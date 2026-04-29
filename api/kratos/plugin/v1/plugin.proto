@@ -1,0 +1,85 @@
+syntax = "proto3";
+
+package kratos.plugin.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+
+option go_package = "aranea-agents/api/kratos/plugin/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.kratos.plugin.v1";
+
+message PluginPermissions {
+  bool can_view = 1;
+  bool can_toggle = 2;
+  bool can_edit_config = 3;
+  bool can_view_logs = 4;
+}
+
+message Plugin {
+  string id = 1;
+  string key = 2;
+  string name = 3;
+  string description = 4;
+  string category = 5;
+  string risk_level = 6;
+  bool enabled = 7;
+  string scope = 8;
+  repeated string callback_points = 9;
+  int32 sort_order = 10;
+  string config_schema_json = 11;
+  string config_json = 12;
+  string default_config_json = 13;
+  int32 invoke_count = 14;
+  int32 block_count = 15;
+  int32 error_count = 16;
+  string last_invoked_at = 17;
+  string last_status = 18;
+  string created_at = 19;
+  string updated_at = 20;
+  PluginPermissions permissions = 21;
+}
+
+message ListPluginsRequest {
+  string search = 1;
+  string category = 2;
+  string enabled = 3;
+  string callback_point = 4;
+  int32 page = 5;
+  int32 page_size = 6;
+}
+
+message ListPluginsResponse {
+  repeated Plugin items = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+}
+
+message TogglePluginEnabledRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  bool enabled = 2;
+}
+
+message UpdatePluginConfigRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string config_json = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+service PluginService {
+  rpc ListPlugins(ListPluginsRequest) returns (ListPluginsResponse) {
+    option (google.api.http) = {get: "/v1/plugins"};
+  }
+  rpc TogglePluginEnabled(TogglePluginEnabledRequest) returns (Plugin) {
+    option (google.api.http) = {
+      patch: "/v1/plugins/{id}/enabled"
+      body: "*"
+    };
+  }
+  rpc UpdatePluginConfig(UpdatePluginConfigRequest) returns (Plugin) {
+    option (google.api.http) = {
+      put: "/v1/plugins/{id}/config"
+      body: "*"
+    };
+  }
+}

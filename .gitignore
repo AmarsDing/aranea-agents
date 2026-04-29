@@ -36,6 +36,8 @@ bin/
 # Develop tools
 .vscode/
 .cache/
+.tools/
+
 .idea/
 *.swp
 

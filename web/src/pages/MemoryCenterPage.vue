@@ -83,19 +83,18 @@ import MemoryOverviewPanel from "../features/memory/MemoryOverviewPanel.vue";
 import MemorySessionsPanel from "../features/memory/MemorySessionsPanel.vue";
 import MemorySettingsStatusPanel from "../features/memory/MemorySettingsStatusPanel.vue";
 import MemorySnapshotDrawer from "../features/memory/MemorySnapshotDrawer.vue";
+import { listAgents, type Agent } from "../features/agents/api";
+import { searchSessions, type Session } from "../features/chat/api";
 import {
-  listAgents,
+  getAgentIdentity,
+  getAgentStrategy,
+  getEvolutionMetrics,
   listEvolutionEvents,
   listEvolutionProposals,
   listL0Snapshots,
   listL1Tasks,
-  listMemoryFacts,
   listMemoryEntities,
-  getAgentIdentity,
-  getAgentStrategy,
-  getEvolutionMetrics,
-  searchSessions,
-  type Agent,
+  listMemoryFacts,
   type AgentIdentity,
   type AgentStrategyProfile,
   type EvolutionEvent,
@@ -104,9 +103,8 @@ import {
   type L0AssemblySnapshot,
   type L1Task,
   type MemoryEntity,
-  type MemoryFact,
-  type Session
-} from "../api/client";
+  type MemoryFact
+} from "../features/memory/api";
 
 const tab = ref("overview");
 const agents = ref<Agent[]>([]);

@@ -1,0 +1,152 @@
+syntax = "proto3";
+
+package kratos.team.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/empty.proto";
+
+option go_package = "aranea-agents/api/kratos/team/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.kratos.team.v1";
+
+// Team mirrors legacy teams row (definition_json holds orchestration JSON).
+message Team {
+  string id = 1;
+  string team_key = 2;
+  string display_name = 3;
+  string status = 4;
+  bool is_default = 5;
+  string definition_json = 6;
+  string adk_app_name = 7;
+  string created_at = 8;
+  string updated_at = 9;
+  string deleted_at = 10;
+}
+
+message TeamRun {
+  string id = 1;
+  string team_id = 2;
+  string session_id = 3;
+  string message_id = 4;
+  string mode = 5;
+  string status = 6;
+  string input_preview = 7;
+  string output_preview = 8;
+  int32 token_in = 9;
+  int32 token_out = 10;
+  int64 cost_micro_usd = 11;
+  int32 duration_ms = 12;
+  string error_message = 13;
+  string topology_json = 14;
+  string started_at = 15;
+  string finished_at = 16;
+  string created_at = 17;
+  string updated_at = 18;
+}
+
+message TeamRunStep {
+  string id = 1;
+  string run_id = 2;
+  string team_id = 3;
+  string agent_id = 4;
+  string agent_key = 5;
+  string agent_name = 6;
+  string role = 7;
+  int32 sort_order = 8;
+  string status = 9;
+  string input_preview = 10;
+  string output_preview = 11;
+  int32 token_in = 12;
+  int32 token_out = 13;
+  int64 cost_micro_usd = 14;
+  int32 duration_ms = 15;
+  string error_message = 16;
+  string started_at = 17;
+  string finished_at = 18;
+  string created_at = 19;
+}
+
+message ListTeamsRequest {}
+
+message ListTeamsResponse {
+  repeated Team items = 1;
+}
+
+message CreateTeamRequest {
+  string team_key = 1 [(google.api.field_behavior) = REQUIRED];
+  string display_name = 2 [(google.api.field_behavior) = REQUIRED];
+  string status = 3;
+  string definition_json = 4;
+  string adk_app_name = 5;
+}
+
+message GetTeamRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message UpdateTeamRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  Team team = 2;
+}
+
+message DeleteTeamRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message DuplicateTeamRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListTeamRunsRequest {
+  string team_id = 1;
+  int32 limit = 2;
+}
+
+message ListTeamRunsResponse {
+  repeated TeamRun items = 1;
+}
+
+message ListTeamRunStepsRequest {
+  string run_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListTeamRunStepsResponse {
+  repeated TeamRunStep items = 1;
+}
+
+service TeamService {
+  rpc ListTeams(ListTeamsRequest) returns (ListTeamsResponse) {
+    option (google.api.http) = {get: "/v1/teams"};
+  }
+  rpc CreateTeam(CreateTeamRequest) returns (Team) {
+    option (google.api.http) = {
+      post: "/v1/teams"
+      body: "*"
+    };
+  }
+  rpc GetTeam(GetTeamRequest) returns (Team) {
+    option (google.api.http) = {get: "/v1/teams/{id}"};
+  }
+  rpc UpdateTeam(UpdateTeamRequest) returns (Team) {
+    option (google.api.http) = {
+      patch: "/v1/teams/{id}"
+      body: "team"
+    };
+  }
+  rpc DeleteTeam(DeleteTeamRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {delete: "/v1/teams/{id}"};
+  }
+  rpc DuplicateTeam(DuplicateTeamRequest) returns (Team) {
+    option (google.api.http) = {
+      post: "/v1/teams/{id}/duplicate"
+      body: "*"
+    };
+  }
+  rpc ListTeamRuns(ListTeamRunsRequest) returns (ListTeamRunsResponse) {
+    option (google.api.http) = {get: "/v1/team-runs"};
+  }
+  rpc ListTeamRunSteps(ListTeamRunStepsRequest) returns (ListTeamRunStepsResponse) {
+    option (google.api.http) = {get: "/v1/team-runs/{run_id}/steps"};
+  }
+}

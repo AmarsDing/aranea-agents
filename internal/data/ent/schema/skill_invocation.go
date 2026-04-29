@@ -1,0 +1,43 @@
+package schema
+
+import (
+	"entgo.io/ent"
+	"entgo.io/ent/dialect/entsql"
+	"entgo.io/ent/schema"
+	"entgo.io/ent/schema/field"
+)
+
+// SkillInvocation maps table skill_invocation (incl. legacy columns from ensureLegacyColumns).
+type SkillInvocation struct {
+	ent.Schema
+}
+
+func (SkillInvocation) Annotations() []schema.Annotation {
+	return []schema.Annotation{
+		entsql.Annotation{Table: "skill_invocation"},
+	}
+}
+
+func (SkillInvocation) Fields() []ent.Field {
+	return []ent.Field{
+		field.String("id").Immutable().Unique().MaxLen(256),
+		field.String("skill_id").MaxLen(256),
+		field.String("agent_id").Default(""),
+		field.String("status").Default("pending"),
+		field.Text("input_json").Default("{}"),
+		field.Text("output_json").Default("{}"),
+		field.Text("error_message").Default(""),
+		field.String("created_at").Default(""),
+		field.String("updated_at").Default(""),
+		field.String("skill_version").Default(""),
+		field.String("user_id").Default(""),
+		field.String("session_id").Default(""),
+		field.Int("duration_ms").Default(0),
+		field.String("started_at").Default(""),
+		field.String("ended_at").Default(""),
+		field.Text("input_preview").Default(""),
+		field.String("input_hash").Default(""),
+		field.Text("output_preview").Default(""),
+		field.String("error_code").Default(""),
+	}
+}

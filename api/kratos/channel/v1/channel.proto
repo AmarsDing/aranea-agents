@@ -1,0 +1,211 @@
+syntax = "proto3";
+
+package kratos.channel.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/empty.proto";
+
+option go_package = "aranea-agents/api/kratos/channel/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.kratos.channel.v1";
+
+// Aligns with legacy PlatformResource JSON for resource "channels".
+message Channel {
+  string id = 1;
+  string resource = 2;
+  string key = 3;
+  string name = 4;
+  string description = 5;
+  string status = 6;
+  bool enabled = 7;
+  int32 sort_order = 8;
+  string parent_id = 9;
+  string level = 10;
+  string agent_id = 11;
+  string provider = 12;
+  string model = 13;
+  string config_json = 14;
+  string metadata_json = 15;
+  string created_at = 16;
+  string updated_at = 17;
+  string deleted_at = 18;
+}
+
+message ChannelCatalogItem {
+  string type = 1;
+  string label = 2;
+  string description = 3;
+  string group = 4;
+  repeated string receive_modes = 5;
+  string icon = 6;
+  bool bundled = 7;
+  bool supports_test = 8;
+  bool supports_webhook = 9;
+  string config_schema_json = 10;
+  string credential_schema_json = 11;
+  string ui_hints_json = 12;
+  int32 sort_order = 13;
+}
+
+message ChannelCredential {
+  string id = 1;
+  string channel_id = 2;
+  string credential_key = 3;
+  string status = 4;
+  string metadata_json = 5;
+  bool configured = 6;
+  string masked_preview = 7;
+  string created_at = 8;
+  string updated_at = 9;
+}
+
+message ChannelCredentialInput {
+  string credential_key = 1 [(google.api.field_behavior) = REQUIRED];
+  string secret = 2;
+  string secret_ref = 3;
+  string status = 4;
+  string metadata_json = 5;
+}
+
+message ChannelDelivery {
+  string id = 1;
+  string channel_id = 2;
+  string agent_id = 3;
+  string status = 4;
+  string payload_json = 5;
+  string error_message = 6;
+  string created_at = 7;
+  string updated_at = 8;
+}
+
+message ChannelTestResult {
+  bool ok = 1;
+  string status = 2;
+  string message = 3;
+  string details_json = 4;
+}
+
+message ListChannelCatalogResponse {
+  repeated ChannelCatalogItem items = 1;
+}
+
+message ListChannelsResponse {
+  repeated Channel items = 1;
+}
+
+message GetChannelRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message CreateChannelRequest {
+  string key = 1 [(google.api.field_behavior) = REQUIRED];
+  string name = 2 [(google.api.field_behavior) = REQUIRED];
+  string description = 3;
+  string status = 4;
+  bool enabled = 5;
+  int32 sort_order = 6;
+  string config_json = 7;
+  string metadata_json = 8;
+  repeated ChannelCredentialInput credentials = 9;
+}
+
+message UpdateChannelRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string key = 2 [(google.api.field_behavior) = REQUIRED];
+  string name = 3 [(google.api.field_behavior) = REQUIRED];
+  string description = 4;
+  string status = 5;
+  bool enabled = 6;
+  int32 sort_order = 7;
+  string config_json = 8;
+  string metadata_json = 9;
+  repeated ChannelCredentialInput credentials = 10;
+}
+
+message DeleteChannelRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ToggleChannelRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  bool enabled = 2;
+}
+
+message TestChannelRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListChannelCredentialsResponse {
+  repeated ChannelCredential items = 1;
+}
+
+message UpsertChannelCredentialsRequest {
+  string channel_id = 1 [(google.api.field_behavior) = REQUIRED];
+  repeated ChannelCredentialInput credentials = 2;
+}
+
+message DeleteChannelCredentialRequest {
+  string channel_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string credential_key = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListChannelDeliveriesRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  int32 limit = 2;
+}
+
+message ListChannelDeliveriesResponse {
+  repeated ChannelDelivery items = 1;
+}
+
+service ChannelService {
+  rpc ListChannelCatalog(google.protobuf.Empty) returns (ListChannelCatalogResponse) {
+    option (google.api.http) = {get: "/v1/channels/catalog"};
+  }
+  rpc ListChannels(google.protobuf.Empty) returns (ListChannelsResponse) {
+    option (google.api.http) = {get: "/v1/channels"};
+  }
+  rpc GetChannel(GetChannelRequest) returns (Channel) {
+    option (google.api.http) = {get: "/v1/channels/{id}"};
+  }
+  rpc CreateChannel(CreateChannelRequest) returns (Channel) {
+    option (google.api.http) = {
+      post: "/v1/channels"
+      body: "*"
+    };
+  }
+  rpc UpdateChannel(UpdateChannelRequest) returns (Channel) {
+    option (google.api.http) = {
+      patch: "/v1/channels/{id}"
+      body: "*"
+    };
+  }
+  rpc DeleteChannel(DeleteChannelRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {delete: "/v1/channels/{id}"};
+  }
+  rpc ToggleChannel(ToggleChannelRequest) returns (Channel) {
+    option (google.api.http) = {
+      post: "/v1/channels/{id}/toggle"
+      body: "*"
+    };
+  }
+  rpc TestChannel(TestChannelRequest) returns (ChannelTestResult) {
+    option (google.api.http) = {post: "/v1/channels/{id}/test"};
+  }
+  rpc ListChannelCredentials(GetChannelRequest) returns (ListChannelCredentialsResponse) {
+    option (google.api.http) = {get: "/v1/channels/{id}/credentials"};
+  }
+  rpc UpsertChannelCredentials(UpsertChannelCredentialsRequest) returns (ListChannelCredentialsResponse) {
+    option (google.api.http) = {
+      put: "/v1/channels/{channel_id}/credentials"
+      body: "*"
+    };
+  }
+  rpc DeleteChannelCredential(DeleteChannelCredentialRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {delete: "/v1/channels/{channel_id}/credentials/{credential_key}"};
+  }
+  rpc ListChannelDeliveries(ListChannelDeliveriesRequest) returns (ListChannelDeliveriesResponse) {
+    option (google.api.http) = {get: "/v1/channels/{id}/deliveries"};
+  }
+}

@@ -44,8 +44,8 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
-import SkillPagination from "../features/skills/components/SkillPagination.vue";
-import SkillRunsTable from "../features/skills/components/SkillRunsTable.vue";
+import SkillPagination from "../components/skills/SkillPagination.vue";
+import SkillRunsTable from "../components/skills/SkillRunsTable.vue";
 import { listSkillRuns } from "../features/skills/api";
 import type { SkillInvocation } from "../features/skills/types";
 

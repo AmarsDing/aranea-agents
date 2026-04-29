@@ -65,7 +65,7 @@
 
 <script setup lang="ts">
 import type { QTableProps } from "quasar";
-import type { MemoryFact } from "../../api/client";
+import type { MemoryFact } from "./api";
 
 defineProps<{
   factsEndpointReady: boolean;

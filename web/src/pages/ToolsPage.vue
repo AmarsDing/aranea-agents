@@ -1,182 +1,79 @@
 <template>
   <q-page class="app-page-cream tools-page">
-    <section class="tools-hero">
-      <div>
-        <div class="tools-kicker">Tool registry</div>
-        <h1 class="tools-title">Tools 管理</h1>
-        <p class="tools-subtitle">统一管理 Tool 元数据、运行时绑定、风险策略、配置 Schema 与调用记录。</p>
-      </div>
-      <div class="row q-gutter-sm">
-        <q-btn outline rounded color="primary" icon="history" label="调用记录" :to="{ name: 'tool-runs' }" />
-        <q-btn rounded color="primary" icon="add" label="新建 Tool" @click="openCreate" />
-      </div>
-    </section>
+    <tool-hero-section kicker="Tool registry" title="Tools 管理" subtitle="统一管理 Tool 元数据、运行时绑定、风险策略、配置 Schema 与调用记录。">
+      <template #actions>
+        <q-btn outline rounded no-caps class="tool-outline-btn" icon="history" label="调用记录" :to="{ name: 'tool-runs' }" />
+        <q-btn rounded no-caps unelevated class="tool-primary-btn" icon="add" label="新建 Tool" @click="openCreate" />
+      </template>
+    </tool-hero-section>
 
-    <div class="row q-col-gutter-md q-mb-md">
-      <div v-for="card in summaryCards" :key="card.label" class="col-12 col-sm-6 col-lg-3">
-        <q-card flat bordered class="tools-summary-card">
-          <q-card-section>
-            <div class="text-caption text-grey-7">{{ card.label }}</div>
-            <div class="text-h5 text-weight-bold q-mt-xs">{{ card.value }}</div>
-            <div class="text-caption text-grey-7 q-mt-xs">{{ card.hint }}</div>
-          </q-card-section>
-        </q-card>
-      </div>
-    </div>
+    <tools-metric-strip :cards="summaryCards" />
 
-    <q-card flat bordered class="tools-filter-card q-mb-md">
-      <q-card-section class="row q-col-gutter-sm items-center">
-        <div class="col-12 col-md-4">
-          <q-input v-model="search" dense outlined clearable debounce="350" placeholder="搜索 Tool 名称、Key、描述...">
-            <template #prepend><q-icon name="search" /></template>
-          </q-input>
-        </div>
-        <div class="col-12 col-sm-6 col-md-2">
-          <q-select v-model="category" dense outlined clearable emit-value map-options label="分类" :options="categoryOptions" />
-        </div>
-        <div class="col-12 col-sm-6 col-md-2">
-          <q-select v-model="riskLevel" dense outlined clearable emit-value map-options label="风险" :options="riskOptions" />
-        </div>
-        <div class="col-12 col-sm-6 col-md-2">
-          <q-select v-model="enabled" dense outlined clearable emit-value map-options label="启用状态" :options="enabledOptions" />
-        </div>
-        <div class="col-12 col-md-2 row justify-end q-gutter-sm">
-          <q-btn flat rounded icon="restart_alt" label="重置" @click="resetFilters" />
-          <q-btn flat rounded icon="refresh" label="刷新" :loading="loading" @click="loadRows" />
-        </div>
-      </q-card-section>
-    </q-card>
+    <tool-catalog-filters
+      :search="search"
+      :category="category"
+      :risk-level="riskLevel"
+      :enabled="enabled"
+      :category-options="categoryOptions"
+      :risk-options="riskOptions"
+      :enabled-options="enabledOptions"
+      :loading="loading"
+      @update:search="search = $event"
+      @update:category="category = $event"
+      @update:risk-level="riskLevel = $event"
+      @update:enabled="enabled = $event"
+      @reset="resetFilters"
+      @refresh="loadRows"
+    />
 
-    <q-banner v-if="error" rounded class="bg-negative text-white q-mb-md">
+    <q-banner v-if="error" rounded class="tools-error-banner q-mb-md">
       {{ error }}
       <template #action>
-        <q-btn flat color="white" label="重试" @click="loadRows" />
+        <q-btn flat dense label="重试" class="text-white" @click="loadRows" />
       </template>
     </q-banner>
 
-    <q-table flat bordered class="tools-table" row-key="id" :rows="rows" :columns="columns" :loading="loading" :pagination="tablePagination" hide-pagination>
-      <template #body-cell-name="props">
-        <q-td :props="props">
-          <div class="text-weight-medium">{{ props.row.display_name }}</div>
-          <div class="text-caption text-grey-7">{{ props.row.key }}</div>
-        </q-td>
-      </template>
-
-      <template #body-cell-category="props">
-        <q-td :props="props">
-          <q-chip dense color="primary" text-color="white">{{ props.row.category || "custom" }}</q-chip>
-          <q-chip dense outline color="grey" class="q-ml-xs">{{ props.row.source || "external" }}</q-chip>
-        </q-td>
-      </template>
-
-      <template #body-cell-risk="props">
-        <q-td :props="props">
-          <q-badge rounded :color="riskColor(props.row.risk_level)">{{ riskLabel(props.row.risk_level) }}</q-badge>
-          <q-badge v-if="props.row.requires_confirmation" rounded color="warning" class="q-ml-xs">需确认</q-badge>
-        </q-td>
-      </template>
-
-      <template #body-cell-runtime="props">
-        <q-td :props="props">
-          <q-badge rounded :color="props.row.runtime_status === 'catalog_only' ? 'grey' : 'positive'">
-            {{ props.row.runtime_status || "available" }}
-          </q-badge>
-          <div class="text-caption text-grey-7 q-mt-xs">{{ props.row.supports_streaming ? "streaming" : "function" }}</div>
-        </q-td>
-      </template>
-
-      <template #body-cell-enabled="props">
-        <q-td :props="props">
-          <q-toggle dense color="primary" :model-value="props.row.enabled" :disable="busyId === props.row.id" @update:model-value="toggleEnabled(props.row as Tool, Boolean($event))" />
-        </q-td>
-      </template>
-
-      <template #body-cell-stats="props">
-        <q-td :props="props">
-          <div class="text-weight-medium">{{ props.row.invoke_count }} 次</div>
-          <div class="text-caption text-grey-7">24h {{ props.row.invoke_count_24h }} · 失败 {{ props.row.failure_count }}</div>
-        </q-td>
-      </template>
-
-      <template #body-cell-actions="props">
-        <q-td :props="props" class="q-gutter-xs">
-          <q-btn flat dense round color="primary" icon="visibility" @click="openDetail(props.row as Tool)">
-            <q-tooltip>查看</q-tooltip>
-          </q-btn>
-          <q-btn flat dense round color="primary" icon="edit" @click="openEdit(props.row as Tool)">
-            <q-tooltip>编辑</q-tooltip>
-          </q-btn>
-          <q-btn flat dense round color="negative" icon="delete" :loading="busyId === props.row.id" @click="removeTool(props.row as Tool)">
-            <q-tooltip>删除</q-tooltip>
-          </q-btn>
-        </q-td>
-      </template>
-    </q-table>
+    <tools-table
+      :rows="rows"
+      :loading="loading"
+      :busy-id="busyId"
+      @toggleEnabled="toggleEnabled"
+      @viewDetail="openDetail"
+      @edit="openEdit"
+      @remove="removeTool"
+    />
 
     <skill-pagination v-model:page="page" v-model:page-size="pageSize" :page-max="pageMax" :total="total" :loading="loading" label="个 Tool" />
 
     <q-dialog v-model="detailOpen">
-      <q-card class="tool-detail-card">
+      <q-card class="tool-dialog-card tool-dialog-card--detail">
         <q-card-section class="row items-start justify-between q-gutter-md">
           <div>
             <div class="text-h6">{{ detailTarget?.display_name }}</div>
-            <div class="text-caption text-grey-7">{{ detailTarget?.key }}</div>
+            <div class="text-caption muted-caption">{{ detailTarget?.key }}</div>
           </div>
-          <q-btn flat dense round icon="close" aria-label="关闭详情" v-close-popup />
+          <q-btn flat dense round icon="close" aria-label="关闭详情" class="tool-icon-btn" v-close-popup />
         </q-card-section>
         <q-separator />
-        <q-card-section v-if="detailTarget" class="q-gutter-md">
-          <q-banner rounded class="bg-grey-2 text-grey-9">{{ detailTarget.description || "暂无描述" }}</q-banner>
-          <div class="row q-col-gutter-sm">
-            <div class="col-6"><b>分类：</b>{{ detailTarget.category }}</div>
-            <div class="col-6"><b>来源：</b>{{ detailTarget.source }}</div>
-            <div class="col-6"><b>风险：</b>{{ riskLabel(detailTarget.risk_level) }}</div>
-            <div class="col-6"><b>运行时：</b>{{ detailTarget.runtime_status || "available" }}</div>
-            <div class="col-6"><b>调用次数：</b>{{ detailTarget.invoke_count }}</div>
-            <div class="col-6"><b>成功 / 失败：</b>{{ detailTarget.success_count }} / {{ detailTarget.failure_count }}</div>
-          </div>
-          <q-expansion-item dense-toggle default-open label="参数 Schema"><pre class="tool-schema">{{ prettyJSON(detailTarget.parameters_schema_json) }}</pre></q-expansion-item>
-          <q-expansion-item dense-toggle label="返回 Schema"><pre class="tool-schema">{{ prettyJSON(detailTarget.result_schema_json) }}</pre></q-expansion-item>
-          <q-expansion-item dense-toggle label="配置 JSON"><pre class="tool-schema">{{ prettyJSON(detailTarget.config_json) }}</pre></q-expansion-item>
-          <q-expansion-item dense-toggle label="默认配置"><pre class="tool-schema">{{ prettyJSON(detailTarget.default_config_json) }}</pre></q-expansion-item>
-          <q-expansion-item dense-toggle label="元数据"><pre class="tool-schema">{{ prettyJSON(detailTarget.metadata_json) }}</pre></q-expansion-item>
-          <q-btn flat color="primary" icon="history" label="查看调用记录" :to="{ name: 'tool-runs', query: { tool_key: detailTarget.key } }" v-close-popup />
+        <q-card-section>
+          <tool-detail-content :tool="detailTarget" />
         </q-card-section>
       </q-card>
     </q-dialog>
 
     <q-dialog v-model="editorOpen" persistent>
-      <q-card class="tool-editor-card">
+      <q-card class="tool-dialog-card tool-dialog-card--editor">
         <q-card-section class="row items-center justify-between">
           <div class="text-h6">{{ editingId ? "编辑 Tool" : "新建 Tool" }}</div>
-          <q-btn flat dense round icon="close" :disable="saving" v-close-popup />
+          <q-btn flat dense round icon="close" class="tool-icon-btn" :disable="saving" v-close-popup />
         </q-card-section>
         <q-separator />
-        <q-card-section class="q-gutter-md">
-          <div class="row q-col-gutter-sm">
-            <q-input class="col-12 col-md-6" v-model="form.key" dense outlined label="Key" :disable="Boolean(editingId)" />
-            <q-input class="col-12 col-md-6" v-model="form.display_name" dense outlined label="显示名称" />
-            <q-input class="col-12" v-model="form.description" dense outlined autogrow label="描述" />
-            <q-input class="col-12 col-md-4" v-model="form.category" dense outlined label="分类" />
-            <q-input class="col-12 col-md-4" v-model="form.source" dense outlined label="来源" />
-            <q-select class="col-12 col-md-4" v-model="form.risk_level" dense outlined emit-value map-options label="风险" :options="riskOptions" />
-          </div>
-          <div class="row q-col-gutter-sm">
-            <q-toggle class="col-auto" v-model="form.enabled" label="启用" />
-            <q-toggle class="col-auto" v-model="form.readonly" label="只读" />
-            <q-toggle class="col-auto" v-model="form.requires_confirmation" label="需确认" />
-            <q-toggle class="col-auto" v-model="form.supports_streaming" label="流式" />
-            <q-toggle class="col-auto" v-model="form.supports_concurrency" label="并发" />
-          </div>
-          <q-input v-model="form.parameters_schema_json" type="textarea" outlined label="参数 Schema JSON" :error="Boolean(jsonErrors.parameters_schema_json)" :error-message="jsonErrors.parameters_schema_json" />
-          <q-input v-model="form.result_schema_json" type="textarea" outlined label="返回 Schema JSON" :error="Boolean(jsonErrors.result_schema_json)" :error-message="jsonErrors.result_schema_json" />
-          <q-input v-model="form.config_json" type="textarea" outlined label="配置 JSON" :error="Boolean(jsonErrors.config_json)" :error-message="jsonErrors.config_json" />
-          <q-input v-model="form.default_config_json" type="textarea" outlined label="默认配置 JSON" :error="Boolean(jsonErrors.default_config_json)" :error-message="jsonErrors.default_config_json" />
-          <q-input v-model="form.metadata_json" type="textarea" outlined label="元数据 JSON" :error="Boolean(jsonErrors.metadata_json)" :error-message="jsonErrors.metadata_json" />
+        <q-card-section>
+          <tool-editor-form :form="form" :editing-id="editingId" :errors="jsonErrors" :risk-options="riskOptions" />
         </q-card-section>
         <q-card-actions align="right">
-          <q-btn flat label="取消" :disable="saving" v-close-popup />
-          <q-btn color="primary" label="保存" :loading="saving" @click="saveTool" />
+          <q-btn flat no-caps label="取消" :disable="saving" v-close-popup />
+          <q-btn no-caps unelevated class="tool-primary-btn" label="保存" :loading="saving" @click="saveTool" />
         </q-card-actions>
       </q-card>
     </q-dialog>
@@ -185,10 +82,24 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
-import { useQuasar, type QTableColumn } from "quasar";
-import SkillPagination from "../features/skills/components/SkillPagination.vue";
+import { useQuasar } from "quasar";
+import SkillPagination from "../components/skills/SkillPagination.vue";
+import ToolHeroSection from "../components/tools/ToolHeroSection.vue";
+import ToolsMetricStrip from "../components/tools/ToolsMetricStrip.vue";
+import ToolCatalogFilters from "../components/tools/ToolCatalogFilters.vue";
+import ToolsTable from "../components/tools/ToolsTable.vue";
+import ToolDetailContent from "../components/tools/ToolDetailContent.vue";
+import ToolEditorForm from "../components/tools/ToolEditorForm.vue";
+import {
+  buildToolSummaryCards,
+  categoryFilterOptions,
+  enabledTriStateOptions,
+  riskLevelOptions,
+  validateToolJsonFields,
+  toolEditorJsonKeys
+} from "../components/tools/toolUi";
 import { createTool, deleteTool, getTool, listTools, toggleToolEnabled, updateTool } from "../features/tools/api";
-import type { Tool, ToolSummary, ToolUpsertInput } from "../features/tools/types";
+import type { Tool, ToolUpsertInput } from "../features/tools/types";
 
 const $q = useQuasar();
 const search = ref("");
@@ -199,7 +110,13 @@ const page = ref(1);
 const pageSize = ref(20);
 const rows = ref<Tool[]>([]);
 const total = ref(0);
-const summary = ref<ToolSummary>({ total_tools: 0, enabled_tools: 0, high_risk_enabled: 0, calls_24h: 0, failure_rate_24h: 0 });
+const summary = ref({
+  total_tools: 0,
+  enabled_tools: 0,
+  high_risk_enabled: 0,
+  calls_24h: 0,
+  failure_rate_24h: 0
+});
 const loading = ref(false);
 const error = ref("");
 const busyId = ref("");
@@ -209,6 +126,10 @@ const editorOpen = ref(false);
 const editingId = ref("");
 const saving = ref(false);
 const jsonErrors = reactive<Record<string, string>>({});
+
+const categoryOptions = categoryFilterOptions;
+const riskOptions = riskLevelOptions;
+const enabledOptions = enabledTriStateOptions;
 
 const blankForm = (): ToolUpsertInput => ({
   key: "",
@@ -232,39 +153,20 @@ const blankForm = (): ToolUpsertInput => ({
 const form = reactive<ToolUpsertInput>(blankForm());
 
 const pageMax = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
-const summaryCards = computed(() => [
-  { label: "总工具", value: summary.value.total_tools, hint: "已注册 Tool" },
-  { label: "已启用", value: summary.value.enabled_tools, hint: "全局启用" },
-  { label: "高风险启用", value: summary.value.high_risk_enabled, hint: "high / critical" },
-  { label: "24h 调用", value: summary.value.calls_24h, hint: `失败率 ${(summary.value.failure_rate_24h * 100).toFixed(1)}%` }
-]);
-const categoryOptions = ["system", "web", "filesystem", "skill", "memory", "media", "runtime", "custom"].map((value) => ({ label: value, value }));
-const riskOptions = [
-  { label: "低", value: "low" },
-  { label: "中", value: "medium" },
-  { label: "高", value: "high" },
-  { label: "严重", value: "critical" }
-];
-const enabledOptions = [
-  { label: "已启用", value: true },
-  { label: "已禁用", value: false }
-];
-const tablePagination = { rowsPerPage: 0 };
-const columns: QTableColumn<Tool>[] = [
-  { name: "name", label: "Tool", field: "display_name", align: "left" },
-  { name: "category", label: "分类 / 来源", field: "category", align: "left" },
-  { name: "risk", label: "风险", field: "risk_level", align: "left" },
-  { name: "runtime", label: "运行时", field: "runtime_status", align: "left" },
-  { name: "enabled", label: "启用", field: "enabled", align: "left" },
-  { name: "stats", label: "调用", field: "invoke_count", align: "left" },
-  { name: "actions", label: "操作", field: "id", align: "right" }
-];
+const summaryCards = computed(() => buildToolSummaryCards(summary.value));
 
 async function loadRows() {
   loading.value = true;
   error.value = "";
   try {
-    const data = await listTools({ search: search.value, category: category.value, risk_level: riskLevel.value, enabled: enabled.value, page: page.value, page_size: pageSize.value });
+    const data = await listTools({
+      search: search.value,
+      category: category.value,
+      risk_level: riskLevel.value,
+      enabled: enabled.value,
+      page: page.value,
+      page_size: pageSize.value
+    });
     rows.value = data.items;
     total.value = data.total;
     summary.value = data.summary;
@@ -326,13 +228,16 @@ function openEdit(tool: Tool) {
 
 function validateJSONFields() {
   Object.keys(jsonErrors).forEach((key) => delete jsonErrors[key]);
-  for (const key of ["parameters_schema_json", "result_schema_json", "config_json", "default_config_json", "metadata_json"] as const) {
-    try {
-      JSON.parse(form[key] || "{}");
-    } catch (err) {
-      jsonErrors[key] = err instanceof Error ? err.message : "JSON 格式错误";
-    }
-  }
+  const keys = [...toolEditorJsonKeys];
+  const fieldObj = keys.reduce(
+    (acc, k) => {
+      acc[k] = form[k];
+      return acc;
+    },
+    {} as Record<string, string>
+  );
+  const errs = validateToolJsonFields(fieldObj, keys);
+  Object.assign(jsonErrors, errs);
   return Object.keys(jsonErrors).length === 0;
 }
 
@@ -376,22 +281,6 @@ function removeTool(tool: Tool) {
   });
 }
 
-function prettyJSON(raw: string) {
-  try {
-    return JSON.stringify(JSON.parse(raw || "{}"), null, 2);
-  } catch {
-    return raw || "{}";
-  }
-}
-
-function riskLabel(value: string) {
-  return ({ low: "低", medium: "中", high: "高", critical: "严重" } as Record<string, string>)[value] ?? value;
-}
-
-function riskColor(value: string) {
-  return ({ low: "positive", medium: "warning", high: "orange", critical: "negative" } as Record<string, string>)[value] ?? "grey";
-}
-
 watch([search, category, riskLevel, enabled], () => {
   page.value = 1;
   void loadRows();
@@ -400,60 +289,50 @@ watch([page, pageSize], () => void loadRows());
 onMounted(loadRows);
 </script>
 
-<style scoped>
-.tools-page {
-  padding: 24px;
-}
+<style scoped lang="sass">
+.tools-page
+  padding: 24px
 
-.tools-hero {
-  align-items: center;
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 20px;
-  gap: 16px;
-}
+.muted-caption
+  color: var(--color-text-secondary)
 
-.tools-kicker {
-  color: var(--q-primary);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
+.tools-error-banner
+  background: rgba(229, 92, 92, 0.92)
+  color: #fff
+  border: 1px solid rgba(255, 255, 255, 0.25)
 
-.tools-title {
-  font-size: 32px;
-  line-height: 1.1;
-  margin: 4px 0;
-}
+body.body--dark .tools-error-banner
+  background: rgba(255, 94, 122, 0.22)
+  color: var(--color-text-primary)
+  border-color: rgba(255, 255, 255, 0.12)
 
-.tools-subtitle {
-  color: #6f6a60;
-  margin: 0;
-}
+.tool-dialog-card
+  max-width: 960px
+  width: 92vw
+  border-radius: 22px
+  border: 1px solid var(--glass-border)
+  background: var(--glass-elevated)
+  backdrop-filter: blur(var(--glass-blur-elevated))
+  -webkit-backdrop-filter: blur(var(--glass-blur-elevated))
+  box-shadow: none
 
-.tools-summary-card,
-.tools-filter-card,
-.tools-table,
-.tool-detail-card,
-.tool-editor-card {
-  border-radius: 18px;
-}
+.tool-primary-btn
+  background: var(--color-accent)
+  color: #fff
 
-.tool-detail-card,
-.tool-editor-card {
-  max-width: 960px;
-  width: 92vw;
-}
+body:not(.body--dark) .tool-primary-btn:hover
+  background: var(--color-accent-hover)
 
-.tool-schema {
-  background: #151515;
-  border-radius: 12px;
-  color: #f5f5f5;
-  max-height: 320px;
-  overflow: auto;
-  padding: 12px;
-  white-space: pre-wrap;
-}
+.tool-outline-btn
+  border-color: rgba(208, 192, 168, 0.85)
+  color: var(--color-text-primary)
+
+body:not(.body--dark) .tool-outline-btn:hover
+  background: var(--interaction-surface-hover)
+
+.tool-icon-btn
+  color: var(--color-icon-muted)
+
+body:not(.body--dark) .tool-icon-btn:hover
+  color: var(--color-accent)
 </style>
-

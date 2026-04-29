@@ -78,7 +78,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { useQuasar } from "quasar";
-import { getModelUsageOverview, type ModelUsageOverview } from "../../api/client";
+import { getModelUsageOverview, type ModelUsageOverview } from "../../features/usage/api";
 import type { PlatformResource } from "../../features/platform/api";
 
 type ProviderConfig = {

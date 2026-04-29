@@ -29,14 +29,22 @@ var ProviderSet = wire.NewSet(
 	NewAvatarRepo,
 	NewMemoryRepo,
 	NewAgentRepo,
+	NewTeamRepo,
 	NewAgentCategoryRepo,
 	NewLlmProviderModelRepo,
 	NewHookRepo,
+	NewCronRepo,
+	NewPluginRepo,
 	NewMCPServerRepo,
+	NewSkillRepo,
+	NewSessionRepo,
+	NewToolRepo,
+	NewChannelRepo,
+	NewUsageRepo,
 )
 
 // Data: Ent/SQLite holds app CRUD; Postgres (optional) holds pgvector agent memory only.
-// All relational access（含 avatar_assets）经 *ent.Client，与 admin 等资源一致。
+// 复杂原生 SQL 走 *ent.Client 上的 QueryContext（见 sqlite_db.go），不另开 sql.DB。
 type Data struct {
 	entClient *ent.Client // SQLite — Ent schema（admin / avatar_assets / embedding 偏好等）
 	pg        *sql.DB     // Postgres — agent_memory 向量列

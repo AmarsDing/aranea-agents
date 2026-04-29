@@ -19,7 +19,7 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import type { L0AssemblySegment, L0AssemblySnapshot } from "../../api/client";
+import type { L0AssemblySegment, L0AssemblySnapshot } from "./api";
 
 const props = defineProps<{
   modelValue: boolean;

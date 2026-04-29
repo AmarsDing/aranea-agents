@@ -13,7 +13,7 @@ import { flattenCategoryPositions, formatContext } from "../../components/agents
 import { useAppStore } from "../app";
 import { useAvatarCatalogStore } from "../avatar";
 
-/** Agent 列表页：筛选、分页、依赖数据与列表 CRUD；请求经 api/client 与各域 api。 */
+/** Agent 列表页：筛选、分页、依赖数据与列表 CRUD；Agent HTTP 经 features/agents/api（Kratos）。 */
 export const useAgentsPageStore = defineStore("agentsPage", () => {
   const keyword = ref("");
   const selectedStatus = ref<string | null>(null);

@@ -95,12 +95,21 @@ Component（仅展示：props in / emits out）
 
 | 层级 | 路径 | 职责 |
 |------|------|------|
-| HTTP 纯封装 | `features/<域>/api.ts`、`services/`（Kratos、`axiosHandler`、`clientLegacy` 等） | 只做请求与类型映射，**不**持有业务 loading |
+| HTTP 纯封装 | `features/<域>/api.ts`（及域内子模块如 **`features/session/api.ts`**）、`services/index.ts`（`create*Service`）、`axiosHandler`；**遗留**收口文件 **`clientLegacy.ts`**（仅 `/api/v1/…`，勿写入已迁 Kratos 的实现） | 只做请求与类型映射，**不**持有业务 loading |
 | Store | `stores/<域>/index.ts`，经 `stores/index.ts` **具名导出**；**default export** 必须保留 Quasar 要求的 **Pinia 工厂** | 领域状态 + actions |
 | Composable | `composables/useXxx.ts`（跨域）或 `features/<域>/useXxx.ts`（域内） | 暴露给 Page 的薄 API |
 | 展示组件 | `components/<域>/**/*.vue` | props / emits |
 | 页面 | `pages/**/*Page.vue` | 组合布局与 Composable |
-| Feature | `features/<域>/` | 类型、用例导出、与 Store 互补（避免无限膨胀） |
+| Feature | `features/<域>/` | **`api.ts`**、域内 **`useXxx.ts`**、与 Store 互补的模块；**不含** §0.2 展示用 `.vue`（见 §2 路径硬性） |
+
+**路径硬性 + 浮层 UX（须遵守）**
+
+- 凡 **§0.2** 所定义的 **展示组件**（纯 props / emits、禁止 Store / 业务 API 调用），其 **`.vue` 必须** 放在 **`components/<域>/`**，**禁止** 放在 `features/<域>/` 或 `pages/` 内再套一层「伪 feature」目录取代该路径。
+- **`features/<域>/`** 只放：HTTP 门面 `api.ts`、域内 composable、**容器**组件（若经 §0.2 表的白名单批准，须在文件首注释 `// Container: approved because …`）。
+- **Dialog / Drawer / 全屏表单** 等浮层：默认视为展示组件，**同路径规则**；`script` 内 **禁止** `import features/*/api`、`create*Service` 发请求 — 只 **`emit('submit', payload)`**，由 **Page / Store action** 调 API（与 §0.1 一致）。
+- **浮层视觉**（非纯逻辑）：须遵守 **[UX.md](../UI/UX.md) §1～§2**：`background: var(--glass-elevated)`（或 `--glass-surface`）+ **`backdrop-filter` 与 `-webkit-backdrop-filter`** 成对；主按钮用 **`var(--color-accent)` / `--color-accent-hover`**，**禁止**在日间用夜间霓虹青紫作默认强调（UX §1）。
+- 与展示子组件紧耦合、**无网络请求** 的纯函数 / 常量可与展示组件同域共址为 **`components/<域>/*.ts`**（示例：`components/teams/teamUtils.ts`）；其中 **仅允许** 对 `features/<域>/api` **type-only** import，禁止运行时依赖会触发 §0.2 禁止项的模块。
+- **新代码与迁移 PR** 须按上表落盘；存量若暂在 `features/<域>/` 的展示 `.vue`，应在同一域的迁移中 **迁至** `components/<域>/` 并改 import，**不得**扩大「临时共址」范围。
 
 ---
 
@@ -110,7 +119,10 @@ Component（仅展示：props in / emits out）
 
 - 一个函数对应 **一个** 后端能力（或同一资源的单一操作）。
 - **不得**：读 `useRoute`、改 Pinia、`$q.notify`（通知在 Store 或 Composable 中统一策略）。
-- **本仓库**：Kratos 走 `services/index.ts` 与 `requestHandler`；遗留 REST 走 `api/http` / `clientLegacy`；新路径集中写 **feature api**，勿在 `.vue` 写裸 URL。
+- **本仓库**：
+  - **Kratos**：在 **`features/<域>/api.ts`**（或 **`features/<域>/<topic>.ts`**，例如会话用 **`features/session/api.ts`**）中 **`import { createXxxService } from "../../services/index"`**（路径按目录调整），经 **`requestHandler`** 访问 **`/v1/...`**。
+  - **遗留 REST**：仍走 **`legacyRestApi`** 的调用可集中在 **`features/*/api.ts`**，或暂留在 **`services/clientLegacy.ts`** —— **禁止**在 **`clientLegacy.ts`** 追加 **已迁至 Kratos** 的新逻辑（避免与上一条并存两套实现）。
+  - 新路径集中写 **feature api**，勿在 `.vue` 写裸 URL。
 
 ### 3.2 Store
 
@@ -126,6 +138,7 @@ Component（仅展示：props in / emits out）
 
 ### 3.4 展示组件
 
+- **磁盘路径**：必须符合 **§2「路径硬性」**——`.vue` 落在 **`components/<域>/`**，不得放在 `features/<域>/`（容器白名单例外见 §2）。
 - 完整 **`defineProps` / `defineEmits`**；类型优先 TypeScript + 泛型 props（必要时）。
 - **禁止**把「是否登录」「权限」「列表来源」等业务真源藏在组件内部；由父级传入或全局路由元信息在 Page 层处理后再传 props。
 
@@ -154,7 +167,7 @@ Component（仅展示：props in / emits out）
 当 AI 或开发者接到「迁移旧代码」任务时，按顺序执行：
 
 1. **画数据流**：标出当前「谁发起请求、谁保存列表、谁被多页面读取」。
-2. **抽 Service**：若请求逻辑嵌在 `.vue` 或巨无霸 composable，先挪到 `features/<域>/api.ts`（或复用已有 api）。
+2. **抽 Service**：若请求逻辑嵌在 `.vue` 或巨无霸 composable，先挪到 `features/<域>/api.ts`（或域内子模块如 **`features/session/api.ts`**）；**Kratos** 调用一律经 **`services/index.ts`** 的 **`create*Service()`**，**勿**写入 **`clientLegacy.ts`**（除非该调用仍为 **`legacyRestApi`**）。
 3. **建或扩展 Store**：新增 action `loadXxx`，把原 `ref` 列表、`loading` 移入 state。
 4. **写或收窄 Composable**：`useXxx` 只暴露 `storeToRefs` / 调用 `store.loadXxx`。
 5. **瘦 Page**：删除散装请求，换 composable。

@@ -12,7 +12,7 @@ import {
   type SendMessageOptions,
   type Session,
   type ToolUseEvent
-} from "../api/client";
+} from "../features/chat/api";
 import { createAgent, deleteAgent, listAgents, updateAgent, type Agent } from "../features/agents/api";
 
 export const useAppStore = defineStore("app", {

@@ -11,8 +11,9 @@
 1. **选定目标域**：在 [**§6 模块总表**](#6-模块总表后端状态--建议前端落点) 中确认本迭代要迁的行；顺带打开 [`pkg-backend-to-kratos.md`](./pkg-backend-to-kratos.md) §6.3 与旧路由 [**§7**](#7-旧路由索引便于对账) 对账路径是否全覆盖。  
 2. **读规范栈**（按 **[§1](#1-规范优先级冲突时)** 优先级）：API/DB + Kratos 主文档 → **`vue-design.md` 全文**（前端分层与自检）→ 若改 UI 再读 `UX.md`。  
 3. **按域执行顺序**：**[§2 A → B → C](#2-强制阶段顺序每个业务域)**，不要在 proto 未定稿时让前端长期手写新路径。  
-4. **收尾**：用 [**§8 任务卡片**](#8-ai-单次会话任务卡片复制模板) 勾选；更新 **§6 表**与 `pkg-backend-to-kratos.md` §6.3；PR 描述写清与旧 `pkg/backend` **路径/字段差异**及**未迁子能力**（若有）。  
-5. **编号别混**：本文 **§3～§5** = 阶段 A/B/C（本 Playbook）；`vue-design.md` 里的 **§4 / §5** = 该文档自检清单与迁移剧本——提及「§5」时写明是哪份文档。
+4. **前端能组件化则组件化**（详见 **[§4 B8](#4-阶段-b--前端架构condensed-from-vue-design)**）：列表/筛选/表格行/空态/玻璃外壳等重复结构抽到 `components/<域>/`，页面保持瘦；**网页 UI 的优化与验收**一律以 **[`UX.md`](../UI/UX.md) 为权威**（阶段 C 按 §1～§8 对齐 token / 组件数值 / 布局 / Do·Don't），见 **[§5](#5-阶段-c--设计与-uxcondensed-from-uxmd--quasar)**。  
+5. **收尾**：用 [**§8 任务卡片**](#8-ai-单次会话任务卡片复制模板) 勾选；更新 **§6 表**与 `pkg-backend-to-kratos.md` §6.3；PR 描述写清与旧 `pkg/backend` **路径/字段差异**及**未迁子能力**（若有）。  
+6. **编号别混**：本文 **§3～§5** = 阶段 A/B/C（本 Playbook）；`vue-design.md` 里的 **§4 / §5** = 该文档自检清单与迁移剧本——提及「§5」时写明是哪份文档。
 
 **最低验收（每域可机械核对）**
 
@@ -20,7 +21,8 @@
 |------|----------------|
 | 后端 | `make api`（或与本仓库等价的 proto 生成流程）已跑通；`go run github.com/google/wire/cmd/wire ./cmd/admin`（或 `go generate`）更新 `wire_gen.go`；**`go build ./cmd/admin`** 通过 |
 | 前端 | `features/<域>/api.ts` 存在且**不**在展示组件里直连 HTTP；`web/src/services` 已暴露 `create*Service`；该域对 **`legacyRestApi`/`clientLegacy` 的旧路径**已删除或可说明兼容层 |
-| UX（若本轮做 C） | 触达页面满足 `UX.md` **§8**（Do / Don’t） |
+| UX（若本轮做 C） | 触达页面按 **`UX.md` 全文**对照（至少 **§1 自检、§2 token、§5 组件数值、§7 布局、§8 Do / Don’t**）；优先在**已抽好的展示组件**上落样式，避免只在 Page 堆叠覆盖 |
+| 组件化（B/C） | 同一域内 **可复用 UI** 已抽到 `components/<域>/`（见 §4 B8），无「单文件超长模板」 |
 
 ---
 
@@ -41,12 +43,14 @@ A. 后端（Kratos）
       ↓  make api 已提交、wire 已更新、go build 通过
 B. 前端对齐（同一域）
       ↓  web/src/services + features/*/api + Store actions；去掉该域对 legacy `/api/v1` 的依赖
+      ↓  **能组件化则组件化**：重复 UI 抽到 components/<域>/（§4 B8）
 C. 设计与 UX（同一域触达页面）
-      ↓  按 UX.md 映射 Quasar 变量、布局、玻璃材质；遵守 vue-design 组件分层
+      ↓  **严格按 UX.md** 做网页 UI（token / 玻璃 / 按钮卡片 / 导航 / Do·Don't）；优先改组件而非复制粘贴
 ```
 
 - **不要**在未定 proto、未生成客户端的情况下，让前端长期手写新路径。  
 - **不要**在展示组件里绕过 Store 直连 API（vue-design §0.2）。  
+- **不要**为「省事」在 Page 内堆数百行模板；**同一模式出现 ≥2 次**就应评估抽组件（与 B5/B5b 一致）。  
 - **UX 可与 B 并行设计稿**，但 **落代码** 建议在 **B 稳定** 后进行，避免重复改调用链。
 
 **阶段 B 正文**：[`docs/vue-design/vue-design.md`](../vue-design/vue-design.md)（含迁移剧本 **§5** 与交付自检 **§4**）。本 Playbook **§4 仅为摘要**；实现与评审以 **vue-design 全文** 为准，冲突时按 **本文 §1** 优先级处理。
@@ -80,14 +84,19 @@ C. 设计与 UX（同一域触达页面）
 | B3 | **Pinia** `stores/<域>/`：异步、loading、error、列表真源进 **actions**；`stores/index.ts` **具名导出**，保留 **default export** Pinia 工厂 |
 | B4 | Composable：`useXxx` **默认**只组合 Store；若暂直连 Service，须 `// TECH-DEBT: ...` |
 | B5 | Page 瘦、展示组件 **仅 props/emits**，禁止 `useXxxStore` / `createFooService` 出现在纯展示组件 |
+| B5b | **路径**：展示 `.vue` **必须**在 `components/<域>/`（见 `vue-design.md` §2「路径硬性」），不得长期留在 `features/<域>/` |
+| B5c | **浮层**：Dialog/Drawer 等同域组件路径同 B5b；材质与强调色遵守 **`docs/UI/UX.md` §1～§2**（玻璃 `backdrop-filter` **与** `-webkit-backdrop-filter` 成对；日间主操作 **`--color-accent`**）；**禁止**在展示浮层 `script` 中直接调 **`features/*/api`**（只 **`emit`**，Page/Store 调 API） |
 | B6 | 删除或缩小该域对 `clientLegacy` / `api/client` 中 **旧 `/api/v1/...`** 的依赖；代理与 `getBackendOrigin()` 行为与运维约定一致 |
 | B7 | 交付前自检：[vue-design §4 检查清单](../vue-design/vue-design.md#4-ai-开发迁移检查清单交付前必跑) |
+| **B8** | **组件化（强制倾向）**：**能组件化则组件化**。同一域内至少 **出现两次**的区块（筛选条、表格工具栏、表格列模板、空状态、分页区、玻璃卡片外壳、`q-dialog` 内容骨架）应拆为 **`components/<域>/`** 下独立 `.vue`，由 Page **组合**；跨域可复用模式（如玻璃面板、指标胶囊）优先 **对齐已有页面**（如 Tools / Channels 迁移后的组件拆分）或抽到 **`components/common/`**（须经 `UX.md` §3 样式入口约定）。**禁止**单文件 Page 过长且不拆组件「以后再治」。 |
 
 ---
 
 ## 5. 阶段 C — 设计与 UX（condensed from UX.md + Quasar）
 
 **设计系统**：[UX.md](../UI/UX.md) — 奶油昼 / 玻璃夜；所有浮层 **`backdrop-filter` + `-webkit-backdrop-filter`**，token 以 UX **§2** 为准。
+
+**网页 UI 优化（本阶段含义）**：不是随意「美化」，而是把触达页面 **逐项对齐 `UX.md`**——实现前 **§1 强制自检**（玻璃双前缀、日间金盏花锚点、夜间霓虹用途边界）→ **§2 CSS 变量**（禁止页面硬编码 hex 取代 token）→ **§3 样式工程**（token / 全局类放哪里）→ **§4 排版** → **§5 组件数值**（按钮 / 卡片 / 对话框 / 输入 / 导航）→ **§7 布局**（间距与圆角刻度昼夜一致）→ **§8 Do / Don’t** → **§9 响应式**。阶段 C 的修改应 **落在阶段 B 已抽好的组件**上，避免仅在父级 Page 覆盖样式导致与 `UX.md` 分叉。
 
 | 步骤 | 动作 |
 |------|------|
@@ -113,16 +122,17 @@ C. 设计与 UX（同一域触达页面）
 | 2c | LLM 模型目录 | `api/kratos/llm_provider_model/v1` | `features/platform`, `ResourceManagerPage` | **已落地** | 维持 | 按需 |
 | 2d | Hooks | `api/kratos/hook/v1` | `Ecosystem` / 平台页 | **已落地** | 维持 | 按需 |
 | 2e | MCP Servers | `api/kratos/mcp_server/v1` | `features/mcp`, `McpServersPage` | **已落地** | 维持 | 按需 |
-| 3 | **会话与聊天** | 建议 `session/v1`、`chat/v1`（或合并 `conversation/v1`，须一次定清 RPC） | `components/chat`, `ChatPage`, `SessionsPage`, `features` 聊天 API | **未迁移** | **待做** | **待做** |
+| 3 | **会话与聊天** | 建议 `session/v1`、`chat/v1`（或合并 `conversation/v1`，须一次定清 RPC） | `components/chat`, `features/chat/api.ts`, `stores/app` | **`session/v1` 已落地**（会话 CRUD、搜索、`timeline`；Ent：`sessions`、`messages`、`tool_invocations`，timeline 聚合 skill/tool/message）；**`chat/v1` 未迁移**（`/chat/messages`、`/chat/messages/stream`、`/chat/options` 仍 **`pkg/backend`/遗留 REST**） | **会话部分已接 Kratos**；chat 发送/流式/options/**messages 列表**仍 legacy | **待做**（会话列表页可对 UX token） |
 | 4 | **Agent 目录**（CRUD、runtime settings、prompt 文件、preview） | `api/kratos/agent/v1` | `features/agents`, `stores/agents`（`kratosApi` `/v1/agents`） | **已落地** | **已接 Kratos** | **待做** |
-| 5 | **Team** | `team/v1` | `teams/*`, `AgentsPage` | **未迁移** | **待做** | **待做** |
-| 6 | 技能 / 工具 / 插件 / 通道 / 定时任务 | `skill/v1`、`tool/v1`、`plugin/v1`、`channel/v1`、`cron/v1` 等 | `features/skills`, `tools`, `plugins`, `channels`, `cron` | **未迁移** | **待做** | **待做** |
-| 7 | 记忆 / 进化 | `memory/v1`（可分子 service）；与 `internal/data/pgvector` + `biz/memory` **边界须文档化** | `features/memory`, `MemoryCenterPage` | **未迁移** | **待做** | **待做** |
-| 8 | 用量 / 监控 | `usage/v1`、`monitor/v1` | `features/monitor`, `ToolRunsPage`, 用量相关 | **未迁移** | **待做** | **待做** |
+| 5 | **Team** | `api/kratos/team/v1` | `features/teams/api.ts`（Kratos `/v1/teams`、`/v1/team-runs`）；`subscribeTeamRunEvents` 仍 `/api/v1/team-run-events` | **已落地** | **已接 Kratos** | **待做** |
+| 6 | **Cron 定时任务** | `api/kratos/cron/v1` | `features/cron`（Kratos `/v1/cron-tasks`、`/v1/cron-task-runs`；`pkg/backend` 内 **CronRunner** 仍读写同库 `cron_task` / `cron_task_run`） | **已落地** | **已接 Kratos** | **待做** |
+| 7 | 技能 / 工具 / 插件 / 通道 | **`plugin/v1` 已落地**；**`skill/v1` 已落地**（列表 / 启停 / 复制 / 删除 / 文件读写 / `skill-runs`；ZIP 导入等多段接口仍 **`pkg/backend`**）；`tool/v1`、`channel/v1` 等仍待 | `features/plugins`（Kratos）；**`features/skills` 管理面已接 Kratos**（导入流仍 legacy）；`tools`、`channels` 仍 legacy | **部分：`plugin/v1` + `skill/v1` 管理面已落地**（技能导入未迁） | **`plugins` + skills 列表/运行等已接 Kratos**；**导入仍 legacy**；余子域 **待做** | **待做** |
+| 8 | 记忆 / 进化 | `memory/v1`（可分子 service）；与 `internal/data/pgvector` + `biz/memory` **边界须文档化** | `features/memory`, `MemoryCenterPage` | **未迁移** | **待做** | **待做** |
+| 9 | 用量 / 监控 | **`usage/v1` 已落地**；`monitor/v1` | `features/usage`（`createUsageService()`）；`features/monitor`；用量 UI：`OverviewPage`、`ProviderTrendDialog` | **`usage/v1` 已落地**；**`monitor/v1` 未迁移** | **用量已接 Kratos**；monitor 仍 legacy | **待做** |
 
 **维护约定**：每合并一域，将上表 **后端 / 前端 B / UX C** 更新为 **已落地**（或 **进行中**），并在 [`pkg-backend-to-kratos.md`](./pkg-backend-to-kratos.md) §6.3 保持同步。
 
-**下一优先域**（与主文档一致）：在 **会话与消息（步 3）** 与 **继续收口 catalog 残余** 之间由产品选择；核心聊天链工作量大，建议单独开迁移清单（可仿 Avatar checklist 结构）。
+**下一优先域**（与主文档一致）：在 **会话与消息（步 3）** 与 **继续收口 catalog 残余** 之间由产品选择；后者 **推荐顺序与路由对账**见 [**checklist-catalog-platform-remnants.md**](./checklist-catalog-platform-remnants.md)。核心聊天链工作量大，建议单独开迁移清单（可仿 Avatar checklist 结构）。
 
 ---
 
@@ -134,7 +144,7 @@ C. 设计与 UX（同一域触达页面）
 |------|------------------|
 | Agent | `/api/v1/agents`, `/api/v1/agents/`, `/api/v1/agents/validate-model` |
 | Team | `/api/v1/teams`, `/api/v1/teams/`, `/api/v1/team-runs`, `/api/v1/team-run-events` |
-| 平台资源 | `agent-categories`, `llm-provider-models`, `avatar-assets`, `hooks`, `mcp-servers`, `cron-tasks` |
+| 平台资源（节选） | 旧 `/api/v1/...`：`agent-categories`, `llm-provider-models`, `avatar-assets`, `hooks`, `mcp-servers`；**`cron-tasks` / `cron-task-runs` 已由 Kratos** `GET/PATCH /v1/cron-tasks` **等承接（管理 UI）** |
 | 通道 / 技能 / 插件 | `channels`, `skills`, `skill-runs`, `plugins` |
 | 会话 / 聊天 | `sessions`, `chat/messages`, `chat/messages/stream`, `chat/options` |
 | 用量 / 监控 | `model-usage/*`, `monitor/*` |
@@ -163,10 +173,12 @@ C. 设计与 UX（同一域触达页面）
 - [ ] 无展示组件直连 API/Store 违规（vue-design §0.2）
 - [ ] Composable 直连 Service 已按 vue-design §1 标注 TECH-DEBT 或已上收到 Store
 - [ ] 该域 legacy `/api/v1` 已移除或仅限兼容层
+- [ ] **组件化**：重复 UI 已抽至 `components/<域>/`（本 Playbook §4 **B8**），Page 以组合为主
 
-### C UX
-- [ ] 相关页已接 UX token（玻璃/accent/夜间霓虹）
-- [ ] Do/Don’t 已自检
+### C UX（[`UX.md`](../UI/UX.md) 全文对齐）
+- [ ] **§1～§2**：玻璃双前缀、token（`var(--*)`），日间主强调 `--color-accent`、夜间霓虹边界清晰
+- [ ] **§5～§7**：按钮/卡片/对话框/输入/导航与布局刻度符合文档数值；相关页已接 UX token（玻璃 / accent / 夜间霓虹）
+- [ ] **§8～§9**：Do/Don’t 已自检；移动端 blur 与动效降级已顾及
 
 ### 回写
 - [ ] Playbook §6 与 pkg-backend-to-kratos §6.3 状态已更新
@@ -183,7 +195,7 @@ C. 设计与 UX（同一域触达页面）
 
 ## 10. 附录：给 AI 的一句话系统指令
 
-> 按 `docs/migration/AI-full-stack-migration-playbook.md` 顺序工作：先为该域补齐 Kratos proto、biz、Ent data、service 与 `make api`；**`web/` 前端迁移与分层必须遵守** [`docs/vue-design/vue-design.md`](../vue-design/vue-design.md)（含 Store / Composable / Page / 展示组件数据流、§5 迁移步骤与 §4 自检）——在 `web/src/services` 与 `features/<域>/api.ts` 对接生成客户端与 Pinia，**展示组件不得引用 Store/API**；再把本域页面按 [`docs/UI/UX.md`](../UI/UX.md) 的奶油昼/玻璃夜 token 落到 Quasar；同时遵守 [`docs/API/接口与数据库开发规范.md`](../API/接口与数据库开发规范.md) 与 [`pkg-backend-to-kratos.md`](./pkg-backend-to-kratos.md) §2。
+> 按 `docs/migration/AI-full-stack-migration-playbook.md` 顺序工作：先为该域补齐 Kratos proto、biz、Ent data、service 与 `make api`；**`web/` 前端迁移与分层必须遵守** [`docs/vue-design/vue-design.md`](../vue-design/vue-design.md)（含 Store / Composable / Page / 展示组件数据流、§5 迁移步骤与 §4 自检）——在 `web/src/services` 与 `features/<域>/api.ts` 对接生成客户端与 Pinia，**展示组件不得引用 Store/API**；**能组件化则组件化**（重复 UI 抽到 `components/<域>/`，见本 Playbook §4 B8）；再把本域页面与组件按 [`docs/UI/UX.md`](../UI/UX.md) **全文**（§1～§8 及响应式 §9）做**网页 UI 对齐**，奶油昼/玻璃夜 token 落到 Quasar；同时遵守 [`docs/API/接口与数据库开发规范.md`](../API/接口与数据库开发规范.md) 与 [`pkg-backend-to-kratos.md`](./pkg-backend-to-kratos.md) §2。
 
 ---
 
@@ -191,11 +203,11 @@ C. 设计与 UX（同一域触达页面）
 
 | 维度 | 说明 |
 |------|------|
-| **够用的部分** | 规范优先级（§1）、**固定阶段顺序 A→B→C**（§2）、后端逐步清单（§3）、前端摘要 + 指向 `vue-design` 全文（§4）、UX 摘要（§5）、**域级总表 + 旧路由索引**（§6～§7）、可复制的任务卡（§8）、双进程风险提示（§9）、一句话系统指令（§10）。 |
-| **必须配合 mother docs** | **Ent 字段级约定、SQLite 单连接、`make api` 参数、wire 写法**等仍以 `pkg-backend-to-kratos.md` 与 `接口与数据库开发规范` 为准；**组件谁能调 API** 以 `vue-design.md` **§0～§5** 为准——本文 §4 是摘要，**不能替代**该全文。 |
-| **AI 常见失效点** | ① 只迁 proto 未跑生成或未注册 HTTP/gRPC；② 前端只改 `api/client` 未落到 `features/<域>/api`；③ 展示组件仍 import Store/API；④ §6 表与 §7 路由、旧 `handler` **未对账**，漏迁子路径；⑤ **部分子能力仍走旧栈** 未在 PR 说明。 |
+| **够用的部分** | 规范优先级（§1）、**固定阶段顺序 A→B→C**（§2）、后端逐步清单（§3）、前端摘要 + **`vue-design` 全文** + **§4 B8 组件化**（§4）、**`UX.md` 驱动的网页 UI 优化路径**（§5）、**域级总表 + 旧路由索引**（§6～§7）、可复制的任务卡（§8）、双进程风险提示（§9）、一句话系统指令（§10）。 |
+| **必须配合 mother docs** | **Ent 字段级约定、SQLite 单连接、`make api` 参数、wire 写法**等仍以 `pkg-backend-to-kratos.md` 与 `接口与数据库开发规范` 为准；**组件谁能调 API** 以 `vue-design.md` **§0～§5** 为准——本文 §4 是摘要，**不能替代**该全文；**网页 UI 细则（token、玻璃、组件数值、布局、Do/Don't）** 以 **`UX.md` 全文** 为准——本文 §5 是摘要，**不能替代** `UX.md`。 |
+| **AI 常见失效点** | ① 只迁 proto 未跑生成或未注册 HTTP/gRPC；② 前端只改 `api/client` 未落到 `features/<域>/api`；③ 展示组件仍 import Store/API；④ §6 表与 §7 路由、旧 `handler` **未对账**，漏迁子路径；⑤ **部分子能力仍走旧栈** 未在 PR 说明；⑥ **未组件化**导致 Page 臃肿、阶段 C 只能在父级糊样式，与 **`UX.md`** 分叉；⑦ **只做局部配色**未按 **`UX.md` §1～§8** 系统对齐。 |
 | **建议用法** | 将 **§0 + §10** 粘进会话；每域用 **§8** 勾选；拿 **§6** 选域、**§7** 对路径。复杂域（如会话/流式）另开 checklist 链接进 §6 备注列（可在表尾加「备注」列扩充）。 |
 
 ---
 
-*文档版本：2026-04-29 · 与三份母文档同源维护；母文档更新时同步核对 §6 与硬约束。*
+*文档版本：2026-04-29（增补：§4 B8 组件化、`UX.md` 驱动的网页 UI 优化约定）· 与三份母文档同源维护；母文档更新时同步核对 §6 与硬约束。*

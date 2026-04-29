@@ -242,87 +242,15 @@ function legacyPartialAgentToKratos(payload: Partial<Agent>): KratosAgentWire {
   return o as KratosAgentWire;
 }
 
-export type Session = {
-  id: string;
-  owner_type: string;
-  agent_id: string;
-  team_id: string;
-  title: string;
-  summary: string;
-  context_used_ratio: number;
-  max_context_used_ratio: number;
-  context_status: string;
-  dialog_mode: string;
-  provider: string;
-  model: string;
-  status: string;
-  message_count: number;
-  run_count: number;
-  model_call_count: number;
-  tool_call_count: number;
-  skill_call_count: number;
-  mcp_call_count: number;
-  input_tokens: number;
-  output_tokens: number;
-  total_tokens: number;
-  total_cost_micro_usd: number;
-  last_message_at: string;
-  created_at: string;
-  updated_at: string;
-  archived_at: string;
-  deleted_at: string;
-};
-
-export type SessionSearchQuery = {
-  owner_type?: string;
-  agent_id?: string;
-  team_id?: string;
-  status?: string;
-  context_status?: string;
-  keyword?: string;
-  limit?: number;
-  offset?: number;
-  page?: number;
-  page_size?: number;
-};
-
-export type SessionListResult = {
-  items: Session[];
-  total: number;
-  limit: number;
-  offset: number;
-};
-
-export type SessionTimelineItem = {
-  id: string;
-  kind: "message" | "tool" | "skill" | "mcp" | string;
-  side: "left" | "right" | string;
-  title: string;
-  subtitle: string;
-  actor_id: string;
-  actor_name: string;
-  status: string;
-  occurred_at: string;
-  duration_ms: number;
-  content_markdown: string;
-  preview: string;
-  detail_json: string;
-  tags: string[];
-};
-
-export type SessionTimelineSummary = {
-  total: number;
-  message_count: number;
-  tool_count: number;
-  skill_count: number;
-  mcp_count: number;
-};
-
-export type SessionTimeline = {
-  session_id: string;
-  items: SessionTimelineItem[];
-  summary: SessionTimelineSummary;
-};
+/** 会话 HTTP 实现位于 `features/session/api.ts`；此处仅为 `@/api/client` 兼容 re-export。 */
+export type {
+  Session,
+  SessionSearchQuery,
+  SessionListResult,
+  SessionTimelineItem,
+  SessionTimelineSummary,
+  SessionTimeline
+} from "../features/session/api";
 
 export type Team = {
   id: string;
@@ -651,40 +579,6 @@ export async function getAgent(id: string): Promise<Agent> {
   return data as Agent;
 }
 
-export async function listTeams(): Promise<Team[]> {
-  const { data } = await api.get("/teams");
-  return data.items ?? [];
-}
-
-export async function createTeam(payload: Partial<Team>): Promise<Team> {
-  const { data } = await api.post("/teams", payload);
-  return data;
-}
-
-export async function updateTeam(id: string, payload: Partial<Team>): Promise<Team> {
-  const { data } = await api.patch(`/teams/${id}`, payload);
-  return data;
-}
-
-export async function duplicateTeam(id: string): Promise<Team> {
-  const { data } = await api.post(`/teams/${id}/duplicate`);
-  return data;
-}
-
-export async function deleteTeam(id: string): Promise<void> {
-  await api.delete(`/teams/${id}`);
-}
-
-export async function listTeamRuns(teamID?: string, limit = 50): Promise<TeamRun[]> {
-  const { data } = await api.get("/team-runs", { params: { team_id: teamID, limit } });
-  return data.items ?? [];
-}
-
-export async function listTeamRunSteps(runID: string): Promise<TeamRunStep[]> {
-  const { data } = await api.get(`/team-runs/${runID}/steps`);
-  return data.items ?? [];
-}
-
 export function subscribeTeamRunEvents(teamID: string, onEvent: (event: TeamRunEvent) => void, onError?: (error: Event) => void): EventSource {
   const query = new URLSearchParams({ team_id: teamID });
   const source = new EventSource(`${getBackendBaseURL()}/team-run-events?${query.toString()}`);
@@ -716,76 +610,19 @@ export async function deleteAgent(id: string): Promise<void> {
   await kratosAgent.DeleteAgent({ id });
 }
 
-export async function listSessions(agentID: string): Promise<Session[]> {
-  const data = await searchSessions({ agent_id: agentID, limit: 200 });
-  return data.items;
-}
-
-export async function listTeamSessions(teamID: string): Promise<Session[]> {
-  const data = await searchSessions({ team_id: teamID, limit: 200 });
-  return data.items;
-}
-
-export async function searchSessions(query: SessionSearchQuery = {}): Promise<SessionListResult> {
-  const { data } = await api.get("/sessions", { params: query });
-  const items = data.items ?? [];
-  return {
-    items,
-    total: data.total ?? items.length,
-    limit: data.limit ?? query.limit ?? query.page_size ?? items.length,
-    offset: data.offset ?? query.offset ?? 0
-  };
-}
-
-export async function getSession(id: string): Promise<Session> {
-  const { data } = await api.get(`/sessions/${id}`);
-  return data;
-}
-
-export async function getSessionTimeline(id: string): Promise<SessionTimeline> {
-  const { data } = await api.get(`/sessions/${id}/timeline`);
-  return {
-    session_id: data.session_id,
-    items: data.items ?? [],
-    summary: data.summary ?? {
-      total: data.items?.length ?? 0,
-      message_count: 0,
-      tool_count: 0,
-      skill_count: 0,
-      mcp_count: 0
-    }
-  };
-}
-
-export async function createSession(payload: {
-  owner_type?: string;
-  agent_id?: string;
-  team_id?: string;
-  title: string;
-  dialog_mode?: string;
-  provider?: string;
-  model?: string;
-}): Promise<Session> {
-  const { data } = await api.post("/sessions", payload);
-  return data;
-}
-
-export async function deleteSession(id: string): Promise<void> {
-  await api.delete(`/sessions/${id}`);
-}
-
-export async function archiveSession(id: string): Promise<void> {
-  await api.post(`/sessions/${id}/archive`);
-}
-
-export async function updateSessionTitle(id: string, title: string): Promise<Session> {
-  const { data } = await api.patch(`/sessions/${id}`, { title });
-  return data;
-}
-
-export async function clearAgentSessions(agentID: string): Promise<void> {
-  await api.delete("/sessions", { params: { agent_id: agentID } });
-}
+/** @deprecated 优先 `import { … } from "@/features/session/api"`；此处保留供 `export * from clientLegacy`。 */
+export {
+  archiveSession,
+  clearAgentSessions,
+  createSession,
+  deleteSession,
+  getSession,
+  getSessionTimeline,
+  listSessions,
+  listTeamSessions,
+  searchSessions,
+  updateSessionTitle
+} from "../features/session/api";
 
 export async function listMessages(sessionID: string): Promise<Message[]> {
   const { data } = await api.get("/chat/messages", { params: { session_id: sessionID } });

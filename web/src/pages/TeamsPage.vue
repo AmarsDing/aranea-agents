@@ -85,13 +85,27 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { copyToClipboard, useQuasar } from "quasar";
 import { useRoute } from "vue-router";
-import { createTeam, deleteTeam, duplicateTeam, listAgents, listTeamRuns, listTeamRunSteps, listTeams, subscribeTeamRunEvents, updateTeam, type Team, type TeamDefinition, type TeamRun, type TeamRunEvent, type TeamRunStep } from "../api/client";
-import type { Agent } from "../features/agents/api";
-import TeamCard from "../features/teams/TeamCard.vue";
-import TeamEditorDialog from "../features/teams/TeamEditorDialog.vue";
-import TeamRunsDialog from "../features/teams/TeamRunsDialog.vue";
-import TeamToolbar from "../features/teams/TeamToolbar.vue";
-import { buildGraphFromDefinition, defaultDefinition, definitionFromTemplate, parseDefinition, type TeamTemplateKey } from "../features/teams/teamUtils";
+import { listAgents, type Agent } from "../features/agents/api";
+import {
+  createTeam,
+  deleteTeam,
+  duplicateTeam,
+  listTeamRuns,
+  listTeamRunSteps,
+  listTeams,
+  subscribeTeamRunEvents,
+  updateTeam,
+  type Team,
+  type TeamDefinition,
+  type TeamRun,
+  type TeamRunEvent,
+  type TeamRunStep
+} from "../features/teams/api";
+import TeamCard from "../components/teams/TeamCard.vue";
+import TeamEditorDialog from "../components/teams/TeamEditorDialog.vue";
+import TeamRunsDialog from "../components/teams/TeamRunsDialog.vue";
+import TeamToolbar from "../components/teams/TeamToolbar.vue";
+import { buildGraphFromDefinition, defaultDefinition, definitionFromTemplate, parseDefinition, type TeamTemplateKey } from "../components/teams/teamUtils";
 
 const $q = useQuasar();
 const route = useRoute();

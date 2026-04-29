@@ -1,5 +1,6 @@
 import type { Agent } from "../../features/agents/api";
-import type { Message, Session, Team } from "../../api/client";
+import type { Message, Session } from "../../features/chat/api";
+import type { Team } from "../../features/teams/api";
 
 export type TeamRow = {
   id: string;

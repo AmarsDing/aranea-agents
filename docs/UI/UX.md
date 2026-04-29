@@ -146,6 +146,13 @@ backdrop-filter: blur(var(--glass-blur-default));
 | 昼·实体（慎用） | 底 `#FFFDF5`；边 `#EDE3D3`；影 `0 2px 12px rgba(0,0,0,0.04)`；圆角 16–20px。**同一层级勿与玻璃混用** |
 | 夜 | `rgba(18,24,34,0.65)` + blur 18px + webkit；边 `rgba(255,255,255,0.08)`；悬停边 → `--glass-border-hover`；选中可 `box-shadow: 0 0 20px rgba(0,229,255,0.15)` |
 
+### 5.2a 对话框（`q-dialog` 内主卡片）
+
+| 规则 |
+|------|
+| 背景 **`var(--glass-elevated)`**，**`backdrop-filter` + `-webkit-backdrop-filter`** 使用 **`var(--glass-blur-elevated)`**；边框 **`var(--glass-border)`**；圆角 **20–24px**（与 §7 面板一致） |
+| 主按钮：优先 **`var(--color-accent)`** / **`var(--color-accent-hover)`**（随昼夜 token 切换），**禁止**在日间把霓虹青紫当默认主色（见 §1） |
+
 ### 5.3 输入
 
 | 模式 | 规则 |
@@ -208,4 +215,4 @@ backdrop-filter: blur(var(--glass-blur-default));
 
 - **昼卡片**：底 `#FEFBF4`；卡片 `rgba(255,253,245,0.65)` blur 18px；边 `rgba(235,220,200,0.7)`；主按钮 `#E9A23B`；无重投影。  
 - **夜面板**：底 `#090D14`；面板 `rgba(18,24,34,0.65)` blur；边 `rgba(255,255,255,0.08)`；强调 `#00E5FF`。  
-- **输入**：双模半透明+模糊；昼聚焦 `#E9A23B`；夜聚焦 `#00E5FF` + 微光晕。
+- **对话框**：内容卡 `--glass-elevated` + `blur(--glass-blur-elevated)` **双前缀**；边 `--glass-border`；主 CTA `--color-accent`。

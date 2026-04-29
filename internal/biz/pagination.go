@@ -5,6 +5,22 @@ import (
 	"go.einride.tech/aip/ordering"
 )
 
+// normalized page / page_size for API responses (defaults: page≥1, size default 20, max 100).
+func PageToLimitOffset(page, pageSize int32) (limit, offset int, pageOut, pageSizeOut int32) {
+	p := int(page)
+	ps := int(pageSize)
+	if p < 1 {
+		p = 1
+	}
+	if ps < 1 {
+		ps = 20
+	}
+	if ps > 100 {
+		ps = 100
+	}
+	return ps, (p - 1) * ps, int32(p), int32(ps)
+}
+
 type ListOption func(*ListOptions)
 
 type ListOptions struct {

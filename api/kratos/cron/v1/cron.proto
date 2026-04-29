@@ -1,0 +1,107 @@
+syntax = "proto3";
+
+package kratos.cron.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/empty.proto";
+
+option go_package = "aranea-agents/api/kratos/cron/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.kratos.cron.v1";
+
+message CronTask {
+  string id = 1;
+  string task_key = 2;
+  string name = 3;
+  string description = 4;
+  string status = 5;
+  bool enabled = 6;
+  int32 sort_order = 7;
+  string agent_id = 8;
+  string config_json = 9;
+  string metadata_json = 10;
+  string created_at = 11;
+  string updated_at = 12;
+  string deleted_at = 13;
+}
+
+message ListCronTasksResponse {
+  repeated CronTask items = 1;
+}
+
+message CreateCronTaskRequest {
+  string task_key = 1 [(google.api.field_behavior) = REQUIRED];
+  string name = 2 [(google.api.field_behavior) = REQUIRED];
+  string description = 3;
+  string status = 4;
+  bool enabled = 5;
+  int32 sort_order = 6;
+  string agent_id = 7;
+  string config_json = 8;
+  string metadata_json = 9;
+}
+
+message GetCronTaskRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message UpdateCronTaskRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  CronTask task = 2;
+}
+
+message DeleteCronTaskRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message CronTaskRun {
+  string id = 1;
+  string task_id = 2;
+  string task_name = 3;
+  string status = 4;
+  string started_at = 5;
+  string finished_at = 6;
+  string trigger = 7;
+  string run_id = 8;
+  string output_json = 9;
+  string error_message = 10;
+  string created_at = 11;
+}
+
+message ListCronTaskRunsRequest {
+  string cron_task_id = 1;
+  string status = 2;
+  int32 limit = 3;
+}
+
+message ListCronTaskRunsResponse {
+  repeated CronTaskRun items = 1;
+}
+
+service CronService {
+  rpc ListCronTasks(google.protobuf.Empty) returns (ListCronTasksResponse) {
+    option (google.api.http) = {get: "/v1/cron-tasks"};
+  }
+  rpc CreateCronTask(CreateCronTaskRequest) returns (CronTask) {
+    option (google.api.http) = {
+      post: "/v1/cron-tasks"
+      body: "*"
+    };
+  }
+  rpc GetCronTask(GetCronTaskRequest) returns (CronTask) {
+    option (google.api.http) = {get: "/v1/cron-tasks/{id}"};
+  }
+  rpc UpdateCronTask(UpdateCronTaskRequest) returns (CronTask) {
+    option (google.api.http) = {
+      patch: "/v1/cron-tasks/{id}"
+      body: "task"
+    };
+  }
+  rpc DeleteCronTask(DeleteCronTaskRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {delete: "/v1/cron-tasks/{id}"};
+  }
+  rpc ListCronTaskRuns(ListCronTaskRunsRequest) returns (ListCronTaskRunsResponse) {
+    option (google.api.http) = {get: "/v1/cron-task-runs"};
+  }
+}

@@ -78,7 +78,7 @@
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from "vue";
-import { getModelUsageOverview, type ModelUsageOverview, type ModelUsageQuery } from "../api/client";
+import { getModelUsageOverview, type ModelUsageOverview, type ModelUsageQuery } from "../features/usage/api";
 import UsageAnomalyList from "../components/usage/UsageAnomalyList.vue";
 import UsageMetricCards from "../components/usage/UsageMetricCards.vue";
 import UsageTopAgents from "../components/usage/UsageTopAgents.vue";

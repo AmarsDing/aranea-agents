@@ -114,8 +114,16 @@ import ChatMessagePanel from "../components/chat/ChatMessagePanel.vue";
 import ChatSessionSidebar from "../components/chat/ChatSessionSidebar.vue";
 import ChatSideToggle from "../components/chat/ChatSideToggle.vue";
 import SessionTimelineDialog from "../components/chat/SessionTimelineDialog.vue";
-import { createSession, deleteTeam, listChatOptions, listMessages, listTeams, listTeamSessions, sendMessageStream, updateSessionTitle, updateTeam } from "../api/client";
-import type { ToolUseEvent } from "../api/client";
+import {
+  createSession,
+  listChatOptions,
+  listMessages,
+  listTeamSessions,
+  sendMessageStream,
+  updateSessionTitle
+} from "../features/chat/api";
+import type { ToolUseEvent } from "../features/chat/api";
+import { deleteTeam, listTeams, updateTeam } from "../features/teams/api";
 import {
   listPlatformResources,
   listPlatformResourceTree,

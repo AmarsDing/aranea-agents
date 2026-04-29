@@ -8,7 +8,14 @@
       </div>
     </section>
 
-    <skill-upload-placeholder class="q-mb-md" @completed="loadRows" />
+    <skill-upload-placeholder
+      class="q-mb-md"
+      :upload-skill-zip="uploadSkillZip"
+      :get-skill-import-job="getSkillImportJob"
+      :refine-skill-conflict-group="refineSkillConflictGroup"
+      :apply-skill-import="applySkillImport"
+      @completed="loadRows"
+    />
 
     <skill-filter-bar
       v-model:search="search"
@@ -47,20 +54,37 @@
 
     <skill-pagination v-model:page="page" v-model:page-size="pageSize" :page-max="pageMax" :total="total" :loading="loading" label="条 Skill" />
     <skill-delete-dialog v-model="deleteOpen" :skill="deleteTarget" :loading="deleting" @confirm="deleteTargetSkill" />
-    <skill-editor-dialog v-model="editorOpen" :skill="editorTarget" />
+    <skill-editor-dialog
+      v-model="editorOpen"
+      :skill="editorTarget"
+      :list-skill-files="listSkillFiles"
+      :read-skill-file="readSkillFile"
+      :update-skill-file="updateSkillFile"
+    />
   </q-page>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
 import { useQuasar } from "quasar";
-import SkillDeleteDialog from "../features/skills/components/SkillDeleteDialog.vue";
-import SkillEditorDialog from "../features/skills/components/SkillEditorDialog.vue";
-import SkillFilterBar from "../features/skills/components/SkillFilterBar.vue";
-import SkillPagination from "../features/skills/components/SkillPagination.vue";
-import SkillTable from "../features/skills/components/SkillTable.vue";
-import SkillUploadPlaceholder from "../features/skills/components/SkillUploadPlaceholder.vue";
-import { deleteSkill, listSkills, toggleSkillEnabled } from "../features/skills/api";
+import SkillDeleteDialog from "../components/skills/SkillDeleteDialog.vue";
+import SkillEditorDialog from "../components/skills/SkillEditorDialog.vue";
+import SkillFilterBar from "../components/skills/SkillFilterBar.vue";
+import SkillPagination from "../components/skills/SkillPagination.vue";
+import SkillTable from "../components/skills/SkillTable.vue";
+import SkillUploadPlaceholder from "../components/skills/SkillUploadPlaceholder.vue";
+import {
+  applySkillImport,
+  deleteSkill,
+  getSkillImportJob,
+  listSkillFiles,
+  listSkills,
+  readSkillFile,
+  refineSkillConflictGroup,
+  toggleSkillEnabled,
+  updateSkillFile,
+  uploadSkillZip
+} from "../features/skills/api";
 import type { Skill } from "../features/skills/types";
 
 const $q = useQuasar();

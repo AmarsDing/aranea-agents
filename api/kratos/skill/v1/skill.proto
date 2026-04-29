@@ -1,0 +1,195 @@
+syntax = "proto3";
+
+package kratos.skill.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/empty.proto";
+
+option go_package = "aranea-agents/api/kratos/skill/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.kratos.skill.v1";
+
+message SkillTag {
+  string name = 1;
+  string source = 2;
+}
+
+message SkillVersionSummary {
+  string id = 1;
+  string version = 2;
+  string validation_status = 3;
+  string published_at = 4;
+}
+
+message SkillPermissions {
+  bool can_edit = 1;
+  bool can_delete = 2;
+  bool can_toggle_enabled = 3;
+  bool can_duplicate = 4;
+}
+
+message Skill {
+  string id = 1;
+  string name = 2;
+  string slug = 3;
+  string description = 4;
+  repeated SkillTag tags = 5;
+  string extends_skill_id = 6;
+  string status = 7;
+  bool enabled = 8;
+  SkillVersionSummary current_version = 9;
+  int32 invoke_count = 10;
+  int32 success_count = 11;
+  int32 failure_count = 12;
+  int32 usage_count_7d = 13;
+  double avg_duration_ms = 14;
+  string last_agent_id = 15;
+  string last_agent_display_name = 16;
+  string last_invoked_at = 17;
+  int32 last_duration_ms = 18;
+  string created_at = 19;
+  string updated_at = 20;
+  SkillPermissions permissions = 21;
+}
+
+message ListSkillsRequest {
+  string search = 1;
+  string tags = 2;
+  string enabled = 3;
+  string status = 4;
+  int32 page = 5;
+  int32 page_size = 6;
+}
+
+message ListSkillsResponse {
+  repeated Skill items = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+}
+
+message ToggleSkillEnabledRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  bool enabled = 2;
+}
+
+message DuplicateSkillRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message DeleteSkillRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListSkillFilesRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message SkillFile {
+  string path = 1;
+  string name = 2;
+  string language = 3;
+  int64 size = 4;
+  string updated_at = 5;
+}
+
+message ListSkillFilesResponse {
+  repeated SkillFile items = 1;
+}
+
+message GetSkillFileRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string path = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message SkillFileContent {
+  string path = 1;
+  string content = 2;
+  string language = 3;
+}
+
+message UpdateSkillFileRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string path = 2 [(google.api.field_behavior) = REQUIRED];
+  string content = 3 [(google.api.field_behavior) = REQUIRED];
+}
+
+message SkillInvocationPermissions {
+  bool can_view_detail = 1;
+}
+
+message SkillInvocation {
+  string id = 1;
+  string skill_id = 2;
+  string skill_name = 3;
+  string skill_version = 4;
+  string agent_id = 5;
+  string agent_display_name = 6;
+  string user_id = 7;
+  string session_id = 8;
+  string status = 9;
+  int32 duration_ms = 10;
+  string started_at = 11;
+  string ended_at = 12;
+  string input_preview = 13;
+  string input_hash = 14;
+  string output_preview = 15;
+  string error_code = 16;
+  string error_message = 17;
+  SkillInvocationPermissions permissions = 18;
+}
+
+message ListSkillRunsRequest {
+  string skill_id = 1;
+  string agent_id = 2;
+  string session_id = 3;
+  string status = 4;
+  string from = 5;
+  string to = 6;
+  int32 page = 7;
+  int32 page_size = 8;
+}
+
+message ListSkillRunsResponse {
+  repeated SkillInvocation items = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+}
+
+service SkillService {
+  rpc ListSkills(ListSkillsRequest) returns (ListSkillsResponse) {
+    option (google.api.http) = {get: "/v1/skills"};
+  }
+  rpc ToggleSkillEnabled(ToggleSkillEnabledRequest) returns (Skill) {
+    option (google.api.http) = {
+      patch: "/v1/skills/{id}/enabled"
+      body: "*"
+    };
+  }
+  rpc DuplicateSkill(DuplicateSkillRequest) returns (Skill) {
+    option (google.api.http) = {
+      post: "/v1/skills/{id}/duplicate"
+      body: "*"
+    };
+  }
+  rpc DeleteSkill(DeleteSkillRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {delete: "/v1/skills/{id}"};
+  }
+  rpc ListSkillFiles(ListSkillFilesRequest) returns (ListSkillFilesResponse) {
+    option (google.api.http) = {get: "/v1/skills/{id}/files"};
+  }
+  rpc GetSkillFile(GetSkillFileRequest) returns (SkillFileContent) {
+    option (google.api.http) = {get: "/v1/skills/{id}/file"};
+  }
+  rpc UpdateSkillFile(UpdateSkillFileRequest) returns (SkillFileContent) {
+    option (google.api.http) = {
+      put: "/v1/skills/{id}/file"
+      body: "*"
+    };
+  }
+  rpc ListSkillRuns(ListSkillRunsRequest) returns (ListSkillRunsResponse) {
+    option (google.api.http) = {get: "/v1/skill-runs"};
+  }
+}

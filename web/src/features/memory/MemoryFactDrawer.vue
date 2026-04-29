@@ -28,7 +28,7 @@
 </template>
 
 <script setup lang="ts">
-import type { MemoryFact } from "../../api/client";
+import type { MemoryFact } from "./api";
 
 defineProps<{
   modelValue: boolean;

@@ -1,0 +1,224 @@
+syntax = "proto3";
+
+package kratos.tool.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/empty.proto";
+
+option go_package = "aranea-agents/api/kratos/tool/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.kratos.tool.v1";
+
+message ToolPermissions {
+  bool can_manage = 1;
+}
+
+message Tool {
+  string id = 1;
+  string key = 2;
+  string display_name = 3;
+  string description = 4;
+  string category = 5;
+  string source = 6;
+  string risk_level = 7;
+  bool enabled = 8;
+  bool readonly = 9;
+  bool requires_confirmation = 10;
+  bool supports_streaming = 11;
+  bool supports_concurrency = 12;
+  string parameters_schema_json = 13;
+  string result_schema_json = 14;
+  string config_schema_json = 15;
+  string config_json = 16;
+  string default_config_json = 17;
+  string metadata_json = 18;
+  string runtime_status = 19;
+  string runtime_kind = 20;
+  int32 invoke_count = 21;
+  int32 invoke_count_24h = 22;
+  int32 success_count = 23;
+  int32 failure_count = 24;
+  int32 blocked_count = 25;
+  int32 agent_override_count = 26;
+  optional double avg_duration_ms = 27;
+  string last_invoked_at = 28;
+  string last_status = 29;
+  string created_at = 30;
+  string updated_at = 31;
+  ToolPermissions permissions = 32;
+}
+
+message ToolSummary {
+  int32 total_tools = 1;
+  int32 enabled_tools = 2;
+  int32 high_risk_enabled = 3;
+  int32 calls_24h = 4;
+  double failure_rate_24h = 5;
+}
+
+message ListToolsRequest {
+  string search = 1;
+  string category = 2;
+  string source = 3;
+  string risk_level = 4;
+  string enabled = 5;
+  int32 page = 6;
+  int32 page_size = 7;
+}
+
+message ListToolsResponse {
+  repeated Tool items = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+  ToolSummary summary = 5;
+}
+
+message GetToolRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message CreateToolRequest {
+  string key = 1 [(google.api.field_behavior) = REQUIRED];
+  string display_name = 2 [(google.api.field_behavior) = REQUIRED];
+  string description = 3;
+  string category = 4;
+  string source = 5;
+  string risk_level = 6;
+  bool enabled = 7;
+  bool readonly = 8;
+  bool requires_confirmation = 9;
+  bool supports_streaming = 10;
+  bool supports_concurrency = 11;
+  string parameters_schema_json = 12;
+  string result_schema_json = 13;
+  string config_schema_json = 14;
+  string config_json = 15;
+  string default_config_json = 16;
+  string metadata_json = 17;
+}
+
+message UpdateToolRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string key = 2 [(google.api.field_behavior) = REQUIRED];
+  string display_name = 3 [(google.api.field_behavior) = REQUIRED];
+  string description = 4;
+  string category = 5;
+  string source = 6;
+  string risk_level = 7;
+  bool enabled = 8;
+  bool readonly = 9;
+  bool requires_confirmation = 10;
+  bool supports_streaming = 11;
+  bool supports_concurrency = 12;
+  string parameters_schema_json = 13;
+  string result_schema_json = 14;
+  string config_schema_json = 15;
+  string config_json = 16;
+  string default_config_json = 17;
+  string metadata_json = 18;
+}
+
+message DeleteToolRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ToggleToolEnabledRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  bool enabled = 2;
+}
+
+message ToolInvocation {
+  string id = 1;
+  string request_id = 2;
+  string invocation_id = 3;
+  string tool_id = 4;
+  string tool_key = 5;
+  string tool_display_name = 6;
+  string agent_id = 7;
+  string agent_key = 8;
+  string agent_display_name = 9;
+  string session_id = 10;
+  string message_id = 11;
+  string user_id = 12;
+  string source = 13;
+  string status = 14;
+  string started_at = 15;
+  string ended_at = 16;
+  int32 duration_ms = 17;
+  string input_preview = 18;
+  string input_hash = 19;
+  string output_preview = 20;
+  string output_hash = 21;
+  string error_code = 22;
+  string error_message = 23;
+  bool redaction_applied = 24;
+  string metadata_json = 25;
+  string created_at = 26;
+}
+
+message ListToolRunsRequest {
+  string tool_key = 1;
+  string agent_id = 2;
+  string session_id = 3;
+  string status = 4;
+  string from = 5;
+  string to = 6;
+  int32 page = 7;
+  int32 page_size = 8;
+}
+
+message ListToolRunsResponse {
+  repeated ToolInvocation items = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+}
+
+message ListToolRunsForToolRequest {
+  string tool_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string agent_id = 2;
+  string session_id = 3;
+  string status = 4;
+  string from = 5;
+  string to = 6;
+  int32 page = 7;
+  int32 page_size = 8;
+}
+
+service ToolService {
+  rpc ListTools(ListToolsRequest) returns (ListToolsResponse) {
+    option (google.api.http) = {get: "/v1/tools"};
+  }
+  rpc GetTool(GetToolRequest) returns (Tool) {
+    option (google.api.http) = {get: "/v1/tools/{id}"};
+  }
+  rpc CreateTool(CreateToolRequest) returns (Tool) {
+    option (google.api.http) = {
+      post: "/v1/tools"
+      body: "*"
+    };
+  }
+  rpc UpdateTool(UpdateToolRequest) returns (Tool) {
+    option (google.api.http) = {
+      put: "/v1/tools/{id}"
+      body: "*"
+    };
+  }
+  rpc DeleteTool(DeleteToolRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {delete: "/v1/tools/{id}"};
+  }
+  rpc ToggleToolEnabled(ToggleToolEnabledRequest) returns (Tool) {
+    option (google.api.http) = {
+      patch: "/v1/tools/{id}/enabled"
+      body: "*"
+    };
+  }
+  rpc ListToolRuns(ListToolRunsRequest) returns (ListToolRunsResponse) {
+    option (google.api.http) = {get: "/v1/tools/runs"};
+  }
+  rpc ListToolRunsForTool(ListToolRunsForToolRequest) returns (ListToolRunsResponse) {
+    option (google.api.http) = {get: "/v1/tools/{tool_id}/runs"};
+  }
+}

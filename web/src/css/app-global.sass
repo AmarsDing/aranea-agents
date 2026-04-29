@@ -434,70 +434,295 @@ body.body--dark
   .chat-toolbar-actions
     justify-content: flex-start
 
-// Skill 管理页：沿用奶油白视觉系统，避免新模块回到默认灰白风格
+// Skill 管理页：UX.md §2 玻璃 token + §7 圆角；昼夜仅换变量
 body:not(.body--dark)
   .skills-page,
-  .skill-runs-page
-    color: $cream-text
+  .skill-runs-page,
+  .sessions-page
+    color: var(--color-text-primary)
 
     .skill-filter-card,
     .skill-upload-card,
     .skill-runs-filter,
     .skill-table,
     .skill-runs-table,
-    .skills-empty-card
-      background: rgba(255, 255, 255, 0.78) !important
-      border: 1px solid rgba(141, 110, 99, 0.14)
-      box-shadow: 0 10px 30px $cream-shadow-soft, inset 0 1px 0 rgba(255, 255, 255, 0.7)
-      backdrop-filter: blur(10px)
+    .skills-empty-card,
+    .sessions-glass-panel,
+    .sessions-summary-card,
+    .sessions-filter-card,
+    .sessions-detail-card,
+    .sessions-table
+      background: var(--glass-surface) !important
+      border: 1px solid var(--glass-border) !important
+      border-radius: 20px !important
+      box-shadow: var(--glass-inner-highlight)
+      backdrop-filter: blur(var(--glass-blur-default))
+      -webkit-backdrop-filter: blur(var(--glass-blur-default))
+
+    .skill-filter-card,
+    .skill-upload-card,
+    .skill-runs-filter,
+    .skills-empty-card,
+    .sessions-glass-panel,
+    .sessions-filter-card,
+    .sessions-detail-card
+      transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease
+      &:hover
+        background: var(--glass-surface-hover) !important
+        box-shadow: var(--glass-inner-highlight)
+        backdrop-filter: blur(var(--glass-blur-hover))
+        -webkit-backdrop-filter: blur(var(--glass-blur-hover))
+
+    .sessions-summary-card
+      transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease
+      &:hover
+        background: var(--glass-surface-hover) !important
+        border-color: var(--glass-border)
+        backdrop-filter: blur(var(--glass-blur-hover))
+        -webkit-backdrop-filter: blur(var(--glass-blur-hover))
 
     .q-table th
-      color: $cream-text-light
+      color: var(--color-text-secondary)
       font-weight: 700
-      background: rgba(255, 248, 231, 0.72)
+      background: var(--glass-surface)
+      backdrop-filter: blur(var(--glass-blur-default))
+      -webkit-backdrop-filter: blur(var(--glass-blur-default))
 
     .q-table tbody tr
-      background: rgba(255, 255, 255, 0.38)
+      background: transparent
 
     .q-table tbody tr:hover
-      background: rgba(255, 255, 255, 0.68)
+      background: var(--interaction-surface-hover)
 
     .skill-stat,
     .metric-pill
-      background: rgba(224, 176, 160, 0.16)
-      border: 1px solid rgba(141, 110, 99, 0.1)
+      background: var(--glass-surface)
+      border: 1px solid var(--glass-border)
+      backdrop-filter: blur(var(--glass-blur-default))
+      -webkit-backdrop-filter: blur(var(--glass-blur-default))
+      box-shadow: var(--glass-inner-highlight)
+      padding: 8px 10px
+      border-radius: 12px
 
     .q-field__control
-      background: rgba(255, 255, 255, 0.68)
+      background: rgba(255, 255, 255, 0.5)
       border-radius: 14px
+      backdrop-filter: blur(8px)
+      -webkit-backdrop-filter: blur(8px)
+
+    .skill-pagination,
+    .sessions-pagination
+      color: var(--color-text-secondary)
+
+    .sessions-muted
+      color: var(--color-text-secondary)
+
+    .sessions-btn-accent
+      background: var(--color-accent) !important
+      color: #fff !important
+      &:hover
+        background: var(--color-accent-hover) !important
+
+    .sessions-btn-accent-outline
+      color: var(--color-accent) !important
+      border-color: color-mix(in srgb, var(--color-accent) 55%, transparent) !important
+      &:hover
+        background: var(--interaction-surface-hover)
+
+    .sessions-btn-ghost
+      color: var(--color-icon-muted) !important
+      &:hover
+        color: var(--color-accent) !important
+        background: var(--interaction-surface-hover)
+
+    .sessions-icon-btn
+      color: var(--color-icon-muted)
+      &:hover
+        color: var(--color-accent)
+
+    .sessions-sep
+      background: var(--glass-border)
+
+    .sessions-table-action
+      color: var(--color-accent) !important
+
+    .sessions-table-action-muted
+      color: var(--color-icon-muted) !important
+      &:hover
+        color: var(--color-accent) !important
+
+    .sessions-pagination-control .q-btn
+      color: var(--color-accent)
+
+@media (max-width: 720px)
+  body:not(.body--dark) .skills-page .skill-filter-card,
+  body:not(.body--dark) .skills-page .skill-upload-card,
+  body:not(.body--dark) .skill-runs-page .skill-runs-filter,
+  body:not(.body--dark) .sessions-page .sessions-filter-card,
+  body:not(.body--dark) .sessions-page .sessions-glass-panel
+    backdrop-filter: blur(12px)
+    -webkit-backdrop-filter: blur(12px)
+
+  body.body--dark .skills-page .skill-filter-card,
+  body.body--dark .skills-page .skill-upload-card,
+  body.body--dark .skill-runs-page .skill-runs-filter,
+  body.body--dark .sessions-page .sessions-filter-card,
+  body.body--dark .sessions-page .sessions-glass-panel
+    backdrop-filter: blur(12px)
+    -webkit-backdrop-filter: blur(12px)
+
+.skill-ux-dialog-card
+  width: 420px
+  max-width: 92vw
+  border-radius: 22px !important
+  background: var(--glass-elevated) !important
+  border: 1px solid var(--glass-border) !important
+  box-shadow: var(--glass-inner-highlight)
+  backdrop-filter: blur(var(--glass-blur-elevated))
+  -webkit-backdrop-filter: blur(var(--glass-blur-elevated))
+
+.skill-ux-subcard
+  border-radius: 18px !important
+  background: var(--glass-surface) !important
+  border: 1px solid var(--glass-border) !important
+  box-shadow: var(--glass-inner-highlight)
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+
+.skill-import-dialog
+  border-radius: 24px !important
+  background: var(--glass-elevated) !important
+  border: 1px solid var(--glass-border) !important
+  box-shadow: var(--glass-inner-highlight)
+  backdrop-filter: blur(var(--glass-blur-elevated))
+  -webkit-backdrop-filter: blur(var(--glass-blur-elevated))
+
+.skill-import-dialog .metric-pill
+  background: var(--glass-surface)
+  border: 1px solid var(--glass-border)
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+  box-shadow: var(--glass-inner-highlight)
+  padding: 8px 10px
+  border-radius: 12px
+
+body.body--dark .skill-import-dialog
+  box-shadow: 0 0 28px rgba(0, 229, 255, 0.14)
 
 body.body--dark
   .skills-page,
-  .skill-runs-page
-    background: linear-gradient(160deg, #0b1220 0%, #111827 48%, #0f172a 100%)
-    color: #e5e7eb
+  .skill-runs-page,
+  .sessions-page
+    background: linear-gradient(160deg, var(--canvas-base) 0%, #111827 48%, #0f172a 100%)
+    color: var(--color-text-primary)
 
     .skill-filter-card,
     .skill-upload-card,
     .skill-runs-filter,
     .skill-table,
     .skill-runs-table,
-    .skills-empty-card
-      background: rgba(17, 24, 39, 0.88) !important
-      border: 1px solid rgba(148, 163, 184, 0.16)
-      box-shadow: 0 12px 34px rgba(0, 0, 0, 0.32)
+    .skills-empty-card,
+    .sessions-glass-panel,
+    .sessions-summary-card,
+    .sessions-filter-card,
+    .sessions-detail-card,
+    .sessions-table
+      background: var(--glass-surface) !important
+      border: 1px solid var(--glass-border) !important
+      border-radius: 20px !important
+      box-shadow: none
+      backdrop-filter: blur(var(--glass-blur-default))
+      -webkit-backdrop-filter: blur(var(--glass-blur-default))
+
+    .skill-filter-card,
+    .skill-upload-card,
+    .skill-runs-filter,
+    .skills-empty-card,
+    .sessions-glass-panel,
+    .sessions-filter-card,
+    .sessions-detail-card
+      transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease
+      &:hover
+        background: var(--glass-surface-hover) !important
+        border-color: var(--glass-border-hover)
+        box-shadow: 0 0 20px rgba(0, 229, 255, 0.12)
+
+    .sessions-summary-card
+      transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease
+      &:hover
+        background: var(--glass-surface-hover) !important
+        border-color: var(--glass-border-hover)
+        box-shadow: 0 0 16px rgba(0, 229, 255, 0.1)
 
     .q-table th
-      background: rgba(15, 23, 42, 0.86)
-      color: #cbd5e1
+      background: var(--glass-surface)
+      color: var(--color-text-secondary)
+      backdrop-filter: blur(var(--glass-blur-default))
+      -webkit-backdrop-filter: blur(var(--glass-blur-default))
 
     .q-table tbody tr:hover
-      background: rgba(51, 65, 85, 0.46)
+      background: var(--glass-surface-hover)
 
     .skill-stat,
     .metric-pill
-      background: rgba(30, 41, 59, 0.72)
-      border: 1px solid rgba(148, 163, 184, 0.12)
+      background: var(--glass-surface)
+      border: 1px solid var(--glass-border)
+      backdrop-filter: blur(var(--glass-blur-default))
+      -webkit-backdrop-filter: blur(var(--glass-blur-default))
+      box-shadow: var(--glass-inner-highlight)
+      padding: 8px 10px
+      border-radius: 12px
+
+    .skill-pagination,
+    .sessions-pagination
+      color: var(--color-text-secondary)
+
+    .sessions-muted
+      color: var(--color-text-secondary)
+
+    .sessions-btn-accent
+      background: color-mix(in srgb, var(--color-accent) 22%, transparent) !important
+      color: var(--color-accent) !important
+      border: 1px solid color-mix(in srgb, var(--color-accent) 45%, transparent)
+      &:hover
+        background: color-mix(in srgb, var(--color-accent) 32%, transparent) !important
+
+    .sessions-btn-accent-outline
+      color: var(--color-accent) !important
+      border-color: color-mix(in srgb, var(--color-accent) 38%, transparent) !important
+      &:hover
+        background: rgba(0, 229, 255, 0.08)
+
+    .sessions-btn-ghost
+      color: var(--color-text-secondary) !important
+      &:hover
+        color: var(--color-accent) !important
+        background: rgba(0, 229, 255, 0.06)
+
+    .sessions-icon-btn
+      color: var(--color-text-secondary)
+      &:hover
+        color: var(--color-accent)
+
+    .sessions-sep
+      background: var(--glass-border)
+
+    .sessions-table-action
+      color: var(--color-accent) !important
+
+    .sessions-table-action-muted
+      color: var(--color-text-secondary) !important
+      &:hover
+        color: var(--color-accent) !important
+
+    .sessions-pagination-control .q-btn
+      color: var(--color-accent)
+
+  .skill-ux-dialog-card
+    box-shadow: 0 0 24px rgba(0, 229, 255, 0.12)
+
+body.body--dark .skill-editor-card
+  box-shadow: 0 0 32px rgba(0, 229, 255, 0.1)
 
 // 概览：持仓表紧凑、褐色调底纹
 body:not(.body--dark) .dashboard-pos-table

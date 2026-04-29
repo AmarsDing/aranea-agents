@@ -1,0 +1,160 @@
+syntax = "proto3";
+
+package kratos.usage.v1;
+
+import "google/api/annotations.proto";
+
+option go_package = "aranea-agents/api/kratos/usage/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.kratos.usage.v1";
+
+// Mirrors legacy query `/model-usage/*` GET params.
+message UsageQuery {
+  string range = 1;
+  string start_date = 2;
+  string end_date = 3;
+  string provider_code = 4;
+  string model_api_id = 5;
+  string agent_id = 6;
+  string status = 7;
+  int32 limit = 8;
+}
+
+message UsageSummary {
+  int32 call_count = 1;
+  int32 request_count = 2;
+  int32 success_count = 3;
+  int32 failed_count = 4;
+  int32 cancelled_count = 5;
+  int32 input_tokens = 6;
+  int32 output_tokens = 7;
+  int32 total_tokens = 8;
+  int64 total_cost_micro_usd = 9;
+  double avg_latency_ms = 10;
+  double avg_tokens_per_second = 11;
+  double success_rate = 12;
+}
+
+message UsageTrendPoint {
+  string date_key = 1;
+  int32 call_count = 2;
+  int32 input_tokens = 3;
+  int32 output_tokens = 4;
+  int32 total_tokens = 5;
+  int64 total_cost_micro_usd = 6;
+  int32 success_count = 7;
+  int32 failed_count = 8;
+  int32 cancelled_count = 9;
+  double avg_latency_ms = 10;
+  double avg_tokens_per_second = 11;
+}
+
+message UsageBreakdownRow {
+  string provider_code = 1;
+  string model_api_id = 2;
+  string model_display_name = 3;
+  string agent_id = 4;
+  string agent_key = 5;
+  int32 call_count = 6;
+  int32 input_tokens = 7;
+  int32 output_tokens = 8;
+  int32 total_tokens = 9;
+  int64 total_cost_micro_usd = 10;
+  double avg_latency_ms = 11;
+  double avg_tokens_per_second = 12;
+  double success_rate = 13;
+}
+
+message TokenUsageEvent {
+  string id = 1;
+  string occurred_at = 2;
+  string date_key = 3;
+  string hour_key = 4;
+  string workspace_id = 5;
+  string user_id = 6;
+  string team_id = 7;
+  string agent_id = 8;
+  string agent_key = 9;
+  string session_id = 10;
+  string message_id = 11;
+  string request_id = 12;
+  string provider_code = 13;
+  string provider_type = 14;
+  string provider_display_name = 15;
+  string model_api_id = 16;
+  string model_display_name = 17;
+  string model_category_json = 18;
+  string usage_kind = 19;
+  int32 call_count = 20;
+  int32 input_tokens = 21;
+  int32 output_tokens = 22;
+  int32 cached_input_tokens = 23;
+  int32 reasoning_tokens = 24;
+  int32 embedding_tokens = 25;
+  int32 total_tokens = 26;
+  int64 input_price_micro_usd_per_1k = 27;
+  int64 output_price_micro_usd_per_1k = 28;
+  int64 cached_input_price_micro_usd_per_1k = 29;
+  int64 reasoning_price_micro_usd_per_1k = 30;
+  int64 embedding_price_micro_usd_per_1k = 31;
+  int64 input_cost_micro_usd = 32;
+  int64 output_cost_micro_usd = 33;
+  int64 cached_input_cost_micro_usd = 34;
+  int64 reasoning_cost_micro_usd = 35;
+  int64 embedding_cost_micro_usd = 36;
+  int64 total_cost_micro_usd = 37;
+  int32 latency_ms = 38;
+  int32 time_to_first_token_ms = 39;
+  double tokens_per_second = 40;
+  string status = 41;
+  string error_code = 42;
+  string error_message = 43;
+  int32 retry_count = 44;
+  string prompt_mode = 45;
+  int32 max_output_tokens = 46;
+  int32 context_window_k = 47;
+  bool stream_enabled = 48;
+  string metadata_json = 49;
+  string created_at = 50;
+}
+
+message UsageOverview {
+  UsageSummary today = 1;
+  UsageSummary yesterday = 2;
+  UsageSummary month = 3;
+  UsageSummary range_summary = 4;
+  repeated UsageTrendPoint trends = 5;
+  repeated UsageBreakdownRow top_models = 6;
+  repeated UsageBreakdownRow top_agents = 7;
+  repeated TokenUsageEvent anomalies = 8;
+}
+
+message ListUsageTrendsResponse {
+  repeated UsageTrendPoint items = 1;
+}
+
+message ListBreakdownResponse {
+  repeated UsageBreakdownRow items = 1;
+}
+
+message ListUsageEventsResponse {
+  repeated TokenUsageEvent items = 1;
+}
+
+service UsageService {
+  rpc GetUsageOverview(UsageQuery) returns (UsageOverview) {
+    option (google.api.http) = {get: "/v1/usage/overview"};
+  }
+  rpc ListUsageTrends(UsageQuery) returns (ListUsageTrendsResponse) {
+    option (google.api.http) = {get: "/v1/usage/trends"};
+  }
+  rpc ListTopModels(UsageQuery) returns (ListBreakdownResponse) {
+    option (google.api.http) = {get: "/v1/usage/top-models"};
+  }
+  rpc ListTopAgents(UsageQuery) returns (ListBreakdownResponse) {
+    option (google.api.http) = {get: "/v1/usage/top-agents"};
+  }
+  rpc ListUsageEvents(UsageQuery) returns (ListUsageEventsResponse) {
+    option (google.api.http) = {get: "/v1/usage/events"};
+  }
+}

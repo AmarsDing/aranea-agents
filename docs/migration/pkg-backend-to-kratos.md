@@ -109,7 +109,15 @@
 
 ### 5.3 持久化策略
 
-| **Ent 重建表** | 在 **`internal/data/ent/schema`** 建实体，字段映射旧表；写 **一次性数据迁移脚本**（Go 或 SQL）从 `arenea.db` 读入新库/新文件 | 长期维护、与 Kratos 配置统一到同一 SQLite/pg |
+| **Ent 重建表** | 在 **`internal/data/ent/schema`** 建实体，字段映射旧表；写 **一次性数据迁移脚本**从 `arenea.db` 读入新库/新文件 | 长期维护、与 Kratos 配置统一到同一 SQLite |
+
+**数据库接口约定（建议对齐 [`internal/data/admin.go`](../../internal/data/admin.go)）：**
+
+- **`data` 注入**：Repo 结构体内嵌 **`\*data.Data`**（参见 **`adminRepo`**），通过 **`r.data.entClient`**（或 **`Data.Ent()`**，与本仓库其它 Repo 命名一致即可）访问 **`\*ent.Client`**，不再直接使用手写 **`database/sql`** 连接串起的 SQLite Repository。
+- **查询**：单条用 **`Get`/`Only`**（`.Where(...).Only(ctx)`），列表用 **`Query().Where(...).Order(...).Offset(...).Limit(...).All(ctx)`**；与 AIP 列表参数对齐时，筛排序 **`github.com/go-kratos/aip-go/ents`** 的 **`ApplyFilter`/`ApplyOrderBy`**（同 **`ListAdmins`**）。
+- **写操作**：**`Create()…Save`**、**`UpdateOneID`…`Save`**、**`DeleteOneID().Exec`**；领域错误映射 **`ent.IsNotFound`** → **`biz.Err*`**（参见 **`FindByID`**）。
+- **转换**：持久实体 ↔ **`internal/biz`** 模型放在 Repo 包内小函数（如 **`convertAdmin`**），不把 SQL / Ent 类型泄漏到 **`biz`** 接口。
+- **例外**：统计视图、跨表聚合若必须用原生 SQL，经 **`\*ent.Client` 上的 Exec/Query**（或封装助手），仍共用 **`NewData` 打开的同一 SQLite**，勿重复 **`sql.Open`**。
 
 向量相关旧逻辑若在 PG，与当前 **`internal/data/pgvector`** 对齐；SQLite 仅存配置时延续 **[规范](../API/接口与数据库开发规范.md)** 中的分工。
 
@@ -140,7 +148,7 @@
 4. **Agent / Team 配置**：agents、teams、`agent_runtime`、team-runs 等。
 5. **工具与插件等集成面**：tools、plugins、hooks、channels、skills、mcp-servers（与 `cap`/`catalog` 适配器衔接）。
 6. **记忆 L0–L4 + 进化**：依赖会话/Agent 已迁或可对齐契约后再迁；按 L0→L4 与 `agent_evolution_*` 分包。
-7. **运维与可观测**：cron、monitor、model-usage 等。
+7. **运维与可观测**：**`cron` 任务 CRUD/运行列表已迁 `cmd/admin` `cron/v1`**；monitor、model-usage 等仍待迁。
 
 **dependencies**（外键、跨表事务、SSE/流式）密集的域可略作**顺序微调**，但优先保持上表**自下而上依赖**清晰。
 
@@ -158,20 +166,22 @@
 |--------|----|---------------------------|----------------------------------|-------------------------|
 | 1 | Admin | 登录/登出/当前用户、管理员 CRUD | `api/kratos/admin/v1` | **已落地** |
 | 2 | Avatar / 平台资源 | `avatar-assets`；`agent-categories`、`llm-provider-models`、`hooks`、`mcp-servers` 等平台 CRUD/树 | `avatar/v1`、`agent_category/v1`、`llm_provider_model/v1`、`hook/v1`、`mcp_server/v1`（Ent **`PlatformHook`** / **`PlatformMCPServer`**，避免 **`Hook`** / **`MCPServer`** 类保留冲突） | **Avatar、`agent-categories`、`llm-provider-models`、`hooks`、`mcp-servers` 已迁移**；其余 catalog 资源仍在收口 |
-| 3 | 会话与聊天 | `sessions`、`chat/messages`（含 stream）、`chat/options` | `session/v1` + `chat/v1`（或合并为 `conversation/v1`，须在 proto 中一次定清） | **未迁移**（旧 `conversation/adapters/sqlite`） |
-| 4 | Agent 目录；Team / 运行 | `agents`（CRUD、runtime、prompt、preview）；`teams`、`team-runs`、`team-run-events` | `agent/v1`；`team/v1` 等 | **`agent/v1`（目录）已落地**；Team 等 **未迁移** |
-| 5 | 技能 · 工具 · 插件 · 通道 | `skills`、`plugins`、`channels`、`/api/v1/tools`（`capability` 注册）、`cron-tasks` | `skill/v1`、`plugin/v1`、`channel/v1`、`tool/v1`、`cron/v1` 等 | **未迁移**（部分逻辑在 `pkg/backend/internal/capability`、`catalog`） |
+| 3 | 会话与聊天 | `sessions`、`chat/messages`（含 stream）、`chat/options` | `session/v1` + `chat/v1`（或合并为 `conversation/v1`，须在 proto 中一次定清） | **`session/v1` 已在 `cmd/admin` 落地**（`/v1/sessions`、`/v1/sessions/{id}/timeline` 等；timeline 依赖 Ent：`sessions`、`messages`、`tool_invocations`，skill 侧与 **`skill_invocation`/`skill`** 表对齐）；**`chat/v1` 仍未迁入**：`/chat/messages`、`/chat/messages/stream`、`/chat/options` **仍为遗留 REST `/api/v1/...`** |
+| 4 | Agent 目录；Team / 运行 | `agents`（CRUD、runtime、prompt、preview）；`teams`、`team-runs`、`team-run-events` | `agent/v1`；`team/v1` | **`agent/v1`（目录）与 `team/v1`（teams + team-runs/steps）已落地**；**`team-run-events`（SSE）仍走遗留 `/api/v1/...`**，待会话域迁移后一并收口 |
+| 5 | 技能 · 工具 · 插件 · 通道；**Cron（任务 CRUD + 运行列表）** | `skills`、`plugins`、`channels`、`/api/v1/tools`（`capability` 注册）；**`cron-tasks`、`cron-task-runs`** | `skill/v1`、`plugin/v1`、`channel/v1`、`tool/v1` 等；**`cron/v1`** | **`cron/v1` 已落地**（Ent `CronTask` / `CronTaskRun`，HTTP `/v1/cron-tasks`、`/v1/cron-task-runs`）；**调度执行仍由 `pkg/backend` CronRunner 等同库表读写**。**`plugin/v1` 已落地（管理 UI）**：Ent **`PlatformPlugin`**，`GET /v1/plugins`、`PATCH /v1/plugins/{id}/enabled`、`PUT /v1/plugins/{id}/config`；与旧栈相比 **未迁** `SyncBuiltins`、CLI/运行时插件装配等（仍 **`pkg/backend`**）。**`skill/v1` 已落地（管理 UI）**：Ent **`PlatformSkill`** / **`SkillVersion`** / **`SkillInvocation`** 等，HTTP **`GET /v1/skills`**、`PATCH /v1/skills/{id}/enabled`、`POST /v1/skills/{id}/duplicate`、`DELETE /v1/skills/{id}`、文件与子路径、`GET /v1/skill-runs`；**ZIP/冲突导入等多段 JSON 与 multipart 仍走旧 `/api/v1/skills/import*`**（见 Playbook §3 A9）。**`tool/v1` 已落地（管理 UI CRUD + runs）**：`/v1/tools`、`/v1/tools/runs` 等；**`GET /api/v1/agents/:id/tools/effective` 仍走遗留**（待 `agent/v1`）。**`channels` 等未迁移**（部分逻辑在 `capability`、`catalog`） |
 | 6 | 记忆 · 进化 | `memory` 适配器挂接；`evolution` 注册 | `memory/v1`（可按 L0–L4 子 service 或 message 后缀拆分） | **未迁移**；本仓库 **`internal/data/pgvector` + `biz/memory`** 为 **另一类记忆存储**，与 SQLite 会话链并行时需 **文档说明边界** |
-| 7 | 用量 · 监控 | `model-usage/*`、`monitor/*`（含 audit 流） | `usage/v1`、`monitor/v1` 等 | **未迁移** |
+| 7 | 用量 · 监控 | `model-usage/*`、`monitor/*`（含 audit 流） | `usage/v1`、`monitor/v1` 等 | **`usage/v1` 已在 `cmd/admin` 落地**（`/v1/usage/overview`、`/v1/usage/trends`、`/v1/usage/top-models`、`/v1/usage/top-agents`、`/v1/usage/events`；SQLite：`internal/data/usage.go` → `model_token_usage_events`）；**`monitor/*` 与 audit/SSE 等仍为遗留 REST**。 |
 
 **横切**：`GET /healthz` 可归入运维或 Ingress，不必强行塞进某一业务 proto；若迁入 Kratos，需在模块说明中单列。
+
+**Catalog / 平台余项「逐个收口」顺序**（tools、channels、`usage`、`monitor`、skill import、SSE 等）：见 **[checklist-catalog-platform-remnants.md](./checklist-catalog-platform-remnants.md)**。
 
 ### 6.4 AI / 人肉执行「迁完全部」的操作顺序（每次只推进一行）
 
 对每个 **状态为「未迁移」** 的域，从上到下按 §6.1 顺序选域 → 为该域单列 **迁移清单**（可仿 **[checklist-avatar](./checklist-avatar.md)**）→ 按 **§5** 与 **§9** 逐项完成 → **回写本 §6.3 表**为已落地。
 
 **下一优先（在 §6.1 步 2～3 间二选一或由产品指定）**：  
-- 继续 **逐个** 收口 catalog / 平台剩余资源（cron/monitor 等），或  
+- 继续 **逐个** 收口 catalog / 平台剩余资源（monitor 等），或  
 - 启动 **sessions / messages**（步 3，核心对话链，工作量大）。
 
 ---

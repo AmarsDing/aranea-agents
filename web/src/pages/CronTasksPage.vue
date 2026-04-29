@@ -130,18 +130,27 @@
       </q-card-section>
     </q-card>
 
-    <CronTaskFormDialog v-model="editorOpen" :row="editingRow" :agents="agents" :teams="teams" @saved="onSaved" />
+    <CronTaskFormDialog
+      v-model="editorOpen"
+      :row="editingRow"
+      :agents="agents"
+      :teams="teams"
+      :submitting="formSubmitting"
+      :server-error="formServerError"
+      @submit="onFormSubmit"
+    />
   </q-page>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useQuasar, type QTableColumn } from "quasar";
 import type { Agent } from "../features/agents/api";
-import type { Team } from "../api/client";
-import CronTaskFormDialog from "../features/cron/CronTaskFormDialog.vue";
-import { deleteCronTask, listCronAgents, listCronTasks, listCronTeams, updateCronTask } from "../features/cron/api";
+import type { Team } from "../features/teams/api";
+import CronTaskFormDialog from "../components/cron/CronTaskFormDialog.vue";
+import { createCronTask, deleteCronTask, listCronAgents, listCronTasks, listCronTeams, updateCronTask } from "../features/cron/api";
+import type { PlatformResourceInput } from "../features/platform/api";
 import type { CronFailureSummary, CronTaskConfig, CronTaskMetadata, CronTaskRow } from "../features/cron/types";
 
 const $q = useQuasar();
@@ -156,6 +165,8 @@ const statusFilter = ref("");
 const editorOpen = ref(false);
 const editingRow = ref<CronTaskRow | null>(null);
 const savingId = ref("");
+const formSubmitting = ref(false);
+const formServerError = ref("");
 
 const columns: QTableColumn<CronTaskRow>[] = [
   { name: "name", label: "名称", field: "name", align: "left", sortable: true },
@@ -188,6 +199,26 @@ const filteredRows = computed(() => {
 });
 
 onMounted(loadAll);
+
+watch(editorOpen, (open) => {
+  if (open) formServerError.value = "";
+});
+
+async function onFormSubmit(payload: PlatformResourceInput) {
+  formServerError.value = "";
+  formSubmitting.value = true;
+  try {
+    const row = editingRow.value ? await updateCronTask(editingRow.value.id, payload) : await createCronTask(payload);
+    onSaved(row);
+    editorOpen.value = false;
+    $q.notify({ type: "positive", message: "定时任务已保存" });
+  } catch (err) {
+    formServerError.value = err instanceof Error ? err.message : "保存失败";
+    $q.notify({ type: "negative", message: formServerError.value });
+  } finally {
+    formSubmitting.value = false;
+  }
+}
 
 async function loadAll() {
   loading.value = true;

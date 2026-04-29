@@ -1,0 +1,92 @@
+<!--
+  Cron 表单字段区：q-form + 校验暴露（vue-design §0.2，无 API）。
+  皮肤：UX token，见父级 CronTaskFormDialog 与同文件 scoped :deep。
+-->
+<template>
+  <q-form ref="formRef" class="row q-col-gutter-md cron-form-fields-root" @submit.prevent="$emit('submit')">
+    <q-input
+      v-model="form.name"
+      class="col-12 col-md-6 cron-field"
+      dense
+      outlined
+      label="名称 *"
+      placeholder="my-daily-task"
+      :rules="[cronSlugRule]"
+    />
+    <q-input v-model="form.display_name" class="col-12 col-md-6 cron-field" dense outlined label="展示名称" />
+    <q-input v-model="form.description" class="col-12 cron-field" dense outlined autogrow type="textarea" label="描述" />
+
+    <CronTaskFormTargetFields v-model:form="form" :agents="agents" :teams="teams" />
+    <CronTaskFormScheduleFields v-model:form="form" />
+
+    <q-input v-model="form.timezone" class="col-12 col-md-6 cron-field" dense outlined label="时区" placeholder="Asia/Shanghai" />
+    <q-toggle v-model="form.enabled" class="col-12 col-md-6" color="primary" label="启用任务" />
+    <q-input
+      v-model="form.message"
+      class="col-12 cron-field"
+      dense
+      outlined
+      autogrow
+      type="textarea"
+      label="消息 *"
+      placeholder="Agent 应该做什么?"
+      :rules="[cronMessageRule]"
+    />
+
+    <div v-if="serverError" class="col-12 text-negative">{{ serverError }}</div>
+  </q-form>
+</template>
+
+<script setup lang="ts">
+import { ref } from "vue";
+import type { QForm } from "quasar";
+import type { Agent } from "../../features/agents/api";
+import type { CronTaskFormValue } from "../../features/cron/types";
+import type { Team } from "../../features/teams/api";
+import CronTaskFormScheduleFields from "./CronTaskFormScheduleFields.vue";
+import CronTaskFormTargetFields from "./CronTaskFormTargetFields.vue";
+import { cronMessageRule, cronSlugRule } from "./cronTaskUtils";
+
+defineProps<{
+  agents: Agent[];
+  teams: Team[];
+  serverError?: string;
+}>();
+
+defineEmits<{
+  submit: [];
+}>();
+
+const form = defineModel<CronTaskFormValue>("form", { required: true });
+
+const formRef = ref<QForm>();
+
+defineExpose({
+  validate: () => formRef.value?.validate()
+});
+
+</script>
+
+<style scoped>
+.section-label {
+  color: var(--color-text-primary);
+  font-weight: 800;
+}
+
+.cron-btn-toggle {
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid var(--glass-border);
+}
+
+/* 子块内 .cron-field 由 :deep 统一上材质（UX §5.3 玻璃输入近似） */
+.cron-form-fields-root :deep(.cron-field .q-field__control) {
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--canvas-base) 55%, transparent);
+}
+
+body.body--dark .cron-form-fields-root :deep(.cron-field .q-field__control) {
+  background: rgba(22, 28, 40, 0.45);
+  border-color: var(--glass-border);
+}
+</style>
