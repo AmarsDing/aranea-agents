@@ -1,0 +1,125 @@
+package data
+
+import (
+	"context"
+	"database/sql"
+
+	"aranea-agents/internal/biz"
+	"aranea-agents/internal/data/ent"
+	"aranea-agents/internal/data/ent/platformmcpserver"
+
+	entsql "entgo.io/ent/dialect/sql"
+)
+
+type mcpServerRepo struct {
+	data *Data
+}
+
+func NewMCPServerRepo(d *Data) biz.MCPServerRepo {
+	return &mcpServerRepo{data: d}
+}
+
+func entToBizMCP(e *ent.PlatformMCPServer) biz.MCPServer {
+	if e == nil {
+		return biz.MCPServer{}
+	}
+	return biz.MCPServer{
+		ID:           e.ID,
+		Key:          e.ServerKey,
+		Name:         e.Name,
+		Description:  e.Description,
+		Status:       e.Status,
+		Enabled:      e.Enabled,
+		SortOrder:    e.SortOrder,
+		ConfigJSON:   e.ConfigJSON,
+		MetadataJSON: e.MetadataJSON,
+		CreatedAt:    e.CreatedAt,
+		UpdatedAt:    e.UpdatedAt,
+		DeletedAt:    e.DeletedAt,
+	}
+}
+
+func (r *mcpServerRepo) ListMCPServers(ctx context.Context) ([]biz.MCPServer, error) {
+	rows, err := r.data.entClient.PlatformMCPServer.Query().
+		Where(platformmcpserver.DeletedAtEQ("")).
+		Order(
+			platformmcpserver.BySortOrder(),
+			platformmcpserver.ByCreatedAt(entsql.OrderDesc()),
+		).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]biz.MCPServer, 0, len(rows))
+	for _, e := range rows {
+		out = append(out, entToBizMCP(e))
+	}
+	return out, nil
+}
+
+func (r *mcpServerRepo) GetMCPServer(ctx context.Context, id string) (biz.MCPServer, error) {
+	row, err := r.data.entClient.PlatformMCPServer.Query().
+		Where(platformmcpserver.IDEQ(id), platformmcpserver.DeletedAtEQ("")).
+		Only(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return biz.MCPServer{}, sql.ErrNoRows
+		}
+		return biz.MCPServer{}, err
+	}
+	return entToBizMCP(row), nil
+}
+
+func (r *mcpServerRepo) CreateMCPServer(ctx context.Context, m biz.MCPServer) (biz.MCPServer, error) {
+	now := nowRFC3339()
+	if m.CreatedAt == "" {
+		m.CreatedAt = now
+	}
+	m.UpdatedAt = now
+	saved, err := r.data.entClient.PlatformMCPServer.Create().
+		SetID(m.ID).
+		SetServerKey(m.Key).
+		SetName(m.Name).
+		SetDescription(m.Description).
+		SetStatus(m.Status).
+		SetEnabled(m.Enabled).
+		SetSortOrder(m.SortOrder).
+		SetConfigJSON(m.ConfigJSON).
+		SetMetadataJSON(m.MetadataJSON).
+		SetCreatedAt(m.CreatedAt).
+		SetUpdatedAt(m.UpdatedAt).
+		SetDeletedAt("").
+		Save(ctx)
+	if err != nil {
+		return biz.MCPServer{}, err
+	}
+	return entToBizMCP(saved), nil
+}
+
+func (r *mcpServerRepo) UpdateMCPServer(ctx context.Context, m biz.MCPServer) (biz.MCPServer, error) {
+	m.UpdatedAt = nowRFC3339()
+	err := r.data.entClient.PlatformMCPServer.UpdateOneID(m.ID).
+		SetServerKey(m.Key).
+		SetName(m.Name).
+		SetDescription(m.Description).
+		SetStatus(m.Status).
+		SetEnabled(m.Enabled).
+		SetSortOrder(m.SortOrder).
+		SetConfigJSON(m.ConfigJSON).
+		SetMetadataJSON(m.MetadataJSON).
+		SetUpdatedAt(m.UpdatedAt).
+		Exec(ctx)
+	if err != nil {
+		return biz.MCPServer{}, err
+	}
+	return r.GetMCPServer(ctx, m.ID)
+}
+
+func (r *mcpServerRepo) DeleteMCPServer(ctx context.Context, id string) error {
+	now := nowRFC3339()
+	return r.data.entClient.PlatformMCPServer.UpdateOneID(id).
+		SetDeletedAt(now).
+		SetStatus("deleted").
+		SetUpdatedAt(now).
+		Exec(ctx)
+}

@@ -1,0 +1,332 @@
+<template>
+  <q-dialog :model-value="modelValue" persistent @update:model-value="$emit('update:modelValue', $event)">
+    <q-card class="mcp-form-card">
+      <q-card-section class="row items-start justify-between q-gutter-md">
+        <div>
+          <div class="text-h6">{{ row ? "编辑 MCP 服务器" : "添加 MCP 服务器" }}</div>
+          <div class="text-caption text-grey-7">配置连接方式、请求头、环境变量与工具前缀。</div>
+        </div>
+        <q-btn flat dense round icon="close" aria-label="关闭" @click="$emit('update:modelValue', false)" />
+      </q-card-section>
+      <q-separator />
+
+      <q-card-section class="mcp-form-scroll">
+        <q-form class="row q-col-gutter-md" @submit.prevent="save">
+          <q-input
+            v-model="form.name"
+            class="col-12 col-md-6"
+            dense
+            outlined
+            label="name *"
+            placeholder="my-mcp-server"
+            :rules="[slugRule]"
+          />
+          <q-input v-model="form.display_name" class="col-12 col-md-6" dense outlined label="display_name" placeholder="sqlserver" />
+          <q-input v-model="form.description" class="col-12" dense outlined autogrow type="textarea" label="描述" />
+
+          <div class="col-12">
+            <div class="section-label q-mb-sm">传输方式 *</div>
+            <q-btn-toggle
+              v-model="form.transport"
+              spread
+              no-caps
+              unelevated
+              toggle-color="primary"
+              color="grey-2"
+              text-color="grey-9"
+              :options="transportOptions"
+            />
+          </div>
+
+          <q-input
+            v-if="usesUrl"
+            v-model="form.url"
+            class="col-12"
+            dense
+            outlined
+            label="URL *"
+            placeholder="https://example.com/mcp"
+            :rules="[urlRule]"
+          />
+
+          <template v-else>
+            <q-input v-model="form.command" class="col-12 col-md-6" dense outlined label="Command *" placeholder="node" :rules="[commandRule]" />
+            <q-input
+              v-model="form.argsText"
+              class="col-12 col-md-6"
+              dense
+              outlined
+              autogrow
+              type="textarea"
+              label="Args"
+              hint="每行一个参数，例如 server.js"
+            />
+          </template>
+
+          <q-input v-model="form.tool_prefix" class="col-12 col-md-6" dense outlined label="工具前缀" hint="Tools: mcp_{prefix}__{tool}">
+            <template #prepend>mcp_</template>
+          </q-input>
+          <q-input v-model.number="form.timeout_sec" class="col-12 col-md-3" dense outlined type="number" min="1" suffix="s" label="超时" />
+          <q-toggle v-model="form.enabled" class="col-12 col-md-3" color="primary" label="启用" />
+          <q-toggle v-model="form.require_user_credentials" class="col-12" color="primary" label="每个用户须配置自己的凭据，否则无法使用" />
+
+          <div v-if="usesUrl" class="col-12">
+            <div class="row items-center justify-between q-mb-xs">
+              <div class="section-label">请求头</div>
+              <q-btn flat dense rounded color="primary" icon="add" label="添加请求头" @click="addPair('headers')" />
+            </div>
+            <div v-for="(item, index) in form.headers" :key="`header-${index}`" class="row q-col-gutter-sm q-mb-sm">
+              <q-input v-model="item.key" class="col-12 col-md-5" dense outlined placeholder="Header 名称" />
+              <q-input v-model="item.value" class="col-12 col-md" dense outlined :type="isSensitiveKey(item.key) ? 'password' : 'text'" placeholder="值" />
+              <div class="col-12 col-md-auto">
+                <q-btn flat dense round icon="delete" color="negative" aria-label="删除请求头" @click="removePair('headers', index)" />
+              </div>
+            </div>
+          </div>
+
+          <div class="col-12">
+            <div class="row items-center justify-between q-mb-xs">
+              <div class="section-label">环境变量</div>
+              <q-btn flat dense rounded color="primary" icon="add" label="添加变量" @click="addPair('env')" />
+            </div>
+            <div v-for="(item, index) in form.env" :key="`env-${index}`" class="row q-col-gutter-sm q-mb-sm">
+              <q-input v-model="item.key" class="col-12 col-md-5" dense outlined placeholder="变量名称" />
+              <q-input v-model="item.value" class="col-12 col-md" dense outlined :type="isSensitiveKey(item.key) ? 'password' : 'text'" placeholder="值" />
+              <div class="col-12 col-md-auto">
+                <q-btn flat dense round icon="delete" color="negative" aria-label="删除变量" @click="removePair('env', index)" />
+              </div>
+            </div>
+          </div>
+
+          <div v-if="serverError" class="col-12 text-negative">{{ serverError }}</div>
+        </q-form>
+      </q-card-section>
+
+      <q-separator />
+      <q-card-actions align="between">
+        <q-btn outline rounded color="primary" icon="science" label="测试连接" :loading="testing" :disable="!canSave || saving" @click="saveAndTest" />
+        <div class="row q-gutter-sm">
+          <q-btn flat rounded label="取消" @click="$emit('update:modelValue', false)" />
+          <q-btn color="primary" rounded unelevated :label="row ? '保存' : '创建'" :loading="saving" :disable="!canSave" @click="save" />
+        </div>
+      </q-card-actions>
+    </q-card>
+  </q-dialog>
+</template>
+
+<script setup lang="ts">
+import { computed, reactive, ref, watch } from "vue";
+import { useQuasar } from "quasar";
+import type { PlatformResourceInput } from "../platform/api";
+import { createMcpServer, testMcpServer, updateMcpServer } from "./api";
+import type { McpKeyValue, McpServerConfig, McpServerFormValue, McpServerMetadata, McpServerRow } from "./types";
+
+const props = defineProps<{
+  modelValue: boolean;
+  row: McpServerRow | null;
+}>();
+
+const emit = defineEmits<{
+  "update:modelValue": [value: boolean];
+  saved: [row: McpServerRow];
+  tested: [];
+}>();
+
+const $q = useQuasar();
+const saving = ref(false);
+const testing = ref(false);
+const serverError = ref("");
+const form = reactive<McpServerFormValue>(emptyForm());
+
+const transportOptions = [
+  { label: "stdio", value: "stdio" },
+  { label: "SSE", value: "sse" },
+  { label: "Streamable HTTP", value: "streamable_http" }
+];
+
+const usesUrl = computed(() => form.transport === "sse" || form.transport === "streamable_http");
+const canSave = computed(() => slugPattern.test(form.name) && (usesUrl.value ? isHttpUrl(form.url) : Boolean(form.command.trim())));
+
+watch(
+  () => props.modelValue,
+  (open) => {
+    if (open) resetForm();
+  }
+);
+
+function emptyForm(): McpServerFormValue {
+  return {
+    name: "",
+    display_name: "",
+    description: "",
+    transport: "streamable_http",
+    url: "",
+    command: "",
+    argsText: "",
+    headers: [],
+    env: [],
+    tool_prefix: "",
+    timeout_sec: 60,
+    enabled: true,
+    require_user_credentials: false
+  };
+}
+
+function resetForm() {
+  serverError.value = "";
+  const row = props.row;
+  const config = parseJSON<McpServerConfig>(row?.config_json, {});
+  Object.assign(form, {
+    name: row?.key || "",
+    display_name: row?.name || "",
+    description: row?.description || "",
+    transport: config.transport || "streamable_http",
+    url: config.url || "",
+    command: config.command || "",
+    argsText: (config.args || []).join("\n"),
+    headers: recordToPairs(config.headers || {}),
+    env: recordToPairs(config.env || {}),
+    tool_prefix: config.tool_prefix || "",
+    timeout_sec: config.timeout_sec || 60,
+    enabled: row?.enabled ?? true,
+    require_user_credentials: Boolean(config.require_user_credentials)
+  });
+}
+
+async function save() {
+  await persist({ close: true, notify: true });
+}
+
+async function saveAndTest() {
+  testing.value = true;
+  try {
+    const saved = await persist({ close: false, notify: false });
+    const result = await testMcpServer(saved.id);
+    emit("tested");
+    emit("update:modelValue", false);
+    $q.notify({ type: result.ok ? "positive" : "warning", message: result.message || result.status });
+  } catch (err) {
+    serverError.value = err instanceof Error ? err.message : "测试连接失败";
+    $q.notify({ type: "negative", message: serverError.value });
+  } finally {
+    testing.value = false;
+  }
+}
+
+async function persist(options: { close: boolean; notify: boolean }) {
+  serverError.value = "";
+  saving.value = true;
+  try {
+    const payload = buildPayload();
+    const saved = props.row ? await updateMcpServer(props.row.id, payload) : await createMcpServer(payload);
+    emit("saved", saved);
+    if (options.close) emit("update:modelValue", false);
+    if (options.notify) $q.notify({ type: "positive", message: "MCP 服务器已保存" });
+    return saved;
+  } catch (err) {
+    serverError.value = err instanceof Error ? err.message : "保存失败";
+    $q.notify({ type: "negative", message: serverError.value });
+    throw err;
+  } finally {
+    saving.value = false;
+  }
+}
+
+function buildPayload(): PlatformResourceInput {
+  const existingMetadata = parseJSON<McpServerMetadata>(props.row?.metadata_json, {});
+  const config: McpServerConfig = {
+    transport: form.transport,
+    url: usesUrl.value ? form.url.trim() : "",
+    command: usesUrl.value ? "" : form.command.trim(),
+    args: usesUrl.value ? [] : form.argsText.split(/\r?\n/).map((item) => item.trim()).filter(Boolean),
+    headers: usesUrl.value ? pairsToRecord(form.headers) : {},
+    env: pairsToRecord(form.env),
+    tool_prefix: form.tool_prefix.trim(),
+    timeout_sec: Number(form.timeout_sec) || 60,
+    require_user_credentials: form.require_user_credentials
+  };
+  return {
+    key: form.name.trim(),
+    name: form.display_name.trim() || form.name.trim(),
+    description: form.description.trim(),
+    enabled: form.enabled,
+    status: props.row?.status || "active",
+    sort_order: props.row?.sort_order || 0,
+    config_json: JSON.stringify(config),
+    metadata_json: JSON.stringify(existingMetadata)
+  };
+}
+
+function addPair(field: "headers" | "env") {
+  form[field].push({ key: "", value: "" });
+}
+
+function removePair(field: "headers" | "env", index: number) {
+  form[field].splice(index, 1);
+}
+
+function recordToPairs(record: Record<string, string>): McpKeyValue[] {
+  return Object.entries(record).map(([key, value]) => ({ key, value: String(value ?? "") }));
+}
+
+function pairsToRecord(pairs: McpKeyValue[]) {
+  return Object.fromEntries(pairs.map((item) => [item.key.trim(), item.value]).filter(([key]) => key));
+}
+
+function parseJSON<T>(value: string | undefined, fallback: T): T {
+  if (!value) return fallback;
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+function slugRule(value: string) {
+  return slugPattern.test(value) || "仅支持小写字母、数字、连字符，且不能以连字符开头或结尾";
+}
+
+function urlRule(value: string) {
+  return isHttpUrl(value) || "请输入有效的 HTTP(S) URL";
+}
+
+function commandRule(value: string) {
+  return Boolean(value.trim()) || "stdio 传输需要填写 command";
+}
+
+function isHttpUrl(value: string) {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function isSensitiveKey(key: string) {
+  return /authorization|token|secret|password|key/i.test(key);
+}
+</script>
+
+<style scoped>
+.mcp-form-card {
+  width: 980px;
+  max-width: 96vw;
+}
+
+.mcp-form-scroll {
+  max-height: min(70vh, 720px);
+  overflow: auto;
+}
+
+.section-label {
+  color: #5d4037;
+  font-weight: 800;
+}
+
+body.body--dark .section-label {
+  color: inherit;
+}
+</style>

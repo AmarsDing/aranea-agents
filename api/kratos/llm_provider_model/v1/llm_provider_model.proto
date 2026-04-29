@@ -1,0 +1,134 @@
+syntax = "proto3";
+
+package kratos.llm_provider_model.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/empty.proto";
+
+option go_package = "aranea-agents/api/kratos/llm_provider_model/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.kratos.llm_provider_model.v1";
+
+// ProviderModel is one row of llm_provider_models (legacy "llm-provider-models").
+message ProviderModel {
+  string id = 1;
+  string key = 2;
+  string name = 3;
+  string description = 4;
+  string status = 5;
+  bool enabled = 6;
+  int32 sort_order = 7;
+  string provider = 8;
+  string model = 9;
+  string config_json = 10;
+  string metadata_json = 11;
+  string created_at = 12;
+  string updated_at = 13;
+  string deleted_at = 14;
+}
+
+message ListProviderModelsResponse {
+  repeated ProviderModel items = 1;
+}
+
+message CreateProviderModelRequest {
+  string key = 1 [(google.api.field_behavior) = REQUIRED];
+  string name = 2 [(google.api.field_behavior) = REQUIRED];
+  string description = 3;
+  string status = 4;
+  bool enabled = 5;
+  int32 sort_order = 6;
+  string provider = 7;
+  string model = 8;
+  string config_json = 9;
+  string metadata_json = 10;
+}
+
+message GetProviderModelRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message UpdateProviderModelRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  ProviderModel provider_model = 2;
+}
+
+message DeleteProviderModelRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// ValidatePairRequest matches POST /api/v1/agents/validate-model body.
+message ValidateProviderPairRequest {
+  string provider = 1;
+  string model = 2;
+}
+
+message ValidateProviderPairResponse {
+  bool ok = 1;
+  string message = 2;
+}
+
+message InspectProviderModelRequest {
+  string resource_id = 1;
+  string provider_code = 2;
+  string provider_type = 3;
+  string model_api_id = 4;
+  string api_base_url = 5;
+  string api_key = 6;
+}
+
+message InspectProviderModelResponse {
+  bool ok = 1;
+  string message = 2;
+  string provider_code = 3;
+  string provider_type = 4;
+  string model_api_id = 5;
+  string model_display_name = 6;
+  string model_size_label = 7;
+  int32 context_window_k = 8;
+  int32 max_output_tokens = 9;
+  int64 input_price_micro_usd_per_1k = 10;
+  int64 output_price_micro_usd_per_1k = 11;
+  int64 cached_input_price_micro_usd_per_1k = 12;
+  int64 reasoning_price_micro_usd_per_1k = 13;
+  int64 embedding_price_micro_usd_per_1k = 14;
+  string source = 15;
+  string raw_metadata_json = 16;
+}
+
+service LlmProviderModelService {
+  rpc ListProviderModels(google.protobuf.Empty) returns (ListProviderModelsResponse) {
+    option (google.api.http) = {get: "/v1/llm-provider-models"};
+  }
+  rpc CreateProviderModel(CreateProviderModelRequest) returns (ProviderModel) {
+    option (google.api.http) = {
+      post: "/v1/llm-provider-models"
+      body: "*"
+    };
+  }
+  rpc GetProviderModel(GetProviderModelRequest) returns (ProviderModel) {
+    option (google.api.http) = {get: "/v1/llm-provider-models/{id}"};
+  }
+  rpc UpdateProviderModel(UpdateProviderModelRequest) returns (ProviderModel) {
+    option (google.api.http) = {
+      patch: "/v1/llm-provider-models/{id}"
+      body: "provider_model"
+    };
+  }
+  rpc DeleteProviderModel(DeleteProviderModelRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {delete: "/v1/llm-provider-models/{id}"};
+  }
+  rpc InspectProviderModel(InspectProviderModelRequest) returns (InspectProviderModelResponse) {
+    option (google.api.http) = {
+      post: "/v1/llm-provider-models/inspect"
+      body: "*"
+    };
+  }
+  rpc ValidateProviderPair(ValidateProviderPairRequest) returns (ValidateProviderPairResponse) {
+    option (google.api.http) = {
+      post: "/v1/agents/validate-model"
+      body: "*"
+    };
+  }
+}

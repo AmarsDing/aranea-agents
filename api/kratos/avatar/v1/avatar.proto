@@ -1,0 +1,92 @@
+syntax = "proto3";
+
+package kratos.avatar.v1;
+
+import "google/protobuf/empty.proto";
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+
+option go_package = "aranea-agents/api/kratos/avatar/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.kratos.avatar.v1";
+
+// AvatarAsset is a catalog row without image bytes (list/create response).
+message AvatarAsset {
+  string id = 1;
+  string key = 2;
+  string name = 3;
+  string description = 4;
+  string mime_type = 5;
+  string workspace_id = 6;
+  string owner_user_id = 7;
+  string source = 8;
+  bool is_system = 9;
+  int32 file_size_bytes = 10;
+  int32 width_px = 11;
+  int32 height_px = 12;
+  int32 sort_order = 13;
+  string created_at = 14;
+}
+
+message ListAvatarAssetsRequest {
+  string scope = 1;
+  string workspace_id = 2;
+  string owner_user_id = 3;
+}
+
+message ListAvatarAssetsResponse {
+  repeated AvatarAsset items = 1;
+}
+
+message CreateAvatarAssetRequest {
+  string workspace_id = 1;
+  string owner_user_id = 2;
+  string filename = 3;
+  bytes image_data = 4 [(google.api.field_behavior) = REQUIRED];
+}
+
+message GetAvatarBlobRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message GetAvatarBlobResponse {
+  string mime_type = 1;
+  bytes data = 2;
+}
+
+message DeleteAvatarAssetRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+service AvatarService {
+  rpc ListAvatarAssets(ListAvatarAssetsRequest) returns (ListAvatarAssetsResponse) {
+    option (google.api.http) = {
+      get: "/v1/avatar-assets"
+    };
+  }
+
+  rpc CreateAvatarAsset(CreateAvatarAssetRequest) returns (AvatarAsset) {
+    option (google.api.http) = {
+      post: "/v1/avatar-assets"
+      body: "*"
+    };
+  }
+
+  rpc GetAvatarFile(GetAvatarBlobRequest) returns (GetAvatarBlobResponse) {
+    option (google.api.http) = {
+      get: "/v1/avatar-assets/{id}/file"
+    };
+  }
+
+  rpc GetAvatarThumbnail(GetAvatarBlobRequest) returns (GetAvatarBlobResponse) {
+    option (google.api.http) = {
+      get: "/v1/avatar-assets/{id}/thumbnail"
+    };
+  }
+
+  rpc DeleteAvatarAsset(DeleteAvatarAssetRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      delete: "/v1/avatar-assets/{id}"
+    };
+  }
+}

@@ -1,0 +1,80 @@
+# Reference https://github.com/github/gitignore/blob/master/Go.gitignore
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# Dependency directories (remove the comment below to include it)
+vendor/
+
+# Go workspace file
+go.work
+
+# Compiled Object files, Static and Dynamic libs (Shared Objects)
+*.o
+*.a
+*.so
+
+# OS General
+Thumbs.db
+.DS_Store
+
+# project
+*.cert
+*.key
+*.log
+bin/
+/cmd/kratos-admin
+
+# Develop tools
+.vscode/
+.cache/
+.idea/
+*.swp
+
+# ----- 生成物（勿提交；本地用 make api / make generate / npm install 等还原）-----
+
+# protoc → Go（保留 *.proto）
+api/**/*.pb.go
+internal/**/*.pb.go
+
+# gnostic / kratos → 仓库根 OpenAPI
+/openapi.yaml
+/openapi.json
+
+# Ent（保留 schema/ 与 generate.go）
+/internal/data/ent/*
+!/internal/data/ent/schema/
+!/internal/data/ent/schema/**
+!/internal/data/ent/generate.go
+
+# wire
+**/wire_gen.go
+
+# protoc → 前端 TS 客户端（保留 web/src/services 下手写文件）
+web/src/services/kratos/
+
+# 前端依赖与构建
+web/node_modules/
+web/dist/
+web/.quasar/
+web/**/*.tsbuildinfo
+
+# 环境与本地配置
+.env
+.env.*
+!.env.example
+
+# 测试与覆盖率
+coverage.out
+coverage.html
+*.coverprofile
+profile.cov
+pkg/trpc-agent-go/

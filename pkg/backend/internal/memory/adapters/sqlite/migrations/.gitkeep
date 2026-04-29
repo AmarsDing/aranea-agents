@@ -1,0 +1,2 @@
+# Memory Context migrations
+# File naming: 000001_memory_<topic>.up.sql

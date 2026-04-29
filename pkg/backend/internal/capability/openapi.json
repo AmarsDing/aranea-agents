@@ -1,0 +1,7 @@
+{
+  "openapi": "3.0.3",
+  "info": { "title": "Capability Context", "version": "0.1.0" },
+  "paths": {},
+  "components": { "schemas": {} },
+  "tags": [{ "name": "capability", "x-aranea-context": "capability" }]
+}

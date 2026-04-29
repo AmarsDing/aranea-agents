@@ -1,0 +1,206 @@
+syntax = "proto3";
+
+package kratos.agent.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/empty.proto";
+
+option go_package = "aranea-agents/api/kratos/agent/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.kratos.agent.v1";
+
+// AgentRuntimeSettings mirrors legacy agent_runtime_settings / frontend AgentRuntimeSettings.
+message AgentRuntimeSettings {
+  string agent_id = 1;
+  bool self_evolve = 2;
+  bool subagents_enabled = 3;
+  int32 subagents_max_concurrency = 4;
+  int32 subagents_max_generation_depth = 5;
+  int32 subagents_max_children_per_agent = 6;
+  int32 subagents_archive_after_minutes = 7;
+  int32 subagents_max_retries = 8;
+  string subagents_model_override = 9;
+  bool tools_enabled = 10;
+  string tools_profile = 11;
+  string tools_tool_call_prefix = 12;
+  string tools_allow_json = 13;
+  string tools_deny_json = 14;
+  string tools_concurrent_allow_json = 15;
+  bool memory_enabled = 16;
+  int32 memory_max_chunk_length = 17;
+  int32 memory_max_results = 18;
+  double memory_min_score = 19;
+  bool heartbeat_enabled = 20;
+  int32 heartbeat_interval_minutes = 21;
+  bool evolution_self_evolve = 22;
+  bool evolution_skill_evolve = 23;
+  bool evolution_metrics_enabled = 24;
+  bool evolution_suggestions_enabled = 25;
+  double guardrail_max_change_per_period = 26;
+  int32 guardrail_min_data_points = 27;
+  int32 guardrail_rollback_on_decline_percent = 28;
+  int32 l0_recent_window_turns = 29;
+  int32 l0_recent_window_tokens = 30;
+  double l0_summary_threshold = 31;
+  int32 l0_summary_keep_turns = 32;
+  string l0_truncate_strategy = 33;
+  bool l0_inject_l1 = 34;
+  bool l0_inject_l3 = 35;
+  bool l0_inject_l4 = 36;
+  int32 l0_l3_max_chunks = 37;
+  int32 l0_l4_max_paths = 38;
+  string l0_snapshot_mode = 39;
+  bool l1_enabled = 40;
+  int32 l1_budget_tokens = 41;
+  int32 l1_field_max_tokens = 42;
+  int32 l1_history_keep_revisions = 43;
+  string l1_default_schema_id = 44;
+  int32 l1_archive_on_idle_minutes = 45;
+  bool l2_episode_enabled = 46;
+  double l2_episode_min_importance = 47;
+  bool l2_index_enabled = 48;
+  string l2_index_embedding_model = 49;
+  bool l2_recall_enabled = 50;
+  int32 l2_recall_max = 51;
+  int32 l2_retention_days = 52;
+  int32 l2_archive_after_days = 53;
+  bool l3_enabled = 54;
+  int32 l3_recall_top_k = 55;
+  double l3_recall_min_score = 56;
+  string l3_recall_scopes_json = 57;
+  string l3_embedding_model = 58;
+  int32 l3_decay_interval_hours = 59;
+  double l3_archive_threshold = 60;
+  int32 l3_max_per_recall_chars = 61;
+  bool l4_enabled = 62;
+  bool l4_graph_inject_neighbors = 63;
+  int32 l4_graph_max_neighbors = 64;
+  int32 l4_graph_max_hops = 65;
+  bool l4_identity_inject = 66;
+  bool l4_strategy_inject = 67;
+  bool evo_enabled = 68;
+  bool evo_auto_apply = 69;
+  int32 evo_min_episodes = 70;
+  int32 evo_min_negative_feedback = 71;
+  int32 evo_throttle_hours = 72;
+  int32 evo_proposal_ttl_days = 73;
+  int32 evo_persona_max_chars = 74;
+  int32 evo_system_prompt_max_appends = 75;
+  string created_at = 76;
+  string updated_at = 77;
+}
+
+message AgentPromptFile {
+  string id = 1;
+  string agent_id = 2;
+  string name = 3;
+  string body = 4;
+  int32 sort_order = 5;
+  string created_at = 6;
+  string updated_at = 7;
+}
+
+message Agent {
+  string id = 1;
+  string agent_key = 2;
+  string display_name = 3;
+  string provider = 4;
+  string model = 5;
+  string status = 6;
+  bool is_default = 7;
+  bool is_favorite = 8;
+  string icon = 9;
+  string agent_description = 10;
+  string category_position_id = 11;
+  string system_prompt_mode = 12;
+  int32 context_window = 13;
+  int32 budget_monthly_cents = 14;
+  string config_json = 15;
+  string created_at = 16;
+  string updated_at = 17;
+  string deleted_at = 18;
+  AgentRuntimeSettings settings = 19;
+  repeated AgentPromptFile files = 20;
+}
+
+message ListAgentsRequest {
+  string keyword = 1;
+  string status = 2;
+  string provider = 3;
+  string category_id = 4;
+  int32 limit = 5;
+  int32 offset = 6;
+}
+
+message ListAgentsResponse {
+  repeated Agent items = 1;
+  int32 total = 2;
+  int32 limit = 3;
+  int32 offset = 4;
+}
+
+message CreateAgentRequest {
+  string agent_key = 1 [(google.api.field_behavior) = REQUIRED];
+  string display_name = 2 [(google.api.field_behavior) = REQUIRED];
+  string provider = 3 [(google.api.field_behavior) = REQUIRED];
+  string model = 4 [(google.api.field_behavior) = REQUIRED];
+  string icon = 5;
+  string agent_description = 6;
+  string category_position_id = 7;
+  string system_prompt_mode = 8;
+  int32 context_window = 9;
+  int32 budget_monthly_cents = 10;
+  string config_json = 11;
+  AgentRuntimeSettings settings = 12;
+  repeated AgentPromptFile files = 13;
+}
+
+message GetAgentRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message UpdateAgentRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  Agent agent = 2;
+}
+
+message DeleteAgentRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message GetAgentPromptPreviewRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string mode = 2;
+}
+
+message GetAgentPromptPreviewResponse {
+  string preview = 1;
+}
+
+service AgentService {
+  rpc ListAgents(ListAgentsRequest) returns (ListAgentsResponse) {
+    option (google.api.http) = {get: "/v1/agents"};
+  }
+  rpc CreateAgent(CreateAgentRequest) returns (Agent) {
+    option (google.api.http) = {
+      post: "/v1/agents"
+      body: "*"
+    };
+  }
+  rpc GetAgent(GetAgentRequest) returns (Agent) {
+    option (google.api.http) = {get: "/v1/agents/{id}"};
+  }
+  rpc UpdateAgent(UpdateAgentRequest) returns (Agent) {
+    option (google.api.http) = {
+      patch: "/v1/agents/{id}"
+      body: "agent"
+    };
+  }
+  rpc DeleteAgent(DeleteAgentRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {delete: "/v1/agents/{id}"};
+  }
+  rpc GetAgentPromptPreview(GetAgentPromptPreviewRequest) returns (GetAgentPromptPreviewResponse) {
+    option (google.api.http) = {get: "/v1/agents/{id}/system-prompt/preview"};
+  }
+}

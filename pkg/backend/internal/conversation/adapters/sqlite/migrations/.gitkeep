@@ -1,0 +1,2 @@
+# Conversation Context migrations
+# File naming: 000001_conversation_<topic>.up.sql

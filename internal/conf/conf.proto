@@ -1,0 +1,61 @@
+syntax = "proto3";
+package kratos.api;
+
+option go_package = "aranea-agents/internal/conf;conf";
+
+import "google/protobuf/duration.proto";
+
+message Bootstrap {
+  Server server = 1;
+  Data data = 2;
+}
+
+message Server {
+  message HTTP {
+    string network = 1;
+    string addr = 2;
+    google.protobuf.Duration timeout = 3;
+  }
+  message GRPC {
+    string network = 1;
+    string addr = 2;
+    google.protobuf.Duration timeout = 3;
+  }
+  message SSE {
+    bool enable = 1;
+    string network = 2;
+    string addr = 3;
+    string path = 4;
+    google.protobuf.Duration timeout = 5;
+  }
+  HTTP http = 1;
+  GRPC grpc = 2;
+  SSE sse = 3;
+}
+
+message Data {
+  message Database {
+    string driver = 1;
+    string source = 2;
+  }
+  message Sqlite {
+    bool enable = 1;
+    string source = 2;
+  }
+  // PostgreSQL + pgvector: agent long-term memory (embeddings). Not used by Ent.
+  message Postgres {
+    string source = 1;
+    // embedding dimension (e.g. 1536 for text-embedding-3-small). 0 = default 1536.
+    int32 vector_dim = 2;
+  }
+  message Redis {
+    string network = 1;
+    string addr = 2;
+    google.protobuf.Duration read_timeout = 3;
+    google.protobuf.Duration write_timeout = 4;
+  }
+  Database database = 1;
+  Redis redis = 2;
+  Sqlite sqlite = 3;
+  Postgres postgres = 4;
+}

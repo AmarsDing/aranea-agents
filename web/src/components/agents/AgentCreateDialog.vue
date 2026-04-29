@@ -1,0 +1,384 @@
+<template>
+  <q-dialog v-model="dialogModel" persistent>
+    <q-card :class="['create-agent-card', { 'create-agent-card--dark': isDark }]">
+      <q-toolbar class="create-agent-card__toolbar">
+        <div>
+          <q-toolbar-title class="q-pa-none">创建 Agent</q-toolbar-title>
+          <div class="text-caption text-grey-7">最小字段创建，模型检查通过后才能提交。</div>
+        </div>
+        <q-space />
+        <q-btn flat round dense icon="close" v-close-popup />
+      </q-toolbar>
+      <q-separator />
+
+      <q-card-section class="create-agent-card__body">
+        <div class="create-agent-layout row q-col-gutter-lg">
+          <div class="col-12 col-md-auto column items-center avatar-column">
+            <agent-avatar-q
+              size="104px"
+              avatar-class="cursor-pointer avatar-picker"
+              :icon="form.icon"
+              :alt="form.display_name || 'Agent avatar'"
+              @click="avatarPickerOpen = true"
+            >
+              <q-tooltip>选择头像</q-tooltip>
+            </agent-avatar-q>
+            <q-btn class="avatar-change-btn q-mt-md" outline rounded color="primary" icon="photo_library" label="选择头像" @click="avatarPickerOpen = true" />
+            <div class="avatar-column__hint">从数据库内置头像选择，或上传图片。</div>
+          </div>
+
+          <div class="col">
+            <div class="form-panel row q-col-gutter-md">
+              <q-input v-model.trim="form.display_name" class="col-12 col-md-6 agent-dialog-control" dense outlined label="显示名称 *">
+                <template #prepend><q-icon name="smart_toy" /></template>
+              </q-input>
+              <q-input
+                v-model.trim="form.agent_key"
+                class="col-12 col-md-6 agent-dialog-control"
+                dense
+                outlined
+                label="Agent 标识 *"
+                hint="小写字母、数字、连字符"
+                :error="Boolean(agentKeyError)"
+                :error-message="agentKeyError"
+              />
+              <q-select v-model="categoryIndustry" class="col-12 col-md-4 agent-dialog-control" dense outlined clearable emit-value map-options label="行业" :options="industryOptions" />
+              <q-select v-model="categoryDepartment" class="col-12 col-md-4 agent-dialog-control" dense outlined clearable emit-value map-options label="部门" :options="departmentOptions" :disable="!categoryIndustry" />
+              <q-select v-model="form.category_position_id" class="col-12 col-md-4 agent-dialog-control" dense outlined clearable emit-value map-options label="职位" :options="positionOptions" :disable="!categoryDepartment" />
+              <q-select v-model="form.provider" class="col-12 col-md-5 agent-dialog-control" dense outlined emit-value map-options label="Provider *" :options="providerOptions" />
+              <q-select v-model="form.model" class="col-12 col-md-5 agent-dialog-control" dense outlined emit-value map-options label="模型 *" :options="modelOptions" />
+              <div class="col-12 col-md-2">
+                <q-btn class="model-check-btn full-width" outline rounded color="primary" label="检查" :disable="!form.provider || !form.model" :loading="checkingModel" @click="$emit('check-model')" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <section class="description-block">
+          <div class="text-subtitle2">描述您的 Agent</div>
+          <div class="row q-gutter-xs q-mt-sm">
+            <q-chip
+              v-for="template in descriptionTemplates"
+              :key="template.key"
+              clickable
+              outline
+              color="primary"
+              :icon="template.icon"
+              :class="{ 'template-chip--active': selectedTemplateKey === template.key }"
+              @click="$emit('apply-template', template)"
+            >
+              {{ template.label }}
+            </q-chip>
+          </div>
+          <q-input
+            v-model="form.agent_description"
+            class="agent-dialog-control q-mt-sm"
+            outlined
+            type="textarea"
+            rows="7"
+            label="描述您的 Agent"
+            hint="AI 将根据此描述自动生成 Agent 的上下文文件。留空则使用模板。"
+          />
+        </section>
+
+        <q-card flat bordered class="self-evolve-card">
+          <q-card-section class="row items-center justify-between">
+            <div>
+              <div class="text-subtitle2">自我进化</div>
+              <div class="text-caption text-grey-7">允许 Agent 通过 SOUL.md 随时间进化其风格和语调。</div>
+            </div>
+            <q-toggle v-model="selfEvolveModel" color="primary" />
+          </q-card-section>
+        </q-card>
+      </q-card-section>
+
+      <q-card-actions align="right" class="create-agent-card__actions">
+        <q-btn flat rounded label="取消" v-close-popup />
+        <q-btn color="primary" rounded unelevated label="创建" :disable="!canCreate" :loading="creating" @click="$emit('create')" />
+      </q-card-actions>
+    </q-card>
+    <agent-avatar-picker v-model="form.icon" v-model:open="avatarPickerOpen" />
+  </q-dialog>
+</template>
+
+<script setup lang="ts">
+import { computed, ref } from "vue";
+import { useQuasar } from "quasar";
+import AgentAvatarPicker from "../avatar/AgentAvatarPicker.vue";
+import AgentAvatarQ from "../avatar/AgentAvatarQ.vue";
+import { descriptionTemplates } from "./agentUi";
+
+type CreateForm = {
+  agent_key: string;
+  display_name: string;
+  provider: string;
+  model: string;
+  icon: string;
+  agent_description: string;
+  category_position_id: string;
+};
+
+const props = defineProps<{
+  modelValue: boolean;
+  form: CreateForm;
+  selfEvolve: boolean;
+  categoryIndustry: string | null;
+  categoryDepartment: string | null;
+  industryOptions: Array<{ label: string; value: string }>;
+  departmentOptions: Array<{ label: string; value: string }>;
+  positionOptions: Array<{ label: string; value: string }>;
+  providerOptions: Array<{ label: string; value: string }>;
+  modelOptions: Array<{ label: string; value: string }>;
+  selectedTemplateKey: string;
+  agentKeyError: string;
+  canCreate: boolean;
+  creating: boolean;
+  checkingModel: boolean;
+}>();
+
+const emit = defineEmits<{
+  "update:modelValue": [value: boolean];
+  "update:selfEvolve": [value: boolean];
+  "update:categoryIndustry": [value: string | null];
+  "update:categoryDepartment": [value: string | null];
+  "apply-template": [template: (typeof descriptionTemplates)[number]];
+  "check-model": [];
+  create: [];
+}>();
+
+const $q = useQuasar();
+const isDark = computed(() => $q.dark.isActive);
+const dialogModel = computed({
+  get: () => props.modelValue,
+  set: (value: boolean) => emit("update:modelValue", value)
+});
+
+const selfEvolveModel = computed({
+  get: () => props.selfEvolve,
+  set: (value: boolean) => emit("update:selfEvolve", value)
+});
+
+const categoryIndustry = computed({
+  get: () => props.categoryIndustry,
+  set: (value: string | null) => emit("update:categoryIndustry", value)
+});
+
+const categoryDepartment = computed({
+  get: () => props.categoryDepartment,
+  set: (value: string | null) => emit("update:categoryDepartment", value)
+});
+
+const avatarPickerOpen = ref(false);
+</script>
+
+<style scoped>
+.create-agent-card {
+  width: 880px;
+  max-width: 94vw;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at 8% 0%, rgba(25, 118, 210, 0.1), transparent 32%),
+    radial-gradient(circle at 88% 16%, rgba(245, 158, 11, 0.08), transparent 28%),
+    #ffffff;
+  box-shadow: 0 30px 90px rgba(16, 24, 40, 0.2);
+}
+
+.create-agent-card__toolbar {
+  padding: 22px 26px;
+  background: linear-gradient(180deg, #ffffff, #fbfcff);
+}
+
+.create-agent-card__body {
+  padding: 22px 24px 18px;
+}
+
+.create-agent-layout {
+  padding-top: 4px;
+}
+
+.avatar-column {
+  width: 190px;
+  padding: 18px 16px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 24px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(248, 250, 252, 0.92)),
+    radial-gradient(circle at top, rgba(25, 118, 210, 0.1), transparent 54%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.avatar-picker {
+  border: 4px solid #ffffff;
+  box-shadow: 0 18px 40px rgba(25, 118, 210, 0.24);
+  transition:
+    transform 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.avatar-picker:hover {
+  transform: translateY(-2px) scale(1.01);
+  box-shadow: 0 22px 50px rgba(25, 118, 210, 0.3);
+}
+
+.avatar-change-btn {
+  width: 100%;
+  min-height: 38px;
+  font-weight: 700;
+}
+
+.avatar-column__hint {
+  margin-top: 10px;
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.55;
+  text-align: center;
+}
+
+.form-panel {
+  padding: 2px 0 0;
+}
+
+.agent-dialog-control :deep(.q-field__control) {
+  min-height: 44px;
+  border-radius: 16px;
+  background: #ffffff;
+}
+
+.agent-dialog-control :deep(.q-field__control::before) {
+  border-color: rgba(15, 23, 42, 0.14);
+}
+
+.agent-dialog-control :deep(.q-field__control::after) {
+  border-width: 1px;
+}
+
+.agent-dialog-control :deep(textarea) {
+  min-height: 132px;
+  color: #1d2939;
+  line-height: 1.65;
+}
+
+.model-check-btn {
+  min-height: 44px;
+  font-weight: 700;
+}
+
+.description-block {
+  margin-top: 20px;
+  padding: 18px 18px 14px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 24px;
+  background:
+    linear-gradient(180deg, #ffffff, #fbfcff),
+    radial-gradient(circle at top left, rgba(25, 118, 210, 0.05), transparent 35%);
+  box-shadow: 0 12px 30px rgba(16, 24, 40, 0.035);
+}
+
+.description-block :deep(.q-chip) {
+  font-weight: 700;
+  background: #ffffff;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    transform 160ms ease;
+}
+
+.description-block :deep(.q-chip:hover) {
+  transform: translateY(-1px);
+  background: #eef6ff;
+}
+
+.template-chip--active {
+  border-color: rgba(245, 158, 11, 0.36);
+  background: #fff4e5;
+  color: #b45309;
+}
+
+.self-evolve-card {
+  margin-top: 18px;
+  border-color: rgba(245, 158, 11, 0.18);
+  border-radius: 22px;
+  background: linear-gradient(135deg, #fff8ed, #f8fbff);
+  box-shadow: 0 12px 30px rgba(16, 24, 40, 0.035);
+}
+
+.create-agent-card__actions {
+  padding: 14px 22px 20px;
+  background: rgba(248, 250, 252, 0.58);
+}
+
+.create-agent-card__actions :deep(.q-btn) {
+  min-height: 40px;
+  padding: 0 18px;
+  font-weight: 700;
+}
+
+.create-agent-card.create-agent-card--dark {
+  border-color: rgba(148, 163, 184, 0.16);
+  background:
+    radial-gradient(circle at 8% 0%, rgba(59, 130, 246, 0.14), transparent 32%),
+    radial-gradient(circle at 88% 16%, rgba(245, 158, 11, 0.1), transparent 28%),
+    #111827;
+  color: #e5e7eb;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.55);
+}
+
+.create-agent-card.create-agent-card--dark .create-agent-card__toolbar {
+  background: linear-gradient(180deg, rgba(17, 24, 39, 0.98), rgba(15, 23, 42, 0.94));
+}
+
+.create-agent-card.create-agent-card--dark .avatar-column,
+.create-agent-card.create-agent-card--dark .description-block,
+.create-agent-card.create-agent-card--dark .self-evolve-card {
+  border-color: rgba(148, 163, 184, 0.16);
+  background:
+    linear-gradient(180deg, rgba(30, 41, 59, 0.68), rgba(15, 23, 42, 0.82)),
+    radial-gradient(circle at top, rgba(59, 130, 246, 0.12), transparent 54%);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+}
+
+.create-agent-card.create-agent-card--dark .avatar-picker {
+  border-color: rgba(15, 23, 42, 0.9);
+}
+
+.create-agent-card.create-agent-card--dark .avatar-column__hint {
+  color: #94a3b8;
+}
+
+.create-agent-card.create-agent-card--dark .agent-dialog-control :deep(.q-field__control) {
+  background: rgba(30, 41, 59, 0.76);
+}
+
+.create-agent-card.create-agent-card--dark .agent-dialog-control :deep(.q-field__control::before) {
+  border-color: rgba(148, 163, 184, 0.18);
+}
+
+.create-agent-card.create-agent-card--dark .agent-dialog-control :deep(textarea) {
+  color: #e5e7eb;
+}
+
+.create-agent-card.create-agent-card--dark .description-block :deep(.q-chip) {
+  background: rgba(30, 41, 59, 0.72);
+}
+
+.create-agent-card.create-agent-card--dark .description-block :deep(.q-chip:hover) {
+  background: rgba(51, 65, 85, 0.78);
+}
+
+.create-agent-card.create-agent-card--dark .template-chip--active {
+  border-color: rgba(245, 158, 11, 0.36);
+  background: rgba(120, 53, 15, 0.32);
+  color: #fbbf24;
+}
+
+.create-agent-card.create-agent-card--dark .create-agent-card__actions {
+  background: rgba(15, 23, 42, 0.72);
+}
+
+@media (max-width: 767px) {
+  .avatar-column {
+    width: 100%;
+  }
+}
+</style>

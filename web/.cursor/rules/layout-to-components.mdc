@@ -1,0 +1,9 @@
+---
+description: 布局中可复用块亦抽到 src/components
+globs: aranea/frontend/src/layouts/**/*.vue
+alwaysApply: false
+---
+
+# 与 page-to-components 一致
+
+`src/layouts` 中的侧栏、顶栏、可切换区域等，若**非纯粹一次性外壳**，应抽到 **`src/components/`**，由布局只做引用与传参。详见同目录下 `page-to-components.mdc`。

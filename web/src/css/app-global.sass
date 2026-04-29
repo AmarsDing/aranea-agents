@@ -1,0 +1,510 @@
+@import ./app-theme
+
+// 全局布局、Shell、按昼夜分叉的页面局部样式（分支与 Quasar 一致：body:not(.body--dark) / body.body--dark）
+
+body
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif
+
+body:not(.body--dark)
+  background: $cream-page
+  color: $cream-text
+  -webkit-font-smoothing: antialiased
+
+  // 避免纯黑链接/默认灰破坏柔和感
+  a.q-link
+    color: $cream-text-light
+
+  .text-cream-text
+    color: $cream-text
+
+  .text-cream-muted
+    color: $cream-text-light
+
+  // 主内容区与概览大容器
+  .app-page-cream
+    min-height: 100%
+    color: $cream-text
+    // 与参考图一致的暖色渐变底
+    background: linear-gradient(160deg, #FFF8E7 0%, $cream-page 40%, $cream-page-alt 100%)
+
+  .app-page-container
+    padding: 0 0 1rem
+    @media (min-width: 1024px)
+      padding: 0.5rem 1.25rem 1.5rem
+
+  // 外框大玻璃 + 内层卡片
+  .dashboard-glass-shell
+    border-radius: 24px
+    background: rgba(255, 255, 255, 0.5)
+    border: 1px solid $cream-border-soft
+    box-shadow: 0 12px 40px $cream-shadow-soft, 0 2px 8px $cream-shadow
+    backdrop-filter: blur(14px)
+    -webkit-backdrop-filter: blur(14px)
+
+  .dashboard-glass-card
+    min-height: 0
+    border-radius: 20px !important
+    background: rgba(254, 253, 245, 0.88) !important
+    box-shadow: 0 2px 16px $cream-shadow-soft !important
+
+  .dashboard-glass-card--fill
+    display: flex
+    flex-direction: column
+    height: 100%
+
+  .q-separator.cream-sep
+    background: $cream-border-soft
+    min-height: 1px
+    color: $cream-border-soft
+
+  // 页面内卡片：白底 + 轻玻璃感 + 大圆角 + 软阴影；概览内 .dashboard-glass-card 另有覆盖
+  .q-card
+    background: rgba(255, 255, 255, 0.92)
+    border: 1px solid $cream-border-soft
+    border-radius: 16px
+    box-shadow: 0 4px 24px $cream-shadow-soft, 0 1px 3px $cream-shadow
+    backdrop-filter: blur(8px)
+
+  .q-separator
+    background: $cream-border-soft
+
+  // 表头/工具条上的次级文字
+  .text-grey-7
+    color: $cream-text-muted !important
+
+// 主布局：顶栏（白昼）
+.cream-header
+  background: $cream-header !important
+  color: $cream-text !important
+  box-shadow: 0 1px 16px $cream-shadow-soft !important
+  border-bottom: 1px solid $cream-border-soft
+
+  .q-toolbar
+    color: $cream-text
+
+  .q-btn
+    color: $cream-text-light
+
+  .q-select .q-field__control
+    color: $cream-text
+
+// 侧栏通用排版（左右分栏、图标不挤占标题）
+.q-drawer .q-list
+  .q-item__label--header
+    font-weight: 600
+    letter-spacing: 0.04em
+    padding: 8px 12px 4px
+
+  .q-item
+    min-height: 46px
+    border-radius: 12px
+    margin: 2px 6px
+    line-height: 1.4
+
+  .q-item__section--main
+    font-size: 0.9rem
+    min-width: 0
+    word-break: break-word
+
+  .q-item__section--avatar
+    min-width: 40px
+    max-width: 40px
+    padding-right: 0
+    align-items: center
+
+  .q-icon:not(img)
+    font-size: 22px
+    width: 1em
+    height: 1em
+    line-height: 1
+
+// 侧栏（白昼）配色
+.cream-drawer
+  background: $cream-page-alt !important
+  border-right: 1px solid $cream-border-soft !important
+  -webkit-font-smoothing: antialiased
+
+  .q-item__label--header
+    color: $cream-text-muted !important
+
+  .q-icon:not(img)
+    color: $cream-text-light
+
+// 侧栏当前项：脏粉浅底 + 深棕字，不用高饱和蓝
+.cream-menu-item--active
+  background: $cream-accent-tint !important
+  color: $cream-text !important
+  font-weight: 600
+  border-radius: 12px
+
+  .q-item__section--avatar .q-icon
+    color: $cream-text
+
+// 与旧类名兼容
+.panel-scroll
+  overflow-y: auto
+  height: calc(100vh - 110px)
+
+// 概览交易面板：多/空切换（空侧陶土感，与 positive 的 sage 对称）
+body:not(.body--dark) .dashboard-side-toggle .dashboard-sell
+  color: $cream-text
+  &.q-btn--flat
+    background: rgba(201, 123, 99, 0.12) !important
+  &.dashboard-sell--on
+    background: #C97B63 !important
+    color: #fff !important
+
+// 聊天页：与文档宽度、输入区、工具条一致
+// 组件化后这些类由 ChatEntitySidebar / ChatMessagePanel / ChatSessionSidebar 共享
+.chat-page
+  height: 100%
+  min-height: 0
+  overflow: hidden
+
+.chat-page__row
+  min-height: 0
+  height: 100%
+  gap: 0
+
+.chat-mid-card
+  min-height: 0
+  overflow: hidden
+
+.chat-composer
+  flex: 0 0 auto
+  border-top: 1px solid rgba(141, 110, 99, 0.12)
+  border-radius: 0 0 16px 16px
+
+.chat-side
+  width: 220px
+  flex: 0 0 220px
+  overflow: hidden
+  border-radius: 18px
+
+.chat-side__header
+  padding: 10px 10px 6px
+
+.chat-side__content
+  padding: 0 10px 10px
+
+.chat-section-label
+  padding: 10px 4px 6px !important
+  font-weight: 700
+  letter-spacing: 0.08em
+
+.chat-side-hint
+  padding: 0 4px 8px
+
+.chat-side--left,
+.chat-side--right
+  min-width: 0
+  transition: width 0.22s ease, opacity 0.18s ease
+
+.chat-side__toggle
+  width: 18px
+  min-width: 18px
+  margin: 0 4px
+  &--shrink
+    width: 10px
+    min-width: 10px
+
+.chat-side__toggle-btn
+  z-index: 1
+  width: 28px
+  height: 28px
+  border-radius: 12px !important
+
+.chat-messages
+  min-height: 0
+  overflow: auto
+  position: relative
+
+.chat-empty-state
+  min-height: 100%
+  text-align: center
+
+.chat-session-header
+  min-height: 42px
+  padding: 10px 12px 4px
+
+.chat-session-list
+  padding: 8px 10px 10px
+
+.chat-session-actions
+  min-height: 54px
+  padding: 10px
+
+.chat-attachments
+  min-height: 34px
+  align-items: center
+
+.chat-input .q-field__control
+  max-height: 400px
+  overflow: auto
+  border-radius: 18px
+  padding: 10px 12px
+
+.chat-input textarea
+  min-height: 100px
+  max-height: 400px
+
+.chat-toolbar
+  min-height: 40px
+  align-items: stretch
+
+.chat-toolbar-field .q-field__control
+  min-height: 44px
+  border-radius: 14px
+
+.app-page-container:has(.chat-page)
+  display: flex
+  flex-direction: column
+  height: 100vh
+  min-height: 0
+  box-sizing: border-box
+  padding-bottom: 0 !important
+
+  .chat-page
+    flex: 1 1 auto
+    height: auto
+    min-height: 0 !important
+
+.chat-toolbar-actions
+  justify-content: flex-end
+  min-height: 44px
+
+.chat-context-pill
+  min-height: 42px
+  padding: 4px 10px 4px 12px
+  border-radius: 999px
+
+.chat-icon-btn
+  width: 38px
+  height: 38px
+  border-radius: 14px !important
+
+.chat-send-btn
+  width: 42px
+  height: 42px
+  border-radius: 16px !important
+
+.chat-action-btn
+  width: 28px
+  height: 28px
+  border-radius: 10px !important
+
+.chat-primary-btn,
+.chat-outline-danger-btn
+  min-height: 36px
+  border-radius: 12px !important
+  font-weight: 600
+
+body:not(.body--dark)
+  .chat-page
+    .chat-mid-card
+      background: rgba(255, 255, 255, 0.76) !important
+      border: 1px solid rgba(141, 110, 99, 0.16)
+      box-shadow: 0 10px 30px $cream-shadow-soft, inset 0 1px 0 rgba(255, 255, 255, 0.7)
+    .chat-messages
+      background: linear-gradient(180deg, rgba(255, 251, 242, 0.65), rgba(254, 253, 245, 0.95))
+    .chat-composer
+      background: linear-gradient(180deg, rgba(255, 248, 231, 0.82), rgba(255, 251, 242, 0.96))
+      box-shadow: 0 -10px 28px rgba(93, 64, 55, 0.05)
+    .chat-side
+      background: rgba(255, 248, 231, 0.82)
+      border: 1px solid rgba(141, 110, 99, 0.14)
+      box-shadow: 0 8px 28px rgba(93, 64, 55, 0.06)
+      backdrop-filter: blur(12px)
+    .chat-search .q-field__control
+      background: rgba(255, 255, 255, 0.72)
+      border-radius: 14px
+    .chat-input .q-field__control
+      background: rgba(242, 230, 211, 0.72)
+      border: 1px solid rgba(141, 110, 99, 0.1)
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.62)
+    .chat-input.q-field--focused .q-field__control
+      border-color: rgba(141, 110, 99, 0.34)
+      box-shadow: 0 0 0 3px rgba(224, 176, 160, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.7)
+    .chat-toolbar-field .q-field__control
+      background: rgba(255, 255, 255, 0.68)
+      border-color: rgba(141, 110, 99, 0.16)
+    .chat-context-pill
+      color: $cream-text-light
+      background: rgba(255, 255, 255, 0.58)
+      border: 1px solid rgba(141, 110, 99, 0.12)
+    .chat-side__toggle-btn
+      box-shadow: 0 5px 16px rgba(93, 64, 55, 0.16) !important
+      background: #8D6E63 !important
+      color: #fff !important
+    .chat-icon-btn,
+    .chat-action-btn
+      background: rgba(255, 255, 255, 0.56) !important
+      color: $cream-text-light !important
+    .chat-send-btn,
+    .chat-primary-btn
+      background: linear-gradient(135deg, #8D6E63, #A98274) !important
+      color: #fff !important
+      box-shadow: 0 8px 20px rgba(93, 64, 55, 0.16)
+    .chat-danger-btn,
+    .chat-outline-danger-btn
+      color: #C97B63 !important
+      border-color: rgba(201, 123, 99, 0.34) !important
+      background: rgba(201, 123, 99, 0.08) !important
+    .chat-entity-item,
+    .chat-session-item
+      min-height: 56px
+      background: rgba(255, 255, 255, 0.54)
+      transition: transform 0.16s ease, background 0.16s ease, box-shadow 0.16s ease
+      &:hover
+        background: rgba(255, 255, 255, 0.86)
+        box-shadow: 0 6px 18px rgba(93, 64, 55, 0.08)
+        transform: translateY(-1px)
+    .chat-session-actions
+      background: rgba(255, 248, 231, 0.92)
+  .chat-entity-item,
+  .chat-session-item
+    border: 1px solid $cream-border-soft
+
+body.body--dark
+  .chat-page
+    background: linear-gradient(160deg, #0b1220 0%, #111827 48%, #0f172a 100%)
+    color: #e5e7eb
+    .chat-mid-card
+      background: rgba(17, 24, 39, 0.88) !important
+      border: 1px solid rgba(148, 163, 184, 0.16)
+      box-shadow: 0 12px 34px rgba(0, 0, 0, 0.32)
+    .chat-messages
+      background: linear-gradient(180deg, rgba(15, 23, 42, 0.7), rgba(17, 24, 39, 0.94))
+    .chat-composer
+      background: rgba(15, 23, 42, 0.96)
+      border-top-color: rgba(148, 163, 184, 0.14)
+      box-shadow: 0 -12px 28px rgba(0, 0, 0, 0.22)
+    .chat-side
+      background: rgba(15, 23, 42, 0.88)
+      border: 1px solid rgba(148, 163, 184, 0.14)
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.26)
+      backdrop-filter: blur(12px)
+    .chat-search .q-field__control,
+    .chat-toolbar-field .q-field__control,
+    .chat-input .q-field__control
+      background: rgba(30, 41, 59, 0.76)
+      border-color: rgba(148, 163, 184, 0.18)
+    .chat-input.q-field--focused .q-field__control
+      border-color: rgba(96, 165, 250, 0.45)
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.16)
+    .text-cream-text
+      color: #f8fafc !important
+    .text-cream-muted
+      color: #94a3b8 !important
+    .chat-context-pill
+      color: #cbd5e1
+      background: rgba(30, 41, 59, 0.74)
+      border: 1px solid rgba(148, 163, 184, 0.16)
+    .chat-side__toggle-btn,
+    .chat-send-btn,
+    .chat-primary-btn
+      background: linear-gradient(135deg, #2563eb, #38bdf8) !important
+      color: #fff !important
+      box-shadow: 0 9px 22px rgba(37, 99, 235, 0.28)
+    .chat-icon-btn,
+    .chat-action-btn
+      background: rgba(30, 41, 59, 0.72) !important
+      color: #cbd5e1 !important
+      border: 1px solid rgba(148, 163, 184, 0.12)
+    .chat-danger-btn,
+    .chat-outline-danger-btn
+      color: #fca5a5 !important
+      border-color: rgba(248, 113, 113, 0.26) !important
+      background: rgba(127, 29, 29, 0.18) !important
+    .chat-entity-item,
+    .chat-session-item
+      min-height: 56px
+      background: rgba(30, 41, 59, 0.54)
+      border: 1px solid rgba(148, 163, 184, 0.12)
+      transition: transform 0.16s ease, background 0.16s ease, box-shadow 0.16s ease
+      &:hover
+        background: rgba(51, 65, 85, 0.78)
+        box-shadow: 0 8px 22px rgba(0, 0, 0, 0.28)
+        transform: translateY(-1px)
+
+@media (max-width: 900px)
+  .chat-side
+    width: 180px
+    flex-basis: 180px
+  .chat-toolbar-actions
+    justify-content: flex-start
+
+// Skill 管理页：沿用奶油白视觉系统，避免新模块回到默认灰白风格
+body:not(.body--dark)
+  .skills-page,
+  .skill-runs-page
+    color: $cream-text
+
+    .skill-filter-card,
+    .skill-upload-card,
+    .skill-runs-filter,
+    .skill-table,
+    .skill-runs-table,
+    .skills-empty-card
+      background: rgba(255, 255, 255, 0.78) !important
+      border: 1px solid rgba(141, 110, 99, 0.14)
+      box-shadow: 0 10px 30px $cream-shadow-soft, inset 0 1px 0 rgba(255, 255, 255, 0.7)
+      backdrop-filter: blur(10px)
+
+    .q-table th
+      color: $cream-text-light
+      font-weight: 700
+      background: rgba(255, 248, 231, 0.72)
+
+    .q-table tbody tr
+      background: rgba(255, 255, 255, 0.38)
+
+    .q-table tbody tr:hover
+      background: rgba(255, 255, 255, 0.68)
+
+    .skill-stat,
+    .metric-pill
+      background: rgba(224, 176, 160, 0.16)
+      border: 1px solid rgba(141, 110, 99, 0.1)
+
+    .q-field__control
+      background: rgba(255, 255, 255, 0.68)
+      border-radius: 14px
+
+body.body--dark
+  .skills-page,
+  .skill-runs-page
+    background: linear-gradient(160deg, #0b1220 0%, #111827 48%, #0f172a 100%)
+    color: #e5e7eb
+
+    .skill-filter-card,
+    .skill-upload-card,
+    .skill-runs-filter,
+    .skill-table,
+    .skill-runs-table,
+    .skills-empty-card
+      background: rgba(17, 24, 39, 0.88) !important
+      border: 1px solid rgba(148, 163, 184, 0.16)
+      box-shadow: 0 12px 34px rgba(0, 0, 0, 0.32)
+
+    .q-table th
+      background: rgba(15, 23, 42, 0.86)
+      color: #cbd5e1
+
+    .q-table tbody tr:hover
+      background: rgba(51, 65, 85, 0.46)
+
+    .skill-stat,
+    .metric-pill
+      background: rgba(30, 41, 59, 0.72)
+      border: 1px solid rgba(148, 163, 184, 0.12)
+
+// 概览：持仓表紧凑、褐色调底纹
+body:not(.body--dark) .dashboard-pos-table
+  font-size: 0.8rem
+  th
+    color: $cream-text-light
+  tbody tr
+    background: rgba(255, 255, 255, 0.35) !important
+  tbody tr:hover
+    background: rgba(255, 255, 255, 0.6) !important
