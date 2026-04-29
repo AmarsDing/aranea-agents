@@ -67,8 +67,8 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { copyToClipboard, Notify, type QTableColumn } from "quasar";
-import type { AuditLog } from "./types";
-import { compactJSON, formatDate } from "./utils";
+import type { AuditLog } from "../../features/monitor/types";
+import { compactJSON, formatDate } from "../../features/monitor/utils";
 
 const props = defineProps<{
   rows: AuditLog[];

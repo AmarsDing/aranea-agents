@@ -105,7 +105,10 @@ export default {
     confirmDelete: "Delete",
     cancel: "Cancel",
     voicePlaceholder: "Voice capture will be wired in a later release.",
-    teamNoBackend: "Team list is sample data until the API is connected."
+    teamNoBackend: "Team list is sample data until the API is connected.",
+    workspaceKicker: "ADK Multi-Agent",
+    workspaceTitle: "Chat workspace",
+    workspaceSubtitle: "Switch agents and teams; keep model choice and session context aligned."
   },
   menu: {
     groupMain: "Main",

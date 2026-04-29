@@ -1,7 +1,26 @@
 /**
- * 记忆 / L0–L4 / 图谱与进化：`/memory/…`、`/agents/…/identity|MCP`、进化相关路径（经 clientLegacy）。
- * 待 `memory/v1` Kratos 后换实现；与 Session 类型请用 `features/chat/api`（Playbook §6 行 7）。
+ * 记忆 / L0–L4 / 图谱与进化：**遗留 REST**（`legacyRest.ts` → `/api/v1/...`）。待后端 `memory/v1` 后替换实现。
+ * Session 类型请用 `features/session/api` 或 `features/chat/api`。
  */
+export type {
+  AgentIdentity,
+  AgentSkillStat,
+  AgentStrategyProfile,
+  EvolutionEvent,
+  EvolutionMetricsReport,
+  EvolutionProposal,
+  GraphNeighborhood,
+  L0AssemblySegment,
+  L0AssemblySnapshot,
+  L1Field,
+  L1Task,
+  MemoryEntity,
+  MemoryFact,
+  MemoryFactListQuery,
+  MemoryFactListResult,
+  MemoryRelation
+} from "./types";
+
 export {
   getAgentIdentity,
   getAgentStrategy,
@@ -10,20 +29,8 @@ export {
   listEvolutionEvents,
   listEvolutionProposals,
   listL0Snapshots,
+  listL1Fields,
   listL1Tasks,
   listMemoryEntities,
-  listMemoryFacts,
-  type AgentIdentity,
-  type AgentStrategyProfile,
-  type EvolutionEvent,
-  type EvolutionMetricsReport,
-  type EvolutionProposal,
-  type GraphNeighborhood,
-  type L0AssemblySegment,
-  type L0AssemblySnapshot,
-  type L1Task,
-  type MemoryEntity,
-  type MemoryFact,
-  type MemoryFactListQuery,
-  type MemoryFactListResult
-} from "../../services/clientLegacy";
+  listMemoryFacts
+} from "./legacyRest";

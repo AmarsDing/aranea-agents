@@ -4,6 +4,7 @@ import "github.com/google/wire"
 
 // ProviderSet is biz providers.
 var ProviderSet = wire.NewSet(
+	NewTeamRunEventBroker,
 	NewAdminUsecase,
 	NewAvatarUsecase,
 	NewMemoryUsecase,
@@ -20,4 +21,5 @@ var ProviderSet = wire.NewSet(
 	NewToolUsecase,
 	NewChannelUsecase,
 	NewUsageUsecase,
+	NewMonitorUsecase,
 )

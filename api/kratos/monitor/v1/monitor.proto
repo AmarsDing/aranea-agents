@@ -1,0 +1,114 @@
+syntax = "proto3";
+
+package kratos.monitor.v1;
+
+import "google/api/annotations.proto";
+
+option go_package = "aranea-agents/api/kratos/monitor/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.kratos.monitor.v1";
+
+message AuditLog {
+  string id = 1;
+  string action = 2;
+  string resource = 3;
+  string resource_id = 4;
+  string request_id = 5;
+  string detail = 6;
+  string created_at = 7;
+}
+
+message ListAuditLogsRequest {
+  int32 limit = 1;
+}
+
+message ListAuditLogsResponse {
+  repeated AuditLog items = 1;
+}
+
+// Mirrors legacy domain.PlatformResource JSON for monitor-events / monitor-traces rows.
+message MonitorPlatformRow {
+  string id = 1;
+  string resource = 2;
+  string key = 3;
+  string name = 4;
+  string description = 5;
+  string status = 6;
+  bool enabled = 7;
+  int32 sort_order = 8;
+  string parent_id = 9;
+  string level = 10;
+  string agent_id = 11;
+  string provider = 12;
+  string model = 13;
+  string config_json = 14;
+  string metadata_json = 15;
+  string created_at = 16;
+  string updated_at = 17;
+  string deleted_at = 18;
+}
+
+message ListMonitorEventsRequest {}
+
+message ListMonitorEventsResponse {
+  repeated MonitorPlatformRow items = 1;
+}
+
+message GetMonitorEventRequest {
+  string id = 1;
+}
+
+message ListMonitorTracesRequest {}
+
+message ListMonitorTracesResponse {
+  repeated MonitorPlatformRow items = 1;
+}
+
+message MonitorTraceDetail {
+  MonitorPlatformRow trace = 1;
+  string config_json = 2;
+  string metadata_json = 3;
+  string spans_json = 4;
+}
+
+message GetMonitorTraceRequest {
+  string id = 1;
+}
+
+message MonitorLogLine {
+  string id = 1;
+  string time = 2;
+  string level = 3;
+  string message = 4;
+  string source = 5;
+  string created_at = 6;
+}
+
+message GetMonitorLogsResponse {
+  repeated MonitorLogLine items = 1;
+  bool enabled = 2;
+  string message = 3;
+}
+
+message GetMonitorLogsRequest {}
+
+service MonitorService {
+  rpc ListAuditLogs(ListAuditLogsRequest) returns (ListAuditLogsResponse) {
+    option (google.api.http) = {get: "/v1/monitor/audit"};
+  }
+  rpc ListMonitorEvents(ListMonitorEventsRequest) returns (ListMonitorEventsResponse) {
+    option (google.api.http) = {get: "/v1/monitor/events"};
+  }
+  rpc GetMonitorEvent(GetMonitorEventRequest) returns (MonitorPlatformRow) {
+    option (google.api.http) = {get: "/v1/monitor/events/{id}"};
+  }
+  rpc ListMonitorTraces(ListMonitorTracesRequest) returns (ListMonitorTracesResponse) {
+    option (google.api.http) = {get: "/v1/monitor/traces"};
+  }
+  rpc GetMonitorTrace(GetMonitorTraceRequest) returns (MonitorTraceDetail) {
+    option (google.api.http) = {get: "/v1/monitor/traces/{id}"};
+  }
+  rpc GetMonitorLogs(GetMonitorLogsRequest) returns (GetMonitorLogsResponse) {
+    option (google.api.http) = {get: "/v1/monitor/logs"};
+  }
+}

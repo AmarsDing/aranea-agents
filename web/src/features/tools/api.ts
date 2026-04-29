@@ -1,4 +1,8 @@
-import { createToolService, legacyRestApi } from "../../services/index";
+import { createAgentService, createToolService } from "../../services/index";
+import type {
+  AgentEffectiveToolsView,
+  EffectiveAgentTool as KratosEffectiveTool
+} from "../../services/kratos/agent/v1/index";
 import type {
   Tool as KratosTool,
   ToolInvocation as KratosInvocation,
@@ -16,6 +20,7 @@ import type {
 } from "./types";
 
 const toolApi = createToolService();
+const agentApi = createAgentService();
 
 function enabledFilter(enabled: ToolListQuery["enabled"]): string | undefined {
   if (enabled === true) {
@@ -226,8 +231,31 @@ export async function listToolRuns(query: ToolRunQuery = {}): Promise<PaginatedR
   };
 }
 
-/** 仍走遗留 `pkg/backend`：尚无 `agent/v1` 等价 RPC（baseURL 已含 `/api/v1`）。 */
+/** Agent 生效工具矩阵：**`/v1/agents/{id}/tools/effective`**（`agent/v1`）；遗留 `/api/v1/agents/.../tools/effective` 已删除。 */
 export async function getAgentEffectiveTools(agentId: string): Promise<AgentEffectiveTools> {
-  const { data } = await legacyRestApi.get(`/agents/${encodeURIComponent(agentId)}/tools/effective`);
-  return data;
+  const view = await agentApi.GetAgentEffectiveTools({ agentId });
+  return kratosAgentEffectiveToolsToLegacy(view);
+}
+
+function kratosEffectiveToolRow(row: KratosEffectiveTool | undefined): AgentEffectiveTools["items"][number] {
+  return {
+    tool_key: row?.toolKey ?? "",
+    display_name: row?.displayName ?? "",
+    category: row?.category ?? "",
+    source: row?.source ?? "",
+    enabled: row?.enabled ?? false,
+    effective_state: (row?.effectiveState ?? "denied") as AgentEffectiveTools["items"][number]["effective_state"],
+    reason: row?.reason ?? ""
+  };
+}
+
+function kratosAgentEffectiveToolsToLegacy(view: AgentEffectiveToolsView): AgentEffectiveTools {
+  const items = (view.items ?? []).map(kratosEffectiveToolRow);
+  return {
+    tools_enabled: view.toolsEnabled ?? false,
+    profile: view.profile ?? "",
+    allow: view.allow ?? [],
+    deny: view.deny ?? [],
+    items
+  };
 }

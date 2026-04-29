@@ -1,5 +1,5 @@
-import { api } from "../../api/http";
-import { getBackendBaseURL } from "../../config/runtime";
+import { createMonitorService } from "../../services/index";
+import { getSseBaseURL } from "../../config/runtime";
 import type {
   AuditLog,
   ModelUsageQuery,
@@ -9,33 +9,94 @@ import type {
   PlatformResource,
   TeamRunEvent
 } from "./types";
+import { listModelUsageEvents } from "../usage/api";
+
+const monitor = createMonitorService();
+
+function obj(v: unknown): Record<string, unknown> {
+  return v !== null && typeof v === "object" ? (v as Record<string, unknown>) : {};
+}
+
+function auditFromWire(raw: unknown): AuditLog {
+  const r = obj(raw);
+  return {
+    id: String(r.id ?? ""),
+    action: String(r.action ?? ""),
+    resource: String(r.resource ?? ""),
+    resource_id: String(r.resource_id ?? r.resourceId ?? ""),
+    request_id: String(r.request_id ?? r.requestId ?? ""),
+    detail: String(r.detail ?? ""),
+    created_at: String(r.created_at ?? r.createdAt ?? "")
+  };
+}
+
+function platformResourceFromWire(raw: unknown): PlatformResource {
+  const r = obj(raw);
+  const resource = String(r.resource ?? "");
+  const resourceKind =
+    resource === "monitor-traces" ? ("monitor-traces" as const) : ("monitor-events" as const);
+  return {
+    id: String(r.id ?? ""),
+    resource: resourceKind,
+    key: String(r.key ?? ""),
+    name: String(r.name ?? ""),
+    description: String(r.description ?? ""),
+    status: String(r.status ?? ""),
+    enabled: Boolean(r.enabled ?? true),
+    sort_order: Number(r.sort_order ?? r.sortOrder ?? 0),
+    parent_id: String(r.parent_id ?? r.parentId ?? ""),
+    level: String(r.level ?? ""),
+    agent_id: String(r.agent_id ?? r.agentId ?? ""),
+    provider: String(r.provider ?? ""),
+    model: String(r.model ?? ""),
+    config_json: String(r.config_json ?? r.configJson ?? "{}"),
+    metadata_json: String(r.metadata_json ?? r.metadataJson ?? "{}"),
+    created_at: String(r.created_at ?? r.createdAt ?? ""),
+    updated_at: String(r.updated_at ?? r.updatedAt ?? ""),
+    deleted_at: String(r.deleted_at ?? r.deletedAt ?? "")
+  };
+}
+
+function logLineFromWire(raw: unknown): MonitorLogLine {
+  const r = obj(raw);
+  return {
+    id: String(r.id ?? ""),
+    time: String(r.time ?? ""),
+    level: String(r.level ?? "INFO") as MonitorLogLine["level"],
+    message: String(r.message ?? ""),
+    source: String(r.source ?? ""),
+    created_at: String(r.created_at ?? r.createdAt ?? "")
+  };
+}
 
 export async function listMonitorAudit(limit = 200): Promise<AuditLog[]> {
-  const { data } = await api.get("/monitor/audit", { params: { limit } });
-  return data.items ?? [];
+  const res = await monitor.ListAuditLogs({ limit });
+  const items = res.items ?? [];
+  return items.map((item: unknown) => auditFromWire(item));
 }
 
 export async function listMonitorEvents(): Promise<PlatformResource[]> {
-  const { data } = await api.get("/monitor/events");
-  return data.items ?? [];
+  const res = await monitor.ListMonitorEvents({});
+  const items = res.items ?? [];
+  return items.map((item: unknown) => platformResourceFromWire(item));
 }
 
 export async function getMonitorEvent(id: string): Promise<PlatformResource> {
-  const { data } = await api.get(`/monitor/events/${id}`);
-  return data;
+  const row = await monitor.GetMonitorEvent({ id });
+  return platformResourceFromWire(row as unknown);
 }
 
 export async function getMonitorLogs(): Promise<MonitorLogSnapshot> {
-  const { data } = await api.get("/monitor/logs");
+  const data = await monitor.GetMonitorLogs({});
   return {
-    items: data.items ?? [],
+    items: (data.items ?? []).map((line: unknown) => logLineFromWire(line)),
     enabled: Boolean(data.enabled),
     message: data.message ?? ""
   };
 }
 
 export function subscribeMonitorLogs(onLine: (line: MonitorLogLine) => void, onError?: (error: Event) => void): EventSource {
-  const source = new EventSource(`${getBackendBaseURL()}/monitor/logs/stream`);
+  const source = new EventSource(`${getSseBaseURL()}/monitor/logs/stream`);
   source.addEventListener("log", (event) => {
     onLine(JSON.parse((event as MessageEvent).data) as MonitorLogLine);
   });
@@ -44,7 +105,7 @@ export function subscribeMonitorLogs(onLine: (line: MonitorLogLine) => void, onE
 }
 
 export function subscribeMonitorRuntimeEvents(onEvent: (event: TeamRunEvent) => void, onError?: (error: Event) => void): EventSource {
-  const source = new EventSource(`${getBackendBaseURL()}/team-run-events`);
+  const source = new EventSource(`${getSseBaseURL()}/team-run-events`);
   for (const eventName of ["run_started", "step_finished", "run_finished", "tool.call", "tool.result", "run.failed"]) {
     source.addEventListener(eventName, (event) => {
       onEvent(JSON.parse((event as MessageEvent).data) as TeamRunEvent);
@@ -54,13 +115,8 @@ export function subscribeMonitorRuntimeEvents(onEvent: (event: TeamRunEvent) => 
   return source;
 }
 
+/** Trace 列表语义：`usage/v1` 用量事件（对齐后端 `/v1/usage/events`，替代遗留 `/model-usage/events`）。 */
 export async function listMonitorTraceEvents(query: ModelUsageQuery = {}): Promise<MonitorTraceEvent[]> {
-  const { data } = await api.get("/model-usage/events", { params: cleanQuery(query) });
-  return data.items ?? [];
-}
-
-function cleanQuery(query: ModelUsageQuery) {
-  return Object.fromEntries(
-    Object.entries(query).filter(([, value]) => value !== "" && value !== undefined && value !== null)
-  );
+  const rows = await listModelUsageEvents(query);
+  return rows as MonitorTraceEvent[];
 }

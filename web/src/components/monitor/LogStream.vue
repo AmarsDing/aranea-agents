@@ -43,8 +43,8 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { getMonitorLogs, subscribeMonitorLogs } from "./api";
-import type { MonitorLogLine, StreamState } from "./types";
+import { getMonitorLogs, subscribeMonitorLogs } from "../../features/monitor/api";
+import type { MonitorLogLine, StreamState } from "../../features/monitor/types";
 
 const lines = ref<MonitorLogLine[]>([]);
 const keyword = ref("");

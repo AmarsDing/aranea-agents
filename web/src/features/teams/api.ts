@@ -1,5 +1,12 @@
 
 import { createTeamService } from "../../services";
+import { getSseBaseURL } from "../../config/runtime";
+import type {
+  Team,
+  TeamRun,
+  TeamRunEvent,
+  TeamRunStep
+} from "./types";
 import type {
   Team as WireTeam,
   TeamRun as WireTeamRun,
@@ -9,12 +16,15 @@ import type {
 export type {
   Team,
   TeamDefinition,
+  TeamDefinitionGraphEdge,
+  TeamDefinitionGraphNode,
+  TeamDefinitionMember,
   TeamRun,
   TeamRunEvent,
   TeamRunStep
-} from "../../services/clientLegacy";
+} from "./types";
 
-function wireTeam(t: WireTeam | null | undefined): import("../../services/clientLegacy").Team {
+function wireTeam(t: WireTeam | null | undefined): Team {
   return {
     id: t?.id ?? "",
     team_key: t?.teamKey ?? "",
@@ -29,7 +39,7 @@ function wireTeam(t: WireTeam | null | undefined): import("../../services/client
   };
 }
 
-function wireRun(r: WireTeamRun | null | undefined): import("../../services/clientLegacy").TeamRun {
+function wireRun(r: WireTeamRun | null | undefined): TeamRun {
   return {
     id: r?.id ?? "",
     team_id: r?.teamId ?? "",
@@ -52,7 +62,7 @@ function wireRun(r: WireTeamRun | null | undefined): import("../../services/clie
   };
 }
 
-function wireStep(s: WireTeamRunStep | null | undefined): import("../../services/clientLegacy").TeamRunStep {
+function wireStep(s: WireTeamRunStep | null | undefined): TeamRunStep {
   return {
     id: s?.id ?? "",
     run_id: s?.runId ?? "",
@@ -76,9 +86,7 @@ function wireStep(s: WireTeamRunStep | null | undefined): import("../../services
   };
 }
 
-function patchToWire(
-  payload: Partial<import("../../services/clientLegacy").Team>
-): WireTeam {
+function patchToWire(payload: Partial<Team>): WireTeam {
   const t = {} as WireTeam;
   if (payload.team_key !== undefined) t.teamKey = payload.team_key;
   if (payload.display_name !== undefined) t.displayName = payload.display_name;
@@ -92,16 +100,14 @@ function patchToWire(
   return t;
 }
 
-export async function listTeams(): Promise<import("../../services/clientLegacy").Team[]> {
+export async function listTeams(): Promise<Team[]> {
   const svc = createTeamService();
   const res = await svc.ListTeams({});
   const items = res.items ?? [];
   return items.map(wireTeam);
 }
 
-export async function createTeam(
-  payload: Partial<import("../../services/clientLegacy").Team>
-): Promise<import("../../services/clientLegacy").Team> {
+export async function createTeam(payload: Partial<Team>): Promise<Team> {
   const svc = createTeamService();
   const data = await svc.CreateTeam({
     teamKey: payload.team_key,
@@ -113,16 +119,13 @@ export async function createTeam(
   return wireTeam(data);
 }
 
-export async function updateTeam(
-  id: string,
-  payload: Partial<import("../../services/clientLegacy").Team>
-): Promise<import("../../services/clientLegacy").Team> {
+export async function updateTeam(id: string, payload: Partial<Team>): Promise<Team> {
   const svc = createTeamService();
   const data = await svc.UpdateTeam({ id, team: patchToWire(payload) });
   return wireTeam(data);
 }
 
-export async function duplicateTeam(id: string): Promise<import("../../services/clientLegacy").Team> {
+export async function duplicateTeam(id: string): Promise<Team> {
   const svc = createTeamService();
   const data = await svc.DuplicateTeam({ id });
   return wireTeam(data);
@@ -133,23 +136,35 @@ export async function deleteTeam(id: string): Promise<void> {
   await svc.DeleteTeam({ id });
 }
 
-export async function listTeamRuns(
-  teamID?: string,
-  limit = 50
-): Promise<import("../../services/clientLegacy").TeamRun[]> {
+export async function listTeamRuns(teamID?: string, limit = 50): Promise<TeamRun[]> {
   const svc = createTeamService();
   const res = await svc.ListTeamRuns({ teamId: teamID, limit });
   const items = res.items ?? [];
   return items.map(wireRun);
 }
 
-export async function listTeamRunSteps(
-  runID: string
-): Promise<import("../../services/clientLegacy").TeamRunStep[]> {
+export async function listTeamRunSteps(runID: string): Promise<TeamRunStep[]> {
   const svc = createTeamService();
   const res = await svc.ListTeamRunSteps({ runId: runID });
   const items = res.items ?? [];
   return items.map(wireStep);
 }
 
-export { subscribeTeamRunEvents } from "../../services/clientLegacy";
+/** Team 运行事件 SSE（`configs.server.sse`，前端经 `/sse` 同源代理）。 */
+export function subscribeTeamRunEvents(
+  teamID: string,
+  onEvent: (event: TeamRunEvent) => void,
+  onError?: (error: Event) => void
+): EventSource {
+  const query = new URLSearchParams({ team_id: teamID });
+  const source = new EventSource(`${getSseBaseURL()}/team-run-events?${query.toString()}`);
+  for (const eventName of ["run_started", "step_finished", "run_finished"]) {
+    source.addEventListener(eventName, (event) => {
+      onEvent(JSON.parse((event as MessageEvent).data) as TeamRunEvent);
+    });
+  }
+  source.onerror = (event) => {
+    onError?.(event);
+  };
+  return source;
+}

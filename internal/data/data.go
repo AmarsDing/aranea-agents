@@ -41,6 +41,7 @@ var ProviderSet = wire.NewSet(
 	NewToolRepo,
 	NewChannelRepo,
 	NewUsageRepo,
+	NewMonitorRepo,
 )
 
 // Data: Ent/SQLite holds app CRUD; Postgres (optional) holds pgvector agent memory only.

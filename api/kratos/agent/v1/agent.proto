@@ -178,6 +178,37 @@ message GetAgentPromptPreviewResponse {
   string preview = 1;
 }
 
+// EffectiveAgentTool is one evaluated tool row for an agent (legacy /agents/{id}/tools/effective JSON).
+message EffectiveAgentTool {
+  string tool_key = 1;
+  string display_name = 2;
+  string category = 3;
+  string source = 4;
+  bool enabled = 5;
+  string effective_state = 6;
+  string reason = 7;
+}
+
+message AgentEffectiveToolsView {
+  bool tools_enabled = 1;
+  string profile = 2;
+  repeated string allow = 3;
+  repeated string deny = 4;
+  repeated EffectiveAgentTool items = 5;
+}
+
+message GetAgentEffectiveToolsRequest {
+  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message UpdateAgentToolPolicyRequest {
+  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+  bool tools_enabled = 2;
+  string profile = 3;
+  repeated string allow = 4;
+  repeated string deny = 5;
+}
+
 service AgentService {
   rpc ListAgents(ListAgentsRequest) returns (ListAgentsResponse) {
     option (google.api.http) = {get: "/v1/agents"};
@@ -202,5 +233,14 @@ service AgentService {
   }
   rpc GetAgentPromptPreview(GetAgentPromptPreviewRequest) returns (GetAgentPromptPreviewResponse) {
     option (google.api.http) = {get: "/v1/agents/{id}/system-prompt/preview"};
+  }
+  rpc GetAgentEffectiveTools(GetAgentEffectiveToolsRequest) returns (AgentEffectiveToolsView) {
+    option (google.api.http) = {get: "/v1/agents/{agent_id}/tools/effective"};
+  }
+  rpc UpdateAgentToolPolicy(UpdateAgentToolPolicyRequest) returns (AgentEffectiveToolsView) {
+    option (google.api.http) = {
+      put: "/v1/agents/{agent_id}/tools/policy"
+      body: "*"
+    };
   }
 }

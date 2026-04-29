@@ -125,8 +125,8 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { copyToClipboard, Notify, type QTableColumn } from "quasar";
-import type { MonitorTraceEvent } from "./types";
-import { compactJSON, formatCount, formatDate, formatLatency, formatMoney, parseJSON } from "./utils";
+import type { MonitorTraceEvent } from "../../features/monitor/types";
+import { compactJSON, formatCount, formatDate, formatLatency, formatMoney, parseJSON } from "../../features/monitor/utils";
 
 type TreeNode = {
   id: string;

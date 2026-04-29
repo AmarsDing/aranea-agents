@@ -41,11 +41,12 @@ type AgentRepository interface {
 
 // AgentUsecase is catalog agent CRUD + prompt preview.
 type AgentUsecase struct {
-	repo AgentRepository
+	repo  AgentRepository
+	tools ToolRepo
 }
 
-func NewAgentUsecase(repo AgentRepository) *AgentUsecase {
-	return &AgentUsecase{repo: repo}
+func NewAgentUsecase(repo AgentRepository, tools ToolRepo) *AgentUsecase {
+	return &AgentUsecase{repo: repo, tools: tools}
 }
 
 // List returns a page of agents without per-row hydration (settings/files).

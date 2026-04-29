@@ -1,8 +1,5 @@
-import type {
-  ModelTokenUsageEvent,
-  ModelUsageQuery,
-  TeamRunEvent
-} from "../../api/client";
+import type { ModelTokenUsageEvent, ModelUsageQuery } from "../usage/types";
+import type { TeamRunEvent } from "../teams/types";
 import type { PlatformResource } from "../platform/api";
 
 export type {

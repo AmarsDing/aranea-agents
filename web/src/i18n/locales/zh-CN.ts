@@ -105,7 +105,10 @@ export default {
     confirmDelete: "确认删除",
     cancel: "取消",
     voicePlaceholder: "语音输入功能将在后续版本接入。",
-    teamNoBackend: "Team 与后端联调中，本列表为展示数据。"
+    teamNoBackend: "Team 与后端联调中，本列表为展示数据。",
+    workspaceKicker: "ADK Multi-Agent",
+    workspaceTitle: "对话工作台",
+    workspaceSubtitle: "在 Agent 与 Team 之间切换会话，模型与上下文在此保持一致。"
   },
   menu: {
     groupMain: "常用",

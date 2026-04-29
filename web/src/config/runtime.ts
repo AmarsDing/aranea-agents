@@ -58,6 +58,17 @@ export function getBackendBaseURL(): string {
 }
 
 /**
+ * tx7do SSE 监听独立端口（server.sse）；开发环境由 devServer 将 `/sse` 代理到该端口，前端用同源 `/sse/...` 避免跨域。
+ */
+export function getSseBaseURL(): string {
+  const origin = getBackendOrigin();
+  if (origin === "") {
+    return "/sse";
+  }
+  return `${origin}/sse`;
+}
+
+/**
  * 用于 `POST .../run_sse` 的绝对 URL。
  * 未配置 `adkStreamOrigin` 时：开发环境走同源相对路径 `/run_sse`（由 devServer 代理到后端/ADK）；生产为当前站点 `origin`。
  */

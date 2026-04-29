@@ -164,7 +164,7 @@ body:not(.body--dark) .dashboard-side-toggle .dashboard-sell
 .chat-page__row
   min-height: 0
   height: 100%
-  gap: 0
+  gap: 16px
 
 .chat-mid-card
   min-height: 0
@@ -302,19 +302,18 @@ body:not(.body--dark) .dashboard-side-toggle .dashboard-sell
 body:not(.body--dark)
   .chat-page
     .chat-mid-card
-      background: rgba(255, 255, 255, 0.76) !important
-      border: 1px solid rgba(141, 110, 99, 0.16)
-      box-shadow: 0 10px 30px $cream-shadow-soft, inset 0 1px 0 rgba(255, 255, 255, 0.7)
+      background: rgba(255, 253, 245, 0.82) !important
+      border: 1px solid var(--glass-border)
+      box-shadow: var(--glass-inner-highlight)
     .chat-messages
       background: linear-gradient(180deg, rgba(255, 251, 242, 0.65), rgba(254, 253, 245, 0.95))
     .chat-composer
       background: linear-gradient(180deg, rgba(255, 248, 231, 0.82), rgba(255, 251, 242, 0.96))
-      box-shadow: 0 -10px 28px rgba(93, 64, 55, 0.05)
     .chat-side
-      background: rgba(255, 248, 231, 0.82)
-      border: 1px solid rgba(141, 110, 99, 0.14)
-      box-shadow: 0 8px 28px rgba(93, 64, 55, 0.06)
-      backdrop-filter: blur(12px)
+      background: var(--glass-surface)
+      border: 1px solid var(--glass-border)
+      backdrop-filter: blur(var(--glass-blur-default))
+      -webkit-backdrop-filter: blur(var(--glass-blur-default))
     .chat-search .q-field__control
       background: rgba(255, 255, 255, 0.72)
       border-radius: 14px
@@ -323,8 +322,8 @@ body:not(.body--dark)
       border: 1px solid rgba(141, 110, 99, 0.1)
       box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.62)
     .chat-input.q-field--focused .q-field__control
-      border-color: rgba(141, 110, 99, 0.34)
-      box-shadow: 0 0 0 3px rgba(224, 176, 160, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.7)
+      border-color: rgba(233, 162, 59, 0.65)
+      box-shadow: 0 0 0 2px rgba(233, 162, 59, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.7)
     .chat-toolbar-field .q-field__control
       background: rgba(255, 255, 255, 0.68)
       border-color: rgba(141, 110, 99, 0.16)
@@ -333,18 +332,22 @@ body:not(.body--dark)
       background: rgba(255, 255, 255, 0.58)
       border: 1px solid rgba(141, 110, 99, 0.12)
     .chat-side__toggle-btn
-      box-shadow: 0 5px 16px rgba(93, 64, 55, 0.16) !important
-      background: #8D6E63 !important
+      box-shadow: var(--glass-inner-highlight) !important
+      background: var(--color-accent) !important
       color: #fff !important
+      &:hover
+        background: var(--color-accent-hover) !important
     .chat-icon-btn,
     .chat-action-btn
       background: rgba(255, 255, 255, 0.56) !important
       color: $cream-text-light !important
     .chat-send-btn,
     .chat-primary-btn
-      background: linear-gradient(135deg, #8D6E63, #A98274) !important
+      background: var(--color-accent) !important
       color: #fff !important
-      box-shadow: 0 8px 20px rgba(93, 64, 55, 0.16)
+      box-shadow: var(--glass-inner-highlight)
+      &:hover
+        background: var(--color-accent-hover) !important
     .chat-danger-btn,
     .chat-outline-danger-btn
       color: #C97B63 !important
@@ -367,31 +370,32 @@ body:not(.body--dark)
 
 body.body--dark
   .chat-page
-    background: linear-gradient(160deg, #0b1220 0%, #111827 48%, #0f172a 100%)
-    color: #e5e7eb
+    background: linear-gradient(160deg, var(--canvas-base) 0%, #111827 48%, #0f172a 100%)
+    color: var(--color-text-primary)
     .chat-mid-card
-      background: rgba(17, 24, 39, 0.88) !important
-      border: 1px solid rgba(148, 163, 184, 0.16)
-      box-shadow: 0 12px 34px rgba(0, 0, 0, 0.32)
+      background: var(--glass-surface) !important
+      border: 1px solid var(--glass-border)
+      box-shadow: var(--glass-inner-highlight)
+      backdrop-filter: blur(var(--glass-blur-default))
+      -webkit-backdrop-filter: blur(var(--glass-blur-default))
     .chat-messages
       background: linear-gradient(180deg, rgba(15, 23, 42, 0.7), rgba(17, 24, 39, 0.94))
     .chat-composer
       background: rgba(15, 23, 42, 0.96)
       border-top-color: rgba(148, 163, 184, 0.14)
-      box-shadow: 0 -12px 28px rgba(0, 0, 0, 0.22)
     .chat-side
-      background: rgba(15, 23, 42, 0.88)
-      border: 1px solid rgba(148, 163, 184, 0.14)
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.26)
-      backdrop-filter: blur(12px)
+      background: var(--glass-surface)
+      border: 1px solid var(--glass-border)
+      backdrop-filter: blur(var(--glass-blur-default))
+      -webkit-backdrop-filter: blur(var(--glass-blur-default))
     .chat-search .q-field__control,
     .chat-toolbar-field .q-field__control,
     .chat-input .q-field__control
       background: rgba(30, 41, 59, 0.76)
       border-color: rgba(148, 163, 184, 0.18)
     .chat-input.q-field--focused .q-field__control
-      border-color: rgba(96, 165, 250, 0.45)
-      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.16)
+      border-color: rgba(0, 229, 255, 0.55)
+      box-shadow: 0 0 0 2px rgba(0, 229, 255, 0.22)
     .text-cream-text
       color: #f8fafc !important
     .text-cream-muted
@@ -403,9 +407,13 @@ body.body--dark
     .chat-side__toggle-btn,
     .chat-send-btn,
     .chat-primary-btn
-      background: linear-gradient(135deg, #2563eb, #38bdf8) !important
-      color: #fff !important
-      box-shadow: 0 9px 22px rgba(37, 99, 235, 0.28)
+      background: rgba(0, 229, 255, 0.15) !important
+      color: var(--color-accent) !important
+      border: 1px solid var(--color-accent) !important
+      box-shadow: 0 0 16px rgba(0, 229, 255, 0.28)
+      &:hover
+        background: rgba(0, 229, 255, 0.25) !important
+        box-shadow: 0 0 20px rgba(0, 229, 255, 0.38)
     .chat-icon-btn,
     .chat-action-btn
       background: rgba(30, 41, 59, 0.72) !important
@@ -733,3 +741,125 @@ body:not(.body--dark) .dashboard-pos-table
     background: rgba(255, 255, 255, 0.35) !important
   tbody tr:hover
     background: rgba(255, 255, 255, 0.6) !important
+
+// ----- Monitor：Audit / Events / Traces / Logs（子组件共用 monitor-* 工具类） -----
+.monitor-card
+  border-radius: 18px
+
+.monitor-detail-card
+  border-radius: 18px
+  max-width: 880px
+  width: min(880px, 92vw)
+
+body:not(.body--dark) .monitor-trace-dialog
+  background: var(--glass-surface)
+  border: 1px solid var(--glass-border)
+  backdrop-filter: blur(var(--glass-blur-elevated))
+  -webkit-backdrop-filter: blur(var(--glass-blur-elevated))
+
+body.body--dark .monitor-trace-dialog
+  background: var(--glass-surface)
+  border: 1px solid var(--glass-border)
+  backdrop-filter: blur(var(--glass-blur-elevated))
+  -webkit-backdrop-filter: blur(var(--glass-blur-elevated))
+
+.monitor-json
+  background: color-mix(in srgb, var(--canvas-base) 8%, #111827)
+  border-radius: 14px
+  border: 1px solid var(--glass-border)
+  color: color-mix(in srgb, var(--color-success) 65%, #fff)
+  font-size: 12px
+  line-height: 1.6
+  margin: 0
+  max-height: 60vh
+  overflow: auto
+  padding: 14px
+  white-space: pre-wrap
+  word-break: break-word
+
+.monitor-code
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent)
+  border-radius: 6px
+  padding: 2px 6px
+
+.monitor-empty
+  align-items: center
+  color: var(--color-text-secondary)
+  display: grid
+  gap: 8px
+  justify-items: center
+  min-height: 180px
+
+.monitor-event-item
+  border-radius: 14px
+  margin-bottom: 4px
+
+body:not(.body--dark) .monitor-log-banner
+  background: var(--glass-surface)
+  border: 1px solid var(--glass-border)
+  color: var(--color-text-primary)
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+
+body.body--dark .monitor-log-banner
+  background: var(--glass-surface)
+  border: 1px solid var(--glass-border)
+  color: var(--color-text-primary)
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+
+.monitor-log-console
+  background: color-mix(in srgb, var(--canvas-base) 6%, #0f172a)
+  border-radius: 16px
+  border: 1px solid var(--glass-border)
+  color: var(--color-text-secondary)
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace
+  min-height: 320px
+  overflow: auto
+  padding: 14px
+
+.monitor-log-line
+  display: flex
+  gap: 10px
+  line-height: 1.7
+  min-width: max-content
+
+.monitor-log-time
+  color: color-mix(in srgb, var(--color-accent) 75%, #fff)
+
+body:not(.body--dark) .monitor-log-level
+  color: var(--color-accent-hover)
+  font-weight: 700
+
+body.body--dark .monitor-log-level
+  color: color-mix(in srgb, var(--color-neon-violet) 90%, #fff)
+  font-weight: 700
+
+.monitor-log-line--warn .monitor-log-level
+  color: var(--color-warning)
+
+.monitor-log-line--error .monitor-log-level
+  color: var(--color-danger)
+
+.monitor-log-empty
+  color: var(--color-text-secondary)
+  display: grid
+  min-height: 220px
+  place-items: center
+
+body.body--dark
+  .monitor-card.q-card--bordered,
+  .monitor-card
+    background: var(--glass-surface) !important
+    border-color: var(--glass-border) !important
+    backdrop-filter: blur(var(--glass-blur-default))
+    -webkit-backdrop-filter: blur(var(--glass-blur-default))
+
+  .monitor-detail-card
+    background: var(--glass-surface) !important
+    border: 1px solid var(--glass-border) !important
+    backdrop-filter: blur(var(--glass-blur-default))
+    -webkit-backdrop-filter: blur(var(--glass-blur-default))
+
+  .monitor-json
+    border-color: var(--glass-border)

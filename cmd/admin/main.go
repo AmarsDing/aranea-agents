@@ -36,7 +36,10 @@ func init() {
 }
 
 func newApp(logger log.Logger, gs *grpc.Server, hs *http.Server, ss *sse.Server) *kratos.App {
-	srv := []transport.Server{gs, hs, ss}
+	srv := []transport.Server{gs, hs}
+	if ss != nil {
+		srv = append(srv, ss)
+	}
 	return kratos.New(
 		kratos.ID(id),
 		kratos.Name(Name),

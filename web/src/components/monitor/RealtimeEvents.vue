@@ -63,9 +63,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { copyToClipboard, Notify } from "quasar";
-import { subscribeMonitorRuntimeEvents } from "./api";
-import type { PlatformResource, StreamState, TeamRunEvent } from "./types";
-import { compactJSON, formatDate, parseJSON } from "./utils";
+import { subscribeMonitorRuntimeEvents } from "../../features/monitor/api";
+import type { PlatformResource, StreamState, TeamRunEvent } from "../../features/monitor/types";
+import { compactJSON, formatDate, parseJSON } from "../../features/monitor/utils";
 
 type ViewEvent = {
   id: string;

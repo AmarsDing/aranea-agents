@@ -31,6 +31,14 @@ export default configure(() => {
         "/run_sse": {
           target: "http://127.0.0.1:8080",
           changeOrigin: true
+        },
+        // tx7do SSE（configs server.sse.addr，默认 :8001）；前缀剥离后与后端 `/monitor/logs/stream` 对齐
+        "/sse": {
+          target: "http://127.0.0.1:8001",
+          changeOrigin: true,
+          pathRewrite: {
+            "^/sse": ""
+          }
         }
       }
     },

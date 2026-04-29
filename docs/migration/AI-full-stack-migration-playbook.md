@@ -128,7 +128,7 @@ C. 设计与 UX（同一域触达页面）
 | 6 | **Cron 定时任务** | `api/kratos/cron/v1` | `features/cron`（Kratos `/v1/cron-tasks`、`/v1/cron-task-runs`；`pkg/backend` 内 **CronRunner** 仍读写同库 `cron_task` / `cron_task_run`） | **已落地** | **已接 Kratos** | **待做** |
 | 7 | 技能 / 工具 / 插件 / 通道 | **`plugin/v1` 已落地**；**`skill/v1` 已落地**（列表 / 启停 / 复制 / 删除 / 文件读写 / `skill-runs`；ZIP 导入等多段接口仍 **`pkg/backend`**）；`tool/v1`、`channel/v1` 等仍待 | `features/plugins`（Kratos）；**`features/skills` 管理面已接 Kratos**（导入流仍 legacy）；`tools`、`channels` 仍 legacy | **部分：`plugin/v1` + `skill/v1` 管理面已落地**（技能导入未迁） | **`plugins` + skills 列表/运行等已接 Kratos**；**导入仍 legacy**；余子域 **待做** | **待做** |
 | 8 | 记忆 / 进化 | `memory/v1`（可分子 service）；与 `internal/data/pgvector` + `biz/memory` **边界须文档化** | `features/memory`, `MemoryCenterPage` | **未迁移** | **待做** | **待做** |
-| 9 | 用量 / 监控 | **`usage/v1` 已落地**；`monitor/v1` | `features/usage`（`createUsageService()`）；`features/monitor`；用量 UI：`OverviewPage`、`ProviderTrendDialog` | **`usage/v1` 已落地**；**`monitor/v1` 未迁移** | **用量已接 Kratos**；monitor 仍 legacy | **待做** |
+| 9 | 用量 / 监控 | **`usage/v1`** **`monitor/v1`**（读）；SSE 仍遗留 | **`features/usage`、`features/monitor`**（`api.ts`：`createUsageService` / `createMonitorService`）；**`components/monitor`**（监控页与各 Tab 展示）；Trace 用量事件走 **`usage/v1`** | **`usage/v1` + `monitor/v1`（读）已落地**；**SSE / 部分写入仍 pkg/backend** | **monitor 读路径已接 Kratos** | **待做** |
 
 **维护约定**：每合并一域，将上表 **后端 / 前端 B / UX C** 更新为 **已落地**（或 **进行中**），并在 [`pkg-backend-to-kratos.md`](./pkg-backend-to-kratos.md) §6.3 保持同步。
 

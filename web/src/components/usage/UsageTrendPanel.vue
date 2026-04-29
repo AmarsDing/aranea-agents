@@ -27,7 +27,7 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import type { ModelUsageTrendPoint } from "../../api/client";
+import type { ModelUsageTrendPoint } from "../../../features/usage/types";
 
 const props = defineProps<{
   points: ModelUsageTrendPoint[];

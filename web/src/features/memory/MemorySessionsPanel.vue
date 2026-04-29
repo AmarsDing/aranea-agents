@@ -103,7 +103,8 @@
 
 <script setup lang="ts">
 import type { QTableProps } from "quasar";
-import type { L0AssemblySegment, L0AssemblySnapshot, L1Task, Session } from "../../api/client";
+import type { Session } from "../../features/session/api";
+import type { L0AssemblySegment, L0AssemblySnapshot, L1Task } from "../../features/memory/types";
 
 defineProps<{
   sessionRows: Session[];

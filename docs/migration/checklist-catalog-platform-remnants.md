@@ -9,12 +9,12 @@
 
 | 优先级 | 遗留分组 | 旧前缀（`handler.go`） | 前端落点 | 备注 |
 |--------|----------|------------------------|----------|------|
-| **①** | **Tools（capability 目录）** | `/api/v1/tools`、`/tools/*/runs` 等 | [`web/src/features/tools/api.ts`](../../web/src/features/tools/api.ts)，`ToolsPage.vue`、`ToolRunsPage.vue` | **目录 CRUD + runs** 已迁 **`tool/v1`**（`createToolService()` → `/v1/tools*`）；**`GET .../agents/:id/tools/effective`** 仍 **`legacyRestApi`** `/api/v1/...` |
+| **①** | **Tools（capability 目录）** | `/api/v1/tools`、`/tools/*/runs` 等 | [`web/src/features/tools/api.ts`](../../web/src/features/tools/api.ts)，`ToolsPage.vue`、`ToolRunsPage.vue` | **目录 CRUD + runs** 已迁 **`tool/v1`**（`createToolService()` → `/v1/tools*`）；**Agent 生效工具矩阵** **`GET /v1/agents/{id}/tools/effective`** + **`PUT .../tools/policy`** 已迁 **`agent/v1`**（`createAgentService()`）；**其它**仍可能走 **`legacyRestApi`** `/api/v1/...` |
 | **②** | **Channels 通道** | `/channels/catalog`、`/channels`、`/channels/*` | [`web/src/features/channels/api.ts`](../../web/src/features/channels/api.ts)，`ChannelsPage.vue` | catalog 只读 + 实例 CRUD / test / credentials |
 | **③** | **Skill 导入（multipart / 多段 JSON）** | `/skills/import`、`/skills/import/*` | [`web/src/features/skills/api.ts`](../../web/src/features/skills/api.ts)，`SkillsPage.vue` | Playbook **A9**：须写明兼容策略 |
 | **④** | **用量 model-usage** | ~~`/model-usage/...`~~ → **`/v1/usage/*`**（Kratos） | [`web/src/features/usage/api.ts`](../../web/src/features/usage/api.ts)：`**createUsageService()`** + snake_case 映射；`OverviewPage`、`ProviderTrendDialog` | ✅ **`usage/v1`**（后端 `UsageService` + `biz/data usage`） |
-| **⑤** | **Monitor 监控** | `/monitor/audit`、`/monitor/events`、`/monitor/traces`、`/monitor/logs*` | [`web/src/features/monitor/api.ts`](../../web/src/features/monitor/api.ts)（`legacyRestApi`）；`MonitorPage.vue` | 含 **SSE**：`/monitor/logs/stream`；audit 依赖 **AuditService**（非 Platform 通用 List） |
-| **⑥（横切）** | **Team 运行 SSE** | `/team-run-events` | `features/monitor/api.ts` `subscribeMonitorRuntimeEvents` | 可与 `team/v1` 流式补齐同一阶段 |
+| **⑤** | **Monitor 监控** | ~~`/monitor/...`~~ → **`/v1/monitor/*`**（Kratos）；SSE：**`/sse/monitor/logs/stream`** → **`server.sse`**（tx7do） | [`web/src/features/monitor/api.ts`](../../web/src/features/monitor/api.ts)：**`createMonitorService()`**；展示 UI：[`web/src/components/monitor/`](../../web/src/components/monitor/)（`MonitorPage.vue` 与各 Tab：`AuditTable`、`TraceList`、`RealtimeEvents`、`LogStream`、Hero/Glass/Error 等）；Trace 列表 → **`usage/v1`**（`listModelUsageEvents`） | ✅ **读路径 + logs SSE 已收口** |
+| **⑥（横切）** | **Team 运行 SSE** | ~~`/api/v1/team-run-events`~~ → **`/sse/team-run-events`**（`cmd/admin` SSE，`biz.TeamRunEventBroker`） | `features/monitor/api.ts` `subscribeMonitorRuntimeEvents`，[`web/src/services/clientLegacy.ts`](../../web/src/services/clientLegacy.ts) `subscribeTeamRunEvents` | ✅ **端点已迁**；**Publish** 接线编排栈待后续 |
 
 ---
 
@@ -34,16 +34,17 @@
    - RPC：`GetUsageOverview`、`ListUsageTrends`、`ListTopModels`、`ListTopAgents`、`ListUsageEvents`（`/v1/usage/*`）。  
    - 前端：`features/usage/api.ts` → **`createUsageService()`**；响应 **`range_summary` → `range`** 等映射为遗留 **`ModelUsage*`** snake_case 形状。
 
-4. **`monitor/v1`**  
-   - 只读：`ListAudit`、`ListMonitorEvents`、`GetMonitorEvent`、`ListMonitorTraces`、`GetMonitorTrace`（结构与 `sanitizePlatformResource` 对齐）。  
-   - **SSE**：`StreamMonitorLogs` 或网关层保留 SSE 路径（须在 proto/README 单列）。  
-   - 注意：**`listMonitorTraceEvents` 在前端当前实现里调用的是 `/model-usage/events`**（非 `/monitor/traces`），收口时要么统一语义要么拆两个 RPC。
+4. **`monitor/v1`**（✅ 管理 UI 读路径已收口）  
+   - RPC：`ListAuditLogs`、`ListMonitorEvents`、`GetMonitorEvent`、`ListMonitorTraces`、`GetMonitorTrace`、`GetMonitorLogs`（占位）。HTTP：`/v1/monitor/*`。  
+   - 前端：`features/monitor/api.ts` → **`createMonitorService()`**；**Trace 表格**数据语义对齐 **`usage/v1`**（`listModelUsageEvents`）。  
+   - **前端分层**（与 Playbook **B5b**、`vue-design.md` §2）：展示 `.vue` 在 **`components/monitor/`**；**`features/monitor/`** 仅存 **`api.ts`、`types.ts`、`utils.ts`**。  
+   - **SSE**：`/sse/monitor/logs/stream`（tx7do）、`/sse/team-run-events`（broker + 手写帧），见 **`configs.server.sse`** 与 Quasar **`/sse` → `server.sse.addr`**。
 
 5. **Skill import**  
    - 对齐 `POST /skills/import`、poll job、conflict refine、apply；** multipart** 遵守主文档 §2.4。
 
-6. **`team-run-events` SSE**  
-   - 归入 `team/v1` 流式扩展或独立 `SubscribeTeamRuns` RPC；CLI `capability` 种子里的路径一并更新。
+6. **`team-run-events` SSE（端点已迁）**  
+   - **`biz.TeamRunEventBroker.Publish`**：待团队运行写入迁入 **`cmd/admin`** 会话/编排栈后从运行路径调用；可选后续：`team/v1` 流式扩展或独立 RPC，CLI `capability` 种子路径一并更新。
 
 ---
 

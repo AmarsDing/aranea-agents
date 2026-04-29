@@ -19,4 +19,5 @@ var ProviderSet = wire.NewSet(
 	NewToolService,
 	NewChannelService,
 	NewUsageService,
+	NewMonitorService,
 )

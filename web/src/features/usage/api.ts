@@ -1,5 +1,5 @@
 /**
- * 模型用量：`usage/v1` Kratos HTTP，映射为遗留 snake_case 形状（页面仍用 `ModelUsage*` 类型）。
+ * 模型用量：`usage/v1` —— `createUsageService()`（见 `services/index.ts`），映射为 `types.ts` snake_case 形状。
  */
 import { createUsageService } from "../../services/index";
 import type {
@@ -16,7 +16,7 @@ import type {
   ModelUsageQuery,
   ModelUsageTrendPoint,
   ModelUsageSummary
-} from "../../services/clientLegacy";
+} from "./types";
 
 export type {
   ModelTokenUsageEvent,
@@ -25,7 +25,7 @@ export type {
   ModelUsageQuery,
   ModelUsageTrendPoint,
   ModelUsageSummary
-} from "../../services/clientLegacy";
+} from "./types";
 
 const usage = createUsageService();
 

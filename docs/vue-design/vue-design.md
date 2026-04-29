@@ -110,6 +110,7 @@ Component（仅展示：props in / emits out）
 - **浮层视觉**（非纯逻辑）：须遵守 **[UX.md](../UI/UX.md) §1～§2**：`background: var(--glass-elevated)`（或 `--glass-surface`）+ **`backdrop-filter` 与 `-webkit-backdrop-filter`** 成对；主按钮用 **`var(--color-accent)` / `--color-accent-hover`**，**禁止**在日间用夜间霓虹青紫作默认强调（UX §1）。
 - 与展示子组件紧耦合、**无网络请求** 的纯函数 / 常量可与展示组件同域共址为 **`components/<域>/*.ts`**（示例：`components/teams/teamUtils.ts`）；其中 **仅允许** 对 `features/<域>/api` **type-only** import，禁止运行时依赖会触发 §0.2 禁止项的模块。
 - **新代码与迁移 PR** 须按上表落盘；存量若暂在 `features/<域>/` 的展示 `.vue`，应在同一域的迁移中 **迁至** `components/<域>/` 并改 import，**不得**扩大「临时共址」范围。
+- **Monitor 域（落地对照）**：展示 `.vue` 位于 [`web/src/components/monitor/`](../../web/src/components/monitor/)（如 `MonitorPage` 组合的 `MonitorHeroSection`、`MonitorGlassPanel`、`AuditTable`、`TraceList`、`RealtimeEvents`、`LogStream` 等）；[`web/src/features/monitor/`](../../web/src/features/monitor/) **仅**保留 **`api.ts`、`types.ts`、`utils.ts`**（生成客户端封装与类型、纯函数），由页面与子组件 `import`。若后续收紧 **B5c**，SSE 相关组件应改为 **emit**，由 Page / Store 调 `features/monitor/api`。
 
 ---
 

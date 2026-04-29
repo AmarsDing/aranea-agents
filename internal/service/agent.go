@@ -389,3 +389,55 @@ func (s *AgentService) GetAgentPromptPreview(ctx context.Context, req *v1.GetAge
 	}
 	return &v1.GetAgentPromptPreviewResponse{Preview: text}, nil
 }
+
+func bizEffectiveToolsToProto(in biz.AgentEffectiveTools) *v1.AgentEffectiveToolsView {
+	items := make([]*v1.EffectiveAgentTool, 0, len(in.Items))
+	for _, row := range in.Items {
+		items = append(items, &v1.EffectiveAgentTool{
+			ToolKey:        row.ToolKey,
+			DisplayName:    row.DisplayName,
+			Category:       row.Category,
+			Source:         row.Source,
+			Enabled:        row.Enabled,
+			EffectiveState: row.EffectiveState,
+			Reason:         row.Reason,
+		})
+	}
+	return &v1.AgentEffectiveToolsView{
+		ToolsEnabled: in.ToolsEnabled,
+		Profile:      in.Profile,
+		Allow:        append([]string(nil), in.Allow...),
+		Deny:         append([]string(nil), in.Deny...),
+		Items:        items,
+	}
+}
+
+// GetAgentEffectiveTools implements GET /v1/agents/{agent_id}/tools/effective.
+func (s *AgentService) GetAgentEffectiveTools(ctx context.Context, req *v1.GetAgentEffectiveToolsRequest) (*v1.AgentEffectiveToolsView, error) {
+	out, err := s.uc.GetEffectiveTools(ctx, req.GetAgentId())
+	if err != nil {
+		if stderrors.Is(err, sql.ErrNoRows) {
+			return nil, kerrors.NotFound("AGENT", "agent not found")
+		}
+		return nil, err
+	}
+	return bizEffectiveToolsToProto(out), nil
+}
+
+// UpdateAgentToolPolicy implements PUT /v1/agents/{agent_id}/tools/policy.
+func (s *AgentService) UpdateAgentToolPolicy(ctx context.Context, req *v1.UpdateAgentToolPolicyRequest) (*v1.AgentEffectiveToolsView, error) {
+	in := biz.AgentToolPolicyInput{
+		ToolsEnabled: req.GetToolsEnabled(),
+		Profile:      req.GetProfile(),
+		Allow:        req.GetAllow(),
+		Deny:         req.GetDeny(),
+	}
+	out, err := s.uc.UpdateAgentToolPolicy(ctx, req.GetAgentId(), in)
+	if err != nil {
+		if stderrors.Is(err, sql.ErrNoRows) {
+			return nil, kerrors.NotFound("AGENT", "agent not found")
+		}
+		return nil, err
+	}
+	return bizEffectiveToolsToProto(out), nil
+}

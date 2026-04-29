@@ -13,10 +13,10 @@ import { createSkillServiceClient } from "./kratos/skill/v1/index";
 import { createTeamServiceClient } from "./kratos/team/v1/index";
 import { createToolServiceClient } from "./kratos/tool/v1/index";
 import { createUsageServiceClient } from "./kratos/usage/v1/index";
+import { createMonitorServiceClient } from "./kratos/monitor/v1/index";
 import { requestHandler } from "./axiosHandler";
 
-// 每个功能模块的 service（proto 生成客户端 + requestHandler → kratosApi）
-
+// 每个功能模块的 service（proto 生成客户端 + requestHandler → kratosApi）。
 export function createAdminService() {
   return createAdminServiceClient(requestHandler);
 }
@@ -75,6 +75,10 @@ export function createToolService() {
 
 export function createUsageService() {
   return createUsageServiceClient(requestHandler);
+}
+
+export function createMonitorService() {
+  return createMonitorServiceClient(requestHandler);
 }
 
 export { kratosApi, legacyRestApi, requestHandler, syncHttpClients } from "./axiosHandler";

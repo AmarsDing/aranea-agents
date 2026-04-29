@@ -1,8 +1,5 @@
 /**
- * Chat 域对外 API 门面（vue-design：`features/<domain>/api.ts`）。
- *
- * - **会话（Kratos）**：`../session/api` → `createSessionService()` → `/v1/sessions`
- * - **消息 / SSE / options（遗留 REST）**：仍经 `clientLegacy` → `legacyRestApi` `/api/v1/chat/*`，待 `chat/v1`
+ * Chat 域对外门面：`features/session/api`（Kratos）+ `legacyRest` + `./types`（遗留 REST `/api/v1/chat/*`，待 `chat/v1`）。
  */
 export {
   archiveSession,
@@ -23,15 +20,13 @@ export {
   type SessionTimelineSummary
 } from "../session/api";
 
-export {
-  listChatOptions,
-  listMessages,
-  sendMessage,
-  sendMessageStream,
-  type ChatOption,
-  type Message,
-  type SendMessageOptions,
-  type SendMessageResult,
-  type SendMessageStreamCallbacks,
-  type ToolUseEvent
-} from "../../services/clientLegacy";
+export type {
+  ChatOption,
+  Message,
+  SendMessageOptions,
+  SendMessageResult,
+  SendMessageStreamCallbacks,
+  ToolUseEvent
+} from "./types";
+
+export { listChatOptions, listMessages, sendMessage, sendMessageStream } from "./legacyRest";
