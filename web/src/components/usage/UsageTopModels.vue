@@ -25,7 +25,7 @@
 </template>
 
 <script setup lang="ts">
-import type { ModelUsageBreakdownRow } from "../../../features/usage/types";
+import type { ModelUsageBreakdownRow } from "../../features/usage/types";
 
 defineProps<{
   rows: ModelUsageBreakdownRow[];

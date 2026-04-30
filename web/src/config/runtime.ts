@@ -46,7 +46,7 @@ export function getBackendOrigin(): string {
 export const getAdminServiceBaseURL = getBackendOrigin;
 
 /**
- * 遗留手写 REST（如 `web/src/api/client.ts`）的 axios 前缀：**同一 `getBackendOrigin()` + 路径段 `/api/v1`**。
+ * 遗留手写 REST（**`legacyRestApi`**，`web/src/services/axiosHandler.ts`）的 axios 前缀：**同一 `getBackendOrigin()` + 路径段 `/api/v1`**。
  * 新接口优先在 proto 中定义并由 `make api` 生成，不再增加此类路径族。
  */
 export function getBackendBaseURL(): string {

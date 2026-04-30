@@ -250,6 +250,18 @@ func (uc *SessionUsecase) DeleteByAgent(ctx context.Context, agentID string) err
 	return uc.sessions.DeleteSessionsByAgentID(ctx, agentID)
 }
 
+// ListMessages returns raw chat rows for a session (same store as timeline messages).
+func (uc *SessionUsecase) ListMessages(ctx context.Context, sessionID string) ([]ChatMessage, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return nil, validationErr("session id is required")
+	}
+	if _, err := uc.sessions.GetSessionByID(ctx, sessionID); err != nil {
+		return nil, err
+	}
+	return uc.sessions.ListMessagesBySession(ctx, sessionID)
+}
+
 func (uc *SessionUsecase) Timeline(ctx context.Context, id string) (SessionTimeline, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {

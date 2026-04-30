@@ -31,7 +31,7 @@
 </template>
 
 <script setup lang="ts">
-import type { ModelTokenUsageEvent } from "../../../features/usage/types";
+import type { ModelTokenUsageEvent } from "../../features/usage/types";
 
 defineProps<{
   rows: ModelTokenUsageEvent[];

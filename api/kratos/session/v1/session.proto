@@ -130,6 +130,33 @@ message GetSessionTimelineRequest {
   string id = 1 [(google.api.field_behavior) = REQUIRED];
 }
 
+// ChatMessageRow mirrors Ent messages row / legacy chat JSON（snake_case）.
+message ChatMessageRow {
+  string id = 1;
+  string session_id = 2;
+  string parent_message_id = 3;
+  int32 turn_index = 4;
+  string role = 5;
+  string content_markdown = 6;
+  string model_name = 7;
+  int32 token_in = 8;
+  int32 token_out = 9;
+  int32 latency_ms = 10;
+  string status = 11;
+  int32 attachments_count = 12;
+  string options_json = 13;
+  string error_message = 14;
+  string created_at = 15;
+}
+
+message ListSessionMessagesRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListSessionMessagesResponse {
+  repeated ChatMessageRow items = 1;
+}
+
 service SessionService {
   rpc SearchSessions(SearchSessionsRequest) returns (SearchSessionsResponse) {
     option (google.api.http) = {get: "/v1/sessions"};
@@ -156,9 +183,15 @@ service SessionService {
     option (google.api.http) = {delete: "/v1/sessions/{id}"};
   }
   rpc ArchiveSession(ArchiveSessionRequest) returns (google.protobuf.Empty) {
-    option (google.api.http) = {post: "/v1/sessions/{id}/archive"};
+    option (google.api.http) = {
+      post: "/v1/sessions/{id}/archive"
+      body: "*"
+    };
   }
   rpc GetSessionTimeline(GetSessionTimelineRequest) returns (SessionTimeline) {
     option (google.api.http) = {get: "/v1/sessions/{id}/timeline"};
+  }
+  rpc ListSessionMessages(ListSessionMessagesRequest) returns (ListSessionMessagesResponse) {
+    option (google.api.http) = {get: "/v1/sessions/{id}/messages"};
   }
 }

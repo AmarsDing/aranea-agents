@@ -208,6 +208,39 @@ func (s *SessionService) ArchiveSession(ctx context.Context, req *v1.ArchiveSess
 	return &emptypb.Empty{}, nil
 }
 
+func toProtoChatMessageRow(m biz.ChatMessage) *v1.ChatMessageRow {
+	return &v1.ChatMessageRow{
+		Id:                 m.ID,
+		SessionId:          m.SessionID,
+		ParentMessageId:    m.ParentMessageID,
+		TurnIndex:          int32(m.TurnIndex),
+		Role:               m.Role,
+		ContentMarkdown:    m.ContentMarkdown,
+		ModelName:          m.ModelName,
+		TokenIn:            int32(m.TokenIn),
+		TokenOut:           int32(m.TokenOut),
+		LatencyMs:          int32(m.LatencyMS),
+		Status:             m.Status,
+		AttachmentsCount:   int32(m.AttachmentsCount),
+		OptionsJson:        m.OptionsJSON,
+		ErrorMessage:       m.ErrorMessage,
+		CreatedAt:          m.CreatedAt,
+	}
+}
+
+// ListSessionMessages implements GET /v1/sessions/{id}/messages.
+func (s *SessionService) ListSessionMessages(ctx context.Context, req *v1.ListSessionMessagesRequest) (*v1.ListSessionMessagesResponse, error) {
+	rows, err := s.uc.ListMessages(ctx, req.GetId())
+	if err != nil {
+		return nil, mapSessionErr(err)
+	}
+	out := make([]*v1.ChatMessageRow, 0, len(rows))
+	for i := range rows {
+		out = append(out, toProtoChatMessageRow(rows[i]))
+	}
+	return &v1.ListSessionMessagesResponse{Items: out}, nil
+}
+
 // GetSessionTimeline implements GET /v1/sessions/{id}/timeline.
 func (s *SessionService) GetSessionTimeline(ctx context.Context, req *v1.GetSessionTimelineRequest) (*v1.SessionTimeline, error) {
 	out, err := s.uc.Timeline(ctx, req.GetId())

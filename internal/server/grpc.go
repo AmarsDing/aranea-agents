@@ -16,6 +16,7 @@ import (
 	toolv1 "aranea-agents/api/kratos/tool/v1"
 	channelv1 "aranea-agents/api/kratos/channel/v1"
 	monitorv1 "aranea-agents/api/kratos/monitor/v1"
+	memoryv1 "aranea-agents/api/kratos/memory/v1"
 	usagev1 "aranea-agents/api/kratos/usage/v1"
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/service"
@@ -42,6 +43,7 @@ func NewGRPCServer(c *conf.Server,
 	channelSvc *service.ChannelService,
 	usageSvc *service.UsageService,
 	monitorSvc *service.MonitorService,
+	memorySvc *service.MemoryService,
 	teams *service.TeamService,
 ) *grpc.Server {
 	var opts = []grpc.ServerOption{
@@ -75,6 +77,7 @@ func NewGRPCServer(c *conf.Server,
 	channelv1.RegisterChannelServiceServer(srv, channelSvc)
 	usagev1.RegisterUsageServiceServer(srv, usageSvc)
 	monitorv1.RegisterMonitorServiceServer(srv, monitorSvc)
+	memoryv1.RegisterMemoryServiceServer(srv, memorySvc)
 	teamv1.RegisterTeamServiceServer(srv, teams)
 	return srv
 }

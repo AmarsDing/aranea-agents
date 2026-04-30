@@ -16,6 +16,7 @@ import (
 	toolv1 "aranea-agents/api/kratos/tool/v1"
 	channelv1 "aranea-agents/api/kratos/channel/v1"
 	monitorv1 "aranea-agents/api/kratos/monitor/v1"
+	memoryv1 "aranea-agents/api/kratos/memory/v1"
 	usagev1 "aranea-agents/api/kratos/usage/v1"
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/service"
@@ -43,11 +44,13 @@ func NewHTTPServer(c *conf.Server,
 	channelSvc *service.ChannelService,
 	usageSvc *service.UsageService,
 	monitorSvc *service.MonitorService,
+	memorySvc *service.MemoryService,
 	teams *service.TeamService,
 ) *http.Server {
 	var opts = []http.ServerOption{
 		http.Filter(
 			auth.Middleware(),
+			LegacyRESTProxyFilter(),
 		),
 		http.Middleware(
 			recovery.Recovery(),
@@ -79,6 +82,7 @@ func NewHTTPServer(c *conf.Server,
 	channelv1.RegisterChannelServiceHTTPServer(srv, channelSvc)
 	usagev1.RegisterUsageServiceHTTPServer(srv, usageSvc)
 	monitorv1.RegisterMonitorServiceHTTPServer(srv, monitorSvc)
+	memoryv1.RegisterMemoryServiceHTTPServer(srv, memorySvc)
 	teamv1.RegisterTeamServiceHTTPServer(srv, teams)
 	return srv
 }

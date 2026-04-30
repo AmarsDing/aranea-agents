@@ -16,7 +16,7 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import type { ModelUsageOverview } from "../../../features/usage/types";
+import type { ModelUsageOverview } from "../../features/usage/types";
 
 const props = defineProps<{
   overview: ModelUsageOverview | null;

@@ -12,6 +12,7 @@ import (
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/migrate"
 	"aranea-agents/internal/data/pgvector"
+	"aranea-agents/internal/data/sessionmemory"
 
 	"entgo.io/ent/dialect"
 
@@ -42,6 +43,7 @@ var ProviderSet = wire.NewSet(
 	NewChannelRepo,
 	NewUsageRepo,
 	NewMonitorRepo,
+	NewSessionMemoryStore,
 )
 
 // Data: Ent/SQLite holds app CRUD; Postgres (optional) holds pgvector agent memory only.
@@ -135,6 +137,10 @@ func NewData(c *conf.Data) (*Data, func(), error) {
 	if err != nil {
 		log.Fatalf("failed opening sqlite for ent: %v", err)
 	}
+	if err = sessionmemory.EnsureSchema(context.Background(), entClient); err != nil {
+		_ = entClient.Close()
+		return nil, nil, fmt.Errorf("session memory schema: %w", err)
+	}
 
 	pgDSN := postgresVectorDSN(c)
 	var pg *sql.DB
@@ -185,4 +191,12 @@ func NewData(c *conf.Data) (*Data, func(), error) {
 		}
 	}
 	return st, cleanup, nil
+}
+
+// NewSessionMemoryStore exposes SQLite session-chain reads (L0–L4, evolution) on the same DB as Ent.
+func NewSessionMemoryStore(d *Data) *sessionmemory.Store {
+	if d == nil {
+		return nil
+	}
+	return sessionmemory.NewStore(d.Ent())
 }

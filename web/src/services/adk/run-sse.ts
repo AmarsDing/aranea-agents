@@ -1,4 +1,4 @@
-import { getAdkRunSseUrl } from "../../config/runtime";
+import { getAdkRunSseUrl } from "../config/runtime";
 import type { AdkLlmResponse, AdkRunSseRequest } from "./types";
 
 export type AdkRunSseHandlers = {

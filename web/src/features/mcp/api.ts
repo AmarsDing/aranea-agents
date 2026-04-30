@@ -1,4 +1,4 @@
-import { api } from "../../api/http";
+import { legacyRestApi as api } from "../../services";
 import type { PlatformResource, PlatformResourceInput } from "../platform/api";
 import type { McpServerTestResult } from "./types";
 

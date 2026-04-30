@@ -1,4 +1,4 @@
-import { api } from "../../api/http";
+import { legacyRestApi as api } from "../../services";
 
 export type PlatformResourceName =
   | "avatar-assets"

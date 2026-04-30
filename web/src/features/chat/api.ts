@@ -1,5 +1,5 @@
 /**
- * Chat 域对外门面：`features/session/api`（Kratos）+ `legacyRest` + `./types`（遗留 REST `/api/v1/chat/*`，待 `chat/v1`）。
+ * Chat 域：`features/session/api`（Kratos）+ `legacyRest`（`/v1/chat/*`：发送 / 流式 / options，经网关转发至遗留对话栈）。
  */
 export {
   archiveSession,
@@ -8,6 +8,8 @@ export {
   deleteSession,
   getSession,
   getSessionTimeline,
+  listSessionChatMessages,
+  listSessionChatMessages as listMessages,
   listSessions,
   listTeamSessions,
   searchSessions,
@@ -29,4 +31,4 @@ export type {
   ToolUseEvent
 } from "./types";
 
-export { listChatOptions, listMessages, sendMessage, sendMessageStream } from "./legacyRest";
+export { listChatOptions, sendMessage, sendMessageStream } from "./legacyRest";

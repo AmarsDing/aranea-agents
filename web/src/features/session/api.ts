@@ -1,11 +1,13 @@
 
 import { createSessionService } from "../../services/index";
 import type {
+  ChatMessageRow,
   Session as KratosSession,
   SessionTimeline as KratosSessionTimeline,
   SessionTimelineItem as KratosTimelineItem,
   SessionTimelineSummary as KratosTimelineSummary
 } from "../../services/kratos/session/v1/index";
+import type { Message } from "../chat/types";
 
 const sessionApi = createSessionService();
 
@@ -244,4 +246,30 @@ export async function updateSessionTitle(id: string, title: string): Promise<Ses
 
 export async function clearAgentSessions(agentID: string): Promise<void> {
   await sessionApi.DeleteSessionsByAgent({ agentId: agentID });
+}
+
+function kratosChatRowToMessage(row: ChatMessageRow): Message {
+  return {
+    id: row.id ?? "",
+    session_id: row.sessionId ?? "",
+    parent_message_id: row.parentMessageId ?? "",
+    turn_index: row.turnIndex ?? 0,
+    role: row.role ?? "",
+    content_markdown: row.contentMarkdown ?? "",
+    model_name: row.modelName ?? "",
+    token_in: row.tokenIn ?? 0,
+    token_out: row.tokenOut ?? 0,
+    latency_ms: row.latencyMs ?? 0,
+    status: row.status ?? "",
+    attachments_count: row.attachmentsCount ?? 0,
+    options_json: row.optionsJson ?? "",
+    error_message: row.errorMessage ?? "",
+    created_at: row.createdAt ?? ""
+  };
+}
+
+/** Kratos `GET /v1/sessions/{id}/messages`（替代遗留 `/api/v1/chat/messages` 列表）。 */
+export async function listSessionChatMessages(sessionID: string): Promise<Message[]> {
+  const data = await sessionApi.ListSessionMessages({ id: sessionID });
+  return (data.items ?? []).map(kratosChatRowToMessage);
 }

@@ -1,4 +1,4 @@
-import { createSkillService, legacyRestApi } from "../../services";
+import { createSkillService, kratosApi } from "../../services";
 import type {
   PaginatedResponse,
   Skill,
@@ -14,7 +14,7 @@ import type {
   SkillTag
 } from "./types";
 
-// 技能 ZIP 导入 / 冲突消解等多段 JSON 仍走旧栈 multipart 与专有路径；与 AI-full-stack-migration-playbook §3 A9 一致。
+// ZIP / 冲突消解：`kratosApi` **`/v1/skills/import*`**；`cmd/admin` 在 **`LEGACY_REST_ORIGIN`** 下转发至遗留 `/api/v1/skills/import*`（multipart）。后续可迁入 **`skill/v1`** multipart RPC（Playbook §3 A9）。
 // 管理列表、启停、文件编辑、运行记录等已接 Kratos `skill/v1`。
 
 function mapSkillTag(raw: unknown): SkillTag {
@@ -217,15 +217,13 @@ export async function listSkillRuns(query: SkillRunQuery = {}): Promise<Paginate
 export async function uploadSkillZip(file: File): Promise<{ job_id: string }> {
   const form = new FormData();
   form.append("file", file);
-  const { data } = await legacyRestApi.post("/skills/import", form, {
-    headers: { "Content-Type": "multipart/form-data" }
-  });
+  const { data } = await kratosApi.post("/v1/skills/import", form);
   const d = data as Record<string, unknown>;
   return { job_id: String(d.job_id ?? d.jobId ?? "") };
 }
 
 export async function getSkillImportJob(jobId: string): Promise<SkillImportJob> {
-  const { data } = await legacyRestApi.get(`/skills/import/${jobId}`);
+  const { data } = await kratosApi.get(`/v1/skills/import/${jobId}`);
   return data as SkillImportJob;
 }
 
@@ -234,8 +232,8 @@ export async function refineSkillConflictGroup(
   groupId: string,
   payload: { provider?: string; model?: string; instructions?: string }
 ): Promise<SkillRefineResult> {
-  const { data } = await legacyRestApi.post(
-    `/skills/import/${jobId}/conflict-groups/${groupId}/refine`,
+  const { data } = await kratosApi.post(
+    `/v1/skills/import/${jobId}/conflict-groups/${groupId}/refine`,
     payload
   );
   return data as SkillRefineResult;
@@ -245,6 +243,6 @@ export async function applySkillImport(
   jobId: string,
   decisions: SkillImportDecision[]
 ): Promise<SkillImportApplyResult> {
-  const { data } = await legacyRestApi.post(`/skills/import/${jobId}/apply`, { decisions });
+  const { data } = await kratosApi.post(`/v1/skills/import/${jobId}/apply`, { decisions });
   return data as SkillImportApplyResult;
 }

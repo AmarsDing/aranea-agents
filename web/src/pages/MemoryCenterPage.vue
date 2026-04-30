@@ -213,7 +213,7 @@ const settingChecklist = computed(() => [
   { label: "基础 memory_* 设置", caption: "Agent 设置页已有旧版记忆启用、结果数和最低分数。", done: true },
   { label: "L0 上下文策略", caption: "Prompt snapshot / preview API 已接入。", done: true },
   { label: "L1 工作记忆预算", caption: "L1 task/field API 已接入。", done: true },
-  { label: "L3 语义记忆设置", caption: "Facts / recall / conflict 后端 API 已注册。", done: factsEndpointReady.value },
+  { label: "L3 语义记忆设置", caption: "Facts / recall：`memory/v1` 由 cmd/admin SQLite（sessionmemory）提供。", done: factsEndpointReady.value },
   { label: "L4 图谱与进化设置", caption: "Entities / neighborhood / evolution API 已注册并在本页读取。", done: true }
 ]);
 

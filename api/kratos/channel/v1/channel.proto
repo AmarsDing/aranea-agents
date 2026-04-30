@@ -191,7 +191,10 @@ service ChannelService {
     };
   }
   rpc TestChannel(TestChannelRequest) returns (ChannelTestResult) {
-    option (google.api.http) = {post: "/v1/channels/{id}/test"};
+    option (google.api.http) = {
+      post: "/v1/channels/{id}/test"
+      body: "*"
+    };
   }
   rpc ListChannelCredentials(GetChannelRequest) returns (ListChannelCredentialsResponse) {
     option (google.api.http) = {get: "/v1/channels/{id}/credentials"};

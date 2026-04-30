@@ -1,4 +1,4 @@
-/** Chat 遗留 REST（`/api/v1/chat/*`）使用的 snake_case 类型；待 `chat/v1` 后可收敛为 proto 形状。 */
+/** Chat：消息列表走 `session/v1` `GET /v1/sessions/{id}/messages`；发送 / 流式 / options 仍以遗留 REST `/api/v1/chat/*` 类型为准直至 `chat/v1`。 */
 
 export type Message = {
   id: string;

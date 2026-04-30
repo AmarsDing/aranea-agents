@@ -14,7 +14,7 @@
 | **③** | **Skill 导入（multipart / 多段 JSON）** | `/skills/import`、`/skills/import/*` | [`web/src/features/skills/api.ts`](../../web/src/features/skills/api.ts)，`SkillsPage.vue` | Playbook **A9**：须写明兼容策略 |
 | **④** | **用量 model-usage** | ~~`/model-usage/...`~~ → **`/v1/usage/*`**（Kratos） | [`web/src/features/usage/api.ts`](../../web/src/features/usage/api.ts)：`**createUsageService()`** + snake_case 映射；`OverviewPage`、`ProviderTrendDialog` | ✅ **`usage/v1`**（后端 `UsageService` + `biz/data usage`） |
 | **⑤** | **Monitor 监控** | ~~`/monitor/...`~~ → **`/v1/monitor/*`**（Kratos）；SSE：**`/sse/monitor/logs/stream`** → **`server.sse`**（tx7do） | [`web/src/features/monitor/api.ts`](../../web/src/features/monitor/api.ts)：**`createMonitorService()`**；展示 UI：[`web/src/components/monitor/`](../../web/src/components/monitor/)（`MonitorPage.vue` 与各 Tab：`AuditTable`、`TraceList`、`RealtimeEvents`、`LogStream`、Hero/Glass/Error 等）；Trace 列表 → **`usage/v1`**（`listModelUsageEvents`） | ✅ **读路径 + logs SSE 已收口** |
-| **⑥（横切）** | **Team 运行 SSE** | ~~`/api/v1/team-run-events`~~ → **`/sse/team-run-events`**（`cmd/admin` SSE，`biz.TeamRunEventBroker`） | `features/monitor/api.ts` `subscribeMonitorRuntimeEvents`，[`web/src/services/clientLegacy.ts`](../../web/src/services/clientLegacy.ts) `subscribeTeamRunEvents` | ✅ **端点已迁**；**Publish** 接线编排栈待后续 |
+| **⑥（横切）** | **Team 运行 SSE** | ~~`/api/v1/team-run-events`~~ → **`/sse/team-run-events`**（`cmd/admin` SSE，`biz.TeamRunEventBroker`） | [`web/src/features/monitor/api.ts`](../../web/src/features/monitor/api.ts) `subscribeMonitorRuntimeEvents`；[`web/src/features/teams/api.ts`](../../web/src/features/teams/api.ts) `subscribeTeamRunEvents` | ✅ **端点已迁**；**Publish** 接线编排栈待后续 |
 
 ---
 

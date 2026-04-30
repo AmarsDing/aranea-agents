@@ -1,0 +1,368 @@
+syntax = "proto3";
+
+package kratos.memory.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+
+option go_package = "aranea-agents/api/kratos/memory/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.kratos.memory.v1";
+
+// Memory HTTP shapes mirror legacy SQLite L0–L4 + evolution JSON (**snake_case** on wire).
+// **`internal/service.MemoryService`** forwards to **`LEGACY_REST_ORIGIN` + `/api/v1/...`** until native repos land in **`cmd/admin`** (**biz/memory** pgvector is a separate vector store — see playbook §6).
+
+message ListL0SnapshotsRequest {
+  string session_id = 1 [(google.api.field_behavior) = REQUIRED];
+  int32 limit = 2;
+}
+
+message ListL0SnapshotsResponse {
+  repeated L0AssemblySnapshot items = 1;
+}
+
+message L0AssemblySnapshot {
+  string id = 1;
+  string session_id = 2;
+  string run_id = 3;
+  string turn_id = 4;
+  string span_id = 5;
+  string agent_id = 6;
+  string team_id = 7;
+  string provider = 8;
+  string model = 9;
+  int32 context_window_tokens = 10;
+  int32 budget_tokens = 11;
+  int32 recent_window_turns = 12;
+  int32 recent_window_tokens = 13;
+  int32 summary_token_estimate = 14;
+  int32 l1_field_count = 15;
+  int32 l1_token_estimate = 16;
+  int32 l3_chunk_count = 17;
+  int32 l3_token_estimate = 18;
+  int32 l4_path_count = 19;
+  int32 l4_token_estimate = 20;
+  int32 prompt_token_estimate = 21;
+  int32 prompt_token_actual = 22;
+  double used_ratio = 23;
+  string truncate_strategy = 24;
+  int32 truncated_message_count = 25;
+  int32 summarized_turn_from = 26;
+  int32 summarized_turn_to = 27;
+  string segments_json = 28;
+  string warning_codes_json = 29;
+  string metadata_json = 30;
+  string created_at = 31;
+}
+
+message ListL1TasksRequest {
+  string session_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string agent_id = 2;
+  string status = 3;
+  string include_ended = 4;
+}
+
+message ListL1TasksResponse {
+  repeated L1Task items = 1;
+}
+
+message L1Task {
+  string id = 1;
+  string session_id = 2;
+  string run_id = 3;
+  string team_id = 4;
+  string agent_id = 5;
+  string task_key = 6;
+  string task_title = 7;
+  string task_goal = 8;
+  string status = 9;
+  int32 schema_version = 10;
+  int32 budget_tokens = 11;
+  int32 used_tokens = 12;
+  string parent_task_id = 13;
+  string shared_with_json = 14;
+  string started_at = 15;
+  string ended_at = 16;
+  string archived_at = 17;
+  string metadata_json = 18;
+  string created_at = 19;
+  string updated_at = 20;
+}
+
+message ListL1FieldsRequest {
+  string session_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string task_id = 2 [(google.api.field_behavior) = REQUIRED];
+  string include_internal = 3;
+}
+
+message ListL1FieldsResponse {
+  repeated L1Field items = 1;
+}
+
+message L1Field {
+  string id = 1;
+  string task_id = 2;
+  string session_id = 3;
+  string agent_id = 4;
+  string field_path = 5;
+  string field_kind = 6;
+  string visibility = 7;
+  bool pin_to_prompt = 8;
+  bool is_required = 9;
+  string value_text = 10;
+  string value_json = 11;
+  string value_ref = 12;
+  string preview = 13;
+  int32 token_estimate = 14;
+  string source = 15;
+  string source_ref = 16;
+  int32 ttl_seconds = 17;
+  string expires_at = 18;
+  int32 revision = 19;
+  string last_read_at = 20;
+  int32 read_count = 21;
+  string metadata_json = 22;
+  string created_at = 23;
+  string updated_at = 24;
+}
+
+message ListMemoryFactsRequest {
+  string scope_type = 1;
+  string scope_id = 2;
+  string kind = 3;
+  string status = 4;
+  string keyword = 5;
+  int32 limit = 6;
+  int32 offset = 7;
+}
+
+message ListMemoryFactsResponse {
+  repeated MemoryFact items = 1;
+  int32 total = 2;
+  int32 limit = 3;
+  int32 offset = 4;
+}
+
+message MemoryFact {
+  string id = 1;
+  string scope_type = 2;
+  string scope_id = 3;
+  string workspace_id = 4;
+  string user_id = 5;
+  string team_id = 6;
+  string agent_id = 7;
+  string statement = 8;
+  string details_markdown = 9;
+  string fact_kind = 10;
+  string tags_json = 11;
+  double confidence = 12;
+  double importance = 13;
+  int32 use_count = 14;
+  int32 hit_count = 15;
+  int32 positive_feedback_count = 16;
+  int32 negative_feedback_count = 17;
+  int32 conflict_count = 18;
+  string source_kind = 19;
+  string source_episode_id = 20;
+  string source_session_id = 21;
+  string source_message_id = 22;
+  int32 version = 23;
+  string status = 24;
+  bool pii_flag = 25;
+  string created_at = 26;
+  string updated_at = 27;
+}
+
+message ListMemoryEntitiesRequest {
+  string scope_type = 1;
+  string scope_id = 2;
+  string workspace_id = 3;
+  string user_id = 4;
+  string entity_type = 5;
+  string status = 6;
+  string keyword = 7;
+  int32 limit = 8;
+  int32 offset = 9;
+}
+
+message ListMemoryEntitiesResponse {
+  repeated MemoryEntity items = 1;
+  int32 total = 2;
+}
+
+message MemoryEntity {
+  string id = 1;
+  string scope_type = 2;
+  string scope_id = 3;
+  string workspace_id = 4;
+  string user_id = 5;
+  string entity_type = 6;
+  string name = 7;
+  string name_normalized = 8;
+  repeated string aliases = 9;
+  string description = 10;
+  double importance = 11;
+  double confidence = 12;
+  int32 use_count = 13;
+  string source_kind = 14;
+  string status = 15;
+  string created_at = 16;
+  string updated_at = 17;
+}
+
+message MemoryRelation {
+  string id = 1;
+  string source_id = 2;
+  string target_id = 3;
+  string relation_type = 4;
+  double weight = 5;
+  double confidence = 6;
+  string status = 7;
+}
+
+message GetMemoryNeighborhoodRequest {
+  string center_id = 1 [(google.api.field_behavior) = REQUIRED];
+  int32 hops = 2;
+  int32 max_nodes = 3;
+}
+
+message GraphNeighborhood {
+  MemoryEntity center = 1;
+  int32 hops = 2;
+  repeated MemoryEntity entities = 3;
+  repeated MemoryRelation relations = 4;
+}
+
+message GetAgentIdentityRequest {
+  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message AgentIdentity {
+  string agent_id = 1;
+  string persona = 2;
+  repeated string values = 3;
+  string tone = 4;
+  repeated string domains = 5;
+  string user_expectations = 6;
+  string current_phase = 7;
+  int32 version = 8;
+}
+
+message GetAgentStrategyRequest {
+  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message AgentStrategyProfile {
+  string agent_id = 1;
+  double exploration = 2;
+  double conciseness = 3;
+  double caution = 4;
+  double delegation = 5;
+  map<string, double> tool_preference = 6;
+  repeated string tool_blacklist = 7;
+  map<string, double> provider_preference = 8;
+  map<string, double> model_preference = 9;
+  int32 version = 10;
+}
+
+message ListEvolutionProposalsRequest {
+  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string status = 2;
+  int32 limit = 3;
+}
+
+message ListEvolutionProposalsResponse {
+  repeated EvolutionProposal items = 1;
+}
+
+message EvolutionProposal {
+  string id = 1;
+  string agent_id = 2;
+  string proposal_kind = 3;
+  string kind = 4;
+  string target_field = 5;
+  string rationale = 6;
+  string expected_impact = 7;
+  string risk_level = 8;
+  string status = 9;
+  string created_at = 10;
+}
+
+message ListEvolutionEventsRequest {
+  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+  int32 limit = 2;
+}
+
+message ListEvolutionEventsResponse {
+  repeated EvolutionEvent items = 1;
+}
+
+message EvolutionEvent {
+  string id = 1;
+  string agent_id = 2;
+  string event_kind = 3;
+  string kind = 4;
+  string target_field = 5;
+  string reason = 6;
+  bool reverted = 7;
+  string created_at = 8;
+}
+
+message GetEvolutionMetricsRequest {
+  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string range = 2;
+}
+
+message EvolutionMetricsReport {
+  int32 events_total = 1;
+  int32 events_reverted = 2;
+  int32 proposals_total = 3;
+  map<string, int32> proposals_by_status = 4;
+  repeated AgentSkillStat skill_stats = 5;
+}
+
+message AgentSkillStat {
+  string agent_id = 1;
+  string tool_key = 2;
+  int32 invocations = 3;
+  int32 successes = 4;
+  int32 failures = 5;
+  double preference_score = 6;
+  string last_used_at = 7;
+}
+
+service MemoryService {
+  rpc ListL0Snapshots(ListL0SnapshotsRequest) returns (ListL0SnapshotsResponse) {
+    option (google.api.http) = {get: "/v1/sessions/{session_id}/l0/snapshots"};
+  }
+  rpc ListL1Tasks(ListL1TasksRequest) returns (ListL1TasksResponse) {
+    option (google.api.http) = {get: "/v1/sessions/{session_id}/l1/tasks"};
+  }
+  rpc ListL1Fields(ListL1FieldsRequest) returns (ListL1FieldsResponse) {
+    option (google.api.http) = {get: "/v1/sessions/{session_id}/l1/tasks/{task_id}/fields"};
+  }
+  rpc ListMemoryFacts(ListMemoryFactsRequest) returns (ListMemoryFactsResponse) {
+    option (google.api.http) = {get: "/v1/memory/l3/facts"};
+  }
+  rpc ListMemoryEntities(ListMemoryEntitiesRequest) returns (ListMemoryEntitiesResponse) {
+    option (google.api.http) = {get: "/v1/memory/l4/entities"};
+  }
+  rpc GetMemoryNeighborhood(GetMemoryNeighborhoodRequest) returns (GraphNeighborhood) {
+    option (google.api.http) = {get: "/v1/memory/l4/entities/{center_id}/neighborhood"};
+  }
+  rpc GetAgentIdentity(GetAgentIdentityRequest) returns (AgentIdentity) {
+    option (google.api.http) = {get: "/v1/agents/{agent_id}/identity"};
+  }
+  rpc GetAgentStrategy(GetAgentStrategyRequest) returns (AgentStrategyProfile) {
+    option (google.api.http) = {get: "/v1/agents/{agent_id}/strategy"};
+  }
+  rpc ListEvolutionProposals(ListEvolutionProposalsRequest) returns (ListEvolutionProposalsResponse) {
+    option (google.api.http) = {get: "/v1/agents/{agent_id}/evolution/proposals"};
+  }
+  rpc ListEvolutionEvents(ListEvolutionEventsRequest) returns (ListEvolutionEventsResponse) {
+    option (google.api.http) = {get: "/v1/agents/{agent_id}/evolution/events"};
+  }
+  rpc GetEvolutionMetrics(GetEvolutionMetricsRequest) returns (EvolutionMetricsReport) {
+    option (google.api.http) = {get: "/v1/agents/{agent_id}/evolution/metrics"};
+  }
+}

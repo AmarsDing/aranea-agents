@@ -1,8 +1,8 @@
 /**
- * 遗留 Chat REST：`legacyRestApi` + `/api/v1/chat/*`，待后端 `chat/v1` 迁入 Kratos 后替换实现。
+ * Chat 发送 / SSE / options：`kratosApi` + **`/v1/chat/*`**；网关（`cmd/admin`）在设置了 **`LEGACY_REST_ORIGIN`** 时将请求转发至仍实现对话栈的遗留进程（`/api/v1/chat/*`）。
  */
-import { legacyRestApi as api } from "../../services/axiosHandler";
-import { getBackendBaseURL } from "../../config/runtime";
+import { kratosApi } from "../../services/axiosHandler";
+import { getBackendOrigin } from "../../config/runtime";
 import type {
   ChatOption,
   Message,
@@ -12,11 +12,6 @@ import type {
   ToolUseEvent
 } from "./types";
 
-export async function listMessages(sessionID: string): Promise<Message[]> {
-  const { data } = await api.get("/chat/messages", { params: { session_id: sessionID } });
-  return data.items ?? [];
-}
-
 export async function sendMessage(payload: {
   session_id: string;
   agent_key?: string;
@@ -24,7 +19,7 @@ export async function sendMessage(payload: {
   content: string;
   options?: SendMessageOptions;
 }): Promise<SendMessageResult> {
-  const { data } = await api.post("/chat/messages", payload);
+  const { data } = await kratosApi.post("/v1/chat/messages", payload);
   return data;
 }
 
@@ -38,7 +33,7 @@ export async function sendMessageStream(
   },
   callbacks: SendMessageStreamCallbacks = {}
 ): Promise<void> {
-  const response = await fetch(`${getBackendBaseURL()}/chat/messages/stream`, {
+  const response = await fetch(`${getBackendOrigin()}/v1/chat/messages/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -96,6 +91,6 @@ function handleStreamEvent(block: string, callbacks: SendMessageStreamCallbacks)
 }
 
 export async function listChatOptions(type?: string): Promise<ChatOption[]> {
-  const { data } = await api.get("/chat/options", { params: type ? { type } : undefined });
+  const { data } = await kratosApi.get("/v1/chat/options", { params: type ? { type } : undefined });
   return data.items ?? [];
 }

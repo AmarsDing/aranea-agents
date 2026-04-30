@@ -1,4 +1,4 @@
-/** 记忆 / L0–L4 / 图谱与进化遗留 REST 响应形状（snake_case）；待 `memory/v1` 对齐 proto。 */
+/** 记忆中心 UI / `memory/v1` 映射后的 snake_case 形状（与网关 JSON 对齐）。 */
 
 export type L0AssemblySegment = {
   section: string;
