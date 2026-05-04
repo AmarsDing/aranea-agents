@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"os"
 
 	"aranea-agents/internal/conf"
+	"aranea-agents/internal/cronrunner"
 
 	"github.com/go-kratos/kratos/v2"
 	"github.com/go-kratos/kratos/v2/config"
@@ -77,14 +79,22 @@ func main() {
 		panic(err)
 	}
 
-	app, cleanup, err := wireApp(bc.Server, bc.Data, logger)
+	out, cleanup, err := wireApp(bc.Server, bc.Data, logger)
 	if err != nil {
 		panic(err)
 	}
 	defer cleanup()
 
+	cronCtx, cancelCron := context.WithCancel(context.Background())
+	defer cancelCron()
+	if out.CronRunner != nil {
+		interval := cronrunner.DefaultInterval()
+		go out.CronRunner.Start(cronCtx, interval)
+		logger.Log(log.LevelInfo, "msg", "cron runner started", "interval", interval.String())
+	}
+
 	// start and wait for stop signal
-	if err := app.Run(); err != nil {
+	if err := out.App.Run(); err != nil {
 		panic(err)
 	}
 }

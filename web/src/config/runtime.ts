@@ -46,8 +46,7 @@ export function getBackendOrigin(): string {
 export const getAdminServiceBaseURL = getBackendOrigin;
 
 /**
- * 遗留手写 REST（**`legacyRestApi`**，`web/src/services/axiosHandler.ts`）的 axios 前缀：**同一 `getBackendOrigin()` + 路径段 `/api/v1`**。
- * 新接口优先在 proto 中定义并由 `make api` 生成，不再增加此类路径族。
+ * **`{getBackendOrigin()}/api/v1`**（或开发环境下 **`/api/v1`**）。前端业务代码已统一走 **`kratosApi`** + **`/v1/...`**；保留此 helper 供运维脚本、DeepLink、或极少数仍需直连旧前缀的工具使用。
  */
 export function getBackendBaseURL(): string {
   const origin = getBackendOrigin();

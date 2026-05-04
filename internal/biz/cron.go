@@ -67,6 +67,8 @@ type CronRepo interface {
 	UpdateCronTask(ctx context.Context, t CronTask) (CronTask, error)
 	DeleteCronTask(ctx context.Context, id string) error
 	ListCronTaskRuns(ctx context.Context, q CronTaskRunQuery) ([]CronTaskRun, error)
+	InsertCronTaskRun(ctx context.Context, id, taskID, status, startedAt, outputJSON, createdAt string) error
+	UpdateCronTaskRun(ctx context.Context, id, status, finishedAt, outputJSON, errorMessage string) error
 }
 
 type CronUsecase struct {

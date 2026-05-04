@@ -470,3 +470,109 @@ func (r *skillRepo) GetSkillStorageDir(ctx context.Context, id string) (string, 
 	}
 	return metadata.StorageDir, nil
 }
+
+func previewSkillBody(body string, limit int) string {
+	body = strings.TrimSpace(body)
+	if limit <= 0 {
+		return body
+	}
+	runes := []rune(body)
+	if len(runes) <= limit {
+		return body
+	}
+	return string(runes[:limit]) + "..."
+}
+
+func (r *skillRepo) ListSkillSimilaritySources(ctx context.Context) ([]biz.SkillSimilaritySource, error) {
+	c := r.client()
+	rows, err := c.PlatformSkill.Query().
+		Where(platformskill.DeletedAtEQ("")).
+		Order(platformskill.ByUpdatedAt(entsql.OrderDesc()), platformskill.ByCreatedAt(entsql.OrderDesc())).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]biz.SkillSimilaritySource, 0, len(rows))
+	for _, s := range rows {
+		item := biz.SkillSimilaritySource{
+			ID:          s.ID,
+			Name:        s.Name,
+			Slug:        s.SkillKey,
+			Description: s.Description,
+		}
+		sv, err := c.SkillVersion.Query().
+			Where(skillversion.SkillIDEQ(s.ID)).
+			Order(skillversion.ByCreatedAt(entsql.OrderDesc())).
+			First(ctx)
+		if err != nil {
+			if dataent.IsNotFound(err) {
+				out = append(out, item)
+				continue
+			}
+			return nil, err
+		}
+		item.Version = sv.Version
+		item.Body = sv.ContentMarkdown
+		item.BodyPreview = previewSkillBody(item.Body, 240)
+		out = append(out, item)
+	}
+	return out, nil
+}
+
+func (r *skillRepo) CreateSkillWithVersion(ctx context.Context, in biz.SkillCreateInput) (biz.Skill, error) {
+	in.Name = strings.TrimSpace(in.Name)
+	in.Slug = strings.TrimSpace(in.Slug)
+	in.Description = strings.TrimSpace(in.Description)
+	in.Body = strings.TrimSpace(in.Body)
+	if in.Name == "" || in.Slug == "" || in.Body == "" {
+		return biz.Skill{}, errors.New("skill name, slug and body are required")
+	}
+	skillID := fmt.Sprintf("skill_%d", time.Now().UTC().UnixNano())
+	versionID := fmt.Sprintf("skillver_%d", time.Now().UTC().UnixNano())
+	metadata := struct {
+		Tags       []biz.SkillTag `json:"tags"`
+		StorageDir string         `json:"storage_dir"`
+	}{Tags: in.Tags, StorageDir: in.StorageDir}
+	metaJSON, err := json.Marshal(metadata)
+	if err != nil {
+		return biz.Skill{}, err
+	}
+	now := nowRFC3339()
+	tx, err := r.client().Tx(ctx)
+	if err != nil {
+		return biz.Skill{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err = tx.PlatformSkill.Create().
+		SetID(skillID).
+		SetSkillKey(in.Slug).
+		SetName(in.Name).
+		SetDescription(in.Description).
+		SetStatus("draft").
+		SetEnabled(false).
+		SetSortOrder(0).
+		SetConfigJSON("{}").
+		SetMetadataJSON(string(metaJSON)).
+		SetCreatedAt(now).
+		SetUpdatedAt(now).
+		SetDeletedAt("").
+		Save(ctx); err != nil {
+		return biz.Skill{}, err
+	}
+	if _, err = tx.SkillVersion.Create().
+		SetID(versionID).
+		SetSkillID(skillID).
+		SetVersion("1.0.0").
+		SetStatus("pass").
+		SetContentMarkdown(in.Body).
+		SetMetadataJSON(string(metaJSON)).
+		SetCreatedAt(now).
+		SetUpdatedAt(now).
+		Save(ctx); err != nil {
+		return biz.Skill{}, err
+	}
+	if err = tx.Commit(); err != nil {
+		return biz.Skill{}, err
+	}
+	return r.GetSkillByID(ctx, skillID)
+}

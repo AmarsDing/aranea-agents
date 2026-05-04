@@ -15,6 +15,7 @@ var (
 	// noAuthPaths defines the paths that do not require authentication.
 	noAuthPaths = map[string]struct{}{
 		"/v1/admins/login": {},
+		"/healthz":         {},
 	}
 	// authSecretKey is the secret key used for signing JWT tokens.
 	authSecretKey = authSecretFromEnv("KRATOS_AUTH_SECRET")

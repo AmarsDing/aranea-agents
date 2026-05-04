@@ -1,7 +1,7 @@
 <template>
   <div>
     <q-banner v-if="!factsEndpointReady" rounded class="memory-info-banner q-mb-md">
-      L3 facts 暂时不可用。这里会读取 `/api/v1/memory/l3/facts`，请检查后端服务或筛选条件。
+      L3 facts 暂时不可用。请检查 **`memory/v1`** 网关（**`GET /v1/memory/l3/facts`**）或筛选条件。
     </q-banner>
     <q-card flat bordered class="memory-card">
       <q-card-section class="row q-col-gutter-sm items-center">

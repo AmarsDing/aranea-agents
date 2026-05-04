@@ -7,7 +7,7 @@ import (
 	v1 "aranea-agents/api/kratos/memory/v1"
 )
 
-// legacy JSON decoding helpers (upstream **`/api/v1/...`** responses use snake_case).
+// JSON decoding helpers for **memory/v1** wire data (**snake_case** maps from SQLite/sessionmemory JSON shaping).
 func ifaceStr(m map[string]any, k string) string {
 	v, ok := m[k]
 	if !ok || v == nil {

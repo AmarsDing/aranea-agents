@@ -1,25 +1,29 @@
 package server
 
 import (
+	"encoding/json"
+	nethttp "net/http"
+
 	adminv1 "aranea-agents/api/kratos/admin/v1"
 	agentv1 "aranea-agents/api/kratos/agent/v1"
 	agentcategoryv1 "aranea-agents/api/kratos/agent_category/v1"
 	avatarv1 "aranea-agents/api/kratos/avatar/v1"
+	channelv1 "aranea-agents/api/kratos/channel/v1"
 	cronv1 "aranea-agents/api/kratos/cron/v1"
 	hookv1 "aranea-agents/api/kratos/hook/v1"
 	llmprovidermodelv1 "aranea-agents/api/kratos/llm_provider_model/v1"
 	mcpserverv1 "aranea-agents/api/kratos/mcp_server/v1"
+	memoryv1 "aranea-agents/api/kratos/memory/v1"
+	monitorv1 "aranea-agents/api/kratos/monitor/v1"
 	pluginv1 "aranea-agents/api/kratos/plugin/v1"
 	sessionv1 "aranea-agents/api/kratos/session/v1"
 	skillv1 "aranea-agents/api/kratos/skill/v1"
 	teamv1 "aranea-agents/api/kratos/team/v1"
 	toolv1 "aranea-agents/api/kratos/tool/v1"
-	channelv1 "aranea-agents/api/kratos/channel/v1"
-	monitorv1 "aranea-agents/api/kratos/monitor/v1"
-	memoryv1 "aranea-agents/api/kratos/memory/v1"
 	usagev1 "aranea-agents/api/kratos/usage/v1"
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/service"
+	"aranea-agents/internal/skillimport"
 	"aranea-agents/pkg/auth"
 	"aranea-agents/pkg/validate"
 
@@ -46,6 +50,7 @@ func NewHTTPServer(c *conf.Server,
 	monitorSvc *service.MonitorService,
 	memorySvc *service.MemoryService,
 	teams *service.TeamService,
+	skillImport *skillimport.Engine,
 ) *http.Server {
 	var opts = []http.ServerOption{
 		http.Filter(
@@ -84,5 +89,13 @@ func NewHTTPServer(c *conf.Server,
 	monitorv1.RegisterMonitorServiceHTTPServer(srv, monitorSvc)
 	memoryv1.RegisterMemoryServiceHTTPServer(srv, memorySvc)
 	teamv1.RegisterTeamServiceHTTPServer(srv, teams)
+	RegisterLegacyChatForwardHTTPServer(srv)
+	RegisterSkillImportHTTPServer(srv, skillImport)
+	srv.Route("/").GET("/healthz", func(ctx http.Context) error {
+		w := ctx.Response()
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(nethttp.StatusOK)
+		return json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	})
 	return srv
 }

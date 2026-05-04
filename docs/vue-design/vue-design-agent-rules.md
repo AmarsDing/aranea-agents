@@ -17,8 +17,8 @@
 
 ## MUST
 
-- Put **new HTTP calls** in `web/src/features/<domain>/api.ts`（或域内子模块，例如 **`features/session/api.ts`**），并通过 **`web/src/services/index.ts`** 的 **`createFooService()`** + `requestHandler` 调 Kratos；**不得**把新实现塞进 **`legacyRest.ts`** / **`axiosHandler`** 以外的自创巨型胶水入口（例外：仍为 **`legacyRestApi`** 的旧路径须写在 **`features/<域>/`** 内）。
-- **遗留 REST**：仍走 **`legacyRestApi`**（`/api/v1/…`，实例来自 **`services/axiosHandler`**）。请在 **`features/<域>/api.ts`** 或 **`features/<域>/legacyRest.ts`** 收口。**禁止**在薄封装层追加 **已迁至 Kratos** 的领域逻辑（会话见 **`features/session/api.ts`**）。
+- Put **new HTTP calls** in `web/src/features/<domain>/api.ts`（或域内子模块，例如 **`features/session/api.ts`**），并通过 **`web/src/services/index.ts`** 的 **`createFooService()`** + `requestHandler`（或 **`kratosApi`**）访问 **`/v1/...`**；**不得**把新实现塞进 **`axiosHandler`** 以外的自创巨型胶水入口。
+- **仍命中旧 `/api/v1/...` 的过渡能力**（例如经网关改写）：在 **`features/<域>/api.ts`** 或 **`features/<域>/legacyRest.ts`** 收口，优先 **`kratosApi`** 请求 **`/v1/...`**（由 **`cmd/admin`** 转发）；确需裸前缀时用 **`axios`** + **`getBackendBaseURL()`**（**`config/runtime.ts`**）。**禁止**在薄封装层追加 **已迁至 Kratos** 的领域逻辑（会话见 **`features/session/api.ts`**）。
 - Trigger network requests from **Pinia `actions`** (store calls the API/service layer).
 - Prefer **Composable → Store actions** (not Composable → API directly). *If* you must call API from a composable during migration, add at file top: `// TECH-DEBT: direct API call; move to store — issue #...`
 - Pages: **route + layout + call `useXxx()` + pass props + handle emits**; keep `<script setup>` short.
@@ -31,7 +31,7 @@
 ## MUST NOT (in presentational `components/**/*.vue` `<script>`)
 
 - `useXxxStore`, `defineStore`, `storeToRefs` used **to drive business data** (unless file is an approved **container** with first-line comment: `// Container: approved because ...`).
-- Imports from **`features/*/api`**, **`services/`** request entrypoints, **`axios`**, **`api.get`**, **`legacyRestApi`**, **`create*Service()`** used to **mutate remote state or load lists** — **including `dialogs/**` / form dialogs**: use **`emit('submit', payload)`** and handle HTTP in **Page or store action** unless the file is an approved **container** (`// Container: approved because …` at line 1).
+- Imports from **`features/*/api`**, **`services/`** request entrypoints, **`axios`**, **`api.get`**, **`kratosApi`**, **`create*Service()`** used to **mutate remote state or load lists** — **including `dialogs/**` / form dialogs**: use **`emit('submit', payload)`** and handle HTTP in **Page or store action** unless the file is an approved **container** (`// Container: approved because …` at line 1).
 - **`watch` + fetch + `ref`** for data **shared across components** — that belongs in a **store**.
 
 ---
@@ -40,8 +40,8 @@
 
 | Need | Put it in |
 |------|-----------|
-| Raw HTTP + types（**含 Kratos**） | **`features/<domain>/api.ts`** 或域内子模块（如 **`features/session/api.ts`**）；经 **`services/index.ts`** → **`create*Service()`** |
-| Raw HTTP（仍 **legacy `/api/v1`**） | **`features/<domain>/api.ts`** 使用 **`legacyRestApi`**（来自 **`axiosHandler`**），或 **`features/<domain>/legacyRest.ts`**；**勿**把 **已迁 Kratos** 的新逻辑混进遗留路径 |
+| Raw HTTP + types（**含 Kratos**） | **`features/<domain>/api.ts`** 或域内子模块（如 **`features/session/api.ts`**）；经 **`services/index.ts`** → **`create*Service()`** 或 **`kratosApi`** |
+| Raw HTTP（仍 **`/api/v1/...`** 过渡前缀） | 同上域内收口；优先 **`kratosApi`** + **`/v1/...`**（网关转发）；极少数再用 **`axios`** + **`getBackendBaseURL()`** |
 | Cached lists, loading, errors, workflows | `stores/<domain>/` |
 | Reusable “page glue” | `composables/useXxx.ts` or `features/<domain>/useXxx.ts` |
 | Pure UI（含 Dialog / Drawer；仅 props+emits） | `components/<domain>/`；**禁止**落 `features/<domain>/`；浮层材质 [UX.md](../UI/UX.md) §1～§2（玻璃 + 双前缀 blur；主操作 `--color-accent`）；**不得**在组件内直接调 `features/*/api`，应 **`emit('submit', …)`** |

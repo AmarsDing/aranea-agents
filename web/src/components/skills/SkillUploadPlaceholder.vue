@@ -142,7 +142,7 @@ import type {
 } from "../../features/skills/types";
 
 const props = defineProps<{
-  /** 遗留 `/api/v1/skills/import*`；由 Page 绑定 `features/skills/api` */
+  /** `kratosApi` **`/v1/skills/import*`**（**`cmd/admin`**）；由 Page 绑定 `features/skills/api` */
   uploadSkillZip: (file: File) => Promise<{ job_id: string }>;
   getSkillImportJob: (jobId: string) => Promise<SkillImportJob>;
   refineSkillConflictGroup: (

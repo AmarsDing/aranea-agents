@@ -1,5 +1,7 @@
 /**
- * Chat 发送 / SSE / options：`kratosApi` + **`/v1/chat/*`**；网关（`cmd/admin`）在设置了 **`LEGACY_REST_ORIGIN`** 时将请求转发至仍实现对话栈的遗留进程（`/api/v1/chat/*`）。
+ * Chat 发送 / SSE / options：`kratosApi` + **`/v1/chat/*`**。
+ * **`cmd/admin`** 用 **`RegisterLegacyChatForwardHTTPServer`**（`internal/server/chat_legacy_forward.go`）挂载这些路径：
+ * 配置了 **`LEGACY_REST_ORIGIN`** 时反向代理到 **`{origin}/api/v1/chat/*`**；未配置时返回 **503**。
  */
 import { kratosApi } from "../../services/axiosHandler";
 import { getBackendOrigin } from "../../config/runtime";

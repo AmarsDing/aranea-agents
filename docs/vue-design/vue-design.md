@@ -38,8 +38,8 @@ Component（仅展示：props in / emits out）
 | 禁止 | 说明 |
 |------|------|
 | `useXxxStore` / `defineStore` | 状态与请求收敛在 Store |
-| `features/*/api`、`services/`（`legacyRestApi` / `createFooService`）中发请求的门面 | 网络只能在 Service/API 层声明，**请求动作**在 Store |
-| `axios` / `api.get` / `legacyRestApi` / `createFooService()` 等 | 同上 |
+| `features/*/api`、`services/`（`kratosApi` / `createFooService`）中发请求的门面 | 网络只能在 Service/API 层声明，**请求动作**在 Store |
+| `axios` / `api.get` / `kratosApi` / `createFooService()` 等 | 同上 |
 | 在组件内 `watch` + 拉列表并 `ref` 存「跨组件要共享」的业务数据 | 应进 Store |
 
 **允许**在展示组件内：
@@ -95,7 +95,7 @@ Component（仅展示：props in / emits out）
 
 | 层级 | 路径 | 职责 |
 |------|------|------|
-| HTTP 纯封装 | `features/<域>/api.ts`（及域内子模块如 **`features/session/api.ts`**）、`services/index.ts`（`create*Service`）、`axiosHandler`；仍走 **`/api/v1/…`** 的实现在对应域 **`features/<域>/legacyRest.ts`**（如 **`features/chat/legacyRest.ts`**、**`features/memory/legacyRest.ts`**）或 **`features/*/api.ts`** 内直接 **`import { legacyRestApi }`** —— **禁止**在其中追加 **已迁至 Kratos** 的新逻辑 | 只做请求与类型映射，**不**持有业务 loading |
+| HTTP 纯封装 | `features/<域>/api.ts`（及域内子模块）、`services/index.ts`（`create*Service`）、`axiosHandler`（**`kratosApi`**）；过渡 **`/api/v1/...`** 在同域 **`legacyRest.ts`**（如 **`features/chat/legacyRest.ts`**）或 **`features/*/api.ts`** 用 **`kratosApi`** / **`axios` + `getBackendBaseURL()`** —— **禁止**在其中追加 **已迁至 Kratos** 的新逻辑 | 只做请求与类型映射，**不**持有业务 loading |
 | Store | `stores/<域>/index.ts`，经 `stores/index.ts` **具名导出**；**default export** 必须保留 Quasar 要求的 **Pinia 工厂** | 领域状态 + actions |
 | Composable | `composables/useXxx.ts`（跨域）或 `features/<域>/useXxx.ts`（域内） | 暴露给 Page 的薄 API |
 | 展示组件 | `components/<域>/**/*.vue` | props / emits |
@@ -122,7 +122,7 @@ Component（仅展示：props in / emits out）
 - **不得**：读 `useRoute`、改 Pinia、`$q.notify`（通知在 Store 或 Composable 中统一策略）。
 - **本仓库**：
   - **Kratos**：在 **`features/<域>/api.ts`**（或 **`features/<域>/<topic>.ts`**，例如会话用 **`features/session/api.ts`**）中 **`import { createXxxService } from "../../services/index"`**（路径按目录调整），经 **`requestHandler`** 访问 **`/v1/...`**。
-  - **遗留 REST**：仍走 **`legacyRestApi`**（`axiosHandler.ts`）的调用写在 **`features/*/api.ts`**，或与 **`legacyRest.ts`** 同域收口 —— **禁止**把这些文件当成「万能兜底」：已为 **`/v1/...`** 的能力必须在 **`create*Service()`** 路径实现（避免与 Kratos 并存两套实现）。
+  - **过渡路径（网关改写或旧前缀）**：写在 **`features/*/api.ts`** 或与 **`legacyRest.ts`** 同域收口；优先 **`kratosApi`** **`/v1/...`**。**禁止**把这些文件当成「万能兜底」。
   - 新路径集中写 **feature api**，勿在 `.vue` 写裸 URL。
 
 ### 3.2 Store
@@ -168,7 +168,7 @@ Component（仅展示：props in / emits out）
 当 AI 或开发者接到「迁移旧代码」任务时，按顺序执行：
 
 1. **画数据流**：标出当前「谁发起请求、谁保存列表、谁被多页面读取」。
-2. **抽 Service**：若请求逻辑嵌在 `.vue` 或巨无霸 composable，先挪到 `features/<域>/api.ts`（或域内子模块如 **`features/session/api.ts`**）；**Kratos** 调用一律经 **`services/index.ts`** 的 **`create*Service()`**。旧 **`/api/v1/…`** 仅能走 **`legacyRestApi`**（从 **`services`** 或 **`services/axiosHandler`** 引入）：实现在 **`features/<域>/api.ts`** 或 **`features/<域>/legacyRest.ts`**，**勿**再建 mega facade。
+2. **抽 Service**：若请求逻辑嵌在 `.vue` 或巨无霸 composable，先挪到 `features/<域>/api.ts`（或域内子模块如 **`features/session/api.ts`**）；**Kratos** 调用一律经 **`services/index.ts`** 的 **`create*Service()`** 或 **`kratosApi`**。确需旧前缀时用 **`axios`** + **`getBackendBaseURL()`**：实现在 **`features/<域>/api.ts`** 或 **`features/<域>/legacyRest.ts`**，**勿**再建 mega facade。
 3. **建或扩展 Store**：新增 action `loadXxx`，把原 `ref` 列表、`loading` 移入 state。
 4. **写或收窄 Composable**：`useXxx` 只暴露 `storeToRefs` / 调用 `store.loadXxx`。
 5. **瘦 Page**：删除散装请求，换 composable。
@@ -195,11 +195,11 @@ Component（仅展示：props in / emits out）
 **`features/skill/api.ts`**
 
 ```typescript
-import { legacyRestApi as api } from "../../services";
+import { createAgentService } from "../../services";
 
-export async function fetchAgentSkillStats(agentId: string) {
-  const { data } = await api.get(`/agents/${agentId}/skill-stats`);
-  return data;
+export async function fetchAgent(agentId: string) {
+  const svc = createAgentService();
+  return svc.GetAgent({ id: agentId });
 }
 ```
 

@@ -220,3 +220,26 @@ func (r *cronRepo) ListCronTaskRuns(ctx context.Context, q biz.CronTaskRunQuery)
 	}
 	return out, nil
 }
+
+func (r *cronRepo) InsertCronTaskRun(ctx context.Context, id, taskID, status, startedAt, outputJSON, createdAt string) error {
+	_, err := r.data.entClient.CronTaskRun.Create().
+		SetID(id).
+		SetTaskID(taskID).
+		SetStatus(status).
+		SetStartedAt(startedAt).
+		SetFinishedAt("").
+		SetOutputJSON(outputJSON).
+		SetErrorMessage("").
+		SetCreatedAt(createdAt).
+		Save(ctx)
+	return err
+}
+
+func (r *cronRepo) UpdateCronTaskRun(ctx context.Context, id, status, finishedAt, outputJSON, errorMessage string) error {
+	return r.data.entClient.CronTaskRun.UpdateOneID(id).
+		SetStatus(status).
+		SetFinishedAt(finishedAt).
+		SetOutputJSON(outputJSON).
+		SetErrorMessage(errorMessage).
+		Exec(ctx)
+}

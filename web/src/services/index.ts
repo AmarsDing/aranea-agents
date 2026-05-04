@@ -86,7 +86,7 @@ export function createMemoryService() {
   return createMemoryServiceClient(requestHandler);
 }
 
-export { kratosApi, legacyRestApi, requestHandler, syncHttpClients } from "./axiosHandler";
+export { kratosApi, requestHandler, syncHttpClients } from "./axiosHandler";
 
 /** ADK：`run_sse` / `run_live`（fetch + WebSocket），不走 axios */
 export * from "./adk";

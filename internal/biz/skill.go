@@ -9,8 +9,8 @@ import (
 
 // SkillTag mirrors admin JSON.
 type SkillTag struct {
-	Name   string
-	Source string
+	Name   string `json:"name"`
+	Source string `json:"source"`
 }
 
 type SkillVersionSummary struct {
@@ -119,6 +119,8 @@ type SkillRepo interface {
 	DeleteSkill(ctx context.Context, id string) error
 	SearchSkillInvocations(ctx context.Context, q SkillRunQuery) (SkillRunResult, error)
 	GetSkillStorageDir(ctx context.Context, id string) (string, error)
+	ListSkillSimilaritySources(ctx context.Context) ([]SkillSimilaritySource, error)
+	CreateSkillWithVersion(ctx context.Context, in SkillCreateInput) (Skill, error)
 }
 
 type SkillUsecase struct {
