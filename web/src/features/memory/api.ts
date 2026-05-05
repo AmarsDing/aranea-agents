@@ -24,6 +24,7 @@ export type {
 export { memoryEndpoints } from "./memoryEndpoints";
 
 import { createMemoryService } from "../../services/index";
+import type { AppendEvolutionEventRequest, MemoryFact as PbMemoryFact } from "../../services/kratos/memory/v1/index";
 import type {
   AgentIdentity,
   AgentSkillStat,
@@ -433,7 +434,14 @@ export async function listEvolutionEvents(agentID: string, params: { limit?: num
   return Array.isArray(items) ? items.map(mapEvolutionEvent) : [];
 }
 
-export async function getEvolutionMetrics(agentID: string, range = "30d"): Promise<EvolutionMetricsReport> {
-  const raw = await memory.GetEvolutionMetrics({ agentId: agentID, range });
-  return mapEvolutionMetrics(raw);
+export async function upsertMemoryFact(fact: Partial<PbMemoryFact>): Promise<MemoryFact> {
+  const res = asRecord(await memory.UpsertMemoryFact({ fact: fact as PbMemoryFact }));
+  const raw = res.fact ?? res.Fact;
+  return mapFact(raw);
+}
+
+export async function appendEvolutionEvent(req: AppendEvolutionEventRequest): Promise<EvolutionEvent> {
+  const res = asRecord(await memory.AppendEvolutionEvent(req));
+  const raw = res.event ?? res.Event;
+  return mapEvolutionEvent(raw);
 }

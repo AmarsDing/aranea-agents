@@ -171,7 +171,7 @@
 | 4 | Agent 目录；Team / 运行 | `agents`（CRUD、runtime、prompt、preview）；`teams`、`team-runs`、`team-run-events` | `agent/v1`；`team/v1` | **`agent/v1`（目录）与 `team/v1`（teams + team-runs/steps）已落地**；**`team-run-events`（SSE）已在 `cmd/admin` 独立 SSE 端口挂载**（前端同源 **`/sse/team-run-events`**）；实时 **`biz.TeamRunEventBroker.Publish`** 仍待会话/编排栈迁入后接线（运行写入可能仍在遗留侧）。 |
 | 5 | 技能 · 工具 · 插件 · 通道；**Cron（任务 CRUD + 运行列表 + 调度循环）** | `skills`、`plugins`、`channels`、`/api/v1/tools`（`capability` 注册）；**`cron-tasks`、`cron-task-runs`** | `skill/v1`、`plugin/v1`、`channel/v1`、`tool/v1` 等；**`cron/v1`** | **`cron/v1` + `internal/cronrunner` 已落地**（Ent、HTTP；调度与同库运行记录）；**`LEGACY_REST_ORIGIN` / `CRON_*` 见 §6.3.1**。**`plugin/v1` 已落地（管理 UI）**：Ent **`PlatformPlugin`**，`GET /v1/plugins`、`PATCH /v1/plugins/{id}/enabled`、`PUT /v1/plugins/{id}/config`；与旧栈相比 **未迁** `SyncBuiltins`、CLI/运行时插件装配等（仍 **`pkg/backend`**）。**`skill/v1` 已落地（管理 UI）**：Ent **`PlatformSkill`** / **`SkillVersion`** / **`SkillInvocation`** 等，HTTP **`GET /v1/skills`**、`PATCH /v1/skills/{id}/enabled`、`POST /v1/skills/{id}/duplicate`、`DELETE /v1/skills/{id}`、文件与子路径、`GET /v1/skill-runs`；**`/v1/skills/import*`**（multipart + 冲突消解 JSON）已在 **`cmd/admin`**（**`RegisterSkillImportHTTPServer`** / **`internal/skillimport`**），不再依赖遗留 **`/api/v1/skills/import*`**。**`tool/v1` 已落地（管理 UI CRUD + runs）**：`/v1/tools`、`/v1/tools/runs` 等；**`GET /api/v1/agents/:id/tools/effective`**：遗留前缀仍有外部客户端时须经网关改写（管理 UI 已 **`agent/v1`**）。**`channel/v1` 已落地（管理 UI）**：`/v1/channels`、`/v1/channels/catalog` 等。 |
 | 6 | 记忆 · 进化 | SQLite L0–L4、`agents/*/identity|strategy|evolution/*` | `memory/v1` | **`memory/v1`** 已在 **`cmd/admin`** 由 **`internal/data/sessionmemory`** 读 SQLite（与 Ent 同连接）；**不再** HTTP 转发 **`LEGACY_REST_ORIGIN`**。另有 **`internal/data/pgvector` + `biz/memory`**（向量记忆）与会话链 SQLite **并行时需文档说明边界**。若需 **写** facts / 进化等，须扩 proto + service。 |
-| 7 | 用量 · 监控 | `model-usage/*`、`monitor/*`（含 audit、占位 logs） | `usage/v1`、`monitor/v1` | **`usage/v1`**（`/v1/usage/*`）；**`monitor/v1`**（`/v1/monitor/audit|events|events/{id}|traces|traces/{id}|logs`；SQLite：`audit_logs`、`monitor_events`、`monitor_traces`）；**SSE（tx7do + broker）**：`/sse/monitor/logs/stream`、`/sse/team-run-events` → **`configs.server.sse`**；用量写入与其它路由仍可能走 **`pkg/backend`**。**前端**：[`features/monitor/api.ts`](../../web/src/features/monitor/api.ts)（门面）、[`components/monitor/`](../../web/src/components/monitor/)（展示 `.vue`，与 `vue-design.md` §2 路径硬性一致）。 |
+| 7 | 用量 · 监控 | `model-usage/*`、`monitor/*`（含 audit、占位 logs） | `usage/v1`、`monitor/v1` | **`usage/v1`**：读 **`/v1/usage/*`**；**写**：**`POST /v1/usage/token-events`** 录入 **`model_token_usage_events`**，并 **`UPDATE sessions`** 用量列 + **`model_token_usage_daily`** rollup（对齐 **`pkg/backend` `AddModelTokenUsageEvent`**，供原生 chat / 上游回调逐步接线）。**浏览器 / 双写约束见 §6.3.2**。**`monitor/v1`**（`/v1/monitor/audit|events|events/{id}|traces|traces/{id}|logs`；SQLite：`audit_logs`、`monitor_events`、`monitor_traces`）；**SSE（tx7do + broker）**：`/sse/monitor/logs/stream`、`/sse/team-run-events` → **`configs.server.sse`**；其它写入仍可能走 **`pkg/backend`**。**前端**：[`features/monitor/api.ts`](../../web/src/features/monitor/api.ts)（门面）、[`components/monitor/`](../../web/src/components/monitor/)（展示 `.vue`，与 `vue-design.md` §2 路径硬性一致）。 |
 
 ### 6.3.1 环境变量与遗留 HTTP 边界（运维速查）
 
@@ -189,6 +189,24 @@
 
 **Catalog / 平台余项「逐个收口」顺序**（tools、channels、`usage`、`monitor`、skill import、SSE 等）：见 **[checklist-catalog-platform-remnants.md](./checklist-catalog-platform-remnants.md)**。
 
+### 6.3.2 用量：`token-events` 浏览器 ingest 与双写（必读）
+
+**HTTP**：**`POST /v1/usage/token-events`**（**`UsageService.RecordTokenUsageEvent`**），请求体为完整 **`TokenUsageEvent`**。Kratos **`ctx.Bind`** 使用生成消息上的 **`encoding/json` 标签**：字段名为 **snake_case**（如 **`occurred_at`**、**`agent_id`**、**`total_cost_micro_usd`**），与 **`api/kratos/usage/v1/usage.pb.go`** 中 **`json:"…"`** 一致。
+
+**前端**：[**`web/src/features/usage/api.ts`**](../../web/src/features/usage/api.ts) 中 **`recordModelTokenUsageEvent`** 使用 **`kratosApi.post`** 与 **`usageTokenEventIngestBody(...)`** 显式构造 snake_case JSON。**勿**依赖 **`protoc-gen-typescript-http`** 生成的 **`RecordTokenUsageEvent`** 默认体：其对 **`TokenUsageEvent`** 使用 **`JSON.stringify`**，键为 **camelCase**，与上述 Go 绑定不一致，易导致静默丢字段或整体验证失败。
+
+**单一写入方（避免双写 / 重复计数）**
+
+| 场景 | 说明 |
+|------|------|
+| **当前主流路径** | 对话完成仍在 **`pkg/backend`**（或 **`LEGACY_REST_ORIGIN`** 上游）处理时，旧栈往往在 **同一轮对话结束** 已写入 **`model_token_usage_events`**（及会话侧汇总）。此时若在浏览器 **`onDone` / SSE 结束** 再调 **`POST /v1/usage/token-events`**，会对 **同一轮交互** **重复插入**，报表与 **`model_token_usage_daily`** 会被 **放大**。 |
+| **目标态** | **原生 `chat/v1` 落在 `cmd/admin`** 且 **仅此路径** 调用 **`UsageUsecase.RecordTokenUsageEvent`**（或等价服务端钩子）时，**无需**浏览器再报同一事件；遗留 **`pkg/backend`** 侧对应写入应 **关停或改为 no-op**。 |
+| **例外** | 仅当 **服务端确认对该请求类型从不写入用量**（例如纯前端估算、或完全不同的 **`id`/会话** 且不重叠）时，浏览器 ingest 才可单独启用；须在 PR / Runbook 写明理由。 |
+
+**产品化过渡（建议）**：若必须在过渡期同时保留「服务端自动写」与「浏览器补报」两种能力，应用 **显式配置位**（例如 **`RECORD_USAGE_FROM_BROWSER=1`** 或等价 feature flag）保证 **同一部署中默认只启用一侧**，并在运维文档记录；**禁止**在未知遗留是否已写的情况下默认打开浏览器上报。
+
+**与本章其它「双写」的关系**：§7 **双进程 / 双读双写窗口**指 **两个进程争用同一 SQLite** 的工程风险；**§6.3.2** 指 **同一业务事件被两处应用逻辑各写一行用量** 的 **语义双写**，二者均需在生产核对。
+
 ### 6.4 AI / 人肉执行「迁完全部」的操作顺序（每次只推进一行）
 
 对每个 **状态为「未迁移」** 的域，从上到下按 §6.1 顺序选域 → 为该域单列 **迁移清单**（可仿 **[checklist-avatar](./checklist-avatar.md)**）→ 按 **§5** 与 **§9** 逐项完成 → **回写本 §6.3 表**为已落地。
@@ -198,7 +216,7 @@
 - 收口 **monitor / 用量写入**（步 7）等仍偏 **`pkg/backend`** 的能力；或  
 - **记忆 / 进化写路径**（步 6）按需扩 proto。  
 
-编排变更、双进程与 **`LEGACY_REST_*`**：**§6.3.1**。
+编排变更、双进程与 **`LEGACY_REST_*`**：**§6.3.1**。**用量**：浏览器 **`token-events` ingest** 与 **语义双写**：**§6.3.2**。
 
 ---
 
@@ -206,6 +224,7 @@
 
 - 旧库大量使用 **`TEXT` UUID** 主键；Kratos/Ent 示例多为 **int64**。新 proto 中 **id 类型**需统一设计（string vs int64），并 **全链路**（DB、Ent、biz、proto、TS）一致。
 - **双写/双读窗口**：迁移期可能同时存在 `pkg/backend` 进程与 `cmd/admin`—需约定**库文件锁**或**只读副本**，避免双进程写同一 SQLite 文件。
+- **用量语义双写**：即使单库单进程，若在 **遗留 chat 完成路径** 已写 **`model_token_usage_events`** 的同时又从 **浏览器** 对同一轮对话调用 **`POST /v1/usage/token-events`**，仍会造成 **重复计数**；约束见 **§6.3.2**。
 
 ---
 
@@ -232,4 +251,4 @@
 
 完成以上条目，即视为该子域可按 Kratos 规范持续迭代维护。
 
-*变更提要（2026-04-29）：新增 **§6.3.1**；§6.4「下一优先」与 §6.1 步号对齐；§6.3 表引用 §6.3.1；§1 表增补 **遗留 Chat** 行；代码 **`internal/legacychat`** 统一 admin/上游 chat 路径。*
+*变更提要（2026-04-29）：新增 **§6.3.1**；**§6.3.2**（浏览器 ingest / 双写、snake_case JSON）；§6.3 **用量写路径**：**`POST /v1/usage/token-events`**；§7 用量语义双写指针；§6.4、§1、`internal/legacychat` 等同前。*

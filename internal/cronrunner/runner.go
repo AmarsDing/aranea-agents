@@ -20,12 +20,14 @@ import (
 	"github.com/google/uuid"
 )
 
-// Deps wires cron execution to Ent repos + session create + legacy chat HTTP.
+// Deps wires cron execution to Ent repos + session create + chat HTTP POST.
 type Deps struct {
 	Cron    biz.CronRepo
 	Session *biz.SessionUsecase
 	Teams   biz.TeamRepository
 	Agents  biz.AgentRepository
+	// TeamSSE optional: publish team cron completion hints to SSE clients.
+	TeamSSE *biz.TeamRunEventBroker
 }
 
 // Runner executes due cron_task rows on an interval (ported from pkg/backend CronRunner).
@@ -197,12 +199,17 @@ func (r *Runner) dispatchCronTask(ctx context.Context, task biz.CronTask, cfg cr
 		if err != nil {
 			return cronDispatchResult{}, err
 		}
-		return r.postChat(ctx, sendMessagePayload{
+		res, err := r.postChat(ctx, sendMessagePayload{
 			SessionID: sess.ID,
 			TeamID:    teamID,
 			Content:   cfg.Message,
 			Options:   sendMessageOptions{DialogMode: "cron"},
 		})
+		if err != nil {
+			return cronDispatchResult{}, err
+		}
+		r.publishTeamCronMaybe(ctx, teamID)
+		return res, nil
 	default:
 		agent, err := r.resolveCronAgent(ctx, task)
 		if err != nil {
@@ -281,16 +288,30 @@ type sendMessageOptions struct {
 	DialogMode string `json:"dialog_mode"`
 }
 
-func (r *Runner) postChat(ctx context.Context, in sendMessagePayload) (cronDispatchResult, error) {
-	base := strings.TrimRight(strings.TrimSpace(os.Getenv("LEGACY_REST_ORIGIN")), "/")
-	if base == "" {
-		return cronDispatchResult{}, errors.New("LEGACY_REST_ORIGIN is not set (cron needs POST " + legacychat.MessagesPath + " on legacy backend)")
+func cronChatPOSTRoot() string {
+	if o := strings.TrimSpace(os.Getenv("CRON_CHAT_DISPATCH_ORIGIN")); o != "" {
+		return strings.TrimRight(o, "/")
 	}
-	u, err := url.Parse(base)
-	if err != nil || u.Scheme == "" || u.Host == "" {
-		return cronDispatchResult{}, fmt.Errorf("invalid LEGACY_REST_ORIGIN")
+	return strings.TrimRight(strings.TrimSpace(os.Getenv("LEGACY_REST_ORIGIN")), "/")
+}
+
+func (r *Runner) publishTeamCronMaybe(ctx context.Context, teamID string) {
+	biz.HintTeamRunSSE(ctx, r.deps.TeamSSE, r.deps.Teams, teamID)
+}
+
+func (r *Runner) postChat(ctx context.Context, in sendMessagePayload) (cronDispatchResult, error) {
+	base := cronChatPOSTRoot()
+	if base == "" {
+		return cronDispatchResult{}, errors.New(`cron chat: set CRON_CHAT_DISPATCH_ORIGIN (→ admin /v1/chat/messages) or LEGACY_REST_ORIGIN (→ legacy /api/v1/chat/messages)`)
+	}
+	pu, err := url.Parse(base)
+	if err != nil || pu.Scheme == "" || pu.Host == "" {
+		return cronDispatchResult{}, fmt.Errorf("invalid cron chat dispatch URL base")
 	}
 	endpoint := base + legacychat.MessagesPath
+	if strings.TrimSpace(os.Getenv("CRON_CHAT_DISPATCH_ORIGIN")) != "" {
+		endpoint = base + "/v1/chat/messages"
+	}
 	body, err := json.Marshal(in)
 	if err != nil {
 		return cronDispatchResult{}, err

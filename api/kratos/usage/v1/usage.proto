@@ -157,4 +157,11 @@ service UsageService {
   rpc ListUsageEvents(UsageQuery) returns (ListUsageEventsResponse) {
     option (google.api.http) = {get: "/v1/usage/events"};
   }
+  // Inserts model_token_usage_events, rolls up sessions counters, upserts model_token_usage_daily (parity with pkg/backend AddModelTokenUsageEvent + UpsertModelTokenUsageDaily).
+  rpc RecordTokenUsageEvent(TokenUsageEvent) returns (TokenUsageEvent) {
+    option (google.api.http) = {
+      post: "/v1/usage/token-events"
+      body: "*"
+    };
+  }
 }

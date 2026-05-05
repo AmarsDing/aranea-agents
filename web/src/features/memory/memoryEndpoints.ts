@@ -15,5 +15,7 @@ export const memoryEndpoints = {
   getAgentStrategy: (agentId: string) => `v1/agents/${encodeURIComponent(agentId)}/strategy`,
   listEvolutionProposals: (agentId: string) => `v1/agents/${encodeURIComponent(agentId)}/evolution/proposals`,
   listEvolutionEvents: (agentId: string) => `v1/agents/${encodeURIComponent(agentId)}/evolution/events`,
-  getEvolutionMetrics: (agentId: string) => `v1/agents/${encodeURIComponent(agentId)}/evolution/metrics`
+  appendEvolutionEvent: (agentId: string) => `v1/agents/${encodeURIComponent(agentId)}/evolution/events`,
+  getEvolutionMetrics: (agentId: string) => `v1/agents/${encodeURIComponent(agentId)}/evolution/metrics`,
+  upsertMemoryFact: () => "v1/memory/l3/facts"
 } as const;

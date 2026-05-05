@@ -10,7 +10,7 @@ option java_multiple_files = true;
 option java_package = "api.kratos.memory.v1";
 
 // Memory HTTP shapes mirror legacy SQLite L0–L4 + evolution JSON (**snake_case** on wire).
-// **`internal/service.MemoryService`** forwards to **`LEGACY_REST_ORIGIN` + `/api/v1/...`** until native repos land in **`cmd/admin`** (**biz/memory** pgvector is a separate vector store — see playbook §6).
+// **`internal/service.MemoryService`** reads/writes **`internal/data/sessionmemory`** (**cmd/admin**) over the Ent SQLite connection (**biz/memory** pgvector is separate — see playbook §6).
 
 message ListL0SnapshotsRequest {
   string session_id = 1 [(google.api.field_behavior) = REQUIRED];
@@ -313,14 +313,6 @@ message GetEvolutionMetricsRequest {
   string range = 2;
 }
 
-message EvolutionMetricsReport {
-  int32 events_total = 1;
-  int32 events_reverted = 2;
-  int32 proposals_total = 3;
-  map<string, int32> proposals_by_status = 4;
-  repeated AgentSkillStat skill_stats = 5;
-}
-
 message AgentSkillStat {
   string agent_id = 1;
   string tool_key = 2;
@@ -329,6 +321,42 @@ message AgentSkillStat {
   int32 failures = 5;
   double preference_score = 6;
   string last_used_at = 7;
+}
+
+message EvolutionMetricsReport {
+  int32 events_total = 1;
+  int32 events_reverted = 2;
+  int32 proposals_total = 3;
+  map<string, int32> proposals_by_status = 4;
+  repeated AgentSkillStat skill_stats = 5;
+}
+
+// UpsertMemoryFactRequest persists or updates one L3 fact (dedupe via scope + fingerprint of statement).
+message UpsertMemoryFactRequest {
+  MemoryFact fact = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message UpsertMemoryFactResponse {
+  MemoryFact fact = 1;
+}
+
+// AppendEvolutionEventRequest registers a persisted evolution timeline row (SQLite agent_evolution_events).
+message AppendEvolutionEventRequest {
+  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string workspace_id = 2;
+  // event_kind identifies the lineage record (preferred over kind).
+  string event_kind = 3 [(google.api.field_behavior) = REQUIRED];
+  // kind mirrors legacy list JSON when different from event_kind; optional duplicate of event_kind.
+  string kind = 4;
+  string target_field = 5;
+  string reason = 6;
+  string trigger_kind = 7 [(google.api.field_behavior) = REQUIRED];
+  string trigger_source = 8;
+  string metadata_json = 9;
+}
+
+message AppendEvolutionEventResponse {
+  EvolutionEvent event = 1;
 }
 
 service MemoryService {
@@ -364,5 +392,19 @@ service MemoryService {
   }
   rpc GetEvolutionMetrics(GetEvolutionMetricsRequest) returns (EvolutionMetricsReport) {
     option (google.api.http) = {get: "/v1/agents/{agent_id}/evolution/metrics"};
+  }
+
+  rpc UpsertMemoryFact(UpsertMemoryFactRequest) returns (UpsertMemoryFactResponse) {
+    option (google.api.http) = {
+      post: "/v1/memory/l3/facts"
+      body: "*"
+    };
+  }
+
+  rpc AppendEvolutionEvent(AppendEvolutionEventRequest) returns (AppendEvolutionEventResponse) {
+    option (google.api.http) = {
+      post: "/v1/agents/{agent_id}/evolution/events"
+      body: "*"
+    };
   }
 }

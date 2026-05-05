@@ -1,4 +1,4 @@
-/** Chat：消息列表走 `session/v1` `GET /v1/sessions/{id}/messages`；发送 / 流式 / options 仍以遗留 REST `/api/v1/chat/*` 类型为准直至 `chat/v1`。 */
+/** Chat：消息列表走 `session/v1` `GET /v1/sessions/{id}/messages`；发送 / 流式 / options 见 **`features/chat/api.ts`** → **`/v1/chat/*`**（admin 转发遗留 **`/api/v1/chat/*`**），直至原生 **`chat/v1`**。 */
 
 export type Message = {
   id: string;

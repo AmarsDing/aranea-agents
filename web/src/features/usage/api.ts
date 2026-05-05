@@ -1,7 +1,9 @@
 /**
  * 模型用量：`usage/v1` —— `createUsageService()`（见 `services/index.ts`），映射为 `types.ts` snake_case 形状。
+ * **`recordModelTokenUsageEvent`** → **`POST /v1/usage/token-events`**（body 与 Go **`json:"…"`** 标签一致为 snake_case；生成的 **`JSON.stringify(TokenUsageEvent)`** 为 camelCase，不经由该方法）。
  */
 import { createUsageService } from "../../services/index";
+import { kratosApi } from "../../services/axiosHandler";
 import type {
   UsageTrendPoint as KTrend,
   TokenUsageEvent as KEvent,
@@ -161,6 +163,117 @@ function queryToKratos(q: ModelUsageQuery): KUsageQuery {
   };
 }
 
+/** `POST /v1/usage/token-events`：与 `api/kratos/usage/v1/usage.pb.go` 中 `TokenUsageEvent` 的 `json:"…"` 键一致。 */
+function usageTokenEventIngestBody(e: ModelTokenUsageEvent): Record<string, unknown> {
+  const out: Record<string, unknown> = {
+    id: e.id,
+    agent_id: e.agent_id,
+    agent_key: e.agent_key,
+    session_id: e.session_id,
+    message_id: e.message_id,
+    provider_code: e.provider_code,
+    provider_type: e.provider_type,
+    provider_display_name: e.provider_display_name,
+    model_api_id: e.model_api_id,
+    model_display_name: e.model_display_name,
+    call_count: Math.trunc(e.call_count),
+    input_tokens: Math.trunc(e.input_tokens),
+    output_tokens: Math.trunc(e.output_tokens),
+    total_tokens: Math.trunc(e.total_tokens),
+    total_cost_micro_usd: Math.round(Number(e.total_cost_micro_usd)),
+    latency_ms: Math.trunc(e.latency_ms),
+    tokens_per_second: Number(e.tokens_per_second),
+    status: e.status,
+    error_message: e.error_message ?? "",
+    prompt_mode: e.prompt_mode,
+    max_output_tokens: Math.trunc(e.max_output_tokens),
+    context_window_k: Math.trunc(e.context_window_k),
+    stream_enabled: Boolean(e.stream_enabled)
+  };
+  if (e.occurred_at) {
+    out.occurred_at = e.occurred_at;
+  }
+  if (e.date_key) {
+    out.date_key = e.date_key;
+  }
+  if (e.hour_key) {
+    out.hour_key = e.hour_key;
+  }
+  if (e.workspace_id) {
+    out.workspace_id = e.workspace_id;
+  }
+  if (e.user_id) {
+    out.user_id = e.user_id;
+  }
+  if (e.team_id) {
+    out.team_id = e.team_id;
+  }
+  if (e.request_id) {
+    out.request_id = e.request_id;
+  }
+  if (e.model_category_json) {
+    out.model_category_json = e.model_category_json;
+  }
+  if (e.usage_kind) {
+    out.usage_kind = e.usage_kind;
+  }
+  if (e.cached_input_tokens !== undefined) {
+    out.cached_input_tokens = Math.trunc(e.cached_input_tokens);
+  }
+  if (e.reasoning_tokens !== undefined) {
+    out.reasoning_tokens = Math.trunc(e.reasoning_tokens);
+  }
+  if (e.embedding_tokens !== undefined) {
+    out.embedding_tokens = Math.trunc(e.embedding_tokens);
+  }
+  if (e.input_price_micro_usd_per_1k !== undefined) {
+    out.input_price_micro_usd_per_1k = Math.round(e.input_price_micro_usd_per_1k);
+  }
+  if (e.output_price_micro_usd_per_1k !== undefined) {
+    out.output_price_micro_usd_per_1k = Math.round(e.output_price_micro_usd_per_1k);
+  }
+  if (e.cached_input_price_micro_usd_per_1k !== undefined) {
+    out.cached_input_price_micro_usd_per_1k = Math.round(e.cached_input_price_micro_usd_per_1k);
+  }
+  if (e.reasoning_price_micro_usd_per_1k !== undefined) {
+    out.reasoning_price_micro_usd_per_1k = Math.round(e.reasoning_price_micro_usd_per_1k);
+  }
+  if (e.embedding_price_micro_usd_per_1k !== undefined) {
+    out.embedding_price_micro_usd_per_1k = Math.round(e.embedding_price_micro_usd_per_1k);
+  }
+  if (e.input_cost_micro_usd !== undefined) {
+    out.input_cost_micro_usd = Math.round(e.input_cost_micro_usd);
+  }
+  if (e.output_cost_micro_usd !== undefined) {
+    out.output_cost_micro_usd = Math.round(e.output_cost_micro_usd);
+  }
+  if (e.cached_input_cost_micro_usd !== undefined) {
+    out.cached_input_cost_micro_usd = Math.round(e.cached_input_cost_micro_usd);
+  }
+  if (e.reasoning_cost_micro_usd !== undefined) {
+    out.reasoning_cost_micro_usd = Math.round(e.reasoning_cost_micro_usd);
+  }
+  if (e.embedding_cost_micro_usd !== undefined) {
+    out.embedding_cost_micro_usd = Math.round(e.embedding_cost_micro_usd);
+  }
+  if (e.time_to_first_token_ms !== undefined) {
+    out.time_to_first_token_ms = Math.trunc(e.time_to_first_token_ms);
+  }
+  if (e.error_code) {
+    out.error_code = e.error_code;
+  }
+  if (e.retry_count !== undefined) {
+    out.retry_count = Math.trunc(e.retry_count);
+  }
+  if (e.metadata_json) {
+    out.metadata_json = e.metadata_json;
+  }
+  if (e.created_at) {
+    out.created_at = e.created_at;
+  }
+  return out;
+}
+
 export async function getModelUsageOverview(query: ModelUsageQuery = {}): Promise<ModelUsageOverview> {
   const raw = await usage.GetUsageOverview(queryToKratos(query));
   return overviewToLegacy(raw);
@@ -176,4 +289,12 @@ export async function listModelUsageEvents(query: ModelUsageQuery = {}): Promise
   const raw = (await usage.ListUsageEvents(queryToKratos(query))) as ListUsageEventsResponse;
   const items = raw.items ?? [];
   return items.map((e: KEvent) => tokenEventFromUnknown(e as unknown as Record<string, unknown>));
+}
+
+/** Persists one usage row + session counters + daily rollup (`usage/v1` ingest). */
+export async function recordModelTokenUsageEvent(e: ModelTokenUsageEvent): Promise<ModelTokenUsageEvent> {
+  const { data } = await kratosApi.post<unknown>("/v1/usage/token-events", usageTokenEventIngestBody(e), {
+    headers: { "Content-Type": "application/json" }
+  });
+  return tokenEventFromUnknown(data);
 }

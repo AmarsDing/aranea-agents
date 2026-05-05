@@ -50,6 +50,7 @@ func NewHTTPServer(c *conf.Server,
 	monitorSvc *service.MonitorService,
 	memorySvc *service.MemoryService,
 	teams *service.TeamService,
+	chatSvc *service.ChatService,
 	skillImport *skillimport.Engine,
 ) *http.Server {
 	var opts = []http.ServerOption{
@@ -89,7 +90,7 @@ func NewHTTPServer(c *conf.Server,
 	monitorv1.RegisterMonitorServiceHTTPServer(srv, monitorSvc)
 	memoryv1.RegisterMemoryServiceHTTPServer(srv, memorySvc)
 	teamv1.RegisterTeamServiceHTTPServer(srv, teams)
-	RegisterLegacyChatForwardHTTPServer(srv)
+	RegisterChatIngress(srv, chatSvc)
 	RegisterSkillImportHTTPServer(srv, skillImport)
 	srv.Route("/").GET("/healthz", func(ctx http.Context) error {
 		w := ctx.Response()

@@ -164,6 +164,72 @@ func mapTokenEvents(events []biz.TokenUsageEvent) []*v1.TokenUsageEvent {
 	return out
 }
 
+func protoTokenUsageEventToBiz(p *v1.TokenUsageEvent) biz.TokenUsageEvent {
+	if p == nil {
+		return biz.TokenUsageEvent{}
+	}
+	return biz.TokenUsageEvent{
+		ID:                            p.GetId(),
+		OccurredAt:                    p.GetOccurredAt(),
+		DateKey:                       p.GetDateKey(),
+		HourKey:                       p.GetHourKey(),
+		WorkspaceID:                   p.GetWorkspaceId(),
+		UserID:                        p.GetUserId(),
+		TeamID:                        p.GetTeamId(),
+		AgentID:                       p.GetAgentId(),
+		AgentKey:                      p.GetAgentKey(),
+		SessionID:                     p.GetSessionId(),
+		MessageID:                     p.GetMessageId(),
+		RequestID:                     p.GetRequestId(),
+		ProviderCode:                  p.GetProviderCode(),
+		ProviderType:                  p.GetProviderType(),
+		ProviderDisplayName:           p.GetProviderDisplayName(),
+		ModelAPIID:                    p.GetModelApiId(),
+		ModelDisplayName:              p.GetModelDisplayName(),
+		ModelCategoryJSON:             p.GetModelCategoryJson(),
+		UsageKind:                     p.GetUsageKind(),
+		CallCount:                     int(p.GetCallCount()),
+		InputTokens:                   int(p.GetInputTokens()),
+		OutputTokens:                  int(p.GetOutputTokens()),
+		CachedInputTokens:             int(p.GetCachedInputTokens()),
+		ReasoningTokens:               int(p.GetReasoningTokens()),
+		EmbeddingTokens:               int(p.GetEmbeddingTokens()),
+		TotalTokens:                   int(p.GetTotalTokens()),
+		InputPriceMicroUSDPer1K:       p.GetInputPriceMicroUsdPer_1K(),
+		OutputPriceMicroUSDPer1K:      p.GetOutputPriceMicroUsdPer_1K(),
+		CachedInputPriceMicroUSDPer1K: p.GetCachedInputPriceMicroUsdPer_1K(),
+		ReasoningPriceMicroUSDPer1K:   p.GetReasoningPriceMicroUsdPer_1K(),
+		EmbeddingPriceMicroUSDPer1K:   p.GetEmbeddingPriceMicroUsdPer_1K(),
+		InputCostMicroUSD:             p.GetInputCostMicroUsd(),
+		OutputCostMicroUSD:            p.GetOutputCostMicroUsd(),
+		CachedInputCostMicroUSD:       p.GetCachedInputCostMicroUsd(),
+		ReasoningCostMicroUSD:         p.GetReasoningCostMicroUsd(),
+		EmbeddingCostMicroUSD:         p.GetEmbeddingCostMicroUsd(),
+		TotalCostMicroUSD:             p.GetTotalCostMicroUsd(),
+		LatencyMS:                     int(p.GetLatencyMs()),
+		TimeToFirstTokenMS:            int(p.GetTimeToFirstTokenMs()),
+		TokensPerSecond:               p.GetTokensPerSecond(),
+		Status:                        p.GetStatus(),
+		ErrorCode:                     p.GetErrorCode(),
+		ErrorMessage:                  p.GetErrorMessage(),
+		RetryCount:                    int(p.GetRetryCount()),
+		PromptMode:                    p.GetPromptMode(),
+		MaxOutputTokens:               int(p.GetMaxOutputTokens()),
+		ContextWindowK:                int(p.GetContextWindowK()),
+		StreamEnabled:                 p.GetStreamEnabled(),
+		MetadataJSON:                  p.GetMetadataJson(),
+		CreatedAt:                     p.GetCreatedAt(),
+	}
+}
+
+func (s *UsageService) RecordTokenUsageEvent(ctx context.Context, in *v1.TokenUsageEvent) (*v1.TokenUsageEvent, error) {
+	e, err := s.uc.RecordTokenUsageEvent(ctx, protoTokenUsageEventToBiz(in))
+	if err != nil {
+		return nil, err
+	}
+	return bizTokenUsageEventToProto(e), nil
+}
+
 func (s *UsageService) GetUsageOverview(ctx context.Context, in *v1.UsageQuery) (*v1.UsageOverview, error) {
 	o, err := s.uc.Overview(ctx, protoUsageQuery(in))
 	if err != nil {

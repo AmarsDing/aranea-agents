@@ -5,6 +5,7 @@ import (
 	agentv1 "aranea-agents/api/kratos/agent/v1"
 	agentcategoryv1 "aranea-agents/api/kratos/agent_category/v1"
 	avatarv1 "aranea-agents/api/kratos/avatar/v1"
+	chatv1 "aranea-agents/api/kratos/chat/v1"
 	cronv1 "aranea-agents/api/kratos/cron/v1"
 	hookv1 "aranea-agents/api/kratos/hook/v1"
 	llmprovidermodelv1 "aranea-agents/api/kratos/llm_provider_model/v1"
@@ -45,6 +46,7 @@ func NewGRPCServer(c *conf.Server,
 	monitorSvc *service.MonitorService,
 	memorySvc *service.MemoryService,
 	teams *service.TeamService,
+	chatSvc *service.ChatService,
 ) *grpc.Server {
 	var opts = []grpc.ServerOption{
 		grpc.Middleware(
@@ -79,5 +81,6 @@ func NewGRPCServer(c *conf.Server,
 	monitorv1.RegisterMonitorServiceServer(srv, monitorSvc)
 	memoryv1.RegisterMemoryServiceServer(srv, memorySvc)
 	teamv1.RegisterTeamServiceServer(srv, teams)
+	chatv1.RegisterChatServiceServer(srv, chatSvc)
 	return srv
 }

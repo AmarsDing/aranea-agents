@@ -2,7 +2,10 @@ package biz
 
 import (
 	"context"
+	"strings"
 	"time"
+
+	"github.com/go-kratos/kratos/v2/errors"
 )
 
 // UsageQuery mirrors legacy model-usage GET params.
@@ -133,6 +136,7 @@ type UsageRepo interface {
 	ListTopModelUsage(ctx context.Context, query UsageQuery) ([]UsageBreakdownRow, error)
 	ListTopAgentUsage(ctx context.Context, query UsageQuery) ([]UsageBreakdownRow, error)
 	ListModelUsageEvents(ctx context.Context, query UsageQuery) ([]TokenUsageEvent, error)
+	RecordTokenUsageEvent(ctx context.Context, event TokenUsageEvent) (TokenUsageEvent, error)
 }
 
 type UsageUsecase struct {
@@ -258,4 +262,49 @@ func (u *UsageUsecase) TopAgents(ctx context.Context, query UsageQuery) ([]Usage
 
 func (u *UsageUsecase) Events(ctx context.Context, query UsageQuery) ([]TokenUsageEvent, error) {
 	return u.repo.ListModelUsageEvents(ctx, u.normalizeQuery(query, u.now()))
+}
+
+func normalizeTokenUsageEventForInsert(e TokenUsageEvent, now time.Time) TokenUsageEvent {
+	if strings.TrimSpace(e.OccurredAt) != "" {
+		if t, err := time.Parse(time.RFC3339, e.OccurredAt); err == nil {
+			now = t.UTC()
+		}
+	}
+	if strings.TrimSpace(e.OccurredAt) == "" {
+		e.OccurredAt = now.Format(time.RFC3339)
+	}
+	if strings.TrimSpace(e.CreatedAt) == "" {
+		e.CreatedAt = e.OccurredAt
+	}
+	if strings.TrimSpace(e.DateKey) == "" && len(e.OccurredAt) >= 10 {
+		e.DateKey = e.OccurredAt[:10]
+	}
+	if strings.TrimSpace(e.HourKey) == "" && len(e.OccurredAt) >= 13 {
+		e.HourKey = e.OccurredAt[:13] + ":00"
+	}
+	if strings.TrimSpace(e.UsageKind) == "" {
+		e.UsageKind = "chat"
+	}
+	if e.CallCount <= 0 {
+		e.CallCount = 1
+	}
+	if strings.TrimSpace(e.Status) == "" {
+		e.Status = "success"
+	}
+	if strings.TrimSpace(e.ModelCategoryJSON) == "" {
+		e.ModelCategoryJSON = "[]"
+	}
+	if strings.TrimSpace(e.MetadataJSON) == "" {
+		e.MetadataJSON = "{}"
+	}
+	return e
+}
+
+// RecordTokenUsageEvent inserts one usage row, updates session aggregates, and upserts daily rollup (parity with pkg/backend).
+func (u *UsageUsecase) RecordTokenUsageEvent(ctx context.Context, e TokenUsageEvent) (TokenUsageEvent, error) {
+	if strings.TrimSpace(e.ID) == "" {
+		return TokenUsageEvent{}, errors.BadRequest("USAGE", "id is required")
+	}
+	e = normalizeTokenUsageEventForInsert(e, u.now())
+	return u.repo.RecordTokenUsageEvent(ctx, e)
 }

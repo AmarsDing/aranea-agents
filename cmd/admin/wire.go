@@ -26,12 +26,14 @@ func provideCronRunnerDeps(
 	session *biz.SessionUsecase,
 	teams biz.TeamRepository,
 	agents biz.AgentRepository,
+	teamSSE *biz.TeamRunEventBroker,
 ) cronrunner.Deps {
 	return cronrunner.Deps{
 		Cron:    cron,
 		Session: session,
 		Teams:   teams,
 		Agents:  agents,
+		TeamSSE: teamSSE,
 	}
 }
 

@@ -451,3 +451,91 @@ func (s *MemoryService) GetEvolutionMetrics(ctx context.Context, req *v1.GetEvol
 	}
 	return out, nil
 }
+
+// UpsertMemoryFact creates or merges an L3 fact row (SQLite).
+func (s *MemoryService) UpsertMemoryFact(ctx context.Context, req *v1.UpsertMemoryFactRequest) (*v1.UpsertMemoryFactResponse, error) {
+	if err := s.errStore(); err != nil {
+		return nil, err
+	}
+	f := req.GetFact()
+	if f == nil {
+		return nil, kerrors.BadRequest("MEMORY", "fact is required")
+	}
+	raw, err := s.store.UpsertFactRow(ctx, sessionmemory.MemoryFactUpsert{
+		ID:                       strings.TrimSpace(f.GetId()),
+		ScopeType:                strings.TrimSpace(f.GetScopeType()),
+		ScopeID:                  strings.TrimSpace(f.GetScopeId()),
+		WorkspaceID:              strings.TrimSpace(f.GetWorkspaceId()),
+		UserID:                   strings.TrimSpace(f.GetUserId()),
+		TeamID:                   strings.TrimSpace(f.GetTeamId()),
+		AgentID:                  strings.TrimSpace(f.GetAgentId()),
+		Statement:                strings.TrimSpace(f.GetStatement()),
+		DetailsMarkdown:          f.GetDetailsMarkdown(),
+		FactKind:                 f.GetFactKind(),
+		TagsJSON:                 f.GetTagsJson(),
+		Confidence:               f.GetConfidence(),
+		Importance:               f.GetImportance(),
+		UseCount:                 f.GetUseCount(),
+		HitCount:                 f.GetHitCount(),
+		PositiveFeedbackCount:    f.GetPositiveFeedbackCount(),
+		NegativeFeedbackCount:    f.GetNegativeFeedbackCount(),
+		ConflictCount:            f.GetConflictCount(),
+		SourceKind:               f.GetSourceKind(),
+		SourceEpisodeID:          f.GetSourceEpisodeId(),
+		SourceSessionID:          f.GetSourceSessionId(),
+		SourceMessageID:          f.GetSourceMessageId(),
+		Version:                  f.GetVersion(),
+		Status:                   f.GetStatus(),
+		PIIFlag:                  f.GetPiiFlag(),
+		CreatedAt:                strings.TrimSpace(f.GetCreatedAt()),
+		UpdatedAt:                strings.TrimSpace(f.GetUpdatedAt()),
+	})
+	if err != nil {
+		return nil, err
+	}
+	pb, err := pbMemoryFact(raw)
+	if err != nil || pb == nil {
+		return nil, kerrors.InternalServer("MEMORY", "failed to hydrate fact after upsert")
+	}
+	return &v1.UpsertMemoryFactResponse{Fact: pb}, nil
+}
+
+// AppendEvolutionEvent inserts a timeline row under agent_evolution_events.
+func (s *MemoryService) AppendEvolutionEvent(ctx context.Context, req *v1.AppendEvolutionEventRequest) (*v1.AppendEvolutionEventResponse, error) {
+	if err := s.errStore(); err != nil {
+		return nil, err
+	}
+	aid := strings.TrimSpace(req.GetAgentId())
+	if aid == "" {
+		return nil, kerrors.BadRequest("MEMORY", "agent_id is required")
+	}
+	raw, err := s.store.InsertEvolutionEventRow(ctx, sessionmemory.EvolutionEventInsert{
+		AgentID:       aid,
+		WorkspaceID: strings.TrimSpace(req.GetWorkspaceId()),
+		EventKind:     strings.TrimSpace(req.GetEventKind()),
+		Kind:          strings.TrimSpace(req.GetKind()),
+		TargetField:   strings.TrimSpace(req.GetTargetField()),
+		Reason:        strings.TrimSpace(req.GetReason()),
+		TriggerKind:   strings.TrimSpace(req.GetTriggerKind()),
+		TriggerSource: strings.TrimSpace(req.GetTriggerSource()),
+		MetadataJSON:  strings.TrimSpace(req.GetMetadataJson()),
+	})
+	if err != nil {
+		return nil, err
+	}
+	m, err := jsonMap(raw)
+	if err != nil {
+		return nil, err
+	}
+	out := &v1.AppendEvolutionEventResponse{Event: &v1.EvolutionEvent{
+		Id:          ifaceStr(m, "id"),
+		AgentId:     ifaceStr(m, "agent_id"),
+		EventKind:   ifaceStr(m, "event_kind"),
+		Kind:        ifaceStr(m, "kind"),
+		TargetField: ifaceStr(m, "target_field"),
+		Reason:      ifaceStr(m, "reason"),
+		Reverted:    ifaceBool(m, "reverted"),
+		CreatedAt:   ifaceStr(m, "created_at"),
+	}}
+	return out, nil
+}

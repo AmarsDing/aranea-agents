@@ -62,28 +62,55 @@ export type ModelUsageBreakdownRow = {
 export type ModelTokenUsageEvent = {
   id: string;
   occurred_at: string;
+  /** RFC3339; ingest defaults filled server-side when omitted */
+  date_key?: string;
+  hour_key?: string;
+  workspace_id?: string;
+  user_id?: string;
+  team_id?: string;
   agent_id: string;
   agent_key: string;
   session_id: string;
   message_id: string;
+  request_id?: string;
   provider_code: string;
   provider_type: string;
   provider_display_name: string;
   model_api_id: string;
   model_display_name: string;
+  model_category_json?: string;
+  usage_kind?: string;
   call_count: number;
   input_tokens: number;
   output_tokens: number;
+  cached_input_tokens?: number;
+  reasoning_tokens?: number;
+  embedding_tokens?: number;
   total_tokens: number;
+  input_price_micro_usd_per_1k?: number;
+  output_price_micro_usd_per_1k?: number;
+  cached_input_price_micro_usd_per_1k?: number;
+  reasoning_price_micro_usd_per_1k?: number;
+  embedding_price_micro_usd_per_1k?: number;
+  input_cost_micro_usd?: number;
+  output_cost_micro_usd?: number;
+  cached_input_cost_micro_usd?: number;
+  reasoning_cost_micro_usd?: number;
+  embedding_cost_micro_usd?: number;
   total_cost_micro_usd: number;
   latency_ms: number;
+  time_to_first_token_ms?: number;
   tokens_per_second: number;
   status: string;
+  error_code?: string;
   error_message: string;
+  retry_count?: number;
   prompt_mode: string;
   max_output_tokens: number;
   context_window_k: number;
   stream_enabled: boolean;
+  metadata_json?: string;
+  created_at?: string;
 };
 
 export type ModelUsageOverview = {
