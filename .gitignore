@@ -80,3 +80,4 @@ coverage.html
 *.coverprofile
 profile.cov
 pkg/trpc-agent-go/
+pkg/adk-go/
