@@ -4,6 +4,7 @@ go 1.24.6
 
 require (
 	entgo.io/ent v0.14.5
+	github.com/glebarez/go-sqlite v1.22.0
 	github.com/go-kratos/aip-go/ents v0.0.0-20251213081434-74ffa1fc1588
 	github.com/go-kratos/kratos/v2 v2.9.2
 	github.com/go-sql-driver/mysql v1.9.3
@@ -11,7 +12,6 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/google/wire v0.6.0
 	github.com/lib/pq v1.12.3
-	github.com/mattn/go-sqlite3 v1.14.42
 	github.com/pgvector/pgvector-go v0.3.0
 	github.com/tx7do/kratos-transport/transport/sse v1.3.2
 	go.einride.tech/aip v0.76.0
@@ -30,6 +30,7 @@ require (
 	github.com/bmatcuk/doublestar v1.3.4 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/fsnotify/fsnotify v1.6.0 // indirect
 	github.com/go-kratos/aegis v0.2.0 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
@@ -40,8 +41,11 @@ require (
 	github.com/gorilla/mux v1.8.1 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.6 // indirect
 	github.com/hashicorp/hcl/v2 v2.23.0 // indirect
+	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/mattn/go-sqlite3 v1.14.42 // indirect
 	github.com/mitchellh/go-wordwrap v1.0.1 // indirect
 	github.com/openzipkin/zipkin-go v0.4.3 // indirect
+	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/tx7do/kratos-transport/broker v1.3.2 // indirect
 	github.com/tx7do/kratos-transport/tracing v1.1.1 // indirect
 	github.com/tx7do/kratos-transport/transport v1.3.3 // indirect
@@ -67,4 +71,8 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260128011058-8636f8732409 // indirect
 	gopkg.in/cenkalti/backoff.v1 v1.1.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
+	modernc.org/libc v1.37.6 // indirect
+	modernc.org/mathutil v1.6.0 // indirect
+	modernc.org/memory v1.7.2 // indirect
+	modernc.org/sqlite v1.28.0 // indirect
 )

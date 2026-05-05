@@ -102,26 +102,29 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, withDefaults } from "vue";
 import type { TeamDefinition } from "../../features/teams/api";
 import { buildGraphFromDefinition, modeOptions, roleOptions, statusOptions, teamTemplateOptions, topologyNodesFromDefinition, type TeamTemplateKey } from "./teamUtils";
 
-const props = defineProps<{
-  modelValue: boolean;
-  editingId: string;
-  form: {
-    team_key: string;
-    display_name: string;
-    status: string;
-    adk_app_name: string;
-  };
-  definition: TeamDefinition;
-  definitionJSON: string;
-  agentOptions: Array<{ label: string; value: string }>;
-  saving: boolean;
-  canSave: boolean;
-  isDark: boolean;
-}>();
+const props = withDefaults(
+  defineProps<{
+    modelValue: boolean;
+    editingId: string;
+    form: {
+      team_key: string;
+      display_name: string;
+      status: string;
+      adk_app_name: string;
+    };
+    definition: TeamDefinition;
+    definitionJSON?: string;
+    agentOptions: Array<{ label: string; value: string }>;
+    saving: boolean;
+    canSave: boolean;
+    isDark: boolean;
+  }>(),
+  { definitionJSON: "{}" },
+);
 
 defineEmits<{
   "update:modelValue": [value: boolean];

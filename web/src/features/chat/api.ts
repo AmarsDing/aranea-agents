@@ -1,6 +1,6 @@
 /**
- * Chat 域：`features/session/api`（Kratos `session/v1`）+ 本文件 **`/v1/chat/*`**
- *（**`cmd/admin`** **`RegisterLegacyChatForwardHTTPServer`** → **`LEGACY_REST_ORIGIN`** **`/api/v1/chat/*`**）。
+ * Chat 域：`features/session/api`（Kratos `session/v1`）+ 本文件网关 **`/v1/chat/*`**
+ *（**`cmd/admin`**：**`chat/v1` HTTP** + SSE； unary / options / stream 在执行层仍经由 **`LEGACY_REST_ORIGIN`** 转发 **`/api/v1/chat/*`**，直至原生 chat Phase 完成）。
  */
 import { getBackendOrigin } from "../../config/runtime";
 import { kratosApi } from "../../services/axiosHandler";

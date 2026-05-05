@@ -8,7 +8,9 @@ import { getBackendOrigin } from "../config/runtime";
  */
 export const kratosApi = axios.create({
   baseURL: getBackendOrigin(),
-  timeout: 15000
+  timeout: 15000,
+  // Session cookie is host-scoped; call API with credentials so login works when CORS allows Origin (see CorsDevFilter).
+  withCredentials: true
 });
 
 /**

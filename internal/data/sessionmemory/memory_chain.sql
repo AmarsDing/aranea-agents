@@ -326,6 +326,220 @@ CREATE TABLE IF NOT EXISTS monitor_traces (
   deleted_at TEXT NOT NULL DEFAULT ''
 );
 
+-- Usage + tooling (pkg/backend parity); required before downstream indexes referencing these tables.
+CREATE TABLE IF NOT EXISTS model_token_usage_events (
+  id TEXT PRIMARY KEY,
+  occurred_at TEXT NOT NULL,
+  date_key TEXT NOT NULL,
+  hour_key TEXT NOT NULL,
+  workspace_id TEXT NOT NULL DEFAULT '',
+  user_id TEXT NOT NULL DEFAULT '',
+  team_id TEXT NOT NULL DEFAULT '',
+  agent_id TEXT NOT NULL DEFAULT '',
+  agent_key TEXT NOT NULL DEFAULT '',
+  session_id TEXT NOT NULL DEFAULT '',
+  message_id TEXT NOT NULL DEFAULT '',
+  request_id TEXT NOT NULL DEFAULT '',
+  provider_code TEXT NOT NULL DEFAULT '',
+  provider_type TEXT NOT NULL DEFAULT '',
+  provider_display_name TEXT NOT NULL DEFAULT '',
+  model_api_id TEXT NOT NULL DEFAULT '',
+  model_display_name TEXT NOT NULL DEFAULT '',
+  model_category_json TEXT NOT NULL DEFAULT '[]',
+  usage_kind TEXT NOT NULL DEFAULT 'chat',
+  call_count INTEGER NOT NULL DEFAULT 1,
+  input_tokens INTEGER NOT NULL DEFAULT 0,
+  output_tokens INTEGER NOT NULL DEFAULT 0,
+  cached_input_tokens INTEGER NOT NULL DEFAULT 0,
+  reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+  embedding_tokens INTEGER NOT NULL DEFAULT 0,
+  total_tokens INTEGER NOT NULL DEFAULT 0,
+  input_price_micro_usd_per_1k INTEGER NOT NULL DEFAULT 0,
+  output_price_micro_usd_per_1k INTEGER NOT NULL DEFAULT 0,
+  cached_input_price_micro_usd_per_1k INTEGER NOT NULL DEFAULT 0,
+  reasoning_price_micro_usd_per_1k INTEGER NOT NULL DEFAULT 0,
+  embedding_price_micro_usd_per_1k INTEGER NOT NULL DEFAULT 0,
+  input_cost_micro_usd INTEGER NOT NULL DEFAULT 0,
+  output_cost_micro_usd INTEGER NOT NULL DEFAULT 0,
+  cached_input_cost_micro_usd INTEGER NOT NULL DEFAULT 0,
+  reasoning_cost_micro_usd INTEGER NOT NULL DEFAULT 0,
+  embedding_cost_micro_usd INTEGER NOT NULL DEFAULT 0,
+  total_cost_micro_usd INTEGER NOT NULL DEFAULT 0,
+  latency_ms INTEGER NOT NULL DEFAULT 0,
+  time_to_first_token_ms INTEGER NOT NULL DEFAULT 0,
+  tokens_per_second REAL NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'success',
+  error_code TEXT NOT NULL DEFAULT '',
+  error_message TEXT NOT NULL DEFAULT '',
+  retry_count INTEGER NOT NULL DEFAULT 0,
+  prompt_mode TEXT NOT NULL DEFAULT '',
+  max_output_tokens INTEGER NOT NULL DEFAULT 0,
+  context_window_k INTEGER NOT NULL DEFAULT 0,
+  stream_enabled INTEGER NOT NULL DEFAULT 0,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS model_pricing_rules (
+  id TEXT PRIMARY KEY,
+  provider_code TEXT NOT NULL,
+  model_api_id TEXT NOT NULL,
+  currency TEXT NOT NULL DEFAULT 'USD',
+  input_price_micro_usd_per_1k INTEGER NOT NULL DEFAULT 0,
+  output_price_micro_usd_per_1k INTEGER NOT NULL DEFAULT 0,
+  cached_input_price_micro_usd_per_1k INTEGER NOT NULL DEFAULT 0,
+  reasoning_price_micro_usd_per_1k INTEGER NOT NULL DEFAULT 0,
+  embedding_price_micro_usd_per_1k INTEGER NOT NULL DEFAULT 0,
+  effective_from TEXT NOT NULL,
+  effective_to TEXT NOT NULL DEFAULT '',
+  is_active INTEGER NOT NULL DEFAULT 1,
+  source TEXT NOT NULL DEFAULT 'manual',
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(provider_code, model_api_id, effective_from)
+);
+
+CREATE TABLE IF NOT EXISTS model_token_usage_daily (
+  id TEXT PRIMARY KEY,
+  date_key TEXT NOT NULL,
+  workspace_id TEXT NOT NULL DEFAULT '',
+  agent_id TEXT NOT NULL DEFAULT '',
+  agent_key TEXT NOT NULL DEFAULT '',
+  provider_code TEXT NOT NULL DEFAULT '',
+  model_api_id TEXT NOT NULL DEFAULT '',
+  usage_kind TEXT NOT NULL DEFAULT 'chat',
+  call_count INTEGER NOT NULL DEFAULT 0,
+  request_count INTEGER NOT NULL DEFAULT 0,
+  success_count INTEGER NOT NULL DEFAULT 0,
+  failed_count INTEGER NOT NULL DEFAULT 0,
+  cancelled_count INTEGER NOT NULL DEFAULT 0,
+  input_tokens INTEGER NOT NULL DEFAULT 0,
+  output_tokens INTEGER NOT NULL DEFAULT 0,
+  cached_input_tokens INTEGER NOT NULL DEFAULT 0,
+  reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+  embedding_tokens INTEGER NOT NULL DEFAULT 0,
+  total_tokens INTEGER NOT NULL DEFAULT 0,
+  total_cost_micro_usd INTEGER NOT NULL DEFAULT 0,
+  avg_latency_ms REAL NOT NULL DEFAULT 0,
+  avg_tokens_per_second REAL NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(date_key, workspace_id, agent_id, provider_code, model_api_id, usage_kind)
+);
+
+CREATE TABLE IF NOT EXISTS chat_attachments (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  message_id TEXT NOT NULL DEFAULT '',
+  file_name TEXT NOT NULL,
+  mime_type TEXT NOT NULL DEFAULT '',
+  size_bytes INTEGER NOT NULL DEFAULT 0,
+  storage_key TEXT NOT NULL DEFAULT '',
+  checksum TEXT NOT NULL DEFAULT '',
+  upload_status TEXT NOT NULL DEFAULT 'pending',
+  created_at TEXT NOT NULL,
+  deleted_at TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS tools (
+  id TEXT PRIMARY KEY,
+  tool_key TEXT NOT NULL UNIQUE,
+  display_name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  category TEXT NOT NULL DEFAULT 'system',
+  source TEXT NOT NULL DEFAULT 'builtin',
+  risk_level TEXT NOT NULL DEFAULT 'low',
+  enabled INTEGER NOT NULL DEFAULT 1,
+  readonly INTEGER NOT NULL DEFAULT 0,
+  requires_confirmation INTEGER NOT NULL DEFAULT 0,
+  supports_streaming INTEGER NOT NULL DEFAULT 0,
+  supports_concurrency INTEGER NOT NULL DEFAULT 0,
+  parameters_schema_json TEXT NOT NULL DEFAULT '{}',
+  result_schema_json TEXT NOT NULL DEFAULT '{}',
+  config_schema_json TEXT NOT NULL DEFAULT '{}',
+  config_json TEXT NOT NULL DEFAULT '{}',
+  default_config_json TEXT NOT NULL DEFAULT '{}',
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  deleted_at TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS tool_agent_overrides (
+  id TEXT PRIMARY KEY,
+  tool_id TEXT NOT NULL,
+  tool_key TEXT NOT NULL,
+  agent_id TEXT NOT NULL,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  mode TEXT NOT NULL DEFAULT 'inherit',
+  config_override_json TEXT NOT NULL DEFAULT '{}',
+  requires_confirmation INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  deleted_at TEXT NOT NULL DEFAULT '',
+  UNIQUE(tool_key, agent_id)
+);
+
+CREATE TABLE IF NOT EXISTS tool_invocations (
+  id TEXT PRIMARY KEY,
+  request_id TEXT NOT NULL DEFAULT '',
+  invocation_id TEXT NOT NULL DEFAULT '',
+  tool_id TEXT NOT NULL DEFAULT '',
+  tool_key TEXT NOT NULL,
+  agent_id TEXT NOT NULL DEFAULT '',
+  agent_key TEXT NOT NULL DEFAULT '',
+  session_id TEXT NOT NULL DEFAULT '',
+  message_id TEXT NOT NULL DEFAULT '',
+  user_id TEXT NOT NULL DEFAULT '',
+  source TEXT NOT NULL DEFAULT 'adk',
+  status TEXT NOT NULL DEFAULT 'success',
+  started_at TEXT NOT NULL,
+  ended_at TEXT NOT NULL DEFAULT '',
+  duration_ms INTEGER NOT NULL DEFAULT 0,
+  input_preview TEXT NOT NULL DEFAULT '',
+  input_hash TEXT NOT NULL DEFAULT '',
+  output_preview TEXT NOT NULL DEFAULT '',
+  output_hash TEXT NOT NULL DEFAULT '',
+  error_code TEXT NOT NULL DEFAULT '',
+  error_message TEXT NOT NULL DEFAULT '',
+  redaction_applied INTEGER NOT NULL DEFAULT 1,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS tool_invocation_params (
+  id TEXT PRIMARY KEY,
+  invocation_id TEXT NOT NULL,
+  tool_key TEXT NOT NULL,
+  param_name TEXT NOT NULL,
+  param_type TEXT NOT NULL DEFAULT 'string',
+  value_preview TEXT NOT NULL DEFAULT '',
+  value_hash TEXT NOT NULL DEFAULT '',
+  value_size_bytes INTEGER NOT NULL DEFAULT 0,
+  is_required INTEGER NOT NULL DEFAULT 0,
+  is_sensitive INTEGER NOT NULL DEFAULT 0,
+  redaction_reason TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS tool_usage_daily (
+  id TEXT PRIMARY KEY,
+  date_key TEXT NOT NULL,
+  tool_key TEXT NOT NULL,
+  agent_id TEXT NOT NULL DEFAULT '',
+  call_count INTEGER NOT NULL DEFAULT 0,
+  success_count INTEGER NOT NULL DEFAULT 0,
+  failure_count INTEGER NOT NULL DEFAULT 0,
+  blocked_count INTEGER NOT NULL DEFAULT 0,
+  total_duration_ms INTEGER NOT NULL DEFAULT 0,
+  avg_duration_ms REAL NOT NULL DEFAULT 0,
+  p95_duration_ms REAL NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(date_key, tool_key, agent_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_sessions_agent ON sessions(agent_id, deleted_at, updated_at);
 CREATE INDEX IF NOT EXISTS idx_sessions_team ON sessions(team_id, deleted_at, updated_at);
 CREATE INDEX IF NOT EXISTS idx_team_runs_team_created ON team_runs(team_id, created_at);

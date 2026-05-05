@@ -26,11 +26,24 @@
           {{ t("common.appTitle") }}
         </q-toolbar-title>
         <q-space />
-        <div v-if="!isDark && isDesktop" class="row items-center q-gutter-sm q-mr-sm cream-header__user">
-          <q-btn round flat color="primary" icon="notifications_none" size="md" />
-          <q-avatar size="36px" color="secondary" text-color="white" font-size="14px">
-            A
-          </q-avatar>
+        <div v-if="isDesktop" class="row items-center q-gutter-sm q-mr-sm" :class="{ 'cream-header__user': !isDark }">
+          <q-btn round flat :color="isDark ? 'white' : 'primary'" icon="notifications_none" size="md" />
+          <q-btn round flat dense class="cursor-pointer">
+            <q-avatar size="36px" color="secondary" text-color="white" font-size="14px">
+              {{ auth.avatarLetter }}
+            </q-avatar>
+            <q-menu anchor="bottom right" self="top right">
+              <q-list dense style="min-width: 180px">
+                <q-item>
+                  <q-item-section class="text-caption text-grey">{{ auth.displayLabel }}</q-item-section>
+                </q-item>
+                <q-separator />
+                <q-item v-close-popup clickable @click="onLogout">
+                  <q-item-section>{{ t("auth.logout") }}</q-item-section>
+                </q-item>
+              </q-list>
+            </q-menu>
+          </q-btn>
         </div>
         <q-btn
           flat
@@ -115,11 +128,13 @@ import { useI18n } from "vue-i18n";
 import { useQuasar } from "quasar";
 import { setQuasarLangFor } from "../i18n/quasar-lang";
 import { sideNavGroups } from "../config/sideNav";
+import { useAuthStore } from "../stores/auth";
 
 const { t, locale } = useI18n();
 const $q = useQuasar();
 const route = useRoute();
 const router = useRouter();
+const auth = useAuthStore();
 const drawerOpen = ref(true);
 const drawerMini = ref(true);
 
@@ -158,5 +173,10 @@ function isNavItemActive(item: { to: string; exact?: boolean }) {
 async function navigateTo(path: string) {
   if (route.path === path) return;
   await router.push(path);
+}
+
+async function onLogout() {
+  await auth.logout();
+  await router.push("/login");
 }
 </script>

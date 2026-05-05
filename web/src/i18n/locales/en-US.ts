@@ -11,6 +11,18 @@ export default {
     language: "Language",
     expandSidebar: "Expand or collapse sidebar"
   },
+  auth: {
+    subtitle: "Sign in with an admin account. Session is kept via HTTP cookie.",
+    tabUsername: "Username",
+    tabEmail: "Email",
+    usernameLabel: "Username",
+    emailLabel: "Email",
+    passwordLabel: "Password",
+    submit: "Sign in",
+    loginFailed: "Sign-in failed. Check your credentials.",
+    backendHint: "Matches AdminService: POST /v1/admins/login",
+    logout: "Log out"
+  },
   dashboard: {
     totalBalance: "KPI / overview",
     today: "Today",

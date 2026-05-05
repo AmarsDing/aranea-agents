@@ -5,5 +5,6 @@ import { store } from "quasar/wrappers";
 export default store(() => createPinia());
 
 export { useAppStore } from "./app";
+export { useAuthStore } from "./auth";
 export { useAgentsPageStore, useAgentDetailStore } from "./agents";
 export { useAvatarCatalogStore } from "./avatar";

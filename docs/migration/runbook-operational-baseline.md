@@ -1,6 +1,6 @@
 # Legacy → Kratos 运维基线（Phase 0 对账）
 
-本文与 [pkg-backend-to-kratos.md](pkg-backend-to-kratos.md) §6、§7 配套，供部署与迭代对账。**不取代** §6.3 明细。
+本文与 [pkg-backend-to-kratos.md](pkg-backend-to-kratos.md) §6、§7 配套，供部署与迭代对账。**不取代** §6.3 明细。**Phase 状态总表**：[phase-status.md](phase-status.md)。
 
 ## 1. 环境变量（`cmd/admin`）
 
@@ -10,6 +10,7 @@
 | `CRON_RUNNER_INTERVAL` | `internal/cronrunner` tick；非法或空 → **1m**。 |
 | `CRON_RUNNER_DISABLED` | 为 **`1`** 时不启动 runner，仅保留 **`cron/v1` CRUD**。 |
 | **`CRON_CHAT_DISPATCH_ORIGIN`**（推荐） | 若设置：**`internal/cronrunner`** **`postChat`** 向 **`POST {origin}/v1/chat/messages`**（**admin 网关 / kratos 入口**）。未设置时回退 **`LEGACY_REST_ORIGIN`** → 遗留 **`/api/v1/chat/messages`**。用于 Phase 4 去遗留；与 **`LEGACY_REST_ORIGIN`** 可指向同一 admin 主机，仅路径前缀不同。 |
+| **`CHAT_RECORD_USAGE_INGRESS`** | 若为 **`1` / true / yes**： unary **`POST /v1/chat/messages`** 在 legacy 成功返回且 **`agent_message` 含 token 字段**时，额外调用 **`UsageUsecase.RecordTokenUsageEvent`** 写入 **`cmd/admin`** 侧 **`model_token_usage_events`**。**默认不设**，避免与 **`pkg/backend`** 同源双写；迁移「单一写入方」时：**关闭遗留侧同源写入后再开启**，或仅存一处。 |
 
 ## 2. 双进程与 SQLite
 

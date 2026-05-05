@@ -1,4 +1,6 @@
 import type { RouteRecordRaw } from "vue-router";
+import BlankLayout from "../layouts/BlankLayout.vue";
+import LoginPage from "../pages/LoginPage.vue";
 import MainLayout from "../layouts/MainLayout.vue";
 import ChatPage from "../pages/ChatPage.vue";
 import AgentsPage from "../pages/AgentsPage.vue";
@@ -24,8 +26,15 @@ import MemoryCenterPage from "../pages/MemoryCenterPage.vue";
 
 export const routes: RouteRecordRaw[] = [
   {
+    path: "/login",
+    component: BlankLayout,
+    meta: { public: true },
+    children: [{ path: "", name: "login", component: LoginPage }]
+  },
+  {
     path: "/",
     component: MainLayout,
+    meta: { requiresAuth: true },
     children: [
       { path: "", redirect: "/overview" },
       { path: "overview", name: "overview", component: OverviewPage },

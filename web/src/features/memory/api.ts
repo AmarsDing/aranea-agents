@@ -434,6 +434,11 @@ export async function listEvolutionEvents(agentID: string, params: { limit?: num
   return Array.isArray(items) ? items.map(mapEvolutionEvent) : [];
 }
 
+export async function getEvolutionMetrics(agentID: string): Promise<EvolutionMetricsReport> {
+  const raw = await memory.GetEvolutionMetrics({ agentId: agentID });
+  return mapEvolutionMetrics(raw);
+}
+
 export async function upsertMemoryFact(fact: Partial<PbMemoryFact>): Promise<MemoryFact> {
   const res = asRecord(await memory.UpsertMemoryFact({ fact: fact as PbMemoryFact }));
   const raw = res.fact ?? res.Fact;

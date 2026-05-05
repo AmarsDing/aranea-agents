@@ -31,6 +31,14 @@ var (
 func Middleware() httpm.FilterFunc {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if HTTPAuthBypassEnabled() {
+				next.ServeHTTP(w, r.WithContext(NewContext(r.Context(), DevBypassPrincipal())))
+				return
+			}
+			if r.Method == http.MethodOptions {
+				next.ServeHTTP(w, r)
+				return
+			}
 			if _, ok := noAuthPaths[r.URL.Path]; ok {
 				next.ServeHTTP(w, r)
 				return

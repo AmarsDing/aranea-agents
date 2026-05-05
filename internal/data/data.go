@@ -16,9 +16,9 @@ import (
 
 	"entgo.io/ent/dialect"
 
+	_ "github.com/glebarez/go-sqlite/compat"
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/lib/pq"
-	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/google/wire"
 )
@@ -137,6 +137,25 @@ func NewData(c *conf.Data) (*Data, func(), error) {
 	if err != nil {
 		log.Fatalf("failed opening sqlite for ent: %v", err)
 	}
+	if driverName == dialect.SQLite {
+		if _, pragmaErr := entClient.ExecContext(context.Background(), "PRAGMA foreign_keys=ON"); pragmaErr != nil {
+			_ = entClient.Close()
+			return nil, nil, fmt.Errorf("sqlite foreign_keys pragma: %w", pragmaErr)
+		}
+	}
+
+	ctxEnt := context.Background()
+	if strings.TrimSpace(os.Getenv("DEPLOY_ENV")) == "dev" {
+		entClient, err = migrateDev(ctxEnt, entClient, "sqlite(ent)")
+		if err != nil {
+			_ = entClient.Close()
+			return nil, nil, err
+		}
+	} else if err = entClient.Schema.Create(ctxEnt); err != nil {
+		_ = entClient.Close()
+		return nil, nil, fmt.Errorf("ent schema create (sqlite): %w", err)
+	}
+
 	if err = sessionmemory.EnsureSchema(context.Background(), entClient); err != nil {
 		_ = entClient.Close()
 		return nil, nil, fmt.Errorf("session memory schema: %w", err)
@@ -170,16 +189,12 @@ func NewData(c *conf.Data) (*Data, func(), error) {
 		}
 	}
 
-	if os.Getenv("DEPLOY_ENV") == "dev" {
-		debugEnt, mErr := migrateDev(context.Background(), st.entClient, "sqlite(ent)")
-		if mErr != nil {
-			if st.pg != nil {
-				st.pg.Close()
-			}
-			st.entClient.Close()
-			return nil, nil, mErr
+	if err = ensureDevBypassAdminIfEnabled(context.Background(), entClient); err != nil {
+		if pg != nil {
+			pg.Close()
 		}
-		st.entClient = debugEnt
+		_ = entClient.Close()
+		return nil, nil, err
 	}
 
 	cleanup := func() {

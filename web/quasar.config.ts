@@ -20,16 +20,16 @@ export default configure(() => {
       proxy: {
         // Kratos Admin：`/v1/admins/...`（与 `web/src/services` 中 `adminApi` 对齐）
         "/v1": {
-          target: "http://127.0.0.1:8080",
+          target: "http://127.0.0.1:8000",
           changeOrigin: true
         },
         "/api": {
-          target: "http://127.0.0.1:8080",
+          target: "http://127.0.0.1:8000",
           changeOrigin: true
         },
         // ADK 风格 `POST /run_sse`；若 ADK 跑在其它端口，在 runtime-cfg 中设置 adkStreamOrigin
         "/run_sse": {
-          target: "http://127.0.0.1:8080",
+          target: "http://127.0.0.1:8000",
           changeOrigin: true
         },
         // tx7do SSE（configs server.sse.addr，默认 :8001）；前缀剥离后与后端 `/monitor/logs/stream` 对齐

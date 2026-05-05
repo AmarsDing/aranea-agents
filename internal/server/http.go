@@ -55,6 +55,7 @@ func NewHTTPServer(c *conf.Server,
 ) *http.Server {
 	var opts = []http.ServerOption{
 		http.Filter(
+			CorsDevFilter(),
 			auth.Middleware(),
 			LegacyRESTProxyFilter(),
 		),

@@ -11,6 +11,18 @@ export default {
     language: "语言",
     expandSidebar: "展开或收起侧栏"
   },
+  auth: {
+    subtitle: "使用管理员账号登录，会话由服务端 Cookie 保持。",
+    tabUsername: "用户名",
+    tabEmail: "邮箱",
+    usernameLabel: "用户名",
+    emailLabel: "邮箱",
+    passwordLabel: "密码",
+    submit: "登录",
+    loginFailed: "登录失败，请检查账号和密码。",
+    backendHint: "与后端 AdminService 一致：POST /v1/admins/login",
+    logout: "退出登录"
+  },
   dashboard: {
     totalBalance: "总览指标",
     today: "今日",

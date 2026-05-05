@@ -34,14 +34,16 @@ type ChatService struct {
 	client  *http.Client
 	teamSSE *biz.TeamRunEventBroker
 	teams   biz.TeamRepository
+	usage   *biz.UsageUsecase
 }
 
 // NewChatService builds a chat façade (LEGACY_REST_ORIGIN → legacy /api/v1/chat/* until fully in-process execution).
-func NewChatService(broker *biz.TeamRunEventBroker, teams biz.TeamRepository) *ChatService {
+func NewChatService(broker *biz.TeamRunEventBroker, teams biz.TeamRepository, usage *biz.UsageUsecase) *ChatService {
 	s := &ChatService{
 		client:  &http.Client{Timeout: 600 * time.Second},
 		teamSSE: broker,
 		teams:   teams,
+		usage:   usage,
 	}
 	s.refreshUpstream()
 	return s
@@ -170,6 +172,7 @@ func (s *ChatService) SendChatMessage(ctx context.Context, req *chatv1.SendChatM
 		}
 		out.AgentMessage = st
 	}
+	recordChatIngressUsage(ctx, s.usage, req, am)
 	if tid := strings.TrimSpace(req.GetTeamId()); tid != "" {
 		biz.HintTeamRunSSE(ctx, s.teamSSE, s.teams, tid)
 	}

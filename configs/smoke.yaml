@@ -1,0 +1,15 @@
+# sqlite-only bootstrap for local smoke tests (no postgres/redis dependency).
+# Optional SPA dev: set KRATOS_HTTP_AUTH_DISABLED=1 (or true/yes) to skip HTTP cookie auth and seed admin id=1 / password "dev".
+server:
+  http:
+    addr: 0.0.0.0:8000
+    timeout: 30s
+  grpc:
+    addr: 0.0.0.0:9100
+    timeout: 30s
+  sse:
+    enable: false
+data:
+  sqlite:
+    enable: true
+    source: file:.run-smoke.sqlite?cache=shared&_fk=1
