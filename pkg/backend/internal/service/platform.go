@@ -357,6 +357,15 @@ func (s *PlatformService) ValidateModel(in domain.ValidateModelInput) (domain.Va
 	return domain.ValidateModelResult{OK: false, Message: "provider/model is not enabled"}, nil
 }
 
+func deepSeekOpenAICompatBaseInspect(apiBase string) bool {
+	u := strings.TrimSpace(strings.ToLower(apiBase))
+	if u == "" || !strings.Contains(u, "api.deepseek.com") {
+		return false
+	}
+	u = strings.TrimRight(u, "/")
+	return !strings.HasSuffix(u, "/anthropic")
+}
+
 func (s *PlatformService) InspectProviderModel(in domain.InspectProviderModelInput) (domain.InspectProviderModelResult, error) {
 	in.ResourceID = strings.TrimSpace(in.ResourceID)
 	in.ProviderCode = strings.TrimSpace(in.ProviderCode)
@@ -372,6 +381,9 @@ func (s *PlatformService) InspectProviderModel(in domain.InspectProviderModelInp
 	}
 	if strings.Contains(strings.ToLower(in.APIBaseURL), "openrouter.ai") || strings.Contains(strings.ToLower(in.ProviderCode), "openrouter") {
 		return inspectOpenRouterModel(in)
+	}
+	if deepSeekOpenAICompatBaseInspect(in.APIBaseURL) {
+		return inspectOpenAICompatibleModel(in)
 	}
 	if strings.Contains(strings.ToLower(in.ProviderType), "anthropic") {
 		return inspectAnthropicModel(in)

@@ -60,7 +60,8 @@
                 <div class="text-h6 ellipsis">{{ industry.name }}</div>
                 <q-chip dense square :class="isSystem(industry) ? 'system-chip' : 'custom-chip'">{{ isSystem(industry) ? "系统" : "自建" }}</q-chip>
               </div>
-              <div class="text-caption text-grey-7">{{ industry.description || "按部门和职位组织该行业下的 Agent。" }}</div>
+              <div v-if="trimmedDesc(industry.description)" class="text-body2 text-grey-8 q-mt-xs category-desc-line">{{ trimmedDesc(industry.description) }}</div>
+              <div v-else class="text-caption text-grey-7">暂无行业描述 · 可在编辑中补充</div>
             </div>
           </div>
           <div class="row q-gutter-xs">
@@ -82,7 +83,8 @@
               <q-item-section avatar><q-icon name="lan" color="primary" /></q-item-section>
               <q-item-section>
                 <q-item-label class="text-weight-bold">{{ department.name }}</q-item-label>
-                <q-item-label caption>{{ department.description || "部门下维护职位叶子节点。" }}</q-item-label>
+                <q-item-label v-if="trimmedDesc(department.description)" caption class="category-dept-desc">{{ trimmedDesc(department.description) }}</q-item-label>
+                <q-item-label v-else caption class="text-grey-6">暂无部门描述</q-item-label>
               </q-item-section>
               <q-item-section side>
                 <div class="row q-gutter-xs">
@@ -97,12 +99,15 @@
               <div v-for="position in department.children" :key="position.id" class="position-item">
                 <div class="row items-center q-gutter-sm">
                   <q-icon name="badge" color="primary" />
-                  <div>
+                  <div class="col min-width-0">
                     <div class="text-weight-medium">{{ position.name }}</div>
-                    <div class="text-caption text-grey-7">{{ fullPath(industry, department, position) }}</div>
+                    <div class="text-caption text-grey-7 position-path">{{ fullPath(industry, department, position) }}</div>
+                    <div v-if="positionDescChain(industry, department, position)" class="text-caption position-desc-chain q-mt-xs">
+                      {{ positionDescChain(industry, department, position) }}
+                    </div>
                   </div>
                 </div>
-                <div class="row q-gutter-xs">
+                <div class="row q-gutter-xs position-item__actions">
                   <q-btn flat dense round color="primary" icon="edit" @click="openEdit(position)" />
                   <q-btn flat dense round color="negative" icon="delete" @click="removeNode(position)" />
                 </div>
@@ -327,6 +332,21 @@ function fullPath(industry: PlatformResourceTreeNode, department: PlatformResour
   return `${industry.name} / ${department.name} / ${position.name}`;
 }
 
+/** 名称路径下一行：三层「描述」串联（空则跳过），与截图中 行业/部门/职位 信息一致。 */
+function positionDescChain(
+  industry: PlatformResourceTreeNode,
+  department: PlatformResourceTreeNode,
+  position: PlatformResourceTreeNode
+) {
+  const parts = [trimmedDesc(industry.description), trimmedDesc(department.description), trimmedDesc(position.description)].filter(Boolean);
+  return parts.join(" / ");
+}
+
+function trimmedDesc(raw?: string | null) {
+  const s = (raw ?? "").trim();
+  return s;
+}
+
 function buildKey(level: string, name: string) {
   const ascii = name
     .toLowerCase()
@@ -359,8 +379,7 @@ function errorMessage(error: unknown) {
 .category-hero,
 .category-actions,
 .category-stats,
-.industry-card__header,
-.position-item {
+.industry-card__header {
   display: flex;
   align-items: center;
 }
@@ -518,12 +537,32 @@ function errorMessage(error: unknown) {
 }
 
 .position-item {
+  display: flex;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
   padding: 10px 12px;
   border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 14px;
   background: #ffffff;
+}
+
+.position-path {
+  line-height: 1.35;
+}
+
+.position-desc-chain {
+  color: #475467;
+  line-height: 1.5;
+}
+
+.category-desc-line {
+  line-height: 1.55;
+}
+
+.position-item__actions {
+  flex-shrink: 0;
+  align-self: center;
 }
 
 .category-empty {
@@ -643,6 +682,12 @@ function errorMessage(error: unknown) {
 .agent-categories-page.is-dark .position-item {
   border-color: rgba(148, 163, 184, 0.14);
   background: rgba(30, 41, 59, 0.7);
+}
+
+.agent-categories-page.is-dark .position-desc-chain,
+.agent-categories-page.is-dark .category-dept-desc,
+.agent-categories-page.is-dark .category-desc-line {
+  color: #94a3b8;
 }
 
 .agent-categories-page.is-dark .category-empty {

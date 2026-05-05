@@ -125,6 +125,19 @@
             label="Provider类型 *"
             :options="providerTypeOptions"
           />
+          <q-input
+            v-model="providerForm.api_key"
+            class="col-12 col-md-6"
+            dense
+            outlined
+            :type="showApiKey ? 'text' : 'password'"
+            label="API 密钥"
+            :hint="apiKeyFieldHint"
+          >
+            <template #append>
+              <q-btn flat dense round :icon="showApiKey ? 'visibility_off' : 'visibility'" :aria-label="showApiKey ? '隐藏密钥' : '显示密钥'" @click="showApiKey = !showApiKey" />
+            </template>
+          </q-input>
           <q-select
             v-model="providerForm.model_api_id"
             class="col-12 col-md-6"
@@ -149,7 +162,7 @@
                 color="primary"
                 label="检查"
                 :loading="checkingModel"
-                :disable="!providerForm.provider_code || !providerForm.model_api_id"
+                :disable="!canInspectProviderModel"
                 @click.stop="inspectCurrentProviderModel"
               />
             </template>
@@ -174,19 +187,6 @@
           <q-input v-model="providerForm.provider_display_name" class="col-12 col-md-6" dense outlined label="显示名称" />
           <q-input v-model="providerForm.model_display_name" class="col-12 col-md-6" dense outlined label="模型展示名" />
           <q-input v-model="providerForm.api_base_url" class="col-12 col-md-6" dense outlined label="API 基础 URL" placeholder="https://..." />
-          <q-input
-            v-model="providerForm.api_key"
-            class="col-12 col-md-6"
-            dense
-            outlined
-            :type="showApiKey ? 'text' : 'password'"
-            label="API 密钥"
-            :hint="editingId ? '留空表示不修改' : ''"
-          >
-            <template #append>
-              <q-btn flat dense round :icon="showApiKey ? 'visibility_off' : 'visibility'" :aria-label="showApiKey ? '隐藏密钥' : '显示密钥'" @click="showApiKey = !showApiKey" />
-            </template>
-          </q-input>
           <q-toggle v-model="providerForm.enabled" class="col-12 col-md-6" color="primary" label="已启用" />
 
           <q-separator class="col-12 q-my-sm" />
@@ -271,7 +271,19 @@
         </q-card-section>
         <q-card-actions align="right">
           <q-btn flat rounded label="取消" v-close-popup />
-          <q-btn color="primary" rounded unelevated :label="editingId ? '保存' : '创建'" :loading="saving" @click="saveRow" />
+          <q-btn
+            color="primary"
+            rounded
+            unelevated
+            :label="editingId ? '保存' : '创建'"
+            :loading="saving"
+            :disable="saving || !canSubmitNewProviderModel"
+            @click="saveRow"
+          >
+            <q-tooltip v-if="isProviderResource && !editingId && !canSubmitNewProviderModel">
+              请先点击「检查」并通过远程验证后再创建
+            </q-tooltip>
+          </q-btn>
         </q-card-actions>
       </q-card>
     </q-dialog>
@@ -320,6 +332,8 @@ const showApiKey = ref(false);
 const trendDialogOpen = ref(false);
 const trendRow = ref<PlatformResource | null>(null);
 const providerPresetKey = ref("");
+/** 新建 Provider：最近一次「检查」成功时的连接指纹；改动 code/model/base/key/type 后需重新检查 */
+const providerCreateInspectFingerprint = ref("");
 
 type ModelCategory = {
   value: string;
@@ -460,6 +474,52 @@ const providerPresetOptions = computed(() =>
   }))
 );
 const currentProviderPreset = computed(() => findProviderPreset(providerPresetKey.value || providerForm.provider_code));
+
+/** 本地 / 内网模型：检查列表通常可不填密钥（如 Ollama、localhost OpenAI 兼容） */
+const isLocalProviderModel = computed(() => {
+  if (providerForm.provider_type === "Ollama") return true;
+  const raw = providerForm.api_base_url.trim();
+  if (!raw) return false;
+  return /^(https?|wss?):\/\/(localhost|127\.0\.0\.1|\[::1\])([/:?#]|$)/i.test(raw);
+});
+
+const hasInspectApiKey = computed(() => {
+  if (providerForm.api_key.trim()) return true;
+  if (editingId.value && providerForm.api_key_set) return true;
+  return false;
+});
+
+const canInspectProviderModel = computed(() => {
+  if (!providerForm.provider_code.trim() || !providerForm.model_api_id.trim()) return false;
+  if (isLocalProviderModel.value) return true;
+  return hasInspectApiKey.value;
+});
+
+const apiKeyFieldHint = computed(() => {
+  const parts: string[] = [];
+  if (editingId.value) parts.push("留空表示不修改");
+  if (!isLocalProviderModel.value) parts.push("远程 Provider 检查模型前需填写密钥");
+  return parts.join("；") || undefined;
+});
+
+function providerCreateInspectFingerprintValue(): string {
+  return [
+    providerForm.provider_code.trim(),
+    providerForm.model_api_id.trim(),
+    providerForm.api_base_url.trim(),
+    providerForm.api_key.trim(),
+    providerForm.provider_type.trim()
+  ].join("\0");
+}
+
+const canSubmitNewProviderModel = computed(() => {
+  if (!isProviderResource.value) return true;
+  if (editingId.value) return true;
+  const saved = providerCreateInspectFingerprint.value;
+  if (!saved) return false;
+  return saved === providerCreateInspectFingerprintValue();
+});
+
 const providerModelOptions = computed(() =>
   (currentProviderPreset.value?.models ?? []).map((model) => ({
     label: model.label,
@@ -473,6 +533,7 @@ const dialogTitle = computed(() => {
 });
 const dialogSubtitle = computed(() => {
   if (!isProviderResource.value) return "Key 和 Name 为必填，其他字段按模块需要填写。";
+  if (!editingId.value) return "配置 LLM Provider 连接。新建需先点击「检查」并通过验证后再创建。";
   return "配置 LLM Provider 连接";
 });
 
@@ -540,6 +601,7 @@ function resetForm() {
   });
   showApiKey.value = false;
   providerPresetKey.value = "";
+  providerCreateInspectFingerprint.value = "";
 }
 
 function openCreate() {
@@ -593,6 +655,7 @@ function openEdit(row: PlatformResource) {
       description: row.description
     });
   }
+  providerCreateInspectFingerprint.value = "";
   dialogOpen.value = true;
 }
 
@@ -626,6 +689,10 @@ async function saveProviderRow() {
   const model = providerForm.model_api_id.trim();
   if (!code || !model || !isProviderCodeValid(code)) {
     $q.notify({ type: "negative", message: "Provider 名称和模型ID必填，名称仅支持小写字母、数字、连字符" });
+    return;
+  }
+  if (!editingId.value && !canSubmitNewProviderModel.value) {
+    $q.notify({ type: "warning", message: "请先点击「检查」并通过验证后再创建" });
     return;
   }
 
@@ -692,6 +759,10 @@ async function inspectCurrentProviderModel() {
     $q.notify({ type: "negative", message: "请先填写 Provider 名称和模型ID" });
     return;
   }
+  if (!canInspectProviderModel.value) {
+    $q.notify({ type: "warning", message: "非本地模型需填写 API 密钥后才能检查" });
+    return;
+  }
   checkingModel.value = true;
   try {
     const result = await inspectProviderModel({
@@ -703,6 +774,9 @@ async function inspectCurrentProviderModel() {
       api_key: providerForm.api_key.trim()
     });
     if (!result.ok) {
+      if (!editingId.value) {
+        providerCreateInspectFingerprint.value = "";
+      }
       const preset = findModelPreset(providerPresetKey.value || code, model);
       if (preset) {
         applyModelPresetValues(preset, true);
@@ -713,6 +787,9 @@ async function inspectCurrentProviderModel() {
       }
       $q.notify({ type: "warning", message: result.message || "未获取到模型参数，也没有匹配的预设参数" });
       return;
+    }
+    if (!editingId.value) {
+      providerCreateInspectFingerprint.value = providerCreateInspectFingerprintValue();
     }
     providerForm.provider_type = result.provider_type || providerForm.provider_type;
     providerForm.model_display_name = result.model_display_name || providerForm.model_display_name || model;
@@ -728,6 +805,9 @@ async function inspectCurrentProviderModel() {
     providerForm.metadata_source = result.source || "";
     $q.notify({ type: "positive", message: result.message || "已获取模型参数" });
   } catch (error) {
+    if (!editingId.value) {
+      providerCreateInspectFingerprint.value = "";
+    }
     $q.notify({ type: "negative", message: errorMessage(error) });
   } finally {
     checkingModel.value = false;

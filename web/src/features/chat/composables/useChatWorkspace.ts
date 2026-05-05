@@ -28,6 +28,7 @@ import type {
   SessionView,
   TeamRow
 } from "../../../components/chat/types";
+import type { ChatOption } from "../types";
 import {
   CHAT_MODE_OPTIONS,
   loadDialogModeFromStorage,
@@ -405,6 +406,14 @@ export function useChatWorkspace() {
             type: "negative",
             message: error instanceof Error ? error.message : "发送失败，请稍后重试"
           });
+          if (store.selectedSession) {
+            try {
+              await store.loadMessages();
+              await store.loadSessions();
+            } catch {
+              /* ignore */
+            }
+          }
         }
       } finally {
         sending.value = false;
@@ -791,25 +800,29 @@ export function useChatWorkspace() {
   }
 
   async function loadChatOptions() {
+    let modeRows: ChatOption[] = [];
     try {
-      const [modes, models] = await Promise.all([
-        listChatOptions("dialog_mode"),
-        listPlatformResources("llm-provider-models")
-      ]);
-      if (modes.length) {
-        modeOpts.value = modes.map((item) => ({ label: item.label, value: item.key }));
-      }
-      providerModels.value = models.filter((item) => item.enabled);
-      if (providerModels.value.length) {
-        provOpts.value = providerModels.value.map((item) => ({
-          label: item.name || item.model,
-          value: getProviderModelValue(item),
-          caption: `${item.provider} / ${item.model}`
-        }));
-        ensureSelectedModel();
-      }
+      modeRows = await listChatOptions("dialog_mode");
     } catch {
-      // Keep local fallback options when backend config is unavailable.
+      /* keep CHAT_MODE_OPTIONS fallback */
+    }
+    let modelRows: PlatformResource[] = [];
+    try {
+      modelRows = await listPlatformResources("llm-provider-models");
+    } catch {
+      /* keep empty; model selector falls back to labels only */
+    }
+    if (modeRows.length) {
+      modeOpts.value = modeRows.map((item) => ({ label: item.label, value: item.key }));
+    }
+    providerModels.value = modelRows.filter((item) => item.enabled !== false);
+    if (providerModels.value.length) {
+      provOpts.value = providerModels.value.map((item) => ({
+        label: item.name || item.model,
+        value: getProviderModelValue(item),
+        caption: `${item.provider} / ${item.model}`
+      }));
+      ensureSelectedModel();
     }
   }
 

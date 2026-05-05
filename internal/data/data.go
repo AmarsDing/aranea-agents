@@ -160,6 +160,10 @@ func NewData(c *conf.Data) (*Data, func(), error) {
 		_ = entClient.Close()
 		return nil, nil, fmt.Errorf("session memory schema: %w", err)
 	}
+	if err = ensureBuiltinPlatformTools(context.Background(), entClient); err != nil {
+		_ = entClient.Close()
+		return nil, nil, err
+	}
 
 	pgDSN := postgresVectorDSN(c)
 	var pg *sql.DB
@@ -189,6 +193,13 @@ func NewData(c *conf.Data) (*Data, func(), error) {
 		}
 	}
 
+	if err = ensureInitialAdminFromConfig(context.Background(), entClient, c); err != nil {
+		if pg != nil {
+			pg.Close()
+		}
+		_ = entClient.Close()
+		return nil, nil, err
+	}
 	if err = ensureDevBypassAdminIfEnabled(context.Background(), entClient); err != nil {
 		if pg != nil {
 			pg.Close()

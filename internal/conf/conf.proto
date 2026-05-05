@@ -48,6 +48,17 @@ message Data {
     // embedding dimension (e.g. 1536 for text-embedding-3-small). 0 = default 1536.
     int32 vector_dim = 2;
   }
+  // When SQLite has zero admins, create this account once (aligned with AdminService.Login: password stored as MD5 hex).
+  // Use only for local/smoke; never commit production secrets.
+  message InitialAdmin {
+    // Login-by-username value (maps to ent Admin.name).
+    string name = 1;
+    string email = 2;
+    // Plaintext in YAML; hashed with MD5 before persist.
+    string password = 3;
+    // e.g. "admin" (Admin.access).
+    string access = 4;
+  }
   message Redis {
     string network = 1;
     string addr = 2;
@@ -58,4 +69,5 @@ message Data {
   Redis redis = 2;
   Sqlite sqlite = 3;
   Postgres postgres = 4;
+  InitialAdmin initial_admin = 5;
 }

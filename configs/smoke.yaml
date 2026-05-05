@@ -1,15 +1,26 @@
 # sqlite-only bootstrap for local smoke tests (no postgres/redis dependency).
-# Optional SPA dev: set KRATOS_HTTP_AUTH_DISABLED=1 (or true/yes) to skip HTTP cookie auth and seed admin id=1 / password "dev".
+# data.initial_admin: when admins table is empty, seeds id=1 (password → MD5, same as AdminService.Login).
+# Optional: KRATOS_HTTP_AUTH_DISABLED=1 skips cookie auth for local SPA.
 server:
   http:
     addr: 0.0.0.0:8000
-    timeout: 30s
+    timeout: 600s
   grpc:
     addr: 0.0.0.0:9100
-    timeout: 30s
+    timeout: 120s
+  # 与 web/quasar devServer `/sse` → :8001 代理一致；关闭则监控日志 EventSource 会代理失败。
   sse:
-    enable: false
+    enable: true
+    network: tcp
+    addr: 0.0.0.0:8001
+    path: /
+    timeout: 120s
 data:
   sqlite:
     enable: true
     source: file:.run-smoke.sqlite?cache=shared&_fk=1
+  initial_admin:
+    name: dev
+    email: dev@local.invalid
+    password: dev
+    access: admin

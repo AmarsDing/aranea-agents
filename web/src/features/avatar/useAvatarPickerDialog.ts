@@ -1,6 +1,7 @@
 import { computed, ref, watch, type Ref } from "vue";
 import { storeToRefs } from "pinia";
 import { useQuasar } from "quasar";
+import { avatarUploadErrorMessage, validateAvatarFileForUpload } from "../../features/avatar/api";
 import { useAvatarCatalogStore } from "../../stores/avatar";
 
 /** 头像选择弹层：组合 Store + 本地 UI 状态；供 AgentAvatarPicker 使用，组件内不直接调 api/store */
@@ -46,12 +47,19 @@ export function useAvatarPickerDialog(options: { modelValue: Ref<string>; open: 
   }
 
   async function uploadFromFile(file: File) {
+    const invalid = validateAvatarFileForUpload(file);
+    if (invalid) {
+      $q.notify({ type: "negative", message: invalid });
+      return;
+    }
     uploading.value = true;
     try {
       const uploaded = await store.uploadAvatarFromFile(file);
       selectedId.value = uploaded.id;
       tab.value = "mine";
       $q.notify({ type: "positive", message: "头像已上传" });
+    } catch (err) {
+      $q.notify({ type: "negative", message: avatarUploadErrorMessage(err) });
     } finally {
       uploading.value = false;
     }

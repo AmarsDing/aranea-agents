@@ -28,6 +28,7 @@ message Admin {
   // Possible values are: "admin", "user", etc.
   string access = 6;
   // The password of the user.
+  // HTTP JSON: plaintext on the wire for Login / CreateAdmin / UpdateAdmin; persistence is MD5 hex (see AdminService impl).
   string password = 7;
   // The timestamp at which the user was created.
   google.protobuf.Timestamp create_time = 8;

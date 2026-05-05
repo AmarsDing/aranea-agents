@@ -13,7 +13,7 @@
         @save="saveAgent"
       />
       <q-separator />
-      <q-tabs v-model="tab" dense align="left" class="agent-settings-tabs" active-color="transparent" indicator-color="transparent" :breakpoint="0">
+      <q-tabs v-model="tab" dense align="left" class="agent-settings-tabs" active-color="primary" indicator-color="primary" :breakpoint="0">
         <q-tab name="agent" label="Agent" />
         <q-tab name="memory" label="记忆" />
         <q-tab name="files" label="文件" />
@@ -606,14 +606,29 @@ const snapshotModeOptions = ["always", "on_warning", "off"].map((value) => ({ la
 const memoryScopeOptions = ["agent", "user", "team", "workspace", "global"].map((value) => ({ label: value, value }));
 
 onMounted(async () => {
-  const [agent] = await Promise.all([detailStore.fetchById(String(route.params.id)), loadProviderModels()]);
-  if (!agent?.id) return;
-  Object.assign(form, agent);
-  hydrateSettings(agent);
-  store.upsertAgent(agent);
-  snapshotFiles();
-  previewMode.value = (form.system_prompt_mode as PromptMode) || "complete";
-  await loadPromptPreview();
+  const id = String(route.params.id ?? "").trim();
+  if (!id) {
+    $q.notify({ type: "negative", message: "缺少 Agent ID" });
+    router.back();
+    return;
+  }
+  try {
+    const [agent] = await Promise.all([detailStore.fetchById(id), loadProviderModels()]);
+    if (!agent?.id) {
+      $q.notify({ type: "warning", message: "未找到该 Agent" });
+      router.back();
+      return;
+    }
+    Object.assign(form, agent);
+    hydrateSettings(agent);
+    store.upsertAgent(agent);
+    snapshotFiles();
+    previewMode.value = (form.system_prompt_mode as PromptMode) || "complete";
+    await loadPromptPreview();
+  } catch (e) {
+    $q.notify({ type: "negative", message: e instanceof Error ? e.message : "加载 Agent 失败" });
+    router.back();
+  }
 });
 
 watch(previewMode, () => void loadPromptPreview());
@@ -1025,7 +1040,8 @@ async function copyKey() {
 }
 
 .agent-settings-tabs :deep(.q-tab--active) {
-  color: var(--color-accent);
+  color: var(--color-text-primary);
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
 }
 
 .agent-settings-tabs :deep(.q-tab__indicator) {
@@ -1178,6 +1194,11 @@ body.body--dark .settings-shell {
 
 body.body--dark .agent-settings-tabs {
   background: var(--glass-surface);
+}
+
+body.body--dark .agent-settings-tabs :deep(.q-tab--active) {
+  color: #f8fafc;
+  background: color-mix(in srgb, var(--color-accent) 22%, transparent);
 }
 
 body.body--dark .settings-section {

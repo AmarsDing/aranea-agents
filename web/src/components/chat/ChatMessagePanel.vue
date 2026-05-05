@@ -90,6 +90,18 @@
             }"
             v-html="renderMarkdown(message.content_markdown)"
           />
+          <div
+            v-if="message.role !== 'user' && message.status === 'error' && assistantErrorDetail(message)"
+            class="text-caption text-negative q-mt-xs chat-assistant-error"
+          >
+            {{ assistantErrorDetail(message) }}
+          </div>
+          <div
+            v-if="message.role === 'user'"
+            class="message-send-tags message-send-tags--sent text-caption"
+          >
+            {{ userSendTagLine(message) }}
+          </div>
           <span v-if="isStreaming(message)" class="chat-typing" aria-label="正在输入">
             <i /><i /><i />
           </span>
@@ -422,6 +434,40 @@ function messageIdentityKey(message: Message): string {
   if (meta?.agent_key) return meta.agent_key;
   if (message.model_name?.trim()) return message.model_name;
   return message.id || "assistant";
+}
+
+function assistantErrorDetail(message: Message): string {
+  const raw = message.error_message?.trim();
+  if (raw) return raw;
+  const body = message.content_markdown?.trim() || "";
+  if (body === "对话生成失败。") {
+    return "未返回详细错误，请查看用量事件或后端日志。";
+  }
+  return "";
+}
+
+function userSendTagLine(message: Message): string {
+  let agentLabel = "—";
+  let ctx = "0%";
+  try {
+    const raw = JSON.parse(message.options_json || "{}") as {
+      agent?: { name?: string; display_name?: string };
+      send_meta?: { context_pct?: number };
+    };
+    const n = raw.agent?.name || raw.agent?.display_name;
+    if (n) agentLabel = n;
+    if (typeof raw.send_meta?.context_pct === "number") {
+      ctx = `${Math.round(raw.send_meta.context_pct)}%`;
+    }
+  } catch {
+    /* ignore */
+  }
+  const parts: string[] = [agentLabel, `${ctx} CTX`];
+  const st = message.status?.trim();
+  if (st && st !== "ok") parts.push(st);
+  const err = message.error_message?.trim();
+  if (err) parts.push(err);
+  return parts.join(" · ");
 }
 
 function isTeamMember(message: Message): boolean {
@@ -1032,6 +1078,23 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
   color: rgba(71, 85, 105, 0.7)
   line-height: 1.2
   font-variant-numeric: tabular-nums
+
+.message-send-tags
+  display: block
+  width: 100%
+  margin-top: 8px
+  text-align: right
+  align-self: flex-end
+  font-weight: 600
+  letter-spacing: 0.01em
+  line-height: 1.35
+  opacity: 0.92
+
+.message-send-tags--sent
+  color: rgba(255, 255, 255, 0.82)
+
+:global(.body--dark) .message-send-tags:not(.message-send-tags--sent)
+  color: rgba(148, 163, 184, 0.95)
 
 :global(.body--dark) .message-name
   color: #f1f5f9

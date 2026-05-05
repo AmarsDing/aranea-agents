@@ -4,6 +4,8 @@ import (
 	"context"
 	"os"
 	"strings"
+	"time"
+	"unicode/utf8"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	"aranea-agents/internal/biz"
@@ -11,23 +13,54 @@ import (
 	"github.com/google/uuid"
 )
 
-// recordChatIngressUsage forwards one token-usage row to admin SQLite when explicitly enabled:
-// CHAT_RECORD_USAGE_INGRESS=1 (avoids doubling legacy pkg/backend inserts by default).
-func recordChatIngressUsage(ctx context.Context, uc *biz.UsageUsecase, req *chatv1.SendChatMessageRequest, am map[string]any) {
+// chatIngressRecordingDisabled is true only when CHAT_RECORD_USAGE_INGRESS is explicitly off
+// (legacy dual-stack with pkg/backend may set this to avoid duplicate rows).
+func chatIngressRecordingDisabled() bool {
+	raw := strings.TrimSpace(strings.ToLower(os.Getenv("CHAT_RECORD_USAGE_INGRESS")))
+	return raw == "0" || raw == "false" || raw == "no" || raw == "off"
+}
+
+// roughTokenEstimateFromText ~4 chars per token for CJK/Latin mix (display-only when API omits usage).
+func roughTokenEstimateFromText(s string) int {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0
+	}
+	n := utf8.RuneCountInString(s)
+	if n < 1 {
+		return 0
+	}
+	est := n / 4
+	if est < 1 {
+		return 1
+	}
+	return est
+}
+
+// recordChatIngressUsage writes one model_token_usage_events row for native admin chat.
+// Recording is ON by default; set CHAT_RECORD_USAGE_INGRESS=0|false|no|off to disable.
+func recordChatIngressUsage(ctx context.Context, uc *biz.UsageUsecase, req *chatv1.SendChatMessageRequest, am map[string]any, streamEnabled bool) {
 	if uc == nil {
 		return
 	}
-	raw := strings.TrimSpace(strings.ToLower(os.Getenv("CHAT_RECORD_USAGE_INGRESS")))
-	if raw != "1" && raw != "true" && raw != "yes" {
+	if chatIngressRecordingDisabled() {
 		return
 	}
 	if am == nil {
 		return
 	}
+	status := firstNonEmptyString(jsonString(am["status"]), "success")
 	tin := jsonNumberInt(am["token_in"])
 	tout := jsonNumberInt(am["token_out"])
-	if tin <= 0 && tout <= 0 {
-		return
+	if tin <= 0 && tout <= 0 && status == "success" {
+		// Streaming providers often omit usage unless stream_options.include_usage is supported.
+		tout = roughTokenEstimateFromText(jsonString(am["content_markdown"]))
+	}
+
+	latency := jsonNumberInt(am["latency_ms"])
+	tps := 0.0
+	if latency > 0 && tout > 0 {
+		tps = float64(tout) / (float64(latency) / 1000.0)
 	}
 
 	sess := strings.TrimSpace(req.GetSessionId())
@@ -37,7 +70,7 @@ func recordChatIngressUsage(ctx context.Context, uc *biz.UsageUsecase, req *chat
 
 	ev := biz.TokenUsageEvent{
 		ID:               uuid.NewString(),
-		SessionID:      sess,
+		SessionID:        sess,
 		TeamID:           strings.TrimSpace(req.GetTeamId()),
 		AgentKey:         strings.TrimSpace(req.GetAgentKey()),
 		MessageID:        jsonString(am["id"]),
@@ -46,12 +79,18 @@ func recordChatIngressUsage(ctx context.Context, uc *biz.UsageUsecase, req *chat
 		InputTokens:      tin,
 		OutputTokens:     tout,
 		TotalTokens:      tin + tout,
-		LatencyMS:        jsonNumberInt(am["latency_ms"]),
-		Status:           firstNonEmptyString(jsonString(am["status"]), "success"),
-		StreamEnabled:    false,
+		LatencyMS:        latency,
+		TokensPerSecond:  tps,
+		Status:           status,
+		StreamEnabled:    streamEnabled,
 		UsageKind:        "chat",
-		MetadataJSON:     `{"source":"chat_ingress_unary"}`,
+		MetadataJSON:     `{"source":"chat_ingress_native"}`,
 	}
+	if streamEnabled {
+		ev.MetadataJSON = `{"source":"chat_ingress_native_stream"}`
+	}
+	ev.ErrorMessage = firstNonEmptyString(jsonString(am["error_message"]), jsonString(am["errorMessage"]))
+	ev.ErrorCode = firstNonEmptyString(jsonString(am["error_code"]), jsonString(am["errorCode"]))
 	opts := req.GetOptions()
 	if opts != nil {
 		if ev.ModelAPIID == "" {
@@ -61,7 +100,10 @@ func recordChatIngressUsage(ctx context.Context, uc *biz.UsageUsecase, req *chat
 		ev.ProviderCode = strings.TrimSpace(opts.GetProvider())
 		ev.PromptMode = strings.TrimSpace(opts.GetDialogMode())
 	}
-	if _, err := uc.RecordTokenUsageEvent(ctx, ev); err != nil {
+	// Request ctx may already be expired after a long LLM call; usage insert uses its own deadline.
+	recCtx, recCancel := context.WithTimeout(context.WithoutCancel(ctx), 45*time.Second)
+	defer recCancel()
+	if _, err := uc.RecordTokenUsageEvent(recCtx, ev); err != nil {
 		// best-effort; do not fail chat
 		return
 	}

@@ -17,6 +17,9 @@ type TeamRepository interface {
 	DeleteTeam(ctx context.Context, id string) error
 	ListTeamRuns(ctx context.Context, teamID string, limit int) ([]TeamRun, error)
 	ListTeamRunSteps(ctx context.Context, runID string) ([]TeamRunStep, error)
+	CreateTeamRun(ctx context.Context, r TeamRun) (TeamRun, error)
+	UpdateTeamRun(ctx context.Context, r TeamRun) error
+	CreateTeamRunStep(ctx context.Context, s TeamRunStep) (TeamRunStep, error)
 }
 
 // TeamUsecase implements team catalog + run listing (writes to runs still happen in legacy chat stack).

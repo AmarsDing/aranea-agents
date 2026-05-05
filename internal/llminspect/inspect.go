@@ -3,7 +3,6 @@ package llminspect
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 // Input matches legacy InspectProviderModelInput JSON.
@@ -44,6 +45,17 @@ type Result struct {
 	RawMetadataJSON               string
 }
 
+// deepSeekOpenAICompatBase is true for DeepSeek OpenAI-compatible base_url (see https://api-docs.deepseek.com/zh-cn/ ),
+// excluding the Anthropic-alternate base https://api.deepseek.com/anthropic .
+func deepSeekOpenAICompatBase(apiBase string) bool {
+	u := strings.TrimSpace(strings.ToLower(apiBase))
+	if u == "" || !strings.Contains(u, "api.deepseek.com") {
+		return false
+	}
+	u = strings.TrimRight(u, "/")
+	return !strings.HasSuffix(u, "/anthropic")
+}
+
 // Run performs remote provider discovery (OpenRouter / Anthropic / OpenAI-compatible).
 // Caller must merge saved config_json into Input when needed.
 func Run(in Input) (Result, error) {
@@ -54,10 +66,14 @@ func Run(in Input) (Result, error) {
 	in.APIBaseURL = strings.TrimSpace(in.APIBaseURL)
 	in.APIKey = strings.TrimSpace(in.APIKey)
 	if in.ProviderCode == "" || in.ModelAPIID == "" {
-		return Result{}, errors.New("provider_code and model_api_id are required")
+		return Result{}, kerrors.BadRequest("LLM_INSPECT", "provider_code and model_api_id are required")
 	}
 	if strings.Contains(strings.ToLower(in.APIBaseURL), "openrouter.ai") || strings.Contains(strings.ToLower(in.ProviderCode), "openrouter") {
 		return inspectOpenRouterModel(in)
+	}
+	// DeepSeek OpenAI 路由：GET /models + Bearer，与 Anthropic 头互不兼容；避免因错配的 provider_type 走 inspectAnthropicModel。
+	if deepSeekOpenAICompatBase(in.APIBaseURL) {
+		return inspectOpenAICompatibleModel(in)
 	}
 	if strings.Contains(strings.ToLower(in.ProviderType), "anthropic") {
 		return inspectAnthropicModel(in)
