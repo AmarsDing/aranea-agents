@@ -191,7 +191,7 @@ func (s *ChatService) SendChatMessage(ctx context.Context, req *chatv1.SendChatM
 		}
 		out.AgentMessage = st
 	}
-		recordChatIngressUsage(ctx, s.usage, req, am, false)
+	recordChatIngressUsage(ctx, s.usage, req, am, false)
 	if tid := strings.TrimSpace(req.GetTeamId()); tid != "" {
 		biz.HintTeamRunSSE(ctx, s.teamSSE, s.teams, tid)
 	}
