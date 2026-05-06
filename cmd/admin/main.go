@@ -19,18 +19,16 @@ import (
 	sse "github.com/tx7do/kratos-transport/transport/sse"
 
 	_ "go.uber.org/automaxprocs"
+
+	_ "aranea-agents/internal/tools/registerstd"
 )
 
 // go build -ldflags "-X main.Version=x.y.z"
 var (
-	// Name is the name of the compiled software.
-	Name string
-	// Version is the version of the compiled software.
+	Name    string
 	Version string
-	// flagconf is the config flag.
 	flagconf string
-
-	id, _ = os.Hostname()
+	id, _   = os.Hostname()
 )
 
 func init() {
@@ -93,7 +91,6 @@ func main() {
 		logger.Log(log.LevelInfo, "msg", "cron runner started", "interval", interval.String())
 	}
 
-	// start and wait for stop signal
 	if err := out.App.Run(); err != nil {
 		panic(err)
 	}

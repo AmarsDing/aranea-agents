@@ -1,0 +1,12 @@
+---
+description: Agent/runtime work must follow pkg/adk-go; do not use pkg/backend as architecture reference
+alwaysApply: true
+---
+
+# ADK-Go 优先（框架真相源）
+
+- **`pkg/adk-go` 是 Agent 框架**：Runner、Session、LLM（`model`）、Tool、Agent 组合与流式语义等，**先查 `pkg/adk-go` 再实现**。
+- **不要以 `pkg/backend` 为范本**：新功能的分层、编排、事件设计**不要**照抄 `pkg/backend` 或 `adapters/adkruntime`；仅在兼容、迁移或对照旧行为时触及。
+- **集成方式**：业务代码通过薄适配层使用 `pkg/adk-go` 公开 API，避免复制 ADK 内部逻辑。
+
+完整条文见 `docs/AI-全栈新功能开发规范.md`。

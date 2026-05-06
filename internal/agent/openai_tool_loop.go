@@ -300,18 +300,18 @@ func CompleteOpenAIModelReply(ctx context.Context, d Deps, cfg providerAPIConfig
 		reply, reasoning, tin, tout, failRound, toolErr := RunOpenAICompatWithNativeTools(ctx, d.HTTP, cfg.APIBaseURL, cfg.APIKey, model, prefix, messages, tools, stream)
 		if toolErr != nil && failRound == 0 && shouldFallbackChatWithoutTools(toolErr) {
 			if stream != nil {
-				return CallOpenAICompatChatStream(ctx, d.HTTP, cfg.APIBaseURL, cfg.APIKey, model, oaMsgs, func(piece string) error {
+				return CallOpenAICompatChatStream(ctx, d.HTTP, cfg, model, oaMsgs, func(piece string) error {
 					return stream.Emit("delta", map[string]string{"content": piece})
 				})
 			}
-			return CallOpenAICompatChat(ctx, d.HTTP, cfg.APIBaseURL, cfg.APIKey, model, oaMsgs)
+			return CallOpenAICompatChat(ctx, d.HTTP, cfg, model, oaMsgs)
 		}
 		return reply, reasoning, tin, tout, toolErr
 	}
 	if stream != nil {
-		return CallOpenAICompatChatStream(ctx, d.HTTP, cfg.APIBaseURL, cfg.APIKey, model, oaMsgs, func(piece string) error {
+		return CallOpenAICompatChatStream(ctx, d.HTTP, cfg, model, oaMsgs, func(piece string) error {
 			return stream.Emit("delta", map[string]string{"content": piece})
 		})
 	}
-	return CallOpenAICompatChat(ctx, d.HTTP, cfg.APIBaseURL, cfg.APIKey, model, oaMsgs)
+	return CallOpenAICompatChat(ctx, d.HTTP, cfg, model, oaMsgs)
 }
