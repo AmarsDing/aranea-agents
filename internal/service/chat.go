@@ -16,34 +16,54 @@ import (
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/legacychat"
+	"aranea-agents/internal/team"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	khttp "github.com/go-kratos/kratos/v2/transport/http"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
-var errChatUpstreamUnset = fmt.Errorf("chat upstream not configured (set LEGACY_REST_ORIGIN)")
-
 // ChatService implements kratos chat.v1 unary RPCs via legacy upstream proxy when LEGACY_REST_ORIGIN is set.
 type ChatService struct {
 	chatv1.UnimplementedChatServiceServer
 
-	mu      sync.RWMutex
-	up      *url.URL
-	proxy   *httputil.ReverseProxy
-	client  *http.Client
-	teamSSE *biz.TeamRunEventBroker
-	teams   biz.TeamRepository
-	usage   *biz.UsageUsecase
+	mu          sync.RWMutex
+	up          *url.URL
+	proxy       *httputil.ReverseProxy
+	client      *http.Client
+	llmHTTP     *http.Client
+	teamSSE     *biz.TeamRunEventBroker
+	teams       biz.TeamRepository
+	teamsNative *team.Runner
+	usage       *biz.UsageUsecase
+	sessions    *biz.SessionUsecase
+	agents      biz.AgentRepository
+	agentsUC    *biz.AgentUsecase
+	llmCatalog  *biz.LlmProviderModelUsecase
 }
 
 // NewChatService builds a chat façade (LEGACY_REST_ORIGIN → legacy /api/v1/chat/* until fully in-process execution).
-func NewChatService(broker *biz.TeamRunEventBroker, teams biz.TeamRepository, usage *biz.UsageUsecase) *ChatService {
+func NewChatService(
+	broker *biz.TeamRunEventBroker,
+	teams biz.TeamRepository,
+	teamsNative *team.Runner,
+	usage *biz.UsageUsecase,
+	sessions *biz.SessionUsecase,
+	agents biz.AgentRepository,
+	agentsUC *biz.AgentUsecase,
+	llmCatalog *biz.LlmProviderModelUsecase,
+) *ChatService {
 	s := &ChatService{
-		client:  &http.Client{Timeout: 600 * time.Second},
-		teamSSE: broker,
-		teams:   teams,
-		usage:   usage,
+		client:      &http.Client{Timeout: 600 * time.Second},
+		llmHTTP:     &http.Client{Timeout: 300 * time.Second},
+		teamSSE:     broker,
+		teams:       teams,
+		teamsNative: teamsNative,
+		usage:       usage,
+		sessions:    sessions,
+		agents:      agents,
+		agentsUC:    agentsUC,
+		llmCatalog:  llmCatalog,
 	}
 	s.refreshUpstream()
 	return s
@@ -78,8 +98,7 @@ func (s *ChatService) upstreamRoot() (*url.URL, *httputil.ReverseProxy) {
 func (s *ChatService) ProxyStream(ctx khttp.Context) error {
 	_, proxy := s.upstreamRoot()
 	if proxy == nil {
-		legacychat.WriteUpstreamUnavailableJSON(ctx.Response())
-		return nil
+		return s.proxyNativeStream(ctx)
 	}
 	proxy.ServeHTTP(ctx.Response(), ctx.Request())
 	return nil
@@ -89,7 +108,7 @@ func (s *ChatService) ProxyStream(ctx khttp.Context) error {
 func (s *ChatService) SendChatMessage(ctx context.Context, req *chatv1.SendChatMessageRequest) (*chatv1.SendChatMessageResponse, error) {
 	baseRaw := strings.TrimRight(strings.TrimSpace(os.Getenv("LEGACY_REST_ORIGIN")), "/")
 	if baseRaw == "" {
-		return nil, kerrors.ServiceUnavailable("CHAT_UPSTREAM", errChatUpstreamUnset.Error())
+		return s.nativeSendChatMessage(ctx, req)
 	}
 
 	body := map[string]any{
@@ -172,7 +191,7 @@ func (s *ChatService) SendChatMessage(ctx context.Context, req *chatv1.SendChatM
 		}
 		out.AgentMessage = st
 	}
-	recordChatIngressUsage(ctx, s.usage, req, am)
+	recordChatIngressUsage(ctx, s.usage, req, am, false)
 	if tid := strings.TrimSpace(req.GetTeamId()); tid != "" {
 		biz.HintTeamRunSSE(ctx, s.teamSSE, s.teams, tid)
 	}
@@ -191,7 +210,7 @@ func pickMap(v any) map[string]any {
 func (s *ChatService) GetChatOptions(ctx context.Context, req *chatv1.GetChatOptionsRequest) (*chatv1.GetChatOptionsResponse, error) {
 	baseRaw := strings.TrimRight(strings.TrimSpace(os.Getenv("LEGACY_REST_ORIGIN")), "/")
 	if baseRaw == "" {
-		return nil, kerrors.ServiceUnavailable("CHAT_UPSTREAM", errChatUpstreamUnset.Error())
+		return s.nativeGetChatOptions(ctx, req)
 	}
 
 	rawURL := baseRaw + legacychat.LegacyRoutePrefix + "/options"

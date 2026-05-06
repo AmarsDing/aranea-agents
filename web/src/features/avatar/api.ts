@@ -1,5 +1,69 @@
+import axios from "axios";
 import { createAvatarService } from "../../services";
 import { requestHandler } from "../../services/axiosHandler";
+
+/** 与后端 `internal/biz/avatar.go` 一致 */
+export const AVATAR_MAX_FILE_BYTES = 2 * 1024 * 1024;
+
+const AVATAR_ALLOWED_MIME = new Set(["image/png", "image/jpeg", "image/webp"]);
+
+/** 上传前校验；通过返回 `null`，否则返回简短中文错误说明 */
+export function validateAvatarFileForUpload(file: File): string | null {
+  if (!file?.size) {
+    return "请选择有效的图片文件";
+  }
+  if (file.size > AVATAR_MAX_FILE_BYTES) {
+    return "头像图片须不超过 2MB";
+  }
+  const mime = (file.type || "").toLowerCase();
+  if (!AVATAR_ALLOWED_MIME.has(mime)) {
+    return "仅支持 PNG、JPEG、WebP 格式";
+  }
+  return null;
+}
+
+/** 将 axios / 服务端错误整理为可展示文案 */
+export function avatarUploadErrorMessage(err: unknown): string {
+  if (axios.isAxiosError(err)) {
+    const data = err.response?.data;
+    if (data && typeof data === "object" && !Array.isArray(data)) {
+      const o = data as Record<string, unknown>;
+      const raw = o.message ?? o.msg;
+      if (typeof raw === "string" && raw.trim()) {
+        return mapAvatarBackendMessage(raw.trim());
+      }
+    }
+    const status = err.response?.status;
+    if (status === 400) {
+      return "图片不符合要求，请检查格式（PNG / JPEG / WebP）与大小（≤ 2MB）";
+    }
+    if (status === 401 || status === 403) {
+      return "未登录或无权上传头像";
+    }
+    if (status === 413) {
+      return "头像图片须不超过 2MB";
+    }
+  }
+  if (err instanceof Error && err.message) {
+    return err.message;
+  }
+  return "头像上传失败";
+}
+
+function mapAvatarBackendMessage(message: string): string {
+  const table: Record<string, string> = {
+    "avatar file is required": "请选择有效的图片文件",
+    "avatar file must be <= 2MB": "头像图片须不超过 2MB",
+    "unsupported avatar type": "仅支持 PNG、JPEG、WebP 格式"
+  };
+  if (table[message]) {
+    return table[message];
+  }
+  if (message.startsWith("unsupported avatar type:")) {
+    return "仅支持 PNG、JPEG、WebP 格式";
+  }
+  return message;
+}
 
 export type AvatarAsset = {
   id: string;

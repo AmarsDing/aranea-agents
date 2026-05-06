@@ -80,3 +80,9 @@ coverage.html
 *.coverprofile
 profile.cov
 pkg/trpc-agent-go/
+pkg/adk-go/
+
+# 本地草稿 / 演示输出（勿提交）
+/tmp_*.go
+/manager_notes_*.md
+/output/

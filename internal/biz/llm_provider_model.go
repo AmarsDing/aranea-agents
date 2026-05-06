@@ -107,6 +107,11 @@ func (u *LlmProviderModelUsecase) Get(ctx context.Context, id string) (ProviderM
 	return u.repo.GetProviderModel(ctx, id)
 }
 
+// GetByProviderAndModel loads a catalog row by provider + model_api_id.
+func (u *LlmProviderModelUsecase) GetByProviderAndModel(ctx context.Context, provider, model string) (ProviderModel, error) {
+	return u.repo.GetProviderModelByProviderAndModel(ctx, provider, model)
+}
+
 func (u *LlmProviderModelUsecase) Create(ctx context.Context, in ProviderModel) (ProviderModel, error) {
 	in.Key = strings.TrimSpace(in.Key)
 	in.Name = strings.TrimSpace(in.Name)
@@ -148,8 +153,12 @@ func (u *LlmProviderModelUsecase) Update(ctx context.Context, id string, patch P
 	merged.SortOrder = patch.SortOrder
 	merged.Provider = patch.Provider
 	merged.Model = patch.Model
-	merged.ConfigJSON = patch.ConfigJSON
-	merged.MetadataJSON = patch.MetadataJSON
+	if strings.TrimSpace(patch.ConfigJSON) != "" {
+		merged.ConfigJSON = patch.ConfigJSON
+	}
+	if strings.TrimSpace(patch.MetadataJSON) != "" {
+		merged.MetadataJSON = patch.MetadataJSON
+	}
 	if merged.Key == "" {
 		merged.Key = cur.Key
 	}

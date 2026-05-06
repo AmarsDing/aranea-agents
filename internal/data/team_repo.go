@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
@@ -223,4 +224,116 @@ func (r *teamRepo) ListTeamRunSteps(ctx context.Context, runID string) ([]biz.Te
 		out = append(out, entTeamRunStepToBiz(row))
 	}
 	return out, nil
+}
+
+func (r *teamRepo) CreateTeamRun(ctx context.Context, run biz.TeamRun) (biz.TeamRun, error) {
+	if strings.TrimSpace(run.ID) == "" || strings.TrimSpace(run.TeamID) == "" {
+		return biz.TeamRun{}, fmt.Errorf("team run id and team_id are required")
+	}
+	now := nowRFC3339()
+	if run.CreatedAt == "" {
+		run.CreatedAt = now
+	}
+	if run.UpdatedAt == "" {
+		run.UpdatedAt = now
+	}
+	if run.StartedAt == "" {
+		run.StartedAt = now
+	}
+	if run.Status == "" {
+		run.Status = "running"
+	}
+	if run.TopologyJSON == "" {
+		run.TopologyJSON = "{}"
+	}
+	_, err := r.data.entClient.TeamRun.Create().
+		SetID(run.ID).
+		SetTeamID(run.TeamID).
+		SetSessionID(run.SessionID).
+		SetMessageID(run.MessageID).
+		SetMode(run.Mode).
+		SetStatus(run.Status).
+		SetInputPreview(run.InputPreview).
+		SetOutputPreview(run.OutputPreview).
+		SetTokenIn(run.TokenIn).
+		SetTokenOut(run.TokenOut).
+		SetCostMicroUsd(run.CostMicroUSD).
+		SetDurationMs(run.DurationMS).
+		SetErrorMessage(run.ErrorMessage).
+		SetTopologyJSON(run.TopologyJSON).
+		SetStartedAt(run.StartedAt).
+		SetFinishedAt(run.FinishedAt).
+		SetCreatedAt(run.CreatedAt).
+		SetUpdatedAt(run.UpdatedAt).
+		Save(ctx)
+	if err != nil {
+		return biz.TeamRun{}, err
+	}
+	row, err := r.data.entClient.TeamRun.Get(ctx, run.ID)
+	if err != nil {
+		return biz.TeamRun{}, err
+	}
+	return entTeamRunToBiz(row), nil
+}
+
+func (r *teamRepo) UpdateTeamRun(ctx context.Context, run biz.TeamRun) error {
+	if strings.TrimSpace(run.ID) == "" {
+		return fmt.Errorf("team run id is required")
+	}
+	now := nowRFC3339()
+	_, err := r.data.entClient.TeamRun.UpdateOneID(run.ID).
+		SetStatus(run.Status).
+		SetOutputPreview(run.OutputPreview).
+		SetTokenIn(run.TokenIn).
+		SetTokenOut(run.TokenOut).
+		SetCostMicroUsd(run.CostMicroUSD).
+		SetDurationMs(run.DurationMS).
+		SetErrorMessage(run.ErrorMessage).
+		SetTopologyJSON(run.TopologyJSON).
+		SetFinishedAt(run.FinishedAt).
+		SetUpdatedAt(now).
+		Save(ctx)
+	return err
+}
+
+func (r *teamRepo) CreateTeamRunStep(ctx context.Context, step biz.TeamRunStep) (biz.TeamRunStep, error) {
+	if strings.TrimSpace(step.ID) == "" || strings.TrimSpace(step.RunID) == "" {
+		return biz.TeamRunStep{}, fmt.Errorf("step id and run_id are required")
+	}
+	now := nowRFC3339()
+	if step.CreatedAt == "" {
+		step.CreatedAt = now
+	}
+	if step.Status == "" {
+		step.Status = "success"
+	}
+	_, err := r.data.entClient.TeamRunStep.Create().
+		SetID(step.ID).
+		SetRunID(step.RunID).
+		SetTeamID(step.TeamID).
+		SetAgentID(step.AgentID).
+		SetAgentKey(step.AgentKey).
+		SetAgentName(step.AgentName).
+		SetRole(step.Role).
+		SetSortOrder(step.SortOrder).
+		SetStatus(step.Status).
+		SetInputPreview(step.InputPreview).
+		SetOutputPreview(step.OutputPreview).
+		SetTokenIn(step.TokenIn).
+		SetTokenOut(step.TokenOut).
+		SetCostMicroUsd(step.CostMicroUSD).
+		SetDurationMs(step.DurationMS).
+		SetErrorMessage(step.ErrorMessage).
+		SetStartedAt(step.StartedAt).
+		SetFinishedAt(step.FinishedAt).
+		SetCreatedAt(step.CreatedAt).
+		Save(ctx)
+	if err != nil {
+		return biz.TeamRunStep{}, err
+	}
+	row, err := r.data.entClient.TeamRunStep.Get(ctx, step.ID)
+	if err != nil {
+		return biz.TeamRunStep{}, err
+	}
+	return entTeamRunStepToBiz(row), nil
 }

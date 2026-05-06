@@ -34,6 +34,13 @@ export function pickBool(r: Record<string, unknown>, snake: string, camel: strin
   return Boolean(v);
 }
 
+/** Like pickBool, but omitted / null counts as true (proto JSON often omits default true). */
+export function pickOptionalBoolDefaultTrue(r: Record<string, unknown>, snake: string, camel: string): boolean {
+  const v = r[snake] ?? r[camel];
+  if (v === undefined || v === null) return true;
+  return Boolean(v);
+}
+
 export function pickStrArray(r: Record<string, unknown>, snake: string, camel: string): string[] {
   const v = r[snake] ?? r[camel];
   if (!Array.isArray(v)) return [];

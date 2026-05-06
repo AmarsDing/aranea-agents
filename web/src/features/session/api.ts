@@ -7,6 +7,7 @@ import type {
   SessionTimelineItem as KratosTimelineItem,
   SessionTimelineSummary as KratosTimelineSummary
 } from "../../services/kratos/session/v1/index";
+import { asRecord, pickStr } from "../memory/wireJson";
 import type { Message } from "../chat/types";
 
 const sessionApi = createSessionService();
@@ -96,13 +97,15 @@ export type SessionTimeline = {
 };
 
 function kratosSessionToLegacy(s: KratosSession): Session {
+  const r = asRecord(s as unknown);
+  const title = pickStr(r, "title", "title") || (s.title ?? "");
   return {
-    id: s.id ?? "",
-    owner_type: s.ownerType ?? "",
-    agent_id: s.agentId ?? "",
-    team_id: s.teamId ?? "",
-    title: s.title ?? "",
-    summary: s.summary ?? "",
+    id: pickStr(r, "id", "id") || s.id || "",
+    owner_type: pickStr(r, "owner_type", "ownerType") || s.ownerType || "",
+    agent_id: pickStr(r, "agent_id", "agentId") || s.agentId || "",
+    team_id: pickStr(r, "team_id", "teamId") || s.teamId || "",
+    title,
+    summary: pickStr(r, "summary", "summary") || s.summary || "",
     context_used_ratio: s.contextUsedRatio ?? 0,
     max_context_used_ratio: s.maxContextUsedRatio ?? 0,
     context_status: s.contextStatus ?? "",

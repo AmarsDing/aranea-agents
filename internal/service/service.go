@@ -1,9 +1,14 @@
 package service
 
-import "github.com/google/wire"
+import (
+	"aranea-agents/internal/team"
+
+	"github.com/google/wire"
+)
 
 // ProviderSet is service providers.
 var ProviderSet = wire.NewSet(
+	team.ProviderSet,
 	NewAdminService,
 	NewAvatarService,
 	NewAgentService,

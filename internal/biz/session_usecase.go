@@ -174,6 +174,10 @@ type SessionRepository interface {
 	ListMessagesBySession(ctx context.Context, sessionID string) ([]ChatMessage, error)
 	ListToolInvocationsBySession(ctx context.Context, sessionID string, limit int) ([]ToolInvocationView, error)
 	ListSkillInvocationsBySession(ctx context.Context, sessionID string, limit int) ([]SkillInvocationView, error)
+	// AppendChatTurn inserts user + assistant rows and updates session aggregates (native chat).
+	AppendChatTurn(ctx context.Context, sessionID string, user, assistant ChatMessage) error
+	// AppendChatMessage inserts a single message row and updates session aggregates.
+	AppendChatMessage(ctx context.Context, sessionID string, msg ChatMessage, bumpModelCall bool) error
 }
 
 // SessionUsecase handles session CRUD + timeline（不包含发送消息）.
@@ -260,6 +264,76 @@ func (uc *SessionUsecase) ListMessages(ctx context.Context, sessionID string) ([
 		return nil, err
 	}
 	return uc.sessions.ListMessagesBySession(ctx, sessionID)
+}
+
+// AppendChatTurn persists a user + assistant pair (native chat).
+func (uc *SessionUsecase) AppendChatTurn(ctx context.Context, sessionID string, user, assistant ChatMessage) error {
+	if err := uc.sessions.AppendChatTurn(ctx, sessionID, user, assistant); err != nil {
+		return err
+	}
+	if strings.EqualFold(strings.TrimSpace(user.Role), "user") {
+		_ = uc.maybeAutoTitleFromUserMessage(ctx, sessionID, user.ContentMarkdown)
+	}
+	return nil
+}
+
+// AppendChatMessage persists one chat row (streamed native turns).
+func (uc *SessionUsecase) AppendChatMessage(ctx context.Context, sessionID string, msg ChatMessage, bumpModelCall bool) error {
+	if err := uc.sessions.AppendChatMessage(ctx, sessionID, msg, bumpModelCall); err != nil {
+		return err
+	}
+	if strings.EqualFold(strings.TrimSpace(msg.Role), "user") {
+		_ = uc.maybeAutoTitleFromUserMessage(ctx, sessionID, msg.ContentMarkdown)
+	}
+	return nil
+}
+
+func sessionTitleFromUserSnippet(snippet string) string {
+	s := strings.TrimSpace(snippet)
+	if s == "" {
+		return ""
+	}
+	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.ReplaceAll(s, "\r", "")
+	s = strings.Join(strings.Fields(s), " ")
+	r := []rune(s)
+	if len(r) > 56 {
+		return string(r[:56]) + "…"
+	}
+	return s
+}
+
+func shouldAutoNameSession(title string) bool {
+	t := strings.TrimSpace(title)
+	if t == "" {
+		return true
+	}
+	lower := strings.ToLower(t)
+	switch lower {
+	case "untitled", "new chat":
+		return true
+	}
+	// Matches i18n `chat.untitledSession` (zh/en) and common placeholders.
+	if strings.Contains(t, "未命名") || strings.Contains(t, "新会话") || strings.Contains(t, "新对话") {
+		return true
+	}
+	return false
+}
+
+func (uc *SessionUsecase) maybeAutoTitleFromUserMessage(ctx context.Context, sessionID, content string) error {
+	sess, err := uc.Get(ctx, sessionID)
+	if err != nil {
+		return err
+	}
+	if !shouldAutoNameSession(sess.Title) {
+		return nil
+	}
+	title := sessionTitleFromUserSnippet(content)
+	if title == "" {
+		return nil
+	}
+	_, err = uc.Rename(ctx, sessionID, title)
+	return err
 }
 
 func (uc *SessionUsecase) Timeline(ctx context.Context, id string) (SessionTimeline, error) {

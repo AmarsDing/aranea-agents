@@ -174,10 +174,43 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     providerType: "OpenAI Compatible",
     apiBaseUrl: "https://api.deepseek.com",
     metadataApi: "full",
-    metadataNote: "兼容 OpenAI 规范，提供 /models 接口。",
+    metadataNote:
+      "OpenAI 兼容：base_url=https://api.deepseek.com，对话 POST /chat/completions，模型列表 GET /models；Anthropic 兼容 base_url=https://api.deepseek.com/anthropic。详见 https://api-docs.deepseek.com/zh-cn/",
     models: [
-      { id: "deepseek-chat", label: "DeepSeek Chat / V3", contextWindowK: 64, maxOutputTokens: 8192, inputPriceMicroUsdPer1K: 270, outputPriceMicroUsdPer1K: 1100 },
-      { id: "deepseek-reasoner", label: "DeepSeek Reasoner / R1", contextWindowK: 64, maxOutputTokens: 8192, inputPriceMicroUsdPer1K: 550, outputPriceMicroUsdPer1K: 2190, reasoningPriceMicroUsdPer1K: 2190 }
+      {
+        id: "deepseek-v4-pro",
+        label: "DeepSeek V4 Pro",
+        contextWindowK: 128,
+        maxOutputTokens: 8192,
+        inputPriceMicroUsdPer1K: 550,
+        outputPriceMicroUsdPer1K: 2190,
+        reasoningPriceMicroUsdPer1K: 2190
+      },
+      {
+        id: "deepseek-v4-flash",
+        label: "DeepSeek V4 Flash",
+        contextWindowK: 128,
+        maxOutputTokens: 8192,
+        inputPriceMicroUsdPer1K: 270,
+        outputPriceMicroUsdPer1K: 1100
+      },
+      {
+        id: "deepseek-chat",
+        label: "deepseek-chat（兼容至 2026-07-24，对应 V4 Flash 非思考）",
+        contextWindowK: 128,
+        maxOutputTokens: 8192,
+        inputPriceMicroUsdPer1K: 270,
+        outputPriceMicroUsdPer1K: 1100
+      },
+      {
+        id: "deepseek-reasoner",
+        label: "deepseek-reasoner（兼容至 2026-07-24，对应 V4 Flash 思考）",
+        contextWindowK: 128,
+        maxOutputTokens: 8192,
+        inputPriceMicroUsdPer1K: 550,
+        outputPriceMicroUsdPer1K: 2190,
+        reasoningPriceMicroUsdPer1K: 2190
+      }
     ]
   },
   {
@@ -242,8 +275,10 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     models: [
       { id: "openai/gpt-5", label: "OpenAI GPT-5", contextWindowK: 1000, maxOutputTokens: 32768, inputPriceMicroUsdPer1K: 2000, outputPriceMicroUsdPer1K: 8000 },
       { id: "anthropic/claude-sonnet-4-6", label: "Claude Sonnet 4.6", contextWindowK: 200, maxOutputTokens: 8192, inputPriceMicroUsdPer1K: 3000, outputPriceMicroUsdPer1K: 15000 },
-      { id: "deepseek/deepseek-chat-v3-0324", label: "DeepSeek V3", contextWindowK: 64, maxOutputTokens: 8192, inputPriceMicroUsdPer1K: 270, outputPriceMicroUsdPer1K: 1100 },
-      { id: "deepseek/deepseek-r1", label: "DeepSeek R1", contextWindowK: 64, maxOutputTokens: 8192, inputPriceMicroUsdPer1K: 550, outputPriceMicroUsdPer1K: 2190 }
+      { id: "deepseek/deepseek-v4-pro", label: "DeepSeek V4 Pro", contextWindowK: 128, maxOutputTokens: 8192, inputPriceMicroUsdPer1K: 550, outputPriceMicroUsdPer1K: 2190 },
+      { id: "deepseek/deepseek-v4-flash", label: "DeepSeek V4 Flash", contextWindowK: 128, maxOutputTokens: 8192, inputPriceMicroUsdPer1K: 270, outputPriceMicroUsdPer1K: 1100 },
+      { id: "deepseek/deepseek-chat-v3-0324", label: "DeepSeek Chat V3（legacy）", contextWindowK: 128, maxOutputTokens: 8192, inputPriceMicroUsdPer1K: 270, outputPriceMicroUsdPer1K: 1100 },
+      { id: "deepseek/deepseek-r1", label: "DeepSeek R1（legacy）", contextWindowK: 128, maxOutputTokens: 8192, inputPriceMicroUsdPer1K: 550, outputPriceMicroUsdPer1K: 2190 }
     ]
   },
   {

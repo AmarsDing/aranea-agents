@@ -78,6 +78,10 @@ func chatCompletionsEndpoint(apiBase string) string {
 	if strings.HasSuffix(u, "/chat/completions") {
 		return u
 	}
+	// DeepSeek OpenAI 兼容：POST {base}/chat/completions（无 /v1 前缀）。见 https://api-docs.deepseek.com/zh-cn/
+	if strings.Contains(strings.ToLower(u), "api.deepseek.com") {
+		return u + "/chat/completions"
+	}
 	if strings.HasSuffix(u, "/v1") {
 		return u + "/chat/completions"
 	}

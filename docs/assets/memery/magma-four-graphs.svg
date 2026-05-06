@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 200" font-family="system-ui,Segoe UI,sans-serif">
+  <text x="12" y="26" fill="#222" font-size="15" font-weight="600">MAGMA:	Ϋc¤ώ</text>
+  <text x="12" y="46" fill="#666" font-size="11">φτώ:οΨ	Ή¨rΰ/SIοe¨­soft	</text>
+  <g transform="translate(20,70)">
+    <rect width="110" height="44" rx="6" fill="#fff7e6" stroke="#fa8c16"/>
+    <text x="55" y="28" text-anchor="middle" font-size="12">νIώ</text>
+    <rect x="130" width="110" height="44" rx="6" fill="#fff1f0" stroke="#f5222d"/>
+    <text x="185" y="28" text-anchor="middle" font-size="12">φτώ</text>
+    <rect x="260" width="110" height="44" rx="6" fill="#f6ffed" stroke="#52c41a"/>
+    <text x="315" y="28" text-anchor="middle" font-size="12">ΰώ</text>
+    <rect x="390" width="110" height="44" rx="6" fill="#f9f0ff" stroke="#722ed1"/>
+    <text x="445" y="28" text-anchor="middle" font-size="12">Sώ</text>
+  </g>
+  <text x="20" y="150" fill="#0958d9" font-size="11">»‰φτ¨rΔ 0.700 ’ 0.647‡pn	</text>
+</svg>

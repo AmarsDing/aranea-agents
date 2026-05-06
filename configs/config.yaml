@@ -1,10 +1,11 @@
 server:
   http:
     addr: 0.0.0.0:8000
-    timeout: 1s
+    # Chat/completions can exceed seconds; 1s causes context deadline errors after the model returns.
+    timeout: 600s
   grpc:
     addr: 0.0.0.0:9000
-    timeout: 1s
+    timeout: 120s
   sse:
     enable: true
     network: tcp
@@ -15,6 +16,12 @@ data:
   sqlite:
     enable: true
     source: file:./data.sqlite?cache=shared&_fk=1
+  # First boot only (empty admins): id=1, password MD5-hashed like Login.
+  initial_admin:
+    name: admin
+    email: admin@local.invalid
+    password: changeme
+    access: admin
   postgres:
     source: postgres://postgres:postgres@127.0.0.1:5432/aranea?sslmode=disable
     vector_dim: 1536

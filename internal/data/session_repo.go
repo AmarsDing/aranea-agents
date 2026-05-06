@@ -464,3 +464,126 @@ func dedupeStrings(in []string) []string {
 	}
 	return out
 }
+
+func (r *sessionRepo) maxMessageTurnTx(ctx context.Context, tx *ent.Tx, sessionID string) (int, error) {
+	row, err := tx.Message.Query().
+		Where(message.SessionIDEQ(sessionID)).
+		Order(message.ByTurnIndex(entsql.OrderDesc())).
+		First(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	return row.TurnIndex, nil
+}
+
+func (r *sessionRepo) insertMessageTx(ctx context.Context, tx *ent.Tx, m biz.ChatMessage) error {
+	return tx.Message.Create().
+		SetID(m.ID).
+		SetSessionID(m.SessionID).
+		SetParentMessageID(m.ParentMessageID).
+		SetTurnIndex(m.TurnIndex).
+		SetRole(m.Role).
+		SetContentMarkdown(m.ContentMarkdown).
+		SetModelName(m.ModelName).
+		SetTokenIn(m.TokenIn).
+		SetTokenOut(m.TokenOut).
+		SetLatencyMs(m.LatencyMS).
+		SetStatus(m.Status).
+		SetAttachmentsCount(m.AttachmentsCount).
+		SetOptionsJSON(m.OptionsJSON).
+		SetErrorMessage(m.ErrorMessage).
+		SetCreatedAt(m.CreatedAt).
+		Exec(ctx)
+}
+
+func (r *sessionRepo) AppendChatTurn(ctx context.Context, sessionID string, user, assistant biz.ChatMessage) error {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return errors.New("session id is required")
+	}
+	tx, err := r.data.entClient.Tx(ctx)
+	if err != nil {
+		return err
+	}
+	rollback := func(e error) error {
+		_ = tx.Rollback()
+		return e
+	}
+	if _, err = tx.Session.Query().Where(entsession.IDEQ(sessionID), entsession.DeletedAtEQ("")).Only(ctx); err != nil {
+		return rollback(err)
+	}
+	maxTurn, err := r.maxMessageTurnTx(ctx, tx, sessionID)
+	if err != nil {
+		return rollback(err)
+	}
+	user.TurnIndex = maxTurn + 1
+	assistant.TurnIndex = maxTurn + 2
+	if err = r.insertMessageTx(ctx, tx, user); err != nil {
+		return rollback(err)
+	}
+	if err = r.insertMessageTx(ctx, tx, assistant); err != nil {
+		return rollback(err)
+	}
+	upd := tx.Session.UpdateOneID(sessionID).
+		AddMessageCount(2).
+		SetLastMessageAt(assistant.CreatedAt).
+		SetUpdatedAt(nowRFC3339()).
+		AddModelCallCount(1)
+	if tin, tout := assistant.TokenIn, assistant.TokenOut; tin > 0 || tout > 0 {
+		upd = upd.AddInputTokens(tin).AddOutputTokens(tout).AddTotalTokens(tin + tout).AddContextUsedTokens(tin + tout)
+	}
+	if _, err = upd.Save(ctx); err != nil {
+		return rollback(err)
+	}
+	if err = tx.Commit(); err != nil {
+		return rollback(err)
+	}
+	return nil
+}
+
+func (r *sessionRepo) AppendChatMessage(ctx context.Context, sessionID string, msg biz.ChatMessage, bumpModelCall bool) error {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return errors.New("session id is required")
+	}
+	tx, err := r.data.entClient.Tx(ctx)
+	if err != nil {
+		return err
+	}
+	rollback := func(e error) error {
+		_ = tx.Rollback()
+		return e
+	}
+	if _, err = tx.Session.Query().Where(entsession.IDEQ(sessionID), entsession.DeletedAtEQ("")).Only(ctx); err != nil {
+		return rollback(err)
+	}
+	maxTurn, err := r.maxMessageTurnTx(ctx, tx, sessionID)
+	if err != nil {
+		return rollback(err)
+	}
+	msg.TurnIndex = maxTurn + 1
+	if err = r.insertMessageTx(ctx, tx, msg); err != nil {
+		return rollback(err)
+	}
+	upd := tx.Session.UpdateOneID(sessionID).
+		AddMessageCount(1).
+		SetLastMessageAt(msg.CreatedAt).
+		SetUpdatedAt(nowRFC3339())
+	if bumpModelCall {
+		upd = upd.AddModelCallCount(1)
+	}
+	tin, tout := msg.TokenIn, msg.TokenOut
+	if bumpModelCall && (tin > 0 || tout > 0) {
+		upd = upd.AddInputTokens(tin).AddOutputTokens(tout).AddTotalTokens(tin + tout).AddContextUsedTokens(tin + tout)
+	}
+	if _, err = upd.Save(ctx); err != nil {
+		return rollback(err)
+	}
+	if err = tx.Commit(); err != nil {
+		return rollback(err)
+	}
+	return nil
+}

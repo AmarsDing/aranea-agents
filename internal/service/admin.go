@@ -111,10 +111,14 @@ func (s *AdminService) CreateAdmin(ctx context.Context, req *v1.CreateAdminReque
 	if !a.HasAdminAccess() {
 		return nil, auth.ErrForbidden
 	}
+	pwd := req.Admin.Password
+	if pwd != "" {
+		pwd = encodePassword(pwd)
+	}
 	admin, err := s.uc.CreateAdmin(ctx, &biz.Admin{
 		Name:     req.Admin.Name,
 		Email:    req.Admin.Email,
-		Password: req.Admin.Password,
+		Password: pwd,
 		Avatar:   req.Admin.Avatar,
 		Access:   req.Admin.Access,
 	})

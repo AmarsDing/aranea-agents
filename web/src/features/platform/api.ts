@@ -17,7 +17,7 @@ import {
 } from "../../services";
 import { kratosApi } from "../../services/axiosHandler";
 import { listAvatarAssets } from "../avatar/api";
-import { asRecord, pickBool, pickI32, pickNum, pickStr } from "../memory/wireJson";
+import { asRecord, pickBool, pickOptionalBoolDefaultTrue, pickI32, pickNum, pickStr } from "../memory/wireJson";
 import { listSkills } from "../skills/api";
 import type { Skill } from "../skills/types";
 import { listModelUsageEvents } from "../usage/api";
@@ -146,7 +146,7 @@ function llmProviderWireToPlatform(raw: unknown): PlatformResource {
     name: pickStr(r, "name", "name"),
     description: pickStr(r, "description", "description"),
     status: pickStr(r, "status", "status"),
-    enabled: pickBool(r, "enabled", "enabled"),
+    enabled: pickOptionalBoolDefaultTrue(r, "enabled", "enabled"),
     sort_order: pickI32(r, "sort_order", "sortOrder"),
     parent_id: "",
     level: "",
@@ -404,7 +404,25 @@ function providerInputToCreateBody(payload: PlatformResourceInput): CreateProvid
   };
 }
 
+function providerModelConfigJsonFromWire(base: ProviderModel): string | undefined {
+  const r = base as unknown as Record<string, unknown>;
+  const v = r.configJson ?? r.config_json;
+  if (v === undefined || v === null) return undefined;
+  const s = String(v);
+  return s === "" ? undefined : s;
+}
+
+function providerModelMetadataJsonFromWire(base: ProviderModel): string | undefined {
+  const r = base as unknown as Record<string, unknown>;
+  const v = r.metadataJson ?? r.metadata_json;
+  if (v === undefined || v === null) return undefined;
+  const s = String(v);
+  return s === "" ? undefined : s;
+}
+
 function mergeProviderModel(base: ProviderModel, patch: Partial<PlatformResourceInput>): ProviderModel {
+  const baseConfig = providerModelConfigJsonFromWire(base);
+  const baseMeta = providerModelMetadataJsonFromWire(base);
   return {
     id: base.id,
     key: patch.key ?? base.key,
@@ -415,8 +433,8 @@ function mergeProviderModel(base: ProviderModel, patch: Partial<PlatformResource
     sortOrder: patch.sort_order ?? base.sortOrder,
     provider: patch.provider ?? base.provider,
     model: patch.model ?? base.model,
-    configJson: patch.config_json ?? base.configJson,
-    metadataJson: patch.metadata_json ?? base.metadataJson,
+    configJson: patch.config_json ?? baseConfig ?? base.configJson ?? "{}",
+    metadataJson: patch.metadata_json ?? baseMeta ?? base.metadataJson ?? "{}",
     createdAt: base.createdAt,
     updatedAt: base.updatedAt,
     deletedAt: base.deletedAt
