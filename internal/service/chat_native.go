@@ -189,7 +189,7 @@ func (s *ChatService) proxyNativeStream(ctx khttp.Context) error {
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
 
-	_, assistantMsg, err := s.runNativeAgentTurn(ctx, protoReq, sw)
+	_, assistantMsg, err := s.runNativeAgentTurn(req.Context(), protoReq, sw)
 	if err != nil {
 		_ = sw.writeEvent("error", map[string]string{"message": err.Error()})
 		return nil
@@ -262,8 +262,20 @@ func (s *ChatService) runNativeAgentTurn(ctx context.Context, req *chatv1.SendCh
 }
 
 func (s *ChatService) hydratedAgent(ctx context.Context, agentID string) (biz.Agent, error) {
+	agentID = strings.TrimSpace(agentID)
+	if agentID == "" {
+		return biz.Agent{}, kerrors.BadRequest("CHAT_NATIVE", "agent id is required")
+	}
 	if s.agentsUC != nil {
 		return s.agentsUC.Get(ctx, agentID)
+	}
+	if s.agents == nil {
+		return biz.Agent{}, kerrors.InternalServer("CHAT_NATIVE", "agent repository not configured")
+	}
+	// Without *AgentUsecase, GetAgentByID leaves Settings nil and breaks subagent transfer + runtime cues.
+	if s.toolsCatalog != nil {
+		ephemeral := biz.NewAgentUsecase(s.agents, s.toolsCatalog)
+		return ephemeral.Get(ctx, agentID)
 	}
 	return s.agents.GetAgentByID(ctx, agentID)
 }

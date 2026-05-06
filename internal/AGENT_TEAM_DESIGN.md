@@ -3,7 +3,7 @@
 ## Kratos v2 + ADK Runtime 分工（迁移后）
 
 - **Kratos v2**：HTTP/gRPC/SSE 传输、`wire` 注入、`conf.Bootstrap`、`recovery` / `tracing` / `auth` / CORS 等中间件、kratos log 与 `kerrors`。**`internal/server` 禁止 import `google.golang.org/adk`**。
-- **ADK Runtime（`pkg/adk-go`）**：`runner.Runner`、`llmagent` / workflow agents、工具循环、会话事件、插件与遥测。执行入口在 **`internal/service` + `internal/adkadapter`**，不在 transport 层。
+- **ADK Runtime（`pkg/adk-go`）**：`runner.Runner`、`llmagent` / workflow agents、工具循环、会话事件、插件与遥测。执行入口在 **`internal/service`**（单 Agent）与 **`internal/team`**（团队工作流），组合 **`internal/agent`**、**`internal/agent/adksvc`**、**`internal/tools`**、**`internal/provider`**；不在 transport 层直接跑 ADK。
 - **边界全文**：见仓库根目录 **`docs/AGENT_RUNTIME_BOUNDARY.md`**（依赖方向与「八不准」）。
 
 以下各节描述业务契约；实现细节以 ADK Runner 事件流为准。
@@ -31,7 +31,7 @@
 - **Team**：
   - **sequential**：按 `members` 顺序，逐步将**用户本轮输入**接在历史消息后调用各成员 Agent；每步产出一条 assistant 消息（`options_json` 含 `team_member`）。
   - **parallel**：对启用成员并发调用；若有 `synthesizer_agent_id` 或 role=`synthesizer` 的成员，用合成 Agent 将各条产出合并为最终回复；否则依赖 biz 校验已在并行多成员时要求 synthesizer。
-  - **coordinator / critic_loop / adaptive**：原生执行器返回「未实现」，需 `LEGACY_REST_ORIGIN` 或后续迭代。
+  - **coordinator / critic_loop / adaptive**：由 ADK `loopagent` 包裹成员链（见 `internal/team`）；行为与超时见 `DefinitionJSON`。
 
 ## 4. 会话与 API 契约
 
@@ -42,7 +42,7 @@
 
 ## 5. 与 pkg/adk-go 的关系
 
-当前仓库 **未** 将 `google.golang.org/adk` 链入主模块；本实现为 **进程内 Go 编排**，语义上对齐 ADK examples 中 sequential / parallel 子 Agent 组合，便于后续把 `internal/agent` 的 `ExecuteOpenAICompatTurn` 替换为 `llmagent` + `runner`。
+主模块已依赖 **`google.golang.org/adk`**：**原生单 Agent 与团队（sequential / parallel / loop 等）** 通过 `runner.Run` + `llmagent` 执行；OpenAI 兼容路径仍由 `internal/agent` 的 `ExecuteOpenAICompatTurn` 等保留（网关/遗留场景）。会话 ADK 状态由 `sessions.adk_snapshot_json` 经 `internal/agent/adksvc` 持久化。
 
 ## 6. 依赖图
 
@@ -55,5 +55,5 @@ agent → biz.AgentRepository, LlmProviderModelUsecase
 
 ## 7. 文件布局
 
-- `internal/agent/` — `openai_compat.go`, `options.go`, `prompt.go`, `turn.go`（含 `ExecuteOpenAIRelayStep`）, `parallel.go`（`ExecuteOpenAIParallelMember`）
-- `internal/team/` — `definition.go`, `runner.go`, `provider.go`（wire）
+- `internal/agent/` — OpenAI 兼容：`openai_compat.go`, `options.go`, `prompt.go`, `turn.go`, `parallel.go` 等；ADK：`adk_*.go`，`adksvc/`（会话服务）
+- `internal/team/` — `definition.go`, `builder.go`, `runner.go`（ADK workflow + `runner.Run`）, `provider.go`（wire）

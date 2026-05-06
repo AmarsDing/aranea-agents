@@ -1,4 +1,4 @@
-package adkadapter
+package agent
 
 import (
 	"strings"
@@ -33,7 +33,6 @@ func FinalTextFromEvent(ev *session.Event) (main string, reasoning string) {
 }
 
 // ProjectEvent applies a snapshot of an ADK session event onto a pair of chat rows (user + assistant draft).
-// D1 in the adoption plan: extend with token/cost from Actions.StateDelta and branch-aware routing.
 func ProjectEvent(ev *session.Event, user *biz.ChatMessage, asst *biz.ChatMessage) {
 	if ev == nil || asst == nil {
 		return

@@ -1,4 +1,4 @@
-package adkadapter
+package adksvc
 
 import (
 	"strings"

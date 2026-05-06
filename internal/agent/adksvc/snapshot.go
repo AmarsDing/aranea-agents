@@ -1,4 +1,4 @@
-package adkadapter
+package adksvc
 
 import (
 	"encoding/json"
@@ -13,12 +13,12 @@ import (
 
 // persistedBundle is JSON-serializable ADK session state for SQLite (sessions.adk_snapshot_json).
 type persistedBundle struct {
-	AppName         string           `json:"app_name"`
-	UserID          string           `json:"user_id"`
-	RootAgentName   string           `json:"root_agent_name,omitempty"`
-	State           map[string]any   `json:"state"`
-	Events          []*session.Event `json:"events"`
-	UpdatedAt       time.Time        `json:"updated_at"`
+	AppName       string           `json:"app_name"`
+	UserID        string           `json:"user_id"`
+	RootAgentName string           `json:"root_agent_name,omitempty"`
+	State         map[string]any   `json:"state"`
+	Events        []*session.Event `json:"events"`
+	UpdatedAt     time.Time        `json:"updated_at"`
 }
 
 func bundleFromSession(s *mutableSession) *persistedBundle {
@@ -95,13 +95,13 @@ func unmarshalBundle(data string) (*persistedBundle, error) {
 type mutableSession struct {
 	mu sync.RWMutex
 
-	RootAgentName   string
-	sessionID       string
-	appName         string
-	userID          string
-	state           map[string]any
-	events          []*session.Event
-	updatedAt       time.Time
+	RootAgentName string
+	sessionID     string
+	appName       string
+	userID        string
+	state         map[string]any
+	events        []*session.Event
+	updatedAt     time.Time
 }
 
 func newMutableSession(appName, userID, sessionID string) *mutableSession {
@@ -110,9 +110,6 @@ func newMutableSession(appName, userID, sessionID string) *mutableSession {
 	}
 	if userID == "" {
 		userID = DefaultUserID
-	}
-	if sessionID == "" {
-		sessionID = ""
 	}
 	return &mutableSession{
 		sessionID: sessionID,
@@ -124,15 +121,11 @@ func newMutableSession(appName, userID, sessionID string) *mutableSession {
 	}
 }
 
-func (s *mutableSession) ID() string            { return s.sessionID }
-func (s *mutableSession) AppName() string         { return s.appName }
-func (s *mutableSession) UserID() string        { return s.userID }
-func (s *mutableSession) LastUpdateTime() time.Time { return s.updatedAt }
-
-func (s *mutableSession) State() session.State {
-	return &mutableState{s: s}
-}
-
+func (s *mutableSession) ID() string                   { return s.sessionID }
+func (s *mutableSession) AppName() string              { return s.appName }
+func (s *mutableSession) UserID() string               { return s.userID }
+func (s *mutableSession) LastUpdateTime() time.Time    { return s.updatedAt }
+func (s *mutableSession) State() session.State         { return &mutableState{s: s} }
 func (s *mutableSession) Events() session.Events {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

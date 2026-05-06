@@ -1,4 +1,4 @@
-package adkadapter
+package agent
 
 import (
 	"context"
@@ -32,17 +32,17 @@ func NewLocalArtifactService(rootDir string) *LocalArtifactService {
 }
 
 func (s *LocalArtifactService) dir(app, user, session string) (string, error) {
-	if err := ensureDir(s.root); err != nil {
+	if err := ensureArtifactDir(s.root); err != nil {
 		return "", err
 	}
 	p := filepath.Join(s.root, safeSeg(app), safeSeg(user), safeSeg(session))
-	if err := ensureDir(p); err != nil {
+	if err := ensureArtifactDir(p); err != nil {
 		return "", err
 	}
 	return p, nil
 }
 
-func ensureDir(p string) error {
+func ensureArtifactDir(p string) error {
 	return os.MkdirAll(p, 0o755)
 }
 

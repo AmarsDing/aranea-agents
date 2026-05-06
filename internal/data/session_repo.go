@@ -514,6 +514,42 @@ func (r *sessionRepo) UpdateAdkSnapshotJSON(ctx context.Context, sessionID strin
 	return err
 }
 
+func (r *sessionRepo) UpdateSessionContextFromLLMUsage(ctx context.Context, sessionID string, promptTokens, _ int, contextWindow int) error {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return errors.New("session id is required")
+	}
+	cur, err := r.GetSessionByID(ctx, sessionID)
+	if err != nil {
+		return err
+	}
+	ratio := cur.ContextUsedRatio
+	if contextWindow > 0 && promptTokens > 0 {
+		ratio = float64(promptTokens) / float64(contextWindow)
+		if ratio > 1 {
+			ratio = 1
+		}
+	}
+	maxR := cur.MaxContextUsedRatio
+	if ratio > maxR {
+		maxR = ratio
+	}
+	upd := r.data.entClient.Session.Update().
+		Where(entsession.IDEQ(sessionID), entsession.DeletedAtEQ("")).
+		SetContextUsedRatio(ratio).
+		SetMaxContextUsedRatio(maxR).
+		SetContextStatus(contextStatusForRatio(ratio)).
+		SetUpdatedAt(nowRFC3339())
+	if contextWindow > 0 {
+		upd = upd.SetLastContextWindowTokens(contextWindow)
+	}
+	if promptTokens > 0 {
+		upd = upd.SetContextUsedTokens(promptTokens)
+	}
+	_, err = upd.Save(ctx)
+	return err
+}
+
 func (r *sessionRepo) AppendChatTurn(ctx context.Context, sessionID string, user, assistant biz.ChatMessage) error {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {

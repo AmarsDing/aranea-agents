@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	"aranea-agents/internal/adkadapter"
+	bizagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/tools"
 
 	"google.golang.org/adk/agent"
 	"google.golang.org/adk/agent/workflowagents/loopagent"
@@ -34,7 +35,7 @@ func firstOfThree(a, b, c string) string {
 func buildLLMChain(
 	ctx context.Context,
 	members []MemberDef,
-	deps adkadapter.BuilderDeps,
+	deps bizagent.BuilderDeps,
 	provOpt, modOpt string,
 	sess biz.Session,
 	resolve func(context.Context, string) (biz.Agent, error),
@@ -48,7 +49,8 @@ func buildLLMChain(
 		d := deps
 		d.Provider = firstOfThree(provOpt, sess.Provider, ag.Provider)
 		d.Model = firstOfThree(modOpt, sess.Model, ag.Model)
-		a, err := adkadapter.BuildLLMAgent(ctx, ag, d)
+		d.Tools = tools.ADKToolsForAgentPolicy(ctx, d.AgentUC, d.Agents, d.ToolsCatalog, ag.ID, ag.Settings != nil && ag.Settings.SubagentsEnabled)
+		a, err := bizagent.BuildLLMAgent(ctx, ag, d)
 		if err != nil {
 			return nil, err
 		}
@@ -69,7 +71,7 @@ func BuildWorkflowRoot(
 	ctx context.Context,
 	mode string,
 	def Definition,
-	deps adkadapter.BuilderDeps,
+	deps bizagent.BuilderDeps,
 	sess biz.Session,
 	provOpt, modOpt string,
 	resolve func(context.Context, string) (biz.Agent, error),
@@ -113,7 +115,8 @@ func BuildWorkflowRoot(
 			d := deps
 			d.Provider = firstOfThree(provOpt, sess.Provider, ag.Provider)
 			d.Model = firstOfThree(modOpt, sess.Model, ag.Model)
-			sub, err := adkadapter.BuildLLMAgent(ctx, ag, d)
+			d.Tools = tools.ADKToolsForAgentPolicy(ctx, d.AgentUC, d.Agents, d.ToolsCatalog, ag.ID, ag.Settings != nil && ag.Settings.SubagentsEnabled)
+			sub, err := bizagent.BuildLLMAgent(ctx, ag, d)
 			if err != nil {
 				return nil, plan, err
 			}
@@ -145,7 +148,8 @@ func BuildWorkflowRoot(
 		d := deps
 		d.Provider = firstOfThree(provOpt, sess.Provider, synthAg.Provider)
 		d.Model = firstOfThree(modOpt, sess.Model, synthAg.Model)
-		synthLLM, err := adkadapter.BuildLLMAgent(ctx, synthAg, d)
+		d.Tools = tools.ADKToolsForAgentPolicy(ctx, d.AgentUC, d.Agents, d.ToolsCatalog, synthAg.ID, synthAg.Settings != nil && synthAg.Settings.SubagentsEnabled)
+		synthLLM, err := bizagent.BuildLLMAgent(ctx, synthAg, d)
 		if err != nil {
 			return nil, plan, err
 		}

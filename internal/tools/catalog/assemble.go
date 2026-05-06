@@ -5,7 +5,7 @@ import (
 	"fmt"
 	iofs "io/fs"
 
-	"aranea-agents/internal/tools/stdtools"
+	"aranea-agents/internal/tools/registry"
 
 	"google.golang.org/adk/agent"
 	"google.golang.org/adk/tool"
@@ -46,37 +46,37 @@ type Assembled struct {
 	Toolsets []tool.Toolset
 }
 
-// Build 从 [stdtools] 与可选 skill/mcp/agent 组合出工具列表。
+// Build 从 [registry] 与可选 skill/mcp/agent 组合出工具列表。
 func (o Options) Build(ctx context.Context) (*Assembled, error) {
 	out := &Assembled{}
 
 	if o.ExitLoop {
-		if err := stdtools.AppendCatalogTool(NameExitLoop, &out.Tools); err != nil {
+		if err := registry.AppendADKBuiltin(NameExitLoop, nil, &out.Tools); err != nil {
 			return nil, err
 		}
 	}
 	if o.GoogleSearch {
-		if err := stdtools.AppendCatalogTool(NameGoogleSearch, &out.Tools); err != nil {
+		if err := registry.AppendADKBuiltin(NameGoogleSearch, nil, &out.Tools); err != nil {
 			return nil, err
 		}
 	}
 	if o.LoadArtifacts {
-		if err := stdtools.AppendCatalogTool(NameLoadArtifacts, &out.Tools); err != nil {
+		if err := registry.AppendADKBuiltin(NameLoadArtifacts, nil, &out.Tools); err != nil {
 			return nil, err
 		}
 	}
 	if o.LoadMemory {
-		if err := stdtools.AppendCatalogTool(NameLoadMemory, &out.Tools); err != nil {
+		if err := registry.AppendADKBuiltin(NameLoadMemory, nil, &out.Tools); err != nil {
 			return nil, err
 		}
 	}
 	if o.PreloadMemory {
-		if err := stdtools.AppendCatalogTool(NamePreloadMemory, &out.Tools); err != nil {
+		if err := registry.AppendADKBuiltin(NamePreloadMemory, nil, &out.Tools); err != nil {
 			return nil, err
 		}
 	}
 	if o.Filesystem {
-		fsTools, err := stdtools.WorkspaceADKTools(o.FilesystemKeys)
+		fsTools, err := registry.WorkspaceADKTools(o.FilesystemKeys)
 		if err != nil {
 			return nil, fmt.Errorf("工作区文件工具: %w", err)
 		}

@@ -159,9 +159,43 @@
                         :options="toolProfileOptions"
                       />
                       <q-input v-model="config.tools.tool_call_prefix" dense outlined label="工具调用前缀" hint="如 proxy_，解析前会从工具名中剥离。" />
-                      <q-select v-model="config.tools.allow" dense outlined multiple use-chips label="允许" :options="toolOptions" />
-                      <q-select v-model="config.tools.deny" dense outlined multiple use-chips label="拒绝" :options="toolOptions" />
-                      <q-select v-model="config.tools.concurrent_allow" dense outlined multiple use-chips label="同时允许" :options="toolOptions" />
+                      <q-select
+                        v-model="config.tools.allow"
+                        dense
+                        outlined
+                        multiple
+                        use-chips
+                        emit-value
+                        map-options
+                        label="允许"
+                        :options="toolSelectOptions"
+                        :loading="loadingCatalogTools"
+                        hint="选项来自 Tools 目录中的平台工具；亦可保留已保存的自定义 key。"
+                      />
+                      <q-select
+                        v-model="config.tools.deny"
+                        dense
+                        outlined
+                        multiple
+                        use-chips
+                        emit-value
+                        map-options
+                        label="拒绝"
+                        :options="toolSelectOptions"
+                        :loading="loadingCatalogTools"
+                      />
+                      <q-select
+                        v-model="config.tools.concurrent_allow"
+                        dense
+                        outlined
+                        multiple
+                        use-chips
+                        emit-value
+                        map-options
+                        label="同时允许"
+                        :options="toolSelectOptions"
+                        :loading="loadingCatalogTools"
+                      />
                       <q-banner v-if="toolConflicts.length" rounded class="settings-warning-banner">
                         以下工具同时出现在允许与拒绝中，运行时按拒绝优先：{{ toolConflicts.join(", ") }}
                       </q-banner>
@@ -405,6 +439,7 @@ import {
   type PromptMode
 } from "../components/agents/agentUi";
 import { listPlatformResources, type PlatformResource } from "../features/platform/api";
+import { listTools } from "../features/tools/api";
 import { useAppStore } from "../stores/app";
 
 const $q = useQuasar();
@@ -589,7 +624,56 @@ const filteredProviderModelOptions = computed(() => {
   );
 });
 const selectedProviderModelID = computed(() => providerModelOptions.value.find((row) => row.provider === form.provider && row.model === form.model)?.value ?? "");
-const toolOptions = ["datetime", "web_fetch", "list_files", "read_file", "write_file", "edit_file"];
+
+/** Native / legacy tool keys always listed so older agents keep working without catalog rows. */
+const defaultNativeToolKeys = [
+  "datetime",
+  "web_search",
+  "web_fetch",
+  "list_files",
+  "read_file",
+  "write_file",
+  "edit_file",
+  "shell_exec"
+];
+
+const catalogTools = ref<{ key: string; display_name: string }[]>([]);
+const loadingCatalogTools = ref(false);
+
+async function loadCatalogTools() {
+  loadingCatalogTools.value = true;
+  try {
+    const res = await listTools({ page: 1, page_size: 500 });
+    catalogTools.value = (res.items ?? [])
+      .map((t) => ({ key: String(t.key ?? "").trim(), display_name: String(t.display_name ?? "").trim() || String(t.key ?? "").trim() }))
+      .filter((t) => t.key !== "");
+  } catch {
+    catalogTools.value = [];
+  } finally {
+    loadingCatalogTools.value = false;
+  }
+}
+
+const toolSelectOptions = computed(() => {
+  const byKey = new Map<string, { label: string; value: string }>();
+  for (const k of defaultNativeToolKeys) {
+    byKey.set(k, { label: `${k} · 内置`, value: k });
+  }
+  for (const t of catalogTools.value) {
+    const label =
+      t.display_name && t.display_name !== t.key ? `${t.display_name} (${t.key})` : t.key;
+    byKey.set(t.key, { label, value: t.key });
+  }
+  const extra = [...config.tools.allow, ...config.tools.deny, ...config.tools.concurrent_allow];
+  for (const raw of extra) {
+    const key = String(raw ?? "").trim();
+    if (key && !byKey.has(key)) {
+      byKey.set(key, { label: `${key} · 已保存`, value: key });
+    }
+  }
+  return Array.from(byKey.values()).sort((a, b) => a.label.localeCompare(b.label, "zh-CN"));
+});
+
 const toolConflicts = computed(() => config.tools.allow.filter((tool) => config.tools.deny.includes(tool)));
 // Profile options surface the current canonical names to the user.
 // Backend still accepts legacy values (minimal/safe/system_admin) so
@@ -613,7 +697,7 @@ onMounted(async () => {
     return;
   }
   try {
-    const [agent] = await Promise.all([detailStore.fetchById(id), loadProviderModels()]);
+    const [agent] = await Promise.all([detailStore.fetchById(id), loadProviderModels(), loadCatalogTools()]);
     if (!agent?.id) {
       $q.notify({ type: "warning", message: "未找到该 Agent" });
       router.back();

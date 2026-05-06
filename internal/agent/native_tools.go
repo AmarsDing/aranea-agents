@@ -4,15 +4,15 @@ import (
 	"context"
 	"errors"
 
-	"aranea-agents/internal/tools/stdtools"
+	"aranea-agents/internal/tools/registry"
 )
 
 func nativeToolDefinitionsForKeys(enabled map[string]bool) []map[string]any {
-	return stdtools.WorkspaceOpenAISpecs(enabled)
+	return registry.WorkspaceOpenAISpecs(enabled)
 }
 
 func executeNativeFilesystemTool(name string, argsJSON string) (map[string]any, error) {
-	resp := stdtools.InvokeJSON(context.Background(), name, argsJSON)
+	resp := registry.InvokeWorkspaceJSON(context.Background(), name, argsJSON)
 	if !resp.OK {
 		return nil, errors.New(resp.Error)
 	}

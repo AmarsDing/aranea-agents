@@ -63,6 +63,19 @@ func (l *llm) GenerateContent(ctx context.Context, req *model.LLMRequest, stream
 	}
 }
 
+type chatAssistantMessage struct {
+	Content          string          `json:"content"`
+	ReasoningContent json.RawMessage `json:"reasoning_content"`
+	ToolCalls        []struct {
+		ID       string `json:"id"`
+		Type     string `json:"type"`
+		Function struct {
+			Name      string `json:"name"`
+			Arguments string `json:"arguments"`
+		} `json:"function"`
+	} `json:"tool_calls"`
+}
+
 func (l *llm) generate(ctx context.Context, req *model.LLMRequest) (*model.LLMResponse, error) {
 	if req == nil {
 		return nil, fmt.Errorf("openai llm: nil LLMRequest")
@@ -74,6 +87,7 @@ func (l *llm) generate(ctx context.Context, req *model.LLMRequest) (*model.LLMRe
 	if err != nil {
 		return nil, err
 	}
+	messages = SanitizeOpenAIChatMessagesToolSequence(messages)
 	mid := modelName(req.Model, "")
 	if mid == "" {
 		return nil, fmt.Errorf("openai llm: LLMRequest.Model is required")
@@ -82,6 +96,10 @@ func (l *llm) generate(ctx context.Context, req *model.LLMRequest) (*model.LLMRe
 		"model":       mid,
 		"messages":    messages,
 		"temperature": temperatureFromConfig(req.Config),
+	}
+	if tools := OpenAIChatToolsFromRequest(req); len(tools) > 0 {
+		body["tools"] = tools
+		body["tool_choice"] = "auto"
 	}
 	raw, err := json.Marshal(body)
 	if err != nil {
@@ -109,10 +127,7 @@ func (l *llm) generate(ctx context.Context, req *model.LLMRequest) (*model.LLMRe
 	}
 	var parsed struct {
 		Choices []struct {
-			Message struct {
-				Content          string          `json:"content"`
-				ReasoningContent json.RawMessage `json:"reasoning_content"`
-			} `json:"message"`
+			Message chatAssistantMessage `json:"message"`
 		} `json:"choices"`
 		Usage struct {
 			PromptTokens     int `json:"prompt_tokens"`
@@ -132,15 +147,44 @@ func (l *llm) generate(ctx context.Context, req *model.LLMRequest) (*model.LLMRe
 		return nil, fmt.Errorf("empty choices from provider")
 	}
 	msg := parsed.Choices[0].Message
+	return assistantMessageToLLMResponse(msg, mid, parsed.Usage.PromptTokens, parsed.Usage.CompletionTokens)
+}
+
+func assistantMessageToLLMResponse(msg chatAssistantMessage, mid string, promptTok, completionTok int) (*model.LLMResponse, error) {
 	text := strings.TrimSpace(msg.Content)
 	reasoning := reasoningFromAPIRawJSON(msg.ReasoningContent)
-	out := assistantContent(text, reasoning)
+	var parts []*genai.Part
+	if text != "" {
+		parts = append(parts, genai.NewPartFromText(text))
+	}
+	if reasoning != "" {
+		parts = append(parts, &genai.Part{Text: reasoning, Thought: true})
+	}
+	for _, tc := range msg.ToolCalls {
+		args := map[string]any{}
+		argStr := strings.TrimSpace(tc.Function.Arguments)
+		if argStr != "" {
+			if err := json.Unmarshal([]byte(argStr), &args); err != nil {
+				return nil, fmt.Errorf("tool %q arguments: %w", tc.Function.Name, err)
+			}
+		}
+		parts = append(parts, &genai.Part{
+			FunctionCall: &genai.FunctionCall{
+				ID:   strings.TrimSpace(tc.ID),
+				Name: strings.TrimSpace(tc.Function.Name),
+				Args: args,
+			},
+		})
+	}
+	if len(parts) == 0 {
+		return nil, fmt.Errorf("openai llm: empty assistant message (no content or tool_calls)")
+	}
 	return &model.LLMResponse{
-		Content:       out,
+		Content:       &genai.Content{Role: genai.RoleModel, Parts: parts},
 		Partial:       false,
 		TurnComplete:  true,
 		ModelVersion:  mid,
-		UsageMetadata: usageMeta(parsed.Usage.PromptTokens, parsed.Usage.CompletionTokens),
+		UsageMetadata: usageMeta(promptTok, completionTok),
 	}, nil
 }
 
@@ -154,11 +198,16 @@ func (l *llm) generateStream(ctx context.Context, req *model.LLMRequest) iter.Se
 			yield(nil, fmt.Errorf("openai llm: base URL and API key are required"))
 			return
 		}
+		if len(OpenAIChatToolsFromRequest(req)) > 0 {
+			l.generateStreamWithTools(ctx, req)(yield)
+			return
+		}
 		messages, err := OpenAIMessagesFromContents(req.Contents)
 		if err != nil {
 			yield(nil, err)
 			return
 		}
+		messages = SanitizeOpenAIChatMessagesToolSequence(messages)
 		mid := modelName(req.Model, "")
 		if mid == "" {
 			yield(nil, fmt.Errorf("openai llm: LLMRequest.Model is required"))

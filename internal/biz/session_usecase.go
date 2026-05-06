@@ -182,6 +182,8 @@ type SessionRepository interface {
 	AppendChatMessage(ctx context.Context, sessionID string, msg ChatMessage, bumpModelCall bool) error
 	// UpdateAdkSnapshotJSON persists ADK runner session blob (optional migration / legacy rows).
 	UpdateAdkSnapshotJSON(ctx context.Context, sessionID string, snapshotJSON string) error
+	// UpdateSessionContextFromLLMUsage updates context bar fields from the latest model call (prompt vs context window).
+	UpdateSessionContextFromLLMUsage(ctx context.Context, sessionID string, promptTokens, completionTokens, contextWindow int) error
 }
 
 // SessionUsecase handles session CRUD + timeline（不包含发送消息）.
@@ -295,6 +297,11 @@ func (uc *SessionUsecase) AppendChatMessage(ctx context.Context, sessionID strin
 // UpdateAdkSnapshotJSON persists the ADK session.Service serialization.
 func (uc *SessionUsecase) UpdateAdkSnapshotJSON(ctx context.Context, sessionID string, snapshotJSON string) error {
 	return uc.sessions.UpdateAdkSnapshotJSON(ctx, sessionID, snapshotJSON)
+}
+
+// UpdateSessionContextFromLLMUsage refreshes sessions.context_used_ratio after a native LLM turn.
+func (uc *SessionUsecase) UpdateSessionContextFromLLMUsage(ctx context.Context, sessionID string, promptTokens, completionTokens, contextWindow int) error {
+	return uc.sessions.UpdateSessionContextFromLLMUsage(ctx, sessionID, promptTokens, completionTokens, contextWindow)
 }
 
 func sessionTitleFromUserSnippet(snippet string) string {

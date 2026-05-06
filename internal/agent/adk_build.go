@@ -1,4 +1,4 @@
-package adkadapter
+package agent
 
 import (
 	"context"
@@ -20,6 +20,8 @@ type BuilderDeps struct {
 	Catalog   *biz.LlmProviderModelUsecase
 	AgentUC   *biz.AgentUsecase
 	Agents    biz.AgentRepository
+	// ToolsCatalog is the platform tool table (biz.ToolRepo). Optional; required only when AgentUC is nil and callers still need effective tools.
+	ToolsCatalog biz.ToolRepo
 	RT        *provider.RoundTrip
 	Memory    memory.Service
 	Artifacts artifact.Service
@@ -33,14 +35,14 @@ type BuilderDeps struct {
 // BuildLLMAgent constructs an ADK LLM agent from a hydrated biz catalog agent.
 func BuildLLMAgent(ctx context.Context, ag biz.Agent, deps BuilderDeps) (agent.Agent, error) {
 	if strings.TrimSpace(ag.AgentKey) == "" {
-		return nil, fmt.Errorf("adkadapter: agent_key required")
+		return nil, fmt.Errorf("agent: agent_key required")
 	}
-	prov := firstNonEmpty(deps.Provider, ag.Provider)
-	mod := firstNonEmpty(deps.Model, ag.Model)
+	prov := firstNonEmptyString(deps.Provider, ag.Provider)
+	mod := firstNonEmptyString(deps.Model, ag.Model)
 	if prov == "" || mod == "" {
-		return nil, fmt.Errorf("adkadapter: provider and model required")
+		return nil, fmt.Errorf("agent: provider and model required")
 	}
-	m, err := ModelForProviderModel(ctx, deps.Catalog, deps.RT, prov, mod)
+	m, err := provider.ModelForProviderModel(ctx, deps.Catalog, deps.RT, prov, mod)
 	if err != nil {
 		return nil, err
 	}
@@ -53,7 +55,8 @@ func BuildLLMAgent(ctx context.Context, ag biz.Agent, deps BuilderDeps) (agent.A
 		}
 	}
 	sys := BuildSystemPrompt(ag, files)
-	if cue := RuntimeCapabilityCue(ctx, deps.AgentUC, ag); cue != "" {
+	promptDeps := Deps{Agents: deps.Agents, AgentUC: deps.AgentUC, ToolsCatalog: deps.ToolsCatalog}
+	if cue := RuntimeCapabilityCue(ctx, promptDeps, ag); cue != "" {
 		sys = sys + "\n\n" + cue
 	}
 
@@ -78,12 +81,10 @@ func BuildLLMAgent(ctx context.Context, ag biz.Agent, deps BuilderDeps) (agent.A
 		Tools:                    deps.Tools,
 		Toolsets:                 deps.Toolsets,
 	}
-	// Optional services are consulted by Runner invocation context, not llmagent.Config.
-
 	return llmagent.New(cfg)
 }
 
-func firstNonEmpty(vals ...string) string {
+func firstNonEmptyString(vals ...string) string {
 	for _, v := range vals {
 		if strings.TrimSpace(v) != "" {
 			return strings.TrimSpace(v)

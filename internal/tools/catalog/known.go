@@ -1,26 +1,33 @@
 package catalog
 
-import "google.golang.org/adk/tool"
+import (
+	"aranea-agents/internal/tools/registry"
 
-// 工作区内置文件工具名序列见 [stdtools.WorkspaceToolNames].
+	"google.golang.org/adk/tool"
+)
+
+// Name* mirror [registry] keys for stable call sites in this package.
+
+// 工作区内置文件工具名序列见 [registry.WorkspaceToolNames].
 const (
-	NameExitLoop      = "exit_loop"
-	NameGoogleSearch  = "google_search"
-	NameLoadArtifacts = "load_artifacts"
-	NameLoadMemory    = "load_memory"
-	NamePreloadMemory = "preload_memory"
-	NameExampleTool   = "example_tool"
+	NameExitLoop      = registry.ExitLoop
+	NameGoogleSearch  = registry.GoogleSearch
+	NameLoadArtifacts = registry.LoadArtifacts
+	NameLoadMemory    = registry.LoadMemory
+	NamePreloadMemory = registry.PreloadMemory
+	NameExampleTool   = registry.ExampleTool
 
-	NameSkillListSkills        = "list_skills"
-	NameSkillLoadSkill         = "load_skill"
-	NameSkillLoadSkillResource = "load_skill_resource"
+	NameSkillListSkills        = registry.SkillListSkills
+	NameSkillLoadSkill         = registry.SkillLoadSkill
+	NameSkillLoadSkillResource = registry.SkillLoadSkillResource
 
-	NameMCPToolset = "mcp_tool_set"
+	NameMCPToolset = registry.MCPToolset
 
-	NameFilesystemRead  = "read_file"
-	NameFilesystemList  = "list_files"
-	NameFilesystemWrite = "write_file"
-	NameFilesystemEdit  = "edit_file"
+	NameFilesystemRead  = registry.ReadFile
+	NameFilesystemList  = registry.ListFiles
+	NameFilesystemWrite = registry.WriteFile
+	NameFilesystemEdit  = registry.EditFile
+	NameShellExec       = registry.ShellExec
 )
 
 // WithConfirmation wraps a tool.Toolset with HITL confirmation (tool package; experimental upstream API).

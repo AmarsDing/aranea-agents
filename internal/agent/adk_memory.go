@@ -1,4 +1,4 @@
-package adkadapter
+package agent
 
 import (
 	"google.golang.org/adk/memory"

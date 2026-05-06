@@ -1,4 +1,4 @@
-package adkadapter
+package agent
 
 import (
 	"context"
@@ -57,11 +57,11 @@ func (s *SessionSQLiteMemoryService) SearchMemory(ctx context.Context, req *memo
 		if body == "" {
 			body = string(row)
 		}
-		id := jsonString(m, "id")
+		id := jsonStringMem(m, "id")
 		if id == "" {
 			id = fmt.Sprintf("mem-%d", i)
 		}
-		etype := jsonString(m, "entity_type")
+		etype := jsonStringMem(m, "entity_type")
 		if etype == "" {
 			etype = "memory"
 		}
@@ -74,7 +74,7 @@ func (s *SessionSQLiteMemoryService) SearchMemory(ctx context.Context, req *memo
 	return &memory.SearchResponse{Memories: entries}, nil
 }
 
-func jsonString(m map[string]any, key string) string {
+func jsonStringMem(m map[string]any, key string) string {
 	v, ok := m[key].(string)
 	if !ok {
 		return ""

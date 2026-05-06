@@ -9,8 +9,8 @@ import (
 	"time"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
-	"aranea-agents/internal/adkadapter"
 	"aranea-agents/internal/agent"
+	"aranea-agents/internal/agent/adksvc"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/provider"
 
@@ -24,13 +24,14 @@ import (
 
 // Runner executes native team workflows via pkg/adk-go workflow agents + runner.Run.
 type Runner struct {
-	teams    biz.TeamRepository
-	sessions *biz.SessionUsecase
-	agents   biz.AgentRepository
-	agentsUC *biz.AgentUsecase
-	catalog  *biz.LlmProviderModelUsecase
-	broker   *biz.TeamRunEventBroker
-	llmHTTP  *http.Client
+	teams        biz.TeamRepository
+	sessions     *biz.SessionUsecase
+	agents       biz.AgentRepository
+	agentsUC     *biz.AgentUsecase
+	toolsCatalog biz.ToolRepo
+	catalog      *biz.LlmProviderModelUsecase
+	broker       *biz.TeamRunEventBroker
+	llmHTTP      *http.Client
 }
 
 // NewRunner wires a team runner (llmHTTP should match chat transport timeouts).
@@ -39,23 +40,28 @@ func NewRunner(
 	sessions *biz.SessionUsecase,
 	agents biz.AgentRepository,
 	agentsUC *biz.AgentUsecase,
+	toolsCatalog biz.ToolRepo,
 	catalog *biz.LlmProviderModelUsecase,
 	broker *biz.TeamRunEventBroker,
 ) *Runner {
 	return &Runner{
-		teams:    teams,
-		sessions: sessions,
-		agents:   agents,
-		agentsUC: agentsUC,
-		catalog:  catalog,
-		broker:   broker,
-		llmHTTP:  &http.Client{Timeout: 300 * time.Second},
+		teams:        teams,
+		sessions:     sessions,
+		agents:       agents,
+		agentsUC:     agentsUC,
+		toolsCatalog: toolsCatalog,
+		catalog:      catalog,
+		broker:       broker,
+		llmHTTP:      &http.Client{Timeout: 300 * time.Second},
 	}
 }
 
 func (r *Runner) catalogAgent(ctx context.Context, id string) (biz.Agent, error) {
 	if r.agentsUC != nil {
 		return r.agentsUC.Get(ctx, id)
+	}
+	if r.agents != nil && r.toolsCatalog != nil {
+		return biz.NewAgentUsecase(r.agents, r.toolsCatalog).Get(ctx, id)
 	}
 	return r.agents.GetAgentByID(ctx, id)
 }
@@ -152,11 +158,12 @@ func (r *Runner) runTeamADK(ctx context.Context, sess biz.Session, req *chatv1.S
 	}
 
 	t0 := time.Now()
-	deps := adkadapter.BuilderDeps{
-		Catalog: r.catalog,
-		AgentUC: r.agentsUC,
-		Agents:  r.agents,
-		RT:      &provider.RoundTrip{HTTP: r.llmHTTP},
+	deps := agent.BuilderDeps{
+		Catalog:      r.catalog,
+		AgentUC:      r.agentsUC,
+		Agents:       r.agents,
+		ToolsCatalog: r.toolsCatalog,
+		RT:           &provider.RoundTrip{HTTP: r.llmHTTP},
 	}
 
 	root, plan, err := BuildWorkflowRoot(ctx, mode, def, deps, sess, provOpt, modOpt, r.catalogAgent)
@@ -165,9 +172,9 @@ func (r *Runner) runTeamADK(ctx context.Context, sess biz.Session, req *chatv1.S
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
 
-	ss := &adkadapter.BizSessionService{
-		Repo:    adkadapter.UsecaseSessionRepo{UC: r.sessions},
-		AppName: adkadapter.DefaultAppName,
+	ss := &adksvc.BizSessionService{
+		Repo:    adksvc.UsecaseSessionRepo{UC: r.sessions},
+		AppName: adksvc.DefaultAppName,
 	}
 	ss.ResolveAssistantAuthor = func(c context.Context, agentID string) (string, error) {
 		a, e := r.catalogAgent(c, agentID)
@@ -178,13 +185,13 @@ func (r *Runner) runTeamADK(ctx context.Context, sess biz.Session, req *chatv1.S
 	}
 
 	rn, err := runner.New(runner.Config{
-		AppName:           adkadapter.DefaultAppName,
+		AppName:           adksvc.DefaultAppName,
 		Agent:             root,
 		SessionService:    ss,
-		MemoryService:     adkadapter.NewADKMemoryService(),
+		MemoryService:     agent.NewADKMemoryService(),
 		AutoCreateSession: false,
 		PluginConfig: runner.PluginConfig{
-			Plugins: adkadapter.DefaultRunnerPlugins(),
+			Plugins: agent.DefaultRunnerPlugins(),
 		},
 	})
 	if err != nil {
@@ -233,7 +240,7 @@ func (r *Runner) runTeamADK(ctx context.Context, sess biz.Session, req *chatv1.S
 	}
 
 	msg := genai.NewContentFromText(content, genai.RoleUser)
-	uid := adkadapter.UserIDFromCtx(ctx)
+	uid := agent.UserIDFromCtx(ctx)
 	cfg := adkagent.RunConfig{StreamingMode: adkagent.StreamingModeSSE}
 	if !streaming {
 		cfg = adkagent.RunConfig{StreamingMode: adkagent.StreamingModeNone}
@@ -262,7 +269,16 @@ func (r *Runner) runTeamADK(ctx context.Context, sess biz.Session, req *chatv1.S
 	var lastForClient biz.ChatMessage
 	var unaryAssistants []biz.ChatMessage
 
+	var toolRelay *agent.ChatToolSSERelay
+	if streaming {
+		toolRelay = agent.NewChatToolSSERelay(stream)
+	}
+
 	for ev, err := range rn.Run(ctx, uid, sess.ID, msg, cfg) {
+		if ctx.Err() != nil {
+			r.finishRunErr(ctx, &run, t0, ctx.Err().Error())
+			return userMsg, biz.ChatMessage{}, ctx.Err()
+		}
 		if err != nil {
 			r.finishRunErr(ctx, &run, t0, err.Error())
 			return userMsg, biz.ChatMessage{}, err
@@ -270,7 +286,19 @@ func (r *Runner) runTeamADK(ctx context.Context, sess biz.Session, req *chatv1.S
 		if ev == nil {
 			continue
 		}
+		if streaming && toolRelay != nil {
+			agEv := teamAgentForToolSSE(ev.Author, keyMeta, firstAg)
+			if agent.SessionHasFunctionResponses(ev) {
+				toolRelay.EmitToolResponses(agEv, ev)
+			}
+		}
 		if streaming && ev.LLMResponse.Partial {
+			if toolRelay != nil {
+				agEv := teamAgentForToolSSE(ev.Author, keyMeta, firstAg)
+				if agent.SessionHasFunctionCalls(ev) {
+					toolRelay.EmitToolCalls(agEv, ev)
+				}
+			}
 			auth := strings.ToLower(strings.TrimSpace(ev.Author))
 			if auth == synthKey {
 				main, rsn := provider.TextsFromLLMResponse(&ev.LLMResponse)
@@ -287,6 +315,10 @@ func (r *Runner) runTeamADK(ctx context.Context, sess biz.Session, req *chatv1.S
 			continue
 		}
 		auth := strings.ToLower(strings.TrimSpace(ev.Author))
+		if streaming && toolRelay != nil && agent.SessionHasFunctionCalls(ev) {
+			agEv := teamAgentForToolSSE(ev.Author, keyMeta, firstAg)
+			toolRelay.EmitToolCalls(agEv, ev)
+		}
 		meta, ok := keyMeta[auth]
 		if !ok {
 			continue
@@ -378,6 +410,17 @@ func sortIndexForMember(order []MemberDef, m MemberDef) int {
 		}
 	}
 	return 0
+}
+
+func teamAgentForToolSSE(author string, keyMeta map[string]struct {
+	Member MemberDef
+	Agent  biz.Agent
+}, fallback biz.Agent) biz.Agent {
+	auth := strings.ToLower(strings.TrimSpace(author))
+	if meta, ok := keyMeta[auth]; ok {
+		return meta.Agent
+	}
+	return agent.AgentForToolSSELabel(author, fallback)
 }
 
 func extractOpts(req *chatv1.SendChatMessageRequest) (dialogMode, prov, mod string, attN int) {

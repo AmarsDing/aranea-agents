@@ -1,4 +1,4 @@
-package adkadapter
+package adksvc
 
 import (
 	"context"
@@ -11,12 +11,6 @@ import (
 	"aranea-agents/internal/biz"
 
 	"google.golang.org/adk/session"
-)
-
-// Default identifiers for Aranea admin sessions (single-tenant); uniqueness is sessions.id.
-const (
-	DefaultAppName = "aranea"
-	DefaultUserID  = "local"
 )
 
 // SessionRepositorySubset is the persistence surface for [session.Service].
@@ -44,7 +38,6 @@ func NewSessionService(repo SessionRepositorySubset) *BizSessionService {
 	return &BizSessionService{Repo: repo, AppName: DefaultAppName}
 }
 
-// NewSessionService returns nil if repo is nil.
 func (s *BizSessionService) app() string {
 	if s != nil && strings.TrimSpace(s.AppName) != "" {
 		return strings.TrimSpace(s.AppName)
@@ -55,11 +48,11 @@ func (s *BizSessionService) app() string {
 // Create initializes ADK snapshot for an existing biz session row (Runner auto-create off).
 func (s *BizSessionService) Create(ctx context.Context, req *session.CreateRequest) (*session.CreateResponse, error) {
 	if req == nil || strings.TrimSpace(req.AppName) == "" || strings.TrimSpace(req.UserID) == "" {
-		return nil, fmt.Errorf("adkadapter: invalid create request")
+		return nil, fmt.Errorf("adksvc: invalid create request")
 	}
 	sid := strings.TrimSpace(req.SessionID)
 	if sid == "" {
-		return nil, fmt.Errorf("adkadapter: session_id is required")
+		return nil, fmt.Errorf("adksvc: session_id is required")
 	}
 	if _, err := s.Repo.GetSessionByID(ctx, sid); err != nil {
 		return nil, err
@@ -81,11 +74,11 @@ func (s *BizSessionService) Create(ctx context.Context, req *session.CreateReque
 // Get loads snapshot for Runner.
 func (s *BizSessionService) Get(ctx context.Context, req *session.GetRequest) (*session.GetResponse, error) {
 	if req == nil {
-		return nil, fmt.Errorf("adkadapter: nil get request")
+		return nil, fmt.Errorf("adksvc: nil get request")
 	}
 	sid := strings.TrimSpace(req.SessionID)
 	if sid == "" {
-		return nil, fmt.Errorf("adkadapter: session_id required")
+		return nil, fmt.Errorf("adksvc: session_id required")
 	}
 	bizSess, err := s.Repo.GetSessionByID(ctx, sid)
 	if err != nil {
@@ -93,7 +86,7 @@ func (s *BizSessionService) Get(ctx context.Context, req *session.GetRequest) (*
 	}
 	bundle, err := unmarshalBundle(bizSess.AdkSnapshotJSON)
 	if err != nil {
-		return nil, fmt.Errorf("adkadapter: corrupt adk snapshot: %w", err)
+		return nil, fmt.Errorf("adksvc: corrupt adk snapshot: %w", err)
 	}
 	if err := s.maybeHydrateFromLegacyMessages(ctx, sid, bizSess, bundle); err != nil {
 		return nil, err
@@ -136,7 +129,7 @@ func (s *BizSessionService) List(ctx context.Context, req *session.ListRequest) 
 func (s *BizSessionService) Delete(ctx context.Context, req *session.DeleteRequest) error {
 	sid := strings.TrimSpace(req.SessionID)
 	if sid == "" {
-		return fmt.Errorf("adkadapter: session_id required")
+		return fmt.Errorf("adksvc: session_id required")
 	}
 	return s.Repo.UpdateAdkSnapshotJSON(ctx, sid, "{}")
 }
@@ -144,7 +137,7 @@ func (s *BizSessionService) Delete(ctx context.Context, req *session.DeleteReque
 // AppendEvent merges event into snapshot JSON.
 func (s *BizSessionService) AppendEvent(ctx context.Context, curSession session.Session, event *session.Event) error {
 	if curSession == nil || event == nil {
-		return fmt.Errorf("adkadapter: nil session or event")
+		return fmt.Errorf("adksvc: nil session or event")
 	}
 	if event.Partial {
 		return nil

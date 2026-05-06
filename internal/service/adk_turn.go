@@ -5,10 +5,11 @@ import (
 	"strings"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
-	"aranea-agents/internal/adkadapter"
 	chatagent "aranea-agents/internal/agent"
+	"aranea-agents/internal/agent/adksvc"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/provider"
+	"aranea-agents/internal/tools"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
@@ -34,9 +35,9 @@ func (s *ChatService) runSingleAgentViaADK(
 		return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.Forbidden("CHAT_AGENT", "agent_key does not match this session")
 	}
 
-	ss := &adkadapter.BizSessionService{
-		Repo:    adkadapter.UsecaseSessionRepo{UC: s.sessions},
-		AppName: adkadapter.DefaultAppName,
+	ss := &adksvc.BizSessionService{
+		Repo:    adksvc.UsecaseSessionRepo{UC: s.sessions},
+		AppName: adksvc.DefaultAppName,
 	}
 	ss.ResolveAssistantAuthor = func(c context.Context, agentID string) (string, error) {
 		a, err := s.agents.GetAgentByID(c, agentID)
@@ -47,26 +48,30 @@ func (s *ChatService) runSingleAgentViaADK(
 	}
 
 	rt := &provider.RoundTrip{HTTP: s.llmHTTP}
-	root, err := adkadapter.BuildLLMAgent(ctx, ag, adkadapter.BuilderDeps{
-		Catalog:  s.llmCatalog,
-		AgentUC:  s.agentsUC,
-		Agents:   s.agents,
-		RT:       rt,
-		Provider: prov,
-		Model:    mod,
+	subAgents := ag.Settings != nil && ag.Settings.SubagentsEnabled
+	adkTools := tools.ADKToolsForAgentPolicy(ctx, s.agentsUC, s.agents, s.toolsCatalog, ag.ID, subAgents)
+	root, err := chatagent.BuildLLMAgent(ctx, ag, chatagent.BuilderDeps{
+		Catalog:      s.llmCatalog,
+		AgentUC:      s.agentsUC,
+		Agents:       s.agents,
+		ToolsCatalog: s.toolsCatalog,
+		RT:           rt,
+		Provider:     prov,
+		Model:        mod,
+		Tools:        adkTools,
 	})
 	if err != nil {
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
 
 	rn, err := runner.New(runner.Config{
-		AppName:           adkadapter.DefaultAppName,
+		AppName:           adksvc.DefaultAppName,
 		Agent:             root,
 		SessionService:    ss,
-		MemoryService:     adkadapter.NewADKMemoryService(),
+		MemoryService:     chatagent.NewADKMemoryService(),
 		AutoCreateSession: false,
 		PluginConfig: runner.PluginConfig{
-			Plugins: adkadapter.DefaultRunnerPlugins(),
+			Plugins: chatagent.DefaultRunnerPlugins(),
 		},
 	})
 	if err != nil {
@@ -97,33 +102,53 @@ func (s *ChatService) runSingleAgentViaADK(
 	}
 
 	msg := genai.NewContentFromText(content, genai.RoleUser)
-	uid := adkadapter.UserIDFromCtx(ctx)
+	uid := chatagent.UserIDFromCtx(ctx)
 	cfg := adkagent.RunConfig{StreamingMode: adkagent.StreamingModeSSE}
 	if stream == nil {
 		cfg = adkagent.RunConfig{StreamingMode: adkagent.StreamingModeNone}
 	}
 
+	toolRelay := chatagent.NewChatToolSSERelay(stream)
 	var reply strings.Builder
 	var reasoning strings.Builder
+	var lastUsage *genai.GenerateContentResponseUsageMetadata
 	for ev, err := range rn.Run(ctx, uid, sessionID, msg, cfg) {
+		if ctx.Err() != nil {
+			return userMsg, biz.ChatMessage{}, ctx.Err()
+		}
 		if err != nil {
 			return userMsg, biz.ChatMessage{}, err
 		}
 		if ev == nil {
 			continue
 		}
+		if ev.LLMResponse.UsageMetadata != nil {
+			lastUsage = ev.LLMResponse.UsageMetadata
+		}
+		agEv := chatagent.AgentForToolSSELabel(ev.Author, ag)
+		if toolRelay != nil && chatagent.SessionHasFunctionResponses(ev) {
+			toolRelay.EmitToolResponses(agEv, ev)
+		}
 		if stream != nil && ev.LLMResponse.Partial {
+			if toolRelay != nil && chatagent.SessionHasFunctionCalls(ev) {
+				toolRelay.EmitToolCalls(agEv, ev)
+			}
 			main, rsn := provider.TextsFromLLMResponse(&ev.LLMResponse)
 			if main != "" {
+				reply.WriteString(main)
 				_ = stream.Emit("delta", map[string]string{"content": main})
 			}
 			if rsn != "" {
+				reasoning.WriteString(rsn)
 				_ = stream.Emit("delta", map[string]string{"reasoning_content": rsn})
 			}
 			continue
 		}
 		if strings.EqualFold(strings.TrimSpace(ev.Author), "user") {
 			continue
+		}
+		if toolRelay != nil && chatagent.SessionHasFunctionCalls(ev) {
+			toolRelay.EmitToolCalls(agEv, ev)
 		}
 		main, rsn := provider.TextsFromLLMResponse(&ev.LLMResponse)
 		if main != "" {
@@ -132,6 +157,16 @@ func (s *ChatService) runSingleAgentViaADK(
 		if rsn != "" {
 			reasoning.WriteString(rsn)
 		}
+	}
+
+	promptTok, completionTok := 0, 0
+	if lastUsage != nil {
+		promptTok = int(lastUsage.PromptTokenCount)
+		completionTok = int(lastUsage.CandidatesTokenCount)
+	}
+	if promptTok <= 0 && completionTok <= 0 && strings.TrimSpace(reply.String()) != "" {
+		promptTok = roughTokenEstimateFromText(content + reply.String())
+		completionTok = roughTokenEstimateFromText(reply.String())
 	}
 
 	assistantOptsStr, err := chatagent.AssistantOptionsJSON(ag, nil)
@@ -153,16 +188,31 @@ func (s *ChatService) runSingleAgentViaADK(
 		Status:          "ok",
 		OptionsJSON:     assistantOptsStr,
 		CreatedAt:       chatagent.RFC3339Now(),
+		TokenIn:         promptTok,
+		TokenOut:        completionTok,
 	}
 	if stream == nil {
 		if err := s.sessions.AppendChatTurn(ctx, sessionID, userMsg, assistantMsg); err != nil {
 			return userMsg, biz.ChatMessage{}, err
 		}
+		patchSessionContextUsage(ctx, s, sessionID, ag, promptTok, completionTok)
 		return userMsg, assistantMsg, nil
 	}
 	if err := s.sessions.AppendChatMessage(ctx, sessionID, assistantMsg, true); err != nil {
 		return userMsg, biz.ChatMessage{}, err
 	}
+	patchSessionContextUsage(ctx, s, sessionID, ag, promptTok, completionTok)
 	_ = stream.Emit("done", assistantMsg)
 	return userMsg, assistantMsg, nil
+}
+
+func patchSessionContextUsage(ctx context.Context, s *ChatService, sessionID string, ag biz.Agent, promptTok, completionTok int) {
+	if s == nil || s.sessions == nil {
+		return
+	}
+	win := ag.ContextWindow
+	if win <= 0 {
+		win = 128000
+	}
+	_ = s.sessions.UpdateSessionContextFromLLMUsage(ctx, sessionID, promptTok, completionTok, win)
 }

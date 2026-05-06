@@ -1,4 +1,4 @@
-package adkadapter
+package agent
 
 import (
 	"strings"

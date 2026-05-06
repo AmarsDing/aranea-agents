@@ -1,4 +1,4 @@
-package adkadapter
+package adksvc
 
 import (
 	"context"
@@ -14,7 +14,7 @@ type UsecaseSessionRepo struct {
 
 func (r UsecaseSessionRepo) GetSessionByID(ctx context.Context, id string) (biz.Session, error) {
 	if r.UC == nil {
-		return biz.Session{}, fmt.Errorf("adkadapter: nil session usecase")
+		return biz.Session{}, fmt.Errorf("adksvc: nil session usecase")
 	}
 	return r.UC.Get(ctx, id)
 }
