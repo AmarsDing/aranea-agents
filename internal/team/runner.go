@@ -4,23 +4,25 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
+	"aranea-agents/internal/adkadapter"
 	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/provider"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
-	"golang.org/x/sync/errgroup"
+	adkagent "google.golang.org/adk/agent"
+	"google.golang.org/adk/runner"
+
+	"google.golang.org/genai"
 )
 
-const synthesisCue = "请将上文中团队成员的并行回复整合为一条对用户问题的最终答案，语气连贯，不要解释团队内部流程。"
-
-// Runner executes native team workflows (OpenAI-compat members).
+// Runner executes native team workflows via pkg/adk-go workflow agents + runner.Run.
 type Runner struct {
 	teams    biz.TeamRepository
 	sessions *biz.SessionUsecase
@@ -56,15 +58,6 @@ func (r *Runner) catalogAgent(ctx context.Context, id string) (biz.Agent, error)
 		return r.agentsUC.Get(ctx, id)
 	}
 	return r.agents.GetAgentByID(ctx, id)
-}
-
-func firstNonEmpty(vals ...string) string {
-	for _, v := range vals {
-		if strings.TrimSpace(v) != "" {
-			return strings.TrimSpace(v)
-		}
-	}
-	return ""
 }
 
 func preview(s string, max int) string {
@@ -121,16 +114,270 @@ func (r *Runner) RunTurn(ctx context.Context, sess biz.Session, req *chatv1.Send
 	}
 
 	mode := strings.ToLower(strings.TrimSpace(def.Mode))
-	switch mode {
-	case "sequential":
-		return r.runSequential(ctx, sess, req, teamRow, def, stream)
-	case "parallel":
-		return r.runParallel(ctx, sess, req, teamRow, def, stream)
-	case "coordinator", "critic_loop", "adaptive":
-		return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.ServiceUnavailable("CHAT_TEAM_NATIVE", fmt.Sprintf("Team mode %q is not supported by the native executor yet; set LEGACY_REST_ORIGIN.", mode))
-	default:
-		return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.BadRequest("TEAM", "unsupported team mode")
+	return r.runTeamADK(ctx, sess, req, teamRow, def, mode, stream)
+}
+
+func (r *Runner) runTeamADK(ctx context.Context, sess biz.Session, req *chatv1.SendChatMessageRequest, teamRow biz.Team, def Definition, mode string, stream agent.StreamEmitter) (userMsg biz.ChatMessage, assistantMsg biz.ChatMessage, err error) {
+	content := strings.TrimSpace(req.GetContent())
+	if content == "" {
+		return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.BadRequest("CHAT_NATIVE", "content is required")
 	}
+	dialogMode, provOpt, modOpt, attN := extractOpts(req)
+	dialogMode = firstNonEmptyStr(dialogMode, sess.DialogMode, "default")
+
+	members := EnabledMembers(def)
+	if len(members) == 0 {
+		return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.BadRequest("TEAM", "team has no enabled members")
+	}
+
+	run := biz.TeamRun{
+		ID:            uuid.NewString(),
+		TeamID:        teamRow.ID,
+		SessionID:     sess.ID,
+		Mode:          mode,
+		Status:        "running",
+		InputPreview:  preview(content, 512),
+		TopologyJSON:  topologyJSON(def),
+		StartedAt:     agent.RFC3339Now(),
+		CreatedAt:     agent.RFC3339Now(),
+		UpdatedAt:     agent.RFC3339Now(),
+	}
+	run, err = r.teams.CreateTeamRun(ctx, run)
+	if err != nil {
+		return biz.ChatMessage{}, biz.ChatMessage{}, err
+	}
+	if r.broker != nil {
+		cp := run
+		r.broker.Publish(biz.TeamRunEvent{Type: "run_started", TeamID: teamRow.ID, RunID: run.ID, Run: &cp})
+	}
+
+	t0 := time.Now()
+	deps := adkadapter.BuilderDeps{
+		Catalog: r.catalog,
+		AgentUC: r.agentsUC,
+		Agents:  r.agents,
+		RT:      &provider.RoundTrip{HTTP: r.llmHTTP},
+	}
+
+	root, plan, err := BuildWorkflowRoot(ctx, mode, def, deps, sess, provOpt, modOpt, r.catalogAgent)
+	if err != nil {
+		r.finishRunErr(ctx, &run, t0, err.Error())
+		return biz.ChatMessage{}, biz.ChatMessage{}, err
+	}
+
+	ss := &adkadapter.BizSessionService{
+		Repo:    adkadapter.UsecaseSessionRepo{UC: r.sessions},
+		AppName: adkadapter.DefaultAppName,
+	}
+	ss.ResolveAssistantAuthor = func(c context.Context, agentID string) (string, error) {
+		a, e := r.catalogAgent(c, agentID)
+		if e != nil {
+			return "", e
+		}
+		return strings.TrimSpace(a.AgentKey), nil
+	}
+
+	rn, err := runner.New(runner.Config{
+		AppName:           adkadapter.DefaultAppName,
+		Agent:             root,
+		SessionService:    ss,
+		MemoryService:     adkadapter.NewADKMemoryService(),
+		AutoCreateSession: false,
+		PluginConfig: runner.PluginConfig{
+			Plugins: adkadapter.DefaultRunnerPlugins(),
+		},
+	})
+	if err != nil {
+		r.finishRunErr(ctx, &run, t0, err.Error())
+		return biz.ChatMessage{}, biz.ChatMessage{}, err
+	}
+
+	firstAg, err := r.catalogAgent(ctx, members[0].AgentID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			err = kerrors.NotFound("AGENT", "team member agent not found")
+		}
+		r.finishRunErr(ctx, &run, t0, err.Error())
+		return biz.ChatMessage{}, biz.ChatMessage{}, err
+	}
+	prov0 := firstNonEmptyStr(provOpt, sess.Provider, firstAg.Provider)
+	mod0 := firstNonEmptyStr(modOpt, sess.Model, firstAg.Model)
+	anchor := &agent.TeamMemberAnchor{
+		AgentID: firstAg.ID,
+		Name:    firstNonEmptyStr(firstAg.DisplayName, firstAg.AgentKey),
+		Role:    members[0].Role,
+	}
+	userOpts, err := agent.UserOptionsJSON(firstAg, dialogMode, prov0, mod0, sess.ContextUsedRatio, anchor)
+	if err != nil {
+		r.finishRunErr(ctx, &run, t0, err.Error())
+		return biz.ChatMessage{}, biz.ChatMessage{}, err
+	}
+	userMsg = biz.ChatMessage{
+		ID:               uuid.NewString(),
+		SessionID:        sess.ID,
+		Role:             "user",
+		ContentMarkdown:  content,
+		Status:           "ok",
+		OptionsJSON:      userOpts,
+		CreatedAt:        agent.RFC3339Now(),
+		AttachmentsCount: attN,
+	}
+
+	streaming := stream != nil
+	if streaming {
+		if err := r.sessions.AppendChatMessage(ctx, sess.ID, userMsg, false); err != nil {
+			r.finishRunErr(ctx, &run, t0, err.Error())
+			return biz.ChatMessage{}, biz.ChatMessage{}, err
+		}
+		_ = stream.Emit("user_message", userMsg)
+	}
+
+	msg := genai.NewContentFromText(content, genai.RoleUser)
+	uid := adkadapter.UserIDFromCtx(ctx)
+	cfg := adkagent.RunConfig{StreamingMode: adkagent.StreamingModeSSE}
+	if !streaming {
+		cfg = adkagent.RunConfig{StreamingMode: adkagent.StreamingModeNone}
+	}
+
+	keyMeta := map[string]struct {
+		Member MemberDef
+		Agent  biz.Agent
+	}{}
+	for _, m := range plan.persistMembers {
+		ag, e := r.catalogAgent(ctx, m.AgentID)
+		if e != nil {
+			continue
+		}
+		key := strings.ToLower(strings.TrimSpace(ag.AgentKey))
+		if key != "" {
+			keyMeta[key] = struct {
+				Member MemberDef
+				Agent  biz.Agent
+			}{Member: m, Agent: ag}
+		}
+	}
+
+	synthKey := strings.ToLower(strings.TrimSpace(plan.streamAuthor))
+	var totalIn, totalOut int
+	var lastForClient biz.ChatMessage
+	var unaryAssistants []biz.ChatMessage
+
+	for ev, err := range rn.Run(ctx, uid, sess.ID, msg, cfg) {
+		if err != nil {
+			r.finishRunErr(ctx, &run, t0, err.Error())
+			return userMsg, biz.ChatMessage{}, err
+		}
+		if ev == nil {
+			continue
+		}
+		if streaming && ev.LLMResponse.Partial {
+			auth := strings.ToLower(strings.TrimSpace(ev.Author))
+			if auth == synthKey {
+				main, rsn := provider.TextsFromLLMResponse(&ev.LLMResponse)
+				if main != "" {
+					_ = stream.Emit("delta", map[string]string{"content": main})
+				}
+				if rsn != "" {
+					_ = stream.Emit("delta", map[string]string{"reasoning_content": rsn})
+				}
+			}
+			continue
+		}
+		if !ev.IsFinalResponse() || ev.LLMResponse.Partial {
+			continue
+		}
+		auth := strings.ToLower(strings.TrimSpace(ev.Author))
+		meta, ok := keyMeta[auth]
+		if !ok {
+			continue
+		}
+		main, rsn := provider.TextsFromLLMResponse(&ev.LLMResponse)
+		main = strings.TrimSpace(main)
+		opts, e := agent.AssistantOptionsJSON(meta.Agent, &agent.TeamMemberAnchor{
+			AgentID: meta.Agent.ID,
+			Name:    firstNonEmptyStr(meta.Agent.DisplayName, meta.Agent.AgentKey),
+			Role:    meta.Member.Role,
+		})
+		if e != nil {
+			r.finishRunErr(ctx, &run, t0, e.Error())
+			return userMsg, biz.ChatMessage{}, e
+		}
+		if rsn != "" {
+			if opts, err = agent.MergeReasoningIntoAssistantOptionsJSON(opts, rsn); err != nil {
+				r.finishRunErr(ctx, &run, t0, err.Error())
+				return userMsg, biz.ChatMessage{}, err
+			}
+		}
+		am := biz.ChatMessage{
+			ID:              uuid.NewString(),
+			SessionID:       sess.ID,
+			Role:            "assistant",
+			ContentMarkdown: main,
+			ModelName:       firstNonEmptyStr(modOpt, sess.Model, meta.Agent.Model),
+			Status:          "ok",
+			OptionsJSON:     opts,
+			CreatedAt:       agent.RFC3339Now(),
+		}
+		totalIn += am.TokenIn
+		totalOut += am.TokenOut
+		if streaming {
+			if err := r.sessions.AppendChatMessage(ctx, sess.ID, am, true); err != nil {
+				r.finishRunErr(ctx, &run, t0, err.Error())
+				return userMsg, biz.ChatMessage{}, err
+			}
+		} else {
+			unaryAssistants = append(unaryAssistants, am)
+		}
+		r.persistStep(ctx, run, teamRow.ID, sortIndexForMember(plan.persistMembers, meta.Member), meta.Member, meta.Agent, content, am)
+		if auth == synthKey {
+			lastForClient = am
+		}
+	}
+
+	assistantMsg = lastForClient
+	if !streaming {
+		if len(unaryAssistants) == 0 {
+			err := kerrors.InternalServer("CHAT_TEAM_NATIVE", "team workflow produced no assistant messages")
+			r.finishRunErr(ctx, &run, t0, err.Error())
+			return userMsg, biz.ChatMessage{}, err
+		}
+		if err := r.sessions.AppendChatTurn(ctx, sess.ID, userMsg, unaryAssistants[0]); err != nil {
+			r.finishRunErr(ctx, &run, t0, err.Error())
+			return userMsg, biz.ChatMessage{}, err
+		}
+		for i := 1; i < len(unaryAssistants); i++ {
+			if err := r.sessions.AppendChatMessage(ctx, sess.ID, unaryAssistants[i], true); err != nil {
+				r.finishRunErr(ctx, &run, t0, err.Error())
+				return userMsg, biz.ChatMessage{}, err
+			}
+		}
+		assistantMsg = unaryAssistants[len(unaryAssistants)-1]
+	} else if stream != nil {
+		_ = stream.Emit("done", assistantMsg)
+	}
+
+	run.Status = "success"
+	run.TokenIn = totalIn
+	run.TokenOut = totalOut
+	run.DurationMS = int(time.Since(t0).Milliseconds())
+	run.OutputPreview = preview(assistantMsg.ContentMarkdown, 512)
+	run.FinishedAt = agent.RFC3339Now()
+	_ = r.teams.UpdateTeamRun(ctx, run)
+	if r.broker != nil {
+		cp := run
+		r.broker.Publish(biz.TeamRunEvent{Type: "run_finished", TeamID: teamRow.ID, RunID: run.ID, Run: &cp})
+	}
+	biz.HintTeamRunSSE(ctx, r.broker, r.teams, teamRow.ID)
+	return userMsg, assistantMsg, nil
+}
+
+func sortIndexForMember(order []MemberDef, m MemberDef) int {
+	for i, x := range order {
+		if strings.TrimSpace(x.AgentID) == strings.TrimSpace(m.AgentID) && strings.TrimSpace(x.Role) == strings.TrimSpace(m.Role) {
+			return i
+		}
+	}
+	return 0
 }
 
 func extractOpts(req *chatv1.SendChatMessageRequest) (dialogMode, prov, mod string, attN int) {
@@ -151,7 +398,7 @@ func (r *Runner) persistStep(ctx context.Context, run biz.TeamRun, teamID string
 		TeamID:        teamID,
 		AgentID:       ag.ID,
 		AgentKey:      ag.AgentKey,
-		AgentName:     firstNonEmpty(ag.DisplayName, ag.AgentKey),
+		AgentName:     firstNonEmptyStr(ag.DisplayName, ag.AgentKey),
 		Role:          m.Role,
 		SortOrder:     sortIdx,
 		Status:        asst.Status,
@@ -190,322 +437,11 @@ func (r *Runner) finishRunErr(ctx context.Context, run *biz.TeamRun, t0 time.Tim
 	}
 }
 
-func (r *Runner) runSequential(ctx context.Context, sess biz.Session, req *chatv1.SendChatMessageRequest, teamRow biz.Team, def Definition, stream agent.StreamEmitter) (biz.ChatMessage, biz.ChatMessage, error) {
-	members := EnabledMembers(def)
-	if len(members) == 0 {
-		return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.BadRequest("TEAM", "team has no enabled members")
-	}
-	content := strings.TrimSpace(req.GetContent())
-	if content == "" {
-		return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.BadRequest("CHAT_NATIVE", "content is required")
-	}
-	dialogMode, provOpt, modOpt, attN := extractOpts(req)
-	dialogMode = firstNonEmpty(dialogMode, sess.DialogMode, "default")
-
-	run := biz.TeamRun{
-		ID:            uuid.NewString(),
-		TeamID:        teamRow.ID,
-		SessionID:     sess.ID,
-		Mode:          "sequential",
-		Status:        "running",
-		InputPreview:  preview(content, 512),
-		TopologyJSON:  topologyJSON(def),
-		StartedAt:     agent.RFC3339Now(),
-		CreatedAt:     agent.RFC3339Now(),
-		UpdatedAt:     agent.RFC3339Now(),
-	}
-	run, err := r.teams.CreateTeamRun(ctx, run)
-	if err != nil {
-		return biz.ChatMessage{}, biz.ChatMessage{}, err
-	}
-	if r.broker != nil {
-		cp := run
-		r.broker.Publish(biz.TeamRunEvent{Type: "run_started", TeamID: teamRow.ID, RunID: run.ID, Run: &cp})
-	}
-
-	ad := agent.Deps{Agents: r.agents, AgentUC: r.agentsUC, Catalog: r.catalog, HTTP: r.llmHTTP}
-	t0 := time.Now()
-	var userMsg biz.ChatMessage
-	var lastAsst biz.ChatMessage
-	var totalIn, totalOut int
-
-	for i, m := range members {
-		ag, err := r.catalogAgent(ctx, m.AgentID)
-		if err != nil {
-			if err == sql.ErrNoRows {
-				err = kerrors.NotFound("AGENT", "team member agent not found")
-			}
-			r.finishRunErr(ctx, &run, t0, err.Error())
-			return biz.ChatMessage{}, biz.ChatMessage{}, err
+func firstNonEmptyStr(vals ...string) string {
+	for _, v := range vals {
+		if strings.TrimSpace(v) != "" {
+			return strings.TrimSpace(v)
 		}
-		prov := firstNonEmpty(provOpt, sess.Provider, ag.Provider)
-		mod := firstNonEmpty(modOpt, sess.Model, ag.Model)
-		anchor := &agent.TeamMemberAnchor{
-			AgentID: ag.ID,
-			Name:    firstNonEmpty(ag.DisplayName, ag.AgentKey),
-			Role:    m.Role,
-		}
-		stepStream := stream
-		if i != len(members)-1 {
-			stepStream = nil
-		}
-		if i == 0 {
-			uin := agent.TurnInput{
-				SessionID:        sess.ID,
-				Agent:            ag,
-				UserContent:      content,
-				DialogMode:       dialogMode,
-				Provider:         prov,
-				Model:            mod,
-				AgentKeyFromReq:  strings.TrimSpace(req.GetAgentKey()),
-				AttachmentsCount: attN,
-				ContextRatio:     sess.ContextUsedRatio,
-				TeamMember:       anchor,
-			}
-			var e error
-			userMsg, lastAsst, e = agent.ExecuteOpenAICompatTurn(ctx, ad, r.sessions, uin, stepStream)
-			if e != nil {
-				r.finishRunErr(ctx, &run, t0, e.Error())
-				return biz.ChatMessage{}, biz.ChatMessage{}, e
-			}
-		} else {
-			rin := agent.RelayStepInput{
-				SessionID:       sess.ID,
-				Agent:           ag,
-				DialogMode:      dialogMode,
-				Provider:        prov,
-				Model:           mod,
-				AgentKeyFromReq: strings.TrimSpace(req.GetAgentKey()),
-				ContextRatio:    sess.ContextUsedRatio,
-				TeamMember:      anchor,
-			}
-			var e error
-			lastAsst, e = agent.ExecuteOpenAIRelayStep(ctx, ad, r.sessions, rin, stepStream)
-			if e != nil {
-				r.finishRunErr(ctx, &run, t0, e.Error())
-				return userMsg, biz.ChatMessage{}, e
-			}
-		}
-		totalIn += lastAsst.TokenIn
-		totalOut += lastAsst.TokenOut
-		r.persistStep(ctx, run, teamRow.ID, i, m, ag, content, lastAsst)
 	}
-
-	run.Status = "success"
-	run.TokenIn = totalIn
-	run.TokenOut = totalOut
-	run.DurationMS = int(time.Since(t0).Milliseconds())
-	run.OutputPreview = preview(lastAsst.ContentMarkdown, 512)
-	run.FinishedAt = agent.RFC3339Now()
-	_ = r.teams.UpdateTeamRun(ctx, run)
-	if r.broker != nil {
-		cp := run
-		r.broker.Publish(biz.TeamRunEvent{Type: "run_finished", TeamID: teamRow.ID, RunID: run.ID, Run: &cp})
-	}
-	biz.HintTeamRunSSE(ctx, r.broker, r.teams, teamRow.ID)
-	return userMsg, lastAsst, nil
-}
-
-func (r *Runner) runParallel(ctx context.Context, sess biz.Session, req *chatv1.SendChatMessageRequest, teamRow biz.Team, def Definition, stream agent.StreamEmitter) (biz.ChatMessage, biz.ChatMessage, error) {
-	workers := ParallelWorkers(def)
-	if len(workers) == 0 {
-		return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.BadRequest("TEAM", "team has no enabled members")
-	}
-	content := strings.TrimSpace(req.GetContent())
-	if content == "" {
-		return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.BadRequest("CHAT_NATIVE", "content is required")
-	}
-	dialogMode, provOpt, modOpt, attN := extractOpts(req)
-	dialogMode = firstNonEmpty(dialogMode, sess.DialogMode, "default")
-
-	synthID := strings.TrimSpace(SynthesizerAgentID(def))
-	if len(workers) > 1 && synthID == "" {
-		return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.BadRequest("TEAM", "parallel team requires synthesizer_agent_id or a synthesizer member")
-	}
-
-	run := biz.TeamRun{
-		ID:           uuid.NewString(),
-		TeamID:       teamRow.ID,
-		SessionID:    sess.ID,
-		Mode:         "parallel",
-		Status:       "running",
-		InputPreview: preview(content, 512),
-		TopologyJSON: topologyJSON(def),
-		StartedAt:    agent.RFC3339Now(),
-		CreatedAt:    agent.RFC3339Now(),
-		UpdatedAt:    agent.RFC3339Now(),
-	}
-	run, err := r.teams.CreateTeamRun(ctx, run)
-	if err != nil {
-		return biz.ChatMessage{}, biz.ChatMessage{}, err
-	}
-	if r.broker != nil {
-		cp := run
-		r.broker.Publish(biz.TeamRunEvent{Type: "run_started", TeamID: teamRow.ID, RunID: run.ID, Run: &cp})
-	}
-
-	ad := agent.Deps{Agents: r.agents, AgentUC: r.agentsUC, Catalog: r.catalog, HTTP: r.llmHTTP}
-	t0 := time.Now()
-
-	firstAg, err := r.catalogAgent(ctx, workers[0].AgentID)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			err = kerrors.NotFound("AGENT", "team member agent not found")
-		}
-		r.finishRunErr(ctx, &run, t0, err.Error())
-		return biz.ChatMessage{}, biz.ChatMessage{}, err
-	}
-	prov0 := firstNonEmpty(provOpt, sess.Provider, firstAg.Provider)
-	mod0 := firstNonEmpty(modOpt, sess.Model, firstAg.Model)
-	userOpts, err := agent.UserOptionsJSON(firstAg, dialogMode, prov0, mod0, sess.ContextUsedRatio, nil)
-	if err != nil {
-		r.finishRunErr(ctx, &run, t0, err.Error())
-		return biz.ChatMessage{}, biz.ChatMessage{}, err
-	}
-	userMsg := biz.ChatMessage{
-		ID:               uuid.NewString(),
-		SessionID:        sess.ID,
-		Role:             "user",
-		ContentMarkdown:  content,
-		Status:           "ok",
-		OptionsJSON:      userOpts,
-		CreatedAt:        agent.RFC3339Now(),
-		AttachmentsCount: attN,
-	}
-	if err := r.sessions.AppendChatMessage(ctx, sess.ID, userMsg, false); err != nil {
-		r.finishRunErr(ctx, &run, t0, err.Error())
-		return biz.ChatMessage{}, biz.ChatMessage{}, err
-	}
-	if stream != nil {
-		_ = stream.Emit("user_message", userMsg)
-	}
-
-	var lastAsst biz.ChatMessage
-	var totalIn, totalOut int
-
-	if len(workers) == 1 && synthID == "" {
-		ag := firstAg
-		prov := firstNonEmpty(provOpt, sess.Provider, ag.Provider)
-		mod := firstNonEmpty(modOpt, sess.Model, ag.Model)
-		anchor := &agent.TeamMemberAnchor{AgentID: ag.ID, Name: firstNonEmpty(ag.DisplayName, ag.AgentKey), Role: workers[0].Role}
-		pin := agent.ParallelWorkerInput{
-			SessionID:       sess.ID,
-			Agent:           ag,
-			UserLine:        content,
-			DialogMode:      dialogMode,
-			Provider:        prov,
-			Model:           mod,
-			AgentKeyFromReq: strings.TrimSpace(req.GetAgentKey()),
-			TeamMember:      anchor,
-			SkipPersist:     false,
-			Stream:          stream,
-		}
-		lastAsst, err = agent.ExecuteOpenAIParallelMember(ctx, ad, r.sessions, pin)
-		if err != nil {
-			r.finishRunErr(ctx, &run, t0, err.Error())
-			return userMsg, biz.ChatMessage{}, err
-		}
-		totalIn += lastAsst.TokenIn
-		totalOut += lastAsst.TokenOut
-		r.persistStep(ctx, run, teamRow.ID, 0, workers[0], ag, content, lastAsst)
-	} else {
-		results := make([]biz.ChatMessage, len(workers))
-		eg, egctx := errgroup.WithContext(ctx)
-		for i := range workers {
-			i := i
-			eg.Go(func() error {
-				m := workers[i]
-				ag, err := r.catalogAgent(egctx, m.AgentID)
-				if err != nil {
-					return err
-				}
-				prov := firstNonEmpty(provOpt, sess.Provider, ag.Provider)
-				mod := firstNonEmpty(modOpt, sess.Model, ag.Model)
-				anchor := &agent.TeamMemberAnchor{AgentID: ag.ID, Name: firstNonEmpty(ag.DisplayName, ag.AgentKey), Role: m.Role}
-				pin := agent.ParallelWorkerInput{
-					SessionID:       sess.ID,
-					Agent:           ag,
-					UserLine:        content,
-					DialogMode:      dialogMode,
-					Provider:        prov,
-					Model:           mod,
-					AgentKeyFromReq: strings.TrimSpace(req.GetAgentKey()),
-					TeamMember:      anchor,
-					SkipPersist:     true,
-				}
-				am, err := agent.ExecuteOpenAIParallelMember(egctx, ad, r.sessions, pin)
-				if err != nil {
-					return err
-				}
-				results[i] = am
-				return nil
-			})
-		}
-		if err := eg.Wait(); err != nil {
-			r.finishRunErr(ctx, &run, t0, err.Error())
-			return userMsg, biz.ChatMessage{}, err
-		}
-		pctx, pcancel := agent.ChatPersistCtx(ctx)
-		defer pcancel()
-		for i, m := range workers {
-			am := results[i]
-			ag, err := r.catalogAgent(ctx, m.AgentID)
-			if err != nil {
-				r.finishRunErr(ctx, &run, t0, err.Error())
-				return userMsg, biz.ChatMessage{}, err
-			}
-			if err := r.sessions.AppendChatMessage(pctx, sess.ID, am, true); err != nil {
-				r.finishRunErr(ctx, &run, t0, err.Error())
-				return userMsg, biz.ChatMessage{}, err
-			}
-			totalIn += am.TokenIn
-			totalOut += am.TokenOut
-			r.persistStep(ctx, run, teamRow.ID, i, m, ag, content, am)
-		}
-		synthAg, err := r.catalogAgent(ctx, synthID)
-		if err != nil {
-			if err == sql.ErrNoRows {
-				err = kerrors.NotFound("AGENT", "synthesizer agent not found")
-			}
-			r.finishRunErr(ctx, &run, t0, err.Error())
-			return userMsg, biz.ChatMessage{}, err
-		}
-		sprov := firstNonEmpty(provOpt, sess.Provider, synthAg.Provider)
-		smod := firstNonEmpty(modOpt, sess.Model, synthAg.Model)
-		sanchor := &agent.TeamMemberAnchor{AgentID: synthAg.ID, Name: firstNonEmpty(synthAg.DisplayName, synthAg.AgentKey), Role: "synthesizer"}
-		rin := agent.RelayStepInput{
-			SessionID:        sess.ID,
-			Agent:            synthAg,
-			DialogMode:       dialogMode,
-			Provider:         sprov,
-			Model:            smod,
-			AgentKeyFromReq:  strings.TrimSpace(req.GetAgentKey()),
-			ContextRatio:     sess.ContextUsedRatio,
-			TeamMember:       sanchor,
-			RelayUserContent: synthesisCue,
-		}
-		lastAsst, err = agent.ExecuteOpenAIRelayStep(ctx, ad, r.sessions, rin, stream)
-		if err != nil {
-			r.finishRunErr(ctx, &run, t0, err.Error())
-			return userMsg, biz.ChatMessage{}, err
-		}
-		totalIn += lastAsst.TokenIn
-		totalOut += lastAsst.TokenOut
-		synthMember := MemberDef{AgentID: synthAg.ID, Role: "synthesizer"}
-		r.persistStep(ctx, run, teamRow.ID, len(workers), synthMember, synthAg, content, lastAsst)
-	}
-
-	run.Status = "success"
-	run.TokenIn = totalIn
-	run.TokenOut = totalOut
-	run.DurationMS = int(time.Since(t0).Milliseconds())
-	run.OutputPreview = preview(lastAsst.ContentMarkdown, 512)
-	run.FinishedAt = agent.RFC3339Now()
-	_ = r.teams.UpdateTeamRun(ctx, run)
-	if r.broker != nil {
-		cp := run
-		r.broker.Publish(biz.TeamRunEvent{Type: "run_finished", TeamID: teamRow.ID, RunID: run.ID, Run: &cp})
-	}
-	biz.HintTeamRunSSE(ctx, r.broker, r.teams, teamRow.ID)
-	return userMsg, lastAsst, nil
+	return ""
 }

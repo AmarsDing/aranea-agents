@@ -7,7 +7,8 @@ import (
 	"os"
 	"strings"
 
-	"aranea-agents/internal/tools/toolapi"
+	"aranea-agents/internal/tools/argmap"
+	"aranea-agents/internal/tools/specs"
 	"aranea-agents/internal/tools/workspace"
 
 	"google.golang.org/adk/tool"
@@ -20,28 +21,12 @@ type args struct {
 	Path string `json:"path"`
 }
 
-// impl 实现在工作区内按相对路径读取 UTF-8 文件；若为目录则回退到「列出该目录」（与原先行为一致）。
-type impl struct{}
+const desc = `Read a UTF-8 text file under the workspace root. Argument path is relative to the workspace (e.g. "internal/foo.go").`
 
-// New 返回统一 registry 可用的 Tool。
-func New() toolapi.Tool {
-	return &impl{}
-}
-
-func (*impl) Meta() toolapi.Meta {
-	return toolapi.Meta{
-		Name:        "read_file",
-		TitleZh:     "读取文件",
-		SummaryZh:   "读取工作区内指定相对路径的文件内容（UTF-8）；若目标是目录则返回该目录条目列表而非报错。",
-		Description: `Read a UTF-8 text file under the workspace root. Argument path is relative to the workspace (e.g. "internal/foo.go").`,
-	}
-}
-
-func (*impl) SupportsLocalInvoke() bool { return true }
-
-func (*impl) InvokeLocal(ctx context.Context, argsMap map[string]any) (map[string]any, error) {
+// Run executes the read side-effect (also used by legacy OpenAI tool loop).
+func Run(ctx context.Context, argsMap map[string]any) (map[string]any, error) {
 	_ = ctx
-	path := toolapi.ArgString(argsMap, "path")
+	path := argmap.String(argsMap, "path")
 	abs, rel, err := workspace.ResolvePath(strings.TrimSpace(path))
 	if err != nil {
 		return nil, err
@@ -67,23 +52,23 @@ func (*impl) InvokeLocal(ctx context.Context, argsMap map[string]any) (map[strin
 	return map[string]any{"path": rel, "content": string(data), "size": len(data)}, nil
 }
 
-func (*impl) OpenAIFunction() map[string]any {
-	return toolapi.BuildOpenAISpec("read_file",
-		new(impl).Meta().Description,
-		map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"path": map[string]any{"type": "string", "description": "Relative path under workspace root"},
-			},
-			"required": []string{"path"},
-		})
-}
-
-func (*impl) ADKTool() (tool.Tool, error) {
+// New returns an ADK function tool.
+func New() (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "read_file",
-		Description: (&impl{}).Meta().Description,
+		Description: desc,
 	}, func(_ tool.Context, in args) (map[string]any, error) {
-		return (&impl{}).InvokeLocal(context.Background(), map[string]any{"path": in.Path})
+		return Run(context.Background(), map[string]any{"path": in.Path})
+	})
+}
+
+// OpenAIFunctionSpec is used by the legacy /chat/completions native tool loop until full Runner migration.
+func OpenAIFunctionSpec() map[string]any {
+	return specs.OpenAI("read_file", desc, map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"path": map[string]any{"type": "string", "description": "Relative path under workspace root"},
+		},
+		"required": []string{"path"},
 	})
 }

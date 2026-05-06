@@ -5,7 +5,7 @@ import (
 	"fmt"
 	iofs "io/fs"
 
-	"aranea-agents/internal/tools/toolapi"
+	"aranea-agents/internal/tools/stdtools"
 
 	"google.golang.org/adk/agent"
 	"google.golang.org/adk/tool"
@@ -15,22 +15,6 @@ import (
 	"google.golang.org/adk/tool/skilltoolset"
 	"google.golang.org/adk/tool/skilltoolset/skill"
 )
-
-func appendADKRegistered(r *toolapi.Registry, name string, slice *[]tool.Tool) error {
-	tk, ok := r.Tool(name)
-	if !ok {
-		return fmt.Errorf("catalog: 工具 %q 未在 global registry 注册（请 import internal/tools/registerstd）", name)
-	}
-	adk, err := tk.ADKTool()
-	if err != nil {
-		return fmt.Errorf("catalog: %q ADK 构造失败: %w", name, err)
-	}
-	if adk == nil {
-		return fmt.Errorf("catalog: %q 无 ADKTool 绑定", name)
-	}
-	*slice = append(*slice, adk)
-	return nil
-}
 
 // SubAgent 将子 Agent 作为 tool 暴露（ADK agenttool）。
 type SubAgent struct {
@@ -62,38 +46,37 @@ type Assembled struct {
 	Toolsets []tool.Toolset
 }
 
-// Build 从全局 registry（须已 import registerstd）与可选 skill/mcp/agent 组合出工具列表。
+// Build 从 [stdtools] 与可选 skill/mcp/agent 组合出工具列表。
 func (o Options) Build(ctx context.Context) (*Assembled, error) {
 	out := &Assembled{}
-	reg := toolapi.Default()
 
 	if o.ExitLoop {
-		if err := appendADKRegistered(reg, NameExitLoop, &out.Tools); err != nil {
+		if err := stdtools.AppendCatalogTool(NameExitLoop, &out.Tools); err != nil {
 			return nil, err
 		}
 	}
 	if o.GoogleSearch {
-		if err := appendADKRegistered(reg, NameGoogleSearch, &out.Tools); err != nil {
+		if err := stdtools.AppendCatalogTool(NameGoogleSearch, &out.Tools); err != nil {
 			return nil, err
 		}
 	}
 	if o.LoadArtifacts {
-		if err := appendADKRegistered(reg, NameLoadArtifacts, &out.Tools); err != nil {
+		if err := stdtools.AppendCatalogTool(NameLoadArtifacts, &out.Tools); err != nil {
 			return nil, err
 		}
 	}
 	if o.LoadMemory {
-		if err := appendADKRegistered(reg, NameLoadMemory, &out.Tools); err != nil {
+		if err := stdtools.AppendCatalogTool(NameLoadMemory, &out.Tools); err != nil {
 			return nil, err
 		}
 	}
 	if o.PreloadMemory {
-		if err := appendADKRegistered(reg, NamePreloadMemory, &out.Tools); err != nil {
+		if err := stdtools.AppendCatalogTool(NamePreloadMemory, &out.Tools); err != nil {
 			return nil, err
 		}
 	}
 	if o.Filesystem {
-		fsTools, err := reg.WorkspaceADKTools(o.FilesystemKeys)
+		fsTools, err := stdtools.WorkspaceADKTools(o.FilesystemKeys)
 		if err != nil {
 			return nil, fmt.Errorf("工作区文件工具: %w", err)
 		}

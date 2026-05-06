@@ -8,7 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"aranea-agents/internal/tools/toolapi"
+	"aranea-agents/internal/tools/argmap"
+	"aranea-agents/internal/tools/specs"
 	"aranea-agents/internal/tools/workspace"
 
 	"google.golang.org/adk/tool"
@@ -20,27 +21,11 @@ type wfArgs struct {
 	Content string `json:"content"`
 }
 
-// impl 在工作区内创建或覆盖 UTF-8 文件，并自动创建缺失的父目录。
-type impl struct{}
+const desc = `Create or overwrite a UTF-8 file under the workspace. Parent directories are created as needed.`
 
-func New() toolapi.Tool {
-	return &impl{}
-}
-
-func (*impl) Meta() toolapi.Meta {
-	return toolapi.Meta{
-		Name:        "write_file",
-		TitleZh:     "写入文件",
-		SummaryZh:   "写入或覆盖工作区内的文本文件内容，按需创建多级父目录（危险操作需谨慎授权）。",
-		Description: `Create or overwrite a UTF-8 file under the workspace. Parent directories are created as needed.`,
-	}
-}
-
-func (*impl) SupportsLocalInvoke() bool { return true }
-
-func (*impl) InvokeLocal(ctx context.Context, argsMap map[string]any) (map[string]any, error) {
+func Run(ctx context.Context, argsMap map[string]any) (map[string]any, error) {
 	_ = ctx
-	path := toolapi.ArgString(argsMap, "path")
+	path := argmap.String(argsMap, "path")
 	var content string
 	if v, ok := argsMap["content"]; ok && v != nil {
 		content = fmt.Sprint(v)
@@ -58,26 +43,22 @@ func (*impl) InvokeLocal(ctx context.Context, argsMap map[string]any) (map[strin
 	return map[string]any{"path": rel, "written": len(content)}, nil
 }
 
-func (*impl) OpenAIFunction() map[string]any {
-	desc := (&impl{}).Meta().Description
-	return toolapi.BuildOpenAISpec("write_file", desc,
-		map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"path":    map[string]any{"type": "string", "description": "Relative path under workspace root"},
-				"content": map[string]any{"type": "string", "description": "Full file contents"},
-			},
-			"required": []string{"path", "content"},
-		})
-}
-
-func (*impl) ADKTool() (tool.Tool, error) {
-	desc := (&impl{}).Meta().Description
+func New() (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "write_file",
 		Description: desc,
 	}, func(_ tool.Context, in wfArgs) (map[string]any, error) {
-		return (&impl{}).InvokeLocal(context.Background(),
-			map[string]any{"path": in.Path, "content": in.Content})
+		return Run(context.Background(), map[string]any{"path": in.Path, "content": in.Content})
+	})
+}
+
+func OpenAIFunctionSpec() map[string]any {
+	return specs.OpenAI("write_file", desc, map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"path":    map[string]any{"type": "string", "description": "Relative path under workspace root"},
+			"content": map[string]any{"type": "string", "description": "Full file contents"},
+		},
+		"required": []string{"path", "content"},
 	})
 }

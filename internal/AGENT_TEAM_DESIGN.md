@@ -1,5 +1,13 @@
 # Agent & Team 运行时设计（Aranea Admin）
 
+## Kratos v2 + ADK Runtime 分工（迁移后）
+
+- **Kratos v2**：HTTP/gRPC/SSE 传输、`wire` 注入、`conf.Bootstrap`、`recovery` / `tracing` / `auth` / CORS 等中间件、kratos log 与 `kerrors`。**`internal/server` 禁止 import `google.golang.org/adk`**。
+- **ADK Runtime（`pkg/adk-go`）**：`runner.Runner`、`llmagent` / workflow agents、工具循环、会话事件、插件与遥测。执行入口在 **`internal/service` + `internal/adkadapter`**，不在 transport 层。
+- **边界全文**：见仓库根目录 **`docs/AGENT_RUNTIME_BOUNDARY.md`**（依赖方向与「八不准」）。
+
+以下各节描述业务契约；实现细节以 ADK Runner 事件流为准。
+
 ## 1. 目标
 
 - **`internal/agent`**：单次「catalog Agent + OpenAI 兼容提供商」的会话回合执行（拼 system、历史、调用、落库策略），与 HTTP 传输无关。

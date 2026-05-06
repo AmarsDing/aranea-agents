@@ -3,9 +3,20 @@ package agent
 import (
 	"encoding/json"
 	"strings"
+	"time"
 
 	"aranea-agents/internal/biz"
 )
+
+// RFC3339Now returns a UTC RFC3339 timestamp for chat messages.
+func RFC3339Now() string {
+	return time.Now().UTC().Format(time.RFC3339)
+}
+
+// StreamEmitter is optional SSE bridge (e.g. chat stream).
+type StreamEmitter interface {
+	Emit(event string, payload any) error
+}
 
 type providerAPIConfig struct {
 	ProviderType string `json:"provider_type"`

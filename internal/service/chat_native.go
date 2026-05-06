@@ -258,29 +258,7 @@ func (s *ChatService) runNativeAgentTurn(ctx context.Context, req *chatv1.SendCh
 		attN = len(opts.Attachments)
 	}
 
-	deps := agent.Deps{
-		Agents:  s.agents,
-		AgentUC: s.agentsUC,
-		Catalog: s.llmCatalog,
-		HTTP:    s.llmHTTP,
-	}
-	tin := agent.TurnInput{
-		SessionID:        sessionID,
-		Agent:            ag,
-		UserContent:      content,
-		DialogMode:       dialogMode,
-		Provider:         prov,
-		Model:            mod,
-		AgentKeyFromReq:  strings.TrimSpace(req.GetAgentKey()),
-		AttachmentsCount: attN,
-		ContextRatio:     sess.ContextUsedRatio,
-		TeamMember:       nil,
-	}
-	var emitter agent.StreamEmitter
-	if stream != nil {
-		emitter = stream
-	}
-	return agent.ExecuteOpenAICompatTurn(ctx, deps, s.sessions, tin, emitter)
+	return s.runSingleAgentViaADK(ctx, sess, req, ag, dialogMode, prov, mod, attN, stream)
 }
 
 func (s *ChatService) hydratedAgent(ctx context.Context, agentID string) (biz.Agent, error) {

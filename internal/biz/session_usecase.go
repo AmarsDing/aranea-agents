@@ -45,6 +45,8 @@ type Session struct {
 	UpdatedAt               string
 	ArchivedAt              string
 	DeletedAt               string
+	// AdkSnapshotJSON stores serialized ADK session state (events + KV) when using Runner; optional for legacy rows.
+	AdkSnapshotJSON string
 }
 
 // SessionSearchQuery filters sessions（对齐遗留 REST query）.
@@ -178,6 +180,8 @@ type SessionRepository interface {
 	AppendChatTurn(ctx context.Context, sessionID string, user, assistant ChatMessage) error
 	// AppendChatMessage inserts a single message row and updates session aggregates.
 	AppendChatMessage(ctx context.Context, sessionID string, msg ChatMessage, bumpModelCall bool) error
+	// UpdateAdkSnapshotJSON persists ADK runner session blob (optional migration / legacy rows).
+	UpdateAdkSnapshotJSON(ctx context.Context, sessionID string, snapshotJSON string) error
 }
 
 // SessionUsecase handles session CRUD + timeline（不包含发送消息）.
@@ -286,6 +290,11 @@ func (uc *SessionUsecase) AppendChatMessage(ctx context.Context, sessionID strin
 		_ = uc.maybeAutoTitleFromUserMessage(ctx, sessionID, msg.ContentMarkdown)
 	}
 	return nil
+}
+
+// UpdateAdkSnapshotJSON persists the ADK session.Service serialization.
+func (uc *SessionUsecase) UpdateAdkSnapshotJSON(ctx context.Context, sessionID string, snapshotJSON string) error {
+	return uc.sessions.UpdateAdkSnapshotJSON(ctx, sessionID, snapshotJSON)
 }
 
 func sessionTitleFromUserSnippet(snippet string) string {

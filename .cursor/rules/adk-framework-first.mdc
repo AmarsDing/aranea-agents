@@ -7,6 +7,8 @@ alwaysApply: true
 
 - **`pkg/adk-go` 是 Agent 框架**：Runner、Session、LLM（`model`）、Tool、Agent 组合与流式语义等，**先查 `pkg/adk-go` 再实现**。
 - **不要以 `pkg/backend` 为范本**：新功能的分层、编排、事件设计**不要**照抄 `pkg/backend` 或 `adapters/adkruntime`；仅在兼容、迁移或对照旧行为时触及。
-- **集成方式**：业务代码通过薄适配层使用 `pkg/adk-go` 公开 API，避免复制 ADK 内部逻辑。
+- **集成方式**：业务代码通过 **`internal/adkadapter`** 使用 `pkg/adk-go` 公开 API，避免复制 ADK 内部逻辑。
+- **Kratos v2 中间件 / 传输边界不变**：`internal/server` 不调 ADK；Runner 在 **`internal/service`** 层使用，依赖方向见 **`docs/AGENT_RUNTIME_BOUNDARY.md`**。
+- **Service 是唯一桥点**（除 `adkadapter`）：将 RPC/HTTP 请求译为 `runner.Run`，将 `session.Event` 投影为响应或 SSE；不在 biz 层引用 ADK。
 
-完整条文见 `docs/AI-全栈新功能开发规范.md`。
+完整条文见 `docs/AI-全栈新功能开发规范.md` 与 `docs/AGENT_RUNTIME_BOUNDARY.md`。

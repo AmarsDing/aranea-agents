@@ -63,6 +63,7 @@ func entSessionToBiz(e *ent.Session) biz.Session {
 		UpdatedAt:               e.UpdatedAt,
 		ArchivedAt:              e.ArchivedAt,
 		DeletedAt:               e.DeletedAt,
+		AdkSnapshotJSON:         e.AdkSnapshotJSON,
 	}
 }
 
@@ -201,6 +202,7 @@ func (r *sessionRepo) CreateSession(ctx context.Context, in biz.Session) (biz.Se
 		SetUpdatedAt(in.UpdatedAt).
 		SetArchivedAt(in.ArchivedAt).
 		SetDeletedAt(in.DeletedAt).
+		SetAdkSnapshotJSON(in.AdkSnapshotJSON).
 		Save(ctx)
 	if err != nil {
 		return biz.Session{}, err
@@ -497,6 +499,19 @@ func (r *sessionRepo) insertMessageTx(ctx context.Context, tx *ent.Tx, m biz.Cha
 		SetErrorMessage(m.ErrorMessage).
 		SetCreatedAt(m.CreatedAt).
 		Exec(ctx)
+}
+
+func (r *sessionRepo) UpdateAdkSnapshotJSON(ctx context.Context, sessionID string, snapshotJSON string) error {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return errors.New("session id is required")
+	}
+	_, err := r.data.entClient.Session.Update().
+		Where(entsession.IDEQ(sessionID), entsession.DeletedAtEQ("")).
+		SetAdkSnapshotJSON(snapshotJSON).
+		SetUpdatedAt(nowRFC3339()).
+		Save(ctx)
+	return err
 }
 
 func (r *sessionRepo) AppendChatTurn(ctx context.Context, sessionID string, user, assistant biz.ChatMessage) error {

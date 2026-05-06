@@ -1,4 +1,4 @@
-package agent
+package adkadapter
 
 import (
 	"context"
@@ -8,13 +8,7 @@ import (
 	"aranea-agents/internal/biz"
 )
 
-// Deps is a minimal bundle for prompt / runtime helpers (biz facades).
-type Deps struct {
-	Agents  biz.AgentRepository
-	AgentUC *biz.AgentUsecase
-}
-
-// BuildSystemPrompt joins agent description and prompt files.
+// BuildSystemPrompt joins agent description and prompt files (copied from internal/agent for adapter isolation).
 func BuildSystemPrompt(agent biz.Agent, files []biz.AgentPromptFile) string {
 	var b strings.Builder
 	if d := strings.TrimSpace(agent.AgentDescription); d != "" {
@@ -30,16 +24,8 @@ func BuildSystemPrompt(agent biz.Agent, files []biz.AgentPromptFile) string {
 	return strings.TrimSpace(b.String())
 }
 
-// PromptFilesForAgent returns hydrated in-memory files when present, otherwise loads from persistence.
-func PromptFilesForAgent(ctx context.Context, d Deps, ag biz.Agent) ([]biz.AgentPromptFile, error) {
-	if len(ag.Files) > 0 {
-		return ag.Files, nil
-	}
-	return d.Agents.ListAgentPromptFiles(ctx, ag.ID)
-}
-
-// RuntimeCapabilityCue appends ADK-style runtime directives: sub-agent switches and effective tool policy.
-func RuntimeCapabilityCue(ctx context.Context, d Deps, ag biz.Agent) string {
+// RuntimeCapabilityCue appends runtime directives for tools and sub-agents.
+func RuntimeCapabilityCue(ctx context.Context, uc *biz.AgentUsecase, ag biz.Agent) string {
 	if ag.Settings == nil {
 		return ""
 	}
@@ -53,8 +39,8 @@ func RuntimeCapabilityCue(ctx context.Context, d Deps, ag biz.Agent) string {
 	} else {
 		b.WriteString("- Subagents: disabled (this process runs a single agent turn; delegate via instructions only).\n")
 	}
-	if d.AgentUC != nil {
-		eff, err := d.AgentUC.GetEffectiveTools(ctx, ag.ID)
+	if uc != nil {
+		eff, err := uc.GetEffectiveTools(ctx, ag.ID)
 		if err == nil {
 			if !eff.ToolsEnabled {
 				b.WriteString("- Tools: disabled for this agent.\n")

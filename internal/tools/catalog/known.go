@@ -2,7 +2,7 @@ package catalog
 
 import "google.golang.org/adk/tool"
 
-// 工作区内置文件工具名序列见 toolapi.WorkspaceToolNames。
+// 工作区内置文件工具名序列见 [stdtools.WorkspaceToolNames].
 const (
 	NameExitLoop      = "exit_loop"
 	NameGoogleSearch  = "google_search"
