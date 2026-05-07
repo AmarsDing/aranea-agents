@@ -8,7 +8,7 @@
 |------|------|
 | [**guides/**](./guides/) | 开发规范、接口与库表约定、迭代计划（「怎么写」） |
 | [**需求/**](./需求/)（`docs/需求/`） | 产品需求、各域规格；**入口** [`需求/产品需求总览.md`](./需求/产品需求总览.md) |
-| [**design/**](./design/) | **架构与编排统一稿** [`platform-architecture-unified.md`](./design/platform-architecture-unified.md)；`platform-architecture.md` 等旧文件名为重定向 stub |
+| [**design/**](./design/) | **架构与编排统一稿** [`platform-architecture.md`](./design/platform-architecture.md)（第一篇～第三篇；第二篇 LLM Gateway 为凝练版） |
 | [**domain/**](./domain/) | 领域专题（LLM 模型与表结构等）；Memory 思辨见 [`需求/memory.md`](./需求/memory.md) |
 | [**frontend/**](./frontend/) | 前端分层、设计系统与 UX |
 | [**migration/**](./migration/) | 自 `pkg/backend` 迁 Kratos 的剧本、清单与运维 runbook |
@@ -19,7 +19,7 @@
 
 - **全栈新功能**：[`guides/AI-全栈新功能开发规范.md`](./guides/AI-全栈新功能开发规范.md)
 - **接口与数据库**：[`guides/接口与数据库开发规范.md`](./guides/接口与数据库开发规范.md)
-- **平台架构 · Agent 编排 · LLM Gateway**：[`design/platform-architecture-unified.md`](./design/platform-architecture-unified.md)（第一～三篇；旧路径 `platform-architecture.md` 等为 stub）
+- **平台架构 · Agent 编排 · LLM Gateway**：[`design/platform-architecture.md`](./design/platform-architecture.md)（第一篇～第三篇）
 - **产品与技术需求总览**：[`需求/产品需求总览.md`](./需求/产品需求总览.md)
 - **后端迁移主线**：[`migration/pkg-backend-to-kratos.md`](./migration/pkg-backend-to-kratos.md)
 - **全栈迁移执行顺序**：[`migration/AI-full-stack-migration-playbook.md`](./migration/AI-full-stack-migration-playbook.md)
@@ -31,9 +31,9 @@
 
 以下为整理时移动的旧路径 → 新路径：
 
-- `docs/需求/0 main design.md` → 正文迁至 **`docs/design/platform-architecture-unified.md` 第三篇**（`design/platform-architecture.md` 为 stub）
+- `docs/需求/0 main design.md` → 正文迁至 **`docs/design/platform-architecture.md` 第三篇**
 - `docs/需求/总体设计文档.md` / `docs/需求/设计需求.md`（提炼部分）→ **`docs/需求/产品需求总览.md`**
-- `docs/需求/设计需求.md`（原始讲义网关部分）→ **`docs/design/platform-architecture-unified.md` 第二篇**（`llm-gateway-design-reference.md` 为 stub）
+- `docs/需求/设计需求.md`（原始讲义网关部分）→ 要点迁至 **`docs/design/platform-architecture.md` 第二篇（凝练）**
 - `docs/AI-全栈新功能开发规范.md` → `docs/guides/AI-全栈新功能开发规范.md`
 - `docs/API/接口与数据库开发规范.md` → `docs/guides/接口与数据库开发规范.md`
 - `docs/plan.md` → `docs/guides/plan.md`

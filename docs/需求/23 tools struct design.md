@@ -1,5 +1,5 @@
 > **Capability Context 归属**  
-> 本文档是 [`docs/design/platform-architecture-unified.md`](../design/platform-architecture-unified.md) **第三篇** 中 **Capability Context** 的 Tool 执行子系统专题设计。当前代码仍位于 `backend/internal/tools/**`，作为迁移期参考实现；目标落位是 `backend/internal/capability/**`，并通过 `kernel/contracts` 暴露 `ToolResolver` / `ToolExecutor` 等端口。本文中的 registry、executor、middleware、backends、adkbridge、schema、telemetry、storage 均应按主架构「四、模块功能设计」对齐：ADK 类型只出现在桥接层，事件必须脱敏，所有执行必须经 executor + middleware；工具目录、启用状态、调用记录等持久化只能通过 `tools/storage` 的端口访问，legacy `repository` 只保留迁移期委托。
+> 本文档是 [`docs/design/platform-architecture.md`](../design/platform-architecture.md) **第三篇** 中 **Capability Context** 的 Tool 执行子系统专题设计。当前代码仍位于 `backend/internal/tools/**`，作为迁移期参考实现；目标落位是 `backend/internal/capability/**`，并通过 `kernel/contracts` 暴露 `ToolResolver` / `ToolExecutor` 等端口。本文中的 registry、executor、middleware、backends、adkbridge、schema、telemetry、storage 均应按主架构「四、模块功能设计」对齐：ADK 类型只出现在桥接层，事件必须脱敏，所有执行必须经 executor + middleware；工具目录、启用状态、调用记录等持久化只能通过 `tools/storage` 的端口访问，legacy `repository` 只保留迁移期委托。
 
 整体的“Tools 模块”设计就需要围绕 Go 的接口抽象和 go-adk 的 SDK 来落地。
 

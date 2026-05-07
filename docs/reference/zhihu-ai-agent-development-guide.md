@@ -6,7 +6,7 @@
 > **注意**：个别特长句在知乎 Web 无障碍树上会被截断（例如句末戛然而止、出现 `单Age` 等缺字），此处不做补写或润色，以保持与导出数据一致。
 > **配图**：知乎图床 `*.zhimg.com` 对外链下载会返回占位图（刘看山），无法像普通静态资源那样用 `curl` 拉原图。本站将文内主要示意图以 **浏览器渲染截屏 PNG** 存放在同目录下的 `zhihu-ai-agent-development-guide.assets/`，并在正文中对应插入；截屏含页面侧栏/登录浮层时以原页呈现为准。
 >
-> **本仓库引申架构**：已从专栏要点提炼适用于 **Kratos + pkg/adk-go** 的编排与模块划分指导 → [`platform-architecture-unified.md` 第一篇](../design/platform-architecture-unified.md)。
+> **本仓库引申架构**：已从专栏要点提炼适用于 **Kratos + pkg/adk-go** 的编排与模块划分指导 → [`platform-architecture.md` 第一篇](../design/platform-architecture.md)。
 
 本文系统梳理了AI Agent的发展历程、核心协议(MCP/A2A)与思考框架(CoT/ReAct/ Plan-and-Execute )，结合Golang生态的Eino和tRPC-A2A-Go框架，详细展示了如何优雅开发复杂多Agent系统。从单Agent到多Agent协作，从理论到实践，提供了完整的开发指南，并强调了可观测性与人机协同在构建生产级Agent系统中的重要性。
 
