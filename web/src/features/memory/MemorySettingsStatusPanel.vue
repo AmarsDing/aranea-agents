@@ -2,7 +2,7 @@
   <q-card flat bordered class="memory-card">
     <q-card-section>
       <div class="text-h6">记忆设置实施状态</div>
-      <div class="text-caption text-grey-7">Agent 设置页已存在基础记忆字段；完整 L0-L4 设置 Tab 将按 `docs/31 memery.md` Phase 1 继续扩展。</div>
+      <div class="text-caption text-grey-7">Agent 设置页已存在基础记忆字段；完整 L0–L4 设置 Tab 将按 `docs/需求/memory.md` 与 `12`–`16` memory-L*-*.md 继续扩展。</div>
     </q-card-section>
     <q-list separator>
       <q-item v-for="item in items" :key="item.label">

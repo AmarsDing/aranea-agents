@@ -1,7 +1,0 @@
-{
-  "openapi": "3.0.3",
-  "info": { "title": "Identity Context", "version": "0.1.0" },
-  "paths": {},
-  "components": { "schemas": {} },
-  "tags": [{ "name": "identity", "x-aranea-context": "identity" }]
-}

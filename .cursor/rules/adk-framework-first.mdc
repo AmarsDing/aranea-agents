@@ -9,4 +9,4 @@ alwaysApply: true
 - **不要以 `pkg/backend` 为范本**：新功能的分层、编排、事件设计**不要**照抄 `pkg/backend` 或 `adapters/adkruntime`；仅在兼容、迁移或对照旧行为时触及。
 - **集成方式**：业务代码通过薄适配层使用 `pkg/adk-go` 公开 API，避免复制 ADK 内部逻辑。
 
-完整条文见 `docs/AI-全栈新功能开发规范.md`。
+完整条文见 `docs/guides/AI-全栈新功能开发规范.md`。

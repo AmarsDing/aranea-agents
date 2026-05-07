@@ -1,11 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 140" font-family="system-ui,Segoe UI,sans-serif">
-  <text x="8" y="22" fill="#222" font-size="14">Zep / TKG¹
-„ Temporal Validity	Höô—	</text>
-  <line x1="40" y1="70" x2="600" y2="70" stroke="#ccc" stroke-width="2"/>
-  <polygon points="600,68 614,70 600,72" fill="#ccc"/>
-  <text x="40" y="62" fill="#666" font-size="11">öô ’</text>
-  <rect x="120" y="52" width="280" height="36" rx="4" fill="#e8f4fc" stroke="#1890ff" stroke-width="2"/>
-  <text x="130" y="76" fill="#0958d9" font-size="12">valid_timeåsû(d—ã…Ë</text>
-  <line x1="380" y1="100" x2="380" y2="52" stroke="#52c41a" stroke-dasharray="6 4"/>
-  <text x="388" y="108" fill="#389e0d" font-size="11">query_timeÀ"öÖ†Öd;„¹</text>
-</svg>
