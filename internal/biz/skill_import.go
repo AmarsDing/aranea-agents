@@ -1,5 +1,12 @@
 package biz
 
+// Skill invocation source values (skill_invocation.source).
+const (
+	SkillInvocationSourceRuntime         = "runtime"
+	SkillInvocationSourceFilesystemScan  = "filesystem_scan"
+	SkillInvocationSourceFilesystemWatch = "filesystem_watch"
+)
+
 // Skill import / similarity DTOs — JSON matches pkg/backend domain + web expectations.
 
 type SkillSimilaritySource struct {
@@ -100,6 +107,16 @@ type SkillImportApplyResult struct {
 
 // SkillCreateInput creates platform skill + initial skill_version (import / directory sync).
 type SkillCreateInput struct {
+	Name        string
+	Slug        string
+	Description string
+	Body        string
+	Tags        []SkillTag
+	StorageDir  string
+}
+
+// SkillDiskSyncInput upserts skill rows from on-disk packages (directory watcher).
+type SkillDiskSyncInput struct {
 	Name        string
 	Slug        string
 	Description string

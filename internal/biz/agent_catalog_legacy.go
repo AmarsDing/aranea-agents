@@ -54,6 +54,7 @@ func withSettingDefaults(v AgentRuntimeSettings) AgentRuntimeSettings {
 	defaultInt(&v.EvoProposalTTLDays, d.EvoProposalTTLDays)
 	defaultInt(&v.EvoPersonaMaxChars, d.EvoPersonaMaxChars)
 	defaultInt(&v.EvoSystemPromptMaxAppends, d.EvoSystemPromptMaxAppends)
+	defaultString(&v.SkillRuntimeJSON, d.SkillRuntimeJSON)
 	return v
 }
 

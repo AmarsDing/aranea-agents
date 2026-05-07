@@ -138,6 +138,8 @@ message SkillInvocation {
   string error_code = 16;
   string error_message = 17;
   SkillInvocationPermissions permissions = 18;
+  string source = 19;
+  string activation_id = 20;
 }
 
 message ListSkillRunsRequest {
@@ -158,9 +160,76 @@ message ListSkillRunsResponse {
   int32 page_size = 4;
 }
 
+message GetSkillRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message GetSkillResponse {
+  Skill skill = 1;
+  string body_markdown = 2;
+}
+
+message CreateSkillRequest {
+  string name = 1 [(google.api.field_behavior) = REQUIRED];
+  string slug = 2 [(google.api.field_behavior) = REQUIRED];
+  string description = 3 [(google.api.field_behavior) = REQUIRED];
+  string body_markdown = 4 [(google.api.field_behavior) = REQUIRED];
+  repeated SkillTag tags = 5;
+}
+
+message UpdateSkillRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  optional string name = 2;
+  optional string description = 3;
+  bool replace_tags = 4;
+  repeated SkillTag tags = 5;
+  optional string body_markdown = 6;
+}
+
+message PublishSkillRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message DeleteSkillFileRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string path = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message PreviewSkillRuntimeRequest {}
+
+message PreviewSkillRuntimeResponse {
+  string resolved_storage_root = 1;
+  int32 enabled_published_count = 2;
+  repeated string enabled_skill_slugs = 3;
+}
+
 service SkillService {
   rpc ListSkills(ListSkillsRequest) returns (ListSkillsResponse) {
     option (google.api.http) = {get: "/v1/skills"};
+  }
+  rpc GetSkill(GetSkillRequest) returns (GetSkillResponse) {
+    option (google.api.http) = {get: "/v1/skills/{id}"};
+  }
+  rpc CreateSkill(CreateSkillRequest) returns (Skill) {
+    option (google.api.http) = {
+      post: "/v1/skills"
+      body: "*"
+    };
+  }
+  rpc UpdateSkill(UpdateSkillRequest) returns (Skill) {
+    option (google.api.http) = {
+      patch: "/v1/skills/{id}"
+      body: "*"
+    };
+  }
+  rpc PublishSkill(PublishSkillRequest) returns (Skill) {
+    option (google.api.http) = {
+      post: "/v1/skills/{id}/publish"
+      body: "*"
+    };
+  }
+  rpc PreviewSkillRuntime(PreviewSkillRuntimeRequest) returns (PreviewSkillRuntimeResponse) {
+    option (google.api.http) = {get: "/v1/skill-runtime-preview"};
   }
   rpc ToggleSkillEnabled(ToggleSkillEnabledRequest) returns (Skill) {
     option (google.api.http) = {
@@ -186,6 +255,12 @@ service SkillService {
   rpc UpdateSkillFile(UpdateSkillFileRequest) returns (SkillFileContent) {
     option (google.api.http) = {
       put: "/v1/skills/{id}/file"
+      body: "*"
+    };
+  }
+  rpc DeleteSkillFile(DeleteSkillFileRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      post: "/v1/skills/{id}/files:delete"
       body: "*"
     };
   }

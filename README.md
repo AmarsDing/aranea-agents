@@ -39,8 +39,7 @@ aranea-agents/
 │   ├── provider/             # 厂商 LLM 注册表与 ADK model.LLM 解析（如 adk_llm.go）
 │   ├── server/               # Kratos 服务器：HTTP/gRPC 路由、中间件注册
 │   ├── service/              # 用例门面：将 RPC/HTTP 接到 biz + Agent 运行时
-│   ├── skill/                # Skill 领域占位（ADK 扩展：`skill/adk/`，待补充）
-│   ├── skillimport/          # Skill 导入与相关聊天辅助
+│   ├── skill/                # Skill：`importer/`（ZIP 导入）、`watch/`（磁盘监听同步）
 │   ├── team/                 # 团队定义与工作流（顺序/并行/循环等）
 │   └── tools/                # 内置 Tool；registry 装配；catalog.Options 高级组合
 ├── output/                  # 本地生成物输出目录（通常应忽略，不提交）

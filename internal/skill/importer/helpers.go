@@ -1,4 +1,4 @@
-package skillimport
+package importer
 
 import (
 	"crypto/rand"

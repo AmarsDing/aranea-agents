@@ -90,6 +90,8 @@ type SkillInvocation struct {
 	OutputPreview    string
 	ErrorCode        string
 	ErrorMessage     string
+	Source           string
+	ActivationID     string
 	Permissions      SkillInvocationPermissions
 }
 
@@ -121,6 +123,27 @@ type SkillRepo interface {
 	GetSkillStorageDir(ctx context.Context, id string) (string, error)
 	ListSkillSimilaritySources(ctx context.Context) ([]SkillSimilaritySource, error)
 	CreateSkillWithVersion(ctx context.Context, in SkillCreateInput) (Skill, error)
+	GetSkillBySkillKey(ctx context.Context, skillKey string) (Skill, error)
+	UpsertSkillFromDisk(ctx context.Context, in SkillDiskSyncInput) (Skill, error)
+	ListEnabledPublishedSkillKeys(ctx context.Context) ([]string, error)
+	ListEnabledPublishedSkillCandidates(ctx context.Context) ([]SkillRuntimeCandidate, error)
+	RecordSkillInvocation(ctx context.Context, in SkillInvocationWrite) error
+	GetLatestSkillMarkdown(ctx context.Context, skillID string) (string, error)
+	PatchSkill(ctx context.Context, id string, patch SkillUpdateDraft) (Skill, error)
+	PublishSkill(ctx context.Context, id string) (Skill, error)
+	MarkSkillFilesystemMissing(ctx context.Context, slug string, missing bool) error
+}
+
+// SkillUpdateDraft is a partial update for admin edits (optional fields via booleans).
+type SkillUpdateDraft struct {
+	HasName        bool
+	Name           string
+	HasDescription bool
+	Description    string
+	HasTags        bool
+	Tags           []SkillTag
+	HasBody        bool
+	Body           string
 }
 
 type SkillUsecase struct {
@@ -163,6 +186,21 @@ func (u *SkillUsecase) Get(ctx context.Context, id string) (Skill, error) {
 	return s, nil
 }
 
+func (u *SkillUsecase) Create(ctx context.Context, in SkillCreateInput) (Skill, error) {
+	in.Name = strings.TrimSpace(in.Name)
+	in.Slug = strings.TrimSpace(in.Slug)
+	in.Description = strings.TrimSpace(in.Description)
+	in.Body = strings.TrimSpace(in.Body)
+	in.StorageDir = strings.TrimSpace(in.StorageDir)
+	if in.Name == "" {
+		return Skill{}, errors.BadRequest("SKILL", "skill name is required")
+	}
+	if in.Slug == "" {
+		return Skill{}, errors.BadRequest("SKILL", "skill slug is required")
+	}
+	return u.repo.CreateSkillWithVersion(ctx, in)
+}
+
 func (u *SkillUsecase) ToggleEnabled(ctx context.Context, id string, enabled bool) (Skill, error) {
 	if strings.TrimSpace(id) == "" {
 		return Skill{}, errors.BadRequest("SKILL", "skill id is required")
@@ -203,4 +241,77 @@ func (u *SkillUsecase) SearchRuns(ctx context.Context, q SkillRunQuery) (SkillRu
 
 func (u *SkillUsecase) GetStorageDir(ctx context.Context, id string) (string, error) {
 	return u.repo.GetSkillStorageDir(ctx, id)
+}
+
+// SkillInvocationWrite inserts a skill_invocation row (filesystem sync, runtime, etc.).
+type SkillInvocationWrite struct {
+	SkillID       string
+	SkillName     string
+	SkillVersion  string
+	AgentID       string
+	UserID        string
+	SessionID     string
+	Status        string
+	DurationMS    int
+	StartedAt     string
+	EndedAt       string
+	InputPreview  string
+	OutputPreview string
+	ErrorCode     string
+	ErrorMessage  string
+	Source        string
+	ActivationID  string
+}
+
+func (u *SkillUsecase) GetBySkillKey(ctx context.Context, skillKey string) (Skill, error) {
+	skillKey = strings.TrimSpace(skillKey)
+	if skillKey == "" {
+		return Skill{}, errors.BadRequest("SKILL", "skill key is required")
+	}
+	return u.repo.GetSkillBySkillKey(ctx, skillKey)
+}
+
+func (u *SkillUsecase) UpsertSkillFromDisk(ctx context.Context, in SkillDiskSyncInput) (Skill, error) {
+	return u.repo.UpsertSkillFromDisk(ctx, in)
+}
+
+func (u *SkillUsecase) ListEnabledPublishedSkillKeys(ctx context.Context) ([]string, error) {
+	return u.repo.ListEnabledPublishedSkillKeys(ctx)
+}
+
+func (u *SkillUsecase) ListEnabledPublishedSkillCandidates(ctx context.Context) ([]SkillRuntimeCandidate, error) {
+	return u.repo.ListEnabledPublishedSkillCandidates(ctx)
+}
+
+func (u *SkillUsecase) RecordInvocation(ctx context.Context, in SkillInvocationWrite) error {
+	return u.repo.RecordSkillInvocation(ctx, in)
+}
+
+func (u *SkillUsecase) GetLatestMarkdown(ctx context.Context, id string) (string, error) {
+	if strings.TrimSpace(id) == "" {
+		return "", errors.BadRequest("SKILL", "skill id is required")
+	}
+	return u.repo.GetLatestSkillMarkdown(ctx, id)
+}
+
+func (u *SkillUsecase) Patch(ctx context.Context, id string, patch SkillUpdateDraft) (Skill, error) {
+	if strings.TrimSpace(id) == "" {
+		return Skill{}, errors.BadRequest("SKILL", "skill id is required")
+	}
+	return u.repo.PatchSkill(ctx, id, patch)
+}
+
+func (u *SkillUsecase) Publish(ctx context.Context, id string) (Skill, error) {
+	if strings.TrimSpace(id) == "" {
+		return Skill{}, errors.BadRequest("SKILL", "skill id is required")
+	}
+	return u.repo.PublishSkill(ctx, id)
+}
+
+func (u *SkillUsecase) MarkFilesystemMissing(ctx context.Context, slug string, missing bool) error {
+	slug = strings.TrimSpace(slug)
+	if slug == "" {
+		return errors.BadRequest("SKILL", "skill slug is required")
+	}
+	return u.repo.MarkSkillFilesystemMissing(ctx, slug, missing)
 }

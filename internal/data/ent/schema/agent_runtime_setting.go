@@ -95,6 +95,8 @@ func (AgentRuntimeSetting) Fields() []ent.Field {
 		field.Int("evo_proposal_ttl_days").Default(14),
 		field.Int("evo_persona_max_chars").Default(1500),
 		field.Int("evo_system_prompt_max_appends").Default(5),
+		// JSON policy for narrow Skill toolset per agent: allowed_slugs, denied_slugs, allowed_tags, intent routing caps (see docs/需求/20 skill struct design.md 十三′).
+		field.String("skill_runtime_json").Default("{}"),
 		field.String("created_at").Default(""),
 		field.String("updated_at").Default(""),
 	}

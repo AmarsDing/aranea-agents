@@ -101,8 +101,10 @@ type AgentRuntimeSettings struct {
 	EvoProposalTTLDays                int
 	EvoPersonaMaxChars                int
 	EvoSystemPromptMaxAppends         int
-	CreatedAt                         string
-	UpdatedAt                         string
+	// SkillRuntimeJSON is agent_runtime_settings.skill_runtime_json (whitelist/deny/tags + routing caps).
+	SkillRuntimeJSON string
+	CreatedAt        string
+	UpdatedAt        string
 }
 
 // AgentPromptFile is one row in agent_prompt_files (API name field maps to file_name).

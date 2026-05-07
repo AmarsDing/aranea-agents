@@ -145,5 +145,17 @@ export default {
     monitor: "Monitoring",
     shop: "Marketplace",
     settings: "System settings"
+  },
+  settingsPage: {
+    title: "System settings",
+    rootDir: "System root directory",
+    rootDirHint: "Install or deployment root; base path for data and resources.",
+    workDir: "Working directory",
+    workDirHint: "Runtime working directory (process or agent cwd). May differ from root.",
+    save: "Save",
+    reload: "Reload",
+    lastSaved: "Last updated: {time}",
+    saveOk: "Saved",
+    saveFailed: "Save failed"
   }
 };

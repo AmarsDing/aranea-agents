@@ -20,15 +20,21 @@ import (
 type SkillService struct {
 	v1.UnimplementedSkillServiceServer
 
-	uc          *biz.SkillUsecase
-	storageRoot string
+	uc  *biz.SkillUsecase
+	sys biz.SystemSettingRepo
 }
 
-func NewSkillService(uc *biz.SkillUsecase) *SkillService {
-	return &SkillService{
-		uc:          uc,
-		storageRoot: skillstorage.ResolveRoot(),
+func NewSkillService(uc *biz.SkillUsecase, sys biz.SystemSettingRepo) *SkillService {
+	return &SkillService{uc: uc, sys: sys}
+}
+
+func (s *SkillService) resolvedStorageRoot(ctx context.Context) string {
+	if s.sys != nil {
+		if st, err := s.sys.Get(ctx); err == nil {
+			return skillstorage.ResolveRootWithPlatform(st.RootDirectory)
+		}
 	}
+	return skillstorage.ResolveRoot()
 }
 
 func toProtoSkill(s biz.Skill) *v1.Skill {
@@ -95,6 +101,8 @@ func toProtoInvocation(x biz.SkillInvocation) *v1.SkillInvocation {
 		OutputPreview:    x.OutputPreview,
 		ErrorCode:        x.ErrorCode,
 		ErrorMessage:     x.ErrorMessage,
+		Source:           x.Source,
+		ActivationId:     x.ActivationID,
 		Permissions: &v1.SkillInvocationPermissions{
 			CanViewDetail: x.Permissions.CanViewDetail,
 		},
@@ -178,7 +186,7 @@ func (s *SkillService) ListSkillFiles(ctx context.Context, req *v1.ListSkillFile
 		}
 		rel = filepath.ToSlash(rel)
 		items = append(items, &v1.SkillFile{
-			Path: rel, Name: pathBase(rel), Language: languageForPath(rel), Size:info.Size(), UpdatedAt: info.ModTime().UTC().Format("2006-01-02T15:04:05Z07:00"),
+			Path: rel, Name: pathBase(rel), Language: languageForPath(rel), Size: info.Size(), UpdatedAt: info.ModTime().UTC().Format("2006-01-02T15:04:05Z07:00"),
 		})
 		return nil
 	})
@@ -223,6 +231,126 @@ func (s *SkillService) UpdateSkillFile(ctx context.Context, req *v1.UpdateSkillF
 	return s.GetSkillFile(ctx, &v1.GetSkillFileRequest{Id: req.GetId(), Path: req.GetPath()})
 }
 
+func (s *SkillService) GetSkill(ctx context.Context, req *v1.GetSkillRequest) (*v1.GetSkillResponse, error) {
+	sk, err := s.uc.Get(ctx, req.GetId())
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, kerrors.NotFound("SKILL", "skill not found")
+		}
+		return nil, err
+	}
+	body, err := s.uc.GetLatestMarkdown(ctx, req.GetId())
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	return &v1.GetSkillResponse{Skill: toProtoSkill(sk), BodyMarkdown: body}, nil
+}
+
+func (s *SkillService) CreateSkill(ctx context.Context, req *v1.CreateSkillRequest) (*v1.Skill, error) {
+	name := strings.TrimSpace(req.GetName())
+	slug := strings.TrimSpace(req.GetSlug())
+	if slug != "" && (strings.ContainsAny(slug, `/\`) || strings.Contains(slug, "..")) {
+		return nil, kerrors.BadRequest("SKILL", "invalid slug")
+	}
+	root := s.resolvedStorageRoot(ctx)
+	dir := filepath.Join(root, slug)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil, err
+	}
+	body := strings.TrimSpace(req.GetBodyMarkdown())
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(body), 0o644); err != nil {
+		return nil, err
+	}
+	tags := make([]biz.SkillTag, 0, len(req.GetTags()))
+	for _, t := range req.GetTags() {
+		tags = append(tags, biz.SkillTag{Name: t.GetName(), Source: t.GetSource()})
+	}
+	out, err := s.uc.Create(ctx, biz.SkillCreateInput{
+		Name:        name,
+		Slug:        slug,
+		Description: strings.TrimSpace(req.GetDescription()),
+		Body:        body,
+		Tags:        tags,
+		StorageDir:  dir,
+	})
+	if err != nil {
+		return nil, kerrors.BadRequest("SKILL", err.Error())
+	}
+	return toProtoSkill(out), nil
+}
+
+func (s *SkillService) UpdateSkill(ctx context.Context, req *v1.UpdateSkillRequest) (*v1.Skill, error) {
+	patch := biz.SkillUpdateDraft{}
+	if req.Name != nil {
+		patch.HasName = true
+		patch.Name = req.GetName()
+	}
+	if req.Description != nil {
+		patch.HasDescription = true
+		patch.Description = req.GetDescription()
+	}
+	if req.GetReplaceTags() {
+		patch.HasTags = true
+		for _, t := range req.GetTags() {
+			patch.Tags = append(patch.Tags, biz.SkillTag{Name: t.GetName(), Source: t.GetSource()})
+		}
+	}
+	if req.BodyMarkdown != nil {
+		patch.HasBody = true
+		patch.Body = req.GetBodyMarkdown()
+	}
+	out, err := s.uc.Patch(ctx, req.GetId(), patch)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, kerrors.NotFound("SKILL", "skill not found")
+		}
+		return nil, kerrors.BadRequest("SKILL", err.Error())
+	}
+	return toProtoSkill(out), nil
+}
+
+func (s *SkillService) PublishSkill(ctx context.Context, req *v1.PublishSkillRequest) (*v1.Skill, error) {
+	out, err := s.uc.Publish(ctx, req.GetId())
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, kerrors.NotFound("SKILL", "skill not found")
+		}
+		return nil, err
+	}
+	return toProtoSkill(out), nil
+}
+
+func (s *SkillService) DeleteSkillFile(ctx context.Context, req *v1.DeleteSkillFileRequest) (*emptypb.Empty, error) {
+	rel := strings.TrimSpace(req.GetPath())
+	if rel == "" {
+		return nil, kerrors.BadRequest("SKILL", "path is required")
+	}
+	if strings.EqualFold(filepath.ToSlash(rel), "SKILL.md") || strings.EqualFold(filepath.ToSlash(rel), "skill.md") {
+		return nil, kerrors.BadRequest("SKILL", "cannot delete primary SKILL.md via DeleteSkillFile")
+	}
+	_, path, err := s.safeSkillFilePath(ctx, req.GetId(), rel)
+	if err != nil {
+		return nil, kerrors.BadRequest("SKILL", err.Error())
+	}
+	if err := os.Remove(path); err != nil {
+		return nil, err
+	}
+	return &emptypb.Empty{}, nil
+}
+
+func (s *SkillService) PreviewSkillRuntime(ctx context.Context, _ *v1.PreviewSkillRuntimeRequest) (*v1.PreviewSkillRuntimeResponse, error) {
+	root := s.resolvedStorageRoot(ctx)
+	slugs, err := s.uc.ListEnabledPublishedSkillKeys(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &v1.PreviewSkillRuntimeResponse{
+		ResolvedStorageRoot:   root,
+		EnabledPublishedCount: int32(len(slugs)),
+		EnabledSkillSlugs:     slugs,
+	}, nil
+}
+
 func (s *SkillService) ListSkillRuns(ctx context.Context, req *v1.ListSkillRunsRequest) (*v1.ListSkillRunsResponse, error) {
 	limit, offset, page, pageSize := biz.PageToLimitOffset(req.GetPage(), req.GetPageSize())
 	q := biz.SkillRunQuery{
@@ -256,7 +384,7 @@ func (s *SkillService) skillDir(ctx context.Context, id string) (string, error) 
 			}
 			return "", getErr
 		}
-		dir = filepath.Join(s.storageRoot, current.Slug)
+		dir = filepath.Join(s.resolvedStorageRoot(ctx), current.Slug)
 	}
 	if _, statErr := os.Stat(dir); statErr != nil {
 		return "", statErr

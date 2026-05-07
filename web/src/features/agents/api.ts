@@ -105,6 +105,8 @@ export type AgentRuntimeSettings = {
   guardrail_max_change_per_period: number;
   guardrail_min_data_points: number;
   guardrail_rollback_on_decline_percent: number;
+  /** JSON：Skill 运行时收窄策略（allowed_slugs / intent_routing_enabled 等），见 Agent 设置 Skill 面板 */
+  skill_runtime_json?: string;
   created_at?: string;
   updated_at?: string;
 };
@@ -273,6 +275,7 @@ function normalizeRuntimeSettingsFromWire(raw: unknown): AgentRuntimeSettings | 
     guardrail_max_change_per_period: pickNum(w, "guardrailMaxChangePerPeriod", "guardrail_max_change_per_period", 0.1),
     guardrail_min_data_points: pickNum(w, "guardrailMinDataPoints", "guardrail_min_data_points", 100),
     guardrail_rollback_on_decline_percent: pickNum(w, "guardrailRollbackOnDeclinePercent", "guardrail_rollback_on_decline_percent", 20),
+    skill_runtime_json: pickStr(w, "skillRuntimeJson", "skill_runtime_json", "{}"),
     created_at: pickStrOpt(w, "createdAt", "created_at"),
     updated_at: pickStrOpt(w, "updatedAt", "updated_at")
   };
@@ -386,6 +389,7 @@ function runtimeSettingsToWire(s: AgentRuntimeSettings): KratosRuntimeWire {
     evoProposalTtlDays: s.evo_proposal_ttl_days,
     evoPersonaMaxChars: s.evo_persona_max_chars,
     evoSystemPromptMaxAppends: s.evo_system_prompt_max_appends,
+    skillRuntimeJson: s.skill_runtime_json ?? "{}",
     createdAt: s.created_at,
     updatedAt: s.updated_at
   };

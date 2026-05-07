@@ -107,6 +107,7 @@ func fromProtoRuntime(pb *v1.AgentRuntimeSettings) *biz.AgentRuntimeSettings {
 		EvoSystemPromptMaxAppends:         int(pb.GetEvoSystemPromptMaxAppends()),
 		CreatedAt:                         pb.GetCreatedAt(),
 		UpdatedAt:                         pb.GetUpdatedAt(),
+		SkillRuntimeJSON:                  pb.GetSkillRuntimeJson(),
 	}
 }
 
@@ -192,6 +193,7 @@ func toProtoRuntime(b *biz.AgentRuntimeSettings) *v1.AgentRuntimeSettings {
 		EvoSystemPromptMaxAppends:         int32(b.EvoSystemPromptMaxAppends),
 		CreatedAt:                         b.CreatedAt,
 		UpdatedAt:                         b.UpdatedAt,
+		SkillRuntimeJson:                  b.SkillRuntimeJSON,
 	}
 }
 

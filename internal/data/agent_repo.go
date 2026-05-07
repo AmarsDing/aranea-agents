@@ -40,6 +40,17 @@ func normalizeJSONList(value string) string {
 	return string(b)
 }
 
+func normalizeSkillRuntimeJSON(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "{}"
+	}
+	if json.Valid([]byte(value)) {
+		return value
+	}
+	return "{}"
+}
+
 func sanitizePromptFileID(value string) string {
 	value = strings.ToLower(strings.TrimSpace(value))
 	value = strings.Map(func(r rune) rune {
@@ -157,6 +168,7 @@ func entRuntimeToBiz(e *ent.AgentRuntimeSetting) biz.AgentRuntimeSettings {
 		EvoProposalTTLDays:                e.EvoProposalTTLDays,
 		EvoPersonaMaxChars:                e.EvoPersonaMaxChars,
 		EvoSystemPromptMaxAppends:         e.EvoSystemPromptMaxAppends,
+		SkillRuntimeJSON:                  e.SkillRuntimeJSON,
 		CreatedAt:                         e.CreatedAt,
 		UpdatedAt:                         e.UpdatedAt,
 	}
@@ -252,6 +264,7 @@ func applyBizRuntimeToCreate(b *ent.AgentRuntimeSettingCreate, v biz.AgentRuntim
 		SetEvoProposalTTLDays(v.EvoProposalTTLDays).
 		SetEvoPersonaMaxChars(v.EvoPersonaMaxChars).
 		SetEvoSystemPromptMaxAppends(v.EvoSystemPromptMaxAppends).
+		SetSkillRuntimeJSON(normalizeSkillRuntimeJSON(v.SkillRuntimeJSON)).
 		SetCreatedAt(v.CreatedAt).
 		SetUpdatedAt(v.UpdatedAt)
 }

@@ -6,7 +6,6 @@ import ChatPage from "../pages/ChatPage.vue";
 import AgentsPage from "../pages/AgentsPage.vue";
 import AgentSettingsPage from "../pages/AgentSettingsPage.vue";
 import MonitorPage from "../pages/MonitorPage.vue";
-import GenericPage from "../pages/GenericPage.vue";
 import OverviewPage from "../pages/OverviewPage.vue";
 import ResourceManagerPage from "../pages/ResourceManagerPage.vue";
 import EcosystemPage from "../pages/EcosystemPage.vue";
@@ -23,6 +22,7 @@ import McpServersPage from "../pages/McpServersPage.vue";
 import CronTasksPage from "../pages/CronTasksPage.vue";
 import CronRunsPage from "../pages/CronRunsPage.vue";
 import MemoryCenterPage from "../pages/MemoryCenterPage.vue";
+import SystemSettingsPage from "../pages/SystemSettingsPage.vue";
 
 export const routes: RouteRecordRaw[] = [
   {
@@ -101,7 +101,7 @@ export const routes: RouteRecordRaw[] = [
       { path: "cron/runs", name: "cron-runs", component: CronRunsPage },
       { path: "monitor/logs", name: "monitor-logs", component: MonitorPage },
       { path: "shop", name: "shop", component: EcosystemPage },
-      { path: "settings", name: "settings", component: GenericPage, meta: { titleKey: "menu.settings" } }
+      { path: "settings", name: "settings", component: SystemSettingsPage, meta: { titleKey: "menu.settings" } }
     ]
   }
 ];

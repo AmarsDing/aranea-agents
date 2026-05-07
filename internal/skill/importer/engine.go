@@ -1,4 +1,4 @@
-package skillimport
+package importer
 
 import (
 	"archive/zip"
@@ -20,7 +20,7 @@ import (
 type Engine struct {
 	repo biz.SkillRepo
 	llm  *biz.LlmProviderModelUsecase
-	root string
+	sys  biz.SystemSettingRepo
 
 	jobsMu sync.RWMutex
 	jobs   map[string]*jobState
@@ -38,15 +38,25 @@ type candidateState struct {
 	tags   []biz.SkillTag
 }
 
-// NewEngine constructs the skill ZIP importer. storageRoot defaults via skillstorage.ResolveRoot().
-func NewEngine(repo biz.SkillRepo, llm *biz.LlmProviderModelUsecase) *Engine {
-	root := skillstorage.ResolveRoot()
+// NewEngine constructs the skill ZIP importer. Skill storage root resolves via skillstorage + system settings.
+func NewEngine(repo biz.SkillRepo, llm *biz.LlmProviderModelUsecase, sys biz.SystemSettingRepo) *Engine {
 	return &Engine{
 		repo: repo,
 		llm:  llm,
-		root: root,
+		sys:  sys,
 		jobs: make(map[string]*jobState),
 	}
+}
+
+func (e *Engine) resolveRoot(ctx context.Context) string {
+	if e.sys == nil {
+		return skillstorage.ResolveRootFromEnv()
+	}
+	st, err := e.sys.Get(ctx)
+	if err != nil {
+		return skillstorage.ResolveRootFromEnv()
+	}
+	return skillstorage.ResolveRootWithPlatform(st.RootDirectory)
 }
 
 func candidateRequiresRiskApproval(candidate biz.SkillImportCandidate) bool {
@@ -84,7 +94,7 @@ func (e *Engine) Import(ctx context.Context, file multipart.File, header *multip
 			JobID:            newID(),
 			Status:           "processing",
 			ValidationStatus: "pass",
-			StorageRoot:      e.root,
+			StorageRoot:      e.resolveRoot(ctx),
 			Candidates:       []biz.SkillImportCandidate{},
 			ConflictGroups:   []biz.SkillConflictGroup{},
 		},
@@ -98,7 +108,7 @@ func (e *Engine) Import(ctx context.Context, file multipart.File, header *multip
 		job.public.Status = "completed"
 		job.public.ValidationStatus = summarizeImportStatus(job.public.Candidates, job.public.ConflictGroups)
 		if job.public.ValidationStatus == "block" {
-			job.public.Message = strings.Join(importBlockMessages(job.public.Candidates), "；")
+			job.public.Message = strings.Join(importBlockMessages(job.public.Candidates), "?")
 		}
 	}
 	e.jobsMu.Lock()
@@ -114,7 +124,9 @@ func (e *Engine) GetImportJob(jobID string) (biz.SkillImportJob, error) {
 	if job == nil {
 		return biz.SkillImportJob{}, ErrImportJobNotFound
 	}
-	return job.public, nil
+	out := job.public
+	out.StorageRoot = e.resolveRoot(context.Background())
+	return out, nil
 }
 
 func (e *Engine) RefineConflictGroup(ctx context.Context, jobID string, groupID string, in biz.SkillRefineRequest) (biz.SkillRefineResult, error) {
@@ -205,7 +217,7 @@ func (e *Engine) ApplyImport(ctx context.Context, jobID string, in biz.SkillImpo
 			return result, fmt.Errorf("unsupported import action: %s", decision.Action)
 		}
 	}
-	result.Message = "导入完成"
+	result.Message = "????"
 	return result, nil
 }
 
@@ -236,7 +248,7 @@ func (e *Engine) createImportedSkill(ctx context.Context, name string, slug stri
 	if slug == "" {
 		slug = slugify(name)
 	}
-	targetDir := filepath.Join(e.root, slug)
+	targetDir := filepath.Join(e.resolveRoot(ctx), slug)
 	if err := os.MkdirAll(targetDir, 0o755); err != nil {
 		return biz.Skill{}, err
 	}
@@ -265,7 +277,7 @@ func (e *Engine) updateCandidateWarning(job *jobState, candidateID string, metri
 		job.public.Candidates[i].StatusIcon = "merge_suggested"
 		job.public.Candidates[i].Warnings = append(job.public.Candidates[i].Warnings, biz.SkillImportIssue{
 			Type:    "similarity",
-			Message: fmt.Sprintf("模型判定相似度 %d%%，建议炼化", int(metrics.SimilarityScore*100+0.5)),
+			Message: fmt.Sprintf("??????? %d%%?????", int(metrics.SimilarityScore*100+0.5)),
 		})
 		state := job.candidates[candidateID]
 		state.public = job.public.Candidates[i]
@@ -318,46 +330,9 @@ func (e *Engine) inspectSkillZip(ctx context.Context, data []byte, job *jobState
 			continue
 		}
 		body := string(bodyBytes)
-		name, desc, tags := parseSkillMarkdown(body)
-		slug := slugify(firstNonEmptyString(name, pathBaseSkill(dir)))
-		candidateID := newID()
-		candidate := biz.SkillImportCandidate{
-			CandidateID:      candidateID,
-			Name:             name,
-			Slug:             slug,
-			Description:      desc,
-			BodyPreview:      truncateRunes(body, 240),
-			TargetDir:        filepath.Join(job.public.StorageRoot, slug),
-			ValidationStatus: "pass",
-			StatusIcon:       "check",
-			Warnings:         []biz.SkillImportIssue{},
-			Blocks:           []biz.SkillImportIssue{},
-		}
-		if strings.TrimSpace(name) == "" || strings.TrimSpace(desc) == "" {
-			candidate.ValidationStatus = "block"
-			candidate.StatusIcon = "block"
-			candidate.Blocks = append(candidate.Blocks, biz.SkillImportIssue{Type: "invalid_format", Message: "SKILL.md must include a title/name and description"})
-		}
-		if hasShellScriptAsset(files) {
-			candidate.Warnings = append(candidate.Warnings, biz.SkillImportIssue{Type: "script_asset", Message: "包含 .sh 脚本素材，将仅作为 Skill 文件存储，不会自动执行"})
-		}
-		if highRiskFiles := highRiskFileNames(files); len(highRiskFiles) > 0 {
-			candidate.ValidationStatus = "block"
-			candidate.StatusIcon = "security"
-			candidate.Blocks = append(candidate.Blocks, biz.SkillImportIssue{
-				Type:    "high_risk_file",
-				Message: "包含高风险文件，需要用户确认后才允许上传整个 Skill：" + strings.Join(highRiskFiles, ", "),
-			})
-		}
-		for _, item := range existing {
-			if strings.EqualFold(item.Name, name) || strings.EqualFold(item.Slug, slug) {
-				candidate.ValidationStatus = "block"
-				candidate.StatusIcon = "block"
-				candidate.Blocks = append(candidate.Blocks, biz.SkillImportIssue{Type: "duplicate_name", Message: "Skill name or slug already exists"})
-				break
-			}
-		}
-		job.candidates[candidateID] = candidateState{public: candidate, body: body, files: files, tags: tags}
+		candidate, tags := ValidateSkillPackage(files, dir, existing, false)
+		candidate.TargetDir = filepath.Join(job.public.StorageRoot, candidate.Slug)
+		job.candidates[candidate.CandidateID] = candidateState{public: candidate, body: body, files: files, tags: tags}
 		job.public.Candidates = append(job.public.Candidates, candidate)
 	}
 	if len(job.public.Candidates) == 0 {

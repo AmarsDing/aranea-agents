@@ -8,13 +8,13 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/skillimport"
+	"aranea-agents/internal/skill/importer"
 
 	kratoshttp "github.com/go-kratos/kratos/v2/transport/http"
 )
 
 // RegisterSkillImportHTTPServer mounts **/v1/skills/import*** (multipart ZIP + JSON) on cmd/admin.
-func RegisterSkillImportHTTPServer(srv *kratoshttp.Server, eng *skillimport.Engine) {
+func RegisterSkillImportHTTPServer(srv *kratoshttp.Server, eng *importer.Engine) {
 	if eng == nil {
 		return
 	}
@@ -44,7 +44,7 @@ func RegisterSkillImportHTTPServer(srv *kratoshttp.Server, eng *skillimport.Engi
 		}
 		job, err := eng.GetImportJob(jobID)
 		if err != nil {
-			if errors.Is(err, skillimport.ErrImportJobNotFound) {
+			if errors.Is(err, importer.ErrImportJobNotFound) {
 				return writeSkillImportJSON(ctx, http.StatusNotFound, map[string]string{"message": err.Error()})
 			}
 			return writeSkillImportJSON(ctx, http.StatusBadRequest, map[string]string{"message": err.Error()})
@@ -67,7 +67,7 @@ func RegisterSkillImportHTTPServer(srv *kratoshttp.Server, eng *skillimport.Engi
 		}
 		result, err := eng.ApplyImport(ctx.Request().Context(), jobID, in)
 		if err != nil {
-			if errors.Is(err, skillimport.ErrImportJobNotFound) {
+			if errors.Is(err, importer.ErrImportJobNotFound) {
 				return writeSkillImportJSON(ctx, http.StatusNotFound, map[string]string{"message": err.Error()})
 			}
 			return writeSkillImportJSON(ctx, http.StatusBadRequest, map[string]string{"message": err.Error()})
@@ -90,7 +90,7 @@ func RegisterSkillImportHTTPServer(srv *kratoshttp.Server, eng *skillimport.Engi
 		}
 		result, err := eng.RefineConflictGroup(ctx.Request().Context(), jobID, groupID, in)
 		if err != nil {
-			if errors.Is(err, skillimport.ErrImportJobNotFound) || errors.Is(err, skillimport.ErrConflictGroupNotFound) {
+			if errors.Is(err, importer.ErrImportJobNotFound) || errors.Is(err, importer.ErrConflictGroupNotFound) {
 				return writeSkillImportJSON(ctx, http.StatusNotFound, map[string]string{"message": err.Error()})
 			}
 			return writeSkillImportJSON(ctx, http.StatusBadRequest, map[string]string{"message": err.Error()})

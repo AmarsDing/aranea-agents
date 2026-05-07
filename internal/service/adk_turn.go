@@ -10,6 +10,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/provider"
 	"aranea-agents/internal/tools"
+	"aranea-agents/internal/tools/skillruntime"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
@@ -50,7 +51,7 @@ func (s *ChatService) runSingleAgentViaADK(
 	rt := &provider.RoundTrip{HTTP: s.llmHTTP}
 	subAgents := ag.Settings != nil && ag.Settings.SubagentsEnabled
 	adkTools := tools.ADKToolsForAgentPolicy(ctx, s.agentsUC, s.agents, s.toolsCatalog, ag.ID, subAgents)
-	root, err := chatagent.BuildLLMAgent(ctx, ag, chatagent.BuilderDeps{
+	deps := chatagent.BuilderDeps{
 		Catalog:      s.llmCatalog,
 		AgentUC:      s.agentsUC,
 		Agents:       s.agents,
@@ -59,7 +60,12 @@ func (s *ChatService) runSingleAgentViaADK(
 		Provider:     prov,
 		Model:        mod,
 		Tools:        adkTools,
+	}
+	_ = skillruntime.AppendEnabledPublishedSkillToolsets(ctx, &deps.Toolsets, s.skillUC, s.sys, &skillruntime.SkillToolsetOptions{
+		Runtime:   ag.Settings,
+		UserQuery: content,
 	})
+	root, err := chatagent.BuildLLMAgent(ctx, ag, deps)
 	if err != nil {
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}

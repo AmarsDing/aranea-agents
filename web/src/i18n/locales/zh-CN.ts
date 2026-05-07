@@ -145,5 +145,17 @@ export default {
     monitor: "监控",
     shop: "商城",
     settings: "系统设置"
+  },
+  settingsPage: {
+    title: "系统设置",
+    rootDir: "系统根目录",
+    rootDirHint: "平台安装或部署根路径，用于数据、资源等相对解析的基准目录。",
+    workDir: "系统工作目录",
+    workDirHint: "运行时工作目录（进程或 Agent 的 cwd）。可与根目录不同。",
+    save: "保存",
+    reload: "重新加载",
+    lastSaved: "上次更新：{time}",
+    saveOk: "已保存",
+    saveFailed: "保存失败"
   }
 };

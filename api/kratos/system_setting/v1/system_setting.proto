@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package kratos.system_setting.v1;
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+import "google/api/annotations.proto";
+
+option go_package = "aranea-agents/api/kratos/system_setting/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.kratos.system_setting.v1";
+
+message SystemSettings {
+  // Absolute or workspace-relative path used as the platform working directory.
+  string work_directory = 1;
+  google.protobuf.Timestamp update_time = 2;
+  // Platform root path (install / deployment root for data and resources).
+  string root_directory = 3;
+}
+
+message UpdateSystemSettingsRequest {
+  string work_directory = 1;
+  string root_directory = 2;
+}
+
+service SystemSettingService {
+  rpc GetSystemSettings(google.protobuf.Empty) returns (SystemSettings) {
+    option (google.api.http) = {
+      get: "/v1/system-settings"
+    };
+  }
+  rpc UpdateSystemSettings(UpdateSystemSettingsRequest) returns (SystemSettings) {
+    option (google.api.http) = {
+      put: "/v1/system-settings"
+      body: "*"
+    };
+  }
+}

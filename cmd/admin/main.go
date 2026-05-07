@@ -23,10 +23,10 @@ import (
 
 // go build -ldflags "-X main.Version=x.y.z"
 var (
-	Name    string
-	Version string
+	Name     string
+	Version  string
 	flagconf string
-	id, _   = os.Hostname()
+	id, _    = os.Hostname()
 )
 
 func init() {
@@ -87,6 +87,13 @@ func main() {
 		interval := cronrunner.DefaultInterval()
 		go out.CronRunner.Start(cronCtx, interval)
 		logger.Log(log.LevelInfo, "msg", "cron runner started", "interval", interval.String())
+	}
+
+	watchCtx, cancelWatch := context.WithCancel(context.Background())
+	defer cancelWatch()
+	if out.SkillWatch != nil {
+		go out.SkillWatch.Start(watchCtx)
+		logger.Log(log.LevelInfo, "msg", "skill filesystem watcher started")
 	}
 
 	if err := out.App.Run(); err != nil {

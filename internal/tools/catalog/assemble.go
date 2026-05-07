@@ -6,14 +6,13 @@ import (
 	iofs "io/fs"
 
 	"aranea-agents/internal/tools/registry"
+	"aranea-agents/internal/tools/skillruntime"
 
 	"google.golang.org/adk/agent"
 	"google.golang.org/adk/tool"
 	"google.golang.org/adk/tool/agenttool"
 	"google.golang.org/adk/tool/exampletool"
 	"google.golang.org/adk/tool/mcptoolset"
-	"google.golang.org/adk/tool/skilltoolset"
-	"google.golang.org/adk/tool/skilltoolset/skill"
 )
 
 // SubAgent 将子 Agent 作为 tool 暴露（ADK agenttool）。
@@ -96,7 +95,7 @@ func (o Options) Build(ctx context.Context) (*Assembled, error) {
 		out.Tools = append(out.Tools, WrapAgent(sub.Agent, sub.Config))
 	}
 	if o.SkillsFS != nil {
-		ts, err := skilltoolset.New(ctx, skilltoolset.Config{Source: skill.NewFileSystemSource(o.SkillsFS)})
+		ts, err := skillruntime.NewSkillToolsetFromFS(ctx, o.SkillsFS)
 		if err != nil {
 			return nil, err
 		}

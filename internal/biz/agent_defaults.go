@@ -70,5 +70,6 @@ func DefaultAgentRuntimeSettings() AgentRuntimeSettings {
 		EvoProposalTTLDays:                14,
 		EvoPersonaMaxChars:                1500,
 		EvoSystemPromptMaxAppends:         5,
+		SkillRuntimeJSON:                  "{}",
 	}
 }

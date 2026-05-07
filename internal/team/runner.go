@@ -13,6 +13,7 @@ import (
 	"aranea-agents/internal/agent/adksvc"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/provider"
+	"aranea-agents/internal/tools/skillruntime"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
@@ -32,6 +33,8 @@ type Runner struct {
 	catalog      *biz.LlmProviderModelUsecase
 	broker       *biz.TeamRunEventBroker
 	llmHTTP      *http.Client
+	skillUC      *biz.SkillUsecase
+	sys          biz.SystemSettingRepo
 }
 
 // NewRunner wires a team runner (llmHTTP should match chat transport timeouts).
@@ -43,6 +46,8 @@ func NewRunner(
 	toolsCatalog biz.ToolRepo,
 	catalog *biz.LlmProviderModelUsecase,
 	broker *biz.TeamRunEventBroker,
+	skillUC *biz.SkillUsecase,
+	sys biz.SystemSettingRepo,
 ) *Runner {
 	return &Runner{
 		teams:        teams,
@@ -53,6 +58,8 @@ func NewRunner(
 		catalog:      catalog,
 		broker:       broker,
 		llmHTTP:      &http.Client{Timeout: 300 * time.Second},
+		skillUC:      skillUC,
+		sys:          sys,
 	}
 }
 
@@ -137,16 +144,16 @@ func (r *Runner) runTeamADK(ctx context.Context, sess biz.Session, req *chatv1.S
 	}
 
 	run := biz.TeamRun{
-		ID:            uuid.NewString(),
-		TeamID:        teamRow.ID,
-		SessionID:     sess.ID,
-		Mode:          mode,
-		Status:        "running",
-		InputPreview:  preview(content, 512),
-		TopologyJSON:  topologyJSON(def),
-		StartedAt:     agent.RFC3339Now(),
-		CreatedAt:     agent.RFC3339Now(),
-		UpdatedAt:     agent.RFC3339Now(),
+		ID:           uuid.NewString(),
+		TeamID:       teamRow.ID,
+		SessionID:    sess.ID,
+		Mode:         mode,
+		Status:       "running",
+		InputPreview: preview(content, 512),
+		TopologyJSON: topologyJSON(def),
+		StartedAt:    agent.RFC3339Now(),
+		CreatedAt:    agent.RFC3339Now(),
+		UpdatedAt:    agent.RFC3339Now(),
 	}
 	run, err = r.teams.CreateTeamRun(ctx, run)
 	if err != nil {
@@ -158,6 +165,15 @@ func (r *Runner) runTeamADK(ctx context.Context, sess biz.Session, req *chatv1.S
 	}
 
 	t0 := time.Now()
+	firstAg, err := r.catalogAgent(ctx, members[0].AgentID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			err = kerrors.NotFound("AGENT", "team member agent not found")
+		}
+		r.finishRunErr(ctx, &run, t0, err.Error())
+		return biz.ChatMessage{}, biz.ChatMessage{}, err
+	}
+
 	deps := agent.BuilderDeps{
 		Catalog:      r.catalog,
 		AgentUC:      r.agentsUC,
@@ -165,6 +181,8 @@ func (r *Runner) runTeamADK(ctx context.Context, sess biz.Session, req *chatv1.S
 		ToolsCatalog: r.toolsCatalog,
 		RT:           &provider.RoundTrip{HTTP: r.llmHTTP},
 	}
+	skillOpts := &skillruntime.SkillToolsetOptions{Runtime: firstAg.Settings, UserQuery: content}
+	_ = skillruntime.AppendEnabledPublishedSkillToolsets(ctx, &deps.Toolsets, r.skillUC, r.sys, skillOpts)
 
 	root, plan, err := BuildWorkflowRoot(ctx, mode, def, deps, sess, provOpt, modOpt, r.catalogAgent)
 	if err != nil {
@@ -199,14 +217,6 @@ func (r *Runner) runTeamADK(ctx context.Context, sess biz.Session, req *chatv1.S
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
 
-	firstAg, err := r.catalogAgent(ctx, members[0].AgentID)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			err = kerrors.NotFound("AGENT", "team member agent not found")
-		}
-		r.finishRunErr(ctx, &run, t0, err.Error())
-		return biz.ChatMessage{}, biz.ChatMessage{}, err
-	}
 	prov0 := firstNonEmptyStr(provOpt, sess.Provider, firstAg.Provider)
 	mod0 := firstNonEmptyStr(modOpt, sess.Model, firstAg.Model)
 	anchor := &agent.TeamMemberAnchor{

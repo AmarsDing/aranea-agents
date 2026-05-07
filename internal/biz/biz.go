@@ -22,4 +22,5 @@ var ProviderSet = wire.NewSet(
 	NewChannelUsecase,
 	NewUsageUsecase,
 	NewMonitorUsecase,
+	NewSystemSettingUsecase,
 )

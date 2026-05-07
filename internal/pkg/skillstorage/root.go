@@ -7,13 +7,36 @@ import (
 	"strings"
 )
 
-// ResolveRoot matches pkg/backend util.ResolveSkillStorageRoot (same env vars / defaults).
+// ResolveRoot is legacy behavior: environment variables only, then OS default (no system settings).
+// Prefer ResolveRootWithPlatform when root_directory from settings is available.
 func ResolveRoot() string {
+	return ResolveRootFromEnv()
+}
+
+// ResolveRootFromEnv returns SKILL_ROOT, SKILL_STORAGE_ROOT, or DefaultRoot.
+func ResolveRootFromEnv() string {
 	if value := strings.TrimSpace(os.Getenv("SKILL_ROOT")); value != "" {
 		return Absolute(value)
 	}
 	if value := strings.TrimSpace(os.Getenv("SKILL_STORAGE_ROOT")); value != "" {
 		return Absolute(value)
+	}
+	return Absolute(DefaultRoot(runtime.GOOS))
+}
+
+// ResolveRootWithPlatform returns skill storage root using platform install root + "/skills"
+// when env overrides are unset.
+// Priority: SKILL_ROOT > SKILL_STORAGE_ROOT > filepath.Join(Absolute(rootDirectory), "skills") if rootDirectory non-empty > DefaultRoot.
+func ResolveRootWithPlatform(rootDirectory string) string {
+	if value := strings.TrimSpace(os.Getenv("SKILL_ROOT")); value != "" {
+		return Absolute(value)
+	}
+	if value := strings.TrimSpace(os.Getenv("SKILL_STORAGE_ROOT")); value != "" {
+		return Absolute(value)
+	}
+	rootDirectory = strings.TrimSpace(rootDirectory)
+	if rootDirectory != "" {
+		return filepath.Join(Absolute(rootDirectory), "skills")
 	}
 	return Absolute(DefaultRoot(runtime.GOOS))
 }

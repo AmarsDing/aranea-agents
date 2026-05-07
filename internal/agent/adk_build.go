@@ -17,16 +17,16 @@ import (
 
 // BuilderDeps wires catalog resolution and optional services for [BuildLLMAgent].
 type BuilderDeps struct {
-	Catalog   *biz.LlmProviderModelUsecase
-	AgentUC   *biz.AgentUsecase
-	Agents    biz.AgentRepository
+	Catalog *biz.LlmProviderModelUsecase
+	AgentUC *biz.AgentUsecase
+	Agents  biz.AgentRepository
 	// ToolsCatalog is the platform tool table (biz.ToolRepo). Optional; required only when AgentUC is nil and callers still need effective tools.
 	ToolsCatalog biz.ToolRepo
-	RT        *provider.RoundTrip
-	Memory    memory.Service
-	Artifacts artifact.Service
-	Tools     []tool.Tool
-	Toolsets  []tool.Toolset
+	RT           *provider.RoundTrip
+	Memory       memory.Service
+	Artifacts    artifact.Service
+	Tools        []tool.Tool
+	Toolsets     []tool.Toolset
 	// Provider / model override from session or request (non-empty wins over ag.Provider / ag.Model).
 	Provider string
 	Model    string

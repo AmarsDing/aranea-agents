@@ -18,6 +18,7 @@ import (
 	channelv1 "aranea-agents/api/kratos/channel/v1"
 	monitorv1 "aranea-agents/api/kratos/monitor/v1"
 	memoryv1 "aranea-agents/api/kratos/memory/v1"
+	systemsettingv1 "aranea-agents/api/kratos/system_setting/v1"
 	usagev1 "aranea-agents/api/kratos/usage/v1"
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/service"
@@ -45,6 +46,7 @@ func NewGRPCServer(c *conf.Server,
 	usageSvc *service.UsageService,
 	monitorSvc *service.MonitorService,
 	memorySvc *service.MemoryService,
+	systemSettingSvc *service.SystemSettingService,
 	teams *service.TeamService,
 	chatSvc *service.ChatService,
 ) *grpc.Server {
@@ -80,6 +82,7 @@ func NewGRPCServer(c *conf.Server,
 	usagev1.RegisterUsageServiceServer(srv, usageSvc)
 	monitorv1.RegisterMonitorServiceServer(srv, monitorSvc)
 	memoryv1.RegisterMemoryServiceServer(srv, memorySvc)
+	systemsettingv1.RegisterSystemSettingServiceServer(srv, systemSettingSvc)
 	teamv1.RegisterTeamServiceServer(srv, teams)
 	chatv1.RegisterChatServiceServer(srv, chatSvc)
 	return srv

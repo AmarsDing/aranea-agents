@@ -37,5 +37,9 @@ func (PlatformSkill) Fields() []ent.Field {
 		field.String("agent_id").Default(""),
 		field.String("provider").Default(""),
 		field.String("model").Default(""),
+		field.String("kind").Default("markdown").MaxLen(64),
+		field.String("risk_level").Default("low").MaxLen(32),
+		field.String("entry_path").Default("SKILL.md").MaxLen(512),
+		field.Bool("filesystem_missing").Default(false),
 	}
 }

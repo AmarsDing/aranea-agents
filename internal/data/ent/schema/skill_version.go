@@ -28,5 +28,8 @@ func (SkillVersion) Fields() []ent.Field {
 		field.Text("metadata_json").Default("{}"),
 		field.String("created_at").Default(""),
 		field.String("updated_at").Default(""),
+		field.Text("manifest_json").Default("{}"),
+		field.String("published_at").Default(""),
+		field.String("validation_status").Default(""),
 	}
 }

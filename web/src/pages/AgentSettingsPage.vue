@@ -18,6 +18,7 @@
         <q-tab name="memory" label="记忆" />
         <q-tab name="files" label="文件" />
         <q-tab name="permissions" label="权限" />
+        <q-tab name="skills" label="Skill" />
         <q-tab name="evolution" label="进化" />
         <q-tab name="hooks" label="钩子" />
         <q-tab name="instances" label="用户实例" />
@@ -363,6 +364,106 @@
           <q-banner rounded class="settings-placeholder-banner">权限与用户可见范围将按独立 PRD 接入。当前保留入口。</q-banner>
         </q-tab-panel>
 
+        <q-tab-panel name="skills">
+          <div class="settings-grid">
+            <section class="settings-section">
+              <div class="section-heading">
+                <div>
+                  <div class="text-subtitle1 text-weight-bold">平台 Skill 挂载策略</div>
+                  <div class="text-caption text-grey-7">
+                    控制本会话中 ADK 可见的已发布 Skill：Agent 白名单/黑名单、必选标签，以及是否根据用户话术做意图收窄（详见仓库文档「20 skill struct design」十三′）。
+                  </div>
+                </div>
+                <q-btn outline rounded dense color="primary" label="恢复默认" @click="resetSkillRuntimeDefaults" />
+              </div>
+              <q-banner rounded class="q-mb-md settings-info-banner">
+                留空「允许的 slug」表示不按 slug 白名单过滤；「意图收窄」开启后，仅对与话术匹配的 taxonomy / 关键词相关的 Skill 并集挂载（可减少无关工具）。
+              </q-banner>
+              <div class="row q-col-gutter-md">
+                <div class="col-12 col-lg-6">
+                  <q-card flat bordered class="capability-card">
+                    <q-card-section class="row items-center justify-between">
+                      <div>
+                        <div class="text-subtitle2">意图收窄（层 B）</div>
+                        <div class="text-caption text-grey-7">根据用户消息关键词匹配内置意图路径，缩小 Skill 候选集。</div>
+                      </div>
+                      <q-toggle v-model="config.skillRuntime.intent_routing_enabled" color="primary" />
+                    </q-card-section>
+                    <q-separator />
+                    <q-card-section class="row q-col-gutter-sm">
+                      <q-input
+                        v-model.number="config.skillRuntime.intent_max_paths"
+                        class="col-6"
+                        dense
+                        outlined
+                        type="number"
+                        label="最多意图路径数"
+                        :min="1"
+                        :max="32"
+                      />
+                      <q-input
+                        v-model.number="config.skillRuntime.max_skills_in_toolset"
+                        class="col-6"
+                        dense
+                        outlined
+                        type="number"
+                        label="工具集内 Skill 上限"
+                        :min="1"
+                        :max="256"
+                      />
+                    </q-card-section>
+                  </q-card>
+                </div>
+                <div class="col-12 col-lg-6">
+                  <q-card flat bordered class="capability-card">
+                    <q-card-section>
+                      <div class="text-subtitle2 q-mb-xs">slug 与标签（层 A）</div>
+                      <div class="text-caption text-grey-7 q-mb-sm">标签 token 写入 Skill 元数据的标签名（如 file_type:xlsx），多项为「同时满足」。</div>
+                      <q-select
+                        v-model="config.skillRuntime.allowed_slugs"
+                        class="q-mb-sm"
+                        dense
+                        outlined
+                        multiple
+                        use-chips
+                        use-input
+                        new-value-mode="add-unique"
+                        input-debounce="0"
+                        label="允许的 Skill slug（skill_key）"
+                        hint="留空 = 不启用 slug 白名单"
+                      />
+                      <q-select
+                        v-model="config.skillRuntime.denied_slugs"
+                        class="q-mb-sm"
+                        dense
+                        outlined
+                        multiple
+                        use-chips
+                        use-input
+                        new-value-mode="add-unique"
+                        input-debounce="0"
+                        label="拒绝的 Skill slug"
+                      />
+                      <q-select
+                        v-model="config.skillRuntime.allowed_tags"
+                        dense
+                        outlined
+                        multiple
+                        use-chips
+                        use-input
+                        new-value-mode="add-unique"
+                        input-debounce="0"
+                        label="要求的标签（AND）"
+                        hint="可与用户话术中的 domain:/file_type: 提示合并"
+                      />
+                    </q-card-section>
+                  </q-card>
+                </div>
+              </div>
+            </section>
+          </div>
+        </q-tab-panel>
+
         <q-tab-panel name="evolution">
           <agent-evolution-panel v-model:range="evolutionRange" :evolution="config.evolution" :guardrails="config.evolution_guardrails" />
         </q-tab-panel>
@@ -582,6 +683,14 @@ const config = reactive({
     max_change_per_period: 0.1,
     min_data_points: 100,
     rollback_on_decline_percent: 20
+  },
+  skillRuntime: {
+    intent_routing_enabled: true,
+    intent_max_paths: 3,
+    max_skills_in_toolset: 32,
+    allowed_slugs: [] as string[],
+    denied_slugs: [] as string[],
+    allowed_tags: [] as string[]
   }
 });
 
@@ -730,6 +839,65 @@ watch(
   }
 );
 
+function parseSkillRuntimeForm(raw?: string) {
+  const out = {
+    intent_routing_enabled: true,
+    intent_max_paths: 3,
+    max_skills_in_toolset: 32,
+    allowed_slugs: [] as string[],
+    denied_slugs: [] as string[],
+    allowed_tags: [] as string[]
+  };
+  try {
+    const o = JSON.parse(String(raw ?? "{}").trim() || "{}");
+    if (typeof o.intent_routing_enabled === "boolean") out.intent_routing_enabled = o.intent_routing_enabled;
+    if (typeof o.intent_max_paths === "number" && Number.isFinite(o.intent_max_paths)) {
+      const n = Math.floor(o.intent_max_paths);
+      if (n >= 1 && n <= 32) out.intent_max_paths = n;
+    }
+    if (typeof o.max_skills_in_toolset === "number" && Number.isFinite(o.max_skills_in_toolset)) {
+      const n = Math.floor(o.max_skills_in_toolset);
+      if (n >= 1 && n <= 256) out.max_skills_in_toolset = n;
+    }
+    const strList = (v: unknown) =>
+      Array.isArray(v) ? v.map((x) => String(x).trim()).filter(Boolean) : [];
+    out.allowed_slugs = strList(o.allowed_slugs);
+    out.denied_slugs = strList(o.denied_slugs);
+    out.allowed_tags = strList(o.allowed_tags);
+  } catch {
+    /* keep defaults */
+  }
+  return out;
+}
+
+function normalizeSkillRuntimeState() {
+  const rt = config.skillRuntime;
+  rt.intent_max_paths = Math.min(32, Math.max(1, Math.floor(Number(rt.intent_max_paths) || 3)));
+  rt.max_skills_in_toolset = Math.min(256, Math.max(1, Math.floor(Number(rt.max_skills_in_toolset) || 32)));
+  for (const key of ["allowed_slugs", "denied_slugs", "allowed_tags"] as const) {
+    if (!Array.isArray(rt[key])) rt[key] = [];
+    rt[key] = rt[key].map((x) => String(x).trim()).filter(Boolean);
+  }
+}
+
+function stringifySkillRuntimeJSON(): string {
+  normalizeSkillRuntimeState();
+  return JSON.stringify({
+    intent_routing_enabled: config.skillRuntime.intent_routing_enabled,
+    intent_max_paths: config.skillRuntime.intent_max_paths,
+    max_skills_in_toolset: config.skillRuntime.max_skills_in_toolset,
+    allowed_slugs: [...config.skillRuntime.allowed_slugs],
+    denied_slugs: [...config.skillRuntime.denied_slugs],
+    allowed_tags: [...config.skillRuntime.allowed_tags]
+  });
+}
+
+function resetSkillRuntimeDefaults() {
+  Object.assign(config.skillRuntime, parseSkillRuntimeForm("{}"));
+  normalizeSkillRuntimeState();
+  $q.notify({ type: "info", message: "Skill 策略已恢复默认（尚未保存）" });
+}
+
 function hydrateConfig(raw: string) {
   try {
     const parsed = JSON.parse(raw || "{}");
@@ -747,7 +915,8 @@ function hydrateConfig(raw: string) {
       evolutionSettings: { ...config.evolutionSettings, ...(parsed.evolutionSettings || {}) },
       heartbeat: { ...config.heartbeat, ...(parsed.heartbeat || {}) },
       evolution: { ...config.evolution, ...(parsed.evolution || {}), self_evolve: parsed.self_evolve ?? config.self_evolve },
-      evolution_guardrails: { ...config.evolution_guardrails, ...(parsed.evolution_guardrails || {}) }
+      evolution_guardrails: { ...config.evolution_guardrails, ...(parsed.evolution_guardrails || {}) },
+      skillRuntime: { ...config.skillRuntime, ...(parsed.skillRuntime || {}) }
     });
     if (Array.isArray(parsed.files)) {
       for (const saved of parsed.files) {
@@ -861,11 +1030,13 @@ function hydrateSettings(agent: Agent) {
         max_change_per_period: agent.settings.guardrail_max_change_per_period,
         min_data_points: agent.settings.guardrail_min_data_points,
         rollback_on_decline_percent: agent.settings.guardrail_rollback_on_decline_percent
-      }
+      },
+      skillRuntime: parseSkillRuntimeForm(agent.settings.skill_runtime_json)
     });
   } else {
     hydrateConfig(agent.config_json);
   }
+  normalizeSkillRuntimeState();
   if (agent.files?.length) {
     hydrateFiles(agent.files);
   }
@@ -895,6 +1066,7 @@ async function saveAgent() {
         heartbeat: config.heartbeat,
         evolution: config.evolution,
         evolution_guardrails: config.evolution_guardrails,
+        skillRuntime: config.skillRuntime,
         files: files.map((file) => ({ name: file.name, body: file.body }))
       })
     });
@@ -1070,7 +1242,8 @@ function buildSettingsPayload(): AgentRuntimeSettings {
     evolution_suggestions_enabled: config.evolution.evolution_suggestions_enabled,
     guardrail_max_change_per_period: config.evolution_guardrails.max_change_per_period,
     guardrail_min_data_points: config.evolution_guardrails.min_data_points,
-    guardrail_rollback_on_decline_percent: config.evolution_guardrails.rollback_on_decline_percent
+    guardrail_rollback_on_decline_percent: config.evolution_guardrails.rollback_on_decline_percent,
+    skill_runtime_json: stringifySkillRuntimeJSON()
   };
 }
 
@@ -1231,6 +1404,11 @@ async function copyKey() {
   color: #9a3412;
 }
 
+.settings-info-banner {
+  background: #eff6ff;
+  color: #1e40af;
+}
+
 .settings-placeholder-banner {
   background: var(--interaction-surface-hover, #f2f4f7);
   color: var(--color-text-primary);
@@ -1332,6 +1510,11 @@ body.body--dark .settings-section :deep(.text-grey-7) {
 body.body--dark .settings-warning-banner {
   background: rgba(154, 52, 18, 0.22);
   color: #fed7aa;
+}
+
+body.body--dark .settings-info-banner {
+  background: rgba(30, 58, 138, 0.35);
+  color: #bfdbfe;
 }
 
 body.body--dark .settings-placeholder-banner {

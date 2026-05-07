@@ -15,6 +15,7 @@ import (
 	"aranea-agents/internal/data"
 	"aranea-agents/internal/server"
 	"aranea-agents/internal/service"
+	"aranea-agents/internal/skill/watch"
 
 	"github.com/go-kratos/kratos/v2"
 	"github.com/go-kratos/kratos/v2/log"
@@ -44,14 +45,22 @@ func provideCronRunner(deps cronrunner.Deps) *cronrunner.Runner {
 	return cronrunner.NewRunner(deps)
 }
 
+func provideSkillWatchRunner(skillUC *biz.SkillUsecase, sys biz.SystemSettingRepo, logger log.Logger) *watch.Runner {
+	if strings.TrimSpace(os.Getenv("SKILL_WATCH_DISABLED")) == "1" {
+		return nil
+	}
+	return watch.NewRunner(skillUC, sys, logger)
+}
+
 // wireOut is non-cleanup inject outputs (cleanup must be a top-level injector return for Wire).
 type wireOut struct {
 	App        *kratos.App
 	CronRunner *cronrunner.Runner
+	SkillWatch *watch.Runner
 }
 
-func provideWireOut(app *kratos.App, runner *cronrunner.Runner) wireOut {
-	return wireOut{App: app, CronRunner: runner}
+func provideWireOut(app *kratos.App, runner *cronrunner.Runner, skillWatch *watch.Runner) wireOut {
+	return wireOut{App: app, CronRunner: runner, SkillWatch: skillWatch}
 }
 
 // wireApp init kratos application.
@@ -63,6 +72,7 @@ func wireApp(*conf.Server, *conf.Data, log.Logger) (wireOut, func(), error) {
 		service.ProviderSet,
 		provideCronRunnerDeps,
 		provideCronRunner,
+		provideSkillWatchRunner,
 		newApp,
 		provideWireOut,
 	))

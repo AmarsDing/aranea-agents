@@ -43,6 +43,7 @@ var ProviderSet = wire.NewSet(
 	NewChannelRepo,
 	NewUsageRepo,
 	NewMonitorRepo,
+	NewSystemSettingRepo,
 	NewSessionMemoryStore,
 )
 
@@ -160,7 +161,15 @@ func NewData(c *conf.Data) (*Data, func(), error) {
 		_ = entClient.Close()
 		return nil, nil, fmt.Errorf("session memory schema: %w", err)
 	}
+	if err = ensureAgentRuntimePatches(context.Background(), entClient); err != nil {
+		_ = entClient.Close()
+		return nil, nil, fmt.Errorf("agent runtime patches: %w", err)
+	}
 	if err = ensureBuiltinPlatformTools(context.Background(), entClient); err != nil {
+		_ = entClient.Close()
+		return nil, nil, err
+	}
+	if err = ensureDefaultSystemSetting(context.Background(), entClient); err != nil {
 		_ = entClient.Close()
 		return nil, nil, err
 	}

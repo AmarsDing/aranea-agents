@@ -15,6 +15,7 @@ import (
 	mcpserverv1 "aranea-agents/api/kratos/mcp_server/v1"
 	memoryv1 "aranea-agents/api/kratos/memory/v1"
 	monitorv1 "aranea-agents/api/kratos/monitor/v1"
+	systemsettingv1 "aranea-agents/api/kratos/system_setting/v1"
 	pluginv1 "aranea-agents/api/kratos/plugin/v1"
 	sessionv1 "aranea-agents/api/kratos/session/v1"
 	skillv1 "aranea-agents/api/kratos/skill/v1"
@@ -23,7 +24,7 @@ import (
 	usagev1 "aranea-agents/api/kratos/usage/v1"
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/service"
-	"aranea-agents/internal/skillimport"
+	"aranea-agents/internal/skill/importer"
 	"aranea-agents/pkg/auth"
 	"aranea-agents/pkg/validate"
 
@@ -49,9 +50,10 @@ func NewHTTPServer(c *conf.Server,
 	usageSvc *service.UsageService,
 	monitorSvc *service.MonitorService,
 	memorySvc *service.MemoryService,
+	systemSettingSvc *service.SystemSettingService,
 	teams *service.TeamService,
 	chatSvc *service.ChatService,
-	skillImport *skillimport.Engine,
+	skillImport *importer.Engine,
 ) *http.Server {
 	var opts = []http.ServerOption{
 		http.Filter(
@@ -90,6 +92,7 @@ func NewHTTPServer(c *conf.Server,
 	usagev1.RegisterUsageServiceHTTPServer(srv, usageSvc)
 	monitorv1.RegisterMonitorServiceHTTPServer(srv, monitorSvc)
 	memoryv1.RegisterMemoryServiceHTTPServer(srv, memorySvc)
+	systemsettingv1.RegisterSystemSettingServiceHTTPServer(srv, systemSettingSvc)
 	teamv1.RegisterTeamServiceHTTPServer(srv, teams)
 	RegisterChatIngress(srv, chatSvc)
 	RegisterSkillImportHTTPServer(srv, skillImport)

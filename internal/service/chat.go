@@ -27,20 +27,22 @@ import (
 type ChatService struct {
 	chatv1.UnimplementedChatServiceServer
 
-	mu          sync.RWMutex
-	up          *url.URL
-	proxy       *httputil.ReverseProxy
-	client      *http.Client
-	llmHTTP     *http.Client
-	teamSSE     *biz.TeamRunEventBroker
-	teams       biz.TeamRepository
-	teamsNative *team.Runner
-	usage       *biz.UsageUsecase
-	sessions    *biz.SessionUsecase
-	agents      biz.AgentRepository
-	agentsUC    *biz.AgentUsecase
+	mu           sync.RWMutex
+	up           *url.URL
+	proxy        *httputil.ReverseProxy
+	client       *http.Client
+	llmHTTP      *http.Client
+	teamSSE      *biz.TeamRunEventBroker
+	teams        biz.TeamRepository
+	teamsNative  *team.Runner
+	usage        *biz.UsageUsecase
+	sessions     *biz.SessionUsecase
+	agents       biz.AgentRepository
+	agentsUC     *biz.AgentUsecase
 	toolsCatalog biz.ToolRepo
-	llmCatalog  *biz.LlmProviderModelUsecase
+	llmCatalog   *biz.LlmProviderModelUsecase
+	skillUC      *biz.SkillUsecase
+	sys          biz.SystemSettingRepo
 }
 
 // NewChatService builds a chat façade (LEGACY_REST_ORIGIN → legacy /api/v1/chat/* until fully in-process execution).
@@ -54,6 +56,8 @@ func NewChatService(
 	agentsUC *biz.AgentUsecase,
 	toolsCatalog biz.ToolRepo,
 	llmCatalog *biz.LlmProviderModelUsecase,
+	skillUC *biz.SkillUsecase,
+	sys biz.SystemSettingRepo,
 ) *ChatService {
 	s := &ChatService{
 		client:       &http.Client{Timeout: 600 * time.Second},
@@ -67,6 +71,8 @@ func NewChatService(
 		agentsUC:     agentsUC,
 		toolsCatalog: toolsCatalog,
 		llmCatalog:   llmCatalog,
+		skillUC:      skillUC,
+		sys:          sys,
 	}
 	s.refreshUpstream()
 	return s

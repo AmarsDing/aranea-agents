@@ -89,6 +89,7 @@ message AgentRuntimeSettings {
   int32 evo_system_prompt_max_appends = 75;
   string created_at = 76;
   string updated_at = 77;
+  string skill_runtime_json = 78;
 }
 
 message AgentPromptFile {

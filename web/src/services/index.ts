@@ -10,6 +10,7 @@ import { createMCPServerServiceClient } from "./kratos/mcp_server/v1/index";
 import { createPluginServiceClient } from "./kratos/plugin/v1/index";
 import { createSessionServiceClient } from "./kratos/session/v1/index";
 import { createSkillServiceClient } from "./kratos/skill/v1/index";
+import { createSystemSettingServiceClient } from "./kratos/system_setting/v1/index";
 import { createTeamServiceClient } from "./kratos/team/v1/index";
 import { createToolServiceClient } from "./kratos/tool/v1/index";
 import { createUsageServiceClient } from "./kratos/usage/v1/index";
@@ -64,6 +65,10 @@ export function createSessionService() {
 
 export function createSkillService() {
   return createSkillServiceClient(requestHandler);
+}
+
+export function createSystemSettingService() {
+  return createSystemSettingServiceClient(requestHandler);
 }
 
 export function createTeamService() {

@@ -33,7 +33,7 @@
 5. **不得在 transport 层解析工具参数或拼接 prompt**：在 service + `internal/agent` / `internal/tools` 层完成。
 6. **不得为 ADK 另起独立 HTTP 监听**：若挂 A2A，须用 Kratos `http.Server` 的 `Handle`。
 7. **不得把 Kratos `middleware` 逻辑复制进 `pkg/adk-go`**：可观测性与请求元数据通过 context / OTel TracerProvider 对齐。
-8. **预留目录**：`internal/channel/adk`、`internal/skill/adk` 仅占位，避免将来再次集中「大适配包」；渠道/Skill 相关 ADK 扩展应落在对应包内。
+8. **Skill 与 ADK toolset 边界**：平台 Skill → ADK 装配落在 **`internal/tools/skillruntime`**（及 `catalog.Options.SkillsFS`）；勿在 `internal/biz` 直接依赖 ADK。渠道侧预留 **`internal/channel/adk`**（仅占位时勿塞业务逻辑）。
 
 ## 相关文档
 

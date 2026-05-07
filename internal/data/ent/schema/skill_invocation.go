@@ -39,5 +39,7 @@ func (SkillInvocation) Fields() []ent.Field {
 		field.String("input_hash").Default(""),
 		field.Text("output_preview").Default(""),
 		field.String("error_code").Default(""),
+		field.String("source").Default("runtime").MaxLen(64),
+		field.String("activation_id").Default("").MaxLen(256),
 	}
 }

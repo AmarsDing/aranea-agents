@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -143,6 +145,52 @@ func normalizeSkillTags(tags []biz.SkillTag) []biz.SkillTag {
 	return result
 }
 
+func parseTaxonomyPathsFromJSON(blob string) []string {
+	blob = strings.TrimSpace(blob)
+	if blob == "" {
+		return nil
+	}
+	var wrap struct {
+		TaxonomyPaths []string `json:"taxonomy_paths"`
+	}
+	if err := json.Unmarshal([]byte(blob), &wrap); err != nil || len(wrap.TaxonomyPaths) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(wrap.TaxonomyPaths))
+	seen := map[string]bool{}
+	for _, p := range wrap.TaxonomyPaths {
+		p = strings.TrimSpace(p)
+		if p == "" || seen[p] {
+			continue
+		}
+		seen[p] = true
+		out = append(out, p)
+	}
+	return out
+}
+
+func mergeTaxonomyPaths(meta, cfg string) []string {
+	a := parseTaxonomyPathsFromJSON(meta)
+	b := parseTaxonomyPathsFromJSON(cfg)
+	if len(a) == 0 {
+		return b
+	}
+	if len(b) == 0 {
+		return a
+	}
+	seen := map[string]bool{}
+	out := make([]string, 0, len(a)+len(b))
+	for _, p := range append(append([]string{}, a...), b...) {
+		p = strings.TrimSpace(p)
+		if p == "" || seen[p] {
+			continue
+		}
+		seen[p] = true
+		out = append(out, p)
+	}
+	return out
+}
+
 func (r *skillRepo) enrichSkill(ctx context.Context, e *dataent.PlatformSkill) (biz.Skill, error) {
 	c := r.client()
 	id := e.ID
@@ -211,11 +259,19 @@ func (r *skillRepo) enrichSkill(ctx context.Context, e *dataent.PlatformSkill) (
 		if st == "" || st == "active" {
 			st = "pass"
 		}
+		pubAt := sv.CreatedAt
+		if strings.TrimSpace(sv.PublishedAt) != "" {
+			pubAt = sv.PublishedAt
+		}
+		vstat := strings.TrimSpace(sv.ValidationStatus)
+		if vstat == "" {
+			vstat = st
+		}
 		item.CurrentVersion = &biz.SkillVersionSummary{
 			ID:               sv.ID,
 			Version:          sv.Version,
-			ValidationStatus: st,
-			PublishedAt:      sv.CreatedAt,
+			ValidationStatus: vstat,
+			PublishedAt:      pubAt,
 		}
 	}
 
@@ -446,6 +502,8 @@ func (r *skillRepo) SearchSkillInvocations(ctx context.Context, query biz.SkillR
 			OutputPreview:    row.OutputPreview,
 			ErrorCode:        row.ErrorCode,
 			ErrorMessage:     row.ErrorMessage,
+			Source:           row.Source,
+			ActivationID:     row.ActivationID,
 			Permissions:      biz.SkillInvocationPermissions{CanViewDetail: true},
 		})
 	}
@@ -575,4 +633,316 @@ func (r *skillRepo) CreateSkillWithVersion(ctx context.Context, in biz.SkillCrea
 		return biz.Skill{}, err
 	}
 	return r.GetSkillByID(ctx, skillID)
+}
+
+func (r *skillRepo) GetSkillBySkillKey(ctx context.Context, skillKey string) (biz.Skill, error) {
+	skillKey = strings.TrimSpace(skillKey)
+	if skillKey == "" {
+		return biz.Skill{}, errors.New("skill key is required")
+	}
+	e, err := r.client().PlatformSkill.Query().
+		Where(platformskill.SkillKeyEQ(skillKey), platformskill.DeletedAtEQ("")).
+		Only(ctx)
+	if err != nil {
+		return biz.Skill{}, err
+	}
+	return r.enrichSkill(ctx, e)
+}
+
+func (r *skillRepo) UpsertSkillFromDisk(ctx context.Context, in biz.SkillDiskSyncInput) (biz.Skill, error) {
+	in.Name = strings.TrimSpace(in.Name)
+	in.Slug = strings.TrimSpace(in.Slug)
+	in.Description = strings.TrimSpace(in.Description)
+	in.Body = strings.TrimSpace(in.Body)
+	if in.Name == "" || in.Slug == "" || in.Body == "" {
+		return biz.Skill{}, errors.New("skill name, slug and body are required")
+	}
+	skillRow, err := r.client().PlatformSkill.Query().
+		Where(platformskill.SkillKeyEQ(in.Slug), platformskill.DeletedAtEQ("")).
+		Only(ctx)
+	if dataent.IsNotFound(err) {
+		return r.CreateSkillWithVersion(ctx, biz.SkillCreateInput{
+			Name:        in.Name,
+			Slug:        in.Slug,
+			Description: in.Description,
+			Body:        in.Body,
+			Tags:        in.Tags,
+			StorageDir:  in.StorageDir,
+		})
+	}
+	if err != nil {
+		return biz.Skill{}, err
+	}
+	now := nowRFC3339()
+	md := struct {
+		Tags       []biz.SkillTag `json:"tags"`
+		StorageDir string         `json:"storage_dir"`
+	}{Tags: in.Tags, StorageDir: in.StorageDir}
+	metaJSON, err := json.Marshal(md)
+	if err != nil {
+		return biz.Skill{}, err
+	}
+	if _, err := r.client().PlatformSkill.UpdateOneID(skillRow.ID).
+		SetName(in.Name).
+		SetDescription(in.Description).
+		SetMetadataJSON(string(metaJSON)).
+		SetUpdatedAt(now).
+		SetFilesystemMissing(false).
+		Save(ctx); err != nil {
+		return biz.Skill{}, err
+	}
+	sv, err := r.client().SkillVersion.Query().
+		Where(skillversion.SkillIDEQ(skillRow.ID)).
+		Order(skillversion.ByCreatedAt(entsql.OrderDesc())).
+		First(ctx)
+	if err != nil {
+		return biz.Skill{}, err
+	}
+	if strings.TrimSpace(sv.ContentMarkdown) != in.Body {
+		if _, err := r.client().SkillVersion.UpdateOneID(sv.ID).
+			SetContentMarkdown(in.Body).
+			SetUpdatedAt(now).
+			Save(ctx); err != nil {
+			return biz.Skill{}, err
+		}
+	}
+	return r.GetSkillByID(ctx, skillRow.ID)
+}
+
+func (r *skillRepo) ListEnabledPublishedSkillKeys(ctx context.Context) ([]string, error) {
+	rows, err := r.client().PlatformSkill.Query().
+		Where(
+			platformskill.DeletedAtEQ(""),
+			platformskill.EnabledEQ(true),
+			platformskill.Or(platformskill.StatusEQ("published"), platformskill.StatusEQ("active")),
+		).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, row.SkillKey)
+	}
+	return out, nil
+}
+
+func (r *skillRepo) ListEnabledPublishedSkillCandidates(ctx context.Context) ([]biz.SkillRuntimeCandidate, error) {
+	rows, err := r.client().PlatformSkill.Query().
+		Where(
+			platformskill.DeletedAtEQ(""),
+			platformskill.EnabledEQ(true),
+			platformskill.Or(platformskill.StatusEQ("published"), platformskill.StatusEQ("active")),
+		).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]biz.SkillRuntimeCandidate, 0, len(rows))
+	for _, row := range rows {
+		tags := parseSkillTags(row.MetadataJSON)
+		if len(tags) == 0 {
+			tags = parseSkillTags(row.ConfigJSON)
+		}
+		out = append(out, biz.SkillRuntimeCandidate{
+			Slug:          row.SkillKey,
+			Name:          row.Name,
+			Description:   row.Description,
+			Tags:          tags,
+			TaxonomyPaths: mergeTaxonomyPaths(row.MetadataJSON, row.ConfigJSON),
+		})
+	}
+	return out, nil
+}
+
+func (r *skillRepo) RecordSkillInvocation(ctx context.Context, in biz.SkillInvocationWrite) error {
+	id := fmt.Sprintf("skillinv_%d", time.Now().UTC().UnixNano())
+	now := nowRFC3339()
+	source := strings.TrimSpace(in.Source)
+	if source == "" {
+		source = "runtime"
+	}
+	started := strings.TrimSpace(in.StartedAt)
+	if started == "" {
+		started = now
+	}
+	ended := strings.TrimSpace(in.EndedAt)
+	if ended == "" {
+		ended = now
+	}
+	status := strings.TrimSpace(in.Status)
+	if status == "" {
+		status = "success"
+	}
+	_, err := r.client().SkillInvocation.Create().
+		SetID(id).
+		SetSkillID(strings.TrimSpace(in.SkillID)).
+		SetAgentID(strings.TrimSpace(in.AgentID)).
+		SetStatus(status).
+		SetInputJSON("{}").
+		SetOutputJSON("{}").
+		SetSkillVersion(strings.TrimSpace(in.SkillVersion)).
+		SetUserID(strings.TrimSpace(in.UserID)).
+		SetSessionID(strings.TrimSpace(in.SessionID)).
+		SetDurationMs(in.DurationMS).
+		SetStartedAt(started).
+		SetEndedAt(ended).
+		SetInputPreview(strings.TrimSpace(in.InputPreview)).
+		SetOutputPreview(strings.TrimSpace(in.OutputPreview)).
+		SetErrorCode(strings.TrimSpace(in.ErrorCode)).
+		SetErrorMessage(strings.TrimSpace(in.ErrorMessage)).
+		SetSource(source).
+		SetActivationID(strings.TrimSpace(in.ActivationID)).
+		SetCreatedAt(now).
+		SetUpdatedAt(now).
+		Save(ctx)
+	return err
+}
+
+func (r *skillRepo) GetLatestSkillMarkdown(ctx context.Context, skillID string) (string, error) {
+	skillID = strings.TrimSpace(skillID)
+	if skillID == "" {
+		return "", errors.New("skill id is required")
+	}
+	sv, err := r.client().SkillVersion.Query().
+		Where(skillversion.SkillIDEQ(skillID)).
+		Order(skillversion.ByCreatedAt(entsql.OrderDesc())).
+		First(ctx)
+	if err != nil {
+		if dataent.IsNotFound(err) {
+			return "", sql.ErrNoRows
+		}
+		return "", err
+	}
+	return sv.ContentMarkdown, nil
+}
+
+type skillMetadataEnvelope struct {
+	Tags       []biz.SkillTag `json:"tags"`
+	StorageDir string         `json:"storage_dir"`
+}
+
+func parseSkillMetadata(raw string) skillMetadataEnvelope {
+	var md skillMetadataEnvelope
+	_ = json.Unmarshal([]byte(raw), &md)
+	return md
+}
+
+func (r *skillRepo) PatchSkill(ctx context.Context, id string, patch biz.SkillUpdateDraft) (biz.Skill, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return biz.Skill{}, errors.New("skill id is required")
+	}
+	e, err := r.client().PlatformSkill.Query().
+		Where(platformskill.IDEQ(id), platformskill.DeletedAtEQ("")).
+		Only(ctx)
+	if err != nil {
+		if dataent.IsNotFound(err) {
+			return biz.Skill{}, sql.ErrNoRows
+		}
+		return biz.Skill{}, err
+	}
+	now := nowRFC3339()
+	upd := r.client().PlatformSkill.UpdateOneID(id).SetUpdatedAt(now)
+	if patch.HasName {
+		upd.SetName(strings.TrimSpace(patch.Name))
+	}
+	if patch.HasDescription {
+		upd.SetDescription(strings.TrimSpace(patch.Description))
+	}
+	if patch.HasTags {
+		md := parseSkillMetadata(e.MetadataJSON)
+		md.Tags = normalizeSkillTags(patch.Tags)
+		metaJSON, jerr := json.Marshal(md)
+		if jerr != nil {
+			return biz.Skill{}, jerr
+		}
+		upd.SetMetadataJSON(string(metaJSON))
+	}
+	if err := upd.Exec(ctx); err != nil {
+		return biz.Skill{}, err
+	}
+	if patch.HasBody {
+		body := strings.TrimSpace(patch.Body)
+		sv, err := r.client().SkillVersion.Query().
+			Where(skillversion.SkillIDEQ(id)).
+			Order(skillversion.ByCreatedAt(entsql.OrderDesc())).
+			First(ctx)
+		if err != nil {
+			return biz.Skill{}, err
+		}
+		if _, err := r.client().SkillVersion.UpdateOneID(sv.ID).
+			SetContentMarkdown(body).
+			SetUpdatedAt(now).
+			Save(ctx); err != nil {
+			return biz.Skill{}, err
+		}
+		fresh, err := r.client().PlatformSkill.Query().
+			Where(platformskill.IDEQ(id), platformskill.DeletedAtEQ("")).
+			Only(ctx)
+		if err != nil {
+			return biz.Skill{}, err
+		}
+		md := parseSkillMetadata(fresh.MetadataJSON)
+		dir := strings.TrimSpace(md.StorageDir)
+		if dir == "" {
+			return biz.Skill{}, errors.New("skill storage directory is not configured")
+		}
+		path := filepath.Join(dir, "SKILL.md")
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			return biz.Skill{}, err
+		}
+	}
+	return r.GetSkillByID(ctx, id)
+}
+
+func (r *skillRepo) PublishSkill(ctx context.Context, id string) (biz.Skill, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return biz.Skill{}, errors.New("skill id is required")
+	}
+	now := nowRFC3339()
+	err := r.client().PlatformSkill.UpdateOneID(id).
+		SetStatus("published").
+		SetUpdatedAt(now).
+		Exec(ctx)
+	if err != nil {
+		if dataent.IsNotFound(err) {
+			return biz.Skill{}, sql.ErrNoRows
+		}
+		return biz.Skill{}, err
+	}
+	sv, err := r.client().SkillVersion.Query().
+		Where(skillversion.SkillIDEQ(id)).
+		Order(skillversion.ByCreatedAt(entsql.OrderDesc())).
+		First(ctx)
+	if err == nil && sv != nil {
+		if _, serr := r.client().SkillVersion.UpdateOneID(sv.ID).
+			SetPublishedAt(now).
+			SetValidationStatus("pass").
+			SetUpdatedAt(now).
+			Save(ctx); serr != nil {
+			return biz.Skill{}, serr
+		}
+	}
+	return r.GetSkillByID(ctx, id)
+}
+
+func (r *skillRepo) MarkSkillFilesystemMissing(ctx context.Context, slug string, missing bool) error {
+	slug = strings.TrimSpace(slug)
+	if slug == "" {
+		return errors.New("skill slug is required")
+	}
+	n, err := r.client().PlatformSkill.Update().
+		Where(platformskill.SkillKeyEQ(slug), platformskill.DeletedAtEQ("")).
+		SetFilesystemMissing(missing).
+		SetUpdatedAt(nowRFC3339()).
+		Save(ctx)
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
