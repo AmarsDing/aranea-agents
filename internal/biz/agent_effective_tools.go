@@ -53,6 +53,49 @@ var toolGroupsSkill = []string{"skill_search", "use_skill"}
 var toolGroupsMedia = []string{"read_image", "read_document", "create_image", "tts"}
 var toolGroupsRuntime = []string{"shell_exec"}
 
+// syntheticShellExecCatalogTool matches internal/data builtin seeds when the tools table has no shell_exec row.
+func syntheticShellExecCatalogTool() Tool {
+	return Tool{
+		Key:                  "shell_exec",
+		DisplayName:          "Shell 命令",
+		Description:          "执行本地 shell 命令。",
+		Category:             "runtime",
+		Source:               "builtin",
+		RiskLevel:            "critical",
+		Enabled:              false,
+		RequiresConfirmation: true,
+		ParametersSchemaJSON: `{"type":"object","properties":{"command":{"type":"string"},"working_dir":{"type":"string"}},"required":["command"]}`,
+	}
+}
+
+func syntheticWebSearchCatalogTool() Tool {
+	return Tool{
+		Key:                  "web_search",
+		DisplayName:          "Web 搜索",
+		Description:          "搜索实时网络信息，返回标题、链接和摘要。",
+		Category:             "web",
+		Source:               "builtin",
+		RiskLevel:            "medium",
+		Enabled:              true,
+		Readonly:             true,
+		ParametersSchemaJSON: `{"type":"object","properties":{"query":{"type":"string","description":"搜索关键词"},"limit":{"type":"number","description":"返回结果数量"}},"required":["query"]}`,
+	}
+}
+
+func syntheticWebFetchCatalogTool() Tool {
+	return Tool{
+		Key:                  "web_fetch",
+		DisplayName:          "Web 抓取",
+		Description:          "抓取 URL 并提取页面文本或 Markdown。",
+		Category:             "web",
+		Source:               "builtin",
+		RiskLevel:            "medium",
+		Enabled:              true,
+		Readonly:             true,
+		ParametersSchemaJSON: `{"type":"object","properties":{"url":{"type":"string"},"extract_mode":{"type":"string","enum":["markdown","text","json"]}},"required":["url"]}`,
+	}
+}
+
 func cliAdminKeysFromCatalog(catalog []Tool) []string {
 	var keys []string
 	for _, t := range catalog {
@@ -130,56 +173,146 @@ func canonicalToolProfile(profile string) string {
 	}
 }
 
+// computePolicyAllowedSet merges built-in profile + ToolsAllowJSON into one set of catalog tool_key values.
+// Keys are normalized ([normalizeToolPolicyKey]) so UI aliases match platform rows uniformly.
+func computePolicyAllowedSet(profile string, allowExtra []string, catalog []Tool) map[string]bool {
+	prof := strings.TrimSpace(profile)
+	out := profileAllowSet(prof, catalog)
+	for _, key := range allowExtra {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		if strings.HasPrefix(key, "group:") {
+			for _, member := range expandToolGroup(strings.TrimPrefix(key, "group:"), catalog) {
+				out[member] = true
+			}
+			continue
+		}
+		out[normalizeToolPolicyKey(key)] = true
+	}
+	propagateAllowAliases(out)
+	return out
+}
+
+// computePolicyDenySet merges ToolsDenyJSON + optional group: entries into denied tool_key set (normalized).
+func computePolicyDenySet(denyList []string, catalog []Tool) map[string]bool {
+	out := map[string]bool{}
+	for _, key := range denyList {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		if strings.HasPrefix(key, "group:") {
+			for _, member := range expandToolGroup(strings.TrimPrefix(key, "group:"), catalog) {
+				out[member] = true
+			}
+			continue
+		}
+		out[normalizeToolPolicyKey(key)] = true
+	}
+	propagateDenyAliases(out)
+	return out
+}
+
+// computeEffectiveToolState applies one catalog row against agent policy.
+//
+// Semantics (all tools, same rules):
+//   - tools.enabled on the catalog row means "open by default": the tool may be used if the active
+//     profile gate passes and the key is not denied.
+//   - tools.enabled == false means "opt-in only": the tool is usable only if the expanded policy set
+//     (profile presets + group:* + allow JSON) explicitly names this tool_key. This supports high
+//     risk defaults (e.g. shell_exec) without per-tool code branches in callers.
+//   - Deny list and ToolsEnabled global switch override everything else.
+func computeEffectiveToolState(settings AgentRuntimeSettings, tool Tool, prof string, allowed, deny map[string]bool) (state, reason string, enabled bool) {
+	state = "denied"
+	reason = "global_disabled"
+	catalogOpenByDefault := tool.Enabled
+	policyNamesKey := allowed[tool.Key]
+	baseEnabled := settings.ToolsEnabled && (catalogOpenByDefault || policyNamesKey)
+	if baseEnabled && (prof == "" || prof == "full" || allowed[tool.Key]) {
+		state = "allowed"
+		reason = "profile:" + settings.ToolsProfile
+	}
+	if deny[tool.Key] {
+		state = "denied"
+		reason = "agent_deny"
+	}
+	if !settings.ToolsEnabled {
+		reason = "agent_tools_disabled"
+	}
+	enabled = baseEnabled && state == "allowed"
+	return state, reason, enabled
+}
+
 func buildAgentEffectiveTools(settings AgentRuntimeSettings, catalog []Tool) AgentEffectiveTools {
 	allow := jsonStringList(settings.ToolsAllowJSON)
 	deny := jsonStringList(settings.ToolsDenyJSON)
 
-	allowedSet := profileAllowSet(settings.ToolsProfile, catalog)
-	for _, key := range allow {
-		if strings.HasPrefix(key, "group:") {
-			for _, member := range expandToolGroup(strings.TrimPrefix(key, "group:"), catalog) {
-				allowedSet[member] = true
-			}
-			continue
-		}
-		allowedSet[key] = true
-	}
+	prof := strings.TrimSpace(settings.ToolsProfile)
+	allowedSet := computePolicyAllowedSet(prof, allow, catalog)
+	denySet := computePolicyDenySet(deny, catalog)
 
-	denySet := map[string]bool{}
-	for _, key := range deny {
-		if strings.HasPrefix(key, "group:") {
-			for _, member := range expandToolGroup(strings.TrimPrefix(key, "group:"), catalog) {
-				denySet[member] = true
-			}
-			continue
-		}
-		denySet[key] = true
-	}
-
-	items := make([]EffectiveAgentTool, 0, len(catalog))
+	catalogKeys := make(map[string]bool, len(catalog))
 	for _, tool := range catalog {
-		state := "denied"
-		reason := "global_disabled"
-		baseEnabled := settings.ToolsEnabled && tool.Enabled
-		if baseEnabled && (settings.ToolsProfile == "" || settings.ToolsProfile == "full" || allowedSet[tool.Key]) {
-			state = "allowed"
-			reason = "profile:" + settings.ToolsProfile
-		}
-		if denySet[tool.Key] {
-			state = "denied"
-			reason = "agent_deny"
-		}
-		if !settings.ToolsEnabled {
-			reason = "agent_tools_disabled"
-		}
+		catalogKeys[tool.Key] = true
+	}
+
+	items := make([]EffectiveAgentTool, 0, len(catalog)+3)
+	for _, tool := range catalog {
+		st, rsn, en := computeEffectiveToolState(settings, tool, prof, allowedSet, denySet)
 		items = append(items, EffectiveAgentTool{
 			ToolKey:        tool.Key,
 			DisplayName:    tool.DisplayName,
 			Category:       tool.Category,
 			Source:         tool.Source,
-			Enabled:        baseEnabled && state == "allowed",
-			EffectiveState: state,
-			Reason:         reason,
+			Enabled:        en,
+			EffectiveState: st,
+			Reason:         rsn,
+		})
+	}
+
+	const shellExecKey = "shell_exec"
+	if !catalogKeys[shellExecKey] && allowedSet[shellExecKey] {
+		syn := syntheticShellExecCatalogTool()
+		st, rsn, en := computeEffectiveToolState(settings, syn, prof, allowedSet, denySet)
+		items = append(items, EffectiveAgentTool{
+			ToolKey:        shellExecKey,
+			DisplayName:    syn.DisplayName,
+			Category:       syn.Category,
+			Source:         syn.Source,
+			Enabled:        en,
+			EffectiveState: st,
+			Reason:         rsn,
+		})
+	}
+
+	const webSearchKey = "web_search"
+	if !catalogKeys[webSearchKey] && allowedSet[webSearchKey] {
+		syn := syntheticWebSearchCatalogTool()
+		st, rsn, en := computeEffectiveToolState(settings, syn, prof, allowedSet, denySet)
+		items = append(items, EffectiveAgentTool{
+			ToolKey:        webSearchKey,
+			DisplayName:    syn.DisplayName,
+			Category:       syn.Category,
+			Source:         syn.Source,
+			Enabled:        en,
+			EffectiveState: st,
+			Reason:         rsn,
+		})
+	}
+	const webFetchKey = "web_fetch"
+	if !catalogKeys[webFetchKey] && allowedSet[webFetchKey] {
+		syn := syntheticWebFetchCatalogTool()
+		st, rsn, en := computeEffectiveToolState(settings, syn, prof, allowedSet, denySet)
+		items = append(items, EffectiveAgentTool{
+			ToolKey:        webFetchKey,
+			DisplayName:    syn.DisplayName,
+			Category:       syn.Category,
+			Source:         syn.Source,
+			Enabled:        en,
+			EffectiveState: st,
+			Reason:         rsn,
 		})
 	}
 

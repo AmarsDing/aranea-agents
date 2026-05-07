@@ -19,8 +19,6 @@ import (
 	sse "github.com/tx7do/kratos-transport/transport/sse"
 
 	_ "go.uber.org/automaxprocs"
-
-	_ "aranea-agents/internal/tools/registerstd"
 )
 
 // go build -ldflags "-X main.Version=x.y.z"

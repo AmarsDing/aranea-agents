@@ -13,6 +13,7 @@ import {
   type Session,
   type ToolUseEvent
 } from "../features/chat/api";
+import { formatToolEventMarkdown } from "../features/chat/toolEventMarkdown";
 import { createAgent, deleteAgent, listAgents, updateAgent, type Agent } from "../features/agents/api";
 
 export const useAppStore = defineStore("app", {
@@ -215,7 +216,7 @@ function toolEventMessage(sessionID: string, event: ToolUseEvent): Message {
     parent_message_id: "",
     turn_index: 0,
     role: "assistant",
-    content_markdown: toolEventMarkdown(event),
+    content_markdown: formatToolEventMarkdown(event),
     model_name: "",
     token_in: 0,
     token_out: 0,
@@ -234,14 +235,4 @@ function toolEventMessage(sessionID: string, event: ToolUseEvent): Message {
     error_message: event.error || "",
     created_at: event.occurred_at || new Date().toISOString()
   };
-}
-
-function toolEventMarkdown(event: ToolUseEvent): string {
-  const label = event.tool_label || event.tool_name;
-  const agent = event.agent_name || event.agent_key || "Agent";
-  const path = typeof event.arguments?.path === "string" ? ` \`${event.arguments.path}\`` : "";
-  if (event.status === "running") return `工具调用：${agent} 正在使用 **${label}**${path}`;
-  if (event.status === "failed" || event.status === "error" || event.status === "blocked") return `工具调用失败：${agent} 使用 **${label}**${path}\n\n${event.error || "未知错误"}`;
-  const duration = event.duration_ms ? `，耗时 ${event.duration_ms}ms` : "";
-  return `工具调用完成：${agent} 已使用 **${label}**${path}${duration}`;
 }

@@ -1,3 +1,9 @@
-// Package tools 为业务侧工具根的说明：目录下每个一级子文件夹通常对应一类工具，
-// 核心类型与装配见 internal/tools/toolapi 与 internal/tools/registerstd。
+// Package tools is the facade for callers outside this tree: ADK binding from biz effective tools.
+//
+// Layout:
+//   - registry — canonical tool_key constants, workspace + ADK builtin wiring, legacy invoke helpers
+//   - catalog — optional [catalog.Options] builder (skills, MCP, sub-agents)
+//   - read_file, list_files, write_file, edit_file — workspace tool implementations
+//   - shell_exec — host shell builtin
+//   - workspace, argmap, specs — shared helpers for builtins
 package tools

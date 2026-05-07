@@ -11,6 +11,7 @@ import {
   updateSessionTitle
 } from "../api";
 import type { ToolUseEvent } from "../api";
+import { formatToolEventMarkdown } from "../toolEventMarkdown";
 import { deleteTeam, listTeams, updateTeam } from "../../teams/api";
 import {
   listPlatformResources,
@@ -539,15 +540,15 @@ export function useChatWorkspace() {
   }
 
   function toolEventMessage(sessionID: string, event: ToolUseEvent): Message {
-    const status =
-      event.status === "running" ? "tool_running" : event.status === "failed" ? "tool_failed" : "tool_success";
+    const failed = event.status === "failed" || event.status === "error" || event.status === "blocked";
+    const status = event.status === "running" ? "tool_running" : failed ? "tool_failed" : "tool_success";
     return {
       id: `tool-${event.agent_id || event.agent_key || "agent"}-${event.id || event.tool_name}`,
       session_id: sessionID,
       parent_message_id: "",
       turn_index: 0,
       role: "assistant",
-      content_markdown: toolEventMarkdown(event),
+      content_markdown: formatToolEventMarkdown(event),
       model_name: "",
       token_in: 0,
       token_out: 0,
@@ -566,16 +567,6 @@ export function useChatWorkspace() {
       error_message: event.error || "",
       created_at: event.occurred_at || new Date().toISOString()
     };
-  }
-
-  function toolEventMarkdown(event: ToolUseEvent): string {
-    const label = event.tool_label || event.tool_name;
-    const agent = event.agent_name || event.agent_key || "Agent";
-    const path = typeof event.arguments?.path === "string" ? ` \`${event.arguments.path}\`` : "";
-    if (event.status === "running") return `工具调用：${agent} 正在使用 **${label}**${path}`;
-    if (event.status === "failed") return `工具调用失败：${agent} 使用 **${label}**${path}\n\n${event.error || "未知错误"}`;
-    const duration = event.duration_ms ? `，耗时 ${event.duration_ms}ms` : "";
-    return `工具调用完成：${agent} 已使用 **${label}**${path}${duration}`;
   }
 
   async function openSettings(kind: ChatEntityKind, id: string) {

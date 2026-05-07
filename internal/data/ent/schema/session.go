@@ -50,5 +50,7 @@ func (Session) Fields() []ent.Field {
 		field.String("updated_at").Default(""),
 		field.String("archived_at").Default(""),
 		field.String("deleted_at").Default(""),
+		// Serialized ADK session.Service state (events + KV state) for Runner; empty when legacy chat only.
+		field.Text("adk_snapshot_json").Default(""),
 	}
 }

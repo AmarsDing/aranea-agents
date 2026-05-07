@@ -39,6 +39,7 @@ type ChatService struct {
 	sessions    *biz.SessionUsecase
 	agents      biz.AgentRepository
 	agentsUC    *biz.AgentUsecase
+	toolsCatalog biz.ToolRepo
 	llmCatalog  *biz.LlmProviderModelUsecase
 }
 
@@ -51,19 +52,21 @@ func NewChatService(
 	sessions *biz.SessionUsecase,
 	agents biz.AgentRepository,
 	agentsUC *biz.AgentUsecase,
+	toolsCatalog biz.ToolRepo,
 	llmCatalog *biz.LlmProviderModelUsecase,
 ) *ChatService {
 	s := &ChatService{
-		client:      &http.Client{Timeout: 600 * time.Second},
-		llmHTTP:     &http.Client{Timeout: 300 * time.Second},
-		teamSSE:     broker,
-		teams:       teams,
-		teamsNative: teamsNative,
-		usage:       usage,
-		sessions:    sessions,
-		agents:      agents,
-		agentsUC:    agentsUC,
-		llmCatalog:  llmCatalog,
+		client:       &http.Client{Timeout: 600 * time.Second},
+		llmHTTP:      &http.Client{Timeout: 300 * time.Second},
+		teamSSE:      broker,
+		teams:        teams,
+		teamsNative:  teamsNative,
+		usage:        usage,
+		sessions:     sessions,
+		agents:       agents,
+		agentsUC:     agentsUC,
+		toolsCatalog: toolsCatalog,
+		llmCatalog:   llmCatalog,
 	}
 	s.refreshUpstream()
 	return s

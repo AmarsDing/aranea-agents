@@ -6,7 +6,6 @@ import (
 	"strings"
 	"sync"
 
-	"aranea-agents/internal/provider/deepseek"
 	"aranea-agents/internal/provider/gemini"
 	"aranea-agents/internal/provider/openai"
 )
@@ -21,13 +20,28 @@ type Registry struct {
 	fallback LLMFactory
 }
 
+// newOpenAICompatLLM builds OpenAI /chat/completions backends.
+// idForADK is used as model.LLM.Name(); ADK copies it onto LLMRequest.Model for each call,
+// so it must be the provider's real API model id when present in cc.ModelAPI (catalog row).
+// fallbackName is only used when ModelAPI is empty (misconfigured catalog).
+func newOpenAICompatLLM(rt *RoundTrip, cc CatalogConfig, fallbackName string) (LLM, error) {
+	id := strings.TrimSpace(cc.ModelAPI)
+	if id == "" {
+		id = strings.TrimSpace(fallbackName)
+	}
+	if id == "" {
+		id = "openai"
+	}
+	return openai.NewLLM(roundOrNil(rt).Client(), cc.BaseURL, cc.APIKey, openai.WithName(id)), nil
+}
+
 // NewRegistry wires OpenAI-shape and DeepSeek backends.
 func NewRegistry() *Registry {
 	oai := func(rt *RoundTrip, cc CatalogConfig) (LLM, error) {
-		return openai.NewLLM(roundOrNil(rt).Client(), cc.BaseURL, cc.APIKey), nil
+		return newOpenAICompatLLM(rt, cc, "openai")
 	}
 	dsk := func(rt *RoundTrip, cc CatalogConfig) (LLM, error) {
-		return deepseek.NewLLM(roundOrNil(rt).Client(), cc.BaseURL, cc.APIKey), nil
+		return newOpenAICompatLLM(rt, cc, "deepseek")
 	}
 	gmn := func(rt *RoundTrip, cc CatalogConfig) (LLM, error) {
 		return gemini.NewLLM(context.Background(), roundOrNil(rt).Client(), cc.APIKey, cc.BaseURL, cc.ModelAPI)

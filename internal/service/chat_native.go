@@ -189,7 +189,7 @@ func (s *ChatService) proxyNativeStream(ctx khttp.Context) error {
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
 
-	_, assistantMsg, err := s.runNativeAgentTurn(ctx, protoReq, sw)
+	_, assistantMsg, err := s.runNativeAgentTurn(req.Context(), protoReq, sw)
 	if err != nil {
 		_ = sw.writeEvent("error", map[string]string{"message": err.Error()})
 		return nil
@@ -258,34 +258,24 @@ func (s *ChatService) runNativeAgentTurn(ctx context.Context, req *chatv1.SendCh
 		attN = len(opts.Attachments)
 	}
 
-	deps := agent.Deps{
-		Agents:  s.agents,
-		AgentUC: s.agentsUC,
-		Catalog: s.llmCatalog,
-		HTTP:    s.llmHTTP,
-	}
-	tin := agent.TurnInput{
-		SessionID:        sessionID,
-		Agent:            ag,
-		UserContent:      content,
-		DialogMode:       dialogMode,
-		Provider:         prov,
-		Model:            mod,
-		AgentKeyFromReq:  strings.TrimSpace(req.GetAgentKey()),
-		AttachmentsCount: attN,
-		ContextRatio:     sess.ContextUsedRatio,
-		TeamMember:       nil,
-	}
-	var emitter agent.StreamEmitter
-	if stream != nil {
-		emitter = stream
-	}
-	return agent.ExecuteOpenAICompatTurn(ctx, deps, s.sessions, tin, emitter)
+	return s.runSingleAgentViaADK(ctx, sess, req, ag, dialogMode, prov, mod, attN, stream)
 }
 
 func (s *ChatService) hydratedAgent(ctx context.Context, agentID string) (biz.Agent, error) {
+	agentID = strings.TrimSpace(agentID)
+	if agentID == "" {
+		return biz.Agent{}, kerrors.BadRequest("CHAT_NATIVE", "agent id is required")
+	}
 	if s.agentsUC != nil {
 		return s.agentsUC.Get(ctx, agentID)
+	}
+	if s.agents == nil {
+		return biz.Agent{}, kerrors.InternalServer("CHAT_NATIVE", "agent repository not configured")
+	}
+	// Without *AgentUsecase, GetAgentByID leaves Settings nil and breaks subagent transfer + runtime cues.
+	if s.toolsCatalog != nil {
+		ephemeral := biz.NewAgentUsecase(s.agents, s.toolsCatalog)
+		return ephemeral.Get(ctx, agentID)
 	}
 	return s.agents.GetAgentByID(ctx, agentID)
 }
