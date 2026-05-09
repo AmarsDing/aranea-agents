@@ -1,5 +1,5 @@
 <template>
-  <q-splitter v-model="splitterModel" class="files-splitter">
+  <q-splitter v-model="splitterModel" class="files-splitter fit">
     <template #before>
       <q-list bordered separator class="file-list">
         <q-item v-for="file in files" :key="file.name" clickable :active="activeFile === file.name" active-class="file-item--active" class="file-item" @click="$emit('update:activeFile', file.name)">
@@ -12,8 +12,8 @@
     </template>
 
     <template #after>
-      <div class="file-editor q-pa-md">
-        <div class="row items-start justify-between q-gutter-md">
+      <div class="file-editor q-pa-md column fit">
+        <div class="row items-start justify-between q-gutter-md flex-shrink-0">
           <div>
             <div class="text-h6">{{ activeFile }}</div>
             <div class="text-caption text-grey-7">{{ activeFileMeta.caption }}</div>
@@ -25,7 +25,7 @@
           </div>
         </div>
         <q-input v-model="bodyModel" class="q-mt-md markdown-editor" outlined type="textarea" label="Markdown" />
-        <div class="file-editor__footer">Token 估算：{{ tokenEstimateFor(bodyModel) }}</div>
+        <div class="file-editor__footer flex-shrink-0">Token 估算：{{ tokenEstimateFor(bodyModel) }}</div>
       </div>
     </template>
   </q-splitter>
@@ -67,58 +67,104 @@ const bodyModel = computed({
 
 <style scoped>
 .files-splitter {
-  min-height: 650px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  border: 1px solid var(--glass-border);
   border-radius: 22px;
   overflow: hidden;
-  background: #ffffff;
-  box-shadow: 0 18px 48px rgba(16, 24, 40, 0.06);
+  background: var(--glass-surface);
+  backdrop-filter: blur(var(--glass-blur-default));
+  -webkit-backdrop-filter: blur(var(--glass-blur-default));
+  box-shadow: none;
+}
+
+.files-splitter :deep(.q-splitter__separator) {
+  background: var(--glass-border);
+}
+
+.files-splitter :deep(.q-splitter__before),
+.files-splitter :deep(.q-splitter__after) {
+  min-height: 0;
 }
 
 .file-list {
   height: 100%;
   border-radius: 0;
-  background: #f8fafc;
-  color: #344054;
-  border-color: rgba(15, 23, 42, 0.08);
+  background: var(--glass-elevated);
+  color: var(--color-text-primary);
+  border-color: var(--glass-border);
 }
 
 .file-item {
   margin: 8px;
   border-radius: 14px;
-  color: #475467;
+  color: var(--color-text-secondary);
+}
+
+.file-item:hover {
+  background: var(--glass-surface-hover);
 }
 
 .file-item--active {
-  background: #eaf3ff;
-  color: #155ebc;
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+  color: var(--color-text-primary);
   font-weight: 700;
+  box-shadow: var(--glass-inner-highlight);
 }
 
 .file-editor {
-  min-height: 650px;
-  color: #1d2939;
+  flex: 1 1 auto;
+  min-height: 0;
+  color: var(--color-text-primary);
   background:
-    radial-gradient(circle at top right, rgba(25, 118, 210, 0.08), transparent 32%),
-    #ffffff;
+    radial-gradient(circle at top right, color-mix(in srgb, var(--color-accent) 12%, transparent), transparent 42%),
+    var(--glass-surface);
+  backdrop-filter: blur(var(--glass-blur-default));
+  -webkit-backdrop-filter: blur(var(--glass-blur-default));
+}
+
+.markdown-editor {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.markdown-editor :deep(.q-field__inner) {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .markdown-editor :deep(.q-field__control) {
+  flex: 1 1 auto;
+  min-height: 120px;
   border-radius: 18px;
-  background: #fbfcff;
+  background: var(--glass-elevated);
+  box-shadow: var(--glass-inner-highlight);
 }
 
-.markdown-editor :deep(textarea) {
-  min-height: 440px;
-  color: #1d2939;
+.markdown-editor :deep(textarea.q-field__native) {
+  flex: 1 1 auto;
+  min-height: 160px;
+  color: var(--color-text-primary);
   line-height: 1.65;
   font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  resize: vertical;
 }
 
 .file-editor__footer {
   margin-top: 10px;
-  color: #667085;
+  color: var(--color-text-secondary);
   font-size: 12px;
   font-weight: 600;
+}
+
+body.body--dark .file-item--active {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--color-accent) 32%, transparent),
+    var(--glass-inner-highlight);
 }
 </style>

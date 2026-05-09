@@ -13,6 +13,8 @@
 | **第二篇** | [LLM Gateway（凝练）](#第二篇-llm-gateway-设计参考凝练) |
 | **第三篇** | [平台目标态架构全文](#第三篇-平台架构与目标态实现全文)（限界上下文、Kernel、Capability 执行链、迁移映射与附录） |
 
+**专题设计**：[会话上下文压缩](./session-context-compression.md)（长会话 LLM 摘要、`session_summaries` 与 L0 装配对齐）。
+
 ---
 
 # 第一篇 编排速查

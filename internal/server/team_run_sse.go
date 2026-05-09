@@ -17,6 +17,9 @@ func registerTeamRunSSE(srv *sse.Server, broker *biz.TeamRunEventBroker) {
 		return
 	}
 	srv.HandleFunc("/team-run-events", func(w http.ResponseWriter, r *http.Request) {
+		if !prepareSSEAccessControl(w, r) {
+			return
+		}
 		if r.Method != http.MethodGet {
 			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
 			return

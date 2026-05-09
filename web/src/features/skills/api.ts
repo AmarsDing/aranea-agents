@@ -168,6 +168,12 @@ export async function toggleSkillEnabled(id: string, enabled: boolean): Promise<
   return mapSkill(row);
 }
 
+/** POST /v1/skills/{id}/publish — 草稿 → 已发布（与 codegen 无关，避免客户端未同步时缺方法）。 */
+export async function publishSkill(id: string): Promise<Skill> {
+  const { data } = await kratosApi.post(`/v1/skills/${encodeURIComponent(id)}/publish`, {});
+  return mapSkill(data);
+}
+
 export async function duplicateSkill(id: string): Promise<Skill> {
   const row = await createSkillService().DuplicateSkill({ id });
   return mapSkill(row);

@@ -3,6 +3,7 @@ package team
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strings"
 	"time"
 
@@ -51,7 +52,7 @@ func (r *Runner) runTeamADK(ctx context.Context, sess biz.Session, req *chatv1.S
 	}
 	if r.broker != nil {
 		cp := run
-		r.broker.Publish(biz.TeamRunEvent{Type: "run_started", TeamID: teamRow.ID, RunID: run.ID, Run: &cp})
+		r.broker.Publish(biz.TeamRunEvent{Type: "run_started", TeamID: teamRow.ID, RunID: run.ID, SessionID: sess.ID, Run: &cp})
 	}
 
 	t0 := time.Now()
@@ -165,8 +166,26 @@ func (r *Runner) runTeamADK(ctx context.Context, sess biz.Session, req *chatv1.S
 	var unaryAssistants []biz.ChatMessage
 
 	var toolRelay *agent.ChatToolSSERelay
-	if streaming {
-		toolRelay = agent.NewChatToolSSERelay(stream)
+	var synthStreamReply strings.Builder
+	var synthStreamReason strings.Builder
+	mono := func(p agent.ChatToolUseSSE) {
+		if r.broker == nil {
+			return
+		}
+		typ := "tool.result"
+		if p.Phase == "before" {
+			typ = "tool.call"
+		}
+		r.broker.Publish(biz.TeamRunEvent{
+			Type:      typ,
+			TeamID:    teamRow.ID,
+			RunID:     run.ID,
+			SessionID: sess.ID,
+			Payload:   agent.ChatToolPayloadMap(p),
+		})
+	}
+	if streaming || r.broker != nil {
+		toolRelay = agent.NewChatToolSSERelay(stream, mono)
 	}
 
 	for ev, err := range rn.Run(ctx, uid, sess.ID, msg, cfg) {
@@ -181,7 +200,7 @@ func (r *Runner) runTeamADK(ctx context.Context, sess biz.Session, req *chatv1.S
 		if ev == nil {
 			continue
 		}
-		if streaming && toolRelay != nil {
+		if toolRelay != nil {
 			agEv := teamAgentForToolSSE(ev.Author, keyMeta, firstAg)
 			if agent.SessionHasFunctionResponses(ev) {
 				toolRelay.EmitToolResponses(agEv, ev)
@@ -197,11 +216,11 @@ func (r *Runner) runTeamADK(ctx context.Context, sess biz.Session, req *chatv1.S
 			auth := strings.ToLower(strings.TrimSpace(ev.Author))
 			if auth == synthKey {
 				main, rsn := provider.TextsFromLLMResponse(&ev.LLMResponse)
-				if main != "" {
-					_ = stream.Emit("delta", map[string]string{"content": main})
+				if d := provider.VisibleStreamingDelta(&synthStreamReply, main); d != "" {
+					_ = stream.Emit("delta", map[string]string{"content": d})
 				}
-				if rsn != "" {
-					_ = stream.Emit("delta", map[string]string{"reasoning_content": rsn})
+				if dr := provider.VisibleStreamingDelta(&synthStreamReason, rsn); dr != "" {
+					_ = stream.Emit("delta", map[string]string{"reasoning_content": dr})
 				}
 			}
 			continue
@@ -210,7 +229,7 @@ func (r *Runner) runTeamADK(ctx context.Context, sess biz.Session, req *chatv1.S
 			continue
 		}
 		auth := strings.ToLower(strings.TrimSpace(ev.Author))
-		if streaming && toolRelay != nil && agent.SessionHasFunctionCalls(ev) {
+		if toolRelay != nil && agent.SessionHasFunctionCalls(ev) {
 			agEv := teamAgentForToolSSE(ev.Author, keyMeta, firstAg)
 			toolRelay.EmitToolCalls(agEv, ev)
 		}
@@ -291,9 +310,27 @@ func (r *Runner) runTeamADK(ctx context.Context, sess biz.Session, req *chatv1.S
 	run.OutputPreview = preview(assistantMsg.ContentMarkdown, 512)
 	run.FinishedAt = agent.RFC3339Now()
 	_ = r.teams.UpdateTeamRun(ctx, run)
+
+	win := firstAg.ContextWindow
+	if win <= 0 {
+		win = 128000
+	}
+	promptTok := totalIn
+	completionTok := totalOut
+	if promptTok <= 0 && strings.TrimSpace(assistantMsg.ContentMarkdown) != "" {
+		promptTok = agent.RoughTokenEstimate(content + assistantMsg.ContentMarkdown)
+	}
+	if completionTok <= 0 && strings.TrimSpace(assistantMsg.ContentMarkdown) != "" {
+		completionTok = agent.RoughTokenEstimate(assistantMsg.ContentMarkdown)
+	}
+	_ = r.sessions.UpdateSessionContextFromLLMUsage(ctx, sess.ID, promptTok, completionTok, win)
+	if r.compress != nil {
+		r.compress.AfterNativeTurn(ctx, sess.ID, firstAg)
+	}
+
 	if r.broker != nil {
 		cp := run
-		r.broker.Publish(biz.TeamRunEvent{Type: "run_finished", TeamID: teamRow.ID, RunID: run.ID, Run: &cp})
+		r.broker.Publish(biz.TeamRunEvent{Type: "run_finished", TeamID: teamRow.ID, RunID: run.ID, SessionID: sess.ID, Run: &cp})
 	}
 	biz.HintTeamRunSSE(ctx, r.broker, r.teams, teamRow.ID)
 	return userMsg, assistantMsg, nil
@@ -346,7 +383,7 @@ func (r *Runner) persistStep(ctx context.Context, run biz.TeamRun, teamID string
 		return
 	}
 	if r.broker != nil {
-		r.broker.Publish(biz.TeamRunEvent{Type: "step_finished", TeamID: teamID, RunID: run.ID, Step: &saved})
+		r.broker.Publish(biz.TeamRunEvent{Type: "step_finished", TeamID: teamID, RunID: run.ID, SessionID: run.SessionID, Step: &saved})
 	}
 }
 
@@ -361,6 +398,25 @@ func (r *Runner) finishRunErr(ctx context.Context, run *biz.TeamRun, t0 time.Tim
 	_ = r.teams.UpdateTeamRun(ctx, *run)
 	if r.broker != nil {
 		cp := *run
-		r.broker.Publish(biz.TeamRunEvent{Type: "run_finished", TeamID: run.TeamID, RunID: run.ID, Run: &cp})
+		r.broker.Publish(biz.TeamRunEvent{
+			Type:      "run_finished",
+			TeamID:    run.TeamID,
+			RunID:     run.ID,
+			SessionID: strings.TrimSpace(run.SessionID),
+			Run:       &cp,
+		})
+		r.broker.Publish(biz.TeamRunEvent{
+			Type:      "run.failed",
+			TeamID:    run.TeamID,
+			RunID:     run.ID,
+			SessionID: strings.TrimSpace(run.SessionID),
+			Run:       &cp,
+			Payload: map[string]any{
+				"error_message": msg,
+			},
+		})
+	}
+	if r.monitorLogs != nil {
+		r.monitorLogs.Publish(ctx, "WARN", fmt.Sprintf("team_run failed team_id=%s run_id=%s session_id=%s: %s", run.TeamID, run.ID, strings.TrimSpace(run.SessionID), msg), "team-runner")
 	}
 }

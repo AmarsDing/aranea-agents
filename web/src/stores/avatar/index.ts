@@ -31,7 +31,16 @@ export const useAvatarCatalogStore = defineStore("avatarCatalog", {
       this.pickerMine = mine;
       this.pickerLoaded = true;
     },
-    /** 拉取并写入缩略图缓存（幂等：已有 key 则跳过） */
+    /** 丢弃缩略图缓存项（用于路由切换后强制重拉，或清理错误写入的空串缓存） */
+    forgetThumbnail(rawId: string) {
+      const trimmed = String(rawId || "").trim();
+      if (!trimmed) return;
+      if (!Object.prototype.hasOwnProperty.call(this.thumbnailById, trimmed)) return;
+      const next = { ...this.thumbnailById };
+      delete next[trimmed];
+      this.thumbnailById = next;
+    },
+    /** 拉取并写入缩略图缓存（幂等：已有 key 则跳过，含空串表示已请求过） */
     async ensureThumbnail(rawId: string) {
       const trimmed = String(rawId || "").trim();
       if (!trimmed || /^(https?:|data:|blob:)/i.test(trimmed)) return;
@@ -49,6 +58,8 @@ export const useAvatarCatalogStore = defineStore("avatarCatalog", {
     async uploadAvatarFromFile(file: File): Promise<AvatarAsset> {
       const asset = await uploadAvatarAsset(file);
       this.mergeUploaded(asset);
+      this.forgetThumbnail(asset.id);
+      await this.ensureThumbnail(asset.id);
       return asset;
     },
     invalidateAll() {

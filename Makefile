@@ -1,12 +1,19 @@
 GOHOSTOS:=$(shell go env GOHOSTOS)
 GOEXE:=$(shell go env GOEXE)
 GOPATH:=$(shell go env GOPATH)
+GOBIN_RAW:=$(shell go env GOBIN)
 # Use / so Make wildcard and protoc --plugin see a consistent path on Windows.
 GOPATH_NORM:=$(subst \,/,$(GOPATH))
+# go install puts binaries in GOBIN when set; otherwise GOPATH/bin.
+ifeq ($(strip $(GOBIN_RAW)),)
+GO_BIN_DIR:=$(GOPATH_NORM)/bin
+else
+GO_BIN_DIR:=$(subst \,/,$(GOBIN_RAW))
+endif
 VERSION=$(shell git describe --tags --always)
 
 # Explicit plugin path: Windows protoc often does not see Cygwin/MSYS PATH for protoc-gen-*.
-PROTOC_GEN_TYPESCRIPT_HTTP:=$(GOPATH_NORM)/bin/protoc-gen-typescript-http$(GOEXE)
+PROTOC_GEN_TYPESCRIPT_HTTP:=$(GO_BIN_DIR)/protoc-gen-typescript-http$(GOEXE)
 # Optional TypeScript emit from api/*.proto (empty = auto: on if plugin exists). Set SKIP_API_TS=1 to force off.
 API_TS_PLUGIN_ARGS:=
 ifeq ($(SKIP_API_TS),)
@@ -68,8 +75,8 @@ generate:
 	go generate ./...
 	go mod tidy
 
-# dependency injection (use GOPATH bin so an older wire.exe on PATH — e.g. under GOROOT — does not shadow)
-WIRE := $(GOPATH_NORM)/bin/wire$(GOEXE)
+# dependency injection (use go-install bin dir so an older wire.exe on PATH — e.g. under GOROOT — does not shadow)
+WIRE := $(GO_BIN_DIR)/wire$(GOEXE)
 
 .PHONY: wire-admin
 wire-admin:

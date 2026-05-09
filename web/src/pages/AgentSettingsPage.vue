@@ -1,6 +1,6 @@
 <template>
-  <q-page class="agent-settings">
-    <q-card flat bordered class="settings-shell">
+  <q-page :class="['agent-settings', { 'agent-settings--files-fill': tab === 'files' }]">
+    <q-card flat bordered :class="['settings-shell', { 'settings-shell--fill': tab === 'files' }]">
       <agent-settings-header
         :agent="form"
         :self-evolve="config.self_evolve"
@@ -13,7 +13,7 @@
         @save="saveAgent"
       />
       <q-separator />
-      <q-tabs v-model="tab" dense align="left" class="agent-settings-tabs" active-color="primary" indicator-color="primary" :breakpoint="0">
+      <q-tabs v-model="tab" dense align="left" class="agent-settings-tabs" :breakpoint="0">
         <q-tab name="agent" label="Agent" />
         <q-tab name="memory" label="记忆" />
         <q-tab name="files" label="文件" />
@@ -347,7 +347,7 @@
           </div>
         </q-tab-panel>
 
-        <q-tab-panel name="files">
+        <q-tab-panel name="files" class="settings-tab-panel-fill">
           <agent-files-panel
             v-model:active-file="activeFile"
             v-model:splitter="fileSplitter"
@@ -374,10 +374,13 @@
                     控制本会话中 ADK 可见的已发布 Skill：Agent 白名单/黑名单、必选标签，以及是否根据用户话术做意图收窄（详见仓库文档「20 skill struct design」十三′）。
                   </div>
                 </div>
-                <q-btn outline rounded dense color="primary" label="恢复默认" @click="resetSkillRuntimeDefaults" />
+                <div class="row q-gutter-sm">
+                  <q-btn outline rounded dense color="primary" label="刷新 Skill 列表" :loading="loadingSkillSlugs" @click="loadSkillSlugOptions" />
+                  <q-btn outline rounded dense color="primary" label="恢复默认" @click="resetSkillRuntimeDefaults" />
+                </div>
               </div>
               <q-banner rounded class="q-mb-md settings-info-banner">
-                留空「允许的 slug」表示不按 slug 白名单过滤；「意图收窄」开启后，仅对与话术匹配的 taxonomy / 关键词相关的 Skill 并集挂载（可减少无关工具）。
+                留空「允许的 slug」表示不按 slug 白名单过滤；「意图收窄」开启后，仅对与话术匹配的 taxonomy / 关键词相关的 Skill 并集挂载（可减少无关工具）。运行时只会挂载<strong>已发布且已启用</strong>的平台 Skill；草稿仅便于在此勾选 slug，需先到 Skill 管理发布并启用。
               </q-banner>
               <div class="row q-col-gutter-md">
                 <div class="col-12 col-lg-6">
@@ -418,7 +421,9 @@
                   <q-card flat bordered class="capability-card">
                     <q-card-section>
                       <div class="text-subtitle2 q-mb-xs">slug 与标签（层 A）</div>
-                      <div class="text-caption text-grey-7 q-mb-sm">标签 token 写入 Skill 元数据的标签名（如 file_type:xlsx），多项为「同时满足」。</div>
+                      <div class="text-caption text-grey-7 q-mb-sm">
+                        标签 token 写入 Skill 元数据的标签名（如 file_type:xlsx），多项为「同时满足」。允许与拒绝同一 slug 互斥：在一侧添加会从另一侧去掉同名项；若历史配置两侧重叠，载入/保存时会按运行时规则以<strong>拒绝优先</strong>规整。
+                      </div>
                       <q-select
                         v-model="config.skillRuntime.allowed_slugs"
                         class="q-mb-sm"
@@ -429,8 +434,13 @@
                         use-input
                         new-value-mode="add-unique"
                         input-debounce="0"
+                        :options="skillSlugOptions"
+                        option-label="label"
+                        option-value="value"
+                        emit-value
+                        map-options
                         label="允许的 Skill slug（skill_key）"
-                        hint="留空 = 不启用 slug 白名单"
+                        hint="从平台 Skill 勾选或手动输入；留空 = 不启用 slug 白名单。与「拒绝」互斥：此处勾选会从拒绝列表移除同名 slug。"
                       />
                       <q-select
                         v-model="config.skillRuntime.denied_slugs"
@@ -442,7 +452,13 @@
                         use-input
                         new-value-mode="add-unique"
                         input-debounce="0"
+                        :options="skillSlugOptions"
+                        option-label="label"
+                        option-value="value"
+                        emit-value
+                        map-options
                         label="拒绝的 Skill slug"
+                        hint="与「允许」互斥：此处勾选会从允许列表移除同名 slug。"
                       />
                       <q-select
                         v-model="config.skillRuntime.allowed_tags"
@@ -520,7 +536,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { computed, nextTick, onMounted, reactive, ref, watch } from "vue";
 import { copyToClipboard, useQuasar } from "quasar";
 import { useRoute, useRouter } from "vue-router";
 import { storeToRefs } from "pinia";
@@ -540,13 +556,17 @@ import {
   type PromptMode
 } from "../components/agents/agentUi";
 import { listPlatformResources, type PlatformResource } from "../features/platform/api";
+import { listSkills } from "../features/skills/api";
 import { listTools } from "../features/tools/api";
+import { isAvatarAssetRef } from "../features/avatar/iconModel";
 import { useAppStore } from "../stores/app";
+import { useAvatarCatalogStore } from "../stores/avatar";
 
 const $q = useQuasar();
 const route = useRoute();
 const router = useRouter();
 const store = useAppStore();
+const avatarCatalogStore = useAvatarCatalogStore();
 const detailStore = useAgentDetailStore();
 const { saving } = storeToRefs(detailStore);
 const tab = ref("agent");
@@ -749,6 +769,10 @@ const defaultNativeToolKeys = [
 const catalogTools = ref<{ key: string; display_name: string }[]>([]);
 const loadingCatalogTools = ref(false);
 
+/** 平台 Skill 下拉：名称 + slug + 状态（Agent 策略仍存 slug 列表）。 */
+const skillSlugOptions = ref<{ label: string; value: string }[]>([]);
+const loadingSkillSlugs = ref(false);
+
 async function loadCatalogTools() {
   loadingCatalogTools.value = true;
   try {
@@ -760,6 +784,31 @@ async function loadCatalogTools() {
     catalogTools.value = [];
   } finally {
     loadingCatalogTools.value = false;
+  }
+}
+
+async function loadSkillSlugOptions() {
+  loadingSkillSlugs.value = true;
+  try {
+    const data = await listSkills({ page: 1, page_size: 500 });
+    const seen = new Set<string>();
+    const next: { label: string; value: string }[] = [];
+    for (const s of data.items) {
+      const slug = String(s.slug ?? "").trim();
+      if (!slug || seen.has(slug)) continue;
+      seen.add(slug);
+      const statusTip =
+        s.status === "published" ? "已发布" : s.status === "draft" ? "草稿" : s.status === "archived" ? "已归档" : s.status;
+      next.push({
+        label: `${s.name || slug} · ${slug} · ${statusTip}`,
+        value: slug
+      });
+    }
+    skillSlugOptions.value = next;
+  } catch {
+    skillSlugOptions.value = [];
+  } finally {
+    loadingSkillSlugs.value = false;
   }
 }
 
@@ -798,6 +847,37 @@ const truncateStrategyOptions = ["summary", "drop_oldest", "drop_tool_results", 
 const snapshotModeOptions = ["always", "on_warning", "off"].map((value) => ({ label: value, value }));
 const memoryScopeOptions = ["agent", "user", "team", "workspace", "global"].map((value) => ({ label: value, value }));
 
+/** 打开设置页时强制预热缩略图（支持 icon 为 asset id 或 asset_key） */
+async function primeAvatarThumbnailCacheForAgentIcon() {
+  const raw = String(form.icon ?? "").trim();
+  if (!raw || /^(https?:|data:|blob:)/i.test(raw)) return;
+  let fetchId = raw;
+  if (!isAvatarAssetRef(raw)) {
+    await avatarCatalogStore.ensureAgentsCatalog();
+    const hit = avatarCatalogStore.agentsCatalog.find((a) => a.id === raw || (a.key && a.key === raw));
+    if (!hit?.id) return;
+    fetchId = hit.id;
+  }
+  avatarCatalogStore.forgetThumbnail(fetchId);
+  await avatarCatalogStore.ensureThumbnail(fetchId);
+}
+
+async function applyLoadedAgent(agent: Agent | null | undefined) {
+  if (!agent?.id) {
+    $q.notify({ type: "warning", message: "未找到该 Agent" });
+    router.back();
+    return false;
+  }
+  Object.assign(form, agent);
+  hydrateSettings(agent);
+  store.upsertAgent(agent);
+  snapshotFiles();
+  previewMode.value = (form.system_prompt_mode as PromptMode) || "complete";
+  await loadPromptPreview();
+  await primeAvatarThumbnailCacheForAgentIcon();
+  return true;
+}
+
 onMounted(async () => {
   const id = String(route.params.id ?? "").trim();
   if (!id) {
@@ -806,23 +886,32 @@ onMounted(async () => {
     return;
   }
   try {
-    const [agent] = await Promise.all([detailStore.fetchById(id), loadProviderModels(), loadCatalogTools()]);
-    if (!agent?.id) {
-      $q.notify({ type: "warning", message: "未找到该 Agent" });
-      router.back();
-      return;
-    }
-    Object.assign(form, agent);
-    hydrateSettings(agent);
-    store.upsertAgent(agent);
-    snapshotFiles();
-    previewMode.value = (form.system_prompt_mode as PromptMode) || "complete";
-    await loadPromptPreview();
+    const [agent] = await Promise.all([
+      detailStore.fetchById(id),
+      loadProviderModels(),
+      loadCatalogTools(),
+      loadSkillSlugOptions()
+    ]);
+    await applyLoadedAgent(agent);
   } catch (e) {
     $q.notify({ type: "negative", message: e instanceof Error ? e.message : "加载 Agent 失败" });
     router.back();
   }
 });
+
+watch(
+  () => String(route.params.id ?? "").trim(),
+  async (newId, prevId) => {
+    if (!newId || newId === prevId) return;
+    try {
+      const agent = await detailStore.fetchById(newId);
+      await applyLoadedAgent(agent);
+    } catch (e) {
+      $q.notify({ type: "negative", message: e instanceof Error ? e.message : "加载 Agent 失败" });
+      router.back();
+    }
+  }
+);
 
 watch(previewMode, () => void loadPromptPreview());
 watch(
@@ -837,6 +926,57 @@ watch(
   (value) => {
     config.self_evolve = value;
   }
+);
+
+/** Skill slug 比较规则（与后端 Layer A 一致：小写 + trim） */
+function normSkillSlug(s: string): string {
+  return String(s ?? "").trim().toLowerCase();
+}
+
+/** 与运行时一致：拒绝列表优先，去掉与白名单重叠项后再去掉多余的拒绝项，保证两侧无交集 */
+function reconcileSkillSlugListsDenyWins() {
+  const rt = config.skillRuntime;
+  const denySet = new Set(rt.denied_slugs.map(normSkillSlug).filter(Boolean));
+  rt.allowed_slugs = rt.allowed_slugs.filter((a) => !denySet.has(normSkillSlug(a)));
+  const allowSet = new Set(rt.allowed_slugs.map(normSkillSlug).filter(Boolean));
+  rt.denied_slugs = rt.denied_slugs.filter((d) => !allowSet.has(normSkillSlug(d)));
+}
+
+/** 编辑中双向同步时抑制循环触发 */
+const skillSlugListsSyncing = ref(false);
+
+watch(
+  () => config.skillRuntime.allowed_slugs,
+  (allowed) => {
+    if (skillSlugListsSyncing.value) return;
+    skillSlugListsSyncing.value = true;
+    try {
+      const allowSet = new Set((allowed ?? []).map(normSkillSlug).filter(Boolean));
+      config.skillRuntime.denied_slugs = config.skillRuntime.denied_slugs.filter((d) => !allowSet.has(normSkillSlug(d)));
+    } finally {
+      void nextTick(() => {
+        skillSlugListsSyncing.value = false;
+      });
+    }
+  },
+  { deep: true }
+);
+
+watch(
+  () => config.skillRuntime.denied_slugs,
+  (denied) => {
+    if (skillSlugListsSyncing.value) return;
+    skillSlugListsSyncing.value = true;
+    try {
+      const denySet = new Set((denied ?? []).map(normSkillSlug).filter(Boolean));
+      config.skillRuntime.allowed_slugs = config.skillRuntime.allowed_slugs.filter((a) => !denySet.has(normSkillSlug(a)));
+    } finally {
+      void nextTick(() => {
+        skillSlugListsSyncing.value = false;
+      });
+    }
+  },
+  { deep: true }
 );
 
 function parseSkillRuntimeForm(raw?: string) {
@@ -877,6 +1017,14 @@ function normalizeSkillRuntimeState() {
   for (const key of ["allowed_slugs", "denied_slugs", "allowed_tags"] as const) {
     if (!Array.isArray(rt[key])) rt[key] = [];
     rt[key] = rt[key].map((x) => String(x).trim()).filter(Boolean);
+  }
+  skillSlugListsSyncing.value = true;
+  try {
+    reconcileSkillSlugListsDenyWins();
+  } finally {
+    void nextTick(() => {
+      skillSlugListsSyncing.value = false;
+    });
   }
 }
 
@@ -1075,6 +1223,7 @@ async function saveAgent() {
     store.upsertAgent(updated);
     snapshotFiles();
     await loadPromptPreview();
+    await primeAvatarThumbnailCacheForAgentIcon();
     $q.notify({ type: "positive", message: "已保存" });
   } catch (e) {
     $q.notify({ type: "negative", message: e instanceof Error ? e.message : "保存失败" });
@@ -1271,10 +1420,18 @@ async function copyKey() {
 
 <style scoped>
 .agent-settings {
+  display: flex;
+  flex-direction: column;
   min-height: 100%;
   padding: 28px;
   background: var(--canvas-base);
   color: var(--color-text-primary);
+}
+
+.agent-settings--files-fill {
+  flex: 1 1 auto;
+  min-height: calc(100vh - 52px);
+  min-height: calc(100dvh - 52px);
 }
 
 .settings-shell,
@@ -1284,7 +1441,7 @@ async function copyKey() {
 
 .agent-settings-tabs {
   padding: 8px 16px 0;
-  background: var(--glass-surface);
+  background: var(--nav-bg-light, var(--glass-surface));
   backdrop-filter: blur(var(--glass-blur-default));
   -webkit-backdrop-filter: blur(var(--glass-blur-default));
 }
@@ -1322,6 +1479,32 @@ async function copyKey() {
   overflow: hidden;
   backdrop-filter: blur(var(--glass-blur-default));
   -webkit-backdrop-filter: blur(var(--glass-blur-default));
+}
+
+.settings-shell--fill {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: calc(100vh - 192px);
+  height: calc(100dvh - 192px);
+  max-height: calc(100vh - 192px);
+  max-height: calc(100dvh - 192px);
+  overflow: hidden;
+}
+
+.settings-shell--fill .settings-panels {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-shell--fill .settings-panels :deep(.q-tab-panel.settings-tab-panel-fill) {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .settings-grid {
@@ -1455,7 +1638,9 @@ body.body--dark .settings-shell {
 }
 
 body.body--dark .agent-settings-tabs {
-  background: var(--glass-surface);
+  background: var(--nav-bg-dark, var(--glass-surface));
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
 }
 
 body.body--dark .agent-settings-tabs :deep(.q-tab--active) {

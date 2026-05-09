@@ -22,20 +22,11 @@ var (
 
 const monitorLogsStreamID sse.StreamID = "monitor-logs"
 
-// monitorLogLine JSON mirrors legacy transport monitor_log_line / frontend MonitorLogLine.
-type monitorLogLine struct {
-	ID        string `json:"id"`
-	Time      string `json:"time"`
-	Level     string `json:"level"`
-	Message   string `json:"message"`
-	Source    string `json:"source"`
-	CreatedAt string `json:"created_at"`
-}
-
 // NewSSEServer 使用 tx7do/kratos-transport/transport/sse，独立监听（与 Kratos HTTP 不同端口）。
 // 注册命名流 monitorLogsStreamID，使用 CreateStream + Publish；HandleFunc 包装 /monitor/logs/stream 并注入 stream 查询参数后交给内置 ServeHTTP。
+// monitorLogs 绑定后，运维文本行经 biz.MonitorLogBroker.Publish 进入 Logs SSE（event: log）。
 // 配置来自 internal/conf/conf.proto 中 Server.sse。
-func NewSSEServer(c *conf.Server, teamRunEvents *biz.TeamRunEventBroker) *sse.Server {
+func NewSSEServer(c *conf.Server, teamRunEvents *biz.TeamRunEventBroker, monitorLogs *biz.MonitorLogBroker) *sse.Server {
 	if c == nil || c.GetSse() == nil || !c.GetSse().GetEnable() {
 		return nil
 	}
@@ -74,8 +65,12 @@ func NewSSEServer(c *conf.Server, teamRunEvents *biz.TeamRunEventBroker) *sse.Se
 	registerTeamRunSSE(srv, teamRunEvents)
 
 	ctx := context.Background()
-	publishMonitorLogLine(ctx, srv, "sse-connected", "INFO",
-		"monitor SSE stream ready (tx7do); no tail/process source configured", false)
+	if monitorLogs != nil {
+		monitorLogs.SetPublisher(func(c context.Context, line biz.MonitorLogLine) {
+			publishBrokerMonitorLine(c, srv, line)
+		})
+		monitorLogs.Publish(ctx, "INFO", "monitor SSE stream ready (tx7do/kratos-transport); operational lines use MonitorLogBroker.Publish", "monitor-sse")
+	}
 
 	go monitorLogsHeartbeatLoop(ctx, srv)
 
@@ -84,6 +79,9 @@ func NewSSEServer(c *conf.Server, teamRunEvents *biz.TeamRunEventBroker) *sse.Se
 
 func registerMonitorLogSSE(srv *sse.Server) {
 	srv.HandleFunc("/monitor/logs/stream", func(w http.ResponseWriter, r *http.Request) {
+		if !prepareSSEAccessControl(w, r) {
+			return
+		}
 		if r.Method != http.MethodGet {
 			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
 			return
@@ -96,21 +94,9 @@ func registerMonitorLogSSE(srv *sse.Server) {
 	})
 }
 
-func publishMonitorLogLine(ctx context.Context, srv *sse.Server, id, level, message string, notConfigured bool) {
+func publishBrokerMonitorLine(ctx context.Context, srv *sse.Server, line biz.MonitorLogLine) {
 	if srv == nil {
 		return
-	}
-	now := time.Now().UTC().Format(time.RFC3339)
-	line := monitorLogLine{
-		ID:        id,
-		Time:      now,
-		Level:     level,
-		Message:   message,
-		Source:    "monitor-sse",
-		CreatedAt: now,
-	}
-	if notConfigured {
-		line.Message = "structured monitor APIs are available; process log streaming is not configured"
 	}
 	raw, err := json.Marshal(line)
 	if err != nil {

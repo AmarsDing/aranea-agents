@@ -62,6 +62,19 @@
 
     <template #body-cell-actions="props">
       <q-td :props="props" class="q-gutter-xs">
+        <q-btn
+          v-if="props.row.status === 'draft'"
+          flat
+          dense
+          round
+          color="positive"
+          icon="publish"
+          :disable="!props.row.permissions.can_edit || publishingId === props.row.id"
+          :loading="publishingId === props.row.id"
+          @click="emit('publish', props.row)"
+        >
+          <q-tooltip>发布（发布后才能在运行时挂载并启用）</q-tooltip>
+        </q-btn>
         <q-btn flat dense round color="primary" icon="edit" :disable="!props.row.permissions.can_edit" @click="emit('edit', props.row)">
           <q-tooltip>编辑 Skill 文件</q-tooltip>
         </q-btn>
@@ -82,10 +95,13 @@ defineProps<{
   rows: Skill[];
   loading: boolean;
   togglingId?: string;
+  /** 正在调用发布的 skill id，用于按钮 loading */
+  publishingId?: string;
 }>();
 
 const emit = defineEmits<{
   "toggle-enabled": [skill: Skill, enabled: boolean];
+  publish: [skill: Skill];
   edit: [skill: Skill];
   delete: [skill: Skill];
 }>();

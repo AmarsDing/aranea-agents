@@ -14,15 +14,10 @@
       <q-card-section class="create-agent-card__body">
         <div class="create-agent-layout row q-col-gutter-lg">
           <div class="col-12 col-md-auto column items-center avatar-column">
-            <agent-avatar-q
-              size="104px"
-              avatar-class="cursor-pointer avatar-picker"
-              :icon="form.icon"
-              :alt="form.display_name || 'Agent avatar'"
-              @click="avatarPickerOpen = true"
-            >
+            <div class="avatar-picker-hit cursor-pointer" @click="avatarPickerOpen = true">
+              <agent-avatar-q size="104px" avatar-class="avatar-picker" :icon="form.icon" :alt="form.display_name || 'Agent avatar'" />
               <q-tooltip>选择头像</q-tooltip>
-            </agent-avatar-q>
+            </div>
             <q-btn class="avatar-change-btn q-mt-md" outline rounded color="primary" icon="photo_library" label="选择头像" @click="avatarPickerOpen = true" />
             <div class="avatar-column__hint">从数据库内置头像选择，或上传图片。</div>
           </div>
@@ -206,6 +201,11 @@ const avatarPickerOpen = ref(false);
     linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(248, 250, 252, 0.92)),
     radial-gradient(circle at top, rgba(25, 118, 210, 0.1), transparent 54%);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.avatar-picker-hit {
+  display: inline-block;
+  line-height: 0;
 }
 
 .avatar-picker {

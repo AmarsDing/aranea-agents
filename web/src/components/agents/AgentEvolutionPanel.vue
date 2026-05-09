@@ -16,7 +16,7 @@
           <q-item-section side><q-toggle v-model="evolution[item.key]" color="primary" /></q-item-section>
         </q-item>
       </q-list>
-      <q-banner rounded class="bg-blue-1 text-blue-10 q-mt-md">
+      <q-banner rounded class="evolution-info-banner q-mt-md">
         仅允许进化 SOUL.md 中的沟通风格与语调；身份、核心目的、AGENTS* 操作规则保持锁定。
       </q-banner>
     </section>
@@ -104,12 +104,12 @@ const metricCards = [
 
 .settings-section {
   padding: 20px;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 22px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(255, 255, 255, 0.92)),
-    radial-gradient(circle at top right, rgba(25, 118, 210, 0.06), transparent 32%);
-  box-shadow: 0 14px 36px rgba(16, 24, 40, 0.045);
+  border: 1px solid var(--glass-border);
+  border-radius: 24px;
+  background: var(--glass-surface);
+  backdrop-filter: blur(var(--glass-blur-default));
+  -webkit-backdrop-filter: blur(var(--glass-blur-default));
+  box-shadow: none;
 }
 
 .section-title-row {
@@ -119,11 +119,20 @@ const metricCards = [
   margin-bottom: 14px;
 }
 
+.evolution-info-banner {
+  border: 1px solid var(--glass-border);
+  background: var(--glass-elevated);
+  color: var(--color-text-primary);
+  box-shadow: var(--glass-inner-highlight);
+}
+
 .evolution-list {
-  border: 1px solid rgba(15, 23, 42, 0.06);
+  border: 1px solid var(--glass-border);
   border-radius: 16px;
   overflow: hidden;
-  background: #fbfcff;
+  background: var(--glass-elevated);
+  backdrop-filter: blur(var(--glass-blur-default));
+  -webkit-backdrop-filter: blur(var(--glass-blur-default));
 }
 
 .evolution-item {
@@ -132,23 +141,40 @@ const metricCards = [
 
 .metric-empty {
   min-height: 136px;
-  border-color: rgba(15, 23, 42, 0.08);
+  border-color: var(--glass-border);
   border-radius: 18px;
-  background: linear-gradient(180deg, #ffffff, #fbfcff);
+  background: var(--glass-elevated);
+  backdrop-filter: blur(var(--glass-blur-default));
+  -webkit-backdrop-filter: blur(var(--glass-blur-default));
+  box-shadow: none;
   transition:
     transform 180ms ease,
-    box-shadow 180ms ease,
-    border-color 180ms ease;
+    border-color 180ms ease,
+    background 180ms ease;
 }
 
 .metric-empty:hover {
   transform: translateY(-2px);
-  border-color: rgba(25, 118, 210, 0.24);
-  box-shadow: 0 16px 34px rgba(16, 24, 40, 0.08);
+  border-color: var(--glass-border-hover, var(--glass-border));
+  background: var(--glass-surface-hover);
 }
 
 .guardrails-section {
-  border-color: rgba(34, 197, 94, 0.18);
-  background: linear-gradient(135deg, #f7fff8, #ffffff);
+  border-color: color-mix(in srgb, var(--color-success) 28%, var(--glass-border));
+  background: color-mix(in srgb, var(--color-success) 9%, var(--glass-surface));
+}
+
+body.body--dark .settings-section {
+  box-shadow: none;
+}
+
+body.body--dark .evolution-info-banner {
+  background: var(--glass-elevated);
+  border-color: var(--glass-border);
+}
+
+body.body--dark .guardrails-section {
+  border-color: color-mix(in srgb, var(--color-success) 35%, var(--glass-border));
+  background: color-mix(in srgb, var(--color-success) 12%, var(--glass-surface));
 }
 </style>

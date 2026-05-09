@@ -48,7 +48,7 @@ func openAICompatToContents(msgs []OpenAICompatMessage) []*genai.Content {
 }
 
 // CallOpenAICompatChat uses ADK-style model.LLM.GenerateContent (non-stream).
-func CallOpenAICompatChat(ctx context.Context, hc *http.Client, cfg providerAPIConfig, model string, messages []OpenAICompatMessage) (text string, reasoning string, promptTok, completionTok int, err error) {
+func CallOpenAICompatChat(ctx context.Context, hc *http.Client, cfg ProviderAPIConfig, model string, messages []OpenAICompatMessage) (text string, reasoning string, promptTok, completionTok int, err error) {
 	cc := provider.CatalogFromEndpoints(cfg.ProviderType, cfg.APIBaseURL, cfg.APIKey)
 	llm, err := provider.DefaultRegistry().Resolve(cc, &provider.RoundTrip{HTTP: hc})
 	if err != nil {
@@ -77,7 +77,7 @@ func CallOpenAICompatChat(ctx context.Context, hc *http.Client, cfg providerAPIC
 }
 
 // CallOpenAICompatChatStream uses model.LLM.GenerateContent with stream=true (SSE), forwarding text deltas.
-func CallOpenAICompatChatStream(ctx context.Context, hc *http.Client, cfg providerAPIConfig, model string, messages []OpenAICompatMessage, onDelta func(piece string) error) (fullText string, reasoningText string, promptTok, completionTok int, err error) {
+func CallOpenAICompatChatStream(ctx context.Context, hc *http.Client, cfg ProviderAPIConfig, model string, messages []OpenAICompatMessage, onDelta func(piece string) error) (fullText string, reasoningText string, promptTok, completionTok int, err error) {
 	cc := provider.CatalogFromEndpoints(cfg.ProviderType, cfg.APIBaseURL, cfg.APIKey)
 	llm, err := provider.DefaultRegistry().Resolve(cc, &provider.RoundTrip{HTTP: hc})
 	if err != nil {

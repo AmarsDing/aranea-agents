@@ -550,6 +550,32 @@ func (r *sessionRepo) UpdateSessionContextFromLLMUsage(ctx context.Context, sess
 	return err
 }
 
+func (r *sessionRepo) UpdateSessionContextAfterCompression(ctx context.Context, sessionID string, estimatedPromptTokens int, contextWindow int) error {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return errors.New("session id is required")
+	}
+	if contextWindow <= 0 {
+		contextWindow = 128000
+	}
+	tok := estimatedPromptTokens
+	if tok < 0 {
+		tok = 0
+	}
+	ratio := float64(tok) / float64(contextWindow)
+	if ratio > 1 {
+		ratio = 1
+	}
+	_, err := r.data.entClient.Session.Update().
+		Where(entsession.IDEQ(sessionID), entsession.DeletedAtEQ("")).
+		SetContextUsedTokens(tok).
+		SetContextUsedRatio(ratio).
+		SetContextStatus(contextStatusForRatio(ratio)).
+		SetUpdatedAt(nowRFC3339()).
+		Save(ctx)
+	return err
+}
+
 func (r *sessionRepo) AppendChatTurn(ctx context.Context, sessionID string, user, assistant biz.ChatMessage) error {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {

@@ -113,6 +113,8 @@ export type TeamRunEvent = {
   type: string;
   team_id: string;
   run_id: string;
+  session_id?: string;
   run?: TeamRun;
   step?: TeamRunStep;
+  payload?: Record<string, unknown>;
 };

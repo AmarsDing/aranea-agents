@@ -47,7 +47,9 @@
       :rows="rows"
       :loading="loading"
       :toggling-id="togglingId"
+      :publishing-id="publishingId"
       @toggle-enabled="onToggleEnabled"
+      @publish="onPublishSkill"
       @edit="openEditor"
       @delete="confirmDelete"
     />
@@ -79,6 +81,7 @@ import {
   getSkillImportJob,
   listSkillFiles,
   listSkills,
+  publishSkill,
   readSkillFile,
   refineSkillConflictGroup,
   toggleSkillEnabled,
@@ -98,6 +101,7 @@ const total = ref(0);
 const loading = ref(false);
 const error = ref("");
 const togglingId = ref("");
+const publishingId = ref("");
 const deleteOpen = ref(false);
 const deleteTarget = ref<Skill | null>(null);
 const deleting = ref(false);
@@ -132,6 +136,19 @@ function resetFilters() {
   status.value = "";
   page.value = 1;
   void loadRows();
+}
+
+async function onPublishSkill(skill: Skill) {
+  publishingId.value = skill.id;
+  try {
+    const updated = await publishSkill(skill.id);
+    rows.value = rows.value.map((row) => (row.id === updated.id ? updated : row));
+    $q.notify({ type: "positive", message: "Skill 已发布；请在列表中打开「启用」以便 Agent 运行时挂载" });
+  } catch (err) {
+    $q.notify({ type: "negative", message: err instanceof Error ? err.message : "发布失败" });
+  } finally {
+    publishingId.value = "";
+  }
 }
 
 async function onToggleEnabled(skill: Skill, next: boolean) {

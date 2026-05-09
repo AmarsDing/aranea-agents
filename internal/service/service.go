@@ -1,6 +1,8 @@
 package service
 
 import (
+	"aranea-agents/internal/biz"
+	"aranea-agents/internal/compress"
 	"aranea-agents/internal/team"
 
 	"github.com/google/wire"
@@ -8,6 +10,10 @@ import (
 
 // ProviderSet is service providers.
 var ProviderSet = wire.NewSet(
+	wire.Bind(new(biz.NativeTurnCompressor), new(*SessionCompressor)),
+	wire.Bind(new(compress.Compressor), new(*compress.LLMService)),
+	NewCompressHTTPClient,
+	compress.NewLLMService,
 	team.ProviderSet,
 	NewAdminService,
 	NewAvatarService,
@@ -28,4 +34,5 @@ var ProviderSet = wire.NewSet(
 	NewMemoryService,
 	NewSystemSettingService,
 	NewChatService,
+	NewSessionCompressor,
 )

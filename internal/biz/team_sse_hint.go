@@ -17,9 +17,10 @@ func HintTeamRunSSE(ctx context.Context, broker *TeamRunEventBroker, teams TeamR
 	}
 	cp := runs[0]
 	broker.Publish(TeamRunEvent{
-		Type:   "run_finished",
-		TeamID: teamID,
-		RunID:  cp.ID,
-		Run:    &cp,
+		Type:      "run_finished",
+		TeamID:    teamID,
+		RunID:     cp.ID,
+		SessionID: strings.TrimSpace(cp.SessionID),
+		Run:       &cp,
 	})
 }

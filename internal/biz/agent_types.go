@@ -58,7 +58,10 @@ type AgentRuntimeSettings struct {
 	L0RecentWindowTokens              int
 	L0SummaryThreshold                float64
 	L0SummaryKeepTurns                int
-	L0TruncateStrategy                string
+	// L0CompressProvider / L0CompressModel select a cheaper catalog model for session summarization; empty → use agent/session chat model.
+	L0CompressProvider string
+	L0CompressModel    string
+	L0TruncateStrategy string
 	L0InjectL1                        bool
 	L0InjectL3                        bool
 	L0InjectL4                        bool

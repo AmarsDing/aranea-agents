@@ -4,7 +4,7 @@
     text-color="white"
     :rounded="rounded"
     :size="size"
-    :icon="avatarIcon"
+    :icon="resolvedIcon"
     :class="avatarClass"
     @click="$emit('click', $event)"
   >
@@ -25,7 +25,7 @@ const props = withDefaults(
     rounded?: boolean;
     avatarClass?: string;
   }>(),
-  { alt: "", size: "56px", rounded: true, avatarClass: "" }
+  { alt: "", size: "56px", rounded: false, avatarClass: "" }
 );
 
 defineEmits<{
@@ -34,4 +34,15 @@ defineEmits<{
 
 const iconRef = computed(() => props.icon);
 const { avatarSrc, avatarIcon } = useAgentAvatarPreview(iconRef);
+
+/** 有 `<img>` 时不传 `icon`；缩略图加载前显示占位图标 */
+const resolvedIcon = computed(() => (avatarSrc.value ? undefined : avatarIcon.value ?? "smart_toy"));
 </script>
+
+<style scoped>
+.q-avatar :deep(img) {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+</style>

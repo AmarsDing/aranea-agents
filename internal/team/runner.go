@@ -28,6 +28,8 @@ type Runner struct {
 	skillUC      *biz.SkillUsecase
 	sys          biz.SystemSettingRepo
 	adk          *adkdeps.Runtime
+	compress     biz.NativeTurnCompressor
+	monitorLogs  *biz.MonitorLogBroker
 }
 
 // NewRunner wires a team runner (llmHTTP should match chat transport timeouts).
@@ -42,6 +44,8 @@ func NewRunner(
 	skillUC *biz.SkillUsecase,
 	sys biz.SystemSettingRepo,
 	adk *adkdeps.Runtime,
+	compress biz.NativeTurnCompressor,
+	monitorLogs *biz.MonitorLogBroker,
 ) *Runner {
 	return &Runner{
 		teams:        teams,
@@ -55,6 +59,8 @@ func NewRunner(
 		skillUC:      skillUC,
 		sys:          sys,
 		adk:          adk,
+		compress:     compress,
+		monitorLogs:  monitorLogs,
 	}
 }
 

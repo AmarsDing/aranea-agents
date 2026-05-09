@@ -96,12 +96,18 @@ watch(paused, (isPaused) => {
 function start() {
   stop();
   state.value = "connecting";
-  source = subscribeMonitorLogs((line) => {
-    state.value = "live";
-    lines.value = [...lines.value, line].slice(-5000);
-  }, () => {
-    if (!paused.value) state.value = "error";
-  });
+  source = subscribeMonitorLogs(
+    (line) => {
+      state.value = "live";
+      lines.value = [...lines.value, line].slice(-5000);
+    },
+    () => {
+      if (!paused.value) state.value = "error";
+    },
+    () => {
+      if (!paused.value) state.value = "live";
+    }
+  );
 }
 
 function stop() {

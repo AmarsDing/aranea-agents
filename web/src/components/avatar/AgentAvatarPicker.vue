@@ -9,7 +9,7 @@
         <q-btn flat round icon="close" @click="dialogModel = false" />
       </q-card-section>
 
-      <q-tabs v-model="tab" dense active-color="primary" indicator-color="primary" class="avatar-tabs">
+      <q-tabs v-model="tab" dense class="avatar-tabs">
         <q-tab name="system" label="内置" />
         <q-tab name="mine" label="我的上传" />
       </q-tabs>
@@ -36,7 +36,7 @@
           </button>
         </div>
 
-        <q-banner v-if="!loading && visibleAssets.length === 0" rounded class="bg-grey-1 text-grey-8">
+        <q-banner v-if="!loading && visibleAssets.length === 0" rounded class="avatar-picker-empty-banner">
           暂无头像。可以先上传一张本地图片。
         </q-banner>
       </q-card-section>
@@ -99,13 +99,13 @@ function confirm() {
 .avatar-picker-card {
   width: 560px;
   max-width: 94vw;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid var(--glass-border);
   border-radius: 26px;
-  background:
-    radial-gradient(circle at top left, rgba(25, 118, 210, 0.08), transparent 32%),
-    #ffffff;
+  background: var(--glass-surface);
+  backdrop-filter: blur(var(--glass-blur-elevated));
+  -webkit-backdrop-filter: blur(var(--glass-blur-elevated));
+  box-shadow: none;
   overflow: hidden;
-  box-shadow: 0 28px 80px rgba(16, 24, 40, 0.18);
 }
 
 .avatar-picker-card__header {
@@ -114,11 +114,33 @@ function confirm() {
   justify-content: space-between;
   gap: 16px;
   padding: 22px 24px;
-  background: linear-gradient(180deg, #ffffff, #fbfcff);
+  background: var(--glass-elevated);
+  box-shadow: var(--glass-inner-highlight);
+}
+
+.avatar-picker-card__header .text-h6 {
+  color: var(--color-text-primary);
 }
 
 .avatar-tabs {
   padding: 0 16px;
+  background: var(--glass-surface);
+}
+
+.avatar-tabs :deep(.q-tab) {
+  font-weight: 700;
+  color: var(--color-text-secondary);
+}
+
+.avatar-tabs :deep(.q-tab--active) {
+  color: var(--color-text-primary);
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+}
+
+.avatar-tabs :deep(.q-tab__indicator) {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--color-accent);
 }
 
 .avatar-grid {
@@ -134,29 +156,30 @@ function confirm() {
   justify-items: center;
   gap: 8px;
   padding: 12px 8px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid var(--glass-border);
   border-radius: 18px;
-  background:
-    linear-gradient(180deg, #ffffff, #fbfcff),
-    radial-gradient(circle at top, rgba(25, 118, 210, 0.04), transparent 60%);
-  color: #475467;
+  background: var(--glass-elevated);
+  backdrop-filter: blur(var(--glass-blur-default));
+  -webkit-backdrop-filter: blur(var(--glass-blur-default));
+  box-shadow: var(--glass-inner-highlight);
+  color: var(--color-text-primary);
   cursor: pointer;
   font: inherit;
   transition:
     transform 180ms ease,
     border-color 180ms ease,
-    box-shadow 180ms ease;
+    background 180ms ease;
 }
 
 .avatar-option:hover,
 .avatar-option.is-selected {
   transform: translateY(-2px);
-  border-color: rgba(25, 118, 210, 0.38);
-  box-shadow: 0 14px 34px rgba(16, 24, 40, 0.08);
+  border-color: var(--glass-border-hover, var(--glass-border));
+  background: var(--glass-surface-hover);
 }
 
 .avatar-option.is-selected {
-  background: #eef6ff;
+  box-shadow: var(--glass-inner-highlight), 0 0 0 1px color-mix(in srgb, var(--color-accent) 35%, transparent);
 }
 
 .avatar-option span {
@@ -166,15 +189,22 @@ function confirm() {
   font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--color-text-secondary);
 }
 
 .avatar-option__check {
   position: absolute;
   top: 8px;
   right: 8px;
-  color: #1976d2;
-  background: white;
+  color: var(--color-accent);
+  background: var(--glass-surface);
   border-radius: 999px;
+}
+
+.avatar-picker-empty-banner {
+  border: 1px solid var(--glass-border);
+  background: var(--glass-elevated);
+  color: var(--color-text-primary);
 }
 
 .avatar-upload-row {
@@ -182,7 +212,7 @@ function confirm() {
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
-  background: #fbfcff;
+  background: var(--glass-surface);
 }
 
 .avatar-upload-row :deep(.q-btn) {
@@ -192,7 +222,8 @@ function confirm() {
 
 .avatar-picker-card :deep(.q-card__actions) {
   padding: 14px 22px 20px;
-  background: rgba(248, 250, 252, 0.58);
+  background: var(--glass-elevated);
+  border-top: 1px solid var(--glass-border);
 }
 
 .avatar-picker-card :deep(.q-card__actions .q-btn) {
@@ -201,7 +232,32 @@ function confirm() {
   font-weight: 700;
 }
 
+.avatar-picker-card :deep(.text-grey-7) {
+  color: var(--color-text-secondary) !important;
+}
+
 .hidden-input {
   display: none;
+}
+
+body.body--dark .avatar-picker-card {
+  border-color: var(--glass-border);
+  background: var(--glass-surface);
+}
+
+body.body--dark .avatar-picker-card__header {
+  background: var(--glass-elevated);
+}
+
+body.body--dark .avatar-tabs :deep(.q-tab--active) {
+  background: color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
+
+body.body--dark .avatar-option.is-selected {
+  box-shadow: var(--glass-inner-highlight), 0 0 0 1px color-mix(in srgb, var(--color-accent) 42%, transparent);
+}
+
+body.body--dark .avatar-option__check {
+  background: rgba(18, 24, 34, 0.92);
 }
 </style>

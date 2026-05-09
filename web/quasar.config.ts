@@ -32,13 +32,13 @@ export default configure(() => {
           target: "http://127.0.0.1:8000",
           changeOrigin: true
         },
-        // tx7do SSE（configs server.sse.addr，默认 :8001）；前缀剥离后与后端 `/monitor/logs/stream` 对齐
+        // tx7do SSE（configs server.sse.addr，默认 :8001）。
+        // Vite 代理须使用 `rewrite`；`pathRewrite`（webpack）会被忽略，未剥离 `/sse` 时后端只有 `/monitor/...` 路由 → 404 → 「连接异常」。
         "/sse": {
           target: "http://127.0.0.1:8001",
           changeOrigin: true,
-          pathRewrite: {
-            "^/sse": ""
-          }
+          timeout: 0,
+          rewrite: (path: string) => path.replace(/^\/sse/, "") || "/"
         }
       }
     },

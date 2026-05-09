@@ -113,11 +113,21 @@ func normalizeMemoryEntityKey(s string) string {
 			b.WriteRune('_')
 		}
 	}
-	out := strings.Trim(b.String(), "_")
+	out := strings.TrimSpace(b.String())
 	if out == "" {
 		return "event"
 	}
-	return out
+	allSep := true
+	for _, r := range out {
+		if r != '_' && r != '-' {
+			allSep = false
+			break
+		}
+	}
+	if allSep {
+		return "event"
+	}
+	return strings.TrimRight(out, "_")
 }
 
 // SearchMemory returns entity rows loosely matching the query (keyword filter on memory_entities).

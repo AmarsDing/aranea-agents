@@ -13,15 +13,27 @@ func ensureAgentRuntimePatches(ctx context.Context, c *ent.Client) error {
 	if c == nil {
 		return nil
 	}
-	has, err := sqliteColumnExists(ctx, c, "agent_runtime_settings", "skill_runtime_json")
-	if err != nil {
-		return err
+	patches := []struct {
+		col string
+		ddl string
+	}{
+		{"skill_runtime_json", `ALTER TABLE agent_runtime_settings ADD COLUMN skill_runtime_json TEXT NOT NULL DEFAULT '{}'`},
+		{"l0_compress_provider", `ALTER TABLE agent_runtime_settings ADD COLUMN l0_compress_provider TEXT NOT NULL DEFAULT ''`},
+		{"l0_compress_model", `ALTER TABLE agent_runtime_settings ADD COLUMN l0_compress_model TEXT NOT NULL DEFAULT ''`},
 	}
-	if has {
-		return nil
+	for _, p := range patches {
+		has, err := sqliteColumnExists(ctx, c, "agent_runtime_settings", p.col)
+		if err != nil {
+			return err
+		}
+		if has {
+			continue
+		}
+		if _, err := c.ExecContext(ctx, p.ddl); err != nil {
+			return err
+		}
 	}
-	_, err = c.ExecContext(ctx, `ALTER TABLE agent_runtime_settings ADD COLUMN skill_runtime_json TEXT NOT NULL DEFAULT '{}';`)
-	return err
+	return nil
 }
 
 func sqliteColumnExists(ctx context.Context, c *ent.Client, table, column string) (bool, error) {

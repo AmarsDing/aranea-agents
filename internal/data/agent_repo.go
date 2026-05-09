@@ -125,6 +125,8 @@ func entRuntimeToBiz(e *ent.AgentRuntimeSetting) biz.AgentRuntimeSettings {
 		L0RecentWindowTokens:              e.L0RecentWindowTokens,
 		L0SummaryThreshold:                e.L0SummaryThreshold,
 		L0SummaryKeepTurns:                e.L0SummaryKeepTurns,
+		L0CompressProvider:                e.L0CompressProvider,
+		L0CompressModel:                   e.L0CompressModel,
 		L0TruncateStrategy:                e.L0TruncateStrategy,
 		L0InjectL1:                        e.L0InjectL1,
 		L0InjectL3:                        e.L0InjectL3,
@@ -221,6 +223,8 @@ func applyBizRuntimeToCreate(b *ent.AgentRuntimeSettingCreate, v biz.AgentRuntim
 		SetL0RecentWindowTokens(v.L0RecentWindowTokens).
 		SetL0SummaryThreshold(v.L0SummaryThreshold).
 		SetL0SummaryKeepTurns(v.L0SummaryKeepTurns).
+		SetL0CompressProvider(strings.TrimSpace(v.L0CompressProvider)).
+		SetL0CompressModel(strings.TrimSpace(v.L0CompressModel)).
 		SetL0TruncateStrategy(v.L0TruncateStrategy).
 		SetL0InjectL1(v.L0InjectL1).
 		SetL0InjectL3(v.L0InjectL3).

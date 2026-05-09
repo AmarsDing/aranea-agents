@@ -141,12 +141,18 @@ watch(paused, (isPaused) => {
 function startStream() {
   stopStream();
   state.value = "connecting";
-  source = subscribeMonitorRuntimeEvents((event) => {
-    state.value = "live";
-    runtimeEvents.value = [teamRunEventToView(event), ...runtimeEvents.value].slice(0, 1000);
-  }, () => {
-    if (!paused.value) state.value = "error";
-  });
+  source = subscribeMonitorRuntimeEvents(
+    (event) => {
+      state.value = "live";
+      runtimeEvents.value = [teamRunEventToView(event), ...runtimeEvents.value].slice(0, 1000);
+    },
+    () => {
+      if (!paused.value) state.value = "error";
+    },
+    () => {
+      if (!paused.value) state.value = "live";
+    }
+  );
 }
 
 function stopStream() {

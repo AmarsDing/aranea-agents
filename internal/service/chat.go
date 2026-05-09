@@ -45,6 +45,7 @@ type ChatService struct {
 	skillUC      *biz.SkillUsecase
 	sys          biz.SystemSettingRepo
 	adk          *adkdeps.Runtime
+	compress     biz.NativeTurnCompressor
 }
 
 // NewChatService builds a chat façade (LEGACY_REST_ORIGIN → legacy /api/v1/chat/* until fully in-process execution).
@@ -61,6 +62,7 @@ func NewChatService(
 	skillUC *biz.SkillUsecase,
 	sys biz.SystemSettingRepo,
 	adk *adkdeps.Runtime,
+	compress biz.NativeTurnCompressor,
 ) *ChatService {
 	s := &ChatService{
 		client:       &http.Client{Timeout: 600 * time.Second},
@@ -77,6 +79,7 @@ func NewChatService(
 		skillUC:      skillUC,
 		sys:          sys,
 		adk:          adk,
+		compress:     compress,
 	}
 	s.refreshUpstream()
 	return s

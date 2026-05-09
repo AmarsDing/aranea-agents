@@ -18,15 +18,16 @@ type StreamEmitter interface {
 	Emit(event string, payload any) error
 }
 
-type providerAPIConfig struct {
+// ProviderAPIConfig holds outbound HTTP credential hints deserialized from llm_provider_models.config_json.
+type ProviderAPIConfig struct {
 	ProviderType string `json:"provider_type"`
 	APIBaseURL   string `json:"api_base_url"`
 	APIKey       string `json:"api_key"`
 }
 
 // MergeProviderConfigJSON overlays JSON config from LlmProviderModel.ConfigJSON.
-func MergeProviderConfigJSON(raw string, out *providerAPIConfig) {
-	var c providerAPIConfig
+func MergeProviderConfigJSON(raw string, out *ProviderAPIConfig) {
+	var c ProviderAPIConfig
 	if json.Unmarshal([]byte(strings.TrimSpace(raw)), &c) != nil {
 		return
 	}

@@ -95,8 +95,15 @@ export async function getMonitorLogs(): Promise<MonitorLogSnapshot> {
   };
 }
 
-export function subscribeMonitorLogs(onLine: (line: MonitorLogLine) => void, onError?: (error: Event) => void): EventSource {
+export function subscribeMonitorLogs(
+  onLine: (line: MonitorLogLine) => void,
+  onError?: (error: Event) => void,
+  onOpen?: () => void
+): EventSource {
   const source = new EventSource(`${getSseBaseURL()}/monitor/logs/stream`);
+  source.onopen = () => {
+    onOpen?.();
+  };
   source.addEventListener("log", (event) => {
     onLine(JSON.parse((event as MessageEvent).data) as MonitorLogLine);
   });
@@ -104,8 +111,15 @@ export function subscribeMonitorLogs(onLine: (line: MonitorLogLine) => void, onE
   return source;
 }
 
-export function subscribeMonitorRuntimeEvents(onEvent: (event: TeamRunEvent) => void, onError?: (error: Event) => void): EventSource {
+export function subscribeMonitorRuntimeEvents(
+  onEvent: (event: TeamRunEvent) => void,
+  onError?: (error: Event) => void,
+  onOpen?: () => void
+): EventSource {
   const source = new EventSource(`${getSseBaseURL()}/team-run-events`);
+  source.onopen = () => {
+    onOpen?.();
+  };
   for (const eventName of ["run_started", "step_finished", "run_finished", "tool.call", "tool.result", "run.failed"]) {
     source.addEventListener(eventName, (event) => {
       onEvent(JSON.parse((event as MessageEvent).data) as TeamRunEvent);

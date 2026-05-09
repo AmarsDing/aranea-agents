@@ -103,7 +103,21 @@ func (s *ChatService) runSingleAgentViaADK(
 		cfg = adkagent.RunConfig{StreamingMode: adkagent.StreamingModeNone}
 	}
 
-	toolRelay := chatagent.NewChatToolSSERelay(stream)
+	mono := func(p chatagent.ChatToolUseSSE) {
+		if s.teamSSE == nil {
+			return
+		}
+		typ := "tool.result"
+		if p.Phase == "before" {
+			typ = "tool.call"
+		}
+		s.teamSSE.Publish(biz.TeamRunEvent{
+			Type:      typ,
+			SessionID: sessionID,
+			Payload:   chatagent.ChatToolPayloadMap(p),
+		})
+	}
+	toolRelay := chatagent.NewChatToolSSERelay(stream, mono)
 	var reply strings.Builder
 	var reasoning strings.Builder
 	var lastUsage *genai.GenerateContentResponseUsageMetadata
@@ -129,13 +143,11 @@ func (s *ChatService) runSingleAgentViaADK(
 				toolRelay.EmitToolCalls(agEv, ev)
 			}
 			main, rsn := provider.TextsFromLLMResponse(&ev.LLMResponse)
-			if main != "" {
-				reply.WriteString(main)
-				_ = stream.Emit("delta", map[string]string{"content": main})
+			if d := provider.VisibleStreamingDelta(&reply, main); d != "" {
+				_ = stream.Emit("delta", map[string]string{"content": d})
 			}
-			if rsn != "" {
-				reasoning.WriteString(rsn)
-				_ = stream.Emit("delta", map[string]string{"reasoning_content": rsn})
+			if dr := provider.VisibleStreamingDelta(&reasoning, rsn); dr != "" {
+				_ = stream.Emit("delta", map[string]string{"reasoning_content": dr})
 			}
 			continue
 		}
@@ -146,12 +158,8 @@ func (s *ChatService) runSingleAgentViaADK(
 			toolRelay.EmitToolCalls(agEv, ev)
 		}
 		main, rsn := provider.TextsFromLLMResponse(&ev.LLMResponse)
-		if main != "" {
-			reply.WriteString(main)
-		}
-		if rsn != "" {
-			reasoning.WriteString(rsn)
-		}
+		_ = provider.VisibleStreamingDelta(&reply, main)
+		_ = provider.VisibleStreamingDelta(&reasoning, rsn)
 	}
 	_ = chatagent.SyncPersistedADKSessionToMemory(ctx, ss, chatagent.RunnerMemoryForRuntime(s.adk), adksvc.DefaultAppName, uid, sessionID)
 
@@ -211,4 +219,7 @@ func patchSessionContextUsage(ctx context.Context, s *ChatService, sessionID str
 		win = 128000
 	}
 	_ = s.sessions.UpdateSessionContextFromLLMUsage(ctx, sessionID, promptTok, completionTok, win)
+	if s.compress != nil {
+		s.compress.AfterNativeTurn(ctx, sessionID, ag)
+	}
 }

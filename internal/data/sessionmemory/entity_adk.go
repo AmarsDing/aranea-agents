@@ -106,3 +106,18 @@ ON CONFLICT(scope_type, scope_id, entity_type, name_normalized) DO UPDATE SET
 	_, err := st.client.ExecContext(ctx, q, args...)
 	return err
 }
+
+// DeleteADKSessionEventEntities removes keyword-memory rows produced by session sync for one session.
+func (st *Store) DeleteADKSessionEventEntities(ctx context.Context, sessionID string) error {
+	if st == nil || st.client == nil {
+		return nil
+	}
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return nil
+	}
+	_, err := st.client.ExecContext(ctx,
+		`DELETE FROM memory_entities WHERE scope_type = ? AND scope_id = ? AND entity_type = ?`,
+		adkScopeTypeSession, sessionID, adkEntityEvent)
+	return err
+}

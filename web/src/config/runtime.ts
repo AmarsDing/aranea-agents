@@ -5,6 +5,11 @@ type RuntimeConfig = {
    */
   backendUrl?: string;
   /**
+   * 监控 SSE（tx7do，`server.sse`，默认监听 :8001）的 **Origin**，**不带路径**。
+   * 生产环境若页面与 SSE 不同源、且入口网关未把 `/sse` 反代到该端口时填写，例如 `http://127.0.0.1:8001`。
+   */
+  sseOrigin?: string;
+  /**
    * ADK HTTP 流式接口所在 **Origin**（无路径），如 `http://127.0.0.1:8000`。
    * 用于 `POST {origin}/run_sse`，与 `/api/v1` 可指向不同服务。
    */
@@ -60,9 +65,19 @@ export function getBackendBaseURL(): string {
 }
 
 /**
- * tx7do SSE 监听独立端口（server.sse）；开发环境由 devServer 将 `/sse` 代理到该端口，前端用同源 `/sse/...` 避免跨域。
+ * tx7do SSE 监听独立端口（server.sse）；开发环境由 devServer 将 `/sse` 代理到该端口。
+ *
+ * **开发环境一律使用相对路径 `/sse`**：即使配置了 `backendUrl`，也不得把 EventSource 指到 API Origin，
+ * 否则浏览器会直连 `:8000/.../sse`（无路由）或跨域 `:8001` 而无 CORS，监控 Logs/Events 会显示「连接异常」。
  */
 export function getSseBaseURL(): string {
+  if (import.meta.env.DEV) {
+    return "/sse";
+  }
+  const sse = runtimeConfig.sseOrigin?.trim();
+  if (sse && sse.length > 0) {
+    return sse.replace(/\/$/, "");
+  }
   const origin = getBackendOrigin();
   if (origin === "") {
     return "/sse";

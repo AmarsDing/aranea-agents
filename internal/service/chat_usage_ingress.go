@@ -5,9 +5,9 @@ import (
 	"os"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
+	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 
 	"github.com/google/uuid"
@@ -22,19 +22,7 @@ func chatIngressRecordingDisabled() bool {
 
 // roughTokenEstimateFromText ~4 chars per token for CJK/Latin mix (display-only when API omits usage).
 func roughTokenEstimateFromText(s string) int {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return 0
-	}
-	n := utf8.RuneCountInString(s)
-	if n < 1 {
-		return 0
-	}
-	est := n / 4
-	if est < 1 {
-		return 1
-	}
-	return est
+	return chatagent.RoughTokenEstimate(s)
 }
 
 // recordChatIngressUsage writes one model_token_usage_events row for native admin chat.

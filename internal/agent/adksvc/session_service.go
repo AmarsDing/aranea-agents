@@ -229,7 +229,7 @@ func (s *BizSessionService) maybeHydrateFromLegacyMessages(ctx context.Context, 
 			author = strings.TrimSpace(k)
 		}
 	}
-	bundle.Events = messagesToADKEvents(msgs, author)
+	bundle.Events = MessagesToADKEvents(msgs, author)
 	bundle.RootAgentName = author
 	if bundle.State == nil {
 		bundle.State = map[string]any{}

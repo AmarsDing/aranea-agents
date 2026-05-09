@@ -3,12 +3,15 @@ package biz
 import "sync"
 
 // TeamRunEvent matches legacy conversation/application.TeamRunEvent JSON for SSE clients.
+// Payload carries structured extras (e.g. tool.call / tool.result bodies, run.failed details).
 type TeamRunEvent struct {
-	Type   string       `json:"type"`
-	TeamID string       `json:"team_id"`
-	RunID  string       `json:"run_id"`
-	Run    *TeamRun      `json:"run,omitempty"`
-	Step   *TeamRunStep `json:"step,omitempty"`
+	Type      string         `json:"type"`
+	TeamID    string         `json:"team_id"`
+	RunID     string         `json:"run_id"`
+	SessionID string         `json:"session_id,omitempty"`
+	Run       *TeamRun       `json:"run,omitempty"`
+	Step      *TeamRunStep   `json:"step,omitempty"`
+	Payload   map[string]any `json:"payload,omitempty"`
 }
 
 // TeamRunEventBroker fans out team run notifications to SSE subscribers (filtered by team_id).

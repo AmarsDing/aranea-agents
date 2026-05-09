@@ -11,8 +11,8 @@ import (
 	"google.golang.org/genai"
 )
 
-// messagesToADKEvents converts legacy chat rows into ADK events (best-effort).
-func messagesToADKEvents(msgs []biz.ChatMessage, assistantAuthor string) []*session.Event {
+// MessagesToADKEvents converts legacy chat rows into ADK events (best-effort).
+func MessagesToADKEvents(msgs []biz.ChatMessage, assistantAuthor string) []*session.Event {
 	if assistantAuthor == "" {
 		assistantAuthor = "agent"
 	}

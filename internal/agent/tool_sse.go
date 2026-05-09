@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -28,20 +29,35 @@ type ChatToolUseSSE struct {
 	DurationMs int64          `json:"duration_ms,omitempty"`
 }
 
-// ChatToolSSERelay emits tool start/finish events on a chat stream.
+// ChatToolPayloadMap flattens ChatToolUseSSE into a generic map for monitor SSE TeamRunEvent.payload.
+func ChatToolPayloadMap(p ChatToolUseSSE) map[string]any {
+	b, err := json.Marshal(p)
+	if err != nil {
+		return map[string]any{}
+	}
+	var m map[string]any
+	if err := json.Unmarshal(b, &m); err != nil {
+		return map[string]any{}
+	}
+	return m
+}
+
+// ChatToolSSERelay emits tool start/finish events on a chat stream and optionally duplicates them for monitor SSE.
 type ChatToolSSERelay struct {
 	stream    StreamEmitter
 	startedAt map[string]time.Time
+	onMonitor func(ChatToolUseSSE)
 }
 
-// NewChatToolSSERelay returns nil when stream is nil.
-func NewChatToolSSERelay(stream StreamEmitter) *ChatToolSSERelay {
-	if stream == nil {
+// NewChatToolSSERelay returns nil when neither chat stream nor monitor callback is configured.
+func NewChatToolSSERelay(stream StreamEmitter, onMonitor func(ChatToolUseSSE)) *ChatToolSSERelay {
+	if stream == nil && onMonitor == nil {
 		return nil
 	}
 	return &ChatToolSSERelay{
 		stream:    stream,
 		startedAt: make(map[string]time.Time),
+		onMonitor: onMonitor,
 	}
 }
 
@@ -114,9 +130,15 @@ func AgentForToolSSELabel(author string, root biz.Agent) biz.Agent {
 	}
 }
 
+func (r *ChatToolSSERelay) emitMonitor(p ChatToolUseSSE) {
+	if r.onMonitor != nil {
+		r.onMonitor(p)
+	}
+}
+
 // EmitToolCalls emits one "running" tool_event per new function-call id.
 func (r *ChatToolSSERelay) EmitToolCalls(ag biz.Agent, ev *session.Event) {
-	if r == nil || r.stream == nil || ev == nil || ev.LLMResponse.Content == nil {
+	if r == nil || ev == nil || ev.LLMResponse.Content == nil {
 		return
 	}
 	for _, p := range ev.LLMResponse.Content.Parts {
@@ -148,13 +170,16 @@ func (r *ChatToolSSERelay) EmitToolCalls(ag biz.Agent, ev *session.Event) {
 			OccurredAt: time.Now().UTC().Format(time.RFC3339Nano),
 		}
 		fillChatToolAgentMeta(&payload, ag)
-		_ = r.stream.Emit("tool_event", payload)
+		if r.stream != nil {
+			_ = r.stream.Emit("tool_event", payload)
+		}
+		r.emitMonitor(payload)
 	}
 }
 
 // EmitToolResponses emits one success/failed tool_event per function response part.
 func (r *ChatToolSSERelay) EmitToolResponses(ag biz.Agent, ev *session.Event) {
-	if r == nil || r.stream == nil || ev == nil || ev.LLMResponse.Content == nil {
+	if r == nil || ev == nil || ev.LLMResponse.Content == nil {
 		return
 	}
 	for _, p := range ev.LLMResponse.Content.Parts {
@@ -187,6 +212,9 @@ func (r *ChatToolSSERelay) EmitToolResponses(ag biz.Agent, ev *session.Event) {
 			DurationMs: d.Milliseconds(),
 		}
 		fillChatToolAgentMeta(&payload, ag)
-		_ = r.stream.Emit("tool_event", payload)
+		if r.stream != nil {
+			_ = r.stream.Emit("tool_event", payload)
+		}
+		r.emitMonitor(payload)
 	}
 }
