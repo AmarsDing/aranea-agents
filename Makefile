@@ -1,6 +1,21 @@
 GOHOSTOS:=$(shell go env GOHOSTOS)
+GOEXE:=$(shell go env GOEXE)
 GOPATH:=$(shell go env GOPATH)
+# Use / so Make wildcard and protoc --plugin see a consistent path on Windows.
+GOPATH_NORM:=$(subst \,/,$(GOPATH))
 VERSION=$(shell git describe --tags --always)
+
+# Explicit plugin path: Windows protoc often does not see Cygwin/MSYS PATH for protoc-gen-*.
+PROTOC_GEN_TYPESCRIPT_HTTP:=$(GOPATH_NORM)/bin/protoc-gen-typescript-http$(GOEXE)
+# Optional TypeScript emit from api/*.proto (empty = auto: on if plugin exists). Set SKIP_API_TS=1 to force off.
+API_TS_PLUGIN_ARGS:=
+ifeq ($(SKIP_API_TS),)
+  ifneq ($(wildcard $(PROTOC_GEN_TYPESCRIPT_HTTP)),)
+    API_TS_PLUGIN_ARGS:=--plugin=protoc-gen-typescript-http=$(PROTOC_GEN_TYPESCRIPT_HTTP) --typescript-http_out=./web/src/services
+  else
+    $(warning protoc-gen-typescript-http not found at $(PROTOC_GEN_TYPESCRIPT_HTTP); install with `make init`. Skipping API TypeScript emit.; set SKIP_API_TS=1 to silence)
+  endif
+endif
 
 ifeq ($(GOHOSTOS),windows)
 	# Use scripts/list-proto-files.ps1 so Git-Bash/sh does not parse $ $() inside $(shell ...).
@@ -39,7 +54,7 @@ api:
  	       --go-http_out=paths=source_relative:./api \
  	       --go-grpc_out=paths=source_relative:./api \
 	       --openapi_out="fq_schema_naming=true,default_response=false:." \
-		   --typescript-http_out ./web/src/services \
+	       $(API_TS_PLUGIN_ARGS) \
 	       $(API_PROTO_FILES)
 
 .PHONY: build
@@ -53,12 +68,20 @@ generate:
 	go generate ./...
 	go mod tidy
 
+# dependency injection (use GOPATH bin so an older wire.exe on PATH — e.g. under GOROOT — does not shadow)
+WIRE := $(GOPATH_NORM)/bin/wire$(GOEXE)
+
+.PHONY: wire-admin
+wire-admin:
+	cd ./cmd/admin && "$(WIRE)"
+
 .PHONY: all
-# generate all
+# api+internal proto, go generate (ent etc.) + tidy, then cmd/admin wire
 all:
-	make api;
-	make config;
-	make generate;
+	$(MAKE) api
+	$(MAKE) config
+	$(MAKE) generate
+	$(MAKE) wire-admin
 
 # show help
 help:

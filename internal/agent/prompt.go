@@ -13,6 +13,8 @@ type Deps struct {
 	Agents       biz.AgentRepository
 	AgentUC      *biz.AgentUsecase
 	ToolsCatalog biz.ToolRepo // optional; with Agents, used when AgentUC is nil to still resolve GetEffectiveTools
+	// SQLiteSessionMemory reflects whether Runner memory persists session entities (SessionMemoryStore wired).
+	SQLiteSessionMemory bool
 }
 
 // BuildSystemPrompt joins agent description and prompt files.
@@ -68,15 +70,34 @@ func RuntimeCapabilityCue(ctx context.Context, d Deps, ag biz.Agent) string {
 			} else {
 				fmt.Fprintf(&b, "- Tools: enabled; profile=%q\n", eff.Profile)
 				var keys []string
+				memCue := false
+				mcpCue := false
 				for _, it := range eff.Items {
 					if it.Enabled {
 						keys = append(keys, it.ToolKey)
+						tk := strings.ToLower(strings.TrimSpace(it.ToolKey))
+						switch tk {
+						case "load_memory", "preload_memory":
+							memCue = true
+						case biz.ToolKeyMCPToolSet:
+							mcpCue = true
+						}
 					}
 				}
 				if len(keys) > 0 {
 					b.WriteString("- Effective tool keys this turn: " + strings.Join(keys, ", ") + "\n")
 				} else {
 					b.WriteString("- Effective tool keys: (none under current profile and allow list)\n")
+				}
+				if memCue {
+					if d.SQLiteSessionMemory {
+						b.WriteString("- load_memory/preload_memory: SQLite-backed session memory (memory_entities); durable across process restarts for turns that sync into the store.\n")
+					} else {
+						b.WriteString("- load_memory/preload_memory: in-process recall only (no SessionMemory store wired to this runner); not durable across restarts.\n")
+					}
+				}
+				if mcpCue {
+					b.WriteString("- MCP (mcp_tool_set): tools from enabled platform MCP servers (stdio/sse/streamable_http per row). Optional: include `mcp:<server_key>` in Tools allow/deny JSON to restrict which servers mount; stdio servers respect request context cancellation when the tool runner passes it through.\n")
 				}
 				if len(eff.Deny) > 0 {
 					b.WriteString("- Deny list: " + strings.Join(eff.Deny, ", ") + "\n")

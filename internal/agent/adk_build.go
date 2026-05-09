@@ -30,6 +30,8 @@ type BuilderDeps struct {
 	// Provider / model override from session or request (non-empty wins over ag.Provider / ag.Model).
 	Provider string
 	Model    string
+	// SQLiteSessionMemory is true when the Runner uses SessionMemoryStore-backed ADK memory (durable entities).
+	SQLiteSessionMemory bool
 }
 
 // BuildLLMAgent constructs an ADK LLM agent from a hydrated biz catalog agent.
@@ -55,7 +57,10 @@ func BuildLLMAgent(ctx context.Context, ag biz.Agent, deps BuilderDeps) (agent.A
 		}
 	}
 	sys := BuildSystemPrompt(ag, files)
-	promptDeps := Deps{Agents: deps.Agents, AgentUC: deps.AgentUC, ToolsCatalog: deps.ToolsCatalog}
+	promptDeps := Deps{
+		Agents: deps.Agents, AgentUC: deps.AgentUC, ToolsCatalog: deps.ToolsCatalog,
+		SQLiteSessionMemory: deps.SQLiteSessionMemory,
+	}
 	if cue := RuntimeCapabilityCue(ctx, promptDeps, ag); cue != "" {
 		sys = sys + "\n\n" + cue
 	}

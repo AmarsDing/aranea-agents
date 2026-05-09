@@ -14,6 +14,7 @@ import (
 	"time"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
+	"aranea-agents/internal/adkdeps"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/legacychat"
 	"aranea-agents/internal/team"
@@ -43,6 +44,7 @@ type ChatService struct {
 	llmCatalog   *biz.LlmProviderModelUsecase
 	skillUC      *biz.SkillUsecase
 	sys          biz.SystemSettingRepo
+	adk          *adkdeps.Runtime
 }
 
 // NewChatService builds a chat façade (LEGACY_REST_ORIGIN → legacy /api/v1/chat/* until fully in-process execution).
@@ -58,6 +60,7 @@ func NewChatService(
 	llmCatalog *biz.LlmProviderModelUsecase,
 	skillUC *biz.SkillUsecase,
 	sys biz.SystemSettingRepo,
+	adk *adkdeps.Runtime,
 ) *ChatService {
 	s := &ChatService{
 		client:       &http.Client{Timeout: 600 * time.Second},
@@ -73,6 +76,7 @@ func NewChatService(
 		llmCatalog:   llmCatalog,
 		skillUC:      skillUC,
 		sys:          sys,
+		adk:          adk,
 	}
 	s.refreshUpstream()
 	return s

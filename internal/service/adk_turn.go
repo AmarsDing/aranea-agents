@@ -10,12 +10,10 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/provider"
 	"aranea-agents/internal/tools"
-	"aranea-agents/internal/tools/skillruntime"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
 	adkagent "google.golang.org/adk/agent"
-	"google.golang.org/adk/runner"
 
 	"google.golang.org/genai"
 )
@@ -36,50 +34,41 @@ func (s *ChatService) runSingleAgentViaADK(
 		return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.Forbidden("CHAT_AGENT", "agent_key does not match this session")
 	}
 
-	ss := &adksvc.BizSessionService{
-		Repo:    adksvc.UsecaseSessionRepo{UC: s.sessions},
-		AppName: adksvc.DefaultAppName,
-	}
-	ss.ResolveAssistantAuthor = func(c context.Context, agentID string) (string, error) {
+	ss := adksvc.NewBizSessionForUsecase(s.sessions, func(c context.Context, agentID string) (string, error) {
 		a, err := s.agents.GetAgentByID(c, agentID)
 		if err != nil {
 			return "", err
 		}
 		return strings.TrimSpace(a.AgentKey), nil
-	}
+	})
 
 	rt := &provider.RoundTrip{HTTP: s.llmHTTP}
-	subAgents := ag.Settings != nil && ag.Settings.SubagentsEnabled
-	adkTools := tools.ADKToolsForAgentPolicy(ctx, s.agentsUC, s.agents, s.toolsCatalog, ag.ID, subAgents)
-	deps := chatagent.BuilderDeps{
-		Catalog:      s.llmCatalog,
-		AgentUC:      s.agentsUC,
-		Agents:       s.agents,
-		ToolsCatalog: s.toolsCatalog,
-		RT:           rt,
-		Provider:     prov,
-		Model:        mod,
-		Tools:        adkTools,
+	mount := tools.TurnMount{
+		AgentsUC: s.agentsUC, Agents: s.agents, ToolsCatalog: s.toolsCatalog,
+		SkillUC: s.skillUC, Sys: s.sys,
 	}
-	_ = skillruntime.AppendEnabledPublishedSkillToolsets(ctx, &deps.Toolsets, s.skillUC, s.sys, &skillruntime.SkillToolsetOptions{
-		Runtime:   ag.Settings,
-		UserQuery: content,
-	})
+	if s.adk != nil {
+		mount.MCP = s.adk.AgentMCP
+	}
+	deps := chatagent.BuilderDeps{
+		Catalog:             s.llmCatalog,
+		AgentUC:             s.agentsUC,
+		Agents:              s.agents,
+		ToolsCatalog:        s.toolsCatalog,
+		RT:                  rt,
+		Provider:            prov,
+		Model:               mod,
+		SQLiteSessionMemory: s.adk != nil && s.adk.SessionMemory != nil,
+	}
+	if err := mount.Attach(ctx, ag, content, &deps.Tools, &deps.Toolsets); err != nil {
+		return biz.ChatMessage{}, biz.ChatMessage{}, err
+	}
 	root, err := chatagent.BuildLLMAgent(ctx, ag, deps)
 	if err != nil {
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
 
-	rn, err := runner.New(runner.Config{
-		AppName:           adksvc.DefaultAppName,
-		Agent:             root,
-		SessionService:    ss,
-		MemoryService:     chatagent.NewADKMemoryService(),
-		AutoCreateSession: false,
-		PluginConfig: runner.PluginConfig{
-			Plugins: chatagent.DefaultRunnerPlugins(),
-		},
-	})
+	rn, err := chatagent.NewADKRunnerForRuntime(root, ss, s.adk)
 	if err != nil {
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
@@ -164,6 +153,7 @@ func (s *ChatService) runSingleAgentViaADK(
 			reasoning.WriteString(rsn)
 		}
 	}
+	_ = chatagent.SyncPersistedADKSessionToMemory(ctx, ss, chatagent.RunnerMemoryForRuntime(s.adk), adksvc.DefaultAppName, uid, sessionID)
 
 	promptTok, completionTok := 0, 0
 	if lastUsage != nil {
