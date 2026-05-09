@@ -38,6 +38,16 @@ func NewSessionService(repo SessionRepositorySubset) *BizSessionService {
 	return &BizSessionService{Repo: repo, AppName: DefaultAppName}
 }
 
+// NewBizSessionForUsecase builds a Runner session service backed by [biz.SessionUsecase].
+// resolveAuthor maps agent IDs to assistant event author strings (typically AgentKey); it may be nil.
+func NewBizSessionForUsecase(uc *biz.SessionUsecase, resolveAuthor func(ctx context.Context, agentID string) (string, error)) *BizSessionService {
+	return &BizSessionService{
+		Repo:                   UsecaseSessionRepo{UC: uc},
+		AppName:                DefaultAppName,
+		ResolveAssistantAuthor: resolveAuthor,
+	}
+}
+
 func (s *BizSessionService) app() string {
 	if s != nil && strings.TrimSpace(s.AppName) != "" {
 		return strings.TrimSpace(s.AppName)

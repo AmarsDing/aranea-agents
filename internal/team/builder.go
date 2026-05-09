@@ -32,10 +32,22 @@ func firstOfThree(a, b, c string) string {
 	return ""
 }
 
+func buildLLMAgentForMember(ctx context.Context, ag biz.Agent, deps bizagent.BuilderDeps, mount tools.TurnMount, skillUserQuery string, provOpt, modOpt string, sess biz.Session) (agent.Agent, error) {
+	d := deps
+	d.Provider = firstOfThree(provOpt, sess.Provider, ag.Provider)
+	d.Model = firstOfThree(modOpt, sess.Model, ag.Model)
+	if err := mount.Attach(ctx, ag, skillUserQuery, &d.Tools, &d.Toolsets); err != nil {
+		return nil, err
+	}
+	return bizagent.BuildLLMAgent(ctx, ag, d)
+}
+
 func buildLLMChain(
 	ctx context.Context,
 	members []MemberDef,
 	deps bizagent.BuilderDeps,
+	mount tools.TurnMount,
+	skillUserQuery string,
 	provOpt, modOpt string,
 	sess biz.Session,
 	resolve func(context.Context, string) (biz.Agent, error),
@@ -46,11 +58,7 @@ func buildLLMChain(
 		if err != nil {
 			return nil, err
 		}
-		d := deps
-		d.Provider = firstOfThree(provOpt, sess.Provider, ag.Provider)
-		d.Model = firstOfThree(modOpt, sess.Model, ag.Model)
-		d.Tools = tools.ADKToolsForAgentPolicy(ctx, d.AgentUC, d.Agents, d.ToolsCatalog, ag.ID, ag.Settings != nil && ag.Settings.SubagentsEnabled)
-		a, err := bizagent.BuildLLMAgent(ctx, ag, d)
+		a, err := buildLLMAgentForMember(ctx, ag, deps, mount, skillUserQuery, provOpt, modOpt, sess)
 		if err != nil {
 			return nil, err
 		}
@@ -67,11 +75,14 @@ func loopMaxIterations(d Definition) uint {
 }
 
 // BuildWorkflowRoot builds a workflow agent tree for native team execution via ADK runner.Run.
+// skillUserQuery narrows skill toolsets per member (each member still uses its own SkillRuntimeJSON).
 func BuildWorkflowRoot(
 	ctx context.Context,
 	mode string,
 	def Definition,
 	deps bizagent.BuilderDeps,
+	mount tools.TurnMount,
+	skillUserQuery string,
 	sess biz.Session,
 	provOpt, modOpt string,
 	resolve func(context.Context, string) (biz.Agent, error),
@@ -83,7 +94,7 @@ func BuildWorkflowRoot(
 		if len(members) == 0 {
 			return nil, plan, fmt.Errorf("team: no members")
 		}
-		subs, err := buildLLMChain(ctx, members, deps, provOpt, modOpt, sess, resolve)
+		subs, err := buildLLMChain(ctx, members, deps, mount, skillUserQuery, provOpt, modOpt, sess, resolve)
 		if err != nil {
 			return nil, plan, err
 		}
@@ -112,11 +123,7 @@ func BuildWorkflowRoot(
 			if err != nil {
 				return nil, plan, err
 			}
-			d := deps
-			d.Provider = firstOfThree(provOpt, sess.Provider, ag.Provider)
-			d.Model = firstOfThree(modOpt, sess.Model, ag.Model)
-			d.Tools = tools.ADKToolsForAgentPolicy(ctx, d.AgentUC, d.Agents, d.ToolsCatalog, ag.ID, ag.Settings != nil && ag.Settings.SubagentsEnabled)
-			sub, err := bizagent.BuildLLMAgent(ctx, ag, d)
+			sub, err := buildLLMAgentForMember(ctx, ag, deps, mount, skillUserQuery, provOpt, modOpt, sess)
 			if err != nil {
 				return nil, plan, err
 			}
@@ -127,7 +134,7 @@ func BuildWorkflowRoot(
 		if len(workers) > 1 && synthID == "" {
 			return nil, plan, fmt.Errorf("team: parallel team requires synthesizer_agent_id or a synthesizer member")
 		}
-		wAgents, err := buildLLMChain(ctx, workers, deps, provOpt, modOpt, sess, resolve)
+		wAgents, err := buildLLMChain(ctx, workers, deps, mount, skillUserQuery, provOpt, modOpt, sess, resolve)
 		if err != nil {
 			return nil, plan, err
 		}
@@ -145,11 +152,7 @@ func BuildWorkflowRoot(
 		if err != nil {
 			return nil, plan, err
 		}
-		d := deps
-		d.Provider = firstOfThree(provOpt, sess.Provider, synthAg.Provider)
-		d.Model = firstOfThree(modOpt, sess.Model, synthAg.Model)
-		d.Tools = tools.ADKToolsForAgentPolicy(ctx, d.AgentUC, d.Agents, d.ToolsCatalog, synthAg.ID, synthAg.Settings != nil && synthAg.Settings.SubagentsEnabled)
-		synthLLM, err := bizagent.BuildLLMAgent(ctx, synthAg, d)
+		synthLLM, err := buildLLMAgentForMember(ctx, synthAg, deps, mount, skillUserQuery, provOpt, modOpt, sess)
 		if err != nil {
 			return nil, plan, err
 		}
@@ -172,7 +175,7 @@ func BuildWorkflowRoot(
 		if len(members) == 0 {
 			return nil, plan, fmt.Errorf("team: no members")
 		}
-		subs, err := buildLLMChain(ctx, members, deps, provOpt, modOpt, sess, resolve)
+		subs, err := buildLLMChain(ctx, members, deps, mount, skillUserQuery, provOpt, modOpt, sess, resolve)
 		if err != nil {
 			return nil, plan, err
 		}

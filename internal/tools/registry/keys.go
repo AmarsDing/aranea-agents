@@ -25,6 +25,7 @@ const (
 	SkillLoadSkill         = "load_skill"
 	SkillLoadSkillResource = "load_skill_resource"
 
+	// MCPToolset aligns with biz.ToolKeyMCPToolSet (mounted as ADK MCP toolsets, not registry builtins).
 	MCPToolset = "mcp_tool_set"
 )
 

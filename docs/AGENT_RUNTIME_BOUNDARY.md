@@ -37,6 +37,6 @@
 
 ## 相关文档
 
-- `internal/AGENT_TEAM_DESIGN.md` — Agent/Team 行为与 API 契约
+- `docs/AGENT_SKILLS_TOOLS_MCP_MEMORY.md` — Skill / tools / MCP / 记忆运行时与演进计划（含 `TurnMount`、`adkdeps`、`AgentMCPTooling`）
 - `docs/AI-全栈新功能开发规范.md` — 全栈开发规范
 - `.cursor/rules/adk-framework-first.mdc` — Cursor 规则摘要
