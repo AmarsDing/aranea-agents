@@ -12,10 +12,42 @@ function formatToolResultSummary(event: ToolUseEvent): string {
     return "";
   }
   const rec = r as Record<string, unknown>;
+  const parts: string[] = [];
+
+  if (event.tool_name === "list_files") {
+    const path = typeof rec.path === "string" ? rec.path : ".";
+    const items = rec.items;
+    if (Array.isArray(items)) {
+      const json = JSON.stringify(items);
+      parts.push(
+        `\n\n**结果**（${items.length} 项，目录 \`${path}\`）\n\n\`\`\`json\n${truncateBlock(json, 16000)}\n\`\`\``
+      );
+    }
+    return parts.join("");
+  }
+
+  if (event.tool_name === "workspace_search") {
+    const matches = rec.matches;
+    const trunc = rec.truncated === true ? "（已截断）" : "";
+    if (Array.isArray(matches)) {
+      const json = JSON.stringify(matches);
+      parts.push(`\n\n**结果** workspace_search ${trunc}（${matches.length} 条）\n\n\`\`\`json\n${truncateBlock(json, 16000)}\n\`\`\``);
+    }
+    return parts.join("");
+  }
+
+  if (event.tool_name === "read_file") {
+    const path = typeof rec.path === "string" ? rec.path : "";
+    const body = typeof rec.content === "string" ? rec.content : typeof rec.body === "string" ? rec.body : "";
+    if (body) {
+      parts.push(`\n\n**结果**（\`${path || "file"}\`）\n\n\`\`\`text\n${truncateBlock(body, 24000)}\n\`\`\``);
+      return parts.join("");
+    }
+  }
+
   const stdout = typeof rec.stdout === "string" ? rec.stdout.trim() : "";
   const stderr = typeof rec.stderr === "string" ? rec.stderr.trim() : "";
 
-  const parts: string[] = [];
   if (stdout) {
     parts.push(`\n\n**输出**\n\n\`\`\`text\n${truncateBlock(stdout, 12000)}\n\`\`\``);
   }

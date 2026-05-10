@@ -21,6 +21,9 @@ type workflowPlan struct {
 	persistMembers []MemberDef
 	// streamAuthor is the SubAgents leaf agent name (AgentKey) whose SSE deltas/done reflect the user-visible turn.
 	streamAuthor string
+	// workflowAuthorAliases are ADK workflow wrapper agent names (sequential / loop / parallel parents)
+	// that may appear as ev.Author on final responses; they map to streamAuthor's persist entry in the runner.
+	workflowAuthorAliases []string
 }
 
 func firstOfThree(a, b, c string) string {
@@ -32,10 +35,13 @@ func firstOfThree(a, b, c string) string {
 	return ""
 }
 
-func buildLLMAgentForMember(ctx context.Context, ag biz.Agent, deps bizagent.BuilderDeps, mount tools.TurnMount, skillUserQuery string, provOpt, modOpt string, sess biz.Session) (agent.Agent, error) {
+func buildLLMAgentForMember(ctx context.Context, ag biz.Agent, deps bizagent.BuilderDeps, mount tools.TurnMount, skillUserQuery string, provOpt, modOpt string, sess biz.Session, teamMode string, member MemberDef) (agent.Agent, error) {
 	d := deps
 	d.Provider = firstOfThree(provOpt, sess.Provider, ag.Provider)
 	d.Model = firstOfThree(modOpt, sess.Model, ag.Model)
+	d.TeamOrchestrationMode = strings.TrimSpace(teamMode)
+	d.TeamMemberRole = strings.TrimSpace(member.Role)
+	d.TeamMemberDisplayName = strings.TrimSpace(member.Name)
 	if err := mount.Attach(ctx, ag, skillUserQuery, &d.Tools, &d.Toolsets); err != nil {
 		return nil, err
 	}
@@ -50,6 +56,7 @@ func buildLLMChain(
 	skillUserQuery string,
 	provOpt, modOpt string,
 	sess biz.Session,
+	teamMode string,
 	resolve func(context.Context, string) (biz.Agent, error),
 ) ([]agent.Agent, error) {
 	var out []agent.Agent
@@ -58,7 +65,7 @@ func buildLLMChain(
 		if err != nil {
 			return nil, err
 		}
-		a, err := buildLLMAgentForMember(ctx, ag, deps, mount, skillUserQuery, provOpt, modOpt, sess)
+		a, err := buildLLMAgentForMember(ctx, ag, deps, mount, skillUserQuery, provOpt, modOpt, sess, teamMode, m)
 		if err != nil {
 			return nil, err
 		}
@@ -67,11 +74,63 @@ func buildLLMChain(
 	return out, nil
 }
 
-func loopMaxIterations(d Definition) uint {
-	if d.TimeoutSeconds > 0 && d.TimeoutSeconds <= 64 {
-		return uint(d.TimeoutSeconds)
+func boundedLoopIterations(v int, maxCap uint) uint {
+	if v <= 0 {
+		return 0
 	}
-	return 8
+	u := uint(v)
+	if u > maxCap {
+		return maxCap
+	}
+	return u
+}
+
+// chunkParallelWorkers splits workers into batches of at most maxConcurrency (all in one batch if <=0).
+func chunkParallelWorkers(workers []MemberDef, maxConcurrency int) [][]MemberDef {
+	if len(workers) == 0 {
+		return nil
+	}
+	if maxConcurrency <= 0 || maxConcurrency >= len(workers) {
+		return [][]MemberDef{workers}
+	}
+	var out [][]MemberDef
+	for i := 0; i < len(workers); i += maxConcurrency {
+		j := i + maxConcurrency
+		if j > len(workers) {
+			j = len(workers)
+		}
+		out = append(out, workers[i:j])
+	}
+	return out
+}
+
+// loopMaxIterations bounds LoopAgent replays.
+// critic_loop: critic_loop.max_iterations → loop_max_iterations → default 8.
+// coordinator/adaptive: loop_max_iterations → default 3.
+func loopMaxIterations(mode string, d Definition) uint {
+	const maxCap = uint(32)
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	switch mode {
+	case "critic_loop":
+		if d.CriticLoop != nil && d.CriticLoop.MaxIterations > 0 {
+			return boundedLoopIterations(d.CriticLoop.MaxIterations, maxCap)
+		}
+		if d.LoopMaxIterations > 0 {
+			return boundedLoopIterations(d.LoopMaxIterations, maxCap)
+		}
+		return 8
+	case "coordinator", "adaptive":
+		if d.LoopMaxIterations > 0 {
+			return boundedLoopIterations(d.LoopMaxIterations, maxCap)
+		}
+		// Default 1 outer pass: each increment runs the full sequential member chain again (cost ≈ iterations × members).
+		return 1
+	default:
+		if d.LoopMaxIterations > 0 {
+			return boundedLoopIterations(d.LoopMaxIterations, maxCap)
+		}
+		return 8
+	}
 }
 
 // BuildWorkflowRoot builds a workflow agent tree for native team execution via ADK runner.Run.
@@ -94,7 +153,7 @@ func BuildWorkflowRoot(
 		if len(members) == 0 {
 			return nil, plan, fmt.Errorf("team: no members")
 		}
-		subs, err := buildLLMChain(ctx, members, deps, mount, skillUserQuery, provOpt, modOpt, sess, resolve)
+		subs, err := buildLLMChain(ctx, members, deps, mount, skillUserQuery, provOpt, modOpt, sess, mode, resolve)
 		if err != nil {
 			return nil, plan, err
 		}
@@ -110,6 +169,7 @@ func BuildWorkflowRoot(
 		}
 		plan.persistMembers = members
 		plan.streamAuthor = subs[len(subs)-1].Name()
+		plan.workflowAuthorAliases = []string{"team_sequential"}
 		return rootAgent, plan, nil
 
 	case "parallel":
@@ -123,36 +183,72 @@ func BuildWorkflowRoot(
 			if err != nil {
 				return nil, plan, err
 			}
-			sub, err := buildLLMAgentForMember(ctx, ag, deps, mount, skillUserQuery, provOpt, modOpt, sess)
+			sub, err := buildLLMAgentForMember(ctx, ag, deps, mount, skillUserQuery, provOpt, modOpt, sess, mode, workers[0])
 			if err != nil {
 				return nil, plan, err
 			}
 			plan.persistMembers = workers
 			plan.streamAuthor = sub.Name()
+			plan.workflowAuthorAliases = nil
 			return sub, plan, nil
 		}
 		if len(workers) > 1 && synthID == "" {
 			return nil, plan, fmt.Errorf("team: parallel team requires synthesizer_agent_id or a synthesizer member")
 		}
-		wAgents, err := buildLLMChain(ctx, workers, deps, mount, skillUserQuery, provOpt, modOpt, sess, resolve)
-		if err != nil {
-			return nil, plan, err
+		chunks := chunkParallelWorkers(workers, def.MaxConcurrency)
+		var workerStages []agent.Agent
+		anyParallelBatch := false
+		for _, chunk := range chunks {
+			subs, err := buildLLMChain(ctx, chunk, deps, mount, skillUserQuery, provOpt, modOpt, sess, mode, resolve)
+			if err != nil {
+				return nil, plan, err
+			}
+			if len(subs) == 1 {
+				workerStages = append(workerStages, subs[0])
+				continue
+			}
+			anyParallelBatch = true
+			par, err := parallelagent.New(parallelagent.Config{
+				AgentConfig: agent.Config{
+					Name:        "team_parallel_workers",
+					Description: "Parallel worker batch",
+					SubAgents:   subs,
+				},
+			})
+			if err != nil {
+				return nil, plan, err
+			}
+			workerStages = append(workerStages, par)
 		}
-		par, err := parallelagent.New(parallelagent.Config{
-			AgentConfig: agent.Config{
-				Name:        "team_parallel_workers",
-				Description: "Parallel worker agents",
-				SubAgents:   wAgents,
-			},
-		})
-		if err != nil {
-			return nil, plan, err
+		var workersPhase agent.Agent
+		switch len(workerStages) {
+		case 0:
+			return nil, plan, fmt.Errorf("team: parallel workers phase empty")
+		case 1:
+			workersPhase = workerStages[0]
+		default:
+			wp, err := sequentialagent.New(sequentialagent.Config{
+				AgentConfig: agent.Config{
+					Name:        "team_parallel_stages",
+					Description: "Sequential batches of parallel workers (max_concurrency)",
+					SubAgents:   workerStages,
+				},
+			})
+			if err != nil {
+				return nil, plan, err
+			}
+			workersPhase = wp
 		}
 		synthAg, err := resolve(ctx, synthID)
 		if err != nil {
 			return nil, plan, err
 		}
-		synthLLM, err := buildLLMAgentForMember(ctx, synthAg, deps, mount, skillUserQuery, provOpt, modOpt, sess)
+		synthMember := MemberDef{
+			AgentID: synthAg.ID,
+			Role:    "synthesizer",
+			Name:    firstOfThree(synthAg.DisplayName, synthAg.AgentKey, ""),
+		}
+		synthLLM, err := buildLLMAgentForMember(ctx, synthAg, deps, mount, skillUserQuery, provOpt, modOpt, sess, mode, synthMember)
 		if err != nil {
 			return nil, plan, err
 		}
@@ -160,7 +256,7 @@ func BuildWorkflowRoot(
 			AgentConfig: agent.Config{
 				Name:        "team_parallel_root",
 				Description: "Parallel workers then synthesizer",
-				SubAgents:   []agent.Agent{par, synthLLM},
+				SubAgents:   []agent.Agent{workersPhase, synthLLM},
 			},
 		})
 		if err != nil {
@@ -168,6 +264,14 @@ func BuildWorkflowRoot(
 		}
 		plan.persistMembers = append(append([]MemberDef{}, workers...), MemberDef{AgentID: synthAg.ID, Role: "synthesizer"})
 		plan.streamAuthor = synthLLM.Name()
+		aliases := []string{"team_parallel_root"}
+		if len(workerStages) > 1 {
+			aliases = append(aliases, "team_parallel_stages")
+		}
+		if anyParallelBatch {
+			aliases = append(aliases, "team_parallel_workers")
+		}
+		plan.workflowAuthorAliases = aliases
 		return rootAgent, plan, nil
 
 	case "coordinator", "critic_loop", "adaptive":
@@ -175,7 +279,7 @@ func BuildWorkflowRoot(
 		if len(members) == 0 {
 			return nil, plan, fmt.Errorf("team: no members")
 		}
-		subs, err := buildLLMChain(ctx, members, deps, mount, skillUserQuery, provOpt, modOpt, sess, resolve)
+		subs, err := buildLLMChain(ctx, members, deps, mount, skillUserQuery, provOpt, modOpt, sess, mode, resolve)
 		if err != nil {
 			return nil, plan, err
 		}
@@ -190,7 +294,7 @@ func BuildWorkflowRoot(
 			return nil, plan, err
 		}
 		rootAgent, err := loopagent.New(loopagent.Config{
-			MaxIterations: loopMaxIterations(def),
+			MaxIterations: loopMaxIterations(mode, def),
 			AgentConfig: agent.Config{
 				Name:        "team_loop_" + mode,
 				Description: "Loop workflow over team members",
@@ -202,6 +306,7 @@ func BuildWorkflowRoot(
 		}
 		plan.persistMembers = members
 		plan.streamAuthor = subs[len(subs)-1].Name()
+		plan.workflowAuthorAliases = []string{"team_loop_" + mode, "team_loop_body"}
 		return rootAgent, plan, nil
 
 	default:

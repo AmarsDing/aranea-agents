@@ -118,6 +118,9 @@ func settingsFromLegacyConfig(raw string) AgentRuntimeSettings {
 			MinDataPoints            int     `json:"min_data_points"`
 			RollbackOnDeclinePercent int     `json:"rollback_on_decline_percent"`
 		} `json:"evolution_guardrails"`
+		IntentPass struct {
+			Enabled *bool `json:"enabled"`
+		} `json:"intent_pass"`
 	}
 	if json.Unmarshal([]byte(raw), &parsed) != nil {
 		return settings
@@ -193,6 +196,9 @@ func settingsFromLegacyConfig(raw string) AgentRuntimeSettings {
 	if parsed.EvolutionGuardrails.RollbackOnDeclinePercent > 0 {
 		settings.GuardrailRollbackOnDeclinePercent = parsed.EvolutionGuardrails.RollbackOnDeclinePercent
 	}
+	if parsed.IntentPass.Enabled != nil {
+		settings.IntentPassEnabled = *parsed.IntentPass.Enabled
+	}
 	return settings
 }
 
@@ -253,6 +259,9 @@ func configJSONFromSettings(settings AgentRuntimeSettings, files []AgentPromptFi
 			"allow":            jsonList(settings.ToolsAllowJSON),
 			"deny":             jsonList(settings.ToolsDenyJSON),
 			"concurrent_allow": jsonList(settings.ToolsConcurrentAllowJSON),
+		},
+		"intent_pass": map[string]any{
+			"enabled": settings.IntentPassEnabled,
 		},
 		"memory": map[string]any{
 			"enabled":          settings.MemoryEnabled,
@@ -319,6 +328,7 @@ func composePromptPreview(agent Agent, mode string) string {
 		b.WriteString(fmt.Sprintf("- Self evolve: %t\n", settings.SelfEvolve))
 		b.WriteString(fmt.Sprintf("- Subagents: enabled=%t, max_concurrency=%d, max_depth=%d\n", settings.SubagentsEnabled, settings.SubagentsMaxConcurrency, settings.SubagentsMaxGenerationDepth))
 		b.WriteString(fmt.Sprintf("- Tools: enabled=%t, profile=%s, allow=%s, deny=%s\n", settings.ToolsEnabled, settings.ToolsProfile, strings.Join(jsonList(settings.ToolsAllowJSON), ", "), strings.Join(jsonList(settings.ToolsDenyJSON), ", ")))
+		b.WriteString(fmt.Sprintf("- Intent pass: %t\n", settings.IntentPassEnabled))
 		b.WriteString(fmt.Sprintf("- Memory: enabled=%t, max_results=%d, min_score=%.2f\n", settings.MemoryEnabled, settings.MemoryMaxResults, settings.MemoryMinScore))
 		b.WriteString(fmt.Sprintf("- Heartbeat: enabled=%t, interval=%d minutes\n", settings.HeartbeatEnabled, settings.HeartbeatIntervalMinutes))
 		b.WriteString(fmt.Sprintf("- Evolution: style=%t, skill=%t, metrics=%t, suggestions=%t\n", settings.EvolutionSelfEvolve, settings.EvolutionSkillEvolve, settings.EvolutionMetricsEnabled, settings.EvolutionSuggestionsEnabled))

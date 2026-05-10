@@ -108,6 +108,7 @@ func fromProtoRuntime(pb *v1.AgentRuntimeSettings) *biz.AgentRuntimeSettings {
 		CreatedAt:                         pb.GetCreatedAt(),
 		UpdatedAt:                         pb.GetUpdatedAt(),
 		SkillRuntimeJSON:                  pb.GetSkillRuntimeJson(),
+		IntentPassEnabled:                 pb.GetIntentPassEnabled(),
 	}
 }
 
@@ -194,6 +195,7 @@ func toProtoRuntime(b *biz.AgentRuntimeSettings) *v1.AgentRuntimeSettings {
 		CreatedAt:                         b.CreatedAt,
 		UpdatedAt:                         b.UpdatedAt,
 		SkillRuntimeJson:                  b.SkillRuntimeJSON,
+		IntentPassEnabled:                 b.IntentPassEnabled,
 	}
 }
 

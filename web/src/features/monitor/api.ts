@@ -120,7 +120,15 @@ export function subscribeMonitorRuntimeEvents(
   source.onopen = () => {
     onOpen?.();
   };
-  for (const eventName of ["run_started", "step_finished", "run_finished", "tool.call", "tool.result", "run.failed"]) {
+  for (const eventName of [
+    "run_started",
+    "step_finished",
+    "run_finished",
+    "tool.call",
+    "tool.result",
+    "run.failed",
+    "intent_pass"
+  ]) {
     source.addEventListener(eventName, (event) => {
       onEvent(JSON.parse((event as MessageEvent).data) as TeamRunEvent);
     });

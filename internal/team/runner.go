@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"net/http"
 	"strings"
-	"time"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	"aranea-agents/internal/adkdeps"
@@ -32,7 +31,8 @@ type Runner struct {
 	monitorLogs  *biz.MonitorLogBroker
 }
 
-// NewRunner wires a team runner (llmHTTP should match chat transport timeouts).
+// NewRunner wires a team runner. llmHTTP uses Timeout 0 so per-turn limits come from
+// context.WithTimeout in runTeamADK (definition.timeout_seconds), not a fixed client cap.
 func NewRunner(
 	teams biz.TeamRepository,
 	sessions *biz.SessionUsecase,
@@ -55,7 +55,7 @@ func NewRunner(
 		toolsCatalog: toolsCatalog,
 		catalog:      catalog,
 		broker:       broker,
-		llmHTTP:      &http.Client{Timeout: 300 * time.Second},
+		llmHTTP:      &http.Client{Timeout: 0},
 		skillUC:      skillUC,
 		sys:          sys,
 		adk:          adk,

@@ -99,6 +99,8 @@ func (AgentRuntimeSetting) Fields() []ent.Field {
 		field.Int("evo_system_prompt_max_appends").Default(5),
 		// JSON policy for narrow Skill toolset per agent: allowed_slugs, denied_slugs, allowed_tags, intent routing caps (see docs/需求/20 skill struct design.md 十三′).
 		field.String("skill_runtime_json").Default("{}"),
+		// Pre-main LLM pass to classify/refine user intent (extra latency/cost); persisted per agent; env ARANEA_INTENT_PASS can override.
+		field.Bool("intent_pass_enabled").Default(true),
 		field.String("created_at").Default(""),
 		field.String("updated_at").Default(""),
 	}

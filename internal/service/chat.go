@@ -46,6 +46,7 @@ type ChatService struct {
 	sys          biz.SystemSettingRepo
 	adk          *adkdeps.Runtime
 	compress     biz.NativeTurnCompressor
+	monitorLogs  *biz.MonitorLogBroker
 }
 
 // NewChatService builds a chat façade (LEGACY_REST_ORIGIN → legacy /api/v1/chat/* until fully in-process execution).
@@ -63,6 +64,7 @@ func NewChatService(
 	sys biz.SystemSettingRepo,
 	adk *adkdeps.Runtime,
 	compress biz.NativeTurnCompressor,
+	monitorLogs *biz.MonitorLogBroker,
 ) *ChatService {
 	s := &ChatService{
 		client:       &http.Client{Timeout: 600 * time.Second},
@@ -80,6 +82,7 @@ func NewChatService(
 		sys:          sys,
 		adk:          adk,
 		compress:     compress,
+		monitorLogs:  monitorLogs,
 	}
 	s.refreshUpstream()
 	return s

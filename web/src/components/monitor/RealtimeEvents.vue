@@ -168,11 +168,23 @@ function teamRunEventToView(event: TeamRunEvent): ViewEvent {
   const type = event.type || "runtime.event";
   const step = event.step;
   const run = event.run;
+  const payload = event.payload || {};
+  let title = step?.agent_name || run?.mode || type;
+  let subtitle = step?.error_message || run?.error_message || step?.output_preview || run?.output_preview || "runtime event";
+  if (type === "intent_pass") {
+    title = "意图 Pass";
+    const outcome = String(payload.outcome ?? "");
+    const ms = payload.duration_ms;
+    subtitle =
+      outcome +
+      (typeof ms === "number" ? ` · ${ms} ms` : "") +
+      (payload.intent_kind ? ` · ${String(payload.intent_kind)}` : "");
+  }
   return {
     id: `${type}-${run?.id || step?.id || Date.now()}-${runtimeEvents.value.length}`,
     type,
-    title: step?.agent_name || run?.mode || type,
-    subtitle: step?.error_message || run?.error_message || step?.output_preview || run?.output_preview || "runtime event",
+    title,
+    subtitle,
     category: categoryFor(type),
     source: "sse",
     time: formatDate(step?.created_at || run?.updated_at || run?.created_at || new Date().toISOString()),
@@ -181,6 +193,7 @@ function teamRunEventToView(event: TeamRunEvent): ViewEvent {
 }
 
 function categoryFor(type: string) {
+  if (type === "intent_pass") return "agent";
   if (type.startsWith("run") || type.includes("team_run")) return "task";
   if (type.startsWith("message") || type.startsWith("chat")) return "message";
   if (type.startsWith("agent")) return "agent";
@@ -191,6 +204,7 @@ function categoryFor(type: string) {
 function eventColor(type: string) {
   if (type.includes("failed") || type.includes("error")) return "negative";
   if (type.includes("finished") || type.includes("completed")) return "positive";
+  if (type === "intent_pass") return "cyan";
   if (type.includes("tool") || type.includes("step")) return "orange";
   if (type.includes("agent")) return "cyan";
   return "primary";

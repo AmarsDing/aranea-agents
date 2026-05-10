@@ -6,6 +6,7 @@ import (
 	"aranea-agents/internal/tools/edit_file"
 	"aranea-agents/internal/tools/list_files"
 	"aranea-agents/internal/tools/read_file"
+	"aranea-agents/internal/tools/workspace_search"
 	"aranea-agents/internal/tools/write_file"
 
 	"google.golang.org/adk/tool"
@@ -29,6 +30,9 @@ func WorkspaceOpenAISpecs(enabled map[string]bool) []map[string]any {
 			out = append(out, edit_file.OpenAIFunctionSpec())
 		}
 	}
+	if enabled != nil && enabled[WorkspaceSearch] {
+		out = append(out, workspace_search.OpenAIFunctionSpec())
+	}
 	return out
 }
 
@@ -44,6 +48,13 @@ func WorkspaceADKTools(enabled map[string]bool) ([]tool.Tool, error) {
 			return nil, err
 		}
 		out = append(out, t)
+	}
+	if enabled != nil && enabled[WorkspaceSearch] {
+		wst, err := workspace_search.New()
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, wst)
 	}
 	return out, nil
 }

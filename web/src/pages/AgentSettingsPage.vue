@@ -203,6 +203,21 @@
                     </q-card-section>
                   </q-card>
                 </div>
+                <div class="col-12">
+                  <q-card flat bordered class="capability-card">
+                    <q-card-section class="row items-center justify-between">
+                      <div>
+                        <div class="text-subtitle2">意图 Pass</div>
+                        <div class="text-caption text-grey-7">
+                          每轮用户消息进入主模型前先做一次轻量意图梳理（多一次 LLM 调用）。部署侧可用环境变量
+                          <code>ARANEA_INTENT_PASS=0</code>
+                          等对全部 Agent 做全局覆写。
+                        </div>
+                      </div>
+                      <q-toggle v-model="config.intent_pass.enabled" color="primary" />
+                    </q-card-section>
+                  </q-card>
+                </div>
               </div>
             </section>
 
@@ -711,6 +726,9 @@ const config = reactive({
     allowed_slugs: [] as string[],
     denied_slugs: [] as string[],
     allowed_tags: [] as string[]
+  },
+  intent_pass: {
+    enabled: true
   }
 });
 
@@ -1064,7 +1082,8 @@ function hydrateConfig(raw: string) {
       heartbeat: { ...config.heartbeat, ...(parsed.heartbeat || {}) },
       evolution: { ...config.evolution, ...(parsed.evolution || {}), self_evolve: parsed.self_evolve ?? config.self_evolve },
       evolution_guardrails: { ...config.evolution_guardrails, ...(parsed.evolution_guardrails || {}) },
-      skillRuntime: { ...config.skillRuntime, ...(parsed.skillRuntime || {}) }
+      skillRuntime: { ...config.skillRuntime, ...(parsed.skillRuntime || {}) },
+      intent_pass: { ...config.intent_pass, ...(parsed.intent_pass || {}) }
     });
     if (Array.isArray(parsed.files)) {
       for (const saved of parsed.files) {
@@ -1179,7 +1198,10 @@ function hydrateSettings(agent: Agent) {
         min_data_points: agent.settings.guardrail_min_data_points,
         rollback_on_decline_percent: agent.settings.guardrail_rollback_on_decline_percent
       },
-      skillRuntime: parseSkillRuntimeForm(agent.settings.skill_runtime_json)
+      skillRuntime: parseSkillRuntimeForm(agent.settings.skill_runtime_json),
+      intent_pass: {
+        enabled: agent.settings.intent_pass_enabled !== false
+      }
     });
   } else {
     hydrateConfig(agent.config_json);
@@ -1215,6 +1237,7 @@ async function saveAgent() {
         evolution: config.evolution,
         evolution_guardrails: config.evolution_guardrails,
         skillRuntime: config.skillRuntime,
+        intent_pass: config.intent_pass,
         files: files.map((file) => ({ name: file.name, body: file.body }))
       })
     });
@@ -1392,7 +1415,8 @@ function buildSettingsPayload(): AgentRuntimeSettings {
     guardrail_max_change_per_period: config.evolution_guardrails.max_change_per_period,
     guardrail_min_data_points: config.evolution_guardrails.min_data_points,
     guardrail_rollback_on_decline_percent: config.evolution_guardrails.rollback_on_decline_percent,
-    skill_runtime_json: stringifySkillRuntimeJSON()
+    skill_runtime_json: stringifySkillRuntimeJSON(),
+    intent_pass_enabled: config.intent_pass.enabled
   };
 }
 

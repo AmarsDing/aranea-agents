@@ -21,9 +21,17 @@ export type TeamTemplateKey = "sequential" | "parallel_experts" | "critic_loop" 
 
 export const teamTemplateOptions: Array<{ label: string; value: TeamTemplateKey; description: string }> = [
   { label: "顺序协作", value: "sequential", description: "多个 worker 按顺序接力处理任务。" },
-  { label: "并行专家组", value: "parallel_experts", description: "多个专家并行处理，由 synthesizer 汇总。" },
-  { label: "生成评审", value: "critic_loop", description: "generator 产出初稿，critic 评审并触发修订。" },
-  { label: "主控分派", value: "coordinator", description: "coordinator 先拆解计划，再分派给成员执行。" }
+  {
+    label: "并行专家组",
+    value: "parallel_experts",
+    description: "前若干成员并行产出；列表中的最后一位 Agent 固定为汇总角色（与专家槽位不同实例）。"
+  },
+  { label: "生成评审", value: "critic_loop", description: "generator 与 critic 顺序迭代；迭代次数取自编排里的 critic_loop.max_iterations。" },
+  {
+    label: "主控分派",
+    value: "coordinator",
+    description: "成员顺序执行；当前运行时为带迭代的上屏顺序链（非独立并行拓扑），适合分步接力。"
+  }
 ];
 
 export function defaultDefinition(): TeamDefinition {
@@ -32,7 +40,9 @@ export function defaultDefinition(): TeamDefinition {
     description: "",
     mode: "sequential",
     max_concurrency: 2,
-    timeout_seconds: 180,
+    timeout_seconds: 600,
+    loop_max_iterations: 0,
+    intent_anchor_agent_id: "",
     a2a: defaultA2AConfig(),
     members: [],
     critic_loop: { max_iterations: 3, score_threshold: 0.8 }
@@ -43,12 +53,14 @@ export function defaultDefinition(): TeamDefinition {
 export function definitionFromTemplate(template: TeamTemplateKey, agents: Agent[]): TeamDefinition {
   const base = defaultDefinition();
   if (template === "parallel_experts") {
+    const synthId = agents.length ? agents[agents.length - 1].id : "";
     return withGraph({
       ...base,
-      description: "并行专家组：多个 Agent 同时给出专业意见，再由 synthesizer 汇总最终答复。",
+      description:
+        "并行专家组：靠前槽位的专家并行产出；团队 Agent 列表中的最后一位负责汇总（与并行槽位区分）。",
       mode: "parallel",
       max_concurrency: Math.max(2, Math.min(3, agents.length || 2)),
-      synthesizer_agent_id: pickAgentID(agents, 0),
+      synthesizer_agent_id: synthId,
       members: [
         templateMember(agents, 0, "worker", "专家 A", 10),
         templateMember(agents, 1, "worker", "专家 B", 20),
@@ -75,6 +87,7 @@ export function definitionFromTemplate(template: TeamTemplateKey, agents: Agent[
       description: "主控分派：coordinator 先拆解任务，worker 按计划完成分工。",
       mode: "coordinator",
       max_concurrency: 2,
+      loop_max_iterations: 1,
       members: [
         templateMember(agents, 0, "coordinator", "主控", 10),
         templateMember(agents, 1, "worker", "执行者 A", 20),
@@ -122,7 +135,9 @@ export function parseDefinition(team: Team): TeamDefinition {
       description: parsed.description || "",
       mode: parsed.mode || "sequential",
       max_concurrency: parsed.max_concurrency || 2,
-      timeout_seconds: parsed.timeout_seconds || 180,
+      timeout_seconds: parsed.timeout_seconds || 600,
+      loop_max_iterations: typeof parsed.loop_max_iterations === "number" ? parsed.loop_max_iterations : 0,
+      intent_anchor_agent_id: typeof parsed.intent_anchor_agent_id === "string" ? parsed.intent_anchor_agent_id : "",
       a2a: parsed.a2a || defaultA2AConfig(),
       members: Array.isArray(parsed.members) ? parsed.members : [],
       graph: parsed.graph,

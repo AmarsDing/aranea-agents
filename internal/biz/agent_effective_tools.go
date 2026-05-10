@@ -46,7 +46,7 @@ func jsonStringList(raw string) []string {
 	return result
 }
 
-var toolGroupsFilesystem = []string{"read_file", "write_file", "list_files", "edit_file"}
+var toolGroupsFilesystem = []string{"read_file", "write_file", "list_files", "edit_file", "workspace_search"}
 var toolGroupsWeb = []string{"web_search", "web_fetch"}
 var toolGroupsMemory = []string{"memory_search", "memory_get"}
 var toolGroupsSkill = []string{"skill_search", "use_skill"}
@@ -144,13 +144,13 @@ func profileAllowSet(profile string, catalog []Tool) map[string]bool {
 
 var toolProfiles = map[string][]string{
 	"chat_only": {},
-	"read_only": {"datetime", "read_file", "list_files"},
+	"read_only": {"datetime", "read_file", "list_files", "workspace_search"},
 	"coding":    {"group:filesystem", "group:web", "group:skill", "datetime"},
-	"research":  {"web_search", "web_fetch", "read_file", "list_files", "skill_search", "memory_search", "datetime"},
+	"research":  {"web_search", "web_fetch", "read_file", "list_files", "workspace_search", "skill_search", "memory_search", "datetime"},
 	"full":      {"group:filesystem", "group:web", "group:skill", "group:memory", "group:media", "group:runtime", "group:cli_admin", "datetime"},
 
 	"minimal":      {},
-	"safe":         {"datetime", "read_file", "list_files"},
+	"safe":         {"datetime", "read_file", "list_files", "workspace_search"},
 	"system_admin": {"group:cli_admin", "web_fetch", "datetime"},
 }
 

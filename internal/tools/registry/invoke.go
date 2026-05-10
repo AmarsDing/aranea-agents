@@ -9,6 +9,7 @@ import (
 	"aranea-agents/internal/tools/edit_file"
 	"aranea-agents/internal/tools/list_files"
 	"aranea-agents/internal/tools/read_file"
+	"aranea-agents/internal/tools/workspace_search"
 	"aranea-agents/internal/tools/write_file"
 )
 
@@ -45,6 +46,8 @@ func InvokeWorkspaceJSON(ctx context.Context, name, argsJSON string) InvokeRespo
 		res, err = write_file.Run(ctx, args)
 	case EditFile:
 		res, err = edit_file.Run(ctx, args)
+	case WorkspaceSearch:
+		res, err = workspace_search.Run(ctx, args)
 	default:
 		return InvokeResponse{OK: false, Error: fmt.Sprintf("tool %q has no workspace invoke path", name)}
 	}

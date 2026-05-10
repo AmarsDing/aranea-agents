@@ -49,7 +49,8 @@ func firstNonEmptyTeam(a, b string) string {
 }
 
 func defaultTeamDefinitionJSON() string {
-	return `{"version":1,"mode":"sequential","members":[],"max_concurrency":2,"timeout_seconds":180}`
+	// Align with server.http.timeout in configs (long coordinator / tool runs); user may set 0 to skip runner deadline.
+	return `{"version":1,"mode":"sequential","members":[],"max_concurrency":2,"timeout_seconds":600}`
 }
 
 func validateTeamDefinition(raw string) error {

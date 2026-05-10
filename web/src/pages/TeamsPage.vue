@@ -50,6 +50,7 @@
 
     <TeamEditorDialog
       v-model="editorOpen"
+      v-model:selected-template-key="selectedTeamTemplateKey"
       :editing-id="editingId"
       :form="form"
       :definition="definition"
@@ -119,6 +120,7 @@ const search = ref("");
 const modeFilter = ref("");
 const statusFilter = ref("");
 const editorOpen = ref(false);
+const selectedTeamTemplateKey = ref<TeamTemplateKey | null>(null);
 const editingId = ref("");
 const runsOpen = ref(false);
 const runsLoading = ref(false);
@@ -142,7 +144,8 @@ const definition = reactive<TeamDefinition>({
   description: "",
   mode: "sequential",
   max_concurrency: 2,
-  timeout_seconds: 180,
+  timeout_seconds: 600,
+  loop_max_iterations: 0,
   members: []
 });
 
@@ -194,6 +197,7 @@ function openRouteEdit() {
 
 function openCreate() {
   editingId.value = "";
+  selectedTeamTemplateKey.value = null;
   Object.assign(form, { team_key: "", display_name: "", status: "active", adk_app_name: "" });
   Object.assign(definition, defaultDefinition());
   editorOpen.value = true;
@@ -201,6 +205,7 @@ function openCreate() {
 
 function openEdit(team: Team) {
   editingId.value = team.id;
+  selectedTeamTemplateKey.value = null;
   Object.assign(form, { team_key: team.team_key, display_name: team.display_name, status: team.status, adk_app_name: team.adk_app_name });
   Object.assign(definition, parseDefinition(team));
   editorOpen.value = true;
@@ -220,9 +225,34 @@ function removeMember(index: number) {
   definition.members.splice(index, 1);
 }
 
+function validateTeamDefinition(): string | null {
+  const mode = String(definition.mode || "sequential").toLowerCase();
+  const enabled = definition.members.filter((m) => m.enabled !== false && String(m.agent_id || "").trim() !== "");
+  if (enabled.length === 0) {
+    return "请至少启用一名成员并选择 Agent";
+  }
+  if (mode === "parallel") {
+    const synthRaw = String(definition.synthesizer_agent_id || "").trim();
+    const synthFromRole = enabled.find((m) => String(m.role || "").toLowerCase() === "synthesizer")?.agent_id?.trim();
+    const synth = synthRaw || synthFromRole || "";
+    if (!synth) {
+      return "并行模式需要指定汇总 Agent（synthesizer_agent_id 或成员角色 synthesizer）";
+    }
+    const workers = enabled.filter((m) => String(m.agent_id).trim() !== synth);
+    if (workers.length === 0) {
+      return "并行模式至少需要一名与汇总 Agent 不同的并行成员";
+    }
+  }
+  if (mode === "critic_loop" && enabled.length < 2) {
+    return "生成评审模式建议至少两名成员（生成与评审）";
+  }
+  return null;
+}
+
 function applyTemplate(template: TeamTemplateKey) {
   if (agents.value.length === 0) {
     $q.notify({ type: "warning", message: "请先创建或加载 Agent 后再应用模板" });
+    selectedTeamTemplateKey.value = null;
     return;
   }
   Object.assign(definition, definitionFromTemplate(template, agents.value));
@@ -230,6 +260,11 @@ function applyTemplate(template: TeamTemplateKey) {
 }
 
 async function save() {
+  const hint = validateTeamDefinition();
+  if (hint) {
+    $q.notify({ type: "warning", message: hint });
+    return;
+  }
   saving.value = true;
   try {
     const payload = {

@@ -133,10 +133,36 @@ export const useAppStore = defineStore("app", {
       const sessionID = this.selectedSession.id;
       const agent = this.selectedAgent;
       let streamingMessageID = "";
+      const pendingUserId = `pending-user-${Date.now()}`;
+      this.messages = [
+        ...this.messages,
+        {
+          id: pendingUserId,
+          session_id: sessionID,
+          parent_message_id: "",
+          turn_index: this.messages.length + 1,
+          role: "user",
+          content_markdown: content,
+          model_name: "",
+          token_in: 0,
+          token_out: 0,
+          latency_ms: 0,
+          status: "ok",
+          attachments_count: options?.attachments?.length ?? 0,
+          options_json: "",
+          error_message: "",
+          created_at: new Date().toISOString()
+        }
+      ];
 
       const appendMessage = (message: Message) => {
         if (this.messages.some((item) => item.id === message.id)) return;
         this.messages = [...this.messages, message];
+      };
+
+      const onUserMessage = (message: Message) => {
+        this.messages = this.messages.filter((item) => item.id !== pendingUserId);
+        appendMessage(message);
       };
 
       await sendMessageStream(
@@ -148,7 +174,7 @@ export const useAppStore = defineStore("app", {
         },
         {
           signal,
-          onUserMessage: appendMessage,
+          onUserMessage,
           onToolEvent: (event) => {
             const message = toolEventMessage(sessionID, event);
             if (this.messages.some((item) => item.id === message.id)) {

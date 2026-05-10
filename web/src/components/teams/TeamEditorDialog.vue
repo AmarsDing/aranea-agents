@@ -8,7 +8,7 @@
       <q-card-section class="row items-center justify-between">
         <div>
           <div class="text-h6">{{ editingId ? "编辑 Team" : "新增 Team" }}</div>
-          <div class="text-caption text-grey-7">配置成员后，后端会根据 mode 动态选择 sequential / parallel / coordinator / critic_loop 拓扑。</div>
+          <div class="text-caption text-grey-7">并行模式按「并行批大小」分批同时执行 Worker；coordinator/adaptive 的外圈迭代可在表单中配置。</div>
         </div>
         <q-btn flat round icon="close" @click="$emit('update:modelValue', false)" />
       </q-card-section>
@@ -20,7 +20,18 @@
               <div class="text-subtitle2">Team 模板</div>
               <div class="text-caption text-grey-7">选择模板可快速生成成员角色和编排参数。</div>
             </div>
-            <q-select class="col-12 col-md-5 team-control" dense outlined emit-value map-options label="选择模板" :options="teamTemplateOptions" @update:model-value="$emit('applyTemplate', $event)" />
+            <q-select
+              class="col-12 col-md-5 team-control"
+              dense
+              outlined
+              clearable
+              emit-value
+              map-options
+              label="选择模板"
+              :model-value="selectedTemplateKey"
+              :options="teamTemplateOptions"
+              @update:model-value="onTemplatePick"
+            />
             <div class="col-12 col-md-2 row justify-end">
               <q-icon name="auto_awesome" color="primary" size="28px" />
             </div>
@@ -32,8 +43,69 @@
           <q-input v-model.trim="form.team_key" class="col-12 col-md-6 team-control" dense outlined label="Team Key *" hint="小写字母、数字、连字符" />
           <q-select v-model="definition.mode" class="col-12 col-md-4 team-control" dense outlined emit-value map-options label="编排模式" :options="modeOptions" />
           <q-select v-model="form.status" class="col-12 col-md-4 team-control" dense outlined emit-value map-options label="状态" :options="statusOptions" />
-          <q-input v-model.number="definition.max_concurrency" class="col-12 col-md-4 team-control" dense outlined type="number" min="1" label="并发上限" />
+          <q-input
+            v-if="definition.mode === 'parallel'"
+            v-model.number="definition.max_concurrency"
+            class="col-12 col-md-4 team-control"
+            dense
+            outlined
+            type="number"
+            min="1"
+            label="并行批大小"
+            hint="每批同时执行的 Worker 数，批与批之间顺序执行"
+          />
+          <q-input
+            v-else-if="definition.mode === 'coordinator' || definition.mode === 'adaptive'"
+            v-model.number="definition.loop_max_iterations"
+            class="col-12 col-md-4 team-control"
+            dense
+            outlined
+            type="number"
+            min="0"
+            max="32"
+            label="外圈循环迭代"
+            hint="0 = 默认 1 轮外圈迭代（每轮整链成员各跑一遍；轮数×成员数会成倍拉长耗时与超时风险）"
+          />
+          <q-input
+            v-else-if="definition.mode === 'critic_loop'"
+            v-model.number="criticLoopMaxIterations"
+            class="col-12 col-md-4 team-control"
+            dense
+            outlined
+            type="number"
+            min="1"
+            max="32"
+            label="评审迭代次数"
+            hint="对应 critic_loop.max_iterations"
+          />
+          <div v-else class="col-12 col-md-4" />
           <q-input v-model="definition.description" class="col-12 team-control" dense outlined autogrow type="textarea" label="Team 说明" />
+        </div>
+
+        <div class="row q-col-gutter-md">
+          <q-input
+            v-model.number="definition.timeout_seconds"
+            class="col-12 col-md-4 team-control"
+            dense
+            outlined
+            type="number"
+            min="0"
+            max="7200"
+            label="单次运行超时（秒）"
+            hint="0=仅遵循 HTTP/反代超时；否则后端 120～7200s。coordinator/长任务建议 ≥600，并与 Nginx proxy_read_timeout 等对齐"
+          />
+          <q-select
+            v-model="definition.intent_anchor_agent_id"
+            class="col-12 col-md-8 team-control"
+            dense
+            outlined
+            clearable
+            emit-value
+            map-options
+            label="Intent / 选项锚定成员（可选）"
+            hint="intent 预处理与 user options 的锚点；留空则用排序后首位启用成员"
+            :options="intentAnchorOptions"
+          />
         </div>
 
         <q-expansion-item icon="sync_alt" label="A2A 协议">
@@ -109,6 +181,7 @@ import { buildGraphFromDefinition, modeOptions, roleOptions, statusOptions, team
 const props = withDefaults(
   defineProps<{
     modelValue: boolean;
+    selectedTemplateKey: TeamTemplateKey | null;
     editingId: string;
     form: {
       team_key: string;
@@ -123,16 +196,31 @@ const props = withDefaults(
     canSave: boolean;
     isDark: boolean;
   }>(),
-  { definitionJSON: "{}" },
+  { definitionJSON: "{}", selectedTemplateKey: null },
 );
 
-defineEmits<{
+const emit = defineEmits<{
   "update:modelValue": [value: boolean];
+  "update:selectedTemplateKey": [value: TeamTemplateKey | null];
   addMember: [];
   removeMember: [index: number];
   applyTemplate: [template: TeamTemplateKey];
   save: [];
 }>();
+
+const intentAnchorOptions = computed(() =>
+  props.definition.members
+    .filter((m) => m.enabled !== false && String(m.agent_id || "").trim() !== "")
+    .map((m) => ({
+      label: [m.name, m.role].filter(Boolean).join(" · ") || String(m.agent_id).slice(0, 8),
+      value: m.agent_id,
+    })),
+);
+
+function onTemplatePick(key: TeamTemplateKey | null) {
+  emit("update:selectedTemplateKey", key);
+  if (key) emit("applyTemplate", key);
+}
 
 const graph = computed(() => buildGraphFromDefinition(props.definition));
 const a2aFormatOptions = [
@@ -167,6 +255,15 @@ const a2aIncludeTrace = computed({
   get: () => props.definition.a2a?.include_trace ?? true,
   set: (value: boolean) => {
     props.definition.a2a = { ...props.definition.a2a, include_trace: value };
+  }
+});
+
+const criticLoopMaxIterations = computed({
+  get: () => props.definition.critic_loop?.max_iterations ?? 2,
+  set: (value: number) => {
+    const n = Number.isFinite(value) ? Math.min(32, Math.max(1, Math.floor(value))) : 2;
+    const prev = props.definition.critic_loop ?? { max_iterations: 2, score_threshold: 0.8 };
+    props.definition.critic_loop = { ...prev, max_iterations: n };
   }
 });
 

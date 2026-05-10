@@ -160,10 +160,18 @@ function handleStreamEvent(block: string, callbacks: SendMessageStreamCallbacks)
   if (event === "user_message") {
     callbacks.onUserMessage?.(wireInboundChatMessage(parsed));
   } else if (event === "delta") {
-    callbacks.onDelta?.(String(parsed.content ?? ""));
+    const c = String(parsed.content ?? "");
+    const r = String(parsed.reasoning_content ?? parsed.reasoningContent ?? "");
+    const deltaText = `${c}${r}`;
+    callbacks.onDelta?.(deltaText);
   } else if (event === "done") {
     const am = parsed.agent_message ?? parsed.agentMessage;
-    callbacks.onDone?.(wireInboundChatMessage(am));
+    if (am != null && typeof am === "object") {
+      const m = wireInboundChatMessage(am);
+      if (String(m.id ?? "").trim()) {
+        callbacks.onDone?.(m);
+      }
+    }
   } else if (event === "tool_event") {
     callbacks.onToolEvent?.(parsed as ToolUseEvent);
   } else if (event === "member_message_start") {

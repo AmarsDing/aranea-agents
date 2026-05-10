@@ -45,6 +45,10 @@ export type TeamDefinition = {
   mode: "sequential" | "parallel" | "coordinator" | "critic_loop" | "adaptive" | string;
   max_concurrency?: number;
   timeout_seconds?: number;
+  /** coordinator / adaptive：外圈 LoopAgent 迭代上限；0 表示后端默认 3 */
+  loop_max_iterations?: number;
+  /** 可选：intent 与 user options 锚定的启用成员 agent_id；默认首位启用成员 */
+  intent_anchor_agent_id?: string;
   members: TeamDefinitionMember[];
   a2a?: {
     enabled?: boolean;

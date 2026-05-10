@@ -158,7 +158,7 @@ export function subscribeTeamRunEvents(
 ): EventSource {
   const query = new URLSearchParams({ team_id: teamID });
   const source = new EventSource(`${getSseBaseURL()}/team-run-events?${query.toString()}`);
-  for (const eventName of ["run_started", "step_finished", "run_finished"]) {
+  for (const eventName of ["run_started", "step_finished", "run_finished", "intent_pass"]) {
     source.addEventListener(eventName, (event) => {
       onEvent(JSON.parse((event as MessageEvent).data) as TeamRunEvent);
     });

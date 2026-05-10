@@ -50,3 +50,31 @@ func firstNonEmptyStr(vals ...string) string {
 	}
 	return ""
 }
+
+// mergeTeamUserADKMetaJSON adds audit fields for the text sent to ADK vs content_markdown shown in chat.
+func mergeTeamUserADKMetaJSON(userOpts string, displayContent, adkSendText string) (string, error) {
+	displayContent = strings.TrimSpace(displayContent)
+	adkSendText = strings.TrimSpace(adkSendText)
+	var opts map[string]any
+	if strings.TrimSpace(userOpts) == "" {
+		opts = map[string]any{}
+	} else if err := json.Unmarshal([]byte(userOpts), &opts); err != nil {
+		return userOpts, err
+	}
+	sendLen := len([]rune(adkSendText))
+	opts["team_adk_user_display_len"] = len([]rune(displayContent))
+	opts["team_adk_user_send_len"] = sendLen
+	opts["team_adk_user_send_differs_from_display"] = adkSendText != displayContent
+	// Plan / audit aliases (same values as team_* send fields).
+	opts["adk_user_turn_length"] = sendLen
+	if adkSendText != "" {
+		pr := runesTruncate(adkSendText, 240)
+		opts["team_adk_user_send_preview"] = pr
+		opts["adk_user_text_preview"] = pr
+	}
+	out, err := json.Marshal(opts)
+	if err != nil {
+		return userOpts, err
+	}
+	return string(out), nil
+}

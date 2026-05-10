@@ -20,6 +20,7 @@ func ensureAgentRuntimePatches(ctx context.Context, c *ent.Client) error {
 		{"skill_runtime_json", `ALTER TABLE agent_runtime_settings ADD COLUMN skill_runtime_json TEXT NOT NULL DEFAULT '{}'`},
 		{"l0_compress_provider", `ALTER TABLE agent_runtime_settings ADD COLUMN l0_compress_provider TEXT NOT NULL DEFAULT ''`},
 		{"l0_compress_model", `ALTER TABLE agent_runtime_settings ADD COLUMN l0_compress_model TEXT NOT NULL DEFAULT ''`},
+		{"intent_pass_enabled", `ALTER TABLE agent_runtime_settings ADD COLUMN intent_pass_enabled INTEGER NOT NULL DEFAULT 1`},
 	}
 	for _, p := range patches {
 		has, err := sqliteColumnExists(ctx, c, "agent_runtime_settings", p.col)

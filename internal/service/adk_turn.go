@@ -2,11 +2,13 @@ package service
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/agent/adksvc"
+	"aranea-agents/internal/agent/intent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/provider"
 	"aranea-agents/internal/tools"
@@ -77,6 +79,28 @@ func (s *ChatService) runSingleAgentViaADK(
 	if err != nil {
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
+	sendText := content
+	intRes := intent.Run(ctx, intent.IntentPassFromAgent(ag), s.llmCatalog, s.llmHTTP, prov, mod, content)
+	if intRes.Artifact != nil {
+		if strings.TrimSpace(intRes.RawJSON) != "" {
+			merged, merr := intent.MergeIntoUserOptionsJSON(userOpts, intRes.RawJSON)
+			if merr != nil {
+				slog.Warn("intent merge into user options_json failed; continuing without intent_artifact", "error", merr)
+			} else {
+				userOpts = merged
+			}
+		}
+		sendText = intent.WrapUserMessage(content, intRes.Artifact)
+	}
+	meta := intent.SSERunMeta{AgentID: ag.ID, SessionID: sessionID}
+	if s.teamSSE != nil {
+		s.teamSSE.Publish(biz.TeamRunEvent{
+			Type:      "intent_pass",
+			SessionID: sessionID,
+			Payload:   intent.BuildIntentPassPayload(intRes, meta),
+		})
+	}
+	intent.PublishMonitorLog(ctx, s.monitorLogs, intRes, "chat", meta)
 	now := chatagent.RFC3339Now()
 	userMsg := biz.ChatMessage{
 		ID:               uuid.NewString(),
@@ -96,7 +120,7 @@ func (s *ChatService) runSingleAgentViaADK(
 		_ = stream.Emit("user_message", userMsg)
 	}
 
-	msg := genai.NewContentFromText(content, genai.RoleUser)
+	msg := genai.NewContentFromText(sendText, genai.RoleUser)
 	uid := chatagent.UserIDFromCtx(ctx)
 	cfg := adkagent.RunConfig{StreamingMode: adkagent.StreamingModeSSE}
 	if stream == nil {

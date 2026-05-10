@@ -32,6 +32,42 @@ type BuilderDeps struct {
 	Model    string
 	// SQLiteSessionMemory is true when the Runner uses SessionMemoryStore-backed ADK memory (durable entities).
 	SQLiteSessionMemory bool
+	// TeamOrchestrationMode / TeamMemberRole / TeamMemberDisplayName are optional; native team sets them per member.
+	TeamOrchestrationMode string
+	TeamMemberRole        string
+	TeamMemberDisplayName string
+}
+
+// appendTeamOrchestrationCue adds team workflow context to the system instruction when any field is set.
+func appendTeamOrchestrationCue(sys, mode, role, rosterName string) string {
+	mode = strings.TrimSpace(mode)
+	role = strings.TrimSpace(role)
+	rosterName = strings.TrimSpace(rosterName)
+	if mode == "" && role == "" && rosterName == "" {
+		return sys
+	}
+	var b strings.Builder
+	b.WriteString("\n\n## Team orchestration (system)\n")
+	if mode != "" {
+		b.WriteString("- Team workflow mode: ")
+		b.WriteString(mode)
+		b.WriteByte('\n')
+	}
+	if role != "" {
+		b.WriteString("- Your role in this team workflow: ")
+		b.WriteString(role)
+		b.WriteByte('\n')
+	}
+	if rosterName != "" {
+		b.WriteString("- Team roster label (coordination with other members): ")
+		b.WriteString(rosterName)
+		b.WriteByte('\n')
+	}
+	if strings.EqualFold(strings.TrimSpace(mode), "parallel") {
+		b.WriteString("- Parallel workflow: split read-only investigation across members when tasks are independent; avoid two members editing the same file in the same turn. Record searched paths in shared working_memory when available.\n")
+	}
+	b.WriteString("- Align with this role and workflow mode together with your primary instructions above.\n")
+	return sys + b.String()
 }
 
 // BuildLLMAgent constructs an ADK LLM agent from a hydrated biz catalog agent.
@@ -64,6 +100,7 @@ func BuildLLMAgent(ctx context.Context, ag biz.Agent, deps BuilderDeps) (agent.A
 	if cue := RuntimeCapabilityCue(ctx, promptDeps, ag); cue != "" {
 		sys = sys + "\n\n" + cue
 	}
+	sys = appendTeamOrchestrationCue(sys, deps.TeamOrchestrationMode, deps.TeamMemberRole, deps.TeamMemberDisplayName)
 
 	incl := llmagent.IncludeContentsDefault
 	if ag.Settings != nil && strings.EqualFold(strings.TrimSpace(ag.Settings.L0SnapshotMode), "none") {

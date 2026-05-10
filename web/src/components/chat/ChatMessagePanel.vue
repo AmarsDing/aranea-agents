@@ -82,7 +82,25 @@
             <span class="message-name">{{ displayMessageName(message) }}</span>
             <span class="message-stamp">{{ formatStamp(message.created_at) }}</span>
           </div>
+          <details
+            v-if="isCollapsibleToolDetail(message)"
+            class="chat-tool-details"
+          >
+            <summary class="chat-tool-details__summary">
+              <span class="chat-tool-details__summary-text">{{ toolCollapseSummary(message) }}</span>
+              <span class="chat-tool-details__hint text-caption" aria-hidden="true" />
+            </summary>
+            <div
+              class="chat-message-content chat-tool-details__body"
+              :class="{
+                'chat-message-content--sent': message.role === 'user',
+                'chat-message-content--dark': message.role !== 'user' && props.isDark
+              }"
+              v-html="renderMarkdown(toolCollapseDetail(message))"
+            />
+          </details>
           <div
+            v-else
             class="chat-message-content"
             :class="{
               'chat-message-content--sent': message.role === 'user',
@@ -536,6 +554,39 @@ function toolEventMeta(message: Message): ToolMessageMeta | null {
 
 function isToolEventMessage(message: Message): boolean {
   return Boolean(toolEventMeta(message)) || message.status.startsWith("tool_");
+}
+
+/** 首行作为摘要，其余（含 read_file 大段代码等）放入可折叠区。 */
+function toolCollapseParts(message: Message): { summary: string; detail: string } {
+  const md = message.content_markdown?.trim() ?? "";
+  const nl = md.indexOf("\n");
+  if (nl === -1) {
+    return { summary: toolCollapsePlainLine(md), detail: "" };
+  }
+  const first = md.slice(0, nl).trim();
+  const rest = md.slice(nl + 1).trim();
+  return { summary: toolCollapsePlainLine(first), detail: rest };
+}
+
+function toolCollapsePlainLine(s: string): string {
+  let t = s.replace(/\*\*/g, "").replace(/`/g, "").trim();
+  if (t.length > 220) t = `${t.slice(0, 220)}…`;
+  return t || "工具";
+}
+
+function toolCollapseSummary(message: Message): string {
+  return toolCollapseParts(message).summary;
+}
+
+function toolCollapseDetail(message: Message): string {
+  return toolCollapseParts(message).detail;
+}
+
+/** 工具「进行中」保持单行展开；有后续段落/代码块时默认折叠详情。 */
+function isCollapsibleToolDetail(message: Message): boolean {
+  if (!isToolEventMessage(message)) return false;
+  if (message.status === "tool_running") return false;
+  return toolCollapseParts(message).detail.length > 0;
 }
 
 function messageAvatarRawIcon(message: Message): string {
@@ -1174,6 +1225,66 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
 .chat-scroll-fade-leave-to
   opacity: 0
   transform: translateY(8px) scale(0.92)
+
+// ===== 工具调用结果：默认折叠，点开展开详情（read_file / shell 输出等）=====
+.chat-tool-details
+  width: 100%
+  min-width: 0
+  margin-top: 2px
+
+.chat-tool-details__summary
+  cursor: pointer
+  list-style: none
+  display: flex
+  flex-wrap: wrap
+  align-items: baseline
+  gap: 8px 12px
+  padding: 6px 4px
+  border-radius: 10px
+  user-select: none
+  outline: none
+  &::-webkit-details-marker
+    display: none
+  &:hover
+    background: rgba(14, 165, 233, 0.09)
+
+.chat-tool-details[open] > .chat-tool-details__summary
+  margin-bottom: 4px
+
+.chat-tool-details__summary-text
+  flex: 1
+  min-width: 0
+  font-weight: 600
+  font-size: 14px
+  line-height: 1.45
+  color: #0f172a
+
+.chat-tool-details__hint
+  flex-shrink: 0
+  letter-spacing: 0.02em
+  &::after
+    content: "展开详情"
+    color: rgba(71, 85, 105, 0.92)
+
+.chat-tool-details[open] .chat-tool-details__hint::after
+  content: "收起"
+
+.chat-tool-details__body
+  margin-top: 8px
+  padding-top: 10px
+  border-top: 1px dashed rgba(148, 163, 184, 0.45)
+
+.chat-message-bubble--dark .chat-tool-details__summary-text
+  color: #f1f5f9
+
+.chat-message-bubble--dark .chat-tool-details__hint::after
+  color: rgba(148, 163, 184, 0.92)
+
+.chat-message-bubble--dark .chat-tool-details__summary:hover
+  background: rgba(56, 189, 248, 0.1)
+
+.chat-message-bubble--dark .chat-tool-details__body
+  border-top-color: rgba(148, 163, 184, 0.28)
 
 // ===== Markdown content =====
 .chat-message-content

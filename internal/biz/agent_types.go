@@ -106,8 +106,10 @@ type AgentRuntimeSettings struct {
 	EvoSystemPromptMaxAppends         int
 	// SkillRuntimeJSON is agent_runtime_settings.skill_runtime_json (whitelist/deny/tags + routing caps).
 	SkillRuntimeJSON string
-	CreatedAt        string
-	UpdatedAt        string
+	// IntentPassEnabled runs the optional pre-turn intent classification pass (see intent package); default true in DB/UI.
+	IntentPassEnabled bool
+	CreatedAt         string
+	UpdatedAt         string
 }
 
 // AgentPromptFile is one row in agent_prompt_files (API name field maps to file_name).

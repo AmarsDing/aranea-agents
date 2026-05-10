@@ -2,24 +2,38 @@ package team
 
 import (
 	"encoding/json"
+	"sort"
 	"strings"
+	"time"
 )
 
 // Definition mirrors team DefinitionJSON (subset used by native runner).
 type Definition struct {
-	Version            int            `json:"version"`
-	Mode               string         `json:"mode"`
-	SynthesizerAgentID string         `json:"synthesizer_agent_id"`
-	Members            []MemberDef    `json:"members"`
-	MaxConcurrency     int            `json:"max_concurrency"`
-	TimeoutSeconds     int            `json:"timeout_seconds"`
+	Version            int               `json:"version"`
+	Mode               string            `json:"mode"`
+	SynthesizerAgentID string            `json:"synthesizer_agent_id"`
+	Members            []MemberDef       `json:"members"`
+	MaxConcurrency     int               `json:"max_concurrency"`
+	TimeoutSeconds     int               `json:"timeout_seconds"`
+	LoopMaxIterations  int               `json:"loop_max_iterations,omitempty"`
+	CriticLoop         *CriticLoopConfig `json:"critic_loop,omitempty"`
+	// IntentAnchorAgentID, when set, selects which enabled member drives intent pass and user options_json anchor (default: first enabled member).
+	IntentAnchorAgentID string `json:"intent_anchor_agent_id,omitempty"`
+}
+
+// CriticLoopConfig matches frontend critic_loop JSON (score_threshold reserved for future routing).
+type CriticLoopConfig struct {
+	MaxIterations  int     `json:"max_iterations"`
+	ScoreThreshold float64 `json:"score_threshold"`
 }
 
 // MemberDef is one team member entry in DefinitionJSON.
 type MemberDef struct {
-	AgentID string `json:"agent_id"`
-	Role    string `json:"role"`
-	Enabled *bool  `json:"enabled"`
+	AgentID   string `json:"agent_id"`
+	Role      string `json:"role"`
+	Enabled   *bool  `json:"enabled"`
+	SortOrder int    `json:"sort_order"`
+	Name      string `json:"name"`
 }
 
 // ParseDefinition unmarshals team JSON; empty string yields default sequential with no members.
@@ -42,14 +56,36 @@ func memberEnabled(m MemberDef) bool {
 	return m.Enabled == nil || *m.Enabled
 }
 
-// EnabledMembers returns members in order that are enabled and have agent_id.
+type memberWithIndex struct {
+	m MemberDef
+	i int
+}
+
+// EnabledMembers returns enabled members with non-empty agent_id, ordered by sort_order then declaration order.
 func EnabledMembers(d Definition) []MemberDef {
-	var out []MemberDef
-	for _, m := range d.Members {
+	var pairs []memberWithIndex
+	for i, m := range d.Members {
 		if !memberEnabled(m) || strings.TrimSpace(m.AgentID) == "" {
 			continue
 		}
-		out = append(out, m)
+		pairs = append(pairs, memberWithIndex{m: m, i: i})
+	}
+	sort.SliceStable(pairs, func(a, b int) bool {
+		sa, sb := pairs[a].m.SortOrder, pairs[b].m.SortOrder
+		switch {
+		case sa > 0 && sb > 0 && sa != sb:
+			return sa < sb
+		case sa > 0 && sb <= 0:
+			return true
+		case sa <= 0 && sb > 0:
+			return false
+		default:
+			return pairs[a].i < pairs[b].i
+		}
+	})
+	out := make([]MemberDef, len(pairs))
+	for j := range pairs {
+		out[j] = pairs[j].m
 	}
 	return out
 }
@@ -59,10 +95,7 @@ func SynthesizerAgentID(d Definition) string {
 	if id := strings.TrimSpace(d.SynthesizerAgentID); id != "" {
 		return id
 	}
-	for _, m := range d.Members {
-		if !memberEnabled(m) {
-			continue
-		}
+	for _, m := range EnabledMembers(d) {
 		if strings.EqualFold(strings.TrimSpace(m.Role), "synthesizer") {
 			return strings.TrimSpace(m.AgentID)
 		}
@@ -84,4 +117,26 @@ func ParallelWorkers(d Definition) []MemberDef {
 		return EnabledMembers(d)
 	}
 	return out
+}
+
+const (
+	teamTurnMinSeconds = 120
+	teamTurnMaxSeconds = 7200
+)
+
+// TurnDeadlineDuration bounds wall-clock time for the native team **ADK Run phase** (orchestrated LLM
+// workflow only), not intent preflight or workflow build. Intent uses its own short timeout (see intent.Run).
+// Zero means do not add an extra deadline for ADK (still subject to parent context / gateway limits).
+func TurnDeadlineDuration(d Definition) time.Duration {
+	sec := d.TimeoutSeconds
+	if sec <= 0 {
+		return 0
+	}
+	if sec < teamTurnMinSeconds {
+		sec = teamTurnMinSeconds
+	}
+	if sec > teamTurnMaxSeconds {
+		sec = teamTurnMaxSeconds
+	}
+	return time.Duration(sec) * time.Second
 }

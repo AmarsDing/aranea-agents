@@ -19,6 +19,8 @@ const (
 	ListFiles  = "list_files"
 	WriteFile  = "write_file"
 	EditFile   = "edit_file"
+	// WorkspaceSearch is an optional readonly search tool (not part of four core FS CRUD tools).
+	WorkspaceSearch = "workspace_search"
 	ExampleTool = "example_tool"
 
 	SkillListSkills        = "list_skills"

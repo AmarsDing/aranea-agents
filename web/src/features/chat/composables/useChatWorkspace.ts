@@ -4,6 +4,7 @@ import { useQuasar } from "quasar";
 import { useRoute, useRouter } from "vue-router";
 import {
   createSession,
+  getSession,
   listChatOptions,
   listMessages,
   listTeamSessions,
@@ -386,27 +387,30 @@ export function useChatWorkspace() {
       streamAbortController.value = new AbortController();
       try {
         if (!store.selectedSession) await onNewSession(makeSessionTitle(content));
-        if (store.selectedSession) {
-          const selectedModel = selectedProviderModel.value;
-          inputText.value = "";
-          await store.sendStream(
-            content,
-            {
-              dialog_mode: dialogMode.value,
-              provider:
-                selectedModel?.provider || store.selectedSession.provider || store.selectedAgent?.provider || "",
-              model: selectedModel?.model || store.selectedSession.model || store.selectedAgent?.model || "",
-              attachments: attachments.value.map((item) => ({ id: item.id }))
-            },
-            streamAbortController.value.signal
-          );
+        if (!store.selectedSession) {
+          $q.notify({ type: "negative", message: "未创建会话或会话无效，请重试" });
+          return;
         }
+        const selectedModel = selectedProviderModel.value;
+        inputText.value = "";
+        await store.sendStream(
+          content,
+          {
+            dialog_mode: dialogMode.value,
+            provider:
+              selectedModel?.provider || store.selectedSession.provider || store.selectedAgent?.provider || "",
+            model: selectedModel?.model || store.selectedSession.model || store.selectedAgent?.model || "",
+            attachments: attachments.value.map((item) => ({ id: item.id }))
+          },
+          streamAbortController.value.signal
+        );
       } catch (error) {
         if (!(error instanceof DOMException && error.name === "AbortError")) {
           $q.notify({
             type: "negative",
             message: error instanceof Error ? error.message : "发送失败，请稍后重试"
           });
+          store.messages = store.messages.filter((m) => !String(m.id).startsWith("pending-user-"));
           if (store.selectedSession) {
             try {
               await store.loadMessages();
@@ -426,13 +430,20 @@ export function useChatWorkspace() {
     if (selectedEntityKind.value === "team" && selectedTeamId.value) {
       sending.value = true;
       streamAbortController.value = new AbortController();
+      let sessionIdForCatch = "";
       try {
         if (!teamSelectedSessionId.value) await onNewSession(makeSessionTitle(content));
         const sessionId = teamSelectedSessionId.value;
-        if (!sessionId) return;
+        if (!sessionId) {
+          $q.notify({ type: "negative", message: "未创建会话或会话无效，请重试" });
+          return;
+        }
+        sessionIdForCatch = sessionId;
         const session = teamSessions.value[selectedTeamId.value]?.find((item) => item.id === sessionId);
         const selectedModel = selectedProviderModel.value;
         inputText.value = "";
+        const pendingUserId = `pending-user-${Date.now()}`;
+        teamMessages.value[sessionId] = [...(teamMessages.value[sessionId] ?? []), mockMessage(pendingUserId, sessionId, "user", content)];
         let streamingMessageID = "";
         await sendMessageStream(
           {
@@ -449,7 +460,8 @@ export function useChatWorkspace() {
           {
             signal: streamAbortController.value.signal,
             onUserMessage: (message) => {
-              teamMessages.value[sessionId] = [...(teamMessages.value[sessionId] ?? []), message];
+              const cur = teamMessages.value[sessionId] ?? [];
+              teamMessages.value[sessionId] = [...cur.filter((item) => item.id !== pendingUserId), message];
             },
             onToolEvent: (event) => {
               const message = toolEventMessage(sessionId, event);
@@ -495,10 +507,36 @@ export function useChatWorkspace() {
             }
           }
         );
+        try {
+          teamMessages.value[sessionId] = await listMessages(sessionId);
+        } catch {
+          /* keep SSE-assembled rows if history fetch fails */
+        }
         await loadTeamSessions(selectedTeamId.value);
+        try {
+          const fresh = await getSession(sessionId);
+          const tid = selectedTeamId.value;
+          if (tid) {
+            const rows = teamSessions.value[tid] ?? [];
+            teamSessions.value[tid] = rows.map((row) =>
+              row.id === sessionId
+                ? {
+                    ...fresh,
+                    at: formatSessionTime(fresh.last_message_at || fresh.updated_at || fresh.created_at)
+                  }
+                : row
+            );
+          }
+        } catch {
+          /* ignore best-effort refresh */
+        }
       } catch (error) {
         if (!(error instanceof DOMException && error.name === "AbortError")) {
           $q.notify({ type: "negative", message: error instanceof Error ? error.message : "Team 发送失败" });
+        }
+        if (sessionIdForCatch) {
+          const cur = teamMessages.value[sessionIdForCatch] ?? [];
+          teamMessages.value[sessionIdForCatch] = cur.filter((item) => !String(item.id).startsWith("pending-user-"));
         }
       } finally {
         sending.value = false;

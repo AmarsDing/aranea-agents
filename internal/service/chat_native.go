@@ -88,10 +88,14 @@ func (s *ChatService) nativeSendChatMessage(ctx context.Context, req *chatv1.Sen
 	um := chatMessageToMap(userMsg)
 	am := chatMessageToMap(assistantMsg)
 	out := &chatv1.SendChatMessageResponse{}
-	if st, err := structpb.NewStruct(um); err == nil {
+	if st, err := structpb.NewStruct(um); err != nil {
+		return nil, kerrors.InternalServer("CHAT_NATIVE", fmt.Sprintf("encode user_message: %v", err))
+	} else {
 		out.UserMessage = st
 	}
-	if st, err := structpb.NewStruct(am); err == nil {
+	if st, err := structpb.NewStruct(am); err != nil {
+		return nil, kerrors.InternalServer("CHAT_NATIVE", fmt.Sprintf("encode agent_message: %v", err))
+	} else {
 		out.AgentMessage = st
 	}
 	recordChatIngressUsage(ctx, s.usage, req, am, false)
@@ -216,6 +220,15 @@ func (s *ChatService) runNativeAgentTurn(ctx context.Context, req *chatv1.SendCh
 	if strings.EqualFold(strings.TrimSpace(sess.OwnerType), "team") {
 		if s.teamsNative == nil {
 			return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.InternalServer("CHAT_TEAM_NATIVE", "team runner not wired")
+		}
+		if s.monitorLogs != nil {
+			transport := "unary"
+			if stream != nil {
+				transport = "sse"
+			}
+			s.monitorLogs.Publish(ctx, "INFO", fmt.Sprintf(
+				"chat_native phase=team_invoke session_id=%s team_id=%s content_len=%d transport=%s",
+				sess.ID, strings.TrimSpace(sess.TeamID), len(content), transport), "chat-native")
 		}
 		var emitter agent.StreamEmitter
 		if stream != nil {

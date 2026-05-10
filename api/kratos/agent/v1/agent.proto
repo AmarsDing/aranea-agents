@@ -90,6 +90,7 @@ message AgentRuntimeSettings {
   string created_at = 76;
   string updated_at = 77;
   string skill_runtime_json = 78;
+  bool intent_pass_enabled = 79;
 }
 
 message AgentPromptFile {

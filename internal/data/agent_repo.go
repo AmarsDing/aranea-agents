@@ -171,6 +171,7 @@ func entRuntimeToBiz(e *ent.AgentRuntimeSetting) biz.AgentRuntimeSettings {
 		EvoPersonaMaxChars:                e.EvoPersonaMaxChars,
 		EvoSystemPromptMaxAppends:         e.EvoSystemPromptMaxAppends,
 		SkillRuntimeJSON:                  e.SkillRuntimeJSON,
+		IntentPassEnabled:                 e.IntentPassEnabled,
 		CreatedAt:                         e.CreatedAt,
 		UpdatedAt:                         e.UpdatedAt,
 	}
@@ -269,6 +270,7 @@ func applyBizRuntimeToCreate(b *ent.AgentRuntimeSettingCreate, v biz.AgentRuntim
 		SetEvoPersonaMaxChars(v.EvoPersonaMaxChars).
 		SetEvoSystemPromptMaxAppends(v.EvoSystemPromptMaxAppends).
 		SetSkillRuntimeJSON(normalizeSkillRuntimeJSON(v.SkillRuntimeJSON)).
+		SetIntentPassEnabled(v.IntentPassEnabled).
 		SetCreatedAt(v.CreatedAt).
 		SetUpdatedAt(v.UpdatedAt)
 }

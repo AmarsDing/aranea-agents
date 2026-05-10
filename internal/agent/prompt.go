@@ -51,6 +51,7 @@ func RuntimeCapabilityCue(ctx context.Context, d Deps, ag biz.Agent) string {
 	b.WriteString("## Runtime capability policy (system)\n")
 	b.WriteString("When tools are enabled below, this server may execute matching filesystem functions via the model's tool calls (paths are confined to the configured workspace root; override with env ARANEA_WORKSPACE_ROOT or WORKSPACE_ROOT).\n")
 	b.WriteString("shell_exec runs with cwd inside that sandbox only: Windows %USERPROFILE%\\Desktop and other paths outside the workspace root will fail. Use relative paths under the workspace (e.g. mkdir notes). If stderr reports access/path errors, explain the sandbox limit once—do not loop repeating the same shell command.\n")
+	b.WriteString("list_files: call at most once per directory path for the same user task; if you already have a listing, proceed with read_file on specific paths or answer—do not repeat list_files on the same path.\n")
 	if st.SubagentsEnabled {
 		fmt.Fprintf(&b, "- Subagents: enabled; max_concurrency=%d, max_depth=%d, max_children_per_agent=%d\n",
 			st.SubagentsMaxConcurrency, st.SubagentsMaxGenerationDepth, st.SubagentsMaxChildrenPerAgent)
@@ -72,6 +73,7 @@ func RuntimeCapabilityCue(ctx context.Context, d Deps, ag biz.Agent) string {
 				var keys []string
 				memCue := false
 				mcpCue := false
+				hasWorkspaceSearch := false
 				for _, it := range eff.Items {
 					if it.Enabled {
 						keys = append(keys, it.ToolKey)
@@ -81,6 +83,8 @@ func RuntimeCapabilityCue(ctx context.Context, d Deps, ag biz.Agent) string {
 							memCue = true
 						case biz.ToolKeyMCPToolSet:
 							mcpCue = true
+						case "workspace_search":
+							hasWorkspaceSearch = true
 						}
 					}
 				}
@@ -89,6 +93,10 @@ func RuntimeCapabilityCue(ctx context.Context, d Deps, ag biz.Agent) string {
 				} else {
 					b.WriteString("- Effective tool keys: (none under current profile and allow list)\n")
 				}
+				if hasWorkspaceSearch {
+					b.WriteString("- workspace_search: use to locate symbols or string literals across the workspace before listing directories; preferred order: workspace_search → read_file (use start_line/end_line for large files) → edit/write. Avoid list_files at repo root without a narrowed path or keyword.\n")
+				}
+				b.WriteString("- Execution planning: state 3-7 verifiable steps before substantive edits; prefer tests or builds on affected packages when tools allow; if intent_artifact appears in session metadata, align steps with refined_goal and use search_hints for workspace_search queries.\n")
 				if memCue {
 					if d.SQLiteSessionMemory {
 						b.WriteString("- load_memory/preload_memory: SQLite-backed session memory (memory_entities); durable across process restarts for turns that sync into the store.\n")

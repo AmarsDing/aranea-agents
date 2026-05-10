@@ -15,10 +15,11 @@ import (
 )
 
 type args struct {
-	Path string `json:"path"`
+	Path       string `json:"path"`
+	MaxEntries int    `json:"max_entries,omitempty"`
 }
 
-const desc = `List files and directories under a path relative to the workspace root. Use "" or "." for root.`
+const desc = `List files and directories under a path relative to the workspace root. Use "" or "." for the workspace root. Do not call again with the same path in one task once you have a result—use read_file or workspace_search to inspect files or proceed with analysis. Optional max_entries caps the listing (items may be truncated).`
 
 func Run(ctx context.Context, argsMap map[string]any) (map[string]any, error) {
 	_ = ctx
@@ -31,7 +32,34 @@ func Run(ctx context.Context, argsMap map[string]any) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"path": rel, "items": workspace.DirEntriesAsItems(entries)}, nil
+	items := workspace.DirEntriesAsItems(entries)
+	out := map[string]any{"path": rel, "items": items}
+	maxEntries := intFromArg(argsMap, "max_entries", 0)
+	if maxEntries > 0 && len(items) > maxEntries {
+		out["items"] = items[:maxEntries]
+		out["truncated"] = true
+	}
+	return out, nil
+}
+
+func intFromArg(m map[string]any, key string, def int) int {
+	if m == nil {
+		return def
+	}
+	v, ok := m[key]
+	if !ok || v == nil {
+		return def
+	}
+	switch t := v.(type) {
+	case float64:
+		return int(t)
+	case int:
+		return t
+	case int64:
+		return int(t)
+	default:
+		return def
+	}
 }
 
 func New() (tool.Tool, error) {
@@ -39,7 +67,11 @@ func New() (tool.Tool, error) {
 		Name:        "list_files",
 		Description: desc,
 	}, func(_ tool.Context, in args) (map[string]any, error) {
-		return Run(context.Background(), map[string]any{"path": in.Path})
+		m := map[string]any{"path": in.Path}
+		if in.MaxEntries != 0 {
+			m["max_entries"] = in.MaxEntries
+		}
+		return Run(context.Background(), m)
 	})
 }
 
@@ -48,6 +80,10 @@ func OpenAIFunctionSpec() map[string]any {
 		"type": "object",
 		"properties": map[string]any{
 			"path": map[string]any{"type": "string", "description": "Directory relative to workspace; empty means root"},
+			"max_entries": map[string]any{
+				"type":        "number",
+				"description": "Optional max number of directory entries to return; if exceeded, items are truncated and truncated=true is set",
+			},
 		},
 	})
 }
