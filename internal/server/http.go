@@ -53,6 +53,7 @@ func NewHTTPServer(c *conf.Server,
 	systemSettingSvc *service.SystemSettingService,
 	teams *service.TeamService,
 	chatSvc *service.ChatService,
+	channelIngress *service.ChannelIngress,
 	skillImport *importer.Engine,
 ) *http.Server {
 	var opts = []http.ServerOption{
@@ -95,6 +96,7 @@ func NewHTTPServer(c *conf.Server,
 	systemsettingv1.RegisterSystemSettingServiceHTTPServer(srv, systemSettingSvc)
 	teamv1.RegisterTeamServiceHTTPServer(srv, teams)
 	RegisterChatIngress(srv, chatSvc)
+	RegisterChannelWebhook(srv, channelIngress)
 	RegisterSkillImportHTTPServer(srv, skillImport)
 	srv.Route("/").GET("/healthz", func(ctx http.Context) error {
 		w := ctx.Response()

@@ -12,7 +12,7 @@ func Test_registerPersistMetaKeys_lookup_aliases(t *testing.T) {
 	ag := biz.Agent{ID: "id1", AgentKey: "coder-bot", DisplayName: "Coder"}
 	registerPersistMetaKeys(m, mem, ag)
 
-	for _, k := range []string{"coder-bot", "coder", "显示名"} {
+	for _, k := range []string{"coder-bot", "coder", "显示名", "id1"} {
 		if _, ok := m[k]; !ok {
 			t.Fatalf("missing alias key %q, have %v", k, m)
 		}

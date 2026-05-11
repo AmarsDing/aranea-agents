@@ -292,3 +292,8 @@ func (s *ChatService) hydratedAgent(ctx context.Context, agentID string) (biz.Ag
 	}
 	return s.agents.GetAgentByID(ctx, agentID)
 }
+
+// RunNativeTurnUnary runs the native in-process agent/team turn, ignoring LEGACY_REST_ORIGIN (for Channel webhooks).
+func (s *ChatService) RunNativeTurnUnary(ctx context.Context, req *chatv1.SendChatMessageRequest) (biz.ChatMessage, biz.ChatMessage, error) {
+	return s.runNativeAgentTurn(ctx, req, nil)
+}

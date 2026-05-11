@@ -1,12 +1,12 @@
 # Agent & Team 运行时设计（Aranea Admin）
 
-## Kratos v2 + ADK Runtime 分工（迁移后）
+## Kratos v2 + tRPC-Agent-Go 运行时分工（迁移后）
 
-- **Kratos v2**：HTTP/gRPC/SSE 传输、`wire` 注入、`conf.Bootstrap`、`recovery` / `tracing` / `auth` / CORS 等中间件、kratos log 与 `kerrors`。**`internal/server` 禁止 import `google.golang.org/adk`**。
-- **ADK Runtime（`pkg/adk-go`）**：`runner.Runner`、`llmagent` / workflow agents、工具循环、会话事件、插件与遥测。执行入口在 **`internal/service`**（单 Agent）与 **`internal/team`**（团队工作流），组合 **`internal/agent`**、**`internal/agent/adksvc`**、**`internal/tools`**、**`internal/provider`**；不在 transport 层直接跑 ADK。
+- **Kratos v2**：HTTP/gRPC/SSE 传输、`wire` 注入、`conf.Bootstrap`、`recovery` / `tracing` / `auth` / CORS 等中间件、kratos log 与 `kerrors`。**`internal/server` 禁止直接 import `pkg/trpc-agent-go`/框架运行时**。
+- **tRPC-Agent-Go（`pkg/trpc-agent-go`）**：`runner.Runner`、`llmagent` / workflow agents、工具循环、会话事件、插件与遥测。执行入口在 **`internal/service`**（单 Agent）与 **`internal/team`**（团队工作流），组合 **`internal/agent`**、**`internal/agent/adksvc`**、**`internal/tools`**、**`internal/provider`**；不在 transport 层直接跑 Runner。
 - **边界全文**：见仓库根目录 **`docs/AGENT_RUNTIME_BOUNDARY.md`**（依赖方向与「八不准」）。
 
-以下各节描述业务契约；实现细节以 ADK Runner 事件流为准。
+以下各节描述业务契约；实现细节以 Runner 事件流为准。
 
 ## 1. 目标
 
@@ -23,7 +23,7 @@
 | Team 拓扑 | `Team.DefinitionJSON`（`mode`、`members`、`synthesizer_agent_id`） |
 | Team 运行记录 | `TeamRepository`（本设计扩展 `CreateTeamRun` / `UpdateTeamRun` / `CreateTeamRunStep`） |
 
-不在 biz 中的能力（例如 ADK `llmagent`、MCP 工具实例化）不在此包实现；后续可加 `Deps` 接口扩展。
+不在 biz 中的能力（例如框架 `llmagent`、MCP 工具实例化）不在此包实现；后续可加 `Deps` 接口扩展。
 
 ## 3. 原生执行范围
 
@@ -31,7 +31,7 @@
 - **Team**：
   - **sequential**：按 `members` 顺序，逐步将**用户本轮输入**接在历史消息后调用各成员 Agent；每步产出一条 assistant 消息（`options_json` 含 `team_member`）。
   - **parallel**：对启用成员并发调用；若有 `synthesizer_agent_id` 或 role=`synthesizer` 的成员，用合成 Agent 将各条产出合并为最终回复；否则依赖 biz 校验已在并行多成员时要求 synthesizer。
-  - **coordinator / critic_loop / adaptive**：由 ADK `loopagent` 包裹成员链（见 `internal/team`）；行为与超时见 `DefinitionJSON`。
+  - **coordinator / critic_loop / adaptive**：由框架 `loopagent` 包裹成员链（见 `internal/team`）；行为与超时见 `DefinitionJSON`。
 
 ## 4. 会话与 API 契约
 
@@ -40,9 +40,9 @@
 - **Unary 响应**：`agent_message` 为 **最后一轮助手消息**（team 下多为合成器或顺序最后一格）。
 - **Stream**：`user_message` 后，`delta` 为模型 **增量**（OpenAI `stream: true` SSE 解析）；最后 `done` 含完整 `agent_message`。团队 **sequential** 仅**最后一员**、`parallel` 仅**合成器**（或 **单成员无合成器**）对流式输出；中间顺序成员仍用非流式请求，避免多路 SSE 交错。
 
-## 5. 与 pkg/adk-go 的关系
+## 5. 与 `pkg/trpc-agent-go` 的关系
 
-主模块已依赖 **`google.golang.org/adk`**：**原生单 Agent 与团队（sequential / parallel / loop 等）** 通过 `runner.Run` + `llmagent` 执行；OpenAI 兼容路径仍由 `internal/agent` 的 `ExecuteOpenAICompatTurn` 等保留（网关/遗留场景）。会话 ADK 状态由 `sessions.adk_snapshot_json` 经 `internal/agent/adksvc` 持久化。
+主模块以 **`pkg/trpc-agent-go`（tRPC-Agent-Go）** 为运行时真相源（具体 module 以根 **`go.mod`** 为准；迁移期可能仍为 `google.golang.org/adk`）：**原生单 Agent 与团队（sequential / parallel / loop 等）** 通过 `runner.Run` + `llmagent` 执行；OpenAI 兼容路径仍由 `internal/agent` 的 `ExecuteOpenAICompatTurn` 等保留（网关/遗留场景）。会话框架状态由 `sessions.adk_snapshot_json` 经 `internal/agent/adksvc` 持久化。
 
 ## 6. 依赖图
 
@@ -55,5 +55,5 @@ agent → biz.AgentRepository, LlmProviderModelUsecase
 
 ## 7. 文件布局
 
-- `internal/agent/` — OpenAI 兼容：`openai_compat.go`, `options.go`, `prompt.go`, `turn.go`, `parallel.go` 等；ADK：`adk_*.go`，`adksvc/`（会话服务）
-- `internal/team/` — `definition.go`, `builder.go`, `runner.go`（ADK workflow + `runner.Run`）, `provider.go`（wire）
+- `internal/agent/` — OpenAI 兼容：`openai_compat.go`, `options.go`, `prompt.go`, `turn.go`, `parallel.go` 等；框架：`adk_*.go`，`adksvc/`（会话服务）
+- `internal/team/` — `definition.go`, `builder.go`, `runner.go`（workflow + `runner.Run`）, `provider.go`（wire）

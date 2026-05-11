@@ -1,7 +1,7 @@
 # Aranea 平台架构与 Agent 编排（统一稿）
 
 > **文档地位**：本文为评审实现、迁移与编排时以**本文为唯一真理源**。  
-> **产品 KPI / 路线图**：[`docs/需求/产品需求总览.md`](../需求/产品需求总览.md)。**proto / Wire / Ent 流程**：[`docs/guides/AI-全栈新功能开发规范.md`](../guides/AI-全栈新功能开发规范.md)。**框架 API**：[`pkg/adk-go`](../../pkg/adk-go)。**ADK import 红线**：`.cursor/rules/adk-framework-first.mdc`。
+> **产品 KPI / 路线图**：[`docs/需求/产品需求总览.md`](../需求/产品需求总览.md)。**proto / Wire / Ent 流程**：[`docs/guides/AI-全栈新功能开发规范.md`](../guides/AI-全栈新功能开发规范.md)。**框架 API**：[`pkg/trpc-agent-go`](../../pkg/trpc-agent-go)。**tRPC-Agent-Go import 红线**：`.cursor/rules/trpc-agent-framework-first.mdc`。
 
 ---
 
@@ -9,7 +9,7 @@
 
 | 篇 | 内容 |
 |----|------|
-| **第一篇** | [编排速查](#第一篇-编排速查)（Kratos、ADK-Go、`pkg/adk-go`、MCP/A2A、建设顺序、红线、网关在本项目中的落点） |
+| **第一篇** | [编排速查](#第一篇-编排速查)（Kratos、tRPC-Agent-Go、`pkg/trpc-agent-go`、MCP/A2A、建设顺序、红线、网关在本项目中的落点） |
 | **第二篇** | [LLM Gateway（凝练）](#第二篇-llm-gateway-设计参考凝练) |
 | **第三篇** | [平台目标态架构全文](#第三篇-平台架构与目标态实现全文)（限界上下文、Kernel、Capability 执行链、迁移映射与附录） |
 
@@ -23,9 +23,9 @@
 
 | # | 检查项 | 若不满足 |
 |---|--------|-----------|
-| 1 | Agent **编排语义**（Runner、会话、Agent 树、Tool、事件流）是否落在 **`pkg/adk-go`** + **薄 `adkruntime` 适配**，而非在 `biz` 重写运行时？ | 停 |
+| 1 | Agent **编排语义**（Runner、会话、Agent 树、Tool、事件流）是否落在 **`pkg/trpc-agent-go`** + **薄 `adkruntime` 适配**，而非在 `biz` 重写运行时？ | 停 |
 | 2 | 新 **HTTP/API** 是否走 **`api/**/*.proto`** → `internal/service` → `internal/biz` → `internal/data`？ | 禁止未入库 proto 的私有业务路由 |
-| 3 | `google.golang.org/adk` / `pkg/adk-go` **内部导入**是否**仅**出现在 **`internal/conversation/adapters/adkruntime/**`**（与第三篇一章 §6 / §12 一致）？ | 停 |
+| 3 | **`pkg/trpc-agent-go`** / 其底层运行时模块（import 路径以 **`go.mod`** 为准）**内部导入**是否**仅**出现在 **`internal/conversation/adapters/adkruntime/**`**（与第三篇一章 §6 / §12 一致）？ | 停 |
 | 4 | 跨模块协作是否经 **`kernel/contracts`**，而非 Context 互 import `domain`？ | 停 |
 | 5 | Capability 执行是否 **`application → executor → middleware → backends`**，**不**绕过 executor？ | 停 |
 | 6 | LLM **路由 / 熔断 / 配额 / 降级**是否有明确归属（见下节「网关三层 → 本项目落点」），而非散落在各 handler？ | 逐项勾 |
@@ -33,8 +33,8 @@
 **服务与编排硬性约定**：
 
 - **服务基座**：新对外能力以 **Kratos** 为准（`api/**/*.proto`、`internal/service` → `biz` → `data`），见 [**迁移主线**](../migration/pkg-backend-to-kratos.md) 与全栈规范。
-- **Agent 编排**：以 **`pkg/adk-go` 为框架真相源**；**不以** `pkg/backend` 或旧手写编排为范本（见 `.cursor/rules/adk-framework-first.mdc`）。
-- **集成**：业务经**薄适配**调用 ADK **公共 API**，避免在业务包复制 ADK 内部逻辑。
+- **Agent 编排**：以 **`pkg/trpc-agent-go` 为框架真相源**；**不以** `pkg/backend` 或旧手写编排为范本（见 `.cursor/rules/trpc-agent-framework-first.mdc`）。
+- **集成**：业务经**薄适配**调用 tRPC-Agent-Go **公开 API**，避免在业务包复制框架内部逻辑。
 
 ---
 
@@ -42,17 +42,17 @@
 
 | 专栏 / 业界要点 | 在本仓库中的落点 |
 |-----------------|-------------------|
-| **Agent = LLM + 规划 + 记忆 + 工具** | ADK：`model` + `memory`/`session` + `tool`；复杂规划用 **Workflow** 或显式 **Plan-and-Execute**。 |
-| **单 Agent → 多 Agent** | ADK：`SubAgents`、树与转移；跨进程协作 **A2A**（`pkg/adk-go/server/adka2a` 等），Kratos 仅会话/任务管理面。 |
-| **MCP** | **工具 / 上下文资源**接入面 → ADK **Tool**；社区 MCP Server 独立适配；Kratos 管配置、鉴权边界。已有统一工具网关时允许直连网关 API。 |
-| **A2A** | **多实例 / 多角色**协议 → ADK A2A；Kratos 映射注册、启停、观测。 |
+| **Agent = LLM + 规划 + 记忆 + 工具** | **tRPC Agent**：`model` + `memory`/`session` + `tool`；复杂规划用 **Workflow** 或显式 **Plan-and-Execute**。 |
+| **单 Agent → 多 Agent** | **tRPC Agent**：`SubAgents`、树与转移；跨进程协作 **A2A**（`pkg/trpc-agent-go/server/adka2a` 等），Kratos 仅会话/任务管理面。 |
+| **MCP** | **工具 / 上下文资源**接入面 → **tRPC Agent Tool**；社区 MCP Server 独立适配；Kratos 管配置、鉴权边界。已有统一工具网关时允许直连网关 API。 |
+| **A2A** | **多实例 / 多角色**协议 → **tRPC-Agent-Go A2A**；Kratos 映射注册、启停、观测。 |
 | **ReAct / Plan-and-Execute** | 工具循环 **ReAct**；长链路、人审 **先规划再执行**；设计上必须写 **终止条件**。 |
-| **Human-in-the-loop** | 暂停/恢复/人工提交在 **`biz`** 与表中表达；可与 ADK `EndInvocation`/会话衔接；禁止仅进程内「假暂停」。 |
-| **可观测** | Kratos 中间件 + ADK **事件流**；运行关联 `trace_id`、会话、Agent、工具、错误。 |
+| **Human-in-the-loop** | 暂停/恢复/人工提交在 **`biz`** 与表中表达；可与框架 **`EndInvocation`**/会话衔接；禁止仅进程内「假暂停」。 |
+| **可观测** | Kratos 中间件 + **tRPC-Agent-Go 事件流**；运行关联 `trace_id`、会话、Agent、工具、错误。 |
 
 ---
 
-## 第一篇 · Kratos 与 ADK 分层（示意）
+## 第一篇 · Kratos 与 tRPC Agent 分层（示意）
 
 ```mermaid
 flowchart TB
@@ -62,7 +62,7 @@ flowchart TB
     biz[internal/biz]
     data[internal/data]
   end
-  subgraph adkframe [ADK-Go / pkg/adk-go]
+  subgraph trpcframe [tRPC-Agent-Go / pkg/trpc-agent-go]
     runner[Runner]
     agents[Agent tree Workflow LLM]
     tools[Tool adapters]
@@ -77,7 +77,7 @@ flowchart TB
 ```
 
 - **Kratos**：鉴权、限流、审计、持久化契约、与前端的 HTTP/JSON、gRPC。**不**承载第二套 Planner/事件循环。  
-- **`pkg/adk-go`**：**Invocation** 内编排语义。  
+- **`pkg/trpc-agent-go`**：**Invocation** 内编排语义。  
 - **适配层**：`proto`/`biz` ↔ `Runner.Run`，事件迭代 → SSE/任务状态。
 
 ---
@@ -88,7 +88,7 @@ flowchart TB
 2. **专家**：**单一职责**，可独立发布与回滚。  
 3. **工具 / 外部世界**：Tool；标准生态 **MCP**；跨服务 **A2A**。  
 
-ADK：**根 + `SubAgents`** 或 **Workflow Agent**；动态选题时用根 LLM Agent + `SubAgents` 描述。
+**tRPC Agent：** **根 + `SubAgents`** 或 **Workflow Agent**；动态选题时用根 LLM Agent + `SubAgents` 描述。
 
 ---
 
@@ -104,9 +104,9 @@ ADK：**根 + `SubAgents`** 或 **Workflow Agent**；动态选题时用根 LLM A
 
 ## 第一篇 · MCP / A2A / FC
 
-- **Function calling**：ADK `model` 抽象，业务不绑死单一厂商 JSON。  
+- **Function calling**：**tRPC Agent `model`** 抽象，业务不绑死单一厂商 JSON。  
 - **MCP**：配置驱动连接，Kratos 管密钥与网络策略；无成熟基建时不强行依赖 MCP。  
-- **A2A**：独立部署专家、跨团队复用 → ADK A2A；管理面 RPC 仍在 Kratos。
+- **A2A**：独立部署专家、跨团队复用 → **tRPC-Agent-Go A2A**；管理面 RPC 仍在 Kratos。
 
 ---
 
@@ -124,9 +124,9 @@ ADK：**根 + `SubAgents`** 或 **Workflow Agent**；动态选题时用根 LLM A
 
 ## 第一篇 · 新能力建设顺序 · 红线
 
-**顺序**：① `proto` ② `biz/data`（可恢复状态入表）③ **ADK / Agent / Tool**④ `service` 适配 ⑤ trace/指标 ⑥ HITL 的 RPC 与状态机。
+**顺序**：① `proto` ② `biz/data`（可恢复状态入表）③ **tRPC Agent / Agent / Tool**④ `service` 适配 ⑤ trace/指标 ⑥ HITL 的 RPC 与状态机。
 
-**一票否决**：在 `biz` 重写运行时；私自 HTTP 路由；把 `pkg/backend` 编排习惯套入新链路；在非 `adkruntime` import ADK **实现包**绕过约定；跨 Context **直引 domain**；**绕过 executor** 调 backend。
+**一票否决**：在 `biz` 重写运行时；私自 HTTP 路由；把 `pkg/backend` 编排习惯套入新链路；在非 `adkruntime` import **框架实现包**绕过约定；跨 Context **直引 domain**；**绕过 executor** 调 backend。
 
 ---
 
@@ -202,7 +202,7 @@ ADK：**根 + `SubAgents`** 或 **Workflow Agent**；动态选题时用根 LLM A
 > **AI 速查（动手前先读这八条）**  
 > 1. **目标态目录**：所有新代码落到「二、§3」的目标 Context 下，**禁止**在 `internal/{repository,runtime,transport,service,tools,domain,middleware}` 等旧路径新增文件。  
 > 2. **Context 边界**：跨 Context 协作只走 `kernel/contracts/`；`<context>/domain` 与 `<context>/application` 不允许 import 其它 Context（一章 §8 编译期红线）。  
-> 3. **ADK 隔离**：`google.golang.org/adk` 仅出现在 `internal/conversation/adapters/adkruntime/**`。  
+> 3. **框架运行时隔离**：**`pkg/trpc-agent-go`** 及其底层依赖（具体 import 以根 **`go.mod`** 为准）仅出现在 `internal/conversation/adapters/adkruntime/**`。  
 > 4. **SQL 归属**：表前缀必须等于 Context 名（`identity_*` / `catalog_*` / `capability_*` / `conversation_*` / `memory_*` / `operations_*`），SQL 仅在 `<context>/adapters/sqlite/**` 出现（三章 §2）。  
 > 5. **迁移粒度**：按一章 §12.1.1 映射表，**一行 = 一个 PR**；五步流程见 §12.1.2，违反红线立即停手。  
 > 6. **Kernel 准入**：把接口提到 `kernel/contracts/` 必须满足「≥3 Context 实现/消费 + 已稳定 ≥2 个 PR 周期」（一章 §5、§9）。  
@@ -212,7 +212,7 @@ ADK：**根 + `SubAgents`** 或 **Workflow Agent**；动态选题时用根 LLM A
 ---
 # 一、主体架构设计
 
-> 本章是 Aranea 的**目标架构（Target Architecture）**：以「**限界上下文 + 端口与适配器（Ports & Adapters）+ go-adk 内嵌运行时**」重新立项设计，与当前 `internal/` 目录的实现并不一一对应。后续章节（路由、数据库、模块功能）在本章框架下展开；与现有实现的差异及迁移路径见 §12。
+> 本章是 Aranea 的**目标架构（Target Architecture）**：以「**限界上下文 + 端口与适配器（Ports & Adapters）+ tRPC-Agent-Go（`pkg/trpc-agent-go`）内嵌运行时**」重新立项设计，与当前 `internal/` 目录的实现并不一一对应。后续章节（路由、数据库、模块功能）在本章框架下展开；与现有实现的差异及迁移路径见 §12。
 
 ---
 
@@ -222,7 +222,7 @@ Aranea 是一个**以 Agent 为中心的多智能体编排平台**：用户在 W
 
 平台本身**不实现**：模型推理、向量检索引擎、对象存储、IM 协议——这些经端口接入外部依赖。
 
-执行底座是 [go-adk](https://google.golang.org/adk)：Aranea 把 ADK 的 `agent / runner / session / memory / artifact / tool / plugin / model` 当作**内嵌引擎**用，但**不让 ADK 类型穿透到业务代码**。
+执行底座是 **tRPC-Agent-Go**（[`pkg/trpc-agent-go`](../../pkg/trpc-agent-go)；对外模块路径以根 **`go.mod`** 为准）：Aranea 把框架的 `agent / runner / session / memory / artifact / tool / plugin / model` 当作**内嵌引擎**用，但**不让框架类型穿透到业务代码**。
 
 ---
 
@@ -231,20 +231,20 @@ Aranea 是一个**以 Agent 为中心的多智能体编排平台**：用户在 W
 下面 9 条是后续所有设计的**判定基准**。任何新模块、PR、专题文档若与之冲突，必须在本章登记例外或修正本章。
 
 1. **限界上下文（Bounded Context）**：按业务概念切分，而不是按技术层切分。系统由若干高内聚、低耦合的 Context 组成；Context 内部允许丰富，Context 之间只能通过**端口、命令、事件、查询**协作。
-2. **端口与适配器（Hexagonal）**：每个 Context 对外只暴露**端口（Port）**，所有实现细节是**适配器（Adapter）**——HTTP、CLI、SQLite、go-adk、LLM SDK、向量库等都是"被适配"的，不是"内嵌"的。
+2. **端口与适配器（Hexagonal）**：每个 Context 对外只暴露**端口（Port）**，所有实现细节是**适配器（Adapter）**——HTTP、CLI、SQLite、tRPC-Agent-Go、LLM SDK、向量库等都是"被适配"的，不是"内嵌"的。
 3. **接口清晰（四要素显式）**：模块边界（哪个 Context）、调用协议（命令/查询/事件签名）、数据格式（领域类型 + JSON schema）、依赖方向（谁依赖谁），四者必须**写进 `ports/` 包并在文档中固化**。
 4. **不变与变化分离**：协议、领域类型、事件信封、能力契约属于**不变层**；后端实现、运行时、SDK、UI 属于**变化层**。两者在目录、包名、变更流程上必须区分。
 5. **单一职责**：一个包只解决一类技术问题；一个 Context 只解决一类业务问题。功能跨包靠**组合**，禁止"上下文穿透"（不要为了图省事把别的 Context 的类型直接拉进来）。
 6. **共享内核（Shared Kernel）最小化**：内核只放**所有 Context 都依赖**且**长期稳定**的内容（ID、时间、错误、事件信封、运行上下文、Module 接口）。绝不放业务策略与领域逻辑。
 7. **依赖方向单向收敛**：`adapter → context → kernel`、`runtime adapter → context.port`，**绝不反向**。同层 Context 之间只能依赖对方在 `kernel` 中暴露的端口，不能直接 import 对方包。
-8. **可观测优先**：tracing、结构化事件、SSE、审计、用量从 Day 1 起即作为**架构约束**而非补丁，由内核统一定义信封，由 ADK Plugin / 运行时 middleware 注入。
+8. **可观测优先**：tracing、结构化事件、SSE、审计、用量从 Day 1 起即作为**架构约束**而非补丁，由内核统一定义信封，由 **tRPC-Agent-Go Plugin** / 运行时 middleware 注入。
 9. **可裁剪部署**：通过 launcher 装配不同 Context 子集（console、web、full、headless agent），**业务代码不感知 launcher**。
 
 ---
 
 ## 3. 顶层架构（Hexagonal）
 
-Aranea 整体是一个**六边形架构**：业务 Context 在内圈，端口（Ports）在边界上，外圈由各类 Adapter 接入；go-adk 是 Conversation Context 的内嵌引擎，本身也通过端口被业务调用。
+Aranea 整体是一个**六边形架构**：业务 Context 在内圈，端口（Ports）在边界上，外圈由各类 Adapter 接入；**tRPC-Agent-Go** 是 Conversation Context 的内嵌引擎，本身也通过端口被业务调用。
 
 ```text
                     ┌─────────────── DRIVING ADAPTERS ───────────────┐
@@ -273,7 +273,7 @@ Aranea 整体是一个**六边形架构**：业务 Context 在内圈，端口（
    │ contracts · module · telemetry · pkg           │  │            FS · S3 · HTTP                  │
    └────────────────────────────────────────────────┘  │ 外部 SDK ：LLM provider · MCP 客户端       │
                                                        │ 内嵌引擎：adkruntime（Conversation 私有，  │
-                                                       │           唯一允许 import google.../adk） │
+                                                       │           唯一允许 import 框架底层模块；路径以 go.mod 为准） │
                                                        └────────────────────────────────────────────┘
 ```
 
@@ -281,7 +281,7 @@ Aranea 整体是一个**六边形架构**：业务 Context 在内圈，端口（
 
 - **Driving**：把请求"驱动进来"的入口（REST/CLI/Cron/A2A）。
 - **Driven**：被业务"驱动出去"的依赖（DB/LLM/FS/外部 HTTP）。
-- **go-adk** 在 Aranea 中是 **Driven Adapter 的一种特殊形态**——一个内嵌引擎：业务 Context 通过 `ConversationRuntime` 端口请求"运行 Agent 一轮对话"，由 `adk-adapter` 实现该端口并调用 `adk.Runner`。
+- **tRPC-Agent-Go** 在 Aranea 中是 **Driven Adapter 的一种特殊形态**——一个内嵌引擎：业务 Context 通过 `ConversationRuntime` 端口请求"运行 Agent 一轮对话"，由 `adkruntime` 适配实现该端口并调用框架 **`Runner`**。
 - **adkruntime 的归属是 Conversation Context 私有**：Catalog / Capability / Memory / Operations / Identity **不**直接依赖它，跨 Context 触发会话执行只能经 `kernel/contracts.ConversationRuntime`。
 - **Kernel** 是六边形的中心，所有 Context 都可以依赖它，但**它不依赖任何 Context**。
 
@@ -307,7 +307,7 @@ Aranea 的现有功能（agents、sessions、tools、skills、L0~L4 memory、pro
 ├── domain/        # 实体、值对象、聚合、领域事件
 ├── application/   # 用例（Command/Query handler）、事务边界
 ├── ports/         # 对外端口（input port = 用例接口；output port = 依赖接口）
-├── adapters/      # 输入适配器（HTTP/CLI/Cron）+ 输出适配器（SQL/HTTP/ADK 等）
+├── adapters/      # 输入适配器（HTTP/CLI/Cron）+ 输出适配器（SQL/HTTP/框架运行时 等）
 └── module.go      # Context Shell：装配 + 注册 + 生命周期
 ```
 
@@ -359,7 +359,7 @@ type ConversationRuntime interface {
 **硬约束**：
 
 - Kernel **不 import** 任何 `internal/<context>` 包（编译期防回环）。
-- Kernel 只允许依赖 `context`、`time`、`encoding/json`、OpenTelemetry API、`google/uuid` 等中性库，**不依赖 go-adk、SQLite、chi**。
+- Kernel 只允许依赖 `context`、`time`、`encoding/json`、OpenTelemetry API、`google/uuid` 等中性库，**不依赖 `pkg/trpc-agent-go`、SQLite、chi**。
 - Kernel 中不放策略与算法，只放接口与稳定数据类型。
 - 提升进入 Kernel 的门槛：**≥3 个 Context 已实现或将要实现该端口；接口经过 ≥2 次 PR 周期未变更**。
 
@@ -396,7 +396,7 @@ type ConversationRuntime interface {
 
 ### 5.3 RuntimeContext 注入路径
 
-`kernel/runctx.RuntimeContext` 由 driving adapter 创建，沿调用链传递；ADK callback 进入业务前由 `adkruntime/plugins` 重建同一份 RuntimeContext。
+`kernel/runctx.RuntimeContext` 由 driving adapter 创建，沿调用链传递；**框架** callback 进入业务前由 `adkruntime/plugins` 重建同一份 RuntimeContext。
 
 ```text
 HTTP / CLI / Cron driving adapter
@@ -408,7 +408,7 @@ HTTP / CLI / Cron driving adapter
 <context>.ports.Output（contracts.*Reader/Writer/Resolver/Runtime）
    ▼
 conversation.adapters.adkruntime.Runner.Run(ctx, …)
-   │ adk.plugin.Before*：从 ctx 重建 RuntimeContext，再回调
+   │ framework plugin Before*：从 ctx 重建 RuntimeContext，再回调
    ▼
 capability.application.ExecuteTool(ctx, …)          # 同一份 RuntimeContext
 ```
@@ -417,14 +417,14 @@ capability.application.ExecuteTool(ctx, …)          # 同一份 RuntimeContext
 
 - 所有跨包公共函数**首参**必须是 `context.Context`；从 `runctx.From(ctx)` 取 RuntimeContext，**禁止**通过结构体字段透传。
 - 派生子 ctx（带超时 / 带值）必须基于父 ctx；**不允许** `context.Background()` 覆盖上游 ctx。
-- ADK callback 进入业务之前由 `adkruntime/plugins` 重建 ctx；丢失 RuntimeContext 视为 P0 缺陷。
+- **框架** callback 进入业务之前由 `adkruntime/plugins` 重建 ctx；丢失 RuntimeContext 视为 P0 缺陷。
 - HTTP 中间件构造 RuntimeContext 失败（无身份 / token 过期）→ 直接 401，不允许继续下游。
 
 ---
 
-## 6. 与 go-adk 的关系（运行时层）
+## 6. 与 tRPC-Agent-Go 的关系（运行时层）
 
-go-adk 是 Aranea 唯一的"会话执行引擎"，但**仅服务于 Conversation Context**，不是全局基础设施。它在六边形里的位置如下：
+**tRPC-Agent-Go（`pkg/trpc-agent-go`）**是 Aranea 的主要**会话执行引擎**实现选型，但**仅服务于 Conversation Context**，不是全局基础设施。它在六边形里的位置如下：
 
 ```text
 Conversation.application
@@ -433,35 +433,35 @@ Conversation.application
 Conversation.ports.ConversationRuntime（输出端口，定义在 Conversation 内）
         │
         ▼
-adapters/adkruntime/                          ← 唯一引用 google.golang.org/adk 的位置
+adapters/adkruntime/                          ← **唯一**直接依赖框架底层模块的位置（路径以根 go.mod / `pkg/trpc-agent-go` 为准）
    ├── runner.go        实现 ConversationRuntime
-   ├── agent_builder.go 把 Catalog/Capability/Memory 的视图组装成 adk.Agent
-   ├── tool_bridge.go   Capability.ToolDescriptor → adk.Tool
-   ├── skill_bridge.go  Capability.SkillDescriptor → adk.skilltoolset
-   ├── memory_bridge.go Memory.View → adk.memory.Service
-   ├── model_bridge.go  Provider.ModelProfile → adk.model.Model
-   └── plugins/         审计/脱敏/用量/成本以 adk.Plugin 形式注入
+   ├── agent_builder.go 把 Catalog/Capability/Memory 的视图组装成框架 Agent 树
+   ├── tool_bridge.go   Capability.ToolDescriptor → 框架 Tool
+   ├── skill_bridge.go  Capability.SkillDescriptor → 框架 Skill toolset
+   ├── memory_bridge.go Memory.View → 框架 Memory Service
+   ├── model_bridge.go  Provider.ModelProfile → 框架 Model
+   └── plugins/         审计/脱敏/用量/成本以框架 Plugin 形式注入
 ```
 
-**对应关系（Aranea ↔ go-adk）**：
+**对应关系（Aranea ↔ tRPC-Agent-Go）**：下表 **`framework.*`** 表示 **`pkg/trpc-agent-go`** 对外暴露的包与类型命名空间；与本仓库 **`go.mod` 实际 module path**不一致时以实现代码为准。
 
-| Aranea 概念                            | go-adk 抽象                                  | 适配责任                                                        |
-| -------------------------------------- | -------------------------------------------- | --------------------------------------------------------------- |
-| `Conversation.Session`                 | `adk.session.Service` + `adk.session.Session` | 自家持久化为主，必要时实现 `adk.session.Service` 提供给 Runner |
-| `Conversation.RunTurn` 命令            | `adk.Runner.Run(...)`                        | adkruntime 把 TurnRequest → `adk.Runner` 输入                  |
-| `Catalog.Agent` 定义                   | `adk.agent.Agent`（含 `llmagent`、`workflowagents`、`remoteagent`） | agent_builder 按 Agent 类型选择具体 ADK Agent     |
-| `Capability.Tool/Skill/MCP`            | `adk.tool.Tool`、`skilltoolset`、`mcptoolset` | 桥接器持有"原生 backend"，转出 `adk.Tool`，回调再回到自家执行链 |
-| `Memory.View`（L0~L4 已聚合）          | `adk.memory.Service`                         | memory_bridge 实现 `Service`：Search/Add 路由到 L2/L3/L4         |
-| `Capability.Plugin/Hook`、Operations 审计 | `adk.plugin.Plugin`                       | 审计/脱敏/用量/成本/超时统一以 ADK Plugin 注入                 |
-| `Capability.Provider/Model`            | `adk.model.Model`                            | model_bridge 把 ModelProfile 转为具体 Model 实现               |
-| `Conversation.Event` 流                | `adk.event.Event` 流                         | adkruntime 订阅 ADK 事件 → 转换为 Aranea event.Envelope         |
+| Aranea 概念                            | tRPC-Agent-Go（概念映射）                                  | 适配责任                                                        |
+| -------------------------------------- | ---------------------------------------------------------- | --------------------------------------------------------------- |
+| `Conversation.Session`                 | session 抽象（Runner 输入/持久化视图）                       | 自家持久化为主，必要时实现框架 `session.Service` 提供给 Runner |
+| `Conversation.RunTurn` 命令            | **`Runner.Run(...)`**                                    | `adkruntime` 把 TurnRequest → Runner 输入                        |
+| `Catalog.Agent` 定义                   | Agent 树（llm/workflow/remote 等）                          | agent_builder 按 Agent 类型选择具体实现                          |
+| `Capability.Tool/Skill/MCP`            | `tool` / skill toolset / MCP toolset                       | 桥接器持有"原生 backend"，转出框架 Tool，回调再回到自家执行链     |
+| `Memory.View`（L0~L4 已聚合）          | memory 抽象                                                | memory_bridge：Search/Add 路由到 L2/L3/L4                      |
+| `Capability.Plugin/Hook`、Operations 审计 | Plugin                                                    | 审计/脱敏/用量/成本/超时统一以框架 Plugin 注入                  |
+| `Capability.Provider/Model`            | `model` / LLM 驱动                                         | model_bridge 把 ModelProfile 转为具体实现                        |
+| `Conversation.Event` 流                | 会话事件流                                                 | `adkruntime` 订阅框架事件 → 转换为 Aranea `event.Envelope`        |
 
 **集成约束**：
 
-- **adkruntime/ 是 Aranea 中唯一允许 import `google.golang.org/adk` 的包**。其他业务 Context（Catalog/Capability/Memory/Identity/Operations）**禁止**直接 import ADK。
-- ADK 触发的回调（before_tool/after_tool/before_model_request/…）在 adkruntime 内**重建 RuntimeContext**，再回调到对应 Context 的 application 用例（例如 Capability.ExecuteTool），不是直接触发 backend。这样校验、预算、事件、tracing 始终走业务路径。
-- ADK 版本与 replace 路径在根 `go.mod` 显式声明；升级 ADK = 修改 adkruntime + 升级 go.mod，**不应改业务 Context**。
-- 未来若需替换 ADK（多运行时、自研引擎），只新增一个 `adapters/<other>runtime/`，业务 Context 完全不感知。
+- **`adkruntime/` 是 Aranea 中唯一允许直接 import 框架底层实现（含 `pkg/trpc-agent-go` 及 `go.mod` 声明的传递依赖）的包目录**。其他业务 Context（Catalog/Capability/Memory/Identity/Operations）**禁止**直接 import 框架运行时。
+- **框架**触发的回调（before_tool/after_tool/before_model_request/…）在 `adkruntime` 内**重建 RuntimeContext**，再回调到对应 Context 的 application 用例（例如 `Capability.ExecuteTool`），不是直接触发 backend。
+- **`pkg/trpc-agent-go` 版本与 replace 路径**在根 **`go.mod`** 显式声明；升级框架 = 修改 `adkruntime` + 升级 `go.mod`，**不应改业务 Context**。
+- 未来若需替换为多运行时方案，只新增一个 `adapters/<other>runtime/`，业务 Context 完全不感知。
 
 ---
 
@@ -580,7 +580,7 @@ Event        （事实通告）   A.publish ──► event.Bus ──► B.hand
 2. `<context>/domain` 不允许 import 任何 adapter、任何外部 SDK、任何其它 Context 包。
 3. `<context>/application` 只允许 import 本 Context 的 `domain`、`ports`，加 `kernel/**`。
 4. 跨 Context import 仅允许出现在 `<context>/adapters/**`，且 import 的目标必须是 **`kernel/contracts`** 中的接口（不是对方的 domain/application）。
-5. `google.golang.org/adk` 只允许出现在 `adapters/adkruntime/**`。
+5. **`pkg/trpc-agent-go`** / 框架底层依赖只允许出现在 `adapters/adkruntime/**`（具体 import 路径以 `go.mod` 为准）。
 6. `chi`、`net/http` 路由相关只允许出现在 `<context>/adapters/http/**` 与 `cmd/**`。
 7. `database/sql`、`modernc.org/sqlite` 只允许出现在 `<context>/adapters/sqlite/**` 与 `kernel/pkg/db/**`。
 
@@ -601,7 +601,7 @@ Event        （事实通告）   A.publish ──► event.Bus ──► B.hand
 | `<context>/ports` 输出端口  | 半稳定   | 各 Context 内部                       | 跨次要版本兼容，必要时双轨                      |
 | 数据库 schema               | 半稳定   | 各 adapter 的 `migrations/`           | 仅向前迁移；破坏性需旁路表 + 双写               |
 | Adapter 实现                | 易变     | `<context>/adapters/**`               | 自由替换，前提是端口契约不变                    |
-| go-adk 集成                 | 易变     | `adapters/adkruntime/**`              | 升级 ADK 不应改业务 Context                     |
+| tRPC-Agent-Go 集成        | 易变     | `adapters/adkruntime/**`              | 升级框架不应改业务 Context                     |
 | 前端 / UI                   | 易变     | `frontend/**`                         | 与 API 协议解耦，可独立发版                     |
 
 判定"是否提升为不变"的统一标准：**接口被 ≥3 个 Context 实现/消费 + 回滚成本高 + 已稳定 ≥2 个 PR 周期**。
@@ -630,9 +630,9 @@ Conversation.application.RunTurnHandler
             │
             ▼
        adapters.adkruntime
-            ├─► agent_builder：装配 adk.Agent + plugins
-            ├─► adk.Runner.Run(ctx, …)
-            └─► 订阅 adk.Event ► 转 Envelope ► event.Bus + SSE
+            ├─► agent_builder：装配框架 Agent 树 + plugins
+            ├─► Runner.Run(ctx, …)
+            └─► 订阅框架事件 ► 转 Envelope ► event.Bus + SSE
                      │
         ┌────────────┴────────────────┐
         ▼                             ▼
@@ -649,7 +649,7 @@ Conversation.application.RunTurnHandler
 ### 10.2 工具调用（同步嵌入式）
 
 ```text
-adk.Runner ─► before_tool plugin ─► 回到 Capability.application.ExecuteTool
+Runner ─► before_tool plugin ─► 回到 Capability.application.ExecuteTool
                                                  │
                                                  ▼
                                 Capability.ports.ToolExecutor （chain: validate/budget/audit/exec）
@@ -658,7 +658,7 @@ adk.Runner ─► before_tool plugin ─► 回到 Capability.application.Execut
                                        adapters/<tool-backend>
 ```
 
-ADK 永不直接执行 Aranea 的 tool backend；中转点是 **Capability.application.ExecuteTool**，由 plugin 把 ADK 的 tool 调用桥接回业务用例。
+**框架**永不直接执行 Aranea 的 tool backend；中转点是 **Capability.application.ExecuteTool**，由 plugin 把框架的 tool 调用桥接回业务用例。
 
 ### 10.3 后台演化（事件驱动）
 
@@ -770,7 +770,7 @@ cmd/aranea/
 
 ## 13. 章节导航
 
-本章是**总纲**，定义 Context 划分、Kernel 范围、端口契约、依赖方向、ADK 集成边界。后续章节展开实施细节：
+本章是**总纲**，定义 Context 划分、Kernel 范围、端口契约、依赖方向、**tRPC-Agent-Go（`pkg/trpc-agent-go`）**集成边界。后续章节展开实施细节：
 
 - **二、路由设计**：Driving HTTP Adapter 的统一装配（Module 接口、显式聚合、OpenAPI、生命周期）。
 - **三、数据库设计**：Driven SQL Adapter 的统一约束（连接池、表前缀按 Context、Repository、迁移、事务边界）。

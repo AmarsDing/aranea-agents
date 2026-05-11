@@ -79,7 +79,6 @@ coverage.out
 coverage.html
 *.coverprofile
 profile.cov
-pkg/trpc-agent-go/
 
 # 本地草稿 / 演示输出（勿提交）
 /tmp_*.go

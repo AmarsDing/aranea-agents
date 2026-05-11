@@ -1,12 +1,12 @@
 # Kratos Admin Template（aranea-agents）
 
-后台管理服务与原生 Agent / 聊天 / 团队编排；**业务运行时以 `internal` + Kratos 为主**，Agent 框架参考 **`pkg/adk-go`**（Google ADK Go），旧版能力仍在 **`pkg/backend`**（仅兼容、迁移对照时参阅）。
+后台管理服务与原生 Agent / 聊天 / 团队编排；**业务运行时以 `internal` + Kratos 为主**，Agent 框架以 **`pkg/trpc-agent-go`（tRPC-Agent-Go）** 为真相源，旧版能力仍在 **`pkg/backend`**（仅兼容、迁移对照时参阅）。
 
 ---
 
 ## 项目结构（目录树与职责）
 
-以下为仓库内主要目录；`pkg/adk-go`、`pkg/backend` 体量较大，此处只列顶层子模块含义，不逐文件展开。
+以下为仓库内主要目录；`pkg/trpc-agent-go`、`pkg/backend` 体量可能较大（以实际仓库为准），此处只列顶层子模块含义，不逐文件展开。
 
 ```
 aranea-agents/
@@ -26,8 +26,8 @@ aranea-agents/
 │   ├── API/ assets/ migration/ model/ UI/ vue-design/
 │   └── ...
 ├── internal/                 # 应用核心（优先维护）
-│   ├── agent/                # Catalog Agent：OpenAI 兼容轮、提示、选项；ADK（llmagent/Runner 辅助见 adk_*.go、adksvc/）
-│   ├── channel/              # 渠道领域占位（ADK 扩展：`channel/adk/`，待补充）
+│   ├── agent/                # Catalog Agent：OpenAI 兼容轮、提示、选项；框架集成（Runner/llmagent 辅助见 adk_*.go、adksvc/）
+│   ├── channel/              # 渠道领域占位（框架扩展：`channel/adk/`，待补充）
 │   ├── biz/                  # 领域用例与仓储接口（业务规则）
 │   ├── conf/                 # 配置加载与绑定
 │   ├── cronrunner/           # 定时任务执行
@@ -36,7 +36,7 @@ aranea-agents/
 │   ├── llminspect/           # LLM 调试/探针辅助
 │   ├── mcpprobe/             # MCP 探测或实验代码
 │   ├── pkg/                  # 内部小型库（如 skillstorage）
-│   ├── provider/             # 厂商 LLM 注册表与 ADK model.LLM 解析（如 adk_llm.go）
+│   ├── provider/             # 厂商 LLM 注册表与框架 model.LLM 解析（如 adk_llm.go）
 │   ├── server/               # Kratos 服务器：HTTP/gRPC 路由、中间件注册
 │   ├── service/              # 用例门面：将 RPC/HTTP 接到 biz + Agent 运行时
 │   ├── skill/                # Skill：`importer/`（ZIP 导入）、`watch/`（磁盘监听同步）
@@ -44,7 +44,7 @@ aranea-agents/
 │   └── tools/                # 内置 Tool；registry 装配；catalog.Options 高级组合
 ├── output/                  # 本地生成物输出目录（通常应忽略，不提交）
 ├── pkg/                      # 可复用子工程/依赖树
-│   ├── adk-go/               # Google ADK Go（Agent/Runner/LLM/tool；框架真相源）
+│   ├── trpc-agent-go/        # tRPC-Agent-Go（Agent/Runner/LLM/tool；框架真相源，若采用 replace 则可能不在此路径）
 │   ├── auth/                 # 认证相关公共包
 │   ├── backend/              # 旧版单体/兼容代码与文档（新功能勿照抄分层）
 │   ├── docs/                 # 与 backend 配套的长文档
@@ -75,9 +75,9 @@ aranea-agents/
 | `cmd` | 程序入口；`cmd/admin` 为对外主进程。 |
 | `configs` | YAML 配置（端口、数据库、超时、SSE 等）。 |
 | `docs` | 功能/迁移/模型/UI 说明文档。 |
-| `internal` | **主业务代码**：server → service → biz → data；ADK 相关拆在 `agent`（含 `adksvc`）、`provider`、`tools`、`team` 等，无单独适配包。 |
-| `pkg/adk-go` | ADK 框架实现（Runner、Session、LLM、Tool、工作流 Agent）。 |
-| `pkg/backend` | 历史实现与大量设计文档；新功能分层请以 `internal` + ADK 为准。 |
+| `internal` | **主业务代码**：server → service → biz → data；Agent 运行时拆在 `agent`（含 `adksvc`）、`provider`、`tools`、`team` 等。 |
+| `pkg/trpc-agent-go` | tRPC-Agent-Go 框架（Runner、Session、LLM、Tool、工作流 Agent）；最终以根 `go.mod` 为准。 |
+| `pkg/backend` | 历史实现与大量设计文档；新功能分层请以 `internal` + **`pkg/trpc-agent-go`** 为准。 |
 | `web` | 管理后台 SPA：Agent/会话/Tools/团队/渠道等。 |
 | `third_party` | 外部 proto 依赖。 |
 | `scripts` | 自动化脚本。 |
@@ -85,7 +85,7 @@ aranea-agents/
 ### `internal/service` 与运行时边界（简要）
 
 - **HTTP/gRPC 入口**在 `internal/server`，实现通常在 `internal/service`。
-- **原生聊天/Agent 轮次**使用 `pkg/adk-go` 的 Runner 时，由 `internal/service` 组合 `internal/agent`（构建 llmagent、内存/插件）、`internal/agent/adksvc`（会话快照）、`internal/tools`（工具有效列表）等；边界说明见 `docs/AGENT_RUNTIME_BOUNDARY.md`。
+- **原生聊天/Agent 轮次**使用 **`pkg/trpc-agent-go`**（tRPC-Agent-Go）的 Runner 时，由 `internal/service` 组合 `internal/agent`（构建 llmagent、内存/插件）、`internal/agent/adksvc`（会话快照）、`internal/tools`（工具有效列表）等；边界说明见 `docs/AGENT_RUNTIME_BOUNDARY.md`。
 
 ---
 

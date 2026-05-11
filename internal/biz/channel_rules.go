@@ -194,6 +194,15 @@ func errorMessageForTest(result ChannelTestResult) string {
 	return result.Message
 }
 
+// EvaluateChannelTest runs structural/policy checks without persisting deliveries.
+func EvaluateChannelTest(row Channel, credentials []ChannelCredential) (ChannelTestResult, error) {
+	cfg, err := parseChannelConfig(row.ConfigJSON)
+	if err != nil {
+		return ChannelTestResult{}, err
+	}
+	return evaluateChannelTest(row, cfg, credentials), nil
+}
+
 func sanitizeCredentials(items []ChannelCredential) []ChannelCredential {
 	out := make([]ChannelCredential, len(items))
 	for i, item := range items {

@@ -20,7 +20,7 @@ import (
 	"google.golang.org/genai"
 )
 
-// runSingleAgentViaADK executes one catalog-agent turn using pkg/adk-go Runner + llmagent.
+// runSingleAgentViaADK executes one catalog-agent turn using pkg/trpc-agent-go Runner + llmagent.
 func (s *ChatService) runSingleAgentViaADK(
 	ctx context.Context,
 	sess biz.Session,

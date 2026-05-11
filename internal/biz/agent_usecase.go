@@ -30,6 +30,7 @@ func newAgentCatalogID() string {
 type AgentRepository interface {
 	SearchAgents(ctx context.Context, q AgentListQuery) (AgentListResult, error)
 	GetAgentByID(ctx context.Context, id string) (Agent, error)
+	GetAgentByAgentKey(ctx context.Context, agentKey string) (Agent, error)
 	CreateAgent(ctx context.Context, a Agent) (Agent, error)
 	UpdateAgent(ctx context.Context, a Agent) (Agent, error)
 	DeleteAgent(ctx context.Context, id string) error

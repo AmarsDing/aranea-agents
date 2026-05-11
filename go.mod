@@ -14,13 +14,14 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/google/uuid v1.6.0
 	github.com/google/wire v0.6.0
+	github.com/gorilla/mux v1.8.1
 	github.com/lib/pq v1.12.3
 	github.com/pgvector/pgvector-go v0.3.0
 	github.com/tx7do/kratos-transport/transport/sse v1.3.2
 	go.einride.tech/aip v0.76.0
 	go.uber.org/automaxprocs v1.5.1
 	golang.org/x/text v0.35.0
-	google.golang.org/adk v0.0.0
+	google.golang.org/adk v1.2.0
 	google.golang.org/genai v1.40.0
 	google.golang.org/genproto/googleapis/api v0.0.0-20260316180232-0b37fe3546d5
 	google.golang.org/grpc v1.79.3
@@ -66,7 +67,6 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-openapi/inflect v0.21.0 // indirect
 	github.com/go-playground/form/v4 v4.3.0 // indirect
-	github.com/gorilla/mux v1.8.1 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.7 // indirect
 	github.com/hashicorp/hcl/v2 v2.23.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
@@ -102,5 +102,3 @@ require (
 	modernc.org/memory v1.7.2 // indirect
 	modernc.org/sqlite v1.28.0 // indirect
 )
-
-replace google.golang.org/adk => ./pkg/adk-go

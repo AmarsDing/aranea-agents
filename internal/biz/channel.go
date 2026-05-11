@@ -92,6 +92,7 @@ type ChannelTestResult struct {
 type ChannelRepo interface {
 	List(ctx context.Context) ([]Channel, error)
 	Get(ctx context.Context, id string) (Channel, error)
+	GetByKey(ctx context.Context, channelKey string) (Channel, error)
 	Create(ctx context.Context, row Channel) (Channel, error)
 	Update(ctx context.Context, row Channel) (Channel, error)
 	Delete(ctx context.Context, id string) error
@@ -124,6 +125,15 @@ func (u *ChannelUsecase) Get(ctx context.Context, id string) (Channel, error) {
 		return Channel{}, errors.BadRequest("CHANNEL", "id is required")
 	}
 	return u.repo.Get(ctx, id)
+}
+
+// GetByKey loads a channel by unique channel_key (webhook path segment).
+func (u *ChannelUsecase) GetByKey(ctx context.Context, channelKey string) (Channel, error) {
+	channelKey = strings.TrimSpace(channelKey)
+	if channelKey == "" {
+		return Channel{}, errors.BadRequest("CHANNEL", "channel_key is required")
+	}
+	return u.repo.GetByKey(ctx, channelKey)
 }
 
 func (u *ChannelUsecase) Create(ctx context.Context, row Channel, credentials []ChannelCredentialInput) (Channel, error) {
@@ -215,6 +225,11 @@ func (u *ChannelUsecase) ListCredentials(ctx context.Context, channelID string) 
 	return sanitizeCredentials(items), nil
 }
 
+// ListCredentialsRaw returns credentials including secret_ref (for server-side runtime only).
+func (u *ChannelUsecase) ListCredentialsRaw(ctx context.Context, channelID string) ([]ChannelCredential, error) {
+	return u.repo.ListCredentials(ctx, strings.TrimSpace(channelID))
+}
+
 func (u *ChannelUsecase) UpsertCredentials(ctx context.Context, channelID string, inputs []ChannelCredentialInput) ([]ChannelCredential, error) {
 	channelID = strings.TrimSpace(channelID)
 	if channelID == "" {
@@ -274,12 +289,24 @@ func (u *ChannelUsecase) ListDeliveries(ctx context.Context, channelID string, l
 	return u.repo.ListDeliveries(ctx, strings.TrimSpace(channelID), limit)
 }
 
+// AddInboundDelivery records a runtime webhook/delivery row (payload must not contain message bodies).
+func (u *ChannelUsecase) AddInboundDelivery(ctx context.Context, channelID, status, payloadJSON, errMsg string) error {
+	channelID = strings.TrimSpace(channelID)
+	if channelID == "" {
+		return errors.BadRequest("CHANNEL", "channel id is required")
+	}
+	_, err := u.repo.AddDelivery(ctx, ChannelDelivery{
+		ID:           uuid.NewString(),
+		ChannelID:    channelID,
+		Status:       strings.TrimSpace(status),
+		PayloadJSON:  strings.TrimSpace(payloadJSON),
+		ErrorMessage: strings.TrimSpace(errMsg),
+	})
+	return err
+}
+
 func (u *ChannelUsecase) Test(ctx context.Context, id string) (ChannelTestResult, error) {
 	row, err := u.repo.Get(ctx, strings.TrimSpace(id))
-	if err != nil {
-		return ChannelTestResult{}, err
-	}
-	cfg, err := parseChannelConfig(row.ConfigJSON)
 	if err != nil {
 		return ChannelTestResult{}, err
 	}
@@ -287,12 +314,24 @@ func (u *ChannelUsecase) Test(ctx context.Context, id string) (ChannelTestResult
 	if err != nil {
 		return ChannelTestResult{}, err
 	}
-	result := evaluateChannelTest(row, cfg, credentials)
+	result, err := EvaluateChannelTest(row, credentials)
+	if err != nil {
+		return ChannelTestResult{}, err
+	}
+	return u.CommitChannelTest(ctx, row, credentials, result)
+}
+
+// CommitChannelTest persists a test delivery row and updates channel metadata from result.
+func (u *ChannelUsecase) CommitChannelTest(ctx context.Context, row Channel, credentials []ChannelCredential, result ChannelTestResult) (ChannelTestResult, error) {
+	cfg, err := parseChannelConfig(row.ConfigJSON)
+	if err != nil {
+		return result, err
+	}
 	payload, _ := json.Marshal(map[string]any{
-		"type":          cfg.Type,
-		"receive_mode":  cfg.ReceiveMode,
-		"credential_ok": credentialCount(credentials),
-		"result_status": result.Status,
+		"type":            cfg.Type,
+		"receive_mode":    cfg.ReceiveMode,
+		"credential_ok":   credentialCount(credentials),
+		"result_status":   result.Status,
 	})
 	_, _ = u.repo.AddDelivery(ctx, ChannelDelivery{
 		ID:           uuid.NewString(),
@@ -301,8 +340,7 @@ func (u *ChannelUsecase) Test(ctx context.Context, id string) (ChannelTestResult
 		PayloadJSON:  string(payload),
 		ErrorMessage: errorMessageForTest(result),
 	})
-	final, err := u.updateTestMetadata(ctx, row, result)
-	return final, err
+	return u.updateTestMetadata(ctx, row, result)
 }
 
 func (u *ChannelUsecase) updateTestMetadata(ctx context.Context, row Channel, result ChannelTestResult) (ChannelTestResult, error) {

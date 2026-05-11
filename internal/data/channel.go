@@ -77,6 +77,23 @@ func (r *channelRepo) Get(ctx context.Context, id string) (biz.Channel, error) {
 	return entToChannel(e), nil
 }
 
+func (r *channelRepo) GetByKey(ctx context.Context, key string) (biz.Channel, error) {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return biz.Channel{}, errors.New("channel key is required")
+	}
+	e, err := r.entClient().PlatformChannel.Query().
+		Where(
+			platformchannel.ChannelKeyEQ(key),
+			platformchannel.DeletedAtEQ(""),
+		).
+		Only(ctx)
+	if err != nil {
+		return biz.Channel{}, err
+	}
+	return entToChannel(e), nil
+}
+
 func (r *channelRepo) Create(ctx context.Context, row biz.Channel) (biz.Channel, error) {
 	now := nowRFC3339()
 	if row.CreatedAt == "" {

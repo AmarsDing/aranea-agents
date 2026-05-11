@@ -33,6 +33,7 @@ var ProviderSet = wire.NewSet(
 	NewMonitorService,
 	NewMemoryService,
 	NewSystemSettingService,
+	NewChannelIngress,
 	NewChatService,
 	NewSessionCompressor,
 )

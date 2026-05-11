@@ -648,18 +648,18 @@ backdrop-filter: blur(var(--glass-blur-default));
 
 # 开发规范
 
-## Agent / 运行时（以 `pkg/adk-go` 为框架真相源）
+## Agent / 运行时（以 `pkg/trpc-agent-go` 为框架真相源）
 
-- **`pkg/adk-go` 是本项目的 Agent 框架**：凡涉及「Agent 执行、Runner 编排、Session 状态、LLM 请求/响应（`model`）、工具（`tool`）、流式与事件语义」的设计与实现，**必须先对照 `pkg/adk-go` 中的包结构、接口与约定**，再落代码。
+- **`pkg/trpc-agent-go` 是本项目的 Agent 框架**：凡涉及「Agent 执行、Runner 编排、Session 状态、LLM 请求/响应（`model`）、工具（`tool`）、流式与事件语义」的设计与实现，**必须先对照 `pkg/trpc-agent-go` 中的包结构、接口与约定**，再落代码。
 - **`pkg/backend` 不作为新能力的结构范本**：`pkg/backend`（含 `internal/conversation`、`adapters/adkruntime`、旧版 HTTP 对话与团队编排等）仅保留历史或并行实现；**新增或重构功能时，不得以 `pkg/backend` 的分层、调用链或事件命名为权威参考**。需要兼容旧行为时，单独说明迁移路径即可。
-- **集成原则**：在 `internal/agent`、`internal/team`、`internal/service` 等与对话/团队相关的代码中，通过**薄适配层**调用 `pkg/adk-go` 公开 API，避免在业务包内重复实现 ADK 已提供的编排或会话语义。
-- **与 API/服务层的边界**：对外 Kratos、gRPC/HTTP、AIP 资源形态仍遵循本仓库既有约定；**对话与多 Agent 的语义模型**以 `pkg/adk-go` 为准，避免再引入一套与 ADK 冲突的「第二套运行时」。
+- **集成原则**：在 `internal/agent`、`internal/team`、`internal/service` 等与对话/团队相关的代码中，通过**薄适配层**调用 `pkg/trpc-agent-go` 公开 API，避免在业务包内重复实现框架已提供的编排或会话语义。
+- **与 API/服务层的边界**：对外 Kratos、gRPC/HTTP、AIP 资源形态仍遵循本仓库既有约定；**对话与多 Agent 的语义模型**以 `pkg/trpc-agent-go` 为准，避免再引入一套与 tRPC-Agent-Go 冲突的「第二套运行时」。
 
 ### `internal/provider`：厂商与模型集成单点
 
-- **职责范围**：**`internal/provider`**（含 **`provider/openai`**、**`provider/deepseek`**、**`provider/gemini`** 等子包）承载 **厂商连接与模型的初始化、解析与调用**——例如：目录/Biz 侧 **`provider_type` / `api_base_url` / `api_key` / 模型名**的合并、**`Registry.Resolve`** 绑定具体后端、**HTTP 传输（`RoundTrip`）**、以及实现 **`google.golang.org/adk/model.LLM`** 的 **`GenerateContent`**（含流式）等。
-- **契约对齐**：对模型的入参/出参形态以 **`pkg/adk-go/model`** 为准（如 **`LLMRequest` / `LLMResponse`**、`genai.Content` 与配置）；不要在业务包中平行维护另一套「驱动接口」或重复的厂商 HTTP 客户端分散在各处。
+- **职责范围**：**`internal/provider`**（含 **`provider/openai`**、**`provider/deepseek`**、**`provider/gemini`** 等子包）承载 **厂商连接与模型的初始化、解析与调用**——例如：目录/Biz 侧 **`provider_type` / `api_base_url` / `api_key` / 模型名**的合并、**`Registry.Resolve`** 绑定具体后端、**HTTP 传输（`RoundTrip`）**、以及实现 **`pkg/trpc-agent-go` 所定义之 `model.LLM`**（或兼容层等价接口）的 **`GenerateContent`**（含流式）等。
+- **契约对齐**：对模型的入参/出参形态以 **`pkg/trpc-agent-go/model`** 为准（如 **`LLMRequest` / `LLMResponse`**、`genai.Content` 与配置）；不要在业务包中平行维护另一套「驱动接口」或重复的厂商 HTTP 客户端分散在各处。
 - **业务集成约定**：凡与 **调用大模型** 相关的业务能力（选厂商、走补全/流式、聚合用量与文本解析等），**优先在 `internal/provider` 及其子包内收口实现**；**`internal/agent`、`internal/team`、`internal/service`** 等仅保留编排、proto/会话消息与 **`LLMRequest`** 之间的**必要适配**，避免在多处复制厂商协议细节或私自新建直连调用路径。
 - **新增厂商或协议变体**：通过扩展 **`Registry`** 注册工厂、在子包中实现 **`model.LLM`**，并保持与现有 **`CatalogClient`**、**`MergeCatalogIntoRequest`** 等辅助方法一致；评审时检查是否仍有绕过 **`provider`** 的零散模型调用。
-- **`provider_type`：`gemini`**：走 **`google.golang.org/genai`** + **`pkg/adk-go/model/gemini`**（官方 Gemini API，非 OpenAI 兼容层）。目录 **`ConfigJSON`** 中 **`api_key`** 必填或依赖环境变量 **`GOOGLE_API_KEY` / `GEMINI_API_KEY`**；**`api_base_url`** 可选，用于自定义/代理端点；**`model`** 行字段为 Gemini 模型 id（如 **`gemini-2.5-flash`**）；**`google` / `vertex`** 仍默认绑定 OpenAI 兼容工厂（网关场景），不要用它们表示原生 Gemini。
+- **`provider_type`：`gemini`**：走 **`google.golang.org/genai`** + **`pkg/trpc-agent-go/model/gemini`**（若该子路径与本仓库 `go.mod` 不一致，以实现代码为准）（官方 Gemini API，非 OpenAI 兼容层）。目录 **`ConfigJSON`** 中 **`api_key`** 必填或依赖环境变量 **`GOOGLE_API_KEY` / `GEMINI_API_KEY`**；**`api_base_url`** 可选，用于自定义/代理端点；**`model`** 行字段为 Gemini 模型 id（如 **`gemini-2.5-flash`**）；**`google` / `vertex`** 仍默认绑定 OpenAI 兼容工厂（网关场景），不要用它们表示原生 Gemini。
 

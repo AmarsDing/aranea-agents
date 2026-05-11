@@ -337,7 +337,7 @@ func (e *Executor) Run(ctx *toolctx.ToolContext, tool tooldef.Tool, params map[s
 
 ### 2. 与 go-adk 的适配器
 
-go-adk 要求工具满足其 `tool.Tool` 接口，通常使用 `tool.NewFunctionTool` 等构造。下例需与 **`github.com/google/adk-go` 当前版本**中的符号名核对。
+tRPC-Agent-Go（`pkg/trpc-agent-go`）要求工具满足其 `tool.Tool` 接口，通常使用 `tool.NewFunctionTool` 等构造。下例须与 **`go.mod`** 指向的 **`pkg/trpc-agent-go`** 版本中符号名核对。
 
 ```go
 // adkbridge/adapter.go
@@ -489,8 +489,8 @@ go-adk 本身也支持 OTEL，将 Agent 调用和工具调用串联成一条完�
 
 ## 十一、Human-in-the-Loop（人机交互 / 审批流）实现
 
-> **与 adk-go 版本对齐**  
-> 下文中 `NewLongRunningFunctionTool`、`LongRunningFunctionResult`、`PendingApproval`、`Resume` 等**类型与构造函数名**须与 `github.com/google/adk-go` 当前所依赖的 tag/commit **核对**；若符号不存在，以官方示例为准改写，本节保留流程语义。
+> **与 `pkg/trpc-agent-go` 版本对齐**  
+> 下文中 `NewLongRunningFunctionTool`、`LongRunningFunctionResult`、`PendingApproval`、`Resume` 等**类型与构造函数名**须与 **`pkg/trpc-agent-go`（当前所依赖 tag/commit）** **核对**；若符号不存在，以官方示例为准改写，本节保留流程语义。
 
 > **与同步路径的关系**  
 > `ToADKTool` 在第八节为简化的 `FunctionTool`；若某工具实现 `ApprovableTool`，应在**注册/装配**时改为 `adkbridge` 的 Long-running 构造（下例 `ToADKTool` / `createFunctionTool` 分派），避免与第十一节实现冲突。  
@@ -592,10 +592,10 @@ func (e *PendingApprovalError) Error() string { return "tool " + e.ToolName + " 
 - **首次执行**：`exec.Run` → 可能返回 `*middleware.PendingApprovalError` → 适配层转为 **挂起/待审批** 事件，并附带 `Resume`。  
 - **Resume**：从 `StateStore` 取 `approval_result:{approval_id}`；若拒绝则直接返回错误；若批准则 **`ExecuteWithApproval`**（不再次走会触发审批的 `Execute` 路径）。`ctx.ApprovalID` 与审计字段写入应在此时完成。
 
-**以下为一版完整可讨论伪代码**（`LongRunningResultT`、`NewLongRunningFunctionTool`、`Pending`/`Resume` 的字段与回调形参**须**与 `github.com/google/adk-go` 当前包 `tool` / `run` 对齐后替换，注释中标「adk:」处即待核对点）。
+**以下为一版完整可讨论伪代码**（`LongRunningResultT`、`NewLongRunningFunctionTool`、`Pending`/`Resume` 的字段与回调形参**须**与 `pkg/trpc-agent-go` 当前包 `tool` / `run` 对齐后替换，注释中标「adk:」处即待核对点）。
 
 ```go
-// adkbridge/longrunning.go — 讨论稿，与 adk-go 版本绑定时逐符号替换
+// agent_tools_bridge/longrunning.go — 讨论稿，与 pkg/trpc-agent-go 绑定时逐符号替换
 package adkbridge
 
 import (
@@ -735,8 +735,8 @@ func unmarshalParamsIntoInput(args json.RawMessage, in tooldef.InputSchema) erro
 
 ## 十二、流式工具与 SSE 对接
 
-> **与 adk-go 版本对齐**  
-> `NewStreamingTool`、`StreamingResult`、`StreamHandler`、事件类型等须与**当前** `adk-go` 核对；`model.ToolEvent` 在下列片段中为**占位名**，应替换为 SDK 中实际消息类型。
+> **与 `pkg/trpc-agent-go` 版本对齐**  
+> `NewStreamingTool`、`StreamingResult`、`StreamHandler`、事件类型等须与**当前** **`pkg/trpc-agent-go`** 核对；`model.ToolEvent` 在下列片段中为**占位名**，应替换为 SDK 中实际消息类型。
 
 > **与同步中间件**  
 > 下例在适配器里**直接**调用 `t.Stream(...)`，不经过与 `Execute` 相同的 `Middleware` 链。若需鉴权/审计/限流与同步一致，应：在 `adkbridge` 内复用与 `Run` 相同的前置检查，或后续引入 `StreamMiddleware` 并在适配器最外层包装。
@@ -798,7 +798,7 @@ func (t *StreamCodeExec) Stream(ctx *toolctx.ToolContext, params tooldef.InputSc
 ### b) `adkbridge` 流式适配（伪代码）
 
 ```go
-// adkbridge/streaming.go — 伪代码，签名以 adk-go 为准
+// agent_tools_bridge/streaming.go — 伪代码，签名以 pkg/trpc-agent-go 为准
 func ToADKStreamTool(t tooldef.Tool, exec *executor.Executor) /* tool.StreamingTool 或 tool.Tool */ {
     _ = exec
     // 1) FromADKContext → *toolctx.ToolContext

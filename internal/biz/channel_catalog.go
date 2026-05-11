@@ -3,7 +3,7 @@ package biz
 var channelCatalog = []ChannelCatalogItem{
 	channelCatalogItem("qq", "QQ (NapCat)", "国内", "websocket", "QQ 个人号，NapCat OneBot11 协议", 10, true),
 	channelCatalogItem("qqbot", "QQ 官方机器人", "国内", "webhook", "QQ 开放平台机器人", 20, true),
-	channelCatalogItem("feishu", "飞书 / Lark", "办公协作", "webhook", "事件订阅、机器人消息、多账号", 30, true),
+	feishuCatalogItem(),
 	channelCatalogItem("dingtalk", "钉钉", "办公协作", "webhook", "钉钉机器人与事件回调", 40, true),
 	channelCatalogItem("wecom", "企业微信智能机器人", "办公协作", "webhook", "群机器人或智能机器人", 50, true),
 	channelCatalogItem("wecom-app", "企业微信自建应用", "办公协作", "webhook", "企业微信自建应用通道", 60, true),
@@ -58,5 +58,80 @@ func channelCatalogItem(channelType, label, group, receiveMode, description stri
 			"receive_mode": receiveMode,
 		},
 		SortOrder: sortOrder,
+	}
+}
+
+func feishuCatalogItem() ChannelCatalogItem {
+	return ChannelCatalogItem{
+		Type:            "feishu",
+		Label:           "飞书 / Lark",
+		Group:           "办公协作",
+		Description:     "事件订阅、机器人消息、多账号",
+		ReceiveModes:    []string{"webhook"},
+		Icon:            "feishu",
+		Bundled:         true,
+		SupportsTest:    true,
+		SupportsWebhook: true,
+		ConfigSchema: map[string]any{
+			"type":        "object",
+			"description": "Non-sensitive Feishu / Lark configuration",
+			"properties": map[string]any{
+				"type": map[string]any{
+					"type":        "string",
+					"const":       "feishu",
+					"description": "platform type",
+				},
+				"receive_mode": map[string]any{"type": "string"},
+				"webhook": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"path": map[string]any{"type": "string"},
+					},
+				},
+				"routing": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"default_agent_id": map[string]any{"type": "string"},
+						"default_team_id":  map[string]any{"type": "string"},
+						"dm_scope": map[string]any{
+							"type": "string",
+							"enum": []string{"main", "per-peer", "per-channel-peer"},
+						},
+					},
+				},
+				"config": map[string]any{
+					"type": "object",
+					"required": []string{"app_id"},
+					"properties": map[string]any{
+						"app_id": map[string]any{"type": "string", "description": "Feishu app id"},
+						"region": map[string]any{
+							"type":        "string",
+							"description": "feishu (China) or lark (international)",
+							"enum":        []string{"feishu", "lark"},
+						},
+					},
+				},
+			},
+		},
+		CredentialSchema: map[string]any{
+			"type":     "object",
+			"required": requiredCredentials("feishu"),
+			"properties": map[string]any{
+				"app_secret": map[string]any{"type": "string", "description": "App secret"},
+				"encrypt_key": map[string]any{
+					"type":        "string",
+					"description": "Event subscription Encrypt Key (for signature verification)",
+				},
+				"verification_token": map[string]any{
+					"type":        "string",
+					"description": "URL verification token from Feishu console",
+				},
+			},
+		},
+		UIHints: map[string]any{
+			"group":        "办公协作",
+			"receive_mode": "webhook",
+		},
+		SortOrder: 30,
 	}
 }

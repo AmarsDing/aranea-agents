@@ -60,7 +60,7 @@
 
 ### 2.4 运行时现状（重要）
 
-当前 Agent 工具链中的 Skill 能力与 **`pkg/adk-go/tool/skilltoolset`** 对齐：**给定 `io/fs.FS`（常用为本地目录）即暴露 ADK toolset**。这与「平台库里启用哪些 Skill、如何按回合筛选」**尚未打通**：DB 中的 `enabled`、`tags`、版本尚未自动映射到 `SkillsFS`。
+当前 Agent 工具链中的 Skill 能力与 **`pkg/trpc-agent-go/tool/skilltoolset`** 对齐：**给定 `io/fs.FS`（常用为本地目录）即暴露框架 toolset（tRPC-Agent-Go）**。这与「平台库里启用哪些 Skill、如何按回合筛选」**尚未打通**：DB 中的 `enabled`、`tags`、版本尚未自动映射到 `SkillsFS`。
 
 **目标**：增加一层 **SkillRuntimeAssembler**（名称可与代码一致），从 **biz/data** 读出候选 Skill → 合成只读 FS 或合成 prompt → 再交给 ADK；或与 `skilltoolset` 的 `Source` 接口对齐实现 **DB-backed Source**。
 
@@ -227,7 +227,7 @@ type SkillBackend interface {
 
 ### 5.2 Manifest（逻辑模型）
 
-与 `pkg/adk-go/tool/skilltoolset/skill` 的 frontmatter 习惯对齐，同时支持独立 `skill.json`：
+与 `pkg/trpc-agent-go/tool/skilltoolset/skill` 的 frontmatter 习惯对齐，同时支持独立 `skill.json`：
 
 | 字段 | 说明 |
 |------|------|
@@ -506,7 +506,7 @@ internal/server/skill_import_http.go     → 导入路由挂载
 internal/tools/catalog/assemble.go       → ADK tool 装配（SkillsFS → skilltoolset）
 internal/tools/skillruntime/*           → 启用 Skill → **策略(A)+意图(B)收窄** → 过滤 FS → skilltoolset
 internal/tools/skillrouter/*            → 意图路径关键词与标签 hint（层 B）
-pkg/adk-go/tool/skilltoolset/**          → ADK Skill 工具链参考实现
+pkg/trpc-agent-go/tool/skilltoolset/**          → Skill 工具链参考实现（tRPC-Agent-Go）
 api/kratos/system_setting/v1/system_setting.proto → `work_directory`；Skill 根推导见 §2.5
 internal/service/system_setting.go       → 设置读写；与 skillstorage 接通待实现
 ```

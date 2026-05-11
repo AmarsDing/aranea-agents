@@ -27,7 +27,7 @@ Plugin 与 Skill / Tool 的边界：
 | 运行日志 | MVP 展示摘要 | 仅展示 callback 类型、Agent、结果、耗时、错误摘要 |
 | 上传第三方插件代码 | 否 | 不允许上传任意 Go / 动态库插件，避免安全和跨平台问题 |
 | 动态插件运行时 | 后续迭代 | 可考虑外部进程 / gRPC / MCP / WASM 插件 |
-| 真正注入 ADK Runner | 后续接入 | 当前 `ADKRuntimeAdapter` 仍是直连模型适配；后续真实接入 `adk-go runner.PluginConfig` 后生效 |
+| 真正注入框架 Runner | 后续接入 | 当前 `ADKRuntimeAdapter` 仍是直连模型适配；后续真实接入 **`pkg/trpc-agent-go` Runner `PluginConfig`** 后生效 |
 
 ### 0.2 默认产品决策
 
@@ -64,7 +64,7 @@ Plugin 与 Skill / Tool 的边界：
 
 ### 1.1 基本机制
 
-`adk-go/plugin` 的 Plugin 是运行时回调对象。每个 Plugin 通过 `plugin.New(plugin.Config{...})` 注册一组 callback：
+**`pkg/trpc-agent-go`/plugin** 的 Plugin 是运行时回调对象。每个 Plugin 通过 `plugin.New(plugin.Config{...})` 注册一组 callback：
 
 | Callback | 触发时机 | 典型用途 |
 |----------|----------|----------|
@@ -860,7 +860,7 @@ type BuiltinPluginDefinition struct {
 
 真正生效需要后续实现：
 
-1. `ADKRuntimeAdapter` 接入真实 `adk-go runner.Runner`。
+1. `ADKRuntimeAdapter` 接入真实 **`pkg/trpc-agent-go` `runner.Runner`**。
 2. 从数据库读取启用插件。
 3. 根据作用域和 Agent 绑定生成 `runner.PluginConfig`。
 4. 执行 callback 时写入 `plugin_run` 记录。

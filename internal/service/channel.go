@@ -3,9 +3,11 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"strings"
 
 	v1 "aranea-agents/api/kratos/channel/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/channel/lark"
 
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
@@ -222,11 +224,50 @@ func (s *ChannelService) ToggleChannel(ctx context.Context, req *v1.ToggleChanne
 }
 
 func (s *ChannelService) TestChannel(ctx context.Context, req *v1.TestChannelRequest) (*v1.ChannelTestResult, error) {
-	res, err := s.uc.Test(ctx, req.GetId())
+	row, err := s.uc.Get(ctx, req.GetId())
 	if err != nil {
 		return nil, err
 	}
-	return bizTestToProto(res)
+	creds, err := s.uc.ListCredentialsRaw(ctx, row.ID)
+	if err != nil {
+		return nil, err
+	}
+	result, err := biz.EvaluateChannelTest(row, creds)
+	if err != nil {
+		return nil, err
+	}
+	var env struct {
+		Type string `json:"type"`
+	}
+	_ = json.Unmarshal([]byte(row.ConfigJSON), &env)
+	if strings.EqualFold(strings.TrimSpace(env.Type), "feishu") && result.OK {
+		region, appID, ferr := feishuAppAndRegion(row.ConfigJSON)
+		if ferr != nil {
+			result = biz.ChannelTestResult{OK: false, Status: "error", Message: ferr.Error()}
+		} else {
+			appRef, cerr := ChannelCredentialSecretRef(creds, "app_secret")
+			if cerr != nil {
+				result = biz.ChannelTestResult{OK: false, Status: "pending_auth", Message: cerr.Error()}
+			} else {
+				sec, serr := ResolveSecretRef(appRef)
+				if serr != nil {
+					result = biz.ChannelTestResult{OK: false, Status: "pending_auth", Message: serr.Error()}
+				} else {
+					_, _, terr := lark.FetchTenantAccessToken(ctx, lark.DefaultHTTPClient(), region, appID, sec)
+					if terr != nil {
+						result = biz.ChannelTestResult{OK: false, Status: "error", Message: terr.Error()}
+					} else {
+						result = biz.ChannelTestResult{OK: true, Status: "ok", Message: "tenant_access_token acquired"}
+					}
+				}
+			}
+		}
+	}
+	final, err := s.uc.CommitChannelTest(ctx, row, creds, result)
+	if err != nil {
+		return nil, err
+	}
+	return bizTestToProto(final)
 }
 
 func (s *ChannelService) ListChannelCredentials(ctx context.Context, req *v1.GetChannelRequest) (*v1.ListChannelCredentialsResponse, error) {

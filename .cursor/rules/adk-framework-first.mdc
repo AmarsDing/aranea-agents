@@ -1,14 +1,12 @@
 ---
-description: Agent/runtime work must follow pkg/adk-go; do not use pkg/backend as architecture reference
-alwaysApply: true
+description: Superseded — use trpc-agent-framework-first.mdc for Agent framework alignment
+alwaysApply: false
 ---
 
-# ADK-Go 优先（框架真相源）
+# 已由 tRPC-Agent-Go 规则取代
 
-- **`pkg/adk-go` 是 Agent 框架**：Runner、Session、LLM（`model`）、Tool、Agent 组合与流式语义等，**先查 `pkg/adk-go` 再实现**。
-- **不要以 `pkg/backend` 为范本**：新功能的分层、编排、事件设计**不要**照抄 `pkg/backend` 或 `adapters/adkruntime`；仅在兼容、迁移或对照旧行为时触及。
-- **集成方式**：按领域使用 **`internal/agent`**（llmagent 构建、内存/插件/投影）、**`internal/agent/adksvc`**（会话快照）、**`internal/provider`**（`model.LLM`）、**`internal/tools`**（ADK tool 绑定）、**`internal/team`**（工作流 Agent）；避免复制 `pkg/adk-go` 内部实现细节。
-- **Kratos v2 中间件 / 传输边界不变**：`internal/server` 不调 ADK；Runner 在 **`internal/service`** 层使用，依赖方向见 **`docs/AGENT_RUNTIME_BOUNDARY.md`**。
-- **Service 是传输桥点**：将 RPC/HTTP 请求译为 `runner.Run`，将 `session.Event` 投影为响应或 SSE；`team` 等业务包可持有 Runner 编排；不在 biz 层引用 ADK。
+本项目 Agent 运行时对齐基准**已为** **`pkg/trpc-agent-go`**。开发与审阅时请遵循：
 
-完整条文见 `docs/AI-全栈新功能开发规范.md` 与 `docs/AGENT_RUNTIME_BOUNDARY.md`。
+- **`trpc-agent-framework-first.mdc`**（`alwaysApply: true`）
+
+若历史文档仍提到本文件名或 ADK-only 措辞，以实现代码与 **`docs/AI-全栈新功能开发规范.md`**、**`docs/AGENT_RUNTIME_BOUNDARY.md`** 的现行版本为准。

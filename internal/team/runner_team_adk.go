@@ -222,6 +222,17 @@ func (r *Runner) runTeamADK(ctx context.Context, sess biz.Session, req *chatv1.S
 		}
 		registerPersistMetaKeys(keyMeta, m, ag)
 	}
+	for i, runName := range plan.persistRuntimeNames {
+		if i >= len(plan.persistMembers) {
+			break
+		}
+		m := plan.persistMembers[i]
+		ag, e := r.catalogAgent(ctx, m.AgentID)
+		if e != nil {
+			continue
+		}
+		registerAuthorKeyIfAbsent(keyMeta, persistMetaEntry{Member: m, Agent: ag}, runName)
+	}
 	if sk := strings.ToLower(strings.TrimSpace(plan.streamAuthor)); sk != "" {
 		if ent, ok := keyMeta[sk]; ok {
 			registerPersistMetaKeys(keyMeta, ent.Member, ent.Agent)
@@ -288,6 +299,7 @@ func (r *Runner) runTeamADK(ctx context.Context, sess biz.Session, req *chatv1.S
 		"team_turn phase=adk_run_start session_id=%s run_id=%s session_streaming=%v",
 		sess.ID, run.ID, streaming))
 
+	var lastCompressAg biz.Agent
 	for ev, err := range rn.Run(runCtx, uid, sess.ID, msg, cfg) {
 		if runCtx.Err() != nil {
 			hint := ""
@@ -358,6 +370,12 @@ func (r *Runner) runTeamADK(ctx context.Context, sess biz.Session, req *chatv1.S
 		if !ok {
 			mainPeek, _ := provider.TextsFromLLMResponse(&ev.LLMResponse)
 			mainPeek = strings.TrimSpace(mainPeek)
+			if streaming && mainPeek == "" {
+				mainPeek = strings.TrimSpace(synthStreamReply.String())
+			}
+			if streaming && mainPeek == "" {
+				mainPeek = strings.TrimSpace(synthStreamReason.String())
+			}
 			if synthKey != "" && mainPeek != "" {
 				if entLeaf, ok2 := keyMeta[synthKey]; ok2 {
 					meta = entLeaf
@@ -376,9 +394,9 @@ func (r *Runner) runTeamADK(ctx context.Context, sess biz.Session, req *chatv1.S
 				"author", strings.TrimSpace(ev.Author), "stream_author", strings.TrimSpace(plan.streamAuthor),
 				"final", ev.IsFinalResponse(), "partial", ev.LLMResponse.Partial)
 			publishTeamMonitor(ctx, r.monitorLogs, "WARN", fmt.Sprintf(
-				"team_turn phase=skip_unknown_author session_id=%s run_id=%s author=%q stream_author=%q is_final=%v partial=%v text_preview=%q",
+				"team_turn phase=skip_unknown_author session_id=%s run_id=%s author=%q stream_author=%q is_final=%v partial=%v text_preview=%q keymap_sample=%q",
 				sess.ID, run.ID, strings.TrimSpace(ev.Author), strings.TrimSpace(plan.streamAuthor),
-				ev.IsFinalResponse(), ev.LLMResponse.Partial, pvw))
+				ev.IsFinalResponse(), ev.LLMResponse.Partial, pvw, teamMonitorAliasSample(keyMeta)))
 			continue
 		}
 		main, rsnForMerge := provider.TextsFromLLMResponse(&ev.LLMResponse)
@@ -454,6 +472,9 @@ func (r *Runner) runTeamADK(ctx context.Context, sess biz.Session, req *chatv1.S
 		if streaming && strings.TrimSpace(am.ContentMarkdown) != "" {
 			lastStreamingAssistant = am
 		}
+		if strings.TrimSpace(displayMarkdown) != "" {
+			lastCompressAg = meta.Agent
+		}
 		r.persistStep(ctx, run, teamRow.ID, sortIndexForMember(plan.persistMembers, meta.Member), meta.Member, meta.Agent, content, am)
 		leaf := metaIsStreamLeaf(ev.Author, synthKey, keyMeta, len(plan.persistMembers))
 		if leaf && strings.TrimSpace(displayMarkdown) != "" {
@@ -517,7 +538,11 @@ func (r *Runner) runTeamADK(ctx context.Context, sess biz.Session, req *chatv1.S
 	run.FinishedAt = agent.RFC3339Now()
 	_ = r.teams.UpdateTeamRun(ctx, run)
 
-	win := firstAg.ContextWindow
+	compressAg := firstAg
+	if strings.TrimSpace(lastCompressAg.ID) != "" {
+		compressAg = lastCompressAg
+	}
+	win := compressAg.ContextWindow
 	if win <= 0 {
 		win = 128000
 	}
@@ -541,7 +566,7 @@ func (r *Runner) runTeamADK(ctx context.Context, sess biz.Session, req *chatv1.S
 	}
 	_ = r.sessions.UpdateSessionContextFromLLMUsage(ctx, sess.ID, promptTok, completionTok, win)
 	if r.compress != nil {
-		r.compress.AfterNativeTurn(ctx, sess.ID, firstAg)
+		r.compress.AfterNativeTurn(ctx, sess.ID, compressAg)
 	}
 
 	if r.broker != nil {
@@ -590,6 +615,16 @@ type persistMetaEntry struct {
 	Agent  biz.Agent
 }
 
+func registerAuthorKeyIfAbsent(m map[string]persistMetaEntry, ent persistMetaEntry, name string) {
+	k := strings.ToLower(strings.TrimSpace(name))
+	if k == "" {
+		return
+	}
+	if _, exists := m[k]; !exists {
+		m[k] = ent
+	}
+}
+
 func registerPersistMetaKeys(m map[string]persistMetaEntry, mem MemberDef, ag biz.Agent) {
 	ent := persistMetaEntry{Member: mem, Agent: ag}
 	add := func(s string) {
@@ -604,6 +639,7 @@ func registerPersistMetaKeys(m map[string]persistMetaEntry, mem MemberDef, ag bi
 	add(ag.AgentKey)
 	add(ag.DisplayName)
 	add(mem.Name)
+	add(ag.ID)
 }
 
 // registerWorkflowAuthorAliases maps ADK parent workflow agent names to the user-visible stream leaf,

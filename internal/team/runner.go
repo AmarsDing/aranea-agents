@@ -14,7 +14,7 @@ import (
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
-// Runner executes native team workflows via pkg/adk-go workflow agents + runner.Run.
+// Runner executes native team workflows via pkg/trpc-agent-go workflow agents + runner.Run.
 type Runner struct {
 	teams        biz.TeamRepository
 	sessions     *biz.SessionUsecase

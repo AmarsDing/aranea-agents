@@ -70,13 +70,13 @@ CLI 的目标是把现有 Web 控制台（`/skills`、`/agents`、`/teams`、`/t
 
 ---
 
-## 1. 命令模型与 Launcher 架构（对齐 google/adk-go 官方设计）
+## 1. 命令模型与 Launcher 架构（对齐 **`pkg/trpc-agent-go` / tRPC-Agent-Go**；双层结构可参考 google/adk-go）
 
-Aranea 的运行时与 Agent 框架基于 [google/adk-go](https://github.com/google/adk-go)，其官方 CLI（`adkgo` + `cmd/launcher`）已经给出了一套**经过工程验证的双层结构**。本节明确 Aranea CLI 的实现模式与 ADK 一一对齐，避免发明新轮子。
+Aranea 的运行时与 Agent 框架以 **`pkg/trpc-agent-go`（tRPC-Agent-Go）** 为真相源。[google/adk-go](https://github.com/google/adk-go) 官方 CLI（`adkgo` + `cmd/launcher`）提供了一套**工程上可借鉴的双层结构**表格与接口形态；**本节在流程上对齐其模式，具体 import / 包路径以实现仓库根 `go.mod` 与 `pkg/trpc-agent-go` 为准**。
 
-### 1.1 ADK 官方 CLI 双层结构
+### 1.1 参考：google/adk-go 官方 CLI 双层结构（历史对照）
 
-ADK Go 官方仓库的 CLI 由两套互补的入口组成：
+google/adk-go 仓库的 CLI 由两套互补的入口组成：
 
 | 入口 | 实现位置 | 用途 | 命令风格 |
 |------|----------|------|----------|
@@ -138,18 +138,18 @@ for {
 
 Aranea 的 CLI 也分两层，二进制名都是 `aranea`：
 
-| Aranea | 对应 ADK | 实现位置 | 框架 |
-|--------|----------|----------|------|
+| Aranea | 对应参考实现 | 实现位置 | 框架 |
+|--------|--------------|----------|------|
 | `aranea <资源> <动作>`：管理类命令（agent / skill / tool / plugin / mcp / cron / channel / monitor / system / config / completion / login / version） | `adkgo` Cobra 命令树 | `aranea/backend/cmd/aranea/cli/<feature>/` + `cmd/aranea/cli/root.go`（`package cli`） | **Cobra** |
-| `aranea console / web / api / webui / full`：运行时 SubLauncher | `adk` 运行时 launcher | `aranea/backend/cmd/aranea/launcher/{console,web,api,webui,full}/...` | **直接复用 `google.golang.org/adk/cmd/launcher` 接口** + stdlib `flag.FlagSet` |
+| `aranea console / web / api / webui / full`：运行时 SubLauncher | `adk` 运行时 launcher（对照） | `aranea/backend/cmd/aranea/launcher/{console,web,api,webui,full}/...` | **复用框架 `cmd/launcher` 接口**（路径以 **`pkg/trpc-agent-go`/go.mod** 为准，迁移期可能仍为 `google.golang.org/adk/cmd/launcher`）+ stdlib `flag.FlagSet` |
 | `aranea`（无参数） | `adk`（无参数 → `console`） | `cmd/aranea/main.go` 走 `full.NewLauncher().Execute(...)`，默认 sublauncher 是 `console` | 同上 |
 
 设计原则：
 
-1. **Launcher / SubLauncher 接口直接 import `google.golang.org/adk/cmd/launcher`**，不在 Aranea 重新定义；任何用 ADK Console Launcher 写过的 SubLauncher 都能在 Aranea 里跑。
-2. **`Config` 结构体扩展而非替换**：`aranea/launcher.Config` 内嵌 ADK 的 `launcher.Config`，再追加 Aranea 特有依赖（见 §1.5）。
-3. **管理 CLI 用 Cobra**，因为子命令多、有 `init()` 自注册需求，与 ADK `adkgo` 的 `cmd/adkgo/internal/deploy/cloudrun/cloudrun.go` 完全相同的写法。
-4. **运行时 SubLauncher 用 stdlib `flag.FlagSet`**，与 ADK `console.go` / `web.go` / `api.go` 完全相同的写法；统一通过 `internal/cli/util.FormatFlagUsage(fs)` 渲染帮助文本。
+1. **Launcher / SubLauncher 接口**：直接 import **框架**提供的 `cmd/launcher` 类型（**具体 module path 以 `go.mod` 为准**），不在 Aranea 重新定义；与官方 Console Launcher 组合方式兼容的子 Launcher 仍可复用。
+2. **`Config` 结构体扩展而非替换**：`aranea/launcher.Config` 内嵌框架的 `launcher.Config`，再追加 Aranea 特有依赖（见 §1.5）。
+3. **管理 CLI 用 Cobra**，因为子命令多、有 `init()` 自注册需求；写法可与 google/adk-go 的 `cmd/adkgo/internal/deploy/cloudrun/cloudrun.go` 对照。
+4. **运行时 SubLauncher 用 stdlib `flag.FlagSet`**，与参考实现 `console.go` / `web.go` / `api.go` 相同的风格；统一通过 `internal/cli/util.FormatFlagUsage(fs)` 渲染帮助文本。
 5. **共享 `Config` DI 容器**：所有 SubLauncher 不直接 import 业务包，而是从注入的 `Config` 拿 `AgentLoader` / `SessionService` / `PluginConfig`，便于测试与替换实现。
 
 ### 1.3 Go 包结构
@@ -217,9 +217,11 @@ func main() {
 }
 ```
 
-### 1.4 直接复用 ADK 的接口与帮助函数
+### 1.4 直接复用框架（**`pkg/trpc-agent-go`/go.mod**）的接口与帮助函数
 
-| ADK 包 | Aranea 用法 |
+下表所列 **`google.golang.org/adk/...`** 为**迁移期**常见示例路径；**规范以根 `go.mod` 与仓库内 [`pkg/trpc-agent-go`](../../pkg/trpc-agent-go)（或其所 re-export / replace 的路径）为准**。
+
+| 框架包（示例 import） | Aranea 用法 |
 |--------|-------------|
 | `google.golang.org/adk/cmd/launcher` | 直接 import `Launcher` / `SubLauncher` / `Config`；不重新定义 |
 | `google.golang.org/adk/cmd/launcher/universal` | 用 `universal.NewLauncher(...)` 串联 console + web；用 `universal.ErrorOnUnparsedArgs` 校验未消费参数 |
@@ -1311,20 +1313,20 @@ enabled = false
 
 | 模块 | 关系 |
 |------|------|
-| `1 chat.md` | 对话模式复用 chat 后端；UI 形态从 Quasar `QChatMessage` 切换为终端折叠块；底层运行循环对齐 ADK Console Launcher（§4） |
-| `2-8 agent*` | `aranea agent *` 直接命令与 §6 工具复用 Agent 模型与策略；`dbAgentLoader`（§6.5）实现 ADK `agent.Loader`，把数据库 Agent 暴露给 Console / Web Launcher |
+| `1 chat.md` | 对话模式复用 chat 后端；UI 形态从 Quasar `QChatMessage` 切换为终端折叠块；底层运行循环对齐框架 Console Launcher（§4） |
+| `2-8 agent*` | `aranea agent *` 直接命令与 §6 工具复用 Agent 模型与策略；`dbAgentLoader`（§6.5）实现 `agent.Loader`，把数据库 Agent 暴露给 Console / Web Launcher |
 | `11 multi-agent.md` | `aranea team *` 与 `aranea chat --team` 复用 Team 编排；Team 模式下 Console Launcher 把 Team 当作 RootAgent 注入 |
 | `19 mcp.md` | `aranea mcp *` 直接复用 MCP 表与 `/mcp-servers` API |
 | `20 skill.md` | §5 安装链路严格依赖 `20 skill.md` 的导入 / 冲突组 / 炼化设计 |
 | `21 cron.md` | `aranea cron *` 复用 `cron_task` |
 | `22 plugin.md` | `aranea plugin *` 复用插件启停与排序；Console Launcher 通过 `runner.PluginConfig` 共用同一份 Plugin 链，CLI / Web 审计一致 |
-| `23 tools.md` | §6 新增 `cli_admin_*` 一组 Tool，并扩展 `tool_invocations.source = cli`；Tool 实现为 ADK `tool.Tool`，统一走 BeforeTool / AfterTool / OnToolError 钩子 |
+| `23 tools.md` | §6 新增 `cli_admin_*` 一组 Tool，并扩展 `tool_invocations.source = cli`；Tool 实现为 **`pkg/trpc-agent-go` `tool.Tool`**，统一走 BeforeTool / AfterTool / OnToolError 钩子 |
 | `17 channel.md` | `aranea channel send` 受同样的高风险二次确认约束 |
-| `18 monitor.md` | CLI 调用全部进入 audit / events / traces；监控页可按 `source=cli` 过滤；OTel 由 `--otel_to_cloud` 走 ADK telemetry |
-| `24 telemetry.md` | CLI 与 ADK 共用 `telemetry.InitAndSetGlobalOtelProviders(...)`，`--otel_to_cloud` 标志名也保持一致 |
+| `18 monitor.md` | CLI 调用全部进入 audit / events / traces；监控页可按 `source=cli` 过滤；OTel 由 `--otel_to_cloud` 走框架 telemetry |
+| `24 telemetry.md` | CLI 与框架共用 `telemetry.InitAndSetGlobalOtelProviders(...)`，`--otel_to_cloud` 标志名也保持一致 |
 | `30 ecosystem.md` | 商城安装可由 CLI 触发 `cli_admin_marketplace_install`（后续阶段） |
-| **google/adk-go** | `cmd/adkgo`（Cobra）+ `cmd/launcher/{universal,console,web,api,webui,full}`（Launcher / SubLauncher 接口）+ `agent.Loader` + `runner.Runner` + `internal/cli/util` —— **本 CLI 的所有运行时入口、对话循环、AgentLoader、Plugin 注入路径都直接复用 ADK 接口**（详见 §1） |
+| **pkg/trpc-agent-go（tRPC-Agent-Go）** | `cmd/adkgo` 式管理命令 + `cmd/launcher/{universal,console,web,api,webui,full}`（Launcher / SubLauncher）+ `agent.Loader` + `runner.Runner` + `internal/cli/util` —— **运行时入口与对话循环以本仓库集成后的框架 API 为准**；代码示例中出现的 `google.golang.org/adk/...` 仅为迁移期路径参照（详见 §1、§1.4）。
 
 ---
 
-*文档版本：1.1 — 在 1.0 基础上对齐 google/adk-go 官方 CLI 设计模式：双层结构（Cobra 管理命令 + Launcher / SubLauncher 运行时）、`aranea/launcher.Config` 内嵌 ADK `launcher.Config`、Console Launcher 实现骨架、`agent.Loader` 桥接、Plugin / Telemetry / 输出风格统一。原 1.0 章节顺延为 §2-§14。*
+*文档版本：1.2 — **规范对齐 `pkg/trpc-agent-go`/tRPC-Agent-Go**；保留 google/adk-go CLI 分层作工程对照；`aranea/launcher.Config` 内嵌框架 `launcher.Config`；Console Launcher 骨架与 Plugin / Telemetry / 输出风格与原 1.1 一致。*

@@ -1,0 +1,13 @@
+---
+description: Agent/runtime work must follow pkg/trpc-agent-go as framework source of truth; not pkg/backend
+alwaysApply: true
+---
+
+# tRPC-Agent-Go 优先（框架真相源）
+
+- **`pkg/trpc-agent-go` 是 Agent 框架**：Runner、Session、LLM、Tool、Agent 组合与流式语义等，**先查 `pkg/trpc-agent-go` 再实现**。
+- **集成方式**：按领域使用 **`internal/agent`**（构建、内存/插件/会话投影等）、**`internal/provider`**（模型驱动）、**`internal/tools`**（框架工具绑定）、**`internal/team`**（工作流 Agent）等；子包命名以实现代码为准，**禁止**把 `pkg/trpc-agent-go` 的内部实现整块复制到业务目录。
+- **Kratos v2 中间件 / 传输边界不变**：**`internal/server`** 不直接调用 Agent 框架运行时；组装与 **`Run`** 放在 **`internal/service`** 层，依赖方向见 **`docs/AGENT_RUNTIME_BOUNDARY.md`**。
+- **Service 是传输桥点**：将 RPC/HTTP 请求译为框架运行时调用，将会话事件流投影为响应或 SSE；业务编排可在 `team` 等包持有 Runner；**`internal/biz` 不 import `pkg/trpc-agent-go`**。
+
+完整条文以 **`docs/AI-全栈新功能开发规范.md`** 与 **`docs/AGENT_RUNTIME_BOUNDARY.md`**（已按 **tRPC Agent** 框架修订的版本）为准。

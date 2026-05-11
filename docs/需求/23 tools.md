@@ -88,7 +88,7 @@ runner.New(runner.Config{
 
 1. 后端 Tool Registry：维护 Tool 定义、schema、配置、风险级别。
 2. Agent Tool Resolver：根据全局启用、Agent profile、allow / deny 计算本次 Run 的可用工具。
-3. ADK Tool Adapter：把系统内部 Tool 适配为 `google.golang.org/adk/tool.Tool`。
+3. **框架 Tool Adapter**：把系统内部 Tool 适配为 **`pkg/trpc-agent-go` / `tool.Tool`**（具体 import 以 `go.mod` 为准）。
 4. Tool Audit Recorder：记录调用参数、结果、耗时和错误。
 
 ### 1.2 执行链路
@@ -98,8 +98,8 @@ runner.New(runner.Config{
   -> ChatService / RuntimeAdapter
   -> 读取 Agent + AgentRuntimeSettings
   -> ToolResolver 计算 allowed tools
-  -> buildAgent 注入 ADK tools
-  -> ADK model 选择 function call
+  -> buildAgent 注入框架 tools
+  -> 框架 model 选择 function call
   -> Tool Adapter 执行实际工具
   -> BeforeTool / AfterTool / OnToolError Plugin 记录调用
   -> tool_invocations / tool_invocation_params 落库

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-kratos/kratos/v2/errors"
@@ -40,6 +41,10 @@ func Middleware() httpm.FilterFunc {
 				return
 			}
 			if _, ok := noAuthPaths[r.URL.Path]; ok {
+				next.ServeHTTP(w, r)
+				return
+			}
+			if strings.HasPrefix(r.URL.Path, "/webhooks/") {
 				next.ServeHTTP(w, r)
 				return
 			}

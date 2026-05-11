@@ -41,6 +41,7 @@ var ProviderSet = wire.NewSet(
 	NewSessionRepo,
 	NewToolRepo,
 	NewChannelRepo,
+	NewChannelPeerSessionRepo,
 	NewUsageRepo,
 	NewMonitorRepo,
 	NewSystemSettingRepo,

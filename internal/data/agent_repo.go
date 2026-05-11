@@ -336,6 +336,21 @@ func (r *agentRepo) GetAgentByID(ctx context.Context, id string) (biz.Agent, err
 	return entAgentToBiz(row), nil
 }
 
+func (r *agentRepo) GetAgentByAgentKey(ctx context.Context, agentKey string) (biz.Agent, error) {
+	agentKey = strings.TrimSpace(agentKey)
+	if agentKey == "" {
+		return biz.Agent{}, sql.ErrNoRows
+	}
+	row, err := r.data.entClient.Agent.Query().Where(agent.AgentKeyEQ(agentKey), agent.DeletedAtEQ("")).Only(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return biz.Agent{}, sql.ErrNoRows
+		}
+		return biz.Agent{}, err
+	}
+	return entAgentToBiz(row), nil
+}
+
 func (r *agentRepo) CreateAgent(ctx context.Context, a biz.Agent) (biz.Agent, error) {
 	if a.ID == "" || a.AgentKey == "" || a.DisplayName == "" || a.Provider == "" || a.Model == "" {
 		return biz.Agent{}, fmt.Errorf("missing required fields")

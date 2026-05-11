@@ -53,8 +53,11 @@ func TestLoopMaxIterations_criticLoopCap(t *testing.T) {
 
 func TestLoopMaxIterations_coordinatorCap(t *testing.T) {
 	def := Definition{TimeoutSeconds: 180}
-	if got := loopMaxIterations("coordinator", def); got != 1 {
-		t.Fatalf("got %d want 1 (default outer iterations when loop_max_iterations unset)", got)
+	if got := loopMaxIterations("coordinator", def); got != 3 {
+		t.Fatalf("got %d want 3 (default outer iterations when loop_max_iterations unset)", got)
+	}
+	if got := loopMaxIterations("adaptive", def); got != 3 {
+		t.Fatalf("adaptive default: got %d want 3", got)
 	}
 }
 

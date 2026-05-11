@@ -1,5 +1,5 @@
 // Package provider routes catalog-backed LLM calls through implementations of
-// google.golang.org/adk/model.LLM (same contract as pkg/adk-go/model).
+// google.golang.org/adk/model.LLM (same contract as pkg/trpc-agent-go/model).
 //
 // Subpackages provider/openai, provider/deepseek, and provider/gemini supply backends;
 // Registry.Resolve binds catalog provider_type to a factory.
