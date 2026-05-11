@@ -4,6 +4,9 @@ go 1.25.0
 
 toolchain go1.26.1
 
+// Agent runtime migrations must resolve to the vendored framework source.
+replace trpc.group/trpc-go/trpc-agent-go => ./pkg/trpc-agent-go
+
 require (
 	entgo.io/ent v0.14.5
 	github.com/fsnotify/fsnotify v1.6.0
@@ -26,6 +29,7 @@ require (
 	google.golang.org/genproto/googleapis/api v0.0.0-20260316180232-0b37fe3546d5
 	google.golang.org/grpc v1.79.3
 	google.golang.org/protobuf v1.36.11
+	trpc.group/trpc-go/trpc-agent-go v0.0.0
 )
 
 require (
@@ -41,7 +45,7 @@ require (
 	github.com/googleapis/gax-go/v2 v2.18.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/modelcontextprotocol/go-sdk v1.4.1
-	github.com/segmentio/asm v1.1.3 // indirect
+	github.com/segmentio/asm v1.2.0 // indirect
 	github.com/segmentio/encoding v0.5.4 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.63.0 // indirect
@@ -89,6 +93,8 @@ require (
 	go.opentelemetry.io/otel/sdk v1.40.0 // indirect
 	go.opentelemetry.io/otel/trace v1.40.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.9.0 // indirect
+	go.uber.org/multierr v1.10.0 // indirect
+	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/mod v0.33.0 // indirect
 	golang.org/x/net v0.52.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
@@ -101,4 +107,5 @@ require (
 	modernc.org/mathutil v1.6.0 // indirect
 	modernc.org/memory v1.7.2 // indirect
 	modernc.org/sqlite v1.28.0 // indirect
+	trpc.group/trpc-go/trpc-a2a-go v0.2.5 // indirect
 )

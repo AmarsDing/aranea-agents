@@ -69,6 +69,15 @@ api:
 build:
 	mkdir -p bin/ && go build -ldflags "-X main.Version=$(VERSION)" -o ./bin/ ./...
 
+.PHONY: runtime-boundary
+# check Agent runtime import boundaries
+runtime-boundary:
+ifeq ($(GOHOSTOS),windows)
+	powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-runtime-boundary.ps1
+else
+	pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/check-runtime-boundary.ps1
+endif
+
 .PHONY: generate
 # generate
 generate:

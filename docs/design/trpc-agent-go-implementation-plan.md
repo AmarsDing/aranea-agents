@@ -120,7 +120,29 @@ flowchart TB
 
 ---
 
-## 5. 阶段实施计划
+## 5. Agent 业务模块升级映射
+
+每个业务模块升级时，都应先判断它属于“平台真相源”还是“运行时执行语义”。平台真相源留在 Kratos / biz / data；运行时执行语义迁到 tRPC-Agent-Go 公开 API。
+
+| 业务模块 | 平台真相源 | tRPC 执行落点 | 升级要求 | 验收口径 |
+|----------|------------|---------------|----------|----------|
+| Agent Catalog | `agents`, `agent_runtime_settings`, `agent_prompt_files` | `llmagent` / `agent.Agent` | Agent 表只保存身份、模型、prompt、运行策略；每轮由 `internal/agent` 构造运行时 Agent。 | 修改 Agent 配置后下一轮生效，无需重启专用 runtime。 |
+| Single Agent Chat | `sessions`, `messages`, `usage`, `tool_invocation` | `runner.Run` + event stream | `internal/service` 只做请求翻译、事件投影、持久化；Tool / Memory / Plugin 交给 Runner。 | unary / SSE 行为一致，消息和 usage 落库兼容。 |
+| Team / Multi-Agent | `teams.definition_json`, `team_run`, `team_run_step` | `team` / `chainagent` / `parallelagent` / `cycleagent` / `graphagent` | Team 定义映射到 tRPC 多 Agent 拓扑；成员按自身 Agent 策略装配能力。 | sequential / parallel / coordinator / critic_loop 均能按定义产生步骤和最终回复。 |
+| Tools | `platform_tool`, Agent effective tools | `tool.Tool` | 工具元数据、启用策略在 biz；调用实现和 schema 由 `internal/tools` 适配成 Tool。 | 新增工具只注册一次，Chat / Team / Cron / Channel 共用。 |
+| Skills | `platform_skill`, `skill_version`, Skill FS | Skill ToolSet | Skill 发布、版本、路由策略在平台；运行时通过 ToolSet 按需加载、选择 docs、执行脚本。 | Agent 只看到允许的 Skill，按 query 收窄后仍能调用。 |
+| MCP | `mcp_server`, Agent `mcp:<server_key>` allow / deny | MCP ToolSet | Kratos 管 server 配置、密钥、启停、探测；运行时按 turn 挂载 ToolSet 并随 context 取消。 | 未启用 `mcp_tool_set` 不暴露 MCP；allow / deny 可控。 |
+| Memory | SQLite L0-L4、Postgres pgvector、session summary | `memory.Service` + memory tools | 模型可见记忆统一经 tRPC MemoryService；底层可组合 sessionmemory 和 pgvector。 | `memory_load/search` 读到真实持久化记忆，后端缺失可降级。 |
+| Provider / Model | `llm_provider_model`, pricing rules | `model.Model` | Provider 适配负责把平台配置转换成 tRPC Model；业务代码不绑定厂商协议。 | OpenAI-compatible、DeepSeek、Gemini 等经同一 registry 解析。 |
+| Channel | `platform_channel`, credential, delivery | 统一 Chat / Team runtime bridge | Webhook 只做验签、解析、会话映射；实际回复进入同一 Runner 路径。 | 渠道消息与 Web Chat 具备一致工具、记忆、Team 能力。 |
+| Cron | `cron_task`, `cron_task_run` | 统一 Chat / Team runtime bridge | Cron 不通过 HTTP 回打本进程；直接创建会话并调用运行时桥。 | 定时任务的输出、错误、usage 与普通会话一致。 |
+| Plugin / Telemetry | monitor log、usage、trace id | `plugin` / event callbacks | Plugin 不直写库，使用事件或 service 投影；trace 从 Kratos context 贯穿到 Runner。 | 能从一次请求追踪到模型、工具、MCP、Team 成员事件。 |
+
+模块升级顺序建议：先升级 **Agent / Provider / Runner** 基线，再升级 **Tools / Skills / MCP**，随后升级 **Memory / Team**，最后收敛 **Channel / Cron / Telemetry**。任何模块迁移中发现需要跨层访问运行时类型，应优先新增薄适配，而不是放宽 `biz` 或 `server` 依赖规则。
+
+---
+
+## 6. 阶段实施计划
 
 ### P0：运行时标准与导入边界
 
@@ -279,7 +301,7 @@ flowchart TB
 
 ---
 
-## 6. 交付顺序
+## 7. 交付顺序
 
 推荐拆分为以下 PR / 迭代：
 
@@ -304,10 +326,11 @@ flowchart TB
 
 ---
 
-## 7. PR 自检清单
+## 8. PR 自检清单
 
 每个涉及 Agent runtime 的 PR 必须检查：
 
+- [ ] 是否通过 `make runtime-boundary` 或 `scripts/check-runtime-boundary.ps1`。
 - [ ] 是否先查 `pkg/trpc-agent-go` 公开 API，而不是复制旧 runtime 逻辑。
 - [ ] 是否没有在 `internal/server` 新增 Runner / Agent / Tool import。
 - [ ] 是否没有在 `internal/biz` 新增 tRPC-Agent-Go import。
@@ -319,7 +342,7 @@ flowchart TB
 
 ---
 
-## 8. 文件索引
+## 9. 文件索引
 
 | 主题 | 文件 |
 |------|------|
@@ -332,4 +355,3 @@ flowchart TB
 | Team workflow builder | [`internal/team/builder.go`](../../internal/team/builder.go) |
 | 工具装配 | [`internal/tools/turn_mount.go`](../../internal/tools/turn_mount.go) |
 | tRPC-Agent-Go 框架 | [`pkg/trpc-agent-go`](../../pkg/trpc-agent-go) |
-

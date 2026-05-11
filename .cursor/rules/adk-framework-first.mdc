@@ -9,4 +9,4 @@ alwaysApply: false
 
 - **`trpc-agent-framework-first.mdc`**（`alwaysApply: true`）
 
-若历史文档仍提到本文件名或 ADK-only 措辞，以实现代码与 **`docs/AI-全栈新功能开发规范.md`**、**`docs/AGENT_RUNTIME_BOUNDARY.md`** 的现行版本为准。
+若历史文档仍提到本文件名或 ADK-only 措辞，以实现代码与 **`docs/guides/AI-全栈新功能开发规范.md`**、**`docs/AGENT_RUNTIME_BOUNDARY.md`** 的现行版本为准。
