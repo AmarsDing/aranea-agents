@@ -20,6 +20,7 @@
 - **全栈新功能**：[`guides/AI-全栈新功能开发规范.md`](./guides/AI-全栈新功能开发规范.md)
 - **接口与数据库**：[`guides/接口与数据库开发规范.md`](./guides/接口与数据库开发规范.md)
 - **平台架构 · Agent 编排 · LLM Gateway**：[`design/platform-architecture.md`](./design/platform-architecture.md)（第一篇～第三篇）
+- **tRPC-Agent-Go 标准化实施计划**：[`design/trpc-agent-go-implementation-plan.md`](./design/trpc-agent-go-implementation-plan.md)
 - **Agent 编排总体设计**（意图梳理 → 规划执行 → 并行委派）：[`design/agent-orchestration-total-design.md`](./design/agent-orchestration-total-design.md)
 - **Agent 代码库检索与上下文工程**（`workspace_search` / rg 等）：[`design/agent-repo-retrieval-context-engineering.md`](./design/agent-repo-retrieval-context-engineering.md)
 - **产品与技术需求总览**：[`需求/产品需求总览.md`](./需求/产品需求总览.md)

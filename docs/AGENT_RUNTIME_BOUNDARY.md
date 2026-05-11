@@ -37,6 +37,7 @@
 
 ## 相关文档
 
+- `docs/design/trpc-agent-go-implementation-plan.md` — tRPC-Agent-Go 标准化迁移与分阶段实施计划
 - `docs/AGENT_SKILLS_TOOLS_MCP_MEMORY.md` — Skill / tools / MCP / 记忆运行时与演进计划（含 `TurnMount`、`adkdeps`、`AgentMCPTooling`）
-- `docs/AI-全栈新功能开发规范.md` — 全栈开发规范
+- `docs/guides/AI-全栈新功能开发规范.md` — 全栈开发规范
 - `.cursor/rules/trpc-agent-framework-first.mdc` — Cursor 规则摘要
