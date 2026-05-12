@@ -54,12 +54,12 @@ func (r *Runner) runTeamADK(ctx context.Context, sess biz.Session, req *chatv1.S
 	if err != nil {
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
-	publishTeamMonitor(ctx, r.monitorLogs, "INFO", fmt.Sprintf(
+	publishTeamMonitor(ctx, r.td.MonitorLogs, "INFO", fmt.Sprintf(
 		"team_turn phase=start session_id=%s run_id=%s team_id=%s mode=%s members=%d streaming=%v",
 		sess.ID, run.ID, teamRow.ID, mode, len(members), stream != nil))
-	if r.broker != nil {
+	if r.td.TeamSSE != nil {
 		cp := run
-		r.broker.Publish(biz.TeamRunEvent{Type: "run_started", TeamID: teamRow.ID, RunID: run.ID, SessionID: sess.ID, Run: &cp})
+		r.td.TeamSSE.Publish(biz.TeamRunEvent{Type: "run_started", TeamID: teamRow.ID, RunID: run.ID, SessionID: sess.ID, Run: &cp})
 	}
 
 	t0 := time.Now()
@@ -88,29 +88,29 @@ func (r *Runner) runTeamADK(ctx context.Context, sess biz.Session, req *chatv1.S
 	}
 
 	deps := agent.BuilderDeps{
-		Catalog:             r.catalog,
-		AgentUC:             r.agentsUC,
-		Agents:              r.agents,
-		ToolsCatalog:        r.toolsCatalog,
-		RT:                  &provider.RoundTrip{HTTP: r.llmHTTP},
-		SQLiteSessionMemory: r.adk != nil && r.adk.SessionMemory != nil,
+		Catalog:             r.td.LLMCatalog,
+		AgentUC:             r.td.AgentsUC,
+		Agents:              r.td.Agents,
+		ToolsCatalog:        r.td.ToolsCatalog,
+		RT:                  r.td.RoundTrip(),
+		SQLiteSessionMemory: r.td.SQLiteSessionMemory(),
 	}
 	mount := tools.TurnMount{
-		AgentsUC:     r.agentsUC,
-		Agents:       r.agents,
-		ToolsCatalog: r.toolsCatalog,
-		SkillUC:      r.skillUC,
-		Sys:          r.sys,
+		AgentsUC:     r.td.AgentsUC,
+		Agents:       r.td.Agents,
+		ToolsCatalog: r.td.ToolsCatalog,
+		SkillUC:      r.td.SkillUC,
+		Sys:          r.td.Sys,
 	}
-	if r.adk != nil {
-		mount.MCP = r.adk.AgentMCP
+	if r.td.ADK != nil {
+		mount.MCP = r.td.ADK.AgentMCP
 	}
 	root, plan, err := BuildWorkflowRoot(ctx, mode, def, deps, mount, content, sess, provOpt, modOpt, r.catalogAgent)
 	if err != nil {
 		r.finishRunErr(ctx, &run, t0, err.Error())
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
-	publishTeamMonitor(ctx, r.monitorLogs, "INFO", fmt.Sprintf(
+	publishTeamMonitor(ctx, r.td.MonitorLogs, "INFO", fmt.Sprintf(
 		"team_turn phase=workflow_built session_id=%s run_id=%s persist_members=%d stream_author=%q adk_streaming=%s",
 		sess.ID, run.ID, len(plan.persistMembers), plan.streamAuthor,
 		map[bool]string{true: "sse", false: "none"}[stream != nil]))
@@ -119,13 +119,13 @@ func (r *Runner) runTeamADK(ctx context.Context, sess biz.Session, req *chatv1.S
 		li := loopMaxIterations(mode, def)
 		nMem := len(plan.persistMembers)
 		if nMem > 0 {
-			publishTeamMonitor(ctx, r.monitorLogs, "INFO", fmt.Sprintf(
+			publishTeamMonitor(ctx, r.td.MonitorLogs, "INFO", fmt.Sprintf(
 				"team_turn phase=loop_plan session_id=%s run_id=%s mode=%s outer_loop_iterations=%d members_each_pass=%d (~%d_llm_chain_steps_before_tools_tokens)",
 				sess.ID, run.ID, mode, li, nMem, int(li)*nMem))
 		}
 	}
 
-	ss := adksvc.NewBizSessionForUsecase(r.sessions, func(c context.Context, agentID string) (string, error) {
+	ss := adksvc.NewBizSessionForUsecase(r.td.Sessions, func(c context.Context, agentID string) (string, error) {
 		a, e := r.catalogAgent(c, agentID)
 		if e != nil {
 			return "", e
@@ -133,7 +133,7 @@ func (r *Runner) runTeamADK(ctx context.Context, sess biz.Session, req *chatv1.S
 		return strings.TrimSpace(a.AgentKey), nil
 	})
 
-	rn, err := agent.NewADKRunnerForRuntime(root, ss, r.adk)
+	rn, err := agent.NewADKRunnerForRuntime(root, ss, r.td.ADK)
 	if err != nil {
 		r.finishRunErr(ctx, &run, t0, err.Error())
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
@@ -152,7 +152,7 @@ func (r *Runner) runTeamADK(ctx context.Context, sess biz.Session, req *chatv1.S
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
 	sendText := content
-	intRes := intent.Run(ctx, intent.IntentPassFromAgent(firstAg), r.catalog, r.llmHTTP, prov0, mod0, content)
+	intRes := intent.Run(ctx, intent.IntentPassFromAgent(firstAg), r.td.LLMCatalog, r.td.LLMHTTP, prov0, mod0, content)
 	if intRes.Artifact != nil {
 		if strings.TrimSpace(intRes.RawJSON) != "" {
 			merged, merr := intent.MergeIntoUserOptionsJSON(userOpts, intRes.RawJSON)
@@ -175,8 +175,8 @@ func (r *Runner) runTeamADK(ctx context.Context, sess biz.Session, req *chatv1.S
 		RunID:     run.ID,
 		TeamID:    teamRow.ID,
 	}
-	if r.broker != nil {
-		r.broker.Publish(biz.TeamRunEvent{
+	if r.td.TeamSSE != nil {
+		r.td.TeamSSE.Publish(biz.TeamRunEvent{
 			Type:      "intent_pass",
 			TeamID:    teamRow.ID,
 			RunID:     run.ID,
@@ -184,7 +184,7 @@ func (r *Runner) runTeamADK(ctx context.Context, sess biz.Session, req *chatv1.S
 			Payload:   intent.BuildIntentPassPayload(intRes, meta),
 		})
 	}
-	intent.PublishMonitorLog(ctx, r.monitorLogs, intRes, "team", meta)
+	intent.PublishMonitorLog(ctx, r.td.MonitorLogs, intRes, "team", meta)
 	userMsg = biz.ChatMessage{
 		ID:               uuid.NewString(),
 		SessionID:        sess.ID,
@@ -197,7 +197,7 @@ func (r *Runner) runTeamADK(ctx context.Context, sess biz.Session, req *chatv1.S
 	}
 
 	streaming := stream != nil
-	if err := r.sessions.AppendChatMessage(ctx, sess.ID, userMsg, false); err != nil {
+	if err := r.td.Sessions.AppendChatMessage(ctx, sess.ID, userMsg, false); err != nil {
 		r.finishRunErr(ctx, &run, t0, err.Error())
 		return userMsg, biz.ChatMessage{}, err
 	}
@@ -237,25 +237,25 @@ func (r *Runner) runTeamADK(ctx context.Context, sess biz.Session, req *chatv1.S
 		if ent, ok := keyMeta[sk]; ok {
 			registerPersistMetaKeys(keyMeta, ent.Member, ent.Agent)
 		} else {
-			publishTeamMonitor(ctx, r.monitorLogs, "WARN", fmt.Sprintf(
+			publishTeamMonitor(ctx, r.td.MonitorLogs, "WARN", fmt.Sprintf(
 				"team_turn phase=keymap_missing_stream_author session_id=%s run_id=%s stream_author=%q persist_members=%d (ADK events for this author will not map to team members for persist/SSE leaf)",
 				sess.ID, run.ID, plan.streamAuthor, len(plan.persistMembers)))
 		}
 	}
 	registerWorkflowAuthorAliases(keyMeta, plan.workflowAuthorAliases, plan.streamAuthor)
 	sampleKeys := teamMonitorAliasSample(keyMeta)
-	publishTeamMonitor(ctx, r.monitorLogs, "INFO", fmt.Sprintf(
+	publishTeamMonitor(ctx, r.td.MonitorLogs, "INFO", fmt.Sprintf(
 		"team_turn phase=keymap_ready session_id=%s run_id=%s alias_count=%d sample_aliases=%s",
 		sess.ID, run.ID, len(keyMeta), sampleKeys))
 
 	synthKey := strings.ToLower(strings.TrimSpace(plan.streamAuthor))
 	var (
-		nEvents              int
-		nPartial             int
-		nSkipNonFinal        int
-		nSkipUnknownAuthor   int
-		nSkipToolOnlyFinal   int
-		nAssistantOK         int
+		nEvents                int
+		nPartial               int
+		nSkipNonFinal          int
+		nSkipUnknownAuthor     int
+		nSkipToolOnlyFinal     int
+		nAssistantOK           int
 		lastStreamingAssistant biz.ChatMessage
 	)
 	var totalIn, totalOut int
@@ -267,14 +267,14 @@ func (r *Runner) runTeamADK(ctx context.Context, sess biz.Session, req *chatv1.S
 	var synthStreamReply strings.Builder
 	var synthStreamReason strings.Builder
 	mono := func(p agent.ChatToolUseSSE) {
-		if r.broker == nil {
+		if r.td.TeamSSE == nil {
 			return
 		}
 		typ := "tool.result"
 		if p.Phase == "before" {
 			typ = "tool.call"
 		}
-		r.broker.Publish(biz.TeamRunEvent{
+		r.td.TeamSSE.Publish(biz.TeamRunEvent{
 			Type:      typ,
 			TeamID:    teamRow.ID,
 			RunID:     run.ID,
@@ -282,12 +282,12 @@ func (r *Runner) runTeamADK(ctx context.Context, sess biz.Session, req *chatv1.S
 			Payload:   agent.ChatToolPayloadMap(p),
 		})
 	}
-	if streaming || r.broker != nil {
+	if streaming || r.td.TeamSSE != nil {
 		toolRelay = agent.NewChatToolSSERelay(stream, mono)
 	}
 
 	// Apply team definition timeout only to ADK execution. Intent pass, workflow build, and DB
-	// prep run on the parent ctx so a long intent (e.g. 20–45s) does not consume the whole budget
+	// prep run on the parent ctx so a long intent (e.g. 20�?5s) does not consume the whole budget
 	// and starve the first LLM call (seen as silence after keymap_ready in monitor).
 	runCtx := ctx
 	if dur := TurnDeadlineDuration(def); dur > 0 {
@@ -295,7 +295,7 @@ func (r *Runner) runTeamADK(ctx context.Context, sess biz.Session, req *chatv1.S
 		runCtx, cancel = context.WithTimeout(ctx, dur)
 		defer cancel()
 	}
-	publishTeamMonitor(ctx, r.monitorLogs, "INFO", fmt.Sprintf(
+	publishTeamMonitor(ctx, r.td.MonitorLogs, "INFO", fmt.Sprintf(
 		"team_turn phase=adk_run_start session_id=%s run_id=%s session_streaming=%v",
 		sess.ID, run.ID, streaming))
 
@@ -313,14 +313,14 @@ func (r *Runner) runTeamADK(ctx context.Context, sess biz.Session, req *chatv1.S
 			case errors.Is(runCtx.Err(), context.Canceled):
 				hint = " hint=client_disconnect_or_abort"
 			}
-			publishTeamMonitor(ctx, r.monitorLogs, "WARN", fmt.Sprintf(
+			publishTeamMonitor(ctx, r.td.MonitorLogs, "WARN", fmt.Sprintf(
 				"team_turn phase=cancelled session_id=%s run_id=%s err=%v events=%d partial=%d skip_non_final=%d skip_unknown_author=%d assistant_ok=%d%s",
 				sess.ID, run.ID, runCtx.Err(), nEvents, nPartial, nSkipNonFinal, nSkipUnknownAuthor, nAssistantOK, hint))
 			r.finishRunErr(ctx, &run, t0, runCtx.Err().Error())
 			return userMsg, biz.ChatMessage{}, runCtx.Err()
 		}
 		if err != nil {
-			publishTeamMonitor(ctx, r.monitorLogs, "WARN", fmt.Sprintf(
+			publishTeamMonitor(ctx, r.td.MonitorLogs, "WARN", fmt.Sprintf(
 				"team_turn phase=adk_run_error session_id=%s run_id=%s err=%v events=%d partial=%d assistant_ok=%d",
 				sess.ID, run.ID, err, nEvents, nPartial, nAssistantOK))
 			r.finishRunErr(ctx, &run, t0, err.Error())
@@ -380,7 +380,7 @@ func (r *Runner) runTeamADK(ctx context.Context, sess biz.Session, req *chatv1.S
 				if entLeaf, ok2 := keyMeta[synthKey]; ok2 {
 					meta = entLeaf
 					ok = true
-					publishTeamMonitor(ctx, r.monitorLogs, "INFO", fmt.Sprintf(
+					publishTeamMonitor(ctx, r.td.MonitorLogs, "INFO", fmt.Sprintf(
 						"team_turn phase=author_fallback_stream_leaf session_id=%s run_id=%s author=%q",
 						sess.ID, run.ID, strings.TrimSpace(ev.Author)))
 				}
@@ -393,7 +393,7 @@ func (r *Runner) runTeamADK(ctx context.Context, sess biz.Session, req *chatv1.S
 			slog.Warn("team run: unknown LLM event author; skipping persist",
 				"author", strings.TrimSpace(ev.Author), "stream_author", strings.TrimSpace(plan.streamAuthor),
 				"final", ev.IsFinalResponse(), "partial", ev.LLMResponse.Partial)
-			publishTeamMonitor(ctx, r.monitorLogs, "WARN", fmt.Sprintf(
+			publishTeamMonitor(ctx, r.td.MonitorLogs, "WARN", fmt.Sprintf(
 				"team_turn phase=skip_unknown_author session_id=%s run_id=%s author=%q stream_author=%q is_final=%v partial=%v text_preview=%q keymap_sample=%q",
 				sess.ID, run.ID, strings.TrimSpace(ev.Author), strings.TrimSpace(plan.streamAuthor),
 				ev.IsFinalResponse(), ev.LLMResponse.Partial, pvw, teamMonitorAliasSample(keyMeta)))
@@ -459,8 +459,8 @@ func (r *Runner) runTeamADK(ctx context.Context, sess biz.Session, req *chatv1.S
 		totalIn += ptok
 		totalOut += ctok
 		if streaming {
-			if err := r.sessions.AppendChatMessage(ctx, sess.ID, am, true); err != nil {
-				publishTeamMonitor(ctx, r.monitorLogs, "WARN", fmt.Sprintf(
+			if err := r.td.Sessions.AppendChatMessage(ctx, sess.ID, am, true); err != nil {
+				publishTeamMonitor(ctx, r.td.MonitorLogs, "WARN", fmt.Sprintf(
 					"team_turn phase=append_assistant_failed session_id=%s run_id=%s err=%v", sess.ID, run.ID, err))
 				r.finishRunErr(ctx, &run, t0, err.Error())
 				return userMsg, biz.ChatMessage{}, err
@@ -481,15 +481,15 @@ func (r *Runner) runTeamADK(ctx context.Context, sess biz.Session, req *chatv1.S
 			lastForClient = am
 		}
 	}
-	_ = agent.SyncPersistedADKSessionToMemory(ctx, ss, agent.RunnerMemoryForRuntime(r.adk), adksvc.DefaultAppName, uid, sess.ID)
+	_ = agent.SyncPersistedADKSessionToMemory(ctx, ss, agent.RunnerMemoryForRuntime(r.td.ADK), adksvc.DefaultAppName, uid, sess.ID)
 
-	publishTeamMonitor(ctx, r.monitorLogs, "INFO", fmt.Sprintf(
+	publishTeamMonitor(ctx, r.td.MonitorLogs, "INFO", fmt.Sprintf(
 		"team_turn phase=adk_events_done session_id=%s run_id=%s events=%d partial_chunks=%d skip_non_final=%d skip_unknown_author=%d skip_tool_only_final=%d assistant_persisted=%d",
 		sess.ID, run.ID, nEvents, nPartial, nSkipNonFinal, nSkipUnknownAuthor, nSkipToolOnlyFinal, nAssistantOK))
 
 	assistantMsg = lastForClient
 	if streaming && strings.TrimSpace(assistantMsg.ContentMarkdown) == "" && strings.TrimSpace(lastStreamingAssistant.ContentMarkdown) != "" {
-		publishTeamMonitor(ctx, r.monitorLogs, "WARN", fmt.Sprintf(
+		publishTeamMonitor(ctx, r.td.MonitorLogs, "WARN", fmt.Sprintf(
 			"team_turn phase=done_fallback session_id=%s run_id=%s reason=stream_leaf_empty using_last_persisted_assistant id=%s model=%q preview=%q",
 			sess.ID, run.ID, lastStreamingAssistant.ID,
 			strings.TrimSpace(lastStreamingAssistant.ModelName),
@@ -498,7 +498,7 @@ func (r *Runner) runTeamADK(ctx context.Context, sess biz.Session, req *chatv1.S
 	}
 	if !streaming {
 		for i := 0; i < len(unaryAssistants); i++ {
-			if err := r.sessions.AppendChatMessage(ctx, sess.ID, unaryAssistants[i], true); err != nil {
+			if err := r.td.Sessions.AppendChatMessage(ctx, sess.ID, unaryAssistants[i], true); err != nil {
 				r.finishRunErr(ctx, &run, t0, err.Error())
 				return userMsg, biz.ChatMessage{}, err
 			}
@@ -515,7 +515,7 @@ func (r *Runner) runTeamADK(ctx context.Context, sess biz.Session, req *chatv1.S
 			msg = "team workflow produced no assistant messages"
 		}
 		err := kerrors.InternalServer("CHAT_TEAM_NATIVE", msg)
-		publishTeamMonitor(ctx, r.monitorLogs, "WARN", fmt.Sprintf(
+		publishTeamMonitor(ctx, r.td.MonitorLogs, "WARN", fmt.Sprintf(
 			"team_turn phase=no_usable_reply session_id=%s run_id=%s nAssistantOK=%d reply_empty=%v skip_unknown_author=%d stream_author=%q",
 			sess.ID, run.ID, nAssistantOK, replyEmpty, nSkipUnknownAuthor, plan.streamAuthor))
 		r.finishRunErr(ctx, &run, t0, err.Error())
@@ -524,7 +524,7 @@ func (r *Runner) runTeamADK(ctx context.Context, sess biz.Session, req *chatv1.S
 
 	if streaming && stream != nil {
 		_ = stream.Emit("done", assistantMsg)
-		publishTeamMonitor(ctx, r.monitorLogs, "INFO", fmt.Sprintf(
+		publishTeamMonitor(ctx, r.td.MonitorLogs, "INFO", fmt.Sprintf(
 			"team_turn phase=sse_doneEmitted session_id=%s run_id=%s assistant_msg_id=%s content_len=%d token_out=%d",
 			sess.ID, run.ID, assistantMsg.ID,
 			len(strings.TrimSpace(assistantMsg.ContentMarkdown)), assistantMsg.TokenOut))
@@ -564,16 +564,16 @@ func (r *Runner) runTeamADK(ctx context.Context, sess biz.Session, req *chatv1.S
 	if completionTok <= 0 && strings.TrimSpace(assistantMsg.ContentMarkdown) != "" {
 		completionTok = agent.RoughTokenEstimate(assistantMsg.ContentMarkdown)
 	}
-	_ = r.sessions.UpdateSessionContextFromLLMUsage(ctx, sess.ID, promptTok, completionTok, win)
-	if r.compress != nil {
-		r.compress.AfterNativeTurn(ctx, sess.ID, compressAg)
+	_ = r.td.Sessions.UpdateSessionContextFromLLMUsage(ctx, sess.ID, promptTok, completionTok, win)
+	if r.td.Compress != nil {
+		r.td.Compress.AfterNativeTurn(ctx, sess.ID, compressAg)
 	}
 
-	if r.broker != nil {
+	if r.td.TeamSSE != nil {
 		cp := run
-		r.broker.Publish(biz.TeamRunEvent{Type: "run_finished", TeamID: teamRow.ID, RunID: run.ID, SessionID: sess.ID, Run: &cp})
+		r.td.TeamSSE.Publish(biz.TeamRunEvent{Type: "run_finished", TeamID: teamRow.ID, RunID: run.ID, SessionID: sess.ID, Run: &cp})
 	}
-	biz.HintTeamRunSSE(ctx, r.broker, r.teams, teamRow.ID)
+	biz.HintTeamRunSSE(ctx, r.td.TeamSSE, r.teams, teamRow.ID)
 	return userMsg, assistantMsg, nil
 }
 
@@ -595,7 +595,7 @@ func teamMonitorAliasSample(m map[string]persistMetaEntry) string {
 	sort.Strings(keys)
 	const max = 15
 	if len(keys) > max {
-		return strings.Join(keys[:max], ",") + fmt.Sprintf(",…(+%d)", len(keys)-max)
+		return strings.Join(keys[:max], ",") + fmt.Sprintf(",�?+%d)", len(keys)-max)
 	}
 	return strings.Join(keys, ",")
 }
@@ -738,8 +738,8 @@ func (r *Runner) persistStep(ctx context.Context, run biz.TeamRun, teamID string
 	if err != nil {
 		return
 	}
-	if r.broker != nil {
-		r.broker.Publish(biz.TeamRunEvent{Type: "step_finished", TeamID: teamID, RunID: run.ID, SessionID: run.SessionID, Step: &saved})
+	if r.td.TeamSSE != nil {
+		r.td.TeamSSE.Publish(biz.TeamRunEvent{Type: "step_finished", TeamID: teamID, RunID: run.ID, SessionID: run.SessionID, Step: &saved})
 	}
 }
 
@@ -752,16 +752,16 @@ func (r *Runner) finishRunErr(ctx context.Context, run *biz.TeamRun, t0 time.Tim
 	run.FinishedAt = agent.RFC3339Now()
 	run.DurationMS = int(time.Since(t0).Milliseconds())
 	_ = r.teams.UpdateTeamRun(ctx, *run)
-	if r.broker != nil {
+	if r.td.TeamSSE != nil {
 		cp := *run
-		r.broker.Publish(biz.TeamRunEvent{
+		r.td.TeamSSE.Publish(biz.TeamRunEvent{
 			Type:      "run_finished",
 			TeamID:    run.TeamID,
 			RunID:     run.ID,
 			SessionID: strings.TrimSpace(run.SessionID),
 			Run:       &cp,
 		})
-		r.broker.Publish(biz.TeamRunEvent{
+		r.td.TeamSSE.Publish(biz.TeamRunEvent{
 			Type:      "run.failed",
 			TeamID:    run.TeamID,
 			RunID:     run.ID,
@@ -772,7 +772,7 @@ func (r *Runner) finishRunErr(ctx context.Context, run *biz.TeamRun, t0 time.Tim
 			},
 		})
 	}
-	if r.monitorLogs != nil {
-		r.monitorLogs.Publish(ctx, "WARN", fmt.Sprintf("team_run failed team_id=%s run_id=%s session_id=%s: %s", run.TeamID, run.ID, strings.TrimSpace(run.SessionID), msg), "team-runner")
+	if r.td.MonitorLogs != nil {
+		r.td.MonitorLogs.Publish(ctx, "WARN", fmt.Sprintf("team_run failed team_id=%s run_id=%s session_id=%s: %s", run.TeamID, run.ID, strings.TrimSpace(run.SessionID), msg), "team-runner")
 	}
 }

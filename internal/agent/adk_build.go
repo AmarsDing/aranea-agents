@@ -2,11 +2,13 @@ package agent
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/provider"
+	"aranea-agents/pkg/strutil"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 
 	"google.golang.org/adk/agent"
 	"google.golang.org/adk/agent/llmagent"
@@ -73,12 +75,12 @@ func appendTeamOrchestrationCue(sys, mode, role, rosterName string) string {
 // BuildLLMAgent constructs an ADK LLM agent from a hydrated biz catalog agent.
 func BuildLLMAgent(ctx context.Context, ag biz.Agent, deps BuilderDeps) (agent.Agent, error) {
 	if strings.TrimSpace(ag.AgentKey) == "" {
-		return nil, fmt.Errorf("agent: agent_key required")
+		return nil, kerrors.BadRequest("AGENT", "agent_key required")
 	}
-	prov := firstNonEmptyString(deps.Provider, ag.Provider)
-	mod := firstNonEmptyString(deps.Model, ag.Model)
+	prov := strutil.FirstNonEmpty(deps.Provider, ag.Provider)
+	mod := strutil.FirstNonEmpty(deps.Model, ag.Model)
 	if prov == "" || mod == "" {
-		return nil, fmt.Errorf("agent: provider and model required")
+		return nil, kerrors.BadRequest("AGENT", "provider and model required")
 	}
 	m, err := provider.ModelForProviderModel(ctx, deps.Catalog, deps.RT, prov, mod)
 	if err != nil {
@@ -124,13 +126,4 @@ func BuildLLMAgent(ctx context.Context, ag biz.Agent, deps BuilderDeps) (agent.A
 		Toolsets:                 deps.Toolsets,
 	}
 	return llmagent.New(cfg)
-}
-
-func firstNonEmptyString(vals ...string) string {
-	for _, v := range vals {
-		if strings.TrimSpace(v) != "" {
-			return strings.TrimSpace(v)
-		}
-	}
-	return ""
 }

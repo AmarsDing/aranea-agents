@@ -7,12 +7,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/strutil"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	khttp "github.com/go-kratos/kratos/v2/transport/http"
@@ -37,21 +39,21 @@ func chatNowRFC3339() string {
 
 func chatMessageToMap(m biz.ChatMessage) map[string]any {
 	return map[string]any{
-		"id":                 m.ID,
-		"session_id":         m.SessionID,
-		"parent_message_id":  m.ParentMessageID,
-		"turn_index":         m.TurnIndex,
-		"role":               m.Role,
-		"content_markdown":   m.ContentMarkdown,
-		"model_name":         m.ModelName,
-		"token_in":           m.TokenIn,
-		"token_out":          m.TokenOut,
-		"latency_ms":         m.LatencyMS,
-		"status":             m.Status,
-		"attachments_count":  m.AttachmentsCount,
-		"options_json":       m.OptionsJSON,
-		"error_message":      m.ErrorMessage,
-		"created_at":         m.CreatedAt,
+		"id":                m.ID,
+		"session_id":        m.SessionID,
+		"parent_message_id": m.ParentMessageID,
+		"turn_index":        m.TurnIndex,
+		"role":              m.Role,
+		"content_markdown":  m.ContentMarkdown,
+		"model_name":        m.ModelName,
+		"token_in":          m.TokenIn,
+		"token_out":         m.TokenOut,
+		"latency_ms":        m.LatencyMS,
+		"status":            m.Status,
+		"attachments_count": m.AttachmentsCount,
+		"options_json":      m.OptionsJSON,
+		"error_message":     m.ErrorMessage,
+		"created_at":        m.CreatedAt,
 	}
 }
 
@@ -64,12 +66,7 @@ func nativeDialogModeChatOptions() []*chatv1.ChatOption {
 }
 
 func firstNonEmptyStr(values ...string) string {
-	for _, v := range values {
-		if strings.TrimSpace(v) != "" {
-			return strings.TrimSpace(v)
-		}
-	}
-	return ""
+	return strutil.FirstNonEmpty(values...)
 }
 
 func (s *ChatService) nativeGetChatOptions(ctx context.Context, req *chatv1.GetChatOptionsRequest) (*chatv1.GetChatOptionsResponse, error) {
@@ -100,7 +97,7 @@ func (s *ChatService) nativeSendChatMessage(ctx context.Context, req *chatv1.Sen
 	}
 	recordChatIngressUsage(ctx, s.usage, req, am, false)
 	if tid := strings.TrimSpace(req.GetTeamId()); tid != "" {
-		biz.HintTeamRunSSE(ctx, s.teamSSE, s.teams, tid)
+		biz.HintTeamRunSSE(ctx, s.td.TeamSSE, s.teams, tid)
 	}
 	return out, nil
 }
@@ -209,7 +206,7 @@ func (s *ChatService) runNativeAgentTurn(ctx context.Context, req *chatv1.SendCh
 		return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.BadRequest("CHAT_NATIVE", "session_id and content are required")
 	}
 
-	sess, err := s.sessions.Get(ctx, sessionID)
+	sess, err := s.td.Sessions.Get(ctx, sessionID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.NotFound("SESSION", "session not found")
@@ -221,12 +218,12 @@ func (s *ChatService) runNativeAgentTurn(ctx context.Context, req *chatv1.SendCh
 		if s.teamsNative == nil {
 			return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.InternalServer("CHAT_TEAM_NATIVE", "team runner not wired")
 		}
-		if s.monitorLogs != nil {
+		if s.td.MonitorLogs != nil {
 			transport := "unary"
 			if stream != nil {
 				transport = "sse"
 			}
-			s.monitorLogs.Publish(ctx, "INFO", fmt.Sprintf(
+			s.td.MonitorLogs.Publish(ctx, "INFO", fmt.Sprintf(
 				"chat_native phase=team_invoke session_id=%s team_id=%s content_len=%d transport=%s",
 				sess.ID, strings.TrimSpace(sess.TeamID), len(content), transport), "chat-native")
 		}
@@ -271,7 +268,27 @@ func (s *ChatService) runNativeAgentTurn(ctx context.Context, req *chatv1.SendCh
 		attN = len(opts.Attachments)
 	}
 
+	return s.runAgentTurn(ctx, sess, req, ag, dialogMode, prov, mod, attN, stream)
+}
+
+func (s *ChatService) runAgentTurn(
+	ctx context.Context,
+	sess biz.Session,
+	req *chatv1.SendChatMessageRequest,
+	ag biz.Agent,
+	dialogMode, prov, mod string,
+	attN int,
+	stream *streamWriter,
+) (biz.ChatMessage, biz.ChatMessage, error) {
+	if useTRPCRuntime() {
+		return s.runSingleAgentViaTRPC(ctx, sess, req, ag, dialogMode, prov, mod, attN, stream)
+	}
 	return s.runSingleAgentViaADK(ctx, sess, req, ag, dialogMode, prov, mod, attN, stream)
+}
+
+func useTRPCRuntime() bool {
+	v := strings.TrimSpace(os.Getenv("ARANEA_AGENT_RUNTIME"))
+	return strings.EqualFold(v, "trpc")
 }
 
 func (s *ChatService) hydratedAgent(ctx context.Context, agentID string) (biz.Agent, error) {
@@ -279,18 +296,17 @@ func (s *ChatService) hydratedAgent(ctx context.Context, agentID string) (biz.Ag
 	if agentID == "" {
 		return biz.Agent{}, kerrors.BadRequest("CHAT_NATIVE", "agent id is required")
 	}
-	if s.agentsUC != nil {
-		return s.agentsUC.Get(ctx, agentID)
+	if s.td.AgentsUC != nil {
+		return s.td.AgentsUC.Get(ctx, agentID)
 	}
-	if s.agents == nil {
+	if s.td.Agents == nil {
 		return biz.Agent{}, kerrors.InternalServer("CHAT_NATIVE", "agent repository not configured")
 	}
-	// Without *AgentUsecase, GetAgentByID leaves Settings nil and breaks subagent transfer + runtime cues.
-	if s.toolsCatalog != nil {
-		ephemeral := biz.NewAgentUsecase(s.agents, s.toolsCatalog)
+	if s.td.ToolsCatalog != nil {
+		ephemeral := biz.NewAgentUsecase(s.td.Agents, s.td.ToolsCatalog)
 		return ephemeral.Get(ctx, agentID)
 	}
-	return s.agents.GetAgentByID(ctx, agentID)
+	return s.td.Agents.GetAgentByID(ctx, agentID)
 }
 
 // RunNativeTurnUnary runs the native in-process agent/team turn, ignoring LEGACY_REST_ORIGIN (for Channel webhooks).

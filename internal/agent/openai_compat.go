@@ -3,11 +3,12 @@ package agent
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strings"
 
 	"aranea-agents/internal/provider"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 
 	"google.golang.org/genai"
 )
@@ -67,7 +68,7 @@ func CallOpenAICompatChat(ctx context.Context, hc *http.Client, cfg ProviderAPIC
 		last = resp
 	}
 	if last == nil {
-		return "", "", 0, 0, fmt.Errorf("provider: empty LLM response")
+		return "", "", 0, 0, kerrors.InternalServer("PROVIDER", "empty LLM response")
 	}
 	text, reasoning = provider.TextsFromLLMResponse(last)
 	text = strings.TrimSpace(text)

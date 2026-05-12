@@ -2,13 +2,14 @@ package adksvc
 
 import (
 	"context"
-	"fmt"
 	"maps"
 	"slices"
 	"strings"
 	"time"
 
 	"aranea-agents/internal/biz"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 
 	"google.golang.org/adk/session"
 )
@@ -58,11 +59,11 @@ func (s *BizSessionService) app() string {
 // Create initializes ADK snapshot for an existing biz session row (Runner auto-create off).
 func (s *BizSessionService) Create(ctx context.Context, req *session.CreateRequest) (*session.CreateResponse, error) {
 	if req == nil || strings.TrimSpace(req.AppName) == "" || strings.TrimSpace(req.UserID) == "" {
-		return nil, fmt.Errorf("adksvc: invalid create request")
+		return nil, kerrors.BadRequest("ADK_SESSION", "invalid create request")
 	}
 	sid := strings.TrimSpace(req.SessionID)
 	if sid == "" {
-		return nil, fmt.Errorf("adksvc: session_id is required")
+		return nil, kerrors.BadRequest("ADK_SESSION", "session_id is required")
 	}
 	if _, err := s.Repo.GetSessionByID(ctx, sid); err != nil {
 		return nil, err
@@ -84,11 +85,11 @@ func (s *BizSessionService) Create(ctx context.Context, req *session.CreateReque
 // Get loads snapshot for Runner.
 func (s *BizSessionService) Get(ctx context.Context, req *session.GetRequest) (*session.GetResponse, error) {
 	if req == nil {
-		return nil, fmt.Errorf("adksvc: nil get request")
+		return nil, kerrors.BadRequest("ADK_SESSION", "nil get request")
 	}
 	sid := strings.TrimSpace(req.SessionID)
 	if sid == "" {
-		return nil, fmt.Errorf("adksvc: session_id required")
+		return nil, kerrors.BadRequest("ADK_SESSION", "session_id required")
 	}
 	bizSess, err := s.Repo.GetSessionByID(ctx, sid)
 	if err != nil {
@@ -96,7 +97,7 @@ func (s *BizSessionService) Get(ctx context.Context, req *session.GetRequest) (*
 	}
 	bundle, err := unmarshalBundle(bizSess.AdkSnapshotJSON)
 	if err != nil {
-		return nil, fmt.Errorf("adksvc: corrupt adk snapshot: %w", err)
+		return nil, kerrors.InternalServer("ADK_SESSION", err.Error())
 	}
 	if err := s.maybeHydrateFromLegacyMessages(ctx, sid, bizSess, bundle); err != nil {
 		return nil, err
@@ -139,7 +140,7 @@ func (s *BizSessionService) List(ctx context.Context, req *session.ListRequest) 
 func (s *BizSessionService) Delete(ctx context.Context, req *session.DeleteRequest) error {
 	sid := strings.TrimSpace(req.SessionID)
 	if sid == "" {
-		return fmt.Errorf("adksvc: session_id required")
+		return kerrors.BadRequest("ADK_SESSION", "session_id required")
 	}
 	return s.Repo.UpdateAdkSnapshotJSON(ctx, sid, "{}")
 }
@@ -147,7 +148,7 @@ func (s *BizSessionService) Delete(ctx context.Context, req *session.DeleteReque
 // AppendEvent merges event into snapshot JSON.
 func (s *BizSessionService) AppendEvent(ctx context.Context, curSession session.Session, event *session.Event) error {
 	if curSession == nil || event == nil {
-		return fmt.Errorf("adksvc: nil session or event")
+		return kerrors.BadRequest("ADK_SESSION", "nil session or event")
 	}
 	if event.Partial {
 		return nil

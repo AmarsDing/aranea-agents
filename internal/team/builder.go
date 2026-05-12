@@ -2,12 +2,13 @@ package team
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	bizagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/tools"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 
 	"google.golang.org/adk/agent"
 	"google.golang.org/adk/agent/workflowagents/loopagent"
@@ -164,7 +165,7 @@ func BuildWorkflowRoot(
 	case "sequential":
 		members := EnabledMembers(def)
 		if len(members) == 0 {
-			return nil, plan, fmt.Errorf("team: no members")
+			return nil, plan, kerrors.BadRequest("TEAM", "no members")
 		}
 		subs, err := buildLLMChain(ctx, members, deps, mount, skillUserQuery, provOpt, modOpt, sess, mode, resolve)
 		if err != nil {
@@ -189,7 +190,7 @@ func BuildWorkflowRoot(
 	case "parallel":
 		workers := ParallelWorkers(def)
 		if len(workers) == 0 {
-			return nil, plan, fmt.Errorf("team: no workers")
+			return nil, plan, kerrors.BadRequest("TEAM", "no workers")
 		}
 		synthID := strings.TrimSpace(SynthesizerAgentID(def))
 		if len(workers) == 1 && synthID == "" {
@@ -208,7 +209,7 @@ func BuildWorkflowRoot(
 			return sub, plan, nil
 		}
 		if len(workers) > 1 && synthID == "" {
-			return nil, plan, fmt.Errorf("team: parallel team requires synthesizer_agent_id or a synthesizer member")
+			return nil, plan, kerrors.BadRequest("TEAM", "parallel team requires synthesizer_agent_id or a synthesizer member")
 		}
 		chunks := chunkParallelWorkers(workers, def.MaxConcurrency)
 		var workerStages []agent.Agent
@@ -243,7 +244,7 @@ func BuildWorkflowRoot(
 		var workersPhase agent.Agent
 		switch len(workerStages) {
 		case 0:
-			return nil, plan, fmt.Errorf("team: parallel workers phase empty")
+			return nil, plan, kerrors.InternalServer("TEAM", "parallel workers phase empty")
 		case 1:
 			workersPhase = workerStages[0]
 		default:
@@ -298,7 +299,7 @@ func BuildWorkflowRoot(
 	case "coordinator", "critic_loop", "adaptive":
 		members := EnabledMembers(def)
 		if len(members) == 0 {
-			return nil, plan, fmt.Errorf("team: no members")
+			return nil, plan, kerrors.BadRequest("TEAM", "no members")
 		}
 		subs, err := buildLLMChain(ctx, members, deps, mount, skillUserQuery, provOpt, modOpt, sess, mode, resolve)
 		if err != nil {
@@ -332,6 +333,6 @@ func BuildWorkflowRoot(
 		return rootAgent, plan, nil
 
 	default:
-		return nil, plan, fmt.Errorf("team: unsupported mode %q", mode)
+		return nil, plan, kerrors.BadRequest("TEAM", "unsupported mode: "+mode)
 	}
 }

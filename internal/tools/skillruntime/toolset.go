@@ -6,14 +6,16 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/pkg/skillstorage"
+	skilltrpc "aranea-agents/internal/skill/trpc"
+
+	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
+	"trpc.group/trpc-go/trpc-agent-go/codeexecutor"
 
 	"google.golang.org/adk/tool"
 	"google.golang.org/adk/tool/skilltoolset"
 	"google.golang.org/adk/tool/skilltoolset/skill"
 )
 
-// NewSkillToolsetFromFS builds an ADK skill toolset from a read-only filesystem root.
-// Prefer this over calling skilltoolset.New directly so ADK wiring stays in one place.
 func NewSkillToolsetFromFS(ctx context.Context, filesystem iofs.FS) (tool.Toolset, error) {
 	if filesystem == nil {
 		return nil, nil
@@ -21,9 +23,6 @@ func NewSkillToolsetFromFS(ctx context.Context, filesystem iofs.FS) (tool.Toolse
 	return skilltoolset.New(ctx, skilltoolset.Config{Source: skill.NewFileSystemSource(filesystem)})
 }
 
-// AppendEnabledPublishedSkillToolsets adds one toolset rooted at the resolved skill storage path,
-// limited to platform skills that are enabled and published (or active). When opts is nil, all such skills are mounted;
-// otherwise layer A/B narrowing applies (see docs/需求/20 skill struct design.md 「十三′」).
 func AppendEnabledPublishedSkillToolsets(ctx context.Context, out *[]tool.Toolset, skillUC *biz.SkillUsecase, sys biz.SystemSettingRepo, opts *SkillToolsetOptions) error {
 	if skillUC == nil || out == nil {
 		return nil
@@ -50,4 +49,35 @@ func AppendEnabledPublishedSkillToolsets(ctx context.Context, out *[]tool.Toolse
 	}
 	*out = append(*out, ts)
 	return nil
+}
+
+func BuildTRPCSkillTools(ctx context.Context, skillUC *biz.SkillUsecase, sys biz.SystemSettingRepo, opts *SkillToolsetOptions, exec codeexecutor.CodeExecutor) ([]trpctool.Tool, error) {
+	if skillUC == nil {
+		return nil, nil
+	}
+	var slugs []string
+	var err error
+	if opts == nil {
+		slugs, err = skillUC.ListEnabledPublishedSkillKeys(ctx)
+	} else {
+		slugs, err = resolveSkillSlugs(ctx, skillUC, opts)
+	}
+	if err != nil || len(slugs) == 0 {
+		return nil, err
+	}
+	rootDir := skillstorage.ResolveRoot()
+	if sys != nil {
+		if st, e := sys.Get(ctx); e == nil {
+			rootDir = skillstorage.ResolveRootWithPlatform(st.RootDirectory)
+		}
+	}
+	repo, err := skilltrpc.NewFSRepositoryAdapter(rootDir)
+	if err != nil {
+		return nil, err
+	}
+	filtered := skilltrpc.NewFilteredRepository(repo, slugs)
+	return skilltrpc.BuildSkillTools(skilltrpc.SkillToolsetConfig{
+		Repo:     filtered,
+		Executor: exec,
+	}), nil
 }

@@ -16,23 +16,10 @@ import (
 
 // Runner executes native team workflows via pkg/trpc-agent-go workflow agents + runner.Run.
 type Runner struct {
-	teams        biz.TeamRepository
-	sessions     *biz.SessionUsecase
-	agents       biz.AgentRepository
-	agentsUC     *biz.AgentUsecase
-	toolsCatalog biz.ToolRepo
-	catalog      *biz.LlmProviderModelUsecase
-	broker       *biz.TeamRunEventBroker
-	llmHTTP      *http.Client
-	skillUC      *biz.SkillUsecase
-	sys          biz.SystemSettingRepo
-	adk          *adkdeps.Runtime
-	compress     biz.NativeTurnCompressor
-	monitorLogs  *biz.MonitorLogBroker
+	teams biz.TeamRepository
+	td    adkdeps.TurnDeps
 }
 
-// NewRunner wires a team runner. llmHTTP uses Timeout 0 so per-turn limits come from
-// context.WithTimeout in runTeamADK (definition.timeout_seconds), not a fixed client cap.
 func NewRunner(
 	teams biz.TeamRepository,
 	sessions *biz.SessionUsecase,
@@ -48,35 +35,37 @@ func NewRunner(
 	monitorLogs *biz.MonitorLogBroker,
 ) *Runner {
 	return &Runner{
-		teams:        teams,
-		sessions:     sessions,
-		agents:       agents,
-		agentsUC:     agentsUC,
-		toolsCatalog: toolsCatalog,
-		catalog:      catalog,
-		broker:       broker,
-		llmHTTP:      &http.Client{Timeout: 0},
-		skillUC:      skillUC,
-		sys:          sys,
-		adk:          adk,
-		compress:     compress,
-		monitorLogs:  monitorLogs,
+		teams: teams,
+		td: adkdeps.TurnDeps{
+			Agents:       agents,
+			AgentsUC:     agentsUC,
+			ToolsCatalog: toolsCatalog,
+			LLMCatalog:   catalog,
+			SkillUC:      skillUC,
+			Sys:          sys,
+			ADK:          adk,
+			LLMHTTP:      &http.Client{Timeout: 0},
+			Sessions:     sessions,
+			Compress:     compress,
+			MonitorLogs:  monitorLogs,
+			TeamSSE:      broker,
+		},
 	}
 }
 
 func (r *Runner) catalogAgent(ctx context.Context, id string) (biz.Agent, error) {
-	if r.agentsUC != nil {
-		return r.agentsUC.Get(ctx, id)
+	if r.td.AgentsUC != nil {
+		return r.td.AgentsUC.Get(ctx, id)
 	}
-	if r.agents != nil && r.toolsCatalog != nil {
-		return biz.NewAgentUsecase(r.agents, r.toolsCatalog).Get(ctx, id)
+	if r.td.Agents != nil && r.td.ToolsCatalog != nil {
+		return biz.NewAgentUsecase(r.td.Agents, r.td.ToolsCatalog).Get(ctx, id)
 	}
-	return r.agents.GetAgentByID(ctx, id)
+	return r.td.Agents.GetAgentByID(ctx, id)
 }
 
 // RunTurn executes one user turn for a team session.
 func (r *Runner) RunTurn(ctx context.Context, sess biz.Session, req *chatv1.SendChatMessageRequest, stream agent.StreamEmitter) (userMsg biz.ChatMessage, assistantMsg biz.ChatMessage, err error) {
-	if r == nil || r.sessions == nil || r.teams == nil || r.agents == nil || r.catalog == nil {
+	if r == nil || r.td.Sessions == nil || r.teams == nil || r.td.Agents == nil || r.td.LLMCatalog == nil {
 		return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.InternalServer("CHAT_TEAM_NATIVE", "team runner not configured")
 	}
 	if !strings.EqualFold(strings.TrimSpace(sess.OwnerType), "team") {

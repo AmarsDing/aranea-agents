@@ -28,25 +28,14 @@ import (
 type ChatService struct {
 	chatv1.UnimplementedChatServiceServer
 
-	mu           sync.RWMutex
-	up           *url.URL
-	proxy        *httputil.ReverseProxy
-	client       *http.Client
-	llmHTTP      *http.Client
-	teamSSE      *biz.TeamRunEventBroker
-	teams        biz.TeamRepository
-	teamsNative  *team.Runner
-	usage        *biz.UsageUsecase
-	sessions     *biz.SessionUsecase
-	agents       biz.AgentRepository
-	agentsUC     *biz.AgentUsecase
-	toolsCatalog biz.ToolRepo
-	llmCatalog   *biz.LlmProviderModelUsecase
-	skillUC      *biz.SkillUsecase
-	sys          biz.SystemSettingRepo
-	adk          *adkdeps.Runtime
-	compress     biz.NativeTurnCompressor
-	monitorLogs  *biz.MonitorLogBroker
+	mu          sync.RWMutex
+	up          *url.URL
+	proxy       *httputil.ReverseProxy
+	client      *http.Client
+	teams       biz.TeamRepository
+	teamsNative *team.Runner
+	usage       *biz.UsageUsecase
+	td          adkdeps.TurnDeps
 }
 
 // NewChatService builds a chat façade (LEGACY_REST_ORIGIN → legacy /api/v1/chat/* until fully in-process execution).
@@ -67,22 +56,24 @@ func NewChatService(
 	monitorLogs *biz.MonitorLogBroker,
 ) *ChatService {
 	s := &ChatService{
-		client:       &http.Client{Timeout: 600 * time.Second},
-		llmHTTP:      &http.Client{Timeout: 300 * time.Second},
-		teamSSE:      broker,
-		teams:        teams,
-		teamsNative:  teamsNative,
-		usage:        usage,
-		sessions:     sessions,
-		agents:       agents,
-		agentsUC:     agentsUC,
-		toolsCatalog: toolsCatalog,
-		llmCatalog:   llmCatalog,
-		skillUC:      skillUC,
-		sys:          sys,
-		adk:          adk,
-		compress:     compress,
-		monitorLogs:  monitorLogs,
+		client:      &http.Client{Timeout: 600 * time.Second},
+		teams:       teams,
+		teamsNative: teamsNative,
+		usage:       usage,
+		td: adkdeps.TurnDeps{
+			Agents:       agents,
+			AgentsUC:     agentsUC,
+			ToolsCatalog: toolsCatalog,
+			LLMCatalog:   llmCatalog,
+			SkillUC:      skillUC,
+			Sys:          sys,
+			ADK:          adk,
+			LLMHTTP:      &http.Client{Timeout: 300 * time.Second},
+			Sessions:     sessions,
+			Compress:     compress,
+			MonitorLogs:  monitorLogs,
+			TeamSSE:      broker,
+		},
 	}
 	s.refreshUpstream()
 	return s
@@ -212,7 +203,7 @@ func (s *ChatService) SendChatMessage(ctx context.Context, req *chatv1.SendChatM
 	}
 	recordChatIngressUsage(ctx, s.usage, req, am, false)
 	if tid := strings.TrimSpace(req.GetTeamId()); tid != "" {
-		biz.HintTeamRunSSE(ctx, s.teamSSE, s.teams, tid)
+		biz.HintTeamRunSSE(ctx, s.td.TeamSSE, s.teams, tid)
 	}
 	return out, nil
 }

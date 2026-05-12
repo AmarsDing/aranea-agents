@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
+	"aranea-agents/pkg/strutil"
 )
 
 func preview(s string, max int) string {
@@ -43,12 +44,7 @@ func extractOpts(req *chatv1.SendChatMessageRequest) (dialogMode, prov, mod stri
 }
 
 func firstNonEmptyStr(vals ...string) string {
-	for _, v := range vals {
-		if strings.TrimSpace(v) != "" {
-			return strings.TrimSpace(v)
-		}
-	}
-	return ""
+	return strutil.FirstNonEmpty(vals...)
 }
 
 // mergeTeamUserADKMetaJSON adds audit fields for the text sent to ADK vs content_markdown shown in chat.

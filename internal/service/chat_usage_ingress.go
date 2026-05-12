@@ -9,6 +9,7 @@ import (
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/strutil"
 
 	"github.com/google/uuid"
 )
@@ -37,7 +38,7 @@ func recordChatIngressUsage(ctx context.Context, uc *biz.UsageUsecase, req *chat
 	if am == nil {
 		return
 	}
-	status := firstNonEmptyString(jsonString(am["status"]), "success")
+	status := strutil.FirstNonEmpty(jsonString(am["status"]), "success")
 	tin := jsonNumberInt(am["token_in"])
 	tout := jsonNumberInt(am["token_out"])
 	if tin <= 0 && tout <= 0 && status == "success" {
@@ -77,8 +78,8 @@ func recordChatIngressUsage(ctx context.Context, uc *biz.UsageUsecase, req *chat
 	if streamEnabled {
 		ev.MetadataJSON = `{"source":"chat_ingress_native_stream"}`
 	}
-	ev.ErrorMessage = firstNonEmptyString(jsonString(am["error_message"]), jsonString(am["errorMessage"]))
-	ev.ErrorCode = firstNonEmptyString(jsonString(am["error_code"]), jsonString(am["errorCode"]))
+	ev.ErrorMessage = strutil.FirstNonEmpty(jsonString(am["error_message"]), jsonString(am["errorMessage"]))
+	ev.ErrorCode = strutil.FirstNonEmpty(jsonString(am["error_code"]), jsonString(am["errorCode"]))
 	opts := req.GetOptions()
 	if opts != nil {
 		if ev.ModelAPIID == "" {
@@ -117,11 +118,4 @@ func jsonNumberInt(v any) int {
 	default:
 		return 0
 	}
-}
-
-func firstNonEmptyString(a, b string) string {
-	if strings.TrimSpace(a) != "" {
-		return a
-	}
-	return b
 }

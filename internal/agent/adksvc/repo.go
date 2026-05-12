@@ -2,9 +2,10 @@ package adksvc
 
 import (
 	"context"
-	"fmt"
 
 	"aranea-agents/internal/biz"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 // UsecaseSessionRepo adapts *biz.SessionUsecase to [SessionRepositorySubset].
@@ -14,7 +15,7 @@ type UsecaseSessionRepo struct {
 
 func (r UsecaseSessionRepo) GetSessionByID(ctx context.Context, id string) (biz.Session, error) {
 	if r.UC == nil {
-		return biz.Session{}, fmt.Errorf("adksvc: nil session usecase")
+		return biz.Session{}, kerrors.InternalServer("ADK_SESSION", "nil session usecase")
 	}
 	return r.UC.Get(ctx, id)
 }

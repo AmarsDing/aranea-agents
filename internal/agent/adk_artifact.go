@@ -2,11 +2,12 @@ package agent
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 
 	"google.golang.org/genai"
 
@@ -15,8 +16,8 @@ import (
 
 // LocalArtifactService stores artifacts under {workspace}/.aranea-artifacts/{app}/{user}/{session}/.
 type LocalArtifactService struct {
-	mu     sync.RWMutex
-	root   string
+	mu      sync.RWMutex
+	root    string
 	created bool
 }
 
@@ -71,7 +72,7 @@ func (s *LocalArtifactService) Save(ctx context.Context, req *artifact.SaveReque
 	} else if req.Part.Text != "" {
 		data = []byte(req.Part.Text)
 	} else {
-		return nil, fmt.Errorf("artifact: empty part")
+		return nil, kerrors.BadRequest("ARTIFACT", "empty part")
 	}
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		return nil, err

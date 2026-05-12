@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"aranea-agents/pkg/strutil"
 )
 
 type cronTaskConfig struct {
@@ -193,10 +195,5 @@ func mustMarshalJSON(value any) string {
 }
 
 func firstNonEmptyString(values ...string) string {
-	for _, v := range values {
-		if strings.TrimSpace(v) != "" {
-			return v
-		}
-	}
-	return ""
+	return strutil.FirstNonEmpty(values...)
 }

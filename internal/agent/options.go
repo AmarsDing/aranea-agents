@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/strutil"
 )
 
 // RFC3339Now returns a UTC RFC3339 timestamp for chat messages.
@@ -61,12 +62,7 @@ type TeamMemberAnchor struct {
 }
 
 func firstNonEmptyStr(values ...string) string {
-	for _, v := range values {
-		if strings.TrimSpace(v) != "" {
-			return strings.TrimSpace(v)
-		}
-	}
-	return ""
+	return strutil.FirstNonEmpty(values...)
 }
 
 func mathRoundCtxRatio(r float64) float64 {

@@ -7,21 +7,15 @@ import (
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	chatagent "aranea-agents/internal/agent"
-	"aranea-agents/internal/agent/adksvc"
 	"aranea-agents/internal/agent/intent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/provider"
-	"aranea-agents/internal/tools"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
-	adkagent "google.golang.org/adk/agent"
-
-	"google.golang.org/genai"
 )
 
-// runSingleAgentViaADK executes one catalog-agent turn using pkg/trpc-agent-go Runner + llmagent.
-func (s *ChatService) runSingleAgentViaADK(
+func (s *ChatService) runSingleAgentViaTRPC(
 	ctx context.Context,
 	sess biz.Session,
 	req *chatv1.SendChatMessageRequest,
@@ -36,44 +30,29 @@ func (s *ChatService) runSingleAgentViaADK(
 		return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.Forbidden("CHAT_AGENT", "agent_key does not match this session")
 	}
 
-	ss := adksvc.NewBizSessionForUsecase(s.td.Sessions, func(c context.Context, agentID string) (string, error) {
-		a, err := s.td.Agents.GetAgentByID(c, agentID)
-		if err != nil {
-			return "", err
-		}
-		return strings.TrimSpace(a.AgentKey), nil
+	deps := chatagent.TRPCBuilderDeps{
+		Catalog:    s.td.LLMCatalog,
+		AgentUC:    s.td.AgentsUC,
+		Agents:     s.td.Agents,
+		RT:         s.td.RoundTrip(),
+		SkillUC:    s.td.SkillUC,
+		Sys:        s.td.Sys,
+		Provider:   prov,
+		Model:      mod,
+		DialogMode: dialogMode,
+	}
+	root, err := chatagent.BuildTRPCLLMAgent(ctx, ag, deps)
+	if err != nil {
+		return biz.ChatMessage{}, biz.ChatMessage{}, err
+	}
+
+	runner, err := chatagent.NewTRPCRunner(root, chatagent.TRPCRunnerDeps{
+		SessionService: chatagent.NewInMemoryTRPCSessionService(),
 	})
-
-	rt := s.td.RoundTrip()
-	mount := tools.TurnMount{
-		AgentsUC: s.td.AgentsUC, Agents: s.td.Agents, ToolsCatalog: s.td.ToolsCatalog,
-		SkillUC: s.td.SkillUC, Sys: s.td.Sys,
-	}
-	if s.td.ADK != nil {
-		mount.MCP = s.td.ADK.AgentMCP
-	}
-	deps := chatagent.BuilderDeps{
-		Catalog:             s.td.LLMCatalog,
-		AgentUC:             s.td.AgentsUC,
-		Agents:              s.td.Agents,
-		ToolsCatalog:        s.td.ToolsCatalog,
-		RT:                  rt,
-		Provider:            prov,
-		Model:               mod,
-		SQLiteSessionMemory: s.td.SQLiteSessionMemory(),
-	}
-	if err := mount.Attach(ctx, ag, content, &deps.Tools, &deps.Toolsets); err != nil {
-		return biz.ChatMessage{}, biz.ChatMessage{}, err
-	}
-	root, err := chatagent.BuildLLMAgent(ctx, ag, deps)
 	if err != nil {
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
-
-	rn, err := chatagent.NewADKRunnerForRuntime(root, ss, s.td.ADK)
-	if err != nil {
-		return biz.ChatMessage{}, biz.ChatMessage{}, err
-	}
+	defer runner.Close()
 
 	userOpts, err := chatagent.UserOptionsJSON(ag, dialogMode, prov, mod, sess.ContextUsedRatio, nil)
 	if err != nil {
@@ -101,6 +80,7 @@ func (s *ChatService) runSingleAgentViaADK(
 		})
 	}
 	intent.PublishMonitorLog(ctx, s.td.MonitorLogs, intRes, "chat", meta)
+
 	now := chatagent.RFC3339Now()
 	userMsg := biz.ChatMessage{
 		ID:               uuid.NewString(),
@@ -112,7 +92,6 @@ func (s *ChatService) runSingleAgentViaADK(
 		CreatedAt:        now,
 		AttachmentsCount: attN,
 	}
-
 	if stream != nil {
 		if err := s.td.Sessions.AppendChatMessage(ctx, sessionID, userMsg, false); err != nil {
 			return biz.ChatMessage{}, biz.ChatMessage{}, err
@@ -120,78 +99,72 @@ func (s *ChatService) runSingleAgentViaADK(
 		_ = stream.Emit("user_message", userMsg)
 	}
 
-	msg := genai.NewContentFromText(sendText, genai.RoleUser)
 	uid := chatagent.UserIDFromCtx(ctx)
-	cfg := adkagent.RunConfig{StreamingMode: adkagent.StreamingModeSSE}
-	if stream == nil {
-		cfg = adkagent.RunConfig{StreamingMode: adkagent.StreamingModeNone}
+	events, err := chatagent.RunTRPCUserTurn(ctx, runner, uid, sessionID, sendText)
+	if err != nil {
+		return userMsg, biz.ChatMessage{}, err
 	}
 
-	mono := func(p chatagent.ChatToolUseSSE) {
-		if s.td.TeamSSE == nil {
-			return
-		}
-		typ := "tool.result"
-		if p.Phase == "before" {
-			typ = "tool.call"
-		}
-		s.td.TeamSSE.Publish(biz.TeamRunEvent{
-			Type:      typ,
-			SessionID: sessionID,
-			Payload:   chatagent.ChatToolPayloadMap(p),
-		})
-	}
-	toolRelay := chatagent.NewChatToolSSERelay(stream, mono)
 	var reply strings.Builder
 	var reasoning strings.Builder
-	var lastUsage *genai.GenerateContentResponseUsageMetadata
-	for ev, err := range rn.Run(ctx, uid, sessionID, msg, cfg) {
+	promptTok, completionTok := 0, 0
+
+	for ev := range events {
 		if ctx.Err() != nil {
 			return userMsg, biz.ChatMessage{}, ctx.Err()
 		}
-		if err != nil {
-			return userMsg, biz.ChatMessage{}, err
-		}
-		if ev == nil {
+		if ev == nil || ev.Response == nil {
 			continue
 		}
-		if ev.LLMResponse.UsageMetadata != nil {
-			lastUsage = ev.LLMResponse.UsageMetadata
-		}
-		agEv := chatagent.AgentForToolSSELabel(ev.Author, ag)
-		if toolRelay != nil && chatagent.SessionHasFunctionResponses(ev) {
-			toolRelay.EmitToolResponses(agEv, ev)
-		}
-		if stream != nil && ev.LLMResponse.Partial {
-			if toolRelay != nil && chatagent.SessionHasFunctionCalls(ev) {
-				toolRelay.EmitToolCalls(agEv, ev)
-			}
-			main, rsn := provider.TextsFromLLMResponse(&ev.LLMResponse)
-			if d := provider.VisibleStreamingDelta(&reply, main); d != "" {
-				_ = stream.Emit("delta", map[string]string{"content": d})
-			}
-			if dr := provider.VisibleStreamingDelta(&reasoning, rsn); dr != "" {
-				_ = stream.Emit("delta", map[string]string{"reasoning_content": dr})
-			}
+		if ev.IsRunnerCompletion() {
 			continue
 		}
-		if strings.EqualFold(strings.TrimSpace(ev.Author), "user") {
-			continue
+		if usage := ev.Response.Usage; usage != nil {
+			promptTok = usage.PromptTokens
+			completionTok = usage.CompletionTokens
 		}
-		if toolRelay != nil && chatagent.SessionHasFunctionCalls(ev) {
-			toolRelay.EmitToolCalls(agEv, ev)
+		for _, choice := range ev.Response.Choices {
+			msg := choice.Message
+			if text := strings.TrimSpace(msg.Content); text != "" {
+				if stream != nil && ev.Response.IsPartial {
+					if d := provider.VisibleStreamingDelta(&reply, text); d != "" {
+						_ = stream.Emit("delta", map[string]string{"content": d})
+					}
+				} else {
+					_ = provider.VisibleStreamingDelta(&reply, text)
+				}
+			}
+			if rc := strings.TrimSpace(msg.ReasoningContent); rc != "" {
+				if stream != nil && ev.Response.IsPartial {
+					if d := provider.VisibleStreamingDelta(&reasoning, rc); d != "" {
+						_ = stream.Emit("delta", map[string]string{"reasoning_content": d})
+					}
+				} else {
+					_ = provider.VisibleStreamingDelta(&reasoning, rc)
+				}
+			}
+			if stream != nil && len(msg.ToolCalls) > 0 {
+				for _, tc := range msg.ToolCalls {
+					_ = stream.Emit("tool.call", map[string]any{
+						"session_id":   sessionID,
+						"tool_name":    tc.Function.Name,
+						"tool_call_id": tc.ID,
+					})
+				}
+			}
+			delta := choice.Delta
+			if stream != nil && len(delta.ToolCalls) > 0 {
+				for _, tc := range delta.ToolCalls {
+					_ = stream.Emit("tool.call", map[string]any{
+						"session_id":   sessionID,
+						"tool_name":    tc.Function.Name,
+						"tool_call_id": tc.ID,
+					})
+				}
+			}
 		}
-		main, rsn := provider.TextsFromLLMResponse(&ev.LLMResponse)
-		_ = provider.VisibleStreamingDelta(&reply, main)
-		_ = provider.VisibleStreamingDelta(&reasoning, rsn)
 	}
-	_ = chatagent.SyncPersistedADKSessionToMemory(ctx, ss, chatagent.RunnerMemoryForRuntime(s.td.ADK), adksvc.DefaultAppName, uid, sessionID)
 
-	promptTok, completionTok := 0, 0
-	if lastUsage != nil {
-		promptTok = int(lastUsage.PromptTokenCount)
-		completionTok = int(lastUsage.CandidatesTokenCount)
-	}
 	if promptTok <= 0 && completionTok <= 0 && strings.TrimSpace(reply.String()) != "" {
 		promptTok = roughTokenEstimateFromText(content + reply.String())
 		completionTok = roughTokenEstimateFromText(reply.String())
@@ -232,18 +205,4 @@ func (s *ChatService) runSingleAgentViaADK(
 	patchSessionContextUsage(ctx, s, sessionID, ag, promptTok, completionTok)
 	_ = stream.Emit("done", assistantMsg)
 	return userMsg, assistantMsg, nil
-}
-
-func patchSessionContextUsage(ctx context.Context, s *ChatService, sessionID string, ag biz.Agent, promptTok, completionTok int) {
-	if s == nil || s.td.Sessions == nil {
-		return
-	}
-	win := ag.ContextWindow
-	if win <= 0 {
-		win = 128000
-	}
-	_ = s.td.Sessions.UpdateSessionContextFromLLMUsage(ctx, sessionID, promptTok, completionTok, win)
-	if s.td.Compress != nil {
-		s.td.Compress.AfterNativeTurn(ctx, sessionID, ag)
-	}
 }
