@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -176,8 +177,18 @@ func (s *sqliteMemoryService) SearchMemories(ctx context.Context, uk trpcmemory.
 	if len(rows) == 0 {
 		return s.ReadMemories(ctx, uk, 10)
 	}
-	_ = rows
-	return s.ReadMemories(ctx, uk, 10)
+	var out []*trpcmemory.Entry
+	for _, raw := range rows {
+		e, convErr := entityRowToEntry(raw, uk)
+		if convErr != nil {
+			continue
+		}
+		out = append(out, e)
+	}
+	if len(out) == 0 {
+		return s.ReadMemories(ctx, uk, 10)
+	}
+	return out, nil
 }
 
 func (s *sqliteMemoryService) Tools() []trpctool.Tool {
@@ -222,4 +233,74 @@ func topicsJSON(topics []string) string {
 		}
 	}
 	return "[" + strings.Join(parts, ",") + "]"
+}
+
+type entityRow struct {
+	ID           string  `json:"id"`
+	ScopeID      string  `json:"scope_id"`
+	UserID       string  `json:"user_id"`
+	EntityType   string  `json:"entity_type"`
+	Name         string  `json:"name"`
+	Description  string  `json:"description"`
+	Importance   float64 `json:"importance"`
+	MetadataJSON string  `json:"metadata_json"`
+	CreatedAt    string  `json:"created_at"`
+	UpdatedAt    string  `json:"updated_at"`
+}
+
+func entityRowToEntry(raw []byte, uk trpcmemory.UserKey) (*trpcmemory.Entry, error) {
+	var row entityRow
+	if err := json.Unmarshal(raw, &row); err != nil {
+		return nil, err
+	}
+	topics := decodeMetadataTopics(row.MetadataJSON)
+	now := time.Now()
+	lastUpdated := &now
+	if t, err := time.Parse(time.RFC3339, row.UpdatedAt); err == nil {
+		lastUpdated = &t
+	}
+	createdAt := now
+	if t, err := time.Parse(time.RFC3339, row.CreatedAt); err == nil {
+		createdAt = t
+	}
+	updatedAt := now
+	if t, err := time.Parse(time.RFC3339, row.UpdatedAt); err == nil {
+		updatedAt = t
+	}
+	return &trpcmemory.Entry{
+		ID:      row.ID,
+		AppName: uk.AppName,
+		Memory: &trpcmemory.Memory{
+			Memory:      row.Description,
+			Topics:      topics,
+			LastUpdated: lastUpdated,
+		},
+		UserID:    uk.UserID,
+		CreatedAt: createdAt,
+		UpdatedAt: updatedAt,
+		Score:     row.Importance,
+	}, nil
+}
+
+func decodeMetadataTopics(meta string) []string {
+	meta = strings.TrimSpace(meta)
+	if meta == "" || meta == "[]" || meta == "{}" {
+		return nil
+	}
+	var topics []string
+	if err := json.Unmarshal([]byte(meta), &topics); err != nil {
+		var m map[string]any
+		if err2 := json.Unmarshal([]byte(meta), &m); err2 == nil {
+			if t, ok := m["topics"]; ok {
+				if arr, ok := t.([]any); ok {
+					for _, v := range arr {
+						if s, ok := v.(string); ok {
+							topics = append(topics, s)
+						}
+					}
+				}
+			}
+		}
+	}
+	return topics
 }
