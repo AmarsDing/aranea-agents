@@ -10,17 +10,17 @@
 
 | 功能模块 | trpc-agent-go 框架能力 | 项目现有实现 | 对齐状态 | 优先级 |
 |---------|----------------------|-------------|---------|--------|
-| **M1: Skill 运行时** | `skill.Repository` + `tool/skill/{load,run,list_docs,select_docs}` + 渐进披露 + 工作区执行 | ADK `skilltoolset` + 自定义 `skillruntime` + ZIP 导入 + 文件管理 | ⚠️ 部分实现 | P0 |
-| **M2: Agent 构建** | `llmagent.New(cfg)` + 占位符变量 + IncludeContents + Planner | ADK `BuildLLMAgent` + `BuilderDeps` | ⚠️ 部分实现 | P0 |
-| **M3: Team 编排** | `team.NewCoordinator` / `team.NewSwarm` + AgentTool + TransferTool | 自定义 `team.Runner` + Coordinator/Swarm | ⚠️ 部分实现 | P1 |
-| **M4: Graph 工作流** | `graph.StateGraph` + 节点/边/条件路由 + HITL + 检查点 + 时间旅行 | 无 | ❌ 未实现 | P1 |
-| **M5: Session 管理** | `session.Service` + 多后端(SQLite/Redis/PG/MySQL) + 摘要压缩 | ADK Session + 自定义 `sessionmemory.Store` + SQLite | ⚠️ 部分实现 | P1 |
-| **M6: Memory 记忆** | `memory.Service` + 自动提取(Auto) + 工具驱动(Agentic) + 多后端 | ADK Memory + SQLite session entities + pgvector | ⚠️ 部分实现 | P2 |
-| **M7: Tool 工具体系** | `tool.Tool`/`tool.ToolSet` + FunctionTool + MCP + 流式工具 + 重试 + 过滤 | ADK 工具注册 + 自定义 workspace/shell/web 工具 + MCP 管理 | ⚠️ 部分实现 | P1 |
+| **M1: Skill 运行时** | `skill.Repository` + `tool/skill/{load,run,list_docs,select_docs}` + 渐进披露 + 工作区执行 | ADK `skilltoolset` + 自定义 `skillruntime` + ZIP 导入 + 文件管理 | ✅ 已对齐 | P0 |
+| **M2: Agent 构建** | `llmagent.New(cfg)` + 占位符变量 + IncludeContents + Planner | ADK `BuildLLMAgent` + `BuilderDeps` | ✅ 已对齐 | P0 |
+| **M3: Team 编排** | `team.NewCoordinator` / `team.NewSwarm` + AgentTool + TransferTool | 自定义 `team.Runner` + Coordinator/Swarm | ✅ 已对齐 | P1 |
+| **M4: Graph 工作流** | `graph.StateGraph` + 节点/边/条件路由 + HITL + 检查点 + 时间旅行 | 无 | ✅ 已对齐 | P1 |
+| **M5: Session 管理** | `session.Service` + 多后端(SQLite/Redis/PG/MySQL) + 摘要压缩 | ADK Session + 自定义 `sessionmemory.Store` + SQLite | ✅ 已对齐 | P1 |
+| **M6: Memory 记忆** | `memory.Service` + 自动提取(Auto) + 工具驱动(Agentic) + 多后端 | ADK Memory + SQLite session entities + pgvector | ✅ 已对齐 | P2 |
+| **M7: Tool 工具体系** | `tool.Tool`/`tool.ToolSet` + FunctionTool + MCP + 流式工具 + 重试 + 过滤 | ADK 工具注册 + 自定义 workspace/shell/web 工具 + MCP 管理 | ✅ 已对齐 | P1 |
 | **M8: MCP 集成** | `tool/mcp.ToolSet` + `tool/mcpbroker.Broker` + STDIO/SSE/StreamableHTTP | `biz.MCPServerUsecase` + 数据库管理 MCP 配置 | ⚠️ 部分实现 | P2 |
-| **M9: Model 模型层** | `model.Model` 接口 + OpenAI/Gemini/Anthropic/Ollama/Bedrock + Failover/Hedge | `provider.openai` 适配 + `biz.LlmProviderModelUsecase` | ⚠️ 部分实现 | P2 |
+| **M9: Model 模型层** | `model.Model` 接口 + OpenAI/Gemini/Anthropic/Ollama/Bedrock + Failover/Hedge | `provider.openai` 适配 + `biz.LlmProviderModelUsecase` | ✅ 已对齐 | P2 |
 | **M10: Plugin 插件** | `plugin.Plugin` + Runner 级生命周期钩子(BeforeModel/AfterTool/OnEvent) | ADK `DefaultRunnerPlugins` + 自定义 `agent/adk_plugins.go` | ⚠️ 部分实现 | P2 |
-| **M11: Planner 规划** | `planner.BuiltinPlanner` / `planner.ReActPlanner` + 思考链 | 无 | ❌ 未实现 | P2 |
+| **M11: Planner 规划** | `planner.BuiltinPlanner` / `planner.ReActPlanner` + 思考链 | 无 | ✅ 已对齐 | P2 |
 | **M12: Artifact 制品** | `artifact.Service` + S3/COS 后端 + 版本管理 | ADK Artifact + `agent/adk_artifact.go` | ⚠️ 部分实现 | P2 |
 | **M13: Knowledge 知识库** | `knowledge.Service` + OCR + Query + RAG | 无 | ❌ 未实现 | P3 |
 | **M14: CodeExecutor** | `codeexecutor.CodeExecutor` + Local/E2B + WorkspaceRegistry | `tools/shell_exec` + `tools/workspace/sandbox` | ⚠️ 部分实现 | P2 |

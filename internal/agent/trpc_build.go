@@ -8,6 +8,7 @@ import (
 	"aranea-agents/internal/pkg/skillstorage"
 	"aranea-agents/internal/provider"
 	skilltrpc "aranea-agents/internal/skill/trpc"
+	tooltrpc "aranea-agents/internal/tools/trpc"
 	"aranea-agents/pkg/strutil"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -61,7 +62,6 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) 
 	if cue := RuntimeCapabilityCue(ctx, promptDeps, ag); cue != "" {
 		sys = sys + "\n\n" + cue
 	}
-	sys = appendTeamOrchestrationCue(sys, "", "", "")
 
 	opts := []trpcllmagent.Option{
 		trpcllmagent.WithModel(m),
@@ -92,6 +92,15 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) 
 			trpcllmagent.WithSkillToolProfile(trpcllmagent.SkillToolProfileFull),
 			trpcllmagent.WithSkillsDirectoryHints(true),
 		)
+	}
+
+	if ts, err := buildToolsetsForAgent(ag, deps); err == nil && ts != nil {
+		if len(ts.ToolSets) > 0 {
+			opts = append(opts, trpcllmagent.WithToolSets(ts.ToolSets))
+		}
+		if len(ts.Tools) > 0 {
+			opts = append(opts, trpcllmagent.WithTools(ts.Tools))
+		}
 	}
 
 	return trpcllmagent.New(strings.TrimSpace(ag.AgentKey), opts...), nil
@@ -131,6 +140,36 @@ func sliceToSet(slugs []string) map[string]bool {
 		s = strings.TrimSpace(strings.ToLower(s))
 		if s != "" {
 			m[s] = true
+		}
+	}
+	return m
+}
+
+func buildToolsetsForAgent(ag biz.Agent, deps TRPCBuilderDeps) (*tooltrpc.AssembledToolsets, error) {
+	cfg := tooltrpc.ToolsetConfig{}
+	if ag.Settings != nil && ag.Settings.ToolsEnabled {
+		eff := loadEffectiveToolKeys(deps, ag.ID)
+		cfg.Filesystem = eff["read_file"] || eff["list_files"] || eff["write_file"] || eff["edit_file"]
+		cfg.ShellExec = eff["shell_exec"]
+	}
+	if !cfg.Filesystem && !cfg.ShellExec {
+		return nil, nil
+	}
+	return tooltrpc.BuildToolsets(cfg)
+}
+
+func loadEffectiveToolKeys(deps TRPCBuilderDeps, agentID string) map[string]bool {
+	m := map[string]bool{}
+	if deps.AgentUC == nil || strings.TrimSpace(agentID) == "" {
+		return m
+	}
+	eff, err := deps.AgentUC.GetEffectiveTools(context.Background(), agentID)
+	if err != nil || !eff.ToolsEnabled {
+		return m
+	}
+	for _, it := range eff.Items {
+		if it.Enabled {
+			m[it.ToolKey] = true
 		}
 	}
 	return m

@@ -8,21 +8,62 @@ import (
 	"aranea-agents/internal/biz"
 )
 
-// CatalogConfig is the runtime connection + routing key built from a biz catalog row.
 type CatalogConfig struct {
-	ProviderType string // from ConfigJSON provider_type
-	BaseURL      string // from ConfigJSON api_base_url
-	APIKey       string // from ConfigJSON api_key
-	ModelAPI     string // row.Model (API id)
+	ProviderType         string
+	Variant              string
+	BaseURL              string
+	APIKey               string
+	ModelAPI             string
+	SecretID             string
+	SecretKey            string
+	AWSRegion            string
+	EnableTokenTailoring bool
+	ContextWindow        int
+	MaxInputTokens       int
+	OptimizeForCache     bool
+	ReasoningBackfill    bool
+	ShowToolCallDelta    bool
+	CacheSystemPrompt    bool
+	CacheTools           bool
+	CacheMessages        bool
+	KeepAliveMinutes     int
+	ChannelBufferSize    int
+	HAMode               string
+	HACandidates         []HACandidateConfig
+	HAHedgeDelayMs       int
 }
 
-type catalogConfigJSON struct {
+type HACandidateConfig struct {
+	Name         string `json:"name"`
 	ProviderType string `json:"provider_type"`
-	APIBaseURL   string `json:"api_base_url"`
+	BaseURL      string `json:"base_url"`
 	APIKey       string `json:"api_key"`
 }
 
-// CatalogFromProviderModel parses biz.ProviderModel into a CatalogConfig.
+type catalogConfigJSON struct {
+	ProviderType         string              `json:"provider_type"`
+	Variant              string              `json:"variant"`
+	APIBaseURL           string              `json:"api_base_url"`
+	APIKey               string              `json:"api_key"`
+	SecretID             string              `json:"secret_id"`
+	SecretKey            string              `json:"secret_key"`
+	AWSRegion            string              `json:"aws_region"`
+	EnableTokenTailoring *bool               `json:"enable_token_tailoring"`
+	ContextWindowK       int                 `json:"context_window_k"`
+	MaxInputTokens       int                 `json:"max_input_tokens"`
+	OptimizeForCache     *bool               `json:"optimize_for_cache"`
+	ReasoningBackfill    *bool               `json:"reasoning_content_backfill"`
+	ShowToolCallDelta    *bool               `json:"show_tool_call_delta"`
+	CacheSystemPrompt    *bool               `json:"cache_system_prompt"`
+	CacheTools           *bool               `json:"cache_tools"`
+	CacheMessages        *bool               `json:"cache_messages"`
+	KeepAliveMinutes     int                 `json:"keep_alive_minutes"`
+	ChannelBufferSize    int                 `json:"channel_buffer_size"`
+	HAMode               string              `json:"ha_mode"`
+	HACandidates         []HACandidateConfig `json:"ha_candidates"`
+	HAHedgeDelayMs       int                 `json:"ha_hedge_delay_ms"`
+}
+
 func CatalogFromProviderModel(pm biz.ProviderModel) (CatalogConfig, error) {
 	base := strings.TrimSpace(pm.Model)
 	if base == "" {
@@ -30,15 +71,9 @@ func CatalogFromProviderModel(pm biz.ProviderModel) (CatalogConfig, error) {
 	}
 	var c catalogConfigJSON
 	_ = json.Unmarshal([]byte(strings.TrimSpace(pm.ConfigJSON)), &c)
-	return CatalogConfig{
-		ProviderType: strings.TrimSpace(c.ProviderType),
-		BaseURL:      strings.TrimRight(strings.TrimSpace(c.APIBaseURL), "/"),
-		APIKey:       strings.TrimSpace(c.APIKey),
-		ModelAPI:     base,
-	}, nil
+	return catalogConfigToConfig(c, base), nil
 }
 
-// CatalogFromEndpoints builds routing configuration from connection fields (e.g. merged from biz + session).
 func CatalogFromEndpoints(providerType, baseURL, apiKey string) CatalogConfig {
 	return CatalogConfig{
 		ProviderType: strings.TrimSpace(providerType),
@@ -47,7 +82,6 @@ func CatalogFromEndpoints(providerType, baseURL, apiKey string) CatalogConfig {
 	}
 }
 
-// MergeCatalogConfig overlays connection fields from JSON when the struct is partial (e.g. tests).
 func MergeCatalogConfig(cfg CatalogConfig, configJSON string) CatalogConfig {
 	raw := strings.TrimSpace(configJSON)
 	if raw == "" {
@@ -57,14 +91,113 @@ func MergeCatalogConfig(cfg CatalogConfig, configJSON string) CatalogConfig {
 	if json.Unmarshal([]byte(strings.TrimSpace(configJSON)), &c) != nil {
 		return cfg
 	}
-	if cfg.ProviderType == "" {
-		cfg.ProviderType = strings.TrimSpace(c.ProviderType)
+	merged := cfg
+	if merged.ProviderType == "" {
+		merged.ProviderType = strings.TrimSpace(c.ProviderType)
 	}
-	if cfg.BaseURL == "" {
-		cfg.BaseURL = strings.TrimRight(strings.TrimSpace(c.APIBaseURL), "/")
+	if merged.Variant == "" {
+		merged.Variant = strings.TrimSpace(c.Variant)
 	}
-	if cfg.APIKey == "" {
-		cfg.APIKey = strings.TrimSpace(c.APIKey)
+	if merged.BaseURL == "" {
+		merged.BaseURL = strings.TrimRight(strings.TrimSpace(c.APIBaseURL), "/")
+	}
+	if merged.APIKey == "" {
+		merged.APIKey = strings.TrimSpace(c.APIKey)
+	}
+	if merged.SecretID == "" {
+		merged.SecretID = strings.TrimSpace(c.SecretID)
+	}
+	if merged.SecretKey == "" {
+		merged.SecretKey = strings.TrimSpace(c.SecretKey)
+	}
+	if merged.AWSRegion == "" {
+		merged.AWSRegion = strings.TrimSpace(c.AWSRegion)
+	}
+	if !merged.EnableTokenTailoring && c.EnableTokenTailoring != nil {
+		merged.EnableTokenTailoring = *c.EnableTokenTailoring
+	}
+	if merged.ContextWindow == 0 && c.ContextWindowK > 0 {
+		merged.ContextWindow = c.ContextWindowK * 1000
+	}
+	if merged.MaxInputTokens == 0 && c.MaxInputTokens > 0 {
+		merged.MaxInputTokens = c.MaxInputTokens
+	}
+	if !merged.OptimizeForCache && c.OptimizeForCache != nil {
+		merged.OptimizeForCache = *c.OptimizeForCache
+	}
+	if !merged.ReasoningBackfill && c.ReasoningBackfill != nil {
+		merged.ReasoningBackfill = *c.ReasoningBackfill
+	}
+	if !merged.ShowToolCallDelta && c.ShowToolCallDelta != nil {
+		merged.ShowToolCallDelta = *c.ShowToolCallDelta
+	}
+	if !merged.CacheSystemPrompt && c.CacheSystemPrompt != nil {
+		merged.CacheSystemPrompt = *c.CacheSystemPrompt
+	}
+	if !merged.CacheTools && c.CacheTools != nil {
+		merged.CacheTools = *c.CacheTools
+	}
+	if !merged.CacheMessages && c.CacheMessages != nil {
+		merged.CacheMessages = *c.CacheMessages
+	}
+	if merged.KeepAliveMinutes == 0 && c.KeepAliveMinutes > 0 {
+		merged.KeepAliveMinutes = c.KeepAliveMinutes
+	}
+	if merged.ChannelBufferSize == 0 && c.ChannelBufferSize > 0 {
+		merged.ChannelBufferSize = c.ChannelBufferSize
+	}
+	if merged.HAMode == "" {
+		merged.HAMode = strings.TrimSpace(c.HAMode)
+	}
+	if len(merged.HACandidates) == 0 && len(c.HACandidates) > 0 {
+		merged.HACandidates = c.HACandidates
+	}
+	if merged.HAHedgeDelayMs == 0 && c.HAHedgeDelayMs > 0 {
+		merged.HAHedgeDelayMs = c.HAHedgeDelayMs
+	}
+	return merged
+}
+
+func catalogConfigToConfig(c catalogConfigJSON, modelAPI string) CatalogConfig {
+	cfg := CatalogConfig{
+		ProviderType:      strings.TrimSpace(c.ProviderType),
+		Variant:           strings.TrimSpace(c.Variant),
+		BaseURL:           strings.TrimRight(strings.TrimSpace(c.APIBaseURL), "/"),
+		APIKey:            strings.TrimSpace(c.APIKey),
+		ModelAPI:          modelAPI,
+		SecretID:          strings.TrimSpace(c.SecretID),
+		SecretKey:         strings.TrimSpace(c.SecretKey),
+		AWSRegion:         strings.TrimSpace(c.AWSRegion),
+		MaxInputTokens:    c.MaxInputTokens,
+		KeepAliveMinutes:  c.KeepAliveMinutes,
+		ChannelBufferSize: c.ChannelBufferSize,
+		HAMode:            strings.TrimSpace(c.HAMode),
+		HACandidates:      c.HACandidates,
+		HAHedgeDelayMs:    c.HAHedgeDelayMs,
+	}
+	if c.EnableTokenTailoring != nil {
+		cfg.EnableTokenTailoring = *c.EnableTokenTailoring
+	}
+	if c.ContextWindowK > 0 {
+		cfg.ContextWindow = c.ContextWindowK * 1000
+	}
+	if c.OptimizeForCache != nil {
+		cfg.OptimizeForCache = *c.OptimizeForCache
+	}
+	if c.ReasoningBackfill != nil {
+		cfg.ReasoningBackfill = *c.ReasoningBackfill
+	}
+	if c.ShowToolCallDelta != nil {
+		cfg.ShowToolCallDelta = *c.ShowToolCallDelta
+	}
+	if c.CacheSystemPrompt != nil {
+		cfg.CacheSystemPrompt = *c.CacheSystemPrompt
+	}
+	if c.CacheTools != nil {
+		cfg.CacheTools = *c.CacheTools
+	}
+	if c.CacheMessages != nil {
+		cfg.CacheMessages = *c.CacheMessages
 	}
 	return cfg
 }

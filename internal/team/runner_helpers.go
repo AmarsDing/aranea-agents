@@ -1,11 +1,18 @@
 package team
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
+	"time"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
+	"aranea-agents/internal/agent"
+	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/strutil"
+
+	"github.com/google/uuid"
 )
 
 func preview(s string, max int) string {
@@ -73,4 +80,76 @@ func mergeTeamUserADKMetaJSON(userOpts string, displayContent, adkSendText strin
 		return userOpts, err
 	}
 	return string(out), nil
+}
+
+func publishTeamMonitor(ctx context.Context, b *biz.MonitorLogBroker, level, msg string) {
+	if b == nil || strings.TrimSpace(msg) == "" {
+		return
+	}
+	b.Publish(ctx, level, msg, "team-runner")
+}
+
+func (r *Runner) finishRunErr(ctx context.Context, run *biz.TeamRun, t0 time.Time, msg string) {
+	if run == nil {
+		return
+	}
+	run.Status = "failed"
+	run.ErrorMessage = msg
+	run.FinishedAt = agent.RFC3339Now()
+	run.DurationMS = int(time.Since(t0).Milliseconds())
+	_ = r.teams.UpdateTeamRun(ctx, *run)
+	if r.td.TeamSSE != nil {
+		cp := *run
+		r.td.TeamSSE.Publish(biz.TeamRunEvent{
+			Type:      "run_finished",
+			TeamID:    run.TeamID,
+			RunID:     run.ID,
+			SessionID: strings.TrimSpace(run.SessionID),
+			Run:       &cp,
+		})
+		r.td.TeamSSE.Publish(biz.TeamRunEvent{
+			Type:      "run.failed",
+			TeamID:    run.TeamID,
+			RunID:     run.ID,
+			SessionID: strings.TrimSpace(run.SessionID),
+			Run:       &cp,
+			Payload: map[string]any{
+				"error_message": msg,
+			},
+		})
+	}
+	if r.td.MonitorLogs != nil {
+		r.td.MonitorLogs.Publish(ctx, "WARN", fmt.Sprintf("team_run failed team_id=%s run_id=%s session_id=%s: %s", run.TeamID, run.ID, strings.TrimSpace(run.SessionID), msg), "team-runner")
+	}
+}
+
+func (r *Runner) persistStep(ctx context.Context, run biz.TeamRun, teamID string, sortIdx int, m MemberDef, ag biz.Agent, userContent string, asst biz.ChatMessage) {
+	step := biz.TeamRunStep{
+		ID:            uuid.NewString(),
+		RunID:         run.ID,
+		TeamID:        teamID,
+		AgentID:       ag.ID,
+		AgentKey:      ag.AgentKey,
+		AgentName:     firstNonEmptyStr(ag.DisplayName, ag.AgentKey),
+		Role:          m.Role,
+		SortOrder:     sortIdx,
+		Status:        asst.Status,
+		InputPreview:  preview(userContent, 400),
+		OutputPreview: preview(asst.ContentMarkdown, 400),
+		TokenIn:       asst.TokenIn,
+		TokenOut:      asst.TokenOut,
+		CostMicroUSD:  0,
+		DurationMS:    asst.LatencyMS,
+		ErrorMessage:  asst.ErrorMessage,
+		StartedAt:     asst.CreatedAt,
+		FinishedAt:    asst.CreatedAt,
+		CreatedAt:     agent.RFC3339Now(),
+	}
+	saved, err := r.teams.CreateTeamRunStep(ctx, step)
+	if err != nil {
+		return
+	}
+	if r.td.TeamSSE != nil {
+		r.td.TeamSSE.Publish(biz.TeamRunEvent{Type: "step_finished", TeamID: teamID, RunID: run.ID, SessionID: run.SessionID, Step: &saved})
+	}
 }

@@ -9,6 +9,7 @@ import (
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/agent/intent"
 	"aranea-agents/internal/biz"
+	memtrpc "aranea-agents/internal/memory/trpc"
 	"aranea-agents/internal/provider"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -46,9 +47,13 @@ func (s *ChatService) runSingleAgentViaTRPC(
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
 
-	runner, err := chatagent.NewTRPCRunner(root, chatagent.TRPCRunnerDeps{
+	runnerDeps := chatagent.TRPCRunnerDeps{
 		SessionService: chatagent.NewInMemoryTRPCSessionService(),
-	})
+	}
+	if s.td.ADK != nil && s.td.ADK.SessionMemory != nil {
+		runnerDeps.MemoryService = memtrpc.NewSQLiteMemoryService(s.td.ADK.SessionMemory)
+	}
+	runner, err := chatagent.NewTRPCRunner(root, runnerDeps)
 	if err != nil {
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}

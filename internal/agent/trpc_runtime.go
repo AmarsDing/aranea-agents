@@ -7,6 +7,7 @@ import (
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
+	trpcmemory "trpc.group/trpc-go/trpc-agent-go/memory"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 	trpcrunner "trpc.group/trpc-go/trpc-agent-go/runner"
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
@@ -23,6 +24,7 @@ const TRPCDefaultAppName = "aranea"
 type TRPCRunnerDeps struct {
 	AppName        string
 	SessionService trpcsession.Service
+	MemoryService  trpcmemory.Service
 }
 
 // NewTRPCRunner constructs the standard Runner for Aranea Agent turns.
@@ -40,6 +42,9 @@ func NewTRPCRunner(root trpcagent.Agent, deps TRPCRunnerDeps, opts ...trpcrunner
 	}
 	if deps.SessionService != nil {
 		opts = append([]trpcrunner.Option{trpcrunner.WithSessionService(deps.SessionService)}, opts...)
+	}
+	if deps.MemoryService != nil {
+		opts = append([]trpcrunner.Option{trpcrunner.WithMemoryService(deps.MemoryService)}, opts...)
 	}
 	return trpcrunner.NewRunner(appName, root, opts...), nil
 }
@@ -74,4 +79,3 @@ func RunTRPCUserTurn(
 func NewInMemoryTRPCSessionService() trpcsession.Service {
 	return trpcinmemory.NewSessionService()
 }
-

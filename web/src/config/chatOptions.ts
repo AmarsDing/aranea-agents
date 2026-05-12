@@ -8,7 +8,11 @@ export const CHAT_MODE_OPTIONS = [
 export const CHAT_MODEL_PROVIDER_OPTIONS = [
   { label: "OpenAI 兼容", value: "openai" },
   { label: "Anthropic", value: "anthropic" },
-  { label: "自托管", value: "self" }
+  { label: "Gemini", value: "gemini" },
+  { label: "Ollama", value: "ollama" },
+  { label: "混元", value: "hunyuan" },
+  { label: "HuggingFace", value: "huggingface" },
+  { label: "Bedrock", value: "bedrock" }
 ] as const;
 
 const LS_KEY_MODE = "chat:dialog_mode";

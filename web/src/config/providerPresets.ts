@@ -1,3 +1,9 @@
+export type AuthType = "api_key" | "secret_id_key" | "aws_config" | "none";
+
+export type ProviderType = "openai" | "anthropic" | "gemini" | "ollama" | "hunyuan" | "huggingface" | "bedrock";
+
+export type OpenAIVariant = "openai" | "deepseek" | "qwen" | "hunyuan";
+
 export type ProviderModelPreset = {
   id: string;
   label: string;
@@ -15,19 +21,40 @@ export type ProviderPreset = {
   key: string;
   label: string;
   providerCode: string;
-  providerType: string;
+  providerType: ProviderType;
+  variant?: OpenAIVariant;
+  authType: AuthType;
   apiBaseUrl: string;
   metadataApi: "full" | "partial" | "limited" | "none";
   metadataNote: string;
   models: ProviderModelPreset[];
 };
 
+export const PROVIDER_TYPE_OPTIONS: { label: string; value: ProviderType }[] = [
+  { label: "OpenAI Compatible", value: "openai" },
+  { label: "Anthropic", value: "anthropic" },
+  { label: "Gemini", value: "gemini" },
+  { label: "Ollama", value: "ollama" },
+  { label: "Hunyuan", value: "hunyuan" },
+  { label: "HuggingFace", value: "huggingface" },
+  { label: "Bedrock", value: "bedrock" },
+];
+
+export const VARIANT_OPTIONS: { label: string; value: OpenAIVariant }[] = [
+  { label: "OpenAI", value: "openai" },
+  { label: "DeepSeek", value: "deepseek" },
+  { label: "Qwen", value: "qwen" },
+  { label: "Hunyuan", value: "hunyuan" },
+];
+
 export const PROVIDER_PRESETS: ProviderPreset[] = [
   {
     key: "openai",
     label: "OpenAI",
     providerCode: "openai",
-    providerType: "OpenAI Compatible",
+    providerType: "openai",
+    variant: "openai",
+    authType: "api_key",
     apiBaseUrl: "https://api.openai.com/v1",
     metadataApi: "full",
     metadataNote: "支持标准 /models 查询；价格和上下文使用预设兜底。",
@@ -42,7 +69,8 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     key: "anthropic",
     label: "Anthropic (Claude)",
     providerCode: "anthropic",
-    providerType: "Anthropic",
+    providerType: "anthropic",
+    authType: "api_key",
     apiBaseUrl: "https://api.anthropic.com",
     metadataApi: "full",
     metadataNote: "官方 SDK 提供 ListModels；代理环境不可用时使用 Claude 预设。",
@@ -56,7 +84,8 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     key: "gemini",
     label: "Google (Gemini)",
     providerCode: "gemini",
-    providerType: "Google Gemini",
+    providerType: "gemini",
+    authType: "api_key",
     apiBaseUrl: "https://generativelanguage.googleapis.com",
     metadataApi: "full",
     metadataNote: "支持 GET /v1beta/models 查询模型列表。",
@@ -66,112 +95,12 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     ]
   },
   {
-    key: "baidu-qianfan",
-    label: "百度智能云 (千帆)",
-    providerCode: "baidu-qianfan",
-    providerType: "Custom",
-    apiBaseUrl: "https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop",
-    metadataApi: "full",
-    metadataNote: "千帆平台提供模型列表和详情等管理 API。",
-    models: [
-      { id: "ERNIE-4.5-Turbo", label: "ERNIE 4.5 Turbo", contextWindowK: 128, maxOutputTokens: 8192 },
-      { id: "ERNIE-X1-Turbo", label: "ERNIE X1 Turbo", contextWindowK: 128, maxOutputTokens: 8192 },
-      { id: "DeepSeek R1", label: "DeepSeek R1 on Qianfan", contextWindowK: 64, maxOutputTokens: 8192 },
-      { id: "DeepSeek V3", label: "DeepSeek V3 on Qianfan", contextWindowK: 64, maxOutputTokens: 8192 }
-    ]
-  },
-  {
-    key: "aliyun-qwen",
-    label: "阿里云 (通义千问)",
-    providerCode: "aliyun-qwen",
-    providerType: "OpenAI Compatible",
-    apiBaseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    metadataApi: "full",
-    metadataNote: "阿里云官方 SDK 提供 ListModels 等接口。",
-    models: [
-      { id: "qwen3.6-plus", label: "Qwen 3.6 Plus", contextWindowK: 128, maxOutputTokens: 8192 },
-      { id: "qwen3.5-plus", label: "Qwen 3.5 Plus", contextWindowK: 128, maxOutputTokens: 8192 },
-      { id: "qwen3.5-flash", label: "Qwen 3.5 Flash", contextWindowK: 128, maxOutputTokens: 8192 },
-      { id: "qwen-max", label: "Qwen Max", contextWindowK: 128, maxOutputTokens: 8192 }
-    ]
-  },
-  {
-    key: "tencent-hunyuan",
-    label: "腾讯云 (混元)",
-    providerCode: "tencent-hunyuan",
-    providerType: "Custom",
-    apiBaseUrl: "https://hunyuan.tencentcloudapi.com",
-    metadataApi: "full",
-    metadataNote: "腾讯云标准云 API 可进行调用和管理。",
-    models: [
-      { id: "hunyuan-2.0-thinking", label: "Hunyuan 2.0 Thinking", contextWindowK: 128, maxOutputTokens: 8192 },
-      { id: "hunyuan-2.0-instruct", label: "Hunyuan 2.0 Instruct", contextWindowK: 128, maxOutputTokens: 8192 },
-      { id: "hunyuan-a13b", label: "Hunyuan A13B", sizeLabel: "13B", contextWindowK: 32, maxOutputTokens: 4096 },
-      { id: "hunyuan-lite", label: "Hunyuan Lite", contextWindowK: 32, maxOutputTokens: 4096 }
-    ]
-  },
-  {
-    key: "iflytek-spark",
-    label: "科大讯飞 (星火)",
-    providerCode: "iflytek-spark",
-    providerType: "Custom",
-    apiBaseUrl: "wss://spark-api.xf-yun.com/v4.0/chat",
-    metadataApi: "limited",
-    metadataNote: "WebSocket 调用接口不直接提供 RESTful 模型列表查询。",
-    models: [
-      { id: "Spark4.0 Ultra", label: "Spark 4.0 Ultra", contextWindowK: 128, maxOutputTokens: 8192 },
-      { id: "Spark Max", label: "Spark Max", contextWindowK: 32, maxOutputTokens: 4096 },
-      { id: "Spark Pro", label: "Spark Pro", contextWindowK: 32, maxOutputTokens: 4096 },
-      { id: "Spark Lite", label: "Spark Lite", contextWindowK: 8, maxOutputTokens: 4096 },
-      { id: "Spark X2", label: "Spark X2", contextWindowK: 128, maxOutputTokens: 8192 }
-    ]
-  },
-  {
-    key: "zhipu-glm",
-    label: "智谱AI (GLM)",
-    providerCode: "zhipu-glm",
-    providerType: "OpenAI Compatible",
-    apiBaseUrl: "https://open.bigmodel.cn/api/paas/v4",
-    metadataApi: "full",
-    metadataNote: "兼容 OpenAI 规范，支持编程获取模型列表。",
-    models: [
-      { id: "GLM-5.1", label: "GLM 5.1", contextWindowK: 128, maxOutputTokens: 8192 },
-      { id: "GLM-5", label: "GLM 5", contextWindowK: 128, maxOutputTokens: 8192 },
-      { id: "GLM-4.7-Flash", label: "GLM 4.7 Flash", contextWindowK: 128, maxOutputTokens: 8192 },
-      { id: "GLM-Z1-Rumination", label: "GLM Z1 Rumination", contextWindowK: 128, maxOutputTokens: 8192 }
-    ]
-  },
-  {
-    key: "meta-llama",
-    label: "Meta (Llama)",
-    providerCode: "meta-llama",
-    providerType: "OpenAI Compatible",
-    apiBaseUrl: "https://api.llama.com",
-    metadataApi: "full",
-    metadataNote: "兼容 OpenAI 规范，可通过 /models 获取列表。",
-    models: [
-      { id: "Llama-4-Scout", label: "Llama 4 Scout", contextWindowK: 128, maxOutputTokens: 8192 },
-      { id: "Llama-4-Maverick", label: "Llama 4 Maverick", contextWindowK: 128, maxOutputTokens: 8192 }
-    ]
-  },
-  {
-    key: "mistral",
-    label: "Mistral AI",
-    providerCode: "mistral",
-    providerType: "OpenAI Compatible",
-    apiBaseUrl: "https://api.mistral.ai",
-    metadataApi: "full",
-    metadataNote: "官方 API 提供 List Models 接口。",
-    models: [
-      { id: "mistral-large-latest", label: "Mistral Large Latest", contextWindowK: 128, maxOutputTokens: 8192, inputPriceMicroUsdPer1K: 2000, outputPriceMicroUsdPer1K: 6000 },
-      { id: "mistral-small-latest", label: "Mistral Small Latest", contextWindowK: 128, maxOutputTokens: 8192, inputPriceMicroUsdPer1K: 200, outputPriceMicroUsdPer1K: 600 }
-    ]
-  },
-  {
     key: "deepseek",
     label: "DeepSeek",
     providerCode: "deepseek",
-    providerType: "OpenAI Compatible",
+    providerType: "openai",
+    variant: "deepseek",
+    authType: "api_key",
     apiBaseUrl: "https://api.deepseek.com",
     metadataApi: "full",
     metadataNote:
@@ -214,10 +143,124 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     ]
   },
   {
+    key: "aliyun-qwen",
+    label: "阿里云 (通义千问)",
+    providerCode: "aliyun-qwen",
+    providerType: "openai",
+    variant: "qwen",
+    authType: "api_key",
+    apiBaseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    metadataApi: "full",
+    metadataNote: "阿里云官方 SDK 提供 ListModels 等接口。",
+    models: [
+      { id: "qwen3.6-plus", label: "Qwen 3.6 Plus", contextWindowK: 128, maxOutputTokens: 8192 },
+      { id: "qwen3.5-plus", label: "Qwen 3.5 Plus", contextWindowK: 128, maxOutputTokens: 8192 },
+      { id: "qwen3.5-flash", label: "Qwen 3.5 Flash", contextWindowK: 128, maxOutputTokens: 8192 },
+      { id: "qwen-max", label: "Qwen Max", contextWindowK: 128, maxOutputTokens: 8192 }
+    ]
+  },
+  {
+    key: "tencent-hunyuan",
+    label: "腾讯云 (混元)",
+    providerCode: "tencent-hunyuan",
+    providerType: "hunyuan",
+    authType: "secret_id_key",
+    apiBaseUrl: "https://hunyuan.tencentcloudapi.com",
+    metadataApi: "full",
+    metadataNote: "腾讯云标准云 API 可进行调用和管理。",
+    models: [
+      { id: "hunyuan-2.0-thinking", label: "Hunyuan 2.0 Thinking", contextWindowK: 128, maxOutputTokens: 8192 },
+      { id: "hunyuan-2.0-instruct", label: "Hunyuan 2.0 Instruct", contextWindowK: 128, maxOutputTokens: 8192 },
+      { id: "hunyuan-a13b", label: "Hunyuan A13B", sizeLabel: "13B", contextWindowK: 32, maxOutputTokens: 4096 },
+      { id: "hunyuan-lite", label: "Hunyuan Lite", contextWindowK: 32, maxOutputTokens: 4096 }
+    ]
+  },
+  {
+    key: "ollama",
+    label: "Ollama",
+    providerCode: "ollama",
+    providerType: "ollama",
+    authType: "none",
+    apiBaseUrl: "http://localhost:11434",
+    metadataApi: "partial",
+    metadataNote: "本地模型通常可列出模型名，但上下文和价格需按本地配置维护。",
+    models: [
+      { id: "llama3.1", label: "Llama 3.1", contextWindowK: 128, maxOutputTokens: 8192 },
+      { id: "qwen2.5", label: "Qwen 2.5", contextWindowK: 128, maxOutputTokens: 8192 },
+      { id: "deepseek-r1", label: "DeepSeek R1 Local", contextWindowK: 128, maxOutputTokens: 8192 }
+    ]
+  },
+  {
+    key: "baidu-qianfan",
+    label: "百度智能云 (千帆)",
+    providerCode: "baidu-qianfan",
+    providerType: "openai",
+    variant: "openai",
+    authType: "api_key",
+    apiBaseUrl: "https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop",
+    metadataApi: "full",
+    metadataNote: "千帆平台提供模型列表和详情等管理 API。",
+    models: [
+      { id: "ERNIE-4.5-Turbo", label: "ERNIE 4.5 Turbo", contextWindowK: 128, maxOutputTokens: 8192 },
+      { id: "ERNIE-X1-Turbo", label: "ERNIE X1 Turbo", contextWindowK: 128, maxOutputTokens: 8192 },
+      { id: "DeepSeek R1", label: "DeepSeek R1 on Qianfan", contextWindowK: 64, maxOutputTokens: 8192 },
+      { id: "DeepSeek V3", label: "DeepSeek V3 on Qianfan", contextWindowK: 64, maxOutputTokens: 8192 }
+    ]
+  },
+  {
+    key: "zhipu-glm",
+    label: "智谱AI (GLM)",
+    providerCode: "zhipu-glm",
+    providerType: "openai",
+    variant: "openai",
+    authType: "api_key",
+    apiBaseUrl: "https://open.bigmodel.cn/api/paas/v4",
+    metadataApi: "full",
+    metadataNote: "兼容 OpenAI 规范，支持编程获取模型列表。",
+    models: [
+      { id: "GLM-5.1", label: "GLM 5.1", contextWindowK: 128, maxOutputTokens: 8192 },
+      { id: "GLM-5", label: "GLM 5", contextWindowK: 128, maxOutputTokens: 8192 },
+      { id: "GLM-4.7-Flash", label: "GLM 4.7 Flash", contextWindowK: 128, maxOutputTokens: 8192 },
+      { id: "GLM-Z1-Rumination", label: "GLM Z1 Rumination", contextWindowK: 128, maxOutputTokens: 8192 }
+    ]
+  },
+  {
+    key: "meta-llama",
+    label: "Meta (Llama)",
+    providerCode: "meta-llama",
+    providerType: "openai",
+    variant: "openai",
+    authType: "api_key",
+    apiBaseUrl: "https://api.llama.com",
+    metadataApi: "full",
+    metadataNote: "兼容 OpenAI 规范，可通过 /models 获取列表。",
+    models: [
+      { id: "Llama-4-Scout", label: "Llama 4 Scout", contextWindowK: 128, maxOutputTokens: 8192 },
+      { id: "Llama-4-Maverick", label: "Llama 4 Maverick", contextWindowK: 128, maxOutputTokens: 8192 }
+    ]
+  },
+  {
+    key: "mistral",
+    label: "Mistral AI",
+    providerCode: "mistral",
+    providerType: "openai",
+    variant: "openai",
+    authType: "api_key",
+    apiBaseUrl: "https://api.mistral.ai",
+    metadataApi: "full",
+    metadataNote: "官方 API 提供 List Models 接口。",
+    models: [
+      { id: "mistral-large-latest", label: "Mistral Large Latest", contextWindowK: 128, maxOutputTokens: 8192, inputPriceMicroUsdPer1K: 2000, outputPriceMicroUsdPer1K: 6000 },
+      { id: "mistral-small-latest", label: "Mistral Small Latest", contextWindowK: 128, maxOutputTokens: 8192, inputPriceMicroUsdPer1K: 200, outputPriceMicroUsdPer1K: 600 }
+    ]
+  },
+  {
     key: "cohere",
     label: "Cohere",
     providerCode: "cohere",
-    providerType: "Custom",
+    providerType: "openai",
+    variant: "openai",
+    authType: "api_key",
     apiBaseUrl: "https://api.cohere.ai",
     metadataApi: "full",
     metadataNote: "提供 List Models 端点。",
@@ -230,7 +273,9 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     key: "moonshot-kimi",
     label: "月之暗面 (Kimi)",
     providerCode: "moonshot-kimi",
-    providerType: "OpenAI Compatible",
+    providerType: "openai",
+    variant: "openai",
+    authType: "api_key",
     apiBaseUrl: "https://api.moonshot.cn/v1",
     metadataApi: "full",
     metadataNote: "兼容 OpenAI 规范，可查询模型列表。",
@@ -239,10 +284,30 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     ]
   },
   {
+    key: "iflytek-spark",
+    label: "科大讯飞 (星火)",
+    providerCode: "iflytek-spark",
+    providerType: "openai",
+    variant: "openai",
+    authType: "api_key",
+    apiBaseUrl: "wss://spark-api.xf-yun.com/v4.0/chat",
+    metadataApi: "limited",
+    metadataNote: "WebSocket 调用接口不直接提供 RESTful 模型列表查询。",
+    models: [
+      { id: "Spark4.0 Ultra", label: "Spark 4.0 Ultra", contextWindowK: 128, maxOutputTokens: 8192 },
+      { id: "Spark Max", label: "Spark Max", contextWindowK: 32, maxOutputTokens: 4096 },
+      { id: "Spark Pro", label: "Spark Pro", contextWindowK: 32, maxOutputTokens: 4096 },
+      { id: "Spark Lite", label: "Spark Lite", contextWindowK: 8, maxOutputTokens: 4096 },
+      { id: "Spark X2", label: "Spark X2", contextWindowK: 128, maxOutputTokens: 8192 }
+    ]
+  },
+  {
     key: "stability",
     label: "Stability AI",
     providerCode: "stability",
-    providerType: "Custom",
+    providerType: "openai",
+    variant: "openai",
+    authType: "api_key",
     apiBaseUrl: "https://api.stability.ai",
     metadataApi: "none",
     metadataNote: "未提供公开模型列表 API，需手动维护。",
@@ -255,7 +320,9 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     key: "volcengine-doubao",
     label: "字节跳动 (豆包)",
     providerCode: "volcengine-doubao",
-    providerType: "OpenAI Compatible",
+    providerType: "openai",
+    variant: "openai",
+    authType: "api_key",
     apiBaseUrl: "https://ark.cn-beijing.volces.com/api/v3",
     metadataApi: "full",
     metadataNote: "火山方舟平台标准 API 支持模型管理。",
@@ -268,7 +335,9 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     key: "openrouter",
     label: "OpenRouter",
     providerCode: "openrouter",
-    providerType: "OpenAI Compatible",
+    providerType: "openai",
+    variant: "openai",
+    authType: "api_key",
     apiBaseUrl: "https://openrouter.ai/api/v1",
     metadataApi: "full",
     metadataNote: "聚合平台，支持 /models 查询上下文长度和价格。",
@@ -282,24 +351,34 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     ]
   },
   {
-    key: "ollama",
-    label: "Ollama",
-    providerCode: "ollama",
-    providerType: "Ollama",
-    apiBaseUrl: "http://localhost:11434/v1",
-    metadataApi: "partial",
-    metadataNote: "本地模型通常可列出模型名，但上下文和价格需按本地配置维护。",
-    models: [
-      { id: "llama3.1", label: "Llama 3.1", contextWindowK: 128, maxOutputTokens: 8192 },
-      { id: "qwen2.5", label: "Qwen 2.5", contextWindowK: 128, maxOutputTokens: 8192 },
-      { id: "deepseek-r1", label: "DeepSeek R1 Local", contextWindowK: 128, maxOutputTokens: 8192 }
-    ]
+    key: "huggingface",
+    label: "HuggingFace",
+    providerCode: "huggingface",
+    providerType: "huggingface",
+    authType: "api_key",
+    apiBaseUrl: "https://router.huggingface.co",
+    metadataApi: "limited",
+    metadataNote: "HuggingFace Inference API，模型列表需手动维护。",
+    models: []
+  },
+  {
+    key: "bedrock",
+    label: "AWS Bedrock",
+    providerCode: "bedrock",
+    providerType: "bedrock",
+    authType: "aws_config",
+    apiBaseUrl: "",
+    metadataApi: "full",
+    metadataNote: "AWS Bedrock Runtime，通过 AWS 配置认证。",
+    models: []
   },
   {
     key: "custom",
     label: "自定义",
     providerCode: "custom",
-    providerType: "Custom",
+    providerType: "openai",
+    variant: "openai",
+    authType: "api_key",
     apiBaseUrl: "",
     metadataApi: "none",
     metadataNote: "手动维护连接、上下文和价格。",
@@ -313,4 +392,13 @@ export function findProviderPreset(keyOrCode: string) {
 
 export function findModelPreset(providerKeyOrCode: string, modelId: string) {
   return findProviderPreset(providerKeyOrCode)?.models.find((model) => model.id === modelId);
+}
+
+export function getAuthTypeForProviderType(providerType: ProviderType): AuthType {
+  switch (providerType) {
+    case "hunyuan": return "secret_id_key";
+    case "ollama": return "none";
+    case "bedrock": return "aws_config";
+    default: return "api_key";
+  }
 }

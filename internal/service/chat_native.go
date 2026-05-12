@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -280,15 +279,7 @@ func (s *ChatService) runAgentTurn(
 	attN int,
 	stream *streamWriter,
 ) (biz.ChatMessage, biz.ChatMessage, error) {
-	if useTRPCRuntime() {
-		return s.runSingleAgentViaTRPC(ctx, sess, req, ag, dialogMode, prov, mod, attN, stream)
-	}
-	return s.runSingleAgentViaADK(ctx, sess, req, ag, dialogMode, prov, mod, attN, stream)
-}
-
-func useTRPCRuntime() bool {
-	v := strings.TrimSpace(os.Getenv("ARANEA_AGENT_RUNTIME"))
-	return strings.EqualFold(v, "trpc")
+	return s.runSingleAgentViaTRPC(ctx, sess, req, ag, dialogMode, prov, mod, attN, stream)
 }
 
 func (s *ChatService) hydratedAgent(ctx context.Context, agentID string) (biz.Agent, error) {
@@ -312,4 +303,18 @@ func (s *ChatService) hydratedAgent(ctx context.Context, agentID string) (biz.Ag
 // RunNativeTurnUnary runs the native in-process agent/team turn, ignoring LEGACY_REST_ORIGIN (for Channel webhooks).
 func (s *ChatService) RunNativeTurnUnary(ctx context.Context, req *chatv1.SendChatMessageRequest) (biz.ChatMessage, biz.ChatMessage, error) {
 	return s.runNativeAgentTurn(ctx, req, nil)
+}
+
+func patchSessionContextUsage(ctx context.Context, s *ChatService, sessionID string, ag biz.Agent, promptTok, completionTok int) {
+	if s == nil || s.td.Sessions == nil {
+		return
+	}
+	win := ag.ContextWindow
+	if win <= 0 {
+		win = 128000
+	}
+	_ = s.td.Sessions.UpdateSessionContextFromLLMUsage(ctx, sessionID, promptTok, completionTok, win)
+	if s.td.Compress != nil {
+		s.td.Compress.AfterNativeTurn(ctx, sessionID, ag)
+	}
 }

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
@@ -10,7 +11,6 @@ import (
 
 	"aranea-agents/internal/adkdeps"
 	chatagent "aranea-agents/internal/agent"
-	"aranea-agents/internal/agent/adksvc"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/compress"
 
@@ -201,7 +201,7 @@ func (c *SessionCompressor) runCompress(ctx context.Context, sessionID string, a
 		author = "agent"
 	}
 
-	raw, err := adksvc.RewriteSnapshotWithCompression(sess.AdkSnapshotJSON, merged, tail, author)
+	raw, err := rewriteSnapshotWithCompression(sess.AdkSnapshotJSON, merged, tail, author)
 	if err != nil {
 		return err
 	}
@@ -243,24 +243,6 @@ func (c *SessionCompressor) resyncSessionMemory(ctx context.Context, sessionID s
 		return
 	}
 	_ = c.ADK.SessionMemory.DeleteADKSessionEventEntities(ctx, sessionID)
-
-	resolve := func(ctx context.Context, aid string) (string, error) {
-		if c.Agents == nil || strings.TrimSpace(aid) == "" {
-			return "agent", nil
-		}
-		a, err := c.Agents.GetAgentByID(ctx, aid)
-		if err != nil {
-			return "", err
-		}
-		k := strings.TrimSpace(a.AgentKey)
-		if k == "" {
-			return "agent", nil
-		}
-		return k, nil
-	}
-	ss := adksvc.NewBizSessionForUsecase(c.Sessions, resolve)
-	mem := chatagent.NewSessionSQLiteMemoryService(c.ADK.SessionMemory)
-	_ = chatagent.SyncPersistedADKSessionToMemory(ctx, ss, mem, adksvc.DefaultAppName, adksvc.DefaultUserID, sessionID)
 }
 
 func timelineUserAssistant(msgs []biz.ChatMessage) []biz.ChatMessage {
@@ -352,4 +334,54 @@ func estimateCompactedPromptTokens(mergedSummary string, tail []biz.ChatMessage)
 		b.WriteString("\n")
 	}
 	return chatagent.RoughTokenEstimate(b.String())
+}
+
+func rewriteSnapshotWithCompression(snapshotJSON string, mergedSummariesMarkdown string, tail []biz.ChatMessage, assistantAuthor string) (string, error) {
+	snapshotJSON = strings.TrimSpace(snapshotJSON)
+	if snapshotJSON == "" {
+		snapshotJSON = "{}"
+	}
+	var bundle map[string]any
+	if err := json.Unmarshal([]byte(snapshotJSON), &bundle); err != nil {
+		return "", err
+	}
+	if bundle == nil {
+		bundle = map[string]any{}
+	}
+	summaryEvent := map[string]any{
+		"author":    "user",
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+		"content":   "[Conversation summary — earlier turns compressed]\n\n" + strings.TrimSpace(mergedSummariesMarkdown),
+		"role":      "system",
+	}
+	var tailEvents []any
+	for _, m := range tail {
+		role := strings.ToLower(strings.TrimSpace(m.Role))
+		if role != "user" && role != "assistant" {
+			continue
+		}
+		author := role
+		if role == "assistant" {
+			author = strings.TrimSpace(assistantAuthor)
+			if author == "" {
+				author = "agent"
+			}
+		}
+		tailEvents = append(tailEvents, map[string]any{
+			"author":    author,
+			"timestamp": m.CreatedAt,
+			"content":   strings.TrimSpace(m.ContentMarkdown),
+			"role":      role,
+		})
+	}
+	var events []any
+	events = append(events, summaryEvent)
+	events = append(events, tailEvents...)
+	bundle["events"] = events
+	bundle["updated_at"] = time.Now().UTC().Format(time.RFC3339)
+	out, err := json.Marshal(bundle)
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
 }

@@ -93,5 +93,5 @@ func (r *Runner) RunTurn(ctx context.Context, sess biz.Session, req *chatv1.Send
 	}
 
 	mode := strings.ToLower(strings.TrimSpace(def.Mode))
-	return r.runTeamADK(ctx, sess, req, teamRow, def, mode, stream)
+	return r.runTeamTRPC(ctx, sess, req, teamRow, def, mode, stream)
 }

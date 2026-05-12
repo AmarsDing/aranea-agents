@@ -7,6 +7,8 @@ toolchain go1.26.1
 // Agent runtime migrations must resolve to the vendored framework source.
 replace trpc.group/trpc-go/trpc-agent-go => ./pkg/trpc-agent-go
 
+replace trpc.group/trpc-go/trpc-agent-go/model/hunyuan => ./pkg/trpc-agent-go/model/hunyuan
+
 require (
 	entgo.io/ent v0.14.5
 	github.com/fsnotify/fsnotify v1.6.0
@@ -29,7 +31,11 @@ require (
 	google.golang.org/genproto/googleapis/api v0.0.0-20260316180232-0b37fe3546d5
 	google.golang.org/grpc v1.79.3
 	google.golang.org/protobuf v1.36.11
-	trpc.group/trpc-go/trpc-agent-go v0.0.0
+	trpc.group/trpc-go/trpc-agent-go v1.9.1
+	trpc.group/trpc-go/trpc-agent-go/model/anthropic v1.9.0
+	trpc.group/trpc-go/trpc-agent-go/model/gemini v1.9.0
+	trpc.group/trpc-go/trpc-agent-go/model/ollama v1.9.0
+	trpc.group/trpc-go/trpc-agent-go/model/provider v1.9.0
 )
 
 require (
@@ -61,9 +67,12 @@ require (
 	dario.cat/mergo v1.0.0 // indirect
 	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/agext/levenshtein v1.2.3 // indirect
+	github.com/anthropics/anthropic-sdk-go v1.37.0 // indirect
 	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect
+	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/bmatcuk/doublestar v1.3.4 // indirect
 	github.com/bmatcuk/doublestar/v4 v4.9.1 // indirect
+	github.com/buger/jsonparser v1.1.2 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/creack/pty v1.1.24 // indirect
@@ -74,20 +83,25 @@ require (
 	github.com/go-openapi/inflect v0.21.0 // indirect
 	github.com/go-playground/form/v4 v4.3.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.7 // indirect
+	github.com/hashicorp/errwrap v1.1.0 // indirect
+	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/hcl/v2 v2.23.0 // indirect
+	github.com/mailru/easyjson v0.9.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mitchellh/go-wordwrap v1.0.1 // indirect
+	github.com/ollama/ollama v0.16.3 // indirect
 	github.com/openai/openai-go v1.12.0 // indirect
 	github.com/openzipkin/zipkin-go v0.4.3 // indirect
 	github.com/panjf2000/ants/v2 v2.10.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
-	github.com/tidwall/gjson v1.14.4 // indirect
+	github.com/tidwall/gjson v1.18.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/tx7do/kratos-transport/broker v1.3.2 // indirect
 	github.com/tx7do/kratos-transport/tracing v1.1.1 // indirect
 	github.com/tx7do/kratos-transport/transport v1.3.3 // indirect
+	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
 	github.com/zclconf/go-cty v1.16.2 // indirect
 	github.com/zclconf/go-cty-yaml v1.1.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
