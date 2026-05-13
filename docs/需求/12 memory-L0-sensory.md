@@ -616,3 +616,82 @@ POST /api/v1/sessions/{id}/l0/preview
 4. **摘要是裁剪的最后一步前**：先去掉低价值 tool_results，再压缩，再抛弃，避免无谓信息丢失。
 5. **每次装配独立**：Team 中各子 Agent 的 L0 互不影响，避免「一个长输出污染所有人」。
 6. **预览即调试**：`/l0/preview` 是产品的「眼睛」，让运营和工程能在不发模型的前提下确认 prompt 形态。
+
+---
+
+## 14. 运行时实现与演进方向
+
+> 本节整合自 `architecture/agent-skills-tools-mcp-memory.md` 与 `architecture/session-context-compression.md`，描述记忆系统在 Agent 运行时的装配机制、上下文压缩策略与后续演进方向。
+
+### 14.1 运行时记忆装配
+
+运行时里「记忆」在代码中拆成几条**互不自动打通**的线，需分开理解。
+
+| 层次 | 已实现 | 说明 |
+|------|--------|------|
+| Runner MemoryService | 是 | `internal/agent/adk_memory.go` — `RunnerMemoryService(store)`：有 `sessionmemory.Store` → `SessionSQLiteMemoryService`，否则 `memory.InMemoryService()` |
+| SQLite 会话记忆链 | 是 | `internal/data/sessionmemory` + `memory_chain.sql`（L0 装配快照、L1–L4、entities 等） |
+| 对外 API | 是 | `internal/service/memory.go`（`memory/v1` gRPC）对外查询 L0/L1/…，**不是**会话 Runner Memory 的一环 |
+| 桥接 | 部分 | `SessionSQLiteMemoryService` 在注入 Store 时起效；**`AddSessionToMemory` 仍为 no-op**，与 L0 写入链路的对齐仍可完善 |
+| Postgres pgvector | 是（独立业务线） | `internal/biz/memory.go`（`Remember` / `Search`）、`internal/data/memory.go` 对 `agent_memory` 的读写，**不在** Chat Runner 默认路径内自动挂载 |
+
+**接入点**：`adk_turn.go`、`team/runner.go` 通过 `adkdeps.Runtime.SessionMemory`（Wire 注入 `NewSessionMemoryStore`）。`load_memory` / `preload_memory` 使用 Runner 挂载的 `MemoryService`。
+
+### 14.2 会话上下文压缩
+
+当历史达到一定规模时，将一段可追溯的对话区间交给「压缩模型」梳理为结构化摘要，后续轮次仅注入摘要 + 近期原文。
+
+**核心概念**：
+
+| 术语 | 含义 |
+|------|------|
+| 滚动摘要（Rolling Summary） | 覆盖区间 `[from_turn, to_turn]` 的 Markdown 文本，存于 `session_summaries` |
+| 当前有效摘要（Active Summary） | 某 session 在装配时刻用于头部的摘要集合 |
+| 滑动窗口（Tail） | 摘要区间之后、尚未被摘要覆盖的最近 K 轮或最近 T tokens 的原始对话 |
+| 压缩模型（Compressor Model） | 执行摘要生成的 LLM 调用，可与对话模型同厂商或降级为更小规格 |
+
+**触发条件（可组合配置）**：
+
+| 策略 | 条件 | 说明 |
+|------|------|------|
+| 比例触发 | `context_used_ratio ≥ summary_threshold` | 与现有 `sessions.context_*` 字段对齐 |
+| 轮次触发 | 自上次摘要以来新增 `Δturn ≥ compress_every_n_turns` | 防窗口很大但比例尚未告警时长对话不摘要 |
+| Token 估算触发 | 未摘要前缀估算 token ≥ `compress_prefix_token_budget` | 与滑动窗口预算联动 |
+| 手动触发 | UI「生成会话摘要」或 API | 便于调试与关键节点强制固化 |
+
+**防抖**：同一 session 短时间窗口内（如 5～10 分钟）最多触发 N 次摘要任务。
+
+**压缩输出 schema（推荐固定章节）**：
+
+1. 用户意图与目标
+2. 已确认事实 / 结论（含数字、版本、路径、API 名等硬信息）
+3. 约束与偏好（语言、风格、禁止项）
+4. 未完成事项 / 待澄清问题
+5. 重要工具结果摘录（表格或列表）
+6. 术语与别名
+
+**装配顺序（与 L0 一致）**：
+
+1. 系统 / 开发者固定段（SOUL、策略等）
+2. `session_summaries` 合并摘要（标记 `source: session_summaries:<id>`）
+3. L1 工作记忆字段（若有）
+4. 滑动窗口内原始 messages（摘要区间之后）
+5. L3/L4 检索段（若有）
+6. 本轮 user 输入
+
+**与 ADK 会话持久态的协同**：首版采用**装配层优先**——不改变 `adk_snapshot_json` 内全量事件，仅在构造发往 LLM 的 messages 时应用摘要 + tail。实现集中、可逆、与现有 messages 账本一致。
+
+**Team 会话**：每个子 Agent 应有独立的摘要区间与 `session_summaries` 维度，避免 Host 与子 Agent 上下文串扰。
+
+**API / 配置**：扩展 `agent_runtime_settings`：`summary_threshold`、`compress_every_n_turns`、`recent_window_turns`、`recent_window_tokens`、`compressor_model_profile`；另设 `l0_compress_provider` / `l0_compress_model`（可选），指定专用压缩调用。
+
+### 14.3 待完善项与演进方向
+
+| 方向 | 现状 | 建议 |
+|------|------|------|
+| MemoryService 可插拔 | 全域使用 `InMemoryService`，`SessionSQLiteMemoryService` 已实现却未注入 Runner | 通过 Wire 注入 `memory.Service`：有 `sessionmemory.Store` 时选用 SQLite 适配器或组合式；`AddSessionToMemory` 与 adksvc 会话快照/装配流水线对齐 |
+| 记忆工具业务含义 | `load_memory`/`preload_memory` 走框架默认语义，但底层仍是空/in-memory | 要么默认关闭直至后端就绪并在 `RuntimeCapabilityCue` 中如实描述，要么实现 Composite `SearchMemory` 聚合 SQLite entities + pgvector |
+| 向量记忆与 Runner 统一 | Postgres pgvector 是独立业务线，与 Runner Memory 语义割裂 | 为 `biz.MemoryUsecase` 增加显式工具或统一 `SearchMemory` 后端，避免 pgvector 能力与对话路径永远平行 |
+| 闭环会话记忆 | `AddSessionToMemory` 仍为 no-op | 实现 `AddSessionToMemory` 与 L0–L4 写入路径一致；grpc `memory/v1` 继续作为观测面，或与 Run 共用同一底层 |
+| 摘要多条记录合并 | 首版采用区间链式（保留多条记录，装配时按 `from_turn` 排序拼接） | 二期可演进为单条滚动（每次压缩后把旧摘要 + 新区间对话一并输入，产出一条覆盖 `[0, current_to]` 的新摘要） |
+| 压缩调用成本 | 压缩模型与对话模型共用 | 可配置更小模型、更长触发间隔、批量区间合并以控 latency/cost |

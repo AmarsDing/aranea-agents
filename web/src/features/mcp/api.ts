@@ -3,7 +3,7 @@
  */
 import { kratosApi } from "../../services/axiosHandler";
 import type { PlatformResource, PlatformResourceInput } from "../platform/api";
-import { asRecord, pickBool, pickI32, pickStr } from "../memory/wireJson";
+import { asRecord, pickBool, pickI32, pickStr } from "../../shared/wireJson";
 import type { McpServerTestResult } from "./types";
 
 function mcpRowToPlatform(raw: unknown): PlatformResource {

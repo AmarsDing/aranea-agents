@@ -3,15 +3,17 @@ import { useI18n } from "vue-i18n";
 import { useQuasar } from "quasar";
 import { useRoute, useRouter } from "vue-router";
 import {
-  createSession,
-  getSession,
   listChatOptions,
-  listMessages,
-  listTeamSessions,
   sendMessageStream,
-  updateSessionTitle
 } from "../api";
 import type { ToolUseEvent } from "../api";
+import {
+  createSession,
+  getSession,
+  listSessionChatMessages as listMessages,
+  listTeamSessions,
+  updateSessionTitle
+} from "../../session/api";
 import { formatToolEventMarkdown } from "../toolEventMarkdown";
 import { deleteTeam, listTeams, updateTeam } from "../../teams/api";
 import {

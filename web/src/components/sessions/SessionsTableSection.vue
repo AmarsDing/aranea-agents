@@ -96,7 +96,7 @@
 </template>
 
 <script setup lang="ts">
-import type { Session } from "../../features/chat/api";
+import type { Session } from "../../features/session/api";
 import {
   contextProgressColor,
   formatNumber,

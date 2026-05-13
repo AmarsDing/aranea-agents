@@ -55,7 +55,7 @@
 
 <script setup lang="ts">
 import type { RouteLocationRaw } from "vue-router";
-import type { Session } from "../../features/chat/api";
+import type { Session } from "../../features/session/api";
 import {
   contextProgressColor,
   formatCostMicroUsd,

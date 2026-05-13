@@ -3,14 +3,16 @@ import {
   clearAgentSessions,
   createSession,
   deleteSession,
-  listMessages,
+  listSessionChatMessages as listMessages,
   listSessions,
+  updateSessionTitle,
+  type Session
+} from "../features/session/api";
+import {
   sendMessage,
   sendMessageStream,
-  updateSessionTitle,
   type Message,
   type SendMessageOptions,
-  type Session,
   type ToolUseEvent
 } from "../features/chat/api";
 import { formatToolEventMarkdown } from "../features/chat/toolEventMarkdown";

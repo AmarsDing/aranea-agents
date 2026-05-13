@@ -1,8 +1,8 @@
 # Aranea-Agents AI 开发规范
 
-> **文档地位**：AI 编码时的唯一行为准则。所有代码改动必须遵守本规范。
+> **文档地位**：AI 编码时的**唯一行为准则**。所有代码改动必须遵守本规范。本文已整合原 `architecture/runtime-boundary.md`、`AI-全栈新功能开发规范.md`、`接口与数据库开发规范.md`、`frontend/vue-design.md`、`frontend/UX.md` 的全部内容。
 >
-> **规范冲突优先级**：本文 > `AGENT_RUNTIME_BOUNDARY.md` > `AI-全栈新功能开发规范.md` > `接口与数据库开发规范.md`
+> **规范冲突优先级**：本文 > 所有其他 docs 下的规范文档
 
 ---
 
@@ -14,6 +14,16 @@
 |------|----------|------|
 | **Kratos v2** | 传输层（HTTP/gRPC/SSE）、配置、鉴权、中间件、Wire 依赖注入 | 不承载 Agent 编排、不实现第二套事件循环 |
 | **trpc-agent-go** | Agent 编排（Runner/Agent/Session/Memory/Tool/Event） | 不直接写业务数据库、不处理 HTTP 路由 |
+
+**各包职责映射**（框架能力按领域拆开，无单独 `adkadapter`）：
+
+| 能力 | 主要包 |
+|------|--------|
+| `session.Service`（会话快照读写） | `internal/agent/adksvc`（`BizSessionService`） |
+| `llmagent` 构建、`model.LLM` | `internal/agent`（`BuildLLMAgent`）、`internal/provider`（`ModelForProviderModel`） |
+| 工具有效列表 → `tool.Tool` | `internal/tools`（`ToolsForAgent`） |
+| Runner 内存 / 插件 / 用户 ID 上下文 | `internal/agent`（`NewADKMemoryService`、`DefaultRunnerPlugins`、`UserIDFromCtx`） |
+| Team 工作流根 Agent | `internal/team`（`BuildWorkflowRoot` + `runner.Run`） |
 
 ### 1.2 依赖方向铁律
 
@@ -41,6 +51,18 @@ internal/data           ← Repo 实现（Ent ORM + pgvector）
 | 6 | 不得为框架运行时另起独立 HTTP 监听 | 停 |
 | 7 | 不得把 Kratos middleware 逻辑复制进 `pkg/trpc-agent-go` | 停 |
 | 8 | 不得在 `internal/biz` 直接依赖框架运行时 toolset/skill 类型 | 停 |
+
+### 1.4 逐包 import 规则
+
+| 包路径 | 允许 import | 禁止 import |
+|--------|-------------|-------------|
+| `internal/server/*` | `internal/service`、`internal/conf`、kratos、`pkg/auth`、`pkg/validate` | `pkg/trpc-agent-go` / 框架运行时私有 import |
+| `internal/biz/*` | stdlib、kratos errors、本仓 biz/data API | `pkg/trpc-agent-go` / 框架运行时私有 import |
+| `internal/service/*` | `internal/biz`、`internal/team`、`internal/agent`、`internal/agent/adksvc`、`internal/provider`、`internal/tools`，以及框架 Runner/Agent 装配 API | 绕过 `internal/tools` 大量直连拼装底层 `tool` |
+| `internal/agent/*`（含 `adksvc`） | `internal/biz`、`internal/provider`、`internal/data/...`（如需）、`pkg/trpc-agent-go` / 框架运行时 | — |
+| `internal/team/*` | `internal/biz`、`internal/agent`、`internal/provider`、`internal/tools`、`pkg/trpc-agent-go` / 框架运行时 | — |
+| `internal/provider/*` | `internal/biz`、`pkg/trpc-agent-go` / 框架 `model` 适配 | — |
+| `internal/tools/*` | `internal/biz`、框架 `tool` API（由 `pkg/trpc-agent-go` 暴露或兼容层 re-export） | — |
 
 ---
 
@@ -82,6 +104,8 @@ func (s *ChatService) SendChatMessage(ctx context.Context, req *chatv1.SendChatM
     // 5. runner.Run → 事件流 → 投影为 proto 响应
 }
 ```
+
+**桥接约定**：`internal/service` 内 Kratos service 在方法中构造框架 `Runner`，将 RPC/HTTP 请求译为会话执行入口，将会话事件流投影为 unary 或 SSE。**不在 `internal/server` 或 `internal/biz` 中直接使用框架运行时。**
 
 ### 2.2 Biz 层——领域核心
 
@@ -278,6 +302,13 @@ func (m TurnMount) Attach(ctx context.Context, ag biz.Agent, userQuery string,
 3. **`load_memory`/`preload_memory`**：行为必须与实际后端一致，后端未就绪时不在 prompt 中宣称
 4. **记忆写入**：经 broker/async 异步写，不在 plugin 回调中直接写库
 
+### 3.7 Provider 集成约定
+
+- **`internal/provider`** 承载厂商连接与模型的初始化、解析与调用——目录/Biz 侧 `provider_type` / `api_base_url` / `api_key` / 模型名的合并、`Registry.Resolve` 绑定具体后端、HTTP 传输、以及实现 `pkg/trpc-agent-go` 所定义之 `model.LLM` 的 `GenerateContent`（含流式）
+- **契约对齐**：对模型的入参/出参形态以 `pkg/trpc-agent-go/model` 为准；不要在业务包中平行维护另一套「驱动接口」或重复的厂商 HTTP 客户端
+- **业务集成**：凡与调用大模型相关的业务能力（选厂商、走补全/流式、聚合用量与文本解析等），优先在 `internal/provider` 及其子包内收口实现；`internal/agent`、`internal/team`、`internal/service` 等仅保留编排、proto/会话消息与 `LLMRequest` 之间的必要适配
+- **新增厂商**：通过扩展 `Registry` 注册工厂、在子包中实现 `model.LLM`，并保持与现有 `CatalogClient`、`MergeCatalogIntoRequest` 等辅助方法一致
+
 ---
 
 ## 第四章：Proto 与 API 规范
@@ -310,6 +341,46 @@ make config  # 仅改 conf.proto 时
 - [ ] `internal/server`：`Register*HTTPServer`，无非 proto 手写业务路由
 - [ ] `web/src/services/index.ts`：导出 `createXXXService`
 - [ ] Wire 已更新，`go build ./cmd/admin` 通过
+
+### 4.4 迁移与迭代硬约束
+
+**协议（`api/**/*.proto`）**：
+
+1. 对外能力必须在 Proto 中印全：同一业务的 service 应列出该域在 `/v1/...` 暴露的全部 RPC，并配以 `google.api.http`。禁止「一半在 proto，一半用手写 srv.Route / HandleFunc / HandlePrefix / 独立 *_route.go」
+2. 修改 `.proto` 必须跑生成：根目录 `make api`，提交 `*.pb.go`、`*_http.pb.go`、`*_grpc.pb.go` 与 `web/src/services`。禁止只改契约不重生
+
+**持久化（`internal/data`）**：
+
+1. SQLite 侧以 `*ent.Client` 为主入口：经 `NewData` 打开的 `Ent()`，Repo 持有 `*data.Data`。禁止在 `NewData` 里再 `sql.Open` 同一 DSN 并联池化 SQLite
+2. 表结构进 Ent：`internal/data/ent/schema` 声明实体；禁止长期平行维护「仅存 SQL、不进 Ent」而无说明
+3. 复杂 WHERE / BLOB：优先 `predicate` + `dialect/sql`（如 `ExprP`、`And/Or`），避免整页复制裸露 SQL 与 Ent 分叉
+
+**HTTP / gRPC 挂载（`internal/server`）**：
+
+1. 业务模块 HTTP 只做 `Register<Module>HTTPServer(srv, svc)`，gRPC 只做 `Register<Module>ServiceServer`。禁止在同一业务域叠加未写入 proto 的手写路由
+2. 横切路由（健康检查、网关、探测等）单独列出，不充当业务 `FooService` 的补丁契约
+
+### 4.5 横切与运维边界
+
+- **`GET /healthz`**：在 `cmd/admin` 挂载，响应 `{"status":"ok"}`；常与鉴权的 `noAuthPaths` 放行配合探针
+- **`LEGACY_REST_ORIGIN`**：上游根 URL（无尾部 `/`）。`chat_legacy_forward` 将 `/v1/chat/messages` 反向代理到 `{origin}` + 遗留路径推导值；`internal/cronrunner` 到期任务 POST `{origin}` + 遗留 Messages 路径。未设置：`/v1/chat/*` 可能 503
+- **`CRON_RUNNER_INTERVAL`**：Cron tick，`time.ParseDuration`；空或非法默认 `1m`
+- **`CRON_RUNNER_DISABLED`**：设为 `1` 则不启动 `internal/cronrunner`
+
+### 4.6 用量上报与双写
+
+**HTTP**：`POST /v1/usage/token-events`，请求体为完整 `TokenUsageEvent`。`ctx.Bind` 使用 `encoding/json` 标签，字段名为 snake_case。
+
+**前端注意**：`protoc-gen-typescript-http` 生成的默认体可能对嵌套消息用 `JSON.stringify` 产出 camelCase 键，与 Go `json` 标签不一致，导致静默丢字段或校验失败。此类接口应在 `features/<域>/api.ts` 中用 `kratosApi.post` 等显式构造 snake_case。
+
+**单一写入方（避免重复计数）**：
+
+| 场景 | 说明 |
+|------|------|
+| 常见风险 | 对话完成已由后端写入 `model_token_usage_events` 时，若在浏览器 `onDone` / SSE 结束再 POST，会对同一轮交互重复插入 |
+| 目标态 | 仅服务端在同一请求路径写入用量时，浏览器不应再报同一事件 |
+| 例外 | 仅当服务端确认从不写入且不重叠会话/id 时，才可单独浏览器上报；须在 PR 写明 |
+| 过渡 | 若须二选一并行，应有 feature flag，默认只开一侧。禁止在未知后端是否已写时默认开启浏览器 ingest |
 
 ---
 
@@ -460,9 +531,121 @@ Component                ← 展示：props in / emits out
 2. 统一使用 `requestHandler`，不另建 axios 实例
 3. 后端根地址统一用 `getBackendOrigin()`
 
+### 7.4 前端迭代节奏
+
+对每个业务域建议使用同一节奏（可拆分 PR）：
+1. **API 层**：`services/index.ts` → `features/<域>/api.ts`
+2. **状态层**：Store actions 触发请求，Composable 封装
+3. **页面层**：Page 瘦路由 + 布局，展示组件 `defineProps` + `defineEmits`
+4. **组件化**：重复 UI 抽到 `components/<域>/`
+5. **不写裸路径**：所有 `/v1/...` 走 `createXxxService`
+
+### 7.5 展示组件速记
+
+**MUST**：新 HTTP 在 `features/<domain>/api.ts`；经 `services/index` 的 `createFooService` + `requestHandler` 访问 `/v1/...`；触发请求仅在 Pinia actions；展示组件 `defineProps` + `defineEmits`；新 store `stores/<domain>/` 具名导出。
+
+**MUST NOT**（展示组件）：`useXxxStore`/`defineStore`/`storeToRefs`（非白名单容器）；`features/*/api` / `services` 入口 / `axios` / `kratosApi` / `create*Service()` 用于远程读写；`watch`+fetch+ref 承载跨组件业务数据。
+
 ---
 
-## 第八章：AI 编码自检清单
+## 第八章：UI · UX 执行规范
+
+> 本章整合自 `AI-全栈新功能开发规范.md` 第四部分。数值与 token 为实现权威，不要用「相近」色替代。
+
+### 8.1 强制自检
+
+| 检查项 | 要求 |
+|--------|------|
+| 玻璃材质 | 半透明 + `backdrop-filter` / `-webkit-backdrop-filter`，blur 一般 12–24px，移动端 8–12px |
+| 边框 | 半透明；禁止纯黑或纯白硬边作玻璃边框 |
+| 阴影 | 日间优先不靠重 `box-shadow`，用厚度与边框；夜间用微弱光晕 |
+| 昼夜结构 | 间距·圆角·字体阶梯不变，只换语义色与材质参数 |
+| 日间锚点 | 金盏花 `#E9A23B`（悬 `#D48C1A`）贯穿主按钮、链接、`:focus-visible`、表单聚焦边；禁用日间以青紫霓虹为默认强调 |
+| 夜间霓虹 | `#00E5FF`、`#A855F7` 仅占交互焦点与小面积强调渐变，禁用铺满；日间不得将它们作默认强调 |
+
+### 8.2 CSS 变量 Token
+
+**实现路径**：`web/src/css/theme/_css-vars-light.sass`（`:root`）、`_css-vars-dark.sass`（`body.body--dark`）；聚合入口 `web/src/css/app-theme.sass`。页面与组件取值用 `var(--*)`，一般不硬编码 hex。
+
+**日间核心 Token**：
+
+| Token | 值 | 用途 |
+|-------|-----|------|
+| `--canvas-base` | `#FEFBF4` | 主画布 |
+| `--glass-surface` | `rgba(255,253,245,0.65)` | 标准玻璃 |
+| `--glass-blur-default` | `18px` | 与 surface 配对 |
+| `--glass-border` | `rgba(235,220,200,0.7)` | 边框 |
+| `--glass-elevated` | `rgba(255,255,255,0.72)` | 弹层 |
+| `--color-accent` | `#E9A23B` | 主操作 |
+| `--color-accent-hover` | `#D48C1A` | 主操作悬 |
+| `--color-text-primary` | `#3A322C` | 正文 |
+| `--color-text-secondary` | `#8B7A6B` | 辅文案 |
+
+**夜间核心 Token**：
+
+| Token | 值 | 用途 |
+|-------|-----|------|
+| `--canvas-base` | `#090D14` | 画布 |
+| `--glass-surface` | `rgba(18,24,34,0.65)` | 玻璃 |
+| `--glass-border` | `rgba(255,255,255,0.08)` | 边框 |
+| `--color-accent` | `#00E5FF` | 霓虹主强调 |
+| `--color-neon-cyan` | `#00E5FF` | 焦点/链接 |
+| `--color-neon-violet` | `#A855F7` | 二级渐变 |
+| `--color-text-primary` | `#EBEBF0` | — |
+
+**最小玻璃片段**：
+
+```css
+background: var(--glass-surface);
+backdrop-filter: blur(var(--glass-blur-default));
+-webkit-backdrop-filter: blur(var(--glass-blur-default));
+```
+
+### 8.3 样式工程规则
+
+| 层级 | 路径 | 职责 |
+|------|------|------|
+| 构建常量 | `web/src/css/quasar-variables.sass` | `$primary` 等；不随 Dark 重算 |
+| Token | `app-theme.sass` → `theme/*` | CSS 变量 |
+| 全局类 | `app-global.sass` | 字体、shell、页面 class |
+| 入口链 | `style.sass` → `css/style.sass` | 构建 `css: ['style.sass']` |
+
+1. 新 token → `_css-vars-*.sass` 或新 partial 并由 `app-theme` 聚合
+2. 新页面/布局 class → `app-global`
+3. 主强调、链接、焦点以 `--color-accent`；`$primary` 仅兼容默认 Quasar；禁止运行时改 `quasar-variables`
+4. Token 增殖仅在 `theme/` 扩充；勿并行第二全局 CSS 入口
+
+### 8.4 组件数值
+
+**按钮**：昼主 `#E9A23B` 字白圆角 10px；昼次透明字 `#3A322C`；夜主 `rgba(0,229,255,0.15)` 霓虹边字 cyan。
+
+**卡片**：昼玻璃 `rgba(255,253,245,0.65)`+blur18 无重阴影；夜 `rgba(18,24,34,0.65)`+blur+webkit。
+
+**对话框**：`background: var(--glass-elevated)`；`backdrop-filter` + `-webkit-backdrop-filter` 用 `blur(var(--glass-blur-elevated))`；边 `var(--glass-border)`；圆角 20–24px；主 CTA 用 `var(--color-accent)`。
+
+**输入**：昼实体 `#fff` 底边 `#D0C0A8` 聚焦 `#E9A23B`；夜深透+白边渐变聚焦青；圆角 12–16px。
+
+**导航**：昼奶色半透明+blur；夜 `rgba(9,13,20,0.7)` blur 20。
+
+### 8.5 布局与排版
+
+间距刻度：`4,8,12,16,20,24,32,48,64` px。圆角：控件 5–8；卡片/面板 16–20；大模块 28–36；胶囊 56–980；圆 50%。层级不靠重阴影，靠不透明、blur、边亮与昼夜焦点策略。
+
+展示字体：`SF Pro Display, Inter Tight, Helvetica Neue, sans-serif`。正文：`SF Pro Text, Inter, Helvetica Neue, sans-serif`。
+
+### 8.6 Do / Don't
+
+**Do**：全昼夜磨砂玻璃；昼奶油 rgba255,253,245系；夜深透+弱光；强调仅锚点。
+
+**Don't**：昼大白硬块铺满；层级靠堆砌阴影；同层混搭实体与玻璃；玻璃上大纯色块挡内容；移动端忽略 blur 降级。
+
+### 8.7 响应式
+
+断点遵从项目全局。移动端 blur 8–12px，动效降级。
+
+---
+
+## 第九章：AI 编码自检清单
 
 每次代码改动前，AI 必须逐项确认：
 
@@ -490,17 +673,25 @@ Component                ← 展示：props in / emits out
 - [ ] 无红线违反
 - [ ] 新增能力两处生效（Chat + Team 共用装配路径）
 
+### 全链路合并检查
+
+- [ ] `api/**/*.proto` 覆盖本迭代全部 `/v1` 能力，`make api`，Go + TS 已提交
+- [ ] `internal/biz` / data / service / server 合规；Wire + `go build ./cmd/admin`
+- [ ] `web/src/services/index.ts` `createXXXService`
+- [ ] `features/<域>/api` + Pinia，展示组件门禁，浮层 `emit` 链闭环
+- [ ] UX：玻璃双前缀、变量 token、组件数值/Do-Don't；深浅色自检
+- [ ] `LEGACY_*` / 用量 ingest：按需阅读并声明
+
+若需求违反本文硬性分层（例如必须在叶子组件打点请求），须在 PR 写明例外、边界、偿还计划，否则评审可拒。
+
 ---
 
 ## 附录 A：关键文件索引
 
 | 文件 | 用途 |
 |------|------|
-| `docs/AGENT_RUNTIME_BOUNDARY.md` | Kratos 与 tRPC-Agent-Go 运行时边界 |
-| `docs/AGENT_SKILLS_TOOLS_MCP_MEMORY.md` | Skill/Tools/MCP/记忆运行时详解 |
-| `docs/guides/AI-全栈新功能开发规范.md` | 全栈开发规范（含前端） |
-| `docs/guides/接口与数据库开发规范.md` | 接口与数据库规范 |
-| `docs/design/platform-architecture.md` | 平台架构设计 |
+| `docs/需求/` | 全部需求设计文档（权威源） |
+| `docs/guides/AI-DEVELOPMENT-SPECIFICATION.md` | 本文档：AI 开发规范 |
 | `.cursor/rules/trpc-agent-framework-first.mdc` | 框架优先规则 |
 
 ## 附录 B：Wire 注入模板
@@ -567,3 +758,52 @@ func (Xxx) Indexes() []ent.Index {
     }
 }
 ```
+
+## 第十章：平台目标架构原则
+
+> 本章整合自 `architecture/platform-architecture.md` 第三篇，描述 Aranea 的目标态架构设计原则。所有新模块、PR、专题文档若与之冲突，必须在本章登记例外或修正本章。
+
+### 9.1 设计原则（判定基准）
+
+1. **限界上下文（Bounded Context）**：按业务概念切分，不按技术层切分。Context 内部允许丰富，Context 之间只能通过端口、命令、事件、查询协作
+2. **端口与适配器（Hexagonal）**：每个 Context 对外只暴露端口（Port），所有实现细节是适配器（Adapter）——HTTP、CLI、SQLite、tRPC-Agent-Go、LLM SDK、向量库等都是"被适配"的
+3. **接口清晰（四要素显式）**：模块边界（哪个 Context）、调用协议（命令/查询/事件签名）、数据格式（领域类型 + JSON schema）、依赖方向（谁依赖谁），四者必须写进 `ports/` 包并在文档中固化
+4. **不变与变化分离**：协议、领域类型、事件信封、能力契约属于不变层；后端实现、运行时、SDK、UI 属于变化层
+5. **单一职责**：一个包只解决一类技术问题；一个 Context 只解决一类业务问题
+6. **共享内核最小化**：内核只放所有 Context 都依赖且长期稳定的内容（ID、时间、错误、事件信封、运行上下文、Module 接口），绝不放业务策略与领域逻辑
+7. **依赖方向单向收敛**：`adapter → context → kernel`、`runtime adapter → context.port`，绝不反向
+8. **可观测优先**：tracing、结构化事件、SSE、审计、用量从 Day 1 起即作为架构约束而非补丁
+9. **可裁剪部署**：通过 launcher 装配不同 Context 子集，业务代码不感知 launcher
+
+### 9.2 六大限界上下文
+
+| Context | 核心领域 | 包含 |
+|---------|---------|------|
+| **Identity** | 用户与权限 | user、team、workspace、role |
+| **Catalog** | Agent 目录 | agent、evolution、prompt |
+| **Capability** | 能力管理 | tool、skill、mcp/plugin、hook |
+| **Conversation** | 会话与编排 | session、message、channel、team-run |
+| **Memory** | 记忆系统 | L0~L4、recall、decay |
+| **Operations** | 运维与调度 | cron、monitor、audit、budget |
+
+每个 Context 对内：domain · application · ports · 内部组件；对外：仅 ports（命令/查询/事件/能力契约）。
+
+### 9.3 能力执行链
+
+Capability 的运行时调用必须经 `application → executor → middleware → backends`，**禁止**跳过 executor。
+
+### 9.4 跨 Context 协作规则
+
+- 跨 Context 协作只走 `kernel/contracts/`
+- `<context>/domain` 与 `<context>/application` 不允许 import 其它 Context
+- Kernel 准入条件：≥3 Context 实现/消费 + 已稳定 ≥2 个 PR 周期
+
+### 9.5 SQL 归属
+
+表前缀必须等于 Context 名（`identity_*` / `catalog_*` / `capability_*` / `conversation_*` / `memory_*` / `operations_*`），SQL 仅在 `<context>/adapters/sqlite/**` 出现。
+
+### 9.6 迁移原则
+
+- 按映射表一行 = 一个 PR
+- 违反红线立即停手
+- 新代码落到目标 Context 下，禁止在旧路径新增文件

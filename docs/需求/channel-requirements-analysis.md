@@ -403,8 +403,8 @@ type ChannelRuntimeConfig struct {
 | Channel 设计文档 | `docs/需求/17 channel.md` |
 | 完善计划 | `docs/plan.md` |
 | 产品需求总览 | `docs/需求/产品需求总览.md` |
-| 平台架构 | `docs/design/platform-architecture.md` |
-| Agent 运行时边界 | `docs/AGENT_RUNTIME_BOUNDARY.md` |
+| 平台架构 | `docs/architecture/platform-architecture.md` |
+| Agent 运行时边界 | `docs/architecture/runtime-boundary.md` |
 
 ### 8.3 术语对照
 

@@ -7,7 +7,7 @@ import type {
   SessionTimelineItem as KratosTimelineItem,
   SessionTimelineSummary as KratosTimelineSummary
 } from "../../services/kratos/session/v1/index";
-import { asRecord, pickStr } from "../memory/wireJson";
+import { asRecord, pickStr } from "../../shared/wireJson";
 import type { Message } from "../chat/types";
 
 const sessionApi = createSessionService();

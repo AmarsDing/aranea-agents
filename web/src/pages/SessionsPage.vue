@@ -43,7 +43,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
-import { archiveSession, getSession, searchSessions, type Session } from "../features/chat/api";
+import { archiveSession, getSession, searchSessions, type Session } from "../features/session/api";
 import SessionsErrorBanner from "../components/sessions/SessionsErrorBanner.vue";
 import SessionsFilterBar from "../components/sessions/SessionsFilterBar.vue";
 import SessionsPageHero from "../components/sessions/SessionsPageHero.vue";

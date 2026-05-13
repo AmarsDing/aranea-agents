@@ -1,6 +1,6 @@
 # Skill 模块结构设计（对齐本仓库与平台架构）
 
-本文档描述 **aranea-agents** 仓库中 Skill 能力的**现状基线**、**目标形态**与**演进路径**。产品交互与 API 字段细节以 [`20 skill.md`](./20%20skill.md) 为准；平台分层、Context 边界与 ADK 集成红线以 [`design/platform-architecture.md`](../design/platform-architecture.md) 为准。
+本文档描述 **aranea-agents** 仓库中 Skill 能力的**现状基线**、**目标形态**与**演进路径**。产品交互与 API 字段细节以 [`20 skill.md`](./20%20skill.md) 为准；平台分层、Context 边界与 ADK 集成红线以 [`architecture/platform-architecture.md`](../architecture/platform-architecture.md) 为准。
 
 ---
 
@@ -19,7 +19,7 @@
 ## 一、概念边界（与平台架构一致）
 
 - Skill 归属 **Capability Context**（与 Tool / MCP / Provider 并列），详见 `platform-architecture.md` 第一篇 §4、第三篇 §6「skill_bridge」示意。
-- **跨 Context 规则**：Catalog / Conversation 只能通过 **`kernel/contracts`**（未来端口）查询 Skill 视图；按 [`platform-architecture.md`](../design/platform-architecture.md) **目标态**，**禁止**在非专用运行时适配包内 import `google.golang.org/adk`（当前仓库仍存在历史调用点如 `internal/tools/catalog`，迁移时应收敛）。
+- **跨 Context 规则**：Catalog / Conversation 只能通过 **`kernel/contracts`**（未来端口）查询 Skill 视图；按 [`platform-architecture.md`](../architecture/platform-architecture.md) **目标态**，**禁止**在非专用运行时适配包内 import `google.golang.org/adk`（当前仓库仍存在历史调用点如 `internal/tools/catalog`，迁移时应收敛）。
 - **依赖方向（目标态）**：`proto → internal/service → internal/biz → internal/data`；导入等特殊路由可走同一服务的 HTTP 挂载，但业务逻辑应落在 **biz**，持久化在 **data**。
 - Skill **默认不执行副作用**；需要读写文件、调用外部 API 时走 **Tool** 或显式「SkillAction」类扩展（若引入）。
 

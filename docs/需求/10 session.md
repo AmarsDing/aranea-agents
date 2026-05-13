@@ -1470,3 +1470,116 @@ export const useSessionStore = defineStore("sessions", {
 8. **框架对齐优先**：先查 trpc-agent-go 框架 API 再实现，不在 biz 重写运行时；`runner_snapshot_json` 是 Runner 状态的唯一持久化格式。
 9. **分层铁律不可违反**：`internal/biz` 不得 import `pkg/trpc-agent-go`；框架运行时交互只在 `internal/service` 和 `internal/agent` 层进行。
 10. **错误处理统一**：biz 层使用 `kerrors.BadRequest`/`kerrors.NotFound`/`kerrors.InternalServer`，不用 `fmt.Errorf` 或 `errors.New`。
+
+---
+
+## 11. 会话上下文压缩
+
+> 本节整合自 `architecture/session-context-compression.md`，描述长会话如何用 LLM 生成可复用的压缩摘要，并在后续轮次仅向模型注入摘要 + 近期原文以降低 token 的行为契约与实现落点。
+
+### 11.1 问题与目标
+
+**问题**：单会话消息与 Runner 事件随轮次增长，反复把完整历史送入模型导致 prompt token 线性增长、成本与延迟上升，更易触碰上下文上限。
+
+**目标**：
+
+1. 当历史达到一定规模，将一段可追溯的对话区间交给「压缩模型」梳理为结构化摘要，要求不遗漏对后续决策关键的事实。
+2. 后续用户继续对话时，模型侧上下文改为：**压缩摘要 + 最近若干轮原文 + 本轮输入**。
+3. **账本不变**：`messages`（及必要的 trace）仍保留完整原文；压缩改变的是**送入模型的装配结果**，默认不物理删除历史消息。
+
+**非目标**：不替代 L3/L4 长期记忆检索；不把「压缩」作为唯一降耗手段；首版不要求用户编辑摘要正文。
+
+### 11.2 核心概念
+
+| 术语 | 含义 |
+|------|------|
+| 滚动摘要（Rolling Summary） | 覆盖区间 `[from_turn, to_turn]` 的 Markdown 文本，存于 `session_summaries` |
+| 当前有效摘要（Active Summary） | 某 session 在装配时刻用于头部的摘要集合 |
+| 滑动窗口（Tail） | 摘要区间之后、尚未被摘要覆盖的最近 K 轮或最近 T tokens 的原始对话 |
+| 压缩模型（Compressor Model） | 执行摘要生成的 LLM 调用；可与对话模型同厂商或降级为更小规格 |
+
+### 11.3 触发条件
+
+建议可组合配置（Agent / Team / Session 级覆盖），默认启用「soft + hard」双层：
+
+| 策略 | 条件 | 说明 |
+|------|------|------|
+| 比例触发 | `context_used_ratio ≥ summary_threshold` | 与现有 `sessions.context_*` 字段对齐 |
+| 轮次触发 | 自上次摘要以来新增 `Δturn ≥ compress_every_n_turns` | 防窗口很大但比例尚未告警时长对话不摘要 |
+| Token 估算触发 | 未摘要前缀估算 token ≥ `compress_prefix_token_budget` | 与滑动窗口预算联动 |
+| 手动触发 | UI「生成会话摘要」或 API | 便于调试与关键节点强制固化 |
+
+**防抖**：同一 session 短时间窗口内（如 5～10 分钟）最多触发 N 次摘要任务。
+
+**并发**：若上一轮摘要尚未完成，后续触发应合并区间或排队，避免交错写入两条重叠 `from_turn/to_turn`。
+
+### 11.4 压缩任务的输入与输出
+
+**输入（发给压缩模型）**：对选定区间，序列化可追溯的对话——角色与时间序、工具调用（工具名、参数摘要、结果摘要或截断后的关键字段）、锚点（session_id、区间、上轮摘要）。
+
+**输出（摘要 schema）**——推荐固定章节：
+
+1. 用户意图与目标
+2. 已确认事实 / 结论（含数字、版本、路径、API 名等硬信息）
+3. 约束与偏好（语言、风格、禁止项）
+4. 未完成事项 / 待澄清问题
+5. 重要工具结果摘录（表格或列表）
+6. 术语与别名
+
+输出写入 `session_summaries.summary_markdown`，并填写 `from_turn`、`to_turn`、`token_estimate`、`created_at`。可同时更新 `sessions.summary` 为列表页/会话卡片用的一句话摘要。
+
+**提示词原则**：明确后续对话仅能看到本摘要 + 最近几轮，要求在无损前提下最大化密度；不得编造；保留可执行细节。
+
+### 11.5 后续轮次装配顺序
+
+在单次模型调用前，L0 装配器按段拼装：
+
+1. 系统 / 开发者固定段（SOUL、策略等）
+2. **`session_summaries` 合并摘要**（标记 `source: session_summaries:<id>`）
+3. L1 工作记忆字段（若有）
+4. **滑动窗口内原始 messages**（摘要区间之后）
+5. L3/L4 检索段（若有）
+6. 本轮 user 输入
+
+被摘要覆盖的旧消息不再重复进入 prompt，但仍可从 DB 读取用于 UI 与合规。
+
+### 11.6 多条 session_summaries 合并策略
+
+- **A. 区间链式（首版推荐）**：保留多条记录，装配时按 `from_turn` 排序拼接为一块「历史摘要」文本。逻辑清晰且易于回放；metadata 中记录 `supersedes_id` 以备迁移。
+- **B. 单条滚动（二期演进）**：每次压缩后把旧摘要 + 新区间对话一并输入，产出一条覆盖 `[0, current_to]` 的新摘要并 supersede 旧指针。token 更省，单次成本高。
+
+### 11.7 与 ADK 会话持久态的关系
+
+| 方案 | 做法 | 优点 | 风险 |
+|------|------|------|------|
+| **装配层优先（首版推荐）** | 不改变 `runner_snapshot_json` 内全量事件；仅在构造发往 LLM 的 messages 时应用摘要 + tail | 实现集中、可逆、与现有 messages 账本一致 | ADK 内部若独立推算上下文，需确认走同一装配入口 |
+| 快照裁剪（可选） | 在摘要固化后，对 snapshot 中早于 `to_turn` 的模型事件做归档或删除 | 持久态更小 | 回放 Runner 历史不完整，需额外归档存储 |
+
+### 11.8 一致性、失败与重试
+
+- **幂等键**：`(session_id, from_turn, to_turn, prompt_hash)`；重复任务返回已有记录。
+- **失败**：摘要失败时不阻断用户发消息；回退为「仅滑动窗口截断」并打 `context_status`/告警日志。
+- **观测**：写入 `memory_l0_assembly_snapshots` 中的 `summarized_turn_from/to`、`summary_token_estimate`、`segments_json` 段来源。
+
+### 11.9 Team 会话
+
+- **隔离**：每个子 Agent 应有独立的摘要区间与 `session_summaries` 维度，避免 Host 与子 Agent 上下文串扰。
+- **Host 摘要**：可仅摘要「路由级」对话；专家会话单独滚动摘要。
+
+### 11.10 API / 配置 / UX
+
+| 层次 | 建议 |
+|------|------|
+| 配置 | 扩展 `agent_runtime_settings`：`summary_threshold`、`compress_every_n_turns`、`recent_window_turns`、`recent_window_tokens`、`compressor_model_profile`；另设 `l0_compress_provider` / `l0_compress_model`（可选），指定专用压缩调用 |
+| API | `SummaryService.SummarizeRange(session_id, from, to)` |
+| UI | 会话详情展示「已摘要至第 N 轮」标签；可选展示摘要正文（只读）；手动触发按钮 |
+
+### 11.11 落地里程碑
+
+1. **M1**：实现 `SummarizeRange`，写入 `session_summaries`；L0 装配器读取并注入 summary 段；集成测试覆盖「摘要 + tail」token 低于「全量」。
+2. **M2**：与 `context_used_ratio` / 轮次策略联动自动触发；观测写入 assembly snapshot。
+3. **M3**：Team 维度与手动触发 / UI；可选迁移到单条滚动摘要策略 B。
+
+---
+
+*文档版本：2.1 — 整合会话上下文压缩设计（原 architecture/session-context-compression.md）。*

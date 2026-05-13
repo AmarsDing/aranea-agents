@@ -794,4 +794,43 @@ AI 炼化用于将一个冲突组中的相似 Skill 合并成一份新草稿。*
 
 ---
 
-*文档版本：3.1 — 明确上传 Skill 的目录存储、严格规范校验、名称重复程序检查、模型相似度检查、20% 炼化阈值，以及按冲突组触发炼化的交互与 API。*
+## 11. 运行时实现与演进方向
+
+> 本节整合自 `architecture/agent-skills-tools-mcp-memory.md` 与 `architecture/trpc-agent-go-implementation-plan.md`，描述 Skill 在 Agent 运行时的装配机制与后续演进方向。
+
+### 11.1 运行时加载机制
+
+Skill 在运行时通过 **ToolSet**（而非单独 `Tools` 切片）挂载到 `llmagent`，来源是启用且已发布的 Skill + 运行时策略与用户 query 收窄。
+
+| 环节 | 位置 | 行为 |
+|------|------|------|
+| 列举候选 | `biz.SkillUsecase` | `ListEnabledPublishedSkillCandidates` 提供 slug、标签、taxonomy 等路由元数据 |
+| 运行时策略 | `ag.Settings.SkillRuntimeJSON` | `biz.ParseSkillRuntimePolicy` → allow/deny、标签、intent 路由开关、`MaxSkillsInToolset` |
+| 按需收窄 | `skillrouter` | 用户首轮 `content` 作 query：意图路径检测、关键词与 taxonomy 打分，截取前 N 个 skill |
+| 物理根路径 | `internal/pkg/skillstorage` | `SKILL_ROOT` / `SKILL_STORAGE_ROOT` 优先；否则结合系统设置 `RootDirectory`，或 OS 默认目录 |
+| 子树 FS | `skillruntime.NewEnabledSkillsRootFS` | 仅在根下暴露允许的 `{slug}/` 目录，防路径穿越 |
+| 框架装配 | `skilltoolset.New` | `NewSkillToolsetFromFS` 将只读 FS 交给 Skill 源码读取 |
+
+**调用点**：单 Agent / Team 均通过 `tools.TurnMount.Attach`（`internal/tools/turn_mount.go`）统一挂载。Team `BuildWorkflowRoot` 对**每个成员**分别调用挂载，每个成员使用**自己的** `SkillRuntimeJSON` 和生效工具集。用户首轮 `content` 作为 Skill 路由 query 在成员之间共享。
+
+### 11.2 装配顺序
+
+`TurnMount.Attach` 按以下顺序装配：
+
+1. **Builtin Tools**（`ADKToolsForAgentPolicy`）
+2. **Skill Toolsets**（`skillruntime.AppendEnabledPublishedSkillToolsets`）
+3. **MCP Toolsets**（`mcpmount.AppendEffectiveMCPServerToolsets`）
+
+新增工具类型必须通过 `TurnMount.Attach` 挂载，不另开装配路径。Chat 和 Team 共用同一 `TurnMount` 逻辑。
+
+### 11.3 演进方向
+
+| 方向 | 现状与问题 | 建议 |
+|------|------------|------|
+| Team 与 Skill 路由 | Team 仅用首位成员的 `SkillRuntimeJSON` + 用户 query 生成共享 Toolsets，其余成员共用同一 Skill 挂载 | 产品上若需要「成员 A 挂载写作 skill、成员 B 挂载检索 skill」，应在 builder 层按成员拆分或复制 Toolsets；或在团队定义中显式 `skill_profile` |
+| 装配收口 | `internal/tools/catalog/assemble.go` 中的 `SkillsFS` 是另一种装配入口，与主聊天路径的 `AppendEnabledPublishedSkillToolsets` 并列存在 | 评估是否让 `internal/tools/catalog.Options.Build` 成为 chat/team 唯一 skill+MCP+builtin 装配入口，减少分叉 |
+| 配置来源统一 | Skill 根路径混用 env、系统设置、OS 默认 | 在 conf 或单一模块中写下优先级表与是否支持热更新 |
+
+---
+
+*文档版本：3.2 — 整合运行时装配机制与演进方向（原 architecture/agent-skills-tools-mcp-memory.md Skill 部分）。*

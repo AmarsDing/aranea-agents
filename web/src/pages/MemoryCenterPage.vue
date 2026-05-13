@@ -84,7 +84,7 @@ import MemorySessionsPanel from "../features/memory/MemorySessionsPanel.vue";
 import MemorySettingsStatusPanel from "../features/memory/MemorySettingsStatusPanel.vue";
 import MemorySnapshotDrawer from "../features/memory/MemorySnapshotDrawer.vue";
 import { listAgents, type Agent } from "../features/agents/api";
-import { searchSessions, type Session } from "../features/chat/api";
+import { searchSessions, type Session } from "../features/session/api";
 import {
   getAgentIdentity,
   getAgentStrategy,

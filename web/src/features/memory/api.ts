@@ -42,7 +42,7 @@ import type {
   MemoryFactListResult,
   MemoryRelation
 } from "./types";
-import { asRecord, mapStringFloat, pickBool, pickI32, pickNum, pickOptionalI32, pickStr, pickStrArray } from "./wireJson";
+import { asRecord, mapStringFloat, pickBool, pickI32, pickNum, pickOptionalI32, pickStr, pickStrArray } from "../../shared/wireJson";
 
 const memory = createMemoryService();
 

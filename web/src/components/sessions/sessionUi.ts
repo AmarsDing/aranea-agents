@@ -1,4 +1,4 @@
-import type { Session } from "../../features/chat/api";
+import type { Session } from "../../features/session/api";
 
 /** 列表摘要卡片（纯展示文案来源） */
 export type SessionsSummaryCard = {

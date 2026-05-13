@@ -185,4 +185,30 @@
 
 ---
 
-*文档版本：1.1 — 列表由 `QTable` 改为 **`QList` + 每项内嵌 MCP 组件**；其余同 1.0。*
+## 9. 运行时实现与演进方向
+
+> 本节整合自 `architecture/agent-skills-tools-mcp-memory.md` 与 `architecture/trpc-agent-go-implementation-plan.md`，描述 MCP 在 Agent 运行时的装配机制与后续演进方向。
+
+### 9.1 运行时装配
+
+| 层次 | 已实现 | 说明 |
+|------|--------|------|
+| 数据与 API | 是 | `mcp_server` 表（Ent）、`MCPServerService` gRPC/HTTP、增删改查与 `mcpprobe` 连通性测试 |
+| MCP 客户端 | 是（库） | MCP toolset API（随 `pkg/trpc-agent-go` 提供的 `tool`/`mcptoolset`），将远端 MCP 工具转为 `tool.Toolset` |
+| 统一装配器 | 部分 | `internal/tools/catalog/assemble.go`：若传入 `Options.MCP` 则可 `mcptoolset.New`（与本机聊天路径的 `mcpmount` 并列存在） |
+| 聊天 / Team Runner | 是 | `tools.TurnMount` + `biz.AgentMCPTooling` + `internal/tools/mcpmount`；Wire 通过 `adkdeps.NewRuntime` 注入 `AgentMCPTooling` |
+
+**关键规则**：生效工具需启用 `mcp_tool_set`（`biz.ToolKeyMCPToolSet`）。在 `agent_runtime_settings.tools_allow_json` / `tools_deny_json` 中可使用前缀 `mcp:<server_key>` 限制挂载的服务器列表；未配置任何 `mcp:` 项时仍为「所有已启用且 active 的平台服务器」。stdio 传输在 `TurnMount.Attach` 使用请求 `context` 构建子进程，便于在上层取消时结束 MCP 子进程。
+
+### 9.2 演进方向
+
+| 方向 | 现状与问题 | 建议 |
+|------|------------|------|
+| Agent 级 MCP 策略 | 仅有平台级 `MCPServer` CRUD / 探测，缺「某 Agent 可用哪些 MCP」的领域表达 | 在 biz 增加与工具策略同构的 effective MCP 策略（或由 agent/team 绑定 `server_key` + enable），由 service 在 turn 前解析为 `[]mcptoolset.Config` |
+| MCP 闭环 | `MCPServer`（enabled + config_json）→ mcptoolset → BuilderDeps.Toolsets 链路需与 session 的 `MCPCallCount` 统计打通校验 | 补齐从配置到运行时到统计的端到端验证 |
+| 超时与资源 | 上层 context 取消时，stdio MCP 子进程、长连接 HTTP MCP 的收尾是否及时 | 在 service 层设定与 LLM 超时一致的 deadline 策略；为 MCP toolset 定义 turn 级或连接级生命周期 |
+| 配置来源统一 | MCP 未来将混用 DB 行 + 环境占位 | 在 conf 或单一模块中写下优先级表与是否支持热更新 |
+
+---
+
+*文档版本：1.2 — 整合运行时装配机制与演进方向（原 architecture/agent-skills-tools-mcp-memory.md MCP 部分）。*

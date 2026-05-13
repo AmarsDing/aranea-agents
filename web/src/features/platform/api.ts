@@ -15,9 +15,9 @@ import {
   createMonitorService,
   createSkillService
 } from "../../services";
-import { kratosApi } from "../../services/axiosHandler";
 import { listAvatarAssets } from "../avatar/api";
-import { asRecord, pickBool, pickOptionalBoolDefaultTrue, pickI32, pickNum, pickStr } from "../memory/wireJson";
+import { asRecord, pickBool, pickOptionalBoolDefaultTrue, pickI32, pickNum, pickStr } from "../../shared/wireJson";
+import { createMcpServer, deleteMcpServer, listMcpServers, updateMcpServer } from "../mcp/api";
 import { listSkills } from "../skills/api";
 import type { Skill } from "../skills/types";
 import { listModelUsageEvents } from "../usage/api";
@@ -201,30 +201,6 @@ function channelWireToPlatform(raw: unknown): PlatformResource {
     agent_id: pickStr(r, "agent_id", "agentId"),
     provider: pickStr(r, "provider", "provider"),
     model: pickStr(r, "model", "model"),
-    config_json: pickStr(r, "config_json", "configJson") || "{}",
-    metadata_json: pickStr(r, "metadata_json", "metadataJson") || "{}",
-    created_at: pickStr(r, "created_at", "createdAt"),
-    updated_at: pickStr(r, "updated_at", "updatedAt"),
-    deleted_at: pickStr(r, "deleted_at", "deletedAt")
-  };
-}
-
-function mcpWireToPlatform(raw: unknown): PlatformResource {
-  const r = asRecord(raw);
-  return {
-    id: pickStr(r, "id", "id"),
-    resource: "mcp-servers",
-    key: pickStr(r, "key", "key"),
-    name: pickStr(r, "name", "name"),
-    description: pickStr(r, "description", "description"),
-    status: pickStr(r, "status", "status"),
-    enabled: pickBool(r, "enabled", "enabled"),
-    sort_order: pickI32(r, "sort_order", "sortOrder"),
-    parent_id: "",
-    level: "",
-    agent_id: "",
-    provider: "",
-    model: "",
     config_json: pickStr(r, "config_json", "configJson") || "{}",
     metadata_json: pickStr(r, "metadata_json", "metadataJson") || "{}",
     created_at: pickStr(r, "created_at", "createdAt"),
@@ -467,8 +443,7 @@ export async function listPlatformResources(resource: PlatformResourceName): Pro
       return (res.items ?? []).map((row: unknown) => channelWireToPlatform(row));
     }
     case "mcp-servers": {
-      const { data } = await kratosApi.get<{ items?: unknown[] }>("v1/mcp-servers");
-      return (data?.items ?? []).map(mcpWireToPlatform);
+      return listMcpServers();
     }
     case "skills": {
       const { items } = await listSkills({ page: 1, page_size: 500 });
@@ -560,18 +535,7 @@ export async function createPlatformResource(
       return channelWireToPlatform(row);
     }
     case "mcp-servers": {
-      const body = {
-        key: payload.key,
-        name: payload.name,
-        description: payload.description ?? "",
-        status: payload.status ?? "active",
-        enabled: payload.enabled ?? true,
-        sort_order: payload.sort_order ?? 0,
-        config_json: payload.config_json ?? "{}",
-        metadata_json: payload.metadata_json ?? "{}"
-      };
-      const { data } = await kratosApi.post<unknown>("v1/mcp-servers", body);
-      return mcpWireToPlatform(data);
+      return createMcpServer(payload);
     }
     case "skills":
       throw new Error('Create skill via Skills page or ZIP import (`features/skills/api`).');
@@ -675,17 +639,7 @@ export async function updatePlatformResource(
       return channelWireToPlatform(row);
     }
     case "mcp-servers": {
-      const o: Record<string, unknown> = {};
-      if (payload.key !== undefined) o.key = payload.key;
-      if (payload.name !== undefined) o.name = payload.name;
-      if (payload.description !== undefined) o.description = payload.description;
-      if (payload.status !== undefined) o.status = payload.status;
-      if (payload.enabled !== undefined) o.enabled = payload.enabled;
-      if (payload.sort_order !== undefined) o.sort_order = payload.sort_order;
-      if (payload.config_json !== undefined) o.config_json = payload.config_json;
-      if (payload.metadata_json !== undefined) o.metadata_json = payload.metadata_json;
-      const { data } = await kratosApi.patch<unknown>(`v1/mcp-servers/${encodeURIComponent(id)}`, o);
-      return mcpWireToPlatform(data);
+      return updateMcpServer(id, payload);
     }
     case "skills":
       throw new Error('Update skill via Skills management UI (`features/skills/api`).');
@@ -747,7 +701,7 @@ export async function deletePlatformResource(resource: PlatformResourceName, id:
       return;
     }
     case "mcp-servers": {
-      await kratosApi.delete(`v1/mcp-servers/${encodeURIComponent(id)}`);
+      await deleteMcpServer(id);
       return;
     }
     case "skills": {

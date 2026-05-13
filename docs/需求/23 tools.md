@@ -924,3 +924,140 @@ func RedactToolArgs(toolKey string, schema map[string]any, args map[string]any) 
 2. 参数敏感字段策略可配置。
 3. MCP Tool 接入与搜索。
 4. 调用统计日聚合与清理策略。
+
+---
+
+## 14. 运行时实现与演进方向
+
+> 本节整合自 `architecture/agent-skills-tools-mcp-memory.md`、`architecture/trpc-agent-go-implementation-plan.md` 与 `architecture/agent-repo-retrieval-context-engineering.md`，描述 Tools 在 Agent 运行时的装配机制、代码检索增强与后续演进方向。
+
+### 14.1 运行时工具装配
+
+| 步骤 | 位置 | 说明 |
+|------|------|------|
+| 真相源 | `AgentUsecase.GetEffectiveTools` | 返回 profile、是否启用工具、每条 `tool_key` 的 allow/deny 列表 |
+| 映射为框架 Tool | `internal/tools/tools.go` | `ToolsFromAgentEffective` → `registry.ApplyEffectiveAliases` → `registry.ADKToolsFromEnabled` |
+| 单 Agent / Team 成员 | `ADKToolsForAgentPolicy` | 在生效工具基础上，若 `SubagentsEnabled` 则追加 `spawn_subagent` |
+
+**具体工具族**：
+
+- **工作区文件**：`read_file`、`list_files`、`write_file`、`edit_file`（沙箱根由 `ARANEA_WORKSPACE_ROOT` 约束）
+- **框架内置顺序**：`exit_loop`、`web_search`、`web_fetch`、`load_artifacts`、`load_memory`、`preload_memory`
+- **宿主**：`shell_exec`
+- **子 Agent**：`spawn_subagent`（策略开启时）
+
+`BuildLLMAgent`（`internal/agent/adk_build.go`）将 `deps.Tools` 与 `deps.Toolsets` 分别传给 `llmagent.Config`，由框架统一暴露给模型。
+
+### 14.2 代码库检索与上下文工程
+
+> 本节详细内容整合自 `architecture/agent-repo-retrieval-context-engineering.md`。
+
+当前工作区 filesystem 工具仅有 `read_file` / `list_files` / `write_file` / `edit_file`，**缺少受预算约束的字面/workspace 级搜索工具**；模型只能反复列目录或直接读大文件摸索。
+
+**核心指标**：
+
+| 指标 | 含义 | 建议度量方式 |
+|------|------|----------------|
+| Precision@k（工具） | 前 k 次工具调用中，对用户最终任务有直接帮助的比例 | 固定任务脚本 + 人工或 LLM-as-judge 标注 |
+| 工具返回 token 体积 | 单次 list/search 的平均 JSON 体积 | 日志里对工具 result 长度采样 |
+| 到达结论步数 | 从首轮 user 到「可编译/通过约定测试」的 tool+assistant 轮次 | CI 评测集 |
+
+**混合检索层级**：
+
+| 层级 | 能力 | 落点 |
+|------|------|------|
+| L0 字面检索 | 子串或安全子集正则、glob、按文件名 | 缺口：P0-WS 工单 |
+| L1 Git/变更锚点 | `git status` / `diff`（可选） | 可先通过受控 `shell_exec` 或专用只读工具包装 |
+| L2 符号/LSP | 跳转到定义、引用 | 中长期：P1-SYM 工单 |
+| L3 语义/向量 | hybrid：向量候选 + 字面重排 | 长期：P2-RAG 工单 |
+
+**设计约束**：
+
+1. **沙箱**：只允许访问 `workspace.ResolvePath` 可解析的路径；禁止把绝对路径或可穿越 `..` 的原始字符串直接交给操作系统 API
+2. **输出预算**：任何「扫描类」工具必须有 `max_results`（默认 40～80）、单行/单文件 excerpt 上限、总输出字节上限
+3. **DoS**：正则搜索须限复杂度（可选用 RE2、`regexp` 编译失败即拒；或只允许 `Substring`/`FixedString` 首版）
+4. **忽略噪音**：可选实现「尊重 `.gitignore`」（若嵌入调用 `rg` 则开箱即有）
+5. **双通路一致**：若维护 OpenAI-native 回路，新增工具须同时更新 `WorkspaceOpenAISpecs`/`Invoke*` 中与 ADK 等价的契约
+6. **Catalog 一致性**：新增 `tool_key` 必须与 `biz`/`data`/`web` 对齐
+
+**分阶段实施工单**：
+
+#### P0-WS：`workspace_search` 字面检索工具
+
+**目标**：给模型一个不依赖 shell 的、默认 `max_results` 截断的工作区搜索能力（子串或可配置 regex + 可选路径 glob）。
+
+**参数**：`query`（必填）；`mode`：`substring`|`regex`；`path_prefix`（可选）；`glob`（可选文件名 glob）；`max_results`（可选 int，默认 `50`，硬顶 `500`）；`max_matches_per_file`（可选）；`context_lines`（可选，每条匹配前后行数）。
+
+**返回**：`matches`: `[{ "path","line","column","snippet" }]`，若超过预算在顶层加 `truncated: true`。
+
+**后端选型**：
+- **首推**：在只读、`PATH` 上存在 `rg` 且沙箱 cwd 定于 `workspace.Root()` 的前提下，封装一次 `rg` 调用：`--follow`、`-S`（smart case）、`-n`/`--column`、`--glob`、`--max-count`、`--max-filesize`、`--json`、硬性 wall-clock 超时（如 10～30s）
+- **必选回退**：无 `rg` 或调用失败 → `filepath.WalkDir` + 默认跳过清单 + UTF-8 文本启发式；大仓必须通过 `path_prefix` 收窄
+- **不推荐**：默认把字面检索唯一路径绑在 `shell_exec` 上调 `rg`
+
+**接入 registry**：
+- `internal/tools/registry/keys.go` 新增常量 `WorkspaceSearch = "workspace_search"`
+- `registry/adk_enabled.go`：在 `WorkspaceADKTools` 之后追加该工具
+- `builtin_tools_seed.go` 增加一行（`category: filesystem` 或 `filesystem_search`）
+- `biz/agent_effective_tools.go`：`toolProfiles` 中至少 `coding`、`research`、`full` 应包含该 key
+
+**验收**：`go test ./internal/tools/workspace_search/...`（含边界：越权路径、`max_results` 截断）；启用该工具的 Agent 在「找字符串 X」任务中，`list_files` 调用次数 ≤ 人工基线。
+
+#### P0-LF：收紧 `list_files` 输出预算
+
+新增可选参数 `max_entries`（默认 `0`=不截断，或默认 `200`）。截断时在结果中加 `truncated: true`。可选 `depth`/`sort`/`dirs_only` 按复杂度迭代。
+
+#### P0-RF：`read_file` 部分读取
+
+增加可选 `offset` + `limit` 或「按行区间」`(start_line,end_line)`，避免全文读入。与 P0-WS 的 snippet 衔接。
+
+#### P0-PROMPT：系统提示与 Runtime cue
+
+在 `RuntimeCapabilityCue` 追加短规则：有 `workspace_search` 时探索顺序 `workspace_search → read_file → edit/write`；无明确关键词才 `list_files` 且每层只列一次；禁止为用工具而用工具。
+
+#### P1-SYM：Go 符号级导航
+
+候选实现：包装 `go doc`/`go list`/`gopls query`（仅只读）；或预生成 `.json` outline。接入为独立 `tool_key`（如 `go_outline`），或作为 `workspace_search` 的特殊 `mode`。
+
+#### P1-BGIDX：工作区后台轻量索引/摘要
+
+文件级 manifest（mtime + hash + lang + LOC）存放在进程内 LRU 或 SQLite/Bolt；Watcher 可选用 fsnotify，或会话首次 `workspace_search` 时 lazy 补齐。
+
+#### P2-RAG：项目向量检索 + hybrid
+
+必须与 `docs/需求/15 memory-L3-semantic.md` 对齐，避免再造孤岛向量库。chunk 边界用目录 + exported API + 文件名；检索流程向量召回 topK → same-file 字面重排 → excerpt。
+
+#### P3-TEAM：Team 运行时黑板
+
+并行分支写入 `visibility=shared` 的 `working_memory` 字段，记录已搜索路径与已知模块，减少重复工作。
+
+**安全与守门**：
+
+- 新检索工具必须为 readonly；与 `shell_exec` 严格分离
+- 正则与时间上限防 ReDoS
+- 不在工具结果内返回二进制全文
+- WalkDir/`rg` 共用默认跳过清单：`.git`、`node_modules`、`vendor`、`dist`、`build`、`.cursor` 等；按后缀：`.exe`、`.png`、`.zip` 等
+
+**代码地图**（改哪里）：
+
+| 主题 | 路径 | 说明 |
+|------|------|------|
+| 工作区根与路径校验 | `internal/tools/workspace/sandbox.go` | 一切文件访问须落在此 sandbox 内 |
+| 工作区四类文件工具 | `internal/tools/registry/workspace.go` | `WorkspaceToolNames` 顺序即挂载顺序 |
+| Effective tools → ADK Tool | `internal/tools/tools.go` | 新 builtins 须在 platform catalog + biz policy + registry 挂载三处贯通 |
+| 运行时能力提示 | `internal/agent/prompt.go` `RuntimeCapabilityCue` | 追加探索策略 |
+| 平台工具种子 | `internal/data/builtin_tools_seed.go` | 新工具要增 `builtinPlatformToolSeeds` 行 |
+| Profile 预设 | `internal/biz/agent_effective_tools.go` | `read_only`/`coding` 等是否默认带上新检索工具 |
+
+### 14.3 演进方向
+
+| 方向 | 现状与问题 | 建议 |
+|------|------------|------|
+| 服务层「唯一桥点」一致性 | `runSingleAgentViaADK` 与 `team.Runner` 各自构造 Runner、BuilderDeps，逻辑相似但分叉维护 | 抽出面向本产品的 Runner 装配助手（位于 `internal/service`），禁止下沉到 `internal/server` |
+| Tool vs Toolset 职责 | 平台 `mcp_tool_set` 未进入 `ADKToolsFromEnabled`，模型侧「可调能力」与运营配置脱节 | 保持 builtin/tool 映射在 `internal/tools/registry`；MCP 只走 Toolset，由 effective 策略在 service 组装进 `deps.Toolsets` |
+| 回归与熔断 | 对「生效工具 + skill 子集 + MCP」缺少契约测试 | 增加录制/契约测试；对 MCP 与 runtime 报错路径统一用户可见文案 |
+| 记忆工具的业务含义 | `load_memory` / `preload_memory` 走框架默认语义，若底层仍是空/in-memory，能力名实不符 | 默认关闭直至后端就绪并在 `RuntimeCapabilityCue` 中如实描述，或 Composite SearchMemory 聚合多后端 |
+
+---
+
+*文档版本：2.1 — 整合运行时装配机制、代码检索增强与演进方向（原 architecture/agent-skills-tools-mcp-memory.md、agent-repo-retrieval-context-engineering.md Tools 部分）。*

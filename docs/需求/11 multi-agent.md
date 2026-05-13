@@ -644,6 +644,113 @@ P2：
 - Team 模板。
 - 实时 step 事件流。
 
+---
+
+## 14. 运行时实现与演进方向
+
+> 本节整合自 `architecture/agent-team-design.md`、`architecture/agent-orchestration-roadmap.md`、`architecture/agent-orchestration-total-design.md` 与 `architecture/trpc-agent-go-implementation-plan.md`，描述 Team 运行时的装配机制、编排演进方向与后续规划。
+
+### 14.1 运行时分工与装配
+
+**Kratos v2 + tRPC-Agent-Go 运行时分工**：
+
+- **Kratos v2**：HTTP/gRPC/SSE 传输、`wire` 注入、`conf.Bootstrap`、中间件。`internal/server` 禁止直接 import `pkg/trpc-agent-go`。
+- **tRPC-Agent-Go**：`runner.Runner`、`llmagent` / workflow agents、工具循环、会话事件、插件与遥测。执行入口在 `internal/service`（单 Agent）与 `internal/team`（团队工作流）。
+
+**Team 运行时装配**：
+
+| 环节 | 位置 | 行为 |
+|------|------|------|
+| Team 拓扑 | `biz.Team.DefinitionJSON` | `mode`、`members`、`synthesizer_agent_id` |
+| 构建 | `internal/team/trpc_build.go` | `BuildTRPCTeam` → 五种编排模式 |
+| 运行 | `internal/team/runner_team_trpc.go` | `agent.RunTRPCUserTurn` |
+| 工具装配 | `internal/tools/turn_mount.go` | 每个成员分别调用 `TurnMount.Attach`，使用自己的 `SkillRuntimeJSON` 和生效工具集 |
+| 事件流 | `biz.TeamRunEventBroker` | SSE 推送 run/step 事件 |
+
+**会话与 API 契约**：
+
+- **Team 会话**（`owner_type=team`）：`session.team_id` 必填；请求若带 `team_id` 须与之一致。
+- **Stream**：sequential 仅最后一员、parallel 仅合成器（或单成员无合成器）对流式输出；中间顺序成员仍用非流式请求，避免多路 SSE 交错。
+
+### 14.2 意图梳理与规划能力（未实现）
+
+**意图梳理 Pass**：在主执行链路前增加轻量 LLM 预处理 Pass，将口语化指令折叠为结构化 `IntentArtifact`。
+
+| 字段 | 说明 |
+|------|------|
+| `refined_goal` | 一句无歧义任务陈述 |
+| `intent_kind` | `code_change` \| `explain` \| `debug` \| `doc` \| `research` \| `other` |
+| `success_criteria` | 可判定「完成」的检查项 |
+| `ambiguities` | 仍需向用户确认的点；非空时走澄清分支 |
+| `search_hints` | 字面检索词或符号片段 |
+| `risk_flags` | 如 `touches_auth`、`migrations`、`prod_config` |
+| `parallel_candidates` | 可并行子任务候选 |
+
+**触发策略（可配置）**：`always`（每轮都跑）/ `heuristic`（消息长度/指代词多时触发）/ `off`（兼容旧行为）。
+
+**落点**：Team `runner_team_adk.go` 在 `genai.NewContentFromText` 之前插入；单 Agent 会话在 `SendMessage`/Runner 入口同样处理。失败时跳过，不阻塞主路径。
+
+**规划契约**：将 `IntentArtifact` 注入主执行上下文后，强制模型先列出 3～7 条可验证步骤，每条带可验证动作。注入方式：User 包装块或 System 增补。
+
+**Planner 集成**：集成 trpc-agent-go 的 `planner.ReActPlanner`，为 Agent 添加「先规划再执行」能力。落点：新建 `internal/agent/planner.go`。
+
+### 14.3 并行委派与多 Agent 协作（未实现/部分实现）
+
+**自动并行委派**：新增轻量 Planner 消费 `IntentArtifact`，输出 `parallel_candidates`，由 Runner 校验后调用已有 Team 并行拓扑。
+
+- **允许并行**：多路只读 `workspace_search`/`read_file` 且路径不交叠；多包独立 `go test`；不同成员负责不同子问题。
+- **禁止并行**：多 Writer 同时 `edit_file` 同一文件；同一资源迁移未加锁；`shell_exec` 高危与文件写交错。
+
+**Team 运行时黑板**：并行分支写入 `visibility=shared` 的 `working_memory` 字段，记录已搜索路径与已知模块，减少重复工作。
+
+**Team 成员 Skill 独立策略**：在 `builder` 层按成员拆分或复制 `Toolsets`，或在团队定义中显式 `skill_profile`，实现「成员 A 挂载写作 skill、成员 B 挂载检索 skill」。
+
+### 14.4 Graph 工作流（未实现）
+
+集成 trpc-agent-go `graph.StateGraph`，支持节点/边/条件路由、HITL（中断/恢复）、检查点、时间旅行、子图。两种执行引擎：BSP（默认）/ DAG。
+
+落点：新建 `internal/graph/builder.go` + `api/kratos/graph/v1/` proto 定义。
+
+### 14.5 编排模式与思考框架
+
+| 模式 | 适用 | 要点 |
+|------|------|------|
+| ReAct | 工具密集 | LLM → Tool → Observation 至结束；超时/重试在 Kratos/biz 策略化 |
+| Plan-and-Execute | 长任务、解释性、HITL | 计划可持久化于 biz/表；每步内可 ReAct；失败可局部重规划 |
+| Human-in-the-Loop | 暂停/恢复/人工提交 | 在 biz 与表中表达；可与框架 `EndInvocation`/会话衔接；高风险意图可触发 UI 确认 |
+
+### 14.6 协议与生态（未实现/部分实现）
+
+| 能力 | 现状 | 方向 |
+|------|------|------|
+| A2A 协议 | 无 | 集成 trpc-agent-go `a2a.A2AServer` + `a2a.A2AAgent`，实现 Agent Card 自动生成、任务生命周期管理、跨实例/跨角色协作 |
+| Knowledge 知识库 | 无 | 集成 trpc-agent-go `knowledge.Service`，支持 OCR + Query + RAG |
+| Gateway 网关增强 | 部分 | 实现 LLM Gateway 三层架构：接入层（协议归一、鉴权、限流）→ 决策层（路由引擎、健康检查、负载均衡、降级编排）→ 出口层（厂商适配、SSE 流式归一、计费日志） |
+| Artifact 制品 | 部分 | 集成 trpc-agent-go `artifact.Service`，支持 S3/COS 后端 + 版本管理 |
+| CodeExecutor 代码执行 | 部分 | 集成 trpc-agent-go `codeexecutor.CodeExecutor`，支持 Local/E2B + WorkspaceRegistry |
+
+### 14.7 可观测与质量（未实现/部分实现）
+
+| 方向 | 现状 | 建议 |
+|------|------|------|
+| 全链路 Trace | Kratos middleware 不能 import 框架运行时，但请求级 trace id / user id 已进入 context | 明确 OTel/log 字段从 gRPC 流入 `runner.Run` 的约定；工具与 MCP 客户端在 `internal/tools` 内打子 span |
+| 契约测试 | 无 | 加入针对有效工具、Skill 子集、MCP server allow/deny、Team 并发的契约测试 |
+| 评测体系 | 无 | 集成 trpc-agent-go `evaluation.AgentEvaluator`，建立评测集 + 指标 + LLM-as-Judge |
+
+### 14.8 分阶段演进路线
+
+| 阶段 | 内容 | 前置依赖 |
+|------|------|----------|
+| P0 | `workspace_search` + `read_file` 部分读取 + `list_files` 截断 + RuntimeCapabilityCue 更新 | 无 |
+| P1 | 意图 Pass（可开关）+ `IntentArtifact` 注入 + 规划契约 | P0 |
+| P2 | MemoryService Wire 注入 + 记忆工具对齐 + 会话压缩自动触发 | 无 |
+| P3 | MCP Agent 级策略 + 统一装配入口 + 配置来源统一 | 无 |
+| P4 | `parallel_candidates` 校验器 + Team 黑板 + 成员 Skill 独立策略 | P1 |
+| P5 | Graph 工作流 + HITL | P4 |
+| P6 | A2A 协议 + Knowledge 知识库 | P3 |
+| P7 | LLM Gateway 三层 + 评测体系 + 全链路 Trace | P2, P3 |
+| P8 | Cron/Channel 统一运行时桥 + Artifact/CodeExecutor 闭环 | P3 |
+
 P3：
 
 - 图工作流。

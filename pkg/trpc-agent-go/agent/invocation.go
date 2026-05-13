@@ -131,6 +131,7 @@ type Invocation struct {
 	parent *Invocation
 	// traceCapture stores the shared execution trace capture for one root run.
 	traceCapture *tracecapture.Capture
+	traceMu      sync.Mutex
 	// entryPredecessorStepIDs stores the predecessor step ids passed to this invocation entry.
 	entryPredecessorStepIDs []string
 	// traceNodeID stores the mounted static root node id for this invocation.
@@ -204,6 +205,14 @@ func NewWaitNoticeTimeoutError(message string) *WaitNoticeTimeoutError {
 
 // RunOption is a function that configures a RunOptions.
 type RunOption func(*RunOptions)
+
+// ModelSelector selects the model for one framework-managed LLM call.
+// The invocation's Model is the base model for this call when the selector is
+// invoked. Returning nil with nil error keeps that base model. Returning an
+// error fails the current call before the request is built. A selector may be
+// called concurrently by different runs and must protect any shared state it
+// owns.
+type ModelSelector func(ctx context.Context, inv *Invocation) (model.Model, error)
 
 type runControlConfig struct {
 	DisableGraphCompletionEvent bool
@@ -636,6 +645,15 @@ func ModelContextWindowFromRunOptions(opts *RunOptions) (int, bool) {
 	return opts.ModelContextWindow, true
 }
 
+// WithModelSelector sets the model selector for this specific run.
+// The selector is called before each framework-managed LLM call and takes
+// precedence over any agent-level selector.
+func WithModelSelector(selector ModelSelector) RunOption {
+	return func(opts *RunOptions) {
+		opts.ModelSelector = selector
+	}
+}
+
 // WithCodeExecutor sets the code executor for this specific run.
 // If set, it temporarily overrides the agent's default code executor for this
 // request only.
@@ -1029,6 +1047,8 @@ type RunOptions struct {
 	// The agent will look up the model by name from its registered models.
 	// If both Model and ModelName are set, Model takes precedence.
 	ModelName string
+	// ModelSelector selects the model before each framework-managed LLM call.
+	ModelSelector ModelSelector
 
 	// ModelContextWindow is the model context window for this specific run.
 	// If set, it takes precedence over model instance configuration and the
@@ -1195,7 +1215,6 @@ func (inv *Invocation) Clone(invocationOpts ...InvocationOptions) *Invocation {
 		noticeChannels:  inv.noticeChannels,
 		eventFilterKey:  inv.eventFilterKey,
 		parent:          inv,
-		traceCapture:    inv.traceCapture,
 		state:           inv.cloneState(),
 	}
 
@@ -1216,6 +1235,10 @@ func (inv *Invocation) Clone(invocationOpts ...InvocationOptions) *Invocation {
 	if newInv.eventFilterKey == "" && newInv.AgentName != "" {
 		newInv.eventFilterKey = newInv.AgentName
 	}
+	if newInv.RunOptions.ExecutionTraceEnabled && inv.RunOptions.ExecutionTraceEnabled {
+		inv.initializeExecutionTrace()
+		newInv.traceCapture = inv.executionTraceCapture()
+	}
 	if newInv.traceCapture == nil {
 		newInv.initializeExecutionTrace()
 	}
@@ -1232,6 +1255,7 @@ func (inv *Invocation) View(invocationOpts ...InvocationOptions) *Invocation {
 	if inv == nil {
 		return nil
 	}
+	traceCapture, traceNodeID := inv.executionTraceFields()
 	view := &Invocation{
 		Agent:                inv.Agent,
 		AgentName:            inv.AgentName,
@@ -1253,11 +1277,11 @@ func (inv *Invocation) View(invocationOpts ...InvocationOptions) *Invocation {
 		noticeMu:             inv.noticeMu,
 		eventFilterKey:       inv.eventFilterKey,
 		parent:               inv.parent,
-		traceCapture:         inv.traceCapture,
+		traceCapture:         traceCapture,
 		entryPredecessorStepIDs: cloneStringSlice(
 			inv.entryPredecessorStepIDs,
 		),
-		traceNodeID:        inv.traceNodeID,
+		traceNodeID:        traceNodeID,
 		state:              inv.cloneViewState(),
 		MaxLLMCalls:        inv.MaxLLMCalls,
 		MaxToolIterations:  inv.MaxToolIterations,
@@ -1295,11 +1319,14 @@ func (inv *Invocation) SyncView(view *Invocation) {
 	inv.noticeMu = view.noticeMu
 	inv.eventFilterKey = view.eventFilterKey
 	inv.parent = view.parent
-	inv.traceCapture = view.traceCapture
+	traceCapture, traceNodeID := view.executionTraceFields()
+	inv.traceMu.Lock()
+	inv.traceCapture = traceCapture
+	inv.traceNodeID = traceNodeID
+	inv.traceMu.Unlock()
 	inv.entryPredecessorStepIDs = cloneStringSlice(
 		view.entryPredecessorStepIDs,
 	)
-	inv.traceNodeID = view.traceNodeID
 	inv.MaxLLMCalls = view.MaxLLMCalls
 	inv.MaxToolIterations = view.MaxToolIterations
 	inv.timingInfo = view.timingInfo

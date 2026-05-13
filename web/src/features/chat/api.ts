@@ -1,10 +1,12 @@
 /**
- * Chat 域：`features/session/api`（Kratos `session/v1`）+ 本文件网关 **`/v1/chat/*`**。
+ * Chat 域：网关 **`/v1/chat/*`**。
  * **`cmd/admin`**：`chat/v1` HTTP + SSE；若设置了 **`LEGACY_REST_ORIGIN`** 则转发遗留 **`/api/v1/chat/*`**，否则由 admin 进程内 OpenAI 兼容路径处理单 Agent 会话并持久化消息。
+ *
+ * Session 相关 API 请从 `features/session/api` 直接导入。
  */
 import { getBackendOrigin } from "../../config/runtime";
 import { kratosApi } from "../../services/axiosHandler";
-import { asRecord, pickI32, pickStr } from "../memory/wireJson";
+import { asRecord, pickI32, pickStr } from "../../shared/wireJson";
 import type {
   ChatOption,
   Message,
@@ -13,27 +15,6 @@ import type {
   SendMessageStreamCallbacks,
   ToolUseEvent
 } from "./types";
-
-export {
-  archiveSession,
-  clearAgentSessions,
-  createSession,
-  deleteSession,
-  getSession,
-  getSessionTimeline,
-  listSessionChatMessages,
-  listSessionChatMessages as listMessages,
-  listSessions,
-  listTeamSessions,
-  searchSessions,
-  updateSessionTitle,
-  type Session,
-  type SessionListResult,
-  type SessionSearchQuery,
-  type SessionTimeline,
-  type SessionTimelineItem,
-  type SessionTimelineSummary
-} from "../session/api";
 
 export type {
   ChatOption,

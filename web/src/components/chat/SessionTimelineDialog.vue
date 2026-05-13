@@ -96,7 +96,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { getSessionTimeline, type SessionTimeline, type SessionTimelineItem } from "../../features/chat/api";
+import { getSessionTimeline, type SessionTimeline, type SessionTimelineItem } from "../../features/session/api";
 
 const props = defineProps<{
   modelValue: boolean;
