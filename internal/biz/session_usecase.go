@@ -15,38 +15,49 @@ import (
 
 // Session mirrors legacy conversation sessions row.
 type Session struct {
-	ID                      string
-	OwnerType               string
-	AgentID                 string
-	TeamID                  string
-	Title                   string
-	Summary                 string
-	ContextUsedRatio        float64
-	ContextUsedTokens       int
-	MaxContextUsedRatio     float64
-	LastContextWindowTokens int
-	ContextStatus           string
-	DialogMode              string
-	Provider                string
-	Model                   string
-	Status                  string
-	MessageCount            int
-	RunCount                int
-	ModelCallCount          int
-	ToolCallCount           int
-	SkillCallCount          int
-	MCPCallCount            int
-	InputTokens             int
-	OutputTokens            int
-	TotalTokens             int
-	TotalCostMicroUSD       int64
-	LastMessageAt           string
-	CreatedAt               string
-	UpdatedAt               string
-	ArchivedAt              string
-	DeletedAt               string
-	// RunnerSnapshotJSON stores serialized trpc-agent-go Runner session state (events + KV) when using Runner; optional for legacy rows.
-	RunnerSnapshotJSON string
+	ID                         string
+	WorkspaceID                string
+	UserID                     string
+	OwnerType                  string
+	AgentID                    string
+	TeamID                     string
+	Title                      string
+	Summary                    string
+	TagsJSON                   string
+	DialogMode                 string
+	DefaultProvider            string
+	DefaultModel               string
+	DefaultContextWindowTokens int
+	LastProvider               string
+	LastModel                  string
+	LastContextWindowTokens    int
+	Status                     string
+	Visibility                 string
+	MessageCount               int
+	RunCount                   int
+	ModelCallCount             int
+	ToolCallCount              int
+	SkillCallCount             int
+	MCPCallCount               int
+	InputTokens                int
+	OutputTokens               int
+	TotalTokens                int
+	TotalCostMicroUSD          int64
+	AvgLatencyMs               float64
+	ErrorCount                 int
+	ContextUsedTokens          int
+	ContextUsedRatio           float64
+	MaxContextUsedRatio        float64
+	ContextStatus              string
+	FirstMessageAt             string
+	LastMessageAt              string
+	LastRunAt                  string
+	CreatedAt                  string
+	UpdatedAt                  string
+	ArchivedAt                 string
+	DeletedAt                  string
+	RunnerSnapshotJSON         string
+	MetadataJSON               string
 }
 
 // SessionSearchQuery filters sessions（对齐遗留 REST query）.

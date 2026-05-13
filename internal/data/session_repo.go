@@ -3,7 +3,6 @@ package data
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"strings"
 
 	"aranea-agents/internal/biz"
@@ -17,6 +16,7 @@ import (
 	toolinvocationpkg "aranea-agents/internal/data/ent/toolinvocation"
 
 	entsql "entgo.io/ent/dialect/sql"
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 type sessionRepo struct {
@@ -33,37 +33,49 @@ func entSessionToBiz(e *ent.Session) biz.Session {
 		return biz.Session{}
 	}
 	return biz.Session{
-		ID:                      e.ID,
-		OwnerType:               e.OwnerType,
-		AgentID:                 e.AgentID,
-		TeamID:                  e.TeamID,
-		Title:                   e.Title,
-		Summary:                 e.Summary,
-		ContextUsedRatio:        e.ContextUsedRatio,
-		ContextUsedTokens:       e.ContextUsedTokens,
-		MaxContextUsedRatio:     e.MaxContextUsedRatio,
-		LastContextWindowTokens: e.LastContextWindowTokens,
-		ContextStatus:           e.ContextStatus,
-		DialogMode:              e.DialogMode,
-		Provider:                e.Provider,
-		Model:                   e.Model,
-		Status:                  e.Status,
-		MessageCount:            e.MessageCount,
-		RunCount:                e.RunCount,
-		ModelCallCount:          e.ModelCallCount,
-		ToolCallCount:           e.ToolCallCount,
-		SkillCallCount:          e.SkillCallCount,
-		MCPCallCount:            e.McpCallCount,
-		InputTokens:             e.InputTokens,
-		OutputTokens:            e.OutputTokens,
-		TotalTokens:             e.TotalTokens,
-		TotalCostMicroUSD:       e.TotalCostMicroUsd,
-		LastMessageAt:           e.LastMessageAt,
-		CreatedAt:               e.CreatedAt,
-		UpdatedAt:               e.UpdatedAt,
-		ArchivedAt:              e.ArchivedAt,
-		DeletedAt:               e.DeletedAt,
-		RunnerSnapshotJSON:      e.RunnerSnapshotJSON,
+		ID:                         e.ID,
+		WorkspaceID:                e.WorkspaceID,
+		UserID:                     e.UserID,
+		OwnerType:                  e.OwnerType,
+		AgentID:                    e.AgentID,
+		TeamID:                     e.TeamID,
+		Title:                      e.Title,
+		Summary:                    e.Summary,
+		TagsJSON:                   e.TagsJSON,
+		DialogMode:                 e.DialogMode,
+		DefaultProvider:            e.DefaultProvider,
+		DefaultModel:               e.DefaultModel,
+		DefaultContextWindowTokens: e.DefaultContextWindowTokens,
+		LastProvider:               e.LastProvider,
+		LastModel:                  e.LastModel,
+		LastContextWindowTokens:    e.LastContextWindowTokens,
+		Status:                     e.Status,
+		Visibility:                 e.Visibility,
+		MessageCount:               e.MessageCount,
+		RunCount:                   e.RunCount,
+		ModelCallCount:             e.ModelCallCount,
+		ToolCallCount:              e.ToolCallCount,
+		SkillCallCount:             e.SkillCallCount,
+		MCPCallCount:               e.McpCallCount,
+		InputTokens:                e.InputTokens,
+		OutputTokens:               e.OutputTokens,
+		TotalTokens:                e.TotalTokens,
+		TotalCostMicroUSD:          e.TotalCostMicroUsd,
+		AvgLatencyMs:               e.AvgLatencyMs,
+		ErrorCount:                 e.ErrorCount,
+		ContextUsedTokens:          e.ContextUsedTokens,
+		ContextUsedRatio:           e.ContextUsedRatio,
+		MaxContextUsedRatio:        e.MaxContextUsedRatio,
+		ContextStatus:              e.ContextStatus,
+		FirstMessageAt:             e.FirstMessageAt,
+		LastMessageAt:              e.LastMessageAt,
+		LastRunAt:                  e.LastRunAt,
+		CreatedAt:                  e.CreatedAt,
+		UpdatedAt:                  e.UpdatedAt,
+		ArchivedAt:                 e.ArchivedAt,
+		DeletedAt:                  e.DeletedAt,
+		RunnerSnapshotJSON:         e.RunnerSnapshotJSON,
+		MetadataJSON:               e.MetadataJSON,
 	}
 }
 
@@ -173,20 +185,23 @@ func (r *sessionRepo) CreateSession(ctx context.Context, in biz.Session) (biz.Se
 
 	_, err := c.Session.Create().
 		SetID(in.ID).
+		SetWorkspaceID(in.WorkspaceID).
+		SetUserID(in.UserID).
 		SetOwnerType(in.OwnerType).
 		SetAgentID(in.AgentID).
 		SetTeamID(in.TeamID).
 		SetTitle(in.Title).
 		SetSummary(in.Summary).
-		SetContextUsedRatio(in.ContextUsedRatio).
-		SetContextUsedTokens(in.ContextUsedTokens).
-		SetMaxContextUsedRatio(in.MaxContextUsedRatio).
-		SetLastContextWindowTokens(in.LastContextWindowTokens).
-		SetContextStatus(in.ContextStatus).
+		SetTagsJSON(in.TagsJSON).
 		SetDialogMode(in.DialogMode).
-		SetProvider(in.Provider).
-		SetModel(in.Model).
+		SetDefaultProvider(in.DefaultProvider).
+		SetDefaultModel(in.DefaultModel).
+		SetDefaultContextWindowTokens(in.DefaultContextWindowTokens).
+		SetLastProvider(in.LastProvider).
+		SetLastModel(in.LastModel).
+		SetLastContextWindowTokens(in.LastContextWindowTokens).
 		SetStatus(in.Status).
+		SetVisibility(in.Visibility).
 		SetMessageCount(in.MessageCount).
 		SetRunCount(in.RunCount).
 		SetModelCallCount(in.ModelCallCount).
@@ -197,12 +212,21 @@ func (r *sessionRepo) CreateSession(ctx context.Context, in biz.Session) (biz.Se
 		SetOutputTokens(in.OutputTokens).
 		SetTotalTokens(in.TotalTokens).
 		SetTotalCostMicroUsd(in.TotalCostMicroUSD).
+		SetAvgLatencyMs(in.AvgLatencyMs).
+		SetErrorCount(in.ErrorCount).
+		SetContextUsedTokens(in.ContextUsedTokens).
+		SetContextUsedRatio(in.ContextUsedRatio).
+		SetMaxContextUsedRatio(in.MaxContextUsedRatio).
+		SetContextStatus(in.ContextStatus).
+		SetFirstMessageAt(in.FirstMessageAt).
 		SetLastMessageAt(in.LastMessageAt).
+		SetLastRunAt(in.LastRunAt).
 		SetCreatedAt(in.CreatedAt).
 		SetUpdatedAt(in.UpdatedAt).
 		SetArchivedAt(in.ArchivedAt).
 		SetDeletedAt(in.DeletedAt).
 		SetRunnerSnapshotJSON(in.RunnerSnapshotJSON).
+		SetMetadataJSON(in.MetadataJSON).
 		Save(ctx)
 	if err != nil {
 		return biz.Session{}, err
@@ -517,7 +541,7 @@ func (r *sessionRepo) UpdateRunnerSnapshotJSON(ctx context.Context, sessionID st
 func (r *sessionRepo) UpdateSessionContextFromLLMUsage(ctx context.Context, sessionID string, promptTokens, _ int, contextWindow int) error {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
-		return errors.New("session id is required")
+		return kerrors.BadRequest("SESSION", "session id is required")
 	}
 	cur, err := r.GetSessionByID(ctx, sessionID)
 	if err != nil {
@@ -553,7 +577,7 @@ func (r *sessionRepo) UpdateSessionContextFromLLMUsage(ctx context.Context, sess
 func (r *sessionRepo) UpdateSessionContextAfterCompression(ctx context.Context, sessionID string, estimatedPromptTokens int, contextWindow int) error {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
-		return errors.New("session id is required")
+		return kerrors.BadRequest("SESSION", "session id is required")
 	}
 	if contextWindow <= 0 {
 		contextWindow = 128000
@@ -579,7 +603,7 @@ func (r *sessionRepo) UpdateSessionContextAfterCompression(ctx context.Context, 
 func (r *sessionRepo) AppendChatTurn(ctx context.Context, sessionID string, user, assistant biz.ChatMessage) error {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
-		return errors.New("session id is required")
+		return kerrors.BadRequest("SESSION", "session id is required")
 	}
 	tx, err := r.data.entClient.Tx(ctx)
 	if err != nil {
@@ -624,7 +648,7 @@ func (r *sessionRepo) AppendChatTurn(ctx context.Context, sessionID string, user
 func (r *sessionRepo) AppendChatMessage(ctx context.Context, sessionID string, msg biz.ChatMessage, bumpModelCall bool) error {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
-		return errors.New("session id is required")
+		return kerrors.BadRequest("SESSION", "session id is required")
 	}
 	tx, err := r.data.entClient.Tx(ctx)
 	if err != nil {

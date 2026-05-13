@@ -83,8 +83,8 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
 
-	prov0 := strutil.FirstNonEmpty(provOpt, sess.Provider, firstAg.Provider)
-	mod0 := strutil.FirstNonEmpty(modOpt, sess.Model, firstAg.Model)
+	prov0 := strutil.FirstNonEmpty(provOpt, sess.DefaultProvider, firstAg.Provider)
+	mod0 := strutil.FirstNonEmpty(modOpt, sess.DefaultModel, firstAg.Model)
 	builderDeps := agent.TRPCBuilderDeps{
 		Catalog:    r.td.LLMCatalog,
 		AgentUC:    r.td.AgentsUC,
@@ -299,7 +299,7 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 		SessionID:       sess.ID,
 		Role:            "assistant",
 		ContentMarkdown: displayMarkdown,
-		ModelName:       strutil.FirstNonEmpty(modOpt, sess.Model, firstAg.Model),
+		ModelName:       strutil.FirstNonEmpty(modOpt, sess.DefaultModel, firstAg.Model),
 		Status:          "ok",
 		OptionsJSON:     assistantOptsStr,
 		CreatedAt:       agent.RFC3339Now(),

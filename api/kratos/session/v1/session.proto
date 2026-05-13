@@ -13,20 +13,23 @@ option java_package = "api.kratos.session.v1";
 // Session mirrors legacy sessions row（JSON 与 pkg/backend domain.Session 对齐）.
 message Session {
   string id = 1;
+  string workspace_id = 31;
+  string user_id = 32;
   string owner_type = 2;
   string agent_id = 3;
   string team_id = 4;
   string title = 5;
   string summary = 6;
-  double context_used_ratio = 7;
-  int32 context_used_tokens = 8;
-  double max_context_used_ratio = 9;
-  int32 last_context_window_tokens = 10;
-  string context_status = 11;
+  string tags_json = 33;
   string dialog_mode = 12;
-  string provider = 13;
-  string model = 14;
+  string default_provider = 34;
+  string default_model = 35;
+  int32 default_context_window_tokens = 36;
+  string last_provider = 37;
+  string last_model = 38;
+  int32 last_context_window_tokens = 10;
   string status = 15;
+  string visibility = 39;
   int32 message_count = 16;
   int32 run_count = 17;
   int32 model_call_count = 18;
@@ -37,11 +40,21 @@ message Session {
   int32 output_tokens = 23;
   int32 total_tokens = 24;
   int64 total_cost_micro_usd = 25;
+  double avg_latency_ms = 40;
+  int32 error_count = 41;
+  int32 context_used_tokens = 8;
+  double context_used_ratio = 7;
+  double max_context_used_ratio = 9;
+  string context_status = 11;
+  string first_message_at = 42;
   string last_message_at = 26;
+  string last_run_at = 43;
   string created_at = 27;
   string updated_at = 28;
   string archived_at = 29;
   string deleted_at = 30;
+  string runner_snapshot_json = 44;
+  string metadata_json = 45;
 }
 
 message SessionTimelineSummary {
@@ -101,8 +114,8 @@ message CreateSessionRequest {
   string team_id = 3;
   string title = 4 [(google.api.field_behavior) = REQUIRED];
   string dialog_mode = 5;
-  string provider = 6;
-  string model = 7;
+  string default_provider = 6;
+  string default_model = 7;
 }
 
 message GetSessionRequest {

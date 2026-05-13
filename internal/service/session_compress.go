@@ -237,7 +237,7 @@ func compressProviderModel(sess biz.Session, ag biz.Agent) (prov, mod string) {
 			return p, m
 		}
 	}
-	return strutil.FirstNonEmpty(sess.Provider, ag.Provider), strutil.FirstNonEmpty(sess.Model, ag.Model)
+	return strutil.FirstNonEmpty(sess.DefaultProvider, ag.Provider), strutil.FirstNonEmpty(sess.DefaultModel, ag.Model)
 }
 
 func (c *SessionCompressor) resyncSessionMemory(ctx context.Context, sessionID string) {

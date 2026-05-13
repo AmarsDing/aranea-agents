@@ -255,8 +255,8 @@ func (s *ChatService) runNativeAgentTurn(ctx context.Context, req *chatv1.SendCh
 		mod = strings.TrimSpace(opts.GetModel())
 	}
 	dialogMode = strutil.FirstNonEmpty(dialogMode, sess.DialogMode, "default")
-	prov = strutil.FirstNonEmpty(prov, sess.Provider, ag.Provider)
-	mod = strutil.FirstNonEmpty(mod, sess.Model, ag.Model)
+	prov = strutil.FirstNonEmpty(prov, sess.DefaultProvider, ag.Provider)
+	mod = strutil.FirstNonEmpty(mod, sess.DefaultModel, ag.Model)
 
 	attN := 0
 	if opts != nil {

@@ -28,20 +28,23 @@ func NewSessionService(uc *biz.SessionUsecase) *SessionService {
 func toProtoSession(s biz.Session) *v1.Session {
 	return &v1.Session{
 		Id:                      s.ID,
+		WorkspaceId:             s.WorkspaceID,
+		UserId:                  s.UserID,
 		OwnerType:               s.OwnerType,
 		AgentId:                 s.AgentID,
 		TeamId:                  s.TeamID,
 		Title:                   s.Title,
 		Summary:                 s.Summary,
-		ContextUsedRatio:        s.ContextUsedRatio,
-		ContextUsedTokens:       int32(s.ContextUsedTokens),
-		MaxContextUsedRatio:     s.MaxContextUsedRatio,
-		LastContextWindowTokens: int32(s.LastContextWindowTokens),
-		ContextStatus:           s.ContextStatus,
+		TagsJson:                s.TagsJSON,
 		DialogMode:              s.DialogMode,
-		Provider:                s.Provider,
-		Model:                   s.Model,
+		DefaultProvider:         s.DefaultProvider,
+		DefaultModel:            s.DefaultModel,
+		DefaultContextWindowTokens: int32(s.DefaultContextWindowTokens),
+		LastProvider:            s.LastProvider,
+		LastModel:               s.LastModel,
+		LastContextWindowTokens: int32(s.LastContextWindowTokens),
 		Status:                  s.Status,
+		Visibility:              s.Visibility,
 		MessageCount:            int32(s.MessageCount),
 		RunCount:                int32(s.RunCount),
 		ModelCallCount:          int32(s.ModelCallCount),
@@ -52,11 +55,21 @@ func toProtoSession(s biz.Session) *v1.Session {
 		OutputTokens:            int32(s.OutputTokens),
 		TotalTokens:             int32(s.TotalTokens),
 		TotalCostMicroUsd:       s.TotalCostMicroUSD,
+		AvgLatencyMs:            s.AvgLatencyMs,
+		ErrorCount:              int32(s.ErrorCount),
+		ContextUsedTokens:       int32(s.ContextUsedTokens),
+		ContextUsedRatio:        s.ContextUsedRatio,
+		MaxContextUsedRatio:     s.MaxContextUsedRatio,
+		ContextStatus:           s.ContextStatus,
+		FirstMessageAt:          s.FirstMessageAt,
 		LastMessageAt:           s.LastMessageAt,
+		LastRunAt:               s.LastRunAt,
 		CreatedAt:               s.CreatedAt,
 		UpdatedAt:               s.UpdatedAt,
 		ArchivedAt:              s.ArchivedAt,
 		DeletedAt:               s.DeletedAt,
+		RunnerSnapshotJson:      s.RunnerSnapshotJSON,
+		MetadataJson:            s.MetadataJSON,
 	}
 }
 
@@ -151,13 +164,13 @@ func (s *SessionService) SearchSessions(ctx context.Context, req *v1.SearchSessi
 // CreateSession implements POST /v1/sessions.
 func (s *SessionService) CreateSession(ctx context.Context, req *v1.CreateSessionRequest) (*v1.Session, error) {
 	in := biz.Session{
-		OwnerType:  req.GetOwnerType(),
-		AgentID:    req.GetAgentId(),
-		TeamID:     req.GetTeamId(),
-		Title:      req.GetTitle(),
-		DialogMode: req.GetDialogMode(),
-		Provider:   req.GetProvider(),
-		Model:      req.GetModel(),
+		OwnerType:       req.GetOwnerType(),
+		AgentID:         req.GetAgentId(),
+		TeamID:          req.GetTeamId(),
+		Title:           req.GetTitle(),
+		DialogMode:      req.GetDialogMode(),
+		DefaultProvider: req.GetDefaultProvider(),
+		DefaultModel:    req.GetDefaultModel(),
 	}
 	created, err := s.uc.Create(ctx, in)
 	if err != nil {
