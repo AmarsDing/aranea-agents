@@ -1583,3 +1583,90 @@ export const useSessionStore = defineStore("sessions", {
 ---
 
 *文档版本：2.1 — 整合会话上下文压缩设计（原 architecture/session-context-compression.md）。*
+
+---
+
+## 12. trpc-agent-go 对齐需求（M5 Session 管理）
+
+> 本节补充 `plan.md` M5 模块的对齐需求，确保 Session 管理完全复刻 trpc-agent-go `session.Service` 能力。
+
+### 12.1 trpc session.Service 集成
+
+**trpc 框架**：`session.Service` 提供统一的 Session 存储接口，支持多后端。
+
+**需求**：
+- 新建 `internal/session/trpc/service.go`，桥接 Ent session 到 trpc `session.Service` 接口
+- 先实现 SQLite 后端（项目已有）
+- 后续增加 Redis 后端用于生产环境
+- 最终支持 PostgreSQL/MySQL/ClickHouse 后端
+
+**涉及文件**：`internal/session/trpc/service.go`、`internal/session/trpc/sqlite.go`、`internal/session/trpc/redis.go`
+
+**验收标准**：Session 通过 trpc `session.Service` 接口持久化到 SQLite
+
+### 12.2 Event 分页
+
+**trpc 框架**：`session.Service.ListEvents` 支持分页查询 Session 事件。
+
+**需求**：
+- 实现 `ListEvents(sessionID, pageSize, pageToken)` 方法
+- 支持按时间正序/倒序
+- 支持按事件类型过滤
+
+**涉及文件**：`internal/session/trpc/service.go`
+
+**验收标准**：Session 事件可分页查询
+
+### 12.3 Session Track
+
+**trpc 框架**：`session.Service` 支持 Track 操作，记录 Session 级别的元数据。
+
+**需求**：
+- 实现 `Track(sessionID, key, value)` 方法
+- Track 数据存储在 `sessions.metadata_json` 中
+- 前端可查询 Track 数据
+
+**涉及文件**：`internal/session/trpc/service.go`
+
+**验收标准**：Session 级别的元数据可记录和查询
+
+### 12.4 Session Ingestor
+
+**trpc 框架**：`session.Ingestor` 接口，Session 完成后自动摄入到外部平台。
+
+**需求**：
+- 新建 `internal/session/trpc/ingestor.go`
+- 实现 `session.Ingestor` 接口
+- 可对接 Mem0 等外部记忆平台
+- Runner 完成后自动调用 Ingestor
+
+**涉及文件**：`internal/session/trpc/ingestor.go`、`internal/agent/trpc_runtime.go`
+
+**验收标准**：Session 完成后自动摄入到外部记忆平台
+
+### 12.5 多后端支持
+
+**trpc 框架**：`session/sqlite`、`session/redis`、`session/pg`、`session/mysql`、`session/clickhouse` 多后端。
+
+**需求**：
+- 配置文件增加 `session.backend` 字段
+- 可选值：`sqlite`（默认）、`redis`、`postgresql`、`mysql`、`clickhouse`
+- 按配置动态选择后端
+- 提供迁移工具
+
+**涉及文件**：`internal/session/trpc/factory.go`、`internal/conf/conf.proto`
+
+**验收标准**：Session 可按配置选择不同存储后端
+
+### 12.6 Runner Snapshot 集成
+
+**trpc 框架**：Runner 执行状态序列化为 `runner_snapshot_json`，用于 Runner 恢复。
+
+**需求**：
+- Runner 每轮执行后更新 `sessions.runner_snapshot_json`
+- Runner 恢复时从 `runner_snapshot_json` 加载状态
+- 摘要压缩后同步更新 snapshot
+
+**涉及文件**：`internal/agent/trpc_runtime.go`、`internal/service/chat_native.go`
+
+**验收标准**：Runner 可从 snapshot 恢复执行状态

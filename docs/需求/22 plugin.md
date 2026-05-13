@@ -930,3 +930,66 @@ type BuiltinPluginDefinition struct {
 4. `RetryAndReflectPlugin` 对高风险工具是否默认禁止自动重试？
 5. `SkillUsageTrackerPlugin` 是否作为 Skill 统计的唯一来源？
 6. 后续真实接入 ADK Runner 的优先级是否高于其他运行时能力？
+
+---
+
+## 11. trpc-agent-go 对齐需求（M10 Plugin 插件）
+
+> 本节补充 `plan.md` M10 模块的对齐需求，确保 Plugin 插件完全复刻 trpc-agent-go `plugin` 包能力。
+
+### 11.1 Plugin 接口实现
+
+**trpc 框架**：`plugin.Plugin` 接口定义了完整的生命周期回调。
+
+**需求**：
+- 实现 `plugin.New(plugin.Config{...})` 注册回调
+- 支持所有 11 种回调类型（OnUserMessage/BeforeRun/AfterRun/BeforeAgent/AfterAgent/BeforeModel/AfterModel/OnModelError/BeforeTool/AfterTool/OnToolError）
+- 回调按注册顺序执行
+
+**涉及文件**：`internal/plugin/trpc/manager.go`
+
+**验收标准**：所有 11 种回调类型可正确触发
+
+### 11.2 PluginManager 集成
+
+**trpc 框架**：Runner 通过 `WithPlugins` 注入 PluginManager。
+
+**需求**：
+- 新建 `internal/plugin/trpc/manager.go`，实现 `agent.PluginManager` 接口
+- `AgentCallbacks()` 返回 Agent 级回调
+- `ModelCallbacks()` 返回 Model 级回调
+- `ToolCallbacks()` 返回 Tool 级回调
+- `OnEvent()` 处理事件回调
+- 在 `NewTRPCRunner` 中通过 `WithPlugins` 注入
+
+**涉及文件**：`internal/plugin/trpc/manager.go`、`internal/agent/trpc_runtime.go`
+
+**验收标准**：Runner 执行中回调正确触发
+
+### 11.3 内置 Plugin 迁移
+
+**trpc 框架**：提供 `plugin/builtin` 内置插件。
+
+**需求**：
+- 将现有内置 Plugin 迁移到 trpc `plugin.Plugin` 接口
+- LoggingPlugin → BeforeModel/AfterModel 记录请求和响应
+- RetryAndReflectPlugin → OnModelError/OnToolError 自动重试
+- SkillUsageTrackerPlugin → AfterTool 记录 Skill 使用
+- GuardrailPlugin → BeforeTool 拦截高风险工具
+
+**涉及文件**：`internal/plugin/trpc/builtin/`
+
+**验收标准**：内置 Plugin 通过 trpc Plugin 接口正确工作
+
+### 11.4 Plugin 配置持久化
+
+**需求**：Plugin 配置存储在数据库中，运行时加载。
+
+**实现要点**：
+- `plugins` 表存储 Plugin 配置
+- Runner 启动时从数据库加载启用的 Plugin
+- 支持热更新（修改配置后下次 Run 生效）
+
+**涉及文件**：`internal/plugin/trpc/loader.go`
+
+**验收标准**：Plugin 配置持久化，运行时正确加载

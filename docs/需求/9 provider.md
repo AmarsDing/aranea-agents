@@ -974,3 +974,76 @@ type CatalogConfig struct {
 ---
 
 *文档版本：基于 trpc-agent-go `model/provider` 体系重新设计；与 `8 agent-title.md` §8.1、`2 agents-create.md` 对齐。LLM Gateway 整合自 `architecture/platform-architecture.md`。*
+
+---
+
+## 12. trpc-agent-go 对齐需求（M9 Model 模型层）
+
+> 本节补充 `plan.md` M9 模块的对齐需求，确保 Model 模型层完全复刻 trpc-agent-go `model` 包能力。
+
+### 12.1 Failover 高可用
+
+**trpc 框架**：`model/failover.New` 按顺序尝试候选模型，首个成功即返回。
+
+**需求**：
+- 在 Provider 管理页增加 Failover 配置
+- 支持配置主备模型列表
+- 主模型失败时自动切换到备模型
+- 切换事件记录在 `model_token_usage_events` 中
+
+**涉及文件**：`internal/provider/trpc_llm.go`
+
+**验收标准**：主模型失败时自动切换到备模型
+
+### 12.2 Hedge 低延迟
+
+**trpc 框架**：`model/hedge.New` 并发发起多个候选请求，首个有效响应即返回。
+
+**需求**：
+- 在 Provider 管理页增加 Hedge 配置
+- 支持配置候选模型列表和延迟偏移
+- 并发请求，首个有效响应即返回
+- 取消其他未完成请求
+
+**涉及文件**：`internal/provider/trpc_llm.go`
+
+**验收标准**：Hedge 模式下响应延迟显著降低
+
+### 12.3 TokenTailor
+
+**trpc 框架**：`model/tokentailor` 自动裁剪超出上下文窗口的请求。
+
+**需求**：
+- 集成 trpc `model/tokentailor` 包
+- 当请求 token 超过上下文窗口时自动裁剪
+- 裁剪策略：保留系统指令 + 最近 N 轮 + 摘要
+
+**涉及文件**：`internal/provider/trpc_llm.go`
+
+**验收标准**：请求 token 超限时自动裁剪而非报错
+
+### 12.4 多模型注册
+
+**trpc 框架**：支持 OpenAI/Gemini/Anthropic/Ollama/Bedrock/Hunyuan/HuggingFace 7 种 Provider。
+
+**需求**：
+- 确认 5 种已注册 Provider 可正常使用
+- 待 HuggingFace 和 Bedrock 上游注册后启用
+- 每种 Provider 的认证方式和配置项完整
+
+**涉及文件**：`internal/provider/trpc_llm.go`、`internal/provider/catalog.go`
+
+**验收标准**：所有已注册 Provider 可正常调用
+
+### 12.5 IterModel 优化
+
+**trpc 框架**：`model.IterModel` 支持同 goroutine 迭代，减少 channel 开销。
+
+**需求**：
+- 检查当前模型是否支持 IterModel 接口
+- 支持 IterModel 的模型使用迭代模式
+- 不支持的模型回退到 channel 模式
+
+**涉及文件**：`internal/provider/trpc_llm.go`
+
+**验收标准**：支持 IterModel 的模型使用迭代模式，性能更优

@@ -1061,3 +1061,75 @@ func RedactToolArgs(toolKey string, schema map[string]any, args map[string]any) 
 ---
 
 *文档版本：2.1 — 整合运行时装配机制、代码检索增强与演进方向（原 architecture/agent-skills-tools-mcp-memory.md、agent-repo-retrieval-context-engineering.md Tools 部分）。*
+
+---
+
+## 15. trpc-agent-go 对齐需求（M7 Tool 工具体系）
+
+> 本节补充 `plan.md` M7 模块的对齐需求，确保 Tool 工具体系完全复刻 trpc-agent-go `tool` 包能力。
+
+### 15.1 trpc Tool 接口迁移
+
+**trpc 框架**：`tool.Tool` / `tool.CallableTool` / `tool.StreamableTool` 统一工具接口。
+
+**需求**：
+- 所有内置工具通过 trpc `tool.Tool` 接口注册
+- `tool.FunctionTool` 包装简单函数为 Tool
+- `tool.StreamableTool` 支持流式结果返回
+- `tool.ToolSet` 管理工具集合
+
+**涉及文件**：`internal/tools/trpc/toolsets.go`
+
+**验收标准**：所有内置工具通过 trpc Tool 接口注册和调用
+
+### 15.2 流式工具
+
+**trpc 框架**：`tool.StreamableTool` 支持流式返回工具结果。
+
+**需求**：
+- 长时间运行的工具（如 `web_search`、`shell_exec`）支持流式返回
+- 前端可实时显示工具执行进度
+- 流式结果通过 SSE 推送
+
+**涉及文件**：`internal/tools/trpc/toolsets.go`、`internal/server/sse.go`
+
+**验收标准**：长时间运行的工具可流式返回结果
+
+### 15.3 工具重试
+
+**trpc 框架**：`tool.WithRetry` 支持工具执行重试。
+
+**需求**：
+- 工具配置增加 `max_retries` 和 `retry_delay_ms` 字段
+- 执行失败时自动重试
+- 重试次数和结果记录在 `tool_invocations` 中
+
+**涉及文件**：`internal/tools/trpc/toolsets.go`
+
+**验收标准**：工具执行失败时自动重试
+
+### 15.4 工具过滤
+
+**trpc 框架**：`tool.WithFilter` 支持工具调用过滤。
+
+**需求**：
+- 根据 Agent 的 `tools_allow_json` / `tools_deny_json` 过滤可用工具
+- 高风险工具需要确认后执行
+- 过滤结果记录在 `tool_invocations` 中
+
+**涉及文件**：`internal/tools/trpc/toolsets.go`、`internal/agent/trpc_build.go`
+
+**验收标准**：工具按 Agent 配置过滤
+
+### 15.5 ToolSet 并行
+
+**trpc 框架**：`tool.ToolSet` 支持并行执行多个工具调用。
+
+**需求**：
+- LLM 返回多个 tool_call 时并行执行
+- 并行度受 `tools_concurrent_allow_json` 控制
+- 并行结果合并后返回
+
+**涉及文件**：`internal/tools/trpc/toolsets.go`
+
+**验收标准**：多个工具调用可并行执行

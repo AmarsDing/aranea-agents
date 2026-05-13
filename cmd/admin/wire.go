@@ -9,14 +9,15 @@ import (
 	"os"
 	"strings"
 
-	"aranea-agents/internal/runtimedeps"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/cronrunner"
 	"aranea-agents/internal/data"
+	"aranea-agents/internal/runtimedeps"
 	"aranea-agents/internal/server"
 	"aranea-agents/internal/service"
 	"aranea-agents/internal/skill/watch"
+	"aranea-agents/internal/team"
 
 	"github.com/go-kratos/kratos/v2"
 	"github.com/go-kratos/kratos/v2/log"
@@ -53,6 +54,40 @@ func provideSkillWatchRunner(skillUC *biz.SkillUsecase, sys biz.SystemSettingRep
 	return watch.NewRunner(skillUC, sys, logger)
 }
 
+func provideChatServiceDeps(
+	broker *biz.TeamRunEventBroker,
+	teams biz.TeamRepository,
+	teamsNative *team.Runner,
+	usage *biz.UsageUsecase,
+	sessions *biz.SessionUsecase,
+	agents biz.AgentRepository,
+	agentsUC *biz.AgentUsecase,
+	toolsCatalog biz.ToolRepo,
+	llmCatalog *biz.LlmProviderModelUsecase,
+	skillUC *biz.SkillUsecase,
+	sys biz.SystemSettingRepo,
+	rt *runtimedeps.Runtime,
+	compress biz.NativeTurnCompressor,
+	monitorLogs *biz.MonitorLogBroker,
+) service.ChatServiceDeps {
+	return service.ChatServiceDeps{
+		Broker:       broker,
+		Teams:        teams,
+		TeamsNative:  teamsNative,
+		Usage:        usage,
+		Sessions:     sessions,
+		Agents:       agents,
+		AgentsUC:     agentsUC,
+		ToolsCatalog: toolsCatalog,
+		LLMCatalog:   llmCatalog,
+		SkillUC:      skillUC,
+		Sys:          sys,
+		RT:           rt,
+		Compress:     compress,
+		MonitorLogs:  monitorLogs,
+	}
+}
+
 // wireOut is non-cleanup inject outputs (cleanup must be a top-level injector return for Wire).
 type wireOut struct {
 	App        *kratos.App
@@ -74,6 +109,7 @@ func wireApp(*conf.Server, *conf.Data, log.Logger) (wireOut, func(), error) {
 		provideCronRunnerDeps,
 		provideCronRunner,
 		provideSkillWatchRunner,
+		provideChatServiceDeps,
 		runtimedeps.NewRuntime,
 		newApp,
 		provideWireOut,

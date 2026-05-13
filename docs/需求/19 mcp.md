@@ -212,3 +212,62 @@
 ---
 
 *文档版本：1.2 — 整合运行时装配机制与演进方向（原 architecture/agent-skills-tools-mcp-memory.md MCP 部分）。*
+
+---
+
+## 10. trpc-agent-go 对齐需求（M8 MCP 集成）
+
+> 本节补充 `plan.md` M8 模块的对齐需求，确保 MCP 集成完全复刻 trpc-agent-go `tool/mcp` 包能力。
+
+### 10.1 MCP ToolSet 集成
+
+**trpc 框架**：`tool/mcp.ToolSet` 提供 MCP 工具集合，自动发现和注册远程 MCP 工具。
+
+**需求**：
+- 集成 trpc `tool/mcp.ToolSet` 替换当前自定义 MCP 挂载
+- MCP ToolSet 自动从 MCP 服务器发现工具
+- 工具自动注册为 `mcp_{prefix}__{tool_name}` 格式
+
+**涉及文件**：`internal/tools/mcpmount/`
+
+**验收标准**：MCP 工具通过 trpc ToolSet 自动发现和注册
+
+### 10.2 MCPBroker
+
+**trpc 框架**：`tool/mcpbroker.Broker` 管理 MCP 连接池，支持会话重连。
+
+**需求**：
+- 集成 trpc `tool/mcpbroker.Broker`
+- 管理多个 MCP 服务器连接
+- 支持连接池复用
+- 支持会话重连（断线后自动恢复）
+
+**涉及文件**：`internal/tools/mcpbroker/`
+
+**验收标准**：MCP 连接池管理，支持会话重连
+
+### 10.3 运行时发现
+
+**trpc 框架**：MCP ToolSet 支持运行时动态发现新工具。
+
+**需求**：
+- Agent 运行时可通过 `mcp_tool_search` 工具搜索可用 MCP 工具
+- 新增 MCP 服务器后无需重启即可发现
+- 工具列表缓存和刷新机制
+
+**涉及文件**：`internal/tools/mcpmount/`
+
+**验收标准**：Agent 运行时可动态发现 MCP 工具
+
+### 10.4 会话重连
+
+**trpc 框架**：MCP 连接支持会话级重连。
+
+**需求**：
+- SSE/StreamableHTTP 连接断开后自动重连
+- 重连后恢复工具调用上下文
+- 重连失败时标记 MCP 服务器为不可用
+
+**涉及文件**：`internal/tools/mcpmount/`
+
+**验收标准**：MCP 连接断开后可自动重连

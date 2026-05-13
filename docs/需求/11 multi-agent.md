@@ -26,14 +26,14 @@
   - `critic_loop`：生成 Agent 与评审 Agent 多轮迭代，达到条件或最大轮数后结束。
 - 运行记录落库，支持在监控页或 Team 详情页查看编排轨迹。
 
-### 本期不做
+### 未来扩展
 
-- 不做真正的 A2A 跨框架协议发现。
-- 不做强化学习调度、PPO 或自动拓扑训练。
-- 不做图工作流编辑器。
-- 不做自动生成新 Agent。
-- 不做外部 Team 市场或模板商店。
-- 不做复杂人工审批流，仅预留高风险工具拦截接口。
+- A2A 跨框架协议发现。
+- 强化学习调度、PPO 或自动拓扑训练。
+- 图工作流编辑器。
+- 自动生成新 Agent。
+- 外部 Team 市场或模板商店。
+- 复杂人工审批流，仅预留高风险工具拦截接口。
 
 ## 3. 用户场景
 
@@ -757,3 +757,87 @@ P3：
 - A2A 协议集成。
 - 自适应拓扑选择。
 - 强化学习调度。
+
+---
+
+## 15. trpc-agent-go 对齐需求（M3 Team 编排）
+
+> 本节补充 `plan.md` M3 模块的对齐需求，确保 Team 编排完全复刻 trpc-agent-go `team` 包能力。
+
+### 15.1 crossRequestTransfer
+
+**trpc 框架**：`team.WithCrossRequestTransfer(true)` 允许 Agent 在跨请求间传递控制权。
+
+**需求**：
+- `BuildTRPCTeam` 中通过 `WithCrossRequestTransfer(true)` 启用
+- Agent A 在当前请求中调用 `transfer_to_agent`，下一轮用户消息自动路由到 Agent B
+- 控制权传递记录在 Session State 中
+
+**涉及文件**：`internal/team/trpc_build.go`
+
+**验收标准**：Agent 可在跨请求间传递控制权
+
+### 15.2 SwarmHandoffInput
+
+**trpc 框架**：`team.WithSwarmHandoffInput` 控制 Swarm 模式下 Agent 间传递的输入内容。
+
+**需求**：
+- `BuildTRPCTeam` 中通过 `WithSwarmHandoffInput` 配置
+- 可选值：`full_history`（传递完整历史）、`last_message`（仅传递最后一条）
+- 在 Team 编辑器中增加配置项
+
+**涉及文件**：`internal/team/trpc_build.go`、`internal/team/definition.go`
+
+**验收标准**：Swarm 模式下 Agent 间按配置传递输入
+
+### 15.3 AgentTool 增强
+
+**trpc 框架**：`team.AgentTool` 将成员 Agent 包装为工具，coordinator 可调度。
+
+**需求**：
+- 确认 `BuildTRPCTeam` 中 AgentTool 正确包装成员 Agent
+- AgentTool 的描述包含成员 Agent 的能力描述
+- AgentTool 的参数 schema 与成员 Agent 的输入 schema 对齐
+
+**涉及文件**：`internal/team/trpc_build.go`
+
+**验收标准**：Coordinator 可通过 AgentTool 正确调度成员 Agent
+
+### 15.4 TransferTool 增强
+
+**trpc 框架**：`team.TransferTool` 允许 Swarm 模式下 Agent 间传递控制权。
+
+**需求**：
+- 确认 `BuildTRPCTeam` 中 TransferTool 正确注册
+- TransferTool 的目标 Agent 列表与 Team 成员一致
+- TransferTool 调用后控制权正确转移
+
+**涉及文件**：`internal/team/trpc_build.go`
+
+**验收标准**：Swarm 模式下 Agent 可通过 TransferTool 传递控制权
+
+### 15.5 Team 级 Skill 策略
+
+**trpc 框架**：Team 成员可有独立的 SkillLoadMode。
+
+**需求**：
+- Team 编辑器支持为每个成员配置独立的 SkillLoadMode
+- `definition_json.members[].skill_load_mode` 字段
+- `BuildTRPCTeam` 中为每个成员 Agent 注入独立的 SkillLoadMode
+
+**涉及文件**：`internal/team/trpc_build.go`、`internal/team/definition.go`
+
+**验收标准**：Team 成员可有独立的 Skill 加载策略
+
+### 15.6 Team 级 Memory 共享
+
+**trpc 框架**：Team 成员可共享 Memory Service。
+
+**需求**：
+- Team 运行时共享同一个 Memory Service 实例
+- 成员 Agent 可读写共享记忆
+- 支持按 Agent 隔离记忆
+
+**涉及文件**：`internal/team/trpc_build.go`
+
+**验收标准**：Team 成员可共享或隔离记忆

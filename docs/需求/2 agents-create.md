@@ -212,4 +212,103 @@
 
 ---
 
-*文档版本：与 `2 agent.md` 主表、`4.agent-type.md` 业务分类及 **`50 Avatar.md`（§3.8 头像）** 对齐；界面以当前「创建 Agent」弹窗为准。*
+## 8. trpc-agent-go 对齐需求（M2 Agent 构建）
+
+> 本节补充 `plan.md` M2 模块的对齐需求，确保 Agent 构建完全复刻 trpc-agent-go `llmagent` 能力。
+
+### 8.1 占位符变量
+
+**trpc 框架**：`llmagent.New` 支持 `WithInstruction` 中的 `{key}` 占位符，运行时由 `agent.Invocation` 的 `Variables` 替换。
+
+**需求**：
+- Agent 的 `system_prompt` 支持 `{variable_name}` 占位符
+- 运行时从 `Invocation.Variables` 注入实际值
+- 内置变量：`{agent_name}`、`{session_id}`、`{user_id}`、`{current_date}`
+- 自定义变量：通过 `AgentRuntimeSetting.variables_json` 配置
+
+**涉及文件**：`internal/agent/trpc_build.go`
+
+**验收标准**：Agent Instruction 中 `{key}` 被正确替换为运行时值
+
+### 8.2 ModelInstructions
+
+**trpc 框架**：`llmagent.WithModelInstructions` 为不同模型注入不同的指令片段。
+
+**需求**：
+- `AgentRuntimeSetting` 增加 `model_instructions_json` 字段
+- 格式：`{"gpt-4o": "你是一个精确的助手", "claude-3": "你是一个有创意的助手"}`
+- `BuildTRPCLLMAgent` 中通过 `WithModelInstructions` 注入
+
+**涉及文件**：`internal/agent/trpc_build.go`、`internal/biz/agent_types.go`
+
+**验收标准**：不同模型使用不同的指令片段
+
+### 8.3 ContextCompaction
+
+**trpc 框架**：`llmagent.WithContextCompaction` 启用上下文自动压缩，当 token 接近上限时自动摘要。
+
+**需求**：
+- `AgentRuntimeSetting` 增加 `context_compaction` 布尔字段
+- `BuildTRPCLLMAgent` 中通过 `WithContextCompaction` 启用
+- 压缩策略：保留最近 N 轮 + 摘要历史
+
+**涉及文件**：`internal/agent/trpc_build.go`、`internal/biz/agent_types.go`
+
+**验收标准**：长对话自动压缩，不丢失关键信息
+
+### 8.4 SessionSummary
+
+**trpc 框架**：`llmagent.WithSessionSummary` 启用会话摘要，新 session 可加载旧 session 摘要。
+
+**需求**：
+- `AgentRuntimeSetting` 增加 `session_summary` 布尔字段
+- `BuildTRPCLLMAgent` 中通过 `WithSessionSummary` 启用
+- Session 结束时自动生成摘要
+- 新 Session 可通过摘要继承上下文
+
+**涉及文件**：`internal/agent/trpc_build.go`、`internal/biz/agent_types.go`
+
+**验收标准**：新 Session 可通过摘要继承旧 Session 上下文
+
+### 8.5 SkillLoadMode
+
+**trpc 框架**：`llmagent.WithSkillLoadMode` 控制技能加载策略（auto/manual/none）。
+
+**需求**：
+- `AgentRuntimeSetting` 增加 `skill_load_mode` 字段
+- 可选值：`auto`（自动匹配）、`manual`（手动指定）、`none`（不加载）
+- `BuildTRPCLLMAgent` 中通过 `WithSkillLoadMode` 注入
+
+**涉及文件**：`internal/agent/trpc_build.go`、`internal/biz/agent_types.go`
+
+**验收标准**：Agent 按配置策略加载技能
+
+### 8.6 StructuredOutput
+
+**trpc 框架**：`llmagent.WithStructuredOutput` 强制 LLM 输出符合 JSON Schema。
+
+**需求**：
+- `AgentRuntimeSetting` 增加 `output_schema_json` 字段
+- `BuildTRPCLLMAgent` 中通过 `WithStructuredOutput` 注入
+- LLM 输出自动校验和解析
+
+**涉及文件**：`internal/agent/trpc_build.go`、`internal/biz/agent_types.go`
+
+**验收标准**：Agent 输出符合预定义的 JSON Schema
+
+### 8.7 ModelSelector
+
+**trpc 框架**：`llmagent.WithModelSelector` 动态选择模型。
+
+**需求**：
+- `AgentRuntimeSetting` 增加 `model_selector` 字段
+- 可选值：`default`（使用配置模型）、`auto`（根据任务复杂度选择）
+- `BuildTRPCLLMAgent` 中通过 `WithModelSelector` 注入
+
+**涉及文件**：`internal/agent/trpc_build.go`、`internal/biz/agent_types.go`
+
+**验收标准**：Agent 根据任务复杂度动态选择模型
+
+---
+
+*文档版本：与 `2 agent.md` 主表、`4.agent-type.md` 业务分类及 **`50 Avatar.md`（§3.8 头像）** 对齐；界面以当前「创建 Agent」弹窗为准。trpc 对齐需求见 §8。*
