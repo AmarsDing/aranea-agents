@@ -14,7 +14,7 @@ import (
 	"time"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
-	"aranea-agents/internal/adkdeps"
+	"aranea-agents/internal/runtimedeps"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/legacychat"
 	"aranea-agents/internal/team"
@@ -35,44 +35,45 @@ type ChatService struct {
 	teams       biz.TeamRepository
 	teamsNative *team.Runner
 	usage       *biz.UsageUsecase
-	td          adkdeps.TurnDeps
+	td          runtimedeps.TurnDeps
 }
 
-// NewChatService builds a chat façade (LEGACY_REST_ORIGIN → legacy /api/v1/chat/* until fully in-process execution).
-func NewChatService(
-	broker *biz.TeamRunEventBroker,
-	teams biz.TeamRepository,
-	teamsNative *team.Runner,
-	usage *biz.UsageUsecase,
-	sessions *biz.SessionUsecase,
-	agents biz.AgentRepository,
-	agentsUC *biz.AgentUsecase,
-	toolsCatalog biz.ToolRepo,
-	llmCatalog *biz.LlmProviderModelUsecase,
-	skillUC *biz.SkillUsecase,
-	sys biz.SystemSettingRepo,
-	adk *adkdeps.Runtime,
-	compress biz.NativeTurnCompressor,
-	monitorLogs *biz.MonitorLogBroker,
-) *ChatService {
+type ChatServiceDeps struct {
+	Broker       *biz.TeamRunEventBroker
+	Teams        biz.TeamRepository
+	TeamsNative  *team.Runner
+	Usage        *biz.UsageUsecase
+	Sessions     *biz.SessionUsecase
+	Agents       biz.AgentRepository
+	AgentsUC     *biz.AgentUsecase
+	ToolsCatalog biz.ToolRepo
+	LLMCatalog   *biz.LlmProviderModelUsecase
+	SkillUC      *biz.SkillUsecase
+	Sys          biz.SystemSettingRepo
+	RT           *runtimedeps.Runtime
+	Compress     biz.NativeTurnCompressor
+	MonitorLogs  *biz.MonitorLogBroker
+}
+
+func NewChatService(deps ChatServiceDeps) *ChatService {
 	s := &ChatService{
 		client:      &http.Client{Timeout: 600 * time.Second},
-		teams:       teams,
-		teamsNative: teamsNative,
-		usage:       usage,
-		td: adkdeps.TurnDeps{
-			Agents:       agents,
-			AgentsUC:     agentsUC,
-			ToolsCatalog: toolsCatalog,
-			LLMCatalog:   llmCatalog,
-			SkillUC:      skillUC,
-			Sys:          sys,
-			ADK:          adk,
+		teams:       deps.Teams,
+		teamsNative: deps.TeamsNative,
+		usage:       deps.Usage,
+		td: runtimedeps.TurnDeps{
+			Agents:       deps.Agents,
+			AgentsUC:     deps.AgentsUC,
+			ToolsCatalog: deps.ToolsCatalog,
+			LLMCatalog:   deps.LLMCatalog,
+			SkillUC:      deps.SkillUC,
+			Sys:          deps.Sys,
+			RT:           deps.RT,
 			LLMHTTP:      &http.Client{Timeout: 300 * time.Second},
-			Sessions:     sessions,
-			Compress:     compress,
-			MonitorLogs:  monitorLogs,
-			TeamSSE:      broker,
+			Sessions:     deps.Sessions,
+			Compress:     deps.Compress,
+			MonitorLogs:  deps.MonitorLogs,
+			TeamSSE:      deps.Broker,
 		},
 	}
 	s.refreshUpstream()

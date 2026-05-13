@@ -124,7 +124,7 @@ func buildSkillDeps(ctx context.Context, deps TRPCBuilderDeps) (trpcskill.Reposi
 		return nil, nil, nil, err
 	}
 
-	allowSet := sliceToSet(slugs)
+	allowSet := strutil.SliceToSet(slugs)
 	filter := func(_ context.Context, summary trpcskill.Summary) bool {
 		name := strings.TrimSpace(strings.ToLower(summary.Name))
 		return allowSet[name]
@@ -132,17 +132,6 @@ func buildSkillDeps(ctx context.Context, deps TRPCBuilderDeps) (trpcskill.Reposi
 
 	exec := skilltrpc.NewLocalExecutor(rootDir)
 	return repo, filter, exec, nil
-}
-
-func sliceToSet(slugs []string) map[string]bool {
-	m := map[string]bool{}
-	for _, s := range slugs {
-		s = strings.TrimSpace(strings.ToLower(s))
-		if s != "" {
-			m[s] = true
-		}
-	}
-	return m
 }
 
 func buildToolsetsForAgent(ag biz.Agent, deps TRPCBuilderDeps) (*tooltrpc.AssembledToolsets, error) {

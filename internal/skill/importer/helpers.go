@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/pkg/strutil"
 )
 
 var fallbackIDCounter uint64
@@ -27,9 +26,7 @@ func newID() string {
 	return hex.EncodeToString(buf)
 }
 
-func firstNonEmptyString(values ...string) string {
-	return strutil.FirstNonEmpty(values...)
-}
+
 
 func slugify(value string) string {
 	value = strings.ToLower(strings.TrimSpace(value))

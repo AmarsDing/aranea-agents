@@ -7,12 +7,9 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/strutil"
 )
 
-// ValidateSkillPackage runs structural checks shared by ZIP import and disk sync.
-// When skipDuplicateCheck is false, existing DB names/slugs block import (ZIP flow).
-// Disk sync sets skipDuplicateCheck true and relies on Upsert by slug.
-// Returns parsed tags from SKILL.md frontmatter / headings.
 func ValidateSkillPackage(files map[string][]byte, dirSlugHint string, existing []biz.SkillSimilaritySource, skipDuplicateCheck bool) (biz.SkillImportCandidate, []biz.SkillTag) {
 	bodyBytes, ok := files["SKILL.md"]
 	if !ok {
@@ -28,7 +25,7 @@ func ValidateSkillPackage(files map[string][]byte, dirSlugHint string, existing 
 	}
 	body := string(bodyBytes)
 	name, desc, tags := parseSkillMarkdown(body)
-	slug := slugify(firstNonEmptyString(name, pathBaseSkill(dirSlugHint)))
+	slug := slugify(strutil.FirstNonEmpty(name, pathBaseSkill(dirSlugHint)))
 	if slug == "" {
 		slug = slugify(pathBaseSkill(dirSlugHint))
 	}

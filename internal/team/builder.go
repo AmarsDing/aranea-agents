@@ -1,31 +1,6 @@
 package team
 
-import (
-	"context"
-	"strings"
-
-	bizagent "aranea-agents/internal/agent"
-	"aranea-agents/internal/biz"
-
-	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
-)
-
-func firstOfThree(a, b, c string) string {
-	for _, v := range []string{a, b, c} {
-		if s := strings.TrimSpace(v); s != "" {
-			return s
-		}
-	}
-	return ""
-}
-
-func buildTRPCLLMAgentForMember(ctx context.Context, ag biz.Agent, deps bizagent.TRPCBuilderDeps, provOpt, modOpt string, sess biz.Session, teamMode string, member MemberDef) (trpcagent.Agent, error) {
-	d := deps
-	d.Provider = firstOfThree(provOpt, sess.Provider, ag.Provider)
-	d.Model = firstOfThree(modOpt, sess.Model, ag.Model)
-	d.DialogMode = strings.TrimSpace(teamMode)
-	return bizagent.BuildTRPCLLMAgent(ctx, ag, d)
-}
+import "strings"
 
 func boundedLoopIterations(v int, maxCap uint) uint {
 	if v <= 0 {

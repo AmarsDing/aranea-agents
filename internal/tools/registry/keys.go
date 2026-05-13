@@ -1,4 +1,4 @@
-// Package registry maps platform tool_key strings to built-in implementations (workspace, ADK-shipped, host).
+// Package registry maps platform tool_key strings to built-in implementations (workspace, runtime-shipped, host).
 package registry
 
 // Tool keys match internal/biz effective tools and internal/data builtin tool seeds.
@@ -27,7 +27,7 @@ const (
 	SkillLoadSkill         = "load_skill"
 	SkillLoadSkillResource = "load_skill_resource"
 
-	// MCPToolset aligns with biz.ToolKeyMCPToolSet (mounted as ADK MCP toolsets, not registry builtins).
+	// MCPToolset aligns with biz.ToolKeyMCPToolSet (mounted as runtime MCP toolsets, not registry builtins).
 	MCPToolset = "mcp_tool_set"
 )
 

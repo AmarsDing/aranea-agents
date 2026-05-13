@@ -8,6 +8,7 @@ import (
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcteam "trpc.group/trpc-go/trpc-agent-go/team"
 )
@@ -19,7 +20,7 @@ type TRPCTeamBuilderDeps struct {
 func BuildTRPCTeam(ctx context.Context, def Definition, deps TRPCTeamBuilderDeps, catalogAgent func(ctx context.Context, id string) (biz.Agent, error)) (trpcagent.Agent, error) {
 	members := EnabledMembers(def)
 	if len(members) == 0 {
-		return nil, fmt.Errorf("team: no enabled members")
+		return nil, kerrors.BadRequest("TEAM", "no enabled members")
 	}
 
 	mode := strings.ToLower(strings.TrimSpace(def.Mode))
@@ -28,11 +29,11 @@ func BuildTRPCTeam(ctx context.Context, def Definition, deps TRPCTeamBuilderDeps
 	for _, m := range members {
 		ag, err := catalogAgent(ctx, strings.TrimSpace(m.AgentID))
 		if err != nil {
-			return nil, fmt.Errorf("team: member %s: %w", m.AgentID, err)
+			return nil, kerrors.BadRequest("TEAM", fmt.Sprintf("member %s: %v", m.AgentID, err))
 		}
 		trpcAg, err := chatagent.BuildTRPCLLMAgent(ctx, ag, deps.BuilderDeps)
 		if err != nil {
-			return nil, fmt.Errorf("team: build member %s: %w", m.AgentID, err)
+			return nil, kerrors.InternalServer("TEAM", fmt.Sprintf("build member %s: %v", m.AgentID, err))
 		}
 		memberAgents = append(memberAgents, trpcAg)
 	}
@@ -46,7 +47,7 @@ func BuildTRPCTeam(ctx context.Context, def Definition, deps TRPCTeamBuilderDeps
 			memberAgents,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("team: new swarm: %w", err)
+			return nil, kerrors.InternalServer("TEAM", fmt.Sprintf("new swarm: %v", err))
 		}
 		return t, nil
 
@@ -61,7 +62,7 @@ func BuildTRPCTeam(ctx context.Context, def Definition, deps TRPCTeamBuilderDeps
 			rest,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("team: new coordinator: %w", err)
+			return nil, kerrors.InternalServer("TEAM", fmt.Sprintf("new coordinator: %v", err))
 		}
 		return t, nil
 	}

@@ -9,7 +9,7 @@ import (
 	"os"
 	"strings"
 
-	"aranea-agents/internal/adkdeps"
+	"aranea-agents/internal/runtimedeps"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/cronrunner"
@@ -74,7 +74,7 @@ func wireApp(*conf.Server, *conf.Data, log.Logger) (wireOut, func(), error) {
 		provideCronRunnerDeps,
 		provideCronRunner,
 		provideSkillWatchRunner,
-		adkdeps.NewRuntime,
+		runtimedeps.NewRuntime,
 		newApp,
 		provideWireOut,
 	))

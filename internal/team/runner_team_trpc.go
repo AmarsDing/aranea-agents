@@ -15,6 +15,7 @@ import (
 	"aranea-agents/internal/biz"
 	memtrpc "aranea-agents/internal/memory/trpc"
 	"aranea-agents/internal/provider"
+	"aranea-agents/pkg/strutil"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
@@ -26,7 +27,7 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 		return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.BadRequest("CHAT_NATIVE", "content is required")
 	}
 	dialogMode, provOpt, modOpt, attN := extractOpts(req)
-	dialogMode = firstNonEmptyStr(dialogMode, sess.DialogMode, "default")
+	dialogMode = strutil.FirstNonEmpty(dialogMode, sess.DialogMode, "default")
 
 	members := EnabledMembers(def)
 	if len(members) == 0 {
@@ -82,8 +83,8 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
 
-	prov0 := firstNonEmptyStr(provOpt, sess.Provider, firstAg.Provider)
-	mod0 := firstNonEmptyStr(modOpt, sess.Model, firstAg.Model)
+	prov0 := strutil.FirstNonEmpty(provOpt, sess.Provider, firstAg.Provider)
+	mod0 := strutil.FirstNonEmpty(modOpt, sess.Model, firstAg.Model)
 	builderDeps := agent.TRPCBuilderDeps{
 		Catalog:    r.td.LLMCatalog,
 		AgentUC:    r.td.AgentsUC,
@@ -108,8 +109,8 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 	runnerDeps := agent.TRPCRunnerDeps{
 		SessionService: agent.NewInMemoryTRPCSessionService(),
 	}
-	if r.td.ADK != nil && r.td.ADK.SessionMemory != nil {
-		runnerDeps.MemoryService = memtrpc.NewSQLiteMemoryService(r.td.ADK.SessionMemory)
+	if r.td.RT != nil && r.td.RT.SessionMemory != nil {
+		runnerDeps.MemoryService = memtrpc.NewSQLiteMemoryService(r.td.RT.SessionMemory)
 	}
 	runner, err := agent.NewTRPCRunner(root, runnerDeps)
 	if err != nil {
@@ -120,7 +121,7 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 
 	anchor := &agent.TeamMemberAnchor{
 		AgentID: firstAg.ID,
-		Name:    firstNonEmptyStr(firstAg.DisplayName, firstAg.AgentKey),
+		Name:    strutil.FirstNonEmpty(firstAg.DisplayName, firstAg.AgentKey),
 		Role:    anchorMem.Role,
 	}
 	userOpts, err := agent.UserOptionsJSON(firstAg, dialogMode, prov0, mod0, sess.ContextUsedRatio, anchor)
@@ -200,9 +201,9 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 	}
 
 	var (
-		reply        strings.Builder
-		reasoning    strings.Builder
-		promptTok    int
+		reply         strings.Builder
+		reasoning     strings.Builder
+		promptTok     int
 		completionTok int
 	)
 
@@ -298,7 +299,7 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 		SessionID:       sess.ID,
 		Role:            "assistant",
 		ContentMarkdown: displayMarkdown,
-		ModelName:       firstNonEmptyStr(modOpt, sess.Model, firstAg.Model),
+		ModelName:       strutil.FirstNonEmpty(modOpt, sess.Model, firstAg.Model),
 		Status:          "ok",
 		OptionsJSON:     assistantOptsStr,
 		CreatedAt:       agent.RFC3339Now(),

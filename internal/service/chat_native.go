@@ -20,18 +20,6 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
-type chatHTTPPostBody struct {
-	SessionID string `json:"session_id"`
-	AgentKey  string `json:"agent_key"`
-	TeamID    string `json:"team_id"`
-	Content   string `json:"content"`
-	Options   struct {
-		DialogMode string `json:"dialog_mode"`
-		Provider   string `json:"provider"`
-		Model      string `json:"model"`
-	} `json:"options"`
-}
-
 func chatNowRFC3339() string {
 	return time.Now().UTC().Format(time.RFC3339)
 }
@@ -64,9 +52,7 @@ func nativeDialogModeChatOptions() []*chatv1.ChatOption {
 	}
 }
 
-func firstNonEmptyStr(values ...string) string {
-	return strutil.FirstNonEmpty(values...)
-}
+
 
 func (s *ChatService) nativeGetChatOptions(ctx context.Context, req *chatv1.GetChatOptionsRequest) (*chatv1.GetChatOptionsResponse, error) {
 	typed := strings.TrimSpace(req.GetType())
@@ -147,7 +133,17 @@ func (s *ChatService) proxyNativeStream(ctx khttp.Context) error {
 	if err != nil {
 		return err
 	}
-	var payload chatHTTPPostBody
+	var payload struct {
+		SessionID string `json:"session_id"`
+		AgentKey  string `json:"agent_key"`
+		TeamID    string `json:"team_id"`
+		Content   string `json:"content"`
+		Options   struct {
+			DialogMode string `json:"dialog_mode"`
+			Provider   string `json:"provider"`
+			Model      string `json:"model"`
+		} `json:"options"`
+	}
 	if err := json.Unmarshal(body, &payload); err != nil {
 		http.Error(ctx.Response(), "invalid JSON body", http.StatusBadRequest)
 		return nil
@@ -258,9 +254,9 @@ func (s *ChatService) runNativeAgentTurn(ctx context.Context, req *chatv1.SendCh
 		prov = strings.TrimSpace(opts.GetProvider())
 		mod = strings.TrimSpace(opts.GetModel())
 	}
-	dialogMode = firstNonEmptyStr(dialogMode, sess.DialogMode, "default")
-	prov = firstNonEmptyStr(prov, sess.Provider, ag.Provider)
-	mod = firstNonEmptyStr(mod, sess.Model, ag.Model)
+	dialogMode = strutil.FirstNonEmpty(dialogMode, sess.DialogMode, "default")
+	prov = strutil.FirstNonEmpty(prov, sess.Provider, ag.Provider)
+	mod = strutil.FirstNonEmpty(mod, sess.Model, ag.Model)
 
 	attN := 0
 	if opts != nil {

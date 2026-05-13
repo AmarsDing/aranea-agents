@@ -8,13 +8,13 @@ import (
 )
 
 const (
-	adkScopeTypeSession = "adk_session"
-	adkEntityEvent      = "adk_event"
-	adkSourceSync       = "adk_session_sync"
+	scopeTypeSession = "session"
+	entityTypeEvent  = "event"
+	sourceSync       = "session_sync"
 )
 
-// ADKEventEntityParams is row input for UpsertADKEventEntity (no ADK imports).
-type ADKEventEntityParams struct {
+// EventEntityParams is row input for UpsertEventEntity.
+type EventEntityParams struct {
 	ID               string
 	ScopeType        string
 	ScopeID          string
@@ -32,9 +32,9 @@ type ADKEventEntityParams struct {
 	UpdatedAtRFC3339 string
 }
 
-// UpsertADKEventEntity stores one conversation event in memory_entities so keyword search can surface it.
+// UpsertEventEntity stores one conversation event in memory_entities so keyword search can surface it.
 // name_normalized must be stable per (session scope, entity_type, logical event) for upserts across turns.
-func (st *Store) UpsertADKEventEntity(ctx context.Context, params ADKEventEntityParams) error {
+func (st *Store) UpsertEventEntity(ctx context.Context, params EventEntityParams) error {
 	if st == nil || st.client == nil {
 		return nil
 	}
@@ -44,13 +44,13 @@ func (st *Store) UpsertADKEventEntity(ctx context.Context, params ADKEventEntity
 	}
 	p.ScopeType = strings.TrimSpace(p.ScopeType)
 	if p.ScopeType == "" {
-		p.ScopeType = adkScopeTypeSession
+		p.ScopeType = scopeTypeSession
 	}
 	p.ScopeID = strings.TrimSpace(p.ScopeID)
 	p.UserID = strings.TrimSpace(p.UserID)
 	p.EntityType = strings.TrimSpace(p.EntityType)
 	if p.EntityType == "" {
-		p.EntityType = adkEntityEvent
+		p.EntityType = entityTypeEvent
 	}
 	p.Name = strings.TrimSpace(p.Name)
 	if p.Name == "" {
@@ -99,7 +99,7 @@ ON CONFLICT(scope_type, scope_id, entity_type, name_normalized) DO UPDATE SET
 	args := []any{
 		p.ID, p.ScopeType, p.ScopeID, strings.TrimSpace(p.WorkspaceID), p.UserID,
 		p.EntityType, p.Name, p.NameNormalized, "[]", p.Description, "{}",
-		p.Importance, p.Confidence, p.UseCount, adkSourceSync,
+		p.Importance, p.Confidence, p.UseCount, sourceSync,
 		"pending", "", 0, nil, 0.0,
 		"active", "", meta, created, now, "", "",
 	}
@@ -107,8 +107,8 @@ ON CONFLICT(scope_type, scope_id, entity_type, name_normalized) DO UPDATE SET
 	return err
 }
 
-// DeleteADKSessionEventEntities removes keyword-memory rows produced by session sync for one session.
-func (st *Store) DeleteADKSessionEventEntities(ctx context.Context, sessionID string) error {
+// DeleteSessionEventEntities removes keyword-memory rows produced by session sync for one session.
+func (st *Store) DeleteSessionEventEntities(ctx context.Context, sessionID string) error {
 	if st == nil || st.client == nil {
 		return nil
 	}
@@ -118,6 +118,6 @@ func (st *Store) DeleteADKSessionEventEntities(ctx context.Context, sessionID st
 	}
 	_, err := st.client.ExecContext(ctx,
 		`DELETE FROM memory_entities WHERE scope_type = ? AND scope_id = ? AND entity_type = ?`,
-		adkScopeTypeSession, sessionID, adkEntityEvent)
+		scopeTypeSession, sessionID, entityTypeEvent)
 	return err
 }

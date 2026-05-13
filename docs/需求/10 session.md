@@ -2,6 +2,8 @@
 
 本文档设计 **会话历史存储（Session History）**，覆盖数据库表、后端 session 模块、前端展示界面，以及 session 在 **Agent / Team 编排**中的核心作用。目标不是只保存聊天记录，而是把一次用户任务从输入、编排、模型调用、上下文窗口消耗到最终结果都串成可回放、可分析、可治理的运行实例。
 
+> **框架对齐**：本设计遵循 `AI-DEVELOPMENT-SPECIFICATION.md` 分层规范和 `plan.md` M5 Session 管理模块，逐步向 trpc-agent-go `session.Service` 对齐。当前阶段以 SQLite + Ent 为主存储，后续可桥接 trpc session.Service 多后端（Redis/PG/MySQL）。
+
 ---
 
 ## 0. 会话历史追踪弹窗（实施范围）
@@ -143,6 +145,11 @@ Team session 与单 Agent session 的主要差异：
 
 现有代码中已经有 `sessions`、`messages`、`model_token_usage_events`，并且 `ChatService` 会更新 `context_used_ratio`。本设计是在现有基础上扩展，让 session 从聊天列表升级为编排历史中心。
 
+> **trpc-agent-go 对齐路径**：trpc 框架提供 `session.Service` + 多后端（SQLite/Redis/PG/MySQL/ClickHouse）+ 内置摘要压缩。当前项目使用 Ent + SQLite 自管理 session 存储，后续通过适配器桥接到 trpc `session.Service` 接口，实现：
+> 1. `internal/session/trpc/service.go` — 桥接 Ent session 到 trpc session.Service
+> 2. `internal/session/trpc/redis.go` — 生产环境 Redis 后端
+> 3. 逐步将 `internal/compress` 摘要逻辑迁移到 trpc 内置压缩
+
 ---
 
 ## 4. 数据库表设计
@@ -215,6 +222,9 @@ CREATE TABLE IF NOT EXISTS sessions (
   archived_at TEXT NOT NULL DEFAULT '',
   deleted_at TEXT NOT NULL DEFAULT '',
 
+  -- Runner 快照：序列化的 trpc-agent-go Runner 会话状态（events + KV state），用于 Runner 恢复与压缩重写
+  runner_snapshot_json TEXT NOT NULL DEFAULT '',
+
   -- 扩展
   metadata_json TEXT NOT NULL DEFAULT '{}',
 
@@ -253,6 +263,7 @@ CREATE INDEX IF NOT EXISTS idx_sessions_status_time
 | `max_context_used_ratio` | 会话历史最高消耗比例，用于发现曾经接近爆窗的 session |
 | `context_status` | 前端可直接映射颜色：normal 绿、warning 橙、critical 红、exceeded 紫/红 |
 | `summary` | 后端异步生成的会话摘要，用于历史列表和归档后快速理解 |
+| `runner_snapshot_json` | trpc-agent-go Runner 会话序列化状态（events + KV state），用于 Runner 恢复和压缩重写；空值表示纯 native chat |
 | `metadata_json` | 保存 UI 扩展、入口来源、编排策略版本等非核心字段 |
 
 ---
@@ -734,41 +745,62 @@ ALTER TABLE messages ADD COLUMN visibility TEXT NOT NULL DEFAULT 'visible';
 
 ## 5. 后端 Session 模块设计
 
-### 5.1 模块边界
+### 5.1 模块边界（遵循 AI-DEVELOPMENT-SPECIFICATION.md 分层规范）
 
-建议将后端拆为以下职责：
+> **分层铁律**：`internal/biz` 不得 import `pkg/trpc-agent-go`；`internal/service` 是框架调用的唯一桥点；`internal/data` 仅通过 `Ent()`/`Postgres()` 访问数据库。
 
-| 模块 | 职责 |
-|------|------|
-| `SessionService` | 创建、查询、归档、删除、聚合会话指标 |
-| `SessionRepository` | 读写 `sessions`、turns、participants、runs、steps、trace spans、snapshots |
-| `ChatService` | 处理单 Agent 对话，写 message、turn、trace span、usage、context snapshot |
-| `OrchestrationService` | 处理 Team 编排，创建 run/step/span，记录 handoff、tool、Skill、MCP 调用 |
-| `UsageService` | 继续维护 `model_token_usage_events`，并把结果回填到 session 聚合字段 |
-| `SummaryService` | 上下文接近阈值时生成摘要，写 system message 和 context snapshot |
+| 模块 | 职责 | 所在层 |
+|------|------|--------|
+| `SessionUsecase` | Session CRUD、timeline 聚合、上下文治理、摘要触发 | biz |
+| `SessionRepository` | 读写 `sessions`、turns、participants、runs、steps、trace spans、snapshots | biz 接口 / data 实现 |
+| `SessionService` | proto ↔ biz 映射、Runner 装配编排 | service |
+| `ChatService` | 单 Agent 对话处理，写 message、turn、trace span、usage、context snapshot | service |
+| `SessionCompressor` | 上下文接近阈值时生成摘要，写 system message 和 context snapshot | service |
+| `UsageService` | 维护 `model_token_usage_events`，回填 session 聚合字段 | service |
+| `sessionmemory.Store` | L0-L4 记忆链读写，Runner 会话实体同步 | data |
+| `trpc session.Service` 适配器 | 桥接 Ent session 到 trpc session.Service 接口（后续实现） | internal/session/trpc |
 
-当前 `SessionService` 只有 create/list/delete，建议扩展为 session 历史中心：
+当前 `SessionUsecase` 已实现 create/search/get/rename/archive/delete/timeline/appendChatTurn 等基础能力，建议逐步扩展为 session 历史中心：
 
 ```go
-type SessionService interface {
-  Create(ctx context.Context, in CreateSessionInput) (domain.Session, error)
-  Get(ctx context.Context, id string) (SessionDetail, error)
-  Search(ctx context.Context, query SessionSearchQuery) (SessionListResult, error)
-  Archive(ctx context.Context, id string) error
-  Delete(ctx context.Context, id string) error
+// biz 层：SessionUsecase（不 import pkg/trpc-agent-go）
+type SessionUsecase struct {
+    sessions SessionRepository
+    agents   AgentRepository
+    teams    TeamRepository
+}
 
-  StartRun(ctx context.Context, in StartSessionRunInput) (SessionRun, error)
-  FinishRun(ctx context.Context, in FinishSessionRunInput) error
-  AddStep(ctx context.Context, in AddRunStepInput) (SessionRunStep, error)
-  FinishStep(ctx context.Context, in FinishRunStepInput) error
+// SessionRepository 接口定义在 biz，实现在 data
+type SessionRepository interface {
+    SearchSessions(ctx context.Context, q SessionSearchQuery) (SessionListResult, error)
+    CreateSession(ctx context.Context, s Session) (Session, error)
+    GetSessionByID(ctx context.Context, id string) (Session, error)
+    UpdateSessionTitle(ctx context.Context, id, title string) (Session, error)
+    ArchiveSession(ctx context.Context, id string) error
+    DeleteSession(ctx context.Context, id string) error
+    DeleteSessionsByAgentID(ctx context.Context, agentID string) error
+    ListMessagesBySession(ctx context.Context, sessionID string) ([]ChatMessage, error)
+    ListToolInvocationsBySession(ctx context.Context, sessionID string, limit int) ([]ToolInvocationView, error)
+    ListSkillInvocationsBySession(ctx context.Context, sessionID string, limit int) ([]SkillInvocationView, error)
+    AppendChatTurn(ctx context.Context, sessionID string, user, assistant ChatMessage) error
+    AppendChatMessage(ctx context.Context, sessionID string, msg ChatMessage, bumpModelCall bool) error
+    UpdateRunnerSnapshotJSON(ctx context.Context, sessionID string, snapshotJSON string) error
+    UpdateSessionContextFromLLMUsage(ctx context.Context, sessionID string, promptTokens, completionTokens, contextWindow int) error
+    UpdateSessionContextAfterCompression(ctx context.Context, sessionID string, estimatedPromptTokens int, contextWindow int) error
+    InsertSessionSummary(ctx context.Context, row SessionSummary) error
+    MaxSessionSummaryToTurn(ctx context.Context, sessionID string) (int, error)
+    ListSessionSummaries(ctx context.Context, sessionID string) ([]SessionSummary, error)
+    LatestSessionSummaryTime(ctx context.Context, sessionID string) (string, error)
+    UpdateSessionListSummary(ctx context.Context, sessionID, summary string) error
+    // 后续扩展：runs / steps / turns / trace_spans / participants / context_snapshots
+}
+```
 
-  StartTurn(ctx context.Context, in StartSessionTurnInput) (SessionTurn, error)
-  FinishTurn(ctx context.Context, in FinishSessionTurnInput) error
-  StartSpan(ctx context.Context, in StartTraceSpanInput) (SessionTraceSpan, error)
-  FinishSpan(ctx context.Context, in FinishTraceSpanInput) error
-
-  RecordContextSnapshot(ctx context.Context, in ContextSnapshotInput) error
-  RecalculateAggregates(ctx context.Context, sessionID string) error
+```go
+// service 层：SessionService（proto ↔ biz 映射 + Runner 装配）
+type SessionService struct {
+    v1.UnimplementedSessionServiceServer
+    uc *biz.SessionUsecase
 }
 ```
 
@@ -1366,11 +1398,25 @@ export const useSessionStore = defineStore("sessions", {
 
 建议分阶段实现，避免一次性重构聊天链路。
 
+### Phase 0：代码清理与命名对齐（当前阶段）
+
+| 工作 | 说明 |
+|------|------|
+| 重命名 `AdkSnapshotJSON` → `RunnerSnapshotJSON` | biz 模型、Ent schema、data 层、service 层统一重命名 |
+| 重命名 `UpdateAdkSnapshotJSON` → `UpdateRunnerSnapshotJSON` | SessionRepository 接口和实现 |
+| 重命名 `DeleteADKSessionEventEntities` → `DeleteSessionEventEntities` | sessionmemory.Store |
+| 重命名 `ADKEventEntityParams` → `EventEntityParams`、`UpsertADKEventEntity` → `UpsertEventEntity` | sessionmemory.Store |
+| 重命名 `adkScopeTypeSession`/`adkEntityEvent`/`adkSourceSync` 常量 | sessionmemory |
+| `session_repo.go` 中 `errors.New` 替换为 `kerrors` | 对齐 AI-DEVELOPMENT-SPECIFICATION.md 错误处理规范 |
+| 补充 Session 模型缺失字段 | workspace_id, user_id, tags_json, default_provider, default_model, default_context_window_tokens, last_provider, last_model, last_context_window_tokens, visibility, avg_latency_ms, error_count, first_message_at, last_run_at, metadata_json |
+
 ### Phase 1：扩展 Session 主表与列表
 
 | 工作 | 说明 |
 |------|------|
 | 数据库 | 给 `sessions` 增加 summary、message_count、token、cost、context_status 等字段 |
+| Ent Schema | 同步新增字段定义，`go generate ./internal/data/ent` |
+| Proto | 更新 `session.proto`，添加新字段的 proto 定义，`make api` |
 | Repository | `ListSessions` 支持 owner_type、team_id、状态、分页 |
 | API | `GET /sessions` 从简单数组升级为分页查询 |
 | 前端 | 新增 Session 历史页和详情 Header，复用现有聊天列表数据 |
@@ -1401,6 +1447,15 @@ export const useSessionStore = defineStore("sessions", {
 | Team 编排 | 自动维护参与 Agent、角色、贡献指标 |
 | 前端 | Team session 展示参与者、handoff、内部消息开关 |
 
+### Phase 5：trpc session.Service 对齐
+
+| 工作 | 说明 |
+|------|------|
+| 适配器 | `internal/session/trpc/service.go` 桥接 Ent session 到 trpc session.Service |
+| Redis 后端 | `internal/session/trpc/redis.go` 生产环境 Redis 存储 |
+| 摘要迁移 | 将 `internal/compress` 摘要逻辑迁移到 trpc 内置压缩 |
+| 验证 | Runner 使用适配后的 SessionService 正常运行 |
+
 ---
 
 ## 10. 关键设计原则
@@ -1412,3 +1467,6 @@ export const useSessionStore = defineStore("sessions", {
 5. **Context ratio 必须可解释**：列表显示比例，详情能追到哪个 run/step/message 导致消耗升高。
 6. **软删除优先**：session 删除不应破坏成本统计和审计链路。
 7. **模型配置保存快照，但不假设唯一模型**：历史 session 保存默认模型和最近模型；每次实际调用的 provider/model/context window 以 usage 与 step 明细为准。
+8. **框架对齐优先**：先查 trpc-agent-go 框架 API 再实现，不在 biz 重写运行时；`runner_snapshot_json` 是 Runner 状态的唯一持久化格式。
+9. **分层铁律不可违反**：`internal/biz` 不得 import `pkg/trpc-agent-go`；框架运行时交互只在 `internal/service` 和 `internal/agent` 层进行。
+10. **错误处理统一**：biz 层使用 `kerrors.BadRequest`/`kerrors.NotFound`/`kerrors.InternalServer`，不用 `fmt.Errorf` 或 `errors.New`。

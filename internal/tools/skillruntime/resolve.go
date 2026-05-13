@@ -7,9 +7,10 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/tools/skillrouter"
+	"aranea-agents/pkg/strutil"
 )
 
-// SkillToolsetOptions narrows which published Skills are mounted for one ADK turn (layer A + B).
+// SkillToolsetOptions narrows which published Skills are mounted for one turn (layer A + B).
 type SkillToolsetOptions struct {
 	Runtime   *biz.AgentRuntimeSettings
 	UserQuery string
@@ -78,8 +79,8 @@ type slugScore struct {
 }
 
 func applyLayerA(in []biz.SkillRuntimeCandidate, policy biz.SkillRuntimePolicy) []biz.SkillRuntimeCandidate {
-	deny := sliceToSet(policy.DeniedSlugs)
-	allow := sliceToSet(policy.AllowedSlugs)
+	deny := strutil.SliceToSet(policy.DeniedSlugs)
+	allow := strutil.SliceToSet(policy.AllowedSlugs)
 	out := make([]biz.SkillRuntimeCandidate, 0, len(in))
 	for _, c := range in {
 		slug := strings.TrimSpace(strings.ToLower(c.Slug))
@@ -92,17 +93,6 @@ func applyLayerA(in []biz.SkillRuntimeCandidate, policy biz.SkillRuntimePolicy) 
 		out = append(out, c)
 	}
 	return out
-}
-
-func sliceToSet(slugs []string) map[string]bool {
-	m := map[string]bool{}
-	for _, s := range slugs {
-		s = strings.TrimSpace(strings.ToLower(s))
-		if s != "" {
-			m[s] = true
-		}
-	}
-	return m
 }
 
 func mergeTagRequirements(policyTags, hints []string) []string {

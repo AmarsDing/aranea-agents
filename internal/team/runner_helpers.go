@@ -50,30 +50,26 @@ func extractOpts(req *chatv1.SendChatMessageRequest) (dialogMode, prov, mod stri
 	return strings.TrimSpace(o.GetDialogMode()), strings.TrimSpace(o.GetProvider()), strings.TrimSpace(o.GetModel()), len(o.Attachments)
 }
 
-func firstNonEmptyStr(vals ...string) string {
-	return strutil.FirstNonEmpty(vals...)
-}
 
-// mergeTeamUserADKMetaJSON adds audit fields for the text sent to ADK vs content_markdown shown in chat.
-func mergeTeamUserADKMetaJSON(userOpts string, displayContent, adkSendText string) (string, error) {
+
+func mergeTeamUserTurnMetaJSON(userOpts string, displayContent, sendText string) (string, error) {
 	displayContent = strings.TrimSpace(displayContent)
-	adkSendText = strings.TrimSpace(adkSendText)
+	sendText = strings.TrimSpace(sendText)
 	var opts map[string]any
 	if strings.TrimSpace(userOpts) == "" {
 		opts = map[string]any{}
 	} else if err := json.Unmarshal([]byte(userOpts), &opts); err != nil {
 		return userOpts, err
 	}
-	sendLen := len([]rune(adkSendText))
-	opts["team_adk_user_display_len"] = len([]rune(displayContent))
-	opts["team_adk_user_send_len"] = sendLen
-	opts["team_adk_user_send_differs_from_display"] = adkSendText != displayContent
-	// Plan / audit aliases (same values as team_* send fields).
-	opts["adk_user_turn_length"] = sendLen
-	if adkSendText != "" {
-		pr := runesTruncate(adkSendText, 240)
-		opts["team_adk_user_send_preview"] = pr
-		opts["adk_user_text_preview"] = pr
+	sendLen := len([]rune(sendText))
+	opts["team_user_display_len"] = len([]rune(displayContent))
+	opts["team_user_send_len"] = sendLen
+	opts["team_user_send_differs_from_display"] = sendText != displayContent
+	opts["user_turn_length"] = sendLen
+	if sendText != "" {
+		pr := runesTruncate(sendText, 240)
+		opts["team_user_send_preview"] = pr
+		opts["user_text_preview"] = pr
 	}
 	out, err := json.Marshal(opts)
 	if err != nil {
@@ -130,7 +126,7 @@ func (r *Runner) persistStep(ctx context.Context, run biz.TeamRun, teamID string
 		TeamID:        teamID,
 		AgentID:       ag.ID,
 		AgentKey:      ag.AgentKey,
-		AgentName:     firstNonEmptyStr(ag.DisplayName, ag.AgentKey),
+		AgentName:     strutil.FirstNonEmpty(ag.DisplayName, ag.AgentKey),
 		Role:          m.Role,
 		SortOrder:     sortIdx,
 		Status:        asst.Status,

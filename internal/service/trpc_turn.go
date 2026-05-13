@@ -50,8 +50,8 @@ func (s *ChatService) runSingleAgentViaTRPC(
 	runnerDeps := chatagent.TRPCRunnerDeps{
 		SessionService: chatagent.NewInMemoryTRPCSessionService(),
 	}
-	if s.td.ADK != nil && s.td.ADK.SessionMemory != nil {
-		runnerDeps.MemoryService = memtrpc.NewSQLiteMemoryService(s.td.ADK.SessionMemory)
+	if s.td.RT != nil && s.td.RT.SessionMemory != nil {
+		runnerDeps.MemoryService = memtrpc.NewSQLiteMemoryService(s.td.RT.SessionMemory)
 	}
 	runner, err := chatagent.NewTRPCRunner(root, runnerDeps)
 	if err != nil {

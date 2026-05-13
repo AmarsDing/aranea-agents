@@ -63,7 +63,7 @@ func entSessionToBiz(e *ent.Session) biz.Session {
 		UpdatedAt:               e.UpdatedAt,
 		ArchivedAt:              e.ArchivedAt,
 		DeletedAt:               e.DeletedAt,
-		AdkSnapshotJSON:         e.AdkSnapshotJSON,
+		RunnerSnapshotJSON:      e.RunnerSnapshotJSON,
 	}
 }
 
@@ -156,7 +156,7 @@ func (r *sessionRepo) SearchSessions(ctx context.Context, q biz.SessionSearchQue
 func (r *sessionRepo) CreateSession(ctx context.Context, in biz.Session) (biz.Session, error) {
 	c := r.data.entClient
 	if strings.TrimSpace(in.ID) == "" || strings.TrimSpace(in.Title) == "" {
-		return biz.Session{}, errors.New("missing required fields")
+		return biz.Session{}, kerrors.BadRequest("SESSION", "missing required fields")
 	}
 	if in.OwnerType == "" {
 		in.OwnerType = "agent"
@@ -202,7 +202,7 @@ func (r *sessionRepo) CreateSession(ctx context.Context, in biz.Session) (biz.Se
 		SetUpdatedAt(in.UpdatedAt).
 		SetArchivedAt(in.ArchivedAt).
 		SetDeletedAt(in.DeletedAt).
-		SetAdkSnapshotJSON(in.AdkSnapshotJSON).
+		SetRunnerSnapshotJSON(in.RunnerSnapshotJSON).
 		Save(ctx)
 	if err != nil {
 		return biz.Session{}, err
@@ -501,14 +501,14 @@ func (r *sessionRepo) insertMessageTx(ctx context.Context, tx *ent.Tx, m biz.Cha
 		Exec(ctx)
 }
 
-func (r *sessionRepo) UpdateAdkSnapshotJSON(ctx context.Context, sessionID string, snapshotJSON string) error {
+func (r *sessionRepo) UpdateRunnerSnapshotJSON(ctx context.Context, sessionID string, snapshotJSON string) error {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
-		return errors.New("session id is required")
+		return kerrors.BadRequest("SESSION", "session id is required")
 	}
 	_, err := r.data.entClient.Session.Update().
 		Where(entsession.IDEQ(sessionID), entsession.DeletedAtEQ("")).
-		SetAdkSnapshotJSON(snapshotJSON).
+		SetRunnerSnapshotJSON(snapshotJSON).
 		SetUpdatedAt(nowRFC3339()).
 		Save(ctx)
 	return err

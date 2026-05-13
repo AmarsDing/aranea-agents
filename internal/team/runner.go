@@ -7,17 +7,16 @@ import (
 	"strings"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
-	"aranea-agents/internal/adkdeps"
+	"aranea-agents/internal/runtimedeps"
 	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
-// Runner executes native team workflows via pkg/trpc-agent-go workflow agents + runner.Run.
 type Runner struct {
 	teams biz.TeamRepository
-	td    adkdeps.TurnDeps
+	td    runtimedeps.TurnDeps
 }
 
 func NewRunner(
@@ -30,20 +29,20 @@ func NewRunner(
 	broker *biz.TeamRunEventBroker,
 	skillUC *biz.SkillUsecase,
 	sys biz.SystemSettingRepo,
-	adk *adkdeps.Runtime,
+	rt *runtimedeps.Runtime,
 	compress biz.NativeTurnCompressor,
 	monitorLogs *biz.MonitorLogBroker,
 ) *Runner {
 	return &Runner{
 		teams: teams,
-		td: adkdeps.TurnDeps{
+		td: runtimedeps.TurnDeps{
 			Agents:       agents,
 			AgentsUC:     agentsUC,
 			ToolsCatalog: toolsCatalog,
 			LLMCatalog:   catalog,
 			SkillUC:      skillUC,
 			Sys:          sys,
-			ADK:          adk,
+			RT:           rt,
 			LLMHTTP:      &http.Client{Timeout: 0},
 			Sessions:     sessions,
 			Compress:     compress,

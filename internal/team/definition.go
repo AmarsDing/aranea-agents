@@ -124,9 +124,9 @@ const (
 	teamTurnMaxSeconds = 7200
 )
 
-// TurnDeadlineDuration bounds wall-clock time for the native team **ADK Run phase** (orchestrated LLM
+// TurnDeadlineDuration bounds wall-clock time for the native team Run phase (orchestrated LLM
 // workflow only), not intent preflight or workflow build. Intent uses its own short timeout (see intent.Run).
-// Zero means do not add an extra deadline for ADK (still subject to parent context / gateway limits).
+// Zero means do not add an extra deadline (still subject to parent context / gateway limits).
 func TurnDeadlineDuration(d Definition) time.Duration {
 	sec := d.TimeoutSeconds
 	if sec <= 0 {

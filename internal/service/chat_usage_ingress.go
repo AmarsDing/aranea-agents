@@ -9,6 +9,7 @@ import (
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/jsonutil"
 	"aranea-agents/pkg/strutil"
 
 	"github.com/google/uuid"
@@ -38,15 +39,14 @@ func recordChatIngressUsage(ctx context.Context, uc *biz.UsageUsecase, req *chat
 	if am == nil {
 		return
 	}
-	status := strutil.FirstNonEmpty(jsonString(am["status"]), "success")
-	tin := jsonNumberInt(am["token_in"])
-	tout := jsonNumberInt(am["token_out"])
+	status := strutil.FirstNonEmpty(jsonutil.IfaceStr(am, "status"), "success")
+	tin := jsonutil.IfaceInt(am, "token_in")
+	tout := jsonutil.IfaceInt(am, "token_out")
 	if tin <= 0 && tout <= 0 && status == "success" {
-		// Streaming providers often omit usage unless stream_options.include_usage is supported.
-		tout = roughTokenEstimateFromText(jsonString(am["content_markdown"]))
+		tout = roughTokenEstimateFromText(jsonutil.IfaceStr(am, "content_markdown"))
 	}
 
-	latency := jsonNumberInt(am["latency_ms"])
+	latency := jsonutil.IfaceInt(am, "latency_ms")
 	tps := 0.0
 	if latency > 0 && tout > 0 {
 		tps = float64(tout) / (float64(latency) / 1000.0)
@@ -54,7 +54,7 @@ func recordChatIngressUsage(ctx context.Context, uc *biz.UsageUsecase, req *chat
 
 	sess := strings.TrimSpace(req.GetSessionId())
 	if sess == "" {
-		sess = jsonString(am["session_id"])
+		sess = jsonutil.IfaceStr(am, "session_id")
 	}
 
 	ev := biz.TokenUsageEvent{
@@ -62,9 +62,9 @@ func recordChatIngressUsage(ctx context.Context, uc *biz.UsageUsecase, req *chat
 		SessionID:        sess,
 		TeamID:           strings.TrimSpace(req.GetTeamId()),
 		AgentKey:         strings.TrimSpace(req.GetAgentKey()),
-		MessageID:        jsonString(am["id"]),
-		ModelAPIID:       jsonString(am["model_name"]),
-		ModelDisplayName: jsonString(am["model_name"]),
+		MessageID:        jsonutil.IfaceStr(am, "id"),
+		ModelAPIID:       jsonutil.IfaceStr(am, "model_name"),
+		ModelDisplayName: jsonutil.IfaceStr(am, "model_name"),
 		InputTokens:      tin,
 		OutputTokens:     tout,
 		TotalTokens:      tin + tout,
@@ -78,8 +78,8 @@ func recordChatIngressUsage(ctx context.Context, uc *biz.UsageUsecase, req *chat
 	if streamEnabled {
 		ev.MetadataJSON = `{"source":"chat_ingress_native_stream"}`
 	}
-	ev.ErrorMessage = strutil.FirstNonEmpty(jsonString(am["error_message"]), jsonString(am["errorMessage"]))
-	ev.ErrorCode = strutil.FirstNonEmpty(jsonString(am["error_code"]), jsonString(am["errorCode"]))
+	ev.ErrorMessage = strutil.FirstNonEmpty(jsonutil.IfaceStr(am, "error_message"), jsonutil.IfaceStr(am, "errorMessage"))
+	ev.ErrorCode = strutil.FirstNonEmpty(jsonutil.IfaceStr(am, "error_code"), jsonutil.IfaceStr(am, "errorCode"))
 	opts := req.GetOptions()
 	if opts != nil {
 		if ev.ModelAPIID == "" {
@@ -95,27 +95,5 @@ func recordChatIngressUsage(ctx context.Context, uc *biz.UsageUsecase, req *chat
 	if _, err := uc.RecordTokenUsageEvent(recCtx, ev); err != nil {
 		// best-effort; do not fail chat
 		return
-	}
-}
-
-func jsonString(v any) string {
-	switch x := v.(type) {
-	case string:
-		return strings.TrimSpace(x)
-	default:
-		return ""
-	}
-}
-
-func jsonNumberInt(v any) int {
-	switch x := v.(type) {
-	case float64:
-		return int(x)
-	case int:
-		return x
-	case int64:
-		return int(x)
-	default:
-		return 0
 	}
 }

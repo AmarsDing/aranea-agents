@@ -4,11 +4,13 @@ import (
 	"context"
 	"strings"
 
+	"aranea-agents/pkg/strutil"
+
 	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
 )
 
 func NewFilteredRepository(base trpcskill.Repository, allowedSlugs []string) trpcskill.ContextRepository {
-	allowSet := sliceToSet(allowedSlugs)
+	allowSet := strutil.SliceToSet(allowedSlugs)
 	filter := func(_ context.Context, summary trpcskill.Summary) bool {
 		if len(allowSet) == 0 {
 			return true
@@ -17,15 +19,4 @@ func NewFilteredRepository(base trpcskill.Repository, allowedSlugs []string) trp
 		return allowSet[name]
 	}
 	return trpcskill.NewFilteredRepository(base, filter)
-}
-
-func sliceToSet(slugs []string) map[string]bool {
-	m := map[string]bool{}
-	for _, s := range slugs {
-		s = strings.TrimSpace(strings.ToLower(s))
-		if s != "" {
-			m[s] = true
-		}
-	}
-	return m
 }

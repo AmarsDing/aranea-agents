@@ -1,4 +1,4 @@
-// Package lark implements Feishu / Lark Open Platform HTTP callbacks (no ADK).
+// Package lark implements Feishu / Lark Open Platform HTTP callbacks.
 package lark
 
 import (
@@ -12,6 +12,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"aranea-agents/pkg/strutil"
 )
 
 const (
@@ -116,7 +118,7 @@ func ParseWebhookPost(raw []byte, verificationToken string) (*WebhookParseResult
 		}
 		res.MessageID = strings.TrimSpace(wrap.Event.Message.MessageID)
 		res.ChatID = strings.TrimSpace(wrap.Event.Message.ChatID)
-		res.SenderOpenID = firstNonEmpty(
+		res.SenderOpenID = strutil.FirstNonEmpty(
 			strings.TrimSpace(wrap.Event.Sender.SenderID.OpenID),
 			strings.TrimSpace(wrap.Event.Sender.SenderID.UserID),
 		)
@@ -125,13 +127,6 @@ func ParseWebhookPost(raw []byte, verificationToken string) (*WebhookParseResult
 		res.SkipResponse = true
 	}
 	return res, nil
-}
-
-func firstNonEmpty(a, b string) string {
-	if a != "" {
-		return a
-	}
-	return b
 }
 
 type imTextContent struct {

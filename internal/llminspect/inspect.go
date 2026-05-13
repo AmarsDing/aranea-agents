@@ -13,6 +13,8 @@ import (
 	"time"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
+
+	"aranea-agents/pkg/strutil"
 )
 
 // Input matches legacy InspectProviderModelInput JSON.
@@ -112,9 +114,9 @@ func inspectOpenRouterModel(in Input) (Result, error) {
 			OK:                       true,
 			Message:                  "已从 OpenRouter 获取模型参数",
 			ProviderCode:             in.ProviderCode,
-			ProviderType:             firstNonEmpty(in.ProviderType, "OpenAI Compatible"),
+			ProviderType:             strutil.FirstNonEmpty(in.ProviderType, "OpenAI Compatible"),
 			ModelAPIID:               item.ID,
-			ModelDisplayName:         firstNonEmpty(item.Name, item.ID),
+			ModelDisplayName:         strutil.FirstNonEmpty(item.Name, item.ID),
 			ModelSizeLabel:           inferModelSizeLabel(item.ID + " " + item.Name),
 			ContextWindowK:           tokensToK(item.ContextLength),
 			MaxOutputTokens:          item.TopProvider.MaxCompletionTokens,
@@ -148,7 +150,7 @@ func inspectOpenAICompatibleModel(in Input) (Result, error) {
 				OK:               true,
 				Message:          "已验证模型存在；该 Provider 未返回上下文和价格",
 				ProviderCode:     in.ProviderCode,
-				ProviderType:     firstNonEmpty(in.ProviderType, "OpenAI Compatible"),
+				ProviderType:     strutil.FirstNonEmpty(in.ProviderType, "OpenAI Compatible"),
 				ModelAPIID:       item.ID,
 				ModelDisplayName: item.ID,
 				ModelSizeLabel:   inferModelSizeLabel(item.ID),
@@ -161,7 +163,7 @@ func inspectOpenAICompatibleModel(in Input) (Result, error) {
 }
 
 func inspectAnthropicModel(in Input) (Result, error) {
-	base := firstNonEmpty(in.APIBaseURL, "https://api.anthropic.com/v1")
+	base := strutil.FirstNonEmpty(in.APIBaseURL, "https://api.anthropic.com/v1")
 	var out struct {
 		Data []struct {
 			ID          string `json:"id"`
@@ -180,9 +182,9 @@ func inspectAnthropicModel(in Input) (Result, error) {
 				OK:                       true,
 				Message:                  "已从 Anthropic 获取模型名称；价格和上下文需手动维护",
 				ProviderCode:             in.ProviderCode,
-				ProviderType:             firstNonEmpty(in.ProviderType, "Anthropic"),
+				ProviderType:             strutil.FirstNonEmpty(in.ProviderType, "Anthropic"),
 				ModelAPIID:               item.ID,
-				ModelDisplayName:         firstNonEmpty(item.DisplayName, item.ID),
+				ModelDisplayName:         strutil.FirstNonEmpty(item.DisplayName, item.ID),
 				ModelSizeLabel:           inferModelSizeLabel(item.ID + " " + item.DisplayName),
 				ContextWindowK:           fallback.ContextWindowK,
 				MaxOutputTokens:          fallback.MaxOutputTokens,
@@ -208,7 +210,7 @@ func anthropicKnownModelDefaults(in Input) Result {
 	model := strings.ToLower(in.ModelAPIID)
 	result := Result{
 		ProviderCode:     in.ProviderCode,
-		ProviderType:     firstNonEmpty(in.ProviderType, "Anthropic"),
+		ProviderType:     strutil.FirstNonEmpty(in.ProviderType, "Anthropic"),
 		ModelAPIID:       in.ModelAPIID,
 		ModelDisplayName: in.ModelAPIID,
 		ContextWindowK:   200,
@@ -302,13 +304,4 @@ func inferModelSizeLabel(value string) string {
 		return ""
 	}
 	return strings.ToUpper(strings.ReplaceAll(match, " ", ""))
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return value
-		}
-	}
-	return ""
 }

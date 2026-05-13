@@ -84,7 +84,7 @@ func cronTaskDueAt(updatedAt string, cfg cronTaskConfig, meta cronTaskMetadata, 
 }
 
 func nextCronRunAfter(cfg cronTaskConfig, after time.Time) (time.Time, error) {
-	loc, _ := time.LoadLocation(firstNonEmptyString(cfg.Timezone, "UTC"))
+	loc, _ := time.LoadLocation(strutil.FirstNonEmpty(cfg.Timezone, "UTC"))
 	if loc == nil {
 		loc = time.UTC
 	}
@@ -192,8 +192,4 @@ func mustMarshalJSON(value any) string {
 		return "{}"
 	}
 	return string(raw)
-}
-
-func firstNonEmptyString(values ...string) string {
-	return strutil.FirstNonEmpty(values...)
 }

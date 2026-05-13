@@ -7,20 +7,17 @@ import (
 
 	v1 "aranea-agents/api/kratos/memory/v1"
 	"aranea-agents/internal/data/sessionmemory"
+	"aranea-agents/pkg/jsonutil"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
-// MemoryService implements **memory/v1** against SQLite session-chain tables (**internal/data/sessionmemory**)，与 Ent 共用同一连接。
-// **pkg/backend** 独立进程已废弃；不复用 **LEGACY_REST_ORIGIN** HTTP 转发。
-// 与 **internal/biz.MemoryUsecase**（Postgres **pgvector**）是另一条「向量记忆」边界。
 type MemoryService struct {
 	v1.UnimplementedMemoryServiceServer
 
 	store *sessionmemory.Store
 }
 
-// NewMemoryService wires L0–L4 + evolution reads from Ent SQLite.
 func NewMemoryService(store *sessionmemory.Store) *MemoryService {
 	return &MemoryService{store: store}
 }
@@ -32,7 +29,6 @@ func (s *MemoryService) errStore() error {
 	return nil
 }
 
-// ListL0Snapshots lists L0 assembly snapshots for a session.
 func (s *MemoryService) ListL0Snapshots(ctx context.Context, req *v1.ListL0SnapshotsRequest) (*v1.ListL0SnapshotsResponse, error) {
 	if err := s.errStore(); err != nil {
 		return nil, err
@@ -56,7 +52,6 @@ func (s *MemoryService) ListL0Snapshots(ctx context.Context, req *v1.ListL0Snaps
 	return out, nil
 }
 
-// ListL1Tasks lists L1 tasks for a session.
 func (s *MemoryService) ListL1Tasks(ctx context.Context, req *v1.ListL1TasksRequest) (*v1.ListL1TasksResponse, error) {
 	if err := s.errStore(); err != nil {
 		return nil, err
@@ -82,7 +77,6 @@ func (s *MemoryService) ListL1Tasks(ctx context.Context, req *v1.ListL1TasksRequ
 	return out, nil
 }
 
-// ListL1Fields lists fields for a task.
 func (s *MemoryService) ListL1Fields(ctx context.Context, req *v1.ListL1FieldsRequest) (*v1.ListL1FieldsResponse, error) {
 	if err := s.errStore(); err != nil {
 		return nil, err
@@ -98,38 +92,37 @@ func (s *MemoryService) ListL1Fields(ctx context.Context, req *v1.ListL1FieldsRe
 	}
 	out := &v1.ListL1FieldsResponse{}
 	for _, raw := range rows {
-		m, _ := jsonMap(raw)
+		m, _ := jsonutil.ParseMap(raw)
 		out.Items = append(out.Items, &v1.L1Field{
-			Id:            ifaceStr(m, "id"),
-			TaskId:        ifaceStr(m, "task_id"),
-			SessionId:     ifaceStr(m, "session_id"),
-			AgentId:       ifaceStr(m, "agent_id"),
-			FieldPath:     ifaceStr(m, "field_path"),
-			FieldKind:     ifaceStr(m, "field_kind"),
-			Visibility:    ifaceStr(m, "visibility"),
-			PinToPrompt:   ifaceBool(m, "pin_to_prompt"),
-			IsRequired:    ifaceBool(m, "is_required"),
-			ValueText:     ifaceStr(m, "value_text"),
-			ValueJson:     ifaceStr(m, "value_json"),
-			ValueRef:      ifaceStr(m, "value_ref"),
-			Preview:       ifaceStr(m, "preview"),
-			TokenEstimate: ifaceI32(m, "token_estimate"),
-			Source:        ifaceStr(m, "source"),
-			SourceRef:     ifaceStr(m, "source_ref"),
-			TtlSeconds:    ifaceI32(m, "ttl_seconds"),
-			ExpiresAt:     ifaceStr(m, "expires_at"),
-			Revision:      ifaceI32(m, "revision"),
-			LastReadAt:    ifaceStr(m, "last_read_at"),
-			ReadCount:     ifaceI32(m, "read_count"),
-			MetadataJson:  ifaceStr(m, "metadata_json"),
-			CreatedAt:     ifaceStr(m, "created_at"),
-			UpdatedAt:     ifaceStr(m, "updated_at"),
+			Id:            jsonutil.IfaceStr(m, "id"),
+			TaskId:        jsonutil.IfaceStr(m, "task_id"),
+			SessionId:     jsonutil.IfaceStr(m, "session_id"),
+			AgentId:       jsonutil.IfaceStr(m, "agent_id"),
+			FieldPath:     jsonutil.IfaceStr(m, "field_path"),
+			FieldKind:     jsonutil.IfaceStr(m, "field_kind"),
+			Visibility:    jsonutil.IfaceStr(m, "visibility"),
+			PinToPrompt:   jsonutil.IfaceBool(m, "pin_to_prompt"),
+			IsRequired:    jsonutil.IfaceBool(m, "is_required"),
+			ValueText:     jsonutil.IfaceStr(m, "value_text"),
+			ValueJson:     jsonutil.IfaceStr(m, "value_json"),
+			ValueRef:      jsonutil.IfaceStr(m, "value_ref"),
+			Preview:       jsonutil.IfaceStr(m, "preview"),
+			TokenEstimate: jsonutil.IfaceI32(m, "token_estimate"),
+			Source:        jsonutil.IfaceStr(m, "source"),
+			SourceRef:     jsonutil.IfaceStr(m, "source_ref"),
+			TtlSeconds:    jsonutil.IfaceI32(m, "ttl_seconds"),
+			ExpiresAt:     jsonutil.IfaceStr(m, "expires_at"),
+			Revision:      jsonutil.IfaceI32(m, "revision"),
+			LastReadAt:    jsonutil.IfaceStr(m, "last_read_at"),
+			ReadCount:     jsonutil.IfaceI32(m, "read_count"),
+			MetadataJson:  jsonutil.IfaceStr(m, "metadata_json"),
+			CreatedAt:     jsonutil.IfaceStr(m, "created_at"),
+			UpdatedAt:     jsonutil.IfaceStr(m, "updated_at"),
 		})
 	}
 	return out, nil
 }
 
-// ListMemoryFacts lists L3 facts.
 func (s *MemoryService) ListMemoryFacts(ctx context.Context, req *v1.ListMemoryFactsRequest) (*v1.ListMemoryFactsResponse, error) {
 	if err := s.errStore(); err != nil {
 		return nil, err
@@ -156,7 +149,6 @@ func (s *MemoryService) ListMemoryFacts(ctx context.Context, req *v1.ListMemoryF
 	return out, nil
 }
 
-// ListMemoryEntities lists L4 entities.
 func (s *MemoryService) ListMemoryEntities(ctx context.Context, req *v1.ListMemoryEntitiesRequest) (*v1.ListMemoryEntitiesResponse, error) {
 	if err := s.errStore(); err != nil {
 		return nil, err
@@ -185,7 +177,6 @@ func (s *MemoryService) ListMemoryEntities(ctx context.Context, req *v1.ListMemo
 	return out, nil
 }
 
-// GetMemoryNeighborhood returns a bounded ego-graph around an entity.
 func (s *MemoryService) GetMemoryNeighborhood(ctx context.Context, req *v1.GetMemoryNeighborhoodRequest) (*v1.GraphNeighborhood, error) {
 	if err := s.errStore(); err != nil {
 		return nil, err
@@ -230,7 +221,6 @@ func (s *MemoryService) GetMemoryNeighborhood(ctx context.Context, req *v1.GetMe
 	return out, nil
 }
 
-// GetAgentIdentity returns persisted identity JSON for an agent.
 func (s *MemoryService) GetAgentIdentity(ctx context.Context, req *v1.GetAgentIdentityRequest) (*v1.AgentIdentity, error) {
 	if err := s.errStore(); err != nil {
 		return nil, err
@@ -243,7 +233,7 @@ func (s *MemoryService) GetAgentIdentity(ctx context.Context, req *v1.GetAgentId
 	if err != nil {
 		return nil, err
 	}
-	m, err := jsonMap(body)
+	m, err := jsonutil.ParseMap(body)
 	if err != nil {
 		return nil, err
 	}
@@ -264,18 +254,17 @@ func (s *MemoryService) GetAgentIdentity(ctx context.Context, req *v1.GetAgentId
 		}
 	}
 	return &v1.AgentIdentity{
-		AgentId:          ifaceStr(m, "agent_id"),
-		Persona:          ifaceStr(m, "persona"),
+		AgentId:          jsonutil.IfaceStr(m, "agent_id"),
+		Persona:          jsonutil.IfaceStr(m, "persona"),
 		Values:           vals,
-		Tone:             ifaceStr(m, "tone"),
+		Tone:             jsonutil.IfaceStr(m, "tone"),
 		Domains:          doms,
-		UserExpectations: ifaceStr(m, "user_expectations"),
-		CurrentPhase:     ifaceStr(m, "current_phase"),
-		Version:          ifaceI32(m, "version"),
+		UserExpectations: jsonutil.IfaceStr(m, "user_expectations"),
+		CurrentPhase:     jsonutil.IfaceStr(m, "current_phase"),
+		Version:          jsonutil.IfaceI32(m, "version"),
 	}, nil
 }
 
-// GetAgentStrategy returns persisted strategy profile JSON for an agent.
 func (s *MemoryService) GetAgentStrategy(ctx context.Context, req *v1.GetAgentStrategyRequest) (*v1.AgentStrategyProfile, error) {
 	if err := s.errStore(); err != nil {
 		return nil, err
@@ -288,17 +277,17 @@ func (s *MemoryService) GetAgentStrategy(ctx context.Context, req *v1.GetAgentSt
 	if err != nil {
 		return nil, err
 	}
-	m, err := jsonMap(body)
+	m, err := jsonutil.ParseMap(body)
 	if err != nil {
 		return nil, err
 	}
 	out := &v1.AgentStrategyProfile{
-		AgentId:            ifaceStr(m, "agent_id"),
-		Exploration:        ifaceF64(m, "exploration"),
-		Conciseness:        ifaceF64(m, "conciseness"),
-		Caution:            ifaceF64(m, "caution"),
-		Delegation:         ifaceF64(m, "delegation"),
-		Version:            ifaceI32(m, "version"),
+		AgentId:            jsonutil.IfaceStr(m, "agent_id"),
+		Exploration:        jsonutil.IfaceF64(m, "exploration"),
+		Conciseness:        jsonutil.IfaceF64(m, "conciseness"),
+		Caution:            jsonutil.IfaceF64(m, "caution"),
+		Delegation:         jsonutil.IfaceF64(m, "delegation"),
+		Version:            jsonutil.IfaceI32(m, "version"),
 		ToolPreference:     map[string]float64{},
 		ProviderPreference: map[string]float64{},
 		ModelPreference:    map[string]float64{},
@@ -335,7 +324,6 @@ func mapStringFloat(in map[string]any) map[string]float64 {
 	return out
 }
 
-// ListEvolutionProposals lists evolution proposals for an agent.
 func (s *MemoryService) ListEvolutionProposals(ctx context.Context, req *v1.ListEvolutionProposalsRequest) (*v1.ListEvolutionProposalsResponse, error) {
 	if err := s.errStore(); err != nil {
 		return nil, err
@@ -350,24 +338,23 @@ func (s *MemoryService) ListEvolutionProposals(ctx context.Context, req *v1.List
 	}
 	out := &v1.ListEvolutionProposalsResponse{}
 	for _, raw := range rows {
-		m, _ := jsonMap(raw)
+		m, _ := jsonutil.ParseMap(raw)
 		out.Items = append(out.Items, &v1.EvolutionProposal{
-			Id:             ifaceStr(m, "id"),
-			AgentId:        ifaceStr(m, "agent_id"),
-			ProposalKind:   ifaceStr(m, "proposal_kind"),
-			Kind:           ifaceStr(m, "kind"),
-			TargetField:    ifaceStr(m, "target_field"),
-			Rationale:      ifaceStr(m, "rationale"),
-			ExpectedImpact: ifaceStr(m, "expected_impact"),
-			RiskLevel:      ifaceStr(m, "risk_level"),
-			Status:         ifaceStr(m, "status"),
-			CreatedAt:      ifaceStr(m, "created_at"),
+			Id:             jsonutil.IfaceStr(m, "id"),
+			AgentId:        jsonutil.IfaceStr(m, "agent_id"),
+			ProposalKind:   jsonutil.IfaceStr(m, "proposal_kind"),
+			Kind:           jsonutil.IfaceStr(m, "kind"),
+			TargetField:    jsonutil.IfaceStr(m, "target_field"),
+			Rationale:      jsonutil.IfaceStr(m, "rationale"),
+			ExpectedImpact: jsonutil.IfaceStr(m, "expected_impact"),
+			RiskLevel:      jsonutil.IfaceStr(m, "risk_level"),
+			Status:         jsonutil.IfaceStr(m, "status"),
+			CreatedAt:      jsonutil.IfaceStr(m, "created_at"),
 		})
 	}
 	return out, nil
 }
 
-// ListEvolutionEvents lists evolution events for an agent.
 func (s *MemoryService) ListEvolutionEvents(ctx context.Context, req *v1.ListEvolutionEventsRequest) (*v1.ListEvolutionEventsResponse, error) {
 	if err := s.errStore(); err != nil {
 		return nil, err
@@ -382,22 +369,21 @@ func (s *MemoryService) ListEvolutionEvents(ctx context.Context, req *v1.ListEvo
 	}
 	out := &v1.ListEvolutionEventsResponse{}
 	for _, raw := range rows {
-		m, _ := jsonMap(raw)
+		m, _ := jsonutil.ParseMap(raw)
 		out.Items = append(out.Items, &v1.EvolutionEvent{
-			Id:          ifaceStr(m, "id"),
-			AgentId:     ifaceStr(m, "agent_id"),
-			EventKind:   ifaceStr(m, "event_kind"),
-			Kind:        ifaceStr(m, "kind"),
-			TargetField: ifaceStr(m, "target_field"),
-			Reason:      ifaceStr(m, "reason"),
-			Reverted:    ifaceBool(m, "reverted"),
-			CreatedAt:   ifaceStr(m, "created_at"),
+			Id:          jsonutil.IfaceStr(m, "id"),
+			AgentId:     jsonutil.IfaceStr(m, "agent_id"),
+			EventKind:   jsonutil.IfaceStr(m, "event_kind"),
+			Kind:        jsonutil.IfaceStr(m, "kind"),
+			TargetField: jsonutil.IfaceStr(m, "target_field"),
+			Reason:      jsonutil.IfaceStr(m, "reason"),
+			Reverted:    jsonutil.IfaceBool(m, "reverted"),
+			CreatedAt:   jsonutil.IfaceStr(m, "created_at"),
 		})
 	}
 	return out, nil
 }
 
-// GetEvolutionMetrics aggregates evolution counters from SQLite.
 func (s *MemoryService) GetEvolutionMetrics(ctx context.Context, req *v1.GetEvolutionMetricsRequest) (*v1.EvolutionMetricsReport, error) {
 	if err := s.errStore(); err != nil {
 		return nil, err
@@ -406,20 +392,20 @@ func (s *MemoryService) GetEvolutionMetrics(ctx context.Context, req *v1.GetEvol
 	if aid == "" {
 		return nil, kerrors.BadRequest("MEMORY", "agent_id is required")
 	}
-	_ = strings.TrimSpace(req.GetRange()) // reserved; native store aggregates all-time window for parity with legacy MVP
+	_ = strings.TrimSpace(req.GetRange())
 
 	body, err := s.store.EvolutionMetricsJSON(ctx, aid)
 	if err != nil {
 		return nil, err
 	}
-	m, err := jsonMap(body)
+	m, err := jsonutil.ParseMap(body)
 	if err != nil {
 		return nil, err
 	}
 	out := &v1.EvolutionMetricsReport{
-		EventsTotal:       ifaceI32(m, "events_total"),
-		EventsReverted:    ifaceI32(m, "events_reverted"),
-		ProposalsTotal:    ifaceI32(m, "proposals_total"),
+		EventsTotal:       jsonutil.IfaceI32(m, "events_total"),
+		EventsReverted:    jsonutil.IfaceI32(m, "events_reverted"),
+		ProposalsTotal:    jsonutil.IfaceI32(m, "proposals_total"),
 		ProposalsByStatus: map[string]int32{},
 	}
 	if raw, ok := m["proposals_by_status"].(map[string]any); ok {
@@ -439,20 +425,19 @@ func (s *MemoryService) GetEvolutionMetrics(ctx context.Context, req *v1.GetEvol
 				continue
 			}
 			out.SkillStats = append(out.SkillStats, &v1.AgentSkillStat{
-				AgentId:         ifaceStr(rm, "agent_id"),
-				ToolKey:         ifaceStr(rm, "tool_key"),
-				Invocations:     ifaceI32(rm, "invocations"),
-				Successes:       ifaceI32(rm, "successes"),
-				Failures:        ifaceI32(rm, "failures"),
-				PreferenceScore: ifaceF64(rm, "preference_score"),
-				LastUsedAt:      ifaceStr(rm, "last_used_at"),
+				AgentId:         jsonutil.IfaceStr(rm, "agent_id"),
+				ToolKey:         jsonutil.IfaceStr(rm, "tool_key"),
+				Invocations:     jsonutil.IfaceI32(rm, "invocations"),
+				Successes:       jsonutil.IfaceI32(rm, "successes"),
+				Failures:        jsonutil.IfaceI32(rm, "failures"),
+				PreferenceScore: jsonutil.IfaceF64(rm, "preference_score"),
+				LastUsedAt:      jsonutil.IfaceStr(rm, "last_used_at"),
 			})
 		}
 	}
 	return out, nil
 }
 
-// UpsertMemoryFact creates or merges an L3 fact row (SQLite).
 func (s *MemoryService) UpsertMemoryFact(ctx context.Context, req *v1.UpsertMemoryFactRequest) (*v1.UpsertMemoryFactResponse, error) {
 	if err := s.errStore(); err != nil {
 		return nil, err
@@ -462,33 +447,33 @@ func (s *MemoryService) UpsertMemoryFact(ctx context.Context, req *v1.UpsertMemo
 		return nil, kerrors.BadRequest("MEMORY", "fact is required")
 	}
 	raw, err := s.store.UpsertFactRow(ctx, sessionmemory.MemoryFactUpsert{
-		ID:                       strings.TrimSpace(f.GetId()),
-		ScopeType:                strings.TrimSpace(f.GetScopeType()),
-		ScopeID:                  strings.TrimSpace(f.GetScopeId()),
-		WorkspaceID:              strings.TrimSpace(f.GetWorkspaceId()),
-		UserID:                   strings.TrimSpace(f.GetUserId()),
-		TeamID:                   strings.TrimSpace(f.GetTeamId()),
-		AgentID:                  strings.TrimSpace(f.GetAgentId()),
-		Statement:                strings.TrimSpace(f.GetStatement()),
-		DetailsMarkdown:          f.GetDetailsMarkdown(),
-		FactKind:                 f.GetFactKind(),
-		TagsJSON:                 f.GetTagsJson(),
-		Confidence:               f.GetConfidence(),
-		Importance:               f.GetImportance(),
-		UseCount:                 f.GetUseCount(),
-		HitCount:                 f.GetHitCount(),
-		PositiveFeedbackCount:    f.GetPositiveFeedbackCount(),
-		NegativeFeedbackCount:    f.GetNegativeFeedbackCount(),
-		ConflictCount:            f.GetConflictCount(),
-		SourceKind:               f.GetSourceKind(),
-		SourceEpisodeID:          f.GetSourceEpisodeId(),
-		SourceSessionID:          f.GetSourceSessionId(),
-		SourceMessageID:          f.GetSourceMessageId(),
-		Version:                  f.GetVersion(),
-		Status:                   f.GetStatus(),
-		PIIFlag:                  f.GetPiiFlag(),
-		CreatedAt:                strings.TrimSpace(f.GetCreatedAt()),
-		UpdatedAt:                strings.TrimSpace(f.GetUpdatedAt()),
+		ID:                    strings.TrimSpace(f.GetId()),
+		ScopeType:             strings.TrimSpace(f.GetScopeType()),
+		ScopeID:               strings.TrimSpace(f.GetScopeId()),
+		WorkspaceID:           strings.TrimSpace(f.GetWorkspaceId()),
+		UserID:                strings.TrimSpace(f.GetUserId()),
+		TeamID:                strings.TrimSpace(f.GetTeamId()),
+		AgentID:               strings.TrimSpace(f.GetAgentId()),
+		Statement:             strings.TrimSpace(f.GetStatement()),
+		DetailsMarkdown:       f.GetDetailsMarkdown(),
+		FactKind:              f.GetFactKind(),
+		TagsJSON:              f.GetTagsJson(),
+		Confidence:            f.GetConfidence(),
+		Importance:            f.GetImportance(),
+		UseCount:              f.GetUseCount(),
+		HitCount:              f.GetHitCount(),
+		PositiveFeedbackCount: f.GetPositiveFeedbackCount(),
+		NegativeFeedbackCount: f.GetNegativeFeedbackCount(),
+		ConflictCount:         f.GetConflictCount(),
+		SourceKind:            f.GetSourceKind(),
+		SourceEpisodeID:       f.GetSourceEpisodeId(),
+		SourceSessionID:       f.GetSourceSessionId(),
+		SourceMessageID:       f.GetSourceMessageId(),
+		Version:               f.GetVersion(),
+		Status:                f.GetStatus(),
+		PIIFlag:               f.GetPiiFlag(),
+		CreatedAt:             strings.TrimSpace(f.GetCreatedAt()),
+		UpdatedAt:             strings.TrimSpace(f.GetUpdatedAt()),
 	})
 	if err != nil {
 		return nil, err
@@ -500,7 +485,6 @@ func (s *MemoryService) UpsertMemoryFact(ctx context.Context, req *v1.UpsertMemo
 	return &v1.UpsertMemoryFactResponse{Fact: pb}, nil
 }
 
-// AppendEvolutionEvent inserts a timeline row under agent_evolution_events.
 func (s *MemoryService) AppendEvolutionEvent(ctx context.Context, req *v1.AppendEvolutionEventRequest) (*v1.AppendEvolutionEventResponse, error) {
 	if err := s.errStore(); err != nil {
 		return nil, err
@@ -511,7 +495,7 @@ func (s *MemoryService) AppendEvolutionEvent(ctx context.Context, req *v1.Append
 	}
 	raw, err := s.store.InsertEvolutionEventRow(ctx, sessionmemory.EvolutionEventInsert{
 		AgentID:       aid,
-		WorkspaceID: strings.TrimSpace(req.GetWorkspaceId()),
+		WorkspaceID:   strings.TrimSpace(req.GetWorkspaceId()),
 		EventKind:     strings.TrimSpace(req.GetEventKind()),
 		Kind:          strings.TrimSpace(req.GetKind()),
 		TargetField:   strings.TrimSpace(req.GetTargetField()),
@@ -523,19 +507,19 @@ func (s *MemoryService) AppendEvolutionEvent(ctx context.Context, req *v1.Append
 	if err != nil {
 		return nil, err
 	}
-	m, err := jsonMap(raw)
+	m, err := jsonutil.ParseMap(raw)
 	if err != nil {
 		return nil, err
 	}
 	out := &v1.AppendEvolutionEventResponse{Event: &v1.EvolutionEvent{
-		Id:          ifaceStr(m, "id"),
-		AgentId:     ifaceStr(m, "agent_id"),
-		EventKind:   ifaceStr(m, "event_kind"),
-		Kind:        ifaceStr(m, "kind"),
-		TargetField: ifaceStr(m, "target_field"),
-		Reason:      ifaceStr(m, "reason"),
-		Reverted:    ifaceBool(m, "reverted"),
-		CreatedAt:   ifaceStr(m, "created_at"),
+		Id:          jsonutil.IfaceStr(m, "id"),
+		AgentId:     jsonutil.IfaceStr(m, "agent_id"),
+		EventKind:   jsonutil.IfaceStr(m, "event_kind"),
+		Kind:        jsonutil.IfaceStr(m, "kind"),
+		TargetField: jsonutil.IfaceStr(m, "target_field"),
+		Reason:      jsonutil.IfaceStr(m, "reason"),
+		Reverted:    jsonutil.IfaceBool(m, "reverted"),
+		CreatedAt:   jsonutil.IfaceStr(m, "created_at"),
 	}}
 	return out, nil
 }

@@ -16,6 +16,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/legacychat"
+	"aranea-agents/pkg/strutil"
 
 	"github.com/google/uuid"
 )
@@ -92,7 +93,7 @@ func (r *Runner) runDue(ctx context.Context) {
 		}
 		cfg, err := parseCronTaskConfig(task.ConfigJSON)
 		if err != nil || strings.TrimSpace(cfg.Message) == "" {
-			r.recordSkipped(ctx, task, now, firstNonEmptyString(errString(err), "cron message is required"))
+			r.recordSkipped(ctx, task, now, strutil.FirstNonEmpty(errString(err), "cron message is required"))
 			continue
 		}
 		meta := parseCronTaskMetadata(task.MetadataJSON)

@@ -5,14 +5,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
 
-	"aranea-agents/internal/adkdeps"
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/compress"
+	"aranea-agents/internal/runtimedeps"
+	"aranea-agents/pkg/strutil"
 
 	"github.com/google/uuid"
 )
@@ -27,7 +29,7 @@ type SessionCompressor struct {
 	Sessions *biz.SessionUsecase
 	Agents   biz.AgentRepository
 	Compress compress.Compressor
-	ADK      *adkdeps.Runtime
+	RT       *runtimedeps.Runtime
 
 	MonitorLogs *biz.MonitorLogBroker
 
@@ -36,11 +38,11 @@ type SessionCompressor struct {
 
 var _ biz.NativeTurnCompressor = (*SessionCompressor)(nil)
 
-// NewSessionCompressor wires optional SQLite memory through ADK runtime (compress may be nil to disable).
+// NewSessionCompressor wires optional SQLite memory through runtime (compress may be nil to disable).
 func NewSessionCompressor(
 	sessions *biz.SessionUsecase,
 	agents biz.AgentRepository,
-	adk *adkdeps.Runtime,
+	rt *runtimedeps.Runtime,
 	comp compress.Compressor,
 	monitorLogs *biz.MonitorLogBroker,
 ) *SessionCompressor {
@@ -48,7 +50,7 @@ func NewSessionCompressor(
 		Sessions:    sessions,
 		Agents:      agents,
 		Compress:    comp,
-		ADK:         adk,
+		RT:          rt,
 		MonitorLogs: monitorLogs,
 	}
 }
@@ -201,11 +203,11 @@ func (c *SessionCompressor) runCompress(ctx context.Context, sessionID string, a
 		author = "agent"
 	}
 
-	raw, err := rewriteSnapshotWithCompression(sess.AdkSnapshotJSON, merged, tail, author)
+	raw, err := rewriteSnapshotWithCompression(sess.RunnerSnapshotJSON, merged, tail, author)
 	if err != nil {
 		return err
 	}
-	if err := c.Sessions.UpdateAdkSnapshotJSON(ctx, sessionID, raw); err != nil {
+	if err := c.Sessions.UpdateRunnerSnapshotJSON(ctx, sessionID, raw); err != nil {
 		return err
 	}
 
@@ -235,14 +237,14 @@ func compressProviderModel(sess biz.Session, ag biz.Agent) (prov, mod string) {
 			return p, m
 		}
 	}
-	return firstNonEmpty(sess.Provider, ag.Provider), firstNonEmpty(sess.Model, ag.Model)
+	return strutil.FirstNonEmpty(sess.Provider, ag.Provider), strutil.FirstNonEmpty(sess.Model, ag.Model)
 }
 
 func (c *SessionCompressor) resyncSessionMemory(ctx context.Context, sessionID string) {
-	if c == nil || c.ADK == nil || c.ADK.SessionMemory == nil {
+	if c == nil || c.RT == nil || c.RT.SessionMemory == nil {
 		return
 	}
-	_ = c.ADK.SessionMemory.DeleteADKSessionEventEntities(ctx, sessionID)
+	_ = c.RT.SessionMemory.DeleteSessionEventEntities(ctx, sessionID)
 }
 
 func timelineUserAssistant(msgs []biz.ChatMessage) []biz.ChatMessage {
@@ -300,15 +302,6 @@ func firstSummaryLine(md string) string {
 				return string(r[:160]) + "…"
 			}
 			return t
-		}
-	}
-	return ""
-}
-
-func firstNonEmpty(vals ...string) string {
-	for _, v := range vals {
-		if strings.TrimSpace(v) != "" {
-			return strings.TrimSpace(v)
 		}
 	}
 	return ""
@@ -384,4 +377,8 @@ func rewriteSnapshotWithCompression(snapshotJSON string, mergedSummariesMarkdown
 		return "", err
 	}
 	return string(out), nil
+}
+
+func NewCompressHTTPClient() *http.Client {
+	return &http.Client{Timeout: 120 * time.Second}
 }

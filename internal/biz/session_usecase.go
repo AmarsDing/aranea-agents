@@ -45,8 +45,8 @@ type Session struct {
 	UpdatedAt               string
 	ArchivedAt              string
 	DeletedAt               string
-	// AdkSnapshotJSON stores serialized ADK session state (events + KV) when using Runner; optional for legacy rows.
-	AdkSnapshotJSON string
+	// RunnerSnapshotJSON stores serialized trpc-agent-go Runner session state (events + KV) when using Runner; optional for legacy rows.
+	RunnerSnapshotJSON string
 }
 
 // SessionSearchQuery filters sessions（对齐遗留 REST query）.
@@ -180,8 +180,8 @@ type SessionRepository interface {
 	AppendChatTurn(ctx context.Context, sessionID string, user, assistant ChatMessage) error
 	// AppendChatMessage inserts a single message row and updates session aggregates.
 	AppendChatMessage(ctx context.Context, sessionID string, msg ChatMessage, bumpModelCall bool) error
-	// UpdateAdkSnapshotJSON persists ADK runner session blob (optional migration / legacy rows).
-	UpdateAdkSnapshotJSON(ctx context.Context, sessionID string, snapshotJSON string) error
+	// UpdateRunnerSnapshotJSON persists Runner session snapshot (events + KV state).
+	UpdateRunnerSnapshotJSON(ctx context.Context, sessionID string, snapshotJSON string) error
 	// UpdateSessionContextFromLLMUsage updates context bar fields from the latest model call (prompt vs context window).
 	UpdateSessionContextFromLLMUsage(ctx context.Context, sessionID string, promptTokens, completionTokens, contextWindow int) error
 	// UpdateSessionContextAfterCompression sets estimated prompt usage after ADK snapshot compaction (summary + tail).
@@ -302,9 +302,9 @@ func (uc *SessionUsecase) AppendChatMessage(ctx context.Context, sessionID strin
 	return nil
 }
 
-// UpdateAdkSnapshotJSON persists the ADK session.Service serialization.
-func (uc *SessionUsecase) UpdateAdkSnapshotJSON(ctx context.Context, sessionID string, snapshotJSON string) error {
-	return uc.sessions.UpdateAdkSnapshotJSON(ctx, sessionID, snapshotJSON)
+// UpdateRunnerSnapshotJSON persists the Runner session snapshot.
+func (uc *SessionUsecase) UpdateRunnerSnapshotJSON(ctx context.Context, sessionID string, snapshotJSON string) error {
+	return uc.sessions.UpdateRunnerSnapshotJSON(ctx, sessionID, snapshotJSON)
 }
 
 // UpdateSessionContextFromLLMUsage refreshes sessions.context_used_ratio after a native LLM turn.

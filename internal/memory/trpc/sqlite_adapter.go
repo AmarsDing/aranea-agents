@@ -67,7 +67,7 @@ func (s *sqliteMemoryService) AddMemory(ctx context.Context, uk trpcmemory.UserK
 	s.cache[key][id] = entry
 	s.mu.Unlock()
 
-	params := sessionmemory.ADKEventEntityParams{
+	params := sessionmemory.EventEntityParams{
 		ID:               id,
 		ScopeType:        "trpc_memory",
 		ScopeID:          uk.AppName,
@@ -82,7 +82,7 @@ func (s *sqliteMemoryService) AddMemory(ctx context.Context, uk trpcmemory.UserK
 		CreatedAtRFC3339: now.Format(time.RFC3339),
 		UpdatedAtRFC3339: now.Format(time.RFC3339),
 	}
-	return s.store.UpsertADKEventEntity(ctx, params)
+	return s.store.UpsertEventEntity(ctx, params)
 }
 
 func (s *sqliteMemoryService) UpdateMemory(ctx context.Context, mk trpcmemory.Key, mem string, topics []string, opts ...trpcmemory.UpdateOption) error {
@@ -104,7 +104,7 @@ func (s *sqliteMemoryService) UpdateMemory(ctx context.Context, mk trpcmemory.Ke
 	}
 	s.mu.Unlock()
 
-	params := sessionmemory.ADKEventEntityParams{
+	params := sessionmemory.EventEntityParams{
 		ID:               mk.MemoryID,
 		ScopeType:        "trpc_memory",
 		ScopeID:          mk.AppName,
@@ -116,7 +116,7 @@ func (s *sqliteMemoryService) UpdateMemory(ctx context.Context, mk trpcmemory.Ke
 		MetadataJSON:     topicsJSON(topics),
 		UpdatedAtRFC3339: time.Now().Format(time.RFC3339),
 	}
-	return s.store.UpsertADKEventEntity(ctx, params)
+	return s.store.UpsertEventEntity(ctx, params)
 }
 
 func (s *sqliteMemoryService) DeleteMemory(_ context.Context, mk trpcmemory.Key) error {

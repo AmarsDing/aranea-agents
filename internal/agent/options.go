@@ -61,9 +61,7 @@ type TeamMemberAnchor struct {
 	Role    string `json:"role"`
 }
 
-func firstNonEmptyStr(values ...string) string {
-	return strutil.FirstNonEmpty(values...)
-}
+
 
 func mathRoundCtxRatio(r float64) float64 {
 	if r <= 0 {
@@ -86,7 +84,7 @@ func UserOptionsJSON(agent biz.Agent, dialogMode, provider, model string, ctxRat
 			"id":           agent.ID,
 			"agent_key":    agent.AgentKey,
 			"display_name": agent.DisplayName,
-			"name":         firstNonEmptyStr(agent.DisplayName, agent.AgentKey),
+			"name":         strutil.FirstNonEmpty(agent.DisplayName, agent.AgentKey),
 			"icon":         agent.Icon,
 		},
 		"send_meta": map[string]any{
@@ -114,7 +112,7 @@ func AssistantOptionsJSON(agent biz.Agent, team *TeamMemberAnchor) (string, erro
 			"id":           agent.ID,
 			"agent_key":    agent.AgentKey,
 			"display_name": agent.DisplayName,
-			"name":         firstNonEmptyStr(agent.DisplayName, agent.AgentKey),
+			"name":         strutil.FirstNonEmpty(agent.DisplayName, agent.AgentKey),
 			"icon":         agent.Icon,
 		},
 	}

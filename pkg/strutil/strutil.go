@@ -10,3 +10,14 @@ func FirstNonEmpty(vals ...string) string {
 	}
 	return ""
 }
+
+func SliceToSet(ss []string) map[string]bool {
+	m := make(map[string]bool, len(ss))
+	for _, s := range ss {
+		s = strings.TrimSpace(strings.ToLower(s))
+		if s != "" {
+			m[s] = true
+		}
+	}
+	return m
+}

@@ -1,5 +1,4 @@
-// Package adkdeps holds lightweight runtime wiring structs shared by service and team (no transport imports).
-package adkdeps
+package runtimedeps
 
 import (
 	"net/http"
@@ -25,7 +24,7 @@ type TurnDeps struct {
 	LLMCatalog   *biz.LlmProviderModelUsecase
 	SkillUC      *biz.SkillUsecase
 	Sys          biz.SystemSettingRepo
-	ADK          *Runtime
+	RT           *Runtime
 	LLMHTTP      *http.Client
 	Sessions     *biz.SessionUsecase
 	Compress     biz.NativeTurnCompressor
@@ -38,5 +37,5 @@ func (d TurnDeps) RoundTrip() *provider.RoundTrip {
 }
 
 func (d TurnDeps) SQLiteSessionMemory() bool {
-	return d.ADK != nil && d.ADK.SessionMemory != nil
+	return d.RT != nil && d.RT.SessionMemory != nil
 }
