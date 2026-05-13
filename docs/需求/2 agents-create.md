@@ -1,6 +1,6 @@
 # Agent 创建弹窗 — 产品设计说明（Quasar）
 
-本文档基于「创建 Agent」界面线框，对控件、布局、行为与数据字段进行说明，并与 `agents` 主表及关联概念对齐。在 `2 agent.md` 基础上做了结构重组、截图要素补全（模板标签行等）与实现级补充。
+本文档基于「创建 Agent」界面线框，对控件、布局、行为与数据字段进行说明，并与 `agents` 主表及关联概念对齐。后端 Agent 运行时基于 trpc-agent-go 框架，Agent 构建入口为 `internal/agent/trpc_build.go` → `BuildTRPCLLMAgent`。
 
 ---
 

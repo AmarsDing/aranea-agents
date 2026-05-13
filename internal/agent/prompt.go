@@ -17,17 +17,19 @@ type Deps struct {
 	SQLiteSessionMemory bool
 }
 
-// BuildSystemPrompt joins agent description and prompt files.
-func BuildSystemPrompt(agent biz.Agent, files []biz.AgentPromptFile) string {
+// BuildSystemPrompt joins agent description and prompt files, filtered by system_prompt_mode.
+func BuildSystemPrompt(agent biz.Agent, files []biz.AgentPromptFile, mode string) string {
+	filtered := biz.FilesForMode(files, mode)
 	var b strings.Builder
 	if d := strings.TrimSpace(agent.AgentDescription); d != "" {
 		b.WriteString(d)
 		b.WriteString("\n\n")
 	}
-	for _, f := range files {
+	for _, f := range filtered {
 		if body := strings.TrimSpace(f.Body); body != "" {
+			b.WriteString(fmt.Sprintf("<internal_config name=%q>\n", f.Name))
 			b.WriteString(body)
-			b.WriteString("\n\n")
+			b.WriteString("\n</internal_config>\n\n")
 		}
 	}
 	return strings.TrimSpace(b.String())

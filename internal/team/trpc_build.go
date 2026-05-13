@@ -10,6 +10,10 @@ import (
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
+	"trpc.group/trpc-go/trpc-agent-go/agent/chainagent"
+	"trpc.group/trpc-go/trpc-agent-go/agent/cycleagent"
+	"trpc.group/trpc-go/trpc-agent-go/agent/parallelagent"
+	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
 	trpcteam "trpc.group/trpc-go/trpc-agent-go/team"
 )
 
@@ -39,6 +43,27 @@ func BuildTRPCTeam(ctx context.Context, def Definition, deps TRPCTeamBuilderDeps
 	}
 
 	switch mode {
+	case "sequential":
+		return chainagent.New("team-sequential",
+			chainagent.WithSubAgents(memberAgents),
+		), nil
+
+	case "parallel":
+		return parallelagent.New("team-parallel",
+			parallelagent.WithSubAgents(memberAgents),
+		), nil
+
+	case "critic_loop":
+		maxIter := 3
+		if def.CriticLoop != nil && def.CriticLoop.MaxIterations > 0 {
+			maxIter = def.CriticLoop.MaxIterations
+		}
+		return cycleagent.New("team-critic-loop",
+			cycleagent.WithSubAgents(memberAgents),
+			cycleagent.WithMaxIterations(maxIter),
+			cycleagent.WithEscalationFunc(defaultEscalationFunc),
+		), nil
+
 	case "swarm":
 		entryName := memberAgents[0].Info().Name
 		t, err := trpcteam.NewSwarm(
@@ -66,4 +91,16 @@ func BuildTRPCTeam(ctx context.Context, def Definition, deps TRPCTeamBuilderDeps
 		}
 		return t, nil
 	}
+}
+
+func defaultEscalationFunc(ev *trpcevent.Event) bool {
+	if ev == nil || ev.Response == nil {
+		return false
+	}
+	for _, ch := range ev.Choices {
+		if strings.Contains(strings.ToLower(ch.Message.Content), "approved") {
+			return true
+		}
+	}
+	return false
 }

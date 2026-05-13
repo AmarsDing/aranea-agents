@@ -179,7 +179,36 @@
 
 `IDENTITY.md` → `SOUL.md` → `USER_PREDEFINED.md` → `USER.md`（及实例覆盖）→ `CAPABILITIES.md` → `AGENTS_CORE.md` → `AGENTS_TASK.md`（或合并为 `AGENTS.md`）→ `RULE.md` → （其它如 `compaction_config` 等）
 
-`HEARTBEAT.md` 仅在 **心跳任务** 注入，不必并入普通轮次系统提示。具体分隔符与标题由 **`前端.md` / 服务端** 统一。
+`HEARTBEAT.md` 仅在 **心跳任务** 注入，不必并入普通轮次系统提示。具体分隔符与标题由 **`前端.md` / 服务端**统一。
+
+### 运行时组装实现（trpc-agent-go）
+
+`BuildSystemPrompt`（`internal/agent/prompt.go`）按以下逻辑组装：
+
+1. 写入 `agent.AgentDescription`（非空时）
+2. 调用 `biz.FilesForMode(files, mode)` 根据系统提示模式过滤文件
+3. 遍历过滤后的文件，每个文件内容用 `<internal_config name="{Name}">` 标签包裹
+
+**`system_prompt_mode` 过滤**：`FilesForMode` 函数（`internal/biz/agent_catalog_legacy.go`）根据模式过滤文件：
+
+| 模式 | 允许的文件名 |
+|------|------------|
+| `complete` | 全部 |
+| `task` | AGENTS_CORE.md, AGENTS_TASK.md, IDENTITY.md, CAPABILITIES.md, RULE.md, HEARTBEAT.md |
+| `minimized` | AGENTS_CORE.md, IDENTITY.md, RULE.md |
+| `none` | 无（空集） |
+
+**`<internal_config>` 标签包裹**：每个文件内容包裹在 `<internal_config name="{Name}">` 标签中，便于 LLM 区分不同配置块，也支持 Prompt Cache 优化：
+
+```xml
+<internal_config name="IDENTITY.md">
+身份与对外设定内容...
+</internal_config>
+
+<internal_config name="SOUL.md">
+人格/语调核心内容...
+</internal_config>
+```
 
 ---
 

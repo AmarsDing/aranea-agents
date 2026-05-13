@@ -240,34 +240,93 @@ Chat 接口需要支持：
 - `TeamRunRepository`：保存 run / step。
 - `ChatService`：根据 session owner_type 路由到 AgentRuntime 或 TeamRuntime。
 
-### 5.4 运行时策略
+### 5.4 运行时策略（基于 trpc-agent-go 框架）
 
-`sequential`：
+项目已迁移至 trpc-agent-go 框架，所有编排模式均映射到 trpc 原生 Agent 组件：
+
+| 编排模式 | trpc 框架组件 | 说明 |
+|---------|-------------|------|
+| `sequential` | `chainagent.New` | 子 Agent 按顺序执行，前一个 Agent 的事件传递给下一个 |
+| `parallel` | `parallelagent.New` | 子 Agent 并行执行，事件流合并输出 |
+| `coordinator` | `team.New(coordinator, members)` | 协调者 Agent 调度成员作为工具 |
+| `critic_loop` | `cycleagent.New` + `WithEscalationFunc` | 生成-评审循环，满足升级条件或达到最大迭代次数后停止 |
+| `swarm` | `team.NewSwarm` | 成员间 `transfer_to_agent` 传递控制权 |
+
+#### `sequential`（chainagent）
+
+```go
+chainAgent := chainagent.New("team-sequential",
+    chainagent.WithSubAgents(memberAgents),
+)
+```
 
 1. 用用户输入作为第一个 Agent 输入。
-2. 每个 Agent 输出作为下一个 Agent 的上下文。
+2. 每个 Agent 的事件流传递给下一个 Agent（chainagent 内部处理上下文传递）。
 3. 最后一个 Agent 输出作为最终答案。
 
-`parallel`：
+#### `parallel`（parallelagent）
 
-1. 将同一用户输入发送给所有 worker。
+```go
+parallelAgent := parallelagent.New("team-parallel",
+    parallelagent.WithSubAgents(workerAgents),
+)
+```
+
+1. 将同一用户输入发送给所有 worker Agent（parallelagent 内部并行执行）。
 2. 等待全部完成或超时。
-3. 将 worker 输出交给 synthesizer Agent。
-4. synthesizer 输出最终答案。
+3. 若有 synthesizer Agent，将 worker 输出交给 synthesizer 生成最终答案。
 
-`coordinator`：
+#### `coordinator`（team.New）
 
-1. coordinator Agent 根据用户输入产出任务拆分 JSON。
-2. 后端按 JSON 匹配成员 Agent。
-3. 执行子任务。
-4. synthesizer 或 coordinator 生成最终答案。
+```go
+team, err := trpcteam.New(coordinatorAgent, memberAgents)
+```
 
-`critic_loop`：
+1. coordinator Agent 根据用户输入产出任务拆分。
+2. coordinator 将成员 Agent 作为工具调度（trpc team 内部实现 AgentTool）。
+3. synthesizer 或 coordinator 生成最终答案。
+
+#### `critic_loop`（cycleagent）
+
+```go
+cycleAgent := cycleagent.New("team-critic-loop",
+    cycleagent.WithSubAgents([]agent.Agent{generatorAgent, criticAgent}),
+    cycleagent.WithMaxIterations(maxIter),
+    cycleagent.WithEscalationFunc(escalationFunc),
+)
+```
 
 1. generator Agent 生成初稿。
 2. critic Agent 输出评分和修改意见。
-3. 若评分达标或达到最大轮数，结束。
-4. 否则把意见回传 generator 继续生成。
+3. `escalationFunc` 检查是否满足升级条件（如评分达标）。
+4. 若满足条件或达到最大迭代次数，循环停止；否则继续迭代。
+
+#### `swarm`（team.NewSwarm）
+
+```go
+swarm, err := trpcteam.NewSwarm("team", entryAgentName, memberAgents)
+```
+
+1. 从 entry Agent 开始处理用户输入。
+2. 成员间通过 `transfer_to_agent` 工具传递控制权。
+3. 自由协作，无需中央决策。
+
+### 5.5 当前代码实现状态
+
+当前 `internal/team/trpc_build.go` 的 `BuildTRPCTeam` 函数已实现全部五种编排模式：
+
+| 编排模式 | trpc 框架组件 | 状态 |
+|---------|-------------|------|
+| `sequential` | `chainagent.New` | ✅ 已实现 |
+| `parallel` | `parallelagent.New` | ✅ 已实现 |
+| `coordinator` | `team.New(coordinator, members)` | ✅ 已实现 |
+| `critic_loop` | `cycleagent.New` + `WithEscalationFunc` | ✅ 已实现 |
+| `swarm` | `team.NewSwarm` | ✅ 已实现 |
+
+**涉及文件**：
+- `internal/team/trpc_build.go` — 五种编排模式 + `defaultEscalationFunc`
+- `internal/team/definition.go` — `CriticLoopConfig` 定义
+- `internal/team/runner_team_trpc.go` — 运行时调用 `BuildTRPCTeam`
 
 ## 6. 前端实施规划
 
@@ -444,51 +503,68 @@ MVP 完成标准：
 
 ## 11. 当前实施进度
 
-更新时间：2026-04-25
+更新时间：2026-05-13
+
+### 架构迁移
+
+项目已从 ADK 迁移至 trpc-agent-go 框架，Team 编排运行时基于 trpc 原生组件：
+
+- Agent 构建：`internal/agent/trpc_build.go` → `trpcllmagent.New`
+- Team 构建：`internal/team/trpc_build.go` → `trpcteam.New` / `trpcteam.NewSwarm`
+- Team 运行：`internal/team/runner_team_trpc.go` → `agent.RunTRPCUserTurn`
+- 模型层：`internal/provider/trpc_llm.go` → `provider.Model()`
+- 记忆层：`internal/memory/trpc/sqlite_adapter.go` → `trpcmemory.Service`
+- 工具层：`internal/tools/trpc/toolsets.go` → trpc tool.ToolSet
 
 ### 进度汇总
 
 | 模块 | 状态 | 说明 |
 | --- | --- | --- |
-| Team CRUD / 编辑器 | 已完成 | 支持增删改查、复制、成员配置、编排模式、JSON 预览 |
-| Chat Team session | 已完成 | Chat 可进入 Team 会话并发送 Team 消息 |
-| sequential / parallel | 已完成 | sequential 顺序传递上下文；parallel 并行执行并汇总 |
-| Run / Step 可观测 | 已完成 | 已落库 `team_runs` / `team_run_steps`，前端可查看运行轨迹 |
-| 前端组件化 / 昼夜模式 | 已完成 | Team 页面已拆分组件，组件级暗色样式已覆盖 |
-| Team Runtime 解耦 | 已完成 | 已抽出 `internal/service/team_runtime.go` |
-| coordinator / critic_loop | 基础完成 | 已具备计划优先、生成-评审-修订结构，结构化 JSON 和评分阈值待补 |
-| synthesizer Agent 汇总 | 已完成 | 已接入 `synthesizer_agent_id`，由指定 Agent 生成最终回复并记录为 step |
-| parallel 部分失败 | 已完成 | 部分失败时继续汇总成功成员结果，run 标记为 `partial_success` |
-| timeout / cancel 状态 | 已完成 | 已按 `timeout_seconds` 控制 Team 运行上下文，并记录 `timeout` / `cancelled` 状态 |
-| 实时 step event SSE | 基础完成 | 已新增 SSE API，运行轨迹抽屉可实时接收 run/step 事件 |
-| Team 模板 | 基础完成 | 已内置顺序协作、并行专家组、生成评审、主控分派模板 |
-| 图工作流 schema / 预览 | 基础完成 | definition 已支持 `graph.nodes/edges`，Team 编辑器可生成基础拓扑预览 |
-| A2A 协议 | 基础完成 | definition 已支持 `a2a` 配置，Runtime 使用统一 sender/receiver/intent/payload 信封传递上下文 |
-| 自适应拓扑选择 | 基础完成 | 已支持 `adaptive` mode，Runtime 基于任务关键词、成员角色和成员数量选择实际拓扑 |
+| Team CRUD / 编辑器 | ✅ 已完成 | 支持增删改查、复制、成员配置、编排模式、JSON 预览 |
+| Chat Team session | ✅ 已完成 | Chat 可进入 Team 会话并发送 Team 消息 |
+| coordinator / swarm | ✅ 已完成 | 基于 `trpcteam.New` / `trpcteam.NewSwarm` |
+| sequential | ✅ 已完成 | 基于 `chainagent.New`，按顺序执行子 Agent |
+| parallel | ✅ 已完成 | 基于 `parallelagent.New`，并行执行子 Agent |
+| critic_loop | ✅ 已完成 | 基于 `cycleagent.New` + `WithEscalationFunc`，生成-评审循环 |
+| Run / Step 可观测 | ✅ 已完成 | 已落库 `team_runs` / `team_run_steps`，前端可查看运行轨迹 |
+| 前端组件化 / 昼夜模式 | ✅ 已完成 | Team 页面已拆分组件，组件级暗色样式已覆盖 |
+| Team Runtime 解耦 | ✅ 已完成 | 已抽出 `internal/team/runner_team_trpc.go` |
+| synthesizer Agent 汇总 | ✅ 已完成 | 已接入 `synthesizer_agent_id` |
+| parallel 部分失败 | ✅ 已完成 | 部分失败时继续汇总成功成员结果 |
+| timeout / cancel 状态 | ✅ 已完成 | 已按 `timeout_seconds` 控制 Team 运行上下文 |
+| 实时 step event SSE | ⚠️ 基础完成 | 已新增 SSE API，运行轨迹抽屉可实时接收事件 |
+| Team 模板 | ⚠️ 基础完成 | 已内置四个模板 |
+| 图工作流 schema / 预览 | ⚠️ 基础完成 | definition 已支持 `graph.nodes/edges` |
+| A2A 协议 | ⚠️ 基础完成 | 内部信封基础版 |
+| 自适应拓扑选择 | ⚠️ 基础完成 | 启发式基础版 |
 
 ### 已完成
 
 - Team CRUD：后端已支持创建、读取、更新、删除、复制；前端 Team 管理页已接入真实接口。
 - Team 编辑器：已支持基础信息、成员 Agent、编排模式、并发上限、说明和 JSON 预览。
 - Chat Team session：Chat 页面已支持从 Team 进入会话、创建 Team session、发送 Team 消息。
-- sequential runtime：已按成员顺序执行，并将上一个成员输出传递给下一个成员。
-- parallel runtime：已支持并行调用多个成员，并汇总为 Team 输出。
+- coordinator runtime：基于 `trpcteam.New(coordinator, members)` 实现，协调者 Agent 调度成员作为工具。
+- swarm runtime：基于 `trpcteam.NewSwarm` 实现，成员间通过 `transfer_to_agent` 传递控制权。
+- sequential runtime：基于 `chainagent.New` 实现，子 Agent 按顺序执行，前一个 Agent 的事件传递给下一个。
+- parallel runtime：基于 `parallelagent.New` 实现，子 Agent 并行执行，事件流合并输出。
+- critic_loop runtime：基于 `cycleagent.New` + `WithEscalationFunc` 实现，生成-评审循环，满足升级条件或达到最大迭代次数后停止。
 - Run / Step 存储：已新增 `team_runs`、`team_run_steps`，每次 Team 执行记录 run 和 step 摘要。
 - Team Run 详情：Team 管理页已提供运行轨迹抽屉，可查看 run 概览和子 Agent step。
 - 前端组件化：Team 管理页已拆分为 `TeamToolbar`、`TeamCard`、`TeamEditorDialog`、`TeamRunsDialog` 和 `teamUtils`。
 - 昼夜模式：Team 管理页、编辑弹窗、运行轨迹抽屉已使用组件级 `is-dark` 样式。
-- Team Runtime 解耦：已新增 `internal/service/team_runtime.go`，ChatService 只保留 Team chat 入口转发。
-- coordinator：已支持 coordinator 成员优先生成执行计划，再将计划传递给 worker 成员执行。
-- critic_loop：已支持 generator 初稿、critic 评审、按 `max_iterations` 触发可选修订。
-- synthesizer Agent 汇总：已支持 `synthesizer_agent_id`，由指定 Agent 基于所有成员 step 生成最终回复。
+- Team Runtime 解耦：已迁移至 `internal/team/runner_team_trpc.go`，基于 trpc Runner 执行。
+- synthesizer Agent 汇总：已接入 `synthesizer_agent_id`，由指定 Agent 基于所有成员 step 生成最终回复。
 - parallel 部分失败：已允许部分成员失败时继续汇总成功成员结果，失败 step 保留在运行轨迹中。
 - timeout / cancel 状态：已按 `timeout_seconds` 为 Team 运行创建超时上下文，run/step 可区分 `timeout`、`cancelled`、`failed`。
-- 实时 step event SSE：已新增 `/api/v1/team-run-events`，Team Runtime 在 run 开始/结束、step 完成时发布事件，前端运行轨迹抽屉实时刷新。
-- Team 模板：Team 编辑器已支持顺序协作、并行专家组、生成评审、主控分派四个内置模板，一键填充 mode、成员角色、并发上限和评审参数。
-- 图工作流 schema / 预览：Team definition 已支持 `graph.nodes`、`graph.edges`、`layout`，保存时自动生成图 schema，编辑器可展示基础节点和边。
-- A2A 协议：Team definition 已支持 `a2a.enabled`、`envelope_version`、`message_format`、`include_trace`、`max_payload_chars`，Team Runtime 在成员交接、并行分派、主控分派、生成评审中使用统一 A2A 信封。
-- 自适应拓扑选择：已新增 `adaptive` mode，运行时根据任务关键词、成员角色和成员数量选择 `sequential`、`parallel`、`coordinator` 或 `critic_loop`，前端可选择并预览该模式。
-- Team Run 成本汇总：`team_runs` / `team_run_steps` 已新增 `cost_micro_usd`，Team Runtime 按子 Agent 模型调用成本写入 step 并汇总到 run，前端运行轨迹可查看本次团队调用和每个子 Agent 的费用。
+- 实时 step event SSE：已新增 `/api/v1/team-run-events`，Team Runtime 在 run 开始/结束、step 完成时发布事件。
+- Team 模板：Team 编辑器已支持顺序协作、并行专家组、生成评审、主控分派四个内置模板。
+- Team Run 成本汇总：`team_runs` / `team_run_steps` 已新增 `cost_micro_usd`。
+
+### 待实现（P0）
+
+- escalationFunc 增强：当前 `defaultEscalationFunc` 仅检查 "approved" 关键词，需支持基于 `CriticLoopConfig.ScoreThreshold` 的结构化评分判断。
+- sequential 上下文传递：chainagent 内部自动传递事件流，但需验证前一个 Agent 的输出是否正确作为下一个 Agent 的输入。
+- parallel synthesizer：parallelagent 并行执行后，需确认是否有 synthesizer Agent 汇总结果，或由前端展示多个并行输出。
 
 ### 部分完成
 

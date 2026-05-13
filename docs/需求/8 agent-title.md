@@ -74,13 +74,15 @@ UI 可在预览中 **弱化展示** 该分隔线，或仅调试模式显示。
 
 ## 5. `<internal_config>` 与「文件」字段
 
-运行时可将某列 Markdown 包在标签内注入，例如：
+运行时将每个 Markdown 文件包在标签内注入：
 
 ```xml
 <internal_config name="IDENTITY.md">
 …
 </internal_config>
 ```
+
+实现位置：`BuildSystemPrompt`（`internal/agent/prompt.go`），每个文件内容用 `fmt.Sprintf("<internal_config name=%q>\n", f.Name)` 包裹。
 
 | `name` 属性 | 典型来源列（见 **`6` §8**） |
 |-------------|----------------------------|

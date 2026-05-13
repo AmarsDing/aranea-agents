@@ -1,6 +1,6 @@
 # Agent 列表页 — 产品设计说明（Quasar）
 
-本文档描述「Agent 管理」主列表界面（标题 **Agent**、副标题 **AI Agent 管理 **），涵盖布局、控件、交互、筛选分页与 **`agents` 主表**字段对应关系。创建流程见 `2 agents-create.md`。
+本文档描述「Agent 管理」主列表界面（标题 **Agent**、副标题 **AI Agent 管理 **），涵盖布局、控件、交互、筛选分页与 **`agents` 主表**字段对应关系。后端 Agent 运行时基于 trpc-agent-go 框架。创建流程见 `2 agents-create.md`。
 
 ---
 

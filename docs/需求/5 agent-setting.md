@@ -74,8 +74,26 @@
 | 维度 | 说明 |
 |------|------|
 | **展示** | 每卡：标题、描述、特性 tag 列表、约 **~XK tokens** 估值（服务端可返回） |
-| **绑定** | `system_prompt_mode`：`complete` \| `task` \| `minimized` \| `none`（存 `other_config` 或顶层列，由实现统一） |
+| **绑定** | `system_prompt_mode`：`complete` \| `task` \| `minimized` \| `none`（存 `agents` 主表 `system_prompt_mode` 列） |
 | **行为** | 切换即 PATCH；可 `Notify`「已切换模式」 |
+
+### 运行时映射（trpc-agent-go）
+
+`system_prompt_mode` 在 `BuildTRPCLLMAgent` 中控制哪些 `AgentPromptFile` 注入到系统提示：
+
+| 模式 | 注入的文件 | 代码实现 |
+|------|-----------|---------|
+| `complete` | 全部文件（AGENTS_CORE + AGENTS_TASK + SOUL + IDENTITY + USER + USER_PREDEFINED + CAPABILITIES + RULE + HEARTBEAT） | `FilesForMode(files, "complete")` → 返回全部 |
+| `task` | AGENTS_CORE + AGENTS_TASK + IDENTITY + CAPABILITIES + RULE + HEARTBEAT | `FilesForMode(files, "task")` → allowed 集合 |
+| `minimized` | AGENTS_CORE + IDENTITY + RULE | `FilesForMode(files, "minimized")` → allowed 集合 |
+| `none` | 无文件注入 | `FilesForMode(files, "none")` → 空集 |
+
+**代码实现**：
+
+- `BuildTRPCLLMAgent`（`internal/agent/trpc_build.go`）读取 `ag.SystemPromptMode` 并传递给 `BuildSystemPrompt`
+- `BuildSystemPrompt`（`internal/agent/prompt.go`）接收 mode 参数，调用 `biz.FilesForMode` 过滤文件
+- `FilesForMode`（`internal/biz/agent_catalog_legacy.go`）已导出，根据模式返回允许的文件子集
+- 每个文件内容用 `<internal_config name="{Name}">` 标签包裹，便于 LLM 区分配置块
 
 ---
 

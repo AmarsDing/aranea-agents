@@ -317,7 +317,7 @@ func composePromptPreview(agent Agent, mode string) string {
 	b.WriteString(strFallback(agent.AgentDescription, "No description configured."))
 	b.WriteString("\n\n")
 	if mode != "none" {
-		for _, file := range filesForMode(agent.Files, mode) {
+		for _, file := range FilesForMode(agent.Files, mode) {
 			b.WriteString(fmt.Sprintf("## %s\n", file.Name))
 			b.WriteString(strings.TrimSpace(file.Body))
 			b.WriteString("\n\n")
@@ -336,9 +336,12 @@ func composePromptPreview(agent Agent, mode string) string {
 	return strings.TrimSpace(b.String())
 }
 
-func filesForMode(files []AgentPromptFile, mode string) []AgentPromptFile {
-	if mode == "complete" {
+func FilesForMode(files []AgentPromptFile, mode string) []AgentPromptFile {
+	if mode == "" || mode == "complete" {
 		return files
+	}
+	if mode == "none" {
+		return nil
 	}
 	allowed := map[string]bool{"AGENTS_CORE.md": true, "IDENTITY.md": true, "RULE.md": true}
 	if mode == "task" {

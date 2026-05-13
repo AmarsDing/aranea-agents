@@ -54,7 +54,7 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) 
 			return nil, err
 		}
 	}
-	sys := BuildSystemPrompt(ag, files)
+	sys := BuildSystemPrompt(ag, files, ag.SystemPromptMode)
 	promptDeps := Deps{
 		Agents:  deps.Agents,
 		AgentUC: deps.AgentUC,

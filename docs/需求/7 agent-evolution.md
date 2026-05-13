@@ -40,17 +40,40 @@
 
 垂直列表；每项 **标题 + 说明 + `QToggle`**，项间 **分隔线**。
 
-| # | 标题 | 说明（产品） | 字段 |
-|---|------|--------------|------|
-| 1 | 允许 Agent 进化其沟通风格 | 允许随时间更新 **SOUL.md** 中的语调与风格；**身份与操作指令（如 AGENTS.md / IDENTITY.md）保持锁定** | `self_evolve`（BOOLEAN） |
-| — | 信息框 | 强调：仅风格/语调可变，身份与工作流规则不变 | `QBanner` / `QCard` bordered |
-| 2 | 允许从经验中创建和管理技能 | `skill_manage` 默认可用；可提示用户将工作流保存为技能 | `skill_evolve`；`skill_nudge_interval`（若库表有扩展列） |
-| 3 | 进化指标 | 记录工具效果、检索质量、反馈等，供看板展示 | `evolution_metrics_enabled` |
-| 4 | 进化建议 | 基于指标由分析任务生成改进建议 | `evolution_suggestions_enabled` |
+| # | 标题 | 说明（产品） | 字段 | 代码实现状态 |
+|---|------|--------------|------|-------------|
+| 1 | 允许 Agent 进化其沟通风格 | 允许随时间更新 **SOUL.md** 中的语调与风格；**身份与操作指令（如 AGENTS.md / IDENTITY.md）保持锁定** | `self_evolve`（BOOLEAN） | ✅ 已实现 — `AgentRuntimeSettings.SelfEvolve` |
+| — | 信息框 | 强调：仅风格/语调可变，身份与工作流规则不变 | `QBanner` / `QCard` bordered | — |
+| 2 | 允许从经验中创建和管理技能 | `skill_manage` 默认可用；可提示用户将工作流保存为技能 | `skill_evolve` | ✅ 已实现 — `AgentRuntimeSettings.EvolutionSkillEvolve` |
+| 3 | 进化指标 | 记录工具效果、检索质量、反馈等，供看板展示 | `evolution_metrics_enabled` | ✅ 已实现 — `AgentRuntimeSettings.EvolutionMetricsEnabled`；但指标采集逻辑未实现 |
+| 4 | 进化建议 | 基于指标由分析任务生成改进建议 | `evolution_suggestions_enabled` | ✅ 已实现 — `AgentRuntimeSettings.EvolutionSuggestionsEnabled`；但建议生成逻辑未实现 |
 
 **与创建页对齐**：默认值与行为见 **`2 agents-create.md`**（如 `self_evolve` 默认 true 等）。
 
 **交互**：切换即 **PATCH**（或与全局 debounce 策略一致）；关闭「进化指标」时，§5～§6 可隐藏或展示禁用遮罩 + 说明。
+
+### 代码实现状态
+
+进化开关字段已在 `AgentRuntimeSettings` 中定义并通过 `settingsFromLegacyConfig` 解析存储。运行时逻辑实现状态：
+
+| 功能 | 开关字段 | 状态 | 说明 |
+|------|---------|------|------|
+| 风格进化 | `SelfEvolve` | ✅ 开关已实现 | 运行时未自动修改 `soul_md`，需后续实现 |
+| 技能进化 | `EvolutionSkillEvolve` | ✅ 开关已实现 | 运行时未实现技能自动创建逻辑 |
+| 进化指标 | `EvolutionMetricsEnabled` | ✅ 开关已实现 | 运行时未对工具调用成功/失败、检索质量进行统计写入 |
+| 进化建议 | `EvolutionSuggestionsEnabled` | ✅ 开关已实现 | 无定时任务基于指标生成改进建议 |
+| 适应护栏 | `GuardrailMaxChangePerPeriod` 等 | ✅ 字段已定义 | 运行时未使用这些参数控制演化幅度 |
+
+**待实现运行时逻辑**：
+- 指标采集：运行时对工具调用成功/失败、检索质量进行统计写入
+- 建议生成：定时任务基于指标生成改进建议
+- SOUL.md 自动演化：运行时自动修改 `soul_md` 的风格段落
+- 适应护栏：使用 `GuardrailMaxChangePerPeriod` 等参数控制演化幅度
+
+**涉及文件**：
+- `internal/biz/agent_catalog_legacy.go` — `AgentRuntimeSettings` 定义 + `settingsFromLegacyConfig` 解析
+- `internal/agent/trpc_build.go` — `BuildTRPCLLMAgent` 读取进化开关
+- 运行时指标采集和建议生成 — 需新增 `internal/agent/evolution/` 包
 
 ---
 
