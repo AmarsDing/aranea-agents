@@ -110,8 +110,8 @@ function kratosSessionToLegacy(s: KratosSession): Session {
     max_context_used_ratio: s.maxContextUsedRatio ?? 0,
     context_status: s.contextStatus ?? "",
     dialog_mode: s.dialogMode ?? "",
-    provider: s.provider ?? "",
-    model: s.model ?? "",
+    provider: s.defaultProvider ?? "",
+    model: s.defaultModel ?? "",
     status: s.status ?? "",
     message_count: s.messageCount ?? 0,
     run_count: s.runCount ?? 0,
@@ -219,8 +219,10 @@ export async function createSession(payload: {
   team_id?: string;
   title: string;
   dialog_mode?: string;
-  provider?: string;
-  model?: string;
+  default_provider?: string;
+  default_model?: string;
+  workspace_id?: string;
+  user_id?: string;
 }): Promise<Session> {
   const data = await sessionApi.CreateSession({
     ownerType: payload.owner_type,
@@ -228,8 +230,10 @@ export async function createSession(payload: {
     teamId: payload.team_id,
     title: payload.title,
     dialogMode: payload.dialog_mode,
-    provider: payload.provider,
-    model: payload.model
+    defaultProvider: payload.default_provider,
+    defaultModel: payload.default_model,
+    workspaceId: payload.workspace_id,
+    userId: payload.user_id
   });
   return kratosSessionToLegacy(data);
 }

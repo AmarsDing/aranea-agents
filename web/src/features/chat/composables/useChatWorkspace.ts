@@ -352,8 +352,8 @@ export function useChatWorkspace() {
       const selectedModel = selectedProviderModel.value;
       await store.addSession(title || t("chat.untitledSession"), {
         dialog_mode: dialogMode.value,
-        provider: selectedModel?.provider || store.selectedAgent.provider,
-        model: selectedModel?.model || store.selectedAgent.model
+        default_provider: selectedModel?.provider || store.selectedAgent.provider,
+        default_model: selectedModel?.model || store.selectedAgent.model
       });
       if (store.selectedSession) await store.loadMessages();
       return;
@@ -366,8 +366,8 @@ export function useChatWorkspace() {
         team_id: selectedTeamId.value,
         title: title || t("chat.untitledSession"),
         dialog_mode: dialogMode.value,
-        provider: selectedModel?.provider || "",
-        model: selectedModel?.model || ""
+        default_provider: selectedModel?.provider || "",
+        default_model: selectedModel?.model || ""
       });
       teamSessions.value[selectedTeamId.value] = [
         { ...created, at: formatSessionTime(created.last_message_at || created.updated_at || created.created_at) },

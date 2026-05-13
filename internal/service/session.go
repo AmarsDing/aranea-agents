@@ -164,6 +164,8 @@ func (s *SessionService) SearchSessions(ctx context.Context, req *v1.SearchSessi
 // CreateSession implements POST /v1/sessions.
 func (s *SessionService) CreateSession(ctx context.Context, req *v1.CreateSessionRequest) (*v1.Session, error) {
 	in := biz.Session{
+		WorkspaceID:     req.GetWorkspaceId(),
+		UserID:          req.GetUserId(),
 		OwnerType:       req.GetOwnerType(),
 		AgentID:         req.GetAgentId(),
 		TeamID:          req.GetTeamId(),

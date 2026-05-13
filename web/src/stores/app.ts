@@ -102,7 +102,7 @@ export const useAppStore = defineStore("app", {
         this.selectedSession = this.sessions[0];
       }
     },
-    async addSession(title: string, options?: { dialog_mode?: string; provider?: string; model?: string }) {
+    async addSession(title: string, options?: { dialog_mode?: string; default_provider?: string; default_model?: string }) {
       if (!this.selectedAgent) return null;
       const created = await createSession({ agent_id: this.selectedAgent.id, title, ...options });
       this.sessions.unshift(created);

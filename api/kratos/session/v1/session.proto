@@ -116,6 +116,8 @@ message CreateSessionRequest {
   string dialog_mode = 5;
   string default_provider = 6;
   string default_model = 7;
+  string workspace_id = 8;
+  string user_id = 9;
 }
 
 message GetSessionRequest {
