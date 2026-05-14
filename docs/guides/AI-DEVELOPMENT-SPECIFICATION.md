@@ -2,6 +2,124 @@
 
 > **文档地位**：AI 编码时的**唯一行为准则**。
 > **规范冲突优先级**：本文 > 所有其他 docs 下的规范文档。
+> **阅读方式**：先看「速查卡」掌握红线与决策路径，再按需翻阅详细规范。
+
+---
+
+## 目录
+
+- [速查卡](#速查卡)
+  - [红线（违反即停）](#红线违反即停)
+  - [决策树（我的代码该放哪？）](#决策树我的代码该放哪)
+  - [任务速查卡](#任务速查卡)
+- [第一章：架构总纲](#第一章架构总纲)
+- [第二章：分层编码规范](#第二章分层编码规范)
+- [第三章：Agent 运行时规范](#第三章agent-运行时规范)
+- [第四章：API 与 Proto 规范](#第四章api-与-proto-规范)
+- [第五章：Go 代码风格](#第五章go-代码风格)
+- [第六章：模块化设计](#第六章模块化设计)
+- [第七章：前端编码规范](#第七章前端编码规范)
+- [第八章：UI/UX 执行规范](#第八章uiux-执行规范)
+- [第九章：AI 编码自检清单](#第九章ai-编码自检清单)
+- [附录](#附录)
+
+---
+
+## 速查卡
+
+> AI 每次编码前**必须**先查阅本节。红线不可违反；决策树定位代码归属；任务速查卡给出步骤。
+
+### 红线（违反即停）
+
+| # | 红线 | 正确做法 |
+|---|------|----------|
+| 1 | `internal/server/*` 不得 new `runner.Runner` 或 `llmagent.New` | Runner 装配只在 `internal/service` |
+| 2 | `internal/biz/*` 不得 import `pkg/trpc-agent-go` 任何包 | 框架交互通过 `internal/agent`/`internal/tools` 桥接 |
+| 3 | 框架 `plugin` 回调不得直接写数据库 | 经 broker/async 异步写 |
+| 4 | 不得绕过 `internal/agent/adksvc` 把 Ent 行塞进 `session.Event` | 通过 `BizSessionService` 适配 |
+| 5 | 不得在 transport 层解析工具参数或拼接 prompt | 工具装配在 `internal/tools`，prompt 在 `internal/agent` |
+| 6 | 不得为框架运行时另起独立 HTTP 监听 | 框架运行时复用 Kratos HTTP Server |
+| 7 | 不得把 Kratos middleware 逻辑复制进 `pkg/trpc-agent-go` | 中间件只在 `internal/server` |
+| 8 | `internal/biz` 不得直接依赖框架运行时 toolset/skill 类型 | 通过 `internal/tools` 的 biz 友好接口 |
+| 9 | Service 层不得写业务逻辑 | Service 只做 proto↔biz 映射 + Runner 编排 |
+| 10 | 不得在 `NewData` 外另开 SQLite `sql.Open` | 仅通过 `d.Ent()` 访问 SQLite |
+| 11 | 不得修改 protoc 生成代码 | 改 proto → `make api` → 提交生成物 |
+| 12 | 不得在 Server 层写业务路由或手写 `HandleFunc` | 只做 `Register*HTTPServer`/`Register*ServiceServer` |
+
+### 决策树（我的代码该放哪？）
+
+```
+你要做什么？
+│
+├─ 新增 HTTP/gRPC 接口 ──────────→ api/**/*.proto → internal/service → internal/server
+│
+├─ 新增业务逻辑 ─────────────────→ internal/biz（模型 + Repo 接口 + Usecase）
+│
+├─ 新增数据库表/查询 ────────────→ internal/data/ent/schema → go generate → internal/data
+│
+├─ 新增 LLM Agent 能力 ──────────→ internal/agent（BuildLLMAgent 扩展）
+│
+├─ 新增工具 ─────────────────────→ internal/tools（Registry 注册 + Assemble 装配）
+│
+├─ 新增 Team 工作流 ─────────────→ internal/team（BuildWorkflowRoot）
+│
+├─ 新增 LLM 厂商 ────────────────→ internal/provider（实现 model.LLM）
+│
+├─ 新增记忆能力 ─────────────────→ internal/memory（适配器 → trpcmemory.Service）
+│
+├─ 新增前端页面 ─────────────────→ services/ → features/ → stores/ → pages/ → components/
+│
+└─ 新增横切关注点（鉴权/中间件）→ internal/server + pkg/auth
+```
+
+### 任务速查卡
+
+#### 新增 API
+
+```
+1. api/kratos/<module>/v1/<module>.proto  ← 定义 RPC + HTTP 注解
+2. make api                                ← 生成 Go + TS
+3. internal/biz/<module>.go                ← 模型 + Repo 接口 + Usecase
+4. internal/data/ent/schema/<module>.go    ← Ent Schema
+5. go generate ./internal/data/ent         ← 生成 Ent 代码
+6. internal/data/<module>_repo.go          ← Repo 实现
+7. internal/service/<module>.go            ← Service（嵌入 Unimplemented*）
+8. internal/server/http.go                 ← Register*HTTPServer
+9. cmd/admin/wire.go                       ← Wire 注入
+10. go build ./cmd/admin                   ← 验证编译
+11. web/src/services/index.ts              ← 导出 createXxxService
+```
+
+#### 新增工具
+
+```
+1. internal/tools/registry.go              ← Registry() 中注册 ToolRegistration
+2. internal/tools/builtin_tools_seed.go    ← 添加种子数据
+3. 需要配置 → AssemblyConfig 增加字段 + Assemble 中增加覆盖逻辑
+4. internal/tools/custom/                  ← 自定义工具实现（如需）
+5. Chat 和 Team 共用 BuildToolsets，验证两处生效
+```
+
+#### 新增数据实体
+
+```
+1. internal/data/ent/schema/xxx.go         ← Fields/Index/Edge
+2. go generate ./internal/data/ent         ← 生成 Ent 代码
+3. internal/data/xxx.go                    ← Repo 实现（entXxxToBiz / bizXxxToEnt）
+4. internal/biz/xxx.go                     ← 模型 + Repo 接口 + Usecase
+5. internal/biz/biz.go                     ← ProviderSet 添加 NewXxxUsecase
+6. internal/data/data.go                   ← ProviderSet 添加 NewXxxRepo
+```
+
+#### 新增前端页面
+
+```
+1. web/src/services/index.ts               ← createXxxService
+2. web/src/features/<domain>/api.ts        ← HTTP 调用封装
+3. web/src/stores/<domain>/                ← Pinia Store（actions 触发请求）
+4. web/src/pages/                          ← 页面路由 + 布局
+5. web/src/components/<domain>/            ← 展示组件（props in / emits out）
+```
 
 ---
 
@@ -14,15 +132,22 @@
 | **Kratos v2** | 传输层（HTTP/gRPC/SSE）、配置、鉴权、中间件、Wire 依赖注入 | 不承载 Agent 编排、不实现第二套事件循环 |
 | **trpc-agent-go** | Agent 编排（Runner/Agent/Session/Memory/Tool/Event） | 不直接写业务数据库、不处理 HTTP 路由 |
 
-**各包职责映射**（框架能力按领域拆开，无单独 `adkadapter`）：
+**各包职责映射**：
 
-| 能力 | 主要包 |
-|------|--------|
-| `session.Service`（会话快照读写） | `internal/agent/adksvc`（`BizSessionService`） |
-| `llmagent` 构建、`model.LLM` | `internal/agent`（`BuildLLMAgent`）、`internal/provider`（`ModelForProviderModel`） |
-| 工具有效列表 → `tool.Tool` | `internal/tools`（`ToolsForAgent`） |
-| Runner 内存 / 插件 / 用户 ID 上下文 | `internal/agent`（`NewADKMemoryService`、`DefaultRunnerPlugins`、`UserIDFromCtx`） |
-| Team 工作流根 Agent | `internal/team`（`BuildWorkflowRoot` + `runner.Run`） |
+| 能力 | 主要包 | 关键函数/类型 |
+|------|--------|---------------|
+| 会话快照读写 | `internal/agent/adksvc` | `BizSessionService` |
+| Agent 构建 | `internal/agent` | `BuildLLMAgent` |
+| LLM 模型驱动 | `internal/provider` | `ModelForProviderModel` |
+| 工具注册与装配 | `internal/tools` | `Assemble`、`Registry` |
+| 工具适配层 | `internal/tools/trpc` | `BuildToolsets` |
+| Runner 内存/插件/用户ID | `internal/agent` | `NewADKMemoryService`、`DefaultRunnerPlugins`、`UserIDFromCtx` |
+| Team 工作流 | `internal/team` | `BuildWorkflowRoot` + `runner.Run` |
+| Agent-as-Tool | `internal/tools` | `AgentToolConfig` → `trpcagenttool.NewTool` |
+| MCP ToolSet | `internal/tools` | `MCPServerConfig` → `trpcmcp.NewMCPToolSet` |
+| MCP Broker | `internal/tools` | `MCPBrokerConfig` → `trpcmcpbroker.New` |
+| 记忆服务 | `internal/memory/trpc` | `NewSQLiteMemoryService` |
+| Stream 流式工具 | 框架 `tool.StreamableTool` | 项目层无需额外包 |
 
 ### 1.2 依赖方向铁律
 
@@ -38,30 +163,38 @@ internal/data           ← Repo 实现（Ent ORM + pgvector）
 
 **跨层只允许向内依赖。违反即停。**
 
-### 1.3 八条红线
+### 1.3 逐包 import 规则
 
-| # | 红线 | 违反后果 |
-|---|------|----------|
-| 1 | `internal/server/*` 不得 new `runner.Runner` 或 `llmagent.New` | 停 |
-| 2 | `internal/biz/*` 不得 import `pkg/trpc-agent-go` 任何包 | 停 |
-| 3 | 框架 `plugin` 回调不得直接写数据库 | 停 |
-| 4 | 不得绕过 `internal/agent/adksvc` 把 Ent 行塞进 `session.Event` | 停 |
-| 5 | 不得在 transport 层解析工具参数或拼接 prompt | 停 |
-| 6 | 不得为框架运行时另起独立 HTTP 监听 | 停 |
-| 7 | 不得把 Kratos middleware 逻辑复制进 `pkg/trpc-agent-go` | 停 |
-| 8 | 不得在 `internal/biz` 直接依赖框架运行时 toolset/skill 类型 | 停 |
+> 本节合并了所有 import 约束与红线，是依赖方向的**唯一权威来源**。
 
-### 1.4 逐包 import 规则
-
-| 包路径 | 允许 import | 禁止 import |
-|--------|-------------|-------------|
-| `internal/server/*` | `internal/service`、`internal/conf`、kratos、`pkg/auth`、`pkg/validate` | `pkg/trpc-agent-go` / 框架运行时私有 import |
-| `internal/biz/*` | stdlib、kratos errors、本仓 biz/data API | `pkg/trpc-agent-go` / 框架运行时私有 import |
-| `internal/service/*` | `internal/biz`、`internal/team`、`internal/agent`、`internal/agent/adksvc`、`internal/provider`、`internal/tools`，以及框架 Runner/Agent 装配 API | 绕过 `internal/tools` 大量直连拼装底层 `tool` |
+| 包路径 | ✅ 允许 import | ❌ 禁止 import |
+|--------|----------------|----------------|
+| `internal/server/*` | `internal/service`、`internal/conf`、kratos、`pkg/auth`、`pkg/validate` | `pkg/trpc-agent-go` / 框架运行时私有 import、`runner.Runner`、`llmagent.New` |
+| `internal/biz/*` | stdlib、kratos errors、本仓 biz/data API | `pkg/trpc-agent-go` 任何包、`api/*/v1`、框架运行时 toolset/skill 类型 |
+| `internal/service/*` | `internal/biz`、`internal/team`、`internal/agent`、`internal/agent/adksvc`、`internal/provider`、`internal/tools`，框架 Runner/Agent 装配 API | 绕过 `internal/tools` 大量直连拼装底层 `tool` |
 | `internal/agent/*`（含 `adksvc`） | `internal/biz`、`internal/provider`、`internal/data/...`（如需）、`pkg/trpc-agent-go` / 框架运行时 | — |
 | `internal/team/*` | `internal/biz`、`internal/agent`、`internal/provider`、`internal/tools`、`pkg/trpc-agent-go` / 框架运行时 | — |
 | `internal/provider/*` | `internal/biz`、`pkg/trpc-agent-go` / 框架 `model` 适配 | — |
 | `internal/tools/*` | `internal/biz`、框架 `tool` API（由 `pkg/trpc-agent-go` 暴露或兼容层 re-export） | — |
+
+**正反对照**：
+
+```go
+// ✅ 正确：biz 层只依赖 stdlib + kratos errors + 本仓 biz/data
+import (
+    "context"
+    stderrors "errors"
+    kerrors "github.com/go-kratos/kratos/v2/errors"
+    "aranea-agents/internal/biz"
+)
+
+// ❌ 错误：biz 层 import 框架运行时
+import (
+    "aranea-agents/pkg/trpc-agent-go/runner"    // 红线 2
+    "aranea-agents/pkg/trpc-agent-go/tool"       // 红线 8
+    "aranea-agents/api/chat/v1"                   // biz 禁止 import proto
+)
+```
 
 ---
 
@@ -72,6 +205,7 @@ internal/data           ← Repo 实现（Ent ORM + pgvector）
 **职责**：实现 proto 接口，做 proto ↔ biz 类型映射，编排框架 Runner 调用。
 
 **结构体模板**：
+
 ```go
 type XxxService struct {
     v1.UnimplementedXxxServiceServer
@@ -85,16 +219,18 @@ func NewXxxService(uc *biz.XxxUsecase) *XxxService {
 
 **编码规则**：
 
-1. **嵌入 `Unimplemented*Server`**：每个 Service 必须嵌入对应 proto 生成的未实现结构体
-2. **构造函数 `NewXxxService`**：只接收 biz Usecase，不做其他初始化
-3. **类型转换函数命名**：`toProtoXxx`（biz → proto）、`fromProtoXxx`（proto → biz）
-4. **错误映射**：biz 返回的 `error` 用 `kerrors.FromError(err)` 或手动构造 `kerrors.BadRequest/InternalServer`
-5. **禁止在 Service 中写业务逻辑**：Service 只做映射和编排，业务逻辑全部在 biz
+| 规则 | ✅ 正确 | ❌ 错误 |
+|------|---------|---------|
+| 嵌入 Unimplemented | `v1.UnimplementedXxxServiceServer` | 不嵌入，手写所有方法 |
+| 构造函数 | `NewXxxService(uc *biz.XxxUsecase)` | `NewXxxService(uc, repo, db, runner)` |
+| 类型转换命名 | `toProtoXxx`（biz→proto）、`fromProtoXxx`（proto→biz） | 在方法内内联转换逻辑 |
+| 错误映射 | `kerrors.FromError(err)` 或 `kerrors.BadRequest/InternalServer` | `fmt.Errorf("...")` 返回 |
+| 业务逻辑 | 调 `uc.XxxMethod()` | 在 Service 中写 if/for 业务判断 |
 
 **Runner 装配规则**：
 
 ```go
-// 正确：Service 是框架调用的唯一桥点
+// ✅ 正确：Service 是框架调用的唯一桥点
 func (s *ChatService) SendChatMessage(ctx context.Context, req *chatv1.SendChatMessageRequest) (*chatv1.SendChatMessageResponse, error) {
     // 1. proto → biz 参数
     // 2. 调 biz Usecase 获取 Agent/Session
@@ -102,6 +238,10 @@ func (s *ChatService) SendChatMessage(ctx context.Context, req *chatv1.SendChatM
     // 4. 调 internal/agent 构建 Runner
     // 5. runner.Run → 事件流 → 投影为 proto 响应
 }
+
+// ❌ 错误：在 server 层或 biz 层直接使用框架运行时
+// internal/server/http.go 中 new runner.Runner  → 红线 1
+// internal/biz/agent.go 中 import runner        → 红线 2
 ```
 
 **桥接约定**：`internal/service` 内 Kratos service 在方法中构造框架 `Runner`，将 RPC/HTTP 请求译为会话执行入口，将会话事件流投影为 unary 或 SSE。**不在 `internal/server` 或 `internal/biz` 中直接使用框架运行时。**
@@ -113,7 +253,9 @@ func (s *ChatService) SendChatMessage(ctx context.Context, req *chatv1.SendChatM
 **编码规则**：
 
 1. **模型定义**：纯 Go struct，字段用基本类型，不用 proto 类型
+
 ```go
+// ✅ 正确：纯 Go 类型
 type Agent struct {
     ID          string
     AgentKey    string
@@ -123,9 +265,16 @@ type Agent struct {
     Status      string
     Settings    *AgentRuntimeSettings
 }
+
+// ❌ 错误：使用 proto 类型
+type Agent struct {
+    ID       string
+    Status   chatv1.AgentStatus   // 禁止：biz 不得 import proto
+}
 ```
 
 2. **Repo 接口定义在 biz**：
+
 ```go
 type AgentRepository interface {
     GetAgentByID(ctx context.Context, id string) (Agent, error)
@@ -137,6 +286,7 @@ type AgentRepository interface {
 ```
 
 3. **Usecase 结构**：
+
 ```go
 type AgentUsecase struct {
     repo  AgentRepository
@@ -148,9 +298,23 @@ func NewAgentUsecase(repo AgentRepository, tools ToolRepo) *AgentUsecase {
 }
 ```
 
-4. **错误处理**：使用 `kerrors.BadRequest`/`InternalServer` 等，不使用 `fmt.Errorf`
+4. **错误处理**：
+
+```go
+// ✅ 正确：使用 kratos errors
+if id == "" {
+    return Agent{}, kerrors.BadRequest("AGENT", "id is required")
+}
+if stderrors.Is(err, sql.ErrNoRows) {
+    return Agent{}, kerrors.NotFound("AGENT", "agent not found")
+}
+
+// ❌ 错误：使用 fmt.Errorf
+return Agent{}, fmt.Errorf("agent not found: %w", err)
+```
+
 5. **分页**：统一使用 `biz.ListOption` + `pagination.go` 的 `ListOffset/ListLimit/ListFilter/ListOrderBy`
-6. **禁止 import**：`api/*/v1`、`pkg/trpc-agent-go` 任何包
+6. **禁止 import**：`api/*/v1`、`pkg/trpc-agent-go` 任何包（见 §1.3）
 
 ### 2.3 Data 层——数据访问
 
@@ -159,6 +323,7 @@ func NewAgentUsecase(repo AgentRepository, tools ToolRepo) *AgentUsecase {
 **编码规则**：
 
 1. **Repo 结构体**：
+
 ```go
 type agentRepo struct {
     data *Data
@@ -170,39 +335,47 @@ func NewAgentRepo(d *Data) biz.AgentRepository {
 ```
 
 2. **数据库访问**：
-   - SQLite：仅通过 `d.Ent()` 访问（`*ent.Client`）
-   - pgvector：仅通过 `d.Postgres()` 访问（`*sql.DB`）
-   - **禁止**：在 `NewData` 外另开 SQLite `sql.Open`
 
-3. **Ent 转换函数**：`entAgentToBiz` / `bizAgentToEnt`，放在对应 Repo 文件中
-4. **新增实体流程**：
-   - `internal/data/ent/schema/XXX.go` 定义 Fields/Index/Edge
-   - `go generate ./internal/data/ent`
-   - `internal/data/xxx.go` 实现 Repo
-   - `internal/biz/xxx.go` 定义模型 + Repo 接口 + Usecase
+```go
+// ✅ 正确：通过 Data 访问
+d.Ent()       // SQLite → *ent.Client
+d.Postgres()  // pgvector → *sql.DB
+
+// ❌ 错误：另开连接
+sql.Open("sqlite3", dsn)  // 红线 10：不得在 NewData 外另开 SQLite
+```
+
+3. **Ent 转换函数**：`entXxxToBiz` / `bizXxxToEnt`，放在对应 Repo 文件中
+4. **新增实体流程**：见[任务速查卡 - 新增数据实体](#新增数据实体)
 
 ### 2.4 Server 层——传输注册
 
 **职责**：创建 HTTP/gRPC/SSE 实例，注册 Service。
 
-**编码规则**：
+```go
+// ✅ 正确：只做注册
+v1.RegisterXxxHTTPServer(srv, svc)
+v1.RegisterXxxServiceServer(srv, svc)
 
-1. **HTTP 注册**：只做 `v1.RegisterXxxHTTPServer(srv, service实例)`
-2. **gRPC 注册**：只做 `v1.RegisterXxxServiceServer(srv, service实例)`
-3. **禁止**：在 Server 层写业务路由、手写 `HandleFunc`
-4. **中间件**：统一在 `NewHTTPServer`/`NewGRPCServer` 中注册
+// ❌ 错误：写业务路由
+srv.Route("/v1").HandleFunc("/custom", handler)  // 红线 12
+```
+
+**中间件**：统一在 `NewHTTPServer`/`NewGRPCServer` 中注册。
 
 ---
 
-## 第三章：Agent 运行时编码规范
+## 第三章：Agent 运行时规范
 
 ### 3.1 框架真相源
 
 **`pkg/trpc-agent-go` 是 Agent 框架的唯一真相源。**
 
-- 编排语义（Runner、Agent 树、Tool、Session、Event）必须落在 `pkg/trpc-agent-go`
-- **先查框架 API 再实现**，不在 biz 重写运行时
-- 不把框架内部实现整块复制到业务目录
+| 原则 | ✅ 正确 | ❌ 错误 |
+|------|---------|---------|
+| 先查框架 API | 查 `pkg/trpc-agent-go` 的 Runner/Agent/Tool API 后再实现 | 在 biz 重写运行时逻辑 |
+| 不复制框架 | 调用框架 API | 把框架内部实现整块复制到业务目录 |
+| 编排语义归框架 | Runner/Agent/Tool/Session/Event 在框架中 | 在业务包中平行维护编排逻辑 |
 
 ### 3.2 运行时装配层次
 
@@ -210,14 +383,16 @@ func NewAgentRepo(d *Data) biz.AgentRepository {
 internal/service        ← Runner 装配入口（调 agent/team/tools）
 internal/agent          ← Agent 构建（BuildLLMAgent、Memory、Plugins）
 internal/team           ← Team 工作流（BuildWorkflowRoot、Runner）
-internal/tools          ← 工具装配（TurnMount、Skill、MCP）
+internal/tools          ← 工具注册中心 + Assemble 装配（Registry + AssemblyConfig）
+internal/tools/trpc     ← 向后兼容适配层（ToolsetConfig → AssemblyConfig → Assemble）
+internal/tools/mcpmount ← MCP 服务器发现与 ToolSet 装配
+internal/tools/skillruntime ← Skill 工具集解析
+internal/tools/skillrouter  ← Skill 检测与分类
+internal/tools/custom   ← 自定义工具实现
 internal/provider       ← LLM 模型驱动（ModelForProviderModel）
-internal/biz            ← 领域层（Repository 接口 + Usecase 编排）
-internal/data           ← 数据层（Ent ORM 实现 Repository）
-internal/server         ← 传输层（HTTP/gRPC/SSE 注册与路由）
 internal/runtimedeps    ← 运行时依赖注入（TurnDeps、Runtime 聚合）
 internal/compress       ← L0 上下文压缩（长对话摘要）
-internal/memory         ← 会话记忆（TRPC MemoryService 适配）
+internal/memory         ← 会话记忆（SQLite 适配器 → trpcmemory.Service）
 internal/session        ← 会话存储（TRPC SessionService 适配）
 internal/skill          ← 技能系统（导入、执行、Watch 热重载）
 internal/graph          ← 图编排（TRPC Graph Builder）
@@ -235,14 +410,14 @@ internal/mcpprobe       ← MCP 探针（服务可用性评估）
 ```go
 // 1. Service 层组装 BuilderDeps
 deps := agent.BuilderDeps{
-    Catalog:    s.llmCatalog,
-    AgentUC:    s.agentsUC,
-    Agents:     s.agents,
+    Catalog:      s.llmCatalog,
+    AgentUC:      s.agentsUC,
+    Agents:       s.agents,
     ToolsCatalog: s.toolsCatalog,
-    RT:         s.adk,
-    Memory:     agent.RunnerMemoryForRuntime(s.adk),
-    Provider:   provider,
-    Model:      model,
+    RT:           s.adk,
+    Memory:       agent.RunnerMemoryForRuntime(s.adk),
+    Provider:     provider,
+    Model:        model,
 }
 
 // 2. 构建 Agent
@@ -257,29 +432,69 @@ eventCh, err := runner.Run(ctx, userID, sessionID, userMessage)
 
 **规则**：
 
-1. **BuilderDeps 是 Service 与框架之间的 DTO**：不含框架运行时类型，只含 biz 模型 + 可选依赖标记
-2. **Memory 注入**：通过 `adkdeps.Runtime.SessionMemory` 由 Wire 注入，不在 Service 手动选择
-3. **工具装配**：通过 `TurnMount.Attach` 统一挂载，不分散在多处
+| 规则 | 说明 |
+|------|------|
+| BuilderDeps 是 DTO | 不含框架运行时类型，只含 biz 模型 + 可选依赖标记 |
+| Memory 由 Wire 注入 | 通过 `adkdeps.Runtime.SessionMemory`，不在 Service 手动选择 |
+| 工具统一挂载 | 通过 `TurnMount.Attach`，不分散在多处 |
 
-### 3.4 TurnMount 工具装配规范
+### 3.4 工具装配规范
 
-**唯一装配入口**：`internal/tools/turn_mount.go` 的 `TurnMount.Attach`
+**核心装配入口**：`internal/tools/toolset.go` 的 `Assemble(ctx, cfg)`
 
-```go
-func (m TurnMount) Attach(ctx context.Context, ag biz.Agent, userQuery string,
-    tools *[]tool.Tool, toolsets *[]tool.Toolset) error
+**适配层入口**：`internal/tools/trpc/toolsets.go` 的 `BuildToolsets(ctx, cfg)`
+
+**调用链**：
+
+```
+trpc_build.go:buildToolsetsForAgent
+  → 构造 ToolsetConfig（基于 effective tool keys）
+  → tooltrpc.BuildToolsets(ctx, cfg)
+    → tools.Assemble(ctx, assemblyCfg)
+      → 遍历 Registry() 匹配 enabled tools
+      → 调用 Factory/ToolSetFactory 实例化
+      → 处理 AgentToolConfig、MCPServerConfig、MCPBrokerConfig
+      → 追加 CustomTools
+      → 返回 AssembledToolsets{ToolSets, Tools}
 ```
 
-**装配顺序**：
-1. Builtin Tools（`ADKToolsForAgentPolicy`）
-2. Skill Toolsets（`skillruntime.AppendEnabledPublishedSkillToolsets`）
-3. MCP Toolsets（`mcpmount.AppendEffectiveMCPServerToolsets`）
+**装配顺序**（在 `Assemble` 内部）：
+1. Registry 注册工具（按 enabled 列表匹配，调用 Factory/ToolSetFactory）
+2. 带配置覆盖的工具（file→WithBaseDir、geminifetch→WithModel 等）
+3. OpenAPI Spec ToolSet
+4. workspace_exec 扩展工具（write_stdin、kill_session）
+5. AgentTool（`AgentToolConfig` → `trpcagenttool.NewTool`）
+6. MCP ToolSet（`MCPServerConfig` → `trpcmcp.NewMCPToolSet`）
+7. MCP Broker（`MCPBrokerConfig` → `trpcmcpbroker.New` → `broker.Tools()`）
+8. CustomTools
+
+**AssemblyConfig 关键字段**：
+
+```go
+type AssemblyConfig struct {
+    EnabledTools  []string
+    FilesystemDir string
+    GeminiModel   string
+    GoogleAPIKey  string
+    GoogleCX      string
+    ClaudeCodeDir string
+    OpenAPISpecs  []OpenAPISpecConfig
+    AgentTools    []AgentToolConfig
+    MCPServers    []MCPServerConfig
+    MCPBroker     *MCPBrokerConfig
+    CustomTools   []Tool
+}
+```
 
 **规则**：
 
-1. 新增工具类型必须通过 `TurnMount.Attach` 挂载，不另开装配路径
-2. Chat 和 Team 共用同一 `TurnMount` 逻辑，避免分叉
-3. 工具策略（allow/deny）在 biz 层解析，tools 层只做框架映射
+| # | 规则 | ✅ 正确 | ❌ 错误 |
+|---|------|---------|---------|
+| 1 | 新增工具先注册 | `Registry()` 注册 `ToolRegistration` + `builtin_tools_seed.go` 种子 | 直接在 Service 中手写 tool 实例 |
+| 2 | 需配置的工具 | `AssemblyConfig` 增加字段 + `Assemble` 增加覆盖逻辑 | 硬编码配置值 |
+| 3 | Chat/Team 共用 | 同一 `BuildToolsets` 逻辑 | Chat 和 Team 各写一套装配 |
+| 4 | 工具策略 | biz 层解析为 effective tool keys，tools 层只做框架映射 | tools 层解析 allow/deny 策略 |
+| 5 | 适配层职责 | `ToolsetConfig` → `AssemblyConfig` → `Assemble` | 适配层直接拼装底层 tool |
 
 ### 3.5 Team 编排规范
 
@@ -298,41 +513,127 @@ func (m TurnMount) Attach(ctx context.Context, ag biz.Agent, userQuery string,
 
 ### 3.6 记忆系统规范
 
-**五层记忆架构**：
+**框架记忆架构**（`pkg/trpc-agent-go/memory`）：
 
-| 层级 | 存储 | 运行时接入 |
-|------|------|-----------|
-| L0 感官 | SQLite (sessionmemory) | Runner MemoryService |
-| L1 工作 | SQLite (sessionmemory) | Runner MemoryService |
-| L2 情景 | SQLite (sessionmemory) | Runner MemoryService |
-| L3 语义 | pgvector | biz.MemoryUsecase（独立业务线） |
-| L4 持久 | SQLite (sessionmemory) | Runner MemoryService |
+| 组件 | 职责 |
+|------|------|
+| `memory.Service` | 记忆 CRUD 接口（Add/Update/Delete/Clear/Read/Search） |
+| `memory/tool.ToolSet` | 6 个记忆工具（add/search/load/update/delete/clear） |
+| `memory/extractor` | 自动提取（LLM 从对话中提取 fact/episode） |
+| `memory.Kind` | 记忆类型：`fact`（事实）/ `episode`（情景） |
+
+**项目当前使用**：SQLite 适配器（`internal/memory/trpc` → `NewSQLiteMemoryService`），底层使用 `internal/data/sessionmemory.Store`。框架还支持 sqlitevec/postgres/pgvector/redis/mem0 等后端，按需接入。
+
+**两种记忆模式**：
+
+| 模式 | 行为 | 接入方式 |
+|------|------|----------|
+| Agentic | Agent 主动调用 `memory_add`/`memory_search` 等工具 | `llmagent.WithMemoryService(service)` |
+| Auto | 对话结束后 LLM 自动提取记忆 | `service.EnqueueAutoMemoryJob(ctx, session)` |
 
 **规则**：
 
-1. **Runner MemoryService 由 Wire 注入**：有 `sessionmemory.Store` → SQLite 适配器；无 → in-memory
-2. **L3 pgvector 是独立业务线**：不自动挂载到 Runner，需显式接入
-3. **`load_memory`/`preload_memory`**：行为必须与实际后端一致，后端未就绪时不在 prompt 中宣称
-4. **记忆写入**：经 broker/async 异步写，不在 plugin 回调中直接写库
+| # | 规则 | ✅ 正确 | ❌ 错误 |
+|---|------|---------|---------|
+| 1 | MemoryService 由 Wire 注入 | 有 Store → `NewSQLiteMemoryService`；无 → in-memory | Service 手动选择后端 |
+| 2 | 记忆工具注入 | `service.Tools()` 返回 6 个 `tool.Tool`，追加到 Agent 工具列表 | 手动构造记忆工具实例 |
+| 3 | 用户隔离 | `GetAppAndUserFromContext(ctx)` 获取 app+user 维度隔离 | 不做用户隔离 |
+| 4 | load/preload 行为 | 与实际后端一致，后端未就绪时不在 prompt 中宣称 | 无条件宣称支持 load_memory |
+| 5 | 记忆写入 | 经 broker/async 异步写 | 在 plugin 回调中直接写库（红线 3） |
+| 6 | 搜索能力 | `HybridSearch`（向量+字面混合）、`Kind` 过滤、时间范围、去重 | 只做字面搜索 |
 
 ### 3.7 Provider 集成约定
 
-- **`internal/provider`** 承载厂商连接与模型的初始化、解析与调用——目录/Biz 侧 `provider_type` / `api_base_url` / `api_key` / 模型名的合并、`Registry.Resolve` 绑定具体后端、HTTP 传输、以及实现 `pkg/trpc-agent-go` 所定义之 `model.LLM` 的 `GenerateContent`（含流式）
-- **契约对齐**：对模型的入参/出参形态以 `pkg/trpc-agent-go/model` 为准；不要在业务包中平行维护另一套「驱动接口」或重复的厂商 HTTP 客户端
-- **业务集成**：凡与调用大模型相关的业务能力（选厂商、走补全/流式、聚合用量与文本解析等），优先在 `internal/provider` 及其子包内收口实现；`internal/agent`、`internal/team`、`internal/service` 等仅保留编排、proto/会话消息与 `LLMRequest` 之间的必要适配
-- **新增厂商**：通过扩展 `Registry` 注册工厂、在子包中实现 `model.LLM`，并保持与现有 `CatalogClient`、`MergeCatalogIntoRequest` 等辅助方法一致
+| 原则 | ✅ 正确 | ❌ 错误 |
+|------|---------|---------|
+| 厂商连接收口 | `internal/provider` 承载初始化、解析、调用 | 在 agent/service 中直接写 HTTP 客户端 |
+| 契约对齐 | 入参/出参以 `pkg/trpc-agent-go/model` 为准 | 在业务包中平行维护另一套驱动接口 |
+| 业务集成 | 选厂商/流式/用量解析在 `internal/provider` | agent/team/service 中重复实现厂商逻辑 |
+| 新增厂商 | 扩展 `Registry` + 子包实现 `model.LLM` | 在 agent 中硬编码厂商 URL |
+
+### 3.8 Stream 流式工具规范
+
+**框架三层 Tool 接口**：
+
+```go
+type Tool interface { Declaration() *Declaration }
+type CallableTool interface { Call(ctx, jsonArgs) (any, error); Tool }
+type StreamableTool interface { StreamableCall(ctx, jsonArgs) (*StreamReader, error); Tool }
+```
+
+**Stream 核心类型**：
+
+| 类型 | 作用 |
+|------|------|
+| `tool.NewStream(bufferSize)` | 创建双向流（Reader + Writer） |
+| `StreamChunk{Content, Metadata}` | 流式数据单元 |
+| `FinalResultChunk{Result}` | 标记最终结构化结果 |
+| `FinalResultStateChunk{Result, StateDelta}` | 最终结果 + 状态增量 |
+| `StreamableFunctionTool[I,O]` | 包装流式函数为 StreamableTool |
+
+**执行流程**：
+
+1. 框架检测工具是否实现 `StreamableTool` 接口
+2. 是 → 调用 `StreamableCall` → 返回 `StreamReader` → 循环 `Recv()` 消费
+3. 遇到 `FinalResultChunk` → 保留为最终结果
+4. 遇到 `FinalResultStateChunk` → 保留结果 + 发出 `StateDelta` 事件
+5. 遇到 `io.EOF` → 流结束
+6. 否 → 调用 `Call` → 返回同步结果
+
+**AG-UI 集成**：`agui.WithStreamingToolResultActivityEnabled(true)` 开启后，中间结果转为 Activity 事件（类型 `tool.result.stream`，ID `tool-result-activity-` + toolCallID）。
+
+**规则**：
+
+| # | 规则 | ✅ 正确 | ❌ 错误 |
+|---|------|---------|---------|
+| 1 | 调用方式选择 | 框架自动根据接口类型分派 | 手动判断调用 Call 还是 StreamableCall |
+| 2 | bufferSize | 默认即可，长时间运行的工具可适当增大 | 所有工具统一设大 bufferSize |
+| 3 | 结束标记 | 流式工具必须以 `FinalResultChunk` 或 `FinalResultStateChunk` 结束 | 流结束时无 FinalResult（框架拼接所有 chunk 文本作为结果） |
+| 4 | context 取消 | Writer 通过 `closed` channel 感知 Reader 取消并处理 | 忽略 context 取消 |
+
+### 3.9 Agent-as-Tool 与 MCP Broker 规范
+
+**Agent-as-Tool**（`trpcagenttool.NewTool`）：
+
+```go
+type AgentToolConfig struct {
+    Agent             trpcagent.Agent
+    Name              string
+    Description       string
+    SkipSummarization bool
+    StreamInner       bool
+    HistoryScope      trpcagenttool.HistoryScope
+    ResponseMode      trpcagenttool.ResponseMode
+}
+```
+
+| 选项 | 效果 |
+|------|------|
+| `SkipSummarization=false` | 子 Agent 输出被摘要后返回给父 Agent |
+| `StreamInner=true` | 子 Agent 的流式事件转发到父级 |
+| `ResponseMode=FinalOnly` | 只返回子 Agent 最后一条 assistant 消息 |
+| `HistoryScope` | 控制传递给子 Agent 的对话历史范围 |
+
+**MCP Broker**（`trpcmcpbroker.New`）——4 个运行时发现工具：
+
+| 工具 | 功能 |
+|------|------|
+| `mcp_list_servers` | 列出已注册的命名 MCP 服务器 |
+| `mcp_list_tools` | 连接服务器并列出工具摘要 |
 
 ---
 
-## 第四章：Proto 与 API 规范
+## 第四章：API 与 Proto 规范
 
 ### 4.1 Proto 定义规则
 
-1. **路径**：`api/kratos/<module>/v1/<module>.proto`
-2. **HTTP 注解**：每个 RPC 必须配 `google.api.http`
-3. **必填标记**：使用 `(google.api.field_behavior) = REQUIRED`
-4. **命名**：proto 字段 `snake_case`，Go 生成 `CamelCase`
-5. **禁止**：一半在 proto、一半手写路由的分裂契约
+| 规则 | ✅ 正确 | ❌ 错误 |
+|------|---------|---------|
+| 路径 | `api/kratos/<module>/v1/<module>.proto` | 随意放置 |
+| HTTP 注解 | 每个 RPC 配 `google.api.http` | 只定义 RPC 不配 HTTP path |
+| 必填标记 | `(google.api.field_behavior) = REQUIRED` | 不标记必填 |
+| 命名 | proto 字段 `snake_case`，Go 生成 `CamelCase` | proto 字段用 camelCase |
+| 契约完整性 | 全部能力在 proto 中定义 | 一半在 proto，一半手写路由 |
 
 ### 4.2 代码生成流程
 
@@ -340,10 +641,11 @@ func (m TurnMount) Attach(ctx context.Context, ag biz.Agent, userQuery string,
 make init    # 首次安装插件
 make api     # 生成 Go + TypeScript
 make config  # 仅改 conf.proto 时
-**禁止**：修改工具生成的代码
 ```
 
 **必须提交生成物**：`*.pb.go`、`*_http.pb.go`、`*_grpc.pb.go`、`web/src/services/`
+
+**禁止修改工具生成的代码。**
 
 ### 4.3 新增 API 检查清单
 
@@ -398,32 +700,34 @@ make config  # 仅改 conf.proto 时
 
 ---
 
-## 第五章：Go 代码风格规范
+## 第五章：Go 代码风格
 
 ### 5.1 命名规范
 
-| 场景 | 规范 | 示例 |
-|------|------|------|
-| 包名 | 小写单词，不用下划线 | `agent`, `mcpmount`, `skillruntime` |
-| 文件名 | 小写+下划线，按职责拆分 | `agent_repo.go`, `adk_build.go` |
-| 结构体 | 大驼峰，名词 | `AgentUsecase`, `TurnMount` |
-| 接口 | 大驼峰，名词+后缀 | `AgentRepository`, `MemoryService` |
-| 函数 | 大驼峰导出/小驼峰内部 | `NewAgentUsecase`, `fromProtoRuntime` |
-| 常量 | 大驼峰导出/小驼峰内部 | `DefaultAppName`, `streamQueryKey` |
-| 错误变量 | `Err` 前缀 | `ErrNotFound`, `ErrAppNameRequired` |
+| 场景 | 规范 | ✅ 示例 | ❌ 示例 |
+|------|------|---------|---------|
+| 包名 | 小写单词，不用下划线 | `agent`, `mcpmount` | `agent_svc`, `MCPMount` |
+| 文件名 | 小写+下划线，按职责拆分 | `agent_repo.go`, `adk_build.go` | `agentRepo.go`, `agent.go`（职责不清） |
+| 结构体 | 大驼峰，名词 | `AgentUsecase`, `TurnMount` | `agentUsecase`, `TurnMountHandler` |
+| 接口 | 大驼峰，名词+后缀 | `AgentRepository`, `MemoryService` | `AgentRepo`, `IMemory` |
+| 函数 | 大驼峰导出/小驼峰内部 | `NewAgentUsecase`, `fromProtoRuntime` | `new_agent_usecase` |
+| 常量 | 大驼峰导出/小驼峰内部 | `DefaultAppName`, `streamQueryKey` | `DEFAULT_APP_NAME` |
+| 错误变量 | `Err` 前缀 | `ErrNotFound`, `ErrAppNameRequired` | `ErrorNotFound`, `notFoundErr` |
 
 ### 5.2 函数设计
 
-1. **单一职责**：每个函数只做一件事
-2. **参数不超过 5 个**：超过则封装为 Option struct
-3. **返回值**：业务函数返回 `(result, error)`，不用 panic
-4. **构造函数**：统一 `NewXxx` 命名，返回指针
-5. **类型转换**：独立函数 `toProtoXxx`/`fromProtoXxx`，不在方法内内联
+| 规则 | ✅ 正确 | ❌ 错误 |
+|------|---------|---------|
+| 单一职责 | 每个函数只做一件事 | 一个函数既查数据又发通知又写日志 |
+| 参数 ≤ 5 | 超过则封装为 Option struct | `func Foo(a,b,c,d,e,f,g int)` |
+| 返回值 | 业务函数返回 `(result, error)` | 用 `panic` 处理业务逻辑 |
+| 构造函数 | 统一 `NewXxx` 命名，返回指针 | `CreateXxx`、`MakeXxx` |
+| 类型转换 | 独立函数 `toProtoXxx`/`fromProtoXxx` | 在方法内内联转换逻辑 |
 
 ### 5.3 错误处理
 
 ```go
-// 正确：使用 kratos errors
+// ✅ 正确：使用 kratos errors
 func (u *AgentUsecase) Get(ctx context.Context, id string) (Agent, error) {
     if id == "" {
         return Agent{}, kerrors.BadRequest("AGENT", "id is required")
@@ -437,32 +741,39 @@ func (u *AgentUsecase) Get(ctx context.Context, id string) (Agent, error) {
     }
     return a, nil
 }
+
+// ❌ 错误：使用 fmt.Errorf
+return Agent{}, fmt.Errorf("agent not found: %w", err)
 ```
 
-**规则**：
-1. 不用 `fmt.Errorf` 返回业务错误
-2. 不用 `panic` 处理业务逻辑
-3. `sql.ErrNoRows` → `kerrors.NotFound`
-4. 参数校验失败 → `kerrors.BadRequest`
-5. 内部错误 → `kerrors.InternalServer`
+**错误映射规则**：
+
+| 场景 | 使用 |
+|------|------|
+| 参数校验失败 | `kerrors.BadRequest` |
+| 记录不存在 | `kerrors.NotFound` |
+| 内部错误 | `kerrors.InternalServer` |
+| 框架返回的 error | `kerrors.FromError(err)` |
 
 ### 5.4 依赖注入
 
 1. **Wire ProviderSet**：每层一个，在 `biz.go`/`data.go`/`service.go`/`server.go` 中定义
 2. **构造函数参数**：只接收接口或具体依赖，不接收 `*Data` 之外的"上帝对象"
-3. **禁止**：手动 `wire_gen.go`，必须通过 `wire` 命令生成
+3. **禁止手动 `wire_gen.go`**：必须通过 `wire` 命令生成
 
 ### 5.5 并发与资源
 
-1. **context 传递**：所有跨层调用必须传递 `ctx`
-2. **goroutine**：必须处理 context 取消和 panic recovery
-3. **MCP 子进程**：必须在 context 取消时清理
-4. **SSE 流**：必须处理客户端断连
-5. **共享状态**：使用 `sync.Mutex`/`sync.RWMutex`，不用全局变量
+| 规则 | ✅ 正确 | ❌ 错误 |
+|------|---------|---------|
+| context 传递 | 所有跨层调用必须传递 `ctx` | `go func() { doWork() }()` 不传 ctx |
+| goroutine | 必须处理 context 取消和 panic recovery | goroutine 中不处理 panic |
+| MCP 子进程 | context 取消时清理 | 子进程泄漏 |
+| SSE 流 | 处理客户端断连 | 不检测客户端断连 |
+| 共享状态 | `sync.Mutex`/`sync.RWMutex` | 全局变量 |
 
 ---
 
-## 第六章：模块化设计规范
+## 第六章：模块化设计
 
 ### 6.1 新增功能模块的标准结构
 
@@ -481,14 +792,16 @@ cmd/admin/wire.go                         ← Wire 注入
 
 ### 6.2 模块间通信
 
-1. **同步调用**：Usecase 之间通过接口调用，不直接 import 另一模块的 data
-2. **异步事件**：通过 `Broker` 发布/订阅（如 `TeamRunEventBroker`、`MonitorLogBroker`）
-3. **禁止**：模块间通过全局变量或包级变量共享状态
+| 方式 | ✅ 正确 | ❌ 错误 |
+|------|---------|---------|
+| 同步调用 | Usecase 之间通过接口调用 | 直接 import 另一模块的 data |
+| 异步事件 | 通过 `Broker` 发布/订阅（如 `TeamRunEventBroker`） | 通过全局变量共享状态 |
+| 状态共享 | Pinia Store / 数据库 | 包级变量 |
 
 ### 6.3 接口隔离
 
 ```go
-// 正确：窄接口，按需定义
+// ✅ 正确：窄接口，按需定义
 type AgentReader interface {
     GetAgentByID(ctx context.Context, id string) (Agent, error)
 }
@@ -498,12 +811,22 @@ type AgentWriter interface {
     UpdateAgent(ctx context.Context, a Agent) (Agent, error)
 }
 
-// 完整接口组合
 type AgentRepository interface {
     AgentReader
     AgentWriter
     SearchAgents(ctx context.Context, q AgentListQuery) (AgentListResult, error)
     DeleteAgent(ctx context.Context, id string) error
+}
+
+// ❌ 错误：一个巨大接口包含所有方法
+type AgentRepository interface {
+    GetAgentByID(...)
+    CreateAgent(...)
+    UpdateAgent(...)
+    SearchAgents(...)
+    DeleteAgent(...)
+    GetAgentByName(...)    // 不需要的方法也塞进来
+    BulkUpdate(...)        // 与核心 CRUD 无关
 }
 ```
 
@@ -533,8 +856,8 @@ Component                ← 展示：props in / emits out
 
 ### 7.2 展示组件禁令
 
-| 禁止 | 说明 |
-|------|------|
+| ❌ 禁止 | 说明 |
+|---------|------|
 | `useXxxStore` / `defineStore` | 状态在 Store |
 | `features/*/api` / `services/` / `axios` | 请求在 Store |
 | `watch` + fetch + ref 共享业务数据 | 进 Store |
@@ -562,7 +885,7 @@ Component                ← 展示：props in / emits out
 
 ---
 
-## 第八章：UI · UX 执行规范
+## 第八章：UI/UX 执行规范
 
 > 数值与 token 为实现权威，不要用「相近」色替代。
 
@@ -649,9 +972,13 @@ backdrop-filter: blur(var(--glass-blur-default));
 
 ### 8.6 Do / Don't
 
-**Do**：全昼夜磨砂玻璃；昼奶油 rgba255,253,245系；夜深透+弱光；强调仅锚点。
-
-**Don't**：昼大白硬块铺满；层级靠堆砌阴影；同层混搭实体与玻璃；玻璃上大纯色块挡内容；移动端忽略 blur 降级。
+| ✅ Do | ❌ Don't |
+|-------|----------|
+| 全昼夜磨砂玻璃 | 昼大白硬块铺满 |
+| 昼奶油 rgba255,253,245系 | 层级靠堆砌阴影 |
+| 夜深透+弱光 | 同层混搭实体与玻璃 |
+| 强调仅锚点 | 玻璃上大纯色块挡内容 |
+| — | 移动端忽略 blur 降级 |
 
 ### 8.7 响应式
 
@@ -661,30 +988,34 @@ backdrop-filter: blur(var(--glass-blur-default));
 
 ## 第九章：AI 编码自检清单
 
-每次代码改动前，AI 必须逐项确认：
+> AI 每次代码改动**必须**逐项确认。违反红线立即停手。
 
-### 改动前
+### 改动前（定位与合规）
 
-- [ ] 确认改动属于哪个层（service/biz/data/agent/tools/team/provider）
-- [ ] 确认依赖方向是否合规（不违反向内依赖原则）
-- [ ] 确认是否需要新增 proto 定义
-- [ ] 确认是否涉及 `pkg/trpc-agent-go` 框架 API
+- [ ] 确认改动属于哪个层（service/biz/data/agent/tools/team/provider）→ 参见[决策树](#决策树我的代码该放哪)
+- [ ] 确认依赖方向是否合规（不违反向内依赖原则）→ 参见[红线](#红线违反即停)
+- [ ] 确认是否需要新增 proto 定义 → 参见[任务速查卡](#任务速查卡)
+- [ ] 确认是否涉及 `pkg/trpc-agent-go` 框架 API → 先查框架 API 再实现
 
-### 改动中
+### 改动中（逐层检查）
 
-- [ ] Service 层：只做映射和编排，无业务逻辑
-- [ ] Biz 层：无 `pkg/trpc-agent-go` import，无 proto import
-- [ ] Data 层：仅 `Ent()`/`Postgres()` 访问，无并联 SQLite 连接
-- [ ] Agent/Tools/Team 层：框架 API 调用合规，不复制框架内部逻辑
-- [ ] 错误处理：使用 `kerrors`，不用 `fmt.Errorf`
-- [ ] 命名：符合 5.1 规范
+- [ ] **Service 层**：只做映射和编排，无业务逻辑
+- [ ] **Biz 层**：无 `pkg/trpc-agent-go` import，无 proto import
+- [ ] **Data 层**：仅 `Ent()`/`Postgres()` 访问，无并联 SQLite 连接
+- [ ] **Agent/Tools/Team 层**：框架 API 调用合规，不复制框架内部逻辑
+- [ ] **新增工具**：先在 `Registry()` 注册 `ToolRegistration`，再在 `builtin_tools_seed.go` 添加种子
+- [ ] **流式工具**：实现 `StreamableTool` 接口，必须发送 `FinalResultChunk`
+- [ ] **记忆工具**：通过 `memory.Service.Tools()` 注入，不手动构造
+- [ ] **MCP Broker**：`AllowAdHocHTTP` 默认 false，安全边界明确
+- [ ] **错误处理**：使用 `kerrors`，不用 `fmt.Errorf`
+- [ ] **命名**：符合 §5.1 规范
 
-### 改动后
+### 改动后（构建与验证）
 
 - [ ] `make api` 已执行（如改了 proto）
-- [ ] Wire 已重新生成
+- [ ] Wire 已重新生成：`cd cmd/admin && wire`
 - [ ] `go build ./cmd/admin` 通过
-- [ ] 无红线违反
+- [ ] 无红线违反 → 参见[红线](#红线违反即停)
 - [ ] 新增能力两处生效（Chat + Team 共用装配路径）
 
 ### 全链路合并检查
@@ -700,15 +1031,25 @@ backdrop-filter: blur(var(--glass-blur-default));
 
 ---
 
-## 附录 A：关键文件索引
+## 附录
+
+### 附录 A：关键文件索引
 
 | 文件 | 用途 |
 |------|------|
 | `docs/需求/` | 全部需求设计文档（权威源） |
+| `docs/需求/23 tools.md` | Tools 需求文档（含 Stream/Memory/AgentTool/MCPBroker/商业级工具） |
+| `docs/需求/23 tools.design.md` | Tools 设计文档（含 Stream 流式机制/Memory 记忆/AgentTool/MCPBroker/扩展设计） |
 | `docs/guides/AI-DEVELOPMENT-SPECIFICATION.md` | 本文档：AI 开发规范 |
 | `.cursor/rules/trpc-agent-framework-first.mdc` | 框架优先规则 |
+| `internal/tools/toolset.go` | 工具注册中心（Registry + AssemblyConfig + Assemble） |
+| `internal/tools/tool.go` | 项目级工具类型别名（Tool/CallableTool/StreamableTool/ToolSet） |
+| `internal/tools/trpc/toolsets.go` | 向后兼容适配层（ToolsetConfig → BuildToolsets） |
+| `internal/tools/doc.go` | 工具包文档（框架能力说明 + 注册表 + 自定义工具指南） |
+| `internal/memory/trpc/sqlite_adapter.go` | Memory Service SQLite 适配器 |
+| `internal/agent/trpc_build.go` | Agent 构建 + 工具集装配入口 |
 
-## 附录 B：Wire 注入模板
+### 附录 B：Wire 注入模板
 
 ```go
 // biz/biz.go
@@ -742,7 +1083,7 @@ func wireApp(*conf.Server, *conf.Data, log.Logger) (wireOut, func(), error) {
 }
 ```
 
-## 附录 C：新增 Ent 实体模板
+### 附录 C：新增 Ent 实体模板
 
 ```go
 // internal/data/ent/schema/xxx.go
@@ -773,11 +1114,11 @@ func (Xxx) Indexes() []ent.Index {
 }
 ```
 
-## 第十章：平台目标架构原则
+### 附录 D：平台目标架构演进方向
 
-> 所有新模块、PR、专题文档若与之冲突，必须在本章登记例外或修正本章。
+> **性质**：本节描述的是**目标架构**，与当前项目结构存在差距。新模块、PR 若与之冲突，必须在本节登记例外或修正本节。AI 编码时以当前结构为准，不得按本节重构现有代码。
 
-### 9.1 设计原则（判定基准）
+#### D.1 设计原则
 
 1. **限界上下文（Bounded Context）**：按业务概念切分，不按技术层切分。Context 内部允许丰富，Context 之间只能通过端口、命令、事件、查询协作
 2. **端口与适配器（Hexagonal）**：每个 Context 对外只暴露端口（Port），所有实现细节是适配器（Adapter）——HTTP、CLI、SQLite、tRPC-Agent-Go、LLM SDK、向量库等都是"被适配"的
@@ -787,41 +1128,31 @@ func (Xxx) Indexes() []ent.Index {
 6. **共享内核最小化**：内核只放所有 Context 都依赖且长期稳定的内容（ID、时间、错误、事件信封、运行上下文、Module 接口），绝不放业务策略与领域逻辑
 7. **依赖方向单向收敛**：`adapter → context → kernel`、`runtime adapter → context.port`，绝不反向
 8. **可观测优先**：tracing、结构化事件、SSE、审计、用量从 Day 1 起即作为架构约束而非补丁
-9. **可裁剪部署**：通过 launcher 装配不同 Context 子集，业务代码不感知 launcher
 
-### 9.2 六大限界上下文
-
-| Context | 核心领域 | 包含 |
-|---------|---------|------|
-| **Identity** | 用户与权限 | user、team、workspace、role |
-| **Catalog** | Agent 目录 | agent、evolution、prompt |
-| **Capability** | 能力管理 | tool、skill、mcp/plugin、hook |
-| **Conversation** | 会话与编排 | session、message、channel、team-run |
-| **Memory** | 记忆系统 | L0~L4、recall、decay |
-| **Operations** | 运维与调度 | cron、monitor、audit、budget |
+#### D.2 Context 划分
 
 每个 Context 对内：domain · application · ports · 内部组件；对外：仅 ports（命令/查询/事件/能力契约）。
 
-### 9.3 能力执行链
+#### D.3 能力执行链
 
 Capability 的运行时调用必须经 `application → executor → middleware → backends`，**禁止**跳过 executor。
 
-### 9.4 跨 Context 协作规则
+#### D.4 跨 Context 协作规则
 
 - 跨 Context 协作只走 `kernel/contracts/`
 - `<context>/domain` 与 `<context>/application` 不允许 import 其它 Context
 - Kernel 准入条件：≥3 Context 实现/消费 + 已稳定 ≥2 个 PR 周期
 
-### 9.5 SQL 归属
+#### D.5 SQL 归属
 
 表前缀必须等于 Context 名（`identity_*` / `catalog_*` / `capability_*` / `conversation_*` / `memory_*` / `operations_*`），SQL 仅在 `<context>/adapters/sqlite/**` 出现。
 
-### 9.6 迁移原则
+#### D.6 迁移原则
 
 - 按映射表一行 = 一个 PR
 - 违反红线立即停手
 - 新代码落到目标 Context 下，禁止在旧路径新增文件
-- 目录全扫描优先 ：分析任何框架/库时，第一步是 ls -la 获取完整文件列表，逐文件阅读，不跳过任何文件
-- 建立能力清单矩阵 ：对框架的每个文件/模块，建立 [文件] → [能力] → [项目集成状态] 的三列矩阵
-- 接口+实现双路径 ：不仅看接口定义（ tool.go ），还要看实现文件（ callbacks.go 、 filter.go ）和辅助文件（ context.go 、 final_result.go ）
-- 框架 Option 全枚举 ：对 llmagent.Option 等配置入口做全量枚举，确保每个 With* 函数都有对应的项目集成路径
+- 目录全扫描优先：分析任何框架/库时，第一步是 ls -la 获取完整文件列表，逐文件阅读，不跳过任何文件
+- 建立能力清单矩阵：对框架的每个文件/模块，建立 [文件] → [能力] → [项目集成状态] 的三列矩阵
+- 接口+实现双路径：不仅看接口定义（`tool.go`），还要看实现文件（`callbacks.go`、`filter.go`）和辅助文件（`context.go`、`final_result.go`）
+- 框架 Option 全枚举：对 `llmagent.Option` 等配置入口做全量枚举，确保每个 `With*` 函数都有对应的项目集成路径
