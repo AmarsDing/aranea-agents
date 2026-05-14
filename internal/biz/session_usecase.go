@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
@@ -207,14 +208,17 @@ type SessionRepository interface {
 
 // SessionUsecase handles session CRUD + timeline（不包含发送消息）.
 type SessionUsecase struct {
-	sessions SessionRepository
-	agents   AgentRepository
-	teams    TeamRepository
+	sessions       SessionRepository
+	agents         AgentRepository
+	teams          TeamRepository
+	titleGenerator SessionTitleGenerator
 }
 
-// NewSessionUsecase constructs the usecase.
-func NewSessionUsecase(sessions SessionRepository, agents AgentRepository, teams TeamRepository) *SessionUsecase {
-	return &SessionUsecase{sessions: sessions, agents: agents, teams: teams}
+func NewSessionUsecase(sessions SessionRepository, agents AgentRepository, teams TeamRepository, titleGenerator SessionTitleGenerator) *SessionUsecase {
+	if titleGenerator == nil {
+		titleGenerator = NewNoopSessionTitleGenerator()
+	}
+	return &SessionUsecase{sessions: sessions, agents: agents, teams: teams, titleGenerator: titleGenerator}
 }
 
 func (uc *SessionUsecase) Search(ctx context.Context, q SessionSearchQuery) (SessionListResult, error) {
@@ -393,12 +397,23 @@ func (uc *SessionUsecase) maybeAutoTitleFromUserMessage(ctx context.Context, ses
 	if !shouldAutoNameSession(sess.Title) {
 		return nil
 	}
-	title := sessionTitleFromUserSnippet(content)
-	if title == "" {
-		return nil
+	snippet := sessionTitleFromUserSnippet(content)
+	if snippet != "" {
+		_, _ = uc.Rename(ctx, sessionID, snippet)
 	}
-	_, err = uc.Rename(ctx, sessionID, title)
-	return err
+	go uc.generateTitleAsync(sessionID, content)
+	return nil
+}
+
+func (uc *SessionUsecase) generateTitleAsync(sessionID, content string) {
+	bgCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	title, err := uc.titleGenerator.Generate(bgCtx, content)
+	if err != nil || title == "" {
+		return
+	}
+	_, _ = uc.Rename(bgCtx, sessionID, title)
 }
 
 func (uc *SessionUsecase) Timeline(ctx context.Context, id string) (SessionTimeline, error) {

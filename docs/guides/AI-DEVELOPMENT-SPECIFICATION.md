@@ -1,8 +1,7 @@
 # Aranea-Agents AI 开发规范
 
-> **文档地位**：AI 编码时的**唯一行为准则**。所有代码改动必须遵守本规范。本文已整合原 `architecture/runtime-boundary.md`、`AI-全栈新功能开发规范.md`、`接口与数据库开发规范.md`、`frontend/vue-design.md`、`frontend/UX.md` 的全部内容。
->
-> **规范冲突优先级**：本文 > 所有其他 docs 下的规范文档
+> **文档地位**：AI 编码时的**唯一行为准则**。
+> **规范冲突优先级**：本文 > 所有其他 docs 下的规范文档。
 
 ---
 
@@ -213,6 +212,20 @@ internal/agent          ← Agent 构建（BuildLLMAgent、Memory、Plugins）
 internal/team           ← Team 工作流（BuildWorkflowRoot、Runner）
 internal/tools          ← 工具装配（TurnMount、Skill、MCP）
 internal/provider       ← LLM 模型驱动（ModelForProviderModel）
+internal/biz            ← 领域层（Repository 接口 + Usecase 编排）
+internal/data           ← 数据层（Ent ORM 实现 Repository）
+internal/server         ← 传输层（HTTP/gRPC/SSE 注册与路由）
+internal/runtimedeps    ← 运行时依赖注入（TurnDeps、Runtime 聚合）
+internal/compress       ← L0 上下文压缩（长对话摘要）
+internal/memory         ← 会话记忆（TRPC MemoryService 适配）
+internal/session        ← 会话存储（TRPC SessionService 适配）
+internal/skill          ← 技能系统（导入、执行、Watch 热重载）
+internal/graph          ← 图编排（TRPC Graph Builder）
+internal/channel        ← 渠道集成（飞书 Webhook 等）
+internal/cronrunner     ← 定时任务（Cron 调度与执行）
+internal/legacychat     ← 遗留代理（LEGACY_REST_ORIGIN 转发）
+internal/llminspect     ← LLM 调试检查（模型连通性探测）
+internal/mcpprobe       ← MCP 探针（服务可用性评估）
 ```
 
 ### 3.3 Agent 构建规范
@@ -550,7 +563,7 @@ Component                ← 展示：props in / emits out
 
 ## 第八章：UI · UX 执行规范
 
-> 本章整合自 `AI-全栈新功能开发规范.md` 第四部分。数值与 token 为实现权威，不要用「相近」色替代。
+> 数值与 token 为实现权威，不要用「相近」色替代。
 
 ### 8.1 强制自检
 
@@ -761,7 +774,7 @@ func (Xxx) Indexes() []ent.Index {
 
 ## 第十章：平台目标架构原则
 
-> 本章整合自 `architecture/platform-architecture.md` 第三篇，描述 Aranea 的目标态架构设计原则。所有新模块、PR、专题文档若与之冲突，必须在本章登记例外或修正本章。
+> 所有新模块、PR、专题文档若与之冲突，必须在本章登记例外或修正本章。
 
 ### 9.1 设计原则（判定基准）
 

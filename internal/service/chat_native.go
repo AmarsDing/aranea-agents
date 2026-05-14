@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -51,8 +52,6 @@ func nativeDialogModeChatOptions() []*chatv1.ChatOption {
 		{Type: "dialog_mode", Key: "code", Label: "仅代码", Enabled: true, SortOrder: 3},
 	}
 }
-
-
 
 func (s *ChatService) nativeGetChatOptions(ctx context.Context, req *chatv1.GetChatOptionsRequest) (*chatv1.GetChatOptionsResponse, error) {
 	typed := strings.TrimSpace(req.GetType())
@@ -139,9 +138,10 @@ func (s *ChatService) proxyNativeStream(ctx khttp.Context) error {
 		TeamID    string `json:"team_id"`
 		Content   string `json:"content"`
 		Options   struct {
-			DialogMode string `json:"dialog_mode"`
-			Provider   string `json:"provider"`
-			Model      string `json:"model"`
+			DialogMode  string              `json:"dialog_mode"`
+			Provider    string              `json:"provider"`
+			Model       string              `json:"model"`
+			Attachments []map[string]string `json:"attachments"`
 		} `json:"options"`
 	}
 	if err := json.Unmarshal(body, &payload); err != nil {
@@ -158,7 +158,7 @@ func (s *ChatService) proxyNativeStream(ctx khttp.Context) error {
 	if tid := strings.TrimSpace(payload.TeamID); tid != "" {
 		protoReq.TeamId = &tid
 	}
-	if payload.Options.DialogMode != "" || payload.Options.Provider != "" || payload.Options.Model != "" {
+	if payload.Options.DialogMode != "" || payload.Options.Provider != "" || payload.Options.Model != "" || len(payload.Options.Attachments) > 0 {
 		protoReq.Options = &chatv1.SendMessageOptions{}
 		if payload.Options.DialogMode != "" {
 			protoReq.Options.DialogMode = &payload.Options.DialogMode
@@ -168,6 +168,11 @@ func (s *ChatService) proxyNativeStream(ctx khttp.Context) error {
 		}
 		if payload.Options.Model != "" {
 			protoReq.Options.Model = &payload.Options.Model
+		}
+		for _, att := range payload.Options.Attachments {
+			if id, ok := att["id"]; ok && strings.TrimSpace(id) != "" {
+				protoReq.Options.Attachments = append(protoReq.Options.Attachments, &chatv1.AttachmentRef{Id: strings.TrimSpace(id)})
+			}
 		}
 	}
 
@@ -201,9 +206,14 @@ func (s *ChatService) runNativeAgentTurn(ctx context.Context, req *chatv1.SendCh
 		return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.BadRequest("CHAT_NATIVE", "session_id and content are required")
 	}
 
+	if _, running := s.activeRuns.Load(sessionID); running {
+		s.enqueuePending(sessionID, content)
+		return biz.ChatMessage{}, biz.ChatMessage{}, nil
+	}
+
 	sess, err := s.td.Sessions.Get(ctx, sessionID)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.NotFound("SESSION", "session not found")
 		}
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
@@ -239,7 +249,7 @@ func (s *ChatService) runNativeAgentTurn(ctx context.Context, req *chatv1.SendCh
 	}
 	ag, err := s.hydratedAgent(ctx, agentID)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.NotFound("AGENT", "agent not found")
 		}
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
@@ -263,18 +273,6 @@ func (s *ChatService) runNativeAgentTurn(ctx context.Context, req *chatv1.SendCh
 		attN = len(opts.Attachments)
 	}
 
-	return s.runAgentTurn(ctx, sess, req, ag, dialogMode, prov, mod, attN, stream)
-}
-
-func (s *ChatService) runAgentTurn(
-	ctx context.Context,
-	sess biz.Session,
-	req *chatv1.SendChatMessageRequest,
-	ag biz.Agent,
-	dialogMode, prov, mod string,
-	attN int,
-	stream *streamWriter,
-) (biz.ChatMessage, biz.ChatMessage, error) {
 	return s.runSingleAgentViaTRPC(ctx, sess, req, ag, dialogMode, prov, mod, attN, stream)
 }
 
@@ -288,10 +286,6 @@ func (s *ChatService) hydratedAgent(ctx context.Context, agentID string) (biz.Ag
 	}
 	if s.td.Agents == nil {
 		return biz.Agent{}, kerrors.InternalServer("CHAT_NATIVE", "agent repository not configured")
-	}
-	if s.td.ToolsCatalog != nil {
-		ephemeral := biz.NewAgentUsecase(s.td.Agents, s.td.ToolsCatalog)
-		return ephemeral.Get(ctx, agentID)
 	}
 	return s.td.Agents.GetAgentByID(ctx, agentID)
 }

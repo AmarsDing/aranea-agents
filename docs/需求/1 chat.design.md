@@ -90,15 +90,33 @@ SSE 流式对话通过 HTTP Server 层手动注册路由，不在 Proto 中定�
 POST /v1/chat/messages/stream  →  ChatService.ProxyStream() (SSE)
 ```
 
-### 2.3 待新增 Proto
+### 2.3 已新增 Proto
+
+#### StopGeneration（✅ 已实现）
 
 ```protobuf
 message StopGenerationRequest {
   string session_id = 1 [(google.api.field_behavior) = REQUIRED];
 }
 
-message StopGenerationResponse {}
+message StopGenerationResponse {
+  bool stopped = 1;
+}
 
+rpc StopGeneration(StopGenerationRequest) returns (StopGenerationResponse) {
+  option (google.api.http) = { post: "/v1/chat/stop" body: "*" };
+}
+```
+
+**实现要点**：
+- `ChatService.activeRuns sync.Map` 跟踪 `sessionID → trpcrunner.Runner`
+- `runSingleAgentViaTRPC` 中 `Store(sessionID, runner)`，defer `Delete(sessionID)`
+- `RunTRPCUserTurn` 传入 `trpcagent.WithRequestID(sessionID)` 使 Runner 用 sessionID 作为 requestID
+- `StopGeneration` 优先尝试 `ManagedRunner.Cancel(sessionID)`，回退到 `Runner.Close()`
+
+#### GetPendingMessages（✅ 已实现）
+
+```protobuf
 message GetPendingMessagesRequest {
   string session_id = 1 [(google.api.field_behavior) = REQUIRED];
 }
@@ -114,14 +132,16 @@ message GetPendingMessagesResponse {
   repeated PendingMessage items = 1;
 }
 
-// 新增到 ChatService
-rpc StopGeneration(StopGenerationRequest) returns (StopGenerationResponse) {
-  option (google.api.http) = { post: "/v1/chat/stop" body: "*" };
-}
 rpc GetPendingMessages(GetPendingMessagesRequest) returns (GetPendingMessagesResponse) {
   option (google.api.http) = { get: "/v1/chat/pending" };
 }
 ```
+
+**实现要点**：
+- `ChatService.pendingQueue sync.Map` 跟踪 `sessionID → []PendingMessage`
+- 执行中再次发送时，消息入队而非拒绝
+- 当前 turn 完成后，自动从队列取下一条发送
+- 前端可查看/取消/编辑待执行消息
 
 ### 2.4 消息字段说明
 
@@ -265,12 +285,11 @@ tool_invocations
 
 ```
 internal/service/
-├── chat.go              ← ChatService 主结构 + SendChatMessage/GetChatOptions
-├── chat_native.go       ← 原生对话入口（SSE + unary）
+├── chat.go              ← ChatService 主结构 + SendChatMessage/GetChatOptions + legacy 代理
+├── chat_native.go       ← 原生对话入口（SSE + unary）+ streamWriter + hydratedAgent
 ├── trpc_turn.go         ← trpc-agent-go 单 Agent turn 执行
 ├── chat_usage_ingress.go ← 用量记录
-├── session_compress.go  ← L0 上下文压缩
-├── compress_wire.go     ← 压缩用 HTTP Client Wire 注入
+├── session_compress.go  ← L0 上下文压缩 + compress HTTP Client
 ```
 
 ### 5.2 ChatService 结构体
@@ -278,6 +297,10 @@ internal/service/
 ```go
 type ChatService struct {
     chatv1.UnimplementedChatServiceServer
+
+    mu          sync.RWMutex
+    up          *url.URL
+    proxy       *httputil.ReverseProxy
     client      *http.Client
     teams       biz.TeamRepository
     teamsNative *team.Runner
@@ -302,15 +325,13 @@ type ChatServiceDeps struct {
     MonitorLogs  *biz.MonitorLogBroker
 }
 
-func NewChatService(deps ChatServiceDeps, client *http.Client) *ChatService {
-    return &ChatService{
-        client:      client,
+func NewChatService(deps ChatServiceDeps) *ChatService {
+    s := &ChatService{
+        client:      &http.Client{Timeout: 600 * time.Second},
         teams:       deps.Teams,
         teamsNative: deps.TeamsNative,
         usage:       deps.Usage,
         td: runtimedeps.TurnDeps{
-            Broker:       deps.Broker,
-            Sessions:     deps.Sessions,
             Agents:       deps.Agents,
             AgentsUC:     deps.AgentsUC,
             ToolsCatalog: deps.ToolsCatalog,
@@ -318,10 +339,15 @@ func NewChatService(deps ChatServiceDeps, client *http.Client) *ChatService {
             SkillUC:      deps.SkillUC,
             Sys:          deps.Sys,
             RT:           deps.RT,
+            LLMHTTP:      &http.Client{Timeout: 300 * time.Second},
+            Sessions:     deps.Sessions,
             Compress:     deps.Compress,
             MonitorLogs:  deps.MonitorLogs,
+            TeamSSE:      deps.Broker,
         },
     }
+    s.refreshUpstream()
+    return s
 }
 ```
 
@@ -373,11 +399,15 @@ func (s *ChatService) GetChatOptions(ctx context.Context, req *chatv1.GetChatOpt
 
 ### 5.4 SSE 流式对话（ProxyStream）
 
-SSE 路由在 `internal/server/http.go` 中手动注册，不在 Proto 中：
+SSE 路由在 `internal/server/register_chat.go` 中手动注册，不在 Proto 中：
 
 ```go
-// internal/server/http.go 中注册 SSE 路由
-srv.Route("/v1/chat").POST("/messages/stream", s.chatSSEHandler)
+// internal/server/register_chat.go 中注册 SSE 路由
+func RegisterChatIngress(srv *kratoshttp.Server, chat *service.ChatService) {
+    chatv1.RegisterChatServiceHTTPServer(srv, chat)
+    r := srv.Route("/")
+    r.POST("/v1/chat/messages/stream", chat.ProxyStream)
+}
 ```
 
 **请求流转**：
@@ -435,44 +465,27 @@ func (s *ChatService) recordChatIngressUsage(ctx context.Context, sess biz.Sessi
 
 ```go
 // internal/agent/trpc_build.go
-type BuilderDeps struct {
-    Catalog      *biz.LlmProviderModelUsecase
-    AgentUC      *biz.AgentUsecase
-    Agents       biz.AgentRepository
-    ToolsCatalog biz.ToolRepo
-    RT           *runtimedeps.Runtime
-    Memory       session.Service
-    Provider     string
-    Model        string
+type TRPCBuilderDeps struct {
+    Catalog    *biz.LlmProviderModelUsecase
+    AgentUC    *biz.AgentUsecase
+    Agents     biz.AgentRepository
+    RT         *provider.RoundTrip
+    SkillUC    *biz.SkillUsecase
+    Sys        biz.SystemSettingRepo
+    Provider   string
+    Model      string
+    DialogMode string
 }
 
-func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps BuilderDeps) (*llmagent.Agent, error) {
+func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) (trpcagent.Agent, error) {
     // 1. 获取 LLM 模型
-    llm, err := provider.ModelForProviderModel(ctx, deps.Provider, deps.Model)
-    if err != nil {
-        return nil, kerrors.InternalServer("AGENT", err.Error())
-    }
-    // 2. 挂载工具
-    var tools []tool.Tool
-    var toolsets []tool.Toolset
-    mount := toolsPkg.TurnMount{
-        AgentUC:    deps.AgentUC,
-        Agents:     deps.Agents,
-        Tools:      deps.ToolsCatalog,
-        SkillUC:    deps.SkillUC,
-        MCPServers: deps.MCPServers,
-    }
-    if err := mount.Attach(ctx, ag, "", &tools, &toolsets); err != nil {
-        return nil, kerrors.InternalServer("AGENT", err.Error())
-    }
-    // 3. 构建 Agent
-    opts := []llmagent.Option{
-        llmagent.WithModel(llm),
-        llmagent.WithInstruction(ag.SystemPrompt),
-        llmagent.WithTools(tools...),
-        llmagent.WithToolsets(toolsets...),
-    }
-    return llmagent.New(opts...)
+    m, err := provider.TRPCModelForProviderModel(ctx, deps.Catalog, deps.RT, prov, mod)
+    // 2. 构建 System Prompt（含占位符变量替换）
+    sys := BuildSystemPrompt(ag, files, ag.SystemPromptMode)
+    // 3. 挂载工具（Builtin + Skill + MCP）
+    toolsets := buildToolsetsForAgent(ag, deps)
+    // 4. 构建 Agent
+    return trpcagent.New(opts...)
 }
 ```
 
@@ -480,22 +493,26 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps BuilderDeps) (*ll
 
 ```go
 // internal/agent/trpc_runtime.go
-func NewTRPCRunner(root agent.Agent, sessSvc session.Service, rt *runtimedeps.Runtime) (*runner.Runner, error) {
-    return runner.New(root,
-        runner.WithSessionService(sessSvc),
-        runner.WithMemoryService(rt.SessionMemory),
-    ), nil
+type TRPCRunnerDeps struct {
+    AppName        string
+    SessionService trpcsession.Service
+    MemoryService  trpcmemory.Service
 }
 
-func RunTRPCUserTurn(ctx context.Context, r *runner.Runner, userID, sessionID, msg string) (<-chan agent.Event, error) {
-    return r.Run(ctx, userID, sessionID, msg)
+func NewTRPCRunner(root trpcagent.Agent, deps TRPCRunnerDeps, opts ...trpcrunner.Option) (trpcrunner.Runner, error) {
+    // 注入 SessionService 和 MemoryService（可选）
+    return trpcrunner.NewRunner(appName, root, opts...), nil
+}
+
+func RunTRPCUserTurn(ctx context.Context, r trpcrunner.Runner, userID, sessionID, content string, opts ...trpcagent.RunOption) (<-chan *trpcevent.Event, error) {
+    return r.Run(ctx, userID, sessionID, content, opts...)
 }
 ```
 
 ### 6.3 Team 编排
 
 ```go
-// internal/team/runner.go
+// internal/team/runner_team_trpc.go
 type Runner struct {
     teams    biz.TeamRepository
     sessions *biz.SessionUsecase
@@ -511,13 +528,15 @@ type Runner struct {
     logs     *biz.MonitorLogBroker
 }
 
-func (r *Runner) RunTurn(ctx context.Context, team biz.Team, session biz.Session, agents []biz.Agent, msg string) (<-chan agent.Event, error) {
-    // 1. 构建 Team Root Agent
+func (r *Runner) RunTurn(ctx context.Context, sess biz.Session, req *chatv1.SendChatMessageRequest, emitter agent.StreamEmitter) (biz.ChatMessage, biz.ChatMessage, error) {
+    // 1. 查询 Team 成员 Agent 列表
+    // 2. 构建 Team Root Agent（Coordinator 或 Swarm）
     root, err := BuildWorkflowRoot(ctx, team, agents, r.deps())
-    // 2. 构建 Runner
-    runner, err := NewTRPCRunner(root, r.sessSvc, r.rt)
-    // 3. 执行
-    return runner.Run(ctx, userID, session.ID, msg)
+    // 3. 构建 Runner
+    runner, err := NewTRPCRunner(root, runnerDeps)
+    // 4. 执行
+    events, err := RunTRPCUserTurn(ctx, runner, uid, sessionID, msg)
+    // 5. 投影事件流 → ChatMessage + SSE
 }
 ```
 
@@ -574,6 +593,8 @@ func provideChatServiceDeps(
     }
 }
 ```
+
+> **注意**：`ChatServiceDeps.Broker` 映射到 `TurnDeps.TeamSSE`，`http.Client` 由 `NewChatService` 内部创建（legacy 代理 + LLM 调用），不由 Wire 注入。
 
 ---
 
@@ -935,14 +956,109 @@ export const useChatStore = defineStore('chat', {
 
 ---
 
+## 八-B、Session 标题自动生成
+
+### 设计目标
+
+需求 `1 chat.md` §三.3：首次对话后由模型总结标题，或从用户首条消息自动生成短标题。
+
+### 现有实现
+
+当前 `biz.SessionUsecase.maybeAutoTitleFromUserMessage` 在 `AppendChatMessage` 时触发，逻辑为：
+1. 判断 session 标题是否为默认占位符（"未命名会话"/"untitled"/"new chat"等）
+2. 若是，从用户消息内容截取前 22 字符作为标题
+3. 调用 `Rename(ctx, sessionID, title)` 更新
+
+**不足**：截取用户消息作为标题质量低，无法反映对话意图。
+
+### 新增：LLM 标题生成
+
+在 `maybeAutoTitleFromUserMessage` 基础上增加 LLM 生成路径：
+
+```go
+// internal/biz/session_usecase.go
+func (uc *SessionUsecase) maybeAutoTitleFromUserMessage(ctx context.Context, sessionID, content string) error {
+    sess, err := uc.sessions.Get(ctx, sessionID)
+    if err != nil {
+        return err
+    }
+    if !shouldAutoNameSession(sess.Title) {
+        return nil
+    }
+    // 1. 先用截取方式快速设置标题（即时反馈）
+    snippet := sessionTitleFromUserSnippet(content)
+    if snippet != "" {
+        _, _ = uc.Rename(ctx, sessionID, snippet)
+    }
+    // 2. 异步调用 LLM 生成高质量标题
+    go uc.generateTitleAsync(sessionID, content)
+    return nil
+}
+
+func (uc *SessionUsecase) generateTitleAsync(sessionID, content string) {
+    ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+    defer cancel()
+    
+    title, err := uc.titleGenerator.Generate(ctx, content)
+    if err != nil || title == "" {
+        return
+    }
+    _, _ = uc.Rename(ctx, sessionID, title)
+}
+```
+
+### SessionTitleGenerator 接口
+
+```go
+// internal/biz/session_title.go
+type SessionTitleGenerator interface {
+    Generate(ctx context.Context, userMessage string) (string, error)
+}
+```
+
+### LLM 实现
+
+```go
+// internal/biz/session_title_llm.go
+type LLMSessionTitleGenerator struct {
+    catalog *LlmProviderModelUsecase
+    rt      *runtimedeps.Runtime
+    http    *http.Client
+}
+
+func (g *LLMSessionTitleGenerator) Generate(ctx context.Context, userMessage string) (string, error) {
+    // 使用轻量模型（如 gpt-4o-mini）生成标题
+    // Prompt: "根据用户的第一条消息，生成一个简短的对话标题（不超过20字）。只返回标题文本，不要解释。"
+    // 超时 15s，失败静默
+}
+```
+
+### Wire 注入
+
+```go
+// cmd/admin/wire.go
+// LLMSessionTitleGenerator 由 Wire 注入到 SessionUsecase
+```
+
+### 前端配合
+
+- SSE `done` 事件后，前端检查 session 标题是否更新，若已更新则刷新侧栏
+- 标题生成是异步的，可能有 1-3 秒延迟
+
+---
+
 ## 九、待优化项
 
-| 优先级 | 项目 | 说明 |
-|--------|------|------|
-| P0 | `NewChatService` 参数封装 | ✅ 已完成：改为 `ChatServiceDeps` struct |
-| P1 | `firstNonEmpty` 统一 | 6 处重复定义 → `pkg/strutil.FirstNonEmpty` |
-| P1 | `memory_decode.go` 提取 | `ifaceStr`/`ifaceBool` 等通用函数 → `pkg/` |
-| P2 | `legacychat` 废弃 | `LEGACY_REST_ORIGIN` 模式长期应移除 |
-| P2 | `compress_wire.go` 合并 | 仅含一个函数，合并到 `session_compress.go` |
-| P2 | 停止生成 | 新增 `StopGeneration` RPC |
-| P2 | 待执行队列 | 新增 `GetPendingMessages` RPC |
+| 优先级 | 项目 | 说明 | 状态 |
+|--------|------|------|------|
+| P0 | `NewChatService` 参数封装 | 改为 `ChatServiceDeps` struct | ✅ 已完成 |
+| P1 | `firstNonEmpty` 统一 | 6 处重复定义 → `pkg/strutil.FirstNonEmpty` | ✅ 已完成 |
+| P1 | `memory_decode.go` 提取 | `ifaceStr`/`ifaceBool` 等通用函数 → `pkg/jsonutil` | ✅ 已完成 |
+| P1 | `compress_wire.go` 合并 | 仅含一个函数，合并到 `session_compress.go` | ✅ 已完成 |
+| P1 | `err == sql.ErrNoRows` 修正 | `chat_native.go` 中应使用 `errors.Is(err, sql.ErrNoRows)` | ✅ 已修复 |
+| P1 | SSE body 缺少 attachments | `proxyNativeStream` 解析结构体未包含 `attachments` 字段 | ✅ 已修复 |
+| P2 | `legacychat` 废弃 | `LEGACY_REST_ORIGIN` 模式长期应移除 | — 长期 |
+| P2 | 停止生成 | 新增 `StopGeneration` RPC | ✅ 已实现 |
+| P2 | 待执行队列 | 新增 `GetPendingMessages` RPC | ✅ 已实现 |
+| P2 | `hydratedAgent` 简化 | 逻辑冗余，移除 ephemeral AgentUsecase 分支 | ✅ 已优化 |
+| P2 | `runAgentTurn` 移除 | 冗余中间方法，直接调用 `runSingleAgentViaTRPC` | ✅ 已移除 |

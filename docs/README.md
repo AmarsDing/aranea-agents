@@ -55,31 +55,6 @@ AI 进行任何代码改动时，**必须**按以下顺序阅读规范文档：
 
 **规范冲突优先级**：AI-DEVELOPMENT-SPECIFICATION > plan
 
-> **整合说明**：`AI-DEVELOPMENT-SPECIFICATION.md` 已整合以下文档的全部内容：
-> - 原 `runtime-boundary.md` → 第一章架构总纲
-> - 原 `AI-全栈新功能开发规范.md` → 第四章迁移硬约束/横切边界/用量双写 + 第七章前端迭代 + 第八章 UI/UX
-> - 原 `接口与数据库开发规范.md` → 第四章 Proto/API 规范增强
-> - 原 `platform-architecture.md` 第三篇 → 第十章平台目标架构原则
-
----
-
-## 5. 架构设计融合说明
-
-> 原 `architecture/` 目录下的所有文档已分别融合至对应的需求设计文档中。以下为融合映射：
-
-| 原架构文档 | 融合目标 | 融合内容 |
-|------------|----------|----------|
-| `trpc-agent-go-implementation-plan.md` | [11 multi-agent.md](./需求/11%20multi-agent.md) | trpc-agent-go 标准化实施计划 |
-| `agent-team-design.md` | [11 multi-agent.md](./需求/11%20multi-agent.md) | Agent & Team 运行时设计 |
-| `agent-orchestration-roadmap.md` | [11 multi-agent.md](./需求/11%20multi-agent.md) | Agent 编排系统发展方向 |
-| `agent-orchestration-total-design.md` | [11 multi-agent.md](./需求/11%20multi-agent.md) | Agent 编排总体设计 |
-| `session-context-compression.md` | [10 session.md](./需求/10%20session.md) | 会话上下文压缩设计 |
-| `agent-skills-tools-mcp-memory.md` | [20 skill.md](./需求/20%20skill.md)、[23 tools.md](./需求/23%20tools.md)、[19 mcp.md](./需求/19%20mcp.md)、[12 memory-L0-sensory.md](./需求/12%20memory-L0-sensory.md) | Skill/Tools/MCP/Memory 运行时装配 |
-| `agent-repo-retrieval-context-engineering.md` | [23 tools.md](./需求/23%20tools.md) | 代码库检索与上下文工程实施工单 |
-| `platform-architecture.md` 第一/二篇 | [9 provider.md](./需求/9%20provider.md) | LLM Gateway 三层架构与演进 |
-| `platform-architecture.md` 第三篇 | [AI-DEVELOPMENT-SPECIFICATION.md](./guides/AI-DEVELOPMENT-SPECIFICATION.md) | 平台目标架构原则 |
-| `runtime-boundary.md` | [AI-DEVELOPMENT-SPECIFICATION.md](./guides/AI-DEVELOPMENT-SPECIFICATION.md) | 运行时边界 |
-
 ---
 
 ## 6. 功能对齐与优化清单
@@ -115,8 +90,6 @@ AI 进行任何代码改动时，**必须**按以下顺序阅读规范文档：
 
 ## 7. 产品需求文档
 
-需求文档入口：[产品需求总览.md](./需求/产品需求总览.md)
-
 ### 按功能域索引
 
 | 功能域 | 文档 |
@@ -150,16 +123,9 @@ AI 进行任何代码改动时，**必须**按以下顺序阅读规范文档：
 
 ---
 
-## 8. 前端设计文档（历史参考）
+## 8. 前端设计文档
 
-> 前端规范已整合至 [AI-DEVELOPMENT-SPECIFICATION.md](./guides/AI-DEVELOPMENT-SPECIFICATION.md) 第七章至第八章。以下文档保留供历史参考。
-
-| 文档 | 说明 |
-|------|------|
-| [vue-design.md](./frontend/vue-design/vue-design.md) | 前端编码规范原始版（Vue 3 / Quasar / Pinia 分层与自检） |
-| [vue-design-agent-rules.md](./frontend/vue-design/vue-design-agent-rules.md) | AI 系统提示精简版（MUST/MUST NOT） |
-| [UX.md](./frontend/UX.md) | UI 执行规范原始版（奶油昼·玻璃夜，token 与数值唯一权威） |
-
+> 前端规范遵循 [AI-DEVELOPMENT-SPECIFICATION.md](./guides/AI-DEVELOPMENT-SPECIFICATION.md) 第七章至第八章。
 ---
 
 ## 9. 变更记录
@@ -213,4 +179,5 @@ docs/
 4. 阅读 guides/plan.md → 确认功能对齐状态
 5. 按规范编码 → 遵循分层、依赖方向、命名约定
 6. 编译验证 → go build + go vet
+7. 更新变更记录 → 记录新功能、修改内容，更新相关文档
 ```

@@ -94,6 +94,7 @@ export default {
     inputLabel: "Type a message",
     untitledSession: "New chat",
     emptyMessages: "No messages yet",
+    pendingQueue: "Pending Queue",
     me: "Me",
     assistant: "Agent",
     settingsTitleAgent: "Agent settings",

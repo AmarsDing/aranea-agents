@@ -6,13 +6,16 @@
 package main
 
 import (
+	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/cronrunner"
 	"aranea-agents/internal/data"
+	"aranea-agents/internal/provider"
 	"aranea-agents/internal/runtimedeps"
 	"aranea-agents/internal/server"
 	"aranea-agents/internal/service"
@@ -52,6 +55,14 @@ func provideSkillWatchRunner(skillUC *biz.SkillUsecase, sys biz.SystemSettingRep
 		return nil
 	}
 	return watch.NewRunner(skillUC, sys, logger)
+}
+
+func provideSessionTitleGenerator(catalog *biz.LlmProviderModelUsecase, rt *runtimedeps.Runtime) biz.SessionTitleGenerator {
+	if catalog == nil {
+		return biz.NewNoopSessionTitleGenerator()
+	}
+	httpClient := &http.Client{Timeout: 15 * time.Second}
+	return service.NewLLMSessionTitleGenerator(catalog, &provider.RoundTrip{HTTP: httpClient})
 }
 
 func provideChatServiceDeps(
@@ -109,6 +120,7 @@ func wireApp(*conf.Server, *conf.Data, log.Logger) (wireOut, func(), error) {
 		provideCronRunnerDeps,
 		provideCronRunner,
 		provideSkillWatchRunner,
+		provideSessionTitleGenerator,
 		provideChatServiceDeps,
 		runtimedeps.NewRuntime,
 		newApp,
