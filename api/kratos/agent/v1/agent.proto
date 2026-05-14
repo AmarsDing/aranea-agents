@@ -199,6 +199,10 @@ message AgentEffectiveToolsView {
   repeated EffectiveAgentTool items = 5;
 }
 
+message ToggleFavoriteRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
 message GetAgentEffectiveToolsRequest {
   string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
 }
@@ -209,6 +213,93 @@ message UpdateAgentToolPolicyRequest {
   string profile = 3;
   repeated string allow = 4;
   repeated string deny = 5;
+}
+
+message CreateAgentPromptFileRequest {
+  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string name = 2 [(google.api.field_behavior) = REQUIRED];
+  string body = 3;
+  int32 sort_order = 4;
+}
+
+message UpdateAgentPromptFileRequest {
+  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string id = 2 [(google.api.field_behavior) = REQUIRED];
+  string name = 3;
+  string body = 4;
+  int32 sort_order = 5;
+}
+
+message DeleteAgentPromptFileRequest {
+  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string id = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message EstimateTokensRequest {
+  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message FileTokenEstimate {
+  string file_id = 1;
+  string file_name = 2;
+  int32 estimated_tokens = 3;
+}
+
+message EstimateTokensResponse {
+  int32 total_tokens = 1;
+  repeated FileTokenEstimate file_estimates = 2;
+}
+
+message GetAgentEvolutionMetricsRequest {
+  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string time_range = 2;
+}
+
+message MetricDataPoint {
+  string date = 1;
+  double value = 2;
+}
+
+message EvolutionMetricsResponse {
+  string agent_id = 1;
+  string time_range = 2;
+  double tool_success_rate = 3;
+  double retrieval_quality = 4;
+  int32 total_episodes = 5;
+  int32 negative_feedback = 6;
+  repeated MetricDataPoint tool_success_series = 7;
+  repeated MetricDataPoint retrieval_quality_series = 8;
+}
+
+message GetAgentEvolutionSuggestionsRequest {
+  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string status = 2;
+}
+
+message EvolutionSuggestion {
+  string id = 1;
+  string agent_id = 2;
+  string type = 3;
+  string title = 4;
+  string content = 5;
+  string status = 6;
+  string diff_preview = 7;
+  string created_at = 8;
+  string applied_at = 9;
+}
+
+message ListEvolutionSuggestionsResponse {
+  repeated EvolutionSuggestion items = 1;
+}
+
+message ApplyEvolutionSuggestionRequest {
+  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string suggestion_id = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message RejectEvolutionSuggestionRequest {
+  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string suggestion_id = 2 [(google.api.field_behavior) = REQUIRED];
 }
 
 service AgentService {
@@ -233,6 +324,12 @@ service AgentService {
   rpc DeleteAgent(DeleteAgentRequest) returns (google.protobuf.Empty) {
     option (google.api.http) = {delete: "/v1/agents/{id}"};
   }
+  rpc ToggleFavorite(ToggleFavoriteRequest) returns (Agent) {
+    option (google.api.http) = {
+      patch: "/v1/agents/{id}/favorite"
+      body: "*"
+    };
+  }
   rpc GetAgentPromptPreview(GetAgentPromptPreviewRequest) returns (GetAgentPromptPreviewResponse) {
     option (google.api.http) = {get: "/v1/agents/{id}/system-prompt/preview"};
   }
@@ -242,6 +339,42 @@ service AgentService {
   rpc UpdateAgentToolPolicy(UpdateAgentToolPolicyRequest) returns (AgentEffectiveToolsView) {
     option (google.api.http) = {
       put: "/v1/agents/{agent_id}/tools/policy"
+      body: "*"
+    };
+  }
+  rpc CreateAgentPromptFile(CreateAgentPromptFileRequest) returns (AgentPromptFile) {
+    option (google.api.http) = {
+      post: "/v1/agents/{agent_id}/files"
+      body: "*"
+    };
+  }
+  rpc UpdateAgentPromptFile(UpdateAgentPromptFileRequest) returns (AgentPromptFile) {
+    option (google.api.http) = {
+      patch: "/v1/agents/{agent_id}/files/{id}"
+      body: "*"
+    };
+  }
+  rpc DeleteAgentPromptFile(DeleteAgentPromptFileRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {delete: "/v1/agents/{agent_id}/files/{id}"};
+  }
+  rpc EstimateTokens(EstimateTokensRequest) returns (EstimateTokensResponse) {
+    option (google.api.http) = {post: "/v1/agents/{agent_id}/files/estimate-tokens" body: "*"};
+  }
+  rpc GetAgentEvolutionMetrics(GetAgentEvolutionMetricsRequest) returns (EvolutionMetricsResponse) {
+    option (google.api.http) = {get: "/v1/agents/{agent_id}/evolution/metrics"};
+  }
+  rpc GetAgentEvolutionSuggestions(GetAgentEvolutionSuggestionsRequest) returns (ListEvolutionSuggestionsResponse) {
+    option (google.api.http) = {get: "/v1/agents/{agent_id}/evolution/suggestions"};
+  }
+  rpc ApplyEvolutionSuggestion(ApplyEvolutionSuggestionRequest) returns (EvolutionSuggestion) {
+    option (google.api.http) = {
+      post: "/v1/agents/{agent_id}/evolution/suggestions/{suggestion_id}/apply"
+      body: "*"
+    };
+  }
+  rpc RejectEvolutionSuggestion(RejectEvolutionSuggestionRequest) returns (EvolutionSuggestion) {
+    option (google.api.http) = {
+      post: "/v1/agents/{agent_id}/evolution/suggestions/{suggestion_id}/reject"
       body: "*"
     };
   }

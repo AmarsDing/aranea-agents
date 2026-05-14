@@ -140,3 +140,16 @@ type AgentListResult struct {
 	Limit  int
 	Offset int
 }
+
+// FileTokenEstimate is the token estimate for a single prompt file.
+type FileTokenEstimate struct {
+	FileID          string
+	FileName        string
+	EstimatedTokens int
+}
+
+// FileTokenEstimates is the aggregate token estimate for all prompt files of an agent.
+type FileTokenEstimates struct {
+	TotalTokens    int
+	FileEstimates  []FileTokenEstimate
+}

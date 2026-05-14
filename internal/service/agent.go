@@ -382,6 +382,18 @@ func (s *AgentService) DeleteAgent(ctx context.Context, req *v1.DeleteAgentReque
 	return &emptypb.Empty{}, nil
 }
 
+// ToggleFavorite implements PATCH /v1/agents/{id}/favorite.
+func (s *AgentService) ToggleFavorite(ctx context.Context, req *v1.ToggleFavoriteRequest) (*v1.Agent, error) {
+	a, err := s.uc.ToggleFavorite(ctx, req.GetId())
+	if err != nil {
+		if stderrors.Is(err, sql.ErrNoRows) {
+			return nil, kerrors.NotFound("AGENT", "agent not found")
+		}
+		return nil, err
+	}
+	return toProtoAgent(a), nil
+}
+
 // GetAgentPromptPreview implements GET /v1/agents/{id}/system-prompt/preview.
 func (s *AgentService) GetAgentPromptPreview(ctx context.Context, req *v1.GetAgentPromptPreviewRequest) (*v1.GetAgentPromptPreviewResponse, error) {
 	text, err := s.uc.PromptPreview(ctx, req.GetId(), req.GetMode())
@@ -444,4 +456,74 @@ func (s *AgentService) UpdateAgentToolPolicy(ctx context.Context, req *v1.Update
 		return nil, err
 	}
 	return bizEffectiveToolsToProto(out), nil
+}
+
+// CreateAgentPromptFile implements POST /v1/agents/{agent_id}/files.
+func (s *AgentService) CreateAgentPromptFile(ctx context.Context, req *v1.CreateAgentPromptFileRequest) (*v1.AgentPromptFile, error) {
+	f := biz.AgentPromptFile{
+		AgentID:   req.GetAgentId(),
+		Name:      req.GetName(),
+		Body:      req.GetBody(),
+		SortOrder: int(req.GetSortOrder()),
+	}
+	created, err := s.uc.CreatePromptFile(ctx, f)
+	if err != nil {
+		if stderrors.Is(err, sql.ErrNoRows) {
+			return nil, kerrors.NotFound("AGENT", "agent not found")
+		}
+		return nil, err
+	}
+	return toProtoFile(created), nil
+}
+
+// UpdateAgentPromptFile implements PATCH /v1/agents/{agent_id}/files/{id}.
+func (s *AgentService) UpdateAgentPromptFile(ctx context.Context, req *v1.UpdateAgentPromptFileRequest) (*v1.AgentPromptFile, error) {
+	f := biz.AgentPromptFile{
+		ID:        req.GetId(),
+		AgentID:   req.GetAgentId(),
+		Name:      req.GetName(),
+		Body:      req.GetBody(),
+		SortOrder: int(req.GetSortOrder()),
+	}
+	updated, err := s.uc.UpdatePromptFile(ctx, f)
+	if err != nil {
+		if stderrors.Is(err, sql.ErrNoRows) {
+			return nil, kerrors.NotFound("AGENT_FILE", "prompt file not found")
+		}
+		return nil, err
+	}
+	return toProtoFile(updated), nil
+}
+
+// DeleteAgentPromptFile implements DELETE /v1/agents/{agent_id}/files/{id}.
+func (s *AgentService) DeleteAgentPromptFile(ctx context.Context, req *v1.DeleteAgentPromptFileRequest) (*emptypb.Empty, error) {
+	if err := s.uc.DeletePromptFile(ctx, req.GetAgentId(), req.GetId()); err != nil {
+		if stderrors.Is(err, sql.ErrNoRows) {
+			return nil, kerrors.NotFound("AGENT_FILE", "prompt file not found")
+		}
+		return nil, err
+	}
+	return &emptypb.Empty{}, nil
+}
+
+// EstimateTokens implements POST /v1/agents/{agent_id}/files/estimate-tokens.
+func (s *AgentService) EstimateTokens(ctx context.Context, req *v1.EstimateTokensRequest) (*v1.EstimateTokensResponse, error) {
+	estimates, err := s.uc.EstimateTokens(ctx, req.GetAgentId())
+	if err != nil {
+		if stderrors.Is(err, sql.ErrNoRows) {
+			return nil, kerrors.NotFound("AGENT", "agent not found")
+		}
+		return nil, err
+	}
+	resp := &v1.EstimateTokensResponse{
+		TotalTokens: int32(estimates.TotalTokens),
+	}
+	for _, fe := range estimates.FileEstimates {
+		resp.FileEstimates = append(resp.FileEstimates, &v1.FileTokenEstimate{
+			FileId:          fe.FileID,
+			FileName:        fe.FileName,
+			EstimatedTokens: int32(fe.EstimatedTokens),
+		})
+	}
+	return resp, nil
 }

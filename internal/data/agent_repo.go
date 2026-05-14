@@ -541,3 +541,62 @@ func (r *agentRepo) ReplaceAgentPromptFiles(ctx context.Context, agentID string,
 	}
 	return r.ListAgentPromptFiles(ctx, agentID)
 }
+
+func (r *agentRepo) CreateAgentPromptFile(ctx context.Context, f biz.AgentPromptFile) (biz.AgentPromptFile, error) {
+	if f.AgentID == "" || strings.TrimSpace(f.Name) == "" {
+		return biz.AgentPromptFile{}, fmt.Errorf("agent_id and name are required")
+	}
+	id := f.ID
+	if id == "" {
+		id = fmt.Sprintf("%s_%s", f.AgentID, sanitizePromptFileID(f.Name))
+	}
+	now := nowRFC3339()
+	created, err := r.data.entClient.AgentPromptFile.Create().
+		SetID(id).
+		SetAgentID(f.AgentID).
+		SetFileName(strings.TrimSpace(f.Name)).
+		SetBody(f.Body).
+		SetSortOrder(f.SortOrder).
+		SetCreatedAt(now).
+		SetUpdatedAt(now).
+		Save(ctx)
+	if err != nil {
+		return biz.AgentPromptFile{}, err
+	}
+	return entPromptToBiz(created), nil
+}
+
+func (r *agentRepo) UpdateAgentPromptFile(ctx context.Context, f biz.AgentPromptFile) (biz.AgentPromptFile, error) {
+	if f.ID == "" || f.AgentID == "" {
+		return biz.AgentPromptFile{}, fmt.Errorf("id and agent_id are required")
+	}
+	update := r.data.entClient.AgentPromptFile.UpdateOneID(f.ID).
+		SetUpdatedAt(nowRFC3339())
+	if strings.TrimSpace(f.Name) != "" {
+		update = update.SetFileName(strings.TrimSpace(f.Name))
+	}
+	if f.Body != "" {
+		update = update.SetBody(f.Body)
+	}
+	if f.SortOrder > 0 {
+		update = update.SetSortOrder(f.SortOrder)
+	}
+	updated, err := update.Save(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return biz.AgentPromptFile{}, sql.ErrNoRows
+		}
+		return biz.AgentPromptFile{}, err
+	}
+	return entPromptToBiz(updated), nil
+}
+
+func (r *agentRepo) DeleteAgentPromptFile(ctx context.Context, agentID, id string) error {
+	if agentID == "" || id == "" {
+		return fmt.Errorf("agent_id and id are required")
+	}
+	_, err := r.data.entClient.AgentPromptFile.Delete().
+		Where(agentpromptfile.IDEQ(id), agentpromptfile.AgentIDEQ(agentID)).
+		Exec(ctx)
+	return err
+}
