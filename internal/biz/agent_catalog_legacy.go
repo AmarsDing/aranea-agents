@@ -55,6 +55,10 @@ func withSettingDefaults(v AgentRuntimeSettings) AgentRuntimeSettings {
 	defaultInt(&v.EvoPersonaMaxChars, d.EvoPersonaMaxChars)
 	defaultInt(&v.EvoSystemPromptMaxAppends, d.EvoSystemPromptMaxAppends)
 	defaultString(&v.SkillRuntimeJSON, d.SkillRuntimeJSON)
+	defaultInt(&v.ToolsRetryMaxAttempts, d.ToolsRetryMaxAttempts)
+	defaultInt(&v.ToolsRetryInitialIntervalMs, d.ToolsRetryInitialIntervalMs)
+	defaultFloat(&v.ToolsRetryBackoffFactor, d.ToolsRetryBackoffFactor)
+	defaultInt(&v.ToolsRetryMaxIntervalMs, d.ToolsRetryMaxIntervalMs)
 	return v
 }
 
@@ -259,6 +263,16 @@ func configJSONFromSettings(settings AgentRuntimeSettings, files []AgentPromptFi
 			"allow":            jsonList(settings.ToolsAllowJSON),
 			"deny":             jsonList(settings.ToolsDenyJSON),
 			"concurrent_allow": jsonList(settings.ToolsConcurrentAllowJSON),
+			"retry": map[string]any{
+				"enabled":             settings.ToolsRetryEnabled,
+				"max_attempts":        settings.ToolsRetryMaxAttempts,
+				"initial_interval_ms": settings.ToolsRetryInitialIntervalMs,
+				"backoff_factor":      settings.ToolsRetryBackoffFactor,
+				"max_interval_ms":     settings.ToolsRetryMaxIntervalMs,
+				"jitter":              settings.ToolsRetryJitter,
+			},
+			"parallel_enabled":  settings.ToolsParallelEnabled,
+			"streaming_enabled": settings.ToolsStreamingEnabled,
 		},
 		"intent_pass": map[string]any{
 			"enabled": settings.IntentPassEnabled,

@@ -841,3 +841,70 @@ P3：
 **涉及文件**：`internal/team/trpc_build.go`
 
 **验收标准**：Team 成员可共享或隔离记忆
+
+### 15.7 SwarmConfig 安全限制
+
+**trpc 框架**：`team.WithSwarmConfig(team.SwarmConfig{...})` 限制 Swarm 模式的转移行为。
+
+**需求**：
+- `definition_json.swarm` 字段存储 SwarmConfig 配置
+- `max_handoffs`：最大转移次数（0=不限，默认 10）
+- `node_timeout_seconds`：单个节点超时（0=不限，默认 300）
+- `repetitive_handoff_window`：重复转移检测窗口（0=禁用，默认 5）
+- `repetitive_handoff_min_unique`：窗口内最小唯一 Agent 数（默认 3）
+- `BuildTRPCTeam` 中 swarm 分支使用 `WithSwarmConfig`
+
+**涉及文件**：`internal/team/trpc_build.go`、`internal/team/definition.go`
+
+**验收标准**：Swarm 模式下转移行为受安全限制约束，超出限制自动终止
+
+### 15.8 MemberToolConfig 成员工具配置
+
+**trpc 框架**：`team.WithMemberToolConfig(team.MemberToolConfig{...})` 配置 Coordinator 模式下成员 Agent 工具行为。
+
+**需求**：
+- `definition_json.member_tool_config` 字段存储 MemberToolConfig 配置
+- `stream_inner`：是否流式返回内部调用输出（默认 false）
+- `inner_text_mode`：内部文本模式 default / include / exclude
+- `skip_summarization`：是否跳过摘要（默认 false）
+- `history_scope`：历史范围 default / isolated / parent_branch
+- `BuildTRPCTeam` 中 coordinator 分支使用 `WithMemberToolConfig`
+
+**涉及文件**：`internal/team/trpc_build.go`、`internal/team/definition.go`
+
+**验收标准**：Coordinator 模式下成员 Agent 工具行为可配置
+
+### 15.9 动态成员管理
+
+**trpc 框架**：`team.UpdateSwarmMembers` / `AddSwarmMember` / `RemoveSwarmMember` 运行时增删 Swarm 成员。
+
+**需求**：
+- Proto 新增 `UpdateSwarmMembers` RPC
+- Usecase 新增 `UpdateSwarmMembers` 方法
+- 仅 Swarm 模式支持动态成员管理
+- 添加成员时自动分配 sort_order
+- 删除成员时更新 definition_json
+
+**涉及文件**：`api/kratos/team/v1/team.proto`、`internal/biz/team_usecase.go`、`internal/service/team.go`
+
+**验收标准**：Swarm Team 可在运行时动态增删成员
+
+### 15.10 结构导出
+
+**trpc 框架**：`team.Export()` 导出 Team 结构快照（节点/边/面）。
+
+**需求**：
+- Proto 新增 `ExportTeamStructure` RPC
+- Usecase 新增 `ExportStructure` 方法
+- 根据编排模式生成不同的结构快照：
+  - coordinator：coordinator → workers 星形
+  - swarm：entry → all members 全连接
+  - sequential：member → member 链式
+  - parallel：entry → all members 扇出
+  - critic_loop：entry → all members 循环
+  - graph：按 graph.nodes/edges 导出
+- 前端 `TeamStructureView.vue` 可视化展示
+
+**涉及文件**：`api/kratos/team/v1/team.proto`、`internal/biz/team_usecase.go`、`internal/service/team.go`
+
+**验收标准**：可导出并可视化 Team 编排结构

@@ -11,6 +11,7 @@ import (
 	"aranea-agents/internal/biz"
 	memtrpc "aranea-agents/internal/memory/trpc"
 	"aranea-agents/internal/provider"
+
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -38,6 +39,7 @@ func (s *ChatService) runSingleAgentViaTRPC(
 		Agents:     s.td.Agents,
 		RT:         s.td.RoundTrip(),
 		SkillUC:    s.td.SkillUC,
+		MCPTooling: s.td.RT.AgentMCP,
 		Sys:        s.td.Sys,
 		Provider:   prov,
 		Model:      mod,
@@ -48,11 +50,17 @@ func (s *ChatService) runSingleAgentViaTRPC(
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
 
-	runnerDeps := chatagent.TRPCRunnerDeps{
-		SessionService: chatagent.NewInMemoryTRPCSessionService(),
+	runnerDeps := chatagent.TRPCRunnerDeps{}
+	if s.td.RT != nil {
+		if s.td.RT.TRPCSession != nil {
+			runnerDeps.SessionService = s.td.RT.TRPCSession
+		}
+		if s.td.RT.SessionMemory != nil {
+			runnerDeps.MemoryService = memtrpc.NewSQLiteMemoryService(s.td.RT.SessionMemory)
+		}
 	}
-	if s.td.RT != nil && s.td.RT.SessionMemory != nil {
-		runnerDeps.MemoryService = memtrpc.NewSQLiteMemoryService(s.td.RT.SessionMemory)
+	if runnerDeps.SessionService == nil {
+		runnerDeps.SessionService = chatagent.NewInMemoryTRPCSessionService()
 	}
 	runner, err := chatagent.NewTRPCRunner(root, runnerDeps)
 	if err != nil {
@@ -111,9 +119,13 @@ func (s *ChatService) runSingleAgentViaTRPC(
 	}
 
 	uid := chatagent.UserIDFromCtx(ctx)
-	events, err := chatagent.RunTRPCUserTurn(ctx, runner, uid, sessionID, sendText,
-		trpcagent.WithRequestID(sessionID),
-	)
+	runOpts := []trpcagent.RunOption{trpcagent.WithRequestID(sessionID)}
+	if ag.Settings != nil {
+		if vars := chatagent.ParseVariablesJSON(ag.Settings.VariablesJSON); vars != nil {
+			runOpts = append(runOpts, trpcagent.MergeRuntimeState(vars))
+		}
+	}
+	events, err := chatagent.RunTRPCUserTurn(ctx, runner, uid, sessionID, sendText, runOpts...)
 	if err != nil {
 		return userMsg, biz.ChatMessage{}, err
 	}
@@ -126,10 +138,45 @@ func (s *ChatService) runSingleAgentViaTRPC(
 		if ctx.Err() != nil {
 			return userMsg, biz.ChatMessage{}, ctx.Err()
 		}
-		if ev == nil || ev.Response == nil {
+		if ev == nil {
 			continue
 		}
 		if ev.IsRunnerCompletion() {
+			continue
+		}
+		if stream != nil {
+			if len(ev.StateDelta) > 0 {
+				_ = stream.Emit("state_delta", map[string]any{
+					"session_id":  sessionID,
+					"state_delta": ev.StateDelta,
+				})
+			}
+			if len(ev.Extensions) > 0 {
+				_ = stream.Emit("extensions", map[string]any{
+					"session_id": sessionID,
+					"extensions": ev.Extensions,
+				})
+			}
+			if ev.Branch != "" {
+				_ = stream.Emit("branch", map[string]string{
+					"session_id": sessionID,
+					"branch":     ev.Branch,
+				})
+			}
+			if ev.FilterKey != "" {
+				_ = stream.Emit("filter_key", map[string]string{
+					"session_id": sessionID,
+					"filter_key": ev.FilterKey,
+				})
+			}
+			if ev.Tag != "" {
+				_ = stream.Emit("tag", map[string]string{
+					"session_id": sessionID,
+					"tag":        ev.Tag,
+				})
+			}
+		}
+		if ev.Response == nil {
 			continue
 		}
 		if usage := ev.Response.Usage; usage != nil {

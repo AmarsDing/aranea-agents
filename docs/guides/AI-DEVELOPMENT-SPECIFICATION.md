@@ -340,6 +340,7 @@ func (m TurnMount) Attach(ctx context.Context, ag biz.Agent, userQuery string,
 make init    # 首次安装插件
 make api     # 生成 Go + TypeScript
 make config  # 仅改 conf.proto 时
+**禁止**：修改工具生成的代码
 ```
 
 **必须提交生成物**：`*.pb.go`、`*_http.pb.go`、`*_grpc.pb.go`、`web/src/services/`
@@ -820,3 +821,7 @@ Capability 的运行时调用必须经 `application → executor → middleware 
 - 按映射表一行 = 一个 PR
 - 违反红线立即停手
 - 新代码落到目标 Context 下，禁止在旧路径新增文件
+- 目录全扫描优先 ：分析任何框架/库时，第一步是 ls -la 获取完整文件列表，逐文件阅读，不跳过任何文件
+- 建立能力清单矩阵 ：对框架的每个文件/模块，建立 [文件] → [能力] → [项目集成状态] 的三列矩阵
+- 接口+实现双路径 ：不仅看接口定义（ tool.go ），还要看实现文件（ callbacks.go 、 filter.go ）和辅助文件（ context.go 、 final_result.go ）
+- 框架 Option 全枚举 ：对 llmagent.Option 等配置入口做全量枚举，确保每个 With* 函数都有对应的项目集成路径

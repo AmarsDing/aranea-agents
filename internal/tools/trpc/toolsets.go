@@ -1,46 +1,141 @@
 package trpc
 
 import (
-	"fmt"
+	"context"
+
+	"aranea-agents/internal/tools"
 
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
-	trpcfile "trpc.group/trpc-go/trpc-agent-go/tool/file"
-	trpchostexec "trpc.group/trpc-go/trpc-agent-go/tool/hostexec"
 )
 
 type ToolsetConfig struct {
 	Filesystem    bool
 	FilesystemDir string
 	ShellExec     bool
+	WebFetch      bool
+	WebSearch     bool
+	GeminiFetch   bool
+	GeminiModel   string
+	GoogleSearch  bool
+	GoogleAPIKey  string
+	GoogleCX      string
+	ArxivSearch   bool
+	Wikipedia     bool
+	Email         bool
+	Todo          bool
+	AwaitReply    bool
+	ClaudeCode    bool
+	ClaudeCodeDir string
+	OpenAPISpecs  []OpenAPISpecConfig
+	WorkspaceExec bool
+	AgentTools    []AgentToolConfig
+	MCPServers    []MCPServerConfig
+	MCPBroker     *MCPBrokerConfig
+	CustomTools   []trpctool.Tool
 }
 
-type AssembledToolsets struct {
-	ToolSets []trpctool.ToolSet
-	Tools    []trpctool.Tool
-}
+type AgentToolConfig = tools.AgentToolConfig
 
-func BuildToolsets(cfg ToolsetConfig) (*AssembledToolsets, error) {
-	out := &AssembledToolsets{}
+type MCPServerConfig = tools.MCPServerConfig
 
+type MCPBrokerConfig = tools.MCPBrokerConfig
+
+type OpenAPISpecConfig = tools.OpenAPISpecConfig
+
+type AssembledToolsets = tools.AssembledToolsets
+
+func BuildToolsets(ctx context.Context, cfg ToolsetConfig) (*AssembledToolsets, error) {
+	enabled := []string{}
 	if cfg.Filesystem {
-		opts := []trpcfile.Option{}
-		if cfg.FilesystemDir != "" {
-			opts = append(opts, trpcfile.WithBaseDir(cfg.FilesystemDir))
-		}
-		ts, err := trpcfile.NewToolSet(opts...)
-		if err != nil {
-			return nil, fmt.Errorf("trpc file toolset: %w", err)
-		}
-		out.ToolSets = append(out.ToolSets, ts)
+		enabled = append(enabled, "file")
 	}
-
 	if cfg.ShellExec {
-		ts, err := trpchostexec.NewToolSet()
-		if err != nil {
-			return nil, fmt.Errorf("trpc hostexec toolset: %w", err)
-		}
-		out.ToolSets = append(out.ToolSets, ts)
+		enabled = append(enabled, "hostexec")
+	}
+	if cfg.WebFetch {
+		enabled = append(enabled, "httpfetch")
+	}
+	if cfg.GeminiFetch {
+		enabled = append(enabled, "geminifetch")
+	}
+	if cfg.WebSearch {
+		enabled = append(enabled, "duckduckgo")
+	}
+	if cfg.GoogleSearch {
+		enabled = append(enabled, "google_search")
+	}
+	if cfg.ArxivSearch {
+		enabled = append(enabled, "arxiv_search")
+	}
+	if cfg.Wikipedia {
+		enabled = append(enabled, "wikipedia")
+	}
+	if cfg.Email {
+		enabled = append(enabled, "email")
+	}
+	if cfg.Todo {
+		enabled = append(enabled, "todo")
+	}
+	if cfg.AwaitReply {
+		enabled = append(enabled, "await_user_reply")
+	}
+	if cfg.ClaudeCode {
+		enabled = append(enabled, "claudecode")
+	}
+	if cfg.WorkspaceExec {
+		enabled = append(enabled, "workspace_exec")
+	}
+	if len(cfg.AgentTools) > 0 {
+		enabled = append(enabled, "agent")
+	}
+	if len(cfg.MCPServers) > 0 {
+		enabled = append(enabled, "mcp")
+	}
+	if cfg.MCPBroker != nil {
+		enabled = append(enabled, "mcpbroker")
 	}
 
-	return out, nil
+	openAPISpecs := make([]tools.OpenAPISpecConfig, len(cfg.OpenAPISpecs))
+	for i, spec := range cfg.OpenAPISpecs {
+		openAPISpecs[i] = tools.OpenAPISpecConfig{
+			Name:     spec.Name,
+			SpecURL:  spec.SpecURL,
+			SpecData: spec.SpecData,
+		}
+	}
+
+	agentTools := make([]tools.AgentToolConfig, len(cfg.AgentTools))
+	for i, at := range cfg.AgentTools {
+		agentTools[i] = tools.AgentToolConfig(at)
+	}
+
+	mcpServers := make([]tools.MCPServerConfig, len(cfg.MCPServers))
+	for i, mcp := range cfg.MCPServers {
+		mcpServers[i] = tools.MCPServerConfig(mcp)
+	}
+
+	var mcpBroker *tools.MCPBrokerConfig
+	if cfg.MCPBroker != nil {
+		b := tools.MCPBrokerConfig(*cfg.MCPBroker)
+		mcpBroker = &b
+	}
+
+	customTools := make([]tools.Tool, len(cfg.CustomTools))
+	for i, t := range cfg.CustomTools {
+		customTools[i] = t
+	}
+
+	return tools.Assemble(ctx, tools.AssemblyConfig{
+		EnabledTools:  enabled,
+		FilesystemDir: cfg.FilesystemDir,
+		GeminiModel:   cfg.GeminiModel,
+		GoogleAPIKey:  cfg.GoogleAPIKey,
+		GoogleCX:      cfg.GoogleCX,
+		ClaudeCodeDir: cfg.ClaudeCodeDir,
+		OpenAPISpecs:  openAPISpecs,
+		AgentTools:    agentTools,
+		MCPServers:    mcpServers,
+		MCPBroker:     mcpBroker,
+		CustomTools:   customTools,
+	})
 }

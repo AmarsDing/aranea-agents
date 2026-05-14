@@ -190,6 +190,14 @@ func entRuntimeToBiz(e *ent.AgentRuntimeSetting) biz.AgentRuntimeSettings {
 		SkillLoadMode:                     e.SkillLoadMode,
 		OutputSchemaJSON:                  e.OutputSchemaJSON,
 		ModelSelector:                     e.ModelSelector,
+		ToolsRetryEnabled:                 e.ToolsRetryEnabled,
+		ToolsRetryMaxAttempts:             e.ToolsRetryMaxAttempts,
+		ToolsRetryInitialIntervalMs:       e.ToolsRetryInitialIntervalMs,
+		ToolsRetryBackoffFactor:           e.ToolsRetryBackoffFactor,
+		ToolsRetryMaxIntervalMs:           e.ToolsRetryMaxIntervalMs,
+		ToolsRetryJitter:                  e.ToolsRetryJitter,
+		ToolsParallelEnabled:              e.ToolsParallelEnabled,
+		ToolsStreamingEnabled:             e.ToolsStreamingEnabled,
 		CreatedAt:                         e.CreatedAt,
 		UpdatedAt:                         e.UpdatedAt,
 	}
@@ -296,6 +304,14 @@ func applyBizRuntimeToCreate(b *ent.AgentRuntimeSettingCreate, v biz.AgentRuntim
 		SetSkillLoadMode(v.SkillLoadMode).
 		SetOutputSchemaJSON(v.OutputSchemaJSON).
 		SetModelSelector(v.ModelSelector).
+		SetToolsRetryEnabled(v.ToolsRetryEnabled).
+		SetToolsRetryMaxAttempts(v.ToolsRetryMaxAttempts).
+		SetToolsRetryInitialIntervalMs(v.ToolsRetryInitialIntervalMs).
+		SetToolsRetryBackoffFactor(v.ToolsRetryBackoffFactor).
+		SetToolsRetryMaxIntervalMs(v.ToolsRetryMaxIntervalMs).
+		SetToolsRetryJitter(v.ToolsRetryJitter).
+		SetToolsParallelEnabled(v.ToolsParallelEnabled).
+		SetToolsStreamingEnabled(v.ToolsStreamingEnabled).
 		SetCreatedAt(v.CreatedAt).
 		SetUpdatedAt(v.UpdatedAt)
 }

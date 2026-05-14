@@ -203,6 +203,40 @@
                     </q-card-section>
                   </q-card>
                 </div>
+                <div class="col-12 col-lg-6">
+                  <q-card flat bordered class="capability-card">
+                    <q-card-section class="row items-center justify-between">
+                      <div>
+                        <div class="text-subtitle2">工具重试</div>
+                        <div class="text-caption text-grey-7">工具调用失败时自动重试，指数退避 + 随机抖动。</div>
+                      </div>
+                      <q-toggle v-model="config.tools.retry.enabled" color="primary" />
+                    </q-card-section>
+                    <q-separator />
+                    <q-card-section v-if="config.tools.retry.enabled" class="row q-col-gutter-sm">
+                      <q-input v-model.number="config.tools.retry.max_attempts" class="col-6" dense outlined type="number" label="最大重试次数" hint="含首次调用" />
+                      <q-input v-model.number="config.tools.retry.initial_interval_ms" class="col-6" dense outlined type="number" label="初始间隔 (ms)" />
+                      <q-input v-model.number="config.tools.retry.backoff_factor" class="col-6" dense outlined type="number" step="0.1" label="退避因子" />
+                      <q-input v-model.number="config.tools.retry.max_interval_ms" class="col-6" dense outlined type="number" label="最大间隔 (ms)" />
+                      <q-toggle v-model="config.tools.retry.jitter" class="col-6" color="primary" label="随机抖动" />
+                    </q-card-section>
+                  </q-card>
+                </div>
+                <div class="col-12 col-lg-6">
+                  <q-card flat bordered class="capability-card">
+                    <q-card-section class="row items-center justify-between">
+                      <div>
+                        <div class="text-subtitle2">并行与流式</div>
+                        <div class="text-caption text-grey-7">并行执行多个工具调用；流式工具支持需工具实现 StreamableCall 接口。</div>
+                      </div>
+                    </q-card-section>
+                    <q-separator />
+                    <q-card-section class="row q-col-gutter-sm">
+                      <q-toggle v-model="config.tools.parallel_enabled" class="col-12" color="primary" label="并行工具调用" hint="模型发出多个工具调用时并行执行" />
+                      <q-toggle v-model="config.tools.streaming_enabled" class="col-12" color="primary" label="流式工具" hint="启用支持 StreamableCall 的工具流式输出" />
+                    </q-card-section>
+                  </q-card>
+                </div>
                 <div class="col-12">
                   <q-card flat bordered class="capability-card">
                     <q-card-section class="row items-center justify-between">
@@ -637,7 +671,17 @@ const config = reactive({
     tool_call_prefix: "",
     allow: [] as string[],
     deny: [] as string[],
-    concurrent_allow: [] as string[]
+    concurrent_allow: [] as string[],
+    retry: {
+      enabled: false,
+      max_attempts: 2,
+      initial_interval_ms: 500,
+      backoff_factor: 2.0,
+      max_interval_ms: 5000,
+      jitter: true
+    },
+    parallel_enabled: false,
+    streaming_enabled: false
   },
   memory: {
     enabled: true,
@@ -1071,7 +1115,7 @@ function hydrateConfig(raw: string) {
       ...config,
       ...parsed,
       subagents: { ...config.subagents, ...(parsed.subagents || {}) },
-      tools: { ...config.tools, ...(parsed.tools || {}) },
+      tools: { ...config.tools, ...(parsed.tools || {}), retry: { ...config.tools.retry, ...((parsed.tools || {}).retry || {}) } },
       memory: { ...config.memory, ...(parsed.memory || {}) },
       memoryL0: { ...config.memoryL0, ...(parsed.memoryL0 || {}) },
       memoryL1: { ...config.memoryL1, ...(parsed.memoryL1 || {}) },
@@ -1116,7 +1160,17 @@ function hydrateSettings(agent: Agent) {
         tool_call_prefix: agent.settings.tools_tool_call_prefix,
         allow: parseJSONList(agent.settings.tools_allow_json),
         deny: parseJSONList(agent.settings.tools_deny_json),
-        concurrent_allow: parseJSONList(agent.settings.tools_concurrent_allow_json)
+        concurrent_allow: parseJSONList(agent.settings.tools_concurrent_allow_json),
+        retry: {
+          enabled: agent.settings.tools_retry_enabled ?? config.tools.retry.enabled,
+          max_attempts: agent.settings.tools_retry_max_attempts ?? config.tools.retry.max_attempts,
+          initial_interval_ms: agent.settings.tools_retry_initial_interval_ms ?? config.tools.retry.initial_interval_ms,
+          backoff_factor: agent.settings.tools_retry_backoff_factor ?? config.tools.retry.backoff_factor,
+          max_interval_ms: agent.settings.tools_retry_max_interval_ms ?? config.tools.retry.max_interval_ms,
+          jitter: agent.settings.tools_retry_jitter ?? config.tools.retry.jitter
+        },
+        parallel_enabled: agent.settings.tools_parallel_enabled ?? config.tools.parallel_enabled,
+        streaming_enabled: agent.settings.tools_streaming_enabled ?? config.tools.streaming_enabled
       },
       memory: {
         enabled: agent.settings.memory_enabled,
@@ -1355,6 +1409,14 @@ function buildSettingsPayload(): AgentRuntimeSettings {
     tools_allow_json: JSON.stringify(config.tools.allow),
     tools_deny_json: JSON.stringify(config.tools.deny),
     tools_concurrent_allow_json: JSON.stringify(config.tools.concurrent_allow),
+    tools_retry_enabled: config.tools.retry.enabled,
+    tools_retry_max_attempts: config.tools.retry.max_attempts,
+    tools_retry_initial_interval_ms: config.tools.retry.initial_interval_ms,
+    tools_retry_backoff_factor: config.tools.retry.backoff_factor,
+    tools_retry_max_interval_ms: config.tools.retry.max_interval_ms,
+    tools_retry_jitter: config.tools.retry.jitter,
+    tools_parallel_enabled: config.tools.parallel_enabled,
+    tools_streaming_enabled: config.tools.streaming_enabled,
     memory_enabled: config.memory.enabled,
     memory_max_chunk_length: config.memory.max_chunk_length,
     memory_max_results: config.memory.max_results,

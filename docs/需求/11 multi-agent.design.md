@@ -2,12 +2,14 @@
 
 > 对应需求：`11 multi-agent.md`
 > 遵循规范：`AI-DEVELOPMENT-SPECIFICATION.md`
-
 ---
 
 ## 一、模块概述
 
-Team 编排：五种编排模式（sequential / parallel / coordinator / critic_loop / swarm）、成员 Agent 管理、Team Runner 执行、SSE 事件流、运行轨迹可观测。核心包 `internal/team`。
+Team 多智能体编排系统：支持 Coordinator、Swarm、Sequential、Parallel、Critic Loop 五种编排模式。
+对标 trpc-agent-go `team` 包，完善 SwarmConfig 安全限制、CrossRequestTransfer 跨请求转移、
+SwarmHandoffInputBuilder 自定义转移输入、MemberToolConfig 成员工具配置、
+动态成员管理（AddSwarmMember/RemoveSwarmMember/UpdateSwarmMembers）以及结构导出（Export）。
 
 **当前实现状态**：
 - ✅ Proto CRUD + DuplicateTeam + ListTeamRuns + ListTeamRunSteps 已实现
@@ -19,6 +21,12 @@ Team 编排：五种编排模式（sequential / parallel / coordinator / critic_
 - ✅ `internal/service/team.go` Service 完整实现
 - ✅ `internal/biz/team_run_events.go` SSE Broker 实现
 - ✅ 前端 Team 管理页组件化（TeamCard / TeamToolbar / TeamEditorDialog / TeamRunsDialog / teamUtils）
+- ⏳ SwarmConfig 安全限制：尚未实现 MaxHandoffs / NodeTimeout / RepetitiveHandoff 限制
+- ⏳ CrossRequestTransfer 跨请求转移：尚未实现
+- ⏳ SwarmHandoffInputBuilder 自定义转移输入：尚未实现
+- ⏳ MemberToolConfig 成员工具配置：尚未实现 StreamInner / InnerTextMode / HistoryScope
+- ⏳ 动态成员管理：尚未实现 UpdateSwarmMembers / AddSwarmMember / RemoveSwarmMember
+- ⏳ 结构导出：尚未实现 ExportTeamStructure
 - ⏳ escalationFunc 增强：当前仅检查 "approved" 关键词，需支持 `CriticLoopConfig.ScoreThreshold` 结构化评分
 - ⏳ sequential 上下文传递验证
 - ⏳ parallel synthesizer 结果汇总验证
@@ -26,6 +34,48 @@ Team 编排：五种编排模式（sequential / parallel / coordinator / critic_
 - ⏳ Team 模板后端库 / 自定义模板保存
 - ⏳ 图工作流拖拽编辑 / 条件分支执行 / 后端 DAG 调度
 - ⏳ A2A 跨框架协议握手 / 能力发现 / 消息持久化
+
+### 核心架构
+
+```
+用户消息 → Team.Run()
+             ↓
+         switch mode:
+           ┌─ ModeCoordinator → coordinator.Run() → 成员作为 AgentTool 调用
+           ├─ ModeSwarm       → entryMember.Run() → transfer_to_agent 自由转移
+           ├─ Sequential      → chainagent 顺序执行
+           ├─ Parallel        → parallelagent 并行执行
+           └─ Critic Loop     → cycleagent 迭代执行
+             ↓
+         事件流 → Runner 事件循环 → 持久化 + SSE 推送
+```
+
+### trpc-agent-go team 包结构
+
+```
+pkg/trpc-agent-go/team/
+├── team.go              # Team 结构体、New/NewSwarm、Run/Info/Tools/SubAgents/FindSubAgent
+├── options.go           # Option 配置（MemberToolConfig/SwarmConfig/CrossRequestTransfer/HandoffInputBuilder）
+├── runtime.go           # swarmRuntime：OnTransfer/CustomizeTransferInvocation/链式控制器
+├── swarm_members.go     # 动态成员管理：UpdateSwarmMembers/AddSwarmMember/RemoveSwarmMember
+├── structure_export.go  # 结构导出：Export → structure.Snapshot（节点/边/面）
+└── doc.go               # 包文档
+```
+
+### 编排模式对比（含 trpc-agent-go 对标）
+
+| 模式 | trpc-agent-go | 当前项目 | 差距 |
+|------|--------------|---------|------|
+| Coordinator | `team.New()` | ✅ 已有 | 缺 MemberToolConfig |
+| Swarm | `team.NewSwarm()` | ✅ 已有 | 缺 SwarmConfig/HandoffInput/CrossRequestTransfer |
+| Sequential | `chainagent.New()` | ✅ 已有 | — |
+| Parallel | `parallelagent.New()` | ✅ 已有 | — |
+| Critic Loop | `cycleagent.New()` | ✅ 已有 | — |
+| 动态成员管理 | `UpdateSwarmMembers` 等 | ❌ 缺失 | 完整缺失 |
+| 结构导出 | `Export()` | ❌ 缺失 | 完整缺失 |
+| Swarm 安全限制 | `SwarmConfig` | ❌ 缺失 | 完整缺失 |
+| 跨请求转移 | `CrossRequestTransfer` | ❌ 缺失 | 完整缺失 |
+| 转移输入构建 | `SwarmHandoffInputBuilder` | ❌ 缺失 | 完整缺失 |
 
 ---
 
@@ -175,10 +225,140 @@ service TeamService {
   rpc ListTeamRunSteps(ListTeamRunStepsRequest) returns (ListTeamRunStepsResponse) {
     option (google.api.http) = {get: "/v1/team-runs/{run_id}/steps"};
   }
+  rpc UpdateSwarmMembers(UpdateSwarmMembersRequest) returns (UpdateSwarmMembersResponse) {
+    option (google.api.http) = { post: "/v1/teams/{team_id}/swarm-members" body: "*" };
+  }
+  rpc ExportTeamStructure(ExportTeamStructureRequest) returns (ExportTeamStructureResponse) {
+    option (google.api.http) = { get: "/v1/teams/{team_id}/structure" };
+  }
 }
 ```
 
-### 2.2 API 路由汇总
+### 2.2 扩展 Proto 消息（对齐 trpc-agent-go team 包）
+
+```protobuf
+message TeamDefinition {
+  int32 version = 1;
+  string mode = 2;
+  string description = 3;
+  int32 max_concurrency = 4;
+  int32 timeout_seconds = 5;
+  int32 loop_max_iterations = 6;
+  string intent_anchor_agent_id = 7;
+  string synthesizer_agent_id = 8;
+
+  repeated TeamMember members = 10;
+
+  SwarmConfig swarm = 20;
+  MemberToolConfig member_tool_config = 21;
+
+  CriticLoopConfig critic_loop = 30;
+
+  A2AConfig a2a = 40;
+  GraphConfig graph = 41;
+}
+
+message TeamMember {
+  string agent_id = 1;
+  string role = 2;
+  string name = 3;
+  bool enabled = 4;
+  int32 sort_order = 5;
+}
+
+message SwarmConfig {
+  int32 max_handoffs = 1;
+  int32 node_timeout_seconds = 2;
+  int32 repetitive_handoff_window = 3;
+  int32 repetitive_handoff_min_unique = 4;
+  bool cross_request_transfer = 5;
+}
+
+message MemberToolConfig {
+  bool stream_inner = 1;
+  string inner_text_mode = 2;  // default / include / exclude
+  bool skip_summarization = 3;
+  string history_scope = 4;    // default / isolated / parent_branch
+  string tool_set_name = 5;
+}
+
+message CriticLoopConfig {
+  int32 max_iterations = 1;
+  double score_threshold = 2;
+}
+
+message A2AConfig {
+  bool enabled = 1;
+  string envelope_version = 2;
+  string message_format = 3;
+  bool include_trace = 4;
+  int32 max_payload_chars = 5;
+}
+
+message GraphConfig {
+  int32 version = 1;
+  string layout = 2;
+  repeated GraphNode nodes = 3;
+  repeated GraphEdge edges = 4;
+}
+
+message GraphNode {
+  string id = 1;
+  string type = 2;
+  string label = 3;
+  string agent_id = 4;
+  string role = 5;
+  int32 x = 6;
+  int32 y = 7;
+}
+
+message GraphEdge {
+  string id = 1;
+  string source = 2;
+  string target = 3;
+  string label = 4;
+  string condition = 5;
+}
+
+message UpdateSwarmMembersRequest {
+  string team_id = 1;
+  repeated string add_agent_ids = 2;
+  repeated string remove_agent_ids = 3;
+}
+
+message UpdateSwarmMembersResponse {
+  bool updated = 1;
+}
+
+message ExportTeamStructureRequest {
+  string team_id = 1;
+}
+
+message ExportTeamStructureResponse {
+  string entry_node_id = 1;
+  repeated StructureNode nodes = 2;
+  repeated StructureEdge edges = 3;
+  repeated StructureSurface surfaces = 4;
+}
+
+message StructureNode {
+  string node_id = 1;
+  string kind = 2;
+  string name = 3;
+}
+
+message StructureEdge {
+  string from_node_id = 1;
+  string to_node_id = 2;
+}
+
+message StructureSurface {
+  string node_id = 1;
+  string name = 2;
+}
+```
+
+### 2.3 API 路由汇总
 
 | RPC | HTTP | 用途 |
 |-----|------|------|
@@ -190,6 +370,8 @@ service TeamService {
 | `DuplicateTeam` | `POST /v1/teams/{id}/duplicate` | 复制 Team |
 | `ListTeamRuns` | `GET /v1/team-runs` | 列出 Team 运行记录 |
 | `ListTeamRunSteps` | `GET /v1/team-runs/{run_id}/steps` | 列出运行步骤 |
+| `UpdateSwarmMembers` | `POST /v1/teams/{team_id}/swarm-members` | Swarm 动态成员管理 |
+| `ExportTeamStructure` | `GET /v1/teams/{team_id}/structure` | 导出 Team 结构快照 |
 
 ### 2.3 待新增 Proto（P0）
 
@@ -330,6 +512,51 @@ func (u *TeamUsecase) Duplicate(ctx context.Context, id string) (Team, error)
 func (u *TeamUsecase) ListRuns(ctx context.Context, teamID string, limit int) ([]TeamRun, error)
 func (u *TeamUsecase) ListRunSteps(ctx context.Context, runID string) ([]TeamRunStep, error)
 func (u *TeamUsecase) PublishTeamRunEvent(ev TeamRunEvent)
+func (u *TeamUsecase) UpdateSwarmMembers(ctx context.Context, teamID string, addIDs []string, removeIDs []string) (bool, error)
+func (u *TeamUsecase) ExportStructure(ctx context.Context, teamID string) (*TeamStructureSnapshot, error)
+```
+
+### 3.5 扩展领域模型（对齐 trpc-agent-go team 包）
+
+```go
+type SwarmConfigDef struct {
+    MaxHandoffs               int
+    NodeTimeoutSeconds        int
+    RepetitiveHandoffWindow   int
+    RepetitiveHandoffMinUnique int
+    CrossRequestTransfer      bool
+}
+
+type MemberToolConfigDef struct {
+    StreamInner      bool
+    InnerTextMode    string
+    SkipSummarization bool
+    HistoryScope     string
+    ToolSetName      string
+}
+
+type TeamStructureSnapshot struct {
+    EntryNodeID string
+    Nodes       []StructureNode
+    Edges       []StructureEdge
+    Surfaces    []StructureSurface
+}
+
+type StructureNode struct {
+    NodeID string
+    Kind   string
+    Name   string
+}
+
+type StructureEdge struct {
+    FromNodeID string
+    ToNodeID   string
+}
+
+type StructureSurface struct {
+    NodeID string
+    Name   string
+}
 ```
 
 **Create 校验规则**：
@@ -515,14 +742,20 @@ func entTeamRunStepToBiz(e *ent.TeamRunStep) biz.TeamRunStep
 ```go
 type Definition struct {
     Version            int               `json:"version"`
-    Mode               string            `json:"mode"`                          // "sequential" | "parallel" | "coordinator" | "critic_loop" | "adaptive"
+    Mode               string            `json:"mode"`                          // "sequential" | "parallel" | "coordinator" | "critic_loop" | "swarm"
     SynthesizerAgentID string            `json:"synthesizer_agent_id"`
     Members            []MemberDef       `json:"members"`
     MaxConcurrency     int               `json:"max_concurrency"`
     TimeoutSeconds     int               `json:"timeout_seconds"`
-    LoopMaxIterations  int               `json:"loop_max_iterations,omitempty"` // coordinator/adaptive 外圈迭代
+    LoopMaxIterations  int               `json:"loop_max_iterations,omitempty"` // coordinator 外圈迭代
     CriticLoop         *CriticLoopConfig `json:"critic_loop,omitempty"`
     IntentAnchorAgentID string           `json:"intent_anchor_agent_id,omitempty"`
+    Description        string            `json:"description,omitempty"`
+    Swarm              *SwarmConfigJSON  `json:"swarm,omitempty"`               // Swarm 安全配置
+    MemberToolConfig   *MemberToolJSON   `json:"member_tool_config,omitempty"`  // 成员工具配置
+    SwarmHandoffInputBuilder SwarmHandoffInputBuilder `json:"-"` // 自定义转移输入构建（运行时注入）
+    A2A                *A2AConfigJSON    `json:"a2a,omitempty"`                 // A2A 协议配置
+    Graph              *GraphConfigJSON  `json:"graph,omitempty"`               // 图工作流配置
 }
 
 type CriticLoopConfig struct {
@@ -536,6 +769,57 @@ type MemberDef struct {
     Enabled   *bool  `json:"enabled"`
     SortOrder int    `json:"sort_order"`
     Name      string `json:"name"`
+}
+
+type SwarmConfigJSON struct {
+    MaxHandoffs                int  `json:"max_handoffs"`
+    NodeTimeoutSeconds         int  `json:"node_timeout_seconds"`
+    RepetitiveHandoffWindow    int  `json:"repetitive_handoff_window"`
+    RepetitiveHandoffMinUnique int  `json:"repetitive_handoff_min_unique"`
+    CrossRequestTransfer       bool `json:"cross_request_transfer"`
+}
+
+type MemberToolJSON struct {
+    StreamInner       bool   `json:"stream_inner"`
+    InnerTextMode     string `json:"inner_text_mode"`     // default / include / exclude
+    SkipSummarization bool   `json:"skip_summarization"`
+    HistoryScope      string `json:"history_scope"`       // default / isolated / parent_branch
+    ToolSetName       string `json:"tool_set_name"`
+}
+
+type SwarmHandoffInputBuilder func(ctx context.Context, args trpcteam.SwarmHandoffInputArgs) (trpcmodel.Message, error)
+
+type A2AConfigJSON struct {
+    Enabled         bool   `json:"enabled"`
+    EnvelopeVersion string `json:"envelope_version"`
+    MessageFormat   string `json:"message_format"`
+    IncludeTrace    bool   `json:"include_trace"`
+    MaxPayloadChars int    `json:"max_payload_chars"`
+}
+
+type GraphConfigJSON struct {
+    Version int             `json:"version"`
+    Layout  string          `json:"layout"`
+    Nodes   []GraphNodeJSON `json:"nodes"`
+    Edges   []GraphEdgeJSON `json:"edges"`
+}
+
+type GraphNodeJSON struct {
+    ID      string `json:"id"`
+    Type    string `json:"type"`
+    Label   string `json:"label"`
+    AgentID string `json:"agent_id"`
+    Role    string `json:"role"`
+    X       int    `json:"x"`
+    Y       int    `json:"y"`
+}
+
+type GraphEdgeJSON struct {
+    ID        string `json:"id"`
+    Source    string `json:"source"`
+    Target    string `json:"target"`
+    Label     string `json:"label"`
+    Condition string `json:"condition"`
 }
 ```
 
@@ -568,8 +852,123 @@ func BuildTRPCTeam(ctx context.Context, def Definition, deps TRPCTeamBuilderDeps
 | `sequential` | `chainagent.New` | `chainagent.New("team-sequential", chainagent.WithSubAgents(memberAgents))` |
 | `parallel` | `parallelagent.New` | `parallelagent.New("team-parallel", parallelagent.WithSubAgents(memberAgents))` |
 | `critic_loop` | `cycleagent.New` | `cycleagent.New("team-critic-loop", WithSubAgents, WithMaxIterations, WithEscalationFunc(defaultEscalationFunc))` |
-| `swarm` | `trpcteam.NewSwarm` | `trpcteam.NewSwarm("team", entryName, memberAgents)` |
-| 默认(coordinator) | `trpcteam.New` | `trpcteam.New(coordinator, rest)` — 第一个成员为 coordinator，其余为 workers |
+| `swarm` | `trpcteam.NewSwarm` | `trpcteam.NewSwarm("team", entryName, memberAgents, WithSwarmConfig, WithCrossRequestTransfer, WithSwarmHandoffInputBuilder)` |
+| 默认(coordinator) | `trpcteam.New` | `trpcteam.New(coordinator, rest, WithMemberToolConfig)` — 第一个成员为 coordinator，其余为 workers |
+
+**BuildTRPCTeam 完整实现（含 SwarmConfig/MemberToolConfig/CrossRequestTransfer）**：
+
+```go
+func BuildTRPCTeam(ctx context.Context, def Definition, deps TRPCTeamBuilderDeps, catalogAgent func(ctx context.Context, id string) (biz.Agent, error)) (trpcagent.Agent, error) {
+    members := EnabledMembers(def)
+    if len(members) == 0 {
+        return nil, kerrors.BadRequest("TEAM", "no enabled members")
+    }
+
+    mode := strings.ToLower(strings.TrimSpace(def.Mode))
+
+    memberAgents := make([]trpcagent.Agent, 0, len(members))
+    for _, m := range members {
+        ag, err := catalogAgent(ctx, strings.TrimSpace(m.AgentID))
+        if err != nil {
+            return nil, kerrors.BadRequest("TEAM", fmt.Sprintf("member %s: %v", m.AgentID, err))
+        }
+        trpcAg, err := chatagent.BuildTRPCLLMAgent(ctx, ag, deps.BuilderDeps)
+        if err != nil {
+            return nil, kerrors.InternalServer("TEAM", fmt.Sprintf("build member %s: %v", m.AgentID, err))
+        }
+        memberAgents = append(memberAgents, trpcAg)
+    }
+
+    switch mode {
+    case "sequential":
+        return chainagent.New("team-sequential",
+            chainagent.WithSubAgents(memberAgents),
+        ), nil
+
+    case "parallel":
+        return parallelagent.New("team-parallel",
+            parallelagent.WithSubAgents(memberAgents),
+        ), nil
+
+    case "critic_loop":
+        maxIter := 3
+        if def.CriticLoop != nil && def.CriticLoop.MaxIterations > 0 {
+            maxIter = def.CriticLoop.MaxIterations
+        }
+        return cycleagent.New("team-critic-loop",
+            cycleagent.WithSubAgents(memberAgents),
+            cycleagent.WithMaxIterations(maxIter),
+            cycleagent.WithEscalationFunc(defaultEscalationFunc),
+        ), nil
+
+    case "swarm":
+        entryName := memberAgents[0].Info().Name
+        var opts []trpcteam.Option
+        if def.Swarm != nil {
+            opts = append(opts, trpcteam.WithSwarmConfig(trpcteam.SwarmConfig{
+                MaxHandoffs:                def.Swarm.MaxHandoffs,
+                NodeTimeout:                time.Duration(def.Swarm.NodeTimeoutSeconds) * time.Second,
+                RepetitiveHandoffWindow:    def.Swarm.RepetitiveHandoffWindow,
+                RepetitiveHandoffMinUnique: def.Swarm.RepetitiveHandoffMinUnique,
+            }))
+            if def.Swarm.CrossRequestTransfer {
+                opts = append(opts, trpcteam.WithCrossRequestTransfer(true))
+            }
+        }
+        if def.SwarmHandoffInputBuilder != nil {
+            opts = append(opts, trpcteam.WithSwarmHandoffInputBuilder(def.SwarmHandoffInputBuilder))
+        }
+        t, err := trpcteam.NewSwarm("team", entryName, memberAgents, opts...)
+        if err != nil {
+            return nil, kerrors.InternalServer("TEAM", fmt.Sprintf("new swarm: %v", err))
+        }
+        return t, nil
+
+    default:
+        if len(memberAgents) < 2 {
+            return memberAgents[0], nil
+        }
+        coordinator := memberAgents[0]
+        rest := memberAgents[1:]
+        var opts []trpcteam.Option
+        if def.MemberToolConfig != nil {
+            opts = append(opts, trpcteam.WithMemberToolConfig(trpcteam.MemberToolConfig{
+                StreamInner:       def.MemberToolConfig.StreamInner,
+                InnerTextMode:     toInnerTextMode(def.MemberToolConfig.InnerTextMode),
+                SkipSummarization: def.MemberToolConfig.SkipSummarization,
+                HistoryScope:      toHistoryScope(def.MemberToolConfig.HistoryScope),
+            }))
+        }
+        t, err := trpcteam.New(coordinator, rest, opts...)
+        if err != nil {
+            return nil, kerrors.InternalServer("TEAM", fmt.Sprintf("new coordinator: %v", err))
+        }
+        return t, nil
+    }
+}
+
+func toInnerTextMode(s string) trpcteam.InnerTextMode {
+    switch strings.ToLower(s) {
+    case "include":
+        return trpcteam.InnerTextModeInclude
+    case "exclude":
+        return trpcteam.InnerTextModeExclude
+    default:
+        return trpcteam.InnerTextModeDefault
+    }
+}
+
+func toHistoryScope(s string) trpcteam.HistoryScope {
+    switch strings.ToLower(s) {
+    case "isolated":
+        return trpcteam.HistoryScopeIsolated
+    case "parent_branch":
+        return trpcteam.HistoryScopeParentBranch
+    default:
+        return trpcteam.HistoryScopeDefault
+    }
+}
+```
 
 **defaultEscalationFunc（当前实现）**：
 
@@ -648,6 +1047,165 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 - 取消：`runCtx.Err() == context.Canceled` → `finishRunErr`
 - 无输出：`displayMarkdown == ""` → 返回 `InternalServer` 错误
 
+### 5.4 动态成员管理（对齐 trpc-agent-go `team/swarm_members.go`）
+
+**运行时接口**：
+
+```go
+func UpdateSwarmMembers(t *trpcteam.Team, add []trpcagent.Agent, remove []string) error
+func AddSwarmMember(t *trpcteam.Team, agent trpcagent.Agent) error
+func RemoveSwarmMember(t *trpcteam.Team, agentName string) error
+```
+
+**Usecase 实现**：
+
+```go
+func (u *TeamUsecase) UpdateSwarmMembers(ctx context.Context, teamID string, addIDs []string, removeIDs []string) (bool, error) {
+    team, err := u.repo.GetTeamByID(ctx, teamID)
+    if err != nil {
+        return false, err
+    }
+    if team.Status != "active" {
+        return false, kerrors.FailedPrecondition("TEAM", "team must be active to update members")
+    }
+    var def Definition
+    if err := json.Unmarshal([]byte(team.DefinitionJSON), &def); err != nil {
+        return false, kerrors.Internal("TEAM", fmt.Sprintf("parse definition: %v", err))
+    }
+    if strings.ToLower(def.Mode) != "swarm" {
+        return false, kerrors.FailedPrecondition("TEAM", "dynamic member management only supported in swarm mode")
+    }
+    memberMap := make(map[string]bool)
+    for _, id := range removeIDs {
+        memberMap[id] = false
+    }
+    newMembers := make([]MemberDef, 0)
+    for _, m := range def.Members {
+        if remove, exists := memberMap[m.AgentID]; exists && !remove {
+            continue
+        }
+        newMembers = append(newMembers, m)
+    }
+    maxOrder := 0
+    for _, m := range newMembers {
+        if m.SortOrder > maxOrder {
+            maxOrder = m.SortOrder
+        }
+    }
+    for _, id := range addIDs {
+        maxOrder += 10
+        newMembers = append(newMembers, MemberDef{
+            AgentID:   id,
+            Role:      "worker",
+            Enabled:   boolPtr(true),
+            SortOrder: maxOrder,
+            Name:      id,
+        })
+    }
+    def.Members = newMembers
+    raw, err := json.Marshal(def)
+    if err != nil {
+        return false, kerrors.Internal("TEAM", fmt.Sprintf("marshal definition: %v", err))
+    }
+    team.DefinitionJSON = string(raw)
+    _, err = u.repo.UpdateTeam(ctx, team)
+    if err != nil {
+        return false, err
+    }
+    return true, nil
+}
+```
+
+### 5.5 结构导出（对齐 trpc-agent-go `team/structure_export.go`）
+
+**运行时接口**：
+
+```go
+func Export(t *trpcteam.Team) (*structure.Snapshot, error)
+```
+
+**Usecase 实现**：
+
+```go
+func (u *TeamUsecase) ExportStructure(ctx context.Context, teamID string) (*TeamStructureSnapshot, error) {
+    team, err := u.repo.GetTeamByID(ctx, teamID)
+    if err != nil {
+        return nil, err
+    }
+    var def Definition
+    if err := json.Unmarshal([]byte(team.DefinitionJSON), &def); err != nil {
+        return nil, kerrors.Internal("TEAM", fmt.Sprintf("parse definition: %v", err))
+    }
+    snapshot := &TeamStructureSnapshot{}
+    mode := strings.ToLower(def.Mode)
+    switch mode {
+    case "swarm":
+        snapshot.EntryNodeID = "swarm-entry"
+        snapshot.Nodes = append(snapshot.Nodes, StructureNode{NodeID: "swarm-entry", Kind: "entry", Name: "Swarm Entry"})
+        for _, m := range EnabledMembers(def) {
+            nid := m.AgentID
+            snapshot.Nodes = append(snapshot.Nodes, StructureNode{NodeID: nid, Kind: "agent", Name: m.Name})
+            snapshot.Edges = append(snapshot.Edges, StructureEdge{FromNodeID: "swarm-entry", ToNodeID: nid})
+            snapshot.Surfaces = append(snapshot.Surfaces, StructureSurface{NodeID: nid, Name: m.Name})
+        }
+    case "coordinator":
+        members := EnabledMembers(def)
+        if len(members) > 0 {
+            coordID := members[0].AgentID
+            snapshot.EntryNodeID = coordID
+            snapshot.Nodes = append(snapshot.Nodes, StructureNode{NodeID: coordID, Kind: "coordinator", Name: members[0].Name})
+            for _, m := range members[1:] {
+                nid := m.AgentID
+                snapshot.Nodes = append(snapshot.Nodes, StructureNode{NodeID: nid, Kind: "worker", Name: m.Name})
+                snapshot.Edges = append(snapshot.Edges, StructureEdge{FromNodeID: coordID, ToNodeID: nid})
+            }
+        }
+    case "sequential":
+        members := EnabledMembers(def)
+        for i, m := range members {
+            snapshot.Nodes = append(snapshot.Nodes, StructureNode{NodeID: m.AgentID, Kind: "agent", Name: m.Name})
+            if i > 0 {
+                snapshot.Edges = append(snapshot.Edges, StructureEdge{FromNodeID: members[i-1].AgentID, ToNodeID: m.AgentID})
+            }
+        }
+        if len(members) > 0 {
+            snapshot.EntryNodeID = members[0].AgentID
+        }
+    case "parallel":
+        members := EnabledMembers(def)
+        entryID := "parallel-entry"
+        snapshot.EntryNodeID = entryID
+        snapshot.Nodes = append(snapshot.Nodes, StructureNode{NodeID: entryID, Kind: "entry", Name: "Parallel Entry"})
+        for _, m := range members {
+            nid := m.AgentID
+            snapshot.Nodes = append(snapshot.Nodes, StructureNode{NodeID: nid, Kind: "agent", Name: m.Name})
+            snapshot.Edges = append(snapshot.Edges, StructureEdge{FromNodeID: entryID, ToNodeID: nid})
+        }
+    case "critic_loop":
+        members := EnabledMembers(def)
+        entryID := "critic-loop-entry"
+        snapshot.EntryNodeID = entryID
+        snapshot.Nodes = append(snapshot.Nodes, StructureNode{NodeID: entryID, Kind: "entry", Name: "Critic Loop Entry"})
+        for _, m := range members {
+            nid := m.AgentID
+            snapshot.Nodes = append(snapshot.Nodes, StructureNode{NodeID: nid, Kind: "agent", Name: m.Name})
+            snapshot.Edges = append(snapshot.Edges, StructureEdge{FromNodeID: entryID, ToNodeID: nid})
+        }
+    default:
+        if def.Graph != nil && len(def.Graph.Nodes) > 0 {
+            snapshot.EntryNodeID = def.Graph.Nodes[0].ID
+            for _, n := range def.Graph.Nodes {
+                snapshot.Nodes = append(snapshot.Nodes, StructureNode{NodeID: n.ID, Kind: n.Type, Name: n.Label})
+            }
+            for _, e := range def.Graph.Edges {
+                snapshot.Edges = append(snapshot.Edges, StructureEdge{FromNodeID: e.Source, ToNodeID: e.Target})
+            }
+        }
+    }
+    return snapshot, nil
+}
+```
+
 ---
 
 ## 六、Service 层
@@ -685,6 +1243,8 @@ func mapTeamErr(err error) error   // sql.ErrNoRows → kerrors.NotFound
 | `DuplicateTeam` | `uc.Duplicate(ctx, req.GetId())` → `mapTeamErr` → `toProtoTeam` |
 | `ListTeamRuns` | `uc.ListRuns(ctx, req.GetTeamId(), int(req.GetLimit()))` → 遍历 `toProtoTeamRun` |
 | `ListTeamRunSteps` | `uc.ListRunSteps(ctx, req.GetRunId())` → 遍历 `toProtoTeamRunStep` |
+| `UpdateSwarmMembers` | `uc.UpdateSwarmMembers(ctx, req.GetTeamId(), req.GetAddAgentIds(), req.GetRemoveAgentIds())` → `UpdateSwarmMembersResponse` |
+| `ExportTeamStructure` | `uc.ExportStructure(ctx, req.GetTeamId())` → `toProtoStructure` → `ExportTeamStructureResponse` |
 
 ---
 
@@ -713,6 +1273,9 @@ web/src/components/teams/
 ├── TeamToolbar.vue                     # 搜索/筛选工具栏
 ├── TeamEditorDialog.vue                # Team 编辑弹窗（新增/编辑）
 ├── TeamRunsDialog.vue                  # 运行轨迹抽屉
+├── SwarmConfigPanel.vue                # Swarm 安全配置面板
+├── MemberToolConfigPanel.vue           # 成员工具配置面板
+├── TeamStructureView.vue               # Team 结构可视化
 └── teamUtils.ts                        # 纯函数工具（模板/解析/格式化）
 ```
 
@@ -763,12 +1326,14 @@ export type TeamDefinitionGraphEdge = {
 export type TeamDefinition = {
   version: number;
   description?: string;
-  mode: "sequential" | "parallel" | "coordinator" | "critic_loop" | "adaptive" | string;
+  mode: "sequential" | "parallel" | "coordinator" | "critic_loop" | "swarm" | string;
   max_concurrency?: number;
   timeout_seconds?: number;
   loop_max_iterations?: number;
   intent_anchor_agent_id?: string;
   members: TeamDefinitionMember[];
+  swarm?: SwarmConfig;
+  member_tool_config?: MemberToolConfig;
   a2a?: {
     enabled?: boolean;
     envelope_version?: string;
@@ -787,6 +1352,45 @@ export type TeamDefinition = {
     max_iterations?: number;
     score_threshold?: number;
   };
+};
+
+export type SwarmConfig = {
+  max_handoffs?: number;
+  node_timeout_seconds?: number;
+  repetitive_handoff_window?: number;
+  repetitive_handoff_min_unique?: number;
+  cross_request_transfer?: boolean;
+};
+
+export type MemberToolConfig = {
+  stream_inner?: boolean;
+  inner_text_mode?: "default" | "include" | "exclude" | string;
+  skip_summarization?: boolean;
+  history_scope?: "default" | "isolated" | "parent_branch" | string;
+  tool_set_name?: string;
+};
+
+export type TeamStructureNode = {
+  node_id: string;
+  kind: string;
+  name: string;
+};
+
+export type TeamStructureEdge = {
+  from_node_id: string;
+  to_node_id: string;
+};
+
+export type TeamStructureSurface = {
+  node_id: string;
+  name: string;
+};
+
+export type TeamStructureSnapshot = {
+  entry_node_id: string;
+  nodes: TeamStructureNode[];
+  edges: TeamStructureEdge[];
+  surfaces: TeamStructureSurface[];
 };
 
 export type TeamRun = {
@@ -856,6 +1460,8 @@ export type TeamRunEvent = {
 | `deleteTeam(id)` | `DELETE /v1/teams/{id}` → `void` |
 | `listTeamRuns(teamID?, limit?)` | `GET /v1/team-runs` → `TeamRun[]` |
 | `listTeamRunSteps(runID)` | `GET /v1/team-runs/{run_id}/steps` → `TeamRunStep[]` |
+| `updateSwarmMembers(teamID, addIDs, removeIDs)` | `POST /v1/teams/{team_id}/swarm-members` → `{ updated: boolean }` |
+| `exportTeamStructure(teamID)` | `GET /v1/teams/{team_id}/structure` → `TeamStructureSnapshot` |
 | `subscribeTeamRunEvents(teamID, onEvent, onError?)` | SSE 订阅 `/sse/team-run-events?team_id=` |
 
 **wire 类型转换**：`wireTeam` / `wireRun` / `wireStep` / `patchToWire` — Kratos 生成类型（camelCase）↔ 业务类型（snake_case）
@@ -950,6 +1556,69 @@ export type TeamRunEvent = {
 
 **SSE 实时连接**：`subscribeTeamRunEvents(teamID, onEvent)` 监听 `run_started` / `step_finished` / `run_finished` / `intent_pass`
 
+#### SwarmConfigPanel.vue
+
+**Props**：`modelValue: SwarmConfig` / `isDark: boolean`
+
+**Emits**：`update:modelValue`
+
+**布局**：
+- `QInput` 最大转移次数（`max_handoffs`，0=不限，默认 10）
+- `QInput` 节点超时秒数（`node_timeout_seconds`，0=不限，默认 300）
+- `QInput` 重复转移检测窗口（`repetitive_handoff_window`，0=禁用，默认 5）
+- `QInput` 窗口内最小唯一数（`repetitive_handoff_min_unique`，默认 3）
+- `QToggle` 跨请求转移（`cross_request_transfer`，默认 false）
+  - 启用后 Swarm 成员可在不同用户请求间保持状态转移
+
+**校验规则**：
+- `max_handoffs` ≥ 0
+- `node_timeout_seconds` ≥ 0
+- `repetitive_handoff_window` ≥ 0
+- `repetitive_handoff_min_unique` ≥ 1
+
+#### MemberToolConfigPanel.vue
+
+**Props**：`modelValue: MemberToolConfig` / `isDark: boolean`
+
+**Emits**：`update:modelValue`
+
+**布局**：
+- `QToggle` 流式内部调用（`stream_inner`，默认 false）
+  - 启用后 Coordinator 调用成员 Agent 时流式返回中间输出
+- `QSelect` 内部文本模式（`inner_text_mode`，选项：default / include / exclude）
+  - `default`：仅返回最终结果
+  - `include`：包含内部推理文本
+  - `exclude`：排除内部文本，仅返回工具调用结果
+- `QToggle` 跳过摘要（`skip_summarization`，默认 false）
+  - 启用后 Coordinator 不对成员输出做摘要，直接透传
+- `QSelect` 历史范围（`history_scope`，选项：default / isolated / parent_branch）
+  - `default`：共享完整会话历史
+  - `isolated`：每个成员独立历史
+  - `parent_branch`：仅继承父级分支历史
+- `QInput` 工具集名称（`tool_set_name`，可选）
+  - 指定成员 Agent 暴露给 Coordinator 的工具集
+
+#### TeamStructureView.vue
+
+**Props**：`teamId: string` / `isDark: boolean`
+
+**数据获取**：调用 `exportTeamStructure(teamId)` 获取 `TeamStructureSnapshot`
+
+**布局**：
+- 头部：Team 结构标题 + 导出按钮（JSON 下载）
+- 结构图：
+  - 入口节点（`entry_node_id`）高亮显示
+  - 节点：按 `kind` 区分样式（entry / coordinator / worker / agent）
+  - 边：带箭头连线，表示数据流方向
+  - 面（surfaces）：节点可展开的详细属性面板
+- 图例：节点类型颜色说明
+- 空状态：Team 无结构数据时显示提示
+
+**交互**：
+- 点击节点：展开该节点的 Surface 详情
+- 拖拽：支持画布平移和缩放
+- 导出：下载结构 JSON 文件
+
 ### 8.5 工具函数
 
 文件：`web/src/components/teams/teamUtils.ts`
@@ -966,6 +1635,9 @@ export type TeamRunEvent = {
 | `memberIcon(role)` | 角色图标映射 |
 | `formatDate(value)` | 日期格式化 |
 | `defaultA2AConfig()` | 默认 A2A 配置 |
+| `defaultSwarmConfig()` | 默认 Swarm 安全配置 |
+| `defaultMemberToolConfig()` | 默认成员工具配置 |
+| `buildStructureFromDefinition(def)` | 从 Definition 构建 TeamStructureSnapshot |
 
 **常量**：
 - `modeOptions`：5 种编排模式选项
@@ -977,7 +1649,83 @@ export type TeamRunEvent = {
 
 ## 九、待实现功能（P0）
 
-### 9.1 escalationFunc 增强
+### 9.1 SwarmConfig 安全限制
+
+**当前**：Swarm 模式无安全限制，可能无限转移或死循环
+
+**目标**：支持 MaxHandoffs / NodeTimeout / RepetitiveHandoff 限制
+
+**实现方案**：
+
+1. `internal/team/definition.go` 新增 `SwarmConfigJSON` 结构（已完成设计）
+2. `BuildTRPCTeam` swarm 分支使用 `trpcteam.WithSwarmConfig`（已完成设计）
+3. `TeamEditorDialog` 新增 Swarm 配置 Tab，使用 `SwarmConfigPanel.vue`
+4. `definition_json` 中 `swarm` 字段持久化
+
+### 9.2 CrossRequestTransfer 跨请求转移
+
+**当前**：Swarm 每次请求独立，无法跨请求保持状态
+
+**目标**：支持 Swarm 成员跨用户请求保持上下文转移
+
+**实现方案**：
+
+1. `SwarmConfigJSON.CrossRequestTransfer` 字段（已完成设计）
+2. `BuildTRPCTeam` 中 `def.Swarm.CrossRequestTransfer` → `trpcteam.WithCrossRequestTransfer(true)`
+3. 前端 `SwarmConfigPanel.vue` 添加 `cross_request_transfer` Toggle
+
+### 9.3 SwarmHandoffInputBuilder 自定义转移输入
+
+**当前**：Swarm 转移时使用默认输入格式
+
+**目标**：支持自定义转移输入构建函数
+
+**实现方案**：
+
+1. `Definition.SwarmHandoffInputBuilder` 函数字段（已完成设计）
+2. `BuildTRPCTeam` 中 `def.SwarmHandoffInputBuilder` → `trpcteam.WithSwarmHandoffInputBuilder`
+3. 可通过插件系统注册自定义 Builder
+
+### 9.4 MemberToolConfig 成员工具配置
+
+**当前**：Coordinator 模式下成员 Agent 工具行为不可配置
+
+**目标**：支持 StreamInner / InnerTextMode / SkipSummarization / HistoryScope 配置
+
+**实现方案**：
+
+1. `MemberToolJSON` 结构（已完成设计）
+2. `BuildTRPCTeam` coordinator 分支使用 `trpcteam.WithMemberToolConfig`（已完成设计）
+3. `toInnerTextMode` / `toHistoryScope` 转换函数（已完成设计）
+4. 前端 `MemberToolConfigPanel.vue` 组件
+
+### 9.5 动态成员管理
+
+**当前**：Swarm 成员在创建后无法动态增删
+
+**目标**：支持运行时 AddSwarmMember / RemoveSwarmMember / UpdateSwarmMembers
+
+**实现方案**：
+
+1. Proto 新增 `UpdateSwarmMembers` RPC（已完成设计）
+2. Usecase 新增 `UpdateSwarmMembers` 方法（已完成设计）
+3. Service 层实现 RPC（已完成设计）
+4. 前端 `TeamCard.vue` 新增"管理成员"按钮（仅 Swarm 模式显示）
+
+### 9.6 结构导出
+
+**当前**：无法查看 Team 的编排结构
+
+**目标**：支持导出 Team 结构快照（节点/边/面）
+
+**实现方案**：
+
+1. Proto 新增 `ExportTeamStructure` RPC（已完成设计）
+2. Usecase 新增 `ExportStructure` 方法（已完成设计）
+3. Service 层实现 RPC（已完成设计）
+4. 前端 `TeamStructureView.vue` 组件
+
+### 9.7 escalationFunc 增强
 
 **当前**：`defaultEscalationFunc` 仅检查 `"approved"` 关键词
 
@@ -1000,7 +1748,7 @@ export type TeamRunEvent = {
    - 百分比 `85%`
    - 兜底 `"approved"` 关键词
 
-### 9.2 sequential 上下文传递验证
+### 9.8 sequential 上下文传递验证
 
 **当前**：`chainagent` 内部自动传递事件流
 
@@ -1012,7 +1760,7 @@ export type TeamRunEvent = {
 3. 第二个 Agent 的 prompt 要求引用第一个 Agent 的输出
 4. 确认第二个 Agent 能正确获取前序输出
 
-### 9.3 parallel synthesizer 验证
+### 9.9 parallel synthesizer 验证
 
 **当前**：`parallelagent` 并行执行后事件流合并
 
@@ -1024,7 +1772,7 @@ export type TeamRunEvent = {
 3. synthesizer 的 prompt 要求汇总所有 worker 输出
 4. 确认最终输出包含所有 worker 的结果
 
-### 9.4 实时 step event SSE 增强
+### 9.10 实时 step event SSE 增强
 
 **当前**：仅 `run_started` / `step_finished` / `run_finished` / `intent_pass`
 
@@ -1037,7 +1785,7 @@ export type TeamRunEvent = {
 3. 前端 `TeamRunsDialog` 展示实时进度条
 4. SSE 断线续传：前端重连时请求最近 N 条事件
 
-### 9.5 RunTeamTest / GetTeamRun / CancelTeamRun
+### 9.11 RunTeamTest / GetTeamRun / CancelTeamRun
 
 **Proto 新增**：
 

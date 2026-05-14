@@ -14,7 +14,7 @@ function formatToolResultSummary(event: ToolUseEvent): string {
   const rec = r as Record<string, unknown>;
   const parts: string[] = [];
 
-  if (event.tool_name === "list_files") {
+  if (event.tool_name === "list_file") {
     const path = typeof rec.path === "string" ? rec.path : ".";
     const items = rec.items;
     if (Array.isArray(items)) {
@@ -26,12 +26,12 @@ function formatToolResultSummary(event: ToolUseEvent): string {
     return parts.join("");
   }
 
-  if (event.tool_name === "workspace_search") {
+  if (event.tool_name === "search_content") {
     const matches = rec.matches;
     const trunc = rec.truncated === true ? "（已截断）" : "";
     if (Array.isArray(matches)) {
       const json = JSON.stringify(matches);
-      parts.push(`\n\n**结果** workspace_search ${trunc}（${matches.length} 条）\n\n\`\`\`json\n${truncateBlock(json, 16000)}\n\`\`\``);
+      parts.push(`\n\n**结果** search_content ${trunc}（${matches.length} 条）\n\n\`\`\`json\n${truncateBlock(json, 16000)}\n\`\`\``);
     }
     return parts.join("");
   }

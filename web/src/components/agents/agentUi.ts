@@ -32,7 +32,7 @@ export const statusOptions = [
   { label: "Inactive", value: "inactive" }
 ];
 
-export const toolOptions = ["browser", "edit", "list_files", "read_file", "write_file", "create_image", "create_video", "stt"];
+export const toolOptions = ["browser", "replace_content", "list_file", "read_file", "save_file", "create_image", "create_video", "stt"];
 
 export const defaultAgentFiles: AgentFile[] = [
   { name: "AGENTS_CORE.md", caption: "通用操作规则、语言跟随、工具保存约束", body: "# AGENTS_CORE\n遵循用户语言，保存变更必须通过文件工具。" },

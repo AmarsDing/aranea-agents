@@ -7,12 +7,15 @@ import (
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
 	trpcgraph "trpc.group/trpc-go/trpc-agent-go/graph"
+	trpcgraphcheckpoint "trpc.group/trpc-go/trpc-agent-go/graph/checkpoint/inmemory"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
 type NodeDef struct {
-	ID   string
-	Func trpcgraph.NodeFunc
+	ID              string
+	Func            trpcgraph.NodeFunc
+	InterruptBefore bool
+	InterruptAfter  bool
 }
 
 type EdgeDef struct {
@@ -32,6 +35,9 @@ type GraphBuildConfig struct {
 	ConditionalEdges []ConditionalEdgeDef
 	EntryPoint       string
 	FinishPoint      string
+	EnableCheckpoint bool
+	InterruptBefore  []string
+	InterruptAfter   []string
 }
 
 func BuildStateGraph(cfg GraphBuildConfig) (*trpcgraph.Graph, error) {
@@ -46,7 +52,14 @@ func BuildStateGraph(cfg GraphBuildConfig) (*trpcgraph.Graph, error) {
 	sg := trpcgraph.NewStateGraph(schema)
 
 	for _, n := range cfg.Nodes {
-		sg.AddNode(n.ID, n.Func)
+		opts := []trpcgraph.Option{}
+		if n.InterruptBefore {
+			opts = append(opts, trpcgraph.WithInterruptBefore())
+		}
+		if n.InterruptAfter {
+			opts = append(opts, trpcgraph.WithInterruptAfter())
+		}
+		sg.AddNode(n.ID, n.Func, opts...)
 	}
 
 	sg.AddEdge(trpcgraph.Start, cfg.EntryPoint)
@@ -63,6 +76,13 @@ func BuildStateGraph(cfg GraphBuildConfig) (*trpcgraph.Graph, error) {
 		sg.AddEdge(cfg.FinishPoint, trpcgraph.End)
 	}
 
+	if len(cfg.InterruptBefore) > 0 {
+		sg.WithInterruptBeforeNodes(cfg.InterruptBefore...)
+	}
+	if len(cfg.InterruptAfter) > 0 {
+		sg.WithInterruptAfterNodes(cfg.InterruptAfter...)
+	}
+
 	return sg.Compile()
 }
 
@@ -74,8 +94,13 @@ type GraphAgent struct {
 
 var _ trpcagent.Agent = (*GraphAgent)(nil)
 
-func NewGraphAgent(name string, g *trpcgraph.Graph) (*GraphAgent, error) {
-	exec, err := trpcgraph.NewExecutor(g)
+func NewGraphAgent(name string, g *trpcgraph.Graph, enableCheckpoint bool) (*GraphAgent, error) {
+	var execOpts []trpcgraph.ExecutorOption
+	if enableCheckpoint {
+		saver := trpcgraphcheckpoint.NewSaver()
+		execOpts = append(execOpts, trpcgraph.WithCheckpointSaver(saver))
+	}
+	exec, err := trpcgraph.NewExecutor(g, execOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("graph agent: %w", err)
 	}

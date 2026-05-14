@@ -14,25 +14,15 @@ import (
 	trpcinmemory "trpc.group/trpc-go/trpc-agent-go/session/inmemory"
 )
 
-// TRPCDefaultAppName keeps the tRPC-Agent-Go session namespace aligned with the
-// existing runtime app name while the project migrates off the ADK-shaped path.
 const TRPCDefaultAppName = "aranea"
 
-// TRPCRunnerDeps contains product-owned services that are injected into a
-// tRPC-Agent-Go Runner. Keep this struct thin: platform policy should stay in
-// biz/data, while execution semantics remain in pkg/trpc-agent-go.
 type TRPCRunnerDeps struct {
 	AppName        string
 	SessionService trpcsession.Service
 	MemoryService  trpcmemory.Service
 }
 
-// NewTRPCRunner constructs the standard Runner for Aranea Agent turns.
-//
-// Callers may pass a product session service when bridging persisted sessions.
-// If omitted, an in-memory service is used, which is useful for tests and
-// request-scoped dry runs.
-func NewTRPCRunner(root trpcagent.Agent, deps TRPCRunnerDeps, opts ...trpcrunner.Option) (trpcrunner.Runner, error) {
+func NewTRPCRunner(root trpcagent.Agent, deps TRPCRunnerDeps, opts ...trpcrunner.Option) (trpcrunner.ManagedRunner, error) {
 	if root == nil {
 		return nil, errors.New("trpc runtime: root agent is nil")
 	}
@@ -46,12 +36,15 @@ func NewTRPCRunner(root trpcagent.Agent, deps TRPCRunnerDeps, opts ...trpcrunner
 	if deps.MemoryService != nil {
 		opts = append([]trpcrunner.Option{trpcrunner.WithMemoryService(deps.MemoryService)}, opts...)
 	}
-	return trpcrunner.NewRunner(appName, root, opts...), nil
+	r := trpcrunner.NewRunner(appName, root, opts...)
+	mr, ok := r.(trpcrunner.ManagedRunner)
+	if !ok {
+		r.Close()
+		return nil, errors.New("trpc runtime: runner does not implement ManagedRunner")
+	}
+	return mr, nil
 }
 
-// RunTRPCUserTurn executes one user turn and returns the framework event stream.
-// Service-layer callers are responsible for projecting these events to Kratos
-// responses, SSE, usage, and message persistence.
 func RunTRPCUserTurn(
 	ctx context.Context,
 	r trpcrunner.Runner,
@@ -74,8 +67,30 @@ func RunTRPCUserTurn(
 	return r.Run(ctx, userID, sessionID, trpcmodel.NewUserMessage(content), opts...)
 }
 
-// NewInMemoryTRPCSessionService exposes the framework in-memory session service
-// for tests and temporary migration adapters.
+func CancelTRPCRun(r trpcrunner.Runner, requestID string) bool {
+	mr, ok := r.(trpcrunner.ManagedRunner)
+	if !ok {
+		return false
+	}
+	return mr.Cancel(requestID)
+}
+
+func TRPCRunStatus(r trpcrunner.Runner, requestID string) (trpcrunner.RunStatus, bool) {
+	mr, ok := r.(trpcrunner.ManagedRunner)
+	if !ok {
+		return trpcrunner.RunStatus{}, false
+	}
+	return mr.RunStatus(requestID)
+}
+
+func EnqueueTRPCUserMessage(r trpcrunner.Runner, requestID string, content string) error {
+	sr, ok := r.(trpcrunner.SteerableRunner)
+	if !ok {
+		return errors.New("runner does not support steerable operations")
+	}
+	return sr.EnqueueUserMessage(requestID, trpcmodel.NewUserMessage(content))
+}
+
 func NewInMemoryTRPCSessionService() trpcsession.Service {
 	return trpcinmemory.NewSessionService()
 }

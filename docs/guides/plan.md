@@ -2,6 +2,7 @@
 
 > 本文档是项目对标 `pkg/trpc-agent-go` 框架的总体大纲，目标是 **完全复刻** 框架能力并 **超越**。
 > 每个模块的详细需求见 `docs/需求/` 下对应文档。
+> **最近一次代码审计**：2026-05-15，基于 `internal/` 全量代码扫描 + `pkg/trpc-agent-go/tool/` 逐文件能力审计。
 
 ---
 
@@ -17,87 +18,174 @@
 
 ## 二、功能对齐总览
 
+> 对齐状态基于 2026-05-14 代码审计结果，反映代码库实际实现情况。
+
 | # | 模块 | trpc-agent-go 框架能力 | 项目现有实现 | 对齐状态 | 优先级 | 需求文档 |
 |---|------|----------------------|-------------|---------|--------|----------|
-| M1 | Skill 运行时 | `skill.Repository` + `tool/skill/{load,run,list_docs,select_docs}` + 渐进披露 + 工作区执行 + SkillLoadMode + PromptCache | `skill/trpc/repository.go` + `skill/trpc/tools.go` + `skill/trpc/executor.go` + `skill/trpc/filter.go` | ✅ 已对齐 | P0 | `20 skill.md` |
-| M2 | Agent 构建 | `llmagent.New` + 占位符变量 + ModelInstructions + Planner + SkillLoadMode + ContextCompaction + SessionSummary | `agent/trpc_build.go` + `agent/trpc_runtime.go` | ⚠️ 部分实现 | P0 | `2 agents-create.md` |
-| M3 | Team 编排 | `team.NewCoordinator` / `team.NewSwarm` + AgentTool + TransferTool + crossRequestTransfer + SwarmHandoffInput | `team/trpc_build.go` + `team/runner.go` | ⚠️ 部分实现 | P1 | `11 multi-agent.md` |
-| M4 | Graph 工作流 | `graph.StateGraph` + 节点/边/条件路由 + HITL + 检查点 + 时间旅行 + 子图 + DAG引擎 + 可视化 | `graph/trpc/builder.go` | ⚠️ 部分实现 | P1 | `graph-workflow.md` |
-| M5 | Session 管理 | `session.Service` + SQLite/Redis/PG/MySQL/ClickHouse + 摘要压缩 + Event分页 + Track + Ingestor | `session/trpc/sqlite.go` (仅inmemory) | ❌ 严重不足 | P1 | `10 session.md` |
-| M6 | Memory 记忆 | `memory.Service` + 自动提取(Auto) + 工具驱动(Agentic) + Mem0 + 多后端(SQLite/PG/Redis/MySQL/pgvector) + 向量搜索 | `memory/trpc/sqlite_adapter.go` (基础CRUD) | ❌ 严重不足 | P2 | `memory.md` + `12-16` |
-| M7 | Tool 工具体系 | `tool.Tool`/`CallableTool`/`StreamableTool` + FunctionTool + MCP + 流式 + 重试 + 过滤 + ToolSet + 并行 | `tools/trpc/toolsets.go` (基础filesystem+shell) | ⚠️ 部分实现 | P1 | `23 tools.md` |
-| M8 | MCP 集成 | `tool/mcp.ToolSet` + `tool/mcpbroker.Broker` + STDIO/SSE/StreamableHTTP + 运行时发现 + 会话重连 | `tools/mcpmount/` + `biz/mcp_server.go` | ⚠️ 部分实现 | P2 | `19 mcp.md` |
-| M9 | Model 模型层 | `model.Model` + OpenAI/Gemini/Anthropic/Ollama/Bedrock/Hunyuan/HuggingFace + Failover/Hedge + TokenTailor | `provider/trpc_llm.go` + `provider/catalog.go` | ⚠️ 部分实现 | P2 | `9 provider.md` |
-| M10 | Plugin 插件 | `plugin.Plugin` + Runner级生命周期 + BeforeModel/AfterTool/OnEvent + PluginManager | `biz/plugin.go` (仅CRUD) | ❌ 未实现 | P2 | `22 plugin.md` |
-| M11 | Planner 规划 | `planner.BuiltinPlanner` / `planner.ReActPlanner` / `planner.A2UIPlanner` + 思考链 | `agent/trpc_build.go` (仅Builtin) | ⚠️ 部分实现 | P2 | `planner.md` |
+| M1 | Skill 运行时 | `skill.Repository` + `tool/skill/{load,run,list_docs,select_docs}` + 渐进披露 + 工作区执行 + SkillLoadMode + PromptCache | `skill/trpc/repository.go` (FSRepositoryAdapter) + `skill/trpc/tools.go` + `skill/trpc/executor.go` + `skill/trpc/filter.go` | ✅ 已对齐 | P0 | `20 skill.md` |
+| M2 | Agent 构建 | `llmagent.New` + 占位符变量 + ModelInstructions + Planner + SkillLoadMode + ContextCompaction + SessionSummary | `agent/trpc_build.go` (BuildTRPCLLMAgent) + `agent/trpc_runtime.go` (NewTRPCRunner) + `agent/prompt.go` (BuildSystemPrompt+RuntimeCapabilityCue) | ✅ 已对齐 | P0 | `2 agents-create.md` |
+| M3 | Team 编排 | `team.NewCoordinator` / `team.NewSwarm` + AgentTool + TransferTool + crossRequestTransfer + SwarmHandoffInput | `team/trpc_build.go` (BuildTRPCTeam: coordinator/swarm/sequential/parallel/critic_loop + WithCrossRequestTransfer + WithSwarmHandoffInput) + `team/runner.go` + `team/definition.go` | ✅ 已对齐 | P1 | `11 multi-agent.md` |
+| M4 | Graph 工作流 | `graph.StateGraph` + 节点/边/条件路由 + HITL + 检查点 + 时间旅行 + 子图 + DAG引擎 + 可视化 | `graph/trpc/builder.go` (BuildStateGraph + GraphAgent: HITL/Checkpoint/条件路由) | ⚠️ 部分实现 | P1 | `graph-workflow.md` |
+| M5 | Session 管理 | `session.Service` + SQLite/Redis/PG/MySQL/ClickHouse + 摘要压缩 + Event分页 + Track + Ingestor | `session/trpc/sqlite.go` (NewSQLiteSessionService + NewInMemorySessionService) + `data/sessionmemory/` (SQLite Store 用于 Memory) + `service/session_compress.go` (异步压缩) | ✅ 已对齐 | P1 | `10 session.md` |
+| M6 | Memory 记忆 | `memory.Service` + 自动提取(Auto) + 工具驱动(Agentic) + Mem0 + 多后端(SQLite/PG/Redis/MySQL/pgvector) + 向量搜索 | `memory/trpc/sqlite_adapter.go` (sqliteMemoryService: AddMemory/UpdateMemory/DeleteMemory/SearchMemories/ReadMemories/Tools 基础CRUD) + `data/sessionmemory/` (Store) | ❌ 严重不足 | P2 | `memory.md` + `12-16` |
+| M7 | Tool 工具体系 | `tool.Tool`/`CallableTool`/`StreamableTool` + FunctionTool + MCP + 流式 + 重试 + 过滤 + Callbacks + ToolSet + 并行 + arxivsearch + awaitreply + claudecode + email + geminifetch + google/search + openapi + todo + wikipedia + workspaceexec + claudefetch(stub) | `tools/tool.go` (项目级接口别名) + `tools/toolset.go` (Registry+Assemble总入口) + `tools/trpc/toolsets.go` (向后兼容适配器) + `tools/mcpmount/` (trpc MCP) + `tools/skillruntime/` (Skill) + `agent/trpc_build.go` (buildToolFilter+buildToolCallbacks+buildToolRetryPolicy+WithEnableParallelTools) + DB字段(tools_retry_*/tools_parallel_enabled/tools_streaming_enabled) + 前端UI(重试/并行/流式配置卡片) | ✅ 已对齐 | P1 | `23 tools.md` |
+| M8 | MCP 集成 | `tool/mcp.ToolSet` + `tool/mcpbroker.Broker` + STDIO/SSE/StreamableHTTP + 运行时发现 + 会话重连 | `tools/mcpmount/append.go` (ADK MCP ToolSet, 非trpc) + `tools/mcpmount/config.go` + `tools/mcpmount/transport.go` + `biz/mcp_server.go` | ⚠️ 部分实现 | P2 | `19 mcp.md` |
+| M9 | Model 模型层 | `model.Model` + OpenAI/Gemini/Anthropic/Ollama/Bedrock/Hunyuan/HuggingFace + Failover/Hedge + TokenTailor | `provider/trpc_llm.go` (TRPCModelForProviderModel + wrapHA: failover/hedge) + `provider/catalog.go` (CatalogConfig + HA配置) | ✅ 基本对齐 | P2 | `9 provider.md` |
+| M10 | Plugin 插件 | `plugin.Plugin` + Runner级生命周期 + BeforeModel/AfterTool/OnEvent + PluginManager | `biz/plugin.go` (仅CRUD) + `data/plugin.go` (Ent Repo) + `data/ent/schema/plugin.go` | ❌ 未实现 | P2 | `22 plugin.md` |
+| M11 | Planner 规划 | `planner.BuiltinPlanner` / `planner.ReActPlanner` / `planner.A2UIPlanner` + 思考链 | `agent/trpc_build.go` (仅BuiltinPlanner: dialogMode=="plan"时启用) | ⚠️ 部分实现 | P2 | `planner.md` |
 | M12 | Artifact 制品 | `artifact.Service` + S3/COS/InMemory + 版本管理 + ListArtifactKeys | 无 | ❌ 未实现 | P2 | `artifact.md` |
 | M13 | Knowledge 知识库 | `knowledge.Knowledge` + OCR + Query + RAG + 分块 + Source + AgenticFilter + SearchFilter | 无 | ❌ 未实现 | P3 | `knowledge.md` |
-| M14 | CodeExecutor | `codeexecutor.CodeExecutor` + Local/E2B/Jupyter/Container + WorkspaceRegistry + Interactive | `skill/trpc/executor.go` (仅Local) | ⚠️ 部分实现 | P2 | `codeexecutor.md` |
+| M14 | CodeExecutor | `codeexecutor.CodeExecutor` + Local/E2B/Jupyter/Container + WorkspaceRegistry + Interactive | `skill/trpc/executor.go` (仅Local, 通过 llmagent.WithCodeExecutor 注入) | ⚠️ 部分实现 | P2 | `codeexecutor.md` |
 | M15 | A2A 协议 | `a2aagent.A2AAgent` + A2AServer + AgentCard + 流式 + DataPart映射 + GraphResume | 无 | ❌ 未实现 | P3 | `a2a-protocol.md` |
-| M16 | Gateway 网关 | `runner.Runner` + HTTP webhook + 会话并发控制 + status/cancel + AwaitUserReply + QueuedUserMessage | `server/sse.go` + `service/chat_native.go` | ⚠️ 部分实现 | P2 | `gateway.md` |
+| M16 | Gateway 网关 | `runner.Runner` + HTTP webhook + 会话并发控制 + status/cancel + AwaitUserReply + QueuedUserMessage | `server/sse.go` + `service/chat_native.go` (activeRuns sync.Map + pendingQueue) + `service/chat.go` (ManagedRunner引用) | ⚠️ 部分实现 | P2 | `gateway.md` |
 | M17 | Evaluation 评估 | `evaluation.AgentEvaluator` + EvalSet + Metric + LLM-as-Judge + UserSimulation + MultiRun | 无 | ❌ 未实现 | P3 | `evaluation.md` |
-| M18 | Event 事件 | `event.Event` + 流式 + 标签 + StateDelta + Extensions + FilterKey + Branch + Clone + Actions | `server/sse.go` (SSE投影) | ⚠️ 部分实现 | P2 | `event-system.md` |
-| M19 | Callback 回调 | `agent.Callbacks` + BeforeAgent/AfterAgent + StructuredCallback + ModelCallbacks + ToolCallbacks | 无 | ❌ 未实现 | P2 | `callback.md` |
-| M20 | Runner 运行器 | `runner.Runner` + AgentFactory + PluginManager + ArtifactService + SessionIngestor + AwaitUserReply | `agent/trpc_runtime.go` (基础) | ⚠️ 部分实现 | P1 | `runner.md` |
+| M18 | Event 事件 | `event.Event` + 流式 + 标签 + StateDelta + Extensions + FilterKey + Branch + Clone + Actions | `server/sse.go` (SSE投影) + `service/trpc_turn.go` (事件流处理: StateDelta/Extensions/Branch/FilterKey/Tag) | ✅ 已对齐 | P2 | `event-system.md` |
+| M19 | Callback 回调 | `agent.Callbacks` + BeforeAgent/AfterAgent + StructuredCallback + ModelCallbacks + ToolCallbacks | `agent/trpc_build.go` (buildToolCallbacks: AfterTool error handling) + DB字段(tools_retry_enabled等) + 前端UI | ⚠️ 部分实现 | P2 | `callback.md` |
+| M20 | Runner 运行器 | `runner.Runner` + ManagedRunner + SteerableRunner + AgentFactory + PluginManager + ArtifactService + SessionIngestor + AwaitUserReply | `agent/trpc_runtime.go` (NewTRPCRunner: ManagedRunner + CancelTRPCRun + EnqueueTRPCUserMessage + SessionService + MemoryService) | ✅ 已对齐 | P1 | `runner.md` |
 
 ---
 
-## 三、实施阶段
+## 三、代码审计发现
+
+### 3.1 已实现但未充分利用的框架能力
+
+| 能力 | 框架支持 | 项目现状 | 差距 |
+|------|----------|----------|------|
+| Session SQLite 持久化 | `session/sqlite.NewSessionService` | `session/trpc/sqlite.go` 仅导出 `NewInMemorySessionService`，Runner 始终使用 inmemory | 需实现 SQLite SessionService 适配器并注入 Runner |
+| Memory 自动提取 | `memory.Service.EnqueueAutoMemoryJob` + `memory/extractor` | `sqliteMemoryService` 有 `EnqueueAutoMemoryJob` 方法但未实现自动提取逻辑 | 需集成 `memory/extractor` |
+| Memory 工具 | `memory/tool` 提供 memory_add/search/load 等工具 | `sqliteMemoryService.Tools()` 返回 `trpcmemtool.New(s)` 但未确认工具是否正确注入 Agent | 需验证工具注入链路 |
+| Model Failover/Hedge | `model/failover` + `model/hedge` | `provider/trpc_llm.go` 已实现 `wrapHA` 支持 failover/hedge 模式 | ✅ 已对齐 |
+| Model TokenTailor | `trpcprovider.WithEnableTokenTailoring` | `provider/trpc_llm.go` 已支持 `EnableTokenTailoring` 配置 | ✅ 已对齐 |
+| Team Swarm | `team.NewSwarm` | `team/trpc_build.go` 已使用 `trpcteam.NewSwarm` | ✅ 基本对齐 |
+| Team Coordinator | `team.New` | `team/trpc_build.go` 已使用 `trpcteam.New` | ✅ 基本对齐 |
+| Graph 条件路由 | `graph.AddConditionalEdges` | `graph/trpc/builder.go` 已支持 `ConditionalEdgeDef` | ✅ 基本对齐 |
+| Skill Repository | `skill.NewFSRepository` | `skill/trpc/repository.go` 已实现 `FSRepositoryAdapter` | ✅ 已对齐 |
+| CodeExecutor Local | `codeexecutor/local` | `skill/trpc/executor.go` 通过 `llmagent.WithCodeExecutor` 注入 | ✅ 基本对齐 |
+
+### 3.2 MCP 集成仍使用 ADK 而非 trpc
+
+`tools/mcpmount/append.go` 仍在 import `google.golang.org/adk/tool` 和 `google.golang.org/adk/tool/mcptoolset`，未迁移到 `trpc.group/trpc-go/trpc-agent-go/tool/mcp`。这是 **P2 优先级迁移项**。
+
+### 3.3 Session 管理关键缺口
+
+当前 Runner 的 SessionService 始终使用 `trpcinmemory.NewSessionService()`（见 `service/trpc_turn.go`），Session 数据不持久化。`data/sessionmemory/` 包实现了 SQLite Store 但仅用于 Memory 实体的存储，未用于框架 Session 持久化。
+
+### 3.4 Runner 能力缺口
+
+当前 Runner 仅使用基础 `trpcrunner.NewRunner`，未使用：
+- `ManagedRunner`（Cancel/RunStatus）
+- `SteerableRunner`（EnqueueUserMessage）
+- `runner.WithPlugins`
+- `runner.WithArtifactService`
+
+### 3.5 Tool 框架能力审计（2026-05-15）
+
+对 `pkg/trpc-agent-go/tool/` 逐文件审计发现以下框架能力此前未被项目集成：
+
+| 框架文件 | 框架能力 | 集成状态 |
+|----------|----------|----------|
+| `tool/callbacks.go` | BeforeTool/AfterTool 结构化回调链 + panic 恢复 + ContinueOnError | ✅ 已集成（buildToolCallbacks + WithToolCallbacks） |
+| `tool/filter.go` | FilterFunc + FilterTools + FilterToolSet + Include/Exclude 名称过滤器 | ✅ 已集成（buildToolFilter + NewExcludeToolNamesFilter） |
+| `tool/retry.go` | RetryPolicy + 指数退避 + Jitter + DefaultRetryOn | ✅ 已集成（buildToolRetryPolicy + DB字段 tools_retry_*） |
+| `tool/merge.go` | Merge 函数（字符串/数字/切片/Map/结构体/Mergeable） | ⚠️ 未集成（无业务场景需要合并多工具结果） |
+| `tool/stream.go` | Stream/StreamReader/StreamWriter + StreamChunk + FinalResultChunk | ⚠️ 预留字段（tools_streaming_enabled），待有 StreamableCall 实现后启用 |
+| `tool/context.go` | ToolCallID 传播 + 结构化错误流 + FinalResult 标记 | ⚠️ 未显式使用（框架内部自动处理） |
+| `tool/agent_tool.go` | AgentTool（Agent 包装为 Tool）+ HistoryScope + ResponseMode | ⚠️ 未集成（Team 编排使用框架内置 TransferTool） |
+| `tool/codeexecutor_tool.go` | CodeExecutionTool + 语言验证 + 结果处理 | ✅ 已集成（通过 llmagent.WithCodeExecutor） |
+| `tool/transfer_tool.go` | TransferTool（Agent 间转移）+ 上下文保持 | ✅ 已集成（Team 编排中自动注入） |
+
+**框架 Tool 子包完整对照**（2026-05-15 补充）：
+
+| 框架子包 | 工具类型 | Registry 注册名 | 集成方式 |
+|----------|----------|-----------------|----------|
+| `tool/agent/` | Agent-as-Tool | `agent` | ✅ Registry+Assemble（AgentToolConfig） |
+| `tool/arxivsearch/` | Arxiv 搜索 ToolSet | `arxiv_search` | ✅ Registry+Assemble |
+| `tool/awaitreply/` | 等待用户回复 | `await_user_reply` | ✅ Registry+Assemble |
+| `tool/claudecode/` | Claude Code ToolSet | `claudecode` | ✅ Registry+Assemble |
+| `tool/codeexec/` | 代码执行 | — | ✅ 通过 llmagent.WithCodeExecutor 注入 |
+| `tool/duckduckgo/` | DuckDuckGo 搜索 | `duckduckgo` | ✅ Registry+Assemble |
+| `tool/email/` | 邮件 ToolSet | `email` | ✅ Registry+Assemble |
+| `tool/file/` | 文件操作 ToolSet | `file` | ✅ Registry+Assemble |
+| `tool/function/` | FunctionTool 泛型 | — | ✅ custom/demo.go 使用 |
+| `tool/google/search/` | Google 搜索 ToolSet | `google_search` | ✅ Registry+Assemble |
+| `tool/hostexec/` | 主机命令执行 ToolSet | `hostexec` | ✅ Registry+Assemble |
+| `tool/mcp/` | MCP 协议 ToolSet | `mcp` | ✅ Registry+Assemble（MCPServerConfig + trpc_build.go 接通） |
+| `tool/mcpbroker/` | MCP 服务发现 | `mcpbroker` | ✅ Registry+Assemble（MCPBrokerConfig + trpc_build.go 接通） |
+| `tool/openapi/` | OpenAPI Spec ToolSet | `openapi` | ✅ Registry+Assemble |
+| `tool/skill/` | Skill 加载/执行/文档 | — | ✅ 通过 llmagent.WithSkills 注入 |
+| `tool/todo/` | Todo 管理 | `todo` | ✅ Registry+Assemble |
+| `tool/transfer/` | Agent 转移工具 | — | ✅ Team 编排自动注入 |
+| `tool/webfetch/claudefetch/` | Claude 网页抓取 | `claudefetch` | ⚠️ 框架空壳包（无导出函数），Registry 占位 |
+| `tool/webfetch/geminifetch/` | Gemini 网页抓取 | `geminifetch` | ✅ Registry+Assemble |
+| `tool/webfetch/httpfetch/` | HTTP 网页抓取 | `httpfetch` | ✅ Registry+Assemble |
+| `tool/wikipedia/` | Wikipedia 搜索 | `wikipedia` | ✅ Registry+Assemble |
+| `tool/workspaceexec/` | 工作区执行 | `workspace_exec` | ✅ Registry+Assemble |
+
+**目录重构**（2026-05-15）：学习 trpc 框架目录结构，在 `internal/tools/` 根目录建立：
+- `tool.go` — 项目级接口定义（type alias 到 trpc-agent-go/tool）
+- `toolset.go` — 中央注册表 `Registry()` + 总入口 `Assemble(ctx, AssemblyConfig)`
+- `trpc/toolsets.go` — 向后兼容适配器（ToolsetConfig → AssemblyConfig → tools.Assemble）
+
+**教训**：后续分析框架时必须逐文件扫描，建立 `[文件] → [能力] → [项目集成状态]` 矩阵，避免遗漏。
+
+---
+
+## 四、实施阶段
 
 ### 阶段一：核心运行时完善（P0-P1）
 
 **目标**：让 Agent 的构建、运行、编排能力完全对齐框架
 
-| 步骤 | 模块 | 关键任务 | 验收标准 |
-|------|------|----------|----------|
-| 1.1 | M2 Agent构建 | 启用占位符变量、ModelInstructions、ContextCompaction、SessionSummary | Agent Instruction 中 `{key}` 被正确替换；长对话自动压缩 |
-| 1.2 | M5 Session | 集成 trpc `session/sqlite` 替换 inmemory；集成摘要压缩 | Session 持久化到 SQLite；长对话自动摘要 |
-| 1.3 | M20 Runner | 完善 Runner：AgentFactory、PluginManager、ArtifactService | Runner 支持动态 Agent 创建和插件注入 |
-| 1.4 | M3 Team | 使用 trpc `team.NewCoordinator`/`team.NewSwarm`；集成 AgentTool + TransferTool + crossRequestTransfer | Coordinator/Swarm 模式通过 trpc team 包运行 |
-| 1.5 | M4 Graph | 完善 Graph：条件路由、HITL、检查点、子图、API端点 | 能通过 API 定义并执行 Graph 工作流 |
-| 1.6 | M7 Tool | 迁移到 trpc Tool 接口；集成 FunctionTool、流式工具、工具重试、工具过滤 | 所有内置工具通过 trpc Tool 接口注册 |
-| 1.7 | M18 Event | 完善 Event：StateDelta、Extensions、FilterKey、Branch、Actions | SSE 推流包含完整事件元数据 |
+| 步骤 | 模块 | 关键任务 | 涉及文件 | 验收标准 |
+|------|------|----------|----------|----------|
+| 1.1 | M2 Agent构建 | ~~1. 启用占位符变量替换（`{key}` 在 Instruction 中被正确替换）~~ ✅（框架内置）<br>~~2. 集成 ContextCompaction（长对话自动压缩）~~ ✅<br>~~3. 集成 SessionSummary（会话摘要注入）~~ ✅ | `agent/trpc_build.go`<br>`agent/prompt.go`<br>`biz/session_summary.go` | ✅ 占位符由框架渲染；长对话自动压缩；会话摘要注入 |
+| 1.2 | M5 Session | ~~1. 实现 `session/trpc/sqlite.go` SQLite SessionService 适配器（基于 `session/sqlite.NewSessionService`）~~ ✅<br>~~2. Wire 注入 SQLite SessionService 替换 inmemory~~ ✅<br>~~3. 集成摘要压缩（已有 `service/session_compress.go`）~~ ✅ | `session/trpc/sqlite.go`<br>`service/trpc_turn.go`<br>`cmd/admin/wire.go` | ✅ Session 持久化到 SQLite；重启后会话不丢失；长对话自动摘要 |
+| 1.3 | M20 Runner | ~~1. 升级为 ManagedRunner（支持 Cancel/RunStatus）~~ ✅<br>~~2. 升级为 SteerableRunner（支持 EnqueueUserMessage）~~ ✅<br>3. 集成 PluginManager（预留接口）<br>4. 集成 SessionIngestor | `agent/trpc_runtime.go`<br>`service/chat.go`<br>`service/trpc_turn.go` | ✅ Runner 支持取消运行中请求；支持排队消息；支持运行状态查询 |
+| 1.4 | M3 Team | ~~1. 集成 TransferTool（Agent 间转移控制权）~~ ✅<br>~~2. 集成 crossRequestTransfer（跨请求上下文转移）~~ ✅<br>~~3. 集成 SwarmHandoffInput（自定义转移输入）~~ ✅ | `team/trpc_build.go`<br>`team/runner.go` | ✅ Swarm 模式支持 transfer_to_agent；跨请求保持 Agent 上下文 |
+| 1.5 | M4 Graph | ~~1. 实现 HITL（人机中断：interrupt_before/interrupt_after）~~ ✅<br>~~2. 实现检查点（Checkpoint 持久化/恢复）~~ ✅<br>3. 实现子图（Subgraph 嵌套）<br>4. 实现 DAG 并行执行器<br>5. 暴露 Graph API 端点 | `graph/trpc/builder.go`<br>`api/kratos/graph/v1/graph.proto`<br>`service/graph.go` | ✅ HITL 中断；✅ 检查点恢复；⚠️ 子图/DAG/API 待实现 |
+| 1.6 | M7 Tool | ~~1. 统一工具注册到 trpc Tool 接口（消除 ADK 残留）~~ ✅<br>~~2. 集成 FunctionTool（`tool/function`）~~ ✅<br>~~3. 集成全部框架 ToolSet: arxivsearch/awaitreply/claudecode/email/geminifetch/google-search/openapi/todo/wikipedia/workspaceexec~~ ✅<br>~~4. 集成工具重试策略~~ ✅（buildToolRetryPolicy + DB字段 tools_retry_* + 前端UI）<br>~~5. 集成工具过滤（allow/deny）~~ ✅（buildToolFilter + NewExcludeToolNamesFilter）<br>~~6. 集成工具回调（BeforeTool/AfterTool）~~ ✅（buildToolCallbacks + WithToolCallbacks）<br>~~7. 集成并行工具调用~~ ✅（WithEnableParallelTools + DB字段 tools_parallel_enabled + 前端UI）<br>8. 集成流式工具（StreamableTool）— 预留字段 tools_streaming_enabled，待有 StreamableCall 实现后启用 | `tools/tool.go`<br>`tools/toolset.go`<br>`tools/trpc/toolsets.go`<br>`agent/trpc_build.go`<br>`internal/data/ent/schema/`<br>`web/src/pages/AgentSettingsPage.vue` | ✅ 工具注册/ToolSet/重试/过滤/回调/并行已集成；⚠️ 流式工具待框架侧有 StreamableCall 实现后启用 |
+| 1.7 | M18 Event | ~~1. SSE 推流包含 StateDelta~~ ✅<br>~~2. SSE 推流包含 Extensions~~ ✅<br>~~3. SSE 推流包含 FilterKey/Branch~~ ✅<br>~~4. SSE 推流包含 Tag~~ ✅ | `server/sse.go`<br>`service/trpc_turn.go`<br>`team/runner_team_trpc.go` | ✅ SSE 推流包含完整事件元数据；前端可按 Branch/Tag 过滤事件 |
 
 ### 阶段二：能力扩展（P2）
 
-**目标**：补齐 Memory、MCP、Model、Plugin、Planner、Artifact、CodeExecutor、Callback、Gateway
+**目标**：补齐 Memory、MCP、Plugin、Planner、Artifact、CodeExecutor、Callback、Gateway
 
-| 步骤 | 模块 | 关键任务 | 验收标准 |
-|------|------|----------|----------|
-| 2.1 | M6 Memory | 集成 trpc `memory.Service`；启用自动提取；集成记忆工具；支持 pgvector 向量搜索 | 对话后自动提取记忆；Agent 可调用 memory_search |
-| 2.2 | M8 MCP | 集成 `tool/mcp.ToolSet` + `tool/mcpbroker.Broker`；运行时发现；会话重连 | Agent 可通过 MCP Broker 动态发现和调用远程 MCP 工具 |
-| 2.3 | M9 Model | 集成 Failover/Hedge；支持 Gemini/Anthropic/Ollama/Bedrock；TokenTailor | 多模型自动切换；token 超限自动裁剪 |
-| 2.4 | M10 Plugin | 实现 `plugin.Plugin` 接口；Runner 级生命周期钩子 | BeforeModel/AfterTool/OnEvent 钩子生效 |
-| 2.5 | M11 Planner | 集成 ReActPlanner、A2UIPlanner | 复杂任务先规划再执行 |
-| 2.6 | M12 Artifact | 集成 `artifact.Service`；S3/COS 后端；版本管理 | Agent 可保存/加载/列出制品 |
-| 2.7 | M14 CodeExecutor | 集成 E2B/Jupyter/Container 执行器；Interactive 模式 | 代码在沙箱中执行并返回结果 |
-| 2.8 | M19 Callback | 实现 BeforeAgent/AfterAgent StructuredCallback；ModelCallbacks；ToolCallbacks | 回调在 Agent/Model/Tool 各阶段正确触发 |
-| 2.9 | M16 Gateway | 完善 Runner：会话并发控制、status/cancel、AwaitUserReply、QueuedUserMessage | 支持中断/恢复、排队消息 |
+| 步骤 | 模块 | 关键任务 | 涉及文件 | 验收标准 |
+|------|------|----------|----------|----------|
+| 2.1 | M6 Memory | 1. 实现 `EnqueueAutoMemoryJob`（集成 `memory/extractor` 自动提取）<br>2. 集成 `memory/tool` 完整工具链（memory_add/search/load/update/delete）<br>3. 实现 pgvector 向量搜索后端<br>4. 集成 Mem0 平台适配 | `memory/trpc/sqlite_adapter.go`<br>`memory/trpc/pgvector_adapter.go`<br>`memory/trpc/extractor.go` | 对话后自动提取记忆；Agent 可调用 memory_search；支持向量相似度搜索 |
+| 2.2 | M8 MCP | 1. 迁移 `tools/mcpmount/` 从 ADK 到 trpc `tool/mcp.ToolSet`<br>2. 集成 `tool/mcpbroker.Broker`（运行时发现）<br>3. 实现 STDIO/SSE/StreamableHTTP 传输<br>4. 实现会话重连 | `tools/mcpmount/append.go`<br>`tools/mcpmount/broker.go`<br>`tools/mcpmount/transport.go` | Agent 可通过 MCP Broker 动态发现和调用远程 MCP 工具；MCP 不再依赖 ADK |
+| 2.3 | M9 Model | 1. 集成 Bedrock 适配器<br>2. 验证 Gemini/Anthropic/Ollama 完整功能<br>3. Failover/Hedge 已对齐，补充集成测试 | `provider/trpc_llm.go`<br>`provider/catalog.go` | 多模型自动切换；token 超限自动裁剪；Bedrock 可用 |
+| 2.4 | M10 Plugin | 1. 实现 `plugin.Plugin` 接口适配器<br>2. Runner 级生命周期钩子（BeforeModel/AfterTool/OnEvent）<br>3. PluginManager 注册与调度<br>4. 日志插件和全局指令插件 | `agent/plugin.go`<br>`biz/plugin.go`<br>`agent/trpc_runtime.go` | BeforeModel/AfterTool/OnEvent 钩子生效；可动态注册/卸载插件 |
+| 2.5 | M11 Planner | 1. 集成 ReActPlanner（标签约束规划）<br>2. 集成 A2UIPlanner（JSONL 协议规划）<br>3. 在 Agent 设置中暴露 Planner 选择 | `agent/trpc_build.go`<br>`agent/planner.go` | 复杂任务先规划再执行；用户可选择 Planner 类型 |
+| 2.6 | M12 Artifact | 1. 集成 `artifact.Service`<br>2. 实现 InMemory 后端<br>3. 实现 S3/COS 后端<br>4. 版本管理 + ListArtifactKeys | `artifact/trpc/service.go`<br>`artifact/trpc/s3.go`<br>`artifact/trpc/cos.go` | Agent 可保存/加载/列出制品；支持 S3/COS 存储 |
+| 2.7 | M14 CodeExecutor | 1. 集成 E2B 沙箱执行器<br>2. 集成 Jupyter 执行器<br>3. 集成 Container 执行器<br>4. Interactive 模式 | `skill/trpc/executor.go`<br>`skill/trpc/executor_e2b.go`<br>`skill/trpc/executor_jupyter.go` | 代码在沙箱中执行并返回结果；支持 E2B/Jupyter/Container |
+| 2.8 | M19 Callback | ~~1. 实现 ToolCallbacks（BeforeTool/AfterTool）~~ ✅（buildToolCallbacks 已集成）<br>2. 实现 BeforeAgent/AfterAgent StructuredCallback<br>3. 实现 ModelCallbacks（BeforeModel/AfterModel）<br>4. 与 Plugin 系统协调 | `agent/callback.go`<br>`agent/trpc_build.go` | ✅ ToolCallbacks 已集成；⚠️ Agent/Model 级回调待实现 |
+| 2.9 | M16 Gateway | 1. 实现会话并发控制（基于 ManagedRunner）<br>2. 实现 status/cancel API<br>3. 实现 AwaitUserReply（基于 SteerableRunner）<br>4. 实现 QueuedUserMessage | `service/chat.go`<br>`service/trpc_turn.go`<br>`api/kratos/chat/v1/chat.proto` | 支持中断/恢复；支持排队消息；支持运行状态查询 |
 
 ### 阶段三：超越层（P3）
 
 **目标**：在复刻基础上增加框架不具备的产品层能力
 
-| 步骤 | 模块 | 关键任务 | 验收标准 |
-|------|------|----------|----------|
-| 3.1 | M13 Knowledge | 集成 `knowledge.Knowledge` + OCR + RAG + AgenticFilter；超越：多租户知识库隔离 | Agent 可搜索知识库；不同租户知识隔离 |
-| 3.2 | M15 A2A | 集成 `a2aagent.A2AAgent` + A2AServer；超越：A2A 网关注册中心 | Agent 可通过 A2A 协议与其他 Agent 通信 |
-| 3.3 | M17 Evaluation | 集成 `evaluation.AgentEvaluator`；超越：可视化评估平台 + A/B 测试 | 可对 Agent 进行自动化评估 |
-| 3.4 | 超越-可视化编排 | Graph 可视化编辑器（拖拽节点/边） | 前端可拖拽构建 Graph 工作流 |
-| 3.5 | 超越-多租户 | 全模块多租户隔离（Session/Memory/Knowledge/Artifact） | 不同租户数据完全隔离 |
-| 3.6 | 超越-审计 | 全链路审计日志（Agent调用/Tool调用/Memory变更） | 可追溯任何操作的完整链路 |
-| 3.7 | 超越-可观测 | OpenTelemetry 集成 + Metrics + Trace Dashboard | 可在 Grafana 查看 Agent 运行指标 |
+| 步骤 | 模块 | 关键任务 | 涉及文件 | 验收标准 |
+|------|------|----------|----------|----------|
+| 3.1 | M13 Knowledge | 1. 集成 `knowledge.Knowledge` + OCR + RAG<br>2. 实现 AgenticFilter + SearchFilter<br>3. 超越：多租户知识库隔离 | `knowledge/trpc/service.go`<br>`knowledge/trpc/rag.go`<br>`data/pgvector/` | Agent 可搜索知识库；不同租户知识隔离 |
+| 3.2 | M15 A2A | 1. 集成 `a2aagent.A2AAgent` + A2AServer<br>2. 实现 AgentCard + 流式 + DataPart映射<br>3. 实现 GraphResume<br>4. 超越：A2A 网关注册中心 | `a2a/trpc/agent.go`<br>`a2a/trpc/server.go`<br>`a2a/trpc/registry.go` | Agent 可通过 A2A 协议与其他 Agent 通信 |
+| 3.3 | M17 Evaluation | 1. 集成 `evaluation.AgentEvaluator`<br>2. 实现 EvalSet + Metric + LLM-as-Judge<br>3. 实现 UserSimulation + MultiRun<br>4. 超越：可视化评估平台 + A/B 测试 | `evaluation/trpc/evaluator.go`<br>`evaluation/trpc/metrics.go` | 可对 Agent 进行自动化评估 |
+| 3.4 | 超越-可视化编排 | Graph 可视化编辑器（拖拽节点/边） | 前端 `web/src/features/graph/` | 前端可拖拽构建 Graph 工作流 |
+| 3.5 | 超越-多租户 | 全模块多租户隔离（Session/Memory/Knowledge/Artifact） | `biz/tenant.go` + 各模块适配 | 不同租户数据完全隔离 |
+| 3.6 | 超越-审计 | 全链路审计日志（Agent调用/Tool调用/Memory变更） | `biz/audit.go` + `data/audit.go` | 可追溯任何操作的完整链路 |
+| 3.7 | 超越-可观测 | OpenTelemetry 集成 + Metrics + Trace Dashboard | `internal/telemetry/` | 可在 Grafana 查看 Agent 运行指标 |
 
 ---
 
-## 四、模块详细计划索引
+## 五、模块详细计划索引
 
 每个模块的详细需求、现状分析、trpc框架参照、具体步骤、涉及文件、验收标准，
 均记录在 `docs/需求/` 下对应文档中：
 
 | 模块 | 需求文档 | 状态 |
 |------|----------|------|
-| M1 Skill 运行时 | `20 skill.md` + `20 skill struct design.md` | 已有，需补充 SkillLoadMode/PromptCache 细节 |
+| M1 Skill 运行时 | `20 skill.md` + `20 skill struct design.md` | ✅ 已对齐，需补充 SkillLoadMode/PromptCache 细节 |
 | M2 Agent 构建 | `2 agents-create.md` + `4.agent-type.md` + `5 agent-setting.md` | 已有，已补充占位符/ContextCompaction/SessionSummary（§8） |
 | M3 Team 编排 | `11 multi-agent.md` + `team.md` | 已有，已补充 crossRequestTransfer/SwarmHandoff（§15） |
 | M4 Graph 工作流 | `graph-workflow.md` | ✅ 已创建 |
@@ -120,17 +208,18 @@
 
 ---
 
-## 五、架构原则
+## 六、架构原则
 
 1. **框架即内核**：trpc-agent-go 是运行时内核，项目是产品壳层，通过适配器桥接
 2. **适配器模式**：每个模块通过 `internal/{module}/trpc/` 适配器桥接框架接口
 3. **渐进迁移**：新功能直接使用 trpc 接口，旧功能通过适配器逐步迁移
 4. **产品层增值**：多租户、权限、审计、可视化等是产品层能力，不修改框架代码
 5. **测试先行**：每个适配器必须有单元测试，验证接口契约
+6. **ADK 残留清理**：所有 `google.golang.org/adk` import 必须逐步替换为 `trpc.group/trpc-go/trpc-agent-go` 对应包
 
 ---
 
-## 六、依赖关系
+## 七、依赖关系
 
 ```
 M2 Agent构建 ← M1 Skill运行时
@@ -149,9 +238,20 @@ M16 Gateway  ← M20 Runner + M5 Session
 
 **关键路径**：M2 → M20 → M5 → M6 → M13（Agent构建 → Runner → Session → Memory → Knowledge）
 
+**阶段一内部执行顺序**（考虑依赖）：
+1. M2 Agent构建（1.1）→ 无前置依赖
+2. M5 Session（1.2）→ 依赖 M20 Runner 基础（已有）
+3. M20 Runner（1.3）→ 依赖 M5 Session（1.2）
+4. M3 Team（1.4）→ 依赖 M2 Agent构建（1.1）+ M7 Tool（1.6）
+5. M4 Graph（1.5）→ 依赖 M2 Agent构建（1.1）
+6. M7 Tool（1.6）→ 依赖 M2 Agent构建（1.1）
+7. M18 Event（1.7）→ 依赖 M20 Runner（1.3）
+
+**建议执行顺序**：1.1 → 1.6 → 1.2 → 1.3 → 1.4 → 1.5 → 1.7
+
 ---
 
-## 七、风险与缓解
+## 八、风险与缓解
 
 | 风险 | 影响 | 缓解措施 |
 |------|------|----------|
@@ -160,3 +260,13 @@ M16 Gateway  ← M20 Runner + M5 Session
 | Memory 自动提取质量 | 提取无关记忆 | 提供提取 prompt 可配置；增加 checker 机制 |
 | Graph 可视化复杂度 | 开发周期长 | 先实现 API 端点，可视化作为超越层 |
 | A2A 协议兼容性 | 与外部 Agent 通信失败 | 严格遵循 A2A 规范；增加兼容性测试 |
+| ADK 残留清理 | MCP 等模块迁移风险 | 逐模块迁移，保持 ADK 和 trpc 双轨运行直到验证完毕 |
+| Session 从 inmemory 切换到 SQLite | 运行中会话丢失 | 提供平滑迁移路径；新会话用 SQLite，旧会话保持 inmemory |
+
+---
+
+## 九、变更记录
+
+| 日期 | 变更内容 |
+|------|----------|
+| 2026-05-14 | 基于代码审计重新梳理：更新 M5/M6/M8/M9/M16 对齐状态；新增第三节"代码审计发现"；细化实施步骤涉及文件和验收标准；补充 ADK 残留清理原则；调整阶段一执行顺序 |

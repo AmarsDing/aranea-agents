@@ -3,9 +3,10 @@ package mcpmount
 import (
 	"encoding/json"
 	"strings"
+
+	trpcmcp "trpc.group/trpc-go/trpc-agent-go/tool/mcp"
 )
 
-// ServerConfig matches platform mcp_server.config_json (see internal/mcpprobe).
 type ServerConfig struct {
 	Transport              string            `json:"transport"`
 	URL                    string            `json:"url"`
@@ -28,4 +29,18 @@ func parseServerConfigJSON(raw string) (ServerConfig, error) {
 		return ServerConfig{}, err
 	}
 	return c, nil
+}
+
+func toTRPCConnectionConfig(sc ServerConfig) trpcmcp.ConnectionConfig {
+	cfg := trpcmcp.ConnectionConfig{
+		Transport: normalizeTransport(sc.Transport),
+		ServerURL: strings.TrimSpace(sc.URL),
+		Headers:   sc.Headers,
+		Command:   strings.TrimSpace(sc.Command),
+		Args:      sc.Args,
+	}
+	if sc.TimeoutSec > 0 {
+		cfg.Timeout = parseDurationSec(sc.TimeoutSec)
+	}
+	return cfg
 }

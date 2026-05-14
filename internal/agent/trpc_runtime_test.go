@@ -7,6 +7,7 @@ import (
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
+	trpcrunner "trpc.group/trpc-go/trpc-agent-go/runner"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
@@ -96,3 +97,46 @@ func TestRunTRPCUserTurnValidatesRequiredIDs(t *testing.T) {
 	}
 }
 
+func TestNewTRPCRunnerReturnsManagedRunner(t *testing.T) {
+	r, err := NewTRPCRunner(staticTRPCAgent{name: "assistant", reply: "hello"}, TRPCRunnerDeps{
+		SessionService: NewInMemoryTRPCSessionService(),
+	})
+	if err != nil {
+		t.Fatalf("NewTRPCRunner() error = %v", err)
+	}
+	defer r.Close()
+
+	if _, ok := interface{}(r).(trpcrunner.Runner); !ok {
+		t.Fatal("ManagedRunner should also implement Runner")
+	}
+}
+
+func TestCancelTRPCRun(t *testing.T) {
+	r, err := NewTRPCRunner(staticTRPCAgent{name: "assistant", reply: "hello"}, TRPCRunnerDeps{
+		SessionService: NewInMemoryTRPCSessionService(),
+	})
+	if err != nil {
+		t.Fatalf("NewTRPCRunner() error = %v", err)
+	}
+	defer r.Close()
+
+	result := CancelTRPCRun(r, "nonexistent-request")
+	if result {
+		t.Fatal("expected false for nonexistent request")
+	}
+}
+
+func TestEnqueueTRPCUserMessage(t *testing.T) {
+	r, err := NewTRPCRunner(staticTRPCAgent{name: "assistant", reply: "hello"}, TRPCRunnerDeps{
+		SessionService: NewInMemoryTRPCSessionService(),
+	})
+	if err != nil {
+		t.Fatalf("NewTRPCRunner() error = %v", err)
+	}
+	defer r.Close()
+
+	err = EnqueueTRPCUserMessage(r, "nonexistent-request", "test message")
+	if err != nil {
+		t.Logf("EnqueueTRPCUserMessage on non-running request: %v (expected)", err)
+	}
+}

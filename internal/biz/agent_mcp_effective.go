@@ -9,6 +9,8 @@ import (
 // It appears in effective-tools when the agent profile allows it (see tools table seeds).
 const ToolKeyMCPToolSet = "mcp_tool_set"
 
+const ToolKeyMCPBroker = "mcp_broker"
+
 // EffectiveMCPServer is a biz DTO for one enabled MCP server row — no ADK imports.
 type EffectiveMCPServer struct {
 	ID         string

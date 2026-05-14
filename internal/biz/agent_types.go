@@ -122,8 +122,24 @@ type AgentRuntimeSettings struct {
 	OutputSchemaJSON string
 	// ModelSelector controls dynamic model selection: "default" | "auto".
 	ModelSelector string
-	CreatedAt     string
-	UpdatedAt     string
+	// ToolsRetryEnabled enables automatic retry for transient tool call failures.
+	ToolsRetryEnabled bool
+	// ToolsRetryMaxAttempts is the total number of attempts including the first try.
+	ToolsRetryMaxAttempts int
+	// ToolsRetryInitialIntervalMs is the delay in ms before the second attempt.
+	ToolsRetryInitialIntervalMs int
+	// ToolsRetryBackoffFactor controls how the delay grows after each failed attempt.
+	ToolsRetryBackoffFactor float64
+	// ToolsRetryMaxIntervalMs caps the computed retry delay.
+	ToolsRetryMaxIntervalMs int
+	// ToolsRetryJitter enables additive random jitter on the computed delay.
+	ToolsRetryJitter bool
+	// ToolsParallelEnabled enables parallel tool execution when the model issues multiple tool calls.
+	ToolsParallelEnabled bool
+	// ToolsStreamingEnabled enables StreamableTool support for tools that implement StreamableCall.
+	ToolsStreamingEnabled bool
+	CreatedAt             string
+	UpdatedAt             string
 }
 
 // AgentPromptFile is one row in agent_prompt_files (API name field maps to file_name).

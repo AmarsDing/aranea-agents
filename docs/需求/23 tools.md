@@ -1133,3 +1133,509 @@ func RedactToolArgs(toolKey string, schema map[string]any, args map[string]any) 
 **涉及文件**：`internal/tools/trpc/toolsets.go`
 
 **验收标准**：多个工具调用可并行执行
+
+### 15.6 Stream 流式工具机制
+
+**trpc 框架**：`tool.NewStream(bufferSize)` 创建双向流，`StreamableTool` 接口支持流式调用。
+
+**框架核心类型**：
+
+```go
+// Stream 双向流：Reader 消费 + Writer 生产
+type Stream struct {
+    Reader *StreamReader
+    Writer *StreamWriter
+}
+
+// StreamableTool 流式工具接口
+type StreamableTool interface {
+    StreamableCall(ctx context.Context, jsonArgs []byte) (*StreamReader, error)
+    Tool
+}
+
+// StreamChunk 流式数据单元
+type StreamChunk struct {
+    Content  any      `json:"content"`
+    Metadata Metadata `json:"metadata,omitempty"`
+}
+
+// FinalResultChunk 标记流式工具最终结果
+type FinalResultChunk struct {
+    Result any
+}
+
+// FinalResultStateChunk 最终结果 + 状态增量
+type FinalResultStateChunk struct {
+    Result     any
+    StateDelta map[string][]byte
+}
+```
+
+**Stream 工作原理**：
+
+1. `NewStream(bufferSize)` 创建带缓冲的 channel 双向流
+2. `StreamWriter.Send(chunk, err)` 生产数据块，`closed` channel 控制流终止
+3. `StreamReader.Recv()` 消费数据块，`io.EOF` 标识流结束
+4. `StreamableTool.StreamableCall()` 返回 `StreamReader`，框架逐块消费
+5. `FinalResultChunk` / `FinalResultStateChunk` 标记最终结果，框架保留而非拼接文本
+6. AG-UI 集成：`StreamingToolResultActivityType = "tool.result.stream"` 将流式中间结果转为 Activity 事件
+
+**应用场景**：
+
+| 场景 | 说明 | 实现方式 |
+|------|------|----------|
+| 日志流式查询 | 大量日志逐步返回，无需等待全量 | `StreamableCall` → `StreamWriter.Send` 逐行 |
+| 数据分析 | 长时间计算的中间进度 | `StreamChunk{Content: progress}` + `FinalResultChunk{Result: final}` |
+| Agent 内部流式转发 | AgentTool 包装子 Agent 时转发内部流 | `WithStreamInner(true)` + `InnerTextMode` |
+| 代码执行 | 沙箱执行实时输出 | `workspaceexec` / `skill_run` 逐步推送 stdout |
+| 实时监控 | 持续观测指标变化 | 长连接流式推送 |
+
+**需求**：
+- 实现 `StreamableTool` 适配器，将 trpc `StreamableCall` 桥接到项目工具体系
+- `AssemblyConfig` 增加 `StreamingEnabled` 开关
+- `tool_invocations` 增加 `streaming` 标记和 `chunk_count` 统计
+- 前端 Tools 管理页展示 `supports_streaming` 状态
+- AG-UI SSE 推流集成 `StreamingToolResultActivityType`
+
+**涉及文件**：`internal/tools/toolset.go`、`internal/agent/trpc_build.go`、`internal/server/sse.go`
+
+**验收标准**：
+- 流式工具可逐步返回结果，前端实时展示
+- `FinalResultChunk` 正确标记最终结果
+- 非流式工具不受影响
+
+### 15.7 Memory 记忆工具
+
+**trpc 框架**：`memory/tool` 提供 6 个记忆工具 + `memory.Service` 接口 + 多后端 + 自动提取。
+
+**框架核心类型**：
+
+```go
+// memory.Service 接口
+type Service interface {
+    AddMemory(ctx, userKey, memory, topics, ...AddOption) error
+    UpdateMemory(ctx, memoryKey, memory, topics, ...UpdateOption) error
+    DeleteMemory(ctx, memoryKey) error
+    ClearMemories(ctx, userKey) error
+    ReadMemories(ctx, userKey, limit) ([]*Entry, error)
+    SearchMemories(ctx, userKey, query, ...SearchOption) ([]*Entry, error)
+    Tools() []tool.Tool
+    EnqueueAutoMemoryJob(ctx, sess) error
+    Close() error
+}
+
+// 记忆类型
+type Kind string  // "fact" | "episode"
+type Metadata struct {
+    Kind         Kind
+    EventTime    *time.Time
+    Participants []string
+    Location     string
+}
+```
+
+**6 个记忆工具**：
+
+| 工具名 | 功能 | 风险级别 |
+|--------|------|----------|
+| `memory_add` | 添加持久记忆（fact/episode） | low |
+| `memory_search` | 语义搜索记忆（hybrid search + kind/time 过滤） | low |
+| `memory_load` | 加载最近 N 条记忆 | low |
+| `memory_update` | 更新已有记忆 | medium |
+| `memory_delete` | 删除指定记忆 | medium |
+| `memory_clear` | 清空用户所有记忆 | high |
+
+**两种记忆模式**：
+
+| 模式 | 说明 | 实现方式 |
+|------|------|----------|
+| **Agentic（工具驱动）** | Agent 主动调用 memory_add/search 等工具 | `memory.Service.Tools()` 注入 Agent |
+| **Auto（自动提取）** | 后台 LLM 从对话中自动提取记忆 | `memory.Service.EnqueueAutoMemoryJob()` + `memory/extractor` |
+
+**存储后端**：
+
+| 后端 | 包路径 | 特性 |
+|------|--------|------|
+| SQLite | `memory/sqlite` | 本地开发，基础 CRUD |
+| SQLite + Vec | `memory/sqlitevec` | 本地向量搜索 |
+| PostgreSQL | `memory/postgres` | 生产级关系存储 |
+| pgvector | `memory/pgvector` | 生产级向量搜索 |
+| MySQL | `memory/mysql` | 兼容 MySQL 生态 |
+| MySQL Vec | `memory/mysqlvec` | MySQL 向量搜索 |
+| Redis | `memory/redis` | 高性能缓存 |
+| Mem0 | `memory/mem0` | 第三方记忆平台 |
+
+**需求**：
+- 集成 `memory/tool` 完整 6 工具链到 `Registry()` + `Assemble()`
+- `AssemblyConfig` 增加 `MemoryConfig`（后端类型、连接串、自动提取开关）
+- Agent 设置增加 `memory_mode`：`off` / `agentic` / `auto` / `both`
+- `memory_search` 支持 hybrid search（向量 + 字面）+ kind/time 过滤
+- `memory_add` 支持 fact/episode 两种类型 + 元数据（participants/location/event_time）
+- Auto 模式集成 `memory/extractor`，对话结束后异步提取
+- `tool_invocations` 记录记忆工具调用
+
+**涉及文件**：`internal/tools/toolset.go`、`internal/memory/trpc/`、`internal/agent/trpc_build.go`
+
+**验收标准**：
+- Agent 可调用 memory_add/search/load/update/delete/clear
+- 搜索结果按语义相似度排序，含 score
+- Auto 模式对话后自动提取 fact/episode
+- 记忆按 app+user 隔离
+
+### 15.8 Agent-as-Tool（Agent 编排工具）
+
+**trpc 框架**：`tool/agent.Tool` 将 Agent 包装为可调用 Tool，支持委托和组合。
+
+**框架核心类型**：
+
+```go
+// AgentTool 包装 Agent 为 Tool
+type Tool struct {
+    agent             agent.Agent
+    skipSummarization bool
+    streamInner       bool
+    innerTextMode     InnerTextMode
+    historyScope      HistoryScope
+    responseMode      ResponseMode
+}
+
+// HistoryScope 控制历史传递范围
+type HistoryScope int
+
+// ResponseMode 控制返回内容
+type ResponseMode int
+```
+
+**关键选项**：
+
+| 选项 | 说明 | 默认值 |
+|------|------|--------|
+| `WithSkipSummarization` | 跳过子 Agent 输出摘要 | false |
+| `WithStreamInner` | 转发子 Agent 内部流式事件 | false |
+| `WithHistoryScope` | 控制传递给子 Agent 的历史范围 | 全部 |
+| `WithResponseMode` | `Default`（拼接全部）/ `FinalOnly`（仅最后） | Default |
+| `WithInnerTextMode` | `Include`（转发文本）/ `Exclude`（仅聚合） | Include |
+
+**需求**：
+- `AssemblyConfig.AgentTools` 已实现，需在 UI 暴露配置入口
+- Agent 设置页增加「子 Agent」Tab，选择可委托的 Agent
+- 支持配置 HistoryScope 和 ResponseMode
+- 流式转发与 AG-UI 集成
+
+**涉及文件**：`internal/tools/toolset.go`、`internal/agent/trpc_build.go`、前端 Agent 设置页
+
+**验收标准**：
+- Agent 可通过 AgentTool 调用其他 Agent
+- 子 Agent 的流式事件可转发到父级
+- HistoryScope 正确控制历史传递
+
+### 15.9 MCP Broker（运行时 MCP 发现）
+
+**trpc 框架**：`tool/mcpbroker.Broker` 提供 4 个运行时 MCP 发现工具。
+
+**4 个 Broker 工具**：
+
+| 工具名 | 功能 | 风险级别 |
+|--------|------|----------|
+| `mcp_list_servers` | 列出已配置的命名 MCP 服务器 | low |
+| `mcp_list_tools` | 列出指定 MCP 服务器的工具摘要 | low |
+| `mcp_inspect_tools` | 检查指定 MCP 工具的输入/输出 Schema | low |
+| `mcp_call` | 调用指定 MCP 工具 | high |
+
+**Broker 特性**：
+
+| 特性 | 说明 |
+|------|------|
+| 命名服务器 | 预配置的 MCP 服务器（stdio/sse/streamable_http） |
+| Ad-hoc HTTP | 运行时动态连接任意 HTTP MCP 端点 |
+| 参数验证 | `mcp_call` 调用前自动校验必填参数 |
+| Selector 语法 | `server_name.tool_name` 或 `https://url#tool=name` |
+
+**需求**：
+- `MCPBrokerConfig` 已实现，需在 UI 暴露配置入口
+- Agent 设置页增加「MCP 服务器」Tab
+- 支持 AllowAdHocHTTP 开关
+- `mcp_call` 调用记录写入 `tool_invocations`
+
+**涉及文件**：`internal/tools/toolset.go`、`internal/agent/trpc_build.go`、`internal/biz/agent_mcp_effective.go`
+
+**验收标准**：
+- Agent 可通过 Broker 动态发现和调用 MCP 工具
+- 命名服务器和 Ad-hoc HTTP 均可用
+- 调用记录可审计
+
+---
+
+## 16. 商业级 Agent 编排系统 — 缺失工具能力分析
+
+> 本节分析当前工具体系与商业级 Agent 编排系统的差距，识别需要补充的工具能力。
+
+### 16.1 当前工具能力总览
+
+**已集成（Registry 注册）**：
+
+| 分类 | 工具 | 来源 |
+|------|------|------|
+| filesystem | file (read/write/search/replace/list) | trpc `tool/file` |
+| execution | hostexec, workspace_exec | trpc `tool/hostexec`, `tool/workspaceexec` |
+| web | httpfetch, geminifetch, claudefetch(stub) | trpc `tool/webfetch/*` |
+| search | duckduckgo, google_search, arxiv_search, wikipedia | trpc `tool/duckduckgo`, `tool/google/search`, `tool/arxivsearch`, `tool/wikipedia` |
+| communication | email | trpc `tool/email` |
+| productivity | todo | trpc `tool/todo` |
+| interaction | await_user_reply | trpc `tool/awaitreply` |
+| coding | claudecode | trpc `tool/claudecode` |
+| integration | openapi, mcp, mcpbroker | trpc `tool/openapi`, `tool/mcp`, `tool/mcpbroker` |
+| composition | agent (AgentTool) | trpc `tool/agent` |
+| memory | memory_add/search/load/update/delete/clear | trpc `memory/tool` |
+
+**框架能力已就绪但未在 Registry 注册**：
+
+| 框架包 | 能力 | 说明 |
+|--------|------|------|
+| `tool/codeexec` | 代码执行工具 | 通过 `llmagent.WithCodeExecutor` 注入，非 Registry |
+| `tool/skill` | Skill 加载/执行/文档 | 通过 `llmagent.WithSkills` 注入，非 Registry |
+| `tool/transfer` | Agent 间转移 | Team 编排自动注入，非 Registry |
+
+### 16.2 商业级系统缺失的工具能力
+
+对标 LangChain/LlamaIndex/CrewAI/AutoGen/OpenAI Assistants 等商业级 Agent 编排系统，当前缺失以下关键工具能力：
+
+#### 16.2.1 知识库检索工具（P2 → P1 提升）
+
+**现状**：无 Knowledge 工具，Agent 无法检索外部知识库。
+
+**商业系统对标**：
+- LangChain: `Retriever` + `VectorStore` + `DocumentLoader`
+- OpenAI Assistants: `file_search` 工具
+- LlamaIndex: `QueryEngine` + `RouterQueryEngine`
+
+**需求**：
+- `knowledge_search`：语义搜索知识库文档
+- `knowledge_list`：列出可用知识库
+- `knowledge_upload`：上传文档到知识库
+- 支持 RAG（检索增强生成）流程
+- 支持 AgenticFilter（Agent 决定是否检索）和 SearchFilter（过滤条件）
+- 文档分块（fixed/json/semantic）、OCR、查询改写
+
+**trpc 框架支持**：`knowledge.Knowledge` + `knowledge/tool` + `knowledge/chunking` + `knowledge/ocr`
+
+**对应需求文档**：`37 knowledge.md`
+
+#### 16.2.2 Artifact 制品管理工具（P2）
+
+**现状**：无 Artifact 工具，Agent 运行产出物无法持久化。
+
+**商业系统对标**：
+- OpenAI Assistants: `code_interpreter` 自动产出文件
+- LangChain: `Artifact` + `Blob`
+- CrewAI: `Task.output` + 文件产出
+
+**需求**：
+- `artifact_save`：保存制品（文件/图片/代码输出）
+- `artifact_load`：加载制品
+- `artifact_list`：列出会话/Agent 的制品
+- `artifact_delete`：删除制品
+- 版本管理（同一文件多版本）
+- 多存储后端（InMemory/SQLite/S3/COS）
+
+**trpc 框架支持**：`artifact.Service` + `artifact/cos` + `artifact/s3` + `artifact/inmemory`
+
+**对应需求文档**：`27 artifact.md`
+
+#### 16.2.3 代码沙箱执行工具（P2）
+
+**现状**：仅有 `codeexecutor/local`，无沙箱隔离。
+
+**商业系统对标**：
+- OpenAI: `code_interpreter`（沙箱 Python）
+- E2B: `Sandbox`（云端安全执行）
+- Anthropic: `computer_use`（沙箱浏览器）
+
+**需求**：
+- `code_execute`：在沙箱中执行代码（Python/Bash/JS）
+- 支持 E2B 云端沙箱
+- 支持 Jupyter 内核
+- 支持 Container 隔离
+- Interactive 模式（多轮执行保持状态）
+- 产出物自动收集
+
+**trpc 框架支持**：`codeexecutor.CodeExecutor` + `codeexecutor/e2b` + `codeexecutor/jupyter` + `codeexecutor/container`
+
+**对应需求文档**：`32 codeexecutor.md`
+
+#### 16.2.4 图片/媒体理解与生成工具（P2）
+
+**现状**：无媒体工具，Agent 无法理解或生成图片/音频/视频。
+
+**商业系统对标**：
+- OpenAI: `dall-e` 图片生成 + `gpt-4-vision` 图片理解 + `tts` 语音
+- Anthropic: `claude-3-vision` 图片理解
+- Google: `gemini-pro-vision` 多模态
+
+**需求**：
+- `image_understand`：分析图片附件（依赖视觉模型）
+- `image_generate`：生成图片（依赖 DALL-E/Stable Diffusion）
+- `document_read`：理解 PDF/Office/CSV 文档
+- `tts`：文本转语音
+- `stt`：语音转文本
+
+**trpc 框架支持**：部分通过 `tool/claudecode` 的 `read` 工具支持图片理解；`tts` 需自行实现
+
+#### 16.2.5 时间与调度工具（P1）
+
+**现状**：无时间工具，Agent 无法获取当前时间或设置定时任务。
+
+**商业系统对标**：
+- LangChain: `DateTimeTool`
+- AutoGen: 内置时间工具
+- CrewAI: `TimerTool`
+
+**需求**：
+- `datetime`：获取当前时间、时区、日期格式
+- `schedule`：设置定时任务（与 `21 cron.md` 对齐）
+- `timer`：倒计时/提醒
+
+**实现复杂度**：低，可快速实现
+
+#### 16.2.6 人机交互增强工具（P2）
+
+**现状**：仅有 `await_user_reply`，缺少丰富的交互方式。
+
+**商业系统对标**：
+- OpenAI: `function_calling` + `required_action`
+- LangGraph: `interrupt` + `Command(resume=)`
+- CrewAI: `human_input`
+
+**需求**：
+- `ask_user`：向用户提问并等待回复（增强版 awaitreply）
+- `confirm_action`：高风险操作确认（与审批流集成）
+- `select_option`：让用户从选项中选择
+- `upload_file`：请求用户上传文件
+
+**trpc 框架支持**：`tool/awaitreply` + `tool/function.LongRunner` + `agent.Invocation` 的 Resume 机制
+
+#### 16.2.7 数据库/结构化数据工具（P3）
+
+**现状**：无数据库工具，Agent 无法查询结构化数据。
+
+**商业系统对标**：
+- LangChain: `SQLDatabaseChain` + `DataFrameAgent`
+- Vanna: `Text2SQL`
+- OpenAI: `code_interpreter` 处理 CSV
+
+**需求**：
+- `sql_query`：安全 SQL 查询（只读，白名单表）
+- `csv_analyze`：分析 CSV 数据
+- `chart_generate`：生成图表
+- 数据脱敏和权限控制
+
+**安全约束**：只允许 SELECT；禁止 DDL/DML；结果行数限制；敏感字段脱敏
+
+#### 16.2.8 通知与消息推送工具（P2）
+
+**现状**：仅有 `email`，缺少多渠道通知。
+
+**商业系统对标**：
+- Zapier: 多渠道集成
+- n8n: Webhook + 通知节点
+- Slack/Teams Bot: 消息推送
+
+**需求**：
+- `notify`：统一通知接口（邮件/IM/Webhook）
+- `webhook_call`：调用外部 Webhook
+- `slack_message`：发送 Slack 消息
+- `sms_send`：发送短信
+
+**trpc 框架支持**：`tool/email` 已有；其他需自行实现或通过 MCP 集成
+
+#### 16.2.9 工作流编排工具（P3）
+
+**现状**：Agent 无法在工具层面编排子工作流。
+
+**商业系统对标**：
+- LangGraph: `ToolNode` + 条件边
+- CrewAI: `Task` + `Process`
+- AutoGen: `GroupChat` + `NestedChat`
+
+**需求**：
+- `workflow_start`：启动子工作流
+- `workflow_status`：查询工作流状态
+- `workflow_cancel`：取消工作流
+- 与 `36 graph-workflow.md` 对齐
+
+**trpc 框架支持**：`graph.StateGraph` + `tool/agent.Tool` 可组合实现
+
+#### 16.2.10 评估与测试工具（P3）
+
+**现状**：无评估工具，无法自动化测试 Agent 质量。
+
+**商业系统对标**：
+- LangSmith: `Evaluate` + `Dataset`
+- Promptfoo: 评估框架
+- OpenAI Evals: 评估平台
+
+**需求**：
+- `eval_run`：运行评估集
+- `eval_compare`：比较不同版本 Agent 表现
+- `eval_report`：生成评估报告
+
+**trpc 框架支持**：`evaluation.AgentEvaluator` + `evaluation.EvalSet` + `evaluation.Metric`
+
+**对应需求文档**：`33 evaluation.md`
+
+### 16.3 工具能力优先级矩阵
+
+| 优先级 | 工具 | 商业价值 | 实现复杂度 | 框架支持 |
+|--------|------|----------|-----------|----------|
+| **P1** | `datetime` | 基础能力 | 低 | 需自行实现 |
+| **P1** | `knowledge_search` | 核心差异化 | 中 | ✅ `knowledge/tool` |
+| **P1** | `image_understand` | 多模态刚需 | 低 | 部分（视觉模型） |
+| **P2** | `artifact_save/load/list` | 产出物管理 | 中 | ✅ `artifact.Service` |
+| **P2** | `code_execute`（沙箱） | 安全执行 | 中 | ✅ `codeexecutor/e2b` |
+| **P2** | `confirm_action` | 安全控制 | 低 | ✅ `LongRunner` |
+| **P2** | `notify`（多渠道） | 企业集成 | 中 | 部分（email） |
+| **P2** | `image_generate` | 创意场景 | 中 | 需自行实现 |
+| **P2** | `document_read` | 文档理解 | 中 | 需自行实现 |
+| **P3** | `sql_query` | 数据分析 | 高 | 需自行实现 |
+| **P3** | `workflow_start/status` | 编排增强 | 高 | ✅ `graph.StateGraph` |
+| **P3** | `eval_run` | 质量保障 | 中 | ✅ `evaluation` |
+| **P3** | `chart_generate` | 数据可视化 | 中 | 需自行实现 |
+| **P3** | `stt` | 语音输入 | 中 | 需自行实现 |
+
+### 16.4 工具分类体系更新
+
+基于商业级系统需求，更新工具分类体系：
+
+| 分类 | 新增工具 | 原有工具 |
+|------|----------|----------|
+| `filesystem` | `workspace_search`(P0) | `file`, `hostexec`, `workspace_exec` |
+| `web` | — | `httpfetch`, `geminifetch`, `claudefetch` |
+| `search` | — | `duckduckgo`, `google_search`, `arxiv_search`, `wikipedia` |
+| `memory` | — | `memory_add/search/load/update/delete/clear` |
+| `knowledge` | `knowledge_search`, `knowledge_list`, `knowledge_upload` | — |
+| `artifact` | `artifact_save`, `artifact_load`, `artifact_list`, `artifact_delete` | — |
+| `code` | `code_execute`(沙箱) | `claudecode` |
+| `media` | `image_understand`, `image_generate`, `document_read`, `tts`, `stt` | — |
+| `communication` | `notify`, `webhook_call`, `slack_message`, `sms_send` | `email` |
+| `interaction` | `ask_user`, `confirm_action`, `select_option`, `upload_file` | `await_user_reply` |
+| `system` | `datetime`, `schedule`, `timer` | — |
+| `data` | `sql_query`, `csv_analyze`, `chart_generate` | — |
+| `workflow` | `workflow_start`, `workflow_status`, `workflow_cancel` | — |
+| `evaluation` | `eval_run`, `eval_compare`, `eval_report` | — |
+| `integration` | — | `openapi`, `mcp`, `mcpbroker` |
+| `composition` | — | `agent`(AgentTool) |
+
+### 16.5 首批建议实现（P1）
+
+| Tool Key | 名称 | 分类 | 风险 | 默认 | 说明 |
+|----------|------|------|------|------|------|
+| `datetime` | 当前时间 | system | low | 启用 | 返回当前时间、时区、日期格式 |
+| `knowledge_search` | 知识库搜索 | knowledge | low | 启用 | 语义搜索知识库文档 |
+| `knowledge_list` | 知识库列表 | knowledge | low | 启用 | 列出可用知识库 |
+| `image_understand` | 图片理解 | media | low | 启用 | 分析图片附件 |
+| `confirm_action` | 操作确认 | interaction | medium | 启用 | 高风险操作需用户确认 |
+| `ask_user` | 用户提问 | interaction | low | 启用 | 向用户提问并等待回复 |
+
+---
+
+*文档版本：3.0 — 整合 Stream 流式机制、Memory 记忆工具、AgentTool/MCPBroker 对齐需求、商业级系统缺失工具能力分析（§15.6-16.5 新增）。*

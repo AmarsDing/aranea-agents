@@ -1077,3 +1077,446 @@ export async function getAgentEffectiveTools(agentId: string): Promise<AgentEffe
 |------|------|------|
 | `/tools` | ToolsPage | 工具目录管理页 |
 | `/tools/runs` | ToolRunsPage | 工具调用记录页 |
+
+---
+
+## 九、Stream 流式工具机制设计
+
+### 9.1 框架核心接口
+
+trpc-agent-go 的流式工具体系基于以下核心类型：
+
+```go
+// tool.Tool 三层接口
+type Tool interface { Declaration() *Declaration }
+type CallableTool interface { Call(ctx, jsonArgs) (any, error); Tool }
+type StreamableTool interface { StreamableCall(ctx, jsonArgs) (*StreamReader, error); Tool }
+
+// tool.Stream 双向流
+type Stream struct {
+    Reader *StreamReader  // 消费端
+    Writer *StreamWriter  // 生产端
+}
+
+// tool.StreamChunk 流式数据单元
+type StreamChunk struct {
+    Content  any      `json:"content"`
+    Metadata Metadata `json:"metadata,omitempty"`
+}
+
+// tool.FinalResultChunk 最终结果标记
+type FinalResultChunk struct { Result any }
+
+// tool.FinalResultStateChunk 最终结果 + 状态增量
+type FinalResultStateChunk struct {
+    Result     any
+    StateDelta map[string][]byte
+}
+```
+
+### 9.2 Stream 内部实现
+
+```go
+// 底层基于 channel 的泛型流
+type stream[T any] struct {
+    items  chan streamItem[T]   // 缓冲 channel
+    closed chan struct{}        // 关闭信号
+}
+
+// NewStream(bufferSize) 创建流
+// - bufferSize 控制 Send 阻塞前的队列深度
+// - closed channel 用于 Reader 主动取消时通知 Writer 停止
+
+// Send 路径：
+//   1. select closed → 已关闭，返回 true
+//   2. select items ← → 发送成功，返回 false
+
+// Recv 路径：
+//   1. channel 关闭后返回 io.EOF
+//   2. 正常消费 streamItem
+```
+
+### 9.3 流式工具执行流程
+
+```
+LLM 返回 tool_call
+  → 框架检测工具是否实现 StreamableTool
+  → 是：调用 StreamableCall(ctx, args) → 返回 StreamReader
+     → 循环 Recv() 消费 StreamChunk
+     → 遇到 FinalResultChunk → 保留为最终结果
+     → 遇到 FinalResultStateChunk → 保留结果 + 发出 StateDelta 事件
+     → 遇到 io.EOF → 流结束
+     → 非最终 chunk → 转为文本拼接（若无 FinalResultChunk）
+  → 否：调用 Call(ctx, args) → 返回同步结果
+```
+
+### 9.4 AG-UI 集成
+
+```go
+// agui.WithStreamingToolResultActivityEnabled(true)
+// 开启后，流式中间结果转为 Activity 事件：
+// - ActivityType = "tool.result.stream"
+// - ActivityMessageID = "tool-result-activity-" + toolCallID
+// 工具结束时仍发一条 TOOL_CALL_RESULT
+
+// 未开启时：
+// 同一 tool call 可能产生多条 TOOL_CALL_RESULT
+```
+
+### 9.5 项目集成设计
+
+**AssemblyConfig 扩展**：
+
+```go
+type AssemblyConfig struct {
+    // ... 已有字段
+    StreamingEnabled bool  // 全局流式工具开关
+}
+```
+
+**Registry 注册**：
+
+```go
+// 在 ToolRegistration 中已有 supports_streaming 标记
+// 流式工具在 Assemble 时需检查 StreamingEnabled
+// 若工具实现 StreamableTool 且 StreamingEnabled=true，框架自动使用 StreamableCall
+```
+
+**tool_invocations 扩展**：
+
+```sql
+ALTER TABLE tool_invocations ADD COLUMN streaming INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE tool_invocations ADD COLUMN chunk_count INTEGER NOT NULL DEFAULT 0;
+```
+
+**SSE 推流**：
+
+- `internal/server/sse.go` 已支持事件推流
+- 流式工具的中间结果通过 `StreamingToolResultActivityType` 转为 Activity 事件
+- 前端可按 `activityType === "tool.result.stream"` 过滤展示实时进度
+
+---
+
+## 十、Memory 记忆工具设计
+
+### 10.1 框架架构
+
+```
+memory/
+├── memory.go           # Service 接口 + Kind/Metadata/Entry/Key/UserKey
+├── tool/tool.go        # 6 个记忆工具（add/search/load/update/delete/clear）
+├── extractor/          # 自动提取（LLM 从对话中提取记忆）
+├── inmemory/           # 内存后端
+├── sqlite/             # SQLite 后端
+├── sqlitevec/          # SQLite + 向量搜索
+├── postgres/           # PostgreSQL 后端
+├── pgvector/           # pgvector 向量搜索
+├── mysql/              # MySQL 后端
+├── mysqlvec/           # MySQL 向量搜索
+├── redis/              # Redis 后端
+└── mem0/               # Mem0 平台适配
+```
+
+### 10.2 Service 接口
+
+```go
+type Service interface {
+    AddMemory(ctx, userKey UserKey, memory string, topics []string, ...AddOption) error
+    UpdateMemory(ctx, memoryKey Key, memory string, topics []string, ...UpdateOption) error
+    DeleteMemory(ctx, memoryKey Key) error
+    ClearMemories(ctx, userKey UserKey) error
+    ReadMemories(ctx, userKey UserKey, limit int) ([]*Entry, error)
+    SearchMemories(ctx, userKey UserKey, query string, ...SearchOption) ([]*Entry, error)
+    Tools() []tool.Tool
+    EnqueueAutoMemoryJob(ctx, sess *session.Session) error
+    Close() error
+}
+```
+
+### 10.3 工具注入路径
+
+```
+AssemblyConfig.MemoryConfig
+  → Assemble() 检查 MemoryConfig
+  → 创建 memory.Service 实例（根据后端类型）
+  → service.Tools() 返回 6 个 tool.Tool
+  → 追加到 AssembledToolsets.Tools
+  → Agent 构建时注入 llmagent.WithMemoryService(service)
+```
+
+### 10.4 MemoryConfig 设计
+
+```go
+type MemoryConfig struct {
+    Backend       string  // "sqlite" / "sqlitevec" / "postgres" / "pgvector" / "mysql" / "redis" / "mem0" / "inmemory"
+    ConnectionDSN string  // 连接串
+    AutoExtract   bool    // 是否启用自动提取
+    Mode          string  // "off" / "agentic" / "auto" / "both"
+}
+```
+
+### 10.5 两种记忆模式
+
+**Agentic 模式**：
+- Agent 主动调用 `memory_add` / `memory_search` 等工具
+- 工具通过 `GetMemoryServiceFromContext(ctx)` 获取 Service
+- 通过 `GetAppAndUserFromContext(ctx)` 获取 app+user 隔离
+
+**Auto 模式**：
+- 对话结束后，Runner 调用 `service.EnqueueAutoMemoryJob(ctx, session)`
+- `memory/extractor` 使用 LLM 从对话历史中提取 fact/episode
+- 提取结果自动调用 `service.AddMemory()` 存储
+- 增量提取：基于 `SessionStateKeyAutoMemoryLastExtractAt` 时间戳
+
+### 10.6 搜索能力
+
+```go
+type SearchOptions struct {
+    Query         string
+    Kind          Kind       // "fact" / "episode" 过滤
+    KindFallback  bool       // kind 过滤结果不足时回退
+    TimeAfter     *time.Time
+    TimeBefore    *time.Time
+    OrderByEventTime bool
+    Deduplicate   bool       // 默认 true
+    HybridSearch  bool       // 默认 true：向量 + 字面混合
+}
+```
+
+---
+
+## 十一、AgentTool 与 MCPBroker 设计
+
+### 11.1 AgentTool 设计
+
+**AssemblyConfig 已有**：
+
+```go
+type AgentToolConfig struct {
+    Agent             trpcagent.Agent
+    Name              string
+    Description       string
+    SkipSummarization bool
+    StreamInner       bool
+    HistoryScope      trpcagenttool.HistoryScope
+    ResponseMode      trpcagenttool.ResponseMode
+}
+```
+
+**Assemble 路径**：
+
+```
+AssemblyConfig.AgentTools
+  → 遍历每个 AgentToolConfig
+  → trpcagenttool.NewTool(agent, opts...)
+  → 追加到 AssembledToolsets.Tools
+```
+
+**关键行为**：
+
+| 选项 | 效果 |
+|------|------|
+| `SkipSummarization=false` | 子 Agent 输出被摘要后返回 |
+| `StreamInner=true` | 子 Agent 的流式事件转发到父级 |
+| `InnerTextMode=Exclude` | 不转发子 Agent 的文本消息，仅聚合到最终结果 |
+| `ResponseMode=FinalOnly` | 只返回子 Agent 最后一条 assistant 消息 |
+| `HistoryScope` | 控制传递给子 Agent 的对话历史范围 |
+
+### 11.2 MCPBroker 设计
+
+**AssemblyConfig 已有**：
+
+```go
+type MCPBrokerConfig struct {
+    Servers         []MCPServerConfig
+    AllowAdHocHTTP  bool
+    AdHocTimeoutSec int
+}
+```
+
+**Assemble 路径**：
+
+```
+AssemblyConfig.MCPBroker
+  → buildMCPBrokerTools(cfg)
+  → trpcmcpbroker.New(opts...)
+  → broker.Tools() → 4 个工具
+  → 追加到 AssembledToolsets.Tools
+```
+
+**4 个 Broker 工具调用链**：
+
+```
+mcp_list_servers → broker.listServers → 返回命名服务器列表
+mcp_list_tools   → broker.listTools(selector) → 连接 MCP 服务器 → ListTools → 返回工具摘要
+mcp_inspect_tools → broker.inspectTools(selector, tools) → 连接 MCP 服务器 → ListTools → 过滤 → 返回 Schema
+mcp_call         → broker.callTool(selector, arguments) → 连接 MCP 服务器 → 验证参数 → CallTool → 返回结果
+```
+
+**Selector 解析**：
+
+- 命名服务器：`local_stdio_code.add` → server=`local_stdio_code`, tool=`add`
+- Ad-hoc HTTP：`https://example.com/mcp.add` → URL=`https://example.com/mcp`, tool=`add`
+- 替代语法：`https://example.com/mcp#tool=add`（避免 URL 中 dot 歧义）
+
+---
+
+## 十二、商业级系统工具扩展设计
+
+### 12.1 新增工具注册设计
+
+基于需求文档 §16 的分析，新增以下工具到 Registry：
+
+```go
+// Registry() 新增条目
+{
+    Name:        "datetime",
+    Description: "Current date and time tool",
+    Category:    "system",
+    Factory: func(ctx context.Context) (Tool, error) {
+        return newDateTimeTool(), nil
+    },
+    EnabledByDefault: true,
+},
+{
+    Name:        "knowledge",
+    Description: "Knowledge base search ToolSet (knowledge_search, knowledge_list)",
+    Category:    "knowledge",
+    ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
+        return nil, fmt.Errorf("knowledge requires knowledge service configuration")
+    },
+    EnabledByDefault: false,
+},
+{
+    Name:        "artifact",
+    Description: "Artifact management ToolSet (save, load, list, delete)",
+    Category:    "artifact",
+    ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
+        return nil, fmt.Errorf("artifact requires storage configuration")
+    },
+    EnabledByDefault: false,
+},
+{
+    Name:        "code_execute",
+    Description: "Sandboxed code execution tool (E2B/Jupyter/Container)",
+    Category:    "code",
+    Factory: func(ctx context.Context) (Tool, error) {
+        return nil, fmt.Errorf("code_execute requires executor configuration")
+    },
+    EnabledByDefault: false,
+},
+{
+    Name:        "confirm_action",
+    Description: "Human-in-the-loop action confirmation tool",
+    Category:    "interaction",
+    Factory: func(ctx context.Context) (Tool, error) {
+        return newConfirmActionTool(), nil
+    },
+    EnabledByDefault: false,
+},
+{
+    Name:        "image_understand",
+    Description: "Image understanding tool (vision model required)",
+    Category:    "media",
+    Factory: func(ctx context.Context) (Tool, error) {
+        return nil, fmt.Errorf("image_understand requires vision model configuration")
+    },
+    EnabledByDefault: false,
+},
+```
+
+### 12.2 AssemblyConfig 扩展
+
+```go
+type AssemblyConfig struct {
+    // ... 已有字段
+
+    // 新增
+    MemoryConfig    *MemoryConfig
+    KnowledgeConfig *KnowledgeConfig
+    ArtifactConfig  *ArtifactConfig
+    CodeExecConfig  *CodeExecConfig
+    DateTimeEnabled bool
+    ConfirmActionEnabled bool
+}
+
+type MemoryConfig struct {
+    Backend       string  // "sqlite" / "pgvector" / "mem0" / "inmemory"
+    ConnectionDSN string
+    AutoExtract   bool
+    Mode          string  // "off" / "agentic" / "auto" / "both"
+}
+
+type KnowledgeConfig struct {
+    Service knowledge.Knowledge  // 框架 Knowledge 实例
+    Filter  *knowledge.SearchFilter
+}
+
+type ArtifactConfig struct {
+    Service artifact.Service  // 框架 Artifact Service 实例
+}
+
+type CodeExecConfig struct {
+    Executor  codeexecutor.CodeExecutor
+    Languages []string
+}
+```
+
+### 12.3 工具分类体系 Proto 扩展
+
+```protobuf
+// tool.proto 中 Tool.category 枚举扩展
+// 原有: system / data / network / filesystem / web / search / memory / skill / media / session / messaging / mcp
+// 新增:
+//   knowledge  — 知识库检索
+//   artifact   — 制品管理
+//   code       — 代码执行
+//   interaction — 人机交互
+//   workflow   — 工作流编排
+//   evaluation — 评估测试
+```
+
+### 12.4 工具风险级别映射
+
+| 分类 | 默认风险 | 说明 |
+|------|----------|------|
+| `system` | low | datetime 等只读工具 |
+| `filesystem` | low(读)/medium(写)/high(执行) | 按操作类型区分 |
+| `web` | medium | 外部网络访问 |
+| `search` | low | 只读搜索 |
+| `memory` | low(读)/medium(写)/high(清空) | 按操作类型区分 |
+| `knowledge` | low | 只读检索 |
+| `artifact` | low(读)/medium(写) | 按操作类型区分 |
+| `code` | high | 代码执行有安全风险 |
+| `media` | medium | 可能涉及隐私和成本 |
+| `interaction` | low(提问)/medium(确认) | 按交互类型区分 |
+| `integration` | medium-high | MCP/外部 API 调用 |
+| `composition` | medium | Agent 委托 |
+| `communication` | high | 外部消息发送 |
+| `workflow` | medium | 工作流编排 |
+| `evaluation` | low | 只读评估 |
+
+### 12.5 前端 UI 扩展设计
+
+**Tools 管理页分类筛选扩展**：
+
+新增分类选项：`knowledge`、`artifact`、`code`、`interaction`、`workflow`、`evaluation`
+
+**Agent 工具配置 Tab 扩展**：
+
+| Tab | 新增内容 |
+|-----|----------|
+| Memory | memory_mode 选择（off/agentic/auto/both）、后端配置 |
+| Knowledge | 知识库绑定、搜索过滤配置 |
+| MCP 服务器 | MCP 服务器列表、AllowAdHocHTTP 开关 |
+| 子 Agent | 可委托的 Agent 列表、HistoryScope/ResponseMode 配置 |
+| 代码执行 | 执行器类型（Local/E2B/Jupyter）、语言限制 |
+
+**Tool 详情页流式标记**：
+
+- `supports_streaming=true` 的工具展示流式标识
+- 流式工具的调用记录展示 `chunk_count` 和实时进度
+
+---
+
+*文档版本：2.0 — 整合 Stream 流式机制（§9）、Memory 记忆工具（§10）、AgentTool/MCPBroker（§11）、商业级系统工具扩展（§12）设计。*

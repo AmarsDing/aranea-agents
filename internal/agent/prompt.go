@@ -75,6 +75,7 @@ func RuntimeCapabilityCue(ctx context.Context, d Deps, ag biz.Agent) string {
 				var keys []string
 				memCue := false
 				mcpCue := false
+				mcpBrokerCue := false
 				hasWorkspaceSearch := false
 				for _, it := range eff.Items {
 					if it.Enabled {
@@ -85,7 +86,9 @@ func RuntimeCapabilityCue(ctx context.Context, d Deps, ag biz.Agent) string {
 							memCue = true
 						case biz.ToolKeyMCPToolSet:
 							mcpCue = true
-						case "workspace_search":
+						case biz.ToolKeyMCPBroker:
+							mcpBrokerCue = true
+						case "search_content":
 							hasWorkspaceSearch = true
 						}
 					}
@@ -96,9 +99,9 @@ func RuntimeCapabilityCue(ctx context.Context, d Deps, ag biz.Agent) string {
 					b.WriteString("- Effective tool keys: (none under current profile and allow list)\n")
 				}
 				if hasWorkspaceSearch {
-					b.WriteString("- workspace_search: use to locate symbols or string literals across the workspace before listing directories; preferred order: workspace_search → read_file (use start_line/end_line for large files) → edit/write. Avoid list_files at repo root without a narrowed path or keyword.\n")
+					b.WriteString("- search_content: use to locate symbols or string literals across the workspace before listing directories; preferred order: search_content → read_file (use start_line/end_line for large files) → replace_content/save_file. Avoid list_file at repo root without a narrowed path or keyword.\n")
 				}
-				b.WriteString("- Execution planning: state 3-7 verifiable steps before substantive edits; prefer tests or builds on affected packages when tools allow; if intent_artifact appears in session metadata, align steps with refined_goal and use search_hints for workspace_search queries.\n")
+				b.WriteString("- Execution planning: state 3-7 verifiable steps before substantive edits; prefer tests or builds on affected packages when tools allow; if intent_artifact appears in session metadata, align steps with refined_goal and use search_hints for search_content queries.\n")
 				if memCue {
 					if d.SQLiteSessionMemory {
 						b.WriteString("- load_memory/preload_memory: SQLite-backed session memory (memory_entities); durable across process restarts for turns that sync into the store.\n")
@@ -108,6 +111,9 @@ func RuntimeCapabilityCue(ctx context.Context, d Deps, ag biz.Agent) string {
 				}
 				if mcpCue {
 					b.WriteString("- MCP (mcp_tool_set): tools from enabled platform MCP servers (stdio/sse/streamable_http per row). Optional: include `mcp:<server_key>` in Tools allow/deny JSON to restrict which servers mount; stdio servers respect request context cancellation when the tool runner passes it through.\n")
+				}
+				if mcpBrokerCue {
+					b.WriteString("- MCP Broker (mcp_broker): runtime MCP discovery tools (mcp_list_servers, mcp_list_tools, mcp_inspect_tools, mcp_call). Use these to dynamically discover and invoke MCP servers at runtime instead of having tools pre-mounted.\n")
 				}
 				if len(eff.Deny) > 0 {
 					b.WriteString("- Deny list: " + strings.Join(eff.Deny, ", ") + "\n")

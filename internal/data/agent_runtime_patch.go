@@ -21,6 +21,14 @@ func ensureAgentRuntimePatches(ctx context.Context, c *ent.Client) error {
 		{"l0_compress_provider", `ALTER TABLE agent_runtime_settings ADD COLUMN l0_compress_provider TEXT NOT NULL DEFAULT ''`},
 		{"l0_compress_model", `ALTER TABLE agent_runtime_settings ADD COLUMN l0_compress_model TEXT NOT NULL DEFAULT ''`},
 		{"intent_pass_enabled", `ALTER TABLE agent_runtime_settings ADD COLUMN intent_pass_enabled INTEGER NOT NULL DEFAULT 1`},
+		{"tools_retry_enabled", `ALTER TABLE agent_runtime_settings ADD COLUMN tools_retry_enabled INTEGER NOT NULL DEFAULT 0`},
+		{"tools_retry_max_attempts", `ALTER TABLE agent_runtime_settings ADD COLUMN tools_retry_max_attempts INTEGER NOT NULL DEFAULT 2`},
+		{"tools_retry_initial_interval_ms", `ALTER TABLE agent_runtime_settings ADD COLUMN tools_retry_initial_interval_ms INTEGER NOT NULL DEFAULT 500`},
+		{"tools_retry_backoff_factor", `ALTER TABLE agent_runtime_settings ADD COLUMN tools_retry_backoff_factor REAL NOT NULL DEFAULT 2.0`},
+		{"tools_retry_max_interval_ms", `ALTER TABLE agent_runtime_settings ADD COLUMN tools_retry_max_interval_ms INTEGER NOT NULL DEFAULT 5000`},
+		{"tools_retry_jitter", `ALTER TABLE agent_runtime_settings ADD COLUMN tools_retry_jitter INTEGER NOT NULL DEFAULT 1`},
+		{"tools_parallel_enabled", `ALTER TABLE agent_runtime_settings ADD COLUMN tools_parallel_enabled INTEGER NOT NULL DEFAULT 0`},
+		{"tools_streaming_enabled", `ALTER TABLE agent_runtime_settings ADD COLUMN tools_streaming_enabled INTEGER NOT NULL DEFAULT 0`},
 	}
 	for _, p := range patches {
 		has, err := sqliteColumnExists(ctx, c, "agent_runtime_settings", p.col)

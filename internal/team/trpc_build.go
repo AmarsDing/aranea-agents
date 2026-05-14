@@ -14,6 +14,7 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/agent/cycleagent"
 	"trpc.group/trpc-go/trpc-agent-go/agent/parallelagent"
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
+	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 	trpcteam "trpc.group/trpc-go/trpc-agent-go/team"
 )
 
@@ -66,10 +67,16 @@ func BuildTRPCTeam(ctx context.Context, def Definition, deps TRPCTeamBuilderDeps
 
 	case "swarm":
 		entryName := memberAgents[0].Info().Name
+		opts := []trpcteam.Option{
+			trpcteam.WithSwarmConfig(trpcteam.DefaultSwarmConfig()),
+			trpcteam.WithCrossRequestTransfer(true),
+			trpcteam.WithSwarmHandoffInputBuilder(defaultSwarmHandoffInput),
+		}
 		t, err := trpcteam.NewSwarm(
 			"team",
 			entryName,
 			memberAgents,
+			opts...,
 		)
 		if err != nil {
 			return nil, kerrors.InternalServer("TEAM", fmt.Sprintf("new swarm: %v", err))
@@ -103,4 +110,17 @@ func defaultEscalationFunc(ev *trpcevent.Event) bool {
 		}
 	}
 	return false
+}
+
+func defaultSwarmHandoffInput(ctx context.Context, args trpcteam.SwarmHandoffInputArgs) (trpcmodel.Message, error) {
+	transferMsg := strings.TrimSpace(args.TransferMessage)
+	if transferMsg == "" {
+		return args.RootInput, nil
+	}
+	rootContent := strings.TrimSpace(args.RootInput.Content)
+	if rootContent != "" {
+		combined := fmt.Sprintf("[Original request]: %s\n\n[Handoff from %s]: %s", rootContent, args.FromAgentName, transferMsg)
+		return trpcmodel.NewUserMessage(combined), nil
+	}
+	return trpcmodel.NewUserMessage(transferMsg), nil
 }

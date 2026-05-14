@@ -37,6 +37,14 @@ export type AgentRuntimeSettings = {
   tools_allow_json: string;
   tools_deny_json: string;
   tools_concurrent_allow_json: string;
+  tools_retry_enabled?: boolean;
+  tools_retry_max_attempts?: number;
+  tools_retry_initial_interval_ms?: number;
+  tools_retry_backoff_factor?: number;
+  tools_retry_max_interval_ms?: number;
+  tools_retry_jitter?: boolean;
+  tools_parallel_enabled?: boolean;
+  tools_streaming_enabled?: boolean;
   memory_enabled: boolean;
   memory_max_chunk_length: number;
   memory_max_results: number;

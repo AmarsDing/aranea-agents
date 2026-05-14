@@ -14,6 +14,7 @@ import (
 	"time"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
+	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/legacychat"
 	"aranea-agents/internal/runtimedeps"
@@ -300,18 +301,16 @@ func (s *ChatService) StopGeneration(ctx context.Context, req *chatv1.StopGenera
 	if !ok {
 		return &chatv1.StopGenerationResponse{Stopped: false}, nil
 	}
-	runner, ok := val.(trpcrunner.ManagedRunner)
-	if ok {
-		stopped := runner.Cancel(sessionID)
-		return &chatv1.StopGenerationResponse{Stopped: stopped}, nil
-	}
 	r, ok := val.(trpcrunner.Runner)
-	if ok {
-		_ = r.Close()
-		s.activeRuns.Delete(sessionID)
+	if !ok {
+		return &chatv1.StopGenerationResponse{Stopped: false}, nil
+	}
+	if chatagent.CancelTRPCRun(r, sessionID) {
 		return &chatv1.StopGenerationResponse{Stopped: true}, nil
 	}
-	return &chatv1.StopGenerationResponse{Stopped: false}, nil
+	_ = r.Close()
+	s.activeRuns.Delete(sessionID)
+	return &chatv1.StopGenerationResponse{Stopped: true}, nil
 }
 
 type pendingEntry struct {

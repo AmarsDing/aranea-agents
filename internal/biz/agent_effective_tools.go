@@ -46,12 +46,14 @@ func jsonStringList(raw string) []string {
 	return result
 }
 
-var toolGroupsFilesystem = []string{"read_file", "write_file", "list_files", "edit_file", "workspace_search"}
-var toolGroupsWeb = []string{"web_search", "web_fetch"}
+var toolGroupsFilesystem = []string{"read_file", "read_multiple_files", "save_file", "list_file", "search_file", "search_content", "replace_content"}
+var toolGroupsWeb = []string{"duckduckgo_search", "web_fetch", "gemini_web_fetch", "google_search", "arxiv_search", "wikipedia_search"}
 var toolGroupsMemory = []string{"memory_search", "memory_get"}
 var toolGroupsSkill = []string{"skill_search", "use_skill"}
 var toolGroupsMedia = []string{"read_image", "read_document", "create_image", "tts"}
-var toolGroupsRuntime = []string{"shell_exec"}
+var toolGroupsRuntime = []string{"shell_exec", "claude_code", "workspace_exec"}
+var toolGroupsMessaging = []string{"send_email"}
+var toolGroupsSession = []string{"await_user_reply", "todo_write"}
 
 // syntheticShellExecCatalogTool matches internal/data builtin seeds when the tools table has no shell_exec row.
 func syntheticShellExecCatalogTool() Tool {
@@ -70,15 +72,15 @@ func syntheticShellExecCatalogTool() Tool {
 
 func syntheticWebSearchCatalogTool() Tool {
 	return Tool{
-		Key:                  "web_search",
-		DisplayName:          "Web 搜索",
-		Description:          "搜索实时网络信息，返回标题、链接和摘要。",
+		Key:                  "duckduckgo_search",
+		DisplayName:          "DuckDuckGo 搜索",
+		Description:          "使用 DuckDuckGo 搜索实时网络信息，返回标题、链接和摘要。",
 		Category:             "web",
 		Source:               "builtin",
 		RiskLevel:            "medium",
 		Enabled:              true,
 		Readonly:             true,
-		ParametersSchemaJSON: `{"type":"object","properties":{"query":{"type":"string","description":"搜索关键词"},"limit":{"type":"number","description":"返回结果数量"}},"required":["query"]}`,
+		ParametersSchemaJSON: `{"type":"object","properties":{"query":{"type":"string","description":"搜索关键词"}},"required":["query"]}`,
 	}
 }
 
@@ -120,6 +122,10 @@ func expandToolGroup(name string, catalog []Tool) []string {
 		return append([]string{}, toolGroupsMedia...)
 	case "runtime":
 		return append([]string{}, toolGroupsRuntime...)
+	case "messaging":
+		return append([]string{}, toolGroupsMessaging...)
+	case "session":
+		return append([]string{}, toolGroupsSession...)
 	case "cli_admin":
 		return cliAdminKeysFromCatalog(catalog)
 	default:
@@ -144,13 +150,13 @@ func profileAllowSet(profile string, catalog []Tool) map[string]bool {
 
 var toolProfiles = map[string][]string{
 	"chat_only": {},
-	"read_only": {"datetime", "read_file", "list_files", "workspace_search"},
-	"coding":    {"group:filesystem", "group:web", "group:skill", "datetime"},
-	"research":  {"web_search", "web_fetch", "read_file", "list_files", "workspace_search", "skill_search", "memory_search", "datetime"},
-	"full":      {"group:filesystem", "group:web", "group:skill", "group:memory", "group:media", "group:runtime", "group:cli_admin", "datetime"},
+	"read_only": {"datetime", "read_file", "read_multiple_files", "list_file", "search_file", "search_content", "todo_write"},
+	"coding":    {"group:filesystem", "group:web", "group:skill", "group:session", "datetime"},
+	"research":  {"duckduckgo_search", "web_fetch", "gemini_web_fetch", "google_search", "arxiv_search", "wikipedia_search", "read_file", "read_multiple_files", "list_file", "search_file", "search_content", "skill_search", "memory_search", "todo_write", "datetime"},
+	"full":      {"group:filesystem", "group:web", "group:skill", "group:memory", "group:media", "group:runtime", "group:messaging", "group:session", "group:cli_admin", "datetime"},
 
 	"minimal":      {},
-	"safe":         {"datetime", "read_file", "list_files", "workspace_search"},
+	"safe":         {"datetime", "read_file", "read_multiple_files", "list_file", "search_file", "search_content", "todo_write"},
 	"system_admin": {"group:cli_admin", "web_fetch", "datetime"},
 }
 
@@ -287,7 +293,7 @@ func buildAgentEffectiveTools(settings AgentRuntimeSettings, catalog []Tool) Age
 		})
 	}
 
-	const webSearchKey = "web_search"
+	const webSearchKey = "duckduckgo_search"
 	if !catalogKeys[webSearchKey] && allowedSet[webSearchKey] {
 		syn := syntheticWebSearchCatalogTool()
 		st, rsn, en := computeEffectiveToolState(settings, syn, prof, allowedSet, denySet)

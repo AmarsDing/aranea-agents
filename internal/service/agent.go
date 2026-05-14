@@ -117,6 +117,14 @@ func fromProtoRuntime(pb *v1.AgentRuntimeSettings) *biz.AgentRuntimeSettings {
 		SkillLoadMode:                     pb.GetSkillLoadMode(),
 		OutputSchemaJSON:                  pb.GetOutputSchemaJson(),
 		ModelSelector:                     pb.GetModelSelector(),
+		ToolsRetryEnabled:                 pb.GetToolsRetryEnabled(),
+		ToolsRetryMaxAttempts:             int(pb.GetToolsRetryMaxAttempts()),
+		ToolsRetryInitialIntervalMs:       int(pb.GetToolsRetryInitialIntervalMs()),
+		ToolsRetryBackoffFactor:           pb.GetToolsRetryBackoffFactor(),
+		ToolsRetryMaxIntervalMs:           int(pb.GetToolsRetryMaxIntervalMs()),
+		ToolsRetryJitter:                  pb.GetToolsRetryJitter(),
+		ToolsParallelEnabled:              pb.GetToolsParallelEnabled(),
+		ToolsStreamingEnabled:             pb.GetToolsStreamingEnabled(),
 	}
 }
 
@@ -211,6 +219,14 @@ func toProtoRuntime(b *biz.AgentRuntimeSettings) *v1.AgentRuntimeSettings {
 		SkillLoadMode:                     b.SkillLoadMode,
 		OutputSchemaJson:                  b.OutputSchemaJSON,
 		ModelSelector:                     b.ModelSelector,
+		ToolsRetryEnabled:                 b.ToolsRetryEnabled,
+		ToolsRetryMaxAttempts:             int32(b.ToolsRetryMaxAttempts),
+		ToolsRetryInitialIntervalMs:       int32(b.ToolsRetryInitialIntervalMs),
+		ToolsRetryBackoffFactor:           b.ToolsRetryBackoffFactor,
+		ToolsRetryMaxIntervalMs:           int32(b.ToolsRetryMaxIntervalMs),
+		ToolsRetryJitter:                  b.ToolsRetryJitter,
+		ToolsParallelEnabled:              b.ToolsParallelEnabled,
+		ToolsStreamingEnabled:             b.ToolsStreamingEnabled,
 	}
 }
 

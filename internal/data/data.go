@@ -13,12 +13,15 @@ import (
 	"aranea-agents/internal/data/ent/migrate"
 	"aranea-agents/internal/data/pgvector"
 	"aranea-agents/internal/data/sessionmemory"
+	sessiontrpc "aranea-agents/internal/session/trpc"
 
 	"entgo.io/ent/dialect"
 
 	_ "github.com/glebarez/go-sqlite/compat"
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/lib/pq"
+
+	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 
 	"github.com/google/wire"
 )
@@ -48,6 +51,7 @@ var ProviderSet = wire.NewSet(
 	NewSessionMemoryStore,
 	NewEvolutionMetricsRepo,
 	NewEvolutionSuggestionRepo,
+	NewTRPCSessionService,
 )
 
 // Data: Ent/SQLite holds app CRUD; Postgres (optional) holds pgvector agent memory only.
@@ -56,6 +60,7 @@ type Data struct {
 	entClient *ent.Client // SQLite — Ent schema（admin / avatar_assets / embedding 偏好等）
 	pg        *sql.DB     // Postgres — agent_memory 向量列
 	vectorDim int
+	sqliteDSN string // SQLite DSN for trpc session service
 }
 
 // Ent returns the SQLite-backed Ent client.
@@ -195,7 +200,7 @@ func NewData(c *conf.Data) (*Data, func(), error) {
 	}
 
 	vdim := vectorDimFromConf(c)
-	st := &Data{entClient: entClient, pg: pg, vectorDim: vdim}
+	st := &Data{entClient: entClient, pg: pg, vectorDim: vdim, sqliteDSN: dsn}
 
 	if pg != nil {
 		if err = pgvector.EnsureSchema(context.Background(), pg, vdim); err != nil {
@@ -237,4 +242,23 @@ func NewSessionMemoryStore(d *Data) *sessionmemory.Store {
 		return nil
 	}
 	return sessionmemory.NewStore(d.Ent())
+}
+
+func (d *Data) SQLiteDSN() string {
+	if d == nil {
+		return ""
+	}
+	return d.sqliteDSN
+}
+
+func NewTRPCSessionService(d *Data) trpcsession.Service {
+	if d == nil || d.SQLiteDSN() == "" {
+		return nil
+	}
+	svc, err := sessiontrpc.NewSQLiteSessionService(d.SQLiteDSN())
+	if err != nil {
+		log.Printf("trpc session sqlite init failed, falling back to in-memory: %v", err)
+		return sessiontrpc.NewInMemorySessionService()
+	}
+	return svc
 }

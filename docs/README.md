@@ -52,6 +52,12 @@ AI 进行任何代码改动时，**必须**按以下顺序阅读规范文档：
 
 ---
 
+## 5. 系统架构总览
+
+| 文档 | 说明 |
+|------|------|
+| [0 系统框图.md](./需求/0%20系统框图.md) | **系统架构总览**：分层架构图、模块关系图、数据流图、模块依赖矩阵、Web 端功能分布、Team vs Multi-Agent 区别 |
+
 ## 6. 功能对齐与优化清单
 
 | 文档 | 说明 |
@@ -86,8 +92,6 @@ AI 进行任何代码改动时，**必须**按以下顺序阅读规范文档：
 ---
 
 ## 7. 产品需求文档
-
-### 按功能域索引
 
 | 功能域 | 文档 |
 |--------|------|
@@ -127,15 +131,9 @@ AI 进行任何代码改动时，**必须**按以下顺序阅读规范文档：
 | **Memory（框架）** | [38 memory.md](./需求/38%20memory.md) |
 | **Planner 规划** | [39 planner.md](./需求/39%20planner.md)、[39 planner.design.md](./需求/39%20planner.design.md) |
 | **Runner 运行器** | [40 runner.md](./需求/40%20runner.md)、[40 runner.design.md](./需求/40%20runner.design.md) |
-| **Team（框架）** | [41 team.md](./需求/41%20team.md)、[41 team.design.md](./需求/41%20team.design.md) |
 | **Avatar** | [50 Avatar.md](./需求/50%20Avatar.md)、[50 Avatar.design.md](./需求/50%20Avatar.design.md) |
 | **TTS** | [tts.md](./需求/tts.md) |
 
----
-
-## 8. 前端设计文档
-
-> 前端规范遵循 [AI-DEVELOPMENT-SPECIFICATION.md](./guides/AI-DEVELOPMENT-SPECIFICATION.md) 第七章至第八章。
 ---
 
 ## 9. 变更记录
@@ -151,7 +149,6 @@ AI 进行任何代码改动时，**必须**按以下顺序阅读规范文档：
 
 | 路径 | 说明 |
 |------|------|
-| [reference/](./reference/) | 外部资料整理（知乎 AI Agent 开发攻略等） |
 | [skills/](./skills/) | Agent Skill 定义（karpathy-guidelines 等） |
 
 ---
@@ -165,15 +162,14 @@ docs/
 │   ├── AI-DEVELOPMENT-SPECIFICATION.md   ← ★ AI 编码唯一行为准则（十章整合版）
 │   ├── trpc-agent-go-framework.md        ← trpc-agent-go 框架工程化解读
 │   └── plan.md                          ← trpc 功能对齐清单
-├── 需求/                      ← 产品需求规格（含架构融合内容）
-│   ├── 产品需求总览.md                    ← 需求入口
-│   ├── 1 chat.md ~ 50 Avatar.md
-│   └── ...
-├── frontend/                  ← 前端设计（历史参考，已整合至 guides/）
+├── 需求/                      ← 产品需求规格 + 设计文档
+│   ├── 0 系统框图.md                      ← ★ 系统架构总览（框图/数据流/依赖矩阵）
+│   ├── 1 chat.md ~ 50 Avatar.md          ← 各模块需求规格
+│   └── *.design.md                        ← 各模块技术设计
+├── frontend/                  ← 前端设计参考
 │   ├── UX.md
 │   └── vue-design/
 ├── changelog/                 ← 变更记录
-├── reference/                 ← 外部参考资料
 └── skills/                    ← Agent Skill 定义
 ```
 
@@ -192,5 +188,5 @@ docs/
 6. 按规范编码 → 遵循分层、依赖方向、命名约定
 7. 后端编译验证 → make all 验证后端编译与运行
 8. 前端编译验证 → npm install && quasar dev 验证前端编译与运行
-8. 更新变更记录 → 记录新功能、修改内容，更新相关文档
+9. 更新变更记录 → 记录新功能、修改内容，更新相关文档
 ```

@@ -4,8 +4,8 @@ import "testing"
 
 func TestComputePolicyAllowedSet_googleSearchAlias(t *testing.T) {
 	m := computePolicyAllowedSet("read_only", []string{"google_search"}, nil)
-	if !m["web_search"] {
-		t.Fatalf("expected google_search to imply web_search; got keys %v", m)
+	if !m["google_search"] {
+		t.Fatalf("expected google_search in allowed set; got keys %v", m)
 	}
 }
 

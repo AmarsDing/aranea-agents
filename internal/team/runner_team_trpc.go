@@ -91,6 +91,7 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 		Agents:     r.td.Agents,
 		RT:         r.td.RoundTrip(),
 		SkillUC:    r.td.SkillUC,
+		MCPTooling: r.td.RT.AgentMCP,
 		Sys:        r.td.Sys,
 		Provider:   prov0,
 		Model:      mod0,
@@ -106,11 +107,17 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 		"team_turn phase=team_built session_id=%s run_id=%s mode=%s",
 		sess.ID, run.ID, mode))
 
-	runnerDeps := agent.TRPCRunnerDeps{
-		SessionService: agent.NewInMemoryTRPCSessionService(),
+	runnerDeps := agent.TRPCRunnerDeps{}
+	if r.td.RT != nil {
+		if r.td.RT.TRPCSession != nil {
+			runnerDeps.SessionService = r.td.RT.TRPCSession
+		}
+		if r.td.RT.SessionMemory != nil {
+			runnerDeps.MemoryService = memtrpc.NewSQLiteMemoryService(r.td.RT.SessionMemory)
+		}
 	}
-	if r.td.RT != nil && r.td.RT.SessionMemory != nil {
-		runnerDeps.MemoryService = memtrpc.NewSQLiteMemoryService(r.td.RT.SessionMemory)
+	if runnerDeps.SessionService == nil {
+		runnerDeps.SessionService = agent.NewInMemoryTRPCSessionService()
 	}
 	runner, err := agent.NewTRPCRunner(root, runnerDeps)
 	if err != nil {
@@ -224,10 +231,45 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 			r.finishRunErr(ctx, &run, t0, runCtx.Err().Error())
 			return userMsg, biz.ChatMessage{}, runCtx.Err()
 		}
-		if ev == nil || ev.Response == nil {
+		if ev == nil {
 			continue
 		}
 		if ev.IsRunnerCompletion() {
+			continue
+		}
+		if streaming {
+			if len(ev.StateDelta) > 0 {
+				_ = stream.Emit("state_delta", map[string]any{
+					"session_id":  sess.ID,
+					"state_delta": ev.StateDelta,
+				})
+			}
+			if len(ev.Extensions) > 0 {
+				_ = stream.Emit("extensions", map[string]any{
+					"session_id": sess.ID,
+					"extensions": ev.Extensions,
+				})
+			}
+			if ev.Branch != "" {
+				_ = stream.Emit("branch", map[string]string{
+					"session_id": sess.ID,
+					"branch":     ev.Branch,
+				})
+			}
+			if ev.FilterKey != "" {
+				_ = stream.Emit("filter_key", map[string]string{
+					"session_id": sess.ID,
+					"filter_key": ev.FilterKey,
+				})
+			}
+			if ev.Tag != "" {
+				_ = stream.Emit("tag", map[string]string{
+					"session_id": sess.ID,
+					"tag":        ev.Tag,
+				})
+			}
+		}
+		if ev.Response == nil {
 			continue
 		}
 		if usage := ev.Response.Usage; usage != nil {

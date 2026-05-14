@@ -7,13 +7,11 @@ import (
 
 	"aranea-agents/internal/biz"
 
-	"google.golang.org/adk/tool"
-	"google.golang.org/adk/tool/mcptoolset"
+	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
+	trpcmcp "trpc.group/trpc-go/trpc-agent-go/tool/mcp"
 )
 
-// AppendEffectiveMCPServerToolsets appends one ADK MCP toolset per effective server row.
-// ctx is passed to stdio MCP subprocess creation (optional; see [TransportFromConfig]).
-func AppendEffectiveMCPServerToolsets(ctx context.Context, out *[]tool.Toolset, servers []biz.EffectiveMCPServer) error {
+func AppendEffectiveMCPServerToolsets(ctx context.Context, out *[]trpctool.ToolSet, servers []biz.EffectiveMCPServer) error {
 	if out == nil {
 		return nil
 	}
@@ -26,27 +24,30 @@ func AppendEffectiveMCPServerToolsets(ctx context.Context, out *[]tool.Toolset, 
 		if cfgJSON == "" {
 			continue
 		}
-		pc, err := parseServerConfigJSON(cfgJSON)
+		sc, err := parseServerConfigJSON(cfgJSON)
 		if err != nil {
 			return fmt.Errorf("mcp server %q: %w", key, err)
 		}
-		transport, err := TransportFromConfig(ctx, pc)
-		if err != nil {
-			return fmt.Errorf("mcp server %q: %w", key, err)
+		connCfg := toTRPCConnectionConfig(sc)
+		opts := []trpcmcp.ToolSetOption{trpcmcp.WithName(key)}
+		if pred := toolFilterForPrefix(sc.ToolPrefix); pred != nil {
+			opts = append(opts, trpcmcp.WithToolFilterFunc(pred))
 		}
-		cfg := mcptoolset.Config{
-			Transport:           transport,
-			RequireConfirmation: pc.RequireUserCredentials,
-		}
-		base, err := mcptoolset.New(cfg)
-		if err != nil {
-			return fmt.Errorf("mcp server %q: %w", key, err)
-		}
-		if pred := toolPredicateForPrefix(pc.ToolPrefix); pred != nil {
-			*out = append(*out, tool.FilterToolset(base, pred))
-		} else {
-			*out = append(*out, base)
-		}
+		ts := trpcmcp.NewMCPToolSet(connCfg, opts...)
+		*out = append(*out, ts)
 	}
 	return nil
+}
+
+func toolFilterForPrefix(prefix string) trpctool.FilterFunc {
+	prefix = strings.TrimSpace(prefix)
+	if prefix == "" {
+		return nil
+	}
+	return func(_ context.Context, t trpctool.Tool) bool {
+		if t == nil || t.Declaration() == nil {
+			return false
+		}
+		return strings.HasPrefix(t.Declaration().Name, prefix)
+	}
 }

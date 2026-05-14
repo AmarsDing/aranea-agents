@@ -98,6 +98,14 @@ message AgentRuntimeSettings {
   string skill_load_mode = 84;
   string output_schema_json = 85;
   string model_selector = 86;
+  bool tools_retry_enabled = 87;
+  int32 tools_retry_max_attempts = 88;
+  int32 tools_retry_initial_interval_ms = 89;
+  double tools_retry_backoff_factor = 90;
+  int32 tools_retry_max_interval_ms = 91;
+  bool tools_retry_jitter = 92;
+  bool tools_parallel_enabled = 93;
+  bool tools_streaming_enabled = 94;
 }
 
 message AgentPromptFile {

@@ -6,15 +6,18 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/sessionmemory"
 	"aranea-agents/internal/provider"
+
+	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 )
 
 type Runtime struct {
 	SessionMemory *sessionmemory.Store
 	AgentMCP      *biz.AgentMCPTooling
+	TRPCSession   trpcsession.Service
 }
 
-func NewRuntime(store *sessionmemory.Store, mcp *biz.AgentMCPTooling) *Runtime {
-	return &Runtime{SessionMemory: store, AgentMCP: mcp}
+func NewRuntime(store *sessionmemory.Store, mcp *biz.AgentMCPTooling, trpcSession trpcsession.Service) *Runtime {
+	return &Runtime{SessionMemory: store, AgentMCP: mcp, TRPCSession: trpcSession}
 }
 
 type TurnDeps struct {
