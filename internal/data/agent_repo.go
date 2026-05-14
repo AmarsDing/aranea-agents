@@ -51,6 +51,17 @@ func normalizeSkillRuntimeJSON(value string) string {
 	return "{}"
 }
 
+func normalizeJSONObj(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "{}"
+	}
+	if json.Valid([]byte(value)) {
+		return value
+	}
+	return "{}"
+}
+
 func sanitizePromptFileID(value string) string {
 	value = strings.ToLower(strings.TrimSpace(value))
 	value = strings.Map(func(r rune) rune {
@@ -172,6 +183,13 @@ func entRuntimeToBiz(e *ent.AgentRuntimeSetting) biz.AgentRuntimeSettings {
 		EvoSystemPromptMaxAppends:         e.EvoSystemPromptMaxAppends,
 		SkillRuntimeJSON:                  e.SkillRuntimeJSON,
 		IntentPassEnabled:                 e.IntentPassEnabled,
+		VariablesJSON:                     e.VariablesJSON,
+		ModelInstructionsJSON:             e.ModelInstructionsJSON,
+		ContextCompactionEnabled:          e.ContextCompactionEnabled,
+		SessionSummaryEnabled:             e.SessionSummaryEnabled,
+		SkillLoadMode:                     e.SkillLoadMode,
+		OutputSchemaJSON:                  e.OutputSchemaJSON,
+		ModelSelector:                     e.ModelSelector,
 		CreatedAt:                         e.CreatedAt,
 		UpdatedAt:                         e.UpdatedAt,
 	}
@@ -271,6 +289,13 @@ func applyBizRuntimeToCreate(b *ent.AgentRuntimeSettingCreate, v biz.AgentRuntim
 		SetEvoSystemPromptMaxAppends(v.EvoSystemPromptMaxAppends).
 		SetSkillRuntimeJSON(normalizeSkillRuntimeJSON(v.SkillRuntimeJSON)).
 		SetIntentPassEnabled(v.IntentPassEnabled).
+		SetVariablesJSON(normalizeJSONObj(v.VariablesJSON)).
+		SetModelInstructionsJSON(normalizeJSONObj(v.ModelInstructionsJSON)).
+		SetContextCompactionEnabled(v.ContextCompactionEnabled).
+		SetSessionSummaryEnabled(v.SessionSummaryEnabled).
+		SetSkillLoadMode(v.SkillLoadMode).
+		SetOutputSchemaJSON(v.OutputSchemaJSON).
+		SetModelSelector(v.ModelSelector).
 		SetCreatedAt(v.CreatedAt).
 		SetUpdatedAt(v.UpdatedAt)
 }

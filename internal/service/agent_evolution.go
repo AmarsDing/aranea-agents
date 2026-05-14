@@ -1,0 +1,72 @@
+package service
+
+import (
+	"context"
+
+	v1 "aranea-agents/api/kratos/agent/v1"
+	"aranea-agents/internal/biz"
+)
+
+func toProtoSuggestion(s biz.EvolutionSuggestion) *v1.EvolutionSuggestion {
+	return &v1.EvolutionSuggestion{
+		Id:          s.ID,
+		AgentId:     s.AgentID,
+		Type:        s.Type,
+		Title:       s.Title,
+		Content:     s.Content,
+		Status:      s.Status,
+		DiffPreview: s.DiffPreview,
+		CreatedAt:   s.CreatedAt,
+		AppliedAt:   s.AppliedAt,
+	}
+}
+
+func (s *AgentService) GetAgentEvolutionMetrics(ctx context.Context, req *v1.GetAgentEvolutionMetricsRequest) (*v1.EvolutionMetricsResponse, error) {
+	m, err := s.evoUC.GetEvolutionMetrics(ctx, req.GetAgentId(), req.GetTimeRange())
+	if err != nil {
+		return nil, err
+	}
+	resp := &v1.EvolutionMetricsResponse{
+		AgentId:          m.AgentID,
+		TimeRange:        m.TimeRange,
+		ToolSuccessRate:  m.ToolSuccessRate,
+		RetrievalQuality: m.RetrievalQuality,
+		TotalEpisodes:    int32(m.TotalEpisodes),
+		NegativeFeedback: int32(m.NegativeFeedback),
+	}
+	for _, p := range m.ToolSuccessSeries {
+		resp.ToolSuccessSeries = append(resp.ToolSuccessSeries, &v1.MetricDataPoint{Date: p.Date, Value: p.Value})
+	}
+	for _, p := range m.RetrievalQualitySeries {
+		resp.RetrievalQualitySeries = append(resp.RetrievalQualitySeries, &v1.MetricDataPoint{Date: p.Date, Value: p.Value})
+	}
+	return resp, nil
+}
+
+func (s *AgentService) GetAgentEvolutionSuggestions(ctx context.Context, req *v1.GetAgentEvolutionSuggestionsRequest) (*v1.ListEvolutionSuggestionsResponse, error) {
+	items, err := s.evoUC.GetEvolutionSuggestions(ctx, req.GetAgentId(), req.GetStatus())
+	if err != nil {
+		return nil, err
+	}
+	resp := &v1.ListEvolutionSuggestionsResponse{}
+	for _, item := range items {
+		resp.Items = append(resp.Items, toProtoSuggestion(item))
+	}
+	return resp, nil
+}
+
+func (s *AgentService) ApplyEvolutionSuggestion(ctx context.Context, req *v1.ApplyEvolutionSuggestionRequest) (*v1.EvolutionSuggestion, error) {
+	result, err := s.evoUC.ApplySuggestion(ctx, req.GetAgentId(), req.GetSuggestionId())
+	if err != nil {
+		return nil, err
+	}
+	return toProtoSuggestion(result), nil
+}
+
+func (s *AgentService) RejectEvolutionSuggestion(ctx context.Context, req *v1.RejectEvolutionSuggestionRequest) (*v1.EvolutionSuggestion, error) {
+	result, err := s.evoUC.RejectSuggestion(ctx, req.GetAgentId(), req.GetSuggestionId())
+	if err != nil {
+		return nil, err
+	}
+	return toProtoSuggestion(result), nil
+}

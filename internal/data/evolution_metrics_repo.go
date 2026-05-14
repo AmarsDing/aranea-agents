@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	entsession "aranea-agents/internal/data/ent/session"
+	toolinvocationpkg "aranea-agents/internal/data/ent/toolinvocation"
 )
 
 type evolutionMetricsRepo struct {
@@ -16,16 +18,16 @@ func NewEvolutionMetricsRepo(data *Data) biz.EvolutionMetricsRepo {
 }
 
 func (r *evolutionMetricsRepo) GetToolSuccessRate(ctx context.Context, agentID string, since time.Time) (float64, []biz.MetricDataPoint, error) {
-	var total, success int64
 	rows, err := r.data.entClient.ToolInvocation.Query().
 		Where(
-			toolinvocation.AgentIDEQ(agentID),
-			toolinvocation.CreatedAtGTE(since.Format(time.RFC3339)),
+			toolinvocationpkg.AgentIDEQ(agentID),
+			toolinvocationpkg.CreatedAtGTE(since.Format(time.RFC3339)),
 		).
 		All(ctx)
 	if err != nil {
 		return 0, nil, err
 	}
+	var total, success int64
 	total = int64(len(rows))
 	for _, row := range rows {
 		if row.Status == "success" {
@@ -46,8 +48,8 @@ func (r *evolutionMetricsRepo) GetRetrievalQuality(ctx context.Context, agentID 
 func (r *evolutionMetricsRepo) GetEpisodeCount(ctx context.Context, agentID string, since time.Time) (int, error) {
 	count, err := r.data.entClient.Session.Query().
 		Where(
-			session.AgentIDEQ(agentID),
-			session.CreatedAtGTE(since.Format(time.RFC3339)),
+			entsession.AgentIDEQ(agentID),
+			entsession.CreatedAtGTE(since.Format(time.RFC3339)),
 		).
 		Count(ctx)
 	if err != nil {

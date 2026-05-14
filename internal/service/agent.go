@@ -17,12 +17,13 @@ import (
 type AgentService struct {
 	v1.UnimplementedAgentServiceServer
 
-	uc *biz.AgentUsecase
+	uc    *biz.AgentUsecase
+	evoUC *biz.EvolutionUsecase
 }
 
 // NewAgentService constructs the service.
-func NewAgentService(uc *biz.AgentUsecase) *AgentService {
-	return &AgentService{uc: uc}
+func NewAgentService(uc *biz.AgentUsecase, evoUC *biz.EvolutionUsecase) *AgentService {
+	return &AgentService{uc: uc, evoUC: evoUC}
 }
 
 func fromProtoRuntime(pb *v1.AgentRuntimeSettings) *biz.AgentRuntimeSettings {
@@ -109,6 +110,13 @@ func fromProtoRuntime(pb *v1.AgentRuntimeSettings) *biz.AgentRuntimeSettings {
 		UpdatedAt:                         pb.GetUpdatedAt(),
 		SkillRuntimeJSON:                  pb.GetSkillRuntimeJson(),
 		IntentPassEnabled:                 pb.GetIntentPassEnabled(),
+		VariablesJSON:                     pb.GetVariablesJson(),
+		ModelInstructionsJSON:             pb.GetModelInstructionsJson(),
+		ContextCompactionEnabled:          pb.GetContextCompactionEnabled(),
+		SessionSummaryEnabled:             pb.GetSessionSummaryEnabled(),
+		SkillLoadMode:                     pb.GetSkillLoadMode(),
+		OutputSchemaJSON:                  pb.GetOutputSchemaJson(),
+		ModelSelector:                     pb.GetModelSelector(),
 	}
 }
 
@@ -196,6 +204,13 @@ func toProtoRuntime(b *biz.AgentRuntimeSettings) *v1.AgentRuntimeSettings {
 		UpdatedAt:                         b.UpdatedAt,
 		SkillRuntimeJson:                  b.SkillRuntimeJSON,
 		IntentPassEnabled:                 b.IntentPassEnabled,
+		VariablesJson:                     b.VariablesJSON,
+		ModelInstructionsJson:             b.ModelInstructionsJSON,
+		ContextCompactionEnabled:          b.ContextCompactionEnabled,
+		SessionSummaryEnabled:             b.SessionSummaryEnabled,
+		SkillLoadMode:                     b.SkillLoadMode,
+		OutputSchemaJson:                  b.OutputSchemaJSON,
+		ModelSelector:                     b.ModelSelector,
 	}
 }
 

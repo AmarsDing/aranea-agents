@@ -91,6 +91,13 @@ message AgentRuntimeSettings {
   string updated_at = 77;
   string skill_runtime_json = 78;
   bool intent_pass_enabled = 79;
+  string variables_json = 80;
+  string model_instructions_json = 81;
+  bool context_compaction_enabled = 82;
+  bool session_summary_enabled = 83;
+  string skill_load_mode = 84;
+  string output_schema_json = 85;
+  string model_selector = 86;
 }
 
 message AgentPromptFile {

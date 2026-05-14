@@ -59,57 +59,71 @@ type AgentRuntimeSettings struct {
 	L0SummaryThreshold                float64
 	L0SummaryKeepTurns                int
 	// L0CompressProvider / L0CompressModel select a cheaper catalog model for session summarization; empty → use agent/session chat model.
-	L0CompressProvider string
-	L0CompressModel    string
-	L0TruncateStrategy string
-	L0InjectL1                        bool
-	L0InjectL3                        bool
-	L0InjectL4                        bool
-	L0L3MaxChunks                     int
-	L0L4MaxPaths                      int
-	L0SnapshotMode                    string
-	L1Enabled                         bool
-	L1BudgetTokens                    int
-	L1FieldMaxTokens                  int
-	L1HistoryKeepRevisions            int
-	L1DefaultSchemaID                 string
-	L1ArchiveOnIdleMinutes            int
-	L2EpisodeEnabled                  bool
-	L2EpisodeMinImportance            float64
-	L2IndexEnabled                    bool
-	L2IndexEmbeddingModel             string
-	L2RecallEnabled                   bool
-	L2RecallMax                       int
-	L2RetentionDays                   int
-	L2ArchiveAfterDays                int
-	L3Enabled                         bool
-	L3RecallTopK                      int
-	L3RecallMinScore                  float64
-	L3RecallScopesJSON                string
-	L3EmbeddingModel                  string
-	L3DecayIntervalHours              int
-	L3ArchiveThreshold                float64
-	L3MaxPerRecallChars               int
-	L4Enabled                         bool
-	L4GraphInjectNeighbors            bool
-	L4GraphMaxNeighbors               int
-	L4GraphMaxHops                    int
-	L4IdentityInject                  bool
-	L4StrategyInject                  bool
-	EvoEnabled                        bool
-	EvoAutoApply                      bool
-	EvoMinEpisodes                    int
-	EvoMinNegativeFeedback            int
-	EvoThrottleHours                  int
-	EvoProposalTTLDays                int
-	EvoPersonaMaxChars                int
-	EvoSystemPromptMaxAppends         int
+	L0CompressProvider        string
+	L0CompressModel           string
+	L0TruncateStrategy        string
+	L0InjectL1                bool
+	L0InjectL3                bool
+	L0InjectL4                bool
+	L0L3MaxChunks             int
+	L0L4MaxPaths              int
+	L0SnapshotMode            string
+	L1Enabled                 bool
+	L1BudgetTokens            int
+	L1FieldMaxTokens          int
+	L1HistoryKeepRevisions    int
+	L1DefaultSchemaID         string
+	L1ArchiveOnIdleMinutes    int
+	L2EpisodeEnabled          bool
+	L2EpisodeMinImportance    float64
+	L2IndexEnabled            bool
+	L2IndexEmbeddingModel     string
+	L2RecallEnabled           bool
+	L2RecallMax               int
+	L2RetentionDays           int
+	L2ArchiveAfterDays        int
+	L3Enabled                 bool
+	L3RecallTopK              int
+	L3RecallMinScore          float64
+	L3RecallScopesJSON        string
+	L3EmbeddingModel          string
+	L3DecayIntervalHours      int
+	L3ArchiveThreshold        float64
+	L3MaxPerRecallChars       int
+	L4Enabled                 bool
+	L4GraphInjectNeighbors    bool
+	L4GraphMaxNeighbors       int
+	L4GraphMaxHops            int
+	L4IdentityInject          bool
+	L4StrategyInject          bool
+	EvoEnabled                bool
+	EvoAutoApply              bool
+	EvoMinEpisodes            int
+	EvoMinNegativeFeedback    int
+	EvoThrottleHours          int
+	EvoProposalTTLDays        int
+	EvoPersonaMaxChars        int
+	EvoSystemPromptMaxAppends int
 	// SkillRuntimeJSON is agent_runtime_settings.skill_runtime_json (whitelist/deny/tags + routing caps).
 	SkillRuntimeJSON string
 	// IntentPassEnabled runs the optional pre-turn intent classification pass (see intent package); default true in DB/UI.
 	IntentPassEnabled bool
-	CreatedAt         string
-	UpdatedAt         string
+	// VariablesJSON holds custom placeholder variables for system prompt {key} substitution.
+	VariablesJSON string
+	// ModelInstructionsJSON holds per-model instruction overrides: {"gpt-4o": "...", "claude-3": "..."}.
+	ModelInstructionsJSON string
+	// ContextCompactionEnabled enables automatic context compaction when tokens approach the limit.
+	ContextCompactionEnabled bool
+	// SessionSummaryEnabled enables session summary injection so new sessions can inherit old context.
+	SessionSummaryEnabled bool
+	// SkillLoadMode controls skill loading strategy: "auto" | "manual" | "none".
+	SkillLoadMode string
+	// OutputSchemaJSON is a JSON Schema that forces the LLM to produce structured output.
+	OutputSchemaJSON string
+	// ModelSelector controls dynamic model selection: "default" | "auto".
+	ModelSelector string
+	CreatedAt     string
+	UpdatedAt     string
 }
 
 // AgentPromptFile is one row in agent_prompt_files (API name field maps to file_name).
@@ -150,6 +164,6 @@ type FileTokenEstimate struct {
 
 // FileTokenEstimates is the aggregate token estimate for all prompt files of an agent.
 type FileTokenEstimates struct {
-	TotalTokens    int
-	FileEstimates  []FileTokenEstimate
+	TotalTokens   int
+	FileEstimates []FileTokenEstimate
 }
