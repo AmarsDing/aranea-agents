@@ -38,6 +38,7 @@
         :context-ratio="selectedSessionForUi?.context_used_ratio ?? 0"
         :is-dark="isDark"
         :sending="sending"
+        :pending-messages="pendingMessages"
         @update:dialog-mode="onModeChange"
         @update:model-provider="onProviderChange"
         @remove-attachment="removeAttachment"

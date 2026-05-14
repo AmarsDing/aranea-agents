@@ -38,6 +38,9 @@ type AgentRepository interface {
 	UpsertAgentRuntimeSettings(ctx context.Context, v AgentRuntimeSettings) (AgentRuntimeSettings, error)
 	ListAgentPromptFiles(ctx context.Context, agentID string) ([]AgentPromptFile, error)
 	ReplaceAgentPromptFiles(ctx context.Context, agentID string, files []AgentPromptFile) ([]AgentPromptFile, error)
+	CreateAgentPromptFile(ctx context.Context, f AgentPromptFile) (AgentPromptFile, error)
+	UpdateAgentPromptFile(ctx context.Context, f AgentPromptFile) (AgentPromptFile, error)
+	DeleteAgentPromptFile(ctx context.Context, agentID, id string) error
 }
 
 // AgentUsecase is catalog agent CRUD + prompt preview.
@@ -102,15 +105,6 @@ func (u *AgentUsecase) hydrate(ctx context.Context, agent Agent) (Agent, error) 
 	return agent, nil
 }
 
-func (u *AgentUsecase) syncConfigJSON(ctx context.Context, id string, settings AgentRuntimeSettings, files []AgentPromptFile) (Agent, error) {
-	a, err := u.repo.GetAgentByID(ctx, id)
-	if err != nil {
-		return Agent{}, err
-	}
-	a.ConfigJSON = configJSONFromSettings(withSettingDefaults(settings), files)
-	return u.repo.UpdateAgent(ctx, a)
-}
-
 // Create inserts an agent and persists settings + prompt files.
 func (u *AgentUsecase) Create(ctx context.Context, in Agent) (Agent, error) {
 	in.AgentKey = strings.TrimSpace(in.AgentKey)
@@ -146,7 +140,7 @@ func (u *AgentUsecase) Create(ctx context.Context, in Agent) (Agent, error) {
 	if _, err := u.repo.ReplaceAgentPromptFiles(ctx, in.ID, files); err != nil {
 		return Agent{}, err
 	}
-	if _, err := u.syncConfigJSON(ctx, in.ID, settings, files); err != nil {
+	if _, err := u.syncConfigJSON(ctx, in.ID); err != nil {
 		return Agent{}, err
 	}
 	return u.Get(ctx, in.ID)
@@ -185,7 +179,7 @@ func (u *AgentUsecase) Update(ctx context.Context, id string, patch Agent) (Agen
 	if _, err := u.repo.ReplaceAgentPromptFiles(ctx, id, files); err != nil {
 		return Agent{}, err
 	}
-	if _, err := u.syncConfigJSON(ctx, id, settings, files); err != nil {
+	if _, err := u.syncConfigJSON(ctx, id); err != nil {
 		return Agent{}, err
 	}
 	return u.Get(ctx, id)
@@ -200,6 +194,27 @@ func (u *AgentUsecase) Delete(ctx context.Context, id string) error {
 	return u.repo.DeleteAgent(ctx, id)
 }
 
+// ToggleFavorite flips the is_favorite flag on an agent.
+func (u *AgentUsecase) ToggleFavorite(ctx context.Context, id string) (Agent, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return Agent{}, kerrors.BadRequest("AGENT", "id is required")
+	}
+	a, err := u.repo.GetAgentByID(ctx, id)
+	if err != nil {
+		if stderrors.Is(err, sql.ErrNoRows) {
+			return Agent{}, kerrors.NotFound("AGENT", "agent not found")
+		}
+		return Agent{}, err
+	}
+	a.IsFavorite = !a.IsFavorite
+	updated, err := u.repo.UpdateAgent(ctx, a)
+	if err != nil {
+		return Agent{}, err
+	}
+	return u.hydrate(ctx, updated)
+}
+
 // PromptPreview returns the composed system prompt text for an agent (after hydration).
 func (u *AgentUsecase) PromptPreview(ctx context.Context, id, mode string) (string, error) {
 	a, err := u.Get(ctx, id)
@@ -211,6 +226,97 @@ func (u *AgentUsecase) PromptPreview(ctx context.Context, id, mode string) (stri
 		mode = "complete"
 	}
 	return composePromptPreview(a, mode), nil
+}
+
+// CreatePromptFile adds a single prompt file to an agent.
+func (u *AgentUsecase) CreatePromptFile(ctx context.Context, f AgentPromptFile) (AgentPromptFile, error) {
+	f.AgentID = strings.TrimSpace(f.AgentID)
+	f.Name = strings.TrimSpace(f.Name)
+	if f.AgentID == "" || f.Name == "" {
+		return AgentPromptFile{}, kerrors.BadRequest("AGENT_FILE", "agent_id and name are required")
+	}
+	if _, err := u.Get(ctx, f.AgentID); err != nil {
+		return AgentPromptFile{}, err
+	}
+	created, err := u.repo.CreateAgentPromptFile(ctx, f)
+	if err != nil {
+		return AgentPromptFile{}, err
+	}
+	if _, err := u.syncConfigJSON(ctx, f.AgentID); err != nil {
+		return AgentPromptFile{}, err
+	}
+	return created, nil
+}
+
+// UpdatePromptFile modifies a single prompt file.
+func (u *AgentUsecase) UpdatePromptFile(ctx context.Context, f AgentPromptFile) (AgentPromptFile, error) {
+	f.AgentID = strings.TrimSpace(f.AgentID)
+	f.ID = strings.TrimSpace(f.ID)
+	if f.AgentID == "" || f.ID == "" {
+		return AgentPromptFile{}, kerrors.BadRequest("AGENT_FILE", "agent_id and id are required")
+	}
+	if _, err := u.Get(ctx, f.AgentID); err != nil {
+		return AgentPromptFile{}, err
+	}
+	updated, err := u.repo.UpdateAgentPromptFile(ctx, f)
+	if err != nil {
+		return AgentPromptFile{}, err
+	}
+	if _, err := u.syncConfigJSON(ctx, f.AgentID); err != nil {
+		return AgentPromptFile{}, err
+	}
+	return updated, nil
+}
+
+// DeletePromptFile removes a single prompt file.
+func (u *AgentUsecase) DeletePromptFile(ctx context.Context, agentID, id string) error {
+	agentID = strings.TrimSpace(agentID)
+	id = strings.TrimSpace(id)
+	if agentID == "" || id == "" {
+		return kerrors.BadRequest("AGENT_FILE", "agent_id and id are required")
+	}
+	if _, err := u.Get(ctx, agentID); err != nil {
+		return err
+	}
+	if err := u.repo.DeleteAgentPromptFile(ctx, agentID, id); err != nil {
+		return err
+	}
+	_, err := u.syncConfigJSON(ctx, agentID)
+	return err
+}
+
+// EstimateTokens returns an approximate token count for all prompt files of an agent.
+func (u *AgentUsecase) EstimateTokens(ctx context.Context, agentID string) (FileTokenEstimates, error) {
+	agentID = strings.TrimSpace(agentID)
+	if agentID == "" {
+		return FileTokenEstimates{}, kerrors.BadRequest("AGENT_FILE", "agent_id is required")
+	}
+	a, err := u.Get(ctx, agentID)
+	if err != nil {
+		return FileTokenEstimates{}, err
+	}
+	return estimateTokensForFiles(a.Files), nil
+}
+
+func (u *AgentUsecase) syncConfigJSON(ctx context.Context, id string) (Agent, error) {
+	a, err := u.repo.GetAgentByID(ctx, id)
+	if err != nil {
+		return Agent{}, err
+	}
+	settings, err := u.repo.GetAgentRuntimeSettings(ctx, id)
+	if err != nil {
+		if !stderrors.Is(err, sql.ErrNoRows) {
+			return Agent{}, err
+		}
+		settings = withSettingDefaults(settingsFromLegacyConfig(a.ConfigJSON))
+		settings.AgentID = id
+	}
+	files, err := u.repo.ListAgentPromptFiles(ctx, id)
+	if err != nil {
+		return Agent{}, err
+	}
+	a.ConfigJSON = configJSONFromSettings(withSettingDefaults(settings), files)
+	return u.repo.UpdateAgent(ctx, a)
 }
 
 func mergeAgentCatalog(current, patch Agent) Agent {

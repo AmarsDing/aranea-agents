@@ -94,6 +94,7 @@ export default {
     inputLabel: "输入内容",
     untitledSession: "新对话",
     emptyMessages: "暂无消息",
+    pendingQueue: "待执行队列",
     me: "我",
     assistant: "Agent",
     settingsTitleAgent: "Agent 设置",

@@ -171,3 +171,28 @@ export async function listChatOptions(type?: string): Promise<ChatOption[]> {
   const { data } = await kratosApi.get("/v1/chat/options", { params: type ? { type } : undefined });
   return data.items ?? [];
 }
+
+export async function stopGeneration(sessionId: string): Promise<boolean> {
+  try {
+    const { data } = await kratosApi.post("/v1/chat/stop", { session_id: sessionId });
+    return !!data?.stopped;
+  } catch {
+    return false;
+  }
+}
+
+export interface PendingMessage {
+  id: string;
+  content: string;
+  status: string;
+  created_at: string;
+}
+
+export async function getPendingMessages(sessionId: string): Promise<PendingMessage[]> {
+  try {
+    const { data } = await kratosApi.get("/v1/chat/pending", { params: { session_id: sessionId } });
+    return data.items ?? [];
+  } catch {
+    return [];
+  }
+}

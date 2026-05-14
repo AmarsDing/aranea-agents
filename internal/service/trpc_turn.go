@@ -11,6 +11,7 @@ import (
 	"aranea-agents/internal/biz"
 	memtrpc "aranea-agents/internal/memory/trpc"
 	"aranea-agents/internal/provider"
+	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
@@ -57,7 +58,12 @@ func (s *ChatService) runSingleAgentViaTRPC(
 	if err != nil {
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
-	defer runner.Close()
+	s.activeRuns.Store(sessionID, runner)
+	defer func() {
+		s.activeRuns.Delete(sessionID)
+		runner.Close()
+		s.processPendingQueue(sessionID, sess, ag, dialogMode, prov, mod, stream)
+	}()
 
 	userOpts, err := chatagent.UserOptionsJSON(ag, dialogMode, prov, mod, sess.ContextUsedRatio, nil)
 	if err != nil {
@@ -105,7 +111,9 @@ func (s *ChatService) runSingleAgentViaTRPC(
 	}
 
 	uid := chatagent.UserIDFromCtx(ctx)
-	events, err := chatagent.RunTRPCUserTurn(ctx, runner, uid, sessionID, sendText)
+	events, err := chatagent.RunTRPCUserTurn(ctx, runner, uid, sessionID, sendText,
+		trpcagent.WithRequestID(sessionID),
+	)
 	if err != nil {
 		return userMsg, biz.ChatMessage{}, err
 	}
@@ -210,4 +218,19 @@ func (s *ChatService) runSingleAgentViaTRPC(
 	patchSessionContextUsage(ctx, s, sessionID, ag, promptTok, completionTok)
 	_ = stream.Emit("done", assistantMsg)
 	return userMsg, assistantMsg, nil
+}
+
+func (s *ChatService) processPendingQueue(sessionID string, sess biz.Session, ag biz.Agent, dialogMode, prov, mod string, stream *streamWriter) {
+	entry, ok := s.dequeuePending(sessionID)
+	if !ok {
+		return
+	}
+	go func() {
+		bgCtx := context.Background()
+		req := &chatv1.SendChatMessageRequest{
+			SessionId: sessionID,
+			Content:   entry.Content,
+		}
+		_, _, _ = s.runSingleAgentViaTRPC(bgCtx, sess, req, ag, dialogMode, prov, mod, 0, stream)
+	}()
 }

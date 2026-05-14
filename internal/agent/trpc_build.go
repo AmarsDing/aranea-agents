@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 
 	"aranea-agents/internal/biz"
@@ -16,6 +17,7 @@ import (
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcllmagent "trpc.group/trpc-go/trpc-agent-go/agent/llmagent"
 	"trpc.group/trpc-go/trpc-agent-go/codeexecutor"
+	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 	trpcbuiltin "trpc.group/trpc-go/trpc-agent-go/planner/builtin"
 	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
 )
@@ -103,6 +105,10 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) 
 		}
 	}
 
+	if ag.Settings != nil {
+		opts = append(opts, buildTRPCRuntimeOptions(ag.Settings)...)
+	}
+
 	return trpcllmagent.New(strings.TrimSpace(ag.AgentKey), opts...), nil
 }
 
@@ -162,4 +168,60 @@ func loadEffectiveToolKeys(deps TRPCBuilderDeps, agentID string) map[string]bool
 		}
 	}
 	return m
+}
+
+func buildTRPCRuntimeOptions(s *biz.AgentRuntimeSettings) []trpcllmagent.Option {
+	var opts []trpcllmagent.Option
+
+	if s.ModelInstructionsJSON != "" && s.ModelInstructionsJSON != "{}" {
+		var instructions map[string]string
+		if err := json.Unmarshal([]byte(s.ModelInstructionsJSON), &instructions); err == nil && len(instructions) > 0 {
+			opts = append(opts, trpcllmagent.WithModelInstructions(instructions))
+		}
+	}
+
+	if s.ContextCompactionEnabled {
+		opts = append(opts, trpcllmagent.WithEnableContextCompaction(true))
+		if s.L0SummaryThreshold > 0 {
+			opts = append(opts, trpcllmagent.WithContextCompactionThresholdRatio(s.L0SummaryThreshold))
+		}
+		if s.L0SummaryKeepTurns > 0 {
+			opts = append(opts, trpcllmagent.WithContextCompactionKeepRecentRequests(s.L0SummaryKeepTurns))
+		}
+	}
+
+	if s.SessionSummaryEnabled {
+		opts = append(opts, trpcllmagent.WithAddSessionSummary(true))
+	}
+
+	if s.SkillLoadMode != "" && s.SkillLoadMode != "auto" {
+		opts = append(opts, trpcllmagent.WithSkillLoadMode(s.SkillLoadMode))
+	}
+
+	if s.OutputSchemaJSON != "" {
+		var schema map[string]any
+		if err := json.Unmarshal([]byte(s.OutputSchemaJSON), &schema); err == nil && len(schema) > 0 {
+			opts = append(opts, trpcllmagent.WithOutputSchema(schema))
+		}
+	}
+
+	if s.ModelSelector != "" && s.ModelSelector != "default" {
+		selector := buildModelSelector(s.ModelSelector)
+		if selector != nil {
+			opts = append(opts, trpcllmagent.WithModelSelector(selector))
+		}
+	}
+
+	return opts
+}
+
+func buildModelSelector(selector string) trpcagent.ModelSelector {
+	switch selector {
+	case "auto":
+		return func(ctx context.Context, inv *trpcagent.Invocation) (trpcmodel.Model, error) {
+			return nil, nil
+		}
+	default:
+		return nil
+	}
 }

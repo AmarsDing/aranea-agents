@@ -1,11 +1,14 @@
-import { computed, nextTick, onMounted, ref } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useQuasar } from "quasar";
 import { useRoute, useRouter } from "vue-router";
 import {
   listChatOptions,
   sendMessageStream,
+  stopGeneration,
+  getPendingMessages,
 } from "../api";
+import type { PendingMessage } from "../api";
 import type { ToolUseEvent } from "../api";
 import {
   createSession,
@@ -100,6 +103,8 @@ export function useChatWorkspace() {
   const providerModels = ref<PlatformResource[]>([]);
   const provOpts = ref<Array<{ label: string; value: string; caption?: string }>>([]);
   const attachments = ref<ChatAttachment[]>([]);
+  const pendingMessages = ref<PendingMessage[]>([]);
+  let pendingPollTimer: ReturnType<typeof setInterval> | null = null;
 
   const settingsOpen = ref(false);
   const settingsMode = ref<ChatEntityKind | null>(null);
@@ -559,7 +564,50 @@ export function useChatWorkspace() {
 
   function stopStreaming() {
     streamAbortController.value?.abort();
+    const sid = selectedSessionForUi.value?.id;
+    if (sid) {
+      stopGeneration(sid);
+    }
   }
+
+  async function refreshPendingMessages() {
+    const sid = selectedSessionForUi.value?.id;
+    if (!sid) {
+      pendingMessages.value = [];
+      return;
+    }
+    pendingMessages.value = await getPendingMessages(sid);
+  }
+
+  function startPendingPoll() {
+    stopPendingPoll();
+    refreshPendingMessages();
+    pendingPollTimer = setInterval(refreshPendingMessages, 3000);
+  }
+
+  function stopPendingPoll() {
+    if (pendingPollTimer != null) {
+      clearInterval(pendingPollTimer);
+      pendingPollTimer = null;
+    }
+  }
+
+  watch(sending, (val) => {
+    if (val) {
+      startPendingPoll();
+    } else {
+      setTimeout(() => {
+        refreshPendingMessages();
+        if (pendingMessages.value.length === 0) {
+          stopPendingPoll();
+        }
+      }, 1000);
+    }
+  });
+
+  onUnmounted(() => {
+    stopPendingPoll();
+  });
 
   function makeSessionTitle(content: string) {
     const plain = content
@@ -923,6 +971,7 @@ export function useChatWorkspace() {
     modeOpts,
     provOpts,
     attachments,
+    pendingMessages,
     settingsOpen,
     settingsMode,
     settingsId,

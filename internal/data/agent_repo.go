@@ -51,6 +51,17 @@ func normalizeSkillRuntimeJSON(value string) string {
 	return "{}"
 }
 
+func normalizeJSONObj(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "{}"
+	}
+	if json.Valid([]byte(value)) {
+		return value
+	}
+	return "{}"
+}
+
 func sanitizePromptFileID(value string) string {
 	value = strings.ToLower(strings.TrimSpace(value))
 	value = strings.Map(func(r rune) rune {
@@ -172,6 +183,13 @@ func entRuntimeToBiz(e *ent.AgentRuntimeSetting) biz.AgentRuntimeSettings {
 		EvoSystemPromptMaxAppends:         e.EvoSystemPromptMaxAppends,
 		SkillRuntimeJSON:                  e.SkillRuntimeJSON,
 		IntentPassEnabled:                 e.IntentPassEnabled,
+		VariablesJSON:                     e.VariablesJSON,
+		ModelInstructionsJSON:             e.ModelInstructionsJSON,
+		ContextCompactionEnabled:          e.ContextCompactionEnabled,
+		SessionSummaryEnabled:             e.SessionSummaryEnabled,
+		SkillLoadMode:                     e.SkillLoadMode,
+		OutputSchemaJSON:                  e.OutputSchemaJSON,
+		ModelSelector:                     e.ModelSelector,
 		CreatedAt:                         e.CreatedAt,
 		UpdatedAt:                         e.UpdatedAt,
 	}
@@ -271,6 +289,13 @@ func applyBizRuntimeToCreate(b *ent.AgentRuntimeSettingCreate, v biz.AgentRuntim
 		SetEvoSystemPromptMaxAppends(v.EvoSystemPromptMaxAppends).
 		SetSkillRuntimeJSON(normalizeSkillRuntimeJSON(v.SkillRuntimeJSON)).
 		SetIntentPassEnabled(v.IntentPassEnabled).
+		SetVariablesJSON(normalizeJSONObj(v.VariablesJSON)).
+		SetModelInstructionsJSON(normalizeJSONObj(v.ModelInstructionsJSON)).
+		SetContextCompactionEnabled(v.ContextCompactionEnabled).
+		SetSessionSummaryEnabled(v.SessionSummaryEnabled).
+		SetSkillLoadMode(v.SkillLoadMode).
+		SetOutputSchemaJSON(v.OutputSchemaJSON).
+		SetModelSelector(v.ModelSelector).
 		SetCreatedAt(v.CreatedAt).
 		SetUpdatedAt(v.UpdatedAt)
 }
@@ -540,4 +565,63 @@ func (r *agentRepo) ReplaceAgentPromptFiles(ctx context.Context, agentID string,
 		return nil, err
 	}
 	return r.ListAgentPromptFiles(ctx, agentID)
+}
+
+func (r *agentRepo) CreateAgentPromptFile(ctx context.Context, f biz.AgentPromptFile) (biz.AgentPromptFile, error) {
+	if f.AgentID == "" || strings.TrimSpace(f.Name) == "" {
+		return biz.AgentPromptFile{}, fmt.Errorf("agent_id and name are required")
+	}
+	id := f.ID
+	if id == "" {
+		id = fmt.Sprintf("%s_%s", f.AgentID, sanitizePromptFileID(f.Name))
+	}
+	now := nowRFC3339()
+	created, err := r.data.entClient.AgentPromptFile.Create().
+		SetID(id).
+		SetAgentID(f.AgentID).
+		SetFileName(strings.TrimSpace(f.Name)).
+		SetBody(f.Body).
+		SetSortOrder(f.SortOrder).
+		SetCreatedAt(now).
+		SetUpdatedAt(now).
+		Save(ctx)
+	if err != nil {
+		return biz.AgentPromptFile{}, err
+	}
+	return entPromptToBiz(created), nil
+}
+
+func (r *agentRepo) UpdateAgentPromptFile(ctx context.Context, f biz.AgentPromptFile) (biz.AgentPromptFile, error) {
+	if f.ID == "" || f.AgentID == "" {
+		return biz.AgentPromptFile{}, fmt.Errorf("id and agent_id are required")
+	}
+	update := r.data.entClient.AgentPromptFile.UpdateOneID(f.ID).
+		SetUpdatedAt(nowRFC3339())
+	if strings.TrimSpace(f.Name) != "" {
+		update = update.SetFileName(strings.TrimSpace(f.Name))
+	}
+	if f.Body != "" {
+		update = update.SetBody(f.Body)
+	}
+	if f.SortOrder > 0 {
+		update = update.SetSortOrder(f.SortOrder)
+	}
+	updated, err := update.Save(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return biz.AgentPromptFile{}, sql.ErrNoRows
+		}
+		return biz.AgentPromptFile{}, err
+	}
+	return entPromptToBiz(updated), nil
+}
+
+func (r *agentRepo) DeleteAgentPromptFile(ctx context.Context, agentID, id string) error {
+	if agentID == "" || id == "" {
+		return fmt.Errorf("agent_id and id are required")
+	}
+	_, err := r.data.entClient.AgentPromptFile.Delete().
+		Where(agentpromptfile.IDEQ(id), agentpromptfile.AgentIDEQ(agentID)).
+		Exec(ctx)
+	return err
 }

@@ -125,6 +125,16 @@
           </span>
         </div>
       </q-chat-message>
+      <div v-if="props.pendingMessages?.length" class="chat-pending-list">
+        <div class="chat-pending-label">{{ t("chat.pendingQueue") }}</div>
+        <div v-for="pm in props.pendingMessages" :key="pm.id" class="chat-pending-item">
+          <div class="chat-pending-item__content ellipsis">{{ pm.content }}</div>
+          <div class="chat-pending-item__meta">
+            <span class="chat-pending-item__status">{{ pm.status }}</span>
+            <span class="chat-pending-item__time">{{ formatStamp(pm.created_at) }}</span>
+          </div>
+        </div>
+      </div>
       <transition name="chat-scroll-fade">
         <q-btn
           v-if="showScrollBtn"
@@ -311,6 +321,7 @@ const props = defineProps<{
   contextRatio: number;
   isDark: boolean;
   sending?: boolean;
+  pendingMessages?: { id: string; content: string; status: string; created_at: string }[];
 }>();
 
 const emit = defineEmits<{
@@ -1698,4 +1709,55 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
   .message-avatar,
   .chat-message-bubble
     transition: none
+
+.chat-pending-list
+  margin: 8px 16px
+  padding: 8px 12px
+  border-radius: 12px
+  background: rgba(251, 191, 36, 0.08)
+  border: 1px solid rgba(251, 191, 36, 0.22)
+
+.chat-pending-label
+  font-size: 12px
+  font-weight: 600
+  color: #92400e
+  margin-bottom: 6px
+  text-transform: uppercase
+  letter-spacing: 0.04em
+
+:global(.body--dark) .chat-pending-label
+  color: #fbbf24
+
+.chat-pending-item
+  padding: 6px 8px
+  border-radius: 8px
+  background: rgba(255, 255, 255, 0.55)
+  margin-bottom: 4px
+  &:last-child
+    margin-bottom: 0
+
+:global(.body--dark) .chat-pending-item
+  background: rgba(15, 23, 42, 0.35)
+
+.chat-pending-item__content
+  font-size: 13px
+  color: #1e293b
+  line-height: 1.4
+
+:global(.body--dark) .chat-pending-item__content
+  color: #e2e8f0
+
+.chat-pending-item__meta
+  display: flex
+  gap: 8px
+  margin-top: 2px
+  font-size: 11px
+  color: #64748b
+
+:global(.body--dark) .chat-pending-item__meta
+  color: #94a3b8
+
+.chat-pending-item__status
+  font-weight: 600
+  text-transform: uppercase
 </style>
