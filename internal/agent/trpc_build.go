@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -31,6 +32,7 @@ type TRPCBuilderDeps struct {
 	RT         *provider.RoundTrip
 	SkillUC    *biz.SkillUsecase
 	MCPTooling *biz.AgentMCPTooling
+	ToolUC     *biz.ToolUsecase
 	Sys        biz.SystemSettingRepo
 	Provider   string
 	Model      string
@@ -115,7 +117,7 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) 
 			opts = append(opts, trpcllmagent.WithToolFilter(toolFilter))
 		}
 
-		if callbacks := buildToolCallbacks(ag.Settings); callbacks != nil {
+		if callbacks := buildToolCallbacks(ag.Settings, ag, deps); callbacks != nil {
 			opts = append(opts, trpcllmagent.WithToolCallbacks(callbacks))
 		}
 
@@ -410,20 +412,98 @@ func buildToolFilter(s *biz.AgentRuntimeSettings) trpctool.FilterFunc {
 	return trpctool.NewExcludeToolNamesFilter(denyList...)
 }
 
-func buildToolCallbacks(s *biz.AgentRuntimeSettings) *trpctool.Callbacks {
+func buildToolCallbacks(s *biz.AgentRuntimeSettings, ag biz.Agent, deps TRPCBuilderDeps) *trpctool.Callbacks {
 	if !s.ToolsEnabled {
 		return nil
 	}
 	callbacks := trpctool.NewCallbacks()
 
 	callbacks.RegisterAfterTool(func(ctx context.Context, args *trpctool.AfterToolArgs) (*trpctool.AfterToolResult, error) {
-		if args.Error != nil {
-			return nil, nil
-		}
+		recordToolInvocationAsync(ctx, args, ag, deps)
 		return &trpctool.AfterToolResult{}, nil
 	})
 
 	return callbacks
+}
+
+func recordToolInvocationAsync(ctx context.Context, args *trpctool.AfterToolArgs, ag biz.Agent, deps TRPCBuilderDeps) {
+	if deps.ToolUC == nil {
+		return
+	}
+	toolKey := args.ToolName
+	if toolKey == "" {
+		return
+	}
+	var sessionID, userID, agentKey string
+	if inv, ok := trpcagent.InvocationFromContext(ctx); ok && inv != nil {
+		if inv.Session != nil {
+			sessionID = inv.Session.ID
+			userID = inv.Session.UserID
+		}
+		agentKey = inv.AgentName
+	}
+	inputPreview := previewFromArgs(args.Arguments)
+	outputPreview := previewFromResult(args.Result)
+	status := "success"
+	var errCode, errMsg string
+	if args.Error != nil {
+		status = "error"
+		errMsg = args.Error.Error()
+		if len(errMsg) > 500 {
+			errMsg = errMsg[:500]
+		}
+		errCode = "tool_error"
+	}
+	now := time.Now().UTC()
+	write := biz.ToolInvocationWrite{
+		ToolKey:       toolKey,
+		AgentID:       ag.ID,
+		AgentKey:      strutil.FirstNonEmpty(agentKey, ag.AgentKey),
+		SessionID:     sessionID,
+		UserID:        userID,
+		Status:        status,
+		DurationMS:    0,
+		StartedAt:     now.Format(time.RFC3339),
+		EndedAt:       now.Format(time.RFC3339),
+		InputPreview:  inputPreview,
+		OutputPreview: outputPreview,
+		ErrorCode:     errCode,
+		ErrorMessage:  errMsg,
+		Source:        "adk",
+		ToolCallID:    args.ToolCallID,
+	}
+	go func() {
+		bgCtx := context.Background()
+		if err := deps.ToolUC.RecordToolInvocation(bgCtx, write); err != nil {
+			slog.Warn("tool invocation record failed", "tool", toolKey, "error", err)
+		}
+	}()
+}
+
+func previewFromArgs(args []byte) string {
+	if len(args) == 0 {
+		return ""
+	}
+	s := string(args)
+	if len(s) > 2000 {
+		return s[:2000]
+	}
+	return s
+}
+
+func previewFromResult(result any) string {
+	if result == nil {
+		return ""
+	}
+	b, err := json.Marshal(result)
+	if err != nil {
+		return ""
+	}
+	s := string(b)
+	if len(s) > 2000 {
+		return s[:2000]
+	}
+	return s
 }
 
 func buildToolRetryPolicy(s *biz.AgentRuntimeSettings) *trpctool.RetryPolicy {

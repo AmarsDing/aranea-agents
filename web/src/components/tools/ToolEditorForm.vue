@@ -50,7 +50,16 @@
       label="配置 Schema JSON"
       @update:model-value="patch({ config_schema_json: $event })"
     />
+    <template v-if="hasConfigSchema">
+      <div class="text-caption q-mb-xs">配置（按 Schema 渲染）</div>
+      <tool-schema-form
+        :schema-json="form.config_schema_json"
+        :model-value="form.config_json"
+        @update:model-value="patch({ config_json: $event })"
+      />
+    </template>
     <q-input
+      v-else
       :model-value="form.config_json"
       type="textarea"
       outlined
@@ -81,7 +90,9 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from "vue";
 import type { ToolUpsertInput } from "../../features/tools/types";
+import ToolSchemaForm from "./ToolSchemaForm.vue";
 
 const props = defineProps<{
   form: ToolUpsertInput;
@@ -93,4 +104,13 @@ const props = defineProps<{
 function patch(p: Partial<ToolUpsertInput>) {
   Object.assign(props.form, p);
 }
+
+const hasConfigSchema = computed(() => {
+  try {
+    const s = JSON.parse(props.form.config_schema_json || "{}");
+    return s.properties && Object.keys(s.properties).length > 0;
+  } catch {
+    return false;
+  }
+});
 </script>

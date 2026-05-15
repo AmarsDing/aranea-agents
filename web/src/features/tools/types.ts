@@ -30,6 +30,7 @@ export type Tool = {
   blocked_count: number;
   agent_override_count: number;
   avg_duration_ms: number | null;
+  p95_duration_ms: number;
   last_invoked_at?: string;
   last_status?: string;
   created_at: string;
@@ -71,6 +72,7 @@ export type ToolListQuery = {
   source?: string;
   risk_level?: string;
   enabled?: boolean | null;
+  sort?: string;
   page?: number;
   page_size?: number;
 };
@@ -119,6 +121,7 @@ export type ToolRunQuery = {
   status?: string;
   from?: string;
   to?: string;
+  has_error?: boolean;
   page?: number;
   page_size?: number;
 };
@@ -128,6 +131,28 @@ export type PaginatedResponse<T> = {
   page: number;
   page_size: number;
   total: number;
+};
+
+export type ToolAgentOverride = {
+  id: string;
+  tool_id: string;
+  tool_key: string;
+  agent_id: string;
+  enabled: boolean;
+  mode: "inherit" | "allow" | "deny" | string;
+  config_override_json: string;
+  requires_confirmation: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ToolAgentOverrideInput = {
+  tool_id: string;
+  agent_id: string;
+  enabled?: boolean;
+  mode?: string;
+  config_override_json?: string;
+  requires_confirmation?: boolean;
 };
 
 export type AgentEffectiveTool = {

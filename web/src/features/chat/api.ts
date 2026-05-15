@@ -1,6 +1,6 @@
 /**
  * Chat 域：网关 **`/v1/chat/*`**。
- * **`cmd/admin`**：`chat/v1` HTTP + SSE；若设置了 **`LEGACY_REST_ORIGIN`** 则转发遗留 **`/api/v1/chat/*`**，否则由 admin 进程内 OpenAI 兼容路径处理单 Agent 会话并持久化消息。
+ * **`cmd/admin`**：`chat/v1` HTTP + SSE，由 admin 进程内 trpc-agent-go 运行时处理 Agent/Team 会话并持久化消息。
  *
  * Session 相关 API 请从 `features/session/api` 直接导入。
  */
@@ -13,7 +13,8 @@ import type {
   SendMessageOptions,
   SendMessageResult,
   SendMessageStreamCallbacks,
-  ToolUseEvent
+  ToolUseEvent,
+  IntentPassResult
 } from "./types";
 
 export type {
@@ -22,7 +23,8 @@ export type {
   SendMessageOptions,
   SendMessageResult,
   SendMessageStreamCallbacks,
-  ToolUseEvent
+  ToolUseEvent,
+  IntentPassResult
 } from "./types";
 
 function wireInboundChatMessage(raw: unknown): Message {
@@ -153,8 +155,23 @@ function handleStreamEvent(block: string, callbacks: SendMessageStreamCallbacks)
         callbacks.onDone?.(m);
       }
     }
-  } else if (event === "tool_event") {
-    callbacks.onToolEvent?.(parsed as ToolUseEvent);
+  } else if (event === "tool.call" || event === "tool_event") {
+    if (event === "tool.call") {
+      callbacks.onToolEvent?.({
+        id: String(parsed.tool_call_id ?? ""),
+        phase: "before",
+        status: "running",
+        agent_id: "",
+        agent_key: "",
+        agent_name: "",
+        agent_icon: "",
+        tool_name: String(parsed.tool_name ?? ""),
+        tool_label: String(parsed.tool_name ?? ""),
+        occurred_at: new Date().toISOString()
+      });
+    } else {
+      callbacks.onToolEvent?.(parsed as ToolUseEvent);
+    }
   } else if (event === "member_message_start") {
     callbacks.onMemberMessageStart?.(wireInboundChatMessage(parsed));
   } else if (event === "member_delta") {
@@ -164,6 +181,8 @@ function handleStreamEvent(block: string, callbacks: SendMessageStreamCallbacks)
     callbacks.onMemberMessageDone?.(wireInboundChatMessage(am));
   } else if (event === "error") {
     throw new Error(String(parsed.message ?? "stream failed"));
+  } else if (event === "intent_pass") {
+    callbacks.onIntentPass?.(parsed as import("./types").IntentPassResult);
   }
 }
 
@@ -194,5 +213,34 @@ export async function getPendingMessages(sessionId: string): Promise<PendingMess
     return data.items ?? [];
   } catch {
     return [];
+  }
+}
+
+export async function cancelPendingMessage(sessionId: string, pendingId: string): Promise<boolean> {
+  try {
+    const { data } = await kratosApi.post("/v1/chat/pending/cancel", {
+      session_id: sessionId,
+      pending_id: pendingId
+    });
+    return !!data?.cancelled;
+  } catch {
+    return false;
+  }
+}
+
+export async function updatePendingMessage(
+  sessionId: string,
+  pendingId: string,
+  content: string
+): Promise<boolean> {
+  try {
+    const { data } = await kratosApi.post("/v1/chat/pending/update", {
+      session_id: sessionId,
+      pending_id: pendingId,
+      content
+    });
+    return !!data?.updated;
+  } catch {
+    return false;
   }
 }

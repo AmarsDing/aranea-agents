@@ -19,12 +19,16 @@ type Declaration = trpctool.Declaration
 type Schema = trpctool.Schema
 
 type ToolRegistration struct {
-	Name        string
-	Description string
-	Factory     func(ctx context.Context) (Tool, error)
-	ToolSetFactory func(ctx context.Context) (ToolSet, error)
-	EnabledByDefault bool
-	Category    string
+	Name               string
+	Description        string
+	Factory            func(ctx context.Context) (Tool, error)
+	ToolSetFactory     func(ctx context.Context) (ToolSet, error)
+	EnabledByDefault   bool
+	Category           string
+	RiskLevel          string
+	RequiresConfirmation bool
+	SupportsStreaming  bool
+	SupportsConcurrency bool
 }
 
 func NewToolRegistration(name, description string, factory func(ctx context.Context) (Tool, error)) *ToolRegistration {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"strings"
+	"time"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	chatagent "aranea-agents/internal/agent"
@@ -40,6 +41,7 @@ func (s *ChatService) runSingleAgentViaTRPC(
 		RT:         s.td.RoundTrip(),
 		SkillUC:    s.td.SkillUC,
 		MCPTooling: s.td.RT.AgentMCP,
+		ToolUC:     s.td.ToolUC,
 		Sys:        s.td.Sys,
 		Provider:   prov,
 		Model:      mod,
@@ -91,12 +93,16 @@ func (s *ChatService) runSingleAgentViaTRPC(
 		sendText = intent.WrapUserMessage(content, intRes.Artifact)
 	}
 	meta := intent.SSERunMeta{AgentID: ag.ID, SessionID: sessionID}
+	intentPayload := intent.BuildIntentPassPayload(intRes, meta)
 	if s.td.TeamSSE != nil {
 		s.td.TeamSSE.Publish(biz.TeamRunEvent{
 			Type:      "intent_pass",
 			SessionID: sessionID,
-			Payload:   intent.BuildIntentPassPayload(intRes, meta),
+			Payload:   intentPayload,
 		})
+	}
+	if stream != nil {
+		_ = stream.Emit("intent_pass", intentPayload)
 	}
 	intent.PublishMonitorLog(ctx, s.td.MonitorLogs, intRes, "chat", meta)
 
@@ -273,7 +279,12 @@ func (s *ChatService) processPendingQueue(sessionID string, sess biz.Session, ag
 		return
 	}
 	go func() {
-		bgCtx := context.Background()
+		bgCtx, cancel := context.WithTimeout(context.Background(), 600*time.Second)
+		s.pendingCancels.Store(sessionID, cancel)
+		defer func() {
+			cancel()
+			s.pendingCancels.Delete(sessionID)
+		}()
 		req := &chatv1.SendChatMessageRequest{
 			SessionId: sessionID,
 			Content:   entry.Content,

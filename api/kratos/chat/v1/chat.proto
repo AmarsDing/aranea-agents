@@ -79,6 +79,25 @@ message GetPendingMessagesResponse {
   repeated PendingMessage items = 1;
 }
 
+message CancelPendingMessageRequest {
+  string session_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string pending_id = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message CancelPendingMessageResponse {
+  bool cancelled = 1;
+}
+
+message UpdatePendingMessageRequest {
+  string session_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string pending_id = 2 [(google.api.field_behavior) = REQUIRED];
+  string content = 3 [(google.api.field_behavior) = REQUIRED];
+}
+
+message UpdatePendingMessageResponse {
+  bool updated = 1;
+}
+
 service ChatService {
   rpc SendChatMessage(SendChatMessageRequest) returns (SendChatMessageResponse) {
     option (google.api.http) = {
@@ -97,5 +116,17 @@ service ChatService {
   }
   rpc GetPendingMessages(GetPendingMessagesRequest) returns (GetPendingMessagesResponse) {
     option (google.api.http) = { get: "/v1/chat/pending" };
+  }
+  rpc CancelPendingMessage(CancelPendingMessageRequest) returns (CancelPendingMessageResponse) {
+    option (google.api.http) = {
+      post: "/v1/chat/pending/cancel"
+      body: "*"
+    };
+  }
+  rpc UpdatePendingMessage(UpdatePendingMessageRequest) returns (UpdatePendingMessageResponse) {
+    option (google.api.http) = {
+      post: "/v1/chat/pending/update"
+      body: "*"
+    };
   }
 }

@@ -2,7 +2,9 @@ package data
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -40,7 +42,7 @@ func toolSelectSQL() string {
 		       t.parameters_schema_json, t.result_schema_json, t.config_schema_json, t.config_json, t.default_config_json, t.metadata_json,
 		       COALESCE(stats.invoke_count, 0), COALESCE(stats.invoke_count_24h, 0), COALESCE(stats.success_count, 0),
 		       COALESCE(stats.failure_count, 0), COALESCE(stats.blocked_count, 0), COALESCE(overrides.agent_override_count, 0),
-		       stats.avg_duration_ms, COALESCE(last.started_at, ''), COALESCE(last.status, ''),
+		       stats.avg_duration_ms, COALESCE(stats.p95_duration_ms, 0), COALESCE(last.started_at, ''), COALESCE(last.status, ''),
 		       t.created_at, t.updated_at, t.deleted_at
 		FROM tools t
 		LEFT JOIN (
@@ -50,7 +52,13 @@ func toolSelectSQL() string {
 			       SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS success_count,
 			       SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS failure_count,
 			       SUM(CASE WHEN status = 'blocked' THEN 1 ELSE 0 END) AS blocked_count,
-			       AVG(duration_ms) AS avg_duration_ms
+			       AVG(duration_ms) AS avg_duration_ms,
+			       (SELECT AVG(duration_ms) FROM (
+			           SELECT duration_ms FROM tool_invocations ti2
+			           WHERE ti2.tool_key = tool_invocations.tool_key
+			           ORDER BY duration_ms DESC
+			           LIMIT MAX(1, ROUND(COUNT(1) OVER() * 0.05))
+			       )) AS p95_duration_ms
 			FROM tool_invocations
 			GROUP BY tool_key
 		) stats ON stats.tool_key = t.tool_key
@@ -103,12 +111,13 @@ func scanBizTool(rows *sql.Rows) ([]biz.Tool, error) {
 	for rows.Next() {
 		var item biz.Tool
 		var avg sql.NullFloat64
+		var p95 float64
 		if err := rows.Scan(
 			&item.ID, &item.Key, &item.DisplayName, &item.Description, &item.Category, &item.Source, &item.RiskLevel,
 			&item.Enabled, &item.Readonly, &item.RequiresConfirmation, &item.SupportsStreaming, &item.SupportsConcurrency,
 			&item.ParametersSchemaJSON, &item.ResultSchemaJSON, &item.ConfigSchemaJSON, &item.ConfigJSON, &item.DefaultConfigJSON, &item.MetadataJSON,
 			&item.InvokeCount, &item.InvokeCount24h, &item.SuccessCount, &item.FailureCount, &item.BlockedCount, &item.AgentOverrideCount,
-			&avg, &item.LastInvokedAt, &item.LastStatus,
+			&avg, &p95, &item.LastInvokedAt, &item.LastStatus,
 			&item.CreatedAt, &item.UpdatedAt, &item.DeletedAt,
 		); err != nil {
 			return nil, err
@@ -117,6 +126,7 @@ func scanBizTool(rows *sql.Rows) ([]biz.Tool, error) {
 			v := avg.Float64
 			item.AvgDurationMS = &v
 		}
+		item.P95DurationMS = p95
 		item.Permissions = adminToolPerms()
 		out = append(out, item)
 	}
@@ -168,7 +178,18 @@ func (r *toolRepo) SearchTools(ctx context.Context, q biz.ToolListQuery) (biz.To
 	}
 	listArgs := append([]any{cutoff}, args...)
 	listArgs = append(listArgs, q.Limit, q.Offset)
-	rows, err := client.QueryContext(ctx, toolSelectSQL()+` WHERE `+where+` ORDER BY t.category ASC, t.display_name ASC LIMIT ? OFFSET ?`, listArgs...)
+	orderBy := "t.category ASC, t.display_name ASC"
+	switch q.Sort {
+	case "last_invoked_at":
+		orderBy = "last.started_at DESC NULLS LAST, t.display_name ASC"
+	case "invoke_count":
+		orderBy = "stats.invoke_count DESC NULLS LAST, t.display_name ASC"
+	case "failure_rate":
+		orderBy = "CASE WHEN stats.invoke_count > 0 THEN CAST(stats.failure_count AS REAL) / stats.invoke_count ELSE 0 END DESC, t.display_name ASC"
+	case "avg_duration_ms":
+		orderBy = "stats.avg_duration_ms DESC NULLS LAST, t.display_name ASC"
+	}
+	rows, err := client.QueryContext(ctx, toolSelectSQL()+` WHERE `+where+` ORDER BY `+orderBy+` LIMIT ? OFFSET ?`, listArgs...)
 	if err != nil {
 		return biz.ToolListResult{}, err
 	}
@@ -361,6 +382,24 @@ func (r *toolRepo) UpdateToolEnabled(ctx context.Context, idOrKey string, enable
 	return r.GetTool(ctx, ex.ToolKey)
 }
 
+func (r *toolRepo) UpdateToolConfig(ctx context.Context, idOrKey string, configJSON string) (biz.Tool, error) {
+	ex, err := r.toolByIDOrKey(ctx, idOrKey)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return biz.Tool{}, sql.ErrNoRows
+		}
+		return biz.Tool{}, err
+	}
+	err = r.data.Ent().PlatformTool.UpdateOneID(ex.ID).
+		SetConfigJSON(configJSON).
+		SetUpdatedAt(nowRFC3339()).
+		Exec(ctx)
+	if err != nil {
+		return biz.Tool{}, err
+	}
+	return r.GetTool(ctx, ex.ToolKey)
+}
+
 func (r *toolRepo) SearchToolInvocations(ctx context.Context, q biz.ToolRunQuery) (biz.ToolRunResult, error) {
 	client := r.data.Ent()
 	if client == nil {
@@ -391,6 +430,13 @@ func (r *toolRepo) SearchToolInvocations(ctx context.Context, q biz.ToolRunQuery
 	if q.To != "" {
 		where = append(where, "ti.started_at <= ?")
 		args = append(args, q.To)
+	}
+	if q.HasError != nil {
+		if *q.HasError {
+			where = append(where, "ti.status = 'error'")
+		} else {
+			where = append(where, "ti.status != 'error'")
+		}
 	}
 	whereSQL := strings.Join(where, " AND ")
 	var total int
@@ -435,4 +481,199 @@ func (r *toolRepo) SearchToolInvocations(ctx context.Context, q biz.ToolRunQuery
 		return biz.ToolRunResult{}, err
 	}
 	return biz.ToolRunResult{Items: items, Total: total, Limit: q.Limit, Offset: q.Offset}, nil
+}
+
+func (r *toolRepo) RecordToolInvocation(ctx context.Context, in biz.ToolInvocationWrite) error {
+	client := r.data.Ent()
+	if client == nil {
+		return errors.New("ent client unavailable")
+	}
+	now := nowRFC3339()
+	started := strings.TrimSpace(in.StartedAt)
+	if started == "" {
+		started = now
+	}
+	ended := strings.TrimSpace(in.EndedAt)
+	if ended == "" {
+		ended = now
+	}
+	status := strings.TrimSpace(in.Status)
+	if status == "" {
+		if in.ErrorMessage != "" {
+			status = "error"
+		} else {
+			status = "success"
+		}
+	}
+	source := strings.TrimSpace(in.Source)
+	if source == "" {
+		source = "adk"
+	}
+	inputPreview := in.InputPreview
+	if len(inputPreview) > 2000 {
+		inputPreview = inputPreview[:2000]
+	}
+	outputPreview := in.OutputPreview
+	if len(outputPreview) > 2000 {
+		outputPreview = outputPreview[:2000]
+	}
+	id := uniqueToolID("tinv")
+	_, err := client.ToolInvocation.Create().
+		SetID(id).
+		SetToolKey(strings.TrimSpace(in.ToolKey)).
+		SetAgentID(strings.TrimSpace(in.AgentID)).
+		SetAgentKey(strings.TrimSpace(in.AgentKey)).
+		SetSessionID(strings.TrimSpace(in.SessionID)).
+		SetUserID(strings.TrimSpace(in.UserID)).
+		SetSource(source).
+		SetStatus(status).
+		SetStartedAt(started).
+		SetEndedAt(ended).
+		SetDurationMs(in.DurationMS).
+		SetInputPreview(inputPreview).
+		SetInputHash(hashTrim(in.InputHash, in.InputPreview)).
+		SetOutputPreview(outputPreview).
+		SetOutputHash(hashTrim(in.OutputHash, in.OutputPreview)).
+		SetErrorCode(strings.TrimSpace(in.ErrorCode)).
+		SetErrorMessage(strings.TrimSpace(in.ErrorMessage)).
+		SetRedactionApplied(true).
+		SetMetadataJSON(invocationMetaJSON(in)).
+		SetCreatedAt(now).
+		Save(ctx)
+	return err
+}
+
+func hashTrim(explicit, fallback string) string {
+	if h := strings.TrimSpace(explicit); h != "" {
+		if len(h) > 64 {
+			return h[:64]
+		}
+		return h
+	}
+	s := strings.TrimSpace(fallback)
+	if s == "" {
+		return ""
+	}
+	h := sha256.Sum256([]byte(s))
+	return fmt.Sprintf("%x", h)
+}
+
+func invocationMetaJSON(in biz.ToolInvocationWrite) string {
+	m := map[string]string{}
+	if in.ToolCallID != "" {
+		m["tool_call_id"] = in.ToolCallID
+	}
+	if len(m) == 0 {
+		return "{}"
+	}
+	b, _ := json.Marshal(m)
+	return string(b)
+}
+
+func (r *toolRepo) SyncBuiltinTools(ctx context.Context) error {
+	return syncBuiltinToolsFromRegistry(ctx, r.data.Ent())
+}
+
+func (r *toolRepo) ListToolAgentOverrides(ctx context.Context, toolKey string) ([]biz.ToolAgentOverride, error) {
+	client := r.data.Ent()
+	if client == nil {
+		return nil, errors.New("ent client unavailable")
+	}
+	rows, err := client.QueryContext(ctx, `
+		SELECT id, COALESCE(tool_id, ''), tool_key, agent_id, enabled, mode, config_override_json, requires_confirmation, created_at, updated_at
+		FROM tool_agent_overrides
+		WHERE tool_key = ? AND deleted_at = ''
+		ORDER BY agent_id`, toolKey)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var result []biz.ToolAgentOverride
+	for rows.Next() {
+		var o biz.ToolAgentOverride
+		var enabled int
+		var reqConfirm int
+		if err := rows.Scan(&o.ID, &o.ToolID, &o.ToolKey, &o.AgentID, &enabled, &o.Mode, &o.ConfigOverrideJSON, &reqConfirm, &o.CreatedAt, &o.UpdatedAt); err != nil {
+			return nil, err
+		}
+		o.Enabled = enabled != 0
+		o.RequiresConfirmation = reqConfirm != 0
+		result = append(result, o)
+	}
+	return result, rows.Err()
+}
+
+func (r *toolRepo) UpsertToolAgentOverride(ctx context.Context, in biz.ToolAgentOverrideInput) (biz.ToolAgentOverride, error) {
+	client := r.data.Ent()
+	if client == nil {
+		return biz.ToolAgentOverride{}, errors.New("ent client unavailable")
+	}
+	now := nowRFC3339()
+	const q = `INSERT INTO tool_agent_overrides (id, tool_id, tool_key, agent_id, enabled, mode, config_override_json, requires_confirmation, created_at, updated_at, deleted_at)
+		VALUES (?, '', ?, ?, ?, ?, ?, ?, ?, ?, '')
+		ON CONFLICT(tool_key, agent_id) DO UPDATE SET
+			enabled = excluded.enabled,
+			mode = excluded.mode,
+			config_override_json = excluded.config_override_json,
+			requires_confirmation = excluded.requires_confirmation,
+			updated_at = excluded.updated_at,
+			deleted_at = ''`
+	id := uniqueToolID("tao")
+	_, err := client.ExecContext(ctx, q,
+		id, in.ToolKey, in.AgentID, b2i(in.Enabled), in.Mode, in.ConfigOverrideJSON, b2i(in.RequiresConfirmation),
+		now, now,
+	)
+	if err != nil {
+		return biz.ToolAgentOverride{}, err
+	}
+	overrides, err := r.ListToolAgentOverrides(ctx, in.ToolKey)
+	if err != nil {
+		return biz.ToolAgentOverride{}, err
+	}
+	for _, o := range overrides {
+		if o.AgentID == in.AgentID {
+			return o, nil
+		}
+	}
+	return biz.ToolAgentOverride{}, nil
+}
+
+func (r *toolRepo) DeleteToolAgentOverride(ctx context.Context, toolKey string, agentID string) error {
+	client := r.data.Ent()
+	if client == nil {
+		return errors.New("ent client unavailable")
+	}
+	now := nowRFC3339()
+	_, err := client.ExecContext(ctx, `
+		UPDATE tool_agent_overrides SET deleted_at = ?, updated_at = ?
+		WHERE tool_key = ? AND agent_id = ? AND deleted_at = ''`,
+		now, now, toolKey, agentID,
+	)
+	return err
+}
+
+func (r *toolRepo) GetToolInvocationParams(ctx context.Context, invocationID string) (biz.ToolInvocationParam, error) {
+	client := r.data.Ent()
+	if client == nil {
+		return biz.ToolInvocationParam{}, errors.New("ent client unavailable")
+	}
+	rows, err := client.QueryContext(ctx, `
+		SELECT id, invocation_id, tool_key, params_json, redaction_applied, created_at
+		FROM tool_invocation_params
+		WHERE invocation_id = ?
+		LIMIT 1`, invocationID)
+	if err != nil {
+		return biz.ToolInvocationParam{}, err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return biz.ToolInvocationParam{}, sql.ErrNoRows
+	}
+	var p biz.ToolInvocationParam
+	var redaction int
+	if err := rows.Scan(&p.ID, &p.InvocationID, &p.ToolKey, &p.ParamsJSON, &redaction, &p.CreatedAt); err != nil {
+		return biz.ToolInvocationParam{}, err
+	}
+	p.RedactionApplied = redaction != 0
+	return p, nil
 }

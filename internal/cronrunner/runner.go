@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/legacychat"
 	"aranea-agents/pkg/strutil"
 
 	"github.com/google/uuid"
@@ -290,10 +289,7 @@ type sendMessageOptions struct {
 }
 
 func cronChatPOSTRoot() string {
-	if o := strings.TrimSpace(os.Getenv("CRON_CHAT_DISPATCH_ORIGIN")); o != "" {
-		return strings.TrimRight(o, "/")
-	}
-	return strings.TrimRight(strings.TrimSpace(os.Getenv("LEGACY_REST_ORIGIN")), "/")
+	return strings.TrimRight(strings.TrimSpace(os.Getenv("CRON_CHAT_DISPATCH_ORIGIN")), "/")
 }
 
 func (r *Runner) publishTeamCronMaybe(ctx context.Context, teamID string) {
@@ -303,16 +299,13 @@ func (r *Runner) publishTeamCronMaybe(ctx context.Context, teamID string) {
 func (r *Runner) postChat(ctx context.Context, in sendMessagePayload) (cronDispatchResult, error) {
 	base := cronChatPOSTRoot()
 	if base == "" {
-		return cronDispatchResult{}, errors.New(`cron chat: set CRON_CHAT_DISPATCH_ORIGIN (→ admin /v1/chat/messages) or LEGACY_REST_ORIGIN (→ legacy /api/v1/chat/messages)`)
+		return cronDispatchResult{}, errors.New(`cron chat: set CRON_CHAT_DISPATCH_ORIGIN (→ admin /v1/chat/messages)`)
 	}
 	pu, err := url.Parse(base)
 	if err != nil || pu.Scheme == "" || pu.Host == "" {
 		return cronDispatchResult{}, fmt.Errorf("invalid cron chat dispatch URL base")
 	}
-	endpoint := base + legacychat.MessagesPath
-	if strings.TrimSpace(os.Getenv("CRON_CHAT_DISPATCH_ORIGIN")) != "" {
-		endpoint = base + "/v1/chat/messages"
-	}
+	endpoint := base + "/v1/chat/messages"
 	body, err := json.Marshal(in)
 	if err != nil {
 		return cronDispatchResult{}, err

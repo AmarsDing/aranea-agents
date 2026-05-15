@@ -13,7 +13,8 @@ import {
   sendMessageStream,
   type Message,
   type SendMessageOptions,
-  type ToolUseEvent
+  type ToolUseEvent,
+  type IntentPassResult
 } from "../features/chat/api";
 import { formatToolEventMarkdown } from "../features/chat/toolEventMarkdown";
 import { createAgent, deleteAgent, listAgents, updateAgent, type Agent } from "../features/agents/api";
@@ -25,7 +26,8 @@ export const useAppStore = defineStore("app", {
     sessions: [] as Session[],
     messages: [] as Message[],
     selectedAgent: null as Agent | null,
-    selectedSession: null as Session | null
+    selectedSession: null as Session | null,
+    lastIntentPass: null as IntentPassResult | null
   }),
   actions: {
     async removeAgentFromList(id: string) {
@@ -226,6 +228,9 @@ export const useAppStore = defineStore("app", {
             } else {
               appendMessage(message);
             }
+          },
+          onIntentPass: (result) => {
+            this.lastIntentPass = result;
           }
         }
       );

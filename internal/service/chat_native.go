@@ -55,10 +55,82 @@ func nativeDialogModeChatOptions() []*chatv1.ChatOption {
 
 func (s *ChatService) nativeGetChatOptions(ctx context.Context, req *chatv1.GetChatOptionsRequest) (*chatv1.GetChatOptionsResponse, error) {
 	typed := strings.TrimSpace(req.GetType())
-	if typed != "" && typed != "dialog_mode" {
+	switch typed {
+	case "", "dialog_mode":
+		return &chatv1.GetChatOptionsResponse{Items: nativeDialogModeChatOptions()}, nil
+	case "provider":
+		return s.nativeGetProviderOptions(ctx)
+	case "model":
+		return s.nativeGetModelOptions(ctx)
+	default:
 		return &chatv1.GetChatOptionsResponse{Items: nil}, nil
 	}
-	return &chatv1.GetChatOptionsResponse{Items: nativeDialogModeChatOptions()}, nil
+}
+
+func (s *ChatService) nativeGetProviderOptions(ctx context.Context) (*chatv1.GetChatOptionsResponse, error) {
+	if s.td.LLMCatalog == nil {
+		return &chatv1.GetChatOptionsResponse{Items: nil}, nil
+	}
+	rows, err := s.td.LLMCatalog.List(ctx)
+	if err != nil {
+		return &chatv1.GetChatOptionsResponse{Items: nil}, nil
+	}
+	seen := make(map[string]struct{})
+	var items []*chatv1.ChatOption
+	for _, row := range rows {
+		p := strings.TrimSpace(row.Provider)
+		if p == "" || row.Enabled == false {
+			continue
+		}
+		if _, ok := seen[p]; ok {
+			continue
+		}
+		seen[p] = struct{}{}
+		items = append(items, &chatv1.ChatOption{
+			Type:      "provider",
+			Key:       p,
+			Label:     p,
+			Enabled:   true,
+			SortOrder: int32(len(items) + 1),
+		})
+	}
+	return &chatv1.GetChatOptionsResponse{Items: items}, nil
+}
+
+func (s *ChatService) nativeGetModelOptions(ctx context.Context) (*chatv1.GetChatOptionsResponse, error) {
+	if s.td.LLMCatalog == nil {
+		return &chatv1.GetChatOptionsResponse{Items: nil}, nil
+	}
+	rows, err := s.td.LLMCatalog.List(ctx)
+	if err != nil {
+		return &chatv1.GetChatOptionsResponse{Items: nil}, nil
+	}
+	var items []*chatv1.ChatOption
+	for i, row := range rows {
+		if row.Enabled == false {
+			continue
+		}
+		mj := "{}"
+		if row.Provider != "" || row.Model != "" {
+			mj = fmt.Sprintf(`{"provider":"%s","model":"%s"}`, row.Provider, row.Model)
+		}
+		label := row.Name
+		if label == "" {
+			label = row.Key
+		}
+		if label == "" {
+			label = row.Model
+		}
+		items = append(items, &chatv1.ChatOption{
+			Type:         "model",
+			Key:          row.Key,
+			Label:        label,
+			Enabled:      true,
+			SortOrder:    int32(i + 1),
+			MetadataJson: mj,
+		})
+	}
+	return &chatv1.GetChatOptionsResponse{Items: items}, nil
 }
 
 func (s *ChatService) nativeSendChatMessage(ctx context.Context, req *chatv1.SendChatMessageRequest) (*chatv1.SendChatMessageResponse, error) {

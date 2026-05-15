@@ -92,6 +92,7 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 		RT:         r.td.RoundTrip(),
 		SkillUC:    r.td.SkillUC,
 		MCPTooling: r.td.RT.AgentMCP,
+		ToolUC:     r.td.ToolUC,
 		Sys:        r.td.Sys,
 		Provider:   prov0,
 		Model:      mod0,

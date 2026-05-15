@@ -2,7 +2,7 @@ import axios from "axios";
 import { getBackendOrigin } from "../config/runtime";
 
 /**
- * **`kratosApi`**：`requestHandler` + `create*Service()` → **`/v1/...`**（含 **`memory/v1`**）；**`chat`**：`RegisterLegacyChatForwardHTTPServer`（**`LEGACY_REST_ORIGIN`** → **`/api/v1/chat/*`**）；**`skills/import*`**：本进程 **`RegisterSkillImportHTTPServer`**（multipart + JSON，不经遗留网关）。
+ * **`kratosApi`**：`requestHandler` + `create*Service()` → **`/v1/...`**（含 **`memory/v1`**）；**`chat`**：`ChatServiceHTTPServer`（**`/v1/chat/*`**）；**`skills/import*`**：本进程 **`RegisterSkillImportHTTPServer`**（multipart + JSON）。
  *
  * {@link syncHttpClients} 在 **`loadRuntimeConfig`** 之后刷新 **`kratosApi`** 的 **`baseURL`**（见 **`getBackendOrigin()`**）。
  */

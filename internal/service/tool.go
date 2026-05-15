@@ -61,6 +61,7 @@ func bizToolToProto(t biz.Tool) *v1.Tool {
 		v := *t.AvgDurationMS
 		out.AvgDurationMs = &v
 	}
+	out.P95DurationMs = t.P95DurationMS
 	return out
 }
 
@@ -118,6 +119,7 @@ func (s *ToolService) ListTools(ctx context.Context, req *v1.ListToolsRequest) (
 		Source:    req.GetSource(),
 		RiskLevel: req.GetRiskLevel(),
 		Enabled:   enabled,
+		Sort:      req.GetSort(),
 		Limit:     limit,
 		Offset:    offset,
 	}
@@ -218,7 +220,7 @@ func (s *ToolService) DeleteTool(ctx context.Context, req *v1.DeleteToolRequest)
 }
 
 func (s *ToolService) ToggleToolEnabled(ctx context.Context, req *v1.ToggleToolEnabledRequest) (*v1.Tool, error) {
-	t, err := s.uc.ToggleEnabled(ctx, req.GetId(), req.GetEnabled())
+	t, err := s.uc.ToggleEnabled(ctx, req.GetId(), req.GetEnabled(), req.GetConfirmKey())
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, kerrors.NotFound("TOOL", "tool not found")
@@ -230,6 +232,10 @@ func (s *ToolService) ToggleToolEnabled(ctx context.Context, req *v1.ToggleToolE
 
 func runsQuery(req *v1.ListToolRunsRequest) biz.ToolRunQuery {
 	limit, offset, _, _ := biz.PageToLimitOffset(req.GetPage(), req.GetPageSize())
+	var hasError *bool
+	if req.HasError != nil {
+		hasError = req.HasError
+	}
 	return biz.ToolRunQuery{
 		ToolKey:   req.GetToolKey(),
 		AgentID:   req.GetAgentId(),
@@ -237,6 +243,7 @@ func runsQuery(req *v1.ListToolRunsRequest) biz.ToolRunQuery {
 		Status:    req.GetStatus(),
 		From:      req.GetFrom(),
 		To:        req.GetTo(),
+		HasError:  hasError,
 		Limit:     limit,
 		Offset:    offset,
 	}
@@ -287,4 +294,85 @@ func (s *ToolService) ListToolRunsForTool(ctx context.Context, req *v1.ListToolR
 		Page:     page,
 		PageSize: pageSize,
 	}, nil
+}
+
+func bizOverrideToProto(o biz.ToolAgentOverride) *v1.ToolAgentOverride {
+	return &v1.ToolAgentOverride{
+		Id:                   o.ID,
+		ToolId:               o.ToolID,
+		ToolKey:              o.ToolKey,
+		AgentId:              o.AgentID,
+		Enabled:              o.Enabled,
+		Mode:                 o.Mode,
+		ConfigOverrideJson:   o.ConfigOverrideJSON,
+		RequiresConfirmation: o.RequiresConfirmation,
+		CreatedAt:            o.CreatedAt,
+		UpdatedAt:            o.UpdatedAt,
+	}
+}
+
+func (s *ToolService) ListToolAgentOverrides(ctx context.Context, req *v1.ListToolAgentOverridesRequest) (*v1.ListToolAgentOverridesResponse, error) {
+	toolKey := req.GetToolId()
+	overrides, err := s.uc.ListToolAgentOverrides(ctx, toolKey)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]*v1.ToolAgentOverride, 0, len(overrides))
+	for i := range overrides {
+		items = append(items, bizOverrideToProto(overrides[i]))
+	}
+	return &v1.ListToolAgentOverridesResponse{Items: items}, nil
+}
+
+func (s *ToolService) UpsertToolAgentOverride(ctx context.Context, req *v1.UpsertToolAgentOverrideRequest) (*v1.ToolAgentOverride, error) {
+	in := biz.ToolAgentOverrideInput{
+		ToolKey:              req.GetToolId(),
+		AgentID:              req.GetAgentId(),
+		Enabled:              req.GetEnabled(),
+		Mode:                 req.GetMode(),
+		ConfigOverrideJSON:   req.GetConfigOverrideJson(),
+		RequiresConfirmation: req.GetRequiresConfirmation(),
+	}
+	o, err := s.uc.UpsertToolAgentOverride(ctx, in)
+	if err != nil {
+		return nil, err
+	}
+	return bizOverrideToProto(o), nil
+}
+
+func (s *ToolService) DeleteToolAgentOverride(ctx context.Context, req *v1.DeleteToolAgentOverrideRequest) (*emptypb.Empty, error) {
+	err := s.uc.DeleteToolAgentOverride(ctx, req.GetToolId(), req.GetAgentId())
+	if err != nil {
+		return nil, err
+	}
+	return &emptypb.Empty{}, nil
+}
+
+func (s *ToolService) GetToolInvocationParams(ctx context.Context, req *v1.GetToolInvocationParamsRequest) (*v1.ToolInvocationParam, error) {
+	p, err := s.uc.GetToolInvocationParams(ctx, req.GetInvocationId())
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, kerrors.NotFound("TOOL", "invocation params not found")
+		}
+		return nil, err
+	}
+	return &v1.ToolInvocationParam{
+		Id:               p.ID,
+		InvocationId:     p.InvocationID,
+		ToolKey:          p.ToolKey,
+		ParamsJson:       p.ParamsJSON,
+		RedactionApplied: p.RedactionApplied,
+		CreatedAt:        p.CreatedAt,
+	}, nil
+}
+
+func (s *ToolService) UpdateToolConfig(ctx context.Context, req *v1.UpdateToolConfigRequest) (*v1.Tool, error) {
+	t, err := s.uc.UpdateToolConfig(ctx, req.GetId(), req.GetConfigJson())
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, kerrors.NotFound("TOOL", "tool not found")
+		}
+		return nil, err
+	}
+	return bizToolToProto(t), nil
 }

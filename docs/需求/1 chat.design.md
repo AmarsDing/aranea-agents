@@ -7,7 +7,7 @@
 
 ## 一、模块概述
 
-Chat 是用户与 Agent/Team 交互的核心入口，负责 SSE 流式对话、上下文管理、用量记录。当前已实现完整功能，本设计文档记录现有实现架构并标注优化方向。
+Chat 是用户与 Agent/Team 交互的核心入口，负责 SSE 流式对话、上下文管理、用量记录、停止生成与待执行队列。当前已实现完整功能，本设计文档记录现有实现架构并标注优化方向。
 
 ---
 
@@ -69,32 +69,6 @@ message GetChatOptionsResponse {
   repeated ChatOption items = 1;
 }
 
-service ChatService {
-  rpc SendChatMessage(SendChatMessageRequest) returns (SendChatMessageResponse) {
-    option (google.api.http) = {
-      post: "/v1/chat/messages"
-      body: "*"
-    };
-  }
-  rpc GetChatOptions(GetChatOptionsRequest) returns (GetChatOptionsResponse) {
-    option (google.api.http) = {get: "/v1/chat/options"};
-  }
-}
-```
-
-### 2.2 SSE 流式端点（非 Proto 定义，HTTP Server 层注册）
-
-SSE 流式对话通过 HTTP Server 层手动注册路由，不在 Proto 中定义：
-
-```
-POST /v1/chat/messages/stream  →  ChatService.ProxyStream() (SSE)
-```
-
-### 2.3 已新增 Proto
-
-#### StopGeneration（✅ 已实现）
-
-```protobuf
 message StopGenerationRequest {
   string session_id = 1 [(google.api.field_behavior) = REQUIRED];
 }
@@ -103,20 +77,6 @@ message StopGenerationResponse {
   bool stopped = 1;
 }
 
-rpc StopGeneration(StopGenerationRequest) returns (StopGenerationResponse) {
-  option (google.api.http) = { post: "/v1/chat/stop" body: "*" };
-}
-```
-
-**实现要点**：
-- `ChatService.activeRuns sync.Map` 跟踪 `sessionID → trpcrunner.Runner`
-- `runSingleAgentViaTRPC` 中 `Store(sessionID, runner)`，defer `Delete(sessionID)`
-- `RunTRPCUserTurn` 传入 `trpcagent.WithRequestID(sessionID)` 使 Runner 用 sessionID 作为 requestID
-- `StopGeneration` 优先尝试 `ManagedRunner.Cancel(sessionID)`，回退到 `Runner.Close()`
-
-#### GetPendingMessages（✅ 已实现）
-
-```protobuf
 message GetPendingMessagesRequest {
   string session_id = 1 [(google.api.field_behavior) = REQUIRED];
 }
@@ -132,18 +92,68 @@ message GetPendingMessagesResponse {
   repeated PendingMessage items = 1;
 }
 
-rpc GetPendingMessages(GetPendingMessagesRequest) returns (GetPendingMessagesResponse) {
-  option (google.api.http) = { get: "/v1/chat/pending" };
+message CancelPendingMessageRequest {
+  string session_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string pending_id = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message CancelPendingMessageResponse {
+  bool cancelled = 1;
+}
+
+message UpdatePendingMessageRequest {
+  string session_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string pending_id = 2 [(google.api.field_behavior) = REQUIRED];
+  string content = 3 [(google.api.field_behavior) = REQUIRED];
+}
+
+message UpdatePendingMessageResponse {
+  bool updated = 1;
+}
+
+service ChatService {
+  rpc SendChatMessage(SendChatMessageRequest) returns (SendChatMessageResponse) {
+    option (google.api.http) = {
+      post: "/v1/chat/messages"
+      body: "*"
+    };
+  }
+  rpc GetChatOptions(GetChatOptionsRequest) returns (GetChatOptionsResponse) {
+    option (google.api.http) = {get: "/v1/chat/options"};
+  }
+  rpc StopGeneration(StopGenerationRequest) returns (StopGenerationResponse) {
+    option (google.api.http) = {
+      post: "/v1/chat/stop"
+      body: "*"
+    };
+  }
+  rpc GetPendingMessages(GetPendingMessagesRequest) returns (GetPendingMessagesResponse) {
+    option (google.api.http) = { get: "/v1/chat/pending" };
+  }
+  rpc CancelPendingMessage(CancelPendingMessageRequest) returns (CancelPendingMessageResponse) {
+    option (google.api.http) = {
+      post: "/v1/chat/pending/cancel"
+      body: "*"
+    };
+  }
+  rpc UpdatePendingMessage(UpdatePendingMessageRequest) returns (UpdatePendingMessageResponse) {
+    option (google.api.http) = {
+      post: "/v1/chat/pending/update"
+      body: "*"
+    };
+  }
 }
 ```
 
-**实现要点**：
-- `ChatService.pendingQueue sync.Map` 跟踪 `sessionID → []PendingMessage`
-- 执行中再次发送时，消息入队而非拒绝
-- 当前 turn 完成后，自动从队列取下一条发送
-- 前端可查看/取消/编辑待执行消息
+### 2.2 SSE 流式端点（非 Proto 定义，HTTP Server 层注册）
 
-### 2.4 消息字段说明
+SSE 流式对话通过 HTTP Server 层手动注册路由，不在 Proto 中定义：
+
+```
+POST /v1/chat/messages/stream  →  ChatService.ProxyStream() (SSE)
+```
+
+### 2.3 消息字段说明
 
 | 消息 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|------|
@@ -161,6 +171,13 @@ rpc GetPendingMessages(GetPendingMessagesRequest) returns (GetPendingMessagesRes
 | | `label` | string | — | 显示标签 |
 | | `enabled` | bool | — | 是否启用 |
 | | `sort_order` | int32 | — | 排序 |
+| `StopGenerationRequest` | `session_id` | string | ✅ | 要停止的会话 ID |
+| `GetPendingMessagesRequest` | `session_id` | string | ✅ | 要查询的会话 ID |
+| `CancelPendingMessageRequest` | `session_id` | string | ✅ | 会话 ID |
+| | `pending_id` | string | ✅ | 待执行消息 ID |
+| `UpdatePendingMessageRequest` | `session_id` | string | ✅ | 会话 ID |
+| | `pending_id` | string | ✅ | 待执行消息 ID |
+| | `content` | string | ✅ | 新消息内容 |
 
 ---
 
@@ -175,6 +192,9 @@ Chat 模块无独立 Biz 模型，依赖以下已有模型：
 | `biz.Agent` | `internal/biz` | Agent 配置查询 |
 | `biz.Session` | `internal/biz` | 会话上下文 |
 | `biz.Team` | `internal/biz` | Team 编排 |
+| `biz.ChatMessage` | `internal/biz` | 对话消息 |
+| `biz.TokenUsageEvent` | `internal/biz` | 用量记录事件 |
+| `biz.SessionSummary` | `internal/biz` | 会话摘要 |
 
 ### 3.2 依赖的 Usecase/Repo 接口
 
@@ -185,20 +205,23 @@ type AgentRepository interface {
 }
 
 type SessionUsecase struct {
-    repo    SessionRepository
-    agents  AgentRepository
-    teams   TeamRepository
+    repo           SessionRepository
+    agents         AgentRepository
+    teams          TeamRepository
+    titleGenerator SessionTitleGenerator
 }
 
 func (uc *SessionUsecase) Get(ctx context.Context, id string) (Session, error)
 func (uc *SessionUsecase) UpdateContextFromLLMUsage(ctx context.Context, id string, usage LLMUsage) error
+func (uc *SessionUsecase) AppendChatTurn(ctx context.Context, sessionID string, user, assistant ChatMessage) error
+func (uc *SessionUsecase) AppendChatMessage(ctx context.Context, sessionID string, msg ChatMessage, bumpModelCall bool) error
 
 type TeamRepository interface {
     GetTeamByID(ctx context.Context, id string) (Team, error)
 }
 
 type UsageUsecase struct { ... }
-func (uc *UsageUsecase) RecordIngress(ctx context.Context, event TokenUsageEvent) error
+func (uc *UsageUsecase) RecordTokenUsageEvent(ctx context.Context, event TokenUsageEvent) (TokenUsageEvent, error)
 
 type LlmProviderModelUsecase struct { ... }
 func (uc *LlmProviderModelUsecase) ModelForProviderModel(ctx context.Context, provider, model string) (model.LLM, error)
@@ -241,6 +264,18 @@ type NativeTurnCompressor interface {
 }
 ```
 
+### 3.5 SessionTitleGenerator 接口
+
+```go
+type SessionTitleGenerator interface {
+    Generate(ctx context.Context, userMessage string) (string, error)
+}
+```
+
+两个实现：
+- `noopSessionTitleGenerator`：空实现，不生成标题
+- `LLMSessionTitleGenerator`（`internal/service/session_title_llm.go`）：使用轻量 LLM 模型生成标题
+
 ---
 
 ## 四、Data 层
@@ -251,15 +286,27 @@ Chat 模块无独立 Data 层，通过以下已有表间接使用：
 
 ```
 model_token_usage_events
-├── id               TEXT (UUID)
-├── session_id       TEXT
-├── agent_id         TEXT
-├── provider         TEXT
-├── model            TEXT
-├── prompt_tokens    INTEGER
-├── completion_tokens INTEGER
-├── total_tokens     INTEGER
-├── created_at       TEXT
+├── id                TEXT (UUID)
+├── session_id        TEXT
+├── agent_key         TEXT
+├── team_id           TEXT
+├── message_id        TEXT
+├── model_api_id      TEXT
+├── model_display_name TEXT
+├── input_tokens      INTEGER
+├── output_tokens     INTEGER
+├── total_tokens      INTEGER
+├── latency_ms        INTEGER
+├── tokens_per_second REAL
+├── status            TEXT
+├── stream_enabled    BOOLEAN
+├── usage_kind        TEXT
+├── provider_code     TEXT
+├── prompt_mode       TEXT
+├── error_message     TEXT
+├── error_code        TEXT
+├── metadata_json     TEXT
+├── created_at        TEXT
 ```
 
 ### 4.2 工具调用记录表
@@ -285,11 +332,12 @@ tool_invocations
 
 ```
 internal/service/
-├── chat.go              ← ChatService 主结构 + SendChatMessage/GetChatOptions + legacy 代理
+├── chat.go              ← ChatService 主结构 + SendChatMessage/GetChatOptions/StopGeneration/GetPendingMessages/CancelPendingMessage/UpdatePendingMessage + pending queue
 ├── chat_native.go       ← 原生对话入口（SSE + unary）+ streamWriter + hydratedAgent
-├── trpc_turn.go         ← trpc-agent-go 单 Agent turn 执行
+├── trpc_turn.go         ← trpc-agent-go 单 Agent turn 执行 + 事件流投影 + processPendingQueue
 ├── chat_usage_ingress.go ← 用量记录
-├── session_compress.go  ← L0 上下文压缩 + compress HTTP Client
+├── session_compress.go  ← L0 上下文压缩
+├── session_title_llm.go ← LLM 标题生成
 ```
 
 ### 5.2 ChatService 结构体
@@ -298,14 +346,13 @@ internal/service/
 type ChatService struct {
     chatv1.UnimplementedChatServiceServer
 
-    mu          sync.RWMutex
-    up          *url.URL
-    proxy       *httputil.ReverseProxy
-    client      *http.Client
-    teams       biz.TeamRepository
-    teamsNative *team.Runner
-    usage       *biz.UsageUsecase
-    td          runtimedeps.TurnDeps
+    teams        biz.TeamRepository
+    teamsNative  *team.Runner
+    usage        *biz.UsageUsecase
+    td           runtimedeps.TurnDeps
+    activeRuns   sync.Map    // sessionID → trpcrunner.Runner
+    pendingQueue sync.Map    // sessionID → []pendingEntry
+    pendingCancels sync.Map  // sessionID → context.CancelFunc
 }
 
 type ChatServiceDeps struct {
@@ -317,6 +364,7 @@ type ChatServiceDeps struct {
     Agents       biz.AgentRepository
     AgentsUC     *biz.AgentUsecase
     ToolsCatalog biz.ToolRepo
+    ToolUC       *biz.ToolUsecase
     LLMCatalog   *biz.LlmProviderModelUsecase
     SkillUC      *biz.SkillUsecase
     Sys          biz.SystemSettingRepo
@@ -325,29 +373,11 @@ type ChatServiceDeps struct {
     MonitorLogs  *biz.MonitorLogBroker
 }
 
-func NewChatService(deps ChatServiceDeps) *ChatService {
-    s := &ChatService{
-        client:      &http.Client{Timeout: 600 * time.Second},
-        teams:       deps.Teams,
-        teamsNative: deps.TeamsNative,
-        usage:       deps.Usage,
-        td: runtimedeps.TurnDeps{
-            Agents:       deps.Agents,
-            AgentsUC:     deps.AgentsUC,
-            ToolsCatalog: deps.ToolsCatalog,
-            LLMCatalog:   deps.LLMCatalog,
-            SkillUC:      deps.SkillUC,
-            Sys:          deps.Sys,
-            RT:           deps.RT,
-            LLMHTTP:      &http.Client{Timeout: 300 * time.Second},
-            Sessions:     deps.Sessions,
-            Compress:     deps.Compress,
-            MonitorLogs:  deps.MonitorLogs,
-            TeamSSE:      deps.Broker,
-        },
-    }
-    s.refreshUpstream()
-    return s
+type pendingEntry struct {
+    ID        string
+    Content   string
+    Status    string
+    CreatedAt string
 }
 ```
 
@@ -355,54 +385,65 @@ func NewChatService(deps ChatServiceDeps) *ChatService {
 
 #### SendChatMessage（unary，非流式）
 
-```go
-func (s *ChatService) SendChatMessage(ctx context.Context, req *chatv1.SendChatMessageRequest) (*chatv1.SendChatMessageResponse, error) {
-    if req.SessionId == "" {
-        return nil, kerrors.BadRequest("CHAT", "session_id is required")
-    }
-    if req.Content == "" {
-        return nil, kerrors.BadRequest("CHAT", "content is required")
-    }
-    // 1. 查询 Session
-    sess, err := s.td.Sessions.Get(ctx, req.SessionId)
-    if err != nil {
-        return nil, kerrors.FromError(err)
-    }
-    // 2. 走原生对话路径
-    userMsg, agentMsg, err := s.runNativeTurn(ctx, sess, req)
-    if err != nil {
-        return nil, kerrors.FromError(err)
-    }
-    resp := &chatv1.SendChatMessageResponse{}
-    if userMsg != nil {
-        resp.UserMessage = userMsg
-    }
-    if agentMsg != nil {
-        resp.AgentMessage = agentMsg
-    }
-    return resp, nil
-}
+```
+1. 检查 session_id 和 content 必填
+2. 调 nativeSendChatMessage → runNativeAgentTurn
+3. 返回 user_message + agent_message
+4. 记录用度
+5. 如果是 team 请求，触发 TeamRunEventBroker hint
 ```
 
 #### GetChatOptions
 
-```go
-func (s *ChatService) GetChatOptions(ctx context.Context, req *chatv1.GetChatOptionsRequest) (*chatv1.GetChatOptionsResponse, error) {
-    items := []*chatv1.ChatOption{
-        {Type: "dialog_mode", Key: "default", Label: "标准对话", Enabled: true, SortOrder: 1},
-        {Type: "dialog_mode", Key: "plan", Label: "深思考", Enabled: true, SortOrder: 2},
-        {Type: "dialog_mode", Key: "code", Label: "仅代码", Enabled: true, SortOrder: 3},
-    }
-    return &chatv1.GetChatOptionsResponse{Items: items}, nil
-}
+```
+1. 调 nativeGetChatOptions:
+   - type="" 或 "dialog_mode" → 返回硬编码的 dialog_mode 选项
+   - type="provider" → 从 LLM Catalog 动态获取可用 Provider 列表
+   - type="model" → 从 LLM Catalog 动态获取可用 Model 列表
+```
+
+#### StopGeneration
+
+```
+1. 检查 session_id 必填
+2. 从 activeRuns 加载 Runner
+3. 优先尝试 chatagent.CancelTRPCRun(runner, sessionID)
+4. 回退到 runner.Close()
+5. 从 activeRuns 删除
+6. 从 pendingCancels 加载 CancelFunc 并调用（取消待执行队列处理）
+7. 从 pendingCancels 删除
+```
+
+#### GetPendingMessages
+
+```
+1. 检查 session_id 必填
+2. 从 pendingQueue 加载 []pendingEntry
+3. 转换为 proto PendingMessage 列表
+```
+
+#### CancelPendingMessage
+
+```
+1. 检查 session_id 和 pending_id 必填
+2. 调用 removePending(sessionID, entryID)
+3. 返回 cancelled 状态
+```
+
+#### UpdatePendingMessage
+
+```
+1. 检查 session_id、pending_id 和 content 必填
+2. 调用 updatePending(sessionID, entryID, newContent)
+3. updatePending 使用 CAS 循环更新 pendingQueue 中的条目内容
+4. 返回 updated 状态
 ```
 
 ### 5.4 SSE 流式对话（ProxyStream）
 
-SSE 路由在 `internal/server/register_chat.go` 中手动注册，不在 Proto 中：
+SSE 路由在 `internal/server/register_chat.go` 中手动注册：
 
 ```go
-// internal/server/register_chat.go 中注册 SSE 路由
 func RegisterChatIngress(srv *kratoshttp.Server, chat *service.ChatService) {
     chatv1.RegisterChatServiceHTTPServer(srv, chat)
     r := srv.Route("/")
@@ -415,15 +456,11 @@ func RegisterChatIngress(srv *kratoshttp.Server, chat *service.ChatService) {
 ```
 POST /v1/chat/messages/stream (SSE)
   → ChatService.ProxyStream()
-    → LEGACY_REST_ORIGIN 已配置?
-      → 反向代理到旧后端 (legacychat)
-    → 未配置 → proxyNativeStream()
-      → session.owner_type == "team"?
-        → team.Runner.RunTurn() → SSE 事件流
-      → session.owner_type == "agent"?
-        → runSingleAgentViaTRPC()
-          → BuildTRPCLLMAgent() → NewTRPCRunner() → RunTRPCUserTurn()
-          → SSE 事件流
+    → proxyNativeStream()
+      → 解析 JSON body → 构造 protoReq
+      → 设置 SSE headers (Content-Type/Cache-Control/Connection/X-Accel-Buffering)
+      → runNativeAgentTurn(ctx, protoReq, streamWriter)
+      → 记录用度
 ```
 
 ### 5.5 SSE 事件协议
@@ -435,25 +472,118 @@ POST /v1/chat/messages/stream (SSE)
 | `tool.call` | server→client | `{"session_id":"...","tool_name":"...","tool_call_id":"..."}` | 工具调用通知 |
 | `done` | server→client | `{"agent_message":{"id":"...","content_markdown":"..."}}` | 生成完成 |
 | `error` | server→client | `{"message":"..."}` | 错误信息 |
+| `state_delta` | server→client | `{"session_id":"...","state_delta":{...}}` | Session State 增量 |
+| `extensions` | server→client | `{"session_id":"...","extensions":{...}}` | 事件扩展数据 |
+| `branch` | server→client | `{"session_id":"...","branch":"..."}` | 分支标识 |
+| `filter_key` | server→client | `{"session_id":"...","filter_key":"..."}` | 过滤键 |
+| `tag` | server→client | `{"session_id":"...","tag":"..."}` | 事件标签 |
+| `intent_pass` | server→client | `{"outcome":"completed","duration_ms":42,"intent_kind":"debug",...}` | 意图识别结果 |
 
-### 5.6 用量记录
+### 5.6 runNativeAgentTurn 核心流程
+
+```
+1. 校验 session_id 和 content
+2. 检查 activeRuns → 如果正在运行则入队 pendingQueue 并返回
+3. 查询 Session
+4. 判断 owner_type:
+   - "team" → teamsNative.RunTurn()
+   - "agent" → runSingleAgentViaTRPC()
+5. 对于 agent 路径:
+   a. hydratedAgent() 获取完整 Agent 配置
+   b. 解析 dialogMode/provider/model（优先级：请求 > Session > Agent）
+   c. runSingleAgentViaTRPC()
+```
+
+### 5.7 runSingleAgentViaTRPC 核心流程
+
+```
+1. 校验 agent_key 匹配
+2. 构建 TRPCBuilderDeps
+3. BuildTRPCLLMAgent() → root Agent
+4. 构建 TRPCRunnerDeps（SessionService + MemoryService）
+5. NewTRPCRunner() → runner
+6. activeRuns.Store(sessionID, runner)
+7. defer: activeRuns.Delete + runner.Close + processPendingQueue
+8. 构建 UserOptionsJSON
+9. 运行意图识别 intent.Run()
+   - 成功时：MergeIntoUserOptionsJSON 合并到 options_json
+   - 成功时：WrapUserMessage 嵌入 artifact 到用户消息
+   - SSE emit intent_pass 事件（单 Agent 和 Team 均发送）
+   - TeamSSE.Publish intent_pass 事件
+10. 构造 userMsg → AppendChatMessage/SSE emit
+11. RunTRPCUserTurn() → events channel
+12. 遍历事件流:
+    - StateDelta/Extensions/Branch/FilterKey/Tag → SSE emit
+    - Response.Choices → 累积 reply/reasoning，SSE emit delta
+    - ToolCalls → SSE emit tool.call
+    - Usage → 记录 promptTok/completionTok
+13. 构造 assistantMsg
+14. 持久化消息（unary: AppendChatTurn, stream: AppendChatMessage）
+15. patchSessionContextUsage
+16. SSE emit done
+```
+
+### 5.8 用量记录
 
 ```go
-// internal/service/chat_usage_ingress.go
-func (s *ChatService) recordChatIngressUsage(ctx context.Context, sess biz.Session, provider, model string, usage model.Usage) {
-    if os.Getenv("CHAT_RECORD_USAGE_INGRESS") == "0" {
-        return
-    }
-    event := biz.TokenUsageEvent{
-        SessionID:       sess.ID,
-        AgentID:         sess.OwnerID,
-        Provider:        provider,
-        Model:           model,
-        PromptTokens:    usage.PromptTokens,
-        CompletionTokens: usage.CompletionTokens,
-        TotalTokens:     usage.TotalTokens,
-    }
-    _ = s.usage.RecordIngress(ctx, event)
+func recordChatIngressUsage(ctx, uc, req, am, streamEnabled) {
+    // 1. 检查 CHAT_RECORD_USAGE_INGRESS 环境变量
+    // 2. 从 agent_message 提取 token_in/token_out/latency_ms
+    // 3. 如果 API 未返回 usage，使用 roughTokenEstimateFromText 估算
+    // 4. 计算 tokens_per_second
+    // 5. 构造 TokenUsageEvent 并写入
+    // 6. 使用独立 context.WithoutCancel 避免请求超时影响记录
+}
+```
+
+### 5.9 L0 上下文压缩
+
+```go
+type SessionCompressor struct {
+    Sessions    *biz.SessionUsecase
+    Agents      biz.AgentRepository
+    Compress    compress.Compressor
+    RT          *runtimedeps.Runtime
+    MonitorLogs *biz.MonitorLogBroker
+    inFlight    sync.Map  // sessionID → bool（防重入）
+}
+
+func (c *SessionCompressor) AfterNativeTurn(ctx, sessionID, ag) {
+    // 1. 异步执行，inFlight 防重入
+    // 2. 查询 Session，检查 context_used_ratio 是否超过阈值（默认 0.6）
+    // 3. 100% 使用率时立即压缩，否则检查距上次压缩是否超过 10 分钟
+    // 4. 获取消息列表，计算需要压缩的范围
+    // 5. 调用 Compress.Compress() 生成摘要
+    // 6. 插入 SessionSummary 记录
+    // 7. 合并所有摘要，更新 Session Runner Snapshot
+}
+```
+
+### 5.10 Session 标题自动生成
+
+```go
+func (uc *SessionUsecase) maybeAutoTitleFromUserMessage(ctx, sessionID, content) error {
+    // 1. 查询 Session，检查标题是否为默认占位符
+    // 2. 先用截取方式快速设置标题（即时反馈）
+    // 3. 异步调用 generateTitleAsync
+}
+
+func (uc *SessionUsecase) generateTitleAsync(sessionID, content) {
+    // 1. 15s 超时
+    // 2. 调用 titleGenerator.Generate()
+    // 3. 成功则更新标题
+}
+
+type LLMSessionTitleGenerator struct {
+    catalog *biz.LlmProviderModelUsecase
+    rt      *provider.RoundTrip
+}
+
+func (g *LLMSessionTitleGenerator) Generate(ctx, userMessage) (string, error) {
+    // 1. 从 catalog 选择轻量模型（mini/flash/lite/small）
+    // 2. 构造请求：system prompt + user message
+    // 3. 调用 LLM，流式读取响应
+    // 4. 截取前 50 字符作为标题
 }
 ```
 
@@ -464,35 +594,31 @@ func (s *ChatService) recordChatIngressUsage(ctx context.Context, sess biz.Sessi
 ### 6.1 Agent 构建
 
 ```go
-// internal/agent/trpc_build.go
 type TRPCBuilderDeps struct {
     Catalog    *biz.LlmProviderModelUsecase
     AgentUC    *biz.AgentUsecase
     Agents     biz.AgentRepository
     RT         *provider.RoundTrip
     SkillUC    *biz.SkillUsecase
+    MCPTooling interface{}
+    ToolUC     *biz.ToolUsecase
     Sys        biz.SystemSettingRepo
     Provider   string
     Model      string
     DialogMode string
 }
 
-func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) (trpcagent.Agent, error) {
+func BuildTRPCLLMAgent(ctx, ag biz.Agent, deps TRPCBuilderDeps) (trpcagent.Agent, error) {
     // 1. 获取 LLM 模型
-    m, err := provider.TRPCModelForProviderModel(ctx, deps.Catalog, deps.RT, prov, mod)
     // 2. 构建 System Prompt（含占位符变量替换）
-    sys := BuildSystemPrompt(ag, files, ag.SystemPromptMode)
     // 3. 挂载工具（Builtin + Skill + MCP）
-    toolsets := buildToolsetsForAgent(ag, deps)
     // 4. 构建 Agent
-    return trpcagent.New(opts...)
 }
 ```
 
 ### 6.2 Runner 构建
 
 ```go
-// internal/agent/trpc_runtime.go
 type TRPCRunnerDeps struct {
     AppName        string
     SessionService trpcsession.Service
@@ -501,18 +627,17 @@ type TRPCRunnerDeps struct {
 
 func NewTRPCRunner(root trpcagent.Agent, deps TRPCRunnerDeps, opts ...trpcrunner.Option) (trpcrunner.Runner, error) {
     // 注入 SessionService 和 MemoryService（可选）
-    return trpcrunner.NewRunner(appName, root, opts...), nil
+    // 返回 trpcrunner.NewRunner(appName, root, opts...)
 }
 
-func RunTRPCUserTurn(ctx context.Context, r trpcrunner.Runner, userID, sessionID, content string, opts ...trpcagent.RunOption) (<-chan *trpcevent.Event, error) {
-    return r.Run(ctx, userID, sessionID, content, opts...)
+func RunTRPCUserTurn(ctx, r trpcrunner.Runner, userID, sessionID, content string, opts ...trpcagent.RunOption) (<-chan *trpcevent.Event, error) {
+    // 执行一轮用户对话
 }
 ```
 
 ### 6.3 Team 编排
 
 ```go
-// internal/team/runner_team_trpc.go
 type Runner struct {
     teams    biz.TeamRepository
     sessions *biz.SessionUsecase
@@ -528,14 +653,11 @@ type Runner struct {
     logs     *biz.MonitorLogBroker
 }
 
-func (r *Runner) RunTurn(ctx context.Context, sess biz.Session, req *chatv1.SendChatMessageRequest, emitter agent.StreamEmitter) (biz.ChatMessage, biz.ChatMessage, error) {
+func (r *Runner) RunTurn(ctx, sess biz.Session, req *chatv1.SendChatMessageRequest, emitter agent.StreamEmitter) (biz.ChatMessage, biz.ChatMessage, error) {
     // 1. 查询 Team 成员 Agent 列表
     // 2. 构建 Team Root Agent（Coordinator 或 Swarm）
-    root, err := BuildWorkflowRoot(ctx, team, agents, r.deps())
     // 3. 构建 Runner
-    runner, err := NewTRPCRunner(root, runnerDeps)
     // 4. 执行
-    events, err := RunTRPCUserTurn(ctx, runner, uid, sessionID, msg)
     // 5. 投影事件流 → ChatMessage + SSE
 }
 ```
@@ -547,10 +669,11 @@ func (r *Runner) RunTurn(ctx context.Context, sess biz.Session, req *chatv1.Send
 ### 7.1 ProviderSet
 
 ```go
-// internal/service/service.go
 var ProviderSet = wire.NewSet(
     NewChatService,
     provideChatServiceDeps,
+    NewSessionCompressor,
+    NewLLMSessionTitleGenerator,
     // ... 其他 Service
 )
 ```
@@ -558,7 +681,6 @@ var ProviderSet = wire.NewSet(
 ### 7.2 provideChatServiceDeps
 
 ```go
-// cmd/admin/wire.go
 func provideChatServiceDeps(
     broker *biz.TeamRunEventBroker,
     teams biz.TeamRepository,
@@ -568,33 +690,15 @@ func provideChatServiceDeps(
     agents biz.AgentRepository,
     agentsUC *biz.AgentUsecase,
     toolsCatalog biz.ToolRepo,
+    toolUC *biz.ToolUsecase,
     llmCatalog *biz.LlmProviderModelUsecase,
     skillUC *biz.SkillUsecase,
     sys biz.SystemSettingRepo,
     rt *runtimedeps.Runtime,
     compress biz.NativeTurnCompressor,
     monitorLogs *biz.MonitorLogBroker,
-) service.ChatServiceDeps {
-    return service.ChatServiceDeps{
-        Broker:       broker,
-        Teams:        teams,
-        TeamsNative:  teamsNative,
-        Usage:        usage,
-        Sessions:     sessions,
-        Agents:       agents,
-        AgentsUC:     agentsUC,
-        ToolsCatalog: toolsCatalog,
-        LLMCatalog:   llmCatalog,
-        SkillUC:      skillUC,
-        Sys:          sys,
-        RT:           rt,
-        Compress:     compress,
-        MonitorLogs:  monitorLogs,
-    }
-}
+) service.ChatServiceDeps { ... }
 ```
-
-> **注意**：`ChatServiceDeps.Broker` 映射到 `TurnDeps.TeamSSE`，`http.Client` 由 `NewChatService` 内部创建（legacy 代理 + LLM 调用），不由 Wire 注入。
 
 ---
 
@@ -606,346 +710,208 @@ func provideChatServiceDeps(
 web/src/
 ├── services/index.ts              ← createChatService 导出
 ├── features/chat/
-│   ├── api.ts                     ← Chat API 调用封装
+│   ├── api.ts                     ← Chat API 调用封装（sendMessage/streamMessage/stop/listOptions/getPending/cancelPending/updatePending）
 │   ├── types.ts                   ← TypeScript 类型定义
 │   ├── toolEventMarkdown.ts       ← 工具事件 Markdown 渲染
 │   └── composables/
-│       └── useChatWorkspace.ts    ← 对话工作区 composable
-├── stores/chat/
-│   └── index.ts                   ← Pinia Store（useChatStore）
+│       └── useChatWorkspace.ts    ← 对话工作区 composable（状态管理 + 交互逻辑）
 ├── components/chat/
-│   ├── ChatLayout.vue             ← 三栏布局容器
-│   ├── AgentTeamList.vue          ← 左侧 Agent/Team 列表
-│   ├── SessionHistory.vue         ← 右侧 Session 历史
-│   ├── ChatMessages.vue           ← 中间对话内容
-│   ├── ChatInput.vue              ← 底部输入区域
-│   ├── ChatToolbar.vue            ← 工具条
-│   ├── ChatMessageBubble.vue      ← 单条消息气泡
-│   └── ContextProgress.vue        ← 上下文额度圆环
+│   ├── ChatWorkspaceShell.vue     ← 工作区外壳（标题 + 三栏布局容器）
+│   ├── ChatEntitySidebar.vue      ← 左侧 Agent/Team 列表
+│   ├── ChatSessionSidebar.vue     ← 右侧 Session 历史
+│   ├── ChatMessagePanel.vue       ← 中间对话内容 + 输入区域
+│   ├── ChatSideToggle.vue         ← 侧栏折叠按钮
+│   ├── ChatSettingsDialog.vue     ← Agent/Team 设置弹框
+│   ├── ChatDeleteDialog.vue       ← 删除确认弹框
+│   ├── SessionTimelineDialog.vue  ← Session 历史追踪弹框
+│   └── types.ts                   ← 组件级类型定义
+├── config/chatOptions.ts          ← 对话模式/模型配置
+├── stores/app.ts                  ← 全局状态（含 Agent/Session 选择）
 ```
 
 ### 8.2 页面布局
 
 ```
 ┌──────────┬─────────────────────────────────┬──────────┐
-│ Agent/   │                                 │ Session  │
-│ Team     │        对话内容区域               │ 历史     │
-│ 列表     │     (q-chat-message)             │ 列表     │
-│ 120px    │                                 │ 120px    │
-│          ├─────────────────────────────────┤          │
-│          │  输入框 (autogrow, max 400px)    │          │
-│          │  [模式][Provider][上下文] [文件][发送] │          │
+│ Agent/   │        ChatWorkspaceShell        │ Session  │
+│ Team     │  ┌───────────────────────────┐  │ 历史     │
+│ 列表     │  │  Session 标题 + 上下文比   │  │ 列表     │
+│          │  ├───────────────────────────┤  │          │
+│ 120px    │  │                           │  │ 120px    │
+│          │  │   对话内容区域             │  │          │
+│          │  │   (q-chat-message)        │  │          │
+│          │  │                           │  │          │
+│          │  │   待执行消息列表           │  │          │
+│          │  ├───────────────────────────┤  │          │
+│          │  │  附件区域                  │  │          │
+│          │  │  输入框 (autogrow)         │  │          │
+│          │  │  [模式][Provider][上下文]  │  │          │
+│          │  │              [文件][发送]  │  │          │
+│          │  └───────────────────────────┘  │          │
 └──────────┴─────────────────────────────────┴──────────┘
 ```
 
 ### 8.3 TypeScript 类型定义
 
 ```typescript
-// features/chat/types.ts
-export interface SendChatMessageRequest {
-  session_id: string
-  agent_key?: string
-  team_id?: string
-  content: string
-  options?: SendMessageOptions
-}
+export type Message = {
+  id: string;
+  session_id: string;
+  parent_message_id: string;
+  turn_index: number;
+  role: string;
+  content_markdown: string;
+  model_name: string;
+  token_in: number;
+  token_out: number;
+  latency_ms: number;
+  status: string;
+  attachments_count: number;
+  options_json: string;
+  error_message: string;
+  created_at: string;
+};
 
-export interface SendMessageOptions {
-  dialog_mode?: 'default' | 'plan' | 'code'
-  provider?: string
-  model?: string
-  attachments?: AttachmentRef[]
-}
+export type ChatOption = {
+  type: string;
+  key: string;
+  label: string;
+  enabled: boolean;
+  sort_order: number;
+  metadata_json: string;
+};
 
-export interface AttachmentRef {
-  id: string
-}
+export type SendMessageOptions = {
+  dialog_mode?: string;
+  provider?: string;
+  model?: string;
+  attachments?: Array<{ id: string }>;
+};
 
-export interface ChatOption {
-  type: string
-  key: string
-  label: string
-  enabled: boolean
-  sort_order: number
-  metadata_json?: string
-}
+export type SendMessageResult = {
+  user_message: Message;
+  agent_message: Message;
+};
 
-export interface SSEEvent {
-  type: 'user_message' | 'delta' | 'tool.call' | 'done' | 'error'
-  data: Record<string, unknown>
-}
+export type SendMessageStreamCallbacks = {
+  signal?: AbortSignal;
+  onUserMessage?: (message: Message) => void;
+  onDelta?: (content: string) => void;
+  onDone?: (message: Message) => void;
+  onToolEvent?: (event: ToolUseEvent) => void;
+  onMemberMessageStart?: (message: Message) => void;
+  onMemberDelta?: (messageID: string, content: string) => void;
+  onMemberMessageDone?: (message: Message) => void;
+  onIntentPass?: (result: IntentPassResult) => void;
+};
 
-export interface ToolCallEvent {
-  session_id: string
-  tool_name: string
-  tool_call_id: string
-}
+export type IntentPassResult = {
+  outcome: string;
+  duration_ms: number;
+  session_id?: string;
+  agent_id?: string;
+  intent_kind?: string;
+  refined_goal_len?: number;
+  search_hints_count?: number;
+};
 
-export interface AgentMessage {
-  id: string
-  content_markdown: string
-}
-
-export interface PendingMessage {
-  id: string
-  content: string
-  status: string
-  created_at: string
-}
+export type ToolUseEvent = {
+  id: string;
+  phase: "before" | "after" | string;
+  status: "running" | "success" | "error" | "failed" | "blocked" | string;
+  agent_id: string;
+  agent_key: string;
+  agent_name: string;
+  agent_icon: string;
+  tool_name: string;
+  tool_label: string;
+  arguments?: Record<string, unknown>;
+  result?: Record<string, unknown>;
+  error?: string;
+  occurred_at: string;
+  duration_ms?: number;
+  message_hint?: string;
+};
 ```
 
 ### 8.4 API 调用
 
 ```typescript
-// features/chat/api.ts
-import { createChatService } from 'services/index'
-
-const chatService = createChatService()
-
-export async function getChatOptions(type?: string): Promise<ChatOption[]> {
-  const resp = await chatService.getChatOptions({ type })
-  return resp.items ?? []
-}
-
-export function streamChatMessage(
-  req: SendChatMessageRequest,
-  onDelta: (delta: string, isReasoning?: boolean) => void,
-  onToolCall: (call: ToolCallEvent) => void,
-  onDone: (msg: AgentMessage) => void,
-  onError: (err: string) => void,
-): AbortController {
-  const controller = new AbortController()
-  const backendOrigin = getBackendOrigin()
-  const url = `${backendOrigin}/v1/chat/messages/stream`
-
-  fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(req),
-    signal: controller.signal,
-    credentials: 'include',
-  }).then(async (response) => {
-    const reader = response.body!.getReader()
-    const decoder = new TextDecoder()
-    let buffer = ''
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop()!
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue
-        const raw = line.slice(6)
-        if (raw === '[DONE]') { onDone({ id: '', content_markdown: '' }); return }
-        try {
-          const evt = JSON.parse(raw)
-          switch (evt.type) {
-            case 'delta':
-              onDelta(evt.content ?? '', !!evt.reasoning_content)
-              break
-            case 'tool.call':
-              onToolCall(evt)
-              break
-            case 'done':
-              onDone(evt.agent_message ?? { id: '', content_markdown: '' })
-              break
-            case 'error':
-              onError(evt.message ?? 'unknown error')
-              break
-          }
-        } catch { /* skip malformed */ }
-      }
-    }
-  }).catch((err) => {
-    if (err.name !== 'AbortError') onError(err.message)
-  })
-
-  return controller
-}
-
-export async function stopGeneration(sessionId: string): Promise<void> {
-  await kratosApi.post('/v1/chat/stop', { session_id: sessionId })
-}
-
-export async function getPendingMessages(sessionId: string): Promise<PendingMessage[]> {
-  const resp = await kratosApi.get(`/v1/chat/pending`, { params: { session_id: sessionId } })
-  return resp.data.items ?? []
-}
+export async function sendMessage(payload: {...}): Promise<SendMessageResult>
+export async function sendMessageStream(payload: {...}, callbacks: SendMessageStreamCallbacks): Promise<void>
+export async function listChatOptions(type?: string): Promise<ChatOption[]>
+export async function stopGeneration(sessionId: string): Promise<boolean>
+export async function getPendingMessages(sessionId: string): Promise<PendingMessage[]>
+export async function cancelPendingMessage(sessionId: string, pendingId: string): Promise<boolean>
+export async function updatePendingMessage(sessionId: string, pendingId: string, content: string): Promise<boolean>
 ```
 
-### 8.5 Pinia Store
+### 8.5 组件设计
 
-```typescript
-// stores/chat/index.ts
-import { defineStore } from 'pinia'
-
-export const useChatStore = defineStore('chat', {
-  state: () => ({
-    currentAgentId: null as string | null,
-    currentTeamId: null as string | null,
-    currentSessionId: null as string | null,
-    dialogMode: 'default' as 'default' | 'plan' | 'code',
-    selectedProvider: '',
-    selectedModel: '',
-    contextUsedRatio: 0,
-    isGenerating: false,
-    pendingMessages: [] as PendingMessage[],
-    messages: [] as ChatMessageRow[],
-    abortController: null as AbortController | null,
-  }),
-  actions: {
-    async sendMessage(content: string, attachments?: AttachmentRef[]) {
-      if (!this.currentSessionId) return
-      this.isGenerating = true
-      this.abortController = streamChatMessage(
-        {
-          session_id: this.currentSessionId,
-          content,
-          options: {
-            dialog_mode: this.dialogMode,
-            provider: this.selectedProvider || undefined,
-            model: this.selectedModel || undefined,
-            attachments,
-          },
-        },
-        (delta, isReasoning) => { /* append to last message */ },
-        (call) => { /* add tool call indicator */ },
-        (msg) => { this.isGenerating = false; this.abortController = null },
-        (err) => { this.isGenerating = false; this.abortController = null; /* show error */ },
-      )
-    },
-    stopGeneration() {
-      this.abortController?.abort()
-      this.isGenerating = false
-    },
-  },
-})
-```
-
-### 8.6 组件设计
-
-#### ChatLayout.vue
-
-```vue
-<template>
-  <q-layout>
-    <AgentTeamList
-      :agents="agents"
-      :teams="teams"
-      :selected-id="currentAgentId"
-      @select="onSelectAgent"
-      class="col-auto" style="width: 120px"
-    />
-    <div class="col column">
-      <ChatMessages :messages="messages" class="col" />
-      <ChatInput
-        :is-generating="isGenerating"
-        :dialog-mode="dialogMode"
-        :provider="selectedProvider"
-        :model="selectedModel"
-        :context-ratio="contextUsedRatio"
-        @send="onSend"
-        @stop="onStop"
-        @update:dialog-mode="onDialogModeChange"
-        @update:provider="onProviderChange"
-        @update:model="onModelChange"
-      />
-    </div>
-    <SessionHistory
-      :sessions="sessions"
-      :selected-id="currentSessionId"
-      @select="onSelectSession"
-      class="col-auto" style="width: 120px"
-    />
-  </q-layout>
-</template>
-```
-
-#### AgentTeamList.vue
+#### ChatEntitySidebar
 
 | Prop | 类型 | 说明 |
 |------|------|------|
+| `open` | `boolean` | 是否展开 |
+| `search` | `string` | 搜索关键词 |
 | `agents` | `Agent[]` | Agent 列表 |
-| `teams` | `Team[]` | Team 列表 |
-| `selectedId` | `string \| null` | 当前选中 ID |
+| `teams` | `TeamRow[]` | Team 列表 |
+| `categoryTree` | `PlatformResourceTreeNode[]` | 分类树 |
+| `selectedKind` | `ChatEntityKind` | 选中类型 |
+| `selectedAgentId` | `string \| null` | 选中 Agent ID |
+| `selectedTeamId` | `string \| null` | 选中 Team ID |
+| `isDark` | `boolean` | 暗黑模式 |
 
 | Emit | 载荷 | 说明 |
 |------|------|------|
-| `select` | `{ type: 'agent' \| 'team', id: string }` | 选中 Agent/Team |
+| `select-agent` | `Agent` | 选中 Agent |
+| `select-team` | `TeamRow` | 选中 Team |
+| `settings` | `kind, id` | 打开设置 |
+| `delete` | `kind, id` | 删除 |
 
-功能要点：
-- 宽度 120px，高度 100%
-- Agent 和 Team 分组显示
-- 默认 Agent/Team 在最上方，不可拖拽调序
-- 顶部搜索框：按名称搜索
-- 条目：左侧工作状态指示灯 + 名称，右侧设置/删除按钮
-- 选中时背景高亮
-- 列表右侧中间折叠按钮，带动画
-
-#### SessionHistory.vue
+#### ChatSessionSidebar
 
 | Prop | 类型 | 说明 |
 |------|------|------|
-| `sessions` | `Session[]` | Session 列表 |
-| `selectedId` | `string \| null` | 当前选中 ID |
+| `open` | `boolean` | 是否展开 |
+| `sessions` | `SessionView[]` | Session 列表 |
+| `selectedSessionId` | `string \| null` | 选中 Session ID |
+| `isDark` | `boolean` | 暗黑模式 |
 
 | Emit | 载荷 | 说明 |
 |------|------|------|
-| `select` | `string` (session ID) | 选中 Session |
-| `delete` | `string` (session ID) | 删除 Session |
-| `create` | — | 创建新 Session |
+| `select` | `string` | 选中 Session |
+| `new-session` | — | 新建 Session |
+| `rename` | `{id, title}` | 重命名 |
+| `delete` | `kind, id` | 删除 |
+| `trace` | `string` | 历史追踪 |
 
-功能要点：
-- 宽度 120px，高度 100%
-- 每条：右侧 session 名称，下角标时间，左侧圆环显示上下文额度比
-- 底部：左侧新建 Session，右侧一键删除历史
-- 列表左侧中间折叠按钮，带动画
-
-#### ChatInput.vue
+#### ChatMessagePanel
 
 | Prop | 类型 | 说明 |
 |------|------|------|
-| `isGenerating` | `boolean` | 是否正在生成 |
-| `dialogMode` | `string` | 对话模式 |
-| `provider` | `string` | 当前 Provider |
-| `model` | `string` | 当前模型 |
+| `messages` | `Message[]` | 消息列表 |
+| `pendingMessages` | `PendingMessage[]` | 待执行消息 |
+| `sessionTitle` | `string` | Session 标题 |
 | `contextRatio` | `number` | 上下文使用比例 |
+| `isDark` | `boolean` | 暗黑模式 |
+| `sending` | `boolean` | 是否正在发送 |
+| `dialogMode` | `string` | 对话模式 |
+| `modelProvider` | `string` | 当前 Provider/Model |
+| `attachments` | `ChatAttachment[]` | 附件列表 |
 
 | Emit | 载荷 | 说明 |
 |------|------|------|
-| `send` | `{ content: string, attachments?: AttachmentRef[] }` | 发送消息 |
+| `send` | `{content, attachments}` | 发送消息 |
 | `stop` | — | 停止生成 |
-| `update:dialog-mode` | `string` | 切换对话模式 |
-| `update:provider` | `string` | 切换 Provider |
-| `update:model` | `string` | 切换模型 |
+| `cancel-pending` | `pendingId` | 取消待执行消息 |
+| `update-pending` | `pendingId, content` | 编辑待执行消息 |
+| `update:modelValue` | `string` | 输入框内容 |
+| `update:dialogMode` | `string` | 切换对话模式 |
+| `update:modelProvider` | `string` | 切换模型 |
+| `remove-attachment` | `string` | 移除附件 |
 
-功能要点：
-- 初始高度 100px，autogrow，最高 400px
-- 底部工具条（固定高 40px）：
-  - 左侧：对话模式 `QSelect`、Provider `QSelect`、上下文使用量 `QCircularProgress`
-  - 右侧：文件导入 `QBtn`、发送/停止按钮 `QBtn`
-- 文件导入时，输入框上方显示 30×30px 方框（进度、名称、关闭按钮）
-- `Enter` 发送，`Shift + Enter` 换行
-- 生成中发送按钮切换为停止图标
-
-#### ChatMessages.vue
-
-| Prop | 类型 | 说明 |
-|------|------|------|
-| `messages` | `ChatMessageRow[]` | 消息列表 |
-
-使用 `q-chat-message` 组件显示头像、时间、内容。暗黑模式下确保正文、代码块、工具结果、时间戳等文本可读。
-
-#### ContextProgress.vue
-
-| Prop | 类型 | 说明 |
-|------|------|------|
-| `ratio` | `number` | 上下文使用比例 0-1 |
-
-颜色阈值：`<0.6` 绿 / `0.6-0.8` 黄 / `>0.8` 红
-
-### 8.7 UX 规范
+### 8.6 UX 规范
 
 - 玻璃材质：`background: var(--glass-surface); backdrop-filter: blur(var(--glass-blur-default))`
 - 日间主操作色：`var(--color-accent)` = `#E9A23B`
@@ -953,97 +919,7 @@ export const useChatStore = defineStore('chat', {
 - 输入框圆角：12-16px
 - 消息气泡圆角：16-20px
 - 暗黑模式可读性：聊天记录正文、代码块、工具结果、时间戳等文本必须保证对比度
-
----
-
-## 八-B、Session 标题自动生成
-
-### 设计目标
-
-需求 `1 chat.md` §三.3：首次对话后由模型总结标题，或从用户首条消息自动生成短标题。
-
-### 现有实现
-
-当前 `biz.SessionUsecase.maybeAutoTitleFromUserMessage` 在 `AppendChatMessage` 时触发，逻辑为：
-1. 判断 session 标题是否为默认占位符（"未命名会话"/"untitled"/"new chat"等）
-2. 若是，从用户消息内容截取前 22 字符作为标题
-3. 调用 `Rename(ctx, sessionID, title)` 更新
-
-**不足**：截取用户消息作为标题质量低，无法反映对话意图。
-
-### 新增：LLM 标题生成
-
-在 `maybeAutoTitleFromUserMessage` 基础上增加 LLM 生成路径：
-
-```go
-// internal/biz/session_usecase.go
-func (uc *SessionUsecase) maybeAutoTitleFromUserMessage(ctx context.Context, sessionID, content string) error {
-    sess, err := uc.sessions.Get(ctx, sessionID)
-    if err != nil {
-        return err
-    }
-    if !shouldAutoNameSession(sess.Title) {
-        return nil
-    }
-    // 1. 先用截取方式快速设置标题（即时反馈）
-    snippet := sessionTitleFromUserSnippet(content)
-    if snippet != "" {
-        _, _ = uc.Rename(ctx, sessionID, snippet)
-    }
-    // 2. 异步调用 LLM 生成高质量标题
-    go uc.generateTitleAsync(sessionID, content)
-    return nil
-}
-
-func (uc *SessionUsecase) generateTitleAsync(sessionID, content string) {
-    ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-    defer cancel()
-    
-    title, err := uc.titleGenerator.Generate(ctx, content)
-    if err != nil || title == "" {
-        return
-    }
-    _, _ = uc.Rename(ctx, sessionID, title)
-}
-```
-
-### SessionTitleGenerator 接口
-
-```go
-// internal/biz/session_title.go
-type SessionTitleGenerator interface {
-    Generate(ctx context.Context, userMessage string) (string, error)
-}
-```
-
-### LLM 实现
-
-```go
-// internal/biz/session_title_llm.go
-type LLMSessionTitleGenerator struct {
-    catalog *LlmProviderModelUsecase
-    rt      *runtimedeps.Runtime
-    http    *http.Client
-}
-
-func (g *LLMSessionTitleGenerator) Generate(ctx context.Context, userMessage string) (string, error) {
-    // 使用轻量模型（如 gpt-4o-mini）生成标题
-    // Prompt: "根据用户的第一条消息，生成一个简短的对话标题（不超过20字）。只返回标题文本，不要解释。"
-    // 超时 15s，失败静默
-}
-```
-
-### Wire 注入
-
-```go
-// cmd/admin/wire.go
-// LLMSessionTitleGenerator 由 Wire 注入到 SessionUsecase
-```
-
-### 前端配合
-
-- SSE `done` 事件后，前端检查 session 标题是否更新，若已更新则刷新侧栏
-- 标题生成是异步的，可能有 1-3 秒延迟
+- 上下文进度颜色阈值：`<0.6` 绿 / `0.6-0.8` 黄 / `>0.8` 红
 
 ---
 
@@ -1052,13 +928,18 @@ func (g *LLMSessionTitleGenerator) Generate(ctx context.Context, userMessage str
 | 优先级 | 项目 | 说明 | 状态 |
 |--------|------|------|------|
 | P0 | `NewChatService` 参数封装 | 改为 `ChatServiceDeps` struct | ✅ 已完成 |
+| P0 | `CancelPendingMessage` RPC | 新增取消待执行消息端点 | ✅ 已实现 |
 | P1 | `firstNonEmpty` 统一 | 6 处重复定义 → `pkg/strutil.FirstNonEmpty` | ✅ 已完成 |
 | P1 | `memory_decode.go` 提取 | `ifaceStr`/`ifaceBool` 等通用函数 → `pkg/jsonutil` | ✅ 已完成 |
 | P1 | `compress_wire.go` 合并 | 仅含一个函数，合并到 `session_compress.go` | ✅ 已完成 |
-| P1 | `err == sql.ErrNoRows` 修正 | `chat_native.go` 中应使用 `errors.Is(err, sql.ErrNoRows)` | ✅ 已修复 |
+| P1 | `err == sql.ErrNoRows` 修正 | 改为 `errors.Is(err, sql.ErrNoRows)` | ✅ 已修复 |
 | P1 | SSE body 缺少 attachments | `proxyNativeStream` 解析结构体未包含 `attachments` 字段 | ✅ 已修复 |
-| P2 | `legacychat` 废弃 | `LEGACY_REST_ORIGIN` 模式长期应移除 | — 长期 |
-| P2 | 停止生成 | 新增 `StopGeneration` RPC | ✅ 已实现 |
-| P2 | 待执行队列 | 新增 `GetPendingMessages` RPC | ✅ 已实现 |
-| P2 | `hydratedAgent` 简化 | 逻辑冗余，移除 ephemeral AgentUsecase 分支 | ✅ 已优化 |
-| P2 | `runAgentTurn` 移除 | 冗余中间方法，直接调用 `runSingleAgentViaTRPC` | ✅ 已移除 |
+| P1 | `hydratedAgent` 简化 | 逻辑冗余，移除 ephemeral AgentUsecase 分支 | ✅ 已优化 |
+| P1 | `runAgentTurn` 移除 | 冗余中间方法，直接调用 `runSingleAgentViaTRPC` | ✅ 已移除 |
+| P1 | Session 标题 LLM 生成 | 异步 LLM 生成高质量标题 | ✅ 已实现 |
+| P2 | `legacychat` 废弃 | `LEGACY_REST_ORIGIN` 模式已移除，所有 Chat 请求直接由 admin 进程内处理 | ✅ 已移除 |
+| P2 | `GetChatOptions` 动态化 | Provider/Model 选项从 LLM Catalog 动态获取 | ✅ 已实现 |
+| P2 | `processPendingQueue` 超时 | 600 秒超时 + 取消传播（pendingCancels sync.Map） | ✅ 已实现 |
+| P2 | `pendingEntry` ID 生成 | 使用 `github.com/google/uuid` 替代 `UnixNano` | ✅ 已实现 |
+| P2 | `UpdatePendingMessage` RPC | 新增编辑待执行消息端点 | ✅ 已实现 |
+| P2 | 意图识别增强 | 单 Agent SSE 发送 `intent_pass` 事件 + 前端展示 | ✅ 已实现 |

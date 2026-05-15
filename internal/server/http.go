@@ -15,10 +15,10 @@ import (
 	mcpserverv1 "aranea-agents/api/kratos/mcp_server/v1"
 	memoryv1 "aranea-agents/api/kratos/memory/v1"
 	monitorv1 "aranea-agents/api/kratos/monitor/v1"
-	systemsettingv1 "aranea-agents/api/kratos/system_setting/v1"
 	pluginv1 "aranea-agents/api/kratos/plugin/v1"
 	sessionv1 "aranea-agents/api/kratos/session/v1"
 	skillv1 "aranea-agents/api/kratos/skill/v1"
+	systemsettingv1 "aranea-agents/api/kratos/system_setting/v1"
 	teamv1 "aranea-agents/api/kratos/team/v1"
 	toolv1 "aranea-agents/api/kratos/tool/v1"
 	usagev1 "aranea-agents/api/kratos/usage/v1"
@@ -60,7 +60,6 @@ func NewHTTPServer(c *conf.Server,
 		http.Filter(
 			CorsDevFilter(),
 			auth.Middleware(),
-			LegacyRESTProxyFilter(),
 		),
 		http.Middleware(
 			recovery.Recovery(),

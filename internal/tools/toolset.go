@@ -42,7 +42,9 @@ func Registry() []*ToolRegistration {
 				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
 					return trpcfile.NewToolSet()
 				},
-				EnabledByDefault: true,
+				EnabledByDefault:   true,
+				RiskLevel:          "low",
+				SupportsConcurrency: true,
 			},
 			{
 				Name:        "hostexec",
@@ -51,7 +53,9 @@ func Registry() []*ToolRegistration {
 				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
 					return trpchostexec.NewToolSet()
 				},
-				EnabledByDefault: false,
+				EnabledByDefault:     false,
+				RiskLevel:            "critical",
+				RequiresConfirmation: true,
 			},
 			{
 				Name:        "httpfetch",
@@ -61,6 +65,7 @@ func Registry() []*ToolRegistration {
 					return trpchttpfetch.NewTool(), nil
 				},
 				EnabledByDefault: false,
+				RiskLevel:        "medium",
 			},
 			{
 				Name:        "claudefetch",
@@ -70,6 +75,7 @@ func Registry() []*ToolRegistration {
 					return nil, fmt.Errorf("claudefetch: framework stub, not yet implemented in trpc-agent-go")
 				},
 				EnabledByDefault: false,
+				RiskLevel:        "medium",
 			},
 			{
 				Name:        "geminifetch",
@@ -83,6 +89,7 @@ func Registry() []*ToolRegistration {
 					return t, nil
 				},
 				EnabledByDefault: false,
+				RiskLevel:        "medium",
 			},
 			{
 				Name:        "duckduckgo",
@@ -92,6 +99,7 @@ func Registry() []*ToolRegistration {
 					return trpcduckduckgo.NewTool(), nil
 				},
 				EnabledByDefault: false,
+				RiskLevel:        "medium",
 			},
 			{
 				Name:        "google_search",
@@ -101,6 +109,7 @@ func Registry() []*ToolRegistration {
 					return trpcgooglesearch.NewToolSet(ctx)
 				},
 				EnabledByDefault: false,
+				RiskLevel:        "medium",
 			},
 			{
 				Name:        "arxiv_search",
@@ -110,6 +119,7 @@ func Registry() []*ToolRegistration {
 					return trpcarxivsearch.NewToolSet()
 				},
 				EnabledByDefault: false,
+				RiskLevel:        "low",
 			},
 			{
 				Name:        "wikipedia",
@@ -119,6 +129,7 @@ func Registry() []*ToolRegistration {
 					return trpcwikipedia.NewToolSet()
 				},
 				EnabledByDefault: false,
+				RiskLevel:        "low",
 			},
 			{
 				Name:        "email",
@@ -127,7 +138,9 @@ func Registry() []*ToolRegistration {
 				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
 					return trpcemail.NewToolSet()
 				},
-				EnabledByDefault: false,
+				EnabledByDefault:     false,
+				RiskLevel:            "high",
+				RequiresConfirmation: true,
 			},
 			{
 				Name:        "todo",
@@ -137,6 +150,7 @@ func Registry() []*ToolRegistration {
 					return trpctodo.New(), nil
 				},
 				EnabledByDefault: false,
+				RiskLevel:        "low",
 			},
 			{
 				Name:        "await_user_reply",
@@ -146,6 +160,7 @@ func Registry() []*ToolRegistration {
 					return trpcawaitreply.New(), nil
 				},
 				EnabledByDefault: false,
+				RiskLevel:        "low",
 			},
 			{
 				Name:        "claudecode",
@@ -154,7 +169,9 @@ func Registry() []*ToolRegistration {
 				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
 					return trpcclaudecode.NewToolSet()
 				},
-				EnabledByDefault: false,
+				EnabledByDefault:     false,
+				RiskLevel:            "critical",
+				RequiresConfirmation: true,
 			},
 			{
 				Name:        "workspace_exec",
@@ -163,7 +180,9 @@ func Registry() []*ToolRegistration {
 				Factory: func(ctx context.Context) (Tool, error) {
 					return trpcworkspaceexec.NewExecTool(nil), nil
 				},
-				EnabledByDefault: false,
+				EnabledByDefault:     false,
+				RiskLevel:            "critical",
+				RequiresConfirmation: true,
 			},
 			{
 				Name:        "openapi",
@@ -173,24 +192,28 @@ func Registry() []*ToolRegistration {
 					return nil, fmt.Errorf("openapi requires spec configuration")
 				},
 				EnabledByDefault: false,
+				RiskLevel:        "medium",
 			},
 			{
 				Name:             "agent",
 				Description:      "Agent-as-Tool: wrap an Agent as a callable Tool for delegation/composition",
 				Category:         "composition",
 				EnabledByDefault: false,
+				RiskLevel:        "medium",
 			},
 			{
 				Name:             "mcp",
 				Description:      "MCP ToolSet: connect to MCP servers (stdio/sse/streamable_http) and expose their tools",
 				Category:         "integration",
 				EnabledByDefault: false,
+				RiskLevel:        "medium",
 			},
 			{
 				Name:             "mcpbroker",
 				Description:      "MCP Broker: runtime MCP discovery tools (mcp_list_servers, mcp_list_tools, mcp_inspect_tools, mcp_call)",
 				Category:         "integration",
 				EnabledByDefault: false,
+				RiskLevel:        "medium",
 			},
 		}
 	})

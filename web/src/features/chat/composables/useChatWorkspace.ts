@@ -7,6 +7,8 @@ import {
   sendMessageStream,
   stopGeneration,
   getPendingMessages,
+  cancelPendingMessage,
+  updatePendingMessage,
 } from "../api";
 import type { PendingMessage } from "../api";
 import type { ToolUseEvent } from "../api";
@@ -511,6 +513,9 @@ export function useChatWorkspace() {
               teamMessages.value[sessionId] = current.some((item) => item.id === message.id)
                 ? current.map((item) => (item.id === message.id ? message : item))
                 : [...current, message];
+            },
+            onIntentPass: (result) => {
+              store.lastIntentPass = result;
             }
           }
         );
@@ -567,6 +572,26 @@ export function useChatWorkspace() {
     const sid = selectedSessionForUi.value?.id;
     if (sid) {
       stopGeneration(sid);
+    }
+  }
+
+  async function onCancelPending(pendingId: string) {
+    const sid = selectedSessionForUi.value?.id;
+    if (!sid || !pendingId) return;
+    const ok = await cancelPendingMessage(sid, pendingId);
+    if (ok) {
+      pendingMessages.value = pendingMessages.value.filter((pm) => pm.id !== pendingId);
+    }
+  }
+
+  async function onUpdatePending(pendingId: string, content: string) {
+    const sid = selectedSessionForUi.value?.id;
+    if (!sid || !pendingId || !content.trim()) return;
+    const ok = await updatePendingMessage(sid, pendingId, content.trim());
+    if (ok) {
+      pendingMessages.value = pendingMessages.value.map((pm) =>
+        pm.id === pendingId ? { ...pm, content: content.trim() } : pm
+      );
     }
   }
 
@@ -1019,6 +1044,8 @@ export function useChatWorkspace() {
     pickFile,
     onFileChange,
     removeAttachment,
+    onCancelPending,
+    onUpdatePending,
     onVoiceClick
   };
 }

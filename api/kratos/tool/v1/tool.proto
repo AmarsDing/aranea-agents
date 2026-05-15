@@ -42,6 +42,7 @@ message Tool {
   int32 blocked_count = 25;
   int32 agent_override_count = 26;
   optional double avg_duration_ms = 27;
+  double p95_duration_ms = 33;
   string last_invoked_at = 28;
   string last_status = 29;
   string created_at = 30;
@@ -65,6 +66,7 @@ message ListToolsRequest {
   string enabled = 5;
   int32 page = 6;
   int32 page_size = 7;
+  string sort = 8;
 }
 
 message ListToolsResponse {
@@ -127,6 +129,7 @@ message DeleteToolRequest {
 message ToggleToolEnabledRequest {
   string id = 1 [(google.api.field_behavior) = REQUIRED];
   bool enabled = 2;
+  string confirm_key = 3;
 }
 
 message ToolInvocation {
@@ -167,6 +170,7 @@ message ListToolRunsRequest {
   string to = 6;
   int32 page = 7;
   int32 page_size = 8;
+  optional bool has_error = 9;
 }
 
 message ListToolRunsResponse {
@@ -185,6 +189,59 @@ message ListToolRunsForToolRequest {
   string to = 6;
   int32 page = 7;
   int32 page_size = 8;
+}
+
+message ToolAgentOverride {
+  string id = 1;
+  string tool_id = 2;
+  string tool_key = 3;
+  string agent_id = 4;
+  bool enabled = 5;
+  string mode = 6;
+  string config_override_json = 7;
+  bool requires_confirmation = 8;
+  string created_at = 9;
+  string updated_at = 10;
+}
+
+message ListToolAgentOverridesRequest {
+  string tool_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListToolAgentOverridesResponse {
+  repeated ToolAgentOverride items = 1;
+}
+
+message UpsertToolAgentOverrideRequest {
+  string tool_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string agent_id = 2 [(google.api.field_behavior) = REQUIRED];
+  bool enabled = 3;
+  string mode = 4;
+  string config_override_json = 5;
+  bool requires_confirmation = 6;
+}
+
+message DeleteToolAgentOverrideRequest {
+  string tool_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string agent_id = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ToolInvocationParam {
+  string id = 1;
+  string invocation_id = 2;
+  string tool_key = 3;
+  string params_json = 4;
+  bool redaction_applied = 5;
+  string created_at = 6;
+}
+
+message GetToolInvocationParamsRequest {
+  string invocation_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message UpdateToolConfigRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string config_json = 2 [(google.api.field_behavior) = REQUIRED];
 }
 
 service ToolService {
@@ -220,5 +277,26 @@ service ToolService {
   }
   rpc ListToolRunsForTool(ListToolRunsForToolRequest) returns (ListToolRunsResponse) {
     option (google.api.http) = {get: "/v1/tools/{tool_id}/runs"};
+  }
+  rpc ListToolAgentOverrides(ListToolAgentOverridesRequest) returns (ListToolAgentOverridesResponse) {
+    option (google.api.http) = {get: "/v1/tools/{tool_id}/agent-overrides"};
+  }
+  rpc UpsertToolAgentOverride(UpsertToolAgentOverrideRequest) returns (ToolAgentOverride) {
+    option (google.api.http) = {
+      put: "/v1/tools/{tool_id}/agent-overrides/{agent_id}"
+      body: "*"
+    };
+  }
+  rpc DeleteToolAgentOverride(DeleteToolAgentOverrideRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {delete: "/v1/tools/{tool_id}/agent-overrides/{agent_id}"};
+  }
+  rpc GetToolInvocationParams(GetToolInvocationParamsRequest) returns (ToolInvocationParam) {
+    option (google.api.http) = {get: "/v1/tools/runs/{invocation_id}/params"};
+  }
+  rpc UpdateToolConfig(UpdateToolConfigRequest) returns (Tool) {
+    option (google.api.http) = {
+      put: "/v1/tools/{id}/config"
+      body: "*"
+    };
   }
 }

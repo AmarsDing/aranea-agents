@@ -5,6 +5,7 @@ import type {
 } from "../../services/kratos/agent/v1/index";
 import type {
   Tool as KratosTool,
+  ToolAgentOverride as KratosToolAgentOverride,
   ToolInvocation as KratosInvocation,
   ToolSummary as KratosSummary
 } from "../../services/kratos/tool/v1/index";
@@ -12,6 +13,7 @@ import type {
   AgentEffectiveTools,
   PaginatedResponse,
   Tool,
+  ToolAgentOverride,
   ToolInvocation,
   ToolListQuery,
   ToolListResponse,
@@ -61,6 +63,7 @@ function kratosToolToLegacy(t: KratosTool): Tool {
     blocked_count: t.blockedCount ?? 0,
     agent_override_count: t.agentOverrideCount ?? 0,
     avg_duration_ms: t.avgDurationMs ?? null,
+    p95_duration_ms: t.p95DurationMs ?? 0,
     last_invoked_at: t.lastInvokedAt ?? "",
     last_status: t.lastStatus ?? "",
     created_at: t.createdAt ?? "",
@@ -117,6 +120,7 @@ export async function listTools(query: ToolListQuery = {}): Promise<ToolListResp
     source: query.source,
     riskLevel: query.risk_level,
     enabled: enabledFilter(query.enabled),
+    sort: query.sort,
     page: query.page,
     pageSize: query.page_size
   });
@@ -186,8 +190,13 @@ export async function deleteTool(id: string): Promise<void> {
   await toolApi.DeleteTool({ id });
 }
 
-export async function toggleToolEnabled(id: string, enabled: boolean): Promise<Tool> {
-  const data = await toolApi.ToggleToolEnabled({ id, enabled });
+export async function toggleToolEnabled(id: string, enabled: boolean, confirmKey?: string): Promise<Tool> {
+  const data = await toolApi.ToggleToolEnabled({ id, enabled, confirmKey });
+  return kratosToolToLegacy(data);
+}
+
+export async function updateToolConfig(id: string, configJson: string): Promise<Tool> {
+  const data = await toolApi.UpdateToolConfig({ id, configJson });
   return kratosToolToLegacy(data);
 }
 
@@ -219,6 +228,7 @@ export async function listToolRuns(query: ToolRunQuery = {}): Promise<PaginatedR
     status: query.status,
     from: query.from,
     to: query.to,
+    hasError: query.has_error,
     page: query.page,
     pageSize: query.page_size
   });
@@ -258,4 +268,47 @@ function kratosAgentEffectiveToolsToLegacy(view: AgentEffectiveToolsView): Agent
     deny: view.deny ?? [],
     items
   };
+}
+
+function kratosOverrideToLegacy(o: KratosToolAgentOverride): ToolAgentOverride {
+  return {
+    id: o.id ?? "",
+    tool_id: o.toolId ?? "",
+    tool_key: o.toolKey ?? "",
+    agent_id: o.agentId ?? "",
+    enabled: Boolean(o.enabled),
+    mode: o.mode ?? "inherit",
+    config_override_json: o.configOverrideJson ?? "{}",
+    requires_confirmation: Boolean(o.requiresConfirmation),
+    created_at: o.createdAt ?? "",
+    updated_at: o.updatedAt ?? ""
+  };
+}
+
+export async function listToolAgentOverrides(toolId: string): Promise<ToolAgentOverride[]> {
+  const data = await toolApi.ListToolAgentOverrides({ toolId });
+  return (data.items ?? []).map(kratosOverrideToLegacy);
+}
+
+export async function upsertToolAgentOverride(input: {
+  tool_id: string;
+  agent_id: string;
+  enabled?: boolean;
+  mode?: string;
+  config_override_json?: string;
+  requires_confirmation?: boolean;
+}): Promise<ToolAgentOverride> {
+  const data = await toolApi.UpsertToolAgentOverride({
+    toolId: input.tool_id,
+    agentId: input.agent_id,
+    enabled: input.enabled,
+    mode: input.mode,
+    configOverrideJson: input.config_override_json,
+    requiresConfirmation: input.requires_confirmation
+  });
+  return kratosOverrideToLegacy(data);
+}
+
+export async function deleteToolAgentOverride(toolId: string, agentId: string): Promise<void> {
+  await toolApi.DeleteToolAgentOverride({ toolId, agentId });
 }

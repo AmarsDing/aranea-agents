@@ -24,6 +24,7 @@ type TurnDeps struct {
 	Agents       biz.AgentRepository
 	AgentsUC     *biz.AgentUsecase
 	ToolsCatalog biz.ToolRepo
+	ToolUC       *biz.ToolUsecase
 	LLMCatalog   *biz.LlmProviderModelUsecase
 	SkillUC      *biz.SkillUsecase
 	Sys          biz.SystemSettingRepo

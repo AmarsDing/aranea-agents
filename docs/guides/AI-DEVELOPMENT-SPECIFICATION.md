@@ -398,7 +398,6 @@ internal/skill          ← 技能系统（导入、执行、Watch 热重载）
 internal/graph          ← 图编排（TRPC Graph Builder）
 internal/channel        ← 渠道集成（飞书 Webhook 等）
 internal/cronrunner     ← 定时任务（Cron 调度与执行）
-internal/legacychat     ← 遗留代理（LEGACY_REST_ORIGIN 转发）
 internal/llminspect     ← LLM 调试检查（模型连通性探测）
 internal/mcpprobe       ← MCP 探针（服务可用性评估）
 ```
@@ -679,7 +678,7 @@ make config  # 仅改 conf.proto 时
 ### 4.5 横切与运维边界
 
 - **`GET /healthz`**：在 `cmd/admin` 挂载，响应 `{"status":"ok"}`；常与鉴权的 `noAuthPaths` 放行配合探针
-- **`LEGACY_REST_ORIGIN`**：上游根 URL（无尾部 `/`）。`chat_legacy_forward` 将 `/v1/chat/messages` 反向代理到 `{origin}` + 遗留路径推导值；`internal/cronrunner` 到期任务 POST `{origin}` + 遗留 Messages 路径。未设置：`/v1/chat/*` 可能 503
+- **`CRON_CHAT_DISPATCH_ORIGIN`**：Cron 到期任务 POST 发送聊天消息的目标根 URL（无尾部 `/`），路径为 `{origin}/v1/chat/messages`。未设置：Cron 聊天任务无法执行
 - **`CRON_RUNNER_INTERVAL`**：Cron tick，`time.ParseDuration`；空或非法默认 `1m`
 - **`CRON_RUNNER_DISABLED`**：设为 `1` 则不启动 `internal/cronrunner`
 

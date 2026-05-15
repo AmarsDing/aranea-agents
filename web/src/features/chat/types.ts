@@ -1,4 +1,4 @@
-/** Chat：消息列表走 `session/v1` `GET /v1/sessions/{id}/messages`；发送 / 流式 / options 见 **`features/chat/api.ts`** → **`/v1/chat/*`**（admin 转发遗留 **`/api/v1/chat/*`**），直至原生 **`chat/v1`**。 */
+/** Chat：消息列表走 `session/v1` `GET /v1/sessions/{id}/messages`；发送 / 流式 / options 见 **`features/chat/api.ts`** → **`/v1/chat/*`**，由 admin 进程内 trpc-agent-go 运行时处理。 */
 
 export type Message = {
   id: string;
@@ -39,6 +39,16 @@ export type SendMessageResult = {
   agent_message: Message;
 };
 
+export type IntentPassResult = {
+  outcome: string;
+  duration_ms: number;
+  session_id?: string;
+  agent_id?: string;
+  intent_kind?: string;
+  refined_goal_len?: number;
+  search_hints_count?: number;
+};
+
 export type SendMessageStreamCallbacks = {
   signal?: AbortSignal;
   onUserMessage?: (message: Message) => void;
@@ -48,6 +58,7 @@ export type SendMessageStreamCallbacks = {
   onMemberMessageStart?: (message: Message) => void;
   onMemberDelta?: (messageID: string, content: string) => void;
   onMemberMessageDone?: (message: Message) => void;
+  onIntentPass?: (result: IntentPassResult) => void;
 };
 
 export type ToolUseEvent = {

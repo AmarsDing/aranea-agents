@@ -46,6 +46,8 @@
         @voice="onVoiceClick"
         @send="onSend"
         @stop="stopStreaming"
+        @cancel-pending="onCancelPending"
+        @update-pending="onUpdatePending"
       />
       <input ref="fileRef" type="file" hidden multiple @change="onFileChange" />
     </div>
@@ -177,6 +179,9 @@ const {
   pickFile,
   onFileChange,
   removeAttachment,
+  pendingMessages,
+  onCancelPending,
+  onUpdatePending,
   onVoiceClick
 } = useChatWorkspace();
 </script>

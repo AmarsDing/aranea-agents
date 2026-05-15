@@ -1582,10 +1582,6 @@ export const useSessionStore = defineStore("sessions", {
 
 ---
 
-*文档版本：2.1 — 整合会话上下文压缩设计（原 architecture/session-context-compression.md）。*
-
----
-
 ## 12. trpc-agent-go 对齐需求（M5 Session 管理）
 
 > 本节补充 `plan.md` M5 模块的对齐需求，确保 Session 管理完全复刻 trpc-agent-go `session.Service` 能力。

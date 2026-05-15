@@ -128,11 +128,69 @@
       <div v-if="props.pendingMessages?.length" class="chat-pending-list">
         <div class="chat-pending-label">{{ t("chat.pendingQueue") }}</div>
         <div v-for="pm in props.pendingMessages" :key="pm.id" class="chat-pending-item">
-          <div class="chat-pending-item__content ellipsis">{{ pm.content }}</div>
-          <div class="chat-pending-item__meta">
-            <span class="chat-pending-item__status">{{ pm.status }}</span>
-            <span class="chat-pending-item__time">{{ formatStamp(pm.created_at) }}</span>
+          <div v-if="editingPendingId === pm.id" class="chat-pending-item__edit">
+            <q-input
+              v-model="editingPendingContent"
+              dense
+              outlined
+              autogrow
+              class="chat-pending-item__edit-input"
+              :dark="props.isDark"
+              @keydown.enter.prevent="confirmEditPending(pm.id)"
+              @keydown.escape.prevent="cancelEditPending"
+            />
+            <q-btn
+              dense
+              flat
+              round
+              size="sm"
+              icon="check"
+              color="positive"
+              class="chat-pending-item__edit-confirm"
+              :aria-label="t('chat.confirmEdit')"
+              @click="confirmEditPending(pm.id)"
+            />
+            <q-btn
+              dense
+              flat
+              round
+              size="sm"
+              icon="close"
+              color="negative"
+              class="chat-pending-item__edit-cancel"
+              :aria-label="t('chat.cancelEdit')"
+              @click="cancelEditPending"
+            />
           </div>
+          <template v-else>
+            <div class="chat-pending-item__content ellipsis">{{ pm.content }}</div>
+            <div class="chat-pending-item__meta">
+              <span class="chat-pending-item__status">{{ pm.status }}</span>
+              <span class="chat-pending-item__time">{{ formatStamp(pm.created_at) }}</span>
+              <q-btn
+                dense
+                flat
+                round
+                size="sm"
+                icon="edit"
+                color="primary"
+                class="chat-pending-item__edit-btn"
+                :aria-label="t('chat.editPending')"
+                @click="startEditPending(pm)"
+              />
+              <q-btn
+                dense
+                flat
+                round
+                size="sm"
+                icon="cancel"
+                color="negative"
+                class="chat-pending-item__cancel"
+                :aria-label="t('chat.cancelPending')"
+                @click="$emit('cancel-pending', pm.id)"
+              />
+            </div>
+          </template>
         </div>
       </div>
       <transition name="chat-scroll-fade">
@@ -333,11 +391,16 @@ const emit = defineEmits<{
   voice: [];
   send: [];
   stop: [];
+  "cancel-pending": [pendingId: string];
+  "update-pending": [pendingId: string, content: string];
 }>();
 
 const { t } = useI18n();
 const messageAvatarSize = "44px";
 const messageAvatarIconSize = "24px";
+
+const editingPendingId = ref("");
+const editingPendingContent = ref("");
 
 /**
  * 头像调色板：name 给 QAvatar 用（Quasar 颜色），hex 给气泡 accent 条用。
@@ -478,20 +541,26 @@ function assistantErrorDetail(message: Message): string {
 function userSendTagLine(message: Message): string {
   let agentLabel = "—";
   let ctx = "0%";
+  let intentKind = "";
   try {
     const raw = JSON.parse(message.options_json || "{}") as {
       agent?: { name?: string; display_name?: string };
       send_meta?: { context_pct?: number };
+      intent_artifact?: { intent_kind?: string };
     };
     const n = raw.agent?.name || raw.agent?.display_name;
     if (n) agentLabel = n;
     if (typeof raw.send_meta?.context_pct === "number") {
       ctx = `${Math.round(raw.send_meta.context_pct)}%`;
     }
+    if (raw.intent_artifact?.intent_kind) {
+      intentKind = raw.intent_artifact.intent_kind;
+    }
   } catch {
     /* ignore */
   }
   const parts: string[] = [agentLabel, `${ctx} CTX`];
+  if (intentKind) parts.push(intentKind);
   const st = message.status?.trim();
   if (st && st !== "ok") parts.push(st);
   const err = message.error_message?.trim();
@@ -591,6 +660,24 @@ function toolCollapseSummary(message: Message): string {
 
 function toolCollapseDetail(message: Message): string {
   return toolCollapseParts(message).detail;
+}
+
+function startEditPending(pm: { id: string; content: string }) {
+  editingPendingId.value = pm.id;
+  editingPendingContent.value = pm.content;
+}
+
+function confirmEditPending(pendingId: string) {
+  const content = editingPendingContent.value.trim();
+  if (!content) return;
+  emit("update-pending", pendingId, content);
+  editingPendingId.value = "";
+  editingPendingContent.value = "";
+}
+
+function cancelEditPending() {
+  editingPendingId.value = "";
+  editingPendingContent.value = "";
 }
 
 /** 工具「进行中」保持单行展开；有后续段落/代码块时默认折叠详情。 */
@@ -1760,4 +1847,27 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
 .chat-pending-item__status
   font-weight: 600
   text-transform: uppercase
+
+.chat-pending-item__cancel
+  margin-left: auto
+  opacity: 0.6
+  &:hover
+    opacity: 1
+
+.chat-pending-item__edit-btn
+  opacity: 0.6
+  &:hover
+    opacity: 1
+
+.chat-pending-item__edit
+  display: flex
+  align-items: flex-start
+  gap: 4px
+
+.chat-pending-item__edit-input
+  flex: 1
+
+.chat-pending-item__edit-confirm,
+.chat-pending-item__edit-cancel
+  margin-top: 4px
 </style>

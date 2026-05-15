@@ -14,7 +14,7 @@ import type {
   SkillTag
 } from "./types";
 
-// ZIP / 冲突消解：`kratosApi` **`/v1/skills/import*`** 由 **`cmd/admin`** 内挂载（multipart + JSON），不经 **`LEGACY_REST_ORIGIN`**。
+// ZIP / 冲突消解：`kratosApi` **`/v1/skills/import*`** 由 **`cmd/admin`** 内挂载（multipart + JSON）。
 // 管理列表、启停、文件编辑、运行记录等已接 Kratos `skill/v1`。
 
 function mapSkillTag(raw: unknown): SkillTag {
