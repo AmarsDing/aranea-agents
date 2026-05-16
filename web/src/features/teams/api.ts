@@ -1,6 +1,5 @@
 
 import { createTeamService } from "../../services";
-import { getSseBaseURL } from "../../config/runtime";
 import type {
   Team,
   TeamRun,
@@ -12,6 +11,8 @@ import type {
   TeamRun as WireTeamRun,
   TeamRunStep as WireTeamRunStep
 } from "../../services/kratos/team/v1/index";
+import { useEnvelopeStream } from "../chat/useEnvelopeStream";
+import type { Envelope } from "../chat/envelope";
 
 export type {
   Team,
@@ -32,7 +33,7 @@ function wireTeam(t: WireTeam | null | undefined): Team {
     status: t?.status ?? "",
     is_default: t?.isDefault ?? false,
     definition_json: t?.definitionJson ?? "",
-    adk_app_name: t?.adkAppName ?? "",
+    app_name: t?.adkAppName ?? "",
     created_at: t?.createdAt ?? "",
     updated_at: t?.updatedAt ?? "",
     deleted_at: t?.deletedAt ?? ""
@@ -93,7 +94,7 @@ function patchToWire(payload: Partial<Team>): WireTeam {
   if (payload.status !== undefined) t.status = payload.status;
   if (payload.is_default !== undefined) t.isDefault = payload.is_default;
   if (payload.definition_json !== undefined) t.definitionJson = payload.definition_json;
-  if (payload.adk_app_name !== undefined) t.adkAppName = payload.adk_app_name;
+  if (payload.app_name !== undefined) t.adkAppName = payload.app_name;
   if (payload.created_at !== undefined) t.createdAt = payload.created_at;
   if (payload.updated_at !== undefined) t.updatedAt = payload.updated_at;
   if (payload.deleted_at !== undefined) t.deletedAt = payload.deleted_at;
@@ -114,7 +115,7 @@ export async function createTeam(payload: Partial<Team>): Promise<Team> {
     displayName: payload.display_name,
     status: payload.status,
     definitionJson: payload.definition_json,
-    adkAppName: payload.adk_app_name
+    adkAppName: payload.app_name
   });
   return wireTeam(data);
 }
@@ -150,21 +151,52 @@ export async function listTeamRunSteps(runID: string): Promise<TeamRunStep[]> {
   return items.map(wireStep);
 }
 
-/** Team 运行事件 SSE（`configs.server.sse`，前端经 `/sse` 同源代理）。 */
-export function subscribeTeamRunEvents(
+export function subscribeTeamRunEventsWs(
+  sessionId: string,
   teamID: string,
   onEvent: (event: TeamRunEvent) => void,
-  onError?: (error: Event) => void
-): EventSource {
-  const query = new URLSearchParams({ team_id: teamID });
-  const source = new EventSource(`${getSseBaseURL()}/team-run-events?${query.toString()}`);
-  for (const eventName of ["run_started", "step_finished", "run_finished", "intent_pass"]) {
-    source.addEventListener(eventName, (event) => {
-      onEvent(JSON.parse((event as MessageEvent).data) as TeamRunEvent);
+  onError?: (error: string) => void
+) {
+  const stream = useEnvelopeStream({ sessionId, channels: ["team", "system"], autoConnect: false });
+
+  stream.onType("intent_pass", (env: Envelope) => {
+    onEvent({
+      type: "intent_pass",
+      team_id: env.team_id ?? teamID,
+      run_id: "",
+      session_id: env.session_id,
+      payload: env.metadata ?? {}
     });
-  }
-  source.onerror = (event) => {
-    onError?.(event);
+  });
+
+  stream.onType("transfer", (env: Envelope) => {
+    onEvent({
+      type: "transfer",
+      team_id: env.team_id ?? teamID,
+      run_id: "",
+      session_id: env.session_id,
+      payload: { from_agent: env.transfer?.from_agent, to_agent: env.transfer?.to_agent }
+    });
+  });
+
+  stream.onType("runner_completion", (env: Envelope) => {
+    onEvent({
+      type: "run_finished",
+      team_id: env.team_id ?? teamID,
+      run_id: "",
+      session_id: env.session_id,
+      payload: env.metadata ?? {}
+    });
+  });
+
+  stream.onType("error", (env: Envelope) => {
+    onError?.(env.error?.message ?? "team ws error");
+  });
+
+  stream.connect();
+
+  return {
+    close: () => stream.disconnect(),
+    connected: stream.connected
   };
-  return source;
 }

@@ -21,16 +21,14 @@ message Server {
     string addr = 2;
     google.protobuf.Duration timeout = 3;
   }
-  message SSE {
+  message WS {
     bool enable = 1;
     string network = 2;
     string addr = 3;
-    string path = 4;
-    google.protobuf.Duration timeout = 5;
   }
   HTTP http = 1;
   GRPC grpc = 2;
-  SSE sse = 3;
+  WS ws = 4;
 }
 
 message Data {

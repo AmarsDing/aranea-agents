@@ -29,6 +29,11 @@ func ensureAgentRuntimePatches(ctx context.Context, c *ent.Client) error {
 		{"tools_retry_jitter", `ALTER TABLE agent_runtime_settings ADD COLUMN tools_retry_jitter INTEGER NOT NULL DEFAULT 1`},
 		{"tools_parallel_enabled", `ALTER TABLE agent_runtime_settings ADD COLUMN tools_parallel_enabled INTEGER NOT NULL DEFAULT 0`},
 		{"tools_streaming_enabled", `ALTER TABLE agent_runtime_settings ADD COLUMN tools_streaming_enabled INTEGER NOT NULL DEFAULT 0`},
+		{"channel_id", `ALTER TABLE agent_runtime_settings ADD COLUMN channel_id TEXT NOT NULL DEFAULT ''`},
+		{"chat_id", `ALTER TABLE agent_runtime_settings ADD COLUMN chat_id TEXT NOT NULL DEFAULT ''`},
+		{"workspace", `ALTER TABLE agent_runtime_settings ADD COLUMN workspace TEXT NOT NULL DEFAULT ''`},
+		{"reasoning_mode", `ALTER TABLE agent_runtime_settings ADD COLUMN reasoning_mode TEXT NOT NULL DEFAULT 'provider_default'`},
+		{"reasoning_level", `ALTER TABLE agent_runtime_settings ADD COLUMN reasoning_level TEXT NOT NULL DEFAULT 'off'`},
 	}
 	for _, p := range patches {
 		has, err := sqliteColumnExists(ctx, c, "agent_runtime_settings", p.col)

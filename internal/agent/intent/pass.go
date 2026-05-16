@@ -18,12 +18,12 @@ import (
 
 // Artifact is the structured output of the intent pass (subset of design doc).
 type Artifact struct {
-	RefinedGoal       string   `json:"refined_goal"`
-	IntentKind        string   `json:"intent_kind"`
-	SuccessCriteria   []string `json:"success_criteria"`
-	Ambiguities       []string `json:"ambiguities"`
-	SearchHints       []string `json:"search_hints"`
-	RiskFlags         []string `json:"risk_flags"`
+	RefinedGoal     string   `json:"refined_goal"`
+	IntentKind      string   `json:"intent_kind"`
+	SuccessCriteria []string `json:"success_criteria"`
+	Ambiguities     []string `json:"ambiguities"`
+	SearchHints     []string `json:"search_hints"`
+	RiskFlags       []string `json:"risk_flags"`
 }
 
 const intentSystem = `You classify and restate the user's request for a coding assistant. Reply with ONE JSON object only, no markdown fences, no commentary. Keys:
@@ -60,7 +60,7 @@ func IntentPassFromAgent(ag biz.Agent) bool {
 	return true
 }
 
-// RunResult is the outcome of Run (for main path wiring and TeamRunEvent / monitor SSE).
+// RunResult is the outcome of Run (for main path wiring and TeamRunEvent / monitor).
 type RunResult struct {
 	Artifact *Artifact
 	RawJSON  string
@@ -69,8 +69,8 @@ type RunResult struct {
 	Outcome string
 }
 
-// SSERunMeta carries IDs duplicated into intent_pass event payload (snake_case) for clients that only read payload.
-type SSERunMeta struct {
+// RunMeta carries IDs duplicated into intent_pass event payload (snake_case) for clients that only read payload.
+type RunMeta struct {
 	AgentID   string
 	SessionID string
 	RunID     string
@@ -78,7 +78,7 @@ type SSERunMeta struct {
 }
 
 // BuildIntentPassPayload builds TeamRunEvent.Payload for type "intent_pass" (orchestration facts; no raw user text).
-func BuildIntentPassPayload(r RunResult, meta SSERunMeta) map[string]any {
+func BuildIntentPassPayload(r RunResult, meta RunMeta) map[string]any {
 	out := map[string]any{
 		"outcome":     r.Outcome,
 		"duration_ms": r.Duration.Milliseconds(),
@@ -103,15 +103,7 @@ func BuildIntentPassPayload(r RunResult, meta SSERunMeta) map[string]any {
 	return out
 }
 
-// PublishMonitorLog writes one line to the Monitor Logs SSE stream (/monitor/logs/stream, event: log).
-// scope is "team" or "chat" (single-agent session). See .cursor/rules/monitor-streams-wire.mdc (Logs 分流).
-func PublishMonitorLog(ctx context.Context, b *biz.MonitorLogBroker, r RunResult, scope string, meta SSERunMeta) {
-	if b == nil {
-		return
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
+func MonitorLogEntry(r RunResult, scope string, meta RunMeta) (level, msg string) {
 	var sb strings.Builder
 	sb.WriteString("intent_pass[")
 	sb.WriteString(scope)
@@ -133,11 +125,11 @@ func PublishMonitorLog(ctx context.Context, b *biz.MonitorLogBroker, r RunResult
 	if r.Artifact != nil && strings.TrimSpace(r.Artifact.IntentKind) != "" {
 		fmt.Fprintf(&sb, " intent_kind=%s", strings.TrimSpace(r.Artifact.IntentKind))
 	}
-	level := "INFO"
+	level = "INFO"
 	if r.Outcome == "skipped_llm" || r.Outcome == "skipped_parse" {
 		level = "WARN"
 	}
-	b.Publish(ctx, level, sb.String(), "intent-pass")
+	return level, sb.String()
 }
 
 // Run calls a small chat completion to produce an Artifact. On skip or failure Artifact is nil with Outcome set.

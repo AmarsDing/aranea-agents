@@ -17,6 +17,7 @@ type Agent struct {
 	ContextWindow      int
 	BudgetMonthlyCents int
 	ConfigJSON         string
+	Roles              []string
 	CreatedAt          string
 	UpdatedAt          string
 	DeletedAt          string
@@ -108,8 +109,12 @@ type AgentRuntimeSettings struct {
 	SkillRuntimeJSON string
 	// IntentPassEnabled runs the optional pre-turn intent classification pass (see intent package); default true in DB/UI.
 	IntentPassEnabled bool
-	// VariablesJSON holds custom placeholder variables for system prompt {key} substitution.
-	VariablesJSON string
+	ChannelID         string
+	ChatID            string
+	Workspace         string
+	ReasoningMode     string
+	ReasoningLevel    string
+	VariablesJSON     string
 	// ModelInstructionsJSON holds per-model instruction overrides: {"gpt-4o": "...", "claude-3": "..."}.
 	ModelInstructionsJSON string
 	// ContextCompactionEnabled enables automatic context compaction when tokens approach the limit.

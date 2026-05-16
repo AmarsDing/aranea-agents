@@ -381,12 +381,13 @@ const categoryOptions: ModelCategory[] = [
 ];
 
 const providerTypeOptions = [
-  { label: "OpenAI Compatible", value: "OpenAI Compatible" },
-  { label: "Anthropic", value: "Anthropic" },
-  { label: "Google Gemini", value: "Google Gemini" },
-  { label: "Azure OpenAI", value: "Azure OpenAI" },
-  { label: "Ollama", value: "Ollama" },
-  { label: "自定义", value: "Custom" }
+  { label: "OpenAI Compatible", value: "openai" },
+  { label: "Anthropic", value: "anthropic" },
+  { label: "Google Gemini", value: "gemini" },
+  { label: "Azure OpenAI", value: "openai" },
+  { label: "Ollama", value: "ollama" },
+  { label: "Hunyuan", value: "hunyuan" },
+  { label: "自定义", value: "openai" }
 ];
 
 const form = reactive<PlatformResourceInput>({
@@ -405,7 +406,7 @@ const form = reactive<PlatformResourceInput>({
 });
 
 const providerForm = reactive({
-  provider_type: "OpenAI Compatible",
+  provider_type: "openai",
   model_api_id: "",
   provider_code: "",
   provider_display_name: "",
@@ -477,7 +478,7 @@ const currentProviderPreset = computed(() => findProviderPreset(providerPresetKe
 
 /** 本地 / 内网模型：检查列表通常可不填密钥（如 Ollama、localhost OpenAI 兼容） */
 const isLocalProviderModel = computed(() => {
-  if (providerForm.provider_type === "Ollama") return true;
+  if (providerForm.provider_type === "ollama") return true;
   const raw = providerForm.api_base_url.trim();
   if (!raw) return false;
   return /^(https?|wss?):\/\/(localhost|127\.0\.0\.1|\[::1\])([/:?#]|$)/i.test(raw);
@@ -575,7 +576,7 @@ function resetForm() {
     metadata_json: "{}"
   });
   Object.assign(providerForm, {
-    provider_type: "OpenAI Compatible",
+    provider_type: "openai",
     model_api_id: "",
     provider_code: "",
     provider_display_name: "",
@@ -630,7 +631,7 @@ function openEdit(row: PlatformResource) {
     const config = getConfig(row);
     providerPresetKey.value = findProviderPreset(row.provider)?.key || "";
     Object.assign(providerForm, {
-      provider_type: config.provider_type || "OpenAI Compatible",
+      provider_type: normalizeProviderType(config.provider_type),
       model_api_id: row.model,
       provider_code: row.provider,
       provider_display_name: config.provider_display_name || row.provider,
@@ -894,6 +895,15 @@ function buildProviderPayload(): PlatformResourceInput {
     config_json: JSON.stringify(config),
     metadata_json: JSON.stringify({ model_rating: providerForm.model_rating })
   };
+}
+
+function normalizeProviderType(raw: string | undefined): string {
+  const v = (raw || "").trim().toLowerCase();
+  if (v === "anthropic") return "anthropic";
+  if (v === "gemini" || v === "google gemini") return "gemini";
+  if (v === "ollama") return "ollama";
+  if (v === "hunyuan") return "hunyuan";
+  return "openai";
 }
 
 function getConfig(row: PlatformResource): ProviderConfig {

@@ -25,6 +25,7 @@
 
     <div class="row q-gutter-sm">
       <q-btn outline rounded color="primary" icon="visibility" label="系统提示词" class="settings-action" @click="$emit('open-prompt')" />
+      <q-btn outline rounded color="grey-7" icon="settings" label="高级" class="settings-action" @click="$emit('open-advanced')" />
       <q-btn flat round color="amber-8" :icon="favorite ? 'star' : 'star_border'" class="header-icon-btn" @click="$emit('toggle-favorite')" />
       <q-btn color="primary" rounded unelevated icon="save" label="保存设置" class="settings-save" :loading="saving" @click="$emit('save')" />
     </div>
@@ -62,6 +63,7 @@ defineEmits<{
   back: [];
   "change-avatar": [];
   "open-prompt": [];
+  "open-advanced": [];
   "toggle-favorite": [];
   save: [];
 }>();

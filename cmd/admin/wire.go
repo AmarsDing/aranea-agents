@@ -15,6 +15,7 @@ import (
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/cronrunner"
 	"aranea-agents/internal/data"
+	"aranea-agents/internal/event"
 	"aranea-agents/internal/provider"
 	"aranea-agents/internal/runtimedeps"
 	"aranea-agents/internal/server"
@@ -32,14 +33,14 @@ func provideCronRunnerDeps(
 	session *biz.SessionUsecase,
 	teams biz.TeamRepository,
 	agents biz.AgentRepository,
-	teamSSE *biz.TeamRunEventBroker,
+	eventBus event.Bus,
 ) cronrunner.Deps {
 	return cronrunner.Deps{
-		Cron:    cron,
-		Session: session,
-		Teams:   teams,
-		Agents:  agents,
-		TeamSSE: teamSSE,
+		Cron:     cron,
+		Session:  session,
+		Teams:    teams,
+		Agents:   agents,
+		EventBus: eventBus,
 	}
 }
 
@@ -66,7 +67,6 @@ func provideSessionTitleGenerator(catalog *biz.LlmProviderModelUsecase, rt *runt
 }
 
 func provideChatServiceDeps(
-	broker *biz.TeamRunEventBroker,
 	teams biz.TeamRepository,
 	teamsNative *team.Runner,
 	usage *biz.UsageUsecase,
@@ -80,10 +80,9 @@ func provideChatServiceDeps(
 	sys biz.SystemSettingRepo,
 	rt *runtimedeps.Runtime,
 	compress biz.NativeTurnCompressor,
-	monitorLogs *biz.MonitorLogBroker,
+	eventBus event.Bus,
 ) service.ChatServiceDeps {
 	return service.ChatServiceDeps{
-		Broker:       broker,
 		Teams:        teams,
 		TeamsNative:  teamsNative,
 		Usage:        usage,
@@ -97,8 +96,16 @@ func provideChatServiceDeps(
 		Sys:          sys,
 		RT:           rt,
 		Compress:     compress,
-		MonitorLogs:  monitorLogs,
+		EventBus:     eventBus,
 	}
+}
+
+func provideRunCanceller(svc *service.ChatService) server.RunCanceller {
+	return svc
+}
+
+func provideChatSender(svc *service.ChatService) server.ChatSender {
+	return svc
 }
 
 // wireOut is non-cleanup inject outputs (cleanup must be a top-level injector return for Wire).
@@ -118,12 +125,15 @@ func wireApp(*conf.Server, *conf.Data, log.Logger) (wireOut, func(), error) {
 		server.ProviderSet,
 		data.ProviderSet,
 		biz.ProviderSet,
+		event.ProviderSet,
 		service.ProviderSet,
 		provideCronRunnerDeps,
 		provideCronRunner,
 		provideSkillWatchRunner,
 		provideSessionTitleGenerator,
 		provideChatServiceDeps,
+		provideRunCanceller,
+		provideChatSender,
 		runtimedeps.NewRuntime,
 		newApp,
 		provideWireOut,

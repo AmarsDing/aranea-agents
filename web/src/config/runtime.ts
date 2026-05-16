@@ -1,24 +1,6 @@
 type RuntimeConfig = {
-  /**
-   * 后端 **Origin**（协议 + 主机 [:端口]），**不带路径**。
-   * 与 Kratos Admin（`/v1/...`）、遗留 REST（`/api/v1/...`）共用同一网关来源，不在此做「两套根」分叉。
-   */
   backendUrl?: string;
-  /**
-   * 监控 SSE（tx7do，`server.sse`，默认监听 :8001）的 **Origin**，**不带路径**。
-   * 生产环境若页面与 SSE 不同源、且入口网关未把 `/sse` 反代到该端口时填写，例如 `http://127.0.0.1:8001`。
-   */
-  sseOrigin?: string;
-  /**
-   * ADK HTTP 流式接口所在 **Origin**（无路径），如 `http://127.0.0.1:8000`。
-   * 用于 `POST {origin}/run_sse`，与 `/api/v1` 可指向不同服务。
-   */
-  adkStreamOrigin?: string;
-  /**
-   * WebSocket 主机，格式 `host:port`，如 `127.0.0.1:8000`。
-   * 用于 `ws(s)://{host}/run_live?...`
-   */
-  adkWsHost?: string;
+  wsOrigin?: string;
 };
 
 let runtimeConfig: RuntimeConfig = {};
@@ -64,71 +46,51 @@ export function getBackendBaseURL(): string {
   return `${origin}/api/v1`;
 }
 
-/**
- * tx7do SSE 监听独立端口（server.sse）；开发环境由 devServer 将 `/sse` 代理到该端口。
- *
- * **开发环境一律使用相对路径 `/sse`**：即使配置了 `backendUrl`，也不得把 EventSource 指到 API Origin，
- * 否则浏览器会直连 `:8000/.../sse`（无路由）或跨域 `:8001` 而无 CORS，监控 Logs/Events 会显示「连接异常」。
- */
-export function getSseBaseURL(): string {
-  if (import.meta.env.DEV) {
-    return "/sse";
+export function getWsOrigin(): string {
+  if (runtimeConfig.wsOrigin && runtimeConfig.wsOrigin.trim() !== "") {
+    return runtimeConfig.wsOrigin.replace(/\/$/, "");
   }
-  const sse = runtimeConfig.sseOrigin?.trim();
-  if (sse && sse.length > 0) {
-    return sse.replace(/\/$/, "");
+  if (import.meta.env.DEV) {
+    return "http://127.0.0.1:8002";
   }
   const origin = getBackendOrigin();
   if (origin === "") {
-    return "/sse";
+    return "";
   }
-  return `${origin}/sse`;
+  return origin;
 }
 
-/**
- * 用于 `POST .../run_sse` 的绝对 URL。
- * 未配置 `adkStreamOrigin` 时：开发环境走同源相对路径 `/run_sse`（由 devServer 代理到后端/ADK）；生产为当前站点 `origin`。
- */
-export function getAdkRunSseUrl(): string {
-  if (runtimeConfig.adkStreamOrigin && runtimeConfig.adkStreamOrigin.trim() !== "") {
-    return `${runtimeConfig.adkStreamOrigin.replace(/\/$/, "")}/run_sse`;
-  }
-  if (import.meta.env.DEV) {
-    return "/run_sse";
-  }
-  if (typeof window !== "undefined" && window.location?.origin) {
-    return `${window.location.origin}/run_sse`;
-  }
-  return "http://localhost:8080/run_sse";
-}
-
-/**
- * 与 ADK 对齐：`ws(s)://{host}/run_live?app_name&user_id&session_id`
- */
-export function buildAdkLiveUrl(params: {
-  appName: string;
-  userId: string;
+export function buildWsUrl(params: {
   sessionId: string;
+  lastEventId?: string;
+  token?: string;
+  logEnabled?: boolean;
 }): string {
-  const protocol = typeof window !== "undefined" && window.location?.protocol === "https:" ? "wss" : "ws";
-  const host = resolveAdkWsHost();
-  const q = new URLSearchParams({
-    app_name: params.appName,
-    user_id: params.userId,
-    session_id: params.sessionId
-  });
-  return `${protocol}://${host}/run_live?${q.toString()}`;
+  const origin = getWsOrigin();
+  const protocol = origin.startsWith("https") ? "wss" : "ws";
+  const wsOrigin = origin.replace(/^https?/, protocol);
+  const q = new URLSearchParams({ session_id: params.sessionId });
+  if (params.lastEventId) {
+    q.set("last_event_id", params.lastEventId);
+  }
+  if (params.token) {
+    q.set("token", params.token);
+  }
+  if (params.logEnabled) {
+    q.set("log_enabled", "1");
+  }
+  return `${wsOrigin}/v1/ws?${q.toString()}`;
 }
 
-function resolveAdkWsHost(): string {
-  if (runtimeConfig.adkWsHost && runtimeConfig.adkWsHost.trim() !== "") {
-    return runtimeConfig.adkWsHost.trim();
-  }
-  if (import.meta.env.DEV) {
-    return "127.0.0.1:8000";
-  }
-  if (typeof window !== "undefined" && window.location?.host) {
-    return window.location.host;
-  }
-  return "127.0.0.1:8080";
+export function buildHealthWsUrl(): string {
+  const origin = getWsOrigin();
+  const protocol = origin.startsWith("https") ? "wss" : "ws";
+  const wsOrigin = origin.replace(/^https?/, protocol);
+  return `${wsOrigin}/v1/ws/health`;
+}
+
+export function readAccessTokenCookie(): string | undefined {
+  if (typeof document === "undefined") return undefined;
+  const match = document.cookie.match(/(?:^|;\s*)access_token=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : undefined;
 }

@@ -22,6 +22,7 @@
         class="col-auto"
       />
       <q-btn flat rounded :icon="paused ? 'play_arrow' : 'pause'" :label="paused ? '恢复' : '停止'" @click="toggle" />
+      <q-btn flat rounded :icon="logEnabled ? 'visibility' : 'visibility_off'" :label="logEnabled ? '日志开' : '日志关'" :color="logEnabled ? 'positive' : undefined" @click="toggleLog" />
       <q-btn flat rounded icon="delete_sweep" label="清除" @click="lines = []" />
     </q-card-section>
     <q-banner v-if="message" rounded class="monitor-log-banner q-ma-md">
@@ -43,16 +44,17 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { getMonitorLogs, subscribeMonitorLogs } from "../../features/monitor/api";
+import { getMonitorLogs, subscribeMonitorLogsWs } from "../../features/monitor/api";
 import type { MonitorLogLine, StreamState } from "../../features/monitor/types";
 
 const lines = ref<MonitorLogLine[]>([]);
 const keyword = ref("");
 const level = ref("INFO");
 const paused = ref(false);
+const logEnabled = ref(false);
 const state = ref<StreamState>("connecting");
 const message = ref("");
-let source: EventSource | null = null;
+let wsSub: ReturnType<typeof subscribeMonitorLogsWs> | null = null;
 
 const levelOptions = [
   { label: "DEBUG", value: "DEBUG" },
@@ -96,7 +98,8 @@ watch(paused, (isPaused) => {
 function start() {
   stop();
   state.value = "connecting";
-  source = subscribeMonitorLogs(
+  wsSub = subscribeMonitorLogsWs(
+    "monitor",
     (line) => {
       state.value = "live";
       lines.value = [...lines.value, line].slice(-5000);
@@ -108,14 +111,24 @@ function start() {
       if (!paused.value) state.value = "live";
     }
   );
+  if (logEnabled.value && wsSub?.enableLog) {
+    wsSub.enableLog(true);
+  }
 }
 
 function stop() {
-  source?.close();
-  source = null;
+  wsSub?.close();
+  wsSub = null;
 }
 
 function toggle() {
   paused.value = !paused.value;
+}
+
+function toggleLog() {
+  logEnabled.value = !logEnabled.value;
+  if (wsSub?.enableLog) {
+    wsSub.enableLog(logEnabled.value);
+  }
 }
 </script>

@@ -459,7 +459,8 @@ POST /v1/chat/messages/stream (SSE)
     → proxyNativeStream()
       → 解析 JSON body → 构造 protoReq
       → 设置 SSE headers (Content-Type/Cache-Control/Connection/X-Accel-Buffering)
-      → runNativeAgentTurn(ctx, protoReq, streamWriter)
+      → 创建 streamCtx 监听 req.Context().Done()（客户端断连时取消流式上下文）
+      → runNativeAgentTurn(streamCtx, protoReq, streamWriter)
       → 记录用度
 ```
 
@@ -471,7 +472,7 @@ POST /v1/chat/messages/stream (SSE)
 | `delta` | server→client | `{"content":"..."}` 或 `{"reasoning_content":"..."}` | 流式增量文本 |
 | `tool.call` | server→client | `{"session_id":"...","tool_name":"...","tool_call_id":"..."}` | 工具调用通知 |
 | `done` | server→client | `{"agent_message":{"id":"...","content_markdown":"..."}}` | 生成完成 |
-| `error` | server→client | `{"message":"..."}` | 错误信息 |
+| `error` | server→client | `{"message":"...","pending_id":"..."}` | 错误信息（`pending_id` 为待执行消息失败时的 ID） |
 | `state_delta` | server→client | `{"session_id":"...","state_delta":{...}}` | Session State 增量 |
 | `extensions` | server→client | `{"session_id":"...","extensions":{...}}` | 事件扩展数据 |
 | `branch` | server→client | `{"session_id":"...","branch":"..."}` | 分支标识 |
@@ -513,14 +514,48 @@ POST /v1/chat/messages/stream (SSE)
 10. 构造 userMsg → AppendChatMessage/SSE emit
 11. RunTRPCUserTurn() → events channel
 12. 遍历事件流:
-    - StateDelta/Extensions/Branch/FilterKey/Tag → SSE emit
-    - Response.Choices → 累积 reply/reasoning，SSE emit delta
-    - ToolCalls → SSE emit tool.call
+    - StateDelta/Extensions/Branch/FilterKey/Tag → SSE emit（写入失败时立即退出循环）
+    - Response.Choices → 累积 reply/reasoning，SSE emit delta（写入失败时立即退出循环）
+    - ToolCalls → SSE emit tool.call（写入失败时立即退出循环）
     - Usage → 记录 promptTok/completionTok
+    - ctx.Err() != nil 时退出循环（客户端断连）
 13. 构造 assistantMsg
 14. 持久化消息（unary: AppendChatTurn, stream: AppendChatMessage）
 15. patchSessionContextUsage
 16. SSE emit done
+```
+
+### 5.7.1 streamWriter 断连检测
+
+```go
+type streamWriter struct {
+    w       http.ResponseWriter
+    flusher http.Flusher
+    closed  bool  // 写入失败后标记关闭，后续 writeEvent 直接返回 io.EOF
+}
+
+func (w *streamWriter) writeEvent(event string, payload any) error {
+    if w.closed { return io.EOF }
+    // ... 写入 + flush，失败时 w.closed = true
+}
+```
+
+### 5.7.2 processPendingQueue 错误处理
+
+```
+1. dequeuePending 取出待执行消息
+2. 启动 goroutine，设置 600s 超时 + cancel 传播
+3. 调用 runSingleAgentViaTRPC 执行
+4. 执行失败时：检查 streamWriter 是否仍可用（!stream.closed）
+5. 通过 SSE error 事件通知前端，载荷包含 message 和 pending_id
+```
+
+### 5.7.3 pendingQueue 容量控制
+
+```
+- maxPendingPerSession = 32
+- enqueuePending 检查队列长度，超出时返回空 ID
+- runNativeAgentTurn 中检测空 ID，返回 BadRequest 错误
 ```
 
 ### 5.8 用量记录
@@ -712,7 +747,7 @@ web/src/
 ├── features/chat/
 │   ├── api.ts                     ← Chat API 调用封装（sendMessage/streamMessage/stop/listOptions/getPending/cancelPending/updatePending）
 │   ├── types.ts                   ← TypeScript 类型定义
-│   ├── toolEventMarkdown.ts       ← 工具事件 Markdown 渲染
+│   ├── toolEventMarkdown.ts       ← 工具事件 Markdown 渲染 + toolEventToMessage 共享转换函数
 │   └── composables/
 │       └── useChatWorkspace.ts    ← 对话工作区 composable（状态管理 + 交互逻辑）
 ├── components/chat/
@@ -803,6 +838,9 @@ export type SendMessageStreamCallbacks = {
   onMemberDelta?: (messageID: string, content: string) => void;
   onMemberMessageDone?: (message: Message) => void;
   onIntentPass?: (result: IntentPassResult) => void;
+  onStateDelta?: (sessionId: string, stateDelta: Record<string, unknown>) => void;
+  onExtensions?: (sessionId: string, extensions: Record<string, unknown>) => void;
+  onError?: (message: string, pendingId?: string) => void;
 };
 
 export type IntentPassResult = {
@@ -943,3 +981,10 @@ export async function updatePendingMessage(sessionId: string, pendingId: string,
 | P2 | `pendingEntry` ID 生成 | 使用 `github.com/google/uuid` 替代 `UnixNano` | ✅ 已实现 |
 | P2 | `UpdatePendingMessage` RPC | 新增编辑待执行消息端点 | ✅ 已实现 |
 | P2 | 意图识别增强 | 单 Agent SSE 发送 `intent_pass` 事件 + 前端展示 | ✅ 已实现 |
+| P0 | SSE 客户端断连检测 | `proxyNativeStream` 监听 `req.Context().Done()` 取消流式上下文；`streamWriter` 增加 `closed` 标志，写入失败时标记关闭 | ✅ 已修复 |
+| P0 | SSE 事件循环提前退出 | `runSingleAgentViaTRPC` 事件循环中所有 `stream.Emit` 检查返回值，写入失败时立即退出 | ✅ 已修复 |
+| P0 | pendingQueue 大小限制 | `enqueuePending` 增加 `maxPendingPerSession=32` 上限，超出返回 `BadRequest` 错误 | ✅ 已修复 |
+| P1 | processPendingQueue 错误上报 | 待执行消息执行失败时通过 SSE `error` 事件通知前端（含 `pending_id`） | ✅ 已修复 |
+| P1 | toolEventMessage 重复定义消除 | 提取 `toolEventToMessage` 到 `toolEventMarkdown.ts` 共享模块 | ✅ 已修复 |
+| P1 | SSE error 事件回调化 | `handleStreamEvent` 中 `error` 事件改为通过 `onError` 回调通知，允许区分业务错误和网络错误 | ✅ 已修复 |
+| P2 | SSE state_delta/extensions 前端处理 | `SendMessageStreamCallbacks` 新增 `onStateDelta`/`onExtensions` 回调 | ✅ 已修复 |

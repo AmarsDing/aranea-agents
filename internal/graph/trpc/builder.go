@@ -3,6 +3,7 @@ package graph
 import (
 	"context"
 	"fmt"
+	"reflect"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
@@ -11,11 +12,61 @@ import (
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
-type NodeDef struct {
+type ReducerType string
+
+const (
+	ReducerDefault ReducerType = "default"
+	ReducerAppend  ReducerType = "append"
+	ReducerCover   ReducerType = "cover"
+	ReducerMerge   ReducerType = "merge"
+)
+
+type StateFieldDef struct {
+	Name            string
+	Type            string
+	Reducer         ReducerType
+	DefaultValue    any
+	Required        bool
+	DisableDeepCopy bool
+}
+
+type ExecutionEngineType string
+
+const (
+	EngineBSP ExecutionEngineType = "bsp"
+	EngineDAG ExecutionEngineType = "dag"
+)
+
+type SubgraphDef struct {
 	ID              string
-	Func            trpcgraph.NodeFunc
+	BuildConfig     GraphBuildConfig
+	InputMapper     trpcgraph.SubgraphInputMapper
+	OutputMapper    trpcgraph.SubgraphOutputMapper
 	InterruptBefore bool
 	InterruptAfter  bool
+}
+
+type NodeDef struct {
+	ID                       string
+	FuncRef                  string
+	Func                     trpcgraph.NodeFunc
+	Type                     string
+	Description              string
+	Instruction              string
+	ModelName                string
+	ToolNames                []string
+	AgentName                string
+	InterruptBefore          bool
+	InterruptAfter           bool
+	Destinations             []string
+	RequiredRole             string
+	AssignmentMode           string
+	AssignmentStrategy       string
+	ReviewerAgent            string
+	ReviewRules              string
+	TimeoutSeconds           int
+	HeartbeatIntervalSeconds int
+	EnableLeaseExtension     bool
 }
 
 type EdgeDef struct {
@@ -24,34 +75,111 @@ type EdgeDef struct {
 }
 
 type ConditionalEdgeDef struct {
-	From     string
-	CondFunc any
-	PathMap  map[string]string
+	From        string
+	CondFuncRef string
+	CondFunc    any
+	PathMap     map[string]string
 }
 
 type GraphBuildConfig struct {
 	Nodes            []NodeDef
 	Edges            []EdgeDef
 	ConditionalEdges []ConditionalEdgeDef
+	Subgraphs        []SubgraphDef
+	StateFields      []StateFieldDef
 	EntryPoint       string
 	FinishPoint      string
 	EnableCheckpoint bool
+	ExecutionEngine  ExecutionEngineType
 	InterruptBefore  []string
 	InterruptAfter   []string
 }
 
+func resolveReducer(rt ReducerType) trpcgraph.StateReducer {
+	switch rt {
+	case ReducerAppend:
+		return trpcgraph.AppendReducer
+	case ReducerCover:
+		return trpcgraph.CoverReducer
+	case ReducerMerge:
+		return trpcgraph.MergeReducer
+	default:
+		return trpcgraph.DefaultReducer
+	}
+}
+
+func resolveFieldType(typeName string) reflect.Type {
+	switch typeName {
+	case "string":
+		return reflect.TypeOf("")
+	case "int", "integer":
+		return reflect.TypeOf(0)
+	case "float", "float64":
+		return reflect.TypeOf(0.0)
+	case "bool", "boolean":
+		return reflect.TypeOf(false)
+	case "[]string":
+		return reflect.TypeOf([]string{})
+	case "[]int":
+		return reflect.TypeOf([]int{})
+	case "[]any":
+		return reflect.TypeOf([]any{})
+	case "map":
+		return reflect.TypeOf(map[string]any{})
+	default:
+		return nil
+	}
+}
+
 func BuildStateGraph(cfg GraphBuildConfig) (*trpcgraph.Graph, error) {
-	if len(cfg.Nodes) == 0 {
-		return nil, fmt.Errorf("graph: at least one node required")
+	g, _, err := BuildStateGraphWithAgents(cfg)
+	return g, err
+}
+
+func BuildStateGraphWithRegistry(cfg GraphBuildConfig, reg *Registry) (*trpcgraph.Graph, []trpcagent.Agent, error) {
+	if reg != nil {
+		resolved, err := reg.ResolveBuildConfig(cfg)
+		if err != nil {
+			return nil, nil, err
+		}
+		cfg = resolved
+	}
+	return BuildStateGraphWithAgents(cfg)
+}
+
+func BuildStateGraphWithAgents(cfg GraphBuildConfig) (*trpcgraph.Graph, []trpcagent.Agent, error) {
+	if len(cfg.Nodes) == 0 && len(cfg.Subgraphs) == 0 {
+		return nil, nil, fmt.Errorf("graph: at least one node required")
 	}
 	if cfg.EntryPoint == "" {
-		return nil, fmt.Errorf("graph: entry point required")
+		return nil, nil, fmt.Errorf("graph: entry point required")
 	}
 
+	var allAgents []trpcagent.Agent
+
 	schema := trpcgraph.NewStateSchema()
+	for _, sf := range cfg.StateFields {
+		field := trpcgraph.StateField{
+			Reducer:         resolveReducer(sf.Reducer),
+			Required:        sf.Required,
+			DisableDeepCopy: sf.DisableDeepCopy,
+		}
+		if sf.Type != "" {
+			field.Type = resolveFieldType(sf.Type)
+		}
+		if sf.DefaultValue != nil {
+			dv := sf.DefaultValue
+			field.Default = func() any { return dv }
+		}
+		schema.AddField(sf.Name, field)
+	}
+
 	sg := trpcgraph.NewStateGraph(schema)
 
 	for _, n := range cfg.Nodes {
+		if n.Func == nil {
+			return nil, nil, fmt.Errorf("graph: node %q has no Func (FuncRef=%q not resolved)", n.ID, n.FuncRef)
+		}
 		opts := []trpcgraph.Option{}
 		if n.InterruptBefore {
 			opts = append(opts, trpcgraph.WithInterruptBefore())
@@ -60,6 +188,33 @@ func BuildStateGraph(cfg GraphBuildConfig) (*trpcgraph.Graph, error) {
 			opts = append(opts, trpcgraph.WithInterruptAfter())
 		}
 		sg.AddNode(n.ID, n.Func, opts...)
+	}
+
+	for _, sub := range cfg.Subgraphs {
+		subGraph, subAgents, err := BuildStateGraphWithAgents(sub.BuildConfig)
+		if err != nil {
+			return nil, nil, fmt.Errorf("graph: subgraph %q build failed: %w", sub.ID, err)
+		}
+		subAgent, err := NewGraphAgent(sub.ID, subGraph, sub.BuildConfig.EnableCheckpoint)
+		if err != nil {
+			return nil, nil, fmt.Errorf("graph: subgraph %q agent failed: %w", sub.ID, err)
+		}
+		allAgents = append(allAgents, subAgent)
+		allAgents = append(allAgents, subAgents...)
+		opts := []trpcgraph.Option{}
+		if sub.InputMapper != nil {
+			opts = append(opts, trpcgraph.WithSubgraphInputMapper(sub.InputMapper))
+		}
+		if sub.OutputMapper != nil {
+			opts = append(opts, trpcgraph.WithSubgraphOutputMapper(sub.OutputMapper))
+		}
+		if sub.InterruptBefore {
+			opts = append(opts, trpcgraph.WithInterruptBefore())
+		}
+		if sub.InterruptAfter {
+			opts = append(opts, trpcgraph.WithInterruptAfter())
+		}
+		sg.AddAgentNode(sub.ID, opts...)
 	}
 
 	sg.AddEdge(trpcgraph.Start, cfg.EntryPoint)
@@ -83,21 +238,27 @@ func BuildStateGraph(cfg GraphBuildConfig) (*trpcgraph.Graph, error) {
 		sg.WithInterruptAfterNodes(cfg.InterruptAfter...)
 	}
 
-	return sg.Compile()
+	compiled, err := sg.Compile()
+	if err != nil {
+		return nil, nil, err
+	}
+	return compiled, allAgents, nil
 }
 
 type GraphAgent struct {
 	graph    *trpcgraph.Graph
 	executor *trpcgraph.Executor
 	name     string
+	saver    trpcgraph.CheckpointSaver
 }
 
 var _ trpcagent.Agent = (*GraphAgent)(nil)
 
 func NewGraphAgent(name string, g *trpcgraph.Graph, enableCheckpoint bool) (*GraphAgent, error) {
 	var execOpts []trpcgraph.ExecutorOption
+	var saver trpcgraph.CheckpointSaver
 	if enableCheckpoint {
-		saver := trpcgraphcheckpoint.NewSaver()
+		saver = trpcgraphcheckpoint.NewSaver()
 		execOpts = append(execOpts, trpcgraph.WithCheckpointSaver(saver))
 	}
 	exec, err := trpcgraph.NewExecutor(g, execOpts...)
@@ -108,6 +269,55 @@ func NewGraphAgent(name string, g *trpcgraph.Graph, enableCheckpoint bool) (*Gra
 		graph:    g,
 		executor: exec,
 		name:     name,
+		saver:    saver,
+	}, nil
+}
+
+func NewGraphAgentWithSaver(name string, g *trpcgraph.Graph, saver trpcgraph.CheckpointSaver, engine ExecutionEngineType) (*GraphAgent, error) {
+	var execOpts []trpcgraph.ExecutorOption
+	if saver != nil {
+		execOpts = append(execOpts, trpcgraph.WithCheckpointSaver(saver))
+	}
+	switch engine {
+	case EngineDAG:
+		execOpts = append(execOpts, trpcgraph.WithExecutionEngine(trpcgraph.ExecutionEngineDAG))
+	default:
+		execOpts = append(execOpts, trpcgraph.WithExecutionEngine(trpcgraph.ExecutionEngineBSP))
+	}
+	exec, err := trpcgraph.NewExecutor(g, execOpts...)
+	if err != nil {
+		return nil, fmt.Errorf("graph agent: %w", err)
+	}
+	return &GraphAgent{
+		graph:    g,
+		executor: exec,
+		name:     name,
+		saver:    saver,
+	}, nil
+}
+
+func NewGraphAgentWithEngine(name string, g *trpcgraph.Graph, enableCheckpoint bool, engine ExecutionEngineType) (*GraphAgent, error) {
+	var execOpts []trpcgraph.ExecutorOption
+	var saver trpcgraph.CheckpointSaver
+	if enableCheckpoint {
+		saver = trpcgraphcheckpoint.NewSaver()
+		execOpts = append(execOpts, trpcgraph.WithCheckpointSaver(saver))
+	}
+	switch engine {
+	case EngineDAG:
+		execOpts = append(execOpts, trpcgraph.WithExecutionEngine(trpcgraph.ExecutionEngineDAG))
+	default:
+		execOpts = append(execOpts, trpcgraph.WithExecutionEngine(trpcgraph.ExecutionEngineBSP))
+	}
+	exec, err := trpcgraph.NewExecutor(g, execOpts...)
+	if err != nil {
+		return nil, fmt.Errorf("graph agent: %w", err)
+	}
+	return &GraphAgent{
+		graph:    g,
+		executor: exec,
+		name:     name,
+		saver:    saver,
 	}, nil
 }
 
@@ -132,4 +342,20 @@ func (a *GraphAgent) SubAgents() []trpcagent.Agent {
 
 func (a *GraphAgent) FindSubAgent(name string) trpcagent.Agent {
 	return nil
+}
+
+func (a *GraphAgent) Graph() *trpcgraph.Graph {
+	return a.graph
+}
+
+func (a *GraphAgent) Executor() *trpcgraph.Executor {
+	return a.executor
+}
+
+func (a *GraphAgent) Saver() trpcgraph.CheckpointSaver {
+	return a.saver
+}
+
+func (a *GraphAgent) TimeTravel() (*trpcgraph.TimeTravel, error) {
+	return a.executor.TimeTravel()
 }

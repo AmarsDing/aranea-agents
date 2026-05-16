@@ -41,6 +41,7 @@
         <div class="row q-col-gutter-md">
           <q-input v-model.trim="form.display_name" class="col-12 col-md-6 team-control" dense outlined label="Team 名称 *" />
           <q-input v-model.trim="form.team_key" class="col-12 col-md-6 team-control" dense outlined label="Team Key *" hint="小写字母、数字、连字符" />
+          <q-input v-model.trim="form.app_name" class="col-12 col-md-6 team-control" dense outlined label="App Name" hint="应用标识，留空则使用 Team Key" />
           <q-select v-model="definition.mode" class="col-12 col-md-4 team-control" dense outlined emit-value map-options label="编排模式" :options="modeOptions" />
           <q-select v-model="form.status" class="col-12 col-md-4 team-control" dense outlined emit-value map-options label="状态" :options="statusOptions" />
           <q-input
@@ -174,7 +175,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, withDefaults } from "vue";
+import { computed } from "vue";
 import type { TeamDefinition } from "../../features/teams/api";
 import { buildGraphFromDefinition, modeOptions, roleOptions, statusOptions, teamTemplateOptions, topologyNodesFromDefinition, type TeamTemplateKey } from "./teamUtils";
 
@@ -187,7 +188,7 @@ const props = withDefaults(
       team_key: string;
       display_name: string;
       status: string;
-      adk_app_name: string;
+      app_name: string;
     };
     definition: TeamDefinition;
     definitionJSON?: string;

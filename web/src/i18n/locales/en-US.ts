@@ -1,8 +1,4 @@
 export default {
-  adk: {
-    sseError: "Stream request failed: {msg}",
-    wsError: "WebSocket error"
-  },
   common: {
     appTitle: "Arenea Agent Orchestrator",
     placeholder: "This section will be fleshed out in a later release.",
@@ -139,6 +135,7 @@ export default {
     agents: "Agent management",
     agentCategories: "Agent categories",
     team: "Team management",
+    graphs: "Graph Workflow",
     models: "Model management",
     channels: "Channel management",
     mcp: "MCP management",

@@ -5,6 +5,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/sessionmemory"
+	"aranea-agents/internal/event"
 	"aranea-agents/internal/provider"
 
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
@@ -32,8 +33,7 @@ type TurnDeps struct {
 	LLMHTTP      *http.Client
 	Sessions     *biz.SessionUsecase
 	Compress     biz.NativeTurnCompressor
-	MonitorLogs  *biz.MonitorLogBroker
-	TeamSSE      *biz.TeamRunEventBroker
+	EventBus     event.Bus
 }
 
 func (d TurnDeps) RoundTrip() *provider.RoundTrip {

@@ -4,14 +4,12 @@ import { useQuasar } from "quasar";
 import { useRoute, useRouter } from "vue-router";
 import {
   listChatOptions,
-  sendMessageStream,
   stopGeneration,
   getPendingMessages,
   cancelPendingMessage,
   updatePendingMessage,
 } from "../api";
 import type { PendingMessage } from "../api";
-import type { ToolUseEvent } from "../api";
 import {
   createSession,
   getSession,
@@ -19,7 +17,6 @@ import {
   listTeamSessions,
   updateSessionTitle
 } from "../../session/api";
-import { formatToolEventMarkdown } from "../toolEventMarkdown";
 import { deleteTeam, listTeams, updateTeam } from "../../teams/api";
 import {
   listPlatformResources,
@@ -46,6 +43,9 @@ import {
   saveModelToStorage
 } from "../../../config/chatOptions";
 import { useAppStore } from "../../../stores/app";
+import { useAuthStore } from "../../../stores/auth";
+import { useChatStream, useTeamStream } from "../useEnvelopeStream";
+import type { Envelope } from "../envelope";
 
 function mockMessage(id: string, sessionID: string, role: string, content: string): Message {
   return {
@@ -98,7 +98,6 @@ export function useChatWorkspace() {
   const dialogMode = ref(loadDialogModeFromStorage("default"));
   const modelProvider = ref(loadModelFromStorage(""));
   const sending = ref(false);
-  const streamAbortController = ref<AbortController | null>(null);
   const modeOpts = ref<Array<{ label: string; value: string }>>(
     CHAT_MODE_OPTIONS.map((o) => ({ label: o.label, value: o.value }))
   );
@@ -387,32 +386,213 @@ export function useChatWorkspace() {
     }
   }
 
+  let chatStream: ReturnType<typeof useChatStream> | null = null;
+  let teamStream: ReturnType<typeof useTeamStream> | null = null;
+
+  function ensureChatStream(sessionId: string) {
+    if (chatStream && chatStream.transport.value) {
+      return chatStream;
+    }
+    chatStream?.disconnect();
+    chatStream = useChatStream(sessionId, {
+      onServerShutdown: () => {
+        $q.notify({
+          type: "warning",
+          message: t("chat.serverShutdown", "服务器已关闭，请重新登录"),
+          timeout: 0,
+          actions: [{ label: t("chat.relogin", "重新登录"), color: "white", handler: () => {} }],
+        });
+        const auth = useAuthStore();
+        auth.user = null;
+        auth.sessionChecked = true;
+        router.push({ name: "login" });
+      },
+    });
+    chatStream.onType("text_delta", (env: Envelope) => {
+      if (env.content?.text) {
+        const sid = store.selectedSession?.id;
+        if (!sid) return;
+        const streamingId = `ws-stream-${sid}`;
+        const exists = store.messages.some((m) => m.id === streamingId);
+        if (!exists) {
+          store.messages = [
+            ...store.messages,
+            { ...mockMessage(streamingId, sid, "assistant", ""), status: "streaming" }
+          ];
+        }
+        store.messages = store.messages.map((m) =>
+          m.id === streamingId
+            ? { ...m, content_markdown: `${m.content_markdown}${env.content!.text}` }
+            : m
+        );
+      }
+    });
+    chatStream.onType("text_done", (env: Envelope) => {
+      const sid = store.selectedSession?.id;
+      if (!sid) return;
+      const streamingId = `ws-stream-${sid}`;
+      if (env.content?.text) {
+        store.messages = store.messages.map((m) =>
+          m.id === streamingId
+            ? { ...m, content_markdown: env.content!.text }
+            : m
+        );
+      }
+    });
+    chatStream.onType("tool_call", (env: Envelope) => {
+      if (env.tool_call) {
+        const sid = store.selectedSession?.id;
+        if (!sid) return;
+        const msgId = `tool-${env.tool_call.id}`;
+        const existing = store.messages.find((m) => m.id === msgId);
+        if (existing) {
+          store.messages = store.messages.map((m) =>
+            m.id === msgId
+              ? { ...m, content_markdown: `🔧 ${env.tool_call!.name} (${env.tool_call!.status})` }
+              : m
+          );
+        } else {
+          store.messages = [
+            ...store.messages,
+            mockMessage(msgId, sid, "assistant", `🔧 ${env.tool_call.name} (${env.tool_call.status})`)
+          ];
+        }
+      }
+    });
+    chatStream.onType("runner_completion", async () => {
+      sending.value = false;
+      const sid = store.selectedSession?.id;
+      if (sid) {
+        try {
+          await store.loadMessages();
+          await store.loadSessions();
+        } catch { /* ignore */ }
+      }
+    });
+    chatStream.onType("error", (env: Envelope) => {
+      const msg = env.error?.message ?? "stream failed";
+      $q.notify({ type: "negative", message: msg });
+      sending.value = false;
+    });
+    chatStream.onType("intent_pass", (env: Envelope) => {
+      store.lastIntentPass = env.metadata as any;
+    });
+    chatStream.connect();
+    return chatStream;
+  }
+
+  function ensureTeamStream(sessionId: string) {
+    if (teamStream && teamStream.transport.value) {
+      return teamStream;
+    }
+    teamStream?.disconnect();
+    teamStream = useTeamStream(sessionId);
+    teamStream.onType("text_delta", (env: Envelope) => {
+      if (env.content?.text && teamSelectedSessionId.value) {
+        const sid = teamSelectedSessionId.value;
+        const streamingId = `ws-team-stream-${sid}`;
+        const cur = teamMessages.value[sid] ?? [];
+        const exists = cur.some((m) => m.id === streamingId);
+        if (!exists) {
+          teamMessages.value[sid] = [...cur, { ...mockMessage(streamingId, sid, "assistant", ""), status: "streaming" }];
+        }
+        teamMessages.value[sid] = (teamMessages.value[sid] ?? []).map((m) =>
+          m.id === streamingId
+            ? { ...m, content_markdown: `${m.content_markdown}${env.content!.text}` }
+            : m
+        );
+      }
+    });
+    teamStream.onType("member_message_start", (env: Envelope) => {
+      if (env.author && teamSelectedSessionId.value) {
+        const sid = teamSelectedSessionId.value;
+        const msgId = `member-${env.author}-${Date.now()}`;
+        const cur = teamMessages.value[sid] ?? [];
+        if (!cur.some((m) => m.id === msgId)) {
+          teamMessages.value[sid] = [...cur, mockMessage(msgId, sid, "assistant", "")];
+        }
+      }
+    });
+    teamStream.onType("member_delta", (env: Envelope) => {
+      if (env.author && env.content?.text && teamSelectedSessionId.value) {
+        const sid = teamSelectedSessionId.value;
+        teamMessages.value[sid] = (teamMessages.value[sid] ?? []).map((m) =>
+          m.id.startsWith(`member-${env.author}`)
+            ? { ...m, content_markdown: `${m.content_markdown}${env.content!.text}` }
+            : m
+        );
+      }
+    });
+    teamStream.onType("member_message_done", (env: Envelope) => {
+      if (env.author && env.content?.text && teamSelectedSessionId.value) {
+        const sid = teamSelectedSessionId.value;
+        teamMessages.value[sid] = (teamMessages.value[sid] ?? []).map((m) =>
+          m.id.startsWith(`member-${env.author}`)
+            ? { ...m, content_markdown: env.content!.text }
+            : m
+        );
+      }
+    });
+    teamStream.onType("runner_completion", async () => {
+      sending.value = false;
+      if (teamSelectedSessionId.value) {
+        try {
+          teamMessages.value[teamSelectedSessionId.value] = await listMessages(teamSelectedSessionId.value);
+        } catch { /* keep assembled rows */ }
+        if (selectedTeamId.value) await loadTeamSessions(selectedTeamId.value);
+      }
+    });
+    teamStream.onType("error", (env: Envelope) => {
+      const msg = env.error?.message ?? "stream failed";
+      $q.notify({ type: "negative", message: msg });
+      sending.value = false;
+    });
+    teamStream.onType("intent_pass", (env: Envelope) => {
+      store.lastIntentPass = env.metadata as any;
+    });
+    teamStream.connect();
+    return teamStream;
+  }
+
   async function onSend() {
     const content = inputText.value.trim();
     if (!content || sending.value) return;
 
     if (selectedEntityKind.value === "agent") {
       sending.value = true;
-      streamAbortController.value = new AbortController();
       try {
         if (!store.selectedSession) await onNewSession(makeSessionTitle(content));
         if (!store.selectedSession) {
           $q.notify({ type: "negative", message: "未创建会话或会话无效，请重试" });
           return;
         }
+        const sessionId = store.selectedSession.id;
         const selectedModel = selectedProviderModel.value;
         inputText.value = "";
-        await store.sendStream(
-          content,
-          {
-            dialog_mode: dialogMode.value,
-            provider:
-              selectedModel?.provider || store.selectedSession.provider || store.selectedAgent?.provider || "",
-            model: selectedModel?.model || store.selectedSession.model || store.selectedAgent?.model || "",
-            attachments: attachments.value.map((item) => ({ id: item.id }))
-          },
-          streamAbortController.value.signal
-        );
+
+        const pendingUserId = `pending-user-${Date.now()}`;
+        store.messages = [
+          ...store.messages,
+          mockMessage(pendingUserId, sessionId, "user", content)
+        ];
+
+        const stream = ensureChatStream(sessionId);
+        stream.transport.value?.send({
+          direction: "client_to_server",
+          channel: "chat",
+          type: "user_message",
+          payload: {
+            session_id: sessionId,
+            agent_key: store.selectedAgent?.agent_key,
+            content,
+            options: {
+              dialog_mode: dialogMode.value,
+              provider: selectedModel?.provider || store.selectedSession.provider || store.selectedAgent?.provider || "",
+              model: selectedModel?.model || store.selectedSession.model || store.selectedAgent?.model || "",
+              attachments: attachments.value.map((item) => ({ id: item.id }))
+            }
+          }
+        });
       } catch (error) {
         if (!(error instanceof DOMException && error.name === "AbortError")) {
           $q.notify({
@@ -424,21 +604,17 @@ export function useChatWorkspace() {
             try {
               await store.loadMessages();
               await store.loadSessions();
-            } catch {
-              /* ignore */
-            }
+            } catch { /* ignore */ }
           }
         }
       } finally {
-        sending.value = false;
-        streamAbortController.value = null;
+        attachments.value = [];
       }
       return;
     }
 
     if (selectedEntityKind.value === "team" && selectedTeamId.value) {
       sending.value = true;
-      streamAbortController.value = new AbortController();
       let sessionIdForCatch = "";
       try {
         if (!teamSelectedSessionId.value) await onNewSession(makeSessionTitle(content));
@@ -451,11 +627,16 @@ export function useChatWorkspace() {
         const session = teamSessions.value[selectedTeamId.value]?.find((item) => item.id === sessionId);
         const selectedModel = selectedProviderModel.value;
         inputText.value = "";
+
         const pendingUserId = `pending-user-${Date.now()}`;
         teamMessages.value[sessionId] = [...(teamMessages.value[sessionId] ?? []), mockMessage(pendingUserId, sessionId, "user", content)];
-        let streamingMessageID = "";
-        await sendMessageStream(
-          {
+
+        const stream = ensureTeamStream(sessionId);
+        stream.transport.value?.send({
+          direction: "client_to_server",
+          channel: "chat",
+          type: "user_message",
+          payload: {
             session_id: sessionId,
             team_id: selectedTeamId.value,
             content,
@@ -465,83 +646,8 @@ export function useChatWorkspace() {
               model: selectedModel?.model || session?.model || "",
               attachments: attachments.value.map((item) => ({ id: item.id }))
             }
-          },
-          {
-            signal: streamAbortController.value.signal,
-            onUserMessage: (message) => {
-              const cur = teamMessages.value[sessionId] ?? [];
-              teamMessages.value[sessionId] = [...cur.filter((item) => item.id !== pendingUserId), message];
-            },
-            onToolEvent: (event) => {
-              const message = toolEventMessage(sessionId, event);
-              const current = teamMessages.value[sessionId] ?? [];
-              teamMessages.value[sessionId] = current.some((item) => item.id === message.id)
-                ? current.map((item) => (item.id === message.id ? message : item))
-                : [...current, message];
-            },
-            onDelta: (delta) => {
-              if (!streamingMessageID) {
-                streamingMessageID = `team-stream-${Date.now()}`;
-                teamMessages.value[sessionId] = [
-                  ...(teamMessages.value[sessionId] ?? []),
-                  mockMessage(streamingMessageID, sessionId, "assistant", "")
-                ];
-              }
-              teamMessages.value[sessionId] = (teamMessages.value[sessionId] ?? []).map((message) =>
-                message.id === streamingMessageID
-                  ? { ...message, content_markdown: `${message.content_markdown}${delta}` }
-                  : message
-              );
-            },
-            onDone: (message) => {
-              teamMessages.value[sessionId] = streamingMessageID
-                ? (teamMessages.value[sessionId] ?? []).map((item) => (item.id === streamingMessageID ? message : item))
-                : [...(teamMessages.value[sessionId] ?? []), message];
-            },
-            onMemberMessageStart: (message) => {
-              if ((teamMessages.value[sessionId] ?? []).some((item) => item.id === message.id)) return;
-              teamMessages.value[sessionId] = [...(teamMessages.value[sessionId] ?? []), message];
-            },
-            onMemberDelta: (messageID, delta) => {
-              if (!messageID || !delta) return;
-              teamMessages.value[sessionId] = (teamMessages.value[sessionId] ?? []).map((message) =>
-                message.id === messageID ? { ...message, content_markdown: `${message.content_markdown}${delta}` } : message
-              );
-            },
-            onMemberMessageDone: (message) => {
-              const current = teamMessages.value[sessionId] ?? [];
-              teamMessages.value[sessionId] = current.some((item) => item.id === message.id)
-                ? current.map((item) => (item.id === message.id ? message : item))
-                : [...current, message];
-            },
-            onIntentPass: (result) => {
-              store.lastIntentPass = result;
-            }
           }
-        );
-        try {
-          teamMessages.value[sessionId] = await listMessages(sessionId);
-        } catch {
-          /* keep SSE-assembled rows if history fetch fails */
-        }
-        await loadTeamSessions(selectedTeamId.value);
-        try {
-          const fresh = await getSession(sessionId);
-          const tid = selectedTeamId.value;
-          if (tid) {
-            const rows = teamSessions.value[tid] ?? [];
-            teamSessions.value[tid] = rows.map((row) =>
-              row.id === sessionId
-                ? {
-                    ...fresh,
-                    at: formatSessionTime(fresh.last_message_at || fresh.updated_at || fresh.created_at)
-                  }
-                : row
-            );
-          }
-        } catch {
-          /* ignore best-effort refresh */
-        }
+        });
       } catch (error) {
         if (!(error instanceof DOMException && error.name === "AbortError")) {
           $q.notify({ type: "negative", message: error instanceof Error ? error.message : "Team 发送失败" });
@@ -552,7 +658,7 @@ export function useChatWorkspace() {
         }
       } finally {
         sending.value = false;
-        streamAbortController.value = null;
+        attachments.value = [];
       }
     }
   }
@@ -568,7 +674,8 @@ export function useChatWorkspace() {
   }
 
   function stopStreaming() {
-    streamAbortController.value?.abort();
+    chatStream?.cancel();
+    teamStream?.cancel();
     const sid = selectedSessionForUi.value?.id;
     if (sid) {
       stopGeneration(sid);
@@ -650,36 +757,6 @@ export function useChatWorkspace() {
     } catch {
       return iso;
     }
-  }
-
-  function toolEventMessage(sessionID: string, event: ToolUseEvent): Message {
-    const failed = event.status === "failed" || event.status === "error" || event.status === "blocked";
-    const status = event.status === "running" ? "tool_running" : failed ? "tool_failed" : "tool_success";
-    return {
-      id: `tool-${event.agent_id || event.agent_key || "agent"}-${event.id || event.tool_name}`,
-      session_id: sessionID,
-      parent_message_id: "",
-      turn_index: 0,
-      role: "assistant",
-      content_markdown: formatToolEventMarkdown(event),
-      model_name: "",
-      token_in: 0,
-      token_out: 0,
-      latency_ms: event.duration_ms ?? 0,
-      status,
-      attachments_count: 0,
-      options_json: JSON.stringify({
-        agent: {
-          agent_id: event.agent_id,
-          agent_key: event.agent_key,
-          name: event.agent_name || event.agent_key,
-          icon: event.agent_icon || ""
-        },
-        tool_event: event
-      }),
-      error_message: event.error || "",
-      created_at: event.occurred_at || new Date().toISOString()
-    };
   }
 
   async function openSettings(kind: ChatEntityKind, id: string) {

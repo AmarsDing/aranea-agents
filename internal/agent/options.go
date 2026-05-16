@@ -14,11 +14,6 @@ func RFC3339Now() string {
 	return time.Now().UTC().Format(time.RFC3339)
 }
 
-// StreamEmitter is optional SSE bridge (e.g. chat stream).
-type StreamEmitter interface {
-	Emit(event string, payload any) error
-}
-
 // ProviderAPIConfig holds outbound HTTP credential hints deserialized from llm_provider_models.config_json.
 type ProviderAPIConfig struct {
 	ProviderType string `json:"provider_type"`

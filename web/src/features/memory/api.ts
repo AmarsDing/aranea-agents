@@ -435,7 +435,7 @@ export async function listEvolutionEvents(agentID: string, params: { limit?: num
 }
 
 export async function getEvolutionMetrics(agentID: string): Promise<EvolutionMetricsReport> {
-  const raw = await memory.GetEvolutionMetrics({ agentId: agentID });
+  const raw = await memory.GetEvolutionMetrics({ agentId: agentID, range: "30d" });
   return mapEvolutionMetrics(raw);
 }
 

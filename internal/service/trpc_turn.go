@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
 	"time"
@@ -10,6 +11,7 @@ import (
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/agent/intent"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 	memtrpc "aranea-agents/internal/memory/trpc"
 	"aranea-agents/internal/provider"
 
@@ -26,7 +28,6 @@ func (s *ChatService) runSingleAgentViaTRPC(
 	ag biz.Agent,
 	dialogMode, prov, mod string,
 	attN int,
-	stream *streamWriter,
 ) (biz.ChatMessage, biz.ChatMessage, error) {
 	sessionID := strings.TrimSpace(req.GetSessionId())
 	content := strings.TrimSpace(req.GetContent())
@@ -72,7 +73,7 @@ func (s *ChatService) runSingleAgentViaTRPC(
 	defer func() {
 		s.activeRuns.Delete(sessionID)
 		runner.Close()
-		s.processPendingQueue(sessionID, sess, ag, dialogMode, prov, mod, stream)
+		s.processPendingQueue(sessionID, sess, ag, dialogMode, prov, mod)
 	}()
 
 	userOpts, err := chatagent.UserOptionsJSON(ag, dialogMode, prov, mod, sess.ContextUsedRatio, nil)
@@ -92,19 +93,18 @@ func (s *ChatService) runSingleAgentViaTRPC(
 		}
 		sendText = intent.WrapUserMessage(content, intRes.Artifact)
 	}
-	meta := intent.SSERunMeta{AgentID: ag.ID, SessionID: sessionID}
+	meta := intent.RunMeta{AgentID: ag.ID, SessionID: sessionID}
 	intentPayload := intent.BuildIntentPassPayload(intRes, meta)
-	if s.td.TeamSSE != nil {
-		s.td.TeamSSE.Publish(biz.TeamRunEvent{
-			Type:      "intent_pass",
-			SessionID: sessionID,
-			Payload:   intentPayload,
-		})
+	if s.td.EventBus != nil {
+		env := event.NewEnvelope(event.EnvelopeTypeIntentPass, ag.ID, sessionID)
+		env.Metadata = intentPayload
+		s.td.EventBus.Publish(ctx, env)
 	}
-	if stream != nil {
-		_ = stream.Emit("intent_pass", intentPayload)
+	if s.td.EventBus != nil {
+		level, msg := intent.MonitorLogEntry(intRes, "chat", meta)
+		env := chatagent.NewEventProjector(s.td.EventBus).BuildLogEnvelope(level, msg, "intent-pass", sessionID)
+		s.td.EventBus.Publish(ctx, env)
 	}
-	intent.PublishMonitorLog(ctx, s.td.MonitorLogs, intRes, "chat", meta)
 
 	now := chatagent.RFC3339Now()
 	userMsg := biz.ChatMessage{
@@ -117,11 +117,8 @@ func (s *ChatService) runSingleAgentViaTRPC(
 		CreatedAt:        now,
 		AttachmentsCount: attN,
 	}
-	if stream != nil {
-		if err := s.td.Sessions.AppendChatMessage(ctx, sessionID, userMsg, false); err != nil {
-			return biz.ChatMessage{}, biz.ChatMessage{}, err
-		}
-		_ = stream.Emit("user_message", userMsg)
+	if err := s.td.Sessions.AppendChatMessage(ctx, sessionID, userMsg, false); err != nil {
+		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
 
 	uid := chatagent.UserIDFromCtx(ctx)
@@ -140,6 +137,15 @@ func (s *ChatService) runSingleAgentViaTRPC(
 	var reasoning strings.Builder
 	promptTok, completionTok := 0, 0
 
+	var projector *chatagent.EventProjector
+	if s.td.EventBus != nil {
+		projector = chatagent.NewEventProjector(s.td.EventBus)
+	}
+	projectMeta := chatagent.ProjectMeta{
+		SessionID: sessionID,
+		RequestID: sessionID,
+	}
+
 	for ev := range events {
 		if ctx.Err() != nil {
 			return userMsg, biz.ChatMessage{}, ctx.Err()
@@ -147,41 +153,19 @@ func (s *ChatService) runSingleAgentViaTRPC(
 		if ev == nil {
 			continue
 		}
+
+		if projector != nil {
+			projector.ProjectAndPublish(ctx, ev, projectMeta)
+		}
+
 		if ev.IsRunnerCompletion() {
+			if ev.Response != nil && ev.Response.Usage != nil {
+				promptTok = ev.Response.Usage.PromptTokens
+				completionTok = ev.Response.Usage.CompletionTokens
+			}
 			continue
 		}
-		if stream != nil {
-			if len(ev.StateDelta) > 0 {
-				_ = stream.Emit("state_delta", map[string]any{
-					"session_id":  sessionID,
-					"state_delta": ev.StateDelta,
-				})
-			}
-			if len(ev.Extensions) > 0 {
-				_ = stream.Emit("extensions", map[string]any{
-					"session_id": sessionID,
-					"extensions": ev.Extensions,
-				})
-			}
-			if ev.Branch != "" {
-				_ = stream.Emit("branch", map[string]string{
-					"session_id": sessionID,
-					"branch":     ev.Branch,
-				})
-			}
-			if ev.FilterKey != "" {
-				_ = stream.Emit("filter_key", map[string]string{
-					"session_id": sessionID,
-					"filter_key": ev.FilterKey,
-				})
-			}
-			if ev.Tag != "" {
-				_ = stream.Emit("tag", map[string]string{
-					"session_id": sessionID,
-					"tag":        ev.Tag,
-				})
-			}
-		}
+
 		if ev.Response == nil {
 			continue
 		}
@@ -192,41 +176,10 @@ func (s *ChatService) runSingleAgentViaTRPC(
 		for _, choice := range ev.Response.Choices {
 			msg := choice.Message
 			if text := strings.TrimSpace(msg.Content); text != "" {
-				if stream != nil && ev.Response.IsPartial {
-					if d := provider.VisibleStreamingDelta(&reply, text); d != "" {
-						_ = stream.Emit("delta", map[string]string{"content": d})
-					}
-				} else {
-					_ = provider.VisibleStreamingDelta(&reply, text)
-				}
+				_ = provider.VisibleStreamingDelta(&reply, text)
 			}
 			if rc := strings.TrimSpace(msg.ReasoningContent); rc != "" {
-				if stream != nil && ev.Response.IsPartial {
-					if d := provider.VisibleStreamingDelta(&reasoning, rc); d != "" {
-						_ = stream.Emit("delta", map[string]string{"reasoning_content": d})
-					}
-				} else {
-					_ = provider.VisibleStreamingDelta(&reasoning, rc)
-				}
-			}
-			if stream != nil && len(msg.ToolCalls) > 0 {
-				for _, tc := range msg.ToolCalls {
-					_ = stream.Emit("tool.call", map[string]any{
-						"session_id":   sessionID,
-						"tool_name":    tc.Function.Name,
-						"tool_call_id": tc.ID,
-					})
-				}
-			}
-			delta := choice.Delta
-			if stream != nil && len(delta.ToolCalls) > 0 {
-				for _, tc := range delta.ToolCalls {
-					_ = stream.Emit("tool.call", map[string]any{
-						"session_id":   sessionID,
-						"tool_name":    tc.Function.Name,
-						"tool_call_id": tc.ID,
-					})
-				}
+				_ = provider.VisibleStreamingDelta(&reasoning, rc)
 			}
 		}
 	}
@@ -258,22 +211,14 @@ func (s *ChatService) runSingleAgentViaTRPC(
 		TokenIn:         promptTok,
 		TokenOut:        completionTok,
 	}
-	if stream == nil {
-		if err := s.td.Sessions.AppendChatTurn(ctx, sessionID, userMsg, assistantMsg); err != nil {
-			return userMsg, biz.ChatMessage{}, err
-		}
-		patchSessionContextUsage(ctx, s, sessionID, ag, promptTok, completionTok)
-		return userMsg, assistantMsg, nil
-	}
 	if err := s.td.Sessions.AppendChatMessage(ctx, sessionID, assistantMsg, true); err != nil {
 		return userMsg, biz.ChatMessage{}, err
 	}
 	patchSessionContextUsage(ctx, s, sessionID, ag, promptTok, completionTok)
-	_ = stream.Emit("done", assistantMsg)
 	return userMsg, assistantMsg, nil
 }
 
-func (s *ChatService) processPendingQueue(sessionID string, sess biz.Session, ag biz.Agent, dialogMode, prov, mod string, stream *streamWriter) {
+func (s *ChatService) processPendingQueue(sessionID string, sess biz.Session, ag biz.Agent, dialogMode, prov, mod string) {
 	entry, ok := s.dequeuePending(sessionID)
 	if !ok {
 		return
@@ -289,6 +234,15 @@ func (s *ChatService) processPendingQueue(sessionID string, sess biz.Session, ag
 			SessionId: sessionID,
 			Content:   entry.Content,
 		}
-		_, _, _ = s.runSingleAgentViaTRPC(bgCtx, sess, req, ag, dialogMode, prov, mod, 0, stream)
+		_, _, err := s.runSingleAgentViaTRPC(bgCtx, sess, req, ag, dialogMode, prov, mod, 0)
+		if err != nil && s.td.EventBus != nil {
+			env := event.NewEnvelope(event.EnvelopeTypeError, "pending-queue", sessionID)
+			env.Error = &event.EnvelopeError{
+				Type:    "pending_failed",
+				Message: fmt.Sprintf("pending message failed: %s", err.Error()),
+			}
+			env.Metadata = map[string]any{"pending_id": entry.ID}
+			s.td.EventBus.Publish(bgCtx, env)
+		}
 	}()
 }

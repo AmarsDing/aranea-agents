@@ -35,6 +35,7 @@ func (Agent) Fields() []ent.Field {
 		field.Int("context_window").Default(0),
 		field.Int("budget_monthly_cents").Default(0),
 		field.Text("config_json").Default(""),
+		field.Text("roles_json").Default("[]"),
 		field.String("created_at").Default(""),
 		field.String("updated_at").Default(""),
 		field.String("deleted_at").Default(""),

@@ -63,7 +63,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { copyToClipboard, Notify } from "quasar";
-import { subscribeMonitorRuntimeEvents } from "../../features/monitor/api";
+import { subscribeMonitorRuntimeEventsWs } from "../../features/monitor/api";
 import type { PlatformResource, StreamState, TeamRunEvent } from "../../features/monitor/types";
 import { compactJSON, formatDate, parseJSON } from "../../features/monitor/utils";
 
@@ -88,7 +88,7 @@ const paused = ref(false);
 const runtimeEvents = ref<ViewEvent[]>([]);
 const selected = ref<ViewEvent | null>(null);
 const detailOpen = ref(false);
-let source: EventSource | null = null;
+let wsSub: ReturnType<typeof subscribeMonitorRuntimeEventsWs> | null = null;
 
 const categoryOptions = [
   { label: "全部", value: "all" },
@@ -141,23 +141,21 @@ watch(paused, (isPaused) => {
 function startStream() {
   stopStream();
   state.value = "connecting";
-  source = subscribeMonitorRuntimeEvents(
+  wsSub = subscribeMonitorRuntimeEventsWs(
+    "monitor",
     (event) => {
       state.value = "live";
       runtimeEvents.value = [teamRunEventToView(event), ...runtimeEvents.value].slice(0, 1000);
     },
     () => {
       if (!paused.value) state.value = "error";
-    },
-    () => {
-      if (!paused.value) state.value = "live";
     }
   );
 }
 
 function stopStream() {
-  source?.close();
-  source = null;
+  wsSub?.close();
+  wsSub = null;
 }
 
 function toggleStream() {
@@ -186,7 +184,7 @@ function teamRunEventToView(event: TeamRunEvent): ViewEvent {
     title,
     subtitle,
     category: categoryFor(type),
-    source: "sse",
+    source: "ws",
     time: formatDate(step?.created_at || run?.updated_at || run?.created_at || new Date().toISOString()),
     raw: event
   };

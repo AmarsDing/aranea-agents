@@ -10,6 +10,7 @@ import (
 	avatarv1 "aranea-agents/api/kratos/avatar/v1"
 	channelv1 "aranea-agents/api/kratos/channel/v1"
 	cronv1 "aranea-agents/api/kratos/cron/v1"
+	graphv1 "aranea-agents/api/kratos/graph/v1"
 	hookv1 "aranea-agents/api/kratos/hook/v1"
 	llmprovidermodelv1 "aranea-agents/api/kratos/llm_provider_model/v1"
 	mcpserverv1 "aranea-agents/api/kratos/mcp_server/v1"
@@ -53,6 +54,7 @@ func NewHTTPServer(c *conf.Server,
 	systemSettingSvc *service.SystemSettingService,
 	teams *service.TeamService,
 	chatSvc *service.ChatService,
+	graphSvc *service.GraphService,
 	channelIngress *service.ChannelIngress,
 	skillImport *importer.Engine,
 ) *http.Server {
@@ -95,6 +97,7 @@ func NewHTTPServer(c *conf.Server,
 	systemsettingv1.RegisterSystemSettingServiceHTTPServer(srv, systemSettingSvc)
 	teamv1.RegisterTeamServiceHTTPServer(srv, teams)
 	RegisterChatIngress(srv, chatSvc)
+	graphv1.RegisterGraphServiceHTTPServer(srv, graphSvc)
 	RegisterChannelWebhook(srv, channelIngress)
 	RegisterSkillImportHTTPServer(srv, skillImport)
 	srv.Route("/").GET("/healthz", func(ctx http.Context) error {

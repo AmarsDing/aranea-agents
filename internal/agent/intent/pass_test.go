@@ -1,7 +1,6 @@
 package intent
 
 import (
-	"context"
 	"testing"
 	"time"
 )
@@ -45,7 +44,7 @@ func TestBuildIntentPassPayload(t *testing.T) {
 		Outcome:  "completed",
 		Duration: 42 * time.Millisecond,
 	}
-	p := BuildIntentPassPayload(r, SSERunMeta{AgentID: "ag1", SessionID: "s1", RunID: "r1", TeamID: "t1"})
+	p := BuildIntentPassPayload(r, RunMeta{AgentID: "ag1", SessionID: "s1", RunID: "r1", TeamID: "t1"})
 	if p["outcome"] != "completed" {
 		t.Fatalf("outcome: %v", p["outcome"])
 	}
@@ -61,8 +60,4 @@ func TestBuildIntentPassPayload(t *testing.T) {
 	if p["session_id"] != "s1" || p["team_id"] != "t1" {
 		t.Fatalf("ids: %#v", p)
 	}
-}
-
-func TestPublishMonitorLogNilBroker(t *testing.T) {
-	PublishMonitorLog(context.Background(), nil, RunResult{Outcome: "completed"}, "chat", SSERunMeta{SessionID: "s"})
 }

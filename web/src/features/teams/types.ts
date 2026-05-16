@@ -7,7 +7,7 @@ export type Team = {
   status: string;
   is_default: boolean;
   definition_json: string;
-  adk_app_name: string;
+  app_name: string;
   created_at: string;
   updated_at: string;
   deleted_at: string;

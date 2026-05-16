@@ -106,7 +106,7 @@
               'chat-message-content--sent': message.role === 'user',
               'chat-message-content--dark': message.role !== 'user' && props.isDark
             }"
-            v-html="renderMarkdown(message.content_markdown)"
+            v-html="isStreaming(message) ? renderStreamingMarkdown(message.content_markdown) : renderMarkdown(message.content_markdown)"
           />
           <div
             v-if="message.role !== 'user' && message.status === 'error' && assistantErrorDetail(message)"
@@ -498,6 +498,23 @@ function formatStamp(iso: string) {
 
 function renderMarkdown(content: string) {
   return DOMPurify.sanitize(markdown.render(content || ""), {
+    ADD_TAGS: ["button"],
+    ADD_ATTR: ["type", "aria-label", "aria-hidden"]
+  });
+}
+
+function closeOpenFences(src: string): string {
+  let count = 0;
+  for (const line of src.split("\n")) {
+    if (/^\s*```/.test(line)) count++;
+  }
+  if (count % 2 !== 0) return src + "\n```";
+  return src;
+}
+
+function renderStreamingMarkdown(content: string) {
+  const patched = closeOpenFences(content || "");
+  return DOMPurify.sanitize(markdown.render(patched), {
     ADD_TAGS: ["button"],
     ADD_ATTR: ["type", "aria-label", "aria-hidden"]
   });

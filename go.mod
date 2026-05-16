@@ -24,7 +24,6 @@ require (
 	github.com/gorilla/mux v1.8.1
 	github.com/lib/pq v1.12.3
 	github.com/pgvector/pgvector-go v0.3.0
-	github.com/tx7do/kratos-transport/transport/sse v1.3.2
 	go.einride.tech/aip v0.76.0
 	go.uber.org/automaxprocs v1.5.1
 	google.golang.org/genai v1.40.0
@@ -56,7 +55,7 @@ require (
 	github.com/google/s2a-go v0.1.9 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.14 // indirect
 	github.com/googleapis/gax-go/v2 v2.18.0 // indirect
-	github.com/gorilla/websocket v1.5.3 // indirect
+	github.com/gorilla/websocket v1.5.3
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.63.0 // indirect
 	golang.org/x/crypto v0.49.0 // indirect
@@ -107,7 +106,6 @@ require (
 	github.com/oasdiff/yaml3 v0.0.0-20250309153720-d2182401db90 // indirect
 	github.com/ollama/ollama v0.16.3 // indirect
 	github.com/openai/openai-go v1.12.0 // indirect
-	github.com/openzipkin/zipkin-go v0.4.3 // indirect
 	github.com/panjf2000/ants/v2 v2.10.0 // indirect
 	github.com/pdfcpu/pdfcpu v0.11.1 // indirect
 	github.com/perimeterx/marshmallow v1.1.5 // indirect
@@ -117,9 +115,6 @@ require (
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
-	github.com/tx7do/kratos-transport/broker v1.3.2 // indirect
-	github.com/tx7do/kratos-transport/tracing v1.1.1 // indirect
-	github.com/tx7do/kratos-transport/transport v1.3.3 // indirect
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
 	github.com/wneessen/go-mail v0.7.2 // indirect
 	github.com/woodsbury/decimal128 v1.3.0 // indirect
@@ -131,8 +126,6 @@ require (
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.39.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.39.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.39.0 // indirect
-	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.39.0 // indirect
-	go.opentelemetry.io/otel/exporters/zipkin v1.39.0 // indirect
 	go.opentelemetry.io/otel/metric v1.40.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.40.0 // indirect
 	go.opentelemetry.io/otel/trace v1.40.0 // indirect
@@ -149,7 +142,6 @@ require (
 	golang.org/x/tools v0.42.0 // indirect
 	google.golang.org/api v0.267.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260316180232-0b37fe3546d5 // indirect
-	gopkg.in/cenkalti/backoff.v1 v1.1.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gorm.io/gorm v1.31.0 // indirect

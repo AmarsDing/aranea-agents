@@ -13,6 +13,7 @@ import (
 	"aranea-agents/internal/data/ent/migrate"
 	"aranea-agents/internal/data/pgvector"
 	"aranea-agents/internal/data/sessionmemory"
+	graphtrpc "aranea-agents/internal/graph/trpc"
 	sessiontrpc "aranea-agents/internal/session/trpc"
 
 	"entgo.io/ent/dialect"
@@ -21,6 +22,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/lib/pq"
 
+	trpcgraph "trpc.group/trpc-go/trpc-agent-go/graph"
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 
 	"github.com/google/wire"
@@ -52,6 +54,11 @@ var ProviderSet = wire.NewSet(
 	NewEvolutionMetricsRepo,
 	NewEvolutionSuggestionRepo,
 	NewTRPCSessionService,
+	NewGraphRepo,
+	NewGraphRunRepo,
+	NewGraphCheckpointSaver,
+	NewTaskRepo,
+	wire.Bind(new(trpcgraph.CheckpointSaver), new(*graphtrpc.SQLiteCheckpointSaver)),
 )
 
 // Data: Ent/SQLite holds app CRUD; Postgres (optional) holds pgvector agent memory only.
@@ -165,6 +172,10 @@ func NewData(c *conf.Data) (*Data, func(), error) {
 		return nil, nil, fmt.Errorf("ent schema create (sqlite): %w", err)
 	}
 
+	if err = sessionmemory.EnsurePatches(context.Background(), entClient); err != nil {
+		_ = entClient.Close()
+		return nil, nil, fmt.Errorf("session memory patches: %w", err)
+	}
 	if err = sessionmemory.EnsureSchema(context.Background(), entClient); err != nil {
 		_ = entClient.Close()
 		return nil, nil, fmt.Errorf("session memory schema: %w", err)

@@ -10,13 +10,10 @@ import {
 } from "../features/session/api";
 import {
   sendMessage,
-  sendMessageStream,
   type Message,
   type SendMessageOptions,
-  type ToolUseEvent,
   type IntentPassResult
 } from "../features/chat/api";
-import { formatToolEventMarkdown } from "../features/chat/toolEventMarkdown";
 import { createAgent, deleteAgent, listAgents, updateAgent, type Agent } from "../features/agents/api";
 
 export const useAppStore = defineStore("app", {
@@ -46,7 +43,6 @@ export const useAppStore = defineStore("app", {
       this.upsertAgent(updated);
       return updated;
     },
-    /** 聊天侧栏等：按 id 增量更新 Agent，不依赖 selectedAgent。 */
     async patchAgent(id: string, patch: Partial<Agent>) {
       const base = this.agents.find((a) => a.id === id) ?? (this.selectedAgent?.id === id ? this.selectedAgent : null);
       if (!base) return null;
@@ -131,141 +127,6 @@ export const useAppStore = defineStore("app", {
       await this.loadMessages();
       await this.loadSessions();
       return result;
-    },
-    async sendStream(content: string, options?: SendMessageOptions, signal?: AbortSignal) {
-      if (!this.selectedSession || !this.selectedAgent) return;
-      const sessionID = this.selectedSession.id;
-      const agent = this.selectedAgent;
-      let streamingMessageID = "";
-      const pendingUserId = `pending-user-${Date.now()}`;
-      this.messages = [
-        ...this.messages,
-        {
-          id: pendingUserId,
-          session_id: sessionID,
-          parent_message_id: "",
-          turn_index: this.messages.length + 1,
-          role: "user",
-          content_markdown: content,
-          model_name: "",
-          token_in: 0,
-          token_out: 0,
-          latency_ms: 0,
-          status: "ok",
-          attachments_count: options?.attachments?.length ?? 0,
-          options_json: "",
-          error_message: "",
-          created_at: new Date().toISOString()
-        }
-      ];
-
-      const appendMessage = (message: Message) => {
-        if (this.messages.some((item) => item.id === message.id)) return;
-        this.messages = [...this.messages, message];
-      };
-
-      const onUserMessage = (message: Message) => {
-        this.messages = this.messages.filter((item) => item.id !== pendingUserId);
-        appendMessage(message);
-      };
-
-      await sendMessageStream(
-        {
-          session_id: sessionID,
-          agent_key: this.selectedAgent.agent_key,
-          content,
-          options
-        },
-        {
-          signal,
-          onUserMessage,
-          onToolEvent: (event) => {
-            const message = toolEventMessage(sessionID, event);
-            if (this.messages.some((item) => item.id === message.id)) {
-              this.messages = this.messages.map((item) => (item.id === message.id ? message : item));
-            } else {
-              appendMessage(message);
-            }
-          },
-          onDelta: (delta) => {
-            if (!delta) return;
-            if (!streamingMessageID) {
-              streamingMessageID = `stream-${Date.now()}`;
-              appendMessage({
-                id: streamingMessageID,
-                session_id: sessionID,
-                parent_message_id: "",
-                turn_index: this.messages.length + 1,
-                role: "assistant",
-                content_markdown: "",
-                model_name: "",
-                token_in: 0,
-                token_out: 0,
-                latency_ms: 0,
-                status: "streaming",
-                attachments_count: 0,
-                options_json: JSON.stringify({
-                  agent: {
-                    agent_id: agent.id,
-                    agent_key: agent.agent_key,
-                    name: agent.display_name || agent.agent_key,
-                    icon: agent.icon || ""
-                  }
-                }),
-                error_message: "",
-                created_at: new Date().toISOString()
-              });
-            }
-            this.messages = this.messages.map((message) =>
-              message.id === streamingMessageID
-                ? { ...message, content_markdown: `${message.content_markdown}${delta}` }
-                : message
-            );
-          },
-          onDone: (message) => {
-            if (streamingMessageID) {
-              this.messages = this.messages.map((item) => (item.id === streamingMessageID ? message : item));
-            } else {
-              appendMessage(message);
-            }
-          },
-          onIntentPass: (result) => {
-            this.lastIntentPass = result;
-          }
-        }
-      );
-      await this.loadMessages();
-      await this.loadSessions();
     }
   }
 });
-
-function toolEventMessage(sessionID: string, event: ToolUseEvent): Message {
-  const failed = event.status === "failed" || event.status === "error" || event.status === "blocked";
-  const status = event.status === "running" ? "tool_running" : failed ? "tool_failed" : "tool_success";
-  return {
-    id: `tool-${event.agent_id || event.agent_key || "agent"}-${event.id || event.tool_name}`,
-    session_id: sessionID,
-    parent_message_id: "",
-    turn_index: 0,
-    role: "assistant",
-    content_markdown: formatToolEventMarkdown(event),
-    model_name: "",
-    token_in: 0,
-    token_out: 0,
-    latency_ms: event.duration_ms ?? 0,
-    status,
-    attachments_count: 0,
-    options_json: JSON.stringify({
-      agent: {
-        agent_id: event.agent_id,
-        agent_key: event.agent_key,
-        name: event.agent_name || event.agent_key,
-        icon: event.agent_icon || ""
-      },
-      tool_event: event
-    }),
-    error_message: event.error || "",
-    created_at: event.occurred_at || new Date().toISOString()
-  };
-}

@@ -7,7 +7,9 @@ import type {
   AgentListQuery,
   AgentListResult,
   AgentPromptFile,
-  AgentRuntimeSettings
+  AgentRuntimeSettings,
+  EvolutionMetrics,
+  EvolutionSuggestion
 } from "./types";
 import {
   normalizeAgentFromService,
@@ -21,7 +23,9 @@ export type {
   AgentListQuery,
   AgentListResult,
   AgentPromptFile,
-  AgentRuntimeSettings
+  AgentRuntimeSettings,
+  EvolutionMetrics,
+  EvolutionSuggestion
 } from "./types";
 
 export async function listAgentsPaged(query: AgentListQuery = {}): Promise<AgentListResult> {
@@ -106,6 +110,87 @@ export async function getAgentPromptPreview(id: string, mode?: string): Promise<
 export async function deleteAgent(id: string): Promise<void> {
   const svc = createAgentService();
   await svc.DeleteAgent({ id });
+}
+
+export async function getAgentEvolutionMetrics(
+  agentId: string,
+  timeRange: string = "30d"
+): Promise<EvolutionMetrics> {
+  const svc = createAgentService();
+  const res = await svc.GetAgentEvolutionMetrics({ agentId, timeRange });
+  return {
+    agent_id: res.agentId ?? agentId,
+    time_range: res.timeRange ?? timeRange,
+    tool_success_rate: res.toolSuccessRate ?? 0,
+    retrieval_quality: res.retrievalQuality ?? 0,
+    total_episodes: res.totalEpisodes ?? 0,
+    negative_feedback: res.negativeFeedback ?? 0,
+    tool_success_series: (res.toolSuccessSeries ?? []).map((p) => ({
+      date: p.date ?? "",
+      value: p.value ?? 0
+    })),
+    retrieval_quality_series: (res.retrievalQualitySeries ?? []).map((p) => ({
+      date: p.date ?? "",
+      value: p.value ?? 0
+    }))
+  };
+}
+
+export async function getAgentEvolutionSuggestions(
+  agentId: string,
+  status?: string
+): Promise<EvolutionSuggestion[]> {
+  const svc = createAgentService();
+  const res = await svc.GetAgentEvolutionSuggestions({ agentId, status });
+  return (res.items ?? []).map((item) => ({
+    id: item.id ?? "",
+    agent_id: item.agentId ?? "",
+    type: item.type ?? "",
+    title: item.title ?? "",
+    content: item.content ?? "",
+    status: item.status ?? "",
+    diff_preview: item.diffPreview ?? "",
+    created_at: item.createdAt ?? "",
+    applied_at: item.appliedAt ?? ""
+  }));
+}
+
+export async function applyEvolutionSuggestion(
+  agentId: string,
+  suggestionId: string
+): Promise<EvolutionSuggestion> {
+  const svc = createAgentService();
+  const res = await svc.ApplyEvolutionSuggestion({ agentId, suggestionId });
+  return {
+    id: res.id ?? "",
+    agent_id: res.agentId ?? "",
+    type: res.type ?? "",
+    title: res.title ?? "",
+    content: res.content ?? "",
+    status: res.status ?? "",
+    diff_preview: res.diffPreview ?? "",
+    created_at: res.createdAt ?? "",
+    applied_at: res.appliedAt ?? ""
+  };
+}
+
+export async function rejectEvolutionSuggestion(
+  agentId: string,
+  suggestionId: string
+): Promise<EvolutionSuggestion> {
+  const svc = createAgentService();
+  const res = await svc.RejectEvolutionSuggestion({ agentId, suggestionId });
+  return {
+    id: res.id ?? "",
+    agent_id: res.agentId ?? "",
+    type: res.type ?? "",
+    title: res.title ?? "",
+    content: res.content ?? "",
+    status: res.status ?? "",
+    diff_preview: res.diffPreview ?? "",
+    created_at: res.createdAt ?? "",
+    applied_at: res.appliedAt ?? ""
+  };
 }
 
 export {

@@ -1,11 +1,15 @@
 package biz
 
-import "github.com/google/wire"
+import (
+	"context"
 
-// ProviderSet is biz providers.
+	graphtrpc "aranea-agents/internal/graph/trpc"
+
+	"github.com/google/wire"
+)
+
 var ProviderSet = wire.NewSet(
-	NewTeamRunEventBroker,
-	NewMonitorLogBroker,
+	NewEventBusConsumer,
 	NewAdminUsecase,
 	NewAvatarUsecase,
 	NewMemoryUsecase,
@@ -26,4 +30,48 @@ var ProviderSet = wire.NewSet(
 	NewSystemSettingUsecase,
 	NewAgentMCPTooling,
 	NewEvolutionUsecase,
+	NewGraphUsecase,
+	NewTaskUsecase,
+	graphtrpc.NewRegistry,
 )
+
+func ProvideAgentRoleChecker(repo AgentRepository) AgentRoleChecker {
+	return func(agentKey string, role string) bool {
+		agent, err := repo.GetAgentByAgentKey(context.Background(), agentKey)
+		if err != nil {
+			return false
+		}
+		for _, r := range agent.Roles {
+			if r == role {
+				return true
+			}
+		}
+		return false
+	}
+}
+
+func ProvideAgentListerByRole(repo AgentRepository) AgentListerByRole {
+	return func(role string) ([]string, error) {
+		result, err := repo.SearchAgents(context.Background(), AgentListQuery{Limit: 1000})
+		if err != nil {
+			return nil, err
+		}
+		var matched []string
+		for _, a := range result.Items {
+			for _, r := range a.Roles {
+				if r == role {
+					matched = append(matched, a.AgentKey)
+					break
+				}
+			}
+		}
+		return matched, nil
+	}
+}
+
+func ProvideAgentExistenceChecker(repo AgentRepository) graphtrpc.AgentExistenceChecker {
+	return func(agentName string) bool {
+		_, err := repo.GetAgentByAgentKey(context.Background(), agentName)
+		return err == nil
+	}
+}

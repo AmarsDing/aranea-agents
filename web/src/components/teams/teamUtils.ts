@@ -3,7 +3,7 @@
  * 类型来自 `features/teams/api`（仅 type import）。
  */
 import type { Agent } from "../../features/agents/api";
-import type { Team, TeamDefinition } from "../../features/teams/api";
+import type { Team, TeamDefinition, TeamDefinitionGraphNode } from "../../features/teams/api";
 
 export const modeOptions = [
   { label: "顺序 sequential", value: "sequential" },
@@ -187,10 +187,10 @@ export function withGraph(definition: TeamDefinition): TeamDefinition {
   };
 }
 
-export function buildGraphFromDefinition(def: TeamDefinition) {
+export function buildGraphFromDefinition(def: TeamDefinition): NonNullable<TeamDefinition["graph"]> {
   const members = [...(def.members || [])].sort((a, b) => a.sort_order - b.sort_order);
   const layout = graphLayoutForMode(def.mode || "sequential");
-  const nodes = [
+  const nodes: TeamDefinitionGraphNode[] = [
     { id: "start", type: "start", label: "开始", x: 0, y: 80 },
     ...members.map((member, index) => ({
       id: graphMemberID(member, index),

@@ -8,13 +8,10 @@ server:
   grpc:
     addr: 0.0.0.0:9100
     timeout: 120s
-  # 与 web/quasar devServer `/sse` → :8001 代理一致；关闭则监控日志 EventSource 会代理失败。
-  sse:
+  ws:
     enable: true
     network: tcp
-    addr: 0.0.0.0:8001
-    path: /
-    timeout: 120s
+    addr: 0.0.0.0:8002
 data:
   sqlite:
     enable: true

@@ -5,20 +5,21 @@ import (
 	agentv1 "aranea-agents/api/kratos/agent/v1"
 	agentcategoryv1 "aranea-agents/api/kratos/agent_category/v1"
 	avatarv1 "aranea-agents/api/kratos/avatar/v1"
+	channelv1 "aranea-agents/api/kratos/channel/v1"
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	cronv1 "aranea-agents/api/kratos/cron/v1"
+	graphv1 "aranea-agents/api/kratos/graph/v1"
 	hookv1 "aranea-agents/api/kratos/hook/v1"
 	llmprovidermodelv1 "aranea-agents/api/kratos/llm_provider_model/v1"
 	mcpserverv1 "aranea-agents/api/kratos/mcp_server/v1"
+	memoryv1 "aranea-agents/api/kratos/memory/v1"
+	monitorv1 "aranea-agents/api/kratos/monitor/v1"
 	pluginv1 "aranea-agents/api/kratos/plugin/v1"
 	sessionv1 "aranea-agents/api/kratos/session/v1"
 	skillv1 "aranea-agents/api/kratos/skill/v1"
+	systemsettingv1 "aranea-agents/api/kratos/system_setting/v1"
 	teamv1 "aranea-agents/api/kratos/team/v1"
 	toolv1 "aranea-agents/api/kratos/tool/v1"
-	channelv1 "aranea-agents/api/kratos/channel/v1"
-	monitorv1 "aranea-agents/api/kratos/monitor/v1"
-	memoryv1 "aranea-agents/api/kratos/memory/v1"
-	systemsettingv1 "aranea-agents/api/kratos/system_setting/v1"
 	usagev1 "aranea-agents/api/kratos/usage/v1"
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/service"
@@ -49,6 +50,7 @@ func NewGRPCServer(c *conf.Server,
 	systemSettingSvc *service.SystemSettingService,
 	teams *service.TeamService,
 	chatSvc *service.ChatService,
+	graphSvc *service.GraphService,
 ) *grpc.Server {
 	var opts = []grpc.ServerOption{
 		grpc.Middleware(
@@ -85,5 +87,6 @@ func NewGRPCServer(c *conf.Server,
 	systemsettingv1.RegisterSystemSettingServiceServer(srv, systemSettingSvc)
 	teamv1.RegisterTeamServiceServer(srv, teams)
 	chatv1.RegisterChatServiceServer(srv, chatSvc)
+	graphv1.RegisterGraphServiceServer(srv, graphSvc)
 	return srv
 }

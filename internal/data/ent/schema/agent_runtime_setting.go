@@ -101,6 +101,11 @@ func (AgentRuntimeSetting) Fields() []ent.Field {
 		field.String("skill_runtime_json").Default("{}"),
 		// Pre-main LLM pass to classify/refine user intent (extra latency/cost); persisted per agent; env ARANEA_INTENT_PASS can override.
 		field.Bool("intent_pass_enabled").Default(true),
+		field.String("channel_id").Default(""),
+		field.String("chat_id").Default(""),
+		field.String("workspace").Default(""),
+		field.String("reasoning_mode").Default("provider_default"),
+		field.String("reasoning_level").Default("off"),
 		field.String("variables_json").Default("{}"),
 		field.String("model_instructions_json").Default("{}"),
 		field.Bool("context_compaction_enabled").Default(false),

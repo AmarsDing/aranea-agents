@@ -23,6 +23,9 @@ import CronTasksPage from "../pages/CronTasksPage.vue";
 import CronRunsPage from "../pages/CronRunsPage.vue";
 import MemoryCenterPage from "../pages/MemoryCenterPage.vue";
 import SystemSettingsPage from "../pages/SystemSettingsPage.vue";
+import GraphsPage from "../pages/GraphsPage.vue";
+import GraphEditorPage from "../pages/GraphEditorPage.vue";
+import GraphRunPage from "../pages/GraphRunPage.vue";
 
 export const routes: RouteRecordRaw[] = [
   {
@@ -46,6 +49,10 @@ export const routes: RouteRecordRaw[] = [
       { path: "settings/agent-categories", name: "agent-categories", component: AgentCategoriesPage },
       { path: "agents/:id/settings", name: "agent-settings", component: AgentSettingsPage },
       { path: "team", name: "team", component: TeamsPage },
+      { path: "graphs", name: "graphs", component: GraphsPage },
+      { path: "graphs/new", name: "graph-editor-new", component: GraphEditorPage },
+      { path: "graphs/:id", name: "graph-editor", component: GraphEditorPage },
+      { path: "graphs/:id/run/:execId", name: "graph-run", component: GraphRunPage },
       {
         path: "models",
         name: "models",

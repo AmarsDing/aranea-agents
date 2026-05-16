@@ -49,18 +49,6 @@ export type IntentPassResult = {
   search_hints_count?: number;
 };
 
-export type SendMessageStreamCallbacks = {
-  signal?: AbortSignal;
-  onUserMessage?: (message: Message) => void;
-  onDelta?: (content: string) => void;
-  onDone?: (message: Message) => void;
-  onToolEvent?: (event: ToolUseEvent) => void;
-  onMemberMessageStart?: (message: Message) => void;
-  onMemberDelta?: (messageID: string, content: string) => void;
-  onMemberMessageDone?: (message: Message) => void;
-  onIntentPass?: (result: IntentPassResult) => void;
-};
-
 export type ToolUseEvent = {
   id: string;
   phase: "before" | "after" | string;

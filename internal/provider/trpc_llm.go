@@ -57,7 +57,7 @@ func MapProviderType(pt string) string {
 	switch strings.ToLower(strings.TrimSpace(pt)) {
 	case "anthropic":
 		return "anthropic"
-	case "gemini":
+	case "gemini", "google gemini":
 		return "gemini"
 	case "ollama":
 		return "ollama"

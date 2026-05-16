@@ -75,6 +75,7 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) 
 		trpcllmagent.WithInstruction(sys),
 		trpcllmagent.WithDescription(strings.TrimSpace(ag.DisplayName)),
 		trpcllmagent.WithChannelBufferSize(256),
+		trpcllmagent.WithGenerationConfig(trpcmodel.GenerationConfig{Stream: true}),
 	}
 
 	if strings.EqualFold(deps.DialogMode, "plan") {

@@ -1,10 +1,10 @@
 /**
  * Chat 域：网关 **`/v1/chat/*`**。
- * **`cmd/admin`**：`chat/v1` HTTP + SSE，由 admin 进程内 trpc-agent-go 运行时处理 Agent/Team 会话并持久化消息。
+ * **`cmd/admin`**：`chat/v1` HTTP，由 admin 进程内 trpc-agent-go 运行时处理 Agent/Team 会话并持久化消息。
+ * 流式事件通过 WebSocket + EventBus 推送，不再使用 SSE。
  *
  * Session 相关 API 请从 `features/session/api` 直接导入。
  */
-import { getBackendOrigin } from "../../config/runtime";
 import { kratosApi } from "../../services/axiosHandler";
 import { asRecord, pickI32, pickStr } from "../../shared/wireJson";
 import type {
@@ -12,7 +12,6 @@ import type {
   Message,
   SendMessageOptions,
   SendMessageResult,
-  SendMessageStreamCallbacks,
   ToolUseEvent,
   IntentPassResult
 } from "./types";
@@ -22,7 +21,6 @@ export type {
   Message,
   SendMessageOptions,
   SendMessageResult,
-  SendMessageStreamCallbacks,
   ToolUseEvent,
   IntentPassResult
 } from "./types";
@@ -82,108 +80,6 @@ export async function sendMessage(payload: {
     user_message: wireInboundChatMessage(um),
     agent_message: wireInboundChatMessage(am)
   };
-}
-
-export async function sendMessageStream(
-  payload: {
-    session_id: string;
-    agent_key?: string;
-    team_id?: string;
-    content: string;
-    options?: SendMessageOptions;
-  },
-  callbacks: SendMessageStreamCallbacks = {}
-): Promise<void> {
-  const response = await fetch(`${getBackendOrigin()}/v1/chat/messages/stream`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-    signal: callbacks.signal
-  });
-  if (!response.ok || !response.body) {
-    let msg = await response.text();
-    try {
-      const j = asRecord(JSON.parse(msg) as unknown);
-      const m = pickStr(j, "message", "message");
-      if (m) msg = m;
-    } catch {
-      /* keep body */
-    }
-    throw new Error(msg.trim() || `stream request failed: ${response.status}`);
-  }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const events = buffer.split(/\n\n/);
-    buffer = events.pop() ?? "";
-    for (const eventBlock of events) {
-      handleStreamEvent(eventBlock, callbacks);
-    }
-  }
-  if (buffer.trim()) {
-    handleStreamEvent(buffer, callbacks);
-  }
-}
-
-function handleStreamEvent(block: string, callbacks: SendMessageStreamCallbacks) {
-  const lines = block.split(/\r?\n/);
-  const event = lines.find((line) => line.startsWith("event:"))?.replace(/^event:\s*/, "").trim();
-  const data = lines
-    .filter((line) => line.startsWith("data:"))
-    .map((line) => line.replace(/^data:\s*/, ""))
-    .join("\n");
-  if (!event || !data) return;
-  const parsed = JSON.parse(data) as Record<string, unknown>;
-  if (event === "user_message") {
-    callbacks.onUserMessage?.(wireInboundChatMessage(parsed));
-  } else if (event === "delta") {
-    const c = String(parsed.content ?? "");
-    const r = String(parsed.reasoning_content ?? parsed.reasoningContent ?? "");
-    const deltaText = `${c}${r}`;
-    callbacks.onDelta?.(deltaText);
-  } else if (event === "done") {
-    const am = parsed.agent_message ?? parsed.agentMessage;
-    if (am != null && typeof am === "object") {
-      const m = wireInboundChatMessage(am);
-      if (String(m.id ?? "").trim()) {
-        callbacks.onDone?.(m);
-      }
-    }
-  } else if (event === "tool.call" || event === "tool_event") {
-    if (event === "tool.call") {
-      callbacks.onToolEvent?.({
-        id: String(parsed.tool_call_id ?? ""),
-        phase: "before",
-        status: "running",
-        agent_id: "",
-        agent_key: "",
-        agent_name: "",
-        agent_icon: "",
-        tool_name: String(parsed.tool_name ?? ""),
-        tool_label: String(parsed.tool_name ?? ""),
-        occurred_at: new Date().toISOString()
-      });
-    } else {
-      callbacks.onToolEvent?.(parsed as ToolUseEvent);
-    }
-  } else if (event === "member_message_start") {
-    callbacks.onMemberMessageStart?.(wireInboundChatMessage(parsed));
-  } else if (event === "member_delta") {
-    callbacks.onMemberDelta?.(String(parsed.message_id ?? parsed.messageId ?? ""), String(parsed.content ?? ""));
-  } else if (event === "member_message_done") {
-    const am = parsed.agent_message ?? parsed.agentMessage;
-    callbacks.onMemberMessageDone?.(wireInboundChatMessage(am));
-  } else if (event === "error") {
-    throw new Error(String(parsed.message ?? "stream failed"));
-  } else if (event === "intent_pass") {
-    callbacks.onIntentPass?.(parsed as import("./types").IntentPassResult);
-  }
 }
 
 export async function listChatOptions(type?: string): Promise<ChatOption[]> {

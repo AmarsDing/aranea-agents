@@ -3,21 +3,17 @@ package service
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
 	"time"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
-	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 	"aranea-agents/pkg/strutil"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
-	khttp "github.com/go-kratos/kratos/v2/transport/http"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
@@ -134,7 +130,7 @@ func (s *ChatService) nativeGetModelOptions(ctx context.Context) (*chatv1.GetCha
 }
 
 func (s *ChatService) nativeSendChatMessage(ctx context.Context, req *chatv1.SendChatMessageRequest) (*chatv1.SendChatMessageResponse, error) {
-	userMsg, assistantMsg, err := s.runNativeAgentTurn(ctx, req, nil)
+	userMsg, assistantMsg, err := s.runNativeAgentTurn(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -153,125 +149,17 @@ func (s *ChatService) nativeSendChatMessage(ctx context.Context, req *chatv1.Sen
 	}
 	recordChatIngressUsage(ctx, s.usage, req, am, false)
 	if tid := strings.TrimSpace(req.GetTeamId()); tid != "" {
-		biz.HintTeamRunSSE(ctx, s.td.TeamSSE, s.teams, tid)
+		if s.td.EventBus != nil {
+			env := event.NewEnvelope(event.EnvelopeTypeTeamRunFinished, "chat-native", "")
+			env.TeamID = tid
+			env.Metadata = map[string]any{"hint": true}
+			s.td.EventBus.Publish(ctx, env)
+		}
 	}
 	return out, nil
 }
 
-// streamWriter is used for SSE streaming; when nil, errors are returned from runNativeAgentTurn instead of written as SSE.
-type streamWriter struct {
-	w       http.ResponseWriter
-	flusher http.Flusher
-}
-
-func (w *streamWriter) writeEvent(event string, payload any) error {
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
-	if _, err = fmt.Fprintf(w.w, "event: %s\ndata: %s\n\n", event, data); err != nil {
-		return err
-	}
-	w.flusher.Flush()
-	return nil
-}
-
-// Emit implements agent.StreamEmitter for native SSE.
-func (w *streamWriter) Emit(event string, payload any) error {
-	switch event {
-	case "user_message":
-		m, ok := payload.(biz.ChatMessage)
-		if !ok {
-			return nil
-		}
-		return w.writeEvent("user_message", chatMessageToMap(m))
-	case "delta":
-		return w.writeEvent("delta", payload)
-	case "done":
-		m, ok := payload.(biz.ChatMessage)
-		if !ok {
-			return nil
-		}
-		return w.writeEvent("done", map[string]any{"agent_message": chatMessageToMap(m)})
-	default:
-		return w.writeEvent(event, payload)
-	}
-}
-
-func (s *ChatService) proxyNativeStream(ctx khttp.Context) error {
-	req := ctx.Request()
-	body, err := io.ReadAll(io.LimitReader(req.Body, 4<<20))
-	if err != nil {
-		return err
-	}
-	var payload struct {
-		SessionID string `json:"session_id"`
-		AgentKey  string `json:"agent_key"`
-		TeamID    string `json:"team_id"`
-		Content   string `json:"content"`
-		Options   struct {
-			DialogMode  string              `json:"dialog_mode"`
-			Provider    string              `json:"provider"`
-			Model       string              `json:"model"`
-			Attachments []map[string]string `json:"attachments"`
-		} `json:"options"`
-	}
-	if err := json.Unmarshal(body, &payload); err != nil {
-		http.Error(ctx.Response(), "invalid JSON body", http.StatusBadRequest)
-		return nil
-	}
-	protoReq := &chatv1.SendChatMessageRequest{
-		SessionId: strings.TrimSpace(payload.SessionID),
-		Content:   strings.TrimSpace(payload.Content),
-	}
-	if ak := strings.TrimSpace(payload.AgentKey); ak != "" {
-		protoReq.AgentKey = &ak
-	}
-	if tid := strings.TrimSpace(payload.TeamID); tid != "" {
-		protoReq.TeamId = &tid
-	}
-	if payload.Options.DialogMode != "" || payload.Options.Provider != "" || payload.Options.Model != "" || len(payload.Options.Attachments) > 0 {
-		protoReq.Options = &chatv1.SendMessageOptions{}
-		if payload.Options.DialogMode != "" {
-			protoReq.Options.DialogMode = &payload.Options.DialogMode
-		}
-		if payload.Options.Provider != "" {
-			protoReq.Options.Provider = &payload.Options.Provider
-		}
-		if payload.Options.Model != "" {
-			protoReq.Options.Model = &payload.Options.Model
-		}
-		for _, att := range payload.Options.Attachments {
-			if id, ok := att["id"]; ok && strings.TrimSpace(id) != "" {
-				protoReq.Options.Attachments = append(protoReq.Options.Attachments, &chatv1.AttachmentRef{Id: strings.TrimSpace(id)})
-			}
-		}
-	}
-
-	w := ctx.Response()
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		http.Error(w, "streaming not supported", http.StatusInternalServerError)
-		return nil
-	}
-	sw := &streamWriter{w: w, flusher: flusher}
-	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("X-Accel-Buffering", "no")
-	w.WriteHeader(http.StatusOK)
-	flusher.Flush()
-
-	_, assistantMsg, err := s.runNativeAgentTurn(req.Context(), protoReq, sw)
-	if err != nil {
-		_ = sw.writeEvent("error", map[string]string{"message": err.Error()})
-		return nil
-	}
-	recordChatIngressUsage(ctx, s.usage, protoReq, chatMessageToMap(assistantMsg), true)
-	return nil
-}
-
-func (s *ChatService) runNativeAgentTurn(ctx context.Context, req *chatv1.SendChatMessageRequest, stream *streamWriter) (userMsg biz.ChatMessage, assistantMsg biz.ChatMessage, err error) {
+func (s *ChatService) runNativeAgentTurn(ctx context.Context, req *chatv1.SendChatMessageRequest) (userMsg biz.ChatMessage, assistantMsg biz.ChatMessage, err error) {
 	sessionID := strings.TrimSpace(req.GetSessionId())
 	content := strings.TrimSpace(req.GetContent())
 	if sessionID == "" || content == "" {
@@ -279,7 +167,10 @@ func (s *ChatService) runNativeAgentTurn(ctx context.Context, req *chatv1.SendCh
 	}
 
 	if _, running := s.activeRuns.Load(sessionID); running {
-		s.enqueuePending(sessionID, content)
+		pendingID := s.enqueuePending(sessionID, content)
+		if pendingID == "" {
+			return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.BadRequest("CHAT", "pending queue is full for this session")
+		}
 		return biz.ChatMessage{}, biz.ChatMessage{}, nil
 	}
 
@@ -295,20 +186,15 @@ func (s *ChatService) runNativeAgentTurn(ctx context.Context, req *chatv1.SendCh
 		if s.teamsNative == nil {
 			return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.InternalServer("CHAT_TEAM_NATIVE", "team runner not wired")
 		}
-		if s.td.MonitorLogs != nil {
-			transport := "unary"
-			if stream != nil {
-				transport = "sse"
-			}
-			s.td.MonitorLogs.Publish(ctx, "INFO", fmt.Sprintf(
-				"chat_native phase=team_invoke session_id=%s team_id=%s content_len=%d transport=%s",
-				sess.ID, strings.TrimSpace(sess.TeamID), len(content), transport), "chat-native")
+		if s.td.EventBus != nil {
+			env := event.NewEnvelope(event.EnvelopeTypeLog, "chat-native", sess.ID)
+			env.Metadata = map[string]any{"level": "INFO", "source": "chat-native"}
+			env.Content = &event.EnvelopeContent{Text: fmt.Sprintf(
+				"chat_native phase=team_invoke session_id=%s team_id=%s content_len=%d",
+				sess.ID, strings.TrimSpace(sess.TeamID), len(content))}
+			s.td.EventBus.Publish(ctx, env)
 		}
-		var emitter agent.StreamEmitter
-		if stream != nil {
-			emitter = stream
-		}
-		return s.teamsNative.RunTurn(ctx, sess, req, emitter)
+		return s.teamsNative.RunTurn(ctx, sess, req)
 	}
 
 	if rtid := strings.TrimSpace(req.GetTeamId()); rtid != "" {
@@ -345,7 +231,7 @@ func (s *ChatService) runNativeAgentTurn(ctx context.Context, req *chatv1.SendCh
 		attN = len(opts.Attachments)
 	}
 
-	return s.runSingleAgentViaTRPC(ctx, sess, req, ag, dialogMode, prov, mod, attN, stream)
+	return s.runSingleAgentViaTRPC(ctx, sess, req, ag, dialogMode, prov, mod, attN)
 }
 
 func (s *ChatService) hydratedAgent(ctx context.Context, agentID string) (biz.Agent, error) {
@@ -364,7 +250,7 @@ func (s *ChatService) hydratedAgent(ctx context.Context, agentID string) (biz.Ag
 
 // RunNativeTurnUnary runs the native in-process agent/team turn, ignoring LEGACY_REST_ORIGIN (for Channel webhooks).
 func (s *ChatService) RunNativeTurnUnary(ctx context.Context, req *chatv1.SendChatMessageRequest) (biz.ChatMessage, biz.ChatMessage, error) {
-	return s.runNativeAgentTurn(ctx, req, nil)
+	return s.runNativeAgentTurn(ctx, req)
 }
 
 func patchSessionContextUsage(ctx context.Context, s *ChatService, sessionID string, ag biz.Agent, promptTok, completionTok int) {

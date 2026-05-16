@@ -10,13 +10,13 @@ import (
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 	"aranea-agents/internal/runtimedeps"
 	"aranea-agents/internal/team"
 
 	trpcrunner "trpc.group/trpc-go/trpc-agent-go/runner"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
-	khttp "github.com/go-kratos/kratos/v2/transport/http"
 	"github.com/google/uuid"
 )
 
@@ -33,7 +33,6 @@ type ChatService struct {
 }
 
 type ChatServiceDeps struct {
-	Broker       *biz.TeamRunEventBroker
 	Teams        biz.TeamRepository
 	TeamsNative  *team.Runner
 	Usage        *biz.UsageUsecase
@@ -47,7 +46,7 @@ type ChatServiceDeps struct {
 	Sys          biz.SystemSettingRepo
 	RT           *runtimedeps.Runtime
 	Compress     biz.NativeTurnCompressor
-	MonitorLogs  *biz.MonitorLogBroker
+	EventBus     event.Bus
 }
 
 func NewChatService(deps ChatServiceDeps) *ChatService {
@@ -67,15 +66,10 @@ func NewChatService(deps ChatServiceDeps) *ChatService {
 			LLMHTTP:      &http.Client{Timeout: 300 * time.Second},
 			Sessions:     deps.Sessions,
 			Compress:     deps.Compress,
-			MonitorLogs:  deps.MonitorLogs,
-			TeamSSE:      deps.Broker,
+			EventBus:     deps.EventBus,
 		},
 	}
 	return s
-}
-
-func (s *ChatService) ProxyStream(ctx khttp.Context) error {
-	return s.proxyNativeStream(ctx)
 }
 
 func (s *ChatService) SendChatMessage(ctx context.Context, req *chatv1.SendChatMessageRequest) (*chatv1.SendChatMessageResponse, error) {
@@ -112,6 +106,28 @@ func (s *ChatService) StopGeneration(ctx context.Context, req *chatv1.StopGenera
 	return &chatv1.StopGenerationResponse{Stopped: true}, nil
 }
 
+func (s *ChatService) CancelRun(ctx context.Context, sessionID string) bool {
+	if cancelFn, ok := s.pendingCancels.LoadAndDelete(sessionID); ok {
+		if c, ok := cancelFn.(context.CancelFunc); ok {
+			c()
+		}
+	}
+	val, ok := s.activeRuns.Load(sessionID)
+	if !ok {
+		return false
+	}
+	r, ok := val.(trpcrunner.Runner)
+	if !ok {
+		return false
+	}
+	if chatagent.CancelTRPCRun(r, sessionID) {
+		return true
+	}
+	_ = r.Close()
+	s.activeRuns.Delete(sessionID)
+	return true
+}
+
 type pendingEntry struct {
 	ID        string
 	Content   string
@@ -144,6 +160,8 @@ func (s *ChatService) GetPendingMessages(ctx context.Context, req *chatv1.GetPen
 	return &chatv1.GetPendingMessagesResponse{Items: items}, nil
 }
 
+const maxPendingPerSession = 32
+
 func (s *ChatService) enqueuePending(sessionID, content string) string {
 	id := uuid.NewString()
 	entry := pendingEntry{
@@ -158,6 +176,9 @@ func (s *ChatService) enqueuePending(sessionID, content string) string {
 			return id
 		}
 		queue := existing.([]pendingEntry)
+		if len(queue) >= maxPendingPerSession {
+			return ""
+		}
 		queue = append(queue, entry)
 		if s.pendingQueue.CompareAndSwap(sessionID, existing, queue) {
 			return id

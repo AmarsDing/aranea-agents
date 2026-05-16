@@ -5,8 +5,11 @@ import (
 	"flag"
 	"os"
 
+	"aranea-agents/internal/biz"
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/cronrunner"
+	"aranea-agents/internal/event"
+	"aranea-agents/internal/server"
 
 	"github.com/go-kratos/kratos/v2"
 	"github.com/go-kratos/kratos/v2/config"
@@ -16,40 +19,61 @@ import (
 	"github.com/go-kratos/kratos/v2/transport"
 	"github.com/go-kratos/kratos/v2/transport/grpc"
 	"github.com/go-kratos/kratos/v2/transport/http"
-	sse "github.com/tx7do/kratos-transport/transport/sse"
 
 	_ "go.uber.org/automaxprocs"
 )
 
-// go build -ldflags "-X main.Version=x.y.z"
 var (
 	Name     string
 	Version  string
-	flagconf string
 	id, _    = os.Hostname()
+	flagconf string
 )
 
 func init() {
 	flag.StringVar(&flagconf, "conf", "../../configs", "config path, eg: -conf config.yaml")
 }
 
-func newApp(logger log.Logger, gs *grpc.Server, hs *http.Server, ss *sse.Server) *kratos.App {
+func newApp(
+	logger log.Logger,
+	gs *grpc.Server,
+	hs *http.Server,
+	ws *server.WSServer,
+	consumer *biz.EventBusConsumer,
+	eventBus event.Bus,
+) *kratos.App {
 	srv := []transport.Server{gs, hs}
-	if ss != nil {
-		srv = append(srv, ss)
+	if ws != nil {
+		srv = append(srv, ws)
 	}
-	return kratos.New(
+
+	consumerCtx, consumerCancel := context.WithCancel(context.Background())
+
+	app := kratos.New(
 		kratos.ID(id),
 		kratos.Name(Name),
 		kratos.Version(Version),
 		kratos.Metadata(map[string]string{}),
 		kratos.Logger(logger),
 		kratos.Server(srv...),
+		kratos.BeforeStart(func(context.Context) error {
+			consumer.Start(consumerCtx)
+			if event.InstallSlogBridge(eventBus) {
+				logger.Log(log.LevelInfo, "msg", "slog bridge installed (LOG_BRIDGE_ENABLED=1)")
+			}
+			return nil
+		}),
+		kratos.AfterStop(func(context.Context) error {
+			consumerCancel()
+			return nil
+		}),
 	)
+	return app
 }
 
 func main() {
 	flag.Parse()
+
 	logger := log.With(log.NewStdLogger(os.Stdout),
 		"ts", log.DefaultTimestamp,
 		"caller", log.DefaultCaller,
@@ -59,6 +83,7 @@ func main() {
 		"trace.id", tracing.TraceID(),
 		"span.id", tracing.SpanID(),
 	)
+
 	c := config.New(
 		config.WithSource(
 			file.NewSource(flagconf),

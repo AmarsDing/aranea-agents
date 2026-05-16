@@ -107,6 +107,13 @@ export type AgentRuntimeSettings = {
   guardrail_rollback_on_decline_percent: number;
   skill_runtime_json?: string;
   intent_pass_enabled?: boolean;
+  channel_id?: string;
+  chat_id?: string;
+  workspace?: string;
+  reasoning_mode?: string;
+  reasoning_level?: string;
+  compaction_enabled?: boolean;
+  session_summary_enabled?: boolean;
   created_at?: string;
   updated_at?: string;
 };
@@ -135,4 +142,32 @@ export type AgentListResult = {
   total: number;
   limit: number;
   offset: number;
+};
+
+export type MetricDataPoint = {
+  date: string;
+  value: number;
+};
+
+export type EvolutionMetrics = {
+  agent_id: string;
+  time_range: string;
+  tool_success_rate: number;
+  retrieval_quality: number;
+  total_episodes: number;
+  negative_feedback: number;
+  tool_success_series: MetricDataPoint[];
+  retrieval_quality_series: MetricDataPoint[];
+};
+
+export type EvolutionSuggestion = {
+  id: string;
+  agent_id: string;
+  type: string;
+  title: string;
+  content: string;
+  status: string;
+  diff_preview: string;
+  created_at: string;
+  applied_at: string;
 };

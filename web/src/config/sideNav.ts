@@ -26,7 +26,8 @@ export const sideNavGroups: NavGroup[] = [
     items: [
       { to: "/agents", icon: "smart_toy", labelKey: "menu.agents" },
       { to: "/settings/agent-categories", icon: "account_tree", labelKey: "menu.agentCategories" },
-      { to: "/team", icon: "groups", labelKey: "menu.team" }
+      { to: "/team", icon: "groups", labelKey: "menu.team" },
+      { to: "/graphs", icon: "hub", labelKey: "menu.graphs" }
     ]
   },
   {

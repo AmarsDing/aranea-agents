@@ -1,4 +1,4 @@
-import type { ToolUseEvent } from "./types";
+import type { Message, ToolUseEvent } from "./types";
 
 function truncateBlock(s: string, max: number): string {
   if (s.length <= max) return s;
@@ -94,4 +94,34 @@ export function formatToolEventMarkdown(event: ToolUseEvent): string {
   const duration = event.duration_ms ? `，耗时 ${event.duration_ms}ms` : "";
   const body = formatToolResultSummary(event);
   return `工具调用完成：${agent} 已使用 **${label}**${argHint}${duration}${body}`;
+}
+
+export function toolEventToMessage(sessionID: string, event: ToolUseEvent): Message {
+  const failed = event.status === "failed" || event.status === "error" || event.status === "blocked";
+  const status = event.status === "running" ? "tool_running" : failed ? "tool_failed" : "tool_success";
+  return {
+    id: `tool-${event.agent_id || event.agent_key || "agent"}-${event.id || event.tool_name}`,
+    session_id: sessionID,
+    parent_message_id: "",
+    turn_index: 0,
+    role: "assistant",
+    content_markdown: formatToolEventMarkdown(event),
+    model_name: "",
+    token_in: 0,
+    token_out: 0,
+    latency_ms: event.duration_ms ?? 0,
+    status,
+    attachments_count: 0,
+    options_json: JSON.stringify({
+      agent: {
+        agent_id: event.agent_id,
+        agent_key: event.agent_key,
+        name: event.agent_name || event.agent_key,
+        icon: event.agent_icon || ""
+      },
+      tool_event: event
+    }),
+    error_message: event.error || "",
+    created_at: event.occurred_at || new Date().toISOString()
+  };
 }

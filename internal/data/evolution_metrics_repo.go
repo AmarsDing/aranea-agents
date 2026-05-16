@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"sort"
 	"time"
 
 	"aranea-agents/internal/biz"
@@ -28,21 +29,61 @@ func (r *evolutionMetricsRepo) GetToolSuccessRate(ctx context.Context, agentID s
 		return 0, nil, err
 	}
 	var total, success int64
-	total = int64(len(rows))
+	dayBuckets := make(map[string]struct{ total, success int64 })
 	for _, row := range rows {
+		total++
 		if row.Status == "success" {
 			success++
 		}
+		day := dateFromCreatedAt(row.CreatedAt)
+		b := dayBuckets[day]
+		b.total++
+		if row.Status == "success" {
+			b.success++
+		}
+		dayBuckets[day] = b
 	}
 	rate := 0.0
 	if total > 0 {
 		rate = float64(success) / float64(total)
 	}
-	return rate, nil, nil
+	series := buildSeries(dayBuckets, since)
+	return rate, series, nil
 }
 
 func (r *evolutionMetricsRepo) GetRetrievalQuality(ctx context.Context, agentID string, since time.Time) (float64, []biz.MetricDataPoint, error) {
-	return 0, nil, nil
+	memoryToolKeys := []string{"memory_search", "memory_load", "memory_recall"}
+	rows, err := r.data.entClient.ToolInvocation.Query().
+		Where(
+			toolinvocationpkg.AgentIDEQ(agentID),
+			toolinvocationpkg.CreatedAtGTE(since.Format(time.RFC3339)),
+			toolinvocationpkg.ToolKeyIn(memoryToolKeys...),
+		).
+		All(ctx)
+	if err != nil {
+		return 0, nil, err
+	}
+	var total, success int64
+	dayBuckets := make(map[string]struct{ total, success int64 })
+	for _, row := range rows {
+		total++
+		if row.Status == "success" {
+			success++
+		}
+		day := dateFromCreatedAt(row.CreatedAt)
+		b := dayBuckets[day]
+		b.total++
+		if row.Status == "success" {
+			b.success++
+		}
+		dayBuckets[day] = b
+	}
+	rate := 0.0
+	if total > 0 {
+		rate = float64(success) / float64(total)
+	}
+	series := buildSeries(dayBuckets, since)
+	return rate, series, nil
 }
 
 func (r *evolutionMetricsRepo) GetEpisodeCount(ctx context.Context, agentID string, since time.Time) (int, error) {
@@ -59,5 +100,40 @@ func (r *evolutionMetricsRepo) GetEpisodeCount(ctx context.Context, agentID stri
 }
 
 func (r *evolutionMetricsRepo) GetNegativeFeedbackCount(ctx context.Context, agentID string, since time.Time) (int, error) {
-	return 0, nil
+	count, err := r.data.entClient.ToolInvocation.Query().
+		Where(
+			toolinvocationpkg.AgentIDEQ(agentID),
+			toolinvocationpkg.CreatedAtGTE(since.Format(time.RFC3339)),
+			toolinvocationpkg.StatusNEQ("success"),
+		).
+		Count(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+func dateFromCreatedAt(createdAt string) string {
+	if len(createdAt) >= 10 {
+		return createdAt[:10]
+	}
+	return createdAt
+}
+
+func buildSeries(dayBuckets map[string]struct{ total, success int64 }, since time.Time) []biz.MetricDataPoint {
+	days := make([]string, 0, len(dayBuckets))
+	for d := range dayBuckets {
+		days = append(days, d)
+	}
+	sort.Strings(days)
+	series := make([]biz.MetricDataPoint, 0, len(days))
+	for _, d := range days {
+		b := dayBuckets[d]
+		var v float64
+		if b.total > 0 {
+			v = float64(b.success) / float64(b.total)
+		}
+		series = append(series, biz.MetricDataPoint{Date: d, Value: v})
+	}
+	return series
 }

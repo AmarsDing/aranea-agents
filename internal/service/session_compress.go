@@ -13,6 +13,7 @@ import (
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/compress"
+	"aranea-agents/internal/event"
 	"aranea-agents/internal/runtimedeps"
 	"aranea-agents/pkg/strutil"
 
@@ -30,28 +31,26 @@ type SessionCompressor struct {
 	Agents   biz.AgentRepository
 	Compress compress.Compressor
 	RT       *runtimedeps.Runtime
+	EventBus event.Bus
 
-	MonitorLogs *biz.MonitorLogBroker
-
-	inFlight sync.Map // session id -> bool
+	inFlight sync.Map
 }
 
 var _ biz.NativeTurnCompressor = (*SessionCompressor)(nil)
 
-// NewSessionCompressor wires optional SQLite memory through runtime (compress may be nil to disable).
 func NewSessionCompressor(
 	sessions *biz.SessionUsecase,
 	agents biz.AgentRepository,
 	rt *runtimedeps.Runtime,
 	comp compress.Compressor,
-	monitorLogs *biz.MonitorLogBroker,
+	eventBus event.Bus,
 ) *SessionCompressor {
 	return &SessionCompressor{
-		Sessions:    sessions,
-		Agents:      agents,
-		Compress:    comp,
-		RT:          rt,
-		MonitorLogs: monitorLogs,
+		Sessions: sessions,
+		Agents:   agents,
+		Compress: comp,
+		RT:       rt,
+		EventBus: eventBus,
 	}
 }
 
@@ -73,8 +72,11 @@ func (c *SessionCompressor) AfterNativeTurn(ctx context.Context, sessionID strin
 		defer cancel()
 		if err := c.runCompress(runCtx, sid, ag); err != nil {
 			log.Printf("session_compress: session=%s err=%v", sid, err)
-			if c.MonitorLogs != nil {
-				c.MonitorLogs.Publish(runCtx, "ERROR", fmt.Sprintf("session_compress: session=%s err=%v", sid, err), "session_compress")
+			if c.EventBus != nil {
+				env := event.NewEnvelope(event.EnvelopeTypeLog, "session_compress", sid)
+				env.Metadata = map[string]any{"level": "ERROR", "source": "session_compress"}
+				env.Content = &event.EnvelopeContent{Text: fmt.Sprintf("session_compress: session=%s err=%v", sid, err)}
+				c.EventBus.Publish(runCtx, env)
 			}
 		}
 	}()
@@ -159,8 +161,11 @@ func (c *SessionCompressor) runCompress(ctx context.Context, sessionID string, a
 	line := fmt.Sprintf("session_compress: session=%s ok compress_provider=%s compress_model=%s prompt_tokens=%d completion_tokens=%d duration_ms=%d prompt_ver=%s",
 		sessionID, res.Provider, res.Model, res.PromptTokens, res.CompletionTokens, time.Since(t0).Milliseconds(), res.PromptVersion)
 	log.Println(line)
-	if c.MonitorLogs != nil {
-		c.MonitorLogs.Publish(ctx, "INFO", line, "session_compress")
+	if c.EventBus != nil {
+		env := event.NewEnvelope(event.EnvelopeTypeLog, "session_compress", sessionID)
+		env.Metadata = map[string]any{"level": "INFO", "source": "session_compress"}
+		env.Content = &event.EnvelopeContent{Text: line}
+		c.EventBus.Publish(ctx, env)
 	}
 
 	fromTurn := body[0].TurnIndex

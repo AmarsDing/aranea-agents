@@ -71,6 +71,7 @@ func (Session) Fields() []ent.Field {
 		field.String("deleted_at").Default(""),
 
 		field.Text("runner_snapshot_json").Default(""),
+		field.Text("state_json").Default("{}"),
 		field.Text("metadata_json").Default("{}"),
 	}
 }

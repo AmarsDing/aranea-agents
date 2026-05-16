@@ -20,3 +20,7 @@ func cookieNameFromEnv(key string) string {
 	}
 	return "access_token"
 }
+
+func ParseTokenFromRequest(tokenStr string) (*Auth, error) {
+	return ParseToken(tokenStr, authSecretKey)
+}

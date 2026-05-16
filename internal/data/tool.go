@@ -42,7 +42,7 @@ func toolSelectSQL() string {
 		       t.parameters_schema_json, t.result_schema_json, t.config_schema_json, t.config_json, t.default_config_json, t.metadata_json,
 		       COALESCE(stats.invoke_count, 0), COALESCE(stats.invoke_count_24h, 0), COALESCE(stats.success_count, 0),
 		       COALESCE(stats.failure_count, 0), COALESCE(stats.blocked_count, 0), COALESCE(overrides.agent_override_count, 0),
-		       stats.avg_duration_ms, COALESCE(stats.p95_duration_ms, 0), COALESCE(last.started_at, ''), COALESCE(last.status, ''),
+		       stats.avg_duration_ms, COALESCE(p95.p95_duration_ms, 0), COALESCE(last.started_at, ''), COALESCE(last.status, ''),
 		       t.created_at, t.updated_at, t.deleted_at
 		FROM tools t
 		LEFT JOIN (
@@ -52,16 +52,26 @@ func toolSelectSQL() string {
 			       SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS success_count,
 			       SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS failure_count,
 			       SUM(CASE WHEN status = 'blocked' THEN 1 ELSE 0 END) AS blocked_count,
-			       AVG(duration_ms) AS avg_duration_ms,
-			       (SELECT AVG(duration_ms) FROM (
-			           SELECT duration_ms FROM tool_invocations ti2
-			           WHERE ti2.tool_key = tool_invocations.tool_key
-			           ORDER BY duration_ms DESC
-			           LIMIT MAX(1, ROUND(COUNT(1) OVER() * 0.05))
-			       )) AS p95_duration_ms
+			       AVG(duration_ms) AS avg_duration_ms
 			FROM tool_invocations
 			GROUP BY tool_key
 		) stats ON stats.tool_key = t.tool_key
+		LEFT JOIN (
+			SELECT ti95.tool_key, AVG(ti95.duration_ms) AS p95_duration_ms
+			FROM tool_invocations ti95
+			INNER JOIN (
+				SELECT tool_key, MIN(duration_ms) AS threshold_ms
+				FROM (
+					SELECT tool_key, duration_ms,
+					       ROW_NUMBER() OVER (PARTITION BY tool_key ORDER BY duration_ms DESC) AS rn,
+					       COUNT(1) OVER (PARTITION BY tool_key) AS total_cnt
+					FROM tool_invocations
+				)
+				WHERE rn <= MAX(1, CAST(total_cnt * 0.05 AS INTEGER))
+				GROUP BY tool_key
+			) top5 ON top5.tool_key = ti95.tool_key AND ti95.duration_ms >= top5.threshold_ms
+			GROUP BY ti95.tool_key
+		) p95 ON p95.tool_key = t.tool_key
 		LEFT JOIN (
 			SELECT tool_key, COUNT(1) AS agent_override_count
 			FROM tool_agent_overrides

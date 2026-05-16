@@ -11,8 +11,7 @@ option java_multiple_files = true;
 option java_package = "api.kratos.chat.v1";
 
 // Send / options mirror legacy JSON (snake_case on wire, same as web `features/chat/api.ts`).
-// Streaming POST `/v1/chat/messages/stream` is registered next to this service (SSE body passthrough);
-// it is not expressed as a unary protobuf response.
+// Streaming events are delivered via WebSocket + EventBus (no SSE route).
 message SendChatMessageRequest {
   string session_id = 1 [(google.api.field_behavior) = REQUIRED];
   optional string agent_key = 2;

@@ -9,6 +9,7 @@
         @back="router.back()"
         @change-avatar="avatarPickerOpen = true"
         @open-prompt="promptDialog = true"
+        @open-advanced="advancedDialog = true"
         @toggle-favorite="toggleFavorite"
         @save="saveAgent"
       />
@@ -530,7 +531,7 @@
         </q-tab-panel>
 
         <q-tab-panel name="evolution">
-          <agent-evolution-panel v-model:range="evolutionRange" :evolution="config.evolution" :guardrails="config.evolution_guardrails" />
+          <agent-evolution-panel v-model:range="evolutionRange" :agent-id="agentId" :evolution="config.evolution" :guardrails="config.evolution_guardrails" />
         </q-tab-panel>
 
         <q-tab-panel name="hooks">
@@ -580,6 +581,22 @@
         </q-card-actions>
       </q-card>
     </q-dialog>
+    <agent-advanced-dialog
+      v-model:open="advancedDialog"
+      :saving="saving"
+      :channel-id="advancedState.channel_id"
+      :chat-id-input="advancedState.chat_id"
+      :workspace-input="advancedState.workspace"
+      :reasoning-mode-input="advancedState.reasoning_mode"
+      :reasoning-level-input="advancedState.reasoning_level"
+      :compaction-enabled-input="advancedState.compaction_enabled"
+      :session-summary-enabled-input="advancedState.session_summary_enabled"
+      :truncate-strategy-input="advancedState.truncate_strategy"
+      :recent-window-turns-input="advancedState.recent_window_turns"
+      :recent-window-tokens-input="advancedState.recent_window_tokens"
+      :summary-keep-turns-input="advancedState.summary_keep_turns"
+      @save="onAdvancedSave"
+    />
     <agent-avatar-picker v-model="form.icon" v-model:open="avatarPickerOpen" />
   </q-page>
 </template>
@@ -595,6 +612,7 @@ import AgentAvatarPicker from "../components/avatar/AgentAvatarPicker.vue";
 import AgentEvolutionPanel from "../components/agents/AgentEvolutionPanel.vue";
 import AgentFilesPanel from "../components/agents/AgentFilesPanel.vue";
 import AgentSettingsHeader from "../components/agents/AgentSettingsHeader.vue";
+import AgentAdvancedDialog from "../components/agents/AgentAdvancedDialog.vue";
 import {
   defaultAgentFiles,
   promptModes,
@@ -617,9 +635,11 @@ const router = useRouter();
 const store = useAppStore();
 const avatarCatalogStore = useAvatarCatalogStore();
 const detailStore = useAgentDetailStore();
+const agentId = computed(() => String(route.params.id ?? "").trim());
 const { saving } = storeToRefs(detailStore);
 const tab = ref("agent");
 const promptDialog = ref(false);
+const advancedDialog = ref(false);
 const previewMode = ref<PromptMode>("complete");
 const promptPreview = ref("");
 const fileSplitter = ref(28);
@@ -632,6 +652,19 @@ const evolutionRange = ref("30d");
 const providerModels = ref<PlatformResource[]>([]);
 const providerModelSearch = ref("");
 const loadingProviderModels = ref(false);
+const advancedState = reactive({
+  channel_id: "",
+  chat_id: "",
+  workspace: "",
+  reasoning_mode: "provider_default",
+  reasoning_level: "off",
+  compaction_enabled: false,
+  session_summary_enabled: false,
+  truncate_strategy: "sliding",
+  recent_window_turns: 20,
+  recent_window_tokens: 0,
+  summary_keep_turns: 4
+});
 
 const form = reactive<Agent>({
   id: "",
@@ -1257,6 +1290,19 @@ function hydrateSettings(agent: Agent) {
         enabled: agent.settings.intent_pass_enabled !== false
       }
     });
+    Object.assign(advancedState, {
+      channel_id: agent.settings.channel_id || "",
+      chat_id: agent.settings.chat_id || "",
+      workspace: agent.settings.workspace || "",
+      reasoning_mode: agent.settings.reasoning_mode || "provider_default",
+      reasoning_level: agent.settings.reasoning_level || "off",
+      compaction_enabled: agent.settings.compaction_enabled ?? false,
+      session_summary_enabled: agent.settings.session_summary_enabled ?? false,
+      truncate_strategy: agent.settings.l0_truncate_strategy || "sliding",
+      recent_window_turns: agent.settings.l0_recent_window_turns ?? 20,
+      recent_window_tokens: agent.settings.l0_recent_window_tokens ?? 0,
+      summary_keep_turns: agent.settings.l0_summary_keep_turns ?? 4
+    });
   } else {
     hydrateConfig(agent.config_json);
   }
@@ -1305,6 +1351,27 @@ async function saveAgent() {
   } catch (e) {
     $q.notify({ type: "negative", message: e instanceof Error ? e.message : "保存失败" });
   }
+}
+
+function onAdvancedSave(payload: {
+  channel_id: string;
+  chat_id: string;
+  workspace: string;
+  reasoning_mode: string;
+  reasoning_level: string;
+  compaction_enabled: boolean;
+  session_summary_enabled: boolean;
+  truncate_strategy: string;
+  recent_window_turns: number;
+  recent_window_tokens: number;
+  summary_keep_turns: number;
+}) {
+  Object.assign(advancedState, payload);
+  config.memoryL0.recent_window_turns = payload.recent_window_turns;
+  config.memoryL0.recent_window_tokens = payload.recent_window_tokens;
+  config.memoryL0.summary_keep_turns = payload.summary_keep_turns;
+  config.memoryL0.truncate_strategy = payload.truncate_strategy;
+  saveAgent();
 }
 
 async function toggleFavorite() {
@@ -1478,7 +1545,14 @@ function buildSettingsPayload(): AgentRuntimeSettings {
     guardrail_min_data_points: config.evolution_guardrails.min_data_points,
     guardrail_rollback_on_decline_percent: config.evolution_guardrails.rollback_on_decline_percent,
     skill_runtime_json: stringifySkillRuntimeJSON(),
-    intent_pass_enabled: config.intent_pass.enabled
+    intent_pass_enabled: config.intent_pass.enabled,
+    channel_id: advancedState.channel_id,
+    chat_id: advancedState.chat_id,
+    workspace: advancedState.workspace,
+    reasoning_mode: advancedState.reasoning_mode,
+    reasoning_level: advancedState.reasoning_level,
+    compaction_enabled: advancedState.compaction_enabled,
+    session_summary_enabled: advancedState.session_summary_enabled
   };
 }
 

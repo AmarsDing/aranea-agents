@@ -1,0 +1,770 @@
+syntax = "proto3";
+
+package kratos.graph.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "aranea-agents/api/kratos/graph/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.kratos.graph.v1";
+
+// --- State Schema ---
+
+message StateFieldDef {
+  string name = 1 [(google.api.field_behavior) = REQUIRED];
+  string type = 2;
+  string reducer = 3;
+  optional google.protobuf.Value default_value = 4;
+  bool required = 5;
+  bool disable_deep_copy = 6;
+}
+
+// --- Node / Edge definitions ---
+
+message NodeDef {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string func_ref = 2;
+  bool interrupt_before = 3;
+  bool interrupt_after = 4;
+  string type = 5;
+  string instruction = 6;
+  string model_name = 7;
+  repeated string tool_names = 8;
+  string agent_name = 9;
+  string description = 10;
+  repeated string destinations = 11;
+  string required_role = 12;
+  string assignment_mode = 13;
+  string assignment_strategy = 14;
+  string reviewer_agent = 15;
+  string review_rules = 16;
+  int32 timeout_seconds = 17;
+  int32 heartbeat_interval_seconds = 18;
+  bool enable_lease_extension = 19;
+}
+
+message EdgeDef {
+  string from = 1 [(google.api.field_behavior) = REQUIRED];
+  string to = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ConditionalEdgeDef {
+  string from = 1 [(google.api.field_behavior) = REQUIRED];
+  string cond_func_ref = 2;
+  map<string, string> path_map = 3;
+}
+
+message SubgraphDef {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string graph_id = 2;
+  bool interrupt_before = 3;
+  bool interrupt_after = 4;
+}
+
+// --- Graph definition ---
+
+message GraphDefinition {
+  string id = 1;
+  string name = 2 [(google.api.field_behavior) = REQUIRED];
+  string description = 3;
+  repeated StateFieldDef state_fields = 4;
+  repeated NodeDef nodes = 5;
+  repeated EdgeDef edges = 6;
+  repeated ConditionalEdgeDef conditional_edges = 7;
+  repeated SubgraphDef subgraphs = 8;
+  string entry_point = 9 [(google.api.field_behavior) = REQUIRED];
+  string finish_point = 10;
+  bool enable_checkpoint = 11;
+  string execution_engine = 12;
+  repeated string interrupt_before = 13;
+  repeated string interrupt_after = 14;
+  google.protobuf.Struct metadata = 15;
+  google.protobuf.Timestamp created_at = 16;
+  google.protobuf.Timestamp updated_at = 17;
+}
+
+// --- CreateGraph ---
+
+message CreateGraphRequest {
+  string name = 1 [(google.api.field_behavior) = REQUIRED];
+  string description = 2;
+  repeated StateFieldDef state_fields = 3;
+  repeated NodeDef nodes = 4;
+  repeated EdgeDef edges = 5;
+  repeated ConditionalEdgeDef conditional_edges = 6;
+  repeated SubgraphDef subgraphs = 7;
+  string entry_point = 8 [(google.api.field_behavior) = REQUIRED];
+  string finish_point = 9;
+  bool enable_checkpoint = 10;
+  string execution_engine = 11;
+  repeated string interrupt_before = 12;
+  repeated string interrupt_after = 13;
+  google.protobuf.Struct metadata = 14;
+}
+
+message CreateGraphResponse {
+  GraphDefinition graph = 1;
+}
+
+// --- GetGraph ---
+
+message GetGraphRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message GetGraphResponse {
+  GraphDefinition graph = 1;
+}
+
+// --- ListGraphs ---
+
+message ListGraphsRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+}
+
+message ListGraphsResponse {
+  repeated GraphDefinition items = 1;
+  string next_page_token = 2;
+}
+
+// --- UpdateGraph ---
+
+message UpdateGraphRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string name = 2;
+  string description = 3;
+  repeated StateFieldDef state_fields = 4;
+  repeated NodeDef nodes = 5;
+  repeated EdgeDef edges = 6;
+  repeated ConditionalEdgeDef conditional_edges = 7;
+  repeated SubgraphDef subgraphs = 8;
+  string entry_point = 9;
+  string finish_point = 10;
+  bool enable_checkpoint = 11;
+  string execution_engine = 12;
+  repeated string interrupt_before = 13;
+  repeated string interrupt_after = 14;
+  google.protobuf.Struct metadata = 15;
+}
+
+message UpdateGraphResponse {
+  GraphDefinition graph = 1;
+}
+
+// --- DeleteGraph ---
+
+message DeleteGraphRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message DeleteGraphResponse {
+  bool deleted = 1;
+}
+
+// --- ExecuteGraph ---
+
+message ExecuteGraphRequest {
+  string graph_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string session_id = 2;
+  google.protobuf.Struct initial_state = 3;
+  optional string agent_key = 4;
+}
+
+message ExecuteGraphResponse {
+  string execution_id = 1;
+  string status = 2;
+  google.protobuf.Struct final_state = 3;
+}
+
+// --- GetGraphExecution ---
+
+message GetGraphExecutionRequest {
+  string execution_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message GraphStepSnapshot {
+  string node_id = 1;
+  int32 step_index = 2;
+  google.protobuf.Struct input_state = 3;
+  google.protobuf.Struct output_state = 4;
+  string status = 5;
+  string error = 6;
+  google.protobuf.Timestamp timestamp = 7;
+}
+
+message GetGraphExecutionResponse {
+  string execution_id = 1;
+  string graph_id = 2;
+  string status = 3;
+  google.protobuf.Struct current_state = 4;
+  repeated GraphStepSnapshot steps = 5;
+  string interrupt_node = 6;
+  google.protobuf.Timestamp started_at = 7;
+  google.protobuf.Timestamp finished_at = 8;
+}
+
+// --- ResumeGraph ---
+
+message ResumeGraphRequest {
+  string execution_id = 1 [(google.api.field_behavior) = REQUIRED];
+  google.protobuf.Struct resume_value = 2;
+}
+
+message ResumeGraphResponse {
+  string execution_id = 1;
+  string status = 2;
+  google.protobuf.Struct final_state = 3;
+}
+
+// --- TimeTravelGraph ---
+
+message TimeTravelGraphRequest {
+  string execution_id = 1 [(google.api.field_behavior) = REQUIRED];
+  int32 step_index = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message TimeTravelGraphResponse {
+  string execution_id = 1;
+  int32 step_index = 2;
+  google.protobuf.Struct state_snapshot = 3;
+  string node_id = 4;
+}
+
+// --- ListGraphExecutions ---
+
+message ListGraphExecutionsRequest {
+  string graph_id = 1 [(google.api.field_behavior) = REQUIRED];
+  int32 page_size = 2;
+  string page_token = 3;
+}
+
+message GraphExecutionSummary {
+  string execution_id = 1;
+  string graph_id = 2;
+  string session_id = 3;
+  string status = 4;
+  string current_node = 5;
+  string lineage_id = 6;
+  string error_message = 7;
+  google.protobuf.Timestamp started_at = 8;
+  google.protobuf.Timestamp finished_at = 9;
+}
+
+message ListGraphExecutionsResponse {
+  repeated GraphExecutionSummary items = 1;
+  string next_page_token = 2;
+}
+
+// --- CancelGraphExecution ---
+
+message CancelGraphExecutionRequest {
+  string execution_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message CancelGraphExecutionResponse {
+  string execution_id = 1;
+  string status = 2;
+}
+
+// --- VisualizeGraph ---
+
+message VisualGraphNode {
+  string id = 1;
+  string label = 2;
+  string type = 3;
+  string shape = 4;
+  string fill_color = 5;
+  string border_color = 6;
+}
+
+message VisualGraphEdge {
+  string from = 1;
+  string to = 2;
+  string type = 3;
+  string label = 4;
+}
+
+message VisualizeGraphRequest {
+  string graph_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string format = 2;
+}
+
+message VisualizeGraphResponse {
+  string content = 1;
+  string format = 2;
+  repeated VisualGraphNode nodes = 3;
+  repeated VisualGraphEdge edges = 4;
+}
+
+// --- ListCheckpoints ---
+
+message ListCheckpointsRequest {
+  string execution_id = 1 [(google.api.field_behavior) = REQUIRED];
+  int32 limit = 2;
+}
+
+message CheckpointInfo {
+  string lineage_id = 1;
+  string namespace = 2;
+  string checkpoint_id = 3;
+  string parent_checkpoint_id = 4;
+  string source = 5;
+  int32 step = 6;
+  google.protobuf.Timestamp timestamp = 7;
+}
+
+message ListCheckpointsResponse {
+  repeated CheckpointInfo items = 1;
+}
+
+// --- GetStateSnapshot ---
+
+message GetStateSnapshotRequest {
+  string execution_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string checkpoint_id = 2;
+  string namespace = 3;
+}
+
+message StateSnapshot {
+  CheckpointInfo checkpoint_info = 1;
+  google.protobuf.Struct state = 2;
+  repeated string next_nodes = 3;
+}
+
+message GetStateSnapshotResponse {
+  StateSnapshot snapshot = 1;
+}
+
+// --- EditState ---
+
+message EditStateRequest {
+  string execution_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string checkpoint_id = 2;
+  string namespace = 3;
+  google.protobuf.Struct patch = 4;
+}
+
+message EditStateResponse {
+  string new_checkpoint_id = 1;
+  string lineage_id = 2;
+  string namespace = 3;
+}
+
+// --- ValidateGraph ---
+
+message ValidateGraphRequest {
+  string graph_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ValidationError {
+  string code = 1;
+  string node_id = 2;
+  string field = 3;
+  string message = 4;
+}
+
+message ValidationWarning {
+  string code = 1;
+  string node_id = 2;
+  string field = 3;
+  string message = 4;
+}
+
+message ValidateGraphResponse {
+  repeated ValidationError errors = 1;
+  repeated ValidationWarning warnings = 2;
+  bool valid = 3;
+}
+
+// --- ListGraphTemplates ---
+
+message ListGraphTemplatesRequest {}
+
+message GraphTemplateInfo {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  string category = 4;
+  repeated TemplateNodeInfo nodes = 5;
+  repeated TemplateEdgeInfo edges = 6;
+  repeated StateFieldDef state_fields = 7;
+  string entry_point = 8;
+  string finish_point = 9;
+}
+
+message TemplateNodeInfo {
+  string node_id = 1;
+  string type = 2;
+  string label = 3;
+  string description = 4;
+}
+
+message TemplateEdgeInfo {
+  string from_node = 1;
+  string to_node = 2;
+  string type = 3;
+  string label = 4;
+}
+
+message ListGraphTemplatesResponse {
+  repeated GraphTemplateInfo templates = 1;
+}
+
+// --- CreateGraphFromTemplate ---
+
+message CreateGraphFromTemplateRequest {
+  string template_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string name = 2 [(google.api.field_behavior) = REQUIRED];
+  string description = 3;
+}
+
+// --- Task Model ---
+
+enum TaskStatus {
+  TASK_PENDING = 0;
+  TASK_CLAIMED = 1;
+  TASK_COMPLETE = 2;
+  TASK_BLOCKED = 3;
+  TASK_REVIEW_REQUIRED = 4;
+  TASK_FAILED = 5;
+  TASK_TIMED_OUT = 6;
+  TASK_CANCELLED = 7;
+  TASK_CRASHED = 8;
+  TASK_PENDING_ASSIGNMENT = 9;
+}
+
+message Task {
+  string task_id = 1;
+  string node_id = 2;
+  string execution_id = 3;
+  string assignee = 4;
+  TaskStatus status = 5;
+  string context = 6;
+  string input = 7;
+  string output = 8;
+  string summary = 9;
+  string metadata = 10;
+  google.protobuf.Timestamp created_at = 11;
+  google.protobuf.Timestamp claimed_at = 12;
+  google.protobuf.Timestamp completed_at = 13;
+  string required_role = 14;
+  string assignment_mode = 15;
+}
+
+message TaskComment {
+  string comment_id = 1;
+  string task_id = 2;
+  string author = 3;
+  string content = 4;
+  string type = 5;
+  google.protobuf.Timestamp created_at = 6;
+}
+
+message TaskLog {
+  string log_id = 1;
+  string task_id = 2;
+  string stream = 3;
+  string content = 4;
+  string level = 5;
+  google.protobuf.Timestamp timestamp = 6;
+}
+
+message TaskRun {
+  string run_id = 1;
+  string task_id = 2;
+  google.protobuf.Timestamp started_at = 3;
+  google.protobuf.Timestamp finished_at = 4;
+  int32 exit_code = 5;
+  string log_ref = 6;
+}
+
+message TaskEvent {
+  string event_id = 1;
+  string task_id = 2;
+  string event_type = 3;
+  string source_node = 4;
+  string description = 5;
+  google.protobuf.Timestamp timestamp = 6;
+}
+
+message CircuitBreakerPolicy {
+  int32 failure_threshold = 1;
+  int32 reset_timeout_seconds = 2;
+  string fallback_node = 3;
+}
+
+message WebhookConfig {
+  string url = 1;
+  string event_type = 2;
+  map<string, string> headers = 3;
+}
+
+// --- ListTasks ---
+
+message ListTasksRequest {
+  string execution_id = 1 [(google.api.field_behavior) = REQUIRED];
+  TaskStatus status_filter = 2;
+  int32 page_size = 3;
+  string page_token = 4;
+}
+
+message ListTasksResponse {
+  repeated Task items = 1;
+  string next_page_token = 2;
+}
+
+// --- GetTask ---
+
+message GetTaskRequest {
+  string task_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message GetTaskResponse {
+  Task task = 1;
+}
+
+// --- ClaimTask ---
+
+message ClaimTaskRequest {
+  string task_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string agent_key = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ClaimTaskResponse {
+  Task task = 1;
+}
+
+// --- SubmitTaskResult ---
+
+message SubmitTaskResultRequest {
+  string task_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string output = 2;
+  string summary = 3;
+  string metadata = 4;
+}
+
+message SubmitTaskResultResponse {
+  Task task = 1;
+}
+
+// --- Heartbeat ---
+
+message HeartbeatRequest {
+  string task_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string agent_key = 2 [(google.api.field_behavior) = REQUIRED];
+  string metadata = 3;
+}
+
+message HeartbeatResponse {
+  bool acknowledged = 1;
+  int32 lease_extension_seconds = 2;
+}
+
+// --- ReportBlocked ---
+
+message ReportBlockedRequest {
+  string task_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string reason = 2;
+  string metadata = 3;
+}
+
+message ReportBlockedResponse {
+  Task task = 1;
+}
+
+// --- ListTaskComments ---
+
+message ListTaskCommentsRequest {
+  string task_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListTaskCommentsResponse {
+  repeated TaskComment comments = 1;
+}
+
+// --- AddTaskComment ---
+
+message AddTaskCommentRequest {
+  string task_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string author = 2 [(google.api.field_behavior) = REQUIRED];
+  string content = 3 [(google.api.field_behavior) = REQUIRED];
+  string type = 4;
+}
+
+message AddTaskCommentResponse {
+  TaskComment comment = 1;
+}
+
+// --- ListTaskLogs ---
+
+message ListTaskLogsRequest {
+  string task_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string stream = 2;
+  string level = 3;
+  int32 page_size = 4;
+}
+
+message ListTaskLogsResponse {
+  repeated TaskLog logs = 1;
+}
+
+// --- ListTaskRuns ---
+
+message ListTaskRunsRequest {
+  string task_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListTaskRunsResponse {
+  repeated TaskRun runs = 1;
+}
+
+// --- ListTaskEvents ---
+
+message ListTaskEventsRequest {
+  string execution_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string task_id = 2;
+  string event_type = 3;
+  int32 page_size = 4;
+}
+
+message ListTaskEventsResponse {
+  repeated TaskEvent events = 1;
+}
+
+// --- Service ---
+
+service GraphService {
+  rpc CreateGraph(CreateGraphRequest) returns (CreateGraphResponse) {
+    option (google.api.http) = {
+      post: "/v1/graphs"
+      body: "*"
+    };
+  }
+  rpc GetGraph(GetGraphRequest) returns (GetGraphResponse) {
+    option (google.api.http) = {get: "/v1/graphs/{id}"};
+  }
+  rpc ListGraphs(ListGraphsRequest) returns (ListGraphsResponse) {
+    option (google.api.http) = {get: "/v1/graphs"};
+  }
+  rpc UpdateGraph(UpdateGraphRequest) returns (UpdateGraphResponse) {
+    option (google.api.http) = {
+      put: "/v1/graphs/{id}"
+      body: "*"
+    };
+  }
+  rpc DeleteGraph(DeleteGraphRequest) returns (DeleteGraphResponse) {
+    option (google.api.http) = {delete: "/v1/graphs/{id}"};
+  }
+  rpc ExecuteGraph(ExecuteGraphRequest) returns (ExecuteGraphResponse) {
+    option (google.api.http) = {
+      post: "/v1/graphs/{graph_id}/executions"
+      body: "*"
+    };
+  }
+  rpc GetGraphExecution(GetGraphExecutionRequest) returns (GetGraphExecutionResponse) {
+    option (google.api.http) = {get: "/v1/graph/executions/{execution_id}"};
+  }
+  rpc ListGraphExecutions(ListGraphExecutionsRequest) returns (ListGraphExecutionsResponse) {
+    option (google.api.http) = {get: "/v1/graphs/{graph_id}/executions"};
+  }
+  rpc CancelGraphExecution(CancelGraphExecutionRequest) returns (CancelGraphExecutionResponse) {
+    option (google.api.http) = {
+      post: "/v1/graph/executions/{execution_id}/cancel"
+      body: "*"
+    };
+  }
+  rpc ResumeGraph(ResumeGraphRequest) returns (ResumeGraphResponse) {
+    option (google.api.http) = {
+      post: "/v1/graph/executions/{execution_id}/resume"
+      body: "*"
+    };
+  }
+  rpc TimeTravelGraph(TimeTravelGraphRequest) returns (TimeTravelGraphResponse) {
+    option (google.api.http) = {
+      post: "/v1/graph/executions/{execution_id}/time-travel"
+      body: "*"
+    };
+  }
+  rpc VisualizeGraph(VisualizeGraphRequest) returns (VisualizeGraphResponse) {
+    option (google.api.http) = {get: "/v1/graphs/{graph_id}/visualize"};
+  }
+  rpc ListCheckpoints(ListCheckpointsRequest) returns (ListCheckpointsResponse) {
+    option (google.api.http) = {get: "/v1/graph/executions/{execution_id}/checkpoints"};
+  }
+  rpc GetStateSnapshot(GetStateSnapshotRequest) returns (GetStateSnapshotResponse) {
+    option (google.api.http) = {get: "/v1/graph/executions/{execution_id}/state-snapshot"};
+  }
+  rpc EditState(EditStateRequest) returns (EditStateResponse) {
+    option (google.api.http) = {
+      post: "/v1/graph/executions/{execution_id}/edit-state"
+      body: "*"
+    };
+  }
+  rpc ValidateGraph(ValidateGraphRequest) returns (ValidateGraphResponse) {
+    option (google.api.http) = {
+      post: "/v1/graphs/{graph_id}/validate"
+      body: "*"
+    };
+  }
+  rpc ListGraphTemplates(ListGraphTemplatesRequest) returns (ListGraphTemplatesResponse) {
+    option (google.api.http) = {get: "/v1/graph/templates"};
+  }
+  rpc CreateGraphFromTemplate(CreateGraphFromTemplateRequest) returns (CreateGraphResponse) {
+    option (google.api.http) = {
+      post: "/v1/graph/from-template"
+      body: "*"
+    };
+  }
+  rpc ListTasks(ListTasksRequest) returns (ListTasksResponse) {
+    option (google.api.http) = {get: "/v1/graph/executions/{execution_id}/tasks"};
+  }
+  rpc GetTask(GetTaskRequest) returns (GetTaskResponse) {
+    option (google.api.http) = {get: "/v1/graph/tasks/{task_id}"};
+  }
+  rpc ClaimTask(ClaimTaskRequest) returns (ClaimTaskResponse) {
+    option (google.api.http) = {
+      post: "/v1/graph/tasks/{task_id}/claim"
+      body: "*"
+    };
+  }
+  rpc SubmitTaskResult(SubmitTaskResultRequest) returns (SubmitTaskResultResponse) {
+    option (google.api.http) = {
+      post: "/v1/graph/tasks/{task_id}/submit"
+      body: "*"
+    };
+  }
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse) {
+    option (google.api.http) = {
+      post: "/v1/graph/tasks/{task_id}/heartbeat"
+      body: "*"
+    };
+  }
+  rpc ReportBlocked(ReportBlockedRequest) returns (ReportBlockedResponse) {
+    option (google.api.http) = {
+      post: "/v1/graph/tasks/{task_id}/blocked"
+      body: "*"
+    };
+  }
+  rpc ListTaskComments(ListTaskCommentsRequest) returns (ListTaskCommentsResponse) {
+    option (google.api.http) = {get: "/v1/graph/tasks/{task_id}/comments"};
+  }
+  rpc AddTaskComment(AddTaskCommentRequest) returns (AddTaskCommentResponse) {
+    option (google.api.http) = {
+      post: "/v1/graph/tasks/{task_id}/comments"
+      body: "*"
+    };
+  }
+  rpc ListTaskLogs(ListTaskLogsRequest) returns (ListTaskLogsResponse) {
+    option (google.api.http) = {get: "/v1/graph/tasks/{task_id}/logs"};
+  }
+  rpc ListTaskRuns(ListTaskRunsRequest) returns (ListTaskRunsResponse) {
+    option (google.api.http) = {get: "/v1/graph/tasks/{task_id}/runs"};
+  }
+  rpc ListTaskEvents(ListTaskEventsRequest) returns (ListTaskEventsResponse) {
+    option (google.api.http) = {get: "/v1/graph/executions/{execution_id}/task-events"};
+  }
+}

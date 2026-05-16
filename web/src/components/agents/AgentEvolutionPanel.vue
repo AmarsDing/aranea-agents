@@ -29,17 +29,77 @@
         </div>
         <q-btn-toggle v-model="rangeModel" rounded unelevated toggle-color="primary" :options="rangeOptions" />
       </div>
-      <div class="row q-col-gutter-md q-mt-sm">
-        <div v-for="card in metricCards" :key="card.title" class="col-12 col-md-4">
-          <q-card flat bordered class="metric-empty">
+      <q-inner-loading :showing="metricsLoading" label="加载指标..." />
+      <div v-if="!metricsLoading" class="row q-col-gutter-md q-mt-sm">
+        <div class="col-12 col-md-4">
+          <q-card flat bordered class="metric-card">
             <q-card-section>
-              <q-icon :name="card.icon" color="primary" size="26px" />
-              <div class="text-subtitle2 q-mt-sm">{{ card.title }}</div>
-              <div class="text-caption text-grey-7">{{ card.caption }}</div>
+              <div class="row items-center q-gutter-sm">
+                <q-icon name="query_stats" color="primary" size="26px" />
+                <div class="text-subtitle2">工具成功率</div>
+              </div>
+              <div class="text-h5 q-mt-sm">{{ formatPercent(metrics?.tool_success_rate) }}</div>
+              <div class="text-caption text-grey-7">共 {{ metrics?.total_episodes ?? 0 }} 个会话</div>
+            </q-card-section>
+          </q-card>
+        </div>
+        <div class="col-12 col-md-4">
+          <q-card flat bordered class="metric-card">
+            <q-card-section>
+              <div class="row items-center q-gutter-sm">
+                <q-icon name="travel_explore" color="primary" size="26px" />
+                <div class="text-subtitle2">检索质量</div>
+              </div>
+              <div class="text-h5 q-mt-sm">{{ formatPercent(metrics?.retrieval_quality) }}</div>
+              <div class="text-caption text-grey-7">记忆工具调用成功率</div>
+            </q-card-section>
+          </q-card>
+        </div>
+        <div class="col-12 col-md-4">
+          <q-card flat bordered class="metric-card">
+            <q-card-section>
+              <div class="row items-center q-gutter-sm">
+                <q-icon name="tips_and_updates" color="primary" size="26px" />
+                <div class="text-subtitle2">建议</div>
+              </div>
+              <div class="text-h5 q-mt-sm">{{ pendingSuggestionsCount }}</div>
+              <div class="text-caption text-grey-7">待处理改进建议</div>
             </q-card-section>
           </q-card>
         </div>
       </div>
+    </section>
+
+    <section v-if="suggestions.length > 0" class="settings-section q-mt-md">
+      <div class="section-title-row">
+        <div>
+          <div class="text-subtitle1 text-weight-bold">进化建议列表</div>
+          <div class="text-caption text-grey-7">基于指标自动生成的改进建议，可应用或拒绝。</div>
+        </div>
+      </div>
+      <q-list separator class="suggestion-list">
+        <q-item v-for="s in suggestions" :key="s.id" class="suggestion-item">
+          <q-item-section>
+            <q-item-label class="text-weight-medium">
+              <q-badge :color="suggestionTypeColor(s.type)" class="q-mr-sm" :label="s.type" />
+              {{ s.title }}
+            </q-item-label>
+            <q-item-label caption class="q-mt-xs">{{ s.content }}</q-item-label>
+            <q-item-label caption class="q-mt-xs text-grey-5">{{ formatDate(s.created_at) }}</q-item-label>
+          </q-item-section>
+          <q-item-section side>
+            <div v-if="s.status === 'pending'" class="row q-gutter-xs">
+              <q-btn flat round dense icon="check" color="positive" size="sm" :loading="applyingId === s.id" @click="onApply(s.id)">
+                <q-tooltip>应用</q-tooltip>
+              </q-btn>
+              <q-btn flat round dense icon="close" color="negative" size="sm" :loading="rejectingId === s.id" @click="onReject(s.id)">
+                <q-tooltip>拒绝</q-tooltip>
+              </q-btn>
+            </div>
+            <q-badge v-else :color="s.status === 'applied' ? 'positive' : 'grey'" :label="s.status" />
+          </q-item-section>
+        </q-item>
+      </q-list>
     </section>
 
     <section class="settings-section guardrails-section q-mt-md">
@@ -60,10 +120,19 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref, watch } from "vue";
 import type { EvolutionKey } from "./agentUi";
+import {
+  getAgentEvolutionMetrics,
+  getAgentEvolutionSuggestions,
+  applyEvolutionSuggestion,
+  rejectEvolutionSuggestion,
+  type EvolutionMetrics,
+  type EvolutionSuggestion
+} from "../../features/agents/api";
 
 const props = defineProps<{
+  agentId: string;
   evolution: Record<EvolutionKey, boolean>;
   guardrails: {
     max_change_per_period: number;
@@ -89,11 +158,92 @@ const evolutionToggles: Array<{ key: EvolutionKey; title: string; caption: strin
   { key: "evolution_metrics_enabled", title: "进化指标", caption: "记录工具效果、检索质量、反馈等。" },
   { key: "evolution_suggestions_enabled", title: "进化建议", caption: "基于指标生成改进建议。" }
 ];
-const metricCards = [
-  { title: "工具成功率", icon: "query_stats", caption: "在处理足够请求后展示工具调用成功率。" },
-  { title: "检索质量", icon: "travel_explore", caption: "记忆检索与向量命中质量将在这里展示。" },
-  { title: "建议", icon: "tips_and_updates", caption: "每日分析任务生成后展示改进建议。" }
-];
+
+const metricsLoading = ref(false);
+const metrics = ref<EvolutionMetrics | null>(null);
+const suggestions = ref<EvolutionSuggestion[]>([]);
+const applyingId = ref<string | null>(null);
+const rejectingId = ref<string | null>(null);
+
+const pendingSuggestionsCount = computed(() => suggestions.value.filter((s) => s.status === "pending").length);
+
+function formatPercent(v: number | undefined): string {
+  if (v === undefined || v === null) return "—";
+  return (v * 100).toFixed(1) + "%";
+}
+
+function formatDate(iso: string): string {
+  if (!iso) return "";
+  try {
+    return new Date(iso).toLocaleDateString();
+  } catch {
+    return iso;
+  }
+}
+
+function suggestionTypeColor(type: string): string {
+  switch (type) {
+    case "persona":
+      return "purple";
+    case "prompt":
+      return "blue";
+    case "skill":
+      return "teal";
+    default:
+      return "grey";
+  }
+}
+
+async function fetchMetrics() {
+  if (!props.agentId) return;
+  metricsLoading.value = true;
+  try {
+    metrics.value = await getAgentEvolutionMetrics(props.agentId, props.range);
+  } catch {
+    metrics.value = null;
+  } finally {
+    metricsLoading.value = false;
+  }
+}
+
+async function fetchSuggestions() {
+  if (!props.agentId) return;
+  try {
+    suggestions.value = await getAgentEvolutionSuggestions(props.agentId, "pending");
+  } catch {
+    suggestions.value = [];
+  }
+}
+
+async function onApply(id: string) {
+  applyingId.value = id;
+  try {
+    await applyEvolutionSuggestion(props.agentId, id);
+    await fetchSuggestions();
+    await fetchMetrics();
+  } finally {
+    applyingId.value = null;
+  }
+}
+
+async function onReject(id: string) {
+  rejectingId.value = id;
+  try {
+    await rejectEvolutionSuggestion(props.agentId, id);
+    await fetchSuggestions();
+  } finally {
+    rejectingId.value = null;
+  }
+}
+
+watch(
+  () => [props.agentId, props.range],
+  () => {
+    fetchMetrics();
+    fetchSuggestions();
+  },
+  { immediate: true }
+);
 </script>
 
 <style scoped>
@@ -139,7 +289,7 @@ const metricCards = [
   min-height: 68px;
 }
 
-.metric-empty {
+.metric-card {
   min-height: 136px;
   border-color: var(--glass-border);
   border-radius: 18px;
@@ -153,10 +303,23 @@ const metricCards = [
     background 180ms ease;
 }
 
-.metric-empty:hover {
+.metric-card:hover {
   transform: translateY(-2px);
   border-color: var(--glass-border-hover, var(--glass-border));
   background: var(--glass-surface-hover);
+}
+
+.suggestion-list {
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--glass-elevated);
+  backdrop-filter: blur(var(--glass-blur-default));
+  -webkit-backdrop-filter: blur(var(--glass-blur-default));
+}
+
+.suggestion-item {
+  min-height: 80px;
 }
 
 .guardrails-section {

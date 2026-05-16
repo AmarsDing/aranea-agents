@@ -1,8 +1,4 @@
 export default {
-  adk: {
-    sseError: "流式连接失败: {msg}",
-    wsError: "WebSocket 错误"
-  },
   common: {
     appTitle: "Arenea Agent Orchestrator",
     placeholder: "此区域内容将在后续版本完善。",
@@ -139,6 +135,7 @@ export default {
     agents: "Agent 管理",
     agentCategories: "Agent 分类",
     team: "Team 管理",
+    graphs: "Graph 工作流",
     models: "模型管理",
     channels: "Channel 管理",
     mcp: "MCP 管理",

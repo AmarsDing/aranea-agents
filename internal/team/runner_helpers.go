@@ -10,6 +10,7 @@ import (
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 	"aranea-agents/pkg/strutil"
 
 	"github.com/google/uuid"
@@ -50,8 +51,6 @@ func extractOpts(req *chatv1.SendChatMessageRequest) (dialogMode, prov, mod stri
 	return strings.TrimSpace(o.GetDialogMode()), strings.TrimSpace(o.GetProvider()), strings.TrimSpace(o.GetModel()), len(o.Attachments)
 }
 
-
-
 func mergeTeamUserTurnMetaJSON(userOpts string, displayContent, sendText string) (string, error) {
 	displayContent = strings.TrimSpace(displayContent)
 	sendText = strings.TrimSpace(sendText)
@@ -78,11 +77,14 @@ func mergeTeamUserTurnMetaJSON(userOpts string, displayContent, sendText string)
 	return string(out), nil
 }
 
-func publishTeamMonitor(ctx context.Context, b *biz.MonitorLogBroker, level, msg string) {
-	if b == nil || strings.TrimSpace(msg) == "" {
+func publishTeamMonitor(ctx context.Context, bus event.Bus, level, msg, sessionID string) {
+	if bus == nil || strings.TrimSpace(msg) == "" {
 		return
 	}
-	b.Publish(ctx, level, msg, "team-runner")
+	env := event.NewEnvelope(event.EnvelopeTypeLog, "team-runner", sessionID)
+	env.Metadata = map[string]any{"level": level, "source": "team-runner"}
+	env.Content = &event.EnvelopeContent{Text: msg}
+	bus.Publish(ctx, env)
 }
 
 func (r *Runner) finishRunErr(ctx context.Context, run *biz.TeamRun, t0 time.Time, msg string) {
@@ -94,29 +96,19 @@ func (r *Runner) finishRunErr(ctx context.Context, run *biz.TeamRun, t0 time.Tim
 	run.FinishedAt = agent.RFC3339Now()
 	run.DurationMS = int(time.Since(t0).Milliseconds())
 	_ = r.teams.UpdateTeamRun(ctx, *run)
-	if r.td.TeamSSE != nil {
+	if r.td.EventBus != nil {
 		cp := *run
-		r.td.TeamSSE.Publish(biz.TeamRunEvent{
-			Type:      "run_finished",
-			TeamID:    run.TeamID,
-			RunID:     run.ID,
-			SessionID: strings.TrimSpace(run.SessionID),
-			Run:       &cp,
-		})
-		r.td.TeamSSE.Publish(biz.TeamRunEvent{
-			Type:      "run.failed",
-			TeamID:    run.TeamID,
-			RunID:     run.ID,
-			SessionID: strings.TrimSpace(run.SessionID),
-			Run:       &cp,
-			Payload: map[string]any{
-				"error_message": msg,
-			},
-		})
+		env := event.NewEnvelope(event.EnvelopeTypeTeamRunFinished, "team-runner", strings.TrimSpace(run.SessionID))
+		env.TeamID = run.TeamID
+		env.Metadata = map[string]any{"run_id": run.ID, "run": cp}
+		r.td.EventBus.Publish(ctx, env)
+
+		failEnv := event.NewEnvelope(event.EnvelopeTypeTeamRunFailed, "team-runner", strings.TrimSpace(run.SessionID))
+		failEnv.TeamID = run.TeamID
+		failEnv.Metadata = map[string]any{"run_id": run.ID, "error_message": msg}
+		r.td.EventBus.Publish(ctx, failEnv)
 	}
-	if r.td.MonitorLogs != nil {
-		r.td.MonitorLogs.Publish(ctx, "WARN", fmt.Sprintf("team_run failed team_id=%s run_id=%s session_id=%s: %s", run.TeamID, run.ID, strings.TrimSpace(run.SessionID), msg), "team-runner")
-	}
+	publishTeamMonitor(ctx, r.td.EventBus, "WARN", fmt.Sprintf("team_run failed team_id=%s run_id=%s session_id=%s: %s", run.TeamID, run.ID, strings.TrimSpace(run.SessionID), msg), strings.TrimSpace(run.SessionID))
 }
 
 func (r *Runner) persistStep(ctx context.Context, run biz.TeamRun, teamID string, sortIdx int, m MemberDef, ag biz.Agent, userContent string, asst biz.ChatMessage) {
@@ -145,7 +137,10 @@ func (r *Runner) persistStep(ctx context.Context, run biz.TeamRun, teamID string
 	if err != nil {
 		return
 	}
-	if r.td.TeamSSE != nil {
-		r.td.TeamSSE.Publish(biz.TeamRunEvent{Type: "step_finished", TeamID: teamID, RunID: run.ID, SessionID: run.SessionID, Step: &saved})
+	if r.td.EventBus != nil {
+		env := event.NewEnvelope(event.EnvelopeTypeTeamStepFinished, ag.AgentKey, run.SessionID)
+		env.TeamID = teamID
+		env.Metadata = map[string]any{"run_id": run.ID, "step": saved}
+		r.td.EventBus.Publish(ctx, env)
 	}
 }

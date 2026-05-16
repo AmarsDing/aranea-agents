@@ -67,7 +67,7 @@ internal/biz/agent.go                ← Agent Usecase
 | `delta` | server→client | `{content: "..."}` 或 `{reasoning_content: "..."}` | 流式增量文本 |
 | `tool.call` | server→client | `{session_id, tool_name, tool_call_id}` | 工具调用通知（前端转换为 ToolUseEvent 渲染） |
 | `done` | server→client | `{agent_message: {id, content_markdown, ...}}` | 生成完成 |
-| `error` | server→client | `{message: "..."}` | 错误信息 |
+| `error` | server→client | `{message: "...", pending_id?: "..."}` | 错误信息（`pending_id` 为待执行消息失败时的 ID） |
 | `state_delta` | server→client | `{session_id, state_delta: {...}}` | Session State 增量 |
 | `extensions` | server→client | `{session_id, extensions: {...}}` | 事件扩展数据 |
 | `branch` | server→client | `{session_id, branch: "..."}` | 分支标识 |
@@ -110,6 +110,7 @@ internal/biz/agent.go                ← Agent Usecase
 - `runSingleAgentViaTRPC` 中 `Store(sessionID, runner)`，defer `Delete(sessionID)`
 - `RunTRPCUserTurn` 传入 `trpcagent.WithRequestID(sessionID)` 使 Runner 用 sessionID 作为 requestID
 - `StopGeneration` 优先尝试 `ManagedRunner.Cancel(sessionID)`，回退到 `Runner.Close()`
+- **客户端断连检测**：`proxyNativeStream` 中使用 `context.WithCancel` 监听 `req.Context().Done()`，当客户端断连时取消流式上下文；`streamWriter` 增加 `closed` 标志，写入失败时标记关闭；事件循环中所有 `stream.Emit` 检查返回值，写入失败时立即退出
 
 ### 1.9 待执行队列
 
@@ -121,6 +122,8 @@ internal/biz/agent.go                ← Agent Usecase
 - 前端可通过 `UpdatePendingMessage` 编辑待执行消息内容
 - `pendingEntry` 使用 UUID 生成唯一 ID
 - `processPendingQueue` 设置 600 秒超时控制，并支持取消传播
+- **容量限制**：每个 Session 最多 32 条待执行消息（`maxPendingPerSession`），超出时返回 `BadRequest` 错误
+- **错误上报**：待执行消息执行失败时通过 SSE `error` 事件通知前端（含 `pending_id`），而非静默丢弃
 
 ### 1.10 Session 标题自动生成
 
@@ -227,3 +230,10 @@ internal/biz/agent.go                ← Agent Usecase
 ### 4.3 已优化（本轮新增）
 
 - [x] `legacychat` 包及 `LEGACY_REST_ORIGIN` 已废弃并移除，所有 Chat 请求直接由 admin 进程内 trpc-agent-go 运行时处理
+- [x] **SSE 客户端断连检测**：`proxyNativeStream` 中使用 `context.WithCancel` 监听 `req.Context().Done()`，当客户端断连时取消流式上下文；`streamWriter` 增加 `closed` 标志，写入失败时标记关闭，后续 `writeEvent` 直接返回 `io.EOF`
+- [x] **SSE 事件循环提前退出**：`runSingleAgentViaTRPC` 事件循环中所有 `stream.Emit` 调用改为检查返回值，写入失败时立即退出循环，避免向已断连客户端持续发送事件
+- [x] **pendingQueue 大小限制**：`enqueuePending` 增加 `maxPendingPerSession=32` 上限，超出时返回空 ID 并返回 `BadRequest` 错误，防止内存泄漏
+- [x] **processPendingQueue 错误上报**：待执行消息执行失败时通过 SSE `error` 事件通知前端（含 `pending_id`），而非静默丢弃
+- [x] **toolEventMessage 重复定义消除**：提取 `toolEventToMessage` 到 `toolEventMarkdown.ts` 共享模块，`stores/app.ts` 和 `useChatWorkspace.ts` 统一使用
+- [x] **SSE error 事件回调化**：`handleStreamEvent` 中 `error` 事件不再直接 `throw`，改为通过 `onError` 回调通知上层，允许区分业务错误和网络错误；无 `onError` 回调时仍 throw 保持兼容
+- [x] **SSE state_delta/extensions 事件前端处理**：`SendMessageStreamCallbacks` 新增 `onStateDelta` 和 `onExtensions` 回调，`handleStreamEvent` 中解析并分发这两个事件

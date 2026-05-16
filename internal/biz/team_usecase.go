@@ -25,20 +25,10 @@ type TeamRepository interface {
 // TeamUsecase implements team catalog + run listing (writes to runs still happen in legacy chat stack).
 type TeamUsecase struct {
 	repo TeamRepository
-	runs *TeamRunEventBroker
 }
 
-// NewTeamUsecase constructs the usecase.
-func NewTeamUsecase(repo TeamRepository, runs *TeamRunEventBroker) *TeamUsecase {
-	return &TeamUsecase{repo: repo, runs: runs}
-}
-
-// PublishTeamRunEvent forwards to SSE broker when wired (same process as SSE server).
-func (u *TeamUsecase) PublishTeamRunEvent(ev TeamRunEvent) {
-	if u == nil || u.runs == nil {
-		return
-	}
-	u.runs.Publish(ev)
+func NewTeamUsecase(repo TeamRepository) *TeamUsecase {
+	return &TeamUsecase{repo: repo}
 }
 
 func firstNonEmptyTeam(a, b string) string {

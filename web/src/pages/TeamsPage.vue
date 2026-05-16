@@ -94,7 +94,7 @@ import {
   listTeamRuns,
   listTeamRunSteps,
   listTeams,
-  subscribeTeamRunEvents,
+  subscribeTeamRunEventsWs,
   updateTeam,
   type Team,
   type TeamDefinition,
@@ -130,13 +130,13 @@ const selectedTeam = ref<Team | null>(null);
 const runs = ref<TeamRun[]>([]);
 const stepsByRun = ref<Record<string, TeamRunStep[]>>({});
 const stepsLoading = ref<Record<string, boolean>>({});
-let runEventsSource: EventSource | null = null;
+let runEventsSource: ReturnType<typeof subscribeTeamRunEventsWs> | null = null;
 
 const form = reactive({
   team_key: "",
   display_name: "",
   status: "active",
-  adk_app_name: ""
+  app_name: ""
 });
 
 const definition = reactive<TeamDefinition>({
@@ -198,7 +198,7 @@ function openRouteEdit() {
 function openCreate() {
   editingId.value = "";
   selectedTeamTemplateKey.value = null;
-  Object.assign(form, { team_key: "", display_name: "", status: "active", adk_app_name: "" });
+  Object.assign(form, { team_key: "", display_name: "", status: "active", app_name: "" });
   Object.assign(definition, defaultDefinition());
   editorOpen.value = true;
 }
@@ -206,7 +206,7 @@ function openCreate() {
 function openEdit(team: Team) {
   editingId.value = team.id;
   selectedTeamTemplateKey.value = null;
-  Object.assign(form, { team_key: team.team_key, display_name: team.display_name, status: team.status, adk_app_name: team.adk_app_name });
+  Object.assign(form, { team_key: team.team_key, display_name: team.display_name, status: team.status, app_name: team.app_name });
   Object.assign(definition, parseDefinition(team));
   editorOpen.value = true;
 }
@@ -271,7 +271,7 @@ async function save() {
       team_key: form.team_key,
       display_name: form.display_name,
       status: form.status,
-      adk_app_name: form.adk_app_name || form.team_key,
+      app_name: form.app_name || form.team_key,
       definition_json: definitionJSON.value
     };
     const saved = editingId.value ? await updateTeam(editingId.value, payload) : await createTeam(payload);
@@ -335,7 +335,8 @@ async function loadRunSteps(runID: string) {
 
 function openRunEvents(teamID: string) {
   closeRunEvents();
-  runEventsSource = subscribeTeamRunEvents(
+  runEventsSource = subscribeTeamRunEventsWs(
+    "team-monitor",
     teamID,
     (event) => {
       runEventsConnected.value = true;
@@ -345,9 +346,6 @@ function openRunEvents(teamID: string) {
       runEventsConnected.value = false;
     }
   );
-  runEventsSource.onopen = () => {
-    runEventsConnected.value = true;
-  };
 }
 
 function closeRunEvents() {

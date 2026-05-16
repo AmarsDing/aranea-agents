@@ -58,6 +58,7 @@ type Session struct {
 	ArchivedAt                 string
 	DeletedAt                  string
 	RunnerSnapshotJSON         string
+	StateJSON                  string
 	MetadataJSON               string
 }
 
@@ -204,6 +205,10 @@ type SessionRepository interface {
 	ListSessionSummaries(ctx context.Context, sessionID string) ([]SessionSummary, error)
 	LatestSessionSummaryTime(ctx context.Context, sessionID string) (string, error)
 	UpdateSessionListSummary(ctx context.Context, sessionID, summary string) error
+	// GetSessionState reads the session state KV store (state_json column).
+	GetSessionState(ctx context.Context, sessionID string) (map[string]string, error)
+	// SaveSessionState writes the session state KV store (state_json column).
+	SaveSessionState(ctx context.Context, sessionID string, state map[string]string) error
 }
 
 // SessionUsecase handles session CRUD + timeline（不包含发送消息）.
@@ -320,6 +325,36 @@ func (uc *SessionUsecase) AppendChatMessage(ctx context.Context, sessionID strin
 // UpdateRunnerSnapshotJSON persists the Runner session snapshot.
 func (uc *SessionUsecase) UpdateRunnerSnapshotJSON(ctx context.Context, sessionID string, snapshotJSON string) error {
 	return uc.sessions.UpdateRunnerSnapshotJSON(ctx, sessionID, snapshotJSON)
+}
+
+func (uc *SessionUsecase) GetSessionState(ctx context.Context, sessionID string) (map[string]string, error) {
+	return uc.sessions.GetSessionState(ctx, sessionID)
+}
+
+func (uc *SessionUsecase) SaveSessionState(ctx context.Context, sessionID string, state map[string]string) error {
+	return uc.sessions.SaveSessionState(ctx, sessionID, state)
+}
+
+func (uc *SessionUsecase) ApplyStateDelta(ctx context.Context, sessionID string, delta EnvelopeStateDelta) error {
+	if delta.Path == "" {
+		return nil
+	}
+	state, err := uc.sessions.GetSessionState(ctx, sessionID)
+	if err != nil {
+		return err
+	}
+	switch delta.Operation {
+	case "set":
+		state[delta.Path] = delta.ValueJSON
+	case "append":
+		existing, _ := state[delta.Path]
+		state[delta.Path] = existing + delta.ValueJSON
+	case "delete":
+		delete(state, delta.Path)
+	default:
+		state[delta.Path] = delta.ValueJSON
+	}
+	return uc.sessions.SaveSessionState(ctx, sessionID, state)
 }
 
 // UpdateSessionContextFromLLMUsage refreshes sessions.context_used_ratio after a native LLM turn.

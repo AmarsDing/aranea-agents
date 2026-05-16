@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 	"aranea-agents/pkg/strutil"
 
 	"github.com/google/uuid"
@@ -22,12 +23,11 @@ import (
 
 // Deps wires cron execution to Ent repos + session create + chat HTTP POST.
 type Deps struct {
-	Cron    biz.CronRepo
-	Session *biz.SessionUsecase
-	Teams   biz.TeamRepository
-	Agents  biz.AgentRepository
-	// TeamSSE optional: publish team cron completion hints to SSE clients.
-	TeamSSE *biz.TeamRunEventBroker
+	Cron     biz.CronRepo
+	Session  *biz.SessionUsecase
+	Teams    biz.TeamRepository
+	Agents   biz.AgentRepository
+	EventBus event.Bus
 }
 
 // Runner executes due cron_task rows on an interval (ported from pkg/backend CronRunner).
@@ -293,7 +293,12 @@ func cronChatPOSTRoot() string {
 }
 
 func (r *Runner) publishTeamCronMaybe(ctx context.Context, teamID string) {
-	biz.HintTeamRunSSE(ctx, r.deps.TeamSSE, r.deps.Teams, teamID)
+	if r.deps.EventBus != nil {
+		env := event.NewEnvelope(event.EnvelopeTypeTeamRunFinished, "cron", "")
+		env.TeamID = teamID
+		env.Metadata = map[string]any{"hint": true}
+		r.deps.EventBus.Publish(ctx, env)
+	}
 }
 
 func (r *Runner) postChat(ctx context.Context, in sendMessagePayload) (cronDispatchResult, error) {

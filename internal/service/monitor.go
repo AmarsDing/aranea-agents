@@ -135,15 +135,15 @@ func (s *MonitorService) GetMonitorLogs(context.Context, *v1.GetMonitorLogsReque
 	now := time.Now().UTC().Format(time.RFC3339)
 	return &v1.GetMonitorLogsResponse{
 		Items: []*v1.MonitorLogLine{{
-			Id:        "sse-hint",
+			Id:        "ws-hint",
 			Time:      now,
 			Level:     "INFO",
-			Message:   "Live log lines are pushed via tx7do SSE (server.sse port); GET snapshot here lists hints only.",
+			Message:   "Live log lines are pushed via WebSocket (server.ws port); GET snapshot here lists hints only.",
 			Source:    "monitor",
 			CreatedAt: now,
 		}},
 		Enabled: true,
-		Message: "Use EventSource relative path /sse/monitor/logs/stream (dev proxy to server.sse) or same path behind a gateway that forwards /sse to the SSE listener.",
+		Message: "Use WebSocket /v1/ws to subscribe to monitor channels (logs, events).",
 	}, nil
 }
 

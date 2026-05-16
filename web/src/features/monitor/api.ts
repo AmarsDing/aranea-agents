@@ -1,5 +1,4 @@
 import { createMonitorService } from "../../services/index";
-import { getSseBaseURL } from "../../config/runtime";
 import type {
   AuditLog,
   ModelUsageQuery,
@@ -10,6 +9,8 @@ import type {
   TeamRunEvent
 } from "./types";
 import { listModelUsageEvents } from "../usage/api";
+import { useEnvelopeStream } from "../chat/useEnvelopeStream";
+import type { Envelope } from "../chat/envelope";
 
 const monitor = createMonitorService();
 
@@ -95,49 +96,83 @@ export async function getMonitorLogs(): Promise<MonitorLogSnapshot> {
   };
 }
 
-export function subscribeMonitorLogs(
+export function subscribeMonitorLogsWs(
+  sessionId: string,
   onLine: (line: MonitorLogLine) => void,
-  onError?: (error: Event) => void,
-  onOpen?: () => void
-): EventSource {
-  const source = new EventSource(`${getSseBaseURL()}/monitor/logs/stream`);
-  source.onopen = () => {
-    onOpen?.();
-  };
-  source.addEventListener("log", (event) => {
-    onLine(JSON.parse((event as MessageEvent).data) as MonitorLogLine);
-  });
-  source.onerror = (event) => onError?.(event);
-  return source;
-}
+  onError?: (error: string) => void,
+  onConnected?: () => void
+) {
+  const stream = useEnvelopeStream({ sessionId, channels: ["monitor", "system"], autoConnect: false, logEnabled: false });
 
-export function subscribeMonitorRuntimeEvents(
-  onEvent: (event: TeamRunEvent) => void,
-  onError?: (error: Event) => void,
-  onOpen?: () => void
-): EventSource {
-  const source = new EventSource(`${getSseBaseURL()}/team-run-events`);
-  source.onopen = () => {
-    onOpen?.();
-  };
-  for (const eventName of [
-    "run_started",
-    "step_finished",
-    "run_finished",
-    "tool.call",
-    "tool.result",
-    "run.failed",
-    "intent_pass"
-  ]) {
-    source.addEventListener(eventName, (event) => {
-      onEvent(JSON.parse((event as MessageEvent).data) as TeamRunEvent);
+  stream.onType("log", (env: Envelope) => {
+    const level = (env.metadata?.level as MonitorLogLine["level"]) ?? "INFO";
+    onLine({
+      id: env.id,
+      time: env.timestamp,
+      level,
+      message: env.content?.text ?? "",
+      source: env.author ?? "monitor",
+      created_at: env.timestamp
     });
-  }
-  source.onerror = (event) => onError?.(event);
-  return source;
+  });
+
+  stream.onType("error", (env: Envelope) => {
+    onError?.(env.error?.message ?? "monitor ws error");
+  });
+
+  stream.onType("connected", () => {
+    onConnected?.();
+  });
+
+  stream.connect();
+
+  return {
+    close: () => stream.disconnect(),
+    connected: stream.connected,
+    enableLog: (enabled: boolean) => stream.enableLog(enabled),
+  };
 }
 
-/** Trace 列表语义：`usage/v1` 用量事件（对齐后端 `/v1/usage/events`，替代遗留 `/model-usage/events`）。 */
+export function subscribeMonitorRuntimeEventsWs(
+  sessionId: string,
+  onEvent: (event: TeamRunEvent) => void,
+  onError?: (error: string) => void
+) {
+  const stream = useEnvelopeStream({ sessionId, channels: ["monitor", "system"], autoConnect: false, logEnabled: false });
+
+  stream.onType("log", (env: Envelope) => {
+    const eventType = (env.metadata?.event_type as string) ?? env.type;
+    onEvent({
+      type: eventType,
+      team_id: env.team_id ?? "",
+      run_id: "",
+      session_id: env.session_id,
+      payload: env.metadata ?? {}
+    });
+  });
+
+  stream.onType("intent_pass", (env: Envelope) => {
+    onEvent({
+      type: "intent_pass",
+      team_id: env.team_id ?? "",
+      run_id: "",
+      session_id: env.session_id,
+      payload: env.metadata ?? {}
+    });
+  });
+
+  stream.onType("error", (env: Envelope) => {
+    onError?.(env.error?.message ?? "monitor ws error");
+  });
+
+  stream.connect();
+
+  return {
+    close: () => stream.disconnect(),
+    connected: stream.connected
+  };
+}
+
 export async function listMonitorTraceEvents(query: ModelUsageQuery = {}): Promise<MonitorTraceEvent[]> {
   const rows = await listModelUsageEvents(query);
   return rows as MonitorTraceEvent[];

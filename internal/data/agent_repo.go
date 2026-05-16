@@ -77,7 +77,7 @@ func entAgentToBiz(a *ent.Agent) biz.Agent {
 	if a == nil {
 		return biz.Agent{}
 	}
-	return biz.Agent{
+	agent := biz.Agent{
 		ID:                 a.ID,
 		AgentKey:           a.AgentKey,
 		DisplayName:        a.DisplayName,
@@ -97,6 +97,8 @@ func entAgentToBiz(a *ent.Agent) biz.Agent {
 		UpdatedAt:          a.UpdatedAt,
 		DeletedAt:          a.DeletedAt,
 	}
+	_ = json.Unmarshal([]byte(a.RolesJSON), &agent.Roles)
+	return agent
 }
 
 func entRuntimeToBiz(e *ent.AgentRuntimeSetting) biz.AgentRuntimeSettings {
@@ -183,6 +185,11 @@ func entRuntimeToBiz(e *ent.AgentRuntimeSetting) biz.AgentRuntimeSettings {
 		EvoSystemPromptMaxAppends:         e.EvoSystemPromptMaxAppends,
 		SkillRuntimeJSON:                  e.SkillRuntimeJSON,
 		IntentPassEnabled:                 e.IntentPassEnabled,
+		ChannelID:                         e.ChannelID,
+		ChatID:                            e.ChatID,
+		Workspace:                         e.Workspace,
+		ReasoningMode:                     e.ReasoningMode,
+		ReasoningLevel:                    e.ReasoningLevel,
 		VariablesJSON:                     e.VariablesJSON,
 		ModelInstructionsJSON:             e.ModelInstructionsJSON,
 		ContextCompactionEnabled:          e.ContextCompactionEnabled,
@@ -297,6 +304,11 @@ func applyBizRuntimeToCreate(b *ent.AgentRuntimeSettingCreate, v biz.AgentRuntim
 		SetEvoSystemPromptMaxAppends(v.EvoSystemPromptMaxAppends).
 		SetSkillRuntimeJSON(normalizeSkillRuntimeJSON(v.SkillRuntimeJSON)).
 		SetIntentPassEnabled(v.IntentPassEnabled).
+		SetChannelID(v.ChannelID).
+		SetChatID(v.ChatID).
+		SetWorkspace(v.Workspace).
+		SetReasoningMode(v.ReasoningMode).
+		SetReasoningLevel(v.ReasoningLevel).
 		SetVariablesJSON(normalizeJSONObj(v.VariablesJSON)).
 		SetModelInstructionsJSON(normalizeJSONObj(v.ModelInstructionsJSON)).
 		SetContextCompactionEnabled(v.ContextCompactionEnabled).
