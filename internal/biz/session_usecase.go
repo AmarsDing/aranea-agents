@@ -70,10 +70,13 @@ type SessionSearchQuery struct {
 	Status        string
 	ContextStatus string
 	Keyword       string
+	UserID        string
 	Limit         int
 	Offset        int
 	Page          int
 	PageSize      int
+	SortBy        string
+	SortOrder     string
 }
 
 // SessionListResult is paged session search output.
@@ -177,12 +180,33 @@ type SessionTimeline struct {
 	Summary   SessionTimelineSummary
 }
 
+// SessionUpdateFields holds optional fields for a partial session update.
+type SessionUpdateFields struct {
+	Title           *string
+	TagsJSON        *string
+	Visibility      *string
+	MetadataJSON    *string
+	DialogMode      *string
+	DefaultProvider *string
+	DefaultModel    *string
+}
+
+// TimelineQuery holds optional pagination and filter parameters for timeline.
+type TimelineQuery struct {
+	Limit      int
+	Offset     int
+	KindFilter string
+	SortOrder  string
+}
+
 // SessionRepository persists sessions and reads timeline inputs（SQLite Ent）.
 type SessionRepository interface {
 	SearchSessions(ctx context.Context, q SessionSearchQuery) (SessionListResult, error)
 	CreateSession(ctx context.Context, s Session) (Session, error)
 	GetSessionByID(ctx context.Context, id string) (Session, error)
 	UpdateSessionTitle(ctx context.Context, id, title string) (Session, error)
+	UpdateSession(ctx context.Context, id string, fields SessionUpdateFields) (Session, error)
+	RestoreSession(ctx context.Context, id string) (Session, error)
 	ArchiveSession(ctx context.Context, id string) error
 	DeleteSession(ctx context.Context, id string) error
 	DeleteSessionsByAgentID(ctx context.Context, agentID string) error
@@ -271,6 +295,26 @@ func (uc *SessionUsecase) Rename(ctx context.Context, id, title string) (Session
 		return Session{}, validationErr("title is required")
 	}
 	return uc.sessions.UpdateSessionTitle(ctx, id, title)
+}
+
+func (uc *SessionUsecase) Update(ctx context.Context, id string, fields SessionUpdateFields) (Session, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return Session{}, validationErr("session id is required")
+	}
+	if fields.Title != nil {
+		v := strings.TrimSpace(*fields.Title)
+		fields.Title = &v
+	}
+	return uc.sessions.UpdateSession(ctx, id, fields)
+}
+
+func (uc *SessionUsecase) Restore(ctx context.Context, id string) (Session, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return Session{}, validationErr("session id is required")
+	}
+	return uc.sessions.RestoreSession(ctx, id)
 }
 
 func (uc *SessionUsecase) Archive(ctx context.Context, id string) error {
@@ -451,7 +495,7 @@ func (uc *SessionUsecase) generateTitleAsync(sessionID, content string) {
 	_, _ = uc.Rename(bgCtx, sessionID, title)
 }
 
-func (uc *SessionUsecase) Timeline(ctx context.Context, id string) (SessionTimeline, error) {
+func (uc *SessionUsecase) Timeline(ctx context.Context, id string, q TimelineQuery) (SessionTimeline, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return SessionTimeline{}, validationErr("session id is required")
@@ -485,8 +529,21 @@ func (uc *SessionUsecase) Timeline(ctx context.Context, id string) (SessionTimel
 	}
 
 	sort.SliceStable(items, func(i, j int) bool {
+		if q.SortOrder == "desc" {
+			return items[i].OccurredAt > items[j].OccurredAt
+		}
 		return items[i].OccurredAt < items[j].OccurredAt
 	})
+
+	if q.KindFilter != "" {
+		filtered := make([]SessionTimelineItem, 0, len(items))
+		for _, item := range items {
+			if item.Kind == q.KindFilter {
+				filtered = append(filtered, item)
+			}
+		}
+		items = filtered
+	}
 
 	summary := SessionTimelineSummary{Total: len(items)}
 	for _, item := range items {
@@ -500,6 +557,25 @@ func (uc *SessionUsecase) Timeline(ctx context.Context, id string) (SessionTimel
 		case "mcp":
 			summary.MCPCount++
 		}
+	}
+
+	if q.Limit > 0 || q.Offset > 0 {
+		limit := q.Limit
+		if limit <= 0 {
+			limit = len(items)
+		}
+		offset := q.Offset
+		if offset < 0 {
+			offset = 0
+		}
+		if offset > len(items) {
+			offset = len(items)
+		}
+		end := offset + limit
+		if end > len(items) {
+			end = len(items)
+		}
+		items = items[offset:end]
 	}
 
 	return SessionTimeline{

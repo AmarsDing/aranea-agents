@@ -123,6 +123,9 @@ func (r *sessionRepo) SearchSessions(ctx context.Context, q biz.SessionSearchQue
 	if q.TeamID != "" {
 		wheres = append(wheres, entsession.TeamIDEQ(q.TeamID))
 	}
+	if q.UserID != "" {
+		wheres = append(wheres, entsession.UserIDEQ(q.UserID))
+	}
 	if q.Status != "" {
 		wheres = append(wheres, entsession.StatusEQ(q.Status))
 	}
@@ -143,12 +146,10 @@ func (r *sessionRepo) SearchSessions(ctx context.Context, q biz.SessionSearchQue
 		return biz.SessionListResult{}, err
 	}
 
+	orderOpts := sessionSearchOrder(q.SortBy, q.SortOrder)
 	rows, err := c.Session.Query().
 		Where(wherePred).
-		Order(
-			entsession.ByLastMessageAt(entsql.OrderDesc()),
-			entsession.ByUpdatedAt(entsql.OrderDesc()),
-		).
+		Order(orderOpts...).
 		Limit(limit).
 		Offset(offset).
 		All(ctx)
@@ -261,6 +262,58 @@ func (r *sessionRepo) UpdateSessionTitle(ctx context.Context, id, title string) 
 		return biz.Session{}, err
 	}
 	return r.GetSessionByID(ctx, id)
+}
+
+func (r *sessionRepo) UpdateSession(ctx context.Context, id string, fields biz.SessionUpdateFields) (biz.Session, error) {
+	c := r.data.entClient
+	upd := c.Session.Update().
+		Where(entsession.IDEQ(id), entsession.DeletedAtEQ("")).
+		SetUpdatedAt(nowRFC3339())
+	if fields.Title != nil {
+		upd = upd.SetTitle(*fields.Title)
+	}
+	if fields.TagsJSON != nil {
+		upd = upd.SetTagsJSON(*fields.TagsJSON)
+	}
+	if fields.Visibility != nil {
+		upd = upd.SetVisibility(*fields.Visibility)
+	}
+	if fields.MetadataJSON != nil {
+		upd = upd.SetMetadataJSON(*fields.MetadataJSON)
+	}
+	if fields.DialogMode != nil {
+		upd = upd.SetDialogMode(*fields.DialogMode)
+	}
+	if fields.DefaultProvider != nil {
+		upd = upd.SetDefaultProvider(*fields.DefaultProvider)
+	}
+	if fields.DefaultModel != nil {
+		upd = upd.SetDefaultModel(*fields.DefaultModel)
+	}
+	_, err := upd.Save(ctx)
+	if err != nil {
+		return biz.Session{}, err
+	}
+	return r.GetSessionByID(ctx, id)
+}
+
+func (r *sessionRepo) RestoreSession(ctx context.Context, id string) (biz.Session, error) {
+	c := r.data.entClient
+	_, err := c.Session.Update().
+		Where(entsession.IDEQ(id)).
+		SetStatus("active").
+		SetArchivedAt("").
+		SetDeletedAt("").
+		SetUpdatedAt(nowRFC3339()).
+		Save(ctx)
+	if err != nil {
+		return biz.Session{}, err
+	}
+	row, err := c.Session.Get(ctx, id)
+	if err != nil {
+		return biz.Session{}, err
+	}
+	return entSessionToBiz(row), nil
 }
 
 func (r *sessionRepo) ArchiveSession(ctx context.Context, id string) error {
@@ -678,6 +731,28 @@ func (r *sessionRepo) AppendChatTurn(ctx context.Context, sessionID string, user
 		return rollback(err)
 	}
 	return nil
+}
+
+func sessionSearchOrder(sortBy, sortOrder string) []entsession.OrderOption {
+	dir := entsql.OrderDesc()
+	if strings.EqualFold(sortOrder, "asc") {
+		dir = entsql.OrderAsc()
+	}
+	switch strings.ToLower(strings.TrimSpace(sortBy)) {
+	case "created_at":
+		return []entsession.OrderOption{entsession.ByCreatedAt(dir)}
+	case "updated_at":
+		return []entsession.OrderOption{entsession.ByUpdatedAt(dir)}
+	case "last_message_at":
+		return []entsession.OrderOption{entsession.ByLastMessageAt(dir)}
+	case "title":
+		return []entsession.OrderOption{entsession.ByTitle(dir)}
+	default:
+		return []entsession.OrderOption{
+			entsession.ByLastMessageAt(entsql.OrderDesc()),
+			entsession.ByUpdatedAt(entsql.OrderDesc()),
+		}
+	}
 }
 
 func (r *sessionRepo) AppendChatMessage(ctx context.Context, sessionID string, msg biz.ChatMessage, bumpModelCall bool) error {

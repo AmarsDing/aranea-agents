@@ -27,49 +27,50 @@ func NewSessionService(uc *biz.SessionUsecase) *SessionService {
 
 func toProtoSession(s biz.Session) *v1.Session {
 	return &v1.Session{
-		Id:                      s.ID,
-		WorkspaceId:             s.WorkspaceID,
-		UserId:                  s.UserID,
-		OwnerType:               s.OwnerType,
-		AgentId:                 s.AgentID,
-		TeamId:                  s.TeamID,
-		Title:                   s.Title,
-		Summary:                 s.Summary,
-		TagsJson:                s.TagsJSON,
-		DialogMode:              s.DialogMode,
-		DefaultProvider:         s.DefaultProvider,
-		DefaultModel:            s.DefaultModel,
+		Id:                         s.ID,
+		WorkspaceId:                s.WorkspaceID,
+		UserId:                     s.UserID,
+		OwnerType:                  s.OwnerType,
+		AgentId:                    s.AgentID,
+		TeamId:                     s.TeamID,
+		Title:                      s.Title,
+		Summary:                    s.Summary,
+		TagsJson:                   s.TagsJSON,
+		DialogMode:                 s.DialogMode,
+		DefaultProvider:            s.DefaultProvider,
+		DefaultModel:               s.DefaultModel,
 		DefaultContextWindowTokens: int32(s.DefaultContextWindowTokens),
-		LastProvider:            s.LastProvider,
-		LastModel:               s.LastModel,
-		LastContextWindowTokens: int32(s.LastContextWindowTokens),
-		Status:                  s.Status,
-		Visibility:              s.Visibility,
-		MessageCount:            int32(s.MessageCount),
-		RunCount:                int32(s.RunCount),
-		ModelCallCount:          int32(s.ModelCallCount),
-		ToolCallCount:           int32(s.ToolCallCount),
-		SkillCallCount:          int32(s.SkillCallCount),
-		McpCallCount:            int32(s.MCPCallCount),
-		InputTokens:             int32(s.InputTokens),
-		OutputTokens:            int32(s.OutputTokens),
-		TotalTokens:             int32(s.TotalTokens),
-		TotalCostMicroUsd:       s.TotalCostMicroUSD,
-		AvgLatencyMs:            s.AvgLatencyMs,
-		ErrorCount:              int32(s.ErrorCount),
-		ContextUsedTokens:       int32(s.ContextUsedTokens),
-		ContextUsedRatio:        s.ContextUsedRatio,
-		MaxContextUsedRatio:     s.MaxContextUsedRatio,
-		ContextStatus:           s.ContextStatus,
-		FirstMessageAt:          s.FirstMessageAt,
-		LastMessageAt:           s.LastMessageAt,
-		LastRunAt:               s.LastRunAt,
-		CreatedAt:               s.CreatedAt,
-		UpdatedAt:               s.UpdatedAt,
-		ArchivedAt:              s.ArchivedAt,
-		DeletedAt:               s.DeletedAt,
-		RunnerSnapshotJson:      s.RunnerSnapshotJSON,
-		MetadataJson:            s.MetadataJSON,
+		LastProvider:               s.LastProvider,
+		LastModel:                  s.LastModel,
+		LastContextWindowTokens:    int32(s.LastContextWindowTokens),
+		Status:                     s.Status,
+		Visibility:                 s.Visibility,
+		MessageCount:               int32(s.MessageCount),
+		RunCount:                   int32(s.RunCount),
+		ModelCallCount:             int32(s.ModelCallCount),
+		ToolCallCount:              int32(s.ToolCallCount),
+		SkillCallCount:             int32(s.SkillCallCount),
+		McpCallCount:               int32(s.MCPCallCount),
+		InputTokens:                int32(s.InputTokens),
+		OutputTokens:               int32(s.OutputTokens),
+		TotalTokens:                int32(s.TotalTokens),
+		TotalCostMicroUsd:          s.TotalCostMicroUSD,
+		AvgLatencyMs:               s.AvgLatencyMs,
+		ErrorCount:                 int32(s.ErrorCount),
+		ContextUsedTokens:          int32(s.ContextUsedTokens),
+		ContextUsedRatio:           s.ContextUsedRatio,
+		MaxContextUsedRatio:        s.MaxContextUsedRatio,
+		ContextStatus:              s.ContextStatus,
+		FirstMessageAt:             s.FirstMessageAt,
+		LastMessageAt:              s.LastMessageAt,
+		LastRunAt:                  s.LastRunAt,
+		CreatedAt:                  s.CreatedAt,
+		UpdatedAt:                  s.UpdatedAt,
+		ArchivedAt:                 s.ArchivedAt,
+		DeletedAt:                  s.DeletedAt,
+		RunnerSnapshotJson:         s.RunnerSnapshotJSON,
+		MetadataJson:               s.MetadataJSON,
+		StateJson:                  s.StateJSON,
 	}
 }
 
@@ -135,10 +136,13 @@ func searchQueryFromProto(req *v1.SearchSessionsRequest) biz.SessionSearchQuery 
 		Status:        req.GetStatus(),
 		ContextStatus: req.GetContextStatus(),
 		Keyword:       req.GetKeyword(),
+		UserID:        req.GetUserId(),
 		Limit:         int(req.GetLimit()),
 		Offset:        int(req.GetOffset()),
 		Page:          int(req.GetPage()),
 		PageSize:      int(req.GetPageSize()),
+		SortBy:        req.GetSortBy(),
+		SortOrder:     req.GetSortOrder(),
 	}
 }
 
@@ -173,6 +177,8 @@ func (s *SessionService) CreateSession(ctx context.Context, req *v1.CreateSessio
 		DialogMode:      req.GetDialogMode(),
 		DefaultProvider: req.GetDefaultProvider(),
 		DefaultModel:    req.GetDefaultModel(),
+		TagsJSON:        req.GetTagsJson(),
+		MetadataJSON:    req.GetMetadataJson(),
 	}
 	created, err := s.uc.Create(ctx, in)
 	if err != nil {
@@ -200,7 +206,29 @@ func (s *SessionService) GetSession(ctx context.Context, req *v1.GetSessionReque
 
 // UpdateSession implements PATCH /v1/sessions/{id}.
 func (s *SessionService) UpdateSession(ctx context.Context, req *v1.UpdateSessionRequest) (*v1.Session, error) {
-	out, err := s.uc.Rename(ctx, req.GetId(), req.GetTitle())
+	var fields biz.SessionUpdateFields
+	if v := req.GetTitle(); v != "" {
+		fields.Title = &v
+	}
+	if v := req.GetTagsJson(); v != "" {
+		fields.TagsJSON = &v
+	}
+	if v := req.GetVisibility(); v != "" {
+		fields.Visibility = &v
+	}
+	if v := req.GetMetadataJson(); v != "" {
+		fields.MetadataJSON = &v
+	}
+	if v := req.GetDialogMode(); v != "" {
+		fields.DialogMode = &v
+	}
+	if v := req.GetDefaultProvider(); v != "" {
+		fields.DefaultProvider = &v
+	}
+	if v := req.GetDefaultModel(); v != "" {
+		fields.DefaultModel = &v
+	}
+	out, err := s.uc.Update(ctx, req.GetId(), fields)
 	if err != nil {
 		return nil, mapSessionErr(err)
 	}
@@ -223,23 +251,32 @@ func (s *SessionService) ArchiveSession(ctx context.Context, req *v1.ArchiveSess
 	return &emptypb.Empty{}, nil
 }
 
+// RestoreSession implements POST /v1/sessions/{id}/restore.
+func (s *SessionService) RestoreSession(ctx context.Context, req *v1.RestoreSessionRequest) (*v1.Session, error) {
+	out, err := s.uc.Restore(ctx, req.GetId())
+	if err != nil {
+		return nil, mapSessionErr(err)
+	}
+	return toProtoSession(out), nil
+}
+
 func toProtoChatMessageRow(m biz.ChatMessage) *v1.ChatMessageRow {
 	return &v1.ChatMessageRow{
-		Id:                 m.ID,
-		SessionId:          m.SessionID,
-		ParentMessageId:    m.ParentMessageID,
-		TurnIndex:          int32(m.TurnIndex),
-		Role:               m.Role,
-		ContentMarkdown:    m.ContentMarkdown,
-		ModelName:          m.ModelName,
-		TokenIn:            int32(m.TokenIn),
-		TokenOut:           int32(m.TokenOut),
-		LatencyMs:          int32(m.LatencyMS),
-		Status:             m.Status,
-		AttachmentsCount:   int32(m.AttachmentsCount),
-		OptionsJson:        m.OptionsJSON,
-		ErrorMessage:       m.ErrorMessage,
-		CreatedAt:          m.CreatedAt,
+		Id:               m.ID,
+		SessionId:        m.SessionID,
+		ParentMessageId:  m.ParentMessageID,
+		TurnIndex:        int32(m.TurnIndex),
+		Role:             m.Role,
+		ContentMarkdown:  m.ContentMarkdown,
+		ModelName:        m.ModelName,
+		TokenIn:          int32(m.TokenIn),
+		TokenOut:         int32(m.TokenOut),
+		LatencyMs:        int32(m.LatencyMS),
+		Status:           m.Status,
+		AttachmentsCount: int32(m.AttachmentsCount),
+		OptionsJson:      m.OptionsJSON,
+		ErrorMessage:     m.ErrorMessage,
+		CreatedAt:        m.CreatedAt,
 	}
 }
 
@@ -249,16 +286,39 @@ func (s *SessionService) ListSessionMessages(ctx context.Context, req *v1.ListSe
 	if err != nil {
 		return nil, mapSessionErr(err)
 	}
-	out := make([]*v1.ChatMessageRow, 0, len(rows))
-	for i := range rows {
-		out = append(out, toProtoChatMessageRow(rows[i]))
+	total := len(rows)
+	offset := int(req.GetOffset())
+	limit := int(req.GetLimit())
+	if offset < 0 {
+		offset = 0
 	}
-	return &v1.ListSessionMessagesResponse{Items: out}, nil
+	if offset > total {
+		offset = total
+	}
+	if limit <= 0 {
+		limit = total
+	}
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+	paged := rows[offset:end]
+	out := make([]*v1.ChatMessageRow, 0, len(paged))
+	for i := range paged {
+		out = append(out, toProtoChatMessageRow(paged[i]))
+	}
+	return &v1.ListSessionMessagesResponse{Items: out, Total: int32(total)}, nil
 }
 
 // GetSessionTimeline implements GET /v1/sessions/{id}/timeline.
 func (s *SessionService) GetSessionTimeline(ctx context.Context, req *v1.GetSessionTimelineRequest) (*v1.SessionTimeline, error) {
-	out, err := s.uc.Timeline(ctx, req.GetId())
+	q := biz.TimelineQuery{
+		Limit:      int(req.GetLimit()),
+		Offset:     int(req.GetOffset()),
+		KindFilter: req.GetKindFilter(),
+		SortOrder:  req.GetSortOrder(),
+	}
+	out, err := s.uc.Timeline(ctx, req.GetId(), q)
 	if err != nil {
 		return nil, mapSessionErr(err)
 	}

@@ -173,7 +173,7 @@ message ChatMessageRow {
   string content_markdown = 6;
   string model_name = 7;
   int32 token_in = 8;
-  string token_out = 9;
+  int32 token_out = 9;
   int32 latency_ms = 10;
   string status = 11;
   int32 attachments_count = 12;
