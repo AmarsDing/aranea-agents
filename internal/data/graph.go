@@ -2,7 +2,6 @@ package data
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 
@@ -295,15 +294,9 @@ func NewGraphCheckpointSaver(data *Data) (*graphtrpc.SQLiteCheckpointSaver, erro
 	if data == nil {
 		return nil, fmt.Errorf("data is nil")
 	}
-	dsn := data.SQLiteDSN()
-	if dsn == "" {
-		return nil, fmt.Errorf("sqlite dsn is empty")
+	db := data.RawDB()
+	if db == nil {
+		return nil, fmt.Errorf("sqlite raw db is nil")
 	}
-	db, err := sql.Open("sqlite3", dsn)
-	if err != nil {
-		return nil, fmt.Errorf("graph checkpoint open sqlite: %w", err)
-	}
-	db.SetMaxOpenConns(2)
-	db.SetConnMaxLifetime(0)
 	return graphtrpc.NewSQLiteCheckpointSaver(db)
 }

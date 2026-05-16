@@ -5,11 +5,13 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 type Bus interface {
 	Publish(ctx context.Context, envelope Envelope)
 	Subscribe(opts SubscribeOptions) (<-chan Envelope, func())
+	DropCount() uint64
 }
 
 type SubscribeOptions struct {
@@ -26,6 +28,7 @@ type bus struct {
 	mu          sync.RWMutex
 	subscribers map[uint64]*subscriber
 	nextID      uint64
+	dropCount   atomic.Uint64
 }
 
 type subscriber struct {
@@ -39,29 +42,72 @@ func NewBus() Bus {
 	}
 }
 
+func reliableTypes() map[EnvelopeType]struct{} {
+	return map[EnvelopeType]struct{}{
+		EnvelopeTypeToolResult:      {},
+		EnvelopeTypeError:           {},
+		EnvelopeTypeRunnerCompletion: {},
+		EnvelopeTypeGraphNodeEnd:    {},
+		EnvelopeTypeTeamRunFinished: {},
+		EnvelopeTypeTeamRunFailed:   {},
+	}
+}
+
 func (b *bus) Publish(ctx context.Context, env Envelope) {
 	if env.Channel == "" {
 		env.Channel = RouteChannel(env)
 	}
+	_, isReliable := reliableTypes()[env.Type]
+
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 	for _, sub := range b.subscribers {
 		if !b.matchSubscriber(sub.opts, env) {
 			continue
 		}
-		select {
-		case sub.ch <- env:
-		default:
-			select {
-			case <-sub.ch:
-				select {
-				case sub.ch <- env:
-				default:
-				}
-			default:
-			}
+		if isReliable {
+			b.deliverReliable(sub, env)
+		} else {
+			b.deliverLossy(sub, env)
 		}
 	}
+}
+
+func (b *bus) deliverReliable(sub *subscriber, env Envelope) {
+	select {
+	case sub.ch <- env:
+		return
+	default:
+	}
+	deadline := time.Now().Add(100 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		select {
+		case sub.ch <- env:
+			return
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	b.dropCount.Add(1)
+}
+
+func (b *bus) deliverLossy(sub *subscriber, env Envelope) {
+	select {
+	case sub.ch <- env:
+	default:
+		select {
+		case <-sub.ch:
+			select {
+			case sub.ch <- env:
+			default:
+				b.dropCount.Add(1)
+			}
+		default:
+		}
+	}
+}
+
+func (b *bus) DropCount() uint64 {
+	return b.dropCount.Load()
 }
 
 func (b *bus) Subscribe(opts SubscribeOptions) (<-chan Envelope, func()) {

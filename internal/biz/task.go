@@ -352,32 +352,8 @@ func (uc *TaskUsecase) findNodeDef(ctx context.Context, task *GraphTask) *NodeDe
 	if err != nil {
 		return nil
 	}
-	for i := range def.Nodes {
-		if def.Nodes[i].ID == task.NodeID {
-			return &NodeDefInfo{
-				RequiredRole:             def.Nodes[i].RequiredRole,
-				AssignmentMode:           def.Nodes[i].AssignmentMode,
-				AssignmentStrategy:       def.Nodes[i].AssignmentStrategy,
-				ReviewerAgent:            def.Nodes[i].ReviewerAgent,
-				ReviewRules:              def.Nodes[i].ReviewRules,
-				TimeoutSeconds:           def.Nodes[i].TimeoutSeconds,
-				HeartbeatIntervalSeconds: def.Nodes[i].HeartbeatIntervalSeconds,
-				EnableLeaseExtension:     def.Nodes[i].EnableLeaseExtension,
-			}
-		}
-	}
-	return nil
-}
-
-type NodeDefInfo struct {
-	RequiredRole             string
-	AssignmentMode           string
-	AssignmentStrategy       string
-	ReviewerAgent            string
-	ReviewRules              string
-	TimeoutSeconds           int
-	HeartbeatIntervalSeconds int
-	EnableLeaseExtension     bool
+	cfg := defToBuildConfig(def)
+	return uc.graphUC.factory.FindNodeDef(cfg, task.NodeID)
 }
 
 func (uc *TaskUsecase) recordTaskEvent(ctx context.Context, taskID string, eventType string, sourceNode string, description string) {

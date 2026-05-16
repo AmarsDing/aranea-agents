@@ -137,14 +137,27 @@ func BuildStateGraph(cfg GraphBuildConfig) (*trpcgraph.Graph, error) {
 }
 
 func BuildStateGraphWithRegistry(cfg GraphBuildConfig, reg *Registry) (*trpcgraph.Graph, []trpcagent.Agent, error) {
+	local := GraphBuildConfig{
+		Nodes:            append([]NodeDef(nil), cfg.Nodes...),
+		Edges:            append([]EdgeDef(nil), cfg.Edges...),
+		ConditionalEdges: append([]ConditionalEdgeDef(nil), cfg.ConditionalEdges...),
+		Subgraphs:        append([]SubgraphDef(nil), cfg.Subgraphs...),
+		StateFields:      append([]StateFieldDef(nil), cfg.StateFields...),
+		EntryPoint:       cfg.EntryPoint,
+		FinishPoint:      cfg.FinishPoint,
+		EnableCheckpoint: cfg.EnableCheckpoint,
+		ExecutionEngine:  cfg.ExecutionEngine,
+		InterruptBefore:  append([]string(nil), cfg.InterruptBefore...),
+		InterruptAfter:   append([]string(nil), cfg.InterruptAfter...),
+	}
 	if reg != nil {
-		resolved, err := reg.ResolveBuildConfig(cfg)
+		resolved, err := reg.ResolveBuildConfig(local)
 		if err != nil {
 			return nil, nil, err
 		}
-		cfg = resolved
+		local = resolved
 	}
-	return BuildStateGraphWithAgents(cfg)
+	return BuildStateGraphWithAgents(local)
 }
 
 func BuildStateGraphWithAgents(cfg GraphBuildConfig) (*trpcgraph.Graph, []trpcagent.Agent, error) {

@@ -444,7 +444,7 @@ func (uc *SessionUsecase) SaveSessionState(ctx context.Context, sessionID string
 	return uc.sessions.SaveSessionState(ctx, sessionID, state)
 }
 
-func (uc *SessionUsecase) ApplyStateDelta(ctx context.Context, sessionID string, delta EnvelopeStateDelta) error {
+func (uc *SessionUsecase) ApplyStateDelta(ctx context.Context, sessionID string, delta DomainStateDelta) error {
 	if delta.Path == "" {
 		return nil
 	}

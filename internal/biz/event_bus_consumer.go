@@ -47,29 +47,34 @@ func (c *EventBusConsumer) Start(ctx context.Context) {
 	}()
 }
 
-func (c *EventBusConsumer) handleEnvelope(ctx context.Context, env Envelope) {
+func (c *EventBusConsumer) handleEnvelope(ctx context.Context, env event.Envelope) {
 	c.eventBuffer.Append(env)
 
-	switch env.Type {
-	case EnvelopeTypeRunnerCompletion:
-		c.handleRunnerCompletion(ctx, env)
-	case EnvelopeTypeStateDelta:
-		c.handleStateDelta(ctx, env)
+	de := envelopeToDomainEvent(env)
+	c.handleDomainEvent(ctx, *de)
+}
+
+func (c *EventBusConsumer) handleDomainEvent(ctx context.Context, de DomainEvent) {
+	switch de.Type {
+	case DomainEventRunnerCompletion:
+		c.handleRunnerCompletion(ctx, de)
+	case DomainEventStateDelta:
+		c.handleStateDelta(ctx, de)
 	}
 }
 
-func (c *EventBusConsumer) handleRunnerCompletion(ctx context.Context, env Envelope) {
-	if env.Usage == nil {
+func (c *EventBusConsumer) handleRunnerCompletion(ctx context.Context, de DomainEvent) {
+	if de.Usage == nil {
 		return
 	}
 	if c.usage != nil {
 		now := time.Now().UTC()
 		_, err := c.usage.RecordTokenUsageEvent(ctx, TokenUsageEvent{
-			SessionID:     env.SessionID,
-			AgentID:       env.Author,
-			InputTokens:   env.Usage.PromptTokens,
-			OutputTokens:  env.Usage.CompletionTokens,
-			TotalTokens:   env.Usage.TotalTokens,
+			SessionID:     de.SessionID,
+			AgentID:       de.Author,
+			InputTokens:   de.Usage.PromptTokens,
+			OutputTokens:  de.Usage.CompletionTokens,
+			TotalTokens:   de.Usage.TotalTokens,
 			OccurredAt:    now.Format(time.RFC3339),
 			DateKey:       now.Format("2006-01-02"),
 			HourKey:       now.Format("2006-01-02T15"),
@@ -77,24 +82,28 @@ func (c *EventBusConsumer) handleRunnerCompletion(ctx context.Context, env Envel
 			StreamEnabled: true,
 		})
 		if err != nil {
-			slog.Warn("event_bus_consumer: usage record failed", "error", err, "session_id", env.SessionID)
+			slog.Warn("event_bus_consumer: usage record failed", "error", err, "session_id", de.SessionID)
 		}
 	}
 }
 
-func (c *EventBusConsumer) handleStateDelta(ctx context.Context, env Envelope) {
-	if env.StateDelta == nil || c.sessions == nil {
+func (c *EventBusConsumer) handleStateDelta(ctx context.Context, de DomainEvent) {
+	if de.StateDelta == nil || c.sessions == nil {
 		return
 	}
-	if env.StateDelta.Path == "__state__" {
-		err := c.sessions.UpdateRunnerSnapshotJSON(ctx, env.SessionID, env.StateDelta.ValueJSON)
+	if de.StateDelta.Path == "__state__" {
+		err := c.sessions.UpdateRunnerSnapshotJSON(ctx, de.SessionID, de.StateDelta.ValueJSON)
 		if err != nil {
-			slog.Warn("event_bus_consumer: state delta persist failed", "error", err, "session_id", env.SessionID)
+			slog.Warn("event_bus_consumer: state delta persist failed", "error", err, "session_id", de.SessionID)
 		}
 		return
 	}
-	err := c.sessions.ApplyStateDelta(ctx, env.SessionID, *env.StateDelta)
+	err := c.sessions.ApplyStateDelta(ctx, de.SessionID, DomainStateDelta{
+		Operation: de.StateDelta.Operation,
+		Path:      de.StateDelta.Path,
+		ValueJSON: de.StateDelta.ValueJSON,
+	})
 	if err != nil {
-		slog.Warn("event_bus_consumer: state delta apply failed", "error", err, "session_id", env.SessionID, "path", env.StateDelta.Path)
+		slog.Warn("event_bus_consumer: state delta apply failed", "error", err, "session_id", de.SessionID, "path", de.StateDelta.Path)
 	}
 }

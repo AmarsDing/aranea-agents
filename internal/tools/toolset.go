@@ -42,8 +42,8 @@ func Registry() []*ToolRegistration {
 				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
 					return trpcfile.NewToolSet()
 				},
-				EnabledByDefault:   true,
-				RiskLevel:          "low",
+				EnabledByDefault:    true,
+				RiskLevel:           "low",
 				SupportsConcurrency: true,
 			},
 			{
@@ -448,7 +448,7 @@ func buildMCPToolSet(cfg MCPServerConfig) (ToolSet, error) {
 	}
 
 	opts := []trpcmcp.ToolSetOption{trpcmcp.WithName(cfg.Name)}
-	if pred := toolFilterForPrefix(cfg.ToolPrefix); pred != nil {
+	if pred := ToolFilterForPrefix(cfg.ToolPrefix); pred != nil {
 		opts = append(opts, trpcmcp.WithToolFilterFunc(pred))
 	}
 
@@ -499,7 +499,7 @@ func buildMCPBrokerTools(cfg MCPBrokerConfig) ([]Tool, error) {
 	return result, nil
 }
 
-func toolFilterForPrefix(prefix string) ToolFilterFunc {
+func ToolFilterForPrefix(prefix string) ToolFilterFunc {
 	prefix = strings.TrimSpace(prefix)
 	if prefix == "" {
 		return nil

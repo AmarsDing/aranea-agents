@@ -57,6 +57,7 @@ func NewHTTPServer(c *conf.Server,
 	graphSvc *service.GraphService,
 	channelIngress *service.ChannelIngress,
 	skillImport *importer.Engine,
+	wsSrv *WSServer,
 ) *http.Server {
 	var opts = []http.ServerOption{
 		http.Filter(
@@ -100,6 +101,7 @@ func NewHTTPServer(c *conf.Server,
 	graphv1.RegisterGraphServiceHTTPServer(srv, graphSvc)
 	RegisterChannelWebhook(srv, channelIngress)
 	RegisterSkillImportHTTPServer(srv, skillImport)
+	wsSrv.RegisterOnKratos(srv)
 	srv.Route("/").GET("/healthz", func(ctx http.Context) error {
 		w := ctx.Response()
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")

@@ -13,7 +13,6 @@ const (
 	sourceSync       = "session_sync"
 )
 
-// EventEntityParams is row input for UpsertEventEntity.
 type EventEntityParams struct {
 	ID               string
 	ScopeType        string
@@ -32,8 +31,6 @@ type EventEntityParams struct {
 	UpdatedAtRFC3339 string
 }
 
-// UpsertEventEntity stores one conversation event in memory_entities so keyword search can surface it.
-// name_normalized must be stable per (session scope, entity_type, logical event) for upserts across turns.
 func (st *Store) UpsertEventEntity(ctx context.Context, params EventEntityParams) error {
 	if st == nil || st.client == nil {
 		return nil
@@ -107,7 +104,6 @@ ON CONFLICT(scope_type, scope_id, entity_type, name_normalized) DO UPDATE SET
 	return err
 }
 
-// DeleteSessionEventEntities removes keyword-memory rows produced by session sync for one session.
 func (st *Store) DeleteSessionEventEntities(ctx context.Context, sessionID string) error {
 	if st == nil || st.client == nil {
 		return nil
@@ -119,5 +115,32 @@ func (st *Store) DeleteSessionEventEntities(ctx context.Context, sessionID strin
 	_, err := st.client.ExecContext(ctx,
 		`DELETE FROM memory_entities WHERE scope_type = ? AND scope_id = ? AND entity_type = ?`,
 		scopeTypeSession, sessionID, entityTypeEvent)
+	return err
+}
+
+func (st *Store) DeleteEventEntityByID(ctx context.Context, id string) error {
+	if st == nil || st.client == nil {
+		return nil
+	}
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return nil
+	}
+	_, err := st.client.ExecContext(ctx,
+		`DELETE FROM memory_entities WHERE id = ?`, id)
+	return err
+}
+
+func (st *Store) ClearMemoryEntities(ctx context.Context, scopeType, scopeID, userID string) error {
+	if st == nil || st.client == nil {
+		return nil
+	}
+	args := []any{scopeType, scopeID}
+	q := `DELETE FROM memory_entities WHERE scope_type = ? AND scope_id = ?`
+	if strings.TrimSpace(userID) != "" {
+		q += ` AND user_id = ?`
+		args = append(args, userID)
+	}
+	_, err := st.client.ExecContext(ctx, q, args...)
 	return err
 }

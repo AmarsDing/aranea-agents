@@ -11,11 +11,11 @@ import (
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/agent/intent"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/data/sessionmemory"
 	"aranea-agents/internal/event"
-	memtrpc "aranea-agents/internal/memory/trpc"
-	"aranea-agents/internal/provider"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
+	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
@@ -53,18 +53,13 @@ func (s *ChatService) runSingleAgentViaTRPC(
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
 
-	runnerDeps := chatagent.TRPCRunnerDeps{}
+	var trpcSession trpcsession.Service
+	var sessionMemory *sessionmemory.Store
 	if s.td.RT != nil {
-		if s.td.RT.TRPCSession != nil {
-			runnerDeps.SessionService = s.td.RT.TRPCSession
-		}
-		if s.td.RT.SessionMemory != nil {
-			runnerDeps.MemoryService = memtrpc.NewSQLiteMemoryService(s.td.RT.SessionMemory)
-		}
+		trpcSession = s.td.RT.TRPCSession
+		sessionMemory = s.td.RT.SessionMemory
 	}
-	if runnerDeps.SessionService == nil {
-		runnerDeps.SessionService = chatagent.NewInMemoryTRPCSessionService()
-	}
+	runnerDeps := chatagent.NewRunnerDepsFromRuntime(trpcSession, sessionMemory)
 	runner, err := chatagent.NewTRPCRunner(root, runnerDeps)
 	if err != nil {
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
@@ -133,67 +128,26 @@ func (s *ChatService) runSingleAgentViaTRPC(
 		return userMsg, biz.ChatMessage{}, err
 	}
 
-	var reply strings.Builder
-	var reasoning strings.Builder
-	promptTok, completionTok := 0, 0
-
-	var projector *chatagent.EventProjector
-	if s.td.EventBus != nil {
-		projector = chatagent.NewEventProjector(s.td.EventBus)
-	}
 	projectMeta := chatagent.ProjectMeta{
 		SessionID: sessionID,
 		RequestID: sessionID,
 	}
-
-	for ev := range events {
-		if ctx.Err() != nil {
-			return userMsg, biz.ChatMessage{}, ctx.Err()
-		}
-		if ev == nil {
-			continue
-		}
-
-		if projector != nil {
-			projector.ProjectAndPublish(ctx, ev, projectMeta)
-		}
-
-		if ev.IsRunnerCompletion() {
-			if ev.Response != nil && ev.Response.Usage != nil {
-				promptTok = ev.Response.Usage.PromptTokens
-				completionTok = ev.Response.Usage.CompletionTokens
-			}
-			continue
-		}
-
-		if ev.Response == nil {
-			continue
-		}
-		if usage := ev.Response.Usage; usage != nil {
-			promptTok = usage.PromptTokens
-			completionTok = usage.CompletionTokens
-		}
-		for _, choice := range ev.Response.Choices {
-			msg := choice.Message
-			if text := strings.TrimSpace(msg.Content); text != "" {
-				_ = provider.VisibleStreamingDelta(&reply, text)
-			}
-			if rc := strings.TrimSpace(msg.ReasoningContent); rc != "" {
-				_ = provider.VisibleStreamingDelta(&reasoning, rc)
-			}
-		}
+	result := chatagent.ConsumeEventStream(ctx, events, s.td.EventBus, projectMeta)
+	if ctx.Err() != nil {
+		return userMsg, biz.ChatMessage{}, ctx.Err()
 	}
 
-	if promptTok <= 0 && completionTok <= 0 && strings.TrimSpace(reply.String()) != "" {
-		promptTok = roughTokenEstimateFromText(content + reply.String())
-		completionTok = roughTokenEstimateFromText(reply.String())
+	promptTok, completionTok := result.PromptTok, result.CompletionTok
+	if promptTok <= 0 && completionTok <= 0 && strings.TrimSpace(result.Reply.String()) != "" {
+		promptTok = roughTokenEstimateFromText(content + result.Reply.String())
+		completionTok = roughTokenEstimateFromText(result.Reply.String())
 	}
 
 	assistantOptsStr, err := chatagent.AssistantOptionsJSON(ag, nil)
 	if err != nil {
 		return userMsg, biz.ChatMessage{}, err
 	}
-	if s := reasoning.String(); s != "" {
+	if s := result.Reasoning.String(); s != "" {
 		if assistantOptsStr, err = chatagent.MergeReasoningIntoAssistantOptionsJSON(assistantOptsStr, s); err != nil {
 			return userMsg, biz.ChatMessage{}, err
 		}
@@ -203,7 +157,7 @@ func (s *ChatService) runSingleAgentViaTRPC(
 		ID:              uuid.NewString(),
 		SessionID:       sessionID,
 		Role:            "assistant",
-		ContentMarkdown: strings.TrimSpace(reply.String()),
+		ContentMarkdown: strings.TrimSpace(result.Reply.String()),
 		ModelName:       mod,
 		Status:          "ok",
 		OptionsJSON:     assistantOptsStr,

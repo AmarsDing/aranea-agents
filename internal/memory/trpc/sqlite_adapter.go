@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"aranea-agents/internal/data/sessionmemory"
@@ -18,8 +17,6 @@ import (
 
 type sqliteMemoryService struct {
 	store *sessionmemory.Store
-	mu    sync.RWMutex
-	cache map[string]map[string]*trpcmemory.Entry
 }
 
 var _ trpcmemory.Service = (*sqliteMemoryService)(nil)
@@ -30,7 +27,6 @@ func NewSQLiteMemoryService(store *sessionmemory.Store) trpcmemory.Service {
 	}
 	return &sqliteMemoryService{
 		store: store,
-		cache: map[string]map[string]*trpcmemory.Entry{},
 	}
 }
 
@@ -41,32 +37,10 @@ func (s *sqliteMemoryService) AddMemory(ctx context.Context, uk trpcmemory.UserK
 	meta := trpcmemory.ResolveAddOptions(opts)
 	now := time.Now()
 	id := fmt.Sprintf("mem-%d", now.UnixNano())
-	entry := &trpcmemory.Entry{
-		ID:      id,
-		AppName: uk.AppName,
-		Memory: &trpcmemory.Memory{
-			Memory:      mem,
-			Topics:      topics,
-			LastUpdated: &now,
-		},
-		UserID:    uk.UserID,
-		CreatedAt: now,
-		UpdatedAt: now,
-	}
+	var kind string
 	if meta != nil {
-		entry.Memory.Kind = meta.Kind
-		entry.Memory.EventTime = meta.EventTime
-		entry.Memory.Participants = meta.Participants
-		entry.Memory.Location = meta.Location
+		kind = string(meta.Kind)
 	}
-	s.mu.Lock()
-	key := cacheKey(uk)
-	if s.cache[key] == nil {
-		s.cache[key] = map[string]*trpcmemory.Entry{}
-	}
-	s.cache[key][id] = entry
-	s.mu.Unlock()
-
 	params := sessionmemory.EventEntityParams{
 		ID:               id,
 		ScopeType:        "trpc_memory",
@@ -82,6 +56,7 @@ func (s *sqliteMemoryService) AddMemory(ctx context.Context, uk trpcmemory.UserK
 		CreatedAtRFC3339: now.Format(time.RFC3339),
 		UpdatedAtRFC3339: now.Format(time.RFC3339),
 	}
+	_ = kind
 	return s.store.UpsertEventEntity(ctx, params)
 }
 
@@ -89,21 +64,6 @@ func (s *sqliteMemoryService) UpdateMemory(ctx context.Context, mk trpcmemory.Ke
 	if s == nil || s.store == nil {
 		return nil
 	}
-	uk := trpcmemory.UserKey{AppName: mk.AppName, UserID: mk.UserID}
-	s.mu.Lock()
-	key := cacheKey(uk)
-	entries := s.cache[key]
-	if entries != nil {
-		if e, ok := entries[mk.MemoryID]; ok {
-			e.Memory.Memory = mem
-			e.Memory.Topics = topics
-			now := time.Now()
-			e.Memory.LastUpdated = &now
-			e.UpdatedAt = now
-		}
-	}
-	s.mu.Unlock()
-
 	params := sessionmemory.EventEntityParams{
 		ID:               mk.MemoryID,
 		ScopeType:        "trpc_memory",
@@ -119,47 +79,39 @@ func (s *sqliteMemoryService) UpdateMemory(ctx context.Context, mk trpcmemory.Ke
 	return s.store.UpsertEventEntity(ctx, params)
 }
 
-func (s *sqliteMemoryService) DeleteMemory(_ context.Context, mk trpcmemory.Key) error {
+func (s *sqliteMemoryService) DeleteMemory(ctx context.Context, mk trpcmemory.Key) error {
 	if s == nil {
 		return nil
 	}
-	s.mu.Lock()
-	key := cacheKey(trpcmemory.UserKey{AppName: mk.AppName, UserID: mk.UserID})
-	if entries := s.cache[key]; entries != nil {
-		delete(entries, mk.MemoryID)
-	}
-	s.mu.Unlock()
-	return nil
+	return s.store.DeleteEventEntityByID(ctx, mk.MemoryID)
 }
 
-func (s *sqliteMemoryService) ClearMemories(_ context.Context, uk trpcmemory.UserKey) error {
+func (s *sqliteMemoryService) ClearMemories(ctx context.Context, uk trpcmemory.UserKey) error {
 	if s == nil {
 		return nil
 	}
-	s.mu.Lock()
-	key := cacheKey(uk)
-	s.cache[key] = map[string]*trpcmemory.Entry{}
-	s.mu.Unlock()
-	return nil
+	return s.store.ClearMemoryEntities(ctx, "trpc_memory", uk.AppName, uk.UserID)
 }
 
-func (s *sqliteMemoryService) ReadMemories(_ context.Context, uk trpcmemory.UserKey, limit int) ([]*trpcmemory.Entry, error) {
+func (s *sqliteMemoryService) ReadMemories(ctx context.Context, uk trpcmemory.UserKey, limit int) ([]*trpcmemory.Entry, error) {
 	if s == nil {
 		return nil, nil
 	}
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	key := cacheKey(uk)
-	entries := s.cache[key]
-	if len(entries) == 0 {
-		return nil, nil
+	limit32 := int32(limit)
+	if limit32 <= 0 {
+		limit32 = 50
 	}
-	out := make([]*trpcmemory.Entry, 0, len(entries))
-	for _, e := range entries {
+	rows, _, err := s.store.ListEntityRows(ctx, "trpc_memory", uk.AppName, "", uk.UserID, "memory_fact", "", "", limit32, 0)
+	if err != nil {
+		return nil, err
+	}
+	var out []*trpcmemory.Entry
+	for _, raw := range rows {
+		e, convErr := entityRowToEntry(raw, uk)
+		if convErr != nil {
+			continue
+		}
 		out = append(out, e)
-	}
-	if limit > 0 && len(out) > limit {
-		out = out[:limit]
 	}
 	return out, nil
 }
@@ -208,10 +160,6 @@ func (s *sqliteMemoryService) EnqueueAutoMemoryJob(_ context.Context, _ *session
 
 func (s *sqliteMemoryService) Close() error {
 	return nil
-}
-
-func cacheKey(uk trpcmemory.UserKey) string {
-	return uk.AppName + ":" + uk.UserID
 }
 
 func truncate(s string, n int) string {

@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	sessiontrpc "aranea-agents/internal/session/trpc"
+
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
@@ -49,7 +51,7 @@ func (a staticTRPCAgent) FindSubAgent(name string) trpcagent.Agent { return nil 
 
 func TestNewTRPCRunnerAndRunUserTurn(t *testing.T) {
 	r, err := NewTRPCRunner(staticTRPCAgent{name: "assistant", reply: "hello"}, TRPCRunnerDeps{
-		SessionService: NewInMemoryTRPCSessionService(),
+		SessionService: sessiontrpc.NewInMemorySessionService(),
 	})
 	if err != nil {
 		t.Fatalf("NewTRPCRunner() error = %v", err)
@@ -99,7 +101,7 @@ func TestRunTRPCUserTurnValidatesRequiredIDs(t *testing.T) {
 
 func TestNewTRPCRunnerReturnsManagedRunner(t *testing.T) {
 	r, err := NewTRPCRunner(staticTRPCAgent{name: "assistant", reply: "hello"}, TRPCRunnerDeps{
-		SessionService: NewInMemoryTRPCSessionService(),
+		SessionService: sessiontrpc.NewInMemorySessionService(),
 	})
 	if err != nil {
 		t.Fatalf("NewTRPCRunner() error = %v", err)
@@ -113,7 +115,7 @@ func TestNewTRPCRunnerReturnsManagedRunner(t *testing.T) {
 
 func TestCancelTRPCRun(t *testing.T) {
 	r, err := NewTRPCRunner(staticTRPCAgent{name: "assistant", reply: "hello"}, TRPCRunnerDeps{
-		SessionService: NewInMemoryTRPCSessionService(),
+		SessionService: sessiontrpc.NewInMemorySessionService(),
 	})
 	if err != nil {
 		t.Fatalf("NewTRPCRunner() error = %v", err)
@@ -128,7 +130,7 @@ func TestCancelTRPCRun(t *testing.T) {
 
 func TestEnqueueTRPCUserMessage(t *testing.T) {
 	r, err := NewTRPCRunner(staticTRPCAgent{name: "assistant", reply: "hello"}, TRPCRunnerDeps{
-		SessionService: NewInMemoryTRPCSessionService(),
+		SessionService: sessiontrpc.NewInMemorySessionService(),
 	})
 	if err != nil {
 		t.Fatalf("NewTRPCRunner() error = %v", err)

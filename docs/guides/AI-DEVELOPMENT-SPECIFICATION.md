@@ -36,7 +36,7 @@
 | 1 | `internal/server/*` 不得 new `runner.Runner` 或 `llmagent.New` | Runner 装配只在 `internal/service` |
 | 2 | `internal/biz/*` 不得 import `pkg/trpc-agent-go` 任何包 | 框架交互通过 `internal/agent`/`internal/tools` 桥接 |
 | 3 | 框架 `plugin` 回调不得直接写数据库 | 经 broker/async 异步写 |
-| 4 | 不得绕过 `internal/agent/adksvc` 把 Ent 行塞进 `session.Event` | 通过 `BizSessionService` 适配 |
+| 4 | 不得绕过 `internal/session/trpc` 把 Ent 行塞进 `session.Event` | 通过 `session/trpc` 适配 |
 | 5 | 不得在 transport 层解析工具参数或拼接 prompt | 工具装配在 `internal/tools`，prompt 在 `internal/agent` |
 | 6 | 不得为框架运行时另起独立 HTTP 监听 | 框架运行时复用 Kratos HTTP Server |
 | 7 | 不得把 Kratos middleware 逻辑复制进 `pkg/trpc-agent-go` | 中间件只在 `internal/server` |
@@ -129,19 +129,19 @@
 
 | 框架 | 职责边界 | 禁止 |
 |------|----------|------|
-| **Kratos v2** | 传输层（HTTP/gRPC/SSE）、配置、鉴权、中间件、Wire 依赖注入 | 不承载 Agent 编排、不实现第二套事件循环 |
+| **Kratos v2** | 传输层（HTTP/gRPC/WebSocket）、配置、鉴权、中间件、Wire 依赖注入 | 不承载 Agent 编排、不实现第二套事件循环 |
 | **trpc-agent-go** | Agent 编排（Runner/Agent/Session/Memory/Tool/Event） | 不直接写业务数据库、不处理 HTTP 路由 |
 
 **各包职责映射**：
 
 | 能力 | 主要包 | 关键函数/类型 |
 |------|--------|---------------|
-| 会话快照读写 | `internal/agent/adksvc` | `BizSessionService` |
+| 会话快照读写 | `internal/session/trpc` | `SQLiteSessionService` |
 | Agent 构建 | `internal/agent` | `BuildLLMAgent` |
 | LLM 模型驱动 | `internal/provider` | `ModelForProviderModel` |
 | 工具注册与装配 | `internal/tools` | `Assemble`、`Registry` |
 | 工具适配层 | `internal/tools/trpc` | `BuildToolsets` |
-| Runner 内存/插件/用户ID | `internal/agent` | `NewADKMemoryService`、`DefaultRunnerPlugins`、`UserIDFromCtx` |
+| Runner 内存/插件/用户ID | `internal/agent` | `NewTRPCMemoryService`、`DefaultRunnerPlugins`、`UserIDFromCtx` |
 | Team 工作流 | `internal/team` | `BuildWorkflowRoot` + `runner.Run` |
 | Agent-as-Tool | `internal/tools` | `AgentToolConfig` → `trpcagenttool.NewTool` |
 | MCP ToolSet | `internal/tools` | `MCPServerConfig` → `trpcmcp.NewMCPToolSet` |
@@ -171,8 +171,8 @@ internal/data           ← Repo 实现（Ent ORM + pgvector）
 |--------|----------------|----------------|
 | `internal/server/*` | `internal/service`、`internal/conf`、kratos、`pkg/auth`、`pkg/validate` | `pkg/trpc-agent-go` / 框架运行时私有 import、`runner.Runner`、`llmagent.New` |
 | `internal/biz/*` | stdlib、kratos errors、本仓 biz/data API | `pkg/trpc-agent-go` 任何包、`api/*/v1`、框架运行时 toolset/skill 类型 |
-| `internal/service/*` | `internal/biz`、`internal/team`、`internal/agent`、`internal/agent/adksvc`、`internal/provider`、`internal/tools`，框架 Runner/Agent 装配 API | 绕过 `internal/tools` 大量直连拼装底层 `tool` |
-| `internal/agent/*`（含 `adksvc`） | `internal/biz`、`internal/provider`、`internal/data/...`（如需）、`pkg/trpc-agent-go` / 框架运行时 | — |
+| `internal/service/*` | `internal/biz`、`internal/team`、`internal/agent`、`internal/session/trpc`、`internal/provider`、`internal/tools`，框架 Runner/Agent 装配 API | 绕过 `internal/tools` 大量直连拼装底层 `tool` |
+| `internal/agent/*` | `internal/biz`、`internal/provider`、`internal/data/...`（如需）、`internal/session/trpc`、`pkg/trpc-agent-go` / 框架运行时 | — |
 | `internal/team/*` | `internal/biz`、`internal/agent`、`internal/provider`、`internal/tools`、`pkg/trpc-agent-go` / 框架运行时 | — |
 | `internal/provider/*` | `internal/biz`、`pkg/trpc-agent-go` / 框架 `model` 适配 | — |
 | `internal/tools/*` | `internal/biz`、框架 `tool` API（由 `pkg/trpc-agent-go` 暴露或兼容层 re-export） | — |
@@ -244,7 +244,7 @@ func (s *ChatService) SendChatMessage(ctx context.Context, req *chatv1.SendChatM
 // internal/biz/agent.go 中 import runner        → 红线 2
 ```
 
-**桥接约定**：`internal/service` 内 Kratos service 在方法中构造框架 `Runner`，将 RPC/HTTP 请求译为会话执行入口，将会话事件流投影为 unary 或 SSE。**不在 `internal/server` 或 `internal/biz` 中直接使用框架运行时。**
+**桥接约定**：`internal/service` 内 Kratos service 在方法中构造框架 `Runner`，将 RPC/HTTP 请求译为会话执行入口，将会话事件流投影为 unary 或 WebSocket。**不在 `internal/server` 或 `internal/biz` 中直接使用框架运行时。**
 
 ### 2.2 Biz 层——领域核心
 
@@ -350,7 +350,7 @@ sql.Open("sqlite3", dsn)  // 红线 10：不得在 NewData 外另开 SQLite
 
 ### 2.4 Server 层——传输注册
 
-**职责**：创建 HTTP/gRPC/SSE 实例，注册 Service。
+**职责**：创建 HTTP/gRPC/WebSocket 实例，注册 Service。
 
 ```go
 // ✅ 正确：只做注册
@@ -413,8 +413,8 @@ deps := agent.BuilderDeps{
     AgentUC:      s.agentsUC,
     Agents:       s.agents,
     ToolsCatalog: s.toolsCatalog,
-    RT:           s.adk,
-    Memory:       agent.RunnerMemoryForRuntime(s.adk),
+    RT:           s.runtime,
+    Memory:       agent.RunnerMemoryForRuntime(s.runtime),
     Provider:     provider,
     Model:        model,
 }
@@ -423,7 +423,7 @@ deps := agent.BuilderDeps{
 root, err := agent.BuildLLMAgent(ctx, ag, deps)
 
 // 3. 构建 Runner
-runner, err := agent.NewADKRunnerForRuntime(root, sessSvc, s.adk)
+runner, err := agent.NewTRPCRunnerForRuntime(root, sessSvc, s.runtime)
 
 // 4. 执行
 eventCh, err := runner.Run(ctx, userID, sessionID, userMessage)
@@ -434,7 +434,7 @@ eventCh, err := runner.Run(ctx, userID, sessionID, userMessage)
 | 规则 | 说明 |
 |------|------|
 | BuilderDeps 是 DTO | 不含框架运行时类型，只含 biz 模型 + 可选依赖标记 |
-| Memory 由 Wire 注入 | 通过 `adkdeps.Runtime.SessionMemory`，不在 Service 手动选择 |
+| Memory 由 Wire 注入 | 通过 `runtimedeps.Runtime.SessionMemory`，不在 Service 手动选择 |
 | 工具统一挂载 | 通过 `TurnMount.Attach`，不分散在多处 |
 
 ### 3.4 工具装配规范
@@ -508,7 +508,7 @@ type AssemblyConfig struct {
 
 1. **Team Runner 在 `internal/team`**：不溢出到 service 或 biz
 2. **成员 Agent 独立构建**：每个成员用自己的 Settings、Skill 策略、MCP 服务器列表
-3. **事件流通过 `biz.TeamRunEventBroker`** 发布 SSE
+3. **事件流通过 `biz.TeamRunEventBroker`** 发布 WebSocket
 
 ### 3.6 记忆系统规范
 
@@ -692,7 +692,7 @@ make config  # 仅改 conf.proto 时
 
 | 场景 | 说明 |
 |------|------|
-| 常见风险 | 对话完成已由后端写入 `model_token_usage_events` 时，若在浏览器 `onDone` / SSE 结束再 POST，会对同一轮交互重复插入 |
+| 常见风险 | 对话完成已由后端写入 `model_token_usage_events` 时，若在浏览器 `onDone` / WebSocket 结束再 POST，会对同一轮交互重复插入 |
 | 目标态 | 仅服务端在同一请求路径写入用量时，浏览器不应再报同一事件 |
 | 例外 | 仅当服务端确认从不写入且不重叠会话/id 时，才可单独浏览器上报；须在 PR 写明 |
 | 过渡 | 若须二选一并行，应有 feature flag，默认只开一侧。禁止在未知后端是否已写时默认开启浏览器 ingest |
@@ -706,7 +706,7 @@ make config  # 仅改 conf.proto 时
 | 场景 | 规范 | ✅ 示例 | ❌ 示例 |
 |------|------|---------|---------|
 | 包名 | 小写单词，不用下划线 | `agent`, `mcpmount` | `agent_svc`, `MCPMount` |
-| 文件名 | 小写+下划线，按职责拆分 | `agent_repo.go`, `adk_build.go` | `agentRepo.go`, `agent.go`（职责不清） |
+| 文件名 | 小写+下划线，按职责拆分 | `agent_repo.go`, `trpc_build.go` | `agentRepo.go`, `agent.go`（职责不清） |
 | 结构体 | 大驼峰，名词 | `AgentUsecase`, `TurnMount` | `agentUsecase`, `TurnMountHandler` |
 | 接口 | 大驼峰，名词+后缀 | `AgentRepository`, `MemoryService` | `AgentRepo`, `IMemory` |
 | 函数 | 大驼峰导出/小驼峰内部 | `NewAgentUsecase`, `fromProtoRuntime` | `new_agent_usecase` |
@@ -767,7 +767,7 @@ return Agent{}, fmt.Errorf("agent not found: %w", err)
 | context 传递 | 所有跨层调用必须传递 `ctx` | `go func() { doWork() }()` 不传 ctx |
 | goroutine | 必须处理 context 取消和 panic recovery | goroutine 中不处理 panic |
 | MCP 子进程 | context 取消时清理 | 子进程泄漏 |
-| SSE 流 | 处理客户端断连 | 不检测客户端断连 |
+| WebSocket 流 | 处理客户端断连 | 不检测客户端断连 |
 | 共享状态 | `sync.Mutex`/`sync.RWMutex` | 全局变量 |
 
 ---
@@ -1068,7 +1068,7 @@ var ProviderSet = wire.NewSet(
 )
 
 // server/server.go
-var ProviderSet = wire.NewSet(NewGRPCServer, NewHTTPServer, NewSSEServer)
+var ProviderSet = wire.NewSet(NewGRPCServer, NewHTTPServer, NewWSServer)
 
 // cmd/admin/wire.go
 func wireApp(*conf.Server, *conf.Data, log.Logger) (wireOut, func(), error) {
@@ -1126,7 +1126,7 @@ func (Xxx) Indexes() []ent.Index {
 5. **单一职责**：一个包只解决一类技术问题；一个 Context 只解决一类业务问题
 6. **共享内核最小化**：内核只放所有 Context 都依赖且长期稳定的内容（ID、时间、错误、事件信封、运行上下文、Module 接口），绝不放业务策略与领域逻辑
 7. **依赖方向单向收敛**：`adapter → context → kernel`、`runtime adapter → context.port`，绝不反向
-8. **可观测优先**：tracing、结构化事件、SSE、审计、用量从 Day 1 起即作为架构约束而非补丁
+8. **可观测优先**：tracing、结构化事件、WebSocket、审计、用量从 Day 1 起即作为架构约束而非补丁
 
 #### D.2 Context 划分
 

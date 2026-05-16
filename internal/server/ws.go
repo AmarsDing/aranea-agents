@@ -16,6 +16,7 @@ import (
 	"aranea-agents/pkg/auth"
 
 	"github.com/go-kratos/kratos/v2/transport"
+	kratoshttp "github.com/go-kratos/kratos/v2/transport/http"
 	"github.com/gorilla/websocket"
 )
 
@@ -74,24 +75,12 @@ type WSServer struct {
 	canceller   RunCanceller
 	sender      ChatSender
 	upgrader    websocket.Upgrader
-	addr        string
-	network     string
-	srv         *http.Server
 	closed      bool
 }
 
 func NewWSServer(c *conf.Server, eventBus event.Bus, eventBuffer *event.Buffer, canceller RunCanceller, sender ChatSender) *WSServer {
 	if c == nil || c.GetWs() == nil || !c.GetWs().GetEnable() {
 		return nil
-	}
-	wsConf := c.GetWs()
-	addr := wsConf.GetAddr()
-	if addr == "" {
-		addr = ":8002"
-	}
-	network := wsConf.GetNetwork()
-	if network == "" {
-		network = "tcp"
 	}
 	return &WSServer{
 		conns:       make(map[string][]*wsConn),
@@ -104,37 +93,27 @@ func NewWSServer(c *conf.Server, eventBus event.Bus, eventBuffer *event.Buffer, 
 				return originAllowed(r.Header.Get("Origin"))
 			},
 		},
-		addr:    addr,
-		network: network,
 	}
 }
 
 func (s *WSServer) Start(ctx context.Context) error {
-	if s == nil {
-		return nil
-	}
-	mux := http.NewServeMux()
-	mux.HandleFunc("/v1/ws", s.handleWS)
-	s.srv = &http.Server{
-		Addr:    s.addr,
-		Handler: mux,
-	}
-	go func() {
-		slog.Info("ws server listening", "addr", s.addr)
-		if err := s.srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			slog.Error("ws server error", "error", err)
-		}
-	}()
 	return nil
 }
 
 func (s *WSServer) Stop(ctx context.Context) error {
-	if s == nil || s.srv == nil {
+	if s == nil {
 		return nil
 	}
 	s.closed = true
 	s.broadcastShutdown()
-	return s.srv.Shutdown(ctx)
+	return nil
+}
+
+func (s *WSServer) RegisterOnKratos(srv *kratoshttp.Server) {
+	if s == nil || srv == nil {
+		return
+	}
+	srv.HandleFunc("/v1/ws", s.handleWS)
 }
 
 func (s *WSServer) broadcastShutdown() {

@@ -7,12 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"aranea-agents/internal/event"
 	graphtrpc "aranea-agents/internal/graph/trpc"
-
-	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
-	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
-	trpcgraph "trpc.group/trpc-go/trpc-agent-go/graph"
+	"aranea-agents/pkg/safego"
 
 	"github.com/google/uuid"
 )
@@ -45,22 +41,21 @@ type GraphExecution struct {
 	CurrentNode   string
 	LineageID     string
 	ErrorMessage  string
-	CurrentState  trpcgraph.State
+	CurrentState  map[string]any
 	Steps         []GraphStepSnapshot
 	InterruptNode string
-	Agent         trpcagent.Agent
-	GraphAgent    *graphtrpc.GraphAgent
+	runtime       GraphRuntime
 	StartedAt     time.Time
 	FinishedAt    *time.Time
 }
 
 type GraphStepSnapshot struct {
-	NodeID      string `json:"node_id"`
-	StepIndex   int    `json:"step_index"`
-	InputState  trpcgraph.State
-	OutputState trpcgraph.State
-	Status      string `json:"status"`
-	Error       string `json:"error"`
+	NodeID      string         `json:"node_id"`
+	StepIndex   int            `json:"step_index"`
+	InputState  map[string]any `json:"input_state,omitempty"`
+	OutputState map[string]any `json:"output_state,omitempty"`
+	Status      string         `json:"status"`
+	Error       string         `json:"error"`
 	Timestamp   time.Time
 }
 
@@ -80,29 +75,54 @@ type GraphRunRepo interface {
 }
 
 type GraphUsecase struct {
-	repo         GraphRepo
-	runRepo      GraphRunRepo
-	registry     *graphtrpc.Registry
-	saver        trpcgraph.CheckpointSaver
-	eventBus     event.Bus
-	agentChecker graphtrpc.AgentExistenceChecker
-	mu           sync.RWMutex
-	defs         map[string]*GraphDefinition
-	executions   map[string]*GraphExecution
+	repo       GraphRepo
+	runRepo    GraphRunRepo
+	factory    GraphBuilderFactory
+	mu         sync.RWMutex
+	defs       map[string]*GraphDefinition
+	executions map[string]*GraphExecution
 }
 
-func NewGraphUsecase(repo GraphRepo, runRepo GraphRunRepo, registry *graphtrpc.Registry, saver trpcgraph.CheckpointSaver, eventBus event.Bus, agents AgentRepository) *GraphUsecase {
+func NewGraphUsecase(repo GraphRepo, runRepo GraphRunRepo, factory GraphBuilderFactory) *GraphUsecase {
 	uc := &GraphUsecase{
-		repo:         repo,
-		runRepo:      runRepo,
-		registry:     registry,
-		saver:        saver,
-		eventBus:     eventBus,
-		agentChecker: ProvideAgentExistenceChecker(agents),
-		defs:         make(map[string]*GraphDefinition),
-		executions:   make(map[string]*GraphExecution),
+		repo:       repo,
+		runRepo:    runRepo,
+		factory:    factory,
+		defs:       make(map[string]*GraphDefinition),
+		executions: make(map[string]*GraphExecution),
 	}
+	go uc.gcLoop()
 	return uc
+}
+
+const gcInterval = 5 * time.Minute
+const executionMaxAge = 30 * time.Minute
+
+func (uc *GraphUsecase) gcLoop() {
+	ticker := time.NewTicker(gcInterval)
+	defer ticker.Stop()
+	for range ticker.C {
+		uc.gc()
+	}
+}
+
+func (uc *GraphUsecase) gc() {
+	uc.mu.Lock()
+	defer uc.mu.Unlock()
+	now := time.Now()
+	for id, exec := range uc.executions {
+		if exec.Status == "running" || exec.Status == "waiting_human" {
+			continue
+		}
+		if exec.FinishedAt != nil && now.Sub(*exec.FinishedAt) > executionMaxAge {
+			delete(uc.executions, id)
+		} else if exec.FinishedAt == nil && now.Sub(exec.StartedAt) > executionMaxAge {
+			exec.Status = "expired"
+			nowCopy := now
+			exec.FinishedAt = &nowCopy
+			delete(uc.executions, id)
+		}
+	}
 }
 
 func (uc *GraphUsecase) CreateGraph(ctx context.Context, def *GraphDefinition) (*GraphDefinition, error) {
@@ -167,82 +187,37 @@ func (uc *GraphUsecase) DeleteGraph(ctx context.Context, id string) error {
 	return nil
 }
 
-func (uc *GraphUsecase) ExecuteGraph(ctx context.Context, graphID string, sessionID string, initialState trpcgraph.State) (*GraphExecution, error) {
+func (uc *GraphUsecase) ExecuteGraph(ctx context.Context, graphID string, sessionID string, initialState map[string]any) (*GraphExecution, error) {
 	def, err := uc.GetGraph(ctx, graphID)
 	if err != nil {
 		return nil, err
 	}
-	cfg := graphtrpc.GraphBuildConfig{
-		Nodes:            def.Nodes,
-		Edges:            def.Edges,
-		ConditionalEdges: def.ConditionalEdges,
-		Subgraphs:        def.Subgraphs,
-		StateFields:      def.StateFields,
-		EntryPoint:       def.EntryPoint,
-		FinishPoint:      def.FinishPoint,
-		EnableCheckpoint: def.EnableCheckpoint,
-		ExecutionEngine:  def.ExecutionEngine,
-		InterruptBefore:  def.InterruptBefore,
-		InterruptAfter:   def.InterruptAfter,
-	}
-	g, subAgents, err := graphtrpc.BuildStateGraphWithRegistry(cfg, uc.registry)
-	if err != nil {
-		return nil, err
-	}
 
-	var graphAgent *graphtrpc.GraphAgent
-	if uc.saver != nil && def.EnableCheckpoint {
-		graphAgent, err = graphtrpc.NewGraphAgentWithSaver(def.Name, g, uc.saver, def.ExecutionEngine)
-	} else if def.ExecutionEngine != "" && def.ExecutionEngine != graphtrpc.EngineBSP {
-		graphAgent, err = graphtrpc.NewGraphAgentWithEngine(def.Name, g, def.EnableCheckpoint, def.ExecutionEngine)
-	} else {
-		graphAgent, err = graphtrpc.NewGraphAgent(def.Name, g, def.EnableCheckpoint)
-	}
-	if err != nil {
-		return nil, err
-	}
-	_ = subAgents
-
-	lineageID := uuid.New().String()
-	runtimeState := trpcgraph.CheckpointRef{
-		LineageID:    lineageID,
-		CheckpointID: "",
-	}.ToRuntimeState()
-
-	if initialState != nil {
-		for k, v := range initialState {
-			runtimeState[k] = v
-		}
-	}
-
-	inv := &trpcagent.Invocation{
-		RunOptions: trpcagent.RunOptions{
-			RuntimeState: runtimeState,
-		},
-	}
-
-	eventCh, err := graphAgent.Run(ctx, inv)
-	if err != nil {
-		return nil, fmt.Errorf("graph execute: %w", err)
-	}
-
+	cfg := defToBuildConfig(def)
 	execID := uuid.New().String()
+
+	runtime, eventCh, err := uc.factory.BuildAndRun(ctx, cfg, sessionID, graphID, execID, initialState)
+	if err != nil {
+		return nil, err
+	}
+
 	exec := &GraphExecution{
-		ID:         execID,
-		GraphID:    graphID,
-		SessionID:  sessionID,
-		Status:     "running",
-		Agent:      graphAgent,
-		GraphAgent: graphAgent,
-		LineageID:  lineageID,
-		StartedAt:  time.Now(),
+		ID:        execID,
+		GraphID:   graphID,
+		SessionID: sessionID,
+		Status:    "running",
+		runtime:   runtime,
+		LineageID: runtime.GetLineageID(),
+		StartedAt: time.Now(),
 	}
 
 	if err := uc.runRepo.SaveRun(ctx, exec); err != nil {
 		return nil, fmt.Errorf("graph execute save run: %w", err)
 	}
 
-	go uc.consumeEvents(eventCh, exec, execID, graphID, sessionID)
+	safego.Go(context.Background(), "graph.consumeEvents", func() {
+		uc.consumeRuntimeEvents(eventCh, exec, execID, graphID, sessionID)
+	})
 
 	uc.mu.Lock()
 	uc.executions[execID] = exec
@@ -298,7 +273,7 @@ func (uc *GraphUsecase) ResumeExecution(ctx context.Context, executionID string,
 		uc.executions[executionID] = exec
 		uc.mu.Unlock()
 	}
-	if exec.GraphAgent == nil {
+	if exec.runtime == nil {
 		return nil, ErrNotFound
 	}
 
@@ -308,48 +283,25 @@ func (uc *GraphUsecase) ResumeExecution(ctx context.Context, executionID string,
 		exec.LineageID = lineageID
 	}
 
-	runtimeState := trpcgraph.CheckpointRef{
-		LineageID:    lineageID,
-		Namespace:    "",
-		CheckpointID: "",
-	}.ToRuntimeState()
-
-	if resumeValue != nil {
-		runtimeState[trpcgraph.ResumeChannel] = resumeValue
-	}
-
-	inv := &trpcagent.Invocation{
-		RunOptions: trpcagent.RunOptions{
-			RuntimeState: runtimeState,
-		},
-	}
-
-	eventCh, err := exec.GraphAgent.Run(ctx, inv)
+	cfg := defToBuildConfig(&GraphDefinition{ID: exec.GraphID})
+	runtime, eventCh, err := uc.factory.BuildAndResume(ctx, cfg, exec.SessionID, exec.GraphID, executionID, lineageID, resumeValue)
 	if err != nil {
 		return nil, fmt.Errorf("graph resume: %w", err)
 	}
 
+	exec.runtime = runtime
 	exec.Status = "running"
 
-	go uc.consumeEvents(eventCh, exec, executionID, exec.GraphID, exec.SessionID)
+	safego.Go(context.Background(), "graph.consumeEvents(resume)", func() {
+		uc.consumeRuntimeEvents(eventCh, exec, executionID, exec.GraphID, exec.SessionID)
+	})
 
 	return exec, nil
 }
 
-func (uc *GraphUsecase) consumeEvents(eventCh <-chan *trpcevent.Event, exec *GraphExecution, execID, graphID, sessionID string) {
-	var bridge *graphtrpc.EventBridge
-	if uc.eventBus != nil {
-		bridge = graphtrpc.NewEventBridge(uc.eventBus, sessionID, graphID, execID)
-	}
-
+func (uc *GraphUsecase) consumeRuntimeEvents(eventCh <-chan GraphRuntimeEvent, exec *GraphExecution, execID, graphID, sessionID string) {
 	for e := range eventCh {
-		if bridge != nil {
-			env := bridge.ConvertEvent(e)
-			if env != nil {
-				uc.eventBus.Publish(context.Background(), *env)
-			}
-		}
-		uc.updateExecutionFromEvent(exec, e)
+		uc.updateExecutionFromRuntimeEvent(exec, e)
 	}
 
 	uc.mu.Lock()
@@ -363,159 +315,126 @@ func (uc *GraphUsecase) consumeEvents(eventCh <-chan *trpcevent.Event, exec *Gra
 	_ = uc.runRepo.UpdateRun(context.Background(), exec)
 }
 
-func (uc *GraphUsecase) updateExecutionFromEvent(exec *GraphExecution, e *trpcevent.Event) {
-	switch e.Object {
-	case trpcgraph.ObjectTypeGraphNodeStart:
-		meta := graphtrpc.ExtractNodeMeta(e)
+func (uc *GraphUsecase) updateExecutionFromRuntimeEvent(exec *GraphExecution, e GraphRuntimeEvent) {
+	switch e.Type {
+	case DomainEventGraphNodeStart:
 		uc.mu.Lock()
-		exec.CurrentNode = meta.NodeID
+		exec.CurrentNode = e.NodeID
 		uc.mu.Unlock()
-	case trpcgraph.ObjectTypeGraphNodeError:
-		meta := graphtrpc.ExtractNodeMeta(e)
+	case DomainEventGraphNodeError:
 		uc.mu.Lock()
-		exec.ErrorMessage = meta.Error
+		exec.ErrorMessage = e.Error
 		exec.Status = "failed"
 		uc.mu.Unlock()
-	case trpcgraph.ObjectTypeGraphCheckpointInterrupt:
+	case DomainEventGraphInterrupt:
 		uc.mu.Lock()
 		exec.Status = "waiting_human"
 		uc.mu.Unlock()
 	}
 }
 
-func (uc *GraphUsecase) TimeTravelGetState(ctx context.Context, executionID string, checkpointID string, namespace string) (*trpcgraph.StateSnapshot, error) {
+func (uc *GraphUsecase) TimeTravelGetState(ctx context.Context, executionID string, checkpointID string, namespace string) (any, error) {
 	uc.mu.RLock()
 	exec, ok := uc.executions[executionID]
 	uc.mu.RUnlock()
-	if !ok {
+	if !ok || exec.runtime == nil {
 		return nil, ErrNotFound
 	}
-	if exec.GraphAgent == nil {
-		return nil, ErrNotFound
-	}
-	tt, err := exec.GraphAgent.TimeTravel()
-	if err != nil {
-		return nil, fmt.Errorf("time travel not available: %w", err)
-	}
-	ref := trpcgraph.CheckpointRef{
-		LineageID:    exec.LineageID,
-		Namespace:    namespace,
-		CheckpointID: checkpointID,
-	}
-	return tt.GetState(ctx, ref)
+	return exec.runtime.TimeTravelGetState(ctx, exec.LineageID, checkpointID, namespace)
 }
 
-func (uc *GraphUsecase) TimeTravelHistory(ctx context.Context, executionID string, namespace string, limit int) ([]trpcgraph.CheckpointInfo, error) {
+func (uc *GraphUsecase) TimeTravelHistory(ctx context.Context, executionID string, namespace string, limit int) (any, error) {
 	uc.mu.RLock()
 	exec, ok := uc.executions[executionID]
 	uc.mu.RUnlock()
-	if !ok {
+	if !ok || exec.runtime == nil {
 		return nil, ErrNotFound
 	}
-	if exec.GraphAgent == nil {
-		return nil, ErrNotFound
-	}
-	tt, err := exec.GraphAgent.TimeTravel()
-	if err != nil {
-		return nil, fmt.Errorf("time travel not available: %w", err)
-	}
-	return tt.History(ctx, exec.LineageID, namespace, limit)
+	return exec.runtime.TimeTravelHistory(ctx, exec.LineageID, namespace, limit)
 }
 
-func (uc *GraphUsecase) TimeTravelEditState(ctx context.Context, executionID string, checkpointID string, namespace string, patch trpcgraph.State) (trpcgraph.CheckpointRef, error) {
+func (uc *GraphUsecase) TimeTravelEditState(ctx context.Context, executionID string, checkpointID string, namespace string, patch map[string]any) (any, error) {
 	uc.mu.RLock()
 	exec, ok := uc.executions[executionID]
 	uc.mu.RUnlock()
-	if !ok {
-		return trpcgraph.CheckpointRef{}, ErrNotFound
+	if !ok || exec.runtime == nil {
+		return nil, ErrNotFound
 	}
-	if exec.GraphAgent == nil {
-		return trpcgraph.CheckpointRef{}, ErrNotFound
-	}
-	tt, err := exec.GraphAgent.TimeTravel()
-	if err != nil {
-		return trpcgraph.CheckpointRef{}, fmt.Errorf("time travel not available: %w", err)
-	}
-	base := trpcgraph.CheckpointRef{
-		LineageID:    exec.LineageID,
-		Namespace:    namespace,
-		CheckpointID: checkpointID,
-	}
-	return tt.EditState(ctx, base, patch)
+	return exec.runtime.TimeTravelEditState(ctx, exec.LineageID, checkpointID, namespace, patch)
 }
 
-func (uc *GraphUsecase) GetCheckpointSaver() trpcgraph.CheckpointSaver {
-	return uc.saver
-}
-
-func (uc *GraphUsecase) ListCheckpoints(ctx context.Context, executionID string, namespace string, limit int) ([]trpcgraph.CheckpointInfo, error) {
+func (uc *GraphUsecase) ListCheckpoints(ctx context.Context, executionID string, namespace string, limit int) (any, error) {
 	uc.mu.RLock()
 	exec, ok := uc.executions[executionID]
 	uc.mu.RUnlock()
-	if !ok {
+	if !ok || exec.runtime == nil {
 		return nil, ErrNotFound
 	}
-	if exec.GraphAgent == nil {
-		return nil, ErrNotFound
-	}
-	tt, err := exec.GraphAgent.TimeTravel()
-	if err != nil {
-		return nil, fmt.Errorf("time travel not available: %w", err)
-	}
-	return tt.History(ctx, exec.LineageID, namespace, limit)
+	return exec.runtime.ListCheckpoints(ctx, exec.LineageID, namespace, limit)
 }
 
-func (uc *GraphUsecase) GetStateSnapshot(ctx context.Context, executionID string, checkpointID string, namespace string) (*trpcgraph.StateSnapshot, error) {
+func (uc *GraphUsecase) GetStateSnapshot(ctx context.Context, executionID string, checkpointID string, namespace string) (any, error) {
 	uc.mu.RLock()
 	exec, ok := uc.executions[executionID]
 	uc.mu.RUnlock()
-	if !ok {
+	if !ok || exec.runtime == nil {
 		return nil, ErrNotFound
 	}
-	if exec.GraphAgent == nil {
-		return nil, ErrNotFound
-	}
-	tt, err := exec.GraphAgent.TimeTravel()
-	if err != nil {
-		return nil, fmt.Errorf("time travel not available: %w", err)
-	}
-	ref := trpcgraph.CheckpointRef{
-		LineageID:    exec.LineageID,
-		Namespace:    namespace,
-		CheckpointID: checkpointID,
-	}
-	return tt.GetState(ctx, ref)
+	return exec.runtime.TimeTravelGetState(ctx, exec.LineageID, checkpointID, namespace)
 }
 
-func (uc *GraphUsecase) EditState(ctx context.Context, executionID string, checkpointID string, namespace string, patch trpcgraph.State) (trpcgraph.CheckpointRef, error) {
+func (uc *GraphUsecase) EditState(ctx context.Context, executionID string, checkpointID string, namespace string, patch map[string]any) (any, error) {
 	uc.mu.RLock()
 	exec, ok := uc.executions[executionID]
 	uc.mu.RUnlock()
-	if !ok {
-		return trpcgraph.CheckpointRef{}, ErrNotFound
+	if !ok || exec.runtime == nil {
+		return nil, ErrNotFound
 	}
-	if exec.GraphAgent == nil {
-		return trpcgraph.CheckpointRef{}, ErrNotFound
-	}
-	tt, err := exec.GraphAgent.TimeTravel()
-	if err != nil {
-		return trpcgraph.CheckpointRef{}, fmt.Errorf("time travel not available: %w", err)
-	}
-	base := trpcgraph.CheckpointRef{
-		LineageID:    exec.LineageID,
-		Namespace:    namespace,
-		CheckpointID: checkpointID,
-	}
-	return tt.EditState(ctx, base, patch)
+	return exec.runtime.TimeTravelEditState(ctx, exec.LineageID, checkpointID, namespace, patch)
 }
 
-func (uc *GraphUsecase) VisualizeGraph(ctx context.Context, graphID string, format string) (*graphtrpc.VisualGraph, error) {
+func (uc *GraphUsecase) VisualizeGraph(ctx context.Context, graphID string, format string) (any, error) {
 	def, err := uc.GetGraph(ctx, graphID)
 	if err != nil {
 		return nil, err
 	}
+	cfg := defToBuildConfig(def)
+	return uc.factory.Visualize(ctx, cfg)
+}
 
-	cfg := graphtrpc.GraphBuildConfig{
+func (uc *GraphUsecase) ValidateGraph(ctx context.Context, graphID string) (any, error) {
+	def, err := uc.GetGraph(ctx, graphID)
+	if err != nil {
+		return nil, err
+	}
+	cfg := defToBuildConfig(def)
+	return uc.factory.Validate(ctx, cfg)
+}
+
+func (uc *GraphUsecase) ListGraphTemplates(ctx context.Context) any {
+	return uc.factory.ListTemplates()
+}
+
+func (uc *GraphUsecase) CreateGraphFromTemplate(ctx context.Context, templateID string, name string, description string) (*GraphDefinition, error) {
+	tmpl, ok := uc.factory.GetTemplate(templateID)
+	if !ok {
+		return nil, fmt.Errorf("graph template %q not found", templateID)
+	}
+	def := uc.factory.TemplateToDef(tmpl, name, description)
+	return uc.CreateGraph(ctx, def)
+}
+
+func (uc *GraphUsecase) FindNodeDef(ctx context.Context, graphID string, nodeID string) *NodeDefInfo {
+	def, err := uc.GetGraph(ctx, graphID)
+	if err != nil {
+		return nil
+	}
+	cfg := defToBuildConfig(def)
+	return uc.factory.FindNodeDef(cfg, nodeID)
+}
+
+func defToBuildConfig(def *GraphDefinition) graphtrpc.GraphBuildConfig {
+	return graphtrpc.GraphBuildConfig{
 		Nodes:            def.Nodes,
 		Edges:            def.Edges,
 		ConditionalEdges: def.ConditionalEdges,
@@ -528,22 +447,6 @@ func (uc *GraphUsecase) VisualizeGraph(ctx context.Context, graphID string, form
 		InterruptBefore:  def.InterruptBefore,
 		InterruptAfter:   def.InterruptAfter,
 	}
-
-	g, _, err := graphtrpc.BuildStateGraphWithRegistry(cfg, uc.registry)
-	if err != nil {
-		return nil, fmt.Errorf("build state graph for visualization: %w", err)
-	}
-
-	dot := g.DOT()
-	vg := graphtrpc.ParseDOTToVisualGraph(dot, def.Nodes, def.ConditionalEdges)
-
-	startEnd := graphtrpc.BuildStartEndNodes()
-	allNodes := make([]graphtrpc.VisualGraphNode, 0, len(vg.Nodes)+2)
-	allNodes = append(allNodes, startEnd...)
-	allNodes = append(allNodes, vg.Nodes...)
-	vg.Nodes = allNodes
-
-	return vg, nil
 }
 
 func graphStepSnapshotToJSON(steps []GraphStepSnapshot) string {
@@ -570,50 +473,4 @@ func graphStepSnapshotToJSON(steps []GraphStepSnapshot) string {
 	}
 	b, _ := json.Marshal(js)
 	return string(b)
-}
-
-func (uc *GraphUsecase) ValidateGraph(ctx context.Context, graphID string) (*graphtrpc.ValidationResult, error) {
-	def, err := uc.GetGraph(ctx, graphID)
-	if err != nil {
-		return nil, err
-	}
-	cfg := graphtrpc.GraphBuildConfig{
-		Nodes:            def.Nodes,
-		Edges:            def.Edges,
-		ConditionalEdges: def.ConditionalEdges,
-		Subgraphs:        def.Subgraphs,
-		StateFields:      def.StateFields,
-		EntryPoint:       def.EntryPoint,
-		FinishPoint:      def.FinishPoint,
-		EnableCheckpoint: def.EnableCheckpoint,
-		ExecutionEngine:  def.ExecutionEngine,
-		InterruptBefore:  def.InterruptBefore,
-		InterruptAfter:   def.InterruptAfter,
-	}
-	return graphtrpc.ValidateGraph(&cfg, uc.agentChecker, uc.registry), nil
-}
-
-func (uc *GraphUsecase) ListGraphTemplates(ctx context.Context) []graphtrpc.GraphTemplate {
-	return graphtrpc.ListBuiltinTemplates()
-}
-
-func (uc *GraphUsecase) CreateGraphFromTemplate(ctx context.Context, templateID string, name string, description string) (*GraphDefinition, error) {
-	tmpl := graphtrpc.GetBuiltinTemplate(templateID)
-	if tmpl == nil {
-		return nil, fmt.Errorf("graph template %q not found", templateID)
-	}
-	cfg := graphtrpc.TemplateToBuildConfig(*tmpl)
-	def := &GraphDefinition{
-		Name:             name,
-		Description:      description,
-		StateFields:      cfg.StateFields,
-		Nodes:            cfg.Nodes,
-		Edges:            cfg.Edges,
-		ConditionalEdges: cfg.ConditionalEdges,
-		EntryPoint:       cfg.EntryPoint,
-		FinishPoint:      cfg.FinishPoint,
-		EnableCheckpoint: cfg.EnableCheckpoint,
-		ExecutionEngine:  cfg.ExecutionEngine,
-	}
-	return uc.CreateGraph(ctx, def)
 }

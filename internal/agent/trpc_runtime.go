@@ -11,7 +11,6 @@ import (
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 	trpcrunner "trpc.group/trpc-go/trpc-agent-go/runner"
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
-	trpcinmemory "trpc.group/trpc-go/trpc-agent-go/session/inmemory"
 )
 
 const TRPCDefaultAppName = "aranea"
@@ -89,8 +88,4 @@ func EnqueueTRPCUserMessage(r trpcrunner.Runner, requestID string, content strin
 		return errors.New("runner does not support steerable operations")
 	}
 	return sr.EnqueueUserMessage(requestID, trpcmodel.NewUserMessage(content))
-}
-
-func NewInMemoryTRPCSessionService() trpcsession.Service {
-	return trpcinmemory.NewSessionService()
 }

@@ -17,6 +17,7 @@ import (
 	sessiontrpc "aranea-agents/internal/session/trpc"
 
 	"entgo.io/ent/dialect"
+	entsql "entgo.io/ent/dialect/sql"
 
 	_ "github.com/glebarez/go-sqlite/compat"
 	_ "github.com/go-sql-driver/mysql"
@@ -65,9 +66,9 @@ var ProviderSet = wire.NewSet(
 // 复杂原生 SQL 走 *ent.Client 上的 QueryContext（见 sqlite_db.go），不另开 sql.DB。
 type Data struct {
 	entClient *ent.Client // SQLite — Ent schema（admin / avatar_assets / embedding 偏好等）
+	rawDB     *sql.DB     // SQLite — 底层 *sql.DB，Ent 与 trpc 适配器共用同一连接池
 	pg        *sql.DB     // Postgres — agent_memory 向量列
 	vectorDim int
-	sqliteDSN string // SQLite DSN for trpc session service
 }
 
 // Ent returns the SQLite-backed Ent client.
@@ -76,6 +77,14 @@ func (d *Data) Ent() *ent.Client {
 		return nil
 	}
 	return d.entClient
+}
+
+// RawDB returns the underlying SQLite *sql.DB shared by Ent and trpc adapters (session / checkpoint).
+func (d *Data) RawDB() *sql.DB {
+	if d == nil {
+		return nil
+	}
+	return d.rawDB
 }
 
 // Postgres returns the Postgres DB handle for vectors, or nil if not configured.
@@ -144,18 +153,25 @@ func migrateDev(ctx context.Context, client *ent.Client, label string) (*ent.Cli
 }
 
 // NewData opens SQLite for Ent CRUD; optionally opens Postgres + ensures pgvector schema for agent memory.
+// The underlying *sql.DB is shared with trpc session/checkpoint adapters via RawDB().
 func NewData(c *conf.Data) (*Data, func(), error) {
 	driverName, dsn, err := entSQLiteDriverAndDSN(c)
 	if err != nil {
 		log.Fatalf("sqlite (ent): %v", err)
 	}
-	entClient, err := ent.Open(driverName, dsn)
+
+	rawDB, err := sql.Open(driverName, dsn)
 	if err != nil {
-		log.Fatalf("failed opening sqlite for ent: %v", err)
+		log.Fatalf("failed opening sqlite raw db: %v", err)
 	}
+	rawDB.SetMaxOpenConns(1)
+
+	drv := entsql.OpenDB(driverName, rawDB)
+	entClient := ent.NewClient(ent.Driver(drv))
+
 	if driverName == dialect.SQLite {
-		if _, pragmaErr := entClient.ExecContext(context.Background(), "PRAGMA foreign_keys=ON"); pragmaErr != nil {
-			_ = entClient.Close()
+		if _, pragmaErr := rawDB.ExecContext(context.Background(), "PRAGMA foreign_keys=ON"); pragmaErr != nil {
+			rawDB.Close()
 			return nil, nil, fmt.Errorf("sqlite foreign_keys pragma: %w", pragmaErr)
 		}
 	}
@@ -164,32 +180,32 @@ func NewData(c *conf.Data) (*Data, func(), error) {
 	if strings.TrimSpace(os.Getenv("DEPLOY_ENV")) == "dev" {
 		entClient, err = migrateDev(ctxEnt, entClient, "sqlite(ent)")
 		if err != nil {
-			_ = entClient.Close()
+			rawDB.Close()
 			return nil, nil, err
 		}
 	} else if err = entClient.Schema.Create(ctxEnt); err != nil {
-		_ = entClient.Close()
+		rawDB.Close()
 		return nil, nil, fmt.Errorf("ent schema create (sqlite): %w", err)
 	}
 
 	if err = sessionmemory.EnsurePatches(context.Background(), entClient); err != nil {
-		_ = entClient.Close()
+		rawDB.Close()
 		return nil, nil, fmt.Errorf("session memory patches: %w", err)
 	}
 	if err = sessionmemory.EnsureSchema(context.Background(), entClient); err != nil {
-		_ = entClient.Close()
+		rawDB.Close()
 		return nil, nil, fmt.Errorf("session memory schema: %w", err)
 	}
 	if err = ensureAgentRuntimePatches(context.Background(), entClient); err != nil {
-		_ = entClient.Close()
+		rawDB.Close()
 		return nil, nil, fmt.Errorf("agent runtime patches: %w", err)
 	}
 	if err = ensureBuiltinPlatformTools(context.Background(), entClient); err != nil {
-		_ = entClient.Close()
+		rawDB.Close()
 		return nil, nil, err
 	}
 	if err = ensureDefaultSystemSetting(context.Background(), entClient); err != nil {
-		_ = entClient.Close()
+		rawDB.Close()
 		return nil, nil, err
 	}
 
@@ -198,25 +214,25 @@ func NewData(c *conf.Data) (*Data, func(), error) {
 	if pgDSN != "" {
 		pg, err = sql.Open("postgres", pgDSN)
 		if err != nil {
-			_ = entClient.Close()
+			rawDB.Close()
 			log.Fatalf("failed opening postgres for vectors: %v", err)
 		}
 		pg.SetMaxOpenConns(8)
 		pg.SetConnMaxLifetime(0)
 		if err = pg.PingContext(context.Background()); err != nil {
 			pg.Close()
-			_ = entClient.Close()
+			rawDB.Close()
 			return nil, nil, fmt.Errorf("postgres ping: %w", err)
 		}
 	}
 
 	vdim := vectorDimFromConf(c)
-	st := &Data{entClient: entClient, pg: pg, vectorDim: vdim, sqliteDSN: dsn}
+	st := &Data{entClient: entClient, rawDB: rawDB, pg: pg, vectorDim: vdim}
 
 	if pg != nil {
 		if err = pgvector.EnsureSchema(context.Background(), pg, vdim); err != nil {
 			pg.Close()
-			entClient.Close()
+			rawDB.Close()
 			return nil, nil, err
 		}
 	}
@@ -225,14 +241,14 @@ func NewData(c *conf.Data) (*Data, func(), error) {
 		if pg != nil {
 			pg.Close()
 		}
-		_ = entClient.Close()
+		rawDB.Close()
 		return nil, nil, err
 	}
 	if err = ensureDevBypassAdminIfEnabled(context.Background(), entClient); err != nil {
 		if pg != nil {
 			pg.Close()
 		}
-		_ = entClient.Close()
+		rawDB.Close()
 		return nil, nil, err
 	}
 
@@ -240,8 +256,8 @@ func NewData(c *conf.Data) (*Data, func(), error) {
 		if st.pg != nil {
 			st.pg.Close()
 		}
-		if st.entClient != nil {
-			st.entClient.Close()
+		if st.rawDB != nil {
+			st.rawDB.Close()
 		}
 	}
 	return st, cleanup, nil
@@ -255,18 +271,11 @@ func NewSessionMemoryStore(d *Data) *sessionmemory.Store {
 	return sessionmemory.NewStore(d.Ent())
 }
 
-func (d *Data) SQLiteDSN() string {
-	if d == nil {
-		return ""
-	}
-	return d.sqliteDSN
-}
-
 func NewTRPCSessionService(d *Data) trpcsession.Service {
-	if d == nil || d.SQLiteDSN() == "" {
+	if d == nil || d.RawDB() == nil {
 		return nil
 	}
-	svc, err := sessiontrpc.NewSQLiteSessionService(d.SQLiteDSN())
+	svc, err := sessiontrpc.NewSQLiteSessionService(d.RawDB())
 	if err != nil {
 		log.Printf("trpc session sqlite init failed, falling back to in-memory: %v", err)
 		return sessiontrpc.NewInMemorySessionService()

@@ -1,0 +1,48 @@
+package biz
+
+import (
+	"context"
+
+	graphtrpc "aranea-agents/internal/graph/trpc"
+)
+
+type GraphRuntimeEvent struct {
+	Type     DomainEventType
+	NodeID   string
+	Error    string
+	RawEvent any
+}
+
+type GraphRuntime interface {
+	Run(ctx context.Context, initialState map[string]any) (<-chan GraphRuntimeEvent, error)
+	Resume(ctx context.Context, lineageID string, resumeValue map[string]any) (<-chan GraphRuntimeEvent, error)
+	Cancel() error
+	TimeTravelGetState(ctx context.Context, lineageID, checkpointID, namespace string) (any, error)
+	TimeTravelHistory(ctx context.Context, lineageID, namespace string, limit int) (any, error)
+	TimeTravelEditState(ctx context.Context, lineageID, checkpointID, namespace string, patch map[string]any) (any, error)
+	ListCheckpoints(ctx context.Context, lineageID, namespace string, limit int) (any, error)
+	GetLineageID() string
+}
+
+type NodeDefInfo struct {
+	RequiredRole             string
+	AssignmentMode           string
+	AssignmentStrategy       string
+	ReviewerAgent            string
+	ReviewRules              string
+	TimeoutSeconds           int
+	HeartbeatIntervalSeconds int
+	EnableLeaseExtension     bool
+}
+
+type GraphBuilderFactory interface {
+	BuildAndRun(ctx context.Context, cfg graphtrpc.GraphBuildConfig, sessionID, graphID, execID string, initialState map[string]any) (GraphRuntime, <-chan GraphRuntimeEvent, error)
+	BuildAndResume(ctx context.Context, cfg graphtrpc.GraphBuildConfig, sessionID, graphID, execID, lineageID string, resumeValue map[string]any) (GraphRuntime, <-chan GraphRuntimeEvent, error)
+	Visualize(ctx context.Context, cfg graphtrpc.GraphBuildConfig) (any, error)
+	Validate(ctx context.Context, cfg graphtrpc.GraphBuildConfig) (any, error)
+	ListTemplates() any
+	GetTemplate(templateID string) (any, bool)
+	TemplateToDef(template any, name, description string) *GraphDefinition
+	AgentExists(agentID string) bool
+	FindNodeDef(cfg graphtrpc.GraphBuildConfig, nodeID string) *NodeDefInfo
+}

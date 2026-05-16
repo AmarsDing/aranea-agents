@@ -9,7 +9,6 @@ import (
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/cronrunner"
 	"aranea-agents/internal/event"
-	"aranea-agents/internal/server"
 
 	"github.com/go-kratos/kratos/v2"
 	"github.com/go-kratos/kratos/v2/config"
@@ -38,14 +37,10 @@ func newApp(
 	logger log.Logger,
 	gs *grpc.Server,
 	hs *http.Server,
-	ws *server.WSServer,
 	consumer *biz.EventBusConsumer,
 	eventBus event.Bus,
 ) *kratos.App {
 	srv := []transport.Server{gs, hs}
-	if ws != nil {
-		srv = append(srv, ws)
-	}
 
 	consumerCtx, consumerCancel := context.WithCancel(context.Background())
 

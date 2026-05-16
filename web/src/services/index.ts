@@ -17,6 +17,7 @@ import { createUsageServiceClient } from "./kratos/usage/v1/index";
 import { createMonitorServiceClient } from "./kratos/monitor/v1/index";
 import { createMemoryServiceClient } from "./kratos/memory/v1/index";
 import { createGraphServiceClient } from "./kratos/graph/v1/index";
+import { createChatServiceClient } from "./kratos/chat/v1/index";
 import { requestHandler } from "./axiosHandler";
 
 // 每个功能模块的 service（proto 生成客户端 + requestHandler → kratosApi）。
@@ -94,6 +95,10 @@ export function createMemoryService() {
 
 export function createGraphService() {
   return createGraphServiceClient(requestHandler);
+}
+
+export function createChatService() {
+  return createChatServiceClient(requestHandler);
 }
 
 export { kratosApi, requestHandler, syncHttpClients } from "./axiosHandler";

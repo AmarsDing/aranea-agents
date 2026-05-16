@@ -12,6 +12,7 @@ import (
 	"aranea-agents/internal/provider"
 	skilltrpc "aranea-agents/internal/skill/trpc"
 	tooltrpc "aranea-agents/internal/tools/trpc"
+	"aranea-agents/pkg/safego"
 	"aranea-agents/pkg/strutil"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -165,7 +166,7 @@ func buildSkillDeps(ctx context.Context, deps TRPCBuilderDeps) (trpcskill.Reposi
 func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) (*tooltrpc.AssembledToolsets, error) {
 	cfg := tooltrpc.ToolsetConfig{}
 	if ag.Settings != nil && ag.Settings.ToolsEnabled {
-		eff := loadEffectiveToolKeys(deps, ag.ID)
+		eff := loadEffectiveToolKeys(ctx, deps, ag.ID)
 		cfg.Filesystem = eff["read_file"] || eff["read_multiple_files"] || eff["save_file"] || eff["list_file"] || eff["search_file"] || eff["search_content"] || eff["replace_content"]
 		cfg.ShellExec = eff["shell_exec"]
 		cfg.WebFetch = eff["web_fetch"]
@@ -313,12 +314,12 @@ func parseMCPServerConfigJSON(raw string) (mcpServerConfigJSON, error) {
 	return c, nil
 }
 
-func loadEffectiveToolKeys(deps TRPCBuilderDeps, agentID string) map[string]bool {
+func loadEffectiveToolKeys(ctx context.Context, deps TRPCBuilderDeps, agentID string) map[string]bool {
 	m := map[string]bool{}
 	if deps.AgentUC == nil || strings.TrimSpace(agentID) == "" {
 		return m
 	}
-	eff, err := deps.AgentUC.GetEffectiveTools(context.Background(), agentID)
+	eff, err := deps.AgentUC.GetEffectiveTools(ctx, agentID)
 	if err != nil || !eff.ToolsEnabled {
 		return m
 	}
@@ -473,12 +474,12 @@ func recordToolInvocationAsync(ctx context.Context, args *trpctool.AfterToolArgs
 		Source:        "adk",
 		ToolCallID:    args.ToolCallID,
 	}
-	go func() {
+	safego.Go(ctx, "recordToolInvocationAsync", func() {
 		bgCtx := context.Background()
 		if err := deps.ToolUC.RecordToolInvocation(bgCtx, write); err != nil {
 			slog.Warn("tool invocation record failed", "tool", toolKey, "error", err)
 		}
-	}()
+	})
 }
 
 func previewFromArgs(args []byte) string {

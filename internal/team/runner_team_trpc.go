@@ -13,10 +13,11 @@ import (
 	"aranea-agents/internal/agent"
 	"aranea-agents/internal/agent/intent"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/data/sessionmemory"
 	"aranea-agents/internal/event"
-	memtrpc "aranea-agents/internal/memory/trpc"
-	"aranea-agents/internal/provider"
 	"aranea-agents/pkg/strutil"
+
+	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
@@ -112,18 +113,13 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 		"team_turn phase=team_built session_id=%s run_id=%s mode=%s",
 		sess.ID, run.ID, mode), sess.ID)
 
-	runnerDeps := agent.TRPCRunnerDeps{}
+	var trpcSession trpcsession.Service
+	var sessionMemory *sessionmemory.Store
 	if r.td.RT != nil {
-		if r.td.RT.TRPCSession != nil {
-			runnerDeps.SessionService = r.td.RT.TRPCSession
-		}
-		if r.td.RT.SessionMemory != nil {
-			runnerDeps.MemoryService = memtrpc.NewSQLiteMemoryService(r.td.RT.SessionMemory)
-		}
+		trpcSession = r.td.RT.TRPCSession
+		sessionMemory = r.td.RT.SessionMemory
 	}
-	if runnerDeps.SessionService == nil {
-		runnerDeps.SessionService = agent.NewInMemoryTRPCSessionService()
-	}
+	runnerDeps := agent.NewRunnerDepsFromRuntime(trpcSession, sessionMemory)
 	runner, err := agent.NewTRPCRunner(root, runnerDeps)
 	if err != nil {
 		r.finishRunErr(ctx, &run, t0, err.Error())
@@ -211,79 +207,36 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 		return userMsg, biz.ChatMessage{}, err
 	}
 
-	var (
-		reply         strings.Builder
-		reasoning     strings.Builder
-		promptTok     int
-		completionTok int
-	)
-
-	var projector *agent.EventProjector
-	if r.td.EventBus != nil {
-		projector = agent.NewEventProjector(r.td.EventBus)
-	}
 	projectMeta := agent.ProjectMeta{
 		SessionID: sess.ID,
 		RequestID: run.ID,
 		TeamID:    teamRow.ID,
 	}
-
-	for ev := range events {
-		if runCtx.Err() != nil {
-			hint := ""
-			switch {
-			case errors.Is(runCtx.Err(), context.DeadlineExceeded):
-				if dur := TurnDeadlineDuration(def); dur > 0 {
-					hint = fmt.Sprintf(" hint=definition_timeout_hit effective=%s", dur)
-				}
-			case errors.Is(runCtx.Err(), context.Canceled):
-				hint = " hint=client_disconnect_or_abort"
+	result := agent.ConsumeEventStream(runCtx, events, r.td.EventBus, projectMeta)
+	if runCtx.Err() != nil {
+		hint := ""
+		switch {
+		case errors.Is(runCtx.Err(), context.DeadlineExceeded):
+			if dur := TurnDeadlineDuration(def); dur > 0 {
+				hint = fmt.Sprintf(" hint=definition_timeout_hit effective=%s", dur)
 			}
-			publishTeamMonitor(ctx, r.td.EventBus, "WARN", fmt.Sprintf(
-				"team_turn phase=cancelled session_id=%s run_id=%s err=%v%s",
-				sess.ID, run.ID, runCtx.Err(), hint), sess.ID)
-			r.finishRunErr(ctx, &run, t0, runCtx.Err().Error())
-			return userMsg, biz.ChatMessage{}, runCtx.Err()
+		case errors.Is(runCtx.Err(), context.Canceled):
+			hint = " hint=client_disconnect_or_abort"
 		}
-		if ev == nil {
-			continue
-		}
-
-		if projector != nil {
-			projector.ProjectAndPublish(runCtx, ev, projectMeta)
-		}
-
-		if ev.IsRunnerCompletion() {
-			if ev.Response != nil && ev.Response.Usage != nil {
-				promptTok = ev.Response.Usage.PromptTokens
-				completionTok = ev.Response.Usage.CompletionTokens
-			}
-			continue
-		}
-		if ev.Response == nil {
-			continue
-		}
-		if usage := ev.Response.Usage; usage != nil {
-			promptTok = usage.PromptTokens
-			completionTok = usage.CompletionTokens
-		}
-		for _, choice := range ev.Response.Choices {
-			msg := choice.Message
-			if text := strings.TrimSpace(msg.Content); text != "" {
-				_ = provider.VisibleStreamingDelta(&reply, text)
-			}
-			if rc := strings.TrimSpace(msg.ReasoningContent); rc != "" {
-				_ = provider.VisibleStreamingDelta(&reasoning, rc)
-			}
-		}
+		publishTeamMonitor(ctx, r.td.EventBus, "WARN", fmt.Sprintf(
+			"team_turn phase=cancelled session_id=%s run_id=%s err=%v%s",
+			sess.ID, run.ID, runCtx.Err(), hint), sess.ID)
+		r.finishRunErr(ctx, &run, t0, runCtx.Err().Error())
+		return userMsg, biz.ChatMessage{}, runCtx.Err()
 	}
 
 	publishTeamMonitor(ctx, r.td.EventBus, "INFO", fmt.Sprintf(
 		"team_turn phase=events_done session_id=%s run_id=%s",
 		sess.ID, run.ID), sess.ID)
 
-	replyText := strings.TrimSpace(reply.String())
-	reasoningText := strings.TrimSpace(reasoning.String())
+	replyText := strings.TrimSpace(result.Reply.String())
+	reasoningText := strings.TrimSpace(result.Reasoning.String())
+	promptTok, completionTok := result.PromptTok, result.CompletionTok
 	if promptTok <= 0 && completionTok <= 0 && replyText != "" {
 		promptTok = agent.RoughTokenEstimate(content + replyText)
 		completionTok = agent.RoughTokenEstimate(replyText)

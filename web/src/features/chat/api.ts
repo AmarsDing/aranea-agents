@@ -5,7 +5,7 @@
  *
  * Session 相关 API 请从 `features/session/api` 直接导入。
  */
-import { kratosApi } from "../../services/axiosHandler";
+import { createChatService } from "../../services";
 import { asRecord, pickI32, pickStr } from "../../shared/wireJson";
 import type {
   ChatOption,
@@ -24,6 +24,8 @@ export type {
   ToolUseEvent,
   IntentPassResult
 } from "./types";
+
+const chatService = createChatService();
 
 function wireInboundChatMessage(raw: unknown): Message {
   const r = asRecord(raw);
@@ -72,10 +74,23 @@ export async function sendMessage(payload: {
   content: string;
   options?: SendMessageOptions;
 }): Promise<SendMessageResult> {
-  const { data } = await kratosApi.post("/v1/chat/messages", payload);
+  const data = await chatService.SendChatMessage({
+    sessionId: payload.session_id,
+    agentKey: payload.agent_key,
+    teamId: payload.team_id,
+    content: payload.content,
+    options: payload.options
+      ? {
+          dialogMode: payload.options.dialog_mode,
+          provider: payload.options.provider,
+          model: payload.options.model,
+          attachments: payload.options.attachments?.map((a) => ({ id: a.id })),
+        }
+      : undefined,
+  });
   const d = asRecord(data);
-  const um = d.user_message ?? d.userMessage;
-  const am = d.agent_message ?? d.agentMessage;
+  const um = d.userMessage ?? d.user_message;
+  const am = d.agentMessage ?? d.agent_message;
   return {
     user_message: wireInboundChatMessage(um),
     agent_message: wireInboundChatMessage(am)
@@ -83,13 +98,13 @@ export async function sendMessage(payload: {
 }
 
 export async function listChatOptions(type?: string): Promise<ChatOption[]> {
-  const { data } = await kratosApi.get("/v1/chat/options", { params: type ? { type } : undefined });
+  const data = await chatService.GetChatOptions({ type });
   return data.items ?? [];
 }
 
 export async function stopGeneration(sessionId: string): Promise<boolean> {
   try {
-    const { data } = await kratosApi.post("/v1/chat/stop", { session_id: sessionId });
+    const data = await chatService.StopGeneration({ sessionId });
     return !!data?.stopped;
   } catch {
     return false;
@@ -105,8 +120,13 @@ export interface PendingMessage {
 
 export async function getPendingMessages(sessionId: string): Promise<PendingMessage[]> {
   try {
-    const { data } = await kratosApi.get("/v1/chat/pending", { params: { session_id: sessionId } });
-    return data.items ?? [];
+    const data = await chatService.GetPendingMessages({ sessionId });
+    return (data.items ?? []).map((item) => ({
+      id: item.id ?? "",
+      content: item.content ?? "",
+      status: item.status ?? "",
+      created_at: item.createdAt ?? "",
+    }));
   } catch {
     return [];
   }
@@ -114,10 +134,7 @@ export async function getPendingMessages(sessionId: string): Promise<PendingMess
 
 export async function cancelPendingMessage(sessionId: string, pendingId: string): Promise<boolean> {
   try {
-    const { data } = await kratosApi.post("/v1/chat/pending/cancel", {
-      session_id: sessionId,
-      pending_id: pendingId
-    });
+    const data = await chatService.CancelPendingMessage({ sessionId, pendingId });
     return !!data?.cancelled;
   } catch {
     return false;
@@ -130,11 +147,7 @@ export async function updatePendingMessage(
   content: string
 ): Promise<boolean> {
   try {
-    const { data } = await kratosApi.post("/v1/chat/pending/update", {
-      session_id: sessionId,
-      pending_id: pendingId,
-      content
-    });
+    const data = await chatService.UpdatePendingMessage({ sessionId, pendingId, content });
     return !!data?.updated;
   } catch {
     return false;

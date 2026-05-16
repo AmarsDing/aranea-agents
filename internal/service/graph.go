@@ -1,7 +1,8 @@
-﻿package service
+package service
 
 import (
 	"context"
+	"fmt"
 
 	graphv1 "aranea-agents/api/kratos/graph/v1"
 	"aranea-agents/internal/biz"
@@ -172,9 +173,9 @@ func (s *GraphService) DeleteGraph(ctx context.Context, req *graphv1.DeleteGraph
 }
 
 func (s *GraphService) ExecuteGraph(ctx context.Context, req *graphv1.ExecuteGraphRequest) (*graphv1.ExecuteGraphResponse, error) {
-	var initialState trpcgraph.State
+	var initialState map[string]any
 	if req.InitialState != nil {
-		initialState = trpcgraph.State(req.InitialState.AsMap())
+		initialState = req.InitialState.AsMap()
 	}
 	exec, err := s.uc.ExecuteGraph(ctx, req.GraphId, req.SessionId, initialState)
 	if err != nil {
@@ -287,7 +288,7 @@ func (s *GraphService) ResumeGraph(ctx context.Context, req *graphv1.ResumeGraph
 }
 
 func (s *GraphService) TimeTravelGraph(ctx context.Context, req *graphv1.TimeTravelGraphRequest) (*graphv1.TimeTravelGraphResponse, error) {
-	snapshot, err := s.uc.TimeTravelGetState(ctx, req.ExecutionId, "", "")
+	result, err := s.uc.TimeTravelGetState(ctx, req.ExecutionId, "", "")
 	if err != nil {
 		exec, execErr := s.uc.GetExecution(ctx, req.ExecutionId)
 		if execErr != nil {
@@ -311,6 +312,7 @@ func (s *GraphService) TimeTravelGraph(ctx context.Context, req *graphv1.TimeTra
 		}
 		return resp, nil
 	}
+	snapshot, _ := result.(*trpcgraph.StateSnapshot)
 	resp := &graphv1.TimeTravelGraphResponse{
 		ExecutionId: req.ExecutionId,
 		StepIndex:   req.StepIndex,
@@ -325,9 +327,13 @@ func (s *GraphService) TimeTravelGraph(ctx context.Context, req *graphv1.TimeTra
 }
 
 func (s *GraphService) VisualizeGraph(ctx context.Context, req *graphv1.VisualizeGraphRequest) (*graphv1.VisualizeGraphResponse, error) {
-	vg, err := s.uc.VisualizeGraph(ctx, req.GraphId, req.Format)
+	result, err := s.uc.VisualizeGraph(ctx, req.GraphId, req.Format)
 	if err != nil {
 		return nil, err
+	}
+	vg, ok := result.(*graphtrpc.VisualGraph)
+	if !ok {
+		return nil, fmt.Errorf("visualize: unexpected result type")
 	}
 	format := req.Format
 	if format == "" {
@@ -373,8 +379,12 @@ func (s *GraphService) ListCheckpoints(ctx context.Context, req *graphv1.ListChe
 	if err != nil {
 		return nil, err
 	}
-	items := make([]*graphv1.CheckpointInfo, len(checkpoints))
-	for i, cp := range checkpoints {
+	cpList, ok := checkpoints.([]trpcgraph.CheckpointInfo)
+	if !ok {
+		return nil, fmt.Errorf("list checkpoints: unexpected result type")
+	}
+	items := make([]*graphv1.CheckpointInfo, len(cpList))
+	for i, cp := range cpList {
 		items[i] = &graphv1.CheckpointInfo{
 			LineageId:          cp.Ref.LineageID,
 			Namespace:          cp.Ref.Namespace,
@@ -391,10 +401,11 @@ func (s *GraphService) ListCheckpoints(ctx context.Context, req *graphv1.ListChe
 }
 
 func (s *GraphService) GetStateSnapshot(ctx context.Context, req *graphv1.GetStateSnapshotRequest) (*graphv1.GetStateSnapshotResponse, error) {
-	snapshot, err := s.uc.GetStateSnapshot(ctx, req.ExecutionId, req.CheckpointId, req.Namespace)
+	result, err := s.uc.GetStateSnapshot(ctx, req.ExecutionId, req.CheckpointId, req.Namespace)
 	if err != nil {
 		return nil, err
 	}
+	snapshot, _ := result.(*trpcgraph.StateSnapshot)
 	resp := &graphv1.GetStateSnapshotResponse{}
 	if snapshot != nil {
 		info := &graphv1.CheckpointInfo{
@@ -425,13 +436,17 @@ func (s *GraphService) GetStateSnapshot(ctx context.Context, req *graphv1.GetSta
 }
 
 func (s *GraphService) EditState(ctx context.Context, req *graphv1.EditStateRequest) (*graphv1.EditStateResponse, error) {
-	var patch trpcgraph.State
+	var patch map[string]any
 	if req.Patch != nil {
-		patch = trpcgraph.State(req.Patch.AsMap())
+		patch = req.Patch.AsMap()
 	}
-	ref, err := s.uc.EditState(ctx, req.ExecutionId, req.CheckpointId, req.Namespace, patch)
+	result, err := s.uc.EditState(ctx, req.ExecutionId, req.CheckpointId, req.Namespace, patch)
 	if err != nil {
 		return nil, err
+	}
+	ref, ok := result.(trpcgraph.CheckpointRef)
+	if !ok {
+		return nil, fmt.Errorf("edit state: unexpected result type")
 	}
 	return &graphv1.EditStateResponse{
 		NewCheckpointId: ref.CheckpointID,
@@ -618,10 +633,14 @@ func (s *GraphService) ValidateGraph(ctx context.Context, req *graphv1.ValidateG
 	if err != nil {
 		return nil, err
 	}
-	resp := &graphv1.ValidateGraphResponse{
-		Valid: !result.HasErrors(),
+	vr, ok := result.(*graphtrpc.ValidationResult)
+	if !ok {
+		return nil, fmt.Errorf("validate: unexpected result type")
 	}
-	for _, e := range result.Errors {
+	resp := &graphv1.ValidateGraphResponse{
+		Valid: !vr.HasErrors(),
+	}
+	for _, e := range vr.Errors {
 		resp.Errors = append(resp.Errors, &graphv1.ValidationError{
 			Code:    string(e.Code),
 			NodeId:  e.NodeID,
@@ -629,7 +648,7 @@ func (s *GraphService) ValidateGraph(ctx context.Context, req *graphv1.ValidateG
 			Message: e.Message,
 		})
 	}
-	for _, w := range result.Warnings {
+	for _, w := range vr.Warnings {
 		resp.Warnings = append(resp.Warnings, &graphv1.ValidationWarning{
 			Code:    string(w.Code),
 			NodeId:  w.NodeID,
@@ -642,10 +661,14 @@ func (s *GraphService) ValidateGraph(ctx context.Context, req *graphv1.ValidateG
 
 func (s *GraphService) ListGraphTemplates(ctx context.Context, req *graphv1.ListGraphTemplatesRequest) (*graphv1.ListGraphTemplatesResponse, error) {
 	templates := s.uc.ListGraphTemplates(ctx)
-	resp := &graphv1.ListGraphTemplatesResponse{
-		Templates: make([]*graphv1.GraphTemplateInfo, len(templates)),
+	tmplList, ok := templates.([]graphtrpc.GraphTemplate)
+	if !ok {
+		return nil, fmt.Errorf("list templates: unexpected result type")
 	}
-	for i, t := range templates {
+	resp := &graphv1.ListGraphTemplatesResponse{
+		Templates: make([]*graphv1.GraphTemplateInfo, len(tmplList)),
+	}
+	for i, t := range tmplList {
 		resp.Templates[i] = templateToProto(t)
 	}
 	return resp, nil

@@ -3,10 +3,10 @@ package biz
 import (
 	"context"
 
-	graphtrpc "aranea-agents/internal/graph/trpc"
-
 	"github.com/google/wire"
 )
+
+type AgentExistenceCheckerFunc func(agentName string) bool
 
 var ProviderSet = wire.NewSet(
 	NewEventBusConsumer,
@@ -32,7 +32,7 @@ var ProviderSet = wire.NewSet(
 	NewEvolutionUsecase,
 	NewGraphUsecase,
 	NewTaskUsecase,
-	graphtrpc.NewRegistry,
+	ProvideAgentExistenceChecker,
 )
 
 func ProvideAgentRoleChecker(repo AgentRepository) AgentRoleChecker {
@@ -69,7 +69,7 @@ func ProvideAgentListerByRole(repo AgentRepository) AgentListerByRole {
 	}
 }
 
-func ProvideAgentExistenceChecker(repo AgentRepository) graphtrpc.AgentExistenceChecker {
+func ProvideAgentExistenceChecker(repo AgentRepository) AgentExistenceCheckerFunc {
 	return func(agentName string) bool {
 		_, err := repo.GetAgentByAgentKey(context.Background(), agentName)
 		return err == nil

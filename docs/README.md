@@ -14,7 +14,7 @@
 
 | 层级 | 选型 |
 |------|------|
-| 后端 | Go + **Kratos v2**（HTTP/gRPC/SSE 传输、Wire DI） |
+| 后端 | Go + **Kratos v2**（HTTP/gRPC/WebSocket 传输、Wire DI） |
 | Agent 运行时 | **trpc-agent-go**（Runner/Agent/Session/Memory/Tool/Event/Skill/Graph/Team） |
 | 前端 | Vue 3 + Quasar + Pinia + TypeScript |
 | 数据库 | SQLite（Ent ORM）；向量/图可外挂 pgvector |
@@ -75,7 +75,7 @@ AI 进行任何代码改动时，**必须**按以下顺序阅读规范文档：
 | M5: Session 管理 | ✅ 已对齐（Turns 编排追踪/Detail 页/Restore/Archive/分页过滤已实现） | P1 |
 | M6: Memory 记忆 | ❌ 严重不足 | P2 |
 | M7: Tool 工具体系 | ✅ 已对齐 | P1 |
-| M8: MCP 集成 | ⚠️ 部分实现 | P2 |
+| M8: MCP 集成 | ⚠️ 部分实现（已迁移到 trpc，Broker/传输层待完善） | P2 |
 | M9: Model 模型层 | ✅ 基本对齐 | P2 |
 | M10: Plugin 插件 | ❌ 未实现 | P2 |
 | M11: Planner 规划 | ⚠️ 部分实现 | P2 |
