@@ -5,7 +5,8 @@ import type {
   Session as KratosSession,
   SessionTimeline as KratosSessionTimeline,
   SessionTimelineItem as KratosTimelineItem,
-  SessionTimelineSummary as KratosTimelineSummary
+  SessionTimelineSummary as KratosTimelineSummary,
+  SessionTurn as KratosSessionTurn
 } from "../../services/kratos/session/v1/index";
 import { asRecord, pickStr } from "../../shared/wireJson";
 import type { Message } from "../chat/types";
@@ -279,4 +280,98 @@ function kratosChatRowToMessage(row: ChatMessageRow): Message {
 export async function listSessionChatMessages(sessionID: string): Promise<Message[]> {
   const data = await sessionApi.ListSessionMessages({ id: sessionID });
   return (data.items ?? []).map(kratosChatRowToMessage);
+}
+
+export async function restoreSession(id: string): Promise<Session> {
+  const data = await sessionApi.RestoreSession({ id });
+  return kratosSessionToLegacy(data);
+}
+
+export async function updateSession(id: string, fields: { title?: string; tags_json?: string; visibility?: string; dialog_mode?: string; default_provider?: string; default_model?: string }): Promise<Session> {
+  const data = await sessionApi.UpdateSession({
+    id,
+    title: fields.title,
+    tagsJson: fields.tags_json,
+    visibility: fields.visibility,
+    dialogMode: fields.dialog_mode,
+    defaultProvider: fields.default_provider,
+    defaultModel: fields.default_model
+  });
+  return kratosSessionToLegacy(data);
+}
+
+export type SessionTurn = {
+  id: string;
+  session_id: string;
+  run_id: string;
+  turn_index: number;
+  user_message_id: string;
+  assistant_message_id: string;
+  owner_type: string;
+  agent_id: string;
+  team_id: string;
+  status: string;
+  started_at: string;
+  ended_at: string;
+  duration_ms: number;
+  first_token_ms: number;
+  model_call_count: number;
+  tool_call_count: number;
+  skill_call_count: number;
+  mcp_call_count: number;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  total_cost_micro_usd: number;
+  final_provider: string;
+  final_model: string;
+  final_content_preview: string;
+  error_code: string;
+  error_message: string;
+  metadata_json: string;
+  created_at: string;
+  updated_at: string;
+};
+
+function kratosSessionTurnToLegacy(t: KratosSessionTurn): SessionTurn {
+  return {
+    id: t.id ?? "",
+    session_id: t.sessionId ?? "",
+    run_id: t.runId ?? "",
+    turn_index: t.turnIndex ?? 0,
+    user_message_id: t.userMessageId ?? "",
+    assistant_message_id: t.assistantMessageId ?? "",
+    owner_type: t.ownerType ?? "",
+    agent_id: t.agentId ?? "",
+    team_id: t.teamId ?? "",
+    status: t.status ?? "",
+    started_at: t.startedAt ?? "",
+    ended_at: t.endedAt ?? "",
+    duration_ms: t.durationMs ?? 0,
+    first_token_ms: t.firstTokenMs ?? 0,
+    model_call_count: t.modelCallCount ?? 0,
+    tool_call_count: t.toolCallCount ?? 0,
+    skill_call_count: t.skillCallCount ?? 0,
+    mcp_call_count: t.mcpCallCount ?? 0,
+    input_tokens: t.inputTokens ?? 0,
+    output_tokens: t.outputTokens ?? 0,
+    total_tokens: t.totalTokens ?? 0,
+    total_cost_micro_usd: Number(t.totalCostMicroUsd ?? 0),
+    final_provider: t.finalProvider ?? "",
+    final_model: t.finalModel ?? "",
+    final_content_preview: t.finalContentPreview ?? "",
+    error_code: t.errorCode ?? "",
+    error_message: t.errorMessage ?? "",
+    metadata_json: t.metadataJson ?? "",
+    created_at: t.createdAt ?? "",
+    updated_at: t.updatedAt ?? ""
+  };
+}
+
+export async function listSessionTurns(sessionID: string, limit = 20, offset = 0): Promise<{ items: SessionTurn[]; total: number }> {
+  const data = await sessionApi.ListSessionTurns({ sessionId: sessionID, limit, offset });
+  return {
+    items: (data.items ?? []).map(kratosSessionTurnToLegacy),
+    total: data.total ?? 0
+  };
 }

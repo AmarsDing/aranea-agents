@@ -11,10 +11,12 @@ import {
 } from "../api";
 import type { PendingMessage } from "../api";
 import {
+  archiveSession,
   createSession,
   getSession,
   listSessionChatMessages as listMessages,
   listTeamSessions,
+  restoreSession,
   updateSessionTitle
 } from "../../session/api";
 import { deleteTeam, listTeams, updateTeam } from "../../teams/api";
@@ -353,6 +355,38 @@ export function useChatWorkspace() {
     traceSessionId.value = sessionId;
     traceSessionTitle.value = session?.title ?? t("chat.untitledSession");
     traceOpen.value = true;
+  }
+
+  async function onRestoreSession(sessionId: string) {
+    try {
+      await restoreSession(sessionId);
+      if (selectedEntityKind.value === "team" && selectedTeamId.value) {
+        const sessions = teamSessions.value[selectedTeamId.value] ?? [];
+        teamSessions.value[selectedTeamId.value] = sessions.map((s) =>
+          s.id === sessionId ? { ...s, status: "active" } : s
+        ) as typeof sessions;
+      }
+    } catch (err) {
+      console.error("Restore session failed", err);
+    }
+  }
+
+  async function onArchiveSession(sessionId: string) {
+    try {
+      await archiveSession(sessionId);
+      if (selectedEntityKind.value === "team" && selectedTeamId.value) {
+        const sessions = teamSessions.value[selectedTeamId.value] ?? [];
+        teamSessions.value[selectedTeamId.value] = sessions.map((s) =>
+          s.id === sessionId ? { ...s, status: "archived" } : s
+        ) as typeof sessions;
+      }
+    } catch (err) {
+      console.error("Archive session failed", err);
+    }
+  }
+
+  function onSessionDetail(sessionId: string) {
+    router.push({ name: "session-detail", params: { sessionId } });
   }
 
   async function onNewSession(title?: string) {
@@ -1109,6 +1143,9 @@ export function useChatWorkspace() {
     onSelectSession,
     onRenameSession,
     openSessionTrace,
+    onRestoreSession,
+    onArchiveSession,
+    onSessionDetail,
     onNewSession,
     onSend,
     onModeChange,

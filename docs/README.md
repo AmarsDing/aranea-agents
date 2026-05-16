@@ -72,7 +72,7 @@ AI 进行任何代码改动时，**必须**按以下顺序阅读规范文档：
 | M2: Agent 构建 | ✅ 已对齐 | P0 |
 | M3: Team 编排 | ✅ 已对齐 | P1 |
 | M4: Graph 工作流 | ✅ 已对齐（v2四维架构：校验引擎+模板+前后端全链路已实现） | P1 |
-| M5: Session 管理 | ✅ 已对齐（通用更新/恢复/分页/排序/过滤已实现） | P1 |
+| M5: Session 管理 | ✅ 已对齐（Turns 编排追踪/Detail 页/Restore/Archive/分页过滤已实现） | P1 |
 | M6: Memory 记忆 | ❌ 严重不足 | P2 |
 | M7: Tool 工具体系 | ✅ 已对齐 | P1 |
 | M8: MCP 集成 | ⚠️ 部分实现 | P2 |
@@ -166,6 +166,7 @@ changelog 末尾通过链接指向对应的 devlog 详细记录。
 | [2026-05-13-Session.md](./changelog/2026-05-13-Session.md) | Session 核心数据结构重构 |
 | [2026-05-16-Graph.md](./changelog/2026-05-16-Graph.md) | Graph 工作流完善（校验引擎+模板+全链路） |
 | [2026-05-16-Session-Optimize.md](./changelog/2026-05-16-Session-Optimize.md) | Session 模块优化（通用更新/恢复/分页/排序/过滤） |
+| [2026-05-17-Session-Turns.md](./changelog/2026-05-17-Session-Turns.md) | Session Turns 编排追踪 + Detail 页 + Restore/Archive |
 
 ---
 

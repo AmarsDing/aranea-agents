@@ -324,3 +324,50 @@ func (s *SessionService) GetSessionTimeline(ctx context.Context, req *v1.GetSess
 	}
 	return toProtoTimeline(out), nil
 }
+
+func toProtoSessionTurn(t biz.SessionTurn) *v1.SessionTurn {
+	return &v1.SessionTurn{
+		Id:                  t.ID,
+		SessionId:           t.SessionID,
+		RunId:               t.RunID,
+		TurnIndex:           int32(t.TurnIndex),
+		UserMessageId:       t.UserMessageID,
+		AssistantMessageId:  t.AssistantMessageID,
+		OwnerType:           t.OwnerType,
+		AgentId:             t.AgentID,
+		TeamId:              t.TeamID,
+		Status:              t.Status,
+		StartedAt:           t.StartedAt,
+		EndedAt:             t.EndedAt,
+		DurationMs:          int32(t.DurationMs),
+		FirstTokenMs:        int32(t.FirstTokenMs),
+		ModelCallCount:      int32(t.ModelCallCount),
+		ToolCallCount:       int32(t.ToolCallCount),
+		SkillCallCount:      int32(t.SkillCallCount),
+		McpCallCount:        int32(t.MCPCallCount),
+		InputTokens:         int32(t.InputTokens),
+		OutputTokens:        int32(t.OutputTokens),
+		TotalTokens:         int32(t.TotalTokens),
+		TotalCostMicroUsd:   t.TotalCostMicroUSD,
+		FinalProvider:       t.FinalProvider,
+		FinalModel:          t.FinalModel,
+		FinalContentPreview: t.FinalContentPreview,
+		ErrorCode:           t.ErrorCode,
+		ErrorMessage:        t.ErrorMessage,
+		MetadataJson:        t.MetadataJSON,
+		CreatedAt:           t.CreatedAt,
+		UpdatedAt:           t.UpdatedAt,
+	}
+}
+
+func (s *SessionService) ListSessionTurns(ctx context.Context, req *v1.ListSessionTurnsRequest) (*v1.ListSessionTurnsResponse, error) {
+	res, err := s.uc.ListTurns(ctx, req.GetSessionId(), int(req.GetLimit()), int(req.GetOffset()))
+	if err != nil {
+		return nil, mapSessionErr(err)
+	}
+	items := make([]*v1.SessionTurn, 0, len(res.Items))
+	for i := range res.Items {
+		items = append(items, toProtoSessionTurn(res.Items[i]))
+	}
+	return &v1.ListSessionTurnsResponse{Items: items, Total: int32(res.Total)}, nil
+}

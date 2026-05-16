@@ -199,6 +199,66 @@ type TimelineQuery struct {
 	SortOrder  string
 }
 
+type SessionTurn struct {
+	ID                  string
+	SessionID           string
+	RunID               string
+	TurnIndex           int
+	UserMessageID       string
+	AssistantMessageID  string
+	OwnerType           string
+	AgentID             string
+	TeamID              string
+	Status              string
+	StartedAt           string
+	EndedAt             string
+	DurationMs          int
+	FirstTokenMs        int
+	ModelCallCount      int
+	ToolCallCount       int
+	SkillCallCount      int
+	MCPCallCount        int
+	InputTokens         int
+	OutputTokens        int
+	TotalTokens         int
+	TotalCostMicroUSD   int64
+	FinalProvider       string
+	FinalModel          string
+	FinalContentPreview string
+	ErrorCode           string
+	ErrorMessage        string
+	MetadataJSON        string
+	CreatedAt           string
+	UpdatedAt           string
+}
+
+type SessionTurnListResult struct {
+	Items []SessionTurn
+	Total int
+}
+
+type SessionTurnUpdateFields struct {
+	Status              *string
+	EndedAt             *string
+	DurationMs          *int
+	FirstTokenMs        *int
+	ModelCallCount      *int
+	ToolCallCount       *int
+	SkillCallCount      *int
+	MCPCallCount        *int
+	InputTokens         *int
+	OutputTokens        *int
+	TotalTokens         *int
+	TotalCostMicroUSD   *int64
+	FinalProvider       *string
+	FinalModel          *string
+	FinalContentPreview *string
+	AssistantMessageID  *string
+	ErrorCode           *string
+	ErrorMessage        *string
+	MetadataJSON        *string
+}
+
 // SessionRepository persists sessions and reads timeline inputs（SQLite Ent）.
 type SessionRepository interface {
 	SearchSessions(ctx context.Context, q SessionSearchQuery) (SessionListResult, error)
@@ -233,6 +293,11 @@ type SessionRepository interface {
 	GetSessionState(ctx context.Context, sessionID string) (map[string]string, error)
 	// SaveSessionState writes the session state KV store (state_json column).
 	SaveSessionState(ctx context.Context, sessionID string, state map[string]string) error
+	// Session turns (session_turns table).
+	CreateSessionTurn(ctx context.Context, turn SessionTurn) (SessionTurn, error)
+	UpdateSessionTurn(ctx context.Context, id string, fields SessionTurnUpdateFields) (SessionTurn, error)
+	ListSessionTurns(ctx context.Context, sessionID string, limit, offset int) (SessionTurnListResult, error)
+	GetSessionTurn(ctx context.Context, id string) (SessionTurn, error)
 }
 
 // SessionUsecase handles session CRUD + timeline（不包含发送消息）.
@@ -493,6 +558,43 @@ func (uc *SessionUsecase) generateTitleAsync(sessionID, content string) {
 		return
 	}
 	_, _ = uc.Rename(bgCtx, sessionID, title)
+}
+
+func (uc *SessionUsecase) CreateTurn(ctx context.Context, turn SessionTurn) (SessionTurn, error) {
+	if strings.TrimSpace(turn.SessionID) == "" {
+		return SessionTurn{}, validationErr("session_id is required")
+	}
+	if strings.TrimSpace(turn.ID) == "" {
+		turn.ID = uuid.NewString()
+	}
+	if turn.CreatedAt == "" {
+		turn.CreatedAt = time.Now().UTC().Format(time.RFC3339)
+	}
+	if turn.UpdatedAt == "" {
+		turn.UpdatedAt = turn.CreatedAt
+	}
+	return uc.sessions.CreateSessionTurn(ctx, turn)
+}
+
+func (uc *SessionUsecase) UpdateTurn(ctx context.Context, id string, fields SessionTurnUpdateFields) (SessionTurn, error) {
+	if strings.TrimSpace(id) == "" {
+		return SessionTurn{}, validationErr("turn id is required")
+	}
+	return uc.sessions.UpdateSessionTurn(ctx, id, fields)
+}
+
+func (uc *SessionUsecase) ListTurns(ctx context.Context, sessionID string, limit, offset int) (SessionTurnListResult, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return SessionTurnListResult{}, validationErr("session_id is required")
+	}
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	return uc.sessions.ListSessionTurns(ctx, sessionID, limit, offset)
 }
 
 func (uc *SessionUsecase) Timeline(ctx context.Context, id string, q TimelineQuery) (SessionTimeline, error) {

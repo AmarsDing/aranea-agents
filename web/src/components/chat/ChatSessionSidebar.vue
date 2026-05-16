@@ -89,6 +89,18 @@
                         <q-item-section avatar><q-icon name="timeline" size="18px" /></q-item-section>
                         <q-item-section>历史追踪</q-item-section>
                       </q-item>
+                      <q-item clickable v-close-popup @click.stop="openDetail(session.id)">
+                        <q-item-section avatar><q-icon name="open_in_new" size="18px" /></q-item-section>
+                        <q-item-section>详情页</q-item-section>
+                      </q-item>
+                      <q-item v-if="session.status === 'archived'" clickable v-close-popup @click.stop="$emit('restore', session.id)">
+                        <q-item-section avatar><q-icon name="restore" size="18px" /></q-item-section>
+                        <q-item-section>恢复会话</q-item-section>
+                      </q-item>
+                      <q-item v-else clickable v-close-popup @click.stop="$emit('archive', session.id)">
+                        <q-item-section avatar><q-icon name="archive" size="18px" /></q-item-section>
+                        <q-item-section>归档</q-item-section>
+                      </q-item>
                       <q-item clickable v-close-popup class="text-negative" @click="$emit('delete', 'session', session.id)">
                         <q-item-section avatar><q-icon name="delete" size="18px" /></q-item-section>
                         <q-item-section>{{ t("chat.remove") }}</q-item-section>
@@ -145,6 +157,9 @@ const emit = defineEmits<{
   rename: [payload: { id: string; title: string }];
   delete: [kind: DeleteKind, id: string];
   trace: [id: string];
+  restore: [id: string];
+  archive: [id: string];
+  detail: [id: string];
 }>();
 
 const { t } = useI18n();
@@ -193,6 +208,10 @@ function renameSession(session: SessionView) {
 
 function openTrace(sessionID: string) {
   emit("trace", sessionID);
+}
+
+function openDetail(sessionID: string) {
+  emit("detail", sessionID);
 }
 
 function isPinned(id: string) {

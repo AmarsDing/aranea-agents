@@ -215,6 +215,9 @@ func (s *ChatService) runSingleAgentViaTRPC(
 		return userMsg, biz.ChatMessage{}, err
 	}
 	patchSessionContextUsage(ctx, s, sessionID, ag, promptTok, completionTok)
+
+	s.recordSessionTurn(ctx, sessionID, ag, userMsg.ID, assistantMsg.ID, prov, mod, promptTok, completionTok, assistantMsg.ContentMarkdown)
+
 	return userMsg, assistantMsg, nil
 }
 
@@ -245,4 +248,35 @@ func (s *ChatService) processPendingQueue(sessionID string, sess biz.Session, ag
 			s.td.EventBus.Publish(bgCtx, env)
 		}
 	}()
+}
+
+func (s *ChatService) recordSessionTurn(ctx context.Context, sessionID string, ag biz.Agent, userMsgID, assistantMsgID, prov, mod string, promptTok, completionTok int, contentPreview string) {
+	if s.td.Sessions == nil {
+		return
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	preview := contentPreview
+	if len(preview) > 200 {
+		preview = preview[:200]
+	}
+	turn := biz.SessionTurn{
+		SessionID:           sessionID,
+		UserMessageID:       userMsgID,
+		AssistantMessageID:  assistantMsgID,
+		OwnerType:           "agent",
+		AgentID:             ag.ID,
+		Status:              "completed",
+		StartedAt:           now,
+		EndedAt:             now,
+		InputTokens:         promptTok,
+		OutputTokens:        completionTok,
+		TotalTokens:         promptTok + completionTok,
+		ModelCallCount:      1,
+		FinalProvider:       prov,
+		FinalModel:          mod,
+		FinalContentPreview: preview,
+	}
+	if _, err := s.td.Sessions.CreateTurn(ctx, turn); err != nil {
+		slog.Warn("recordSessionTurn failed", "session_id", sessionID, "error", err)
+	}
 }

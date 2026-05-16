@@ -17,6 +17,7 @@ import PluginsPage from "../pages/PluginsPage.vue";
 import ToolsPage from "../pages/ToolsPage.vue";
 import ToolRunsPage from "../pages/ToolRunsPage.vue";
 import SessionsPage from "../pages/SessionsPage.vue";
+import SessionDetailPage from "../pages/SessionDetailPage.vue";
 import ChannelsPage from "../pages/ChannelsPage.vue";
 import McpServersPage from "../pages/McpServersPage.vue";
 import CronTasksPage from "../pages/CronTasksPage.vue";
@@ -43,7 +44,7 @@ export const routes: RouteRecordRaw[] = [
       { path: "overview", name: "overview", component: OverviewPage },
       { path: "chat", name: "chat", component: ChatPage },
       { path: "sessions", name: "sessions", component: SessionsPage },
-      { path: "sessions/:sessionId", name: "session-detail", component: SessionsPage },
+      { path: "sessions/:sessionId", name: "session-detail", component: SessionDetailPage },
       { path: "memory", name: "memory", component: MemoryCenterPage },
       { path: "agents", name: "agents", component: AgentsPage },
       { path: "settings/agent-categories", name: "agent-categories", component: AgentCategoriesPage },

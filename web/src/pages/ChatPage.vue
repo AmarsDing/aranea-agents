@@ -69,6 +69,9 @@
       @rename="onRenameSession"
       @trace="openSessionTrace"
       @delete="openDelete"
+      @restore="onRestoreSession"
+      @archive="onArchiveSession"
+      @detail="onSessionDetail"
     />
 
     <template #dialogs>
@@ -167,6 +170,9 @@ const {
   onSelectSession,
   onRenameSession,
   openSessionTrace,
+  onRestoreSession,
+  onArchiveSession,
+  onSessionDetail,
   onNewSession,
   onSend,
   onModeChange,
