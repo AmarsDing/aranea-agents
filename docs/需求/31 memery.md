@@ -1,5 +1,17 @@
 # 31 记忆管理界面（Memory Management UX）
 
+> **⚠️ 文件名拼写遗留说明**：本文件名 `31 memery.md` 中的 "memery" 为拼写错误，**正确应为 "memory"**。但已被 `README.md` / `guides/plan.md` / `guides/execution-plan.md` / `12-16 memory.design.md` / `31+38 memory-supplement.design.md` 多处引用，物理重命名会造成大面积链接断裂，故保留文件名。
+>
+> **本文实际主题**：记忆管理 **UX**（用户界面与可视化交互），而非 Memory 框架本身。
+>
+> 相关文档：
+> - Memory 框架对齐 → [`38 memory.md`](./38%20memory.md)
+> - Memory 框架补充设计 → [`31+38 memory-supplement.design.md`](./31+38%20memory-supplement.design.md)
+> - L0–L4 分层需求 → [`12 memory-L0-sensory.md`](./12%20memory-L0-sensory.md) ~ [`16 memory-L4-persistent.md`](./16%20memory-L4-persistent.md)
+> - 综合设计 → [`12-16 memory.design.md`](./12-16%20memory.design.md)
+
+---
+
 本文档从**用户角度**设计 aranea 的统一记忆管理界面，把 `12 memory-L0-sensory.md`、`13 memory-L1-working.md`、`14 memory-L2-episodic.md`、`15 memory-L3-semantic.md`、`16 memory-L4-persistent.md` 中的技术能力，整理成可理解、可审计、可控制的产品体验。
 
 目标不是让用户理解 L0/L1/L2/L3/L4 的内部实现，而是让用户回答四个问题：

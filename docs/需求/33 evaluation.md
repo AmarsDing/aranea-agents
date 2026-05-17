@@ -1,10 +1,17 @@
 # M17: Evaluation 评估 — 详细需求
 
 > 对标 `pkg/trpc-agent-go/evaluation` 包，实现 Agent 自动化评估能力。
+>
+> **2026-05-17 现状对齐**：
+> - ✅ `internal/biz/evaluation.go` / `internal/data/evaluation.go` / `internal/service/evaluation.go` / `internal/evaluation/runner.go` 已落地；`api/kratos/evaluation/v1/*` proto/gRPC/HTTP 已生成。
+> - ❌ **`cmd/admin/wire.go` 在装配 EvaluationService 时 Runner 仍传 `nil`**，导致评估 Run 入口不可用；前端 store 未对接。
+> - ❌ trajectory 多维度评估、LLM-Judge、报告导出 尚未实现。
+>
+> 后续以 `guides/execution-plan.md` §3 EP-BIZ-04 + 运维要点 `guides/evaluation.md` 为准。
 
 ---
 
-## 1. 现状分析
+## 1. 现状分析（已过期，保留参考）
 
 项目无 Evaluation 评估能力。Agent 质量仅靠人工判断，无法自动化评估。
 

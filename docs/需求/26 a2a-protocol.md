@@ -1,10 +1,17 @@
 # M15: A2A 协议 — 详细需求
 
 > 对标 `pkg/trpc-agent-go/agent/a2aagent` + `internal/a2a`，实现 Agent-to-Agent 通信协议。
+>
+> **2026-05-17 现状对齐**：
+> - ✅ `internal/a2a/tool.go` 已暴露 `call_agent` 工具；`internal/biz/a2a.go` / `internal/data/a2a.go` / `internal/service/a2a.go` 已通；`api/kratos/a2a/v1/*` proto/HTTP 已生成。
+> - ❌ **`call_agent` 工具未在 `internal/agent/trpc_build.go` 注入到 Agent toolset**，Agent 实际无法调用远端 Agent。
+> - ❌ 远端鉴权 / mTLS / 流式请求 尚未实现。
+>
+> 后续以 `guides/execution-plan.md` §3 EP-BIZ-02 + 运维要点 `guides/a2a-protocol.md` 为准。
 
 ---
 
-## 1. 现状分析
+## 1. 现状分析（已过期，保留参考）
 
 项目无 A2A 协议能力。Agent 间通信仅通过 Team 内部的 TransferTool 和 AgentTool，无法与外部 Agent 通信。
 

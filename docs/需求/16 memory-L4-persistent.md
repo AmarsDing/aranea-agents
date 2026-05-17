@@ -1,5 +1,14 @@
 # 16 L4 持久 / 进化记忆（Persistent & Evolutionary Memory）
 
+> **2026-05-17 现状对齐**：当前代码仅打通 L1–L3：
+> - ✅ `internal/memory/trpc/sqlite_adapter.go` 持久化已通；Memory tools（add / search / load / update / delete）已注入 Agent。
+> - ✅ `internal/cronrunner/jobs/auto_memory.go` AutoMemory 后台任务已实现（CronRunner 排程）。
+> - ❌ L4 实体-关系知识图谱、Agent 自我进化（Evolution Worker、`evolution_*` 字段串联）、`last_verified` / 回滚 / 审计 尚未实现；本文为远期目标设计。
+>
+> 后续以 `guides/execution-plan.md` 附录 A "Memory L4" 行为准；本文余下章节保持目标态设计。
+
+---
+
 本文档落地 5 层记忆架构中的 **L4：持久 / 进化记忆**，是整个 5 层架构的「最高层」：
 
 - **持久（Persistent）**：跨会话、跨工作区、跨账号长期累积的「实体-关系」知识图谱与 Agent 自身的稳定身份。

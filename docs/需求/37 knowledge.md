@@ -1,10 +1,17 @@
 # M13: Knowledge 知识库 — 详细需求
 
 > 对标 `pkg/trpc-agent-go/knowledge` 包，实现 RAG 知识库能力。
+>
+> **2026-05-17 现状对齐**：以下"现状分析"已被代码反超。当前实现状态：
+> - ✅ `internal/biz/knowledge.go` / `internal/data/knowledge.go` / `internal/service/knowledge.go` 已通；`internal/knowledge/{chunker,embedder,retriever}.go` 已实现；`internal/tools/knowledge/tool.go` 已包装为 `knowledge_search` 工具。
+> - ❌ **未在 Agent 装配链注入 knowledge tool**（`internal/agent/trpc_build.go` 没有把 KnowledgeUsecase 编织进 tool list）；Agent 实际跑时仍无 RAG。
+> - ❌ Embedder 默认 stub，pgvector 后端未启用。
+>
+> 后续以 `guides/execution-plan.md` §3 EP-BIZ-02 为准；运维要点见 `guides/knowledge.md`。
 
 ---
 
-## 1. 现状分析
+## 1. 现状分析（已过期，保留参考）
 
 项目无 Knowledge 知识库能力。当前 Agent 仅能通过 Memory 记忆和 Skill 技能获取上下文，无法检索外部知识。
 

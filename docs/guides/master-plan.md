@@ -1,13 +1,17 @@
 # Aranea-Agents 项目开发整体规划文档
 
-> 版本：v1.1（2026-05-17）
-> 编制依据：`docs/README.md`、`docs/guides/AI-DEVELOPMENT-SPECIFICATION.md`、`docs/guides/plan.md`、`docs/guides/trpc-agent-go-framework.md` 以及 `cmd/`、`internal/`、`api/`、`pkg/`、`web/` 全量源码与配置。
-> 文档定位：作为后续 N 个版本迭代的唯一执行依据，所有结论均锚定到具体文件与行为，不做空泛描述。
+> **⚠️ 本文档自 2026-05-17 起停止维护**。进度真相与下一步规划以 [`docs/guides/execution-plan.md`](execution-plan.md) 为唯一权威基线；本文 §4 状态表、§6 优先级清单、§8 落地分类、§10 风险、§12 配套文档索引 与代码实际现状已脱钩，仅作历史参考。新增任务请直接在 `execution-plan.md` §3 / 附录 A 登记，不要再扩展本文。
 >
-> 伴生文档（本文衍生，可直接用于落地执行）：
-> - 实施方案总览：[docs/guides/implementation-plan.md](implementation-plan.md)
-> - 任务追踪表：[docs/guides/task-tracker.md](task-tracker.md)
-> - Sprint 详细计划：[S1](sprints/S1-p0-redlines.md) · [S2](sprints/S2-architecture-debt.md) · [S3](sprints/S3-observability.md) · [S4](sprints/S4-plugin-skill-planner.md) · [S5](sprints/S5-artifact-cron-tests.md) · [S6](sprints/S6-knowledge-eval-a2a.md)
+> ---
+>
+> 版本：v1.1（2026-05-17，已冻结）
+> 编制依据：`docs/README.md`、`docs/guides/AI-DEVELOPMENT-SPECIFICATION.md`、`docs/guides/plan.md`、`docs/guides/trpc-agent-go-framework.md` 以及 `cmd/`、`internal/`、`api/`、`pkg/`、`web/` 全量源码与配置。
+> 文档定位（已失效）：曾作为后续 N 个版本迭代的执行依据。
+>
+> 伴生文档（同步冻结）：
+> - 实施方案总览：[docs/guides/implementation-plan.md](implementation-plan.md)（已废弃）
+> - 任务追踪表：[docs/guides/task-tracker.md](task-tracker.md)（已废弃）
+> - Sprint 详细计划：[S1](sprints/S1-p0-redlines.md) · [S2](sprints/S2-architecture-debt.md) · [S3](sprints/S3-observability.md) · [S4](sprints/S4-plugin-skill-planner.md) · [S5](sprints/S5-artifact-cron-tests.md) · [S6](sprints/S6-knowledge-eval-a2a.md)（已废弃）
 
 ---
 

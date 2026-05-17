@@ -1,6 +1,14 @@
 # Aranea-Agents 任务追踪表
 
-> 用途：S1~S6 全部 41 个任务的统一勾选表。每周站会更新本表，每个 PR 合并时把对应任务 `status` 改为 `done` 并粘贴 PR 链接。
+> **⚠️ 本文档自 2026-05-17 起停止维护**。表中显示的"0/41 done"与 `docs/changelog/2026-05-17-S{1..6}-*.md` 宣称"已完成"严重不一致，且已与代码层实际接入度脱钩。
+>
+> 新的进度真相、模块接入度矩阵与立即可执行清单，请参见 [`docs/guides/execution-plan.md`](execution-plan.md) §3 / §5 / 附录 A。
+>
+> 仅保留作历史参考。
+>
+> ---
+>
+> 用途（原）：S1~S6 全部 41 个任务的统一勾选表。每周站会更新本表，每个 PR 合并时把对应任务 `status` 改为 `done` 并粘贴 PR 链接。
 > 配套：[docs/guides/implementation-plan.md](implementation-plan.md) · [sprints/](sprints/)
 > 状态枚举：`pending`（待启动） · `in-progress`（进行中） · `review`（PR review 中） · `done`（已合并） · `blocked`（受阻） · `cancelled`（取消）
 

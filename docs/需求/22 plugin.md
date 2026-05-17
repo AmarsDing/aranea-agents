@@ -1,5 +1,14 @@
 # Plugin 管理（Quasar UI + 前后端契约）
 
+> **2026-05-17 现状对齐**：本文部分前置假设已被代码反超。当前实现状态：
+> - ✅ `internal/plugin/trpc/` 已实现 `AuditLogPlugin` / `Permissions` / 热重载 `runtime.go`；HTTP/gRPC 服务与前端 store 已通。
+> - ❌ **未在 Agent 装配链上将 Plugin 注入 Runner**（`internal/team/runner_team_trpc.go` / `internal/agent/turn_helpers.go` / `internal/service/trpc_turn.go` 处 `NewRunnerDepsFromRuntime` 未传 `WithPlugins`）。
+> - ❌ Pre*/Post* 必须配对的红线（R16，详见 `guides/execution-plan.md` §6）需统一落地。
+>
+> 后续以 `guides/execution-plan.md` §3 EP-RT-03 为准；本文以下章节作产品需求基线参考。
+
+---
+
 本文档定义 **Plugin 管理** 的产品需求、前端页面结构与后端契约。Plugin 指 ADK 运行时的回调扩展机制，用于在 Agent 执行过程中插入治理、调试、增强、风控等逻辑。
 
 Plugin 与 Skill / Tool 的边界：

@@ -1,9 +1,13 @@
 # Aranea-Agents 实施方案总览
 
-> 版本：v1.0（2026-05-17）
-> 上游依据：[docs/guides/master-plan.md](master-plan.md)
-> 本文定位：把 master-plan §6 优先级 + §8 落地分类，转写为可逐 PR 执行的 6 个 Sprint，附风险地图、角色分工、度量阈值。
-> 配套：每个 Sprint 详细任务清单见 `docs/guides/sprints/`；周度勾选见 [docs/guides/task-tracker.md](task-tracker.md)。
+> **⚠️ 本文档自 2026-05-17 起停止维护**。S1–S6 / T1–T41 / 6 个 Sprint 节奏 已不再作为执行依据；新的 5 个里程碑（M0–M5）与可执行 Top-20 工作清单见 [`docs/guides/execution-plan.md`](execution-plan.md) §4 / §5。仅保留作历史参考。
+>
+> ---
+>
+> 版本：v1.0（2026-05-17，已冻结）
+> 上游依据：[docs/guides/master-plan.md](master-plan.md)（同步废弃）
+> 本文（原）定位：把 master-plan §6 优先级 + §8 落地分类，转写为可逐 PR 执行的 6 个 Sprint，附风险地图、角色分工、度量阈值。
+> 配套：每个 Sprint 详细任务清单见 `docs/guides/sprints/`（同步废弃）；周度勾选见 [docs/guides/task-tracker.md](task-tracker.md)（同步废弃）。
 
 ---
 

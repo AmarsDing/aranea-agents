@@ -1,24 +1,32 @@
 # M18: Event 事件系统 — 详细需求
 
 > 对标 `pkg/trpc-agent-go/event` 包，完善项目的事件系统。
+>
+> **2026-05-17 现状对齐**：以下"现状分析"已被代码反超。当前实现状态：
+> - ✅ `internal/event/bus.go` 已具备 EventBus + 多种背压策略（block / drop_oldest / drop_new / spill）+ 背压计数指标。
+> - ✅ WebSocket 已统一传输（`web/src/services/wsClient.ts` + `internal/server/http.go`），SSE 仅作 fallback；Chat / Monitor / Team 复用单连接。
+> - ✅ `pkg/trpc-agent-go/event.Event` 的 StateDelta / Branch / Actions / LongRunningToolIDs 已在投影层被尊重。
+> - 🟡 Webhook 投射、断连重放、Envelope 通用化（51a §5）仍属未完成项。
+>
+> 后续以 `guides/execution-plan.md` §3 EP-OBS-* / §A "事件系统" 行为准；本文以下章节作为产品需求基线参考。
 
 ---
 
-## 1. 现状分析
+## 1. 现状分析（已过期，保留参考）
 
 项目已有基础的 SSE 推流：
 - `internal/server/sse.go`：将事件投影为 SSE 推流
 - 事件仅包含基本的文本内容
 
-**缺失能力**：
-1. 无 StateDelta（状态增量更新）
-2. 无 Extensions（扩展元数据）
-3. 无 FilterKey（层级过滤）
-4. 无 Branch（分支追踪）
-5. 无 Actions（流控制提示）
-6. 无 Tag（业务标签）
-7. 无 Clone（深拷贝）
-8. 无 LongRunningToolIDs（长时运行工具标记）
+**缺失能力**（部分已在 2026-05-17 落地）：
+1. 无 StateDelta（状态增量更新） — ✅ 已支持
+2. 无 Extensions（扩展元数据） — 🟡 部分
+3. 无 FilterKey（层级过滤） — 🟡 部分
+4. 无 Branch（分支追踪） — ✅ 已支持
+5. 无 Actions（流控制提示） — ✅ 已支持
+6. 无 Tag（业务标签） — 🟡 部分
+7. 无 Clone（深拷贝） — ✅ 已支持
+8. 无 LongRunningToolIDs（长时运行工具标记） — ✅ 已支持
 
 ---
 

@@ -1,5 +1,9 @@
 # S5 — P2 功能补全（二）：Artifact / Cron / Settings 拆分 / 测试矩阵 60%
 
+> **⚠️ 本文档自 2026-05-17 起停止维护**。Cron 重试/DLQ/指标 ✅、AgentRuntimeSettings 拆分 ✅、Artifact 🟡（REST 已通但未注册 Server / 未注入 Runner，见 [`../execution-plan.md`](../execution-plan.md) §1.3 EP-BIZ-03）、测试矩阵 60% 🟡（白名单口径，见 EP-ENG-01）。仅保留作历史参考。
+>
+> ---
+>
 > 时窗：第 9~10 周 | 任务：T34~T37（4 任务） | PR：4 | 依据：[master-plan §6.4](../master-plan.md)
 
 ---

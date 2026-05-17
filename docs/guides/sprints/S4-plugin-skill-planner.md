@@ -1,5 +1,9 @@
 # S4 — P2 功能补全（一）：Plugin / Skill / Planner / Memory Tools
 
+> **⚠️ 本文档自 2026-05-17 起停止维护**。本 Sprint 已部分落地（Planner ✅、Plugin Runtime 🟡、Memory tools 🟡、Skill DB Repo ⛔），真实接入度见 [`../execution-plan.md`](../execution-plan.md) §1.3 + 附录 A；剩余 EP-BIZ-01 / EP-RT-03 / EP-RT-07 在新计划 M1 里程碑落地。仅保留作历史参考。
+>
+> ---
+>
 > 时窗：第 7~8 周 | 任务：T29~T33（5 任务） | PR：5 | 依据：[master-plan §6.4](../master-plan.md) [§4](../master-plan.md)
 
 ---

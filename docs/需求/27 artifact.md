@@ -1,10 +1,18 @@
 # M12: Artifact 制品 — 详细需求
 
 > 对标 `pkg/trpc-agent-go/artifact` 包，实现制品存储和版本管理。
+>
+> **2026-05-17 现状对齐**：以下"现状分析"已被代码反超。当前实现状态：
+> - ✅ `internal/biz/artifact.go` / `internal/data/artifactfs/repo.go` / `internal/service/artifact.go` / `internal/artifact/trpc/service.go` 已具备 Save / Load / List / Delete；REST `api/kratos/artifact/v1/*` 已生成。
+> - ❌ **未在 `internal/server/http.go` / `grpc.go` 注册 ArtifactService**，对外不可访问。
+> - ❌ **未把 trpc Artifact Service 注入 CodeExecutor / Runner**，工具产生的二进制结果仍丢失。
+> - ❌ S3 / COS 后端未启用，仅本地 FS。
+>
+> 后续以 `guides/execution-plan.md` §3 EP-BIZ-03 为准；运维要点见 `guides/artifact.md`。
 
 ---
 
-## 1. 现状分析
+## 1. 现状分析（已过期，保留参考）
 
 项目无 Artifact 制品管理能力。当前代码执行结果仅作为文本返回，无持久化存储。
 

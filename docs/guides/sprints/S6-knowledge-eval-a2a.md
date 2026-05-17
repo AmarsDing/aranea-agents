@@ -1,5 +1,9 @@
 # S6 — P3 长期能力：Knowledge / Evaluation / A2A / CodeExecutor 沙箱
 
+> **⚠️ 本文档自 2026-05-17 起停止维护**。四项均为"代码骨架存在 + 测试构造可用、但未端到端接入主链路"——Knowledge / A2A 工具未注册到 Agent 装配链、Evaluation Runner 在 wire 处传 `nil`、CodeExecutor Docker 未替换 skill 本地执行器。详见 [`../execution-plan.md`](../execution-plan.md) §1.3 EP-BIZ-02/03/04。仅保留作历史参考。
+>
+> ---
+>
 > 时窗：第 11+ 周（开放窗口） | 任务：T38~T41（4 任务） | PR：4~8 | 依据：[master-plan §6.5](../master-plan.md)
 
 ---

@@ -1,5 +1,9 @@
 # S2 — P1 架构债
 
+> **⚠️ 本文档自 2026-05-17 起停止维护**。RuntimeKernel / EventBus 背压 / Agent 构建缓存 等内容已落到 [`../execution-plan.md`](../execution-plan.md) §1.1 / §3.2（EP-RT-06）和 M1 里程碑。仅保留作历史参考。
+>
+> ---
+>
 > 时窗：第 3~4 周 | 任务：T14~T20（7 任务） | PR：5 | 依据：[master-plan §6.3](../master-plan.md) [§5](../master-plan.md)
 
 ---

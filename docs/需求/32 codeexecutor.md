@@ -1,10 +1,17 @@
 # M14: CodeExecutor 代码执行 — 详细需求
 
 > 对标 `pkg/trpc-agent-go/codeexecutor` 包，实现安全的代码执行环境。
+>
+> **2026-05-17 现状对齐**：
+> - ✅ `internal/agent/codeexecutor/executor.go` 已实现 Docker Sandbox 执行器（含 timeout / 资源限制 / artifact 收集 / 测试 `executor_test.go`）。
+> - ❌ **skill 路径仍使用 `internal/skill/trpc/executor.go` 中的 `codeexecutor/local`**；Docker 执行器未替换为默认。
+> - ❌ E2B 沙箱、Jupyter 内核、Interactive 模式、WorkspaceRegistry 仍未实现。
+>
+> 后续以 `guides/execution-plan.md` §3 EP-BIZ-04 + 运维要点 `guides/codeexecutor.md` 为准。
 
 ---
 
-## 1. 现状分析
+## 1. 现状分析（已过期，保留参考）
 
 项目已有 `internal/skill/trpc/executor.go`，使用 `codeexecutor/local` 执行器：
 - 仅支持本地执行

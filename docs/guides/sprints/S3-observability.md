@@ -1,5 +1,9 @@
 # S3 — P1 业务可观测 + 测试基线
 
+> **⚠️ 本文档自 2026-05-17 起停止维护**。RunStatus / Callback Chain / Metrics / OTel / 多租户 / 测试基线 等已转入 [`../execution-plan.md`](../execution-plan.md) §3.2 / §3.4 / §3.6（EP-RT-01/02、EP-OBS-01/02、EP-ENG-01/02）。仅保留作历史参考。
+>
+> ---
+>
 > 时窗：第 5~6 周 | 任务：T21~T28（8 任务） | PR：6 | 依据：[master-plan §6.3](../master-plan.md) [§3.3](../master-plan.md)
 
 ---
