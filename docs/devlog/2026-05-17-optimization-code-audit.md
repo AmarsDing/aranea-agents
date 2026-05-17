@@ -3,6 +3,8 @@
 > 审计对象：`docs/README.md`、`docs/guides/master-plan.md` 中提到的优化整改项，以及同日 S4/S5/S6 changelog 宣称已完成的能力。
 >
 > 审计方式：只读检查代码、ProviderSet、Wire、HTTP/gRPC 注册、Agent runtime 调用链、前端客户端与 CI 配置；未修改业务代码。
+>
+> **修正声明（2026-05-17 后修订）**：本文 §2 P0-1「`wire_gen.go` 过期 → admin 包无法编译」的结论 **已不再成立**。再次执行 `go build ./cmd/admin` 时返回退出码 0，新的 `wire_gen.go` 已包含 `internal/runtime`、`internal/event`、`SkillWatch`、`WSServer` 等注入。本文其余结论仍有效，但应以 `docs/guides/execution-plan.md` 为新的权威基线；本文仅作为历史审计快照保留。
 
 ---
 
