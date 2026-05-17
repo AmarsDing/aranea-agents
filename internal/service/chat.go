@@ -14,6 +14,7 @@ import (
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/internal/team"
+	tooltrpc "aranea-agents/internal/tools/trpc"
 
 	trpcrunner "trpc.group/trpc-go/trpc-agent-go/runner"
 	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
@@ -41,6 +42,8 @@ type teamRunGuard struct {
 	runID  string
 }
 
+type runPlaceholder struct{}
+
 type ChatService struct {
 	chatv1.UnimplementedChatServiceServer
 
@@ -55,6 +58,7 @@ type ChatService struct {
 	pendingCancels sync.Map
 	runStatuses    sync.Map
 	awaitChans     sync.Map
+	sessionMu      sync.Map
 }
 
 type ChatServiceDeps struct {
@@ -100,6 +104,11 @@ func NewChatService(deps ChatServiceDeps) *ChatService {
 			Compress: deps.Compress,
 		},
 	}
+	if deps.TeamsNative != nil {
+		deps.TeamsNative.SetAwaitHookProvider(func(runCtx context.Context, sessionID, runID string) tooltrpc.ReplyFunc {
+			return s.makeAwaitReplyFunc(runCtx, sessionID, runID)
+		})
+	}
 	return s
 }
 
@@ -130,6 +139,9 @@ func (s *ChatService) StopGeneration(ctx context.Context, req *chatv1.StopGenera
 		s.setRunStatus(sessionID, guard.runID, "cancelled", "")
 		s.activeRuns.Delete(sessionID)
 		return &chatv1.StopGenerationResponse{Stopped: true}, nil
+	}
+	if _, ok := val.(*runPlaceholder); ok {
+		return &chatv1.StopGenerationResponse{Stopped: false}, nil
 	}
 	r, ok := val.(trpcrunner.Runner)
 	if !ok {
@@ -373,6 +385,13 @@ func (s *ChatService) GetRunStatus(ctx context.Context, req *chatv1.GetRunStatus
 		ErrorMessage: entry.ErrMsg,
 		UpdatedAt:    entry.UpdatedAt.Format(time.RFC3339),
 	}, nil
+}
+
+func (s *ChatService) lockSession(sessionID string) func() {
+	val, _ := s.sessionMu.LoadOrStore(sessionID, &sync.Mutex{})
+	mu := val.(*sync.Mutex)
+	mu.Lock()
+	return mu.Unlock
 }
 
 // makeAwaitReplyFunc returns a ReplyFunc closure that the ServiceTool calls to

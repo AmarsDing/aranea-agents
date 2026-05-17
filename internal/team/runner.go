@@ -11,6 +11,7 @@ import (
 	"aranea-agents/internal/event"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	rt "aranea-agents/internal/runtime"
+	tooltrpc "aranea-agents/internal/tools/trpc"
 
 	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
 
@@ -18,10 +19,11 @@ import (
 )
 
 type Runner struct {
-	teams       biz.TeamRepository
-	td          rt.TurnDeps
-	pluginRT    *plugintrpc.Runtime
-	skillDBRepo trpcskill.Repository
+	teams             biz.TeamRepository
+	td                rt.TurnDeps
+	pluginRT          *plugintrpc.Runtime
+	skillDBRepo       trpcskill.Repository
+	awaitHookProvider func(runCtx context.Context, sessionID, runID string) tooltrpc.ReplyFunc
 }
 
 func NewRunner(
@@ -61,6 +63,10 @@ func NewRunner(
 			Compress: compress,
 		},
 	}
+}
+
+func (r *Runner) SetAwaitHookProvider(fn func(runCtx context.Context, sessionID, runID string) tooltrpc.ReplyFunc) {
+	r.awaitHookProvider = fn
 }
 
 func (r *Runner) catalogAgent(ctx context.Context, id string) (biz.Agent, error) {

@@ -174,7 +174,7 @@ Cron Scheduler
 ### 1.7.1 SessionTurn 持久化
 
 - 单 Agent turn 完成后，`recordSessionTurn()` 写入 `session_turns` 表，记录 turn 索引、角色、模型、token 用量和耗时
-- **当前边界**：Team turn 路径不调用 `recordSessionTurn`，导致 `session_turns` 表对 Team 会话无记录，需补齐
+- **当前边界**：~~Team turn 路径不调用 `recordSessionTurn`，导致 `session_turns` 表对 Team 会话无记录，需补齐~~ ✅ 已修复：新增 `recordTeamSessionTurn`，Team turn 成功后调用
 
 ### 1.7.2 Team Run 持久化
 
@@ -195,14 +195,14 @@ Cron Scheduler
 - `StopGeneration` 优先尝试 `ManagedRunner.Cancel(sessionID)`，回退到 `Runner.Close()`
 - **WS 取消路径**：前端可通过 WS `cancel` 上行或 HTTP `StopGeneration` 停止当前 run；二者共用 `activeRuns` / `pendingCancels`
 - **连接管理**：`WSServer` 负责心跳、连接数限制、断线回放和 EventBus 订阅；模型事件不再直接写 HTTP 流
-- **当前边界**：`activeRuns` 只在单 Agent `runSingleAgentViaTRPC` 中登记；Team turn 还未纳入同一套 cancel/pending 串行保护
+- **当前边界**：~~`activeRuns` 只在单 Agent `runSingleAgentViaTRPC` 中登记；Team turn 还未纳入同一套 cancel/pending 串行保护~~ ✅ 已修复：`teamRunGuard` 接入 `activeRuns`，`StopGeneration`/`CancelRun` 支持 Team cancel
 
 ### 1.8.1 EventBuffer 回放
 
 - WS 连接断线重连时，客户端携带 `last_event_id` 请求回放
 - `EventBuffer` 为 ring buffer，容量 200 条/Session，基于事件 ID 匹配回放起始位置
 - 回放期间依次发送 `replay_start` → 事件序列 → `replay_end` 控制消息
-- **清理策略**：仅在 Session 结束时 `RemoveSession` 清理，无 TTL 自动过期；长时间运行的 Session 可能积累大量事件
+- **清理策略**：TTL 30min 自动过期 + 5min eviction ticker + `Close()` 优雅停止；`lastAcc` 追踪最后访问时间
 
 ### 1.8.2 EventBus 订阅与背压
 
@@ -228,8 +228,8 @@ Cron Scheduler
 - `pendingEntry` 使用 UUID 生成唯一 ID
 - `processPendingQueue` 设置 600 秒超时控制，并支持取消传播
 - **容量限制**：每个 Session 最多 32 条待执行消息（`maxPendingPerSession`），超出时返回 `BadRequest` 错误
-- **错误上报**：待执行消息执行失败时通过 EventBus/WS `error` Envelope 通知前端；`pending_id` 应统一写入 `error.pending_id` 字段（当前代码双写 metadata 和 `EnvelopeError.PendingID`，需统一为仅使用 `error.pending_id`）
-- **当前边界**：Team 会话尚未进入 `activeRuns`，待执行队列语义主要覆盖单 Agent turn；**Team turn 完成后不触发 `processPendingQueue`，队列中的消息永远不会被执行——这是功能性 Bug**
+- **错误上报**：待执行消息执行失败时通过 EventBus/WS `error` Envelope 通知前端；`pending_id` 统一写入 `error.pending_id` 字段（✅ 已修复：metadata 双写已移除）
+- **当前边界**：~~Team 会话尚未进入 `activeRuns`，待执行队列语义主要覆盖单 Agent turn；**Team turn 完成后不触发 `processPendingQueue`，队列中的消息永远不会被执行——这是功能性 Bug**~~ ✅ 已修复：Team turn defer 中调用 `processPendingQueue`，内部按 `OwnerType` 路由
 
 ### 1.10 RunStatus 与 AwaitUserReply
 
@@ -237,7 +237,7 @@ Cron Scheduler
 - `runStatuses sync.Map` 记录当前/最近一次 run 状态、run_id、错误信息和更新时间
 - `makeAwaitReplyFunc` 注入 service await-reply tool，工具阻塞时将状态置为 `awaiting_user`
 - `AwaitUserReply` 向 `awaitChans` 投递人工回复，恢复正在等待的 run
-- 当前 `AwaitHook` 注入在单 Agent builder 路径；Team builder 还未接入
+- 当前 `AwaitHook` 注入在单 Agent builder 路径；~~Team builder 还未接入~~ ✅ 已修复：Team Runner 通过 `SetAwaitHookProvider` 注入 `makeAwaitReplyFunc`；`runCtx` 注入 `serviceawaitreply.WithReplyFunc`
 - 前端已有 API/composable 基础（`useRunStatus` 轮询 run 状态 + `submitReply` 提交回复；`useEnvelopeStream` 消费 WS 事件；`useChatStream`/`useTeamStream` 分别处理 Agent/Team 事件流；`EnvelopeDispatcher` 分发事件；`WsTransport` 管理 WS 连接），但 Chat 页仍需补完整 awaiting_user 展示与回复 UI
 - 当前状态与等待通道为进程内内存结构；服务重启后不可恢复，后续应持久化或接入 EventBuffer 恢复
 
@@ -312,18 +312,18 @@ Cron Scheduler
 ### 3.2 待实现
 
 - [ ] **Team 成员级实时流**：稳定发射并消费 `member_message_start/member_delta/member_message_done`
-- [ ] **Team 停止与待执行队列**：Team turn 接入 active run/cancel/pending 语义；**Team turn 完成后需触发 `processPendingQueue`（当前为功能性 Bug）**
-- [ ] **AwaitUserReply 全链路**：Team 注入 AwaitHook，Chat 页展示 awaiting_user 并提交人工回复
-- [ ] **pending_id 错误关联**：统一 pending 失败的 `pending_id` 字段位置（消除 metadata 双写，统一到 `error.pending_id`）并让前端消费
+- [x] **Team 停止与待执行队列**：Team turn 接入 active run/cancel/pending 语义；Team turn 完成后触发 `processPendingQueue` ✅
+- [x] **AwaitUserReply 后端**：Team 注入 AwaitHook ✅；Chat 页展示 awaiting_user 并提交人工回复（前端待闭环）
+- [x] **pending_id 错误关联**：统一 pending 失败的 `pending_id` 字段位置（消除 metadata 双写，统一到 `error.pending_id`）✅
 - [ ] **结构化工具事件卡片**：基于 `tool_call/tool_result` 展示参数、结果、耗时、错误和长任务状态（`is_long_running`）
 - [ ] **多模态附件闭环**：上传、持久化、权限校验、对象存储与 LLM Vision 输入
 - [ ] **模型选项来源统一**：Chat 前端应明确使用 `GetChatOptions("provider"|"model")` 或 Platform Resource，避免双口径
 - [ ] **RunStatus/AwaitUserReply 可恢复性**：避免进程重启导致等待态丢失
 - [ ] **Reasoning 展示规格**：定义 `content.reasoning` 的前端展示方式（折叠/内联/独立区域）
-- [ ] **Channel/Cron 并发保护**：Channel webhook 并发请求需受 activeRuns 互斥保护，避免绕过 pendingQueue
-- [ ] **SessionTurn 一致性**：Team turn 路径需补齐 `recordSessionTurn` 调用
+- [x] **Channel/Cron 并发保护**：Channel webhook 并发请求受 `lockSession` per-session 互斥锁 + `runPlaceholder` 原子占位保护 ✅
+- [x] **SessionTurn 一致性**：Team turn 路径补齐 `recordTeamSessionTurn` 调用 ✅
 - [ ] **WS 控制消息前端消费**：`connected`/`pong`/`replay_start`/`replay_end`/`server_shutdown` 需在前端协议层正确处理
-- [ ] **EventBuffer 清理策略优化**：当前无 TTL 自动过期，长时间运行 Session 可能积累大量事件
+- [x] **EventBuffer 清理策略优化**：TTL 30min 自动过期 + 5min eviction ticker ✅
 
 ### 3.3 已实现（本轮新增）
 
@@ -357,19 +357,19 @@ Cron Scheduler
 ### 4.2 待优化
 
 - [ ] 历史 SSE 文档口径需完全收敛到 WS/EventBus；不得再把 `/v1/chat/messages/stream` 写作当前端点
-- [ ] Team turn 应纳入 `ChatService.activeRuns` 或等价会话级 run registry，保证停止与排队一致
-- [ ] **Team turn 完成后需触发 `processPendingQueue`**，否则队列中的消息永远不会被执行（功能性 Bug）
-- [ ] AwaitHook 应从单 Agent 扩展到 Team Builder，并在 Chat 页接入 `useRunStatus`
-- [ ] pending 失败事件应统一 `pending_id` 字段位置，消除 metadata 与 `EnvelopeError.PendingID` 双写，统一到 `error.pending_id`
+- [x] ~~Team turn 应纳入 `ChatService.activeRuns` 或等价会话级 run registry，保证停止与排队一致~~ ✅ `teamRunGuard` + `lockSession` per-session 互斥锁
+- [x] ~~**Team turn 完成后需触发 `processPendingQueue`**，否则队列中的消息永远不会被执行（功能性 Bug）~~ ✅
+- [x] ~~AwaitHook 应从单 Agent 扩展到 Team Builder，并在 Chat 页接入 `useRunStatus`~~ ✅ 后端已注入；前端 Chat 页 UI 待闭环
+- [x] ~~pending 失败事件应统一 `pending_id` 字段位置，消除 metadata 与 `EnvelopeError.PendingID` 双写，统一到 `error.pending_id`~~ ✅
 - [ ] Team Runner 应补成员级事件投影，避免前端只能看到聚合 `text_delta/text_done`
 - [ ] 工具事件需要从简化文本升级为结构化 UI 与可观测字段（含 `is_long_running` 长任务标识）
 - [ ] 附件 UI 目前只生成本地占位 ID，后端需补真正上传和 LLM 输入装配
 - [ ] Chat 模型选择来源需统一，避免后端 Chat Options 与前端 Platform Resource 两套数据口径并存
 - [ ] RunStatus/AwaitUserReply 当前为进程内状态，生产级长任务需持久化或恢复策略
-- [ ] Channel/Cron 并发入口需受 activeRuns 互斥保护
-- [ ] Team turn 路径需补齐 `recordSessionTurn` 调用，保证 `session_turns` 表对 Team 会话有记录
+- [x] ~~Channel/Cron 并发入口需受 activeRuns 互斥保护~~ ✅ `lockSession` per-session 互斥锁 + `runPlaceholder` 原子占位
+- [x] ~~Team turn 路径需补齐 `recordSessionTurn` 调用，保证 `session_turns` 表对 Team 会话有记录~~ ✅ 新增 `recordTeamSessionTurn`
 - [ ] WS 控制消息（`connected`/`pong`/`replay_*`/`server_shutdown`）需文档化并确保前端正确消费
-- [ ] EventBuffer 需增加 TTL 自动过期清理策略，避免长时间运行 Session 积累事件
+- [x] ~~EventBuffer 需增加 TTL 自动过期清理策略，避免长时间运行 Session 积累事件~~ ✅ TTL 30min + 5min eviction
 - [ ] 前端 `useRunStatus` 应从 HTTP 轮询改为 WS 事件驱动（`state_delta` 或专用事件）
 - [ ] Reasoning 展示规格需定义（折叠/内联/独立区域）
 

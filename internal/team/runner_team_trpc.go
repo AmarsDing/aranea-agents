@@ -14,6 +14,7 @@ import (
 	"aranea-agents/internal/agent/intent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+	"aranea-agents/internal/tools/serviceawaitreply"
 	"aranea-agents/pkg/strutil"
 
 	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
@@ -102,6 +103,10 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 		Model:       mod0,
 		DialogMode:  dialogMode,
 		SkillDBRepo: r.skillDBRepo,
+		HasMemory:   r.td.Persist.Memory != nil,
+	}
+	if r.awaitHookProvider != nil {
+		builderDeps.AwaitHook = r.awaitHookProvider(ctx, sess.ID, run.ID)
 	}
 	teamDeps := TRPCTeamBuilderDeps{BuilderDeps: builderDeps, UseCache: true}
 	root, err := BuildTRPCTeam(ctx, def, teamDeps, r.catalogAgent)
@@ -191,6 +196,9 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 		var cancel context.CancelFunc
 		runCtx, cancel = context.WithTimeout(ctx, dur)
 		defer cancel()
+	}
+	if builderDeps.AwaitHook != nil {
+		runCtx = serviceawaitreply.WithReplyFunc(runCtx, builderDeps.AwaitHook)
 	}
 	publishTeamMonitor(ctx, r.td.Pipeline.Bus, "INFO", fmt.Sprintf(
 		"team_turn phase=trpc_run_start session_id=%s run_id=%s",

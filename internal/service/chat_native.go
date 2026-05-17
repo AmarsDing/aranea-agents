@@ -167,7 +167,9 @@ func (s *ChatService) runNativeAgentTurn(ctx context.Context, req *chatv1.SendCh
 		return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.BadRequest("CHAT_NATIVE", "session_id and content are required")
 	}
 
+	unlock := s.lockSession(sessionID)
 	if _, running := s.activeRuns.Load(sessionID); running {
+		unlock()
 		pendingID := s.enqueuePending(sessionID, content)
 		if pendingID == "" {
 			return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.BadRequest("CHAT", "pending queue is full for this session")
@@ -177,6 +179,7 @@ func (s *ChatService) runNativeAgentTurn(ctx context.Context, req *chatv1.SendCh
 
 	sess, err := s.td.Sessions.Get(ctx, sessionID)
 	if err != nil {
+		unlock()
 		if errors.Is(err, sql.ErrNoRows) {
 			return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.NotFound("SESSION", "session not found")
 		}
@@ -185,6 +188,7 @@ func (s *ChatService) runNativeAgentTurn(ctx context.Context, req *chatv1.SendCh
 
 	if strings.EqualFold(strings.TrimSpace(sess.OwnerType), "team") {
 		if s.teamsNative == nil {
+			unlock()
 			return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.InternalServer("CHAT_TEAM_NATIVE", "team runner not wired")
 		}
 		if s.td.Pipeline.Bus != nil {
@@ -200,6 +204,7 @@ func (s *ChatService) runNativeAgentTurn(ctx context.Context, req *chatv1.SendCh
 		guard := &teamRunGuard{cancel: teamCancel, runID: runID}
 		s.activeRuns.Store(sessionID, guard)
 		s.setRunStatus(sessionID, runID, "running", "")
+		unlock()
 		defer func() {
 			s.activeRuns.Delete(sessionID)
 			s.processPendingQueue(sessionID, sess, biz.Agent{}, "", "", "")
@@ -217,15 +222,18 @@ func (s *ChatService) runNativeAgentTurn(ctx context.Context, req *chatv1.SendCh
 	}
 
 	if rtid := strings.TrimSpace(req.GetTeamId()); rtid != "" {
+		unlock()
 		return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.Forbidden("CHAT_TEAM_NATIVE", "team_id is only valid for team sessions")
 	}
 
 	agentID := strings.TrimSpace(sess.AgentID)
 	if agentID == "" {
+		unlock()
 		return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.BadRequest("CHAT_NATIVE", "session has no agent_id")
 	}
 	ag, err := s.hydratedAgent(ctx, agentID)
 	if err != nil {
+		unlock()
 		if errors.Is(err, sql.ErrNoRows) {
 			return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.NotFound("AGENT", "agent not found")
 		}
@@ -250,6 +258,8 @@ func (s *ChatService) runNativeAgentTurn(ctx context.Context, req *chatv1.SendCh
 		attN = len(opts.Attachments)
 	}
 
+	s.activeRuns.Store(sessionID, &runPlaceholder{})
+	unlock()
 	return s.runSingleAgentViaTRPC(ctx, sess, req, ag, dialogMode, prov, mod, attN)
 }
 

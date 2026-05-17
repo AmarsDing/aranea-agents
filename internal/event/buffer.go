@@ -2,12 +2,16 @@ package event
 
 import (
 	"sync"
+	"time"
 )
 
 type Buffer struct {
 	mu      sync.RWMutex
 	buffers map[string]*ringBuffer
 	cap     int
+	ttl     time.Duration
+	lastAcc map[string]time.Time
+	stopCh  chan struct{}
 }
 
 type ringBuffer struct {
@@ -18,10 +22,45 @@ type ringBuffer struct {
 
 func NewBuffer() *Buffer {
 	cap := 200
-	return &Buffer{
+	ttl := 30 * time.Minute
+	b := &Buffer{
 		buffers: make(map[string]*ringBuffer),
 		cap:     cap,
+		ttl:     ttl,
+		lastAcc: make(map[string]time.Time),
+		stopCh:  make(chan struct{}),
 	}
+	go b.evictLoop()
+	return b
+}
+
+func (b *Buffer) evictLoop() {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			b.evictExpired()
+		case <-b.stopCh:
+			return
+		}
+	}
+}
+
+func (b *Buffer) evictExpired() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	now := time.Now()
+	for sid, last := range b.lastAcc {
+		if now.Sub(last) > b.ttl {
+			delete(b.buffers, sid)
+			delete(b.lastAcc, sid)
+		}
+	}
+}
+
+func (b *Buffer) Close() {
+	close(b.stopCh)
 }
 
 func (b *Buffer) Append(env Envelope) {
@@ -30,6 +69,7 @@ func (b *Buffer) Append(env Envelope) {
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	b.lastAcc[env.SessionID] = time.Now()
 	buf, ok := b.buffers[env.SessionID]
 	if !ok {
 		buf = &ringBuffer{
@@ -45,8 +85,9 @@ func (b *Buffer) Append(env Envelope) {
 }
 
 func (b *Buffer) Replay(sessionID, lastEventID string) []Envelope {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.lastAcc[sessionID] = time.Now()
 
 	buf, ok := b.buffers[sessionID]
 	if !ok || buf.size == 0 {
@@ -95,4 +136,5 @@ func (b *Buffer) RemoveSession(sessionID string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	delete(b.buffers, sessionID)
+	delete(b.lastAcc, sessionID)
 }

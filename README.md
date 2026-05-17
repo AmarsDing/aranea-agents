@@ -89,6 +89,10 @@
 make init      # 初始化工具
 make api       # 生成 Proto 代码
 make build     # 构建后端
+
+$env:DEPLOY_ENV="dev"
+$env:KRATOS_HTTP_AUTH_DISABLED="1"
+
 cd cmd/admin && go run . -conf ../../configs  # 启动服务
 ```
 

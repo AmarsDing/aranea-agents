@@ -475,7 +475,7 @@ type pendingEntry struct {
 7. 从 pendingCancels 删除
 ```
 
-当前 `activeRuns` 由单 Agent `runSingleAgentViaTRPC` 登记；Team turn 由 `team.Runner` 独立执行，尚未纳入同一套 run registry，因此 Team 停止生成与待执行串行保护需后续补齐。
+当前 `activeRuns` 由单 Agent `runSingleAgentViaTRPC` 和 Team turn `teamRunGuard` 共同登记；`lockSession` per-session 互斥锁保护 `activeRuns.Load/Store` 原子性，消除 TOCTOU 竞态。Team turn 完成后通过 defer 调用 `processPendingQueue`，与单 Agent 行为一致。
 
 #### GetPendingMessages
 
@@ -637,7 +637,7 @@ type EnvelopeTrace struct {
 | `member_delta` | team | `author`, `content` | 成员消息增量 |
 | `member_message_done` | team | `author`, `content`, `usage` | 成员消息完成 |
 
-> **pending_id 字段约定**：待执行消息执行失败时，`error.pending_id` 应填充关联的待执行消息 ID。当前代码存在双写问题（同时写入 `metadata["pending_id"]` 和 `EnvelopeError.PendingID` 字段但后者未被赋值），需统一为仅使用 `error.pending_id`，并移除 metadata 中的冗余写入。
+> **pending_id 字段约定**：待执行消息执行失败时，`error.pending_id` 应填充关联的待执行消息 ID。✅ 已修复：`processPendingQueue` 中统一使用 `env.Error.PendingID = entry.ID`，metadata 双写已移除。
 
 ### 5.6 runNativeAgentTurn 核心流程
 
@@ -655,8 +655,8 @@ type EnvelopeTrace struct {
 ```
 
 注意：
-- 步骤 2 的 `activeRuns` 检查由 ChatService 维护，但当前只有单 Agent 路径会在运行期写入 `activeRuns`。Team 路径需要补会话级 run registry 或等价互斥，才能与单 Agent 的 stop/pending 行为完全一致。
-- **Team turn 完成后不触发 `processPendingQueue`**：`teamsNative.RunTurn()` 返回后直接结束，不会像 `runSingleAgentViaTRPC` 的 defer 那样调用 `processPendingQueue`。这意味着 Team 运行期间入队的待执行消息永远不会被执行——这是功能性 Bug，需在 Team turn 完成后补调 `processPendingQueue`。
+- 步骤 2 的 `activeRuns` 检查由 ChatService 维护，`lockSession` per-session 互斥锁保护 Load/Store 原子性。Team 路径通过 `teamRunGuard` 接入 `activeRuns`，与单 Agent 的 stop/pending 行为一致。
+- ~~**Team turn 完成后不触发 `processPendingQueue`**~~ ✅ 已修复：Team turn defer 中调用 `processPendingQueue`，内部按 `OwnerType` 路由到 `teamsNative.RunTurn` 或 `runSingleAgentViaTRPC`。
 
 ### 5.7 runSingleAgentViaTRPC 核心流程
 
@@ -709,7 +709,7 @@ type EnvelopeTrace struct {
 5. WS 前端收到 error 后显示通知
 ```
 
-> **pending_id 约定**：待执行消息执行失败时，`error.pending_id` 应填充关联的待执行消息 ID。当前代码存在双写问题：`processPendingQueue` 中同时写入 `env.Metadata["pending_id"]` 和定义了 `EnvelopeError.PendingID` 字段但未赋值。应统一为仅使用 `error.pending_id`，移除 metadata 中的冗余写入，并确保前端 `error` handler 消费 `error.pending_id` 字段。
+> **pending_id 约定**：待执行消息执行失败时，`error.pending_id` 应填充关联的待执行消息 ID。✅ 已修复：`processPendingQueue` 中统一使用 `env.Error.PendingID = entry.ID`，metadata 双写已移除。
 
 ### 5.7.3 pendingQueue 容量控制
 
@@ -905,7 +905,7 @@ session_turns
 ```
 
 - 单 Agent turn 完成后，`recordSessionTurn()` 写入 `session_turns` 表
-- **当前边界**：Team turn 路径不调用 `recordSessionTurn`，导致 `session_turns` 表对 Team 会话无记录，需补齐
+- **当前边界**：~~Team turn 路径不调用 `recordSessionTurn`，导致 `session_turns` 表对 Team 会话无记录，需补齐~~ ✅ 已修复：新增 `recordTeamSessionTurn`，Team turn 成功后调用
 
 ### 5.16 Agent Settings Variables 注入
 
@@ -1313,21 +1313,21 @@ export async function awaitUserReply(sessionId: string, reply: string, runId?: s
 | P0 | WS 客户端断连与取消 | `WSServer` 心跳、连接上限、cancel 上行、EventBuffer 回放 | ✅ 已实现 |
 | P0 | 实时事件统一投影 | `EventProjector` 将 trpc events 投影为 `text_delta/tool_call/state_delta/runner_completion` 等 Envelope | ✅ 已实现 |
 | P0 | pendingQueue 大小限制 | `enqueuePending` 增加 `maxPendingPerSession=32` 上限，超出返回 `BadRequest` 错误 | ✅ 已修复 |
-| P1 | processPendingQueue 错误上报 | 待执行消息执行失败时通过 WS `error` Envelope 通知前端；`pending_id` 字段位置仍需统一 | 🟡 部分完成 |
+| P1 | processPendingQueue 错误上报 | 待执行消息执行失败时通过 WS `error` Envelope 通知前端；`pending_id` 字段统一到 `error.pending_id` | ✅ 已修复 |
 | P1 | toolEventMessage 重复定义消除 | 提取 `toolEventToMessage` 到 `toolEventMarkdown.ts` 共享模块 | ✅ 已修复 |
 | P1 | WS error 事件处理 | `useEnvelopeStream` / `useChatWorkspace` 监听 `error` Envelope 并通知用户 | ✅ 已修复 |
 | P2 | state_delta/extensions 前后端覆盖 | Envelope 支持 `state_delta` / `extensions` 字段，前端类型已覆盖 | ✅ 已修复 |
-| P1 | Team stop/pending 行为一致性 | Team turn 未登记 `ChatService.activeRuns`，停止与待执行队列主要覆盖单 Agent | ⏳ 待修复 |
-| P1 | Team processPendingQueue 缺失 | Team turn 完成后不触发 `processPendingQueue`，队列中的消息永远不会被执行（功能性 Bug） | ⏳ 待修复 |
-| P1 | AwaitUserReply 全链路 | `AwaitHook` 仅注入单 Agent builder，Team builder 与 Chat 页 UI 未闭环 | ⏳ 待修复 |
-| P1 | EnvelopeError.PendingID 统一 | 字段已定义但未赋值，`processPendingQueue` 只写 metadata；需统一到 `error.pending_id` | ⏳ 待修复 |
+| P1 | Team stop/pending 行为一致性 | Team turn 通过 `teamRunGuard` 接入 `activeRuns`，`lockSession` per-session 互斥锁保护 | ✅ 已修复 |
+| P1 | Team processPendingQueue 缺失 | Team turn 完成后 defer 调用 `processPendingQueue`，内部按 `OwnerType` 路由 | ✅ 已修复 |
+| P1 | AwaitUserReply 全链路 | 后端：Team Runner 通过 `SetAwaitHookProvider` 注入 `makeAwaitReplyFunc`；前端 Chat 页 UI 待闭环 | ✅ 后端 |
+| P1 | EnvelopeError.PendingID 统一 | `env.Error.PendingID = entry.ID`，metadata 双写已移除 | ✅ 已修复 |
 | P1 | WS 控制消息文档化 | `connected`/`pong`/`replay_*`/`server_shutdown` 已实现但未文档化 | ⏳ 待文档化 |
-| P2 | pending_id 字段统一 | pending 失败当前将 `pending_id` 写入 metadata，前端 error handler 未关联队列项 | ⏳ 待优化 |
+| P2 | pending_id 字段统一 | ✅ 已合并到 P1 EnvelopeError.PendingID 统一 | ✅ 已修复 |
 | P2 | Team 成员级实时事件 | `member_*` 类型和前端处理存在，但 Team Runner 尚未稳定发射成员级 start/delta/done | ⏳ 待优化 |
 | P2 | 工具事件结构化展示 | 当前有 `tool_call/tool_result` Envelope，但 Chat 面板仍是简化文本 | ⏳ 待优化 |
-| P2 | SessionTurn 一致性 | Team turn 不调用 `recordSessionTurn`，`session_turns` 表对 Team 会话无记录 | ⏳ 待修复 |
-| P2 | Channel/Cron 并发保护 | Channel webhook 并发入口可能绕过 `activeRuns` 互斥检查 | ⏳ 待修复 |
-| P2 | EventBuffer TTL 清理 | 当前无 TTL 自动过期，长时间运行 Session 可能积累大量事件 | ⏳ 待优化 |
+| P2 | SessionTurn 一致性 | 新增 `recordTeamSessionTurn`，Team turn 成功后调用 | ✅ 已修复 |
+| P2 | Channel/Cron 并发保护 | `lockSession` per-session 互斥锁 + `runPlaceholder` 原子占位 | ✅ 已修复 |
+| P2 | EventBuffer TTL 清理 | TTL 30min + 5min eviction ticker + `Close()` 优雅停止 | ✅ 已修复 |
 | P2 | 前端 RunStatus 轮询改事件驱动 | `useRunStatus` 每 2s 轮询 HTTP，应改为 WS 事件驱动 | ⏳ 待优化 |
 | P2 | Reasoning 展示规格 | 前端已消费 `content.reasoning`，但缺少展示规格定义 | ⏳ 待定义 |
 | P3 | 模型选项来源统一 | 后端 `GetChatOptions("provider"|"model")` 已支持动态选项，Chat 前端主要读取 Platform Resource | ⏳ 待优化 |
