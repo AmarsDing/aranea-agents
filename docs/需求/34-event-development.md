@@ -1,61 +1,66 @@
-# Event — 开发计划
+# Event 事件系统 — 开发计划
 
-> **版本**：2026-05-17 | **状态**：✅  
-> **进度真相**：[`guides/execution-plan.md`](../guides/execution-plan.md) 附录 A · **关联 EP**：EP-RT-06 ✅
+> **版本**：2026-05-17 | **状态**：✅ 端到端可用
+> **需求**：[34 event-system.md](./34%20event-system.md) · **设计**：[34 event-system.design.md](./34%20event-system.design.md)
+> **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：—
 
 ---
 
 ## 1. 模块定位
 
-见 [`0 系统框图.md`](./0%20系统框图.md) 与 `docs/README.md` §7 对应需求/设计文档。
+Event 事件系统：基于事件总线的发布/订阅机制，支持系统内部组件间的异步事件通信。
+
+**代码锚点**：
+- `internal/event/bus.go` — EventBus
+- `internal/runtime/deps.go` — EventPipeline
+- `internal/service/chat.go` — 事件订阅
 
 ---
 
 ## 2. 现状评估
 
-| 维度 | 状态 |
-|------|------|
-| 整体 | ✅ |
-
-对照需求文档「2026-05-17 现状对齐」段与附录 A 各列（Proto/Biz/Data/Service/Server/Runtime/前端）。
+| 项 | 状态 | 证据 |
+|----|------|------|
+| EventBus | ✅ | 发布/订阅模式 |
+| EventPipeline | ✅ | `rt.EventPipeline{Bus: deps.EventBus}` |
+| 事件类型 | ✅ | MessageCreated / TurnCompleted 等 |
+| SSE 事件推送 | ✅ | Chat SSE 事件流 |
+| WS 事件推送 | ✅ | WebSocket 事件流 |
+| 事件持久化 | ❌ | 无事件存储 |
+| 事件回放 | ❌ | 无事件回放机制 |
 
 ---
 
 ## 3. 差距与优化
 
-- 未完成验收项纳入 Phase。
-- 遵守双框架边界：Kratos 传输 / trpc 运行时（AI-DEV-SPEC §1）。
-- 复用既有 Usecase，避免平行实现。
+1. **P2**：无事件持久化，系统重启后事件丢失。
+2. **P3**：无事件回放机制，无法重现历史事件序列。
 
 ---
 
 ## 4. 开发阶段
 
-- **Phase 1**：可靠/lossy 文档
-- **Phase 2**：背压告警
-- **Phase 3**：跨进程总线
+- **Phase 1**：事件持久化（SQLite 存储）
+- **Phase 2**：事件回放机制
 
 ---
 
-## 5. 任务清单（可拆 PR）
+## 5. 任务清单
 
-| 序号 | 任务 | 优先级 | EP |
-|------|------|--------|-----|
-| 1 | Phase 1 首项 | P1 | EP-RT-06 ✅ |
-| 2 | 单测 + make lint + 更新现状对齐 | P1 | §7 |
-| 3 | 前端闭环（若适用） | P2 | EP-FE-* |
+| # | 任务 | 优先级 | EP |
+|---|------|--------|-----|
+| 1 | `event_store` Ent 表 + 事件写入 | P2 | — |
+| 2 | 事件回放 API | P3 | — |
 
 ---
 
 ## 6. 验收标准
 
-- [ ] `go build ./cmd/admin`
-- [ ] 相关 `go test`；并发改动用 `-race`
-- [ ] 附录 A + 需求「现状对齐」一致
-- [ ] changelog 引用 EP
+- [ ] 系统重启后可查询历史事件
+- [ ] 可按时间范围回放事件
 
 ---
 
 ## 7. 依赖与风险
 
-M2 多租户可能触及本模块写路径；按 admin→agent→session 分批合入。
+- 事件持久化需注意存储膨胀（可加 TTL 清理）

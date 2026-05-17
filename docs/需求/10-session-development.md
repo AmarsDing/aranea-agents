@@ -1,61 +1,70 @@
 # Session — 开发计划
 
-> **版本**：2026-05-17 | **状态**：✅  
-> **进度真相**：[`guides/execution-plan.md`](../guides/execution-plan.md) 附录 A · **关联 EP**：—
+> **版本**：2026-05-17 | **状态**：✅ 端到端可用
+> **需求**：[10 session.md](./10%20session.md) · **设计**：[10 session.design.md](./10%20session.design.md)
+> **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：—
 
 ---
 
 ## 1. 模块定位
 
-见 [`0 系统框图.md`](./0%20系统框图.md) 与 `docs/README.md` §7 对应需求/设计文档。
+Session 管理：管理用户与 Agent/Team 的对话会话，包括会话创建、列表、删除、标题更新、上下文压缩等。
+
+**代码锚点**：
+- `api/kratos/session/v1/` — Session CRUD RPC
+- `internal/service/session.go` — SessionService
+- `internal/biz/session.go` — SessionUsecase
+- `internal/data/session.go` — SessionRepo
+- `internal/service/session_compress.go` — 上下文压缩
 
 ---
 
 ## 2. 现状评估
 
-| 维度 | 状态 |
-|------|------|
-| 整体 | ✅ |
-
-对照需求文档「2026-05-17 现状对齐」段与附录 A 各列（Proto/Biz/Data/Service/Server/Runtime/前端）。
+| 项 | 状态 | 证据 |
+|----|------|------|
+| Session CRUD | ✅ | Create/Update/Delete/Get/List |
+| 消息列表 | ✅ | `ListMessages` RPC |
+| 上下文压缩 | ✅ | `SessionCompressor.AfterNativeTurn` |
+| 标题生成 | ✅ | `LLMSessionTitleGenerator` |
+| Session 类型 | ✅ | agent / team |
 
 ---
 
 ## 3. 差距与优化
 
-- 未完成验收项纳入 Phase。
-- 遵守双框架边界：Kratos 传输 / trpc 运行时（AI-DEV-SPEC §1）。
-- 复用既有 Usecase，避免平行实现。
+1. **P2**：Session 无"置顶"功能，用户无法固定重要会话。
+2. **P3**：Session 无"导出"功能，用户无法导出对话记录。
+3. **P3**：Session 消息无"搜索"功能，用户无法在历史消息中搜索关键词。
 
 ---
 
 ## 4. 开发阶段
 
-- **Phase 1**：Turns 回归矩阵
-- **Phase 2**：压缩可观测
-- **Phase 3**：workspace 隔离 M2
+- **Phase 1**：Session 置顶功能（pinned_at 字段 + 排序）
+- **Phase 2**：Session 导出功能（Markdown / JSON 格式）
+- **Phase 3**：消息搜索功能（全文检索）
 
 ---
 
-## 5. 任务清单（可拆 PR）
+## 5. 任务清单
 
-| 序号 | 任务 | 优先级 | EP |
-|------|------|--------|-----|
-| 1 | Phase 1 首项 | P1 | — |
-| 2 | 单测 + make lint + 更新现状对齐 | P1 | §7 |
-| 3 | 前端闭环（若适用） | P2 | EP-FE-* |
+| # | 任务 | 优先级 | EP |
+|---|------|--------|-----|
+| 1 | Session 表增加 `pinned_at` 字段 + PinSession RPC | P2 | — |
+| 2 | ExportSession RPC（Markdown/JSON） | P3 | — |
+| 3 | SearchMessages RPC（全文检索） | P3 | — |
 
 ---
 
 ## 6. 验收标准
 
-- [ ] `go build ./cmd/admin`
-- [ ] 相关 `go test`；并发改动用 `-race`
-- [ ] 附录 A + 需求「现状对齐」一致
-- [ ] changelog 引用 EP
+- [ ] 用户可置顶/取消置顶会话
+- [ ] 可导出会话为 Markdown/JSON
+- [ ] 可在历史消息中搜索关键词
 
 ---
 
 ## 7. 依赖与风险
 
-M2 多租户可能触及本模块写路径；按 admin→agent→session 分批合入。
+- 全文检索需评估 SQLite FTS5 或引入搜索引擎

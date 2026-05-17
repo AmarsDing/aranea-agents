@@ -1,73 +1,77 @@
 # Knowledge 知识库 — 开发计划
 
-> **版本**：2026-05-17 | **状态**：🟡 服务已注册，工程化未完成  
-> **需求**：[37 knowledge.md](./37%20knowledge.md) · **设计**：[37 knowledge.design.md](./37%20knowledge.design.md)  
-> **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：EP-DATA-01、EP-KN-01、EP-KN-02、EP-RT-08
+> **版本**：2026-05-17 | **状态**：✅ 端到端可用
+> **需求**：[37 knowledge.md](./37%20knowledge.md) · **设计**：[37 knowledge.design.md](./37%20knowledge.design.md)
+> **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：—
 
 ---
 
 ## 1. 模块定位
 
-RAG 知识库：文档摄取 → 分块 → 嵌入 → pgvector 检索 → `knowledge_search` 工具进入 Agent 装配链（`ToolKeyKnowledgeSearch`）。
+Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块、向量化、检索和注入。
 
-**代码锚点**：`internal/biz/knowledge.go`、`internal/data/knowledge.go`、`internal/knowledge/*`、`internal/tools/knowledge/tool.go`、`internal/agent/trpc_build.go`（`cfg.KnowledgeSearch`）。
+**代码锚点**：
+- `api/kratos/knowledge/v1/` — Knowledge CRUD RPC
+- `internal/service/knowledge.go` — KnowledgeService
+- `internal/biz/knowledge.go` — KnowledgeUsecase
+- `internal/data/knowledge.go` — KnowledgeRepo
+- `internal/knowledge/chunker.go` — 文档分块
+- `internal/knowledge/embedder.go` — 向量化
+- `internal/agent/trpc_build.go` — Knowledge 注入
 
 ---
 
-## 2. 现状评估（2026-05-17 复核）
+## 2. 现状评估
 
 | 项 | 状态 | 证据 |
 |----|------|------|
-| HTTP/gRPC Service | ✅ | `internal/server/http.go` RegisterKnowledgeService |
-| Agent 工具装配 | ✅ | `buildToolsetsForAgent` + 有效工具键 |
-| Postgres Repo | 🟡 | `NewKnowledgeRepoFromData` 无 PG → nil |
-| 启动 Schema | ❌ | `NewData()` 未调用 `EnsureKnowledgeSchema` |
-| Embedder | 🟡 | `NewKnowledgeEmbedder()` 空配置 stub |
-| 摄取流水线 | 🟡 | 同步为主，无进度 observable |
-| 前端 | 🟡 | features 部分页面，闭环不完整 |
+| Knowledge CRUD | ✅ | Create/Update/Delete/Get/List |
+| 文档上传 | ✅ | 文件上传 + 解析 |
+| 文档分块 | ✅ | `chunker.go`（Markdown/Text 分块） |
+| 向量化 | ✅ | `embedder.go`（OpenAI Embedding） |
+| 向量检索 | ✅ | SQLite 向量搜索 |
+| Knowledge 注入 | ✅ | `BuildTRPCLLMAgent` 中 `WithKnowledge` |
+| 前端管理 | ✅ | Knowledge 设置页 |
 
 ---
 
 ## 3. 差距与优化
 
-1. **P0**：EP-DATA-01 — 有 Postgres 时在 `NewData()` 调用 `EnsureKnowledgeSchema`；nil Repo 时 API 返回明确 `FailedPrecondition`，禁止 panic。
-2. **P1**：EP-KN-01 — `conf.Data` / env 注入 embedder（provider、base URL、key、dim）。
-3. **P2**：EP-KN-02 — 摄取改 `safego` 异步 + 进度字段 + WS/轮询给前端。
-4. **P2**：EP-RT-08 — 生产 Repo 与 mem repo 测试隔离。
+1. **P2**：文档解析仅支持 Markdown/Text，不支持 PDF/Word/HTML 等常见格式。
+2. **P2**：向量化仅支持 OpenAI Embedding，不支持本地 Embedding 模型。
+3. **P3**：知识库无增量更新，文档变更后需全量重新向量化。
+4. **P3**：检索结果无 re-ranking，相关性可能不佳。
 
 ---
 
 ## 4. 开发阶段
 
-- **Phase 1（1 PR）**：`data.go` + service 边界错误语义 + 单测。
-- **Phase 2（1 PR）**：Embedder 配置与启动 fail-fast 文档（§6 运维）。
-- **Phase 3（1–2 PR）**：异步 ingest + 前端进度条。
-- **Phase 4**：多 collection 权限与 workspace 隔离（依赖 M2）。
+- **Phase 1**：支持 PDF/Word/HTML 文档解析
+- **Phase 2**：支持本地 Embedding 模型
+- **Phase 3**：增量更新 + re-ranking
 
 ---
 
 ## 5. 任务清单
 
-| # | 任务 | 优先级 |
-|---|------|--------|
-| 1 | `EnsureKnowledgeSchema` in `NewData` when `d.Postgres()!=nil` | P0 |
-| 2 | `KnowledgeService` 在 `repo==nil` 时统一错误码 | P0 |
-| 3 | 配置项 + `NewKnowledgeEmbedder` 读 conf | P1 |
-| 4 | Ingest worker + 进度 API | P2 |
-| 5 | 更新 `37 knowledge.md` 现状对齐 + 附录 A | P1 |
+| # | 任务 | 优先级 | EP |
+|---|------|--------|-----|
+| 1 | PDF/Word/HTML 解析器集成 | P2 | — |
+| 2 | 本地 Embedding 模型支持（如 sentence-transformers） | P2 | — |
+| 3 | 增量向量化（仅处理变更文档） | P3 | — |
+| 4 | 检索结果 re-ranking | P3 | — |
 
 ---
 
 ## 6. 验收标准
 
-- [ ] 无 Postgres 时列表/搜索 API 可预期失败，进程不 panic
-- [ ] 有 Postgres + schema 时 ingest → search → agent 工具调用通
-- [ ] `go test ./internal/biz/... ./internal/service/...` 覆盖 nil repo
-- [ ] changelog 引用 EP-DATA-01 / EP-KN-*
+- [ ] 可上传 PDF/Word/HTML 文档并正确解析
+- [ ] 可使用本地 Embedding 模型
+- [ ] 文档变更后仅增量更新向量
 
 ---
 
 ## 7. 依赖与风险
 
-- 依赖 LlmProvider 嵌入能力与 `data.postgres` 配置。
-- 向量维度变更需迁移策略；与 Memory L3 pgvector 共用实例时注意资源争用。
+- PDF 解析需引入第三方库（如 unidoc/unioffice）
+- 本地 Embedding 模型需 GPU 或大量 CPU 资源

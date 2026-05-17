@@ -1,61 +1,71 @@
-# Planner — 开发计划
+# Planner 规划 — 开发计划
 
-> **版本**：2026-05-17 | **状态**：✅  
-> **进度真相**：[`guides/execution-plan.md`](../guides/execution-plan.md) 附录 A · **关联 EP**：—
+> **版本**：2026-05-17 | **状态**：🟡 BuiltinPlanner 可用；❌ ReAct/A2UI 未实现
+> **需求**：[39 planner.md](./39%20planner.md) · **设计**：[39 planner.design.md](./39%20planner.design.md)
+> **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：—
 
 ---
 
 ## 1. 模块定位
 
-见 [`0 系统框图.md`](./0%20系统框图.md) 与 `docs/README.md` §7 对应需求/设计文档。
+Planner 规划：为 Agent 提供规划能力，支持 BuiltinPlanner（简单规划）、ReActPlanner（结构化推理）和 A2UIPlanner（A2UI 协议规划）。
+
+**代码锚点**：
+- `internal/agent/trpc_build.go` — `DialogMode == "plan"` → BuiltinPlanner
+- `pkg/trpc-agent-go/planner/` — trpc-agent-go Planner 框架
 
 ---
 
 ## 2. 现状评估
 
-| 维度 | 状态 |
-|------|------|
-| 整体 | ✅ |
-
-对照需求文档「2026-05-17 现状对齐」段与附录 A 各列（Proto/Biz/Data/Service/Server/Runtime/前端）。
+| 项 | 状态 | 证据 |
+|----|------|------|
+| BuiltinPlanner | ✅ | `trpcbuiltin.New(trpcbuiltin.Options{})` |
+| ReActPlanner | ❌ | 未集成 |
+| A2UIPlanner | ❌ | 未集成 |
+| 自定义规划 prompt | ❌ | 无自定义 prompt 配置 |
+| 规划结果结构化 | ❌ | 无结构化处理 |
 
 ---
 
 ## 3. 差距与优化
 
-- 未完成验收项纳入 Phase。
-- 遵守双框架边界：Kratos 传输 / trpc 运行时（AI-DEV-SPEC §1）。
-- 复用既有 Usecase，避免平行实现。
+1. **P2**：ReActPlanner 未集成，Agent 无法使用结构化推理（PLANNING/REASONING/ACTION/FINAL_ANSWER）。
+2. **P2**：A2UIPlanner 未集成，Agent 无法使用 A2UI 协议规划。
+3. **P3**：无自定义规划 prompt 配置，用户无法定制规划策略。
+4. **P3**：规划结果无结构化处理，无法提取规划步骤。
 
 ---
 
 ## 4. 开发阶段
 
-- **Phase 1**：a2ui 调试
-- **Phase 2**：Graph 选型
-- **Phase 3**：步骤可视化
+- **Phase 1**：集成 ReActPlanner
+- **Phase 2**：集成 A2UIPlanner
+- **Phase 3**：自定义规划 prompt + 结构化处理
 
 ---
 
-## 5. 任务清单（可拆 PR）
+## 5. 任务清单
 
-| 序号 | 任务 | 优先级 | EP |
-|------|------|--------|-----|
-| 1 | Phase 1 首项 | P1 | — |
-| 2 | 单测 + make lint + 更新现状对齐 | P1 | §7 |
-| 3 | 前端闭环（若适用） | P2 | EP-FE-* |
+| # | 任务 | 优先级 | EP |
+|---|------|--------|-----|
+| 1 | `trpc_build.go`：集成 ReActPlanner | P2 | — |
+| 2 | `trpc_build.go`：集成 A2UIPlanner | P2 | — |
+| 3 | Agent RuntimeSettings 增加 planner_type 字段 | P2 | — |
+| 4 | 自定义规划 prompt 配置 | P3 | — |
+| 5 | 规划结果结构化处理 | P3 | — |
 
 ---
 
 ## 6. 验收标准
 
-- [ ] `go build ./cmd/admin`
-- [ ] 相关 `go test`；并发改动用 `-race`
-- [ ] 附录 A + 需求「现状对齐」一致
-- [ ] changelog 引用 EP
+- [ ] Agent 可选择 Builtin/ReAct/A2UI 规划器
+- [ ] ReAct 规划器输出 PLANNING/REASONING/ACTION 标签
+- [ ] A2UI 规划器输出 A2UI 协议格式
 
 ---
 
 ## 7. 依赖与风险
 
-M2 多租户可能触及本模块写路径；按 admin→agent→session 分批合入。
+- ReAct/A2UI Planner 依赖 trpc-agent-go 框架实现
+- 规划器选择需与 Agent 对话模式联动

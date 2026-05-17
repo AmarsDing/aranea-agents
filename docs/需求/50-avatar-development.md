@@ -1,61 +1,62 @@
-# Avatar — 开发计划
+# Avatar 头像 — 开发计划
 
-> **版本**：2026-05-17 | **状态**：✅  
-> **进度真相**：[`guides/execution-plan.md`](../guides/execution-plan.md) 附录 A · **关联 EP**：—
+> **版本**：2026-05-17 | **状态**：✅ 端到端可用
+> **需求**：[50 avatar.md](./50%20avatar.md) · **设计**：[50 avatar.design.md](./50%20avatar.design.md)
+> **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：—
 
 ---
 
 ## 1. 模块定位
 
-见 [`0 系统框图.md`](./0%20系统框图.md) 与 `docs/README.md` §7 对应需求/设计文档。
+Avatar 头像：管理 Agent/Team 的头像，支持上传、裁剪、存储和展示。
+
+**代码锚点**：
+- `api/kratos/agent/v1/` — Agent avatar 字段
+- `api/kratos/team/v1/` — Team avatar 字段
+- `internal/service/agent.go` — Avatar 上传
 
 ---
 
 ## 2. 现状评估
 
-| 维度 | 状态 |
-|------|------|
-| 整体 | ✅ |
-
-对照需求文档「2026-05-17 现状对齐」段与附录 A 各列（Proto/Biz/Data/Service/Server/Runtime/前端）。
+| 项 | 状态 | 证据 |
+|----|------|------|
+| Avatar 字段 | ✅ | `avatar_url` 字段 |
+| Avatar 上传 | ✅ | 文件上传 API |
+| Avatar 展示 | ✅ | 前端展示 |
 
 ---
 
 ## 3. 差距与优化
 
-- 未完成验收项纳入 Phase。
-- 遵守双框架边界：Kratos 传输 / trpc 运行时（AI-DEV-SPEC §1）。
-- 复用既有 Usecase，避免平行实现。
+1. **P3**：Avatar 无裁剪功能，用户需预先裁剪图片。
+2. **P3**：Avatar 无 CDN 加速，大图片加载慢。
 
 ---
 
 ## 4. 开发阶段
 
-- **Phase 1**：对象存储
-- **Phase 2**：裁剪
-- **Phase 3**：默认集
+- **Phase 1**：Avatar 裁剪功能（前端裁剪组件）
+- **Phase 2**：CDN 加速
 
 ---
 
-## 5. 任务清单（可拆 PR）
+## 5. 任务清单
 
-| 序号 | 任务 | 优先级 | EP |
-|------|------|--------|-----|
-| 1 | Phase 1 首项 | P1 | — |
-| 2 | 单测 + make lint + 更新现状对齐 | P1 | §7 |
-| 3 | 前端闭环（若适用） | P2 | EP-FE-* |
+| # | 任务 | 优先级 | EP |
+|---|------|--------|-----|
+| 1 | 前端 Avatar 裁剪组件 | P3 | — |
+| 2 | CDN 加速配置 | P3 | — |
 
 ---
 
 ## 6. 验收标准
 
-- [ ] `go build ./cmd/admin`
-- [ ] 相关 `go test`；并发改动用 `-race`
-- [ ] 附录 A + 需求「现状对齐」一致
-- [ ] changelog 引用 EP
+- [ ] 用户可在上传时裁剪 Avatar
+- [ ] Avatar 通过 CDN 加速加载
 
 ---
 
 ## 7. 依赖与风险
 
-M2 多租户可能触及本模块写路径；按 admin→agent→session 分批合入。
+无重大依赖。

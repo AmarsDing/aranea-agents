@@ -1,61 +1,74 @@
-# Callback — 开发计划
+# Callback 回调 — 开发计划
 
-> **版本**：2026-05-17 | **状态**：🟡  
-> **进度真相**：[`guides/execution-plan.md`](../guides/execution-plan.md) 附录 A · **关联 EP**：EP-CB-01
+> **版本**：2026-05-17 | **状态**：🟡 基础 CRUD 可用；❌ 回调投递未实现
+> **需求**：[28 callback.md](./28%20callback.md) · **设计**：[28 callback.design.md](./28%20callback.design.md)
+> **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：—
 
 ---
 
 ## 1. 模块定位
 
-见 [`0 系统框图.md`](./0%20系统框图.md) 与 `docs/README.md` §7 对应需求/设计文档。
+Callback 回调：管理 Agent/Team 运行完成后的回调通知，支持 Webhook 回调、回调重试和回调日志。
+
+**代码锚点**：
+- `api/kratos/callback/v1/` — Callback CRUD RPC
+- `internal/service/callback.go` — CallbackService
+- `internal/biz/callback.go` — CallbackUsecase
+- `internal/data/callback.go` — CallbackRepo
 
 ---
 
 ## 2. 现状评估
 
-| 维度 | 状态 |
-|------|------|
-| 整体 | 🟡 |
-
-对照需求文档「2026-05-17 现状对齐」段与附录 A 各列（Proto/Biz/Data/Service/Server/Runtime/前端）。
+| 项 | 状态 | 证据 |
+|----|------|------|
+| Callback CRUD | ✅ | Create/Update/Delete/Get/List |
+| 回调投递 | ❌ | 无 Webhook 投递 worker |
+| 回调重试 | ❌ | 无重试逻辑 |
+| 回调日志 | ❌ | 无 `callback_delivery` 表 |
+| 签名验证 | ❌ | 无 HMAC 签名 |
 
 ---
 
 ## 3. 差距与优化
 
-- 未完成验收项纳入 Phase。
-- 遵守双框架边界：Kratos 传输 / trpc 运行时（AI-DEV-SPEC §1）。
-- 复用既有 Usecase，避免平行实现。
+1. **P1**：回调投递未实现，Callback 仅存储不执行。
+2. **P2**：无回调重试机制，投递失败后无法自动重试。
+3. **P2**：无回调日志，无法追溯投递历史。
+4. **P3**：无 HMAC 签名，接收方无法验证回调真实性。
 
 ---
 
 ## 4. 开发阶段
 
-- **Phase 1**：Chain 挂 LLM
-- **Phase 2**：用户 callback
-- **Phase 3**：与 Plugin 合并
+- **Phase 1**：回调投递 worker（HTTP POST + 异步队列）
+- **Phase 2**：回调重试（指数退避）+ 回调日志
+- **Phase 3**：HMAC 签名验证
 
 ---
 
-## 5. 任务清单（可拆 PR）
+## 5. 任务清单
 
-| 序号 | 任务 | 优先级 | EP |
-|------|------|--------|-----|
-| 1 | Phase 1 首项 | P1 | EP-CB-01 |
-| 2 | 单测 + make lint + 更新现状对齐 | P1 | §7 |
-| 3 | 前端闭环（若适用） | P2 | EP-FE-* |
+| # | 任务 | 优先级 | EP |
+|---|------|--------|-----|
+| 1 | `internal/callback/worker.go`：HTTP POST 投递 | P1 | — |
+| 2 | `callback_delivery` Ent 表 + 投递历史查询 API | P2 | — |
+| 3 | 回调重试（指数退避，最多 5 次） | P2 | — |
+| 4 | HMAC-SHA256 签名 | P3 | — |
+| 5 | Wire 注入 Worker 到启动流程 | P1 | — |
 
 ---
 
 ## 6. 验收标准
 
-- [ ] `go build ./cmd/admin`
-- [ ] 相关 `go test`；并发改动用 `-race`
-- [ ] 附录 A + 需求「现状对齐」一致
-- [ ] changelog 引用 EP
+- [ ] Agent/Team 运行完成后自动投递回调
+- [ ] 投递失败后自动重试
+- [ ] 回调日志可查询
+- [ ] `go test ./internal/callback/...` 通过
 
 ---
 
 ## 7. 依赖与风险
 
-M2 多租户可能触及本模块写路径；按 admin→agent→session 分批合入。
+- 回调投递需考虑目标服务不可用的情况
+- 需防止回调风暴（限流）

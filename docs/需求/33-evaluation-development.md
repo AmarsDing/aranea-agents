@@ -1,61 +1,78 @@
-# Evaluation — 开发计划
+# Evaluation 评估 — 开发计划
 
-> **版本**：2026-05-17 | **状态**：🟡  
-> **进度真相**：[`guides/execution-plan.md`](../guides/execution-plan.md) 附录 A · **关联 EP**：EP-DATA-01
+> **版本**：2026-05-17 | **状态**：🟡 基础框架可用；❌ 自动评估未实现
+> **需求**：[33 evaluation.md](./33%20evaluation.md) · **设计**：[33 evaluation.design.md](./33%20evaluation.design.md)
+> **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：—
 
 ---
 
 ## 1. 模块定位
 
-见 [`0 系统框图.md`](./0%20系统框图.md) 与 `docs/README.md` §7 对应需求/设计文档。
+Evaluation 评估：对 Agent 的输出质量进行评估，支持自动评估（LLM-as-Judge）和人工评估，评估结果用于进化优化。
+
+**代码锚点**：
+- `api/kratos/evaluation/v1/` — Evaluation CRUD RPC
+- `internal/service/evaluation.go` — EvaluationService
+- `internal/biz/evaluation.go` — EvaluationUsecase
+- `internal/data/evaluation.go` — EvaluationRepo
+- `internal/evaluation/runner.go` — EvaluationRunner
+- `internal/service/wire_providers.go` — Wire 注入
 
 ---
 
 ## 2. 现状评估
 
-| 维度 | 状态 |
-|------|------|
-| 整体 | 🟡 |
-
-对照需求文档「2026-05-17 现状对齐」段与附录 A 各列（Proto/Biz/Data/Service/Server/Runtime/前端）。
+| 项 | 状态 | 证据 |
+|----|------|------|
+| Evaluation CRUD | ✅ | Create/Update/Delete/Get/List |
+| EvaluationRunner | ✅ | `runner.go`（LLM-as-Judge） |
+| 评估指标 | ✅ | accuracy / relevance / completeness |
+- | 自动评估触发 | ❌ | 无自动评估触发机制 |
+| 人工评估 | ❌ | 无人工评估 UI |
+| 评估报告 | ❌ | 无评估报告生成 |
+| 评估集管理 | ❌ | 无评估集（test suite）管理 |
 
 ---
 
 ## 3. 差距与优化
 
-- 未完成验收项纳入 Phase。
-- 遵守双框架边界：Kratos 传输 / trpc 运行时（AI-DEV-SPEC §1）。
-- 复用既有 Usecase，避免平行实现。
+1. **P2**：无自动评估触发机制，评估需手动触发。
+2. **P2**：无评估集管理，无法批量评估 Agent。
+3. **P3**：无人工评估 UI，无法人工标注评估结果。
+4. **P3**：无评估报告生成，无法汇总展示评估结果。
 
 ---
 
 ## 4. 开发阶段
 
-- **Phase 1**：EnsureEvalSchema
-- **Phase 2**：前端 Run
-- **Phase 3**：LLM-Judge
+- **Phase 1**：评估集管理（test suite CRUD + 批量评估）
+- **Phase 2**：自动评估触发（Agent 运行后自动评估）
+- **Phase 3**：人工评估 UI + 评估报告
 
 ---
 
-## 5. 任务清单（可拆 PR）
+## 5. 任务清单
 
-| 序号 | 任务 | 优先级 | EP |
-|------|------|--------|-----|
-| 1 | Phase 1 首项 | P1 | EP-DATA-01 |
-| 2 | 单测 + make lint + 更新现状对齐 | P1 | §7 |
-| 3 | 前端闭环（若适用） | P2 | EP-FE-* |
+| # | 任务 | 优先级 | EP |
+|---|------|--------|-----|
+| 1 | `evaluation_suite` Ent 表 + CRUD API | P2 | — |
+| 2 | 批量评估 API（RunSuite） | P2 | — |
+| 3 | 自动评估触发（AfterTurn Hook） | P2 | — |
+| 4 | 人工评估 UI | P3 | — |
+| 5 | 评估报告生成 + 导出 | P3 | — |
 
 ---
 
 ## 6. 验收标准
 
-- [ ] `go build ./cmd/admin`
-- [ ] 相关 `go test`；并发改动用 `-race`
-- [ ] 附录 A + 需求「现状对齐」一致
-- [ ] changelog 引用 EP
+- [ ] 可创建评估集并批量评估 Agent
+- [ ] Agent 运行后可自动触发评估
+- [ ] 评估结果可人工标注
+- [ ] `go test ./internal/evaluation/...` 通过
 
 ---
 
 ## 7. 依赖与风险
 
-M2 多租户可能触及本模块写路径；按 admin→agent→session 分批合入。
+- 评估消耗 LLM Token，需考虑成本
+- 自动评估需与 Chat turn 流程集成

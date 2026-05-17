@@ -1,61 +1,65 @@
-# 消息机制 51 — 开发计划
+# Message 消息 — 开发计划
 
-> **版本**：2026-05-17 | **状态**：🟡  
-> **进度真相**：[`guides/execution-plan.md`](../guides/execution-plan.md) 附录 A · **关联 EP**：EP-FE-03
+> **版本**：2026-05-17 | **状态**：✅ 端到端可用
+> **需求**：消息机制 · **设计**：消息设计
+> **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：—
 
 ---
 
 ## 1. 模块定位
 
-见 [`0 系统框图.md`](./0%20系统框图.md) 与 `docs/README.md` §7 对应需求/设计文档。
+Message 消息：统一的消息模型和传输机制，支持 SSE、WebSocket 双通道消息推送。
+
+**代码锚点**：
+- `internal/server/ws.go` — WebSocket 服务
+- `internal/service/chat.go` — SSE 消息推送
+- `internal/event/bus.go` — 事件总线
 
 ---
 
 ## 2. 现状评估
 
-| 维度 | 状态 |
-|------|------|
-| 整体 | 🟡 |
-
-对照需求文档「2026-05-17 现状对齐」段与附录 A 各列（Proto/Biz/Data/Service/Server/Runtime/前端）。
+| 项 | 状态 | 证据 |
+|----|------|------|
+| SSE 消息推送 | ✅ | Chat SSE 事件流 |
+| WS 消息推送 | ✅ | WebSocket 事件流 |
+| 消息持久化 | ✅ | Session Message 表 |
+| 消息类型 | ✅ | text / tool_call / tool_result / error |
+| 消息搜索 | ❌ | 无全文检索 |
+| 消息引用 | ❌ | 无消息引用/回复 |
 
 ---
 
 ## 3. 差距与优化
 
-- 未完成验收项纳入 Phase。
-- 遵守双框架边界：Kratos 传输 / trpc 运行时（AI-DEV-SPEC §1）。
-- 复用既有 Usecase，避免平行实现。
+1. **P2**：消息无搜索功能，无法在历史消息中搜索关键词。
+2. **P3**：消息无引用/回复功能，无法引用历史消息。
 
 ---
 
 ## 4. 开发阶段
 
-- **Phase 1**：传输抽象
-- **Phase 2**：event 全覆盖
-- **Phase 3**：SSE 退役
+- **Phase 1**：消息搜索功能
+- **Phase 2**：消息引用/回复
 
 ---
 
-## 5. 任务清单（可拆 PR）
+## 5. 任务清单
 
-| 序号 | 任务 | 优先级 | EP |
-|------|------|--------|-----|
-| 1 | Phase 1 首项 | P1 | EP-FE-03 |
-| 2 | 单测 + make lint + 更新现状对齐 | P1 | §7 |
-| 3 | 前端闭环（若适用） | P2 | EP-FE-* |
+| # | 任务 | 优先级 | EP |
+|---|------|--------|-----|
+| 1 | SearchMessages RPC | P2 | — |
+| 2 | 消息引用字段 + UI | P3 | — |
 
 ---
 
 ## 6. 验收标准
 
-- [ ] `go build ./cmd/admin`
-- [ ] 相关 `go test`；并发改动用 `-race`
-- [ ] 附录 A + 需求「现状对齐」一致
-- [ ] changelog 引用 EP
+- [ ] 可搜索历史消息
+- [ ] 可引用历史消息
 
 ---
 
 ## 7. 依赖与风险
 
-M2 多租户可能触及本模块写路径；按 admin→agent→session 分批合入。
+- 搜索需评估 SQLite FTS5

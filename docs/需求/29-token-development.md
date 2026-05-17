@@ -1,61 +1,68 @@
-# Token — 开发计划
+# Token 用量 — 开发计划
 
-> **版本**：2026-05-17 | **状态**：✅  
-> **进度真相**：[`guides/execution-plan.md`](../guides/execution-plan.md) 附录 A · **关联 EP**：—
+> **版本**：2026-05-17 | **状态**：✅ 端到端可用
+> **需求**：[29 token.md](./29%20token.md) · **设计**：[29 token.design.md](./29%20token.design.md)
+> **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：—
 
 ---
 
 ## 1. 模块定位
 
-见 [`0 系统框图.md`](./0%20系统框图.md) 与 `docs/README.md` §7 对应需求/设计文档。
+Token 用量管理：记录和统计 Agent/Team 运行的 Token 消耗，支持按时间/Agent/Provider 维度查询和聚合。
+
+**代码锚点**：
+- `internal/biz/usage.go` — UsageUsecase
+- `internal/data/usage.go` — UsageRepo
+- `internal/service/chat_usage_ingress.go` — 用量记录入口
+- `internal/data/ent/schema/usage.go` — Ent Schema
 
 ---
 
 ## 2. 现状评估
 
-| 维度 | 状态 |
-|------|------|
-| 整体 | ✅ |
-
-对照需求文档「2026-05-17 现状对齐」段与附录 A 各列（Proto/Biz/Data/Service/Server/Runtime/前端）。
+| 项 | 状态 | 证据 |
+|----|------|------|
+| Token 用量记录 | ✅ | `chat_usage_ingress.go` |
+| 用量查询 API | ✅ | `GetUsage` / `ListUsage` RPC |
+| 按 Agent 聚合 | ✅ | `agent_id` 字段 |
+| 按 Provider 聚合 | ✅ | `provider` 字段 |
+| 用量限额 | ❌ | 无 quota 限制 |
+| 用量告警 | ❌ | 无阈值告警 |
 
 ---
 
 ## 3. 差距与优化
 
-- 未完成验收项纳入 Phase。
-- 遵守双框架边界：Kratos 传输 / trpc 运行时（AI-DEV-SPEC §1）。
-- 复用既有 Usecase，避免平行实现。
+1. **P2**：无 Token 用量限额，用户可能产生意外高额费用。
+2. **P3**：无用量告警，达到阈值时无法通知用户。
 
 ---
 
 ## 4. 开发阶段
 
-- **Phase 1**：成本模型
-- **Phase 2**：分摊报表
-- **Phase 3**：CSV 导出
+- **Phase 1**：Token 用量限额（quota 配置 + 超限拦截）
+- **Phase 2**：用量告警（阈值配置 + 通知）
 
 ---
 
-## 5. 任务清单（可拆 PR）
+## 5. 任务清单
 
-| 序号 | 任务 | 优先级 | EP |
-|------|------|--------|-----|
-| 1 | Phase 1 首项 | P1 | — |
-| 2 | 单测 + make lint + 更新现状对齐 | P1 | §7 |
-| 3 | 前端闭环（若适用） | P2 | EP-FE-* |
+| # | 任务 | 优先级 | EP |
+|---|------|--------|-----|
+| 1 | `usage_quota` 表 + 配置 API | P2 | — |
+| 2 | Chat turn 前检查 quota | P2 | — |
+| 3 | 用量告警阈值配置 + 通知 | P3 | — |
 
 ---
 
 ## 6. 验收标准
 
-- [ ] `go build ./cmd/admin`
-- [ ] 相关 `go test`；并发改动用 `-race`
-- [ ] 附录 A + 需求「现状对齐」一致
-- [ ] changelog 引用 EP
+- [ ] 超过 quota 后 Agent 对话被拦截并提示
+- [ ] 达到告警阈值时通知用户
 
 ---
 
 ## 7. 依赖与风险
 
-M2 多租户可能触及本模块写路径；按 admin→agent→session 分批合入。
+- Quota 检查需在 Chat turn 前执行，增加延迟
+- 需考虑 quota 重置周期（月/周/日）

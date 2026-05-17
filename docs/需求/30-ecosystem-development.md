@@ -1,61 +1,66 @@
-# Ecosystem — 开发计划
+# Ecosystem 生态 — 开发计划
 
-> **版本**：2026-05-17 | **状态**：📄  
-> **进度真相**：[`guides/execution-plan.md`](../guides/execution-plan.md) 附录 A · **关联 EP**：M5
+> **版本**：2026-05-17 | **状态**：❌ 未实现
+> **需求**：[30 ecosystem.md](./30%20ecosystem.md) · **设计**：[30 ecosystem.design.md](./30%20ecosystem.design.md)
+> **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：—
 
 ---
 
 ## 1. 模块定位
 
-见 [`0 系统框图.md`](./0%20系统框图.md) 与 `docs/README.md` §7 对应需求/设计文档。
+Ecosystem 生态：Agent/Tool/Skill/Plugin 的市场与分享平台，支持发布、发现、安装和评价。
+
+**代码锚点**：
+- 无对应代码实现
 
 ---
 
 ## 2. 现状评估
 
-| 维度 | 状态 |
-|------|------|
-| 整体 | 📄 |
-
-对照需求文档「2026-05-17 现状对齐」段与附录 A 各列（Proto/Biz/Data/Service/Server/Runtime/前端）。
+| 项 | 状态 | 证据 |
+|----|------|------|
+| 市场框架 | ❌ | 无代码实现 |
+| 发布/发现 | ❌ | 无 API |
+| 安装/卸载 | ❌ | 无安装流程 |
+| 评价/评分 | ❌ | 无评价系统 |
 
 ---
 
 ## 3. 差距与优化
 
-- 未完成验收项纳入 Phase。
-- 遵守双框架边界：Kratos 传输 / trpc 运行时（AI-DEV-SPEC §1）。
-- 复用既有 Usecase，避免平行实现。
+1. **P2**：Ecosystem 完全未实现，用户无法分享和发现社区资源。
+2. **P3**：无版本管理和兼容性检查。
 
 ---
 
 ## 4. 开发阶段
 
-- **Phase 1**：市场协议
-- **Phase 2**：Skill 签名
-- **Phase 3**：开放 API
+- **Phase 1**：Ecosystem 基础框架（发布/发现/安装）
+- **Phase 2**：评价/评分系统
+- **Phase 3**：版本管理 + 兼容性检查
 
 ---
 
-## 5. 任务清单（可拆 PR）
+## 5. 任务清单
 
-| 序号 | 任务 | 优先级 | EP |
-|------|------|--------|-----|
-| 1 | Phase 1 首项 | P1 | M5 |
-| 2 | 单测 + make lint + 更新现状对齐 | P1 | §7 |
-| 3 | 前端闭环（若适用） | P2 | EP-FE-* |
+| # | 任务 | 优先级 | EP |
+|---|------|--------|-----|
+| 1 | `api/kratos/ecosystem/v1/` proto 定义 | P2 | — |
+| 2 | 发布/发现/安装 API + Service | P2 | — |
+| 3 | 市场前端页面 | P2 | — |
+| 4 | 评价/评分系统 | P3 | — |
 
 ---
 
 ## 6. 验收标准
 
-- [ ] `go build ./cmd/admin`
-- [ ] 相关 `go test`；并发改动用 `-race`
-- [ ] 附录 A + 需求「现状对齐」一致
-- [ ] changelog 引用 EP
+- [ ] 用户可发布 Agent/Tool/Skill 到市场
+- [ ] 用户可发现和安装市场资源
+- [ ] 用户可对资源进行评价
 
 ---
 
 ## 7. 依赖与风险
 
-M2 多租户可能触及本模块写路径；按 admin→agent→session 分批合入。
+- 需与 Skill/Plugin/Tool 模块联动
+- 需考虑安全审核机制

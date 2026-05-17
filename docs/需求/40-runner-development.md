@@ -1,61 +1,71 @@
-# Runner — 开发计划
+# Runner 运行器 — 开发计划
 
-> **版本**：2026-05-17 | **状态**：✅  
-> **进度真相**：[`guides/execution-plan.md`](../guides/execution-plan.md) 附录 A · **关联 EP**：—
+> **版本**：2026-05-17 | **状态**：✅ 端到端可用
+> **需求**：[40 runner.md](./40%20runner.md) · **设计**：[40 runner.design.md](./40%20runner.design.md)
+> **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：—
 
 ---
 
 ## 1. 模块定位
 
-见 [`0 系统框图.md`](./0%20系统框图.md) 与 `docs/README.md` §7 对应需求/设计文档。
+Runner 运行器：管理 Agent/Team 的运行生命周期，包括启动、停止、状态监控和资源回收。
+
+**代码锚点**：
+- `internal/agent/team_runner.go` — team.Runner
+- `internal/service/chat.go` — activeRuns / pendingQueue
+- `internal/agent/trpc_build.go` — Agent 构建链
 
 ---
 
 ## 2. 现状评估
 
-| 维度 | 状态 |
-|------|------|
-| 整体 | ✅ |
-
-对照需求文档「2026-05-17 现状对齐」段与附录 A 各列（Proto/Biz/Data/Service/Server/Runtime/前端）。
+| 项 | 状态 | 证据 |
+|----|------|------|
+| Agent 运行 | ✅ | `runNativeAgentTurn` |
+| Team 运行 | ✅ | `teamsNative.RunTurn` |
+| 停止运行 | ✅ | `StopGeneration` + cancel |
+| 运行状态 | ✅ | `runStatuses` sync.Map |
+| 待执行队列 | ✅ | `pendingQueue` + `processPendingQueue` |
+| 运行超时 | ✅ | `http.Client{Timeout: 300s}` |
+| 资源回收 | 🟡 | 运行结束后未清理 LRU 缓存 |
 
 ---
 
 ## 3. 差距与优化
 
-- 未完成验收项纳入 Phase。
-- 遵守双框架边界：Kratos 传输 / trpc 运行时（AI-DEV-SPEC §1）。
-- 复用既有 Usecase，避免平行实现。
+1. **P2**：运行结束后未清理 `BuildTRPCLLMAgentCached` 的 LRU 缓存，长时间运行后内存可能膨胀。
+2. **P3**：无运行资源限制（CPU/内存），恶意 Agent 可能消耗过多资源。
+3. **P3**：无运行优先级调度，所有运行平等对待。
 
 ---
 
 ## 4. 开发阶段
 
-- **Phase 1**：deps 文档
-- **Phase 2**：取消传播
-- **Phase 3**：Team 指标
+- **Phase 1**：LRU 缓存清理机制
+- **Phase 2**：运行资源限制
+- **Phase 3**：运行优先级调度
 
 ---
 
-## 5. 任务清单（可拆 PR）
+## 5. 任务清单
 
-| 序号 | 任务 | 优先级 | EP |
-|------|------|--------|-----|
-| 1 | Phase 1 首项 | P1 | — |
-| 2 | 单测 + make lint + 更新现状对齐 | P1 | §7 |
-| 3 | 前端闭环（若适用） | P2 | EP-FE-* |
+| # | 任务 | 优先级 | EP |
+|---|------|--------|-----|
+| 1 | `BuildTRPCLLMAgentCached` LRU 缓存 TTL 过期清理 | P2 | — |
+| 2 | 运行资源限制（CPU/内存配额） | P3 | — |
+| 3 | 运行优先级调度（高/中/低） | P3 | — |
 
 ---
 
 ## 6. 验收标准
 
-- [ ] `go build ./cmd/admin`
-- [ ] 相关 `go test`；并发改动用 `-race`
-- [ ] 附录 A + 需求「现状对齐」一致
-- [ ] changelog 引用 EP
+- [ ] LRU 缓存有过期清理机制
+- [ ] 运行资源超限后优雅降级
+- [ ] 高优先级运行优先调度
 
 ---
 
 ## 7. 依赖与风险
 
-M2 多租户可能触及本模块写路径；按 admin→agent→session 分批合入。
+- 资源限制需与 Docker/容器运行时集成
+- 优先级调度需修改 pendingQueue 实现

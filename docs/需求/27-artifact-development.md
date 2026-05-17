@@ -1,61 +1,72 @@
-# Artifact — 开发计划
+# Artifact 产出物 — 开发计划
 
-> **版本**：2026-05-17 | **状态**：🟡  
-> **进度真相**：[`guides/execution-plan.md`](../guides/execution-plan.md) 附录 A · **关联 EP**：EP-RT-08
+> **版本**：2026-05-17 | **状态**：🟡 基础存储可用；❌ 版本管理/预览未实现
+> **需求**：[27 artifact.md](./27%20artifact.md) · **设计**：[27 artifact.design.md](./27%20artifact.design.md)
+> **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：—
 
 ---
 
 ## 1. 模块定位
 
-见 [`0 系统框图.md`](./0%20系统框图.md) 与 `docs/README.md` §7 对应需求/设计文档。
+Artifact 产出物：管理 Agent 运行时产生的文件、图片、代码等产出物，支持存储、版本管理、预览和下载。
+
+**代码锚点**：
+- `api/kratos/artifact/v1/` — Artifact CRUD RPC
+- `internal/service/artifact.go` — ArtifactService
+- `internal/biz/artifact.go` — ArtifactUsecase
+- `internal/data/artifact.go` — ArtifactRepo
+- `internal/agent/codeexecutor/executor.go` — Docker Sandbox 产出物收集
 
 ---
 
 ## 2. 现状评估
 
-| 维度 | 状态 |
-|------|------|
-| 整体 | 🟡 |
-
-对照需求文档「2026-05-17 现状对齐」段与附录 A 各列（Proto/Biz/Data/Service/Server/Runtime/前端）。
+| 项 | 状态 | 证据 |
+|----|------|------|
+| Artifact CRUD | ✅ | Create/Update/Delete/Get/List |
+| 文件存储 | ✅ | 本地文件系统存储 |
+| 产出物收集 | ✅ | CodeExecutor 自动收集 |
+| 版本管理 | ❌ | 无版本历史 |
+| 在线预览 | ❌ | 无预览功能 |
+| 下载链接 | ❌ | 无签名下载 URL |
 
 ---
 
 ## 3. 差距与优化
 
-- 未完成验收项纳入 Phase。
-- 遵守双框架边界：Kratos 传输 / trpc 运行时（AI-DEV-SPEC §1）。
-- 复用既有 Usecase，避免平行实现。
+1. **P2**：Artifact 无版本管理，更新后无法回滚。
+2. **P2**：Artifact 无在线预览（图片/PDF/代码），用户需下载后查看。
+3. **P3**：Artifact 无签名下载 URL，安全性不足。
 
 ---
 
 ## 4. 开发阶段
 
-- **Phase 1**：Runner 写回
-- **Phase 2**：S3 Repo
-- **Phase 3**：前端浏览器
+- **Phase 1**：Artifact 版本管理
+- **Phase 2**：在线预览（图片/PDF/代码高亮）
+- **Phase 3**：签名下载 URL
 
 ---
 
-## 5. 任务清单（可拆 PR）
+## 5. 任务清单
 
-| 序号 | 任务 | 优先级 | EP |
-|------|------|--------|-----|
-| 1 | Phase 1 首项 | P1 | EP-RT-08 |
-| 2 | 单测 + make lint + 更新现状对齐 | P1 | §7 |
-| 3 | 前端闭环（若适用） | P2 | EP-FE-* |
+| # | 任务 | 优先级 | EP |
+|---|------|--------|-----|
+| 1 | Artifact 版本表 + 版本历史查询 API | P2 | — |
+| 2 | 在线预览：图片/PDF/代码高亮 | P2 | — |
+| 3 | 签名下载 URL（HMAC-SHA256） | P3 | — |
 
 ---
 
 ## 6. 验收标准
 
-- [ ] `go build ./cmd/admin`
-- [ ] 相关 `go test`；并发改动用 `-race`
-- [ ] 附录 A + 需求「现状对齐」一致
-- [ ] changelog 引用 EP
+- [ ] Artifact 可管理多个版本并回滚
+- [ ] 图片/PDF/代码可在浏览器中预览
+- [ ] 下载链接有时效性签名
 
 ---
 
 ## 7. 依赖与风险
 
-M2 多租户可能触及本模块写路径；按 admin→agent→session 分批合入。
+- 预览功能需考虑 XSS 防护
+- 大文件预览需流式处理

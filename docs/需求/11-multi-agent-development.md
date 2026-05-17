@@ -1,61 +1,73 @@
-# Team — 开发计划
+# Multi-Agent 编排 — 开发计划
 
-> **版本**：2026-05-17 | **状态**：✅  
-> **进度真相**：[`guides/execution-plan.md`](../guides/execution-plan.md) 附录 A · **关联 EP**：—
+> **版本**：2026-05-17 | **状态**：✅ 端到端可用；🟡 A2A 未连通
+> **需求**：[11 multi-agent.md](./11%20multi-agent.md) · **设计**：[11 multi-agent.design.md](./11%20multi-agent.design.md)
+> **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：EP-BIZ-05
 
 ---
 
 ## 1. 模块定位
 
-见 [`0 系统框图.md`](./0%20系统框图.md) 与 `docs/README.md` §7 对应需求/设计文档。
+Multi-Agent 编排：Team 模式（sequential/parallel/coordinator/critic_loop/swarm），Agent 间协作与消息传递。
+
+**代码锚点**：
+- `api/kratos/team/v1/` — Team CRUD + RunTurn
+- `internal/service/team.go` — TeamService
+- `internal/biz/team.go` — TeamUsecase + TeamRepo
+- `internal/agent/team_runner.go` — team.Runner（trpc-agent-go Team 编排）
+- `internal/agent/trpc_build.go` — BuildTRPCTeam
 
 ---
 
 ## 2. 现状评估
 
-| 维度 | 状态 |
-|------|------|
-| 整体 | ✅ |
-
-对照需求文档「2026-05-17 现状对齐」段与附录 A 各列（Proto/Biz/Data/Service/Server/Runtime/前端）。
+| 项 | 状态 | 证据 |
+|----|------|------|
+| Team CRUD | ✅ | Create/Update/Delete/Get/List |
+| Team 模式 | ✅ | sequential / parallel / coordinator / critic_loop / swarm |
+| Team RunTurn | ✅ | `teamsNative.RunTurn` |
+| Team 成员管理 | ✅ | `team_members` 关联 |
+| Team 对话 | ✅ | Chat SSE → `owner_type == "team"` |
+| A2A call_agent 工具 | ❌ | `call_agent` 未注入 Agent 工具集 |
 
 ---
 
 ## 3. 差距与优化
 
-- 未完成验收项纳入 Phase。
-- 遵守双框架边界：Kratos 传输 / trpc 运行时（AI-DEV-SPEC §1）。
-- 复用既有 Usecase，避免平行实现。
+1. **P1（EP-BIZ-05）**：A2A `call_agent` 工具未注入 Agent 工具集（`internal/agent/trpc_build.go` 中无 `call_agent` 注入），Agent 无法在 Team 中调用远程 Agent。
+2. **P2**：Team 对话时 `member_message_start/delta/done` SSE 事件未发射，前端无法展示子 Agent 实时流。
+3. **P3**：Team 运行结果无结构化汇总（如各成员贡献度、工具调用统计）。
 
 ---
 
 ## 4. 开发阶段
 
-- **Phase 1**：五种模式 UI 标签
-- **Phase 2**：transfer 调试
-- **Phase 3**：成本归因
+- **Phase 1（EP-BIZ-05）**：注入 `call_agent` 工具到 Agent 工具集
+- **Phase 2**：Team 对话发射 member_* SSE 事件
+- **Phase 3**：Team 运行结果结构化汇总
 
 ---
 
-## 5. 任务清单（可拆 PR）
+## 5. 任务清单
 
-| 序号 | 任务 | 优先级 | EP |
-|------|------|--------|-----|
-| 1 | Phase 1 首项 | P1 | — |
-| 2 | 单测 + make lint + 更新现状对齐 | P1 | §7 |
-| 3 | 前端闭环（若适用） | P2 | EP-FE-* |
+| # | 任务 | 优先级 | EP |
+|---|------|--------|-----|
+| 1 | `trpc_build.go`：注入 `call_agent` 工具 | P1 | EP-BIZ-05 |
+| 2 | `chat_native.go`：Team turn 中发射 member_* 事件 | P2 | — |
+| 3 | TeamRunResult 结构化汇总 API | P3 | — |
+| 4 | 单测覆盖 TeamRunner 关键路径 | P1 | EP-TEST-01 |
 
 ---
 
 ## 6. 验收标准
 
-- [ ] `go build ./cmd/admin`
-- [ ] 相关 `go test`；并发改动用 `-race`
-- [ ] 附录 A + 需求「现状对齐」一致
-- [ ] changelog 引用 EP
+- [ ] Agent 可在 Team 中通过 `call_agent` 调用其他 Agent
+- [ ] Team 对话前端可实时看到子 Agent 增量输出
+- [ ] `go test ./internal/agent/... -run TestTeam` 通过
 
 ---
 
 ## 7. 依赖与风险
 
-M2 多租户可能触及本模块写路径；按 admin→agent→session 分批合入。
+- A2A 依赖 M26 a2a-protocol 的 `call_agent` 工具实现
+- member_* 事件需与 SSE 管道对齐

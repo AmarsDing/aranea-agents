@@ -1,61 +1,70 @@
-# A2A — 开发计划
+# A2A 协议 — 开发计划
 
-> **版本**：2026-05-17 | **状态**：🟡  
-> **进度真相**：[`guides/execution-plan.md`](../guides/execution-plan.md) 附录 A · **关联 EP**：EP-A2A-01/02
+> **版本**：2026-05-17 | **状态**：🟡 AgentCard 可用；❌ call_agent 未注入
+> **需求**：[26 a2a-protocol.md](./26%20a2a-protocol.md) · **设计**：[26 a2a-protocol.design.md](./26%20a2a-protocol.design.md)
+> **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：EP-BIZ-05
 
 ---
 
 ## 1. 模块定位
 
-见 [`0 系统框图.md`](./0%20系统框图.md) 与 `docs/README.md` §7 对应需求/设计文档。
+A2A（Agent-to-Agent）协议：支持 Agent 之间的跨实例通信和协作，包括 AgentCard 发现、call_agent 工具调用、远程 Agent 对话。
+
+**代码锚点**：
+- `api/kratos/agent/v1/` — AgentCard 相关字段
+- `internal/agent/trpc_build.go` — Agent 构建链
+- `pkg/trpc-agent-go/a2a/` — trpc-agent-go A2A 框架
 
 ---
 
 ## 2. 现状评估
 
-| 维度 | 状态 |
-|------|------|
-| 整体 | 🟡 |
-
-对照需求文档「2026-05-17 现状对齐」段与附录 A 各列（Proto/Biz/Data/Service/Server/Runtime/前端）。
+| 项 | 状态 | 证据 |
+|----|------|------|
+| AgentCard 字段 | ✅ | Agent proto 中有 a2a 相关字段 |
+| A2A 框架 | ✅ | `pkg/trpc-agent-go/a2a/` 包
+| call_agent 工具注入 | ❌ | `trpc_build.go` 中无 `call_agent` 注入 |
+| 远程 Agent 发现 | ❌ | 无 Agent 注册中心 |
+| A2A 消息路由 | ❌ | 无跨实例消息路由 |
 
 ---
 
 ## 3. 差距与优化
 
-- 未完成验收项纳入 Phase。
-- 遵守双框架边界：Kratos 传输 / trpc 运行时（AI-DEV-SPEC §1）。
-- 复用既有 Usecase，避免平行实现。
+1. **P1（EP-BIZ-05）**：`call_agent` 工具未注入 Agent 工具集，Agent 无法调用远程 Agent。这是 A2A 协议的核心功能缺失。
+2. **P2**：无 Agent 注册中心，远程 Agent 无法被发现。
+3. **P3**：无 A2A 消息路由，跨实例通信未实现。
 
 ---
 
 ## 4. 开发阶段
 
-- **Phase 1**：真派发
-- **Phase 2**：远端鉴权
-- **Phase 3**：EnsureA2ASchema
+- **Phase 1（EP-BIZ-05）**：注入 `call_agent` 工具到 Agent 工具集
+- **Phase 2**：Agent 注册中心（AgentCard 发布/发现）
+- **Phase 3**：A2A 消息路由（跨实例通信）
 
 ---
 
-## 5. 任务清单（可拆 PR）
+## 5. 任务清单
 
-| 序号 | 任务 | 优先级 | EP |
-|------|------|--------|-----|
-| 1 | Phase 1 首项 | P1 | EP-A2A-01/02 |
-| 2 | 单测 + make lint + 更新现状对齐 | P1 | §7 |
-| 3 | 前端闭环（若适用） | P2 | EP-FE-* |
+| # | 任务 | 优先级 | EP |
+|---|------|--------|-----|
+| 1 | `trpc_build.go`：注入 `call_agent` 工具 | P1 | EP-BIZ-05 |
+| 2 | AgentCard 发布/发现 API | P2 | — |
+| 3 | A2A 消息路由 + 跨实例通信 | P3 | — |
+| 4 | A2A 安全（认证/授权） | P3 | — |
 
 ---
 
 ## 6. 验收标准
 
-- [ ] `go build ./cmd/admin`
-- [ ] 相关 `go test`；并发改动用 `-race`
-- [ ] 附录 A + 需求「现状对齐」一致
-- [ ] changelog 引用 EP
+- [ ] Agent 可通过 `call_agent` 调用其他 Agent
+- [ ] AgentCard 可被远程发现
+- [ ] 跨实例 Agent 通信正常
 
 ---
 
 ## 7. 依赖与风险
 
-M2 多租户可能触及本模块写路径；按 admin→agent→session 分批合入。
+- A2A 协议仍在演进，需关注 Google A2A 规范更新
+- 跨实例通信需考虑网络延迟和可靠性

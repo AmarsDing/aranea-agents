@@ -1,61 +1,70 @@
-# Telemetry — 开发计划
+# Telemetry 遥测 — 开发计划
 
-> **版本**：2026-05-17 | **状态**：📄 占位  
-> **进度真相**：[`guides/execution-plan.md`](../guides/execution-plan.md) 附录 A · **关联 EP**：EP-OBS-02 ✅
+> **版本**：2026-05-17 | **状态**：✅ 端到端可用
+> **需求**：[24 telemetry.md](./24%20telemetry.md) · **设计**：[24 telemetry.design.md](./24%20telemetry.design.md)
+> **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：—
 
 ---
 
 ## 1. 模块定位
 
-见 [`0 系统框图.md`](./0%20系统框图.md) 与 `docs/README.md` §7 对应需求/设计文档。
+Telemetry 遥测：基于 OpenTelemetry 的分布式追踪和指标采集，为系统提供可观测性。
+
+**代码锚点**：
+- `internal/server/http.go` — OTEL 中间件注册
+- `internal/server/grpc.go` — OTEL gRPC 拦截器
+- `configs/` — OTEL 配置
 
 ---
 
 ## 2. 现状评估
 
-| 维度 | 状态 |
-|------|------|
-| 整体 | 📄 占位 |
-
-对照需求文档「2026-05-17 现状对齐」段与附录 A 各列（Proto/Biz/Data/Service/Server/Runtime/前端）。
+| 项 | 状态 | 证据 |
+|----|------|------|
+| HTTP OTEL 中间件 | ✅ | `http.go` 中注册 |
+| gRPC OTEL 拦截器 | ✅ | `grpc.go` 中注册 |
+| Trace 传播 | ✅ | W3C Trace Context |
+| 自定义 Span | ❌ | Agent/Team 运行无自定义 Span |
+| Metrics 导出 | ❌ | 无 OTLP Metrics 导出 |
+| Log 关联 | ❌ | 日志未与 Trace ID 关联 |
 
 ---
 
 ## 3. 差距与优化
 
-- 未完成验收项纳入 Phase。
-- 遵守双框架边界：Kratos 传输 / trpc 运行时（AI-DEV-SPEC §1）。
-- 复用既有 Usecase，避免平行实现。
+1. **P2**：Agent/Team 运行过程无自定义 Span，无法追踪 LLM 调用、工具调用等关键步骤。
+2. **P3**：无 OTLP Metrics 导出，无法接入 Prometheus/Grafana。
+3. **P3**：日志未与 Trace ID 关联，无法通过 Trace ID 查询相关日志。
 
 ---
 
 ## 4. 开发阶段
 
-- **Phase 1**：补 telemetry.md
-- **Phase 2**：采样策略
-- **Phase 3**：与 monitor 边界
+- **Phase 1**：Agent/Team 运行关键步骤添加自定义 Span
+- **Phase 2**：OTLP Metrics 导出
+- **Phase 3**：日志与 Trace ID 关联
 
 ---
 
-## 5. 任务清单（可拆 PR）
+## 5. 任务清单
 
-| 序号 | 任务 | 优先级 | EP |
-|------|------|--------|-----|
-| 1 | Phase 1 首项 | P1 | EP-OBS-02 ✅ |
-| 2 | 单测 + make lint + 更新现状对齐 | P1 | §7 |
-| 3 | 前端闭环（若适用） | P2 | EP-FE-* |
+| # | 任务 | 优先级 | EP |
+|---|------|--------|-----|
+| 1 | `trpc_turn.go`：LLM 调用 / 工具调用添加 Span | P2 | — |
+| 2 | OTLP Metrics 导出配置 | P3 | — |
+| 3 | 日志中间件注入 Trace ID | P3 | — |
 
 ---
 
 ## 6. 验收标准
 
-- [ ] `go build ./cmd/admin`
-- [ ] 相关 `go test`；并发改动用 `-race`
-- [ ] 附录 A + 需求「现状对齐」一致
-- [ ] changelog 引用 EP
+- [ ] Jaeger/Zipkin 可看到 Agent 运行的完整 Trace
+- [ ] Prometheus 可采集系统 Metrics
+- [ ] 日志可通过 Trace ID 关联查询
 
 ---
 
 ## 7. 依赖与风险
 
-M2 多租户可能触及本模块写路径；按 admin→agent→session 分批合入。
+- 需部署 OTEL Collector
+- 自定义 Span 需注意性能开销

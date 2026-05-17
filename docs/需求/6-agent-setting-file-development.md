@@ -1,61 +1,63 @@
 # Agent 提示文件 — 开发计划
 
-> **版本**：2026-05-17 | **状态**：✅  
-> **进度真相**：[`guides/execution-plan.md`](../guides/execution-plan.md) 附录 A · **关联 EP**：—
+> **版本**：2026-05-17 | **状态**：✅ 端到端可用
+> **需求**：[6 agent-setting-file.md](./6%20agent-setting-file.md) · **设计**：[6 agent-setting-file.design.md](./6%20agent-setting-file.design.md)
+> **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：—
 
 ---
 
 ## 1. 模块定位
 
-见 [`0 系统框图.md`](./0%20系统框图.md) 与 `docs/README.md` §7 对应需求/设计文档。
+Agent 提示文件管理：用户可为 Agent 上传/编辑提示文件（markdown/text），文件内容在 Agent 构建时注入 system prompt。
+
+**代码锚点**：
+- `api/kratos/agent/v1/agent.proto` — PromptFile CRUD RPC
+- `internal/data/ent/schema/agent_prompt_file.go` — Ent Schema
+- `internal/biz/agent_usecase.go` — PromptFile 管理
+- `internal/agent/trpc_build.go` — prompt 文件注入
 
 ---
 
 ## 2. 现状评估
 
-| 维度 | 状态 |
-|------|------|
-| 整体 | ✅ |
-
-对照需求文档「2026-05-17 现状对齐」段与附录 A 各列（Proto/Biz/Data/Service/Server/Runtime/前端）。
+| 项 | 状态 | 证据 |
+|----|------|------|
+| PromptFile CRUD | ✅ | Create/Update/Delete/List |
+| Agent 构建注入 | ✅ | `BuildTRPCLLMAgent` 读取 prompt 文件 |
+| 前端管理 | ✅ | Agent 设置页提示文件区域 |
 
 ---
 
 ## 3. 差距与优化
 
-- 未完成验收项纳入 Phase。
-- 遵守双框架边界：Kratos 传输 / trpc 运行时（AI-DEV-SPEC §1）。
-- 复用既有 Usecase，避免平行实现。
+1. **P3**：提示文件无版本历史，编辑后无法回滚。
+2. **P3**：提示文件无语法高亮编辑器（前端为纯文本 textarea）。
 
 ---
 
 ## 4. 开发阶段
 
-- **Phase 1**：版本 diff
-- **Phase 2**：大文件上传
-- **Phase 3**：prompt 热更新
+- **Phase 1**：提示文件版本历史（可选）
+- **Phase 2**：Markdown 编辑器集成
 
 ---
 
-## 5. 任务清单（可拆 PR）
+## 5. 任务清单
 
-| 序号 | 任务 | 优先级 | EP |
-|------|------|--------|-----|
-| 1 | Phase 1 首项 | P1 | — |
-| 2 | 单测 + make lint + 更新现状对齐 | P1 | §7 |
-| 3 | 前端闭环（若适用） | P2 | EP-FE-* |
+| # | 任务 | 优先级 | EP |
+|---|------|--------|-----|
+| 1 | 提示文件版本表 + 历史查询 API | P3 | — |
+| 2 | 前端 CodeMirror/Monaco 编辑器 | P3 | — |
 
 ---
 
 ## 6. 验收标准
 
-- [ ] `go build ./cmd/admin`
-- [ ] 相关 `go test`；并发改动用 `-race`
-- [ ] 附录 A + 需求「现状对齐」一致
-- [ ] changelog 引用 EP
+- [ ] 提示文件编辑后可查看历史版本
+- [ ] 编辑器支持 Markdown 语法高亮
 
 ---
 
 ## 7. 依赖与风险
 
-M2 多租户可能触及本模块写路径；按 admin→agent→session 分批合入。
+无重大依赖。

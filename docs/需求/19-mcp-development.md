@@ -1,61 +1,72 @@
-# MCP — 开发计划
+# MCP 协议 — 开发计划
 
-> **版本**：2026-05-17 | **状态**：🟡  
-> **进度真相**：[`guides/execution-plan.md`](../guides/execution-plan.md) 附录 A · **关联 EP**：—
+> **版本**：2026-05-17 | **状态**：✅ 端到端可用
+> **需求**：[19 mcp.md](./19%20mcp.md) · **设计**：[19 mcp.design.md](./19%20mcp.design.md)
+> **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：—
 
 ---
 
 ## 1. 模块定位
 
-见 [`0 系统框图.md`](./0%20系统框图.md) 与 `docs/README.md` §7 对应需求/设计文档。
+MCP（Model Context Protocol）集成：支持 Agent 通过 MCP 协议连接外部工具服务器，动态发现和调用工具。
+
+**代码锚点**：
+- `api/kratos/mcp_server/v1/` — MCPServer CRUD RPC
+- `internal/service/mcp_server.go` — MCPServerService
+- `internal/biz/mcp_server.go` — MCPServerUsecase
+- `internal/data/mcp_server.go` — MCPServerRepo
+- `internal/agent/trpc_build.go` — MCP 工具注入
+- `internal/biz/agent_mcp_effective.go` — Effective MCP 计算
 
 ---
 
 ## 2. 现状评估
 
-| 维度 | 状态 |
-|------|------|
-| 整体 | 🟡 |
-
-对照需求文档「2026-05-17 现状对齐」段与附录 A 各列（Proto/Biz/Data/Service/Server/Runtime/前端）。
+| 项 | 状态 | 证据 |
+|----|------|------|
+| MCPServer CRUD | ✅ | Create/Update/Delete/Get/List |
+| MCP 工具发现 | ✅ | 连接 MCP 服务器 → 列出工具 |
+| MCP 工具注入 | ✅ | `BuildTRPCLLMAgent` 中 `WithMCPTools` |
+| Effective MCP | ✅ | `agent_mcp_effective.go` |
+| 前端管理 | ✅ | MCP Server 设置页 |
 
 ---
 
 ## 3. 差距与优化
 
-- 未完成验收项纳入 Phase。
-- 遵守双框架边界：Kratos 传输 / trpc 运行时（AI-DEV-SPEC §1）。
-- 复用既有 Usecase，避免平行实现。
+1. **P2**：MCP Server 无健康检查，连接失败时无自动重连。
+2. **P3**：MCP 工具调用无超时控制，长时间运行的 MCP 工具可能阻塞 Agent。
+3. **P3**：MCP Server 无认证配置（如 OAuth2），仅支持无认证连接。
 
 ---
 
 ## 4. 开发阶段
 
-- **Phase 1**：Broker 传输
-- **Phase 2**：健康检查
-- **Phase 3**：工具前缀冲突
+- **Phase 1**：MCP Server 健康检查 + 自动重连
+- **Phase 2**：MCP 工具调用超时控制
+- **Phase 3**：MCP Server 认证配置
 
 ---
 
-## 5. 任务清单（可拆 PR）
+## 5. 任务清单
 
-| 序号 | 任务 | 优先级 | EP |
-|------|------|--------|-----|
-| 1 | Phase 1 首项 | P1 | — |
-| 2 | 单测 + make lint + 更新现状对齐 | P1 | §7 |
-| 3 | 前端闭环（若适用） | P2 | EP-FE-* |
+| # | 任务 | 优先级 | EP |
+|---|------|--------|-----|
+| 1 | MCP Server 健康检查定时任务 | P2 | — |
+| 2 | MCP 工具调用超时（默认 60s） | P3 | — |
+| 3 | MCP Server 认证配置（OAuth2/API Key） | P3 | — |
 
 ---
 
 ## 6. 验收标准
 
-- [ ] `go build ./cmd/admin`
-- [ ] 相关 `go test`；并发改动用 `-race`
-- [ ] 附录 A + 需求「现状对齐」一致
-- [ ] changelog 引用 EP
+- [ ] MCP Server 连接断开后可自动重连
+- [ ] MCP 工具调用超时后优雅降级
+- [ ] MCP Server 可配置认证信息
 
 ---
 
 ## 7. 依赖与风险
 
-M2 多租户可能触及本模块写路径；按 admin→agent→session 分批合入。
+- MCP 协议仍在演进，需关注兼容性
+- 认证配置需与 Provider 凭据加密对齐

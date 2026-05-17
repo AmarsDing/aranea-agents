@@ -1,61 +1,67 @@
-# CLI — 开发计划
+# CLI 命令行 — 开发计划
 
-> **版本**：2026-05-17 | **状态**：❌  
-> **进度真相**：[`guides/execution-plan.md`](../guides/execution-plan.md) 附录 A · **关联 EP**：M5
+> **版本**：2026-05-17 | **状态**：❌ 未实现
+> **需求**：[25 cli.md](./25%20cli.md) · **设计**：[25 cli.design.md](./25%20cli.design.md)
+> **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：—
 
 ---
 
 ## 1. 模块定位
 
-见 [`0 系统框图.md`](./0%20系统框图.md) 与 `docs/README.md` §7 对应需求/设计文档。
+CLI 命令行工具：提供命令行界面管理 Agent/Team/Tool/Skill 等资源，支持脚本化操作和 CI/CD 集成。
+
+**代码锚点**：
+- 无对应代码实现
 
 ---
 
 ## 2. 现状评估
 
-| 维度 | 状态 |
-|------|------|
-| 整体 | ❌ |
-
-对照需求文档「2026-05-17 现状对齐」段与附录 A 各列（Proto/Biz/Data/Service/Server/Runtime/前端）。
+| 项 | 状态 | 证据 |
+|----|------|------|
+| CLI 框架 | ❌ | 无 cobra/urfavecli 集成 |
+| Agent 管理 | ❌ | 无 CLI 命令 |
+| Team 管理 | ❌ | 无 CLI 命令 |
+| Tool 管理 | ❌ | 无 CLI 命令 |
+| 对话交互 | ❌ | 无 CLI 对话模式 |
 
 ---
 
 ## 3. 差距与优化
 
-- 未完成验收项纳入 Phase。
-- 遵守双框架边界：Kratos 传输 / trpc 运行时（AI-DEV-SPEC §1）。
-- 复用既有 Usecase，避免平行实现。
+1. **P2**：CLI 工具完全未实现，开发者无法通过命令行管理系统。
+2. **P3**：无 REPL 交互模式，无法在终端中与 Agent 对话。
 
 ---
 
 ## 4. 开发阶段
 
-- **Phase 1**：cmd/aranea
-- **Phase 2**：session ls
-- **Phase 3**：配置共享
+- **Phase 1**：CLI 框架搭建（cobra）+ 基础 CRUD 命令
+- **Phase 2**：CLI 对话交互模式
+- **Phase 3**：CLI 插件系统
 
 ---
 
-## 5. 任务清单（可拆 PR）
+## 5. 任务清单
 
-| 序号 | 任务 | 优先级 | EP |
-|------|------|--------|-----|
-| 1 | Phase 1 首项 | P1 | M5 |
-| 2 | 单测 + make lint + 更新现状对齐 | P1 | §7 |
-| 3 | 前端闭环（若适用） | P2 | EP-FE-* |
+| # | 任务 | 优先级 | EP |
+|---|------|--------|-----|
+| 1 | `cmd/aranea/`：cobra 框架 + root 命令 | P2 | — |
+| 2 | Agent/Team/Tool CRUD 子命令 | P2 | — |
+| 3 | CLI 对话模式（REPL） | P3 | — |
+| 4 | CLI 输出格式化（JSON/Table） | P3 | — |
 
 ---
 
 ## 6. 验收标准
 
-- [ ] `go build ./cmd/admin`
-- [ ] 相关 `go test`；并发改动用 `-race`
-- [ ] 附录 A + 需求「现状对齐」一致
-- [ ] changelog 引用 EP
+- [ ] `aranea agent list` 可列出所有 Agent
+- [ ] `aranea chat <agent_id>` 可与 Agent 对话
+- [ ] `aranea --help` 显示完整命令列表
 
 ---
 
 ## 7. 依赖与风险
 
-M2 多租户可能触及本模块写路径；按 admin→agent→session 分批合入。
+- CLI 需与 HTTP API 对齐
+- 需考虑认证 token 管理

@@ -1,61 +1,70 @@
-# Monitor — 开发计划
+# Monitor 监控 — 开发计划
 
-> **版本**：2026-05-17 | **状态**：✅  
-> **进度真相**：[`guides/execution-plan.md`](../guides/execution-plan.md) 附录 A · **关联 EP**：EP-OBS-06
+> **版本**：2026-05-17 | **状态**：🟡 基础指标可用；❌ Dashboard/告警未实现
+> **需求**：[18 monitor.md](./18%20monitor.md) · **设计**：[18 monitor.design.md](./18%20monitor.design.md)
+> **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：—
 
 ---
 
 ## 1. 模块定位
 
-见 [`0 系统框图.md`](./0%20系统框图.md) 与 `docs/README.md` §7 对应需求/设计文档。
+系统监控：采集和展示 Agent/Team 运行指标，包括 Token 用量、响应时间、成功率、错误率等。
+
+**代码锚点**：
+- `internal/biz/usage.go` — UsageUsecase（Token 用量统计）
+- `internal/service/chat_usage_ingress.go` — 用量记录入口
+- `internal/data/usage.go` — UsageRepo
 
 ---
 
 ## 2. 现状评估
 
-| 维度 | 状态 |
-|------|------|
-| 整体 | ✅ |
-
-对照需求文档「2026-05-17 现状对齐」段与附录 A 各列（Proto/Biz/Data/Service/Server/Runtime/前端）。
+| 项 | 状态 | 证据 |
+|----|------|------|
+| Token 用量记录 | ✅ | `chat_usage_ingress.go` → `UsageUsecase` |
+| 用量查询 API | ✅ | `GetUsage` / `ListUsage` RPC |
+| Dashboard | ❌ | 无前端 Dashboard 页面 |
+| 告警 | ❌ | 无告警规则和通知机制 |
+| 响应时间追踪 | ❌ | 无 latency 指标采集 |
+| 错误率统计 | ❌ | 无 error_rate 指标聚合 |
 
 ---
 
 ## 3. 差距与优化
 
-- 未完成验收项纳入 Phase。
-- 遵守双框架边界：Kratos 传输 / trpc 运行时（AI-DEV-SPEC §1）。
-- 复用既有 Usecase，避免平行实现。
+1. **P2**：无监控 Dashboard，用户无法直观查看系统运行状态。
+2. **P2**：无响应时间和错误率指标，无法评估 Agent 质量。
+3. **P3**：无告警机制，异常无法及时通知。
 
 ---
 
 ## 4. 开发阶段
 
-- **Phase 1**：Grafana 对齐
-- **Phase 2**：Trace 关联
-- **Phase 3**：日志分页
+- **Phase 1**：响应时间 + 错误率指标采集
+- **Phase 2**：监控 Dashboard 前端页面
+- **Phase 3**：告警规则 + 通知机制
 
 ---
 
-## 5. 任务清单（可拆 PR）
+## 5. 任务清单
 
-| 序号 | 任务 | 优先级 | EP |
-|------|------|--------|-----|
-| 1 | Phase 1 首项 | P1 | EP-OBS-06 |
-| 2 | 单测 + make lint + 更新现状对齐 | P1 | §7 |
-| 3 | 前端闭环（若适用） | P2 | EP-FE-* |
+| # | 任务 | 优先级 | EP |
+|---|------|--------|-----|
+| 1 | 运行指标采集：latency / error_rate / success_rate | P2 | — |
+| 2 | Dashboard 前端页面 | P2 | — |
+| 3 | 告警规则引擎 | P3 | — |
+| 4 | 通知渠道（邮件/Webhook） | P3 | — |
 
 ---
 
 ## 6. 验收标准
 
-- [ ] `go build ./cmd/admin`
-- [ ] 相关 `go test`；并发改动用 `-race`
-- [ ] 附录 A + 需求「现状对齐」一致
-- [ ] changelog 引用 EP
+- [ ] Dashboard 可展示 Token 用量、响应时间、错误率
+- [ ] 告警规则可触发通知
 
 ---
 
 ## 7. 依赖与风险
 
-M2 多租户可能触及本模块写路径；按 admin→agent→session 分批合入。
+- Dashboard 可复用现有前端图表库
+- 告警需与 Channel 模块联动

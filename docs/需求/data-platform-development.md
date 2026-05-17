@@ -1,47 +1,64 @@
-# 数据平台横切 — 开发计划
+# Data Platform 数据平台 — 开发计划
 
-> **版本**：2026-05-17  
-> **说明**：非独立产品模块，覆盖 `internal/data/data.go` 启动、Schema 与 Repo 工厂。  
-> **EP**：EP-DATA-01、EP-RT-08、EP-WS-01
-
----
-
-## 1. 问题陈述
-
-`EnsureEvalSchema` / `EnsureA2ASchema` / `EnsureKnowledgeSchema` 已实现但 **未在 `NewData()` 调用**，导致 Evaluation、A2A、Knowledge 在生产 SQLite/Postgres 组合下首跑可能缺表。Knowledge Repo 在无 Postgres 时为 nil，需全链路明确降级。
+> **版本**：2026-05-17 | **状态**：❌ 未实现
+> **需求**：数据平台 · **设计**：数据平台设计
+> **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：—
 
 ---
 
-## 2. 建议改动（单 PR 可闭合 EP-DATA-01）
+## 1. 模块定位
 
-```text
-NewData() 成功打开 rawDB 后：
-  - EnsureEvalSchema(ctx, rawDB)
-  - EnsureA2ASchema(ctx, rawDB)
-若 pg != nil：
-  - EnsureKnowledgeSchema(ctx, pg, vdim)
-```
+Data Platform 数据平台：统一的数据管理和分析平台，支持数据导入、清洗、分析和可视化。
 
-配套：各 Service 在 repo nil 时返回 `kerrors` 业务错误，不 panic。
+**代码锚点**：
+- 无对应代码实现
 
 ---
 
-## 3. EP-RT-08（后续 PR）
+## 2. 现状评估
 
-- `mem*Repo` 仅保留 `_test.go` / `s6_coverage_test.go`。
-- 生产 wire 禁止注入内存 Repo；缺后端时 fail-fast 或功能开关关闭。
-
----
-
-## 4. M2 多租户（EP-WS-01）
-
-Ent Hook 按域分批：admin → agent → session → memory → tool；与 `AssertWorkspace` 写路径配对。
+| 项 | 状态 | 证据 |
+|----|------|------|
+| 数据导入 | ❌ | 无代码实现 |
+| 数据清洗 | ❌ | 无 |
+| 数据分析 | ❌ | 无 |
+| 数据可视化 | ❌ | 无 |
 
 ---
 
-## 5. 验收
+## 3. 差距与优化
 
-- [ ] 冷启动后 eval/a2a 表存在（sqlite）
-- [ ] 配置 postgres 后 knowledge 表存在
-- [ ] 无 PG 时 Knowledge API 稳定错误
-- [ ] execution-plan §5 EP-DATA-01 勾选
+1. **P2**：Data Platform 完全未实现。
+
+---
+
+## 4. 开发阶段
+
+- **Phase 1**：数据导入框架（CSV/JSON/数据库）
+- **Phase 2**：数据清洗管道
+- **Phase 3**：数据分析 + 可视化
+
+---
+
+## 5. 任务清单
+
+| # | 任务 | 优先级 | EP |
+|---|------|--------|-----|
+| 1 | 数据导入 API + Service | P2 | — |
+| 2 | 数据清洗管道 | P3 | — |
+| 3 | 数据分析 API + 可视化 | P3 | — |
+
+---
+
+## 6. 验收标准
+
+- [ ] 可导入 CSV/JSON 数据
+- [ ] 可清洗和转换数据
+- [ ] 可分析和可视化数据
+
+---
+
+## 7. 依赖与风险
+
+- 数据平台需与 Knowledge 模块联动
+- 大数据处理需考虑性能
