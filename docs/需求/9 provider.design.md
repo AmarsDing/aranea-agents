@@ -9,18 +9,29 @@
 
 LLM Provider/Model 管理：多厂商注册、模型目录、Failover/Hedge 高可用、TokenTailor 自动裁剪。核心包 `internal/provider` 桥接 trpc-agent-go `model` 包。
 
-**当前实现状态**：
+**当前实现状态**（2026-05-17 现状对齐）：
 - ✅ Proto CRUD + Inspect + ValidatePair 已实现
-- ✅ `internal/provider/trpc_llm.go` 已实现按 `provider_type` 分发构建 `model.Model`
-- ✅ `internal/provider/catalog.go` 已实现 `CatalogConfig` 解析和合并
-- ✅ Failover/Hedge 包装已实现（`wrapHA`）
-- ✅ 前端 `providerPresets.ts` 已对齐 trpc Provider 类型枚举
-- ✅ 前端 `ProviderModelRow.vue` 列表行已实现
-- ✅ 前端 `ProviderTrendDialog.vue` 趋势看板已实现
-- ⏳ Inspect 请求/响应扩展字段（variant、secret_id、secret_key、aws_region）
-- ⏳ 前端添加/编辑弹窗四步表单（连接与身份 → 模型分类与规格 → 高可用配置 → 高级选项）
-- ⏳ 前端 Variant Chip 展示
-- ⏳ 前端高可用配置 UI
+- ✅ `internal/provider/trpc_llm.go` 已实现按 `provider_type` 分发构建 `model.Model`（5 种原生 Provider + 4 种 Variant）
+- ✅ `internal/provider/catalog.go` 已实现 `CatalogConfig` 解析和合并（含所有 Provider 专属字段 + HA 配置）
+- ✅ Failover/Hedge 包装已实现（`wrapHA` + `wrapFailover` / `wrapHedge`）
+- ✅ Provider 专属选项构建已实现（OpenAI/Anthropic/Gemini/Ollama/Hunyuan 各自 builder）
+- ✅ `internal/llminspect/inspect.go` 已实现 OpenRouter / OpenAI-Compatible / Anthropic 三条探测路径 + DeepSeek 路由
+- ✅ Pricing 定价规则已实现（`UpsertModelPricingRule`；Create/Update 时自动同步）
+- ✅ `internal/provider/stream_delta.go` 流式 Delta 合并已实现
+- ✅ `internal/provider/roundtrip.go` HTTP Transport 注入已实现
+- ✅ 前端 `providerPresets.ts` 已对齐 trpc Provider 类型枚举（20 个预设）
+- ✅ 前端 `ProviderModelRow.vue` 列表行已实现（6 列网格布局、热度、用量、密钥状态）
+- ✅ 前端 `ProviderTrendDialog.vue` 趋势看板已实现（30 天趋势柱状图、汇总卡片、详情表）
+- ✅ 前端 `ResourceManagerPage.vue` 管理页面已实现（搜索、分页、创建/编辑弹窗）
+- ✅ Agent 构建链路已接入（`internal/agent/trpc_build.go` + `internal/service/session_title_llm.go`）
+- ⏳ Inspect 请求/响应扩展字段（variant、secret_id、secret_key、aws_region、enable_token_tailoring、supports_cache、supports_thinking）
+- ⏳ `mergeInspectConfigJSON` 仅合并 3 个字段，缺 variant / secret_id / secret_key / aws_region
+- ⏳ 前端添加/编辑弹窗四步表单（当前为单弹窗表单，非设计文档 §6 的四步表单）
+- ⏳ 前端 Variant Chip 展示（ProviderModelRow 未展示 Variant Chip）
+- ⏳ 前端 HA Chip 展示（ProviderModelRow 未展示 Failover/Hedge Chip）
+- ⏳ llminspect 缺少 Gemini / Ollama / Hunyuan 专属探测路径
+- ⏳ HuggingFace / Bedrock Provider 未注册到 trpc provider 工厂（前端预设已预留）
+- ⏳ 凭据未加密存储（api_key 明文存 SQLite config_json）
 
 ---
 

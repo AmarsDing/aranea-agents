@@ -88,7 +88,7 @@ internal/data           ← Repo 实现（Ent ORM + SQLite，单 sql.Open）
 | M6 Memory 记忆 | 🟡 已通 L1–L3 | L4 进化记忆未实装；Memory tools 已注入 |
 | M7 Tool 工具体系 | ✅ 已对齐 | 含 toolset / DeclarableTool / a2a / knowledge |
 | M8 MCP 集成 | 🟡 部分实现 | trpc 已迁；Broker / 传输层待完善 |
-| M9 Model 模型层 | ✅ 基本对齐 | 多 Provider |
+| M9 Model 模型层 | ✅ 基本对齐 | 5 种原生 Provider + 4 种 Variant + Failover/Hedge + Pricing；待：Inspect 扩展字段 / 前端四步表单 / 凭据加密 |
 | **M10 Plugin** | 🟡 部分实现 | 已注入 Runner；Agent/Model 全链路 Callback 待 EP-CB-01 |
 | M11 Planner 规划 | ✅ 已对齐 | builtin / react / a2ui selector |
 | **M12 Artifact** | 🟡 部分实现 | Service 已注册；Runner 制品闭环 / S3 后端待完善（EP-RT-08） |
@@ -142,7 +142,7 @@ AI 和开发者编写文档时**必须**遵循以下职责分离原则（与 `ex
 | **Agent 提示文件** | [6 agent-setting-file.md](./需求/6%20agent-setting-file.md)、[6 agent-setting-file.design.md](./需求/6%20agent-setting-file.design.md) |
 | **Agent 进化** | [7 agent-evolution.md](./需求/7%20agent-evolution.md)、[7 agent-evolution.design.md](./需求/7%20agent-evolution.design.md) |
 | **Agent 标题** | [8 agent-title.md](./需求/8%20agent-title.md)、[8 agent-title.design.md](./需求/8%20agent-title.design.md) |
-| **Provider** | [9 provider.md](./需求/9%20provider.md)、[9 provider.design.md](./需求/9%20provider.design.md) |
+| **Provider** | [9 provider.md](./需求/9%20provider.md)、[9 provider.design.md](./需求/9%20provider.design.md)、[9-provider-development.md](./需求/9-provider-development.md) |
 | **Session** | [10 session.md](./需求/10%20session.md)、[10 session.design.md](./需求/10%20session.design.md) |
 | **Multi-Agent / Team** | [11 multi-agent.md](./需求/11%20multi-agent.md)、[11 multi-agent.design.md](./需求/11%20multi-agent.design.md) |
 | **Memory L0~L4** | [12 L0-sensory](./需求/12%20memory-L0-sensory.md)、[13 L1-working](./需求/13%20memory-L1-working.md)、[14 L2-episodic](./需求/14%20memory-L2-episodic.md)、[15 L3-semantic](./需求/15%20memory-L3-semantic.md)、[16 L4-persistent](./需求/16%20memory-L4-persistent.md)、[12-16 memory.design](./需求/12-16%20memory.design.md)、[31+38 supplement.design](./需求/31+38%20memory-supplement.design.md)、[38 memory.md（框架对齐）](./需求/38%20memory.md)、[31 memery.md（拼写遗留→记忆管理 UX）](./需求/31%20memery.md) |
