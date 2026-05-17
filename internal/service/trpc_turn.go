@@ -11,11 +11,9 @@ import (
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/agent/intent"
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/data/sessionmemory"
 	"aranea-agents/internal/event"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
-	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
@@ -36,30 +34,24 @@ func (s *ChatService) runSingleAgentViaTRPC(
 	}
 
 	deps := chatagent.TRPCBuilderDeps{
-		Catalog:    s.td.LLMCatalog,
-		AgentUC:    s.td.AgentsUC,
-		Agents:     s.td.Agents,
+		Catalog:    s.td.Catalog.LLM,
+		AgentUC:    s.td.Catalog.AgentsUC,
+		Agents:     s.td.Catalog.Agents,
 		RT:         s.td.RoundTrip(),
-		SkillUC:    s.td.SkillUC,
-		MCPTooling: s.td.RT.AgentMCP,
-		ToolUC:     s.td.ToolUC,
-		Sys:        s.td.Sys,
+		SkillUC:    s.td.Catalog.SkillUC,
+		MCPTooling: s.td.Persist.AgentMCP,
+		ToolUC:     s.td.Catalog.ToolUC,
+		Sys:        s.td.Catalog.Settings,
 		Provider:   prov,
 		Model:      mod,
 		DialogMode: dialogMode,
 	}
-	root, err := chatagent.BuildTRPCLLMAgent(ctx, ag, deps)
+	root, err := chatagent.BuildTRPCLLMAgentCached(ctx, ag, deps)
 	if err != nil {
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
 
-	var trpcSession trpcsession.Service
-	var sessionMemory *sessionmemory.Store
-	if s.td.RT != nil {
-		trpcSession = s.td.RT.TRPCSession
-		sessionMemory = s.td.RT.SessionMemory
-	}
-	runnerDeps := chatagent.NewRunnerDepsFromRuntime(trpcSession, sessionMemory)
+	runnerDeps := chatagent.NewRunnerDepsFromRuntime(s.td.Persist.Session, s.td.Persist.Memory)
 	runner, err := chatagent.NewTRPCRunner(root, runnerDeps)
 	if err != nil {
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
@@ -76,7 +68,7 @@ func (s *ChatService) runSingleAgentViaTRPC(
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
 	sendText := content
-	intRes := intent.Run(ctx, intent.IntentPassFromAgent(ag), s.td.LLMCatalog, s.td.LLMHTTP, prov, mod, content)
+	intRes := intent.Run(ctx, intent.IntentPassFromAgent(ag), s.td.Catalog.LLM, s.td.LLMHTTP, prov, mod, content)
 	if intRes.Artifact != nil {
 		if strings.TrimSpace(intRes.RawJSON) != "" {
 			merged, merr := intent.MergeIntoUserOptionsJSON(userOpts, intRes.RawJSON)
@@ -90,15 +82,15 @@ func (s *ChatService) runSingleAgentViaTRPC(
 	}
 	meta := intent.RunMeta{AgentID: ag.ID, SessionID: sessionID}
 	intentPayload := intent.BuildIntentPassPayload(intRes, meta)
-	if s.td.EventBus != nil {
+	if s.td.Pipeline.Bus != nil {
 		env := event.NewEnvelope(event.EnvelopeTypeIntentPass, ag.ID, sessionID)
 		env.Metadata = intentPayload
-		s.td.EventBus.Publish(ctx, env)
+		s.td.Pipeline.Bus.Publish(ctx, env)
 	}
-	if s.td.EventBus != nil {
+	if s.td.Pipeline.Bus != nil {
 		level, msg := intent.MonitorLogEntry(intRes, "chat", meta)
-		env := chatagent.NewEventProjector(s.td.EventBus).BuildLogEnvelope(level, msg, "intent-pass", sessionID)
-		s.td.EventBus.Publish(ctx, env)
+		env := chatagent.NewEventProjector(s.td.Pipeline.Bus).BuildLogEnvelope(level, msg, "intent-pass", sessionID)
+		s.td.Pipeline.Bus.Publish(ctx, env)
 	}
 
 	now := chatagent.RFC3339Now()
@@ -132,7 +124,7 @@ func (s *ChatService) runSingleAgentViaTRPC(
 		SessionID: sessionID,
 		RequestID: sessionID,
 	}
-	result := chatagent.ConsumeEventStream(ctx, events, s.td.EventBus, projectMeta)
+	result := chatagent.ConsumeEventStream(ctx, events, s.td.Pipeline.Bus, projectMeta)
 	if ctx.Err() != nil {
 		return userMsg, biz.ChatMessage{}, ctx.Err()
 	}
@@ -192,20 +184,20 @@ func (s *ChatService) processPendingQueue(sessionID string, sess biz.Session, ag
 			Content:   entry.Content,
 		}
 		_, _, err := s.runSingleAgentViaTRPC(bgCtx, sess, req, ag, dialogMode, prov, mod, 0)
-		if err != nil && s.td.EventBus != nil {
+		if err != nil && s.td.Pipeline.Bus != nil {
 			env := event.NewEnvelope(event.EnvelopeTypeError, "pending-queue", sessionID)
 			env.Error = &event.EnvelopeError{
 				Type:    "pending_failed",
 				Message: fmt.Sprintf("pending message failed: %s", err.Error()),
 			}
 			env.Metadata = map[string]any{"pending_id": entry.ID}
-			s.td.EventBus.Publish(bgCtx, env)
+			s.td.Pipeline.Bus.Publish(bgCtx, env)
 		}
 	}()
 }
 
 func (s *ChatService) recordSessionTurn(ctx context.Context, sessionID string, ag biz.Agent, userMsgID, assistantMsgID, prov, mod string, promptTok, completionTok int, contentPreview string) {
-	if s.td.Sessions == nil {
+	if s == nil || s.td.Sessions == nil {
 		return
 	}
 	now := time.Now().UTC().Format(time.RFC3339)

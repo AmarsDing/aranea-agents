@@ -70,13 +70,36 @@ build:
 	mkdir -p bin/ && go build -ldflags "-X main.Version=$(VERSION)" -o ./bin/ ./...
 
 .PHONY: runtime-boundary
-# check Agent runtime import boundaries
+# check Agent runtime import boundaries (legacy PowerShell; use `make lint` instead)
 runtime-boundary:
 ifeq ($(GOHOSTOS),windows)
 	powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-runtime-boundary.ps1
 else
 	pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/check-runtime-boundary.ps1
 endif
+
+.PHONY: lint
+# run cross-platform lint tool (R1-R10) + go vet
+lint:
+	go run ./cmd/araneactl/lint --root .
+	go vet ./...
+
+.PHONY: test
+# run all Go tests
+test:
+	go test -cover ./...
+
+.PHONY: smoke
+# basic smoke test (build + health check)
+smoke:
+	go build -o bin/admin-smoke ./cmd/admin 2>&1 && echo "smoke: build OK" && rm -f bin/admin-smoke
+
+.PHONY: ci
+# full CI pipeline: lint, test, smoke
+ci:
+	$(MAKE) lint
+	$(MAKE) test
+	$(MAKE) smoke
 
 .PHONY: generate
 # generate

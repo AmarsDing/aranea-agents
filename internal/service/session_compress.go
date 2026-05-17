@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -14,7 +13,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/compress"
 	"aranea-agents/internal/event"
-	"aranea-agents/internal/runtimedeps"
+	rt "aranea-agents/internal/runtime"
 	"aranea-agents/pkg/strutil"
 
 	"github.com/google/uuid"
@@ -30,7 +29,7 @@ type SessionCompressor struct {
 	Sessions *biz.SessionUsecase
 	Agents   biz.AgentRepository
 	Compress compress.Compressor
-	RT       *runtimedeps.Runtime
+	Persist  rt.PersistenceSet
 	EventBus event.Bus
 
 	inFlight sync.Map
@@ -41,7 +40,7 @@ var _ biz.NativeTurnCompressor = (*SessionCompressor)(nil)
 func NewSessionCompressor(
 	sessions *biz.SessionUsecase,
 	agents biz.AgentRepository,
-	rt *runtimedeps.Runtime,
+	persist rt.PersistenceSet,
 	comp compress.Compressor,
 	eventBus event.Bus,
 ) *SessionCompressor {
@@ -49,7 +48,7 @@ func NewSessionCompressor(
 		Sessions: sessions,
 		Agents:   agents,
 		Compress: comp,
-		RT:       rt,
+		Persist:  persist,
 		EventBus: eventBus,
 	}
 }
@@ -71,7 +70,7 @@ func (c *SessionCompressor) AfterNativeTurn(ctx context.Context, sessionID strin
 		runCtx, cancel := context.WithTimeout(context.Background(), sessionCompressRunTimeout)
 		defer cancel()
 		if err := c.runCompress(runCtx, sid, ag); err != nil {
-			log.Printf("session_compress: session=%s err=%v", sid, err)
+			_ = fmt.Sprintf("session_compress: session=%s err=%v", sid, err) // logged via EventBus below
 			if c.EventBus != nil {
 				env := event.NewEnvelope(event.EnvelopeTypeLog, "session_compress", sid)
 				env.Metadata = map[string]any{"level": "ERROR", "source": "session_compress"}
@@ -160,7 +159,6 @@ func (c *SessionCompressor) runCompress(ctx context.Context, sessionID string, a
 	}
 	line := fmt.Sprintf("session_compress: session=%s ok compress_provider=%s compress_model=%s prompt_tokens=%d completion_tokens=%d duration_ms=%d prompt_ver=%s",
 		sessionID, res.Provider, res.Model, res.PromptTokens, res.CompletionTokens, time.Since(t0).Milliseconds(), res.PromptVersion)
-	log.Println(line)
 	if c.EventBus != nil {
 		env := event.NewEnvelope(event.EnvelopeTypeLog, "session_compress", sessionID)
 		env.Metadata = map[string]any{"level": "INFO", "source": "session_compress"}
@@ -246,10 +244,10 @@ func compressProviderModel(sess biz.Session, ag biz.Agent) (prov, mod string) {
 }
 
 func (c *SessionCompressor) resyncSessionMemory(ctx context.Context, sessionID string) {
-	if c == nil || c.RT == nil || c.RT.SessionMemory == nil {
+	if c == nil || c.Persist.Memory == nil {
 		return
 	}
-	_ = c.RT.SessionMemory.DeleteSessionEventEntities(ctx, sessionID)
+	_ = c.Persist.Memory.DeleteSessionEventEntities(ctx, sessionID)
 }
 
 func timelineUserAssistant(msgs []biz.ChatMessage) []biz.ChatMessage {

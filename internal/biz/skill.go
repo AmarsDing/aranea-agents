@@ -315,3 +315,18 @@ func (u *SkillUsecase) MarkFilesystemMissing(ctx context.Context, slug string, m
 	}
 	return u.repo.MarkSkillFilesystemMissing(ctx, slug, missing)
 }
+
+// GetBySlug returns a skill by its slug (alias for GetSkillBySkillKey).
+func (u *SkillUsecase) GetBySlug(ctx context.Context, slug string) (Skill, error) {
+	slug = strings.TrimSpace(slug)
+	if slug == "" {
+		return Skill{}, errors.BadRequest("SKILL", "skill slug is required")
+	}
+	return u.repo.GetSkillBySkillKey(ctx, slug)
+}
+
+// ListEnabledPublishedCandidates is a shorter alias for ListEnabledPublishedSkillCandidates.
+func (u *SkillUsecase) ListEnabledPublishedCandidates(ctx context.Context) ([]SkillRuntimeCandidate, error) {
+	return u.repo.ListEnabledPublishedSkillCandidates(ctx)
+}
+

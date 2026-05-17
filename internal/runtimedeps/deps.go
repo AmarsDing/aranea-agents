@@ -1,45 +1,24 @@
+// Deprecated: use aranea-agents/internal/runtime instead.
+// This package is a thin alias layer kept for one Sprint to avoid a flag-day migration.
 package runtimedeps
 
 import (
-	"net/http"
-
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/sessionmemory"
-	"aranea-agents/internal/event"
-	"aranea-agents/internal/provider"
+	rt "aranea-agents/internal/runtime"
 
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 )
 
-type Runtime struct {
-	SessionMemory *sessionmemory.Store
-	AgentMCP      *biz.AgentMCPTooling
-	TRPCSession   trpcsession.Service
-}
+// Deprecated: use runtime.PersistenceSet.
+type Runtime = rt.PersistenceSet
 
+// Deprecated: use runtime.TurnDeps.
+type TurnDeps = rt.TurnDeps
+
+// NewRuntime constructs a PersistenceSet (formerly Runtime).
+// Deprecated: use runtime.NewPersistenceSet.
 func NewRuntime(store *sessionmemory.Store, mcp *biz.AgentMCPTooling, trpcSession trpcsession.Service) *Runtime {
-	return &Runtime{SessionMemory: store, AgentMCP: mcp, TRPCSession: trpcSession}
-}
-
-type TurnDeps struct {
-	Agents       biz.AgentRepository
-	AgentsUC     *biz.AgentUsecase
-	ToolsCatalog biz.ToolRepo
-	ToolUC       *biz.ToolUsecase
-	LLMCatalog   *biz.LlmProviderModelUsecase
-	SkillUC      *biz.SkillUsecase
-	Sys          biz.SystemSettingRepo
-	RT           *Runtime
-	LLMHTTP      *http.Client
-	Sessions     *biz.SessionUsecase
-	Compress     biz.NativeTurnCompressor
-	EventBus     event.Bus
-}
-
-func (d TurnDeps) RoundTrip() *provider.RoundTrip {
-	return &provider.RoundTrip{HTTP: d.LLMHTTP}
-}
-
-func (d TurnDeps) SQLiteSessionMemory() bool {
-	return d.RT != nil && d.RT.SessionMemory != nil
+	p := rt.NewPersistenceSet(store, mcp, trpcSession)
+	return &p
 }

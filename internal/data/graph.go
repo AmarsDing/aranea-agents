@@ -152,7 +152,7 @@ func entGraphToBiz(row *ent.GraphDefinition) *biz.GraphDefinition {
 		EntryPoint:       row.EntryPoint,
 		FinishPoint:      row.FinishPoint,
 		EnableCheckpoint: row.EnableCheckpoint,
-		ExecutionEngine:  graphtrpc.ExecutionEngineType(row.ExecutionEngine),
+		ExecutionEngine:  biz.ExecutionEngineType(row.ExecutionEngine),
 		CreatedAt:        row.CreatedAt,
 		UpdatedAt:        row.UpdatedAt,
 	}

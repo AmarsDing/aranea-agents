@@ -15,6 +15,38 @@ import (
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
+// AutoMemoryJobRequest is exported so the cron worker can type-assert queue items.
+type AutoMemoryJobRequest struct {
+	AppName    string
+	SessionID  string
+	UserID     string
+	EnqueuedAt time.Time
+}
+
+// globalAutoMemoryQueue is an in-process queue for auto-memory extraction jobs.
+// The cron worker (internal/cronrunner/jobs/auto_memory.go) drains this queue.
+var autoMemoryQueue = &memoryJobQueue{ch: make(chan AutoMemoryJobRequest, 256)}
+
+type memoryJobQueue struct {
+	ch chan AutoMemoryJobRequest
+}
+
+func (q *memoryJobQueue) enqueue(r AutoMemoryJobRequest) {
+	if r.EnqueuedAt.IsZero() {
+		r.EnqueuedAt = time.Now()
+	}
+	select {
+	case q.ch <- r:
+	default:
+		// Drop silently when channel is full; auto-memory is best-effort.
+	}
+}
+
+func (q *memoryJobQueue) Chan() <-chan AutoMemoryJobRequest { return q.ch }
+
+// GlobalAutoMemoryQueue exposes the process-wide auto-memory job queue for the cron worker.
+func GlobalAutoMemoryQueue() *memoryJobQueue { return autoMemoryQueue }
+
 type sqliteMemoryService struct {
 	store *sessionmemory.Store
 }
@@ -154,7 +186,16 @@ func (s *sqliteMemoryService) Tools() []trpctool.Tool {
 	}
 }
 
-func (s *sqliteMemoryService) EnqueueAutoMemoryJob(_ context.Context, _ *session.Session) error {
+func (s *sqliteMemoryService) EnqueueAutoMemoryJob(_ context.Context, sess *session.Session) error {
+	if s == nil || sess == nil {
+		return nil
+	}
+	// Best-effort: publish to in-memory job queue if one is registered.
+	autoMemoryQueue.enqueue(AutoMemoryJobRequest{
+		AppName:   sess.AppName,
+		SessionID: sess.ID,
+		UserID:    sess.UserID,
+	})
 	return nil
 }
 

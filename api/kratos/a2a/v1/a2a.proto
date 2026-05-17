@@ -1,0 +1,131 @@
+syntax = "proto3";
+
+package kratos.a2a.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+
+option go_package = "aranea-agents/api/kratos/a2a/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.kratos.a2a.v1";
+
+// A2ACapability describes one capability advertised by an agent.
+message A2ACapability {
+  string name = 1;
+  string description = 2;
+  string input_schema_json = 3;
+  string output_schema_json = 4;
+}
+
+// A2AAgentCard is the public metadata published by an A2A-enabled agent.
+message A2AAgentCard {
+  string agent_id = 1;
+  string display_name = 2;
+  string workspace = 3;
+  bool   enabled = 4;
+  repeated A2ACapability capabilities = 5;
+  string updated_at = 6;
+}
+
+// A2AInvokeRequest sends a request from one agent to another.
+message A2AInvokeRequest {
+  string callee_agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string capability = 2 [(google.api.field_behavior) = REQUIRED];
+  string payload_json = 3 [(google.api.field_behavior) = REQUIRED];
+  // caller_session_id is the originating session for audit.
+  string caller_session_id = 4;
+  // timeout_seconds overrides the default invocation timeout.
+  int32  timeout_seconds = 5;
+}
+
+// A2AInvokeResponse returns the result from the callee agent.
+message A2AInvokeResponse {
+  string invoke_id = 1;
+  string status = 2;       // success | error | timeout
+  string result_json = 3;
+  string error_message = 4;
+  int32  duration_ms = 5;
+}
+
+// A2AAuditEntry is one record in the A2A audit log.
+message A2AAuditEntry {
+  string id = 1;
+  string invoke_id = 2;
+  string caller_agent_id = 3;
+  string callee_agent_id = 4;
+  string capability = 5;
+  string status = 6;
+  int32  duration_ms = 7;
+  string workspace = 8;
+  string created_at = 9;
+}
+
+// --- Requests / Responses ---
+
+message UpdateAgentCardRequest {
+  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+  bool   enabled = 2;
+  repeated A2ACapability capabilities = 3;
+}
+
+message GetAgentCardRequest {
+  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message DiscoverRequest {
+  string workspace = 1;
+  string capability = 2;
+}
+
+message DiscoverResponse {
+  repeated A2AAgentCard agents = 1;
+}
+
+message ListAuditRequest {
+  string caller_agent_id = 1;
+  string callee_agent_id = 2;
+  int32  limit = 3;
+  int32  offset = 4;
+}
+
+message ListAuditResponse {
+  repeated A2AAuditEntry items = 1;
+  int32 total = 2;
+}
+
+service A2AService {
+  // Discover A2A-enabled agents in a workspace.
+  rpc Discover(DiscoverRequest) returns (DiscoverResponse) {
+    option (google.api.http) = {
+      get: "/v1/a2a/discover"
+    };
+  }
+
+  // Invoke a capability on a target agent.
+  rpc Invoke(A2AInvokeRequest) returns (A2AInvokeResponse) {
+    option (google.api.http) = {
+      post: "/v1/a2a/invoke"
+      body: "*"
+    };
+  }
+
+  // Manage the agent's A2A card (capabilities + enabled flag).
+  rpc UpdateAgentCard(UpdateAgentCardRequest) returns (A2AAgentCard) {
+    option (google.api.http) = {
+      put: "/v1/a2a/agents/{agent_id}/card"
+      body: "*"
+    };
+  }
+  rpc GetAgentCard(GetAgentCardRequest) returns (A2AAgentCard) {
+    option (google.api.http) = {
+      get: "/v1/a2a/agents/{agent_id}/card"
+    };
+  }
+
+  // Audit log
+  rpc ListAudit(ListAuditRequest) returns (ListAuditResponse) {
+    option (google.api.http) = {
+      get: "/v1/a2a/audit"
+    };
+  }
+}

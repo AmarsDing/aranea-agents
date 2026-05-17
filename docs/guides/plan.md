@@ -128,6 +128,25 @@
 
 **教训**：后续分析框架时必须逐文件扫描，建立 `[文件] → [能力] → [项目集成状态]` 矩阵，避免遗漏。
 
+### 3.6 S1 架构加固成果（2026-05-17）
+
+Sprint 1 完成了以下架构加固，已合并到主干：
+
+| 任务 | 变更 | 验收 |
+|------|------|------|
+| T1 单 SQLite 连接池 | `data.RawDB()` 共享底层连接池；session/graph trpc 适配器接收注入的 `*sql.DB` | `grep -rn "sql.Open" internal/ \| grep -v data/data.go` 空 |
+| T2 WS 接入 Kratos | `WSServer.RegisterOnKratos(srv)` 挂载到 Kratos HTTP；进程仅监听 8000+9000 | 无独立 :8002 进程 |
+| T3 biz 去框架 envelope | `biz/domain_event.go` 定义纯业务 DomainEvent；`biz/domain_event_adapter.go` 提供投影适配 | `go list -deps .../biz/... \| rg trpc-agent-go` 空 |
+| T4 biz 去框架 graph | `biz/graph.go` 直接定义 `StateFieldDef`/`NodeDef`/`GraphBuildConfig` 等业务类型（无 trpc 引用）；`biz/graph_runtime.go` 定义 `GraphBuilderFactory` 纯接口；`adapter/graph/runtime_adapter.go` 实现 bizCfgToTrpc/trpcCfgToBiz 双向转换 | `go list -deps .../biz/... \| rg trpc-agent-go` 空 |
+| T5 Memory cache 修复 | `sqlite_adapter.go` 删除进程内缓存，所有读写直通 SQLite Store | 跨 turn 记忆可见 |
+| T6 Graph builder race 修复 | `BuildStateGraphWithRegistry` 函数内深拷贝入参切片 | `go test -race ./internal/graph/...` 通过 |
+| T7 Graph executions GC | `gcLoop` 每 5min 清理超过 30min 的完成态执行 | 进程内存稳定 |
+| T8 EventBus 可靠投递 | `reliableTypes` 6 类关键事件阻塞最多 100ms 再投递 | tool_result 不被 text_delta 覆盖 |
+| T9 panic recover | `pkg/safego.Go` 统一 recover；goroutine 内 panic 不中断进程 | 单测通过 |
+| T10 ctx 修复 | `loadEffectiveToolKeys` 使用 turn ctx 而非 Background | ctx 取消可传播 |
+| T11 前端 graph 客户端 | `make api` 生成 `web/src/services/kratos/graph/v1/index.ts` | `pnpm build` 通过 |
+| T12 前端 chat 客户端 | `features/chat/api.ts` 使用 `createChatService()` | 无裸 `kratosApi.post` |
+
 ---
 
 ## 四、实施阶段

@@ -153,3 +153,35 @@ export async function updatePendingMessage(
     return false;
   }
 }
+
+export type RunStatusValue = "idle" | "pending" | "running" | "awaiting_user" | "completed" | "failed" | "cancelled";
+
+export interface RunStatus {
+  runId: string;
+  status: RunStatusValue;
+  errorMessage: string;
+  updatedAt: string;
+}
+
+export async function getRunStatus(sessionId: string): Promise<RunStatus> {
+  try {
+    const data = await chatService.GetRunStatus({ sessionId });
+    return {
+      runId: data.runId ?? "",
+      status: (data.status as RunStatusValue) ?? "idle",
+      errorMessage: data.errorMessage ?? "",
+      updatedAt: data.updatedAt ?? "",
+    };
+  } catch {
+    return { runId: "", status: "idle", errorMessage: "", updatedAt: "" };
+  }
+}
+
+export async function awaitUserReply(sessionId: string, reply: string, runId?: string): Promise<boolean> {
+  try {
+    const data = await chatService.AwaitUserReply({ sessionId, reply, runId });
+    return !!data?.accepted;
+  } catch {
+    return false;
+  }
+}

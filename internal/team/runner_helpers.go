@@ -96,19 +96,19 @@ func (r *Runner) finishRunErr(ctx context.Context, run *biz.TeamRun, t0 time.Tim
 	run.FinishedAt = agent.RFC3339Now()
 	run.DurationMS = int(time.Since(t0).Milliseconds())
 	_ = r.teams.UpdateTeamRun(ctx, *run)
-	if r.td.EventBus != nil {
+	if r.td.Pipeline.Bus != nil {
 		cp := *run
 		env := event.NewEnvelope(event.EnvelopeTypeTeamRunFinished, "team-runner", strings.TrimSpace(run.SessionID))
 		env.TeamID = run.TeamID
 		env.Metadata = map[string]any{"run_id": run.ID, "run": cp}
-		r.td.EventBus.Publish(ctx, env)
+		r.td.Pipeline.Bus.Publish(ctx, env)
 
 		failEnv := event.NewEnvelope(event.EnvelopeTypeTeamRunFailed, "team-runner", strings.TrimSpace(run.SessionID))
 		failEnv.TeamID = run.TeamID
 		failEnv.Metadata = map[string]any{"run_id": run.ID, "error_message": msg}
-		r.td.EventBus.Publish(ctx, failEnv)
+		r.td.Pipeline.Bus.Publish(ctx, failEnv)
 	}
-	publishTeamMonitor(ctx, r.td.EventBus, "WARN", fmt.Sprintf("team_run failed team_id=%s run_id=%s session_id=%s: %s", run.TeamID, run.ID, strings.TrimSpace(run.SessionID), msg), strings.TrimSpace(run.SessionID))
+	publishTeamMonitor(ctx, r.td.Pipeline.Bus, "WARN", fmt.Sprintf("team_run failed team_id=%s run_id=%s session_id=%s: %s", run.TeamID, run.ID, strings.TrimSpace(run.SessionID), msg), strings.TrimSpace(run.SessionID))
 }
 
 func (r *Runner) persistStep(ctx context.Context, run biz.TeamRun, teamID string, sortIdx int, m MemberDef, ag biz.Agent, userContent string, asst biz.ChatMessage) {
@@ -137,10 +137,10 @@ func (r *Runner) persistStep(ctx context.Context, run biz.TeamRun, teamID string
 	if err != nil {
 		return
 	}
-	if r.td.EventBus != nil {
+	if r.td.Pipeline.Bus != nil {
 		env := event.NewEnvelope(event.EnvelopeTypeTeamStepFinished, ag.AgentKey, run.SessionID)
 		env.TeamID = teamID
 		env.Metadata = map[string]any{"run_id": run.ID, "step": saved}
-		r.td.EventBus.Publish(ctx, env)
+		r.td.Pipeline.Bus.Publish(ctx, env)
 	}
 }

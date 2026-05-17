@@ -1,0 +1,186 @@
+syntax = "proto3";
+
+package kratos.evaluation.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/empty.proto";
+
+option go_package = "aranea-agents/api/kratos/evaluation/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.kratos.evaluation.v1";
+
+// EvalDataset holds a named set of evaluation cases.
+message EvalDataset {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  int32  case_count = 4;
+  string workspace = 5;
+  string created_at = 6;
+  string updated_at = 7;
+}
+
+// EvalCase is one input/expected-output pair in a dataset.
+message EvalCase {
+  string id = 1;
+  string dataset_id = 2;
+  string input = 3;
+  string expected_output = 4;
+  string metadata_json = 5;
+}
+
+// EvalRun is one async evaluation execution over a dataset.
+message EvalRun {
+  string id = 1;
+  string dataset_id = 2;
+  string agent_id = 3;
+  string status = 4;           // pending | running | completed | failed
+  int32  total_cases = 5;
+  int32  completed_cases = 6;
+  float  exact_match_score = 7;
+  float  contains_match_score = 8;
+  float  llm_judge_score = 9;
+  float  tool_call_accuracy = 10;
+  string error_message = 11;
+  string started_at = 12;
+  string finished_at = 13;
+  string created_at = 14;
+}
+
+// EvalCaseResult is the output for one case in a run.
+message EvalCaseResult {
+  string id = 1;
+  string run_id = 2;
+  string case_id = 3;
+  string actual_output = 4;
+  bool   exact_match = 5;
+  bool   contains_match = 6;
+  float  llm_judge_score = 7;
+  float  tool_call_accuracy = 8;
+  string error_message = 9;
+  string created_at = 10;
+}
+
+// --- Requests / Responses ---
+
+message CreateDatasetRequest {
+  string name = 1 [(google.api.field_behavior) = REQUIRED];
+  string description = 2;
+}
+
+message GetDatasetRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListDatasetsRequest {
+  int32 limit = 1;
+  int32 offset = 2;
+}
+
+message ListDatasetsResponse {
+  repeated EvalDataset items = 1;
+  int32 total = 2;
+}
+
+message DeleteDatasetRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message UploadCasesRequest {
+  string dataset_id = 1 [(google.api.field_behavior) = REQUIRED];
+  // cases_json is a JSON array of {input, expected_output, metadata_json} objects.
+  string cases_json = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message UploadCasesResponse {
+  int32 imported = 1;
+}
+
+message RunEvaluationRequest {
+  string dataset_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string agent_id = 2 [(google.api.field_behavior) = REQUIRED];
+  // metrics is a comma-separated list of metrics to compute (empty = all).
+  string metrics = 3;
+}
+
+message GetRunRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListRunsRequest {
+  string dataset_id = 1;
+  string agent_id = 2;
+  int32 limit = 3;
+  int32 offset = 4;
+}
+
+message ListRunsResponse {
+  repeated EvalRun items = 1;
+  int32 total = 2;
+}
+
+message GetRunResultsRequest {
+  string run_id = 1 [(google.api.field_behavior) = REQUIRED];
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message GetRunResultsResponse {
+  repeated EvalCaseResult items = 1;
+  int32 total = 2;
+}
+
+service EvaluationService {
+  // Datasets
+  rpc CreateDataset(CreateDatasetRequest) returns (EvalDataset) {
+    option (google.api.http) = {
+      post: "/v1/evaluation/datasets"
+      body: "*"
+    };
+  }
+  rpc GetDataset(GetDatasetRequest) returns (EvalDataset) {
+    option (google.api.http) = {
+      get: "/v1/evaluation/datasets/{id}"
+    };
+  }
+  rpc ListDatasets(ListDatasetsRequest) returns (ListDatasetsResponse) {
+    option (google.api.http) = {
+      get: "/v1/evaluation/datasets"
+    };
+  }
+  rpc DeleteDataset(DeleteDatasetRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      delete: "/v1/evaluation/datasets/{id}"
+    };
+  }
+  rpc UploadCases(UploadCasesRequest) returns (UploadCasesResponse) {
+    option (google.api.http) = {
+      post: "/v1/evaluation/datasets/{dataset_id}/cases"
+      body: "*"
+    };
+  }
+
+  // Runs
+  rpc RunEvaluation(RunEvaluationRequest) returns (EvalRun) {
+    option (google.api.http) = {
+      post: "/v1/evaluation/runs"
+      body: "*"
+    };
+  }
+  rpc GetRun(GetRunRequest) returns (EvalRun) {
+    option (google.api.http) = {
+      get: "/v1/evaluation/runs/{id}"
+    };
+  }
+  rpc ListRuns(ListRunsRequest) returns (ListRunsResponse) {
+    option (google.api.http) = {
+      get: "/v1/evaluation/runs"
+    };
+  }
+  rpc GetRunResults(GetRunResultsRequest) returns (GetRunResultsResponse) {
+    option (google.api.http) = {
+      get: "/v1/evaluation/runs/{run_id}/results"
+    };
+  }
+}

@@ -20,6 +20,7 @@ import (
 
 type TRPCTeamBuilderDeps struct {
 	BuilderDeps chatagent.TRPCBuilderDeps
+	UseCache    bool // enable agent build cache for team members
 }
 
 func BuildTRPCTeam(ctx context.Context, def Definition, deps TRPCTeamBuilderDeps, catalogAgent func(ctx context.Context, id string) (biz.Agent, error)) (trpcagent.Agent, error) {
@@ -36,7 +37,12 @@ func BuildTRPCTeam(ctx context.Context, def Definition, deps TRPCTeamBuilderDeps
 		if err != nil {
 			return nil, kerrors.BadRequest("TEAM", fmt.Sprintf("member %s: %v", m.AgentID, err))
 		}
-		trpcAg, err := chatagent.BuildTRPCLLMAgent(ctx, ag, deps.BuilderDeps)
+		var trpcAg trpcagent.Agent
+		if deps.UseCache {
+			trpcAg, err = chatagent.BuildTRPCLLMAgentCached(ctx, ag, deps.BuilderDeps)
+		} else {
+			trpcAg, err = chatagent.BuildTRPCLLMAgent(ctx, ag, deps.BuilderDeps)
+		}
 		if err != nil {
 			return nil, kerrors.InternalServer("TEAM", fmt.Sprintf("build member %s: %v", m.AgentID, err))
 		}

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 	"aranea-agents/internal/pkg/skillstorage"
 	"aranea-agents/internal/skill/importer"
 
@@ -21,9 +22,10 @@ const debounceWindow = 2 * time.Second
 
 // Runner watches the skill root and upserts DB rows from on-disk skill packages.
 type Runner struct {
-	uc  *biz.SkillUsecase
-	sys biz.SystemSettingRepo
-	log log.Logger
+	uc       *biz.SkillUsecase
+	sys      biz.SystemSettingRepo
+	log      log.Logger
+	eventBus event.Bus
 
 	mu           sync.Mutex
 	timer        *time.Timer
@@ -32,8 +34,14 @@ type Runner struct {
 }
 
 // NewRunner returns a filesystem watcher. Pass nil logger to disable structured logs.
+// Pass nil eventBus to disable skill.reload event publishing.
 func NewRunner(uc *biz.SkillUsecase, sys biz.SystemSettingRepo, logger log.Logger) *Runner {
 	return &Runner{uc: uc, sys: sys, log: logger, pending: map[string]struct{}{}}
+}
+
+// NewRunnerWithBus returns a filesystem watcher that publishes skill.reload events.
+func NewRunnerWithBus(uc *biz.SkillUsecase, sys biz.SystemSettingRepo, logger log.Logger, bus event.Bus) *Runner {
+	return &Runner{uc: uc, sys: sys, log: logger, eventBus: bus, pending: map[string]struct{}{}}
 }
 
 func (r *Runner) resolveRoot(ctx context.Context) string {
@@ -266,6 +274,11 @@ func (r *Runner) syncSlug(ctx context.Context, root, slug, source string) {
 		Source:        source,
 	})
 	r.logf(log.LevelInfo, sourceTag, "slug", slug, "skill_id", sk.ID, "duration_ms", dur)
+	if r.eventBus != nil {
+		env := event.NewEnvelope("skill.reload", "skill.watch", "")
+		env.Metadata = map[string]any{"slug": slug}
+		r.eventBus.Publish(ctx, env)
+	}
 }
 
 func (r *Runner) recordFailure(ctx context.Context, slug, source string, t0 time.Time, code string, err error) {

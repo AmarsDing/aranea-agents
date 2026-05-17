@@ -130,6 +130,7 @@ func fromProtoRuntime(pb *v1.AgentRuntimeSettings) *biz.AgentRuntimeSettings {
 		ToolsRetryJitter:                  pb.GetToolsRetryJitter(),
 		ToolsParallelEnabled:              pb.GetToolsParallelEnabled(),
 		ToolsStreamingEnabled:             pb.GetToolsStreamingEnabled(),
+		PlannerKind:                       pb.GetPlannerKind(),
 	}
 }
 
@@ -237,6 +238,7 @@ func toProtoRuntime(b *biz.AgentRuntimeSettings) *v1.AgentRuntimeSettings {
 		ToolsRetryJitter:                  b.ToolsRetryJitter,
 		ToolsParallelEnabled:              b.ToolsParallelEnabled,
 		ToolsStreamingEnabled:             b.ToolsStreamingEnabled,
+		PlannerKind:                       b.PlannerKind,
 	}
 }
 

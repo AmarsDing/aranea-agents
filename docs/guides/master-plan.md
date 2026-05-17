@@ -1,8 +1,13 @@
 # Aranea-Agents 项目开发整体规划文档
 
-> 版本：v1.0（2026-05-17）
+> 版本：v1.1（2026-05-17）
 > 编制依据：`docs/README.md`、`docs/guides/AI-DEVELOPMENT-SPECIFICATION.md`、`docs/guides/plan.md`、`docs/guides/trpc-agent-go-framework.md` 以及 `cmd/`、`internal/`、`api/`、`pkg/`、`web/` 全量源码与配置。
 > 文档定位：作为后续 N 个版本迭代的唯一执行依据，所有结论均锚定到具体文件与行为，不做空泛描述。
+>
+> 伴生文档（本文衍生，可直接用于落地执行）：
+> - 实施方案总览：[docs/guides/implementation-plan.md](implementation-plan.md)
+> - 任务追踪表：[docs/guides/task-tracker.md](task-tracker.md)
+> - Sprint 详细计划：[S1](sprints/S1-p0-redlines.md) · [S2](sprints/S2-architecture-debt.md) · [S3](sprints/S3-observability.md) · [S4](sprints/S4-plugin-skill-planner.md) · [S5](sprints/S5-artifact-cron-tests.md) · [S6](sprints/S6-knowledge-eval-a2a.md)
 
 ---
 
@@ -16,6 +21,12 @@
 - §6 开发优先级划分 —— P0~P3 + 模块迭代顺序
 - §7 编码规范统一标准 —— 红线 + 决策树 + 落地清单
 - §8 落地分类索引 —— ① 可直接落地重构 / ② 新增开发 / ③ 仅调整优化
+- §9 验收标准
+- §10 风险与缓解
+- §11 参考索引
+- §12 配套文档索引（执行入口）
+
+> **快速入口**：本文是全局规划基准（只读），落地执行请直接使用 [implementation-plan.md](implementation-plan.md) + [task-tracker.md](task-tracker.md)。
 
 ---
 
@@ -289,39 +300,40 @@ gRPC :9000 ────────┘
 ## 4. 功能补全计划（M1~M20）
 
 > 状态符号：✅完成 / 🟡部分 / ❌未实现 / 🆕本规划新增
+> 任务编号（Txx）对应 [task-tracker.md](task-tracker.md)，可通过该表追踪完成进度。
 
-| ID | 模块 | 当前实状（基于代码） | 计划动作 | 阶段 |
-|----|------|-----------------------|----------|------|
-| M1 | Agent | ✅ trpc LLMAgent 构建 | 引入 Agent 构建缓存（Q-1）；拆分 Settings sub-struct（Q-22） | P1 |
-| M2 | Runner | ✅ Runner + Turn 流程 | 抽 `RuntimeKernel`；接入 PluginManager；接入 ManagedRunner/SteerableRunner（M-10） | P0 |
-| M3 | Session | ✅ SQLite SessionService（含红线违反） | 单连接池（V-4）；增加 SessionIngestor；完善 RunStatus | P0 |
-| M4 | Graph | ✅ Validator / Checkpoint | 修复 builder 并发 race（B-5）；Checkpoint 基于 Data.RawDB；恢复 ResumeExecution（B-4） | P0 |
-| M5 | Team | ✅ Team Runner | 抽 Envelope 投影到 `event/projection`（R-7） | P1 |
-| M6 | Memory | 🟡 SQLite 适配器但 cache 失效 | 修复 ReadMemories（B-1）；接入 5 个 memory tool（M-2）；EnqueueAutoMemoryJob（M-1） | P0 |
-| M7 | Tool | ✅ Registry/Skillrouter/MCPMount | 删除未用函数（R-1）；提取公共 filter（R-9） | P1 |
-| M8 | MCP | ✅ trpcmcp 集成 | 文档同步；接入 MCP 健康检查 | P2 |
-| M9 | Skill | 🟡 文件 watcher | 实现 `skill/repository` 接口适配；UI 一致化 | P2 |
-| M10 | Plugin | ❌ 仅 CRUD | 适配 PluginManager + Callback Points（M-4） | P1 |
-| M11 | Planner | 🟡 仅 Builtin | 接入 ReAct / A2UI（M-5） | P2 |
-| M12 | Artifact | ❌ | 最小实现 inmemory/local + REST（M-6） | P2 |
-| M13 | Knowledge | ❌ | 设计 + pgvector 集成（M-7） | P3 |
-| M14 | CodeExecutor | 🟡 仅 local | 加 docker / sandbox 选项（M-8） | P3 |
-| M15 | A2A | ❌ | 长期规划（M-9） | P3 |
-| M16 | Gateway | 🟡 chat + ws | 暴露 `GetRunStatus` / `AwaitUserReply` RPC（M-10） | P1 |
-| M17 | Evaluation | ❌ | P3 占位 | P3 |
-| M18 | Cron | ✅ | 增加失败重试 + metrics（B-14） | P2 |
-| M19 | Callback | 🟡 仅 Tool | Agent/Model Callback；统一 Callback 配置（M-12） | P1 |
-| M20 | Event | ✅ EventBus | 背压策略改造（B-8） | P0 |
+| ID | 模块 | 当前实状（基于代码） | 计划动作 | 阶段 | 任务 |
+|----|------|-----------------------|----------|------|------|
+| M1 | Agent | ✅ trpc LLMAgent 构建 | 引入 Agent 构建缓存（Q-1）；拆分 Settings sub-struct（Q-22） | P1 | T16 / T36 |
+| M2 | Runner | ✅ Runner + Turn 流程 | 抽 `RuntimeKernel`；接入 PluginManager；接入 ManagedRunner/SteerableRunner（M-10） | P0 | T14 / T21 |
+| M3 | Session | ✅ SQLite SessionService（含红线违反） | 单连接池（V-4）；增加 SessionIngestor；完善 RunStatus | P0 | T1 / T21 |
+| M4 | Graph | ✅ Validator / Checkpoint | 修复 builder 并发 race（B-5）；Checkpoint 基于 Data.RawDB；恢复 ResumeExecution（B-4） | P0 | T1 / T6 / T7 |
+| M5 | Team | ✅ Team Runner | 抽 Envelope 投影到 `event/projection`（R-7） | P1 | T3 |
+| M6 | Memory | 🟡 SQLite 适配器但 cache 失效 | 修复 ReadMemories（B-1）；接入 5 个 memory tool（M-2）；EnqueueAutoMemoryJob（M-1） | P0 | T5 / T32 / T33 |
+| M7 | Tool | ✅ Registry/Skillrouter/MCPMount | 删除未用函数（R-1）；提取公共 filter（R-9） | P1 | T20 |
+| M8 | MCP | ✅ trpcmcp 集成 | 文档同步；接入 MCP 健康检查 | P2 | T13 |
+| M9 | Skill | 🟡 文件 watcher | 实现 `skill/repository` 接口适配；UI 一致化 | P2 | T30 |
+| M10 | Plugin | ❌ 仅 CRUD | 适配 PluginManager + Callback Points（M-4） | P1 | T29 |
+| M11 | Planner | 🟡 仅 Builtin | 接入 ReAct / A2UI（M-5） | P2 | T31 |
+| M12 | Artifact | ❌ | 最小实现 inmemory/local + REST（M-6） | P2 | T34 |
+| M13 | Knowledge | ❌ | 设计 + pgvector 集成（M-7） | P3 | T38 |
+| M14 | CodeExecutor | 🟡 仅 local | 加 docker / sandbox 选项（M-8） | P3 | T41 |
+| M15 | A2A | ❌ | 长期规划（M-9） | P3 | T40 |
+| M16 | Gateway | 🟡 chat + ws | 暴露 `GetRunStatus` / `AwaitUserReply` RPC（M-10） | P1 | T21 |
+| M17 | Evaluation | ❌ | P3 占位 | P3 | T39 |
+| M18 | Cron | ✅ | 增加失败重试 + metrics（B-14） | P2 | T35 |
+| M19 | Callback | 🟡 仅 Tool | Agent/Model Callback；统一 Callback 配置（M-12） | P1 | T22 |
+| M20 | Event | ✅ EventBus | 背压策略改造（B-8） | P0 | T8 / T15 |
 
 ### 4.1 前端缺口
 
-| ID | 项 | 动作 |
-|----|----|------|
-| F-1 | Graph TS 客户端 | 修复 `make api`；生成 `web/src/services/kratos/graph/v1/`（M-13） |
-| F-2 | Chat 客户端使用 | 改 `features/chat/api.ts` 用生成的 `createChatService()`（M-14） |
-| F-3 | Pinia store 缺失 | 17 个域补 store，遵循 README §7.1（M-15） |
-| F-4 | 统一 axios handler | `services/axiosHandler.ts` 抽错误码映射 + WS 重连策略 |
-| F-5 | i18n / theme tokens | 抽 `web/src/design/`，对接设计 token |
+| ID | 项 | 动作 | 任务 |
+|----|----|------|------|
+| F-1 | Graph TS 客户端 | 修复 `make api`；生成 `web/src/services/kratos/graph/v1/`（M-13） | T11 |
+| F-2 | Chat 客户端使用 | 改 `features/chat/api.ts` 用生成的 `createChatService()`（M-14） | T12 |
+| F-3 | Pinia store 缺失 | 17 个域补 store，遵循 README §7.1（M-15） | T17 |
+| F-4 | 统一 axios handler | `services/axiosHandler.ts` 抽错误码映射 + WS 重连策略 | T18 |
+| F-5 | i18n / theme tokens | 抽 `web/src/design/`，对接设计 token | S6+ |
 
 ---
 
@@ -449,14 +461,14 @@ internal/runtime/
 
 ### 6.6 模块迭代顺序（Sprint 视角）
 
-| Sprint | 主线 | 关键产出 |
-|--------|------|----------|
-| S1（2 周） | P0 红线 + 数据正确性 | 单连接池；WS 改造；Memory 修复；前端 graph 客户端；文档同步 |
-| S2（2 周） | P1 架构债 | RuntimeKernel；EventBus 背压；Agent 构建缓存；前端 store |
-| S3（2 周） | P1 业务可观测 | RunStatus RPC；Callback Chain；统一错误模型；测试基线 |
-| S4（2 周） | P2 功能补全（一） | Plugin 接入；Skill 接入；Planner ReAct |
-| S5（2 周） | P2 功能补全（二） | Artifact；Cron 重试；测试矩阵覆盖 60% |
-| S6+ | P3 / 长期 | Knowledge / Evaluation / A2A / CodeExecutor 沙箱 |
+| Sprint | 主线 | 关键产出 | 详细计划 |
+|--------|------|----------|----------|
+| S1（2 周） | P0 红线 + 数据正确性（T1~T13） | 单连接池；WS 改造；Memory 修复；前端 graph 客户端；文档同步 | [S1-p0-redlines.md](sprints/S1-p0-redlines.md) |
+| S2（2 周） | P1 架构债（T14~T20） | RuntimeKernel；EventBus 背压；Agent 构建缓存；前端 store | [S2-architecture-debt.md](sprints/S2-architecture-debt.md) |
+| S3（2 周） | P1 业务可观测（T21~T28） | RunStatus RPC；Callback Chain；统一错误模型；测试基线 | [S3-observability.md](sprints/S3-observability.md) |
+| S4（2 周） | P2 功能补全（一）（T29~T33） | Plugin 接入；Skill 接入；Planner ReAct；Memory 工具五件套 | [S4-plugin-skill-planner.md](sprints/S4-plugin-skill-planner.md) |
+| S5（2 周） | P2 功能补全（二）（T34~T37） | Artifact；Cron 重试；测试矩阵覆盖 60% | [S5-artifact-cron-tests.md](sprints/S5-artifact-cron-tests.md) |
+| S6+（开放窗口） | P3 / 长期（T38~T41） | Knowledge / Evaluation / A2A / CodeExecutor 沙箱 | [S6-knowledge-eval-a2a.md](sprints/S6-knowledge-eval-a2a.md) |
 
 ---
 
@@ -630,4 +642,21 @@ internal/runtime/
 
 ---
 
-> 文档维护：每个 Sprint 收尾由值班 Tech Lead 刷新 §4 状态表与 §8 落地清单；新增的红线一律同步进 §7.1 并加 CI 检查。
+## 12. 配套文档索引（执行入口）
+
+> 本节文档由 master-plan 衍生，提供逐任务的可执行落地方案。本文（master-plan.md）是**只读基准**，所有执行动作以下列文档为准。
+
+| 文档 | 路径 | 用途 |
+|------|------|------|
+| 实施方案总览 | [docs/guides/implementation-plan.md](implementation-plan.md) | 跨 Sprint 依赖图、风险地图、角色分工、PR 命名规范、度量阈值 |
+| 任务追踪表 | [docs/guides/task-tracker.md](task-tracker.md) | T1~T41 全量勾选表 + 32 个 PR 索引 + 周报模板 + 阻塞登记 |
+| S1 详细计划 | [docs/guides/sprints/S1-p0-redlines.md](sprints/S1-p0-redlines.md) | P0 红线 + 数据正确性（T1~T13，8 PR，2 周） |
+| S2 详细计划 | [docs/guides/sprints/S2-architecture-debt.md](sprints/S2-architecture-debt.md) | P1 架构债（T14~T20，5 PR，2 周） |
+| S3 详细计划 | [docs/guides/sprints/S3-observability.md](sprints/S3-observability.md) | P1 业务可观测 + 测试基线（T21~T28，6 PR，2 周） |
+| S4 详细计划 | [docs/guides/sprints/S4-plugin-skill-planner.md](sprints/S4-plugin-skill-planner.md) | P2 功能补全（一）（T29~T33，5 PR，2 周） |
+| S5 详细计划 | [docs/guides/sprints/S5-artifact-cron-tests.md](sprints/S5-artifact-cron-tests.md) | P2 功能补全（二）+ 测试矩阵 60%（T34~T37，4 PR，2 周） |
+| S6 详细计划 | [docs/guides/sprints/S6-knowledge-eval-a2a.md](sprints/S6-knowledge-eval-a2a.md) | P3 长期能力（T38~T41，4~8 PR，开放窗口） |
+
+---
+
+> 文档维护：每个 Sprint 收尾由值班 Tech Lead 刷新本文 §4 状态表（`任务`列对应任务编号）与 §8 落地清单；新增的红线一律同步进 §7.1 并加 CI 检查；同步更新 [task-tracker.md](task-tracker.md) 对应任务状态。

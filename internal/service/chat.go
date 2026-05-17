@@ -11,7 +11,7 @@ import (
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
-	"aranea-agents/internal/runtimedeps"
+	rt "aranea-agents/internal/runtime"
 	"aranea-agents/internal/team"
 
 	trpcrunner "trpc.group/trpc-go/trpc-agent-go/runner"
@@ -20,16 +20,34 @@ import (
 	"github.com/google/uuid"
 )
 
+// runStatusEntry holds the lifecycle state of a single agent run.
+type runStatusEntry struct {
+	RunID     string
+	Status    string // idle | pending | running | awaiting_user | completed | failed | cancelled
+	ErrMsg    string
+	UpdatedAt time.Time
+}
+
+// awaitReplyCh is sent on channels keyed by sessionID when AwaitUserReply is called.
+type awaitReplyCh struct {
+	RunID string
+	Reply string
+}
+
 type ChatService struct {
 	chatv1.UnimplementedChatServiceServer
 
 	teams          biz.TeamRepository
 	teamsNative    *team.Runner
 	usage          *biz.UsageUsecase
-	td             runtimedeps.TurnDeps
+	td             rt.TurnDeps
 	activeRuns     sync.Map
 	pendingQueue   sync.Map
 	pendingCancels sync.Map
+	// runStatuses stores *runStatusEntry by sessionID.
+	runStatuses sync.Map
+	// awaitChans stores chan awaitReplyCh by sessionID when a run is in awaiting_user state.
+	awaitChans sync.Map
 }
 
 type ChatServiceDeps struct {
@@ -44,7 +62,7 @@ type ChatServiceDeps struct {
 	LLMCatalog   *biz.LlmProviderModelUsecase
 	SkillUC      *biz.SkillUsecase
 	Sys          biz.SystemSettingRepo
-	RT           *runtimedeps.Runtime
+	Persist      rt.PersistenceSet
 	Compress     biz.NativeTurnCompressor
 	EventBus     event.Bus
 }
@@ -54,19 +72,21 @@ func NewChatService(deps ChatServiceDeps) *ChatService {
 		teams:       deps.Teams,
 		teamsNative: deps.TeamsNative,
 		usage:       deps.Usage,
-		td: runtimedeps.TurnDeps{
-			Agents:       deps.Agents,
-			AgentsUC:     deps.AgentsUC,
-			ToolsCatalog: deps.ToolsCatalog,
-			ToolUC:       deps.ToolUC,
-			LLMCatalog:   deps.LLMCatalog,
-			SkillUC:      deps.SkillUC,
-			Sys:          deps.Sys,
-			RT:           deps.RT,
-			LLMHTTP:      &http.Client{Timeout: 300 * time.Second},
-			Sessions:     deps.Sessions,
-			Compress:     deps.Compress,
-			EventBus:     deps.EventBus,
+		td: rt.TurnDeps{
+			Catalog: rt.Catalog{
+				Agents:   deps.Agents,
+				AgentsUC: deps.AgentsUC,
+				Tools:    deps.ToolsCatalog,
+				ToolUC:   deps.ToolUC,
+				LLM:      deps.LLMCatalog,
+				SkillUC:  deps.SkillUC,
+				Settings: deps.Sys,
+			},
+			Persist:  deps.Persist,
+			Pipeline: rt.EventPipeline{Bus: deps.EventBus},
+			LLMHTTP:  &http.Client{Timeout: 300 * time.Second},
+			Sessions: deps.Sessions,
+			Compress: deps.Compress,
 		},
 	}
 	return s
@@ -300,5 +320,64 @@ func (s *ChatService) updatePending(sessionID, entryID, newContent string) bool 
 		if s.pendingQueue.CompareAndSwap(sessionID, val, updated) {
 			return true
 		}
+	}
+}
+
+// setRunStatus atomically updates the run status for a session.
+func (s *ChatService) setRunStatus(sessionID, runID, status, errMsg string) {
+	s.runStatuses.Store(sessionID, &runStatusEntry{
+		RunID:     runID,
+		Status:    status,
+		ErrMsg:    errMsg,
+		UpdatedAt: time.Now(),
+	})
+}
+
+// GetRunStatus returns the current run lifecycle state for a session.
+func (s *ChatService) GetRunStatus(ctx context.Context, req *chatv1.GetRunStatusRequest) (*chatv1.RunStatus, error) {
+	sessionID := strings.TrimSpace(req.GetSessionId())
+	if sessionID == "" {
+		return nil, kerrors.BadRequest("CHAT", "session_id is required")
+	}
+	val, ok := s.runStatuses.Load(sessionID)
+	if !ok {
+		return &chatv1.RunStatus{Status: "idle"}, nil
+	}
+	entry := val.(*runStatusEntry)
+	return &chatv1.RunStatus{
+		RunId:        entry.RunID,
+		Status:       entry.Status,
+		ErrorMessage: entry.ErrMsg,
+		UpdatedAt:    entry.UpdatedAt.Format(time.RFC3339),
+	}, nil
+}
+
+// AwaitUserReply submits a human reply for a run that is paused in awaiting_user state.
+func (s *ChatService) AwaitUserReply(ctx context.Context, req *chatv1.AwaitUserReplyRequest) (*chatv1.AwaitUserReplyResponse, error) {
+	sessionID := strings.TrimSpace(req.GetSessionId())
+	if sessionID == "" {
+		return nil, kerrors.BadRequest("CHAT", "session_id is required")
+	}
+	reply := strings.TrimSpace(req.GetReply())
+	if reply == "" {
+		return nil, kerrors.BadRequest("CHAT", "reply is required")
+	}
+	val, ok := s.awaitChans.Load(sessionID)
+	if !ok {
+		return &chatv1.AwaitUserReplyResponse{Accepted: false}, nil
+	}
+	ch, ok := val.(chan awaitReplyCh)
+	if !ok {
+		return &chatv1.AwaitUserReplyResponse{Accepted: false}, nil
+	}
+	runID := ""
+	if req.RunId != nil {
+		runID = *req.RunId
+	}
+	select {
+	case ch <- awaitReplyCh{RunID: runID, Reply: reply}:
+		return &chatv1.AwaitUserReplyResponse{Accepted: true}, nil
+	default:
+		return &chatv1.AwaitUserReplyResponse{Accepted: false}, nil
 	}
 }

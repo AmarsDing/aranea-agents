@@ -64,10 +64,10 @@ func (s *ChatService) nativeGetChatOptions(ctx context.Context, req *chatv1.GetC
 }
 
 func (s *ChatService) nativeGetProviderOptions(ctx context.Context) (*chatv1.GetChatOptionsResponse, error) {
-	if s.td.LLMCatalog == nil {
+	if s.td.Catalog.LLM == nil {
 		return &chatv1.GetChatOptionsResponse{Items: nil}, nil
 	}
-	rows, err := s.td.LLMCatalog.List(ctx)
+	rows, err := s.td.Catalog.LLM.List(ctx)
 	if err != nil {
 		return &chatv1.GetChatOptionsResponse{Items: nil}, nil
 	}
@@ -94,10 +94,10 @@ func (s *ChatService) nativeGetProviderOptions(ctx context.Context) (*chatv1.Get
 }
 
 func (s *ChatService) nativeGetModelOptions(ctx context.Context) (*chatv1.GetChatOptionsResponse, error) {
-	if s.td.LLMCatalog == nil {
+	if s.td.Catalog.LLM == nil {
 		return &chatv1.GetChatOptionsResponse{Items: nil}, nil
 	}
-	rows, err := s.td.LLMCatalog.List(ctx)
+	rows, err := s.td.Catalog.LLM.List(ctx)
 	if err != nil {
 		return &chatv1.GetChatOptionsResponse{Items: nil}, nil
 	}
@@ -149,11 +149,11 @@ func (s *ChatService) nativeSendChatMessage(ctx context.Context, req *chatv1.Sen
 	}
 	recordChatIngressUsage(ctx, s.usage, req, am, false)
 	if tid := strings.TrimSpace(req.GetTeamId()); tid != "" {
-		if s.td.EventBus != nil {
+		if s.td.Pipeline.Bus != nil {
 			env := event.NewEnvelope(event.EnvelopeTypeTeamRunFinished, "chat-native", "")
 			env.TeamID = tid
 			env.Metadata = map[string]any{"hint": true}
-			s.td.EventBus.Publish(ctx, env)
+			s.td.Pipeline.Bus.Publish(ctx, env)
 		}
 	}
 	return out, nil
@@ -186,13 +186,13 @@ func (s *ChatService) runNativeAgentTurn(ctx context.Context, req *chatv1.SendCh
 		if s.teamsNative == nil {
 			return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.InternalServer("CHAT_TEAM_NATIVE", "team runner not wired")
 		}
-		if s.td.EventBus != nil {
+		if s.td.Pipeline.Bus != nil {
 			env := event.NewEnvelope(event.EnvelopeTypeLog, "chat-native", sess.ID)
 			env.Metadata = map[string]any{"level": "INFO", "source": "chat-native"}
 			env.Content = &event.EnvelopeContent{Text: fmt.Sprintf(
 				"chat_native phase=team_invoke session_id=%s team_id=%s content_len=%d",
 				sess.ID, strings.TrimSpace(sess.TeamID), len(content))}
-			s.td.EventBus.Publish(ctx, env)
+			s.td.Pipeline.Bus.Publish(ctx, env)
 		}
 		return s.teamsNative.RunTurn(ctx, sess, req)
 	}
@@ -239,13 +239,13 @@ func (s *ChatService) hydratedAgent(ctx context.Context, agentID string) (biz.Ag
 	if agentID == "" {
 		return biz.Agent{}, kerrors.BadRequest("CHAT_NATIVE", "agent id is required")
 	}
-	if s.td.AgentsUC != nil {
-		return s.td.AgentsUC.Get(ctx, agentID)
+	if s.td.Catalog.AgentsUC != nil {
+		return s.td.Catalog.AgentsUC.Get(ctx, agentID)
 	}
-	if s.td.Agents == nil {
+	if s.td.Catalog.Agents == nil {
 		return biz.Agent{}, kerrors.InternalServer("CHAT_NATIVE", "agent repository not configured")
 	}
-	return s.td.Agents.GetAgentByID(ctx, agentID)
+	return s.td.Catalog.Agents.GetAgentByID(ctx, agentID)
 }
 
 // RunNativeTurnUnary runs the native in-process agent/team turn, ignoring LEGACY_REST_ORIGIN (for Channel webhooks).

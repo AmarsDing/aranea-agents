@@ -97,6 +97,34 @@ message UpdatePendingMessageResponse {
   bool updated = 1;
 }
 
+// RunStatus represents the lifecycle state of an agent run within a session.
+message RunStatus {
+  // run_id is the unique identifier of the current or most-recent run.
+  string run_id = 1;
+  // status is one of: idle | pending | running | awaiting_user | completed | failed | cancelled.
+  string status = 2;
+  // error_message is only set when status == failed.
+  string error_message = 3;
+  // updated_at is an RFC3339 timestamp of the last status transition.
+  string updated_at = 4;
+}
+
+message GetRunStatusRequest {
+  string session_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// AwaitUserReplyRequest submits the human reply for a paused run that is in awaiting_user state.
+message AwaitUserReplyRequest {
+  string session_id = 1 [(google.api.field_behavior) = REQUIRED];
+  // run_id identifies which run to resume. If omitted, resumes the latest awaiting_user run.
+  optional string run_id = 2;
+  string reply = 3 [(google.api.field_behavior) = REQUIRED];
+}
+
+message AwaitUserReplyResponse {
+  bool accepted = 1;
+}
+
 service ChatService {
   rpc SendChatMessage(SendChatMessageRequest) returns (SendChatMessageResponse) {
     option (google.api.http) = {
@@ -125,6 +153,15 @@ service ChatService {
   rpc UpdatePendingMessage(UpdatePendingMessageRequest) returns (UpdatePendingMessageResponse) {
     option (google.api.http) = {
       post: "/v1/chat/pending/update"
+      body: "*"
+    };
+  }
+  rpc GetRunStatus(GetRunStatusRequest) returns (RunStatus) {
+    option (google.api.http) = {get: "/v1/chat/run-status"};
+  }
+  rpc AwaitUserReply(AwaitUserReplyRequest) returns (AwaitUserReplyResponse) {
+    option (google.api.http) = {
+      post: "/v1/chat/await-reply"
       body: "*"
     };
   }

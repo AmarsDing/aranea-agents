@@ -26,8 +26,8 @@
 ### PR3 — biz 去框架依赖（T3 + T4）
 
 - T3：新建 `internal/biz/domain_event.go` 定义 `DomainEvent`，新建 `internal/biz/domain_event_adapter.go` 实现 `DomainEventPublisher`/`DomainEventSubscriber` 适配器，`EventBusConsumer` 改用 `DomainEvent`
-- T4：新建 `internal/biz/graph_runtime.go` 定义 `GraphRuntime`/`GraphBuilderFactory` 接口，新建 `internal/adapter/graph/runtime_adapter.go` 实现 trpc 适配器，`GraphUsecase`/`TaskUsecase` 改用接口
-- `GraphDefinition` 数据类型保留 `graphtrpc` 具体类型（值对象共享），运行时行为通过接口抽象
+- T4：在 `internal/biz/graph.go` 直接定义 `StateFieldDef`/`NodeDef`/`EdgeDef`/`ConditionalEdgeDef`/`SubgraphDef`/`GraphBuildConfig`/`ExecutionEngineType` 等业务类型，新建 `internal/biz/graph_runtime.go` 定义 `GraphRuntime`/`GraphBuilderFactory` 接口（均使用 biz 类型），`internal/adapter/graph/runtime_adapter.go` 实现 trpc 适配器并提供 `bizCfgToTrpc`/`trpcCfgToBiz` 双向转换
+- `internal/service/graph.go` 同步改用 `biz.NodeDef`/`biz.StateFieldDef` 等类型，`internal/data/graph.go` 同步替换 `ExecutionEngineType` 转换
 - **验收**：`go list -deps aranea-agents/internal/biz/... | rg "trpc-agent-go"` 空输出
 
 ### PR4 — Memory cache 修复（T5）

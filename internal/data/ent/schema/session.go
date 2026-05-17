@@ -54,12 +54,12 @@ func (Session) Fields() []ent.Field {
 		field.Int("output_tokens").Default(0),
 		field.Int("total_tokens").Default(0),
 		field.Int64("total_cost_micro_usd").Default(0),
-		field.Float("avg_latency_ms").Default(0),
+		field.Float("avg_latency_ms").Default(0.0),
 		field.Int("error_count").Default(0),
 
 		field.Int("context_used_tokens").Default(0),
-		field.Float("context_used_ratio").Default(0),
-		field.Float("max_context_used_ratio").Default(0),
+		field.Float("context_used_ratio").Default(0.0),
+		field.Float("max_context_used_ratio").Default(0.0),
 		field.String("context_status").Default("normal"),
 
 		field.String("first_message_at").Default(""),

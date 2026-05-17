@@ -13,11 +13,8 @@ import (
 	"aranea-agents/internal/agent"
 	"aranea-agents/internal/agent/intent"
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/data/sessionmemory"
 	"aranea-agents/internal/event"
 	"aranea-agents/pkg/strutil"
-
-	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
@@ -52,15 +49,15 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 	if err != nil {
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
-	publishTeamMonitor(ctx, r.td.EventBus, "INFO", fmt.Sprintf(
+	publishTeamMonitor(ctx, r.td.Pipeline.Bus, "INFO", fmt.Sprintf(
 		"team_turn phase=start session_id=%s run_id=%s team_id=%s mode=%s members=%d",
 		sess.ID, run.ID, teamRow.ID, mode, len(members)), sess.ID)
-	if r.td.EventBus != nil {
+	if r.td.Pipeline.Bus != nil {
 		cp := run
 		env := event.NewEnvelope(event.EnvelopeTypeTeamRunStarted, "team-runner", sess.ID)
 		env.TeamID = teamRow.ID
 		env.Metadata = map[string]any{"run_id": run.ID, "run": cp}
-		r.td.EventBus.Publish(ctx, env)
+		r.td.Pipeline.Bus.Publish(ctx, env)
 	}
 
 	t0 := time.Now()
@@ -91,35 +88,29 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 	prov0 := strutil.FirstNonEmpty(provOpt, sess.DefaultProvider, firstAg.Provider)
 	mod0 := strutil.FirstNonEmpty(modOpt, sess.DefaultModel, firstAg.Model)
 	builderDeps := agent.TRPCBuilderDeps{
-		Catalog:    r.td.LLMCatalog,
-		AgentUC:    r.td.AgentsUC,
-		Agents:     r.td.Agents,
+		Catalog:    r.td.Catalog.LLM,
+		AgentUC:    r.td.Catalog.AgentsUC,
+		Agents:     r.td.Catalog.Agents,
 		RT:         r.td.RoundTrip(),
-		SkillUC:    r.td.SkillUC,
-		MCPTooling: r.td.RT.AgentMCP,
-		ToolUC:     r.td.ToolUC,
-		Sys:        r.td.Sys,
+		SkillUC:    r.td.Catalog.SkillUC,
+		MCPTooling: r.td.Persist.AgentMCP,
+		ToolUC:     r.td.Catalog.ToolUC,
+		Sys:        r.td.Catalog.Settings,
 		Provider:   prov0,
 		Model:      mod0,
 		DialogMode: dialogMode,
 	}
-	teamDeps := TRPCTeamBuilderDeps{BuilderDeps: builderDeps}
+	teamDeps := TRPCTeamBuilderDeps{BuilderDeps: builderDeps, UseCache: true}
 	root, err := BuildTRPCTeam(ctx, def, teamDeps, r.catalogAgent)
 	if err != nil {
 		r.finishRunErr(ctx, &run, t0, err.Error())
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
-	publishTeamMonitor(ctx, r.td.EventBus, "INFO", fmt.Sprintf(
+	publishTeamMonitor(ctx, r.td.Pipeline.Bus, "INFO", fmt.Sprintf(
 		"team_turn phase=team_built session_id=%s run_id=%s mode=%s",
 		sess.ID, run.ID, mode), sess.ID)
 
-	var trpcSession trpcsession.Service
-	var sessionMemory *sessionmemory.Store
-	if r.td.RT != nil {
-		trpcSession = r.td.RT.TRPCSession
-		sessionMemory = r.td.RT.SessionMemory
-	}
-	runnerDeps := agent.NewRunnerDepsFromRuntime(trpcSession, sessionMemory)
+	runnerDeps := agent.NewRunnerDepsFromRuntime(r.td.Persist.Session, r.td.Persist.Memory)
 	runner, err := agent.NewTRPCRunner(root, runnerDeps)
 	if err != nil {
 		r.finishRunErr(ctx, &run, t0, err.Error())
@@ -138,7 +129,7 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
 	sendText := content
-	intRes := intent.Run(ctx, intent.IntentPassFromAgent(firstAg), r.td.LLMCatalog, r.td.LLMHTTP, prov0, mod0, content)
+	intRes := intent.Run(ctx, intent.IntentPassFromAgent(firstAg), r.td.Catalog.LLM, r.td.LLMHTTP, prov0, mod0, content)
 	if intRes.Artifact != nil {
 		if strings.TrimSpace(intRes.RawJSON) != "" {
 			merged, merr := intent.MergeIntoUserOptionsJSON(userOpts, intRes.RawJSON)
@@ -156,18 +147,18 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 		RunID:     run.ID,
 		TeamID:    teamRow.ID,
 	}
-	if r.td.EventBus != nil {
+	if r.td.Pipeline.Bus != nil {
 		env := event.NewEnvelope(event.EnvelopeTypeIntentPass, firstAg.ID, sess.ID)
 		env.TeamID = teamRow.ID
 		env.Metadata = intent.BuildIntentPassPayload(intRes, meta)
-		r.td.EventBus.Publish(ctx, env)
+		r.td.Pipeline.Bus.Publish(ctx, env)
 	}
-	if r.td.EventBus != nil {
+	if r.td.Pipeline.Bus != nil {
 		level, msg := intent.MonitorLogEntry(intRes, "team", meta)
 		logEnv := event.NewEnvelope(event.EnvelopeTypeLog, "intent-pass", sess.ID)
 		logEnv.Metadata = map[string]any{"level": level, "source": "intent-pass"}
 		logEnv.Content = &event.EnvelopeContent{Text: msg}
-		r.td.EventBus.Publish(ctx, logEnv)
+		r.td.Pipeline.Bus.Publish(ctx, logEnv)
 	}
 
 	userMsg = biz.ChatMessage{
@@ -194,13 +185,13 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 		runCtx, cancel = context.WithTimeout(ctx, dur)
 		defer cancel()
 	}
-	publishTeamMonitor(ctx, r.td.EventBus, "INFO", fmt.Sprintf(
+	publishTeamMonitor(ctx, r.td.Pipeline.Bus, "INFO", fmt.Sprintf(
 		"team_turn phase=trpc_run_start session_id=%s run_id=%s",
 		sess.ID, run.ID), sess.ID)
 
 	events, err := agent.RunTRPCUserTurn(runCtx, runner, uid, sess.ID, sendText)
 	if err != nil {
-		publishTeamMonitor(ctx, r.td.EventBus, "WARN", fmt.Sprintf(
+		publishTeamMonitor(ctx, r.td.Pipeline.Bus, "WARN", fmt.Sprintf(
 			"team_turn phase=run_error session_id=%s run_id=%s err=%v",
 			sess.ID, run.ID, err), sess.ID)
 		r.finishRunErr(ctx, &run, t0, err.Error())
@@ -212,7 +203,7 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 		RequestID: run.ID,
 		TeamID:    teamRow.ID,
 	}
-	result := agent.ConsumeEventStream(runCtx, events, r.td.EventBus, projectMeta)
+	result := agent.ConsumeEventStream(runCtx, events, r.td.Pipeline.Bus, projectMeta)
 	if runCtx.Err() != nil {
 		hint := ""
 		switch {
@@ -223,14 +214,14 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 		case errors.Is(runCtx.Err(), context.Canceled):
 			hint = " hint=client_disconnect_or_abort"
 		}
-		publishTeamMonitor(ctx, r.td.EventBus, "WARN", fmt.Sprintf(
+		publishTeamMonitor(ctx, r.td.Pipeline.Bus, "WARN", fmt.Sprintf(
 			"team_turn phase=cancelled session_id=%s run_id=%s err=%v%s",
 			sess.ID, run.ID, runCtx.Err(), hint), sess.ID)
 		r.finishRunErr(ctx, &run, t0, runCtx.Err().Error())
 		return userMsg, biz.ChatMessage{}, runCtx.Err()
 	}
 
-	publishTeamMonitor(ctx, r.td.EventBus, "INFO", fmt.Sprintf(
+	publishTeamMonitor(ctx, r.td.Pipeline.Bus, "INFO", fmt.Sprintf(
 		"team_turn phase=events_done session_id=%s run_id=%s",
 		sess.ID, run.ID), sess.ID)
 
@@ -317,12 +308,12 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 		r.td.Compress.AfterNativeTurn(ctx, sess.ID, compressAg)
 	}
 
-	if r.td.EventBus != nil {
+	if r.td.Pipeline.Bus != nil {
 		cp := run
 		env := event.NewEnvelope(event.EnvelopeTypeTeamRunFinished, "team-runner", sess.ID)
 		env.TeamID = teamRow.ID
 		env.Metadata = map[string]any{"run_id": run.ID, "run": cp}
-		r.td.EventBus.Publish(ctx, env)
+		r.td.Pipeline.Bus.Publish(ctx, env)
 	}
 	return userMsg, assistantMsg, nil
 }

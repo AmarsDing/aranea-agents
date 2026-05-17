@@ -167,6 +167,10 @@ changelog 末尾通过链接指向对应的 devlog 详细记录。
 | [2026-05-16-Graph.md](./changelog/2026-05-16-Graph.md) | Graph 工作流完善（校验引擎+模板+全链路） |
 | [2026-05-16-Session-Optimize.md](./changelog/2026-05-16-Session-Optimize.md) | Session 模块优化（通用更新/恢复/分页/排序/过滤） |
 | [2026-05-17-Session-Turns.md](./changelog/2026-05-17-Session-Turns.md) | Session Turns 编排追踪 + Detail 页 + Restore/Archive |
+| [2026-05-17-S1-Hardening.md](./changelog/2026-05-17-S1-Hardening.md) | S1 P0 红线加固：单连接池/WS接入/biz解耦/内存缓存修复/并发安全/EventBus可靠投递/前端graph客户端生成 |
+| [2026-05-17-S2-Architecture.md](./changelog/2026-05-17-S2-Architecture.md) | S2 架构债清理：runtime包重构/EventBus背压策略/Agent缓存LRU/17个Pinia store/axios拦截器/统一WS客户端 |
+| [2026-05-17-S3-Observability.md](./changelog/2026-05-17-S3-Observability.md) | S3 业务可观测：RunStatus RPC/Callback Chain/apierror/Workspace中间件/Prometheus metrics/lint工具/CI/测试基线 |
+| [2026-05-17-S4-Plugin-Skill-Planner.md](./changelog/2026-05-17-S4-Plugin-Skill-Planner.md) | S4 功能补全：Plugin运行时(AuditLogPlugin/热重载)/Skill DB仓库/Planner多策略(builtin/react/a2ui)/Memory工具注入/AutoMemory后台任务 |
 
 ---
 

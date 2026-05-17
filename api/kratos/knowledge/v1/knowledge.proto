@@ -1,0 +1,169 @@
+syntax = "proto3";
+
+package kratos.knowledge.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/empty.proto";
+
+option go_package = "aranea-agents/api/kratos/knowledge/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.kratos.knowledge.v1";
+
+// KnowledgeCollection is a named vector store with a fixed embedding model.
+message KnowledgeCollection {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  string embedding_model = 4;
+  int32  dim = 5;
+  string status = 6;          // active | indexing | error
+  int32  document_count = 7;
+  int32  chunk_count = 8;
+  string workspace = 9;
+  string created_at = 10;
+  string updated_at = 11;
+}
+
+// KnowledgeDocument is one source document ingested into a collection.
+message KnowledgeDocument {
+  string id = 1;
+  string collection_id = 2;
+  string source = 3;          // filename, URL, or description
+  string mime_type = 4;
+  int64  size_bytes = 5;
+  int32  chunk_count = 6;
+  string status = 7;          // pending | indexing | indexed | error
+  string error_message = 8;
+  string created_at = 9;
+  string updated_at = 10;
+}
+
+// KnowledgeChunk is one indexed text chunk with its embedding vector.
+message KnowledgeChunk {
+  string id = 1;
+  string doc_id = 2;
+  string collection_id = 3;
+  string content = 4;
+  repeated float embedding = 5;
+  string metadata_json = 6;
+  int32  chunk_index = 7;
+  float  score = 8;           // similarity score (only in search results)
+}
+
+// --- Requests / Responses ---
+
+message CreateCollectionRequest {
+  string name = 1 [(google.api.field_behavior) = REQUIRED];
+  string description = 2;
+  string embedding_model = 3 [(google.api.field_behavior) = REQUIRED];
+}
+
+message GetCollectionRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListCollectionsRequest {
+  int32 limit = 1;
+  int32 offset = 2;
+}
+
+message ListCollectionsResponse {
+  repeated KnowledgeCollection items = 1;
+  int32 total = 2;
+}
+
+message DeleteCollectionRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message IngestDocumentRequest {
+  string collection_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string source = 2 [(google.api.field_behavior) = REQUIRED];
+  string mime_type = 3;
+  // content_base64 is the raw document payload (base64-encoded).
+  string content_base64 = 4 [(google.api.field_behavior) = REQUIRED];
+  string metadata_json = 5;
+  // chunk_size is the target token/char size per chunk (0 = server default 512).
+  int32 chunk_size = 6;
+  // chunk_overlap is the token/char overlap between consecutive chunks (0 = server default 64).
+  int32 chunk_overlap = 7;
+}
+
+message ListDocumentsRequest {
+  string collection_id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message ListDocumentsResponse {
+  repeated KnowledgeDocument items = 1;
+  int32 total = 2;
+}
+
+message DeleteDocumentRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message SearchRequest {
+  string collection_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string query = 2 [(google.api.field_behavior) = REQUIRED];
+  int32 top_k = 3;            // default 5
+  float min_score = 4;        // minimum similarity threshold (0 = no filter)
+  string filter_json = 5;     // optional metadata filter (JSON)
+}
+
+message SearchResponse {
+  repeated KnowledgeChunk chunks = 1;
+}
+
+service KnowledgeService {
+  // Collections
+  rpc CreateCollection(CreateCollectionRequest) returns (KnowledgeCollection) {
+    option (google.api.http) = {
+      post: "/v1/knowledge/collections"
+      body: "*"
+    };
+  }
+  rpc GetCollection(GetCollectionRequest) returns (KnowledgeCollection) {
+    option (google.api.http) = {
+      get: "/v1/knowledge/collections/{id}"
+    };
+  }
+  rpc ListCollections(ListCollectionsRequest) returns (ListCollectionsResponse) {
+    option (google.api.http) = {
+      get: "/v1/knowledge/collections"
+    };
+  }
+  rpc DeleteCollection(DeleteCollectionRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      delete: "/v1/knowledge/collections/{id}"
+    };
+  }
+
+  // Documents
+  rpc IngestDocument(IngestDocumentRequest) returns (KnowledgeDocument) {
+    option (google.api.http) = {
+      post: "/v1/knowledge/documents"
+      body: "*"
+    };
+  }
+  rpc ListDocuments(ListDocumentsRequest) returns (ListDocumentsResponse) {
+    option (google.api.http) = {
+      get: "/v1/knowledge/documents"
+    };
+  }
+  rpc DeleteDocument(DeleteDocumentRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      delete: "/v1/knowledge/documents/{id}"
+    };
+  }
+
+  // Search
+  rpc Search(SearchRequest) returns (SearchResponse) {
+    option (google.api.http) = {
+      post: "/v1/knowledge/search"
+      body: "*"
+    };
+  }
+}

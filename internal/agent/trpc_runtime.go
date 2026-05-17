@@ -9,6 +9,7 @@ import (
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
 	trpcmemory "trpc.group/trpc-go/trpc-agent-go/memory"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
+	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
 	trpcrunner "trpc.group/trpc-go/trpc-agent-go/runner"
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 )
@@ -19,6 +20,9 @@ type TRPCRunnerDeps struct {
 	AppName        string
 	SessionService trpcsession.Service
 	MemoryService  trpcmemory.Service
+	// Plugins is an optional list of runner-level plugins injected at runner creation.
+	// Populate via plugintrpc.Runtime.Plugins() after hot-loading from the DB.
+	Plugins []trpcplugin.Plugin
 }
 
 func NewTRPCRunner(root trpcagent.Agent, deps TRPCRunnerDeps, opts ...trpcrunner.Option) (trpcrunner.ManagedRunner, error) {
@@ -34,6 +38,9 @@ func NewTRPCRunner(root trpcagent.Agent, deps TRPCRunnerDeps, opts ...trpcrunner
 	}
 	if deps.MemoryService != nil {
 		opts = append([]trpcrunner.Option{trpcrunner.WithMemoryService(deps.MemoryService)}, opts...)
+	}
+	if len(deps.Plugins) > 0 {
+		opts = append(opts, trpcrunner.WithPlugins(deps.Plugins...))
 	}
 	r := trpcrunner.NewRunner(appName, root, opts...)
 	mr, ok := r.(trpcrunner.ManagedRunner)

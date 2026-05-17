@@ -1,0 +1,144 @@
+{
+  "__inputs": [
+    {
+      "name": "DS_PROMETHEUS",
+      "label": "Prometheus",
+      "description": "Prometheus data source connected to Aranea metrics endpoint (/metrics)",
+      "type": "datasource",
+      "pluginId": "prometheus",
+      "pluginName": "Prometheus"
+    }
+  ],
+  "__requires": [
+    { "type": "grafana", "id": "grafana", "name": "Grafana", "version": "10.0.0" },
+    { "type": "datasource", "id": "prometheus", "name": "Prometheus", "version": "1.0.0" },
+    { "type": "panel", "id": "timeseries", "name": "Time series", "version": "" },
+    { "type": "panel", "id": "gauge", "name": "Gauge", "version": "" },
+    { "type": "panel", "id": "stat", "name": "Stat", "version": "" }
+  ],
+  "annotations": { "list": [] },
+  "description": "Aranea-Agents runtime observability dashboard",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "title": "Chat Turn Duration (p50 / p95 / p99)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(aranea_chat_turn_duration_seconds_bucket[5m])) by (le, agent_id))",
+          "legendFormat": "p50 {{agent_id}}"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(aranea_chat_turn_duration_seconds_bucket[5m])) by (le, agent_id))",
+          "legendFormat": "p95 {{agent_id}}"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(aranea_chat_turn_duration_seconds_bucket[5m])) by (le, agent_id))",
+          "legendFormat": "p99 {{agent_id}}"
+        }
+      ]
+    },
+    {
+      "title": "Agent Build Cache Hit Rate",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        {
+          "expr": "rate(aranea_agent_build_cache_hits_total[5m]) / (rate(aranea_agent_build_cache_hits_total[5m]) + rate(aranea_agent_build_cache_misses_total[5m]))",
+          "legendFormat": "Hit Rate"
+        }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "colorMode": "background" },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "thresholds": { "steps": [ {"color": "red", "value": 0}, {"color": "yellow", "value": 0.5}, {"color": "green", "value": 0.8} ] } } }
+    },
+    {
+      "title": "Event Bus Dropped Events",
+      "type": "timeseries",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        {
+          "expr": "sum(rate(aranea_event_bus_dropped_total[5m])) by (event_type, policy)",
+          "legendFormat": "{{event_type}} ({{policy}})"
+        }
+      ]
+    },
+    {
+      "title": "Graph Active Executions",
+      "type": "gauge",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        { "expr": "aranea_graph_active_executions", "legendFormat": "Active" }
+      ],
+      "fieldConfig": { "defaults": { "min": 0, "thresholds": { "steps": [ {"color": "green", "value": 0}, {"color": "yellow", "value": 10}, {"color": "red", "value": 50} ] } } }
+    },
+    {
+      "title": "Tool Invocations / sec",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        {
+          "expr": "sum(rate(aranea_tool_invocation_total[5m])) by (tool, status)",
+          "legendFormat": "{{tool}} ({{status}})"
+        }
+      ]
+    },
+    {
+      "title": "LLM Provider Requests / sec",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        {
+          "expr": "sum(rate(aranea_provider_request_total[5m])) by (provider, model, status)",
+          "legendFormat": "{{provider}}/{{model}} ({{status}})"
+        }
+      ]
+    },
+    {
+      "title": "LLM Provider Latency (p95)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(aranea_provider_request_duration_seconds_bucket[5m])) by (le, provider, model))",
+          "legendFormat": "p95 {{provider}}/{{model}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "tags": ["aranea", "ai-agents"],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "definition": "label_values(aranea_chat_turn_duration_seconds_count, agent_id)",
+        "name": "agent_id",
+        "label": "Agent",
+        "type": "query",
+        "multi": true,
+        "includeAll": true
+      }
+    ]
+  },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Aranea-Agents Runtime",
+  "uid": "aranea-agents-runtime",
+  "version": 1
+}

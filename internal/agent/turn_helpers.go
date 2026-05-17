@@ -11,6 +11,7 @@ import (
 	sessiontrpc "aranea-agents/internal/session/trpc"
 
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
+	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 )
 
@@ -21,7 +22,7 @@ type EventStreamResult struct {
 	CompletionTok int
 }
 
-func NewRunnerDepsFromRuntime(trpcSession trpcsession.Service, sessionMemory *sessionmemory.Store) TRPCRunnerDeps {
+func NewRunnerDepsFromRuntime(trpcSession trpcsession.Service, sessionMemory *sessionmemory.Store, plugins ...trpcplugin.Plugin) TRPCRunnerDeps {
 	deps := TRPCRunnerDeps{}
 	if trpcSession != nil {
 		deps.SessionService = trpcSession
@@ -31,6 +32,9 @@ func NewRunnerDepsFromRuntime(trpcSession trpcsession.Service, sessionMemory *se
 	}
 	if deps.SessionService == nil {
 		deps.SessionService = sessiontrpc.NewInMemorySessionService()
+	}
+	if len(plugins) > 0 {
+		deps.Plugins = plugins
 	}
 	return deps
 }

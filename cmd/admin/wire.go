@@ -17,7 +17,7 @@ import (
 	"aranea-agents/internal/data"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/provider"
-	"aranea-agents/internal/runtimedeps"
+	rt "aranea-agents/internal/runtime"
 	"aranea-agents/internal/server"
 	"aranea-agents/internal/service"
 	"aranea-agents/internal/skill/watch"
@@ -58,7 +58,7 @@ func provideSkillWatchRunner(skillUC *biz.SkillUsecase, sys biz.SystemSettingRep
 	return watch.NewRunner(skillUC, sys, logger)
 }
 
-func provideSessionTitleGenerator(catalog *biz.LlmProviderModelUsecase, rt *runtimedeps.Runtime) biz.SessionTitleGenerator {
+func provideSessionTitleGenerator(catalog *biz.LlmProviderModelUsecase, _ rt.PersistenceSet) biz.SessionTitleGenerator {
 	if catalog == nil {
 		return biz.NewNoopSessionTitleGenerator()
 	}
@@ -78,7 +78,7 @@ func provideChatServiceDeps(
 	llmCatalog *biz.LlmProviderModelUsecase,
 	skillUC *biz.SkillUsecase,
 	sys biz.SystemSettingRepo,
-	rt *runtimedeps.Runtime,
+	persist rt.PersistenceSet,
 	compress biz.NativeTurnCompressor,
 	eventBus event.Bus,
 ) service.ChatServiceDeps {
@@ -94,7 +94,7 @@ func provideChatServiceDeps(
 		LLMCatalog:   llmCatalog,
 		SkillUC:      skillUC,
 		Sys:          sys,
-		RT:           rt,
+		Persist:      persist,
 		Compress:     compress,
 		EventBus:     eventBus,
 	}
@@ -134,7 +134,7 @@ func wireApp(*conf.Server, *conf.Data, log.Logger) (wireOut, func(), error) {
 		provideChatServiceDeps,
 		provideRunCanceller,
 		provideChatSender,
-		runtimedeps.NewRuntime,
+		rt.NewPersistenceSet,
 		newApp,
 		provideWireOut,
 	))

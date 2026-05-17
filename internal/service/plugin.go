@@ -4,9 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log/slog"
 
 	v1 "aranea-agents/api/kratos/plugin/v1"
 	"aranea-agents/internal/biz"
+	plugintrpc "aranea-agents/internal/plugin/trpc"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
@@ -15,11 +17,25 @@ import (
 type PluginService struct {
 	v1.UnimplementedPluginServiceServer
 
-	uc *biz.PluginUsecase
+	uc      *biz.PluginUsecase
+	runtime *plugintrpc.Runtime
 }
 
-func NewPluginService(uc *biz.PluginUsecase) *PluginService {
-	return &PluginService{uc: uc}
+func NewPluginService(uc *biz.PluginUsecase, runtime *plugintrpc.Runtime) *PluginService {
+	return &PluginService{uc: uc, runtime: runtime}
+}
+
+// reloadRuntime fetches all enabled plugins and hot-reloads the plugin Runtime.
+func (s *PluginService) reloadRuntime(ctx context.Context) {
+	if s.runtime == nil {
+		return
+	}
+	result, err := s.uc.List(ctx, biz.PluginListQuery{Enabled: "true", Limit: 200})
+	if err != nil {
+		slog.Warn("plugin.reloadRuntime: list enabled failed", "error", err)
+		return
+	}
+	s.runtime.Apply(ctx, result.Items)
 }
 
 func toProtoPlugin(p biz.Plugin) *v1.Plugin {
@@ -87,6 +103,7 @@ func (s *PluginService) TogglePluginEnabled(ctx context.Context, req *v1.ToggleP
 		}
 		return nil, err
 	}
+	s.reloadRuntime(ctx)
 	return toProtoPlugin(out), nil
 }
 
@@ -98,5 +115,6 @@ func (s *PluginService) UpdatePluginConfig(ctx context.Context, req *v1.UpdatePl
 		}
 		return nil, err
 	}
+	s.reloadRuntime(ctx)
 	return toProtoPlugin(out), nil
 }

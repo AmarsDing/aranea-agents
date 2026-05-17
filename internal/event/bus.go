@@ -8,20 +8,41 @@ import (
 	"time"
 )
 
-type Bus interface {
-	Publish(ctx context.Context, envelope Envelope)
-	Subscribe(opts SubscribeOptions) (<-chan Envelope, func())
-	DropCount() uint64
-}
+// DropPolicy controls what happens when a subscriber's buffer is full.
+type DropPolicy int
 
+const (
+	// DropOldest evicts the oldest event in the buffer to make room for the new one.
+	DropOldest DropPolicy = iota
+	// DropNewest silently discards the new event when the buffer is full.
+	DropNewest
+	// BlockUpTo blocks for a configurable duration before falling back to DropOldest.
+	BlockUpTo DropPolicy = 2
+)
+
+// SubscribeOptions configures a single Bus subscription.
 type SubscribeOptions struct {
+	// Routing filters — at least one must match for an event to be delivered.
 	SessionID   string
 	TeamID      string
 	Channel     string
 	FilterKey   string
 	EventTypes  []EnvelopeType
 	LevelFilter string
-	BufferSize  int
+
+	// Backpressure controls.
+	BufferSize  int           // channel capacity (default 128, capped at 512)
+	Reliable    bool          // shorthand: sets DropPolicy=BlockUpTo(100ms) for known critical types
+	DropPolicy  DropPolicy    // default DropOldest
+	BlockFor    time.Duration // used when DropPolicy=BlockUpTo (default 100ms if Reliable=true)
+	Selector    func(EnvelopeType) bool // additional per-type filter (nil = accept all)
+}
+
+// Bus is the in-process event fanout hub.
+type Bus interface {
+	Publish(ctx context.Context, envelope Envelope)
+	Subscribe(opts SubscribeOptions) (<-chan Envelope, func())
+	DropCount() uint64
 }
 
 type bus struct {
@@ -36,13 +57,16 @@ type subscriber struct {
 	opts SubscribeOptions
 }
 
+// NewBus returns a new in-process event bus.
 func NewBus() Bus {
 	return &bus{
 		subscribers: make(map[uint64]*subscriber),
 	}
 }
 
-func reliableTypes() map[EnvelopeType]struct{} {
+// criticalTypes returns the set of event types that must never be silently dropped.
+// These are persisted session events where loss causes observable data corruption.
+func criticalTypes() map[EnvelopeType]struct{} {
 	return map[EnvelopeType]struct{}{
 		EnvelopeTypeToolResult:      {},
 		EnvelopeTypeError:           {},
@@ -57,7 +81,7 @@ func (b *bus) Publish(ctx context.Context, env Envelope) {
 	if env.Channel == "" {
 		env.Channel = RouteChannel(env)
 	}
-	_, isReliable := reliableTypes()[env.Type]
+	_, isCritical := criticalTypes()[env.Type]
 
 	b.mu.RLock()
 	defer b.mu.RUnlock()
@@ -65,21 +89,42 @@ func (b *bus) Publish(ctx context.Context, env Envelope) {
 		if !b.matchSubscriber(sub.opts, env) {
 			continue
 		}
-		if isReliable {
-			b.deliverReliable(sub, env)
-		} else {
-			b.deliverLossy(sub, env)
+		if sub.opts.Selector != nil && !sub.opts.Selector(env.Type) {
+			continue
+		}
+
+		policy := sub.opts.DropPolicy
+		blockFor := sub.opts.BlockFor
+
+		// Reliable subscriptions or critical event types get block-up-to semantics.
+		if sub.opts.Reliable || isCritical {
+			policy = BlockUpTo
+			if blockFor <= 0 {
+				blockFor = 100 * time.Millisecond
+			}
+		}
+
+		switch policy {
+		case BlockUpTo:
+			b.deliverBlockUpTo(sub, env, blockFor)
+		case DropNewest:
+			b.deliverDropNewest(sub, env)
+		default: // DropOldest
+			b.deliverDropOldest(sub, env)
 		}
 	}
 }
 
-func (b *bus) deliverReliable(sub *subscriber, env Envelope) {
+func (b *bus) deliverBlockUpTo(sub *subscriber, env Envelope, blockFor time.Duration) {
 	select {
 	case sub.ch <- env:
 		return
 	default:
 	}
-	deadline := time.Now().Add(100 * time.Millisecond)
+	if blockFor <= 0 {
+		blockFor = 100 * time.Millisecond
+	}
+	deadline := time.Now().Add(blockFor)
 	for time.Now().Before(deadline) {
 		select {
 		case sub.ch <- env:
@@ -87,10 +132,11 @@ func (b *bus) deliverReliable(sub *subscriber, env Envelope) {
 		case <-time.After(10 * time.Millisecond):
 		}
 	}
-	b.dropCount.Add(1)
+	// Deadline exceeded — fall back to evicting oldest.
+	b.deliverDropOldest(sub, env)
 }
 
-func (b *bus) deliverLossy(sub *subscriber, env Envelope) {
+func (b *bus) deliverDropOldest(sub *subscriber, env Envelope) {
 	select {
 	case sub.ch <- env:
 	default:
@@ -102,7 +148,16 @@ func (b *bus) deliverLossy(sub *subscriber, env Envelope) {
 				b.dropCount.Add(1)
 			}
 		default:
+			b.dropCount.Add(1)
 		}
+	}
+}
+
+func (b *bus) deliverDropNewest(sub *subscriber, env Envelope) {
+	select {
+	case sub.ch <- env:
+	default:
+		b.dropCount.Add(1)
 	}
 }
 

@@ -32,36 +32,36 @@ func (s *GraphService) CreateGraph(ctx context.Context, req *graphv1.CreateGraph
 		EntryPoint:       req.EntryPoint,
 		FinishPoint:      req.FinishPoint,
 		EnableCheckpoint: req.EnableCheckpoint,
-		ExecutionEngine:  graphtrpc.ExecutionEngineType(req.ExecutionEngine),
+		ExecutionEngine:  biz.ExecutionEngineType(req.ExecutionEngine),
 		InterruptBefore:  req.InterruptBefore,
 		InterruptAfter:   req.InterruptAfter,
 	}
 	if req.StateFields != nil {
-		def.StateFields = make([]graphtrpc.StateFieldDef, len(req.StateFields))
+		def.StateFields = make([]biz.StateFieldDef, len(req.StateFields))
 		for i, sf := range req.StateFields {
 			def.StateFields[i] = fromProtoStateField(sf)
 		}
 	}
 	if req.Nodes != nil {
-		def.Nodes = make([]graphtrpc.NodeDef, len(req.Nodes))
+		def.Nodes = make([]biz.NodeDef, len(req.Nodes))
 		for i, n := range req.Nodes {
 			def.Nodes[i] = fromProtoNode(n)
 		}
 	}
 	if req.Edges != nil {
-		def.Edges = make([]graphtrpc.EdgeDef, len(req.Edges))
+		def.Edges = make([]biz.EdgeDef, len(req.Edges))
 		for i, e := range req.Edges {
-			def.Edges[i] = graphtrpc.EdgeDef{From: e.From, To: e.To}
+			def.Edges[i] = biz.EdgeDef{From: e.From, To: e.To}
 		}
 	}
 	if req.ConditionalEdges != nil {
-		def.ConditionalEdges = make([]graphtrpc.ConditionalEdgeDef, len(req.ConditionalEdges))
+		def.ConditionalEdges = make([]biz.ConditionalEdgeDef, len(req.ConditionalEdges))
 		for i, ce := range req.ConditionalEdges {
 			def.ConditionalEdges[i] = fromProtoCondEdge(ce)
 		}
 	}
 	if req.Subgraphs != nil {
-		def.Subgraphs = make([]graphtrpc.SubgraphDef, len(req.Subgraphs))
+		def.Subgraphs = make([]biz.SubgraphDef, len(req.Subgraphs))
 		for i, sub := range req.Subgraphs {
 			def.Subgraphs[i] = fromProtoSubgraph(sub)
 		}
@@ -116,36 +116,36 @@ func (s *GraphService) UpdateGraph(ctx context.Context, req *graphv1.UpdateGraph
 		EntryPoint:       req.EntryPoint,
 		FinishPoint:      req.FinishPoint,
 		EnableCheckpoint: req.EnableCheckpoint,
-		ExecutionEngine:  graphtrpc.ExecutionEngineType(req.ExecutionEngine),
+		ExecutionEngine:  biz.ExecutionEngineType(req.ExecutionEngine),
 		InterruptBefore:  req.InterruptBefore,
 		InterruptAfter:   req.InterruptAfter,
 	}
 	if req.StateFields != nil {
-		def.StateFields = make([]graphtrpc.StateFieldDef, len(req.StateFields))
+		def.StateFields = make([]biz.StateFieldDef, len(req.StateFields))
 		for i, sf := range req.StateFields {
 			def.StateFields[i] = fromProtoStateField(sf)
 		}
 	}
 	if req.Nodes != nil {
-		def.Nodes = make([]graphtrpc.NodeDef, len(req.Nodes))
+		def.Nodes = make([]biz.NodeDef, len(req.Nodes))
 		for i, n := range req.Nodes {
 			def.Nodes[i] = fromProtoNode(n)
 		}
 	}
 	if req.Edges != nil {
-		def.Edges = make([]graphtrpc.EdgeDef, len(req.Edges))
+		def.Edges = make([]biz.EdgeDef, len(req.Edges))
 		for i, e := range req.Edges {
-			def.Edges[i] = graphtrpc.EdgeDef{From: e.From, To: e.To}
+			def.Edges[i] = biz.EdgeDef{From: e.From, To: e.To}
 		}
 	}
 	if req.ConditionalEdges != nil {
-		def.ConditionalEdges = make([]graphtrpc.ConditionalEdgeDef, len(req.ConditionalEdges))
+		def.ConditionalEdges = make([]biz.ConditionalEdgeDef, len(req.ConditionalEdges))
 		for i, ce := range req.ConditionalEdges {
 			def.ConditionalEdges[i] = fromProtoCondEdge(ce)
 		}
 	}
 	if req.Subgraphs != nil {
-		def.Subgraphs = make([]graphtrpc.SubgraphDef, len(req.Subgraphs))
+		def.Subgraphs = make([]biz.SubgraphDef, len(req.Subgraphs))
 		for i, sub := range req.Subgraphs {
 			def.Subgraphs[i] = fromProtoSubgraph(sub)
 		}
@@ -455,11 +455,11 @@ func (s *GraphService) EditState(ctx context.Context, req *graphv1.EditStateRequ
 	}, nil
 }
 
-func fromProtoStateField(sf *graphv1.StateFieldDef) graphtrpc.StateFieldDef {
-	def := graphtrpc.StateFieldDef{
+func fromProtoStateField(sf *graphv1.StateFieldDef) biz.StateFieldDef {
+	def := biz.StateFieldDef{
 		Name:            sf.Name,
 		Type:            sf.Type,
-		Reducer:         graphtrpc.ReducerType(sf.Reducer),
+		Reducer:         biz.ReducerType(sf.Reducer),
 		Required:        sf.Required,
 		DisableDeepCopy: sf.DisableDeepCopy,
 	}
@@ -469,8 +469,8 @@ func fromProtoStateField(sf *graphv1.StateFieldDef) graphtrpc.StateFieldDef {
 	return def
 }
 
-func fromProtoNode(n *graphv1.NodeDef) graphtrpc.NodeDef {
-	return graphtrpc.NodeDef{
+func fromProtoNode(n *graphv1.NodeDef) biz.NodeDef {
+	return biz.NodeDef{
 		ID:                       n.Id,
 		FuncRef:                  n.FuncRef,
 		Type:                     n.Type,
@@ -493,16 +493,16 @@ func fromProtoNode(n *graphv1.NodeDef) graphtrpc.NodeDef {
 	}
 }
 
-func fromProtoCondEdge(ce *graphv1.ConditionalEdgeDef) graphtrpc.ConditionalEdgeDef {
-	return graphtrpc.ConditionalEdgeDef{
+func fromProtoCondEdge(ce *graphv1.ConditionalEdgeDef) biz.ConditionalEdgeDef {
+	return biz.ConditionalEdgeDef{
 		From:        ce.From,
 		CondFuncRef: ce.CondFuncRef,
 		PathMap:     ce.PathMap,
 	}
 }
 
-func fromProtoSubgraph(sub *graphv1.SubgraphDef) graphtrpc.SubgraphDef {
-	return graphtrpc.SubgraphDef{
+func fromProtoSubgraph(sub *graphv1.SubgraphDef) biz.SubgraphDef {
+	return biz.SubgraphDef{
 		ID:              sub.Id,
 		InterruptBefore: sub.InterruptBefore,
 		InterruptAfter:  sub.InterruptAfter,
@@ -591,7 +591,7 @@ func toProtoGraph(def *biz.GraphDefinition) (*graphv1.GraphDefinition, error) {
 	return pb, nil
 }
 
-func toProtoStateField(sf graphtrpc.StateFieldDef) *graphv1.StateFieldDef {
+func toProtoStateField(sf biz.StateFieldDef) *graphv1.StateFieldDef {
 	pb := &graphv1.StateFieldDef{
 		Name:            sf.Name,
 		Type:            sf.Type,
@@ -715,7 +715,14 @@ func templateToProto(t graphtrpc.GraphTemplate) *graphv1.GraphTemplateInfo {
 	}
 	info.StateFields = make([]*graphv1.StateFieldDef, len(t.StateFields))
 	for i, sf := range t.StateFields {
-		info.StateFields[i] = toProtoStateField(sf)
+		info.StateFields[i] = toProtoStateField(biz.StateFieldDef{
+			Name:            sf.Name,
+			Type:            sf.Type,
+			Reducer:         biz.ReducerType(sf.Reducer),
+			DefaultValue:    sf.DefaultValue,
+			Required:        sf.Required,
+			DisableDeepCopy: sf.DisableDeepCopy,
+		})
 	}
 	return info
 }

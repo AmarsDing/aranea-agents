@@ -111,6 +111,8 @@ message AgentRuntimeSettings {
   string workspace = 97;
   string reasoning_mode = 98;
   string reasoning_level = 99;
+  // planner_kind selects the planning strategy: "" | "builtin" | "react" | "a2ui"
+  string planner_kind = 100;
 }
 
 message AgentPromptFile {

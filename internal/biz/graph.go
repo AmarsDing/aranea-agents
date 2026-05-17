@@ -7,25 +7,114 @@ import (
 	"sync"
 	"time"
 
-	graphtrpc "aranea-agents/internal/graph/trpc"
 	"aranea-agents/pkg/safego"
 
 	"github.com/google/uuid"
 )
 
+// ReducerType controls how state field values are merged.
+type ReducerType string
+
+const (
+	ReducerDefault ReducerType = "default"
+	ReducerAppend  ReducerType = "append"
+	ReducerCover   ReducerType = "cover"
+	ReducerMerge   ReducerType = "merge"
+)
+
+// ExecutionEngineType selects the graph execution strategy.
+type ExecutionEngineType string
+
+const (
+	EngineBSP ExecutionEngineType = "bsp"
+	EngineDAG ExecutionEngineType = "dag"
+)
+
+// StateFieldDef describes a single typed state field in a graph.
+type StateFieldDef struct {
+	Name            string
+	Type            string
+	Reducer         ReducerType
+	DefaultValue    any
+	Required        bool
+	DisableDeepCopy bool
+}
+
+// NodeDef is the schema-level (biz) description of a graph node.
+// Func/function pointers are resolved in the graph/trpc adapter layer.
+type NodeDef struct {
+	ID                       string
+	FuncRef                  string
+	Type                     string
+	Description              string
+	Instruction              string
+	ModelName                string
+	ToolNames                []string
+	AgentName                string
+	InterruptBefore          bool
+	InterruptAfter           bool
+	Destinations             []string
+	RequiredRole             string
+	AssignmentMode           string
+	AssignmentStrategy       string
+	ReviewerAgent            string
+	ReviewRules              string
+	TimeoutSeconds           int
+	HeartbeatIntervalSeconds int
+	EnableLeaseExtension     bool
+}
+
+// EdgeDef is a directed edge between two graph nodes.
+type EdgeDef struct {
+	From string
+	To   string
+}
+
+// ConditionalEdgeDef is a conditional routing edge.
+// CondFunc is resolved in the graph/trpc adapter layer.
+type ConditionalEdgeDef struct {
+	From        string
+	CondFuncRef string
+	PathMap     map[string]string
+}
+
+// SubgraphDef embeds a nested graph inside a parent graph.
+// InputMapper/OutputMapper are trpc-specific and resolved in the adapter layer.
+type SubgraphDef struct {
+	ID              string
+	BuildConfig     GraphBuildConfig
+	InterruptBefore bool
+	InterruptAfter  bool
+}
+
+// GraphBuildConfig is the schema-level (biz) graph build configuration.
+type GraphBuildConfig struct {
+	Nodes            []NodeDef
+	Edges            []EdgeDef
+	ConditionalEdges []ConditionalEdgeDef
+	Subgraphs        []SubgraphDef
+	StateFields      []StateFieldDef
+	EntryPoint       string
+	FinishPoint      string
+	EnableCheckpoint bool
+	ExecutionEngine  ExecutionEngineType
+	InterruptBefore  []string
+	InterruptAfter   []string
+}
+
 type GraphDefinition struct {
 	ID               string
 	Name             string
 	Description      string
-	StateFields      []graphtrpc.StateFieldDef
-	Nodes            []graphtrpc.NodeDef
-	Edges            []graphtrpc.EdgeDef
-	ConditionalEdges []graphtrpc.ConditionalEdgeDef
-	Subgraphs        []graphtrpc.SubgraphDef
+	StateFields      []StateFieldDef
+	Nodes            []NodeDef
+	Edges            []EdgeDef
+	ConditionalEdges []ConditionalEdgeDef
+	Subgraphs        []SubgraphDef
 	EntryPoint       string
 	FinishPoint      string
 	EnableCheckpoint bool
-	ExecutionEngine  graphtrpc.ExecutionEngineType
+	ExecutionEngine  ExecutionEngineType
 	InterruptBefore  []string
 	InterruptAfter   []string
 	Metadata         map[string]any
@@ -433,8 +522,8 @@ func (uc *GraphUsecase) FindNodeDef(ctx context.Context, graphID string, nodeID 
 	return uc.factory.FindNodeDef(cfg, nodeID)
 }
 
-func defToBuildConfig(def *GraphDefinition) graphtrpc.GraphBuildConfig {
-	return graphtrpc.GraphBuildConfig{
+func defToBuildConfig(def *GraphDefinition) GraphBuildConfig {
+	return GraphBuildConfig{
 		Nodes:            def.Nodes,
 		Edges:            def.Edges,
 		ConditionalEdges: def.ConditionalEdges,

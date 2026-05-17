@@ -10,6 +10,8 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/pkg/skillstorage"
 	"aranea-agents/internal/provider"
+	agentplanner "aranea-agents/internal/agent/planner"
+	memorytool "aranea-agents/internal/tools/memory"
 	skilltrpc "aranea-agents/internal/skill/trpc"
 	tooltrpc "aranea-agents/internal/tools/trpc"
 	"aranea-agents/pkg/safego"
@@ -21,7 +23,6 @@ import (
 	trpcllmagent "trpc.group/trpc-go/trpc-agent-go/agent/llmagent"
 	"trpc.group/trpc-go/trpc-agent-go/codeexecutor"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
-	trpcbuiltin "trpc.group/trpc-go/trpc-agent-go/planner/builtin"
 	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
@@ -79,8 +80,8 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) 
 		trpcllmagent.WithGenerationConfig(trpcmodel.GenerationConfig{Stream: true}),
 	}
 
-	if strings.EqualFold(deps.DialogMode, "plan") {
-		opts = append(opts, trpcllmagent.WithPlanner(trpcbuiltin.New(trpcbuiltin.Options{})))
+	if p := agentplanner.Select(deps.DialogMode, plannerKind(ag)); p != nil {
+		opts = append(opts, trpcllmagent.WithPlanner(p))
 	}
 
 	if deps.SkillUC != nil {
@@ -109,6 +110,14 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) 
 		}
 		if len(ts.Tools) > 0 {
 			opts = append(opts, trpcllmagent.WithTools(ts.Tools))
+		}
+	}
+
+	// Memory tools: inject when MemoryEnabled (runner must be created with
+	// WithMemoryService so the tools can resolve the service at call time).
+	if ag.Settings != nil && ag.Settings.MemoryEnabled {
+		if memTools := memorytool.DefaultTools(); len(memTools) > 0 {
+			opts = append(opts, trpcllmagent.WithTools(memTools))
 		}
 	}
 
@@ -548,4 +557,12 @@ func jsonStringList(raw string) []string {
 		return nil
 	}
 	return list
+}
+
+// plannerKind extracts the PlannerKind from agent settings, defaulting to "".
+func plannerKind(ag biz.Agent) string {
+	if ag.Settings == nil {
+		return ""
+	}
+	return ag.Settings.PlannerKind
 }

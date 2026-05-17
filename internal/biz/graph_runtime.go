@@ -1,10 +1,6 @@
 package biz
 
-import (
-	"context"
-
-	graphtrpc "aranea-agents/internal/graph/trpc"
-)
+import "context"
 
 type GraphRuntimeEvent struct {
 	Type     DomainEventType
@@ -35,14 +31,16 @@ type NodeDefInfo struct {
 	EnableLeaseExtension     bool
 }
 
+// GraphBuilderFactory converts biz-level GraphBuildConfig into a running GraphRuntime.
+// Implementations live in internal/adapter/graph/ and may import trpc-agent-go freely.
 type GraphBuilderFactory interface {
-	BuildAndRun(ctx context.Context, cfg graphtrpc.GraphBuildConfig, sessionID, graphID, execID string, initialState map[string]any) (GraphRuntime, <-chan GraphRuntimeEvent, error)
-	BuildAndResume(ctx context.Context, cfg graphtrpc.GraphBuildConfig, sessionID, graphID, execID, lineageID string, resumeValue map[string]any) (GraphRuntime, <-chan GraphRuntimeEvent, error)
-	Visualize(ctx context.Context, cfg graphtrpc.GraphBuildConfig) (any, error)
-	Validate(ctx context.Context, cfg graphtrpc.GraphBuildConfig) (any, error)
+	BuildAndRun(ctx context.Context, cfg GraphBuildConfig, sessionID, graphID, execID string, initialState map[string]any) (GraphRuntime, <-chan GraphRuntimeEvent, error)
+	BuildAndResume(ctx context.Context, cfg GraphBuildConfig, sessionID, graphID, execID, lineageID string, resumeValue map[string]any) (GraphRuntime, <-chan GraphRuntimeEvent, error)
+	Visualize(ctx context.Context, cfg GraphBuildConfig) (any, error)
+	Validate(ctx context.Context, cfg GraphBuildConfig) (any, error)
 	ListTemplates() any
 	GetTemplate(templateID string) (any, bool)
 	TemplateToDef(template any, name, description string) *GraphDefinition
 	AgentExists(agentID string) bool
-	FindNodeDef(cfg graphtrpc.GraphBuildConfig, nodeID string) *NodeDefInfo
+	FindNodeDef(cfg GraphBuildConfig, nodeID string) *NodeDefInfo
 }

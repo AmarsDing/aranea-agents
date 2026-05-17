@@ -24,6 +24,7 @@ import (
 	toolv1 "aranea-agents/api/kratos/tool/v1"
 	usagev1 "aranea-agents/api/kratos/usage/v1"
 	"aranea-agents/internal/conf"
+	servermw "aranea-agents/internal/server/middleware"
 	"aranea-agents/internal/service"
 	"aranea-agents/internal/skill/importer"
 	"aranea-agents/pkg/auth"
@@ -63,6 +64,7 @@ func NewHTTPServer(c *conf.Server,
 		http.Filter(
 			CorsDevFilter(),
 			auth.Middleware(),
+			servermw.WorkspaceFilter(),
 		),
 		http.Middleware(
 			recovery.Recovery(),

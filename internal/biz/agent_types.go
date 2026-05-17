@@ -25,7 +25,19 @@ type Agent struct {
 	Files              []AgentPromptFile
 }
 
-// AgentRuntimeSettings mirrors agent_runtime_settings row.
+// AgentRuntimeSettings mirrors the agent_runtime_settings row.
+// Fields are kept flat for Ent/DB compatibility; domain accessors are provided
+// via the methods below (see agent_settings.go for domain sub-struct types).
+//
+// Domains:
+//   - Identity  : AgentID, ChannelID, ChatID, Workspace, VariablesJSON, ModelInstructionsJSON
+//   - Reasoning : ReasoningMode, ReasoningLevel
+//   - Memory    : MemoryEnabled, MemoryMax*, HeartbeatEnabled, L0–L4 fields
+//   - Tools     : ToolsEnabled, ToolsProfile, ToolsToolCallPrefix, ToolsAllow/Deny, ToolsRetry*, ToolsParallel*, ToolsStreaming*
+//   - Skills    : SkillRuntimeJSON, IntentPassEnabled, SkillLoadMode
+//   - Plugins   : (reserved)
+//   - Evolution : SelfEvolve, Subagents*, Evolution*, Guardrail*, Evo*
+//   - Context   : ContextCompactionEnabled, SessionSummaryEnabled, OutputSchemaJSON, ModelSelector, PlannerKind
 type AgentRuntimeSettings struct {
 	AgentID                           string
 	SelfEvolve                        bool
@@ -143,8 +155,151 @@ type AgentRuntimeSettings struct {
 	ToolsParallelEnabled bool
 	// ToolsStreamingEnabled enables StreamableTool support for tools that implement StreamableCall.
 	ToolsStreamingEnabled bool
-	CreatedAt             string
-	UpdatedAt             string
+	// PlannerKind selects the planning strategy: "" | "builtin" | "react" | "a2ui".
+	// Empty string inherits the legacy dialog-mode based selection (builtin when dialogMode="plan").
+	PlannerKind string
+	CreatedAt   string
+	UpdatedAt   string
+}
+
+// --- Domain view accessors (Q-22: sub-struct API, flat fields as source of truth) ---
+
+// GetIdentity returns the Identity domain view.
+func (s *AgentRuntimeSettings) GetIdentity() IdentityCfg {
+	return IdentityCfg{
+		AgentID:               s.AgentID,
+		ChannelID:             s.ChannelID,
+		ChatID:                s.ChatID,
+		Workspace:             s.Workspace,
+		VariablesJSON:         s.VariablesJSON,
+		ModelInstructionsJSON: s.ModelInstructionsJSON,
+	}
+}
+
+// GetReasoning returns the Reasoning domain view.
+func (s *AgentRuntimeSettings) GetReasoning() ReasoningCfg {
+	return ReasoningCfg{Mode: s.ReasoningMode, Level: s.ReasoningLevel}
+}
+
+// GetMemory returns the Memory domain view (L0–L4).
+func (s *AgentRuntimeSettings) GetMemory() MemoryCfg {
+	return MemoryCfg{
+		Enabled:              s.MemoryEnabled,
+		MaxChunkLength:       s.MemoryMaxChunkLength,
+		MaxResults:           s.MemoryMaxResults,
+		MinScore:             s.MemoryMinScore,
+		HeartbeatEnabled:     s.HeartbeatEnabled,
+		HeartbeatIntervalMinutes: s.HeartbeatIntervalMinutes,
+		L0RecentWindowTurns:  s.L0RecentWindowTurns,
+		L0RecentWindowTokens: s.L0RecentWindowTokens,
+		L0SummaryThreshold:   s.L0SummaryThreshold,
+		L0SummaryKeepTurns:   s.L0SummaryKeepTurns,
+		L0CompressProvider:   s.L0CompressProvider,
+		L0CompressModel:      s.L0CompressModel,
+		L0TruncateStrategy:   s.L0TruncateStrategy,
+		L0InjectL1:           s.L0InjectL1,
+		L0InjectL3:           s.L0InjectL3,
+		L0InjectL4:           s.L0InjectL4,
+		L0L3MaxChunks:        s.L0L3MaxChunks,
+		L0L4MaxPaths:         s.L0L4MaxPaths,
+		L0SnapshotMode:       s.L0SnapshotMode,
+		L1Enabled:            s.L1Enabled,
+		L1BudgetTokens:       s.L1BudgetTokens,
+		L1FieldMaxTokens:     s.L1FieldMaxTokens,
+		L1HistoryKeepRevisions: s.L1HistoryKeepRevisions,
+		L1DefaultSchemaID:    s.L1DefaultSchemaID,
+		L1ArchiveOnIdleMinutes: s.L1ArchiveOnIdleMinutes,
+		L2EpisodeEnabled:     s.L2EpisodeEnabled,
+		L2EpisodeMinImportance: s.L2EpisodeMinImportance,
+		L2IndexEnabled:       s.L2IndexEnabled,
+		L2IndexEmbeddingModel: s.L2IndexEmbeddingModel,
+		L2RecallEnabled:      s.L2RecallEnabled,
+		L2RecallMax:          s.L2RecallMax,
+		L2RetentionDays:      s.L2RetentionDays,
+		L2ArchiveAfterDays:   s.L2ArchiveAfterDays,
+		L3Enabled:            s.L3Enabled,
+		L3RecallTopK:         s.L3RecallTopK,
+		L3RecallMinScore:     s.L3RecallMinScore,
+		L3RecallScopesJSON:   s.L3RecallScopesJSON,
+		L3EmbeddingModel:     s.L3EmbeddingModel,
+		L3DecayIntervalHours: s.L3DecayIntervalHours,
+		L3ArchiveThreshold:   s.L3ArchiveThreshold,
+		L3MaxPerRecallChars:  s.L3MaxPerRecallChars,
+		L4Enabled:            s.L4Enabled,
+		L4GraphInjectNeighbors: s.L4GraphInjectNeighbors,
+		L4GraphMaxNeighbors:  s.L4GraphMaxNeighbors,
+		L4GraphMaxHops:       s.L4GraphMaxHops,
+		L4IdentityInject:     s.L4IdentityInject,
+		L4StrategyInject:     s.L4StrategyInject,
+	}
+}
+
+// GetTools returns the Tools domain view.
+func (s *AgentRuntimeSettings) GetTools() ToolsCfg {
+	return ToolsCfg{
+		Enabled:              s.ToolsEnabled,
+		Profile:              s.ToolsProfile,
+		ToolCallPrefix:       s.ToolsToolCallPrefix,
+		AllowJSON:            s.ToolsAllowJSON,
+		DenyJSON:             s.ToolsDenyJSON,
+		ConcurrentAllowJSON:  s.ToolsConcurrentAllowJSON,
+		RetryEnabled:         s.ToolsRetryEnabled,
+		RetryMaxAttempts:     s.ToolsRetryMaxAttempts,
+		RetryInitialIntervalMs: s.ToolsRetryInitialIntervalMs,
+		RetryBackoffFactor:   s.ToolsRetryBackoffFactor,
+		RetryMaxIntervalMs:   s.ToolsRetryMaxIntervalMs,
+		RetryJitter:          s.ToolsRetryJitter,
+		ParallelEnabled:      s.ToolsParallelEnabled,
+		StreamingEnabled:     s.ToolsStreamingEnabled,
+	}
+}
+
+// GetSkills returns the Skills domain view.
+func (s *AgentRuntimeSettings) GetSkills() SkillsCfg {
+	return SkillsCfg{
+		RuntimeJSON:       s.SkillRuntimeJSON,
+		LoadMode:          s.SkillLoadMode,
+		IntentPassEnabled: s.IntentPassEnabled,
+	}
+}
+
+// GetEvolution returns the Evolution domain view.
+func (s *AgentRuntimeSettings) GetEvolution() EvolutionCfg {
+	return EvolutionCfg{
+		SelfEvolve:                        s.SelfEvolve,
+		SubagentsEnabled:                  s.SubagentsEnabled,
+		SubagentsMaxConcurrency:           s.SubagentsMaxConcurrency,
+		SubagentsMaxGenerationDepth:       s.SubagentsMaxGenerationDepth,
+		SubagentsMaxChildrenPerAgent:      s.SubagentsMaxChildrenPerAgent,
+		SubagentsArchiveAfterMinutes:      s.SubagentsArchiveAfterMinutes,
+		SubagentsMaxRetries:               s.SubagentsMaxRetries,
+		SubagentsModelOverride:            s.SubagentsModelOverride,
+		SkillEvolve:                       s.EvolutionSkillEvolve,
+		MetricsEnabled:                    s.EvolutionMetricsEnabled,
+		SuggestionsEnabled:                s.EvolutionSuggestionsEnabled,
+		GuardrailMaxChangePerPeriod:       s.GuardrailMaxChangePerPeriod,
+		GuardrailMinDataPoints:            s.GuardrailMinDataPoints,
+		GuardrailRollbackOnDeclinePercent: s.GuardrailRollbackOnDeclinePercent,
+		EvoEnabled:                        s.EvoEnabled,
+		EvoAutoApply:                      s.EvoAutoApply,
+		EvoMinEpisodes:                    s.EvoMinEpisodes,
+		EvoMinNegativeFeedback:            s.EvoMinNegativeFeedback,
+		EvoThrottleHours:                  s.EvoThrottleHours,
+		EvoProposalTTLDays:                s.EvoProposalTTLDays,
+		EvoPersonaMaxChars:                s.EvoPersonaMaxChars,
+		EvoSystemPromptMaxAppends:         s.EvoSystemPromptMaxAppends,
+	}
+}
+
+// GetContext returns the Context domain view.
+func (s *AgentRuntimeSettings) GetContext() ContextCfg {
+	return ContextCfg{
+		CompactionEnabled:     s.ContextCompactionEnabled,
+		SessionSummaryEnabled: s.SessionSummaryEnabled,
+		OutputSchemaJSON:      s.OutputSchemaJSON,
+		ModelSelector:         s.ModelSelector,
+		PlannerKind:           s.PlannerKind,
+	}
 }
 
 // AgentPromptFile is one row in agent_prompt_files (API name field maps to file_name).

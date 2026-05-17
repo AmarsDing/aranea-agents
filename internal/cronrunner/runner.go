@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -16,9 +17,36 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/safego"
 	"aranea-agents/pkg/strutil"
 
 	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+)
+
+// defaultRetryBackoff is the 3-step backoff schedule: 30s, 2m, 10m.
+var defaultRetryBackoff = []time.Duration{30 * time.Second, 2 * time.Minute, 10 * time.Minute}
+
+// maxDeadFailures is the consecutive-failure threshold before a job enters the dead state.
+const maxDeadFailures = 3
+
+var (
+	cronJobRunsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "aranea_cron_job_runs_total",
+		Help: "Number of cron job executions by job_id and status.",
+	}, []string{"job_id", "status"})
+
+	cronJobDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "aranea_cron_job_duration_seconds",
+		Help:    "Duration of cron job executions.",
+		Buckets: []float64{0.5, 1, 5, 15, 30, 60, 120, 300, 600},
+	}, []string{"job_id"})
+
+	cronJobDeadTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "aranea_cron_job_dead_total",
+		Help: "Number of cron jobs that reached the dead-letter state.",
+	}, []string{"job_id"})
 )
 
 // Deps wires cron execution to Ent repos + session create + chat HTTP POST.
@@ -120,7 +148,12 @@ func (r *Runner) executeTask(ctx context.Context, task biz.CronTask, cfg cronTas
 		return
 	}
 
-	result, execErr := r.dispatchCronTask(ctx, task, cfg)
+	startedTime := time.Now()
+	result, execErr := r.dispatchWithRetry(ctx, task, cfg)
+	elapsed := time.Since(startedTime)
+
+	cronJobDuration.WithLabelValues(task.ID).Observe(elapsed.Seconds())
+
 	finishedAt := time.Now().UTC()
 	output := map[string]any{
 		"trigger":          "schedule",
@@ -138,6 +171,7 @@ func (r *Runner) executeTask(ctx context.Context, task biz.CronTask, cfg cronTas
 		status = "failure"
 		errMsg = execErr.Error()
 	}
+	cronJobRunsTotal.WithLabelValues(task.ID, status).Inc()
 	_ = r.deps.Cron.UpdateCronTaskRun(ctx, runID, status, finished, outJSON, errMsg)
 
 	meta.RunCount++
@@ -153,13 +187,24 @@ func (r *Runner) executeTask(ctx context.Context, task biz.CronTask, cfg cronTas
 		if len(meta.RecentFailure) > 5 {
 			meta.RecentFailure = meta.RecentFailure[:5]
 		}
+		// Dead-letter: mark job as dead after maxDeadFailures consecutive failures.
+		if meta.FailureCount >= maxDeadFailures && task.Status != "dead" {
+			task.Status = "dead"
+			task.Enabled = false
+			cronJobDeadTotal.WithLabelValues(task.ID).Inc()
+			slog.Warn("cron job entered dead state", "job_id", task.ID, "task_key", task.TaskKey, "failure_count", meta.FailureCount)
+			r.publishDeadLetterEvent(ctx, task)
+		}
 	} else {
 		meta.SuccessCount++
 		meta.LastError = ""
+		meta.FailureCount = 0
 	}
 	if cfg.ScheduleType == "once" {
 		task.Enabled = false
-		task.Status = "paused"
+		if task.Status != "dead" {
+			task.Status = "paused"
+		}
 		meta.NextRunAt = ""
 	} else if next, err := nextCronRunAfter(cfg, finishedAt); err == nil {
 		meta.NextRunAt = next.Format(time.RFC3339)
@@ -170,6 +215,55 @@ func (r *Runner) executeTask(ctx context.Context, task biz.CronTask, cfg cronTas
 	}
 	task.MetadataJSON = string(rawMeta)
 	_, _ = r.deps.Cron.UpdateCronTask(ctx, task)
+}
+
+// dispatchWithRetry runs dispatchCronTask with exponential back-off retries (30s/2m/10m).
+// It recovers from panics on each attempt via safego.RecoverFunc.
+func (r *Runner) dispatchWithRetry(ctx context.Context, task biz.CronTask, cfg cronTaskConfig) (res cronDispatchResult, err error) {
+	attempts := len(defaultRetryBackoff) + 1
+	for attempt := 0; attempt < attempts; attempt++ {
+		res, err = r.dispatchSafe(ctx, task, cfg)
+		if err == nil {
+			return res, nil
+		}
+		if attempt < len(defaultRetryBackoff) {
+			delay := defaultRetryBackoff[attempt]
+			slog.Warn("cron job attempt failed, retrying", "job_id", task.ID, "attempt", attempt+1, "delay", delay, "error", err)
+			select {
+			case <-ctx.Done():
+				return cronDispatchResult{}, ctx.Err()
+			case <-time.After(delay):
+			}
+		}
+	}
+	return cronDispatchResult{}, err
+}
+
+// dispatchSafe wraps dispatchCronTask with panic recovery.
+func (r *Runner) dispatchSafe(ctx context.Context, task biz.CronTask, cfg cronTaskConfig) (res cronDispatchResult, retErr error) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			retErr = fmt.Errorf("cron panic: %v", rec)
+			slog.Error("cron task panicked", "job_id", task.ID, "panic", rec)
+		}
+	}()
+	return r.dispatchCronTask(ctx, task, cfg)
+}
+
+// publishDeadLetterEvent emits a dead-letter admin alert event via the event bus.
+func (r *Runner) publishDeadLetterEvent(ctx context.Context, task biz.CronTask) {
+	if r.deps.EventBus == nil {
+		return
+	}
+	safego.Go(ctx, "cron.dead_letter.publish", func() {
+		env := event.NewEnvelope("cron.dead_letter", "cron", "")
+		env.Metadata = map[string]any{
+			"job_id":   task.ID,
+			"task_key": task.TaskKey,
+			"name":     task.Name,
+		}
+		r.deps.EventBus.Publish(context.Background(), env)
+	})
 }
 
 type cronDispatchResult struct {
@@ -304,7 +398,7 @@ func (r *Runner) publishTeamCronMaybe(ctx context.Context, teamID string) {
 func (r *Runner) postChat(ctx context.Context, in sendMessagePayload) (cronDispatchResult, error) {
 	base := cronChatPOSTRoot()
 	if base == "" {
-		return cronDispatchResult{}, errors.New(`cron chat: set CRON_CHAT_DISPATCH_ORIGIN (→ admin /v1/chat/messages)`)
+		return cronDispatchResult{}, errors.New(`cron chat: set CRON_CHAT_DISPATCH_ORIGIN (-> admin /v1/chat/messages)`)
 	}
 	pu, err := url.Parse(base)
 	if err != nil || pu.Scheme == "" || pu.Host == "" {

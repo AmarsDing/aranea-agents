@@ -1,0 +1,85 @@
+syntax = "proto3";
+
+package kratos.artifact.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/empty.proto";
+
+option go_package = "aranea-agents/api/kratos/artifact/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.kratos.artifact.v1";
+
+// ArtifactMeta holds metadata for a stored artifact (no binary payload).
+message ArtifactMeta {
+  string id = 1;
+  string session_id = 2;
+  string name = 3;
+  string mime_type = 4;
+  int64 size = 5;
+  string sha256 = 6;
+  string storage_kind = 7;
+  string storage_uri = 8;
+  int32 version = 9;
+  string created_at = 10;
+}
+
+// ArtifactData bundles metadata with the raw binary encoded as base64.
+message ArtifactData {
+  ArtifactMeta meta = 1;
+  // data_base64 is the artifact payload encoded in standard base64.
+  string data_base64 = 2;
+}
+
+message UploadArtifactRequest {
+  string session_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string name = 2 [(google.api.field_behavior) = REQUIRED];
+  string mime_type = 3;
+  // data_base64 is the artifact payload encoded in standard base64.
+  string data_base64 = 4 [(google.api.field_behavior) = REQUIRED];
+}
+
+message GetArtifactRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  // version selects a specific version; 0 or omitted means latest.
+  int32 version = 2;
+}
+
+message ListArtifactsRequest {
+  string session_id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message ListArtifactsResponse {
+  repeated ArtifactMeta items = 1;
+  int32 total = 2;
+}
+
+message DeleteArtifactRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+service ArtifactService {
+  rpc UploadArtifact(UploadArtifactRequest) returns (ArtifactMeta) {
+    option (google.api.http) = {
+      post: "/v1/artifacts"
+      body: "*"
+    };
+  }
+  rpc GetArtifact(GetArtifactRequest) returns (ArtifactData) {
+    option (google.api.http) = {
+      get: "/v1/artifacts/{id}"
+    };
+  }
+  rpc ListArtifacts(ListArtifactsRequest) returns (ListArtifactsResponse) {
+    option (google.api.http) = {
+      get: "/v1/artifacts"
+    };
+  }
+  rpc DeleteArtifact(DeleteArtifactRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      delete: "/v1/artifacts/{id}"
+    };
+  }
+}
