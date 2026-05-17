@@ -27,7 +27,7 @@ export const usePlatformStore = defineStore("platform", () => {
     }
   }
 
-  async function loadCategoryTree(resource: PlatformResourceName = "agent-categories") {
+  async function loadCategoryTree(resource: "agent-categories" = "agent-categories") {
     categoryTree.value = await listPlatformResourceTree(resource);
   }
 

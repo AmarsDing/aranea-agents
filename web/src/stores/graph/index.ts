@@ -20,7 +20,7 @@ export const useGraphStore = defineStore("graph", () => {
     try {
       const result = await listGraphs(pageSize, pageToken);
       graphs.value = result.items ?? [];
-      total.value = result.total ?? graphs.value.length;
+      total.value = graphs.value.length;
     } finally {
       loading.value = false;
     }

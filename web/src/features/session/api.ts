@@ -193,7 +193,10 @@ export async function searchSessions(query: SessionSearchQuery = {}): Promise<Se
     limit: query.limit,
     offset: query.offset,
     page: query.page,
-    pageSize: query.page_size
+    pageSize: query.page_size,
+    userId: undefined,
+    sortBy: undefined,
+    sortOrder: undefined
   });
   const items = (data.items ?? []).map(kratosSessionToLegacy);
   return {
@@ -210,7 +213,7 @@ export async function getSession(id: string): Promise<Session> {
 }
 
 export async function getSessionTimeline(id: string): Promise<SessionTimeline> {
-  const data = await sessionApi.GetSessionTimeline({ id });
+  const data = await sessionApi.GetSessionTimeline({ id, limit: undefined, offset: undefined, kindFilter: undefined, sortOrder: undefined });
   return kratosSessionTimelineToLegacy(data);
 }
 
@@ -234,7 +237,9 @@ export async function createSession(payload: {
     defaultProvider: payload.default_provider,
     defaultModel: payload.default_model,
     workspaceId: payload.workspace_id,
-    userId: payload.user_id
+    userId: payload.user_id,
+    tagsJson: undefined,
+    metadataJson: undefined
   });
   return kratosSessionToLegacy(data);
 }
@@ -248,7 +253,7 @@ export async function archiveSession(id: string): Promise<void> {
 }
 
 export async function updateSessionTitle(id: string, title: string): Promise<Session> {
-  const data = await sessionApi.UpdateSession({ id, title });
+  const data = await sessionApi.UpdateSession({ id, title, tagsJson: undefined, visibility: undefined, metadataJson: undefined, dialogMode: undefined, defaultProvider: undefined, defaultModel: undefined });
   return kratosSessionToLegacy(data);
 }
 
@@ -278,7 +283,7 @@ function kratosChatRowToMessage(row: ChatMessageRow): Message {
 
 /** Kratos `GET /v1/sessions/{id}/messages`（替代遗留 `/api/v1/chat/messages` 列表）。 */
 export async function listSessionChatMessages(sessionID: string): Promise<Message[]> {
-  const data = await sessionApi.ListSessionMessages({ id: sessionID });
+  const data = await sessionApi.ListSessionMessages({ id: sessionID, limit: undefined, offset: undefined });
   return (data.items ?? []).map(kratosChatRowToMessage);
 }
 
@@ -295,7 +300,8 @@ export async function updateSession(id: string, fields: { title?: string; tags_j
     visibility: fields.visibility,
     dialogMode: fields.dialog_mode,
     defaultProvider: fields.default_provider,
-    defaultModel: fields.default_model
+    defaultModel: fields.default_model,
+    metadataJson: undefined
   });
   return kratosSessionToLegacy(data);
 }

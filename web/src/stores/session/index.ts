@@ -42,7 +42,7 @@ export const useSessionStore = defineStore("session", () => {
   }
 
   async function newSession(payload: { agent_id?: string; team_id?: string; owner_type?: string; title?: string }) {
-    const s = await createSession(payload);
+    const s = await createSession({ ...payload, title: payload.title ?? "" });
     sessions.value.unshift(s);
     activeSession.value = s;
     return s;

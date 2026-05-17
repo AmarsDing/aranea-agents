@@ -20,7 +20,7 @@
       />
       <q-input
         v-else-if="def.type === 'number' || def.type === 'integer'"
-        :model-value="getValue(key)"
+        :model-value="getInputValue(key)"
         :label="def.title || key"
         type="number"
         dense
@@ -29,7 +29,7 @@
       />
       <q-input
         v-else
-        :model-value="getValue(key)"
+        :model-value="getInputValue(key)"
         :label="def.title || key"
         dense
         outlined
@@ -79,8 +79,16 @@ const data = computed<Record<string, unknown>>(() => {
   }
 });
 
-function getValue(key: string): unknown {
-  return data.value[key] ?? properties.value[key]?.default ?? "";
+function getValue(key: string): string | number | boolean | null {
+  const v = data.value[key] ?? properties.value[key]?.default ?? "";
+  if (typeof v === "boolean" || typeof v === "number") return v;
+  return v == null ? null : String(v);
+}
+
+function getInputValue(key: string): string | number | null {
+  const v = getValue(key);
+  if (typeof v === "boolean") return v ? 1 : 0;
+  return v;
 }
 
 function setValue(key: string, val: unknown) {

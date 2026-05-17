@@ -263,7 +263,28 @@ export function runtimeSettingsToWire(s: AgentRuntimeSettings): KratosRuntimeWir
     skillRuntimeJson: s.skill_runtime_json ?? "{}",
     intentPassEnabled: s.intent_pass_enabled ?? true,
     createdAt: s.created_at,
-    updatedAt: s.updated_at
+    updatedAt: s.updated_at,
+    variablesJson: undefined,
+    modelInstructionsJson: undefined,
+    contextCompactionEnabled: undefined,
+    sessionSummaryEnabled: undefined,
+    skillLoadMode: undefined,
+    outputSchemaJson: undefined,
+    modelSelector: undefined,
+    toolsRetryEnabled: undefined,
+    toolsRetryMaxAttempts: undefined,
+    toolsRetryInitialIntervalMs: undefined,
+    toolsRetryBackoffFactor: undefined,
+    toolsRetryMaxIntervalMs: undefined,
+    toolsRetryJitter: undefined,
+    toolsParallelEnabled: undefined,
+    toolsStreamingEnabled: undefined,
+    channelId: undefined,
+    chatId: undefined,
+    workspace: undefined,
+    reasoningMode: undefined,
+    reasoningLevel: undefined,
+    plannerKind: undefined
   };
 }
 
