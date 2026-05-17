@@ -32,6 +32,10 @@ var ProviderSet = wire.NewSet(
 	NewEvolutionUsecase,
 	NewGraphUsecase,
 	NewTaskUsecase,
+	NewArtifactUsecase,
+	NewKnowledgeUsecase,
+	NewEvalUsecase,
+	NewA2AUsecase,
 	ProvideAgentExistenceChecker,
 )
 

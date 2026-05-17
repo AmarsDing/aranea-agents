@@ -7,12 +7,12 @@ import (
 	"strings"
 	"time"
 
+	agentplanner "aranea-agents/internal/agent/planner"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/pkg/skillstorage"
 	"aranea-agents/internal/provider"
-	agentplanner "aranea-agents/internal/agent/planner"
-	memorytool "aranea-agents/internal/tools/memory"
 	skilltrpc "aranea-agents/internal/skill/trpc"
+	memorytool "aranea-agents/internal/tools/memory"
 	tooltrpc "aranea-agents/internal/tools/trpc"
 	"aranea-agents/pkg/safego"
 	"aranea-agents/pkg/strutil"
@@ -28,17 +28,18 @@ import (
 )
 
 type TRPCBuilderDeps struct {
-	Catalog    *biz.LlmProviderModelUsecase
-	AgentUC    *biz.AgentUsecase
-	Agents     biz.AgentRepository
-	RT         *provider.RoundTrip
-	SkillUC    *biz.SkillUsecase
-	MCPTooling *biz.AgentMCPTooling
-	ToolUC     *biz.ToolUsecase
-	Sys        biz.SystemSettingRepo
-	Provider   string
-	Model      string
-	DialogMode string
+	Catalog     *biz.LlmProviderModelUsecase
+	AgentUC     *biz.AgentUsecase
+	Agents      biz.AgentRepository
+	RT          *provider.RoundTrip
+	SkillUC     *biz.SkillUsecase
+	MCPTooling  *biz.AgentMCPTooling
+	ToolUC      *biz.ToolUsecase
+	Sys         biz.SystemSettingRepo
+	Provider    string
+	Model       string
+	DialogMode  string
+	SkillDBRepo trpcskill.Repository
 }
 
 func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) (trpcagent.Agent, error) {
@@ -150,16 +151,22 @@ func buildSkillDeps(ctx context.Context, deps TRPCBuilderDeps) (trpcskill.Reposi
 		return nil, nil, nil, err
 	}
 
-	rootDir := skillstorage.ResolveRoot()
-	if deps.Sys != nil {
-		if st, e := deps.Sys.Get(ctx); e == nil {
-			rootDir = skillstorage.ResolveRootWithPlatform(st.RootDirectory)
+	var repo trpcskill.Repository
+	var rootDir string
+	if deps.SkillDBRepo != nil {
+		repo = deps.SkillDBRepo
+	} else {
+		rootDir = skillstorage.ResolveRoot()
+		if deps.Sys != nil {
+			if st, e := deps.Sys.Get(ctx); e == nil {
+				rootDir = skillstorage.ResolveRootWithPlatform(st.RootDirectory)
+			}
 		}
-	}
-
-	repo, err := skilltrpc.NewFSRepositoryAdapter(rootDir)
-	if err != nil {
-		return nil, nil, nil, err
+		fsRepo, err := skilltrpc.NewFSRepositoryAdapter(rootDir)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		repo = fsRepo
 	}
 
 	allowSet := strutil.SliceToSet(slugs)
@@ -203,10 +210,14 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 				cfg.MCPBroker = mcpBrokerCfg
 			}
 		}
+
+		cfg.KnowledgeSearch = eff[biz.ToolKeyKnowledgeSearch]
+		cfg.CallAgent = eff[biz.ToolKeyCallAgent]
 	}
 	if !cfg.Filesystem && !cfg.ShellExec && !cfg.WebFetch && !cfg.WebSearch &&
 		!cfg.GeminiFetch && !cfg.GoogleSearch && !cfg.ArxivSearch && !cfg.Wikipedia &&
 		!cfg.Email && !cfg.Todo && !cfg.AwaitReply && !cfg.ClaudeCode && !cfg.WorkspaceExec &&
+		!cfg.KnowledgeSearch && !cfg.CallAgent &&
 		len(cfg.MCPServers) == 0 && cfg.MCPBroker == nil {
 		return nil, nil
 	}

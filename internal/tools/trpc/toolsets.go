@@ -3,35 +3,39 @@ package trpc
 import (
 	"context"
 
+	"aranea-agents/internal/a2a"
 	"aranea-agents/internal/tools"
+	knowledgepkg "aranea-agents/internal/tools/knowledge"
 
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
 type ToolsetConfig struct {
-	Filesystem    bool
-	FilesystemDir string
-	ShellExec     bool
-	WebFetch      bool
-	WebSearch     bool
-	GeminiFetch   bool
-	GeminiModel   string
-	GoogleSearch  bool
-	GoogleAPIKey  string
-	GoogleCX      string
-	ArxivSearch   bool
-	Wikipedia     bool
-	Email         bool
-	Todo          bool
-	AwaitReply    bool
-	ClaudeCode    bool
-	ClaudeCodeDir string
-	OpenAPISpecs  []OpenAPISpecConfig
-	WorkspaceExec bool
-	AgentTools    []AgentToolConfig
-	MCPServers    []MCPServerConfig
-	MCPBroker     *MCPBrokerConfig
-	CustomTools   []trpctool.Tool
+	Filesystem      bool
+	FilesystemDir   string
+	ShellExec       bool
+	WebFetch        bool
+	WebSearch       bool
+	GeminiFetch     bool
+	GeminiModel     string
+	GoogleSearch    bool
+	GoogleAPIKey    string
+	GoogleCX        string
+	ArxivSearch     bool
+	Wikipedia       bool
+	Email           bool
+	Todo            bool
+	AwaitReply      bool
+	ClaudeCode      bool
+	ClaudeCodeDir   string
+	OpenAPISpecs    []OpenAPISpecConfig
+	WorkspaceExec   bool
+	AgentTools      []AgentToolConfig
+	MCPServers      []MCPServerConfig
+	MCPBroker       *MCPBrokerConfig
+	CustomTools     []trpctool.Tool
+	KnowledgeSearch bool
+	CallAgent       bool
 }
 
 type AgentToolConfig = tools.AgentToolConfig
@@ -123,6 +127,12 @@ func BuildToolsets(ctx context.Context, cfg ToolsetConfig) (*AssembledToolsets, 
 	customTools := make([]tools.Tool, len(cfg.CustomTools))
 	for i, t := range cfg.CustomTools {
 		customTools[i] = t
+	}
+	if cfg.KnowledgeSearch {
+		customTools = append(customTools, knowledgepkg.NewSearchTool())
+	}
+	if cfg.CallAgent {
+		customTools = append(customTools, a2a.NewCallAgentTool())
 	}
 
 	return tools.Assemble(ctx, tools.AssemblyConfig{

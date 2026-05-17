@@ -8,7 +8,9 @@ import (
 	"os"
 	"strings"
 
+	"aranea-agents/internal/biz"
 	"aranea-agents/internal/conf"
+	"aranea-agents/internal/data/artifactfs"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/migrate"
 	"aranea-agents/internal/data/pgvector"
@@ -59,6 +61,10 @@ var ProviderSet = wire.NewSet(
 	NewGraphRunRepo,
 	NewGraphCheckpointSaver,
 	NewTaskRepo,
+	NewArtifactRepo,
+	NewKnowledgeRepoFromData,
+	NewEvalRepoFromData,
+	NewA2ARepoFromData,
 	wire.Bind(new(trpcgraph.CheckpointSaver), new(*graphtrpc.SQLiteCheckpointSaver)),
 )
 
@@ -281,4 +287,29 @@ func NewTRPCSessionService(d *Data) trpcsession.Service {
 		return sessiontrpc.NewInMemorySessionService()
 	}
 	return svc
+}
+
+func NewArtifactRepo() biz.ArtifactRepo {
+	return artifactfs.NewFSArtifactRepo()
+}
+
+func NewKnowledgeRepoFromData(d *Data) biz.KnowledgeRepo {
+	if d == nil || d.Postgres() == nil {
+		return nil
+	}
+	return NewKnowledgeRepo(d.Postgres())
+}
+
+func NewEvalRepoFromData(d *Data) biz.EvalRepo {
+	if d == nil || d.RawDB() == nil {
+		return nil
+	}
+	return NewEvalRepo(d.RawDB())
+}
+
+func NewA2ARepoFromData(d *Data) biz.A2ARepo {
+	if d == nil || d.RawDB() == nil {
+		return nil
+	}
+	return NewA2ARepo(d.RawDB())
 }

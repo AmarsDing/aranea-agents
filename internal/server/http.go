@@ -4,14 +4,18 @@ import (
 	"encoding/json"
 	nethttp "net/http"
 
+	a2av1 "aranea-agents/api/kratos/a2a/v1"
 	adminv1 "aranea-agents/api/kratos/admin/v1"
 	agentv1 "aranea-agents/api/kratos/agent/v1"
 	agentcategoryv1 "aranea-agents/api/kratos/agent_category/v1"
+	artifactv1 "aranea-agents/api/kratos/artifact/v1"
 	avatarv1 "aranea-agents/api/kratos/avatar/v1"
 	channelv1 "aranea-agents/api/kratos/channel/v1"
 	cronv1 "aranea-agents/api/kratos/cron/v1"
+	evaluationv1 "aranea-agents/api/kratos/evaluation/v1"
 	graphv1 "aranea-agents/api/kratos/graph/v1"
 	hookv1 "aranea-agents/api/kratos/hook/v1"
+	knowledgev1 "aranea-agents/api/kratos/knowledge/v1"
 	llmprovidermodelv1 "aranea-agents/api/kratos/llm_provider_model/v1"
 	mcpserverv1 "aranea-agents/api/kratos/mcp_server/v1"
 	memoryv1 "aranea-agents/api/kratos/memory/v1"
@@ -56,6 +60,10 @@ func NewHTTPServer(c *conf.Server,
 	teams *service.TeamService,
 	chatSvc *service.ChatService,
 	graphSvc *service.GraphService,
+	artifactSvc *service.ArtifactService,
+	knowledgeSvc *service.KnowledgeService,
+	evalSvc *service.EvaluationService,
+	a2aSvc *service.A2AService,
 	channelIngress *service.ChannelIngress,
 	skillImport *importer.Engine,
 	wsSrv *WSServer,
@@ -101,6 +109,10 @@ func NewHTTPServer(c *conf.Server,
 	teamv1.RegisterTeamServiceHTTPServer(srv, teams)
 	RegisterChatIngress(srv, chatSvc)
 	graphv1.RegisterGraphServiceHTTPServer(srv, graphSvc)
+	artifactv1.RegisterArtifactServiceHTTPServer(srv, artifactSvc)
+	knowledgev1.RegisterKnowledgeServiceHTTPServer(srv, knowledgeSvc)
+	evaluationv1.RegisterEvaluationServiceHTTPServer(srv, evalSvc)
+	a2av1.RegisterA2AServiceHTTPServer(srv, a2aSvc)
 	RegisterChannelWebhook(srv, channelIngress)
 	RegisterSkillImportHTTPServer(srv, skillImport)
 	wsSrv.RegisterOnKratos(srv)

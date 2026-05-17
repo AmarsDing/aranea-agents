@@ -11,6 +11,10 @@ const ToolKeyMCPToolSet = "mcp_tool_set"
 
 const ToolKeyMCPBroker = "mcp_broker"
 
+const ToolKeyKnowledgeSearch = "knowledge_search"
+
+const ToolKeyCallAgent = "call_agent"
+
 // EffectiveMCPServer is a biz DTO for one enabled MCP server row — no ADK imports.
 type EffectiveMCPServer struct {
 	ID         string

@@ -9,14 +9,19 @@ import (
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+	plugintrpc "aranea-agents/internal/plugin/trpc"
 	rt "aranea-agents/internal/runtime"
+
+	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 type Runner struct {
-	teams biz.TeamRepository
-	td    rt.TurnDeps
+	teams       biz.TeamRepository
+	td          rt.TurnDeps
+	pluginRT    *plugintrpc.Runtime
+	skillDBRepo trpcskill.Repository
 }
 
 func NewRunner(
@@ -32,9 +37,13 @@ func NewRunner(
 	sys biz.SystemSettingRepo,
 	persist rt.PersistenceSet,
 	compress biz.NativeTurnCompressor,
+	pluginRT *plugintrpc.Runtime,
+	skillDBRepo trpcskill.Repository,
 ) *Runner {
 	return &Runner{
-		teams: teams,
+		teams:       teams,
+		pluginRT:    pluginRT,
+		skillDBRepo: skillDBRepo,
 		td: rt.TurnDeps{
 			Catalog: rt.Catalog{
 				Agents:   agents,

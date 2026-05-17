@@ -16,6 +16,8 @@ import (
 	"aranea-agents/internal/event"
 	"aranea-agents/pkg/strutil"
 
+	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
+
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
 )
@@ -88,17 +90,18 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 	prov0 := strutil.FirstNonEmpty(provOpt, sess.DefaultProvider, firstAg.Provider)
 	mod0 := strutil.FirstNonEmpty(modOpt, sess.DefaultModel, firstAg.Model)
 	builderDeps := agent.TRPCBuilderDeps{
-		Catalog:    r.td.Catalog.LLM,
-		AgentUC:    r.td.Catalog.AgentsUC,
-		Agents:     r.td.Catalog.Agents,
-		RT:         r.td.RoundTrip(),
-		SkillUC:    r.td.Catalog.SkillUC,
-		MCPTooling: r.td.Persist.AgentMCP,
-		ToolUC:     r.td.Catalog.ToolUC,
-		Sys:        r.td.Catalog.Settings,
-		Provider:   prov0,
-		Model:      mod0,
-		DialogMode: dialogMode,
+		Catalog:     r.td.Catalog.LLM,
+		AgentUC:     r.td.Catalog.AgentsUC,
+		Agents:      r.td.Catalog.Agents,
+		RT:          r.td.RoundTrip(),
+		SkillUC:     r.td.Catalog.SkillUC,
+		MCPTooling:  r.td.Persist.AgentMCP,
+		ToolUC:      r.td.Catalog.ToolUC,
+		Sys:         r.td.Catalog.Settings,
+		Provider:    prov0,
+		Model:       mod0,
+		DialogMode:  dialogMode,
+		SkillDBRepo: r.skillDBRepo,
 	}
 	teamDeps := TRPCTeamBuilderDeps{BuilderDeps: builderDeps, UseCache: true}
 	root, err := BuildTRPCTeam(ctx, def, teamDeps, r.catalogAgent)
@@ -110,7 +113,11 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 		"team_turn phase=team_built session_id=%s run_id=%s mode=%s",
 		sess.ID, run.ID, mode), sess.ID)
 
-	runnerDeps := agent.NewRunnerDepsFromRuntime(r.td.Persist.Session, r.td.Persist.Memory)
+	var plugins []trpcplugin.Plugin
+	if r.pluginRT != nil {
+		plugins = r.pluginRT.Plugins()
+	}
+	runnerDeps := agent.NewRunnerDepsFromRuntime(r.td.Persist.Session, r.td.Persist.Memory, plugins...)
 	runner, err := agent.NewTRPCRunner(root, runnerDeps)
 	if err != nil {
 		r.finishRunErr(ctx, &run, t0, err.Error())

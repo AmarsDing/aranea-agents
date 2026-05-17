@@ -14,6 +14,7 @@ import (
 	"aranea-agents/internal/event"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
+	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
@@ -34,24 +35,29 @@ func (s *ChatService) runSingleAgentViaTRPC(
 	}
 
 	deps := chatagent.TRPCBuilderDeps{
-		Catalog:    s.td.Catalog.LLM,
-		AgentUC:    s.td.Catalog.AgentsUC,
-		Agents:     s.td.Catalog.Agents,
-		RT:         s.td.RoundTrip(),
-		SkillUC:    s.td.Catalog.SkillUC,
-		MCPTooling: s.td.Persist.AgentMCP,
-		ToolUC:     s.td.Catalog.ToolUC,
-		Sys:        s.td.Catalog.Settings,
-		Provider:   prov,
-		Model:      mod,
-		DialogMode: dialogMode,
+		Catalog:     s.td.Catalog.LLM,
+		AgentUC:     s.td.Catalog.AgentsUC,
+		Agents:      s.td.Catalog.Agents,
+		RT:          s.td.RoundTrip(),
+		SkillUC:     s.td.Catalog.SkillUC,
+		MCPTooling:  s.td.Persist.AgentMCP,
+		ToolUC:      s.td.Catalog.ToolUC,
+		Sys:         s.td.Catalog.Settings,
+		Provider:    prov,
+		Model:       mod,
+		DialogMode:  dialogMode,
+		SkillDBRepo: s.skillDBRepo,
 	}
 	root, err := chatagent.BuildTRPCLLMAgentCached(ctx, ag, deps)
 	if err != nil {
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
 
-	runnerDeps := chatagent.NewRunnerDepsFromRuntime(s.td.Persist.Session, s.td.Persist.Memory)
+	var plugins []trpcplugin.Plugin
+	if s.pluginRT != nil {
+		plugins = s.pluginRT.Plugins()
+	}
+	runnerDeps := chatagent.NewRunnerDepsFromRuntime(s.td.Persist.Session, s.td.Persist.Memory, plugins...)
 	runner, err := chatagent.NewTRPCRunner(root, runnerDeps)
 	if err != nil {
 		return biz.ChatMessage{}, biz.ChatMessage{}, err

@@ -29,6 +29,7 @@ import (
 	"github.com/go-kratos/kratos/v2"
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/google/wire"
+	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
 )
 
 func provideCronRunnerDeps(
@@ -84,6 +85,8 @@ func provideChatServiceDeps(
 	persist rt.PersistenceSet,
 	compress biz.NativeTurnCompressor,
 	eventBus event.Bus,
+	pluginRT *plugintrpc.Runtime,
+	skillDBRepo trpcskill.Repository,
 ) service.ChatServiceDeps {
 	return service.ChatServiceDeps{
 		Teams:        teams,
@@ -100,6 +103,8 @@ func provideChatServiceDeps(
 		Persist:      persist,
 		Compress:     compress,
 		EventBus:     eventBus,
+		PluginRT:     pluginRT,
+		SkillDBRepo:  skillDBRepo,
 	}
 }
 

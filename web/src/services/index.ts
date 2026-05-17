@@ -1,10 +1,14 @@
 import { createAdminServiceClient } from "./kratos/admin/v1/index";
 import { createAgentCategoryServiceClient } from "./kratos/agent_category/v1/index";
 import { createAgentServiceClient } from "./kratos/agent/v1/index";
+import { createArtifactServiceClient } from "./kratos/artifact/v1/index";
+import { createA2AServiceClient } from "./kratos/a2a/v1/index";
 import { createAvatarServiceClient } from "./kratos/avatar/v1/index";
 import { createChannelServiceClient } from "./kratos/channel/v1/index";
 import { createCronServiceClient } from "./kratos/cron/v1/index";
+import { createEvaluationServiceClient } from "./kratos/evaluation/v1/index";
 import { createHookServiceClient } from "./kratos/hook/v1/index";
+import { createKnowledgeServiceClient } from "./kratos/knowledge/v1/index";
 import { createLlmProviderModelServiceClient } from "./kratos/llm_provider_model/v1/index";
 import { createMCPServerServiceClient } from "./kratos/mcp_server/v1/index";
 import { createPluginServiceClient } from "./kratos/plugin/v1/index";
@@ -99,6 +103,22 @@ export function createGraphService() {
 
 export function createChatService() {
   return createChatServiceClient(requestHandler);
+}
+
+export function createArtifactService() {
+  return createArtifactServiceClient(requestHandler);
+}
+
+export function createKnowledgeService() {
+  return createKnowledgeServiceClient(requestHandler);
+}
+
+export function createEvaluationService() {
+  return createEvaluationServiceClient(requestHandler);
+}
+
+export function createA2AService() {
+  return createA2AServiceClient(requestHandler);
 }
 
 export { kratosApi, requestHandler, syncHttpClients } from "./axiosHandler";

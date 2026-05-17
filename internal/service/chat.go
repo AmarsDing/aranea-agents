@@ -11,10 +11,12 @@ import (
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+	plugintrpc "aranea-agents/internal/plugin/trpc"
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/internal/team"
 
 	trpcrunner "trpc.group/trpc-go/trpc-agent-go/runner"
+	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
@@ -41,13 +43,13 @@ type ChatService struct {
 	teamsNative    *team.Runner
 	usage          *biz.UsageUsecase
 	td             rt.TurnDeps
+	pluginRT       *plugintrpc.Runtime
+	skillDBRepo    trpcskill.Repository
 	activeRuns     sync.Map
 	pendingQueue   sync.Map
 	pendingCancels sync.Map
-	// runStatuses stores *runStatusEntry by sessionID.
-	runStatuses sync.Map
-	// awaitChans stores chan awaitReplyCh by sessionID when a run is in awaiting_user state.
-	awaitChans sync.Map
+	runStatuses    sync.Map
+	awaitChans     sync.Map
 }
 
 type ChatServiceDeps struct {
@@ -65,6 +67,8 @@ type ChatServiceDeps struct {
 	Persist      rt.PersistenceSet
 	Compress     biz.NativeTurnCompressor
 	EventBus     event.Bus
+	PluginRT     *plugintrpc.Runtime
+	SkillDBRepo  trpcskill.Repository
 }
 
 func NewChatService(deps ChatServiceDeps) *ChatService {
@@ -72,6 +76,8 @@ func NewChatService(deps ChatServiceDeps) *ChatService {
 		teams:       deps.Teams,
 		teamsNative: deps.TeamsNative,
 		usage:       deps.Usage,
+		pluginRT:    deps.PluginRT,
+		skillDBRepo: deps.SkillDBRepo,
 		td: rt.TurnDeps{
 			Catalog: rt.Catalog{
 				Agents:   deps.Agents,
