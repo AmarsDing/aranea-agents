@@ -36,7 +36,7 @@ Plugin 与 Skill / Tool 的边界：
 | 运行日志 | MVP 展示摘要 | 仅展示 callback 类型、Agent、结果、耗时、错误摘要 |
 | 上传第三方插件代码 | 否 | 不允许上传任意 Go / 动态库插件，避免安全和跨平台问题 |
 | 动态插件运行时 | 后续迭代 | 可考虑外部进程 / gRPC / MCP / WASM 插件 |
-| 真正注入框架 Runner | 后续接入 | 当前 `ADKRuntimeAdapter` 仍是直连模型适配；后续真实接入 **`pkg/trpc-agent-go` Runner `PluginConfig`** 后生效 |
+| 真正注入框架 Runner | 已接入 | `trpcrunner.WithPlugins` + `pluginRT.Plugins()`（见文首现状对齐）；Pre*/Post* 配对红线（R18）待 EP-CB-01 统一 |
 
 ### 0.2 默认产品决策
 

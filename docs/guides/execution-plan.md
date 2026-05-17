@@ -327,6 +327,7 @@
 | `docs/guides/trpc-agent-go-framework.md` | 框架工程化解读 | 框架升级时同步 |
 | `docs/需求/<n> <模块>.md` | 需求 + 运维指南（§6/§7） | 需求变更或运维要点变更时改 |
 | `docs/需求/<n> <模块>.design.md` | 纯设计（接口 / 数据模型 / 选型） | 设计调整时改 |
+| `docs/需求/*-development.md` | 模块开发计划（Phase / EP / 验收） | 审计或里程碑调整时改；索引见 `需求/README-development.md` |
 | `docs/changelog/README.md` | 变更记录索引 | 新增 changelog 时同步 |
 | `docs/changelog/<date>-<topic>.md` | 变更摘要 + EP 引用 | 每个 PR 1 篇 |
 | `docs/devlog/README.md` | 开发日志索引 | 新增 devlog 时同步 |
@@ -372,10 +373,10 @@
 | Memory 基础（L0-L4 表） | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — |
 | Memory Auto Extract | n/a | ✅ | ✅ | n/a | n/a | ✅ | n/a | EP-RT-03 ✅ |
 | Memory Tools（5 件套） | n/a | n/a | n/a | n/a | n/a | 🟡 | n/a | EP-RT-05 ✅ |
-| Knowledge | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | 🟡 | EP-BIZ-03 ✅（工具已注册）|
-| Artifact REST | ✅ | ✅ | ✅ | ✅ | ❌ | ⛔ | 🟡 | EP-BIZ-03（间接）|
-| A2A | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🟡 | EP-BIZ-03 ✅（call_agent 工具已注册）|
-| Evaluation | ✅ | ✅ | ✅ | ✅ | ❌ | 🟡 | 🟡 | EP-BIZ-04 ✅ |
+| Knowledge | ✅ | ✅ | 🟡 | ✅ | ✅ | ✅ | 🟡 | EP-DATA-01, EP-KN-01/02, EP-RT-08 |
+| Artifact REST | ✅ | ✅ | ✅ | ✅ | ✅ | 🟡 | 🟡 | EP-RT-08（FS Repo；Runner CodeExecutor 间接）|
+| A2A | ✅ | ✅ | 🟡 | ✅ | ✅ | 🟡 | 🟡 | EP-A2A-01/02, EP-DATA-01, EP-RT-08 |
+| Evaluation | ✅ | ✅ | 🟡 | ✅ | ✅ | 🟡 | 🟡 | EP-DATA-01, EP-RT-08, EP-BIZ-04 |
 | CodeExecutor（Local） | n/a | n/a | n/a | n/a | n/a | ✅ | n/a | — |
 | CodeExecutor（Docker） | n/a | n/a | n/a | n/a | n/a | ✅ | n/a | EP-BIZ-02 ✅ |
 | Graph 工作流 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — |

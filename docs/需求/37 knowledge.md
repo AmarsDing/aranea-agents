@@ -2,12 +2,12 @@
 
 > 对标 `pkg/trpc-agent-go/knowledge` 包，实现 RAG 知识库能力。
 >
-> **2026-05-17 现状对齐**：以下"现状分析"已被代码反超。当前实现状态：
-> - ✅ `internal/biz/knowledge.go` / `internal/data/knowledge.go` / `internal/service/knowledge.go` 已通；`internal/knowledge/{chunker,embedder,retriever}.go` 已实现；`internal/tools/knowledge/tool.go` 已包装为 `knowledge_search` 工具。
-> - ❌ **未在 Agent 装配链注入 knowledge tool**（`internal/agent/trpc_build.go` 没有把 KnowledgeUsecase 编织进 tool list）；Agent 实际跑时仍无 RAG。
-> - ❌ Embedder 默认 stub，pgvector 后端未启用。
+> **2026-05-17 现状对齐**（2026-05-17 二批复核）：
+> - ✅ Biz / Service / **HTTP+gRPC 已注册**；`knowledge_search` 经 `buildToolsetsForAgent` + `ToolKeyKnowledgeSearch` 进入装配链（需 Agent 工具开关启用）。
+> - 🟡 **Postgres 依赖**：`NewKnowledgeRepoFromData` 无 PG 时返回 nil Repo；`NewData()` **未**调用 `EnsureKnowledgeSchema`（EP-DATA-01）；Embedder 需 conf/env 注入（EP-KN-01）。
+> - 🟡 摄取流水线同步为主，异步进度与前端闭环待 EP-KN-02。
 >
-> 后续以 `guides/execution-plan.md` §3 EP-BIZ-02 为准。运维要点见下方 §6。
+> 进度以 `guides/execution-plan.md` 附录 A 为准。运维要点见 §6。
 
 ---
 

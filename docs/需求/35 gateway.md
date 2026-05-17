@@ -2,23 +2,26 @@
 
 > 对标 `pkg/trpc-agent-go/runner` 包的网关能力，完善项目的会话管理和 API 网关。
 
+> **2026-05-17 现状对齐**：
+> - ✅ **RunStatus / Cancel / AwaitUserReply** 已落 Chat 服务与前端 `useRunStatus`（EP-RT-01/02 ✅）。
+> - ✅ **WebSocket** 已挂入 Kratos HTTP（`internal/server/ws.go`），为事件与聊天主通道之一。
+> - 🟡 **统一 Gateway 抽象**（并发闸门、QueuedUserMessage、Webhook 出站）仍未产品化；Chat SSE 与 WS 并存（见 `51 消息机制.md`）。
+> - 进度真相以 `guides/execution-plan.md` 附录 A 为准。
+
 ---
 
 ## 1. 现状分析
 
-项目已有基础的 HTTP/gRPC 服务和 SSE 推流：
-- `internal/server/sse.go`：SSE 推流
-- `internal/service/chat_native.go`：聊天服务
-- `internal/server/http.go`：HTTP 服务器
-- `internal/server/grpc.go`：gRPC 服务器
+项目已有 HTTP/gRPC、WS、Chat SSE 与 Native Turn 路径：
+- `internal/server/ws.go`：WebSocket 网关
+- `internal/service/chat_native.go`：聊天与 RunStatus
+- `internal/server/http.go` / `grpc.go`：传输注册
 
-**缺失能力**：
-1. 无会话并发控制（同一会话同时多个请求）
-2. 无运行状态查询（status）
-3. 无运行取消（cancel）
-4. 无 AwaitUserReply 路由
-5. 无 QueuedUserMessage 排队
-6. 无 Webhook 回调
+**仍缺失或半成品**：
+1. 会话级并发控制（同一会话多请求互斥/排队）未统一抽象
+2. QueuedUserMessage / RALPH 排队未端到端
+3. 出站 Webhook（运行完成通知第三方）未统一
+4. 与 Channel/A2A 共用的 Gateway 门面层（M16 长期项）
 
 ---
 

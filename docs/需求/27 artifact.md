@@ -2,13 +2,12 @@
 
 > 对标 `pkg/trpc-agent-go/artifact` 包，实现制品存储和版本管理。
 >
-> **2026-05-17 现状对齐**：以下"现状分析"已被代码反超。当前实现状态：
-> - ✅ `internal/biz/artifact.go` / `internal/data/artifactfs/repo.go` / `internal/service/artifact.go` / `internal/artifact/trpc/service.go` 已具备 Save / Load / List / Delete；REST `api/kratos/artifact/v1/*` 已生成。
-> - ❌ **未在 `internal/server/http.go` / `grpc.go` 注册 ArtifactService**，对外不可访问。
-> - ❌ **未把 trpc Artifact Service 注入 CodeExecutor / Runner**，工具产生的二进制结果仍丢失。
-> - ❌ S3 / COS 后端未启用，仅本地 FS。
+> **2026-05-17 现状对齐**（2026-05-17 二批复核）：
+> - ✅ Biz / FS Repo / Service / **HTTP+gRPC 已注册**（`internal/server/http.go`、`grpc.go`）。
+> - 🟡 **Runner 侧制品闭环**：Skill `CodeExecutor` 已注入（`trpc_build.go`）；工具产出物与 trpc `artifact.Service` 持久化联动仍弱。
+> - ❌ S3 / COS 后端未启用，仅本地 FS；多租户路径隔离待 M2（EP-WS-01）。
 >
-> 后续以 `guides/execution-plan.md` §3 EP-BIZ-03 为准。运维要点见下方 §6。
+> 进度以 `guides/execution-plan.md` 附录 A 为准。运维要点见 §6。
 
 ---
 

@@ -2,12 +2,12 @@
 
 > 对标 `pkg/trpc-agent-go/evaluation` 包，实现 Agent 自动化评估能力。
 >
-> **2026-05-17 现状对齐**：
-> - ✅ `internal/biz/evaluation.go` / `internal/data/evaluation.go` / `internal/service/evaluation.go` / `internal/evaluation/runner.go` 已落地；`api/kratos/evaluation/v1/*` proto/gRPC/HTTP 已生成。
-> - ❌ **`cmd/admin/wire.go` 在装配 EvaluationService 时 Runner 仍传 `nil`**，导致评估 Run 入口不可用；前端 store 未对接。
-> - ❌ trajectory 多维度评估、LLM-Judge、报告导出 尚未实现。
+> **2026-05-17 现状对齐**（2026-05-17 二批复核）：
+> - ✅ Biz / data / service / **HTTP+gRPC 已注册**；`NewEvaluationRunner` 经 Chat `RunNativeTurnUnary` 执行用例（EP-BIZ-04 ✅）。
+> - 🟡 **`EnsureEvalSchema` 未在 `NewData()` 启动期调用**（EP-DATA-01）；无表时首跑可能失败。
+> - 🟡 前端 Evaluation 页/store 闭环不完整；trajectory / LLM-Judge / 报告导出未实现。
 >
-> 后续以 `guides/execution-plan.md` §3 EP-BIZ-04 为准。运维要点见下方 §6。
+> 进度以 `guides/execution-plan.md` 附录 A 为准。运维要点见 §6。
 
 ---
 

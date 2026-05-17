@@ -89,16 +89,16 @@ internal/data           ← Repo 实现（Ent ORM + SQLite，单 sql.Open）
 | M7 Tool 工具体系 | ✅ 已对齐 | 含 toolset / DeclarableTool / a2a / knowledge |
 | M8 MCP 集成 | 🟡 部分实现 | trpc 已迁；Broker / 传输层待完善 |
 | M9 Model 模型层 | ✅ 基本对齐 | 多 Provider |
-| **M10 Plugin** | 🟡 部分实现 | AuditLog / Permissions / 热重载已写；**未在 Agent 装配链上注入到 Runner**（EP-RT-03） |
+| **M10 Plugin** | 🟡 部分实现 | 已注入 Runner；Agent/Model 全链路 Callback 待 EP-CB-01 |
 | M11 Planner 规划 | ✅ 已对齐 | builtin / react / a2ui selector |
-| **M12 Artifact** | 🟡 部分实现 | biz/data/service/REST 已通；**未注册到 Server，未注入 Runner CodeExecutor**（EP-BIZ-03） |
-| **M13 Knowledge** | 🟡 部分实现 | usecase / repo / service / chunker / embedder / retriever 已写；**knowledge_search 工具未挂到 Agent 装配链**（EP-BIZ-02） |
+| **M12 Artifact** | 🟡 部分实现 | Service 已注册；Runner 制品闭环 / S3 后端待完善（EP-RT-08） |
+| **M13 Knowledge** | 🟡 部分实现 | 工具已装配；**EnsureKnowledgeSchema / Embedder / 摄取异步**待 EP-DATA-01、EP-KN-01/02 |
 | **M14 CodeExecutor** | 🟡 部分实现 | Docker Sandbox 已写；**skill 路径仍走本地 LocalExec**（EP-BIZ-04） |
 | **M15 A2A 协议** | 🟡 部分实现 | call_agent / pb / service 已写；**未挂到 Agent 装配链 + 远端鉴权未做** |
 | M16 Gateway 网关 | 🟡 部分实现 | RunStatus RPC 已通；统一 Gateway 抽象未做 |
 | **M17 Evaluation** | 🟡 部分实现 | usecase / repo / runner 已写；**wireApp 处 runner 仍传 `nil`** |
 | M18 Event 事件 | ✅ 已对齐 | 背压策略 / Backpressure 计数 / WS 统一传输 |
-| **M19 Callback 回调** | 🟡 部分实现 | callbacks/adapter 已写；**未串到 Agent 主链路** |
+| **M19 Callback 回调** | 🟡 部分实现 | Tool/Plugin 回调已通；**LLMAgent/Model Chain 未挂**（EP-CB-01） |
 | M20 Runner 运行器 | ✅ 已对齐 | trpc Runner 装配走 `internal/runtime/deps.go` |
 
 图例：✅ 端到端可用 | 🟡 代码骨架完成但未端到端接入主链路 | ❌ 未启动
@@ -146,7 +146,7 @@ AI 和开发者编写文档时**必须**遵循以下职责分离原则（与 `ex
 | **Session** | [10 session.md](./需求/10%20session.md)、[10 session.design.md](./需求/10%20session.design.md) |
 | **Multi-Agent / Team** | [11 multi-agent.md](./需求/11%20multi-agent.md)、[11 multi-agent.design.md](./需求/11%20multi-agent.design.md) |
 | **Memory L0~L4** | [12 L0-sensory](./需求/12%20memory-L0-sensory.md)、[13 L1-working](./需求/13%20memory-L1-working.md)、[14 L2-episodic](./需求/14%20memory-L2-episodic.md)、[15 L3-semantic](./需求/15%20memory-L3-semantic.md)、[16 L4-persistent](./需求/16%20memory-L4-persistent.md)、[12-16 memory.design](./需求/12-16%20memory.design.md)、[31+38 supplement.design](./需求/31+38%20memory-supplement.design.md)、[38 memory.md（框架对齐）](./需求/38%20memory.md)、[31 memery.md（拼写遗留→记忆管理 UX）](./需求/31%20memery.md) |
-| **Channel** | [17 channel.md](./需求/17%20channel.md)、[17 channel.design.md](./需求/17%20channel.design.md)、[channel-requirements-analysis.md](./需求/channel-requirements-analysis.md) |
+| **Channel** | [17 channel.md](./需求/17%20channel.md)、[17 channel.design.md](./需求/17%20channel.design.md)、[17-channel-development.md](./需求/17-channel-development.md) |
 | **Monitor** | [18 monitor.md](./需求/18%20monitor.md)、[18 monitor.design.md](./需求/18%20monitor.design.md) |
 | **MCP** | [19 mcp.md](./需求/19%20mcp.md)、[19 mcp.design.md](./需求/19%20mcp.design.md) |
 | **Skill** | [20 skill.md](./需求/20%20skill.md)、[20 skill.design.md](./需求/20%20skill.design.md)、[20 skill struct design.md](./需求/20%20skill%20struct%20design.md) |
@@ -173,6 +173,10 @@ AI 和开发者编写文档时**必须**遵循以下职责分离原则（与 `ex
 | **TTS** | [tts.md](./需求/tts.md)（占位） |
 
 > 旧文件 `31 memery.md`（拼写错误，应为 *memory*）仅作历史保留；新内容请写入 `38 memory.md` 或合入 `31+38 memory-supplement.design.md`。
+
+### 7.1 模块开发计划（2026-05-17）
+
+各功能域迭代路线见 [`需求/README-development.md`](./需求/README-development.md)（索引）及 `需求/*-development.md`（39+ 篇）。横切数据启动项见 [`需求/data-platform-development.md`](./需求/data-platform-development.md)。**进度仍以 `guides/execution-plan.md` 附录 A 为准**；开发计划描述「做什么」，不替代 EP 状态。
 
 ---
 
@@ -212,6 +216,8 @@ docs/
 │   └── trpc-agent-go-framework.md          ← trpc 框架工程化解读
 ├── 需求/                              ← 产品需求 + 设计文档 + 运维指南（§6）
 │   ├── 0 系统框图.md                       ← ★ 系统架构总览
+│   ├── README-development.md               ← 模块开发计划索引
+│   ├── *-development.md                    ← 各模块开发计划
 │   ├── *.md                                ← 纯需求内容
 │   └── *.design.md                         ← 纯设计内容
 ├── changelog/                         ← 变更摘要（只读历史，索引见 README.md）

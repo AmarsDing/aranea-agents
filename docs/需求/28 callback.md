@@ -2,11 +2,16 @@
 
 > 对标 `pkg/trpc-agent-go/agent/callbacks.go` + `model/callbacks.go` + `tool/callbacks.go`，实现全链路回调钩子。
 
+> **2026-05-17 现状对齐**：
+> - ✅ **Tool 回调已接通**：`internal/agent/trpc_build.go` 的 `buildToolCallbacks` 挂载 BeforeTool/AfterTool；Plugin 运行时回调经 `trpcrunner.WithPlugins` 注入。
+> - 🟡 **Agent/Model 生命周期回调未接通**：`internal/agent/callbacks/` 有 Chain 抽象，但未挂到 LLMAgent / Model 构造（见 `guides/execution-plan.md` EP-CB-01）。
+> - 进度真相以 `guides/execution-plan.md` 附录 A 为准。
+
 ---
 
 ## 1. 现状分析
 
-项目无 Callback 回调机制。Agent/Model/Tool 的执行过程无法被拦截、修改或增强。
+**历史结论（已部分过时）**：早期版本无 Callback。当前 Tool 级与 Plugin 级回调已可用；Agent/Model 全链路回调仍为缺口（EP-CB-01）。
 
 ---
 
