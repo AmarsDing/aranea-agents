@@ -252,3 +252,86 @@ Cron 不直接实现 Agent 或 Team 的运行逻辑，而是复用现有 **`Chat
 ---
 
 *文档版本：1.3 — 增加 Cron 调动 Agent / Team 的执行设计，并将后端 Cron runner 纳入本期实施。*
+
+---
+
+## 7. 运维指南
+
+> 原 `guides/cron.md` 内容，2026-05-17 合入。
+
+Cron 任务支持**自动重试**、**Prometheus 指标**和**死信**机制，防止失控故障。
+
+### 7.1 重试策略
+
+每个返回错误的任务会自动按**指数退避**计划重试，然后才计为失败。
+
+| 尝试 | 延迟 |
+|------|------|
+| 第 1 次重试 | 30 秒 |
+| 第 2 次重试 | 2 分钟 |
+| 第 3 次重试 | 10 分钟 |
+
+所有重试次数用尽后，该次运行标记为 `failed`。
+
+**Panic 恢复**通过 `pkg/safego` 在每次尝试时应用。Panic 的任务处理程序视为硬失败，进入重试计划。
+
+#### 配置
+
+重试计划定义在 `internal/cronrunner/runner.go`：
+
+```go
+var defaultRetryBackoff = []time.Duration{30 * time.Second, 2 * time.Minute, 10 * time.Minute}
+const maxDeadFailures = 3
+```
+
+### 7.2 死信状态
+
+当一个任务在多次调度运行中累计 **3 次连续失败**时，转入 `dead` 状态：
+
+- `cron_tasks.status` 设为 `"dead"`
+- `cron_tasks.enabled` 设为 `false`
+- 内部事件总线发出 `cron.dead_letter` 管理告警事件，元数据：
+  ```json
+  { "job_id": "…", "task_key": "…", "name": "…" }
+  ```
+
+死信任务**不再调度**，直到手动重置（将 `enabled = true`、`status = "active"`、`failure_count = 0`）。
+
+### 7.3 指标
+
+| 指标 | 类型 | 标签 | 说明 |
+|------|------|------|------|
+| `aranea_cron_job_runs_total` | Counter | `job_id`, `status` | 按结果的总执行次数（`success`/`failure`） |
+| `aranea_cron_job_duration_seconds` | Histogram | `job_id` | 每次执行的挂钟时间 |
+| `aranea_cron_job_dead_total` | Counter | `job_id` | 任务进入死信状态的次数 |
+
+`duration_seconds` 桶：`0.5s, 1s, 5s, 15s, 30s, 60s, 120s, 300s, 600s`
+
+### 7.4 持久化到数据库的失败字段
+
+| 数据库列 | 更新时机 |
+|----------|----------|
+| `cron_tasks.failure_count` | 每次失败运行 |
+| `cron_tasks.last_error` | 最新错误消息 |
+| `cron_task_runs.status` | `"success"` 或 `"failure"`（每次运行） |
+| `cron_task_runs.error_message` | 错误文本 |
+| `cron_task_runs.finished_at` | 完成时间戳 |
+
+### 7.5 前端（管理 UI）
+
+Cron 管理页显示：
+
+- **重试次数 / 失败次数**（来自 `metadata_json.failure_count`）
+- **最近错误**（来自 `metadata_json.last_error`）
+- **最近失败列表**（来自 `metadata_json.recent_failures`）
+- **"重置失败计数"** 按钮：清除 `failure_count`、`last_error`，设置 `status = active`
+
+### 7.6 回退
+
+临时禁用某个任务的重试，在 `config_json` 中设置 `RetryPolicy.MaxAttempts = 0`：
+
+```json
+{ "retry_max_attempts": 0 }
+```
+
+全局开关尚未实现；需在 `internal/cronrunner/runner.go` 的 `executeTask` 中移除 `dispatchWithRetry` 来禁用。

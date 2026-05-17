@@ -7,7 +7,7 @@
 > - ❌ **skill 路径仍使用 `internal/skill/trpc/executor.go` 中的 `codeexecutor/local`**；Docker 执行器未替换为默认。
 > - ❌ E2B 沙箱、Jupyter 内核、Interactive 模式、WorkspaceRegistry 仍未实现。
 >
-> 后续以 `guides/execution-plan.md` §3 EP-BIZ-04 + 运维要点 `guides/codeexecutor.md` 为准。
+> 后续以 `guides/execution-plan.md` §3 EP-BIZ-04 为准。运维要点见下方 §6。
 
 ---
 
@@ -169,3 +169,117 @@ type CodeExecutionResult struct {
 4. 交互式执行环境可跨轮保持状态
 5. 产出物自动保存为 Artifact
 6. 执行器类型可在 Agent 设置中配置
+
+---
+
+## 6. 运维指南
+
+> 原 `guides/codeexecutor.md` 内容，2026-05-17 合入。
+
+CodeExecutor 模块提供模型生成代码的沙箱执行。支持两种后端：`local` 子进程执行器（开发用）和 `docker` 后端（生产隔离，含资源限制）。
+
+### 6.1 架构
+
+```
+trpc_build.go
+   └── codeexecutor.Executor (interface)
+           ├── LocalExecutor   (direct subprocess, no isolation)
+           └── DockerExecutor  (one-shot container, resource limits)
+                    └── artifact dir → Artifact service (T34)
+```
+
+### 6.2 组件
+
+| 组件 | 路径 |
+|------|------|
+| Executor 接口 + 实现 | `internal/agent/codeexecutor/executor.go` |
+
+### 6.3 配置
+
+在 `agent.codeexecutor.kind` 中：
+
+| 值 | 后端 | 说明 |
+|----|------|------|
+| `local` | `LocalExecutor` | 默认。在宿主进程环境中运行代码。 |
+| `docker` | `DockerExecutor` | 需要宿主机安装 Docker。 |
+
+#### Docker 配置字段
+
+```go
+DockerConfig{
+    Image:          "python:3.11-slim",
+    Network:        "none",
+    CPUQuota:       50000,
+    MemoryBytes:    256 * 1024 * 1024,
+    TmpSize:        "128m",
+    PullPolicy:     "missing",
+    WorkspaceMount: "",
+}
+```
+
+### 6.4 支持的语言
+
+| 语言 | Runner |
+|------|--------|
+| `python` / `python3` | `python3` |
+| `javascript` / `js` / `node` | `node` |
+| `bash` / `sh` / `shell` | `bash` |
+| `ruby` | `ruby` |
+
+### 6.5 Docker 执行流程
+
+1. 将模型生成的代码写入临时文件。
+2. 创建输出目录用于制品。
+3. 启动一次性容器（`--rm`）：
+   - 代码文件只读绑定挂载到 `/workspace/main.<ext>`。
+   - 输出目录可写绑定挂载到 `/workspace/out`。
+   - 可选宿主工作区只读挂载到 `/data`。
+   - `--read-only` 根文件系统，`/tmp` 为 `tmpfs`。
+   - 网络设为 `none`（无互联网访问）。
+   - 内存硬限制 + CPU 配额。
+4. 捕获 stdout、stderr 和 `/workspace/out` 内容。
+5. 自动移除容器（`--rm`）。
+
+### 6.6 执行结果
+
+```go
+type Result struct {
+    Stdout      string
+    Stderr      string
+    ExitCode    int
+    TimedOut    bool
+    OOM         bool
+    ArtifactDir string
+}
+```
+
+`ArtifactDir` 中的文件应由调用方上传到 Artifact 服务。
+
+### 6.7 安全
+
+| 控制 | 实现 |
+|------|------|
+| 无网络 | `--network none` |
+| 只读根文件系统 | `--read-only` |
+| 内存上限 | `--memory` + `--memory-swap`（相等 → 禁用 swap） |
+| CPU 上限 | `--cpus=0.5` |
+| 临时容器 | `--rm` — 运行后移除容器 |
+| 超时 | `context.WithTimeout` + `--stop-timeout` |
+
+### 6.8 Prometheus 指标
+
+| 指标 | 标签 | 说明 |
+|------|------|------|
+| `aranea_codeexec_runs_total` | `kind, status` | 总执行次数（success/error/timeout/oom） |
+| `aranea_codeexec_duration_seconds` | `kind` | 执行时长直方图 |
+| `aranea_codeexec_oom_total` | `kind` | OOM kill 计数 |
+
+### 6.9 回退
+
+如果 Docker 不可用，应用层应回退到 `LocalExecutor` 并发出告警。未来：`kind=firecracker` 或 `kind=nsjail` 用于更轻量的 VM（S7+ 候选）。
+
+### 6.10 运维验收标准
+
+- 模型生成的 Python 脚本 → Docker 容器执行 → stdout + `/workspace/out` 制品返回。
+- 超时 → `Result.TimedOut=true`；`codeexec_runs_total{status="timeout"}` 递增。
+- 内存超限 → `Result.OOM=true`；`codeexec_oom_total` 递增。

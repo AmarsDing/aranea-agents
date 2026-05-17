@@ -7,7 +7,7 @@
 > - ❌ **`cmd/admin/wire.go` 在装配 EvaluationService 时 Runner 仍传 `nil`**，导致评估 Run 入口不可用；前端 store 未对接。
 > - ❌ trajectory 多维度评估、LLM-Judge、报告导出 尚未实现。
 >
-> 后续以 `guides/execution-plan.md` §3 EP-BIZ-04 + 运维要点 `guides/evaluation.md` 为准。
+> 后续以 `guides/execution-plan.md` §3 EP-BIZ-04 为准。运维要点见下方 §6。
 
 ---
 
@@ -176,3 +176,127 @@ func New(appName string, runner runner.Runner, opt ...Option) (AgentEvaluator, e
 4. 模拟用户可自动与 Agent 交互
 5. 评估结果为多次运行的平均值
 6. 前端可查看评估结果和趋势（超越层）
+
+---
+
+## 6. 运维指南
+
+> 原 `guides/evaluation.md` 内容，2026-05-17 合入。
+
+Evaluation 模块提供结构化的 Agent 质量基准测试能力，使用输入/期望输出对数据集。运行异步执行，内置四种指标，结果存储供检查和比较。
+
+### 6.1 架构
+
+```
+EvaluationService (Kratos HTTP/gRPC)
+       │
+EvalUsecase (biz)
+       │
+   EvalRepo (data) ─── SQLite / PostgreSQL tables
+       │
+evaluation.Runner (async goroutine)
+   ├── exact_match
+   ├── contains_match
+   ├── llm_as_judge   (optional LLMJudge hook)
+   └── tool_call_accuracy
+```
+
+### 6.2 组件
+
+| 组件 | 路径 | 用途 |
+|------|------|------|
+| Proto | `api/kratos/evaluation/v1/evaluation.proto` | HTTP + gRPC API |
+| Biz | `internal/biz/evaluation.go` | 领域类型 + `EvalRepo` 接口 |
+| Data | `internal/data/evaluation.go` | Raw SQL 持久化（SQLite/Postgres） |
+| Runner | `internal/evaluation/runner.go` | 异步执行 + 指标计算 |
+| Service | `internal/service/evaluation.go` | Kratos 服务适配器 |
+
+### 6.3 数据库 Schema
+
+由 `data.EnsureEvalSchema(ctx, db)` 创建：
+
+```sql
+eval_datasets      (id, name, description, case_count, workspace, ...)
+eval_cases         (id, dataset_id, input, expected_output, metadata_json)
+eval_runs          (id, dataset_id, agent_id, status, scores..., ...)
+eval_case_results  (id, run_id, case_id, actual_output, exact_match, ...)
+```
+
+### 6.4 API 端点
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/v1/evaluation/datasets` | 创建数据集 |
+| GET | `/v1/evaluation/datasets` | 列出数据集 |
+| GET | `/v1/evaluation/datasets/{id}` | 获取数据集 |
+| DELETE | `/v1/evaluation/datasets/{id}` | 删除数据集 |
+| POST | `/v1/evaluation/datasets/{dataset_id}/cases` | 上传用例（JSON 数组） |
+| POST | `/v1/evaluation/runs` | 启动异步评估运行 |
+| GET | `/v1/evaluation/runs` | 列出运行 |
+| GET | `/v1/evaluation/runs/{id}` | 获取运行 + 分数 |
+| GET | `/v1/evaluation/runs/{run_id}/results` | 逐用例结果 |
+
+### 6.5 评估指标
+
+| 指标 | 键 | 说明 |
+|------|-----|------|
+| 精确匹配 | `exact_match` | 不区分大小写的字符串相等 |
+| 包含匹配 | `contains_match` | 期望字符串出现在输出中 |
+| LLM 评判 | `llm_as_judge` | 评判模型打分 [0,1] |
+| 工具调用准确率 | `tool_call_accuracy` | 期望工具在输出中被提及的比例 |
+
+使用 `RunEvaluationRequest` 的 `metrics` 字段选择子集：
+
+```json
+{ "dataset_id": "...", "agent_id": "...", "metrics": "exact_match,contains_match" }
+```
+
+空 `metrics` 运行全部四种。
+
+### 6.6 上传用例
+
+`cases_json` 必须为 JSON 数组：
+
+```json
+[
+  { "input": "What is 2+2?", "expected_output": "4" },
+  {
+    "input": "Call the weather tool",
+    "expected_output": "The weather is sunny",
+    "metadata_json": "{\"expected_tools\":[\"get_weather\"]}"
+  }
+]
+```
+
+### 6.7 异步 Runner
+
+`RunEvaluation` 创建 `EvalRun` 记录（`status=pending`）并立即派发异步 goroutine。
+
+运行生命周期：`pending` → `running` → `completed` | `failed`
+
+进度可通过轮询 `GET /v1/evaluation/runs/{id}` 观察（`completed_cases` 随每个用例递增）。
+
+### 6.8 LLM-as-Judge 接线
+
+启用 `llm_as_judge` 需在构造 Runner 时提供 `evaluation.LLMJudge` 函数：
+
+```go
+runner := evaluation.NewRunner(evalUsecase, agentRunner, func(ctx context.Context, input, expected, actual string) (float32, error) {
+    return 0.85, nil
+})
+```
+
+`nil` judge 静默跳过该指标。
+
+### 6.9 Prometheus 指标
+
+| 指标 | 类型 | 说明 |
+|------|------|------|
+| `aranea_eval_runs_total{status}` | Counter | 按状态的运行次数（started / completed / error） |
+| `aranea_eval_case_duration_seconds` | Histogram | 逐用例执行时间 |
+
+### 6.10 运维验收标准
+
+- 100 用例数据集在 5 分钟内完成。
+- 报告包含全部 4 种指标分数。
+- 逐用例结果可通过 `GetRunResults` 获取。

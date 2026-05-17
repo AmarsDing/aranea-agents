@@ -17,7 +17,7 @@
 | **3** | [guides/execution-plan.md](./guides/execution-plan.md) | **当前迭代真相**：模块接入度、立即可执行 Top-20、M0–M5 里程碑、扩展红线（R10/R13–R18）、AI 协作约束 |
 | **4** | [guides/trpc-agent-go-framework.md](./guides/trpc-agent-go-framework.md) | trpc-agent-go 框架工程化解读（涉及 Agent/Runner/Model/Session/Memory/Tool 时必读） |
 | **5** | [需求/0 系统框图.md](./需求/0%20系统框图.md) | 系统架构总览：分层、模块关系、数据流、依赖矩阵 |
-| **6** | `docs/需求/` 对应模块文档 | 产品需求与功能规格 |
+| **6** | `docs/需求/` 对应模块文档 | 产品需求、功能规格与运维指南（§6） |
 
 **规范冲突优先级**：`execution-plan.md` 扩展红线（R10/R13–R18）> AI-DEVELOPMENT-SPECIFICATION > 需求文档 > 历史 plan/master-plan。
 
@@ -113,13 +113,14 @@ AI 和开发者编写文档时**必须**遵循以下职责分离原则（与 `ex
 |----------|------|----------|----------|
 | **进度真相** | [`guides/execution-plan.md`](./guides/execution-plan.md) | 模块接入度 / Top-20 / 里程碑 / 红线扩展 | 已被冻结的 sprint 节奏 / S1–S6 / T1–T41 |
 | **编码规范** | `guides/AI-DEVELOPMENT-SPECIFICATION.md` | 分层规则、命名、运行时边界、UI/UX、自检清单 | 进度 / 任务清单 |
-| **需求文档** | `需求/*.md` | 用户故事、功能规格、验收标准 | 实现细节、代码片段、架构方案 |
+| **需求文档** | `需求/*.md` | 用户故事、功能规格、验收标准、运维指南（§6） | 实现细节、代码片段、架构方案 |
 | **设计文档** | `需求/*.design.md` | 架构方案、接口设计、数据模型、技术选型 | 修复记录、待办、实现细节 |
 | **变更记录** | `changelog/` | 日期、模块、变更摘要、影响范围、破坏性变更 | 代码片段、修复过程、待实现 todo |
 | **开发日志** | `devlog/` | 实现细节、修复记录、编译验证、待办、审计快照 | — |
 | **运维参考** | `observability/`、`sql/` | Grafana 仪表盘 JSON、初始化 SQL | 业务逻辑 |
 | **前端参考** | `frontend/` | UX 总纲、Vue 设计系统 | — |
-| **模块指南** | `guides/{cron,artifact,evaluation,knowledge,...}.md` | 单模块上手与运维要点 | 进度 / 完工承诺 |
+| **运维指南** | `需求/*.md` §6 | 单模块上手与运维要点（已合入需求文档） | 进度 / 完工承诺 |
+| **废弃文档** | `_deprecated/` | 已冻结的历史快照，仅供参考 | 任何新增 / 修改内容 |
 
 **核心原则**：
 - **进度真相只在 `execution-plan.md`**，其它文档（含 `master-plan` / `plan` / `implementation-plan` / `task-tracker` / `sprints/*`）已冻结废弃，不得再扩展。
@@ -149,86 +150,46 @@ AI 和开发者编写文档时**必须**遵循以下职责分离原则（与 `ex
 | **Monitor** | [18 monitor.md](./需求/18%20monitor.md)、[18 monitor.design.md](./需求/18%20monitor.design.md) |
 | **MCP** | [19 mcp.md](./需求/19%20mcp.md)、[19 mcp.design.md](./需求/19%20mcp.design.md) |
 | **Skill** | [20 skill.md](./需求/20%20skill.md)、[20 skill.design.md](./需求/20%20skill.design.md)、[20 skill struct design.md](./需求/20%20skill%20struct%20design.md) |
-| **Cron** | [21 cron.md](./需求/21%20cron.md)、[21 cron.design.md](./需求/21%20cron.design.md)（运维指南：[guides/cron.md](./guides/cron.md)） |
+| **Cron** | [21 cron.md](./需求/21%20cron.md)、[21 cron.design.md](./需求/21%20cron.design.md) |
 | **Plugin** | [22 plugin.md](./需求/22%20plugin.md)、[22 plugin.design.md](./需求/22%20plugin.design.md) |
-| **Tools** | [23 tools.md](./需求/23%20tools.md)、[23 tools.design.md](./需求/23%20tools.design.md)、[23 tools struct design.md](./需求/23%20tools%20struct%20design.md)、[23 tools todo.md](./需求/23%20tools%20todo.md) |
+| **Tools** | [23 tools.md](./需求/23%20tools.md)、[23 tools.design.md](./需求/23%20tools.design.md)、[23 tools struct design.md](./需求/23%20tools%20struct%20design.md) |
 | **Telemetry** | [24 telemetry.md](./需求/24%20telemetry.md)（占位）、[24 telemetry.design.md](./需求/24%20telemetry.design.md) |
 | **CLI** | [25 cli.md](./需求/25%20cli.md)、[25 cli.design.md](./需求/25%20cli.design.md) |
-| **A2A 协议** | [26 a2a-protocol.md](./需求/26%20a2a-protocol.md)、[26 a2a-protocol.design.md](./需求/26%20a2a-protocol.design.md)（运维指南：[guides/a2a-protocol.md](./guides/a2a-protocol.md)） |
-| **Artifact 制品** | [27 artifact.md](./需求/27%20artifact.md)、[27 artifact.design.md](./需求/27%20artifact.design.md)（运维指南：[guides/artifact.md](./guides/artifact.md)） |
+| **A2A 协议** | [26 a2a-protocol.md](./需求/26%20a2a-protocol.md)、[26 a2a-protocol.design.md](./需求/26%20a2a-protocol.design.md) |
+| **Artifact 制品** | [27 artifact.md](./需求/27%20artifact.md)、[27 artifact.design.md](./需求/27%20artifact.design.md) |
 | **Callback 回调** | [28 callback.md](./需求/28%20callback.md)、[28 callback.design.md](./需求/28%20callback.design.md) |
 | **Token** | [29 token.md](./需求/29%20token.md)、[29 token.design.md](./需求/29%20token.design.md) |
 | **Ecosystem** | [30 ecosystem.md](./需求/30%20ecosystem.md)、[30 ecosystem.design.md](./需求/30%20ecosystem.design.md) |
-| **CodeExecutor** | [32 codeexecutor.md](./需求/32%20codeexecutor.md)、[32 codeexecutor.design.md](./需求/32%20codeexecutor.design.md)（运维指南：[guides/codeexecutor.md](./guides/codeexecutor.md)） |
-| **Evaluation 评估** | [33 evaluation.md](./需求/33%20evaluation.md)、[33 evaluation.design.md](./需求/33%20evaluation.design.md)（运维指南：[guides/evaluation.md](./guides/evaluation.md)） |
+| **CodeExecutor** | [32 codeexecutor.md](./需求/32%20codeexecutor.md)、[32 codeexecutor.design.md](./需求/32%20codeexecutor.design.md) |
+| **Evaluation 评估** | [33 evaluation.md](./需求/33%20evaluation.md)、[33 evaluation.design.md](./需求/33%20evaluation.design.md) |
 | **Event 事件** | [34 event-system.md](./需求/34%20event-system.md)、[34 event-system.design.md](./需求/34%20event-system.design.md) |
 | **Gateway 网关** | [35 gateway.md](./需求/35%20gateway.md)、[35 gateway.design.md](./需求/35%20gateway.design.md) |
 | **Graph 工作流** | [36 graph-workflow.md](./需求/36%20graph-workflow.md)、[36 graph-workflow.design.md](./需求/36%20graph-workflow.design.md) |
-| **Knowledge 知识库** | [37 knowledge.md](./需求/37%20knowledge.md)、[37 knowledge.design.md](./需求/37%20knowledge.design.md)（运维指南：[guides/knowledge.md](./guides/knowledge.md)） |
+| **Knowledge 知识库** | [37 knowledge.md](./需求/37%20knowledge.md)、[37 knowledge.design.md](./需求/37%20knowledge.design.md) |
 | **Planner 规划** | [39 planner.md](./需求/39%20planner.md)、[39 planner.design.md](./需求/39%20planner.design.md) |
 | **Runner 运行器** | [40 runner.md](./需求/40%20runner.md)、[40 runner.design.md](./需求/40%20runner.design.md) |
 | **Avatar** | [50 Avatar.md](./需求/50%20Avatar.md)、[50 Avatar.design.md](./需求/50%20Avatar.design.md) |
 | **消息机制** | [51 消息机制.md](./需求/51%20消息机制.md)、[51a 后端消息机制.md](./需求/51a%20后端消息机制.md)、[51b 前端消息机制.md](./需求/51b%20前端消息机制.md) |
 | **TTS** | [tts.md](./需求/tts.md)（占位） |
-| **随心记**（杂项备忘） | [随心记.md](./需求/随心记.md) |
 
 > 旧文件 `31 memery.md`（拼写错误，应为 *memory*）仅作历史保留；新内容请写入 `38 memory.md` 或合入 `31+38 memory-supplement.design.md`。
 
 ---
 
-## 8. 变更记录（changelog）
-
-| 文档 | 说明 |
-|------|------|
-| [2026-05-12-Provider.md](./changelog/2026-05-12-Provider.md) | ADK → trpc-agent-go 迁移 + 多 Provider 支持 |
-| [2026-05-13-Session.md](./changelog/2026-05-13-Session.md) | Session 核心数据结构重构 |
-| [2026-05-16-Graph.md](./changelog/2026-05-16-Graph.md) | Graph 工作流完善（校验引擎 + 模板 + 全链路） |
-| [2026-05-16-Session-Optimize.md](./changelog/2026-05-16-Session-Optimize.md) | Session 模块优化（通用更新 / 恢复 / 分页 / 排序 / 过滤） |
-| [2026-05-17-Session-Turns.md](./changelog/2026-05-17-Session-Turns.md) | Session Turns 编排追踪 + Detail 页 + Restore / Archive |
-| [2026-05-17-S1-Hardening.md](./changelog/2026-05-17-S1-Hardening.md) | S1 P0 红线加固：单连接池 / WS 接入 / biz 解耦 / 内存缓存修复 / 并发安全 / EventBus 可靠投递 |
-| [2026-05-17-S2-Architecture.md](./changelog/2026-05-17-S2-Architecture.md) | S2 架构债清理：runtime 包重构 / EventBus 背压 / Agent 缓存 LRU / Pinia store / axios 拦截器 / 统一 WS 客户端 |
-| [2026-05-17-S3-Observability.md](./changelog/2026-05-17-S3-Observability.md) | S3 业务可观测：RunStatus RPC / Callback Chain / apierror / Workspace 中间件 / Prometheus metrics / lint 工具 / CI / 测试基线 |
-| [2026-05-17-S4-Plugin-Skill-Planner.md](./changelog/2026-05-17-S4-Plugin-Skill-Planner.md) | S4 功能补全：Plugin 运行时 / Skill DB 仓库 / Planner 多策略 / Memory 工具注入 / AutoMemory 后台任务 |
-| [2026-05-17-S5-Artifact-Cron-Tests.md](./changelog/2026-05-17-S5-Artifact-Cron-Tests.md) | S5：Artifact 制品 / Cron 重试 DLQ / AgentRuntimeSettings 拆分 / 测试矩阵 60% |
-| [2026-05-17-S6-Knowledge-Eval-A2A.md](./changelog/2026-05-17-S6-Knowledge-Eval-A2A.md) | S6：Knowledge / Evaluation / A2A / CodeExecutor 沙箱（注：四项均未端到端接入 Agent 装配链，详见 `execution-plan.md` §1.3） |
-
-> ⚠️ 自 2026-05-17 起，**新增**变更记录请同时在 `execution-plan.md` §1 / §3 / 附录 A 增改对应行；只写 changelog 不更新 execution-plan 视为未完成。
-
----
-
-## 9. 开发日志（devlog）
-
-| 文档 | 说明 |
-|------|------|
-| [2026-05-12-Provider.md](./devlog/2026-05-12-Provider.md) | Provider 迁移实现细节 |
-| [2026-05-13-Session.md](./devlog/2026-05-13-Session.md) | Session 数据结构重构实现细节 |
-| [2026-05-16-Graph.md](./devlog/2026-05-16-Graph.md) | Graph 工作流实现细节 |
-| [2026-05-16-Session-Optimize.md](./devlog/2026-05-16-Session-Optimize.md) | Session 优化实现细节 |
-| [2026-05-17-Session-Turns.md](./devlog/2026-05-17-Session-Turns.md) | Session Turns 实现细节 |
-| [2026-05-17-optimization-code-audit.md](./devlog/2026-05-17-optimization-code-audit.md) | 2026-05-17 优化项代码层审计（含 §0 修正声明） |
-
----
-
-## 10. 模块运维指南（guides/）
-
-> 这些是**单模块上手与运维要点**，与需求 / 设计文档配套阅读。
+## 8. 核心规范与指南（guides/）
 
 | 文档 | 说明 |
 |------|------|
 | [guides/AI-DEVELOPMENT-SPECIFICATION.md](./guides/AI-DEVELOPMENT-SPECIFICATION.md) | ★ AI 编码唯一行为准则（十章整合版） |
 | [guides/execution-plan.md](./guides/execution-plan.md) | ★ 当前迭代真相 + Top-20 + M0–M5 + 扩展红线 |
 | [guides/trpc-agent-go-framework.md](./guides/trpc-agent-go-framework.md) | trpc-agent-go 框架工程化解读 |
-| [guides/a2a-protocol.md](./guides/a2a-protocol.md) | A2A 协议接入说明 |
-| [guides/artifact.md](./guides/artifact.md) | Artifact 制品模块运维 |
-| [guides/codeexecutor.md](./guides/codeexecutor.md) | Docker Sandbox 安装与配置 |
-| [guides/cron.md](./guides/cron.md) | Cron 重试 / DLQ / 指标 |
-| [guides/evaluation.md](./guides/evaluation.md) | Evaluation Runner 使用 |
-| [guides/knowledge.md](./guides/knowledge.md) | Knowledge 知识库使用 |
-| **已废弃**：[guides/master-plan.md](./guides/master-plan.md) · [guides/plan.md](./guides/plan.md) · [guides/implementation-plan.md](./guides/implementation-plan.md) · [guides/task-tracker.md](./guides/task-tracker.md) · [guides/sprints/](./guides/sprints/) | 历史快照，仅供参考；进度真相以 `execution-plan.md` 为准 |
+| **已废弃**：[_deprecated/guides/](./_deprecated/guides/) | 含 master-plan / plan / implementation-plan / task-tracker / sprints S1–S6，历史快照仅供参考 |
+
+> 单模块运维指南已合入对应需求文档（如 `需求/26 a2a-protocol.md` §6、`需求/27 artifact.md` §6 等），不再单独维护 `guides/` 下的运维文件。
 
 ---
 
-## 11. 参考资料
+## 9. 参考资料
 
 | 路径 | 说明 |
 |------|------|
@@ -240,43 +201,47 @@ AI 和开发者编写文档时**必须**遵循以下职责分离原则（与 `ex
 
 ---
 
-## 12. 目录结构总览
+## 10. 目录结构总览
 
 ```
 docs/
 ├── README.md                          ← 你正在阅读的入口文档
-├── guides/                            ← 编码规范 + 当前执行基线 + 单模块运维
+├── guides/                            ← 编码规范 + 当前执行基线
 │   ├── AI-DEVELOPMENT-SPECIFICATION.md     ← ★ AI 编码唯一行为准则
 │   ├── execution-plan.md                   ← ★ 当前迭代真相（2026-05-17 起）
-│   ├── trpc-agent-go-framework.md          ← trpc 框架工程化解读
-│   ├── artifact.md / cron.md / knowledge.md / evaluation.md / codeexecutor.md / a2a-protocol.md
-│   ├── master-plan.md      ⚠ 已废弃
-│   ├── plan.md             ⚠ 已废弃
-│   ├── implementation-plan.md ⚠ 已废弃
-│   ├── task-tracker.md     ⚠ 已废弃
-│   └── sprints/            ⚠ 已废弃（S1~S6）
-├── 需求/                              ← 产品需求 + 设计文档
+│   └── trpc-agent-go-framework.md          ← trpc 框架工程化解读
+├── 需求/                              ← 产品需求 + 设计文档 + 运维指南（§6）
 │   ├── 0 系统框图.md                       ← ★ 系统架构总览
 │   ├── *.md                                ← 纯需求内容
 │   └── *.design.md                         ← 纯设计内容
-├── changelog/                         ← 变更摘要（只读历史）
-├── devlog/                            ← 开发日志（实现细节 / 审计快照）
+├── changelog/                         ← 变更摘要（只读历史，索引见 README.md）
+├── devlog/                            ← 开发日志（实现细节 / 审计快照，索引见 README.md）
 ├── observability/                     ← Grafana 仪表盘等运维资产
 ├── sql/                               ← 数据库初始化 SQL
 ├── frontend/                          ← 前端 UX 与 Vue 设计系统
-└── skills/                            ← Agent Skill 定义
+├── skills/                            ← Agent Skill 定义
+└── _deprecated/                       ← ⚠ 已废弃文档（历史快照，不可扩展）
+    ├── guides/                             ← 废弃规划文档
+    │   ├── master-plan.md
+    │   ├── plan.md
+    │   ├── implementation-plan.md
+    │   ├── task-tracker.md
+    │   └── sprints/                        ← S1–S6 Sprint 详细计划
+    └── 需求/                               ← 废弃/非正式需求文档
+        ├── 23 tools todo.md                     ← 验证报告（非需求）
+        └── 随心记.md                             ← 个人头脑风暴笔记
 ```
 
 ---
 
-## 13. AI 编码工作流
+## 11. AI 编码工作流
 
 ```
 1. 阅读本入口 README → 了解项目全貌 + 文档治理规则
 2. 阅读 guides/AI-DEVELOPMENT-SPECIFICATION.md → 掌握唯一编码准则
 3. 阅读 guides/execution-plan.md → 确认当前里程碑 / 模块接入度 / 立即可执行任务 / 扩展红线
 4. （涉及 Agent / Runner / Model / Session / Memory / Tool 时）阅读 guides/trpc-agent-go-framework.md
-5. 阅读对应需求文档与 *.design.md → 理解功能规格
+5. 阅读对应需求文档与 *.design.md → 理解功能规格 + 运维要点（§6）
 6. 按规范编码 → 遵循分层、依赖方向、红线（R1–R18）、命名约定
 7. 后端验证：make wire && make api && make build && make test && make runtime-boundary
 8. 前端验证：cd web && pnpm i && pnpm lint && pnpm test && pnpm build
@@ -284,18 +249,20 @@ docs/
    - 必更：guides/execution-plan.md §1 / §3 / 附录 A（关闭对应 EP-* 编号）
    - 必更：changelog/<date>-<topic>.md（变更摘要，不写过程）
    - 可选：devlog/<date>-<topic>.md（实现过程、审计、修复记录）
-   - 禁止：再去扩展 master-plan / plan / implementation-plan / task-tracker / sprints
 ```
 
 ---
 
-## 14. 文档治理变更说明（2026-05-17）
+## 12. 文档治理变更说明（2026-05-17）
 
 为消除"changelog 宣称已完成 vs 代码未接入主链路"的长期不一致，本次治理执行了以下硬性约束：
 
 1. **进度真相单点化**：`guides/execution-plan.md` 是**唯一**反映"代码现实 + 下一步规划"的文档。
 2. **废弃旧规划文档**：`master-plan.md` / `plan.md` / `implementation-plan.md` / `task-tracker.md` / `sprints/S1–S6` 全部冻结，顶部已加废弃声明，不再维护。
 3. **需求文档防误读**：被代码反超的需求文档（如 `22 plugin.md` / `27 artifact.md` / `37 knowledge.md` / `34 event-system.md` / `16 memory-L4-persistent.md` / `51*.md`）在"现状分析"段追加 *2026-05-17 现状对齐* 注解，避免 AI 把过时现状当现实。
-4. **空文件标注占位**：`24 telemetry.md` / `tts.md` 等空文件加占位说明，避免误以为已废弃。
-5. **变更与计划同更**：写 `changelog/` 时**必须**同步更新 `execution-plan.md` 对应 EP-* 行，否则视为未完成。
+4. **废弃文档归档**：已冻结的规划文档（`master-plan.md` / `plan.md` / `implementation-plan.md` / `task-tracker.md` / `sprints/S1–S6`）及非正式文档（`随心记.md` / `23 tools todo.md`）统一迁移至 `_deprecated/` 目录，与活跃文档物理隔离。
+5. **空文件标注占位**：`24 telemetry.md` / `tts.md` 等空文件加占位说明，避免误以为已废弃。
+6. **变更与计划同更**：写 `changelog/` 时**必须**同步更新 `execution-plan.md` 对应 EP-* 行，否则视为未完成。
+7. **运维指南合入需求文档**：`guides/` 下的单模块运维文件（a2a-protocol / artifact / codeexecutor / cron / evaluation / knowledge）内容已合入对应 `需求/*.md` 的 §6（或 §7），不再单独维护。
+8. **changelog / devlog 索引独立**：变更记录和开发日志的索引表从 README 移至各自目录的 `README.md`，README 仅保留核心规范与指南链接。
 

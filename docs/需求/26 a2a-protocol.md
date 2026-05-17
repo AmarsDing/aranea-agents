@@ -7,7 +7,7 @@
 > - ❌ **`call_agent` 工具未在 `internal/agent/trpc_build.go` 注入到 Agent toolset**，Agent 实际无法调用远端 Agent。
 > - ❌ 远端鉴权 / mTLS / 流式请求 尚未实现。
 >
-> 后续以 `guides/execution-plan.md` §3 EP-BIZ-02 + 运维要点 `guides/a2a-protocol.md` 为准。
+> 后续以 `guides/execution-plan.md` §3 EP-BIZ-02 为准。运维要点见下方 §6。
 
 ---
 
@@ -173,3 +173,149 @@ A2AAgent 实现了 `agent.Agent` 接口，可作为子 Agent 或独立 Agent 使
 4. A2A 通信支持流式响应
 5. A2A 长时间任务可中断/恢复 Graph
 6. A2A 网关注册中心（超越层）
+
+---
+
+## 6. 运维指南
+
+> 原 `guides/a2a-protocol.md` 内容，2026-05-17 合入。
+
+A2A 协议使 Aranea 平台内的 Agent 之间可进行结构化通信。Agent 可通过 `call_agent` 工具调用另一个 Agent 的命名能力，需显式启用、能力声明和工作区隔离。
+
+### 6.1 核心原则
+
+1. **默认关闭** — 每个 Agent 默认 A2A 禁用，管理员或 Agent 所有者必须显式启用 A2A 并发布能力列表。
+2. **工作区隔离** — biz 层禁止跨工作区调用，`Discover` 和 `Invoke` 端点仅返回/接受同一工作区内的 Agent。
+3. **审计日志** — 每次调用（成功或失败）写入 `a2a_audit` 记录。
+4. **最小信任面** — `call_agent` 工具在分发前验证 Agent Card。
+
+### 6.2 消息格式
+
+#### 调用请求
+
+```json
+{
+  "callee_agent_id": "agent-456",
+  "capability": "summarize",
+  "payload_json": "{\"text\": \"Long document...\"}",
+  "caller_session_id": "sess-789",
+  "timeout_seconds": 30
+}
+```
+
+#### 调用响应
+
+```json
+{
+  "invoke_id": "a2a-xxxxxxxx",
+  "status": "pending | success | error | timeout",
+  "result_json": "{}",
+  "error_message": "",
+  "duration_ms": 142
+}
+```
+
+### 6.3 Agent Card
+
+每个 A2A 启用的 Agent 发布一张 Card：
+
+```json
+{
+  "agent_id": "agent-123",
+  "display_name": "Research Assistant",
+  "workspace": "workspace-A",
+  "enabled": true,
+  "capabilities": [
+    {
+      "name": "summarize",
+      "description": "Summarize a block of text.",
+      "input_schema_json": "{\"type\":\"object\",\"properties\":{\"text\":{\"type\":\"string\"}}}",
+      "output_schema_json": "{\"type\":\"object\",\"properties\":{\"summary\":{\"type\":\"string\"}}}"
+    }
+  ]
+}
+```
+
+### 6.4 组件
+
+| 组件 | 路径 | 用途 |
+|------|------|------|
+| Proto | `api/kratos/a2a/v1/a2a.proto` | HTTP + gRPC API |
+| Biz | `internal/biz/a2a.go` | 领域类型 + `A2ARepo` 接口 |
+| Data | `internal/data/a2a.go` | SQLite/Postgres 持久化 |
+| Tool | `internal/a2a/tool.go` | `call_agent` trpc 工具 |
+| Service | `internal/service/a2a.go` | Kratos 服务适配器 |
+
+### 6.5 数据库 Schema
+
+由 `data.EnsureA2ASchema(ctx, db)` 创建：
+
+```sql
+a2a_agent_cards   (agent_id PK, display_name, workspace, enabled, capabilities JSON, updated_at)
+a2a_invocations   (id PK, caller_agent_id, callee_agent_id, capability, payload_json, status, ...)
+a2a_audit         (id PK, invoke_id, caller_agent_id, callee_agent_id, status, duration_ms, ...)
+```
+
+### 6.6 API 端点
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/v1/a2a/discover` | 发现已启用的 Agent |
+| POST | `/v1/a2a/invoke` | 调用能力 |
+| PUT | `/v1/a2a/agents/{agent_id}/card` | 更新 Agent A2A Card |
+| GET | `/v1/a2a/agents/{agent_id}/card` | 获取 Agent A2A Card |
+| GET | `/v1/a2a/audit` | 浏览审计日志 |
+
+### 6.7 Agent 工具：`call_agent`
+
+运行前附加上下文辅助：
+
+```go
+ctx = a2a.WithA2AUsecase(ctx, a2aUsecase)
+ctx = a2a.WithCallerAgentID(ctx, "agent-123")
+ctx = a2a.WithInvoker(ctx, myInvokerFunc)
+```
+
+模型可调用：
+
+```json
+{
+  "agent_id": "agent-456",
+  "capability": "summarize",
+  "payload": { "text": "Long document..." },
+  "timeout_seconds": 30
+}
+```
+
+工具流程：
+1. 验证被调用方 Card（`enabled=true`）。
+2. 验证能力在 Card 列表中。
+3. 调用 `invokerFunc` 分发实际工作。
+4. 写入审计条目（成功或错误）。
+
+### 6.8 安全
+
+| 控制 | 实现 |
+|------|------|
+| 默认关闭 | 每个 Agent `enabled=false` |
+| 工作区隔离 | `ListEnabledCards` 按工作区过滤 |
+| 审计 | 每次调用写入 `a2a_audit`，含 caller/callee/status |
+| 速率限制 | 建议：在 `/v1/a2a/invoke` 上应用 API 网关限流 |
+
+### 6.9 Prometheus 指标
+
+| 指标 | 标签 | 说明 |
+|------|------|------|
+| `aranea_a2a_invoke_total` | `caller, callee, status` | 总调用次数 |
+| `aranea_a2a_invoke_duration_seconds` | — | 调用延迟直方图 |
+
+### 6.10 路由
+
+- **同工作区**：通过服务层直接调用。
+- **跨工作区**：默认禁止；未来网关路由为 S7+ 候选。
+
+### 6.11 运维验收标准
+
+- Agent A 调用不同工作区的 Agent B → `403 Forbidden`。
+- Agent A 调用同工作区但 A2A 未启用的 Agent B → `call_agent` 报错。
+- Agent A 调用同工作区且 A2A 启用的 Agent B → 成功；审计日志记录已写入。

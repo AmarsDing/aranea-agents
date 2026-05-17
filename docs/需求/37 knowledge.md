@@ -7,7 +7,7 @@
 > - ❌ **未在 Agent 装配链注入 knowledge tool**（`internal/agent/trpc_build.go` 没有把 KnowledgeUsecase 编织进 tool list）；Agent 实际跑时仍无 RAG。
 > - ❌ Embedder 默认 stub，pgvector 后端未启用。
 >
-> 后续以 `guides/execution-plan.md` §3 EP-BIZ-02 为准；运维要点见 `guides/knowledge.md`。
+> 后续以 `guides/execution-plan.md` §3 EP-BIZ-02 为准。运维要点见下方 §6。
 
 ---
 
@@ -189,3 +189,123 @@ llmagent.New("agent",
 5. 知识搜索支持动态过滤
 6. 图片/PDF 文档可 OCR 识别入库
 7. 多租户知识库隔离（超越层）
+
+---
+
+## 6. 运维指南
+
+> 原 `guides/knowledge.md` 内容，2026-05-17 合入。
+
+Knowledge 模块添加基于 pgvector 的 RAG（检索增强生成）管道。Agent 可上传文档、自动索引为向量嵌入，然后在查询时通过 `knowledge_search` 工具进行语义搜索。
+
+### 6.1 架构
+
+```
+                  ┌─────────────────────┐
+                  │  KnowledgeService   │  ← Kratos HTTP/gRPC
+                  └────────┬────────────┘
+                           │ biz.KnowledgeUsecase
+              ┌────────────┴────────────┐
+              │                         │
+     chunker.go                   knowledge.go (pgvector)
+     embedder.go                  ├── knowledge_collections
+     retriever.go                 ├── knowledge_documents
+              │                   └── knowledge_chunks (vector)
+              └────────────────────────►
+```
+
+### 6.2 组件
+
+| 组件 | 路径 | 用途 |
+|------|------|------|
+| Proto | `api/kratos/knowledge/v1/knowledge.proto` | HTTP + gRPC API |
+| Biz | `internal/biz/knowledge.go` | 领域逻辑 + `KnowledgeRepo` 接口 |
+| Data | `internal/data/knowledge.go` | PostgreSQL + pgvector raw SQL |
+| Chunker | `internal/knowledge/chunker.go` | 文本分割（字符/Token 策略） |
+| Embedder | `internal/knowledge/embedder.go` | OpenAI 兼容 + Ollama 嵌入 API |
+| Retriever | `internal/knowledge/retriever.go` | 嵌入查询 → 调用 `SearchChunks` |
+| Tool | `internal/tools/knowledge/tool.go` | `knowledge_search` trpc 工具 |
+| Service | `internal/service/knowledge.go` | Kratos 服务适配器 |
+
+### 6.3 数据库 Schema
+
+由 `data.EnsureKnowledgeSchema(ctx, db, dim)` 创建：
+
+```sql
+knowledge_collections   (id, name, embedding_model, dim, status, ...)
+knowledge_documents     (id, collection_id, source, status, chunk_count, ...)
+knowledge_chunks        (id, doc_id, collection_id, content, embedding vector(N), metadata jsonb, ...)
+```
+
+索引：`ivfflat` on `knowledge_chunks.embedding` 用于余弦相似度。
+
+**要求**：PostgreSQL + `pgvector` 扩展。
+
+### 6.4 API 端点
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/v1/knowledge/collections` | 创建集合 |
+| GET | `/v1/knowledge/collections` | 列出所有集合 |
+| GET | `/v1/knowledge/collections/{id}` | 获取单个集合 |
+| DELETE | `/v1/knowledge/collections/{id}` | 删除集合 + 所有数据 |
+| POST | `/v1/knowledge/documents` | 摄入文档（异步索引） |
+| GET | `/v1/knowledge/documents` | 列出文档 |
+| DELETE | `/v1/knowledge/documents/{id}` | 删除文档 + 块 |
+| POST | `/v1/knowledge/search` | 语义搜索 |
+
+#### 摄入流程
+
+1. 客户端调用 `POST /v1/knowledge/documents`，传入 `content_base64`（文档负载）。
+2. 服务创建文档记录（`status=pending`）并立即返回。
+3. 后台 goroutine（`safego.Go`）分块文本、嵌入每个块、插入 `knowledge_chunks`。
+4. 完成后文档状态更新为 `indexed`；失败则变为 `error`。
+
+### 6.5 分块策略
+
+| 策略 | 键 | 说明 |
+|------|-----|------|
+| 按字符 | `char` | 默认。按 N 字符窗口分割，含重叠。 |
+| 按 Token | `token` | 空格分词单词；近似真实 Token 计数。 |
+
+参数：
+- `chunk_size` — 窗口大小（默认 512）
+- `chunk_overlap` — 连续块之间的重叠（默认 64）
+
+### 6.6 嵌入提供者
+
+`Embedder` 支持两种后端，通过 `provider` 选择：
+
+| 提供者 | 端点 | 说明 |
+|--------|------|------|
+| `openai`（默认） | `POST /v1/embeddings` | 兼容任何 OpenAI-API 服务器 |
+| `ollama` | `POST /api/embeddings` | 本地 Ollama 实例 |
+
+### 6.7 Agent 工具：`knowledge_search`
+
+将 `Retriever` 附加到 Agent 上下文：
+
+```go
+ctx = knowledgetool.WithRetriever(ctx, retriever)
+```
+
+然后向 trpc runner 注册 `knowledgetool.NewSearchTool()`。
+
+模型可调用：
+
+```json
+{ "collection_id": "abc123", "query": "What is the refund policy?", "top_k": 5 }
+```
+
+### 6.8 Prometheus 指标
+
+| 指标 | 类型 | 说明 |
+|------|------|------|
+| `aranea_knowledge_ingest_documents_total` | Counter | 成功索引的文档数 |
+| `aranea_knowledge_search_duration_seconds` | Histogram | 搜索延迟 |
+
+### 6.9 限制
+
+- 需要 pgvector；当 `db == nil` 时 repo 优雅降级（仅 schema 调用）。
+- 嵌入维度每个集合固定；更改需重建集合。
+- 文档内容必须可文本解码（PDF/图像提取不在 S6 范围内）。

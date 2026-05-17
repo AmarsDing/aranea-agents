@@ -3,7 +3,7 @@
 > 版本：v1.0（2026-05-17）
 > 编制依据：`docs/README.md`、`docs/需求/*`（86 篇）、`docs/guides/{AI-DEVELOPMENT-SPECIFICATION, master-plan, implementation-plan, task-tracker, plan, trpc-agent-go-framework}.md`、`docs/changelog/*`、`docs/devlog/2026-05-17-optimization-code-audit.md`，以及 `cmd/ internal/ api/ pkg/ web/` 全量代码与配置抽样。
 > 文档定位：**给后续 AI 迭代使用的唯一执行基线**。任何 PR / commit 之前，AI 必须按本文 §10 自检。
-> 关系：master-plan、implementation-plan、task-tracker、plan 仍保留作为历史参考；本文负责把它们与代码现实重新对齐，并提供新的工作分解。
+> 关系：master-plan、implementation-plan、task-tracker、plan 已迁移至 `_deprecated/guides/` 作为历史参考；本文负责把它们与代码现实重新对齐，并提供新的工作分解。
 
 ---
 
@@ -261,7 +261,7 @@
 
 | # | ID | 动作 | 主要证据 / 起点 |
 |---|---|---|---|
-| 1 | EP-DOC-01 | 用本计划替代 task-tracker，并把 master-plan §4 + plan §2 状态表改为"参见 docs/guides/execution-plan.md 附录 A" | `docs/guides/master-plan.md`、`plan.md`、`task-tracker.md` |
+| 1 | EP-DOC-01 | ~~用本计划替代 task-tracker，并把 master-plan §4 + plan §2 状态表改为"参见 docs/guides/execution-plan.md 附录 A"~~ **已完成**：废弃文档已迁移至 `_deprecated/guides/` | `docs/_deprecated/guides/` |
 | 2 | EP-SEC-01 | JWT 密钥 fail-fast | `pkg/auth/config.go:8-14` |
 | 3 | EP-SEC-02 | Bypass 限定 dev，启动 banner | `pkg/auth/middleware.go:15-66`、`features.go` |
 | 4 | EP-RT-01 | `runSingleAgentViaTRPC` / `runTeamTRPC` 起止处调用 `setRunStatus` | `internal/service/chat.go:332-388` + `internal/service/trpc_turn.go` |

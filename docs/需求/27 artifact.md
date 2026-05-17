@@ -8,7 +8,7 @@
 > - ❌ **未把 trpc Artifact Service 注入 CodeExecutor / Runner**，工具产生的二进制结果仍丢失。
 > - ❌ S3 / COS 后端未启用，仅本地 FS。
 >
-> 后续以 `guides/execution-plan.md` §3 EP-BIZ-03 为准；运维要点见 `guides/artifact.md`。
+> 后续以 `guides/execution-plan.md` §3 EP-BIZ-03 为准。运维要点见下方 §6。
 
 ---
 
@@ -158,3 +158,113 @@ type Artifact struct {
 3. 代码执行产出物自动保存为 Artifact
 4. 通过 API 可管理制品
 5. 支持 S3/COS 云存储后端（超越层）
+
+---
+
+## 6. 运维指南
+
+> 原 `guides/artifact.md` 内容，2026-05-17 合入。
+
+Aranea-Agents 支持通过 Artifact Service 保存和检索 Agent 在会话中产生的二进制制品（文件）。
+
+### 6.1 架构
+
+```
+Frontend (base64 HTTP)
+    │
+    ▼
+internal/service/artifact.go   ← Kratos HTTP handler
+    │
+    ▼
+internal/biz/artifact.go       ← ArtifactUsecase + ArtifactRepo interface
+    │
+    ▼
+internal/data/artifactfs/      ← local filesystem implementation
+    │  repo.go                 ← versioned storage in {artifact.dir}/<session>/<name>/v<N>.bin
+    │  meta.json               ← per-artifact metadata sidecar
+    │
+    ▼
+internal/artifact/trpc/        ← adapter for trpc-agent-go runtime
+```
+
+### 6.2 API
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `POST` | `/v1/artifacts` | 上传（base64 编码） |
+| `GET`  | `/v1/artifacts/{id}` | 下载（base64 编码） |
+| `GET`  | `/v1/artifacts?session_id=…` | 列出会话的制品元数据 |
+| `DELETE` | `/v1/artifacts/{id}` | 删除所有版本 |
+
+#### 上传请求体
+
+```json
+{
+  "session_id": "sess-abc123",
+  "name": "report.pdf",
+  "mime_type": "application/pdf",
+  "data_base64": "<standard-base64>"
+}
+```
+
+大小限制：每个制品 **50 MB**。
+
+#### 响应 — ArtifactMeta
+
+```json
+{
+  "id": "a9f3c1d2e4b5",
+  "session_id": "sess-abc123",
+  "name": "report.pdf",
+  "mime_type": "application/pdf",
+  "size": 204800,
+  "sha256": "e3b0c44298fc…",
+  "storage_kind": "fs",
+  "storage_uri": "/data/artifacts/sess-abc123/report.pdf/v1.bin",
+  "version": 1,
+  "created_at": "2026-05-17T10:30:00Z"
+}
+```
+
+### 6.3 存储配置
+
+| 配置键 | 默认值 | 说明 |
+|--------|--------|------|
+| `data.artifact.dir` | `./data/artifacts` | 制品文件根目录 |
+
+每个制品存储为：
+```
+{artifact.dir}/{session_id}/{name}/v{version}.bin
+{artifact.dir}/{session_id}/{name}/meta.json
+```
+
+上传相同 `session_id` + `name` 的文件会创建新版本（`v2.bin`、`v3.bin`…）。
+
+### 6.4 指标
+
+| 指标 | 类型 | 标签 | 说明 |
+|------|------|------|------|
+| `aranea_artifact_upload_bytes_total` | Counter | — | 总上传字节数 |
+| `aranea_artifact_download_bytes_total` | Counter | — | 总下载字节数 |
+| `aranea_artifact_storage_bytes` | Gauge | — | 磁盘总字节数（近似） |
+
+### 6.5 Agent 集成
+
+Agent 通过 `trpc-agent-go` artifact service 访问制品：
+
+```go
+svc := ctx.Value(artifact.ServiceKey{}).(artifact.Service)
+
+version, err := svc.SaveArtifact(ctx, sessionInfo, "output.csv", &artifact.Artifact{
+    Data:     csvBytes,
+    MimeType: "text/csv",
+})
+
+a, err := svc.LoadArtifact(ctx, sessionInfo, "output.csv", nil)
+```
+
+### 6.6 已知限制
+
+- 二进制存储仅使用本地文件系统。S3/GCS 后端计划在 S6 实现。
+- 制品不在节点间复制。多实例部署需使用共享卷。
+- `data_base64` 编码增加约 33% 开销；大文件（> 10 MB）应优先使用分块流式传输（计划中）。
