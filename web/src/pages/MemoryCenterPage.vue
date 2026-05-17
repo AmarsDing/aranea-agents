@@ -221,22 +221,22 @@ const scopeOptions = ["user", "agent", "team", "workspace", "global"].map((value
 const factStatusOptions = ["active", "archived", "disputed", "deprecated", "deleted"].map((value) => ({ label: value, value }));
 
 const factColumns = [
-  { name: "statement", label: "Statement", field: "statement", align: "left", sortable: false },
-  { name: "scope", label: "Scope", field: "scope_type", align: "left", sortable: false },
-  { name: "confidence", label: "Confidence", field: "confidence", align: "left", sortable: false },
-  { name: "source", label: "Source", field: "source_kind", align: "left", sortable: false },
-  { name: "updated", label: "Updated", field: "updated_at", align: "left", sortable: false, format: formatDate },
-  { name: "actions", label: "操作", field: "id", align: "right", sortable: false }
-] as const;
+  { name: "statement", label: "Statement", field: "statement", align: "left" as const, sortable: false },
+  { name: "scope", label: "Scope", field: "scope_type", align: "left" as const, sortable: false },
+  { name: "confidence", label: "Confidence", field: "confidence", align: "left" as const, sortable: false },
+  { name: "source", label: "Source", field: "source_kind", align: "left" as const, sortable: false },
+  { name: "updated", label: "Updated", field: "updated_at", align: "left" as const, sortable: false, format: formatDate },
+  { name: "actions", label: "操作", field: "id", align: "right" as const, sortable: false }
+];
 
 const snapshotColumns = [
-  { name: "created", label: "时间", field: "created_at", align: "left", sortable: false, format: formatDate },
-  { name: "model", label: "模型", field: (row: L0AssemblySnapshot) => `${row.provider || "-"} / ${row.model || "-"}`, align: "left", sortable: false },
-  { name: "ratio", label: "Used", field: "used_ratio", align: "left", sortable: false },
-  { name: "segments", label: "段落", field: "segments_json", align: "left", sortable: false },
-  { name: "strategy", label: "裁剪策略", field: "truncate_strategy", align: "left", sortable: false },
-  { name: "actions", label: "操作", field: "id", align: "right", sortable: false }
-] as const;
+  { name: "created", label: "时间", field: "created_at", align: "left" as const, sortable: false, format: formatDate },
+  { name: "model", label: "模型", field: (row: L0AssemblySnapshot) => `${row.provider || "-"} / ${row.model || "-"}`, align: "left" as const, sortable: false },
+  { name: "ratio", label: "Used", field: "used_ratio", align: "left" as const, sortable: false },
+  { name: "segments", label: "段落", field: "segments_json", align: "left" as const, sortable: false },
+  { name: "strategy", label: "裁剪策略", field: "truncate_strategy", align: "left" as const, sortable: false },
+  { name: "actions", label: "操作", field: "id", align: "right" as const, sortable: false }
+];
 
 onMounted(loadAll);
 

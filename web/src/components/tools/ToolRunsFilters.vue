@@ -9,8 +9,8 @@
           clearable
           debounce="350"
           label="Tool Key"
-          @update:model-value="$emit('update:toolKey', $event)"
-        />
+        @update:model-value="onToolKey($event)"
+      />
       </div>
       <div class="col-12 col-md-3">
         <q-input
@@ -20,7 +20,7 @@
           clearable
           debounce="350"
           label="Agent ID"
-          @update:model-value="$emit('update:agentId', $event)"
+          @update:model-value="onAgentId($event)"
         />
       </div>
       <div class="col-12 col-sm-6 col-md-2">
@@ -33,7 +33,7 @@
           map-options
           label="状态"
           :options="statusOptions"
-          @update:model-value="$emit('update:status', $event)"
+          @update:model-value="onStatus($event)"
         />
       </div>
       <div class="col-12 col-sm-6 col-md-2">
@@ -43,7 +43,7 @@
           outlined
           clearable
           label="开始时间 ISO"
-          @update:model-value="$emit('update:from', $event)"
+          @update:model-value="onFrom($event)"
         />
       </div>
       <div class="col-12 col-md-2 row justify-end q-gutter-sm">
@@ -58,20 +58,25 @@
 import ToolGlassPanel from "./ToolGlassPanel.vue";
 
 defineProps<{
-  toolKey: string;
-  agentId: string;
-  status: string;
-  from: string;
+  toolKey: string | null;
+  agentId: string | null;
+  status: string | null;
+  from: string | null;
   statusOptions: { label: string; value: string }[];
   loading?: boolean;
 }>();
 
-defineEmits<{
-  "update:toolKey": [v: string];
-  "update:agentId": [v: string];
-  "update:status": [v: string];
-  "update:from": [v: string];
+const emit = defineEmits<{
+  "update:toolKey": [v: string | null];
+  "update:agentId": [v: string | null];
+  "update:status": [v: string | null];
+  "update:from": [v: string | null];
   reset: [];
   refresh: [];
 }>();
+
+const onToolKey = (v: string | number | null) => emit("update:toolKey", v == null ? null : String(v));
+const onAgentId = (v: string | number | null) => emit("update:agentId", v == null ? null : String(v));
+const onStatus = (v: string | number | null) => emit("update:status", v == null ? null : String(v));
+const onFrom = (v: string | number | null) => emit("update:from", v == null ? null : String(v));
 </script>

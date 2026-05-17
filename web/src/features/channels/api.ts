@@ -186,6 +186,8 @@ export async function deleteChannelCredential(channelId: string, credentialKey: 
   await channelApi.DeleteChannelCredential({ channelId, credentialKey });
 }
 
+export type { ChannelRow, ChannelCatalogItem, ChannelResourceInput, ChannelCredential, ChannelCredentialInput, ChannelTestResult } from "./types";
+
 export type ChannelDeliveryRow = {
   id: string;
   channel_id: string;

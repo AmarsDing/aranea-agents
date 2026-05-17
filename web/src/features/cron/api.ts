@@ -5,6 +5,8 @@ import type { Agent } from "../agents/api";
 import type { Team } from "../teams/api";
 import type { PlatformResource, PlatformResourceInput } from "../platform/api";
 import type { CronTaskRun, CronTaskRunQuery } from "./types";
+
+export type { PlatformResource, PlatformResourceInput } from "../platform/api";
 import type { CronTask as WireCronTask, CronTaskRun as WireCronTaskRun } from "../../services/kratos/cron/v1/index";
 
 const cron = createCronService();
@@ -69,18 +71,23 @@ export async function createCronTask(payload: PlatformResourceInput): Promise<Pl
 }
 
 export async function updateCronTask(id: string, payload: Partial<PlatformResourceInput>): Promise<PlatformResource> {
+  const cur = await cron.GetCronTask({ id });
   const row = await cron.UpdateCronTask({
     id,
     task: {
-      taskKey: payload.key,
-      name: payload.name,
-      description: payload.description,
-      status: payload.status,
-      enabled: payload.enabled,
-      sortOrder: payload.sort_order,
-      agentId: payload.agent_id,
-      configJson: payload.config_json,
-      metadataJson: payload.metadata_json
+      id,
+      taskKey: payload.key ?? cur.taskKey,
+      name: payload.name ?? cur.name,
+      description: payload.description ?? cur.description,
+      status: payload.status ?? cur.status,
+      enabled: payload.enabled ?? cur.enabled,
+      sortOrder: payload.sort_order ?? cur.sortOrder,
+      agentId: payload.agent_id ?? cur.agentId,
+      configJson: payload.config_json ?? cur.configJson,
+      metadataJson: payload.metadata_json ?? cur.metadataJson,
+      createdAt: cur.createdAt,
+      updatedAt: cur.updatedAt,
+      deletedAt: cur.deletedAt
     }
   });
   return wireCronTask(row);

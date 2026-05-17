@@ -21,7 +21,7 @@
     <ChatSideToggle
       :open="leftOpen"
       :icon="leftOpen ? 'chevron_left' : 'chevron_right'"
-      :aria-label="t('chat.collapseList')"
+      :ariaLabel="t('chat.collapseList')"
       @toggle="leftOpen = !leftOpen"
     />
 
@@ -55,7 +55,7 @@
     <ChatSideToggle
       :open="rightOpen"
       :icon="rightOpen ? 'chevron_right' : 'chevron_left'"
-      :aria-label="t('chat.collapseSession')"
+      :ariaLabel="t('chat.collapseSession')"
       @toggle="rightOpen = !rightOpen"
     />
 

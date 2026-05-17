@@ -99,7 +99,14 @@ export async function sendMessage(payload: {
 
 export async function listChatOptions(type?: string): Promise<ChatOption[]> {
   const data = await chatService.GetChatOptions({ type });
-  return data.items ?? [];
+  return (data.items ?? []).map((o) => ({
+    type: o.type ?? "",
+    key: o.key ?? "",
+    label: o.label ?? "",
+    enabled: Boolean(o.enabled),
+    sort_order: o.sortOrder ?? 0,
+    metadata_json: o.metadataJson ?? ""
+  }));
 }
 
 export async function stopGeneration(sessionId: string): Promise<boolean> {

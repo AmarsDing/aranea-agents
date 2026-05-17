@@ -10,7 +10,7 @@ import type {
 } from "./types";
 import { listModelUsageEvents } from "../usage/api";
 import { useEnvelopeStream } from "../chat/useEnvelopeStream";
-import type { Envelope } from "../chat/envelope";
+import type { Envelope, EnvelopeType } from "../chat/envelope";
 
 const monitor = createMonitorService();
 
@@ -120,7 +120,7 @@ export function subscribeMonitorLogsWs(
     onError?.(env.error?.message ?? "monitor ws error");
   });
 
-  stream.onType("connected", () => {
+  stream.onType("connected" as EnvelopeType, () => {
     onConnected?.();
   });
 

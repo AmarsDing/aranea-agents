@@ -4,8 +4,8 @@ import quasarLangZh from "quasar/lang/zh-CN";
 
 export function setQuasarLangFor(code: string) {
   if (code === "en-US") {
-    Quasar.lang.set(quasarLangEn, "en-US");
+    Quasar.lang.set(quasarLangEn);
   } else {
-    Quasar.lang.set(quasarLangZh, "zh-CN");
+    Quasar.lang.set(quasarLangZh);
   }
 }

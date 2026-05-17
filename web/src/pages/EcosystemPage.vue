@@ -211,9 +211,9 @@
         </q-card-section>
         <q-separator />
         <q-card-section class="q-gutter-md">
-          <q-select outlined label="商品类型" :options="publishTypeOptions" />
-          <q-input outlined label="商品名称" />
-          <q-input outlined type="textarea" label="商品描述" />
+          <q-select v-model="publishType" outlined label="商品类型" :options="publishTypeOptions" />
+          <q-input v-model="publishName" outlined label="商品名称" />
+          <q-input v-model="publishDesc" outlined type="textarea" label="商品描述" />
           <q-banner rounded class="bg-grey-2 text-grey-9">
             后续接入真实后端时，这里会生成版本快照、权限声明、定价方案和审核任务。
           </q-banner>
@@ -254,6 +254,9 @@ const pricing = ref("all");
 const sortBy = ref("featured");
 const detailOpen = ref(false);
 const publishOpen = ref(false);
+const publishType = ref("");
+const publishName = ref("");
+const publishDesc = ref("");
 const selectedProduct = ref<MarketProduct | null>(null);
 
 const typeOptions = [

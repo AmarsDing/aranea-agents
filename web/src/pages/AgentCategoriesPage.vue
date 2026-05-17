@@ -206,7 +206,7 @@ async function loadTree() {
   }
 }
 
-function filterNodes(nodes: PlatformResourceTreeNode[]) {
+function filterNodes(nodes: PlatformResourceTreeNode[]): PlatformResourceTreeNode[] {
   const q = keyword.value.trim().toLowerCase();
   return nodes
     .map((node) => ({

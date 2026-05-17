@@ -1,10 +1,15 @@
 /**
- * MCP 服务器：**`mcp_server/v1`** → **`kratosApi`** **`GET|POST|PATCH|DELETE /v1/mcp-servers`**（不再使用 **`legacyRestApi`**）。
+ * MCP 服务器：**`createMCPServerService()`** 生成客户端 → **`/v1/mcp-servers`**。
+ * 更新操作先 GET 获取当前状态，merge 后再 PATCH，与 channel 保持一致的全字段替换语义。
  */
-import { kratosApi } from "../../services/axiosHandler";
+import { createMCPServerService } from "../../services";
 import type { PlatformResource, PlatformResourceInput } from "../platform/api";
 import { asRecord, pickBool, pickI32, pickStr } from "../../shared/wireJson";
 import type { McpServerTestResult } from "./types";
+
+export type { PlatformResource, PlatformResourceInput } from "../platform/api";
+
+const svc = createMCPServerService();
 
 function mcpRowToPlatform(raw: unknown): PlatformResource {
   const r = asRecord(raw);
@@ -30,57 +35,55 @@ function mcpRowToPlatform(raw: unknown): PlatformResource {
   };
 }
 
-function createBody(p: PlatformResourceInput): Record<string, unknown> {
-  return {
-    key: p.key,
-    name: p.name,
-    description: p.description ?? "",
-    status: p.status ?? "active",
-    enabled: p.enabled ?? true,
-    sort_order: p.sort_order ?? 0,
-    config_json: p.config_json ?? "{}",
-    metadata_json: p.metadata_json ?? "{}"
-  };
-}
-
-/** PATCH body binds to **`MCPServer`**（snake_case JSON）。 */
-function patchBody(p: Partial<PlatformResourceInput>): Record<string, unknown> {
-  const o: Record<string, unknown> = {};
-  if (p.key !== undefined) o.key = p.key;
-  if (p.name !== undefined) o.name = p.name;
-  if (p.description !== undefined) o.description = p.description;
-  if (p.status !== undefined) o.status = p.status;
-  if (p.enabled !== undefined) o.enabled = p.enabled;
-  if (p.sort_order !== undefined) o.sort_order = p.sort_order;
-  if (p.config_json !== undefined) o.config_json = p.config_json;
-  if (p.metadata_json !== undefined) o.metadata_json = p.metadata_json;
-  return o;
-}
-
 export async function listMcpServers(): Promise<PlatformResource[]> {
-  const { data } = await kratosApi.get<{ items?: unknown[] }>("v1/mcp-servers");
-  const items = data?.items ?? [];
-  return items.map(mcpRowToPlatform);
+  const res = asRecord(await svc.ListMCPServers({}));
+  const items = res.items ?? res.Items;
+  return Array.isArray(items) ? items.map(mcpRowToPlatform) : [];
 }
 
 export async function createMcpServer(payload: PlatformResourceInput): Promise<PlatformResource> {
-  const { data } = await kratosApi.post<unknown>("v1/mcp-servers", createBody(payload));
-  return mcpRowToPlatform(data);
+  const row = await svc.CreateMCPServer({
+    key: payload.key,
+    name: payload.name,
+    description: payload.description ?? "",
+    status: payload.status ?? "active",
+    enabled: payload.enabled ?? true,
+    sortOrder: payload.sort_order ?? 0,
+    configJson: payload.config_json ?? "{}",
+    metadataJson: payload.metadata_json ?? "{}"
+  });
+  return mcpRowToPlatform(row);
 }
 
 export async function updateMcpServer(id: string, payload: Partial<PlatformResourceInput>): Promise<PlatformResource> {
-  const { data } = await kratosApi.patch<unknown>(`v1/mcp-servers/${encodeURIComponent(id)}`, patchBody(payload));
-  return mcpRowToPlatform(data);
+  const cur = asRecord(await svc.GetMCPServer({ id }));
+  const row = await svc.UpdateMCPServer({
+    id,
+    mcpServer: {
+      id,
+      key: payload.key ?? pickStr(cur, "key", "key"),
+      name: payload.name ?? pickStr(cur, "name", "name"),
+      description: payload.description ?? pickStr(cur, "description", "description"),
+      status: payload.status ?? pickStr(cur, "status", "status"),
+      enabled: payload.enabled !== undefined ? payload.enabled : pickBool(cur, "enabled", "enabled"),
+      sortOrder: payload.sort_order !== undefined ? payload.sort_order : pickI32(cur, "sort_order", "sortOrder"),
+      configJson: payload.config_json ?? pickStr(cur, "config_json", "configJson"),
+      metadataJson: payload.metadata_json ?? pickStr(cur, "metadata_json", "metadataJson"),
+      createdAt: pickStr(cur, "created_at", "createdAt"),
+      updatedAt: pickStr(cur, "updated_at", "updatedAt"),
+      deletedAt: pickStr(cur, "deleted_at", "deletedAt")
+    }
+  });
+  return mcpRowToPlatform(row);
 }
 
 export async function deleteMcpServer(id: string): Promise<void> {
-  await kratosApi.delete(`v1/mcp-servers/${encodeURIComponent(id)}`);
+  await svc.DeleteMCPServer({ id });
 }
 
 export async function testMcpServer(id: string): Promise<McpServerTestResult> {
-  const { data } = await kratosApi.post<unknown>(`v1/mcp-servers/${encodeURIComponent(id)}/test`, {});
-  const r = asRecord(data);
-  const detailsJson = pickStr(r, "details_json", "detailsJson");
+  const res = asRecord(await svc.TestMCPServer({ id }));
+  const detailsJson = pickStr(res, "details_json", "detailsJson");
   let details: Record<string, unknown> | undefined;
   if (detailsJson) {
     try {
@@ -90,9 +93,9 @@ export async function testMcpServer(id: string): Promise<McpServerTestResult> {
     }
   }
   return {
-    ok: pickBool(r, "ok", "ok"),
-    status: pickStr(r, "status", "status"),
-    message: pickStr(r, "message", "message"),
+    ok: pickBool(res, "ok", "ok"),
+    status: pickStr(res, "status", "status"),
+    message: pickStr(res, "message", "message"),
     details
   };
 }

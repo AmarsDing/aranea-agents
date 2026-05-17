@@ -27,7 +27,7 @@ export const useCronStore = defineStore("cron", () => {
 
   async function loadRuns(query?: Parameters<typeof listCronTaskRuns>[0]) {
     const result = await listCronTaskRuns(query);
-    runs.value = result.items ?? [];
+    runs.value = result ?? [];
     return result;
   }
 
