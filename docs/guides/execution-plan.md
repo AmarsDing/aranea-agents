@@ -1,16 +1,14 @@
 # Aranea-Agents 执行计划（AI 协作权威基线）
 
 > 版本：v1.0（2026-05-17）
-> 编制依据：`docs/README.md`、`docs/需求/*`（86 篇）、`docs/guides/{AI-DEVELOPMENT-SPECIFICATION, master-plan, implementation-plan, task-tracker, plan, trpc-agent-go-framework}.md`、`docs/changelog/*`、`docs/devlog/2026-05-17-optimization-code-audit.md`，以及 `cmd/ internal/ api/ pkg/ web/` 全量代码与配置抽样。
+> 编制依据：`docs/README.md`、`docs/需求/*`（86 篇）、`docs/guides/{AI-DEVELOPMENT-SPECIFICATION, trpc-agent-go-framework}.md`、`docs/changelog/*`、`docs/devlog/*`，以及 `cmd/ internal/ api/ pkg/ web/` 全量代码与配置抽样。
 > 文档定位：**给后续 AI 迭代使用的唯一执行基线**。任何 PR / commit 之前，AI 必须按本文 §10 自检。
-> 关系：master-plan、implementation-plan、task-tracker、plan 已迁移至 `_deprecated/guides/` 作为历史参考；本文负责把它们与代码现实重新对齐，并提供新的工作分解。
-
 ---
 
 ## 0. 阅读路径（先读这一页）
 
 - §1 现状全景：六轴（架构、业务、数据、运行时、前端、可观测）当前状态
-- §2 文档与代码的根本性矛盾：必须先解决的元问题
+- §2 文档与代码协同失控（已治理）：元问题回顾与后续约束
 - §3 全域漏洞与不足清单：分类 + 证据 + 优先级
 - §4 长效优化路线（M0–M5 里程碑）
 - §5 立即可执行 Top-20 工作（每项可一 PR 落地）
@@ -38,20 +36,7 @@
 - 前端 `web/src/services/index.ts` 与 `web/src/services/kratos/<24 个域>/v1/index.ts` 已一一对应；`createChatService` 等生成客户端已在 `features/<域>/api.ts` 中使用。
 - Pinia store 已覆盖 19 个业务域。
 
-### 1.2 已被代码反超的"待办"
-
-文档里仍标"未实现"或"P2 待启动"，实际代码已经存在或部分存在：
-
-| 文档主张 | 实际代码状态 | 证据 |
-|---|---|---|
-| `docs/需求/0 系统框图.md` 接入层标"A2A 规划中" | A2A 已注册 HTTP/gRPC Server | `internal/server/http.go`、`grpc.go` |
-| `docs/需求/37 knowledge.md` 称"项目无 Knowledge" | Knowledge 已有 proto + service + biz + data + 检索器 | `internal/biz/knowledge.go`、`internal/service/knowledge.go`、`internal/knowledge/*` |
-| `docs/需求/27 artifact.md` 称"项目无 Artifact" | Artifact REST 已可用，trpc Service 适配也有 | `api/kratos/artifact/v1/*`、`internal/service/artifact.go`、`internal/artifact/trpc/service.go` |
-| `docs/需求/22 plugin.md` 称 Plugin 未注入 Runner | Chat/Team 单聊路径已 `WithPlugins` | `internal/service/trpc_turn.go`、`internal/agent/trpc_runtime.go` |
-| `docs/需求/12-16 memory.design.md` 标 Memory RPC 待新增 | `memory.proto` 已含 L0 快照、L1 task/field 等多个 RPC | `api/kratos/memory/v1/memory.proto` |
-| `task-tracker.md` 全量 41 个任务 `pending` | 多任务实际已合并（S1 全部、S2-S6 大部分） | `docs/changelog/2026-05-17-S{1..6}-*.md` |
-
-### 1.3 仍然真实缺失或半成品
+### 1.2 仍然真实缺失或半成品
 
 | 主题 | 现实状态 | 关键证据 |
 |---|---|---|
@@ -72,32 +57,9 @@
 | 测试矩阵 | Go 测试仅跑白名单 `$TESTABLE_PKGS`，60% 阈值只覆盖白名单；前端 `npm test` 加了 `|| echo` 失败不阻断 | `.github/workflows/ci.yml:47-89` |
 | Adaptive Team mode | `biz.TeamUsecase` 允许 `adaptive` 但 `internal/team/trpc_build.go` switch 落到 default，与 coordinator 等价 | `internal/team/trpc_build.go:52-105` |
 | Knowledge / A2A / Evaluation 工具未注册 | `internal/tools/knowledge/tool.go`、`internal/a2a/tool.go` 仅定义，没被 BuildToolsets / Registry 引用 | `internal/agent/trpc_build.go` 工具装配链 |
-| EvolutionScanner / L4 持久层 | `docs/需求/16 memory-L4-persistent.md` 勾选 `RunEvolutionScan`/30min ticker；代码内不存在 | `internal/` 无对应 worker |
-| 51 消息机制"单 WS 通道" | 文档要求 WS 取代 SSE 为唯一通道；`51a 后端消息机制.md` 自身仍描述 `POST /v1/chat/messages/stream` (SSE)；代码里 WS + Chat SSE 并存 | `internal/server/ws.go` + `internal/service/chat.go` |
+| EvolutionScanner / L4 持久层 | `RunEvolutionScan` / 30min ticker 代码内不存在（需求文档已校准为"未实现"） | `internal/` 无对应 worker |
+| 51 消息机制"单 WS 通道" | 文档要求 WS 取代 SSE 为唯一通道；代码里 WS + Chat SSE 并存（文档已统一为"WS 主通道 + Chat SSE 兼容回退"） | `internal/server/ws.go` + `internal/service/chat.go` |
 | CLI 产品 | `docs/需求/25 cli.md` 要求 `aranea` 可执行 CLI / REPL；实际只有 `cmd/admin`（服务进程）+ `cmd/araneactl/lint`（lint 工具） | `cmd/` 目录 |
-
-### 1.4 文档与文档之间的矛盾（必须治理）
-
-- `docs/guides/master-plan.md §4` 状态表 ≠ `docs/guides/plan.md §2` 状态表 ≠ `docs/README.md §6 对齐状态表` ≠ `docs/guides/task-tracker.md §1 总览`。
-- task-tracker 显示"0/41 done"；changelog 显示 S1–S6 全部已合。两份是矛盾的。
-- `docs/需求/24 telemetry.md` 内容为空，`.design.md` 有完整 OTel 方案。
-- `docs/需求/16 memory-L4-persistent.md §1` 实现状态勾选的文件在仓库中不存在。
-- `docs/需求/34 event-system.md §1` 称"缺失 StateDelta/Extensions/Branch/Tag"，而 `docs/需求/1 chat.md` 与 `internal/server/ws.go` 已支持。
-
----
-
-## 2. 元问题：文档/代码协同失控
-
-进度信息分散在四类文档里，每类口径不同：
-
-- **master-plan / plan**：按 M1-M20 模块状态描述；多处过期。
-- **implementation-plan / task-tracker**：按 S1-S6 / T1-T41 跟踪；当前全 pending。
-- **changelog**：按 sprint 宣称完成；超出代码实际接入度。
-- **需求 + 设计文档**：按业务域描述目标；多篇与代码反向（代码已实现，文档仍称待实现）。
-
-> **执行计划首要动作 EP-DOC-01：把"进度真相"集中到本执行计划 §3 / 附录 A 的状态矩阵，其余文档只允许引用本表，不允许独立维护进度信息。**
-
----
 
 ## 3. 全域漏洞与不足清单（按优先级）
 
@@ -135,7 +97,7 @@
 | EP-BIZ-04 | Evaluation Runner 在 `internal/service/wire_providers.go` 用 `nil, nil` 构造 | P1 | `internal/service/wire_providers.go`（按子代理引用） | 真实注入 AgentRunner + Judge，或在文档中明确"仅评估元数据，不跑用例" |
 | EP-BIZ-05 | Channel 多渠道适配缺失（仅 feishu 真正走端到端） | P2 | `internal/service/channel_ingress.go` + `internal/channel/lark` | 实现 wechat / dingtalk / slack / 邮件入站，或在前端禁用未实现渠道 |
 | EP-BIZ-06 | ToolOverride 域只在 proto / 统计语境出现，无 CRUD / Usecase | P2 | proto agent_override_count 字段 + 缺少 biz/data | 补 `biz/tool_override.go` 与 Repo |
-| EP-BIZ-07 | EvolutionScanner（L4 持久层）需求文档勾选，但代码不存在 | P2 | `docs/需求/16 memory-L4-persistent.md` vs `internal/` | 要么实现 30min ticker scanner，要么把需求降级为"未实现" |
+| EP-BIZ-07 | EvolutionScanner（L4 持久层）代码不存在 | P2 | `internal/` 无对应 worker（需求文档已校准为"未实现"） | 要么实现 30min ticker scanner，要么保持需求降级为"未实现" |
 
 ### 3.4 可观测 / 运维（P1）
 
@@ -167,20 +129,7 @@
 | EP-ENG-03 | `make wire` 别名缺失，且 `wire_gen.go` 与 `wire.go` 之间不强制一致性检查 | P1 | `Makefile` + 无 `make wire-clean` | 加 `make wire`（运行 wire 后 git diff 为空才通过）；CI `wire-clean` job |
 | EP-ENG-04 | `make api` 提交检查缺失（生成产物可能与 proto 不同步） | P2 | `Makefile` | 加 `proto-clean` job：跑 `make api` 后 git diff 必须为空 |
 | EP-ENG-05 | `golangci-lint` 未集成 | P2 | Makefile/CI 仅 `go vet` + araneactl lint | 引入 golangci-lint，配置最小集（govet、ineffassign、staticcheck、errcheck） |
-| EP-ENG-06 | `task-tracker.md` 与 changelog 严重不一致，且未自动校验 | P1 | `docs/guides/task-tracker.md` 总览 0/41 | 弃用 task-tracker；以本执行计划 §3 + 附录 A 为唯一进度源；新增 `araneactl docs-check` |
 | EP-ENG-07 | `Makefile` lint 不包含 `gofmt`/`goimports` 检查 | P3 | Makefile | 加 fmt check |
-
-### 3.7 文档治理（P0）
-
-| 编号 | 问题 | 优先级 | 证据 | 建议动作 |
-|---|---|---|---|---|
-| EP-DOC-01 | 进度信息四处分散且彼此矛盾 | P0 | 见 §1.4 / §2 | 本计划 §3 + 附录 A 为唯一进度真相 |
-| EP-DOC-02 | `docs/需求/24 telemetry.md` 空文件 | P1 | 文件大小 | 写明状态：`参见 24 telemetry.design.md` |
-| EP-DOC-03 | `docs/需求/16 memory-L4-persistent.md` 描述代码不存在 | P1 | 与代码核对 | 重写为"未实现"或先实现再标 |
-| EP-DOC-04 | `docs/需求/27 artifact.md`、`37 knowledge.md` 称"无能力"但代码已具备 | P2 | 与代码核对 | 更新现状段，区分"REST 已通"和"Runner 注入待完成" |
-| EP-DOC-05 | `docs/需求/34 event-system.md` 描述与 chat SSE 实际能力矛盾 | P2 | 与 `1 chat.md` 对比 | 标历史草稿或重写 |
-| EP-DOC-06 | `docs/需求/31 memery.md` 文件名拼写错误 | P3 | 文件 | rename 为 `31 memory.md` |
-| EP-DOC-07 | `docs/需求/51 消息机制.md` 与 `51a 后端消息机制.md` 自相矛盾（WS 唯一通道 vs 仍写 SSE） | P2 | 两文件本身 | 统一为"WS 主通道 + Chat SSE 兼容回退" |
 
 ### 3.8 红线/规范缺口（P1）
 
@@ -200,12 +149,10 @@
 ### M0 真相同步与基础闭合（1 周）
 
 目标：把"文档真相"与"代码真相"对齐，把 P0 安全与运行时正确性补足。
-
-- EP-DOC-01：本计划替代 task-tracker；其余文档 §2/§3 收编为"现状已知问题"，删除/降级旧 sprint 信息。
 - EP-SEC-01 / EP-SEC-02：JWT 密钥 fail-fast + dev bypass 限定；启动 banner。
 - EP-RT-01 / EP-RT-02：RunStatus / AwaitUserReply 真正落 store，前端 `useRunStatus` 可见。
 - EP-OBS-01：暴露 `/metrics`（先 expose，再补点）。
-- 验收：本 §1.3 P0 行全部消除；`go build ./cmd/admin` + `go test ./...` + `npm test` 全过；`/metrics` 可访问。
+- 验收：§3 中 P0 项（EP-SEC-01、EP-SEC-02、EP-RT-01、EP-RT-02）全部消除；`go build ./cmd/admin` + `go test ./...` + `npm test` 全过；`/metrics` 可访问。
 
 ### M1 端到端闭合（2 周）
 
@@ -247,7 +194,7 @@
 ### M5 长期能力与运维化（开放窗口）
 
 - CLI 产品（`docs/需求/25 cli.md`）。
-- Knowledge 多租户隔离 + 知识图谱 L4。
+- Knowledge 多租户隔离（先单用户） + 知识图谱 L4。
 - A2A 注册中心 / Discover 流程。
 - Evaluation 可视化平台 + A/B。
 - pkg/trpc-agent-go 版本治理：每月一次同步评估；适配层版本兼容测试。
@@ -261,7 +208,6 @@
 
 | # | ID | 动作 | 主要证据 / 起点 |
 |---|---|---|---|
-| 1 | EP-DOC-01 | ~~用本计划替代 task-tracker，并把 master-plan §4 + plan §2 状态表改为"参见 docs/guides/execution-plan.md 附录 A"~~ **已完成**：废弃文档已迁移至 `_deprecated/guides/` | `docs/_deprecated/guides/` |
 | 2 | EP-SEC-01 | JWT 密钥 fail-fast | `pkg/auth/config.go:8-14` |
 | 3 | EP-SEC-02 | Bypass 限定 dev，启动 banner | `pkg/auth/middleware.go:15-66`、`features.go` |
 | 4 | EP-RT-01 | `runSingleAgentViaTRPC` / `runTeamTRPC` 起止处调用 `setRunStatus` | `internal/service/chat.go:332-388` + `internal/service/trpc_turn.go` |
@@ -280,7 +226,6 @@
 | 17 | EP-ENG-04 | 新增 `proto-clean` job；`make api` 后 git diff 必空 | `.github/workflows/ci.yml` + Makefile |
 | 18 | EP-OBS-02 | OTel：Kratos tracing.Server middleware + OTLP；环境变量 `OTEL_EXPORTER_OTLP_ENDPOINT` | `internal/server/http.go`、`grpc.go` + new `internal/server/telemetry.go` |
 | 19 | EP-RULE-04 | `pkg/safego.Go` 替代所有 `go func()`；araneactl lint 加规则 | grep `go func\(` 全仓 |
-| 20 | EP-DOC-04/05/07 | 更新 `27 artifact.md` `37 knowledge.md` `22 plugin.md` `34 event-system.md` `51` 系列现状段 | 对应需求文件 |
 
 ---
 
@@ -366,7 +311,7 @@
 
 | 风险 | 触发条件 | 缓解 |
 |---|---|---|
-| 路线图与既有 sprint 文档双轨 | 旧文档继续被引用 | 把 master-plan / plan / task-tracker 顶部加 `已废弃，参见 execution-plan.md` |
+| 路线图与既有 sprint 文档双轨 | 旧文档继续被引用 | 已迁移至 `_deprecated/guides/`；顶部加废弃声明 |
 | 安全 P0 修复影响开发体验 | 强制密钥与限定 bypass | dev 配置文件预置一个明确的 dev secret；启动文档说明 |
 | 全量 `./...` 测试初期失败多 | 现有覆盖白名单只跑通的包 | 分阶段：先 allowlist 阻断不稳定包；逐包修绿 |
 | Ent Hook 多租户改造影响所有 Repo | 一次性大改 | 按域分批：admin → agent → session → memory → tool，每域一 PR |
@@ -401,23 +346,13 @@
 | `docs/guides/execution-plan.md`（本文） | 唯一进度真相 + AI 协作约束 | 每个 PR 同步 §3 / 附录 A；季度 review |
 | `docs/guides/AI-DEVELOPMENT-SPECIFICATION.md` | 规范红线（不变层） | 仅在 §6 红线变化时改 |
 | `docs/guides/trpc-agent-go-framework.md` | 框架工程化解读 | 框架升级时同步 |
-| `docs/需求/<n> <模块>.md` | 纯需求（用户故事 / 验收） | 需求变更时改 |
+| `docs/需求/<n> <模块>.md` | 需求 + 运维指南（§6/§7） | 需求变更或运维要点变更时改 |
 | `docs/需求/<n> <模块>.design.md` | 纯设计（接口 / 数据模型 / 选型） | 设计调整时改 |
+| `docs/changelog/README.md` | 变更记录索引 | 新增 changelog 时同步 |
 | `docs/changelog/<date>-<topic>.md` | 变更摘要 + EP 引用 | 每个 PR 1 篇 |
+| `docs/devlog/README.md` | 开发日志索引 | 新增 devlog 时同步 |
 | `docs/devlog/<date>-<topic>.md` | 实施过程 / 调试 / 走查记录 | 自由 |
-| `docs/guides/master-plan.md` | **已废弃**，保留作历史；顶部需加废弃声明 | 不维护 |
-| `docs/guides/plan.md` | **已废弃**，保留作历史；顶部需加废弃声明 | 不维护 |
-| `docs/guides/implementation-plan.md` | **已废弃**，保留作历史 | 不维护 |
-| `docs/guides/task-tracker.md` | **已废弃**，保留作历史 | 不维护 |
-| `docs/guides/sprints/*` | **已废弃**，保留作历史 | 不维护 |
 | `docs/devlog/2026-05-17-optimization-code-audit.md` | 旧审计快照 | 附录引用，不再更新 |
-
-> 文档治理动作 EP-DOC-01 完成后，废弃文档须加顶部声明：
->
-> ```
-> > 本文档自 2026-05-17 起停止维护，进度信息以 docs/guides/execution-plan.md 为准。
-> ```
-
 ---
 
 ## 附录 A：模块状态矩阵（唯一进度真相）
@@ -480,7 +415,7 @@
 - 权威规范：`docs/guides/AI-DEVELOPMENT-SPECIFICATION.md`
 - 框架解读：`docs/guides/trpc-agent-go-framework.md`
 - 系统架构：`docs/需求/0 系统框图.md`
-- 需求合集：`docs/需求/*`
-- 旧规划（已废弃）：`docs/guides/master-plan.md`、`plan.md`、`implementation-plan.md`、`task-tracker.md`、`sprints/*`
+- 需求合集：`docs/需求/*`（含运维指南 §6/§7）
+- 变更记录索引：`docs/changelog/README.md`
+- 开发日志索引：`docs/devlog/README.md`
 - 历史审计：`docs/devlog/2026-05-17-optimization-code-audit.md`（结论已被本计划 §1 修正）
-- 变更记录：`docs/changelog/*`

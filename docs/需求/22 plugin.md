@@ -2,7 +2,7 @@
 
 > **2026-05-17 现状对齐**：本文部分前置假设已被代码反超。当前实现状态：
 > - ✅ `internal/plugin/trpc/` 已实现 `AuditLogPlugin` / `Permissions` / 热重载 `runtime.go`；HTTP/gRPC 服务与前端 store 已通。
-> - ❌ **未在 Agent 装配链上将 Plugin 注入 Runner**（`internal/team/runner_team_trpc.go` / `internal/agent/turn_helpers.go` / `internal/service/trpc_turn.go` 处 `NewRunnerDepsFromRuntime` 未传 `WithPlugins`）。
+> - ✅ **Plugin 已注入 Runner**：`internal/agent/trpc_runtime.go:43` 使用 `trpcrunner.WithPlugins(deps.Plugins...)`；`internal/agent/turn_helpers.go:37` 传入 `deps.Plugins = plugins`；`internal/service/trpc_turn.go:58` 通过 `s.pluginRT.Plugins()` 获取插件列表。
 > - ❌ Pre*/Post* 必须配对的红线（R16，详见 `guides/execution-plan.md` §6）需统一落地。
 >
 > 后续以 `guides/execution-plan.md` §3 EP-RT-03 为准；本文以下章节作产品需求基线参考。

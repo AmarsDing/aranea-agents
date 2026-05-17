@@ -44,15 +44,17 @@ L4 与 ADK 模型的对应：ADK 的 `MemoryService` 主要服务 L3；L4 在 AD
 
 ## 1. 心智模型与边界
 
-> **实现状态（后端，截至 2026-04）**  
-> - **L4 图谱、启发式实体抽取、Agent 身份/策略/Proposal/Event、L0 邻居与 self 段、Tool 黑名单/排序与模型路由** 已在 `aranea/backend` 落地。  
-> - **EvolutionWorker**：`RunEvolutionScan` 为**启发式**（`tool_invocations` → `agent_skill_stats`、§5.5 触发/节流/可选自动应用）；`POST …/evolution/scan` 可手动触发；`internal/server` 中 **每 30 分钟** 对 `evo_enabled=true` 的 Agent 轮询一次。  
-> - **增量窗口**：`agent_strategy_profile.stats_json` 中保留 `last_scan_at`（与 `last_scan_report` 快照），episode / 负反馈按「自上次扫描以来」计数；**技能统计** 仍用固定 **30 天** 滚动窗聚合，避免相邻两次扫描间信号断裂。  
-> - **负反馈触发**：`memory_fact_feedback` 中 `agent_id` 匹配、类型为 `reject` / `refine`、时间 ≥ 窗口下界的条数，与 `evo_min_negative_feedback` 比较。  
-> - **回滚率刹车**：30 天窗口内 EvolutionEvent 的 `reverted` 比例 > 20% 且样本 ≥ 5 时，将 `evo_auto_apply` 置为 `0`，并记审计 `agent.evolution.scanner.rollback_alarm`（与 §10 一致）。  
-> - **未接线**：`tool_invocations` 已提供 `Insert` 与检索，**Chat / 外部 ADK runtime 在每次工具调用结束时自动写入** 尚待对接待办（否则扫描主要依赖手测/集成写入）。  
-> - **后续可选**：`RunEvolutionScan` 中「LLM JSON 自反思」可替换/叠加当前启发式，见 §5.5。  
-> - **前端** §8（含 §8.6 提议中心）仍为待办。详见 §12。
+> **实现状态（后端，截至 2026-05-17 校准）**
+> - 以下为远期目标设计，**尚未在当前代码库落地**。顶部"现状对齐"段为准。
+> - ❌ L4 实体-关系知识图谱、启发式实体抽取 — 代码不存在（`internal/` 无对应 worker）。
+> - ❌ EvolutionWorker / `RunEvolutionScan` / 30min ticker — 代码不存在。
+> - ❌ Agent 身份/策略/Proposal/Event、L0 邻居与 self 段、Tool 黑名单/排序与模型路由 — 代码不存在。
+> - ❌ 增量窗口、负反馈触发、回滚率刹车 — 代码不存在。
+> - ❌ `tool_invocations` 自动写入 — 代码不存在。
+> - ❌ 前端 §8（含 §8.6 提议中心）— 未实现。
+> - ✅ `memory.proto` 已定义 L0 快照、L1 task/field、L3 fact、L4 entity/neighborhood/identity/strategy/evolution 等 RPC（`api/kratos/memory/v1/memory.proto`）。
+> - ✅ `internal/cronrunner/jobs/auto_memory.go` AutoMemory 后台任务已注册（但 extract 体为占位）。
+> - 后续以 `guides/execution-plan.md` §3 EP-RT-03 / EP-BIZ-07 为准。
 
 ---
 

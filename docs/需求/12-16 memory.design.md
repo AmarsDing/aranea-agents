@@ -37,13 +37,31 @@ service MemoryService {
 }
 ```
 
-### 2.2 待新增
+### 2.2 已新增（2026-05-17 校准）
+
+以下 RPC 已在 `api/kratos/memory/v1/memory.proto` 中定义：
+
+| RPC | 路径 | 用途 | 状态 |
+|-----|------|------|------|
+| `ListL0Snapshots` | — | L0 快照列表 | ✅ 已定义 |
+| `ListL1Tasks` | — | L1 任务列表 | ✅ 已定义 |
+| `ListL1Fields` | — | L1 字段列表 | ✅ 已定义 |
+| `ListMemoryFacts` | — | L3 fact 列表 | ✅ 已定义 |
+| `ListMemoryEntities` | — | L4 实体列表 | ✅ 已定义 |
+| `GetMemoryNeighborhood` | — | L4 邻居查询 | ✅ 已定义 |
+| `GetAgentIdentity` | — | Agent 身份 | ✅ 已定义 |
+| `GetAgentStrategy` | — | Agent 策略画像 | ✅ 已定义 |
+| `ListEvolutionProposals` | — | 进化提议列表 | ✅ 已定义 |
+| `ListEvolutionEvents` | — | 进化事件列表 | ✅ 已定义 |
+| `GetEvolutionMetrics` | — | 进化指标 | ✅ 已定义 |
+| `UpsertMemoryFact` | — | 写入 fact | ✅ 已定义 |
+| `AppendEvolutionEvent` | — | 追加进化事件 | ✅ 已定义 |
+
+### 2.3 仍待新增
 
 | RPC | 路径 | 用途 |
 |-----|------|------|
 | `GetMemoryOverview` | `GET /v1/memories/overview` | 五层记忆总览 |
-| `GetMemoryEvolution` | `GET /v1/memories/{id}/evolution` | 记忆演化历史 |
-| `SearchSemanticMemory` | `POST /v1/memories/semantic/search` | L3 向量搜索 |
 | `GetMemorySnapshot` | `GET /v1/memories/{session_id}/snapshot` | 会话记忆快照 |
 
 ---
