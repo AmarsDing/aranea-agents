@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/safego"
 )
 
 type eventBusAdapter struct {
@@ -30,7 +31,7 @@ func (a *eventBusAdapter) SubscribeDomainEvents() (<-chan DomainEvent, func()) {
 	ch, unsub := a.bus.Subscribe(event.SubscribeOptions{BufferSize: 256})
 	out := make(chan DomainEvent, 256)
 	done := make(chan struct{})
-	go func() {
+	safego.Go(context.Background(), "domain-event-adapter", func() {
 		defer close(out)
 		for {
 			select {
@@ -49,7 +50,7 @@ func (a *eventBusAdapter) SubscribeDomainEvents() (<-chan DomainEvent, func()) {
 				}
 			}
 		}
-	}()
+	})
 	cancel := func() {
 		unsub()
 		close(done)

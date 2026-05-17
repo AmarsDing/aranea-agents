@@ -1,0 +1,45 @@
+# EP-ENG-05: minimal golangci-lint config
+# Run locally: golangci-lint run ./...
+# CI: uses golangci/golangci-lint-action@v6
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - govet        # built-in go vet checks
+    - ineffassign  # detect ineffectual assignments
+    - staticcheck  # SA*, QF* (staticcheck suite)
+    - errcheck     # unchecked error returns
+    - unused       # unused code (replaces deadcode/structcheck)
+    - gocritic     # various opinionated checks (subset)
+
+linters-settings:
+  errcheck:
+    # Don't flag deferred Close/Flush patterns – they're idiomatic.
+    exclude-functions:
+      - (io.Closer).Close
+      - (*os.File).Close
+      - (net.Conn).Close
+  gocritic:
+    # Enable only a safe, non-noisy subset.
+    enabled-tags:
+      - diagnostic
+      - performance
+    disabled-checks:
+      - appendAssign
+      - commentFormatting
+      - hugeParam
+
+issues:
+  # Exclude third-party generated code from linting.
+  exclude-dirs:
+    - pkg/trpc-agent-go
+    - vendor
+  exclude-files:
+    - ".*\\.pb\\.go$"
+    - ".*\\.pb\\.gw\\.go$"
+    - "wire_gen\\.go$"
+    - "ent/.*\\.go$"
+  # Maximum issues per linter per file.
+  max-issues-per-linter: 50
+  max-same-issues: 10

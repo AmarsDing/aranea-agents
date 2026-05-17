@@ -14,6 +14,7 @@ import (
 	"aranea-agents/internal/compress"
 	"aranea-agents/internal/event"
 	rt "aranea-agents/internal/runtime"
+	"aranea-agents/pkg/safego"
 	"aranea-agents/pkg/strutil"
 
 	"github.com/google/uuid"
@@ -62,7 +63,7 @@ func (c *SessionCompressor) AfterNativeTurn(ctx context.Context, sessionID strin
 	if sid == "" {
 		return
 	}
-	go func() {
+	safego.Go(ctx, "session-compress", func() {
 		if _, loaded := c.inFlight.LoadOrStore(sid, true); loaded {
 			return
 		}
@@ -78,7 +79,7 @@ func (c *SessionCompressor) AfterNativeTurn(ctx context.Context, sessionID strin
 				c.EventBus.Publish(runCtx, env)
 			}
 		}
-	}()
+	})
 }
 
 func (c *SessionCompressor) runCompress(ctx context.Context, sessionID string, ag biz.Agent) error {

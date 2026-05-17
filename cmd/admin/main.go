@@ -9,6 +9,8 @@ import (
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/cronrunner"
 	"aranea-agents/internal/event"
+	"aranea-agents/internal/server"
+	"aranea-agents/pkg/auth"
 
 	"github.com/go-kratos/kratos/v2"
 	"github.com/go-kratos/kratos/v2/config"
@@ -37,10 +39,16 @@ func newApp(
 	logger log.Logger,
 	gs *grpc.Server,
 	hs *http.Server,
+	wsSrv *server.WSServer,
 	consumer *biz.EventBusConsumer,
 	eventBus event.Bus,
 ) *kratos.App {
+	// EP-OBS-03: WSServer implements transport.Server (Start/Stop); register it so
+	// kratos.App orchestrates its lifecycle and Stop triggers broadcastShutdown.
 	srv := []transport.Server{gs, hs}
+	if wsSrv != nil {
+		srv = append(srv, wsSrv)
+	}
 
 	consumerCtx, consumerCancel := context.WithCancel(context.Background())
 
@@ -90,10 +98,16 @@ func main() {
 		panic(err)
 	}
 
+	auth.WarnIfBypassEnabled()
+
 	var bc conf.Bootstrap
 	if err := c.Scan(&bc); err != nil {
 		panic(err)
 	}
+
+	// EP-OBS-02: initialise OTel tracer provider; noop when endpoint not set.
+	shutdownTracer := server.InitTracerProvider(Name, Version)
+	defer func() { _ = shutdownTracer(context.Background()) }()
 
 	out, cleanup, err := wireApp(bc.Server, bc.Data, logger)
 	if err != nil {
@@ -114,6 +128,12 @@ func main() {
 	if out.SkillWatch != nil {
 		go out.SkillWatch.Start(watchCtx)
 		logger.Log(log.LevelInfo, "msg", "skill filesystem watcher started")
+	}
+
+	// EP-RT-03: start auto-memory extraction worker.
+	if out.AutoMemory != nil {
+		go out.AutoMemory.Start(cronCtx)
+		logger.Log(log.LevelInfo, "msg", "auto-memory worker started")
 	}
 
 	if err := out.App.Run(); err != nil {

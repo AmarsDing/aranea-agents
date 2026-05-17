@@ -27,9 +27,11 @@ import (
 	usagev1 "aranea-agents/api/kratos/usage/v1"
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/service"
+	"aranea-agents/pkg/auth"
 	"aranea-agents/pkg/validate"
 
 	"github.com/go-kratos/kratos/v2/middleware/recovery"
+	"github.com/go-kratos/kratos/v2/middleware/tracing"
 	"github.com/go-kratos/kratos/v2/transport/grpc"
 )
 
@@ -61,7 +63,11 @@ func NewGRPCServer(c *conf.Server,
 	a2aSvc *service.A2AService,
 ) *grpc.Server {
 	var opts = []grpc.ServerOption{
+		// EP-OBS-02: tracing.Server() spans all gRPC calls when OTel is configured.
+		// EP-SEC-04: auth.GRPCMiddleware() validates Bearer JWT from gRPC metadata.
 		grpc.Middleware(
+			tracing.Server(),
+			auth.GRPCMiddleware(),
 			recovery.Recovery(),
 			validate.Middleware(),
 		),

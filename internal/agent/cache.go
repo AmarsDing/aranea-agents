@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	arametrics "aranea-agents/internal/metrics"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 )
@@ -160,8 +161,10 @@ func InvalidateAgentCache(agentID string) {
 func BuildTRPCLLMAgentCached(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) (trpcagent.Agent, error) {
 	key := BuildCacheKey(ag, deps)
 	if cached := globalBuildCache.get(key); cached != nil {
+		arametrics.AgentBuildCacheHits.Inc() // EP-OBS-04
 		return cached, nil
 	}
+	arametrics.AgentBuildCacheMisses.Inc() // EP-OBS-04
 	built, err := BuildTRPCLLMAgent(ctx, ag, deps)
 	if err != nil {
 		return nil, err

@@ -44,8 +44,8 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { getMonitorLogs, subscribeMonitorLogsWs } from "../../features/monitor/api";
 import type { MonitorLogLine, StreamState } from "../../features/monitor/types";
+import { useMonitorStore } from "../../stores/monitor/index";
 
 const lines = ref<MonitorLogLine[]>([]);
 const keyword = ref("");
@@ -54,7 +54,8 @@ const paused = ref(false);
 const logEnabled = ref(false);
 const state = ref<StreamState>("connecting");
 const message = ref("");
-let wsSub: ReturnType<typeof subscribeMonitorLogsWs> | null = null;
+const monitorStore = useMonitorStore();
+let wsSub: ReturnType<typeof monitorStore.startLogsStream> | null = null;
 
 const levelOptions = [
   { label: "DEBUG", value: "DEBUG" },
@@ -78,9 +79,10 @@ const stateColor = computed(() => state.value === "live" ? "positive" : state.va
 const stateText = computed(() => ({ connecting: "连接中", live: "实时", paused: "已暂停", error: "连接异常" }[state.value]));
 
 onMounted(async () => {
-  const snapshot = await getMonitorLogs();
-  lines.value = snapshot.items;
-  message.value = snapshot.message;
+  await monitorStore.loadLogs();
+  const snapshot = monitorStore.logSnapshot;
+  lines.value = snapshot?.items ?? [];
+  message.value = snapshot?.message ?? "";
   start();
 });
 
@@ -98,7 +100,7 @@ watch(paused, (isPaused) => {
 function start() {
   stop();
   state.value = "connecting";
-  wsSub = subscribeMonitorLogsWs(
+  wsSub = monitorStore.startLogsStream(
     "monitor",
     (line) => {
       state.value = "live";

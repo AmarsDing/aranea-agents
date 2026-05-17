@@ -80,6 +80,10 @@ func (r *Runner) execute(ctx context.Context, run biz.EvalRun, metrics string) e
 		toolTotal, toolSum       float32
 	)
 
+	if r.agent == nil {
+		return r.failRun(ctx, run, "agent runner not configured; inject an AgentRunner via evaluation.NewRunner")
+	}
+
 	for _, c := range cases {
 		start := time.Now()
 		actual, runErr := r.agent(ctx, run.AgentID, c.Input)

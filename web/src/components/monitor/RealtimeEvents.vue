@@ -63,7 +63,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { copyToClipboard, Notify } from "quasar";
-import { subscribeMonitorRuntimeEventsWs } from "../../features/monitor/api";
+import { useMonitorStore } from "../../stores/monitor/index";
 import type { PlatformResource, StreamState, TeamRunEvent } from "../../features/monitor/types";
 import { compactJSON, formatDate, parseJSON } from "../../features/monitor/utils";
 
@@ -88,7 +88,8 @@ const paused = ref(false);
 const runtimeEvents = ref<ViewEvent[]>([]);
 const selected = ref<ViewEvent | null>(null);
 const detailOpen = ref(false);
-let wsSub: ReturnType<typeof subscribeMonitorRuntimeEventsWs> | null = null;
+const monitorStore = useMonitorStore();
+let wsSub: ReturnType<typeof monitorStore.startRuntimeEventsStream> | null = null;
 
 const categoryOptions = [
   { label: "全部", value: "all" },
@@ -141,7 +142,7 @@ watch(paused, (isPaused) => {
 function startStream() {
   stopStream();
   state.value = "connecting";
-  wsSub = subscribeMonitorRuntimeEventsWs(
+  wsSub = monitorStore.startRuntimeEventsStream(
     "monitor",
     (event) => {
       state.value = "live";

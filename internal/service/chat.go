@@ -358,6 +358,32 @@ func (s *ChatService) GetRunStatus(ctx context.Context, req *chatv1.GetRunStatus
 	}, nil
 }
 
+// makeAwaitReplyFunc returns a ReplyFunc closure that the ServiceTool calls to
+// pause the current agent turn (EP-RT-02).  The closure:
+//  1. Creates a buffered channel keyed by sessionID in awaitChans.
+//  2. Sets the run status to "awaiting_user" so the frontend can react.
+//  3. Blocks until AwaitUserReply delivers a reply or ctx is cancelled.
+func (s *ChatService) makeAwaitReplyFunc(runCtx context.Context, sessionID, runID string) func(context.Context) (string, error) {
+	return func(toolCtx context.Context) (string, error) {
+		ch := make(chan awaitReplyCh, 1)
+		s.awaitChans.Store(sessionID, ch)
+		s.setRunStatus(sessionID, runID, "awaiting_user", "")
+		defer func() {
+			s.awaitChans.Delete(sessionID)
+			// Restore "running" so downstream setRunStatus calls see a clean state.
+			s.setRunStatus(sessionID, runID, "running", "")
+		}()
+		select {
+		case r := <-ch:
+			return r.Reply, nil
+		case <-toolCtx.Done():
+			return "", toolCtx.Err()
+		case <-runCtx.Done():
+			return "", runCtx.Err()
+		}
+	}
+}
+
 // AwaitUserReply submits a human reply for a run that is paused in awaiting_user state.
 func (s *ChatService) AwaitUserReply(ctx context.Context, req *chatv1.AwaitUserReplyRequest) (*chatv1.AwaitUserReplyResponse, error) {
 	sessionID := strings.TrimSpace(req.GetSessionId())

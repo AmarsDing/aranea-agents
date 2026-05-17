@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	nethttp "net/http"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+
 	a2av1 "aranea-agents/api/kratos/a2a/v1"
 	adminv1 "aranea-agents/api/kratos/admin/v1"
 	agentv1 "aranea-agents/api/kratos/agent/v1"
@@ -35,6 +37,7 @@ import (
 	"aranea-agents/pkg/validate"
 
 	"github.com/go-kratos/kratos/v2/middleware/recovery"
+	"github.com/go-kratos/kratos/v2/middleware/tracing"
 	"github.com/go-kratos/kratos/v2/transport/http"
 )
 
@@ -74,7 +77,10 @@ func NewHTTPServer(c *conf.Server,
 			auth.Middleware(),
 			servermw.WorkspaceFilter(),
 		),
+		// EP-OBS-02: tracing.Server() is first so every handler gets a span.
+		// The tracer is a noop until OTEL_EXPORTER_OTLP_ENDPOINT is configured.
 		http.Middleware(
+			tracing.Server(),
 			recovery.Recovery(),
 			validate.Middleware(),
 		),
@@ -122,5 +128,7 @@ func NewHTTPServer(c *conf.Server,
 		w.WriteHeader(nethttp.StatusOK)
 		return json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 	})
+	// EP-OBS-01: expose Prometheus metrics at /metrics; bypass auth so scrapers reach it.
+	srv.HandleFunc("/metrics", promhttp.Handler().ServeHTTP)
 	return srv
 }

@@ -7,9 +7,15 @@ import {
   deleteSession,
   archiveSession,
   updateSession,
+  listSessionTurns,
+  getSessionTimeline,
+  listSessionChatMessages,
   type Session,
-  type SessionListResult
+  type SessionListResult,
+  type SessionTurn,
+  type SessionTimeline
 } from "../../features/session/api";
+import type { Message } from "../../features/chat/types";
 
 export const useSessionStore = defineStore("session", () => {
   const sessions = ref<Session[]>([]);
@@ -63,5 +69,18 @@ export const useSessionStore = defineStore("session", () => {
     activeSession.value = s;
   }
 
-  return { sessions, activeSession, loading, total, keyword, loadSessions, fetchSession, newSession, removeSession, archive, rename, setActiveSession };
+  // EP-FE-01: store-level actions so components don't need to import features/*/api directly.
+  async function fetchTurns(sessionId: string, limit = 20, offset = 0): Promise<{ items: SessionTurn[]; total: number }> {
+    return listSessionTurns(sessionId, limit, offset);
+  }
+
+  async function fetchTimeline(sessionId: string): Promise<SessionTimeline> {
+    return getSessionTimeline(sessionId);
+  }
+
+  async function fetchMessages(sessionId: string): Promise<Message[]> {
+    return listSessionChatMessages(sessionId);
+  }
+
+  return { sessions, activeSession, loading, total, keyword, loadSessions, fetchSession, newSession, removeSession, archive, rename, setActiveSession, fetchTurns, fetchTimeline, fetchMessages };
 });

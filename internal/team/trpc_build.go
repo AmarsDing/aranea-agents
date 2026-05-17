@@ -89,6 +89,30 @@ func BuildTRPCTeam(ctx context.Context, def Definition, deps TRPCTeamBuilderDeps
 		}
 		return t, nil
 
+	case "adaptive":
+		// EP-RT-04: "adaptive" mode selects the routing strategy at runtime based
+		// on conversation context.  We implement this as a swarm with
+		// cross-request state transfer enabled so the coordinator can hand off to
+		// the best-suited sub-agent dynamically.
+		//
+		// With ≥2 members: first member is the entry / coordinator agent; the rest
+		// are available for handoff.
+		// With 1 member: fall through to a single-agent run.
+		if len(memberAgents) < 2 {
+			return memberAgents[0], nil
+		}
+		entryName := memberAgents[0].Info().Name
+		adaptiveOpts := []trpcteam.Option{
+			trpcteam.WithSwarmConfig(trpcteam.DefaultSwarmConfig()),
+			trpcteam.WithCrossRequestTransfer(true),
+			trpcteam.WithSwarmHandoffInputBuilder(defaultSwarmHandoffInput),
+		}
+		t, err := trpcteam.NewSwarm("team-adaptive", entryName, memberAgents, adaptiveOpts...)
+		if err != nil {
+			return nil, kerrors.InternalServer("TEAM", fmt.Sprintf("new adaptive swarm: %v", err))
+		}
+		return t, nil
+
 	default:
 		if len(memberAgents) < 2 {
 			return memberAgents[0], nil

@@ -50,9 +50,12 @@
 
 <script setup lang="ts">
 import { onMounted, ref, computed } from "vue";
-import { listSessionTurns, type SessionTurn } from "../../features/session/api";
+import type { SessionTurn } from "../../features/session/api";
+import { useSessionStore } from "../../stores/session/index";
 
 const props = defineProps<{ sessionId: string }>();
+
+const sessionStore = useSessionStore();
 
 const turns = ref<SessionTurn[]>([]);
 const total = ref(0);
@@ -86,7 +89,7 @@ async function loadTurns() {
   loading.value = true;
   error.value = "";
   try {
-    const result = await listSessionTurns(props.sessionId, pageSize, offset.value);
+    const result = await sessionStore.fetchTurns(props.sessionId, pageSize, offset.value);
     turns.value = result.items;
     total.value = result.total;
   } catch (err) {

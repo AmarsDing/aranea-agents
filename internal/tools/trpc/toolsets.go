@@ -6,9 +6,13 @@ import (
 	"aranea-agents/internal/a2a"
 	"aranea-agents/internal/tools"
 	knowledgepkg "aranea-agents/internal/tools/knowledge"
+	serviceawaitreply "aranea-agents/internal/tools/serviceawaitreply"
 
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
+
+// ReplyFunc is re-exported so callers don't need to import serviceawaitreply directly.
+type ReplyFunc = serviceawaitreply.ReplyFunc
 
 type ToolsetConfig struct {
 	Filesystem      bool
@@ -25,15 +29,23 @@ type ToolsetConfig struct {
 	Wikipedia       bool
 	Email           bool
 	Todo            bool
-	AwaitReply      bool
-	ClaudeCode      bool
-	ClaudeCodeDir   string
-	OpenAPISpecs    []OpenAPISpecConfig
-	WorkspaceExec   bool
-	AgentTools      []AgentToolConfig
-	MCPServers      []MCPServerConfig
-	MCPBroker       *MCPBrokerConfig
-	CustomTools     []trpctool.Tool
+	// AwaitReply enables the await_user_reply tool.
+	// When AwaitHook is also set the service-integrated ServiceTool is used
+	// (blocks mid-turn and delivers the reply text back to the agent).
+	// When AwaitHook is nil the framework's built-in tool is used (marks
+	// routing state only; does not block).
+	AwaitReply bool
+	// AwaitHook is an optional blocking callback injected by the ChatService.
+	// When non-nil, the ServiceTool replaces the framework's await_user_reply.
+	AwaitHook     ReplyFunc
+	ClaudeCode    bool
+	ClaudeCodeDir string
+	OpenAPISpecs  []OpenAPISpecConfig
+	WorkspaceExec bool
+	AgentTools    []AgentToolConfig
+	MCPServers    []MCPServerConfig
+	MCPBroker     *MCPBrokerConfig
+	CustomTools   []trpctool.Tool
 	KnowledgeSearch bool
 	CallAgent       bool
 }
@@ -80,7 +92,9 @@ func BuildToolsets(ctx context.Context, cfg ToolsetConfig) (*AssembledToolsets, 
 	if cfg.Todo {
 		enabled = append(enabled, "todo")
 	}
-	if cfg.AwaitReply {
+	if cfg.AwaitReply && cfg.AwaitHook == nil {
+		// AwaitHook absent: use the framework's built-in tool (marks routing state only).
+		// When AwaitHook is set, the ServiceTool is added to customTools below.
 		enabled = append(enabled, "await_user_reply")
 	}
 	if cfg.ClaudeCode {
@@ -133,6 +147,11 @@ func BuildToolsets(ctx context.Context, cfg ToolsetConfig) (*AssembledToolsets, 
 	}
 	if cfg.CallAgent {
 		customTools = append(customTools, a2a.NewCallAgentTool())
+	}
+	if cfg.AwaitReply && cfg.AwaitHook != nil {
+		// EP-RT-02: use the service-integrated tool that blocks mid-turn so the
+		// user reply is delivered back to the agent via the awaitChans channel.
+		customTools = append(customTools, serviceawaitreply.New())
 	}
 
 	return tools.Assemble(ctx, tools.AssemblyConfig{

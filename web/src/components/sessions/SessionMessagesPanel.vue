@@ -31,11 +31,12 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
-import { listSessionChatMessages } from "../../features/session/api";
 import type { Message } from "../../features/chat/types";
+import { useSessionStore } from "../../stores/session/index";
 
 const props = defineProps<{ sessionId: string }>();
 
+const sessionStore = useSessionStore();
 const messages = ref<Message[]>([]);
 const loading = ref(false);
 const error = ref("");
@@ -58,7 +59,7 @@ async function loadMessages() {
   loading.value = true;
   error.value = "";
   try {
-    messages.value = await listSessionChatMessages(props.sessionId);
+    messages.value = await sessionStore.fetchMessages(props.sessionId);
   } catch (err) {
     error.value = err instanceof Error ? err.message : "加载消息失败";
   } finally {

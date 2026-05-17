@@ -14,6 +14,7 @@ import (
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/event"
 	"aranea-agents/pkg/auth"
+	"aranea-agents/pkg/safego"
 
 	"github.com/go-kratos/kratos/v2/transport"
 	kratoshttp "github.com/go-kratos/kratos/v2/transport/http"
@@ -231,8 +232,12 @@ func (s *WSServer) handleWS(w http.ResponseWriter, r *http.Request) {
 		globalMode: globalMode,
 	}
 
+	// EP-RT-06: differentiate reliable (critical) vs lossy (delta) subscriptions.
+	// WS sessions get a reliable subscription so tool_result / errors are never dropped.
+	// Global monitor connections are lossy — they can afford to miss delta events.
 	subOpts := event.SubscribeOptions{
 		BufferSize: 256,
+		Reliable:   !globalMode,
 	}
 	if !globalMode {
 		subOpts.SessionID = sessionID
@@ -246,18 +251,19 @@ func (s *WSServer) handleWS(w http.ResponseWriter, r *http.Request) {
 
 	s.sendConnected(wc, sessionID, lastEventID)
 
-	go s.writePump(wc)
-	go s.readPump(wc, eventCh)
+	connCtx := r.Context()
+	safego.Go(connCtx, "ws-write-pump", func() { s.writePump(wc) })
+	safego.Go(connCtx, "ws-read-pump", func() { s.readPump(wc, eventCh) })
 
 	if !globalMode && lastEventID != "" && s.eventBuffer != nil {
 		wc.replayDone = make(chan struct{})
-		go func() {
+		safego.Go(connCtx, "ws-replay", func() {
 			defer close(wc.replayDone)
 			s.replayEvents(wc, sessionID, lastEventID)
-		}()
+		})
 	}
 
-	go s.eventPump(wc, eventCh)
+	safego.Go(connCtx, "ws-event-pump", func() { s.eventPump(wc, eventCh) })
 }
 
 func (s *WSServer) sendConnected(wc *wsConn, sessionID, lastEventID string) {
@@ -535,20 +541,21 @@ func (s *WSServer) handleUserMessage(wc *wsConn, up wsUpstream) {
 		req.Options = buildChatOptions(opts)
 	}
 
-	go func() {
+	sessionID := wc.sessionID
+	safego.Go(context.Background(), "ws-user-message", func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 600*time.Second)
 		defer cancel()
 		_, err := s.sender.SendChatMessage(ctx, req)
 		if err != nil {
-			slog.Warn("ws user_message send failed", "error", err, "session_id", wc.sessionID)
-			env := event.NewEnvelope(event.EnvelopeTypeError, "ws-handler", wc.sessionID)
+			slog.Warn("ws user_message send failed", "error", err, "session_id", sessionID)
+			env := event.NewEnvelope(event.EnvelopeTypeError, "ws-handler", sessionID)
 			env.Error = &event.EnvelopeError{
 				Type:    "send_failed",
 				Message: err.Error(),
 			}
 			s.eventBus.Publish(context.Background(), env)
 		}
-	}()
+	})
 }
 
 func (s *WSServer) handleEnqueueMessage(wc *wsConn, up wsUpstream) {
@@ -561,33 +568,35 @@ func (s *WSServer) handleEnqueueMessage(wc *wsConn, up wsUpstream) {
 		return
 	}
 
-	go func() {
-		req := &chatv1.SendChatMessageRequest{
-			SessionId: wc.sessionID,
-			Content:   strings.TrimSpace(content),
-		}
-		if agentKey, _ := payload["agent_key"].(string); agentKey != "" {
-			req.AgentKey = &agentKey
-		}
-		if teamID, _ := payload["team_id"].(string); teamID != "" {
-			req.TeamId = &teamID
-		}
-		if opts, ok := payload["options"].(map[string]any); ok {
-			req.Options = buildChatOptions(opts)
-		}
+	sessionID := wc.sessionID
+	req := &chatv1.SendChatMessageRequest{
+		SessionId: sessionID,
+		Content:   strings.TrimSpace(content),
+	}
+	if agentKey, _ := payload["agent_key"].(string); agentKey != "" {
+		req.AgentKey = &agentKey
+	}
+	if teamID, _ := payload["team_id"].(string); teamID != "" {
+		req.TeamId = &teamID
+	}
+	if opts, ok := payload["options"].(map[string]any); ok {
+		req.Options = buildChatOptions(opts)
+	}
+
+	safego.Go(context.Background(), "ws-enqueue-message", func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 600*time.Second)
 		defer cancel()
 		_, err := s.sender.SendChatMessage(ctx, req)
 		if err != nil {
-			slog.Warn("ws enqueue_message send failed", "error", err, "session_id", wc.sessionID)
-			env := event.NewEnvelope(event.EnvelopeTypeError, "ws-handler", wc.sessionID)
+			slog.Warn("ws enqueue_message send failed", "error", err, "session_id", sessionID)
+			env := event.NewEnvelope(event.EnvelopeTypeError, "ws-handler", sessionID)
 			env.Error = &event.EnvelopeError{
 				Type:    "enqueue_failed",
 				Message: err.Error(),
 			}
 			s.eventBus.Publish(context.Background(), env)
 		}
-	}()
+	})
 }
 
 func buildChatOptions(opts map[string]any) *chatv1.SendMessageOptions {

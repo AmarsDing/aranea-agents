@@ -12,6 +12,9 @@ import (
 	"aranea-agents/internal/agent/intent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+	arametrics "aranea-agents/internal/metrics"
+	serviceawaitreply "aranea-agents/internal/tools/serviceawaitreply"
+	"aranea-agents/pkg/safego"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
@@ -34,6 +37,8 @@ func (s *ChatService) runSingleAgentViaTRPC(
 		return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.Forbidden("CHAT_AGENT", "agent_key does not match this session")
 	}
 
+	runID := uuid.NewString()
+
 	deps := chatagent.TRPCBuilderDeps{
 		Catalog:     s.td.Catalog.LLM,
 		AgentUC:     s.td.Catalog.AgentsUC,
@@ -47,6 +52,10 @@ func (s *ChatService) runSingleAgentViaTRPC(
 		Model:       mod,
 		DialogMode:  dialogMode,
 		SkillDBRepo: s.skillDBRepo,
+		// EP-RT-02: inject await-reply hook so the tool blocks mid-turn.
+		AwaitHook: s.makeAwaitReplyFunc(ctx, sessionID, runID),
+		// EP-RT-05: signal whether a MemoryService will back the runner.
+		HasMemory: s.td.Persist.Memory != nil,
 	}
 	root, err := chatagent.BuildTRPCLLMAgentCached(ctx, ag, deps)
 	if err != nil {
@@ -63,6 +72,8 @@ func (s *ChatService) runSingleAgentViaTRPC(
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
 	s.activeRuns.Store(sessionID, runner)
+	s.setRunStatus(sessionID, runID, "running", "")
+	turnStart := time.Now()
 	defer func() {
 		s.activeRuns.Delete(sessionID)
 		runner.Close()
@@ -121,8 +132,13 @@ func (s *ChatService) runSingleAgentViaTRPC(
 			runOpts = append(runOpts, trpcagent.MergeRuntimeState(vars))
 		}
 	}
-	events, err := chatagent.RunTRPCUserTurn(ctx, runner, uid, sessionID, sendText, runOpts...)
+	// EP-RT-02: inject the await-reply hook into the run context so the
+	// ServiceTool can retrieve it at call time.
+	runCtx := serviceawaitreply.WithReplyFunc(ctx, deps.AwaitHook)
+	events, err := chatagent.RunTRPCUserTurn(runCtx, runner, uid, sessionID, sendText, runOpts...)
 	if err != nil {
+		arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "error").Observe(time.Since(turnStart).Seconds())
+		s.setRunStatus(sessionID, runID, "failed", err.Error())
 		return userMsg, biz.ChatMessage{}, err
 	}
 
@@ -168,7 +184,9 @@ func (s *ChatService) runSingleAgentViaTRPC(
 	}
 	patchSessionContextUsage(ctx, s, sessionID, ag, promptTok, completionTok)
 
+	arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "ok").Observe(time.Since(turnStart).Seconds())
 	s.recordSessionTurn(ctx, sessionID, ag, userMsg.ID, assistantMsg.ID, prov, mod, promptTok, completionTok, assistantMsg.ContentMarkdown)
+	s.setRunStatus(sessionID, runID, "completed", "")
 
 	return userMsg, assistantMsg, nil
 }
@@ -178,7 +196,7 @@ func (s *ChatService) processPendingQueue(sessionID string, sess biz.Session, ag
 	if !ok {
 		return
 	}
-	go func() {
+	safego.Go(context.Background(), "pending-queue", func() {
 		bgCtx, cancel := context.WithTimeout(context.Background(), 600*time.Second)
 		s.pendingCancels.Store(sessionID, cancel)
 		defer func() {
@@ -199,7 +217,7 @@ func (s *ChatService) processPendingQueue(sessionID string, sess biz.Session, ag
 			env.Metadata = map[string]any{"pending_id": entry.ID}
 			s.td.Pipeline.Bus.Publish(bgCtx, env)
 		}
-	}()
+	})
 }
 
 func (s *ChatService) recordSessionTurn(ctx context.Context, sessionID string, ag biz.Agent, userMsgID, assistantMsgID, prov, mod string, promptTok, completionTok int, contentPreview string) {

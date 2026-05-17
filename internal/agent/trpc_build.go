@@ -40,6 +40,15 @@ type TRPCBuilderDeps struct {
 	Model       string
 	DialogMode  string
 	SkillDBRepo trpcskill.Repository
+	// AwaitHook is an optional service-level callback that blocks the current
+	// agent turn mid-flight until the user sends a reply (EP-RT-02).
+	// When set, the service-integrated ServiceTool replaces the framework's
+	// built-in await_user_reply tool.
+	AwaitHook tooltrpc.ReplyFunc
+	// HasMemory indicates whether the runner will be created with a MemoryService.
+	// EP-RT-05: memory tools are only injected into the agent when the service is
+	// actually available to back them; avoids silent no-ops when memory is disabled.
+	HasMemory bool
 }
 
 func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) (trpcagent.Agent, error) {
@@ -114,11 +123,17 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) 
 		}
 	}
 
-	// Memory tools: inject when MemoryEnabled (runner must be created with
-	// WithMemoryService so the tools can resolve the service at call time).
+	// EP-RT-05: Memory tools are only injected when both the agent setting is on
+	// AND the runner will have a MemoryService to back them.  When HasMemory is
+	// false but MemoryEnabled is true, we log a warning so operators can act.
 	if ag.Settings != nil && ag.Settings.MemoryEnabled {
-		if memTools := memorytool.DefaultTools(); len(memTools) > 0 {
-			opts = append(opts, trpcllmagent.WithTools(memTools))
+		if deps.HasMemory {
+			if memTools := memorytool.DefaultTools(); len(memTools) > 0 {
+				opts = append(opts, trpcllmagent.WithTools(memTools))
+			}
+		} else {
+			slog.WarnContext(ctx, "agent has MemoryEnabled=true but no MemoryService is configured; memory tools disabled",
+				"agent_id", ag.ID)
 		}
 	}
 
@@ -145,23 +160,29 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) 
 	return trpcllmagent.New(strings.TrimSpace(ag.AgentKey), opts...), nil
 }
 
+// buildSkillDeps resolves the Skill repository, visibility filter, and code executor.
+// EP-BIZ-01: when SkillDBRepo is injected, the DB repo is the primary backend;
+// the local executor falls back to the FS root so skill code files can still be run.
 func buildSkillDeps(ctx context.Context, deps TRPCBuilderDeps) (trpcskill.Repository, trpcskill.VisibilityFilter, codeexecutor.CodeExecutor, error) {
 	slugs, err := deps.SkillUC.ListEnabledPublishedSkillKeys(ctx)
 	if err != nil || len(slugs) == 0 {
 		return nil, nil, nil, err
 	}
 
+	// Always resolve rootDir so the executor has a valid path regardless of
+	// which repo backend is selected.
+	rootDir := skillstorage.ResolveRoot()
+	if deps.Sys != nil {
+		if st, e := deps.Sys.Get(ctx); e == nil {
+			rootDir = skillstorage.ResolveRootWithPlatform(st.RootDirectory)
+		}
+	}
+
 	var repo trpcskill.Repository
-	var rootDir string
 	if deps.SkillDBRepo != nil {
+		// EP-BIZ-01: DB backend is the default; FS is dev fallback when absent.
 		repo = deps.SkillDBRepo
 	} else {
-		rootDir = skillstorage.ResolveRoot()
-		if deps.Sys != nil {
-			if st, e := deps.Sys.Get(ctx); e == nil {
-				rootDir = skillstorage.ResolveRootWithPlatform(st.RootDirectory)
-			}
-		}
 		fsRepo, err := skilltrpc.NewFSRepositoryAdapter(rootDir)
 		if err != nil {
 			return nil, nil, nil, err
@@ -213,6 +234,8 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 
 		cfg.KnowledgeSearch = eff[biz.ToolKeyKnowledgeSearch]
 		cfg.CallAgent = eff[biz.ToolKeyCallAgent]
+		// EP-RT-02: inject the service hook so await_user_reply blocks mid-turn.
+		cfg.AwaitHook = deps.AwaitHook
 	}
 	if !cfg.Filesystem && !cfg.ShellExec && !cfg.WebFetch && !cfg.WebSearch &&
 		!cfg.GeminiFetch && !cfg.GoogleSearch && !cfg.ArxivSearch && !cfg.Wikipedia &&

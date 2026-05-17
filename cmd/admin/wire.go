@@ -15,9 +15,11 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/cronrunner"
+	"aranea-agents/internal/cronrunner/jobs"
 	"aranea-agents/internal/data"
 	"aranea-agents/internal/event"
 	graphtrpc "aranea-agents/internal/graph/trpc"
+	memtrpc "aranea-agents/internal/memory/trpc"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	"aranea-agents/internal/provider"
 	rt "aranea-agents/internal/runtime"
@@ -29,6 +31,7 @@ import (
 	"github.com/go-kratos/kratos/v2"
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/google/wire"
+	"aranea-agents/internal/data/sessionmemory"
 	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
 )
 
@@ -116,15 +119,23 @@ func provideChatSender(svc *service.ChatService) server.ChatSender {
 	return svc
 }
 
-// wireOut is non-cleanup inject outputs (cleanup must be a top-level injector return for Wire).
-type wireOut struct {
-	App        *kratos.App
-	CronRunner *cronrunner.Runner
-	SkillWatch *watch.Runner
+// provideAutoMemoryWorker wires the cron auto-memory extraction worker.
+// EP-RT-03: injects SessionUsecase + SQLite memory service so extraction writes to session_memory.
+func provideAutoMemoryWorker(sessions *biz.SessionUsecase, store *sessionmemory.Store) *jobs.AutoMemoryWorker {
+	mem := memtrpc.NewSQLiteMemoryService(store)
+	return jobs.NewAutoMemoryWorker(0, sessions, mem)
 }
 
-func provideWireOut(app *kratos.App, runner *cronrunner.Runner, skillWatch *watch.Runner) wireOut {
-	return wireOut{App: app, CronRunner: runner, SkillWatch: skillWatch}
+// wireOut is non-cleanup inject outputs (cleanup must be a top-level injector return for Wire).
+type wireOut struct {
+	App             *kratos.App
+	CronRunner      *cronrunner.Runner
+	SkillWatch      *watch.Runner
+	AutoMemory      *jobs.AutoMemoryWorker
+}
+
+func provideWireOut(app *kratos.App, runner *cronrunner.Runner, skillWatch *watch.Runner, autoMem *jobs.AutoMemoryWorker) wireOut {
+	return wireOut{App: app, CronRunner: runner, SkillWatch: skillWatch, AutoMemory: autoMem}
 }
 
 // wireApp init kratos application.
@@ -146,6 +157,7 @@ func wireApp(*conf.Server, *conf.Data, log.Logger) (wireOut, func(), error) {
 		plugintrpc.NewRuntime,
 		graphtrpc.NewRegistry,
 		graph.NewGraphBuilderFactory,
+		provideAutoMemoryWorker,
 		newApp,
 		provideWireOut,
 	))

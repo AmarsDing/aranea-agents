@@ -79,10 +79,16 @@ else
 endif
 
 .PHONY: lint
-# run cross-platform lint tool (R1-R10) + go vet
+# run cross-platform lint tool (R1-R10) + go vet + golangci-lint (if installed)
 lint:
 	go run ./cmd/araneactl/lint --root .
 	go vet ./...
+	@golangci-lint run ./... 2>/dev/null || true
+
+.PHONY: golangci-lint
+# EP-ENG-05: run golangci-lint (must be installed: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest)
+golangci-lint:
+	golangci-lint run ./...
 
 .PHONY: test
 # run all Go tests
@@ -113,6 +119,22 @@ WIRE := $(GO_BIN_DIR)/wire$(GOEXE)
 .PHONY: wire-admin
 wire-admin:
 	cd ./cmd/admin && "$(WIRE)"
+
+.PHONY: wire
+# regenerate all wire_gen.go files
+wire: wire-admin
+
+.PHONY: wire-clean
+# EP-ENG-03: regenerate wire and fail if git diff is non-empty (CI sync check)
+wire-clean: wire
+	git diff --exit-code -- cmd/admin/wire_gen.go || \
+		(echo "wire_gen.go is out of date; run 'make wire' and commit." && exit 1)
+
+.PHONY: proto-clean
+# EP-ENG-04: regenerate proto and fail if generated files differ (CI sync check)
+proto-clean: api
+	git diff --exit-code -- api/ web/src/services/ || \
+		(echo "Proto generated files are out of date; run 'make api' and commit." && exit 1)
 
 .PHONY: all
 # api+internal proto, go generate (ent etc.) + tidy, then cmd/admin wire

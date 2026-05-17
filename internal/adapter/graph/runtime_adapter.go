@@ -7,6 +7,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	graphtrpc "aranea-agents/internal/graph/trpc"
+	"aranea-agents/pkg/safego"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
@@ -55,13 +56,13 @@ func (r *trpcGraphRuntime) Run(ctx context.Context, initialState map[string]any)
 	}
 
 	out := make(chan biz.GraphRuntimeEvent, 64)
-	go func() {
+	safego.Go(ctx, "graph-event-bridge", func() {
 		defer close(out)
 		for e := range eventCh {
 			runtimeEvt := convertTrpcEvent(e, r.eventBus, r.sessionID, r.graphID, r.execID)
 			out <- runtimeEvt
 		}
-	}()
+	})
 
 	return out, nil
 }
@@ -90,13 +91,13 @@ func (r *trpcGraphRuntime) Resume(ctx context.Context, lineageID string, resumeV
 	}
 
 	out := make(chan biz.GraphRuntimeEvent, 64)
-	go func() {
+	safego.Go(ctx, "graph-resume-bridge", func() {
 		defer close(out)
 		for e := range eventCh {
 			runtimeEvt := convertTrpcEvent(e, r.eventBus, r.sessionID, r.graphID, r.execID)
 			out <- runtimeEvt
 		}
-	}()
+	})
 
 	return out, nil
 }

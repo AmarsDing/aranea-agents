@@ -96,7 +96,8 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { getSessionTimeline, type SessionTimeline, type SessionTimelineItem } from "../../features/session/api";
+import type { SessionTimeline, SessionTimelineItem } from "../../features/session/api";
+import { useSessionStore } from "../../stores/session/index";
 
 const props = defineProps<{
   modelValue: boolean;
@@ -108,6 +109,7 @@ const emit = defineEmits<{
   "update:modelValue": [value: boolean];
 }>();
 
+const sessionStore = useSessionStore();
 const timeline = ref<SessionTimeline | null>(null);
 const loading = ref(false);
 const error = ref("");
@@ -134,7 +136,7 @@ watch(
     loading.value = true;
     error.value = "";
     try {
-      timeline.value = await getSessionTimeline(sessionId);
+      timeline.value = await sessionStore.fetchTimeline(sessionId);
     } catch (err) {
       error.value = err instanceof Error ? err.message : "Failed to load session trace.";
       timeline.value = null;

@@ -1,16 +1,37 @@
 package auth
 
 import (
+	"fmt"
 	"os"
-	"time"
+	"strings"
 )
 
-// authSecretFromEnv retrieves the authentication secret from the environment variable.
+// authSecretFromEnv retrieves the JWT signing secret from the environment variable.
+// EP-SEC-01: If the secret is not configured outside of dev/test/CI contexts, the
+// process panics at startup to prevent using a predictable timestamp-derived key.
 func authSecretFromEnv(key string) string {
 	if secret := os.Getenv(key); secret != "" {
 		return secret
 	}
-	return time.Now().Format("20060102150405")
+	// Auth bypass skips JWT validation entirely; the signing key is unused.
+	bypass := strings.TrimSpace(strings.ToLower(os.Getenv("KRATOS_HTTP_AUTH_DISABLED")))
+	if bypass == "1" || bypass == "true" || bypass == "yes" {
+		return "dev-bypass-placeholder"
+	}
+	// Allow test and CI environments to run without a secret (key is not used for request auth).
+	deployEnv := strings.TrimSpace(strings.ToLower(os.Getenv("DEPLOY_ENV")))
+	ci := strings.TrimSpace(os.Getenv("CI"))
+	if deployEnv == "dev" || deployEnv == "development" || deployEnv == "test" ||
+		ci == "true" || ci == "1" {
+		return "test-placeholder-secret-not-for-production"
+	}
+	panic(fmt.Sprintf(
+		"[FATAL] %s is not set. "+
+			"Set it to a random string of at least 32 characters. "+
+			"For local development only, set KRATOS_HTTP_AUTH_DISABLED=1 (with DEPLOY_ENV=dev) "+
+			"to skip JWT validation.",
+		key,
+	))
 }
 
 // cookieNameFromEnv retrieves the cookie name from the environment variable.

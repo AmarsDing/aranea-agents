@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/safego"
 )
 
 type EventBusConsumer struct {
@@ -30,8 +31,8 @@ func NewEventBusConsumer(
 }
 
 func (c *EventBusConsumer) Start(ctx context.Context) {
-	ch, unsubscribe := c.eventBus.Subscribe(event.SubscribeOptions{BufferSize: 256})
-	go func() {
+	ch, unsubscribe := c.eventBus.Subscribe(event.SubscribeOptions{BufferSize: 256, Reliable: true})
+	safego.Go(ctx, "event-bus-consumer", func() {
 		defer unsubscribe()
 		for {
 			select {
@@ -44,7 +45,7 @@ func (c *EventBusConsumer) Start(ctx context.Context) {
 				c.handleEnvelope(ctx, env)
 			}
 		}
-	}()
+	})
 }
 
 func (c *EventBusConsumer) handleEnvelope(ctx context.Context, env event.Envelope) {

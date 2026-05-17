@@ -6,6 +6,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	arametrics "aranea-agents/internal/metrics"
 )
 
 // DropPolicy controls what happens when a subscriber's buffer is full.
@@ -81,6 +83,7 @@ func (b *bus) Publish(ctx context.Context, env Envelope) {
 	if env.Channel == "" {
 		env.Channel = RouteChannel(env)
 	}
+	arametrics.EventBusPublished.WithLabelValues(string(env.Type)).Inc() // EP-OBS-04
 	_, isCritical := criticalTypes()[env.Type]
 
 	b.mu.RLock()
@@ -146,9 +149,11 @@ func (b *bus) deliverDropOldest(sub *subscriber, env Envelope) {
 			case sub.ch <- env:
 			default:
 				b.dropCount.Add(1)
+				arametrics.EventBusDropped.WithLabelValues(string(env.Type), "drop_oldest").Inc() // EP-OBS-04
 			}
 		default:
 			b.dropCount.Add(1)
+			arametrics.EventBusDropped.WithLabelValues(string(env.Type), "drop_oldest").Inc() // EP-OBS-04
 		}
 	}
 }
@@ -158,6 +163,7 @@ func (b *bus) deliverDropNewest(sub *subscriber, env Envelope) {
 	case sub.ch <- env:
 	default:
 		b.dropCount.Add(1)
+		arametrics.EventBusDropped.WithLabelValues(string(env.Type), "drop_newest").Inc() // EP-OBS-04
 	}
 }
 
