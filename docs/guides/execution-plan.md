@@ -1,6 +1,6 @@
 ﻿# Aranea-Agents 执行计划（AI 协作权威基线）
 
-> 版本：v1.0（2026-05-17）
+> 版本：v1.1（2026-05-17，增补 §4「下一迭代 Sprint 节拍」）
 > 编制依据：`docs/README.md`、`docs/需求/*`（86 篇）、`docs/guides/{AI-DEVELOPMENT-SPECIFICATION, trpc-agent-go-framework}.md`、`docs/changelog/*`、`docs/devlog/*`，以及 `cmd/ internal/ api/ pkg/ web/` 全量代码与配置抽样。
 > 文档定位：**给后续 AI 迭代使用的唯一执行基线**。任何 PR / commit 之前，AI 必须按本文 §10 自检。
 ---
@@ -10,7 +10,7 @@
 - §1 现状全景：六轴（架构、业务、数据、运行时、前端、可观测）当前状态
 - §2 文档与代码协同失控（已治理）：元问题回顾与后续约束
 - §3 全域漏洞与不足清单：分类 + 证据 + 优先级
-- §4 长效优化路线（M0–M5 里程碑）
+- §4 长效优化路线（M0–M5 里程碑）+ **下一迭代 Sprint 节拍（M2 主线 + 补丁）**
 - §5 立即可执行剩余工作（每项可一 PR 落地）
 - §6 红线与硬约束（在 AI-DEV-SPEC 基础上扩展）
 - §7 AI 协作迭代约束（每个 Sprint / PR / Commit 标准动作）
@@ -129,6 +129,55 @@
 - pkg/trpc-agent-go 版本治理：每月一次同步评估；适配层版本兼容测试。
 - 文档站点化（mkdocs / docusaurus 等），废弃零散 `.md` 维护方式。
 
+### 下一迭代 Sprint 节拍（M2 主线 + 补丁）
+
+> 本节是 **§4 M0–M5 的工程落地分解**：优先级 P0=阻塞／数据正确性，P1=主路径，P2=完整性；每项尽量**一 PR**。新增 EP 在 PR 闭环后须同步记入 §3、§5（或附录 A）；本节编号与 changelog 交叉引用时需写全 `EP-*`。
+
+#### Sprint-N+1（≈ 1 周）：闭「宣称 vs 现实」与高阻断缺口
+
+按 P0→P1 顺序，建议五个独立 PR。
+
+| 编号 | 动作 | 优先级 | 文件 / 线索 |
+|---|---|---|---|
+| EP-DATA-01 | `NewData()` 启动期按需调用 `EnsureEvalSchema` / `EnsureA2ASchema`；若配置 Postgres，`EnsureKnowledgeSchema` 一并调用；Knowledge usecase／service 在无 Repo（无 Postgres）时返回明确错误或服务不可用语义，禁止 nil repo panic | P0 | `internal/data/data.go`、`internal/biz/knowledge.go`、`internal/service/knowledge.go` |
+| EP-RT-08 | Artifact / Knowledge / Eval / A2A：内存 repo **仅保留测试**；生产路径缺后端时降级或 fail-fast（与 §5 条目一致） | P1 | `internal/biz/*_coverage_test.go` |
+| EP-DOC-01 | 校准附录 A 与§1／§5：Knowledge／Evaluation／Artifact 的 HTTP 路由、Eval Runtime、Knowledge 在无 Postgres 等边界；增补「附录 A↔changelog 不一致」自检说明 | P1 | 本文附录 A、`docs/README.md` 如需引用 |
+| EP-RULE-04 | `araneactl lint`：**编码**§6 中仍为「声明未实现」的检查（示例：safego/`go func`、`KRATOS_HTTP_AUTH_DISABLED` 非 dev、进度真相 grep、wire／proto／stylelint CI 钩子可逐步接入）；将与 `lint/main.go:R10（main.go 行数）` **命名区分开**，避免与文档 **R14（safego）**混淆 | P1 | `cmd/araneactl/lint/main.go`、`Makefile` / CI |
+| EP-FE-07 | Stylelint：**全量归零**——`npm run stylelint -- --fix` 后按域人工兜底（sessions → monitor → mcp → chat → agents）；CI 阻断非 0 violations | P2 | `web/.stylelintrc.json`、`web/src/**/*.{vue,css,scss}` |
+
+#### Sprint-N+2（≈ 2 周）：M2 多租户与安全收口（入场）
+
+| 编号 | 动作 | 优先级 | 备注 |
+|---|---|---|---|
+| EP-WS-01 | Ent Hook：携带 `workspace` 的资源在查询／写入链路注入 `workspace_id` 谓词（按 **admin→agent→session→memory→tool** 分批，每批一 PR） | P0 | 与上文 M2 一致 |
+| EP-WS-02 | Biz／Service：**写路径**调用 `middleware.AssertWorkspace`（或等价校验）；读路径透传 `workspace.FromContext` | P0 | `internal/server/middleware/workspace.go` |
+| EP-AUDIT-01 | `audit_log` 表与 Ent／Repo；关键写路径落审计（workspace、user、action、subject_id、diff／hash） | P1 | — |
+| EP-SMOKE-01 | `make smoke`：双 workspace 互不可见；CI（M2+）强制 | P1 | §8 已预留 smoke 行 |
+
+#### Sprint-N+3（≈ 2 周）：A2A 真派发 + Knowledge 工程化
+
+| 编号 | 动作 | 优先级 |
+|---|---|---|
+| EP-A2A-01 | `A2AService.Invoke`：**由 pending stub**演进为经由现有 Chat／Runner／`call_agent` 等价路径派发 capability，结果写回／审计收口 | P1 |
+| EP-A2A-02 | 远端 A2A **鉴权**（签名头／令牌），与网关／webhook 安全模型对齐；禁止未授权 cross-workspace | P0 |
+| EP-KN-01 | Embedder／知识摄取配置从 conf/env 注入（provider、base URL、密钥）；启动期缺配置时给出明确 fail-fast 或降级说明 | P1 |
+| EP-KN-02 | Ingest **异步流水线**（`safego`）、进度 observable；与前端 Knowledge 闭环衔接 | P2 |
+
+#### Sprint-N+4（≈ 2 周）：Callback 链路 + 可观测 + 测试阶梯
+
+| 编号 | 动作 | 优先级 |
+|---|---|---|
+| EP-CB-01 | `internal/agent/callbacks` **Chain**：挂到 LLM Agent／Model／Agent lifecycle（不限于 ToolCallbacks），使插件与用户回调可扩展到 BeforeModel／AfterAgent 等 | P1 |
+| EP-OBS-06 | Knowledge／Eval／A2A **业务 span** 与 Grafana 仪表盘补点 | P2 |
+| EP-TEST-01 | 「无 `_test.go`」热点包补测；行覆盖率朝向 §8 M4=60%、M5=70% | P1 |
+| EP-DOC-02 | `araneactl docs-check`（或与 CI 等价脚本）：校验附录 A／wire 注册／server 注册一致性可选自动化 | P2 |
+
+#### M5（开放窗口，与上文 M5 里程碑对齐）
+
+- `cmd/aranea`：**最小 CLI**（如 `agent run`、`session ls`）与 `araneactl` 并存，先贯通包结构与发布流程。
+- **pkg/trpc-agent-go**：月度同步脚本 + 适配层回归用例门禁。
+- 文档站点（mkdocs / docusaurus 等）择机启动，不阻塞 M2。
+
 ---
 
 ## 5. 剩余可执行工作（每项可一 PR 落地）
@@ -138,6 +187,17 @@
 
 | ID | 动作 | 优先级 | 主要证据 / 起点 |
 |---|---|---|---|
+| EP-DATA-01 | Eval / A2A / Knowledge 表结构在进程启动期 `Ensure*Schema`；Knowledge 在无 Postgres／nil Repo 时不 panic（见 §4 Sprint-N+1） | P0 | `internal/data/data.go` |
+| EP-DOC-01 | 校准附录 A 与已实现路由／Runtime／边界条件（§4 Sprint-N+1） | P1 | 本文附录 A |
+| EP-RULE-04 | `araneactl lint` 逐步实现 §6 仍缺位的机器检查（safego／dev-only bypass／docs-check／CI）（§4 Sprint-N+1） | P1 | `cmd/araneactl/lint`、`Makefile` |
+| EP-FE-07 | Stylelint 全仓库零违规（§4 Sprint-N+1） | P2 | `web/` |
+| EP-WS-01 / EP-WS-02 | M2 Ent Hook + 写路径 workspace 断言（§4 Sprint-N+2） | P0 | `internal/data`、`internal/server/middleware`、`internal/service`、`internal/biz` |
+| EP-AUDIT-01 | audit_log 落库（§4 Sprint-N+2） | P1 | — |
+| EP-SMOKE-01 | `make smoke` 双 workspace（§4 Sprint-N+2） | P1 | `Makefile` |
+| EP-A2A-01 / EP-A2A-02 | A2A 真派发与远端鉴权（§4 Sprint-N+3） | P1 / P0 | `internal/service/a2a.go` |
+| EP-KN-01 / EP-KN-02 | Knowledge 嵌入与摄取工程化（§4 Sprint-N+3） | P1 / P2 | `internal/service/knowledge.go`、`internal/knowledge` |
+| EP-CB-01 | Callback Chain 接上 LLMAgent／Model（§4 Sprint-N+4） | P1 | `internal/agent/callbacks`、`internal/agent/trpc_build.go` |
+| EP-OBS-06 / EP-TEST-01 / EP-DOC-02 | Span／覆盖率／附录校验自动化（§4 Sprint-N+4） | P2 / P1 / P2 | `internal/`、`cmd/araneactl` |
 | EP-RT-08 | Artifact / Knowledge / Eval / A2A 生产实现；内存 repo 降为 test-only | P2 | `internal/biz/*_coverage_test.go` |
 | EP-BIZ-06 | 补 `biz/tool_override.go` + Repo + CRUD service + 前端页面 | P2 | proto agent_override_count 字段 |
 
