@@ -14,6 +14,7 @@ import (
 	"aranea-agents/pkg/strutil"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
@@ -194,7 +195,25 @@ func (s *ChatService) runNativeAgentTurn(ctx context.Context, req *chatv1.SendCh
 				sess.ID, strings.TrimSpace(sess.TeamID), len(content))}
 			s.td.Pipeline.Bus.Publish(ctx, env)
 		}
-		return s.teamsNative.RunTurn(ctx, sess, req)
+		runID := uuid.NewString()
+		teamCtx, teamCancel := context.WithCancel(ctx)
+		guard := &teamRunGuard{cancel: teamCancel, runID: runID}
+		s.activeRuns.Store(sessionID, guard)
+		s.setRunStatus(sessionID, runID, "running", "")
+		defer func() {
+			s.activeRuns.Delete(sessionID)
+			s.processPendingQueue(sessionID, sess, biz.Agent{}, "", "", "")
+		}()
+		userMsg, assistantMsg, err := s.teamsNative.RunTurn(teamCtx, sess, req)
+		if err != nil {
+			s.setRunStatus(sessionID, runID, "failed", err.Error())
+		} else {
+			s.setRunStatus(sessionID, runID, "completed", "")
+			s.recordTeamSessionTurn(ctx, sessionID, strings.TrimSpace(sess.TeamID),
+				userMsg.ID, assistantMsg.ID, "", "",
+				assistantMsg.TokenIn, assistantMsg.TokenOut, assistantMsg.ContentMarkdown)
+		}
+		return userMsg, assistantMsg, err
 	}
 
 	if rtid := strings.TrimSpace(req.GetTeamId()); rtid != "" {

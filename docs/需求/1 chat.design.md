@@ -185,7 +185,29 @@ service ChatService {
 GET /v1/ws?session_id=...  →  WSServer.handleWS()
 ```
 
-客户端可在 WS 上行发送 `user_message` / `enqueue_message` / `cancel`，服务端复用 `ChatService.SendChatMessage` 与 `ChatService.CancelRun`，下行统一为 Envelope。
+客户端可在 WS 上行发送 `user_message` / `enqueue_message` / `cancel` / `ping` / `subscribe` / `unsubscribe` / `enable_log`，服务端复用 `ChatService.SendChatMessage` 与 `ChatService.CancelRun`，下行统一为 Envelope。
+
+#### WS 上行消息格式
+
+| 上行 type | 载荷字段 | 说明 |
+|-----------|----------|------|
+| `user_message` | `session_id`, `content`, `options` | 发送用户消息，触发 ChatService.SendChatMessage |
+| `enqueue_message` | `session_id`, `content`, `options` | 发送用户消息，若当前有 run 则入队 pendingQueue |
+| `cancel` | `session_id` | 取消当前 run（等同于 HTTP StopGeneration） |
+| `ping` | — | 心跳探测，服务端回复 `pong` |
+| `subscribe` | `session_id` / `team_id` | 订阅指定 session/team 的 EventBus 事件 |
+| `unsubscribe` | `session_id` / `team_id` | 取消订阅 |
+| `enable_log` | `enabled` | 开启/关闭运行日志推送（monitor channel） |
+
+#### WS 下行控制消息
+
+| 下行 type | Channel | 载荷字段 | 说明 |
+|-----------|---------|----------|------|
+| `connected` | system | `session_id`, `connection_id` | WS 连接建立成功 |
+| `pong` | system | — | 心跳回复 |
+| `replay_start` | system | `session_id` | EventBuffer 回放开始标记 |
+| `replay_end` | system | `session_id` | EventBuffer 回放结束标记 |
+| `server_shutdown` | system | `message` | 服务端即将关闭通知 |
 
 ### 2.3 消息字段说明
 
@@ -506,22 +528,116 @@ GET /v1/ws?session_id=...
         → runNativeAgentTurn()
     → 下行 EventBus Envelope
       → wsDownstream{direction, channel, envelope}
+
+Channel 入口（飞书/Lark webhook 等）：
+POST /v1/channel/{channel_type}/webhook
+  → ChannelIngress.HandleWebhook()
+    → ChatService.RunNativeTurnUnary()
+      → 同一 runNativeAgentTurn() 主链路
+
+Cron 入口：
+Cron Scheduler
+  → ChatService.RunCronTurn()
+    → 同一 runNativeAgentTurn() 主链路
 ```
 
 ### 5.5 WebSocket Envelope 事件协议
 
-| Envelope type | Channel | 载荷字段 | 说明 |
+#### 5.5.1 Envelope 完整结构
+
+```go
+type Envelope struct {
+    ID         string           // 事件唯一 ID（单调递增，用于 EventBuffer 回放）
+    Type       string           // 事件类型
+    SessionID  string           // 目标 Session
+    Content    *EnvelopeContent // 文本/reasoning 载荷
+    ToolCall   *EnvelopeToolCall // 工具调用载荷
+    StateDelta *EnvelopeStateDelta // Runner State 增量
+    Transfer   *EnvelopeTransfer // Team 转交载荷
+    Error      *EnvelopeError   // 错误载荷
+    Usage      *EnvelopeUsage   // Token 用量
+    Tag        string           // 事件标签（用于客户端过滤）
+    FilterKey  string           // 过滤键（前缀匹配，用于 EventBus 订阅过滤）
+    Branch     string           // 分支标识（多分支对话）
+    Version    int64            // 事件版本号
+    Extensions *EnvelopeExtensions // 扩展信息
+    Actions    *EnvelopeActions // 动作标记
+    Trace      *EnvelopeTrace   // 追踪信息
+    Metadata   map[string]string // 通用元数据
+}
+
+type EnvelopeContent struct {
+    Text      string // 文本内容
+    Reasoning string // 推理/思维链内容
+    IsPartial bool   // 是否为增量片段
+}
+
+type EnvelopeToolCall struct {
+    ID            string // 工具调用 ID
+    Name          string // 工具名称
+    ArgumentsJSON string // 调用参数 JSON
+    ResultJSON    string // 返回结果 JSON
+    Status        string // 调用状态
+    DurationMS    int64  // 执行耗时
+    IsLongRunning bool   // 是否为长时运行工具
+}
+
+type EnvelopeStateDelta struct {
+    Operation string // 操作类型
+    Path      string // State 路径
+    ValueJSON string // 值 JSON
+}
+
+type EnvelopeTransfer struct {
+    FromAgent string // 来源 Agent
+    ToAgent   string // 目标 Agent
+}
+
+type EnvelopeError struct {
+    Type      string // 错误类型
+    Message   string // 错误消息
+    PendingID string // 关联的待执行消息 ID（待执行失败时填充）
+}
+
+type EnvelopeUsage struct {
+    PromptTokens     int64 // 输入 token 数
+    CompletionTokens int64 // 输出 token 数
+}
+
+type EnvelopeExtensions struct {
+    SkipSummarization bool // 跳过摘要压缩标记
+}
+
+type EnvelopeActions struct {
+    SkipSummarization bool // 跳过摘要压缩动作
+}
+
+type EnvelopeTrace struct {
+    AgentName    string // Agent 名称
+    InvocationID string // 调用 ID
+    StepCount    int64  // 步骤计数
+    DurationMS   int64  // 持续时间
+}
+```
+
+#### 5.5.2 事件类型与载荷映射
+
+| Envelope type | Channel | 主要载荷字段 | 说明 |
 |------|------|------|------|
 | `text_delta` | chat/team | `content.text`, `content.reasoning`, `content.is_partial` | 模型增量文本 |
 | `text_done` | chat/team | `content.text`, `usage` | 模型最终文本 |
-| `tool_call` | chat/team | `tool_call.id/name/arguments_json/status` | 工具调用通知 |
+| `tool_call` | chat/team | `tool_call.id/name/arguments_json/status/is_long_running` | 工具调用通知 |
 | `tool_result` | chat/team | `tool_call.result_json/status/duration_ms` | 工具结果 |
 | `state_delta` | chat/team | `state_delta.operation/path/value_json` | Runner State 增量 |
 | `runner_completion` | chat/team | `usage` | 一轮运行完成 |
-| `error` | chat/system | `error.type/message/pending_id` | 错误信息 |
+| `error` | chat/system | `error.type/message/pending_id` | 错误信息；`pending_id` 在待执行消息失败时填充 |
 | `intent_pass` | chat/team | `metadata` | 意图识别结果 |
 | `transfer` | team | `transfer.from_agent/to_agent` | Team/Swarm 转交 |
-| `member_message_start/member_delta/member_message_done` | team | `author`, `content` | 成员级实时消息；类型已定义，仍需 Team Runner 稳定发射 |
+| `member_message_start` | team | `author`, `content` | 成员消息开始；类型已定义，仍需 Team Runner 稳定发射 |
+| `member_delta` | team | `author`, `content` | 成员消息增量 |
+| `member_message_done` | team | `author`, `content`, `usage` | 成员消息完成 |
+
+> **pending_id 字段约定**：待执行消息执行失败时，`error.pending_id` 应填充关联的待执行消息 ID。当前代码存在双写问题（同时写入 `metadata["pending_id"]` 和 `EnvelopeError.PendingID` 字段但后者未被赋值），需统一为仅使用 `error.pending_id`，并移除 metadata 中的冗余写入。
 
 ### 5.6 runNativeAgentTurn 核心流程
 
@@ -538,7 +654,9 @@ GET /v1/ws?session_id=...
    c. runSingleAgentViaTRPC()
 ```
 
-注意：步骤 2 的 `activeRuns` 检查由 ChatService 维护，但当前只有单 Agent 路径会在运行期写入 `activeRuns`。Team 路径需要补会话级 run registry 或等价互斥，才能与单 Agent 的 stop/pending 行为完全一致。
+注意：
+- 步骤 2 的 `activeRuns` 检查由 ChatService 维护，但当前只有单 Agent 路径会在运行期写入 `activeRuns`。Team 路径需要补会话级 run registry 或等价互斥，才能与单 Agent 的 stop/pending 行为完全一致。
+- **Team turn 完成后不触发 `processPendingQueue`**：`teamsNative.RunTurn()` 返回后直接结束，不会像 `runSingleAgentViaTRPC` 的 defer 那样调用 `processPendingQueue`。这意味着 Team 运行期间入队的待执行消息永远不会被执行——这是功能性 Bug，需在 Team turn 完成后补调 `processPendingQueue`。
 
 ### 5.7 runSingleAgentViaTRPC 核心流程
 
@@ -565,18 +683,20 @@ GET /v1/ws?session_id=...
     - ctx.Err() != nil 时退出循环（取消/超时）
 13. 构造 assistantMsg
 14. 持久化消息（AppendChatMessage）
-15. patchSessionContextUsage
-16. setRunStatus(completed)
+15. recordSessionTurn() 写入 session_turns 表
+16. patchSessionContextUsage
+17. setRunStatus(completed)
 ```
 
 ### 5.7.1 WS 连接与取消
 
 ```
-1. WSServer 限制每个 session 最多 5 条连接，全局监控连接最多 3 条
+1. WSServer 限制每个 session 最多 5 条连接（maxSessionConns=5）
 2. readPump/writePump 使用心跳与写超时维护连接
 3. 客户端上行 cancel → ChatService.CancelRun(sessionID)
 4. StopGeneration RPC 与 WS cancel 共用 activeRuns / pendingCancels
 5. last_event_id + EventBuffer 支持断线后的事件回放
+6. 全局监控连接（globalMode，sessionId="*"）可订阅所有 Session 事件流
 ```
 
 ### 5.7.2 processPendingQueue 错误处理
@@ -586,8 +706,10 @@ GET /v1/ws?session_id=...
 2. 启动 goroutine，设置 600s 超时 + cancel 传播
 3. 调用 runSingleAgentViaTRPC 执行
 4. 执行失败时：发布 error Envelope
-5. WS 前端收到 error 后显示通知；当前 `pending_id` 写在 Envelope metadata，建议统一到 `error.pending_id` 或明确前端消费 metadata
+5. WS 前端收到 error 后显示通知
 ```
+
+> **pending_id 约定**：待执行消息执行失败时，`error.pending_id` 应填充关联的待执行消息 ID。当前代码存在双写问题：`processPendingQueue` 中同时写入 `env.Metadata["pending_id"]` 和定义了 `EnvelopeError.PendingID` 字段但未赋值。应统一为仅使用 `error.pending_id`，移除 metadata 中的冗余写入，并确保前端 `error` handler 消费 `error.pending_id` 字段。
 
 ### 5.7.3 pendingQueue 容量控制
 
@@ -660,6 +782,147 @@ func (g *LLMSessionTitleGenerator) Generate(ctx, userMessage) (string, error) {
     // 4. 截取前 50 字符作为标题
 }
 ```
+
+### 5.11 EventBuffer 设计
+
+```go
+type EventBuffer struct {
+    mu       sync.RWMutex
+    buffers  map[string]*ringBuffer  // sessionID → ring buffer
+    capacity int                     // 每个 buffer 容量，默认 200
+}
+
+type ringBuffer struct {
+    events []*Envelope
+    head   int
+    tail   int
+    size   int
+}
+```
+
+- **容量**：每个 Session ring buffer 容量 200 条事件
+- **写入**：`EventBus.Publish` 时同步写入对应 Session 的 ring buffer
+- **回放**：WS 重连时客户端携带 `last_event_id`，`EventBuffer.Replay()` 从该 ID 之后开始回放
+- **回放协议**：`replay_start` → 事件序列 → `replay_end`
+- **清理**：仅在 `RemoveSession(sessionID)` 时清理（Session 结束时调用），无 TTL 自动过期
+- **风险**：长时间运行的 Session 可能积累大量事件，需增加 TTL 或基于时间/容量的自动清理策略
+
+### 5.12 EventBus 订阅与背压
+
+```go
+type SubscribeOptions struct {
+    SessionID  string
+    TeamID     string
+    Channel    string
+    FilterKey  string
+    EventTypes []string
+    LevelFilter string
+}
+
+type Bus interface {
+    Publish(ctx context.Context, env *Envelope) error
+    Subscribe(opts SubscribeOptions) (<-chan *Envelope, UnsubscribeFunc)
+}
+```
+
+- **订阅选项**：SessionID / TeamID / Channel / FilterKey / EventTypes / LevelFilter
+- **FilterKey 匹配**：采用前缀匹配规则（`MatchFilterKey`），订阅者 FilterKey 为事件 FilterKey 的前缀时匹配
+- **背压策略**：当订阅者消费速度落后于生产速度时，EventBus 丢弃非关键事件
+- **关键事件（不丢弃）**：`tool_result`、`error`、`runner_completion`、`graph_node_end`、`team_run_finished`、`team_run_failed`
+- **全局监控**：WS 连接 `globalMode`（sessionId=`*`）可订阅所有 Session 的事件流
+
+### 5.13 Channel/Cron 入口
+
+#### 5.13.1 Channel Ingress
+
+```
+POST /v1/channel/{channel_type}/webhook
+  → ChannelIngress.HandleWebhook()
+    → 解析 channel_type（lark/feishu/slack 等）
+    → 验证签名
+    → 转换为 SendChatMessageRequest
+    → ChatService.RunNativeTurnUnary()
+      → 同一 runNativeAgentTurn() 主链路
+```
+
+- Channel webhook 为并发入口，多个 webhook 可能同时触发同一 Session 的对话
+- **当前风险**：并发请求可能绕过 `activeRuns` 互斥检查，需确保 `RunNativeTurnUnary` 也受 activeRuns/pendingQueue 保护
+
+#### 5.13.2 Cron Turn
+
+```
+Cron Scheduler
+  → ChatService.RunCronTurn()
+    → 构造 SendChatMessageRequest（content 为 cron 触发内容）
+    → 同一 runNativeAgentTurn() 主链路
+```
+
+- Cron turn 与手动对话共用 `runNativeAgentTurn`，受相同的 activeRuns/pendingQueue 保护
+
+### 5.14 Team Run 持久化
+
+```
+team_runs
+├── id               TEXT (UUID)
+├── team_id          TEXT
+├── session_id       TEXT
+├── status           TEXT (running/completed/failed)
+├── started_at       TEXT
+├── completed_at     TEXT
+├── error_message    TEXT
+├── created_at       TEXT
+
+team_run_steps
+├── id               TEXT (UUID)
+├── team_run_id      TEXT
+├── agent_id         TEXT
+├── agent_key        TEXT
+├── step_type        TEXT
+├── status           TEXT
+├── input_preview    TEXT
+├── output_preview   TEXT
+├── duration_ms      INTEGER
+├── created_at       TEXT
+```
+
+- Team turn 执行时 `CreateTeamRun()` 写入 `team_runs` 表
+- Team turn 中每个成员 Agent 执行步骤通过 `CreateTeamRunStep()` 写入 `team_run_steps` 表
+- Team 定义可配置 `intent_anchor_agent_id`（指定意图识别使用的成员 Agent）和 `TurnDeadlineDuration`（turn 超时时间）
+
+### 5.15 SessionTurn 持久化
+
+```
+session_turns
+├── id               TEXT (UUID)
+├── session_id       TEXT
+├── turn_index       INTEGER
+├── role             TEXT (user/assistant/tool)
+├── model_name       TEXT
+├── input_tokens     INTEGER
+├── output_tokens    INTEGER
+├── latency_ms       INTEGER
+├── created_at       TEXT
+```
+
+- 单 Agent turn 完成后，`recordSessionTurn()` 写入 `session_turns` 表
+- **当前边界**：Team turn 路径不调用 `recordSessionTurn`，导致 `session_turns` 表对 Team 会话无记录，需补齐
+
+### 5.16 Agent Settings Variables 注入
+
+```go
+func ParseVariablesJSON(variablesJSON string) (map[string]interface{}, error)
+func MergeRuntimeState(state map[string]interface{}, variables map[string]interface{}) map[string]interface{}
+```
+
+- Agent 配置中的 `variables_json` 字段存储自定义变量
+- `runSingleAgentViaTRPC` 执行时通过 `ParseVariablesJSON` → `MergeRuntimeState` 将变量注入 Runner State
+- 变量可在 System Prompt 中通过占位符引用（如 `{{variable_name}}`）
+
+### 5.17 可观测性
+
+- Chat turn 耗时通过 `arametrics.ChatTurnDuration` Prometheus 指标记录
+- 意图识别超时为 45 秒
+- Context Window 默认值：当 Agent 配置的 `context_window` ≤ 0 时，默认使用 128000 tokens
 
 ---
 
@@ -784,11 +1047,18 @@ func provideChatServiceDeps(
 web/src/
 ├── services/index.ts              ← createChatService 导出
 ├── features/chat/
-│   ├── api.ts                     ← Chat API 调用封装（sendMessage/streamMessage/stop/listOptions/getPending/cancelPending/updatePending）
+│   ├── api.ts                     ← Chat API 调用封装（sendMessage/stop/listOptions/getPending/cancelPending/updatePending/getRunStatus/awaitUserReply）
 │   ├── types.ts                   ← TypeScript 类型定义
 │   ├── toolEventMarkdown.ts       ← 工具事件 Markdown 渲染 + toolEventToMessage 共享转换函数
 │   └── composables/
-│       └── useChatWorkspace.ts    ← 对话工作区 composable（状态管理 + 交互逻辑）
+│       ├── useChatWorkspace.ts    ← 对话工作区 composable（状态管理 + 交互逻辑）
+│       ├── useChatStream.ts       ← 单 Agent WS 事件流消费（text_delta/tool_call/tool_result 等）
+│       ├── useTeamStream.ts       ← Team WS 事件流消费（member_* / team_run_* 等）
+│       ├── useEnvelopeStream.ts   ← WS Envelope 底层消费（EnvelopeDispatcher + 事件分发）
+│       └── useRunStatus.ts        ← RunStatus 轮询 + AwaitUserReply 回复提交
+├── composables/
+│   ├── useWsTransport.ts          ← WS 连接管理（WsTransport：连接/重连/心跳/断线回放）
+│   └── useEnvelopeDispatcher.ts   ← Envelope 分发器（按 type 分发到对应 handler）
 ├── components/chat/
 │   ├── ChatWorkspaceShell.vue     ← 工作区外壳（标题 + 三栏布局容器）
 │   ├── ChatEntitySidebar.vue      ← 左侧 Agent/Team 列表
@@ -801,6 +1071,22 @@ web/src/
 │   └── types.ts                   ← 组件级类型定义
 ├── config/chatOptions.ts          ← 对话模式/模型配置
 ├── stores/app.ts                  ← 全局状态（含 Agent/Session 选择）
+```
+
+### 8.1.1 前端事件流架构
+
+```
+WsTransport（WS 连接管理：连接/重连/心跳/last_event_id 回放）
+  ↓ Envelope 流
+EnvelopeDispatcher（按 type 分发：text_delta/tool_call/error/state_delta/...）
+  ↓ 分流
+useChatStream（单 Agent 事件：text_delta/text_done/tool_call/tool_result/runner_completion）
+useTeamStream（Team 事件：member_*/team_run_*/transfer）
+useRunStatus（RunStatus 轮询 + isAwaiting + submitReply）
+  ↓ 状态聚合
+useChatWorkspace（对话工作区：消息列表/pending/发送/停止/上下文比）
+  ↓ 渲染
+ChatMessagePanel（消息气泡/工具事件/待执行列表/输入框）
 ```
 
 ### 8.2 页面布局
@@ -1032,10 +1318,18 @@ export async function awaitUserReply(sessionId: string, reply: string, runId?: s
 | P1 | WS error 事件处理 | `useEnvelopeStream` / `useChatWorkspace` 监听 `error` Envelope 并通知用户 | ✅ 已修复 |
 | P2 | state_delta/extensions 前后端覆盖 | Envelope 支持 `state_delta` / `extensions` 字段，前端类型已覆盖 | ✅ 已修复 |
 | P1 | Team stop/pending 行为一致性 | Team turn 未登记 `ChatService.activeRuns`，停止与待执行队列主要覆盖单 Agent | ⏳ 待修复 |
+| P1 | Team processPendingQueue 缺失 | Team turn 完成后不触发 `processPendingQueue`，队列中的消息永远不会被执行（功能性 Bug） | ⏳ 待修复 |
 | P1 | AwaitUserReply 全链路 | `AwaitHook` 仅注入单 Agent builder，Team builder 与 Chat 页 UI 未闭环 | ⏳ 待修复 |
+| P1 | EnvelopeError.PendingID 统一 | 字段已定义但未赋值，`processPendingQueue` 只写 metadata；需统一到 `error.pending_id` | ⏳ 待修复 |
+| P1 | WS 控制消息文档化 | `connected`/`pong`/`replay_*`/`server_shutdown` 已实现但未文档化 | ⏳ 待文档化 |
 | P2 | pending_id 字段统一 | pending 失败当前将 `pending_id` 写入 metadata，前端 error handler 未关联队列项 | ⏳ 待优化 |
 | P2 | Team 成员级实时事件 | `member_*` 类型和前端处理存在，但 Team Runner 尚未稳定发射成员级 start/delta/done | ⏳ 待优化 |
 | P2 | 工具事件结构化展示 | 当前有 `tool_call/tool_result` Envelope，但 Chat 面板仍是简化文本 | ⏳ 待优化 |
+| P2 | SessionTurn 一致性 | Team turn 不调用 `recordSessionTurn`，`session_turns` 表对 Team 会话无记录 | ⏳ 待修复 |
+| P2 | Channel/Cron 并发保护 | Channel webhook 并发入口可能绕过 `activeRuns` 互斥检查 | ⏳ 待修复 |
+| P2 | EventBuffer TTL 清理 | 当前无 TTL 自动过期，长时间运行 Session 可能积累大量事件 | ⏳ 待优化 |
+| P2 | 前端 RunStatus 轮询改事件驱动 | `useRunStatus` 每 2s 轮询 HTTP，应改为 WS 事件驱动 | ⏳ 待优化 |
+| P2 | Reasoning 展示规格 | 前端已消费 `content.reasoning`，但缺少展示规格定义 | ⏳ 待定义 |
 | P3 | 模型选项来源统一 | 后端 `GetChatOptions("provider"|"model")` 已支持动态选项，Chat 前端主要读取 Platform Resource | ⏳ 待优化 |
 | P3 | 多模态附件闭环 | proto/前端有 attachments，但后端缺上传、持久化、权限和 LLM Vision 输入 | ⏳ 待实现 |
 | P3 | RunStatus/AwaitUserReply 可恢复性 | 当前为进程内 `sync.Map` / channel，服务重启不可恢复 | ⏳ 待优化 |

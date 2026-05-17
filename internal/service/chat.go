@@ -36,6 +36,11 @@ type awaitReplyCh struct {
 	Reply string
 }
 
+type teamRunGuard struct {
+	cancel context.CancelFunc
+	runID  string
+}
+
 type ChatService struct {
 	chatv1.UnimplementedChatServiceServer
 
@@ -120,6 +125,12 @@ func (s *ChatService) StopGeneration(ctx context.Context, req *chatv1.StopGenera
 	if !ok {
 		return &chatv1.StopGenerationResponse{Stopped: false}, nil
 	}
+	if guard, ok := val.(*teamRunGuard); ok {
+		guard.cancel()
+		s.setRunStatus(sessionID, guard.runID, "cancelled", "")
+		s.activeRuns.Delete(sessionID)
+		return &chatv1.StopGenerationResponse{Stopped: true}, nil
+	}
 	r, ok := val.(trpcrunner.Runner)
 	if !ok {
 		return &chatv1.StopGenerationResponse{Stopped: false}, nil
@@ -141,6 +152,12 @@ func (s *ChatService) CancelRun(ctx context.Context, sessionID string) bool {
 	val, ok := s.activeRuns.Load(sessionID)
 	if !ok {
 		return false
+	}
+	if guard, ok := val.(*teamRunGuard); ok {
+		guard.cancel()
+		s.setRunStatus(sessionID, guard.runID, "cancelled", "")
+		s.activeRuns.Delete(sessionID)
+		return true
 	}
 	r, ok := val.(trpcrunner.Runner)
 	if !ok {

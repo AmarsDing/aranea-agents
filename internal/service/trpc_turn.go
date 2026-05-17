@@ -207,14 +207,19 @@ func (s *ChatService) processPendingQueue(sessionID string, sess biz.Session, ag
 			SessionId: sessionID,
 			Content:   entry.Content,
 		}
-		_, _, err := s.runSingleAgentViaTRPC(bgCtx, sess, req, ag, dialogMode, prov, mod, 0)
+		var err error
+		if strings.EqualFold(strings.TrimSpace(sess.OwnerType), "team") {
+			_, _, err = s.teamsNative.RunTurn(bgCtx, sess, req)
+		} else {
+			_, _, err = s.runSingleAgentViaTRPC(bgCtx, sess, req, ag, dialogMode, prov, mod, 0)
+		}
 		if err != nil && s.td.Pipeline.Bus != nil {
 			env := event.NewEnvelope(event.EnvelopeTypeError, "pending-queue", sessionID)
 			env.Error = &event.EnvelopeError{
-				Type:    "pending_failed",
-				Message: fmt.Sprintf("pending message failed: %s", err.Error()),
+				Type:      "pending_failed",
+				Message:   fmt.Sprintf("pending message failed: %s", err.Error()),
+				PendingID: entry.ID,
 			}
-			env.Metadata = map[string]any{"pending_id": entry.ID}
 			s.td.Pipeline.Bus.Publish(bgCtx, env)
 		}
 	})
@@ -248,5 +253,36 @@ func (s *ChatService) recordSessionTurn(ctx context.Context, sessionID string, a
 	}
 	if _, err := s.td.Sessions.CreateTurn(ctx, turn); err != nil {
 		slog.Warn("recordSessionTurn failed", "session_id", sessionID, "error", err)
+	}
+}
+
+func (s *ChatService) recordTeamSessionTurn(ctx context.Context, sessionID, teamID, userMsgID, assistantMsgID, prov, mod string, promptTok, completionTok int, contentPreview string) {
+	if s == nil || s.td.Sessions == nil {
+		return
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	preview := contentPreview
+	if len(preview) > 200 {
+		preview = preview[:200]
+	}
+	turn := biz.SessionTurn{
+		SessionID:           sessionID,
+		UserMessageID:       userMsgID,
+		AssistantMessageID:  assistantMsgID,
+		OwnerType:           "team",
+		TeamID:              teamID,
+		Status:              "completed",
+		StartedAt:           now,
+		EndedAt:             now,
+		InputTokens:         promptTok,
+		OutputTokens:        completionTok,
+		TotalTokens:         promptTok + completionTok,
+		ModelCallCount:      1,
+		FinalProvider:       prov,
+		FinalModel:          mod,
+		FinalContentPreview: preview,
+	}
+	if _, err := s.td.Sessions.CreateTurn(ctx, turn); err != nil {
+		slog.Warn("recordTeamSessionTurn failed", "session_id", sessionID, "team_id", teamID, "error", err)
 	}
 }
