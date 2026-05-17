@@ -57,7 +57,7 @@ function formatMoney(value: number) {
   min-height: 180px;
   display: grid;
   place-items: center;
-  color: #9ca3af;
+  color: var(--color-text-gray-400);
 }
 
 .usage-trend-grid {
@@ -78,7 +78,7 @@ function formatMoney(value: number) {
 
 .usage-trend-bar__track {
   align-items: end;
-  background: rgba(37, 99, 235, 0.08);
+  background: rgb(37 99 235 / 8%);
   border-radius: 999px;
   display: flex;
   height: 170px;
@@ -87,7 +87,7 @@ function formatMoney(value: number) {
 }
 
 .usage-trend-bar__fill {
-  background: linear-gradient(180deg, #60a5fa, #2563eb);
+  background: linear-gradient(180deg, var(--color-info), var(--color-accent-blue));
   border-radius: 999px;
   width: 100%;
 }

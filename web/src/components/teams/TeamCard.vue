@@ -81,10 +81,10 @@ const definition = computed(() => parseDefinition(props.team));
 <style scoped>
 .team-card {
   overflow: hidden;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgb(15 23 42 / 8%);
   border-radius: 24px;
-  background: rgba(255, 255, 255, 0.86);
-  box-shadow: 0 18px 48px rgba(16, 24, 40, 0.06);
+  background: rgb(255 255 255 / 86%);
+  box-shadow: 0 18px 48px rgb(16 24 40 / 6%);
   backdrop-filter: blur(16px);
 }
 
@@ -106,31 +106,31 @@ const definition = computed(() => parseDefinition(props.team));
   padding: 0;
   border: 0;
   background: transparent;
-  color: #667085;
+  color: var(--color-text-tertiary);
   cursor: pointer;
   font-size: 12px;
   font-weight: 600;
 }
 
 .team-card__name {
-  color: #101828;
+  color: var(--color-text-dark);
   font-weight: 800;
 }
 
 .team-description {
   min-height: 42px;
-  color: #475467;
+  color: var(--color-text-tertiary);
   line-height: 1.6;
 }
 
 .member-name {
-  color: #101828;
+  color: var(--color-text-dark);
 }
 
 .member-meta,
 .team-empty,
 .team-card__foot-meta {
-  color: #667085;
+  color: var(--color-text-tertiary);
 }
 
 .topology-strip {
@@ -143,10 +143,10 @@ const definition = computed(() => parseDefinition(props.team));
   align-items: center;
   gap: 6px;
   padding: 7px 10px;
-  border: 1px solid rgba(25, 118, 210, 0.12);
+  border: 1px solid rgb(25 118 210 / 12%);
   border-radius: 999px;
-  background: #eef6ff;
-  color: #155ebc;
+  background: var(--color-info-soft);
+  color: var(--color-link);
   font-size: 12px;
   font-weight: 700;
 }
@@ -159,9 +159,9 @@ const definition = computed(() => parseDefinition(props.team));
 .member-row {
   gap: 10px;
   padding: 10px 12px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgb(15 23 42 / 8%);
   border-radius: 16px;
-  background: #fbfcff;
+  background: var(--color-page-tint);
 }
 
 .min-width-0 {
@@ -169,9 +169,9 @@ const definition = computed(() => parseDefinition(props.team));
 }
 
 .team-card.is-dark {
-  border-color: rgba(148, 163, 184, 0.16);
-  background: rgba(17, 24, 39, 0.9);
-  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.32);
+  border-color: rgb(148 163 184 / 16%);
+  background: rgb(17 24 39 / 90%);
+  box-shadow: 0 14px 38px rgb(0 0 0 / 32%);
 }
 
 .team-card.is-dark .team-key,
@@ -179,23 +179,23 @@ const definition = computed(() => parseDefinition(props.team));
 .team-card.is-dark .member-meta,
 .team-card.is-dark .team-empty,
 .team-card.is-dark .team-card__foot-meta {
-  color: #94a3b8;
+  color: var(--color-text-tertiary);
 }
 
 .team-card.is-dark .team-card__name,
 .team-card.is-dark .member-name {
-  color: #f8fafc;
-  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.35);
+  color: var(--color-surface-soft);
+  text-shadow: 0 1px 1px rgb(0 0 0 / 35%);
 }
 
 .team-card.is-dark .topology-node {
-  border-color: rgba(96, 165, 250, 0.22);
-  background: rgba(30, 64, 175, 0.24);
-  color: #93c5fd;
+  border-color: rgb(96 165 250 / 22%);
+  background: rgb(30 64 175 / 24%);
+  color: var(--color-link);
 }
 
 .team-card.is-dark .member-row {
-  border-color: rgba(148, 163, 184, 0.14);
-  background: rgba(30, 41, 59, 0.76);
+  border-color: rgb(148 163 184 / 14%);
+  background: rgb(30 41 59 / 76%);
 }
 </style>

@@ -960,7 +960,7 @@ function errorMessage(error: unknown) {
 <style scoped>
 .resource-manager-page {
   min-height: 100%;
-  background: #f7f8fb;
+  background: var(--color-page-tint-warm);
 }
 
 .resource-card,
@@ -970,11 +970,11 @@ function errorMessage(error: unknown) {
 }
 
 .provider-header {
-  background: linear-gradient(135deg, #ffffff 0%, #f3f6ff 100%);
+  background: linear-gradient(135deg, var(--color-on-accent) 0%, var(--color-page-tint-blue) 100%);
 }
 
 .provider-list {
-  background: #fff;
+  background: var(--color-on-accent);
 }
 
 .empty-state {
@@ -987,7 +987,7 @@ function errorMessage(error: unknown) {
 }
 
 .section-label {
-  color: #374151;
+  color: var(--color-text-gray-700);
   font-size: 14px;
   font-weight: 700;
 }
@@ -999,68 +999,68 @@ function errorMessage(error: unknown) {
 
 .resource-manager-page.is-dark {
   background:
-    radial-gradient(circle at 86% 0%, rgba(59, 130, 246, 0.16), transparent 30%),
-    radial-gradient(circle at 10% 16%, rgba(245, 158, 11, 0.08), transparent 24%),
-    linear-gradient(160deg, #0b1220 0%, #111827 48%, #0f172a 100%);
-  color: #e5e7eb;
+    radial-gradient(circle at 86% 0%, rgb(59 130 246 / 16%), transparent 30%),
+    radial-gradient(circle at 10% 16%, rgb(245 158 11 / 8%), transparent 24%),
+    linear-gradient(160deg, var(--canvas-base) 0%, var(--color-surface-elevated) 48%, var(--color-surface-solid) 100%);
+  color: var(--color-border-soft);
 }
 
 .resource-manager-page.is-dark .provider-card,
 .resource-manager-page.is-dark .resource-card,
 .resource-manager-page.is-dark .resource-dialog-card {
-  border-color: rgba(148, 163, 184, 0.16);
-  background: rgba(17, 24, 39, 0.9);
-  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.32);
+  border-color: rgb(148 163 184 / 16%);
+  background: rgb(17 24 39 / 90%);
+  box-shadow: 0 14px 38px rgb(0 0 0 / 32%);
 }
 
 .resource-manager-page.is-dark .provider-header {
   background:
-    linear-gradient(180deg, rgba(17, 24, 39, 0.96), rgba(15, 23, 42, 0.9)),
-    radial-gradient(circle at top right, rgba(59, 130, 246, 0.14), transparent 34%);
+    linear-gradient(180deg, rgb(17 24 39 / 96%), rgb(15 23 42 / 90%)),
+    radial-gradient(circle at top right, rgb(59 130 246 / 14%), transparent 34%);
 }
 
 .resource-manager-page.is-dark .provider-list {
-  background: rgba(15, 23, 42, 0.86);
+  background: rgb(15 23 42 / 86%);
 }
 
 .resource-manager-page.is-dark :deep(.q-field__control) {
-  background: rgba(30, 41, 59, 0.76);
+  background: rgb(30 41 59 / 76%);
 }
 
 .resource-manager-page.is-dark :deep(.q-field__control::before) {
-  border-color: rgba(148, 163, 184, 0.18);
+  border-color: rgb(148 163 184 / 18%);
 }
 
 .resource-manager-page.is-dark :deep(.q-table__container) {
-  background: rgba(17, 24, 39, 0.9);
-  color: #e5e7eb;
+  background: rgb(17 24 39 / 90%);
+  color: var(--color-border-soft);
 }
 
 .resource-manager-page.is-dark :deep(.q-table th) {
-  background: rgba(15, 23, 42, 0.92);
-  color: #cbd5e1;
+  background: rgb(15 23 42 / 92%);
+  color: var(--color-text-slate-300);
 }
 
 .resource-manager-page.is-dark :deep(.q-table td) {
-  color: #e2e8f0;
+  color: var(--color-text-dark);
 }
 
 .resource-manager-page.is-dark :deep(.q-table tbody tr:hover) {
-  background: rgba(51, 65, 85, 0.46);
+  background: rgb(51 65 85 / 46%);
 }
 
 .resource-manager-page.is-dark .pagination-bar,
 .resource-manager-page.is-dark :deep(.q-table__bottom) {
-  border-top-color: rgba(148, 163, 184, 0.14);
-  background: rgba(15, 23, 42, 0.72);
-  color: #cbd5e1;
+  border-top-color: rgb(148 163 184 / 14%);
+  background: rgb(15 23 42 / 72%);
+  color: var(--color-text-slate-300);
 }
 
 .resource-manager-page.is-dark .section-label {
-  color: #cbd5e1;
+  color: var(--color-text-slate-300);
 }
 
 .resource-manager-page.is-dark .empty-state {
-  color: #cbd5e1;
+  color: var(--color-text-slate-300);
 }
 </style>

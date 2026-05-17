@@ -84,3 +84,4 @@ profile.cov
 /tmp_*.go
 /manager_notes_*.md
 /output/
+/node_modules

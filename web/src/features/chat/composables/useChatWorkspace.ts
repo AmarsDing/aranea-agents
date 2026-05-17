@@ -48,6 +48,7 @@ import { useAppStore } from "../../../stores/app";
 import { useAuthStore } from "../../../stores/auth";
 import { useChatStream, useTeamStream } from "../useEnvelopeStream";
 import type { Envelope } from "../envelope";
+import { getServerHeartbeatState } from "../../heartbeat/useServerHeartbeat";
 
 function mockMessage(id: string, sessionID: string, role: string, content: string): Message {
   return {
@@ -100,6 +101,31 @@ export function useChatWorkspace() {
   const dialogMode = ref(loadDialogModeFromStorage("default"));
   const modelProvider = ref(loadModelFromStorage(""));
   const sending = ref(false);
+  let sendingTimeout: ReturnType<typeof setTimeout> | null = null;
+  const SENDING_TIMEOUT_MS = 120_000;
+
+  function markSending() {
+    sending.value = true;
+    clearSendingTimeout();
+    sendingTimeout = setTimeout(() => {
+      if (sending.value) {
+        sending.value = false;
+        $q.notify({ type: "warning", message: "响应超时，请重试" });
+      }
+    }, SENDING_TIMEOUT_MS);
+  }
+
+  function markSendingDone() {
+    sending.value = false;
+    clearSendingTimeout();
+  }
+
+  function clearSendingTimeout() {
+    if (sendingTimeout != null) {
+      clearTimeout(sendingTimeout);
+      sendingTimeout = null;
+    }
+  }
   const modeOpts = ref<Array<{ label: string; value: string }>>(
     CHAT_MODE_OPTIONS.map((o) => ({ label: o.label, value: o.value }))
   );
@@ -142,21 +168,23 @@ export function useChatWorkspace() {
     if (selectedEntityKind.value === "team" && selectedTeamId.value) {
       return (teamSessions.value[selectedTeamId.value] ?? []).map((session) => ({
         id: session.id,
-        title: session.title,
+        title: session.title || t("chat.untitledSession"),
         context_used_ratio: session.context_used_ratio,
         at: session.at,
         timeline_at: session.last_message_at || session.updated_at || session.created_at,
-        agent_id: session.agent_id
+        agent_id: session.agent_id,
+        status: session.status
       }));
     }
 
     if (selectedEntityKind.value === "agent" && store.selectedAgent) {
       return store.sessions.map((session) => ({
         id: session.id,
-        title: session.title,
+        title: session.title || t("chat.untitledSession"),
         context_used_ratio: session.context_used_ratio,
         at: formatSessionTime(session.last_message_at || session.updated_at || session.created_at),
-        timeline_at: session.last_message_at || session.updated_at || session.created_at
+        timeline_at: session.last_message_at || session.updated_at || session.created_at,
+        status: session.status
       }));
     }
 
@@ -173,7 +201,7 @@ export function useChatWorkspace() {
     return (
       displaySessions.value.find((session) => session.id === store.selectedSession!.id) ?? {
         id: store.selectedSession.id,
-        title: store.selectedSession.title,
+        title: store.selectedSession.title || t("chat.untitledSession"),
         context_used_ratio: store.selectedSession.context_used_ratio,
         at: formatSessionTime(
           store.selectedSession.last_message_at ||
@@ -337,17 +365,21 @@ export function useChatWorkspace() {
   async function onRenameSession(payload: { id: string; title: string }) {
     const title = payload.title.trim();
     if (!title) return;
-    if (selectedEntityKind.value === "team" && selectedTeamId.value) {
-      const updated = await updateSessionTitle(payload.id, title);
-      teamSessions.value[selectedTeamId.value] = (teamSessions.value[selectedTeamId.value] ?? []).map((session) =>
-        session.id === payload.id
-          ? { ...updated, at: formatSessionTime(updated.last_message_at || updated.updated_at || updated.created_at) }
-          : session
-      );
-      return;
-    }
+    try {
+      if (selectedEntityKind.value === "team" && selectedTeamId.value) {
+        const updated = await updateSessionTitle(payload.id, title);
+        teamSessions.value[selectedTeamId.value] = (teamSessions.value[selectedTeamId.value] ?? []).map((session) =>
+          session.id === payload.id
+            ? { ...updated, at: formatSessionTime(updated.last_message_at || updated.updated_at || updated.created_at) }
+            : session
+        );
+        return;
+      }
 
-    await store.renameSessionLocal(payload.id, title);
+      await store.renameSessionLocal(payload.id, title);
+    } catch (err) {
+      $q.notify({ type: "negative", message: "重命名失败，请重试" });
+    }
   }
 
   function openSessionTrace(sessionId: string) {
@@ -421,10 +453,12 @@ export function useChatWorkspace() {
   }
 
   let chatStream: ReturnType<typeof useChatStream> | null = null;
+  let chatStreamSessionId: string | null = null;
   let teamStream: ReturnType<typeof useTeamStream> | null = null;
+  let teamStreamSessionId: string | null = null;
 
   function ensureChatStream(sessionId: string) {
-    if (chatStream && chatStream.transport.value) {
+    if (chatStream && chatStream.transport.value && chatStreamSessionId === sessionId) {
       return chatStream;
     }
     chatStream?.disconnect();
@@ -478,23 +512,35 @@ export function useChatWorkspace() {
         const sid = store.selectedSession?.id;
         if (!sid) return;
         const msgId = `tool-${env.tool_call.id}`;
+        const toolStatus = `tool_${env.tool_call.status}`;
         const existing = store.messages.find((m) => m.id === msgId);
         if (existing) {
           store.messages = store.messages.map((m) =>
             m.id === msgId
-              ? { ...m, content_markdown: `🔧 ${env.tool_call!.name} (${env.tool_call!.status})` }
+              ? { ...m, content_markdown: `🔧 ${env.tool_call!.name} (${env.tool_call!.status})`, status: toolStatus }
               : m
           );
         } else {
           store.messages = [
             ...store.messages,
-            mockMessage(msgId, sid, "assistant", `🔧 ${env.tool_call.name} (${env.tool_call.status})`)
+            { ...mockMessage(msgId, sid, "assistant", `🔧 ${env.tool_call.name} (${env.tool_call.status})`), status: toolStatus, options_json: JSON.stringify({ tool_event: { id: env.tool_call.id, status: env.tool_call.status, tool_name: env.tool_call.name } }) }
           ];
         }
       }
     });
+    chatStream.onType("tool_result", (env: Envelope) => {
+      if (env.tool_call?.id) {
+        const msgId = `tool-${env.tool_call.id}`;
+        const toolStatus = `tool_${env.tool_call.status}`;
+        store.messages = store.messages.map((m) =>
+          m.id === msgId
+            ? { ...m, status: toolStatus, content_markdown: `🔧 ${env.tool_call!.name} (${env.tool_call!.status})` }
+            : m
+        );
+      }
+    });
     chatStream.onType("runner_completion", async () => {
-      sending.value = false;
+      markSendingDone();
       const sid = store.selectedSession?.id;
       if (sid) {
         try {
@@ -506,17 +552,18 @@ export function useChatWorkspace() {
     chatStream.onType("error", (env: Envelope) => {
       const msg = env.error?.message ?? "stream failed";
       $q.notify({ type: "negative", message: msg });
-      sending.value = false;
+      markSendingDone();
     });
     chatStream.onType("intent_pass", (env: Envelope) => {
       store.lastIntentPass = env.metadata as any;
     });
     chatStream.connect();
+    chatStreamSessionId = sessionId;
     return chatStream;
   }
 
   function ensureTeamStream(sessionId: string) {
-    if (teamStream && teamStream.transport.value) {
+    if (teamStream && teamStream.transport.value && teamStreamSessionId === sessionId) {
       return teamStream;
     }
     teamStream?.disconnect();
@@ -568,7 +615,7 @@ export function useChatWorkspace() {
       }
     });
     teamStream.onType("runner_completion", async () => {
-      sending.value = false;
+      markSendingDone();
       if (teamSelectedSessionId.value) {
         try {
           teamMessages.value[teamSelectedSessionId.value] = await listMessages(teamSelectedSessionId.value);
@@ -579,12 +626,13 @@ export function useChatWorkspace() {
     teamStream.onType("error", (env: Envelope) => {
       const msg = env.error?.message ?? "stream failed";
       $q.notify({ type: "negative", message: msg });
-      sending.value = false;
+      markSendingDone();
     });
     teamStream.onType("intent_pass", (env: Envelope) => {
       store.lastIntentPass = env.metadata as any;
     });
     teamStream.connect();
+    teamStreamSessionId = sessionId;
     return teamStream;
   }
 
@@ -593,11 +641,12 @@ export function useChatWorkspace() {
     if (!content || sending.value) return;
 
     if (selectedEntityKind.value === "agent") {
-      sending.value = true;
+      markSending();
       try {
         if (!store.selectedSession) await onNewSession(makeSessionTitle(content));
         if (!store.selectedSession) {
           $q.notify({ type: "negative", message: "未创建会话或会话无效，请重试" });
+          markSendingDone();
           return;
         }
         const sessionId = store.selectedSession.id;
@@ -611,7 +660,24 @@ export function useChatWorkspace() {
         ];
 
         const stream = ensureChatStream(sessionId);
-        stream.transport.value?.send({
+        const transport = stream.transport.value;
+        if (!transport || !transport.connected) {
+          const heartbeat = getServerHeartbeatState();
+          if (!heartbeat.isAlive.value) {
+            $q.notify({ type: "negative", message: "后端服务不可用，请重新登录", timeout: 0 });
+            const auth = useAuthStore();
+            auth.user = null;
+            auth.sessionChecked = true;
+            router.push({ name: "login" });
+          } else {
+            $q.notify({ type: "negative", message: "WebSocket 未连接，正在重连..." });
+            stream.connect();
+          }
+          store.messages = store.messages.filter((m) => !String(m.id).startsWith("pending-user-"));
+          markSendingDone();
+          return;
+        }
+        transport.send({
           direction: "client_to_server",
           channel: "chat",
           type: "user_message",
@@ -640,6 +706,7 @@ export function useChatWorkspace() {
               await store.loadSessions();
             } catch { /* ignore */ }
           }
+          markSendingDone();
         }
       } finally {
         attachments.value = [];
@@ -648,13 +715,14 @@ export function useChatWorkspace() {
     }
 
     if (selectedEntityKind.value === "team" && selectedTeamId.value) {
-      sending.value = true;
+      markSending();
       let sessionIdForCatch = "";
       try {
         if (!teamSelectedSessionId.value) await onNewSession(makeSessionTitle(content));
         const sessionId = teamSelectedSessionId.value;
         if (!sessionId) {
           $q.notify({ type: "negative", message: "未创建会话或会话无效，请重试" });
+          markSendingDone();
           return;
         }
         sessionIdForCatch = sessionId;
@@ -666,7 +734,25 @@ export function useChatWorkspace() {
         teamMessages.value[sessionId] = [...(teamMessages.value[sessionId] ?? []), mockMessage(pendingUserId, sessionId, "user", content)];
 
         const stream = ensureTeamStream(sessionId);
-        stream.transport.value?.send({
+        const transport = stream.transport.value;
+        if (!transport || !transport.connected) {
+          const heartbeat = getServerHeartbeatState();
+          if (!heartbeat.isAlive.value) {
+            $q.notify({ type: "negative", message: "后端服务不可用，请重新登录", timeout: 0 });
+            const auth = useAuthStore();
+            auth.user = null;
+            auth.sessionChecked = true;
+            router.push({ name: "login" });
+          } else {
+            $q.notify({ type: "negative", message: "WebSocket 未连接，正在重连..." });
+            stream.connect();
+          }
+          const cur = teamMessages.value[sessionId] ?? [];
+          teamMessages.value[sessionId] = cur.filter((item) => !String(item.id).startsWith("pending-user-"));
+          markSendingDone();
+          return;
+        }
+        transport.send({
           direction: "client_to_server",
           channel: "chat",
           type: "user_message",
@@ -691,7 +777,7 @@ export function useChatWorkspace() {
           teamMessages.value[sessionIdForCatch] = cur.filter((item) => !String(item.id).startsWith("pending-user-"));
         }
       } finally {
-        sending.value = false;
+        markSendingDone();
         attachments.value = [];
       }
     }
@@ -714,6 +800,7 @@ export function useChatWorkspace() {
     if (sid) {
       stopGeneration(sid);
     }
+    markSendingDone();
   }
 
   async function onCancelPending(pendingId: string) {
@@ -773,6 +860,7 @@ export function useChatWorkspace() {
 
   onUnmounted(() => {
     stopPendingPoll();
+    clearSendingTimeout();
   });
 
   function makeSessionTitle(content: string) {

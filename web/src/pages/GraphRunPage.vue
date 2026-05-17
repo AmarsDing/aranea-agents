@@ -241,7 +241,7 @@ function goBack() {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: var(--canvas-base, #fefbf4);
+  background: var(--canvas-base, var(--canvas-base));
 }
 
 .graph-run-page__toolbar {
@@ -249,8 +249,8 @@ function goBack() {
   align-items: center;
   gap: 8px;
   padding: 8px 16px;
-  border-bottom: 1px solid var(--glass-border, rgba(235, 220, 200, 0.7));
-  background: var(--glass-surface, rgba(255, 253, 245, 0.65));
+  border-bottom: 1px solid var(--glass-border, rgb(235 220 200 / 70%));
+  background: var(--glass-surface, rgb(255 253 245 / 65%));
   backdrop-filter: blur(var(--glass-blur-default, 18px));
   -webkit-backdrop-filter: blur(var(--glass-blur-default, 18px));
 }
@@ -269,8 +269,8 @@ function goBack() {
 .graph-run-page__sidebar {
   width: 300px;
   padding: 16px;
-  border-left: 1px solid var(--glass-border, rgba(235, 220, 200, 0.7));
-  background: var(--glass-surface, rgba(255, 253, 245, 0.65));
+  border-left: 1px solid var(--glass-border, rgb(235 220 200 / 70%));
+  background: var(--glass-surface, rgb(255 253 245 / 65%));
   backdrop-filter: blur(var(--glass-blur-default, 18px));
   -webkit-backdrop-filter: blur(var(--glass-blur-default, 18px));
   overflow-y: auto;
@@ -281,7 +281,7 @@ function goBack() {
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--color-text-secondary, #8b7a6b);
+  color: var(--color-text-secondary, var(--color-text-secondary));
   margin-bottom: 10px;
 }
 
@@ -294,29 +294,29 @@ function goBack() {
 .graph-resume-dialog {
   width: 480px;
   max-width: 94vw;
-  border: 1px solid var(--glass-border, rgba(235, 220, 200, 0.7));
+  border: 1px solid var(--glass-border, rgb(235 220 200 / 70%));
   border-radius: 24px;
-  background: var(--glass-elevated, rgba(255, 255, 255, 0.72));
+  background: var(--glass-elevated, rgb(255 255 255 / 72%));
   backdrop-filter: blur(var(--glass-blur-default, 18px));
   -webkit-backdrop-filter: blur(var(--glass-blur-default, 18px));
 }
 
 .graph-run-page.is-dark {
-  background: var(--canvas-base, #090d14);
+  background: var(--canvas-base, var(--canvas-base));
 }
 
 .graph-run-page.is-dark .graph-run-page__toolbar {
-  border-color: rgba(255, 255, 255, 0.08);
-  background: rgba(18, 24, 34, 0.65);
+  border-color: rgb(255 255 255 / 8%);
+  background: rgb(18 24 34 / 65%);
 }
 
 .graph-run-page__sidebar.is-dark {
-  border-color: rgba(255, 255, 255, 0.08);
-  background: rgba(18, 24, 34, 0.65);
+  border-color: rgb(255 255 255 / 8%);
+  background: rgb(18 24 34 / 65%);
 }
 
 .graph-resume-dialog.is-dark {
-  border-color: rgba(255, 255, 255, 0.08);
-  background: rgba(18, 24, 34, 0.9);
+  border-color: rgb(255 255 255 / 8%);
+  background: rgb(18 24 34 / 90%);
 }
 </style>

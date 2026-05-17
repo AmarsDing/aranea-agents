@@ -86,7 +86,7 @@ defineExpose({
 }
 
 body.body--dark .cron-form-fields-root :deep(.cron-field .q-field__control) {
-  background: rgba(22, 28, 40, 0.45);
+  background: rgb(22 28 40 / 45%);
   border-color: var(--glass-border);
 }
 </style>

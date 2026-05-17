@@ -170,9 +170,9 @@ onMounted(loadTimeline);
 
 <style scoped>
 .timeline-stat {
-  border: 1px solid rgba(100, 116, 139, 0.22);
+  border: 1px solid rgb(100 116 139 / 22%);
   border-radius: 12px;
-  background: var(--color-surface, #fff);
+  background: var(--color-surface, var(--color-on-accent));
   padding: 10px 14px;
 }
 
@@ -185,7 +185,7 @@ onMounted(loadTimeline);
 .timeline-stat__label {
   font-size: 11px;
   font-weight: 700;
-  color: var(--color-text-secondary, #64748b);
+  color: var(--color-text-secondary, var(--color-text-tertiary));
   text-transform: uppercase;
 }
 
@@ -193,23 +193,23 @@ onMounted(loadTimeline);
   max-height: 400px;
   overflow: auto;
   border-radius: 10px;
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  background: var(--color-surface-soft, #f1f5f9);
+  border: 1px solid rgb(148 163 184 / 24%);
+  background: var(--color-surface-soft, var(--color-page-tint-cool));
   color: var(--color-text-primary);
   padding: 12px;
   white-space: pre-wrap;
-  word-break: break-word;
+  overflow-wrap: break-word;
   font-size: 13px;
 }
 
 :global(.body--dark) .timeline-stat {
-  border-color: rgba(148, 163, 184, 0.18);
-  background: rgba(15, 23, 42, 0.6);
+  border-color: rgb(148 163 184 / 18%);
+  background: rgb(15 23 42 / 60%);
 }
 
 :global(.body--dark) .timeline-detail {
-  border-color: rgba(148, 163, 184, 0.18);
-  background: var(--color-surface-dark, #0f172a);
-  color: var(--color-text-primary-dark, #e2e8f0);
+  border-color: rgb(148 163 184 / 18%);
+  background: var(--color-surface-dark, var(--color-surface-solid));
+  color: var(--color-text-primary-dark, var(--color-text-dark));
 }
 </style>

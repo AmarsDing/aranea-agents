@@ -19,9 +19,14 @@ export default configure(() => {
       proxy: {
         "/v1": {
           target: "http://127.0.0.1:8000",
-          changeOrigin: true
+          changeOrigin: true,
+          ws: true
         },
         "/api": {
+          target: "http://127.0.0.1:8000",
+          changeOrigin: true
+        },
+        "/healthz": {
           target: "http://127.0.0.1:8000",
           changeOrigin: true
         }
@@ -29,7 +34,7 @@ export default configure(() => {
     },
     framework: {
       config: { dark: false },
-      plugins: ["Notify"]
+      plugins: ["Dialog", "Notify"]
     },
     animations: []
   };

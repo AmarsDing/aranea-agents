@@ -38,26 +38,26 @@ defineEmits<{
 
 <style scoped>
 .teams-toolbar {
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgb(15 23 42 / 8%);
   border-radius: 24px;
-  background: rgba(255, 255, 255, 0.86);
-  box-shadow: 0 18px 48px rgba(16, 24, 40, 0.06);
+  background: rgb(255 255 255 / 86%);
+  box-shadow: 0 18px 48px rgb(16 24 40 / 6%);
   backdrop-filter: blur(16px);
 }
 
 .team-control :deep(.q-field__control) {
   border-radius: 16px;
-  background: #ffffff;
+  background: var(--color-on-accent);
 }
 
 .teams-toolbar.is-dark {
-  border-color: rgba(148, 163, 184, 0.16);
-  background: rgba(17, 24, 39, 0.9);
-  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.32);
+  border-color: rgb(148 163 184 / 16%);
+  background: rgb(17 24 39 / 90%);
+  box-shadow: 0 14px 38px rgb(0 0 0 / 32%);
 }
 
 .teams-toolbar.is-dark .team-control :deep(.q-field__control) {
-  border-color: rgba(148, 163, 184, 0.14);
-  background: rgba(30, 41, 59, 0.76);
+  border-color: rgb(148 163 184 / 14%);
+  background: rgb(30 41 59 / 76%);
 }
 </style>

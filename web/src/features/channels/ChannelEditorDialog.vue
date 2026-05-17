@@ -348,7 +348,7 @@ function parseJSON<T>(value: string | undefined, fallback: T): T {
 
 .selected-channel-card {
   border-radius: 14px;
-  background: rgba(25, 118, 210, 0.04);
+  background: rgb(25 118 210 / 4%);
 }
 
 .detail-grid {
@@ -364,7 +364,7 @@ function parseJSON<T>(value: string | undefined, fallback: T): T {
 }
 
 .detail-label {
-  color: #667085;
+  color: var(--color-text-tertiary);
   flex: 0 0 auto;
 }
 </style>

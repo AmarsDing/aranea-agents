@@ -290,11 +290,11 @@ function saveIDs(key: string, ids: Set<string>) {
 
 .chat-session-item {
   min-height: 58px;
-  color: var(--q-dark);
+  color: var(--color-text-primary);
 }
 
 :global(.body--dark) .chat-session-item {
-  color: rgba(248, 250, 252, 0.92);
+  color: var(--color-text-primary);
 }
 
 .chat-session-title {
@@ -306,25 +306,25 @@ function saveIDs(key: string, ids: Set<string>) {
 
 .chat-timeline-label {
   padding: 12px 8px 6px;
-  color: rgba(102, 112, 133, 0.78);
+  color: var(--color-text-secondary);
   font-size: 12px;
   font-weight: 800;
 }
 
 :global(.body--dark) .chat-timeline-label {
-  color: rgba(203, 213, 225, 0.78);
+  color: var(--color-text-secondary);
 }
 
 .chat-session-time-badge {
-  background: rgba(25, 118, 210, 0.1);
-  color: var(--color-link, #2563eb);
+  background: rgb(25 118 210 / 10%);
+  color: var(--color-link, var(--color-accent-blue));
   font-size: 10px;
   font-weight: 800;
 }
 
 :global(.body--dark) .chat-session-time-badge {
-  background: rgba(147, 197, 253, 0.18);
-  color: var(--color-link-dark, #dbeafe);
+  background: rgb(147 197 253 / 18%);
+  color: var(--color-link-dark, var(--color-accent-blue-bright));
 }
 
 .chat-session-menu-section {
@@ -332,34 +332,34 @@ function saveIDs(key: string, ids: Set<string>) {
 }
 
 .chat-session-menu-btn {
-  color: rgba(102, 112, 133, 0.92);
+  color: rgb(102 112 133 / 92%);
 }
 
 :global(.body--dark) .chat-session-menu-btn {
-  color: rgba(248, 250, 252, 0.82);
+  color: rgb(248 250 252 / 82%);
 }
 
 :global(.body--dark) .chat-session-time {
-  color: rgba(203, 213, 225, 0.76) !important;
+  color: rgb(203 213 225 / 76%) !important;
 }
 
 .chat-session-item--active,
 :global(.body--dark) .chat-session-item--active {
-  color: var(--color-on-accent, #fff) !important;
+  color: var(--color-on-accent, var(--color-on-accent)) !important;
 }
 
 .chat-session-item--active .chat-session-time,
 .chat-session-item--active .chat-action-btn,
 .chat-session-item--active .chat-session-menu-btn {
-  color: rgba(255, 255, 255, 0.86) !important;
+  color: rgb(255 255 255 / 86%) !important;
 }
 
 .chat-session-item--active .chat-session-time-badge {
-  background: rgba(255, 255, 255, 0.2);
-  color: var(--color-on-accent, #fff);
+  background: rgb(255 255 255 / 20%);
+  color: var(--color-on-accent, var(--color-on-accent));
 }
 
 :global(.body--dark) .chat-action-btn {
-  background: rgba(15, 23, 42, 0.34);
+  background: rgb(15 23 42 / 34%);
 }
 </style>

@@ -313,7 +313,7 @@ function parseTeamDefinition(raw?: string) {
   gap: 6px;
   min-height: 28px;
   padding: 0 8px;
-  color: rgba(102, 112, 133, 0.92);
+  color: var(--color-text-secondary);
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.02em;
@@ -331,32 +331,7 @@ function parseTeamDefinition(raw?: string) {
   align-items: center;
   min-height: 56px;
   padding: 8px 6px;
-  color: var(--q-dark);
-}
-
-:global(.body--dark) .chat-entity-item {
-  color: #f8fafc;
-}
-
-:global(.body--dark) .chat-entity-name {
-  color: #f8fafc;
-  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.35);
-}
-
-.chat-entity-item--active,
-:global(.body--dark) .chat-entity-item--active {
-  color: #fff !important;
-}
-
-.chat-status-icon {
-  min-width: 22px;
-  padding-right: 4px;
-}
-
-.chat-entity-main {
-  min-width: 0;
-  flex: 1 1 auto;
-  padding-right: 4px;
+  color: var(--color-text-primary);
 }
 
 .chat-entity-name {
@@ -369,6 +344,31 @@ function parseTeamDefinition(raw?: string) {
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+:global(.body--dark) .chat-entity-item {
+  color: var(--color-text-primary);
+}
+
+:global(.body--dark) .chat-entity-name {
+  color: var(--color-text-primary);
+  text-shadow: 0 1px 1px rgb(0 0 0 / 35%);
+}
+
+.chat-entity-item--active,
+:global(.body--dark) .chat-entity-item--active {
+  color: var(--color-on-accent) !important;
+}
+
+.chat-status-icon {
+  min-width: 22px;
+  padding-right: 4px;
+}
+
+.chat-entity-main {
+  min-width: 0;
+  flex: 1 1 auto;
+  padding-right: 4px;
 }
 
 .chat-entity-actions {
@@ -388,17 +388,17 @@ function parseTeamDefinition(raw?: string) {
   height: 24px;
   min-height: 24px;
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.72);
+  background: rgb(255 255 255 / 72%);
 }
 
 :global(.body--dark) .chat-action-btn {
-  color: rgba(248, 250, 252, 0.92);
-  background: rgba(15, 23, 42, 0.34);
+  color: rgb(248 250 252 / 92%);
+  background: rgb(15 23 42 / 34%);
 }
 
 .chat-entity-item--active .chat-action-btn {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.18);
+  color: var(--color-on-accent);
+  background: rgb(255 255 255 / 18%);
 }
 
 .chat-entity-meta {
@@ -410,48 +410,48 @@ function parseTeamDefinition(raw?: string) {
   align-items: center;
   min-height: 18px;
   padding: 0 7px;
-  border: 1px solid rgba(102, 112, 133, 0.16);
+  border: 1px solid rgb(102 112 133 / 16%);
   border-radius: 999px;
-  background: rgba(248, 250, 252, 0.88);
-  color: #667085;
+  background: rgb(248 250 252 / 88%);
+  color: var(--color-text-tertiary);
   font-size: 10px;
   font-weight: 800;
   line-height: 1;
 }
 
 .chat-status-pill.is-working {
-  border-color: rgba(239, 68, 68, 0.22);
-  background: rgba(254, 242, 242, 0.92);
-  color: #b42318;
+  border-color: rgb(239 68 68 / 22%);
+  background: rgb(254 242 242 / 92%);
+  color: var(--color-danger-text);
 }
 
 .chat-status-pill.is-idle {
-  border-color: rgba(34, 197, 94, 0.22);
-  background: rgba(240, 253, 244, 0.92);
-  color: #027a48;
+  border-color: rgb(34 197 94 / 22%);
+  background: rgb(240 253 244 / 92%);
+  color: var(--color-accent-green);
 }
 
 .chat-status-pill.is-inactive {
-  border-color: rgba(102, 112, 133, 0.2);
-  background: rgba(242, 244, 247, 0.92);
-  color: #475467;
+  border-color: rgb(102 112 133 / 20%);
+  background: rgb(242 244 247 / 92%);
+  color: var(--color-text-tertiary);
 }
 
 :global(.body--dark) .chat-entity-group__label,
 :global(.body--dark) .chat-section-label,
 :global(.body--dark) .chat-side-hint {
-  color: rgba(203, 213, 225, 0.78) !important;
+  color: var(--color-text-secondary) !important;
 }
 
 :global(.body--dark) .chat-status-pill {
-  border-color: rgba(203, 213, 225, 0.22);
-  background: rgba(15, 23, 42, 0.46);
-  color: rgba(248, 250, 252, 0.86);
+  border-color: rgb(203 213 225 / 22%);
+  background: rgb(15 23 42 / 46%);
+  color: rgb(248 250 252 / 86%);
 }
 
 .chat-entity-item--active .chat-status-pill {
-  border-color: rgba(255, 255, 255, 0.35);
-  background: rgba(255, 255, 255, 0.18);
-  color: #fff;
+  border-color: rgb(255 255 255 / 35%);
+  background: rgb(255 255 255 / 18%);
+  color: var(--color-on-accent);
 }
 </style>

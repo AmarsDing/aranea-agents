@@ -3,7 +3,7 @@
     <q-card-section class="row items-start justify-between q-gutter-md">
       <div class="col">
         <div class="row items-center q-gutter-sm">
-          <div class="text-h6" style="color: var(--color-text-primary)">{{ session.title }}</div>
+          <div class="text-h6" style="color: var(--color-text-primary)">{{ session.title || '未命名会话' }}</div>
           <q-chip dense :color="ownerChipColor(session.owner_type)" text-color="white">{{ ownerLabel(session.owner_type) }}</q-chip>
           <q-badge :color="statusBadgeColor(session.status)">{{ session.status }}</q-badge>
         </div>

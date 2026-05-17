@@ -70,7 +70,7 @@ function truncate(text: string, max: number) {
 }
 
 .graph-flow-node--selected {
-  box-shadow: 0 0 0 2px var(--color-accent, #e9a23b);
+  box-shadow: 0 0 0 2px var(--color-accent, var(--color-accent));
 }
 
 .graph-flow-node--running {
@@ -78,15 +78,15 @@ function truncate(text: string, max: number) {
 }
 
 .graph-flow-node--completed {
-  border-color: var(--color-success, #4caf50);
+  border-color: var(--color-success, var(--color-success));
 }
 
 .graph-flow-node--failed {
-  border-color: var(--color-danger, #f44336);
+  border-color: var(--color-danger, var(--color-danger));
 }
 
 .graph-flow-node--interrupted {
-  border-color: var(--color-warning, #ff9800);
+  border-color: var(--color-warning);
 }
 
 .graph-flow-node__header {
@@ -94,7 +94,7 @@ function truncate(text: string, max: number) {
   align-items: center;
   gap: 6px;
   margin-bottom: 4px;
-  opacity: 0.7;
+  opacity: 70%;
 }
 
 .graph-flow-node__type-label {
@@ -108,12 +108,12 @@ function truncate(text: string, max: number) {
   font-weight: 600;
   font-size: 13px;
   line-height: 1.3;
-  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .graph-flow-node__hint {
   margin-top: 4px;
-  color: var(--color-text-secondary, #666);
+  color: var(--color-text-secondary, var(--color-text-tertiary));
   font-size: 11px;
   line-height: 1.3;
 }
@@ -128,7 +128,7 @@ function truncate(text: string, max: number) {
 }
 
 @keyframes pulse-glow {
-  0%, 100% { box-shadow: 0 0 4px rgba(33, 150, 243, 0.3); }
-  50% { box-shadow: 0 0 16px rgba(33, 150, 243, 0.6); }
+  0%, 100% { box-shadow: 0 0 4px rgb(33 150 243 / 30%); }
+  50% { box-shadow: 0 0 16px rgb(33 150 243 / 60%); }
 }
 </style>

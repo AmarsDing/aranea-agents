@@ -117,6 +117,7 @@ onMounted(loadTurns);
   border-radius: 12px;
   margin-bottom: 4px;
 }
+
 .turn-preview {
   max-width: 480px;
   overflow: hidden;

@@ -281,16 +281,16 @@ function graphNodeIcon(type: string) {
 .team-editor {
   width: 920px;
   max-width: 94vw;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgb(15 23 42 / 8%);
   border-radius: 24px;
-  background: rgba(255, 255, 255, 0.86);
-  box-shadow: 0 18px 48px rgba(16, 24, 40, 0.06);
+  background: rgb(255 255 255 / 86%);
+  box-shadow: 0 18px 48px rgb(16 24 40 / 6%);
   backdrop-filter: blur(16px);
 }
 
 .team-control :deep(.q-field__control) {
   border-radius: 16px;
-  background: #ffffff;
+  background: var(--color-on-accent);
 }
 
 .member-editor-list {
@@ -301,15 +301,15 @@ function graphNodeIcon(type: string) {
 .member-editor {
   gap: 10px;
   padding: 10px 12px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgb(15 23 42 / 8%);
   border-radius: 16px;
-  background: #fbfcff;
+  background: var(--color-page-tint);
 }
 
 .template-panel {
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgb(15 23 42 / 8%);
   border-radius: 18px;
-  background: rgba(238, 246, 255, 0.55);
+  background: rgb(238 246 255 / 55%);
 }
 
 .topology-preview {
@@ -324,19 +324,19 @@ function graphNodeIcon(type: string) {
   align-items: center;
   gap: 6px;
   padding: 7px 10px;
-  border: 1px solid rgba(25, 118, 210, 0.12);
+  border: 1px solid rgb(25 118 210 / 12%);
   border-radius: 999px;
-  background: #eef6ff;
-  color: #155ebc;
+  background: var(--color-info-soft);
+  color: var(--color-link);
   font-size: 12px;
   font-weight: 700;
 }
 
 .graph-preview {
   padding: 12px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgb(15 23 42 / 8%);
   border-radius: 18px;
-  background: rgba(248, 250, 252, 0.82);
+  background: rgb(248 250 252 / 82%);
 }
 
 .graph-canvas,
@@ -355,19 +355,19 @@ function graphNodeIcon(type: string) {
   align-items: center;
   gap: 8px;
   padding: 10px 12px;
-  border: 1px solid rgba(25, 118, 210, 0.12);
+  border: 1px solid rgb(25 118 210 / 12%);
   border-radius: 14px;
-  background: #ffffff;
+  background: var(--color-on-accent);
 }
 
 .graph-edge {
   flex-wrap: wrap;
-  color: #475467;
+  color: var(--color-text-tertiary);
   font-size: 12px;
 }
 
 .graph-node {
-  color: #155ebc;
+  color: var(--color-link);
 }
 
 .definition-json {
@@ -376,44 +376,44 @@ function graphNodeIcon(type: string) {
   overflow: auto;
   padding: 12px;
   border-radius: 14px;
-  background: rgba(15, 23, 42, 0.06);
+  background: rgb(15 23 42 / 6%);
 }
 
 .team-editor.is-dark,
 .team-editor.is-dark .member-editor,
 .team-editor.is-dark .template-panel {
-  border-color: rgba(148, 163, 184, 0.16);
-  background: rgba(17, 24, 39, 0.9);
-  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.32);
+  border-color: rgb(148 163 184 / 16%);
+  background: rgb(17 24 39 / 90%);
+  box-shadow: 0 14px 38px rgb(0 0 0 / 32%);
 }
 
 .team-editor.is-dark .team-control :deep(.q-field__control) {
-  border-color: rgba(148, 163, 184, 0.14);
-  background: rgba(30, 41, 59, 0.76);
+  border-color: rgb(148 163 184 / 14%);
+  background: rgb(30 41 59 / 76%);
 }
 
 .team-editor.is-dark .topology-node {
-  border-color: rgba(96, 165, 250, 0.22);
-  background: rgba(30, 64, 175, 0.24);
-  color: #93c5fd;
+  border-color: rgb(96 165 250 / 22%);
+  background: rgb(30 64 175 / 24%);
+  color: var(--color-link);
 }
 
 .team-editor.is-dark .graph-preview,
 .team-editor.is-dark .graph-node,
 .team-editor.is-dark .graph-edge {
-  border-color: rgba(148, 163, 184, 0.14);
-  background: rgba(30, 41, 59, 0.76);
+  border-color: rgb(148 163 184 / 14%);
+  background: rgb(30 41 59 / 76%);
 }
 
 .team-editor.is-dark .graph-node {
-  color: #93c5fd;
+  color: var(--color-link);
 }
 
 .team-editor.is-dark .graph-edge {
-  color: #cbd5e1;
+  color: var(--color-text-slate-300);
 }
 
 .team-editor.is-dark .definition-json {
-  background: rgba(15, 23, 42, 0.86);
+  background: rgb(15 23 42 / 86%);
 }
 </style>

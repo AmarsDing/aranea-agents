@@ -6,7 +6,30 @@
     }],
     "color-named": ["never", {
       "message": "Use CSS custom properties instead of named colors"
-    }]
+    }],
+    "selector-class-pattern": [
+      "^([a-z][a-z0-9]*)((-[a-z0-9]+)|(__[a-z][a-z0-9]*)|--[a-z][a-z0-9]*)*$|^(q-)",
+      {
+        "resolveNestedSelectors": true,
+        "message": "Expected class selector to be kebab-case or BEM (block__element--modifier); Quasar q- prefixed classes are allowed"
+      }
+    ],
+    "property-no-vendor-prefix": [
+      true,
+      {
+        "ignoreProperties": ["backdrop-filter", "-webkit-backdrop-filter"],
+        "message": "Vendor prefix not allowed except -webkit-backdrop-filter for Safari support"
+      }
+    ],
+    "value-no-vendor-prefix": [
+      true,
+      {
+        "ignoreValues": ["-webkit-backdrop-filter"]
+      }
+    ],
+    "alpha-value-notation": "percentage",
+    "color-function-notation": "modern",
+    "declaration-property-value-keyword-no-deprecated": true
   },
-  "ignoreFiles": ["dist/**", ".quasar/**", "node_modules/**"]
+  "ignoreFiles": ["dist/**", ".quasar/**", "node_modules/**", "**/*.sass", "**/*.scss"]
 }

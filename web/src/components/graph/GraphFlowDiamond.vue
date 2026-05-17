@@ -53,7 +53,7 @@ const diamondStyle = computed(() => ({
 }
 
 .graph-flow-diamond--selected {
-  box-shadow: 0 0 0 2px var(--color-accent, #e9a23b);
+  box-shadow: 0 0 0 2px var(--color-accent, var(--color-accent));
 }
 
 .graph-flow-diamond--running {
@@ -75,12 +75,12 @@ const diamondStyle = computed(() => ({
   font-size: 10px;
   font-weight: 600;
   text-align: center;
-  word-break: break-word;
+  overflow-wrap: break-word;
   line-height: 1.2;
 }
 
 @keyframes pulse-glow {
-  0%, 100% { box-shadow: 0 0 4px rgba(33, 150, 243, 0.3); }
-  50% { box-shadow: 0 0 16px rgba(33, 150, 243, 0.6); }
+  0%, 100% { box-shadow: 0 0 4px rgb(33 150 243 / 30%); }
+  50% { box-shadow: 0 0 16px rgb(33 150 243 / 60%); }
 }
 </style>

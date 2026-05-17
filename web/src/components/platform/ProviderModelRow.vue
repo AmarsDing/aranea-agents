@@ -230,7 +230,7 @@ function toNullableNumber(value: unknown) {
 }
 
 .provider-row:hover {
-  background: #f8faff;
+  background: var(--color-status-blue-bg);
 }
 
 .provider-row-grid {
@@ -257,9 +257,9 @@ function toNullableNumber(value: unknown) {
 
 .provider-usage {
   padding: 10px 12px;
-  border: 1px solid rgba(15, 23, 42, 0.06);
+  border: 1px solid rgb(15 23 42 / 6%);
   border-radius: 14px;
-  background: linear-gradient(180deg, #ffffff, #f8fafc);
+  background: linear-gradient(180deg, var(--color-on-accent), var(--color-surface-soft));
 }
 
 .usage-mini-grid {
@@ -269,13 +269,13 @@ function toNullableNumber(value: unknown) {
 }
 
 .provider-title {
-  color: #1f2937;
+  color: var(--color-text-gray-800);
   font-size: 16px;
   font-weight: 700;
 }
 
 .model-name {
-  color: #4b5563;
+  color: var(--color-text-gray-600);
   font-size: 14px;
   margin-top: 4px;
 }
@@ -284,31 +284,31 @@ function toNullableNumber(value: unknown) {
   width: 9px;
   height: 9px;
   border-radius: 999px;
-  background: #16a34a;
-  box-shadow: 0 0 0 4px rgba(22, 163, 74, 0.12);
+  background: var(--color-success);
+  box-shadow: 0 0 0 4px rgb(22 163 74 / 12%);
   flex: 0 0 auto;
 }
 
 .status-dot--off {
-  background: #9ca3af;
-  box-shadow: 0 0 0 4px rgba(156, 163, 175, 0.14);
+  background: var(--color-text-gray-400);
+  box-shadow: 0 0 0 4px rgb(156 163 175 / 14%);
 }
 
 .field-label {
-  color: #6b7280;
+  color: var(--color-text-gray-500);
   font-size: 12px;
   font-weight: 600;
   margin-bottom: 6px;
 }
 
 .metric-value {
-  color: #111827;
+  color: var(--color-surface-elevated);
   font-size: 14px;
   font-weight: 600;
 }
 
 .muted-value {
-  color: #9ca3af;
+  color: var(--color-text-gray-400);
 }
 
 .provider-actions {
@@ -321,17 +321,17 @@ function toNullableNumber(value: unknown) {
 
 .provider-actions :deep(.q-toggle) {
   padding-right: 10px;
-  border-right: 1px solid rgba(15, 23, 42, 0.08);
+  border-right: 1px solid rgb(15 23 42 / 8%);
 }
 
 .provider-action-btn {
   width: 34px;
   height: 34px;
   min-height: 34px;
-  border: 1px solid rgba(25, 118, 210, 0.12);
+  border: 1px solid rgb(25 118 210 / 12%);
   border-radius: 12px;
-  background: linear-gradient(180deg, #f4f9ff, #edf5ff);
-  box-shadow: 0 8px 18px rgba(25, 118, 210, 0.08);
+  background: linear-gradient(180deg, var(--color-status-blue-bg), var(--color-info-soft));
+  box-shadow: 0 8px 18px rgb(25 118 210 / 8%);
   transition:
     transform 160ms ease,
     box-shadow 160ms ease,
@@ -339,86 +339,86 @@ function toNullableNumber(value: unknown) {
 }
 
 .provider-action-btn--danger {
-  border-color: rgba(220, 38, 38, 0.12);
-  background: linear-gradient(180deg, #fff7f7, #fff1f2);
-  box-shadow: 0 8px 18px rgba(220, 38, 38, 0.08);
+  border-color: rgb(220 38 38 / 12%);
+  background: linear-gradient(180deg, var(--color-status-danger-bg), var(--color-danger-soft));
+  box-shadow: 0 8px 18px rgb(220 38 38 / 8%);
 }
 
 .provider-action-btn:hover {
   transform: translateY(-1px);
-  border-color: rgba(25, 118, 210, 0.28);
-  box-shadow: 0 12px 24px rgba(25, 118, 210, 0.14);
+  border-color: rgb(25 118 210 / 28%);
+  box-shadow: 0 12px 24px rgb(25 118 210 / 14%);
 }
 
 .provider-action-btn--danger:hover {
-  border-color: rgba(220, 38, 38, 0.28);
-  box-shadow: 0 12px 24px rgba(220, 38, 38, 0.14);
+  border-color: rgb(220 38 38 / 28%);
+  box-shadow: 0 12px 24px rgb(220 38 38 / 14%);
 }
 
 .provider-row.provider-row--dark {
-  color: #e5e7eb;
+  color: var(--color-border-soft);
 }
 
 .provider-row.provider-row--dark:hover {
-  background: rgba(51, 65, 85, 0.46);
+  background: rgb(51 65 85 / 46%);
 }
 
 .provider-row.provider-row--dark .provider-usage {
-  border-color: rgba(148, 163, 184, 0.14);
-  background: linear-gradient(180deg, rgba(30, 41, 59, 0.78), rgba(15, 23, 42, 0.82));
+  border-color: rgb(148 163 184 / 14%);
+  background: linear-gradient(180deg, rgb(30 41 59 / 78%), rgb(15 23 42 / 82%));
 }
 
 .provider-row.provider-row--dark .provider-title,
 .provider-row.provider-row--dark .metric-value {
-  color: #f8fafc;
+  color: var(--color-surface-soft);
 }
 
 .provider-row.provider-row--dark .model-name,
 .provider-row.provider-row--dark .field-label {
-  color: #94a3b8;
+  color: var(--color-text-tertiary);
 }
 
 .provider-row.provider-row--dark .muted-value {
-  color: #64748b;
+  color: var(--color-text-tertiary);
 }
 
 .provider-row.provider-row--dark .provider-actions :deep(.q-toggle) {
-  border-right-color: rgba(148, 163, 184, 0.16);
+  border-right-color: rgb(148 163 184 / 16%);
 }
 
 .provider-row.provider-row--dark .provider-action-btn {
-  border-color: rgba(96, 165, 250, 0.2);
-  background: linear-gradient(180deg, rgba(30, 41, 59, 0.82), rgba(15, 23, 42, 0.86));
-  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.25);
+  border-color: rgb(96 165 250 / 20%);
+  background: linear-gradient(180deg, rgb(30 41 59 / 82%), rgb(15 23 42 / 86%));
+  box-shadow: 0 8px 18px rgb(0 0 0 / 25%);
 }
 
 .provider-row.provider-row--dark .provider-action-btn--danger {
-  border-color: rgba(248, 113, 113, 0.22);
-  background: linear-gradient(180deg, rgba(127, 29, 29, 0.22), rgba(69, 10, 10, 0.18));
+  border-color: rgb(248 113 113 / 22%);
+  background: linear-gradient(180deg, rgb(127 29 29 / 22%), rgb(69 10 10 / 18%));
 }
 
 .provider-row.provider-row--dark :deep(.q-chip--colored.bg-grey-2) {
-  background: rgba(51, 65, 85, 0.76) !important;
-  color: #cbd5e1 !important;
+  background: rgb(51 65 85 / 76%) !important;
+  color: var(--color-text-slate-300) !important;
 }
 
 .provider-row.provider-row--dark :deep(.q-chip--colored.bg-blue-1),
 .provider-row.provider-row--dark :deep(.q-chip--colored.bg-indigo-1) {
-  background: rgba(30, 64, 175, 0.26) !important;
-  color: #bfdbfe !important;
+  background: rgb(30 64 175 / 26%) !important;
+  color: var(--color-accent-blue-light) !important;
 }
 
 .provider-row.provider-row--dark :deep(.q-chip--colored.bg-green-1) {
-  background: rgba(22, 101, 52, 0.26) !important;
-  color: #86efac !important;
+  background: rgb(22 101 52 / 26%) !important;
+  color: var(--color-accent-green) !important;
 }
 
 .provider-row.provider-row--dark :deep(.q-chip--colored.bg-orange-1) {
-  background: rgba(120, 53, 15, 0.28) !important;
-  color: #fdba74 !important;
+  background: rgb(120 53 15 / 28%) !important;
+  color: var(--color-accent-orange-light) !important;
 }
 
-@media (max-width: 1023px) {
+@media (width <= 1023px) {
   .provider-row-grid {
     grid-template-columns: 1fr;
     gap: 14px;

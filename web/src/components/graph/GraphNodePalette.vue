@@ -50,8 +50,8 @@ function onDragStart(event: DragEvent, type: NodeType) {
 .graph-node-palette {
   width: 220px;
   padding: 16px 12px;
-  border-right: 1px solid var(--glass-border, rgba(235, 220, 200, 0.7));
-  background: var(--glass-surface, rgba(255, 253, 245, 0.65));
+  border-right: 1px solid var(--glass-border, rgb(235 220 200 / 70%));
+  background: var(--glass-surface, rgb(255 253 245 / 65%));
   backdrop-filter: blur(var(--glass-blur-default, 18px));
   -webkit-backdrop-filter: blur(var(--glass-blur-default, 18px));
   overflow-y: auto;
@@ -62,7 +62,7 @@ function onDragStart(event: DragEvent, type: NodeType) {
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--color-text-secondary, #8b7a6b);
+  color: var(--color-text-secondary, var(--color-text-secondary));
   margin-bottom: 10px;
 }
 
@@ -77,16 +77,16 @@ function onDragStart(event: DragEvent, type: NodeType) {
   align-items: center;
   gap: 10px;
   padding: 8px 10px;
-  border: 1px solid var(--glass-border, rgba(235, 220, 200, 0.7));
+  border: 1px solid var(--glass-border, rgb(235 220 200 / 70%));
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.5);
+  background: rgb(255 255 255 / 50%);
   cursor: grab;
   transition: background 0.15s, box-shadow 0.15s;
 }
 
 .graph-node-palette__item:hover {
-  background: rgba(255, 255, 255, 0.8);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  background: rgb(255 255 255 / 80%);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 6%);
 }
 
 .graph-node-palette__item:active {
@@ -116,27 +116,27 @@ function onDragStart(event: DragEvent, type: NodeType) {
 
 .graph-node-palette__desc {
   font-size: 10px;
-  color: var(--color-text-secondary, #8b7a6b);
+  color: var(--color-text-secondary, var(--color-text-secondary));
   line-height: 1.3;
 }
 
 .graph-node-palette__hint {
   font-size: 11px;
-  color: var(--color-text-secondary, #8b7a6b);
+  color: var(--color-text-secondary, var(--color-text-secondary));
   line-height: 1.4;
 }
 
 .graph-node-palette.is-dark {
-  border-color: rgba(255, 255, 255, 0.08);
-  background: rgba(18, 24, 34, 0.65);
+  border-color: rgb(255 255 255 / 8%);
+  background: rgb(18 24 34 / 65%);
 }
 
 .graph-node-palette.is-dark .graph-node-palette__item {
-  border-color: rgba(255, 255, 255, 0.08);
-  background: rgba(30, 41, 59, 0.5);
+  border-color: rgb(255 255 255 / 8%);
+  background: rgb(30 41 59 / 50%);
 }
 
 .graph-node-palette.is-dark .graph-node-palette__item:hover {
-  background: rgba(30, 41, 59, 0.8);
+  background: rgb(30 41 59 / 80%);
 }
 </style>

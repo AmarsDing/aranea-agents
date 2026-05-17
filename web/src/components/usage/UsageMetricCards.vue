@@ -101,11 +101,11 @@ function deltaTone(current?: number, previous?: number) {
 <style scoped>
 .usage-card {
   border-radius: 18px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.88));
+  background: linear-gradient(180deg, rgb(255 255 255 / 96%), rgb(248 250 252 / 88%));
 }
 
 .usage-card__value {
-  color: #1f2937;
+  color: var(--color-text-gray-800);
   font-size: 24px;
   font-weight: 800;
   margin: 4px 0;

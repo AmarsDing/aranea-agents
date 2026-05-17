@@ -120,8 +120,8 @@ function removeStateField(index: number) {
 .graph-property-panel {
   width: 280px;
   padding: 16px 12px;
-  border-left: 1px solid var(--glass-border, rgba(235, 220, 200, 0.7));
-  background: var(--glass-surface, rgba(255, 253, 245, 0.65));
+  border-left: 1px solid var(--glass-border, rgb(235 220 200 / 70%));
+  background: var(--glass-surface, rgb(255 253 245 / 65%));
   backdrop-filter: blur(var(--glass-blur-default, 18px));
   -webkit-backdrop-filter: blur(var(--glass-blur-default, 18px));
   overflow-y: auto;
@@ -139,7 +139,7 @@ function removeStateField(index: number) {
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--color-text-secondary, #8b7a6b);
+  color: var(--color-text-secondary, var(--color-text-secondary));
 }
 
 .graph-property-panel__body {
@@ -157,18 +157,18 @@ function removeStateField(index: number) {
 
 .state-field-row {
   padding: 6px 8px;
-  border: 1px solid var(--glass-border, rgba(235, 220, 200, 0.7));
+  border: 1px solid var(--glass-border, rgb(235 220 200 / 70%));
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.4);
+  background: rgb(255 255 255 / 40%);
 }
 
 .graph-property-panel.is-dark {
-  border-color: rgba(255, 255, 255, 0.08);
-  background: rgba(18, 24, 34, 0.65);
+  border-color: rgb(255 255 255 / 8%);
+  background: rgb(18 24 34 / 65%);
 }
 
 .graph-property-panel.is-dark .state-field-row {
-  border-color: rgba(255, 255, 255, 0.08);
-  background: rgba(30, 41, 59, 0.5);
+  border-color: rgb(255 255 255 / 8%);
+  background: rgb(30 41 59 / 50%);
 }
 </style>

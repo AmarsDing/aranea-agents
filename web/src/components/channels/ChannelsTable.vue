@@ -135,7 +135,7 @@ const columns: QTableColumn<ChannelRow>[] = [
 
 .channel-type-chip
   background: var(--color-accent)
-  color: #fff
+  color: var(--color-on-accent)
 
 body.body--dark .channel-type-chip
   background: rgba(0, 229, 255, 0.15)

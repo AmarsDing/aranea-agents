@@ -112,7 +112,7 @@ onMounted(() => {
 
 .tools-error-banner
   background: rgba(229, 92, 92, 0.92)
-  color: #fff
+  color: var(--color-on-accent)
   border: 1px solid rgba(255, 255, 255, 0.25)
 
 body.body--dark .tools-error-banner

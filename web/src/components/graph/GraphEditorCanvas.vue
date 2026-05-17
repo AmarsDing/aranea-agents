@@ -283,11 +283,11 @@ function onDrop(event: DragEvent) {
 .graph-editor-canvas {
   flex: 1;
   height: 100%;
-  background: var(--canvas-base, #fefbf4);
+  background: var(--canvas-base, var(--canvas-base));
 }
 
 .graph-editor-canvas.is-dark {
-  background: var(--canvas-base, #090d14);
+  background: var(--canvas-base, var(--canvas-base));
 }
 
 .graph-editor-canvas :deep(.vue-flow) {
@@ -296,22 +296,22 @@ function onDrop(event: DragEvent) {
 }
 
 .graph-editor-canvas.is-dark :deep(.vue-flow__background) {
-  background: #090d14;
+  background: var(--canvas-base);
 }
 
 .graph-editor-canvas.is-dark :deep(.vue-flow__minimap) {
-  background: rgba(18, 24, 34, 0.8);
-  border-color: rgba(255, 255, 255, 0.08);
+  background: rgb(18 24 34 / 80%);
+  border-color: rgb(255 255 255 / 8%);
 }
 
 .graph-editor-canvas.is-dark :deep(.vue-flow__controls) {
-  background: rgba(18, 24, 34, 0.8);
-  border-color: rgba(255, 255, 255, 0.08);
+  background: rgb(18 24 34 / 80%);
+  border-color: rgb(255 255 255 / 8%);
 }
 
 .graph-editor-canvas.is-dark :deep(.vue-flow__controls-button) {
-  background: rgba(30, 41, 59, 0.8);
-  border-color: rgba(255, 255, 255, 0.08);
-  fill: #94a3b8;
+  background: rgb(30 41 59 / 80%);
+  border-color: rgb(255 255 255 / 8%);
+  fill: var(--color-text-tertiary);
 }
 </style>

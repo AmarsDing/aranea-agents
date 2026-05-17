@@ -50,14 +50,7 @@ export function getWsOrigin(): string {
   if (runtimeConfig.wsOrigin && runtimeConfig.wsOrigin.trim() !== "") {
     return runtimeConfig.wsOrigin.replace(/\/$/, "");
   }
-  if (import.meta.env.DEV) {
-    return "http://127.0.0.1:8002";
-  }
-  const origin = getBackendOrigin();
-  if (origin === "") {
-    return "";
-  }
-  return origin;
+  return getBackendOrigin();
 }
 
 export function buildWsUrl(params: {
@@ -86,7 +79,12 @@ export function buildHealthWsUrl(): string {
   const origin = getWsOrigin();
   const protocol = origin.startsWith("https") ? "wss" : "ws";
   const wsOrigin = origin.replace(/^https?/, protocol);
-  return `${wsOrigin}/v1/ws/health`;
+  const q = new URLSearchParams({ session_id: "*" });
+  const token = readAccessTokenCookie();
+  if (token) {
+    q.set("token", token);
+  }
+  return `${wsOrigin}/v1/ws?${q.toString()}`;
 }
 
 export function readAccessTokenCookie(): string | undefined {

@@ -117,7 +117,7 @@ async function onFormSubmit() {
 }
 
 .cron-form-sep {
-  opacity: 0.55;
+  opacity: 55%;
 }
 
 .cron-form-icon-btn {
@@ -138,7 +138,7 @@ async function onFormSubmit() {
 
 .cron-form-submit {
   background: var(--color-accent) !important;
-  color: #fff !important;
+  color: var(--color-on-accent) !important;
 }
 
 .cron-form-submit:hover {

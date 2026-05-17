@@ -206,7 +206,7 @@ function parseJSON<T>(value: string | undefined, fallback: T): T {
 }
 
 .mcp-kicker {
-  color: #9a6a4f;
+  color: var(--color-cream-accent);
   font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.16em;
@@ -214,7 +214,7 @@ function parseJSON<T>(value: string | undefined, fallback: T): T {
 }
 
 .mcp-title {
-  color: #4e342e;
+  color: var(--color-cream-accent-dark);
   font-size: clamp(28px, 4vw, 44px);
   font-weight: 900;
   letter-spacing: -0.04em;
@@ -223,7 +223,7 @@ function parseJSON<T>(value: string | undefined, fallback: T): T {
 }
 
 .mcp-subtitle {
-  color: #795548;
+  color: var(--color-text-secondary);
   margin: 0;
   max-width: 720px;
 }
@@ -248,27 +248,26 @@ function parseJSON<T>(value: string | undefined, fallback: T): T {
 }
 
 .health-dot--ok {
-  background: #21ba45;
+  background: var(--color-quasar-positive);
 }
 
 .health-dot--error {
-  background: #c10015;
+  background: var(--color-quasar-negative);
 }
 
 .health-dot--degraded {
-  background: #f2c037;
+  background: var(--color-quasar-warning);
 }
 
 .health-dot--unknown {
-  background: #9e9e9e;
+  background: var(--color-quasar-grey);
 }
 
 .mcp-empty {
-  align-items: center;
-  color: #8d6e63;
+  place-items: center center;
+  color: var(--color-text-tertiary);
   display: grid;
   gap: 8px;
-  justify-items: center;
   min-height: 240px;
 }
 
@@ -278,7 +277,7 @@ body.body--dark .mcp-subtitle {
   color: inherit;
 }
 
-@media (max-width: 720px) {
+@media (width <= 720px) {
   .mcp-hero {
     align-items: stretch;
     flex-direction: column;

@@ -258,6 +258,6 @@ body.body--dark .avatar-option.is-selected {
 }
 
 body.body--dark .avatar-option__check {
-  background: rgba(18, 24, 34, 0.92);
+  background: rgb(18 24 34 / 92%);
 }
 </style>

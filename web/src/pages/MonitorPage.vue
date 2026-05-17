@@ -175,7 +175,7 @@ async function loadTraces() {
 
 .monitor-primary-btn
   background: var(--color-accent)
-  color: #fff
+  color: var(--color-on-accent)
 
 body:not(.body--dark) .monitor-primary-btn:hover
   background: var(--color-accent-hover)

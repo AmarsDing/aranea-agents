@@ -1,0 +1,2 @@
+=== selector-class-pattern violations by class ===
+224	Expected class selector to be kebab-case (Quasar body--dark and q- prefixed classes are allowed) (selector-class-pattern)

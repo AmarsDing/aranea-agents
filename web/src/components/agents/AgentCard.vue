@@ -70,13 +70,13 @@ const isDark = computed(() => $q.dark.isActive);
 .agent-card {
   display: flex;
   flex-direction: column;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgb(15 23 42 / 8%);
   border-radius: 24px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(255, 255, 255, 0.9)),
-    radial-gradient(circle at top right, rgba(25, 118, 210, 0.08), transparent 30%);
+    linear-gradient(180deg, rgb(255 255 255 / 98%), rgb(255 255 255 / 90%)),
+    radial-gradient(circle at top right, rgb(25 118 210 / 8%), transparent 30%);
   overflow: hidden;
-  box-shadow: 0 14px 36px rgba(16, 24, 40, 0.045);
+  box-shadow: 0 14px 36px rgb(16 24 40 / 4.5%);
   transition:
     transform 180ms ease,
     box-shadow 180ms ease,
@@ -85,8 +85,8 @@ const isDark = computed(() => $q.dark.isActive);
 
 .agent-card:hover {
   transform: translateY(-2px);
-  border-color: rgba(25, 118, 210, 0.32);
-  box-shadow: 0 22px 56px rgba(16, 24, 40, 0.1);
+  border-color: rgb(25 118 210 / 32%);
+  box-shadow: 0 22px 56px rgb(16 24 40 / 10%);
 }
 
 .agent-card__header {
@@ -97,31 +97,31 @@ const isDark = computed(() => $q.dark.isActive);
 }
 
 .agent-card__avatar {
-  box-shadow: 0 12px 28px rgba(25, 118, 210, 0.2);
+  box-shadow: 0 12px 28px rgb(25 118 210 / 20%);
 }
 
 .agent-card__name {
-  color: #101828;
+  color: var(--color-text-dark);
 }
 
 .agent-card__status {
   padding: 4px 8px;
-  background: #eef2f6;
-  color: #475467;
+  background: var(--color-status-info-bg);
+  color: var(--color-text-tertiary);
   font-weight: 700;
   text-transform: capitalize;
 }
 
 .agent-card__status.is-active {
-  background: #e7f8ef;
-  color: #027a48;
+  background: var(--color-status-success-bg);
+  color: var(--color-accent-green);
 }
 
 .agent-card__model {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: #667085;
+  color: var(--color-text-tertiary);
   font-size: 12px;
   font-weight: 600;
 }
@@ -129,7 +129,7 @@ const isDark = computed(() => $q.dark.isActive);
 .agent-description {
   min-height: 52px;
   margin: 12px 0;
-  color: #475467;
+  color: var(--color-text-tertiary);
   font-size: 13px;
   line-height: 1.6;
   display: -webkit-box;
@@ -139,23 +139,23 @@ const isDark = computed(() => $q.dark.isActive);
 }
 
 .agent-card__chip {
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  background: #f8fafc;
-  color: #475467;
+  border: 1px solid rgb(15 23 42 / 8%);
+  background: var(--color-surface-soft);
+  color: var(--color-text-tertiary);
   font-weight: 600;
 }
 
 .agent-card__chip.is-evolving {
-  border-color: rgba(245, 158, 11, 0.22);
-  background: #fff7ed;
-  color: #b45309;
+  border-color: rgb(245 158 11 / 22%);
+  background: var(--color-status-warning-bg);
+  color: var(--color-status-warning-text);
 }
 
 .agent-handle {
   padding: 0;
   border: 0;
   background: transparent;
-  color: #667085;
+  color: var(--color-text-tertiary);
   cursor: pointer;
   font-size: 12px;
   font-weight: 600;
@@ -163,11 +163,11 @@ const isDark = computed(() => $q.dark.isActive);
 
 .agent-card__actions {
   padding: 12px 16px;
-  background: rgba(248, 250, 252, 0.72);
+  background: rgb(248 250 252 / 72%);
 }
 
 .agent-card__context {
-  color: #475467;
+  color: var(--color-text-tertiary);
   font-size: 12px;
   font-weight: 700;
 }
@@ -177,53 +177,53 @@ const isDark = computed(() => $q.dark.isActive);
 }
 
 .agent-card.agent-card--dark {
-  border-color: rgba(148, 163, 184, 0.16);
+  border-color: rgb(148 163 184 / 16%);
   background:
-    linear-gradient(180deg, rgba(17, 24, 39, 0.96), rgba(15, 23, 42, 0.9)),
-    radial-gradient(circle at top right, rgba(59, 130, 246, 0.14), transparent 32%);
-  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.3);
+    linear-gradient(180deg, rgb(17 24 39 / 96%), rgb(15 23 42 / 90%)),
+    radial-gradient(circle at top right, rgb(59 130 246 / 14%), transparent 32%);
+  box-shadow: 0 16px 42px rgb(0 0 0 / 30%);
 }
 
 .agent-card.agent-card--dark:hover {
-  border-color: rgba(96, 165, 250, 0.38);
-  box-shadow: 0 22px 56px rgba(0, 0, 0, 0.42);
+  border-color: rgb(96 165 250 / 38%);
+  box-shadow: 0 22px 56px rgb(0 0 0 / 42%);
 }
 
 .agent-card.agent-card--dark .agent-card__status {
-  background: rgba(51, 65, 85, 0.78);
-  color: #cbd5e1;
+  background: rgb(51 65 85 / 78%);
+  color: var(--color-text-slate-300);
 }
 
 .agent-card.agent-card--dark .agent-card__status.is-active {
-  background: rgba(22, 101, 52, 0.28);
-  color: #86efac;
+  background: rgb(22 101 52 / 28%);
+  color: var(--color-accent-green);
 }
 
 .agent-card.agent-card--dark .agent-card__name {
-  color: #f8fafc;
-  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.35);
+  color: var(--color-surface-soft);
+  text-shadow: 0 1px 1px rgb(0 0 0 / 35%);
 }
 
 .agent-card.agent-card--dark .agent-card__model,
 .agent-card.agent-card--dark .agent-description,
 .agent-card.agent-card--dark .agent-handle,
 .agent-card.agent-card--dark .agent-card__context {
-  color: #94a3b8;
+  color: var(--color-text-tertiary);
 }
 
 .agent-card.agent-card--dark .agent-card__chip {
-  border-color: rgba(148, 163, 184, 0.16);
-  background: rgba(30, 41, 59, 0.78);
-  color: #cbd5e1;
+  border-color: rgb(148 163 184 / 16%);
+  background: rgb(30 41 59 / 78%);
+  color: var(--color-text-slate-300);
 }
 
 .agent-card.agent-card--dark .agent-card__chip.is-evolving {
-  border-color: rgba(245, 158, 11, 0.28);
-  background: rgba(120, 53, 15, 0.26);
-  color: #fbbf24;
+  border-color: rgb(245 158 11 / 28%);
+  background: rgb(120 53 15 / 26%);
+  color: var(--color-accent-amber);
 }
 
 .agent-card.agent-card--dark .agent-card__actions {
-  background: rgba(15, 23, 42, 0.74);
+  background: rgb(15 23 42 / 74%);
 }
 </style>

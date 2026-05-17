@@ -218,7 +218,7 @@ const {
   background: var(--glass-surface-hover);
 }
 
-@media (max-width: 599px) {
+@media (width <= 599px) {
   .agents-page {
     padding: 18px;
   }

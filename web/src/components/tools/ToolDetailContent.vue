@@ -317,7 +317,7 @@ body:not(.body--dark) .tool-icon-btn:hover
 
 .tool-primary-btn
   background: var(--color-accent)
-  color: #fff
+  color: var(--color-on-accent)
 
 .override-item, .run-item
   border-radius: 8px

@@ -45,9 +45,9 @@ function incrementPage() {
   gap: 16px;
   flex-wrap: wrap;
   padding: 12px 16px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgb(15 23 42 / 8%);
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.78);
+  background: rgb(255 255 255 / 78%);
 }
 
 .rows-select {

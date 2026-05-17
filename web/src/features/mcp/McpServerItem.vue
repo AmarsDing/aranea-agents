@@ -92,12 +92,12 @@ function parseJSON<T>(value: string | undefined, fallback: T): T {
 
 <style scoped>
 .mcp-server-item {
-  background: rgba(255, 253, 245, 0.84);
+  background: rgb(255 253 245 / 84%);
   border-radius: 18px;
 }
 
 .mcp-detail-label {
-  color: #8d6e63;
+  color: var(--color-text-tertiary);
   font-weight: 700;
   margin-right: 6px;
 }
@@ -108,6 +108,6 @@ function parseJSON<T>(value: string | undefined, fallback: T): T {
 }
 
 body.body--dark .mcp-server-item {
-  background: rgba(30, 30, 30, 0.72);
+  background: rgb(30 30 30 / 72%);
 }
 </style>

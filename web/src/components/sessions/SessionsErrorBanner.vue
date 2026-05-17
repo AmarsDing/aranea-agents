@@ -15,12 +15,13 @@ defineEmits<{ retry: [] }>();
 <style scoped>
 .sessions-error-banner {
   background: color-mix(in srgb, var(--color-danger) 88%, transparent);
-  color: #fff;
+  color: var(--color-on-accent);
   border: 1px solid color-mix(in srgb, var(--color-danger) 55%, transparent);
   backdrop-filter: blur(var(--glass-blur-default));
   -webkit-backdrop-filter: blur(var(--glass-blur-default));
 }
+
 .sessions-error-action {
-  color: #fff !important;
+  color: var(--color-on-accent) !important;
 }
 </style>

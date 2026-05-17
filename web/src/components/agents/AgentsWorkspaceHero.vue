@@ -82,7 +82,7 @@ defineEmits<{
   box-shadow: none;
 }
 
-@media (max-width: 599px) {
+@media (width <= 599px) {
   .agents-hero__actions {
     width: 100%;
   }

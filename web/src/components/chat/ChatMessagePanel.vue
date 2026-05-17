@@ -877,7 +877,7 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
   width: 9px
   height: 9px
   border-radius: 50%
-  background: #22c55e
+  background: var(--color-accent-green-light)
   box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.6)
   animation: chat-pulse 2.4s ease-in-out infinite
 
@@ -890,7 +890,7 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
     box-shadow: 0 0 0 0 rgba(34, 197, 94, 0)
 
 .chat-message-header__title
-  color: #0f172a
+  color: var(--color-surface-solid)
   font-size: 15px
   font-weight: 800
   letter-spacing: 0.01em
@@ -905,7 +905,7 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
   text-transform: uppercase
 
 :global(.body--dark) .chat-message-header__title
-  color: #f8fafc
+  color: var(--color-text-primary)
 
 :global(.body--dark) .chat-message-header__subtitle
   color: rgba(203, 213, 225, 0.7)
@@ -966,7 +966,7 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
     transform: rotate(360deg)
 
 .chat-empty-state__title
-  color: #1e293b
+  color: var(--color-text-primary)
   font-size: 15px
   font-weight: 700
 
@@ -974,7 +974,7 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
   color: rgba(71, 85, 105, 0.7)
 
 :global(.body--dark) .chat-empty-state__title
-  color: #f1f5f9
+  color: var(--color-text-primary)
 
 :global(.body--dark) .chat-empty-state__hint
   color: rgba(203, 213, 225, 0.7)
@@ -1114,16 +1114,16 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
   overflow-wrap: anywhere
 
 .chat-message-bubble--received
-  background: #ffffff
-  color: #0f172a
+  background: var(--color-on-accent)
+  color: var(--color-surface-solid)
   border: 1px solid rgba(148, 163, 184, 0.22)
   box-shadow: $msg-shadow-md
   background-image: linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(248, 250, 252, 0.92))
 
 .chat-message-bubble--sent
-  color: #ffffff
+  color: var(--color-on-accent)
   border: 1px solid rgba(99, 102, 241, 0.45)
-  background: linear-gradient(135deg, #4f46e5 0%, #6366f1 50%, #818cf8 100%)
+  background: linear-gradient(135deg, var(--color-accent-indigo) 0%, var(--color-accent-indigo-light) 50%, var(--color-accent-indigo-lighter) 100%)
   box-shadow: $msg-shadow-sent
   // 顶部柔和高光
   &::after
@@ -1144,7 +1144,7 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
     top: 0
     bottom: 0
     width: 4px
-    background: var(--bubble-accent, #6366f1)
+    background: var(--bubble-accent, var(--color-accent-indigo-light))
     border-radius: 4px 0 0 4px
 
 .chat-message-bubble--tool
@@ -1175,16 +1175,16 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
 
 // Dark mode（由父组件 props.isDark 直接控制 .chat-message-bubble--dark，避免依赖全局 body--dark）
 .chat-message-bubble--dark.chat-message-bubble--received
-  background: #1e293b
+  background: var(--color-surface-soft)
   background-image: linear-gradient(180deg, rgba(71, 85, 105, 0.55) 0%, rgba(30, 41, 59, 0.92) 100%)
-  color: #f1f5f9
+  color: var(--color-text-primary)
   border-color: rgba(148, 163, 184, 0.18)
   box-shadow: $msg-shadow-dark
 
 .chat-message-bubble--dark.chat-message-bubble--sent
-  background: linear-gradient(135deg, #3730a3 0%, #4338ca 55%, #4f46e5 100%)
+  background: linear-gradient(135deg, var(--color-accent-indigo-darker) 0%, var(--color-accent-indigo-dark) 55%, var(--color-accent-indigo) 100%)
   border-color: rgba(99, 102, 241, 0.6)
-  color: #f8fafc
+  color: rgba(255, 255, 255, 0.95)
 
 .chat-q-message:hover .chat-message-bubble--dark.chat-message-bubble--received
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.3)
@@ -1234,7 +1234,7 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
   font-size: 14px
   font-weight: 700
   letter-spacing: 0.01em
-  color: #0f172a
+  color: var(--color-surface-solid)
   line-height: 1.2
 
 .message-stamp
@@ -1263,7 +1263,7 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
   color: rgba(148, 163, 184, 0.95)
 
 :global(.body--dark) .message-name
-  color: #f1f5f9
+  color: var(--color-text-primary)
 :global(.body--dark) .message-stamp
   color: rgba(203, 213, 225, 0.62)
 
@@ -1275,7 +1275,7 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
   color: rgba(255, 255, 255, 0.72)
 
 .chat-message-bubble--dark.chat-message-bubble--received .message-name
-  color: #f8fafc
+  color: var(--color-text-primary)
 
 .chat-message-bubble--dark.chat-message-bubble--received .message-stamp
   color: rgba(203, 213, 225, 0.68)
@@ -1313,7 +1313,7 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
 // 流式中的气泡左边缘加柔和闪烁高光
 .chat-q-message--streaming .chat-message-bubble
   &::before
-    background: linear-gradient(180deg, var(--bubble-accent, #6366f1) 0%, var(--bubble-accent, #6366f1) 100%) !important
+    background: linear-gradient(180deg, var(--bubble-accent, var(--color-accent-indigo-light)) 0%, var(--bubble-accent, var(--color-accent-indigo-light)) 100%) !important
     animation: chat-stream-glow 1.6s ease-in-out infinite
 
 @keyframes chat-stream-glow
@@ -1372,7 +1372,7 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
   font-weight: 600
   font-size: 14px
   line-height: 1.45
-  color: #0f172a
+  color: var(--color-surface-solid)
 
 .chat-tool-details__hint
   flex-shrink: 0
@@ -1390,7 +1390,7 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
   border-top: 1px dashed rgba(148, 163, 184, 0.45)
 
 .chat-message-bubble--dark .chat-tool-details__summary-text
-  color: #f1f5f9
+  color: var(--color-text-primary)
 
 .chat-message-bubble--dark .chat-tool-details__hint::after
   color: rgba(148, 163, 184, 0.92)
@@ -1409,7 +1409,6 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
   box-sizing: border-box
   font-size: 15px
   overflow-wrap: anywhere
-  word-break: break-word
   white-space: normal
   line-height: 1.78
   position: relative
@@ -1422,7 +1421,7 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
   :deep(h5),
   :deep(h6)
     margin: 0.9em 0 0.45em
-    color: #0f172a
+    color: var(--color-surface-solid)
     font-weight: 700
     line-height: 1.28
     letter-spacing: -0.005em
@@ -1458,12 +1457,12 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
     margin-top: 0.2em
 
   :deep(a)
-    color: #4f46e5
+    color: var(--color-accent-indigo)
     text-decoration: none
     border-bottom: 1px solid rgba(79, 70, 229, 0.35)
     transition: color 0.15s ease, border-color 0.15s ease
   :deep(a:hover)
-    color: #4338ca
+    color: var(--color-accent-indigo-dark)
     border-bottom-color: rgba(79, 70, 229, 0.85)
 
   :deep(table)
@@ -1493,11 +1492,11 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
     vertical-align: top
 
   :deep(th)
-    color: #0f172a
+    color: var(--color-surface-solid)
     font-weight: 700
     letter-spacing: 0.01em
   :deep(td)
-    color: #334155
+    color: var(--color-text-slate-700)
 
   // ===== Code block (with header: lang label + copy button) =====
   :deep(.code-block)
@@ -1507,7 +1506,7 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
     margin: 0.85em 0
     border-radius: 12px
     overflow: hidden
-    background: linear-gradient(180deg, #0f172a 0%, #0b1120 100%)
+    background: linear-gradient(180deg, var(--color-surface-solid) 0%, var(--canvas-base) 100%)
     box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.16)
     text-align: left
 
@@ -1545,12 +1544,12 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
   :deep(.code-block__copy:hover)
     background: rgba(99, 102, 241, 0.18)
     border-color: rgba(99, 102, 241, 0.45)
-    color: #ffffff
+    color: var(--color-on-accent)
 
   :deep(.code-block__copy.is-copied)
     background: rgba(34, 197, 94, 0.18)
     border-color: rgba(34, 197, 94, 0.5)
-    color: #bbf7d0
+    color: var(--color-accent-green-bright)
 
   :deep(.code-block__copy-icon)
     width: 12px
@@ -1567,7 +1566,7 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
     background: transparent
     box-shadow: none
     border-radius: 0
-    color: #e5e7eb
+    color: var(--color-text-dark)
     line-height: 1.6
     font-size: 13.5px
     overflow-x: auto
@@ -1582,8 +1581,8 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
     margin: 0.8em 0
     padding: 14px 16px
     border-radius: 12px
-    background: linear-gradient(180deg, #0f172a 0%, #0b1120 100%)
-    color: #e5e7eb
+    background: linear-gradient(180deg, var(--color-surface-solid) 0%, var(--canvas-base) 100%)
+    color: var(--color-text-dark)
     line-height: 1.6
     font-size: 13.5px
     box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.12)
@@ -1632,17 +1631,17 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
   :deep(h6),
   :deep(p),
   :deep(li)
-    color: #ffffff
+    color: var(--color-on-accent)
 
   :deep(a)
-    color: #ffffff
+    color: var(--color-on-accent)
     border-bottom-color: rgba(255, 255, 255, 0.55)
   :deep(a:hover)
-    border-bottom-color: #ffffff
+    border-bottom-color: var(--color-on-accent)
 
   :deep(code)
     background: rgba(255, 255, 255, 0.20)
-    color: #ffffff
+    color: var(--color-on-accent)
 
   :deep(.code-block)
     background: rgba(15, 23, 42, 0.62)
@@ -1655,7 +1654,7 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
   :deep(.code-block__copy)
     border-color: rgba(255, 255, 255, 0.32)
     background: rgba(255, 255, 255, 0.10)
-    color: #ffffff
+    color: var(--color-on-accent)
   :deep(.code-block__copy:hover)
     background: rgba(255, 255, 255, 0.20)
     border-color: rgba(255, 255, 255, 0.6)
@@ -1672,12 +1671,12 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
     background: rgba(255, 255, 255, 0.18)
   :deep(th),
   :deep(td)
-    color: #ffffff
+    color: var(--color-on-accent)
     border-color: rgba(255, 255, 255, 0.24)
 
 // ===== Dark theme content =====
 .chat-message-content--dark
-  color: #f1f5f9
+  color: var(--color-text-primary)
 
   :deep(h1),
   :deep(h2),
@@ -1685,7 +1684,7 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
   :deep(h4),
   :deep(h5),
   :deep(h6)
-    color: #f8fafc
+    color: var(--color-text-primary)
 
   :deep(p),
   :deep(li),
@@ -1696,10 +1695,10 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
     color: inherit
 
   :deep(a)
-    color: #93c5fd
+    color: var(--color-link)
     border-bottom-color: rgba(147, 197, 253, 0.45)
   :deep(a:hover)
-    color: #bfdbfe
+    color: var(--color-accent-blue-light)
     border-bottom-color: rgba(191, 219, 254, 0.85)
 
   :deep(table)
@@ -1708,16 +1707,16 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
   :deep(thead)
     background: rgba(99, 102, 241, 0.22)
   :deep(th)
-    color: #f8fafc
+    color: var(--color-text-primary)
   :deep(td)
-    color: #e2e8f0
+    color: var(--color-text-dark)
   :deep(th),
   :deep(td)
     border-color: rgba(203, 213, 225, 0.18)
 
   :deep(code)
     background: rgba(226, 232, 240, 0.14)
-    color: #e2e8f0
+    color: var(--color-text-dark)
 
   :deep(blockquote)
     background: rgba(99, 102, 241, 0.12)
@@ -1824,13 +1823,13 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
 .chat-pending-label
   font-size: 12px
   font-weight: 600
-  color: #92400e
+  color: var(--color-accent-amber-dark)
   margin-bottom: 6px
   text-transform: uppercase
   letter-spacing: 0.04em
 
 :global(.body--dark) .chat-pending-label
-  color: #fbbf24
+  color: var(--color-accent-amber)
 
 .chat-pending-item
   padding: 6px 8px
@@ -1845,21 +1844,21 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
 
 .chat-pending-item__content
   font-size: 13px
-  color: #1e293b
+  color: var(--color-text-primary)
   line-height: 1.4
 
 :global(.body--dark) .chat-pending-item__content
-  color: #e2e8f0
+  color: var(--color-text-dark)
 
 .chat-pending-item__meta
   display: flex
   gap: 8px
   margin-top: 2px
   font-size: 11px
-  color: #64748b
+  color: var(--color-text-tertiary)
 
 :global(.body--dark) .chat-pending-item__meta
-  color: #94a3b8
+  color: var(--color-text-tertiary)
 
 .chat-pending-item__status
   font-weight: 600

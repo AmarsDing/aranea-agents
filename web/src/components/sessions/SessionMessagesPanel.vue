@@ -82,22 +82,22 @@ onMounted(loadMessages);
   gap: 12px;
   padding: 12px 16px;
   border-radius: 12px;
-  border: 1px solid rgba(100, 116, 139, 0.15);
-  background: #fff;
+  border: 1px solid rgb(100 116 139 / 15%);
+  background: var(--color-on-accent);
 }
 
 .message-row--user {
-  background: rgba(59, 130, 246, 0.04);
+  background: rgb(59 130 246 / 4%);
 }
 
 .message-row--assistant {
-  background: rgba(16, 185, 129, 0.04);
+  background: rgb(16 185 129 / 4%);
 }
 
 .message-row__avatar {
   flex: 0 0 auto;
   padding-top: 2px;
-  color: #64748b;
+  color: var(--color-text-tertiary);
 }
 
 .message-row__body {
@@ -108,22 +108,22 @@ onMounted(loadMessages);
 .message-row__content {
   margin-top: 6px;
   white-space: pre-wrap;
-  word-break: break-word;
+  overflow-wrap: break-word;
   color: var(--color-text-primary);
   font-size: 14px;
   line-height: 1.6;
 }
 
 :global(.body--dark) .message-row {
-  border-color: rgba(148, 163, 184, 0.18);
-  background: rgba(15, 23, 42, 0.6);
+  border-color: rgb(148 163 184 / 18%);
+  background: rgb(15 23 42 / 60%);
 }
 
 :global(.body--dark) .message-row--user {
-  background: rgba(59, 130, 246, 0.08);
+  background: rgb(59 130 246 / 8%);
 }
 
 :global(.body--dark) .message-row--assistant {
-  background: rgba(16, 185, 129, 0.08);
+  background: rgb(16 185 129 / 8%);
 }
 </style>

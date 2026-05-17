@@ -78,40 +78,40 @@ defineEmits<{
   flex-wrap: wrap;
   padding: 22px 24px;
   background:
-    radial-gradient(circle at top left, rgba(25, 118, 210, 0.08), transparent 28%),
-    linear-gradient(180deg, #ffffff, #fbfcff);
+    radial-gradient(circle at top left, rgb(25 118 210 / 8%), transparent 28%),
+    linear-gradient(180deg, var(--color-on-accent), var(--color-page-tint));
 }
 
 .settings-avatar {
-  box-shadow: 0 14px 34px rgba(25, 118, 210, 0.2);
+  box-shadow: 0 14px 34px rgb(25 118 210 / 20%);
 }
 
 .header-icon-btn {
-  background: rgba(248, 250, 252, 0.92);
+  background: rgb(248 250 252 / 92%);
 }
 
 .settings-status {
   padding: 4px 8px;
-  background: #eef2f6;
-  color: #475467;
+  background: var(--color-status-info-bg);
+  color: var(--color-text-tertiary);
   font-weight: 700;
   text-transform: capitalize;
 }
 
 .settings-status.is-active {
-  background: #e7f8ef;
-  color: #027a48;
+  background: var(--color-status-success-bg);
+  color: var(--color-accent-green);
 }
 
 .settings-chip {
-  border: 1px solid rgba(245, 158, 11, 0.18);
-  background: #fff7ed;
-  color: #b45309;
+  border: 1px solid rgb(245 158 11 / 18%);
+  background: var(--color-status-warning-bg);
+  color: var(--color-status-warning-text);
   font-weight: 700;
 }
 
 .settings-chip.is-evolving {
-  background: #fff4e5;
+  background: var(--color-status-warning-bg-alt);
 }
 
 .settings-action,
@@ -122,7 +122,7 @@ defineEmits<{
 }
 
 .settings-save {
-  box-shadow: 0 12px 26px rgba(25, 118, 210, 0.2);
+  box-shadow: 0 12px 26px rgb(25 118 210 / 20%);
 }
 
 .min-width-0 {
@@ -136,35 +136,35 @@ defineEmits<{
 
 body.body--dark .settings-header {
   background:
-    radial-gradient(circle at top left, rgba(59, 130, 246, 0.16), transparent 30%),
-    linear-gradient(180deg, #1f2937, #111827);
+    radial-gradient(circle at top left, rgb(59 130 246 / 16%), transparent 30%),
+    linear-gradient(180deg, var(--color-text-gray-800), var(--color-surface-elevated));
 }
 
 body.body--dark .header-icon-btn {
-  background: rgba(15, 23, 42, 0.74);
+  background: rgb(15 23 42 / 74%);
 }
 
 body.body--dark .settings-status {
-  background: rgba(148, 163, 184, 0.16);
-  color: #cbd5e1;
+  background: rgb(148 163 184 / 16%);
+  color: var(--color-text-slate-300);
 }
 
 body.body--dark .settings-status.is-active {
-  background: rgba(16, 185, 129, 0.18);
-  color: #86efac;
+  background: rgb(16 185 129 / 18%);
+  color: var(--color-accent-green);
 }
 
 body.body--dark .settings-chip {
-  border-color: rgba(251, 191, 36, 0.24);
-  background: rgba(120, 53, 15, 0.32);
-  color: #fcd34d;
+  border-color: rgb(251 191 36 / 24%);
+  background: rgb(120 53 15 / 32%);
+  color: var(--color-accent-amber-light);
 }
 
 body.body--dark .settings-chip.is-evolving {
-  background: rgba(146, 64, 14, 0.32);
+  background: rgb(146 64 14 / 32%);
 }
 
 body.body--dark .settings-header :deep(.text-grey-7) {
-  color: #94a3b8 !important;
+  color: var(--color-text-tertiary) !important;
 }
 </style>

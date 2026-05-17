@@ -183,7 +183,7 @@ const emit = defineEmits<{
     workspace: string;
     reasoning_mode: string;
     reasoning_level: string;
-    compaction_enabled: boolean;
+    context_compaction_enabled: boolean;
     session_summary_enabled: boolean;
     truncate_strategy: string;
     recent_window_turns: number;
@@ -256,7 +256,7 @@ function onSave() {
     workspace: workspace.value,
     reasoning_mode: reasoningMode.value,
     reasoning_level: reasoningLevel.value,
-    compaction_enabled: compactionEnabled.value,
+    context_compaction_enabled: compactionEnabled.value,
     session_summary_enabled: sessionSummaryEnabled.value,
     truncate_strategy: truncateStrategy.value,
     recent_window_turns: recentWindowTurns.value,

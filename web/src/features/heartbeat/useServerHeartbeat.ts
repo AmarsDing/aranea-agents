@@ -1,19 +1,22 @@
 import { ref } from "vue";
-import { buildHealthWsUrl, getWsOrigin } from "./api";
+import { buildHealthWsUrl } from "./api";
 import { useAuthStore } from "../../stores/auth";
 import { Notify } from "quasar";
+import { getBackendOrigin, readAccessTokenCookie } from "../../config/runtime";
 
 export type ServerHeartbeatOptions = {
   pingInterval?: number;
   pongTimeout?: number;
   reconnectBaseDelay?: number;
   reconnectMaxDelay?: number;
+  initialConnectTimeout?: number;
 };
 
 const DEFAULT_PING_INTERVAL = 15_000;
-const DEFAULT_PONG_TIMEOUT = 45_000;
+const DEFAULT_PONG_TIMEOUT = 30_000;
 const DEFAULT_RECONNECT_BASE_DELAY = 1_000;
 const DEFAULT_RECONNECT_MAX_DELAY = 30_000;
+const DEFAULT_INITIAL_CONNECT_TIMEOUT = 8_000;
 
 export type ServerHeartbeatState = {
   isAlive: boolean;
@@ -21,23 +24,51 @@ export type ServerHeartbeatState = {
   connected: boolean;
 };
 
+const isAlive = ref(true);
+const lastPongAt = ref<number | null>(null);
+const connected = ref(false);
+let heartbeatInstance: ReturnType<typeof createHeartbeat> | null = null;
+
 export function useServerHeartbeat(options?: ServerHeartbeatOptions) {
+  if (!heartbeatInstance) {
+    heartbeatInstance = createHeartbeat(options);
+  }
+  return heartbeatInstance;
+}
+
+export function getServerHeartbeatState() {
+  return { isAlive, lastPongAt, connected };
+}
+
+export async function checkBackendHealth(): Promise<boolean> {
+  const origin = getBackendOrigin();
+  const baseUrl = origin ? `${origin}/healthz` : "/healthz";
+  try {
+    const resp = await fetch(baseUrl, { method: "GET", cache: "no-store", signal: AbortSignal.timeout(5000) });
+    return resp.ok;
+  } catch {
+    return false;
+  }
+}
+
+function createHeartbeat(options?: ServerHeartbeatOptions) {
   const pingInterval = options?.pingInterval ?? DEFAULT_PING_INTERVAL;
   const pongTimeout = options?.pongTimeout ?? DEFAULT_PONG_TIMEOUT;
   const reconnectBaseDelay = options?.reconnectBaseDelay ?? DEFAULT_RECONNECT_BASE_DELAY;
   const reconnectMaxDelay = options?.reconnectMaxDelay ?? DEFAULT_RECONNECT_MAX_DELAY;
-
-  const isAlive = ref(true);
-  const lastPongAt = ref<number | null>(null);
-  const connected = ref(false);
+  const initialConnectTimeout = options?.initialConnectTimeout ?? DEFAULT_INITIAL_CONNECT_TIMEOUT;
 
   let ws: WebSocket | null = null;
   let pingTimer: ReturnType<typeof setInterval> | null = null;
   let timeoutTimer: ReturnType<typeof setInterval> | null = null;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let initialTimer: ReturnType<typeof setTimeout> | null = null;
+  let tokenPollTimer: ReturnType<typeof setInterval> | null = null;
   let reconnectAttempts = 0;
   let stopped = false;
   let shutdownReceived = false;
+  let firstConnection = true;
+  let notifiedDown = false;
 
   function connect(): void {
     if (stopped) return;
@@ -45,18 +76,37 @@ export function useServerHeartbeat(options?: ServerHeartbeatOptions) {
       return;
     }
 
+    const token = readAccessTokenCookie();
+    if (!token) {
+      startTokenPoll();
+      return;
+    }
+
     const url = buildHealthWsUrl();
     try {
       ws = new WebSocket(url);
     } catch {
+      isAlive.value = false;
       scheduleReconnect();
       return;
+    }
+
+    if (firstConnection) {
+      clearInitialTimer();
+      initialTimer = setTimeout(() => {
+        if (!connected.value && firstConnection) {
+          handleServerDown();
+        }
+      }, initialConnectTimeout);
     }
 
     ws.onopen = () => {
       connected.value = true;
       isAlive.value = true;
       reconnectAttempts = 0;
+      firstConnection = false;
+      notifiedDown = false;
+      clearInitialTimer();
       lastPongAt.value = Date.now();
       startPing();
       startTimeoutCheck();
@@ -71,7 +121,7 @@ export function useServerHeartbeat(options?: ServerHeartbeatOptions) {
         }
         if (msg.type === "server_shutdown") {
           shutdownReceived = true;
-          handleTimeout();
+          handleServerDown();
         }
       } catch {
         // ignore
@@ -83,7 +133,11 @@ export function useServerHeartbeat(options?: ServerHeartbeatOptions) {
       stopPing();
       stopTimeoutCheck();
       if (!shutdownReceived) {
-        scheduleReconnect();
+        if (!readAccessTokenCookie()) {
+          startTokenPoll();
+        } else {
+          scheduleReconnect();
+        }
       }
     };
 
@@ -94,6 +148,8 @@ export function useServerHeartbeat(options?: ServerHeartbeatOptions) {
 
   function disconnect(): void {
     stopped = true;
+    clearInitialTimer();
+    stopTokenPoll();
     if (reconnectTimer) {
       clearTimeout(reconnectTimer);
       reconnectTimer = null;
@@ -108,6 +164,13 @@ export function useServerHeartbeat(options?: ServerHeartbeatOptions) {
       ws = null;
     }
     connected.value = false;
+  }
+
+  function clearInitialTimer() {
+    if (initialTimer) {
+      clearTimeout(initialTimer);
+      initialTimer = null;
+    }
   }
 
   function scheduleReconnect(): void {
@@ -140,12 +203,12 @@ export function useServerHeartbeat(options?: ServerHeartbeatOptions) {
     stopTimeoutCheck();
     timeoutTimer = setInterval(() => {
       if (!lastPongAt.value) {
-        handleTimeout();
+        handleServerDown();
         return;
       }
       const elapsed = Date.now() - lastPongAt.value;
       if (elapsed > pongTimeout) {
-        handleTimeout();
+        handleServerDown();
       }
     }, 5_000);
   }
@@ -157,8 +220,28 @@ export function useServerHeartbeat(options?: ServerHeartbeatOptions) {
     }
   }
 
-  async function handleTimeout(): Promise<void> {
+  function startTokenPoll(): void {
+    stopTokenPoll();
+    tokenPollTimer = setInterval(() => {
+      if (readAccessTokenCookie()) {
+        stopTokenPoll();
+        connect();
+      }
+    }, 3_000);
+  }
+
+  function stopTokenPoll(): void {
+    if (tokenPollTimer) {
+      clearInterval(tokenPollTimer);
+      tokenPollTimer = null;
+    }
+  }
+
+  async function handleServerDown(): Promise<void> {
     isAlive.value = false;
+    if (notifiedDown) return;
+    notifiedDown = true;
+
     const auth = useAuthStore();
     auth.user = null;
     auth.sessionChecked = true;

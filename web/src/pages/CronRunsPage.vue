@@ -198,7 +198,7 @@ function formatDate(value?: string) {
 }
 
 .cron-runs-kicker {
-  color: #9a6a4f;
+  color: var(--color-cream-accent);
   font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.16em;
@@ -206,7 +206,7 @@ function formatDate(value?: string) {
 }
 
 .cron-runs-title {
-  color: #4e342e;
+  color: var(--color-cream-accent-dark);
   font-size: clamp(28px, 4vw, 44px);
   font-weight: 900;
   letter-spacing: -0.04em;
@@ -215,7 +215,7 @@ function formatDate(value?: string) {
 }
 
 .cron-runs-subtitle {
-  color: #795548;
+  color: var(--color-text-secondary);
   margin: 0;
   max-width: 720px;
 }
@@ -235,7 +235,7 @@ body.body--dark .cron-runs-subtitle {
   color: inherit;
 }
 
-@media (max-width: 720px) {
+@media (width <= 720px) {
   .cron-runs-hero {
     align-items: stretch;
     flex-direction: column;

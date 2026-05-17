@@ -354,7 +354,7 @@ function parseJSON<T>(value: string | undefined, fallback: T): T {
 }
 
 .cron-kicker {
-  color: #9a6a4f;
+  color: var(--color-cream-accent);
   font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.16em;
@@ -362,7 +362,7 @@ function parseJSON<T>(value: string | undefined, fallback: T): T {
 }
 
 .cron-title {
-  color: #4e342e;
+  color: var(--color-cream-accent-dark);
   font-size: clamp(28px, 4vw, 44px);
   font-weight: 900;
   letter-spacing: -0.04em;
@@ -371,7 +371,7 @@ function parseJSON<T>(value: string | undefined, fallback: T): T {
 }
 
 .cron-subtitle {
-  color: #795548;
+  color: var(--color-text-secondary);
   margin: 0;
   max-width: 720px;
 }
@@ -386,11 +386,10 @@ function parseJSON<T>(value: string | undefined, fallback: T): T {
 }
 
 .cron-empty {
-  align-items: center;
-  color: #8d6e63;
+  place-items: center center;
+  color: var(--color-text-tertiary);
   display: grid;
   gap: 10px;
-  justify-items: center;
   min-height: 280px;
 }
 
@@ -400,7 +399,7 @@ body.body--dark .cron-subtitle {
   color: inherit;
 }
 
-@media (max-width: 720px) {
+@media (width <= 720px) {
   .cron-hero {
     align-items: stretch;
     flex-direction: column;

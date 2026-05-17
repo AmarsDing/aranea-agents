@@ -59,7 +59,7 @@ function isImplemented(type: string): boolean {
 }
 
 .catalog-card--coming-soon {
-  opacity: 0.55;
+  opacity: 55%;
   cursor: not-allowed;
 }
 

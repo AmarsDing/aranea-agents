@@ -170,18 +170,18 @@ const avatarPickerOpen = ref(false);
 .create-agent-card {
   width: 880px;
   max-width: 94vw;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgb(15 23 42 / 8%);
   border-radius: 28px;
   background:
-    radial-gradient(circle at 8% 0%, rgba(25, 118, 210, 0.1), transparent 32%),
-    radial-gradient(circle at 88% 16%, rgba(245, 158, 11, 0.08), transparent 28%),
-    #ffffff;
-  box-shadow: 0 30px 90px rgba(16, 24, 40, 0.2);
+    radial-gradient(circle at 8% 0%, rgb(25 118 210 / 10%), transparent 32%),
+    radial-gradient(circle at 88% 16%, rgb(245 158 11 / 8%), transparent 28%),
+    var(--color-on-accent);
+  box-shadow: 0 30px 90px rgb(16 24 40 / 20%);
 }
 
 .create-agent-card__toolbar {
   padding: 22px 26px;
-  background: linear-gradient(180deg, #ffffff, #fbfcff);
+  background: linear-gradient(180deg, var(--color-on-accent), var(--color-page-tint));
 }
 
 .create-agent-card__body {
@@ -195,12 +195,12 @@ const avatarPickerOpen = ref(false);
 .avatar-column {
   width: 190px;
   padding: 18px 16px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgb(15 23 42 / 8%);
   border-radius: 24px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(248, 250, 252, 0.92)),
-    radial-gradient(circle at top, rgba(25, 118, 210, 0.1), transparent 54%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    linear-gradient(180deg, rgb(255 255 255 / 72%), rgb(248 250 252 / 92%)),
+    radial-gradient(circle at top, rgb(25 118 210 / 10%), transparent 54%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 90%);
 }
 
 .avatar-picker-hit {
@@ -209,8 +209,8 @@ const avatarPickerOpen = ref(false);
 }
 
 .avatar-picker {
-  border: 4px solid #ffffff;
-  box-shadow: 0 18px 40px rgba(25, 118, 210, 0.24);
+  border: 4px solid var(--color-on-accent);
+  box-shadow: 0 18px 40px rgb(25 118 210 / 24%);
   transition:
     transform 180ms ease,
     box-shadow 180ms ease;
@@ -218,7 +218,7 @@ const avatarPickerOpen = ref(false);
 
 .avatar-picker:hover {
   transform: translateY(-2px) scale(1.01);
-  box-shadow: 0 22px 50px rgba(25, 118, 210, 0.3);
+  box-shadow: 0 22px 50px rgb(25 118 210 / 30%);
 }
 
 .avatar-change-btn {
@@ -229,7 +229,7 @@ const avatarPickerOpen = ref(false);
 
 .avatar-column__hint {
   margin-top: 10px;
-  color: #667085;
+  color: var(--color-text-tertiary);
   font-size: 12px;
   line-height: 1.55;
   text-align: center;
@@ -242,11 +242,11 @@ const avatarPickerOpen = ref(false);
 .agent-dialog-control :deep(.q-field__control) {
   min-height: 44px;
   border-radius: 16px;
-  background: #ffffff;
+  background: var(--color-on-accent);
 }
 
 .agent-dialog-control :deep(.q-field__control::before) {
-  border-color: rgba(15, 23, 42, 0.14);
+  border-color: rgb(15 23 42 / 14%);
 }
 
 .agent-dialog-control :deep(.q-field__control::after) {
@@ -255,7 +255,7 @@ const avatarPickerOpen = ref(false);
 
 .agent-dialog-control :deep(textarea) {
   min-height: 132px;
-  color: #1d2939;
+  color: var(--color-text-heading);
   line-height: 1.65;
 }
 
@@ -267,17 +267,17 @@ const avatarPickerOpen = ref(false);
 .description-block {
   margin-top: 20px;
   padding: 18px 18px 14px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgb(15 23 42 / 8%);
   border-radius: 24px;
   background:
-    linear-gradient(180deg, #ffffff, #fbfcff),
-    radial-gradient(circle at top left, rgba(25, 118, 210, 0.05), transparent 35%);
-  box-shadow: 0 12px 30px rgba(16, 24, 40, 0.035);
+    linear-gradient(180deg, var(--color-on-accent), var(--color-page-tint)),
+    radial-gradient(circle at top left, rgb(25 118 210 / 5%), transparent 35%);
+  box-shadow: 0 12px 30px rgb(16 24 40 / 3.5%);
 }
 
 .description-block :deep(.q-chip) {
   font-weight: 700;
-  background: #ffffff;
+  background: var(--color-on-accent);
   transition:
     background 160ms ease,
     border-color 160ms ease,
@@ -286,26 +286,26 @@ const avatarPickerOpen = ref(false);
 
 .description-block :deep(.q-chip:hover) {
   transform: translateY(-1px);
-  background: #eef6ff;
+  background: var(--color-info-soft);
 }
 
 .template-chip--active {
-  border-color: rgba(245, 158, 11, 0.36);
-  background: #fff4e5;
-  color: #b45309;
+  border-color: rgb(245 158 11 / 36%);
+  background: var(--color-status-warning-bg-alt);
+  color: var(--color-status-warning-text);
 }
 
 .self-evolve-card {
   margin-top: 18px;
-  border-color: rgba(245, 158, 11, 0.18);
+  border-color: rgb(245 158 11 / 18%);
   border-radius: 22px;
-  background: linear-gradient(135deg, #fff8ed, #f8fbff);
-  box-shadow: 0 12px 30px rgba(16, 24, 40, 0.035);
+  background: linear-gradient(135deg, var(--color-status-warning-bg-warm), var(--color-page-tint-blue));
+  box-shadow: 0 12px 30px rgb(16 24 40 / 3.5%);
 }
 
 .create-agent-card__actions {
   padding: 14px 22px 20px;
-  background: rgba(248, 250, 252, 0.58);
+  background: rgb(248 250 252 / 58%);
 }
 
 .create-agent-card__actions :deep(.q-btn) {
@@ -315,68 +315,68 @@ const avatarPickerOpen = ref(false);
 }
 
 .create-agent-card.create-agent-card--dark {
-  border-color: rgba(148, 163, 184, 0.16);
+  border-color: rgb(148 163 184 / 16%);
   background:
-    radial-gradient(circle at 8% 0%, rgba(59, 130, 246, 0.14), transparent 32%),
-    radial-gradient(circle at 88% 16%, rgba(245, 158, 11, 0.1), transparent 28%),
-    #111827;
-  color: #e5e7eb;
-  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.55);
+    radial-gradient(circle at 8% 0%, rgb(59 130 246 / 14%), transparent 32%),
+    radial-gradient(circle at 88% 16%, rgb(245 158 11 / 10%), transparent 28%),
+    var(--color-surface-elevated);
+  color: var(--color-border-soft);
+  box-shadow: 0 30px 90px rgb(0 0 0 / 55%);
 }
 
 .create-agent-card.create-agent-card--dark .create-agent-card__toolbar {
-  background: linear-gradient(180deg, rgba(17, 24, 39, 0.98), rgba(15, 23, 42, 0.94));
+  background: linear-gradient(180deg, rgb(17 24 39 / 98%), rgb(15 23 42 / 94%));
 }
 
 .create-agent-card.create-agent-card--dark .avatar-column,
 .create-agent-card.create-agent-card--dark .description-block,
 .create-agent-card.create-agent-card--dark .self-evolve-card {
-  border-color: rgba(148, 163, 184, 0.16);
+  border-color: rgb(148 163 184 / 16%);
   background:
-    linear-gradient(180deg, rgba(30, 41, 59, 0.68), rgba(15, 23, 42, 0.82)),
-    radial-gradient(circle at top, rgba(59, 130, 246, 0.12), transparent 54%);
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+    linear-gradient(180deg, rgb(30 41 59 / 68%), rgb(15 23 42 / 82%)),
+    radial-gradient(circle at top, rgb(59 130 246 / 12%), transparent 54%);
+  box-shadow: 0 12px 30px rgb(0 0 0 / 25%);
 }
 
 .create-agent-card.create-agent-card--dark .avatar-picker {
-  border-color: rgba(15, 23, 42, 0.9);
+  border-color: rgb(15 23 42 / 90%);
 }
 
 .create-agent-card.create-agent-card--dark .avatar-column__hint {
-  color: #94a3b8;
+  color: var(--color-text-tertiary);
 }
 
 .create-agent-card.create-agent-card--dark .agent-dialog-control :deep(.q-field__control) {
-  background: rgba(30, 41, 59, 0.76);
+  background: rgb(30 41 59 / 76%);
 }
 
 .create-agent-card.create-agent-card--dark .agent-dialog-control :deep(.q-field__control::before) {
-  border-color: rgba(148, 163, 184, 0.18);
+  border-color: rgb(148 163 184 / 18%);
 }
 
 .create-agent-card.create-agent-card--dark .agent-dialog-control :deep(textarea) {
-  color: #e5e7eb;
+  color: var(--color-border-soft);
 }
 
 .create-agent-card.create-agent-card--dark .description-block :deep(.q-chip) {
-  background: rgba(30, 41, 59, 0.72);
+  background: rgb(30 41 59 / 72%);
 }
 
 .create-agent-card.create-agent-card--dark .description-block :deep(.q-chip:hover) {
-  background: rgba(51, 65, 85, 0.78);
+  background: rgb(51 65 85 / 78%);
 }
 
 .create-agent-card.create-agent-card--dark .template-chip--active {
-  border-color: rgba(245, 158, 11, 0.36);
-  background: rgba(120, 53, 15, 0.32);
-  color: #fbbf24;
+  border-color: rgb(245 158 11 / 36%);
+  background: rgb(120 53 15 / 32%);
+  color: var(--color-accent-amber);
 }
 
 .create-agent-card.create-agent-card--dark .create-agent-card__actions {
-  background: rgba(15, 23, 42, 0.72);
+  background: rgb(15 23 42 / 72%);
 }
 
-@media (max-width: 767px) {
+@media (width <= 767px) {
   .avatar-column {
     width: 100%;
   }

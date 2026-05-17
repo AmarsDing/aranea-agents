@@ -15,13 +15,13 @@ defineEmits<{ retry: [] }>();
 <style scoped lang="sass">
 .monitor-error-banner
   background: color-mix(in srgb, var(--color-danger) 88%, transparent)
-  color: #fff
+  color: var(--color-on-accent)
   border: 1px solid color-mix(in srgb, var(--color-danger) 55%, transparent)
   backdrop-filter: blur(var(--glass-blur-default))
   -webkit-backdrop-filter: blur(var(--glass-blur-default))
 
 .monitor-error-banner__action
-  color: #fff !important
+  color: var(--color-on-accent) !important
 
 body.body--dark .monitor-error-banner
   background: color-mix(in srgb, var(--color-danger) 28%, transparent)

@@ -117,7 +117,7 @@ defineEmits<{
   padding: 0;
   border: 0;
   background: transparent;
-  color: #667085;
+  color: var(--color-text-tertiary);
   cursor: pointer;
   font-size: 12px;
 }
@@ -125,15 +125,15 @@ defineEmits<{
 .empty-agent-card,
 .agents-table {
   border-radius: 24px;
-  border-color: rgba(15, 23, 42, 0.08);
-  box-shadow: 0 18px 48px rgba(16, 24, 40, 0.05);
+  border-color: rgb(15 23 42 / 8%);
+  box-shadow: 0 18px 48px rgb(16 24 40 / 5%);
 }
 
 .empty-agent-card {
   overflow: hidden;
   background:
-    radial-gradient(circle at center 26%, rgba(25, 118, 210, 0.08), transparent 22%),
-    linear-gradient(180deg, #ffffff, #fbfcff);
+    radial-gradient(circle at center 26%, rgb(25 118 210 / 8%), transparent 22%),
+    linear-gradient(180deg, var(--color-on-accent), var(--color-page-tint));
 }
 
 .empty-agent-state {
@@ -146,22 +146,22 @@ defineEmits<{
   place-items: center;
   width: 108px;
   height: 108px;
-  border: 1px solid rgba(25, 118, 210, 0.12);
+  border: 1px solid rgb(25 118 210 / 12%);
   border-radius: 32px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(238, 246, 255, 0.9)),
-    radial-gradient(circle at top, rgba(25, 118, 210, 0.16), transparent 55%);
-  box-shadow: 0 18px 42px rgba(16, 24, 40, 0.08);
+    linear-gradient(180deg, rgb(255 255 255 / 90%), rgb(238 246 255 / 90%)),
+    radial-gradient(circle at top, rgb(25 118 210 / 16%), transparent 55%);
+  box-shadow: 0 18px 42px rgb(16 24 40 / 8%);
 }
 
 .agents-table :deep(th) {
-  color: #475467;
+  color: var(--color-text-tertiary);
   font-size: 12px;
   font-weight: 700;
-  background: #f8fafc;
+  background: var(--color-surface-soft);
 }
 
 .agents-table :deep(td) {
-  color: #344054;
+  color: var(--color-text-gray-600-alt);
 }
 </style>

@@ -414,9 +414,9 @@ function formatDate(value?: string) {
 .memory-page {
   min-height: 100%;
   background:
-    radial-gradient(circle at 8% 0%, rgba(25, 118, 210, 0.12), transparent 30%),
-    radial-gradient(circle at 92% 12%, rgba(156, 39, 176, 0.08), transparent 28%),
-    linear-gradient(180deg, #fbfcff 0%, #f7f9fc 48%, #ffffff 100%);
+    radial-gradient(circle at 8% 0%, rgb(25 118 210 / 12%), transparent 30%),
+    radial-gradient(circle at 92% 12%, rgb(156 39 176 / 8%), transparent 28%),
+    linear-gradient(180deg, var(--color-page-tint) 0%, var(--color-page-tint-alt) 48%, var(--color-on-accent) 100%);
 }
 
 .memory-hero {
@@ -428,7 +428,7 @@ function formatDate(value?: string) {
 }
 
 .memory-kicker {
-  color: #1976d2;
+  color: var(--color-info);
   font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.16em;
@@ -436,7 +436,7 @@ function formatDate(value?: string) {
 }
 
 .memory-title {
-  color: #1d2939;
+  color: var(--color-text-heading);
   font-size: clamp(30px, 4vw, 46px);
   font-weight: 900;
   letter-spacing: -0.04em;
@@ -445,7 +445,7 @@ function formatDate(value?: string) {
 }
 
 .memory-subtitle {
-  color: #667085;
+  color: var(--color-text-tertiary);
   margin: 0;
   max-width: 760px;
 }
@@ -480,7 +480,7 @@ function formatDate(value?: string) {
 
 .memory-flow-node {
   align-items: center;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgb(15 23 42 / 8%);
   border-radius: 16px;
   display: flex;
   gap: 12px;
@@ -488,20 +488,20 @@ function formatDate(value?: string) {
 }
 
 .memory-active-item {
-  background: rgba(25, 118, 210, 0.08);
+  background: rgb(25 118 210 / 8%);
   color: var(--q-primary);
 }
 
 .memory-info-banner {
-  background: #eef6ff;
-  color: #175cd3;
+  background: var(--color-info-soft);
+  color: var(--color-status-info-text-light);
 }
 
 .memory-pre {
-  background: #f8fafc;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: var(--color-surface-soft);
+  border: 1px solid rgb(15 23 42 / 8%);
   border-radius: 14px;
-  color: #1d2939;
+  color: var(--color-text-heading);
   line-height: 1.55;
   margin: 12px 0 0;
   max-height: 320px;
@@ -511,53 +511,53 @@ function formatDate(value?: string) {
 }
 
 .memory-drawer {
-  background: #ffffff;
+  background: var(--color-on-accent);
 }
 
 body.body--dark .memory-page {
   background:
-    radial-gradient(circle at 8% 0%, rgba(59, 130, 246, 0.18), transparent 32%),
-    radial-gradient(circle at 92% 12%, rgba(168, 85, 247, 0.13), transparent 30%),
-    linear-gradient(180deg, #0f172a 0%, #111827 48%, #0b1120 100%);
+    radial-gradient(circle at 8% 0%, rgb(59 130 246 / 18%), transparent 32%),
+    radial-gradient(circle at 92% 12%, rgb(168 85 247 / 13%), transparent 30%),
+    linear-gradient(180deg, var(--color-surface-solid) 0%, var(--color-surface-elevated) 48%, var(--canvas-base) 100%);
 }
 
 body.body--dark .memory-title {
-  color: #f8fafc;
+  color: var(--color-surface-soft);
 }
 
 body.body--dark .memory-subtitle,
 body.body--dark .memory-page .text-grey-7 {
-  color: #94a3b8 !important;
+  color: var(--color-text-tertiary) !important;
 }
 
 body.body--dark .memory-card,
 body.body--dark .memory-metric-card,
 body.body--dark .memory-tabs-card {
-  background: rgba(17, 24, 39, 0.88);
-  border-color: rgba(148, 163, 184, 0.18);
+  background: rgb(17 24 39 / 88%);
+  border-color: rgb(148 163 184 / 18%);
 }
 
 body.body--dark .memory-flow-node {
-  border-color: rgba(148, 163, 184, 0.18);
-  background: rgba(15, 23, 42, 0.5);
+  border-color: rgb(148 163 184 / 18%);
+  background: rgb(15 23 42 / 50%);
 }
 
 body.body--dark .memory-info-banner {
-  background: rgba(30, 64, 175, 0.24);
-  color: #bfdbfe;
+  background: rgb(30 64 175 / 24%);
+  color: var(--color-accent-blue-light);
 }
 
 body.body--dark .memory-pre {
-  background: #0f172a;
-  border-color: rgba(148, 163, 184, 0.2);
-  color: #e2e8f0;
+  background: var(--color-surface-solid);
+  border-color: rgb(148 163 184 / 20%);
+  color: var(--color-text-dark);
 }
 
 body.body--dark .memory-drawer {
-  background: #111827;
+  background: var(--color-surface-elevated);
 }
 
-@media (max-width: 800px) {
+@media (width <= 800px) {
   .memory-hero {
     align-items: stretch;
     flex-direction: column;

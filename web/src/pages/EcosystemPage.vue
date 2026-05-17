@@ -464,8 +464,8 @@ function scrollToCatalog() {
 .ecosystem-hero__content {
   padding: clamp(18px, 4vw, 36px);
   border-radius: 28px;
-  background: linear-gradient(135deg, rgba(37, 99, 235, 0.12), rgba(20, 184, 166, 0.12));
-  border: 1px solid rgba(37, 99, 235, 0.14);
+  background: linear-gradient(135deg, rgb(37 99 235 / 12%), rgb(20 184 166 / 12%));
+  border: 1px solid rgb(37 99 235 / 14%);
 }
 
 .ecosystem-title {
@@ -480,8 +480,8 @@ function scrollToCatalog() {
   max-width: 680px;
   margin: 14px 0 0;
   font-size: 1rem;
-  color: currentColor;
-  opacity: 0.76;
+  color: currentcolor;
+  opacity: 76%;
 }
 
 .ecosystem-hero-card,
@@ -498,7 +498,7 @@ function scrollToCatalog() {
 
 .market-product-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 14px 34px rgba(37, 99, 235, 0.16);
+  box-shadow: 0 14px 34px rgb(37 99 235 / 16%);
 }
 
 .product-description {
@@ -509,34 +509,34 @@ function scrollToCatalog() {
   width: min(760px, 92vw);
 }
 
-@media (max-width: 900px) {
+@media (width <= 900px) {
   .ecosystem-hero {
     grid-template-columns: 1fr;
   }
 }
 
 :global(body.body--dark) .ecosystem-page {
-  background: linear-gradient(160deg, #0b1220 0%, #111827 48%, #0f172a 100%);
-  color: #e5e7eb;
+  background: linear-gradient(160deg, var(--canvas-base) 0%, var(--color-surface-elevated) 48%, var(--color-surface-solid) 100%);
+  color: var(--color-border-soft);
 }
 
 :global(body.body--dark) .ecosystem-hero__content {
-  background: linear-gradient(135deg, rgba(37, 99, 235, 0.2), rgba(20, 184, 166, 0.16));
-  border-color: rgba(148, 163, 184, 0.16);
+  background: linear-gradient(135deg, rgb(37 99 235 / 20%), rgb(20 184 166 / 16%));
+  border-color: rgb(148 163 184 / 16%);
 }
 
 :global(body.body--dark) .ecosystem-page .q-card {
-  background: rgba(17, 24, 39, 0.88) !important;
-  border-color: rgba(148, 163, 184, 0.16);
-  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.32);
+  background: rgb(17 24 39 / 88%) !important;
+  border-color: rgb(148 163 184 / 16%);
+  box-shadow: 0 12px 34px rgb(0 0 0 / 32%);
 }
 
 :global(body.body--dark) .ecosystem-page .q-field__control {
-  background: rgba(30, 41, 59, 0.72);
-  border-color: rgba(148, 163, 184, 0.16);
+  background: rgb(30 41 59 / 72%);
+  border-color: rgb(148 163 184 / 16%);
 }
 
 :global(body.body--dark) .ecosystem-page .text-grey-7 {
-  color: #94a3b8 !important;
+  color: var(--color-text-tertiary) !important;
 }
 </style>

@@ -225,18 +225,18 @@ function toNullableNumber(value: unknown) {
 .trend-summary-card {
   padding: 14px;
   border-radius: 14px;
-  background: linear-gradient(180deg, #ffffff, #f8fafc);
+  background: linear-gradient(180deg, var(--color-on-accent), var(--color-surface-soft));
 }
 
 .trend-summary-value {
-  color: #111827;
+  color: var(--color-surface-elevated);
   font-size: 22px;
   font-weight: 750;
   margin: 4px 0 8px;
 }
 
 .field-label {
-  color: #6b7280;
+  color: var(--color-text-gray-500);
   font-size: 12px;
   font-weight: 600;
   margin-bottom: 6px;
@@ -260,7 +260,7 @@ function toNullableNumber(value: unknown) {
 
 .trend-bar__track {
   align-items: end;
-  background: rgba(37, 99, 235, 0.08);
+  background: rgb(37 99 235 / 8%);
   border-radius: 999px;
   display: flex;
   height: 112px;
@@ -269,44 +269,44 @@ function toNullableNumber(value: unknown) {
 }
 
 .trend-bar__fill {
-  background: linear-gradient(180deg, #93c5fd, #2563eb);
+  background: linear-gradient(180deg, var(--color-link), var(--color-accent-blue));
   border-radius: 999px;
   width: 100%;
 }
 
 .trend-dialog.trend-dialog--dark {
-  border-color: rgba(148, 163, 184, 0.16);
-  background: rgba(17, 24, 39, 0.94);
-  color: #e5e7eb;
+  border-color: rgb(148 163 184 / 16%);
+  background: rgb(17 24 39 / 94%);
+  color: var(--color-border-soft);
 }
 
 .trend-dialog.trend-dialog--dark .trend-summary-card {
-  border-color: rgba(148, 163, 184, 0.16);
-  background: linear-gradient(180deg, rgba(30, 41, 59, 0.78), rgba(15, 23, 42, 0.82));
+  border-color: rgb(148 163 184 / 16%);
+  background: linear-gradient(180deg, rgb(30 41 59 / 78%), rgb(15 23 42 / 82%));
 }
 
 .trend-dialog.trend-dialog--dark .trend-summary-value {
-  color: #f8fafc;
+  color: var(--color-surface-soft);
 }
 
 .trend-dialog.trend-dialog--dark .field-label {
-  color: #94a3b8;
+  color: var(--color-text-tertiary);
 }
 
 .trend-dialog.trend-dialog--dark .trend-bar__track {
-  background: rgba(51, 65, 85, 0.72);
+  background: rgb(51 65 85 / 72%);
 }
 
 .trend-dialog.trend-dialog--dark :deep(.q-markup-table) {
-  background: rgba(15, 23, 42, 0.86);
-  color: #e5e7eb;
+  background: rgb(15 23 42 / 86%);
+  color: var(--color-border-soft);
 }
 
 .trend-dialog.trend-dialog--dark :deep(td) {
-  border-color: rgba(148, 163, 184, 0.12);
+  border-color: rgb(148 163 184 / 12%);
 }
 
-@media (max-width: 1023px) {
+@media (width <= 1023px) {
   .trend-summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

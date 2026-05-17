@@ -322,7 +322,7 @@ function isSensitiveKey(key: string) {
 }
 
 .section-label {
-  color: #5d4037;
+  color: var(--color-text-primary);
   font-weight: 800;
 }
 

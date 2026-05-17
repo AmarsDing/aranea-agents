@@ -208,9 +208,9 @@ function prettyJSON(value: string) {
   flex-direction: column;
   overflow: hidden;
   border-radius: 24px;
-  background: #f8fafc;
-  color: #0f172a;
-  box-shadow: 0 32px 90px rgba(15, 23, 42, 0.22);
+  background: var(--color-surface-soft);
+  color: var(--color-surface-solid);
+  box-shadow: 0 32px 90px rgb(15 23 42 / 22%);
 }
 
 .session-trace__header {
@@ -218,7 +218,7 @@ function prettyJSON(value: string) {
 }
 
 .session-trace__eyebrow {
-  color: #64748b;
+  color: var(--color-text-tertiary);
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.14em;
@@ -227,7 +227,7 @@ function prettyJSON(value: string) {
 
 .session-trace__title {
   margin-top: 4px;
-  color: #0f172a;
+  color: var(--color-surface-solid);
   font-size: 22px;
   font-weight: 850;
   line-height: 1.35;
@@ -235,7 +235,7 @@ function prettyJSON(value: string) {
 
 .session-trace__subtitle {
   margin-top: 4px;
-  color: #64748b;
+  color: var(--color-text-tertiary);
   font-size: 13px;
 }
 
@@ -245,21 +245,21 @@ function prettyJSON(value: string) {
 }
 
 .session-trace-stat {
-  border: 1px solid rgba(100, 116, 139, 0.22);
+  border: 1px solid rgb(100 116 139 / 22%);
   border-radius: 16px;
-  background: #fff;
+  background: var(--color-on-accent);
   padding: 14px;
-  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 10px 28px rgb(15 23 42 / 6%);
 }
 
 .session-trace-stat__value {
-  color: #0f172a;
+  color: var(--color-surface-solid);
   font-size: 22px;
   font-weight: 850;
 }
 
 .session-trace-stat__label {
-  color: #64748b;
+  color: var(--color-text-tertiary);
   font-size: 12px;
   font-weight: 700;
 }
@@ -273,7 +273,7 @@ function prettyJSON(value: string) {
 
 .session-trace__empty {
   min-height: 280px;
-  color: #64748b;
+  color: var(--color-text-tertiary);
   text-align: center;
 }
 
@@ -283,16 +283,16 @@ function prettyJSON(value: string) {
 }
 
 .session-trace-entry {
-  border: 1px solid rgba(100, 116, 139, 0.2);
+  border: 1px solid rgb(100 116 139 / 20%);
   border-radius: 16px;
-  background: #fff;
-  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+  background: var(--color-on-accent);
+  box-shadow: 0 12px 30px rgb(15 23 42 / 8%);
   overflow: hidden;
 }
 
 .session-trace-entry__title {
   max-width: 220px;
-  color: #1e293b;
+  color: var(--color-surface-soft);
   font-weight: 850;
 }
 
@@ -302,14 +302,14 @@ function prettyJSON(value: string) {
 }
 
 .session-trace-entry :deep(.q-item__label) {
-  color: #334155;
+  color: var(--color-text-slate-700);
   font-weight: 650;
   line-height: 1.55;
 }
 
 .session-trace-entry__meta {
   padding: 12px 16px 0;
-  color: #64748b;
+  color: var(--color-text-tertiary);
   font-size: 12px;
 }
 
@@ -320,7 +320,7 @@ function prettyJSON(value: string) {
 }
 
 .session-trace-entry__meta strong {
-  color: #0f172a;
+  color: var(--color-surface-solid);
 }
 
 .session-trace-entry__detail {
@@ -328,43 +328,43 @@ function prettyJSON(value: string) {
   margin: 12px 16px 16px;
   overflow: auto;
   border-radius: 12px;
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  background: #f1f5f9;
-  color: #0f172a;
+  border: 1px solid rgb(148 163 184 / 24%);
+  background: var(--color-page-tint-cool);
+  color: var(--color-surface-solid);
   padding: 14px;
   white-space: pre-wrap;
-  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .session-trace-entry__detail--empty {
-  background: rgba(148, 163, 184, 0.12);
-  color: #64748b;
+  background: rgb(148 163 184 / 12%);
+  color: var(--color-text-tertiary);
 }
 
 .session-trace-timeline :deep(.q-timeline__title) {
-  color: #1e293b;
+  color: var(--color-surface-soft);
 }
 
 .session-trace-timeline :deep(.q-timeline__subtitle) {
-  color: #475569;
+  color: var(--color-text-slate-600);
   font-weight: 650;
-  opacity: 1;
+  opacity: 100%;
 }
 
 .session-trace-timeline :deep(.q-timeline__content) {
-  color: #334155;
+  color: var(--color-text-slate-700);
 }
 
 :global(.body--dark) .session-trace {
-  background: #0b1120;
-  color: #e2e8f0;
-  box-shadow: 0 32px 90px rgba(0, 0, 0, 0.52);
+  background: var(--canvas-base);
+  color: var(--color-text-dark);
+  box-shadow: 0 32px 90px rgb(0 0 0 / 52%);
 }
 
 :global(.body--dark) .session-trace__title,
 :global(.body--dark) .session-trace-stat__value,
 :global(.body--dark) .session-trace-entry__title {
-  color: #f8fafc;
+  color: var(--color-surface-soft);
 }
 
 :global(.body--dark) .session-trace__subtitle,
@@ -372,39 +372,39 @@ function prettyJSON(value: string) {
 :global(.body--dark) .session-trace-stat__label,
 :global(.body--dark) .session-trace__empty,
 :global(.body--dark) .session-trace-entry__meta {
-  color: rgba(203, 213, 225, 0.76);
+  color: rgb(203 213 225 / 76%);
 }
 
 :global(.body--dark) .session-trace-stat,
 :global(.body--dark) .session-trace-entry {
-  border-color: rgba(148, 163, 184, 0.18);
-  background: rgba(15, 23, 42, 0.88);
+  border-color: rgb(148 163 184 / 18%);
+  background: rgb(15 23 42 / 88%);
 }
 
 :global(.body--dark) .session-trace-entry :deep(.q-item__label) {
-  color: rgba(226, 232, 240, 0.92);
+  color: rgb(226 232 240 / 92%);
 }
 
 :global(.body--dark) .session-trace-entry__detail {
-  border-color: rgba(148, 163, 184, 0.18);
-  background: #0f172a;
-  color: #e2e8f0;
+  border-color: rgb(148 163 184 / 18%);
+  background: var(--color-surface-solid);
+  color: var(--color-text-dark);
 }
 
 :global(.body--dark) .session-trace-entry__meta strong {
-  color: #f8fafc;
+  color: var(--color-surface-soft);
 }
 
 :global(.body--dark) .session-trace-timeline :deep(.q-timeline__title) {
-  color: #f8fafc;
+  color: var(--color-surface-soft);
 }
 
 :global(.body--dark) .session-trace-timeline :deep(.q-timeline__subtitle) {
-  color: rgba(203, 213, 225, 0.82);
-  opacity: 1;
+  color: rgb(203 213 225 / 82%);
+  opacity: 100%;
 }
 
 :global(.body--dark) .session-trace-timeline :deep(.q-timeline__content) {
-  color: rgba(226, 232, 240, 0.9);
+  color: rgb(226 232 240 / 90%);
 }
 </style>

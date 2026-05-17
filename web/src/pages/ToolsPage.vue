@@ -322,7 +322,7 @@ onMounted(loadRows);
 
 .tools-error-banner
   background: rgba(229, 92, 92, 0.92)
-  color: #fff
+  color: var(--color-on-accent)
   border: 1px solid rgba(255, 255, 255, 0.25)
 
 body.body--dark .tools-error-banner
@@ -342,7 +342,7 @@ body.body--dark .tools-error-banner
 
 .tool-primary-btn
   background: var(--color-accent)
-  color: #fff
+  color: var(--color-on-accent)
 
 body:not(.body--dark) .tool-primary-btn:hover
   background: var(--color-accent-hover)

@@ -20,7 +20,7 @@ withDefaults(
   font-size: 12px
   line-height: 1.45
   white-space: pre-wrap
-  word-break: break-word
+  overflow-wrap: break-word
   max-height: 320px
   overflow: auto
   color: var(--color-text-primary)

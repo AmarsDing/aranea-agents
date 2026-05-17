@@ -89,37 +89,37 @@ function formatCost(value?: number) {
   width: min(640px, 94vw);
   min-height: 100vh;
   border-radius: 24px 0 0 24px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 18px 48px rgba(16, 24, 40, 0.06);
+  border: 1px solid rgb(15 23 42 / 8%);
+  background: rgb(255 255 255 / 96%);
+  box-shadow: 0 18px 48px rgb(16 24 40 / 6%);
 }
 
 .run-list {
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgb(15 23 42 / 8%);
   border-radius: 18px;
   overflow: hidden;
 }
 
 .run-detail {
   position: relative;
-  background: rgba(248, 250, 252, 0.84);
+  background: rgb(248 250 252 / 84%);
 }
 
 .run-preview {
   white-space: pre-wrap;
   padding: 10px 12px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgb(15 23 42 / 8%);
   border-radius: 14px;
-  background: #ffffff;
-  color: #475467;
+  background: var(--color-on-accent);
+  color: var(--color-text-tertiary);
   line-height: 1.55;
 }
 
 .run-step {
   padding: 12px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgb(15 23 42 / 8%);
   border-radius: 16px;
-  background: #ffffff;
+  background: var(--color-on-accent);
 }
 
 .run-step + .run-step {
@@ -127,20 +127,20 @@ function formatCost(value?: number) {
 }
 
 .team-runs-panel.is-dark {
-  border-color: rgba(148, 163, 184, 0.16);
-  background: rgba(17, 24, 39, 0.9);
-  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.32);
+  border-color: rgb(148 163 184 / 16%);
+  background: rgb(17 24 39 / 90%);
+  box-shadow: 0 14px 38px rgb(0 0 0 / 32%);
 }
 
 .team-runs-panel.is-dark .run-detail,
 .team-runs-panel.is-dark .run-step,
 .team-runs-panel.is-dark .run-preview,
 .team-runs-panel.is-dark .run-list {
-  border-color: rgba(148, 163, 184, 0.14);
-  background: rgba(30, 41, 59, 0.76);
+  border-color: rgb(148 163 184 / 14%);
+  background: rgb(30 41 59 / 76%);
 }
 
 .team-runs-panel.is-dark .run-preview {
-  color: #cbd5e1;
+  color: var(--color-text-slate-300);
 }
 </style>

@@ -388,8 +388,8 @@ function upsertRunStep(step: TeamRunStep) {
   min-height: 100%;
   padding: 28px;
   background:
-    radial-gradient(circle at 86% 0%, rgba(25, 118, 210, 0.12), transparent 28%),
-    linear-gradient(180deg, #fbfcff 0%, #f7f9fc 46%, #ffffff 100%);
+    radial-gradient(circle at 86% 0%, rgb(25 118 210 / 12%), transparent 28%),
+    linear-gradient(180deg, var(--color-page-tint) 0%, var(--color-page-tint-alt) 46%, var(--color-on-accent) 100%);
 }
 
 .teams-hero {
@@ -403,10 +403,10 @@ function upsertRunStep(step: TeamRunStep) {
 .teams-kicker {
   display: inline-flex;
   padding: 5px 11px;
-  border: 1px solid rgba(25, 118, 210, 0.14);
+  border: 1px solid rgb(25 118 210 / 14%);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.78);
-  color: #155ebc;
+  background: rgb(255 255 255 / 78%);
+  color: var(--color-link);
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.08em;
@@ -415,7 +415,7 @@ function upsertRunStep(step: TeamRunStep) {
 
 .teams-title {
   margin: 12px 0 0;
-  color: #101828;
+  color: var(--color-text-dark);
   font-size: clamp(34px, 5vw, 54px);
   font-weight: 800;
   letter-spacing: -0.055em;
@@ -425,15 +425,15 @@ function upsertRunStep(step: TeamRunStep) {
 .teams-subtitle {
   max-width: 720px;
   margin: 10px 0 0;
-  color: #5f6b7a;
+  color: var(--color-text-tertiary);
   line-height: 1.65;
 }
 
 .teams-empty {
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgb(15 23 42 / 8%);
   border-radius: 24px;
-  background: rgba(255, 255, 255, 0.86);
-  box-shadow: 0 18px 48px rgba(16, 24, 40, 0.06);
+  background: rgb(255 255 255 / 86%);
+  box-shadow: 0 18px 48px rgb(16 24 40 / 6%);
   backdrop-filter: blur(16px);
 }
 
@@ -445,32 +445,32 @@ function upsertRunStep(step: TeamRunStep) {
 
 .teams-page.is-dark {
   background:
-    radial-gradient(circle at 86% 0%, rgba(59, 130, 246, 0.16), transparent 30%),
-    linear-gradient(160deg, #0b1220 0%, #111827 48%, #0f172a 100%);
-  color: #e5e7eb;
+    radial-gradient(circle at 86% 0%, rgb(59 130 246 / 16%), transparent 30%),
+    linear-gradient(160deg, var(--canvas-base) 0%, var(--color-surface-elevated) 48%, var(--color-surface-solid) 100%);
+  color: var(--color-border-soft);
 }
 
 .teams-page.is-dark .teams-kicker {
-  border-color: rgba(96, 165, 250, 0.22);
-  background: rgba(30, 64, 175, 0.24);
-  color: #93c5fd;
+  border-color: rgb(96 165 250 / 22%);
+  background: rgb(30 64 175 / 24%);
+  color: var(--color-link);
 }
 
 .teams-page.is-dark .teams-title {
-  color: #f8fafc;
+  color: var(--color-surface-soft);
 }
 
 .teams-page.is-dark .teams-subtitle {
-  color: #94a3b8;
+  color: var(--color-text-tertiary);
 }
 
 .teams-empty.is-dark {
-  border-color: rgba(148, 163, 184, 0.16);
-  background: rgba(17, 24, 39, 0.9);
-  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.32);
+  border-color: rgb(148 163 184 / 16%);
+  background: rgb(17 24 39 / 90%);
+  box-shadow: 0 14px 38px rgb(0 0 0 / 32%);
 }
 
-@media (max-width: 599px) {
+@media (width <= 599px) {
   .teams-page {
     padding: 18px;
   }

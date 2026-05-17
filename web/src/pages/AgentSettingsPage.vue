@@ -589,7 +589,7 @@
       :workspace-input="advancedState.workspace"
       :reasoning-mode-input="advancedState.reasoning_mode"
       :reasoning-level-input="advancedState.reasoning_level"
-      :compaction-enabled-input="advancedState.compaction_enabled"
+      :compaction-enabled-input="advancedState.context_compaction_enabled"
       :session-summary-enabled-input="advancedState.session_summary_enabled"
       :truncate-strategy-input="advancedState.truncate_strategy"
       :recent-window-turns-input="advancedState.recent_window_turns"
@@ -658,7 +658,7 @@ const advancedState = reactive({
   workspace: "",
   reasoning_mode: "provider_default",
   reasoning_level: "off",
-  compaction_enabled: false,
+  context_compaction_enabled: false,
   session_summary_enabled: false,
   truncate_strategy: "sliding",
   recent_window_turns: 20,
@@ -1296,7 +1296,7 @@ function hydrateSettings(agent: Agent) {
       workspace: agent.settings.workspace || "",
       reasoning_mode: agent.settings.reasoning_mode || "provider_default",
       reasoning_level: agent.settings.reasoning_level || "off",
-      compaction_enabled: agent.settings.compaction_enabled ?? false,
+      context_compaction_enabled: agent.settings.context_compaction_enabled ?? false,
       session_summary_enabled: agent.settings.session_summary_enabled ?? false,
       truncate_strategy: agent.settings.l0_truncate_strategy || "sliding",
       recent_window_turns: agent.settings.l0_recent_window_turns ?? 20,
@@ -1359,7 +1359,7 @@ function onAdvancedSave(payload: {
   workspace: string;
   reasoning_mode: string;
   reasoning_level: string;
-  compaction_enabled: boolean;
+  context_compaction_enabled: boolean;
   session_summary_enabled: boolean;
   truncate_strategy: string;
   recent_window_turns: number;
@@ -1551,7 +1551,7 @@ function buildSettingsPayload(): AgentRuntimeSettings {
     workspace: advancedState.workspace,
     reasoning_mode: advancedState.reasoning_mode,
     reasoning_level: advancedState.reasoning_level,
-    compaction_enabled: advancedState.compaction_enabled,
+    context_compaction_enabled: advancedState.context_compaction_enabled,
     session_summary_enabled: advancedState.session_summary_enabled
   };
 }
@@ -1692,7 +1692,7 @@ async function copyKey() {
   height: 100%;
   border-color: var(--glass-border);
   border-radius: 18px;
-  background: var(--glass-elevated, rgba(255, 255, 255, 0.72));
+  background: var(--glass-elevated, rgb(255 255 255 / 72%));
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   transition:
@@ -1709,12 +1709,12 @@ async function copyKey() {
 
 .prompt-mode-card.is-active {
   border-color: var(--color-accent);
-  background: var(--interaction-surface-hover, rgba(255, 243, 228, 0.92));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  background: var(--interaction-surface-hover, rgb(255 243 228 / 92%));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 45%);
 }
 
 .prompt-mode-card__token {
-  background: var(--glass-elevated, #ffffff);
+  background: var(--glass-elevated, var(--color-on-accent));
   color: var(--color-text-secondary);
   font-weight: 700;
 }
@@ -1743,17 +1743,17 @@ async function copyKey() {
 }
 
 .settings-warning-banner {
-  background: #fff7ed;
-  color: #9a3412;
+  background: var(--color-status-warning-bg);
+  color: var(--color-status-warning-text-dark);
 }
 
 .settings-info-banner {
-  background: #eff6ff;
-  color: #1e40af;
+  background: var(--color-status-info-bg-alt);
+  color: var(--color-status-info-text);
 }
 
 .settings-placeholder-banner {
-  background: var(--interaction-surface-hover, #f2f4f7);
+  background: var(--interaction-surface-hover, var(--color-interaction-surface-alt));
   color: var(--color-text-primary);
 }
 
@@ -1804,7 +1804,7 @@ body.body--dark .agent-settings-tabs {
 }
 
 body.body--dark .agent-settings-tabs :deep(.q-tab--active) {
-  color: #f8fafc;
+  color: var(--color-surface-soft);
   background: color-mix(in srgb, var(--color-accent) 22%, transparent);
 }
 
@@ -1827,44 +1827,44 @@ body.body--dark .prompt-mode-card:hover {
 
 body.body--dark .prompt-mode-card.is-active {
   border-color: var(--color-neon-cyan);
-  background: rgba(0, 229, 255, 0.08);
-  box-shadow: 0 0 0 1px rgba(0, 229, 255, 0.35);
+  background: rgb(0 229 255 / 8%);
+  box-shadow: 0 0 0 1px rgb(0 229 255 / 35%);
 }
 
 body.body--dark .prompt-mode-card__token {
-  background: rgba(30, 41, 59, 0.94);
-  color: #cbd5e1;
+  background: rgb(30 41 59 / 94%);
+  color: var(--color-text-slate-300);
 }
 
 body.body--dark .capability-card :deep(.q-card__section:first-child) {
-  background: rgba(30, 41, 59, 0.86);
+  background: rgb(30 41 59 / 86%);
 }
 
 body.body--dark .settings-section :deep(.q-field__control) {
-  background: rgba(15, 23, 42, 0.72);
+  background: rgb(15 23 42 / 72%);
 }
 
 body.body--dark .settings-section :deep(.q-toggle__label) {
-  color: #e2e8f0;
+  color: var(--color-text-dark);
 }
 
 body.body--dark .settings-section :deep(.text-grey-7) {
-  color: #94a3b8 !important;
+  color: var(--color-text-tertiary) !important;
 }
 
 body.body--dark .settings-warning-banner {
-  background: rgba(154, 52, 18, 0.22);
-  color: #fed7aa;
+  background: rgb(154 52 18 / 22%);
+  color: var(--color-accent-orange-bg);
 }
 
 body.body--dark .settings-info-banner {
-  background: rgba(30, 58, 138, 0.35);
-  color: #bfdbfe;
+  background: rgb(30 58 138 / 35%);
+  color: var(--color-accent-blue-light);
 }
 
 body.body--dark .settings-placeholder-banner {
-  background: rgba(30, 41, 59, 0.82);
-  color: #cbd5e1;
+  background: rgb(30 41 59 / 82%);
+  color: var(--color-text-slate-300);
 }
 
 body.body--dark .prompt-dialog {
@@ -1879,7 +1879,7 @@ body.body--dark .agent-prompt-preview {
   color: var(--color-text-primary);
 }
 
-@media (max-width: 599px) {
+@media (width <= 599px) {
   .agent-settings {
     padding: 18px;
   }

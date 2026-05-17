@@ -20,7 +20,7 @@
         <q-btn flat round icon="arrow_back" class="q-mr-sm" @click="router.push({ name: 'sessions' })" />
         <div class="col">
           <div class="row items-center q-gutter-sm">
-            <div class="text-h5" style="color: var(--color-text-primary)">{{ session.title }}</div>
+            <div class="text-h5" style="color: var(--color-text-primary)">{{ session.title || '未命名会话' }}</div>
             <q-chip dense :color="ownerChipColor(session.owner_type)" text-color="white">{{ ownerLabel(session.owner_type) }}</q-chip>
             <q-badge :color="statusBadgeColor(session.status)">{{ session.status }}</q-badge>
           </div>
@@ -81,7 +81,7 @@
         </q-tab-panel>
 
         <q-tab-panel name="timeline" class="q-pa-none q-mt-md">
-          <SessionTimelinePanel :session-id="session.id" :session-title="session.title" />
+          <SessionTimelinePanel :session-id="session.id" :session-title="session.title || '未命名会话'" />
         </q-tab-panel>
       </q-tab-panels>
     </template>
