@@ -11,11 +11,14 @@ import (
 	"strings"
 	"time"
 
+	"aranea-agents/internal/adapter/graph"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/cronrunner"
 	"aranea-agents/internal/data"
 	"aranea-agents/internal/event"
+	graphtrpc "aranea-agents/internal/graph/trpc"
+	plugintrpc "aranea-agents/internal/plugin/trpc"
 	"aranea-agents/internal/provider"
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/internal/server"
@@ -135,6 +138,9 @@ func wireApp(*conf.Server, *conf.Data, log.Logger) (wireOut, func(), error) {
 		provideRunCanceller,
 		provideChatSender,
 		rt.NewPersistenceSet,
+		plugintrpc.NewRuntime,
+		graphtrpc.NewRegistry,
+		graph.NewGraphBuilderFactory,
 		newApp,
 		provideWireOut,
 	))
