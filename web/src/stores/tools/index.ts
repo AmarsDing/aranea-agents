@@ -1,7 +1,13 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
-import { listTools, getTool, createTool, updateTool, deleteTool, toggleToolEnabled } from "../../features/tools/api";
-import type { Tool, ToolListQuery, ToolUpsertInput, ToolListResponse } from "../../features/tools/types";
+import {
+  listTools, getTool, createTool, updateTool, deleteTool, toggleToolEnabled,
+  listToolAgentOverrides, upsertToolAgentOverride, deleteToolAgentOverride, listToolRunsForTool
+} from "../../features/tools/api";
+import type {
+  Tool, ToolListQuery, ToolUpsertInput, ToolListResponse,
+  ToolAgentOverride, ToolInvocation, ToolRunQuery, PaginatedResponse
+} from "../../features/tools/types";
 
 export const useToolsStore = defineStore("tools", () => {
   const tools = ref<Tool[]>([]);
@@ -50,5 +56,25 @@ export const useToolsStore = defineStore("tools", () => {
     return updated;
   }
 
-  return { tools, activeTool, total, loading, loadTools, fetchTool, addTool, editTool, remove, toggle };
+  async function fetchOverrides(toolId: string): Promise<ToolAgentOverride[]> {
+    return listToolAgentOverrides(toolId);
+  }
+
+  async function saveOverride(input: { tool_id: string; agent_id: string; mode: string; enabled: boolean; requires_confirmation: boolean; config_override_json: string }): Promise<ToolAgentOverride> {
+    return upsertToolAgentOverride(input);
+  }
+
+  async function removeOverride(toolId: string, agentId: string): Promise<void> {
+    return deleteToolAgentOverride(toolId, agentId);
+  }
+
+  async function fetchToolRuns(toolId: string, query: ToolRunQuery = {}): Promise<PaginatedResponse<ToolInvocation>> {
+    return listToolRunsForTool(toolId, query);
+  }
+
+  return {
+    tools, activeTool, total, loading,
+    loadTools, fetchTool, addTool, editTool, remove, toggle,
+    fetchOverrides, saveOverride, removeOverride, fetchToolRuns
+  };
 });

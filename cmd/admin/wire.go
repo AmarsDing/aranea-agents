@@ -28,10 +28,10 @@ import (
 	"aranea-agents/internal/skill/watch"
 	"aranea-agents/internal/team"
 
+	"aranea-agents/internal/data/sessionmemory"
 	"github.com/go-kratos/kratos/v2"
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/google/wire"
-	"aranea-agents/internal/data/sessionmemory"
 	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
 )
 
@@ -41,6 +41,7 @@ func provideCronRunnerDeps(
 	teams biz.TeamRepository,
 	agents biz.AgentRepository,
 	eventBus event.Bus,
+	chat *service.ChatService,
 ) cronrunner.Deps {
 	return cronrunner.Deps{
 		Cron:     cron,
@@ -48,6 +49,7 @@ func provideCronRunnerDeps(
 		Teams:    teams,
 		Agents:   agents,
 		EventBus: eventBus,
+		Chat:     chat,
 	}
 }
 
@@ -128,10 +130,10 @@ func provideAutoMemoryWorker(sessions *biz.SessionUsecase, store *sessionmemory.
 
 // wireOut is non-cleanup inject outputs (cleanup must be a top-level injector return for Wire).
 type wireOut struct {
-	App             *kratos.App
-	CronRunner      *cronrunner.Runner
-	SkillWatch      *watch.Runner
-	AutoMemory      *jobs.AutoMemoryWorker
+	App        *kratos.App
+	CronRunner *cronrunner.Runner
+	SkillWatch *watch.Runner
+	AutoMemory *jobs.AutoMemoryWorker
 }
 
 func provideWireOut(app *kratos.App, runner *cronrunner.Runner, skillWatch *watch.Runner, autoMem *jobs.AutoMemoryWorker) wireOut {

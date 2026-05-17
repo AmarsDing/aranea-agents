@@ -317,14 +317,14 @@ function saveIDs(key: string, ids: Set<string>) {
 
 .chat-session-time-badge {
   background: rgba(25, 118, 210, 0.1);
-  color: #2563eb;
+  color: var(--color-link, #2563eb);
   font-size: 10px;
   font-weight: 800;
 }
 
 :global(.body--dark) .chat-session-time-badge {
   background: rgba(147, 197, 253, 0.18);
-  color: #dbeafe;
+  color: var(--color-link-dark, #dbeafe);
 }
 
 .chat-session-menu-section {
@@ -345,7 +345,7 @@ function saveIDs(key: string, ids: Set<string>) {
 
 .chat-session-item--active,
 :global(.body--dark) .chat-session-item--active {
-  color: #fff !important;
+  color: var(--color-on-accent, #fff) !important;
 }
 
 .chat-session-item--active .chat-session-time,
@@ -356,7 +356,7 @@ function saveIDs(key: string, ids: Set<string>) {
 
 .chat-session-item--active .chat-session-time-badge {
   background: rgba(255, 255, 255, 0.2);
-  color: #fff;
+  color: var(--color-on-accent, #fff);
 }
 
 :global(.body--dark) .chat-action-btn {

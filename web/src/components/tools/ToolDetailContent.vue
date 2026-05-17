@@ -138,9 +138,11 @@
 import { onMounted, ref, watch } from "vue";
 import { useQuasar } from "quasar";
 import type { Tool, ToolAgentOverride, ToolInvocation } from "../../features/tools/types";
-import { listToolAgentOverrides, upsertToolAgentOverride, deleteToolAgentOverride, listToolRunsForTool } from "../../features/tools/api";
 import ToolJsonBlock from "./ToolJsonBlock.vue";
 import { prettyJSON, riskLabel, runtimeStatusLabel } from "./toolUi";
+import { useToolsStore } from "../../stores/tools/index";
+
+const toolsStore = useToolsStore();
 
 const props = defineProps<{
   tool: Tool | null;
@@ -195,7 +197,7 @@ async function loadOverrides() {
   if (!props.tool) return;
   overridesLoading.value = true;
   try {
-    overrides.value = await listToolAgentOverrides(props.tool.id || props.tool.key);
+    overrides.value = await toolsStore.fetchOverrides(props.tool.id || props.tool.key);
   } catch {
     overrides.value = [];
   } finally {
@@ -207,7 +209,7 @@ async function loadRecentRuns() {
   if (!props.tool) return;
   runsLoading.value = true;
   try {
-    const res = await listToolRunsForTool(props.tool.id || props.tool.key, { page: 1, page_size: 20 });
+    const res = await toolsStore.fetchToolRuns(props.tool.id || props.tool.key, { page: 1, page_size: 20 });
     recentRuns.value = res.items;
   } catch {
     recentRuns.value = [];
@@ -236,7 +238,7 @@ async function saveOverride() {
   if (!props.tool) return;
   overrideSaving.value = true;
   try {
-    await upsertToolAgentOverride({
+    await toolsStore.saveOverride({
       tool_id: props.tool.id || props.tool.key,
       agent_id: overrideForm.value.agent_id,
       enabled: overrideForm.value.enabled,
@@ -257,7 +259,7 @@ function removeOverride(o: ToolAgentOverride) {
   if (!props.tool) return;
   $q.dialog({ title: "删除覆盖", message: `确认删除 Agent ${o.agent_id} 的覆盖？`, cancel: true, persistent: true }).onOk(async () => {
     try {
-      await deleteToolAgentOverride(props.tool!.id || props.tool!.key, o.agent_id);
+      await toolsStore.removeOverride(props.tool!.id || props.tool!.key, o.agent_id);
       await loadOverrides();
     } catch (err) {
       $q.notify({ type: "negative", message: err instanceof Error ? err.message : "删除覆盖失败" });

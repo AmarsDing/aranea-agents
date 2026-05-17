@@ -44,7 +44,18 @@ func Middleware() httpm.FilterFunc {
 				next.ServeHTTP(w, r)
 				return
 			}
+			// EP-SEC-03: only allow registered webhook paths; unregistered paths return 401.
+			// Registered paths must still carry a signing header (Lark, GitHub, etc.) in
+			// non-bypass mode; the actual signature content is verified by the handler.
 			if strings.HasPrefix(r.URL.Path, "/webhooks/") {
+				if !isRegisteredWebhookPath(r.URL.Path) {
+					http.Error(w, "Forbidden: unregistered webhook path", http.StatusForbidden)
+					return
+				}
+				if !HTTPAuthBypassEnabled() && !hasWebhookSigningHeader(r) {
+					http.Error(w, "Forbidden: webhook requires a signing header", http.StatusForbidden)
+					return
+				}
 				next.ServeHTTP(w, r)
 				return
 			}

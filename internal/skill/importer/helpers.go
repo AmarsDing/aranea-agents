@@ -26,8 +26,6 @@ func newID() string {
 	return hex.EncodeToString(buf)
 }
 
-
-
 func slugify(value string) string {
 	value = strings.ToLower(strings.TrimSpace(value))
 	value = regexp.MustCompile(`[^a-z0-9\-_]+`).ReplaceAllString(value, "-")

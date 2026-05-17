@@ -116,6 +116,103 @@
         }
       ],
       "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "title": "Event Bus Published / sec",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        {
+          "expr": "sum(rate(aranea_event_bus_published_total[5m])) by (event_type)",
+          "legendFormat": "{{event_type}}"
+        }
+      ]
+    },
+    {
+      "title": "Plugin Invocations / sec",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        {
+          "expr": "sum(rate(aranea_plugin_invoke_total[5m])) by (plugin, point, status)",
+          "legendFormat": "{{plugin}} / {{point}} ({{status}})"
+        }
+      ]
+    },
+    {
+      "title": "Plugin Blocks / sec",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        {
+          "expr": "sum(rate(aranea_plugin_block_total[5m])) by (plugin, reason)",
+          "legendFormat": "{{plugin}} ({{reason}})"
+        }
+      ]
+    },
+    {
+      "title": "Auto-Memory Job Completions / sec",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        {
+          "expr": "sum(rate(aranea_auto_memory_job_total[5m])) by (status)",
+          "legendFormat": "{{status}}"
+        }
+      ]
+    },
+    {
+      "title": "Auto-Memory Extraction Duration (p95)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 32 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(aranea_auto_memory_extraction_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p95"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "title": "Artifact Storage (bytes)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 40 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        { "expr": "aranea_artifact_storage_bytes", "legendFormat": "Storage" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes" } }
+    },
+    {
+      "title": "Artifact Upload Bytes / sec",
+      "type": "timeseries",
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 40 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        {
+          "expr": "rate(aranea_artifact_upload_bytes_total[5m])",
+          "legendFormat": "Upload"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "Bps" } }
+    },
+    {
+      "title": "Artifact Download Bytes / sec",
+      "type": "timeseries",
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 40 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        {
+          "expr": "rate(aranea_artifact_download_bytes_total[5m])",
+          "legendFormat": "Download"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "Bps" } }
     }
   ],
   "refresh": "30s",
@@ -140,5 +237,5 @@
   "timezone": "browser",
   "title": "Aranea-Agents Runtime",
   "uid": "aranea-agents-runtime",
-  "version": 1
+  "version": 2
 }

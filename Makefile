@@ -79,10 +79,12 @@ else
 endif
 
 .PHONY: lint
-# run cross-platform lint tool (R1-R10) + go vet + golangci-lint (if installed)
+# run cross-platform lint tool (R1-R10) + go vet + gofmt + golangci-lint (if installed)
+# EP-ENG-07: gofmt check added via go run so CI catches formatting drift on any OS.
 lint:
 	go run ./cmd/araneactl/lint --root .
 	go vet ./...
+	go run ./cmd/araneactl/fmtcheck --root .
 	@golangci-lint run ./... 2>/dev/null || true
 
 .PHONY: golangci-lint

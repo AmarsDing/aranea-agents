@@ -1,10 +1,10 @@
 package trpc
 
 import (
-	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
-	trpcskilltool "trpc.group/trpc-go/trpc-agent-go/tool/skill"
-	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 	"trpc.group/trpc-go/trpc-agent-go/codeexecutor"
+	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
+	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
+	trpcskilltool "trpc.group/trpc-go/trpc-agent-go/tool/skill"
 )
 
 type SkillToolsetConfig struct {

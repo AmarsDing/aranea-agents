@@ -253,6 +253,24 @@ func (s *ChatService) RunNativeTurnUnary(ctx context.Context, req *chatv1.SendCh
 	return s.runNativeAgentTurn(ctx, req)
 }
 
+// RunCronTurn dispatches a cron-triggered turn through the in-process agent runner
+// with all plugins applied (EP-RT-07). Implements cronrunner.CronChatRunner.
+func (s *ChatService) RunCronTurn(ctx context.Context, sessionID, content, teamID string) (userMsgID, agentMsgID string, err error) {
+	req := &chatv1.SendChatMessageRequest{
+		SessionId: sessionID,
+		Content:   content,
+	}
+	if strings.TrimSpace(teamID) != "" {
+		tid := teamID
+		req.TeamId = &tid
+	}
+	user, asst, err := s.RunNativeTurnUnary(ctx, req)
+	if err != nil {
+		return "", "", err
+	}
+	return user.ID, asst.ID, nil
+}
+
 func patchSessionContextUsage(ctx context.Context, s *ChatService, sessionID string, ag biz.Agent, promptTok, completionTok int) {
 	if s == nil || s.td.Sessions == nil {
 		return

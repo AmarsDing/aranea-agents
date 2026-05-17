@@ -329,4 +329,3 @@ func (u *SkillUsecase) GetBySlug(ctx context.Context, slug string) (Skill, error
 func (u *SkillUsecase) ListEnabledPublishedCandidates(ctx context.Context) ([]SkillRuntimeCandidate, error) {
 	return u.repo.ListEnabledPublishedSkillCandidates(ctx)
 }
-

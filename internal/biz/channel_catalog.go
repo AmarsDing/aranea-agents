@@ -100,7 +100,7 @@ func feishuCatalogItem() ChannelCatalogItem {
 					},
 				},
 				"config": map[string]any{
-					"type": "object",
+					"type":     "object",
 					"required": []string{"app_id"},
 					"properties": map[string]any{
 						"app_id": map[string]any{"type": "string", "description": "Feishu app id"},

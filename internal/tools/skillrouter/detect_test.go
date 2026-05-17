@@ -10,8 +10,8 @@ func TestDetectIntentPaths_salesFeedbackEmail(t *testing.T) {
 	}
 	want := map[string]bool{
 		`数据获取与集成/内部数据源/文件系统读取（读取表格）`: true,
-		`分析与推理/自然语言理解（情感分析）`:             true,
-		`交互与执行/消息发送（发邮件）`:                true,
+		`分析与推理/自然语言理解（情感分析）`:         true,
+		`交互与执行/消息发送（发邮件）`:            true,
 	}
 	for _, p := range paths {
 		if !want[p] {

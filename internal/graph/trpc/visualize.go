@@ -91,8 +91,8 @@ func ParseDOTToVisualGraph(dot string, nodes []NodeDef, condEdges []ConditionalE
 }
 
 var (
-	nodeDeclRe = regexp.MustCompile(`"([^"]+)"\s*\[`)
-	edgeRe     = regexp.MustCompile(`"([^"]+)"\s*->\s*"([^"]+)"`)
+	nodeDeclRe  = regexp.MustCompile(`"([^"]+)"\s*\[`)
+	edgeRe      = regexp.MustCompile(`"([^"]+)"\s*->\s*"([^"]+)"`)
 	edgeLabelRe = regexp.MustCompile(`label="([^"]*)"`)
 	edgeStyleRe = regexp.MustCompile(`style=(\w+)`)
 )

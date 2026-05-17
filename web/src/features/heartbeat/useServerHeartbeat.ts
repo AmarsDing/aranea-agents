@@ -1,5 +1,5 @@
 import { ref } from "vue";
-import { buildHealthWsUrl, getWsOrigin } from "../../config/runtime";
+import { buildHealthWsUrl, getWsOrigin } from "./api";
 import { useAuthStore } from "../../stores/auth";
 import { Notify } from "quasar";
 

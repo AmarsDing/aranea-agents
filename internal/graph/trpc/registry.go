@@ -13,9 +13,9 @@ type NodeFuncFactory func() (trpcgraph.NodeFunc, error)
 type CondFuncFactory func() (any, error)
 
 type Registry struct {
-	mu         sync.RWMutex
-	nodeFuncs  map[string]NodeFuncFactory
-	condFuncs  map[string]CondFuncFactory
+	mu        sync.RWMutex
+	nodeFuncs map[string]NodeFuncFactory
+	condFuncs map[string]CondFuncFactory
 }
 
 func NewRegistry() *Registry {

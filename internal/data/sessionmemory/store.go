@@ -63,12 +63,12 @@ func (st *Store) ListL0SnapshotRows(ctx context.Context, sessionID string, limit
 	for rows.Next() {
 		var (
 			id, sessID, runID, turnID, spanID, agentID, teamID, provider, model string
-			cwt, bt, rwt, rwtok, ste, l1fc, l1te, l3c, l3te, l4p, l4te           int
-			pte, pta                                                             int
-			ur                                                                   float64
-			ts                                                                   string
-			tmc, stf, ste2                                                       int
-			segs, warns, meta, cat                                               string
+			cwt, bt, rwt, rwtok, ste, l1fc, l1te, l3c, l3te, l4p, l4te          int
+			pte, pta                                                            int
+			ur                                                                  float64
+			ts                                                                  string
+			tmc, stf, ste2                                                      int
+			segs, warns, meta, cat                                              string
 		)
 		if err := rows.Scan(
 			&id, &sessID, &runID, &turnID, &spanID, &agentID, &teamID, &provider, &model,
@@ -84,7 +84,7 @@ func (st *Store) ListL0SnapshotRows(ctx context.Context, sessionID string, limit
 			"context_window_tokens": cwt, "budget_tokens": bt,
 			"recent_window_turns": rwt, "recent_window_tokens": rwtok,
 			"summary_token_estimate": ste,
-			"l1_field_count": l1fc, "l1_token_estimate": l1te,
+			"l1_field_count":         l1fc, "l1_token_estimate": l1te,
 			"l3_chunk_count": l3c, "l3_token_estimate": l3te,
 			"l4_path_count": l4p, "l4_token_estimate": l4te,
 			"prompt_token_estimate": pte, "prompt_token_actual": pta,
@@ -137,8 +137,8 @@ func (st *Store) ListL1TaskRows(ctx context.Context, sessionID, agentID, status,
 	for rows.Next() {
 		var (
 			id, sid, rid, tid, aid, tkey, title, goal, st string
-			sv, bt, ut                                   int
-			parent, shared, meta, sa, ea, aa, ca, ua     string
+			sv, bt, ut                                    int
+			parent, shared, meta, sa, ea, aa, ca, ua      string
 		)
 		if err := rows.Scan(
 			&id, &sid, &rid, &tid, &aid, &tkey, &title, &goal, &st,
@@ -314,7 +314,7 @@ func scanFactRowJSON(rows *sql.Rows) ([]byte, error) {
 		ttlD                               int
 		decay                              float64
 		nextD, lastU, exp                  string
-		meta, ca, ua, arch, del           string
+		meta, ca, ua, arch, del            string
 	)
 	if err := rows.Scan(
 		&id, &stype, &sid, &wid, &uid, &tid, &aid,
@@ -342,10 +342,10 @@ func scanFactRowJSON(rows *sql.Rows) ([]byte, error) {
 		"source_session_id": sessID, "source_message_id": msgID, "source_external": ext,
 		"version": ver, "status": st, "superseded_by": sup,
 		"embedding_status": embSt, "embedding_model": embModel, "embedding_dim": embDim,
-		"embedding_norm": embNorm,
-		"pii_flag": pii != 0,
+		"embedding_norm":     embNorm,
+		"pii_flag":           pii != 0,
 		"redacted_statement": redacted,
-		"ttl_days": ttlD, "decay_factor": decay,
+		"ttl_days":           ttlD, "decay_factor": decay,
 		"next_decay_at": nextD, "last_used_at": lastU, "expires_at": exp,
 		"metadata_json": meta, "created_at": ca, "updated_at": ua,
 		"archived_at": arch, "deleted_at": del,

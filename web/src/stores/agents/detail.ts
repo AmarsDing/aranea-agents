@@ -1,6 +1,11 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
-import { getAgent, getAgentPromptPreview, updateAgent, type Agent } from "../../features/agents/api";
+import {
+  getAgent, getAgentPromptPreview, updateAgent,
+  getAgentEvolutionMetrics, getAgentEvolutionSuggestions,
+  applyEvolutionSuggestion, rejectEvolutionSuggestion,
+  type Agent, type EvolutionMetrics, type EvolutionSuggestion
+} from "../../features/agents/api";
 
 /** Agent 详情 / 设置页：HTTP 仅在此 Store actions（vue-design §0.1）。 */
 export const useAgentDetailStore = defineStore("agentDetail", () => {
@@ -35,12 +40,32 @@ export const useAgentDetailStore = defineStore("agentDetail", () => {
     }
   }
 
+  async function fetchEvolutionMetrics(id: string, timeRange?: string): Promise<EvolutionMetrics> {
+    return getAgentEvolutionMetrics(id, timeRange);
+  }
+
+  async function fetchEvolutionSuggestions(id: string, status?: string): Promise<EvolutionSuggestion[]> {
+    return getAgentEvolutionSuggestions(id, status);
+  }
+
+  async function applyEvolution(agentId: string, suggestionId: string): Promise<EvolutionSuggestion> {
+    return applyEvolutionSuggestion(agentId, suggestionId);
+  }
+
+  async function rejectEvolution(agentId: string, suggestionId: string): Promise<EvolutionSuggestion> {
+    return rejectEvolutionSuggestion(agentId, suggestionId);
+  }
+
   return {
     loading,
     saving,
     previewLoading,
     fetchById,
     patch,
-    fetchPromptPreview
+    fetchPromptPreview,
+    fetchEvolutionMetrics,
+    fetchEvolutionSuggestions,
+    applyEvolution,
+    rejectEvolution
   };
 });

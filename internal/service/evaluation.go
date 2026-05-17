@@ -149,20 +149,20 @@ func toProtoDataset(d biz.EvalDataset) *v1.EvalDataset {
 
 func toProtoRun(r biz.EvalRun) *v1.EvalRun {
 	return &v1.EvalRun{
-		Id:                  r.ID,
-		DatasetId:           r.DatasetID,
-		AgentId:             r.AgentID,
-		Status:              r.Status,
-		TotalCases:          int32(r.TotalCases),
-		CompletedCases:      int32(r.CompletedCases),
-		ExactMatchScore:     r.ExactMatchScore,
-		ContainsMatchScore:  r.ContainsMatchScore,
-		LlmJudgeScore:       r.LLMJudgeScore,
-		ToolCallAccuracy:    r.ToolCallAccuracy,
-		ErrorMessage:        r.ErrorMessage,
-		StartedAt:           r.StartedAt,
-		FinishedAt:          r.FinishedAt,
-		CreatedAt:           r.CreatedAt,
+		Id:                 r.ID,
+		DatasetId:          r.DatasetID,
+		AgentId:            r.AgentID,
+		Status:             r.Status,
+		TotalCases:         int32(r.TotalCases),
+		CompletedCases:     int32(r.CompletedCases),
+		ExactMatchScore:    r.ExactMatchScore,
+		ContainsMatchScore: r.ContainsMatchScore,
+		LlmJudgeScore:      r.LLMJudgeScore,
+		ToolCallAccuracy:   r.ToolCallAccuracy,
+		ErrorMessage:       r.ErrorMessage,
+		StartedAt:          r.StartedAt,
+		FinishedAt:         r.FinishedAt,
+		CreatedAt:          r.CreatedAt,
 	}
 }
 

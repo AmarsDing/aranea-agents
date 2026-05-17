@@ -78,8 +78,11 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { useQuasar } from "quasar";
-import { getModelUsageOverview, type ModelUsageOverview } from "../../features/usage/api";
+import type { ModelUsageOverview } from "../../features/usage/api";
 import type { PlatformResource } from "../../features/platform/api";
+import { useUsageStore } from "../../stores/usage/index";
+
+const usageStore = useUsageStore();
 
 type ProviderConfig = {
   provider_display_name?: string;
@@ -141,7 +144,7 @@ async function loadOverview() {
   if (!props.row) return;
   loading.value = true;
   try {
-    overview.value = await getModelUsageOverview({
+    overview.value = await usageStore.fetchOverview({
       range: "30d",
       provider_code: props.row.provider,
       model_api_id: props.row.model

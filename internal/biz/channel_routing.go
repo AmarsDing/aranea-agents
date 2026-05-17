@@ -12,9 +12,9 @@ import (
 
 // ChannelRouting is parsed from config_json.routing.
 type ChannelRouting struct {
-	DefaultAgentID string            `json:"default_agent_id"`
-	DefaultTeamID  string            `json:"default_team_id"`
-	DMScope        string            `json:"dm_scope"`
+	DefaultAgentID string             `json:"default_agent_id"`
+	DefaultTeamID  string             `json:"default_team_id"`
+	DMScope        string             `json:"dm_scope"`
 	Rules          []ChannelRouteRule `json:"rules"`
 }
 

@@ -78,15 +78,15 @@ function truncate(text: string, max: number) {
 }
 
 .graph-flow-node--completed {
-  border-color: #4caf50;
+  border-color: var(--color-success, #4caf50);
 }
 
 .graph-flow-node--failed {
-  border-color: #f44336;
+  border-color: var(--color-danger, #f44336);
 }
 
 .graph-flow-node--interrupted {
-  border-color: #ff9800;
+  border-color: var(--color-warning, #ff9800);
 }
 
 .graph-flow-node__header {
@@ -113,7 +113,7 @@ function truncate(text: string, max: number) {
 
 .graph-flow-node__hint {
   margin-top: 4px;
-  color: #666;
+  color: var(--color-text-secondary, #666);
   font-size: 11px;
   line-height: 1.3;
 }

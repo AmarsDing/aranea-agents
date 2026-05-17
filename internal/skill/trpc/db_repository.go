@@ -13,18 +13,18 @@ import (
 
 // dbSkillEntry is a cached skill loaded from the DB.
 type dbSkillEntry struct {
-	summary trpcskill.Summary
-	skill   *trpcskill.Skill
-	slug    string
-	dir     string
+	summary  trpcskill.Summary
+	skill    *trpcskill.Skill
+	slug     string
+	dir      string
 	loadedAt time.Time
 }
 
 // DBRepositoryAdapter implements trpcskill.Repository backed by the skill DB.
 // Skills are loaded from biz.SkillUsecase and cached in-process with a TTL.
 type DBRepositoryAdapter struct {
-	uc      *biz.SkillUsecase
-	ttl     time.Duration
+	uc  *biz.SkillUsecase
+	ttl time.Duration
 
 	mu      sync.RWMutex
 	entries []dbSkillEntry

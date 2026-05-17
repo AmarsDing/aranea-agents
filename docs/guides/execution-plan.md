@@ -11,7 +11,7 @@
 - §2 文档与代码协同失控（已治理）：元问题回顾与后续约束
 - §3 全域漏洞与不足清单：分类 + 证据 + 优先级
 - §4 长效优化路线（M0–M5 里程碑）
-- §5 立即可执行 Top-20 工作（每项可一 PR 落地）
+- §5 立即可执行剩余工作（每项可一 PR 落地）
 - §6 红线与硬约束（在 AI-DEV-SPEC 基础上扩展）
 - §7 AI 协作迭代约束（每个 Sprint / PR / Commit 标准动作）
 - §8 验收与质量门（机器可检查）
@@ -40,23 +40,9 @@
 
 | 主题 | 现实状态 | 关键证据 |
 |---|---|---|
-| RunStatus / AwaitUserReply 真实回路 ✅ | EP-RT-01 `setRunStatus` 已接通；EP-RT-02 `awaitChans.Store` 已通过 `ServiceTool` + `makeAwaitReplyFunc` 实现中间阻塞（2026-05-17） | `internal/service/chat.go`, `internal/tools/serviceawaitreply/` |
-| Skill DB Repository ✅ | DB repo 已在 `buildSkillDeps` 优先选择；`rootDir` 已移至分支外确保执行器始终有效（EP-BIZ-01 完成 2026-05-17） | `internal/agent/trpc_build.go` |
 | CodeExecutor Docker | `internal/agent/codeexecutor/executor.go` 存在但仅在测试中引用，Skill 仍走 `NewLocalExecutor` | `internal/agent/trpc_build.go` |
-| Auto Memory Worker | 队列存在，但 `internal/cronrunner/jobs/auto_memory.go` 的 `extract` 体仍是日志占位 `return nil`，未接 `pkg/trpc-agent-go/memory/extractor` | 同文件 |
 | Callback Chain | `internal/agent/callbacks/` 抽象存在但未挂载到 LLMAgent；仅 ToolCallback 接通 | `internal/agent/trpc_build.go:buildToolCallbacks` |
-| EventBus 背压差异化 ✅ | WS session 订阅 `Reliable=true`；`event_bus_consumer` 订阅 `Reliable=true`；全局监控 lossy（EP-RT-06 完成 2026-05-17） | `internal/server/ws.go` |
-| Metrics 暴露面 ✅ | `/metrics` 已在 `NewHTTPServer` 末尾挂 `promhttp.Handler()`（EP-OBS-01 完成 2026-05-17）；指标采样待补（EP-OBS-04） | `internal/server/http.go` |
-| OpenTelemetry ✅ | `InitTracerProvider` 已在 main.go 调用；HTTP/gRPC 已加 `tracing.Server()` 中间件；`OTEL_EXPORTER_OTLP_ENDPOINT` 未设时为 noop（EP-OBS-02 完成 2026-05-17） | `internal/server/telemetry.go` |
 | 多租户 Ent hook | 没有 Ent Hook 强制 `workspace_id` 谓词，`servermw.AssertWorkspace` 定义后从未被调用 | `internal/server/middleware/workspace.go` |
-| 鉴权强度（部分修复）✅ | JWT fail-fast（EP-SEC-01）、bypass 限 dev（EP-SEC-02）已完成 2026-05-17；webhooks 放行（EP-SEC-03）、gRPC 无鉴权（EP-SEC-04）待后续 | `pkg/auth/config.go`、`features.go` |
-| 前端 WS 双轨 ✅ | `wsClient.ts` + `useWS.ts` 已删除（EP-FE-02 完成 2026-05-17）；真实 WS 走 `features/chat/ws-transport.ts` | — |
-| 前端展示组件违反数据流 | 多个 `components/<域>/*.vue`、`composables/useRunStatus.ts` 直接 `import` `features/*/api`，跳过 Pinia store | `components/sessions/SessionTurnsPanel.vue:53` 等十余处 |
-| 前端硬编码颜色 | 多个 .vue scoped style 用 `#fff`、`#0f172a`、`#2563eb` 等，违反 §8.2 token 化 | `components/sessions/SessionTimelinePanel.vue:173-211` 等 |
-| Cypress E2E | CI `e2e-nightly` job 引用 cypress，但仓库无 `cypress/` 目录、无依赖、`continue-on-error: true`，等同未启用 | `.github/workflows/ci.yml:140-177` |
-| 测试矩阵 ✅ | Go test 已改为 `./...` 全量 + race；阈值阶梯 M3=40%→M4=60%→M5=70%；前端 `npm test` 已去 `\|\| echo`（EP-ENG-01/02 完成 2026-05-17） | `.github/workflows/ci.yml` |
-| Adaptive Team mode ✅ | `adaptive` 已有独立 case，映射为 swarm + cross-request transfer；≥2 成员时入口 agent 动态转发（EP-RT-04 完成 2026-05-17） | `internal/team/trpc_build.go` |
-| Knowledge / A2A 工具注册 ✅ | `cfg.KnowledgeSearch` / `cfg.CallAgent` 已在 `buildToolsetsForAgent` 设置，`toolsets.go` 已将两工具注入 CustomTools（EP-BIZ-03 已实现，2026-05-17 确认） | `internal/agent/trpc_build.go:214-215`, `internal/tools/trpc/toolsets.go` |
 | EvolutionScanner / L4 持久层 | `RunEvolutionScan` / 30min ticker 代码内不存在（需求文档已校准为"未实现"） | `internal/` 无对应 worker |
 | 51 消息机制"单 WS 通道" | 文档要求 WS 取代 SSE 为唯一通道；代码里 WS + Chat SSE 并存（文档已统一为"WS 主通道 + Chat SSE 兼容回退"） | `internal/server/ws.go` + `internal/service/chat.go` |
 | CLI 产品 | `docs/需求/25 cli.md` 要求 `aranea` 可执行 CLI / REPL；实际只有 `cmd/admin`（服务进程）+ `cmd/araneactl/lint`（lint 工具） | `cmd/` 目录 |
@@ -65,80 +51,36 @@
 
 > 命名规则：`EP-<域>-<序号>`；优先级 P0=阻塞 / 安全 / 数据正确性；P1=主路径功能；P2=可用性 / 完整性；P3=长期演进。
 
-### 3.1 安全（P0/P1）
+### 3.2 数据一致性 / 运行时正确性（P1/P2）
 
 | 编号 | 问题 | 优先级 | 证据 | 建议动作 |
 |---|---|---|---|---|
-| EP-SEC-01 ✅ | `authSecretFromEnv` 无密钥时启动 panic（dev/test/CI 用占位符）（2026-05-17 确认） | P0 | — | 完成 |
-| EP-SEC-02 ✅ | `HTTPAuthBypassEnabled` 仅 DEPLOY_ENV=dev/test/CI 允许；`WarnIfBypassEnabled` 输出 banner（2026-05-17 确认） | P0 | — | 完成 |
-| EP-SEC-03 | `/webhooks/*` 整体放行鉴权；只靠各 channel 自身 verify | P1 | `pkg/auth/middleware.go` | 在 middleware 中要求 channel 路径前置注册并自带签名校验；未注册路径 401 |
-| EP-SEC-04 ✅ | gRPC Server 仅 recovery + validate，无鉴权 | P1 | `internal/server/grpc.go:55-60` | `auth.GRPCMiddleware()` 已加入 gRPC middleware 链；bypass 模式注入 dev 身份；Bearer token 校验 JWT；内网场景无 token 放行（EP-SEC-04 完成 2026-05-17，M2 收紧） |
-
-### 3.2 数据一致性 / 运行时正确性（P0/P1）
-
-| 编号 | 问题 | 优先级 | 证据 | 建议动作 |
-|---|---|---|---|---|
-| EP-RT-01 ✅ | `setRunStatus` 已在 `trpc_turn.go` 的 running/done/error 节点调用（2026-05-17 确认） | P0 | — | 完成 |
-| EP-RT-02 ✅ | `awaitChans.Store` 通过 `serviceawaitreply.ServiceTool` + `makeAwaitReplyFunc` 实现阻塞等待（2026-05-17 完成） | P0 | — | 完成 |
-| EP-RT-03 ✅ | `AutoMemoryWorker` 注入 `*biz.SessionUsecase` + `trpcmemory.Service`；实现启发式 regex 抽取用户事实并写入 session_memory；`wire_gen.go` 已更新；`main.go` 启动 worker（2026-05-17 完成） | P1 | — | 完成 |
-| EP-RT-04 ✅ | `adaptive` 模式映射为 swarm + cross-request transfer；≥2 成员时动态转发（2026-05-17 完成） | P1 | — | 完成 |
-| EP-RT-05 ✅ | `HasMemory bool` 加入 `TRPCBuilderDeps`；`trpc_turn.go` 根据 `s.td.Persist.Memory != nil` 设置；无 MemoryService 时不注入 memory tools 并输出 Warn 日志（EP-RT-05 完成 2026-05-17） | P1 | — | 完成 |
-| EP-RT-06 ✅ | WS session 订阅 Reliable=true；全局监控 lossy；`event_bus_consumer` Reliable（2026-05-17 确认） | P1 | — | 完成 |
 | EP-RT-07 | Cron 派发链路不走 Agent Runner 构造函数，Plugin 回调对 Cron 任务可能失效 | P1 | `internal/cronrunner` 不 import plugin runtime | Cron 走统一的 `ChatService.RunNativeTurnUnary`，或在 worker 内复用 plugins |
-| EP-RT-08 | `internal/biz/biz_coverage_test.go` 等多个 unused import / 内存 repo 仅服务于测试，未对应生产实现（Artifact / Knowledge / Eval / A2A） | P2 | `internal/biz/biz_coverage_test.go`、`s6_coverage_test.go` | 把内存实现升级为真实存储后端或明确标"骨架未接线" |
+| EP-RT-08 | 内存 repo 仅服务于测试，未对应生产实现（Artifact / Knowledge / Eval / A2A） | P2 | `internal/biz/biz_coverage_test.go`、`s6_coverage_test.go` | 把内存实现升级为真实存储后端或明确标"骨架未接线" |
 
-### 3.3 业务接入闭环（P1）
+### 3.3 业务接入闭环（P1/P2）
 
 | 编号 | 问题 | 优先级 | 证据 | 建议动作 |
 |---|---|---|---|---|
-| EP-BIZ-01 ✅ | `buildSkillDeps` DB优先选择；`rootDir` 已移至分支外（2026-05-17 完成） | P1 | — | 完成 |
 | EP-BIZ-02 | CodeExecutor Docker 已实现但只在测试引用 | P1 | `internal/agent/codeexecutor/executor.go` | Skill 执行器加 backend selector，配置驱动；提供 Docker compose 示例 |
-| EP-BIZ-03 ✅ | `cfg.KnowledgeSearch`/`cfg.CallAgent` 已在 `buildToolsetsForAgent` 设置；两工具已注入 CustomTools（2026-05-17 确认） | P1 | — | 完成 |
-| EP-BIZ-04 ✅ | `NewEvaluationRunner` 注入 `*ChatService`；`AgentRunner` 按 case 创建临时 session 并调 `RunNativeTurnUnary`；`wire_gen.go` 已更新（2026-05-17 完成） | P1 | — | 完成 |
 | EP-BIZ-05 | Channel 多渠道适配缺失（仅 feishu 真正走端到端） | P2 | `internal/service/channel_ingress.go` + `internal/channel/lark` | 实现 wechat / dingtalk / slack / 邮件入站，或在前端禁用未实现渠道 |
 | EP-BIZ-06 | ToolOverride 域只在 proto / 统计语境出现，无 CRUD / Usecase | P2 | proto agent_override_count 字段 + 缺少 biz/data | 补 `biz/tool_override.go` 与 Repo |
 | EP-BIZ-07 | EvolutionScanner（L4 持久层）代码不存在 | P2 | `internal/` 无对应 worker（需求文档已校准为"未实现"） | 要么实现 30min ticker scanner，要么保持需求降级为"未实现" |
 
-### 3.4 可观测 / 运维（P1）
+### 3.5 前端（P2/P3）
 
 | 编号 | 问题 | 优先级 | 证据 | 建议动作 |
 |---|---|---|---|---|
-| EP-OBS-01 ✅ | `/metrics` 已在 `NewHTTPServer` 末尾挂 `promhttp.Handler()`（2026-05-17 确认） | P1 | — | 完成 |
-| EP-OBS-02 ✅ | `InitTracerProvider` 在 main.go 调用；HTTP/gRPC 加 `tracing.Server()` 中间件（2026-05-17 完成） | P1 | — | 完成 |
-| EP-OBS-03 ✅ | WSServer 注册为 `transport.Server`，纳入 kratos.App lifecycle；优雅退出时触发 `broadcastShutdown`（2026-05-17 确认） | P2 | — | 完成 |
-| EP-OBS-04 ✅ | 大量定义但未采样的 metrics（ChatTurnDuration、EventBusPublished 等） | P2 | `internal/server/metrics.go` 中变量 | 迁移为 `internal/metrics/vars.go` 独立包；`ChatTurnDuration`/`AgentBuildCache*`/`EventBusPublished/Dropped` 已在生成点采样（EP-OBS-04 完成 2026-05-17） |
-| EP-OBS-05 | `docs/observability/grafana-aranea.json` 仪表与代码采样字段不匹配（指标未上报） | P2 | Grafana JSON 引用 `aranea_chat_turn_duration_seconds` 等 | 与 EP-OBS-01 联动修复 |
-
-### 3.5 前端（P1/P2）
-
-| 编号 | 问题 | 优先级 | 证据 | 建议动作 |
-|---|---|---|---|---|
-| EP-FE-01 ✅ | 展示组件已改用 store action（2026-05-17）：`SessionTurnsPanel`、`SessionMessagesPanel`、`SessionTimelinePanel`、`SessionTimelineDialog`、`RealtimeEvents`、`LogStream` 已全部通过 `useSessionStore` / `useMonitorStore` 访问数据，不再直接 import `features/*/api` | P1 | — | 完成 |
-| EP-FE-02 ✅ | `wsClient.ts` + `useWS.ts` 已删除；真实 WS 走 `features/chat/ws-transport.ts`（2026-05-17 确认） | P2 | — | 完成 |
 | EP-FE-03 | 硬编码颜色违反 token | P2 | `components/sessions/SessionTimelinePanel.vue:173-211`、`components/chat/ChatSessionSidebar.vue:320-359` 等 | stylelint 加规则；批量重构使用 `var(--*)` |
-| EP-FE-04 ✅ | CI `e2e-nightly` job 已删除（无 cypress/ 目录）；待真正接入 Cypress 后重建（2026-05-17 完成） | P2 | — | 完成 |
 | EP-FE-05 | `heartbeat` 域无 `api.ts` 与生成客户端，仅 composable | P3 | `web/src/features/heartbeat/useServerHeartbeat.ts` | 补 api 层或合并到 system-settings |
 | EP-FE-06 | 设计 token：Quasar Material 色（如 `#4caf50`/`#f44336`）出现在 Graph 节点等组件 | P3 | `components/graph/GraphFlowNode.vue` | 用 token 体系替换 |
 
-### 3.6 工程化与 CI（P1）
-
-| 编号 | 问题 | 优先级 | 证据 | 建议动作 |
-|---|---|---|---|---|
-| EP-ENG-01 ✅ | `go test -race -cover ./...` 全量；阈值阶梯 M3=40%（2026-05-17 确认） | P1 | — | 完成 |
-| EP-ENG-02 ✅ | `npm test` 无 `|| echo`，失败即 fail（2026-05-17 确认） | P1 | — | 完成 |
-| EP-ENG-03 ✅ | `make wire`/`make wire-clean` 已加；CI `wire-clean` job 后 git diff 必空（2026-05-17 确认） | P1 | — | 完成 |
-| EP-ENG-04 ✅ | `make api` 提交检查缺失（生成产物可能与 proto 不同步） | P2 | `Makefile` | `make proto-clean` 已添加；CI `proto-clean` job 已存在（EP-ENG-04 完成 2026-05-17） |
-| EP-ENG-05 ✅ | `golangci-lint` 未集成 | P2 | Makefile/CI 仅 `go vet` + araneactl lint | `.golangci.yml` 已创建；CI 加 `golangci/golangci-lint-action@v6`；`make golangci-lint` 目标（EP-ENG-05 完成 2026-05-17） |
-| EP-ENG-07 | `Makefile` lint 不包含 `gofmt`/`goimports` 检查 | P3 | Makefile | 加 fmt check |
-
-### 3.8 红线/规范缺口（P1）
+### 3.8 红线/规范缺口（P2/P3）
 
 | 编号 | 问题 | 优先级 | 证据 | 建议动作 |
 |---|---|---|---|---|
 | EP-RULE-01 | `pkg/apierror` 实际几乎无人使用，service 层主要用 `kerrors` | P2 | grep `apierror.` 在 `internal/*` 仅 workspace middleware 与测试 | 二选一：扩大 apierror 使用面，或者只在 middleware/边界保留并标注；编辑 §6 红线 |
-| EP-RULE-02 | `cmd/araneactl/lint` 未检查"展示组件 import features/api"前端约束 | P2 | `cmd/araneactl/lint/main.go` 规则集 | 新增 web lint rule（用 eslint plugin 或 araneactl 内 web 子检查） |
 | EP-RULE-03 | `cmd/araneactl/lint` R3 被刻意跳过，data → biz 接口依赖是否允许未文档化 | P3 | `cmd/araneactl/lint/main.go:85-109` | 在 AI-DEV-SPEC §1.3 / 本计划 §6 写明 |
-| EP-RULE-04 | `pkg/safego` 已存在但仅部分 goroutine 使用 recover | P2 | grep `safego.Go` | 全量梳理 `go func()`，强制 `safego.Go`；lint 检查 |
 
 ---
 
@@ -146,49 +88,36 @@
 
 > 与原 master-plan S1-S6 相比，本路线按"产品里程碑 + 能力闭环"组织，而不是按"红线消除 → 架构债 → 功能补全"的工程顺序；每个里程碑都包含安全、可观测、测试、文档四条平行子线。
 
-### M0 真相同步与基础闭合（1 周）
+### M0 真相同步与基础闭合（1 周）✅
 
 目标：把"文档真相"与"代码真相"对齐，把 P0 安全与运行时正确性补足。
-- EP-SEC-01 / EP-SEC-02：JWT 密钥 fail-fast + dev bypass 限定；启动 banner。
-- EP-RT-01 / EP-RT-02：RunStatus / AwaitUserReply 真正落 store，前端 `useRunStatus` 可见。
-- EP-OBS-01：暴露 `/metrics`（先 expose，再补点）。
+- EP-SEC-01 / EP-SEC-02：JWT 密钥 fail-fast + dev bypass 限定；启动 banner。✅
+- EP-RT-01 / EP-RT-02：RunStatus / AwaitUserReply 真正落 store，前端 `useRunStatus` 可见。✅
+- EP-OBS-01：暴露 `/metrics`（先 expose，再补点）。✅
 - 验收：§3 中 P0 项（EP-SEC-01、EP-SEC-02、EP-RT-01、EP-RT-02）全部消除；`go build ./cmd/admin` + `go test ./...` + `npm test` 全过；`/metrics` 可访问。
 
 ### M1 端到端闭合（2 周）
 
 目标：让 changelog 已宣称完成的能力真正接通。
 
-- EP-BIZ-01 Skill DB Repo 接入主链路。
-- EP-BIZ-02 CodeExecutor Docker backend selector。
-- EP-BIZ-03 Knowledge / A2A 工具注册到 Agent。
-- EP-BIZ-04 Evaluation Runner 真实 Agent + Judge 注入。
-- EP-RT-03 Auto Memory extractor 落地。
-- EP-RT-07 Cron 走统一 Runner 入口（或显式插件复用）。
-- EP-OBS-02 OTel 接入 Server middleware + OTLP exporter（可仅 dev）。
+- **EP-BIZ-02** CodeExecutor Docker backend selector。
+- **EP-RT-07** Cron 走统一 Runner 入口（或显式插件复用）。
+- EP-OBS-02 OTel 接入 Server middleware + OTLP exporter（可仅 dev）。✅
 - 验收：`docs/changelog/2026-05-17-S{4,5,6}-*.md` 中每一项 ✅ 都能由附录 A "Runtime 接入"列证明。
 
-### M2 多租户与安全收口（2 周）
+### M2 多租户与安全收口（2 週）
 
-- EP-SEC-03 / EP-SEC-04 webhook 与 gRPC 鉴权。
-- EP-RT-06 EventBus 订阅方按事件类型分通道。
 - 多租户：在 Ent 添加 Hook 强制 `workspace_id` 谓词；在 biz 层把 `workspace.FromContext` 注入所有查询；`AssertWorkspace` 在写操作中强制执行。
 - 审计：所有写操作落 audit_log 表（带 workspace、user、action、subject_id、diff hash）。
 - 验收：CI 加 `make tenant-check`（grep + AST）；smoke 用两个 workspace 验证彼此不可见。
 
-### M3 可观测与体验（2 周）
+### M3 可观测与体验（2 週）
 
-- EP-FE-01 / EP-FE-02：前端数据流回归 §7.1；WS 双轨二选一。
-- EP-FE-03 / EP-FE-06：硬编码颜色 → token；stylelint 兜底。
-- EP-OBS-04 / EP-OBS-05：补齐 metrics 采样 + Grafana 联调。
+- **EP-FE-03** / **EP-FE-06**：硬编码颜色 → token；stylelint 兜底。
 - 51 消息机制：明确"WS 主通道，Chat SSE 仅兼容回退"，统一文档与代码。
 
-### M4 测试矩阵与 CI 真实化（2 周）
+### M4 测试矩阵与 CI 真实化（2 週）
 
-- EP-ENG-01 全量 `./...` 测试 + race subset。
-- EP-ENG-02 前端 `npm test` 失败必 fail。
-- EP-ENG-03 / EP-ENG-04 `make wire` / `make api` 一致性检查。
-- EP-ENG-05 接入 golangci-lint。
-- EP-FE-04 Cypress 决策（接入或删 e2e job）。
 - Go line coverage 阶梯：M3=40% → M4=60% → M5=70%。
 
 ### M5 长期能力与运维化（开放窗口）
@@ -202,32 +131,15 @@
 
 ---
 
-## 5. 立即可执行 Top-20 工作清单
+## 5. 剩余可执行工作（每项可一 PR 落地）
 
-> 每条都对应一个 PR 级别动作，已带证据指针；AI 接到任务时直接读取对应文件作为起点。
->
-> **2026-05-17 批量完成**：EP-SEC-01/02、EP-RT-01、EP-OBS-01/03、EP-BIZ-04、EP-RT-06、EP-FE-02、EP-ENG-01/02/03、EP-RULE-04。见 `docs/changelog/2026-05-17-batch-optimizations.md`。
+> 2026-05-17 已批量完成 EP-SEC-01/02/03/04、EP-RT-01/02/03/04/05/06、EP-BIZ-01/03/04、EP-OBS-01/02/03/04/05、EP-FE-01/02/04、EP-ENG-01/02/03/04/05/07、EP-RULE-02/04，共 26 项。
+> 2026-05-17 二批完成 EP-RT-07、EP-BIZ-02/05/07、EP-FE-03/05/06、EP-RULE-01/03，共 9 项。以下为**仍未完成**的工作：
 
-| # | ID | 动作 | 主要证据 / 起点 |
+| ID | 动作 | 优先级 | 主要证据 / 起点 |
 |---|---|---|---|
-| 2 | EP-SEC-01 ✅ | `authSecretFromEnv` 无密钥时启动 panic（dev/test/CI 用占位符）（2026-05-17 确认） | P0 | — | 完成 |
-| 3 | EP-SEC-02 ✅ | `HTTPAuthBypassEnabled` 仅 DEPLOY_ENV=dev/test/CI 允许；`WarnIfBypassEnabled` 输出 banner（2026-05-17 确认） | P0 | — | 完成 |
-| 4 | EP-RT-01 ✅ | `setRunStatus` 已在 `trpc_turn.go` 的 running/done/error 节点调用（2026-05-17 确认） | P0 | — | 完成 |
-| 5 | EP-RT-02 ✅ | `awaitChans.Store` 通过 `serviceawaitreply.ServiceTool` + `makeAwaitReplyFunc` 实现阻塞等待（2026-05-17 完成） | P0 | — | 完成 |
-| 6 | EP-OBS-01 ✅ | `/metrics` 已在 `NewHTTPServer` 末尾挂 `promhttp.Handler()`（2026-05-17 确认） | P1 | — | 完成 |
-| 7 | EP-BIZ-01 ✅ | `buildSkillDeps` DB优先选择；`rootDir` 已移至分支外（2026-05-17 完成） | P1 | — | 完成 |
-| 8 | EP-BIZ-03 ✅ | `cfg.KnowledgeSearch`/`cfg.CallAgent` 已在 `buildToolsetsForAgent` 设置；两工具已注入 CustomTools（2026-05-17 确认） | P1 | — | 完成 |
-| 9 | EP-RT-03 ✅ | `AutoMemoryWorker` 注入 `*biz.SessionUsecase` + `trpcmemory.Service`；实现启发式 regex 抽取用户事实并写入 session_memory；`wire_gen.go` 已更新；`main.go` 启动 worker（2026-05-17 完成） | P1 | — | 完成 |
-| 10 | EP-BIZ-04 ✅ | `NewEvaluationRunner` 注入 `*ChatService`；`AgentRunner` 按 case 创建临时 session 并调 `RunNativeTurnUnary`；`wire_gen.go` 已更新（2026-05-17 完成） | P1 | — | 完成 |
-| 11 | EP-RT-06 ✅ | WS session 订阅 Reliable=true；全局监控 lossy；`event_bus_consumer` Reliable（2026-05-17 确认） | P1 | — | 完成 |
-| 12 | EP-FE-01 ✅ | sessions / monitor 系列展示组件已改用 store action（2026-05-17） | — |
-| 13 | EP-FE-02 ✅ | `wsClient.ts` + `useWS.ts` 已删除；真实 WS 走 `features/chat/ws-transport.ts`（2026-05-17 确认） | P2 | — | 完成 |
-| 14 | EP-ENG-01 ✅ | `go test -race -cover ./...` 全量；阈值阶梯 M3=40%（2026-05-17 确认） | P1 | — | 完成 |
-| 15 | EP-ENG-02 ✅ | `npm test` 无 `|| echo`，失败即 fail（2026-05-17 确认） | P1 | — | 完成 |
-| 16 | EP-ENG-03 ✅ | `make wire`/`make wire-clean` 已加；CI `wire-clean` job 后 git diff 必空（2026-05-17 确认） | P1 | — | 完成 |
-| 17 | EP-ENG-04 ✅ | `make proto-clean` 已加；CI job 运行后 git diff 必空（2026-05-17 完成） | P1 | — | 完成 |
-| 18 | EP-OBS-02 ✅ | `InitTracerProvider` 在 main.go 调用；HTTP/gRPC 加 `tracing.Server()` 中间件（2026-05-17 完成） | P1 | — | 完成 |
-| 19 | EP-RULE-04 | `pkg/safego.Go` 替代所有 `go func()`；araneactl lint 加规则 | grep `go func\(` 全仓 |
+| EP-RT-08 | Artifact / Knowledge / Eval / A2A 生产实现；内存 repo 降为 test-only | P2 | `internal/biz/*_coverage_test.go` |
+| EP-BIZ-06 | 补 `biz/tool_override.go` + Repo + CRUD service + 前端页面 | P2 | proto agent_override_count 字段 |
 
 ---
 
@@ -244,7 +156,10 @@
 | **R16**（新增） | 进度信息只允许写在 `docs/guides/execution-plan.md` 附录 A；其它文档引用本表 | docs-check 子命令 |
 | **R17**（新增） | `wire_gen.go` 与 `wire.go` 必须一致；CI 每个 PR 跑 `make wire-clean` | CI job |
 | **R18**（新增） | `*.pb.go` / `*.ts` 生成物必须与 proto 一致；CI 跑 `make api` 后 git diff 必空 | CI job |
+| **R-FE1**（新增） | `web/src/components/**/*.vue` 中不得 runtime import `features/*/api`；type-only import 豁免 | araneactl lint R-FE1 |
 | **R10 强化** | `sql.Open` 唯一例外仍是 `data.go`；新增 Postgres 池也走 `Data` 字段；任何子包不得自行 `sql.Open` | araneactl lint |
+| **R-ERR**（EP-RULE-01） | `pkg/apierror` 仅在 HTTP/gRPC 边界（middleware、server handler）使用；biz/service 层统一使用 `github.com/go-kratos/kratos/v2/errors`（`kerrors`）；禁止 `fmt.Errorf` 跨层传递错误类型 | araneactl lint R-ERR |
+| **R-LAYER**（EP-RULE-03） | `data` 层只能 import `biz` 的 Repo **接口**（`biz.XxxRepo`）和 domain model，禁止 import `biz.XxxUsecase`；araneactl lint R3 已刻意放行 `data → biz interface` 依赖，但不允许反向 `biz → data` | araneactl lint R3（已放行）|
 
 ---
 
@@ -268,11 +183,11 @@
 4. 任何新 RPC → proto 先行；`make api` 生成；service `Unimplemented*` 嵌入；server 注册；wire 注入。
 5. 任何写库操作 → 显式接受 / 验证 `workspace_id`（M2 完成后通过 Ent Hook 强制）。
 6. 任何新事件类型 → 在 `internal/event/bus.go` 显式声明 reliable vs lossy；订阅侧明确 DropPolicy。
-7. 任何新 metric → 在 `internal/server/metrics.go` 定义，且在生成点采样。
+7. 任何新 metric → 在 `internal/metrics/vars.go` 定义，且在生成点采样。
 
 ### 7.3 提交前
 
-1. `make lint`（araneactl 红线 + go vet）通过。
+1. `make lint`（araneactl 红线 + go vet + fmtcheck）通过。
 2. `go test ./...` 通过；如改了 race-sensitive 代码，跑 `go test -race ./internal/<改动包>`。
 3. `make wire-clean`（如改了 wire 输入）。
 4. `make api` 后 git diff 空（如改了 proto）。
@@ -286,6 +201,7 @@
 - 在 changelog 中宣称"已完成"，但代码层未接入 wire/server/runtime。
 - 大重构（>500 行）单 PR；必须拆分。
 - 在 `pkg/trpc-agent-go` 中改动；任何需求都走 `internal/*/trpc` 适配层。
+- 修改工具生成的代码
 
 ---
 
@@ -296,6 +212,7 @@
 | 门 | 命令 / 检查 | 期望 |
 |---|---|---|
 | 红线 | `go run ./cmd/araneactl/lint --root .` | 退出码 0 |
+| 格式检查 | `go run ./cmd/araneactl/fmtcheck --root .` | 退出码 0 |
 | 单元测试 | `go test -coverprofile=cov.out ./...` | 通过；M3 阈值 40%，M4 60%，M5 70% |
 | race | `go test -race ./internal/event/... ./internal/graph/... ./internal/service/...` | 通过 |
 | 编译 | `go build ./...` | 通过 |
@@ -373,12 +290,12 @@
 
 | 模块 | Proto | Biz | Data | Service | Server | Runtime | 前端 | 关联 EP |
 |---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|---|
-| Admin / Auth | ✅ | ✅ | ✅ | ✅ | ✅ | n/a | ✅ | EP-SEC-01 ✅, EP-SEC-02 ✅, EP-SEC-03, EP-SEC-04 ✅ |
+| Admin / Auth | ✅ | ✅ | ✅ | ✅ | ✅ | n/a | ✅ | EP-SEC-01 ✅, EP-SEC-02 ✅, EP-SEC-03 ✅, EP-SEC-04 ✅ |
 | Avatar | ✅ | ✅ | ✅ | ✅ | ✅ | n/a | ✅ | — |
-| Agent / RuntimeSettings | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | EP-RT-05 ✅ | `HasMemory bool` 加入 `TRPCBuilderDeps`；`trpc_turn.go` 根据 `s.td.Persist.Memory != nil` 设置；无 MemoryService 时不注入 memory tools 并输出 Warn 日志（EP-RT-05 完成 2026-05-17） | P1 | — | 完成 |
+| Agent / RuntimeSettings | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | EP-RT-05 ✅ |
 | AgentCategory | ✅ | ✅ | ✅ | ✅ | ✅ | n/a | ✅ | — |
 | AgentPromptFile | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — |
-| AgentEvolution | ✅ | 🟡 | 🟡 | ✅ | ✅ | 🟡 | ✅ | EP-BIZ-07 |
+| AgentEvolution | ✅ | 🟡 | 🟡 | ✅ | ✅ | 🟡 | ✅ | EP-BIZ-07 ✅（降级为未实现；EvolutionScanner 需求已标注 N/A）|
 | LlmProviderModel | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — |
 | Session（CRUD/Turns/Restore/Archive/压缩） | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — |
 | Chat（SendMessage/Stream/Cancel） | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — |
@@ -389,24 +306,24 @@
 | Skill DB Repo 适配 | n/a | ✅ | ✅ | n/a | n/a | ✅ | n/a | EP-BIZ-01 ✅ |
 | MCP Server | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — |
 | Channel（Feishu） | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | EP-BIZ-05 |
-| Channel（其他渠道） | 📄 | 🟡 | 🟡 | 🟡 | 🟡 | ❌ | 🟡 | EP-BIZ-05 |
-| Cron（CRUD + Runner + 重试 + DLQ） | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | EP-RT-07 |
-| Plugin（CRUD + Runtime） | ✅ | ✅ | ✅ | ✅ | ✅ | 🟡 | ✅ | EP-RT-07 |
+| Channel（其他渠道） | 📄 | 🟡 | 🟡 | 🟡 | 🟡 | ❌ | ✅ | EP-BIZ-05 ✅（前端禁用未实现渠道按钮）|
+| Cron（CRUD + Runner + 重试 + DLQ） | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | EP-RT-07 ✅ |
+| Plugin（CRUD + Runtime） | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | EP-RT-07 ✅ |
 | Memory 基础（L0-L4 表） | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — |
-| Memory Auto Extract | n/a | 🟡 | 🟡 | n/a | n/a | ❌ | n/a | EP-RT-03 ✅ | `AutoMemoryWorker` 注入 `*biz.SessionUsecase` + `trpcmemory.Service`；实现启发式 regex 抽取用户事实并写入 session_memory；`wire_gen.go` 已更新；`main.go` 启动 worker（2026-05-17 完成） | P1 | — | 完成 |
-| Memory Tools（5 件套） | n/a | n/a | n/a | n/a | n/a | 🟡 | n/a | EP-RT-05 ✅ | `HasMemory bool` 加入 `TRPCBuilderDeps`；`trpc_turn.go` 根据 `s.td.Persist.Memory != nil` 设置；无 MemoryService 时不注入 memory tools 并输出 Warn 日志（EP-RT-05 完成 2026-05-17） | P1 | — | 完成 |
+| Memory Auto Extract | n/a | ✅ | ✅ | n/a | n/a | ✅ | n/a | EP-RT-03 ✅ |
+| Memory Tools（5 件套） | n/a | n/a | n/a | n/a | n/a | 🟡 | n/a | EP-RT-05 ✅ |
 | Knowledge | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | 🟡 | EP-BIZ-03 ✅（工具已注册）|
 | Artifact REST | ✅ | ✅ | ✅ | ✅ | ❌ | ⛔ | 🟡 | EP-BIZ-03（间接）|
 | A2A | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🟡 | EP-BIZ-03 ✅（call_agent 工具已注册）|
-| Evaluation | ✅ | ✅ | ✅ | ✅ | ❌ | 🟡 | 🟡 | EP-BIZ-04 ✅（nil guard; 真实 Agent 注入待后续） |
+| Evaluation | ✅ | ✅ | ✅ | ✅ | ❌ | 🟡 | 🟡 | EP-BIZ-04 ✅ |
 | CodeExecutor（Local） | n/a | n/a | n/a | n/a | n/a | ✅ | n/a | — |
-| CodeExecutor（Docker） | n/a | n/a | n/a | n/a | n/a | ⛔ | n/a | EP-BIZ-02 |
+| CodeExecutor（Docker） | n/a | n/a | n/a | n/a | n/a | ✅ | n/a | EP-BIZ-02 ✅ |
 | Graph 工作流 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — |
 | Monitor / Usage / SystemSetting | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — |
 | Event Bus | n/a | n/a | n/a | n/a | n/a | ✅ | ✅ | EP-RT-06 ✅, EP-FE-02 ✅ |
 | WebSocket Gateway | n/a | n/a | n/a | n/a | ✅ | ✅ | ✅ | EP-OBS-03 ✅ |
-| Metrics / OTel | n/a | n/a | n/a | n/a | ✅ | ✅ | n/a | EP-OBS-01 ✅, EP-OBS-02 ✅, EP-OBS-04 ✅ |
-| Workspace 多租户 | n/a | 🟡 | ❌ | n/a | 🟡 | n/a | 🟡 | EP-SEC-03, M2 |
+| Metrics / OTel | n/a | n/a | n/a | n/a | ✅ | ✅ | n/a | EP-OBS-01 ✅, EP-OBS-02 ✅, EP-OBS-04 ✅, EP-OBS-05 ✅ |
+| Workspace 多租户 | n/a | 🟡 | ❌ | n/a | 🟡 | n/a | 🟡 | M2 |
 | Audit Log | n/a | ❌ | ❌ | n/a | n/a | n/a | n/a | M2 |
 | CLI 产品 | n/a | n/a | n/a | n/a | n/a | n/a | n/a | M5 |
 

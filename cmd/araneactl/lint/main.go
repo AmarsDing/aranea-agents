@@ -58,6 +58,25 @@ func main() {
 		}
 	}
 
+	// EP-RULE-02: scan web/src/components/**/*.vue for direct features/*/api imports.
+	webComponents := filepath.Join(abs, "web", "src", "components")
+	if _, err := os.Stat(webComponents); err == nil {
+		if err := filepath.WalkDir(webComponents, func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.IsDir() || !strings.HasSuffix(path, ".vue") {
+				return nil
+			}
+			rel := relPath(abs, path)
+			violations = append(violations, checkVueFeaturesAPIImport(rel, path)...)
+			return nil
+		}); err != nil {
+			fmt.Fprintf(os.Stderr, "araneactl lint: walk error (web): %v\n", err)
+			os.Exit(2)
+		}
+	}
+
 	// Additional non-file checks.
 	violations = append(violations, checkMainGoSize(abs)...)
 
@@ -280,6 +299,63 @@ func r9NoBizLogDefault(rel string, lines []string) []violation {
 		}
 	}
 	return nil
+}
+
+// EP-RULE-02: Vue components in web/src/components/ must not directly import from
+// features/*/api.  Data access must go through Pinia stores (§7.1 / §7.2).
+func checkVueFeaturesAPIImport(rel, path string) []violation {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	var vs []violation
+	for sc.Scan() {
+		line := sc.Text()
+		trimmed := strings.TrimSpace(line)
+		// Match runtime (non-type) imports from features/.../api.
+		// "import type" statements are allowed — they carry no runtime call.
+		if !strings.Contains(trimmed, "from ") {
+			continue
+		}
+		if strings.HasPrefix(trimmed, "import type ") {
+			continue
+		}
+		for _, q := range []string{`"`, `'`} {
+			idx := strings.Index(trimmed, "from "+q)
+			if idx < 0 {
+				continue
+			}
+			imp := trimmed[idx+5+len(q):]
+			end := strings.Index(imp, q)
+			if end < 0 {
+				continue
+			}
+			imp = imp[:end]
+			// Check for pattern features/<domain>/api (with any number of ../ prefixes).
+			clean := strings.TrimLeft(imp, "./")
+			parts := strings.Split(clean, "/")
+			if len(parts) >= 2 && parts[len(parts)-2] == "features" || isFeaturesAPIPath(parts) {
+				vs = append(vs, violation{
+					file:    rel,
+					rule:    "R-FE1",
+					message: fmt.Sprintf("component directly imports from features API (%q); use a Pinia store action instead", imp),
+				})
+			}
+		}
+	}
+	return vs
+}
+
+// isFeaturesAPIPath returns true for paths like .../features/<domain>/api.
+func isFeaturesAPIPath(parts []string) bool {
+	for i := 0; i < len(parts)-2; i++ {
+		if parts[i] == "features" && parts[i+2] == "api" {
+			return true
+		}
+	}
+	return false
 }
 
 // R10: cmd/admin/main.go must not exceed 200 lines.

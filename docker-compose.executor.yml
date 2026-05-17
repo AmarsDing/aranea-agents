@@ -1,0 +1,31 @@
+# docker-compose.executor.yml
+# EP-BIZ-02: Standalone docker-compose for the sandboxed code-executor backend.
+# Start with:  docker compose -f docker-compose.executor.yml up -d
+# Then set:    CODE_EXECUTOR_BACKEND=docker
+#
+# The admin service is included here only as an example overlay that shows
+# how to inject the env var; in production merge this into your main
+# docker-compose.yml or pass the variable through your deploy config.
+
+version: "3.9"
+
+services:
+  # Pre-pull the sandbox image so the first execution is not slow.
+  executor-init:
+    image: python:3.11-slim
+    command: ["echo", "executor image ready"]
+    restart: "no"
+
+  admin:
+    image: aranea-agents:latest
+    environment:
+      # Switch the skill code executor backend to Docker (EP-BIZ-02).
+      CODE_EXECUTOR_BACKEND: docker
+      # Optional: override the sandbox image (must have python3 / node / bash).
+      # CODE_EXECUTOR_DOCKER_IMAGE: python:3.11-slim
+      # Optional: per-execution timeout (default 60s).
+      # CODE_EXECUTOR_TIMEOUT: 90s
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - executor-init

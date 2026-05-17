@@ -87,7 +87,7 @@ func (s *PluginService) ListPlugins(ctx context.Context, req *v1.ListPluginsRequ
 		Total:    int32(result.Total),
 		Page:     page,
 		PageSize: pageSize,
-		Items:      make([]*v1.Plugin, 0, len(result.Items)),
+		Items:    make([]*v1.Plugin, 0, len(result.Items)),
 	}
 	for i := range result.Items {
 		resp.Items = append(resp.Items, toProtoPlugin(result.Items[i]))

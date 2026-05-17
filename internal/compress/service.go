@@ -23,12 +23,12 @@ type Request struct {
 
 // Result is model output plus resolved routing metadata.
 type Result struct {
-	Markdown           string
-	PromptTokens       int
-	CompletionTokens   int
-	Provider           string
-	Model              string
-	PromptVersion      string
+	Markdown         string
+	PromptTokens     int
+	CompletionTokens int
+	Provider         string
+	Model            string
+	PromptVersion    string
 }
 
 // Compressor summarizes transcripts via the configured LLM catalog row.

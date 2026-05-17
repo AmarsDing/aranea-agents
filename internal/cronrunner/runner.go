@@ -49,6 +49,12 @@ var (
 	}, []string{"job_id"})
 )
 
+// CronChatRunner dispatches a single cron-triggered chat turn via the in-process
+// agent runner (EP-RT-07). Implemented by *service.ChatService.
+type CronChatRunner interface {
+	RunCronTurn(ctx context.Context, sessionID, content, teamID string) (userMsgID, agentMsgID string, err error)
+}
+
 // Deps wires cron execution to Ent repos + session create + chat HTTP POST.
 type Deps struct {
 	Cron     biz.CronRepo
@@ -56,6 +62,9 @@ type Deps struct {
 	Teams    biz.TeamRepository
 	Agents   biz.AgentRepository
 	EventBus event.Bus
+	// Chat, when non-nil, dispatches cron turns in-process via RunCronTurn
+	// instead of the legacy HTTP POST fallback (EP-RT-07).
+	Chat CronChatRunner
 }
 
 // Runner executes due cron_task rows on an interval (ported from pkg/backend CronRunner).
@@ -293,14 +302,24 @@ func (r *Runner) dispatchCronTask(ctx context.Context, task biz.CronTask, cfg cr
 		if err != nil {
 			return cronDispatchResult{}, err
 		}
-		res, err := r.postChat(ctx, sendMessagePayload{
-			SessionID: sess.ID,
-			TeamID:    teamID,
-			Content:   cfg.Message,
-			Options:   sendMessageOptions{DialogMode: "cron"},
-		})
-		if err != nil {
-			return cronDispatchResult{}, err
+		var res cronDispatchResult
+		if r.deps.Chat != nil {
+			// EP-RT-07: in-process dispatch via plugin runtime.
+			uid, aid, rerr := r.deps.Chat.RunCronTurn(ctx, sess.ID, cfg.Message, teamID)
+			if rerr != nil {
+				return cronDispatchResult{}, rerr
+			}
+			res = cronDispatchResult{SessionID: sess.ID, UserMessageID: uid, AgentMessageID: aid}
+		} else {
+			res, err = r.postChat(ctx, sendMessagePayload{
+				SessionID: sess.ID,
+				TeamID:    teamID,
+				Content:   cfg.Message,
+				Options:   sendMessageOptions{DialogMode: "cron"},
+			})
+			if err != nil {
+				return cronDispatchResult{}, err
+			}
 		}
 		r.publishTeamCronMaybe(ctx, teamID)
 		return res, nil
@@ -318,6 +337,14 @@ func (r *Runner) dispatchCronTask(ctx context.Context, task biz.CronTask, cfg cr
 		})
 		if err != nil {
 			return cronDispatchResult{}, err
+		}
+		if r.deps.Chat != nil {
+			// EP-RT-07: in-process dispatch via plugin runtime.
+			uid, aid, rerr := r.deps.Chat.RunCronTurn(ctx, sess.ID, cfg.Message, "")
+			if rerr != nil {
+				return cronDispatchResult{}, rerr
+			}
+			return cronDispatchResult{SessionID: sess.ID, UserMessageID: uid, AgentMessageID: aid}, nil
 		}
 		return r.postChat(ctx, sendMessagePayload{
 			SessionID: sess.ID,

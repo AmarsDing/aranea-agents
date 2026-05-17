@@ -154,8 +154,10 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { listChannels } from "../../features/channels/api";
 import type { PlatformResource } from "../../features/platform/api";
+import { useChannelsStore } from "../../stores/channels/index";
+
+const channelsStore = useChannelsStore();
 
 const props = defineProps<{
   open: boolean;
@@ -203,10 +205,9 @@ const recentWindowTokens = ref(props.recentWindowTokensInput || 0);
 const summaryKeepTurns = ref(props.summaryKeepTurnsInput || 4);
 
 const loadingChannels = ref(false);
-const channels = ref<PlatformResource[]>([]);
 
 const channelOptions = computed(() =>
-  channels.value
+  channelsStore.channels
     .filter((ch: PlatformResource) => ch.enabled)
     .map((ch: PlatformResource) => ({
       label: `${ch.name}（${ch.key}）`,
@@ -240,9 +241,9 @@ function onChannelChange() {
 async function fetchChannels() {
   loadingChannels.value = true;
   try {
-    channels.value = await listChannels();
+    await channelsStore.loadChannels();
   } catch {
-    channels.value = [];
+    // error handled by store
   } finally {
     loadingChannels.value = false;
   }

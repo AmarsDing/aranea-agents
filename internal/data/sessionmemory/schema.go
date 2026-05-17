@@ -68,9 +68,9 @@ func EnsurePatches(ctx context.Context, client *ent.Client) error {
 		return nil
 	}
 	patches := []struct {
-		table  string
-		col    string
-		ddl    string
+		table string
+		col   string
+		ddl   string
 	}{
 		{
 			"tool_invocation_params", "param_name",

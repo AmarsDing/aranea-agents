@@ -19,3 +19,4 @@
 | [2026-05-17-S4-Plugin-Skill-Planner.md](./2026-05-17-S4-Plugin-Skill-Planner.md) | S4 功能补全：Plugin 运行时 / Skill DB 仓库 / Planner 多策略 / Memory 工具注入 / AutoMemory 后台任务 |
 | [2026-05-17-S5-Artifact-Cron-Tests.md](./2026-05-17-S5-Artifact-Cron-Tests.md) | S5：Artifact 制品 / Cron 重试 DLQ / AgentRuntimeSettings 拆分 / 测试矩阵 60% |
 | [2026-05-17-S6-Knowledge-Eval-A2A.md](./2026-05-17-S6-Knowledge-Eval-A2A.md) | S6：Knowledge / Evaluation / A2A / CodeExecutor 沙箱（注：四项均未端到端接入 Agent 装配链，详见 `execution-plan.md` §1.3） |
+| [2026-05-17-batch2-EP-RT07-BIZ02-FE.md](./2026-05-17-batch2-EP-RT07-BIZ02-FE.md) | 二批收尾：EP-RT-07 Cron 走 plugin runtime / EP-BIZ-02 Docker executor backend selector / EP-BIZ-05/07 渠道禁用与进化降级 / EP-FE-03/05/06 设计 token / EP-RULE-01/03 红线补充 |

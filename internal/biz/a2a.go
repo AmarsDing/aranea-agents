@@ -11,10 +11,10 @@ import (
 
 // A2ACapability describes one callable capability on an agent.
 type A2ACapability struct {
-	Name              string
-	Description       string
-	InputSchemaJSON   string
-	OutputSchemaJSON  string
+	Name             string
+	Description      string
+	InputSchemaJSON  string
+	OutputSchemaJSON string
 }
 
 // A2AAgentCard is the public A2A profile of an agent.

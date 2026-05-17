@@ -1,15 +1,15 @@
 package graph
 
 type GraphTemplate struct {
-	ID          string         `json:"id"`
-	Name        string         `json:"name"`
-	Description string         `json:"description"`
-	Category    string         `json:"category"`
-	Nodes       []TemplateNode `json:"nodes"`
-	Edges       []TemplateEdge `json:"edges"`
+	ID          string          `json:"id"`
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	Category    string          `json:"category"`
+	Nodes       []TemplateNode  `json:"nodes"`
+	Edges       []TemplateEdge  `json:"edges"`
 	StateFields []StateFieldDef `json:"state_fields"`
-	EntryPoint  string         `json:"entry_point"`
-	FinishPoint string         `json:"finish_point"`
+	EntryPoint  string          `json:"entry_point"`
+	FinishPoint string          `json:"finish_point"`
 }
 
 type TemplateNode struct {

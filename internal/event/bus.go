@@ -33,11 +33,11 @@ type SubscribeOptions struct {
 	LevelFilter string
 
 	// Backpressure controls.
-	BufferSize  int           // channel capacity (default 128, capped at 512)
-	Reliable    bool          // shorthand: sets DropPolicy=BlockUpTo(100ms) for known critical types
-	DropPolicy  DropPolicy    // default DropOldest
-	BlockFor    time.Duration // used when DropPolicy=BlockUpTo (default 100ms if Reliable=true)
-	Selector    func(EnvelopeType) bool // additional per-type filter (nil = accept all)
+	BufferSize int                     // channel capacity (default 128, capped at 512)
+	Reliable   bool                    // shorthand: sets DropPolicy=BlockUpTo(100ms) for known critical types
+	DropPolicy DropPolicy              // default DropOldest
+	BlockFor   time.Duration           // used when DropPolicy=BlockUpTo (default 100ms if Reliable=true)
+	Selector   func(EnvelopeType) bool // additional per-type filter (nil = accept all)
 }
 
 // Bus is the in-process event fanout hub.
@@ -70,12 +70,12 @@ func NewBus() Bus {
 // These are persisted session events where loss causes observable data corruption.
 func criticalTypes() map[EnvelopeType]struct{} {
 	return map[EnvelopeType]struct{}{
-		EnvelopeTypeToolResult:      {},
-		EnvelopeTypeError:           {},
+		EnvelopeTypeToolResult:       {},
+		EnvelopeTypeError:            {},
 		EnvelopeTypeRunnerCompletion: {},
-		EnvelopeTypeGraphNodeEnd:    {},
-		EnvelopeTypeTeamRunFinished: {},
-		EnvelopeTypeTeamRunFailed:   {},
+		EnvelopeTypeGraphNodeEnd:     {},
+		EnvelopeTypeTeamRunFinished:  {},
+		EnvelopeTypeTeamRunFailed:    {},
 	}
 }
 

@@ -18,6 +18,10 @@ export const useUsageStore = defineStore("usage", () => {
     }
   }
 
+  async function fetchOverview(query?: ModelUsageQuery): Promise<ModelUsageOverview> {
+    return getModelUsageOverview(query);
+  }
+
   async function loadTrends(query?: ModelUsageQuery) {
     trends.value = await listModelUsageTrends(query);
   }
@@ -28,5 +32,5 @@ export const useUsageStore = defineStore("usage", () => {
     return result;
   }
 
-  return { overview, trends, events, loading, loadOverview, loadTrends, loadEvents };
+  return { overview, trends, events, loading, loadOverview, fetchOverview, loadTrends, loadEvents };
 });

@@ -31,11 +31,11 @@ type buildCacheEntry struct {
 // BuildCache is a thread-safe LRU cache for built trpc LLMAgents.
 // It keyed by a sha256 hash of the agent's configuration fingerprint.
 type BuildCache struct {
-	mu       sync.Mutex
-	cap      int
-	ttl      time.Duration
-	items    map[string]*buildCacheEntry
-	lruList  *list.List // front = most-recently-used
+	mu      sync.Mutex
+	cap     int
+	ttl     time.Duration
+	items   map[string]*buildCacheEntry
+	lruList *list.List // front = most-recently-used
 }
 
 var globalBuildCache = newBuildCache(buildCacheDefaultCap, buildCacheTTL)

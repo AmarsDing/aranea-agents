@@ -328,10 +328,10 @@ func (u *ChannelUsecase) CommitChannelTest(ctx context.Context, row Channel, cre
 		return result, err
 	}
 	payload, _ := json.Marshal(map[string]any{
-		"type":            cfg.Type,
-		"receive_mode":    cfg.ReceiveMode,
-		"credential_ok":   credentialCount(credentials),
-		"result_status":   result.Status,
+		"type":          cfg.Type,
+		"receive_mode":  cfg.ReceiveMode,
+		"credential_ok": credentialCount(credentials),
+		"result_status": result.Status,
 	})
 	_, _ = u.repo.AddDelivery(ctx, ChannelDelivery{
 		ID:           uuid.NewString(),

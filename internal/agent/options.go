@@ -56,8 +56,6 @@ type TeamMemberAnchor struct {
 	Role    string `json:"role"`
 }
 
-
-
 func mathRoundCtxRatio(r float64) float64 {
 	if r <= 0 {
 		return 0

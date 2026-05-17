@@ -82,10 +82,10 @@ func TestArtifactService_Upload_Get_Delete(t *testing.T) {
 	encoded := base64.StdEncoding.EncodeToString(payload)
 
 	meta, err := svc.UploadArtifact(ctx, &v1.UploadArtifactRequest{
-		SessionId:   "sess-1",
-		Name:        "hello.txt",
-		MimeType:    "text/plain",
-		DataBase64:  encoded,
+		SessionId:  "sess-1",
+		Name:       "hello.txt",
+		MimeType:   "text/plain",
+		DataBase64: encoded,
 	})
 	if err != nil {
 		t.Fatalf("upload: %v", err)

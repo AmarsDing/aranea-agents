@@ -122,14 +122,10 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import type { EvolutionKey } from "./agentUi";
-import {
-  getAgentEvolutionMetrics,
-  getAgentEvolutionSuggestions,
-  applyEvolutionSuggestion,
-  rejectEvolutionSuggestion,
-  type EvolutionMetrics,
-  type EvolutionSuggestion
-} from "../../features/agents/api";
+import type { EvolutionMetrics, EvolutionSuggestion } from "../../features/agents/api";
+import { useAgentDetailStore } from "../../stores/agents/detail";
+
+const agentDetailStore = useAgentDetailStore();
 
 const props = defineProps<{
   agentId: string;
@@ -198,7 +194,7 @@ async function fetchMetrics() {
   if (!props.agentId) return;
   metricsLoading.value = true;
   try {
-    metrics.value = await getAgentEvolutionMetrics(props.agentId, props.range);
+    metrics.value = await agentDetailStore.fetchEvolutionMetrics(props.agentId, props.range);
   } catch {
     metrics.value = null;
   } finally {
@@ -209,7 +205,7 @@ async function fetchMetrics() {
 async function fetchSuggestions() {
   if (!props.agentId) return;
   try {
-    suggestions.value = await getAgentEvolutionSuggestions(props.agentId, "pending");
+    suggestions.value = await agentDetailStore.fetchEvolutionSuggestions(props.agentId, "pending");
   } catch {
     suggestions.value = [];
   }
@@ -218,7 +214,7 @@ async function fetchSuggestions() {
 async function onApply(id: string) {
   applyingId.value = id;
   try {
-    await applyEvolutionSuggestion(props.agentId, id);
+    await agentDetailStore.applyEvolution(props.agentId, id);
     await fetchSuggestions();
     await fetchMetrics();
   } finally {
@@ -229,7 +225,7 @@ async function onApply(id: string) {
 async function onReject(id: string) {
   rejectingId.value = id;
   try {
-    await rejectEvolutionSuggestion(props.agentId, id);
+    await agentDetailStore.rejectEvolution(props.agentId, id);
     await fetchSuggestions();
   } finally {
     rejectingId.value = null;

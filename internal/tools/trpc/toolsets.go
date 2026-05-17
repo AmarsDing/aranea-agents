@@ -15,20 +15,20 @@ import (
 type ReplyFunc = serviceawaitreply.ReplyFunc
 
 type ToolsetConfig struct {
-	Filesystem      bool
-	FilesystemDir   string
-	ShellExec       bool
-	WebFetch        bool
-	WebSearch       bool
-	GeminiFetch     bool
-	GeminiModel     string
-	GoogleSearch    bool
-	GoogleAPIKey    string
-	GoogleCX        string
-	ArxivSearch     bool
-	Wikipedia       bool
-	Email           bool
-	Todo            bool
+	Filesystem    bool
+	FilesystemDir string
+	ShellExec     bool
+	WebFetch      bool
+	WebSearch     bool
+	GeminiFetch   bool
+	GeminiModel   string
+	GoogleSearch  bool
+	GoogleAPIKey  string
+	GoogleCX      string
+	ArxivSearch   bool
+	Wikipedia     bool
+	Email         bool
+	Todo          bool
 	// AwaitReply enables the await_user_reply tool.
 	// When AwaitHook is also set the service-integrated ServiceTool is used
 	// (blocks mid-turn and delivers the reply text back to the agent).
@@ -37,15 +37,15 @@ type ToolsetConfig struct {
 	AwaitReply bool
 	// AwaitHook is an optional blocking callback injected by the ChatService.
 	// When non-nil, the ServiceTool replaces the framework's await_user_reply.
-	AwaitHook     ReplyFunc
-	ClaudeCode    bool
-	ClaudeCodeDir string
-	OpenAPISpecs  []OpenAPISpecConfig
-	WorkspaceExec bool
-	AgentTools    []AgentToolConfig
-	MCPServers    []MCPServerConfig
-	MCPBroker     *MCPBrokerConfig
-	CustomTools   []trpctool.Tool
+	AwaitHook       ReplyFunc
+	ClaudeCode      bool
+	ClaudeCodeDir   string
+	OpenAPISpecs    []OpenAPISpecConfig
+	WorkspaceExec   bool
+	AgentTools      []AgentToolConfig
+	MCPServers      []MCPServerConfig
+	MCPBroker       *MCPBrokerConfig
+	CustomTools     []trpctool.Tool
 	KnowledgeSearch bool
 	CallAgent       bool
 }

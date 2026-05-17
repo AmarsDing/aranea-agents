@@ -1,0 +1,12 @@
+{
+  "extends": ["stylelint-config-standard", "stylelint-config-recommended-vue"],
+  "rules": {
+    "color-no-hex": [true, {
+      "message": "Use CSS custom properties (var(--*)) instead of hardcoded hex/rgb colors (EP-FE-03)"
+    }],
+    "color-named": ["never", {
+      "message": "Use CSS custom properties instead of named colors"
+    }]
+  },
+  "ignoreFiles": ["dist/**", ".quasar/**", "node_modules/**"]
+}

@@ -172,7 +172,7 @@ onMounted(loadTimeline);
 .timeline-stat {
   border: 1px solid rgba(100, 116, 139, 0.22);
   border-radius: 12px;
-  background: #fff;
+  background: var(--color-surface, #fff);
   padding: 10px 14px;
 }
 
@@ -185,7 +185,7 @@ onMounted(loadTimeline);
 .timeline-stat__label {
   font-size: 11px;
   font-weight: 700;
-  color: #64748b;
+  color: var(--color-text-secondary, #64748b);
   text-transform: uppercase;
 }
 
@@ -194,7 +194,7 @@ onMounted(loadTimeline);
   overflow: auto;
   border-radius: 10px;
   border: 1px solid rgba(148, 163, 184, 0.24);
-  background: #f1f5f9;
+  background: var(--color-surface-soft, #f1f5f9);
   color: var(--color-text-primary);
   padding: 12px;
   white-space: pre-wrap;
@@ -209,7 +209,7 @@ onMounted(loadTimeline);
 
 :global(.body--dark) .timeline-detail {
   border-color: rgba(148, 163, 184, 0.18);
-  background: #0f172a;
-  color: #e2e8f0;
+  background: var(--color-surface-dark, #0f172a);
+  color: var(--color-text-primary-dark, #e2e8f0);
 }
 </style>

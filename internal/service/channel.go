@@ -60,33 +60,33 @@ func bizCatalogItemToProto(it biz.ChannelCatalogItem) (*v1.ChannelCatalogItem, e
 		return nil, err
 	}
 	return &v1.ChannelCatalogItem{
-		Type:                  it.Type,
-		Label:                 it.Label,
-		Description:           it.Description,
-		Group:                 it.Group,
-		ReceiveModes:          append([]string(nil), it.ReceiveModes...),
-		Icon:                  it.Icon,
-		Bundled:               it.Bundled,
-		SupportsTest:          it.SupportsTest,
-		SupportsWebhook:       it.SupportsWebhook,
-		ConfigSchemaJson:      string(cfg),
-		CredentialSchemaJson:  string(cred),
-		UiHintsJson:           string(ui),
-		SortOrder:             int32(it.SortOrder),
+		Type:                 it.Type,
+		Label:                it.Label,
+		Description:          it.Description,
+		Group:                it.Group,
+		ReceiveModes:         append([]string(nil), it.ReceiveModes...),
+		Icon:                 it.Icon,
+		Bundled:              it.Bundled,
+		SupportsTest:         it.SupportsTest,
+		SupportsWebhook:      it.SupportsWebhook,
+		ConfigSchemaJson:     string(cfg),
+		CredentialSchemaJson: string(cred),
+		UiHintsJson:          string(ui),
+		SortOrder:            int32(it.SortOrder),
 	}, nil
 }
 
 func bizCredToProto(c biz.ChannelCredential) *v1.ChannelCredential {
 	return &v1.ChannelCredential{
-		Id:             c.ID,
-		ChannelId:      c.ChannelID,
-		CredentialKey:  c.CredentialKey,
-		Status:         c.Status,
-		MetadataJson:   c.MetadataJSON,
-		Configured:     c.Configured,
-		MaskedPreview:  c.MaskedPreview,
-		CreatedAt:      c.CreatedAt,
-		UpdatedAt:      c.UpdatedAt,
+		Id:            c.ID,
+		ChannelId:     c.ChannelID,
+		CredentialKey: c.CredentialKey,
+		Status:        c.Status,
+		MetadataJson:  c.MetadataJSON,
+		Configured:    c.Configured,
+		MaskedPreview: c.MaskedPreview,
+		CreatedAt:     c.CreatedAt,
+		UpdatedAt:     c.UpdatedAt,
 	}
 }
 

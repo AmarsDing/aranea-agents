@@ -144,7 +144,7 @@ func (r *FSArtifactRepo) Load(_ context.Context, id string, version int) (biz.Ar
 	if err != nil {
 		return biz.Artifact{}, nil, fmt.Errorf("artifact read: %w", err)
 	}
-	
+
 	return meta.toBiz(), data, nil
 }
 

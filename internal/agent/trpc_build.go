@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"os"
 	"strings"
 	"time"
 
@@ -196,7 +197,7 @@ func buildSkillDeps(ctx context.Context, deps TRPCBuilderDeps) (trpcskill.Reposi
 		return allowSet[name]
 	}
 
-	exec := skilltrpc.NewLocalExecutor(rootDir)
+	exec := skilltrpc.NewExecutor(os.Getenv("CODE_EXECUTOR_BACKEND"), rootDir)
 	return repo, filter, exec, nil
 }
 

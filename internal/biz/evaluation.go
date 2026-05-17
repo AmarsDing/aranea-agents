@@ -39,20 +39,20 @@ type EvalCaseUpload struct {
 
 // EvalRun represents one evaluation execution.
 type EvalRun struct {
-	ID                  string
-	DatasetID           string
-	AgentID             string
-	Status              string
-	TotalCases          int
-	CompletedCases      int
-	ExactMatchScore     float32
-	ContainsMatchScore  float32
-	LLMJudgeScore       float32
-	ToolCallAccuracy    float32
-	ErrorMessage        string
-	StartedAt           string
-	FinishedAt          string
-	CreatedAt           string
+	ID                 string
+	DatasetID          string
+	AgentID            string
+	Status             string
+	TotalCases         int
+	CompletedCases     int
+	ExactMatchScore    float32
+	ContainsMatchScore float32
+	LLMJudgeScore      float32
+	ToolCallAccuracy   float32
+	ErrorMessage       string
+	StartedAt          string
+	FinishedAt         string
+	CreatedAt          string
 }
 
 // EvalCaseResult is the outcome for one case in a run.

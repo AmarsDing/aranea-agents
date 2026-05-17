@@ -36,9 +36,9 @@ type LLMJudge func(ctx context.Context, input, expected, actual string) (float32
 
 // Runner executes an evaluation run asynchronously.
 type Runner struct {
-	uc        *biz.EvalUsecase
-	agent     AgentRunner
-	llmJudge  LLMJudge
+	uc       *biz.EvalUsecase
+	agent    AgentRunner
+	llmJudge LLMJudge
 }
 
 // NewRunner creates an evaluation Runner.
@@ -74,10 +74,10 @@ func (r *Runner) execute(ctx context.Context, run biz.EvalRun, metrics string) e
 
 	wantMetrics := parseMetrics(metrics)
 	var (
-		exactTotal, exactHit     float32
+		exactTotal, exactHit       float32
 		containsTotal, containsHit float32
-		llmTotal, llmSum         float32
-		toolTotal, toolSum       float32
+		llmTotal, llmSum           float32
+		toolTotal, toolSum         float32
 	)
 
 	if r.agent == nil {

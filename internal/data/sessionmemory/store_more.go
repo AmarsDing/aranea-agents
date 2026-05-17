@@ -94,14 +94,14 @@ func (st *Store) ListEntityRows(ctx context.Context, scopeType, scopeID, workspa
 func scanEntityRowJSON(rows *sql.Rows) ([]byte, error) {
 	var (
 		id, scopeType, scopeID, wid, uid, etype, name, nnorm, aliases, desc, attr string
-		imp, conf                                                                  float64
-		uc                                                                         int
-		src                                                                        string
-		embSt, embModel                                                            string
-		embDim                                                                     int
-		embBlob                                                                    []byte
-		embNorm                                                                    float64
-		status, merged, meta, ca, ua, arch, del                                  string
+		imp, conf                                                                 float64
+		uc                                                                        int
+		src                                                                       string
+		embSt, embModel                                                           string
+		embDim                                                                    int
+		embBlob                                                                   []byte
+		embNorm                                                                   float64
+		status, merged, meta, ca, ua, arch, del                                   string
 	)
 	if err := rows.Scan(
 		&id, &scopeType, &scopeID, &wid, &uid, &etype, &name, &nnorm, &aliases, &desc, &attr,
@@ -117,13 +117,13 @@ func scanEntityRowJSON(rows *sql.Rows) ([]byte, error) {
 		"id": id, "scope_type": scopeType, "scope_id": scopeID,
 		"workspace_id": wid, "user_id": uid,
 		"entity_type": etype, "name": name, "name_normalized": nnorm,
-		"aliases": aliasesArr,
+		"aliases":     aliasesArr,
 		"description": desc,
-		"importance": imp, "confidence": conf, "use_count": uc,
-		"source_kind": src,
+		"importance":  imp, "confidence": conf, "use_count": uc,
+		"source_kind":      src,
 		"embedding_status": embSt, "embedding_model": embModel, "embedding_dim": embDim,
 		"embedding_norm": embNorm,
-		"status": status, "merged_into": merged,
+		"status":         status, "merged_into": merged,
 		"metadata_json": meta, "created_at": ca, "updated_at": ua,
 		"archived_at": arch, "deleted_at": del,
 	}
@@ -194,7 +194,7 @@ func scanRelationRowJSON(rows *sql.Rows) ([]byte, error) {
 		"id": id, "scope_type": stype, "scope_id": sid, "workspace_id": wid,
 		"source_id": srcID, "target_id": tgtID, "relation_type": relType,
 		"bidirectional": bidir != 0,
-		"weight": w, "confidence": conf, "importance": imp, "use_count": uc,
+		"weight":        w, "confidence": conf, "importance": imp, "use_count": uc,
 		"attributes_json": attrJ, "evidence_json": evidJ,
 		"status": status, "source_kind": srcKind,
 		"metadata_json": metaJ, "created_at": ca, "updated_at": ua,
@@ -317,8 +317,8 @@ func (st *Store) AgentIdentityJSON(ctx context.Context, agentID string) ([]byte,
 	}
 	var (
 		aid, persona, vals, tone, doms, ue, phase, meta string
-		ver                                               int
-		ca, ua                                            string
+		ver                                             int
+		ca, ua                                          string
 	)
 	err = rows.Scan(&aid, &persona, &vals, &tone, &doms, &ue, &phase, &meta, &ver, &ca, &ua)
 	if err != nil {
@@ -328,14 +328,14 @@ func (st *Store) AgentIdentityJSON(ctx context.Context, agentID string) ([]byte,
 		return nil, err
 	}
 	m := map[string]any{
-		"agent_id":           aid,
-		"persona":            persona,
-		"values":             decodeJSONStringSlice(vals),
-		"tone":               tone,
-		"domains":            decodeJSONStringSlice(doms),
-		"user_expectations":  ue,
-		"current_phase":      phase,
-		"version":            ver,
+		"agent_id":          aid,
+		"persona":           persona,
+		"values":            decodeJSONStringSlice(vals),
+		"tone":              tone,
+		"domains":           decodeJSONStringSlice(doms),
+		"user_expectations": ue,
+		"current_phase":     phase,
+		"version":           ver,
 	}
 	if meta != "" && meta != "{}" {
 		m["metadata"] = decodeJSONObject(meta)
@@ -368,12 +368,12 @@ func (st *Store) AgentStrategyJSON(ctx context.Context, agentID string) ([]byte,
 		return json.Marshal(m)
 	}
 	var (
-		aid                                     string
-		ex, co, ca, de                          float64
-		toolPref, toolBL, provPref, modelPref   string
-		statsRaw, metaRaw                       string
-		ver                                     int
-		caS, uaS                                string
+		aid                                   string
+		ex, co, ca, de                        float64
+		toolPref, toolBL, provPref, modelPref string
+		statsRaw, metaRaw                     string
+		ver                                   int
+		caS, uaS                              string
 	)
 	if err := rows.Scan(&aid, &ex, &co, &ca, &de, &toolPref, &toolBL, &provPref, &modelPref, &statsRaw, &metaRaw, &ver, &caS, &uaS); err != nil {
 		return nil, err
@@ -382,16 +382,16 @@ func (st *Store) AgentStrategyJSON(ctx context.Context, agentID string) ([]byte,
 		return nil, err
 	}
 	m := map[string]any{
-		"agent_id":             aid,
-		"exploration":          ex,
-		"conciseness":          co,
-		"caution":              ca,
-		"delegation":           de,
-		"tool_preference":      decodeJSONFloatMap(toolPref),
-		"tool_blacklist":       decodeJSONStringSlice(toolBL),
-		"provider_preference":  decodeJSONFloatMap(provPref),
-		"model_preference":     decodeJSONFloatMap(modelPref),
-		"version":              ver,
+		"agent_id":            aid,
+		"exploration":         ex,
+		"conciseness":         co,
+		"caution":             ca,
+		"delegation":          de,
+		"tool_preference":     decodeJSONFloatMap(toolPref),
+		"tool_blacklist":      decodeJSONStringSlice(toolBL),
+		"provider_preference": decodeJSONFloatMap(provPref),
+		"model_preference":    decodeJSONFloatMap(modelPref),
+		"version":             ver,
 	}
 	if statsRaw != "" && statsRaw != "{}" {
 		m["stats"] = decodeJSONObject(statsRaw)
@@ -434,7 +434,7 @@ func (st *Store) EvolutionProposalRows(ctx context.Context, agentID, status stri
 	for rows.Next() {
 		var (
 			id, aid, wid, pkind, tgt, prop, curr, diff, rat, evid, expimp, risk, st, revBy, revAt, applEv, expAt, src, meta, ca, ua string
-			appReq                                                                                                                   int
+			appReq                                                                                                                  int
 		)
 		if err := rows.Scan(&id, &aid, &wid, &pkind, &tgt, &prop, &curr, &diff, &rat, &evid, &expimp, &risk, &appReq, &st, &revBy, &revAt, &applEv, &expAt, &src, &meta, &ca, &ua); err != nil {
 			return nil, err
@@ -442,7 +442,7 @@ func (st *Store) EvolutionProposalRows(ctx context.Context, agentID, status stri
 		m := map[string]any{
 			"id": id, "agent_id": aid, "workspace_id": wid,
 			"proposal_kind": pkind, "kind": pkind,
-			"target_field": tgt,
+			"target_field":        tgt,
 			"proposed_value_json": prop, "current_value_json": curr, "diff_json": diff,
 			"rationale": rat, "expected_impact": expimp, "risk_level": risk,
 			"status": st, "source": src,
@@ -489,9 +489,9 @@ func (st *Store) EvolutionEventRows(ctx context.Context, agentID string, limit i
 	for rows.Next() {
 		var (
 			id, aid, wid, ekind, tgt, before, after, diff string
-			trig, trSrc, evid, reason, meta              string
+			trig, trSrc, evid, reason, meta               string
 			applied, reverted                             int
-			revBy, ca, applAt, revAt                     string
+			revBy, ca, applAt, revAt                      string
 		)
 		if err := rows.Scan(&id, &aid, &wid, &ekind, &tgt, &before, &after, &diff, &trig, &trSrc, &evid, &reason, &applied, &reverted, &revBy, &meta, &ca, &applAt, &revAt); err != nil {
 			return nil, err
@@ -500,12 +500,12 @@ func (st *Store) EvolutionEventRows(ctx context.Context, agentID string, limit i
 			"id": id, "agent_id": aid, "workspace_id": wid,
 			"event_kind": ekind, "kind": ekind,
 			"target_field": tgt,
-			"before_json": before, "after_json": after, "diff_json": diff,
+			"before_json":  before, "after_json": after, "diff_json": diff,
 			"trigger_kind": trig, "trigger_source": trSrc,
-			"reason": reason,
+			"reason":  reason,
 			"applied": applied != 0, "reverted": reverted != 0,
 			"reverted_by_event_id": revBy,
-			"created_at": ca, "applied_at": applAt, "reverted_at": revAt,
+			"created_at":           ca, "applied_at": applAt, "reverted_at": revAt,
 		}
 		if evid != "" && evid != "[]" {
 			m["evidence_json"] = evid
@@ -591,20 +591,20 @@ func (st *Store) EvolutionMetricsJSON(ctx context.Context, agentID string) ([]by
 			return nil, err
 		}
 		skillStats = append(skillStats, map[string]any{
-			"agent_id":          aid,
-			"scope":             scope,
-			"scope_value":       sval,
-			"tool_key":          tool,
-			"invocations":       inv,
-			"successes":         ok,
-			"failures":          fail,
-			"user_overrides":    uo,
-			"avg_latency_ms":    lat,
-			"avg_tokens":        tok,
-			"preference_score":  pref,
-			"last_used_at":      last,
-			"metadata_json":     meta,
-			"updated_at":        up,
+			"agent_id":         aid,
+			"scope":            scope,
+			"scope_value":      sval,
+			"tool_key":         tool,
+			"invocations":      inv,
+			"successes":        ok,
+			"failures":         fail,
+			"user_overrides":   uo,
+			"avg_latency_ms":   lat,
+			"avg_tokens":       tok,
+			"preference_score": pref,
+			"last_used_at":     last,
+			"metadata_json":    meta,
+			"updated_at":       up,
 		})
 	}
 	if err := statsRows.Err(); err != nil {
@@ -617,11 +617,11 @@ func (st *Store) EvolutionMetricsJSON(ctx context.Context, agentID string) ([]by
 	}
 
 	out := map[string]any{
-		"events_total":         eventsTotal,
-		"events_reverted":      eventsRev,
-		"proposals_total":      propTotals,
-		"proposals_by_status":  byStatusNum,
-		"skill_stats":          skillStats,
+		"events_total":        eventsTotal,
+		"events_reverted":     eventsRev,
+		"proposals_total":     propTotals,
+		"proposals_by_status": byStatusNum,
+		"skill_stats":         skillStats,
 	}
 	return json.Marshal(out)
 }

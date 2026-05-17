@@ -18,12 +18,12 @@ type ReasoningCfg struct {
 
 // MemoryCfg holds all memory + context-window settings (L0–L4).
 type MemoryCfg struct {
-	Enabled             bool    `json:"memory_enabled,omitempty"`
-	MaxChunkLength      int     `json:"memory_max_chunk_length,omitempty"`
-	MaxResults          int     `json:"memory_max_results,omitempty"`
-	MinScore            float64 `json:"memory_min_score,omitempty"`
-	HeartbeatEnabled    bool    `json:"heartbeat_enabled,omitempty"`
-	HeartbeatIntervalMinutes int `json:"heartbeat_interval_minutes,omitempty"`
+	Enabled                  bool    `json:"memory_enabled,omitempty"`
+	MaxChunkLength           int     `json:"memory_max_chunk_length,omitempty"`
+	MaxResults               int     `json:"memory_max_results,omitempty"`
+	MinScore                 float64 `json:"memory_min_score,omitempty"`
+	HeartbeatEnabled         bool    `json:"heartbeat_enabled,omitempty"`
+	HeartbeatIntervalMinutes int     `json:"heartbeat_interval_minutes,omitempty"`
 
 	// L0 session-context window.
 	L0RecentWindowTurns  int     `json:"l0_recent_window_turns,omitempty"`
@@ -49,14 +49,14 @@ type MemoryCfg struct {
 	L1ArchiveOnIdleMinutes int    `json:"l1_archive_on_idle_minutes,omitempty"`
 
 	// L2 episodic memory.
-	L2EpisodeEnabled      bool    `json:"l2_episode_enabled,omitempty"`
+	L2EpisodeEnabled       bool    `json:"l2_episode_enabled,omitempty"`
 	L2EpisodeMinImportance float64 `json:"l2_episode_min_importance,omitempty"`
-	L2IndexEnabled        bool    `json:"l2_index_enabled,omitempty"`
-	L2IndexEmbeddingModel string  `json:"l2_index_embedding_model,omitempty"`
-	L2RecallEnabled       bool    `json:"l2_recall_enabled,omitempty"`
-	L2RecallMax           int     `json:"l2_recall_max,omitempty"`
-	L2RetentionDays       int     `json:"l2_retention_days,omitempty"`
-	L2ArchiveAfterDays    int     `json:"l2_archive_after_days,omitempty"`
+	L2IndexEnabled         bool    `json:"l2_index_enabled,omitempty"`
+	L2IndexEmbeddingModel  string  `json:"l2_index_embedding_model,omitempty"`
+	L2RecallEnabled        bool    `json:"l2_recall_enabled,omitempty"`
+	L2RecallMax            int     `json:"l2_recall_max,omitempty"`
+	L2RetentionDays        int     `json:"l2_retention_days,omitempty"`
+	L2ArchiveAfterDays     int     `json:"l2_archive_after_days,omitempty"`
 
 	// L3 semantic recall.
 	L3Enabled            bool    `json:"l3_enabled,omitempty"`
@@ -79,20 +79,20 @@ type MemoryCfg struct {
 
 // ToolsCfg holds tool execution and retry settings.
 type ToolsCfg struct {
-	Enabled              bool    `json:"tools_enabled,omitempty"`
-	Profile              string  `json:"tools_profile,omitempty"`
-	ToolCallPrefix       string  `json:"tools_tool_call_prefix,omitempty"`
-	AllowJSON            string  `json:"tools_allow_json,omitempty"`
-	DenyJSON             string  `json:"tools_deny_json,omitempty"`
-	ConcurrentAllowJSON  string  `json:"tools_concurrent_allow_json,omitempty"`
-	RetryEnabled         bool    `json:"tools_retry_enabled,omitempty"`
-	RetryMaxAttempts     int     `json:"tools_retry_max_attempts,omitempty"`
-	RetryInitialIntervalMs int   `json:"tools_retry_initial_interval_ms,omitempty"`
-	RetryBackoffFactor   float64 `json:"tools_retry_backoff_factor,omitempty"`
-	RetryMaxIntervalMs   int     `json:"tools_retry_max_interval_ms,omitempty"`
-	RetryJitter          bool    `json:"tools_retry_jitter,omitempty"`
-	ParallelEnabled      bool    `json:"tools_parallel_enabled,omitempty"`
-	StreamingEnabled     bool    `json:"tools_streaming_enabled,omitempty"`
+	Enabled                bool    `json:"tools_enabled,omitempty"`
+	Profile                string  `json:"tools_profile,omitempty"`
+	ToolCallPrefix         string  `json:"tools_tool_call_prefix,omitempty"`
+	AllowJSON              string  `json:"tools_allow_json,omitempty"`
+	DenyJSON               string  `json:"tools_deny_json,omitempty"`
+	ConcurrentAllowJSON    string  `json:"tools_concurrent_allow_json,omitempty"`
+	RetryEnabled           bool    `json:"tools_retry_enabled,omitempty"`
+	RetryMaxAttempts       int     `json:"tools_retry_max_attempts,omitempty"`
+	RetryInitialIntervalMs int     `json:"tools_retry_initial_interval_ms,omitempty"`
+	RetryBackoffFactor     float64 `json:"tools_retry_backoff_factor,omitempty"`
+	RetryMaxIntervalMs     int     `json:"tools_retry_max_interval_ms,omitempty"`
+	RetryJitter            bool    `json:"tools_retry_jitter,omitempty"`
+	ParallelEnabled        bool    `json:"tools_parallel_enabled,omitempty"`
+	StreamingEnabled       bool    `json:"tools_streaming_enabled,omitempty"`
 }
 
 // SkillsCfg holds skill loading and intent-pass settings.
