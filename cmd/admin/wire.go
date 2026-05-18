@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"aranea-agents/internal/adapter/graph"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/cronrunner"
@@ -19,6 +18,7 @@ import (
 	"aranea-agents/internal/data"
 	"aranea-agents/internal/event"
 	graphtrpc "aranea-agents/internal/graph/trpc"
+	"aranea-agents/internal/mcp/health"
 	memtrpc "aranea-agents/internal/memory/trpc"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	"aranea-agents/internal/provider"
@@ -29,6 +29,7 @@ import (
 	"aranea-agents/internal/team"
 
 	"aranea-agents/internal/data/sessionmemory"
+
 	"github.com/go-kratos/kratos/v2"
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/google/wire"
@@ -128,16 +129,31 @@ func provideAutoMemoryWorker(sessions *biz.SessionUsecase, store *sessionmemory.
 	return jobs.NewAutoMemoryWorker(0, sessions, mem)
 }
 
-// wireOut is non-cleanup inject outputs (cleanup must be a top-level injector return for Wire).
-type wireOut struct {
-	App        *kratos.App
-	CronRunner *cronrunner.Runner
-	SkillWatch *watch.Runner
-	AutoMemory *jobs.AutoMemoryWorker
+func provideMCPHealthRunnerDeps(mcpRepo biz.MCPServerRepo, mcpUC *biz.MCPServerUsecase) health.Deps {
+	return health.Deps{
+		MCP: mcpRepo,
+		UC:  mcpUC,
+	}
 }
 
-func provideWireOut(app *kratos.App, runner *cronrunner.Runner, skillWatch *watch.Runner, autoMem *jobs.AutoMemoryWorker) wireOut {
-	return wireOut{App: app, CronRunner: runner, SkillWatch: skillWatch, AutoMemory: autoMem}
+func provideMCPHealthRunner(deps health.Deps) *health.Runner {
+	if strings.TrimSpace(os.Getenv("MCP_HEALTH_DISABLED")) == "1" {
+		return nil
+	}
+	return health.NewRunner(deps)
+}
+
+// wireOut is non-cleanup inject outputs (cleanup must be a top-level injector return for Wire).
+type wireOut struct {
+	App            *kratos.App
+	CronRunner     *cronrunner.Runner
+	SkillWatch     *watch.Runner
+	AutoMemory     *jobs.AutoMemoryWorker
+	MCPHealthProbe *health.Runner
+}
+
+func provideWireOut(app *kratos.App, runner *cronrunner.Runner, skillWatch *watch.Runner, autoMem *jobs.AutoMemoryWorker, mcpHealth *health.Runner) wireOut {
+	return wireOut{App: app, CronRunner: runner, SkillWatch: skillWatch, AutoMemory: autoMem, MCPHealthProbe: mcpHealth}
 }
 
 // wireApp init kratos application.
@@ -158,8 +174,10 @@ func wireApp(*conf.Server, *conf.Data, log.Logger) (wireOut, func(), error) {
 		rt.NewPersistenceSet,
 		plugintrpc.NewRuntime,
 		graphtrpc.NewRegistry,
-		graph.NewGraphBuilderFactory,
+		graphadapter.NewGraphBuilderFactory,
 		provideAutoMemoryWorker,
+		provideMCPHealthRunnerDeps,
+		provideMCPHealthRunner,
 		newApp,
 		provideWireOut,
 	))

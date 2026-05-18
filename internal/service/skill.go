@@ -10,7 +10,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/skill/v1"
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/pkg/skillstorage"
+	"aranea-agents/internal/skill/storage"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -31,10 +31,10 @@ func NewSkillService(uc *biz.SkillUsecase, sys biz.SystemSettingRepo) *SkillServ
 func (s *SkillService) resolvedStorageRoot(ctx context.Context) string {
 	if s.sys != nil {
 		if st, err := s.sys.Get(ctx); err == nil {
-			return skillstorage.ResolveRootWithPlatform(st.RootDirectory)
+			return storage.ResolveRootWithPlatform(st.RootDirectory)
 		}
 	}
-	return skillstorage.ResolveRoot()
+	return storage.ResolveRoot()
 }
 
 func toProtoSkill(s biz.Skill) *v1.Skill {

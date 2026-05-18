@@ -10,12 +10,15 @@
 会话历史存储与编排：Session CRUD、Timeline 时间轴、上下文管理、摘要压缩。逐步向 trpc-agent-go `session.Service` 对齐。
 
 核心能力：
-- Session 搜索/创建/删除/归档/重命名
+- Session 搜索/创建/删除/归档/恢复/重命名/部分更新
 - Timeline 时间轴聚合（消息 + 工具调用 + Skill 调用 + MCP 调用）
 - 上下文窗口消耗追踪与状态管理
 - 异步摘要压缩（SessionCompressor）
 - Runner Snapshot 持久化与压缩重写
 - Session Summaries 滚动摘要
+- Session Turns 对话轮次记录
+- Session State KV 状态管理
+- 自动标题生成（用户消息截取 + LLM 异步生成）
 - 单 Agent / Team 双模式会话
 
 ---
@@ -81,6 +84,7 @@ message Session {
   string deleted_at = 30;
   string runner_snapshot_json = 44;
   string metadata_json = 45;
+  string state_json = 46;
 }
 
 message SessionTimelineSummary {
@@ -125,6 +129,9 @@ message SearchSessionsRequest {
   int32 offset = 8;
   int32 page = 9;
   int32 page_size = 10;
+  string user_id = 11;
+  string sort_by = 12;
+  string sort_order = 13;
 }
 
 message SearchSessionsResponse {
@@ -144,6 +151,8 @@ message CreateSessionRequest {
   string default_model = 7;
   string workspace_id = 8;
   string user_id = 9;
+  string tags_json = 10;
+  string metadata_json = 11;
 }
 
 message GetSessionRequest {
@@ -152,7 +161,13 @@ message GetSessionRequest {
 
 message UpdateSessionRequest {
   string id = 1 [(google.api.field_behavior) = REQUIRED];
-  string title = 2 [(google.api.field_behavior) = REQUIRED];
+  string title = 2;
+  string tags_json = 3;
+  string visibility = 4;
+  string metadata_json = 5;
+  string dialog_mode = 6;
+  string default_provider = 7;
+  string default_model = 8;
 }
 
 message DeleteSessionRequest {
@@ -167,8 +182,16 @@ message ArchiveSessionRequest {
   string id = 1 [(google.api.field_behavior) = REQUIRED];
 }
 
+message RestoreSessionRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
 message GetSessionTimelineRequest {
   string id = 1 [(google.api.field_behavior) = REQUIRED];
+  int32 limit = 2;
+  int32 offset = 3;
+  string kind_filter = 4;
+  string sort_order = 5;
 }
 
 message ChatMessageRow {
@@ -191,10 +214,57 @@ message ChatMessageRow {
 
 message ListSessionMessagesRequest {
   string id = 1 [(google.api.field_behavior) = REQUIRED];
+  int32 limit = 2;
+  int32 offset = 3;
 }
 
 message ListSessionMessagesResponse {
   repeated ChatMessageRow items = 1;
+  int32 total = 2;
+}
+
+message SessionTurn {
+  string id = 1;
+  string session_id = 2;
+  string run_id = 3;
+  int32 turn_index = 4;
+  string user_message_id = 5;
+  string assistant_message_id = 6;
+  string owner_type = 7;
+  string agent_id = 8;
+  string team_id = 9;
+  string status = 10;
+  string started_at = 11;
+  string ended_at = 12;
+  int32 duration_ms = 13;
+  int32 first_token_ms = 14;
+  int32 model_call_count = 15;
+  int32 tool_call_count = 16;
+  int32 skill_call_count = 17;
+  int32 mcp_call_count = 18;
+  int32 input_tokens = 19;
+  int32 output_tokens = 20;
+  int32 total_tokens = 21;
+  int64 total_cost_micro_usd = 22;
+  string final_provider = 23;
+  string final_model = 24;
+  string final_content_preview = 25;
+  string error_code = 26;
+  string error_message = 27;
+  string metadata_json = 28;
+  string created_at = 29;
+  string updated_at = 30;
+}
+
+message ListSessionTurnsRequest {
+  string session_id = 1 [(google.api.field_behavior) = REQUIRED];
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message ListSessionTurnsResponse {
+  repeated SessionTurn items = 1;
+  int32 total = 2;
 }
 
 service SessionService {
@@ -219,11 +289,17 @@ service SessionService {
   rpc ArchiveSession(ArchiveSessionRequest) returns (google.protobuf.Empty) {
     option (google.api.http) = {post: "/v1/sessions/{id}/archive" body: "*"};
   }
+  rpc RestoreSession(RestoreSessionRequest) returns (Session) {
+    option (google.api.http) = {post: "/v1/sessions/{id}/restore" body: "*"};
+  }
   rpc GetSessionTimeline(GetSessionTimelineRequest) returns (SessionTimeline) {
     option (google.api.http) = {get: "/v1/sessions/{id}/timeline"};
   }
   rpc ListSessionMessages(ListSessionMessagesRequest) returns (ListSessionMessagesResponse) {
     option (google.api.http) = {get: "/v1/sessions/{id}/messages"};
+  }
+  rpc ListSessionTurns(ListSessionTurnsRequest) returns (ListSessionTurnsResponse) {
+    option (google.api.http) = {get: "/v1/sessions/{session_id}/turns"};
   }
 }
 ```
@@ -232,15 +308,17 @@ service SessionService {
 
 | RPC | HTTP | 说明 |
 |-----|------|------|
-| `SearchSessions` | `GET /v1/sessions` | 搜索/列表，支持 owner_type/agent_id/team_id/status/context_status/keyword 筛选 + 分页 |
+| `SearchSessions` | `GET /v1/sessions` | 搜索/列表，支持 owner_type/agent_id/team_id/status/context_status/keyword/user_id/sort_by/sort_order 筛选 + 分页 |
 | `CreateSession` | `POST /v1/sessions` | 创建会话，校验 agent_id 或 team_id 存在性 |
 | `GetSession` | `GET /v1/sessions/{id}` | 获取单个会话详情 |
-| `UpdateSession` | `PATCH /v1/sessions/{id}` | 重命名会话标题 |
+| `UpdateSession` | `PATCH /v1/sessions/{id}` | 部分更新会话（title/tags_json/visibility/metadata_json/dialog_mode/default_provider/default_model） |
 | `DeleteSession` | `DELETE /v1/sessions/{id}` | 软删除（设置 deleted_at + status=deleted） |
 | `DeleteSessionsByAgent` | `DELETE /v1/sessions` | 按 agent_id 批量软删除 |
 | `ArchiveSession` | `POST /v1/sessions/{id}/archive` | 归档会话（status=archived, archived_at） |
-| `GetSessionTimeline` | `GET /v1/sessions/{id}/timeline` | 聚合消息+工具+Skill+MCP 的时间轴 |
-| `ListSessionMessages` | `GET /v1/sessions/{id}/messages` | 获取会话消息列表 |
+| `RestoreSession` | `POST /v1/sessions/{id}/restore` | 恢复归档会话（status=active, 清空 archived_at/deleted_at） |
+| `GetSessionTimeline` | `GET /v1/sessions/{id}/timeline` | 聚合消息+工具+Skill+MCP 的时间轴，支持 limit/offset/kind_filter/sort_order |
+| `ListSessionMessages` | `GET /v1/sessions/{id}/messages` | 获取会话消息列表，支持 limit/offset 分页 |
+| `ListSessionTurns` | `GET /v1/sessions/{session_id}/turns` | 获取会话轮次列表，支持 limit/offset 分页 |
 
 ---
 
@@ -294,6 +372,7 @@ type Session struct {
     ArchivedAt                 string
     DeletedAt                  string
     RunnerSnapshotJSON         string
+    StateJSON                  string
     MetadataJSON               string
 }
 
@@ -304,10 +383,13 @@ type SessionSearchQuery struct {
     Status        string
     ContextStatus string
     Keyword       string
+    UserID        string
     Limit         int
     Offset        int
     Page          int
     PageSize      int
+    SortBy        string
+    SortOrder     string
 }
 
 type SessionListResult struct {
@@ -425,6 +507,8 @@ type SessionRepository interface {
     CreateSession(ctx context.Context, s Session) (Session, error)
     GetSessionByID(ctx context.Context, id string) (Session, error)
     UpdateSessionTitle(ctx context.Context, id, title string) (Session, error)
+    UpdateSession(ctx context.Context, id string, fields SessionUpdateFields) (Session, error)
+    RestoreSession(ctx context.Context, id string) (Session, error)
     ArchiveSession(ctx context.Context, id string) error
     DeleteSession(ctx context.Context, id string) error
     DeleteSessionsByAgentID(ctx context.Context, agentID string) error
@@ -441,6 +525,12 @@ type SessionRepository interface {
     ListSessionSummaries(ctx context.Context, sessionID string) ([]SessionSummary, error)
     LatestSessionSummaryTime(ctx context.Context, sessionID string) (string, error)
     UpdateSessionListSummary(ctx context.Context, sessionID, summary string) error
+    GetSessionState(ctx context.Context, sessionID string) (map[string]string, error)
+    SaveSessionState(ctx context.Context, sessionID string, state map[string]string) error
+    CreateSessionTurn(ctx context.Context, turn SessionTurn) (SessionTurn, error)
+    UpdateSessionTurn(ctx context.Context, id string, fields SessionTurnUpdateFields) (SessionTurn, error)
+    ListSessionTurns(ctx context.Context, sessionID string, limit, offset int) (SessionTurnListResult, error)
+    GetSessionTurn(ctx context.Context, id string) (SessionTurn, error)
 }
 ```
 
@@ -448,17 +538,20 @@ type SessionRepository interface {
 
 ```go
 type SessionUsecase struct {
-    sessions SessionRepository
-    agents   AgentRepository
-    teams    TeamRepository
+    sessions       SessionRepository
+    agents         AgentRepository
+    teams          TeamRepository
+    titleGenerator SessionTitleGenerator
 }
 
-func NewSessionUsecase(sessions SessionRepository, agents AgentRepository, teams TeamRepository) *SessionUsecase
+func NewSessionUsecase(sessions SessionRepository, agents AgentRepository, teams TeamRepository, titleGenerator SessionTitleGenerator) *SessionUsecase
 
 func (uc *SessionUsecase) Search(ctx context.Context, q SessionSearchQuery) (SessionListResult, error)
 func (uc *SessionUsecase) Get(ctx context.Context, id string) (Session, error)
 func (uc *SessionUsecase) Create(ctx context.Context, in Session) (Session, error)
 func (uc *SessionUsecase) Rename(ctx context.Context, id, title string) (Session, error)
+func (uc *SessionUsecase) Update(ctx context.Context, id string, fields SessionUpdateFields) (Session, error)
+func (uc *SessionUsecase) Restore(ctx context.Context, id string) (Session, error)
 func (uc *SessionUsecase) Archive(ctx context.Context, id string) error
 func (uc *SessionUsecase) Delete(ctx context.Context, id string) error
 func (uc *SessionUsecase) DeleteByAgent(ctx context.Context, agentID string) error
@@ -473,7 +566,13 @@ func (uc *SessionUsecase) MaxSessionSummaryToTurn(ctx context.Context, sessionID
 func (uc *SessionUsecase) ListSessionSummaries(ctx context.Context, sessionID string) ([]SessionSummary, error)
 func (uc *SessionUsecase) LatestSessionSummaryTime(ctx context.Context, sessionID string) (string, error)
 func (uc *SessionUsecase) UpdateSessionListSummary(ctx context.Context, sessionID, summary string) error
-func (uc *SessionUsecase) Timeline(ctx context.Context, id string) (SessionTimeline, error)
+func (uc *SessionUsecase) GetSessionState(ctx context.Context, sessionID string) (map[string]string, error)
+func (uc *SessionUsecase) SaveSessionState(ctx context.Context, sessionID string, state map[string]string) error
+func (uc *SessionUsecase) ApplyStateDelta(ctx context.Context, sessionID string, delta DomainStateDelta) error
+func (uc *SessionUsecase) CreateTurn(ctx context.Context, turn SessionTurn) (SessionTurn, error)
+func (uc *SessionUsecase) UpdateTurn(ctx context.Context, id string, fields SessionTurnUpdateFields) (SessionTurn, error)
+func (uc *SessionUsecase) ListTurns(ctx context.Context, sessionID string, limit, offset int) (SessionTurnListResult, error)
+func (uc *SessionUsecase) Timeline(ctx context.Context, id string, q TimelineQuery) (SessionTimeline, error)
 ```
 
 ### 3.4 关键业务逻辑
@@ -488,8 +587,10 @@ func (uc *SessionUsecase) Timeline(ctx context.Context, id string) (SessionTimel
 1. 查询 `messages` → `kind=message`, `side=left`
 2. 查询 `tool_invocations` → `kind=tool` 或 `kind=mcp`（当 `source="mcp"` 或 `tool_key` 包含 "mcp" 时）, `side=right`
 3. 查询 `skill_invocations` → `kind=skill`, `side=right`
-4. 合并所有 items 按 `occurred_at` 升序排序
-5. 统计 summary 各类型计数
+4. 合并所有 items 按 `occurred_at` 排序（支持 `sort_order=desc` 倒序）
+5. 支持 `kind_filter` 过滤
+6. 支持 `limit/offset` 分页
+7. 统计 summary 各类型计数
 
 **消息 Timeline 映射**：
 - `role=user` → `title="用户消息"`, `tags=["User"]`
@@ -511,6 +612,34 @@ func contextStatusForRatio(ratio float64) string {
 
 **自动命名**：
 - 当 session 标题为空、"untitled"、"新会话"、"未命名" 等占位符时，从首条用户消息截取前 56 字符自动命名
+- 同时异步调用 `SessionTitleGenerator`（LLM）生成更精确的标题
+
+**SessionTitleGenerator 接口**：
+```go
+type SessionTitleGenerator interface {
+    Generate(ctx context.Context, content string) (string, error)
+}
+```
+- `LLMSessionTitleGenerator`：使用轻量模型（如 gpt-4o-mini）生成标题
+- `NoopSessionTitleGenerator`：空实现，用于测试
+
+**Session State KV**：
+- `GetSessionState`/`SaveSessionState`：读写 `sessions.state_json`（JSON 序列化的 `map[string]string`）
+- `ApplyStateDelta`：支持 `set`/`append`/`delete` 操作的增量更新
+
+**DomainStateDelta**：
+```go
+type DomainStateDelta struct {
+    Path      string
+    ValueJSON string
+    Operation string  // "set" | "append" | "delete"
+}
+```
+
+**Session Turns**：
+- `CreateTurn`：创建对话轮次，自动生成 UUID 和时间戳
+- `UpdateTurn`：部分更新轮次（status/duration/token/counts 等）
+- `ListTurns`：按 turn_index 升序分页查询
 
 **NativeTurnCompressor 接口**：
 ```go
@@ -582,12 +711,90 @@ func (Session) Fields() []ent.Field {
         field.String("archived_at").Default(""),
         field.String("deleted_at").Default(""),
         field.Text("runner_snapshot_json").Default(""),
+        field.Text("state_json").Default("{}"),
         field.Text("metadata_json").Default("{}"),
     }
 }
 ```
 
-### 4.2 Ent Schema — Message
+### 4.2 Ent Schema — SessionTurn
+
+文件：`internal/data/ent/schema/session_turn.go`
+
+```go
+type SessionTurn struct {
+    ent.Schema
+}
+
+func (SessionTurn) Annotations() []schema.Annotation {
+    return []schema.Annotation{
+        entsql.Annotation{Table: "session_turns"},
+    }
+}
+
+func (SessionTurn) Fields() []ent.Field {
+    return []ent.Field{
+        field.String("id").Immutable().Unique().MaxLen(256),
+        field.String("session_id").MaxLen(256),
+        field.String("run_id").Default(""),
+        field.Int("turn_index").Default(0),
+        field.String("user_message_id").Default(""),
+        field.String("assistant_message_id").Default(""),
+        field.String("owner_type").Default("agent"),
+        field.String("agent_id").Default(""),
+        field.String("team_id").Default(""),
+        field.String("status").Default("running"),
+        field.String("started_at").Default(""),
+        field.String("ended_at").Default(""),
+        field.Int("duration_ms").Default(0),
+        field.Int("first_token_ms").Default(0),
+        field.Int("model_call_count").Default(0),
+        field.Int("tool_call_count").Default(0),
+        field.Int("skill_call_count").Default(0),
+        field.Int("mcp_call_count").Default(0),
+        field.Int("input_tokens").Default(0),
+        field.Int("output_tokens").Default(0),
+        field.Int("total_tokens").Default(0),
+        field.Int64("total_cost_micro_usd").Default(0),
+        field.String("final_provider").Default(""),
+        field.String("final_model").Default(""),
+        field.Text("final_content_preview").Default(""),
+        field.String("error_code").Default(""),
+        field.Text("error_message").Default(""),
+        field.Text("metadata_json").Default("{}"),
+        field.String("created_at").Default(""),
+        field.String("updated_at").Default(""),
+    }
+}
+
+func (SessionTurn) Indexes() []ent.Index {
+    return []ent.Index{
+        index.Fields("session_id", "turn_index"),
+        index.Fields("status", "started_at"),
+    }
+}
+```
+
+### 4.3 session_summaries DDL
+
+`session_summaries` 表通过 raw SQL 创建（非 Ent Schema），DDL：
+
+```sql
+CREATE TABLE IF NOT EXISTS session_summaries (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  summary_markdown TEXT NOT NULL DEFAULT '',
+  from_turn INTEGER NOT NULL DEFAULT 0,
+  to_turn INTEGER NOT NULL DEFAULT 0,
+  token_estimate INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS idx_session_summaries_session
+  ON session_summaries(session_id, created_at);
+```
+
+### 4.4 Ent Schema — Message
 
 文件：`internal/data/ent/schema/message.go`
 
@@ -1442,6 +1649,82 @@ export function buildSessionsSummaryCards(rows: Session[], total: number): Sessi
 | M5-1 | Ent + SQLite Session CRUD + Timeline | ✅ 已实现 |
 | M5-2 | 上下文追踪 + 摘要压缩 | ✅ 已实现 |
 | M5-3 | Runner Snapshot 持久化 | ✅ 已实现 |
-| M5-4 | 桥接 trpc `session.Service` 接口 | 待实现 |
-| M5-5 | 多后端支持（Redis/PG） | 待实现 |
-| M5-6 | 内置压缩迁移到 trpc 框架 | 待实现 |
+| M5-3a | Session Turns 对话轮次 | ✅ 已实现 |
+| M5-3b | Session State KV + ApplyStateDelta | ✅ 已实现 |
+| M5-3c | RestoreSession / UpdateSession 部分更新 | ✅ 已实现 |
+| M5-3d | 自动标题生成（LLM + 截取双策略） | ✅ 已实现 |
+| M5-4 | Session 置顶功能（pinned_at + PinSession RPC） | 待实现 |
+| M5-5 | Session 导出功能（Markdown/JSON） | 待实现 |
+| M5-6 | 消息搜索功能（全文检索） | 待实现 |
+| M5-7 | session_runs / session_run_steps 编排记录 | 待实现 |
+| M5-8 | session_participants Team 参与者 | 待实现 |
+| M5-9 | session_trace_spans 完整追踪链路 | 待实现 |
+| M5-10 | session_context_snapshots Context 趋势 | 待实现 |
+| M5-11 | session_model_summaries 多模型分布 | 待实现 |
+| M5-12 | 桥接 trpc `session.Service` 接口 | 待实现 |
+| M5-13 | 多后端支持（Redis/PG） | 待实现 |
+| M5-14 | 内置压缩迁移到 trpc 框架 | 待实现 |
+
+---
+
+## 十、优化内容与后期开发
+
+### 10.1 代码优化（当前可做）
+
+| # | 优化项 | 说明 | 优先级 |
+|---|--------|------|--------|
+| O1 | `session_repo_summaries.go` 错误处理 | 将 `errors.New` 替换为 `kerrors.BadRequest`/`kerrors.InternalServer`，对齐 §10 原则 10 | P1 |
+| O2 | Timeline 聚合性能优化 | 当前全量加载 messages + tools + skills 再内存排序分页，大量数据时性能差；可改为 DB 层分页 | P2 |
+| O3 | ListToolInvocationsBySession 硬编码 limit=100 | 应支持调用方传入 limit，或默认跟随 TimelineQuery.Limit | P2 |
+| O4 | AppendChatTurn 事务内两次查询 | `maxMessageTurnTx` + session 查询可合并为一次 | P3 |
+| O5 | 压缩防抖策略可配置化 | 当前 `sessionCompressMinGap = 10min` 硬编码，应从 Agent Settings 读取 | P2 |
+| O6 | SessionCompressor 压缩模型选择 | 当前 fallback 逻辑分散，应统一为策略模式 | P3 |
+
+### 10.2 功能开发（按优先级排序）
+
+| # | 功能 | 需求文档 | 设计要点 | 优先级 |
+|---|------|----------|----------|--------|
+| F1 | Session 置顶 | §9 Phase 1 | sessions 表增加 `pinned_at` 字段 + PinSession/UnpinSession RPC + 前端置顶分组 | P2 |
+| F2 | Session 导出 | §9 Phase 2 | ExportSession RPC（Markdown/JSON），消息 + 工具调用 + 时间线 | P3 |
+| F3 | 消息搜索 | §9 Phase 3 | SearchMessages RPC，评估 SQLite FTS5 或 LIKE 方案 | P3 |
+| F4 | session_runs 编排记录 | §4.3 | 新表 + ChatService/TeamRunner 写入 + Run Timeline API | P2 |
+| F5 | session_run_steps 步骤记录 | §4.4 | 新表 + 每次 model/tool/skill/mcp 调用写 step | P2 |
+| F6 | session_participants | §4.2 | Team session 参与者 + 角色 + 贡献指标 | P2 |
+| F7 | session_trace_spans | §4.6 | 完整追踪链路 + parent_span_id 树 + Trace API | P3 |
+| F8 | session_context_snapshots | §5.4 | Context ratio 趋势数据 + 快照 API | P3 |
+| F9 | session_model_summaries | §4.7 | 多模型分布汇总 + 模型切换历史 | P3 |
+| F10 | trpc session.Service 适配器 | §12.1 | `internal/session/trpc/service.go` 桥接 | P3 |
+| F11 | Event 分页 | §12.2 | ListEvents 分页查询 | P3 |
+| F12 | Session Track | §12.3 | Track(sessionID, key, value) | P3 |
+| F13 | Session Ingestor | §12.4 | Session 完成后自动摄入外部记忆平台 | P4 |
+| F14 | 多后端支持 | §12.5 | Redis/PG/MySQL/ClickHouse | P4 |
+| F15 | 前端 Trace 链路页 | §7.4 | 树形/瀑布视图 | P3 |
+| F16 | 前端 Context 趋势线 | §7.6 | context ratio 趋势可视化 | P3 |
+| F17 | 前端 Team Session 专属展示 | §7.5 | Participants Panel / Handoff Badge | P2 |
+
+### 10.3 开发阶段建议
+
+**Phase 1（近期优化）**：
+- O1: 错误处理统一
+- O5: 压缩防抖可配置化
+- F1: Session 置顶
+
+**Phase 2（编排增强）**：
+- F4: session_runs
+- F5: session_run_steps
+- F6: session_participants
+- F17: 前端 Team Session 专属展示
+
+**Phase 3（可观测性）**：
+- F7: session_trace_spans
+- F8: session_context_snapshots
+- F9: session_model_summaries
+- F15: 前端 Trace 链路页
+- F16: 前端 Context 趋势线
+
+**Phase 4（导出与搜索）**：
+- F2: Session 导出
+- F3: 消息搜索
+
+**Phase 5（框架对齐）**：
+- F10-F14: trpc session.Service 适配器 + 多后端

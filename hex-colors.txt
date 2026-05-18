@@ -1,1 +1,0 @@
-=== Hardcoded hex colors by frequency ===

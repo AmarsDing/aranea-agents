@@ -17,8 +17,25 @@ type Definition struct {
 	TimeoutSeconds     int               `json:"timeout_seconds"`
 	LoopMaxIterations  int               `json:"loop_max_iterations,omitempty"`
 	CriticLoop         *CriticLoopConfig `json:"critic_loop,omitempty"`
-	// IntentAnchorAgentID, when set, selects which enabled member drives intent pass and user options_json anchor (default: first enabled member).
-	IntentAnchorAgentID string `json:"intent_anchor_agent_id,omitempty"`
+	IntentAnchorAgentID string           `json:"intent_anchor_agent_id,omitempty"`
+	Swarm              *SwarmConfigDef   `json:"swarm,omitempty"`
+	MemberTool         *MemberToolDef    `json:"member_tool_config,omitempty"`
+}
+
+type SwarmConfigDef struct {
+	MaxHandoffs               int  `json:"max_handoffs"`
+	NodeTimeoutSeconds        int  `json:"node_timeout_seconds"`
+	RepetitiveHandoffWindow   int  `json:"repetitive_handoff_window"`
+	RepetitiveHandoffMinUnique int `json:"repetitive_handoff_min_unique"`
+	CrossRequestTransfer      bool `json:"cross_request_transfer"`
+}
+
+type MemberToolDef struct {
+	StreamInner      bool   `json:"stream_inner"`
+	InnerTextMode    string `json:"inner_text_mode"`
+	SkipSummarization bool  `json:"skip_summarization"`
+	HistoryScope     string `json:"history_scope"`
+	ToolSetName      string `json:"tool_set_name"`
 }
 
 // CriticLoopConfig matches frontend critic_loop JSON (score_threshold reserved for future routing).

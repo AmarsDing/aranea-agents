@@ -10,7 +10,7 @@ import (
 
 	agentplanner "aranea-agents/internal/agent/planner"
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/pkg/skillstorage"
+	"aranea-agents/internal/skill/storage"
 	"aranea-agents/internal/provider"
 	skilltrpc "aranea-agents/internal/skill/trpc"
 	memorytool "aranea-agents/internal/tools/memory"
@@ -172,10 +172,10 @@ func buildSkillDeps(ctx context.Context, deps TRPCBuilderDeps) (trpcskill.Reposi
 
 	// Always resolve rootDir so the executor has a valid path regardless of
 	// which repo backend is selected.
-	rootDir := skillstorage.ResolveRoot()
+	rootDir := storage.ResolveRoot()
 	if deps.Sys != nil {
 		if st, e := deps.Sys.Get(ctx); e == nil {
-			rootDir = skillstorage.ResolveRootWithPlatform(st.RootDirectory)
+			rootDir = storage.ResolveRootWithPlatform(st.RootDirectory)
 		}
 	}
 

@@ -4,18 +4,35 @@ import (
 	"context"
 )
 
-// AuditLog mirrors SQLite audit_logs.
 type AuditLog struct {
-	ID         string
-	Action     string
-	Resource   string
-	ResourceID string
-	RequestID  string
-	Detail     string
-	CreatedAt  string
+	ID          string
+	Action      string
+	Resource    string
+	ResourceID  string
+	RequestID   string
+	Detail      string
+	CreatedAt   string
+	Actor       string
+	IP          string
+	UserAgent   string
+	Severity    string
+	MetadataJSON string
 }
 
-// MonitorPlatformRow mirrors legacy domain.PlatformResource for monitor-events / monitor-traces.
+type AuditQuery struct {
+	Limit    int32
+	Offset   int32
+	Action   string
+	Resource string
+	Actor    string
+	Keyword  string
+}
+
+type AuditListResult struct {
+	Items []AuditLog
+	Total int32
+}
+
 type MonitorPlatformRow struct {
 	Resource     string
 	ID           string
@@ -37,11 +54,33 @@ type MonitorPlatformRow struct {
 	DeletedAt    string
 }
 
+type MonitorEventsQuery struct {
+	Limit     int32
+	Offset    int32
+	EventType string
+	AgentID   string
+	Status    string
+}
+
+type MonitorTracesQuery struct {
+	Limit    int32
+	Offset   int32
+	AgentID  string
+	Provider string
+	Model    string
+	Status   string
+}
+
+type MonitorListResult struct {
+	Items []MonitorPlatformRow
+	Total int32
+}
+
 type MonitorRepo interface {
-	ListAuditLogs(ctx context.Context, limit int) ([]AuditLog, error)
-	ListMonitorEvents(ctx context.Context) ([]MonitorPlatformRow, error)
+	ListAuditLogs(ctx context.Context, query AuditQuery) (AuditListResult, error)
+	ListMonitorEvents(ctx context.Context, query MonitorEventsQuery) (MonitorListResult, error)
 	GetMonitorEvent(ctx context.Context, id string) (MonitorPlatformRow, error)
-	ListMonitorTraces(ctx context.Context) ([]MonitorPlatformRow, error)
+	ListMonitorTraces(ctx context.Context, query MonitorTracesQuery) (MonitorListResult, error)
 	GetMonitorTrace(ctx context.Context, id string) (MonitorPlatformRow, error)
 }
 
@@ -61,20 +100,29 @@ func auditLimit(limit int32) int {
 	return l
 }
 
-func (u *MonitorUsecase) ListAuditLogs(ctx context.Context, limit int32) ([]AuditLog, error) {
-	return u.repo.ListAuditLogs(ctx, auditLimit(limit))
+func (u *MonitorUsecase) ListAuditLogs(ctx context.Context, query AuditQuery) (AuditListResult, error) {
+	if query.Limit <= 0 {
+		query.Limit = 200
+	}
+	return u.repo.ListAuditLogs(ctx, query)
 }
 
-func (u *MonitorUsecase) ListMonitorEvents(ctx context.Context) ([]MonitorPlatformRow, error) {
-	return u.repo.ListMonitorEvents(ctx)
+func (u *MonitorUsecase) ListMonitorEvents(ctx context.Context, query MonitorEventsQuery) (MonitorListResult, error) {
+	if query.Limit <= 0 {
+		query.Limit = 100
+	}
+	return u.repo.ListMonitorEvents(ctx, query)
 }
 
 func (u *MonitorUsecase) GetMonitorEvent(ctx context.Context, id string) (MonitorPlatformRow, error) {
 	return u.repo.GetMonitorEvent(ctx, id)
 }
 
-func (u *MonitorUsecase) ListMonitorTraces(ctx context.Context) ([]MonitorPlatformRow, error) {
-	return u.repo.ListMonitorTraces(ctx)
+func (u *MonitorUsecase) ListMonitorTraces(ctx context.Context, query MonitorTracesQuery) (MonitorListResult, error) {
+	if query.Limit <= 0 {
+		query.Limit = 100
+	}
+	return u.repo.ListMonitorTraces(ctx, query)
 }
 
 func (u *MonitorUsecase) GetMonitorTrace(ctx context.Context, id string) (MonitorPlatformRow, error) {

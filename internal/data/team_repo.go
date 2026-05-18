@@ -211,6 +211,17 @@ func (r *teamRepo) ListTeamRuns(ctx context.Context, teamID string, limit int) (
 	return out, nil
 }
 
+func (r *teamRepo) GetTeamRunByID(ctx context.Context, id string) (biz.TeamRun, error) {
+	row, err := r.data.entClient.TeamRun.Get(ctx, id)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return biz.TeamRun{}, sql.ErrNoRows
+		}
+		return biz.TeamRun{}, err
+	}
+	return entTeamRunToBiz(row), nil
+}
+
 func (r *teamRepo) ListTeamRunSteps(ctx context.Context, runID string) ([]biz.TeamRunStep, error) {
 	rows, err := r.data.entClient.TeamRunStep.Query().
 		Where(teamrunstep.RunIDEQ(runID)).

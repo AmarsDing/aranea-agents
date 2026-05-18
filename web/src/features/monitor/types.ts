@@ -36,6 +36,42 @@ export type AuditLog = {
   request_id: string;
   detail: string;
   created_at: string;
+  actor: string;
+  ip: string;
+  user_agent: string;
+  severity: string;
+  metadata_json: string;
+};
+
+export type AuditQuery = {
+  limit?: number;
+  offset?: number;
+  action?: string;
+  resource?: string;
+  actor?: string;
+  keyword?: string;
+};
+
+export type MonitorEventsQuery = {
+  limit?: number;
+  offset?: number;
+  event_type?: string;
+  agent_id?: string;
+  status?: string;
+};
+
+export type MonitorTracesQuery = {
+  limit?: number;
+  offset?: number;
+  agent_id?: string;
+  provider?: string;
+  model?: string;
+  status?: string;
+};
+
+export type PaginatedResult<T> = {
+  items: T[];
+  total: number;
 };
 
 export type MonitorLogLine = {

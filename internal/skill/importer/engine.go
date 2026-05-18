@@ -13,7 +13,7 @@ import (
 	"sync"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/pkg/skillstorage"
+	"aranea-agents/internal/skill/storage"
 )
 
 // Engine holds in-memory import jobs and executes zip inspection / LLM similarity (OpenAI-compatible + Anthropic messages).
@@ -50,13 +50,13 @@ func NewEngine(repo biz.SkillRepo, llm *biz.LlmProviderModelUsecase, sys biz.Sys
 
 func (e *Engine) resolveRoot(ctx context.Context) string {
 	if e.sys == nil {
-		return skillstorage.ResolveRootFromEnv()
+		return storage.ResolveRootFromEnv()
 	}
 	st, err := e.sys.Get(ctx)
 	if err != nil {
-		return skillstorage.ResolveRootFromEnv()
+		return storage.ResolveRootFromEnv()
 	}
-	return skillstorage.ResolveRootWithPlatform(st.RootDirectory)
+	return storage.ResolveRootWithPlatform(st.RootDirectory)
 }
 
 func candidateRequiresRiskApproval(candidate biz.SkillImportCandidate) bool {

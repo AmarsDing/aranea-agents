@@ -5,7 +5,9 @@
         <div class="text-h6 text-weight-bold">活动日志</div>
         <div class="text-caption text-grey-7">管理与配置变更审计记录</div>
       </div>
-      <q-input v-model="keyword" dense outlined clearable debounce="200" class="col-12 col-md-4" label="搜索事件 / 资源 / 详情">
+      <q-select v-model="actionFilter" dense outlined emit-value map-options clearable class="col-12 col-md-2" label="事件类型" :options="actionOptions" />
+      <q-select v-model="resourceFilter" dense outlined emit-value map-options clearable class="col-12 col-md-2" label="实体类型" :options="resourceOptions" />
+      <q-input v-model="keyword" dense outlined clearable debounce="200" class="col-12 col-md-3" label="搜索事件 / 资源 / 详情">
         <template #prepend><q-icon name="search" /></template>
       </q-input>
       <q-btn flat rounded icon="refresh" label="刷新" :loading="loading" @click="$emit('reload')" />
@@ -17,8 +19,9 @@
       :columns="columns"
       row-key="id"
       :loading="loading"
-      :pagination="{ rowsPerPage: 12 }"
-      @row-click="(_, row) => selectRow(row)"
+      :pagination="pagination"
+      :rows-per-page-options="[12, 25, 50, 100]"
+      @request="onPageRequest"
     >
       <template #body-cell-event="props">
         <q-td :props="props">
@@ -33,6 +36,12 @@
           <div class="text-caption text-grey-7 ellipsis">{{ props.row.resource_id || "-" }}</div>
         </q-td>
       </template>
+      <template #body-cell-actor="props">
+        <q-td :props="props">
+          <div>{{ props.row.actor || "system" }}</div>
+          <div v-if="props.row.ip" class="text-caption text-grey-7">{{ props.row.ip }}</div>
+        </q-td>
+      </template>
       <template #body-cell-request="props">
         <q-td :props="props">
           <code class="monitor-code">{{ props.row.request_id || "-" }}</code>
@@ -42,6 +51,10 @@
         <q-td :props="props">{{ formatDate(props.row.created_at) }}</q-td>
       </template>
     </q-table>
+
+    <q-card-section v-if="total > 0" class="text-caption text-grey-7 text-right">
+      共 {{ total }} 条记录
+    </q-card-section>
   </q-card>
 
   <q-dialog v-model="detailOpen">
@@ -55,6 +68,22 @@
       </q-card-section>
       <q-separator />
       <q-card-section>
+        <q-list dense>
+          <q-item v-if="selected?.actor">
+            <q-item-section>操作者</q-item-section>
+            <q-item-section side>{{ selected.actor }}</q-item-section>
+          </q-item>
+          <q-item v-if="selected?.ip">
+            <q-item-section>IP</q-item-section>
+            <q-item-section side>{{ selected.ip }}</q-item-section>
+          </q-item>
+          <q-item v-if="selected?.severity">
+            <q-item-section>严重级别</q-item-section>
+            <q-item-section side>
+              <q-badge :color="severityColor(selected.severity)">{{ selected.severity }}</q-badge>
+            </q-item-section>
+          </q-item>
+        </q-list>
         <pre class="monitor-json">{{ selectedJSON }}</pre>
       </q-card-section>
       <q-card-actions align="right">
@@ -66,12 +95,13 @@
 
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { copyToClipboard, Notify, type QTableColumn } from "quasar";
+import { copyToClipboard, Notify, type QTableColumn, type QTableProps } from "quasar";
 import type { AuditLog } from "../../features/monitor/types";
 import { compactJSON, formatDate } from "../../features/monitor/utils";
 
 const props = defineProps<{
   rows: AuditLog[];
+  total: number;
   loading: boolean;
 }>();
 
@@ -80,36 +110,54 @@ defineEmits<{
 }>();
 
 const keyword = ref("");
+const actionFilter = ref<string | null>(null);
+const resourceFilter = ref<string | null>(null);
 const selected = ref<AuditLog | null>(null);
 const detailOpen = ref(false);
+
+const pagination = ref({ page: 1, rowsPerPage: 12, rowsNumber: props.total });
+
+const actionOptions = computed(() => {
+  const actions = new Set(props.rows.map((r) => r.action).filter(Boolean));
+  return [...actions].map((a) => ({ label: a, value: a }));
+});
+
+const resourceOptions = computed(() => {
+  const resources = new Set(props.rows.map((r) => r.resource).filter(Boolean));
+  return [...resources].map((r) => ({ label: r, value: r }));
+});
 
 const columns: QTableColumn<AuditLog>[] = [
   { name: "event", label: "事件", field: "action", align: "left" },
   { name: "resource", label: "实体", field: "resource", align: "left" },
+  { name: "actor", label: "操作者", field: "actor", align: "left" },
   { name: "request", label: "Request ID", field: "request_id", align: "left" },
   { name: "detail", label: "详情", field: "detail", align: "left" },
   { name: "created", label: "时间", field: "created_at", align: "left" }
 ];
 
 const filteredRows = computed(() => {
+  let result = props.rows;
+  if (actionFilter.value) {
+    result = result.filter((row) => row.action === actionFilter.value);
+  }
+  if (resourceFilter.value) {
+    result = result.filter((row) => row.resource === resourceFilter.value);
+  }
   const q = keyword.value.trim().toLowerCase();
-  if (!q) return props.rows;
-  return props.rows.filter((row) =>
-    [row.action, row.resource, row.resource_id, row.request_id, row.detail]
-      .some((value) => String(value || "").toLowerCase().includes(q))
-  );
+  if (q) {
+    result = result.filter((row) =>
+      [row.action, row.resource, row.resource_id, row.request_id, row.detail, row.actor]
+        .some((value) => String(value || "").toLowerCase().includes(q))
+    );
+  }
+  return result;
 });
 
 const selectedJSON = computed(() => compactJSON(selected.value ?? {}));
 
-function selectRow(row: AuditLog) {
-  selected.value = row;
-  detailOpen.value = true;
-}
-
-async function copyJSON() {
-  await copyToClipboard(selectedJSON.value);
-  Notify.create({ message: "已复制", color: "positive", position: "top" });
+function onPageRequest(params: Parameters<NonNullable<QTableProps["onRequest"]>>[1]) {
+  pagination.value = { ...pagination.value, page: params.pagination.page, rowsPerPage: params.pagination.rowsPerPage };
 }
 
 function eventColor(action: string) {
@@ -117,6 +165,17 @@ function eventColor(action: string) {
   if (action.includes("create")) return "positive";
   if (action.includes("toggle")) return "orange";
   if (action.includes("credentials")) return "purple";
-  return "primary";
+  if (action.includes("update")) return "primary";
+  return "grey";
 }
-</script>
+
+function severityColor(severity: string) {
+  if (severity === "critical" || severity === "high") return "negative";
+  if (severity === "warning" || severity === "medium") return "orange";
+  return "positive";
+}
+
+async function copyJSON() {
+  await copyToClipboard(selectedJSON.value);
+  Notify.create({ message: "已复制", color: "positive", position: "top" });
+}

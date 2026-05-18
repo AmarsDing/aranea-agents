@@ -2,8 +2,10 @@ package team
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
@@ -20,7 +22,7 @@ import (
 
 type TRPCTeamBuilderDeps struct {
 	BuilderDeps chatagent.TRPCBuilderDeps
-	UseCache    bool // enable agent build cache for team members
+	UseCache    bool
 }
 
 func BuildTRPCTeam(ctx context.Context, def Definition, deps TRPCTeamBuilderDeps, catalogAgent func(ctx context.Context, id string) (biz.Agent, error)) (trpcagent.Agent, error) {
@@ -65,53 +67,21 @@ func BuildTRPCTeam(ctx context.Context, def Definition, deps TRPCTeamBuilderDeps
 		if def.CriticLoop != nil && def.CriticLoop.MaxIterations > 0 {
 			maxIter = def.CriticLoop.MaxIterations
 		}
+		escFn := buildEscalationFunc(def.CriticLoop)
 		return cycleagent.New("team-critic-loop",
 			cycleagent.WithSubAgents(memberAgents),
 			cycleagent.WithMaxIterations(maxIter),
-			cycleagent.WithEscalationFunc(defaultEscalationFunc),
+			cycleagent.WithEscalationFunc(escFn),
 		), nil
 
 	case "swarm":
-		entryName := memberAgents[0].Info().Name
-		opts := []trpcteam.Option{
-			trpcteam.WithSwarmConfig(trpcteam.DefaultSwarmConfig()),
-			trpcteam.WithCrossRequestTransfer(true),
-			trpcteam.WithSwarmHandoffInputBuilder(defaultSwarmHandoffInput),
-		}
-		t, err := trpcteam.NewSwarm(
-			"team",
-			entryName,
-			memberAgents,
-			opts...,
-		)
-		if err != nil {
-			return nil, kerrors.InternalServer("TEAM", fmt.Sprintf("new swarm: %v", err))
-		}
-		return t, nil
+		return buildSwarmTeam(def, memberAgents)
 
 	case "adaptive":
-		// EP-RT-04: "adaptive" mode selects the routing strategy at runtime based
-		// on conversation context.  We implement this as a swarm with
-		// cross-request state transfer enabled so the coordinator can hand off to
-		// the best-suited sub-agent dynamically.
-		//
-		// With ≥2 members: first member is the entry / coordinator agent; the rest
-		// are available for handoff.
-		// With 1 member: fall through to a single-agent run.
 		if len(memberAgents) < 2 {
 			return memberAgents[0], nil
 		}
-		entryName := memberAgents[0].Info().Name
-		adaptiveOpts := []trpcteam.Option{
-			trpcteam.WithSwarmConfig(trpcteam.DefaultSwarmConfig()),
-			trpcteam.WithCrossRequestTransfer(true),
-			trpcteam.WithSwarmHandoffInputBuilder(defaultSwarmHandoffInput),
-		}
-		t, err := trpcteam.NewSwarm("team-adaptive", entryName, memberAgents, adaptiveOpts...)
-		if err != nil {
-			return nil, kerrors.InternalServer("TEAM", fmt.Sprintf("new adaptive swarm: %v", err))
-		}
-		return t, nil
+		return buildAdaptiveSwarm(def, memberAgents)
 
 	default:
 		if len(memberAgents) < 2 {
@@ -119,15 +89,139 @@ func BuildTRPCTeam(ctx context.Context, def Definition, deps TRPCTeamBuilderDeps
 		}
 		coordinator := memberAgents[0]
 		rest := memberAgents[1:]
-		t, err := trpcteam.New(
-			coordinator,
-			rest,
-		)
+		opts := buildCoordinatorOptions(def)
+		t, err := trpcteam.New(coordinator, rest, opts...)
 		if err != nil {
 			return nil, kerrors.InternalServer("TEAM", fmt.Sprintf("new coordinator: %v", err))
 		}
 		return t, nil
 	}
+}
+
+func buildSwarmTeam(def Definition, memberAgents []trpcagent.Agent) (trpcagent.Agent, error) {
+	entryName := memberAgents[0].Info().Name
+	opts := buildSwarmOptions(def)
+	t, err := trpcteam.NewSwarm("team", entryName, memberAgents, opts...)
+	if err != nil {
+		return nil, kerrors.InternalServer("TEAM", fmt.Sprintf("new swarm: %v", err))
+	}
+	return t, nil
+}
+
+func buildAdaptiveSwarm(def Definition, memberAgents []trpcagent.Agent) (trpcagent.Agent, error) {
+	entryName := memberAgents[0].Info().Name
+	opts := buildSwarmOptions(def)
+	t, err := trpcteam.NewSwarm("team-adaptive", entryName, memberAgents, opts...)
+	if err != nil {
+		return nil, kerrors.InternalServer("TEAM", fmt.Sprintf("new adaptive swarm: %v", err))
+	}
+	return t, nil
+}
+
+func buildSwarmOptions(def Definition) []trpcteam.Option {
+	cfg := trpcteam.DefaultSwarmConfig()
+	crossTransfer := true
+	if sc := def.Swarm; sc != nil {
+		if sc.MaxHandoffs > 0 {
+			cfg.MaxHandoffs = sc.MaxHandoffs
+		}
+		if sc.NodeTimeoutSeconds > 0 {
+			cfg.NodeTimeout = time.Duration(sc.NodeTimeoutSeconds) * time.Second
+		}
+		if sc.RepetitiveHandoffWindow > 0 {
+			cfg.RepetitiveHandoffWindow = sc.RepetitiveHandoffWindow
+		}
+		if sc.RepetitiveHandoffMinUnique > 0 {
+			cfg.RepetitiveHandoffMinUnique = sc.RepetitiveHandoffMinUnique
+		}
+		crossTransfer = sc.CrossRequestTransfer
+	}
+	return []trpcteam.Option{
+		trpcteam.WithSwarmConfig(cfg),
+		trpcteam.WithCrossRequestTransfer(crossTransfer),
+		trpcteam.WithSwarmHandoffInputBuilder(defaultSwarmHandoffInput),
+	}
+}
+
+func buildCoordinatorOptions(def Definition) []trpcteam.Option {
+	var opts []trpcteam.Option
+	if mt := def.MemberTool; mt != nil {
+		cfg := trpcteam.MemberToolConfig{
+			StreamInner:      mt.StreamInner,
+			SkipSummarization: mt.SkipSummarization,
+		}
+		cfg.InnerTextMode = mapInnerTextMode(mt.InnerTextMode)
+		cfg.HistoryScope = mapHistoryScope(mt.HistoryScope)
+		opts = append(opts, trpcteam.WithMemberToolConfig(cfg))
+		if mt.ToolSetName != "" {
+			opts = append(opts, trpcteam.WithMemberToolSetName(mt.ToolSetName))
+		}
+	}
+	return opts
+}
+
+func mapInnerTextMode(s string) trpcteam.InnerTextMode {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "include":
+		return trpcteam.InnerTextModeInclude
+	case "exclude":
+		return trpcteam.InnerTextModeExclude
+	default:
+		return trpcteam.InnerTextModeDefault
+	}
+}
+
+func mapHistoryScope(s string) trpcteam.HistoryScope {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "isolated":
+		return trpcteam.HistoryScopeIsolated
+	case "parent_branch":
+		return trpcteam.HistoryScopeParentBranch
+	default:
+		return trpcteam.HistoryScopeDefault
+	}
+}
+
+func buildEscalationFunc(clc *CriticLoopConfig) func(ev *trpcevent.Event) bool {
+	if clc == nil || clc.ScoreThreshold <= 0 {
+		return defaultEscalationFunc
+	}
+	threshold := clc.ScoreThreshold
+	return func(ev *trpcevent.Event) bool {
+		if ev == nil || ev.Response == nil {
+			return false
+		}
+		for _, ch := range ev.Choices {
+			content := strings.ToLower(ch.Message.Content)
+			if strings.Contains(content, "approved") {
+				return true
+			}
+			score := extractScore(content)
+			if score > 0 && score >= threshold {
+				return true
+			}
+		}
+		return false
+	}
+}
+
+func extractScore(content string) float64 {
+	type scorePayload struct {
+		Score float64 `json:"score"`
+	}
+	var payloads []scorePayload
+	if err := json.Unmarshal([]byte(content), &payloads); err == nil {
+		for _, p := range payloads {
+			if p.Score > 0 {
+				return p.Score
+			}
+		}
+	}
+	var single scorePayload
+	if err := json.Unmarshal([]byte(content), &single); err == nil && single.Score > 0 {
+		return single.Score
+	}
+	return 0
 }
 
 func defaultEscalationFunc(ev *trpcevent.Event) bool {

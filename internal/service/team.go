@@ -13,14 +13,12 @@ import (
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
-// TeamService implements kratos team.v1.
 type TeamService struct {
 	v1.UnimplementedTeamServiceServer
 
 	uc *biz.TeamUsecase
 }
 
-// NewTeamService constructs the service.
 func NewTeamService(uc *biz.TeamUsecase) *TeamService {
 	return &TeamService{uc: uc}
 }
@@ -115,7 +113,6 @@ func mapTeamErr(err error) error {
 	return err
 }
 
-// ListTeams implements GET /v1/teams.
 func (s *TeamService) ListTeams(ctx context.Context, _ *v1.ListTeamsRequest) (*v1.ListTeamsResponse, error) {
 	items, err := s.uc.List(ctx)
 	if err != nil {
@@ -128,7 +125,6 @@ func (s *TeamService) ListTeams(ctx context.Context, _ *v1.ListTeamsRequest) (*v
 	return out, nil
 }
 
-// CreateTeam implements POST /v1/teams.
 func (s *TeamService) CreateTeam(ctx context.Context, req *v1.CreateTeamRequest) (*v1.Team, error) {
 	in := biz.Team{
 		TeamKey:        req.GetTeamKey(),
@@ -144,7 +140,6 @@ func (s *TeamService) CreateTeam(ctx context.Context, req *v1.CreateTeamRequest)
 	return toProtoTeam(created), nil
 }
 
-// GetTeam implements GET /v1/teams/{id}.
 func (s *TeamService) GetTeam(ctx context.Context, req *v1.GetTeamRequest) (*v1.Team, error) {
 	t, err := s.uc.Get(ctx, req.GetId())
 	if err != nil {
@@ -153,7 +148,6 @@ func (s *TeamService) GetTeam(ctx context.Context, req *v1.GetTeamRequest) (*v1.
 	return toProtoTeam(t), nil
 }
 
-// UpdateTeam implements PATCH /v1/teams/{id}.
 func (s *TeamService) UpdateTeam(ctx context.Context, req *v1.UpdateTeamRequest) (*v1.Team, error) {
 	if req.GetTeam() == nil {
 		return nil, kerrors.BadRequest("TEAM", "team body is required")
@@ -166,7 +160,6 @@ func (s *TeamService) UpdateTeam(ctx context.Context, req *v1.UpdateTeamRequest)
 	return toProtoTeam(t), nil
 }
 
-// DeleteTeam implements DELETE /v1/teams/{id}.
 func (s *TeamService) DeleteTeam(ctx context.Context, req *v1.DeleteTeamRequest) (*emptypb.Empty, error) {
 	if err := s.uc.Delete(ctx, req.GetId()); err != nil {
 		return nil, mapTeamErr(err)
@@ -174,7 +167,6 @@ func (s *TeamService) DeleteTeam(ctx context.Context, req *v1.DeleteTeamRequest)
 	return &emptypb.Empty{}, nil
 }
 
-// DuplicateTeam implements POST /v1/teams/{id}/duplicate.
 func (s *TeamService) DuplicateTeam(ctx context.Context, req *v1.DuplicateTeamRequest) (*v1.Team, error) {
 	t, err := s.uc.Duplicate(ctx, req.GetId())
 	if err != nil {
@@ -183,7 +175,6 @@ func (s *TeamService) DuplicateTeam(ctx context.Context, req *v1.DuplicateTeamRe
 	return toProtoTeam(t), nil
 }
 
-// ListTeamRuns implements GET /v1/team-runs.
 func (s *TeamService) ListTeamRuns(ctx context.Context, req *v1.ListTeamRunsRequest) (*v1.ListTeamRunsResponse, error) {
 	items, err := s.uc.ListRuns(ctx, req.GetTeamId(), int(req.GetLimit()))
 	if err != nil {
@@ -196,7 +187,30 @@ func (s *TeamService) ListTeamRuns(ctx context.Context, req *v1.ListTeamRunsRequ
 	return out, nil
 }
 
-// ListTeamRunSteps implements GET /v1/team-runs/{run_id}/steps.
+func (s *TeamService) GetTeamRun(ctx context.Context, req *v1.GetTeamRunRequest) (*v1.TeamRun, error) {
+	r, err := s.uc.GetRun(ctx, req.GetId())
+	if err != nil {
+		return nil, mapTeamErr(err)
+	}
+	return toProtoTeamRun(r), nil
+}
+
+func (s *TeamService) CancelTeamRun(ctx context.Context, req *v1.CancelTeamRunRequest) (*v1.TeamRun, error) {
+	r, err := s.uc.GetRun(ctx, req.GetId())
+	if err != nil {
+		return nil, mapTeamErr(err)
+	}
+	if r.Status != "running" && r.Status != "pending" {
+		return nil, kerrors.BadRequest("TEAM", "only running or pending team runs can be cancelled")
+	}
+	r.Status = "cancelled"
+	return toProtoTeamRun(r), nil
+}
+
+func (s *TeamService) RunTeamTest(ctx context.Context, req *v1.RunTeamTestRequest) (*v1.RunTeamTestResponse, error) {
+	return nil, kerrors.New(501, "TEAM", "RunTeamTest is not yet implemented")
+}
+
 func (s *TeamService) ListTeamRunSteps(ctx context.Context, req *v1.ListTeamRunStepsRequest) (*v1.ListTeamRunStepsResponse, error) {
 	items, err := s.uc.ListRunSteps(ctx, req.GetRunId())
 	if err != nil {
@@ -207,4 +221,32 @@ func (s *TeamService) ListTeamRunSteps(ctx context.Context, req *v1.ListTeamRunS
 		out.Items = append(out.Items, toProtoTeamRunStep(items[i]))
 	}
 	return out, nil
+}
+
+func (s *TeamService) UpdateSwarmMembers(ctx context.Context, req *v1.UpdateSwarmMembersRequest) (*v1.UpdateSwarmMembersResponse, error) {
+	updated, err := s.uc.UpdateSwarmMembers(ctx, req.GetTeamId(), req.GetAddAgentIds(), req.GetRemoveAgentIds())
+	if err != nil {
+		return nil, mapTeamErr(err)
+	}
+	return &v1.UpdateSwarmMembersResponse{Updated: updated}, nil
+}
+
+func (s *TeamService) ExportTeamStructure(ctx context.Context, req *v1.ExportTeamStructureRequest) (*v1.ExportTeamStructureResponse, error) {
+	snap, err := s.uc.ExportStructure(ctx, req.GetTeamId())
+	if err != nil {
+		return nil, mapTeamErr(err)
+	}
+	resp := &v1.ExportTeamStructureResponse{
+		EntryNodeId: snap.EntryNodeID,
+	}
+	for _, n := range snap.Nodes {
+		resp.Nodes = append(resp.Nodes, &v1.StructureNode{NodeId: n.NodeID, Kind: n.Kind, Name: n.Name})
+	}
+	for _, e := range snap.Edges {
+		resp.Edges = append(resp.Edges, &v1.StructureEdge{FromNodeId: e.FromNodeID, ToNodeId: e.ToNodeID})
+	}
+	for _, sf := range snap.Surfaces {
+		resp.Surfaces = append(resp.Surfaces, &v1.StructureSurface{NodeId: sf.NodeID, Name: sf.Name})
+	}
+	return resp, nil
 }

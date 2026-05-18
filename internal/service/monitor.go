@@ -14,7 +14,6 @@ import (
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
-// MonitorService implements kratos monitor.v1.
 type MonitorService struct {
 	v1.UnimplementedMonitorServiceServer
 
@@ -27,13 +26,18 @@ func NewMonitorService(uc *biz.MonitorUsecase) *MonitorService {
 
 func bizAuditToProto(a biz.AuditLog) *v1.AuditLog {
 	return &v1.AuditLog{
-		Id:         a.ID,
-		Action:     a.Action,
-		Resource:   a.Resource,
-		ResourceId: a.ResourceID,
-		RequestId:  a.RequestID,
-		Detail:     a.Detail,
-		CreatedAt:  a.CreatedAt,
+		Id:          a.ID,
+		Action:      a.Action,
+		Resource:    a.Resource,
+		ResourceId:  a.ResourceID,
+		RequestId:   a.RequestID,
+		Detail:      a.Detail,
+		CreatedAt:   a.CreatedAt,
+		Actor:       a.Actor,
+		Ip:          a.IP,
+		UserAgent:   a.UserAgent,
+		Severity:    a.Severity,
+		MetadataJson: a.MetadataJSON,
 	}
 }
 
@@ -68,27 +72,40 @@ func notFoundMonitor(err error) error {
 }
 
 func (s *MonitorService) ListAuditLogs(ctx context.Context, in *v1.ListAuditLogsRequest) (*v1.ListAuditLogsResponse, error) {
-	items, err := s.uc.ListAuditLogs(ctx, in.GetLimit())
+	result, err := s.uc.ListAuditLogs(ctx, biz.AuditQuery{
+		Limit:    in.GetLimit(),
+		Offset:   in.GetOffset(),
+		Action:   in.GetAction(),
+		Resource: in.GetResource(),
+		Actor:    in.GetActor(),
+		Keyword:  in.GetKeyword(),
+	})
 	if err != nil {
 		return nil, err
 	}
-	out := make([]*v1.AuditLog, 0, len(items))
-	for _, a := range items {
+	out := make([]*v1.AuditLog, 0, len(result.Items))
+	for _, a := range result.Items {
 		out = append(out, bizAuditToProto(a))
 	}
-	return &v1.ListAuditLogsResponse{Items: out}, nil
+	return &v1.ListAuditLogsResponse{Items: out, Total: result.Total}, nil
 }
 
-func (s *MonitorService) ListMonitorEvents(ctx context.Context, _ *v1.ListMonitorEventsRequest) (*v1.ListMonitorEventsResponse, error) {
-	items, err := s.uc.ListMonitorEvents(ctx)
+func (s *MonitorService) ListMonitorEvents(ctx context.Context, in *v1.ListMonitorEventsRequest) (*v1.ListMonitorEventsResponse, error) {
+	result, err := s.uc.ListMonitorEvents(ctx, biz.MonitorEventsQuery{
+		Limit:     in.GetLimit(),
+		Offset:    in.GetOffset(),
+		EventType: in.GetEventType(),
+		AgentID:   in.GetAgentId(),
+		Status:    in.GetStatus(),
+	})
 	if err != nil {
 		return nil, err
 	}
-	out := make([]*v1.MonitorPlatformRow, 0, len(items))
-	for _, row := range items {
+	out := make([]*v1.MonitorPlatformRow, 0, len(result.Items))
+	for _, row := range result.Items {
 		out = append(out, bizMonitorRowToProto(row))
 	}
-	return &v1.ListMonitorEventsResponse{Items: out}, nil
+	return &v1.ListMonitorEventsResponse{Items: out, Total: result.Total}, nil
 }
 
 func (s *MonitorService) GetMonitorEvent(ctx context.Context, in *v1.GetMonitorEventRequest) (*v1.MonitorPlatformRow, error) {
@@ -96,20 +113,26 @@ func (s *MonitorService) GetMonitorEvent(ctx context.Context, in *v1.GetMonitorE
 	if err != nil {
 		return nil, notFoundMonitor(err)
 	}
-	p := bizMonitorRowToProto(row)
-	return p, nil
+	return bizMonitorRowToProto(row), nil
 }
 
-func (s *MonitorService) ListMonitorTraces(ctx context.Context, _ *v1.ListMonitorTracesRequest) (*v1.ListMonitorTracesResponse, error) {
-	items, err := s.uc.ListMonitorTraces(ctx)
+func (s *MonitorService) ListMonitorTraces(ctx context.Context, in *v1.ListMonitorTracesRequest) (*v1.ListMonitorTracesResponse, error) {
+	result, err := s.uc.ListMonitorTraces(ctx, biz.MonitorTracesQuery{
+		Limit:    in.GetLimit(),
+		Offset:   in.GetOffset(),
+		AgentID:  in.GetAgentId(),
+		Provider: in.GetProvider(),
+		Model:    in.GetModel(),
+		Status:   in.GetStatus(),
+	})
 	if err != nil {
 		return nil, err
 	}
-	out := make([]*v1.MonitorPlatformRow, 0, len(items))
-	for _, row := range items {
+	out := make([]*v1.MonitorPlatformRow, 0, len(result.Items))
+	for _, row := range result.Items {
 		out = append(out, bizMonitorRowToProto(row))
 	}
-	return &v1.ListMonitorTracesResponse{Items: out}, nil
+	return &v1.ListMonitorTracesResponse{Items: out, Total: result.Total}, nil
 }
 
 func (s *MonitorService) GetMonitorTrace(ctx context.Context, in *v1.GetMonitorTraceRequest) (*v1.MonitorTraceDetail, error) {
@@ -146,8 +169,6 @@ func (s *MonitorService) GetMonitorLogs(context.Context, *v1.GetMonitorLogsReque
 		Message: "Use WebSocket /v1/ws to subscribe to monitor channels (logs, events).",
 	}, nil
 }
-
-// --- legacy transport/monitor.go JSON sanitization + spans ---
 
 func sanitizeJSONString(raw string) string {
 	parsed := parseJSONMap(raw)

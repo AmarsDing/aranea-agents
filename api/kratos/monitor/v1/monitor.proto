@@ -16,14 +16,25 @@ message AuditLog {
   string request_id = 5;
   string detail = 6;
   string created_at = 7;
+  string actor = 8;
+  string ip = 9;
+  string user_agent = 10;
+  string severity = 11;
+  string metadata_json = 12;
 }
 
 message ListAuditLogsRequest {
   int32 limit = 1;
+  int32 offset = 2;
+  string action = 3;
+  string resource = 4;
+  string actor = 5;
+  string keyword = 6;
 }
 
 message ListAuditLogsResponse {
   repeated AuditLog items = 1;
+  int32 total = 2;
 }
 
 // Mirrors legacy domain.PlatformResource JSON for monitor-events / monitor-traces rows.
@@ -48,20 +59,35 @@ message MonitorPlatformRow {
   string deleted_at = 18;
 }
 
-message ListMonitorEventsRequest {}
+message ListMonitorEventsRequest {
+  int32 limit = 1;
+  int32 offset = 2;
+  string event_type = 3;
+  string agent_id = 4;
+  string status = 5;
+}
 
 message ListMonitorEventsResponse {
   repeated MonitorPlatformRow items = 1;
+  int32 total = 2;
 }
 
 message GetMonitorEventRequest {
   string id = 1;
 }
 
-message ListMonitorTracesRequest {}
+message ListMonitorTracesRequest {
+  int32 limit = 1;
+  int32 offset = 2;
+  string agent_id = 3;
+  string provider = 4;
+  string model = 5;
+  string status = 6;
+}
 
 message ListMonitorTracesResponse {
   repeated MonitorPlatformRow items = 1;
+  int32 total = 2;
 }
 
 message MonitorTraceDetail {

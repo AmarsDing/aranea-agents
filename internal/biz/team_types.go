@@ -1,6 +1,5 @@
 package biz
 
-// Team is a row in legacy teams.
 type Team struct {
 	ID             string
 	TeamKey        string
@@ -14,7 +13,6 @@ type Team struct {
 	DeletedAt      string
 }
 
-// TeamRun is a row in team_runs.
 type TeamRun struct {
 	ID            string `json:"id"`
 	TeamID        string `json:"team_id"`
@@ -36,7 +34,6 @@ type TeamRun struct {
 	UpdatedAt     string `json:"updated_at"`
 }
 
-// TeamRunStep is a row in team_run_steps.
 type TeamRunStep struct {
 	ID            string `json:"id"`
 	RunID         string `json:"run_id"`
@@ -57,4 +54,27 @@ type TeamRunStep struct {
 	StartedAt     string `json:"started_at"`
 	FinishedAt    string `json:"finished_at"`
 	CreatedAt     string `json:"created_at"`
+}
+
+type TeamStructureSnapshot struct {
+	EntryNodeID string
+	Nodes       []StructureNode
+	Edges       []StructureEdge
+	Surfaces    []StructureSurface
+}
+
+type StructureNode struct {
+	NodeID string
+	Kind   string
+	Name   string
+}
+
+type StructureEdge struct {
+	FromNodeID string
+	ToNodeID   string
+}
+
+type StructureSurface struct {
+	NodeID string
+	Name   string
 }

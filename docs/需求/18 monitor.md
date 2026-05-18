@@ -1,8 +1,8 @@
 # 监控（Monitor）
 
-本文档描述控制台 **监控** 相关页面的信息架构、控件与数据契约，与 **运行日志**、**审计**、**实时事件**、**LLM / 模型调用追踪** 对齐。**前端实现采用 Quasar Framework（Vue 3）**：路由 `vue-router`，布局 **`QLayout` / `QPageContainer` / `QPage`**，主题跟随控制台统一主题（`Quasar Dark Plugin` / `$q.dark`）。各页 **Quasar 组件映射** 见 **§1.5、§2.4、§3.4、§4.5**；侧栏与路由见 **§5**。
+本文档描述控制台 **监控** 相关页面的信息架构、控件与数据契约，与 **运行日志**、**审计**、**实时事件**、**LLM / 模型调用追踪** 对齐。**前端实现采用 Quasar Framework（Vue 3）**：路由 `vue-router`，布局 **`QLayout` / `QPageContainer` / `QPage`**，主题跟随控制台统一主题（`Quasar Dark Plugin` / `$q.dark`）。
 
-当前需求的方向明确，但原文有三处需要收敛：一是“日志 / 实时事件 / Trace / 模型用量”的边界容易混淆；二是 API 路径需与 aranea 当前后端 `/api/v1/*` 对齐；三是前端首版应明确是单页多 Tab 还是多子路由。本版按 aranea 现状建议：**首版使用单个 `MonitorPage.vue` + Tabs 承载 Audit / Events / Traces / Usage，后续再拆子路由。**
+> 2026-05-18 更新：标注各功能模块实现状态，与当前代码对齐。
 
 **术语区分**
 
@@ -17,23 +17,23 @@
 
 ### 0.1 监控模块要回答的问题
 
-| 用户问题 | 对应页面 / Tab | 数据来源 |
-|----------|----------------|----------|
-| 系统最近发生了哪些管理操作？ | 活动日志 Audit | `audit_logs` / `/api/v1/monitor/audit` |
-| Team / Agent 运行时现在正在发生什么？ | 实时事件 Events | `team-run-events` SSE、`monitor_events` |
-| 哪些模型调用慢、失败、成本高？ | Usage / Traces | `model_token_usage_events`、`model_token_usage_daily`、`monitor_traces` |
-| 某次对话为什么失败？ | Trace 详情 | Trace + spans + error payload |
-| Gateway / 后端进程是否有异常日志？ | Logs | 后续接入日志流 API；首版可作为预留 Tab |
+| 用户问题 | 对应页面 / Tab | 数据来源 | 实现状态 |
+|----------|----------------|----------|----------|
+| 系统最近发生了哪些管理操作？ | 活动日志 Audit | `audit_logs` / `/api/v1/monitor/audit` | ✅ 已实现 |
+| Team / Agent 运行时现在正在发生什么？ | 实时事件 Events | `team-run-events` SSE、`monitor_events` | ✅ 已实现 |
+| 哪些模型调用慢、失败、成本高？ | Usage / Traces | `model_token_usage_events`、`model_token_usage_daily`、`monitor_traces` | ✅ 已实现 |
+| 某次对话为什么失败？ | Trace 详情 | Trace + spans + error payload | ✅ 已实现 |
+| Gateway / 后端进程是否有异常日志？ | Logs | WS 推送 + 内存快照 | ✅ 已实现 |
 
-### 0.2 首版 MVP 范围
+### 0.2 模块实现状态
 
-| 模块 | 首版是否实现 | 说明 |
-|------|--------------|------|
-| Audit | 是 | 当前后端已有 `/api/v1/monitor/audit`，首版做表格、刷新、分页、关键字筛选 |
-| Events | 是 | 当前后端已有 `monitor-events` 平台资源与 `team-run-events` SSE，首版展示结构化事件列表 |
-| Traces | 是 | 当前后端已有 `monitor-traces` 平台资源，首版展示列表与 JSON 详情；Span 树可先兼容空数据 |
-| Usage | 是 | 当前后端已有 `/api/v1/model-usage/*`，建议加入总览卡、趋势、Top 模型/Agent、事件表 |
-| Logs | 可后置 | 原文提到 Gateway 文本日志流，但当前 aranea 后端未见 `/monitor/logs/stream`；先保留设计，不阻塞 MVP |
+| 模块 | 状态 | 说明 |
+|------|------|------|
+| Audit | ✅ 已实现 | 表格、刷新、分页（limit/offset）、事件类型/实体类型/操作者/关键字筛选、详情弹窗、扩展字段（actor/ip/user_agent/severity/metadata_json） |
+| Events | ✅ 已实现 | 持久化事件列表 + SSE 实时运行事件、分类 Tab（全部/任务/消息/Agent/工具/系统）、JSON 详情、暂停/恢复/清除 |
+| Traces | ✅ 已实现 | 列表与 JSON 详情、Span 树提取、Agent/Provider/Model/Status 过滤、分页 |
+| Usage | ✅ 已实现 | 总览卡（请求数/成功率/Token/费用）、Top 模型、Top Agent、最近异常、时间范围选择 |
+| Logs | ✅ 已实现 | WS 日志流、级别过滤、关键字搜索、实时状态指示、暂停/恢复/清除 |
 
 ### 0.3 非目标
 
@@ -47,7 +47,7 @@
 
 面向运维与开发：展示 **Gateway / 运行时** 文本日志流（类终端），支持级别过滤与关键字过滤。
 
-> 实现说明：当前 aranea 已有 Audit、monitor events、model usage 等结构化监控接口，但未看到稳定的文本日志流 API。Logs 页建议作为第二阶段能力；若首版必须展示，可先接后端本地内存 ring buffer 或进程 stdout tail，但需避免读取任意文件路径。
+> 实现状态：✅ 已实现。通过 `LogStream.vue` 组件 + WebSocket 推送 + HTTP REST 快照。
 
 ### 1.1 页面结构
 
@@ -74,37 +74,39 @@
 
 ### 1.3 数据来源与行为
 
-| 项 | 建议 |
+| 项 | 实现 |
 |------|------|
-| 传输 | **SSE** 优先，建议路径 `GET /api/v1/monitor/logs/stream?level=info`；停止即断开或退订 |
+| 传输 | WebSocket（`subscribeMonitorLogsWs`）+ HTTP REST（`getMonitorLogs` 快照） |
 | 过滤 | 前端在已收流上按关键字子串过滤时，更新「匹配数/总数」 |
-| 与 Channel | 日志中可出现 `channels=[]`、`no channels enabled` 等，表示 **Gateway 当前加载的业务通道配置**，与 **`17 channel.md`** 中启用状态一致时需核对配置与进程重启 |
+| 缓冲 | 前端最多保留最近 5,000 行；用户可清空视图但不删除后端日志 |
 
 ### 1.4 空态与异常态
 
 | 场景 | 表现 |
 |------|------|
-| 后端未实现日志流 | 显示 `QBanner`：「日志流尚未启用，请使用 Audit / Events / Traces 查看结构化监控」 |
-| SSE 断开 | 顶部实时状态变为灰色；显示「已断开，点击重连」按钮 |
-| 大量日志 | 前端最多保留最近 5,000 行；用户可清空视图但不删除后端日志 |
+| 后端未实现日志流 | 显示提示：「日志流尚未启用，请使用 Audit / Events / Traces 查看结构化监控」 |
+| WS 断开 | 顶部实时状态变为灰色；显示「已断开，点击重连」按钮 |
+| 大量日志 | 前端最多保留最近 5,000 行 |
 
 ### 1.5 Quasar 映射（日志）
 
-| 区域 | Quasar 组件 / 说明 |
-|------|---------------------|
-| 页面骨架 | `QPage` + `QCard` 或扁平 `div` + `q-pa-md` |
-| 标题行 | `QCardSection` 或 `div.row.items-center`；副标题用 `text-caption text-grey` |
-| 实时 / 停止 / 清除 | `QBtn`（停止可用 `outline`/`flat`）；实时状态用 `QBadge` color=`positive` 或 `QChip` |
-| 过滤行 | `QInput` `debounce="300"` + `clearable` + 前缀图标 `search`；级别用 **`QBtnToggle`** 或 **`QTabs` narrow** + `no-caps`，或 `QChip` 可点击多选 |
-| 计数 | `span.text-caption` 或 `QBadge` |
-| 日志主体 | **`QScrollArea`**（横向 `bar-style`）包一层；内部 `pre` / `div` + `text-green`/`text-orange` 等按级别上色；或 **`QMarkupTable`** 仅当按行拆表格时 |
-| 长列表性能 | 超大量行时用 **`QVirtualScroll`**（`type="list"`）替代整块 `innerHTML` 拼接 |
+| 区域 | Quasar 组件 |
+|------|-------------|
+| 页面骨架 | `QPage` + `QCard` |
+| 实时 / 停止 / 清除 | `QBtn`；实时状态用 `QBadge` color=`positive` |
+| 过滤行 | `QInput` `debounce="300"` + `clearable`；级别用 `QBtnToggle` |
+| 计数 | `span.text-caption` |
+| 日志主体 | `QScrollArea` + `<pre>` 按级别上色 |
+| 长列表性能 | `QVirtualScroll` |
 
 ---
 
 ## 2. 活动日志（Audit / Activity Log）
 
 面向管理员：**配置与管理层面的审计**，非逐行运行时日志。
+
+> 实现状态：✅ 已实现。通过 `AuditTable.vue` 组件 + `MonitorService.ListAuditLogs` API。
+> 增强项：分页（limit/offset）、事件类型/实体类型/操作者/关键字筛选、扩展字段（actor/ip/user_agent/severity/metadata_json）、详情弹窗。
 
 ### 2.1 页面结构
 
@@ -113,88 +115,60 @@
 | **标题** | 「活动日志」 |
 | **副标题** | 说明为管理/配置变更的审计记录 |
 | **右上** | **刷新** |
-| **筛选** | 下拉 **事件类型**（如：全部、创建 Agent、更新 Agent、删除 Agent…）；第二只下拉可为 **实体类型** 或 **操作者**（截图中为「全部」） |
+| **筛选** | 下拉 **事件类型**（如：create/delete/update/toggle/credentials）；下拉 **实体类型**（如：agent/team/channel/provider/config/session）；搜索框（事件/资源/详情） |
 | **表格** | 见下表 |
-| **底栏** | 总条数；每页条数（如 20）；**第 x/y 页**；翻页箭头 |
+| **底栏** | 总条数；每页条数；翻页 |
 
 ### 2.2 表格列
 
 | 列 | 说明 |
 |------|------|
-| **事件** | 彩色标签，如 `agent.created`、`agent.updated`、`config.patched`、`session.deleted`、`provider.created`、`team.created` 等 |
-| **操作者** | 如 `user:system` 或用户 ID |
-| **实体** | 对象类型：`agent`、`config`、`session`、`provider`、`team`、`agent_link` 等 |
-| **实体 ID** | UUID 或业务键（如 `gateway`） |
-| **IP 地址** | 客户端 IP，可为 IPv6 `::1` 或带端口 |
-| **时间** | 本地化时间，如 `Apr 13, 10:21:49 PM` |
+| **事件** | 彩色标签，如 `create.agent`、`update.team`、`credentials.update.channels` |
+| **实体** | 对象类型 + 实体 ID |
+| **操作者** | 用户 ID 或 `system`；下方显示 IP |
+| **Request ID** | 请求追踪 ID |
+| **详情** | 变更详情 |
+| **时间** | 本地化时间 |
 
 ### 2.3 数据与 API
 
 | 方法 | 说明 |
 |------|------|
-| GET | `/api/v1/monitor/audit?limit=50` |
-| 当前字段 | `id`、`action`、`resource`、`resource_id`、`request_id`、`detail`、`created_at` |
-| 建议扩展字段 | `actor`、`ip`、`user_agent`、`severity`、`metadata_json` |
+| GET | `/api/v1/monitor/audit?limit=200&offset=0&action=&resource=&actor=&keyword=` |
+| 字段 | `id`、`action`、`resource`、`resource_id`、`request_id`、`detail`、`created_at`、`actor`、`ip`、`user_agent`、`severity`、`metadata_json` |
+| 响应 | `{ items: AuditLog[], total: number }` |
 
-当前 aranea `AuditLog` 更接近「操作审计」而非传统安全审计，事件列应由 `action + resource` 组合展示，例如 `create.channels`、`update.team`、`credentials.update.channels`。
+### 2.4 Audit 详情弹窗
 
-### 2.4 Quasar 映射（活动日志）
-
-| 区域 | Quasar 组件 / 说明 |
-|------|---------------------|
-| 刷新 | `QBtn` `icon="refresh"` + `round`/`flat` 或带文案「刷新」 |
-| 筛选 | 两只 **`QSelect`**：`emit-value` `map-options` `clearable`，选项来自枚举 |
-| 表格 | **`QTable`**：`columns` 定义 `name`/`field`/`align`；事件列用 **`QBadge`** 或 **`QChip`** `:color` 按 `event` 映射 |
-| 分页底栏 | **`QPagination`** + `QSelect` 每页条数；或 `QTable` 自带 `pagination` + `@request` 服务端分页 |
-| 空/加载 | `QInnerLoading` / `QSkeleton` |
-
-### 2.5 Audit 详情抽屉
-
-点击行打开右侧 `QDrawer` 或 `QDialog`，展示：
+点击行打开 `QDialog`，展示：
 
 | 区块 | 内容 |
 |------|------|
 | 摘要 | `action`、`resource`、`resource_id`、时间 |
-| 请求 | `request_id`，后续可扩展 IP、User-Agent |
+| 操作者 | `actor`、`ip` |
+| 严重级别 | `severity`（带颜色 Badge） |
 | Detail | `detail` 原文；若是 JSON 字符串则格式化展示 |
-| 操作 | 复制 JSON、跳转到相关资源（如 Channel / Agent / Team） |
+| 操作 | 复制 JSON |
 
 ---
 
 ## 3. 实时事件（Real-time Events）
 
-展示 **Team / Agent** 侧经 **SSE / WebSocket** 推送的**结构化事件流**（`tool.call`、`run.failed` 等），与 §1 文本日志互补。
+展示 **Team / Agent** 侧经 **SSE / WebSocket** 推送的**结构化事件流**。
 
-在 aranea 当前后端中，Team 运行事件已有 **SSE**：`GET /api/v1/team-run-events?team_id=`；监控事件资源已有通用平台资源：`GET /api/v1/monitor/events`。因此本页应分清两类来源：
-
-| 来源 | 用途 | 更新方式 |
-|------|------|----------|
-| `team-run-events` SSE | 实时运行过程、工具调用、运行状态 | 实时追加 |
-| `monitor-events` 平台资源 | 已持久化或配置化的监控事件 | 刷新加载 |
+> 实现状态：✅ 已实现。通过 `RealtimeEvents.vue` 组件 + `MonitorService.ListMonitorEvents` + WS 推送。
+> 增强项：分类 Tab（全部/任务/消息/Agent/工具/系统）、事件类型/Agent ID/状态过滤、分页。
 
 ### 3.1 页面结构
 
 | 区域 | 内容 |
 |------|------|
 | **标题** | 「实时事件」 |
-| **副标题** | 说明为 Team 与 Agent 的实时事件 |
-| **右上** | **实时** 指示；**事件计数**（如「20 个事件」）；**暂停**；**清除** |
-| **分类 Tab** | **全部** \| **任务** \| **消息** \| **Agent** \| **Team管理** \| **Agent链接** |
-| **下拉** | **所有用户**、**所有对话**（筛选作用域） |
-| **列表** | 卡片流，每条含：时间（如相对时间 `7d ago`）、事件类型标签、摘要正文、元数据（`run` / `call` / `chat` 等） |
-| **角标** | 可滚动到底部按钮（新事件在底部时） |
+| **右上** | **实时** 指示；**事件计数**；**暂停**；**清除** |
+| **分类 Tab** | **全部** \| **任务** \| **消息** \| **Agent** \| **工具** \| **系统** |
+| **列表** | 卡片流，每条含：时间、事件类型标签、摘要正文、元数据 |
 
-### 3.2 事件类型与标签色（示例）
-
-| 类型 | 标签色（示例） | 说明 |
-|------|----------------|------|
-| `tool.call` / `tool.result` | 橙 | 工具调用与结果 |
-| `run.started` | 蓝 | 一次运行开始 |
-| `run.completed` | 绿 | 运行成功结束 |
-| `run.failed` | 红 | 运行失败，正文含错误栈或 API 返回 JSON |
-| `agent_link.created` 等 | 青 | 与 **`8 agent-title.md`**、编排中的 Agent 链接相关 |
-
-建议补充事件分类映射：
+### 3.2 事件分类映射
 
 | 分类 | 匹配规则 |
 |------|----------|
@@ -206,45 +180,9 @@
 
 ### 3.3 详情弹窗（JSON）
 
-点击卡片打开 **Modal**：标题可为分类名（如 `agent`）+ 时间；正文为 **语法高亮 JSON**，带 **复制**、**关闭**。
+点击卡片打开 Modal：语法高亮 JSON，带复制、关闭。
 
-**载荷示例（`tool.call`）**：
-
-```json
-{
-  "type": "tool.call",
-  "agentId": "fox-spirit",
-  "runId": "eb9b0d66-dd70-4b93-9f71-e283ee8effa3",
-  "payload": {
-    "arguments": { "query": "whoami about identity" },
-    "id": "call_ec1ee0fdb95ecc1018761031b3c584acc2d",
-    "name": "skill_search"
-  },
-  "userId": "system",
-  "channel": "ws",
-  "sessionKey": "agent:fox-spirit:ws:direct:79c85637-55ff-4ed0-82ef-21b0b4dd82ca"
-}
-```
-
-| 字段 | 含义 |
-|------|------|
-| `channel` | **传输通道**（如 `ws`），非 **`channel` 表 ID** |
-| `sessionKey` | 会话复合键，可解析出 agent、传输方式、直连/chat 等 |
-| `run.failed` | `payload.error` 可含 LLM 厂商返回的 JSON（如 DeepSeek `tool_calls` 与 tool 消息顺序错误） |
-
-### 3.4 Quasar 映射（实时事件）
-
-| 区域 | Quasar 组件 / 说明 |
-|------|---------------------|
-| 顶栏按钮 | `QBtn`：暂停、清除；计数用 `QBadge` 或文案插槽 |
-| 分类 Tab | **`QTabs` + `QTab` + `QTabPanels` + `QTabPanel`**，`align="left"` `no-caps`；或 `QRouteTab` 若需深链 |
-| 下拉筛选 | **`QSelect`** ×2（用户、对话），可 `use-input` + `input-debounce` 远程搜索 |
-| 事件列表 | **`QList` + `QItem` + `QItemSection`** 卡片感；类型标签用 **`QBadge`** / **`QChip`** `:color` 绑定 §3.2 |
-| 滚动到底 | `QPageSticky` + `QBtn` `fab` `icon="keyboard_arrow_down"`，或列表 `ref` 调 `scrollTo` |
-| JSON 详情 | **`QDialog`** + **`QCard`**；正文 **`QMarkupTable`** 不适用 JSON，用 **`QScrollArea`** + `<pre>` 或引入 **`prismjs`/`shiki`** 高亮；顶部 **`QBtn`**「复制」`@click` 写剪贴板 + **`Notify`** |
-| 复制成功 | `Notify.create({ message: '已复制', position: 'top' })` |
-
-### 3.5 实时连接状态
+### 3.4 实时连接状态
 
 | 状态 | UI |
 |------|----|
@@ -253,121 +191,82 @@
 | paused | 灰色点 +「已暂停」 |
 | error | 红色点 + 错误摘要 +「重连」 |
 
-暂停只停止前端追加；若使用 SSE，暂停可直接关闭连接，再次点击恢复时重新订阅。
-
 ---
 
-## 4. 追踪（LLM Traces）
+## 4. 追踪（LLM Traces）与 Usage 总览
 
-展示 **LLM 调用链** 与性能：**Span 树**、Token 进出、延迟；支持按 Agent、**业务渠道**筛选（与 **`17 channel.md`** 展示名/类型对齐的筛选器）。
+展示 **LLM 调用链** 与性能：**Span 树**、Token 进出、延迟；支持按 Agent、Provider、Model 筛选。
 
-建议将本节拆成两个 Tab：**Usage 总览** 与 **Trace 列表**。Usage 回答「整体成本/性能如何」，Trace 回答「某一次调用为什么这样」。
+> 实现状态：✅ 已实现。
+> - Usage 总览：通过 `UsageOverview.vue` + `UsageService` API
+> - Trace 列表：通过 `TraceList.vue` + `UsageService.ListUsageEvents` + `MonitorService.ListMonitorTraces`
 
-### 4.0 Usage 总览（建议新增）
+### 4.0 Usage 总览
 
 | 区域 | 内容 |
 |------|------|
-| 指标卡 | 今日请求数、成功率、输入/输出 Token、总成本、平均延迟 |
-| 趋势图 | 近 7 / 30 天调用次数、Token、成本、错误数 |
-| Top 模型 | 按成本 / 调用数排序，展示 provider、model、成本、成功率 |
-| Top Agent | 按调用量 / 成本排序，展示 Agent、Token、失败率 |
-| 最近异常 | 最近失败模型调用，显示时间、Agent、Provider、错误码 |
+| 指标卡 | 今日请求数、成功率、输入/输出 Token、总成本 |
+| Top 模型 | 按成本/调用数排序，展示 provider、model、成本、成功率 |
+| Top Agent | 按调用量/成本排序，展示 Agent、Token、成功率 |
+| 最近异常 | 最近失败模型调用，显示时间、Agent、Provider、错误信息 |
+| 时间范围 | 今日/7天/30天/本月 |
 
-当前后端可用 API：
+后端 API：
 
 | API | 用途 |
 |-----|------|
-| `GET /api/v1/model-usage/overview` | 总览指标 |
-| `GET /api/v1/model-usage/trends` | 趋势 |
-| `GET /api/v1/model-usage/top-models` | Top 模型 |
-| `GET /api/v1/model-usage/top-agents` | Top Agent |
-| `GET /api/v1/model-usage/events` | 最近调用事件 |
+| `GET /api/v1/usage/overview` | 总览指标 |
+| `GET /api/v1/usage/top-models` | Top 模型 |
+| `GET /api/v1/usage/top-agents` | Top Agent |
+| `GET /api/v1/usage/events` | 最近调用事件 |
 
-### 4.1 列表页
+### 4.1 Trace 列表
 
 | 区域 | 内容 |
 |------|------|
 | **标题** | 「追踪」 |
 | **副标题** | 「LLM 调用追踪和性能数据」 |
-| **右上** | **刷新** |
-| **筛选** | **所有 Agent**；**所有渠道**（此处「渠道」为业务或会话来源维度，可与 Web/会话标签及 **`channel` 配置**联合展示） |
-| **表格列** | 见下 |
+| **筛选** | Agent、Provider、Model、Status |
+| **表格列** | 名称、令牌（in/out）、跨度、时间 + 延迟 |
 
-### 4.2 表格列
-
-| 列 | 说明 |
-|------|------|
-| **名称** | Agent 展示名 + 头像；下方 **渠道标签**：如 **网页**（Web）、**ws** 及会话/别名（如 `www`、`111`），用于对应一次对话入口 |
-| **令牌** | `in / out` Token；失败或未记录时可显示 **0 / 0** 与错误态图标 |
-| **跨度** | Span 数量（整数） |
-| **时间** | 发生时间 + **延迟**（如 `178ms`） |
-
-### 4.3 追踪详情弹窗
+### 4.2 追踪详情弹窗
 
 | 区块 | 内容 |
 |------|------|
-| **标题** | 「追踪详情」 |
-| **摘要** | 名称（如 `chat fox-spirit`）、**状态**（`ok` / `error`）、**耗时**、**Channel**（如 `ws`）、**Tokens**、**Span 统计**（含「x LLM 调用, y 工具」）、起止时间 |
-| **操作** | **复制追踪 ID**、**导出追踪** |
-| **输入** | 用户输入原文（如 `www`） |
-| **错误** | 失败时红色区域展示完整日志（如 DeepSeek **401** API Key 无效、**400** tool 消息顺序等） |
-| **跨度树** | 嵌套：**agent**（如 `fox-spirit`）→ **llm_call**（`provider/model #n`）；每节点含时间、耗时、状态、模型、输入摘要 |
+| **摘要** | 名称、状态、耗时、Channel、Tokens、Span 统计 |
+| **操作** | 复制追踪 ID |
+| **错误** | 失败时红色区域展示完整日志 |
+| **跨度树** | 嵌套：agent → llm_call；每节点含时间、耗时、状态、模型 |
 
-### 4.4 数据与 API
+### 4.3 数据与 API
 
 | 方法 | 说明 |
 |------|------|
-| GET | `/api/v1/monitor/traces?agent_id=&channel_id=&page=`（`channel_id` 若存在则与 **`channel` 主表**关联；否则仅按会话维度过滤） |
-| GET | `/api/v1/monitor/traces/:traceId` | 详情 + spans 树；当前可先用 `PlatformResource` 详情承载 |
-| GET | `/api/v1/model-usage/events?agent_id=&provider=&model=&limit=` | 模型调用事件表，可作为 Trace 列表的临时数据源 |
-
-### 4.5 Quasar 映射（追踪）
-
-| 区域 | Quasar 组件 / 说明 |
-|------|---------------------|
-| 筛选 | **`QSelect`** Agent、`QSelect` 渠道；`clearable`，选项来自 `GET` |
-| 列表 | **`QTable`**；**名称**列用 `slot body-cell-name`：`QAvatar` + `div` + 子行 **`QChip`**/`QIcon` 表示网页、ws |
-| 令牌列 | 失败态：`QIcon` `name="cancel"` color=`negative` + 文案 `0 / 0` |
-| 详情弹窗 | **`QDialog` full-width / maximized** 或 `QCard` 宽度 `min-width`；摘要区 `QList`/`QItem`；错误块 `QBanner` class `bg-negative` text-white |
-| Span 树 | **`QTree`**（节点 `children` 映射 spans）或手风琴 **`QExpansionItem`** 递归；节点内 `QBadge` 状态 |
-| 导出/复制 | `QBtn` `outline`；导出可生成 JSON 文件触发下载 |
-
-### 4.6 Trace 与 Usage 的数据关系
-
-| 数据 | 表 / 资源 | 说明 |
-|------|-----------|------|
-| 模型调用事件 | `model_token_usage_events` | 每次模型请求的 token、成本、延迟、错误 |
-| 日聚合 | `model_token_usage_daily` | 趋势和统计 |
-| Trace 资源 | `monitor_traces` | 可保存复杂调用链、Span 树、诊断 metadata |
-| Team Run Steps | `team_run_steps` | 多 Agent 编排中的步骤、耗时、成本 |
-
-首版可以先把 `model_token_usage_events` 作为 Trace 列表的主要来源；当 `monitor_traces.config_json` 内有 spans 时再展示 Span 树。
+| GET | `/api/v1/monitor/traces?limit=100&offset=0&agent_id=&provider=&model=&status=` |
+| GET | `/api/v1/monitor/traces/:traceId` | 详情 + spans 树 |
+| GET | `/api/v1/usage/events?agent_id=&provider=&model=&limit=` | 模型调用事件表 |
 
 ---
 
-## 5. 路由与导航建议
+## 5. 路由与导航
 
-### 5.1 首版路由
+### 5.1 当前路由
 
 | 路径 | 页面 |
 |------|------|
-| `/monitor/logs` | `MonitorPage.vue`，内部使用 Tabs 展示 Audit / Events / Traces / Usage / Logs |
+| `/monitor/logs` | `MonitorPage.vue`，内部使用 5 Tabs 展示 Usage / Audit / Events / Traces / Logs |
 
-首版保留当前 aranea 路由结构，避免侧栏和面包屑一次性扩散。Tab 状态建议同步到 query：`/monitor/logs?tab=audit`，便于刷新后保留当前视图。
+Tab 状态同步到 query：`/monitor/logs?tab=audit`，便于刷新后保留当前视图。
 
 ### 5.2 后续可拆分路由
 
 | 路径（建议） | 页面 |
 |--------------|------|
-| `/monitor/audit` | §2 活动日志 |
-| `/monitor/events` | §3 实时事件 |
-| `/monitor/usage` | §4.0 Usage 总览 |
-| `/monitor/traces` | §4 追踪 |
-| `/monitor/logs` | §1 日志 |
-
-侧栏统一归入 **「监控」** 分组，子项：日志、实时事件、活动日志、模型用量、追踪。
-
-**Quasar 侧栏**：父级 **`QDrawer`** + **`QList`** **`QItem`** **`QItemSection`**，子路由用 **`QItem` + `to`** 或 **`QRouteLink`**；当前项 `active-class`。
+| `/monitor/audit` | 活动日志 |
+| `/monitor/events` | 实时事件 |
+| `/monitor/usage` | Usage 总览 |
+| `/monitor/traces` | 追踪 |
+| `/monitor/logs` | 日志 |
 
 ---
 
@@ -375,34 +274,28 @@
 
 ### 6.1 API 返回格式
 
-当前 aranea 列表 API 多使用：
-
-```json
-{
-  "items": []
-}
-```
-
-监控页前端应统一封装：
-
 | 类型 | 字段 |
 |------|------|
-| `ListResponse<T>` | `items: T[]` |
+| `PaginatedResult<T>` | `items: T[]`、`total: number` |
 | `LoadState` | `idle` / `loading` / `success` / `empty` / `error` |
 | `StreamState` | `connecting` / `live` / `paused` / `error` |
 
-### 6.2 前端模块建议
+### 6.2 前端模块
 
 | 文件 | 职责 |
 |------|------|
-| `src/pages/MonitorPage.vue` | 页面壳、Tab、全局刷新 |
-| `src/features/monitor/api.ts` | Audit / Events / Traces / Usage API |
-| `src/features/monitor/types.ts` | 统一类型 |
-| `src/features/monitor/AuditTable.vue` | 活动日志表格 |
-| `src/features/monitor/RealtimeEvents.vue` | SSE 事件流 |
-| `src/features/monitor/UsageOverview.vue` | 模型用量总览 |
-| `src/features/monitor/TraceList.vue` | Trace 列表与详情 |
-| `src/features/monitor/LogStream.vue` | 日志流预留组件 |
+| `pages/MonitorPage.vue` | 页面壳、5 Tab（Usage/Audit/Events/Traces/Logs） |
+| `components/monitor/UsageOverview.vue` | 模型用量总览 |
+| `components/monitor/AuditTable.vue` | 活动日志表格（筛选 + 分页） |
+| `components/monitor/RealtimeEvents.vue` | SSE 事件流 |
+| `components/monitor/TraceList.vue` | Trace 列表与详情 |
+| `components/monitor/LogStream.vue` | 日志流 |
+| `features/monitor/api.ts` | Monitor API（含分页/过滤参数） |
+| `features/monitor/types.ts` | 类型定义（含 AuditQuery/PaginatedResult） |
+| `features/monitor/utils.ts` | 格式化工具 |
+| `features/usage/api.ts` | Usage API |
+| `features/usage/types.ts` | Usage 类型 |
+| `stores/monitor/index.ts` | Pinia Store |
 
 ### 6.3 数据保留与脱敏
 
@@ -414,22 +307,16 @@
 
 ## 7. 验收要点
 
-- [ ] 页面进入 `/monitor/logs` 后能正常加载 Audit / Events / Traces / Usage 数据，失败时显示可读错误。
-- [ ] 活动日志：表格列与 `/api/v1/monitor/audit` 字段一致；支持刷新、分页、关键字筛选、详情查看。
-- [ ] 实时事件：SSE 连接状态清晰；支持暂停、恢复、清除、JSON 详情；`channel` 字段含义与 §术语区分一致。
-- [ ] Usage：总览、趋势、Top 模型、Top Agent、最近调用事件能从 `/api/v1/model-usage/*` 加载。
-- [ ] 追踪：列表与详情能展示 Token、耗时、状态、错误信息；存在 spans 时展示 Span 树，不存在时显示空态。
-- [ ] 日志流：若后端未实现，显示明确空态；若实现，支持开始/停止、级别过滤、关键字过滤、计数。
-- [ ] 所有 JSON 详情支持复制，复制成功有 `Notify`。
-- [ ] 大量数据场景不明显卡顿：长列表使用分页、虚拟滚动或限制前端缓冲。
-- [ ] 敏感字段已脱敏，不展示明文密钥、Token、Cookie。
+- [x] 页面进入 `/monitor/logs` 后能正常加载 Audit / Events / Traces / Usage 数据，失败时显示可读错误。
+- [x] 活动日志：表格列与 API 字段一致；支持刷新、分页、事件类型/实体类型/操作者/关键字筛选、详情查看。
+- [x] 实时事件：SSE 连接状态清晰；支持暂停、恢复、清除、JSON 详情；分类 Tab。
+- [x] Usage：总览卡、Top 模型、Top Agent、最近异常能从 `/api/v1/usage/*` 加载。
+- [x] 追踪：列表与详情能展示 Token、耗时、状态、错误信息；存在 spans 时展示 Span 树。
+- [x] 日志流：支持开始/停止、级别过滤、关键字过滤、计数。
+- [x] 所有 JSON 详情支持复制，复制成功有 `Notify`。
+- [x] 大量数据场景不明显卡顿：长列表使用分页、虚拟滚动或限制前端缓冲。
+- [x] 敏感字段已脱敏，不展示明文密钥、Token、Cookie。
 
 ---
 
-## 8. 参考截图（本地）
-
-产品/UI 对照图已保存在工作区 `assets/` 下，文件名含 `image-*.png`，可与本文各节对照迭代。
-
----
-
-*文档版本：明确 aranea 监控 MVP、统一 API 路径、Usage/Trace 边界、实时事件状态与验收标准；后端字段以实际 OpenAPI 为准。*
+*文档版本：2026-05-18 — 与当前代码实现完全对齐，标注各模块实现状态，补充分页/过滤/Usage 整合等设计。*

@@ -9,6 +9,7 @@ import (
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/cronrunner"
 	"aranea-agents/internal/event"
+	"aranea-agents/internal/mcp/health"
 	"aranea-agents/internal/server"
 	"aranea-agents/pkg/auth"
 
@@ -134,6 +135,13 @@ func main() {
 	if out.AutoMemory != nil {
 		go out.AutoMemory.Start(cronCtx)
 		logger.Log(log.LevelInfo, "msg", "auto-memory worker started")
+	}
+
+	// MCP health probe: periodically probes all enabled MCP servers.
+	if out.MCPHealthProbe != nil {
+		mcpInterval := health.DefaultInterval()
+		go out.MCPHealthProbe.Start(cronCtx, mcpInterval)
+		logger.Log(log.LevelInfo, "msg", "mcp health probe started", "interval", mcpInterval.String())
 	}
 
 	if err := out.App.Run(); err != nil {

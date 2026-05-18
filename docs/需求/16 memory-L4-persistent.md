@@ -140,6 +140,10 @@ L4 与 ADK 模型的对应：ADK 的 `MemoryService` 主要服务 L3；L4 在 AD
 | F18 | 自动触发条件：episode 数 ≥ N、负面反馈 ≥ M、连续失败 ≥ K | 必须 |
 | F19 | 节流：同字段 24h 内最多变更 1 次 | 必须 |
 | F20 | 训练数据导出：提供「prompt + completion + score」用于离线微调 | 推荐 |
+| F21 | 级联更新检查：实体属性变更时，BFS 遍历关联实体，生成级联更新提议（EP-MEM-02） | 必须 |
+| F22 | 级联更新传播：关联 fact / entity 沿 `depends_on` / `supports` 等关系边传播更新 | 必须 |
+| F23 | 级联更新门控：所有级联更新走 `EvolutionProposal` 审核，用户/Critic 确认后应用 | 必须 |
+| F24 | 级联更新回滚：任意级联更新可一键回滚到变更前状态 | 必须 |
 
 ### 2.3 非功能需求
 

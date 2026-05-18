@@ -1,10 +1,12 @@
 import { createMonitorService } from "../../services/index";
 import type {
   AuditLog,
+  AuditQuery,
   ModelUsageQuery,
   MonitorLogLine,
   MonitorLogSnapshot,
   MonitorTraceEvent,
+  PaginatedResult,
   PlatformResource,
   TeamRunEvent
 } from "./types";
@@ -27,7 +29,12 @@ function auditFromWire(raw: unknown): AuditLog {
     resource_id: String(r.resource_id ?? r.resourceId ?? ""),
     request_id: String(r.request_id ?? r.requestId ?? ""),
     detail: String(r.detail ?? ""),
-    created_at: String(r.created_at ?? r.createdAt ?? "")
+    created_at: String(r.created_at ?? r.createdAt ?? ""),
+    actor: String(r.actor ?? ""),
+    ip: String(r.ip ?? ""),
+    user_agent: String(r.user_agent ?? r.userAgent ?? ""),
+    severity: String(r.severity ?? ""),
+    metadata_json: String(r.metadata_json ?? r.metadataJson ?? "")
   };
 }
 
@@ -70,10 +77,17 @@ function logLineFromWire(raw: unknown): MonitorLogLine {
   };
 }
 
-export async function listMonitorAudit(limit = 200): Promise<AuditLog[]> {
-  const res = await monitor.ListAuditLogs({ limit });
-  const items = res.items ?? [];
-  return items.map((item: unknown) => auditFromWire(item));
+export async function listMonitorAudit(query: AuditQuery = {}): Promise<PaginatedResult<AuditLog>> {
+  const res = await monitor.ListAuditLogs({
+    limit: query.limit ?? 200,
+    offset: query.offset ?? 0,
+    action: query.action ?? "",
+    resource: query.resource ?? "",
+    actor: query.actor ?? "",
+    keyword: query.keyword ?? ""
+  });
+  const items = (res.items ?? []).map((item: unknown) => auditFromWire(item));
+  return { items, total: Number(res.total ?? items.length) };
 }
 
 export async function listMonitorEvents(): Promise<PlatformResource[]> {

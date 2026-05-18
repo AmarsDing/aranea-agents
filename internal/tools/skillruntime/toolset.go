@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/pkg/skillstorage"
+	"aranea-agents/internal/skill/storage"
 	skilltrpc "aranea-agents/internal/skill/trpc"
 
 	"trpc.group/trpc-go/trpc-agent-go/codeexecutor"
@@ -25,10 +25,10 @@ func BuildTRPCSkillTools(ctx context.Context, skillUC *biz.SkillUsecase, sys biz
 	if err != nil || len(slugs) == 0 {
 		return nil, err
 	}
-	rootDir := skillstorage.ResolveRoot()
+	rootDir := storage.ResolveRoot()
 	if sys != nil {
 		if st, e := sys.Get(ctx); e == nil {
-			rootDir = skillstorage.ResolveRootWithPlatform(st.RootDirectory)
+			rootDir = storage.ResolveRootWithPlatform(st.RootDirectory)
 		}
 	}
 	repo, err := skilltrpc.NewFSRepositoryAdapter(rootDir)

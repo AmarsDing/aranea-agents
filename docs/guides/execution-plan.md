@@ -1,4 +1,4 @@
-﻿# Aranea-Agents 执行计划（AI 协作权威基线）
+# Aranea-Agents 执行计划（AI 协作权威基线）
 
 > 版本：v1.1（2026-05-17，增补 §4「下一迭代 Sprint 节拍」）
 > 编制依据：`docs/README.md`、`docs/需求/*`（86 篇）、`docs/guides/{AI-DEVELOPMENT-SPECIFICATION, trpc-agent-go-framework}.md`、`docs/changelog/*`、`docs/devlog/*`，以及 `cmd/ internal/ api/ pkg/ web/` 全量代码与配置抽样。
@@ -66,6 +66,14 @@
 | EP-BIZ-05 | Channel 多渠道适配缺失（仅 feishu 真正走端到端） | P2 | `internal/service/channel_ingress.go` + `internal/channel/lark` | 实现 wechat / dingtalk / slack / 邮件入站，或在前端禁用未实现渠道 |
 | EP-BIZ-06 | ToolOverride 域只在 proto / 统计语境出现，无 CRUD / Usecase | P2 | proto agent_override_count 字段 + 缺少 biz/data | 补 `biz/tool_override.go` 与 Repo |
 | EP-BIZ-07 | EvolutionScanner（L4 持久层）代码不存在 | P2 | `internal/` 无对应 worker（需求文档已校准为"未实现"） | 要么实现 30min ticker scanner，要么保持需求降级为"未实现" |
+
+### 3.4 可观测 / Monitor 闭环（✅ 已完成）
+
+| 编号 | 问题 | 优先级 | 证据 | 状态 |
+|---|---|---|---|---|
+| EP-MON-01 | Audit 扩展字段缺失（actor/ip/user_agent/severity/metadata_json），无分页/过滤 | P1 | `audit_logs` 表仅 7 字段，API 无 limit/offset | ✅ 已完成：扩展字段 + 分页/过滤 + 前端筛选增强 |
+| EP-MON-02 | Monitor Events/Traces 无分页/过滤，查询性能差 | P1 | `ListMonitorEventsRequest`/`ListMonitorTracesRequest` 无过滤参数 | ✅ 已完成：新增 limit/offset/event_type/agent_id/status 过滤 |
+| EP-MON-03 | 前端缺少 Usage 总览 Tab，Audit 无事件类型/实体类型筛选 | P1 | `MonitorPage.vue` 无 Usage Tab，`AuditTable.vue` 无下拉筛选 | ✅ 已完成：新增 UsageOverview 组件 + Audit 事件类型/实体类型/关键字筛选 + 分页 |
 
 ### 3.5 前端（P2/P3）
 
@@ -183,7 +191,8 @@
 ## 5. 剩余可执行工作（每项可一 PR 落地）
 
 > 2026-05-17 已批量完成 EP-SEC-01/02/03/04、EP-RT-01/02/03/04/05/06、EP-BIZ-01/03/04、EP-OBS-01/02/03/04/05、EP-FE-01/02/04、EP-ENG-01/02/03/04/05/07、EP-RULE-02/04，共 26 项。
-> 2026-05-17 二批完成 EP-RT-07、EP-BIZ-02/05/07、EP-FE-03/05/06、EP-RULE-01/03，共 9 项。以下为**仍未完成**的工作：
+> 2026-05-17 二批完成 EP-RT-07、EP-BIZ-02/05/07、EP-FE-03/05/06、EP-RULE-01/03，共 9 项。
+> 2026-05-18 完成 EP-MON-01/02/03、EP-AUDIT-01，共 4 项。以下为**仍未完成**的工作：
 
 | ID | 动作 | 优先级 | 主要证据 / 起点 |
 |---|---|---|---|
@@ -192,7 +201,7 @@
 | EP-RULE-04 | `araneactl lint` 逐步实现 §6 仍缺位的机器检查（safego／dev-only bypass／docs-check／CI）（§4 Sprint-N+1） | P1 | `cmd/araneactl/lint`、`Makefile` |
 | EP-FE-07 | Stylelint 全仓库零违规（§4 Sprint-N+1） | P2 | `web/` |
 | EP-WS-01 / EP-WS-02 | M2 Ent Hook + 写路径 workspace 断言（§4 Sprint-N+2） | P0 | `internal/data`、`internal/server/middleware`、`internal/service`、`internal/biz` |
-| EP-AUDIT-01 | audit_log 落库（§4 Sprint-N+2） | P1 | — |
+| EP-AUDIT-01 | audit_log 落库（§4 Sprint-N+2） | P1 | ✅ 已完成：Audit 扩展字段（actor/ip/user_agent/severity/metadata_json）+ 分页/过滤 + 前端筛选增强 + 详情弹窗 |
 | EP-SMOKE-01 | `make smoke` 双 workspace（§4 Sprint-N+2） | P1 | `Makefile` |
 | EP-A2A-01 / EP-A2A-02 | A2A 真派发与远端鉴权（§4 Sprint-N+3） | P1 / P0 | `internal/service/a2a.go` |
 | EP-KN-01 / EP-KN-02 | Knowledge 嵌入与摄取工程化（§4 Sprint-N+3） | P1 / P2 | `internal/service/knowledge.go`、`internal/knowledge` |
@@ -200,6 +209,8 @@
 | EP-OBS-06 / EP-TEST-01 / EP-DOC-02 | Span／覆盖率／附录校验自动化（§4 Sprint-N+4） | P2 / P1 / P2 | `internal/`、`cmd/araneactl` |
 | EP-RT-08 | Artifact / Knowledge / Eval / A2A 生产实现；内存 repo 降为 test-only | P2 | `internal/biz/*_coverage_test.go` |
 | EP-BIZ-06 | 补 `biz/tool_override.go` + Repo + CRUD service + 前端页面 | P2 | proto agent_override_count 字段 |
+| EP-MEM-01 | MemoryWorker 后台记忆管理单元：`safego.Go` + EventBus 订阅 `turn.completed` + 异步提取 + 冲突检测 + 巩固管道 | P2 | `internal/cronrunner/jobs/auto_memory.go`（占位替换） |
+| EP-MEM-02 | 记忆联动更新（级联复盘）：实体属性变更 → BFS 关联实体 → 生成 CascadeProposal → 审核 → 应用/回滚 | P2 | 依赖 EP-BIZ-04（L4 Graph）+ EP-MEM-01 |
 
 ---
 
@@ -373,6 +384,8 @@
 | Memory 基础（L0-L4 表） | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — |
 | Memory Auto Extract | n/a | ✅ | ✅ | n/a | n/a | ✅ | n/a | EP-RT-03 ✅ |
 | Memory Tools（5 件套） | n/a | n/a | n/a | n/a | n/a | 🟡 | n/a | EP-RT-05 ✅ |
+| MemoryWorker（后台记忆管理） | n/a | 🟡 | 🟡 | n/a | n/a | ❌ | n/a | EP-MEM-01 |
+| Memory 级联更新 | n/a | 🟡 | 🟡 | n/a | n/a | ❌ | n/a | EP-MEM-02（依赖 EP-BIZ-04） |
 | Knowledge | ✅ | ✅ | 🟡 | ✅ | ✅ | ✅ | 🟡 | EP-DATA-01, EP-KN-01/02, EP-RT-08 |
 | Artifact REST | ✅ | ✅ | ✅ | ✅ | ✅ | 🟡 | 🟡 | EP-RT-08（FS Repo；Runner CodeExecutor 间接）|
 | A2A | ✅ | ✅ | 🟡 | ✅ | ✅ | 🟡 | 🟡 | EP-A2A-01/02, EP-DATA-01, EP-RT-08 |
@@ -380,12 +393,12 @@
 | CodeExecutor（Local） | n/a | n/a | n/a | n/a | n/a | ✅ | n/a | — |
 | CodeExecutor（Docker） | n/a | n/a | n/a | n/a | n/a | ✅ | n/a | EP-BIZ-02 ✅ |
 | Graph 工作流 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — |
-| Monitor / Usage / SystemSetting | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — |
+| Monitor / Usage / SystemSetting | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | EP-MON-01 ✅, EP-MON-02 ✅, EP-MON-03 ✅ |
 | Event Bus | n/a | n/a | n/a | n/a | n/a | ✅ | ✅ | EP-RT-06 ✅, EP-FE-02 ✅ |
 | WebSocket Gateway | n/a | n/a | n/a | n/a | ✅ | ✅ | ✅ | EP-OBS-03 ✅ |
 | Metrics / OTel | n/a | n/a | n/a | n/a | ✅ | ✅ | n/a | EP-OBS-01 ✅, EP-OBS-02 ✅, EP-OBS-04 ✅, EP-OBS-05 ✅ |
 | Workspace 多租户 | n/a | 🟡 | ❌ | n/a | 🟡 | n/a | 🟡 | M2 |
-| Audit Log | n/a | ❌ | ❌ | n/a | n/a | n/a | n/a | M2 |
+| Audit Log | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | EP-MON-01 ✅（Audit 扩展字段 + 分页/过滤 + 前端筛选增强） |
 | CLI 产品 | n/a | n/a | n/a | n/a | n/a | n/a | n/a | M5 |
 
 ---

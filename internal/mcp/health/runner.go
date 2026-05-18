@@ -1,0 +1,114 @@
+package health
+
+import (
+	"context"
+	"log/slog"
+	"os"
+	"strings"
+	"sync"
+	"time"
+
+	"aranea-agents/internal/biz"
+	"aranea-agents/internal/mcp/probe"
+	"aranea-agents/pkg/safego"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+)
+
+var (
+	probeTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "aranea_mcp_health_probe_total",
+		Help: "Number of MCP server health probes by server_key and status.",
+	}, []string{"server_key", "status"})
+
+	probeDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "aranea_mcp_health_probe_duration_seconds",
+		Help:    "Duration of MCP server health probes.",
+		Buckets: []float64{0.1, 0.5, 1, 5, 10, 30},
+	}, []string{"server_key"})
+)
+
+type Deps struct {
+	MCP biz.MCPServerRepo
+	UC  *biz.MCPServerUsecase
+}
+
+type Runner struct {
+	deps Deps
+	mu   sync.Mutex
+}
+
+func NewRunner(deps Deps) *Runner {
+	return &Runner{deps: deps}
+}
+
+func DefaultInterval() time.Duration {
+	raw := strings.TrimSpace(os.Getenv("MCP_HEALTH_INTERVAL"))
+	if raw == "" {
+		return 5 * time.Minute
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil || d <= 0 {
+		return 5 * time.Minute
+	}
+	return d
+}
+
+func (r *Runner) Start(ctx context.Context, interval time.Duration) {
+	if interval <= 0 {
+		interval = 5 * time.Minute
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	r.probeAll(ctx)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			r.probeAll(ctx)
+		}
+	}
+}
+
+func (r *Runner) probeAll(ctx context.Context) {
+	if !r.mu.TryLock() {
+		return
+	}
+	defer r.mu.Unlock()
+
+	servers, err := r.deps.MCP.ListMCPServers(ctx)
+	if err != nil {
+		slog.Error("mcp health: list servers failed", "error", err)
+		return
+	}
+	for _, srv := range servers {
+		if ctx.Err() != nil {
+			return
+		}
+		if !srv.Enabled || strings.TrimSpace(srv.DeletedAt) != "" {
+			continue
+		}
+		safego.Go(ctx, "mcp.health.probe."+srv.Key, func() {
+			r.probeOne(ctx, srv)
+		})
+	}
+}
+
+func (r *Runner) probeOne(ctx context.Context, srv biz.MCPServer) {
+	start := time.Now()
+	result := probe.Evaluate(srv.Enabled, srv.ConfigJSON)
+	elapsed := time.Since(start)
+
+	status := "ok"
+	if !result.OK {
+		status = "error"
+	}
+	probeTotal.WithLabelValues(srv.Key, status).Inc()
+	probeDuration.WithLabelValues(srv.Key).Observe(elapsed.Seconds())
+
+	if err := r.deps.UC.PersistHealth(ctx, srv.ID, result); err != nil {
+		slog.Error("mcp health: persist failed", "server_key", srv.Key, "error", err)
+	}
+}

@@ -11,7 +11,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
-	"aranea-agents/internal/pkg/skillstorage"
+	"aranea-agents/internal/skill/storage"
 	"aranea-agents/internal/skill/importer"
 
 	"github.com/fsnotify/fsnotify"
@@ -47,10 +47,10 @@ func NewRunnerWithBus(uc *biz.SkillUsecase, sys biz.SystemSettingRepo, logger lo
 func (r *Runner) resolveRoot(ctx context.Context) string {
 	if r.sys != nil {
 		if st, err := r.sys.Get(ctx); err == nil {
-			return skillstorage.ResolveRootWithPlatform(st.RootDirectory)
+			return storage.ResolveRootWithPlatform(st.RootDirectory)
 		}
 	}
-	return skillstorage.ResolveRoot()
+	return storage.ResolveRoot()
 }
 
 // Start runs until ctx is cancelled.

@@ -760,14 +760,15 @@ ALTER TABLE messages ADD COLUMN visibility TEXT NOT NULL DEFAULT 'visible';
 | `sessionmemory.Store` | L0-L4 记忆链读写，Runner 会话实体同步 | data |
 | `trpc session.Service` 适配器 | 桥接 Ent session 到 trpc session.Service 接口（后续实现） | internal/session/trpc |
 
-当前 `SessionUsecase` 已实现 create/search/get/rename/archive/delete/timeline/appendChatTurn 等基础能力，建议逐步扩展为 session 历史中心：
+当前 `SessionUsecase` 已实现 create/search/get/rename/archive/delete/restore/update/timeline/appendChatTurn/turns/state/titleGeneration 等基础能力，建议逐步扩展为 session 历史中心：
 
 ```go
 // biz 层：SessionUsecase（不 import pkg/trpc-agent-go）
 type SessionUsecase struct {
-    sessions SessionRepository
-    agents   AgentRepository
-    teams    TeamRepository
+    sessions       SessionRepository
+    agents         AgentRepository
+    teams          TeamRepository
+    titleGenerator SessionTitleGenerator
 }
 
 // SessionRepository 接口定义在 biz，实现在 data
@@ -776,6 +777,8 @@ type SessionRepository interface {
     CreateSession(ctx context.Context, s Session) (Session, error)
     GetSessionByID(ctx context.Context, id string) (Session, error)
     UpdateSessionTitle(ctx context.Context, id, title string) (Session, error)
+    UpdateSession(ctx context.Context, id string, fields SessionUpdateFields) (Session, error)
+    RestoreSession(ctx context.Context, id string) (Session, error)
     ArchiveSession(ctx context.Context, id string) error
     DeleteSession(ctx context.Context, id string) error
     DeleteSessionsByAgentID(ctx context.Context, agentID string) error
@@ -792,7 +795,13 @@ type SessionRepository interface {
     ListSessionSummaries(ctx context.Context, sessionID string) ([]SessionSummary, error)
     LatestSessionSummaryTime(ctx context.Context, sessionID string) (string, error)
     UpdateSessionListSummary(ctx context.Context, sessionID, summary string) error
-    // 后续扩展：runs / steps / turns / trace_spans / participants / context_snapshots
+    GetSessionState(ctx context.Context, sessionID string) (map[string]string, error)
+    SaveSessionState(ctx context.Context, sessionID string, state map[string]string) error
+    CreateSessionTurn(ctx context.Context, turn SessionTurn) (SessionTurn, error)
+    UpdateSessionTurn(ctx context.Context, id string, fields SessionTurnUpdateFields) (SessionTurn, error)
+    ListSessionTurns(ctx context.Context, sessionID string, limit, offset int) (SessionTurnListResult, error)
+    GetSessionTurn(ctx context.Context, id string) (SessionTurn, error)
+    // 后续扩展：runs / steps / trace_spans / participants / context_snapshots
 }
 ```
 
@@ -1398,63 +1407,76 @@ export const useSessionStore = defineStore("sessions", {
 
 建议分阶段实现，避免一次性重构聊天链路。
 
-### Phase 0：代码清理与命名对齐（当前阶段）
+### Phase 0：代码清理与命名对齐（✅ 已完成）
 
-| 工作 | 说明 |
-|------|------|
-| 重命名 `AdkSnapshotJSON` → `RunnerSnapshotJSON` | biz 模型、Ent schema、data 层、service 层统一重命名 |
-| 重命名 `UpdateAdkSnapshotJSON` → `UpdateRunnerSnapshotJSON` | SessionRepository 接口和实现 |
-| 重命名 `DeleteADKSessionEventEntities` → `DeleteSessionEventEntities` | sessionmemory.Store |
-| 重命名 `ADKEventEntityParams` → `EventEntityParams`、`UpsertADKEventEntity` → `UpsertEventEntity` | sessionmemory.Store |
-| 重命名 `adkScopeTypeSession`/`adkEntityEvent`/`adkSourceSync` 常量 | sessionmemory |
-| `session_repo.go` 中 `errors.New` 替换为 `kerrors` | 对齐 AI-DEVELOPMENT-SPECIFICATION.md 错误处理规范 |
-| 补充 Session 模型缺失字段 | workspace_id, user_id, tags_json, default_provider, default_model, default_context_window_tokens, last_provider, last_model, last_context_window_tokens, visibility, avg_latency_ms, error_count, first_message_at, last_run_at, metadata_json |
+| 工作 | 说明 | 状态 |
+|------|------|------|
+| 重命名 `AdkSnapshotJSON` → `RunnerSnapshotJSON` | biz 模型、Ent schema、data 层、service 层统一重命名 | ✅ |
+| 重命名 `UpdateAdkSnapshotJSON` → `UpdateRunnerSnapshotJSON` | SessionRepository 接口和实现 | ✅ |
+| 重命名 `DeleteADKSessionEventEntities` → `DeleteSessionEventEntities` | sessionmemory.Store | ✅ |
+| 重命名 `ADKEventEntityParams` → `EventEntityParams`、`UpsertADKEventEntity` → `UpsertEventEntity` | sessionmemory.Store | ✅ |
+| 重命名 `adkScopeTypeSession`/`adkEntityEvent`/`adkSourceSync` 常量 | sessionmemory | ✅ |
+| 补充 Session 模型缺失字段 | workspace_id, user_id, tags_json, default_provider, default_model, default_context_window_tokens, last_provider, last_model, last_context_window_tokens, visibility, avg_latency_ms, error_count, first_message_at, last_run_at, metadata_json, state_json | ✅ |
 
-### Phase 1：扩展 Session 主表与列表
+### Phase 0a：Session 功能增强（✅ 已完成）
 
-| 工作 | 说明 |
-|------|------|
-| 数据库 | 给 `sessions` 增加 summary、message_count、token、cost、context_status 等字段 |
-| Ent Schema | 同步新增字段定义，`go generate ./internal/data/ent` |
-| Proto | 更新 `session.proto`，添加新字段的 proto 定义，`make api` |
-| Repository | `ListSessions` 支持 owner_type、team_id、状态、分页 |
-| API | `GET /sessions` 从简单数组升级为分页查询 |
-| 前端 | 新增 Session 历史页和详情 Header，复用现有聊天列表数据 |
+| 工作 | 说明 | 状态 |
+|------|------|------|
+| RestoreSession RPC | 恢复归档会话 | ✅ |
+| UpdateSession 部分更新 | title/tags_json/visibility/metadata_json/dialog_mode/default_provider/default_model | ✅ |
+| Session Turns | CreateTurn/UpdateTurn/ListTurns + session_turns 表 | ✅ |
+| Session State KV | GetSessionState/SaveSessionState/ApplyStateDelta | ✅ |
+| 自动标题生成 | LLMSessionTitleGenerator + 截取双策略 | ✅ |
+| Timeline 增强 | kind_filter/sort_order/limit/offset 分页 | ✅ |
+| ListSessionMessages 分页 | limit/offset | ✅ |
+| SearchSessions 增强 | user_id/sort_by/sort_order 筛选 | ✅ |
+
+### Phase 1：扩展 Session 主表与列表（部分完成）
+
+| 工作 | 说明 | 状态 |
+|------|------|------|
+| 数据库 | 给 `sessions` 增加 summary、message_count、token、cost、context_status 等字段 | ✅ |
+| Ent Schema | 同步新增字段定义，`go generate ./internal/data/ent` | ✅ |
+| Proto | 更新 `session.proto`，添加新字段的 proto 定义，`make api` | ✅ |
+| Repository | `ListSessions` 支持 owner_type、team_id、状态、分页 | ✅ |
+| API | `GET /sessions` 从简单数组升级为分页查询 | ✅ |
+| 前端 | 新增 Session 历史页和详情 Header，复用现有聊天列表数据 | ✅ |
+| Session 置顶 | sessions 增加 `pinned_at` 字段 + PinSession/UnpinSession RPC | 待实现 |
 
 ### Phase 2：Context 快照与聚合
 
-| 工作 | 说明 |
-|------|------|
-| 新表 | `session_context_snapshots` |
-| ChatService | 模型调用完成后写快照，更新 `context_status` |
-| Usage 聚合 | 从 `model_token_usage_events` 回填 session token / cost |
-| 前端 | 显示 context 趋势和 warning/critical 状态 |
+| 工作 | 说明 | 状态 |
+|------|------|------|
+| 新表 | `session_context_snapshots` | 待实现 |
+| ChatService | 模型调用完成后写快照，更新 `context_status` | 待实现 |
+| Usage 聚合 | 从 `model_token_usage_events` 回填 session token / cost | 待实现 |
+| 前端 | 显示 context 趋势和 warning/critical 状态 | 待实现 |
 
 ### Phase 3：Run / Step 编排记录
 
-| 工作 | 说明 |
-|------|------|
-| 新表 | `session_runs`、`session_run_steps`、`session_turns`、`session_trace_spans` |
-| 单 Agent | 每次发送消息创建 chat run、turn 和 trace spans |
-| Team | 编排器每个 agent/tool/skill/mcp 动作写 step 和 span |
-| 前端 | 详情页增加 Timeline Tab 和 Trace 链路 Tab |
+| 工作 | 说明 | 状态 |
+|------|------|------|
+| 新表 | `session_runs`、`session_run_steps`、`session_trace_spans` | 待实现 |
+| 单 Agent | 每次发送消息创建 chat run、turn 和 trace spans | 待实现（turns 已实现） |
+| Team | 编排器每个 agent/tool/skill/mcp 动作写 step 和 span | 待实现 |
+| 前端 | 详情页增加 Timeline Tab 和 Trace 链路 Tab | 待实现 |
 
 ### Phase 4：Team Participants 与复盘
 
-| 工作 | 说明 |
-|------|------|
-| 新表 | `session_participants` |
-| Team 编排 | 自动维护参与 Agent、角色、贡献指标 |
-| 前端 | Team session 展示参与者、handoff、内部消息开关 |
+| 工作 | 说明 | 状态 |
+|------|------|------|
+| 新表 | `session_participants` | 待实现 |
+| Team 编排 | 自动维护参与 Agent、角色、贡献指标 | 待实现 |
+| 前端 | Team session 展示参与者、handoff、内部消息开关 | 待实现 |
 
 ### Phase 5：trpc session.Service 对齐
 
-| 工作 | 说明 |
-|------|------|
-| 适配器 | `internal/session/trpc/service.go` 桥接 Ent session 到 trpc session.Service |
-| Redis 后端 | `internal/session/trpc/redis.go` 生产环境 Redis 存储 |
-| 摘要迁移 | 将 `internal/compress` 摘要逻辑迁移到 trpc 内置压缩 |
-| 验证 | Runner 使用适配后的 SessionService 正常运行 |
+| 工作 | 说明 | 状态 |
+|------|------|------|
+| 适配器 | `internal/session/trpc/service.go` 桥接 Ent session 到 trpc session.Service | 待实现 |
+| Redis 后端 | `internal/session/trpc/redis.go` 生产环境 Redis 存储 | 待实现 |
+| 摘要迁移 | 将 `internal/compress` 摘要逻辑迁移到 trpc 内置压缩 | 待实现 |
+| 验证 | Runner 使用适配后的 SessionService 正常运行 | 待实现 |
 
 ---
 
@@ -1665,4 +1687,36 @@ export const useSessionStore = defineStore("sessions", {
 
 **涉及文件**：`internal/agent/trpc_runtime.go`、`internal/service/chat_native.go`
 
+**当前状态**：✅ 已实现（`UpdateRunnerSnapshotJSON` + SessionCompressor 同步更新）
+
 **验收标准**：Runner 可从 snapshot 恢复执行状态
+
+---
+
+## 13. 当前实施状态总览
+
+| 模块 | 功能 | 状态 |
+|------|------|------|
+| Session CRUD | Create/Get/Update/Delete/Search | ✅ |
+| Session 归档/恢复 | ArchiveSession/RestoreSession | ✅ |
+| Session 部分更新 | UpdateSession（title/tags/visibility/metadata/dialog_mode/provider/model） | ✅ |
+| Timeline 聚合 | GetSessionTimeline + kind_filter/sort_order/limit/offset | ✅ |
+| 消息列表 | ListSessionMessages + limit/offset 分页 | ✅ |
+| 上下文压缩 | SessionCompressor.AfterNativeTurn | ✅ |
+| 标题生成 | LLMSessionTitleGenerator + 截取双策略 | ✅ |
+| Session Turns | CreateTurn/UpdateTurn/ListTurns | ✅ |
+| Session State KV | GetSessionState/SaveSessionState/ApplyStateDelta | ✅ |
+| Runner Snapshot | UpdateRunnerSnapshotJSON | ✅ |
+| Session Summaries | InsertSessionSummary/ListSessionSummaries | ✅ |
+| Session 置顶 | pinned_at + PinSession/UnpinSession | ❌ 待实现 |
+| Session 导出 | ExportSession（Markdown/JSON） | ❌ 待实现 |
+| 消息搜索 | SearchMessages（全文检索） | ❌ 待实现 |
+| session_runs | 编排运行记录 | ❌ 待实现 |
+| session_run_steps | 编排步骤记录 | ❌ 待实现 |
+| session_participants | Team 参与者 | ❌ 待实现 |
+| session_trace_spans | 完整追踪链路 | ❌ 待实现 |
+| session_context_snapshots | Context 趋势 | ❌ 待实现 |
+| session_model_summaries | 多模型分布 | ❌ 待实现 |
+| trpc session.Service 适配器 | 桥接 trpc-agent-go | ❌ 待实现 |
+| 多后端支持 | Redis/PG/MySQL/ClickHouse | ❌ 待实现 |
+| Session Ingestor | 自动摄入外部记忆平台 | ❌ 待实现 |

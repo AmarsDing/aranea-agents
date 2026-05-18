@@ -145,7 +145,7 @@ AI 和开发者编写文档时**必须**遵循以下职责分离原则（与 `ex
 | **Provider** | [9 provider.md](./需求/9%20provider.md)、[9 provider.design.md](./需求/9%20provider.design.md)、[9-provider-development.md](./需求/9-provider-development.md) |
 | **Session** | [10 session.md](./需求/10%20session.md)、[10 session.design.md](./需求/10%20session.design.md) |
 | **Multi-Agent / Team** | [11 multi-agent.md](./需求/11%20multi-agent.md)、[11 multi-agent.design.md](./需求/11%20multi-agent.design.md) |
-| **Memory L0~L4** | [12 L0-sensory](./需求/12%20memory-L0-sensory.md)、[13 L1-working](./需求/13%20memory-L1-working.md)、[14 L2-episodic](./需求/14%20memory-L2-episodic.md)、[15 L3-semantic](./需求/15%20memory-L3-semantic.md)、[16 L4-persistent](./需求/16%20memory-L4-persistent.md)、[12-16 memory.design](./需求/12-16%20memory.design.md)、[31+38 supplement.design](./需求/31+38%20memory-supplement.design.md)、[38 memory.md（框架对齐）](./需求/38%20memory.md)、[31 memery.md（拼写遗留→记忆管理 UX）](./需求/31%20memery.md) |
+| **Memory L0~L4** | [12 L0-sensory](./需求/12%20memory-L0-sensory.md)、[13 L1-working](./需求/13%20memory-L1-working.md)、[14 L2-episodic](./需求/14%20memory-L2-episodic.md)、[15 L3-semantic](./需求/15%20memory-L3-semantic.md)、[16 L4-persistent](./需求/16%20memory-L4-persistent.md)、[12-16 memory.design](./需求/12-16%20memory.design.md)（含原 supplement）、[38 memory.md（框架对齐）](./需求/38%20memory.md)、[31 memery.md（拼写遗留→记忆管理 UX）](./需求/31%20memery.md) |
 | **Channel** | [17 channel.md](./需求/17%20channel.md)、[17 channel.design.md](./需求/17%20channel.design.md)、[17-channel-development.md](./需求/17-channel-development.md) |
 | **Monitor** | [18 monitor.md](./需求/18%20monitor.md)、[18 monitor.design.md](./需求/18%20monitor.design.md) |
 | **MCP** | [19 mcp.md](./需求/19%20mcp.md)、[19 mcp.design.md](./需求/19%20mcp.design.md) |
@@ -172,7 +172,7 @@ AI 和开发者编写文档时**必须**遵循以下职责分离原则（与 `ex
 | **消息机制** | [51 消息机制.md](./需求/51%20消息机制.md)、[51a 后端消息机制.md](./需求/51a%20后端消息机制.md)、[51b 前端消息机制.md](./需求/51b%20前端消息机制.md) |
 | **TTS** | [tts.md](./需求/tts.md)（占位） |
 
-> 旧文件 `31 memery.md`（拼写错误，应为 *memory*）仅作历史保留；新内容请写入 `38 memory.md` 或合入 `31+38 memory-supplement.design.md`。
+> 旧文件 `31 memery.md`（拼写错误，应为 *memory*）仅作历史保留；新内容请写入 `38 memory.md` 或合入 `12-16 memory.design.md`。
 
 ### 7.1 模块开发计划（2026-05-17）
 

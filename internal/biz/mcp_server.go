@@ -1,6 +1,7 @@
 package biz
 
 import (
+	"aranea-agents/internal/mcp/probe"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -8,8 +9,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
-
-	"aranea-agents/internal/mcpprobe"
 
 	"github.com/go-kratos/kratos/v2/errors"
 )
@@ -133,19 +132,27 @@ func (u *MCPServerUsecase) Delete(ctx context.Context, id string) error {
 }
 
 // TestMCPServer runs probe and persists health_* metadata + row status (legacy TestMCPServer).
-func (u *MCPServerUsecase) TestMCPServer(ctx context.Context, id string) (mcpprobe.TestResult, error) {
+func (u *MCPServerUsecase) TestMCPServer(ctx context.Context, id string) (probe.TestResult, error) {
 	row, err := u.repo.GetMCPServer(ctx, id)
 	if err != nil {
-		return mcpprobe.TestResult{}, err
+		return probe.TestResult{}, err
 	}
-	result := mcpprobe.Evaluate(row.Enabled, row.ConfigJSON)
+	result := probe.Evaluate(row.Enabled, row.ConfigJSON)
 	if err := u.persistHealth(ctx, &row, result); err != nil {
 		return result, err
 	}
 	return result, nil
 }
 
-func (u *MCPServerUsecase) persistHealth(ctx context.Context, row *MCPServer, result mcpprobe.TestResult) error {
+func (u *MCPServerUsecase) PersistHealth(ctx context.Context, id string, result probe.TestResult) error {
+	row, err := u.repo.GetMCPServer(ctx, id)
+	if err != nil {
+		return err
+	}
+	return u.persistHealth(ctx, &row, result)
+}
+
+func (u *MCPServerUsecase) persistHealth(ctx context.Context, row *MCPServer, result probe.TestResult) error {
 	var metadata map[string]any
 	if json.Unmarshal([]byte(defaultMetaJSON(row.MetadataJSON)), &metadata) != nil {
 		metadata = map[string]any{}

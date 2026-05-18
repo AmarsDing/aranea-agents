@@ -10,7 +10,6 @@ option go_package = "aranea-agents/api/kratos/team/v1;v1";
 option java_multiple_files = true;
 option java_package = "api.kratos.team.v1";
 
-// Team mirrors legacy teams row (definition_json holds orchestration JSON).
 message Team {
   string id = 1;
   string team_key = 2;
@@ -115,6 +114,61 @@ message ListTeamRunStepsResponse {
   repeated TeamRunStep items = 1;
 }
 
+message GetTeamRunRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message CancelTeamRunRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message RunTeamTestRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string content = 2;
+}
+
+message RunTeamTestResponse {
+  TeamRun run = 1;
+  string reply = 2;
+}
+
+message UpdateSwarmMembersRequest {
+  string team_id = 1 [(google.api.field_behavior) = REQUIRED];
+  repeated string add_agent_ids = 2;
+  repeated string remove_agent_ids = 3;
+}
+
+message UpdateSwarmMembersResponse {
+  bool updated = 1;
+}
+
+message ExportTeamStructureRequest {
+  string team_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ExportTeamStructureResponse {
+  string entry_node_id = 1;
+  repeated StructureNode nodes = 2;
+  repeated StructureEdge edges = 3;
+  repeated StructureSurface surfaces = 4;
+}
+
+message StructureNode {
+  string node_id = 1;
+  string kind = 2;
+  string name = 3;
+}
+
+message StructureEdge {
+  string from_node_id = 1;
+  string to_node_id = 2;
+}
+
+message StructureSurface {
+  string node_id = 1;
+  string name = 2;
+}
+
 service TeamService {
   rpc ListTeams(ListTeamsRequest) returns (ListTeamsResponse) {
     option (google.api.http) = {get: "/v1/teams"};
@@ -148,5 +202,29 @@ service TeamService {
   }
   rpc ListTeamRunSteps(ListTeamRunStepsRequest) returns (ListTeamRunStepsResponse) {
     option (google.api.http) = {get: "/v1/team-runs/{run_id}/steps"};
+  }
+  rpc GetTeamRun(GetTeamRunRequest) returns (TeamRun) {
+    option (google.api.http) = {get: "/v1/team-runs/{id}"};
+  }
+  rpc CancelTeamRun(CancelTeamRunRequest) returns (TeamRun) {
+    option (google.api.http) = {
+      post: "/v1/team-runs/{id}/cancel"
+      body: "*"
+    };
+  }
+  rpc RunTeamTest(RunTeamTestRequest) returns (RunTeamTestResponse) {
+    option (google.api.http) = {
+      post: "/v1/teams/{id}/run-test"
+      body: "*"
+    };
+  }
+  rpc UpdateSwarmMembers(UpdateSwarmMembersRequest) returns (UpdateSwarmMembersResponse) {
+    option (google.api.http) = {
+      post: "/v1/teams/{team_id}/swarm-members"
+      body: "*"
+    };
+  }
+  rpc ExportTeamStructure(ExportTeamStructureRequest) returns (ExportTeamStructureResponse) {
+    option (google.api.http) = {get: "/v1/teams/{team_id}/structure"};
   }
 }

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"aranea-agents/internal/llminspect"
+	"aranea-agents/internal/provider/inspect"
 
 	"github.com/go-kratos/kratos/v2/errors"
 )
@@ -191,7 +191,7 @@ func (u *LlmProviderModelUsecase) ValidatePair(ctx context.Context, provider, mo
 	return false, "provider/model is not enabled", nil
 }
 
-func (u *LlmProviderModelUsecase) Inspect(ctx context.Context, in InspectMerge) (llminspect.Result, error) {
+func (u *LlmProviderModelUsecase) Inspect(ctx context.Context, in InspectMerge) (inspect.Result, error) {
 	in.ProviderCode = strings.TrimSpace(in.ProviderCode)
 	in.ModelAPIID = strings.TrimSpace(in.ModelAPIID)
 	in.ResourceID = strings.TrimSpace(in.ResourceID)
@@ -210,7 +210,7 @@ func (u *LlmProviderModelUsecase) Inspect(ctx context.Context, in InspectMerge) 
 		}
 	}
 
-	return llminspect.Run(llminspect.Input{
+	return inspect.Run(inspect.Input{
 		ResourceID:   in.ResourceID,
 		ProviderCode: in.ProviderCode,
 		ProviderType: in.ProviderType,
