@@ -31,38 +31,100 @@
 
 | 层级 | 路径 | 职责 |
 |------|------|------|
-| API | `api/kratos/skill/v1/skill.proto` | SkillService：列表、启用、复制、删除、文件读写、运行记录分页 |
-| 服务 | `internal/service/skill.go` | Proto ↔ biz 转换；`skillstorage.ResolveRoot()` 暴露存储根 |
-| 用例 | `internal/biz/skill.go`、`internal/biz/skill_import.go` | 列表校验、Skill CRUD 端口定义、导入请求类型 |
-| 数据 | `internal/data/skill.go` | Ent 实现的 `SkillRepo`：查询、聚合统计、存储目录等 |
+| API | `api/kratos/skill/v1/skill.proto` | SkillService：列表、详情、创建、更新、发布、启用、复制、删除、文件读写删除、运行时预览、运行记录分页（共 14 RPC） |
+| 服务 | `internal/service/skill.go` | Proto ↔ biz 转换；`resolvedStorageRoot()` 对接系统设置 |
+| 用例 | `internal/biz/skill.go`、`internal/biz/skill_import.go`、`internal/biz/skill_runtime.go` | 列表校验、Skill CRUD 端口定义、导入请求类型、运行时策略与候选模型 |
+| 数据 | `internal/data/skill.go` | Ent 实现的 `SkillRepo`：查询、聚合统计、存储目录、草稿/发布、磁盘同步等 |
 | Schema | `internal/data/ent/schema/platform_skill.go`（表名 `skill`）、`skill_version.go`、`skill_invocation.go` | 与 DB 表映射 |
-| 导入 | `internal/skill/importer/*`、`internal/skill/watch/*`、`internal/server/skill_import_http.go` | ZIP 导入任务；挂载 **`/v1/skills/import*`**（multipart + JSON，不在 proto 内）；目录监听同步 |
-| 存储根 | `internal/pkg/skillstorage/root.go` | 解析 Skill 文件根目录（当前：**环境变量 + OS 默认**，尚未读取系统设置工作目录，见 §2.5） |
-| 系统设置 | `api/kratos/system_setting/v1/system_setting.proto`、`internal/service/system_setting.go` | 单例 **`work_directory`**（前端「系统设置」页）；规划用作 Skill 根路径推导锚点（见 §2.5） |
-| 运行时装配 | `internal/tools/skillruntime/*` | DB 启用的 Skill → 过滤后的 `fs.FS` → ADK `skilltoolset` |
-| 工具装配 | `internal/tools/catalog/assemble.go` | 若传入 `SkillsFS`，装配 **`skilltoolset.New` + `skill.NewFileSystemSource`**（读磁盘 FS，非 DB 清单驱动） |
+| 导入 | `internal/skill/importer/*`（engine / validate / helpers / chat / errors） | ZIP 导入任务；LLM 相似度检查；挂载 **`/v1/skills/import*`**（multipart + JSON，不在 proto 内） |
+| 监听 | `internal/skill/watch/runner.go` | `fsnotify` + debounce 目录监听；启动全量扫描；发布 `skill.reload` 事件 |
+| 存储 | `internal/skill/storage/root.go` | 解析 Skill 文件根目录；**已实现**环境变量 + 系统设置 `work_directory` + OS 默认三级回落 |
+| trpc 桥接 | `internal/skill/trpc/*`（repository / db_repository / tools / executor / filter） | FS 适配器 + DB 适配器 → trpc-agent-go `skill.Repository`；Skill Tool 构建；FilteredRepository；CodeExecutor 适配 |
+| 运行时路由 | `internal/tools/skillrouter/*`（detect / taxonomy） | 用户意图 → 分类路径匹配；关键词路由；标签提示提取 |
+| 运行时装配 | `internal/tools/skillruntime/*`（toolset / resolve） | DB 启用的 Skill → Layer A（allow/deny）+ Layer B（意图路由 + 标签过滤 + 评分）→ 过滤后的 `skill.Repository` → ADK skill tools |
+| Agent 集成 | `internal/agent/trpc_build.go` | `buildSkillDeps()` 装配 Skill repo + filter + executor → `WithSkills` / `WithSkillFilter` / `WithSkillToolProfile` |
+| 系统设置 | `api/kratos/system_setting/v1/system_setting.proto`、`internal/service/system_setting.go` | 单例 **`work_directory`**（前端「系统设置」页）；已用作 Skill 根路径推导锚点 |
 
 ### 2.2 `SkillService`（proto）已暴露的能力
 
-已实现 RPC：`ListSkills`、`ToggleSkillEnabled`、`DuplicateSkill`、`DeleteSkill`、`ListSkillFiles`、`GetSkillFile`、`UpdateSkillFile`、`ListSkillRuns`。
+已实现 RPC（共 14 个）：
+
+| RPC | HTTP | 说明 |
+|-----|------|------|
+| `ListSkills` | `GET /v1/skills` | 列表（搜索、标签、启用、状态筛选、分页） |
+| `GetSkill` | `GET /v1/skills/{id}` | 详情（含 `body_markdown`） |
+| `CreateSkill` | `POST /v1/skills` | 创建草稿（写 SKILL.md + 入库） |
+| `UpdateSkill` | `PATCH /v1/skills/{id}` | 更新草稿（元数据 + 正文可选更新） |
+| `PublishSkill` | `POST /v1/skills/{id}/publish` | 发布（`draft` → `published`） |
+| `ToggleSkillEnabled` | `PATCH /v1/skills/{id}/enabled` | 启用/停用 |
+| `DuplicateSkill` | `POST /v1/skills/{id}/duplicate` | 复制为草稿 |
+| `DeleteSkill` | `DELETE /v1/skills/{id}` | 软删 |
+| `ListSkillFiles` | `GET /v1/skills/{id}/files` | 文件列表 |
+| `GetSkillFile` | `GET /v1/skills/{id}/file` | 文件内容 |
+| `UpdateSkillFile` | `PUT /v1/skills/{id}/file` | 文件更新 |
+| `DeleteSkillFile` | `POST /v1/skills/{id}/files:delete` | 文件删除（禁止删 SKILL.md） |
+| `PreviewSkillRuntime` | `GET /v1/skill-runtime-preview` | 运行时装配预览 |
+| `ListSkillRuns` | `GET /v1/skill-runs` | 运行记录分页 |
+
+此外，ZIP 导入链路通过 **`RegisterSkillImportHTTPServer`** 提供 4 个 HTTP 端点（不在 proto 内）：
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/v1/skills/import` | POST | 上传 ZIP，返回 `job_id` |
+| `/v1/skills/import/{job_id}` | GET | 轮询导入状态 |
+| `/v1/skills/import/{job_id}/apply` | POST | 应用导入结果 |
+| `/v1/skills/import/{job_id}/conflict-groups/{group_id}/refine` | POST | AI 炼化冲突组 |
 
 ### 2.3 与 `20 skill.md` 的差距（产品契约）
 
-以下能力在需求文档中已约定，但 **proto / biz 尚未完整对齐**，需在后续迭代按 proto-first 补齐：
+以下能力在需求文档中已约定，对照当前实现状态：
 
-- 创建草稿 / 更新草稿：`POST/PATCH /v1/skills…`
-- 发布：`POST /v1/skills/{id}/publish`
-- 运行时装配预览：`POST /v1/skills/runtime/preview`（可选）
-- 文件删除：`DELETE /v1/skills/{id}/file`（若需求保留）
-- `SkillDetail` 级响应（manifest、权限扩展字段等）
+| 能力 | 状态 | 说明 |
+|------|------|------|
+| 创建草稿 | ✅ 已实现 | `CreateSkill` RPC + `CreateSkillWithVersion` data |
+| 更新草稿 | ✅ 已实现 | `UpdateSkill` RPC + `PatchSkill` data（可选字段更新） |
+| 发布 | ✅ 已实现 | `PublishSkill` RPC + `PublishSkill` data（`draft` → `published`） |
+| 文件删除 | ✅ 已实现 | `DeleteSkillFile` RPC（禁止删 SKILL.md） |
+| 运行时装配预览 | ✅ 已实现 | `PreviewSkillRuntime` RPC（返回已启用 slug 列表 + 存储根） |
+| `SkillDetail` 级响应 | ✅ 已实现 | `GetSkill` 返回 `Skill` + `body_markdown` |
+| 版本历史 / 回滚 | ❌ 未实现 | 本期只展示当前版本号；版本回滚 API 待后续迭代 |
+| 自动负熵报告 | ❌ 未实现 | 本期只展示已有聚合指标（invoke/success/failure/avg_duration） |
+| 权限扩展字段 | 🟡 部分 | Proto 定义了 `SkillPermissions` / `SkillInvocationPermissions`；当前 data 层硬编码 `CanEdit=true` 等，未接入 RBAC |
 
 导入链路已通过 **`RegisterSkillImportHTTPServer`** 提供 `POST /v1/skills/import`、`GET …/{job_id}`、`POST …/apply`、`POST …/conflict-groups/…/refine`，与 `20 skill.md` §7.4–7.5 一致；后续建议 **收敛进 proto** 或通过同一服务的 OpenAPI 聚合文档声明，避免「半手写路由」长期分叉。
 
 ### 2.4 运行时现状（重要）
 
-当前 Agent 工具链中的 Skill 能力与 **`pkg/trpc-agent-go/tool/skilltoolset`** 对齐：**给定 `io/fs.FS`（常用为本地目录）即暴露框架 toolset（tRPC-Agent-Go）**。这与「平台库里启用哪些 Skill、如何按回合筛选」**尚未打通**：DB 中的 `enabled`、`tags`、版本尚未自动映射到 `SkillsFS`。
+当前 Agent 工具链中的 Skill 能力已通过 **`internal/tools/skillruntime/`** + **`internal/skill/trpc/`** 实现端到端装配：
 
-**目标**：增加一层 **SkillRuntimeAssembler**（名称可与代码一致），从 **biz/data** 读出候选 Skill → 合成只读 FS 或合成 prompt → 再交给 ADK；或与 `skilltoolset` 的 `Source` 接口对齐实现 **DB-backed Source**。
+**装配流程**（`internal/agent/trpc_build.go` → `buildSkillDeps`）：
+
+1. `SkillUC.ListEnabledPublishedSkillKeys()` 获取已启用 + 已发布的 slug 列表。
+2. 优先使用 `SkillDBRepo`（`DBRepositoryAdapter`，DB-backed + TTL 缓存）；否则回退到 `FSRepositoryAdapter`（磁盘 FS）。
+3. 构建 `FilteredRepository`（按 slug 白名单过滤）。
+4. 构建 `CodeExecutor`（local / docker，按 `CODE_EXECUTOR_BACKEND` 环境变量选择）。
+5. 传入 `trpcllmagent.WithSkills(repo)` + `WithSkillFilter(filter)` + `WithSkillToolProfile(SkillToolProfileFull)`。
+
+**运行时路由**（`internal/tools/skillruntime/resolve.go`）：
+
+已实现 **Layer A + Layer B** 两级筛选：
+
+- **Layer A**（`applyLayerA`）：按 `SkillRuntimePolicy` 的 `AllowedSlugs` / `DeniedSlugs` 过滤。
+- **Layer B**（`resolveSkillSlugs`）：意图路由 + 标签过滤 + 评分排序。
+  - `skillrouter.DetectIntentPaths()`：用户 query → 分类路径关键词匹配。
+  - `filterByIntentPaths()`：按分类路径缩小候选。
+  - `filterByAllTags()`：按 `AllowedTags` + `ExtractTagHints()`（从 query 提取 `file_type:*` / `domain:*` 提示）过滤。
+  - `scoreCandidates()`：按分类路径匹配度评分，排序后取 `MaxSkillsInToolset`（默认 32，上限 256）。
+
+**SkillRuntimePolicy**（`internal/biz/skill_runtime.go`）：
+
+存储在 `agent_runtime_settings.skill_runtime_json`，字段包括 `allowed_slugs`、`denied_slugs`、`allowed_tags`、`intent_routing_enabled`（默认 true）、`intent_max_paths`（默认 3）、`max_skills_in_toolset`（默认 32）。
+
+**Skill Tool 构建**（`internal/skill/trpc/tools.go`）：
+
+`BuildSkillTools()` 产出 4 个 ADK 工具：`LoadTool`、`RunTool`（需 CodeExecutor）、`ListDocsTool`、`SelectDocsTool`。
+
+**与 ADK 的衔接方式**：当前采用 **方式 A**（FS 适配器）+ **方式 B**（DB 适配器）混合：`FSRepositoryAdapter` 读磁盘 FS，`DBRepositoryAdapter` 从 DB 加载并缓存。两者均实现 `trpcskill.Repository` 接口，通过 `FilteredRepository` 包装后传入 ADK。方式 C（纯 Prompt 注入）尚未实现。
 
 ### 2.5 Skill 本地目录与系统设置「工作目录」
 
@@ -81,16 +143,18 @@
 | **Skill 根目录** | **`{ResolvedWorkDirectory}/skills`** —— 在工作目录下固定使用子目录名 **`skills`**，与 ZIP 导入解压目标、`skillstorage` 期望的根保持一致。 |
 | **`ResolvedWorkDirectory`** | 服务端将用户填入的 `work_directory` 规范化为绝对路径（含 `~` 展开）；为空或未配置时的回落策略见下。 |
 
-**解析优先级（目标落地顺序，自上而下短路命中）**
+**解析优先级（已实现，自上而下短路命中）**
 
 1. **`SKILL_ROOT`**（若设置 → 视作 Skill 根绝对路径）。
 2. **`SKILL_STORAGE_ROOT`**（若设置 → 同上别名）。
 3. **`filepath.Join(Resolved(work_directory), "skills")`** —— 仅当 **`work_directory` 非空** 且路径合法可读时使用。
-4. **操作系统默认路径** —— 与现行 `internal/pkg/skillstorage/root.go` 中 `DefaultRoot(goos)` 一致（如 `%AppData%\Aranea\skills` 等）。
+4. **操作系统默认路径** —— 与 `storage.DefaultRoot(goos)` 一致（如 `%AppData%\Aranea\skills` 等）。
+
+**已实现**：`storage.ResolveRootWithPlatform(rootDirectory)` 实现了 ①②③④ 完整回落链路。`SkillService.resolvedStorageRoot()`、`watch.Runner.resolveRoot()`、`importer.Engine.resolveRoot()` 均通过 `SystemSettingRepo.Get()` 读取 `work_directory` 后调用 `ResolveRootWithPlatform`。
 
 运维或单机开发者仍可通过环境变量覆盖 ③④，便于 CI / 容器。
 
-**现状缺口**：当前 **`skillstorage.ResolveRoot()` 仅实现 ①②④**，**未拼接系统设置的 `work_directory`**。后续需在服务端启动或解析 Skill 路径时注入 **`SystemSettingRepo`**（或等价读取），并在前端「系统设置」保存成功后提示：**更改工作目录后原有 `{旧路径}/skills` 下的 Skill 需迁移或重新索引**。ZIP 导入与文件读写均应统一到同一解析函数。
+**注意事项**：前端「系统设置」保存成功后需提示：**更改工作目录后原有 `{旧路径}/skills` 下的 Skill 需迁移或重新索引**。ZIP 导入与文件读写均统一到同一解析函数。
 
 ### 2.6 目录监听 / 定时扫描 · 增量装载（磁盘 → 目录）
 
@@ -124,7 +188,7 @@ SkillRoot watcher/ticker
 - **ZIP 导入**：最终写入的仍是同一 Skill 根；扫描器应对同一 **`skill_key`/目录名** **幂等**，避免重复创建行。
 - **权限与安全**：所有路径必须在 **解析后的 Skill 根** 之内，禁止 `..` 跳出；仅服务端进程执行扫描。
 
-**现状**：`cmd/admin` 已集成 **`internal/skill/watch`**（启动全量扫描 + `fsnotify` debounce；环境变量 **`SKILL_WATCH_DISABLED=1`** 可关闭）。可选的补充：**定时 ticker** 作为兜底仍可再加。
+**现状**：`cmd/admin` 已集成 **`internal/skill/watch`**（启动全量扫描 + `fsnotify` debounce 2s；环境变量 **`SKILL_WATCH_DISABLED=1`** 可关闭）。`watch.Runner` 支持 `event.Bus` 集成，同步成功后发布 `skill.reload` 事件。磁盘目录缺失时调用 `MarkFilesystemMissing(slug, true)` 标记 `filesystem_missing` 字段，恢复时清除。可选的补充：**定时 ticker** 作为兜底仍可再加。
 
 ---
 
@@ -157,75 +221,129 @@ SkillRoot watcher/ticker
 └────────────────────────────────────────────────────────────┘
 ```
 
-**与 ADK 的交界（只允许在 adkruntime 一侧）**：
+**与 ADK 的交界（已实现 A + B 混合，C 待规划）**：
 
-- **方式 A**：Assembler 产出 **`SkillsFS`（合并后的只读 FS）** → 现有 `catalog.Assemble` 继续 `skilltoolset.New`。
-- **方式 B**：实现 **`skill.Source`** 的 DB 实现，直接传 `skilltoolset`，免去虚拟 FS。
-- **方式 C**：仅用 Prompt：Assembler 产出 **`Skill` 文本块**写入 system/developer message；`skilltoolset` 可选关闭——与「Skill 不必全是 Tool」一致。
+- **方式 A**（已实现）：`FSRepositoryAdapter` 产出磁盘 FS → `FilteredRepository` → ADK `skill.Repository`。
+- **方式 B**（已实现）：`DBRepositoryAdapter` 从 DB 加载并缓存（TTL 2min）→ `FilteredRepository` → ADK `skill.Repository`。
+- **方式 C**（规划）：仅用 Prompt：Assembler 产出 **`Skill` 文本块**写入 system/developer message；`skilltoolset` 可选关闭——与「Skill 不必全是 Tool」一致。
 
-`internal/tools/skillruntime`（及按需新增的 **`internal/skill/**` 纯 Go 子包**，不 import ADK）可作 **DTO → FS/Source** 的转换层；**真正引用 `google.golang.org/adk` 的装配**在目标态应落在 Conversation 私有的 **adkruntime 适配目录**（路径以迁移落地为准，参见 `platform-architecture.md` 第三篇 §6）。
+`internal/skill/trpc/`（不 import ADK 的纯 Go 子包 `repository.go` / `filter.go`）作 **DTO → Repository** 的转换层；**真正引用 `trpc.group/trpc-go/trpc-agent-go` 的装配**在 `internal/agent/trpc_build.go` 的 `buildSkillDeps` 中完成。
 
 ---
 
-## 四、Go 包布局建议（演进式，不要求一步到位）
+## 四、Go 包布局（现状 + 规划）
 
-当前仓库 **尚无** `internal/skills/*` 大包；为避免大爆炸重构，建议 **增量**：
+当前仓库 Skill 相关包已基本成型，按增量演进原则维护：
 
 ```text
 internal/
 ├── biz/
-│   └── skill*.go              # 用例与端口（已有）
+│   ├── skill.go               # 用例与端口（SkillRepo interface、SkillUsecase、DTO）
+│   ├── skill_import.go         # 导入 DTO（SkillImportJob/Candidate/ConflictGroup/SimilarityMetrics/RefineRequest/ApplyRequest）
+│   └── skill_runtime.go        # 运行时策略（SkillRuntimePolicy、SkillRuntimeCandidate、ParseSkillRuntimePolicy）
 ├── data/
-│   └── skill.go               # Ent 仓储（已有）
+│   └── skill.go                # Ent 仓储实现（SkillRepo、enrichSkill、聚合查询、草稿/发布/磁盘同步）
 ├── skill/
-│   ├── importer/               # ZIP 导入引擎（已有）
-│   ├── watch/                  # Skill 根目录监听与磁盘同步（已有）
-│   ├── manifest/              # frontmatter / skill.json 解析与校验（规划）
-│   ├── render/                # prompt 块渲染、截断策略（规划）
-│   └── runtime/               # Assembler + middleware + executor（规划；当前见 `internal/tools/skillruntime`）
-└── service/
-    └── skill.go               # 薄适配（已有）
+│   ├── importer/               # ZIP 导入引擎（已实现：engine / validate / helpers / chat / errors）
+│   ├── watch/                  # Skill 根目录监听与磁盘同步（已实现：runner，含 fsnotify + debounce + eventBus）
+│   ├── storage/                # Skill 存储根解析（已实现：root.go，含 ResolveRoot / ResolveRootWithPlatform / DefaultRoot）
+│   └── trpc/                   # trpc-agent-go 桥接层（已实现：repository / db_repository / tools / executor / filter）
+├── tools/
+│   ├── skillruntime/           # 运行时装配入口（已实现：toolset.go / resolve.go）
+│   └── skillrouter/            # 意图路由与分类（已实现：detect.go / taxonomy.go）
+├── service/
+│   └── skill.go                # 薄适配（已实现，含 resolvedStorageRoot / safeSkillFilePath）
+├── server/
+│   └── skill_import_http.go    # ZIP 导入 HTTP 路由注册（已实现，4 端点）
+└── agent/
+    └── trpc_build.go           # Agent 构建中 Skill 装配（已实现：buildSkillDeps）
 ```
+
+**规划新增**（不破坏现有包结构）：
+
+| 包 | 规划内容 |
+|----|----------|
+| `internal/skill/manifest/` | frontmatter / skill.json 解析与校验 |
+| `internal/skill/render/` | prompt 块渲染、截断策略 |
 
 若日后完整迁入「Capability Context」目录树，可将 `internal/skill/**` 整体映射为 `internal/capability/skill/**`（以迁移 playbook 为准）。
 
 ---
 
-## 五、核心抽象（接口草图，实现可后置）
+## 五、核心抽象（已实现 + 规划）
 
-以下接口用于统一「加载 → 渲染 → 记账」；**包名避免使用 `context`**，可与现有 `context.Context` 组合。
+以下接口与类型用于统一「加载 → 路由 → 装配 → 记账」。
 
-### 5.1 Skill 运行端口（Capability 内部）
+### 5.1 Skill 运行端口（已实现）
 
 ```go
-// internal/skill/runtime/types.go（示例）
-package skillruntime
-
-type LoadedSkill struct {
-    Body        string
-    Files       []SkillFileRef
-    Examples    []string
-    Constraints []string
-    Metadata    map[string]any
-}
-
-type RenderedSkill struct {
-    Slug       string
-    Version    string
-    Prompt     string
-    TokenCost  int
-    SourceRefs []string
-}
-
-type SkillBackend interface {
-    Slug() string
-    Version() string
-    Load(ctx context.Context, store SkillStorageReader) (LoadedSkill, error)
-    Render(ctx context.Context, loaded LoadedSkill) (RenderedSkill, error)
+// internal/biz/skill.go — SkillRepo interface
+type SkillRepo interface {
+    SearchSkills(ctx, SkillListQuery) (SkillListResult, error)
+    GetSkillByID(ctx, id) (Skill, error)
+    UpdateSkillEnabled(ctx, id, enabled) (Skill, error)
+    DuplicateSkill(ctx, id) (Skill, error)
+    DeleteSkill(ctx, id) error
+    SearchSkillInvocations(ctx, SkillRunQuery) (SkillRunResult, error)
+    GetSkillStorageDir(ctx, id) (string, error)
+    ListSkillSimilaritySources(ctx) ([]SkillSimilaritySource, error)
+    CreateSkillWithVersion(ctx, SkillCreateInput) (Skill, error)
+    GetSkillBySkillKey(ctx, skillKey) (Skill, error)
+    UpsertSkillFromDisk(ctx, SkillDiskSyncInput) (Skill, error)
+    ListEnabledPublishedSkillKeys(ctx) ([]string, error)
+    ListEnabledPublishedSkillCandidates(ctx) ([]SkillRuntimeCandidate, error)
+    RecordSkillInvocation(ctx, SkillInvocationWrite) error
+    GetLatestSkillMarkdown(ctx, skillID) (string, error)
+    PatchSkill(ctx, id, SkillUpdateDraft) (Skill, error)
+    PublishSkill(ctx, id) (Skill, error)
+    MarkSkillFilesystemMissing(ctx, slug, missing) error
 }
 ```
 
-### 5.2 Manifest（逻辑模型）
+### 5.2 运行时策略与候选（已实现）
+
+```go
+// internal/biz/skill_runtime.go
+type SkillRuntimePolicy struct {
+    AllowedSlugs         []string
+    DeniedSlugs          []string
+    AllowedTags          []string
+    IntentRoutingEnabled bool   // 默认 true
+    IntentMaxPaths       int    // 默认 3
+    MaxSkillsInToolset   int    // 默认 32，上限 256
+}
+
+type SkillRuntimeCandidate struct {
+    Slug          string
+    Name          string
+    Description   string
+    Tags          []SkillTag
+    TaxonomyPaths []string
+}
+```
+
+### 5.3 trpc-agent-go Repository 适配（已实现）
+
+```go
+// internal/skill/trpc/repository.go — FS 适配器
+type FSRepositoryAdapter struct { ... }  // 实现 trpcskill.Repository
+
+// internal/skill/trpc/db_repository.go — DB 适配器（TTL 缓存）
+type DBRepositoryAdapter struct { ... }  // 实现 trpcskill.Repository
+
+// internal/skill/trpc/filter.go — 白名单过滤
+func NewFilteredRepository(base, allowedSlugs) trpcskill.ContextRepository
+```
+
+### 5.4 规划抽象（尚未实现）
+
+| 抽象 | 规划内容 |
+|------|----------|
+| `SkillBackend` | 按 `kind`（markdown / prompt_pack / workflow / tool_backed）差异化加载与渲染 |
+| `LoadedSkill` / `RenderedSkill` | 标准化加载结果与渲染结果，用于 Prompt 注入（方式 C） |
+| `SkillManifest` | 统一 frontmatter / skill.json / manifest.json 解析 |
+
+### 5.5 Manifest（逻辑模型）
 
 与 `pkg/trpc-agent-go/tool/skilltoolset/skill` 的 frontmatter 习惯对齐，同时支持独立 `skill.json`：
 
@@ -259,44 +377,50 @@ Skill 链处理 **是否可选中、如何加载、如何裁剪、如何记录**
 
 ---
 
-## 七、运行时 Assembler（产品核心缺口）
+## 七、运行时 Assembler（已实现核心链路）
 
-### 7.1 输入 / 输出
+### 7.1 实际输入 / 输出
 
 ```go
-type AssembleRequest struct {
-    AgentID      string
-    SessionID    string
-    UserInput    string
-    TokenBudget  int
-    MaxSkills    int
-    AllowSlugs   []string
-    DenySlugs    []string
+// internal/tools/skillruntime/resolve.go
+type SkillToolsetOptions struct {
+    Runtime   *biz.AgentRuntimeSettings  // 含 skill_runtime_json
+    UserQuery string                     // 当前用户输入
 }
 
-type AssembleResult struct {
-    Rendered     []RenderedSkill
-    PromptBlock  string
-    TotalTokens  int
-    Reasons      map[string]string // slug → 选中原因，便于 preview API
+// resolveSkillSlugs → []string（过滤后的 slug 列表）
+```
+
+### 7.2 实际流程（Layer A + Layer B）
+
+1. **读库**：`ListEnabledPublishedSkillCandidates()` 获取 `enabled` + `published`（兼容 `active`）的候选 Skill。
+2. **Layer A**（`applyLayerA`）：按 `SkillRuntimePolicy.AllowedSlugs` / `DeniedSlugs` 过滤。
+3. **Layer B**（`resolveSkillSlugs`）：
+   - **意图路由**：`skillrouter.DetectIntentPaths(query, maxPaths)` → 分类路径关键词匹配。
+   - **标签过滤**：`filterByAllTags()` 按 `AllowedTags` + `ExtractTagHints()` 过滤。
+   - **评分排序**：`scoreCandidates()` 按分类路径匹配度评分，排序后取 `MaxSkillsInToolset`。
+4. **装配**：`BuildTRPCSkillTools()` 将过滤后的 slug 列表 → `FilteredRepository` → ADK skill tools。
+
+### 7.3 Skill Tool 产出
+
+```go
+// internal/skill/trpc/tools.go
+func BuildSkillTools(cfg SkillToolsetConfig) []trpctool.Tool {
+    // LoadTool: 加载 Skill 正文
+    // RunTool: 执行 Skill 代码（需 CodeExecutor）
+    // ListDocsTool: 列出 Skill 文档
+    // SelectDocsTool: 选择 Skill 文档片段
 }
 ```
 
-### 7.2 流程
+### 7.4 规划扩展（尚未实现）
 
-1. 读库：`enabled` + `published`（或兼容历史的 `active` → 视作 published，见 data 层 `normalizeSkillStatus`）。
-2. 候选筛选：关键词 / tag /（可选）embedding。
-3. 依赖与冲突解析（§九）。
-4. 走 executor 渲染；合并为稳定格式的 **`## Available Skills`** 块（示例见下文）。
-5. 将结果交给 Conversation 构建消息或注入 `skilltoolset` Source。
-
-**Prompt 片段示例**：
-
-```markdown
-## Available Skills
-- `product-design` v1.2.0: Use when the user asks for product specs…
-  Constraints: …
-```
+| 扩展 | 说明 |
+|------|------|
+| Prompt 注入（方式 C） | Assembler 产出 `## Available Skills` 文本块写入 system/developer message；`skilltoolset` 可选关闭 |
+| embedding 相似度 | 候选筛选增加向量相似度匹配（当前仅关键词 + 标签） |
+| Budget 中间件 | 注入 token 上限裁剪（当前仅 `MaxSkillsInToolset` 数量限制） |
+| Preview API 增强 | 返回每个 Skill 的选中原因（`Reasons map[string]string`） |
 
 ---
 
@@ -304,21 +428,30 @@ type AssembleResult struct {
 
 ### 8.1 当前 Ent 字段摘要（与代码一致）
 
-- **`skill`（`PlatformSkill`）**：`skill_key`、`name`、`description`、`status`、`enabled`、`config_json`、`metadata_json`、`tags`（实际存于 `metadata_json` 约定结构）、软删 `deleted_at`，以及历史字段 `parent_id`、`level`、`agent_id`、`provider`、`model` 等。
-- **`skill_version`**：`skill_id`、`version`、`status`、`content_markdown`、`metadata_json`、时间戳。
-- **`skill_invocation`**：`skill_version`、`user_id`、`session_id`、`duration_ms`、`started_at`/`ended_at`、`preview`/`hash`、`error_code` 等；Ent 仍含 `input_json`/`output_json` 等广义字段。
+- **`skill`（`PlatformSkill`）**：`skill_key`、`name`、`description`、`status`、`enabled`、`config_json`、`metadata_json`（含 `tags` + `storage_dir` + `taxonomy_paths`）、软删 `deleted_at`，历史字段 `parent_id`、`level`、`agent_id`、`provider`、`model`，**已新增** `kind`（默认 `markdown`）、`risk_level`（默认 `low`）、`entry_path`（默认 `SKILL.md`）、`filesystem_missing`（默认 `false`）。
+- **`skill_version`**：`skill_id`、`version`、`status`、`content_markdown`、`metadata_json`、时间戳，**已新增** `manifest_json`（默认 `{}`）、`published_at`、`validation_status`。
+- **`skill_invocation`**：`skill_version`、`user_id`、`session_id`、`duration_ms`、`started_at`/`ended_at`、`preview`/`hash`、`error_code` 等；Ent 仍含 `input_json`/`output_json` 等广义字段，**已新增** `source`（默认 `runtime`，可选 `filesystem_scan` / `filesystem_watch`）、`activation_id`。
 
 列表查询将 **`published` 与历史值 `active` 等同**（见 `skillListPredicates`），与迁移期数据共存。
 
-### 8.2 建议演进字段（不破坏旧库的 additive 策略）
+### 8.2 已落地的新增字段（原 §8.2 建议演进 → 现状）
 
-与 [`guides`](../guides/) 中迁移习惯一致：优先 **`ALTER TABLE` / Ent 增量字段**，禁止强行重写线上语义。
-
-| 区域 | 建议新增 |
-|------|----------|
-| `skill` | `kind`、`risk_level`、`entry_path`、`runtime_status`、`current_version_id`、`visibility`、`default_config_json` |
-| `skill_version` | `manifest_json`、`file_manifest_json`、`published_at`、`validation_status` |
-| `skill_invocation` | `activation_id`、`source`（`runtime` / `use_skill` / `import` / `preview`）、`message_id` |
+| 区域 | 原建议新增 | 当前状态 |
+|------|-----------|----------|
+| `skill` | `kind` | ✅ 已落地，默认 `markdown` |
+| `skill` | `risk_level` | ✅ 已落地，默认 `low` |
+| `skill` | `entry_path` | ✅ 已落地，默认 `SKILL.md` |
+| `skill` | `filesystem_missing` | ✅ 已落地（原建议名 `runtime_status`，实际用 `filesystem_missing`） |
+| `skill` | `current_version_id` | ❌ 未落地（通过 `skill_version` 查询最新版替代） |
+| `skill` | `visibility` | ❌ 未落地 |
+| `skill` | `default_config_json` | ❌ 未落地 |
+| `skill_version` | `manifest_json` | ✅ 已落地 |
+| `skill_version` | `published_at` | ✅ 已落地 |
+| `skill_version` | `validation_status` | ✅ 已落地 |
+| `skill_version` | `file_manifest_json` | ❌ 未落地 |
+| `skill_invocation` | `source` | ✅ 已落地 |
+| `skill_invocation` | `activation_id` | ✅ 已落地 |
+| `skill_invocation` | `message_id` | ❌ 未落地 |
 
 ### 8.3 规划表（可选，重度依赖/权限开启时）
 
@@ -336,19 +469,21 @@ type AssembleResult struct {
 
 `system` / `workspace` / `agent` / `private` / `public`——与 `20 skill.md` 的租户隔离、`permissions` 对象一起看；列表接口不返回无 `can_view` 的行。
 
-### 9.2 运行时策略（目标）
+### 9.2 运行时策略（已实现）
 
 ```go
-type SkillRuntimeSettings struct {
-    SkillsEnabled bool
-    Allow         []string // slug 或 tag:xxx
-    Deny          []string
-    MaxSkills     int
-    TokenBudget   int
+// internal/biz/skill_runtime.go
+type SkillRuntimePolicy struct {
+    AllowedSlugs         []string
+    DeniedSlugs          []string
+    AllowedTags          []string
+    IntentRoutingEnabled bool   // 默认 true
+    IntentMaxPaths       int    // 默认 3
+    MaxSkillsInToolset   int    // 默认 32，上限 256
 }
 ```
 
-来源：Agent 配置 + Workspace 默认 + 用户覆盖（最终以产品为准）。
+来源：`agent_runtime_settings.skill_runtime_json`（JSON 对象），由 `ParseSkillRuntimePolicy()` 解析。
 
 ### 9.3 依赖与冲突
 
@@ -362,16 +497,22 @@ type SkillRuntimeSettings struct {
 
 | 能力 | 状态 | 备注 |
 |------|------|------|
-| `GET /v1/skills` | 已有 | 分页 query：`page`/`page_size`（与需求一致；平台文档提倡 cursor 为长期演进项） |
-| `PATCH /v1/skills/{id}/enabled` | 已有 | |
-| `POST /v1/skills/{id}/duplicate` | 已有 | |
-| `DELETE /v1/skills/{id}` | 已有 | 软删 |
-| `GET/PUT …/files`、`…/file` | 已有 | |
-| `GET /v1/skill-runs` | 已有 | |
-| `POST /v1/skills`、`PATCH …`、`POST …/publish` | 规划中 | 对齐 `20 skill.md` |
-| `POST /v1/skills/import*` | 已有（手写路由） | 建议逐步 code-gen 或补 proto |
-| `POST /v1/skills/runtime/preview` | 规划中 | 展示 Assembler 结果与原因 |
-| `GET /v1/system-settings`、`PUT /v1/system-settings` | 已有 | **`work_directory`**；Skill 磁盘根约定为 **`{work_directory}/skills`**（见 §2.5；与 `skillstorage` 接通前仍以 env 默认为准） |
+| `GET /v1/skills` | ✅ 已实现 | 分页 query：`page`/`page_size` + 搜索/标签/启用/状态筛选 |
+| `GET /v1/skills/{id}` | ✅ 已实现 | 详情含 `body_markdown` |
+| `POST /v1/skills` | ✅ 已实现 | 创建草稿 |
+| `PATCH /v1/skills/{id}` | ✅ 已实现 | 更新草稿 |
+| `POST /v1/skills/{id}/publish` | ✅ 已实现 | 发布 |
+| `PATCH /v1/skills/{id}/enabled` | ✅ 已实现 | 启用/停用 |
+| `POST /v1/skills/{id}/duplicate` | ✅ 已实现 | 复制为草稿 |
+| `DELETE /v1/skills/{id}` | ✅ 已实现 | 软删 |
+| `GET /v1/skills/{id}/files` | ✅ 已实现 | 文件列表 |
+| `GET /v1/skills/{id}/file` | ✅ 已实现 | 文件内容 |
+| `PUT /v1/skills/{id}/file` | ✅ 已实现 | 文件更新 |
+| `POST /v1/skills/{id}/files:delete` | ✅ 已实现 | 文件删除（禁止删 SKILL.md） |
+| `GET /v1/skill-runtime-preview` | ✅ 已实现 | 运行时装配预览 |
+| `GET /v1/skill-runs` | ✅ 已实现 | 运行记录分页 |
+| `POST /v1/skills/import*` | ✅ 已实现（手写路由） | 4 端点：import / status / apply / refine；建议逐步 code-gen 或补 proto |
+| `GET /v1/system-settings`、`PUT /v1/system-settings` | ✅ 已实现 | **`work_directory`**；Skill 磁盘根约定为 **`{work_directory}/skills`**（见 §2.5） |
 
 前端类型与函数分组维持 `web/src/features/skills/api.ts` 与 proto 同源生成优先。**系统设置页**保存 `work_directory` 后，前端可在文案中提示 Skill 默认存放路径为 `{work_directory}/skills`（展示层可与后端返回的 **resolved skill root** 对齐，若后续 API 补充该只读字段）。
 
@@ -388,16 +529,16 @@ type SkillRuntimeSettings struct {
 
 磁盘同步（§2.6）建议补充：`skill.fs.scan`、`skill.fs.synced`、`skill.fs.error`（日志或指标），便于确认「文件夹新增已入库」。
 
-## 十二、演进路线（建议四阶段）
+## 十二、演进路线（2026-05-18 现状对齐）
 
-| 阶段 | 内容 |
-|------|------|
-| **P0** | **`skillstorage.ResolveRoot()` 接通 `SystemSetting.work_directory`**，约定 `{work_directory}/skills`；ZIP/文件 API/导入与工作目录一致；可选：`GET /v1/system-settings` 扩展只读 **`skill_storage_root`** 便于前端展示 |
-| **P1** | 补齐 proto：`CreateSkill`、`UpdateSkill`、`PublishSkill`；biz/data 贯通；前端编辑/发布闭环 |
-| **P2** | `internal/skill/runtime`：Assembler + 渲染 + preview API；会话路径注入 Prompt 或与 `SkillsFS` 对接 |
-| **P2′** | **Skill 根目录定时扫描 ± fsnotify**（§2.6）：磁盘新增/变更合规包 → 目录登记；幂等与可观测 |
-| **P3** | manifest/依赖/冲突表或 JSON 扩展；权限粒度；OpenTelemetry 贯通 |
-| **P4** | Context 目录迁移与 `kernel/contracts.SkillReader`（若 ≥3 调用方）；CLI `skill` 子命令与 HTTP 对齐（`platform-architecture.md` §11.1） |
+| 阶段 | 内容 | 状态 |
+|------|------|------|
+| **P0** | `storage.ResolveRootWithPlatform()` 接通 `SystemSetting.work_directory`，约定 `{work_directory}/skills`；ZIP/文件 API/导入与工作目录一致 | ✅ 已完成 |
+| **P1** | 补齐 proto：`CreateSkill`、`UpdateSkill`、`PublishSkill`、`GetSkill`、`DeleteSkillFile`、`PreviewSkillRuntime`；biz/data 贯通 | ✅ 已完成 |
+| **P2** | `internal/tools/skillruntime`：Layer A + Layer B 路由 + `BuildTRPCSkillTools`；`DBRepositoryAdapter`；Agent 集成 `buildSkillDeps` | ✅ 已完成 |
+| **P2′** | Skill 根目录 `fsnotify` 监听 + debounce + eventBus + `filesystem_missing` 标记 | ✅ 已完成 |
+| **P3** | manifest/依赖/冲突表或 JSON 扩展；权限粒度（RBAC）；OpenTelemetry 贯通 | ❌ 待实现 |
+| **P4** | Prompt 注入（方式 C）；embedding 语义精排；Budget 中间件；Context 目录迁移 | ❌ 待实现 |
 
 ---
 
@@ -474,10 +615,11 @@ type SkillRuntimeSettings struct {
 
 ### 13′.7 代码锚点
 
-- `internal/tools/skillruntime`：`SkillToolsetOptions`、`resolveSkillSlugs`、`AppendEnabledPublishedSkillToolsets`
-- `internal/tools/skillrouter`：意图路径与标签 hint
+- `internal/tools/skillruntime`：`SkillToolsetOptions`、`resolveSkillSlugs`、`BuildTRPCSkillTools`
+- `internal/tools/skillrouter`：`DetectIntentPaths`、`ExtractTagHints`、`TaxonomyLeaves`
+- `internal/biz/skill_runtime.go`：`SkillRuntimePolicy`、`SkillRuntimeCandidate`、`ParseSkillRuntimePolicy`
 - `internal/data/skill.go`：`ListEnabledPublishedSkillCandidates`
-- 会话：`internal/service/adk_turn.go`；原生班组：`internal/team/runner.go`（取 **首位启用成员** Agent 的 runtime 策略与本轮 `content`）
+- `internal/agent/trpc_build.go`：`buildSkillDeps`
 
 ---
 

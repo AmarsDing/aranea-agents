@@ -7,26 +7,28 @@
 
 ## 一、模块概述
 
-Agent 运行器完善：AgentFactory、PluginManager、ArtifactService、SessionIngestor、AwaitUserReplyRouting、ManagedRunner（Status/Cancel）、SteerableRunner（EnqueueUserMessage）、AgentLookup、RalphLoop。对标 trpc-agent-go `runner` 包，将项目从基础 Runner 升级为完整的 ManagedRunner + SteerableRunner。
+Agent 运行器完善：AgentFactory、ArtifactService 注入、SessionIngestor、AwaitUserReplyRouting（框架层）、AgentLookup、RalphLoop、CancelRun/EnqueueUserMessage RPC、RunnerRegistry/RunnerManager。对标 trpc-agent-go `runner` 包，将项目从当前 Service 层自管理的运行模式升级为框架层完整驱动的 ManagedRunner + SteerableRunner。
 
 ### 核心架构
 
 ```
-用户消息 → Runner.Run(userID, sessionID, message)
+用户消息 → ChatService.SendChatMessage
              ↓
-         getOrCreateSession() → 加载/创建会话
+         lockSession() → 会话级互斥
              ↓
-         applyAwaitUserReplyRoute() → 检查待路由的用户回复
+         activeRuns 检查 → 运行中则入 pendingQueue
              ↓
-         selectAgent() → 从注册表/工厂选择 Agent
+         BuildTRPCLLMAgentCached → 构建/缓存 Agent
              ↓
-         resolveCurrentTurnMessages() → 解析当前轮消息
+         NewTRPCRunner(root, deps) → 创建 Runner（注入 Session/Memory/Plugins/Artifact/Ingestor/Routing/RalphLoop）
              ↓
-         agent.RunWithPlugins() → 执行 Agent
+         Runner.Run(userID, sessionID, message) → 框架层执行
              ↓
-         processAgentEvents() → 事件循环：持久化 + 转发 + 状态更新
+         ConsumeEventStream → 事件循环：持久化 + 转发 + 状态更新
              ↓
          sessionIngestor.IngestSession() → 会话完成后摄入外部记忆
+             ↓
+         processPendingQueue → 处理待执行队列
 ```
 
 ### trpc-agent-go runner 包结构
@@ -51,50 +53,53 @@ pkg/trpc-agent-go/runner/
 
 | 能力 | trpc-agent-go | 当前项目 | 状态 |
 |------|--------------|---------|------|
-| Runner.Run | ✅ | ✅ | 已有 |
-| Runner.Close | ✅ | ✅ | 已有 |
-| ManagedRunner.Cancel | ✅ | ❌ | 缺失 |
-| ManagedRunner.RunStatus | ✅ | ❌ | 缺失 |
-| SteerableRunner.EnqueueUserMessage | ✅ | ❌ | 缺失 |
-| AgentFactory | ✅ | ❌ | 缺失 |
-| PluginManager | ✅ | ❌ | 缺失 |
-| ArtifactService | ✅ | ❌ | 缺失 |
-| SessionIngestor | ✅ | ❌ | 缺失 |
-| AwaitUserReplyRouting | ✅ | ❌ | 缺失 |
-| AgentLookup | ✅ | ❌ | 缺失 |
-| RalphLoop | ✅ | ❌ | 缺失 |
-| 多 Runner 实例 | ✅ | ❌ | 缺失 |
+| Runner.Run / Close | ✅ | ✅ | `NewTRPCRunner` 返回 `ManagedRunner` |
+| ManagedRunner.Cancel | ✅ | ✅ | `CancelTRPCRun` 辅助函数 |
+| ManagedRunner.RunStatus | ✅ | ✅ | `TRPCRunStatus` 辅助函数 |
+| SteerableRunner.EnqueueUserMessage | ✅ | ✅ | `EnqueueTRPCUserMessage` 辅助函数 |
+| PluginManager 注入 | ✅ | ✅ | `plugintrpc.Runtime` + `WithPlugins` |
+| AwaitUserReply（Service 层） | — | ✅ | `serviceawaitreply.ServiceTool` + `AwaitUserReply` RPC |
+| GetRunStatus RPC | — | ✅ | `ChatService.GetRunStatus` |
+| StopGeneration RPC | — | ✅ | `ChatService.StopGeneration` |
+| PendingQueue | — | ✅ | `pendingQueue` + `processPendingQueue` |
+| BuildCache LRU + TTL | — | ✅ | `cache.go` |
+| ArtifactService 适配器 | ✅ | 🟡 | 适配器已有，未注入 Runner |
+| AgentFactory | ✅ | ❌ | 未注册 `WithAgentFactory` |
+| SessionIngestor | ✅ | ❌ | 未实现 `WithSessionIngestor` |
+| AwaitUserReplyRouting（框架层） | ✅ | ❌ | 未启用 `WithAwaitUserReplyRouting` |
+| AgentLookup | ✅ | ❌ | Runner 未维护 Agent 注册表 |
+| RalphLoop | ✅ | ❌ | 未配置 `WithRalphLoop` |
+| CancelRun RPC | — | ❌ | 仅有 `StopGeneration`，缺少按 requestID 取消 |
+| EnqueueUserMessage RPC | — | ❌ | 仅有辅助函数，无 RPC 入口 |
+| RunnerRegistry / RunnerManager | — | ❌ | 每次请求创建临时 Runner |
 
 ---
 
 ## 二、Proto 层
 
-无需独立 Proto 服务。通过 Chat Service 和 Gateway 暴露 Runner 控制接口。
+无需独立 Proto 服务。通过 Chat Service 暴露 Runner 控制接口。
+
+### 当前 Proto 状态
+
+`api/kratos/chat/v1/chat.proto` 已有：
+
+| RPC | 路由 | 状态 |
+|-----|------|------|
+| `StopGeneration` | POST `/v1/chat/stop` | ✅ 已有 |
+| `GetRunStatus` | GET `/v1/chat/run-status` | ✅ 已有 |
+| `AwaitUserReply` | POST `/v1/chat/await-reply` | ✅ 已有 |
+| `GetPendingMessages` | GET `/v1/chat/pending` | ✅ 已有 |
+| `CancelPendingMessage` | POST `/v1/chat/pending/cancel` | ✅ 已有 |
+| `UpdatePendingMessage` | POST `/v1/chat/pending/update` | ✅ 已有 |
 
 ### Chat Proto 扩展
 
 ```protobuf
-// api/kratos/chat/v1/chat.proto — Runner 控制接口扩展
-
-message RunStatusRequest {
-  string session_id = 1;
-  string request_id = 2;
-}
-
-message RunStatusResponse {
-  string request_id = 1;
-  string invocation_id = 2;
-  string agent_name = 3;
-  string session_id = 4;
-  string started_at = 5;
-  string last_event_at = 6;
-  int32 event_count = 7;
-  bool running = 8;
-}
+// api/kratos/chat/v1/chat.proto — 新增 RPC
 
 message CancelRunRequest {
-  string session_id = 1;
-  string request_id = 2;
+  string session_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string request_id = 2 [(google.api.field_behavior) = REQUIRED];
 }
 
 message CancelRunResponse {
@@ -102,9 +107,9 @@ message CancelRunResponse {
 }
 
 message EnqueueUserMessageRequest {
-  string session_id = 1;
-  string request_id = 2;
-  string content = 3;
+  string session_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string request_id = 2 [(google.api.field_behavior) = REQUIRED];
+  string content = 3 [(google.api.field_behavior) = REQUIRED];
 }
 
 message EnqueueUserMessageResponse {
@@ -114,9 +119,6 @@ message EnqueueUserMessageResponse {
 service ChatService {
   // ... 已有方法 ...
 
-  rpc GetRunStatus(RunStatusRequest) returns (RunStatusResponse) {
-    option (google.api.http) = { get: "/v1/chat/run-status" };
-  }
   rpc CancelRun(CancelRunRequest) returns (CancelRunResponse) {
     option (google.api.http) = { post: "/v1/chat/cancel-run" body: "*" };
   }
@@ -126,25 +128,37 @@ service ChatService {
 }
 ```
 
-### Agent Proto 扩展
+### GetRunStatus Proto 对齐
+
+当前 `GetRunStatus` 返回的 `RunStatus` 消息仅包含 `run_id`、`status`、`error_message`、`updated_at`。需与 `ManagedRunner.RunStatus` 对齐，增加 `invocation_id`、`agent_name`、`started_at`、`last_event_at`、`event_count` 字段：
 
 ```protobuf
-// api/kratos/agent/v1/agent.proto — AgentRuntimeSettings 消息扩展
-
-message AgentRuntimeSettings {
-  // ... 已有字段 ...
-
-  // Runner 配置
-  bool runner_await_user_reply_routing = 60;
-  int32 runner_max_run_duration_seconds = 61;
-  bool runner_detached_cancel = 62;
-
-  // RalphLoop 配置
-  int32 ralph_loop_max_iterations = 70;
-  string ralph_loop_completion_promise = 71;
-  string ralph_loop_verify_command = 72;
-  int32 ralph_loop_verify_timeout_seconds = 73;
+message RunStatus {
+  string run_id = 1;
+  string status = 2;
+  string error_message = 3;
+  string updated_at = 4;
+  // 新增：与 ManagedRunner.RunStatus 对齐
+  string invocation_id = 5;
+  string agent_name = 6;
+  string started_at = 7;
+  string last_event_at = 8;
+  int32 event_count = 9;
 }
+```
+
+### AgentRuntimeSettings Ent Schema 扩展
+
+```go
+// internal/data/ent/schema/agent_runtime_setting.go — 新增字段
+
+field.Bool("runner_await_user_reply_routing").Default(false),
+field.Int("runner_max_run_duration_seconds").Default(0),
+field.Bool("runner_detached_cancel").Default(false),
+field.Int("ralph_loop_max_iterations").Default(0),
+field.String("ralph_loop_completion_promise").Default(""),
+field.String("ralph_loop_verify_command").Default(""),
+field.Int("ralph_loop_verify_timeout_seconds").Default(0),
 ```
 
 ---
@@ -162,7 +176,7 @@ type RunnerConfig struct {
 }
 
 type RalphLoopConfig struct {
-    MaxIterations    int
+    MaxIterations     int
     CompletionPromise string
     PromiseTagOpen    string
     PromiseTagClose   string
@@ -184,24 +198,16 @@ type RunStatusInfo struct {
 }
 ```
 
-### 3.2 Usecase
+### 3.2 RunnerUsecase
+
+当前运行控制逻辑分散在 `ChatService` 中（`activeRuns`、`runStatuses`、`pendingQueue` 等）。引入 `RunnerUsecase` 将运行控制逻辑下沉到 Biz 层：
 
 ```go
 type RunnerUsecase struct {
-    agents    AgentRepository
-    agentsUC  *AgentUsecase
-    sessions  *SessionUsecase
-    catalog   *LlmProviderModelUsecase
-    broker    *TeamRunEventBroker
+    registry *RunnerRegistry
 }
 
-func NewRunnerUsecase(
-    agents AgentRepository,
-    agentsUC *AgentUsecase,
-    sessions *SessionUsecase,
-    catalog *LlmProviderModelUsecase,
-    broker *TeamRunEventBroker,
-) *RunnerUsecase
+func NewRunnerUsecase(registry *RunnerRegistry) *RunnerUsecase
 
 func (uc *RunnerUsecase) GetRunStatus(ctx context.Context, sessionID, requestID string) (*RunStatusInfo, error)
 func (uc *RunnerUsecase) CancelRun(ctx context.Context, sessionID, requestID string) (bool, error)
@@ -232,16 +238,19 @@ func (r *RunnerRegistry) List() []string
 
 ### 4.1 TRPCRunnerDeps 扩展
 
+当前 `TRPCRunnerDeps` 仅有 `AppName`、`SessionService`、`MemoryService`、`Plugins`。需扩展：
+
 ```go
 type TRPCRunnerDeps struct {
     AppName        string
     SessionService trpcsession.Service
     MemoryService  trpcmemory.Service
+    Plugins        []trpcplugin.Plugin
 
+    // 新增
     Ingestor              trpcsession.Ingestor
     ArtifactService       trpcartifact.Service
     AwaitUserReplyRouting bool
-    Plugins               []trpcplugin.Plugin
     AgentFactories        map[string]trpcrunner.AgentFactory
     RalphLoop             *trpcrunner.RalphLoopConfig
 }
@@ -249,52 +258,35 @@ type TRPCRunnerDeps struct {
 
 ### 4.2 NewTRPCRunner 扩展
 
+当前 `NewTRPCRunner` 已处理 `SessionService`、`MemoryService`、`Plugins`。需在现有逻辑基础上增加：
+
 ```go
-func NewTRPCRunner(root trpcagent.Agent, deps TRPCRunnerDeps, opts ...trpcrunner.Option) (trpcrunner.Runner, error) {
-    if root == nil {
-        return nil, errors.New("trpc runtime: root agent is nil")
-    }
-    appName := strings.TrimSpace(deps.AppName)
-    if appName == "" {
-        appName = TRPCDefaultAppName
-    }
-
-    if deps.SessionService != nil {
-        opts = append([]trpcrunner.Option{trpcrunner.WithSessionService(deps.SessionService)}, opts...)
-    }
-    if deps.MemoryService != nil {
-        opts = append([]trpcrunner.Option{trpcrunner.WithMemoryService(deps.MemoryService)}, opts...)
-    }
-    if deps.Ingestor != nil {
-        opts = append([]trpcrunner.Option{trpcrunner.WithSessionIngestor(deps.Ingestor)}, opts...)
-    }
-    if deps.ArtifactService != nil {
-        opts = append([]trpcrunner.Option{trpcrunner.WithArtifactService(deps.ArtifactService)}, opts...)
-    }
-    if deps.AwaitUserReplyRouting {
-        opts = append(opts, trpcrunner.WithAwaitUserReplyRouting(true))
-    }
-    if len(deps.Plugins) > 0 {
-        opts = append(opts, trpcrunner.WithPlugins(deps.Plugins...))
-    }
-    if deps.RalphLoop != nil {
-        opts = append(opts, trpcrunner.WithRalphLoop(*deps.RalphLoop))
-    }
-    for name, factory := range deps.AgentFactories {
-        opts = append(opts, trpcrunner.WithAgentFactory(name, factory))
-    }
-
-    return trpcrunner.NewRunner(appName, root, opts...), nil
+if deps.Ingestor != nil {
+    opts = append(opts, trpcrunner.WithSessionIngestor(deps.Ingestor))
+}
+if deps.ArtifactService != nil {
+    opts = append(opts, trpcrunner.WithArtifactService(deps.ArtifactService))
+}
+if deps.AwaitUserReplyRouting {
+    opts = append(opts, trpcrunner.WithAwaitUserReplyRouting(true))
+}
+if deps.RalphLoop != nil {
+    opts = append(opts, trpcrunner.WithRalphLoop(*deps.RalphLoop))
+}
+for name, factory := range deps.AgentFactories {
+    opts = append(opts, trpcrunner.WithAgentFactory(name, factory))
 }
 ```
 
 ### 4.3 AgentFactory 实现
 
+`BizAgentFactory` 根据名称从数据库查找 Agent 配置并动态构建 trpc Agent：
+
 ```go
 type BizAgentFactory struct {
-    agents  biz.AgentRepository
+    agents   biz.AgentRepository
     agentsUC *biz.AgentUsecase
-    deps    TRPCBuilderDeps
+    deps     TRPCBuilderDeps
 }
 
 func NewBizAgentFactory(
@@ -306,20 +298,14 @@ func NewBizAgentFactory(
 func (f *BizAgentFactory) Create(
     ctx context.Context,
     ro trpcagent.RunOptions,
-) (trpcagent.Agent, error) {
-    agentName := ro.AgentByName
-    if agentName == "" {
-        return nil, fmt.Errorf("agent factory: agent name is empty")
-    }
-    ag, err := f.agentsUC.Get(ctx, agentName)
-    if err != nil {
-        return nil, fmt.Errorf("agent factory: lookup %q: %w", agentName, err)
-    }
-    return BuildTRPCLLMAgent(ctx, ag, f.deps)
-}
+) (trpcagent.Agent, error)
 ```
 
+`Create` 逻辑：从 `ro.AgentByName` 获取名称 → `agentsUC.Get` 查找 → `BuildTRPCLLMAgent` 构建。
+
 ### 4.4 SessionIngestor 实现
+
+`BizSessionIngestor` 将完成的 Session 转录文本摄入外部记忆平台：
 
 ```go
 type BizSessionIngestor struct {
@@ -335,131 +321,39 @@ func NewBizSessionIngestor(
 func (ing *BizSessionIngestor) IngestSession(
     ctx context.Context,
     sess *trpcsession.Session,
-) error {
-    if ing.memory == nil {
-        return nil
-    }
-    events := sess.GetEvents()
-    if len(events) == 0 {
-        return nil
-    }
-    var transcript strings.Builder
-    for _, evt := range events {
-        if evt.Response == nil {
-            continue
-        }
-        for _, ch := range evt.Response.Choices {
-            if ch.Message.Content != "" {
-                fmt.Fprintf(&transcript, "%s: %s\n", ch.Message.Role, ch.Message.Content)
-            }
-        }
-    }
-    if transcript.Len() == 0 {
-        return nil
-    }
-    key := sess.Key()
-    return ing.memory.Add(ctx, key.UserID, transcript.String(), map[string]string{
-        "session_id": key.SessionID,
-        "app_name":   key.AppName,
-    })
-}
+) error
 ```
 
-### 4.5 AwaitUserReplyRouting 实现
+`IngestSession` 逻辑：检查 `memory` 是否可用 → 提取 Session 事件中的对话转录 → 调用 `memory.Add` 摄入。摄入失败仅记录日志，不阻塞主流程。
+
+### 4.5 AwaitUserReplyRouting（框架层）
+
+当前项目通过 Service 层自行实现 AwaitUserReply（`serviceawaitreply.ServiceTool` + `ChatService.makeAwaitReplyFunc` + `ChatService.AwaitUserReply` RPC），实现了 mid-turn 阻塞等待用户回复。
+
+框架层的 `WithAwaitUserReplyRouting` 提供的是跨 turn 的路由能力：Agent 调用 `await_user_reply` 后在 Session 状态中记录路由，下一轮用户消息自动路由到该 Agent。
+
+两层机制互补：
+- **Service 层**（已有）：mid-turn 阻塞，当前 turn 内等待用户回复
+- **框架层**（待启用）：跨 turn 路由，下一轮用户消息自动路由到指定 Agent
+
+启用方式：在 `NewTRPCRunner` 中传入 `WithAwaitUserReplyRouting(true)`，框架的 `runner.applyAwaitUserReplyRoute` 会自动处理路由逻辑。
+
+### 4.6 RalphLoop 配置
+
+`RalphLoopConfig` 从 `AgentRuntimeSettings` 数据库配置映射：
 
 ```go
-func applyAwaitUserReplyRoute(
-    ctx context.Context,
-    key trpcsession.Key,
-    sess *trpcsession.Session,
-    message trpcmodel.Message,
-    ro trpcagent.RunOptions,
-) (trpcagent.RunOptions, string, error) {
-    if message.Role != trpcmodel.RoleUser {
-        return ro, "", nil
-    }
-    if ro.Agent != nil || ro.AgentByName != "" {
-        return ro, "", nil
-    }
-    route, ok, err := trpcagent.PendingAwaitUserReplyRoute(sess)
-    if err != nil || !ok {
-        return ro, "", nil
-    }
-    selected, rootName, ok, err := resolveAwaitUserReplyRoute(ctx, route, ro)
-    if err != nil || !ok {
-        return ro, "", nil
-    }
-    if err := clearAwaitUserReplyRoute(ctx, key, sess); err != nil {
-        return ro, "", fmt.Errorf("consume await_user_reply route: %w", err)
-    }
-    ro.Agent = selected
-    return ro, rootName, nil
-}
+func ralphLoopConfigFromSettings(settings *biz.AgentRuntimeSettings) *trpcrunner.RalphLoopConfig
 ```
 
-### 4.6 ManagedRunner 扩展
+映射规则：
+- `RalphLoopMaxIterations > 0` 时启用
+- `CompletionPromise` → `PromiseTagOpen`/`PromiseTagClose` 默认 `<promise>`/`</promise>`
+- `VerifyCommand` → `VerifyCommand` + `VerifyTimeout`
 
-```go
-type ManagedTRPCRunner struct {
-    trpcrunner.Runner
-    registry *RunnerRegistry
-}
+### 4.7 RunnerManager
 
-func NewManagedTRPCRunner(root trpcagent.Agent, deps TRPCRunnerDeps, registry *RunnerRegistry) (*ManagedTRPCRunner, error) {
-    r, err := NewTRPCRunner(root, deps)
-    if err != nil {
-        return nil, err
-    }
-    m := &ManagedTRPCRunner{Runner: r, registry: registry}
-    return m, nil
-}
-
-func (m *ManagedTRPCRunner) Cancel(requestID string) bool {
-    if mr, ok := m.Runner.(trpcrunner.ManagedRunner); ok {
-        return mr.Cancel(requestID)
-    }
-    return false
-}
-
-func (m *ManagedTRPCRunner) RunStatus(requestID string) (trpcrunner.RunStatus, bool) {
-    if mr, ok := m.Runner.(trpcrunner.ManagedRunner); ok {
-        return mr.RunStatus(requestID)
-    }
-    return trpcrunner.RunStatus{}, false
-}
-
-func (m *ManagedTRPCRunner) EnqueueUserMessage(requestID string, message trpcmodel.Message) error {
-    if sr, ok := m.Runner.(trpcrunner.SteerableRunner); ok {
-        return sr.EnqueueUserMessage(requestID, message)
-    }
-    return trpcrunner.ErrQueuedUserMessageUnsupported
-}
-```
-
-### 4.7 RalphLoop 实现
-
-```go
-func ralphLoopConfigFromSettings(settings *biz.AgentRuntimeSettings) *trpcrunner.RalphLoopConfig {
-    if settings == nil || settings.RalphLoopMaxIterations <= 0 {
-        return nil
-    }
-    cfg := &trpcrunner.RalphLoopConfig{
-        MaxIterations:    settings.RalphLoopMaxIterations,
-        CompletionPromise: settings.RalphLoopCompletionPromise,
-    }
-    if cfg.CompletionPromise != "" {
-        cfg.PromiseTagOpen = "<promise>"
-        cfg.PromiseTagClose = "</promise>"
-    }
-    if settings.RalphLoopVerifyCommand != "" {
-        cfg.VerifyCommand = settings.RalphLoopVerifyCommand
-        cfg.VerifyTimeout = time.Duration(settings.RalphLoopVerifyTimeoutSeconds) * time.Second
-    }
-    return cfg
-}
-```
-
-### 4.8 多 Runner 实例管理
+当前每次请求创建临时 Runner（`runSingleAgentViaTRPC` 中 `NewTRPCRunner` + `defer runner.Close()`）。引入 `RunnerManager` 支持长生命周期 Runner 实例：
 
 ```go
 type RunnerManager struct {
@@ -468,11 +362,11 @@ type RunnerManager struct {
 }
 
 type RunnerFactoryDeps struct {
-    SessionSvc  trpcsession.Service
-    MemorySvc   trpcmemory.Service
-    Ingestor    trpcsession.Ingestor
-    ArtifactSvc trpcartifact.Service
-    Plugins     []trpcplugin.Plugin
+    SessionSvc   trpcsession.Service
+    MemorySvc    trpcmemory.Service
+    Ingestor     trpcsession.Ingestor
+    ArtifactSvc  trpcartifact.Service
+    Plugins      []trpcplugin.Plugin
 }
 
 func NewRunnerManager(deps RunnerFactoryDeps) *RunnerManager
@@ -482,32 +376,12 @@ func (m *RunnerManager) CreateRunner(
     key string,
     root trpcagent.Agent,
     opts ...trpcrunner.Option,
-) (trpcrunner.Runner, error) {
-    deps := TRPCRunnerDeps{
-        AppName:        key,
-        SessionService: m.deps.SessionSvc,
-        MemoryService:  m.deps.MemorySvc,
-        Ingestor:       m.deps.Ingestor,
-        ArtifactService: m.deps.ArtifactSvc,
-        Plugins:        m.deps.Plugins,
-    }
-    r, err := NewTRPCRunner(root, deps, opts...)
-    if err != nil {
-        return nil, err
-    }
-    m.registry.Register(key, r)
-    return r, nil
-}
+) (trpcrunner.Runner, error)
 
-func (m *RunnerManager) CloseRunner(key string) error {
-    r, ok := m.registry.Get(key)
-    if !ok {
-        return nil
-    }
-    m.registry.Unregister(key)
-    return r.Close()
-}
+func (m *RunnerManager) CloseRunner(key string) error
 ```
+
+`CreateRunner` 逻辑：构建 `TRPCRunnerDeps` → `NewTRPCRunner` → `registry.Register`。
 
 ---
 
@@ -517,67 +391,46 @@ func (m *RunnerManager) CloseRunner(key string) error {
 
 ### AgentRuntimeSettings Ent Schema 扩展
 
-```go
-// internal/data/ent/schema/agent_runtime_setting.go — 新增字段
-
-func (AgentRuntimeSetting) Fields() []ent.Field {
-    return []ent.Field{
-        // ... 已有字段 ...
-
-        field.Bool("runner_await_user_reply_routing").Default(false),
-        field.Int("runner_max_run_duration_seconds").Default(0),
-        field.Bool("runner_detached_cancel").Default(false),
-        field.Int("ralph_loop_max_iterations").Default(0),
-        field.String("ralph_loop_completion_promise").Default(""),
-        field.String("ralph_loop_verify_command").Default(""),
-        field.Int("ralph_loop_verify_timeout_seconds").Default(0),
-    }
-}
-```
+见 §二 AgentRuntimeSettings 扩展。
 
 ---
 
 ## 六、Service 层
 
-### 6.1 ChatService 扩展
+### 6.1 ChatService 现有运行控制
+
+当前 `ChatService` 已有：
+
+| 字段/方法 | 说明 |
+|-----------|------|
+| `activeRuns sync.Map` | sessionID → Runner 实例 |
+| `runStatuses sync.Map` | sessionID → runStatusEntry |
+| `pendingQueue sync.Map` | sessionID → []pendingEntry |
+| `pendingCancels sync.Map` | sessionID → context.CancelFunc |
+| `awaitChans sync.Map` | sessionID → chan awaitReplyCh |
+| `sessionMu sync.Map` | sessionID → *sync.Mutex |
+| `GetRunStatus` | RPC：查询运行状态 |
+| `StopGeneration` | RPC：停止生成 |
+| `CancelRun` | 内部方法：取消运行 |
+| `AwaitUserReply` | RPC：提交用户回复 |
+| `makeAwaitReplyFunc` | 构建 await_reply 阻塞回调 |
+
+### 6.2 ChatService 扩展
+
+新增 RPC 实现：
 
 ```go
-func (s *ChatService) GetRunStatus(ctx context.Context, req *chatv1.RunStatusRequest) (*chatv1.RunStatusResponse, error) {
-    info, err := s.runnerUC.GetRunStatus(ctx, req.GetSessionId(), req.GetRequestId())
-    if err != nil {
-        return nil, err
-    }
-    if info == nil {
-        return &chatv1.RunStatusResponse{Running: false}, nil
-    }
-    return &chatv1.RunStatusResponse{
-        RequestId:    info.RequestID,
-        InvocationId: info.InvocationID,
-        AgentName:    info.AgentName,
-        SessionId:    info.SessionID,
-        StartedAt:    info.StartedAt,
-        LastEventAt:  info.LastEventAt,
-        EventCount:   int32(info.EventCount),
-        Running:      true,
-    }, nil
-}
-
-func (s *ChatService) CancelRun(ctx context.Context, req *chatv1.CancelRunRequest) (*chatv1.CancelRunResponse, error) {
-    cancelled, err := s.runnerUC.CancelRun(ctx, req.GetSessionId(), req.GetRequestId())
-    if err != nil {
-        return nil, err
-    }
-    return &chatv1.CancelRunResponse{Cancelled: cancelled}, nil
-}
-
-func (s *ChatService) EnqueueUserMessage(ctx context.Context, req *chatv1.EnqueueUserMessageRequest) (*chatv1.EnqueueUserMessageResponse, error) {
-    err := s.runnerUC.EnqueueUserMessage(ctx, req.GetSessionId(), req.GetRequestId(), req.GetContent())
-    if err != nil {
-        return nil, err
-    }
-    return &chatv1.EnqueueUserMessageResponse{Enqueued: true}, nil
-}
+func (s *ChatService) CancelRunRPC(ctx context.Context, req *chatv1.CancelRunRequest) (*chatv1.CancelRunResponse, error)
+func (s *ChatService) EnqueueUserMessageRPC(ctx context.Context, req *chatv1.EnqueueUserMessageRequest) (*chatv1.EnqueueUserMessageResponse, error)
 ```
+
+`CancelRunRPC` 逻辑：从 `activeRuns` 获取 Runner → `CancelTRPCRun(r, requestID)`。
+
+`EnqueueUserMessageRPC` 逻辑：从 `activeRuns` 获取 Runner → `EnqueueTRPCUserMessage(r, requestID, content)`。
+
+### 6.3 GetRunStatus 对齐
+
+当前 `GetRunStatus` 从 `runStatuses` sync.Map 读取 Service 层维护的状态。需同时查询 `ManagedRunner.RunStatus` 以获取框架层的完整状态信息（invocation_id、agent_name、event_count 等）。
 
 ---
 
@@ -592,13 +445,12 @@ var ProviderSet = wire.NewSet(
     NewBizSessionIngestor,
     NewRunnerRegistry,
     NewRunnerManager,
-    NewManagedTRPCRunner,
 )
 
 // internal/service/wire.go — ChatServiceDeps 扩展
 type ChatServiceDeps struct {
     // ... 已有 ...
-    RunnerUC *biz.RunnerUsecase
+    RunnerManager *agent.RunnerManager
 }
 ```
 
@@ -606,7 +458,16 @@ type ChatServiceDeps struct {
 
 ## 八、Web 前端设计
 
-Runner 为运行时基础设施，无独立前端页面。相关 UI 通过 Chat 和 Gateway 页面暴露。
+Runner 为运行时基础设施，无独立前端页面。相关 UI 通过 Chat 页面暴露。
+
+### 当前前端状态
+
+| 组件/文件 | 状态 | 说明 |
+|-----------|------|------|
+| `web/src/features/chat/api.ts` | ✅ | 已有 `getRunStatus`、`stopGeneration`、`awaitUserReply` |
+| `web/src/composables/useRunStatus.ts` | ✅ | 已有轮询运行状态 + 提交回复 |
+| `ChatRunnerStatus.vue` | ❌ | 未创建独立运行状态指示器组件 |
+| `ChatEnqueueMessage.vue` | ❌ | 未创建运行中追加消息组件 |
 
 ### 8.1 Chat 页面集成
 
@@ -616,7 +477,7 @@ Runner 为运行时基础设施，无独立前端页面。相关 UI 通过 Chat 
 |------|------|------|
 | 运行状态 | `QBadge` | 在聊天输入框旁显示当前运行状态 |
 | 取消按钮 | `QBtn` | 运行中时显示取消按钮 |
-| 排队消息 | `QInput` | 运行中时允许用户追加消息 |
+| 追加消息 | `QInput` + `QBtn` | 运行中时允许用户追加消息 |
 
 **文件结构**：
 
@@ -629,28 +490,9 @@ web/src/features/chat/
 
 ### 8.2 ChatRunnerStatus.vue
 
-```typescript
-interface Props {
-  sessionId: string
-  requestId: string
-}
-
-interface RunStatus {
-  requestId: string
-  agentName: string
-  startedAt: string
-  lastEventAt: string
-  eventCount: number
-  running: boolean
-}
-
-async function fetchRunStatus(sessionId: string, requestId: string): Promise<RunStatus>
-async function cancelRun(sessionId: string, requestId: string): Promise<boolean>
-```
-
 | 区域 | 组件 | 说明 |
 |------|------|------|
-| 状态标签 | `QBadge` | `running` / `completed` / `cancelled` |
+| 状态标签 | `QBadge` | `running` / `completed` / `cancelled` / `awaiting_user` |
 | Agent 名称 | `QChip` | 当前运行的 Agent |
 | 运行时长 | `span` | 从 startedAt 计算已运行时间 |
 | 事件数 | `span` | 已处理的事件数量 |
@@ -658,87 +500,36 @@ async function cancelRun(sessionId: string, requestId: string): Promise<boolean>
 
 ### 8.3 ChatEnqueueMessage.vue
 
-```typescript
-interface Props {
-  sessionId: string
-  requestId: string
-  disabled: boolean
-}
-
-async function enqueueUserMessage(sessionId: string, requestId: string, content: string): Promise<boolean>
-```
-
 | 区域 | 组件 | 说明 |
 |------|------|------|
 | 输入框 | `QInput` | 追加消息输入 |
 | 发送按钮 | `QBtn` | 点击调用 EnqueueUserMessage API |
 | 状态提示 | `QTooltip` | 消息将在工具调用边界后注入 |
 
-### 8.4 API 接口
+### 8.4 API 接口扩展
+
+当前 `api.ts` 已有 `getRunStatus`、`stopGeneration`、`awaitUserReply`。需新增：
 
 ```typescript
-// web/src/api/runner.ts
-
-export async function getRunStatus(sessionId: string, requestId: string): Promise<RunStatusResponse> {
-  const { data } = await axios.get('/v1/chat/run-status', { params: { session_id: sessionId, request_id: requestId } })
-  return data
-}
-
-export async function cancelRun(sessionId: string, requestId: string): Promise<CancelRunResponse> {
-  const { data } = await axios.post('/v1/chat/cancel-run', { session_id: sessionId, request_id: requestId })
-  return data
-}
-
-export async function enqueueUserMessage(sessionId: string, requestId: string, content: string): Promise<EnqueueUserMessageResponse> {
-  const { data } = await axios.post('/v1/chat/enqueue-user-message', { session_id: sessionId, request_id: requestId, content })
-  return data
-}
+export async function cancelRun(sessionId: string, requestId: string): Promise<boolean>
+export async function enqueueUserMessage(sessionId: string, requestId: string, content: string): Promise<boolean>
 ```
 
-### 8.5 SSE 事件扩展
+### 8.5 RunStatus 类型扩展
 
-Runner 运行状态通过 SSE 推送：
+当前 `RunStatus` 接口仅有 `runId`、`status`、`errorMessage`、`updatedAt`。需与 Proto 对齐新增：
 
 ```typescript
-interface RunnerSSEEvent {
-  type: 'run_started' | 'run_completed' | 'run_cancelled'
-  request_id: string
-  agent_name: string
-  started_at: string
-  duration_ms: number
-  event_count: number
+export interface RunStatus {
+  runId: string;
+  status: RunStatusValue;
+  errorMessage: string;
+  updatedAt: string;
+  // 新增
+  invocationId: string;
+  agentName: string;
+  startedAt: string;
+  lastEventAt: string;
+  eventCount: number;
 }
 ```
-
----
-
-## 九、实现计划
-
-| 阶段 | 内容 | 涉及文件 |
-|------|------|---------|
-| P1 | ManagedRunner + Cancel/RunStatus | `internal/agent/trpc_runtime.go`, `api/kratos/chat/v1/chat.proto` |
-| P2 | AgentFactory + AgentLookup | `internal/agent/factory.go`（新建）, `internal/agent/lookup.go`（新建） |
-| P3 | SessionIngestor | `internal/agent/ingestor.go`（新建） |
-| P4 | AwaitUserReplyRouting | `internal/agent/await_user_reply.go`（新建） |
-| P5 | PluginManager 集成 | `internal/agent/trpc_runtime.go` |
-| P6 | ArtifactService 集成 | `internal/agent/trpc_runtime.go` |
-| P7 | SteerableRunner + EnqueueUserMessage | `internal/agent/trpc_runtime.go` |
-| P8 | RalphLoop | `internal/agent/ralph_loop.go`（新建） |
-| P9 | 多 Runner 实例 + RunnerManager | `internal/agent/runner_manager.go`（新建） |
-| P10 | Web 前端 ChatRunnerStatus + ChatEnqueueMessage | `web/src/features/chat/components/` |
-
----
-
-## 十、验收标准
-
-1. Runner 可按名称动态创建 Agent（AgentFactory）
-2. Runner 执行中回调正确触发（PluginManager）
-3. Agent 可通过 ArtifactService 管理制品
-4. Session 完成后自动摄入到外部记忆平台（SessionIngestor）
-5. Agent 可指定下一轮用户消息路由（AwaitUserReplyRouting）
-6. 可通过 API 查询运行状态和取消运行（ManagedRunner）
-7. 运行中可追加用户消息（SteerableRunner）
-8. TransferTool 可通过名称查找目标 Agent（AgentLookup）
-9. 多个 Runner 实例可并行运行（RunnerManager）
-10. RalphLoop 支持迭代执行和验证（RalphLoop）
-11. Web 前端显示运行状态、支持取消和追加消息

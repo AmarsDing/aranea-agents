@@ -11,7 +11,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	memtrpc "aranea-agents/internal/memory/trpc"
-	servmetrics "aranea-agents/internal/server"
+	servmetrics "aranea-agents/internal/metrics"
 
 	trpcmemory "trpc.group/trpc-go/trpc-agent-go/memory"
 )

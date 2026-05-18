@@ -1,7 +1,7 @@
 import type { PlatformResource } from "../platform/api";
 
 export type CronScheduleType = "interval" | "cron" | "once";
-export type CronTaskStatus = "active" | "paused" | "failed" | string;
+export type CronTaskStatus = "active" | "paused" | "dead" | string;
 export type CronRunStatus = "pending" | "success" | "failure" | "skipped" | string;
 
 export type CronTaskConfig = {
@@ -13,6 +13,7 @@ export type CronTaskConfig = {
   run_at?: string;
   timezone?: string;
   message?: string;
+  retry_max_attempts?: number;
 };
 
 export type CronFailureSummary = {

@@ -6,184 +6,175 @@
 
 ## 1. 现状分析
 
-项目已有基础的 Runner 封装：
-- `internal/agent/trpc_runtime.go`：`NewTRPCRunner` + `RunTRPCUserTurn`
-- 支持基本的 Agent 运行和事件流
+### 已有能力
 
-**缺失能力**：
-1. 无 AgentFactory（动态 Agent 创建）
-2. 无 PluginManager（插件管理）
-3. 无 ArtifactService（制品服务）
-4. 无 SessionIngestor（Session 摄入器）
-5. 无 AwaitUserReplyRouting（用户回复路由）
-6. 无 Status/Cancel（运行状态/取消）
-7. 无 AgentLookup（Agent 查找）
+| 能力 | 状态 | 证据 |
+|------|------|------|
+| Agent 运行 + 事件流 | ✅ | `NewTRPCRunner` 返回 `ManagedRunner` |
+| 运行状态查询 | ✅ | `GetRunStatus` RPC + `runStatuses` sync.Map |
+| 停止/取消运行 | ✅ | `StopGeneration` RPC + `CancelRun` + `CancelTRPCRun` |
+| 待执行队列 | ✅ | `pendingQueue` + `processPendingQueue` |
+| 插件注入 | ✅ | `plugintrpc.Runtime` + `WithPlugins` 传入 Runner |
+| AwaitUserReply（Service 层） | ✅ | `serviceawaitreply.ServiceTool` + `AwaitUserReply` RPC |
+| ArtifactService 适配器 | ✅ | `internal/artifact/trpc/service.go` 实现 `trpcartifact.Service` |
+| SteerableRunner 支持 | ✅ | `EnqueueTRPCUserMessage` 辅助函数 |
+| BuildCache LRU + TTL | ✅ | `cache.go` 已有 TTL 过期清理 |
 
----
+### 缺失能力
 
-## 2. trpc 框架参照
-
-```
-pkg/trpc-agent-go/runner/
-├── runner.go              # Runner 接口和实现
-├── await_user_reply.go    # AwaitUserReply 路由
-├── ralph_loop.go          # 排队消息处理
-└── agent_lookup.go        # Agent 查找
-```
-
-### Runner 接口
-
-```go
-type Runner interface {
-    Run(ctx context.Context, userID, sessionID string, message model.Message, opts ...agent.RunOption) (<-chan *event.Event, error)
-}
-```
-
-### Runner 构造选项
-
-```go
-func WithSessionService(service session.Service) Option
-func WithMemoryService(service memory.Service) Option
-func WithSessionIngestor(ingestor session.Ingestor) Option
-func WithArtifactService(service artifact.Service) Option
-func WithAgent(name string, ag agent.Agent) Option
-func WithAgentFactory(name string, factory AgentFactory) Option
-func WithPlugins(plugins ...plugin.Plugin) Option
-func WithAwaitUserReplyRouting(enabled bool) Option
-```
-
-### AgentFactory
-
-```go
-type AgentFactory func(ctx context.Context, ro agent.RunOptions) (agent.Agent, error)
-```
-
-当 Runner 需要按名称查找 Agent 时，先查注册的 Agent 实例，再查 AgentFactory。
-
-### SessionIngestor
-
-```go
-type Ingestor interface {
-    IngestSession(ctx context.Context, sess *session.Session) error
-}
-```
-
-Session 完成后自动摄入到外部长期记忆平台（如 Mem0）。
+| 能力 | 状态 | 说明 |
+|------|------|------|
+| AgentFactory 动态创建 | ❌ | Runner 层面未注册 `WithAgentFactory` |
+| SessionIngestor | ❌ | 未实现 `WithSessionIngestor`，Session 完成后无外部记忆摄入 |
+| AwaitUserReplyRouting（框架层） | ❌ | 未启用 `WithAwaitUserReplyRouting`，当前路由由 Service 层自行处理 |
+| AgentLookup | ❌ | Runner 未维护 Agent 注册表，TransferTool 无法按名称查找 |
+| RalphLoop | ❌ | 未配置 `WithRalphLoop`，无迭代验证循环 |
+| ArtifactService 注入 Runner | ❌ | 适配器已实现但未通过 `WithArtifactService` 注入 Runner |
+| RunnerRegistry / RunnerManager | ❌ | 无多 Runner 实例管理，当前每次请求创建临时 Runner |
+| CancelRun / EnqueueUserMessage RPC | ❌ | Proto 仅有 `StopGeneration`，缺少细粒度的 `CancelRun` 和 `EnqueueUserMessage` RPC |
 
 ---
 
-## 3. 需求清单
+## 2. 需求清单
 
-### 3.1 AgentFactory 动态创建
+### 2.1 AgentFactory 动态创建
 
-**需求**：Runner 支持按名称动态创建 Agent
+**用户故事**：作为平台用户，我希望 Team/Swarm 中的 Agent 可以按名称动态创建，无需在启动时预注册所有 Agent 实例。
 
-**实现要点**：
-- 在 `NewTRPCRunner` 中通过 `WithAgentFactory` 注册
+**功能规格**：
+- Runner 支持通过 `WithAgentFactory` 注册 Agent 工厂
+- 当 Runner 按名称查找 Agent 时，先查注册的 Agent 实例，再查 AgentFactory
 - AgentFactory 根据请求参数（模型、prompt 等）动态构建 Agent
 - 支持按 Agent Key 查找
 
-**验收标准**：Runner 可按名称动态创建 Agent
+**验收标准**：
+1. Runner 可按名称动态创建 Agent
+2. 查找顺序：已注册实例 → AgentFactory → 未找到
 
-### 3.2 PluginManager 集成
+### 2.2 PluginManager 集成
 
-**需求**：Runner 支持注入 PluginManager
+**用户故事**：作为平台管理员，我希望 Runner 执行过程中插件回调能正确触发，实现审计、拦截、增强等能力。
 
-**实现要点**：
-- 在 `NewTRPCRunner` 中通过 `WithPlugins` 注入
-- PluginManager 管理 Agent/Model/Tool 三层回调
-- OnEvent 事件回调
+**功能规格**：
+- Runner 通过 `WithPlugins` 接收插件列表
+- 插件在 Agent/Model/Tool 三层回调点触发
+- 插件可通过 `plugintrpc.Runtime` 热加载
 
-**验收标准**：Runner 执行中回调正确触发
+**验收标准**：
+1. Runner 执行中插件回调正确触发
+2. 插件热加载后下次 Runner 创建生效
 
-### 3.3 ArtifactService 集成
+### 2.3 ArtifactService 集成
 
-**需求**：Runner 支持注入 ArtifactService
+**用户故事**：作为 Agent 开发者，我希望 Agent 在执行过程中可以保存和加载制品（文件、数据等），实现持久化输出。
 
-**实现要点**：
-- 在 `TRPCRunnerDeps` 中增加 `ArtifactService`
-- 通过 `WithArtifactService` 注入
-- Agent 执行中可保存/加载制品
+**功能规格**：
+- Runner 通过 `WithArtifactService` 注入制品服务
+- Agent 执行中可调用制品工具保存/加载制品
+- 制品按 Session 隔离，支持版本管理
 
-**验收标准**：Agent 可通过 ArtifactService 管理制品
+**验收标准**：
+1. Agent 可通过 ArtifactService 保存制品
+2. Agent 可通过 ArtifactService 加载制品
+3. 制品按 Session 隔离
 
-### 3.4 SessionIngestor 集成
+### 2.4 SessionIngestor 集成
 
-**需求**：Session 完成后自动摄入到外部记忆平台
+**用户故事**：作为平台管理员，我希望 Session 完成后自动摄入到外部长期记忆平台，使 Agent 后续对话可以利用历史会话知识。
 
-**实现要点**：
-- 在 `TRPCRunnerDeps` 中增加 `SessionIngestor`
-- 通过 `WithSessionIngestor` 注入
+**功能规格**：
+- Runner 通过 `WithSessionIngestor` 注入摄入器
 - Session 完成后自动调用 Ingestor
-- 可对接 Mem0 等外部平台
+- 可对接 Mem0 等外部记忆平台
+- 摄入失败不阻塞主流程
 
-**验收标准**：Session 完成后自动摄入到外部记忆平台
+**验收标准**：
+1. Session 完成后自动摄入到外部记忆平台
+2. 摄入失败不影响 Agent 运行结果
 
-### 3.5 AwaitUserReplyRouting
+### 2.5 AwaitUserReplyRouting（框架层）
 
-**需求**：支持用户回复路由
+**用户故事**：作为 Agent 开发者，我希望 Agent 调用 `await_user_reply` 后，下一轮用户消息能自动路由到该 Agent，无需前端手动指定。
 
-**实现要点**：
-- 在 `NewTRPCRunner` 中通过 `WithAwaitUserReplyRouting(true)` 启用
-- Agent 调用 `await_user_reply` 工具时记录路由
-- 下一轮用户消息自动路由到指定 Agent
+**功能规格**：
+- Runner 通过 `WithAwaitUserReplyRouting(true)` 启用框架层路由
+- Agent 调用 `await_user_reply` 工具时在 Session 状态中记录路由
+- 下一轮用户消息到达时，Runner 自动从 Session 状态读取路由并选择对应 Agent
+- 路由消费后自动清除（一次性路由）
 
-**验收标准**：Agent 可指定下一轮用户消息路由
+**验收标准**：
+1. Agent 调用 `await_user_reply` 后，下一轮用户消息自动路由到该 Agent
+2. 路由消费后自动清除
 
-### 3.6 Status/Cancel
+### 2.6 运行控制 API 完善
 
-**需求**：支持运行状态查询和取消
+**用户故事**：作为前端用户，我希望可以通过 API 查询运行状态、取消运行、在运行中追加消息，实现更精细的运行控制。
 
-**实现要点**：
-- Runner 维护活跃运行表
-- `Status(requestID)` 返回运行状态
-- `Cancel(requestID)` 取消运行
+**功能规格**：
+- `CancelRun` RPC：按 requestID 取消指定运行
+- `EnqueueUserMessage` RPC：在运行中的 Agent 工具调用边界后注入用户消息
+- `GetRunStatus` RPC：查询运行状态（已有，需与 ManagedRunner.RunStatus 对齐）
 
-**验收标准**：可通过 API 查询运行状态和取消运行
+**验收标准**：
+1. 可通过 API 按 requestID 取消运行
+2. 可通过 API 在运行中追加用户消息
+3. 运行状态查询返回 ManagedRunner 的完整状态信息
 
-### 3.7 AgentLookup
+### 2.7 AgentLookup
 
-**需求**：支持按名称查找 Agent
+**用户故事**：作为 Agent 开发者，我希望 Team/Swarm 中的 TransferTool 可以通过 Agent 名称查找目标 Agent，实现 Agent 间协作。
 
-**实现要点**：
-- Runner 维护 Agent 注册表
+**功能规格**：
+- Runner 维护 Agent 注册表（名称 → Agent 实例）
 - `WithAgent(name, agent)` 注册 Agent 实例
 - `WithAgentFactory(name, factory)` 注册 Agent 工厂
-- Team/Swarm 中 TransferTool 通过 AgentLookup 查找目标 Agent
+- TransferTool 通过 AgentLookup 查找目标 Agent
 
-**验收标准**：TransferTool 可通过名称查找目标 Agent
+**验收标准**：
+1. TransferTool 可通过名称查找目标 Agent
+2. 查找支持已注册实例和工厂回退
 
-### 3.8 多 Runner 实例
+### 2.8 RalphLoop
 
-**需求**：支持多个 Runner 实例并行
+**用户故事**：作为 Agent 开发者，我希望 Agent 可以在验证循环中反复执行，直到满足完成条件或达到最大迭代次数，提高任务完成质量。
 
-**实现要点**：
+**功能规格**：
+- Runner 通过 `WithRalphLoop` 配置迭代验证循环
+- 支持完成承诺（CompletionPromise）：Agent 输出包含特定标记时停止
+- 支持验证命令（VerifyCommand）：执行外部命令验证任务完成
+- 支持最大迭代次数限制
+- 验证失败时将反馈注入下一轮迭代
+
+**验收标准**：
+1. Agent 在验证循环中反复执行直到满足完成条件
+2. 达到最大迭代次数后自动停止
+3. 验证失败反馈注入下一轮迭代
+
+### 2.9 多 Runner 实例
+
+**用户故事**：作为平台管理员，我希望多个 Agent/Team 可以拥有独立的 Runner 实例并行运行，互不干扰。
+
+**功能规格**：
 - 每个 Agent/Team 可有独立的 Runner 实例
 - Runner 实例间共享 Session/Memory 服务
 - Runner 实例间不共享 Agent 注册表
+- 支持 Runner 的注册、查找、注销
 
-**验收标准**：多个 Runner 实例可并行运行
-
----
-
-## 4. 涉及文件
-
-| 文件 | 操作 | 说明 |
-|------|------|------|
-| `internal/agent/trpc_runtime.go` | 修改 | 完善 Runner 构造 |
-| `internal/agent/trpc_factory.go` | 新建 | AgentFactory 实现 |
-| `internal/plugin/trpc/manager.go` | 新建 | PluginManager |
-| `internal/runtimedeps/deps.go` | 修改 | 增加 ArtifactService/Ingestor |
+**验收标准**：
+1. 多个 Runner 实例可并行运行
+2. Runner 实例间 Agent 注册表隔离
+3. Runner 实例可注册和注销
 
 ---
 
-## 5. 验收标准总览
+## 3. 验收标准总览
 
 1. Runner 可按名称动态创建 Agent
-2. Runner 执行中回调正确触发
+2. Runner 执行中插件回调正确触发
 3. Agent 可通过 ArtifactService 管理制品
 4. Session 完成后自动摄入到外部记忆平台
 5. Agent 可指定下一轮用户消息路由
-6. 可通过 API 查询运行状态和取消运行
+6. 可通过 API 查询运行状态、取消运行、追加消息
 7. TransferTool 可通过名称查找目标 Agent
-8. 多个 Runner 实例可并行运行
+8. Agent 可在验证循环中反复执行直到满足完成条件
+9. 多个 Runner 实例可并行运行

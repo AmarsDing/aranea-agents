@@ -42,20 +42,20 @@ func toProtoCronTask(t biz.CronTask) *v1.CronTask {
 	}
 }
 
-func patchFromProtoCronTask(pb *v1.CronTask) biz.CronTask {
+func patchFromProtoCronTask(pb *v1.CronTask) biz.CronTaskPatch {
 	if pb == nil {
-		return biz.CronTask{}
+		return biz.CronTaskPatch{}
 	}
-	return biz.CronTask{
-		TaskKey:      pb.GetTaskKey(),
-		Name:         pb.GetName(),
-		Description:  pb.GetDescription(),
-		Status:       pb.GetStatus(),
-		Enabled:      pb.GetEnabled(),
-		SortOrder:    int(pb.GetSortOrder()),
-		AgentID:      pb.GetAgentId(),
-		ConfigJSON:   pb.GetConfigJson(),
-		MetadataJSON: pb.GetMetadataJson(),
+	return biz.CronTaskPatch{
+		TaskKey:      biz.StrPtr(pb.GetTaskKey()),
+		Name:         biz.StrPtr(pb.GetName()),
+		Description:  biz.StrPtr(pb.GetDescription()),
+		Status:       biz.StrPtr(pb.GetStatus()),
+		Enabled:      biz.BoolPtr(pb.GetEnabled()),
+		SortOrder:    biz.IntPtr(int(pb.GetSortOrder())),
+		AgentID:      biz.StrPtr(pb.GetAgentId()),
+		ConfigJSON:   biz.StrPtr(pb.GetConfigJson()),
+		MetadataJSON: biz.StrPtr(pb.GetMetadataJson()),
 	}
 }
 

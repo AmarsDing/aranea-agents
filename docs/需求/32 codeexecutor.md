@@ -1,285 +1,170 @@
-# M14: CodeExecutor 代码执行 — 详细需求
+# M14: CodeExecutor 代码执行 — 需求文档
 
-> 对标 `pkg/trpc-agent-go/codeexecutor` 包，实现安全的代码执行环境。
->
-> **2026-05-17 现状对齐**：
-> - ✅ `internal/agent/codeexecutor/executor.go` 已实现 Docker Sandbox 执行器（含 timeout / 资源限制 / artifact 收集 / 测试 `executor_test.go`）。
-> - ❌ **skill 路径仍使用 `internal/skill/trpc/executor.go` 中的 `codeexecutor/local`**；Docker 执行器未替换为默认。
-> - ❌ E2B 沙箱、Jupyter 内核、Interactive 模式、WorkspaceRegistry 仍未实现。
->
-> 后续以 `guides/execution-plan.md` §3 EP-BIZ-04 为准。运维要点见下方 §6。
+> **模块**：CodeExecutor 代码执行
+> **对标**：`pkg/trpc-agent-go/codeexecutor` 包
+> **设计**：[32 codeexecutor.design.md](./32%20codeexecutor.design.md)
+> **开发计划**：[32-codeexecutor-development.md](./32-codeexecutor-development.md)
 
 ---
 
-## 1. 现状分析（已过期，保留参考）
+## 1. 模块定位
 
-项目已有 `internal/skill/trpc/executor.go`，使用 `codeexecutor/local` 执行器：
-- 仅支持本地执行
-- 无 E2B 沙箱
-- 无 Jupyter 内核
-- 无 Container 隔离
-- 无 Interactive 模式
-- 无 WorkspaceRegistry
-- 无产出物自动收集
+CodeExecutor 为 Agent 提供安全的代码执行环境，使模型生成的代码可在隔离沙箱中运行并返回结果。支持多种执行后端（本地子进程、Docker 容器、E2B 云端沙箱、Jupyter 内核），覆盖从开发调试到生产隔离的全场景需求。
 
 ---
 
-## 2. trpc 框架参照
+## 2. 用户故事
 
-```
-pkg/trpc-agent-go/codeexecutor/
-├── codeexecutor.go    # CodeExecutor 接口：ExecuteCode + CodeBlockDelimiter
-├── artifacts.go       # 产出物收集
-├── manifest.go        # 执行清单
-├── metadata.go        # 执行元数据
-├── mime.go            # MIME 类型映射
-├── registry.go        # WorkspaceRegistry
-├── workspace.go       # 工作区管理
-├── env_provider.go    # 环境变量提供者
-├── interactive.go     # Interactive 模式
-├── local/             # 本地执行器
-│   └── local.go
-├── e2b/               # E2B 沙箱执行器
-│   └── e2b.go
-├── jupyter/           # Jupyter 内核执行器
-│   └── ...
-└── container/         # 容器执行器
-    └── ...
-```
+### US-1：安全代码执行
 
-### CodeExecutor 接口
+**作为** Agent 运维者，
+**我希望** 模型生成的代码在隔离沙箱中执行，
+**以便** 恶意或异常代码不会影响宿主系统。
 
-```go
-type CodeExecutor interface {
-    ExecuteCode(context.Context, CodeExecutionInput) (CodeExecutionResult, error)
-    CodeBlockDelimiter() CodeBlockDelimiter
-}
+### US-2：多后端选择
 
-type CodeExecutionInput struct {
-    CodeBlocks  []CodeBlock
-    ExecutionID string
-}
+**作为** Agent 配置者，
+**我希望** 为不同 Agent 选择不同的代码执行后端，
+**以便** 开发环境用轻量本地执行，生产环境用 Docker/E2B 隔离执行。
 
-type CodeExecutionResult struct {
-    Output      string
-    OutputFiles []File
-}
-```
+### US-3：交互式代码执行
+
+**作为** 数据分析用户，
+**我希望** 代码执行环境可跨轮保持状态（变量、已导入模块等），
+**以便** 进行多轮交互式数据分析而无需每次重新初始化。
+
+### US-4：产出物自动收集
+
+**作为** Agent 使用者，
+**我希望** 代码执行产生的文件（图表、数据等）自动保存为 Artifact，
+**以便** 在对话中引用和下载执行产出物。
+
+### US-5：工作区文件管理
+
+**作为** Agent 运维者，
+**我希望** 代码执行前可准备输入文件、执行后可收集输出文件，
+**以便** Agent 能处理需要文件输入输出的复杂任务。
+
+### US-6：执行器状态可观测
+
+**作为** 运维人员，
+**我希望** 查看各执行器的可用状态和执行历史，
+**以便** 监控系统健康和排查问题。
 
 ---
 
-## 3. 需求清单
+## 3. 功能规格
 
-### 3.1 E2B 沙箱执行器
+### 3.1 执行后端
 
-**需求**：支持 E2B 云端沙箱执行
+系统应支持以下执行后端，按安全级别递增排列：
 
-**实现要点**：
-- 集成 trpc `codeexecutor/e2b` 包
-- 配置 E2B API Key
-- 代码在云端沙箱中执行，结果返回
+| 后端类型 | 隔离级别 | 网络访问 | 适用场景 |
+|----------|----------|----------|----------|
+| `local` | 无隔离（子进程） | 有 | 开发调试 |
+| `docker` | 容器隔离 | 无（`--network none`） | 生产环境 |
+| `e2b` | 云端沙箱 | 受控 | 云端隔离执行 |
+| `jupyter` | 内核隔离 | 有 | 交互式数据分析 |
 
-**验收标准**：代码在 E2B 沙箱中安全执行
+### 3.2 支持的语言
 
-### 3.2 Jupyter 内核执行器
-
-**需求**：支持 Jupyter 内核执行
-
-**实现要点**：
-- 集成 trpc `codeexecutor/jupyter` 包
-- 连接 Jupyter 服务器
-- 支持 Interactive 模式（保持内核状态）
-
-**验收标准**：代码在 Jupyter 内核中执行，状态可保持
-
-### 3.3 Container 容器执行器
-
-**需求**：支持 Docker 容器隔离执行
-
-**实现要点**：
-- 集成 trpc `codeexecutor/container` 包
-- 拉取执行镜像
-- 在容器中执行代码
-
-**验收标准**：代码在 Docker 容器中隔离执行
-
-### 3.4 WorkspaceRegistry
-
-**需求**：管理工作区文件系统
-
-**实现要点**：
-- 集成 trpc `codeexecutor/registry.go`
-- 工作区文件自动管理
-- 执行前准备文件，执行后收集产出物
-
-**验收标准**：工作区文件正确准备和收集
-
-### 3.5 Interactive 模式
-
-**需求**：支持交互式代码执行
-
-**实现要点**：
-- 集成 trpc `codeexecutor/interactive.go`
-- 保持执行环境状态
-- 支持多轮代码执行
-
-**验收标准**：代码执行环境可跨轮保持状态
-
-### 3.6 产出物自动收集
-
-**需求**：代码执行产出物自动保存为 Artifact
-
-**实现要点**：
-- `CodeExecutionResult.OutputFiles` 自动保存
-- 通过 ArtifactService 持久化
-
-**验收标准**：代码执行产生的文件自动保存为 Artifact
-
-### 3.7 执行器可配置
-
-**需求**：Agent 级别可配置执行器类型
-
-**实现要点**：
-- 在 `AgentRuntimeSetting` 中增加 `code_executor_type` 字段
-- 可选值：`local`/`e2b`/`jupyter`/`container`
-- 在 `BuildTRPCLLMAgent` 中根据配置选择执行器
-
-**验收标准**：不同 Agent 可配置不同的代码执行器
-
----
-
-## 4. 涉及文件
-
-| 文件 | 操作 | 说明 |
-|------|------|------|
-| `internal/skill/trpc/executor.go` | 修改 | 扩展支持多种执行器 |
-| `internal/codeexecutor/trpc/e2b.go` | 新建 | E2B 执行器适配 |
-| `internal/codeexecutor/trpc/jupyter.go` | 新建 | Jupyter 执行器适配 |
-| `internal/codeexecutor/trpc/container.go` | 新建 | Container 执行器适配 |
-| `internal/agent/trpc_build.go` | 修改 | 根据配置选择执行器 |
-| `internal/biz/agent_types.go` | 修改 | 增加 code_executor_type 字段 |
-
----
-
-## 5. 验收标准总览
-
-1. 支持 Local/E2B/Jupyter/Container 四种执行器
-2. 代码在沙箱中安全执行
-3. 工作区文件正确准备和收集
-4. 交互式执行环境可跨轮保持状态
-5. 产出物自动保存为 Artifact
-6. 执行器类型可在 Agent 设置中配置
-
----
-
-## 6. 运维指南
-
-> 原 `guides/codeexecutor.md` 内容，2026-05-17 合入。
-
-CodeExecutor 模块提供模型生成代码的沙箱执行。支持两种后端：`local` 子进程执行器（开发用）和 `docker` 后端（生产隔离，含资源限制）。
-
-### 6.1 架构
-
-```
-trpc_build.go
-   └── codeexecutor.Executor (interface)
-           ├── LocalExecutor   (direct subprocess, no isolation)
-           └── DockerExecutor  (one-shot container, resource limits)
-                    └── artifact dir → Artifact service (T34)
-```
-
-### 6.2 组件
-
-| 组件 | 路径 |
-|------|------|
-| Executor 接口 + 实现 | `internal/agent/codeexecutor/executor.go` |
-
-### 6.3 配置
-
-在 `agent.codeexecutor.kind` 中：
-
-| 值 | 后端 | 说明 |
-|----|------|------|
-| `local` | `LocalExecutor` | 默认。在宿主进程环境中运行代码。 |
-| `docker` | `DockerExecutor` | 需要宿主机安装 Docker。 |
-
-#### Docker 配置字段
-
-```go
-DockerConfig{
-    Image:          "python:3.11-slim",
-    Network:        "none",
-    CPUQuota:       50000,
-    MemoryBytes:    256 * 1024 * 1024,
-    TmpSize:        "128m",
-    PullPolicy:     "missing",
-    WorkspaceMount: "",
-}
-```
-
-### 6.4 支持的语言
-
-| 语言 | Runner |
+| 语言 | 标识名 |
 |------|--------|
-| `python` / `python3` | `python3` |
-| `javascript` / `js` / `node` | `node` |
-| `bash` / `sh` / `shell` | `bash` |
-| `ruby` | `ruby` |
+| Python | `python` / `python3` |
+| JavaScript | `javascript` / `js` / `node` |
+| Bash | `bash` / `sh` / `shell` |
+| Ruby | `ruby` |
 
-### 6.5 Docker 执行流程
+### 3.3 执行安全
 
-1. 将模型生成的代码写入临时文件。
-2. 创建输出目录用于制品。
-3. 启动一次性容器（`--rm`）：
-   - 代码文件只读绑定挂载到 `/workspace/main.<ext>`。
-   - 输出目录可写绑定挂载到 `/workspace/out`。
-   - 可选宿主工作区只读挂载到 `/data`。
-   - `--read-only` 根文件系统，`/tmp` 为 `tmpfs`。
-   - 网络设为 `none`（无互联网访问）。
-   - 内存硬限制 + CPU 配额。
-4. 捕获 stdout、stderr 和 `/workspace/out` 内容。
-5. 自动移除容器（`--rm`）。
+Docker 后端必须满足以下安全约束：
 
-### 6.6 执行结果
-
-```go
-type Result struct {
-    Stdout      string
-    Stderr      string
-    ExitCode    int
-    TimedOut    bool
-    OOM         bool
-    ArtifactDir string
-}
-```
-
-`ArtifactDir` 中的文件应由调用方上传到 Artifact 服务。
-
-### 6.7 安全
-
-| 控制 | 实现 |
+| 约束 | 说明 |
 |------|------|
-| 无网络 | `--network none` |
-| 只读根文件系统 | `--read-only` |
-| 内存上限 | `--memory` + `--memory-swap`（相等 → 禁用 swap） |
-| CPU 上限 | `--cpus=0.5` |
-| 临时容器 | `--rm` — 运行后移除容器 |
-| 超时 | `context.WithTimeout` + `--stop-timeout` |
+| 无网络 | 容器禁止网络访问 |
+| 只读根文件系统 | 容器根文件系统只读 |
+| 内存上限 | 硬限制容器内存使用 |
+| CPU 上限 | 限制容器 CPU 配额 |
+| 超时控制 | 执行超时自动终止 |
+| 临时容器 | 执行完毕自动移除容器 |
 
-### 6.8 Prometheus 指标
+### 3.4 Agent 级别执行器配置
 
-| 指标 | 标签 | 说明 |
-|------|------|------|
-| `aranea_codeexec_runs_total` | `kind, status` | 总执行次数（success/error/timeout/oom） |
-| `aranea_codeexec_duration_seconds` | `kind` | 执行时长直方图 |
-| `aranea_codeexec_oom_total` | `kind` | OOM kill 计数 |
+- Agent 可独立配置代码执行后端类型
+- 未配置时使用系统默认后端
+- 配置项：`code_executor_type`，可选值 `local` / `docker` / `e2b` / `jupyter`
+- 环境变量 `CODE_EXECUTOR_BACKEND` 作为全局回退
 
-### 6.9 回退
+### 3.5 交互式执行
 
-如果 Docker 不可用，应用层应回退到 `LocalExecutor` 并发出告警。未来：`kind=firecracker` 或 `kind=nsjail` 用于更轻量的 VM（S7+ 候选）。
+- 执行环境可跨多轮对话保持状态
+- 支持向运行中的程序发送输入
+- 支持查询运行中程序的输出
+- 支持终止运行中的程序
 
-### 6.10 运维验收标准
+### 3.6 工作区管理
 
-- 模型生成的 Python 脚本 → Docker 容器执行 → stdout + `/workspace/out` 制品返回。
-- 超时 → `Result.TimedOut=true`；`codeexec_runs_total{status="timeout"}` 递增。
-- 内存超限 → `Result.OOM=true`；`codeexec_oom_total` 递增。
+- 执行前可准备输入文件到工作区
+- 支持从 Artifact、宿主路径、工作区相对路径导入文件
+- 执行后可按 glob 模式收集输出文件
+- 工作区可按 Session 复用
+
+### 3.7 产出物收集
+
+- 代码执行产生的文件自动识别
+- 产出物自动保存为 Artifact
+- 支持配置产出物收集规则（glob 模式、文件数量限制、大小限制）
+
+### 3.8 可观测性
+
+- 执行次数、状态（成功/失败/超时/OOM）计数
+- 执行时长直方图
+- OOM Kill 事件计数
+- 执行器可用状态查询
+
+---
+
+## 4. 验收标准
+
+### 4.1 基础执行
+
+- [ ] 代码可在 Local 后端执行并返回 stdout/stderr
+- [ ] 代码可在 Docker 后端隔离执行并返回 stdout/stderr
+- [ ] 不支持的语言返回明确错误
+- [ ] 执行超时返回超时标识
+
+### 4.2 Docker 安全
+
+- [ ] Docker 执行的容器无网络访问
+- [ ] Docker 执行的容器根文件系统只读
+- [ ] 内存超限返回 OOM 标识
+- [ ] 执行完毕容器自动移除
+
+### 4.3 多后端支持
+
+- [ ] E2B 后端可执行代码并返回结果
+- [ ] Jupyter 后端可执行代码并返回结果
+- [ ] Container 后端可执行代码并返回结果
+
+### 4.4 Agent 配置
+
+- [ ] Agent 可配置执行后端类型
+- [ ] 未配置时使用系统默认后端
+- [ ] 配置变更即时生效（新会话）
+
+### 4.5 交互式执行
+
+- [ ] 执行环境可跨轮保持状态
+- [ ] 可向运行中程序发送输入
+- [ ] 可终止运行中程序
+
+### 4.6 工作区与产出物
+
+- [ ] 执行前可准备输入文件
+- [ ] 执行后可按规则收集输出文件
+- [ ] 产出物自动保存为 Artifact
+
+### 4.7 可观测性
+
+- [ ] Prometheus 指标正确上报
+- [ ] 执行器可用状态可查询

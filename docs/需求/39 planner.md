@@ -6,136 +6,86 @@
 
 ## 1. 现状分析
 
-项目在 `internal/agent/trpc_build.go` 中仅集成了 `trpcbuiltin.New(trpcbuiltin.Options{})`：
-- 当 `DialogMode == "plan"` 时启用 BuiltinPlanner
-- 无 ReActPlanner
-- 无 A2UIPlanner
-- 无自定义规划 prompt
-- 无规划结果的结构化处理
+项目已集成 BuiltinPlanner、ReActPlanner、A2UIPlanner 三种规划器的运行时选择逻辑，通过 `planner_kind` 字段和 `dialogMode` 参数在 Agent 构建时选择对应规划器。当前存在以下不足：
+
+- 规划器参数不可配置（BuiltinPlanner 的 reasoning_effort/thinking_enabled/thinking_tokens、A2UIPlanner 的 Schema 等均使用默认值）
+- `planner_kind` 字段未持久化到数据库（Ent Schema 缺失，数据层映射缺失）
+- 前端无规划模式配置 UI
+- Chat 页面无 ReAct 规划步骤展示和 A2UI 渲染预览
 
 ---
 
-## 2. trpc 框架参照
+## 2. 需求清单
 
-```
-pkg/trpc-agent-go/planner/
-├── planner.go              # Planner 接口：BuildPlanningInstruction + ProcessPlanningResponse
-├── builtin/
-│   ├── builtin_planner.go  # BuiltinPlanner：简单规划指令注入
-│   └── builtin_planner_test.go
-├── react/
-│   ├── react_planner.go    # ReActPlanner：PLANNING/REASONING/ACTION/FINAL_ANSWER 标签
-│   └── react_planner_test.go
-└── a2ui/
-    ├── a2ui.go             # A2UIPlanner：A2UI 协议规划
-    ├── a2ui_test.go
-    ├── options.go          # A2UI 选项
-    └── schema.go           # A2UI Schema 定义
-```
+### 2.1 规划模式可配置
 
-### Planner 接口
+**用户故事**：作为平台管理员，我希望为不同 Agent 配置不同的规划模式，以便 Agent 根据任务类型选择合适的规划策略。
 
-```go
-type Planner interface {
-    BuildPlanningInstruction(ctx context.Context, invocation *agent.Invocation, llmRequest *model.Request) string
-    ProcessPlanningResponse(ctx context.Context, invocation *agent.Invocation, response *model.Response) *model.Response
-}
-```
+**功能规格**：
+- Agent 级别可配置规划模式，可选值：`""`（默认，兼容旧行为）、`builtin`、`react`、`a2ui`
+- 配置通过 `AgentRuntimeSettings.planner_kind` 字段持久化
+- 兼容现有 `DialogMode == "plan"` 的 BuiltinPlanner 行为（planner_kind 为空时回退到 dialogMode 判断）
 
-### BuiltinPlanner
+**验收标准**：不同 Agent 可配置不同的规划模式，配置持久化且重启后生效
 
-简单规划：注入一段系统指令，让 LLM 在回复前先思考。不修改 LLM 响应。
+### 2.2 BuiltinPlanner 参数可配置
 
-### ReActPlanner
+**用户故事**：作为平台管理员，我希望配置 BuiltinPlanner 的推理参数（reasoning_effort、thinking_enabled、thinking_tokens），以便针对不同思维模型优化推理效果。
 
-结构化规划：使用标签约束 LLM 输出格式：
-- `/*PLANNING*/` — 初始规划
-- `/*REASONING*/` — 推理步骤
-- `/*ACTION*/` — 执行动作
-- `/*REPLANNING*/` — 重新规划
-- `/*FINAL_ANSWER*/` — 最终答案
+**功能规格**：
+- `reasoning_effort`：推理力度，OpenAI o系列可选 low/medium/high，DeepSeek v4 可选 high/max
+- `thinking_enabled`：是否启用思维模式，适用于 DeepSeek v4 / Claude / Gemini
+- `thinking_tokens`：思维 Token 长度，适用于 Claude / Gemini
 
-`ProcessPlanningResponse` 会解析标签，提取规划内容。
+**验收标准**：BuiltinPlanner 的推理参数可在 Agent 设置中配置，参数正确注入到 LLM 请求
 
-### A2UIPlanner
+### 2.3 A2UIPlanner 参数可配置
 
-A2UI 协议规划：生成符合 A2UI 规范的结构化输出，用于 UI 交互场景。
+**用户故事**：作为平台管理员，我希望配置 A2UIPlanner 的协议参数（自定义指令、Schema 定义），以便针对不同 UI 交互场景定制 A2UI 输出。
 
----
+**功能规格**：
+- 自定义指令：覆盖默认 A2UI 协议约束指令
+- Server-to-Client with Standard Catalog Schema：服务端到客户端消息格式
+- Client-to-Server Schema：客户端到服务端事件格式
+- Client Capabilities Schema：客户端能力声明
+- Server-to-Client Schema：服务端到客户端消息格式（不含 Standard Catalog）
+- Standard Catalog Definition：标准组件目录定义
+- Catalog Description Schema：目录描述 Schema
 
-## 3. 需求清单
+**验收标准**：A2UIPlanner 的协议参数可在 Agent 设置中配置，参数正确注入到规划指令
 
-### 3.1 ReActPlanner 集成
+### 2.4 前端规划模式配置面板
 
-**需求**：支持 ReAct 模式的规划
+**用户故事**：作为平台管理员，我希望在 Agent 设置页面配置规划模式和参数，以便无需手动修改数据库即可调整规划策略。
 
-**实现要点**：
-```go
-import trpcreact "trpc.group/trpc-go/trpc-agent-go/planner/react"
+**功能规格**：
+- 在 Agent 设置页 Agent Tab 中增加"规划模式"配置区域
+- 下拉选择规划模式：无规划 / 内置思维 / ReAct 结构化规划 / A2UI 协议规划
+- 根据所选模式动态展示对应参数配置表单
+- BuiltinPlanner：推理力度选择、思维模式开关、思维 Token 长度输入
+- A2UIPlanner：自定义指令、各 Schema JSON 输入
 
-opts = append(opts, trpcllmagent.WithPlanner(trpcreact.New(m)))
-```
+**验收标准**：规划模式和参数可在前端 Agent 设置页配置并保存
 
-- 在 `BuildTRPCLLMAgent` 中增加 `DialogMode == "react"` 分支
-- ReActPlanner 需要一个 Model 实例用于规划
+### 2.5 Chat 页面规划步骤展示
 
-**验收标准**：Agent 在复杂任务中先输出 PLANNING/REASONING 标签内容，再执行 ACTION
+**用户故事**：作为用户，我希望在 Chat 页面看到 ReAct 规划器的步骤分解和 A2UI 的渲染预览，以便理解 Agent 的推理过程。
 
-### 3.2 A2UIPlanner 集成
+**功能规格**：
+- ReAct 模式：解析 `/*PLANNING*/`/`/*REASONING*/`/`/*ACTION*/`/`/*REPLANNING*/`/`/*FINAL_ANSWER*/` 标签，以步骤卡片形式展示
+- A2UI 模式：解析 JSONL 输出，渲染 A2UI 组件预览
 
-**需求**：支持 A2UI 协议的结构化规划
-
-**实现要点**：
-```go
-import trpca2ui "trpc.group/trpc-go/trpc-agent-go/planner/a2ui"
-
-planner := trpca2ui.New(m, trpca2ui.WithSchema(schema))
-opts = append(opts, trpcllmagent.WithPlanner(planner))
-```
-
-- 在 `BuildTRPCLLMAgent` 中增加 `DialogMode == "a2ui"` 分支
-- A2UIPlanner 生成符合 A2UI Schema 的结构化输出
-
-**验收标准**：Agent 输出符合 A2UI 协议的结构化规划结果
-
-### 3.3 规划模式可配置
-
-**需求**：Agent 级别可配置规划模式
-
-**实现要点**：
-- 在 `AgentRuntimeSetting` 中增加 `planner_mode` 字段
-- 可选值：`none`/`builtin`/`react`/`a2ui`
-- 在 `BuildTRPCLLMAgent` 中根据配置选择 Planner
-
-**验收标准**：不同 Agent 可配置不同的规划模式
-
-### 3.4 自定义规划 Prompt
-
-**需求**：支持自定义规划指令
-
-**实现要点**：
-- BuiltinPlanner 支持自定义 prompt
-- ReActPlanner 支持自定义标签和指令模板
-
-**验收标准**：规划指令可按 Agent 自定义
+**验收标准**：ReAct 模式下 Chat 页面展示规划步骤卡片；A2UI 模式下展示渲染预览
 
 ---
 
-## 4. 涉及文件
+## 3. 验收标准总览
 
-| 文件 | 操作 | 说明 |
-|------|------|------|
-| `internal/agent/trpc_build.go` | 修改 | 增加 ReAct/A2UI Planner 分支 |
-| `internal/biz/agent_types.go` | 修改 | AgentRuntimeSetting 增加 planner_mode |
-| `internal/data/ent/schema/agent_runtime_setting.go` | 修改 | 增加 planner_mode 字段 |
-| `api/kratos/agent/v1/agent.proto` | 修改 | 增加 planner_mode 字段 |
-
----
-
-## 5. 验收标准总览
-
-1. Agent 可配置 Builtin/ReAct/A2UI 三种规划模式
-2. ReAct 模式输出 PLANNING/REASONING/ACTION 标签
-3. A2UI 模式输出符合 A2UI 协议的结构化结果
-4. 规划模式可在 Agent 设置中配置
-5. 规划指令可自定义
+1. Agent 可配置 none/builtin/react/a2ui 四种规划模式
+2. 规划模式配置持久化到数据库，重启后生效
+3. Builtin 模式正确注入推理参数到 LLM 请求
+4. React 模式输出 PLANNING/REASONING/ACTION/FINAL_ANSWER 标签
+5. A2UI 模式输出符合 A2UI 协议的 JSONL 结构化结果
+6. Builtin/A2UI 规划器参数可在前端配置
+7. Chat 页面正确展示 ReAct 规划步骤和 A2UI 渲染预览
+8. 兼容现有 `DialogMode == "plan"` 的 BuiltinPlanner 行为

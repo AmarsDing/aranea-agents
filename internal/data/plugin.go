@@ -17,13 +17,8 @@ type pluginRepo struct {
 	data *Data
 }
 
-// NewPluginRepo implements biz.PluginRepo for table plugins.
 func NewPluginRepo(d *Data) biz.PluginRepo {
 	return &pluginRepo{data: d}
-}
-
-func adminPluginPerms() biz.PluginPermissions {
-	return biz.PluginPermissions{CanView: true, CanToggle: true, CanEditConfig: true, CanViewLogs: true}
 }
 
 func entToBizPlugin(e *ent.PlatformPlugin) biz.Plugin {
@@ -53,7 +48,7 @@ func entToBizPlugin(e *ent.PlatformPlugin) biz.Plugin {
 		LastStatus:        e.LastStatus,
 		CreatedAt:         e.CreatedAt,
 		UpdatedAt:         e.UpdatedAt,
-		Permissions:       adminPluginPerms(),
+		Permissions:       biz.AdminPluginPerms(),
 	}
 }
 
@@ -84,7 +79,8 @@ func (r *pluginRepo) pluginSearchQuery(q biz.PluginListQuery) *ent.PlatformPlugi
 }
 
 func (r *pluginRepo) SearchPlugins(ctx context.Context, q biz.PluginListQuery) (biz.PluginListResult, error) {
-	total, err := r.pluginSearchQuery(q).Count(ctx)
+	base := r.pluginSearchQuery(q)
+	total, err := base.Count(ctx)
 	if err != nil {
 		return biz.PluginListResult{}, err
 	}
@@ -141,6 +137,20 @@ func (r *pluginRepo) UpdatePluginEnabled(ctx context.Context, id string, enabled
 func (r *pluginRepo) UpdatePluginConfig(ctx context.Context, id string, configJSON string) (biz.Plugin, error) {
 	err := r.data.entClient.PlatformPlugin.UpdateOneID(id).
 		SetConfigJSON(configJSON).
+		SetUpdatedAt(nowRFC3339()).
+		Exec(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return biz.Plugin{}, sql.ErrNoRows
+		}
+		return biz.Plugin{}, err
+	}
+	return r.GetPlugin(ctx, id)
+}
+
+func (r *pluginRepo) UpdateSortOrder(ctx context.Context, id string, sortOrder int) (biz.Plugin, error) {
+	err := r.data.entClient.PlatformPlugin.UpdateOneID(id).
+		SetSortOrder(sortOrder).
 		SetUpdatedAt(nowRFC3339()).
 		Exec(ctx)
 	if err != nil {

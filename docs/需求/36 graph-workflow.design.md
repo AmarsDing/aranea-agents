@@ -1,27 +1,17 @@
-# Graph 工作流模块 — 实现设计文档（v2）
+# Graph 工作流模块 — 实现设计文档（v3）
 
-> 对应需求：`36 graph-workflow.md`（v2 四维需求架构）
-> 遵循规范：`AI-DEVELOPMENT-SPECIFICATION.md`
+> 对应需求：`36 graph-workflow.md`（v3 四维需求架构）
+> 本文档范围：架构方案、接口设计、数据模型。不含实现步骤（见开发计划）和用户故事（见需求文档）。
 
 ---
 
 ## 一、模块概述
 
-Graph 工作流引擎：基于 trpc-agent-go `graph` 包，构建"LangGraph for Go"级别的确定性工作流系统。
-
 ### 1.1 设计定位
 
-Graph 的核心存在意义是解决**复杂流程的确定性执行**问题——Team 解决"多 Agent 如何协作"，Graph 解决"复杂流程如何确定性地执行"。二者互补而非替代。
+Graph 工作流引擎：基于 trpc-agent-go `graph` 包，构建"LangGraph for Go"级别的确定性工作流系统。
 
-| 维度 | Team | Graph |
-|------|------|-------|
-| 编排哲学 | 模式化协作 | 自由编排 |
-| 控制权 | 框架决定执行顺序 | 用户决定流程骨架 |
-| 条件分支 | 无 | 支持 |
-| 人工介入 | 无 | HITL 中断/恢复 |
-| 状态管理 | 隐式消息传递 | 显式 State Schema + Reducer |
-| 可回溯性 | 步骤列表 | Checkpoint + TimeTravel |
-| 并行控制 | 模式级 | 节点级（DAG 引擎） |
+核心命题：**Agent 节点内部自主推理，节点间流转由确定性图规则控制**。Team 解决"多 Agent 如何协作"，Graph 解决"复杂流程如何确定性地执行"。
 
 ### 1.2 现有基础
 
@@ -29,214 +19,158 @@ Graph 的核心存在意义是解决**复杂流程的确定性执行**问题—�
 |------|------|------|
 | Graph 构建器 | `internal/graph/trpc/builder.go` | ✅ BuildStateGraph + GraphAgent + StateSchema/Reducer + 子图 + DAG |
 | 函数注册表 | `internal/graph/trpc/registry.go` | ✅ NodeFunc/CondFunc 注册表 |
-| Checkpoint 适配器 | `internal/graph/trpc/checkpoint.go` | ✅ SQLite Checkpoint Saver |
+| Checkpoint 适配器 | `internal/graph/trpc/checkpoint.go` | ✅ InMemory + SQLite Saver |
 | 事件桥接器 | `internal/graph/trpc/event_bridge.go` | ✅ 9 种 ObjectType 映射 |
 | 可视化解析 | `internal/graph/trpc/visualize.go` | ✅ DOT 解析 + 结构化 JSON |
-| 业务层 | `internal/biz/graph.go` | ✅ CRUD + Execute + Resume + TimeTravel + EventBridge |
-| 数据层 | `internal/data/graph.go` | ✅ GraphRepo + GraphRunRepo |
-| 服务层 | `internal/service/graph.go` | ✅ 15 个 RPC 方法 |
-| Proto 定义 | `api/kratos/graph/v1/graph.proto` | ✅ 15 个 RPC 端点 |
-| 前端编辑器 | `web/src/features/graph/` | ✅ Vue Flow 画布 + 节点面板 + 属性面板 |
+| 设计时校验 | `internal/graph/trpc/validator.go` | ✅ 拓扑/Agent引用/StateSchema/循环 |
+| 设计模式模板 | `internal/graph/trpc/templates.go` | ✅ 6 种内置模板 + TemplateToBuildConfig |
+| 运行时适配器 | `internal/graph/adapter/runtime_adapter.go` | ✅ GraphBuilderFactory + BuildAndRun/Resume/Visualize/Validate |
+| 业务层 | `internal/biz/graph.go` | ✅ CRUD + Execute + Resume + Cancel + TimeTravel + Checkpoint + Visualize + Validate + Templates |
+| 业务运行时 | `internal/biz/graph_runtime.go` | ✅ GraphRuntime 接口 + GraphBuilderFactory 接口 |
+| 任务系统 | `internal/biz/task.go` | ✅ TaskUsecase + 状态机 + Claim/Submit/Heartbeat/Review/Timeout |
+| 数据层 | `internal/data/graph.go` + `task.go` | ✅ GraphRepo + TaskRepo + Ent 持久化 |
+| 服务层 | `internal/service/graph.go` | ✅ 28 个 RPC 方法（含 Task API） |
+| Proto 定义 | `api/kratos/graph/v1/graph.proto` | ✅ 28 个 RPC 端点 |
+| 前端类型 | `web/src/features/graph/types.ts` | ✅ 完整类型定义（含 Task 类型） |
+| 前端 API | `web/src/features/graph/api.ts` | ✅ 完整 API 客户端（含 Task API） |
+| 前端组件 | `web/src/components/graph/` | ✅ Vue Flow 画布 + 节点面板 + 属性面板 |
 
 ### 1.3 本期设计目标
 
-基于需求文档 v2 的四维架构，将设计从"功能实现"升级为"系统能力"：
-
 | 维度 | 当前状态 | 目标 |
 |------|----------|------|
-| 图结构与混合控制 | ✅ 基础节点/边已实现 | 完善节点类型属性配置、混合控制语义 |
-| 动态拓扑与状态共享 | ✅ 条件路由/State Schema 已实现 | 补全动态节点生成、State Schema 校验 |
-| 人机协同与可观测性 | ✅ HITL/Checkpoint/EventBridge 已实现 | 补全 Checkpoint 持久化、执行摘要、设计时校验 |
-| 设计辅助与资产复用 | ❌ 未实现 | 设计模式模板、设计时校验、资产复用 |
+| 图结构与混合控制 | ✅ Function/Agent/Router 节点已实现 | 补全 LLM/Tool 节点、Agent InputMapper/OutputMapper 接线 |
+| 动态拓扑与状态共享 | ✅ 条件路由/State Schema/校验已实现 | 补全 Command.GoTo/WithEndsMap 接线 |
+| 人机协同与可观测性 | ✅ HITL/Checkpoint/EventBridge/Task 已实现 | 补全 ExecutionSummary、前端执行监控增强 |
+| 设计辅助与资产复用 | ✅ 校验/模板已实现 | 补全用户自定义模板、版本管理、导入导出 |
 
 ---
 
-## 二、维度一：图结构与混合控制
+## 二、架构总览
 
-> 系统底层采用有向图（DAG）定义流程骨架。Agent 节点内部拥有基于 LLM 的自主推理能力，但节点间的流转由确定性的图规则牢牢控制。
+### 2.1 分层架构
 
-### 2.1 节点类型体系与属性配置
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                        前端（Vue Flow）                          │
+│  GraphsPage / GraphEditorPage / GraphRunPage                    │
+├──────────────────────────────────────────────────────────────────┤
+│                     服务层（Kratos gRPC/HTTP）                    │
+│  GraphService: 28 RPC 方法（CRUD + Execute + Task + Validate）  │
+├──────────────────────────────────────────────────────────────────┤
+│                      业务层（Biz）                                │
+│  GraphUsecase: 图定义管理 + 执行编排                             │
+│  TaskUsecase: 任务生命周期 + 派工 + 审核 + 超时                   │
+├──────────────────────────────────────────────────────────────────┤
+│                    图引擎层（Graph/Trpc）                         │
+│  Builder → StateGraph → GraphAgent → Executor                   │
+│  Registry | Checkpoint | EventBridge | Validator | Templates    │
+├──────────────────────────────────────────────────────────────────┤
+│                     数据层（Data/Ent）                            │
+│  GraphRepo | TaskRepo | Ent Schemas (7 tables)                  │
+├──────────────────────────────────────────────────────────────────┤
+│                    基础设施（Infra）                               │
+│  SQLite | EventBus | WebSocket | trpc-agent-go/graph             │
+└──────────────────────────────────────────────────────────────────┘
+```
 
-每种节点类型对应不同的属性配置面板和后端构建逻辑：
+### 2.2 核心数据流
 
-#### 2.1.1 Function 节点
+**设计态**：前端 → CreateGraph/UpdateGraph API → GraphUsecase → ValidateGraph → GraphRepo 持久化
 
-**框架映射**：`sg.AddNode(nodeID, nodeFunc, opts...)`
+**运行态**：前端 → ExecuteGraph API → GraphUsecase → BuildStateGraph → GraphAgent.Run() → EventBridge → WS → 前端
 
-| 属性 | Proto 字段 | 必填 | 说明 |
-|------|-----------|------|------|
-| 节点 ID | `node_id` | 是 | 唯一标识 |
-| 描述 | `description` | 否 | 功能说明 |
-| FuncRef | `func_ref` | 是 | Registry 注册的函数引用 |
-| InterruptBefore | `interrupt_before` | 否 | 执行前中断 |
-| InterruptAfter | `interrupt_after` | 否 | 执行后中断 |
-| RetryPolicy | `retry_policy` | 否 | 重试策略 |
-| CachePolicy | `cache_policy` | 否 | 缓存策略 |
+**HITL**：Graph 遇到 Interrupt → EventBridge → WS checkpoint 事件 → 前端确认对话框 → ResumeGraph API → 恢复执行
 
-**构建逻辑**：
-```go
-func buildFunctionNode(sg *trpcgraph.StateGraph, n *NodeDef, reg *Registry) error {
-    fn, err := reg.ResolveNodeFunc(n.FuncRef)
-    if err != nil {
-        return fmt.Errorf("resolve func %s: %w", n.FuncRef, err)
-    }
-    opts := []trpcgraph.AddNodeOption{}
-    if n.InterruptBefore { opts = append(opts, trpcgraph.WithInterruptBefore()) }
-    if n.InterruptAfter { opts = append(opts, trpcgraph.WithInterruptAfter()) }
-    if n.RetryPolicy != nil { opts = append(opts, trpcgraph.WithRetryPolicy(toRetryPolicy(n.RetryPolicy))) }
-    if n.CachePolicy != nil { opts = append(opts, trpcgraph.WithNodeCachePolicy(toCachePolicy(n.CachePolicy))) }
-    sg.AddNode(n.NodeID, fn, opts...)
-    return nil
+**TimeTravel**：GetStateSnapshot API → TimeTravel.GetState → 返回快照 → EditState + Resume 从编辑点重新执行
+
+---
+
+## 三、维度一：图结构与混合控制
+
+### 3.1 节点类型体系
+
+每种节点类型对应不同的框架 API 和属性配置：
+
+| 节点类型 | 框架 API | 必填属性 | 状态 |
+|----------|----------|----------|------|
+| Function | `AddNode(id, fn, opts...)` | FuncRef | ✅ 已实现 |
+| LLM | `AddLLMNode(id, instruction, model, opts...)` | Instruction + Model | ❌ 未接线 |
+| Tool | `AddToolNode(id, toolNames, opts...)` | ToolNames | ❌ 未接线 |
+| Agent | `AddNode(id, agent, opts...)` | AgentName | ✅ 基础已实现，❌ InputMapper/OutputMapper 未接线 |
+| Router | `AddConditionalEdges(src, fn, pathMap)` | CondFuncRef + PathMap | ✅ 已实现 |
+| Join | BSP/DAG 引擎自动处理 | 无 | ✅ 已实现 |
+
+### 3.2 节点属性定义（NodeDef）
+
+```protobuf
+message NodeDef {
+  string node_id = 1;
+  string type = 2;              // "function"|"llm"|"tool"|"agent"|"router"|"join"
+  string description = 3;
+
+  // Function 节点
+  string func_ref = 4;
+
+  // LLM 节点
+  string instruction = 5;
+  string model = 6;
+  repeated string tool_names = 7;
+  string user_input_key = 8;
+
+  // Tool 节点
+  bool enable_parallel_tools = 9;
+
+  // Agent 节点
+  string agent_name = 10;
+  string input_mapper = 11;     // JSON: State → Agent 运行时状态映射
+  string output_mapper = 12;    // JSON: Agent 结果 → State 更新映射
+  bool isolated_messages = 13;
+  bool input_from_last_response = 14;
+
+  // Router 节点
+  string cond_func_ref = 15;
+  map<string, string> path_map = 16;
+  repeated string destinations = 17;  // Command.GoTo 动态路由目标
+
+  // 通用
+  bool interrupt_before = 18;
+  bool interrupt_after = 19;
+
+  // 任务派工
+  string required_role = 20;
+  string assignment_mode = 21;     // "static"|"dynamic"
+  string assignment_strategy = 22; // "least_tasks"|"random"|"manual"
+
+  // 审核
+  string reviewer_agent = 23;
+  string review_rules = 24;
+
+  // 超时
+  int32 timeout_seconds = 25;
+  int32 heartbeat_interval_seconds = 26;
+  bool enable_lease_extension = 27;
 }
 ```
 
-#### 2.1.2 LLM 节点
+### 3.3 边类型
 
-**框架映射**：`sg.AddLLMNode(nodeID, instruction, model, opts...)`
+| 边类型 | 框架 API | Proto 定义 | 视觉表示 |
+|--------|----------|-----------|----------|
+| Runtime Edge | `AddEdge(from, to)` | `EdgeDef{from, to}` | 实线箭头 |
+| Conditional Edge | `AddConditionalEdges(src, fn, pathMap)` | `ConditionalEdgeDef{from, cond_func_ref, path_map}` | 虚线箭头 + 标签 |
+| Command Edge | `WithEndsMap` + `Command.GoTo` | `NodeDef.destinations` | 动态，运行时决定 |
 
-| 属性 | Proto 字段 | 必填 | 说明 |
-|------|-----------|------|------|
-| 节点 ID | `node_id` | 是 | 唯一标识 |
-| 描述 | `description` | 否 | 功能说明 |
-| Instruction | `instruction` | 是 | LLM 指令模板 |
-| Model | `model` | 是 | 模型选择（provider/model 格式） |
-| Tools | `tool_names` | 否 | 绑定工具列表 |
-| UserInputKey | `user_input_key` | 否 | State 中作为 user_input 的字段 |
-| GenerationConfig | `generation_config` | 否 | 生成参数（temperature/max_tokens 等） |
-| InterruptBefore | `interrupt_before` | 否 | 执行前中断 |
-| InterruptAfter | `interrupt_after` | 否 | 执行后中断 |
+### 3.4 执行引擎
 
-**构建逻辑**：
-```go
-func buildLLMNode(sg *trpcgraph.StateGraph, n *NodeDef, reg *Registry, modelFn ModelResolver) error {
-    model, err := modelFn(n.Model)
-    if err != nil {
-        return fmt.Errorf("resolve model %s: %w", n.Model, err)
-    }
-    opts := []trpcgraph.AddLLMNodeOption{}
-    if len(n.ToolNames) > 0 {
-        tools, err := reg.ResolveTools(n.ToolNames)
-        if err != nil { return err }
-        opts = append(opts, trpcgraph.WithLLMNodeTools(tools...))
-    }
-    if n.UserInputKey != "" {
-        opts = append(opts, trpcgraph.WithLLMNodeUserInputKey(n.UserInputKey))
-    }
-    if n.InterruptBefore { opts = append(opts, trpcgraph.WithInterruptBefore()) }
-    if n.InterruptAfter { opts = append(opts, trpcgraph.WithInterruptAfter()) }
-    sg.AddLLMNode(n.NodeID, n.Instruction, model, opts...)
-    return nil
-}
-```
-
-#### 2.1.3 Tool 节点
-
-**框架映射**：`sg.AddToolNode(nodeID, toolNames, opts...)`
-
-| 属性 | Proto 字段 | 必填 | 说明 |
-|------|-----------|------|------|
-| 节点 ID | `node_id` | 是 | 唯一标识 |
-| 描述 | `description` | 否 | 功能说明 |
-| ToolNames | `tool_names` | 是 | 工具名称列表 |
-| EnableParallelTools | `enable_parallel_tools` | 否 | 并行执行多个工具调用 |
-| ToolCallRetryPolicy | `tool_call_retry_policy` | 否 | 工具调用重试策略 |
-| InterruptBefore | `interrupt_before` | 否 | 执行前中断 |
-| InterruptAfter | `interrupt_after` | 否 | 执行后中断 |
-
-#### 2.1.4 Agent 节点（混合控制核心）
-
-**框架映射**：`sg.AddNode(nodeID, agentAsSubgraph, opts...)`
-
-Agent 节点是"混合控制"的精髓——节点内部 Agent 自主推理，节点外部 Graph 控制流转。
-
-| 属性 | Proto 字段 | 必填 | 说明 |
-|------|-----------|------|------|
-| 节点 ID | `node_id` | 是 | 唯一标识 |
-| 描述 | `description` | 否 | 功能说明 |
-| AgentName | `agent_name` | 是 | 引用的系统 Agent 名称 |
-| InputMapper | `input_mapper` | 否 | State → Agent 运行时状态映射 |
-| OutputMapper | `output_mapper` | 否 | Agent 结果 → State 更新映射 |
-| IsolatedMessages | `isolated_messages` | 否 | 是否隔离会话历史 |
-| InputFromLastResponse | `input_from_last_response` | 否 | 上游 last_response → 下游 user_input |
-| EventScope | `event_scope` | 否 | 子图事件作用域 |
-| InterruptBefore | `interrupt_before` | 否 | 执行前中断 |
-| InterruptAfter | `interrupt_after` | 否 | 执行后中断 |
-
-**构建逻辑**：
-```go
-func buildAgentNode(sg *trpcgraph.StateGraph, n *NodeDef, agentResolver AgentResolver) error {
-    agent, err := agentResolver.Resolve(n.AgentName)
-    if err != nil {
-        return fmt.Errorf("resolve agent %s: %w", n.AgentName, err)
-    }
-    opts := []trpcgraph.AddNodeOption{}
-    if n.InputMapper != nil {
-        opts = append(opts, trpcgraph.WithSubgraphInputMapper(toInputMapper(n.InputMapper)))
-    }
-    if n.OutputMapper != nil {
-        opts = append(opts, trpcgraph.WithSubgraphOutputMapper(toOutputMapper(n.OutputMapper)))
-    }
-    if n.IsolatedMessages {
-        opts = append(opts, trpcgraph.WithSubgraphIsolatedMessages())
-    }
-    if n.InputFromLastResponse {
-        opts = append(opts, trpcgraph.WithSubgraphInputFromLastResponse())
-    }
-    if n.InterruptBefore { opts = append(opts, trpcgraph.WithInterruptBefore()) }
-    if n.InterruptAfter { opts = append(opts, trpcgraph.WithInterruptAfter()) }
-    sg.AddNode(n.NodeID, agent, opts...)
-    return nil
-}
-```
-
-#### 2.1.5 Router 节点
-
-**框架映射**：`sg.AddConditionalEdges(sourceNode, condFunc, pathMap)`
-
-Router 不是独立的 AddNode 调用，而是通过 AddConditionalEdges 在源节点上定义条件路由。
-
-| 属性 | Proto 字段 | 必填 | 说明 |
-|------|-----------|------|------|
-| 节点 ID | `node_id` | 是 | 唯一标识（同时也是源节点） |
-| 描述 | `description` | 否 | 路由逻辑说明 |
-| CondFuncRef | `cond_func_ref` | 是 | 条件函数引用 |
-| PathMap | `path_map` | 是 | 分支路径映射 `{label: targetNodeID}` |
-| Destinations | `destinations` | 否 | 声明可能的动态路由目标 |
-
-**构建逻辑**：
-```go
-func buildConditionalEdge(sg *trpcgraph.StateGraph, e *EdgeDef, reg *Registry) error {
-    condFn, err := reg.ResolveCondFunc(e.CondFuncRef)
-    if err != nil {
-        return fmt.Errorf("resolve cond func %s: %w", e.CondFuncRef, err)
-    }
-    sg.AddConditionalEdges(e.FromNode, condFn, e.PathMap)
-    return nil
-}
-```
-
-#### 2.1.6 Join 节点
-
-Join 节点不需要显式添加，由 BSP/DAG 引擎自动处理并行分支的汇聚。在前端画布中作为视觉标记存在。
-
-### 2.2 边类型与流转规则
-
-| 边类型 | 框架 API | Proto 定义 | 视觉表示 | 构建逻辑 |
-|--------|----------|-----------|----------|----------|
-| Runtime Edge | `AddEdge("A", "B")` | `EdgeDef{Type: "runtime", From: "A", To: "B"}` | 实线箭头 | `sg.AddEdge(from, to)` |
-| Conditional Edge | `AddConditionalEdges("A", fn, map)` | `EdgeDef{Type: "conditional", From: "A", CondFuncRef: "...", PathMap: {...}}` | 虚线箭头 + 标签 | `sg.AddConditionalEdges(from, fn, pathMap)` |
-| Command Edge | `WithEndsMap` + `Command.GoTo` | `NodeDef{Destinations: [...]}` | 动态，运行时决定 | `sg.AddNode(id, fn, WithEndsMap(...))` |
-
-### 2.3 执行引擎选择
-
-| 引擎 | 配置 | 适用场景 | 框架 API |
+| 引擎 | 配置 | 框架 API | 适用场景 |
 |------|------|----------|----------|
-| BSP（默认） | `execution_engine: "bsp"` | 需要确定性、可复现 | 默认 Compile |
-| DAG | `execution_engine: "dag"` | 高吞吐、无复杂状态交互 | `graph.WithExecutionEngine(graph.DAGEngine)` |
+| BSP（默认） | `execution_engine: "bsp"` | 默认 Compile | 确定性、可复现 |
+| DAG | `execution_engine: "dag"` | `WithExecutionEngine(DAGEngine)` | 高吞吐、无复杂状态交互 |
 
-### 2.4 子图嵌套
+### 3.5 子图嵌套
 
-Graph 节点可以是另一个 Graph（子图），支持层级化工作流设计：
+子图编译后作为 Agent 节点注册，状态通过 InputMapper/OutputMapper 映射：
 
 ```
 父图 State ──InputMapper──▶ 子图 Agent 运行时状态
@@ -246,243 +180,68 @@ Graph 节点可以是另一个 Graph（子图），支持层级化工作流设�
 子图结果 ──OutputMapper──▶ 父图 State 更新
 ```
 
-**构建逻辑**（已有实现）：
-```go
-func buildSubgraphNode(sg *trpcgraph.StateGraph, n *NodeDef, subgraphResolver SubgraphResolver) error {
-    subAgent, err := subgraphResolver.Resolve(n.SubgraphID)
-    if err != nil { return err }
-    opts := []trpcgraph.AddNodeOption{}
-    if n.InputMapper != nil { opts = append(opts, trpcgraph.WithSubgraphInputMapper(...)) }
-    if n.OutputMapper != nil { opts = append(opts, trpcgraph.WithSubgraphOutputMapper(...)) }
-    sg.AddNode(n.NodeID, subAgent, opts...)
-    return nil
-}
-```
+子图支持 `WithSubgraphIsolatedMessages`（隔离会话历史）和 `WithSubgraphInputFromLastResponse`（上游 last_response → 下游 user_input）。
 
 ---
 
-## 三、维度二：动态拓扑与状态共享
+## 四、维度二：动态拓扑与状态共享
 
-> 现代 Agent 工作流通常不再是静态固定的。应支持条件路由和动态节点生成，同时所有 Agent 应能访问一个全局共享的工作流状态。
+### 4.1 条件路由（✅ 已实现）
 
-### 3.1 条件路由
+Router 节点通过 `AddConditionalEdges` 定义条件路由，CondFuncRef 引用 Registry 中注册的条件函数，PathMap 定义分支映射。
 
-**已实现**：`ConditionalEdgeDef` + `CondFuncRef` + Registry 解析。
+### 4.2 动态路由（Command.GoTo）（❌ 待接线）
 
-**前端配置**：Router 节点属性面板支持：
-1. 选择已注册的条件函数（CondFuncRef 下拉）
-2. 编辑路径映射表（PathMap：标签 → 目标节点 ID）
-3. 声明动态路由目标（Destinations 列表）
+节点 `Destinations` 字段声明可能的动态路由目标，运行时通过 `Command.GoTo` 决定实际路径。Builder 中需接线 `WithEndsMap`。
 
-### 3.2 动态节点生成（Command.GoTo）
+### 4.3 State Schema + Reducer（✅ 已实现）
 
-**框架机制**：节点执行时通过 `Command` 动态决定下一步。
+| Reducer 类型 | 框架映射 | 语义 |
+|-------------|---------|------|
+| `default` | `DefaultReducer` | 完全替换旧值 |
+| `append` | `AppendReducer` | 追加到列表 |
+| `cover` | `CoverReducer` | 覆盖（仅非零值） |
+| `merge` | `MergeReducer` | 深度合并 Map |
 
-**设计**：
-- 节点属性面板新增 `Destinations` 字段，声明可能的动态路由目标
-- 运行时 Command.GoTo 事件通过 WS `graph_node_custom` 推送到前端
-- 前端执行监控中动态高亮实际执行的路径（与预定义路径对比）
-
-**Proto 扩展**：
-```protobuf
-message NodeDef {
-  // ... 现有字段 ...
-  repeated string destinations = 20; // WithEndsMap 声明的动态路由目标
-}
-```
-
-### 3.3 全局共享工作流状态（State Schema + Reducer）
-
-**已实现**：`GraphBuildConfig.StateFields` 定义 State Schema。
-
-**Reducer 类型映射**：
-
-| Proto Reducer | 框架 Reducer | 语义 |
-|---------------|-------------|------|
-| `default` | `graph.DefaultReducer` | 完全替换旧值 |
-| `append` | `graph.AppendReducer` | 追加到列表 |
-| `cover` | `graph.CoverReducer` | 覆盖（仅非零值） |
-| `merge` | `graph.MergeReducer` | 深度合并 Map |
-
-**State Schema 编辑面板设计**：
-
-```
-┌─────────────────────────────────────┐
-│ State Schema                        │
-├─────────────────────────────────────┤
-│ 字段名    类型      Reducer   默认值 │
-│ ──────── ──────── ──────── ──────── │
-│ input    string   default   ""      │
-│ messages []any    append    []      │
-│ counter  int      default   0       │
-│ config   map      merge     {}      │
-│                                     │
-│ [+ 添加字段]                        │
-└─────────────────────────────────────┘
-```
-
-**节点属性面板中的 State 字段引用**：
-
-每个节点属性面板底部显示该节点读写的 State 字段（通过 InputMapper/OutputMapper 推断），帮助用户理解数据流。
-
-### 3.4 State Schema 校验（P1 新增）
-
-**校验逻辑**：在 `UpdateGraph` 时执行产品层校验：
-
-```go
-// internal/graph/trpc/validator.go 新建
-
-type ValidationResult struct {
-    Errors   []ValidationError `json:"errors"`
-    Warnings []ValidationWarning `json:"warnings"`
-}
-
-type ValidationError struct {
-    Code    string `json:"code"`    // "missing_field"/"type_mismatch"/"orphan_node"
-    NodeID  string `json:"node_id,omitempty"`
-    Field   string `json:"field,omitempty"`
-    Message string `json:"message"`
-}
-
-func ValidateGraph(def *GraphDefinition) *ValidationResult
-```
-
-**校验项**：
-
-| 校验项 | 优先级 | 逻辑 |
-|--------|--------|------|
-| State Schema 字段完整性 | P1 | 所有节点 InputMapper/OutputMapper 引用的字段已在 Schema 中定义 |
-| Reducer 类型匹配 | P1 | AppendReducer 字段类型必须是切片；MergeReducer 字段类型必须是 Map |
-| Agent 引用存在性 | P0 | Agent 节点引用的 Agent 在系统中存在 |
-| 基础拓扑校验 | P0 | 入口点存在、无孤立节点、所有节点可达 |
+State Schema 定义在 `GraphBuildConfig.StateFields` 中，Builder 通过 `AddStateField` 注册到 StateGraph。
 
 ---
 
-## 四、维度三：人机协同与可观测性
+## 五、维度三：人机协同与可观测性
 
-> 企业级应用不仅需要工作流图在设计态清晰，更要求在运行态透明。内置人工审批节点、支持状态检查点与恢复以及全链路运行轨迹记录，是保障流程可控可回溯的关键。
+### 5.1 人工审批（HITL）（✅ 已实现）
 
-### 4.1 人工审批节点（HITL）
+节点配置 `InterruptBefore/After`，执行到中断点时 EventBridge 推送 WS `checkpoint` 事件，前端弹出确认对话框，用户通过 `ResumeGraph` API 恢复执行。
 
-**已实现**：`InterruptBefore/After` + `ResumeExecution` API。
+### 5.2 Checkpoint + TimeTravel（✅ 已实现）
 
-**前端交互流程**：
+| API | 说明 |
+|-----|------|
+| `ListCheckpoints` | 列出检查点 |
+| `GetStateSnapshot` | 获取状态快照 |
+| `EditState` | 编辑状态（创建新分支） |
+| `TimeTravelGraph` | 回放到指定步骤 |
 
-```
-Graph 执行 → 遇到 InterruptBefore/After 节点
-  ↓
-WS 推送 checkpoint 事件（含 interrupt_key, node_id）
-  ↓
-前端弹出确认对话框（显示节点信息、当前 State 快照）
-  ↓
-用户输入确认/拒绝 + 附加信息
-  ↓
-ResumeGraph API（传入 user_input）
-  ↓
-Graph 从中断点恢复执行
-```
+Checkpoint Saver 支持 InMemory 和 SQLite 两种后端，通过 `checkpoint.go` 适配器切换。
 
-**HITL 确认对话框设计**：
-```
-┌─────────────────────────────────────┐
-│ ⏸ 人工审批：审批节点                 │
-├─────────────────────────────────────┤
-│ 节点：approval_node                 │
-│ 类型：Function                      │
-│ 描述：请确认是否继续执行             │
-│                                     │
-│ 当前状态：                           │
-│ ┌─────────────────────────────────┐ │
-│ │ input: "处理申请 #12345"         │ │
-│ │ status: "pending_review"        │ │
-│ └─────────────────────────────────┘ │
-│                                     │
-│ 您的输入：                           │
-│ ┌─────────────────────────────────┐ │
-│ │ 批准，请继续执行                  │ │
-│ └─────────────────────────────────┘ │
-│                                     │
-│        [拒绝]        [确认继续]      │
-└─────────────────────────────────────┘
-```
+### 5.3 事件桥接（✅ 已实现）
 
-### 4.2 状态检查点与恢复（Checkpoint）
+| trpc event.Object | EnvelopeType | 说明 |
+|-------------------|--------------|------|
+| `graph.node.start` | `graph_node_start` | 节点开始执行 |
+| `graph.node.complete` | `graph_node_end` | 节点执行完成 |
+| `graph.node.error` | `graph_node_error` | 节点执行失败 |
+| `graph.node.custom` | `graph_node_custom` | 自定义事件（Command.GoTo） |
+| `graph.pregel.step` | `graph_step` | Pregel 步骤完成 |
+| `graph.checkpoint.interrupt` | `checkpoint` | 中断事件 |
+| `graph.checkpoint.created` | `checkpoint` | 检查点创建 |
+| `graph.state.update` | `state_delta` | 状态更新 |
+| `graph.execution`（done） | `graph_execution_done` | 执行完成 |
 
-**已实现**：InMemory Checkpoint + TimeTravel API（ListCheckpoints/GetStateSnapshot/EditState）。
+### 5.4 ExecutionSummary（❌ 待实现）
 
-**待完善**：SQLite Checkpoint 持久化。
+Graph 执行完成后推送 `graph_execution_done` 事件，包含执行摘要：
 
-**SQLite Checkpoint Saver 注入**：
-
-```go
-// internal/data/graph.go
-
-func NewGraphCheckpointSaver(dataDir string) trpcgraph.CheckpointSaver {
-    dbPath := filepath.Join(dataDir, "graph_checkpoints.db")
-    saver, err := trpcgraphsqlite.NewSQLiteCheckpointSaver(dbPath)
-    if err != nil {
-        log.Warnf("failed to create SQLite checkpoint saver, fallback to inmemory: %v", err)
-        return trpcgraph.NewInMemoryCheckpointSaver()
-    }
-    return saver
-}
-```
-
-Wire 注入：替换当前 InMemory Saver 为 SQLite Saver。
-
-### 4.3 时间旅行调试（TimeTravel）
-
-**已实现**：TimeTravel API（History/GetState/EditState）。
-
-**前端时间线组件设计**：
-
-```
-┌──────────────────────────────────────────────────────────────────┐
-│ 时间线                                                           │
-├──────────────────────────────────────────────────────────────────┤
-│ Step 0    Step 1      Step 2      Step 3      Step 4            │
-│ ──●──────────●──────────●──────────●──────────●──               │
-│ START     analyze    review     [中断]     publish              │
-│           ✅完成     ✅完成     ⏸等待确认   ⏳等待               │
-│                                                                  │
-│ 当前查看：Step 3                                                  │
-│ ┌──────────────────────────────────────────────────────────────┐ │
-│ │ 节点：review_node                                            │ │
-│ │ 状态快照：                                                   │ │
-│ │   input: "处理申请 #12345"                                    │ │
-│ │   review_result: "approved"                                  │ │
-│ │   score: 0.95                                                │ │
-│ └──────────────────────────────────────────────────────────────┘ │
-│                                                                  │
-│ [编辑状态]  [从此点重新执行]                                       │
-└──────────────────────────────────────────────────────────────────┘
-```
-
-### 4.4 全链路运行轨迹
-
-**已实现**：EventBridge + WS graph channel 实时推送节点状态。
-
-**执行摘要设计**（P1 新增）：
-
-Graph 执行完成后，WS 推送 `graph_execution_done` 事件，前端展示执行摘要：
-
-```
-┌─────────────────────────────────────┐
-│ ✅ Graph 执行完成                    │
-├─────────────────────────────────────┤
-│ 总步骤：5                           │
-│ 总耗时：12.3s                       │
-│ 总 Token：1,234                     │
-│ 节点执行详情：                       │
-│   analyze    ✅  2.1s  500 tokens   │
-│   review     ✅  3.5s  400 tokens   │
-│   approval   ⏸  等待人工确认        │
-│   publish    ✅  1.2s  334 tokens   │
-│   notify     ✅  0.5s  0 tokens     │
-└─────────────────────────────────────┘
-```
-
-**Proto 扩展**：
 ```protobuf
 message ExecutionSummary {
   string execution_id = 1;
@@ -502,824 +261,222 @@ message NodeExecutionSummary {
 }
 ```
 
-### 4.5 运行时操作
-
-| 操作 | API | WS 事件触发 | 前端交互 |
-|------|-----|------------|----------|
-| HITL 确认 | `ResumeGraph` | `checkpoint` | 确认对话框 |
-| 取消执行 | `CancelGraphExecution` | — | 取消按钮 |
-| 重试失败节点 | `ResumeGraph`（从失败检查点） | `graph_node_error` | 重试按钮 |
-| 修改状态 | `EditState` + `ResumeGraph` | — | 时间线编辑 |
-| 时间旅行 | `GetStateSnapshot` | — | 时间线点击 |
-
 ---
 
-## 五、维度四：设计辅助与资产复用
+## 六、维度四：设计辅助与资产复用
 
-> 引入设计模式建议和资产复用是显著降低用户设计门槛、提升一致性的有效策略。同时，应提供完善的设计时校验功能。
+### 6.1 设计时校验（✅ 已实现）
 
-### 5.1 设计时校验
+校验引擎 `ValidateGraph` 在 `UpdateGraph` 和 `ExecuteGraph` 时执行，返回 `ValidationResult{errors, warnings}`。
 
-**校验架构**：
+**校验项**：
 
-```
-前端保存/运行时
-  ↓ UpdateGraph/ExecuteGraph API
-后端 GraphUsecase
-  ↓ ValidateGraph(def)
-校验引擎 → ValidationResult
-  ↓ 返回 errors/warnings
-前端展示校验结果
-```
+| 校验项 | 错误码 | 级别 | 说明 |
+|--------|--------|------|------|
+| 空图 | `empty_graph` | Error | Graph 必须包含至少一个节点 |
+| 无入口点 | `no_entry_point` | Error | 必须指定 entry_point |
+| 不可达节点 | `unreachable_node` | Warning | 从入口点不可达的节点 |
+| Agent 不存在 | `agent_not_found` | Error | Agent 节点引用的 Agent 不存在 |
+| FuncRef 未注册 | `func_not_registered` | Error | Function 节点的 FuncRef 未在 Registry 注册 |
+| CondFuncRef 未注册 | `cond_func_not_registered` | Error | Router 节点的 CondFuncRef 未注册 |
+| State Schema 缺失 | `missing_state_field` | Warning | 节点引用的 State 字段未在 Schema 中定义 |
+| Reducer 类型不匹配 | `reducer_type_mismatch` | Error | AppendReducer 字段类型不是切片 |
+| 循环无退出 | `loop_no_exit` | Warning | 循环路径没有条件退出 |
 
-**校验实现**：
+### 6.2 设计模式模板（✅ 已实现）
 
-```go
-// internal/graph/trpc/validator.go
+6 种内置模板，通过 `ListGraphTemplates` / `CreateGraphFromTemplate` API 暴露：
 
-func ValidateGraph(def *GraphDefinition) *ValidationResult {
-    result := &ValidationResult{}
+| 模板 ID | 名称 | 拓扑 | 节点数 |
+|---------|------|------|--------|
+| `pipeline` | 顺序流水线 | A→B→C→D | 4 |
+| `approval` | 审批流 | A→[审批]→B/C | 3 |
+| `parallel_review` | 并行评审 | A→(B∥C∥D)→汇总 | 5 |
+| `review_loop` | 生成-评审循环 | A→B→[评分]→A/D | 4 |
+| `dispatch` | 条件分发 | A→[路由]→B/C/D | 4 |
+| `nested_subgraph` | 子图嵌套 | A→[子工作流]→B | 3 |
 
-    // P0: 基础拓扑校验
-    validateTopology(def, result)
-
-    // P0: Agent 引用校验
-    validateAgentRefs(def, result)
-
-    // P1: State Schema 校验
-    validateStateSchema(def, result)
-
-    // P1: 循环退出校验
-    validateLoopExits(def, result)
-
-    return result
-}
-
-func validateTopology(def *GraphDefinition, result *ValidationResult) {
-    if len(def.Nodes) == 0 {
-        result.Errors = append(result.Errors, ValidationError{
-            Code:    "empty_graph",
-            Message: "Graph 必须包含至少一个节点",
-        })
-        return
-    }
-
-    nodeSet := make(map[string]bool)
-    for _, n := range def.Nodes {
-        nodeSet[n.NodeID] = true
-    }
-
-    reachable := make(map[string]bool)
-    var walk func(nodeID string)
-    walk = func(nodeID string) {
-        if reachable[nodeID] { return }
-        reachable[nodeID] = true
-        for _, e := range def.Edges {
-            if e.FromNode == nodeID { walk(e.ToNode) }
-        }
-    }
-    walk(def.EntryPoint)
-
-    for id := range nodeSet {
-        if !reachable[id] {
-            result.Warnings = append(result.Warnings, ValidationWarning{
-                Code:    "unreachable_node",
-                NodeID:  id,
-                Message: fmt.Sprintf("节点 %s 不可达", id),
-            })
-        }
-    }
-}
-
-func validateAgentRefs(def *GraphDefinition, result *ValidationResult) {
-    for _, n := range def.Nodes {
-        if n.Type == "agent" && n.AgentName != "" {
-            if !agentExists(n.AgentName) {
-                result.Errors = append(result.Errors, ValidationError{
-                    Code:    "agent_not_found",
-                    NodeID:  n.NodeID,
-                    Field:   "agent_name",
-                    Message: fmt.Sprintf("Agent %s 不存在", n.AgentName),
-                })
-            }
-        }
-    }
-}
-
-func validateStateSchema(def *GraphDefinition, result *ValidationResult) {
-    fieldSet := make(map[string]bool)
-    for _, f := range def.StateFields {
-        fieldSet[f.Name] = true
-    }
-    for _, n := range def.Nodes {
-        for _, ref := range n.StateReads {
-            if !fieldSet[ref] {
-                result.Warnings = append(result.Warnings, ValidationWarning{
-                    Code:    "undefined_state_field",
-                    NodeID:  n.NodeID,
-                    Field:   ref,
-                    Message: fmt.Sprintf("节点 %s 读取的 State 字段 %s 未在 Schema 中定义", n.NodeID, ref),
-                })
-            }
-        }
-    }
-}
-```
-
-**Proto 扩展**：
-```protobuf
-message ValidateGraphRequest {
-  string graph_id = 1;
-}
-
-message ValidateGraphResponse {
-  repeated ValidationError errors = 1;
-  repeated ValidationWarning warnings = 2;
-}
-
-message ValidationError {
-  string code = 1;
-  string node_id = 2;
-  string field = 3;
-  string message = 4;
-}
-
-message ValidationWarning {
-  string code = 1;
-  string node_id = 2;
-  string field = 3;
-  string message = 4;
-}
-
-// GraphService 新增 RPC
-rpc ValidateGraph(ValidateGraphRequest) returns (ValidateGraphResponse) {
-  option (google.api.http) = {post: "/v1/graph/{graph_id}/validate" body: "*"};
-}
-```
-
-### 5.2 设计模式模板
-
-**模板数据结构**：
-
-```go
-// internal/graph/trpc/templates.go
-
-type GraphTemplate struct {
-    ID          string         `json:"id"`
-    Name        string         `json:"name"`
-    Description string         `json:"description"`
-    Category    string         `json:"category"` // "pipeline"/"approval"/"parallel"/"loop"/"dispatch"/"nested"
-    Nodes       []TemplateNode `json:"nodes"`
-    Edges       []TemplateEdge `json:"edges"`
-    StateFields []StateFieldDef `json:"state_fields"`
-}
-
-type TemplateNode struct {
-    NodeID      string `json:"node_id"`
-    Type        string `json:"type"`
-    Label       string `json:"label"`
-    Description string `json:"description"`
-}
-
-type TemplateEdge struct {
-    FromNode string `json:"from_node"`
-    ToNode   string `json:"to_node"`
-    Type     string `json:"type"` // "runtime"/"conditional"
-    Label    string `json:"label,omitempty"`
-}
-```
-
-**内置模板**：
-
-| 模板 | 拓扑 | 节点 | 边 |
-|------|------|------|-----|
-| 顺序流水线 | A→B→C→D | 4 Function | 3 Runtime |
-| 审批流 | A→[审批]→B/C | 2 Function + 1 Router | 1 Runtime + 1 Conditional |
-| 并行评审 | A→(B∥C∥D)→汇总 | 4 Function + 1 Join | 4 Runtime |
-| 生成-评审循环 | A→B→[评分]→A/D | 2 Function + 1 Router | 2 Runtime + 1 Conditional |
-| 条件分发 | A→[路由]→B/C/D | 1 Function + 1 Router | 1 Runtime + 1 Conditional |
-| 子图嵌套 | A→[子工作流]→B | 1 Function + 1 Agent + 1 Function | 2 Runtime |
-
-**模板 API**：
-
-```protobuf
-message ListGraphTemplatesRequest {}
-
-message GraphTemplateInfo {
-  string id = 1;
-  string name = 2;
-  string description = 3;
-  string category = 4;
-  string preview_dot = 5; // DOT 预览
-}
-
-message ListGraphTemplatesResponse {
-  repeated GraphTemplateInfo templates = 1;
-}
-
-message CreateGraphFromTemplateRequest {
-  string template_id = 1;
-  string name = 2;
-  string description = 3;
-}
-
-// GraphService 新增 RPC
-rpc ListGraphTemplates(ListGraphTemplatesRequest) returns (ListGraphTemplatesResponse) {
-  option (google.api.http) = {get: "/v1/graph/templates"};
-}
-rpc CreateGraphFromTemplate(CreateGraphFromTemplateRequest) returns (CreateGraphResponse) {
-  option (google.api.http) = {post: "/v1/graph/from-template" body: "*"};
-}
-```
-
-### 5.3 资产复用
+### 6.3 资产复用（❌ 待实现）
 
 | 资产类型 | 实现方式 | 优先级 |
 |----------|----------|--------|
-| Graph 模板 | 内置模板 + 用户自定义模板 | P1 |
-| Agent 仓库 | 系统已有 Agent 目录，Graph 节点直接引用 | ✅ 已有 |
-| 子图复用 | 将常用流程片段封装为子图，跨 Graph 复用 | P1 |
-| Graph 版本管理 | Graph 定义版本化，支持回滚 | P2 |
+| 用户自定义模板 | 将已有 Graph 保存为模板 | P2 |
+| Graph 版本管理 | 定义版本化，支持回滚 | P2 |
 | 导入/导出 | Graph 定义 JSON 导入导出 | P2 |
 
 ---
 
-## 六、后端架构
+## 七、任务派工与执行规则
 
-### 6.1 模块结构
-
-```
-internal/graph/trpc/
-├── builder.go        # GraphBuildConfig → BuildStateGraph → GraphAgent
-├── registry.go       # NodeFunc/CondFunc 注册表
-├── checkpoint.go     # SQLite Checkpoint Saver 适配器
-├── event_bridge.go   # Graph 事件 → EventBus 桥接器
-├── visualize.go      # DOT 解析 + 结构化 JSON
-├── validator.go      # 设计时校验引擎（新增）
-└── templates.go      # 设计模式模板（新增）
-```
-
-### 6.2 GraphUsecase 完整方法
-
-| 方法 | 说明 | 状态 |
-|------|------|------|
-| `CreateGraph` | 创建 Graph 定义 | ✅ |
-| `GetGraph` | 获取 Graph 定义 | ✅ |
-| `UpdateGraph` | 更新 Graph 定义 | ✅ |
-| `DeleteGraph` | 删除 Graph | ✅ |
-| `ListGraphs` | 列出 Graph | ✅ |
-| `ExecuteGraph` | 执行 Graph（含 EventBridge） | ✅ |
-| `ResumeExecution` | 恢复中断的执行 | ✅ |
-| `CancelExecution` | 取消执行 | ✅ |
-| `ListExecutions` | 列出执行记录 | ✅ |
-| `ListCheckpoints` | 列出检查点 | ✅ |
-| `GetStateSnapshot` | 获取状态快照 | ✅ |
-| `EditState` | 编辑状态 | ✅ |
-| `VisualizeGraph` | 可视化（结构化 JSON） | ✅ |
-| `ValidateGraph` | 设计时校验 | ❌ P0 新增 |
-| `ListGraphTemplates` | 列出设计模式模板 | ❌ P1 新增 |
-| `CreateGraphFromTemplate` | 从模板创建 Graph | ❌ P1 新增 |
-
-### 6.3 事件桥接器（已实现）
-
-**映射规则**：
-
-| trpc event.Object | EnvelopeType | Metadata 提取 |
-|-------------------|--------------|---------------|
-| `graph.node.start` | `graph_node_start` | NodeExecutionMetadata |
-| `graph.node.complete` | `graph_node_end` | NodeExecutionMetadata |
-| `graph.node.error` | `graph_node_error` | NodeExecutionMetadata |
-| `graph.node.custom` | `graph_node_custom` | NodeCustomEventMetadata |
-| `graph.pregel.step` | `graph_step` | PregelStepMetadata |
-| `graph.checkpoint.interrupt` | `checkpoint` | PregelStepMetadata |
-| `graph.checkpoint.created` | `checkpoint` | PregelStepMetadata |
-| `graph.state.update` | `state_delta` | StateUpdateMetadata |
-| `graph.execution`（done） | `graph_execution_done` | CompletionMetadata |
-
-### 6.4 Checkpoint API（已实现）
-
-| RPC | HTTP | 说明 |
-|-----|------|------|
-| `ListCheckpoints` | `GET /v1/graph/executions/{id}/checkpoints` | 列出检查点 |
-| `GetStateSnapshot` | `GET /v1/graph/executions/{id}/state-snapshot` | 获取状态快照 |
-| `EditState` | `POST /v1/graph/executions/{id}/edit-state` | 编辑状态 |
-
----
-
-## 七、前端设计
-
-### 7.1 页面结构
-
-```
-/graphs                         → Graph 列表页
-/graphs/:id                     → Graph 编辑器页（编辑模式）
-/graphs/:id/run/:execId         → Graph 执行监控页（运行模式）
-```
-
-### 7.2 Graph 编辑器页布局
-
-```
-┌──────────┬───────────────────────────┬──────────────┐
-│ 组件面板  │        画布区域           │  属性面板    │
-│          │                           │              │
-│ Function │   ┌───┐   ┌───┐          │ 节点ID       │
-│ LLM      │   │ A │──▶│ B │          │ 类型         │
-│ Tool     │   └───┘   └─┬─┘          │ 指令         │
-│ Agent    │             │             │ 模型         │
-│ Router   │         ┌───▼───┐         │ 工具         │
-│ Join     │         │   C   │         │ 中断设置     │
-│          │         └───────┘         │              │
-│ ──────── │                           │ ──────────── │
-│ State    │                           │ State Schema │
-│ Schema   │                           │ 字段列表     │
-│          │                           │              │
-│ ──────── │                           │ ──────────── │
-│ 模板     │                           │ 校验结果     │
-└──────────┴───────────────────────────┴──────────────┘
-```
-
-### 7.3 节点样式
-
-| NodeType | 形状 | 填充色 | 边框色 | Vue Flow 样式 |
-|----------|------|--------|--------|--------------|
-| LLM | 矩形 | `#e3f2fd` | `#2196f3` | 蓝色边框节点 |
-| Tool | 矩形 | `#fff3e0` | `#ff9800` | 橙色边框节点 |
-| Agent | 矩形 | `#e8f5e9` | `#4caf50` | 绿色边框节点 |
-| Router | 菱形 | `#eeeeee` | `#757575` | 灰色菱形节点 |
-| Join | 菱形 | `#f3e5f5` | `#9c27b0` | 紫色菱形节点 |
-| Function | 矩形 | `#f3e5f5` | `#9c27b0` | 紫色边框节点 |
-
-### 7.4 执行状态样式
-
-| 状态 | 节点样式 | 说明 |
-|------|----------|------|
-| idle | 默认样式 | 未执行 |
-| running | 脉冲动画 + 蓝色光晕 | 正在执行 |
-| completed | 绿色勾标记 | 执行完成 |
-| failed | 红色叉标记 + 红色边框 | 执行失败 |
-| interrupted | 黄色暂停标记 | HITL 中断 |
-| waiting | 灰色 | 等待执行 |
-
-### 7.5 WS 事件处理
-
-```typescript
-interface GraphNodeState {
-  nodeId: string
-  status: 'idle' | 'running' | 'completed' | 'failed' | 'interrupted' | 'waiting'
-  startTime?: string
-  endTime?: string
-  duration?: number
-  error?: string
-}
-
-function handleGraphEvent(envelope: Envelope) {
-  switch (envelope.type) {
-    case 'graph_node_start':
-      updateNodeState(envelope.metadata.node_id, 'running', { startTime: envelope.timestamp })
-      break
-    case 'graph_node_end':
-      updateNodeState(envelope.metadata.node_id, 'completed', {
-        endTime: envelope.timestamp,
-        duration: envelope.metadata.duration_ns / 1e6,
-      })
-      break
-    case 'graph_node_error':
-      updateNodeState(envelope.metadata.node_id, 'failed', { error: envelope.metadata.error })
-      break
-    case 'checkpoint':
-      showInterruptDialog(envelope.metadata)
-      break
-    case 'graph_execution_done':
-      showExecutionSummary(envelope.metadata)
-      break
-  }
-}
-```
-
----
-
-## 八、数据流
-
-### 8.1 设计态数据流
-
-```
-前端 Vue Flow 编辑器
-  ↓ 拖拽节点/连线/配置属性
-  ↓ CreateGraph/UpdateGraph API (HTTP)
-后端 GraphUsecase → ValidateGraph(def)
-  ↓ 校验通过
-GraphRepo (Ent/SQLite) 持久化
-```
-
-### 8.2 运行态数据流
-
-```
-前端 ExecuteGraph 按钮
-  ↓ ExecuteGraph API (HTTP)
-后端 GraphUsecase → BuildStateGraph → GraphAgent.Run()
-  ↓ trpc-agent-go event.Event channel
-EventBridge → event.Envelope → EventBus.Publish()
-  ↓ WS graph channel
-前端 WS 客户端 → 节点状态更新 → Vue Flow 画布
-```
-
-### 8.3 HITL 数据流
-
-```
-Graph 执行 → 遇到 InterruptBefore/After
-  ↓ EventBridge → WS checkpoint 事件
-前端弹出确认对话框
-  ↓ 用户输入
-ResumeGraph API (HTTP)
-  ↓ GraphUsecase → Executor.Resume(checkpoint, userInput)
-Graph 从中断点恢复执行
-  ↓ EventBridge → WS graph_node_start 事件
-前端更新节点状态
-```
-
-### 8.4 TimeTravel 数据流
-
-```
-前端时间线点击检查点
-  ↓ GetStateSnapshot API (HTTP)
-后端 GraphUsecase → TimeTravel.GetState(ref)
-  ↓ 返回 StateSnapshot
-前端展示历史状态
-
-用户编辑状态
-  ↓ EditState API (HTTP)
-后端 GraphUsecase → TimeTravel.EditState(ref, patch)
-  ↓ 返回新 CheckpointRef
-用户选择从此点重新执行
-  ↓ ResumeGraph API (HTTP)
-Graph 从编辑点恢复执行
-```
-
----
-
-## 九、实现步骤
-
-### 阶段一：P0 核心能力补全
-
-#### 步骤 1：设计时校验引擎
-
-1. 新建 `internal/graph/trpc/validator.go`：实现 ValidateGraph
-2. Proto 新增 `ValidateGraph` RPC
-3. Service 层实现校验端点
-4. 前端编辑器保存时调用校验，展示错误/警告
-
-#### 步骤 2：Checkpoint SQLite 持久化
-
-1. 修改 `internal/data/graph.go`：注入 SQLite Checkpoint Saver 替换 InMemory
-2. Wire 注入更新
-3. 验证重启后 Checkpoint 可恢复
-
-#### 步骤 3：Agent 引用校验
-
-1. 在 validator.go 中实现 validateAgentRefs
-2. 集成 Agent 目录查询
-
-### 阶段二：P1 增强能力
-
-#### 步骤 4：设计模式模板
-
-1. 新建 `internal/graph/trpc/templates.go`：定义 6 种内置模板
-2. Proto 新增 `ListGraphTemplates`/`CreateGraphFromTemplate` RPC
-3. 前端模板选择面板
-
-#### 步骤 5：节点属性配置完善
-
-1. LLM 节点：Instruction + Model + Tools 配置面板
-2. Tool 节点：ToolNames + ParallelTools 配置面板
-3. Agent 节点：InputMapper/OutputMapper 可视化配置
-4. 节点重试配置：RetryPolicy 属性面板
-
-#### 步骤 6：State Schema 校验
-
-1. 在 validator.go 中实现 validateStateSchema
-2. 前端 State Schema 编辑面板实时校验
-
-#### 步骤 7：执行摘要与时间线
-
-1. Proto 新增 ExecutionSummary 消息
-2. 前端执行摘要组件
-3. 前端时间线组件
-
-#### 步骤 8：子图复用
-
-1. 支持将常用流程片段封装为子图
-2. 子图跨 Graph 引用
-
-### 阶段三：P2 高级能力
-
-#### 步骤 9：Graph 版本管理
-
-1. Graph 定义版本化
-2. 版本回滚
-
-#### 步骤 10：导入/导出
-
-1. Graph 定义 JSON 导入导出
-
-#### 步骤 11：节点缓存配置
-
-1. CachePolicy + CacheKeyFields 属性面板
-
----
-
-## 十、涉及文件汇总
-
-| 文件 | 操作 | 说明 |
-|------|------|------|
-| `internal/graph/trpc/validator.go` | 新建 | 设计时校验引擎（拓扑/Agent引用/StateSchema/循环） |
-| `internal/graph/trpc/templates.go` | 新建 | 6 种内置设计模式模板 |
-| `internal/graph/trpc/builder.go` | 修改 | 扩展节点类型构建逻辑（LLM/Tool/Agent 属性解析） |
-| `internal/graph/trpc/event_bridge.go` | 已实现 | Graph 事件 → EventBus 桥接器 |
-| `internal/graph/trpc/visualize.go` | 已实现 | DOT 解析 + 结构化 JSON |
-| `internal/graph/trpc/checkpoint.go` | 已实现 | SQLite Checkpoint Saver |
-| `internal/graph/trpc/registry.go` | 已实现 | NodeFunc/CondFunc 注册表 |
-| `internal/biz/graph.go` | 修改 | 新增 ValidateGraph/ListGraphTemplates/CreateGraphFromTemplate |
-| `internal/data/graph.go` | 修改 | 注入 SQLite Checkpoint Saver |
-| `internal/service/graph.go` | 修改 | 新增校验/模板 RPC 方法 |
-| `api/kratos/graph/v1/graph.proto` | 修改 | 新增校验/模板/摘要消息和 RPC |
-| `internal/event/envelope.go` | 已实现 | Graph 事件类型 |
-| `web/src/features/graph/types.ts` | 修改 | 新增模板/校验/摘要类型 |
-| `web/src/features/graph/api.ts` | 修改 | 新增模板/校验 API |
-| `web/src/components/graph/GraphPropertyPanel.vue` | 修改 | 完善各节点类型属性面板 |
-| `web/src/components/graph/GraphTemplatePanel.vue` | 新建 | 模板选择面板 |
-| `web/src/components/graph/GraphTimeline.vue` | 新建 | 时间线组件 |
-| `web/src/components/graph/GraphValidationPanel.vue` | 新建 | 校验结果面板 |
-
----
-
-## 十一、任务派工与执行规则设计
-
-> 对应需求 §10-§14，设计任务派工、状态生命周期、审核门禁、可观测性、超时重试、对外集成等扩展能力。
-
-### 11.1 Agent 角色与动态派工
-
-**数据模型扩展**：
+### 7.1 任务模型（✅ 已实现）
 
 ```go
-type AgentRole struct {
-    Name        string
-    Parent      string
-    Description string
-}
-
-type AgentProfile struct {
-    AgentKey    string
-    Roles       []AgentRole
-    Capabilities []string
-    MaxConcurrentTasks int
-    CurrentTaskCount   int
-}
-```
-
-**NodeDef 扩展**：
-
-```protobuf
-message NodeDef {
-  // ... 现有字段 ...
-  string required_role = 20;       // 所需角色（动态指派）
-  string assignment_mode = 21;     // "static" | "dynamic"
-  string assignment_strategy = 22; // "least_tasks" | "random" | "manual"
+type GraphTask struct {
+    TaskID             string
+    NodeID             string
+    ExecutionID        string
+    Assignee           string
+    Status             TaskStatus
+    Context            string
+    Input              string
+    Output             string
+    Summary            string
+    Metadata           string
+    RequiredRole       string
+    AssignmentMode     string
+    AssignmentStrategy string
+    CreatedAt          time.Time
+    ClaimedAt          *time.Time
+    CompletedAt        *time.Time
 }
 ```
 
-**派工流程**：
-
-```
-节点执行 → 检查 assignment_mode
-  ├── static → 直接使用 agent_name
-  └── dynamic → 按 required_role 从 Team 中匹配 Agent
-        ├── 唯一匹配 → 指派
-        ├── 多人匹配 → 按 assignment_strategy 选择
-        └── 无匹配 → 任务进入 pending_assignment，发送通知
-```
-
-**安全原则**：无匹配 Agent 时，任务状态为 `pending_assignment`，通过 WS `task_pending_assignment` 事件通知前端，不随机指派。
-
-### 11.2 任务模型与状态机
-
-**数据模型**：
-
-```go
-type Task struct {
-    TaskID      string
-    NodeID      string
-    ExecutionID string
-    Assignee    string
-    Status      TaskStatus
-    Context     json.RawMessage
-    Input       json.RawMessage
-    Output      json.RawMessage
-    Summary     string
-    Metadata    json.RawMessage
-    CreatedAt   time.Time
-    ClaimedAt   *time.Time
-    CompletedAt *time.Time
-}
-```
-
-**状态机转换**：
+### 7.2 任务状态机（✅ 已实现）
 
 ```
 pending ──ClaimTask──▶ claimed ──SubmitResult──▶ complete
-                               ──ReportBlocked──▶ blocked ──Resume──▶ claimed
+                               ──ReportBlocked──▶ blocked
                                ──SubmitForReview──▶ review_required ──Approve──▶ complete
                                                                           ──Reject──▶ claimed
-                               ──Fail──▶ failed ──Retry──▶ claimed
-                                                    ──Cancel──▶ cancelled
-                               ──Timeout──▶ timed_out ──Retry──▶ claimed
+                               ──Fail──▶ failed
+                               ──Timeout──▶ timed_out
+pending ──(无匹配Agent)──▶ pending_assignment
 ```
 
-**Proto 扩展**：
+| 状态 | 说明 |
+|------|------|
+| `pending` | 等待领取 |
+| `claimed` | 已领取，执行中 |
+| `complete` | 已完成 |
+| `blocked` | 执行受阻 |
+| `review_required` | 待审核 |
+| `failed` | 失败 |
+| `timed_out` | 超时 |
+| `cancelled` | 已取消 |
+| `crashed` | 崩溃 |
+| `pending_assignment` | 待指派（无匹配 Agent） |
 
-```protobuf
-enum TaskStatus {
-  TASK_PENDING = 0;
-  TASK_CLAIMED = 1;
-  TASK_COMPLETE = 2;
-  TASK_BLOCKED = 3;
-  TASK_REVIEW_REQUIRED = 4;
-  TASK_FAILED = 5;
-  TASK_TIMED_OUT = 6;
-  TASK_CANCELLED = 7;
-  TASK_CRASHED = 8;
-}
+### 7.3 Agent 角色与动态派工（✅ 已实现）
 
-message Task {
-  string task_id = 1;
-  string node_id = 2;
-  string execution_id = 3;
-  string assignee = 4;
-  TaskStatus status = 5;
-  string context = 6;
-  string input = 7;
-  string output = 8;
-  string summary = 9;
-  string metadata = 10;
-  string created_at = 11;
-  string claimed_at = 12;
-  string completed_at = 13;
-}
-```
+- **static 模式**：直接使用 `agent_name` 指定
+- **dynamic 模式**：按 `required_role` 从 Agent 目录匹配
+  - 唯一匹配 → 指派
+  - 多人匹配 → 按 `assignment_strategy`（least_tasks/random/manual）选择
+  - 无匹配 → `pending_assignment`
 
-### 11.3 审核与质量门禁
+安全原则：无匹配 Agent 时不随机指派，任务进入 `pending_assignment` 等待。
 
-**审核节点设计**：
+### 7.4 审核与质量门禁（✅ 已实现）
 
-- **人工审核**：复用 HITL InterruptBefore/After 机制
-- **自动审核（Reviewer Agent）**：新增 `reviewer` 节点类型，引用一个 Reviewer Agent 对上游输出进行审核
+- **人工审核**：复用 HITL InterruptBefore/After
+- **自动审核**：`reviewer_agent` 字段指定 Reviewer Agent，审核通过 → complete，驳回 → claimed
+- **评论反馈**：`TaskComment` 模型，支持 approve/reject/suggestion 类型
 
-```protobuf
-message NodeDef {
-  // ... 现有字段 ...
-  string reviewer_agent = 23;     // Reviewer Agent 名称
-  string review_rules = 24;       // 审核规则（JSON）
-}
-```
+### 7.5 智能超时（✅ 已实现）
 
-**评论模型**：
+- Agent 通过 `Heartbeat` API 上报心跳
+- 心跳感知超时：持续心跳时延长租约（`enable_lease_extension`）
+- 超时后任务标记为 `timed_out`
 
-```protobuf
-message TaskComment {
-  string comment_id = 1;
-  string task_id = 2;
-  string author = 3;
-  string content = 4;
-  string type = 5;    // "approve" | "reject" | "suggestion"
-  string created_at = 6;
-}
-```
+### 7.6 可观测性（✅ 已实现）
 
-### 11.4 全链路可观测性
+| 模型 | API | 说明 |
+|------|-----|------|
+| TaskLog | `ListTaskLogs` | 任务级 stdout/stderr 日志 |
+| TaskRun | `ListTaskRuns` | 运行历史（启动/结束时间、退出码） |
+| TaskEvent | `ListTaskEvents` | 事件追踪（状态变更流） |
+| TaskComment | `ListTaskComments` | 审核评论 |
 
-**结构化日志**：
+### 7.7 对外集成 API（✅ 部分实现）
 
-```protobuf
-message TaskLog {
-  string task_id = 1;
-  string stream = 2;    // "stdout" | "stderr"
-  string content = 3;
-  string level = 4;     // "debug" | "info" | "warn" | "error"
-  string timestamp = 5;
-}
-```
-
-**运行历史（task_run）**：
-
-```protobuf
-message TaskRun {
-  string run_id = 1;
-  string task_id = 2;
-  string started_at = 3;
-  string finished_at = 4;
-  int32 exit_code = 5;
-  string log_ref = 6;   // 日志引用
-}
-```
-
-**事件追踪（task_events）**：
-
-```protobuf
-message TaskEvent {
-  string event_id = 1;
-  string task_id = 2;
-  string event_type = 3;  // "task_created" | "task_claimed" | "heartbeat" | "task_completed" | ...
-  string source_node = 4;
-  string description = 5;
-  string timestamp = 6;
-}
-```
-
-### 11.5 智能超时与重试
-
-**心跳感知超时**：
-
-```protobuf
-message NodeDef {
-  // ... 现有字段 ...
-  int32 timeout_seconds = 25;        // 最大执行时间
-  int32 heartbeat_interval_seconds = 26; // 心跳间隔
-  bool enable_lease_extension = 27;  // 是否允许租约延长
-}
-```
-
-**熔断策略**：
-
-```protobuf
-message CircuitBreakerPolicy {
-  int32 failure_threshold = 1;  // 连续失败阈值
-  int32 reset_timeout_seconds = 2; // 熔断恢复超时
-  string fallback_node = 3;    // 熔断后执行的补偿节点
-}
-```
-
-### 11.6 对外集成
-
-**Agent 交互 API**：
-
-```protobuf
-service GraphService {
-  // ... 现有 RPC ...
-  rpc ClaimTask(ClaimTaskRequest) returns (ClaimTaskResponse);
-  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
-  rpc SubmitTaskResult(SubmitTaskResultRequest) returns (SubmitTaskResultResponse);
-  rpc ReportBlocked(ReportBlockedRequest) returns (ReportBlockedResponse);
-}
-```
-
-**Webhook 配置**：
-
-```protobuf
-message WebhookConfig {
-  string url = 1;
-  string event_type = 2;   // "task_completed" | "task_failed" | "checkpoint_interrupt" | ...
-  map<string, string> headers = 3;
-}
-```
+| API | 状态 | 说明 |
+|-----|------|------|
+| `ClaimTask` | ✅ | Agent 领取任务 |
+| `Heartbeat` | ✅ | Agent 心跳上报 |
+| `SubmitTaskResult` | ✅ | Agent 提交结果 |
+| `ReportBlocked` | ✅ | Agent 报告阻塞 |
+| `ReviewTask` | ✅ | 审核任务 |
+| Webhook 通知 | ❌ | 节点级 Webhook 配置 |
+| 熔断策略 | ❌ | CircuitBreakerPolicy |
 
 ---
 
-## 十二、分阶段实现步骤
+## 八、数据模型
 
-### P0（当前）
+### 8.1 Ent Schema 清单
 
-| 项目 | 状态 |
-|------|------|
-| 图结构基础（节点/边/State Schema） | ✅ 已实现 |
-| Agent 节点引用 | ✅ 已实现 |
-| 条件路由 | ✅ 已实现 |
-| HITL 中断/恢复 | ✅ 已实现 |
-| Checkpoint API | ✅ 已实现 |
-| 事件桥接 | ✅ 已实现 |
-| 设计时校验引擎 | ✅ 已实现 |
-| 设计模式模板 | ✅ 已实现 |
+| Schema | 表名 | 说明 |
+|--------|------|------|
+| `GraphDefinition` | `graph_definitions` | 工作流定义（节点/边/状态/配置 JSON） |
+| `GraphExecution` | `graph_executions` | 运行实例（关联定义、当前状态、检查点引用） |
+| `GraphTask` | `graph_tasks` | 任务（指派、状态、输入输出） |
+| `GraphTaskComment` | `graph_task_comments` | 审核评论 |
+| `GraphTaskLog` | `graph_task_logs` | 任务日志 |
+| `GraphTaskRun` | `graph_task_runs` | 运行历史 |
+| `GraphTaskEvent` | `graph_task_events` | 事件追踪 |
 
-### P1（下一阶段）
+### 8.2 GraphDefinition 核心字段
 
-| 项目 | 说明 |
-|------|------|
-| 任务模型与状态机 | Task CRUD + 状态转换 + 强制完成回调 |
-| Agent 角色与动态派工 | AgentProfile + required_role + assignment_mode |
-| 审核节点 | Reviewer Agent + 评论反馈 |
-| 结构化日志 | TaskLog + 日志视图 |
-| 运行历史 | TaskRun + 历史查看 |
-| 心跳感知超时 | heartbeat + 租约延长 |
-| 前端模板/校验面板 | GraphTemplatePanel + GraphValidationPanel |
-| 前端执行监控 | 节点状态高亮 + 甘特图/时间线 |
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | UUID | 主键 |
+| `name` | String | 名称 |
+| `description` | String | 描述 |
+| `state_fields` | JSON | State Schema 定义 |
+| `nodes` | JSON | 节点定义列表 |
+| `edges` | JSON | 边定义列表 |
+| `conditional_edges` | JSON | 条件边定义列表 |
+| `subgraphs` | JSON | 子图定义列表 |
+| `entry_point` | String | 入口节点 ID |
+| `finish_point` | String | 终止节点 ID |
+| `enable_checkpoint` | Bool | 是否启用检查点 |
+| `execution_engine` | String | 执行引擎（bsp/dag） |
+| `interrupt_before` | JSON | 全局中断前节点列表 |
+| `interrupt_after` | JSON | 全局中断后节点列表 |
+| `metadata` | JSON | 扩展元数据 |
 
-### P2（远期）
+### 8.3 GraphExecution 核心字段
 
-| 项目 | 说明 |
-|------|------|
-| Agent 交互 API | ClaimTask/Heartbeat/SubmitResult/ReportBlocked |
-| Webhook 通知 | 节点级 Webhook 配置 |
-| 自定义执行器 | spawn_fn 插件机制 |
-| 熔断策略 | CircuitBreakerPolicy |
-| 事件追踪 | TaskEvent + 事件流查询 |
-| Graph 版本管理 | 定义版本化 + 回滚 |
-| 用户自定义模板 | 保存已有 Graph 为模板 |
-| 时间旅行 UI | 检查点时间线 + 状态编辑重放 |
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | UUID | 主键 |
+| `graph_id` | UUID | 关联 GraphDefinition |
+| `session_id` | String | 会话 ID |
+| `status` | String | 执行状态 |
+| `current_node` | String | 当前执行节点 |
+| `lineage_id` | String | 检查点血统 ID |
+| `error_message` | Text | 错误信息 |
+
+---
+
+## 九、模块边界
+
+### 9.1 Graph vs Agent
+
+| 维度 | Graph | Agent |
+|------|-------|-------|
+| 关注点 | 流程编排（节点/边/状态/检查点） | Agent 生命周期（配置/运行/工具） |
+| 交互方式 | Graph 节点引用 Agent 目录中的 Agent | Agent 独立运行，不感知 Graph |
+| 状态管理 | Graph State（显式 Schema + Reducer） | Agent 会话历史（隐式消息传递） |
+
+### 9.2 Graph vs Team
+
+| 维度 | Graph | Team |
+|------|-------|------|
+| 编排方式 | 自由编排（画布定义任意拓扑） | 模式化协作（预定义模式） |
+| 控制粒度 | 节点级（精确控制每一步） | 模式级（框架决定执行顺序） |
+| 适用场景 | 复杂业务流程 | 简单协作 |
+
+### 9.3 Graph 内部模块边界
+
+| 模块 | 职责 | 不负责 |
+|------|------|--------|
+| `builder.go` | GraphBuildConfig → StateGraph → GraphAgent | 业务逻辑、持久化 |
+| `registry.go` | NodeFunc/CondFunc 注册与解析 | 执行逻辑 |
+| `validator.go` | 设计时校验 | 运行时校验 |
+| `templates.go` | 内置模板定义与转换 | 用户模板管理 |
+| `checkpoint.go` | Checkpoint Saver 适配 | 检查点业务逻辑 |
+| `event_bridge.go` | Graph 事件 → EventBus 桥接 | 事件消费 |
+| `visualize.go` | DOT 解析 + 结构化 JSON | 画布渲染 |
+| `GraphUsecase` | 图定义 CRUD + 执行编排 | 图构建细节 |
+| `TaskUsecase` | 任务生命周期管理 | 图执行逻辑 |

@@ -11,6 +11,7 @@ import (
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/mcp/health"
 	"aranea-agents/internal/server"
+	"aranea-agents/internal/telemetry"
 	"aranea-agents/pkg/auth"
 
 	"github.com/go-kratos/kratos/v2"
@@ -106,9 +107,9 @@ func main() {
 		panic(err)
 	}
 
-	// EP-OBS-02: initialise OTel tracer provider; noop when endpoint not set.
-	shutdownTracer := server.InitTracerProvider(Name, Version)
-	defer func() { _ = shutdownTracer(context.Background()) }()
+	// EP-OBS-02: initialise OTel tracer + meter providers; noop when endpoint not set.
+	shutdownTelemetry := telemetry.Init(Name, Version)
+	defer func() { _ = shutdownTelemetry(context.Background()) }()
 
 	out, cleanup, err := wireApp(bc.Server, bc.Data, logger)
 	if err != nil {

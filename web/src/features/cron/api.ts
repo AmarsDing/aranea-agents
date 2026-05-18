@@ -8,6 +8,7 @@ import type { CronTaskRun, CronTaskRunQuery } from "./types";
 
 export type { PlatformResource, PlatformResourceInput } from "../platform/api";
 import type { CronTask as WireCronTask, CronTaskRun as WireCronTaskRun } from "../../services/kratos/cron/v1/index";
+import type { CronTaskConfig, CronTaskMetadata } from "./types";
 
 const cron = createCronService();
 
@@ -112,4 +113,21 @@ export async function listCronAgents(): Promise<Agent[]> {
 
 export async function listCronTeams(): Promise<Team[]> {
   return listTeams();
+}
+
+export function parseCronConfig(row: PlatformResource): CronTaskConfig {
+  return parseJSON<CronTaskConfig>(row.config_json, {});
+}
+
+export function parseCronMetadata(row: PlatformResource): CronTaskMetadata {
+  return parseJSON<CronTaskMetadata>(row.metadata_json, {});
+}
+
+function parseJSON<T>(value: string | undefined, fallback: T): T {
+  if (!value) return fallback;
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
+  }
 }

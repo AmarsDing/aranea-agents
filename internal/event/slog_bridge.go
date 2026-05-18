@@ -7,6 +7,8 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+
+	"go.opentelemetry.io/otel/trace"
 )
 
 type SlogBridge struct {
@@ -124,11 +126,43 @@ func sourceFromRecord(r slog.Record) string {
 }
 
 func InstallSlogBridge(bus Bus) bool {
+	current := slog.Default()
+	wrapped := &traceHandler{inner: current.Handler()}
+
 	if strings.TrimSpace(os.Getenv("LOG_BRIDGE_ENABLED")) != "1" {
+		slog.SetDefault(slog.New(wrapped))
 		return false
 	}
-	current := slog.Default()
-	bridge := NewSlogBridge(bus, current.Handler())
+	bridge := NewSlogBridge(bus, wrapped)
 	slog.SetDefault(slog.New(bridge))
 	return true
+}
+
+type traceHandler struct {
+	inner slog.Handler
+}
+
+func (h *traceHandler) Enabled(ctx context.Context, level slog.Level) bool {
+	return h.inner.Enabled(ctx, level)
+}
+
+func (h *traceHandler) Handle(ctx context.Context, r slog.Record) error {
+	if ctx != nil {
+		if span := trace.SpanFromContext(ctx); span.SpanContext().IsValid() {
+			sc := span.SpanContext()
+			r.AddAttrs(
+				slog.String("trace_id", sc.TraceID().String()),
+				slog.String("span_id", sc.SpanID().String()),
+			)
+		}
+	}
+	return h.inner.Handle(ctx, r)
+}
+
+func (h *traceHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return &traceHandler{inner: h.inner.WithAttrs(attrs)}
+}
+
+func (h *traceHandler) WithGroup(name string) slog.Handler {
+	return &traceHandler{inner: h.inner.WithGroup(name)}
 }

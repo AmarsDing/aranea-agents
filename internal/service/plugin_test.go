@@ -59,6 +59,16 @@ func (m *memPluginRepo) UpdatePluginConfig(_ context.Context, id string, configJ
 	return p, nil
 }
 
+func (m *memPluginRepo) UpdateSortOrder(_ context.Context, id string, sortOrder int) (biz.Plugin, error) {
+	p, ok := m.items[id]
+	if !ok {
+		return biz.Plugin{}, fmt.Errorf("plugin not found: %s", id)
+	}
+	p.SortOrder = sortOrder
+	m.items[id] = p
+	return p, nil
+}
+
 func newPluginService() *service.PluginService {
 	repo := newMemPluginRepo()
 	repo.items["p1"] = biz.Plugin{ID: "p1", Key: "test-plugin", Name: "Test Plugin", Enabled: false}
@@ -104,5 +114,18 @@ func TestPluginService_UpdateConfig(t *testing.T) {
 	}
 	if out.GetConfigJson() != `{"k":"v"}` {
 		t.Errorf("config mismatch: %s", out.GetConfigJson())
+	}
+}
+
+func TestPluginService_UpdateSortOrder(t *testing.T) {
+	svc := newPluginService()
+	ctx := context.Background()
+
+	out, err := svc.UpdatePluginSortOrder(ctx, &v1.UpdatePluginSortOrderRequest{Id: "p1", SortOrder: 5})
+	if err != nil {
+		t.Fatalf("update sort order: %v", err)
+	}
+	if out.GetSortOrder() != 5 {
+		t.Errorf("sort_order mismatch: %d", out.GetSortOrder())
 	}
 }

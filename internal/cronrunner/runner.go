@@ -153,7 +153,14 @@ func (r *Runner) executeTask(ctx context.Context, task biz.CronTask, cfg cronTas
 	runID := uuid.NewString()
 	started := now.Format(time.RFC3339)
 	outputPending := mustMarshalJSON(map[string]any{"trigger": "schedule"})
-	if err := r.deps.Cron.InsertCronTaskRun(ctx, runID, task.ID, "pending", started, outputPending, started); err != nil {
+	if err := r.deps.Cron.InsertCronTaskRun(ctx, biz.CronTaskRunInput{
+		ID:         runID,
+		TaskID:     task.ID,
+		Status:     "pending",
+		StartedAt:  started,
+		OutputJSON: outputPending,
+		CreatedAt:  started,
+	}); err != nil {
 		return
 	}
 
@@ -229,14 +236,21 @@ func (r *Runner) executeTask(ctx context.Context, task biz.CronTask, cfg cronTas
 // dispatchWithRetry runs dispatchCronTask with exponential back-off retries (30s/2m/10m).
 // It recovers from panics on each attempt via safego.RecoverFunc.
 func (r *Runner) dispatchWithRetry(ctx context.Context, task biz.CronTask, cfg cronTaskConfig) (res cronDispatchResult, err error) {
-	attempts := len(defaultRetryBackoff) + 1
+	if cfg.RetryMaxAttempts == 0 {
+		return r.dispatchSafe(ctx, task, cfg)
+	}
+	backoff := defaultRetryBackoff
+	if cfg.RetryMaxAttempts > 0 && cfg.RetryMaxAttempts-1 < len(defaultRetryBackoff) {
+		backoff = defaultRetryBackoff[:cfg.RetryMaxAttempts-1]
+	}
+	attempts := len(backoff) + 1
 	for attempt := 0; attempt < attempts; attempt++ {
 		res, err = r.dispatchSafe(ctx, task, cfg)
 		if err == nil {
 			return res, nil
 		}
-		if attempt < len(defaultRetryBackoff) {
-			delay := defaultRetryBackoff[attempt]
+		if attempt < len(backoff) {
+			delay := backoff[attempt]
 			slog.Warn("cron job attempt failed, retrying", "job_id", task.ID, "attempt", attempt+1, "delay", delay, "error", err)
 			select {
 			case <-ctx.Done():

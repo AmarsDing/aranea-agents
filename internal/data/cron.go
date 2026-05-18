@@ -221,16 +221,16 @@ func (r *cronRepo) ListCronTaskRuns(ctx context.Context, q biz.CronTaskRunQuery)
 	return out, nil
 }
 
-func (r *cronRepo) InsertCronTaskRun(ctx context.Context, id, taskID, status, startedAt, outputJSON, createdAt string) error {
+func (r *cronRepo) InsertCronTaskRun(ctx context.Context, in biz.CronTaskRunInput) error {
 	_, err := r.data.entClient.CronTaskRun.Create().
-		SetID(id).
-		SetTaskID(taskID).
-		SetStatus(status).
-		SetStartedAt(startedAt).
+		SetID(in.ID).
+		SetTaskID(in.TaskID).
+		SetStatus(in.Status).
+		SetStartedAt(in.StartedAt).
 		SetFinishedAt("").
-		SetOutputJSON(outputJSON).
+		SetOutputJSON(in.OutputJSON).
 		SetErrorMessage("").
-		SetCreatedAt(createdAt).
+		SetCreatedAt(in.CreatedAt).
 		Save(ctx)
 	return err
 }

@@ -37,11 +37,11 @@ func (r *monitorRepo) ListAuditLogs(ctx context.Context, query biz.AuditQuery) (
 	args = append(args, limit, offset)
 
 	var total int32
-	if err := r.data.Ent().QueryRowScanContext(ctx, countSQL, args[:len(args)-2], &total); err != nil {
+	if err := r.data.RawDB().QueryRowContext(ctx, countSQL, args[:len(args)-2]...).Scan(&total); err != nil {
 		return biz.AuditListResult{}, err
 	}
 
-	rows, err := r.data.Ent().QueryContext(ctx, listSQL, args...)
+	rows, err := r.data.RawDB().QueryContext(ctx, listSQL, args...)
 	if err != nil {
 		return biz.AuditListResult{}, err
 	}
@@ -115,11 +115,11 @@ func (r *monitorRepo) ListMonitorEvents(ctx context.Context, query biz.MonitorEv
 	listSQL := sqlMonitorEventsList + where + fmt.Sprintf(" ORDER BY created_at DESC LIMIT %d OFFSET %d", limit, offset)
 
 	var total int32
-	if err := r.data.Ent().QueryRowScanContext(ctx, countSQL, args, &total); err != nil {
+	if err := r.data.RawDB().QueryRowContext(ctx, countSQL, args...).Scan(&total); err != nil {
 		return biz.MonitorListResult{}, err
 	}
 
-	rows, err := r.data.Ent().QueryContext(ctx, listSQL, args...)
+	rows, err := r.data.RawDB().QueryContext(ctx, listSQL, args...)
 	if err != nil {
 		return biz.MonitorListResult{}, err
 	}
@@ -154,7 +154,7 @@ func monitorEventsWhere(q biz.MonitorEventsQuery) (string, []any) {
 }
 
 func (r *monitorRepo) GetMonitorEvent(ctx context.Context, id string) (biz.MonitorPlatformRow, error) {
-	rows, err := r.data.Ent().QueryContext(ctx, sqlMonitorEventsGet, id)
+	rows, err := r.data.RawDB().QueryContext(ctx, sqlMonitorEventsGet, id)
 	if err != nil {
 		return biz.MonitorPlatformRow{}, err
 	}
@@ -180,11 +180,11 @@ func (r *monitorRepo) ListMonitorTraces(ctx context.Context, query biz.MonitorTr
 	listSQL := sqlMonitorTracesList + where + fmt.Sprintf(" ORDER BY created_at DESC LIMIT %d OFFSET %d", limit, offset)
 
 	var total int32
-	if err := r.data.Ent().QueryRowScanContext(ctx, countSQL, args, &total); err != nil {
+	if err := r.data.RawDB().QueryRowContext(ctx, countSQL, args...).Scan(&total); err != nil {
 		return biz.MonitorListResult{}, err
 	}
 
-	rows, err := r.data.Ent().QueryContext(ctx, listSQL, args...)
+	rows, err := r.data.RawDB().QueryContext(ctx, listSQL, args...)
 	if err != nil {
 		return biz.MonitorListResult{}, err
 	}
@@ -223,7 +223,7 @@ func monitorTracesWhere(q biz.MonitorTracesQuery) (string, []any) {
 }
 
 func (r *monitorRepo) GetMonitorTrace(ctx context.Context, id string) (biz.MonitorPlatformRow, error) {
-	rows, err := r.data.Ent().QueryContext(ctx, sqlMonitorTracesGet, id)
+	rows, err := r.data.RawDB().QueryContext(ctx, sqlMonitorTracesGet, id)
 	if err != nil {
 		return biz.MonitorPlatformRow{}, err
 	}

@@ -17,6 +17,7 @@ import (
 	"aranea-agents/internal/cronrunner/jobs"
 	"aranea-agents/internal/data"
 	"aranea-agents/internal/event"
+	graphadapter "aranea-agents/internal/graph/adapter"
 	graphtrpc "aranea-agents/internal/graph/trpc"
 	"aranea-agents/internal/mcp/health"
 	memtrpc "aranea-agents/internal/memory/trpc"

@@ -60,6 +60,15 @@ type CronTaskRunQuery struct {
 	Limit  int
 }
 
+type CronTaskRunInput struct {
+	ID         string
+	TaskID     string
+	Status     string
+	StartedAt  string
+	OutputJSON string
+	CreatedAt  string
+}
+
 type CronRepo interface {
 	ListCronTasks(ctx context.Context) ([]CronTask, error)
 	GetCronTask(ctx context.Context, id string) (CronTask, error)
@@ -67,9 +76,25 @@ type CronRepo interface {
 	UpdateCronTask(ctx context.Context, t CronTask) (CronTask, error)
 	DeleteCronTask(ctx context.Context, id string) error
 	ListCronTaskRuns(ctx context.Context, q CronTaskRunQuery) ([]CronTaskRun, error)
-	InsertCronTaskRun(ctx context.Context, id, taskID, status, startedAt, outputJSON, createdAt string) error
+	InsertCronTaskRun(ctx context.Context, in CronTaskRunInput) error
 	UpdateCronTaskRun(ctx context.Context, id, status, finishedAt, outputJSON, errorMessage string) error
 }
+
+type CronTaskPatch struct {
+	TaskKey      *string
+	Name         *string
+	Description  *string
+	Status       *string
+	Enabled      *bool
+	SortOrder    *int
+	AgentID      *string
+	ConfigJSON   *string
+	MetadataJSON *string
+}
+
+func StrPtr(s string) *string { return &s }
+func BoolPtr(b bool) *bool    { return &b }
+func IntPtr(i int) *int       { return &i }
 
 type CronUsecase struct {
 	repo CronRepo
@@ -105,7 +130,7 @@ func (u *CronUsecase) CreateTask(ctx context.Context, in CronTask) (CronTask, er
 	return u.repo.CreateCronTask(ctx, in)
 }
 
-func (u *CronUsecase) UpdateTask(ctx context.Context, id string, patch CronTask) (CronTask, error) {
+func (u *CronUsecase) UpdateTask(ctx context.Context, id string, patch CronTaskPatch) (CronTask, error) {
 	if strings.TrimSpace(id) == "" {
 		return CronTask{}, errors.BadRequest("CRON", "id is required")
 	}
@@ -114,21 +139,33 @@ func (u *CronUsecase) UpdateTask(ctx context.Context, id string, patch CronTask)
 		return CronTask{}, err
 	}
 	merged := cur
-	if patch.TaskKey != "" {
-		merged.TaskKey = patch.TaskKey
+	if patch.TaskKey != nil && *patch.TaskKey != "" {
+		merged.TaskKey = *patch.TaskKey
 	}
-	if patch.Name != "" {
-		merged.Name = patch.Name
+	if patch.Name != nil && *patch.Name != "" {
+		merged.Name = *patch.Name
 	}
-	if patch.Status != "" {
-		merged.Status = patch.Status
+	if patch.Status != nil && *patch.Status != "" {
+		merged.Status = *patch.Status
 	}
-	merged.Description = patch.Description
-	merged.Enabled = patch.Enabled
-	merged.SortOrder = patch.SortOrder
-	merged.AgentID = patch.AgentID
-	merged.ConfigJSON = patch.ConfigJSON
-	merged.MetadataJSON = patch.MetadataJSON
+	if patch.Description != nil {
+		merged.Description = *patch.Description
+	}
+	if patch.Enabled != nil {
+		merged.Enabled = *patch.Enabled
+	}
+	if patch.SortOrder != nil {
+		merged.SortOrder = *patch.SortOrder
+	}
+	if patch.AgentID != nil {
+		merged.AgentID = *patch.AgentID
+	}
+	if patch.ConfigJSON != nil {
+		merged.ConfigJSON = *patch.ConfigJSON
+	}
+	if patch.MetadataJSON != nil {
+		merged.MetadataJSON = *patch.MetadataJSON
+	}
 	if merged.TaskKey == "" {
 		merged.TaskKey = cur.TaskKey
 	}

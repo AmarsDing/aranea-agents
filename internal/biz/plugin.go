@@ -59,11 +59,16 @@ type PluginListResult struct {
 	Offset int
 }
 
+func AdminPluginPerms() PluginPermissions {
+	return PluginPermissions{CanView: true, CanToggle: true, CanEditConfig: true, CanViewLogs: true}
+}
+
 type PluginRepo interface {
 	SearchPlugins(ctx context.Context, q PluginListQuery) (PluginListResult, error)
 	GetPlugin(ctx context.Context, id string) (Plugin, error)
 	UpdatePluginEnabled(ctx context.Context, id string, enabled bool) (Plugin, error)
 	UpdatePluginConfig(ctx context.Context, id string, configJSON string) (Plugin, error)
+	UpdateSortOrder(ctx context.Context, id string, sortOrder int) (Plugin, error)
 }
 
 type PluginUsecase struct {
@@ -105,4 +110,11 @@ func (u *PluginUsecase) UpdateConfig(ctx context.Context, id string, configJSON 
 		return Plugin{}, errors.BadRequest("PLUGIN", "config_json must be valid JSON")
 	}
 	return u.repo.UpdatePluginConfig(ctx, id, configJSON)
+}
+
+func (u *PluginUsecase) UpdateSortOrder(ctx context.Context, id string, sortOrder int) (Plugin, error) {
+	if strings.TrimSpace(id) == "" {
+		return Plugin{}, errors.BadRequest("PLUGIN", "id is required")
+	}
+	return u.repo.UpdateSortOrder(ctx, id, sortOrder)
 }

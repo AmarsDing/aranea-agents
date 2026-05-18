@@ -1,178 +1,143 @@
 # M18: Event 事件系统 — 详细需求
 
-> 对标 `pkg/trpc-agent-go/event` 包，完善项目的事件系统。
->
-> **2026-05-17 现状对齐**：以下"现状分析"已被代码反超。当前实现状态：
-> - ✅ `internal/event/bus.go` 已具备 EventBus + 多种背压策略（block / drop_oldest / drop_new / spill）+ 背压计数指标。
-> - ✅ WebSocket 已统一传输（`web/src/services/wsClient.ts` + `internal/server/http.go`），SSE 仅作 fallback；Chat / Monitor / Team 复用单连接。
-> - ✅ `pkg/trpc-agent-go/event.Event` 的 StateDelta / Branch / Actions / LongRunningToolIDs 已在投影层被尊重。
-> - 🟡 Webhook 投射、断连重放、Envelope 通用化（51a §5）仍属未完成项。
->
-> 后续以 `guides/execution-plan.md` §3 EP-OBS-* / §A "事件系统" 行为准；本文以下章节作为产品需求基线参考。
+> 对标 trpc-agent-go `event` 包，完善项目的事件系统。
 
 ---
 
-## 1. 现状分析（已过期，保留参考）
+## 1. 能力现状
 
-项目已有基础的 SSE 推流：
-- `internal/server/sse.go`：将事件投影为 SSE 推流
-- 事件仅包含基本的文本内容
-
-**缺失能力**（部分已在 2026-05-17 落地）：
-1. 无 StateDelta（状态增量更新） — ✅ 已支持
-2. 无 Extensions（扩展元数据） — 🟡 部分
-3. 无 FilterKey（层级过滤） — 🟡 部分
-4. 无 Branch（分支追踪） — ✅ 已支持
-5. 无 Actions（流控制提示） — ✅ 已支持
-6. 无 Tag（业务标签） — 🟡 部分
-7. 无 Clone（深拷贝） — ✅ 已支持
-8. 无 LongRunningToolIDs（长时运行工具标记） — ✅ 已支持
-
----
-
-## 2. trpc 框架参照
-
-```
-pkg/trpc-agent-go/event/
-├── event.go     # Event 结构体
-└── options.go   # 事件选项
-```
-
-### Event 完整结构
-
-```go
-type Event struct {
-    *model.Response                          // LLM 响应基类
-    RequestID           string               // 请求 ID
-    InvocationID        string               // 调用 ID
-    ParentInvocationID  string               // 父调用 ID
-    Author              string               // 作者
-    ID                  string               // 事件唯一 ID
-    Timestamp           time.Time            // 时间戳
-    Branch              string               // 分支追踪
-    Tag                 string               // 业务标签
-    RequiresCompletion  bool                 // 需要完成信号
-    LongRunningToolIDs  map[string]struct{}  // 长时运行工具
-    StateDelta          map[string][]byte    // 状态增量
-    Extensions          map[string]json.RawMessage // 扩展元数据
-    StructuredOutput    any                  // 结构化输出
-    ExecutionTrace      *trace.Trace         // 执行追踪
-    Actions             *EventActions        // 流控制提示
-    FilterKey           string               // 层级过滤键
-    Version             int                  // 版本号
-}
-```
-
-### 关键能力
-
-1. **StateDelta**：事件携带状态增量，Runner 自动应用到 Session State
-2. **Extensions**：命名空间化的扩展元数据，用于传递自定义信息
-3. **FilterKey**：层级过滤键，支持 `parent/child` 格式，用于多 Agent 场景
-4. **Branch**：分支追踪，记录 Agent 执行链
-5. **Actions**：流控制提示，如 `SkipSummarization`
-6. **Tag**：业务标签，如 `code_execution_code`/`transfer`
-7. **Clone**：深拷贝，用于事件转发
-8. **LongRunningToolIDs**：标记长时运行工具，前端可显示进度
+| 能力 | 状态 | 说明 |
+|------|------|------|
+| 事件发布/订阅 | ✅ | Bus + 多种背压策略（DropOldest / DropNewest / BlockUpTo） |
+| 事件推流（WebSocket） | ✅ | 统一 WS 传输，Chat / Monitor / Team / Graph 复用单连接 |
+| 事件投影 | ✅ | trpc-agent-go Event → Envelope 投影，保留完整元数据 |
+| StateDelta | ✅ | 事件携带状态增量，自动应用到 Session State |
+| Branch 追踪 | ✅ | 事件携带 Branch 字段，多 Agent 场景记录执行路径 |
+| Actions 流控制 | ✅ | SkipSummarization 等流控制提示 |
+| Clone 深拷贝 | ✅ | Envelope.Clone() |
+| LongRunningToolIDs | ✅ | 投影层映射为 ToolCall.IsLongRunning |
+| FilterKey 层级过滤 | ✅ | 前缀匹配规则，WS 连接支持 filter_key 参数 |
+| Tag 业务标签 | ✅ | Envelope.ContainsTag() 分号分隔匹配 |
+| Extensions 扩展元数据 | ✅ | 命名空间化 map[string]string |
+| 事件缓冲与重放 | ✅ | 环形缓冲 + TTL 淘汰 + lastEventID 断连重放 |
+| 事件持久化 | ❌ | 无事件存储，系统重启后事件丢失 |
+| 事件回放 API | ❌ | 无按时间范围查询/回放历史事件的 API |
+| 前端事件可视化 | ❌ | 无事件时间线、分支追踪树、状态变更指示器 |
 
 ---
 
-## 3. 需求清单
+## 2. 需求清单
 
-### 3.1 SSE 推流增强
+### 2.1 事件推流增强
 
-**需求**：SSE 推流包含完整事件元数据
+**用户故事**：作为平台开发者，我希望事件推流携带完整元数据，以便前端能根据 FilterKey/Branch/Tag 等字段进行精细化展示和过滤。
 
-**实现要点**：
-- 修改 `internal/server/sse.go`
-- SSE 事件体包含 StateDelta/Extensions/FilterKey/Branch/Tag
+**功能规格**：
+- 事件推流包含 StateDelta / Extensions / FilterKey / Branch / Tag / Actions
 - 前端可根据 FilterKey 过滤显示
+- 前端可根据 Branch 追踪执行链
+- 向后兼容：现有事件格式不变
 
-**验收标准**：SSE 推流包含完整事件元数据
+**验收标准**：事件推流包含完整事件元数据，前端可按层级过滤事件流
 
-### 3.2 StateDelta 处理
+### 2.2 StateDelta 处理
 
-**需求**：事件中的 StateDelta 自动应用到 Session State
+**用户故事**：作为 Agent 开发者，我希望事件中的 StateDelta 能自动应用到 Session State，以便 Agent 运行时状态能被持久化和共享。
 
-**实现要点**：
-- Runner 在处理事件时检查 StateDelta
-- 自动合并到 Session State
-- 前端可订阅状态变更
+**功能规格**：
+- 事件携带 StateDelta（operation: set / append / delete，path，value_json）
+- Runner 处理事件时自动将 StateDelta 合并到 Session State
+- 前端可订阅状态变更通知
 
-**验收标准**：StateDelta 正确应用到 Session State
+**验收标准**：StateDelta 正确应用到 Session State（set / append / delete 三种操作）
 
-### 3.3 FilterKey 层级过滤
+### 2.3 FilterKey 层级过滤
 
-**需求**：支持按层级过滤事件
+**用户故事**：作为前端开发者，我希望按层级过滤事件流，以便在多 Agent 场景中只关注特定 Agent 子树的事件。
 
-**实现要点**：
-- 事件携带 FilterKey（如 `agent_a/agent_b`）
-- SSE 推流支持 `?filter_key=agent_a` 参数
-- 只推送匹配的事件
+**功能规格**：
+- 事件携带 FilterKey（如 `agent_a/agent_b` 格式）
+- 前缀匹配规则：`agent_a` 匹配 `agent_a/agent_b`，反之亦然
+- 客户端连接时可指定 filter_key 参数
 
 **验收标准**：前端可按层级过滤事件流
 
-### 3.4 Branch 追踪
+### 2.4 Branch 追踪
 
-**需求**：记录 Agent 执行链
+**用户故事**：作为平台运维者，我希望追踪 Agent 执行链，以便理解多 Agent 协作中的调用路径和决策过程。
 
-**实现要点**：
-- 事件携带 Branch 字段
-- 多 Agent 场景中记录执行路径
-- 前端可显示执行树
+**功能规格**：
+- 事件携带 Branch 字段，记录 Agent 执行路径
+- 事件携带 InvocationID / ParentInvocationID，构成调用树
+- 前端可展示执行树
 
 **验收标准**：多 Agent 场景中可追踪执行链
 
-### 3.5 Extensions 扩展元数据
+### 2.5 Extensions 扩展元数据
 
-**需求**：支持自定义扩展元数据
+**用户故事**：作为 Agent 开发者，我希望事件可携带自定义扩展元数据，以便传递工具调用参数等额外信息而不污染主事件字段。
 
-**实现要点**：
-- 事件可携带 Extensions
-- 命名空间化，避免冲突
+**功能规格**：
+- 事件可携带 Extensions（命名空间化的 key-value 对）
+- 命名空间化，避免冲突（如 `trpc_agent.tool_call_args`）
 - 前端可解析和显示
 
 **验收标准**：事件可携带自定义扩展元数据
 
-### 3.6 Actions 流控制
+### 2.6 Actions 流控制
 
-**需求**：事件可携带流控制提示
+**用户故事**：作为 Agent 开发者，我希望事件可携带流控制提示，以便 Runner 根据提示调整行为（如跳过摘要）。
 
-**实现要点**：
-- `SkipSummarization`：跳过摘要
-- Runner 根据 Actions 调整行为
+**功能规格**：
+- 事件可携带 Actions（如 SkipSummarization）
+- Runner 根据 Actions 调整后续处理逻辑
 
 **验收标准**：Runner 正确处理 Actions 提示
 
-### 3.7 前端事件可视化（超越层）
+### 2.7 事件持久化
 
-**需求**：前端可视化事件流
+**用户故事**：作为平台运维者，我希望系统重启后可查询历史事件，以便进行问题排查和审计。
 
-**实现要点**：
-- 事件时间线视图
-- 按分支/标签过滤
-- 事件详情展开
-- 执行追踪可视化
+**功能规格**：
+- 事件写入持久化存储
+- 可按 session_id / 时间范围 / 事件类型查询
+- 支持存储膨胀控制（TTL 清理或容量限制）
 
-**验收标准**：前端可可视化查看事件流
+**验收标准**：系统重启后可查询历史事件
+
+### 2.8 事件回放 API
+
+**用户故事**：作为前端开发者，我希望按时间范围回放事件，以便重现历史事件序列和调试。
+
+**功能规格**：
+- 提供 HTTP API 按时间范围查询历史事件
+- 返回事件列表，支持分页
+
+**验收标准**：可按时间范围回放事件
+
+### 2.9 前端事件可视化
+
+**用户故事**：作为平台使用者，我希望可视化查看事件流，以便理解 Agent 执行过程和状态变更。
+
+**功能规格**：
+- 事件时间线视图，按时间顺序展示事件
+- 按事件类型 / 分支 / 标签过滤
+- 事件详情展开（StateDelta 变更指示、Transfer 标签、ToolCall 详情）
+- 分支追踪树可视化
+- 长时运行工具进度指示
+
+**验收标准**：前端可可视化查看事件流，支持过滤和分支追踪
 
 ---
 
-## 4. 涉及文件
+## 3. 验收标准总览
 
-| 文件 | 操作 | 说明 |
-|------|------|------|
-| `internal/server/sse.go` | 修改 | 增强事件元数据推流 |
-| `internal/service/chat_native.go` | 修改 | StateDelta 处理 |
-| `web/src/features/chat/components/EventTimeline.vue` | 新建 | 事件时间线 |
-| `web/src/features/chat/composables/useEventFilter.ts` | 新建 | 事件过滤 |
-
----
-
-## 5. 验收标准总览
-
-1. SSE 推流包含完整事件元数据
-2. StateDelta 正确应用到 Session State
-3. 前端可按层级过滤事件流
-4. 多 Agent 场景中可追踪执行链
-5. 事件可携带自定义扩展元数据
-6. Runner 正确处理 Actions 提示
+1. ✅ 事件推流包含完整事件元数据（StateDelta / Extensions / FilterKey / Branch / Tag / Actions）
+2. ✅ StateDelta 正确应用到 Session State（set / append / delete 三种操作）
+3. ✅ 前端可按层级过滤事件流（FilterKey 前缀匹配）
+4. ✅ 多 Agent 场景中可追踪执行链（Branch + InvocationID / ParentInvocationID）
+5. ✅ 事件可携带自定义扩展元数据（Extensions 命名空间化）
+6. ✅ Runner 正确处理 Actions 提示（SkipSummarization）
+7. ❌ 系统重启后可查询历史事件
+8. ❌ 可按时间范围回放事件
+9. ❌ 前端事件时间线可视化（按类型 / 分支 / 标签过滤）

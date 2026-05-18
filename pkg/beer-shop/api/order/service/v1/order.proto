@@ -1,0 +1,64 @@
+syntax = "proto3";
+
+package order.service.v1;
+
+import "google/api/annotations.proto";
+
+option go_package = "api/order/service/v1;v1";
+
+
+service Order {
+    rpc ListOrder (ListOrderReq) returns (ListOrderReply) {
+    }
+
+    rpc CreateOrder (CreateOrderReq) returns (CreateOrderReply) {
+    }
+
+    rpc GetOrder (GetOrderReq) returns (GetOrderReply) {
+    }
+
+    rpc UpdateOrder (UpdateOrderReq) returns (UpdateOrderReply) {
+    }
+}
+
+message ListOrderReq {
+    int64 uid = 1;
+    int64 page_num = 2;
+    int64 page_size = 3;
+}
+
+message ListOrderReply {
+    message Order {
+        int64 id = 1;
+        int64 user_id = 2;
+    }
+    repeated Order orders = 1;
+}
+
+message CreateOrderReq {
+    int64 user_id = 1;
+}
+
+message CreateOrderReply {
+    int64 id = 1;
+    int64 user_id = 2;
+}
+
+message GetOrderReq {
+    int64 id = 1;
+}
+
+message GetOrderReply {
+    int64 id = 1;
+    int64 user_id = 2;
+}
+
+message UpdateOrderReq {
+    int64 id = 1;
+    int64 user_id = 2;
+}
+
+message UpdateOrderReply {
+    int64 id = 1;
+    int64 user_id = 2;
+}

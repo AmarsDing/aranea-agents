@@ -10,14 +10,15 @@ import (
 )
 
 type cronTaskConfig struct {
-	TargetType      string `json:"target_type"`
-	TeamID          string `json:"team_id"`
-	ScheduleType    string `json:"schedule_type"`
-	CronExpression  string `json:"cron_expression"`
-	IntervalSeconds int    `json:"interval_seconds"`
-	RunAt           string `json:"run_at"`
-	Timezone        string `json:"timezone"`
-	Message         string `json:"message"`
+	TargetType       string `json:"target_type"`
+	TeamID           string `json:"team_id"`
+	ScheduleType     string `json:"schedule_type"`
+	CronExpression   string `json:"cron_expression"`
+	IntervalSeconds  int    `json:"interval_seconds"`
+	RunAt            string `json:"run_at"`
+	Timezone         string `json:"timezone"`
+	Message          string `json:"message"`
+	RetryMaxAttempts int    `json:"retry_max_attempts"`
 }
 
 type cronTaskMetadata struct {

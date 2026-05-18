@@ -9,6 +9,7 @@ import (
 	v1 "aranea-agents/api/kratos/plugin/v1"
 	"aranea-agents/internal/biz"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
+	"aranea-agents/pkg/safego"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
@@ -30,12 +31,14 @@ func (s *PluginService) reloadRuntime(ctx context.Context) {
 	if s.runtime == nil {
 		return
 	}
-	result, err := s.uc.List(ctx, biz.PluginListQuery{Enabled: "true", Limit: 200})
-	if err != nil {
-		slog.Warn("plugin.reloadRuntime: list enabled failed", "error", err)
-		return
-	}
-	s.runtime.Apply(ctx, result.Items)
+	safego.Go(ctx, "plugin.reloadRuntime", func() {
+		result, err := s.uc.List(context.Background(), biz.PluginListQuery{Enabled: "true", Limit: 200})
+		if err != nil {
+			slog.Warn("plugin.reloadRuntime: list enabled failed", "error", err)
+			return
+		}
+		s.runtime.Apply(context.Background(), result.Items)
+	})
 }
 
 func toProtoPlugin(p biz.Plugin) *v1.Plugin {
@@ -109,6 +112,18 @@ func (s *PluginService) TogglePluginEnabled(ctx context.Context, req *v1.ToggleP
 
 func (s *PluginService) UpdatePluginConfig(ctx context.Context, req *v1.UpdatePluginConfigRequest) (*v1.Plugin, error) {
 	out, err := s.uc.UpdateConfig(ctx, req.GetId(), req.GetConfigJson())
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, kerrors.NotFound("PLUGIN", "plugin not found")
+		}
+		return nil, err
+	}
+	s.reloadRuntime(ctx)
+	return toProtoPlugin(out), nil
+}
+
+func (s *PluginService) UpdatePluginSortOrder(ctx context.Context, req *v1.UpdatePluginSortOrderRequest) (*v1.Plugin, error) {
+	out, err := s.uc.UpdateSortOrder(ctx, req.GetId(), int(req.GetSortOrder()))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, kerrors.NotFound("PLUGIN", "plugin not found")

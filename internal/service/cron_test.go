@@ -57,8 +57,8 @@ func (m *memCronRepo) ListCronTaskRuns(_ context.Context, _ biz.CronTaskRunQuery
 	return m.runs, nil
 }
 
-func (m *memCronRepo) InsertCronTaskRun(_ context.Context, id, taskID, status, startedAt, outputJSON, createdAt string) error {
-	m.runs = append(m.runs, biz.CronTaskRun{ID: id, TaskID: taskID, Status: status})
+func (m *memCronRepo) InsertCronTaskRun(_ context.Context, in biz.CronTaskRunInput) error {
+	m.runs = append(m.runs, biz.CronTaskRun{ID: in.ID, TaskID: in.TaskID, Status: in.Status})
 	return nil
 }
 

@@ -55,7 +55,7 @@
 | **执行次数** | `run_count`（累计触发次数，含成功+失败；与 §4.1 字段一致） |
 | **成功次数** | `success_count`；可用 **`QBadge`** `color="positive"` 或默认正文 |
 | **失败次数** | `failure_count`；`failure_count === 0` 时仅展示数字；`> 0` 时 **`class="text-negative"`** 或 `QBadge` `color="negative"`。**交互见下** |
-| **状态** | **`QBadge`** / **`QChip`**：`active` 绿、`paused` 灰、`failed` 红 |
+| **状态** | **`QBadge`** / **`QChip`**：`active` 绿、`paused` 灰、`dead` 红 |
 | **上次运行** | `last_run_at` 相对时间或本地时间 |
 | **下次运行** | `next_run_at`；`schedule_type=once` 且已执行可为「—」 |
 | **操作** | **启用/暂停** `QToggle`；**编辑** / **删除** `QBtn` `flat` `dense`；可选 **历史** `QBtn` `icon="history"` → 同失败次数点击跳转（见下） |
@@ -161,7 +161,7 @@
 | `run_at` | timestamptz | nullable | `schedule_type=once` 时必填；单次触发时间 |
 | `timezone` | varchar(64) | default `'UTC'` 或 `'Asia/Shanghai'` | Cron/一次任务解释时区 |
 | `message` | text | NOT NULL | 下发给 Agent 的指令/用户消息模板 |
-| `status` | varchar(16) | NOT NULL | `active` \| `paused`；失败不删任务时可加 `failed` |
+| `status` | varchar(16) | NOT NULL | `active` \| `paused` \| `dead`；`dead` 表示连续失败后自动停止调度 |
 | `last_run_at` | timestamptz | nullable | 上次实际开始或结束时间（产品定一种） |
 | `last_run_status` | varchar(16) | nullable | `success` \| `failure` \| `skipped` |
 | `last_error` | text | nullable | 失败摘要 |
@@ -324,14 +324,20 @@ Cron 管理页显示：
 - **重试次数 / 失败次数**（来自 `metadata_json.failure_count`）
 - **最近错误**（来自 `metadata_json.last_error`）
 - **最近失败列表**（来自 `metadata_json.recent_failures`）
-- **"重置失败计数"** 按钮：清除 `failure_count`、`last_error`，设置 `status = active`
+- **"重置失败计数"** 按钮（`dead` 状态时显示）：清除 `failure_count`、`last_error`，设置 `status = active`、`enabled = true`
 
 ### 7.6 回退
 
-临时禁用某个任务的重试，在 `config_json` 中设置 `RetryPolicy.MaxAttempts = 0`：
+禁用某个任务的重试，在 `config_json` 中设置 `retry_max_attempts = 0`：
 
 ```json
 { "retry_max_attempts": 0 }
 ```
 
-全局开关尚未实现；需在 `internal/cronrunner/runner.go` 的 `executeTask` 中移除 `dispatchWithRetry` 来禁用。
+自定义重试次数（如仅重试 1 次）：
+
+```json
+{ "retry_max_attempts": 1 }
+```
+
+默认值为 3（使用 `defaultRetryBackoff` 的完整退避计划）。

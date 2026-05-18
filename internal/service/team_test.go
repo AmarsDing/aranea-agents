@@ -59,6 +59,9 @@ func (m *memTeamRepo) DeleteTeam(_ context.Context, id string) error {
 func (m *memTeamRepo) ListTeamRuns(_ context.Context, _ string, _ int) ([]biz.TeamRun, error) {
 	return nil, nil
 }
+func (m *memTeamRepo) GetTeamRunByID(_ context.Context, id string) (biz.TeamRun, error) {
+	return biz.TeamRun{}, fmt.Errorf("team run not found: %s", id)
+}
 func (m *memTeamRepo) ListTeamRunSteps(_ context.Context, _ string) ([]biz.TeamRunStep, error) {
 	return nil, nil
 }

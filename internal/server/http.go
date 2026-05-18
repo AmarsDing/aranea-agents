@@ -13,6 +13,7 @@ import (
 	artifactv1 "aranea-agents/api/kratos/artifact/v1"
 	avatarv1 "aranea-agents/api/kratos/avatar/v1"
 	channelv1 "aranea-agents/api/kratos/channel/v1"
+	chatv1 "aranea-agents/api/kratos/chat/v1"
 	cronv1 "aranea-agents/api/kratos/cron/v1"
 	evaluationv1 "aranea-agents/api/kratos/evaluation/v1"
 	graphv1 "aranea-agents/api/kratos/graph/v1"
@@ -38,10 +39,9 @@ import (
 
 	"github.com/go-kratos/kratos/v2/middleware/recovery"
 	"github.com/go-kratos/kratos/v2/middleware/tracing"
-	"github.com/go-kratos/kratos/v2/transport/http"
+	kratoshttp "github.com/go-kratos/kratos/v2/transport/http"
 )
 
-// NewHTTPServer new an HTTP server.
 func NewHTTPServer(c *conf.Server,
 	admin *service.AdminService,
 	avatar *service.AvatarService,
@@ -70,31 +70,68 @@ func NewHTTPServer(c *conf.Server,
 	channelIngress *service.ChannelIngress,
 	skillImport *importer.Engine,
 	wsSrv *WSServer,
-) *http.Server {
-	var opts = []http.ServerOption{
-		http.Filter(
+) *kratoshttp.Server {
+	var opts = []kratoshttp.ServerOption{
+		kratoshttp.Filter(
 			CorsDevFilter(),
 			auth.Middleware(),
 			servermw.WorkspaceFilter(),
 		),
-		// EP-OBS-02: tracing.Server() is first so every handler gets a span.
-		// The tracer is a noop until OTEL_EXPORTER_OTLP_ENDPOINT is configured.
-		http.Middleware(
+		kratoshttp.Middleware(
 			tracing.Server(),
 			recovery.Recovery(),
 			validate.Middleware(),
 		),
 	}
 	if c.Http.Network != "" {
-		opts = append(opts, http.Network(c.Http.Network))
+		opts = append(opts, kratoshttp.Network(c.Http.Network))
 	}
 	if c.Http.Addr != "" {
-		opts = append(opts, http.Address(c.Http.Addr))
+		opts = append(opts, kratoshttp.Address(c.Http.Addr))
 	}
 	if c.Http.Timeout != nil {
-		opts = append(opts, http.Timeout(c.Http.Timeout.AsDuration()))
+		opts = append(opts, kratoshttp.Timeout(c.Http.Timeout.AsDuration()))
 	}
-	srv := http.NewServer(opts...)
+	srv := kratoshttp.NewServer(opts...)
+
+	registerProtoServices(srv, admin, avatar, agents, agentCat, llm, hookSvc, cronSvc,
+		pluginSvc, mcpSvc, skillSvc, toolSvc, sessionSvc, channelSvc, usageSvc,
+		monitorSvc, memorySvc, systemSettingSvc, teams, chatSvc, graphSvc,
+		artifactSvc, knowledgeSvc, evalSvc, a2aSvc)
+	registerCustomRoutes(srv, channelIngress, skillImport)
+	registerInfrastructureRoutes(srv)
+	wsSrv.RegisterOnKratos(srv)
+
+	return srv
+}
+
+func registerProtoServices(
+	srv *kratoshttp.Server,
+	admin *service.AdminService,
+	avatar *service.AvatarService,
+	agents *service.AgentService,
+	agentCat *service.AgentCategoryService,
+	llm *service.LlmProviderModelService,
+	hookSvc *service.HookService,
+	cronSvc *service.CronService,
+	pluginSvc *service.PluginService,
+	mcpSvc *service.MCPServerService,
+	skillSvc *service.SkillService,
+	toolSvc *service.ToolService,
+	sessionSvc *service.SessionService,
+	channelSvc *service.ChannelService,
+	usageSvc *service.UsageService,
+	monitorSvc *service.MonitorService,
+	memorySvc *service.MemoryService,
+	systemSettingSvc *service.SystemSettingService,
+	teams *service.TeamService,
+	chatSvc *service.ChatService,
+	graphSvc *service.GraphService,
+	artifactSvc *service.ArtifactService,
+	knowledgeSvc *service.KnowledgeService,
+	evalSvc *service.EvaluationService,
+	a2aSvc *service.A2AService,
+) {
 	adminv1.RegisterAdminServiceHTTPServer(srv, admin)
 	avatarv1.RegisterAvatarServiceHTTPServer(srv, avatar)
 	agentv1.RegisterAgentServiceHTTPServer(srv, agents)
@@ -113,22 +150,37 @@ func NewHTTPServer(c *conf.Server,
 	memoryv1.RegisterMemoryServiceHTTPServer(srv, memorySvc)
 	systemsettingv1.RegisterSystemSettingServiceHTTPServer(srv, systemSettingSvc)
 	teamv1.RegisterTeamServiceHTTPServer(srv, teams)
-	RegisterChatIngress(srv, chatSvc)
+	chatv1.RegisterChatServiceHTTPServer(srv, chatSvc)
 	graphv1.RegisterGraphServiceHTTPServer(srv, graphSvc)
 	artifactv1.RegisterArtifactServiceHTTPServer(srv, artifactSvc)
 	knowledgev1.RegisterKnowledgeServiceHTTPServer(srv, knowledgeSvc)
 	evaluationv1.RegisterEvaluationServiceHTTPServer(srv, evalSvc)
 	a2av1.RegisterA2AServiceHTTPServer(srv, a2aSvc)
-	RegisterChannelWebhook(srv, channelIngress)
-	RegisterSkillImportHTTPServer(srv, skillImport)
-	wsSrv.RegisterOnKratos(srv)
-	srv.Route("/").GET("/healthz", func(ctx http.Context) error {
+}
+
+func registerCustomRoutes(
+	srv *kratoshttp.Server,
+	channelIngress *service.ChannelIngress,
+	skillImport *importer.Engine,
+) {
+	if channelIngress != nil {
+		auth.RegisterWebhookPath("/webhooks/")
+		srv.Route("/").POST("/webhooks/{channel_key}", channelIngress.FeishuWebhookHTTP())
+	}
+	if skillImport != nil {
+		RegisterSkillImportHTTPServer(srv, skillImport)
+	}
+}
+
+func registerInfrastructureRoutes(srv *kratoshttp.Server) {
+	srv.Route("/").GET("/healthz", func(ctx kratoshttp.Context) error {
 		w := ctx.Response()
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(nethttp.StatusOK)
 		return json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 	})
-	// EP-OBS-01: expose Prometheus metrics at /metrics; bypass auth so scrapers reach it.
-	srv.HandleFunc("/metrics", promhttp.Handler().ServeHTTP)
-	return srv
+	srv.Route("/").GET("/metrics", func(ctx kratoshttp.Context) error {
+		promhttp.Handler().ServeHTTP(ctx.Response(), ctx.Request())
+		return nil
+	})
 }

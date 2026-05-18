@@ -1,8 +1,6 @@
 // Package metrics defines all Prometheus metric variables for the Aranea service.
 // By living in its own package it can be imported by any layer (service, agent,
 // event, cronrunner, etc.) without creating import cycles with internal/server.
-//
-// EP-OBS-04: add sampling at generation points; this package holds the vars.
 package metrics
 
 import (

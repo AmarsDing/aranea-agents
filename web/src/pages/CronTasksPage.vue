@@ -113,6 +113,9 @@
             <q-btn flat dense round icon="edit" color="primary" @click="openEdit(props.row)">
               <q-tooltip>编辑</q-tooltip>
             </q-btn>
+            <q-btn v-if="props.row.status === 'dead'" flat dense round icon="restart_alt" color="warning" @click="resetDeadTask(props.row)">
+              <q-tooltip>重置失败计数</q-tooltip>
+            </q-btn>
             <q-btn flat dense round icon="delete" color="negative" @click="confirmDelete(props.row)">
               <q-tooltip>删除</q-tooltip>
             </q-btn>
@@ -149,7 +152,7 @@ import { useQuasar, type QTableColumn } from "quasar";
 import type { Agent } from "../features/agents/api";
 import type { Team } from "../features/teams/api";
 import CronTaskFormDialog from "../components/cron/CronTaskFormDialog.vue";
-import { createCronTask, deleteCronTask, listCronAgents, listCronTasks, listCronTeams, updateCronTask } from "../features/cron/api";
+import { createCronTask, deleteCronTask, listCronAgents, listCronTasks, listCronTeams, parseCronConfig, parseCronMetadata, updateCronTask } from "../features/cron/api";
 import type { PlatformResourceInput } from "../features/platform/api";
 import type { CronFailureSummary, CronTaskConfig, CronTaskMetadata, CronTaskRow } from "../features/cron/types";
 
@@ -182,7 +185,7 @@ const columns: QTableColumn<CronTaskRow>[] = [
 const statusOptions = [
   { label: "启用", value: "active" },
   { label: "暂停", value: "paused" },
-  { label: "失败", value: "failed" }
+  { label: "死信", value: "dead" }
 ];
 const activeCount = computed(() => rows.value.filter((row) => row.enabled).length);
 const filteredRows = computed(() => {
@@ -191,7 +194,7 @@ const filteredRows = computed(() => {
     const cfg = config(row);
     if (statusFilter.value === "active" && !row.enabled) return false;
     if (statusFilter.value === "paused" && row.enabled) return false;
-    if (statusFilter.value === "failed" && row.status !== "failed") return false;
+    if (statusFilter.value === "dead" && row.status !== "dead") return false;
     if (!keyword) return true;
     return [row.key, row.name, row.description, cfg.schedule_type, cfg.cron_expression, cfg.message, targetLabel(row)]
       .some((value) => String(value || "").toLowerCase().includes(keyword));
@@ -281,6 +284,20 @@ function openRuns(row: CronTaskRow, status = "") {
   void router.push({ name: "cron-runs", query: { cron_task_id: row.id, status } });
 }
 
+async function resetDeadTask(row: CronTaskRow) {
+  savingId.value = row.id;
+  try {
+    const resetMeta = { ...parseCronMetadata(row), failure_count: 0, last_error: "", recent_failures: [] };
+    const updated = await updateCronTask(row.id, { ...row, enabled: true, status: "active", metadata_json: JSON.stringify(resetMeta) });
+    onSaved(updated);
+    $q.notify({ type: "positive", message: "已重置失败计数，任务重新启用" });
+  } catch (err) {
+    $q.notify({ type: "negative", message: err instanceof Error ? err.message : "重置失败" });
+  } finally {
+    savingId.value = "";
+  }
+}
+
 function scheduleLabel(row: CronTaskRow) {
   const cfg = config(row);
   if (cfg.schedule_type === "cron") return `cron: ${cfg.cron_expression || "-"}`;
@@ -307,7 +324,7 @@ function targetLabel(row: CronTaskRow) {
 
 function statusColor(row: CronTaskRow) {
   if (!row.enabled || row.status === "paused") return "grey";
-  if (row.status === "failed") return "negative";
+  if (row.status === "dead") return "negative";
   return "positive";
 }
 
@@ -317,26 +334,17 @@ function recentFailures(row: CronTaskRow): CronFailureSummary[] {
 }
 
 function config(row: CronTaskRow): CronTaskConfig {
-  return parseJSON<CronTaskConfig>(row.config_json, {});
+  return parseCronConfig(row);
 }
 
 function metadata(row: CronTaskRow): CronTaskMetadata {
-  return parseJSON<CronTaskMetadata>(row.metadata_json, {});
+  return parseCronMetadata(row);
 }
 
 function formatDate(value?: string) {
   if (!value) return "—";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
-}
-
-function parseJSON<T>(value: string | undefined, fallback: T): T {
-  if (!value) return fallback;
-  try {
-    return JSON.parse(value) as T;
-  } catch {
-    return fallback;
-  }
 }
 </script>
 

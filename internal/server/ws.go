@@ -91,7 +91,7 @@ func NewWSServer(c *conf.Server, eventBus event.Bus, eventBuffer *event.Buffer, 
 		sender:      sender,
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool {
-				return originAllowed(r.Header.Get("Origin"))
+				return OriginAllowed(r.Header.Get("Origin"))
 			},
 		},
 	}

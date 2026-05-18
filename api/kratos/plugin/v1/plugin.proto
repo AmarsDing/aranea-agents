@@ -66,6 +66,11 @@ message UpdatePluginConfigRequest {
   string config_json = 2 [(google.api.field_behavior) = REQUIRED];
 }
 
+message UpdatePluginSortOrderRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  int32 sort_order = 2;
+}
+
 service PluginService {
   rpc ListPlugins(ListPluginsRequest) returns (ListPluginsResponse) {
     option (google.api.http) = {get: "/v1/plugins"};
@@ -79,6 +84,12 @@ service PluginService {
   rpc UpdatePluginConfig(UpdatePluginConfigRequest) returns (Plugin) {
     option (google.api.http) = {
       put: "/v1/plugins/{id}/config"
+      body: "*"
+    };
+  }
+  rpc UpdatePluginSortOrder(UpdatePluginSortOrderRequest) returns (Plugin) {
+    option (google.api.http) = {
+      patch: "/v1/plugins/{id}/sort-order"
       body: "*"
     };
   }

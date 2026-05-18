@@ -1,0 +1,349 @@
+syntax = "proto3";
+
+package shop.admin.v1;
+
+import "google/api/annotations.proto";
+
+option go_package = "api/shop/admin/v1;v1";
+
+
+service ShopAdmin {
+    rpc Login (LoginReq) returns (LoginReply) {
+        option (google.api.http) = {
+            post: "/admin/v1/login"
+            body: "*"
+        };
+    }
+
+    rpc Logout (LogoutReq) returns (LogoutReply) {
+        option (google.api.http) = {
+            post: "/admin/v1/logout"
+            body: "*"
+        };
+    }
+
+    rpc ListBeer (ListBeerReq) returns (ListBeerReply) {
+        option (google.api.http) = {
+            get: "/admin/v1/catalog/beers"
+        };
+    }
+
+    rpc CreateBeer (CreateBeerReq) returns (CreateBeerReply) {
+        option (google.api.http) = {
+            post: "/admin/v1/catalog/beers"
+            body: "*"
+        };
+    }
+
+    rpc UpdateBeer (UpdateBeerReq) returns (UpdateBeerReply) {
+        option (google.api.http) = {
+            put: "/admin/v1/catalog/beers/{id}"
+            body: "*"
+        };
+    }
+
+    rpc DeleteBeer (DeleteBeerReq) returns (DeleteBeerReply) {
+        option (google.api.http) = {
+            delete: "/admin/v1/catalog/beers/{id}"
+        };
+    }
+
+    rpc ListOrder (ListOrderReq) returns (ListOrderReply) {
+        option (google.api.http) = {
+            get: "/admin/v1/orders"
+        };
+    }
+
+    rpc GetOrder (GetOrderReq) returns (GetOrderReply) {
+        option (google.api.http) = {
+            get: "/admin/v1/orders"
+        };
+    }
+
+    rpc ListUser (ListUserReq) returns (ListUserReply) {
+        option (google.api.http) = {
+            get: "/admin/v1/users"
+        };
+    }
+
+    rpc GetUser (GetUserReq) returns (GetUserReply) {
+        option (google.api.http) = {
+            get: "/admin/v1/users/{id}"
+        };
+    }
+}
+
+
+message RegisterReq {
+    string username = 1;
+    string password = 2;
+}
+
+message RegisterReply {
+    int64 id = 1;
+}
+
+
+message LoginReq {
+    string username = 1;
+    string password = 2;
+}
+
+message LoginReply {
+    string token = 1;
+}
+
+message LogoutReq {
+
+}
+
+message LogoutReply {
+
+}
+
+message GetUserReq {
+    int64 id = 1;
+}
+
+message GetUserReply {
+    int64 id = 1;
+    string username = 2;
+}
+
+
+message ListUserReq {
+
+}
+
+message ListUserReply {
+
+}
+
+message CreateUserReq {
+    string username = 1;
+    string password = 2;
+}
+
+message CreateUserReply {
+    int64 id = 1;
+    string username = 2;
+}
+
+message VerifyPasswordReq {
+    string username = 1;
+    string password = 2;
+}
+
+message VerifyPasswordReply {
+    bool ok = 1;
+    int64 id = 2;
+}
+
+message ListAddressReq {
+    int64 uid = 1;
+}
+
+message ListAddressReply {
+    message Address {
+        int64 id = 1;
+        string name = 2;
+        string mobile = 3;
+        string country = 4;
+        string city = 5;
+        string address = 6;
+        string post_code = 7;
+    }
+    repeated Address results = 1;
+}
+
+message CreateAddressReq {
+    int64 uid = 1;
+    string name = 2;
+    string mobile = 3;
+    string country = 4;
+    string city = 5;
+    string address = 6;
+    string post_code = 7;
+}
+
+message CreateAddressReply {
+    int64 id = 1;
+    string name = 2;
+    string mobile = 3;
+    string country = 4;
+    string city = 5;
+    string address = 6;
+    string post_code = 7;
+}
+
+message GetAddressReq {
+    int64 id = 1;
+}
+
+message GetAddressReply {
+    int64 id = 1;
+    string name = 2;
+    string mobile = 3;
+    string country = 4;
+    string city = 5;
+    string address = 6;
+    string post_code = 7;
+}
+
+message ListCardReq {
+    int64 uid = 1;
+}
+
+message ListCardReply {
+    message Card {
+        int64 id = 1;
+        string card_no = 2;
+        string ccv = 3;
+        string expires = 4;
+    }
+    repeated Card results = 1;
+}
+
+message CreateCardReq {
+    int64 uid = 1;
+    string card_no = 2;
+    string ccv = 3;
+    string expires = 4;
+}
+
+message CreateCardReply {
+    int64 id = 1;
+}
+
+message GetCardReq {
+    int64 id = 1;
+}
+
+message GetCardReply {
+    int64 id = 1;
+    string card_no = 2;
+    string ccv = 3;
+    string expires = 4;
+}
+
+message DeleteCardReq {
+    int64 id = 1;
+}
+
+message DeleteCardReply {
+    bool ok = 1;
+}
+
+message ListBeerReq {
+    int64 page_num = 1;
+    int64 page_size = 2;
+}
+
+message ListBeerReply {
+    message Beer {
+        message Image {
+            string url = 1;
+        }
+        int64 id = 1;
+        string name = 2;
+        string description = 3;
+        int64 count = 4;
+        repeated Image image = 5;
+    }
+    repeated Beer results = 1;
+}
+
+message GetBeerReq {
+    int64 id = 1;
+}
+
+message GetBeerReply {
+    message Image {
+        string url = 1;
+    }
+    int64 id = 1;
+    string name = 2;
+    string description = 3;
+    int64 count = 4;
+    repeated Image image = 5;
+}
+
+message ListCartItemReq {
+    int64 page_num = 1;
+    int64 page_size = 2;
+}
+
+message ListCartItemReply {
+
+}
+
+message AddCartItemReq {
+
+}
+
+message AddCartItemReply {
+
+}
+
+message CreateOrderReq {
+
+}
+
+message CreateOrderReply {
+
+}
+
+message ListOrderReq {
+    int64 page_num = 1;
+    int64 page_size = 2;
+}
+
+message ListOrderReply {
+
+}
+
+message GetOrderReq {
+
+}
+
+message GetOrderReply {
+
+}
+
+message CreateBeerReq {
+    message Image {
+        string url = 1;
+    }
+    string name = 1;
+    string description = 2;
+    int64 count = 3;
+    repeated Image image = 4;
+}
+
+message CreateBeerReply {
+
+}
+
+message UpdateBeerReq {
+    message Image {
+        string url = 1;
+    }
+    int64 id = 1;
+    string name = 2;
+    string description = 3;
+    int64 count = 4;
+    repeated Image image = 5;
+}
+
+message UpdateBeerReply {
+
+}
+
+message DeleteBeerReq {
+    int64 id = 1;
+}
+
+message DeleteBeerReply {
+
+}
+

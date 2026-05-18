@@ -114,7 +114,8 @@ service CronService {
   "interval_seconds": 0,
   "run_at": "",
   "timezone": "Asia/Shanghai",
-  "message": "执行每日数据汇总"
+  "message": "执行每日数据汇总",
+  "retry_max_attempts": 3
 }
 ```
 
@@ -128,6 +129,7 @@ service CronService {
 | `run_at` | string | schedule_type=once 时必填，ISO时间 |
 | `timezone` | string | 默认 `Asia/Shanghai` |
 | `message` | string | 下发给 Agent/Team 的消息 |
+| `retry_max_attempts` | int | 重试次数，0=禁用重试，默认 3（使用 defaultRetryBackoff） |
 
 ### 2.3 metadata_json 结构
 
@@ -162,7 +164,7 @@ type CronTask struct {
     TaskKey      string
     Name         string
     Description  string
-    Status       string  // "active" / "paused" / "deleted"
+    Status       string  // "active" / "paused" / "dead" / "deleted"
     Enabled      bool
     SortOrder    int
     AgentID      string
@@ -192,6 +194,27 @@ type CronTaskRunQuery struct {
     Status string
     Limit  int
 }
+
+type CronTaskRunInput struct {
+    ID         string
+    TaskID     string
+    Status     string
+    StartedAt  string
+    OutputJSON string
+    CreatedAt  string
+}
+
+type CronTaskPatch struct {
+    TaskKey      *string
+    Name         *string
+    Description  *string
+    Status       *string
+    Enabled      *bool
+    SortOrder    *int
+    AgentID      *string
+    ConfigJSON   *string
+    MetadataJSON *string
+}
 ```
 
 ### 3.2 Repo 接口
@@ -204,7 +227,7 @@ type CronRepo interface {
     UpdateCronTask(ctx context.Context, t CronTask) (CronTask, error)
     DeleteCronTask(ctx context.Context, id string) error
     ListCronTaskRuns(ctx context.Context, q CronTaskRunQuery) ([]CronTaskRun, error)
-    InsertCronTaskRun(ctx context.Context, id, taskID, status, startedAt, outputJSON, createdAt string) error
+    InsertCronTaskRun(ctx context.Context, in CronTaskRunInput) error
     UpdateCronTaskRun(ctx context.Context, id, status, finishedAt, outputJSON, errorMessage string) error
 }
 ```
@@ -221,7 +244,7 @@ func NewCronUsecase(repo CronRepo) *CronUsecase
 func (u *CronUsecase) ListTasks(ctx context.Context) ([]CronTask, error)
 func (u *CronUsecase) GetTask(ctx context.Context, id string) (CronTask, error)
 func (u *CronUsecase) CreateTask(ctx context.Context, in CronTask) (CronTask, error)
-func (u *CronUsecase) UpdateTask(ctx context.Context, id string, patch CronTask) (CronTask, error)
+func (u *CronUsecase) UpdateTask(ctx context.Context, id string, patch CronTaskPatch) (CronTask, error)
 func (u *CronUsecase) DeleteTask(ctx context.Context, id string) error
 func (u *CronUsecase) ListTaskRuns(ctx context.Context, q CronTaskRunQuery) ([]CronTaskRun, error)
 ```
@@ -232,9 +255,10 @@ func (u *CronUsecase) ListTaskRuns(ctx context.Context, q CronTaskRunQuery) ([]C
 - `status` 为空时默认 `active`
 
 **UpdateTask 合并策略**：
-- 读取当前记录，用 patch 非零值覆盖
-- `TaskKey`/`Name`/`Status` 仅在 patch 非空时覆盖
-- `Description`/`Enabled`/`SortOrder`/`AgentID`/`ConfigJSON`/`MetadataJSON` 直接覆盖
+- 读取当前记录，用 `CronTaskPatch` 指针非 nil 的字段覆盖
+- `TaskKey`/`Name`/`Status` 仅在指针非 nil 且值非空时覆盖
+- `Description`/`Enabled`/`SortOrder`/`AgentID`/`ConfigJSON`/`MetadataJSON` 指针非 nil 时覆盖
+- 指针为 nil 的字段保持原值不变（解决 bool/int 零值歧义）
 
 ---
 
@@ -267,7 +291,7 @@ func NewCronRepo(d *Data) biz.CronRepo
 | `UpdateCronTask` | `CronTask.UpdateOneID(t.ID).SetTaskKey/SetName/.../Exec(ctx)` |
 | `DeleteCronTask` | `CronTask.UpdateOneID(id).SetDeletedAt(now).SetStatus("deleted").Exec(ctx)` — 软删 |
 | `ListCronTaskRuns` | `CronTaskRun.Query().Where(TaskIDEQ(tid), StatusEQ(st)).Order(ByCreatedAt(Desc)).Limit(limit).All(ctx)` + 批量查询任务名称 |
-| `InsertCronTaskRun` | `CronTaskRun.Create().SetID/SetTaskID/SetStatus/.../Save(ctx)` |
+| `InsertCronTaskRun` | `CronTaskRun.Create().SetID/SetTaskID/SetStatus/.../Save(ctx)` — 参数为 `CronTaskRunInput` 结构体 |
 | `UpdateCronTaskRun` | `CronTaskRun.UpdateOneID(id).SetStatus/SetFinishedAt/.../Exec(ctx)` |
 
 **output_json 解析**：`outputJSONExtras` 函数从 `output_json` 提取 `trigger` 和 `run_id`，用于填充 `CronTaskRun.Trigger` 和 `CronTaskRun.RunID`。
@@ -275,24 +299,30 @@ func NewCronRepo(d *Data) biz.CronRepo
 ### 4.3 调度器
 
 ```go
-// internal/cron/scheduler.go
-type Scheduler struct {
-    cron    *cron.Cron
-    usecase *biz.CronUsecase
+// internal/cronrunner/runner.go
+type Runner struct {
+    deps RunnerDeps
 }
 
-func (s *Scheduler) Start(ctx) error
-func (s *Scheduler) Stop() error
-func (s *Scheduler) AddJob(j biz.CronTask) error
-func (s *Scheduler) RemoveJob(id string) error
+type RunnerDeps struct {
+    Cron      biz.CronRepo
+    Chat      CronChatRunner
+    Event     EventPublisher
+}
+
+func NewRunner(deps RunnerDeps) *Runner
+func (r *Runner) Start(ctx context.Context) error
+func (r *Runner) Stop()
 ```
 
 **调度执行流程**：
-1. 后台 runner 定期读取 `cron_task`，筛选 `enabled=true`、`status=active`、`metadata_json.next_run_at <= now` 的任务
-2. 解析 `config_json.target_type`：`agent` 使用 `cron_task.agent_id`；`team` 使用 `config_json.team_id`
-3. 写入 `cron_task_run`，状态 `running`
-4. 创建 Session，调用 `ChatService.Send`
-5. 写回结果：成功/失败 → 更新 `cron_task_run` + `metadata_json` 统计 + 重新计算 `next_run_at`
+1. 后台 runner 每 15 秒扫描 `cron_task`，筛选 `enabled=true`、`status=active` 的任务
+2. 在 Go 进程内解析 `metadata_json.next_run_at`，仅调度 `next_run_at <= now` 的到期任务
+3. 解析 `config_json.target_type`：`agent` 使用 `cron_task.agent_id`；`team` 使用 `config_json.team_id`
+4. 写入 `cron_task_run`（状态 `pending`），调用 `dispatchWithRetry`（指数退避 30s/2m/10m）
+5. 创建 Session，调用 `ChatService.Send`
+6. 写回结果：成功/失败 → 更新 `cron_task_run` + `metadata_json` 统计 + 重新计算 `next_run_at`
+7. 连续失败 ≥3 次时任务进入 `dead` 状态，不再调度
 
 ---
 
@@ -320,7 +350,7 @@ func NewCronService(uc *biz.CronUsecase) *CronService
 
 **类型转换函数**：
 - `toProtoCronTask(biz.CronTask) *v1.CronTask`
-- `patchFromProtoCronTask(*v1.CronTask) biz.CronTask`
+- `patchFromProtoCronTask(*v1.CronTask) biz.CronTaskPatch`
 - `toProtoCronTaskRun(biz.CronTaskRun) *v1.CronTaskRun`
 
 ---
@@ -332,12 +362,10 @@ func NewCronService(uc *biz.CronUsecase) *CronService
 data.ProviderSet → NewCronRepo
 biz.ProviderSet → NewCronUsecase
 service.ProviderSet → NewCronService
+cronrunner.ProviderSet → NewRunner
 ```
 
-待新增：
-```
-cron.ProviderSet → NewScheduler
-```
+Runner 在 `cmd/aranea/main.go` 中通过 Wire 注入，启动时调用 `runner.Start(ctx)`，优雅关闭时调用 `runner.Stop()`。
 
 ---
 
@@ -346,24 +374,30 @@ cron.ProviderSet → NewScheduler
 ### 7.1 文件结构
 
 ```
-web/src/features/cron/
-├── api.ts
-├── types.ts
-├── CronJobListPage.vue
-├── CronJobEditorDialog.vue
-├── CronRunListPage.vue
-└── components/
-    └── CronExprPreview.vue
+web/src/
+├── features/cron/
+│   ├── api.ts                          # API 调用与类型转换
+│   ├── types.ts                        # TypeScript 类型定义
+│   └── __tests__/cron-types.spec.ts    # 类型单元测试
+├── components/cron/
+│   ├── CronTaskFormDialog.vue          # 创建/编辑对话框
+│   ├── CronTaskFormFields.vue          # 表单字段（主容器）
+│   ├── CronTaskFormTargetFields.vue    # 目标类型选择（Agent/Team）
+│   ├── CronTaskFormScheduleFields.vue  # 计划类型选择（interval/cron/once）
+│   └── cronTaskUtils.ts               # 表单工具函数
+└── pages/
+    ├── CronTasksPage.vue               # 定时任务管理主页
+    └── CronRunsPage.vue                # 执行历史页
 ```
 
 ### 7.2 页面路由
 
 | 路由 | 页面 | 说明 |
 |------|------|------|
-| `/cron` | `CronJobListPage.vue` | 定时任务管理主页 |
-| `/cron/runs` | `CronRunListPage.vue` | 执行历史页 |
+| `/cron` | `CronTasksPage.vue` | 定时任务管理主页 |
+| `/cron/runs` | `CronRunsPage.vue` | 执行历史页 |
 
-### 7.3 CronJobListPage.vue
+### 7.3 CronTasksPage.vue
 
 | 区域 | 组件 | 说明 |
 |------|------|------|
@@ -382,12 +416,12 @@ web/src/features/cron/
 | Agent | `agent_id` | 空=「默认」，有=Agent 显示名 |
 | 执行次数 | `metadata_json.run_count` | 数字 |
 | 成功/失败 | `metadata_json.success_count` / `metadata_json.failure_count` | 失败>0 时 `text-negative` + `QTooltip` 展示最近失败 |
-| 状态 | `status` + `enabled` | `QBadge`：active 绿、paused 灰 |
+| 状态 | `status` + `enabled` | `QBadge`：active 绿、paused 灰、dead 红 |
 | 上次运行 | `metadata_json.last_run_at` | 相对时间 |
 | 下次运行 | `metadata_json.next_run_at` | once 已执行显示「—」 |
 | 操作 | — | 启用/暂停 `QToggle` + 编辑/删除 `QBtn flat dense` + 历史 `QBtn icon="history"` |
 
-### 7.4 CronJobEditorDialog.vue
+### 7.4 CronTaskFormDialog.vue
 
 | 控件 | 绑定 | 说明 |
 |------|------|------|

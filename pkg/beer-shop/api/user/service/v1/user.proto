@@ -1,0 +1,201 @@
+syntax = "proto3";
+
+package user.service.v1;
+
+import "google/api/annotations.proto";
+
+option go_package = "api/user/service/v1;v1";
+
+
+service User {
+    rpc GetUser(GetUserReq) returns (GetUserReply) {
+    }
+
+    rpc GetUserByUsername(GetUserByUsernameReq) returns (GetUserByUsernameReply) {
+    }
+
+    rpc Save(SaveUserReq) returns (SaveUserReply) {
+    }
+
+    rpc CreateUser(CreateUserReq) returns (CreateUserReply) {
+    }
+
+    rpc ListUser(ListUserReq) returns (ListUserReply) {
+    }
+
+    rpc VerifyPassword(VerifyPasswordReq) returns (VerifyPasswordReply) {
+    }
+
+    rpc ListAddress(ListAddressReq) returns (ListAddressReply) {
+    }
+
+    rpc CreateAddress(CreateAddressReq) returns (CreateAddressReply) {
+    }
+
+    rpc GetAddress(GetAddressReq) returns (GetAddressReply) {
+    }
+
+    rpc ListCard(ListCardReq) returns (ListCardReply) {
+    }
+
+    rpc CreateCard(CreateCardReq) returns (CreateCardReply) {
+    }
+
+    rpc GetCard(GetCardReq) returns (GetCardReply) {
+    }
+
+    rpc DeleteCard(DeleteCardReq) returns (DeleteCardReply) {
+    }
+
+}
+
+message GetUserReq {
+    int64 id = 1;
+}
+
+message GetUserReply {
+    int64 id = 1;
+    string username = 2;
+}
+
+message GetUserByUsernameReq {
+    string username = 1;
+}
+
+message GetUserByUsernameReply {
+    int64 id = 1;
+    string username = 2;
+}
+
+message CreateUserReq {
+    string username = 1;
+    string password = 2;
+}
+
+message CreateUserReply {
+    int64 id = 1;
+    string username = 2;
+}
+
+message ListUserReq {
+    int64 id = 1;
+}
+
+message ListUserReply {
+    message User {
+        int64 id = 1;
+        string name = 2;
+    }
+    repeated User results = 1;
+}
+
+
+message VerifyPasswordReq {
+    string username = 1;
+    string password = 2;
+}
+
+message VerifyPasswordReply {
+    bool ok = 1;
+    int64 id = 2;
+}
+
+message ListAddressReq {
+    int64 uid = 1;
+}
+
+message ListAddressReply {
+    message Address {
+        int64 id = 1;
+        string name = 2;
+        string mobile = 3;
+        string address = 4;
+        string post_code = 5;
+    }
+    repeated Address results = 1;
+}
+
+message CreateAddressReq {
+    int64 uid = 1;
+    string name = 2;
+    string mobile = 3;
+    string address = 4;
+    string post_code = 5;
+}
+
+message CreateAddressReply {
+    int64 id = 1;
+    string name = 2;
+    string mobile = 3;
+    string address = 4;
+    string post_code = 5;
+}
+
+message GetAddressReq {
+    int64 id = 1;
+}
+
+message GetAddressReply {
+    int64 id = 1;
+    string name = 2;
+    string mobile = 3;
+    string address = 4;
+    string post_code = 5;
+}
+
+message ListCardReq {
+    int64 uid = 1;
+}
+
+message ListCardReply {
+    message Card {
+        int64 id = 1;
+        string card_no = 2;
+        string ccv = 3;
+        string expires = 4;
+    }
+    repeated Card results = 1;
+}
+
+message CreateCardReq {
+    int64 uid = 1;
+    string card_no = 2;
+    string ccv = 3;
+    string expires = 4;
+    string name = 5;
+}
+
+message CreateCardReply {
+    int64 id = 1;
+}
+
+message GetCardReq {
+    int64 id = 1;
+}
+
+message GetCardReply {
+    int64 id = 1;
+    string card_no = 2;
+    string ccv = 3;
+    string expires = 4;
+}
+
+message DeleteCardReq {
+    int64 uid = 1;
+    int64 id = 2;
+}
+
+message DeleteCardReply {
+    bool ok = 1;
+}
+
+message SaveUserReq {
+    int64 id = 1;
+    string username = 2;
+    string password = 3;
+}
+
+message SaveUserReply {
+    int64 id = 1;
+}
+

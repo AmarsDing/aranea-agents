@@ -50,6 +50,9 @@ func (m *memTeamRepoB) DeleteTeam(_ context.Context, id string) error {
 func (m *memTeamRepoB) ListTeamRuns(_ context.Context, _ string, _ int) ([]biz.TeamRun, error) {
 	return nil, nil
 }
+func (m *memTeamRepoB) GetTeamRunByID(_ context.Context, id string) (biz.TeamRun, error) {
+	return biz.TeamRun{}, fmt.Errorf("team run not found: %s", id)
+}
 func (m *memTeamRepoB) ListTeamRunSteps(_ context.Context, _ string) ([]biz.TeamRunStep, error) {
 	return nil, nil
 }
@@ -184,7 +187,7 @@ func (m *memCronRepoB) DeleteCronTask(_ context.Context, id string) error {
 func (m *memCronRepoB) ListCronTaskRuns(_ context.Context, _ biz.CronTaskRunQuery) ([]biz.CronTaskRun, error) {
 	return nil, nil
 }
-func (m *memCronRepoB) InsertCronTaskRun(_ context.Context, _, _, _, _, _, _ string) error {
+func (m *memCronRepoB) InsertCronTaskRun(_ context.Context, _ biz.CronTaskRunInput) error {
 	return nil
 }
 func (m *memCronRepoB) UpdateCronTaskRun(_ context.Context, _, _, _, _, _ string) error {
@@ -283,6 +286,15 @@ func (m *memPluginRepoB) UpdatePluginConfig(_ context.Context, id string, config
 		return biz.Plugin{}, fmt.Errorf("not found")
 	}
 	p.ConfigJSON = configJSON
+	m.items[id] = p
+	return p, nil
+}
+func (m *memPluginRepoB) UpdateSortOrder(_ context.Context, id string, sortOrder int) (biz.Plugin, error) {
+	p, ok := m.items[id]
+	if !ok {
+		return biz.Plugin{}, fmt.Errorf("not found")
+	}
+	p.SortOrder = sortOrder
 	m.items[id] = p
 	return p, nil
 }

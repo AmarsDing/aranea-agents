@@ -18,7 +18,7 @@ var corsAllowedDevPrefixes = []string{
 	"https://[::1]:",
 }
 
-func originAllowed(origin string) bool {
+func OriginAllowed(origin string) bool {
 	o := strings.TrimSpace(origin)
 	if o == "" {
 		return false
@@ -42,7 +42,7 @@ func CorsDevFilter() httpm.FilterFunc {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			o := strings.TrimSpace(r.Header.Get("Origin"))
-			if originAllowed(o) {
+			if OriginAllowed(o) {
 				h := w.Header()
 				h.Set("Access-Control-Allow-Origin", o)
 				h.Set("Access-Control-Allow-Credentials", "true")
