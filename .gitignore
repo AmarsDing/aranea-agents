@@ -33,6 +33,12 @@ Thumbs.db
 bin/
 /cmd/kratos-admin
 
+# SQLite WAL mode sidecar files (auto-generated; never commit)
+*.sqlite-shm
+*.sqlite-wal
+*.db-shm
+*.db-wal
+
 # Develop tools
 .vscode/
 .cache/
