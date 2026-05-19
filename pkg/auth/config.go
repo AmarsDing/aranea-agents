@@ -13,6 +13,9 @@ func authSecretFromEnv(key string) string {
 	if secret := os.Getenv(key); secret != "" {
 		return secret
 	}
+	if isGoTestBinary() {
+		return "test-placeholder-secret-not-for-production"
+	}
 	// Auth bypass skips JWT validation entirely; the signing key is unused.
 	bypass := strings.TrimSpace(strings.ToLower(os.Getenv("KRATOS_HTTP_AUTH_DISABLED")))
 	if bypass == "1" || bypass == "true" || bypass == "yes" {
@@ -32,6 +35,11 @@ func authSecretFromEnv(key string) string {
 			"to skip JWT validation.",
 		key,
 	))
+}
+
+func isGoTestBinary() bool {
+	name := strings.ToLower(os.Args[0])
+	return strings.HasSuffix(name, ".test") || strings.HasSuffix(name, ".test.exe")
 }
 
 // cookieNameFromEnv retrieves the cookie name from the environment variable.
