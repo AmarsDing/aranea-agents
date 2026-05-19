@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -334,7 +333,7 @@ func (uc *SessionUsecase) Create(ctx context.Context, in Session) (Session, erro
 		}
 		if _, err := uc.teams.GetTeamByID(ctx, in.TeamID); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				return Session{}, kerrors.NotFound("SESSION", fmt.Sprintf("team %q was not found", in.TeamID))
+				return Session{}, kerrors.NotFound("SESSION", "team not found")
 			}
 			return Session{}, err
 		}
@@ -344,7 +343,7 @@ func (uc *SessionUsecase) Create(ctx context.Context, in Session) (Session, erro
 		}
 		if _, err := uc.agents.GetAgentByID(ctx, in.AgentID); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				return Session{}, kerrors.NotFound("SESSION", fmt.Sprintf("agent %q was not found", in.AgentID))
+				return Session{}, kerrors.NotFound("SESSION", "agent not found")
 			}
 			return Session{}, err
 		}

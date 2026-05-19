@@ -8,15 +8,22 @@ export default {
     expandSidebar: "展开或收起侧栏"
   },
   auth: {
-    subtitle: "使用管理员账号登录，会话由服务端 Cookie 保持。",
+    subtitle: "使用管理员账号登录，会话由 HttpOnly Cookie 保持（同源代理下自动携带）。",
     tabUsername: "用户名",
     tabEmail: "邮箱",
     usernameLabel: "用户名",
     emailLabel: "邮箱",
     passwordLabel: "密码",
     submit: "登录",
-    loginFailed: "登录失败，请检查账号和密码，并确认后端 HTTP :8000 已启动。",
-    backendHint: "本地开发账号：用户名 dev / 密码 dev（需先启动后端）",
+    loginFailed: "登录失败，请检查账号和密码。",
+    loginFailedNetwork: "无法连接后端，请确认 admin 已在 :8000 启动，并通过 http://localhost:9001 打开页面（勿用 :9000）。",
+    loginFailedCredentials: "用户名或密码错误",
+    loginFailedServer: "服务器错误，请稍后重试或查看后端日志",
+    loginFailedUnknown: "登录失败，请稍后重试",
+    backendDown: "后端服务不可用，请确认 admin 已在 :8000 启动，页面使用 http://localhost:9001",
+    backendHint: "开发：页面 http://localhost:9001 · API/WS 代理到 :8000 · 账号 dev/dev",
+    devBypassHint: "当前为开发免登录模式（auth bypass），可直接进入系统；也可使用 dev/dev 登录。",
+    devModeBTitle: "开发模式 B（真实登录）",
     logout: "退出登录"
   },
   dashboard: {

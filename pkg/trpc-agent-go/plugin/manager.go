@@ -14,6 +14,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 
 	"trpc.group/trpc-go/trpc-agent-go/agent"
 	"trpc.group/trpc-go/trpc-agent-go/event"
@@ -282,8 +283,14 @@ func (m *Manager) OnEvent(
 		return e, nil
 	}
 	curr := e
-	for _, h := range m.eventHooks {
+	fmt.Fprintf(os.Stderr, "[DEBUG:agent-no-response] plugin.Manager.OnEvent entry hooks_count=%d\n", len(m.eventHooks))
+	os.Stderr.Sync()
+	for i, h := range m.eventHooks {
+		fmt.Fprintf(os.Stderr, "[DEBUG:agent-no-response] plugin.Manager.OnEvent calling hook[%d] name=%s\n", i, h.name)
+		os.Stderr.Sync()
 		next, err := h.hook(ctx, invocation, curr)
+		fmt.Fprintf(os.Stderr, "[DEBUG:agent-no-response] plugin.Manager.OnEvent hook[%d] name=%s returned err=%v\n", i, h.name, err)
+		os.Stderr.Sync()
 		if err != nil {
 			return nil, fmt.Errorf("plugin %q: %w", h.name, err)
 		}

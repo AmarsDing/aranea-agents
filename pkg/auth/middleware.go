@@ -68,12 +68,12 @@ func Middleware() httpm.FilterFunc {
 				next.ServeHTTP(w, r)
 				return
 			}
-			cookie, err := r.Cookie(cookieName)
-			if err != nil {
+			tokenStr := TokenFromHTTPRequest(r)
+			if tokenStr == "" {
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}
-			auth, err := ParseToken(cookie.Value, authSecretKey)
+			auth, err := ParseToken(tokenStr, authSecretKey)
 			if err != nil {
 				ec := errors.FromError(err)
 				http.Error(w, ec.Message, int(ec.Code))
@@ -95,13 +95,7 @@ func SetCookie(ctx context.Context, userID int64, access string, expiresAt time.
 	if err != nil {
 		return err
 	}
-	cookie := &http.Cookie{
-		Name:    cookieName,
-		Value:   token,
-		Path:    "/",
-		Expires: expiresAt,
-	}
-	tr.ReplyHeader().Add("Set-Cookie", cookie.String())
+	tr.ReplyHeader().Add("Set-Cookie", newSessionCookie(token, expiresAt).String())
 	return nil
 }
 
@@ -111,13 +105,6 @@ func DeleteCookie(ctx context.Context) error {
 	if !ok {
 		return fmt.Errorf("failed to get transport from context")
 	}
-	expires := time.Now().AddDate(0, 0, -1)
-	cookie := &http.Cookie{
-		Name:    cookieName,
-		Value:   "",
-		Path:    "/",
-		Expires: expires,
-	}
-	tr.ReplyHeader().Add("Set-Cookie", cookie.String())
+	tr.ReplyHeader().Add("Set-Cookie", newClearedSessionCookie().String())
 	return nil
 }

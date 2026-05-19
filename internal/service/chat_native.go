@@ -168,8 +168,17 @@ func (s *ChatService) runNativeAgentTurn(ctx context.Context, req *chatv1.SendCh
 		return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.BadRequest("CHAT_NATIVE", "session_id and content are required")
 	}
 
+	// #region debug-point A:turn-entry
+	flow := event.NewFlowLogger(s.td.Pipeline.Bus, sessionID, "")
+	flow.LogStart("chat.receive", "收到用户消息", event.P("content_len", len(content)))
+	// #endregion
+
 	unlock := s.lockSession(sessionID)
-	if s.runs.HasActive(sessionID) {
+	// #region debug-point B:has-active
+	hasActive := s.runs.HasActive(sessionID)
+	flow.Log("chat.active_check", event.FlowPhaseDone, "检查活跃运行", event.P("has_active", hasActive))
+	// #endregion
+	if hasActive {
 		if _, _, ok := s.runs.ActiveRunner(sessionID); ok {
 			unlock()
 			enqueued, err := s.runs.EnqueueUserMessage(sessionID, content)
@@ -194,11 +203,15 @@ func (s *ChatService) runNativeAgentTurn(ctx context.Context, req *chatv1.SendCh
 	sess, err := s.td.Sessions.Get(ctx, sessionID)
 	if err != nil {
 		unlock()
+		flow.LogError("chat.session_fetch", "获取会话失败", event.P("error", err.Error()))
 		if errors.Is(err, sql.ErrNoRows) {
 			return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.NotFound("SESSION", "session not found")
 		}
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
+	// #region debug-point C:session-state
+	flow.LogDone("chat.session_fetch", "会话已获取", event.P("owner_type", sess.OwnerType), event.P("agent_id", sess.AgentID), event.P("team_id", sess.TeamID))
+	// #endregion
 
 	if strings.EqualFold(strings.TrimSpace(sess.OwnerType), "team") {
 		if s.teamsNative == nil {
@@ -247,11 +260,15 @@ func (s *ChatService) runNativeAgentTurn(ctx context.Context, req *chatv1.SendCh
 	ag, err := s.hydratedAgent(ctx, agentID)
 	if err != nil {
 		unlock()
+		flow.LogError("chat.agent_hydrate", "加载Agent配置失败", event.P("agent_id", agentID), event.P("error", err.Error()))
 		if errors.Is(err, sql.ErrNoRows) {
 			return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.NotFound("AGENT", "agent not found")
 		}
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
+	// #region debug-point D:agent-state
+	flow.LogDone("chat.agent_hydrate", "Agent配置已加载", event.P("agent_key", ag.AgentKey), event.P("provider", ag.Provider), event.P("model", ag.Model))
+	// #endregion
 	if s.usage != nil {
 		check, qerr := s.usage.CheckQuota(ctx, "agent", agentID)
 		if qerr != nil {
@@ -276,11 +293,16 @@ func (s *ChatService) runNativeAgentTurn(ctx context.Context, req *chatv1.SendCh
 	dialogMode = strutil.FirstNonEmpty(dialogMode, sess.DialogMode, "default")
 	prov = strutil.FirstNonEmpty(prov, sess.DefaultProvider, ag.Provider)
 	mod = strutil.FirstNonEmpty(mod, sess.DefaultModel, ag.Model)
+	flow.LogDone("chat.provider_resolve", "Provider/Model已解析", event.P("provider", prov), event.P("model", mod), event.P("dialog_mode", dialogMode))
 
 	attN := 0
 	if opts != nil {
 		attN = len(opts.Attachments)
 	}
+
+	// #region debug-point E:enter-turn
+	flow.LogStart("chat.turn_enter", "进入Agent Turn执行", event.P("dialog_mode", dialogMode), event.P("provider", prov), event.P("model", mod), event.P("attachments", attN))
+	// #endregion
 
 	s.runs.StorePlaceholder(sessionID)
 	unlock()

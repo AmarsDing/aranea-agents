@@ -2,7 +2,7 @@ import { ref } from "vue";
 import { buildHealthWsUrl } from "./api";
 import { useAuthStore } from "../../stores/auth";
 import { Notify } from "quasar";
-import { getBackendOrigin, readAccessTokenCookie } from "../../config/runtime";
+import { getBackendOrigin, isWsSameOriginAsPage, readAccessTokenCookie } from "../../config/runtime";
 
 export type ServerHeartbeatOptions = {
   pingInterval?: number;
@@ -76,9 +76,9 @@ function createHeartbeat(options?: ServerHeartbeatOptions) {
       return;
     }
 
-    const token = readAccessTokenCookie();
-    // Local dev with KRATOS_HTTP_AUTH_DISABLED: HTTP /v1 works without cookie, but WS still must connect.
-    if (!token && !import.meta.env.DEV) {
+    // Same-origin WS sends HttpOnly session cookie; dev bypass does not require a readable token.
+    const canOpenWs = import.meta.env.DEV || isWsSameOriginAsPage() || !!readAccessTokenCookie();
+    if (!canOpenWs) {
       startTokenPoll();
       return;
     }
@@ -134,7 +134,7 @@ function createHeartbeat(options?: ServerHeartbeatOptions) {
       stopPing();
       stopTimeoutCheck();
       if (!shutdownReceived) {
-        if (!readAccessTokenCookie()) {
+        if (!import.meta.env.DEV && !isWsSameOriginAsPage() && !readAccessTokenCookie()) {
           startTokenPoll();
         } else {
           scheduleReconnect();

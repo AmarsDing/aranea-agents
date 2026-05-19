@@ -90,25 +90,36 @@ make init      # 初始化工具
 make api       # 生成 Proto 代码
 make build     # 构建后端
 
+# 开发模式 A：免登录（最快）
 $env:DEPLOY_ENV="dev"
 $env:KRATOS_HTTP_AUTH_DISABLED="1"
+go run ./cmd/admin -conf ./configs/config.yaml
 
-go run ./cmd/admin -conf ./configs   # 在仓库根目录启动（推荐）
+# 开发模式 B：真实 Cookie 登录（与生产一致）
+# $env:DEPLOY_ENV="dev"
+# $env:KRATOS_AUTH_SECRET="local-dev-only-change-me-32chars-minimum"
+# go run ./cmd/admin -conf ./configs
 
-本地登录：**用户名 `dev` / 密码 `dev`**（需 `KRATOS_HTTP_AUTH_DISABLED=1` 时自动种子）。
+# 自检：curl http://localhost:8000/healthz  → auth_mode: bypass | jwt
+```
+
+本地账号（模式 A 或 B）：**`dev` / `dev`**（bypass 时自动种子）。
 
 **Ctrl+C 无法退出**（多见于 Windows + Cursor 终端）：再按一次 Ctrl+C 强制退出；或 `netstat -ano | findstr :8000` 查 PID 后 `taskkill /PID <pid> /F`。
 
 **WebSocket**（聊天流式、监控）：走 **HTTP 同端口** `ws://<host>:8000/v1/ws`（开发时经 Quasar 代理为 `ws://localhost:9001/v1/ws`）。`config.yaml` 里的 `server.ws.addr:8002` 为历史字段，当前实现挂在 Kratos HTTP 上，**不要**单独连 8002。
-```
+
+认证设计详见 [docs/需求/admin-auth.design.md](docs/需求/admin-auth.design.md)。
 
 ### 前端
 
 ```bash
 cd web
 npm install
-npm run serve
+npm run dev    # http://localhost:9001（勿用 :9000，该端口为 gRPC）
 ```
+
+页面须使用 **http://localhost:9001**，API/WS 经 Vite 代理到 `:8000`，会话 **HttpOnly Cookie** 才会自动携带。
 
 ## 文档导航
 

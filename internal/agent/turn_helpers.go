@@ -9,8 +9,8 @@ import (
 	sessiontrpc "aranea-agents/internal/session/trpc"
 
 	trpcartifact "trpc.group/trpc-go/trpc-agent-go/artifact"
-	trpcmemory "trpc.group/trpc-go/trpc-agent-go/memory"
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
+	trpcmemory "trpc.group/trpc-go/trpc-agent-go/memory"
 	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 )
@@ -20,6 +20,12 @@ type EventStreamResult struct {
 	Reasoning     strings.Builder
 	PromptTok     int
 	CompletionTok int
+	// HasError is true when at least one error event was observed during the turn.
+	HasError bool
+	// LastError records the last error message from the event stream.
+	LastError string
+	// HasContent is true when at least one message with non-empty text was received.
+	HasContent bool
 }
 
 func NewRunnerDepsFromRuntime(trpcSession trpcsession.Service, memory trpcmemory.Service, artifact trpcartifact.Service, plugins ...trpcplugin.Plugin) TRPCRunnerDeps {
@@ -67,6 +73,12 @@ func ConsumeEventStream(
 			continue
 		}
 
+		// Track error events so callers can surface them to users.
+		if ev.Response != nil && ev.Response.Error != nil {
+			result.HasError = true
+			result.LastError = ev.Response.Error.Message
+		}
+
 		if projector != nil {
 			projector.ProjectAndPublish(ctx, ev, projectMeta)
 		}
@@ -76,6 +88,13 @@ func ConsumeEventStream(
 				result.PromptTok = ev.Response.Usage.PromptTokens
 				result.CompletionTok = ev.Response.Usage.CompletionTokens
 			}
+			continue
+		}
+
+		// Runner completion events may still carry an error set.
+		if ev.Response != nil && ev.Response.Error != nil {
+			result.HasError = true
+			result.LastError = ev.Response.Error.Message
 			continue
 		}
 
@@ -90,9 +109,11 @@ func ConsumeEventStream(
 			msg := choice.Message
 			if text := strings.TrimSpace(msg.Content); text != "" {
 				_ = provider.VisibleStreamingDelta(&result.Reply, text)
+				result.HasContent = true
 			}
 			if rc := strings.TrimSpace(msg.ReasoningContent); rc != "" {
 				_ = provider.VisibleStreamingDelta(&result.Reasoning, rc)
+				result.HasContent = true
 			}
 		}
 	}

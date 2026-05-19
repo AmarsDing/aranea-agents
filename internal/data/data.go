@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 
@@ -15,6 +14,7 @@ import (
 	"aranea-agents/internal/data/ent/migrate"
 	"aranea-agents/internal/data/pgvector"
 	"aranea-agents/internal/data/sessionmemory"
+
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 
@@ -161,17 +161,64 @@ func entSQLDebugEnabled() bool {
 // NewData opens SQLite for Ent CRUD; optionally opens Postgres + ensures pgvector schema for agent memory.
 // The underlying *sql.DB is shared with trpc session/checkpoint adapters via RawDB().
 func NewData(c *conf.Data) (*Data, func(), error) {
+	entClient, rawDB, err := initSQLite(c)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if err = ensureAllSchemas(rawDB, entClient); err != nil {
+		rawDB.Close()
+		return nil, nil, err
+	}
+
+	pg, err := initPostgres(c)
+	if err != nil {
+		rawDB.Close()
+		return nil, nil, err
+	}
+
+	vdim := vectorDimFromConf(c)
+	st := &Data{entClient: entClient, rawDB: rawDB, pg: pg, vectorDim: vdim}
+
+	if err = ensurePostgresSchemas(pg, vdim); err != nil {
+		if pg != nil {
+			pg.Close()
+		}
+		rawDB.Close()
+		return nil, nil, err
+	}
+
+	if err = seedInitialData(entClient, c); err != nil {
+		if pg != nil {
+			pg.Close()
+		}
+		rawDB.Close()
+		return nil, nil, err
+	}
+
+	cleanup := func() {
+		if st.pg != nil {
+			st.pg.Close()
+		}
+		if st.rawDB != nil {
+			st.rawDB.Close()
+		}
+	}
+	return st, cleanup, nil
+}
+
+// initSQLite opens the SQLite database, configures Ent, applies PRAGMAs,
+// and runs migration.
+func initSQLite(c *conf.Data) (*ent.Client, *sql.DB, error) {
 	driverName, dsn, err := entSQLiteDriverAndDSN(c)
 	if err != nil {
-		log.Fatalf("sqlite (ent): %v", err)
+		return nil, nil, fmt.Errorf("sqlite (ent): %w", err)
 	}
 
 	rawDB, err := sql.Open(driverName, dsn)
 	if err != nil {
-		log.Fatalf("failed opening sqlite raw db: %v", err)
+		return nil, nil, fmt.Errorf("failed opening sqlite raw db: %w", err)
 	}
-	// WAL + busy_timeout: avoid dev HTTP handlers blocking each other when one query waits on the DB.
-	// (Legacy MaxOpenConns(1) caused login to hang if another goroutine held the sole connection.)
 	rawDB.SetMaxOpenConns(4)
 
 	drv := entsql.OpenDB(driverName, rawDB)
@@ -201,103 +248,85 @@ func NewData(c *conf.Data) (*Data, func(), error) {
 		rawDB.Close()
 		return nil, nil, fmt.Errorf("ent schema create (sqlite): %w", err)
 	}
+	return entClient, rawDB, nil
+}
 
-	if err = sessionmemory.EnsurePatches(context.Background(), entClient); err != nil {
-		rawDB.Close()
-		return nil, nil, fmt.Errorf("session memory patches: %w", err)
+// ensureAllSchemas applies all Ent and raw SQL schema patches.
+func ensureAllSchemas(rawDB *sql.DB, entClient *ent.Client) error {
+	if err := sessionmemory.EnsurePatches(context.Background(), entClient); err != nil {
+		return fmt.Errorf("session memory patches: %w", err)
 	}
-	if err = sessionmemory.EnsureSchema(context.Background(), entClient); err != nil {
-		rawDB.Close()
-		return nil, nil, fmt.Errorf("session memory schema: %w", err)
+	if err := sessionmemory.EnsureSchema(context.Background(), entClient); err != nil {
+		return fmt.Errorf("session memory schema: %w", err)
 	}
-	if err = sessionmemory.EnsureMonitorSchemaPatches(context.Background(), entClient); err != nil {
-		rawDB.Close()
-		return nil, nil, fmt.Errorf("monitor schema patches: %w", err)
+	if err := sessionmemory.EnsureMonitorSchemaPatches(context.Background(), entClient); err != nil {
+		return fmt.Errorf("monitor schema patches: %w", err)
 	}
-	if err = ensureAgentRuntimePatches(context.Background(), entClient); err != nil {
-		rawDB.Close()
-		return nil, nil, fmt.Errorf("agent runtime patches: %w", err)
+	if err := ensureAgentRuntimePatches(context.Background(), entClient); err != nil {
+		return fmt.Errorf("agent runtime patches: %w", err)
 	}
-	if err = ensureBuiltinPlatformTools(context.Background(), entClient); err != nil {
-		rawDB.Close()
-		return nil, nil, err
+	if err := ensureBuiltinPlatformTools(context.Background(), entClient); err != nil {
+		return err
 	}
-	if err = ensureDefaultSystemSetting(context.Background(), entClient); err != nil {
-		rawDB.Close()
-		return nil, nil, err
+	if err := ensureDefaultSystemSetting(context.Background(), entClient); err != nil {
+		return err
 	}
 	ctxSchema := context.Background()
-	if err = EnsureEvalSchema(ctxSchema, rawDB); err != nil {
-		rawDB.Close()
-		return nil, nil, fmt.Errorf("eval schema: %w", err)
+	if err := EnsureEvalSchema(ctxSchema, rawDB); err != nil {
+		return fmt.Errorf("eval schema: %w", err)
 	}
-	if err = EnsureA2ASchema(ctxSchema, rawDB); err != nil {
-		rawDB.Close()
-		return nil, nil, fmt.Errorf("a2a schema: %w", err)
+	if err := EnsureA2ASchema(ctxSchema, rawDB); err != nil {
+		return fmt.Errorf("a2a schema: %w", err)
 	}
-	if err = EnsureUsageQuotaSchema(ctxSchema, rawDB); err != nil {
-		rawDB.Close()
-		return nil, nil, fmt.Errorf("usage quota schema: %w", err)
+	if err := EnsureUsageQuotaSchema(ctxSchema, rawDB); err != nil {
+		return fmt.Errorf("usage quota schema: %w", err)
 	}
+	return nil
+}
 
+// initPostgres opens the optional Postgres vector store connection.
+func initPostgres(c *conf.Data) (*sql.DB, error) {
 	pgDSN := postgresVectorDSN(c)
-	var pg *sql.DB
-	if pgDSN != "" {
-		pg, err = sql.Open("postgres", pgDSN)
-		if err != nil {
-			rawDB.Close()
-			log.Fatalf("failed opening postgres for vectors: %v", err)
-		}
-		pg.SetMaxOpenConns(8)
-		pg.SetConnMaxLifetime(0)
-		if err = pg.PingContext(context.Background()); err != nil {
-			pg.Close()
-			rawDB.Close()
-			return nil, nil, fmt.Errorf("postgres ping: %w", err)
-		}
+	if pgDSN == "" {
+		return nil, nil
 	}
+	pg, err := sql.Open("postgres", pgDSN)
+	if err != nil {
+		return nil, fmt.Errorf("failed opening postgres for vectors: %w", err)
+	}
+	pg.SetMaxOpenConns(8)
+	pg.SetConnMaxLifetime(0)
+	if err = pg.PingContext(context.Background()); err != nil {
+		pg.Close()
+		return nil, fmt.Errorf("postgres ping: %w", err)
+	}
+	return pg, nil
+}
 
-	vdim := vectorDimFromConf(c)
-	st := &Data{entClient: entClient, rawDB: rawDB, pg: pg, vectorDim: vdim}
+// ensurePostgresSchemas applies vector and knowledge schema on Postgres if configured.
+func ensurePostgresSchemas(pg *sql.DB, vdim int) error {
+	if pg == nil {
+		return nil
+	}
+	ctxPG := context.Background()
+	if err := pgvector.EnsureSchema(ctxPG, pg, vdim); err != nil {
+		return err
+	}
+	if err := EnsureKnowledgeSchema(ctxPG, pg, vdim); err != nil {
+		return fmt.Errorf("knowledge schema: %w", err)
+	}
+	return nil
+}
 
-	if pg != nil {
-		ctxPG := context.Background()
-		if err = pgvector.EnsureSchema(ctxPG, pg, vdim); err != nil {
-			pg.Close()
-			rawDB.Close()
-			return nil, nil, err
-		}
-		if err = EnsureKnowledgeSchema(ctxPG, pg, vdim); err != nil {
-			pg.Close()
-			rawDB.Close()
-			return nil, nil, fmt.Errorf("knowledge schema: %w", err)
-		}
+// seedInitialData seeds initial admin from config and optional dev bypass admin.
+func seedInitialData(entClient *ent.Client, c *conf.Data) error {
+	if err := ensureInitialAdminFromConfig(context.Background(), entClient, c); err != nil {
+		return err
 	}
-
-	if err = ensureInitialAdminFromConfig(context.Background(), entClient, c); err != nil {
-		if pg != nil {
-			pg.Close()
-		}
-		rawDB.Close()
-		return nil, nil, err
+	if err := ensureDevBypassAdminIfEnabled(context.Background(), entClient); err != nil {
+		return err
 	}
-	if err = ensureDevBypassAdminIfEnabled(context.Background(), entClient); err != nil {
-		if pg != nil {
-			pg.Close()
-		}
-		rawDB.Close()
-		return nil, nil, err
-	}
-
-	cleanup := func() {
-		if st.pg != nil {
-			st.pg.Close()
-		}
-		if st.rawDB != nil {
-			st.rawDB.Close()
-		}
-	}
-	return st, cleanup, nil
+	return nil
 }
 
 // NewSessionMemoryStore exposes SQLite session-chain reads (L0–L4, evolution) on the same DB as Ent.

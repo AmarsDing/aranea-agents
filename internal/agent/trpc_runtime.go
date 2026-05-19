@@ -18,10 +18,10 @@ import (
 const TRPCDefaultAppName = "aranea"
 
 type TRPCRunnerDeps struct {
-	AppName         string
-	SessionService  trpcsession.Service
-	MemoryService   trpcmemory.Service
-	ArtifactService trpcartifact.Service
+	AppName               string
+	SessionService        trpcsession.Service
+	MemoryService         trpcmemory.Service
+	ArtifactService       trpcartifact.Service
 	Ingestor              trpcsession.Ingestor
 	AwaitUserReplyRouting bool
 	// Plugins is an optional list of runner-level plugins injected at runner creation.
@@ -83,7 +83,8 @@ func RunTRPCUserTurn(
 	if sessionID == "" {
 		return nil, errors.New("trpc runtime: session id is required")
 	}
-	return r.Run(ctx, userID, sessionID, trpcmodel.NewUserMessage(content), opts...)
+	ch, err := r.Run(ctx, userID, sessionID, trpcmodel.NewUserMessage(content), opts...)
+	return ch, err
 }
 
 func CancelTRPCRun(r trpcrunner.Runner, requestID string) bool {

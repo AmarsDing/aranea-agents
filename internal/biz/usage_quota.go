@@ -96,6 +96,6 @@ func (u *UsageUsecase) quotaSpent(ctx context.Context, scopeType, scopeID string
 	case "agent":
 		return u.repo.SumAgentCostInPeriod(ctx, scopeID, q.PeriodStart, q.PeriodEnd)
 	default:
-		return 0, fmt.Errorf("unsupported quota scope_type %q", scopeType)
+		return 0, ErrQuotaUnsupportedScope
 	}
 }

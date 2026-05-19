@@ -22,7 +22,7 @@
                 <template #avatar>
                   <q-icon name="cloud_off" />
                 </template>
-                后端服务不可用，请检查服务是否已启动后刷新页面重试。
+                {{ t("auth.backendDown") }}
               </q-banner>
               <div class="text-center q-mt-md">
                 <q-btn outline color="primary" :loading="rechecking" label="重新检测" @click="recheckBackend" />
@@ -77,8 +77,20 @@
               </q-banner>
             </q-card-section>
 
+            <q-banner v-if="authBypass" rounded dense class="bg-info text-white q-mx-md q-mb-sm">
+              {{ t("auth.devBypassHint") }}
+            </q-banner>
+
             <q-card-actions vertical class="q-px-md q-pb-lg">
               <q-btn color="primary" unelevated :loading="auth.loginLoading" :label="t('auth.submit')" padding="sm md" @click="submit" />
+              <q-btn
+                v-if="authBypass"
+                flat
+                color="primary"
+                class="q-mt-xs"
+                label="进入系统（免登录）"
+                @click="enterWithoutLogin"
+              />
               <div class="text-caption text-grey-7 text-center q-mt-sm">{{ t("auth.backendHint") }}</div>
             </q-card-actions>
           </template>
@@ -94,6 +106,8 @@ import { useRoute, useRouter } from "vue-router";
 import { useQuasar } from "quasar";
 import { useI18n } from "vue-i18n";
 import { useAuthStore, type AuthIdentityMode } from "../stores/auth";
+import { fetchAuthHealth } from "../config/authHealth";
+import { formatLoginError } from "../features/admin/loginErrors";
 import { checkBackendHealth, getServerHeartbeatState } from "../features/heartbeat/useServerHeartbeat";
 
 const { t } = useI18n();
@@ -112,6 +126,7 @@ const localError = ref("");
 const backendChecking = ref(true);
 const backendHealthy = ref(false);
 const rechecking = ref(false);
+const authBypass = ref(false);
 
 watch(mode, () => {
   localError.value = "";
@@ -125,14 +140,20 @@ async function checkBackend() {
     backendChecking.value = false;
     return;
   }
-  const healthy = await checkBackendHealth();
+  const health = await fetchAuthHealth();
+  if (health?.auth_mode === "bypass") {
+    authBypass.value = true;
+  }
+  const healthy = health?.status === "ok" || (await checkBackendHealth());
   backendHealthy.value = healthy;
   backendChecking.value = false;
 }
 
 async function recheckBackend() {
   rechecking.value = true;
-  const healthy = await checkBackendHealth();
+  const health = await fetchAuthHealth();
+  authBypass.value = health?.auth_mode === "bypass";
+  const healthy = health?.status === "ok" || (await checkBackendHealth());
   backendHealthy.value = healthy;
   rechecking.value = false;
 }
@@ -148,6 +169,11 @@ async function bootstrapIfAlreadyAuthed() {
 
 void bootstrapIfAlreadyAuthed();
 
+async function enterWithoutLogin() {
+  const redirect = typeof route.query.redirect === "string" && route.query.redirect.startsWith("/") ? route.query.redirect : "/overview";
+  await router.replace(redirect || "/overview");
+}
+
 async function submit() {
   localError.value = "";
   try {
@@ -155,9 +181,10 @@ async function submit() {
     password.value = "";
     const redirect = typeof route.query.redirect === "string" && route.query.redirect.startsWith("/") ? route.query.redirect : "/overview";
     await router.replace(redirect || "/overview");
-  } catch {
-    localError.value = t("auth.loginFailed");
-    $q.notify({ type: "negative", message: t("auth.loginFailed") });
+  } catch (err) {
+    const info = formatLoginError(err, t);
+    localError.value = info.message;
+    $q.notify({ type: "negative", message: info.message });
   }
 }
 </script>

@@ -1,4 +1,4 @@
-import { buildWsUrl, readAccessTokenCookie } from "../../config/runtime";
+import { buildWsUrl } from "../../config/runtime";
 import type { Envelope, WsDownstream, WsUpstream } from "./envelope";
 
 export type WsTransportOptions = {
@@ -45,7 +45,12 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
       return;
     }
 
-    const url = buildWsUrl({ sessionId: opts.sessionId, lastEventId: _lastEventId, token: opts.token || readAccessTokenCookie(), logEnabled: opts.logEnabled });
+    const url = buildWsUrl({
+      sessionId: opts.sessionId,
+      lastEventId: _lastEventId,
+      token: opts.token,
+      logEnabled: opts.logEnabled
+    });
     ws = new WebSocket(url);
 
     ws.onopen = () => {

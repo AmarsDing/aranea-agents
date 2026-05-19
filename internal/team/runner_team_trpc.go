@@ -311,7 +311,13 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 	}
 
 	if displayMarkdown == "" {
-		err := kerrors.InternalServer("CHAT_TEAM_NATIVE", "team workflow produced no usable assistant reply")
+		fallback := "The team workflow produced no usable assistant reply. This may indicate a configuration issue."
+		if result.HasError {
+			fallback = fmt.Sprintf("Team AI service error: %s. Please check your configuration or try again later.", result.LastError)
+		} else if result.HasContent {
+			fallback = "The team workflow completed but produced no text output. This may indicate a configuration issue with the model."
+		}
+		err := kerrors.InternalServer("CHAT_TEAM_NATIVE", fallback)
 		r.finishRunErr(ctx, &run, t0, err.Error())
 		return userMsg, biz.ChatMessage{}, err
 	}

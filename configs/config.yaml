@@ -15,11 +15,13 @@ data:
     enable: true
     source: file:./cmd/data/arenea.sqlite?cache=shared&_fk=1
   # First boot only (empty admins): id=1, password MD5-hashed like Login.
+  # SECURITY: Override via env var DATA__INITIAL_ADMIN__PASSWORD in production.
   initial_admin:
     name: admin
     email: admin@local.invalid
     password: changeme
     access: admin
+  # SECURITY: Override via env var DATA__POSTGRES__SOURCE in production.
   postgres:
     source: postgres://postgres:Hangshan%40123@127.0.0.1:5432/aranea?sslmode=disable
     vector_dim: 1536

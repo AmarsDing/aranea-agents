@@ -167,16 +167,7 @@ func (s *WSServer) handleWS(w http.ResponseWriter, r *http.Request) {
 	if auth.HTTPAuthBypassEnabled() {
 		claims = auth.DevBypassPrincipal()
 	} else {
-		tokenStr := strings.TrimSpace(r.URL.Query().Get("token"))
-		if tokenStr == "" {
-			tokenStr = r.Header.Get("Authorization")
-			tokenStr = strings.TrimPrefix(tokenStr, "Bearer ")
-		}
-		if tokenStr == "" {
-			if cookie, err := r.Cookie("access_token"); err == nil && cookie.Value != "" {
-				tokenStr = cookie.Value
-			}
-		}
+		tokenStr := auth.TokenFromHTTPRequest(r)
 		if tokenStr == "" {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return

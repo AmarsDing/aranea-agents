@@ -26,7 +26,6 @@ import (
 	toolv1 "aranea-agents/api/kratos/tool/v1"
 	usagev1 "aranea-agents/api/kratos/usage/v1"
 	"aranea-agents/internal/conf"
-	"aranea-agents/internal/service"
 	"aranea-agents/pkg/auth"
 	"aranea-agents/pkg/validate"
 
@@ -36,32 +35,7 @@ import (
 )
 
 // NewGRPCServer new a gRPC server.
-func NewGRPCServer(c *conf.Server,
-	admin *service.AdminService,
-	avatar *service.AvatarService,
-	agents *service.AgentService,
-	agentCat *service.AgentCategoryService,
-	llm *service.LlmProviderModelService,
-	hookSvc *service.HookService,
-	cronSvc *service.CronService,
-	pluginSvc *service.PluginService,
-	mcpSvc *service.MCPServerService,
-	skillSvc *service.SkillService,
-	toolSvc *service.ToolService,
-	sessionSvc *service.SessionService,
-	channelSvc *service.ChannelService,
-	usageSvc *service.UsageService,
-	monitorSvc *service.MonitorService,
-	memorySvc *service.MemoryService,
-	systemSettingSvc *service.SystemSettingService,
-	teams *service.TeamService,
-	chatSvc *service.ChatService,
-	graphSvc *service.GraphService,
-	artifactSvc *service.ArtifactService,
-	knowledgeSvc *service.KnowledgeService,
-	evalSvc *service.EvaluationService,
-	a2aSvc *service.A2AService,
-) *grpc.Server {
+func NewGRPCServer(c *conf.Server, s *ServiceRegistry) *grpc.Server {
 	var opts = []grpc.ServerOption{
 		// EP-OBS-02: tracing.Server() spans all gRPC calls when OTel is configured.
 		// EP-SEC-04: auth.GRPCMiddleware() validates Bearer JWT from gRPC metadata.
@@ -82,29 +56,29 @@ func NewGRPCServer(c *conf.Server,
 		opts = append(opts, grpc.Timeout(c.Grpc.Timeout.AsDuration()))
 	}
 	srv := grpc.NewServer(opts...)
-	adminv1.RegisterAdminServiceServer(srv, admin)
-	avatarv1.RegisterAvatarServiceServer(srv, avatar)
-	agentv1.RegisterAgentServiceServer(srv, agents)
-	agentcategoryv1.RegisterAgentCategoryServiceServer(srv, agentCat)
-	llmprovidermodelv1.RegisterLlmProviderModelServiceServer(srv, llm)
-	hookv1.RegisterHookServiceServer(srv, hookSvc)
-	cronv1.RegisterCronServiceServer(srv, cronSvc)
-	pluginv1.RegisterPluginServiceServer(srv, pluginSvc)
-	mcpserverv1.RegisterMCPServerServiceServer(srv, mcpSvc)
-	skillv1.RegisterSkillServiceServer(srv, skillSvc)
-	toolv1.RegisterToolServiceServer(srv, toolSvc)
-	sessionv1.RegisterSessionServiceServer(srv, sessionSvc)
-	channelv1.RegisterChannelServiceServer(srv, channelSvc)
-	usagev1.RegisterUsageServiceServer(srv, usageSvc)
-	monitorv1.RegisterMonitorServiceServer(srv, monitorSvc)
-	memoryv1.RegisterMemoryServiceServer(srv, memorySvc)
-	systemsettingv1.RegisterSystemSettingServiceServer(srv, systemSettingSvc)
-	teamv1.RegisterTeamServiceServer(srv, teams)
-	chatv1.RegisterChatServiceServer(srv, chatSvc)
-	graphv1.RegisterGraphServiceServer(srv, graphSvc)
-	artifactv1.RegisterArtifactServiceServer(srv, artifactSvc)
-	knowledgev1.RegisterKnowledgeServiceServer(srv, knowledgeSvc)
-	evaluationv1.RegisterEvaluationServiceServer(srv, evalSvc)
-	a2av1.RegisterA2AServiceServer(srv, a2aSvc)
+	adminv1.RegisterAdminServiceServer(srv, s.Admin)
+	avatarv1.RegisterAvatarServiceServer(srv, s.Avatar)
+	agentv1.RegisterAgentServiceServer(srv, s.Agents)
+	agentcategoryv1.RegisterAgentCategoryServiceServer(srv, s.AgentCat)
+	llmprovidermodelv1.RegisterLlmProviderModelServiceServer(srv, s.LLM)
+	hookv1.RegisterHookServiceServer(srv, s.Hook)
+	cronv1.RegisterCronServiceServer(srv, s.Cron)
+	pluginv1.RegisterPluginServiceServer(srv, s.Plugin)
+	mcpserverv1.RegisterMCPServerServiceServer(srv, s.MCPServer)
+	skillv1.RegisterSkillServiceServer(srv, s.Skill)
+	toolv1.RegisterToolServiceServer(srv, s.Tool)
+	sessionv1.RegisterSessionServiceServer(srv, s.Session)
+	channelv1.RegisterChannelServiceServer(srv, s.Channel)
+	usagev1.RegisterUsageServiceServer(srv, s.Usage)
+	monitorv1.RegisterMonitorServiceServer(srv, s.Monitor)
+	memoryv1.RegisterMemoryServiceServer(srv, s.Memory)
+	systemsettingv1.RegisterSystemSettingServiceServer(srv, s.SystemSetting)
+	teamv1.RegisterTeamServiceServer(srv, s.Teams)
+	chatv1.RegisterChatServiceServer(srv, s.Chat)
+	graphv1.RegisterGraphServiceServer(srv, s.Graph)
+	artifactv1.RegisterArtifactServiceServer(srv, s.Artifact)
+	knowledgev1.RegisterKnowledgeServiceServer(srv, s.Knowledge)
+	evaluationv1.RegisterEvaluationServiceServer(srv, s.Eval)
+	a2av1.RegisterA2AServiceServer(srv, s.A2A)
 	return srv
 }

@@ -58,9 +58,15 @@ export function getWsOrigin(): string {
   return getBackendOrigin();
 }
 
+/** True when WS uses the same origin as the SPA (Vite proxy); HttpOnly session cookies are sent automatically. */
+export function isWsSameOriginAsPage(): boolean {
+  return getWsOrigin() === "";
+}
+
 export function buildWsUrl(params: {
   sessionId: string;
   lastEventId?: string;
+  /** Only used for cross-origin WS when session cookie is not sent (legacy); omit for same-origin + HttpOnly cookie. */
   token?: string;
   logEnabled?: boolean;
 }): string {
@@ -71,8 +77,9 @@ export function buildWsUrl(params: {
   if (params.lastEventId) {
     q.set("last_event_id", params.lastEventId);
   }
-  if (params.token) {
-    q.set("token", params.token);
+  const token = params.token?.trim();
+  if (token && !isWsSameOriginAsPage()) {
+    q.set("token", token);
   }
   if (params.logEnabled) {
     q.set("log_enabled", "1");
@@ -81,17 +88,13 @@ export function buildWsUrl(params: {
 }
 
 export function buildHealthWsUrl(): string {
-  const origin = getWsOrigin();
-  const protocol = origin.startsWith("https") ? "wss" : "ws";
-  const wsOrigin = origin.replace(/^https?/, protocol);
-  const q = new URLSearchParams({ session_id: GLOBAL_WS_SESSION_ID });
-  const token = readAccessTokenCookie();
-  if (token) {
-    q.set("token", token);
-  }
-  return `${wsOrigin}/v1/ws?${q.toString()}`;
+  return buildWsUrl({ sessionId: GLOBAL_WS_SESSION_ID });
 }
 
+/**
+ * @deprecated Session cookie is HttpOnly; JS cannot read it on same-origin deployments.
+ * Cross-origin integrations should use Bearer token or explicit `token` query on WS URL.
+ */
 export function readAccessTokenCookie(): string | undefined {
   if (typeof document === "undefined") return undefined;
   const match = document.cookie.match(/(?:^|;\s*)access_token=([^;]*)/);

@@ -25,12 +25,72 @@ type activeRun struct {
 	placeholder bool
 }
 
+// activeRunMap wraps sync.Map with typed accessor methods to eliminate
+// unsafe type assertions in external callers.
+type activeRunMap struct {
+	m sync.Map
+}
+
+func (a *activeRunMap) load(key string) (activeRun, bool) {
+	v, ok := a.m.Load(key)
+	if !ok {
+		return activeRun{}, false
+	}
+	ar, ok := v.(activeRun)
+	return ar, ok
+}
+
+func (a *activeRunMap) store(key string, val activeRun) { a.m.Store(key, val) }
+func (a *activeRunMap) delete(key string)               { a.m.Delete(key) }
+
+// cancelMap wraps sync.Map for context.CancelFunc storage.
+type cancelMap struct {
+	m sync.Map
+}
+
+func (c *cancelMap) load(key string) (context.CancelFunc, bool) {
+	v, ok := c.m.Load(key)
+	if !ok {
+		return nil, false
+	}
+	cf, ok := v.(context.CancelFunc)
+	return cf, ok
+}
+
+func (c *cancelMap) store(key string, val context.CancelFunc) { c.m.Store(key, val) }
+func (c *cancelMap) loadAndDelete(key string) (context.CancelFunc, bool) {
+	v, ok := c.m.LoadAndDelete(key)
+	if !ok {
+		return nil, false
+	}
+	cf, ok := v.(context.CancelFunc)
+	return cf, ok
+}
+func (c *cancelMap) delete(key string) { c.m.Delete(key) }
+
+// statusMap wraps sync.Map for *RunStatusEntry storage.
+type statusMap struct {
+	m sync.Map
+}
+
+func (s *statusMap) load(key string) (*RunStatusEntry, bool) {
+	v, ok := s.m.Load(key)
+	if !ok {
+		return nil, false
+	}
+	e, ok := v.(*RunStatusEntry)
+	return e, ok
+}
+
+func (s *statusMap) store(key string, val *RunStatusEntry) { s.m.Store(key, val) }
+func (s *statusMap) delete(key string)                     { s.m.Delete(key) }
+
 // RunRegistry owns per-session runtime state shared by chat, websocket, and
 // future runner control entrypoints.
 type RunRegistry struct {
-	activeRuns     sync.Map
-	pendingCancels sync.Map
-	runStatuses    sync.Map
+	activeRuns     activeRunMap
+	pendingCancels cancelMap
+	runStatuses    statusMap
 }
 
 func NewRunRegistry() *RunRegistry {
@@ -41,7 +101,7 @@ func (r *RunRegistry) HasActive(sessionID string) bool {
 	if r == nil {
 		return false
 	}
-	_, ok := r.activeRuns.Load(sessionID)
+	_, ok := r.activeRuns.load(sessionID)
 	return ok
 }
 
@@ -49,7 +109,7 @@ func (r *RunRegistry) StorePlaceholder(sessionID string) {
 	if r == nil {
 		return
 	}
-	r.activeRuns.Store(sessionID, activeRun{placeholder: true})
+	r.activeRuns.store(sessionID, activeRun{placeholder: true})
 }
 
 func (r *RunRegistry) StoreRunner(sessionID, runID string, runner trpcrunner.Runner) {
@@ -57,15 +117,13 @@ func (r *RunRegistry) StoreRunner(sessionID, runID string, runner trpcrunner.Run
 		return
 	}
 	ar := activeRun{runID: runID, runner: runner}
-	if prev, ok := r.activeRuns.Load(sessionID); ok {
-		if existing, ok := prev.(activeRun); ok {
-			ar.cancel = existing.cancel
-			if ar.runID == "" {
-				ar.runID = existing.runID
-			}
+	if existing, ok := r.activeRuns.load(sessionID); ok {
+		ar.cancel = existing.cancel
+		if ar.runID == "" {
+			ar.runID = existing.runID
 		}
 	}
-	r.activeRuns.Store(sessionID, ar)
+	r.activeRuns.store(sessionID, ar)
 }
 
 func (r *RunRegistry) StoreCancelable(sessionID, runID string, cancel context.CancelFunc) {
@@ -73,56 +131,48 @@ func (r *RunRegistry) StoreCancelable(sessionID, runID string, cancel context.Ca
 		return
 	}
 	ar := activeRun{runID: runID, cancel: cancel}
-	if prev, ok := r.activeRuns.Load(sessionID); ok {
-		if existing, ok := prev.(activeRun); ok {
-			ar.runner = existing.runner
-		}
+	if existing, ok := r.activeRuns.load(sessionID); ok {
+		ar.runner = existing.runner
 	}
-	r.activeRuns.Store(sessionID, ar)
+	r.activeRuns.store(sessionID, ar)
 }
 
 func (r *RunRegistry) Finish(sessionID string) {
 	if r == nil {
 		return
 	}
-	r.activeRuns.Delete(sessionID)
+	r.activeRuns.delete(sessionID)
 }
 
 func (r *RunRegistry) SetPendingCancel(sessionID string, cancel context.CancelFunc) {
 	if r == nil || cancel == nil {
 		return
 	}
-	r.pendingCancels.Store(sessionID, cancel)
+	r.pendingCancels.store(sessionID, cancel)
 }
 
 func (r *RunRegistry) ClearPendingCancel(sessionID string) {
 	if r == nil {
 		return
 	}
-	r.pendingCancels.Delete(sessionID)
+	r.pendingCancels.delete(sessionID)
 }
 
 func (r *RunRegistry) Cancel(sessionID string) bool {
 	if r == nil {
 		return false
 	}
-	if cancelFn, ok := r.pendingCancels.LoadAndDelete(sessionID); ok {
-		if c, ok := cancelFn.(context.CancelFunc); ok {
-			c()
-		}
+	if cancelFn, ok := r.pendingCancels.loadAndDelete(sessionID); ok {
+		cancelFn()
 	}
-	val, ok := r.activeRuns.Load(sessionID)
-	if !ok {
-		return false
-	}
-	run, ok := val.(activeRun)
+	run, ok := r.activeRuns.load(sessionID)
 	if !ok {
 		return false
 	}
 	if run.cancel != nil {
 		run.cancel()
 		r.SetStatus(sessionID, run.runID, "cancelled", "")
-		r.activeRuns.Delete(sessionID)
+		r.activeRuns.delete(sessionID)
 		return true
 	}
 	if run.placeholder || run.runner == nil {
@@ -132,7 +182,7 @@ func (r *RunRegistry) Cancel(sessionID string) bool {
 		return true
 	}
 	_ = run.runner.Close()
-	r.activeRuns.Delete(sessionID)
+	r.activeRuns.delete(sessionID)
 	return true
 }
 
@@ -140,11 +190,7 @@ func (r *RunRegistry) EnqueueUserMessage(sessionID, content string) (bool, error
 	if r == nil {
 		return false, nil
 	}
-	val, ok := r.activeRuns.Load(sessionID)
-	if !ok {
-		return false, nil
-	}
-	run, ok := val.(activeRun)
+	run, ok := r.activeRuns.load(sessionID)
 	if !ok || run.placeholder || run.runner == nil {
 		return false, nil
 	}
@@ -162,7 +208,7 @@ func (r *RunRegistry) SetStatus(sessionID, runID, status, errMsg string) {
 	if r == nil {
 		return
 	}
-	r.runStatuses.Store(sessionID, &RunStatusEntry{
+	r.runStatuses.store(sessionID, &RunStatusEntry{
 		RunID:     runID,
 		Status:    status,
 		ErrMsg:    errMsg,
@@ -175,11 +221,7 @@ func (r *RunRegistry) ActiveRunner(sessionID string) (trpcrunner.Runner, string,
 	if r == nil {
 		return nil, "", false
 	}
-	val, ok := r.activeRuns.Load(sessionID)
-	if !ok {
-		return nil, "", false
-	}
-	run, ok := val.(activeRun)
+	run, ok := r.activeRuns.load(sessionID)
 	if !ok || run.placeholder || run.runner == nil {
 		return nil, "", false
 	}
@@ -190,11 +232,7 @@ func (r *RunRegistry) GetStatus(sessionID string) (RunStatusEntry, bool) {
 	if r == nil {
 		return RunStatusEntry{}, false
 	}
-	val, ok := r.runStatuses.Load(sessionID)
-	if !ok {
-		return RunStatusEntry{}, false
-	}
-	entry, ok := val.(*RunStatusEntry)
+	entry, ok := r.runStatuses.load(sessionID)
 	if !ok || entry == nil {
 		return RunStatusEntry{}, false
 	}

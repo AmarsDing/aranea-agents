@@ -20,13 +20,12 @@ func (m *Manager) dispatchHookOnEvent(
 	}
 	_, agentKey := sessionAgentKey(ctx, invocation)
 	agentID := ""
-	// Agent DB id is not on invocation; hooks scoped by agent_key use condition.agent_id.
 	resolved := m.hooks.Resolve(agentID, agentKey)
 	if len(resolved) == 0 {
 		return e, nil
 	}
 	eventType := eventTypeLabel(e)
-	for _, rh := range resolved {
+	for i, rh := range resolved {
 		if rh.Rule.CallbackPoint != "on_event" {
 			continue
 		}
@@ -36,6 +35,7 @@ func (m *Manager) dispatchHookOnEvent(
 		if err := executeHookAction(ctx, rh, "on_event", agentID, agentKey, "", e); err != nil {
 			return e, err
 		}
+		_ = i // hook executed
 	}
 	return e, nil
 }

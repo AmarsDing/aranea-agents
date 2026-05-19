@@ -32,7 +32,7 @@ type NodeDefInfo struct {
 }
 
 // GraphBuilderFactory converts biz-level GraphBuildConfig into a running GraphRuntime.
-// Implementations live in internal/adapter/graph/ and may import trpc-agent-go freely.
+// Implementations live in internal/graph/trpc/ and may import trpc-agent-go freely.
 type GraphBuilderFactory interface {
 	BuildAndRun(ctx context.Context, cfg GraphBuildConfig, sessionID, graphID, execID string, initialState map[string]any) (GraphRuntime, <-chan GraphRuntimeEvent, error)
 	BuildAndResume(ctx context.Context, cfg GraphBuildConfig, sessionID, graphID, execID, lineageID string, resumeValue map[string]any) (GraphRuntime, <-chan GraphRuntimeEvent, error)

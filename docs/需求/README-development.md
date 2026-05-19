@@ -8,7 +8,7 @@
 |------|----------|
 | System | [0-system-development.md](./0-system-development.md) |
 | Message | [message-development.md](./message-development.md) |
-| Admin/Auth | [admin-auth-development.md](./admin-auth-development.md) |
+| Admin/Auth | [admin-auth.design.md](./admin-auth.design.md) · [admin-auth-development.md](./admin-auth-development.md) |
 
 ## 核心运行
 

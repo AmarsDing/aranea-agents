@@ -8,15 +8,22 @@ export default {
     expandSidebar: "Expand or collapse sidebar"
   },
   auth: {
-    subtitle: "Sign in with an admin account. Session is kept via HTTP cookie.",
+    subtitle: "Sign in with an admin account. Session uses an HttpOnly cookie (sent automatically on same-origin proxy).",
     tabUsername: "Username",
     tabEmail: "Email",
     usernameLabel: "Username",
     emailLabel: "Email",
     passwordLabel: "Password",
     submit: "Sign in",
-    loginFailed: "Sign-in failed. Check credentials and ensure the HTTP API on :8000 is running.",
-    backendHint: "Local dev: username dev / password dev (start the backend first)",
+    loginFailed: "Sign-in failed. Check your credentials.",
+    loginFailedNetwork: "Cannot reach the backend. Start admin on :8000 and open http://localhost:9001 (not :9000).",
+    loginFailedCredentials: "Invalid username or password",
+    loginFailedServer: "Server error. Try again or check backend logs",
+    loginFailedUnknown: "Sign-in failed. Please try again",
+    backendDown: "Backend unavailable. Start admin on :8000 and use http://localhost:9001",
+    backendHint: "Dev: UI on :9001 · API/WS proxied to :8000 · account dev/dev",
+    devBypassHint: "Dev auth bypass is active — you can enter without signing in, or use dev/dev.",
+    devModeBTitle: "Dev mode B (real login)",
     logout: "Log out"
   },
   dashboard: {

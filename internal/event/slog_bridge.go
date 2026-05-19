@@ -18,6 +18,11 @@ type SlogBridge struct {
 	attrs  []slog.Attr
 	groups []string
 	level  slog.Level
+
+	// re-entrancy guard: prevents bus.Publish from being called
+	// recursively when a subscriber's handler calls slog.Info/Warn/Error,
+	// which would deadlock on the bus RWMutex.
+	inPublish sync.Mutex
 }
 
 func NewSlogBridge(bus Bus, inner slog.Handler) *SlogBridge {
@@ -41,35 +46,48 @@ func (b *SlogBridge) Enabled(ctx context.Context, level slog.Level) bool {
 
 func (b *SlogBridge) Handle(ctx context.Context, r slog.Record) error {
 	if b.bus != nil && r.Level >= b.level {
-		env := NewEnvelope(EnvelopeTypeLog, "system", "")
-		env.Channel = "monitor"
-		env.Metadata = map[string]any{
-			"level":  r.Level.String(),
-			"source": sourceFromRecord(r),
+		// Try non-blocking publish to avoid deadlocking when a subscriber
+		// calls slog (which re-enters Handle). If we can't acquire the
+		// guard immediately, skip the bus publish — the inner handler
+		// will still write to stderr.
+		if b.inPublish.TryLock() {
+			env := NewEnvelope(EnvelopeTypeLog, "system", "")
+			env.Channel = "monitor"
+			env.Metadata = map[string]any{
+				"level":  r.Level.String(),
+				"source": sourceFromRecord(r),
+			}
+			if len(b.groups) > 0 {
+				env.Metadata["group"] = strings.Join(b.groups, ".")
+			}
+			var msg strings.Builder
+			msg.WriteString(r.Message)
+			r.Attrs(func(a slog.Attr) bool {
+				msg.WriteByte(' ')
+				msg.WriteString(a.Key)
+				msg.WriteByte('=')
+				msg.WriteString(a.Value.String())
+				return true
+			})
+			for _, a := range b.attrs {
+				msg.WriteByte(' ')
+				msg.WriteString(a.Key)
+				msg.WriteByte('=')
+				msg.WriteString(a.Value.String())
+			}
+			env.Content = &EnvelopeContent{
+				Text:      msg.String(),
+				IsPartial: false,
+			}
+			// Publish asynchronously to avoid blocking the slog caller
+			// and to prevent RWMutex deadlock when a subscriber calls
+			// slog inside its handler.
+			bus := b.bus
+			go func() {
+				defer b.inPublish.Unlock()
+				bus.Publish(context.Background(), env)
+			}()
 		}
-		if len(b.groups) > 0 {
-			env.Metadata["group"] = strings.Join(b.groups, ".")
-		}
-		var msg strings.Builder
-		msg.WriteString(r.Message)
-		r.Attrs(func(a slog.Attr) bool {
-			msg.WriteByte(' ')
-			msg.WriteString(a.Key)
-			msg.WriteByte('=')
-			msg.WriteString(a.Value.String())
-			return true
-		})
-		for _, a := range b.attrs {
-			msg.WriteByte(' ')
-			msg.WriteString(a.Key)
-			msg.WriteByte('=')
-			msg.WriteString(a.Value.String())
-		}
-		env.Content = &EnvelopeContent{
-			Text:      msg.String(),
-			IsPartial: false,
-		}
-		b.bus.Publish(ctx, env)
 	}
 	if b.inner != nil {
 		return b.inner.Handle(ctx, r)

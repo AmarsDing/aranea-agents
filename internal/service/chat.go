@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -46,21 +45,11 @@ type ChatService struct {
 }
 
 type ChatServiceDeps struct {
+	rt.TurnDeps
 	Runs          *rt.RunRegistry
 	Teams         biz.TeamRepository
 	TeamsNative   *team.Runner
 	Usage         *biz.UsageUsecase
-	Sessions      *biz.SessionUsecase
-	Agents        biz.AgentRepository
-	AgentsUC      *biz.AgentUsecase
-	ToolsCatalog  biz.ToolRepo
-	ToolUC        *biz.ToolUsecase
-	LLMCatalog    *biz.LlmProviderModelUsecase
-	SkillUC       *biz.SkillUsecase
-	Sys           biz.SystemSettingRepo
-	Persist       rt.PersistenceSet
-	Compress      biz.NativeTurnCompressor
-	EventBus      event.Bus
 	PluginRT      *plugintrpc.Runtime
 	PluginManager *plugintrpc.Manager
 	SkillDBRepo   trpcskill.Repository
@@ -85,23 +74,7 @@ func NewChatService(deps ChatServiceDeps) *ChatService {
 		runs:          coalesceRunRegistry(deps.Runs),
 		pending:       NewPendingMessageQueue(),
 		a2aUC:         deps.A2AUC,
-		td: rt.TurnDeps{
-			Catalog: rt.Catalog{
-				Agents:   deps.Agents,
-				AgentsUC: deps.AgentsUC,
-				Tools:    deps.ToolsCatalog,
-				ToolUC:   deps.ToolUC,
-				LLM:      deps.LLMCatalog,
-				SkillUC:  deps.SkillUC,
-				Settings: deps.Sys,
-			},
-			Persist:   deps.Persist,
-			Pipeline:  rt.EventPipeline{Bus: deps.EventBus},
-			LLMHTTP:   &http.Client{Timeout: 300 * time.Second},
-			Sessions:  deps.Sessions,
-			Compress:  deps.Compress,
-			RunnerMgr: rt.NewRunnerManagerFromPersist(deps.Persist),
-		},
+		td:            deps.TurnDeps,
 	}
 	if deps.TeamsNative != nil {
 		deps.TeamsNative.SetAwaitHookProvider(func(runCtx context.Context, sessionID, runID string) tooltrpc.ReplyFunc {

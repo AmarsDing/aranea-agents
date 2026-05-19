@@ -41,34 +41,7 @@ import (
 	kratoshttp "github.com/go-kratos/kratos/v2/transport/http"
 )
 
-func NewHTTPServer(c *conf.Server,
-	admin *service.AdminService,
-	avatar *service.AvatarService,
-	agents *service.AgentService,
-	agentCat *service.AgentCategoryService,
-	llm *service.LlmProviderModelService,
-	hookSvc *service.HookService,
-	cronSvc *service.CronService,
-	pluginSvc *service.PluginService,
-	mcpSvc *service.MCPServerService,
-	skillSvc *service.SkillService,
-	toolSvc *service.ToolService,
-	sessionSvc *service.SessionService,
-	channelSvc *service.ChannelService,
-	usageSvc *service.UsageService,
-	monitorSvc *service.MonitorService,
-	memorySvc *service.MemoryService,
-	systemSettingSvc *service.SystemSettingService,
-	teams *service.TeamService,
-	chatSvc *service.ChatService,
-	graphSvc *service.GraphService,
-	artifactSvc *service.ArtifactService,
-	knowledgeSvc *service.KnowledgeService,
-	evalSvc *service.EvaluationService,
-	a2aSvc *service.A2AService,
-	channelIngress *service.ChannelIngress,
-	wsSrv *WSServer,
-) *kratoshttp.Server {
+func NewHTTPServer(c *conf.Server, s *ServiceRegistry, wsSrv *WSServer) *kratoshttp.Server {
 	var opts = []kratoshttp.ServerOption{
 		kratoshttp.Filter(
 			CorsDevFilter(),
@@ -92,70 +65,50 @@ func NewHTTPServer(c *conf.Server,
 	}
 	srv := kratoshttp.NewServer(opts...)
 
-	registerProtoServices(srv, admin, avatar, agents, agentCat, llm, hookSvc, cronSvc,
-		pluginSvc, mcpSvc, skillSvc, toolSvc, sessionSvc, channelSvc, usageSvc,
-		monitorSvc, memorySvc, systemSettingSvc, teams, chatSvc, graphSvc,
-		artifactSvc, knowledgeSvc, evalSvc, a2aSvc)
-	registerCustomRoutes(srv, channelIngress, skillSvc, artifactSvc)
+	registerProtoServices(srv, s)
+	registerCustomRoutes(srv, s.ChannelIngress, s.Skill, s.Artifact)
 	registerInfrastructureRoutes(srv)
 	wsSrv.RegisterOnKratos(srv)
 
 	return srv
 }
 
-func registerProtoServices(
-	srv *kratoshttp.Server,
-	admin *service.AdminService,
-	avatar *service.AvatarService,
-	agents *service.AgentService,
-	agentCat *service.AgentCategoryService,
-	llm *service.LlmProviderModelService,
-	hookSvc *service.HookService,
-	cronSvc *service.CronService,
-	pluginSvc *service.PluginService,
-	mcpSvc *service.MCPServerService,
-	skillSvc *service.SkillService,
-	toolSvc *service.ToolService,
-	sessionSvc *service.SessionService,
-	channelSvc *service.ChannelService,
-	usageSvc *service.UsageService,
-	monitorSvc *service.MonitorService,
-	memorySvc *service.MemoryService,
-	systemSettingSvc *service.SystemSettingService,
-	teams *service.TeamService,
-	chatSvc *service.ChatService,
-	graphSvc *service.GraphService,
-	artifactSvc *service.ArtifactService,
-	knowledgeSvc *service.KnowledgeService,
-	evalSvc *service.EvaluationService,
-	a2aSvc *service.A2AService,
-) {
-	adminv1.RegisterAdminServiceHTTPServer(srv, admin)
-	avatarv1.RegisterAvatarServiceHTTPServer(srv, avatar)
-	agentv1.RegisterAgentServiceHTTPServer(srv, agents)
-	agentcategoryv1.RegisterAgentCategoryServiceHTTPServer(srv, agentCat)
-	llmprovidermodelv1.RegisterLlmProviderModelServiceHTTPServer(srv, llm)
-	hookv1.RegisterHookServiceHTTPServer(srv, hookSvc)
-	cronv1.RegisterCronServiceHTTPServer(srv, cronSvc)
-	pluginv1.RegisterPluginServiceHTTPServer(srv, pluginSvc)
-	mcpserverv1.RegisterMCPServerServiceHTTPServer(srv, mcpSvc)
-	skillv1.RegisterSkillServiceHTTPServer(srv, skillSvc)
-	toolv1.RegisterToolServiceHTTPServer(srv, toolSvc)
-	sessionv1.RegisterSessionServiceHTTPServer(srv, sessionSvc)
-	channelv1.RegisterChannelServiceHTTPServer(srv, channelSvc)
-	usagev1.RegisterUsageServiceHTTPServer(srv, usageSvc)
-	monitorv1.RegisterMonitorServiceHTTPServer(srv, monitorSvc)
-	memoryv1.RegisterMemoryServiceHTTPServer(srv, memorySvc)
-	systemsettingv1.RegisterSystemSettingServiceHTTPServer(srv, systemSettingSvc)
-	teamv1.RegisterTeamServiceHTTPServer(srv, teams)
-	chatv1.RegisterChatServiceHTTPServer(srv, chatSvc)
-	graphv1.RegisterGraphServiceHTTPServer(srv, graphSvc)
-	artifactv1.RegisterArtifactServiceHTTPServer(srv, artifactSvc)
-	knowledgev1.RegisterKnowledgeServiceHTTPServer(srv, knowledgeSvc)
-	evaluationv1.RegisterEvaluationServiceHTTPServer(srv, evalSvc)
-	a2av1.RegisterA2AServiceHTTPServer(srv, a2aSvc)
+func registerProtoServices(srv *kratoshttp.Server, s *ServiceRegistry) {
+	adminv1.RegisterAdminServiceHTTPServer(srv, s.Admin)
+	avatarv1.RegisterAvatarServiceHTTPServer(srv, s.Avatar)
+	agentv1.RegisterAgentServiceHTTPServer(srv, s.Agents)
+	agentcategoryv1.RegisterAgentCategoryServiceHTTPServer(srv, s.AgentCat)
+	llmprovidermodelv1.RegisterLlmProviderModelServiceHTTPServer(srv, s.LLM)
+	hookv1.RegisterHookServiceHTTPServer(srv, s.Hook)
+	cronv1.RegisterCronServiceHTTPServer(srv, s.Cron)
+	pluginv1.RegisterPluginServiceHTTPServer(srv, s.Plugin)
+	mcpserverv1.RegisterMCPServerServiceHTTPServer(srv, s.MCPServer)
+	skillv1.RegisterSkillServiceHTTPServer(srv, s.Skill)
+	toolv1.RegisterToolServiceHTTPServer(srv, s.Tool)
+	sessionv1.RegisterSessionServiceHTTPServer(srv, s.Session)
+	channelv1.RegisterChannelServiceHTTPServer(srv, s.Channel)
+	usagev1.RegisterUsageServiceHTTPServer(srv, s.Usage)
+	monitorv1.RegisterMonitorServiceHTTPServer(srv, s.Monitor)
+	memoryv1.RegisterMemoryServiceHTTPServer(srv, s.Memory)
+	systemsettingv1.RegisterSystemSettingServiceHTTPServer(srv, s.SystemSetting)
+	teamv1.RegisterTeamServiceHTTPServer(srv, s.Teams)
+	chatv1.RegisterChatServiceHTTPServer(srv, s.Chat)
+	graphv1.RegisterGraphServiceHTTPServer(srv, s.Graph)
+	artifactv1.RegisterArtifactServiceHTTPServer(srv, s.Artifact)
+	knowledgev1.RegisterKnowledgeServiceHTTPServer(srv, s.Knowledge)
+	evaluationv1.RegisterEvaluationServiceHTTPServer(srv, s.Eval)
+	a2av1.RegisterA2AServiceHTTPServer(srv, s.A2A)
 }
 
+// registerCustomRoutes registers cross-cutting operational routes that bypass proto
+// registration. These routes have specific requirements that make proto registration
+// impractical:
+//   - /webhooks/{channel_key}: third-party webhook callbacks with varying path segments
+//   - /v1/artifacts/download: signed download with direct response writer access
+//   - skill import multipart: file upload handling
+//
+// All custom routes are explicitly documented here for auditability. New bypass routes
+// MUST be added to this centralized block with justification comments.
 func registerCustomRoutes(
 	srv *kratoshttp.Server,
 	channelIngress *service.ChannelIngress,
@@ -183,7 +136,7 @@ func registerInfrastructureRoutes(srv *kratoshttp.Server) {
 		w := ctx.Response()
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(nethttp.StatusOK)
-		return json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+		return json.NewEncoder(w).Encode(auth.HealthAuthInfo())
 	})
 	srv.Route("/").GET("/metrics", func(ctx kratoshttp.Context) error {
 		promhttp.Handler().ServeHTTP(ctx.Response(), ctx.Request())

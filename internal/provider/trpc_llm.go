@@ -2,6 +2,8 @@ package provider
 
 import (
 	"context"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -26,13 +28,21 @@ func TRPCModelForProviderModel(ctx context.Context, catalog *biz.LlmProviderMode
 	}
 	pm, err := catalog.GetByProviderAndModel(ctx, strings.TrimSpace(prov), strings.TrimSpace(modelAPI))
 	if err != nil {
+		slog.Error("provider.catalog_lookup_failed", "provider", prov, "model", modelAPI, "error", err)
 		return nil, err
 	}
 	cfg, err := CatalogFromModel(ModelCatalogInput{Model: pm.Model, ConfigJSON: pm.ConfigJSON})
 	if err != nil {
+		slog.Error("provider.catalog_parse_failed", "provider", prov, "model", modelAPI, "error", err)
 		return nil, err
 	}
 	cfg = MergeCatalogConfig(cfg, pm.ConfigJSON)
+	slog.Info("provider.config_resolved",
+		"provider", prov, "model", modelAPI,
+		"provider_type", cfg.ProviderType, "variant", cfg.Variant,
+		"base_url", cfg.BaseURL, "has_api_key", cfg.APIKey != "",
+		"ha_mode", cfg.HAMode,
+	)
 	return trpcModelFromCatalogConfig(ctx, cfg, rt)
 }
 
@@ -40,6 +50,25 @@ func trpcModelFromCatalogConfig(ctx context.Context, cfg CatalogConfig, rt *Roun
 	name := strings.TrimSpace(cfg.ModelAPI)
 	if name == "" {
 		return nil, ErrNilLlmCatalog
+	}
+
+	// Preflight connectivity check: verify the LLM API endpoint is reachable
+	// before constructing the full model, so the user gets a fast failure
+	// instead of a hanging request.
+	if baseURL := strings.TrimSpace(cfg.BaseURL); baseURL != "" {
+		probeCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		probeReq, err := http.NewRequestWithContext(probeCtx, http.MethodHead, baseURL, nil)
+		if err == nil {
+			client := &http.Client{Timeout: 15 * time.Second}
+			resp, err := client.Do(probeReq)
+			if err != nil {
+				slog.Error("provider.preflight_probe_failed", "url", baseURL, "error", err)
+				return nil, fmt.Errorf("LLM API unreachable (%s): %w", baseURL, err)
+			}
+			resp.Body.Close()
+			slog.Info("provider.preflight_probe_ok", "url", baseURL, "status", resp.StatusCode)
+		}
 	}
 
 	providerName := MapProviderType(cfg.ProviderType)

@@ -19,12 +19,12 @@ import (
 	"aranea-agents/internal/cronrunner/jobs"
 	"aranea-agents/internal/data"
 	"aranea-agents/internal/data/sessionmemory"
-	aramemory "aranea-agents/internal/memory"
-	memtrpc "aranea-agents/internal/memory/trpc"
 	"aranea-agents/internal/event"
 	graphadapter "aranea-agents/internal/graph/adapter"
 	graphtrpc "aranea-agents/internal/graph/trpc"
 	"aranea-agents/internal/mcp/health"
+	aramemory "aranea-agents/internal/memory"
+	memtrpc "aranea-agents/internal/memory/trpc"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	"aranea-agents/internal/provider"
 	rt "aranea-agents/internal/runtime"
@@ -38,9 +38,9 @@ import (
 	"github.com/google/wire"
 	trpcartifact "trpc.group/trpc-go/trpc-agent-go/artifact"
 	trpcgraph "trpc.group/trpc-go/trpc-agent-go/graph"
+	trpcmemory "trpc.group/trpc-go/trpc-agent-go/memory"
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
-	trpcmemory "trpc.group/trpc-go/trpc-agent-go/memory"
 )
 
 func provideCronRunnerDeps(
@@ -109,21 +109,27 @@ func provideChatServiceDeps(
 	a2aUC *biz.A2AUsecase,
 ) service.ChatServiceDeps {
 	return service.ChatServiceDeps{
-		Runs:         runs,
-		Teams:        teams,
-		TeamsNative:  teamsNative,
-		Usage:        usage,
-		Sessions:     sessions,
-		Agents:       agents,
-		AgentsUC:     agentsUC,
-		ToolsCatalog: toolsCatalog,
-		ToolUC:       toolUC,
-		LLMCatalog:   llmCatalog,
-		SkillUC:      skillUC,
-		Sys:          sys,
-		Persist:      persist,
-		Compress:     compress,
-		EventBus:     eventBus,
+		TurnDeps: rt.TurnDeps{
+			Catalog: rt.Catalog{
+				Agents:   agents,
+				AgentsUC: agentsUC,
+				Tools:    toolsCatalog,
+				ToolUC:   toolUC,
+				LLM:      llmCatalog,
+				SkillUC:  skillUC,
+				Settings: sys,
+			},
+			Persist:   persist,
+			Pipeline:  rt.EventPipeline{Bus: eventBus},
+			LLMHTTP:   &http.Client{Timeout: 300 * time.Second},
+			Sessions:  sessions,
+			Compress:  compress,
+			RunnerMgr: rt.NewRunnerManagerFromPersist(persist),
+		},
+		Runs:          runs,
+		Teams:         teams,
+		TeamsNative:   teamsNative,
+		Usage:         usage,
 		PluginRT:      pluginRT,
 		PluginManager: pluginMgr,
 		SkillDBRepo:   skillDBRepo,

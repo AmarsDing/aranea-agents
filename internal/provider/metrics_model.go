@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/metrics"
+	"aranea-agents/pkg/safego"
 
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
@@ -41,7 +42,7 @@ func (m *metricsModel) GenerateContent(ctx context.Context, request *trpcmodel.R
 		return nil, err
 	}
 	out := make(chan *trpcmodel.Response, 16)
-	go func() {
+	safego.Go(ctx, "metrics-model-stream", func() {
 		defer close(out)
 		status := "ok"
 		for resp := range ch {
@@ -52,6 +53,6 @@ func (m *metricsModel) GenerateContent(ctx context.Context, request *trpcmodel.R
 		}
 		metrics.ProviderRequestTotal.WithLabelValues(m.provider, m.model, status).Inc()
 		metrics.ProviderRequestDuration.WithLabelValues(m.provider, m.model).Observe(time.Since(start).Seconds())
-	}()
+	})
 	return out, nil
 }

@@ -58,45 +58,96 @@ func (a *eventBusAdapter) SubscribeDomainEvents() (<-chan DomainEvent, func()) {
 	return out, cancel
 }
 
+// --- field-level conversion helpers (eliminate duplicated mapping between directions) ---
+
+func copyContentToEnvelope(src *DomainContent, dst *event.EnvelopeContent) {
+	dst.Text = src.Text
+	dst.Reasoning = src.Reasoning
+	dst.IsPartial = src.IsPartial
+}
+
+func copyContentFromEnvelope(src *event.EnvelopeContent, dst *DomainContent) {
+	dst.Text = src.Text
+	dst.Reasoning = src.Reasoning
+	dst.IsPartial = src.IsPartial
+}
+
+func copyStateDeltaToEnvelope(src *DomainStateDelta, dst *event.EnvelopeStateDelta) {
+	dst.Operation = src.Operation
+	dst.Path = src.Path
+	dst.ValueJSON = src.ValueJSON
+}
+
+func copyStateDeltaFromEnvelope(src *event.EnvelopeStateDelta, dst *DomainStateDelta) {
+	dst.Operation = src.Operation
+	dst.Path = src.Path
+	dst.ValueJSON = src.ValueJSON
+}
+
+func copyErrorToEnvelope(src *DomainError, dst *event.EnvelopeError) {
+	dst.Type = src.Type
+	dst.Message = src.Message
+}
+
+func copyErrorFromEnvelope(src *event.EnvelopeError, dst *DomainError) {
+	dst.Type = src.Type
+	dst.Message = src.Message
+}
+
+func copyUsageToEnvelope(src *DomainUsage, dst *event.EnvelopeUsage) {
+	dst.PromptTokens = src.PromptTokens
+	dst.CompletionTokens = src.CompletionTokens
+	dst.TotalTokens = src.TotalTokens
+}
+
+func copyUsageFromEnvelope(src *event.EnvelopeUsage, dst *DomainUsage) {
+	dst.PromptTokens = src.PromptTokens
+	dst.CompletionTokens = src.CompletionTokens
+	dst.TotalTokens = src.TotalTokens
+}
+
+func copyToolCallToEnvelope(src *DomainToolCall, dst *event.EnvelopeToolCall) {
+	dst.ID = src.ID
+	dst.Name = src.Name
+	dst.ArgumentsJSON = src.ArgumentsJSON
+	dst.ResultJSON = src.ResultJSON
+	dst.Status = src.Status
+	dst.DurationMS = src.DurationMS
+}
+
+func copyToolCallFromEnvelope(src *event.EnvelopeToolCall, dst *DomainToolCall) {
+	dst.ID = src.ID
+	dst.Name = src.Name
+	dst.ArgumentsJSON = src.ArgumentsJSON
+	dst.ResultJSON = src.ResultJSON
+	dst.Status = src.Status
+	dst.DurationMS = src.DurationMS
+}
+
+// --- top-level conversion ---
+
 func domainEventToEnvelope(de DomainEvent) event.Envelope {
 	env := event.NewEnvelope(event.EnvelopeType(de.Type), de.Author, de.SessionID)
 	env.TeamID = de.TeamID
 	if de.Content != nil {
-		env.Content = &event.EnvelopeContent{
-			Text:      de.Content.Text,
-			Reasoning: de.Content.Reasoning,
-			IsPartial: de.Content.IsPartial,
-		}
+		env.Content = &event.EnvelopeContent{}
+		copyContentToEnvelope(de.Content, env.Content)
 	}
 	if de.StateDelta != nil {
-		env.StateDelta = &event.EnvelopeStateDelta{
-			Operation: de.StateDelta.Operation,
-			Path:      de.StateDelta.Path,
-			ValueJSON: de.StateDelta.ValueJSON,
-		}
+		env.StateDelta = &event.EnvelopeStateDelta{}
+		copyStateDeltaToEnvelope(de.StateDelta, env.StateDelta)
 	}
 	if de.Error != nil {
-		env.Error = &event.EnvelopeError{
-			Type:    de.Error.Type,
-			Message: de.Error.Message,
-		}
+		env.Error = &event.EnvelopeError{}
+		copyErrorToEnvelope(de.Error, env.Error)
 	}
 	if de.Usage != nil {
-		env.Usage = &event.EnvelopeUsage{
-			PromptTokens:     de.Usage.PromptTokens,
-			CompletionTokens: de.Usage.CompletionTokens,
-			TotalTokens:      de.Usage.TotalTokens,
-		}
+		env.Usage = &event.EnvelopeUsage{}
+		copyUsageToEnvelope(de.Usage, env.Usage)
 	}
 	if de.ToolCall != nil {
-		env.ToolCall = &event.EnvelopeToolCall{
-			ID:            de.ToolCall.ID,
-			Name:          de.ToolCall.Name,
-			ArgumentsJSON: de.ToolCall.ArgumentsJSON,
-			ResultJSON:    de.ToolCall.ResultJSON,
-			Status:        de.ToolCall.Status,
-			DurationMS:    de.ToolCall.DurationMS,
-		}
+		env.ToolCall = &event.EnvelopeToolCall{}
+		copyToolCallToEnvelope(de.ToolCall, env.ToolCall)
 	}
 	return env
 }
@@ -119,41 +170,24 @@ func envelopeToDomainEvent(env event.Envelope) *DomainEvent {
 		de.Timestamp = time.Now()
 	}
 	if env.Content != nil {
-		de.Content = &DomainContent{
-			Text:      env.Content.Text,
-			Reasoning: env.Content.Reasoning,
-			IsPartial: env.Content.IsPartial,
-		}
+		de.Content = &DomainContent{}
+		copyContentFromEnvelope(env.Content, de.Content)
 	}
 	if env.StateDelta != nil {
-		de.StateDelta = &DomainStateDelta{
-			Operation: env.StateDelta.Operation,
-			Path:      env.StateDelta.Path,
-			ValueJSON: env.StateDelta.ValueJSON,
-		}
+		de.StateDelta = &DomainStateDelta{}
+		copyStateDeltaFromEnvelope(env.StateDelta, de.StateDelta)
 	}
 	if env.Error != nil {
-		de.Error = &DomainError{
-			Type:    env.Error.Type,
-			Message: env.Error.Message,
-		}
+		de.Error = &DomainError{}
+		copyErrorFromEnvelope(env.Error, de.Error)
 	}
 	if env.Usage != nil {
-		de.Usage = &DomainUsage{
-			PromptTokens:     env.Usage.PromptTokens,
-			CompletionTokens: env.Usage.CompletionTokens,
-			TotalTokens:      env.Usage.TotalTokens,
-		}
+		de.Usage = &DomainUsage{}
+		copyUsageFromEnvelope(env.Usage, de.Usage)
 	}
 	if env.ToolCall != nil {
-		de.ToolCall = &DomainToolCall{
-			ID:            env.ToolCall.ID,
-			Name:          env.ToolCall.Name,
-			ArgumentsJSON: env.ToolCall.ArgumentsJSON,
-			ResultJSON:    env.ToolCall.ResultJSON,
-			Status:        env.ToolCall.Status,
-			DurationMS:    env.ToolCall.DurationMS,
-		}
+		de.ToolCall = &DomainToolCall{}
+		copyToolCallFromEnvelope(env.ToolCall, de.ToolCall)
 	}
 	return de
 }

@@ -3,12 +3,12 @@ package biz
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"sync"
 	"time"
 
 	"aranea-agents/pkg/safego"
 
+	"github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
 )
 
@@ -180,7 +180,7 @@ func NewGraphUsecase(repo GraphRepo, runRepo GraphRunRepo, factory GraphBuilderF
 		defs:       make(map[string]*GraphDefinition),
 		executions: make(map[string]*GraphExecution),
 	}
-	go uc.gcLoop()
+	safego.Go(context.Background(), "graph-gc-loop", func() { uc.gcLoop() })
 	return uc
 }
 
@@ -301,7 +301,7 @@ func (uc *GraphUsecase) ExecuteGraph(ctx context.Context, graphID string, sessio
 	}
 
 	if err := uc.runRepo.SaveRun(ctx, exec); err != nil {
-		return nil, fmt.Errorf("graph execute save run: %w", err)
+		return nil, errors.FromError(ErrGraphSaveRun).WithCause(err)
 	}
 
 	safego.Go(context.Background(), "graph.consumeEvents", func() {
@@ -340,7 +340,7 @@ func (uc *GraphUsecase) CancelExecution(ctx context.Context, executionID string)
 		return ErrNotFound
 	}
 	if exec.Status != "running" && exec.Status != "waiting_human" {
-		return fmt.Errorf("graph: cannot cancel execution in status %q", exec.Status)
+		return ErrGraphInvalidStatus
 	}
 	exec.Status = "cancelled"
 	now := time.Now()
@@ -375,7 +375,7 @@ func (uc *GraphUsecase) ResumeExecution(ctx context.Context, executionID string,
 	cfg := defToBuildConfig(&GraphDefinition{ID: exec.GraphID})
 	runtime, eventCh, err := uc.factory.BuildAndResume(ctx, cfg, exec.SessionID, exec.GraphID, executionID, lineageID, resumeValue)
 	if err != nil {
-		return nil, fmt.Errorf("graph resume: %w", err)
+		return nil, errors.FromError(ErrGraphResume).WithCause(err)
 	}
 
 	exec.runtime = runtime
@@ -507,7 +507,7 @@ func (uc *GraphUsecase) ListGraphTemplates(ctx context.Context) any {
 func (uc *GraphUsecase) CreateGraphFromTemplate(ctx context.Context, templateID string, name string, description string) (*GraphDefinition, error) {
 	tmpl, ok := uc.factory.GetTemplate(templateID)
 	if !ok {
-		return nil, fmt.Errorf("graph template %q not found", templateID)
+		return nil, ErrGraphTemplateNotFound
 	}
 	def := uc.factory.TemplateToDef(tmpl, name, description)
 	return uc.CreateGraph(ctx, def)

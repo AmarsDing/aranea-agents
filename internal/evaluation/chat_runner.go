@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"aranea-agents/pkg/safego"
+
 	"trpc.group/trpc-go/trpc-agent-go/agent"
 	"trpc.group/trpc-go/trpc-agent-go/event"
 	"trpc.group/trpc-go/trpc-agent-go/model"
@@ -29,7 +31,7 @@ func (r *chatRunnerAdapter) Run(
 	_ ...agent.RunOption,
 ) (<-chan *event.Event, error) {
 	ch := make(chan *event.Event, 2)
-	go func() {
+	safego.Go(ctx, "eval-chat-runner", func() {
 		defer close(ch)
 		output, err := r.runFn(ctx, r.agentID, message.Content)
 		if err != nil {
@@ -52,7 +54,7 @@ func (r *chatRunnerAdapter) Run(
 			},
 		}
 		ch <- runnerCompletionEvent("eval-inv")
-	}()
+	})
 	return ch, nil
 }
 

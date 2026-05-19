@@ -24,6 +24,10 @@ import (
 	"github.com/google/uuid"
 )
 
+const (
+	defaultTurnTimeout = 5 * time.Minute
+)
+
 func (s *ChatService) runSingleAgentViaTRPC(
 	ctx context.Context,
 	sess biz.Session,
@@ -39,6 +43,16 @@ func (s *ChatService) runSingleAgentViaTRPC(
 	}
 
 	runID := uuid.NewString()
+	flow := event.NewFlowLogger(s.td.Pipeline.Bus, sessionID, ag.AgentKey)
+
+	// Apply a turn-level timeout so a hanging LLM does not block the HTTP
+	// caller indefinitely. If the parent context already has a shorter
+	// deadline we keep it as-is.
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, defaultTurnTimeout)
+		defer cancel()
+	}
 
 	deps := chatagent.TRPCBuilderDeps{
 		Catalog:     s.td.Catalog.LLM,
@@ -57,15 +71,17 @@ func (s *ChatService) runSingleAgentViaTRPC(
 		// EP-RT-02: inject await-reply hook so the tool blocks mid-turn.
 		AwaitHook: s.makeAwaitReplyFunc(ctx, sessionID, runID),
 		// EP-RT-05: signal whether a MemoryService will back the runner.
-		HasMemory:       s.td.Persist.Memory.Available(),
-		PluginManager:   s.pluginManager,
-		MemoryAdmin:     s.td.Persist.Memory.Admin,
+		HasMemory:     s.td.Persist.Memory.Available(),
+		PluginManager: s.pluginManager,
+		MemoryAdmin:   s.td.Persist.Memory.Admin,
 	}
 	root, err := chatagent.BuildTRPCLLMAgentCached(ctx, ag, deps)
 	if err != nil {
+		flow.LogError("chat.agent_build", "构建Agent实例失败", event.P("agent_id", ag.ID), event.P("error", err.Error()))
 		s.runs.Finish(sessionID)
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
+	flow.LogDone("chat.agent_build", "Agent实例已构建", event.P("provider", prov), event.P("model", mod))
 
 	var plugins []trpcplugin.Plugin
 	if s.pluginManager != nil {
@@ -73,6 +89,7 @@ func (s *ChatService) runSingleAgentViaTRPC(
 	} else if s.pluginRT != nil {
 		plugins = s.pluginRT.PluginsForAgent(ag.ID)
 	}
+	flow.LogDone("chat.plugins_load", "插件已加载", event.P("plugin_count", len(plugins)))
 	deps.Plugins = plugins
 	if s.td.RunnerMgr == nil {
 		s.td.RunnerMgr = rt.NewRunnerManagerFromPersist(s.td.Persist)
@@ -89,6 +106,7 @@ func (s *ChatService) runSingleAgentViaTRPC(
 	}
 	s.runs.StoreRunner(sessionID, runID, runner)
 	s.setRunStatus(sessionID, runID, "running", "")
+	flow.LogStart("chat.turn_execute", "开始执行Turn", event.P("run_id", runID))
 	turnStart := time.Now()
 	defer func() {
 		s.runs.Finish(sessionID)
@@ -140,6 +158,7 @@ func (s *ChatService) runSingleAgentViaTRPC(
 	if err := s.td.Sessions.AppendChatMessage(ctx, sessionID, userMsg, false); err != nil {
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
+	flow.LogDone("chat.user_msg_persist", "用户消息已持久化")
 
 	uid := chatagent.UserIDFromCtx(ctx)
 	runOpts := []trpcagent.RunOption{trpcagent.WithRequestID(sessionID)}
@@ -148,30 +167,79 @@ func (s *ChatService) runSingleAgentViaTRPC(
 			runOpts = append(runOpts, trpcagent.MergeRuntimeState(vars))
 		}
 	}
+	// Apply a turn-level timeout so a hanging LLM call does not block the
+	// HTTP caller indefinitely. If the parent context already has a shorter
+	// deadline we keep it as-is.
+	const defaultTurnTimeout = 5 * time.Minute
+	if deadline, hasDeadline := ctx.Deadline(); !hasDeadline || time.Until(deadline) > defaultTurnTimeout {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, defaultTurnTimeout)
+		defer cancel()
+	}
 	// EP-RT-02: inject the await-reply hook into the run context so the
 	// ServiceTool can retrieve it at call time.
 	runCtx := serviceawaitreply.WithReplyFunc(ctx, deps.AwaitHook)
 	runCtx = s.injectA2AContext(runCtx, ag.ID)
+
+	// Debug: fire a goroutine that logs if the LLM call is still running after 60s.
+	go func() {
+		select {
+		case <-time.After(60 * time.Second):
+			flow.Log("chat.llm_call", event.FlowPhaseStart, "LLM调用超过60秒仍在等待", event.P("run_id", runID))
+		case <-runCtx.Done():
+		}
+	}()
+	flow.LogStart("chat.llm_call", "调用LLM模型")
 	events, err := chatagent.RunTRPCUserTurn(runCtx, runner, uid, sessionID, sendText, runOpts...)
 	if err != nil {
+		flow.LogError("chat.llm_call", "LLM调用失败", event.P("error", err.Error()))
 		arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "error").Observe(time.Since(turnStart).Seconds())
 		s.setRunStatus(sessionID, runID, "failed", err.Error())
 		return userMsg, biz.ChatMessage{}, err
 	}
+	flow.LogDone("chat.llm_call", "LLM调用返回，开始消费事件流")
 
 	projectMeta := chatagent.ProjectMeta{
 		SessionID: sessionID,
 		RequestID: sessionID,
 	}
 	result := chatagent.ConsumeEventStream(ctx, events, s.td.Pipeline.Bus, projectMeta)
+	flow.LogDone("chat.stream_consume", "事件流消费完成",
+		event.P("reply_len", result.Reply.Len()),
+		event.P("has_error", result.HasError),
+		event.P("has_content", result.HasContent),
+		event.P("prompt_tok", result.PromptTok),
+		event.P("completion_tok", result.CompletionTok),
+	)
 	if ctx.Err() != nil {
-		return userMsg, biz.ChatMessage{}, ctx.Err()
+		flow.LogError("chat.turn_timeout", "请求超时", event.P("timeout", defaultTurnTimeout.String()))
+		fallback := fmt.Sprintf("Request timed out after %v. The AI service may be unavailable. Please try again.", defaultTurnTimeout)
+		arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "timeout").Observe(time.Since(turnStart).Seconds())
+		s.setRunStatus(sessionID, runID, "failed", fallback)
+		return userMsg, biz.ChatMessage{}, kerrors.InternalServer("CHAT_AGENT", fallback)
+	}
+
+	// Empty reply detection: when the agent produces no visible text output,
+	// surface the underlying error or a user-friendly fallback instead of
+	// returning a silent empty message.
+	replyText := strings.TrimSpace(result.Reply.String())
+	if replyText == "" {
+		flow.LogError("chat.empty_reply", "Agent未产生任何响应", event.P("has_error", result.HasError), event.P("last_error", result.LastError), event.P("has_content", result.HasContent))
+		fallback := "I received your message but was unable to generate a response."
+		if result.HasError {
+			fallback = fmt.Sprintf("AI service error: %s. Please check your configuration or try again later.", result.LastError)
+		} else if !result.HasContent {
+			fallback = "The AI model did not produce any output. This may indicate a configuration issue with the model or provider."
+		}
+		arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "empty_reply").Observe(time.Since(turnStart).Seconds())
+		s.setRunStatus(sessionID, runID, "failed", fallback)
+		return userMsg, biz.ChatMessage{}, kerrors.InternalServer("CHAT_AGENT", fallback)
 	}
 
 	promptTok, completionTok := result.PromptTok, result.CompletionTok
-	if promptTok <= 0 && completionTok <= 0 && strings.TrimSpace(result.Reply.String()) != "" {
-		promptTok = roughTokenEstimateFromText(content + result.Reply.String())
-		completionTok = roughTokenEstimateFromText(result.Reply.String())
+	if promptTok <= 0 && completionTok <= 0 && replyText != "" {
+		promptTok = roughTokenEstimateFromText(content + replyText)
+		completionTok = roughTokenEstimateFromText(replyText)
 	}
 
 	assistantOptsStr, err := chatagent.AssistantOptionsJSON(ag, nil)
@@ -188,7 +256,7 @@ func (s *ChatService) runSingleAgentViaTRPC(
 		ID:              uuid.NewString(),
 		SessionID:       sessionID,
 		Role:            "assistant",
-		ContentMarkdown: strings.TrimSpace(result.Reply.String()),
+		ContentMarkdown: replyText,
 		ModelName:       mod,
 		Status:          "ok",
 		OptionsJSON:     assistantOptsStr,
@@ -199,11 +267,18 @@ func (s *ChatService) runSingleAgentViaTRPC(
 	if err := s.td.Sessions.AppendChatMessage(ctx, sessionID, assistantMsg, true); err != nil {
 		return userMsg, biz.ChatMessage{}, err
 	}
+	flow.LogDone("chat.assistant_msg_persist", "助手消息已持久化", event.P("reply_len", len(replyText)))
 	patchSessionContextUsage(ctx, s, sessionID, ag, promptTok, completionTok)
 
 	arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "ok").Observe(time.Since(turnStart).Seconds())
 	s.recordSessionTurn(ctx, sessionID, ag, userMsg.ID, assistantMsg.ID, prov, mod, promptTok, completionTok, assistantMsg.ContentMarkdown)
 	s.setRunStatus(sessionID, runID, "completed", "")
+	flow.LogDone("chat.turn_execute", "Turn执行完成",
+		event.P("run_id", runID),
+		event.P("reply_len", len(replyText)),
+		event.P("prompt_tok", promptTok),
+		event.P("completion_tok", completionTok),
+	)
 
 	return userMsg, assistantMsg, nil
 }
