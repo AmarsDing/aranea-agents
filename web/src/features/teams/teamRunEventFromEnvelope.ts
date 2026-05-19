@@ -6,6 +6,7 @@ export const TEAM_RUNTIME_ENVELOPE_TYPES: EnvelopeType[] = [
   "team_run_started",
   "team_run_finished",
   "team_run_failed",
+  "team_summary",
   "team_step_started",
   "team_step_finished",
   "intent_pass",
@@ -41,6 +42,15 @@ export function teamRunEventFromEnvelope(env: Envelope, defaultTeamID = ""): Tea
     case "team_run_failed":
       return {
         type: env.type,
+        team_id: teamId,
+        run_id: runId,
+        session_id: env.session_id,
+        run: pickRun(meta),
+        payload: meta,
+      };
+    case "team_summary":
+      return {
+        type: "team_summary",
         team_id: teamId,
         run_id: runId,
         session_id: env.session_id,

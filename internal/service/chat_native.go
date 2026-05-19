@@ -170,19 +170,25 @@ func (s *ChatService) runNativeAgentTurn(ctx context.Context, req *chatv1.SendCh
 
 	unlock := s.lockSession(sessionID)
 	if s.runs.HasActive(sessionID) {
-		unlock()
-		enqueued, err := s.runs.EnqueueUserMessage(sessionID, content)
-		if err != nil {
-			return biz.ChatMessage{}, biz.ChatMessage{}, err
-		}
-		if enqueued {
+		if _, _, ok := s.runs.ActiveRunner(sessionID); ok {
+			unlock()
+			enqueued, err := s.runs.EnqueueUserMessage(sessionID, content)
+			if err != nil {
+				return biz.ChatMessage{}, biz.ChatMessage{}, err
+			}
+			if enqueued {
+				s.publishMessageQueued(sessionID)
+				return biz.ChatMessage{}, biz.ChatMessage{}, nil
+			}
+			pendingID := s.pending.Enqueue(sessionID, content)
+			if pendingID == "" {
+				return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.BadRequest("CHAT", "pending queue is full for this session")
+			}
+			s.publishMessageQueued(sessionID)
 			return biz.ChatMessage{}, biz.ChatMessage{}, nil
 		}
-		pendingID := s.pending.Enqueue(sessionID, content)
-		if pendingID == "" {
-			return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.BadRequest("CHAT", "pending queue is full for this session")
-		}
-		return biz.ChatMessage{}, biz.ChatMessage{}, nil
+		// Stale placeholder from a crashed/partial run — clear and start a fresh turn.
+		s.runs.Finish(sessionID)
 	}
 
 	sess, err := s.td.Sessions.Get(ctx, sessionID)

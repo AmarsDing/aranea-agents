@@ -142,11 +142,20 @@ func postgresVectorDSN(c *conf.Data) string {
 }
 
 func migrateDev(ctx context.Context, client *ent.Client, label string) (*ent.Client, error) {
-	client = client.Debug()
+	// Do not enable ent.Debug() by default: it logs every SQL line synchronously to stdout.
+	// With a small SQLite pool that can block other handlers (e.g. POST /v1/admins/login) on Windows.
+	if entSQLDebugEnabled() {
+		client = client.Debug()
+	}
 	if err := client.Schema.Create(ctx, migrate.WithDropIndex(true)); err != nil {
 		return nil, fmt.Errorf("%s migrate: %w", label, err)
 	}
 	return client, nil
+}
+
+func entSQLDebugEnabled() bool {
+	v := strings.TrimSpace(strings.ToLower(os.Getenv("ARANEA_ENT_SQL_DEBUG")))
+	return v == "1" || v == "true" || v == "yes"
 }
 
 // NewData opens SQLite for Ent CRUD; optionally opens Postgres + ensures pgvector schema for agent memory.
@@ -161,15 +170,23 @@ func NewData(c *conf.Data) (*Data, func(), error) {
 	if err != nil {
 		log.Fatalf("failed opening sqlite raw db: %v", err)
 	}
-	rawDB.SetMaxOpenConns(1)
+	// WAL + busy_timeout: avoid dev HTTP handlers blocking each other when one query waits on the DB.
+	// (Legacy MaxOpenConns(1) caused login to hang if another goroutine held the sole connection.)
+	rawDB.SetMaxOpenConns(4)
 
 	drv := entsql.OpenDB(driverName, rawDB)
 	entClient := ent.NewClient(ent.Driver(drv))
 
 	if driverName == dialect.SQLite {
-		if _, pragmaErr := rawDB.ExecContext(context.Background(), "PRAGMA foreign_keys=ON"); pragmaErr != nil {
-			rawDB.Close()
-			return nil, nil, fmt.Errorf("sqlite foreign_keys pragma: %w", pragmaErr)
+		for _, pragma := range []string{
+			"PRAGMA foreign_keys=ON",
+			"PRAGMA journal_mode=WAL",
+			"PRAGMA busy_timeout=10000",
+		} {
+			if _, pragmaErr := rawDB.ExecContext(context.Background(), pragma); pragmaErr != nil {
+				rawDB.Close()
+				return nil, nil, fmt.Errorf("sqlite %s: %w", pragma, pragmaErr)
+			}
 		}
 	}
 
@@ -192,6 +209,10 @@ func NewData(c *conf.Data) (*Data, func(), error) {
 	if err = sessionmemory.EnsureSchema(context.Background(), entClient); err != nil {
 		rawDB.Close()
 		return nil, nil, fmt.Errorf("session memory schema: %w", err)
+	}
+	if err = sessionmemory.EnsureMonitorSchemaPatches(context.Background(), entClient); err != nil {
+		rawDB.Close()
+		return nil, nil, fmt.Errorf("monitor schema patches: %w", err)
 	}
 	if err = ensureAgentRuntimePatches(context.Background(), entClient); err != nil {
 		rawDB.Close()

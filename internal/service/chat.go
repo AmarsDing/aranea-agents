@@ -244,6 +244,22 @@ func (s *ChatService) publishRunStatus(sessionID, runID, status, errMsg string) 
 	bus.Publish(context.Background(), env)
 }
 
+// publishMessageQueued notifies WS clients that a user message was accepted into the
+// active run (steerable enqueue or pending queue) without starting a new turn.
+func (s *ChatService) publishMessageQueued(sessionID string) {
+	bus := s.td.Pipeline.Bus
+	if bus == nil || strings.TrimSpace(sessionID) == "" {
+		return
+	}
+	env := event.NewEnvelope(event.EnvelopeTypeRunStatus, "chat-service", sessionID)
+	env.Channel = event.RouteChannel(env)
+	env.Metadata = map[string]any{
+		"status": "queued",
+		"hint":   "message_queued",
+	}
+	bus.Publish(context.Background(), env)
+}
+
 // GetRunStatus returns the current run lifecycle state for a session.
 // Service-layer status comes from RunRegistry; when a ManagedRunner is active,
 // framework fields are merged from ManagedRunner.RunStatus (request_id = session_id).

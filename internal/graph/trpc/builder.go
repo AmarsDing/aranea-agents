@@ -131,12 +131,12 @@ func resolveFieldType(typeName string) reflect.Type {
 	}
 }
 
-func BuildStateGraph(cfg GraphBuildConfig) (*trpcgraph.Graph, error) {
-	g, _, err := BuildStateGraphWithAgents(cfg)
+func BuildStateGraph(ctx context.Context, cfg GraphBuildConfig, deps *BuildDeps) (*trpcgraph.Graph, error) {
+	g, _, err := BuildStateGraphWithAgents(ctx, cfg, deps)
 	return g, err
 }
 
-func BuildStateGraphWithRegistry(cfg GraphBuildConfig, reg *Registry) (*trpcgraph.Graph, []trpcagent.Agent, error) {
+func BuildStateGraphWithRegistry(ctx context.Context, cfg GraphBuildConfig, reg *Registry, deps *BuildDeps) (*trpcgraph.Graph, []trpcagent.Agent, error) {
 	local := GraphBuildConfig{
 		Nodes:            append([]NodeDef(nil), cfg.Nodes...),
 		Edges:            append([]EdgeDef(nil), cfg.Edges...),
@@ -157,10 +157,10 @@ func BuildStateGraphWithRegistry(cfg GraphBuildConfig, reg *Registry) (*trpcgrap
 		}
 		local = resolved
 	}
-	return BuildStateGraphWithAgents(local)
+	return BuildStateGraphWithAgents(ctx, local, deps)
 }
 
-func BuildStateGraphWithAgents(cfg GraphBuildConfig) (*trpcgraph.Graph, []trpcagent.Agent, error) {
+func BuildStateGraphWithAgents(ctx context.Context, cfg GraphBuildConfig, deps *BuildDeps) (*trpcgraph.Graph, []trpcagent.Agent, error) {
 	if len(cfg.Nodes) == 0 && len(cfg.Subgraphs) == 0 {
 		return nil, nil, fmt.Errorf("graph: at least one node required")
 	}
@@ -190,21 +190,13 @@ func BuildStateGraphWithAgents(cfg GraphBuildConfig) (*trpcgraph.Graph, []trpcag
 	sg := trpcgraph.NewStateGraph(schema)
 
 	for _, n := range cfg.Nodes {
-		if n.Func == nil {
-			return nil, nil, fmt.Errorf("graph: node %q has no Func (FuncRef=%q not resolved)", n.ID, n.FuncRef)
+		if err := wireNode(ctx, sg, n, deps); err != nil {
+			return nil, nil, err
 		}
-		opts := []trpcgraph.Option{}
-		if n.InterruptBefore {
-			opts = append(opts, trpcgraph.WithInterruptBefore())
-		}
-		if n.InterruptAfter {
-			opts = append(opts, trpcgraph.WithInterruptAfter())
-		}
-		sg.AddNode(n.ID, n.Func, opts...)
 	}
 
 	for _, sub := range cfg.Subgraphs {
-		subGraph, subAgents, err := BuildStateGraphWithAgents(sub.BuildConfig)
+		subGraph, subAgents, err := BuildStateGraphWithAgents(ctx, sub.BuildConfig, deps)
 		if err != nil {
 			return nil, nil, fmt.Errorf("graph: subgraph %q build failed: %w", sub.ID, err)
 		}
@@ -230,7 +222,10 @@ func BuildStateGraphWithAgents(cfg GraphBuildConfig) (*trpcgraph.Graph, []trpcag
 		sg.AddAgentNode(sub.ID, opts...)
 	}
 
-	sg.AddEdge(trpcgraph.Start, cfg.EntryPoint)
+	sg.SetEntryPoint(cfg.EntryPoint)
+	if cfg.FinishPoint != "" {
+		sg.SetFinishPoint(cfg.FinishPoint)
+	}
 
 	for _, e := range cfg.Edges {
 		sg.AddEdge(e.From, e.To)
@@ -238,10 +233,6 @@ func BuildStateGraphWithAgents(cfg GraphBuildConfig) (*trpcgraph.Graph, []trpcag
 
 	for _, ce := range cfg.ConditionalEdges {
 		sg.AddConditionalEdges(ce.From, ce.CondFunc, ce.PathMap)
-	}
-
-	if cfg.FinishPoint != "" {
-		sg.AddEdge(cfg.FinishPoint, trpcgraph.End)
 	}
 
 	if len(cfg.InterruptBefore) > 0 {

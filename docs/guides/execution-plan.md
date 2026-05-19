@@ -1,125 +1,163 @@
 ﻿# Aranea-Agents 执行计划
 
-> **状态真相源**：本文记录当前架构健康度、模块接入度和下一阶段任务。详细系统图见 `docs/需求/0 系统框图.md`，综合开发计划见 `docs/需求/0-system-development.md`。
+> **状态真相源**：本文记录当前架构健康度、模块接入度与下一阶段任务。AI 编码前须先读 [docs/README.md](../README.md)，再按场景读取规范与需求文档。
 >
-> **更新时间**：2026-05-19（M3 收尾：文档与 MCP 会话统计闭环；M4 待启动）
+> **关联文档**：[0 系统框图.md](../需求/0%20系统框图.md) · [0-system-development.md](../需求/0-system-development.md) · [README-development.md](../需求/README-development.md)
+>
+> **更新时间**：2026-05-20（迭代 2 启动：飞书 Channel 闭环 ✅；Team `team_summary` ✅；Graph LLM/Tool 进行中）
+
+---
+
+## AI 快速入口
+
+| 步骤 | 文档 |
+|------|------|
+| 1. 项目全貌 | [docs/README.md](../README.md) |
+| 2. 后端编码 | [AI-DEVELOPMENT-SPECIFICATION.md](./AI-DEVELOPMENT-SPECIFICATION.md) |
+| 3. 前端编码 | [frontend-guide.md](./frontend-guide.md) |
+| 4. 框架速查 | [kratos-framework-guide.md](./kratos-framework-guide.md) · [trpc-agent-go-framework.md](./trpc-agent-go-framework.md) |
+| 5. 验证命令 | 后端：`make wire && make api && make build && make test && make runtime-boundary`；前端：`cd web && pnpm i && pnpm lint && pnpm test && pnpm build` |
+
+**文档状态优先级**：`0 系统框图.md` + `0-system-development.md` + **本文** > 模块 `*-development.md` > `*.design.md` > 历史需求正文。
+
+---
 
 ## 当前结论
 
-- 主链路已经可用：Chat / Agent / Team / Graph 通过 `trpc-agent-go` Runner 与 EventBus / WebSocket 串联。
-- 架构红线基本保持：`internal/biz` 不直接 import `trpc-agent-go`，`internal/server` 不直接调用 Agent runtime。
-- 当前优先级不是新增大模块，而是修复系统真理库、Runner/Gateway 状态机、Memory 双轨、Data 运行时耦合和前端模式分裂。
+- **主链路可用**：Chat / Agent / Team / Graph 经 `trpc-agent-go` Runner 与 EventBus + `/v1/ws` 串联；RunRegistry + RunnerManager + RunGateway 已落地。
+- **架构红线保持**：`internal/biz` 不 import `trpc-agent-go`；`internal/server` 不直接调 Agent runtime；实时主通道为 `/v1/ws`（SSE 仅限 A2A/MCP 等外部协议）。
+- **当前优先级**：迭代 2（M4-P1）— Graph LLM/Tool 节点与 ExecutionSummary；多平台 Channel 适配；P2 前端治理与 Memory 图治理。
+
+---
 
 ## 模块接入度
 
-| 等级 | 模块 |
-|------|------|
-| 核心可用 | Chat(1)、Agent 创建/列表/分类/设置/文件/标题/头像(2-6/8/50)、Provider(9)、Session(10)、Skill(20)、Tools(23)、Cron(21)、Message/Event WS(51/34) |
-| 可用但需闭环 | Team(11)、Graph(36)、MCP(19)、Plugin(22)、Callback(28)、Memory(12-16)、Knowledge(37)、Artifact(27)、Evaluation(33)、A2A(26)、Monitor/Telemetry/Token(18/24/29) |
-| 早期/占位 | Evolution(7)、Channel 投递(17)、Ecosystem(30)、CLI 产品化(25)、TTS |
+| 等级 | 模块 | 说明 |
+|------|------|------|
+| **核心可用** | Chat(1)、Agent 全家桶(2–8/50)、Provider(9)、Session(10)、Skill(20)、Tools(23)、Cron(21)、Message/WS(51/34)、Plugin/Callback(22/28)、Gateway/Runner(35/40) | 可创建、运行、配置、观测 |
+| **可用需闭环** | Graph(36)、MCP(19)、Memory(12–16)、Monitor/Token(18/29) | Graph 节点类型待补；MCP 重连可观测；Memory 冲突/级联 |
+| **可用需闭环** | Team(11)、Channel(17) | Team `team_summary` WS ✅；飞书入站+出站 ✅；其他平台适配待补 |
+| **有页、Runtime 已通主项** | Knowledge(37)、Artifact(27)、Evaluation(33)、A2A(26) | 管理页 + Runner 注入 ✅；Rerank/OCR、高级评估、远程 A2A 待补 |
+| **早期/占位** | Evolution(7)、Ecosystem(30)、CLI(25)、TTS、Telemetry UI(24) | 不可作为可组合模块；文档须标 API-only 或 mock |
 
-## Top 20 任务
+---
 
-| 排序 | 任务 | 模块 | 优先级 |
-|------|------|------|--------|
-| 1 | 收敛所有 Chat/Team/Monitor 主通道为 `/v1/ws`，清理旧 SSE 口径 | Message/Monitor/Team | P0 ✅ |
-| 2 | 抽 `RunRegistry` / `RunnerManager`，承接 `ChatService` 的 active run 状态 | Gateway/Runner | P0 ✅ |
-| 3 | 新增细粒度 `CancelRun` / `EnqueueUserMessage` RPC 或 WS 上行闭环 | Runner/Chat | P0（EnqueueUserMessage RPC + WS ✅；独立 CancelRun RPC 仍用 StopGeneration + WS cancel） |
-| 4 | Runner 注入 ArtifactService / SessionIngestor / AgentFactory / AwaitUserReplyRouting | Runner | P1 ✅ |
-| 5 | 统一 `trpc-agent-go/memory.Service` 与 Aranea L0-L4 的关系 | Memory | P0（`memory.RuntimeSet`：TRPC + Admin 端口 ✅） |
-| 6 | 移除 service/agent 对 `internal/data/sessionmemory` 的直接依赖 | Memory | P0（service/agent/runtime 已改；data/memory 包内保留实现） |
-| 7 | 将 trpc session / graph checkpoint provider 从 data 层上移 | Data/Graph/Session | P1 ✅ |
-| 8 | 拆解 `biz` ↔ `provider` 依赖环 | Provider | P1 ✅ |
-| 9 | 将 Skill Import 自定义 HTTP 路由迁入 proto + service | Skill | P1 ✅ |
-| 10 | Team RunTeamTest 端到端实现 | Team | P1 ✅ |
-| 11 | Team member_* WS Envelope 发射与前端展示 | Team/Message | P1（后端发射 ✅；前端已订阅） |
-| 12 | ToolOverride 运行时生效、工具调用统计闭环 | Tools | P1（Override + TRPC 需确认 + 调用统计 ✅） |
-| 13 | MCP timeout、重连验证、认证配置、MCPBroker 默认发现 | MCP | P2（timeout 60s ✅；session `mcp_call_count` 闭环 ✅；认证 UI + 运行时 header ✅；OAuth2 待做） |
-| 14 | Plugin / Callback 全链路挂载 Agent / Model / Tool 生命周期 | Plugin/Callback | P1（Chain+Hook+OnEvent ✅；内置插件除 audit_log 外待实现） |
-| 15 | Memory L4、MemoryWorker、冲突检测、级联更新 | Memory | P2（L4 prompt 注入 + MemoryWorker ✅；图写入/冲突检测待做） |
-| 16 | Knowledge 管理页、摄取进度、Rerank/OCR 规划 | Knowledge | P2（管理页 + Embedder UI 可配置 + 摄取 WS ✅；Rerank/OCR 待做） |
-| 17 | Artifact Runner 注入、预览、签名下载、Chat 附件关联 | Artifact | P2 ✅（Runner 注入 + 管理页 + Preview + 签名下载 + CodeExecutor 自动保存 + Chat 会话制品面板） |
-| 18 | Evaluation 与框架 EvalSet 边界定稿，补前端页面 | Evaluation | P2（AgentEvaluator + MultiRun + LLMJudge + 管理页 ✅） |
-| 19 | 前端 feature/store/mapper 统一，拆巨型 Chat / Agent 设置文件 | Frontend | P1（Knowledge/Evaluation/A2A/AgentSettings composable ✅；Chat 已薄） |
-| 20 | Ecosystem 后端 API 与模板/插件/Skill 市场模型 | Ecosystem | P3 |
+## Top 20 任务（历史 + 当前）
+
+> ✅ = 已验收；🚧 = 进行中；空白 = 下一迭代。细节见 [0-system-development.md §8](../需求/0-system-development.md)。
+
+| 排序 | 任务 | 模块 | 状态 |
+|------|------|------|------|
+| 1 | 收敛 Chat/Team/Monitor 主通道为 `/v1/ws` | Message/Monitor/Team | ✅ P0 |
+| 2 | `RunRegistry` / `RunnerManager` | Gateway/Runner | ✅ P0 |
+| 3 | `EnqueueUserMessage` + WS steer；Cancel 经 StopGeneration + WS | Runner/Chat | ✅ P0（独立 `CancelRun` RPC 非必须） |
+| 4 | ArtifactService / SessionIngestor / AgentFactory / AwaitUserReplyRouting 注入 | Runner | ✅ P1 |
+| 5 | `memory.RuntimeSet`：TRPC MemoryService + L0–L4 Admin 端口 | Memory | ✅ P0 |
+| 6 | 移除 service/agent 对 `sessionmemory` 直连 | Memory | ✅ P0 |
+| 7 | trpc session / graph checkpoint provider 上移出 data | Data/Graph/Session | ✅ P1 |
+| 8 | Provider 拆环（`internal/llminspect`） | Provider | ✅ P1 |
+| 9 | Skill Import 迁入 proto + `SkillService` | Skill | ✅ P1 |
+| 10 | Team RunTeamTest / CancelTeamRun / member_* WS | Team | ✅ P1 |
+| 11 | ToolOverride + `requires_confirmation` + 调用统计 + TestTool | Tools | ✅ P1 |
+| 12 | Plugin Chain + Hook + OnEvent；9 内置 `builtin()` | Plugin/Callback | ✅ P1 |
+| 13 | MCP 60s 超时、OAuth2、Broker 挂载、会话 `*_call_count` | MCP | ✅ P2（重连可观测待补） |
+| 14 | Knowledge / Artifact / Evaluation / A2A 管理页 + Runtime 主项 | 多模块 | ✅ P2 |
+| 15 | Memory L4 注入 + MemoryWorker + AutoMemory 图写入 | Memory | ✅ P2（冲突/级联/衰减待补） |
+| 16 | Monitor 落库 + Provider 指标 + Quota MVP + Usage 事件 | Monitor/Token | ✅ M4 部分 |
+| 17 | Chat 工具卡片 / Reasoning / `run_status` WS / Team 分栏 | Chat/Frontend | ✅ 2026-05-19 |
+| 18 | **Channel** 飞书 + 钉钉 Webhook 入站/出站 | Channel | ✅ P1 |
+| 19 | **Graph** LLM/Tool 节点 + ExecutionSummary | Graph | ✅ P1/P2 |
+| 20 | **Team** 结构化汇总 `team_summary` Envelope | Team | ✅ P1（`EnvelopeTypeTeamSummary` + `BuildTeamRunSummary`） |
+
+### 迭代 2（M4-P1）任务板 — 2026-05-20 起
+
+| ID | 任务 | 优先级 | 状态 | 验收 |
+|----|------|--------|------|------|
+| I2-CH-01 | 飞书 Webhook 入站 → RunGateway → 回复出站 | P1 | ✅ | `POST /webhooks/{channel_key}` + `FeishuTextSender` |
+| I2-CH-02 | 钉钉 Webhook 入站 + 出站（第二平台） | P1 | ✅ | `channel_ingress` 按 `type=dingtalk` 分发；`internal/channel/dingtalk` |
+| I2-TEAM-01 | `team_summary` Envelope（成员 token/耗时/状态） | P1 | ✅ | WS `team_summary`；Monitor 可订阅 |
+| I2-GRAPH-01 | Graph `AddLLMNode` / `AddToolsNode` builder 接线 | P1 | ✅ | `BuildDeps` + `wireNode`；`SetEntryPoint`/`SetFinishPoint` |
+| I2-GRAPH-02 | ExecutionSummary 写入 `graph_execution_done` | P2 | ✅ | `execution_summary` metadata on WS done event |
+| I2-FE-01 | Knowledge/Evaluation/A2A `page-to-components` | P2 | ⏳ | 单文件 <300 行 |
+| I2-MEM-01 | L4 冲突检测、级联、衰减 | P2 | ⏳ | AutoMemory 写入治理 |
+| I2-PLG-01 | Plugin UpdateScope + 运行记录 | P2 | ⏳ | 管理端可审计 |
+| I2-CHAT-01 | 多模态附件、RunStatus 持久化 | P3 | ⏳ | 重启后可恢复 awaiting |
+
+**当前冲刺焦点**：I2-FE-01（前端治理）→ I2-MEM-01 → 企微 Channel（I2-CH-03）。
+
+---
 
 ## 里程碑
 
-### M0：文档与边界
+### M0：文档与边界 ✅
 
-- [x] 补 `docs/需求/0 系统框图.md`
-- [x] 补 `docs/需求/0-system-development.md`
-- [x] 补本文
-- [x] 清理旧 SSE 主链路表述
-- [x] 修复 Memory 断链与模块索引
+- [x] `docs/需求/0 系统框图.md`、`0-system-development.md`、本文
+- [x] `docs/README.md` 文档索引与 AI 工作流
+- [x] WS/SSE 口径统一；Memory 断链修复
 
-### M1：Runner 与 Gateway
+### M1：Runner 与 Gateway ✅
 
-- [x] `RunRegistry`（`internal/runtime/run_registry.go`：active run、pending cancel、run status；`ChatService` 已接入）
-- [x] `RunnerManager`（`internal/runtime/runner_manager.go`：统一 `NewTurnRunner` 装配；可选 `RegistryKey` 长生命周期实例；Chat/Team 已接入）
-- [x] `EnqueueUserMessage` 对外入口（`POST /v1/chat/enqueue`；WS `enqueue_message`；`SendChatMessage` 在 active run 时优先 steerable enqueue）
-- [x] 取消路径（HTTP `StopGeneration` + WS `cancel` → `RunRegistry.Cancel`；Team cancelable run 已登记）
-- [x] ArtifactService 注入（`PersistenceSet.Artifact` → `TRPCRunnerDeps` → `WithArtifactService`；Wire `provideArtifactRuntimeService`）
-- [x] GetRunStatus 与 `ManagedRunner.RunStatus` 对齐（Proto 扩展 + `RunRegistry.ActiveRunner` + 合并框架字段）
-- [x] SessionIngestor 注入（`BizSessionIngestor` + `WithSessionIngestor`；外部摄入待扩展）
-- [x] AgentFactory 注入（`BizAgentFactoryOptions` 按 agent_key 注册；Chat/Team turn 已接入）
-- [x] AwaitUserReplyRouting 注入（`AwaitHook` 配置时启用 `WithAwaitUserReplyRouting`；与 ServiceTool `MarkAwaitingUserReply` 配合）
-- [x] Chat / Team / Cron / Channel 共用 `RunGateway`（`RunRegistry` + `ChatService.RunGateway`；Cron/Channel 经 `RunNativeTurnUnary` / `RunCronTurn`）
+- [x] `RunRegistry`（`internal/runtime/run_registry.go`）+ `RunnerManager`
+- [x] `EnqueueUserMessage`（`POST /v1/chat/enqueue`、WS `enqueue_message`）
+- [x] 取消路径（HTTP `StopGeneration` + WS `cancel`）
+- [x] ArtifactService / SessionIngestor / AgentFactory / AwaitUserReplyRouting 注入
+- [x] Chat / Team / Cron / Channel 共用 `RunGateway`
 
-### M2：架构边界康复
+### M2：架构边界康复 ✅
 
-- [x] Memory 端口统一（`internal/memory.RuntimeSet` + `SessionAdminStore`；`PersistenceSet.Memory`；Wire `provideMemoryService`）
-- [x] Data 运行时 provider 上移（`runtime.NewTRPCSessionService` / `NewGraphCheckpointSaver`；Wire `provideTRPCSessionService` / `provideGraphCheckpointSaver`）
-- [x] Provider inspect 拆环（`internal/llminspect`；`provider.CatalogFromModel` 不再 import `biz`）
-- [x] Skill Import service 化（`skill.proto` Get/Apply/Refine RPC；`SkillService` + multipart `RegisterSkillImportMultipart`）
+- [x] Memory 端口（`memory.RuntimeSet` + `SessionAdminStore`）
+- [x] Data provider 上移（`provideTRPCSessionService` / `provideGraphCheckpointSaver`）
+- [x] Provider 拆环（`internal/llminspect`）
+- [x] Skill Import service 化
 
-### M3：模块闭环（✅ 主项已通，Rerank/OCR 与 MCP 认证/重连留待 P2）
+### M3：模块闭环 ✅
 
+- [x] Team / Tools / Plugin / MCP 统计 / Knowledge / Artifact / Evaluation / A2A 主项
+- [x] Chat UX：工具卡片、Reasoning、`run_status` WS、制品面板
+- [x] 9 内置 Plugin `builtin()`；MCP OAuth2；EvalSet + LLMJudge
 
-- [x] Team RunTeamTest（临时 session + `team.Runner.RunTurn` + 清理）
-- [x] CancelTeamRun 实际取消（`RunRegistry.Cancel` + 持久化 `cancelled`）
-- [x] Team member_* WS Envelope（`ProjectMeta.MemberAgentKeys` + `EventProjector` 成员流）
-- [x] ToolOverride 运行时（`ListToolAgentOverridesByAgent` + `ApplyAgentToolOverrides` + `ApplyRuntimeConfigMaps`）
-- [x] TRPC `requires_confirmation`（Declaration 标注 + BeforeTool 阻断 + `blocked` 记录；`KRATOS_TOOL_AUTO_APPROVE=1` 可跳过）
-- [x] Tools 调用统计闭环（`duration_ms`、Prometheus `aranea_tool_invocation_total`、列表 SQL 聚合）
-- [x] Tools `TestTool` 在线测试（`POST /v1/tools/{id}/test` + 工具详情页）
-- [x] MCP 默认超时 60s（`timeout_sec` 未配置时）
-- [x] Plugin / Callback EP-CB-01 Phase 1（Chain → WithAgent/Model/ToolCallbacks；Runner WithPlugins 保留 OnEvent）
-- [x] PluginManager + Hook 桥接（Phase 2）
-- [x] OnEvent Runner 接入 + Hook modify + CallbackEditor（Phase 3）
-- [x] Plugin StatsRecorder（`IncrementStats` + AuditLog 回写）+ Hook 非 block 错误隔离
-- [x] Plugin 种子同步（`registry.go` + `seedBuiltinPlugins`；9 内置 key 幂等写入 DB）
-- [x] Plugin `config_schema_json` 校验（`gojsonschema` + `UpdateConfig`/`Create`）
-- [x] Knowledge 管理界面（`KnowledgePage.vue` + `/knowledge` + 侧栏/i18n）
-- [x] Artifact 管理界面（`ArtifactsPage.vue` + `/artifacts` + 侧栏/i18n）
-- [x] Evaluation / A2A 管理界面
-- [x] Knowledge EP-DATA-01：`NewData()` 启动调用 `EnsureKnowledgeSchema`；无 PG 时 `ErrKnowledgeUnavailable` fail-fast
-- [x] Evaluation EP-DATA-01：`NewData()` 启动调用 `EnsureEvalSchema`
-- [x] A2A EP-A2A-01：Invoke 实际派发 + call_agent 上下文注入（`RunAgentTurn` + `injectA2AContext`）
-- [x] Knowledge EP-KN-01/02：GetEmbedderConfig + 摄取 WS 推送 + Embedder 面板
-- [x] Evaluation EP-RT-08：LLMJudge 注入 + BizCasesToEvalSet 框架对齐
-- [x] Artifact PreviewArtifact RPC + 签名下载 + CodeExecutor 自动保存 + Chat 会话制品面板
-- [x] A2A EP-A2A-01/02：Invoke 派发 + admin 鉴权
-- [x] Plugin Phase 2：9 个内置插件均有 `builtin()` 实现（`audit_log` 全生命周期 + OnEvent；其余治理类插件）
-- [x] MCP 会话统计：`sessions.mcp_call_count` / `tool_call_count` / `skill_call_count` 随工具调用递增
+### M4：平台运营 🚧
 
-### M4：平台运营（进行中）
+**已完成**
 
-- [x] Provider Prometheus 指标：`ProviderRequestTotal` / `ProviderRequestDuration` 包装 LLM Model
-- [x] Monitor 持久化：`audit_logs` / `monitor_events` 写入；`runner.completion` 事件落库
-- [x] Token：`/usage/events` 明细页；EventBus 流式 run 用量记录 status
-- [x] MCP：`mcp_broker` 或 `mcp_tool_set` 可解析服务器；有服务器时自动挂载 Broker；`auth` + `session_reconnect_max` 配置
-- [x] MemoryWorker：`TurnMemoryWorker` 订阅 `runner_completion` → 自动记忆队列（30s 去重）
-- [x] MCP 认证 UI：`McpServerFormDialog` API Key / Bearer + `config.auth` 写入
-- [x] Admin Audit：Tool / MCP / Agent Create·Update·Delete → `audit_logs`（`RecordAdminAudit`）
-- [x] Memory L4 图注入：`L4MemoryCue` + `TRPCBuilderDeps.MemoryAdmin` 拼入 system prompt
-- [x] Quota MVP：`usage_quotas` 表 + `Get/Set/CheckUsageQuota` RPC；Chat turn 前 `CheckQuota`
-- [ ] Channel 投递与多平台适配
-- [ ] Ecosystem 从 mock 到后端模型
-- [ ] Telemetry 自定义 Span / OTel UI
-- [x] Quota 前端配置页 `/usage/quotas`
-- [x] MCP OAuth2（client_credentials / refresh / static token）
-- [x] L4 图自动写入（AutoMemory → `L4GraphWriter`）
+- [x] Provider Prometheus 指标
+- [x] Monitor：`audit_logs` / `monitor_events`；`runner.completion` 落库
+- [x] Token：`/usage/events`；EventBus 流式用量
+- [x] MCP：Broker 自动挂载、`auth`、`session_reconnect_max`、OAuth2、认证 UI
+- [x] MemoryWorker + L4 prompt 注入 + L4 图自动写入（`L4GraphWriter`）
+- [x] Quota MVP + 前端 `/usage/quotas`；Admin Audit（Tool/MCP/Agent CRUD）
+- [x] MCP 会话 `mcp_call_count` / `tool_call_count` / `skill_call_count`
+
+**待做**
+
+- [x] Channel 飞书入站 + 出站（`internal/service/channel_ingress.go` + `internal/channel/lark`）
+- [x] Channel 钉钉入站 + 出站（I2-CH-02）
+- [ ] Channel 企微等平台（I2-CH-03）
+- [x] Graph LLM/Tool 节点 + ExecutionSummary（I2-GRAPH-01/02）
+- [x] Team 结构化汇总 `team_summary` Envelope（`internal/team/summary.go`）
+- [ ] Ecosystem 后端与市场模型（P3）
+- [ ] Telemetry 业务 Span / OTel UI（P3）
+- [ ] Monitor Dashboard 与告警规则（P2）
+- [ ] 前端 page-to-components + mapper 单测（P2）
+
+---
+
+## 系统级验收（节选）
+
+| 项 | 状态 |
+|----|------|
+| `internal/biz` 不 import `trpc-agent-go` | ✅ |
+| `internal/server` 不调 Runner / Agent / LLM | ✅ |
+| `internal/data` 不绑定 Runner/Graph runtime 组装 | ✅ |
+| Chat/Team/Monitor 实时主链路 `/v1/ws` | ✅ |
+| RunRegistry：status / cancel / enqueue / artifact / ingest | ✅ |
+| Memory L0–L4 与 MemoryService 主从（`RuntimeSet`） | ✅ |
+| 核心模块五面定义完整（Graph/Channel/Ecosystem） | ⏳ |
+| `internal/service` 无复杂运行状态机（await/pending 可接受短期） | ⏳ |
+| 前端 feature 模板 + mapper 单测 | ⏳ |
+| TTS/Ecosystem/CLI 文档标占位 | ⏳ |
+
+---
 
 ## 扩展红线
 
@@ -128,3 +166,4 @@
 - 不复制 `pkg/trpc-agent-go` 内部实现到业务目录。
 - 不新增 Chat / Team 独立 SSE 主链路；实时主通道是 `/v1/ws`。
 - 不在未定义边界的情况下新增第二套 Memory / Evaluation / Gateway 实现。
+- 进度变更时同步更新 **本文** + 相关 `changelog/*.md`（见 [README.md §4](../README.md)）。

@@ -16,6 +16,7 @@ type EventBridge struct {
 	sessionID string
 	graphID   string
 	execID    string
+	summary   *ExecutionSummaryTracker
 }
 
 func NewEventBridge(eventBus event.Bus, sessionID, graphID, execID string) *EventBridge {
@@ -24,6 +25,7 @@ func NewEventBridge(eventBus event.Bus, sessionID, graphID, execID string) *Even
 		sessionID: sessionID,
 		graphID:   graphID,
 		execID:    execID,
+		summary:   NewExecutionSummaryTracker(execID, graphID),
 	}
 }
 
@@ -67,6 +69,9 @@ func (b *EventBridge) convertEvent(e *trpcevent.Event) *event.Envelope {
 
 	case trpcgraph.ObjectTypeGraphNodeComplete:
 		meta := extractNodeMeta(e)
+		if b.summary != nil {
+			b.summary.RecordNodeComplete(meta)
+		}
 		env.Metadata = map[string]any{
 			"execution_id": b.execID,
 			"graph_id":     b.graphID,
@@ -87,6 +92,9 @@ func (b *EventBridge) convertEvent(e *trpcevent.Event) *event.Envelope {
 
 	case trpcgraph.ObjectTypeGraphNodeError:
 		meta := extractNodeMeta(e)
+		if b.summary != nil {
+			b.summary.RecordNodeComplete(meta)
+		}
 		env.Metadata = map[string]any{
 			"execution_id": b.execID,
 			"graph_id":     b.graphID,
@@ -173,6 +181,10 @@ func (b *EventBridge) convertEvent(e *trpcevent.Event) *event.Envelope {
 			}
 			if meta.TotalDuration > 0 {
 				env.Metadata["duration_ns"] = meta.TotalDuration.Nanoseconds()
+			}
+			if b.summary != nil {
+				summary := b.summary.Snapshot(meta)
+				env.Metadata["execution_summary"] = summary
 			}
 		} else {
 			return nil

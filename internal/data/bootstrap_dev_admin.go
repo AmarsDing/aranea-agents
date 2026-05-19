@@ -23,11 +23,24 @@ func ensureDevBypassAdminIfEnabled(ctx context.Context, client *ent.Client) erro
 	if !authpkg.HTTPAuthBypassEnabled() || client == nil {
 		return nil
 	}
-	ok, err := client.Admin.Query().Where(admin.ID(1)).Exist(ctx)
-	if err != nil {
+	existing, err := client.Admin.Query().Where(admin.ID(1)).Only(ctx)
+	if err != nil && !ent.IsNotFound(err) {
 		return fmt.Errorf("dev admin lookup: %w", err)
 	}
-	if ok {
+	wantPwd := adminPwdMD5(DevBypassAdminPassword)
+	if existing != nil {
+		if existing.Name == "dev" && existing.Password == wantPwd {
+			return nil
+		}
+		_, err = client.Admin.UpdateOneID(1).
+			SetName("dev").
+			SetEmail("dev@local.invalid").
+			SetAccess("admin").
+			SetPassword(wantPwd).
+			Save(ctx)
+		if err != nil {
+			return fmt.Errorf("sync dev admin: %w", err)
+		}
 		return nil
 	}
 	_, err = client.Admin.Create().

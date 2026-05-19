@@ -12,7 +12,7 @@ import type {
   TeamRunStep as WireTeamRunStep
 } from "../../services/kratos/team/v1/index";
 import { GLOBAL_WS_SESSION_ID } from "../../config/runtime";
-import { useEnvelopeStream } from "../chat/useEnvelopeStream";
+import { createEnvelopeStream } from "../chat/useEnvelopeStream";
 import { TEAM_RUNTIME_ENVELOPE_TYPES, teamRunEventFromEnvelope } from "./teamRunEventFromEnvelope";
 import type { Envelope } from "../chat/envelope";
 
@@ -165,7 +165,7 @@ export function subscribeTeamRunEventsWs(
 ) {
   const effectiveSession =
     sessionId.trim() === "" || sessionId === "team-monitor" ? GLOBAL_WS_SESSION_ID : sessionId;
-  const stream = useEnvelopeStream({
+  const stream = createEnvelopeStream({
     sessionId: effectiveSession,
     channels: ["team", "monitor", "system"],
     autoConnect: false,

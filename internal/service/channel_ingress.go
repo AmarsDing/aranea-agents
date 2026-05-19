@@ -80,8 +80,18 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 		var env struct {
 			Type string `json:"type"`
 		}
-		if err := json.Unmarshal([]byte(chRow.ConfigJSON), &env); err != nil || strings.TrimSpace(strings.ToLower(env.Type)) != "feishu" {
-			http.Error(w, "not a feishu channel", http.StatusBadRequest)
+		if err := json.Unmarshal([]byte(chRow.ConfigJSON), &env); err != nil {
+			http.Error(w, "bad channel config", http.StatusBadRequest)
+			return nil
+		}
+		switch strings.TrimSpace(strings.ToLower(env.Type)) {
+		case "dingtalk":
+			_ = h.handleDingTalkWebhook(w, r, chRow)
+			return nil
+		case "feishu":
+			// continue below
+		default:
+			http.Error(w, "unsupported channel type", http.StatusBadRequest)
 			return nil
 		}
 
@@ -229,11 +239,13 @@ func (h *ChannelIngress) recordDelivery(ctx context.Context, channelID, status s
 	return h.channels.AddInboundDelivery(ctx, channelID, status, string(b), errMsg)
 }
 
-func ingressFirstNonEmpty(a, b string) string {
-	if strings.TrimSpace(a) != "" {
-		return a
+func ingressFirstNonEmpty(parts ...string) string {
+	for _, p := range parts {
+		if strings.TrimSpace(p) != "" {
+			return strings.TrimSpace(p)
+		}
 	}
-	return b
+	return ""
 }
 
 func resolveCredentialPlain(creds []biz.ChannelCredential, key string) (string, error) {

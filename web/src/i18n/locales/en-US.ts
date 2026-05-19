@@ -15,8 +15,8 @@ export default {
     emailLabel: "Email",
     passwordLabel: "Password",
     submit: "Sign in",
-    loginFailed: "Sign-in failed. Check your credentials.",
-    backendHint: "Matches AdminService: POST /v1/admins/login",
+    loginFailed: "Sign-in failed. Check credentials and ensure the HTTP API on :8000 is running.",
+    backendHint: "Local dev: username dev / password dev (start the backend first)",
     logout: "Log out"
   },
   dashboard: {

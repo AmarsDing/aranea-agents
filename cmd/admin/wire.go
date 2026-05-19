@@ -157,6 +157,17 @@ func provideGraphCheckpointSaver(d *data.Data) (*graphtrpc.SQLiteCheckpointSaver
 	return rt.NewGraphCheckpointSaver(d.RawDB())
 }
 
+func provideGraphBuildDeps(catalog *biz.LlmProviderModelUsecase, toolUC *biz.ToolUsecase) *graphtrpc.BuildDeps {
+	if catalog == nil || toolUC == nil {
+		return nil
+	}
+	rtTrip := &provider.RoundTrip{HTTP: &http.Client{Timeout: 120 * time.Second}}
+	return &graphtrpc.BuildDeps{
+		Models: graphadapter.NewCatalogModelResolver(catalog, rtTrip),
+		Tools:  graphadapter.NewCatalogToolResolver(toolUC),
+	}
+}
+
 func provideArtifactRuntimeService(uc *biz.ArtifactUsecase) trpcartifact.Service {
 	if uc == nil {
 		return nil
@@ -231,6 +242,7 @@ func wireApp(*conf.Server, *conf.Data, log.Logger) (wireOut, func(), error) {
 		plugintrpc.NewRuntime,
 		plugintrpc.NewManager,
 		graphtrpc.NewRegistry,
+		provideGraphBuildDeps,
 		graphadapter.NewGraphBuilderFactory,
 		provideAutoMemoryWorker,
 		provideMCPHealthRunnerDeps,

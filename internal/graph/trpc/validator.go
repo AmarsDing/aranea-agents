@@ -165,6 +165,10 @@ func validateNodeRefs(def *GraphBuildConfig, reg *Registry, result *ValidationRe
 		return
 	}
 	for _, n := range def.Nodes {
+		switch normalizeNodeType(n.Type) {
+		case "llm", "tool", "tools":
+			continue
+		}
 		if n.Func == nil && n.FuncRef != "" {
 			if _, err := reg.GetNodeFunc(n.FuncRef); err != nil {
 				result.AddError(ValidationErrFuncRefNotFound, n.ID, "func_ref",

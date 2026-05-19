@@ -120,6 +120,38 @@ func EnsurePatches(ctx context.Context, client *ent.Client) error {
 	return nil
 }
 
+// EnsureMonitorSchemaPatches adds audit_logs columns missing on DBs created before monitor extended fields.
+// Call after EnsureSchema so audit_logs exists.
+func EnsureMonitorSchemaPatches(ctx context.Context, client *ent.Client) error {
+	if client == nil {
+		return nil
+	}
+	patches := []struct {
+		table string
+		col   string
+		ddl   string
+	}{
+		{"audit_logs", "actor", "ALTER TABLE audit_logs ADD COLUMN actor TEXT NOT NULL DEFAULT ''"},
+		{"audit_logs", "ip", "ALTER TABLE audit_logs ADD COLUMN ip TEXT NOT NULL DEFAULT ''"},
+		{"audit_logs", "user_agent", "ALTER TABLE audit_logs ADD COLUMN user_agent TEXT NOT NULL DEFAULT ''"},
+		{"audit_logs", "severity", "ALTER TABLE audit_logs ADD COLUMN severity TEXT NOT NULL DEFAULT ''"},
+		{"audit_logs", "metadata_json", "ALTER TABLE audit_logs ADD COLUMN metadata_json TEXT NOT NULL DEFAULT ''"},
+	}
+	for _, p := range patches {
+		has, err := sqliteColumnExists(ctx, client, p.table, p.col)
+		if err != nil {
+			return fmt.Errorf("monitor patch check %s.%s: %w", p.table, p.col, err)
+		}
+		if has {
+			continue
+		}
+		if _, err := client.ExecContext(ctx, p.ddl); err != nil {
+			return fmt.Errorf("monitor patch %s.%s: %w", p.table, p.col, err)
+		}
+	}
+	return nil
+}
+
 func sqliteColumnExists(ctx context.Context, client *ent.Client, table, column string) (bool, error) {
 	rows, err := client.QueryContext(ctx, "SELECT 1 FROM pragma_table_info(?) WHERE name = ? LIMIT 1", table, column)
 	if err != nil {

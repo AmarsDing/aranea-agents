@@ -6,7 +6,7 @@ npm install
 npm run dev
 ```
 
-默认端口 `9000`。
+开发服务器默认端口 **9001**（避免与后端 gRPC `:9000` 冲突）。API 经 Vite 代理到 `http://127.0.0.1:8000`。
 
 ## 参考 adk-web-main 的运行方式
 ```bash

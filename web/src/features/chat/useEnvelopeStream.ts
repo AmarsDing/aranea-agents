@@ -29,7 +29,8 @@ export type UseEnvelopeStreamReturn = {
   cancel: () => void;
 };
 
-export function useEnvelopeStream(opts: UseEnvelopeStreamOptions): UseEnvelopeStreamReturn {
+/** Factory for session streams; safe to call outside component `setup()` (e.g. on session select). */
+export function createEnvelopeStream(opts: UseEnvelopeStreamOptions): UseEnvelopeStreamReturn {
   const connected = ref(false);
   const wsReplaying = ref(false);
   const lastEventId = ref<string | undefined>(opts.lastEventId);
@@ -40,6 +41,10 @@ export function useEnvelopeStream(opts: UseEnvelopeStreamOptions): UseEnvelopeSt
 
   function connect(): void {
     if (transport.value?.connected) return;
+    if (transport.value) {
+      transport.value.connect();
+      return;
+    }
 
     const t = createWsTransport({
       sessionId: opts.sessionId,
@@ -80,6 +85,7 @@ export function useEnvelopeStream(opts: UseEnvelopeStreamOptions): UseEnvelopeSt
     transport.value?.disconnect();
     transport.value = null;
     connected.value = false;
+    dispatcher.clear();
   }
 
   function onType(type: EnvelopeType | EnvelopeType[], handler: (env: Envelope) => void): () => void {
@@ -110,11 +116,6 @@ export function useEnvelopeStream(opts: UseEnvelopeStreamOptions): UseEnvelopeSt
     connect();
   }
 
-  onUnmounted(() => {
-    disconnect();
-    dispatcher.clear();
-  });
-
   return {
     connected,
     wsReplaying,
@@ -132,10 +133,34 @@ export function useEnvelopeStream(opts: UseEnvelopeStreamOptions): UseEnvelopeSt
   };
 }
 
-export function useChatStream(
-  sessionId: string,
-  streamOpts?: { onServerShutdown?: (reason: string) => void; onReplayState?: (replaying: boolean, count?: number) => void }
-) {
+export function useEnvelopeStream(opts: UseEnvelopeStreamOptions): UseEnvelopeStreamReturn {
+  const stream = createEnvelopeStream({ ...opts, autoConnect: false });
+  if (opts.autoConnect !== false) {
+    stream.connect();
+  }
+  onUnmounted(() => {
+    stream.disconnect();
+  });
+  return stream;
+}
+
+export type ChatStreamFactoryOpts = {
+  onServerShutdown?: (reason: string) => void;
+  onReplayState?: (replaying: boolean, count?: number) => void;
+};
+
+/** Chat session WS stream; use in `setup()` via {@link useChatStream} or imperatively via this factory. */
+export function createChatStream(sessionId: string, streamOpts?: ChatStreamFactoryOpts): UseEnvelopeStreamReturn {
+  return createEnvelopeStream({
+    sessionId,
+    channels: ["chat", "system"],
+    autoConnect: false,
+    onServerShutdown: streamOpts?.onServerShutdown,
+    onReplayState: streamOpts?.onReplayState,
+  });
+}
+
+export function useChatStream(sessionId: string, streamOpts?: ChatStreamFactoryOpts) {
   const stream = useEnvelopeStream({
     sessionId,
     channels: ["chat", "system"],
@@ -211,6 +236,18 @@ export function useChatStream(
     done,
     wsReplaying: stream.wsReplaying,
   };
+}
+
+export function createTeamStream(
+  sessionId: string,
+  streamOpts?: { onReplayState?: (replaying: boolean, count?: number) => void }
+): UseEnvelopeStreamReturn {
+  return createEnvelopeStream({
+    sessionId,
+    channels: ["chat", "team", "system"],
+    autoConnect: false,
+    onReplayState: streamOpts?.onReplayState,
+  });
 }
 
 export function useTeamStream(

@@ -108,7 +108,19 @@ func (r *Runner) finishRunErr(ctx context.Context, run *biz.TeamRun, t0 time.Tim
 		failEnv.Metadata = map[string]any{"run_id": run.ID, "error_message": msg}
 		r.td.Pipeline.Bus.Publish(ctx, failEnv)
 	}
+	r.publishTeamRunSummary(ctx, *run)
 	publishTeamMonitor(ctx, r.td.Pipeline.Bus, "WARN", fmt.Sprintf("team_run failed team_id=%s run_id=%s session_id=%s: %s", run.TeamID, run.ID, strings.TrimSpace(run.SessionID), msg), strings.TrimSpace(run.SessionID))
+}
+
+func (r *Runner) publishTeamRunSummary(ctx context.Context, run biz.TeamRun) {
+	if r == nil || r.td.Pipeline.Bus == nil || r.teams == nil {
+		return
+	}
+	steps, err := r.teams.ListTeamRunSteps(ctx, run.ID)
+	if err != nil {
+		steps = nil
+	}
+	r.td.Pipeline.Bus.Publish(ctx, TeamSummaryEnvelope(run, steps))
 }
 
 func (r *Runner) persistStep(ctx context.Context, run biz.TeamRun, teamID string, sortIdx int, m MemberDef, ag biz.Agent, userContent string, asst biz.ChatMessage) {

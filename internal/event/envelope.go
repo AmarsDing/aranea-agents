@@ -32,6 +32,7 @@ const (
 	EnvelopeTypeTeamStepStarted    EnvelopeType = "team_step_started"
 	EnvelopeTypeTeamStepFinished   EnvelopeType = "team_step_finished"
 	EnvelopeTypeTeamRunFailed      EnvelopeType = "team_run_failed"
+	EnvelopeTypeTeamSummary        EnvelopeType = "team_summary"
 	EnvelopeTypeGraphStep          EnvelopeType = "graph_step"
 	EnvelopeTypeGraphExecutionDone EnvelopeType = "graph_execution_done"
 	EnvelopeTypeGraphNodeError     EnvelopeType = "graph_node_error"
@@ -134,7 +135,7 @@ func RouteChannel(env Envelope) string {
 		return "monitor"
 	case EnvelopeTypeMemberMessageStart, EnvelopeTypeMemberDelta, EnvelopeTypeMemberMessageDone,
 		EnvelopeTypeTeamRunStarted, EnvelopeTypeTeamRunFinished, EnvelopeTypeTeamStepStarted,
-		EnvelopeTypeTeamStepFinished, EnvelopeTypeTeamRunFailed:
+		EnvelopeTypeTeamStepFinished, EnvelopeTypeTeamRunFailed, EnvelopeTypeTeamSummary:
 		return "team"
 	case EnvelopeTypeGraphNodeStart, EnvelopeTypeGraphNodeEnd, EnvelopeTypeCheckpoint,
 		EnvelopeTypeGraphStep, EnvelopeTypeGraphExecutionDone, EnvelopeTypeGraphNodeError,

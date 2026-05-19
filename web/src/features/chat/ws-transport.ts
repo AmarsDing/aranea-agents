@@ -166,6 +166,9 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
       return;
     }
     pendingQueue.push(upstream);
+    if (!ws || ws.readyState === WebSocket.CLOSED) {
+      connect();
+    }
   }
 
   function subscribe(channel: string): void {

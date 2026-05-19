@@ -14,7 +14,8 @@ export default configure(() => {
       distDir: "dist"
     },
     devServer: {
-      port: 9000,
+      // 勿与 configs/config.yaml 中 server.grpc.addr (:9000) 共用端口；前端开发固定 9001。
+      port: 9001,
       open: false,
       proxy: {
         "/v1": {

@@ -64,7 +64,12 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   resource_id TEXT NOT NULL,
   request_id TEXT NOT NULL,
   detail TEXT NOT NULL,
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  actor TEXT NOT NULL DEFAULT '',
+  ip TEXT NOT NULL DEFAULT '',
+  user_agent TEXT NOT NULL DEFAULT '',
+  severity TEXT NOT NULL DEFAULT '',
+  metadata_json TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS avatar_assets (

@@ -77,7 +77,8 @@ function createHeartbeat(options?: ServerHeartbeatOptions) {
     }
 
     const token = readAccessTokenCookie();
-    if (!token) {
+    // Local dev with KRATOS_HTTP_AUTH_DISABLED: HTTP /v1 works without cookie, but WS still must connect.
+    if (!token && !import.meta.env.DEV) {
       startTokenPoll();
       return;
     }

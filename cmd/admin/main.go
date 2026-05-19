@@ -4,6 +4,9 @@ import (
 	"context"
 	"flag"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/conf"
@@ -118,15 +121,35 @@ func main() {
 	defer cleanup()
 
 	cronCtx, cancelCron := context.WithCancel(context.Background())
-	defer cancelCron()
+	watchCtx, cancelWatch := context.WithCancel(context.Background())
+	stopBackgroundWorkers := func() {
+		cancelCron()
+		cancelWatch()
+	}
+	defer stopBackgroundWorkers()
+
+	// Windows / IDE terminals sometimes fail to deliver Ctrl+C to go run; cancel workers on
+	// first interrupt so kratos Stop can finish. Second interrupt forces exit.
+	go func() {
+		ch := make(chan os.Signal, 2)
+		signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
+		sig := <-ch
+		stopBackgroundWorkers()
+		logger.Log(log.LevelInfo, "msg", "shutdown signal received", "signal", sig.String())
+		select {
+		case <-ch:
+			logger.Log(log.LevelWarn, "msg", "second interrupt — forcing exit")
+			os.Exit(130)
+		case <-time.After(15 * time.Second):
+		}
+	}()
+
 	if out.CronRunner != nil {
 		interval := cronrunner.DefaultInterval()
 		go out.CronRunner.Start(cronCtx, interval)
 		logger.Log(log.LevelInfo, "msg", "cron runner started", "interval", interval.String())
 	}
 
-	watchCtx, cancelWatch := context.WithCancel(context.Background())
-	defer cancelWatch()
 	if out.SkillWatch != nil {
 		go out.SkillWatch.Start(watchCtx)
 		logger.Log(log.LevelInfo, "msg", "skill filesystem watcher started")

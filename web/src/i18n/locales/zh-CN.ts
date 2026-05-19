@@ -15,8 +15,8 @@ export default {
     emailLabel: "邮箱",
     passwordLabel: "密码",
     submit: "登录",
-    loginFailed: "登录失败，请检查账号和密码。",
-    backendHint: "与后端 AdminService 一致：POST /v1/admins/login",
+    loginFailed: "登录失败，请检查账号和密码，并确认后端 HTTP :8000 已启动。",
+    backendHint: "本地开发账号：用户名 dev / 密码 dev（需先启动后端）",
     logout: "退出登录"
   },
   dashboard: {

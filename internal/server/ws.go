@@ -92,7 +92,12 @@ func NewWSServer(c *conf.Server, eventBus event.Bus, eventBuffer *event.Buffer, 
 		sender:      sender,
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool {
-				return OriginAllowed(r.Header.Get("Origin"))
+				o := strings.TrimSpace(r.Header.Get("Origin"))
+				// Browsers may omit Origin for same-site WS; dev tools / proxies too.
+				if o == "" {
+					return true
+				}
+				return OriginAllowed(o)
 			},
 		},
 	}
@@ -158,25 +163,30 @@ func (s *WSServer) handleWS(w http.ResponseWriter, r *http.Request) {
 
 	globalMode := sessionID == "*"
 
-	tokenStr := strings.TrimSpace(r.URL.Query().Get("token"))
-	if tokenStr == "" {
-		tokenStr = r.Header.Get("Authorization")
-		tokenStr = strings.TrimPrefix(tokenStr, "Bearer ")
-	}
-	if tokenStr == "" {
-		if cookie, err := r.Cookie("access_token"); err == nil && cookie.Value != "" {
-			tokenStr = cookie.Value
+	var claims *auth.Auth
+	if auth.HTTPAuthBypassEnabled() {
+		claims = auth.DevBypassPrincipal()
+	} else {
+		tokenStr := strings.TrimSpace(r.URL.Query().Get("token"))
+		if tokenStr == "" {
+			tokenStr = r.Header.Get("Authorization")
+			tokenStr = strings.TrimPrefix(tokenStr, "Bearer ")
 		}
-	}
-	if tokenStr == "" {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	claims, err := auth.ParseTokenFromRequest(tokenStr)
-	if err != nil {
-		http.Error(w, "invalid token", http.StatusUnauthorized)
-		return
+		if tokenStr == "" {
+			if cookie, err := r.Cookie("access_token"); err == nil && cookie.Value != "" {
+				tokenStr = cookie.Value
+			}
+		}
+		if tokenStr == "" {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		var err error
+		claims, err = auth.ParseTokenFromRequest(tokenStr)
+		if err != nil {
+			http.Error(w, "invalid token", http.StatusUnauthorized)
+			return
+		}
 	}
 
 	userID := ""

@@ -93,7 +93,13 @@ make build     # 构建后端
 $env:DEPLOY_ENV="dev"
 $env:KRATOS_HTTP_AUTH_DISABLED="1"
 
-cd cmd/admin && go run . -conf ../../configs  # 启动服务
+go run ./cmd/admin -conf ./configs   # 在仓库根目录启动（推荐）
+
+本地登录：**用户名 `dev` / 密码 `dev`**（需 `KRATOS_HTTP_AUTH_DISABLED=1` 时自动种子）。
+
+**Ctrl+C 无法退出**（多见于 Windows + Cursor 终端）：再按一次 Ctrl+C 强制退出；或 `netstat -ano | findstr :8000` 查 PID 后 `taskkill /PID <pid> /F`。
+
+**WebSocket**（聊天流式、监控）：走 **HTTP 同端口** `ws://<host>:8000/v1/ws`（开发时经 Quasar 代理为 `ws://localhost:9001/v1/ws`）。`config.yaml` 里的 `server.ws.addr:8002` 为历史字段，当前实现挂在 Kratos HTTP 上，**不要**单独连 8002。
 ```
 
 ### 前端

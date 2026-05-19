@@ -19,6 +19,7 @@ export type EnvelopeType =
   | "team_run_started"
   | "team_run_finished"
   | "team_run_failed"
+  | "team_summary"
   | "team_step_started"
   | "team_step_finished"
   | "graph_step"

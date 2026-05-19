@@ -361,6 +361,7 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 		env.TeamID = teamRow.ID
 		env.Metadata = map[string]any{"run_id": run.ID, "run": cp}
 		r.td.Pipeline.Bus.Publish(ctx, env)
+		r.publishTeamRunSummary(ctx, run)
 	}
 	return userMsg, assistantMsg, nil
 }

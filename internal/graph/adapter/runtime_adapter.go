@@ -195,16 +195,24 @@ type trpcGraphBuilderFactory struct {
 	saver        trpcgraph.CheckpointSaver
 	eventBus     event.Bus
 	agentChecker biz.AgentExistenceCheckerFunc
+	buildDeps    *graphtrpc.BuildDeps
 }
 
 var _ biz.GraphBuilderFactory = (*trpcGraphBuilderFactory)(nil)
 
-func NewGraphBuilderFactory(registry *graphtrpc.Registry, saver trpcgraph.CheckpointSaver, eventBus event.Bus, agentChecker biz.AgentExistenceCheckerFunc) biz.GraphBuilderFactory {
+func NewGraphBuilderFactory(
+	registry *graphtrpc.Registry,
+	saver trpcgraph.CheckpointSaver,
+	eventBus event.Bus,
+	agentChecker biz.AgentExistenceCheckerFunc,
+	buildDeps *graphtrpc.BuildDeps,
+) biz.GraphBuilderFactory {
 	return &trpcGraphBuilderFactory{
 		registry:     registry,
 		saver:        saver,
 		eventBus:     eventBus,
 		agentChecker: agentChecker,
+		buildDeps:    buildDeps,
 	}
 }
 
@@ -296,7 +304,7 @@ func trpcCfgToBiz(cfg graphtrpc.GraphBuildConfig) biz.GraphBuildConfig {
 
 func (f *trpcGraphBuilderFactory) BuildAndRun(ctx context.Context, cfg biz.GraphBuildConfig, sessionID, graphID, execID string, initialState map[string]any) (biz.GraphRuntime, <-chan biz.GraphRuntimeEvent, error) {
 	trpcCfg := bizCfgToTrpc(cfg)
-	g, _, err := graphtrpc.BuildStateGraphWithRegistry(trpcCfg, f.registry)
+	g, _, err := graphtrpc.BuildStateGraphWithRegistry(ctx, trpcCfg, f.registry, f.buildDeps)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -318,7 +326,7 @@ func (f *trpcGraphBuilderFactory) BuildAndRun(ctx context.Context, cfg biz.Graph
 
 func (f *trpcGraphBuilderFactory) BuildAndResume(ctx context.Context, cfg biz.GraphBuildConfig, sessionID, graphID, execID, lineageID string, resumeValue map[string]any) (biz.GraphRuntime, <-chan biz.GraphRuntimeEvent, error) {
 	trpcCfg := bizCfgToTrpc(cfg)
-	g, _, err := graphtrpc.BuildStateGraphWithRegistry(trpcCfg, f.registry)
+	g, _, err := graphtrpc.BuildStateGraphWithRegistry(ctx, trpcCfg, f.registry, f.buildDeps)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -340,7 +348,7 @@ func (f *trpcGraphBuilderFactory) BuildAndResume(ctx context.Context, cfg biz.Gr
 
 func (f *trpcGraphBuilderFactory) Visualize(ctx context.Context, cfg biz.GraphBuildConfig) (any, error) {
 	trpcCfg := bizCfgToTrpc(cfg)
-	g, _, err := graphtrpc.BuildStateGraphWithRegistry(trpcCfg, f.registry)
+	g, _, err := graphtrpc.BuildStateGraphWithRegistry(ctx, trpcCfg, f.registry, f.buildDeps)
 	if err != nil {
 		return nil, fmt.Errorf("build state graph for visualization: %w", err)
 	}

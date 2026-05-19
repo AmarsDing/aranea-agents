@@ -23,7 +23,9 @@ export async function loadRuntimeConfig(): Promise<void> {
  * 新能力请通过 **proto + `web/src/services`** 以 Kratos 方式接入。
  *
  * **开发环境**：`backendUrl` 留空则 `kratosApi` 走同源 `/v1`（`quasar.config` 代理到后端），登录 Cookie 与页面同站；
- * 若写成 `http://127.0.0.1:8000` 而页面在 `http://localhost:9000`，浏览器视其为跨站，**默认 SameSite=Lax 的 Cookie 不会随 XHR 带上**，会出现大量 401。
+ * 开发时页面在 `http://localhost:9001`（Quasar），API 走同源 `/v1` 代理到 `:8000`。
+ * 若写成 `http://127.0.0.1:8000` 而页面在 `http://localhost:9001`，浏览器视其为跨站，**默认 SameSite=Lax 的 Cookie 不会随 XHR 带上**，会出现大量 401。
+ * **勿访问 `:9000`**：该端口为后端 gRPC，不是 Web UI。
  */
 export function getBackendOrigin(): string {
   if (runtimeConfig.backendUrl && runtimeConfig.backendUrl.trim().length > 0) {

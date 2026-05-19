@@ -51,13 +51,17 @@ import { useAppStore } from "../../../stores/app";
 import { useAuthStore } from "../../../stores/auth";
 import { useArtifactStore } from "../../../stores/artifact";
 import type { ArtifactMeta } from "../../artifact/types";
-import { useChatStream, useTeamStream } from "../useEnvelopeStream";
-import type { Envelope } from "../envelope";
+import {
+  createChatStream,
+  createTeamStream,
+  type UseEnvelopeStreamReturn
+} from "../useEnvelopeStream";
+import type { Envelope, WsUpstream } from "../envelope";
 import { upsertToolMessage } from "../envelopeToolCall";
 import { runStatusFromEnvelope } from "../envelopeRunStatus";
 import { patchStreamingMessage } from "../streamContentPatch";
 import type { TeamDefinition } from "../../teams/types";
-import { getServerHeartbeatState } from "../../heartbeat/useServerHeartbeat";
+import { checkBackendHealth, getServerHeartbeatState } from "../../heartbeat/useServerHeartbeat";
 
 function mockMessage(id: string, sessionID: string, role: string, content: string): Message {
   return {
@@ -399,7 +403,12 @@ export function useChatWorkspace() {
     const session = store.sessions.find((item) => item.id === sessionId) ?? null;
     store.selectedSession = session;
     store.messages = [];
-    if (session) await store.loadMessages();
+    if (session) {
+      await store.loadMessages();
+      if (selectedEntityKind.value === "agent") {
+        ensureChatStream(session.id);
+      }
+    }
   }
 
   async function onRenameSession(payload: { id: string; title: string }) {
@@ -469,7 +478,10 @@ export function useChatWorkspace() {
         default_provider: selectedModel?.provider || store.selectedAgent.provider,
         default_model: selectedModel?.model || store.selectedAgent.model
       });
-      if (store.selectedSession) await store.loadMessages();
+      if (store.selectedSession) {
+        await store.loadMessages();
+        ensureChatStream(store.selectedSession.id);
+      }
       return;
     }
 
@@ -489,12 +501,13 @@ export function useChatWorkspace() {
       ];
       teamSelectedSessionId.value = created.id;
       teamMessages.value[created.id] = [];
+      ensureTeamStream(created.id);
     }
   }
 
-  let chatStream: ReturnType<typeof useChatStream> | null = null;
+  let chatStream: UseEnvelopeStreamReturn | null = null;
   let chatStreamSessionId: string | null = null;
-  let teamStream: ReturnType<typeof useTeamStream> | null = null;
+  let teamStream: UseEnvelopeStreamReturn | null = null;
   let teamStreamSessionId: string | null = null;
 
   function ensureChatStream(sessionId: string) {
@@ -502,7 +515,7 @@ export function useChatWorkspace() {
       return chatStream;
     }
     chatStream?.disconnect();
-    chatStream = useChatStream(sessionId, {
+    chatStream = createChatStream(sessionId, {
       onServerShutdown: () => {
         $q.notify({
           type: "warning",
@@ -520,27 +533,33 @@ export function useChatWorkspace() {
       },
     });
     chatStream.onType("text_delta", (env: Envelope) => {
-      const sid = store.selectedSession?.id;
-      if (!sid || (!env.content?.text && !env.content?.reasoning)) return;
+      const sid = env.session_id || sessionId;
+      if (sid !== sessionId || (!env.content?.text && !env.content?.reasoning)) return;
       patchAgentMessages(sid, `ws-stream-${sid}`, env, false);
     });
     chatStream.onType("text_done", (env: Envelope) => {
-      const sid = store.selectedSession?.id;
-      if (!sid) return;
+      const sid = env.session_id || sessionId;
+      if (sid !== sessionId) return;
       patchAgentMessages(sid, `ws-stream-${sid}`, env, true);
     });
     chatStream.onType("tool_call", (env: Envelope) => {
-      const sid = store.selectedSession?.id;
-      if (!sid || !env.tool_call) return;
+      const sid = env.session_id || sessionId;
+      if (sid !== sessionId || !env.tool_call) return;
       store.messages = upsertToolMessage(store.messages, sid, env, "before");
     });
     chatStream.onType("tool_result", (env: Envelope) => {
-      const sid = store.selectedSession?.id;
-      if (!sid || !env.tool_call) return;
+      const sid = env.session_id || sessionId;
+      if (sid !== sessionId || !env.tool_call) return;
       store.messages = upsertToolMessage(store.messages, sid, env, "after");
     });
     chatStream.onType("run_status", (env: Envelope) => {
+      if (env.session_id && env.session_id !== sessionId) return;
       applyRunStatusFromEnvelope(env);
+      const meta = env.metadata as { status?: string; hint?: string } | undefined;
+      if (meta?.status === "queued" || meta?.hint === "message_queued") {
+        markSendingDone();
+        $q.notify({ type: "info", message: t("chat.messageQueued", "消息已加入当前运行的队列") });
+      }
     });
     chatStream.onType("runner_completion", async () => {
       markSendingDone();
@@ -574,12 +593,22 @@ export function useChatWorkspace() {
     return chatStream;
   }
 
+  /** WS connect is async; transport.send queues until OPEN — do not block on connected. */
+  function sendChatViaWs(stream: UseEnvelopeStreamReturn, upstream: WsUpstream): void {
+    stream.connect();
+    const transport = stream.transport.value;
+    if (!transport) {
+      throw new Error("WebSocket transport unavailable");
+    }
+    transport.send(upstream);
+  }
+
   function ensureTeamStream(sessionId: string) {
     if (teamStream && teamStream.transport.value && teamStreamSessionId === sessionId) {
       return teamStream;
     }
     teamStream?.disconnect();
-    teamStream = useTeamStream(sessionId, {
+    teamStream = createTeamStream(sessionId, {
       onReplayState: (replaying) => {
         wsReplaying.value = replaying;
       },
@@ -605,7 +634,13 @@ export function useChatWorkspace() {
       teamMessages.value[sid] = upsertToolMessage(teamMessages.value[sid] ?? [], sid, env, "after");
     });
     teamStream.onType("run_status", (env: Envelope) => {
+      if (env.session_id && env.session_id !== sessionId) return;
       applyRunStatusFromEnvelope(env);
+      const meta = env.metadata as { status?: string; hint?: string } | undefined;
+      if (meta?.status === "queued" || meta?.hint === "message_queued") {
+        markSendingDone();
+        $q.notify({ type: "info", message: t("chat.messageQueued", "消息已加入当前运行的队列") });
+      }
     });
     teamStream.onType("member_message_start", (env: Envelope) => {
       if (env.author && teamSelectedSessionId.value) {
@@ -705,25 +740,31 @@ export function useChatWorkspace() {
           mockMessage(pendingUserId, sessionId, "user", content)
         ];
 
-        const stream = ensureChatStream(sessionId);
-        const transport = stream.transport.value;
-        if (!transport || !transport.connected) {
-          const heartbeat = getServerHeartbeatState();
-          if (!heartbeat.isAlive.value) {
-            $q.notify({ type: "negative", message: "后端服务不可用，请重新登录", timeout: 0 });
+        const heartbeat = getServerHeartbeatState();
+        let backendUp = heartbeat.isAlive.value;
+        if (!backendUp) {
+          backendUp = await checkBackendHealth();
+          if (backendUp) {
+            heartbeat.isAlive.value = true;
+          }
+        }
+        if (!backendUp) {
+          const msg = import.meta.env.DEV
+            ? "后端不可用，请确认 admin 是否在 :8000 运行（页面应使用 http://localhost:9001）"
+            : "后端服务不可用，请重新登录";
+          $q.notify({ type: "negative", message: msg, timeout: import.meta.env.DEV ? 8000 : 0 });
+          if (!import.meta.env.DEV) {
             const auth = useAuthStore();
             auth.user = null;
             auth.sessionChecked = true;
             router.push({ name: "login" });
-          } else {
-            $q.notify({ type: "negative", message: "WebSocket 未连接，正在重连..." });
-            stream.connect();
           }
           store.messages = store.messages.filter((m) => !String(m.id).startsWith("pending-user-"));
           markSendingDone();
           return;
         }
-        transport.send({
+        const stream = ensureChatStream(sessionId);
+        sendChatViaWs(stream, {
           direction: "client_to_server",
           channel: "chat",
           type: "user_message",
@@ -779,26 +820,32 @@ export function useChatWorkspace() {
         const pendingUserId = `pending-user-${Date.now()}`;
         teamMessages.value[sessionId] = [...(teamMessages.value[sessionId] ?? []), mockMessage(pendingUserId, sessionId, "user", content)];
 
-        const stream = ensureTeamStream(sessionId);
-        const transport = stream.transport.value;
-        if (!transport || !transport.connected) {
-          const heartbeat = getServerHeartbeatState();
-          if (!heartbeat.isAlive.value) {
-            $q.notify({ type: "negative", message: "后端服务不可用，请重新登录", timeout: 0 });
+        const heartbeat = getServerHeartbeatState();
+        let backendUp = heartbeat.isAlive.value;
+        if (!backendUp) {
+          backendUp = await checkBackendHealth();
+          if (backendUp) {
+            heartbeat.isAlive.value = true;
+          }
+        }
+        if (!backendUp) {
+          const msg = import.meta.env.DEV
+            ? "后端不可用，请确认 admin 是否在 :8000 运行（页面应使用 http://localhost:9001）"
+            : "后端服务不可用，请重新登录";
+          $q.notify({ type: "negative", message: msg, timeout: import.meta.env.DEV ? 8000 : 0 });
+          if (!import.meta.env.DEV) {
             const auth = useAuthStore();
             auth.user = null;
             auth.sessionChecked = true;
             router.push({ name: "login" });
-          } else {
-            $q.notify({ type: "negative", message: "WebSocket 未连接，正在重连..." });
-            stream.connect();
           }
           const cur = teamMessages.value[sessionId] ?? [];
           teamMessages.value[sessionId] = cur.filter((item) => !String(item.id).startsWith("pending-user-"));
           markSendingDone();
           return;
         }
-        transport.send({
+        const stream = ensureTeamStream(sessionId);
+        sendChatViaWs(stream, {
           direction: "client_to_server",
           channel: "chat",
           type: "user_message",
