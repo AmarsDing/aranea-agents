@@ -3,6 +3,8 @@ package service
 import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/compress"
+	a2apkg "aranea-agents/internal/a2a"
+	"aranea-agents/internal/skill/importer"
 	"aranea-agents/internal/team"
 
 	"github.com/google/wire"
@@ -12,6 +14,7 @@ import (
 var ProviderSet = wire.NewSet(
 	wire.Bind(new(biz.NativeTurnCompressor), new(*SessionCompressor)),
 	wire.Bind(new(compress.Compressor), new(*compress.LLMService)),
+	wire.Bind(new(a2apkg.AgentTurnRunner), new(*ChatService)),
 	NewCompressHTTPClient,
 	compress.NewLLMService,
 	team.ProviderSet,
@@ -25,13 +28,13 @@ var ProviderSet = wire.NewSet(
 	NewCronService,
 	NewPluginService,
 	NewMCPServerService,
+	importer.NewEngine,
 	NewSkillService,
 	NewSessionService,
 	NewToolService,
 	NewChannelService,
 	NewUsageService,
 	NewMonitorService,
-	NewMemoryService,
 	NewSystemSettingService,
 	NewChannelIngress,
 	NewChatService,

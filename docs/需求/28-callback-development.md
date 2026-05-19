@@ -1,6 +1,6 @@
 # Callback 回调 — 开发计划
 
-> **版本**：2026-05-18 | **状态**：🟡 Chain 抽象已实现；❌ Agent/Model 回调未挂载；❌ 产品层规则未打通
+> **版本**：2026-05-19 | **状态**：🟢 Phase 1–3 已落地
 > **需求**：[28 callback.md](./28%20callback.md) · **设计**：[28 callback.design.md](./28%20callback.design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：EP-CB-01
 
@@ -14,8 +14,8 @@ Callback 回调：全链路回调钩子，覆盖 Agent/Model/Tool 执行前后�
 - `internal/agent/callbacks/` — Chain 抽象 + 适配器（已实现）
 - `internal/agent/trpc_build.go` — Agent 构造 + Tool 回调注入（部分实现）
 - `internal/plugin/trpc/` — Plugin Runtime + AuditLogPlugin（已实现）
-- `internal/biz/hook.go` — Hook CRUD（已实现，未与回调打通）
-- `internal/biz/plugin.go` — Plugin CRUD（已实现，未与 Chain 桥接）
+- `internal/biz/hook.go` — Hook CRUD + `hook_config` / `hook_resolver`
+- `internal/biz/plugin.go` — Plugin CRUD + `IncrementStats`
 
 ---
 
@@ -24,27 +24,26 @@ Callback 回调：全链路回调钩子，覆盖 Agent/Model/Tool 执行前后�
 | 项 | 状态 | 证据 |
 |----|------|------|
 | Chain 回调链抽象 | ✅ | `callbacks.go` + `adapter.go` + 测试 |
-| Tool AfterTool 回调 | ✅ | `trpc_build.go:buildToolCallbacks` |
+| Tool Before/After 回调 | ✅ | Chain：`toolCallTiming` + `toolConfirmation` + `ToolRecorderCallback` |
 | Plugin 运行时注入 | ✅ | `trpc_runtime.go:WithPlugins` |
-| AuditLogPlugin | ✅ | `plugin/trpc/audit.go`（仅 AfterTool） |
+| AuditLogPlugin | ✅ | Agent/Model/Tool 全点 + `StatsRecorder` 回写 |
 | Hook CRUD | ✅ | `biz/hook.go` + `data/hook.go` + `service/hook.go` |
 | Plugin CRUD | ✅ | `biz/plugin.go` + `data/plugin_repo.go` |
-| Agent BeforeAgent/AfterAgent | ❌ | Chain 存在但未挂到 LLMAgent |
-| Model BeforeModel/AfterModel | ❌ | Chain 存在但未挂到 Model |
-| PluginManager 统一管理 | ❌ | 无聚合三层回调的管理器 |
-| OnEvent 事件回调 | ❌ | 事件流未经回调处理 |
-| Hook → Callback 桥接 | ❌ | Hook CRUD 存在但未与 Chain 打通 |
-| Plugin → Chain 桥接 | ❌ | Plugin callback_points_json 未被消费 |
+| Agent BeforeAgent/AfterAgent | ✅ | `buildCallbackChainOptions` → `WithAgentCallbacks` |
+| Model BeforeModel/AfterModel | ✅ | `buildCallbackChainOptions` → `WithModelCallbacks` |
+| PluginManager 统一管理 | ✅ | `plugin/trpc/manager.go` + `TRPCBuilderDeps.PluginManager` |
+| OnEvent 事件回调 | ✅ | `RunnerPlugins()` + `aranea_event_bridge`；Hook `on_event` 点 |
+| Hook → Callback 桥接 | ✅ | `biz/hook_resolver.go` + `hook_callbacks.go` |
+| Plugin → Chain 桥接 | 🟡 | Plugin 经 Runner `WithPlugins`；`chain_adapter` 校验 callback_points；Hook 经 Chain + 错误隔离 |
 
 ---
 
-## 3. 差距与优化
+## 3. 差距与优化（后续）
 
-1. **P0**：Agent/Model 回调未挂载，Chain 抽象无法生效（EP-CB-01）
-2. **P1**：无 PluginManager，Plugin 和 Hook 无法统一生成 Chain
-3. **P1**：Hook 规则未解析为 Callback，产品层回调规则不可用
-4. **P2**：AuditLogPlugin 仅覆盖 AfterTool，未扩展到 Agent/Model
-5. **P2**：OnEvent 事件回调未实现
+1. **P1**：Plugin Phase 2 — 除 `audit_log` 外内置插件回调实现
+2. **P2**：Plugin `scope` 运行时过滤 + `UpdatePluginScope` API
+3. **P2**：Hook `modify` 覆盖更多字段（tool arguments 深度合并策略文档化）
+4. **P3**：将 Plugin 回调点镜像进 Chain（需避免与 Runner `WithPlugins` 双触发）
 
 ---
 
@@ -99,15 +98,15 @@ Callback 回调：全链路回调钩子，覆盖 Agent/Model/Tool 执行前后�
 
 ## 6. 验收标准
 
-- [ ] Agent 执行前后回调正确触发（Phase 1）
-- [ ] LLM 调用前后回调正确触发（Phase 1）
-- [ ] Tool 调用前后回调正确触发（Phase 1，不退化）
-- [ ] PluginManager 统一管理三层回调（Phase 2）
-- [ ] Hook 规则可解析为 Callback 并生效（Phase 2）
-- [ ] 事件流经 OnEvent 回调正确处理（Phase 3）
-- [ ] 产品层可配置回调规则（Phase 3）
-- [ ] `go test ./internal/agent/callbacks/...` 通过
-- [ ] `go test ./internal/plugin/trpc/...` 通过
+- [x] Agent 执行前后回调正确触发（Phase 1）
+- [x] LLM 调用前后回调正确触发（Phase 1）
+- [x] Tool 调用前后回调正确触发（Phase 1，不退化）
+- [x] PluginManager 统一管理三层回调（Phase 2）
+- [x] Hook 规则可解析为 Callback 并生效（Phase 2）
+- [x] 事件流经 OnEvent 回调正确处理（Phase 3）
+- [x] 产品层可配置回调规则（Phase 3：HooksPage + AgentHooksPanel + CallbackEditor）
+- [x] `go test ./internal/agent/callbacks/...` 通过
+- [x] `go test ./internal/plugin/trpc/...` 通过
 
 ---
 

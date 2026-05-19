@@ -14,6 +14,7 @@ export { useChatStore } from "./chat";
 export { useCronStore } from "./cron";
 export { useGraphStore } from "./graph";
 export { useHeartbeatStore } from "./heartbeat";
+export { useHooksStore } from "./hooks";
 export { useMcpStore } from "./mcp";
 export { useMemoryStore } from "./memory";
 export { useMonitorStore } from "./monitor";

@@ -8,7 +8,7 @@
 
 ## 1. 模块定位
 
-Message 消息：统一的事件模型和传输机制，以 EventBus + Envelope 为核心，WebSocket 为主传输通道，Chat SSE 为兼容回退。
+Message 消息：统一的事件模型和传输机制，以 EventBus + Envelope 为核心，WebSocket（`/v1/ws`）为 Chat / Team / Graph / Monitor 的实时主传输通道。历史 Chat SSE 路由已从当前主链路移除，不得作为新功能入口。
 
 **代码锚点**：
 
@@ -21,7 +21,7 @@ Message 消息：统一的事件模型和传输机制，以 EventBus + Envelope 
 | 事件投影 | `internal/agent/event_projector.go` | trpc event.Event → Envelope 投影 + 发布 |
 | 事件消费 | `internal/biz/event_bus_consumer.go` | 内部消费者（Buffer 追加 / StateDelta 持久化 / Usage 记录） |
 | WS 服务 | `internal/server/ws.go` | WebSocket 服务（挂入 Kratos HTTP Server） |
-| SSE 兼容 | `internal/service/chat.go` | Chat SSE 事件流（兼容回退） |
+| HTTP 后台入口 | `internal/service/chat.go` | `SendChatMessage` unary 入口；WS 上行、Channel、Cron 复用同一 native turn |
 | 前端传输 | `web/src/features/chat/ws-transport.ts` | createWsTransport（心跳/重连/pending 队列） |
 | 前端分发 | `web/src/features/chat/dispatcher.ts` | EnvelopeDispatcher 类（onType/onChannel/on） |
 | 前端 Hooks | `web/src/features/chat/useEnvelopeStream.ts` | useChatStream / useTeamStream / useMonitorStream / useGraphStream |
@@ -38,7 +38,7 @@ Message 消息：统一的事件模型和传输机制，以 EventBus + Envelope 
 | 统一事件总线 | ✅ | `event.Bus` 接口，支持 session_id / team_id / channel / filter_key 路由 |
 | 事件投影 | ✅ | `EventProjector.ProjectAndPublish`，Service 层不再直接处理事件 |
 | WebSocket 统一传输 | ✅ | 单连接多路复用（chat/monitor/team/graph/system），挂入 Kratos |
-| 双向通信 | ✅ | cancel / user_message / enqueue_message / subscribe / enable_log 上行 |
+| 双向通信 | ✅ | cancel / user_message / enqueue_message（→ `EnqueueUserMessage` RPC）/ subscribe / enable_log 上行 |
 | 背压控制 | ✅ | 三级 DropPolicy（DropOldest/DropNewest/BlockUpTo）+ Prometheus 丢弃计数 |
 | 事件缓冲与重放 | ✅ | `event.Buffer`（环形缓冲区 + TTL 30min + 每会话 200 上限）+ WS 同步屏障 |
 | Monitor 日志统一 | ✅ | `SlogBridge` + `EnvelopeTypeLog` + WS channel:monitor |
@@ -46,7 +46,7 @@ Message 消息：统一的事件模型和传输机制，以 EventBus + Envelope 
 | 服务端优雅关闭 | ✅ | `server_shutdown` 系统消息广播 |
 | 前端分发器 | ✅ | `EnvelopeDispatcher` 类（onType/onChannel/on + matchFilterKey） |
 | 前端场景 Hooks | ✅ | useChatStream / useTeamStream / useMonitorStream / useGraphStream |
-| Chat SSE 兼容 | ✅ | HTTP POST /v1/chat/messages/stream 保持可用 |
+| Chat SSE 主链路 | ✅ 已移除 | 实时事件统一走 `/v1/ws`；历史 SSE callback 类型仅可作为待清理兼容代码 |
 
 ### 2.2 待开发（按优先级排序）
 

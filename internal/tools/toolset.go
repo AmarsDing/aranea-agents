@@ -231,14 +231,18 @@ type AgentToolConfig struct {
 }
 
 type MCPServerConfig struct {
-	Name       string
-	Transport  string
-	ServerURL  string
-	Command    string
-	Args       []string
-	Headers    map[string]string
-	TimeoutSec int
-	ToolPrefix string
+	Name                string
+	Transport           string
+	ServerURL           string
+	Command             string
+	Args                []string
+	Env                 map[string]string
+	Headers             map[string]string
+	TimeoutSec          int
+	ToolPrefix          string
+	SessionReconnectMax int
+	AllowAdHocHTTP      bool
+	AdHocTimeoutSec     int
 }
 
 type MCPBrokerConfig struct {
@@ -431,6 +435,16 @@ func Assemble(ctx context.Context, cfg AssemblyConfig) (*AssembledToolsets, erro
 	return out, nil
 }
 
+// DefaultMCPServerTimeoutSec is applied when config_json.timeout_sec is unset.
+const DefaultMCPServerTimeoutSec = 60
+
+func mcpTimeoutDuration(timeoutSec int) time.Duration {
+	if timeoutSec <= 0 {
+		timeoutSec = DefaultMCPServerTimeoutSec
+	}
+	return parseDurationSec(timeoutSec)
+}
+
 func buildMCPToolSet(cfg MCPServerConfig) (ToolSet, error) {
 	transport := strings.TrimSpace(cfg.Transport)
 	if transport == "" {
@@ -442,14 +456,15 @@ func buildMCPToolSet(cfg MCPServerConfig) (ToolSet, error) {
 		Headers:   cfg.Headers,
 		Command:   strings.TrimSpace(cfg.Command),
 		Args:      cfg.Args,
-	}
-	if cfg.TimeoutSec > 0 {
-		connCfg.Timeout = parseDurationSec(cfg.TimeoutSec)
+		Timeout:   mcpTimeoutDuration(cfg.TimeoutSec),
 	}
 
 	opts := []trpcmcp.ToolSetOption{trpcmcp.WithName(cfg.Name)}
 	if pred := ToolFilterForPrefix(cfg.ToolPrefix); pred != nil {
 		opts = append(opts, trpcmcp.WithToolFilterFunc(pred))
+	}
+	if cfg.SessionReconnectMax > 0 {
+		opts = append(opts, trpcmcp.WithSessionReconnect(cfg.SessionReconnectMax))
 	}
 
 	return trpcmcp.NewMCPToolSet(connCfg, opts...), nil
@@ -468,9 +483,7 @@ func buildMCPBrokerTools(cfg MCPBrokerConfig) ([]Tool, error) {
 			Headers:   s.Headers,
 			Command:   strings.TrimSpace(s.Command),
 			Args:      s.Args,
-		}
-		if s.TimeoutSec > 0 {
-			connCfg.Timeout = parseDurationSec(s.TimeoutSec)
+			Timeout:   mcpTimeoutDuration(s.TimeoutSec),
 		}
 		name := strings.TrimSpace(s.Name)
 		if name == "" {
@@ -486,9 +499,7 @@ func buildMCPBrokerTools(cfg MCPBrokerConfig) ([]Tool, error) {
 	if cfg.AllowAdHocHTTP {
 		brokerOpts = append(brokerOpts, trpcmcpbroker.WithAllowAdHocHTTP(true))
 	}
-	if cfg.AdHocTimeoutSec > 0 {
-		brokerOpts = append(brokerOpts, trpcmcpbroker.WithAdHocHTTPTimeout(parseDurationSec(cfg.AdHocTimeoutSec)))
-	}
+	brokerOpts = append(brokerOpts, trpcmcpbroker.WithAdHocHTTPTimeout(mcpTimeoutDuration(cfg.AdHocTimeoutSec)))
 
 	broker := trpcmcpbroker.New(brokerOpts...)
 	tools := broker.Tools()

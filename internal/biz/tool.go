@@ -209,6 +209,7 @@ type ToolRepo interface {
 	SyncBuiltinTools(ctx context.Context) error
 	GetToolInvocationParams(ctx context.Context, invocationID string) (ToolInvocationParam, error)
 	ListToolAgentOverrides(ctx context.Context, toolKey string) ([]ToolAgentOverride, error)
+	ListToolAgentOverridesByAgent(ctx context.Context, agentID string) ([]ToolAgentOverride, error)
 	UpsertToolAgentOverride(ctx context.Context, in ToolAgentOverrideInput) (ToolAgentOverride, error)
 	DeleteToolAgentOverride(ctx context.Context, toolKey string, agentID string) error
 }
@@ -320,6 +321,14 @@ func (u *ToolUsecase) ListToolAgentOverrides(ctx context.Context, toolKey string
 		return nil, errors.BadRequest("TOOL", "tool key is required")
 	}
 	return u.repo.ListToolAgentOverrides(ctx, toolKey)
+}
+
+func (u *ToolUsecase) ListToolAgentOverridesByAgent(ctx context.Context, agentID string) ([]ToolAgentOverride, error) {
+	agentID = strings.TrimSpace(agentID)
+	if agentID == "" {
+		return nil, errors.BadRequest("TOOL", "agent id is required")
+	}
+	return u.repo.ListToolAgentOverridesByAgent(ctx, agentID)
 }
 
 func (u *ToolUsecase) UpsertToolAgentOverride(ctx context.Context, in ToolAgentOverrideInput) (ToolAgentOverride, error) {

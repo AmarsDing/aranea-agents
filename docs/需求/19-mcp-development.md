@@ -39,7 +39,7 @@ MCP（Model Context Protocol）集成：支持 Agent 通过 MCP 协议连接外�
 | 前端管理 | ✅ | McpServersPage + McpServerFormDialog + McpServerItem + 测试连接 |
 | 健康元数据持久化 | ✅ | `TestMCPServer` → `persistHealth` 写入 metadata_json |
 | 健康检查定时任务 | ✅ | `internal/mcphealth/runner.go`：后台定时探活，写入 metadata_json 的 health_status / last_health_at |
-| MCP 工具调用超时 | 🟡 | `config_json.timeout_sec` 已有字段，但运行时未强制执行 |
+| MCP 工具调用超时 | ✅ | 未配置时默认 60s；`buildMCPToolSet` / MCPBroker 传入 `ConnectionConfig.Timeout` |
 | MCP Server 认证 | ❌ | 仅 headers 传静态 key，无 OAuth2 / API Key 动态认证 |
 | MCP 会话重连 | ❌ | SSE/StreamableHTTP 断线后无自动重连 |
 | MCP 运行时发现 | 🟡 | MCPBroker 已提供 `mcp_list_servers` 等工具，但未在 Agent 默认启用 |
@@ -63,7 +63,7 @@ MCP（Model Context Protocol）集成：支持 Agent 通过 MCP 协议连接外�
 
 | 方向 | 现状与问题 | 建议 |
 |------|------------|------|
-| 健康检查定时任务 | 仅手动测试连接，无后台探活 | 增加 Cron 定时探活，写入 `metadata_json` 的 `health_status` / `last_health_at` |
+| 健康检查定时任务 | ✅ 已有后台探活 | 保持 `internal/mcphealth/runner.go` 定时写入 `metadata_json` 的 `health_status` / `last_health_at`，后续只补告警与前端状态提示 |
 | MCP 闭环 | `MCPServer` → mcptoolset → BuilderDeps.Toolsets 链路需与 session 的 `MCPCallCount` 统计打通 | 补齐从配置到运行时到统计的端到端验证 |
 | 超时与资源 | `timeout_sec` 字段已有但运行时未强制执行 | 在 `buildMCPToolSet` 中将 `timeout_sec` 传入 `ConnectionConfig.Timeout`，确保工具调用超时 |
 | 会话重连 | SSE/StreamableHTTP 断线后无自动重连 | 依赖 trpc-agent-go `mcpbroker` 的重连能力，需验证并配置重连策略 |
@@ -74,7 +74,7 @@ MCP（Model Context Protocol）集成：支持 Agent 通过 MCP 协议连接外�
 
 ## 5. 开发阶段
 
-- **Phase 1**：MCP Server 健康检查定时任务 + 超时强制执行
+- **Phase 1**：MCP 工具调用超时强制执行（健康检查定时任务已完成）
 - **Phase 2**：MCP 调用统计闭环 + MCPBroker 默认启用
 - **Phase 3**：MCP Server 认证配置 + 会话重连验证
 

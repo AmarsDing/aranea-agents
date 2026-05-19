@@ -298,6 +298,8 @@ type SessionRepository interface {
 	UpdateSessionTurn(ctx context.Context, id string, fields SessionTurnUpdateFields) (SessionTurn, error)
 	ListSessionTurns(ctx context.Context, sessionID string, limit, offset int) (SessionTurnListResult, error)
 	GetSessionTurn(ctx context.Context, id string) (SessionTurn, error)
+	// IncrementInvocationCounts bumps session-level tool / MCP / skill counters after a runtime invocation.
+	IncrementInvocationCounts(ctx context.Context, sessionID string, toolDelta, mcpDelta, skillDelta int) error
 }
 
 // SessionUsecase handles session CRUD + timeline（不包含发送消息）.
@@ -581,6 +583,15 @@ func (uc *SessionUsecase) UpdateTurn(ctx context.Context, id string, fields Sess
 		return SessionTurn{}, validationErr("turn id is required")
 	}
 	return uc.sessions.UpdateSessionTurn(ctx, id, fields)
+}
+
+// IncrementInvocationCounts bumps session.tool_call_count / mcp_call_count / skill_call_count.
+func (uc *SessionUsecase) IncrementInvocationCounts(ctx context.Context, sessionID string, toolDelta, mcpDelta, skillDelta int) error {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" || (toolDelta == 0 && mcpDelta == 0 && skillDelta == 0) {
+		return nil
+	}
+	return uc.sessions.IncrementInvocationCounts(ctx, sessionID, toolDelta, mcpDelta, skillDelta)
 }
 
 func (uc *SessionUsecase) ListTurns(ctx context.Context, sessionID string, limit, offset int) (SessionTurnListResult, error) {

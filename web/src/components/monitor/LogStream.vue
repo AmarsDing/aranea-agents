@@ -45,6 +45,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import type { MonitorLogLine, StreamState } from "../../features/monitor/types";
+import { GLOBAL_WS_SESSION_ID } from "../../config/runtime";
 import { useMonitorStore } from "../../stores/monitor/index";
 
 const lines = ref<MonitorLogLine[]>([]);
@@ -101,7 +102,7 @@ function start() {
   stop();
   state.value = "connecting";
   wsSub = monitorStore.startLogsStream(
-    "monitor",
+    GLOBAL_WS_SESSION_ID,
     (line) => {
       state.value = "live";
       lines.value = [...lines.value, line].slice(-5000);

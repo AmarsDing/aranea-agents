@@ -203,6 +203,113 @@ message PreviewSkillRuntimeResponse {
   repeated string enabled_skill_slugs = 3;
 }
 
+// Skill import (ZIP batch). JSON field names match web/src/features/skills/types.ts (snake_case).
+message SkillImportIssue {
+  string type = 1;
+  string message = 2;
+}
+
+message SkillImportCandidate {
+  string candidate_id = 1;
+  string name = 2;
+  string slug = 3;
+  string description = 4;
+  string body_preview = 5;
+  string target_dir = 6;
+  string validation_status = 7;
+  string status_icon = 8;
+  repeated SkillImportIssue warnings = 9;
+  repeated SkillImportIssue blocks = 10;
+}
+
+message SkillSimilarityMetrics {
+  double similarity_score = 1;
+  double name_similarity = 2;
+  double description_similarity = 3;
+  double body_similarity = 4;
+  double trigger_similarity = 5;
+  double tool_similarity = 6;
+  string conflict_risk = 7;
+  string recommendation = 8;
+  double confidence = 9;
+}
+
+message SkillSimilaritySource {
+  string id = 1;
+  string name = 2;
+  string slug = 3;
+  string description = 4;
+  string version = 5;
+  string body_preview = 6;
+}
+
+message SkillConflictGroup {
+  string group_id = 1;
+  double highest_similarity_score = 2;
+  SkillSimilarityMetrics metrics = 3;
+  string reason = 4;
+  repeated string evidence = 5;
+  repeated string candidate_ids = 6;
+  repeated SkillSimilaritySource existing_skills = 7;
+  bool can_refine = 8;
+}
+
+message SkillImportJob {
+  string job_id = 1;
+  string status = 2;
+  string validation_status = 3;
+  string storage_root = 4;
+  repeated SkillImportCandidate candidates = 5;
+  repeated SkillConflictGroup conflict_groups = 6;
+  string message = 7;
+}
+
+message ImportSkillZipResponse {
+  string job_id = 1;
+}
+
+message GetSkillImportJobRequest {
+  string job_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message SkillImportDecision {
+  string candidate_id = 1;
+  string group_id = 2;
+  string action = 3 [(google.api.field_behavior) = REQUIRED];
+  string merged_name = 4;
+  string merged_description = 5;
+  string merged_body = 6;
+  repeated SkillTag merged_tags = 7;
+}
+
+message ApplySkillImportRequest {
+  string job_id = 1 [(google.api.field_behavior) = REQUIRED];
+  repeated SkillImportDecision decisions = 2;
+}
+
+message SkillImportApplyResult {
+  repeated string created_skill_ids = 1;
+  repeated string skipped_candidate_ids = 2;
+  string message = 3;
+}
+
+message RefineSkillImportConflictRequest {
+  string job_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string group_id = 2 [(google.api.field_behavior) = REQUIRED];
+  string provider = 3;
+  string model = 4;
+  string instructions = 5;
+}
+
+message SkillRefineResult {
+  string merged_name = 1;
+  string merged_description = 2;
+  string merged_body = 3;
+  repeated SkillTag merged_tags = 4;
+  repeated string source_candidate_ids = 5;
+  repeated string source_existing_skill_ids = 6;
+}
+
 service SkillService {
   rpc ListSkills(ListSkillsRequest) returns (ListSkillsResponse) {
     option (google.api.http) = {get: "/v1/skills"};
@@ -266,5 +373,22 @@ service SkillService {
   }
   rpc ListSkillRuns(ListSkillRunsRequest) returns (ListSkillRunsResponse) {
     option (google.api.http) = {get: "/v1/skill-runs"};
+  }
+  // ImportSkillZip is served via multipart POST /v1/skills/import (RegisterSkillImportMultipart on SkillService).
+  rpc ImportSkillZip(google.protobuf.Empty) returns (ImportSkillZipResponse);
+  rpc GetSkillImportJob(GetSkillImportJobRequest) returns (SkillImportJob) {
+    option (google.api.http) = {get: "/v1/skills/import/{job_id}"};
+  }
+  rpc ApplySkillImport(ApplySkillImportRequest) returns (SkillImportApplyResult) {
+    option (google.api.http) = {
+      post: "/v1/skills/import/{job_id}/apply"
+      body: "*"
+    };
+  }
+  rpc RefineSkillImportConflict(RefineSkillImportConflictRequest) returns (SkillRefineResult) {
+    option (google.api.http) = {
+      post: "/v1/skills/import/{job_id}/conflict-groups/{group_id}/refine"
+      body: "*"
+    };
   }
 }

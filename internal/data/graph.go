@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"aranea-agents/internal/biz"
-	graphtrpc "aranea-agents/internal/graph/trpc"
 
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/graphdefinition"
@@ -288,15 +287,4 @@ func entGraphRunToBiz(row *ent.GraphExecution) *biz.GraphExecution {
 	_ = json.Unmarshal([]byte(row.CurrentStateJSON), &exec.CurrentState)
 	_ = json.Unmarshal([]byte(row.StepsJSON), &exec.Steps)
 	return exec
-}
-
-func NewGraphCheckpointSaver(data *Data) (*graphtrpc.SQLiteCheckpointSaver, error) {
-	if data == nil {
-		return nil, fmt.Errorf("data is nil")
-	}
-	db := data.RawDB()
-	if db == nil {
-		return nil, fmt.Errorf("sqlite raw db is nil")
-	}
-	return graphtrpc.NewSQLiteCheckpointSaver(db)
 }

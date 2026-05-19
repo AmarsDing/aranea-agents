@@ -1,4 +1,5 @@
 import { createMonitorService } from "../../services/index";
+import { GLOBAL_WS_SESSION_ID } from "../../config/runtime";
 import type {
   AuditLog,
   AuditQuery,
@@ -13,6 +14,7 @@ import type {
 import { listModelUsageEvents } from "../usage/api";
 import { useEnvelopeStream } from "../chat/useEnvelopeStream";
 import type { Envelope, EnvelopeType } from "../chat/envelope";
+import { TEAM_RUNTIME_ENVELOPE_TYPES, teamRunEventFromEnvelope } from "../teams/teamRunEventFromEnvelope";
 
 const monitor = createMonitorService();
 
@@ -110,13 +112,33 @@ export async function getMonitorLogs(): Promise<MonitorLogSnapshot> {
   };
 }
 
+type MonitorWsSub = {
+  close: () => void;
+  connected: ReturnType<typeof useEnvelopeStream>["connected"];
+  enableLog?: (enabled: boolean) => void;
+};
+
+function resolveMonitorSessionId(sessionId?: string): string {
+  const trimmed = String(sessionId ?? "").trim();
+  if (!trimmed || trimmed === "monitor") {
+    return GLOBAL_WS_SESSION_ID;
+  }
+  return trimmed;
+}
+
+/** Live monitor logs via `WS /v1/ws` (`session_id=*` for admin-wide stream). */
 export function subscribeMonitorLogsWs(
   sessionId: string,
   onLine: (line: MonitorLogLine) => void,
   onError?: (error: string) => void,
   onConnected?: () => void
-) {
-  const stream = useEnvelopeStream({ sessionId, channels: ["monitor", "system"], autoConnect: false, logEnabled: false });
+): MonitorWsSub {
+  const stream = useEnvelopeStream({
+    sessionId: resolveMonitorSessionId(sessionId),
+    channels: ["monitor", "system"],
+    autoConnect: false,
+    logEnabled: false,
+  });
 
   stream.onType("log", (env: Envelope) => {
     const level = (env.metadata?.level as MonitorLogLine["level"]) ?? "INFO";
@@ -126,7 +148,7 @@ export function subscribeMonitorLogsWs(
       level,
       message: env.content?.text ?? "",
       source: env.author ?? "monitor",
-      created_at: env.timestamp
+      created_at: env.timestamp,
     });
   });
 
@@ -147,33 +169,28 @@ export function subscribeMonitorLogsWs(
   };
 }
 
+/** Team / runtime monitor events via `WS /v1/ws` (global `session_id=*` by default). */
 export function subscribeMonitorRuntimeEventsWs(
   sessionId: string,
   onEvent: (event: TeamRunEvent) => void,
   onError?: (error: string) => void
-) {
-  const stream = useEnvelopeStream({ sessionId, channels: ["monitor", "system"], autoConnect: false, logEnabled: false });
-
-  stream.onType("log", (env: Envelope) => {
-    const eventType = (env.metadata?.event_type as string) ?? env.type;
-    onEvent({
-      type: eventType,
-      team_id: env.team_id ?? "",
-      run_id: "",
-      session_id: env.session_id,
-      payload: env.metadata ?? {}
-    });
+): MonitorWsSub {
+  const stream = useEnvelopeStream({
+    sessionId: resolveMonitorSessionId(sessionId),
+    channels: ["monitor", "team", "system"],
+    autoConnect: false,
+    logEnabled: false,
   });
 
-  stream.onType("intent_pass", (env: Envelope) => {
-    onEvent({
-      type: "intent_pass",
-      team_id: env.team_id ?? "",
-      run_id: "",
-      session_id: env.session_id,
-      payload: env.metadata ?? {}
-    });
-  });
+  const dispatch = (env: Envelope) => {
+    const mapped = teamRunEventFromEnvelope(env);
+    if (mapped) {
+      onEvent(mapped);
+    }
+  };
+
+  stream.onType(TEAM_RUNTIME_ENVELOPE_TYPES, dispatch);
+  stream.onType("log", dispatch);
 
   stream.onType("error", (env: Envelope) => {
     onError?.(env.error?.message ?? "monitor ws error");
@@ -183,7 +200,7 @@ export function subscribeMonitorRuntimeEventsWs(
 
   return {
     close: () => stream.disconnect(),
-    connected: stream.connected
+    connected: stream.connected,
   };
 }
 

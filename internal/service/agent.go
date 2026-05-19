@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	stderrors "errors"
+	"fmt"
 
 	v1 "aranea-agents/api/kratos/agent/v1"
 	"aranea-agents/internal/biz"
@@ -19,11 +20,12 @@ type AgentService struct {
 
 	uc    *biz.AgentUsecase
 	evoUC *biz.EvolutionUsecase
+	mon   *biz.MonitorUsecase
 }
 
 // NewAgentService constructs the service.
-func NewAgentService(uc *biz.AgentUsecase, evoUC *biz.EvolutionUsecase) *AgentService {
-	return &AgentService{uc: uc, evoUC: evoUC}
+func NewAgentService(uc *biz.AgentUsecase, evoUC *biz.EvolutionUsecase, mon *biz.MonitorUsecase) *AgentService {
+	return &AgentService{uc: uc, evoUC: evoUC, mon: mon}
 }
 
 func fromProtoRuntime(pb *v1.AgentRuntimeSettings) *biz.AgentRuntimeSettings {
@@ -386,6 +388,7 @@ func (s *AgentService) CreateAgent(ctx context.Context, req *v1.CreateAgentReque
 	if err != nil {
 		return nil, err
 	}
+	biz.RecordAdminAudit(ctx, s.mon, "agent.create", "agent", created.ID, fmt.Sprintf("key=%s", created.AgentKey))
 	return toProtoAgent(created), nil
 }
 
@@ -414,6 +417,7 @@ func (s *AgentService) UpdateAgent(ctx context.Context, req *v1.UpdateAgentReque
 		}
 		return nil, err
 	}
+	biz.RecordAdminAudit(ctx, s.mon, "agent.update", "agent", a.ID, fmt.Sprintf("key=%s", a.AgentKey))
 	return toProtoAgent(a), nil
 }
 
@@ -422,6 +426,7 @@ func (s *AgentService) DeleteAgent(ctx context.Context, req *v1.DeleteAgentReque
 	if err := s.uc.Delete(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
+	biz.RecordAdminAudit(ctx, s.mon, "agent.delete", "agent", req.GetId(), "")
 	return &emptypb.Empty{}, nil
 }
 

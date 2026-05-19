@@ -28,7 +28,7 @@ func TRPCModelForProviderModel(ctx context.Context, catalog *biz.LlmProviderMode
 	if err != nil {
 		return nil, err
 	}
-	cfg, err := CatalogFromProviderModel(pm)
+	cfg, err := CatalogFromModel(ModelCatalogInput{Model: pm.Model, ConfigJSON: pm.ConfigJSON})
 	if err != nil {
 		return nil, err
 	}
@@ -49,6 +49,7 @@ func trpcModelFromCatalogConfig(ctx context.Context, cfg CatalogConfig, rt *Roun
 	if err != nil {
 		return nil, err
 	}
+	m = WrapModelWithMetrics(m, strings.TrimSpace(cfg.ProviderType), name)
 
 	return wrapHA(ctx, m, cfg, rt)
 }

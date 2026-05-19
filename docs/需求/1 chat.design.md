@@ -408,10 +408,9 @@ type ChatService struct {
     td             rt.TurnDeps
     pluginRT       *plugintrpc.Runtime
     skillDBRepo    trpcskill.Repository
-    activeRuns     sync.Map    // sessionID → trpcrunner.Runner
-    pendingQueue   sync.Map    // sessionID → []pendingEntry
-    pendingCancels sync.Map    // sessionID → context.CancelFunc
-    runStatuses    sync.Map    // sessionID → *runStatusEntry
+    runs           *RunRegistry // internal/runtime：active run、pending cancel、run status
+    pendingQueue   sync.Map    // sessionID → []pendingEntry（仍由 ChatService 持有）
+    awaitChans     sync.Map    // sessionID → await reply channel
     awaitChans     sync.Map    // sessionID → chan awaitReplyCh
 }
 
@@ -475,7 +474,7 @@ type pendingEntry struct {
 7. 从 pendingCancels 删除
 ```
 
-当前 `activeRuns` 由单 Agent `runSingleAgentViaTRPC` 和 Team turn `teamRunGuard` 共同登记；`lockSession` per-session 互斥锁保护 `activeRuns.Load/Store` 原子性，消除 TOCTOU 竞态。Team turn 完成后通过 defer 调用 `processPendingQueue`，与单 Agent 行为一致。
+当前 `RunRegistry` 由单 Agent `StoreRunner` / `StorePlaceholder` 和 Team `StoreCancelable` 共同登记；`lockSession` per-session 互斥锁保护并发检查。Team turn 完成后 defer `Finish` 并调用 `processPendingQueue`，与单 Agent 行为一致。运行中追加消息经 `EnqueueUserMessage`（HTTP/WS）或 `SendChatMessage` 在 active run 时优先 steerable enqueue。
 
 #### GetPendingMessages
 

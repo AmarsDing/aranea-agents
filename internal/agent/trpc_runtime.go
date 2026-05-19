@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
+	trpcartifact "trpc.group/trpc-go/trpc-agent-go/artifact"
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
 	trpcmemory "trpc.group/trpc-go/trpc-agent-go/memory"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
@@ -17,9 +18,12 @@ import (
 const TRPCDefaultAppName = "aranea"
 
 type TRPCRunnerDeps struct {
-	AppName        string
-	SessionService trpcsession.Service
-	MemoryService  trpcmemory.Service
+	AppName         string
+	SessionService  trpcsession.Service
+	MemoryService   trpcmemory.Service
+	ArtifactService trpcartifact.Service
+	Ingestor              trpcsession.Ingestor
+	AwaitUserReplyRouting bool
 	// Plugins is an optional list of runner-level plugins injected at runner creation.
 	// Populate via plugintrpc.Runtime.Plugins() after hot-loading from the DB.
 	Plugins []trpcplugin.Plugin
@@ -41,6 +45,15 @@ func NewTRPCRunner(root trpcagent.Agent, deps TRPCRunnerDeps, opts ...trpcrunner
 	}
 	if len(deps.Plugins) > 0 {
 		opts = append(opts, trpcrunner.WithPlugins(deps.Plugins...))
+	}
+	if deps.ArtifactService != nil {
+		opts = append(opts, trpcrunner.WithArtifactService(deps.ArtifactService))
+	}
+	if deps.Ingestor != nil {
+		opts = append(opts, trpcrunner.WithSessionIngestor(deps.Ingestor))
+	}
+	if deps.AwaitUserReplyRouting {
+		opts = append(opts, trpcrunner.WithAwaitUserReplyRouting(true))
 	}
 	r := trpcrunner.NewRunner(appName, root, opts...)
 	mr, ok := r.(trpcrunner.ManagedRunner)

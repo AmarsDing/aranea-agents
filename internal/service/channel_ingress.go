@@ -178,6 +178,7 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 			tid := teamID
 			req.TeamId = &tid
 		}
+		// Uses ChatService.runNativeAgentTurn → shared RunGateway (active run / pending / cancel).
 		_, asst, err := h.chat.RunNativeTurnUnary(r.Context(), req)
 		if err != nil {
 			_ = h.recordDelivery(r.Context(), chRow.ID, "error", map[string]any{"phase": "chat", "error": err.Error()}, err.Error())

@@ -8,7 +8,9 @@ import {
   ingestDocument,
   listCollections,
   listDocuments,
-  searchKnowledge
+  searchKnowledge,
+  getEmbedderConfig,
+  updateEmbedderConfig
 } from "../../features/knowledge/api";
 import type {
   CreateCollectionInput,
@@ -18,7 +20,9 @@ import type {
   KnowledgeDocument,
   ListCollectionsResult,
   ListDocumentsResult,
-  SearchKnowledgeQuery
+  SearchKnowledgeQuery,
+  EmbedderConfig,
+  UpdateEmbedderConfigInput
 } from "../../features/knowledge/types";
 
 export const useKnowledgeStore = defineStore("knowledge", () => {
@@ -27,6 +31,7 @@ export const useKnowledgeStore = defineStore("knowledge", () => {
   /** Documents keyed by collection_id */
   const documentsByCollection = ref<Record<string, KnowledgeDocument[]>>({});
   const loading = ref(false);
+  const embedderConfig = ref<EmbedderConfig | null>(null);
 
   async function loadCollections(params: { limit?: number; offset?: number } = {}): Promise<ListCollectionsResult> {
     loading.value = true;
@@ -89,11 +94,24 @@ export const useKnowledgeStore = defineStore("knowledge", () => {
     return searchKnowledge(query);
   }
 
+  async function loadEmbedderConfig(): Promise<EmbedderConfig> {
+    const cfg = await getEmbedderConfig();
+    embedderConfig.value = cfg;
+    return cfg;
+  }
+
+  async function saveEmbedderConfig(input: UpdateEmbedderConfigInput): Promise<EmbedderConfig> {
+    const cfg = await updateEmbedderConfig(input);
+    embedderConfig.value = cfg;
+    return cfg;
+  }
+
   return {
     collections,
     collectionsTotal,
     documentsByCollection,
     loading,
+    embedderConfig,
     loadCollections,
     addCollection,
     removeCollection,
@@ -101,6 +119,8 @@ export const useKnowledgeStore = defineStore("knowledge", () => {
     loadDocuments,
     ingest,
     removeDocument,
-    search
+    search,
+    loadEmbedderConfig,
+    saveEmbedderConfig
   };
 });

@@ -3,6 +3,7 @@ package biz
 import (
 	"context"
 	"log/slog"
+	"strings"
 	"time"
 
 	"aranea-agents/internal/event"
@@ -14,6 +15,8 @@ type EventBusConsumer struct {
 	eventBuffer *event.Buffer
 	sessions    *SessionUsecase
 	usage       *UsageUsecase
+	monitor     *MonitorUsecase
+	memWorker   *TurnMemoryWorker
 }
 
 func NewEventBusConsumer(
@@ -21,12 +24,16 @@ func NewEventBusConsumer(
 	eventBuffer *event.Buffer,
 	sessions *SessionUsecase,
 	usage *UsageUsecase,
+	monitor *MonitorUsecase,
+	memWorker *TurnMemoryWorker,
 ) *EventBusConsumer {
 	return &EventBusConsumer{
 		eventBus:    eventBus,
 		eventBuffer: eventBuffer,
 		sessions:    sessions,
 		usage:       usage,
+		monitor:     monitor,
+		memWorker:   memWorker,
 	}
 }
 
@@ -65,11 +72,33 @@ func (c *EventBusConsumer) handleDomainEvent(ctx context.Context, de DomainEvent
 }
 
 func (c *EventBusConsumer) handleRunnerCompletion(ctx context.Context, de DomainEvent) {
+	if c.memWorker != nil {
+		c.memWorker.OnRunnerCompletion(ctx, de)
+	}
+	if c.monitor != nil {
+		status := "ok"
+		if de.Error != nil {
+			status = "error"
+		}
+		if err := c.monitor.RecordMonitorEvent(ctx, MonitorEventWrite{
+			EventKey:     "runner.completion",
+			Name:         "Runner completed",
+			Description:  strings.TrimSpace(de.Author),
+			Status:       status,
+			MetadataJSON: monitorRunnerCompletionMeta(de),
+		}); err != nil {
+			slog.Warn("event_bus_consumer: monitor event failed", "error", err, "session_id", de.SessionID)
+		}
+	}
 	if de.Usage == nil {
 		return
 	}
 	if c.usage != nil {
 		now := time.Now().UTC()
+		status := "ok"
+		if de.Error != nil {
+			status = "error"
+		}
 		_, err := c.usage.RecordTokenUsageEvent(ctx, TokenUsageEvent{
 			SessionID:     de.SessionID,
 			AgentID:       de.Author,
@@ -79,7 +108,7 @@ func (c *EventBusConsumer) handleRunnerCompletion(ctx context.Context, de Domain
 			OccurredAt:    now.Format(time.RFC3339),
 			DateKey:       now.Format("2006-01-02"),
 			HourKey:       now.Format("2006-01-02T15"),
-			Status:        "ok",
+			Status:        status,
 			StreamEnabled: true,
 		})
 		if err != nil {

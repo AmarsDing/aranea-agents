@@ -8,8 +8,10 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/sessionmemory"
 	"aranea-agents/internal/event"
+	aramemory "aranea-agents/internal/memory"
 	"aranea-agents/internal/provider"
 
+	trpcartifact "trpc.group/trpc-go/trpc-agent-go/artifact"
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 )
 
@@ -27,9 +29,10 @@ type Catalog struct {
 
 // PersistenceSet groups the session and memory persistence services for a turn.
 type PersistenceSet struct {
-	Session  trpcsession.Service  // SQLite-backed or in-memory session service
-	Memory   *sessionmemory.Store // SQLite L1/L2 memory store
-	AgentMCP *biz.AgentMCPTooling // per-agent MCP tool configuration
+	Session  trpcsession.Service    // SQLite-backed or in-memory session service
+	Memory   aramemory.RuntimeSet   // TRPC memory service + L0–L4 admin port
+	AgentMCP *biz.AgentMCPTooling   // per-agent MCP tool configuration
+	Artifact trpcartifact.Service   // optional; wired from biz.ArtifactUsecase adapter
 }
 
 // EventPipeline wraps the event bus used for projecting runtime events
@@ -46,9 +49,10 @@ type TurnDeps struct {
 	Persist  PersistenceSet
 	Pipeline EventPipeline
 
-	Sessions *biz.SessionUsecase
-	LLMHTTP  *http.Client
-	Compress biz.NativeTurnCompressor
+	Sessions  *biz.SessionUsecase
+	LLMHTTP   *http.Client
+	Compress  biz.NativeTurnCompressor
+	RunnerMgr *RunnerManager
 }
 
 // RoundTrip returns a provider.RoundTrip backed by the LLMHTTP client.
@@ -58,11 +62,16 @@ func (d TurnDeps) RoundTrip() *provider.RoundTrip {
 
 // SQLiteSessionMemory reports whether the turn has an active SQLite memory store.
 func (d TurnDeps) SQLiteSessionMemory() bool {
-	return d.Persist.Memory != nil
+	return d.Persist.Memory.Available()
 }
 
 // NewPersistenceSet constructs a PersistenceSet from its three components.
 // Used by Wire when wiring the dependency graph.
-func NewPersistenceSet(store *sessionmemory.Store, mcp *biz.AgentMCPTooling, sess trpcsession.Service) PersistenceSet {
-	return PersistenceSet{Session: sess, Memory: store, AgentMCP: mcp}
+func NewPersistenceSet(store *sessionmemory.Store, mcp *biz.AgentMCPTooling, sess trpcsession.Service, artifact trpcartifact.Service) PersistenceSet {
+	return PersistenceSet{Session: sess, Memory: aramemory.NewRuntimeSet(store), AgentMCP: mcp, Artifact: artifact}
+}
+
+// NewRunnerManagerFromPersist builds a RunnerManager from a wired PersistenceSet.
+func NewRunnerManagerFromPersist(persist PersistenceSet) *RunnerManager {
+	return NewRunnerManager(RunnerFactoryDeps{Persist: persist})
 }

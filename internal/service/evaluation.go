@@ -96,7 +96,11 @@ func (s *EvaluationService) RunEvaluation(ctx context.Context, req *v1.RunEvalua
 	}
 	// Fire async runner.
 	if s.runner != nil {
-		s.runner.Start(ctx, run, req.GetMetrics())
+		numRuns := int(req.GetNumRuns())
+		if numRuns <= 0 {
+			numRuns = 1
+		}
+		s.runner.Start(ctx, run, req.GetMetrics(), numRuns)
 	}
 	return toProtoRun(run), nil
 }

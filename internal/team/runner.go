@@ -22,7 +22,9 @@ type Runner struct {
 	teams             biz.TeamRepository
 	td                rt.TurnDeps
 	pluginRT          *plugintrpc.Runtime
+	pluginManager     *plugintrpc.Manager
 	skillDBRepo       trpcskill.Repository
+	runs              *rt.RunRegistry
 	awaitHookProvider func(runCtx context.Context, sessionID, runID string) tooltrpc.ReplyFunc
 }
 
@@ -40,12 +42,14 @@ func NewRunner(
 	persist rt.PersistenceSet,
 	compress biz.NativeTurnCompressor,
 	pluginRT *plugintrpc.Runtime,
+	pluginManager *plugintrpc.Manager,
 	skillDBRepo trpcskill.Repository,
 ) *Runner {
 	return &Runner{
-		teams:       teams,
-		pluginRT:    pluginRT,
-		skillDBRepo: skillDBRepo,
+		teams:         teams,
+		pluginRT:      pluginRT,
+		pluginManager: pluginManager,
+		skillDBRepo:   skillDBRepo,
 		td: rt.TurnDeps{
 			Catalog: rt.Catalog{
 				Agents:   agents,
@@ -56,17 +60,23 @@ func NewRunner(
 				SkillUC:  skillUC,
 				Settings: sys,
 			},
-			Persist:  persist,
-			Pipeline: rt.EventPipeline{Bus: eventBus},
-			LLMHTTP:  &http.Client{Timeout: 0},
-			Sessions: sessions,
-			Compress: compress,
+			Persist:   persist,
+			Pipeline:  rt.EventPipeline{Bus: eventBus},
+			LLMHTTP:   &http.Client{Timeout: 0},
+			Sessions:  sessions,
+			Compress:  compress,
+			RunnerMgr: rt.NewRunnerManagerFromPersist(persist),
 		},
 	}
 }
 
 func (r *Runner) SetAwaitHookProvider(fn func(runCtx context.Context, sessionID, runID string) tooltrpc.ReplyFunc) {
 	r.awaitHookProvider = fn
+}
+
+// SetRunRegistry shares the chat gateway run registry for cancel/status/enqueue.
+func (r *Runner) SetRunRegistry(reg *rt.RunRegistry) {
+	r.runs = reg
 }
 
 func (r *Runner) catalogAgent(ctx context.Context, id string) (biz.Agent, error) {

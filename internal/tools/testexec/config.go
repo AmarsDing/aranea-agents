@@ -1,0 +1,88 @@
+package testexec
+
+import (
+	"strings"
+
+	"aranea-agents/internal/tools"
+)
+
+const (
+	toolKeyKnowledgeSearch = "knowledge_search"
+	toolKeyCallAgent       = "call_agent"
+	toolKeyMCPToolSet      = "mcp_tool_set"
+	toolKeyMCPBroker       = "mcp_broker"
+)
+
+// AssemblyForCatalogKey returns an AssemblyConfig for a single catalog tool_key.
+func AssemblyForCatalogKey(key string, merged map[string]any) (tools.AssemblyConfig, bool) {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return tools.AssemblyConfig{}, false
+	}
+	switch key {
+	case toolKeyKnowledgeSearch, toolKeyCallAgent, toolKeyMCPToolSet, toolKeyMCPBroker:
+		return tools.AssemblyConfig{}, false
+	case "read_file", "read_multiple_files", "save_file", "list_file", "search_file", "search_content", "replace_content":
+		cfg := tools.AssemblyConfig{EnabledTools: []string{"file"}}
+		applyFilesystemDir(&cfg, merged)
+		return cfg, true
+	case "shell_exec":
+		return tools.AssemblyConfig{EnabledTools: []string{"hostexec"}}, true
+	case "web_fetch":
+		return tools.AssemblyConfig{EnabledTools: []string{"httpfetch"}}, true
+	case "duckduckgo_search":
+		return tools.AssemblyConfig{EnabledTools: []string{"duckduckgo"}}, true
+	case "gemini_web_fetch":
+		cfg := tools.AssemblyConfig{EnabledTools: []string{"geminifetch"}}
+		if v := configString(merged, "model", "gemini_model"); v != "" {
+			cfg.GeminiModel = v
+		}
+		return cfg, true
+	case "google_search":
+		cfg := tools.AssemblyConfig{EnabledTools: []string{"google_search"}}
+		if v := configString(merged, "api_key", "google_api_key"); v != "" {
+			cfg.GoogleAPIKey = v
+		}
+		if v := configString(merged, "cx", "engine_id", "google_cx", "search_engine_id"); v != "" {
+			cfg.GoogleCX = v
+		}
+		return cfg, true
+	case "arxiv_search":
+		return tools.AssemblyConfig{EnabledTools: []string{"arxiv_search"}}, true
+	case "wikipedia_search":
+		return tools.AssemblyConfig{EnabledTools: []string{"wikipedia"}}, true
+	case "send_email":
+		return tools.AssemblyConfig{EnabledTools: []string{"email"}}, true
+	case "todo_write":
+		return tools.AssemblyConfig{EnabledTools: []string{"todo"}}, true
+	case "await_user_reply":
+		return tools.AssemblyConfig{EnabledTools: []string{"await_user_reply"}}, true
+	case "claude_code":
+		cfg := tools.AssemblyConfig{EnabledTools: []string{"claudecode"}}
+		if v := configString(merged, "base_dir", "claude_code_dir", "working_dir"); v != "" {
+			cfg.ClaudeCodeDir = v
+		}
+		return cfg, true
+	case "workspace_exec":
+		return tools.AssemblyConfig{EnabledTools: []string{"workspace_exec"}}, true
+	default:
+		return tools.AssemblyConfig{}, false
+	}
+}
+
+func applyFilesystemDir(cfg *tools.AssemblyConfig, m map[string]any) {
+	if v := configString(m, "filesystem_dir", "base_dir", "working_dir", "root_dir"); v != "" {
+		cfg.FilesystemDir = v
+	}
+}
+
+func configString(m map[string]any, keys ...string) string {
+	for _, k := range keys {
+		if v, ok := m[k]; ok {
+			if s, ok := v.(string); ok && strings.TrimSpace(s) != "" {
+				return strings.TrimSpace(s)
+			}
+		}
+	}
+	return ""
+}

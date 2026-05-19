@@ -1,4 +1,6 @@
-package inspect
+// Package llminspect probes remote LLM provider metadata (OpenRouter, OpenAI-compatible, Anthropic).
+// Lives outside internal/provider so biz can use it without a biz↔provider import cycle.
+package llminspect
 
 import (
 	"encoding/json"

@@ -86,6 +86,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { copyToClipboard, useQuasar } from "quasar";
 import { useRoute } from "vue-router";
+import { GLOBAL_WS_SESSION_ID } from "../config/runtime";
 import { listAgents, type Agent } from "../features/agents/api";
 import {
   createTeam,
@@ -336,7 +337,7 @@ async function loadRunSteps(runID: string) {
 function openRunEvents(teamID: string) {
   closeRunEvents();
   runEventsSource = subscribeTeamRunEventsWs(
-    "team-monitor",
+    GLOBAL_WS_SESSION_ID,
     teamID,
     (event) => {
       runEventsConnected.value = true;

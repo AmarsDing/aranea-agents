@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	v1 "aranea-agents/api/kratos/mcp_server/v1"
 	"aranea-agents/internal/biz"
@@ -18,11 +19,12 @@ import (
 type MCPServerService struct {
 	v1.UnimplementedMCPServerServiceServer
 
-	uc *biz.MCPServerUsecase
+	uc  *biz.MCPServerUsecase
+	mon *biz.MonitorUsecase
 }
 
-func NewMCPServerService(uc *biz.MCPServerUsecase) *MCPServerService {
-	return &MCPServerService{uc: uc}
+func NewMCPServerService(uc *biz.MCPServerUsecase, mon *biz.MonitorUsecase) *MCPServerService {
+	return &MCPServerService{uc: uc, mon: mon}
 }
 
 func toProtoMCP(m biz.MCPServer) *v1.MCPServer {
@@ -85,6 +87,7 @@ func (s *MCPServerService) CreateMCPServer(ctx context.Context, req *v1.CreateMC
 	if err != nil {
 		return nil, err
 	}
+	biz.RecordAdminAudit(ctx, s.mon, "mcp_server.create", "mcp_server", out.ID, fmt.Sprintf("key=%s", out.Key))
 	return toProtoMCP(out), nil
 }
 
@@ -110,6 +113,7 @@ func (s *MCPServerService) UpdateMCPServer(ctx context.Context, req *v1.UpdateMC
 		}
 		return nil, err
 	}
+	biz.RecordAdminAudit(ctx, s.mon, "mcp_server.update", "mcp_server", out.ID, fmt.Sprintf("key=%s", out.Key))
 	return toProtoMCP(out), nil
 }
 
@@ -117,6 +121,7 @@ func (s *MCPServerService) DeleteMCPServer(ctx context.Context, req *v1.DeleteMC
 	if err := s.uc.Delete(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
+	biz.RecordAdminAudit(ctx, s.mon, "mcp_server.delete", "mcp_server", req.GetId(), "")
 	return &emptypb.Empty{}, nil
 }
 

@@ -798,3 +798,23 @@ func (r *sessionRepo) AppendChatMessage(ctx context.Context, sessionID string, m
 	}
 	return nil
 }
+
+func (r *sessionRepo) IncrementInvocationCounts(ctx context.Context, sessionID string, toolDelta, mcpDelta, skillDelta int) error {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" || (toolDelta == 0 && mcpDelta == 0 && skillDelta == 0) {
+		return nil
+	}
+	c := r.data.entClient
+	upd := c.Session.UpdateOneID(sessionID).SetUpdatedAt(nowRFC3339())
+	if toolDelta != 0 {
+		upd = upd.AddToolCallCount(toolDelta)
+	}
+	if mcpDelta != 0 {
+		upd = upd.AddMcpCallCount(mcpDelta)
+	}
+	if skillDelta != 0 {
+		upd = upd.AddSkillCallCount(skillDelta)
+	}
+	_, err := upd.Save(ctx)
+	return err
+}

@@ -46,7 +46,7 @@ export const useA2AStore = defineStore("a2a", () => {
     return updated;
   }
 
-  /** 发起 A2A 调用（当前为演示状态，EP-A2A-01）。 */
+  /** 发起 A2A 调用（EP-A2A-01：经 ChatService 派发目标 Agent）。 */
   async function invoke(input: A2AInvokeInput): Promise<A2AInvokeResult> {
     return invokeA2A(input);
   }

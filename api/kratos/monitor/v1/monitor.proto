@@ -134,6 +134,7 @@ service MonitorService {
   rpc GetMonitorTrace(GetMonitorTraceRequest) returns (MonitorTraceDetail) {
     option (google.api.http) = {get: "/v1/monitor/traces/{id}"};
   }
+  // Snapshot hint only; live lines use WebSocket GET /v1/ws (session_id=* or session-scoped, channel=monitor, type=log).
   rpc GetMonitorLogs(GetMonitorLogsRequest) returns (GetMonitorLogsResponse) {
     option (google.api.http) = {get: "/v1/monitor/logs"};
   }

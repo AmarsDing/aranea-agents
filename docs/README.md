@@ -64,6 +64,8 @@ internal/data           ← Repo 实现（Ent ORM + SQLite，单 sql.Open）
 | **使用 trpc-agent-go 框架** | [guides/trpc-agent-go-framework.md](./guides/trpc-agent-go-framework.md) | 框架目录结构、核心接口、项目内桥接函数、常见实现场景、官方文档索引 |
 | **任何前端编码** | [guides/frontend-guide.md](./guides/frontend-guide.md) | ★ **唯一前端编码行为准则**：数据流、分层、红线、UX 主题、迁移剧本 |
 | **当前迭代进度与任务** | [guides/execution-plan.md](./guides/execution-plan.md) | 模块接入度、Top-20、里程碑、扩展红线 |
+| **系统开发计划总览** | [需求/0-system-development.md](./需求/0-system-development.md) | 架构健康度、OpenClaw 对照、路线图、代码质量评价；AI 开发前必读 |
+| **模块开发计划索引** | [需求/README-development.md](./需求/README-development.md) | 全部模块接入度、近期完成、建议下一步 |
 
 ### 5.2 需求与设计
 
@@ -73,7 +75,6 @@ internal/data           ← Repo 实现（Ent ORM + SQLite，单 sql.Open）
 | **某功能的产品需求** | `需求/<编号> <模块名>.md` | 用户故事、功能规格、验收标准 |
 | **某功能的技术设计** | `需求/<编号> <模块名>.design.md` | 架构方案、接口设计、数据模型 |
 | **某功能的开发计划** | `需求/<编号>-<模块名>-development.md` | 迭代计划、任务拆分 |
-| **模块开发计划索引** | [需求/README-development.md](./需求/README-development.md) | 全部模块开发计划汇总 |
 
 ### 5.3 前端参考
 

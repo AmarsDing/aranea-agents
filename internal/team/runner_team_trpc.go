@@ -14,6 +14,7 @@ import (
 	"aranea-agents/internal/agent/intent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+	rt "aranea-agents/internal/runtime"
 	"aranea-agents/internal/tools/serviceawaitreply"
 	"aranea-agents/pkg/strutil"
 
@@ -98,12 +99,15 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 		SkillUC:     r.td.Catalog.SkillUC,
 		MCPTooling:  r.td.Persist.AgentMCP,
 		ToolUC:      r.td.Catalog.ToolUC,
+		Sessions:    r.td.Sessions,
 		Sys:         r.td.Catalog.Settings,
 		Provider:    prov0,
 		Model:       mod0,
 		DialogMode:  dialogMode,
 		SkillDBRepo: r.skillDBRepo,
-		HasMemory:   r.td.Persist.Memory != nil,
+		HasMemory:     r.td.Persist.Memory.Available(),
+		PluginManager: r.pluginManager,
+		MemoryAdmin:   r.td.Persist.Memory.Admin,
 	}
 	if r.awaitHookProvider != nil {
 		builderDeps.AwaitHook = r.awaitHookProvider(ctx, sess.ID, run.ID)
@@ -119,16 +123,39 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 		sess.ID, run.ID, mode), sess.ID)
 
 	var plugins []trpcplugin.Plugin
-	if r.pluginRT != nil {
-		plugins = r.pluginRT.Plugins()
+	if r.pluginManager != nil {
+		plugins = r.pluginManager.RunnerPluginsForAgent(firstAg.ID)
+	} else if r.pluginRT != nil {
+		plugins = r.pluginRT.PluginsForAgent(firstAg.ID)
 	}
-	runnerDeps := agent.NewRunnerDepsFromRuntime(r.td.Persist.Session, r.td.Persist.Memory, plugins...)
-	runner, err := agent.NewTRPCRunner(root, runnerDeps)
+	builderDeps.Plugins = plugins
+	memberKeys, err := memberAgentKeys(ctx, def, r.catalogAgent)
 	if err != nil {
 		r.finishRunErr(ctx, &run, t0, err.Error())
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
-	defer runner.Close()
+	if r.td.RunnerMgr == nil {
+		r.td.RunnerMgr = rt.NewRunnerManagerFromPersist(r.td.Persist)
+	}
+	runner, err := r.td.RunnerMgr.NewTurnRunner(root, rt.TurnRunnerSpec{
+		Plugins:               plugins,
+		AwaitUserReplyRouting: builderDeps.AwaitHook != nil,
+		BuilderDeps:           builderDeps,
+		AgentFactoryKeys:      memberKeys,
+	})
+	if err != nil {
+		r.finishRunErr(ctx, &run, t0, err.Error())
+		return biz.ChatMessage{}, biz.ChatMessage{}, err
+	}
+	if r.runs != nil {
+		r.runs.StoreRunner(sess.ID, run.ID, runner)
+	}
+	defer func() {
+		if r.runs != nil {
+			r.runs.Finish(sess.ID)
+		}
+		runner.Close()
+	}()
 
 	anchor := &agent.TeamMemberAnchor{
 		AgentID: firstAg.ID,
@@ -213,10 +240,15 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 		return userMsg, biz.ChatMessage{}, err
 	}
 
+	memberKeySet := make(map[string]struct{}, len(memberKeys))
+	for _, k := range memberKeys {
+		memberKeySet[k] = struct{}{}
+	}
 	projectMeta := agent.ProjectMeta{
-		SessionID: sess.ID,
-		RequestID: run.ID,
-		TeamID:    teamRow.ID,
+		SessionID:       sess.ID,
+		RequestID:       run.ID,
+		TeamID:          teamRow.ID,
+		MemberAgentKeys: memberKeySet,
 	}
 	result := agent.ConsumeEventStream(runCtx, events, r.td.Pipeline.Bus, projectMeta)
 	if runCtx.Err() != nil {

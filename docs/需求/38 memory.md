@@ -2,7 +2,7 @@
 
 > **构成**：原 `docs/domain/memory/memery.md`（长文思辨、Mermaid 示意、头条配图 DeepLink）与 **梳理副本**（结构化提要）合并为本文，作为需求侧单一入口。  
 > **立场**：个人实践与独立思考，非产品规格；近年论文未经充分同行检验，**仅供参考**。  
-> **规格**：验收与实现约束以 [**`产品需求总览.md`**](./产品需求总览.md) 及 **`12 memory-L0-sensory.md`～`16 memory-L4-persistent.md`** 各文 **§0** 为准。  
+> **规格**：验收与实现约束以 **`12 memory-L0-sensory.md`～`16 memory-L4-persistent.md`** 各文 **§0**、[`12-16 memory.md`](./12-16%20memory.md) 与 [`12-16 memory-development.md`](./12-16%20memory-development.md) 为准。  
 > **对外图文**（自动化抓取常读不到配图）：[今日头条同主题 DeepLink](https://www.toutiao.com/article/7636596749927039530/)（正式配图以客户端/网页为准）。  
 
 ---
@@ -519,4 +519,4 @@ flowchart LR
 
 ---
 
-*合并稿取代已删除的 `docs/domain/memory/memery.md` 与 `memery-梳理副本.md`。与 **产品落地** 对齐时以 **`12 memory-L0-sensory.md`～`16 memory-L4-persistent.md`** 各 **§0** 与 [`产品需求总览.md`](./产品需求总览.md) 为准；讨论论文与命题编号时请对照本文与上述 §0，避免把观点文当作验收依据。*
+*合并稿取代已删除的 `docs/domain/memory/memery.md` 与 `memery-梳理副本.md`。与 **产品落地** 对齐时以 **`12 memory-L0-sensory.md`～`16 memory-L4-persistent.md`** 各 **§0**、[`12-16 memory.md`](./12-16%20memory.md) 与 [`12-16 memory-development.md`](./12-16%20memory-development.md) 为准；讨论论文与命题编号时请对照本文与上述 §0，避免把观点文当作验收依据。*

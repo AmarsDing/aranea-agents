@@ -161,6 +161,25 @@ export async function updatePendingMessage(
   }
 }
 
+export interface EnqueueUserMessageResult {
+  accepted: boolean;
+  queued: boolean;
+  pendingId: string;
+}
+
+export async function enqueueUserMessage(sessionId: string, content: string): Promise<EnqueueUserMessageResult> {
+  try {
+    const data = await chatService.EnqueueUserMessage({ sessionId, content });
+    return {
+      accepted: !!data?.accepted,
+      queued: !!data?.queued,
+      pendingId: data?.pendingId ?? "",
+    };
+  } catch {
+    return { accepted: false, queued: false, pendingId: "" };
+  }
+}
+
 export type RunStatusValue = "idle" | "pending" | "running" | "awaiting_user" | "completed" | "failed" | "cancelled";
 
 export interface RunStatus {
@@ -168,6 +187,11 @@ export interface RunStatus {
   status: RunStatusValue;
   errorMessage: string;
   updatedAt: string;
+  invocationId?: string;
+  agentName?: string;
+  startedAt?: string;
+  lastEventAt?: string;
+  eventCount?: number;
 }
 
 export async function getRunStatus(sessionId: string): Promise<RunStatus> {
@@ -178,6 +202,11 @@ export async function getRunStatus(sessionId: string): Promise<RunStatus> {
       status: (data.status as RunStatusValue) ?? "idle",
       errorMessage: data.errorMessage ?? "",
       updatedAt: data.updatedAt ?? "",
+      invocationId: data.invocationId ?? undefined,
+      agentName: data.agentName ?? undefined,
+      startedAt: data.startedAt ?? undefined,
+      lastEventAt: data.lastEventAt ?? undefined,
+      eventCount: data.eventCount ?? undefined,
     };
   } catch {
     return { runId: "", status: "idle", errorMessage: "", updatedAt: "" };

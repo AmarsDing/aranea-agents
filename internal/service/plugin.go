@@ -23,7 +23,31 @@ type PluginService struct {
 }
 
 func NewPluginService(uc *biz.PluginUsecase, runtime *plugintrpc.Runtime) *PluginService {
-	return &PluginService{uc: uc, runtime: runtime}
+	s := &PluginService{uc: uc, runtime: runtime}
+	if runtime != nil {
+		s.seedBuiltinPlugins(context.Background())
+	}
+	return s
+}
+
+func (s *PluginService) seedBuiltinPlugins(ctx context.Context) {
+	if s == nil || s.uc == nil {
+		return
+	}
+	for _, def := range plugintrpc.BuiltinPluginDefs() {
+		_, err := s.uc.GetByKey(ctx, def.Key)
+		if err == nil {
+			continue
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			slog.Warn("plugin.seed: get by key failed", "key", def.Key, "error", err)
+			continue
+		}
+		if _, err := s.uc.Create(ctx, def.ToBizPlugin()); err != nil {
+			slog.Warn("plugin.seed: create failed", "key", def.Key, "error", err)
+		}
+	}
+	s.reloadRuntime(ctx)
 }
 
 // reloadRuntime fetches all enabled plugins and hot-reloads the plugin Runtime.

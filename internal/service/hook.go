@@ -4,9 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log/slog"
 
 	v1 "aranea-agents/api/kratos/hook/v1"
 	"aranea-agents/internal/biz"
+	plugintrpc "aranea-agents/internal/plugin/trpc"
+	"aranea-agents/pkg/safego"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 
@@ -17,11 +20,23 @@ import (
 type HookService struct {
 	v1.UnimplementedHookServiceServer
 
-	uc *biz.HookUsecase
+	uc  *biz.HookUsecase
+	mgr *plugintrpc.Manager
 }
 
-func NewHookService(uc *biz.HookUsecase) *HookService {
-	return &HookService{uc: uc}
+func NewHookService(uc *biz.HookUsecase, mgr *plugintrpc.Manager) *HookService {
+	return &HookService{uc: uc, mgr: mgr}
+}
+
+func (s *HookService) reloadHooks(ctx context.Context) {
+	if s.mgr == nil {
+		return
+	}
+	safego.Go(ctx, "hook.reload", func() {
+		if err := s.mgr.ReloadHooks(context.Background()); err != nil {
+			slog.Warn("hook.reload: failed", "error", err)
+		}
+	})
 }
 
 func toProtoHook(h biz.Hook) *v1.Hook {
@@ -84,6 +99,7 @@ func (s *HookService) CreateHook(ctx context.Context, req *v1.CreateHookRequest)
 	if err != nil {
 		return nil, err
 	}
+	s.reloadHooks(ctx)
 	return toProtoHook(out), nil
 }
 
@@ -109,6 +125,7 @@ func (s *HookService) UpdateHook(ctx context.Context, req *v1.UpdateHookRequest)
 		}
 		return nil, err
 	}
+	s.reloadHooks(ctx)
 	return toProtoHook(out), nil
 }
 
@@ -116,5 +133,6 @@ func (s *HookService) DeleteHook(ctx context.Context, req *v1.DeleteHookRequest)
 	if err := s.uc.Delete(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
+	s.reloadHooks(ctx)
 	return &emptypb.Empty{}, nil
 }

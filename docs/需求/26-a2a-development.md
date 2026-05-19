@@ -44,7 +44,7 @@ A2A（Agent-to-Agent）协议：支持 Agent 之间的结构化通信和协作�
 | 消息转换 | ❌ | trpc Event ↔ A2A Message 未实现 |
 | 流式通信 | ❌ | A2A SSE 未实现 |
 | Graph 恢复 | ❌ | A2A + Graph 集成未实现 |
-| 前端管理页面 | ❌ | 仅有 API/Store，无独立页面 |
+| 前端管理页面 | ✅ | A2APage.vue（Discover/Audit/Invoke UI）；路由 /a2a 已注册；eatures/a2a/ api/types/mapper + stores/a2a/ 已实现 |
 
 ---
 
@@ -55,7 +55,7 @@ A2A（Agent-to-Agent）协议：支持 Agent 之间的结构化通信和协作�
 | 1 | Context 注入缺失 | **P0** | call_agent 工具运行时报 "invoker not configured"，这是 A2A 的核心阻断问题 |
 | 2 | Invoke 端点为 stub | **P0** | POST /v1/a2a/invoke 仅记录 pending，未实际执行目标 Agent |
 | 3 | 跨工作区校验缺失 | **P0** | 安全红线：必须阻止跨工作区调用 |
-| 4 | 前端管理页面缺失 | **P1** | 仅有 API/Store，用户无法通过 UI 管理 AgentCard 和审计 |
+| ~~4~~ | ~~前端管理页面缺失~~ | ~~**P1**~~ | ✅ A2APage.vue 已实现（Discover/Audit/Invoke UI）；路由 /a2a 已注册 |
 | 5 | 远程 Agent 发现 | **P1** | 无法发现和调用远程 A2A Agent |
 | 6 | A2A Server | **P1** | 无法将本地 Agent 暴露为 A2A 服务 |
 | 7 | 消息转换 | **P2** | trpc Event ↔ A2A Message 双向转换 |

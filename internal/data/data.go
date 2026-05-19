@@ -15,18 +15,12 @@ import (
 	"aranea-agents/internal/data/ent/migrate"
 	"aranea-agents/internal/data/pgvector"
 	"aranea-agents/internal/data/sessionmemory"
-	graphtrpc "aranea-agents/internal/graph/trpc"
-	sessiontrpc "aranea-agents/internal/session/trpc"
-
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 
 	_ "github.com/glebarez/go-sqlite/compat"
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/lib/pq"
-
-	trpcgraph "trpc.group/trpc-go/trpc-agent-go/graph"
-	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 
 	"github.com/google/wire"
 )
@@ -56,16 +50,13 @@ var ProviderSet = wire.NewSet(
 	NewSessionMemoryStore,
 	NewEvolutionMetricsRepo,
 	NewEvolutionSuggestionRepo,
-	NewTRPCSessionService,
 	NewGraphRepo,
 	NewGraphRunRepo,
-	NewGraphCheckpointSaver,
 	NewTaskRepo,
 	NewArtifactRepo,
 	NewKnowledgeRepoFromData,
 	NewEvalRepoFromData,
 	NewA2ARepoFromData,
-	wire.Bind(new(trpcgraph.CheckpointSaver), new(*graphtrpc.SQLiteCheckpointSaver)),
 )
 
 // Data: Ent/SQLite holds app CRUD; Postgres (optional) holds pgvector agent memory only.
@@ -214,6 +205,19 @@ func NewData(c *conf.Data) (*Data, func(), error) {
 		rawDB.Close()
 		return nil, nil, err
 	}
+	ctxSchema := context.Background()
+	if err = EnsureEvalSchema(ctxSchema, rawDB); err != nil {
+		rawDB.Close()
+		return nil, nil, fmt.Errorf("eval schema: %w", err)
+	}
+	if err = EnsureA2ASchema(ctxSchema, rawDB); err != nil {
+		rawDB.Close()
+		return nil, nil, fmt.Errorf("a2a schema: %w", err)
+	}
+	if err = EnsureUsageQuotaSchema(ctxSchema, rawDB); err != nil {
+		rawDB.Close()
+		return nil, nil, fmt.Errorf("usage quota schema: %w", err)
+	}
 
 	pgDSN := postgresVectorDSN(c)
 	var pg *sql.DB
@@ -236,10 +240,16 @@ func NewData(c *conf.Data) (*Data, func(), error) {
 	st := &Data{entClient: entClient, rawDB: rawDB, pg: pg, vectorDim: vdim}
 
 	if pg != nil {
-		if err = pgvector.EnsureSchema(context.Background(), pg, vdim); err != nil {
+		ctxPG := context.Background()
+		if err = pgvector.EnsureSchema(ctxPG, pg, vdim); err != nil {
 			pg.Close()
 			rawDB.Close()
 			return nil, nil, err
+		}
+		if err = EnsureKnowledgeSchema(ctxPG, pg, vdim); err != nil {
+			pg.Close()
+			rawDB.Close()
+			return nil, nil, fmt.Errorf("knowledge schema: %w", err)
 		}
 	}
 
@@ -275,18 +285,6 @@ func NewSessionMemoryStore(d *Data) *sessionmemory.Store {
 		return nil
 	}
 	return sessionmemory.NewStore(d.Ent())
-}
-
-func NewTRPCSessionService(d *Data) trpcsession.Service {
-	if d == nil || d.RawDB() == nil {
-		return nil
-	}
-	svc, err := sessiontrpc.NewSQLiteSessionService(d.RawDB())
-	if err != nil {
-		log.Printf("trpc session sqlite init failed, falling back to in-memory: %v", err)
-		return sessiontrpc.NewInMemorySessionService()
-	}
-	return svc
 }
 
 func NewArtifactRepo() biz.ArtifactRepo {

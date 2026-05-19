@@ -33,7 +33,6 @@ import (
 	"aranea-agents/internal/conf"
 	servermw "aranea-agents/internal/server/middleware"
 	"aranea-agents/internal/service"
-	"aranea-agents/internal/skill/importer"
 	"aranea-agents/pkg/auth"
 	"aranea-agents/pkg/validate"
 
@@ -68,7 +67,6 @@ func NewHTTPServer(c *conf.Server,
 	evalSvc *service.EvaluationService,
 	a2aSvc *service.A2AService,
 	channelIngress *service.ChannelIngress,
-	skillImport *importer.Engine,
 	wsSrv *WSServer,
 ) *kratoshttp.Server {
 	var opts = []kratoshttp.ServerOption{
@@ -98,7 +96,7 @@ func NewHTTPServer(c *conf.Server,
 		pluginSvc, mcpSvc, skillSvc, toolSvc, sessionSvc, channelSvc, usageSvc,
 		monitorSvc, memorySvc, systemSettingSvc, teams, chatSvc, graphSvc,
 		artifactSvc, knowledgeSvc, evalSvc, a2aSvc)
-	registerCustomRoutes(srv, channelIngress, skillImport)
+	registerCustomRoutes(srv, channelIngress, skillSvc, artifactSvc)
 	registerInfrastructureRoutes(srv)
 	wsSrv.RegisterOnKratos(srv)
 
@@ -161,14 +159,22 @@ func registerProtoServices(
 func registerCustomRoutes(
 	srv *kratoshttp.Server,
 	channelIngress *service.ChannelIngress,
-	skillImport *importer.Engine,
+	skillSvc *service.SkillService,
+	artifactSvc *service.ArtifactService,
 ) {
 	if channelIngress != nil {
 		auth.RegisterWebhookPath("/webhooks/")
 		srv.Route("/").POST("/webhooks/{channel_key}", channelIngress.FeishuWebhookHTTP())
 	}
-	if skillImport != nil {
-		RegisterSkillImportHTTPServer(srv, skillImport)
+	if skillSvc != nil {
+		skillSvc.RegisterSkillImportMultipart(srv)
+	}
+	if artifactSvc != nil {
+		auth.RegisterNoAuthPath("/v1/artifacts/download")
+		srv.Route("/").GET("/v1/artifacts/download", func(ctx kratoshttp.Context) error {
+			artifactSvc.ServeSignedDownload(ctx.Response(), ctx.Request())
+			return nil
+		})
 	}
 }
 

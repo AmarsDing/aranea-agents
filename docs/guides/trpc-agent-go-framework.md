@@ -188,7 +188,7 @@ type StreamableTool interface { StreamableCall(ctx, jsonArgs) (*StreamReader, er
 | `team` | `internal/team` | Team 编排 |
 | `graph` | `internal/graph` | 图编排 |
 | `plugin` | `internal/agent` | 插件注册（DefaultRunnerPlugins） |
-| `event` | `internal/service` | 事件投影为 SSE/proto 响应 |
+| `event` | `internal/service` | 事件投影为 Envelope → EventBus → `/v1/ws` |
 
 ### 3.2 关键桥接函数
 
@@ -254,7 +254,7 @@ pkg/trpc-agent-go/* (框架核心)
 1. `Runner.Run` 返回 `<-chan *event.Event`
 2. 遍历事件流，`event.IsRunnerCompletion()` 判断结束
 3. 通过 `event.Object` 区分事件类型
-4. 在 `internal/service/trpc_turn.go` 中投影为 SSE 或 proto 响应
+4. 在 `internal/service/trpc_turn.go` 中投影为 Envelope 并发布到 EventBus（实时经 `/v1/ws` 下发）
 
 ---
 

@@ -13,6 +13,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	arametrics "aranea-agents/internal/metrics"
+	rt "aranea-agents/internal/runtime"
 	serviceawaitreply "aranea-agents/internal/tools/serviceawaitreply"
 	"aranea-agents/pkg/safego"
 
@@ -47,6 +48,7 @@ func (s *ChatService) runSingleAgentViaTRPC(
 		SkillUC:     s.td.Catalog.SkillUC,
 		MCPTooling:  s.td.Persist.AgentMCP,
 		ToolUC:      s.td.Catalog.ToolUC,
+		Sessions:    s.td.Sessions,
 		Sys:         s.td.Catalog.Settings,
 		Provider:    prov,
 		Model:       mod,
@@ -55,27 +57,41 @@ func (s *ChatService) runSingleAgentViaTRPC(
 		// EP-RT-02: inject await-reply hook so the tool blocks mid-turn.
 		AwaitHook: s.makeAwaitReplyFunc(ctx, sessionID, runID),
 		// EP-RT-05: signal whether a MemoryService will back the runner.
-		HasMemory: s.td.Persist.Memory != nil,
+		HasMemory:       s.td.Persist.Memory.Available(),
+		PluginManager:   s.pluginManager,
+		MemoryAdmin:     s.td.Persist.Memory.Admin,
 	}
 	root, err := chatagent.BuildTRPCLLMAgentCached(ctx, ag, deps)
 	if err != nil {
+		s.runs.Finish(sessionID)
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
 
 	var plugins []trpcplugin.Plugin
-	if s.pluginRT != nil {
-		plugins = s.pluginRT.Plugins()
+	if s.pluginManager != nil {
+		plugins = s.pluginManager.RunnerPluginsForAgent(ag.ID)
+	} else if s.pluginRT != nil {
+		plugins = s.pluginRT.PluginsForAgent(ag.ID)
 	}
-	runnerDeps := chatagent.NewRunnerDepsFromRuntime(s.td.Persist.Session, s.td.Persist.Memory, plugins...)
-	runner, err := chatagent.NewTRPCRunner(root, runnerDeps)
+	deps.Plugins = plugins
+	if s.td.RunnerMgr == nil {
+		s.td.RunnerMgr = rt.NewRunnerManagerFromPersist(s.td.Persist)
+	}
+	runner, err := s.td.RunnerMgr.NewTurnRunner(root, rt.TurnRunnerSpec{
+		Plugins:               plugins,
+		AwaitUserReplyRouting: deps.AwaitHook != nil,
+		BuilderDeps:           deps,
+		AgentFactoryKeys:      []string{ag.AgentKey},
+	})
 	if err != nil {
+		s.runs.Finish(sessionID)
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
-	s.activeRuns.Store(sessionID, runner)
+	s.runs.StoreRunner(sessionID, runID, runner)
 	s.setRunStatus(sessionID, runID, "running", "")
 	turnStart := time.Now()
 	defer func() {
-		s.activeRuns.Delete(sessionID)
+		s.runs.Finish(sessionID)
 		runner.Close()
 		s.processPendingQueue(sessionID, sess, ag, dialogMode, prov, mod)
 	}()
@@ -135,6 +151,7 @@ func (s *ChatService) runSingleAgentViaTRPC(
 	// EP-RT-02: inject the await-reply hook into the run context so the
 	// ServiceTool can retrieve it at call time.
 	runCtx := serviceawaitreply.WithReplyFunc(ctx, deps.AwaitHook)
+	runCtx = s.injectA2AContext(runCtx, ag.ID)
 	events, err := chatagent.RunTRPCUserTurn(runCtx, runner, uid, sessionID, sendText, runOpts...)
 	if err != nil {
 		arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "error").Observe(time.Since(turnStart).Seconds())
@@ -192,16 +209,16 @@ func (s *ChatService) runSingleAgentViaTRPC(
 }
 
 func (s *ChatService) processPendingQueue(sessionID string, sess biz.Session, ag biz.Agent, dialogMode, prov, mod string) {
-	entry, ok := s.dequeuePending(sessionID)
+	entry, ok := s.pending.Dequeue(sessionID)
 	if !ok {
 		return
 	}
 	safego.Go(context.Background(), "pending-queue", func() {
 		bgCtx, cancel := context.WithTimeout(context.Background(), 600*time.Second)
-		s.pendingCancels.Store(sessionID, cancel)
+		s.runs.SetPendingCancel(sessionID, cancel)
 		defer func() {
 			cancel()
-			s.pendingCancels.Delete(sessionID)
+			s.runs.ClearPendingCancel(sessionID)
 		}()
 		req := &chatv1.SendChatMessageRequest{
 			SessionId: sessionID,

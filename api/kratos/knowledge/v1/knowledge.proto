@@ -117,6 +117,29 @@ message SearchResponse {
   repeated KnowledgeChunk chunks = 1;
 }
 
+message GetEmbedderConfigRequest {}
+
+message EmbedderConfig {
+  string provider = 1;
+  string base_url = 2;
+  string model = 3;
+  int32  dim = 4;
+  bool   configured = 5;
+  bool   has_api_key = 6;
+}
+
+message UpdateEmbedderConfigRequest {
+  string provider = 1;
+  string base_url = 2;
+  string api_key = 3;
+  string model = 4;
+  int32  dim = 5;
+}
+
+message UpdateEmbedderConfigResponse {
+  EmbedderConfig config = 1;
+}
+
 service KnowledgeService {
   // Collections
   rpc CreateCollection(CreateCollectionRequest) returns (KnowledgeCollection) {
@@ -163,6 +186,17 @@ service KnowledgeService {
   rpc Search(SearchRequest) returns (SearchResponse) {
     option (google.api.http) = {
       post: "/v1/knowledge/search"
+      body: "*"
+    };
+  }
+  rpc GetEmbedderConfig(GetEmbedderConfigRequest) returns (EmbedderConfig) {
+    option (google.api.http) = {
+      get: "/v1/knowledge/embedder-config"
+    };
+  }
+  rpc UpdateEmbedderConfig(UpdateEmbedderConfigRequest) returns (UpdateEmbedderConfigResponse) {
+    option (google.api.http) = {
+      put: "/v1/knowledge/embedder-config"
       body: "*"
     };
   }

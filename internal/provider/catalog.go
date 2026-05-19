@@ -4,9 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-
-	"aranea-agents/internal/biz"
 )
+
+// ModelCatalogInput is the provider-model slice needed to build a runtime catalog (no biz import).
+type ModelCatalogInput struct {
+	Model      string
+	ConfigJSON string
+}
 
 type CatalogConfig struct {
 	ProviderType         string
@@ -64,13 +68,13 @@ type catalogConfigJSON struct {
 	HAHedgeDelayMs       int                 `json:"ha_hedge_delay_ms"`
 }
 
-func CatalogFromProviderModel(pm biz.ProviderModel) (CatalogConfig, error) {
-	base := strings.TrimSpace(pm.Model)
+func CatalogFromModel(in ModelCatalogInput) (CatalogConfig, error) {
+	base := strings.TrimSpace(in.Model)
 	if base == "" {
 		return CatalogConfig{}, fmt.Errorf("provider model: empty model id")
 	}
 	var c catalogConfigJSON
-	_ = json.Unmarshal([]byte(strings.TrimSpace(pm.ConfigJSON)), &c)
+	_ = json.Unmarshal([]byte(strings.TrimSpace(in.ConfigJSON)), &c)
 	return catalogConfigToConfig(c, base), nil
 }
 

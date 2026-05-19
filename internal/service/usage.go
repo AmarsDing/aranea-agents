@@ -278,3 +278,52 @@ func (s *UsageService) ListUsageEvents(ctx context.Context, in *v1.UsageQuery) (
 	}
 	return &v1.ListUsageEventsResponse{Items: mapTokenEvents(items)}, nil
 }
+
+func bizQuotaToProto(q biz.UsageQuota) *v1.UsageQuota {
+	return &v1.UsageQuota{
+		Id:              q.ID,
+		ScopeType:       q.ScopeType,
+		ScopeId:         q.ScopeID,
+		MonthlyMicroUsd: q.MonthlyMicroUSD,
+		PeriodStart:     q.PeriodStart,
+		PeriodEnd:       q.PeriodEnd,
+		CreatedAt:       q.CreatedAt,
+		UpdatedAt:       q.UpdatedAt,
+	}
+}
+
+func (s *UsageService) GetUsageQuota(ctx context.Context, req *v1.GetUsageQuotaRequest) (*v1.UsageQuota, error) {
+	q, err := s.uc.GetQuota(ctx, req.GetScopeType(), req.GetScopeId())
+	if err != nil {
+		return nil, err
+	}
+	return bizQuotaToProto(q), nil
+}
+
+func (s *UsageService) SetUsageQuota(ctx context.Context, req *v1.SetUsageQuotaRequest) (*v1.UsageQuota, error) {
+	q, err := s.uc.SetQuota(ctx, biz.UsageQuota{
+		ScopeType:       req.GetScopeType(),
+		ScopeID:         req.GetScopeId(),
+		MonthlyMicroUSD: req.GetMonthlyMicroUsd(),
+		PeriodStart:     req.GetPeriodStart(),
+		PeriodEnd:       req.GetPeriodEnd(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return bizQuotaToProto(q), nil
+}
+
+func (s *UsageService) CheckUsageQuota(ctx context.Context, req *v1.CheckUsageQuotaRequest) (*v1.CheckUsageQuotaResponse, error) {
+	check, err := s.uc.CheckQuota(ctx, req.GetScopeType(), req.GetScopeId())
+	if err != nil {
+		return nil, err
+	}
+	return &v1.CheckUsageQuotaResponse{
+		Allowed:           check.Allowed,
+		Quota:             bizQuotaToProto(check.Quota),
+		SpentMicroUsd:     check.SpentMicroUSD,
+		RemainingMicroUsd: check.RemainingMicroUSD,
+		Reason:            check.Reason,
+	}, nil
+}

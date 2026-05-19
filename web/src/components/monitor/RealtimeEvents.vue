@@ -63,6 +63,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { copyToClipboard, Notify } from "quasar";
+import { GLOBAL_WS_SESSION_ID } from "../../config/runtime";
 import { useMonitorStore } from "../../stores/monitor/index";
 import type { PlatformResource, StreamState, TeamRunEvent } from "../../features/monitor/types";
 import { compactJSON, formatDate, parseJSON } from "../../features/monitor/utils";
@@ -143,7 +144,7 @@ function startStream() {
   stopStream();
   state.value = "connecting";
   wsSub = monitorStore.startRuntimeEventsStream(
-    "monitor",
+    GLOBAL_WS_SESSION_ID,
     (event) => {
       state.value = "live";
       runtimeEvents.value = [teamRunEventToView(event), ...runtimeEvents.value].slice(0, 1000);

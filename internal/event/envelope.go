@@ -17,6 +17,7 @@ const (
 	EnvelopeTypeStateDelta         EnvelopeType = "state_delta"
 	EnvelopeTypeTransfer           EnvelopeType = "transfer"
 	EnvelopeTypeRunnerCompletion   EnvelopeType = "runner_completion"
+	EnvelopeTypeRunStatus          EnvelopeType = "run_status"
 	EnvelopeTypeError              EnvelopeType = "error"
 	EnvelopeTypeLog                EnvelopeType = "log"
 	EnvelopeTypeGraphNodeStart     EnvelopeType = "graph_node_start"
@@ -35,6 +36,7 @@ const (
 	EnvelopeTypeGraphExecutionDone EnvelopeType = "graph_execution_done"
 	EnvelopeTypeGraphNodeError     EnvelopeType = "graph_node_error"
 	EnvelopeTypeGraphNodeCustom    EnvelopeType = "graph_node_custom"
+	EnvelopeTypeKnowledgeIngest    EnvelopeType = "knowledge_ingest"
 )
 
 type Envelope struct {
@@ -138,6 +140,8 @@ func RouteChannel(env Envelope) string {
 		EnvelopeTypeGraphStep, EnvelopeTypeGraphExecutionDone, EnvelopeTypeGraphNodeError,
 		EnvelopeTypeGraphNodeCustom:
 		return "graph"
+	case EnvelopeTypeKnowledgeIngest:
+		return "knowledge"
 	default:
 		if env.TeamID != "" {
 			return "team"

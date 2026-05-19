@@ -1,6 +1,6 @@
 # Tools 工具 — 开发计划
 
-> **版本**：5.0 | **状态**：✅ 核心已实现
+> **版本**：5.0（修订）| **状态**：✅ 核心已实现；MCP 工程化（timeout/重连/认证/Broker 发现）待补
 > **需求**：[23 tools.md](./23%20tools.md) · **设计**：[23 tools.design.md](./23%20tools.design.md) · **结构**：[23 tools struct design.md](./23%20tools%20struct%20design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：—
 
@@ -48,7 +48,9 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 | ServiceAwaitReply | ✅ 已实现 | serviceawaitreply.ServiceTool (阻塞式等待) |
 | 调用记录 | ✅ 已实现 | ToolInvocationWrite + RecordToolInvocationAsync |
 | 参数详情 | ✅ 已实现 | GetToolInvocationParams (脱敏参数查询) |
-| 前端管理 | ✅ 已实现 | Tool 设置页 + Override 管理 |
+| 前端管理 | ✅ 已实现 | Tool 详情页 Override + Agent 设置页「工具覆盖」 |
+| TRPC 需确认 | ✅ 已实现 | `ApplyConfirmationPolicy` + BeforeTool `blocked` |
+| 调用统计闭环 | ✅ 已实现 | `duration_ms` + Prometheus + 列表 SQL 聚合 |
 
 ---
 
@@ -56,12 +58,13 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 
 | # | 优先级 | 差距 | 说明 |
 |---|--------|------|------|
-| 1 | **P2** | ToolOverride 运行时生效 | Override 数据已存储，但 `buildToolsetsForAgent` 尚未读取 Override 的 `config_override_json` / `enabled` / `requires_confirmation` 来调整运行时工具装配 |
-| 2 | **P2** | ToolOverride 前端集成 | Override CRUD API 已就绪，前端 Agent 设置页需展示和管理单工具粒度覆盖 |
-| 3 | **P3** | 自定义工具在线测试 | 用户无法在配置时验证自定义工具是否可用；需 `TestTool` RPC |
+| 1 | **P2** | ToolOverride 运行时生效 | ✅ `ApplyRuntimeConfigMaps` + `ApplyConfirmationPolicy` + `ApplyAgentToolOverrides` |
+| 2 | **P2** | ToolOverride 前端集成 | ✅ Agent 设置页「工具覆盖」面板 + `GET /v1/agents/{agent_id}/tool-overrides` |
+| 3 | **P3** | 自定义工具在线测试 | ✅ `TestTool` RPC + 工具详情「在线测试」 |
 | 4 | **P3** | 工具调用审计日志 | 当前 ToolInvocation 记录用于展示，缺乏结构化审计日志（谁在何时调用了什么工具、结果如何），需独立审计表 + 查询 API |
 | 5 | **P3** | BeforeTool Callback | 框架支持 BeforeTool 回调（可跳过执行、修改参数），项目尚未使用；可用于动态参数注入、权限校验等 |
 | 6 | **P4** | Tool Cache | 框架未内建工具结果缓存；对于幂等只读工具（如 search、fetch），可考虑缓存层减少重复调用 |
+| 7 | **P2** | MCP 工程化 | MCP ToolSet/Broker 基础可用（默认超时60s ✅）；但 MCP 认证、重连、MCPBroker 默认发现（标准化入口）仍待补；生产环境 MCP Server 异常无重试 |
 
 ---
 

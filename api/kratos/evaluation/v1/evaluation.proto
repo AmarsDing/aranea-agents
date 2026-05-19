@@ -102,6 +102,8 @@ message RunEvaluationRequest {
   string agent_id = 2 [(google.api.field_behavior) = REQUIRED];
   // metrics is a comma-separated list of metrics to compute (empty = all).
   string metrics = 3;
+  // num_runs repeats each case N times (AgentEvaluator MultiRun, default 1).
+  int32 num_runs = 4;
 }
 
 message GetRunRequest {

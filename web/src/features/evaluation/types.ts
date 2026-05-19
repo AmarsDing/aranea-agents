@@ -49,6 +49,8 @@ export type RunEvaluationInput = {
   agent_id: string;
   /** comma-separated list of metrics; empty = all */
   metrics?: string;
+  /** AgentEvaluator MultiRun repeat count (default 1) */
+  num_runs?: number;
 };
 
 export type ListDatasetsParams = {

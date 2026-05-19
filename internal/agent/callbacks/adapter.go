@@ -4,6 +4,7 @@ import (
 	"context"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
+	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
@@ -64,5 +65,62 @@ func NewAfterAgentHook(priority int, fn trpcagent.AfterAgentCallbackStructured) 
 func (h *AfterAgentHookFunc) Point() CallbackPoint { return PointAfterAgent }
 func (h *AfterAgentHookFunc) Priority() int        { return h.priority }
 func (h *AfterAgentHookFunc) HandleAfterAgent(ctx context.Context, args *trpcagent.AfterAgentArgs) (*trpcagent.AfterAgentResult, error) {
+	return h.fn(ctx, args)
+}
+
+// BeforeModelHookFunc wraps a plain function as a BeforeModelHook.
+type BeforeModelHookFunc struct {
+	priority int
+	fn       trpcmodel.BeforeModelCallbackStructured
+}
+
+var _ BeforeModelHook = (*BeforeModelHookFunc)(nil)
+
+// NewBeforeModelHook creates a BeforeModelHookFunc with a given priority and handler.
+func NewBeforeModelHook(priority int, fn trpcmodel.BeforeModelCallbackStructured) *BeforeModelHookFunc {
+	return &BeforeModelHookFunc{priority: priority, fn: fn}
+}
+
+func (h *BeforeModelHookFunc) Point() CallbackPoint { return PointBeforeModel }
+func (h *BeforeModelHookFunc) Priority() int        { return h.priority }
+func (h *BeforeModelHookFunc) HandleBeforeModel(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
+	return h.fn(ctx, args)
+}
+
+// AfterModelHookFunc wraps a plain function as an AfterModelHook.
+type AfterModelHookFunc struct {
+	priority int
+	fn       trpcmodel.AfterModelCallbackStructured
+}
+
+var _ AfterModelHook = (*AfterModelHookFunc)(nil)
+
+// NewAfterModelHook creates an AfterModelHookFunc with a given priority and handler.
+func NewAfterModelHook(priority int, fn trpcmodel.AfterModelCallbackStructured) *AfterModelHookFunc {
+	return &AfterModelHookFunc{priority: priority, fn: fn}
+}
+
+func (h *AfterModelHookFunc) Point() CallbackPoint { return PointAfterModel }
+func (h *AfterModelHookFunc) Priority() int        { return h.priority }
+func (h *AfterModelHookFunc) HandleAfterModel(ctx context.Context, args *trpcmodel.AfterModelArgs) (*trpcmodel.AfterModelResult, error) {
+	return h.fn(ctx, args)
+}
+
+// BeforeToolHookFunc wraps a plain function as a BeforeToolHook.
+type BeforeToolHookFunc struct {
+	priority int
+	fn       trpctool.BeforeToolCallbackStructured
+}
+
+var _ BeforeToolHook = (*BeforeToolHookFunc)(nil)
+
+// NewBeforeToolHook creates a BeforeToolHookFunc with a given priority and handler.
+func NewBeforeToolHook(priority int, fn trpctool.BeforeToolCallbackStructured) *BeforeToolHookFunc {
+	return &BeforeToolHookFunc{priority: priority, fn: fn}
+}
+
+func (h *BeforeToolHookFunc) Point() CallbackPoint { return PointBeforeTool }
+func (h *BeforeToolHookFunc) Priority() int        { return h.priority }
+func (h *BeforeToolHookFunc) HandleBeforeTool(ctx context.Context, args *trpctool.BeforeToolArgs) (*trpctool.BeforeToolResult, error) {
 	return h.fn(ctx, args)
 }

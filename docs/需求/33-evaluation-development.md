@@ -1,6 +1,6 @@
 # Evaluation 评估 — 开发计划
 
-> **版本**：2026-05-19 | **状态**：🟡 基础评估可用；LLM-Judge/前端/高级能力未实现
+> **版本**：2026-05-19（修订）| **状态**：🟡 基础评估可用，前端页面已接入；LLM-Judge/EvalSet 对齐/高级能力未实现（EP-RT-08）
 > **需求**：[33 evaluation.md](./33%20evaluation.md) · **设计**：[33 evaluation.design.md](./33%20evaluation.design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：EP-DATA-01, EP-RT-08, EP-BIZ-04
 
@@ -39,7 +39,7 @@ Evaluation 评估：对 Agent 的输出质量进行结构化评估，支持自�
 | 自动评估触发 | ❌ | 无 AfterTurn Hook 机制 |
 | 人工评估标注 | ❌ | 无人工标注字段和 UI |
 | 评估报告 | ❌ | 无报告生成和导出 |
-| 前端页面 | ❌ | `web/src/` 无 evaluation 相关文件 |
+| 前端页面 | ✅ | EvaluationPage.vue；路由 /evaluation 已注册；eatures/evaluation/ api/types/mapper/store 均已实现 |
 | trpc AgentEvaluator 集成 | ❌ | 使用自建 Runner，未集成框架评估器 |
 | MultiRun / UserSimulation | ❌ | 未实现 |
 | ToolTrajectory / FinalResponse 多维度 | ❌ | 仅有简化版 exact/contains/tool_call_accuracy |
@@ -50,7 +50,7 @@ Evaluation 评估：对 Agent 的输出质量进行结构化评估，支持自�
 
 1. **P0**：`EnsureEvalSchema` 未在 `NewData()` 启动期调用，无表时首跑失败（EP-DATA-01）
 2. **P1**：LLM-as-Judge 未实现，llm_as_judge 指标永远跳过
-3. **P1**：前端无 Evaluation 页面，无法通过 UI 管理评估
+3. ~~**P1**~~：前端 Evaluation 页面已实现（EvaluationPage.vue）✅
 4. **P2**：无自动评估触发机制，评估需手动触发
 5. **P2**：无 DeleteRun / UpdateDataset API，管理能力不完整
 6. **P2**：无评估报告生成和导出
@@ -77,9 +77,9 @@ Evaluation 评估：对 Agent 的输出质量进行结构化评估，支持自�
 | 2 | 实现 LLM-as-Judge（接入 Provider/Model 配置，注入 LLMJudge hook） | P1 | — | Phase 1 |
 | 3 | 补全 DeleteRun API（Proto + Biz + Data + Service） | P2 | — | Phase 1 |
 | 4 | 补全 UpdateDataset API（名称/描述更新） | P2 | — | Phase 1 |
-| 5 | 前端：评估数据集管理页（列表/创建/删除/上传用例） | P1 | — | Phase 2 |
-| 6 | 前端：运行评估页（选择数据集+Agent → 启动 → 查看进度） | P1 | — | Phase 2 |
-| 7 | 前端：评估结果页（汇总分数 + 逐用例详情） | P1 | — | Phase 2 |
+| 5 | 前端：评估数据集管理页（列表/创建/删除/上传用例） | P1 | — | Phase 2 | ✅ EvaluationPage.vue 已集成 |
+| 6 | 前端：运行评估页（选择数据集+Agent → 启动 → 查看进度） | P1 | — | Phase 2 | ✅ EvaluationPage.vue 已集成 |
+| 7 | 前端：评估结果页（汇总分数 + 逐用例详情） | P1 | — | Phase 2 | ✅ EvaluationPage.vue 已集成 |
 | 8 | 自动评估触发（AfterTurn Hook + 关联数据集配置） | P2 | — | Phase 3 |
 | 9 | 评估报告生成 + 导出（JSON/CSV） | P2 | — | Phase 3 |
 | 10 | 人工评估标注（标注字段 + API + 前端） | P3 | — | Phase 4 |
@@ -94,7 +94,7 @@ Evaluation 评估：对 Agent 的输出质量进行结构化评估，支持自�
 - [ ] `NewData()` 启动后 eval_* 表自动创建，无需手动建表
 - [ ] LLM-as-Judge 可配置 Judge 模型并返回有效分数
 - [ ] 可通过 API 删除评估运行、更新数据集
-- [ ] 前端可管理评估数据集、运行评估、查看结果
+- [x] 前端可管理评估数据集、运行评估、查看结果（EvaluationPage.vue ✅）
 - [ ] Agent 运行后可自动触发评估
 - [ ] 评估结果可人工标注
 - [ ] 可生成和导出评估报告

@@ -107,6 +107,16 @@ message RunStatus {
   string error_message = 3;
   // updated_at is an RFC3339 timestamp of the last status transition.
   string updated_at = 4;
+  // invocation_id is the framework invocation id when a run is active (ManagedRunner.RunStatus).
+  string invocation_id = 5;
+  // agent_name is the root agent name for the active invocation.
+  string agent_name = 6;
+  // started_at is RFC3339 when the framework run started.
+  string started_at = 7;
+  // last_event_at is RFC3339 of the last runner event for the invocation.
+  string last_event_at = 8;
+  // event_count is the number of events observed for the invocation.
+  int32 event_count = 9;
 }
 
 message GetRunStatusRequest {
@@ -123,6 +133,19 @@ message AwaitUserReplyRequest {
 
 message AwaitUserReplyResponse {
   bool accepted = 1;
+}
+
+message EnqueueUserMessageRequest {
+  string session_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string content = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message EnqueueUserMessageResponse {
+  // accepted is true when the message was accepted by either runner steering or the pending queue.
+  bool accepted = 1;
+  // queued is true when the message fell back to the service pending queue.
+  bool queued = 2;
+  string pending_id = 3;
 }
 
 service ChatService {
@@ -162,6 +185,12 @@ service ChatService {
   rpc AwaitUserReply(AwaitUserReplyRequest) returns (AwaitUserReplyResponse) {
     option (google.api.http) = {
       post: "/v1/chat/await-reply"
+      body: "*"
+    };
+  }
+  rpc EnqueueUserMessage(EnqueueUserMessageRequest) returns (EnqueueUserMessageResponse) {
+    option (google.api.http) = {
+      post: "/v1/chat/enqueue"
       body: "*"
     };
   }

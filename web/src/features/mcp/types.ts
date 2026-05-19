@@ -8,6 +8,18 @@ export type McpKeyValue = {
   value: string;
 };
 
+export type McpAuthConfig = {
+  type?: "api_key" | "bearer" | "oauth2" | "oauth2_client_credentials" | "oauth2_refresh" | "oauth2_static" | string;
+  api_key?: string;
+  header_name?: string;
+  token_url?: string;
+  client_id?: string;
+  client_secret?: string;
+  scope?: string;
+  access_token?: string;
+  refresh_token?: string;
+};
+
 export type McpServerConfig = {
   transport?: McpTransport;
   url?: string;
@@ -15,8 +27,10 @@ export type McpServerConfig = {
   args?: string[];
   headers?: Record<string, string>;
   env?: Record<string, string>;
+  auth?: McpAuthConfig;
   tool_prefix?: string;
   timeout_sec?: number;
+  session_reconnect_max?: number;
   require_user_credentials?: boolean;
 };
 
@@ -39,6 +53,16 @@ export type McpServerFormValue = {
   env: McpKeyValue[];
   tool_prefix: string;
   timeout_sec: number;
+  session_reconnect_max: number;
+  auth_type: string;
+  auth_api_key: string;
+  auth_header_name: string;
+  auth_token_url: string;
+  auth_client_id: string;
+  auth_client_secret: string;
+  auth_scope: string;
+  auth_access_token: string;
+  auth_refresh_token: string;
   enabled: boolean;
   require_user_credentials: boolean;
 };

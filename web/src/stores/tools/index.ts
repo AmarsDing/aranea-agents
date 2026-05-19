@@ -2,25 +2,37 @@ import { defineStore } from "pinia";
 import { ref } from "vue";
 import {
   listTools, getTool, createTool, updateTool, deleteTool, toggleToolEnabled,
-  listToolAgentOverrides, upsertToolAgentOverride, deleteToolAgentOverride, listToolRunsForTool
+  getAgentEffectiveTools, listToolAgentOverrides, listToolAgentOverridesByAgent,
+  upsertToolAgentOverride, deleteToolAgentOverride,   listToolRunsForTool,
+  testTool
 } from "../../features/tools/api";
+import type { ToolTestResult } from "../../features/tools/types";
 import type {
   Tool, ToolListQuery, ToolUpsertInput, ToolListResponse,
-  ToolAgentOverride, ToolInvocation, ToolRunQuery, PaginatedResponse
+  AgentEffectiveTools, ToolAgentOverride, ToolInvocation, ToolRunQuery, PaginatedResponse
 } from "../../features/tools/types";
 
 export const useToolsStore = defineStore("tools", () => {
   const tools = ref<Tool[]>([]);
   const activeTool = ref<Tool | null>(null);
   const total = ref(0);
+  const summary = ref<ToolListResponse["summary"]>({
+    total_tools: 0,
+    enabled_tools: 0,
+    high_risk_enabled: 0,
+    calls_24h: 0,
+    failure_rate_24h: 0
+  });
   const loading = ref(false);
 
-  async function loadTools(query?: ToolListQuery) {
+  async function loadTools(query?: ToolListQuery): Promise<ToolListResponse> {
     loading.value = true;
     try {
       const result: ToolListResponse = await listTools(query);
       tools.value = result.items ?? [];
       total.value = result.total ?? tools.value.length;
+      if (result.summary) summary.value = result.summary;
+      return result;
     } finally {
       loading.value = false;
     }
@@ -60,6 +72,18 @@ export const useToolsStore = defineStore("tools", () => {
     return listToolAgentOverrides(toolId);
   }
 
+  async function fetchOverridesByAgent(agentId: string): Promise<ToolAgentOverride[]> {
+    return listToolAgentOverridesByAgent(agentId);
+  }
+
+  async function fetchEffectiveTools(agentId: string): Promise<AgentEffectiveTools> {
+    return getAgentEffectiveTools(agentId);
+  }
+
+  async function fetchCatalog(query?: ToolListQuery): Promise<ToolListResponse> {
+    return listTools(query);
+  }
+
   async function saveOverride(input: { tool_id: string; agent_id: string; mode: string; enabled: boolean; requires_confirmation: boolean; config_override_json: string }): Promise<ToolAgentOverride> {
     return upsertToolAgentOverride(input);
   }
@@ -72,9 +96,14 @@ export const useToolsStore = defineStore("tools", () => {
     return listToolRunsForTool(toolId, query);
   }
 
+  async function runToolTest(toolId: string, argumentsJson: string, timeoutSec: number): Promise<ToolTestResult> {
+    return testTool(toolId, argumentsJson, timeoutSec);
+  }
+
   return {
-    tools, activeTool, total, loading,
+    tools, activeTool, total, summary, loading,
     loadTools, fetchTool, addTool, editTool, remove, toggle,
-    fetchOverrides, saveOverride, removeOverride, fetchToolRuns
+    fetchCatalog, fetchEffectiveTools, fetchOverrides, fetchOverridesByAgent,
+    saveOverride, removeOverride, fetchToolRuns, runToolTest
   };
 });

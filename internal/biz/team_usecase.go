@@ -201,6 +201,13 @@ func (u *TeamUsecase) GetRun(ctx context.Context, id string) (TeamRun, error) {
 	return u.repo.GetTeamRunByID(ctx, id)
 }
 
+func (u *TeamUsecase) UpdateRun(ctx context.Context, r TeamRun) error {
+	if strings.TrimSpace(r.ID) == "" {
+		return kerrors.BadRequest("TEAM", "run id is required")
+	}
+	return u.repo.UpdateTeamRun(ctx, r)
+}
+
 func (u *TeamUsecase) ListRunSteps(ctx context.Context, runID string) ([]TeamRunStep, error) {
 	runID = strings.TrimSpace(runID)
 	if runID == "" {

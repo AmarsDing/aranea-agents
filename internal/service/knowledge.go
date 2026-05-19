@@ -3,10 +3,12 @@ package service
 import (
 	"context"
 	"encoding/base64"
+	"fmt"
 	"strings"
 
 	v1 "aranea-agents/api/kratos/knowledge/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 	"aranea-agents/internal/knowledge"
 	"aranea-agents/pkg/safego"
 
@@ -34,11 +36,12 @@ type KnowledgeService struct {
 	uc       *biz.KnowledgeUsecase
 	chunker  *knowledge.Chunker
 	embedder *knowledge.Embedder
+	bus      event.Bus
 }
 
 // NewKnowledgeService constructs a KnowledgeService.
-func NewKnowledgeService(uc *biz.KnowledgeUsecase, chunker *knowledge.Chunker, embedder *knowledge.Embedder) *KnowledgeService {
-	return &KnowledgeService{uc: uc, chunker: chunker, embedder: embedder}
+func NewKnowledgeService(uc *biz.KnowledgeUsecase, chunker *knowledge.Chunker, embedder *knowledge.Embedder, bus event.Bus) *KnowledgeService {
+	return &KnowledgeService{uc: uc, chunker: chunker, embedder: embedder, bus: bus}
 }
 
 // CreateCollection creates a new vector collection.
@@ -127,6 +130,9 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 
 	safego.Go(context.Background(), "knowledge-ingest", func() {
 		bgCtx := context.Background()
+		_ = uc.UpdateDocumentStatus(bgCtx, doc.ID, "indexing", "", 0)
+		s.publishKnowledgeIngest(col.ID, doc.ID, "indexing", "", 0)
+
 		text := string(raw)
 		chunks := chunker.Split(text)
 
@@ -135,10 +141,11 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 			vec, err := embedder.Embed(bgCtx, ch.Content)
 			if err != nil {
 				_ = uc.UpdateDocumentStatus(bgCtx, doc.ID, "error", err.Error(), 0)
+				s.publishKnowledgeIngest(col.ID, doc.ID, "error", err.Error(), 0)
 				return
 			}
 			bizChunks = append(bizChunks, biz.KnowledgeChunk{
-				ID:           doc.ID + "-" + string(rune('A'+i%26)),
+				ID:           fmt.Sprintf("%s-ch-%d", doc.ID, i),
 				DocID:        doc.ID,
 				CollectionID: col.ID,
 				Content:      ch.Content,
@@ -149,10 +156,12 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 
 		if err := uc.InsertChunks(bgCtx, bizChunks); err != nil {
 			_ = uc.UpdateDocumentStatus(bgCtx, doc.ID, "error", err.Error(), 0)
+			s.publishKnowledgeIngest(col.ID, doc.ID, "error", err.Error(), 0)
 			return
 		}
 		_ = uc.UpdateDocumentStatus(bgCtx, doc.ID, "indexed", "", len(bizChunks))
 		_ = uc.UpdateCollectionCounts(bgCtx, col.ID, 1, len(bizChunks))
+		s.publishKnowledgeIngest(col.ID, doc.ID, "indexed", "", len(bizChunks))
 		knowledgeIngestTotal.Inc()
 	})
 
@@ -216,6 +225,57 @@ func (s *KnowledgeService) Search(ctx context.Context, req *v1.SearchRequest) (*
 		})
 	}
 	return &v1.SearchResponse{Chunks: out}, nil
+}
+
+// GetEmbedderConfig returns redacted embedder settings (EP-KN-01).
+func (s *KnowledgeService) GetEmbedderConfig(ctx context.Context, _ *v1.GetEmbedderConfigRequest) (*v1.EmbedderConfig, error) {
+	_ = ctx
+	return s.embedderConfigProto(), nil
+}
+
+// UpdateEmbedderConfig applies runtime embedder settings from admin UI.
+func (s *KnowledgeService) UpdateEmbedderConfig(ctx context.Context, req *v1.UpdateEmbedderConfigRequest) (*v1.UpdateEmbedderConfigResponse, error) {
+	_ = ctx
+	if s.embedder == nil {
+		return nil, kerrors.InternalServer("KNOWLEDGE", "embedder not configured")
+	}
+	provider := strings.TrimSpace(req.GetProvider())
+	if provider != "" && provider != "openai" && provider != "ollama" {
+		return nil, kerrors.BadRequest("KNOWLEDGE", "provider must be openai or ollama")
+	}
+	s.embedder.Update(provider, req.GetBaseUrl(), req.GetApiKey(), req.GetModel(), int(req.GetDim()))
+	return &v1.UpdateEmbedderConfigResponse{Config: s.embedderConfigProto()}, nil
+}
+
+func (s *KnowledgeService) embedderConfigProto() *v1.EmbedderConfig {
+	if s.embedder == nil {
+		return &v1.EmbedderConfig{}
+	}
+	provider, baseURL, model, dim, configured, hasAPIKey := s.embedder.Config()
+	return &v1.EmbedderConfig{
+		Provider:    provider,
+		BaseUrl:     baseURL,
+		Model:       model,
+		Dim:         int32(dim),
+		Configured:  configured,
+		HasApiKey:   hasAPIKey,
+	}
+}
+
+func (s *KnowledgeService) publishKnowledgeIngest(collectionID, docID, status, errMsg string, chunkCount int) {
+	if s.bus == nil {
+		return
+	}
+	env := event.NewEnvelope(event.EnvelopeTypeKnowledgeIngest, "knowledge", collectionID)
+	env.Channel = "knowledge"
+	env.Metadata = map[string]any{
+		"collection_id": collectionID,
+		"document_id":   docID,
+		"status":        status,
+		"error_message": errMsg,
+		"chunk_count":   chunkCount,
+	}
+	s.bus.Publish(context.Background(), env)
 }
 
 // --- proto conversion helpers ---

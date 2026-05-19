@@ -64,5 +64,6 @@ export type ToolUseEvent = {
   error?: string;
   occurred_at: string;
   duration_ms?: number;
+  is_long_running?: boolean;
   message_hint?: string;
 };

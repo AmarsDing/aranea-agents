@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 
 	v1 "aranea-agents/api/kratos/tool/v1"
 	"aranea-agents/internal/biz"
@@ -16,11 +17,12 @@ import (
 type ToolService struct {
 	v1.UnimplementedToolServiceServer
 
-	uc *biz.ToolUsecase
+	uc  *biz.ToolUsecase
+	mon *biz.MonitorUsecase
 }
 
-func NewToolService(uc *biz.ToolUsecase) *ToolService {
-	return &ToolService{uc: uc}
+func NewToolService(uc *biz.ToolUsecase, mon *biz.MonitorUsecase) *ToolService {
+	return &ToolService{uc: uc, mon: mon}
 }
 
 func bizToolToProto(t biz.Tool) *v1.Tool {
@@ -175,6 +177,7 @@ func (s *ToolService) CreateTool(ctx context.Context, req *v1.CreateToolRequest)
 	if err != nil {
 		return nil, err
 	}
+	biz.RecordAdminAudit(ctx, s.mon, "tool.create", "tool", t.ID, fmt.Sprintf("key=%s", t.Key))
 	return bizToolToProto(t), nil
 }
 
@@ -205,6 +208,7 @@ func (s *ToolService) UpdateTool(ctx context.Context, req *v1.UpdateToolRequest)
 		}
 		return nil, err
 	}
+	biz.RecordAdminAudit(ctx, s.mon, "tool.update", "tool", t.ID, fmt.Sprintf("key=%s", t.Key))
 	return bizToolToProto(t), nil
 }
 
@@ -216,6 +220,7 @@ func (s *ToolService) DeleteTool(ctx context.Context, req *v1.DeleteToolRequest)
 		}
 		return nil, err
 	}
+	biz.RecordAdminAudit(ctx, s.mon, "tool.delete", "tool", req.GetId(), "")
 	return &emptypb.Empty{}, nil
 }
 
@@ -324,6 +329,18 @@ func (s *ToolService) ListToolAgentOverrides(ctx context.Context, req *v1.ListTo
 	return &v1.ListToolAgentOverridesResponse{Items: items}, nil
 }
 
+func (s *ToolService) ListToolAgentOverridesByAgent(ctx context.Context, req *v1.ListToolAgentOverridesByAgentRequest) (*v1.ListToolAgentOverridesByAgentResponse, error) {
+	overrides, err := s.uc.ListToolAgentOverridesByAgent(ctx, req.GetAgentId())
+	if err != nil {
+		return nil, err
+	}
+	items := make([]*v1.ToolAgentOverride, 0, len(overrides))
+	for i := range overrides {
+		items = append(items, bizOverrideToProto(overrides[i]))
+	}
+	return &v1.ListToolAgentOverridesByAgentResponse{Items: items}, nil
+}
+
 func (s *ToolService) UpsertToolAgentOverride(ctx context.Context, req *v1.UpsertToolAgentOverrideRequest) (*v1.ToolAgentOverride, error) {
 	in := biz.ToolAgentOverrideInput{
 		ToolKey:              req.GetToolId(),
@@ -375,4 +392,20 @@ func (s *ToolService) UpdateToolConfig(ctx context.Context, req *v1.UpdateToolCo
 		return nil, err
 	}
 	return bizToolToProto(t), nil
+}
+
+func (s *ToolService) TestTool(ctx context.Context, req *v1.TestToolRequest) (*v1.TestToolResponse, error) {
+	res, err := s.uc.TestTool(ctx, req.GetId(), req.GetArgumentsJson(), int(req.GetTimeoutSec()))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, kerrors.NotFound("TOOL", "tool not found")
+		}
+		return nil, err
+	}
+	return &v1.TestToolResponse{
+		Status:        res.Status,
+		ResultPreview: res.ResultPreview,
+		ErrorMessage:  res.ErrorMessage,
+		DurationMs:    int32(res.DurationMS),
+	}, nil
 }

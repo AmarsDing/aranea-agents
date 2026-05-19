@@ -36,22 +36,23 @@ type LLMJudge func(ctx context.Context, input, expected, actual string) (float32
 
 // Runner executes an evaluation run asynchronously.
 type Runner struct {
-	uc       *biz.EvalUsecase
-	agent    AgentRunner
-	llmJudge LLMJudge
+	uc        *biz.EvalUsecase
+	agent     AgentRunner
+	llmJudge  LLMJudge
+	framework *FrameworkBridge
 }
 
 // NewRunner creates an evaluation Runner.
-func NewRunner(uc *biz.EvalUsecase, agent AgentRunner, judge LLMJudge) *Runner {
-	return &Runner{uc: uc, agent: agent, llmJudge: judge}
+func NewRunner(uc *biz.EvalUsecase, agent AgentRunner, judge LLMJudge, framework *FrameworkBridge) *Runner {
+	return &Runner{uc: uc, agent: agent, llmJudge: judge, framework: framework}
 }
 
 // Start launches an async goroutine to execute the run and immediately returns.
 // Progress is persisted via the biz.EvalRepo.
-func (r *Runner) Start(ctx context.Context, run biz.EvalRun, metrics string) {
+func (r *Runner) Start(ctx context.Context, run biz.EvalRun, metrics string, numRuns int) {
 	evalRunsTotal.WithLabelValues("started").Inc()
 	safego.Go(context.Background(), "eval-runner", func() {
-		if err := r.execute(ctx, run, metrics); err != nil {
+		if err := r.execute(ctx, run, metrics, numRuns); err != nil {
 			evalRunsTotal.WithLabelValues("error").Inc()
 		} else {
 			evalRunsTotal.WithLabelValues("completed").Inc()
@@ -59,10 +60,15 @@ func (r *Runner) Start(ctx context.Context, run biz.EvalRun, metrics string) {
 	})
 }
 
-func (r *Runner) execute(ctx context.Context, run biz.EvalRun, metrics string) error {
+func (r *Runner) execute(ctx context.Context, run biz.EvalRun, metrics string, numRuns int) error {
 	cases, err := r.uc.ListCases(ctx, run.DatasetID)
 	if err != nil {
 		return r.failRun(ctx, run, "failed to load cases: "+err.Error())
+	}
+
+	ds, dsErr := r.uc.GetDataset(ctx, run.DatasetID)
+	if dsErr != nil {
+		return r.failRun(ctx, run, "failed to load dataset: "+dsErr.Error())
 	}
 
 	run.TotalCases = len(cases)
@@ -73,16 +79,24 @@ func (r *Runner) execute(ctx context.Context, run biz.EvalRun, metrics string) e
 	}
 
 	wantMetrics := parseMetrics(metrics)
-	var (
-		exactTotal, exactHit       float32
-		containsTotal, containsHit float32
-		llmTotal, llmSum           float32
-		toolTotal, toolSum         float32
-	)
+
+	if r.framework != nil && r.agent != nil {
+		return r.executeFramework(ctx, run, ds, cases, wantMetrics, numRuns)
+	}
 
 	if r.agent == nil {
 		return r.failRun(ctx, run, "agent runner not configured; inject an AgentRunner via evaluation.NewRunner")
 	}
+
+	// Legacy path when framework bridge is unavailable.
+	_ = BizCasesToEvalSet(ds, cases)
+
+	var (
+		exactTotal, exactHit           float32
+		containsTotal, containsHit     float32
+		llmTotal, llmSum               float32
+		toolTotal, toolSum             float32
+	)
 
 	for _, c := range cases {
 		start := time.Now()
@@ -147,6 +161,45 @@ func (r *Runner) execute(ctx context.Context, run biz.EvalRun, metrics string) e
 		run.ToolCallAccuracy = toolSum / toolTotal
 	}
 
+	run.Status = "completed"
+	run.FinishedAt = time.Now().UTC().Format(time.RFC3339)
+	return r.uc.UpdateRun(ctx, run)
+}
+
+func (r *Runner) executeFramework(
+	ctx context.Context,
+	run biz.EvalRun,
+	ds biz.EvalDataset,
+	cases []biz.EvalCase,
+	wantMetrics map[string]bool,
+	numRuns int,
+) error {
+	results, scores, err := r.framework.Execute(ctx, ds, cases, RunConfig{
+		AgentID: run.AgentID,
+		NumRuns: numRuns,
+		Metrics: wantMetrics,
+	})
+	if err != nil {
+		return r.failRun(ctx, run, err.Error())
+	}
+	for i := range results {
+		results[i].RunID = run.ID
+		_ = r.uc.InsertCaseResult(ctx, results[i])
+		run.CompletedCases++
+		_ = r.uc.UpdateRun(ctx, run)
+	}
+	if v, ok := scores[MetricExactMatch]; ok {
+		run.ExactMatchScore = v
+	}
+	if v, ok := scores[MetricContainsMatch]; ok {
+		run.ContainsMatchScore = v
+	}
+	if v, ok := scores[MetricLLMAsJudge]; ok {
+		run.LLMJudgeScore = v
+	}
+	if v, ok := scores[MetricToolCallAccuracy]; ok {
+		run.ToolCallAccuracy = v
+	}
 	run.Status = "completed"
 	run.FinishedAt = time.Now().UTC().Format(time.RFC3339)
 	return r.uc.UpdateRun(ctx, run)

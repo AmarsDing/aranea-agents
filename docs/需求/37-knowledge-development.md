@@ -37,9 +37,10 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 | 元数据过滤 | ✅ | filter_json → JSONB `@>` 操作符 |
 | knowledge_search 工具 | ✅ | `tools/knowledge/tool.go` + `buildToolsetsForAgent` |
 | 前端 API + Store | ✅ | `features/knowledge/api.ts` + `stores/knowledge/` |
-| EnsureKnowledgeSchema 调用 | 🟡 | 函数已定义，但 `NewData()` 未调用（EP-DATA-01） |
+| 管理页面 | ✅ | `web/src/pages/KnowledgePage.vue`；路由 `/knowledge`；侧栏 `menu.knowledge` |
+| EnsureKnowledgeSchema 调用 | ✅ | `NewData()` 在 Postgres 就绪后调用（EP-DATA-01） |
 | Embedder 配置注入 | 🟡 | Wire 工厂硬编码空配置（EP-KN-01） |
-| 摄取进度可观测 | 🟡 | 异步摄取完成但前端无进度闭环（EP-KN-02） |
+| 摄取进度可观测 | 🟡 | 管理页可轮询文档 `status`；无专用进度条/SSE（EP-KN-02） |
 | Markdown/JSON/递归分块 | ❌ | 仅 char/token |
 | Gemini/HuggingFace Embedding | ❌ | 仅 OpenAI/Ollama |
 | AgenticFilter | ❌ | 未实现 |
@@ -87,14 +88,15 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 
 ### Phase 1：工程化闭环（当前优先）
 
-完成 EP-DATA-01、EP-KN-01、EP-KN-02，确保 Knowledge 模块在生产环境可用。
+完成 EP-DATA-01、EP-KN-01、EP-KN-02，确保 Knowledge 模块在生产环境可用。管理页已提供集合/文档/检索入口。
 
-| 任务 | EP | 涉及文件 |
-|------|-----|----------|
-| `NewData()` 调用 `EnsureKnowledgeSchema` | EP-DATA-01 | `internal/data/data.go` |
-| nil Repo 时 service 返回明确错误 | EP-DATA-01 | `internal/service/knowledge.go`、`internal/biz/knowledge.go` |
-| Embedder 配置从 conf/env 注入 | EP-KN-01 | `internal/service/wire_providers.go`、conf |
-| 摄取进度可观测（轮询/SSE） | EP-KN-02 | `internal/service/knowledge.go`、前端 |
+| 任务 | EP | 状态 | 涉及文件 |
+|------|-----|------|----------|
+| `KnowledgePage.vue` 管理界面 | — | ✅ | `web/src/pages/KnowledgePage.vue`、`router/routes.ts` |
+| `NewData()` 调用 `EnsureKnowledgeSchema` | EP-DATA-01 | ✅ | `internal/data/data.go` |
+| nil Repo 时 service 返回明确错误 | EP-DATA-01 | ✅ | `internal/biz/knowledge.go` → `ErrKnowledgeUnavailable` |
+| Embedder 配置从 conf/env 注入 | EP-KN-01 | ⏳ | `internal/service/wire_providers.go`、conf |
+| 摄取进度可观测（轮询/SSE） | EP-KN-02 | 🟡 | 管理页已展示文档 status；专用进度 UX 待补 |
 
 ### Phase 2：高级分块 + 文档解析
 
@@ -155,8 +157,8 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 
 ### Phase 1
 
-- [ ] 配置 Postgres 时 `EnsureKnowledgeSchema` 在启动期自动调用
-- [ ] 无 Postgres 时 Knowledge API 返回明确 "服务不可用" 错误，不 panic
+- [x] 配置 Postgres 时 `EnsureKnowledgeSchema` 在启动期自动调用
+- [x] 无 Postgres 时 Knowledge API 返回明确 "服务不可用" 错误，不 panic
 - [ ] Embedder provider/baseURL/apiKey/model 从配置文件或环境变量注入
 - [ ] 前端可查询文档摄取进度（轮询文档状态或 SSE 推送）
 

@@ -1,96 +1,127 @@
 <template>
-  <q-card flat bordered class="monitor-card">
-    <q-card-section class="row items-center q-col-gutter-md">
-      <div class="col-12 col-md">
-        <div class="text-h6 text-weight-bold">活动日志</div>
-        <div class="text-caption text-grey-7">管理与配置变更审计记录</div>
-      </div>
-      <q-select v-model="actionFilter" dense outlined emit-value map-options clearable class="col-12 col-md-2" label="事件类型" :options="actionOptions" />
-      <q-select v-model="resourceFilter" dense outlined emit-value map-options clearable class="col-12 col-md-2" label="实体类型" :options="resourceOptions" />
-      <q-input v-model="keyword" dense outlined clearable debounce="200" class="col-12 col-md-3" label="搜索事件 / 资源 / 详情">
-        <template #prepend><q-icon name="search" /></template>
-      </q-input>
-      <q-btn flat rounded icon="refresh" label="刷新" :loading="loading" @click="$emit('reload')" />
-    </q-card-section>
-    <q-separator />
-    <q-table
-      flat
-      :rows="filteredRows"
-      :columns="columns"
-      row-key="id"
-      :loading="loading"
-      :pagination="pagination"
-      :rows-per-page-options="[12, 25, 50, 100]"
-      @request="onPageRequest"
-    >
-      <template #body-cell-event="props">
-        <q-td :props="props">
-          <q-chip dense square :color="eventColor(props.row.action)" text-color="white">
-            {{ props.row.action }}.{{ props.row.resource }}
-          </q-chip>
-        </q-td>
-      </template>
-      <template #body-cell-resource="props">
-        <q-td :props="props">
-          <div class="text-weight-medium">{{ props.row.resource }}</div>
-          <div class="text-caption text-grey-7 ellipsis">{{ props.row.resource_id || "-" }}</div>
-        </q-td>
-      </template>
-      <template #body-cell-actor="props">
-        <q-td :props="props">
-          <div>{{ props.row.actor || "system" }}</div>
-          <div v-if="props.row.ip" class="text-caption text-grey-7">{{ props.row.ip }}</div>
-        </q-td>
-      </template>
-      <template #body-cell-request="props">
-        <q-td :props="props">
-          <code class="monitor-code">{{ props.row.request_id || "-" }}</code>
-        </q-td>
-      </template>
-      <template #body-cell-created="props">
-        <q-td :props="props">{{ formatDate(props.row.created_at) }}</q-td>
-      </template>
-    </q-table>
-
-    <q-card-section v-if="total > 0" class="text-caption text-grey-7 text-right">
-      共 {{ total }} 条记录
-    </q-card-section>
-  </q-card>
-
-  <q-dialog v-model="detailOpen">
-    <q-card class="monitor-detail-card">
-      <q-card-section class="row items-start justify-between">
-        <div>
-          <div class="text-h6">Audit 详情</div>
-          <div class="text-caption text-grey-7">{{ selected?.action }}.{{ selected?.resource }}</div>
+  <div>
+    <q-card flat bordered class="monitor-card">
+      <q-card-section class="row items-center q-col-gutter-md">
+        <div class="col-12 col-md">
+          <div class="text-h6 text-weight-bold">活动日志</div>
+          <div class="text-caption text-grey-7">管理与配置变更审计记录</div>
         </div>
-        <q-btn flat round dense icon="close" v-close-popup />
+        <q-select
+          v-model="actionFilter"
+          dense
+          outlined
+          emit-value
+          map-options
+          clearable
+          class="col-12 col-md-2"
+          label="事件类型"
+          :options="actionOptions"
+        />
+        <q-select
+          v-model="resourceFilter"
+          dense
+          outlined
+          emit-value
+          map-options
+          clearable
+          class="col-12 col-md-2"
+          label="实体类型"
+          :options="resourceOptions"
+        />
+        <q-input
+          v-model="keyword"
+          dense
+          outlined
+          clearable
+          debounce="200"
+          class="col-12 col-md-3"
+          label="搜索事件 / 资源 / 详情"
+        >
+          <template #prepend>
+            <q-icon name="search" />
+          </template>
+        </q-input>
+        <q-btn flat rounded icon="refresh" label="刷新" :loading="loading" @click="$emit('reload')" />
       </q-card-section>
       <q-separator />
-      <q-card-section>
-        <q-list dense>
-          <q-item v-if="selected?.actor">
-            <q-item-section>操作者</q-item-section>
-            <q-item-section side>{{ selected.actor }}</q-item-section>
-          </q-item>
-          <q-item v-if="selected?.ip">
-            <q-item-section>IP</q-item-section>
-            <q-item-section side>{{ selected.ip }}</q-item-section>
-          </q-item>
-          <q-item v-if="selected?.severity">
-            <q-item-section>严重级别</q-item-section>
-            <q-item-section side>
-              <q-badge :color="severityColor(selected.severity)">{{ selected.severity }}</q-badge>
-            </q-item-section>
-          </q-item>
-        </q-list>
-        <pre class="monitor-json">{{ selectedJSON }}</pre>
+      <q-table
+        flat
+        :rows="filteredRows"
+        :columns="columns"
+        row-key="id"
+        :loading="loading"
+        :pagination="pagination"
+        :rows-per-page-options="[12, 25, 50, 100]"
+        @request="onPageRequest"
+      >
+        <template #body-cell-event="props">
+          <q-td :props="props">
+            <q-chip dense square :color="eventColor(props.row.action)" text-color="white">
+              {{ props.row.action }}.{{ props.row.resource }}
+            </q-chip>
+          </q-td>
+        </template>
+        <template #body-cell-resource="props">
+          <q-td :props="props">
+            <div class="text-weight-medium">{{ props.row.resource }}</div>
+            <div class="text-caption text-grey-7 ellipsis">{{ props.row.resource_id || "-" }}</div>
+          </q-td>
+        </template>
+        <template #body-cell-actor="props">
+          <q-td :props="props">
+            <div>{{ props.row.actor || "system" }}</div>
+            <div v-if="props.row.ip" class="text-caption text-grey-7">{{ props.row.ip }}</div>
+          </q-td>
+        </template>
+        <template #body-cell-request="props">
+          <q-td :props="props">
+            <code class="monitor-code">{{ props.row.request_id || "-" }}</code>
+          </q-td>
+        </template>
+        <template #body-cell-created="props">
+          <q-td :props="props">{{ formatDate(props.row.created_at) }}</q-td>
+        </template>
+      </q-table>
+      <q-card-section v-if="total > 0" class="text-caption text-grey-7 text-right">
+        共 {{ total }} 条记录
       </q-card-section>
-      <q-card-actions align="right">
-        <q-btn flat label="复制 JSON" icon="content_copy" @click="copyJSON" />
-      </q-card-actions>
     </q-card>
-  </q-dialog>
+
+    <q-dialog v-model="detailOpen">
+      <q-card class="monitor-detail-card">
+        <q-card-section class="row items-start justify-between">
+          <div>
+            <div class="text-h6">Audit 详情</div>
+            <div class="text-caption text-grey-7">{{ selected?.action }}.{{ selected?.resource }}</div>
+          </div>
+          <q-btn flat round dense icon="close" v-close-popup />
+        </q-card-section>
+        <q-separator />
+        <q-card-section>
+          <q-list dense>
+            <q-item v-if="selected?.actor">
+              <q-item-section>操作者</q-item-section>
+              <q-item-section side>{{ selected?.actor }}</q-item-section>
+            </q-item>
+            <q-item v-if="selected?.ip">
+              <q-item-section>IP</q-item-section>
+              <q-item-section side>{{ selected?.ip }}</q-item-section>
+            </q-item>
+            <q-item v-if="selected?.severity">
+              <q-item-section>严重级别</q-item-section>
+              <q-item-section side>
+                <q-badge :color="severityColor(selected!.severity)">{{ selected?.severity }}</q-badge>
+              </q-item-section>
+            </q-item>
+          </q-list>
+          <pre class="monitor-json">{{ selectedJSON }}</pre>
+        </q-card-section>
+        <q-card-actions align="right">
+          <q-btn flat label="复制 JSON" icon="content_copy" @click="copyJSON" />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -147,8 +178,11 @@ const filteredRows = computed(() => {
   const q = keyword.value.trim().toLowerCase();
   if (q) {
     result = result.filter((row) =>
-      [row.action, row.resource, row.resource_id, row.request_id, row.detail, row.actor]
-        .some((value) => String(value || "").toLowerCase().includes(q))
+      [row.action, row.resource, row.resource_id, row.request_id, row.detail, row.actor].some((value) =>
+        String(value || "")
+          .toLowerCase()
+          .includes(q)
+      )
     );
   }
   return result;
@@ -157,7 +191,11 @@ const filteredRows = computed(() => {
 const selectedJSON = computed(() => compactJSON(selected.value ?? {}));
 
 function onPageRequest(params: Parameters<NonNullable<QTableProps["onRequest"]>>[1]) {
-  pagination.value = { ...pagination.value, page: params.pagination.page, rowsPerPage: params.pagination.rowsPerPage };
+  pagination.value = {
+    ...pagination.value,
+    page: params.pagination.page,
+    rowsPerPage: params.pagination.rowsPerPage
+  };
 }
 
 function eventColor(action: string) {
@@ -179,3 +217,4 @@ async function copyJSON() {
   await copyToClipboard(selectedJSON.value);
   Notify.create({ message: "已复制", color: "positive", position: "top" });
 }
+</script>

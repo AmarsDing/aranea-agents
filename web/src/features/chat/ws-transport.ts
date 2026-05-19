@@ -11,6 +11,8 @@ export type WsTransportOptions = {
   onDisconnected?: () => void;
   onError?: (error: Event) => void;
   onServerShutdown?: (reason: string) => void;
+  /** Fired when EventBuffer replay starts/ends (reconnect with last_event_id). */
+  onReplayState?: (replaying: boolean, count?: number) => void;
 };
 
 export type WsTransport = {
@@ -66,6 +68,18 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
         }
 
         if (msg.type === "pong") return;
+
+        if (msg.type === "replay_start") {
+          const payload = msg.payload as Record<string, unknown> | undefined;
+          const count = typeof payload?.count === "number" ? payload.count : undefined;
+          opts.onReplayState?.(true, count);
+          return;
+        }
+
+        if (msg.type === "replay_end") {
+          opts.onReplayState?.(false);
+          return;
+        }
 
         if (msg.type === "server_shutdown") {
           const payload = msg.payload as Record<string, unknown> | undefined;

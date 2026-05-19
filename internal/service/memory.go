@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	v1 "aranea-agents/api/kratos/memory/v1"
-	"aranea-agents/internal/data/sessionmemory"
+	aramemory "aranea-agents/internal/memory"
 	"aranea-agents/pkg/jsonutil"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -15,15 +15,15 @@ import (
 type MemoryService struct {
 	v1.UnimplementedMemoryServiceServer
 
-	store *sessionmemory.Store
+	admin aramemory.SessionAdminStore
 }
 
-func NewMemoryService(store *sessionmemory.Store) *MemoryService {
-	return &MemoryService{store: store}
+func NewMemoryService(admin aramemory.SessionAdminStore) *MemoryService {
+	return &MemoryService{admin: admin}
 }
 
 func (s *MemoryService) errStore() error {
-	if s.store == nil {
+	if s.admin == nil {
 		return kerrors.InternalServer("MEMORY", "session memory store not wired")
 	}
 	return nil
@@ -37,7 +37,7 @@ func (s *MemoryService) ListL0Snapshots(ctx context.Context, req *v1.ListL0Snaps
 	if sid == "" {
 		return nil, kerrors.BadRequest("MEMORY", "session_id is required")
 	}
-	rows, err := s.store.ListL0SnapshotRows(ctx, sid, req.GetLimit())
+	rows, err := s.admin.ListL0SnapshotRows(ctx, sid, req.GetLimit())
 	if err != nil {
 		return nil, err
 	}
@@ -60,7 +60,7 @@ func (s *MemoryService) ListL1Tasks(ctx context.Context, req *v1.ListL1TasksRequ
 	if sid == "" {
 		return nil, kerrors.BadRequest("MEMORY", "session_id is required")
 	}
-	rows, err := s.store.ListL1TaskRows(ctx, sid,
+	rows, err := s.admin.ListL1TaskRows(ctx, sid,
 		strings.TrimSpace(req.GetAgentId()),
 		strings.TrimSpace(req.GetStatus()),
 		strings.TrimSpace(req.GetIncludeEnded()),
@@ -86,7 +86,7 @@ func (s *MemoryService) ListL1Fields(ctx context.Context, req *v1.ListL1FieldsRe
 		return nil, kerrors.BadRequest("MEMORY", "task_id is required")
 	}
 	includeInternal := strings.TrimSpace(req.GetIncludeInternal()) == "true"
-	rows, err := s.store.ListL1FieldRows(ctx, tid, includeInternal)
+	rows, err := s.admin.ListL1FieldRows(ctx, tid, includeInternal)
 	if err != nil {
 		return nil, err
 	}
@@ -127,7 +127,7 @@ func (s *MemoryService) ListMemoryFacts(ctx context.Context, req *v1.ListMemoryF
 	if err := s.errStore(); err != nil {
 		return nil, err
 	}
-	rows, total, lim, off, err := s.store.ListFactRows(ctx,
+	rows, total, lim, off, err := s.admin.ListFactRows(ctx,
 		strings.TrimSpace(req.GetScopeType()),
 		strings.TrimSpace(req.GetScopeId()),
 		strings.TrimSpace(req.GetKind()),
@@ -153,7 +153,7 @@ func (s *MemoryService) ListMemoryEntities(ctx context.Context, req *v1.ListMemo
 	if err := s.errStore(); err != nil {
 		return nil, err
 	}
-	rows, total, err := s.store.ListEntityRows(ctx,
+	rows, total, err := s.admin.ListEntityRows(ctx,
 		strings.TrimSpace(req.GetScopeType()),
 		strings.TrimSpace(req.GetScopeId()),
 		strings.TrimSpace(req.GetWorkspaceId()),
@@ -185,7 +185,7 @@ func (s *MemoryService) GetMemoryNeighborhood(ctx context.Context, req *v1.GetMe
 	if cid == "" {
 		return nil, kerrors.BadRequest("MEMORY", "center_id is required")
 	}
-	body, err := s.store.NeighborhoodJSON(ctx, cid, req.GetHops(), req.GetMaxNodes())
+	body, err := s.admin.NeighborhoodJSON(ctx, cid, req.GetHops(), req.GetMaxNodes())
 	if err != nil {
 		return nil, err
 	}
@@ -229,7 +229,7 @@ func (s *MemoryService) GetAgentIdentity(ctx context.Context, req *v1.GetAgentId
 	if aid == "" {
 		return nil, kerrors.BadRequest("MEMORY", "agent_id is required")
 	}
-	body, err := s.store.AgentIdentityJSON(ctx, aid)
+	body, err := s.admin.AgentIdentityJSON(ctx, aid)
 	if err != nil {
 		return nil, err
 	}
@@ -273,7 +273,7 @@ func (s *MemoryService) GetAgentStrategy(ctx context.Context, req *v1.GetAgentSt
 	if aid == "" {
 		return nil, kerrors.BadRequest("MEMORY", "agent_id is required")
 	}
-	body, err := s.store.AgentStrategyJSON(ctx, aid)
+	body, err := s.admin.AgentStrategyJSON(ctx, aid)
 	if err != nil {
 		return nil, err
 	}
@@ -332,7 +332,7 @@ func (s *MemoryService) ListEvolutionProposals(ctx context.Context, req *v1.List
 	if aid == "" {
 		return nil, kerrors.BadRequest("MEMORY", "agent_id is required")
 	}
-	rows, err := s.store.EvolutionProposalRows(ctx, aid, strings.TrimSpace(req.GetStatus()), req.GetLimit())
+	rows, err := s.admin.EvolutionProposalRows(ctx, aid, strings.TrimSpace(req.GetStatus()), req.GetLimit())
 	if err != nil {
 		return nil, err
 	}
@@ -363,7 +363,7 @@ func (s *MemoryService) ListEvolutionEvents(ctx context.Context, req *v1.ListEvo
 	if aid == "" {
 		return nil, kerrors.BadRequest("MEMORY", "agent_id is required")
 	}
-	rows, err := s.store.EvolutionEventRows(ctx, aid, req.GetLimit())
+	rows, err := s.admin.EvolutionEventRows(ctx, aid, req.GetLimit())
 	if err != nil {
 		return nil, err
 	}
@@ -394,7 +394,7 @@ func (s *MemoryService) GetEvolutionMetrics(ctx context.Context, req *v1.GetEvol
 	}
 	_ = strings.TrimSpace(req.GetRange())
 
-	body, err := s.store.EvolutionMetricsJSON(ctx, aid)
+	body, err := s.admin.EvolutionMetricsJSON(ctx, aid)
 	if err != nil {
 		return nil, err
 	}
@@ -446,7 +446,7 @@ func (s *MemoryService) UpsertMemoryFact(ctx context.Context, req *v1.UpsertMemo
 	if f == nil {
 		return nil, kerrors.BadRequest("MEMORY", "fact is required")
 	}
-	raw, err := s.store.UpsertFactRow(ctx, sessionmemory.MemoryFactUpsert{
+	raw, err := s.admin.UpsertFactRow(ctx, aramemory.FactUpsert{
 		ID:                    strings.TrimSpace(f.GetId()),
 		ScopeType:             strings.TrimSpace(f.GetScopeType()),
 		ScopeID:               strings.TrimSpace(f.GetScopeId()),
@@ -493,7 +493,7 @@ func (s *MemoryService) AppendEvolutionEvent(ctx context.Context, req *v1.Append
 	if aid == "" {
 		return nil, kerrors.BadRequest("MEMORY", "agent_id is required")
 	}
-	raw, err := s.store.InsertEvolutionEventRow(ctx, sessionmemory.EvolutionEventInsert{
+	raw, err := s.admin.InsertEvolutionEventRow(ctx, aramemory.EvolutionEventInsert{
 		AgentID:       aid,
 		WorkspaceID:   strings.TrimSpace(req.GetWorkspaceId()),
 		EventKind:     strings.TrimSpace(req.GetEventKind()),

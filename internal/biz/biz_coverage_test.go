@@ -2,6 +2,7 @@ package biz_test
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"testing"
 
@@ -271,6 +272,20 @@ func (m *memPluginRepoB) GetPlugin(_ context.Context, id string) (biz.Plugin, er
 	}
 	return p, nil
 }
+
+func (m *memPluginRepoB) GetByKey(_ context.Context, key string) (biz.Plugin, error) {
+	for _, p := range m.items {
+		if p.Key == key {
+			return p, nil
+		}
+	}
+	return biz.Plugin{}, sql.ErrNoRows
+}
+
+func (m *memPluginRepoB) CreatePlugin(_ context.Context, p biz.Plugin) (biz.Plugin, error) {
+	m.items[p.ID] = p
+	return p, nil
+}
 func (m *memPluginRepoB) UpdatePluginEnabled(_ context.Context, id string, enabled bool) (biz.Plugin, error) {
 	p, ok := m.items[id]
 	if !ok {
@@ -297,6 +312,22 @@ func (m *memPluginRepoB) UpdateSortOrder(_ context.Context, id string, sortOrder
 	p.SortOrder = sortOrder
 	m.items[id] = p
 	return p, nil
+}
+
+func (m *memPluginRepoB) IncrementStats(_ context.Context, pluginKey string, delta biz.PluginStatUpdate) error {
+	for id, p := range m.items {
+		if p.Key == pluginKey {
+			p.InvokeCount += delta.InvokeCount
+			p.BlockCount += delta.BlockDelta
+			p.ErrorCount += delta.ErrorDelta
+			if delta.LastStatus != "" {
+				p.LastStatus = delta.LastStatus
+			}
+			m.items[id] = p
+			return nil
+		}
+	}
+	return nil
 }
 
 func TestPluginUsecase_ListAndToggle(t *testing.T) {
@@ -342,6 +373,29 @@ func TestPluginUsecase_UpdateConfig(t *testing.T) {
 		t.Fatalf("update config: %v", err)
 	}
 	if out.ConfigJSON != `{"key":"val"}` {
+		t.Errorf("config mismatch: %s", out.ConfigJSON)
+	}
+}
+
+func TestPluginUsecase_UpdateConfig_SchemaValidation(t *testing.T) {
+	repo := newMemPluginRepoB()
+	repo.items["audit"] = biz.Plugin{
+		ID:               "audit",
+		ConfigSchemaJSON: `{"type":"object","properties":{"max_content_length":{"type":"integer"}}}`,
+	}
+	uc := biz.NewPluginUsecase(repo)
+	ctx := context.Background()
+
+	_, err := uc.UpdateConfig(ctx, "audit", `{"max_content_length":"bad"}`)
+	if err == nil {
+		t.Fatal("expected schema validation error")
+	}
+
+	out, err := uc.UpdateConfig(ctx, "audit", `{"max_content_length":100}`)
+	if err != nil {
+		t.Fatalf("valid config: %v", err)
+	}
+	if out.ConfigJSON != `{"max_content_length":100}` {
 		t.Errorf("config mismatch: %s", out.ConfigJSON)
 	}
 }

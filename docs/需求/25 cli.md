@@ -49,7 +49,7 @@ CLI 的目标是把现有 Web 控制台（`/skills`、`/agents`、`/teams`、`/t
 | 默认 Team | 不预设；`aranea chat --team <key>` 可切换 |
 | 输出主题 | 自动检测终端是否支持 ANSI 色；不支持时回退纯文本；可被 `NO_COLOR=1` 强制关闭 |
 | 输出格式 | `text`（默认）/ `json` / `yaml` / `table`；通过 `--output` 切换 |
-| 长任务进度 | SSE 拉流时使用终端进度条；失败可继续追加日志 |
+| 长任务进度 | WS 事件流或 HTTP 轮询驱动终端进度条；失败可继续追加日志 |
 | 危险操作 | 高风险动作（`channel send`、删除资源、装入未签名 Skill 等）默认要求 `--yes` 或对话二次确认 |
 | 系统管家 Agent 的工具集 | 见 §6；**不开放**普通业务工具（如 `web_search`、`tts`），只开放 `cli_admin_*` 管理工具 |
 | 自动补全脚本 | `aranea completion <shell>` 输出补全脚本到 stdout |

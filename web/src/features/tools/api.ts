@@ -18,6 +18,7 @@ import type {
   ToolListQuery,
   ToolListResponse,
   ToolRunQuery,
+  ToolTestResult,
   ToolUpsertInput
 } from "./types";
 
@@ -290,6 +291,11 @@ export async function listToolAgentOverrides(toolId: string): Promise<ToolAgentO
   return (data.items ?? []).map(kratosOverrideToLegacy);
 }
 
+export async function listToolAgentOverridesByAgent(agentId: string): Promise<ToolAgentOverride[]> {
+  const data = await toolApi.ListToolAgentOverridesByAgent({ agentId });
+  return (data.items ?? []).map(kratosOverrideToLegacy);
+}
+
 export async function upsertToolAgentOverride(input: {
   tool_id: string;
   agent_id: string;
@@ -311,4 +317,24 @@ export async function upsertToolAgentOverride(input: {
 
 export async function deleteToolAgentOverride(toolId: string, agentId: string): Promise<void> {
   await toolApi.DeleteToolAgentOverride({ toolId, agentId });
+}
+
+export type { ToolTestResult } from "./types";
+
+export async function testTool(
+  toolId: string,
+  argumentsJson = "{}",
+  timeoutSec = 30
+): Promise<ToolTestResult> {
+  const data = await toolApi.TestTool({
+    id: toolId,
+    argumentsJson,
+    timeoutSec
+  });
+  return {
+    status: data.status ?? "error",
+    result_preview: data.resultPreview ?? "",
+    error_message: data.errorMessage ?? "",
+    duration_ms: Number(data.durationMs ?? 0)
+  };
 }

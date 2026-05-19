@@ -9,6 +9,7 @@ import (
 	"time"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
+	a2apkg "aranea-agents/internal/a2a"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	"aranea-agents/pkg/strutil"
@@ -168,9 +169,16 @@ func (s *ChatService) runNativeAgentTurn(ctx context.Context, req *chatv1.SendCh
 	}
 
 	unlock := s.lockSession(sessionID)
-	if _, running := s.activeRuns.Load(sessionID); running {
+	if s.runs.HasActive(sessionID) {
 		unlock()
-		pendingID := s.enqueuePending(sessionID, content)
+		enqueued, err := s.runs.EnqueueUserMessage(sessionID, content)
+		if err != nil {
+			return biz.ChatMessage{}, biz.ChatMessage{}, err
+		}
+		if enqueued {
+			return biz.ChatMessage{}, biz.ChatMessage{}, nil
+		}
+		pendingID := s.pending.Enqueue(sessionID, content)
 		if pendingID == "" {
 			return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.BadRequest("CHAT", "pending queue is full for this session")
 		}
@@ -201,12 +209,11 @@ func (s *ChatService) runNativeAgentTurn(ctx context.Context, req *chatv1.SendCh
 		}
 		runID := uuid.NewString()
 		teamCtx, teamCancel := context.WithCancel(ctx)
-		guard := &teamRunGuard{cancel: teamCancel, runID: runID}
-		s.activeRuns.Store(sessionID, guard)
+		s.runs.StoreCancelable(sessionID, runID, teamCancel)
 		s.setRunStatus(sessionID, runID, "running", "")
 		unlock()
 		defer func() {
-			s.activeRuns.Delete(sessionID)
+			s.runs.Finish(sessionID)
 			s.processPendingQueue(sessionID, sess, biz.Agent{}, "", "", "")
 		}()
 		userMsg, assistantMsg, err := s.teamsNative.RunTurn(teamCtx, sess, req)
@@ -239,6 +246,17 @@ func (s *ChatService) runNativeAgentTurn(ctx context.Context, req *chatv1.SendCh
 		}
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
+	if s.usage != nil {
+		check, qerr := s.usage.CheckQuota(ctx, "agent", agentID)
+		if qerr != nil {
+			unlock()
+			return biz.ChatMessage{}, biz.ChatMessage{}, qerr
+		}
+		if !check.Allowed {
+			unlock()
+			return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.Forbidden("USAGE_QUOTA", check.Reason)
+		}
+	}
 
 	opts := req.GetOptions()
 	dialogMode := ""
@@ -258,7 +276,7 @@ func (s *ChatService) runNativeAgentTurn(ctx context.Context, req *chatv1.SendCh
 		attN = len(opts.Attachments)
 	}
 
-	s.activeRuns.Store(sessionID, &runPlaceholder{})
+	s.runs.StorePlaceholder(sessionID)
 	unlock()
 	return s.runSingleAgentViaTRPC(ctx, sess, req, ag, dialogMode, prov, mod, attN)
 }
@@ -282,8 +300,48 @@ func (s *ChatService) RunNativeTurnUnary(ctx context.Context, req *chatv1.SendCh
 	return s.runNativeAgentTurn(ctx, req)
 }
 
+// RunAgentTurn implements a2a.AgentTurnRunner for call_agent and HTTP Invoke dispatch (EP-A2A-01).
+func (s *ChatService) RunAgentTurn(ctx context.Context, agentID, input string, timeoutSec int) (string, error) {
+	if s == nil || s.td.Sessions == nil {
+		return "", kerrors.InternalServer("A2A", "chat service not configured")
+	}
+	if timeoutSec <= 0 {
+		timeoutSec = 30
+	}
+	runCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSec)*time.Second)
+	defer cancel()
+
+	sess, err := s.td.Sessions.Create(runCtx, biz.Session{
+		ID:        uuid.NewString(),
+		AgentID:   strings.TrimSpace(agentID),
+		OwnerType: "agent",
+		Title:     fmt.Sprintf("a2a-%s", agentID),
+		UserID:    "1",
+	})
+	if err != nil {
+		return "", fmt.Errorf("a2a: create session: %w", err)
+	}
+	_, asst, err := s.RunNativeTurnUnary(runCtx, &chatv1.SendChatMessageRequest{
+		SessionId: sess.ID,
+		Content:   strings.TrimSpace(input),
+	})
+	if err != nil {
+		return "", err
+	}
+	return asst.ContentMarkdown, nil
+}
+
+func (s *ChatService) injectA2AContext(ctx context.Context, callerAgentID string) context.Context {
+	if s == nil || s.a2aUC == nil {
+		return ctx
+	}
+	inv := a2apkg.NewInvoker(s, s.a2aUC, s.td.Catalog.Agents)
+	return a2apkg.InjectRunContext(ctx, s.a2aUC, callerAgentID, inv)
+}
+
 // RunCronTurn dispatches a cron-triggered turn through the in-process agent runner
-// with all plugins applied (EP-RT-07). Implements cronrunner.CronChatRunner.
+// with all plugins applied (EP-RT-07). Implements cronrunner.CronChatRunner and
+// cronrunner.SessionRunControl via HasActiveRun / RunGateway.
 func (s *ChatService) RunCronTurn(ctx context.Context, sessionID, content, teamID string) (userMsgID, agentMsgID string, err error) {
 	req := &chatv1.SendChatMessageRequest{
 		SessionId: sessionID,

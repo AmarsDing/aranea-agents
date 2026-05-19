@@ -31,10 +31,13 @@ func NewExecutor(backend, workDir string) codeexecutor.CodeExecutor {
 	if strings.TrimSpace(backend) == "" {
 		backend = strings.TrimSpace(os.Getenv("CODE_EXECUTOR_BACKEND"))
 	}
+	var exec codeexecutor.CodeExecutor
 	if strings.EqualFold(backend, "docker") {
-		return newDockerExecutorAdapter()
+		exec = newDockerExecutorAdapter()
+	} else {
+		exec = NewLocalExecutor(workDir)
 	}
-	return NewLocalExecutor(workDir)
+	return WrapWithArtifactSave(exec)
 }
 
 // dockerExecutorAdapter adapts internal/agent/codeexecutor.DockerExecutor to the
@@ -67,6 +70,7 @@ func (a *dockerExecutorAdapter) CodeBlockDelimiter() codeexecutor.CodeBlockDelim
 // ExecuteCode runs each code block sequentially and concatenates the output.
 func (a *dockerExecutorAdapter) ExecuteCode(ctx context.Context, input codeexecutor.CodeExecutionInput) (codeexecutor.CodeExecutionResult, error) {
 	var sb strings.Builder
+	var outFiles []codeexecutor.File
 	for i, block := range input.CodeBlocks {
 		res, err := a.exec.Run(ctx, block.Language, block.Code, a.timeout)
 		if err != nil {
@@ -84,6 +88,9 @@ func (a *dockerExecutorAdapter) ExecuteCode(ctx context.Context, input codeexecu
 		if res.OOM {
 			sb.WriteString("\n[OOM killed]")
 		}
+		if res.ArtifactDir != "" {
+			outFiles = append(outFiles, collectDockerOutputFiles(res.ArtifactDir)...)
+		}
 	}
-	return codeexecutor.CodeExecutionResult{Output: sb.String()}, nil
+	return codeexecutor.CodeExecutionResult{Output: sb.String(), OutputFiles: outFiles}, nil
 }

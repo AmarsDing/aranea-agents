@@ -38,20 +38,19 @@ func callerAgentIDFromContext(ctx context.Context) string {
 	return id
 }
 
-// invokerFunc is a function that executes an agent capability and returns its result.
-// This allows the tool to remain decoupled from the full agent runtime.
-type invokerFunc func(ctx context.Context, calleeAgentID, capability, payloadJSON string, timeoutSec int) (string, error)
+// InvokerFunc executes an agent capability and returns its result JSON string.
+type InvokerFunc func(ctx context.Context, calleeAgentID, capability, payloadJSON string, timeoutSec int) (string, error)
 
-// invokerKey stores the invokerFunc in context.
+// invokerKey stores the InvokerFunc in context.
 type invokerKey struct{}
 
 // WithInvoker attaches the invoker function to ctx.
-func WithInvoker(ctx context.Context, fn invokerFunc) context.Context {
+func WithInvoker(ctx context.Context, fn InvokerFunc) context.Context {
 	return context.WithValue(ctx, invokerKey{}, fn)
 }
 
-func invokerFromContext(ctx context.Context) invokerFunc {
-	fn, _ := ctx.Value(invokerKey{}).(invokerFunc)
+func invokerFromContext(ctx context.Context) InvokerFunc {
+	fn, _ := ctx.Value(invokerKey{}).(InvokerFunc)
 	return fn
 }
 

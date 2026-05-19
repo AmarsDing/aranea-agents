@@ -255,7 +255,7 @@ web/src/
 ├── components/monitor/
 │   ├── UsageOverview.vue              ← ★ 新增：模型用量总览卡片
 │   ├── AuditTable.vue                 ← 活动日志表格（增强：事件类型/实体类型筛选 + 分页）
-│   ├── RealtimeEvents.vue             ← SSE 事件流
+│   ├── RealtimeEvents.vue             ← WS 事件流
 │   ├── EventTimeline.vue              ← Envelope 事件时间线
 │   ├── TraceList.vue                  ← Trace 列表与详情
 │   ├── LogStream.vue                  ← 日志流
@@ -308,4 +308,4 @@ listMonitorTraceEvents(query: ModelUsageQuery): Promise<MonitorTraceEvent[]>
 
 - JSON 详情默认折叠大字段，单字段超过 2,000 字符时显示「展开」
 - 密钥、Token、Authorization、Cookie、API Key 等字段统一用 `******` 脱敏
-- SSE 前端缓冲默认最多 1,000 条事件；Logs 默认最多 5,000 行
+- WS 前端缓冲默认最多 1,000 条事件；Logs 默认最多 5,000 行

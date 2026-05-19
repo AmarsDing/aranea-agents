@@ -37,6 +37,7 @@ type RunCanceller interface {
 
 type ChatSender interface {
 	SendChatMessage(ctx context.Context, req *chatv1.SendChatMessageRequest) (*chatv1.SendChatMessageResponse, error)
+	EnqueueUserMessage(ctx context.Context, req *chatv1.EnqueueUserMessageRequest) (*chatv1.EnqueueUserMessageResponse, error)
 }
 
 type wsUpstream struct {
@@ -569,30 +570,30 @@ func (s *WSServer) handleEnqueueMessage(wc *wsConn, up wsUpstream) {
 	}
 
 	sessionID := wc.sessionID
-	req := &chatv1.SendChatMessageRequest{
+	req := &chatv1.EnqueueUserMessageRequest{
 		SessionId: sessionID,
 		Content:   strings.TrimSpace(content),
-	}
-	if agentKey, _ := payload["agent_key"].(string); agentKey != "" {
-		req.AgentKey = &agentKey
-	}
-	if teamID, _ := payload["team_id"].(string); teamID != "" {
-		req.TeamId = &teamID
-	}
-	if opts, ok := payload["options"].(map[string]any); ok {
-		req.Options = buildChatOptions(opts)
 	}
 
 	safego.Go(context.Background(), "ws-enqueue-message", func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 600*time.Second)
 		defer cancel()
-		_, err := s.sender.SendChatMessage(ctx, req)
+		resp, err := s.sender.EnqueueUserMessage(ctx, req)
 		if err != nil {
 			slog.Warn("ws enqueue_message send failed", "error", err, "session_id", sessionID)
 			env := event.NewEnvelope(event.EnvelopeTypeError, "ws-handler", sessionID)
 			env.Error = &event.EnvelopeError{
 				Type:    "enqueue_failed",
 				Message: err.Error(),
+			}
+			s.eventBus.Publish(context.Background(), env)
+			return
+		}
+		if resp == nil || !resp.GetAccepted() {
+			env := event.NewEnvelope(event.EnvelopeTypeError, "ws-handler", sessionID)
+			env.Error = &event.EnvelopeError{
+				Type:    "enqueue_rejected",
+				Message: "no active run for session",
 			}
 			s.eventBus.Publish(context.Background(), env)
 		}

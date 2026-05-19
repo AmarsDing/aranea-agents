@@ -1,5 +1,5 @@
 ---
-description: 监控 Audit / Logs / Events 分流约定；SSE 与 Wire 纪律
+description: 监控 Audit / Logs / Events 分流约定；WebSocket 与 Wire 纪律
 alwaysApply: false
 ---
 
@@ -10,18 +10,18 @@ alwaysApply: false
 | 类型 | 用途 | 入口 / 落点 |
 |------|------|-------------|
 | Audit | 管理侧可追溯操作 | `GET /v1/monitor/audit` → `audit_logs`；`monitor.go` / `data/monitor.go` |
-| Logs | 运维文本流 | SSE `/monitor/logs/stream`，`event: log` → **`MonitorLogBroker.Publish`** |
-| Events | Team/Agent 运行时 JSON | SSE `/team-run-events`，`internal/server/team_run_sse.go` |
+| Logs | 运维文本流 | **`WS /v1/ws`**（`session_id=*`，`channel=monitor`，`type=log`）；`enable_log` 上行开启 |
+| Events | Team/Agent 运行时 JSON | **`WS /v1/ws`**（`session_id=*` 或具体 session；`channel=team` / `monitor`；`team_run_*` / `team_step_*` / `intent_pass` 等 Envelope） |
 
 - **Audit**：重要配置变更写 **`audit_logs`**，`detail` 不脱敏密钥；别把瞬时运维句子塞进 Audit。
-- **Logs / Events**：编排侧事实走 **`TeamRunEventBroker.Publish`**；需要上「日志」页的运维句再走 **`MonitorLogBroker`**（可与 `log` 并存）。
+- **Logs / Events**：编排侧事实走 **EventBus → `/v1/ws`**；Monitor 管理页默认 **`GLOBAL_WS_SESSION_ID`（`*`）** 订阅全局流（服务端限 3 连接）。
 - **`TeamRunEvent`**：`run` / `step` 字段 **snake_case**（`team_types.go`）；扩展进 **`payload`**；尽量带 **`session_id`**。
 
-## 前端与开发代理（改监控 SSE 时记着）
+## 前端与开发代理
 
-- **`getSseBaseURL()`**：开发环境固定 **`/sse`**（见 `web/src/config/runtime.ts`）；生产跨端口用 **`runtime-config.json` 的 `sseOrigin`**。
-- **Vite**：`/sse` 代理只用 **`rewrite`** 剥前缀，**不要用 webpack 的 `pathRewrite`**（`web/quasar.config.ts`）。
-- **`EventSource`**：连接建立靠 **`onopen`** 表示「已连通」；仅靠注释行不会触发命名事件（见 `web/src/features/monitor/api.ts`）。
+- **实时主通道**：`buildWsUrl({ sessionId })` → **`/v1/ws`**（见 `web/src/config/runtime.ts`）。
+- **全局监控**：`sessionId: GLOBAL_WS_SESSION_ID`（`*`）；`useMonitorStream` / `subscribeMonitor*Ws` / Teams 管理页 `subscribeTeamRunEventsWs` 均走此口径。
+- **禁止**新增 Chat / Team / Monitor 独立 SSE 主链路；MCP transport 的 SSE 与上述无关。
 
 ## Wire
 

@@ -66,11 +66,85 @@
           <q-input v-model="form.tool_prefix" class="col-12 col-md-6" dense outlined label="工具前缀" hint="Tools: mcp_{prefix}__{tool}">
             <template #prepend>mcp_</template>
           </q-input>
-          <q-input v-model.number="form.timeout_sec" class="col-12 col-md-3" dense outlined type="number" min="1" suffix="s" label="超时" />
-          <q-toggle v-model="form.enabled" class="col-12 col-md-3" color="primary" label="启用" />
+          <q-input v-model.number="form.timeout_sec" class="col-12 col-md-2" dense outlined type="number" min="1" suffix="s" label="超时" />
+          <q-input
+            v-model.number="form.session_reconnect_max"
+            class="col-12 col-md-2"
+            dense
+            outlined
+            type="number"
+            min="0"
+            max="10"
+            label="SSE 重连次数"
+            hint="0=关闭"
+          />
+          <q-toggle v-model="form.enabled" class="col-12 col-md-2" color="primary" label="启用" />
           <q-toggle v-model="form.require_user_credentials" class="col-12" color="primary" label="每个用户须配置自己的凭据，否则无法使用" />
 
           <div v-if="usesUrl" class="col-12">
+            <div class="section-label q-mb-sm">API 认证（可选）</div>
+            <div class="row q-col-gutter-md q-mb-md">
+              <q-select
+                v-model="form.auth_type"
+                class="col-12 col-md-4"
+                dense
+                outlined
+                emit-value
+                map-options
+                label="认证方式"
+                :options="authTypeOptions"
+              />
+              <q-input
+                v-if="form.auth_type"
+                v-model="form.auth_header_name"
+                class="col-12 col-md-4"
+                dense
+                outlined
+                label="Header 名称"
+                placeholder="Authorization"
+                hint="留空则使用 Authorization"
+              />
+              <q-input
+                v-if="form.auth_type && !isOAuthAuth"
+                v-model="form.auth_api_key"
+                class="col-12 col-md-4"
+                dense
+                outlined
+                type="password"
+                label="API Key / Token"
+                placeholder="sk-..."
+              />
+              <template v-if="isOAuthAuth">
+                <q-input v-model="form.auth_token_url" class="col-12" dense outlined label="Token URL" placeholder="https://provider/oauth/token" />
+                <q-input v-model="form.auth_client_id" class="col-12 col-md-6" dense outlined label="Client ID" />
+                <q-input
+                  v-model="form.auth_client_secret"
+                  class="col-12 col-md-6"
+                  dense
+                  outlined
+                  type="password"
+                  label="Client Secret"
+                />
+                <q-input v-model="form.auth_scope" class="col-12 col-md-6" dense outlined label="Scope" placeholder="openid profile" />
+                <q-input
+                  v-model="form.auth_access_token"
+                  class="col-12 col-md-6"
+                  dense
+                  outlined
+                  type="password"
+                  label="Access Token（可选，静态）"
+                />
+                <q-input
+                  v-if="form.auth_type === 'oauth2_refresh'"
+                  v-model="form.auth_refresh_token"
+                  class="col-12"
+                  dense
+                  outlined
+                  type="password"
+                  label="Refresh Token"
+                />
+              </template>
+            </div>
             <div class="row items-center justify-between q-mb-xs">
               <div class="section-label">请求头</div>
               <q-btn flat dense rounded color="primary" icon="add" label="添加请求头" @click="addPair('headers')" />
@@ -167,10 +241,30 @@ function emptyForm(): McpServerFormValue {
     env: [],
     tool_prefix: "",
     timeout_sec: 60,
+    session_reconnect_max: 0,
+    auth_type: "",
+    auth_api_key: "",
+    auth_header_name: "",
+    auth_token_url: "",
+    auth_client_id: "",
+    auth_client_secret: "",
+    auth_scope: "",
+    auth_access_token: "",
+    auth_refresh_token: "",
     enabled: true,
     require_user_credentials: false
   };
 }
+
+const authTypeOptions = [
+  { label: "无", value: "" },
+  { label: "API Key / Bearer", value: "api_key" },
+  { label: "OAuth2 静态 Token", value: "oauth2_static" },
+  { label: "OAuth2 Client Credentials", value: "oauth2_client_credentials" },
+  { label: "OAuth2 Refresh Token", value: "oauth2_refresh" }
+];
+
+const isOAuthAuth = computed(() => form.auth_type.startsWith("oauth2"));
 
 function resetForm() {
   serverError.value = "";
@@ -188,6 +282,16 @@ function resetForm() {
     env: recordToPairs(config.env || {}),
     tool_prefix: config.tool_prefix || "",
     timeout_sec: config.timeout_sec || 60,
+    session_reconnect_max: config.session_reconnect_max || 0,
+    auth_type: config.auth?.type || "",
+    auth_api_key: config.auth?.api_key || "",
+    auth_header_name: config.auth?.header_name || "",
+    auth_token_url: config.auth?.token_url || "",
+    auth_client_id: config.auth?.client_id || "",
+    auth_client_secret: config.auth?.client_secret || "",
+    auth_scope: config.auth?.scope || "",
+    auth_access_token: config.auth?.access_token || "",
+    auth_refresh_token: config.auth?.refresh_token || "",
     enabled: row?.enabled ?? true,
     require_user_credentials: Boolean(config.require_user_credentials)
   });
@@ -243,8 +347,25 @@ function buildPayload(): PlatformResourceInput {
     env: pairsToRecord(form.env),
     tool_prefix: form.tool_prefix.trim(),
     timeout_sec: Number(form.timeout_sec) || 60,
+    session_reconnect_max: Number(form.session_reconnect_max) || 0,
     require_user_credentials: form.require_user_credentials
   };
+  if (form.auth_type) {
+    const auth: McpServerConfig["auth"] = {
+      type: form.auth_type,
+      api_key: form.auth_api_key.trim(),
+      header_name: form.auth_header_name.trim(),
+      token_url: form.auth_token_url.trim(),
+      client_id: form.auth_client_id.trim(),
+      client_secret: form.auth_client_secret.trim(),
+      scope: form.auth_scope.trim(),
+      access_token: form.auth_access_token.trim(),
+      refresh_token: form.auth_refresh_token.trim()
+    };
+    if (isOAuthAuth.value ? auth.access_token || auth.client_id : auth.api_key) {
+      config.auth = auth;
+    }
+  }
   return {
     key: form.name.trim(),
     name: form.display_name.trim() || form.name.trim(),

@@ -212,6 +212,14 @@ message ListToolAgentOverridesResponse {
   repeated ToolAgentOverride items = 1;
 }
 
+message ListToolAgentOverridesByAgentRequest {
+  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListToolAgentOverridesByAgentResponse {
+  repeated ToolAgentOverride items = 1;
+}
+
 message UpsertToolAgentOverrideRequest {
   string tool_id = 1 [(google.api.field_behavior) = REQUIRED];
   string agent_id = 2 [(google.api.field_behavior) = REQUIRED];
@@ -242,6 +250,19 @@ message GetToolInvocationParamsRequest {
 message UpdateToolConfigRequest {
   string id = 1 [(google.api.field_behavior) = REQUIRED];
   string config_json = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message TestToolRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string arguments_json = 2;
+  int32 timeout_sec = 3;
+}
+
+message TestToolResponse {
+  string status = 1;
+  string result_preview = 2;
+  string error_message = 3;
+  int32 duration_ms = 4;
 }
 
 service ToolService {
@@ -281,6 +302,9 @@ service ToolService {
   rpc ListToolAgentOverrides(ListToolAgentOverridesRequest) returns (ListToolAgentOverridesResponse) {
     option (google.api.http) = {get: "/v1/tools/{tool_id}/agent-overrides"};
   }
+  rpc ListToolAgentOverridesByAgent(ListToolAgentOverridesByAgentRequest) returns (ListToolAgentOverridesByAgentResponse) {
+    option (google.api.http) = {get: "/v1/agents/{agent_id}/tool-overrides"};
+  }
   rpc UpsertToolAgentOverride(UpsertToolAgentOverrideRequest) returns (ToolAgentOverride) {
     option (google.api.http) = {
       put: "/v1/tools/{tool_id}/agent-overrides/{agent_id}"
@@ -296,6 +320,12 @@ service ToolService {
   rpc UpdateToolConfig(UpdateToolConfigRequest) returns (Tool) {
     option (google.api.http) = {
       put: "/v1/tools/{id}/config"
+      body: "*"
+    };
+  }
+  rpc TestTool(TestToolRequest) returns (TestToolResponse) {
+    option (google.api.http) = {
+      post: "/v1/tools/{id}/test"
       body: "*"
     };
   }

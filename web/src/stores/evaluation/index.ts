@@ -1,5 +1,6 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
+import { listAgents } from "../../features/agents/api";
 import {
   createDataset,
   deleteDataset,
@@ -29,6 +30,17 @@ export const useEvaluationStore = defineStore("evaluation", () => {
   const runs = ref<EvalRun[]>([]);
   const runsTotal = ref(0);
   const loading = ref(false);
+  const agentOptions = ref<{ label: string; value: string }[]>([]);
+
+  async function loadAgentOptions(): Promise<{ label: string; value: string }[]> {
+    try {
+      const agents = await listAgents({ limit: 200 });
+      agentOptions.value = agents.map((a) => ({ label: a.name || a.key || a.id, value: a.id }));
+    } catch {
+      agentOptions.value = [];
+    }
+    return agentOptions.value;
+  }
 
   async function loadDatasets(params: ListDatasetsParams = {}): Promise<ListDatasetsResult> {
     loading.value = true;
@@ -92,6 +104,8 @@ export const useEvaluationStore = defineStore("evaluation", () => {
     runs,
     runsTotal,
     loading,
+    agentOptions,
+    loadAgentOptions,
     loadDatasets,
     addDataset,
     removeDataset,

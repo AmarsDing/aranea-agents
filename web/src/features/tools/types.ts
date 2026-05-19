@@ -172,3 +172,10 @@ export type AgentEffectiveTools = {
   deny: string[];
   items: AgentEffectiveTool[];
 };
+
+export type ToolTestResult = {
+  status: string;
+  result_preview: string;
+  error_message: string;
+  duration_ms: number;
+};

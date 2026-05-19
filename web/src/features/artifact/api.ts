@@ -9,6 +9,7 @@ import { asRecord, pickI32, pickNum, pickStr } from "../../shared/wireJson";
 import type {
   ArtifactData,
   ArtifactMeta,
+  ArtifactPreview,
   ListArtifactsParams,
   ListArtifactsResult,
   UploadArtifactInput
@@ -71,4 +72,34 @@ export async function uploadArtifact(input: UploadArtifactInput): Promise<Artifa
 
 export async function deleteArtifact(id: string): Promise<void> {
   await svc.DeleteArtifact({ id });
+}
+
+export type SignDownloadUrlResult = {
+  url: string;
+  expires_at: string;
+};
+
+export async function signDownloadUrl(id: string, version?: number, ttlSeconds?: number): Promise<SignDownloadUrlResult> {
+  const raw = asRecord(await svc.SignDownloadUrl({ id, version: version ?? 0, ttlSeconds: ttlSeconds ?? 0 }));
+  return {
+    url: pickStr(raw, "url", "url"),
+    expires_at: pickStr(raw, "expires_at", "expiresAt")
+  };
+}
+
+export function artifactDownloadHref(signedPath: string): string {
+  if (signedPath.startsWith("http")) return signedPath;
+  const base = import.meta.env.VITE_API_BASE_URL ?? "";
+  return `${base.replace(/\/$/, "")}${signedPath.startsWith("/") ? signedPath : `/${signedPath}`}`;
+}
+
+export async function previewArtifact(id: string, version?: number): Promise<ArtifactPreview> {
+  const raw = asRecord(await svc.PreviewArtifact({ id, version: version ?? 0 }));
+  const metaRaw = raw.meta ?? raw.Meta;
+  return {
+    meta: mapMeta(metaRaw),
+    preview_kind: pickStr(raw, "preview_kind", "previewKind"),
+    text_content: pickStr(raw, "text_content", "textContent"),
+    data_base64: pickStr(raw, "data_base64", "dataBase64")
+  };
 }

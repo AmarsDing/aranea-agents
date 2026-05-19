@@ -25,6 +25,7 @@ require (
 	github.com/lib/pq v1.12.3
 	github.com/pgvector/pgvector-go v0.3.0
 	github.com/prometheus/client_golang v1.23.2
+	github.com/xeipuuv/gojsonschema v1.2.0
 	go.einride.tech/aip v0.76.0
 	go.opentelemetry.io/otel v1.40.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.39.0
@@ -36,6 +37,7 @@ require (
 	google.golang.org/grpc v1.79.3
 	google.golang.org/protobuf v1.36.11
 	trpc.group/trpc-go/trpc-agent-go v1.9.1
+	trpc.group/trpc-go/trpc-agent-go/evaluation v1.9.0
 	trpc.group/trpc-go/trpc-agent-go/model/anthropic v1.9.0
 	trpc.group/trpc-go/trpc-agent-go/model/gemini v1.9.0
 	trpc.group/trpc-go/trpc-agent-go/model/ollama v1.9.0
@@ -110,6 +112,7 @@ require (
 	github.com/mitchellh/go-wordwrap v1.0.1 // indirect
 	github.com/mohae/deepcopy v0.0.0-20170929034955-c48cc78d4826 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
+	github.com/neurosnap/sentences v1.1.2 // indirect
 	github.com/oasdiff/yaml v0.0.0-20250309154309-f31be36b4037 // indirect
 	github.com/oasdiff/yaml3 v0.0.0-20250309153720-d2182401db90 // indirect
 	github.com/ollama/ollama v0.16.3 // indirect
@@ -129,6 +132,8 @@ require (
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
 	github.com/wneessen/go-mail v0.7.2 // indirect
 	github.com/woodsbury/decimal128 v1.3.0 // indirect
+	github.com/xeipuuv/gojsonpointer v0.0.0-20180127040702-4e3ac2762d5f // indirect
+	github.com/xeipuuv/gojsonreference v0.0.0-20180127040603-bd5ef7bd5415 // indirect
 	github.com/yuin/goldmark v1.7.13 // indirect
 	github.com/zclconf/go-cty v1.16.2 // indirect
 	github.com/zclconf/go-cty-yaml v1.1.0 // indirect

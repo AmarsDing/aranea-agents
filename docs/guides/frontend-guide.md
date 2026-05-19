@@ -14,6 +14,7 @@
   - [决策树（代码该放哪？）](#决策树代码该放哪)
   - [任务速查卡](#任务速查卡)
 - [第一章：数据流与分层](#第一章数据流与分层)
+  - [1.4 页面瘦身与拆分（评审沉淀）](#14-页面瘦身与拆分评审沉淀)
 - [第二章：各层编码规范](#第二章各层编码规范)
 - [第三章：UX 主题规范](#第三章ux-主题规范)
 - [第四章：迁移剧本](#第四章迁移剧本)
@@ -39,6 +40,9 @@
 | 8 | 浮层视觉必须遵守 UX 规范：`backdrop-filter` + `-webkit-backdrop-filter` 成对；主按钮用 `--color-accent` | 禁止日间用夜间霓虹青紫作默认强调 |
 | 9 | 禁止运行时用脚本改 `quasar-variables` | 昼夜仅用 Dark + CSS 变量 + body 选择器 |
 | 10 | 禁止与 `app-global.sass` 平行的第二套全局 CSS 入口 | 新 token 只在 `theme/` 增加 partial，由 `app-theme.sass` 聚合 |
+| 11 | **Page**（`pages/**/*Page.vue`）不得直接 `import` `features/*/api` | 请求经 **Store action**；编排经 **`features/<域>/useXxx.ts`** composable |
+| 12 | 展示组件从 `features/<域>/api.ts` **引类型**（含 re-export） | 共享类型放在 **`features/<域>/types.ts`**，组件只 import types |
+| 13 | 单页 `*Page.vue` 的 `<script setup>` 不宜长期超过 **~200 行**（不含 import） | 拆 **Dialog 组件** + **域内 composable** + **子面板组件** |
 
 ### 决策树（代码该放哪？）
 
@@ -50,6 +54,10 @@
 ├─ 新增业务状态/加载/错误 ──────→ stores/<域>/index.ts（action 内调 api）
 │
 ├─ 多页面复用同一套逻辑 ────────→ composables/useXxx.ts（组合 Store）
+│
+├─ 单页编排过重（列表+详情+多 Dialog）→ features/<域>/useXxxPage.ts 或 useXxxPanel.ts
+│
+├─ 新增 Dialog / 浮层（仅 UI）────→ components/<域>/*Dialog.vue（props/emits）
 │
 ├─ 新增展示组件 ────────────────→ components/<域>/*.vue（仅 props/emits）
 │
@@ -68,8 +76,8 @@
 1. features/<域>/api.ts              ← HTTP 门面（create*Service / kratosApi）
 2. stores/<域>/index.ts              ← state + actions（调 api）
 3. stores/index.ts                   ← 具名导出新 Store
-4. composables/useXxx.ts             ← 暴露给 Page 的薄 API（组合 Store）
-5. components/<域>/*.vue             ← 展示组件（props/emits）
+4. features/<域>/useXxxPage.ts       ← 页面编排（组合 Store，可选）
+5. components/<域>/*Dialog.vue       ← Dialog / Panel（props/emits）
 6. pages/**/*Page.vue                ← 页面（布局 + composable + 传参）
 7. 验证：pnpm lint && pnpm test && pnpm build
 ```
@@ -81,7 +89,7 @@
 2. 抽 Service：请求逻辑挪到 features/<域>/api.ts
 3. 建/扩展 Store：新增 action，把 ref 列表、loading 移入 state
 4. 写/收窄 Composable：useXxx 只暴露 storeToRefs / 调 store action
-5. 瘦 Page：删除散装请求，换 composable
+5. 瘦 Page：删除散装请求，换 composable；超 ~200 行按 §1.4 拆 Dialog/Panel
 6. 瘦组件：删除 Store/API import，改为 props
 7. 回归：相关路由点一遍；检查无循环依赖
 ```
@@ -125,7 +133,36 @@ Component（仅展示：props in / emits out）
 1. 展示组件 `.vue` **必须**放在 `components/<域>/`，**禁止**放在 `features/<域>/` 或 `pages/`
 2. `features/<域>/` 只放：api.ts、域内 composable、容器组件（须首行注释 `// Container: approved because …`）
 3. Dialog / Drawer / 浮层默认视为展示组件，同路径规则；`emit('submit', payload)` 由 Page / Store action 调 API
-4. 与展示子组件紧耦合的纯函数/常量可共址为 `components/<域>/*.ts`；仅允许 type-only import `features/<域>/api`
+4. 与展示子组件紧耦合的纯函数/常量可共址为 `components/<域>/*.ts` 或 `features/<域>/*Ui.ts`；展示组件 **type-only** import 优先 `features/<域>/types.ts`
+5. **Page** 与 **展示组件** 均不得直接调用 `features/<域>/api`；Page 通过 Store 或域内 composable 间接访问
+
+### 1.4 页面瘦身与拆分（评审沉淀）
+
+当 `*Page.vue` 同时承担「列表 + 侧栏/详情 + 多个 Dialog + 轮询/确认框」时，按下列顺序拆分，避免 AI 生成「巨型 Page + 组件内调 Store」：
+
+| 拆出物 | 路径 | 职责 | 仓库示例 |
+|--------|------|------|----------|
+| Store | `stores/<域>/index.ts` | 列表/详情状态、`loadXxx` / `saveXxx` | `stores/tools`、`stores/knowledge` |
+| 域内 composable | `features/<域>/useXxxPage.ts` 或 `useXxxPanel.ts` | 筛选、选中项、Dialog 开关、确认框、`$q.notify` | `useKnowledgePage`、`useToolEditor`、`useAgentToolOverrides` |
+| 子面板 | `components/<域>/*Panel.vue` | 单 Tab/单区块展示，props/emits | `KnowledgeDocumentsPanel`、`KnowledgeSearchPanel` |
+| Dialog | `components/<域>/*Dialog.vue` | 表单 UI，`v-model:open` + `emit('submit')` | `ToolEditorDialog`、`EvaluationCreateDialog` |
+| 详情抽屉内容 | `components/<域>/*Content.vue` | 多 Tab 详情，数据由 Page composable 注入 | `ToolDetailContent` |
+
+**目标形态**（以 Tools / Knowledge / Agent 设置为准绳）：
+
+```
+Page.vue          ← import composable + storeToRefs；模板只做布局与事件绑定
+  ├─ *Dialog.vue  ← 纯展示
+  ├─ *Panel.vue   ← 纯展示
+  └─ composable   ← 调 Store；不放在 .vue 里 watch+fetch
+```
+
+**反例（评审中已修复，禁止回退）**：
+
+- `EvaluationPage` / `KnowledgePage` 在 Page 内 `import { listXxx } from '../features/.../api'`
+- `AgentToolOverridesPanel` 内 `useToolsStore()` + `fetchCatalog`
+- `ToolDetailContent` 内 `testTool()` 与 `useToolsStore`
+- 单文件 Page >300 行且含完整 CRUD Dialog 模板
 
 ---
 
@@ -167,13 +204,34 @@ Component（仅展示：props in / emits out）
 | 计算属性 | 仅依赖 props 的 `computed` | 依赖 Store/API |
 | 本地状态 | `expanded`、`tab` 等 UI 状态 | 承载业务真源 |
 | 禁止 import | — | `useXxxStore`、`features/*/api`、`axios`、`kratosApi` |
+| 类型 import | `import type { X } from '../../features/<域>/types'` | `from '.../api'`（即使仅类型） |
 
 ### 2.5 Page 层
 
 | 规则 | ✅ 正确 | ❌ 错误 |
 |------|---------|---------|
 | 职责 | 布局 + `useRoute` + composable + 传参 + 处理 emits | 大段业务 if/else |
-| 理想行数 | `<script setup>` 以 import + composable + 路由绑定为主 | 超出不下沉 |
+| 数据请求 | `storeToRefs` + `await store.loadXxx()` 或域内 composable | Page 内 `import { listXxx } from '../features/.../api'` |
+| 理想行数 | `<script setup>` 以 import + composable 解构 + 少量绑定为主（**≤~200 行**） | 含完整 Dialog 表单 + 表格列定义 + 全部 CRUD |
+| 子组件接线 | composable 返回的 `ref` 用解构后传给 props（模板自动解包） | 在模板写 `panel.foo.value` |
+| Agent 设置类 Tab | Page 用 `AgentToolsSection`（容器内 `useAgentToolOverrides`） | Page 手写十几项 props 或 Panel 内 `useXxxStore()` |
+
+### 2.6 域内 Composable（页面编排）
+
+| 规则 | ✅ 正确 | ❌ 错误 |
+|------|---------|---------|
+| 放置 | `features/<域>/useXxxPage.ts`、`useXxxPanel.ts`、`useToolEditor.ts` | 把编排逻辑留在 300+ 行 Page |
+| 依赖 | `useXxxStore()`、`useQuasar()`、必要时 `useRoute` | 在 composable 中绕过 Store 直接 `features/*/api`（须标 TECH-DEBT 并尽快迁入 Store） |
+| 返回 | `ref` / `computed` / 方法；Page 解构后绑定模板 | 返回未解构的巨型对象并在模板深层 `.value` |
+| Dialog 状态 | `createOpen`、`editorOpen` 等由 composable 持有 | Dialog 组件内 `watch` + fetch |
+| 共享 UI 常量 | `features/<域>/knowledgeUi.ts`、`components/<域>/toolUi.ts` | 在 Page 与 Panel 各复制一份 `docColumns` |
+
+**命名建议**：
+
+- `useKnowledgePage` — 整页状态（集合列表、选中、入库/检索）
+- `useToolDetailPanel(toolRef)` — 详情抽屉内 Tab（覆盖、调用记录、在线测试）
+- `useToolEditor(onSaved)` — 新建/编辑 Dialog + JSON 校验
+- `useAgentToolOverrides(agentId)` — 由 `AgentToolsSection` 容器调用；Panel 只展示
 
 ---
 
@@ -244,7 +302,7 @@ backdrop-filter: blur(var(--glass-blur-default));
 2. **抽 Service**：请求逻辑挪到 `features/<域>/api.ts`（Kratos 调用经 `services/index.ts`）
 3. **建或扩展 Store**：新增 action `loadXxx`，把原 `ref` 列表、`loading` 移入 state
 4. **写或收窄 Composable**：`useXxx` 只暴露 `storeToRefs` / 调 `store.loadXxx`
-5. **瘦 Page**：删除散装请求，换 composable
+5. **瘦 Page**：删除散装请求，换 composable；超 ~200 行则按 [§1.4](#14-页面瘦身与拆分评审沉淀) 拆 Dialog/Panel
 6. **瘦组件**：删除 Store/API import，改为 props；原 `emit` 由 Page 接住再调 composable/store
 7. **回归**：相关路由点一遍；检查无循环依赖（Store 勿 import `.vue`）
 
@@ -255,9 +313,13 @@ backdrop-filter: blur(var(--glass-blur-default));
 做完功能或重构后，逐条勾选：
 
 - [ ] 展示组件是否直接调用 API / Store？若有 → 已上收或已备案例外
+- [ ] **Page** 是否直接 `import` `features/*/api`？若有 → 迁入 Store + composable
 - [ ] 新网络请求是否只出现在 `features/*/api.ts` 或 `services/`，且由 Store action 触发？
 - [ ] 同一数据是否在多组件重复 fetch？若是 → 已合并到 Store 单一数据源
-- [ ] Page 是否仅组合 composable + 传参，无大段业务 if/else？
+- [ ] Page 是否仅组合 composable + 传参，无大段业务 if/else？**脚本是否 ≤~200 行**？
+- [ ] 多 Dialog / 多 Tab 是否已拆为 `components/<域>/*Dialog.vue`、`*Panel.vue`？
+- [ ] 组件类型是否从 `features/<域>/types.ts` 引入（而非 `api.ts`）？
+- [ ] Agent 设置等业务 Panel 是否由 Page 注入 composable 数据（而非 Panel 内 useStore）？
 - [ ] 新增 Store 是否已在 `stores/index.ts` 具名导出？未破坏 default export Pinia？
 - [ ] 浮层是否遵守 UX 规范（玻璃材质 + 双前缀 blur + `--color-accent`）？
 - [ ] 日间是否未使用夜间霓虹青紫作默认强调？

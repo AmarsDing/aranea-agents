@@ -229,7 +229,7 @@ CLI 命令行工具：提供直接命令模式和交互式对话模式，管理 
 | 2.15 | cli_admin_tool_* Tools（list/enable/disable/config_set） | `internal/tools/cli_admin/tool_*.go` | 2.11 | P3 |
 | 2.16 | BuildSystemAdminAgent 函数 | `internal/agent/trpc_build.go` 扩展 | 2.7, 2.11 | P3 |
 | 2.17 | dbAgentLoader 实现 | `cmd/aranea/repl/loader.go` | 2.16 | P3 |
-| 2.18 | SSE 流式渲染 | `cmd/aranea/repl/repl.go` 扩展 | 2.1 | P3 |
+| 2.18 | WS 流式渲染 | `cmd/aranea/repl/repl.go` 扩展 | 2.1 | P3 |
 
 ### Phase 3 任务
 
@@ -301,7 +301,7 @@ Phase 2（对话模式）  ←── Phase 1
                                └── 2.15 tool tools
   2.16 BuildSystemAdminAgent ←── 2.7, 2.11
   2.17 dbAgentLoader ←── 2.16
-  2.18 SSE 渲染 ←── 2.1
+  2.18 WS 渲染 ←── 2.1
 
 Phase 3（Skill 安装 + 剩余命令）  ←── Phase 2
   3.1 skill install cmd ←── 1.13

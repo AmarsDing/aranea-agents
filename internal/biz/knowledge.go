@@ -78,6 +78,12 @@ type KnowledgeRepo interface {
 	SearchChunks(ctx context.Context, q KnowledgeSearchQuery, queryEmbedding []float32) ([]KnowledgeChunk, error)
 }
 
+// ErrKnowledgeUnavailable is returned when Postgres/pgvector is not configured.
+var ErrKnowledgeUnavailable = errors.ServiceUnavailable(
+	"KNOWLEDGE",
+	"knowledge base requires PostgreSQL with pgvector; configure data.postgres.source",
+)
+
 // KnowledgeUsecase implements collection/document/search operations.
 type KnowledgeUsecase struct {
 	repo KnowledgeRepo
@@ -86,6 +92,13 @@ type KnowledgeUsecase struct {
 // NewKnowledgeUsecase constructs a KnowledgeUsecase.
 func NewKnowledgeUsecase(repo KnowledgeRepo) *KnowledgeUsecase {
 	return &KnowledgeUsecase{repo: repo}
+}
+
+func (u *KnowledgeUsecase) requireRepo() error {
+	if u == nil || u.repo == nil {
+		return ErrKnowledgeUnavailable
+	}
+	return nil
 }
 
 func newKnowledgeID() string {
@@ -98,6 +111,9 @@ func newKnowledgeID() string {
 
 // CreateCollection validates and persists a new collection.
 func (u *KnowledgeUsecase) CreateCollection(ctx context.Context, in KnowledgeCollection) (KnowledgeCollection, error) {
+	if err := u.requireRepo(); err != nil {
+		return KnowledgeCollection{}, err
+	}
 	in.Name = strings.TrimSpace(in.Name)
 	in.EmbeddingModel = strings.TrimSpace(in.EmbeddingModel)
 	if in.Name == "" {
@@ -120,6 +136,9 @@ func (u *KnowledgeUsecase) CreateCollection(ctx context.Context, in KnowledgeCol
 
 // GetCollection returns a single collection.
 func (u *KnowledgeUsecase) GetCollection(ctx context.Context, id string) (KnowledgeCollection, error) {
+	if err := u.requireRepo(); err != nil {
+		return KnowledgeCollection{}, err
+	}
 	if strings.TrimSpace(id) == "" {
 		return KnowledgeCollection{}, errors.BadRequest("KNOWLEDGE", "id is required")
 	}
@@ -128,6 +147,9 @@ func (u *KnowledgeUsecase) GetCollection(ctx context.Context, id string) (Knowle
 
 // ListCollections returns all collections visible in the workspace.
 func (u *KnowledgeUsecase) ListCollections(ctx context.Context, workspace string, limit, offset int) ([]KnowledgeCollection, int, error) {
+	if err := u.requireRepo(); err != nil {
+		return nil, 0, err
+	}
 	if limit <= 0 {
 		limit = 20
 	}
@@ -136,6 +158,9 @@ func (u *KnowledgeUsecase) ListCollections(ctx context.Context, workspace string
 
 // DeleteCollection removes a collection and all its documents/chunks.
 func (u *KnowledgeUsecase) DeleteCollection(ctx context.Context, id string) error {
+	if err := u.requireRepo(); err != nil {
+		return err
+	}
 	if strings.TrimSpace(id) == "" {
 		return errors.BadRequest("KNOWLEDGE", "id is required")
 	}
@@ -144,6 +169,9 @@ func (u *KnowledgeUsecase) DeleteCollection(ctx context.Context, id string) erro
 
 // CreateDocument records a document and returns it (status=pending).
 func (u *KnowledgeUsecase) CreateDocument(ctx context.Context, d KnowledgeDocument) (KnowledgeDocument, error) {
+	if err := u.requireRepo(); err != nil {
+		return KnowledgeDocument{}, err
+	}
 	d.Source = strings.TrimSpace(d.Source)
 	d.CollectionID = strings.TrimSpace(d.CollectionID)
 	if d.CollectionID == "" {
@@ -163,6 +191,9 @@ func (u *KnowledgeUsecase) CreateDocument(ctx context.Context, d KnowledgeDocume
 
 // ListDocuments returns documents for a collection.
 func (u *KnowledgeUsecase) ListDocuments(ctx context.Context, collectionID string, limit, offset int) ([]KnowledgeDocument, int, error) {
+	if err := u.requireRepo(); err != nil {
+		return nil, 0, err
+	}
 	if limit <= 0 {
 		limit = 20
 	}
@@ -171,6 +202,9 @@ func (u *KnowledgeUsecase) ListDocuments(ctx context.Context, collectionID strin
 
 // DeleteDocument removes a document and its chunks.
 func (u *KnowledgeUsecase) DeleteDocument(ctx context.Context, id string) error {
+	if err := u.requireRepo(); err != nil {
+		return err
+	}
 	if strings.TrimSpace(id) == "" {
 		return errors.BadRequest("KNOWLEDGE", "id is required")
 	}
@@ -179,6 +213,9 @@ func (u *KnowledgeUsecase) DeleteDocument(ctx context.Context, id string) error 
 
 // InsertChunks stores indexed chunks for a document.
 func (u *KnowledgeUsecase) InsertChunks(ctx context.Context, chunks []KnowledgeChunk) error {
+	if err := u.requireRepo(); err != nil {
+		return err
+	}
 	if len(chunks) == 0 {
 		return nil
 	}
@@ -187,6 +224,9 @@ func (u *KnowledgeUsecase) InsertChunks(ctx context.Context, chunks []KnowledgeC
 
 // Search performs a vector similarity search.
 func (u *KnowledgeUsecase) Search(ctx context.Context, q KnowledgeSearchQuery, queryEmbedding []float32) ([]KnowledgeChunk, error) {
+	if err := u.requireRepo(); err != nil {
+		return nil, err
+	}
 	if strings.TrimSpace(q.CollectionID) == "" {
 		return nil, errors.BadRequest("KNOWLEDGE", "collection_id is required")
 	}
@@ -201,10 +241,16 @@ func (u *KnowledgeUsecase) Search(ctx context.Context, q KnowledgeSearchQuery, q
 
 // UpdateDocumentStatus marks a document's indexing state.
 func (u *KnowledgeUsecase) UpdateDocumentStatus(ctx context.Context, id, status, errMsg string, chunkCount int) error {
+	if err := u.requireRepo(); err != nil {
+		return err
+	}
 	return u.repo.UpdateDocumentStatus(ctx, id, status, errMsg, chunkCount)
 }
 
 // UpdateCollectionCounts adjusts document/chunk tallies on a collection.
 func (u *KnowledgeUsecase) UpdateCollectionCounts(ctx context.Context, id string, docDelta, chunkDelta int) error {
+	if err := u.requireRepo(); err != nil {
+		return err
+	}
 	return u.repo.UpdateCollectionCounts(ctx, id, docDelta, chunkDelta)
 }

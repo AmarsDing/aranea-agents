@@ -6,21 +6,25 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
 	"time"
 
+	artifacttrpc "aranea-agents/internal/artifact/trpc"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/cronrunner"
 	"aranea-agents/internal/cronrunner/jobs"
 	"aranea-agents/internal/data"
+	"aranea-agents/internal/data/sessionmemory"
+	aramemory "aranea-agents/internal/memory"
+	memtrpc "aranea-agents/internal/memory/trpc"
 	"aranea-agents/internal/event"
 	graphadapter "aranea-agents/internal/graph/adapter"
 	graphtrpc "aranea-agents/internal/graph/trpc"
 	"aranea-agents/internal/mcp/health"
-	memtrpc "aranea-agents/internal/memory/trpc"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	"aranea-agents/internal/provider"
 	rt "aranea-agents/internal/runtime"
@@ -29,12 +33,14 @@ import (
 	"aranea-agents/internal/skill/watch"
 	"aranea-agents/internal/team"
 
-	"aranea-agents/internal/data/sessionmemory"
-
 	"github.com/go-kratos/kratos/v2"
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/google/wire"
+	trpcartifact "trpc.group/trpc-go/trpc-agent-go/artifact"
+	trpcgraph "trpc.group/trpc-go/trpc-agent-go/graph"
+	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
+	trpcmemory "trpc.group/trpc-go/trpc-agent-go/memory"
 )
 
 func provideCronRunnerDeps(
@@ -77,7 +83,12 @@ func provideSessionTitleGenerator(catalog *biz.LlmProviderModelUsecase, _ rt.Per
 	return service.NewLLMSessionTitleGenerator(catalog, &provider.RoundTrip{HTTP: httpClient})
 }
 
+func provideRunRegistry() *rt.RunRegistry {
+	return rt.NewRunRegistry()
+}
+
 func provideChatServiceDeps(
+	runs *rt.RunRegistry,
 	teams biz.TeamRepository,
 	teamsNative *team.Runner,
 	usage *biz.UsageUsecase,
@@ -93,9 +104,12 @@ func provideChatServiceDeps(
 	compress biz.NativeTurnCompressor,
 	eventBus event.Bus,
 	pluginRT *plugintrpc.Runtime,
+	pluginMgr *plugintrpc.Manager,
 	skillDBRepo trpcskill.Repository,
+	a2aUC *biz.A2AUsecase,
 ) service.ChatServiceDeps {
 	return service.ChatServiceDeps{
+		Runs:         runs,
 		Teams:        teams,
 		TeamsNative:  teamsNative,
 		Usage:        usage,
@@ -110,8 +124,10 @@ func provideChatServiceDeps(
 		Persist:      persist,
 		Compress:     compress,
 		EventBus:     eventBus,
-		PluginRT:     pluginRT,
-		SkillDBRepo:  skillDBRepo,
+		PluginRT:      pluginRT,
+		PluginManager: pluginMgr,
+		SkillDBRepo:   skillDBRepo,
+		A2AUC:         a2aUC,
 	}
 }
 
@@ -123,11 +139,39 @@ func provideChatSender(svc *service.ChatService) server.ChatSender {
 	return svc
 }
 
+func provideMemoryService(persist rt.PersistenceSet) *service.MemoryService {
+	return service.NewMemoryService(persist.Memory.Admin)
+}
+
+func provideTRPCSessionService(d *data.Data) trpcsession.Service {
+	if d == nil {
+		return rt.NewTRPCSessionService(nil)
+	}
+	return rt.NewTRPCSessionService(d.RawDB())
+}
+
+func provideGraphCheckpointSaver(d *data.Data) (*graphtrpc.SQLiteCheckpointSaver, error) {
+	if d == nil {
+		return nil, fmt.Errorf("data is nil")
+	}
+	return rt.NewGraphCheckpointSaver(d.RawDB())
+}
+
+func provideArtifactRuntimeService(uc *biz.ArtifactUsecase) trpcartifact.Service {
+	if uc == nil {
+		return nil
+	}
+	return artifacttrpc.NewServiceAdapter(uc)
+}
+
 // provideAutoMemoryWorker wires the cron auto-memory extraction worker.
 // EP-RT-03: injects SessionUsecase + SQLite memory service so extraction writes to session_memory.
-func provideAutoMemoryWorker(sessions *biz.SessionUsecase, store *sessionmemory.Store) *jobs.AutoMemoryWorker {
-	mem := memtrpc.NewSQLiteMemoryService(store)
-	return jobs.NewAutoMemoryWorker(0, sessions, mem)
+func provideAutoMemoryWorker(sessions *biz.SessionUsecase, agents *biz.AgentUsecase, memStore *sessionmemory.Store) *jobs.AutoMemoryWorker {
+	var mem trpcmemory.Service
+	if memStore != nil {
+		mem = memtrpc.NewSQLiteMemoryService(memStore)
+	}
+	return jobs.NewAutoMemoryWorker(0, sessions, agents, mem, aramemory.NewL4GraphWriter(memStore))
 }
 
 func provideMCPHealthRunnerDeps(mcpRepo biz.MCPServerRepo, mcpUC *biz.MCPServerUsecase) health.Deps {
@@ -142,6 +186,10 @@ func provideMCPHealthRunner(deps health.Deps) *health.Runner {
 		return nil
 	}
 	return health.NewRunner(deps)
+}
+
+func providePluginStatsRecorder(repo biz.PluginRepo) plugintrpc.StatsRecorder {
+	return plugintrpc.NewRepoStatsRecorder(repo)
 }
 
 // wireOut is non-cleanup inject outputs (cleanup must be a top-level injector return for Wire).
@@ -169,11 +217,19 @@ func wireApp(*conf.Server, *conf.Data, log.Logger) (wireOut, func(), error) {
 		provideCronRunner,
 		provideSkillWatchRunner,
 		provideSessionTitleGenerator,
+		provideRunRegistry,
 		provideChatServiceDeps,
 		provideRunCanceller,
 		provideChatSender,
+		provideArtifactRuntimeService,
+		provideMemoryService,
+		provideTRPCSessionService,
+		provideGraphCheckpointSaver,
+		wire.Bind(new(trpcgraph.CheckpointSaver), new(*graphtrpc.SQLiteCheckpointSaver)),
 		rt.NewPersistenceSet,
+		providePluginStatsRecorder,
 		plugintrpc.NewRuntime,
+		plugintrpc.NewManager,
 		graphtrpc.NewRegistry,
 		graphadapter.NewGraphBuilderFactory,
 		provideAutoMemoryWorker,

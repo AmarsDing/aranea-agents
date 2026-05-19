@@ -115,6 +115,10 @@ func NewAgentMCPTooling(agents *AgentUsecase, mcp *MCPServerUsecase) *AgentMCPTo
 }
 
 func effectiveToolsAllowsMCP(eff AgentEffectiveTools) bool {
+	return effectiveToolsAllowsMCPServers(eff)
+}
+
+func effectiveToolsAllowsMCPServers(eff AgentEffectiveTools) bool {
 	if !eff.ToolsEnabled {
 		return false
 	}
@@ -122,14 +126,15 @@ func effectiveToolsAllowsMCP(eff AgentEffectiveTools) bool {
 		if !it.Enabled {
 			continue
 		}
-		if strings.TrimSpace(strings.ToLower(it.ToolKey)) == strings.ToLower(ToolKeyMCPToolSet) {
+		k := strings.TrimSpace(strings.ToLower(it.ToolKey))
+		if k == strings.ToLower(ToolKeyMCPToolSet) || k == strings.ToLower(ToolKeyMCPBroker) {
 			return true
 		}
 	}
 	return false
 }
 
-// EffectiveServersForAgent returns MCP server rows exposed for this agent when mcp_tool_set is enabled.
+// EffectiveServersForAgent returns MCP server rows when mcp_tool_set or mcp_broker is enabled.
 func (t *AgentMCPTooling) EffectiveServersForAgent(ctx context.Context, agentID string) ([]EffectiveMCPServer, error) {
 	if t == nil || t.agents == nil || t.mcp == nil {
 		return nil, nil
@@ -142,7 +147,7 @@ func (t *AgentMCPTooling) EffectiveServersForAgent(ctx context.Context, agentID 
 	if err != nil {
 		return nil, err
 	}
-	if !effectiveToolsAllowsMCP(eff) {
+	if !effectiveToolsAllowsMCPServers(eff) {
 		return nil, nil
 	}
 	rows, err := t.mcp.List(ctx)

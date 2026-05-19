@@ -64,6 +64,23 @@ export type SearchKnowledgeQuery = {
   filter_json?: string;
 };
 
+export type EmbedderConfig = {
+  provider: string;
+  base_url: string;
+  model: string;
+  dim: number;
+  configured: boolean;
+  has_api_key: boolean;
+};
+
+export type UpdateEmbedderConfigInput = {
+  provider?: string;
+  base_url?: string;
+  api_key?: string;
+  model?: string;
+  dim?: number;
+};
+
 export type ListCollectionsResult = {
   items: KnowledgeCollection[];
   total: number;

@@ -28,6 +28,15 @@ var (
 	ErrForbidden = errors.Forbidden("FORBIDDEN", "Access denied")
 )
 
+// RegisterNoAuthPath marks an exact path as not requiring authentication.
+func RegisterNoAuthPath(path string) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return
+	}
+	noAuthPaths[path] = struct{}{}
+}
+
 // Middleware is an authentication middleware for HTTP servers.
 func Middleware() httpm.FilterFunc {
 	return func(next http.Handler) http.Handler {

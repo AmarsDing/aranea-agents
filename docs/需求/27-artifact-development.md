@@ -1,6 +1,6 @@
 # Artifact 产出物 — 开发计划
 
-> **版本**：2026-05-19 | **状态**：🟡 基础存储+版本管理可用；❌ Runner 注入/预览/签名下载未实现
+> **版本**：2026-05-19 | **状态**：🟡 存储+Runner 注入+管理页可用；预览 RPC/Chat 附件/签名下载待做
 > **需求**：[27 artifact.md](./27%20artifact.md) · **设计**：[27 artifact.design.md](./27%20artifact.design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：EP-RT-08
 
@@ -34,11 +34,11 @@ Artifact 产出物：管理 Agent 运行时产生的文件、图片、代码等�
 | HTTP/gRPC 注册 | ✅ | http.go + grpc.go 已注册 |
 | 前端 API + Store | ✅ | features/artifact/api.ts + stores/artifact/index.ts |
 | 测试覆盖 | ✅ | service/artifact_test.go + data/artifactfs/repo_test.go + artifact/trpc/service_test.go |
-| Runner 注入 ArtifactService | ❌ | TRPCRunnerDeps 无 ArtifactService 字段 |
+| Runner 注入 ArtifactService | ✅ | `TRPCRunnerDeps.ArtifactService` + `WithArtifactService`（M1/EP-RT-08） |
 | CodeExecutor 产出物自动保存 | ❌ | 仅有 ArtifactDir 字段，无自动持久化 |
-| 前端制品列表组件 | ❌ | 无 ArtifactList.vue |
-| 前端制品预览组件 | ❌ | 无 ArtifactPreview.vue |
-| 在线预览（图片/PDF/代码） | ❌ | 无预览 API |
+| 管理页面 | ✅ | `ArtifactsPage.vue`；路由 `/artifacts`；列表/上传/文本预览 |
+| 前端制品列表组件 | 🟡 | 合并在 `ArtifactsPage`，无独立 `ArtifactList.vue` |
+| 在线预览（图片/PDF/代码） | 🟡 | 管理页内文本预览；无 PreviewArtifact RPC / PDF 渲染 |
 | 签名下载 URL | ❌ | 无签名机制 |
 | S3/COS 后端 | ❌ | 仅本地 FS |
 
@@ -46,9 +46,9 @@ Artifact 产出物：管理 Agent 运行时产生的文件、图片、代码等�
 
 ## 3. 差距与优化
 
-1. **P1**：Runner 未注入 ArtifactService，Agent 运行时无法通过 `artifact.ServiceKey` 访问制品，CodeExecutor 产出物无法自动保存。
-2. **P2**：前端无制品列表/预览组件，用户无法在 UI 中查看和管理制品。
-3. **P2**：无在线预览功能，用户需下载后查看图片/PDF/代码。
+1. **P1**：CodeExecutor 产出物未自动保存为 Artifact。
+2. **P2**：Chat 会话未关联制品列表/附件入口。
+3. **P2**：无 PreviewArtifact RPC；图片/PDF 浏览器内预览未实现。
 4. **P3**：无签名下载 URL，安全性不足。
 5. **P3**：仅本地 FS 存储，多实例部署需共享卷，无法弹性扩展。
 
@@ -56,8 +56,8 @@ Artifact 产出物：管理 Agent 运行时产生的文件、图片、代码等�
 
 ## 4. 开发阶段
 
-- **Phase 1**：Runner 注入 ArtifactService + CodeExecutor 产出物自动保存（闭环 Agent 运行时制品链路）
-- **Phase 2**：前端制品列表 + 在线预览（图片/PDF/代码高亮）
+- **Phase 1**：~~Runner 注入 ArtifactService~~（✅）+ CodeExecutor 产出物自动保存（⏳）
+- **Phase 2**：~~管理页列表/基础预览~~（✅ `ArtifactsPage`）+ PreviewArtifact RPC + 图片/PDF/代码高亮（⏳）
 - **Phase 3**：签名下载 URL（HMAC-SHA256）
 - **Phase 4**：S3/COS 云存储后端
 
@@ -67,10 +67,10 @@ Artifact 产出物：管理 Agent 运行时产生的文件、图片、代码等�
 
 | # | 任务 | 优先级 | Phase | 涉及文件 | EP |
 |---|------|--------|-------|----------|-----|
-| 1 | TRPCRunnerDeps 增加 ArtifactService 字段 + WithArtifactService 注入 | P1 | 1 | `internal/agent/trpc_runtime.go` | EP-RT-08 |
-| 2 | Wire 提供 ServiceAdapter 实例 | P1 | 1 | `internal/artifact/trpc/service.go`, Wire 集成 | EP-RT-08 |
+| 1 | TRPCRunnerDeps 增加 ArtifactService 字段 + WithArtifactService 注入 | P1 | 1 | `internal/agent/trpc_runtime.go` | EP-RT-08 ✅ |
+| 2 | Wire 提供 ServiceAdapter 实例 | P1 | 1 | `internal/artifact/trpc/service.go`, Wire 集成 | EP-RT-08 ✅ |
 | 3 | CodeExecutor 产出物自动保存为 Artifact | P1 | 1 | `internal/agent/codeexecutor/executor.go` | EP-RT-08 |
-| 4 | ArtifactList.vue 制品列表组件 | P2 | 2 | `web/src/features/artifact/` | — |
+| 4 | ArtifactsPage 管理界面 | P2 | 2 | `web/src/pages/ArtifactsPage.vue` | — ✅ |
 | 5 | PreviewArtifact RPC + 在线预览（图片/PDF/代码） | P2 | 2 | Proto + Service + Biz + 前端 | — |
 | 6 | ArtifactPreview.vue 制品预览组件 | P2 | 2 | `web/src/features/artifact/` | — |
 | 7 | 签名下载 URL（HMAC-SHA256） | P3 | 3 | Proto + Service + Biz | — |
@@ -82,10 +82,10 @@ Artifact 产出物：管理 Agent 运行时产生的文件、图片、代码等�
 
 ## 6. 验收标准
 
-- [ ] Agent 运行时可通过 artifact.Service 保存/加载制品（Phase 1）
+- [x] Agent 运行时可通过 artifact.Service 保存/加载制品（Phase 1）
 - [ ] CodeExecutor 产出物自动保存为 Artifact（Phase 1）
-- [ ] 前端可查看会话制品列表（Phase 2）
-- [ ] 图片/PDF/代码可在浏览器中预览（Phase 2）
+- [x] 前端可查看/上传/删除制品（ArtifactsPage，Phase 2）
+- [ ] 图片/PDF/代码可在浏览器中预览（Phase 2，需 Preview RPC）
 - [ ] 下载链接有时效性签名（Phase 3）
 - [ ] 制品可存储到 S3/COS，按租户隔离（Phase 4）
 

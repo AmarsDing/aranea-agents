@@ -55,6 +55,12 @@ type CronChatRunner interface {
 	RunCronTurn(ctx context.Context, sessionID, content, teamID string) (userMsgID, agentMsgID string, err error)
 }
 
+// SessionRunControl is optionally implemented by CronChatRunner to respect
+// active runs on the shared RunGateway before dispatch.
+type SessionRunControl interface {
+	HasActiveRun(sessionID string) bool
+}
+
 // Deps wires cron execution to Ent repos + session create + chat HTTP POST.
 type Deps struct {
 	Cron     biz.CronRepo
@@ -318,6 +324,9 @@ func (r *Runner) dispatchCronTask(ctx context.Context, task biz.CronTask, cfg cr
 		}
 		var res cronDispatchResult
 		if r.deps.Chat != nil {
+			if busy, skip := r.skipCronWhenSessionBusy(sess.ID); skip {
+				return busy, nil
+			}
 			// EP-RT-07: in-process dispatch via plugin runtime.
 			uid, aid, rerr := r.deps.Chat.RunCronTurn(ctx, sess.ID, cfg.Message, teamID)
 			if rerr != nil {
@@ -353,6 +362,9 @@ func (r *Runner) dispatchCronTask(ctx context.Context, task biz.CronTask, cfg cr
 			return cronDispatchResult{}, err
 		}
 		if r.deps.Chat != nil {
+			if busy, skip := r.skipCronWhenSessionBusy(sess.ID); skip {
+				return busy, nil
+			}
 			// EP-RT-07: in-process dispatch via plugin runtime.
 			uid, aid, rerr := r.deps.Chat.RunCronTurn(ctx, sess.ID, cfg.Message, "")
 			if rerr != nil {
@@ -481,6 +493,18 @@ func (r *Runner) postChat(ctx context.Context, in sendMessagePayload) (cronDispa
 		UserMessageID:  out.UserMessage.ID,
 		AgentMessageID: out.AgentMessage.ID,
 	}, nil
+}
+
+func (r *Runner) skipCronWhenSessionBusy(sessionID string) (cronDispatchResult, bool) {
+	if r == nil || r.deps.Chat == nil {
+		return cronDispatchResult{}, false
+	}
+	ctrl, ok := r.deps.Chat.(SessionRunControl)
+	if !ok || !ctrl.HasActiveRun(sessionID) {
+		return cronDispatchResult{}, false
+	}
+	slog.Info("cron dispatch skipped: session has active run", "session_id", sessionID)
+	return cronDispatchResult{SessionID: sessionID}, true
 }
 
 func validationErr(format string, args ...any) error {

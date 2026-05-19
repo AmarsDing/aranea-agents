@@ -33,8 +33,8 @@
 - MemberToolConfig 成员工具配置：StreamInner / InnerTextMode / HistoryScope
 - 动态成员管理：UpdateSwarmMembers API
 - 结构导出：ExportTeamStructure API
-- GetTeamRun / CancelTeamRun / RunTeamTest API
-- 实时 step event SSE 基础链路
+- GetTeamRun / CancelTeamRun API；RunTeamTest Proto / Service 桩已存在，端到端执行仍待补
+- 实时事件统一通过 WebSocket + EventBus Envelope；member_* 子 Agent 实时事件仍待稳定发射
 - Team 模板（四个内置模板）
 - 图工作流 schema 和基础预览
 - A2A 内部信封基础版
@@ -48,7 +48,7 @@
 - 外部 Team 市场或模板商店
 - 复杂人工审批流
 - Team 模板后端库 / 自定义模板保存
-- 实时 SSE 增强：step_started / 进度百分比 / 事件回放与断线续传
+- 实时 WS 事件增强：step_started / 进度百分比 / 事件回放与断线续传
 - A2A call_agent 工具注入
 - Team 运行结果结构化汇总（成员贡献度、工具调用统计）
 
@@ -179,7 +179,7 @@ Swarm 配置：
 
 - GetTeamRun API：获取单条运行详情
 - CancelTeamRun API：取消正在运行的 Team Run（仅 running/pending 状态可取消）
-- RunTeamTest API：手动触发 Team 测试运行
+- RunTeamTest API：手动触发 Team 测试运行（当前仍需从桩实现补为端到端执行）
 
 ## 5. 后端接口
 
@@ -280,5 +280,5 @@ Swarm 配置：
 
 - [ ] RunTeamTest 端到端测试通过
 - [ ] A2A call_agent 工具注入到 Agent 工具集
-- [ ] Team 对话发射 member_* SSE 事件
+- [ ] Team 对话发射 member_* WS Envelope 事件
 - [ ] Team 运行结果结构化汇总 API

@@ -245,10 +245,10 @@ func compressProviderModel(sess biz.Session, ag biz.Agent) (prov, mod string) {
 }
 
 func (c *SessionCompressor) resyncSessionMemory(ctx context.Context, sessionID string) {
-	if c == nil || c.Persist.Memory == nil {
+	if c == nil || c.Persist.Memory.Admin == nil {
 		return
 	}
-	_ = c.Persist.Memory.DeleteSessionEventEntities(ctx, sessionID)
+	_ = c.Persist.Memory.Admin.DeleteSessionEventEntities(ctx, sessionID)
 }
 
 func timelineUserAssistant(msgs []biz.ChatMessage) []biz.ChatMessage {

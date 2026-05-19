@@ -1,7 +1,7 @@
 # Memory 记忆 — 开发计划
 
 > **版本**：2026-05-18 | **状态**：🟡 L0-L3 部分实现；❌ L4 未实现；❌ MemoryWorker 未实现
-> **需求**：[12 L0](./12%20memory-L0-sensory.md) · [13 L1](./13%20memory-L1-working.md) · [14 L2](./14%20memory-L2-episodic.md) · [15 L3](./15%20memory-L3-semantic.md) · [16 L4](./16%20memory-L4-persistent.md) · [38 知识体系](./38%20memory.md) · [31 UX](./31%20memery.md)
+> **需求**：[12 L0](./12%20memory-L0-sensory.md) · [13 L1](./13%20memory-L1-working.md) · [14 L2](./14%20memory-L2-episodic.md) · [15 L3](./15%20memory-L3-semantic.md) · [16 L4](./16%20memory-L4-persistent.md) · [38 知识体系](./38%20memory.md) · [Memory UX](./12-16%20memory.md)
 > **设计**：[12-16 memory.design.md](./12-16%20memory.design.md)（含原 supplement 内容）
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：EP-BIZ-04 / EP-BIZ-07 / EP-MEM-01 / EP-MEM-02
 

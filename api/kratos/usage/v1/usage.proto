@@ -141,6 +141,43 @@ message ListUsageEventsResponse {
   repeated TokenUsageEvent items = 1;
 }
 
+message UsageQuota {
+  string id = 1;
+  string scope_type = 2;
+  string scope_id = 3;
+  int64 monthly_micro_usd = 4;
+  string period_start = 5;
+  string period_end = 6;
+  string created_at = 7;
+  string updated_at = 8;
+}
+
+message GetUsageQuotaRequest {
+  string scope_type = 1;
+  string scope_id = 2;
+}
+
+message SetUsageQuotaRequest {
+  string scope_type = 1;
+  string scope_id = 2;
+  int64 monthly_micro_usd = 3;
+  string period_start = 4;
+  string period_end = 5;
+}
+
+message CheckUsageQuotaRequest {
+  string scope_type = 1;
+  string scope_id = 2;
+}
+
+message CheckUsageQuotaResponse {
+  bool allowed = 1;
+  UsageQuota quota = 2;
+  int64 spent_micro_usd = 3;
+  int64 remaining_micro_usd = 4;
+  string reason = 5;
+}
+
 service UsageService {
   rpc GetUsageOverview(UsageQuery) returns (UsageOverview) {
     option (google.api.http) = {get: "/v1/usage/overview"};
@@ -163,5 +200,17 @@ service UsageService {
       post: "/v1/usage/token-events"
       body: "*"
     };
+  }
+  rpc GetUsageQuota(GetUsageQuotaRequest) returns (UsageQuota) {
+    option (google.api.http) = {get: "/v1/usage/quotas/{scope_type}/{scope_id}"};
+  }
+  rpc SetUsageQuota(SetUsageQuotaRequest) returns (UsageQuota) {
+    option (google.api.http) = {
+      put: "/v1/usage/quotas/{scope_type}/{scope_id}"
+      body: "*"
+    };
+  }
+  rpc CheckUsageQuota(CheckUsageQuotaRequest) returns (CheckUsageQuotaResponse) {
+    option (google.api.http) = {get: "/v1/usage/quotas/{scope_type}/{scope_id}/check"};
   }
 }

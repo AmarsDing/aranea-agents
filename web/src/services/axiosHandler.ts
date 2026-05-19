@@ -3,7 +3,7 @@ import { Notify } from "quasar";
 import { getBackendOrigin } from "../config/runtime";
 
 /**
- * **`kratosApi`**：`requestHandler` + `create*Service()` → **`/v1/...`**（含 **`memory/v1`**）；**`chat`**：`ChatServiceHTTPServer`（**`/v1/chat/*`**）；**`skills/import*`**：本进程 **`RegisterSkillImportHTTPServer`**（multipart + JSON）。
+ * **`kratosApi`**：`requestHandler` + `create*Service()` → **`/v1/...`**（含 **`memory/v1`**）；**`chat`**：`ChatServiceHTTPServer`（**`/v1/chat/*`**）；**`skills/import*`**：`SkillService`（proto HTTP + multipart ZIP on **`RegisterSkillImportMultipart`**）。
  *
  * {@link syncHttpClients} 在 **`loadRuntimeConfig`** 之后刷新 **`kratosApi`** 的 **`baseURL`**（见 **`getBackendOrigin()`**）。
  */

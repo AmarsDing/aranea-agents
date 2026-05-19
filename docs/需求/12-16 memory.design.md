@@ -1,12 +1,12 @@
 # Memory L0-L4 模块 — 实现设计文档
 
-> 对应需求：`12 memory-L0-sensory.md` / `13 memory-L1-working.md` / `14 memory-L2-episodic.md` / `15 memory-L3-semantic.md` / `16 memory-L4-persistent.md` / `31 memery.md` / `38 memory.md`
+> 对应需求：`12 memory-L0-sensory.md` / `13 memory-L1-working.md` / `14 memory-L2-episodic.md` / `15 memory-L3-semantic.md` / `16 memory-L4-persistent.md` / `12-16 memory.md` / `38 memory.md`
 > 遵循规范：`AI-DEVELOPMENT-SPECIFICATION.md`
 >
 > **文档定位**：Memory 模块的**完整实现设计**，覆盖后端（Proto/Biz/Data/Service/Wire/MemoryWorker/运行时注入）和前端（组件/类型/API/路由）。
 >
 > 相关文档：
-> - UX 需求（产品视角）→ [`31 memery.md`](./31%20memery.md)
+> - UX 需求（产品视角）→ [`12-16 memory.md`](./12-16%20memory.md)
 > - Memory 框架对齐 → [`38 memory.md`](./38%20memory.md)
 
 ---
@@ -1168,7 +1168,7 @@ export async function rejectCascadeProposal(id: string, reason?: string): Promis
 
 ## 九、前端实现设计
 
-> UX 需求（页面目标、交互规范、验收标准）见 [`31 memery.md`](./31%20memery.md)，本节聚焦实现层：组件文件结构、组件设计、TypeScript 类型、API 函数、路由配置。
+> UX 需求（页面目标、交互规范、验收标准）见 [`12-16 memory.md`](./12-16%20memory.md)，本节聚焦实现层：组件文件结构、组件设计、TypeScript 类型、API 函数、路由配置。
 
 ### 9.1 文件结构
 

@@ -5,8 +5,11 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"time"
 
 	"aranea-agents/internal/biz"
+
+	"github.com/google/uuid"
 )
 
 type monitorRepo struct {
@@ -15,6 +18,39 @@ type monitorRepo struct {
 
 func NewMonitorRepo(d *Data) biz.MonitorRepo {
 	return &monitorRepo{data: d}
+}
+
+func (r *monitorRepo) InsertAuditLog(ctx context.Context, entry biz.AuditLog) error {
+	id := strings.TrimSpace(entry.ID)
+	if id == "" {
+		id = uuid.NewString()
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	if strings.TrimSpace(entry.CreatedAt) == "" {
+		entry.CreatedAt = now
+	}
+	_, err := r.data.RawDB().ExecContext(ctx,
+		`INSERT INTO audit_logs (id, action, resource, resource_id, request_id, detail, created_at, actor, ip, user_agent, severity, metadata_json)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		id, entry.Action, entry.Resource, entry.ResourceID, entry.RequestID, entry.Detail, entry.CreatedAt,
+		entry.Actor, entry.IP, entry.UserAgent, entry.Severity, entry.MetadataJSON,
+	)
+	return err
+}
+
+func (r *monitorRepo) InsertMonitorEvent(ctx context.Context, ev biz.MonitorEventWrite) error {
+	id := uuid.NewString()
+	now := time.Now().UTC().Format(time.RFC3339)
+	status := strings.TrimSpace(ev.Status)
+	if status == "" {
+		status = "ok"
+	}
+	_, err := r.data.RawDB().ExecContext(ctx,
+		`INSERT INTO monitor_events (id, event_key, name, description, status, metadata_json, created_at, updated_at, deleted_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, '')`,
+		id, ev.EventKey, ev.Name, ev.Description, status, ev.MetadataJSON, now, now,
+	)
+	return err
 }
 
 func (r *monitorRepo) ListAuditLogs(ctx context.Context, query biz.AuditQuery) (biz.AuditListResult, error) {

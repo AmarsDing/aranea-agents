@@ -10,12 +10,13 @@ import (
 
 	agentplanner "aranea-agents/internal/agent/planner"
 	"aranea-agents/internal/biz"
+	aramemory "aranea-agents/internal/memory"
+	plugintrpc "aranea-agents/internal/plugin/trpc"
 	"aranea-agents/internal/skill/storage"
 	"aranea-agents/internal/provider"
 	skilltrpc "aranea-agents/internal/skill/trpc"
 	memorytool "aranea-agents/internal/tools/memory"
 	tooltrpc "aranea-agents/internal/tools/trpc"
-	"aranea-agents/pkg/safego"
 	"aranea-agents/pkg/strutil"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -24,6 +25,7 @@ import (
 	trpcllmagent "trpc.group/trpc-go/trpc-agent-go/agent/llmagent"
 	"trpc.group/trpc-go/trpc-agent-go/codeexecutor"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
+	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
 	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
@@ -36,6 +38,7 @@ type TRPCBuilderDeps struct {
 	SkillUC     *biz.SkillUsecase
 	MCPTooling  *biz.AgentMCPTooling
 	ToolUC      *biz.ToolUsecase
+	Sessions    *biz.SessionUsecase
 	Sys         biz.SystemSettingRepo
 	Provider    string
 	Model       string
@@ -50,6 +53,13 @@ type TRPCBuilderDeps struct {
 	// EP-RT-05: memory tools are only injected into the agent when the service is
 	// actually available to back them; avoids silent no-ops when memory is disabled.
 	HasMemory bool
+	// Plugins are runner-level trpc plugins (audit, guardrails). Runner still receives
+	// them via WithPlugins; LLMAgent uses the product Callback Chain separately.
+	Plugins []trpcplugin.Plugin
+	// PluginManager merges hook rules into the product Callback Chain (EP-CB-01 Phase 2).
+	PluginManager *plugintrpc.Manager
+	// MemoryAdmin is the L0–L4 session memory port for prompt injection (EP-BIZ-04).
+	MemoryAdmin aramemory.SessionAdminStore
 }
 
 func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) (trpcagent.Agent, error) {
@@ -81,6 +91,9 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) 
 	}
 	if cue := RuntimeCapabilityCue(ctx, promptDeps, ag); cue != "" {
 		sys = sys + "\n\n" + cue
+	}
+	if l4 := L4MemoryCue(ctx, deps.MemoryAdmin, ag); l4 != "" {
+		sys = sys + "\n\n" + l4
 	}
 
 	opts := []trpcllmagent.Option{
@@ -138,15 +151,15 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) 
 		}
 	}
 
+	if chainOpts := buildCallbackChainOptions(ctx, ag, deps); len(chainOpts) > 0 {
+		opts = append(opts, chainOpts...)
+	}
+
 	if ag.Settings != nil {
 		opts = append(opts, buildTRPCRuntimeOptions(ag.Settings)...)
 
 		if toolFilter := buildToolFilter(ag.Settings); toolFilter != nil {
 			opts = append(opts, trpcllmagent.WithToolFilter(toolFilter))
-		}
-
-		if callbacks := buildToolCallbacks(ag.Settings, ag, deps); callbacks != nil {
-			opts = append(opts, trpcllmagent.WithToolCallbacks(callbacks))
 		}
 
 		if retryPolicy := buildToolRetryPolicy(ag.Settings); retryPolicy != nil {
@@ -203,8 +216,9 @@ func buildSkillDeps(ctx context.Context, deps TRPCBuilderDeps) (trpcskill.Reposi
 
 func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) (*tooltrpc.AssembledToolsets, error) {
 	cfg := tooltrpc.ToolsetConfig{}
+	var eff map[string]bool
 	if ag.Settings != nil && ag.Settings.ToolsEnabled {
-		eff := loadEffectiveToolKeys(ctx, deps, ag.ID)
+		eff = loadEffectiveToolKeys(ctx, deps, ag.ID)
 		cfg.Filesystem = eff["read_file"] || eff["read_multiple_files"] || eff["save_file"] || eff["list_file"] || eff["search_file"] || eff["search_content"] || eff["replace_content"]
 		cfg.ShellExec = eff["shell_exec"]
 		cfg.WebFetch = eff["web_fetch"]
@@ -219,14 +233,16 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 		cfg.ClaudeCode = eff["claude_code"]
 		cfg.WorkspaceExec = eff["workspace_exec"]
 
-		if eff[biz.ToolKeyMCPToolSet] {
-			mcpServers, err := resolveMCPServers(ctx, deps, ag.ID)
-			if err == nil && len(mcpServers) > 0 {
-				cfg.MCPServers = mcpServers
-			}
+		mcpServers, _ := resolveMCPServers(ctx, deps, ag.ID)
+		if eff[biz.ToolKeyMCPToolSet] && len(mcpServers) > 0 {
+			cfg.MCPServers = mcpServers
 		}
-
-		if eff[biz.ToolKeyMCPBroker] {
+		// Auto-mount MCPBroker when the agent has effective MCP servers (runtime discovery).
+		if len(mcpServers) > 0 {
+			if brokerCfg := buildMCPBrokerFromServers(mcpServers); brokerCfg != nil {
+				cfg.MCPBroker = brokerCfg
+			}
+		} else if eff[biz.ToolKeyMCPBroker] {
 			mcpBrokerCfg, err := resolveMCPBrokerConfig(ctx, deps, ag.ID)
 			if err == nil && mcpBrokerCfg != nil {
 				cfg.MCPBroker = mcpBrokerCfg
@@ -245,7 +261,46 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 		len(cfg.MCPServers) == 0 && cfg.MCPBroker == nil {
 		return nil, nil
 	}
-	return tooltrpc.BuildToolsets(ctx, cfg)
+	applyRuntimeToolConfigs(ctx, ag.ID, eff, deps, &cfg)
+	ts, err := tooltrpc.BuildToolsets(ctx, cfg)
+	if err != nil || ts == nil {
+		return ts, err
+	}
+	if confirm := buildToolConfirmationPolicy(ctx, ag, deps); len(confirm) > 0 {
+		tooltrpc.ApplyConfirmationPolicy(ts, confirm)
+	}
+	return ts, nil
+}
+
+func applyRuntimeToolConfigs(ctx context.Context, agentID string, eff map[string]bool, deps TRPCBuilderDeps, cfg *tooltrpc.ToolsetConfig) {
+	if cfg == nil || deps.ToolUC == nil || len(eff) == 0 {
+		return
+	}
+	overrides, err := deps.ToolUC.ListToolAgentOverridesByAgent(ctx, agentID)
+	if err != nil {
+		overrides = nil
+	}
+	overrideByKey := make(map[string]biz.ToolAgentOverride, len(overrides))
+	for _, o := range overrides {
+		overrideByKey[strings.TrimSpace(o.ToolKey)] = o
+	}
+	merged := make(map[string]map[string]any)
+	for key := range eff {
+		if !eff[key] {
+			continue
+		}
+		tool, err := deps.ToolUC.GetTool(ctx, key)
+		if err != nil {
+			continue
+		}
+		base := strings.TrimSpace(tool.ConfigJSON)
+		if base == "" {
+			base = strings.TrimSpace(tool.DefaultConfigJSON)
+		}
+		ov := overrideByKey[key]
+		merged[key] = biz.MergeToolConfigJSON(base, ov.ConfigOverrideJSON)
+	}
+	tooltrpc.ApplyRuntimeConfigMaps(cfg, merged)
 }
 
 func resolveMCPServers(ctx context.Context, deps TRPCBuilderDeps, agentID string) ([]tooltrpc.MCPServerConfig, error) {
@@ -271,79 +326,113 @@ func resolveMCPServers(ctx context.Context, deps TRPCBuilderDeps, agentID string
 			continue
 		}
 		out = append(out, tooltrpc.MCPServerConfig{
-			Name:       key,
-			Transport:  sc.Transport,
-			ServerURL:  sc.URL,
-			Command:    sc.Command,
-			Args:       sc.Args,
-			Headers:    sc.Headers,
-			TimeoutSec: sc.TimeoutSec,
-			ToolPrefix: sc.ToolPrefix,
+			Name:                  key,
+			Transport:             sc.Transport,
+			ServerURL:             sc.URL,
+			Command:               sc.Command,
+			Args:                  sc.Args,
+			Env:                   sc.Env,
+			Headers:               applyMCPAuthHeaders(ctx, sc),
+			TimeoutSec:            sc.TimeoutSec,
+			ToolPrefix:            sc.ToolPrefix,
+			SessionReconnectMax:   sc.SessionReconnectMax,
+			AllowAdHocHTTP:        sc.AllowAdHocHTTP,
+			AdHocTimeoutSec:       sc.AdHocTimeoutSec,
 		})
 	}
 	return out, nil
 }
 
 func resolveMCPBrokerConfig(ctx context.Context, deps TRPCBuilderDeps, agentID string) (*tooltrpc.MCPBrokerConfig, error) {
-	if deps.MCPTooling == nil {
-		return nil, nil
-	}
-	servers, err := deps.MCPTooling.EffectiveServersForAgent(ctx, agentID)
+	servers, err := resolveMCPServers(ctx, deps, agentID)
 	if err != nil || len(servers) == 0 {
 		return nil, err
 	}
-	brokerServers := make([]tooltrpc.MCPServerConfig, 0, len(servers))
+	return buildMCPBrokerFromServers(servers), nil
+}
+
+func buildMCPBrokerFromServers(servers []tooltrpc.MCPServerConfig) *tooltrpc.MCPBrokerConfig {
+	if len(servers) == 0 {
+		return nil
+	}
 	var allowAdHoc bool
 	var adHocTimeout int
 	for _, s := range servers {
-		key := strings.TrimSpace(s.ServerKey)
-		if key == "" {
-			key = strings.TrimSpace(s.ID)
-		}
-		cfgJSON := strings.TrimSpace(s.ConfigJSON)
-		if cfgJSON == "" {
-			continue
-		}
-		sc, err := parseMCPServerConfigJSON(cfgJSON)
-		if err != nil {
-			continue
-		}
-		brokerServers = append(brokerServers, tooltrpc.MCPServerConfig{
-			Name:       key,
-			Transport:  sc.Transport,
-			ServerURL:  sc.URL,
-			Command:    sc.Command,
-			Args:       sc.Args,
-			Headers:    sc.Headers,
-			TimeoutSec: sc.TimeoutSec,
-		})
-		if sc.AllowAdHocHTTP {
+		if s.AllowAdHocHTTP {
 			allowAdHoc = true
 		}
-		if sc.AdHocTimeoutSec > adHocTimeout {
-			adHocTimeout = sc.AdHocTimeoutSec
+		if s.AdHocTimeoutSec > adHocTimeout {
+			adHocTimeout = s.AdHocTimeoutSec
 		}
 	}
-	if len(brokerServers) == 0 && !allowAdHoc {
-		return nil, nil
-	}
 	return &tooltrpc.MCPBrokerConfig{
-		Servers:         brokerServers,
+		Servers:         servers,
 		AllowAdHocHTTP:  allowAdHoc,
 		AdHocTimeoutSec: adHocTimeout,
-	}, nil
+	}
+}
+
+type mcpAuthConfigJSON struct {
+	Type         string `json:"type"`
+	APIKey       string `json:"api_key"`
+	HeaderName   string `json:"header_name"`
+	TokenURL     string `json:"token_url"`
+	ClientID     string `json:"client_id"`
+	ClientSecret string `json:"client_secret"`
+	Scope        string `json:"scope"`
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
 }
 
 type mcpServerConfigJSON struct {
-	Transport       string            `json:"transport"`
-	URL             string            `json:"url"`
-	Command         string            `json:"command"`
-	Args            []string          `json:"args"`
-	Headers         map[string]string `json:"headers"`
-	ToolPrefix      string            `json:"tool_prefix"`
-	TimeoutSec      int               `json:"timeout_sec"`
-	AllowAdHocHTTP  bool              `json:"allow_adhoc_http"`
-	AdHocTimeoutSec int               `json:"adhoc_timeout_sec"`
+	Transport           string            `json:"transport"`
+	URL                 string            `json:"url"`
+	Command             string            `json:"command"`
+	Args                []string          `json:"args"`
+	Env                 map[string]string `json:"env"`
+	Headers             map[string]string `json:"headers"`
+	Auth                mcpAuthConfigJSON `json:"auth"`
+	ToolPrefix          string            `json:"tool_prefix"`
+	TimeoutSec          int               `json:"timeout_sec"`
+	SessionReconnectMax int               `json:"session_reconnect_max"`
+	AllowAdHocHTTP      bool              `json:"allow_adhoc_http"`
+	AdHocTimeoutSec     int               `json:"adhoc_timeout_sec"`
+}
+
+func applyMCPAuthHeaders(ctx context.Context, sc mcpServerConfigJSON) map[string]string {
+	headers := make(map[string]string, len(sc.Headers)+1)
+	for k, v := range sc.Headers {
+		headers[k] = v
+	}
+	authType := strings.ToLower(strings.TrimSpace(sc.Auth.Type))
+	key := strings.TrimSpace(sc.Auth.APIKey)
+	if strings.HasPrefix(authType, "oauth2") {
+		if token, err := resolveMCPAuthToken(ctx, sc.Auth); err == nil && token != "" {
+			key = token
+		} else if strings.TrimSpace(sc.Auth.AccessToken) != "" {
+			key = strings.TrimSpace(sc.Auth.AccessToken)
+		}
+	}
+	if key == "" {
+		return headers
+	}
+	headerName := strings.TrimSpace(sc.Auth.HeaderName)
+	switch authType {
+	case "api_key", "bearer", "", "oauth2", "oauth2_static", "oauth2_client_credentials", "oauth2_refresh":
+		if headerName == "" {
+			headerName = "Authorization"
+		}
+		if strings.EqualFold(headerName, "Authorization") && !strings.HasPrefix(strings.ToLower(key), "bearer ") {
+			headers[headerName] = "Bearer " + key
+		} else {
+			headers[headerName] = key
+		}
+	default:
+		if headerName != "" {
+			headers[headerName] = key
+		}
+	}
+	return headers
 }
 
 func parseMCPServerConfigJSON(raw string) (mcpServerConfigJSON, error) {
@@ -458,72 +547,36 @@ func buildToolFilter(s *biz.AgentRuntimeSettings) trpctool.FilterFunc {
 	return trpctool.NewExcludeToolNamesFilter(denyList...)
 }
 
-func buildToolCallbacks(s *biz.AgentRuntimeSettings, ag biz.Agent, deps TRPCBuilderDeps) *trpctool.Callbacks {
-	if !s.ToolsEnabled {
-		return nil
-	}
-	callbacks := trpctool.NewCallbacks()
-
-	callbacks.RegisterAfterTool(func(ctx context.Context, args *trpctool.AfterToolArgs) (*trpctool.AfterToolResult, error) {
-		recordToolInvocationAsync(ctx, args, ag, deps)
-		return &trpctool.AfterToolResult{}, nil
-	})
-
-	return callbacks
-}
-
-func recordToolInvocationAsync(ctx context.Context, args *trpctool.AfterToolArgs, ag biz.Agent, deps TRPCBuilderDeps) {
-	if deps.ToolUC == nil {
-		return
-	}
-	toolKey := args.ToolName
+func recordToolInvocationAfter(ctx context.Context, args *trpctool.AfterToolArgs, ag biz.Agent, deps TRPCBuilderDeps) {
+	toolKey := strings.TrimSpace(args.ToolName)
 	if toolKey == "" {
 		return
 	}
-	var sessionID, userID, agentKey string
-	if inv, ok := trpcagent.InvocationFromContext(ctx); ok && inv != nil {
-		if inv.Session != nil {
-			sessionID = inv.Session.ID
-			userID = inv.Session.UserID
-		}
-		agentKey = inv.AgentName
+	ended := time.Now().UTC()
+	started := ended
+	var durationMS int
+	if t, ok := ctx.Value(toolCallStartKey{}).(time.Time); ok {
+		started = t
+		durationMS = int(ended.Sub(t).Milliseconds())
 	}
-	inputPreview := previewFromArgs(args.Arguments)
-	outputPreview := previewFromResult(args.Result)
-	status := "success"
-	var errCode, errMsg string
-	if args.Error != nil {
-		status = "error"
-		errMsg = args.Error.Error()
-		if len(errMsg) > 500 {
-			errMsg = errMsg[:500]
-		}
-		errCode = "tool_error"
+	status, errCode, errMsg := invocationStatusFromAfter(args)
+	if status == "blocked" && errCode == "confirmation_required" {
+		return
 	}
-	now := time.Now().UTC()
 	write := biz.ToolInvocationWrite{
 		ToolKey:       toolKey,
-		AgentID:       ag.ID,
-		AgentKey:      strutil.FirstNonEmpty(agentKey, ag.AgentKey),
-		SessionID:     sessionID,
-		UserID:        userID,
 		Status:        status,
-		DurationMS:    0,
-		StartedAt:     now.Format(time.RFC3339),
-		EndedAt:       now.Format(time.RFC3339),
-		InputPreview:  inputPreview,
-		OutputPreview: outputPreview,
+		DurationMS:    durationMS,
+		StartedAt:     started.Format(time.RFC3339),
+		EndedAt:       ended.Format(time.RFC3339),
+		InputPreview:  previewFromArgs(args.Arguments),
+		OutputPreview: previewFromResult(args.Result),
 		ErrorCode:     errCode,
 		ErrorMessage:  errMsg,
 		Source:        "adk",
 		ToolCallID:    args.ToolCallID,
 	}
-	safego.Go(ctx, "recordToolInvocationAsync", func() {
-		bgCtx := context.Background()
-		if err := deps.ToolUC.RecordToolInvocation(bgCtx, write); err != nil {
-			slog.Warn("tool invocation record failed", "tool", toolKey, "error", err)
-		}
-	})
+	recordToolInvocationWrite(ctx, write, ag, deps)
 }
 
 func previewFromArgs(args []byte) string {

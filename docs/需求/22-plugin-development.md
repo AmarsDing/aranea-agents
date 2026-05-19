@@ -1,6 +1,6 @@
 # Plugin 插件 — 开发计划
 
-> **版本**：2026-05-19 | **状态**：🟡 CRUD + Runtime 已通，内置插件 + Callback Chain 待完善
+> **版本**：2026-05-19 | **状态**：🟢 Phase 1–2 已落地（9 内置插件均可实例化；`audit_log` 全回调点）
 > **需求**：[22 plugin.md](./22%20plugin.md) · **设计**：[22 plugin.design.md](./22%20plugin.design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：EP-CB-01
 
@@ -23,9 +23,10 @@ Plugin 插件系统：运行时回调扩展机制，在 Agent 执行过程中插
 - `internal/plugin/trpc/runtime.go` — plugintrpc.Runtime（热重载）
 - `internal/plugin/trpc/adapter.go` — biz.Plugin → trpcplugin.Plugin 适配
 - `internal/plugin/trpc/audit.go` — AuditLogPlugin 内置插件
-- `internal/plugin/trpc/chain_adapter.go`（待新建） — Plugin → Chain 回调适配
-- `internal/plugin/trpc/registry.go`（待新建） — 内置插件定义 + 种子同步
-- `internal/plugin/trpc/stats.go`（待新建） — StatsUpdater 实现
+- `internal/plugin/trpc/chain_adapter.go` — 内置 callback_points 注册与 DB 声明校验
+- `internal/plugin/trpc/registry.go` — 内置插件定义 + `BuiltinPluginDefs()`
+- `internal/biz/plugin_schema.go` — JSON Schema 校验（gojsonschema）
+- `internal/plugin/trpc/stats.go` — StatsRecorder + 异步 `IncrementStats`
 - `internal/agent/trpc_runtime.go` — WithPlugins 注入 Runner
 - `internal/agent/turn_helpers.go` — Runner 构造时传入 Plugins
 - `internal/agent/trpc_build.go` — LLMAgent 构建（EP-CB-01 修改点）
@@ -47,42 +48,42 @@ Plugin 插件系统：运行时回调扩展机制，在 Agent 执行过程中插
 | 前端管理 | ✅ | Plugin 列表 / 启停 / 配置 / 详情 / 排序 |
 | Callback Chain 基础 | ✅ | `callbacks.Chain` 已有 `AdaptAgentCallbacks()` / `AdaptModelCallbacks()` / `AdaptToolCallbacks()` |
 | Callback 适配器（部分） | ✅ | `BeforeAgentHookFunc`、`AfterAgentHookFunc`、`ToolRecorderCallback` 已实现 |
-| 内置插件注册 | 🟡 | 仅 `audit_log` 一个；需求定义 9 个内置插件 |
-| EP-CB-01 Chain 接入 | 🟡 | Tool 回调已通；LLMAgent/Model Chain 未挂（缺少 `BeforeModelHookFunc`/`AfterModelHookFunc` + `trpc_build.go` 未注入） |
-| Plugin 种子同步 | ❌ | 无启动同步机制，DB 中无内置插件记录 |
-| 配置 Schema 校验 | ❌ | 仅校验 JSON 合法性，不校验 Schema |
-| 统计更新 | ❌ | invoke_count / block_count / error_count 无更新机制 |
+| 内置插件注册 | ✅ | DB 种子 9 条；`adapter.builtin()` 全部 key 可实例化 |
+| EP-CB-01 Chain 接入 | ✅ | Chain 挂 LLMAgent Agent/Model/Tool；Runner `WithPlugins` 保留 |
+| Plugin 种子同步 | ✅ | `seedBuiltinPlugins` 启动幂等；`GetByKey` / `CreatePlugin` |
+| 配置 Schema 校验 | ✅ | `validateJSONSchema`；`UpdateConfig` / `Create` |
+| 统计更新 | ✅ | `RepoStatsRecorder` + `PluginRepo.IncrementStats`；AuditLog 各回调点回写 |
 | Agent 绑定 | ❌ | scope 字段存在但运行时未消费，无 UpdatePluginScope API |
 
 ---
 
 ## 3. 差距与优化
 
-1. **P0**：EP-CB-01 未完成——`BeforeModelHookFunc`/`AfterModelHookFunc` 适配器缺失，`trpc_build.go` 未注入 Agent/Model 回调，Plugin 的 BeforeModel / AfterModel / BeforeAgent / AfterAgent 回调点无法触发。
-2. **P0**：无 Plugin 种子同步机制，数据库中无内置插件记录，前端管理页无数据可展示。
-3. **P1**：内置插件仅实现 `audit_log`，需求定义的 9 个内置插件待逐个实现（EP-CB-01 依赖）。
-4. **P1**：配置校验仅 `json.Valid()`，不校验 Schema。
-5. **P1**：统计字段无更新机制，前端展示始终为 0。
-6. **P2**：Agent 绑定（scope）运行时未消费。
-7. **P2**：Plugin 无沙箱隔离。
-8. **P3**：Plugin 无版本管理。
+1. **P2**：`model_router` / `cost_guard` 模型改写经 `Request.ExtraFields["aranea_model_override"]` 提示，需 Runner 侧消费（或后续 Hook modify 对齐）。
+2. **P2**：`retry_and_reflect` 本期仅 slog 反思提示，不自动重试工具调用。
+3. **P2**：Agent 绑定（`scope`）运行时未消费；无 `UpdatePluginScope` API。
+4. **P2**：Plugin 运行记录（PluginRun）未建表。
+5. **P2**：Plugin 无沙箱隔离。
+6. **P3**：Plugin 无版本管理。
 
 ---
 
 ## 4. 开发阶段
 
-### Phase 1：基础设施补全（当前）
+### Phase 1：基础设施补全（✅ 已完成）
 
 目标：让 Plugin 系统的基础设施完整，内置插件可注册、可配置、可触发回调。
 
-- EP-CB-01 Callback Chain 接入
-- Plugin 种子同步
-- 配置 Schema 校验
-- 统计更新机制
+- [x] EP-CB-01 Callback Chain 接入
+- [x] Plugin 种子同步（T2）
+- [x] 配置 Schema 校验（T3）
+- [x] 统计更新机制（T4）
 
-### Phase 2：内置插件实现
+### Phase 2：内置插件实现（✅ 已完成）
 
 目标：9 个内置插件全部实现并可注册到 Runner。
+
+实现文件：`audit.go`、`sensitive_mask.go`、`confirmation_guard.go`、`cost_guard.go`、`model_router.go`、`permission_guard.go`、`output_policy.go`、`skill_tracker.go`、`retry_reflect.go`、`config.go`。
 
 - runtime_audit（替换 audit_log）
 - sensitive_data_mask

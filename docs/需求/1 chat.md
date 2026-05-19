@@ -113,7 +113,7 @@ Cron Scheduler
 | `intent_pass` | chat/team | 意图识别结果 |
 | `transfer` | team | Team/Swarm 转交 |
 | `team_run_started` / `team_run_finished` / `team_run_failed` | team | Team run 生命周期 |
-| `member_message_start` / `member_delta` / `member_message_done` | team | 成员级实时消息；类型已定义，当前仍需在 Team Runner 稳定发射 |
+| `member_message_start` / `member_delta` / `member_message_done` | team | 成员级实时消息；`EventProjector` 在 `MemberAgentKeys` 下投影，前端 `useChatWorkspace` 消费 |
 | `log` | monitor | 运行日志，需客户端通过 `enable_log` 上行开启订阅 |
 
 #### 1.4.3 下行 Envelope 结构
@@ -187,15 +187,16 @@ Cron Scheduler
 - Chat turn 耗时通过 `arametrics.ChatTurnDuration` Prometheus 指标记录
 - 意图识别超时为 45 秒
 
-### 1.8 停止生成
+### 1.8 停止生成与运行中追加消息
 
-- `ChatService.activeRuns sync.Map` 跟踪 `sessionID → trpcrunner.Runner`
-- `runSingleAgentViaTRPC` 中 `Store(sessionID, runner)`，defer `Delete(sessionID)`
-- `RunTRPCUserTurn` 传入 `trpcagent.WithRequestID(sessionID)` 使 Runner 用 sessionID 作为 requestID
-- `StopGeneration` 优先尝试 `ManagedRunner.Cancel(sessionID)`，回退到 `Runner.Close()`
-- **WS 取消路径**：前端可通过 WS `cancel` 上行或 HTTP `StopGeneration` 停止当前 run；二者共用 `activeRuns` / `pendingCancels`
-- **连接管理**：`WSServer` 负责心跳、连接数限制、断线回放和 EventBus 订阅；模型事件不再直接写 HTTP 流
-- **Team cancel**：`teamRunGuard` 接入 `activeRuns`，`StopGeneration`/`CancelRun` 支持 Team cancel，与单 Agent 行为一致
+- **`internal/runtime.RunRegistry`** 跟踪每 session 的 active run（`trpcrunner.Runner` 或 Team `context.CancelFunc` 或占位符）、pending 处理 cancel、run status
+- `runSingleAgentViaTRPC`：`RunRegistry.StoreRunner`；defer `Finish` + `runner.Close` + `processPendingQueue`
+- `RunTRPCUserTurn` 使用 `trpcagent.WithRequestID(sessionID)`，与 `ManagedRunner.Cancel(sessionID)` 对齐
+- **停止**：HTTP `StopGeneration` 或 WS `cancel` → `RunRegistry.Cancel`（含 pending 后台 turn 的 cancel）
+- **运行中追加**：HTTP `POST /v1/chat/enqueue`（`EnqueueUserMessage` RPC）或 WS `enqueue_message`；优先 `SteerableRunner.EnqueueUserMessage`，否则写入 `pendingQueue`
+- **`SendChatMessage`**：若 session 已有 active run，同样先尝试 steerable enqueue，再入 pending queue（与 enqueue RPC 语义一致）
+- **Team cancel**：`RunRegistry.StoreCancelable` 登记 Team turn，与单 Agent 停止行为一致
+- **连接管理**：`WSServer` 负责心跳、连接数限制、断线回放和 EventBus 订阅
 
 ### 1.8.1 EventBuffer 回放
 
@@ -238,7 +239,7 @@ Cron Scheduler
 - `makeAwaitReplyFunc` 注入 service await-reply tool，工具阻塞时将状态置为 `awaiting_user`
 - `AwaitUserReply` 向 `awaitChans` 投递人工回复，恢复正在等待的 run
 - 单 Agent 和 Team 路径均通过 `makeAwaitReplyFunc` 注入 AwaitHook；Team Runner 通过 `SetAwaitHookProvider` 注入，`runCtx` 注入 `serviceawaitreply.WithReplyFunc`
-- 前端已有 API/composable 基础（`useRunStatus` 轮询 run 状态 + `submitReply` 提交回复；`useEnvelopeStream` 消费 WS 事件；`useChatStream`/`useTeamStream` 分别处理 Agent/Team 事件流；`EnvelopeDispatcher` 分发事件；`WsTransport` 管理 WS 连接），但 Chat 页仍需补完整 awaiting_user 展示与回复 UI
+- 前端：`useEnvelopeStream` / `useChatStream` / `useTeamStream` 消费 WS；`useChatWorkspace` 轮询 `GetRunStatus` 并在 `awaiting_user` 时展示提交回复横幅（`ChatMessagePanel` + `AwaitUserReply` RPC）
 - 当前状态与等待通道为进程内内存结构；服务重启后不可恢复，后续应持久化或接入 EventBuffer 恢复
 
 ### 1.11 Session 标题自动生成
@@ -307,23 +308,30 @@ Cron Scheduler
 - [x] **停止按钮**：模型回复或工具执行中，发送按钮切换为停止图标，点击可暂停/停止；单 Agent 和 Team 均支持
 - [x] **待执行队列**：执行中再次发送时进入"待执行"队列，可见，执行完成后按序发送；单 Agent 和 Team 均支持
 - [x] **取消待执行消息**：前端可取消待执行队列中的消息（`CancelPendingMessage` RPC 已实现，前端 UI 已添加取消按钮）
-- [x] **RunStatus / AwaitUserReply 后端**：支持查询 run 状态与提交人工等待回复；单 Agent 和 Team 路径均已支持；Chat 页 UI 待闭环
+- [x] **RunStatus / AwaitUserReply**：后端 RPC + Chat 页 `awaiting_user` 横幅与提交回复（`useChatWorkspace` 轮询 + `ChatMessagePanel`）
 
-### 3.2 待实现
+### 3.2 待优化（按优先级）
 
-- [ ] **Team 成员级实时流**：稳定发射并消费 `member_message_start/member_delta/member_message_done`
-- [x] **Team 停止与待执行队列**：Team turn 接入 active run/cancel/pending 语义；Team turn 完成后触发 `processPendingQueue`
-- [x] **AwaitUserReply 后端**：单 Agent 和 Team 均注入 AwaitHook；Chat 页展示 awaiting_user 并提交人工回复（前端待闭环）
-- [x] **pending_id 错误关联**：统一 pending 失败的 `pending_id` 字段位置（消除 metadata 双写，统一到 `error.pending_id`）
-- [ ] **结构化工具事件卡片**：基于 `tool_call/tool_result` 展示参数、结果、耗时、错误和长任务状态（`is_long_running`）
-- [ ] **多模态附件闭环**：上传、持久化、权限校验、对象存储与 LLM Vision 输入
-- [ ] **模型选项来源统一**：Chat 前端应明确使用 `GetChatOptions("provider"|"model")` 或 Platform Resource，避免双口径
-- [ ] **RunStatus/AwaitUserReply 可恢复性**：避免进程重启导致等待态丢失
-- [ ] **Reasoning 展示规格**：定义 `content.reasoning` 的前端展示方式（折叠/内联/独立区域）
-- [x] **Channel/Cron 并发保护**：Channel webhook 并发请求受 `lockSession` per-session 互斥锁 + `runPlaceholder` 原子占位保护
-- [x] **SessionTurn 一致性**：Team turn 路径补齐 `recordTeamSessionTurn` 调用
-- [ ] **WS 控制消息前端消费**：`connected`/`pong`/`replay_start`/`replay_end`/`server_shutdown` 需在前端协议层正确处理
-- [x] **EventBuffer 清理策略优化**：TTL 30min 自动过期 + 5min eviction ticker
+| 优先级 | 项 | 状态 | 说明 |
+|--------|-----|------|------|
+| P1 | 结构化工具事件卡片 | ✅ | `ChatToolCallCard`：参数 JSON、结果、耗时、`is_long_running` 徽章 |
+| P1 | Reasoning 展示 | ✅ | 助手气泡上方默认折叠「思考过程」 |
+| P2 | RunStatus WS 驱动 | ✅ | 后端 `run_status` Envelope；前端监听 WS（切换会话 HTTP 校准） |
+| P2 | Team 成员流 UX | ✅ | `team_member` 元数据 + 成员色条分栏 |
+| P2 | WS 回放 UX | ✅ | 顶栏「正在同步历史事件…」 |
+| P3 | 多模态附件 | 待做 | 前端占位 ID；后端无持久化/Vision 装配 |
+| P3 | RunStatus 可恢复性 | 待做 | `awaitChans` / RunRegistry 进程内；重启后 `awaiting_user` 不可恢复 |
+| P3 | 模型选项单一来源 | 部分 | 优先 `llm-provider-models` Platform；空列表时回退 `GetChatOptions("model")` |
+
+### 3.3 已完成（历史项归档）
+
+- [x] **Team 成员级实时流（协议+后端）**：`EventProjector.projectMemberText` + `MemberAgentKeys`
+- [x] **Team 停止与待执行队列**
+- [x] **pending_id 错误关联**
+- [x] **Channel/Cron 并发保护**
+- [x] **SessionTurn 一致性**
+- [x] **WS 控制消息（协议层）**：`connected`/`pong`/`server_shutdown`；`replay_start`/`replay_end` 回调
+- [x] **EventBuffer 清理策略**
 
 ### 3.3 已实现（本轮新增）
 
@@ -354,24 +362,20 @@ Cron Scheduler
 - [x] `runAgentTurn` 移除，直接调用 `runSingleAgentViaTRPC`
 - [x] Session 标题 LLM 自动生成
 
-### 4.2 待优化
+### 4.2 待优化（2026-05-19 复核）
 
-- [ ] 历史 SSE 文档口径需完全收敛到 WS/EventBus；不得再把 `/v1/chat/messages/stream` 写作当前端点
-- [x] ~~Team turn 应纳入 `ChatService.activeRuns` 或等价会话级 run registry，保证停止与排队一致~~ ✅ `teamRunGuard` + `lockSession` per-session 互斥锁
-- [x] ~~**Team turn 完成后需触发 `processPendingQueue`**，否则队列中的消息永远不会被执行（功能性 Bug）~~ ✅
-- [x] ~~AwaitHook 应从单 Agent 扩展到 Team Builder，并在 Chat 页接入 `useRunStatus`~~ ✅ 后端已注入；前端 Chat 页 UI 待闭环
-- [x] ~~pending 失败事件应统一 `pending_id` 字段位置，消除 metadata 与 `EnvelopeError.PendingID` 双写，统一到 `error.pending_id`~~ ✅
-- [ ] Team Runner 应补成员级事件投影，避免前端只能看到聚合 `text_delta/text_done`
-- [ ] 工具事件需要从简化文本升级为结构化 UI 与可观测字段（含 `is_long_running` 长任务标识）
-- [ ] 附件 UI 目前只生成本地占位 ID，后端需补真正上传和 LLM 输入装配
-- [ ] Chat 模型选择来源需统一，避免后端 Chat Options 与前端 Platform Resource 两套数据口径并存
-- [ ] RunStatus/AwaitUserReply 当前为进程内状态，生产级长任务需持久化或恢复策略
-- [x] ~~Channel/Cron 并发入口需受 activeRuns 互斥保护~~ ✅ `lockSession` per-session 互斥锁 + `runPlaceholder` 原子占位
-- [x] ~~Team turn 路径需补齐 `recordSessionTurn` 调用，保证 `session_turns` 表对 Team 会话有记录~~ ✅ 新增 `recordTeamSessionTurn`
-- [ ] WS 控制消息（`connected`/`pong`/`replay_*`/`server_shutdown`）需文档化并确保前端正确消费
-- [x] ~~EventBuffer 需增加 TTL 自动过期清理策略，避免长时间运行 Session 积累事件~~ ✅ TTL 30min + 5min eviction
-- [ ] 前端 `useRunStatus` 应从 HTTP 轮询改为 WS 事件驱动（`state_delta` 或专用事件）
-- [ ] Reasoning 展示规格需定义（折叠/内联/独立区域）
+| 项 | 优先级 | 说明 |
+|----|--------|------|
+| 工具事件结构化 UI | P1 | Envelope 已有；Chat 气泡仍为 `🔧 name (status)` 简写 |
+| Reasoning 展示规格 | P1 | 产品定稿 + `ChatMessagePanel` 折叠区 |
+| RunStatus WS 驱动 | P2 | 替代 `useChatWorkspace` 2s 轮询 |
+| Team 成员分栏展示 | P2 | `member_*` 已通；增强 UX（头像、角色标签） |
+| 回放中 UI 提示 | P2 | `onReplayState` 已接入 transport；页面未展示 |
+| 附件持久化 + Vision | P3 | 仅本地占位 |
+| RunStatus 持久化/恢复 | P3 | 进程内 `awaitChans` |
+| 模型列表单一真相源 | P3 | Platform 优先 + `GetChatOptions("model")` 回退（已实现） |
+
+**已关闭**：SSE 主路径移除；RunRegistry；EnqueueUserMessage；processPendingQueue；AwaitHook Team；pending_id；Channel/Cron 互斥；recordTeamSessionTurn；EventBuffer TTL；member_* 后端投影；AwaitUserReply Chat UI；WS 控制消息协议层。
 
 ### 4.3 已优化（本轮新增）
 

@@ -4,9 +4,16 @@ import (
 	"context"
 	"database/sql"
 	stderrors "errors"
+	"fmt"
+	"strings"
+	"time"
 
+	chatv1 "aranea-agents/api/kratos/chat/v1"
 	v1 "aranea-agents/api/kratos/team/v1"
+	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
+	rt "aranea-agents/internal/runtime"
+	"aranea-agents/internal/team"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 
@@ -16,11 +23,19 @@ import (
 type TeamService struct {
 	v1.UnimplementedTeamServiceServer
 
-	uc *biz.TeamUsecase
+	uc         *biz.TeamUsecase
+	sessions   *biz.SessionUsecase
+	teamRunner *team.Runner
+	runs       *rt.RunRegistry
 }
 
-func NewTeamService(uc *biz.TeamUsecase) *TeamService {
-	return &TeamService{uc: uc}
+func NewTeamService(
+	uc *biz.TeamUsecase,
+	sessions *biz.SessionUsecase,
+	teamRunner *team.Runner,
+	runs *rt.RunRegistry,
+) *TeamService {
+	return &TeamService{uc: uc, sessions: sessions, teamRunner: teamRunner, runs: runs}
 }
 
 func toProtoTeam(t biz.Team) *v1.Team {
@@ -203,12 +218,78 @@ func (s *TeamService) CancelTeamRun(ctx context.Context, req *v1.CancelTeamRunRe
 	if r.Status != "running" && r.Status != "pending" {
 		return nil, kerrors.BadRequest("TEAM", "only running or pending team runs can be cancelled")
 	}
+	if s.runs != nil && strings.TrimSpace(r.SessionID) != "" {
+		_ = s.runs.Cancel(r.SessionID)
+	}
+	now := agent.RFC3339Now()
 	r.Status = "cancelled"
+	r.FinishedAt = now
+	r.UpdatedAt = now
+	if err := s.uc.UpdateRun(ctx, r); err != nil {
+		return nil, err
+	}
 	return toProtoTeamRun(r), nil
 }
 
 func (s *TeamService) RunTeamTest(ctx context.Context, req *v1.RunTeamTestRequest) (*v1.RunTeamTestResponse, error) {
-	return nil, kerrors.New(501, "TEAM", "RunTeamTest is not yet implemented")
+	teamID := strings.TrimSpace(req.GetId())
+	if teamID == "" {
+		return nil, kerrors.BadRequest("TEAM", "team id is required")
+	}
+	if s.teamRunner == nil || s.sessions == nil {
+		return nil, kerrors.InternalServer("TEAM", "team test runtime is not configured")
+	}
+	if _, err := s.uc.Get(ctx, teamID); err != nil {
+		return nil, mapTeamErr(err)
+	}
+
+	content := strings.TrimSpace(req.GetContent())
+	if content == "" {
+		content = "Hello — please introduce your team briefly and respond in one short paragraph."
+	}
+
+	sess, err := s.sessions.Create(ctx, biz.Session{
+		OwnerType: "team",
+		TeamID:    teamID,
+		Title:     fmt.Sprintf("Team test %s", time.Now().UTC().Format(time.RFC3339)),
+		Status:    "active",
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = s.sessions.Delete(ctx, sess.ID) }()
+
+	testReq := &chatv1.SendChatMessageRequest{
+		SessionId: sess.ID,
+		Content:   content,
+		TeamId:    &teamID,
+	}
+	_, assistant, err := s.teamRunner.RunTurn(ctx, sess, testReq)
+	if err != nil {
+		return nil, err
+	}
+
+	var run biz.TeamRun
+	runs, listErr := s.uc.ListRuns(ctx, teamID, 10)
+	if listErr == nil {
+		for _, candidate := range runs {
+			if candidate.SessionID == sess.ID {
+				run = candidate
+				break
+			}
+		}
+		if run.ID == "" && len(runs) > 0 {
+			run = runs[0]
+		}
+	}
+	if run.ID == "" {
+		run = biz.TeamRun{TeamID: teamID, SessionID: sess.ID, Status: "success"}
+	}
+
+	return &v1.RunTeamTestResponse{
+		Run:   toProtoTeamRun(run),
+		Reply: strings.TrimSpace(assistant.ContentMarkdown),
+	}, nil
 }
 
 func (s *TeamService) ListTeamRunSteps(ctx context.Context, req *v1.ListTeamRunStepsRequest) (*v1.ListTeamRunStepsResponse, error) {

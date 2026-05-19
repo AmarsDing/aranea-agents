@@ -1,4 +1,4 @@
-/** Teams UI / SSE snake_case 形状（与 Kratos wire 对齐）。 */
+/** Teams UI / WS Envelope snake_case 形状（与 Kratos wire 对齐）。 */
 
 export type Team = {
   id: string;

@@ -1,5 +1,11 @@
 <template>
   <q-card flat bordered class="col column chat-mid-card" style="min-height: 0; border-radius: 18px">
+    <q-banner v-if="wsReplaying" dense rounded class="q-mx-md q-mt-sm bg-blue-1 text-dark">
+      <template #avatar>
+        <q-spinner-dots color="primary" size="20px" />
+      </template>
+      {{ t("chat.wsReplaying", "正在同步历史事件…") }}
+    </q-banner>
     <q-card-section class="chat-message-header row items-center no-wrap q-px-md q-py-sm">
       <div class="chat-message-header__pulse" aria-hidden="true">
         <span class="chat-message-header__dot" />
@@ -80,10 +86,21 @@
         >
           <div class="message-meta-row" :class="{ 'message-meta-row--sent': message.role === 'user' }">
             <span class="message-name">{{ displayMessageName(message) }}</span>
+            <q-chip
+              v-if="teamMemberMeta(message)?.role"
+              dense
+              size="sm"
+              outline
+              color="primary"
+              class="q-ml-xs"
+            >
+              {{ teamMemberMeta(message)?.role }}
+            </q-chip>
             <span class="message-stamp">{{ formatStamp(message.created_at) }}</span>
           </div>
+          <ChatToolCallCard v-if="structuredToolEvent(message)" :event="structuredToolEvent(message)!" />
           <details
-            v-if="isCollapsibleToolDetail(message)"
+            v-else-if="isCollapsibleToolDetail(message)"
             class="chat-tool-details"
           >
             <summary class="chat-tool-details__summary">
@@ -99,15 +116,28 @@
               v-html="renderMarkdown(toolCollapseDetail(message))"
             />
           </details>
-          <div
-            v-else
-            class="chat-message-content"
-            :class="{
-              'chat-message-content--sent': message.role === 'user',
-              'chat-message-content--dark': message.role !== 'user' && props.isDark
-            }"
-            v-html="isStreaming(message) ? renderStreamingMarkdown(message.content_markdown) : renderMarkdown(message.content_markdown)"
-          />
+          <template v-else>
+            <details
+              v-if="reasoningMarkdown(message)"
+              class="chat-reasoning-details q-mb-sm"
+            >
+              <summary class="text-caption text-weight-medium">{{ t("chat.reasoningTitle", "思考过程") }}</summary>
+              <div
+                class="chat-message-content chat-reasoning-details__body"
+                :class="{ 'chat-message-content--dark': props.isDark }"
+                v-html="renderMarkdown(reasoningMarkdown(message))"
+              />
+            </details>
+            <div
+              v-else
+              class="chat-message-content"
+              :class="{
+                'chat-message-content--sent': message.role === 'user',
+                'chat-message-content--dark': message.role !== 'user' && props.isDark
+              }"
+              v-html="isStreaming(message) ? renderStreamingMarkdown(message.content_markdown) : renderMarkdown(message.content_markdown)"
+            />
+          </template>
           <div
             v-if="message.role !== 'user' && message.status === 'error' && assistantErrorDetail(message)"
             class="text-caption text-negative q-mt-xs chat-assistant-error"
@@ -209,6 +239,27 @@
 
     <q-separator class="cream-sep" />
     <q-card-section class="chat-composer q-pa-sm q-pa-md-sm">
+      <q-banner
+        v-if="props.isAwaitingUser"
+        rounded
+        class="q-mb-sm bg-amber-1 text-dark"
+        dense
+      >
+        <template #avatar>
+          <q-icon name="hourglass_top" color="amber-9" />
+        </template>
+        {{ t("chat.awaitingUserHint", "Agent 正在等待你的回复，在下方输入后点击「提交回复」") }}
+        <template #action>
+          <q-btn
+            flat
+            dense
+            no-caps
+            color="primary"
+            :label="t('chat.submitAwaitReply', '提交回复')"
+            @click="$emit('submit-await-reply')"
+          />
+        </template>
+      </q-banner>
       <div v-if="attachments.length" class="chat-attachments row q-gutter-xs q-mb-sm">
         <div
           v-for="file in attachments"
@@ -362,7 +413,10 @@ import MarkdownIt from "markdown-it";
 import { nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import ResolvedAvatarImg from "../avatar/ResolvedAvatarImg.vue";
+import ChatToolCallCard from "./ChatToolCallCard.vue";
 import { isAvatarAssetRef, shouldRenderAgentAvatarImage } from "../../features/avatar/iconModel";
+import { reasoningMarkdown } from "../../features/chat/streamContentPatch";
+import type { ToolUseEvent } from "../../features/chat/types";
 import type { ChatAttachment, Message } from "./types";
 
 type Option = { label: string; value: string; caption?: string };
@@ -379,6 +433,8 @@ const props = defineProps<{
   contextRatio: number;
   isDark: boolean;
   sending?: boolean;
+  isAwaitingUser?: boolean;
+  wsReplaying?: boolean;
   pendingMessages?: { id: string; content: string; status: string; created_at: string }[];
 }>();
 
@@ -393,6 +449,7 @@ const emit = defineEmits<{
   stop: [];
   "cancel-pending": [pendingId: string];
   "update-pending": [pendingId: string, content: string];
+  "submit-await-reply": [];
 }>();
 
 const { t } = useI18n();
@@ -434,12 +491,7 @@ type AgentMessageMeta = {
   icon?: string;
 };
 
-type ToolMessageMeta = {
-  id?: string;
-  status?: string;
-  tool_name?: string;
-  tool_label?: string;
-};
+type ToolMessageMeta = ToolUseEvent;
 
 const markdown = new MarkdownIt({
   breaks: true,
@@ -624,11 +676,25 @@ function bubbleAccentStyle(message: Message): Record<string, string> | undefined
 
 function teamMemberMeta(message: Message): TeamMemberMessageMeta | null {
   try {
-    const raw = JSON.parse(message.options_json || "{}") as { team_member?: TeamMemberMessageMeta };
-    return raw.team_member ?? null;
+    const raw = JSON.parse(message.options_json || "{}") as {
+      team_member?: TeamMemberMessageMeta;
+      member_agent_key?: string;
+      display_name?: string;
+    };
+    if (raw.team_member) return raw.team_member;
+    if (raw.member_agent_key) {
+      return { agent_key: raw.member_agent_key, name: raw.display_name || raw.member_agent_key };
+    }
+    return null;
   } catch {
     return null;
   }
+}
+
+function structuredToolEvent(message: Message): ToolUseEvent | null {
+  const ev = toolEventMeta(message);
+  if (!ev?.tool_name && !ev?.id) return null;
+  return ev;
 }
 
 function agentMeta(message: Message): AgentMessageMeta | null {
@@ -1133,6 +1199,20 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
     pointer-events: none
     background: linear-gradient(180deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0) 38%)
     border-radius: inherit
+
+.chat-q-message--member
+  margin-left: 8px
+  padding-left: 6px
+  border-left: 2px solid rgba(92, 107, 192, 0.35)
+
+.chat-reasoning-details summary
+  cursor: pointer
+  color: var(--color-text-secondary, #64748b)
+
+.chat-reasoning-details__body
+  margin-top: 6px
+  font-size: 13px
+  opacity: 0.92
 
 // 团队成员气泡：左侧 4px 彩色 accent 条（颜色与头像一致）
 .chat-message-bubble--member

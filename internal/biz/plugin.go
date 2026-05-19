@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"strings"
 
@@ -63,12 +64,23 @@ func AdminPluginPerms() PluginPermissions {
 	return PluginPermissions{CanView: true, CanToggle: true, CanEditConfig: true, CanViewLogs: true}
 }
 
+// PluginStatUpdate is a delta applied to persisted plugin invocation counters.
+type PluginStatUpdate struct {
+	InvokeCount int
+	BlockDelta  int
+	ErrorDelta  int
+	LastStatus  string
+}
+
 type PluginRepo interface {
 	SearchPlugins(ctx context.Context, q PluginListQuery) (PluginListResult, error)
 	GetPlugin(ctx context.Context, id string) (Plugin, error)
+	GetByKey(ctx context.Context, key string) (Plugin, error)
+	CreatePlugin(ctx context.Context, p Plugin) (Plugin, error)
 	UpdatePluginEnabled(ctx context.Context, id string, enabled bool) (Plugin, error)
 	UpdatePluginConfig(ctx context.Context, id string, configJSON string) (Plugin, error)
 	UpdateSortOrder(ctx context.Context, id string, sortOrder int) (Plugin, error)
+	IncrementStats(ctx context.Context, pluginKey string, delta PluginStatUpdate) error
 }
 
 type PluginUsecase struct {
@@ -99,6 +111,46 @@ func (u *PluginUsecase) ToggleEnabled(ctx context.Context, id string, enabled bo
 	return u.repo.UpdatePluginEnabled(ctx, id, enabled)
 }
 
+func (u *PluginUsecase) GetByKey(ctx context.Context, key string) (Plugin, error) {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return Plugin{}, errors.BadRequest("PLUGIN", "key is required")
+	}
+	p, err := u.repo.GetByKey(ctx, key)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Plugin{}, sql.ErrNoRows
+		}
+		return Plugin{}, err
+	}
+	return p, nil
+}
+
+func (u *PluginUsecase) Create(ctx context.Context, p Plugin) (Plugin, error) {
+	p.Key = strings.TrimSpace(p.Key)
+	if p.Key == "" {
+		return Plugin{}, errors.BadRequest("PLUGIN", "key is required")
+	}
+	if strings.TrimSpace(p.ID) == "" {
+		p.ID = "builtin-" + p.Key
+	}
+	if strings.TrimSpace(p.ConfigJSON) == "" {
+		p.ConfigJSON = "{}"
+	}
+	if !json.Valid([]byte(p.ConfigJSON)) {
+		return Plugin{}, errors.BadRequest("PLUGIN", "config_json must be valid JSON")
+	}
+	if schema := strings.TrimSpace(p.ConfigSchemaJSON); schema != "" && schema != "{}" {
+		if err := validateJSONSchema(schema, p.ConfigJSON); err != nil {
+			return Plugin{}, err
+		}
+	}
+	if p.Scope == "" {
+		p.Scope = "global"
+	}
+	return u.repo.CreatePlugin(ctx, p)
+}
+
 func (u *PluginUsecase) UpdateConfig(ctx context.Context, id string, configJSON string) (Plugin, error) {
 	if strings.TrimSpace(id) == "" {
 		return Plugin{}, errors.BadRequest("PLUGIN", "id is required")
@@ -108,6 +160,15 @@ func (u *PluginUsecase) UpdateConfig(ctx context.Context, id string, configJSON 
 	}
 	if !json.Valid([]byte(configJSON)) {
 		return Plugin{}, errors.BadRequest("PLUGIN", "config_json must be valid JSON")
+	}
+	p, err := u.repo.GetPlugin(ctx, id)
+	if err != nil {
+		return Plugin{}, err
+	}
+	if schema := strings.TrimSpace(p.ConfigSchemaJSON); schema != "" && schema != "{}" {
+		if err := validateJSONSchema(schema, configJSON); err != nil {
+			return Plugin{}, err
+		}
 	}
 	return u.repo.UpdatePluginConfig(ctx, id, configJSON)
 }

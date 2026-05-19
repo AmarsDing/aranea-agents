@@ -105,7 +105,8 @@ export async function runEvaluation(input: RunEvaluationInput): Promise<EvalRun>
   const raw = await svc.RunEvaluation({
     datasetId: input.dataset_id,
     agentId: input.agent_id,
-    metrics: input.metrics ?? ""
+    metrics: input.metrics ?? "",
+    numRuns: input.num_runs ?? 1
   });
   return mapRun(raw);
 }

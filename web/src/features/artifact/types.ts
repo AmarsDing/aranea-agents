@@ -34,3 +34,10 @@ export type ListArtifactsResult = {
   items: ArtifactMeta[];
   total: number;
 };
+
+export type ArtifactPreview = {
+  meta: ArtifactMeta;
+  preview_kind: string;
+  text_content: string;
+  data_base64: string;
+};

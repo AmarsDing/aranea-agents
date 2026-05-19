@@ -397,9 +397,9 @@ CLI 在创建 Session 时，在 `metadata_json` 中写入来源标识：
 }
 ```
 
-### 4.5 SSE 流式渲染
+### 4.5 WS 流式渲染
 
-对话模式调用 `POST /api/v1/chat/messages/stream`，事件类型沿用 `1 chat.md` 的约定：
+对话模式应连接 `/v1/ws` 并发送 `user_message` 上行；非交互或后台模式可调用 `POST /v1/chat/messages`。事件类型沿用 `1 chat.md` 的 Envelope 约定：
 
 | 事件 | 渲染 |
 |------|------|

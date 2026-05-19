@@ -1,6 +1,6 @@
 # Chat 对话 — 开发计划
 
-> **版本**：2026-05-17 | **状态**：✅ 端到端可用（WS/EventBus 主通道；HTTP unary 兼容）
+> **版本**：2026-05-19 | **状态**：✅ 端到端可用（WS/EventBus 主通道；RunRegistry + EnqueueUserMessage；AwaitUserReply UI 已接入）
 > **需求**：[1 chat.md](./1%20chat.md) · **设计**：[1 chat.design.md](./1%20chat.design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：—
 
@@ -11,131 +11,125 @@
 Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话、WebSocket + EventBus 实时事件、上下文管理、用量记录、停止生成、人工等待回复与待执行队列。
 
 **代码锚点**：
-- `api/kratos/chat/v1/chat.proto` — Chat RPC 契约（发送、选项、停止、待执行、RunStatus、AwaitUserReply）
-- `internal/server/ws.go` — WebSocket 主实时通道（订阅、取消、上行 user_message、事件回放）
-- `internal/service/chat.go` — ChatService 主结构 + RunStatus/AwaitReply/pending queue
+- `api/kratos/chat/v1/chat.proto` — Chat RPC（含 `EnqueueUserMessage` → `POST /v1/chat/enqueue`）
+- `internal/runtime/run_registry.go` — 会话级 active run / cancel / run status
+- `internal/server/ws.go` — WebSocket（`user_message` / `cancel` / `enqueue_message`）
+- `internal/service/chat.go` — ChatService 桥接 + awaitChans / EnqueueUserMessage
 - `internal/service/chat_native.go` — 原生对话入口（HTTP unary + WS 上行复用）
-- `internal/service/trpc_turn.go` — trpc-agent-go 单 Agent turn 执行 + EventBus 投影
-- `internal/agent/event_projector.go` — trpc event → Envelope 投影
+- `internal/service/trpc_turn.go` — trpc-agent-go 单 Agent turn + EventBus 投影
+- `internal/agent/event_projector.go` — trpc event → Envelope（含 Team `member_*`）
 - `internal/event/envelope.go` — WS Envelope 协议与 channel 路由
-- `internal/service/session_compress.go` — L0 上下文压缩
-- `internal/service/session_title_llm.go` — LLM 标题生成
-- `internal/service/chat_usage_ingress.go` — 用量记录
+- `web/src/features/chat/ws-transport.ts` — WS 客户端（心跳、重连、控制消息）
+- `web/src/features/chat/composables/useChatWorkspace.ts` — Chat 页编排（WS 流、待执行、AwaitUserReply）
+- `web/src/features/chat/useEnvelopeStream.ts` — Envelope 订阅与 `useChatStream` / `useTeamStream`
 
 ---
 
-## 2. 现状评估（2026-05-17 复核）
+## 2. 现状评估（2026-05-19）
 
 | 项 | 状态 | 证据 |
 |----|------|------|
-| WS 实时对话 | ✅ | `/v1/ws` + `user_message` 上行 + EventBus Envelope 下行 |
-| HTTP unary 对话 | ✅ | `SendChatMessage` / `RunNativeTurnUnary`（Channel、Cron、Evaluation 可复用） |
-| Channel 入口 | ✅ | `ChannelIngress.HandleWebhook` → `RunNativeTurnUnary`；`lockSession` per-session 互斥锁 + `runPlaceholder` 原子占位 |
-| Cron 入口 | ✅ | `RunCronTurn` → `runNativeAgentTurn`；受 activeRuns 保护 |
-| 对话选项 | ✅ | `nativeGetChatOptions` → dialog_mode / provider / model |
-| 停止生成 | ✅ | 单 Agent + Team：`StopGeneration` + `activeRuns.Delete` + runner cancel / `teamRunGuard.cancel` |
-| 待执行队列 | ✅ | 单 Agent + Team：`pendingQueue` / `pendingCancels` + `processPendingQueue`；Team turn 完成后正确触发 |
-| RunStatus | 🟡 | 后端 `runStatuses` sync.Map + `GetRunStatus` RPC；前端 Chat 页未形成完整 UI |
-| AwaitUserReply | ✅ | 单 Agent + Team：`awaitChans` + `makeAwaitReplyFunc` + `AwaitUserReply` RPC；Team Builder 已注入 AwaitHook |
-| SessionTurn 持久化 | ✅ | 单 Agent：`recordSessionTurn`；Team：`recordTeamSessionTurn`；均写入 `session_turns` |
-| Team Run 持久化 | ✅ | `CreateTeamRun` / `CreateTeamRunStep` 写入 `team_runs` / `team_run_steps` |
-| EnvelopeError.PendingID | ✅ | `processPendingQueue` 失败时正确赋值 `env.Error.PendingID`；metadata 双写已移除 |
-| WS 控制消息 | ✅ | `connected`/`pong`/`replay_start`/`replay_end`/`server_shutdown` 已实现；设计文档 §2.2 已描述，需求文档 §1.4 已列出 |
-| EventBuffer | ✅ | ring buffer 容量 200，支持 `last_event_id` 回放；TTL 30min 自动过期清理 |
-| EventBus 背压 | ✅ | 关键事件不丢弃（tool_result/error/runner_completion 等）；非关键事件可丢弃 |
-| Agent Variables | ✅ | `ParseVariablesJSON` → `MergeRuntimeState` 注入 Runner State |
-| 上下文压缩 | ✅ | `SessionCompressor.AfterNativeTurn` |
-| LLM 标题生成 | ✅ | `LLMSessionTitleGenerator.Generate` |
-| 用量记录 | ✅ | `chat_usage_ingress.go` → `UsageUsecase` |
-| Plugin 注入 | ✅ | `s.pluginRT.Plugins()` → `trpcrunner.WithPlugins` |
-| Team 对话 | ✅ | `owner_type == "team"` → `teamsNative.RunTurn` |
-| SSE `/v1/chat/messages/stream` | ✅ 已移除 | `register_chat.go` 仅注册 proto HTTP；`chat.proto` 注释标明 no SSE route |
+| WS 实时对话 | ✅ | `/v1/ws` + `user_message` + EventBus Envelope |
+| HTTP unary 对话 | ✅ | `SendChatMessage` / `RunNativeTurnUnary` |
+| Channel / Cron 入口 | ✅ | `lockSession` + `RunRegistry` |
+| 停止 / 运行中追加 | ✅ | `StopGeneration` / WS `cancel`；`EnqueueUserMessage` |
+| 待执行队列 | ✅ | `pendingQueue` + UI 取消/编辑 |
+| RunStatus + AwaitUserReply | ✅ | RPC + Chat 页横幅与提交（`useChatWorkspace` 轮询） |
+| Team member_* Envelope | ✅ | `EventProjector` + `useChatWorkspace` 成员流 |
+| WS 控制消息 | 🟡 | `ws-transport`：`connected`/`pong`/`replay_*`/`server_shutdown`；页面无回放提示 |
+| 工具事件 UI | ✅ | `ChatToolCallCard`：参数/结果/耗时/`is_long_running` 折叠卡片 |
+| Reasoning UI | ✅ | 默认折叠 `<details>` 展示 `reasoning_markdown` |
+| RunStatus | ✅ | WS `run_status` Envelope 驱动；会话切换时 HTTP 快照一次 |
+| WS 回放提示 | ✅ | `replay_start/end` → 顶栏「正在同步历史事件…」 |
+| Team 成员流 UX | ✅ | `team_member` 元数据 + 左侧色条分栏 |
+| 模型选项 | 🟡 | Platform 优先 + `GetChatOptions("model")` 回退 |
+| 附件 / Vision | ❌ | 前端占位 |
+| RunStatus 持久化 | ❌ | 进程内状态 |
 
 ---
 
-## 3. 差距与优化
+## 3. 差距与优化（按优先级）
 
-1. **P1**：Chat 文档曾长期保留 SSE 路径描述；代码已切换到 WS/EventBus，需统一需求、设计和开发计划口径。
-2. ~~**P1**：Team turn 未登记到 `ChatService.activeRuns`~~ ✅ 已修复：`teamRunGuard` 接入 `activeRuns`，`StopGeneration`/`CancelRun` 支持 Team cancel。
-3. ~~**P1**：Team turn 完成后不触发 `processPendingQueue`~~ ✅ 已修复：Team turn defer 中调用 `processPendingQueue`，内部按 `OwnerType` 路由。
-4. ~~**P1**：AwaitUserReply `AwaitHook` 仅注入单 Agent builder~~ ✅ 后端已修复：Team Runner 通过 `SetAwaitHookProvider` 注入 `makeAwaitReplyFunc`；`runCtx` 注入 `serviceawaitreply.WithReplyFunc`。前端 Chat 页回复 UI 待闭环。
-5. ~~**P1**：`EnvelopeError.PendingID` 字段未被赋值~~ ✅ 已修复：`env.Error.PendingID = entry.ID`，metadata 双写已移除。
-6. **P1**：WS 控制消息协议已在设计文档 §2.2 和需求文档 §1.4 描述，但开发计划任务 #6 仍标记为未完成，需确认前端消费链路。
-7. **P2**：Team 子 Agent 实时流仍不完整；`member_message_start/delta/done` 类型和前端处理已存在，但 Team Runner 目前主要投影 `text_delta/text_done` 与 team run 事件，缺少稳定的成员级 start/delta/done 发射。
-8. **P2**：工具执行展示仍偏粗粒度；当前有 `tool_call/tool_result` Envelope，但前端 Chat 面板只展示简化文本，缺少 before/after、参数、结果、耗时、错误的结构化折叠视图。
-9. ~~**P2**：Channel/Cron 并发入口可能绕过 `activeRuns` 互斥保护~~ ✅ 已修复：`lockSession` per-session 互斥锁 + `runPlaceholder` 原子占位。
-10. ~~**P2**：Team turn 路径不调用 `recordSessionTurn`~~ ✅ 已修复：新增 `recordTeamSessionTurn`，Team turn 成功后调用。
-11. ~~**P2**：EventBuffer 无 TTL 自动过期清理策略~~ ✅ 已修复：TTL 30min + 5min eviction ticker + `Close()` 优雅停止。
-12. **P2**：前端 `useRunStatus` 每 2s 轮询 HTTP 获取状态，应改为通过 WS `state_delta` 或专用事件驱动。
-13. **P2**：Reasoning 展示规格未定义；前端已消费 `content.reasoning` 字段，但缺少展示规格（折叠/内联/独立区域）。
-14. **P3**：多模态附件仅为前端占位和 proto 引用计数；后端无 attachment 持久化、权限校验、对象存储、病毒/大小校验与 LLM Vision 输入装配。
-15. **P3**：模型选择来源不完全统一；后端 `GetChatOptions("provider"|"model")` 已动态化，但 Chat 前端模型列表主要读取 `platform` 资源。
-16. **P3**：RunStatus/AwaitUserReply 使用进程内 `sync.Map`，服务重启后不可恢复；生产级长任务需要持久化或 EventBuffer 恢复策略。
+### P1 — 体验闭环
+
+1. **工具事件结构化卡片**：`tool_call`/`tool_result` → 参数 JSON、结果、耗时、`is_long_running` 折叠面板（`ChatMessagePanel` + `toolEventMarkdown` 扩展）。
+2. **Reasoning 展示规格**：产品定稿（折叠/内联/侧栏）并在助手气泡渲染 `content.reasoning`。
+
+### P2 — 实时与 Team UX
+
+3. **RunStatus WS 驱动**：用 `state_delta` 或专用 Envelope 替代 2s `getRunStatus` 轮询。
+4. **Team 成员分栏**：`member-{agent_key}` 消息增加头像、角色标签、独立气泡样式。
+5. **WS 回放 UX**：`ws-transport.onReplayState` → Chat 顶栏「同步历史事件…」提示。
+
+### P3 — 平台级
+
+6. **多模态附件**：上传 API、对象存储、Vision 输入装配。
+7. **RunStatus 可恢复**：`awaiting_user` 持久化或 EventBuffer 恢复策略。
+8. **模型选项单一真相源**：长期统一为 `GetChatOptions` 或 Platform 之一（当前为 Platform 优先 + 回退）。
 
 ---
 
 ## 4. 开发阶段
 
-- **Phase 1（文档对齐）**：统一为 WS/EventBus 主通道，移除 SSE 端点与 `proxyNativeStream` 相关设计口径；文档化 WS 上行/下行控制消息协议 ⏳（后端协议已在设计文档 §2.2 和需求文档 §1.4 描述，前端消费链路待确认）
-- **Phase 2（运行正确性）** ✅：Team turn 接入会话级 active run/cancel/pending 串行保护；Team turn 完成后触发 `processPendingQueue`
-- **Phase 3（人工等待）** ✅ 后端：Team Builder 注入 AwaitHook；前端 Chat 页接入 RunStatus/AwaitUserReply UI 待闭环
-- **Phase 4（数据一致性）** ✅：统一 `EnvelopeError.PendingID` 赋值，移除 metadata 双写；Team turn 补齐 `recordSessionTurn`；Channel/Cron 并发入口受 activeRuns 保护
-- **Phase 5（体验优化）**：Team 对话发射稳定的 `member_message_start/delta/done` 事件，前端实时展示子 Agent 流；定义 Reasoning 展示规格
-- **Phase 6（工具可观测）**：基于 `tool_call/tool_result` 完善结构化工具事件卡片（参数、结果、耗时、错误、`is_long_running`）
-- **Phase 7（扩展）**：多模态附件支持（上传/持久化/权限校验 → LLM Vision API）
-- **Phase 8（一致性）**：统一 Chat 模型选项来源（Chat Options 或 Platform Resource 二选一）
-- **Phase 9（可靠性）**：RunStatus/AwaitUserReply 持久化或接入可恢复事件缓冲；~~EventBuffer 增加 TTL 清理策略~~ ✅；前端 RunStatus 从轮询改为 WS 事件驱动
+| Phase | 主题 | 状态 |
+|-------|------|------|
+| 1 | 文档与 WS/EventBus 主通道 | ✅ |
+| 2 | Team active run / pending / cancel | ✅ |
+| 3 | AwaitUserReply 后端 + Chat UI | ✅ |
+| 4 | 数据一致性（pending_id、session_turns、Channel 互斥） | ✅ |
+| 5 | Team `member_*` + 成员流消费 | ✅ 协议通；UX 待增强 |
+| 6 | 工具可观测 UI | ⏳ |
+| 7 | Reasoning 展示 | ⏳ |
+| 8 | 附件 / RunStatus 持久化 | ⏳ |
 
 ---
 
 ## 5. 任务清单
 
-| # | 任务 | 优先级 | EP | 状态 |
-|---|------|--------|-----|------|
-| 1 | 文档移除 SSE 主路径，校准为 WS/EventBus | P1 | — | |
-| 2 | Team turn 接入 activeRuns/cancel/pending 串行保护 | P1 | — | ✅ |
-| 3 | **Team turn 完成后触发 `processPendingQueue`**（功能性 Bug 修复） | P1 | — | ✅ |
-| 4 | Team 路径注入 AwaitHook，Chat 页接入人工回复 UI | P1 | — | ✅ 后端 |
-| 5 | 统一 `EnvelopeError.PendingID` 赋值，移除 metadata 双写 | P1 | — | ✅ |
-| 6 | 文档化 WS 上行/下行控制消息协议（connected/pong/replay_*/server_shutdown） | P1 | — | ✅ 后端文档 |
-| 7 | Team turn 补齐 `recordSessionTurn` 调用 | P2 | — | ✅ |
-| 8 | Channel/Cron 并发入口受 activeRuns 互斥保护 | P2 | — | ✅ |
-| 9 | Team turn 中发射稳定 member_* WS Envelope | P2 | — | |
-| 10 | 工具事件结构化展示：tool_call/tool_result → 前端卡片（含 `is_long_running`） | P2 | — | |
-| 11 | 定义 Reasoning 展示规格（折叠/内联/独立区域）并实现 | P2 | — | |
-| 12 | EventBuffer 增加 TTL 自动过期清理策略 | P2 | — | ✅ |
-| 13 | 前端 `useRunStatus` 从 HTTP 轮询改为 WS 事件驱动 | P2 | — | |
-| 14 | 多模态附件：后端 attachment 持久化 + LLM 输入 | P3 | — | |
-| 15 | 统一 Chat 模型选项来源，避免 provider/model 双口径 | P3 | — | |
-| 16 | RunStatus/AwaitUserReply 持久化或恢复策略 | P3 | — | |
-| 17 | 单测覆盖 ChatService / WS handler 关键路径 | P1 | EP-TEST-01 | |
+| # | 任务 | 优先级 | 状态 |
+|---|------|--------|------|
+| 1 | 文档移除 SSE 主路径 | P1 | ✅ |
+| 2 | Team turn active run / pending | P1 | ✅ |
+| 3 | Team defer `processPendingQueue` | P1 | ✅ |
+| 4 | AwaitUserReply Chat UI | P1 | ✅ |
+| 5 | `EnvelopeError.PendingID` 统一 | P1 | ✅ |
+| 6 | WS 控制消息协议 + transport | P1 | ✅ |
+| 7 | `recordTeamSessionTurn` | P2 | ✅ |
+| 8 | Channel/Cron 互斥 | P2 | ✅ |
+| 9 | Team `member_*` 发射与消费 | P2 | ✅ |
+| 10 | 工具事件结构化卡片 | P1 | ✅ |
+| 11 | Reasoning 展示规格与实现 | P1 | ✅ |
+| 12 | EventBuffer TTL | P2 | ✅ |
+| 13 | RunStatus WS 事件驱动 | P2 | ✅ |
+| 14 | 多模态附件后端 | P3 | ⏳ |
+| 15 | 模型选项单一来源（长期） | P3 | 🟡 回退已实现 |
+| 16 | RunStatus 持久化 | P3 | ⏳ |
+| 17 | ChatService / WS 单测 | P1 | ⏳ |
+| 18 | RunRegistry + EnqueueUserMessage | P0 | ✅ |
 
 ---
 
 ## 6. 验收标准
 
-- [x] 文档中不再声明 `/v1/chat/messages/stream` 为当前可用端点
-- [x] WS 上行/下行控制消息协议已在需求文档和设计文档中完整描述
-- [x] Team 对话停止生成、待执行队列与单 Agent 行为一致
-- [x] **Team turn 完成后，待执行队列中的消息能被正确消费**（processPendingQueue 触发）
-- [x] AwaitUserReply 在单 Agent 与 Team 路径均可触发（后端），前端可提交回复
-- [x] `EnvelopeError.PendingID` 被正确赋值，metadata 双写已移除，前端可消费 `error.pending_id`
-- [ ] Team 对话时前端可实时看到子 Agent 的增量输出
-- [ ] 工具执行可展示结构化参数、结果、耗时、错误和 `is_long_running` 状态
-- [x] `session_turns` 表对 Agent 和 Team 会话均有记录
-- [x] Channel/Cron 并发入口不会绕过 activeRuns 互斥保护
-- [ ] WS 断线重连后 EventBuffer 回放的正确性（replay_start/replay_end 控制消息正确发送）
-- [ ] 前端 `useRunStatus` 状态与 WS 事件状态一致
+- [x] 无 `/v1/chat/messages/stream` 当前端点表述
+- [x] WS 控制消息在需求/设计文档中完整描述
+- [x] Team 停止/待执行与单 Agent 一致
+- [x] AwaitUserReply：后端 + Chat 页可提交回复
+- [x] `error.pending_id` 前端可消费
+- [x] `session_turns` Agent + Team 均有记录
+- [x] Channel/Cron 不绕过 active run 互斥
+- [x] Team `member_*` 后端发射 + 前端增量展示
+- [x] 工具执行结构化卡片（参数/结果/耗时/`is_long_running`）
+- [x] Reasoning 折叠/展示符合产品规格
+- [x] RunStatus 与 WS `run_status` 一致（切换会话时 HTTP 校准）
+- [x] WS 重连回放时用户可见「同步中」状态
 - [x] `go test ./internal/service/... -run TestChat` 通过
-- [ ] 附录 A Chat 行状态与实际一致
-- [ ] changelog 引用对应 EP
 
 ---
 
 ## 7. 依赖与风险
 
-- M2 多租户可能触及 Session 写路径（workspace_id 注入）
-- Phase 2 依赖 trpc-agent-go Team 事件 author/invocation 元数据稳定
-- Phase 3 依赖 EventProjector 对 tool result 的关联 ID、耗时和错误字段完善
-- Phase 5 依赖 Reasoning 展示规格的产品决策
-- Phase 7 依赖 LlmProvider 多模态能力（Vision API）与 Artifact/对象存储能力
+- Team 成员 UX 依赖 `MemberAgentKeys` 在 turn 元数据中完整传递
+- 工具卡片依赖 `EventProjector` 对 `duration_ms` / `is_long_running` 的稳定填充
+- RunStatus 持久化可能依赖 M2 多租户 Session 改造
+- 附件闭环依赖 Artifact / 对象存储与 LlmProvider Vision 能力

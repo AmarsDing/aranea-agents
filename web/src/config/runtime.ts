@@ -1,3 +1,6 @@
+/** Global monitor WS session: receives all sessions' monitor/team/graph events (server limit: 3 conns). */
+export const GLOBAL_WS_SESSION_ID = "*";
+
 type RuntimeConfig = {
   backendUrl?: string;
   wsOrigin?: string;
@@ -79,7 +82,7 @@ export function buildHealthWsUrl(): string {
   const origin = getWsOrigin();
   const protocol = origin.startsWith("https") ? "wss" : "ws";
   const wsOrigin = origin.replace(/^https?/, protocol);
-  const q = new URLSearchParams({ session_id: "*" });
+  const q = new URLSearchParams({ session_id: GLOBAL_WS_SESSION_ID });
   const token = readAccessTokenCookie();
   if (token) {
     q.set("token", token);

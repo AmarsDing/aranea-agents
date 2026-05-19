@@ -348,7 +348,11 @@ func (u *AgentUsecase) GetEffectiveTools(ctx context.Context, agentID string) (A
 	if err != nil {
 		return AgentEffectiveTools{}, err
 	}
-	return buildAgentEffectiveTools(settings, all.Items), nil
+	eff := buildAgentEffectiveTools(settings, all.Items)
+	if overrides, oerr := u.tools.ListToolAgentOverridesByAgent(ctx, agentID); oerr == nil {
+		ApplyAgentToolOverrides(&eff, all.Items, overrides)
+	}
+	return eff, nil
 }
 
 func (u *AgentUsecase) runtimeSettingsForEffective(ctx context.Context, agentID string) (AgentRuntimeSettings, error) {
@@ -398,5 +402,9 @@ func (u *AgentUsecase) UpdateAgentToolPolicy(ctx context.Context, agentID string
 	}
 	settings = withSettingDefaults(settings)
 
-	return buildAgentEffectiveTools(settings, all.Items), nil
+	eff := buildAgentEffectiveTools(settings, all.Items)
+	if overrides, oerr := u.tools.ListToolAgentOverridesByAgent(ctx, agentID); oerr == nil {
+		ApplyAgentToolOverrides(&eff, all.Items, overrides)
+	}
+	return eff, nil
 }

@@ -107,6 +107,61 @@ func (r *pluginRepo) SearchPlugins(ctx context.Context, q biz.PluginListQuery) (
 	}, nil
 }
 
+func (r *pluginRepo) GetByKey(ctx context.Context, key string) (biz.Plugin, error) {
+	row, err := r.data.entClient.PlatformPlugin.Query().
+		Where(platformplugin.PluginKeyEQ(key), platformplugin.DeletedAtEQ("")).
+		Only(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return biz.Plugin{}, sql.ErrNoRows
+		}
+		return biz.Plugin{}, err
+	}
+	return entToBizPlugin(row), nil
+}
+
+func (r *pluginRepo) CreatePlugin(ctx context.Context, p biz.Plugin) (biz.Plugin, error) {
+	cbsJSON, _ := json.Marshal(p.CallbackPoints)
+	if len(p.CallbackPoints) == 0 {
+		cbsJSON = []byte("[]")
+	}
+	cfg := p.ConfigJSON
+	if cfg == "" {
+		cfg = "{}"
+	}
+	fallback := p.DefaultConfigJSON
+	if fallback == "" {
+		fallback = cfg
+	}
+	schema := p.ConfigSchemaJSON
+	if schema == "" {
+		schema = "{}"
+	}
+	now := nowRFC3339()
+	row, err := r.data.entClient.PlatformPlugin.Create().
+		SetID(p.ID).
+		SetPluginKey(p.Key).
+		SetName(p.Name).
+		SetDescription(p.Description).
+		SetCategory(p.Category).
+		SetRiskLevel(p.RiskLevel).
+		SetEnabled(p.Enabled).
+		SetScope(p.Scope).
+		SetCallbackPointsJSON(string(cbsJSON)).
+		SetSortOrder(p.SortOrder).
+		SetConfigSchemaJSON(schema).
+		SetConfigJSON(cfg).
+		SetFallbackConfigJSON(fallback).
+		SetCreatedAt(now).
+		SetUpdatedAt(now).
+		SetDeletedAt("").
+		Save(ctx)
+	if err != nil {
+		return biz.Plugin{}, err
+	}
+	return entToBizPlugin(row), nil
+}
+
 func (r *pluginRepo) GetPlugin(ctx context.Context, id string) (biz.Plugin, error) {
 	row, err := r.data.entClient.PlatformPlugin.Query().
 		Where(platformplugin.IDEQ(id), platformplugin.DeletedAtEQ("")).
@@ -160,4 +215,32 @@ func (r *pluginRepo) UpdateSortOrder(ctx context.Context, id string, sortOrder i
 		return biz.Plugin{}, err
 	}
 	return r.GetPlugin(ctx, id)
+}
+
+func (r *pluginRepo) IncrementStats(ctx context.Context, pluginKey string, delta biz.PluginStatUpdate) error {
+	pluginKey = strings.TrimSpace(pluginKey)
+	if pluginKey == "" {
+		return nil
+	}
+	row, err := r.data.entClient.PlatformPlugin.Query().
+		Where(platformplugin.PluginKeyEQ(pluginKey), platformplugin.DeletedAtEQ("")).
+		Only(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	status := strings.TrimSpace(delta.LastStatus)
+	if status == "" {
+		status = row.LastStatus
+	}
+	return r.data.entClient.PlatformPlugin.UpdateOne(row).
+		SetInvokeCount(row.InvokeCount + delta.InvokeCount).
+		SetBlockCount(row.BlockCount + delta.BlockDelta).
+		SetErrorCount(row.ErrorCount + delta.ErrorDelta).
+		SetLastStatus(status).
+		SetLastInvokedAt(nowRFC3339()).
+		SetUpdatedAt(nowRFC3339()).
+		Exec(ctx)
 }

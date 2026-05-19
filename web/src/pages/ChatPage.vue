@@ -38,6 +38,8 @@
         :context-ratio="selectedSessionForUi?.context_used_ratio ?? 0"
         :is-dark="isDark"
         :sending="sending"
+        :is-awaiting-user="isAwaitingUser"
+        :ws-replaying="wsReplaying"
         :pending-messages="pendingMessages"
         @update:dialog-mode="onModeChange"
         @update:model-provider="onProviderChange"
@@ -48,6 +50,13 @@
         @stop="stopStreaming"
         @cancel-pending="onCancelPending"
         @update-pending="onUpdatePending"
+        @submit-await-reply="submitAwaitingReply"
+      />
+      <chat-session-artifacts-panel
+        :session-id="selectedSessionForUi?.id ?? ''"
+        :items="sessionArtifacts"
+        :loading="sessionArtifactsLoading"
+        @open="openSessionArtifact"
       />
       <input ref="fileRef" type="file" hidden multiple @change="onFileChange" />
     </div>
@@ -117,6 +126,7 @@ import ChatSessionSidebar from "../components/chat/ChatSessionSidebar.vue";
 import ChatSideToggle from "../components/chat/ChatSideToggle.vue";
 import ChatSettingsDialog from "../components/chat/ChatSettingsDialog.vue";
 import ChatWorkspaceShell from "../components/chat/ChatWorkspaceShell.vue";
+import ChatSessionArtifactsPanel from "../components/chat/ChatSessionArtifactsPanel.vue";
 import SessionTimelineDialog from "../components/chat/SessionTimelineDialog.vue";
 import { useChatWorkspace } from "../features/chat/composables/useChatWorkspace";
 
@@ -186,6 +196,12 @@ const {
   onFileChange,
   removeAttachment,
   pendingMessages,
+  isAwaitingUser,
+  wsReplaying,
+  submitAwaitingReply,
+  sessionArtifacts,
+  sessionArtifactsLoading,
+  openSessionArtifact,
   onCancelPending,
   onUpdatePending,
   onVoiceClick

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	aramemory "aranea-agents/internal/memory"
 	memtrpc "aranea-agents/internal/memory/trpc"
 	servmetrics "aranea-agents/internal/metrics"
 
@@ -39,18 +40,20 @@ var heuristicPatterns = []*regexp.Regexp{
 type AutoMemoryWorker struct {
 	interval time.Duration
 	sessions *biz.SessionUsecase
+	agents   *biz.AgentUsecase
 	memory   trpcmemory.Service
+	l4       *aramemory.L4GraphWriter
 }
 
 // NewAutoMemoryWorker creates a worker with the given polling interval.
 // Pass ≤0 to use the default 10-second interval.
 // sessions and memory may be nil; the worker will still drain the queue but
 // skip writing extracted facts to the store.
-func NewAutoMemoryWorker(interval time.Duration, sessions *biz.SessionUsecase, memory trpcmemory.Service) *AutoMemoryWorker {
+func NewAutoMemoryWorker(interval time.Duration, sessions *biz.SessionUsecase, agents *biz.AgentUsecase, memory trpcmemory.Service, l4 *aramemory.L4GraphWriter) *AutoMemoryWorker {
 	if interval <= 0 {
 		interval = 10 * time.Second
 	}
-	return &AutoMemoryWorker{interval: interval, sessions: sessions, memory: memory}
+	return &AutoMemoryWorker{interval: interval, sessions: sessions, agents: agents, memory: memory, l4: l4}
 }
 
 // Start blocks until ctx is cancelled, draining the queue on each tick.
@@ -132,6 +135,18 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 		return nil
 	}
 
+	sess, err := w.sessions.Get(ctx, sid)
+	if err != nil {
+		return err
+	}
+	agentID := strings.TrimSpace(sess.AgentID)
+	l4Enabled := false
+	if w.agents != nil && agentID != "" {
+		if ag, err := w.agents.Get(ctx, agentID); err == nil && ag.Settings != nil {
+			l4Enabled = ag.Settings.L4Enabled
+		}
+	}
+
 	msgs, err := w.sessions.ListMessages(ctx, sid)
 	if err != nil {
 		return err
@@ -143,7 +158,11 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 	}
 
 	uk := trpcmemory.UserKey{AppName: req.AppName, UserID: req.UserID}
+	if uk.UserID == "" {
+		uk.UserID = strings.TrimSpace(sess.UserID)
+	}
 	var added int
+	var l4Written int
 	for _, msg := range msgs {
 		if msg.Role != "user" {
 			continue
@@ -163,12 +182,21 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 				}
 			}
 		}
+		if l4Enabled && w.l4 != nil && agentID != "" {
+			n, err := w.l4.WriteFromUserText(ctx, agentID, uk.UserID, text)
+			if err != nil {
+				slog.Warn("auto_memory.extract: L4 graph write failed", "session_id", sid, "error", err)
+			} else {
+				l4Written += n
+			}
+		}
 	}
 
 	slog.Info("auto_memory.extract: done",
 		"session_id", sid,
 		"messages_scanned", len(msgs),
 		"facts_added", added,
+		"l4_entities", l4Written,
 	)
 	return nil
 }

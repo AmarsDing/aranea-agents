@@ -10,10 +10,12 @@ export type UseEnvelopeStreamOptions = {
   autoConnect?: boolean;
   logEnabled?: boolean;
   onServerShutdown?: (reason: string) => void;
+  onReplayState?: (replaying: boolean, count?: number) => void;
 };
 
 export type UseEnvelopeStreamReturn = {
   connected: ReturnType<typeof ref<boolean>>;
+  wsReplaying: ReturnType<typeof ref<boolean>>;
   lastEventId: ReturnType<typeof ref<string | undefined>>;
   transport: ReturnType<typeof shallowRef<WsTransport | null>>;
   dispatcher: EnvelopeDispatcher;
@@ -29,6 +31,7 @@ export type UseEnvelopeStreamReturn = {
 
 export function useEnvelopeStream(opts: UseEnvelopeStreamOptions): UseEnvelopeStreamReturn {
   const connected = ref(false);
+  const wsReplaying = ref(false);
   const lastEventId = ref<string | undefined>(opts.lastEventId);
   const transport = shallowRef<WsTransport | null>(null);
   const dispatcher = new EnvelopeDispatcher();
@@ -62,6 +65,10 @@ export function useEnvelopeStream(opts: UseEnvelopeStreamOptions): UseEnvelopeSt
       },
       onServerShutdown: (reason) => {
         opts.onServerShutdown?.(reason);
+      },
+      onReplayState: (replaying, count) => {
+        wsReplaying.value = replaying;
+        opts.onReplayState?.(replaying, count);
       },
     });
 
@@ -110,6 +117,7 @@ export function useEnvelopeStream(opts: UseEnvelopeStreamOptions): UseEnvelopeSt
 
   return {
     connected,
+    wsReplaying,
     lastEventId,
     transport,
     dispatcher,
@@ -124,8 +132,16 @@ export function useEnvelopeStream(opts: UseEnvelopeStreamOptions): UseEnvelopeSt
   };
 }
 
-export function useChatStream(sessionId: string, streamOpts?: { onServerShutdown?: (reason: string) => void }) {
-  const stream = useEnvelopeStream({ sessionId, channels: ["chat", "system"], onServerShutdown: streamOpts?.onServerShutdown });
+export function useChatStream(
+  sessionId: string,
+  streamOpts?: { onServerShutdown?: (reason: string) => void; onReplayState?: (replaying: boolean, count?: number) => void }
+) {
+  const stream = useEnvelopeStream({
+    sessionId,
+    channels: ["chat", "system"],
+    onServerShutdown: streamOpts?.onServerShutdown,
+    onReplayState: streamOpts?.onReplayState,
+  });
 
   const text = ref("");
   const reasoning = ref("");
@@ -193,13 +209,18 @@ export function useChatStream(sessionId: string, streamOpts?: { onServerShutdown
     toolCalls,
     error,
     done,
+    wsReplaying: stream.wsReplaying,
   };
 }
 
-export function useTeamStream(sessionId: string, teamId?: string) {
+export function useTeamStream(
+  sessionId: string,
+  streamOpts?: { onReplayState?: (replaying: boolean, count?: number) => void }
+) {
   const stream = useEnvelopeStream({
     sessionId,
     channels: ["chat", "team", "system"],
+    onReplayState: streamOpts?.onReplayState,
   });
 
   const members = ref<Map<string, { author: string; text: string }>>(new Map());

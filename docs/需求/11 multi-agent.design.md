@@ -33,10 +33,10 @@ SwarmHandoffInputBuilder 自定义转移输入、MemberToolConfig 成员工具�
 | Usecase 层 | ✅ 已完成 | `internal/biz/team_usecase.go` |
 | Data 层 | ✅ 已完成 | `internal/data/team_repo.go` |
 | Service 层 | ✅ 已完成 | `internal/service/team.go` |
-| SSE Broker | ✅ 已完成 | `internal/biz/team_run_events.go` |
+| WS / EventBus 事件 | ✅ 基础完成 | Team 运行事件经 EventBus / WS Envelope 投影；历史 `team_run_events` 仅作存量概念参考 |
 | 前端 Team 管理页 | ✅ 已完成 | TeamCard / TeamToolbar / TeamEditorDialog / TeamRunsDialog |
 | A2A call_agent 工具 | ❌ 缺失 | Agent 无法在 Team 中调用远程 Agent |
-| member_* SSE 事件 | ❌ 缺失 | Team 对话不发射子 Agent 实时流事件 |
+| member_* WS 事件 | ❌ 缺失 | Team 对话不发射子 Agent 实时流 Envelope |
 | Team 运行结果结构化汇总 | ❌ 缺失 | 无成员贡献度 / 工具调用统计 |
 | RunTeamTest 端到端 | ⏳ 桩实现 | Service 层返回 Unimplemented |
 
@@ -52,7 +52,7 @@ SwarmHandoffInputBuilder 自定义转移输入、MemberToolConfig 成员工具�
            ├─ Parallel        → parallelagent 并行执行
            └─ Critic Loop     → cycleagent 迭代执行
              ↓
-         事件流 → Runner 事件循环 → 持久化 + SSE 推送
+        事件流 → Runner 事件循环 → 持久化 + WS 推送
 ```
 
 ---
@@ -516,9 +516,9 @@ func buildCoordinatorOptions(def Definition) []trpcteam.Option {
 
 ---
 
-## 七、SSE 事件模型
+## 七、WS 事件模型
 
-文件：`internal/biz/team_run_events.go`
+当前主链路：`internal/event` + `internal/server/ws.go`。历史 `internal/biz/team_run_events.go` 事件结构仅作存量模型参考。
 
 ```go
 type TeamRunEvent struct {
@@ -553,7 +553,7 @@ type TeamRunEvent struct {
 
 在 `internal/agent/trpc_build.go` 中注入 `call_agent` 工具到 Agent 工具集，使 Agent 可在 Team 中调用远程 Agent。
 
-### 8.3 P2 — member_* SSE 事件
+### 8.3 P2 — member_* WS 事件
 
 在 `chat_native.go` 的 Team turn 中发射 `member_message_start` / `member_message_delta` / `member_message_done` 事件，使前端可展示子 Agent 实时流。
 

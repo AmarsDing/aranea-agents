@@ -4,12 +4,12 @@ import (
 	"context"
 	"strings"
 
-	"aranea-agents/internal/data/sessionmemory"
 	"aranea-agents/internal/event"
-	memtrpc "aranea-agents/internal/memory/trpc"
 	"aranea-agents/internal/provider"
 	sessiontrpc "aranea-agents/internal/session/trpc"
 
+	trpcartifact "trpc.group/trpc-go/trpc-agent-go/artifact"
+	trpcmemory "trpc.group/trpc-go/trpc-agent-go/memory"
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
 	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
@@ -22,13 +22,17 @@ type EventStreamResult struct {
 	CompletionTok int
 }
 
-func NewRunnerDepsFromRuntime(trpcSession trpcsession.Service, sessionMemory *sessionmemory.Store, plugins ...trpcplugin.Plugin) TRPCRunnerDeps {
+func NewRunnerDepsFromRuntime(trpcSession trpcsession.Service, memory trpcmemory.Service, artifact trpcartifact.Service, plugins ...trpcplugin.Plugin) TRPCRunnerDeps {
 	deps := TRPCRunnerDeps{}
 	if trpcSession != nil {
 		deps.SessionService = trpcSession
 	}
-	if sessionMemory != nil {
-		deps.MemoryService = memtrpc.NewSQLiteMemoryService(sessionMemory)
+	if memory != nil {
+		deps.MemoryService = memory
+		deps.Ingestor = NewBizSessionIngestor(deps.MemoryService)
+	}
+	if artifact != nil {
+		deps.ArtifactService = artifact
 	}
 	if deps.SessionService == nil {
 		deps.SessionService = sessiontrpc.NewInMemorySessionService()
@@ -50,6 +54,9 @@ func ConsumeEventStream(
 	var projector *EventProjector
 	if eventBus != nil {
 		projector = NewEventProjector(eventBus)
+		if projectMeta.TeamID != "" && len(projectMeta.MemberAgentKeys) > 0 {
+			projector.memberStarted = make(map[string]bool)
+		}
 	}
 
 	for ev := range events {

@@ -39,6 +39,20 @@ func (m *memPluginRepo) GetPlugin(_ context.Context, id string) (biz.Plugin, err
 	return p, nil
 }
 
+func (m *memPluginRepo) GetByKey(_ context.Context, key string) (biz.Plugin, error) {
+	for _, p := range m.items {
+		if p.Key == key {
+			return p, nil
+		}
+	}
+	return biz.Plugin{}, fmt.Errorf("plugin not found: %s", key)
+}
+
+func (m *memPluginRepo) CreatePlugin(_ context.Context, p biz.Plugin) (biz.Plugin, error) {
+	m.items[p.ID] = p
+	return p, nil
+}
+
 func (m *memPluginRepo) UpdatePluginEnabled(_ context.Context, id string, enabled bool) (biz.Plugin, error) {
 	p, ok := m.items[id]
 	if !ok {
@@ -67,6 +81,22 @@ func (m *memPluginRepo) UpdateSortOrder(_ context.Context, id string, sortOrder 
 	p.SortOrder = sortOrder
 	m.items[id] = p
 	return p, nil
+}
+
+func (m *memPluginRepo) IncrementStats(_ context.Context, pluginKey string, delta biz.PluginStatUpdate) error {
+	for id, p := range m.items {
+		if p.Key == pluginKey {
+			p.InvokeCount += delta.InvokeCount
+			p.BlockCount += delta.BlockDelta
+			p.ErrorCount += delta.ErrorDelta
+			if delta.LastStatus != "" {
+				p.LastStatus = delta.LastStatus
+			}
+			m.items[id] = p
+			return nil
+		}
+	}
+	return nil
 }
 
 func newPluginService() *service.PluginService {

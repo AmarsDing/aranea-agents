@@ -11,7 +11,9 @@ import type {
   TeamRun as WireTeamRun,
   TeamRunStep as WireTeamRunStep
 } from "../../services/kratos/team/v1/index";
+import { GLOBAL_WS_SESSION_ID } from "../../config/runtime";
 import { useEnvelopeStream } from "../chat/useEnvelopeStream";
+import { TEAM_RUNTIME_ENVELOPE_TYPES, teamRunEventFromEnvelope } from "./teamRunEventFromEnvelope";
 import type { Envelope } from "../chat/envelope";
 
 export type {
@@ -151,42 +153,36 @@ export async function listTeamRunSteps(runID: string): Promise<TeamRunStep[]> {
   return items.map(wireStep);
 }
 
+/**
+ * Team run events over `WS /v1/ws`.
+ * Pass a real chat `sessionId` for session-scoped runs, or `GLOBAL_WS_SESSION_ID` (`*`) for admin-wide monitoring.
+ */
 export function subscribeTeamRunEventsWs(
   sessionId: string,
   teamID: string,
   onEvent: (event: TeamRunEvent) => void,
   onError?: (error: string) => void
 ) {
-  const stream = useEnvelopeStream({ sessionId, channels: ["team", "system"], autoConnect: false });
-
-  stream.onType("intent_pass", (env: Envelope) => {
-    onEvent({
-      type: "intent_pass",
-      team_id: env.team_id ?? teamID,
-      run_id: "",
-      session_id: env.session_id,
-      payload: env.metadata ?? {}
-    });
+  const effectiveSession =
+    sessionId.trim() === "" || sessionId === "team-monitor" ? GLOBAL_WS_SESSION_ID : sessionId;
+  const stream = useEnvelopeStream({
+    sessionId: effectiveSession,
+    channels: ["team", "monitor", "system"],
+    autoConnect: false,
   });
 
-  stream.onType("transfer", (env: Envelope) => {
-    onEvent({
-      type: "transfer",
-      team_id: env.team_id ?? teamID,
-      run_id: "",
-      session_id: env.session_id,
-      payload: { from_agent: env.transfer?.from_agent, to_agent: env.transfer?.to_agent }
-    });
+  stream.onType(TEAM_RUNTIME_ENVELOPE_TYPES, (env: Envelope) => {
+    const mapped = teamRunEventFromEnvelope(env, teamID);
+    if (mapped) {
+      onEvent(mapped);
+    }
   });
 
-  stream.onType("runner_completion", (env: Envelope) => {
-    onEvent({
-      type: "run_finished",
-      team_id: env.team_id ?? teamID,
-      run_id: "",
-      session_id: env.session_id,
-      payload: env.metadata ?? {}
-    });
+  stream.onType("log", (env: Envelope) => {
+    const mapped = teamRunEventFromEnvelope(env, teamID);
+    if (mapped) {
+      onEvent(mapped);
+    }
   });
 
   stream.onType("error", (env: Envelope) => {
@@ -197,6 +193,6 @@ export function subscribeTeamRunEventsWs(
 
   return {
     close: () => stream.disconnect(),
-    connected: stream.connected
+    connected: stream.connected,
   };
 }

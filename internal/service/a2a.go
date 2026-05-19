@@ -3,9 +3,12 @@ package service
 import (
 	"context"
 	"strings"
+	"time"
 
 	v1 "aranea-agents/api/kratos/a2a/v1"
+	a2apkg "aranea-agents/internal/a2a"
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/auth"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -28,12 +31,14 @@ var (
 // A2AService implements kratos a2a.v1.
 type A2AService struct {
 	v1.UnimplementedA2AServiceServer
-	uc *biz.A2AUsecase
+	uc     *biz.A2AUsecase
+	runner a2apkg.AgentTurnRunner
+	agents biz.AgentRepository
 }
 
 // NewA2AService constructs an A2AService.
-func NewA2AService(uc *biz.A2AUsecase) *A2AService {
-	return &A2AService{uc: uc}
+func NewA2AService(uc *biz.A2AUsecase, runner a2apkg.AgentTurnRunner, agents biz.AgentRepository) *A2AService {
+	return &A2AService{uc: uc, runner: runner, agents: agents}
 }
 
 // Discover returns A2A-enabled agents, optionally filtered by workspace/capability.
@@ -49,10 +54,12 @@ func (s *A2AService) Discover(ctx context.Context, req *v1.DiscoverRequest) (*v1
 	return &v1.DiscoverResponse{Agents: out}, nil
 }
 
-// Invoke dispatches a capability call to the target agent.
-// The actual agent execution is expected to be wired at the application layer;
-// this service records the invocation and audit entries.
+// Invoke dispatches a capability call to the target agent (EP-A2A-01).
+// EP-A2A-02: requires authenticated admin principal.
 func (s *A2AService) Invoke(ctx context.Context, req *v1.A2AInvokeRequest) (*v1.A2AInvokeResponse, error) {
+	if err := requireA2AAdmin(ctx); err != nil {
+		return nil, err
+	}
 	calleeID := strings.TrimSpace(req.GetCalleeAgentId())
 	capability := strings.TrimSpace(req.GetCapability())
 	if calleeID == "" {
@@ -62,39 +69,81 @@ func (s *A2AService) Invoke(ctx context.Context, req *v1.A2AInvokeRequest) (*v1.
 		return nil, kerrors.BadRequest("A2A", "capability is required")
 	}
 
-	// Verify the callee has A2A enabled.
 	card, err := s.uc.GetAgentCard(ctx, calleeID)
 	if err != nil || !card.Enabled {
 		a2aInvokeTotal.WithLabelValues("", calleeID, "forbidden").Inc()
 		return nil, kerrors.Forbidden("A2A", "agent "+calleeID+" is not A2A-enabled")
 	}
+	foundCap := false
+	for _, c := range card.Capabilities {
+		if c.Name == capability {
+			foundCap = true
+			break
+		}
+	}
+	if !foundCap {
+		a2aInvokeTotal.WithLabelValues("", calleeID, "forbidden").Inc()
+		return nil, kerrors.BadRequest("A2A", "capability "+capability+" is not advertised by agent "+calleeID)
+	}
 
-	timer := prometheus.NewTimer(a2aInvokeDuration)
+	timeoutSec := int(req.GetTimeoutSeconds())
+	if timeoutSec <= 0 {
+		timeoutSec = 30
+	}
+
 	inv, err := s.uc.StartInvocation(ctx, biz.A2AInvocation{
 		CalleeAgentID:   calleeID,
 		Capability:      capability,
 		PayloadJSON:     req.GetPayloadJson(),
 		CallerSessionID: req.GetCallerSessionId(),
-		TimeoutSeconds:  int(req.GetTimeoutSeconds()),
+		TimeoutSeconds:  timeoutSec,
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	// Mark as pending; the actual execution is async / handled externally.
-	timer.ObserveDuration()
-	a2aInvokeTotal.WithLabelValues("", calleeID, "pending").Inc()
+	if s.runner == nil {
+		a2aInvokeTotal.WithLabelValues("", calleeID, "error").Inc()
+		return nil, kerrors.InternalServer("A2A", "agent turn runner not configured")
+	}
 
+	input := a2apkg.PayloadToInput(req.GetPayloadJson(), capability)
+	timer := prometheus.NewTimer(a2aInvokeDuration)
+	start := time.Now()
+	result, runErr := s.runner.RunAgentTurn(ctx, calleeID, input, timeoutSec)
+	durationMs := int(time.Since(start).Milliseconds())
+	timer.ObserveDuration()
+
+	status := "success"
+	var errMsg string
+	if runErr != nil {
+		status = "error"
+		errMsg = runErr.Error()
+		a2aInvokeTotal.WithLabelValues("", calleeID, "error").Inc()
+	} else {
+		a2aInvokeTotal.WithLabelValues("", calleeID, "success").Inc()
+	}
+
+	inv.Status = status
+	inv.ResultJSON = result
+	inv.ErrorMessage = errMsg
+	inv.DurationMs = durationMs
+	_ = s.uc.FinishInvocation(ctx, inv)
 	_ = s.uc.AppendAudit(ctx, biz.A2AAuditEntry{
 		InvokeID:      inv.ID,
 		CalleeAgentID: calleeID,
 		Capability:    capability,
-		Status:        "pending",
+		Status:        status,
+		DurationMs:    durationMs,
+		Workspace:     card.Workspace,
 	})
 
 	return &v1.A2AInvokeResponse{
-		InvokeId: inv.ID,
-		Status:   "pending",
+		InvokeId:     inv.ID,
+		Status:       status,
+		ResultJson:   result,
+		ErrorMessage: errMsg,
+		DurationMs:   int32(durationMs),
 	}, nil
 }
 
@@ -112,8 +161,20 @@ func (s *A2AService) UpdateAgentCard(ctx context.Context, req *v1.UpdateAgentCar
 			OutputSchemaJSON: c.GetOutputSchemaJson(),
 		})
 	}
+	workspace := ""
+	if s.agents != nil {
+		if ag, err := s.agents.GetAgentByID(ctx, req.GetAgentId()); err == nil {
+			if ag.Settings != nil {
+				workspace = strings.TrimSpace(ag.Settings.GetIdentity().Workspace)
+			}
+			if workspace == "" {
+				workspace = strings.TrimSpace(ag.DisplayName)
+			}
+		}
+	}
 	card, err := s.uc.UpdateAgentCard(ctx, biz.A2AAgentCard{
 		AgentID:      req.GetAgentId(),
+		Workspace:    workspace,
 		Enabled:      req.GetEnabled(),
 		Capabilities: caps,
 	})
@@ -153,6 +214,18 @@ func (s *A2AService) ListAudit(ctx context.Context, req *v1.ListAuditRequest) (*
 		})
 	}
 	return &v1.ListAuditResponse{Items: out, Total: int32(total)}, nil
+}
+
+// requireA2AAdmin enforces EP-A2A-02: HTTP Invoke requires authenticated admin.
+func requireA2AAdmin(ctx context.Context) error {
+	a, ok := auth.FromContext(ctx)
+	if !ok || a == nil {
+		return kerrors.Unauthorized("A2A", "authentication required")
+	}
+	if !a.HasAdminAccess() {
+		return kerrors.Forbidden("A2A", "admin access required for invoke")
+	}
+	return nil
 }
 
 // --- proto conversion helpers ---

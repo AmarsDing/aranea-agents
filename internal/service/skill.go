@@ -10,6 +10,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/skill/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/skill/importer"
 	"aranea-agents/internal/skill/storage"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -20,12 +21,13 @@ import (
 type SkillService struct {
 	v1.UnimplementedSkillServiceServer
 
-	uc  *biz.SkillUsecase
-	sys biz.SystemSettingRepo
+	uc      *biz.SkillUsecase
+	sys     biz.SystemSettingRepo
+	import_ *importer.Engine
 }
 
-func NewSkillService(uc *biz.SkillUsecase, sys biz.SystemSettingRepo) *SkillService {
-	return &SkillService{uc: uc, sys: sys}
+func NewSkillService(uc *biz.SkillUsecase, sys biz.SystemSettingRepo, importEng *importer.Engine) *SkillService {
+	return &SkillService{uc: uc, sys: sys, import_: importEng}
 }
 
 func (s *SkillService) resolvedStorageRoot(ctx context.Context) string {

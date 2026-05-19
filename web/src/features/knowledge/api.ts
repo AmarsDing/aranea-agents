@@ -14,7 +14,9 @@ import type {
   KnowledgeDocument,
   ListCollectionsResult,
   ListDocumentsResult,
-  SearchKnowledgeQuery
+  SearchKnowledgeQuery,
+  EmbedderConfig,
+  UpdateEmbedderConfigInput
 } from "./types";
 
 const svc = createKnowledgeService();
@@ -142,4 +144,37 @@ export async function searchKnowledge(query: SearchKnowledgeQuery): Promise<Know
   );
   const chunksRaw = res.chunks ?? res.Chunks;
   return Array.isArray(chunksRaw) ? chunksRaw.map(mapChunk) : [];
+}
+
+export async function getEmbedderConfig(): Promise<EmbedderConfig> {
+  const r = asRecord(await svc.GetEmbedderConfig({}));
+  return {
+    provider: pickStr(r, "provider", "provider"),
+    base_url: pickStr(r, "base_url", "baseUrl"),
+    model: pickStr(r, "model", "model"),
+    dim: pickI32(r, "dim", "dim"),
+    configured: pickBool(r, "configured", "configured"),
+    has_api_key: pickBool(r, "has_api_key", "hasApiKey")
+  };
+}
+
+export async function updateEmbedderConfig(input: UpdateEmbedderConfigInput): Promise<EmbedderConfig> {
+  const raw = asRecord(
+    await svc.UpdateEmbedderConfig({
+      provider: input.provider ?? "",
+      baseUrl: input.base_url ?? "",
+      apiKey: input.api_key ?? "",
+      model: input.model ?? "",
+      dim: input.dim ?? 0
+    })
+  );
+  const cfg = asRecord(raw.config ?? raw.Config);
+  return {
+    provider: pickStr(cfg, "provider", "provider"),
+    base_url: pickStr(cfg, "base_url", "baseUrl"),
+    model: pickStr(cfg, "model", "model"),
+    dim: pickI32(cfg, "dim", "dim"),
+    configured: pickBool(cfg, "configured", "configured"),
+    has_api_key: pickBool(cfg, "has_api_key", "hasApiKey")
+  };
 }

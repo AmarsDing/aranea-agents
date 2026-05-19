@@ -60,6 +60,33 @@ message DeleteArtifactRequest {
   string id = 1 [(google.api.field_behavior) = REQUIRED];
 }
 
+message PreviewArtifactRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  int32 version = 2;
+}
+
+message PreviewArtifactResponse {
+  ArtifactMeta meta = 1;
+  // preview_kind: text | image | pdf | binary
+  string preview_kind = 2;
+  // text_content for text previews; empty for binary kinds.
+  string text_content = 3;
+  // data_base64 for image/pdf inline preview.
+  string data_base64 = 4;
+}
+
+message SignDownloadUrlRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  int32 version = 2;
+  // ttl_seconds overrides default expiry (max 86400).
+  int32 ttl_seconds = 3;
+}
+
+message SignDownloadUrlResponse {
+  string url = 1;
+  string expires_at = 2;
+}
+
 service ArtifactService {
   rpc UploadArtifact(UploadArtifactRequest) returns (ArtifactMeta) {
     option (google.api.http) = {
@@ -80,6 +107,17 @@ service ArtifactService {
   rpc DeleteArtifact(DeleteArtifactRequest) returns (google.protobuf.Empty) {
     option (google.api.http) = {
       delete: "/v1/artifacts/{id}"
+    };
+  }
+  rpc PreviewArtifact(PreviewArtifactRequest) returns (PreviewArtifactResponse) {
+    option (google.api.http) = {
+      get: "/v1/artifacts/{id}/preview"
+    };
+  }
+  rpc SignDownloadUrl(SignDownloadUrlRequest) returns (SignDownloadUrlResponse) {
+    option (google.api.http) = {
+      post: "/v1/artifacts/{id}/sign-download"
+      body: "*"
     };
   }
 }

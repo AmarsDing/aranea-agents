@@ -21,10 +21,12 @@ type ProjectMeta struct {
 	TeamID             string
 	Branch             string
 	FilterKey          string
+	MemberAgentKeys    map[string]struct{} // agent_key set for team member_* envelopes
 }
 
 type EventProjector struct {
-	eventBus event.Bus
+	eventBus      event.Bus
+	memberStarted map[string]bool // per ConsumeEventStream when TeamID + MemberAgentKeys are set
 }
 
 func NewEventProjector(eventBus event.Bus) *EventProjector {
@@ -147,6 +149,11 @@ func (p *EventProjector) projectChatCompletionChunk(ev *trpcevent.Event, meta Pr
 		if hasContent || hasReasoning {
 			text := coalesceStr(strings.TrimSpace(msg.Content), strings.TrimSpace(delta.Content))
 			reasoning := coalesceStr(strings.TrimSpace(msg.ReasoningContent), strings.TrimSpace(delta.ReasoningContent))
+
+			if isTeamMemberAuthor(ev.Author, meta) {
+				envelopes = append(envelopes, p.projectMemberText(ev, meta, text, reasoning, ev.Response.IsPartial)...)
+				continue
+			}
 
 			if ev.Response.IsPartial {
 				env := p.baseEnvelope(ev, meta, event.EnvelopeTypeTextDelta)
@@ -325,6 +332,48 @@ func (p *EventProjector) BuildMemberMessageDoneEnvelope(author, sessionID, teamI
 		IsPartial: false,
 	}
 	return env
+}
+
+func isTeamMemberAuthor(author string, meta ProjectMeta) bool {
+	if meta.TeamID == "" || strings.TrimSpace(author) == "" {
+		return false
+	}
+	if strings.HasPrefix(author, "team") {
+		return false
+	}
+	if len(meta.MemberAgentKeys) == 0 {
+		return true
+	}
+	_, ok := meta.MemberAgentKeys[author]
+	return ok
+}
+
+func (p *EventProjector) projectMemberText(ev *trpcevent.Event, meta ProjectMeta, text, reasoning string, isPartial bool) []event.Envelope {
+	author := strings.TrimSpace(ev.Author)
+	if author == "" {
+		return nil
+	}
+	if p.memberStarted == nil {
+		p.memberStarted = make(map[string]bool)
+	}
+	var out []event.Envelope
+	if !p.memberStarted[author] {
+		p.memberStarted[author] = true
+		out = append(out, p.BuildMemberMessageStartEnvelope(author, meta.SessionID, meta.TeamID, ev.Branch))
+	}
+	combined := strings.TrimSpace(text)
+	if combined == "" {
+		combined = strings.TrimSpace(reasoning)
+	}
+	if combined == "" {
+		return out
+	}
+	if isPartial {
+		out = append(out, p.BuildMemberDeltaEnvelope(author, meta.SessionID, meta.TeamID, combined))
+	} else {
+		out = append(out, p.BuildMemberMessageDoneEnvelope(author, meta.SessionID, meta.TeamID, combined))
+	}
+	return out
 }
 
 func coalesceStr(a, b string) string {

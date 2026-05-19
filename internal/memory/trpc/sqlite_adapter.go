@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"aranea-agents/internal/data/sessionmemory"
@@ -27,13 +28,28 @@ type AutoMemoryJobRequest struct {
 // The cron worker (internal/cronrunner/jobs/auto_memory.go) drains this queue.
 var autoMemoryQueue = &memoryJobQueue{ch: make(chan AutoMemoryJobRequest, 256)}
 
+var recentAutoMemoryEnqueue sync.Map // sessionID -> time.Time
+
 type memoryJobQueue struct {
 	ch chan AutoMemoryJobRequest
+}
+
+// EnqueueAutoMemory schedules a job on the global queue (deduped within 30s per session).
+func EnqueueAutoMemory(r AutoMemoryJobRequest) {
+	GlobalAutoMemoryQueue().enqueue(r)
 }
 
 func (q *memoryJobQueue) enqueue(r AutoMemoryJobRequest) {
 	if r.EnqueuedAt.IsZero() {
 		r.EnqueuedAt = time.Now()
+	}
+	if sid := strings.TrimSpace(r.SessionID); sid != "" {
+		if t, ok := recentAutoMemoryEnqueue.Load(sid); ok {
+			if time.Since(t.(time.Time)) < 30*time.Second {
+				return
+			}
+		}
+		recentAutoMemoryEnqueue.Store(sid, time.Now())
 	}
 	select {
 	case q.ch <- r:

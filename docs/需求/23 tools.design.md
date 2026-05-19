@@ -1454,9 +1454,9 @@ ALTER TABLE tool_invocations ADD COLUMN streaming INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE tool_invocations ADD COLUMN chunk_count INTEGER NOT NULL DEFAULT 0;
 ```
 
-**SSE 推流**：
+**WS 推流**：
 
-- `internal/server/sse.go` 已支持事件推流
+- 通过 EventBus + `/v1/ws` 推送工具流式中间结果
 - 流式工具的中间结果通过 `StreamingToolResultActivityType` 转为 Activity 事件
 - 前端可按 `activityType === "tool.result.stream"` 过滤展示实时进度
 

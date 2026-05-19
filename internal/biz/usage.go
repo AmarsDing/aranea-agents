@@ -137,6 +137,9 @@ type UsageRepo interface {
 	ListTopAgentUsage(ctx context.Context, query UsageQuery) ([]UsageBreakdownRow, error)
 	ListModelUsageEvents(ctx context.Context, query UsageQuery) ([]TokenUsageEvent, error)
 	RecordTokenUsageEvent(ctx context.Context, event TokenUsageEvent) (TokenUsageEvent, error)
+	GetQuota(ctx context.Context, scopeType, scopeID string) (UsageQuota, error)
+	SetQuota(ctx context.Context, quota UsageQuota) (UsageQuota, error)
+	SumAgentCostInPeriod(ctx context.Context, agentID, periodStart, periodEnd string) (int64, error)
 }
 
 type UsageUsecase struct {

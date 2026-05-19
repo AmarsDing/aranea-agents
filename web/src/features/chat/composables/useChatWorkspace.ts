@@ -8,6 +8,9 @@ import {
   getPendingMessages,
   cancelPendingMessage,
   updatePendingMessage,
+  getRunStatus,
+  awaitUserReply,
+  type RunStatusValue,
 } from "../api";
 import type { PendingMessage } from "../api";
 import {
@@ -46,8 +49,14 @@ import {
 } from "../../../config/chatOptions";
 import { useAppStore } from "../../../stores/app";
 import { useAuthStore } from "../../../stores/auth";
+import { useArtifactStore } from "../../../stores/artifact";
+import type { ArtifactMeta } from "../../artifact/types";
 import { useChatStream, useTeamStream } from "../useEnvelopeStream";
 import type { Envelope } from "../envelope";
+import { upsertToolMessage } from "../envelopeToolCall";
+import { runStatusFromEnvelope } from "../envelopeRunStatus";
+import { patchStreamingMessage } from "../streamContentPatch";
+import type { TeamDefinition } from "../../teams/types";
 import { getServerHeartbeatState } from "../../heartbeat/useServerHeartbeat";
 
 function mockMessage(id: string, sessionID: string, role: string, content: string): Message {
@@ -133,6 +142,13 @@ export function useChatWorkspace() {
   const provOpts = ref<Array<{ label: string; value: string; caption?: string }>>([]);
   const attachments = ref<ChatAttachment[]>([]);
   const pendingMessages = ref<PendingMessage[]>([]);
+  const runStatus = ref<RunStatusValue>("idle");
+  const isAwaitingUser = ref(false);
+  const awaitingRunId = ref("");
+  const wsReplaying = ref(false);
+  const artifactStore = useArtifactStore();
+  const sessionArtifacts = ref<ArtifactMeta[]>([]);
+  const sessionArtifactsLoading = ref(false);
   let pendingPollTimer: ReturnType<typeof setInterval> | null = null;
 
   const settingsOpen = ref(false);
@@ -215,6 +231,30 @@ export function useChatWorkspace() {
       }
     );
   });
+
+  async function loadSessionArtifacts(sessionId: string) {
+    if (!sessionId) {
+      sessionArtifacts.value = [];
+      return;
+    }
+    sessionArtifactsLoading.value = true;
+    try {
+      const res = await artifactStore.loadArtifacts({ session_id: sessionId, limit: 20 });
+      sessionArtifacts.value = res.items;
+    } finally {
+      sessionArtifactsLoading.value = false;
+    }
+  }
+
+  watch(
+    () => selectedSessionForUi.value?.id ?? "",
+    (sid) => void loadSessionArtifacts(sid),
+    { immediate: true }
+  );
+
+  function openSessionArtifact(id: string) {
+    void router.push({ path: "/artifacts", query: { id } });
+  }
 
   const displayMessages = computed((): Message[] => {
     if (selectedEntityKind.value === "team" && teamSelectedSessionId.value) {
@@ -475,72 +515,44 @@ export function useChatWorkspace() {
         auth.sessionChecked = true;
         router.push({ name: "login" });
       },
+      onReplayState: (replaying) => {
+        wsReplaying.value = replaying;
+      },
     });
     chatStream.onType("text_delta", (env: Envelope) => {
-      if (env.content?.text) {
-        const sid = store.selectedSession?.id;
-        if (!sid) return;
-        const streamingId = `ws-stream-${sid}`;
-        const exists = store.messages.some((m) => m.id === streamingId);
-        if (!exists) {
-          store.messages = [
-            ...store.messages,
-            { ...mockMessage(streamingId, sid, "assistant", ""), status: "streaming" }
-          ];
-        }
-        store.messages = store.messages.map((m) =>
-          m.id === streamingId
-            ? { ...m, content_markdown: `${m.content_markdown}${env.content!.text}` }
-            : m
-        );
-      }
+      const sid = store.selectedSession?.id;
+      if (!sid || (!env.content?.text && !env.content?.reasoning)) return;
+      patchAgentMessages(sid, `ws-stream-${sid}`, env, false);
     });
     chatStream.onType("text_done", (env: Envelope) => {
       const sid = store.selectedSession?.id;
       if (!sid) return;
-      const streamingId = `ws-stream-${sid}`;
-      if (env.content?.text) {
-        store.messages = store.messages.map((m) =>
-          m.id === streamingId
-            ? { ...m, content_markdown: env.content!.text }
-            : m
-        );
-      }
+      patchAgentMessages(sid, `ws-stream-${sid}`, env, true);
     });
     chatStream.onType("tool_call", (env: Envelope) => {
-      if (env.tool_call) {
-        const sid = store.selectedSession?.id;
-        if (!sid) return;
-        const msgId = `tool-${env.tool_call.id}`;
-        const toolStatus = `tool_${env.tool_call.status}`;
-        const existing = store.messages.find((m) => m.id === msgId);
-        if (existing) {
-          store.messages = store.messages.map((m) =>
-            m.id === msgId
-              ? { ...m, content_markdown: `🔧 ${env.tool_call!.name} (${env.tool_call!.status})`, status: toolStatus }
-              : m
-          );
-        } else {
-          store.messages = [
-            ...store.messages,
-            { ...mockMessage(msgId, sid, "assistant", `🔧 ${env.tool_call.name} (${env.tool_call.status})`), status: toolStatus, options_json: JSON.stringify({ tool_event: { id: env.tool_call.id, status: env.tool_call.status, tool_name: env.tool_call.name } }) }
-          ];
-        }
-      }
+      const sid = store.selectedSession?.id;
+      if (!sid || !env.tool_call) return;
+      store.messages = upsertToolMessage(store.messages, sid, env, "before");
     });
     chatStream.onType("tool_result", (env: Envelope) => {
-      if (env.tool_call?.id) {
-        const msgId = `tool-${env.tool_call.id}`;
-        const toolStatus = `tool_${env.tool_call.status}`;
-        store.messages = store.messages.map((m) =>
-          m.id === msgId
-            ? { ...m, status: toolStatus, content_markdown: `🔧 ${env.tool_call!.name} (${env.tool_call!.status})` }
-            : m
-        );
-      }
+      const sid = store.selectedSession?.id;
+      if (!sid || !env.tool_call) return;
+      store.messages = upsertToolMessage(store.messages, sid, env, "after");
+    });
+    chatStream.onType("run_status", (env: Envelope) => {
+      applyRunStatusFromEnvelope(env);
     });
     chatStream.onType("runner_completion", async () => {
       markSendingDone();
+      applyRunStatusFromEnvelope({
+        id: "",
+        type: "run_status",
+        author: "",
+        session_id: sessionId,
+        timestamp: new Date().toISOString(),
+        version: 0,
+        metadata: { status: "completed", run_id: awaitingRunId.value },
+      });
       const sid = store.selectedSession?.id;
       if (sid) {
         try {
@@ -567,55 +579,85 @@ export function useChatWorkspace() {
       return teamStream;
     }
     teamStream?.disconnect();
-    teamStream = useTeamStream(sessionId);
+    teamStream = useTeamStream(sessionId, {
+      onReplayState: (replaying) => {
+        wsReplaying.value = replaying;
+      },
+    });
     teamStream.onType("text_delta", (env: Envelope) => {
-      if (env.content?.text && teamSelectedSessionId.value) {
-        const sid = teamSelectedSessionId.value;
-        const streamingId = `ws-team-stream-${sid}`;
-        const cur = teamMessages.value[sid] ?? [];
-        const exists = cur.some((m) => m.id === streamingId);
-        if (!exists) {
-          teamMessages.value[sid] = [...cur, { ...mockMessage(streamingId, sid, "assistant", ""), status: "streaming" }];
-        }
-        teamMessages.value[sid] = (teamMessages.value[sid] ?? []).map((m) =>
-          m.id === streamingId
-            ? { ...m, content_markdown: `${m.content_markdown}${env.content!.text}` }
-            : m
-        );
-      }
+      const sid = teamSelectedSessionId.value;
+      if (!sid || (!env.content?.text && !env.content?.reasoning)) return;
+      patchTeamMessages(sid, `ws-team-stream-${sid}`, env, false);
+    });
+    teamStream.onType("text_done", (env: Envelope) => {
+      const sid = teamSelectedSessionId.value;
+      if (!sid) return;
+      patchTeamMessages(sid, `ws-team-stream-${sid}`, env, true);
+    });
+    teamStream.onType("tool_call", (env: Envelope) => {
+      const sid = teamSelectedSessionId.value;
+      if (!sid || !env.tool_call) return;
+      teamMessages.value[sid] = upsertToolMessage(teamMessages.value[sid] ?? [], sid, env, "before");
+    });
+    teamStream.onType("tool_result", (env: Envelope) => {
+      const sid = teamSelectedSessionId.value;
+      if (!sid || !env.tool_call) return;
+      teamMessages.value[sid] = upsertToolMessage(teamMessages.value[sid] ?? [], sid, env, "after");
+    });
+    teamStream.onType("run_status", (env: Envelope) => {
+      applyRunStatusFromEnvelope(env);
     });
     teamStream.onType("member_message_start", (env: Envelope) => {
       if (env.author && teamSelectedSessionId.value) {
         const sid = teamSelectedSessionId.value;
-        const msgId = `member-${env.author}-${Date.now()}`;
+        const msgId = `member-${env.author}`;
         const cur = teamMessages.value[sid] ?? [];
         if (!cur.some((m) => m.id === msgId)) {
-          teamMessages.value[sid] = [...cur, mockMessage(msgId, sid, "assistant", "")];
+          const meta = resolveTeamMemberMeta(env.author);
+          teamMessages.value[sid] = [
+            ...cur,
+            {
+              ...mockMessage(msgId, sid, "assistant", ""),
+              status: "streaming",
+              model_name: `team/${meta.role || "member"}`,
+              options_json: JSON.stringify({ team_member: meta }),
+            },
+          ];
         }
       }
     });
     teamStream.onType("member_delta", (env: Envelope) => {
-      if (env.author && env.content?.text && teamSelectedSessionId.value) {
+      if (env.author && teamSelectedSessionId.value) {
         const sid = teamSelectedSessionId.value;
-        teamMessages.value[sid] = (teamMessages.value[sid] ?? []).map((m) =>
-          m.id.startsWith(`member-${env.author}`)
-            ? { ...m, content_markdown: `${m.content_markdown}${env.content!.text}` }
-            : m
-        );
+        const msgId = `member-${env.author}`;
+        teamMessages.value[sid] = patchStreamingMessage(teamMessages.value[sid] ?? [], msgId, {
+          text: env.content?.text,
+          reasoning: env.content?.reasoning,
+        });
       }
     });
     teamStream.onType("member_message_done", (env: Envelope) => {
-      if (env.author && env.content?.text && teamSelectedSessionId.value) {
+      if (env.author && teamSelectedSessionId.value) {
         const sid = teamSelectedSessionId.value;
-        teamMessages.value[sid] = (teamMessages.value[sid] ?? []).map((m) =>
-          m.id.startsWith(`member-${env.author}`)
-            ? { ...m, content_markdown: env.content!.text }
-            : m
-        );
+        const msgId = `member-${env.author}`;
+        teamMessages.value[sid] = patchStreamingMessage(teamMessages.value[sid] ?? [], msgId, {
+          replaceText: env.content?.text,
+          replaceReasoning: env.content?.reasoning,
+          status: "ok",
+        });
       }
     });
     teamStream.onType("runner_completion", async () => {
       markSendingDone();
+      applyRunStatusFromEnvelope({
+        id: "",
+        type: "run_status",
+        author: "",
+        session_id: sessionId,
+        timestamp: new Date().toISOString(),
+        version: 0,
+        metadata: { status: "completed", run_id: awaitingRunId.value },
+      });
       if (teamSelectedSessionId.value) {
         try {
           teamMessages.value[teamSelectedSessionId.value] = await listMessages(teamSelectedSessionId.value);
@@ -639,6 +681,10 @@ export function useChatWorkspace() {
   async function onSend() {
     const content = inputText.value.trim();
     if (!content || sending.value) return;
+    if (isAwaitingUser.value) {
+      await submitAwaitingReply();
+      return;
+    }
 
     if (selectedEntityKind.value === "agent") {
       markSending();
@@ -861,6 +907,8 @@ export function useChatWorkspace() {
   onUnmounted(() => {
     stopPendingPoll();
     clearSendingTimeout();
+    chatStream?.disconnect();
+    teamStream?.disconnect();
   });
 
   function makeSessionTitle(content: string) {
@@ -1102,6 +1150,137 @@ export function useChatWorkspace() {
     }));
   }
 
+  function chatModelOptionsToPlatform(rows: ChatOption[]): PlatformResource[] {
+    return rows
+      .filter((item) => item.enabled !== false)
+      .map((item, index) => {
+        let provider = "";
+        let model = "";
+        try {
+          const meta = JSON.parse(item.metadata_json || "{}") as { provider?: string; model?: string };
+          provider = meta.provider ?? "";
+          model = meta.model ?? "";
+        } catch {
+          /* ignore */
+        }
+        return {
+          id: item.key || `chat-opt-${index}`,
+          resource: "llm-provider-models" as const,
+          key: item.key,
+          name: item.label || item.key,
+          description: "",
+          status: "active",
+          enabled: item.enabled,
+          sort_order: item.sort_order,
+          parent_id: "",
+          level: "",
+          agent_id: "",
+          provider,
+          model,
+          config_json: "{}",
+          metadata_json: item.metadata_json,
+          created_at: "",
+          updated_at: "",
+          deleted_at: "",
+        };
+      });
+  }
+
+  function applyRunStatusFromEnvelope(env: Envelope) {
+    const rs = runStatusFromEnvelope(env);
+    if (!rs) return;
+    runStatus.value = rs.status;
+    isAwaitingUser.value = rs.status === "awaiting_user";
+    awaitingRunId.value = rs.runId;
+  }
+
+  async function refreshRunStatus() {
+    const sid = selectedSessionForUi.value?.id;
+    if (!sid) {
+      runStatus.value = "idle";
+      isAwaitingUser.value = false;
+      awaitingRunId.value = "";
+      return;
+    }
+    try {
+      const rs = await getRunStatus(sid);
+      runStatus.value = rs.status;
+      isAwaitingUser.value = rs.status === "awaiting_user";
+      awaitingRunId.value = rs.runId;
+    } catch {
+      /* ignore transient errors */
+    }
+  }
+
+  function resolveTeamMemberMeta(agentKey: string) {
+    const team = displayTeams.value.find((row) => row.id === selectedTeamId.value);
+    let def: TeamDefinition | null = null;
+    try {
+      def = team?.definition_json ? (JSON.parse(team.definition_json) as TeamDefinition) : null;
+    } catch {
+      def = null;
+    }
+    const member = def?.members?.find((m) => m.agent_key === agentKey || m.name === agentKey);
+    return {
+      agent_key: agentKey,
+      name: member?.name || agentKey,
+      role: member?.role || "",
+    };
+  }
+
+  function patchAgentMessages(sessionId: string, streamId: string, env: Envelope, isDone: boolean) {
+    const exists = store.messages.some((m) => m.id === streamId);
+    if (!exists) {
+      store.messages = [
+        ...store.messages,
+        { ...mockMessage(streamId, sessionId, "assistant", ""), status: "streaming" },
+      ];
+    }
+    store.messages = patchStreamingMessage(store.messages, streamId, {
+      text: isDone ? undefined : env.content?.text,
+      reasoning: isDone ? undefined : env.content?.reasoning,
+      replaceText: isDone ? env.content?.text : undefined,
+      replaceReasoning: isDone ? env.content?.reasoning : undefined,
+      status: isDone ? "ok" : "streaming",
+    });
+  }
+
+  function patchTeamMessages(sessionId: string, streamId: string, env: Envelope, isDone: boolean) {
+    const cur = teamMessages.value[sessionId] ?? [];
+    const exists = cur.some((m) => m.id === streamId);
+    if (!exists) {
+      teamMessages.value[sessionId] = [...cur, { ...mockMessage(streamId, sessionId, "assistant", ""), status: "streaming" }];
+    }
+    teamMessages.value[sessionId] = patchStreamingMessage(teamMessages.value[sessionId] ?? [], streamId, {
+      text: isDone ? undefined : env.content?.text,
+      reasoning: isDone ? undefined : env.content?.reasoning,
+      replaceText: isDone ? env.content?.text : undefined,
+      replaceReasoning: isDone ? env.content?.reasoning : undefined,
+      status: isDone ? "ok" : "streaming",
+    });
+  }
+
+  async function submitAwaitingReply() {
+    const sid = selectedSessionForUi.value?.id;
+    const reply = inputText.value.trim();
+    if (!sid || !reply || !isAwaitingUser.value) return;
+    try {
+      const ok = await awaitUserReply(sid, reply, awaitingRunId.value || undefined);
+      if (ok) {
+        inputText.value = "";
+        isAwaitingUser.value = false;
+        runStatus.value = "running";
+        $q.notify({ type: "positive", message: t("chat.awaitReplySent", "已提交回复，继续执行") });
+        void refreshRunStatus();
+      }
+    } catch (err) {
+      $q.notify({
+        type: "negative",
+        message: err instanceof Error ? err.message : t("chat.awaitReplyFailed", "提交回复失败"),
+      });
+    }
+  }
+
   async function loadChatOptions() {
     let modeRows: ChatOption[] = [];
     try {
@@ -1114,6 +1293,16 @@ export function useChatWorkspace() {
       modelRows = await listPlatformResources("llm-provider-models");
     } catch {
       /* keep empty; model selector falls back to labels only */
+    }
+    if (!modelRows.length) {
+      try {
+        const catalogModels = await listChatOptions("model");
+        if (catalogModels.length) {
+          modelRows = chatModelOptionsToPlatform(catalogModels);
+        }
+      } catch {
+        /* ignore */
+      }
     }
     if (modeRows.length) {
       modeOpts.value = modeRows.map((item) => ({ label: item.label, value: item.key }));
@@ -1147,6 +1336,20 @@ export function useChatWorkspace() {
   function getProviderModelValue(row: PlatformResource) {
     return row.key || `${row.provider}:${row.model}`;
   }
+
+  watch(
+    () => selectedSessionForUi.value?.id,
+    (sid) => {
+      if (sid) {
+        void refreshRunStatus();
+      } else {
+        runStatus.value = "idle";
+        isAwaitingUser.value = false;
+        awaitingRunId.value = "";
+      }
+    },
+    { immediate: true }
+  );
 
   onMounted(async () => {
     await Promise.all([loadChatOptions(), loadCategoryTree(), loadTeams()]);
@@ -1196,6 +1399,13 @@ export function useChatWorkspace() {
     provOpts,
     attachments,
     pendingMessages,
+    isAwaitingUser,
+    runStatus,
+    wsReplaying,
+    submitAwaitingReply,
+    sessionArtifacts,
+    sessionArtifactsLoading,
+    openSessionArtifact,
     settingsOpen,
     settingsMode,
     settingsId,

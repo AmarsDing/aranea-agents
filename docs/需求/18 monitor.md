@@ -2,7 +2,7 @@
 
 本文档描述控制台 **监控** 相关页面的信息架构、控件与数据契约，与 **运行日志**、**审计**、**实时事件**、**LLM / 模型调用追踪** 对齐。**前端实现采用 Quasar Framework（Vue 3）**：路由 `vue-router`，布局 **`QLayout` / `QPageContainer` / `QPage`**，主题跟随控制台统一主题（`Quasar Dark Plugin` / `$q.dark`）。
 
-> 2026-05-18 更新：标注各功能模块实现状态，与当前代码对齐。
+> 2026-05-19 更新：监控实时事件口径统一为 WebSocket + EventBus。历史 `team-run-events` SSE / 独立 SSE Broker 已从当前主链路移除，后续不得作为新实现入口。
 
 **术语区分**
 
@@ -20,7 +20,7 @@
 | 用户问题 | 对应页面 / Tab | 数据来源 | 实现状态 |
 |----------|----------------|----------|----------|
 | 系统最近发生了哪些管理操作？ | 活动日志 Audit | `audit_logs` / `/api/v1/monitor/audit` | ✅ 已实现 |
-| Team / Agent 运行时现在正在发生什么？ | 实时事件 Events | `team-run-events` SSE、`monitor_events` | ✅ 已实现 |
+| Team / Agent 运行时现在正在发生什么？ | 实时事件 Events | `/v1/ws` + EventBus Envelope、`monitor_events` | ✅ 基础已实现 |
 | 哪些模型调用慢、失败、成本高？ | Usage / Traces | `model_token_usage_events`、`model_token_usage_daily`、`monitor_traces` | ✅ 已实现 |
 | 某次对话为什么失败？ | Trace 详情 | Trace + spans + error payload | ✅ 已实现 |
 | Gateway / 后端进程是否有异常日志？ | Logs | WS 推送 + 内存快照 | ✅ 已实现 |
@@ -30,7 +30,7 @@
 | 模块 | 状态 | 说明 |
 |------|------|------|
 | Audit | ✅ 已实现 | 表格、刷新、分页（limit/offset）、事件类型/实体类型/操作者/关键字筛选、详情弹窗、扩展字段（actor/ip/user_agent/severity/metadata_json） |
-| Events | ✅ 已实现 | 持久化事件列表 + SSE 实时运行事件、分类 Tab（全部/任务/消息/Agent/工具/系统）、JSON 详情、暂停/恢复/清除 |
+| Events | ✅ 基础已实现 | 持久化事件列表 + WS 实时运行事件、分类 Tab（全部/任务/消息/Agent/工具/系统）、JSON 详情、暂停/恢复/清除 |
 | Traces | ✅ 已实现 | 列表与 JSON 详情、Span 树提取、Agent/Provider/Model/Status 过滤、分页 |
 | Usage | ✅ 已实现 | 总览卡（请求数/成功率/Token/费用）、Top 模型、Top Agent、最近异常、时间范围选择 |
 | Logs | ✅ 已实现 | WS 日志流、级别过滤、关键字搜索、实时状态指示、暂停/恢复/清除 |
@@ -154,7 +154,7 @@
 
 ## 3. 实时事件（Real-time Events）
 
-展示 **Team / Agent** 侧经 **SSE / WebSocket** 推送的**结构化事件流**。
+展示 **Team / Agent** 侧经 **WebSocket + EventBus Envelope** 推送的**结构化事件流**。
 
 > 实现状态：✅ 已实现。通过 `RealtimeEvents.vue` 组件 + `MonitorService.ListMonitorEvents` + WS 推送。
 > 增强项：分类 Tab（全部/任务/消息/Agent/工具/系统）、事件类型/Agent ID/状态过滤、分页。
@@ -287,7 +287,7 @@ Tab 状态同步到 query：`/monitor/logs?tab=audit`，便于刷新后保留当
 | `pages/MonitorPage.vue` | 页面壳、5 Tab（Usage/Audit/Events/Traces/Logs） |
 | `components/monitor/UsageOverview.vue` | 模型用量总览 |
 | `components/monitor/AuditTable.vue` | 活动日志表格（筛选 + 分页） |
-| `components/monitor/RealtimeEvents.vue` | SSE 事件流 |
+| `components/monitor/RealtimeEvents.vue` | WS 事件流 |
 | `components/monitor/TraceList.vue` | Trace 列表与详情 |
 | `components/monitor/LogStream.vue` | 日志流 |
 | `features/monitor/api.ts` | Monitor API（含分页/过滤参数） |
@@ -301,7 +301,7 @@ Tab 状态同步到 query：`/monitor/logs?tab=audit`，便于刷新后保留当
 
 - JSON 详情默认折叠大字段，单字段超过 2,000 字符时显示「展开」。
 - 密钥、Token、Authorization、Cookie、API Key 等字段统一用 `******` 脱敏。
-- SSE 前端缓冲默认最多 1,000 条事件；Logs 默认最多 5,000 行。
+- WS 前端缓冲默认最多 1,000 条事件；Logs 默认最多 5,000 行。
 
 ---
 
@@ -309,7 +309,7 @@ Tab 状态同步到 query：`/monitor/logs?tab=audit`，便于刷新后保留当
 
 - [x] 页面进入 `/monitor/logs` 后能正常加载 Audit / Events / Traces / Usage 数据，失败时显示可读错误。
 - [x] 活动日志：表格列与 API 字段一致；支持刷新、分页、事件类型/实体类型/操作者/关键字筛选、详情查看。
-- [x] 实时事件：SSE 连接状态清晰；支持暂停、恢复、清除、JSON 详情；分类 Tab。
+- [x] 实时事件：WS 连接状态清晰；支持暂停、恢复、清除、JSON 详情；分类 Tab。
 - [x] Usage：总览卡、Top 模型、Top Agent、最近异常能从 `/api/v1/usage/*` 加载。
 - [x] 追踪：列表与详情能展示 Token、耗时、状态、错误信息；存在 spans 时展示 Span 树。
 - [x] 日志流：支持开始/停止、级别过滤、关键字过滤、计数。

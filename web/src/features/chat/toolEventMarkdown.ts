@@ -72,7 +72,7 @@ function formatToolResultSummary(event: ToolUseEvent): string {
   return parts.join("");
 }
 
-/** Markdown for a chat tool_event row (mirrors backend ChatToolUseSSE). */
+/** Markdown for a chat tool_event row (mirrors backend tool_event envelope projection). */
 export function formatToolEventMarkdown(event: ToolUseEvent): string {
   const label = event.tool_label || event.tool_name;
   const agent = event.agent_name || event.agent_key || "Agent";
@@ -119,7 +119,7 @@ export function toolEventToMessage(sessionID: string, event: ToolUseEvent): Mess
         name: event.agent_name || event.agent_key,
         icon: event.agent_icon || ""
       },
-      tool_event: event
+      tool_event: { ...event, is_long_running: event.is_long_running }
     }),
     error_message: event.error || "",
     created_at: event.occurred_at || new Date().toISOString()

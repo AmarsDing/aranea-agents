@@ -2,6 +2,9 @@ package biz
 
 import (
 	"context"
+	"strings"
+
+	"github.com/google/uuid"
 )
 
 type AuditLog struct {
@@ -76,8 +79,18 @@ type MonitorListResult struct {
 	Total int32
 }
 
+type MonitorEventWrite struct {
+	EventKey     string
+	Name         string
+	Description  string
+	Status       string
+	MetadataJSON string
+}
+
 type MonitorRepo interface {
 	ListAuditLogs(ctx context.Context, query AuditQuery) (AuditListResult, error)
+	InsertAuditLog(ctx context.Context, entry AuditLog) error
+	InsertMonitorEvent(ctx context.Context, ev MonitorEventWrite) error
 	ListMonitorEvents(ctx context.Context, query MonitorEventsQuery) (MonitorListResult, error)
 	GetMonitorEvent(ctx context.Context, id string) (MonitorPlatformRow, error)
 	ListMonitorTraces(ctx context.Context, query MonitorTracesQuery) (MonitorListResult, error)
@@ -98,6 +111,25 @@ func auditLimit(limit int32) int {
 		l = 200
 	}
 	return l
+}
+
+// RecordAuditLog persists an admin audit row (best-effort).
+func (u *MonitorUsecase) RecordAuditLog(ctx context.Context, entry AuditLog) error {
+	if u == nil || u.repo == nil {
+		return nil
+	}
+	if strings.TrimSpace(entry.ID) == "" {
+		entry.ID = uuid.NewString()
+	}
+	return u.repo.InsertAuditLog(ctx, entry)
+}
+
+// RecordMonitorEvent persists a monitor_events row (best-effort).
+func (u *MonitorUsecase) RecordMonitorEvent(ctx context.Context, ev MonitorEventWrite) error {
+	if u == nil || u.repo == nil {
+		return nil
+	}
+	return u.repo.InsertMonitorEvent(ctx, ev)
 }
 
 func (u *MonitorUsecase) ListAuditLogs(ctx context.Context, query AuditQuery) (AuditListResult, error) {

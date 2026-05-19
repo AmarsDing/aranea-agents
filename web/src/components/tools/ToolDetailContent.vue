@@ -30,6 +30,56 @@
             <span class="text-weight-medium">成功 / 失败：</span>{{ tool.success_count }} / {{ tool.failure_count }}
           </div>
         </div>
+        <q-card v-if="tool.source !== 'mcp'" flat bordered class="q-mt-sm">
+          <q-card-section class="q-pb-sm">
+            <div class="text-subtitle2">在线测试</div>
+            <div class="text-caption text-grey-7">单次调用验证（默认超时 30s，写入 tool_test 调用记录）。</div>
+          </q-card-section>
+          <q-card-section class="q-pt-none q-gutter-sm">
+            <q-input
+              :model-value="testArgsJson"
+              type="textarea"
+              dense
+              outlined
+              autogrow
+              label="参数 JSON"
+              @update:model-value="$emit('update:testArgsJson', String($event ?? '{}'))"
+            />
+            <div class="row q-gutter-sm items-center">
+              <q-input
+                :model-value="testTimeoutSec"
+                class="col-4"
+                dense
+                outlined
+                type="number"
+                label="超时 (秒)"
+                :min="1"
+                :max="120"
+                @update:model-value="$emit('update:testTimeoutSec', Number($event) || 30)"
+              />
+              <q-btn
+                no-caps
+                unelevated
+                class="tool-primary-btn"
+                label="运行测试"
+                icon="play_arrow"
+                :loading="testRunning"
+                @click="$emit('run-test')"
+              />
+            </div>
+            <q-banner v-if="testResult" rounded :class="testResult.status === 'success' ? 'bg-green-1' : 'bg-red-1'">
+              <template #avatar>
+                <q-icon
+                  :name="testResult.status === 'success' ? 'check_circle' : 'error'"
+                  :color="testResult.status === 'success' ? 'positive' : 'negative'"
+                />
+              </template>
+              <div class="text-body2">{{ testResult.status }} · {{ testResult.duration_ms }}ms</div>
+              <div v-if="testResult.error_message" class="text-caption q-mt-xs">{{ testResult.error_message }}</div>
+              <tool-json-block v-else-if="testResult.result_preview" class="q-mt-xs" :text="testResult.result_preview" />
+            </q-banner>
+          </q-card-section>
+        </q-card>
         <q-expansion-item dense-toggle default-open label="参数 Schema">
           <tool-json-block class="q-mt-sm" :text="prettyJSON(tool.parameters_schema_json)" />
         </q-expansion-item>
@@ -59,14 +109,16 @@
               </q-item-section>
               <q-item-section>
                 <q-item-label>{{ o.agent_id }}</q-item-label>
-                <q-item-label caption>模式：{{ modeLabel(o.mode) }}<span v-if="o.requires_confirmation"> · 需确认</span></q-item-label>
+                <q-item-label caption>
+                  模式：{{ modeLabel(o.mode) }}<span v-if="o.requires_confirmation"> · 需确认</span>
+                </q-item-label>
               </q-item-section>
               <q-item-section side>
                 <div class="row q-gutter-xs">
-                  <q-btn flat dense round icon="edit" size="sm" class="tool-icon-btn" @click="openOverrideEditor(o)">
+                  <q-btn flat dense round icon="edit" size="sm" class="tool-icon-btn" @click="$emit('edit-override', o)">
                     <q-tooltip>编辑覆盖</q-tooltip>
                   </q-btn>
-                  <q-btn flat dense round icon="delete" size="sm" class="tool-icon-btn" @click="removeOverride(o)">
+                  <q-btn flat dense round icon="delete" size="sm" class="tool-icon-btn" @click="$emit('delete-override', o)">
                     <q-tooltip>删除覆盖</q-tooltip>
                   </q-btn>
                 </div>
@@ -74,7 +126,7 @@
             </q-item>
           </q-list>
           <div v-else class="text-caption q-pa-sm">暂无 Agent 覆盖配置</div>
-          <q-btn flat no-caps icon="add" label="添加覆盖" class="tool-accent-btn q-mt-sm" @click="openOverrideEditor(null)" />
+          <q-btn flat no-caps icon="add" label="添加覆盖" class="tool-accent-btn q-mt-sm" @click="$emit('edit-override', null)" />
         </template>
       </q-tab-panel>
 
@@ -111,62 +163,55 @@
       </q-tab-panel>
     </q-tab-panels>
 
-    <q-dialog v-model="overrideEditorOpen" persistent>
-      <q-card class="tool-dialog-card" style="max-width: 480px; width: 90vw">
-        <q-card-section class="row items-center justify-between">
-          <div class="text-h6">{{ editingOverride ? '编辑 Agent 覆盖' : '添加 Agent 覆盖' }}</div>
-          <q-btn flat dense round icon="close" class="tool-icon-btn" v-close-popup />
-        </q-card-section>
-        <q-separator />
-        <q-card-section class="q-gutter-sm">
-          <q-input v-model="overrideForm.agent_id" label="Agent ID" dense outlined :disable="!!editingOverride" />
-          <q-select v-model="overrideForm.mode" label="模式" dense outlined :options="modeOptions" emit-value map-options />
-          <q-toggle v-model="overrideForm.enabled" label="启用" />
-          <q-toggle v-model="overrideForm.requires_confirmation" label="需要确认" />
-          <q-input v-model="overrideForm.config_override_json" label="配置覆盖 JSON" type="textarea" dense outlined autogrow />
-        </q-card-section>
-        <q-card-actions align="right">
-          <q-btn flat no-caps label="取消" v-close-popup />
-          <q-btn no-caps unelevated class="tool-primary-btn" label="保存" :loading="overrideSaving" @click="saveOverride" />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
+    <tool-override-editor-dialog
+      :open="overrideEditorOpen"
+      :form="overrideForm"
+      :editing="Boolean(editingOverride)"
+      :saving="overrideSaving"
+      @update:open="$emit('update:overrideEditorOpen', $event)"
+      @update:form="$emit('update:overrideForm', $event)"
+      @save="$emit('save-override')"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, watch } from "vue";
-import { useQuasar } from "quasar";
+import { ref } from "vue";
 import type { Tool, ToolAgentOverride, ToolInvocation } from "../../features/tools/types";
+import type { ToolOverrideForm } from "../../features/tools/useToolDetailPanel";
+import type { ToolTestResult } from "../../features/tools/types";
 import ToolJsonBlock from "./ToolJsonBlock.vue";
+import ToolOverrideEditorDialog from "./ToolOverrideEditorDialog.vue";
 import { prettyJSON, riskLabel, runtimeStatusLabel } from "./toolUi";
-import { useToolsStore } from "../../stores/tools/index";
 
-const toolsStore = useToolsStore();
-
-const props = defineProps<{
+defineProps<{
   tool: Tool | null;
+  overrides: ToolAgentOverride[];
+  overridesLoading: boolean;
+  recentRuns: ToolInvocation[];
+  runsLoading: boolean;
+  testArgsJson: string;
+  testTimeoutSec: number;
+  testRunning: boolean;
+  testResult: ToolTestResult | null;
+  overrideEditorOpen: boolean;
+  editingOverride: ToolAgentOverride | null;
+  overrideSaving: boolean;
+  overrideForm: ToolOverrideForm;
 }>();
 
-const $q = useQuasar();
+defineEmits<{
+  "update:testArgsJson": [value: string];
+  "update:testTimeoutSec": [value: number];
+  "run-test": [];
+  "edit-override": [row: ToolAgentOverride | null];
+  "delete-override": [row: ToolAgentOverride];
+  "update:overrideEditorOpen": [value: boolean];
+  "update:overrideForm": [value: ToolOverrideForm];
+  "save-override": [];
+}>();
+
 const activeTab = ref("overview");
-
-const overrides = ref<ToolAgentOverride[]>([]);
-const overridesLoading = ref(false);
-
-const recentRuns = ref<ToolInvocation[]>([]);
-const runsLoading = ref(false);
-
-const overrideEditorOpen = ref(false);
-const editingOverride = ref<ToolAgentOverride | null>(null);
-const overrideSaving = ref(false);
-const overrideForm = ref({
-  agent_id: "",
-  mode: "inherit",
-  enabled: true,
-  requires_confirmation: false,
-  config_override_json: "{}"
-});
 
 const modeOptions = [
   { label: "继承 (inherit)", value: "inherit" },
@@ -192,97 +237,6 @@ function runStatusColor(status: string): string {
   if (status === "blocked") return "warning";
   return "grey";
 }
-
-async function loadOverrides() {
-  if (!props.tool) return;
-  overridesLoading.value = true;
-  try {
-    overrides.value = await toolsStore.fetchOverrides(props.tool.id || props.tool.key);
-  } catch {
-    overrides.value = [];
-  } finally {
-    overridesLoading.value = false;
-  }
-}
-
-async function loadRecentRuns() {
-  if (!props.tool) return;
-  runsLoading.value = true;
-  try {
-    const res = await toolsStore.fetchToolRuns(props.tool.id || props.tool.key, { page: 1, page_size: 20 });
-    recentRuns.value = res.items;
-  } catch {
-    recentRuns.value = [];
-  } finally {
-    runsLoading.value = false;
-  }
-}
-
-function openOverrideEditor(o: ToolAgentOverride | null) {
-  editingOverride.value = o;
-  if (o) {
-    overrideForm.value = {
-      agent_id: o.agent_id,
-      mode: o.mode,
-      enabled: o.enabled,
-      requires_confirmation: o.requires_confirmation,
-      config_override_json: o.config_override_json
-    };
-  } else {
-    overrideForm.value = { agent_id: "", mode: "inherit", enabled: true, requires_confirmation: false, config_override_json: "{}" };
-  }
-  overrideEditorOpen.value = true;
-}
-
-async function saveOverride() {
-  if (!props.tool) return;
-  overrideSaving.value = true;
-  try {
-    await toolsStore.saveOverride({
-      tool_id: props.tool.id || props.tool.key,
-      agent_id: overrideForm.value.agent_id,
-      enabled: overrideForm.value.enabled,
-      mode: overrideForm.value.mode,
-      config_override_json: overrideForm.value.config_override_json,
-      requires_confirmation: overrideForm.value.requires_confirmation
-    });
-    overrideEditorOpen.value = false;
-    await loadOverrides();
-  } catch (err) {
-    $q.notify({ type: "negative", message: err instanceof Error ? err.message : "保存覆盖失败" });
-  } finally {
-    overrideSaving.value = false;
-  }
-}
-
-function removeOverride(o: ToolAgentOverride) {
-  if (!props.tool) return;
-  $q.dialog({ title: "删除覆盖", message: `确认删除 Agent ${o.agent_id} 的覆盖？`, cancel: true, persistent: true }).onOk(async () => {
-    try {
-      await toolsStore.removeOverride(props.tool!.id || props.tool!.key, o.agent_id);
-      await loadOverrides();
-    } catch (err) {
-      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "删除覆盖失败" });
-    }
-  });
-}
-
-watch(
-  () => props.tool,
-  (t) => {
-    if (t) {
-      loadOverrides();
-      loadRecentRuns();
-    }
-  }
-);
-
-onMounted(() => {
-  if (props.tool) {
-    loadOverrides();
-    loadRecentRuns();
-  }
-});
 </script>
 
 <style scoped lang="sass">
@@ -321,11 +275,4 @@ body:not(.body--dark) .tool-icon-btn:hover
 
 .override-item, .run-item
   border-radius: 8px
-
-.tool-dialog-card
-  border-radius: 22px
-  border: 1px solid var(--glass-border)
-  background: var(--glass-elevated)
-  backdrop-filter: blur(var(--glass-blur-elevated))
-  -webkit-backdrop-filter: blur(var(--glass-blur-elevated))
 </style>

@@ -92,6 +92,15 @@ func (m *memKnowledgeRepo) SearchChunks(_ context.Context, q biz.KnowledgeSearch
 
 // --- Tests ---
 
+func TestKnowledgeUsecase_UnavailableWithoutRepo(t *testing.T) {
+	uc := biz.NewKnowledgeUsecase(nil)
+	ctx := context.Background()
+	_, _, err := uc.ListCollections(ctx, "", 10, 0)
+	if err == nil {
+		t.Fatal("expected error when repo is nil")
+	}
+}
+
 func TestKnowledgeUsecase_CreateCollection(t *testing.T) {
 	uc := biz.NewKnowledgeUsecase(newMemKnowledgeRepo())
 	c, err := uc.CreateCollection(context.Background(), biz.KnowledgeCollection{

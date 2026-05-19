@@ -106,26 +106,26 @@ message CancelRunResponse {
   bool cancelled = 1;
 }
 
+// 已实现（2026-05-19）— 以 chat.proto 为准
 message EnqueueUserMessageRequest {
   string session_id = 1 [(google.api.field_behavior) = REQUIRED];
-  string request_id = 2 [(google.api.field_behavior) = REQUIRED];
-  string content = 3 [(google.api.field_behavior) = REQUIRED];
+  string content = 2 [(google.api.field_behavior) = REQUIRED];
 }
 
 message EnqueueUserMessageResponse {
-  bool enqueued = 1;
+  bool accepted = 1;   // steerable enqueue 或 pending 入队成功
+  bool queued = 2;     // true 表示落入 pendingQueue（非 steerable）
+  string pending_id = 3;
 }
 
 service ChatService {
-  // ... 已有方法 ...
-
-  rpc CancelRun(CancelRunRequest) returns (CancelRunResponse) {
-    option (google.api.http) = { post: "/v1/chat/cancel-run" body: "*" };
-  }
   rpc EnqueueUserMessage(EnqueueUserMessageRequest) returns (EnqueueUserMessageResponse) {
-    option (google.api.http) = { post: "/v1/chat/enqueue-user-message" body: "*" };
+    option (google.api.http) = { post: "/v1/chat/enqueue" body: "*" };
   }
 }
+
+// 取消：沿用 StopGeneration（HTTP）与 WS cancel → ChatService.CancelRun → RunRegistry.Cancel
+// 独立 CancelRun RPC 仍为规划项，非当前实现
 ```
 
 ### GetRunStatus Proto 对齐
@@ -200,7 +200,7 @@ type RunStatusInfo struct {
 
 ### 3.2 RunnerUsecase
 
-当前运行控制逻辑分散在 `ChatService` 中（`activeRuns`、`runStatuses`、`pendingQueue` 等）。引入 `RunnerUsecase` 将运行控制逻辑下沉到 Biz 层：
+运行控制已第一步抽到 `internal/runtime.RunRegistry`（active run、cancel、status）；`pendingQueue` / `awaitChans` 仍在 `ChatService`。后续可引入 `RunnerUsecase` 或 `RunnerManager` 统一入口：
 
 ```go
 type RunnerUsecase struct {

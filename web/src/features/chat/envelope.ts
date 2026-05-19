@@ -6,6 +6,7 @@ export type EnvelopeType =
   | "state_delta"
   | "transfer"
   | "runner_completion"
+  | "run_status"
   | "error"
   | "log"
   | "graph_node_start"
@@ -23,7 +24,8 @@ export type EnvelopeType =
   | "graph_step"
   | "graph_execution_done"
   | "graph_node_error"
-  | "graph_node_custom";
+  | "graph_node_custom"
+  | "knowledge_ingest";
 
 export type EnvelopeContent = {
   text: string;

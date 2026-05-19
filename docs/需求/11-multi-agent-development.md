@@ -1,6 +1,6 @@
 # Multi-Agent 编排 — 开发规划文档
 
-> **版本**：2026-05-18 | **状态**：✅ 核心功能已完成；🟡 A2A / SSE 增强 / 汇总待实现
+> **版本**：2026-05-19 | **状态**：✅ 核心功能已完成；🟡 A2A / WS member 事件 / 汇总待实现
 > **需求**：[11 multi-agent.md](./11%20multi-agent.md) · **设计**：[11 multi-agent.design.md](./11%20multi-agent.design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：EP-BIZ-05
 
@@ -20,7 +20,7 @@ Multi-Agent 编排：Team 模式（sequential / parallel / coordinator / critic_
 - `internal/team/definition.go` — Definition / SwarmConfigDef / MemberToolDef / CriticLoopConfig
 - `internal/team/trpc_build.go` — BuildTRPCTeam / buildSwarmOptions / buildEscalationFunc / buildCoordinatorOptions
 - `internal/team/runner_team_trpc.go` — Team 运行时（trpc-agent-go Team 编排）
-- `internal/biz/team_run_events.go` — SSE Broker
+- `internal/event` + `internal/server/ws.go` — Team 事件统一通过 EventBus / WebSocket Envelope 推送
 
 ---
 
@@ -36,10 +36,10 @@ Multi-Agent 编排：Team 模式（sequential / parallel / coordinator / critic_
 | 动态成员管理 | ✅ | UpdateSwarmMembers API |
 | 结构导出 | ✅ | ExportTeamStructure API |
 | escalationFunc 增强 | ✅ | 支持 ScoreThreshold 结构化评分 |
-| Team 对话 | ✅ | Chat SSE → `owner_type == "team"` |
+| Team 对话 | ✅ | Chat WS / HTTP unary → `owner_type == "team"` |
 | RunTeamTest | ⏳ | Service 桩实现，返回 501 |
 | A2A call_agent 工具 | ❌ | `call_agent` 未注入 Agent 工具集 |
-| member_* SSE 事件 | ❌ | Team 对话不发射子 Agent 实时流事件 |
+| member_* WS 事件 | ❌ | Team 对话不稳定发射子 Agent 实时流 Envelope |
 | Team 运行结果结构化汇总 | ❌ | 无成员贡献度 / 工具调用统计 |
 
 ---
@@ -61,11 +61,11 @@ Multi-Agent 编排：Team 模式（sequential / parallel / coordinator / critic_
 - 支持跨 Team Agent 调用
 - 依赖 M26 a2a-protocol 的 `call_agent` 工具实现
 
-### P2 — member_* SSE 事件
+### P2 — member_* WS 事件
 
-Team 对话时 `member_message_start/delta/done` SSE 事件未发射，前端无法展示子 Agent 实时流。需要：
+Team 对话时 `member_message_start/delta/done` WS Envelope 事件未稳定发射，前端无法展示子 Agent 实时流。需要：
 - 在 `chat_native.go` 的 Team turn 中发射 member_* 事件
-- 与 SSE 管道对齐
+- 与 EventBus / WS 管道对齐
 - 前端接收并渲染子 Agent 增量输出
 
 ### P3 — Team 运行结果结构化汇总
@@ -98,8 +98,8 @@ Team 运行结果无结构化汇总（如各成员贡献度、工具调用统计
 ### Phase 3 — A2A 与实时增强
 
 - ❌ A2A call_agent 工具注入
-- ❌ member_* SSE 事件发射
-- ❌ SSE 增强：step_started / 进度百分比 / 事件回放
+- ❌ member_* WS 事件发射
+- ❌ WS 增强：step_started / 进度百分比 / 事件回放
 
 ### Phase 4 — 高级分析
 
@@ -118,7 +118,7 @@ Team 运行结果无结构化汇总（如各成员贡献度、工具调用统计
 | 3 | `trpc_build.go`：注入 `call_agent` 工具 | P1 | EP-BIZ-05 | ❌ 未开始 |
 | 4 | `chat_native.go`：Team turn 中发射 member_* 事件 | P2 | — | ❌ 未开始 |
 | 5 | TeamRunSummary 结构化汇总 API | P3 | — | ❌ 未开始 |
-| 6 | SSE 增强：step_started / 进度 / 回放 | P3 | — | ❌ 未开始 |
+| 6 | WS 增强：step_started / 进度 / 回放 | P3 | — | ❌ 未开始 |
 | 7 | 单测覆盖 TeamRunner 关键路径 | P1 | EP-TEST-01 | ❌ 未开始 |
 
 ---
@@ -154,6 +154,6 @@ Team 运行结果无结构化汇总（如各成员贡献度、工具调用统计
 ## 7. 依赖与风险
 
 - A2A call_agent 依赖 M26 a2a-protocol 的 `call_agent` 工具实现
-- member_* 事件需与 SSE 管道对齐
+- member_* 事件需与 EventBus / WS 管道对齐
 - RunTeamTest 需要创建临时 Session，需考虑并发安全和资源清理
 - CancelTeamRun 需要与 trpc-agent-go 运行时上下文取消机制集成

@@ -584,6 +584,27 @@ func (r *toolRepo) SyncBuiltinTools(ctx context.Context) error {
 	return syncBuiltinToolsFromRegistry(ctx, r.data.Ent())
 }
 
+func (r *toolRepo) ListToolAgentOverridesByAgent(ctx context.Context, agentID string) ([]biz.ToolAgentOverride, error) {
+	client := r.data.Ent()
+	if client == nil {
+		return nil, errors.New("ent client unavailable")
+	}
+	agentID = strings.TrimSpace(agentID)
+	if agentID == "" {
+		return nil, nil
+	}
+	rows, err := client.QueryContext(ctx, `
+		SELECT id, COALESCE(tool_id, ''), tool_key, agent_id, enabled, mode, config_override_json, requires_confirmation, created_at, updated_at
+		FROM tool_agent_overrides
+		WHERE agent_id = ? AND deleted_at = ''
+		ORDER BY tool_key`, agentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanToolAgentOverrides(rows)
+}
+
 func (r *toolRepo) ListToolAgentOverrides(ctx context.Context, toolKey string) ([]biz.ToolAgentOverride, error) {
 	client := r.data.Ent()
 	if client == nil {
@@ -598,6 +619,10 @@ func (r *toolRepo) ListToolAgentOverrides(ctx context.Context, toolKey string) (
 		return nil, err
 	}
 	defer rows.Close()
+	return scanToolAgentOverrides(rows)
+}
+
+func scanToolAgentOverrides(rows *sql.Rows) ([]biz.ToolAgentOverride, error) {
 	var result []biz.ToolAgentOverride
 	for rows.Next() {
 		var o biz.ToolAgentOverride

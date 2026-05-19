@@ -108,6 +108,48 @@ func (c *Chain) Append(cbs ...Callback) *Chain {
 	return NewChain(all...)
 }
 
+// HasAgentHooks reports whether the chain contains agent lifecycle hooks.
+func (c *Chain) HasAgentHooks() bool {
+	if c == nil {
+		return false
+	}
+	for _, cb := range c.entries {
+		switch cb.(type) {
+		case BeforeAgentHook, AfterAgentHook:
+			return true
+		}
+	}
+	return false
+}
+
+// HasModelHooks reports whether the chain contains model lifecycle hooks.
+func (c *Chain) HasModelHooks() bool {
+	if c == nil {
+		return false
+	}
+	for _, cb := range c.entries {
+		switch cb.(type) {
+		case BeforeModelHook, AfterModelHook:
+			return true
+		}
+	}
+	return false
+}
+
+// HasToolHooks reports whether the chain contains tool lifecycle hooks.
+func (c *Chain) HasToolHooks() bool {
+	if c == nil {
+		return false
+	}
+	for _, cb := range c.entries {
+		switch cb.(type) {
+		case BeforeToolHook, AfterToolHook:
+			return true
+		}
+	}
+	return false
+}
+
 // AdaptAgentCallbacks constructs a *trpcagent.Callbacks from every
 // BeforeAgentHook and AfterAgentHook in the chain.
 func (c *Chain) AdaptAgentCallbacks() *trpcagent.Callbacks {
