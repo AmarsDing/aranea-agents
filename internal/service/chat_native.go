@@ -227,14 +227,8 @@ func (s *ChatService) runNativeAgentTurn(ctx context.Context, req *chatv1.SendCh
 			unlock()
 			return biz.ChatMessage{}, biz.ChatMessage{}, qerr
 		}
-		if s.td.Pipeline.Bus != nil {
-			env := event.NewEnvelope(event.EnvelopeTypeLog, "chat-native", sess.ID)
-			env.Metadata = map[string]any{"level": "INFO", "source": "chat-native"}
-			env.Content = &event.EnvelopeContent{Text: fmt.Sprintf(
-				"chat_native phase=team_invoke session_id=%s team_id=%s content_len=%d",
-				sess.ID, strings.TrimSpace(sess.TeamID), len(content))}
-			s.td.Pipeline.Bus.Publish(ctx, env)
-		}
+		flow.LogStart("chat.team.invoke", "委派团队会话",
+			event.P("team_id", strings.TrimSpace(sess.TeamID)), event.P("content_len", len(content)))
 		runID := uuid.NewString()
 		teamCtx, teamCancel := context.WithCancel(ctx)
 		s.runs.StoreCancelable(sessionID, runID, teamCancel)
@@ -349,7 +343,7 @@ func (s *ChatService) RunAgentTurn(ctx context.Context, agentID, input string, t
 		UserID:    "1",
 	})
 	if err != nil {
-		return "", fmt.Errorf("a2a: create session: %w", err)
+		return "", kerrors.InternalServer("A2A", "create session: "+err.Error())
 	}
 	_, asst, err := s.RunNativeTurnUnary(runCtx, &chatv1.SendChatMessageRequest{
 		SessionId: sess.ID,

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -81,7 +82,7 @@ func (e *TraceEmitter) LogError(stepID, message string, extra ...Pair) {
 	}
 	e.mu.Unlock()
 	e.emit(stepID, FlowPhaseError, FlowSeverityError, message, "", timing, extra)
-	if e.bus != nil {
+	if e.bus != nil && shouldPublishFlowChatError(stepID) {
 		errEnv := NewEnvelope(EnvelopeTypeError, "flow", e.tc.SessionID)
 		errEnv.Error = &EnvelopeError{
 			Type:    "flow_" + normalizeStepID(stepID),
@@ -114,6 +115,22 @@ func (e *TraceEmitter) FinishRoot(status string) {
 		return
 	}
 	e.endSpan(e.rootID, status)
+}
+
+// TraceID returns the correlation trace id for this run.
+func (e *TraceEmitter) TraceID() string {
+	if e == nil {
+		return ""
+	}
+	return strings.TrimSpace(e.tc.TraceID)
+}
+
+// RunID returns the run id for this emitter.
+func (e *TraceEmitter) RunID() string {
+	if e == nil {
+		return ""
+	}
+	return strings.TrimSpace(e.tc.RunID)
 }
 
 // MetadataJSON returns spans + trace_id for usage.metadata_json.
@@ -266,4 +283,15 @@ func (e *TraceEmitter) endSpan(id, status string) {
 			return
 		}
 	}
+}
+
+// flowStepsSkipChatError lists monitor-only flow errors that must not surface as chat toasts.
+var flowStepsSkipChatError = map[string]struct{}{
+	"chat.usage_record":       {},
+	"system.agent.tool_build": {},
+}
+
+func shouldPublishFlowChatError(stepID string) bool {
+	_, skip := flowStepsSkipChatError[normalizeStepID(stepID)]
+	return !skip
 }

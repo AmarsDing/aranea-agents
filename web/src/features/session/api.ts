@@ -9,6 +9,7 @@ import type {
   SessionTurn as KratosSessionTurn
 } from "../../services/kratos/session/v1/index";
 import { asRecord, pickStr } from "../../shared/wireJson";
+import type { BatchOperationResult, BatchPreviewResult, SessionBatchScope } from "./types";
 import type { Message } from "../chat/types";
 
 const sessionApi = createSessionService();
@@ -250,6 +251,83 @@ export async function deleteSession(id: string): Promise<void> {
 
 export async function archiveSession(id: string): Promise<void> {
   await sessionApi.ArchiveSession({ id });
+}
+
+function toBatchScope(scope: SessionBatchScope = {}) {
+  return {
+    ownerType: scope.owner_type,
+    agentId: scope.agent_id,
+    teamId: scope.team_id,
+    status: scope.status,
+    contextStatus: scope.context_status,
+    keyword: scope.keyword,
+    userId: undefined
+  };
+}
+
+export async function previewSessionBatch(payload: {
+  mode: "archive" | "delete";
+  ids?: string[];
+  older_than_days?: number;
+  scope?: SessionBatchScope;
+  include_archived?: boolean;
+}): Promise<BatchPreviewResult> {
+  const data = await sessionApi.BatchPreviewSessions({
+    mode: payload.mode,
+    ids: payload.ids,
+    olderThanDays: payload.older_than_days,
+    scope: toBatchScope(payload.scope),
+    includeArchived: payload.include_archived
+  });
+  return {
+    matched: data.matched ?? 0,
+    skipped_running: data.skippedRunning ?? 0,
+    skipped_not_found: data.skippedNotFound ?? 0,
+    truncated: data.truncated ?? false,
+    sample_ids: data.sampleIds ?? []
+  };
+}
+
+export async function batchArchiveSessions(payload: {
+  ids?: string[];
+  older_than_days?: number;
+  scope?: SessionBatchScope;
+}): Promise<BatchOperationResult> {
+  const data = await sessionApi.BatchArchiveSessions({
+    ids: payload.ids,
+    olderThanDays: payload.older_than_days,
+    scope: toBatchScope(payload.scope)
+  });
+  return {
+    matched: data.matched ?? 0,
+    processed: data.processed ?? 0,
+    skipped_running: data.skippedRunning ?? 0,
+    skipped_not_found: data.skippedNotFound ?? 0,
+    truncated: data.truncated ?? false,
+    failed_ids: data.failedIds ?? []
+  };
+}
+
+export async function batchDeleteSessions(payload: {
+  ids?: string[];
+  older_than_days?: number;
+  scope?: SessionBatchScope;
+  include_archived?: boolean;
+}): Promise<BatchOperationResult> {
+  const data = await sessionApi.BatchDeleteSessions({
+    ids: payload.ids,
+    olderThanDays: payload.older_than_days,
+    scope: toBatchScope(payload.scope),
+    includeArchived: payload.include_archived
+  });
+  return {
+    matched: data.matched ?? 0,
+    processed: data.processed ?? 0,
+    skipped_running: data.skippedRunning ?? 0,
+    skipped_not_found: data.skippedNotFound ?? 0,
+    truncated: data.truncated ?? false,
+    failed_ids: data.failedIds ?? []
+  };
 }
 
 export async function updateSessionTitle(id: string, title: string): Promise<Session> {

@@ -33,9 +33,12 @@
     <agent-create-dialog
       v-model="createOpen"
       v-model:self-evolve="selfEvolve"
+      v-model:agent-kind="agentKind"
       v-model:category-industry="categoryIndustry"
       v-model:category-department="categoryDepartment"
       :form="form"
+      :a2a-proxy="a2aProxy"
+      :is-a2a-proxy="isA2AProxyCreate"
       :industry-options="industryOptions"
       :department-options="departmentOptions"
       :position-options="positionOptions"
@@ -108,6 +111,9 @@ const {
   creating,
   checkingModel,
   selfEvolve,
+  agentKind,
+  a2aProxy,
+  isA2AProxyCreate,
   viewMode,
   categoryIndustry,
   categoryDepartment,

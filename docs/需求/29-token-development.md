@@ -18,7 +18,7 @@ Token 用量管理：记录和统计 Agent / Team 运行的 Token 消耗，支�
 
 | 项 | 状态 | 证据 |
 |----|------|------|
-| 明细表 `model_token_usage_events` | ✅ | `docs/sql/08_usage.sql` · `internal/data/sessionmemory/memory_chain.sql` |
+| 明细表 `model_token_usage_events` | ✅ | `docs/sql/08_usage.sql`（与 `internal/data/sql/memory_chain.sql` Usage 段同步） |
 | 日聚合表 `model_token_usage_daily` | ✅ | 写入时自动 upsert |
 | 价格规则表 `model_pricing_rules` | ✅ | `internal/data/ent/schema/model_pricing_rule.go` |
 | 用量记录写入 | ✅ | 主路径 `recordTurnUsage`；Team `team_member` + `team_turn`（`usage_record.go`、`usage_tokens.go`、`turn_helpers.MemberUsage`） |

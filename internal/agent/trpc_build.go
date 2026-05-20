@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"aranea-agents/internal/event"
 	"strings"
@@ -155,7 +156,9 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) 
 		)
 	}
 
-	if ts, err := buildToolsetsForAgent(ctx, ag, deps); err == nil && ts != nil {
+	if ts, err := buildToolsetsForAgent(ctx, ag, deps); err != nil {
+		return nil, fmt.Errorf("tool build failed: %w", err)
+	} else if ts != nil {
 		if len(ts.ToolSets) > 0 {
 			opts = append(opts, trpcllmagent.WithToolSets(ts.ToolSets))
 		}
@@ -294,6 +297,19 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 	}
 	event.CtxFlowLogDone(ctx, "system.agent.tool_build", "工具构建中", event.P("agent_id", ag.ID), event.P("filesystem", cfg.Filesystem), event.P("mcp_servers", len(cfg.MCPServers)))
 	applyRuntimeToolConfigs(ctx, ag.ID, eff, deps, &cfg)
+	tooltrpc.ResolveGeminiFetchModel(&cfg, ag.Provider, ag.Model)
+	if skipped := tooltrpc.PruneUnconfiguredToolFlags(&cfg); len(skipped) > 0 {
+		event.CtxFlowLogWarn(ctx, "system.agent.tool_build", "已跳过未配置凭证的工具，避免构建失败",
+			event.P("agent_id", ag.ID), event.P("skipped_tools", skipped))
+	}
+	if cfg.Filesystem {
+		dir, err := resolveAgentFilesystemDir(ctx, ag, deps, cfg.FilesystemDir)
+		if err != nil {
+			event.CtxFlowLogError(ctx, "system.agent.tool_build", "工具构建失败", event.P("agent_id", ag.ID), event.P("error", err))
+			return nil, err
+		}
+		cfg.FilesystemDir = dir
+	}
 	ts, err := tooltrpc.BuildToolsets(ctx, cfg)
 	if err != nil || ts == nil {
 		event.CtxFlowLogError(ctx, "system.agent.tool_build", "工具构建失败", event.P("agent_id", ag.ID), event.P("error", err))
@@ -336,6 +352,54 @@ func applyRuntimeToolConfigs(ctx context.Context, agentID string, eff map[string
 		merged[key] = biz.MergeToolConfigJSON(base, ov.ConfigOverrideJSON)
 	}
 	tooltrpc.ApplyRuntimeConfigMaps(cfg, merged)
+}
+
+func resolveAgentFilesystemDir(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, configured string) (string, error) {
+	configured = strings.TrimSpace(configured)
+	if configured != "" {
+		if err := ensureFilesystemWorkspaceDir(configured); err != nil {
+			event.CtxFlowLogWarn(ctx, "system.agent.tool_build", "工具工作区路径无效，回退到默认目录",
+				event.P("agent_id", ag.ID), event.P("configured_dir", configured), event.P("error", err))
+		} else {
+			return configured, nil
+		}
+	}
+	base := "."
+	if deps.Sys != nil {
+		if st, err := deps.Sys.Get(ctx); err == nil && strings.TrimSpace(st.RootDirectory) != "" {
+			base = storage.Absolute(st.RootDirectory)
+		}
+	}
+	if v := strings.TrimSpace(os.Getenv("ARANEA_WORKSPACE_ROOT")); v != "" {
+		base = storage.Absolute(v)
+	} else if v := strings.TrimSpace(os.Getenv("WORKSPACE_ROOT")); v != "" {
+		base = storage.Absolute(v)
+	}
+	agentKey := strings.TrimSpace(ag.AgentKey)
+	dir := filepath.Join(base, "workspace")
+	if agentKey != "" {
+		dir = filepath.Join(dir, agentKey)
+	}
+	if err := ensureFilesystemWorkspaceDir(dir); err != nil {
+		return "", err
+	}
+	return dir, nil
+}
+
+func ensureFilesystemWorkspaceDir(dir string) error {
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		return fmt.Errorf("filesystem workspace dir is empty")
+	}
+	if st, err := os.Stat(dir); err == nil && st.IsDir() {
+		return nil
+	} else if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("stat %q: %w", dir, err)
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("mkdir %q: %w", dir, err)
+	}
+	return nil
 }
 
 func resolveMCPServers(ctx context.Context, deps TRPCBuilderDeps, agentID string) ([]tooltrpc.MCPServerConfig, error) {

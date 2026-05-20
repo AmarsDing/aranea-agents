@@ -112,6 +112,7 @@ message MonitorLogLine {
 
 message GetMonitorLogsResponse {
   repeated MonitorLogLine items = 1;
+  // Mirrors server.monitor.process_log_enabled (Gateway process log / EnvelopeTypeLog).
   bool enabled = 2;
   string message = 3;
 }

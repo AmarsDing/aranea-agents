@@ -26,7 +26,7 @@
 
 - **主链路可用**：Chat / Agent / Team / Graph 经 `trpc-agent-go` Runner 与 EventBus + `/v1/ws` 串联；RunRegistry + RunnerManager + RunGateway 已落地。
 - **架构红线保持**：`internal/biz` 不 import `trpc-agent-go`；`internal/server` 不直接调 Agent runtime；实时主通道为 `/v1/ws`（SSE 仅限 A2A/MCP 等外部协议）。
-- **当前优先级**：迭代 7 后 — FlowLogger Phase 2 落库、Knowledge OCR、A2A 远程发现、Span 语义优化。
+- **当前优先级**：迭代 7 后 — FlowLogger Phase 2 落库、Knowledge OCR、**A2A Phase 4（网关健康 Cron）**、Span 语义优化。
 
 ---
 
@@ -37,7 +37,7 @@
 | **核心可用** | Chat(1)、Agent 全家桶(2–8/50)、Provider(9)、Session(10)、Skill(20)、Tools(23)、Cron(21)、Message/WS(51/34)、Plugin/Callback(22/28)、Gateway/Runner(35/40) | 可创建、运行、配置、观测 |
 | **可用需闭环** | Graph(36)、MCP(19)、Memory(12–16)、Monitor/Token(18/29) | Graph 节点类型待补；MCP 重连可观测；Memory 冲突/级联 |
 | **可用需闭环** | Team(11)、Channel(17) | Team `team_summary` WS ✅；飞书/钉钉/企微入站+出站 ✅；更多平台待补 |
-| **有页、Runtime 已通主项** | Knowledge(37)、Artifact(27)、Evaluation(33)、A2A(26) | 管理页 + Runner 注入 ✅；Rerank/OCR、高级评估、远程 A2A 待补 |
+| **有页、Runtime 已通主项** | Knowledge(37)、Artifact(27)、Evaluation(33)、A2A(26) | A2A Phase 1–3.5 ✅（联邦 Gateway、远程 Invoke、Graph metadata）；网关 Cron/Admin 流式待 Phase 4 |
 | **早期/占位** | Evolution(7)、CLI(25)、TTS | Ecosystem MVP ✅（`/v1/ecosystem/products`）；Telemetry Span 已通 turn，Trace UI 待补 |
 
 ---
@@ -117,7 +117,7 @@
 
 **FlowLogger v2**：📋 [需求](../需求/52-flow-logger.md) · [设计](../需求/52-flow-logger.design.md) · [开发计划](../需求/52-flow-logger-development.md) — Phase 1a/1b/3 ✅；Phase 2 落库待做。
 
-**当前冲刺焦点**：FlowLogger Phase 2 落库 · Knowledge OCR · A2A 远程发现 · Telemetry Span 语义。
+**当前冲刺焦点**：FlowLogger Phase 2 落库 · Knowledge OCR · **A2A Phase 3.5（流式/Graph resume）** · Telemetry Span 语义。
 
 ### 迭代 7（优化升级）任务板 — 2026-05-20
 
@@ -129,6 +129,10 @@
 | I7-FL-04 | `chat.turn.enter` 步骤 ID 对齐 | P2 | ✅ | `chat_native` + 注册表别名 |
 | I7-EVAL-01 | 评估报告 CSV/JSON 导出 | P2 | ✅ | `EvaluationResultsDialog` 按钮 |
 | I7-DOC-01 | 进度文档同步 | P2 | ✅ | 本文 + changelog Iteration7 |
+| I7-A2A-01 | A2A Phase 3：Server + 远程注册 + mTLS + Invoke 工作区策略 | P1 | ✅ | [changelog Phase3](../changelog/2026-05-20-A2A-Phase3.md) |
+| I7-A2A-02 | A2A Phase 3.5：Graph metadata + 远程 Invoke + GatewayDiscover + 传输文档 | P2 | ✅ | [changelog Phase35](../changelog/2026-05-20-A2A-Phase35.md) |
+| I8-MON-01 | Monitor Logs 流程/进程 Tab 拆分 + LogStreamHub + WS enable_log 修复 | P1 | ✅ | [changelog Monitor-Logs-Split](../changelog/2026-05-20-Monitor-Logs-Split.md) |
+| I8-MON-02 | Monitor 方案 C：Runs 主排障 + Events 收窄 + `runner.completion` correlation | P1 | ✅ | [changelog](../changelog/2026-05-20-Monitor-Phase1d-PlanC.md) · [18-monitor-development](../需求/18-monitor-development.md) Phase 1d |
 
 ---
 
@@ -185,7 +189,8 @@
 - [ ] Ecosystem 后端与市场模型（P3） — MVP ✅ 见迭代 5
 - [ ] Telemetry 业务 Span / OTel UI（P3）
 - [x] Monitor 告警规则 + Alerts UI（MON-01）；Usage 总览已有
-- [ ] Monitor 高级 Dashboard / 通知出站（P2 后续）
+- [x] Monitor 方案 C：Runs/Events 分工 + completion 关联（I8-MON-02 / Phase 1d）
+- [ ] Monitor 高级 Dashboard（P2 后续）
 - [x] 前端 page-to-components + A2A mapper 单测（P2）；Knowledge/Evaluation 此前已拆分
 
 ---

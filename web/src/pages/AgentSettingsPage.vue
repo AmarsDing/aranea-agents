@@ -22,6 +22,7 @@
         <q-tab name="skills" label="Skill" />
         <q-tab name="evolution" label="进化" />
         <q-tab name="hooks" label="钩子" />
+        <q-tab name="a2a" label="A2A" />
         <q-tab name="instances" label="用户实例" />
       </q-tabs>
       <q-separator />
@@ -548,6 +549,16 @@
           <agent-hooks-panel :agent-id="agentId" :agent-key="form.agent_key" />
         </q-tab-panel>
 
+        <q-tab-panel name="a2a">
+          <agent-settings-a2-a-tab
+            v-if="form.agent_kind === 'a2a_proxy'"
+            :agent-id="agentId"
+            :a2a-proxy="form.a2a_proxy_config"
+            @saved="reloadAgent"
+          />
+          <agent-settings-a2-a-endpoint-tab v-else :agent-id="agentId" />
+        </q-tab-panel>
+
         <q-tab-panel name="instances">
           <q-banner rounded class="settings-placeholder-banner">用户实例用于按用户覆盖 USER.md、权限与默认上下文；当前保留入口。</q-banner>
         </q-tab-panel>
@@ -619,6 +630,8 @@ import AgentSettingsHeader from "../components/agents/AgentSettingsHeader.vue";
 import AgentAdvancedDialog from "../components/agents/AgentAdvancedDialog.vue";
 import AgentToolsSection from "../components/agents/AgentToolsSection.vue";
 import AgentHooksPanel from "../components/agents/AgentHooksPanel.vue";
+import AgentSettingsA2ATab from "../components/agents/AgentSettingsA2ATab.vue";
+import AgentSettingsA2AEndpointTab from "../components/agents/AgentSettingsA2AEndpointTab.vue";
 import AgentUsageQuotaPanel from "../components/agents/AgentUsageQuotaPanel.vue";
 import { useAgentSettingsPage } from "../features/agents/useAgentSettingsPage";
 
@@ -632,6 +645,7 @@ const {
   promptDialog,
   advancedDialog,
   toggleFavorite,
+  reloadAgent,
   saveAgent,
   promptModes,
   statusOptions,

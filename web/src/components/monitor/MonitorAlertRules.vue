@@ -1,5 +1,5 @@
 <template>
-  <q-card flat bordered class="monitor-card">
+  <q-card flat bordered class="monitor-card monitor-alert-rules">
     <q-card-section class="row items-center">
       <div class="text-h6 text-weight-bold">告警规则</div>
       <q-space />
@@ -8,10 +8,10 @@
     </q-card-section>
     <q-separator />
     <q-card-section>
-      <q-banner rounded class="bg-info text-white q-mb-md">
+      <q-banner rounded class="monitor-info-banner q-mb-md">
         默认冷却 60 分钟。指标示例：runner.error_rate。超阈后写入 alert.fired 与 Events，并按规则出站 Webhook / Channel。
       </q-banner>
-      <div v-for="(rule, idx) in rules" :key="rule.id || idx" class="q-mb-md q-pa-md rounded-borders bg-grey-1">
+      <div v-for="(rule, idx) in rules" :key="rule.id || idx" class="monitor-alert-rule-row q-mb-md q-pa-md rounded-borders">
         <div class="row q-col-gutter-md">
           <q-input v-model="rule.name" class="col-12 col-md-4" dense outlined label="名称" />
           <q-input v-model="rule.metric_key" class="col-12 col-md-4" dense outlined label="指标键" />

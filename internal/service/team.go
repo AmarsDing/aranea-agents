@@ -12,6 +12,7 @@ import (
 	v1 "aranea-agents/api/kratos/team/v1"
 	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/internal/team"
 
@@ -27,6 +28,7 @@ type TeamService struct {
 	sessions   *biz.SessionUsecase
 	teamRunner *team.Runner
 	runs       *rt.RunRegistry
+	eventBus   event.Bus
 }
 
 func NewTeamService(
@@ -34,8 +36,9 @@ func NewTeamService(
 	sessions *biz.SessionUsecase,
 	teamRunner *team.Runner,
 	runs *rt.RunRegistry,
+	eventBus event.Bus,
 ) *TeamService {
-	return &TeamService{uc: uc, sessions: sessions, teamRunner: teamRunner, runs: runs}
+	return &TeamService{uc: uc, sessions: sessions, teamRunner: teamRunner, runs: runs, eventBus: eventBus}
 }
 
 func toProtoTeam(t biz.Team) *v1.Team {
@@ -220,6 +223,11 @@ func (s *TeamService) CancelTeamRun(ctx context.Context, req *v1.CancelTeamRunRe
 	}
 	if s.runs != nil && strings.TrimSpace(r.SessionID) != "" {
 		_ = s.runs.Cancel(r.SessionID)
+		runID := strings.TrimSpace(r.ID)
+		if entry, ok := s.runs.GetStatus(r.SessionID); ok && strings.TrimSpace(entry.RunID) != "" {
+			runID = entry.RunID
+		}
+		CancelSessionRunSideEffects(ctx, s.eventBus, s.sessions, r.SessionID, runID)
 	}
 	now := agent.RFC3339Now()
 	r.Status = "cancelled"

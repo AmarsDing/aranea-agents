@@ -258,7 +258,7 @@ func ensureAllSchemas(rawDB *sql.DB, entClient *ent.Client) error {
 	if err := sessionmemory.EnsurePatches(context.Background(), entClient); err != nil {
 		return fmt.Errorf("session memory patches: %w", err)
 	}
-	if err := sessionmemory.EnsureSchema(context.Background(), entClient); err != nil {
+	if err := EnsureSessionMemorySchema(context.Background(), entClient); err != nil {
 		return fmt.Errorf("session memory schema: %w", err)
 	}
 	if err := sessionmemory.EnsureMonitorSchemaPatches(context.Background(), entClient); err != nil {
@@ -269,6 +269,9 @@ func ensureAllSchemas(rawDB *sql.DB, entClient *ent.Client) error {
 	}
 	if err := ensureBuiltinPlatformTools(context.Background(), entClient); err != nil {
 		return err
+	}
+	if err := ensureSystemSettingPatches(context.Background(), entClient); err != nil {
+		return fmt.Errorf("system setting patches: %w", err)
 	}
 	if err := ensureDefaultSystemSetting(context.Background(), entClient); err != nil {
 		return err

@@ -1,7 +1,8 @@
 import type {
   Agent,
   AgentPromptFile,
-  AgentRuntimeSettings
+  AgentRuntimeSettings,
+  A2AProxyConfig
 } from "./types";
 import type {
   Agent as KratosAgentWire,
@@ -165,6 +166,32 @@ export function normalizeRuntimeSettingsFromWire(raw: unknown): AgentRuntimeSett
   };
 }
 
+export function normalizeA2AProxyFromWire(raw: unknown): A2AProxyConfig | undefined {
+  if (raw === null || raw === undefined) return undefined;
+  const w = asWireRecord(raw);
+  const remote = pickStr(w, "remoteUrl", "remote_url");
+  if (!remote) return undefined;
+  return {
+    remote_url: remote,
+    agent_card_url: pickStrOpt(w, "agentCardUrl", "agent_card_url"),
+    enable_streaming: pickBoolOpt(w, "enableStreaming", "enable_streaming"),
+    auth_type: pickStrOpt(w, "authType", "auth_type"),
+    auth_config_json: pickStrOpt(w, "authConfigJson", "auth_config_json"),
+    timeout_seconds: pickNumOpt(w, "timeoutSeconds", "timeout_seconds")
+  };
+}
+
+export function a2aProxyToWire(cfg: A2AProxyConfig) {
+  return {
+    remoteUrl: cfg.remote_url,
+    agentCardUrl: cfg.agent_card_url,
+    enableStreaming: cfg.enable_streaming,
+    authType: cfg.auth_type,
+    authConfigJson: cfg.auth_config_json,
+    timeoutSeconds: cfg.timeout_seconds
+  };
+}
+
 export function normalizeAgentFromService(raw: unknown): Agent {
   const w = asWireRecord(raw);
   const filesRaw = w.files;
@@ -191,6 +218,9 @@ export function normalizeAgentFromService(raw: unknown): Agent {
     created_at: pickStr(w, "createdAt", "created_at"),
     updated_at: pickStr(w, "updatedAt", "updated_at"),
     deleted_at: pickStr(w, "deletedAt", "deleted_at"),
+    agent_kind: (pickStr(w, "agentKind", "agent_kind", "llm") || "llm") as Agent["agent_kind"],
+    a2a_proxy_config: normalizeA2AProxyFromWire(w.a2aProxyConfig ?? w.a2a_proxy_config),
+    a2a_endpoint_enabled: pickBool(w, "a2aEndpointEnabled", "a2a_endpoint_enabled", false),
     settings: normalizeRuntimeSettingsFromWire(w.settings),
     files
   };
@@ -335,5 +365,7 @@ export function partialAgentToWire(payload: Partial<Agent>): KratosAgentWire {
   if (payload.deleted_at !== undefined) o.deletedAt = payload.deleted_at;
   if (payload.settings !== undefined) o.settings = runtimeSettingsToWire(payload.settings);
   if (payload.files !== undefined) o.files = payload.files.map(promptFileToWire);
+  if (payload.agent_kind !== undefined) o.agentKind = payload.agent_kind;
+  if (payload.a2a_proxy_config !== undefined) o.a2aProxyConfig = a2aProxyToWire(payload.a2a_proxy_config);
   return o as KratosAgentWire;
 }

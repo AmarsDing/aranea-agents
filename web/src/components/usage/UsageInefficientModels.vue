@@ -1,21 +1,32 @@
 <template>
-  <q-card flat bordered class="usage-panel">
+  <q-card flat class="overview-panel">
     <q-card-section>
-      <div class="text-h6">低性价比模型</div>
-      <div class="text-caption text-grey-7">高费用且低 TPS 或成功率偏低的模型（任务 #24）</div>
+      <div class="text-h6 overview-section-title">低性价比模型</div>
+      <div class="text-caption overview-section-caption">高费用且低 TPS 或成功率偏低的模型</div>
     </q-card-section>
-    <q-separator />
+    <q-separator class="overview-separator" />
     <q-card-section>
-      <div v-if="!rows.length" class="usage-empty">当前筛选范围内暂无标记</div>
-      <q-list v-else dense>
+      <div v-if="!rows.length" class="overview-empty overview-empty--compact">当前筛选范围内暂无标记</div>
+      <q-list v-else dense class="overview-rank-list">
         <q-item v-for="row in rows" :key="`${row.provider_code}:${row.model_api_id}`">
           <q-item-section>
             <q-item-label>{{ row.model_display_name || row.model_api_id }}</q-item-label>
-            <q-item-label caption>{{ row.provider_code }} · {{ formatMoney(row.total_cost_micro_usd) }}</q-item-label>
+            <q-item-label caption class="overview-item-caption">
+              {{ row.provider_code }} · {{ formatMoney(row.total_cost_micro_usd) }}
+            </q-item-label>
           </q-item-section>
           <q-item-section side>
             <div class="row q-gutter-xs justify-end">
-              <q-chip v-for="f in row.flags" :key="f" dense size="sm" color="orange-2" text-color="orange-10">{{ flagLabel(f) }}</q-chip>
+              <q-chip
+                v-for="f in row.flags"
+                :key="f"
+                dense
+                size="sm"
+                outline
+                class="overview-flag-chip"
+              >
+                {{ flagLabel(f) }}
+              </q-chip>
             </div>
           </q-item-section>
         </q-item>
@@ -48,15 +59,3 @@ function flagLabel(f: string) {
   }
 }
 </script>
-
-<style scoped>
-.usage-panel {
-  border-radius: 18px;
-}
-.usage-empty {
-  min-height: 80px;
-  display: grid;
-  place-items: center;
-  color: var(--color-text-gray-400);
-}
-</style>

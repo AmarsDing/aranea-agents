@@ -27,6 +27,16 @@
       <div class="row q-gutter-xs">
         <q-chip dense square class="agent-card__chip">{{ categoryLabel }}</q-chip>
         <q-chip v-if="evolving" dense square class="agent-card__chip is-evolving" icon="auto_awesome">进化中</q-chip>
+        <q-chip v-if="agent.agent_kind === 'a2a_proxy'" dense square class="agent-card__chip is-a2a-proxy" icon="sync_alt">A2A ↗</q-chip>
+        <q-chip
+          v-else-if="agent.a2a_endpoint_enabled"
+          dense
+          square
+          class="agent-card__chip is-a2a-endpoint"
+          icon="call_received"
+        >
+          A2A ↙
+        </q-chip>
       </div>
     </q-card-section>
 
@@ -45,7 +55,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useQuasar } from "quasar";
-import type { Agent } from "../../features/agents/api";
+import type { Agent } from "../../features/agents/types";
 import AgentAvatarQ from "../avatar/AgentAvatarQ.vue";
 
 const props = defineProps<{
@@ -151,6 +161,13 @@ const isDark = computed(() => $q.dark.isActive);
   color: var(--color-status-warning-text);
 }
 
+.agent-card__chip.is-a2a-proxy,
+.agent-card__chip.is-a2a-endpoint {
+  border-color: rgb(25 118 210 / 22%);
+  background: rgb(239 246 255 / 92%);
+  color: rgb(29 78 216);
+}
+
 .agent-handle {
   padding: 0;
   border: 0;
@@ -221,6 +238,13 @@ const isDark = computed(() => $q.dark.isActive);
   border-color: rgb(245 158 11 / 28%);
   background: rgb(120 53 15 / 26%);
   color: var(--color-accent-amber);
+}
+
+.agent-card.agent-card--dark .agent-card__chip.is-a2a-proxy,
+.agent-card.agent-card--dark .agent-card__chip.is-a2a-endpoint {
+  border-color: rgb(59 130 246 / 28%);
+  background: rgb(30 58 138 / 26%);
+  color: rgb(147 197 253);
 }
 
 .agent-card.agent-card--dark .agent-card__actions {

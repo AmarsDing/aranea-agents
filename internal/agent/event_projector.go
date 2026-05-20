@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/event"
+	"aranea-agents/internal/provider"
 
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
@@ -21,22 +22,49 @@ type ProjectMeta struct {
 	TeamID             string
 	Branch             string
 	FilterKey          string
+	RunID              string
+	TraceID            string
+	AgentID            string
+	AgentDisplayName   string
 	MemberAgentKeys    map[string]struct{} // agent_key set for team member_* envelopes
 }
 
 type EventProjector struct {
-	eventBus      event.Bus
-	memberStarted map[string]bool // per ConsumeEventStream when TeamID + MemberAgentKeys are set
+	eventBus          event.Bus
+	memberStarted     map[string]bool
+	toolCalls         map[string]toolCallCache
+	streamText        map[string]*strings.Builder
+	metaResolver ActivityMetaResolver
+	projectMeta  ProjectMeta
+}
+
+type toolCallCache struct {
+	name      string
+	argsJSON  string
+	author    string
+	startedAt time.Time
 }
 
 func NewEventProjector(eventBus event.Bus) *EventProjector {
 	return &EventProjector{eventBus: eventBus}
 }
 
+func (p *EventProjector) Configure(meta ProjectMeta, resolver ActivityMetaResolver) {
+	p.projectMeta = meta
+	p.metaResolver = resolver
+}
+
+func (p *EventProjector) ensureToolCallCache() {
+	if p.toolCalls == nil {
+		p.toolCalls = make(map[string]toolCallCache)
+	}
+}
+
 func (p *EventProjector) ProjectAndPublish(ctx context.Context, ev *trpcevent.Event, meta ProjectMeta) {
 	if ev == nil {
 		return
 	}
+	p.projectMeta = meta
 	envelopes := p.Project(ctx, ev, meta)
 	for _, env := range envelopes {
 		p.eventBus.Publish(ctx, env)
@@ -67,11 +95,11 @@ func (p *EventProjector) Project(ctx context.Context, ev *trpcevent.Event, meta 
 	objType := ev.Response.Object
 	switch objType {
 	case trpcmodel.ObjectTypeChatCompletionChunk:
-		return p.projectChatCompletionChunk(ev, meta)
+		return p.projectChatCompletionChunk(ctx, ev, meta)
 	case trpcmodel.ObjectTypeChatCompletion:
-		return p.projectChatCompletion(ev, meta)
+		return p.projectChatCompletion(ctx, ev, meta)
 	case trpcmodel.ObjectTypeToolResponse:
-		return []event.Envelope{p.buildToolResultEnvelope(ev, meta)}
+		return []event.Envelope{p.buildToolResultEnvelope(ctx, ev, meta)}
 	case trpcmodel.ObjectTypeTransfer:
 		return []event.Envelope{p.buildTransferEnvelope(ev, meta)}
 	default:
@@ -118,7 +146,7 @@ func (p *EventProjector) baseEnvelope(ev *trpcevent.Event, meta ProjectMeta, typ
 	return env
 }
 
-func (p *EventProjector) projectChatCompletionChunk(ev *trpcevent.Event, meta ProjectMeta) []event.Envelope {
+func (p *EventProjector) projectChatCompletionChunk(ctx context.Context, ev *trpcevent.Event, meta ProjectMeta) []event.Envelope {
 	var envelopes []event.Envelope
 	for _, choice := range ev.Response.Choices {
 		msg := choice.Message
@@ -132,42 +160,61 @@ func (p *EventProjector) projectChatCompletionChunk(ev *trpcevent.Event, meta Pr
 			allCalls := append(msg.ToolCalls, delta.ToolCalls...)
 			for _, tc := range allCalls {
 				env := p.baseEnvelope(ev, meta, event.EnvelopeTypeToolCall)
-				env.ToolCall = &event.EnvelopeToolCall{
-					ID:            tc.ID,
-					Name:          tc.Function.Name,
-					ArgumentsJSON: string(tc.Function.Arguments),
-					Status:        "calling",
+				argsJSON := string(tc.Function.Arguments)
+				startedAt := time.Now().UTC()
+				if !ev.Timestamp.IsZero() {
+					startedAt = ev.Timestamp.UTC()
 				}
-				if _, ok := ev.LongRunningToolIDs[tc.ID]; ok {
-					env.ToolCall.IsLongRunning = true
+				p.ensureToolCallCache()
+				p.toolCalls[tc.ID] = toolCallCache{
+					name:      tc.Function.Name,
+					argsJSON:  argsJSON,
+					author:    ev.Author,
+					startedAt: startedAt,
 				}
+				_, isLongRunning := ev.LongRunningToolIDs[tc.ID]
+				env.ToolCall = p.buildToolCallEnvelope(ctx, tc.ID, tc.Function.Name, argsJSON, "", "calling", ev.Author, startedAt, nil, 0, "", isLongRunning)
+				p.attachActivityMetadata(&env)
 				envelopes = append(envelopes, env)
 			}
 			continue
 		}
 
 		if hasContent || hasReasoning {
-			text := coalesceStr(strings.TrimSpace(msg.Content), strings.TrimSpace(delta.Content))
-			reasoning := coalesceStr(strings.TrimSpace(msg.ReasoningContent), strings.TrimSpace(delta.ReasoningContent))
+			rawText := coalesceStr(strings.TrimSpace(delta.Content), strings.TrimSpace(msg.Content))
+			rawReasoning := coalesceStr(strings.TrimSpace(delta.ReasoningContent), strings.TrimSpace(msg.ReasoningContent))
 
 			if isTeamMemberAuthor(ev.Author, meta) {
-				envelopes = append(envelopes, p.projectMemberText(ev, meta, text, reasoning, ev.Response.IsPartial)...)
+				envelopes = append(envelopes, p.projectMemberText(ev, meta, rawText, rawReasoning, ev.Response.IsPartial)...)
 				continue
 			}
 
 			if ev.Response.IsPartial {
+				textDelta := p.visibleStreamDelta(streamKey(ev.Author, meta), rawText)
+				reasoningDelta := p.visibleStreamDelta(streamKey(ev.Author, meta)+":reasoning", rawReasoning)
+				if textDelta == "" && reasoningDelta == "" {
+					continue
+				}
 				env := p.baseEnvelope(ev, meta, event.EnvelopeTypeTextDelta)
 				env.Content = &event.EnvelopeContent{
-					Text:      text,
-					Reasoning: reasoning,
+					Text:      textDelta,
+					Reasoning: reasoningDelta,
 					IsPartial: true,
 				}
 				envelopes = append(envelopes, env)
 			} else {
+				textDone := rawText
+				reasoningDone := rawReasoning
+				if b := p.streamBuilder(streamKey(ev.Author, meta)); b != nil && b.Len() > 0 {
+					textDone = b.String()
+				}
+				if b := p.streamBuilder(streamKey(ev.Author, meta)+":reasoning"); b != nil && b.Len() > 0 {
+					reasoningDone = b.String()
+				}
 				env := p.baseEnvelope(ev, meta, event.EnvelopeTypeTextDone)
 				env.Content = &event.EnvelopeContent{
-					Text:      text,
-					Reasoning: reasoning,
+					Text:      textDone,
+					Reasoning: reasoningDone,
 					IsPartial: false,
 				}
 				envelopes = append(envelopes, env)
@@ -177,7 +224,7 @@ func (p *EventProjector) projectChatCompletionChunk(ev *trpcevent.Event, meta Pr
 	return envelopes
 }
 
-func (p *EventProjector) projectChatCompletion(ev *trpcevent.Event, meta ProjectMeta) []event.Envelope {
+func (p *EventProjector) projectChatCompletion(ctx context.Context, ev *trpcevent.Event, meta ProjectMeta) []event.Envelope {
 	var envelopes []event.Envelope
 	for _, choice := range ev.Response.Choices {
 		msg := choice.Message
@@ -187,12 +234,20 @@ func (p *EventProjector) projectChatCompletion(ev *trpcevent.Event, meta Project
 		if len(msg.ToolCalls) > 0 {
 			for _, tc := range msg.ToolCalls {
 				env := p.baseEnvelope(ev, meta, event.EnvelopeTypeToolCall)
-				env.ToolCall = &event.EnvelopeToolCall{
-					ID:            tc.ID,
-					Name:          tc.Function.Name,
-					ArgumentsJSON: string(tc.Function.Arguments),
-					Status:        "calling",
+				argsJSON := string(tc.Function.Arguments)
+				startedAt := time.Now().UTC()
+				if !ev.Timestamp.IsZero() {
+					startedAt = ev.Timestamp.UTC()
 				}
+				p.ensureToolCallCache()
+				p.toolCalls[tc.ID] = toolCallCache{
+					name:      tc.Function.Name,
+					argsJSON:  argsJSON,
+					author:    ev.Author,
+					startedAt: startedAt,
+				}
+				env.ToolCall = p.buildToolCallEnvelope(ctx, tc.ID, tc.Function.Name, argsJSON, "", "calling", ev.Author, startedAt, nil, 0, "", false)
+				p.attachActivityMetadata(&env)
 				envelopes = append(envelopes, env)
 			}
 		}
@@ -212,12 +267,44 @@ func (p *EventProjector) projectChatCompletion(ev *trpcevent.Event, meta Project
 
 func (p *EventProjector) buildRunnerCompletionEnvelope(ev *trpcevent.Event, meta ProjectMeta) event.Envelope {
 	env := p.baseEnvelope(ev, meta, event.EnvelopeTypeRunnerCompletion)
-	if ev.Response != nil && ev.Response.Usage != nil {
-		env.Usage = &event.EnvelopeUsage{
-			PromptTokens:     ev.Response.Usage.PromptTokens,
-			CompletionTokens: ev.Response.Usage.CompletionTokens,
-			TotalTokens:      ev.Response.Usage.TotalTokens,
+	if ev.Response != nil {
+		if ev.Response.Usage != nil {
+			env.Usage = &event.EnvelopeUsage{
+				PromptTokens:     ev.Response.Usage.PromptTokens,
+				CompletionTokens: ev.Response.Usage.CompletionTokens,
+				TotalTokens:      ev.Response.Usage.TotalTokens,
+			}
 		}
+		if ev.Response.Error != nil {
+			errType := ev.Response.Error.Type
+			if errType == "" {
+				errType = "run_error"
+			}
+			env.Error = &event.EnvelopeError{
+				Type:    errType,
+				Message: ev.Response.Error.Message,
+			}
+		}
+	}
+	runKind := "chat"
+	if strings.TrimSpace(meta.TeamID) != "" {
+		runKind = "team"
+	}
+	md := map[string]any{"run_kind": runKind}
+	if v := strings.TrimSpace(meta.RunID); v != "" {
+		md["run_id"] = v
+	}
+	if v := strings.TrimSpace(meta.TraceID); v != "" {
+		md["trace_id"] = v
+	}
+	if v := strings.TrimSpace(meta.AgentID); v != "" {
+		md["agent_id"] = v
+	}
+	if v := strings.TrimSpace(meta.AgentDisplayName); v != "" {
+		md["agent_display_name"] = v
+	}
+	if len(md) > 0 {
+		env.Metadata = md
 	}
 	return env
 }
@@ -250,17 +337,154 @@ func (p *EventProjector) buildStateDeltaEnvelope(ev *trpcevent.Event, meta Proje
 	return env
 }
 
-func (p *EventProjector) buildToolResultEnvelope(ev *trpcevent.Event, meta ProjectMeta) event.Envelope {
+func (p *EventProjector) buildToolResultEnvelope(ctx context.Context, ev *trpcevent.Event, meta ProjectMeta) event.Envelope {
 	env := p.baseEnvelope(ev, meta, event.EnvelopeTypeToolResult)
-	if ev.Response != nil && len(ev.Response.Choices) > 0 {
-		msg := ev.Response.Choices[0].Message
-		resultJSON, _ := json.Marshal(msg.Content)
-		env.ToolCall = &event.EnvelopeToolCall{
-			Status:     "success",
-			ResultJSON: string(resultJSON),
+	if ev.Response == nil || len(ev.Response.Choices) == 0 {
+		return env
+	}
+
+	msg := ev.Response.Choices[0].Message
+	toolID := strings.TrimSpace(msg.ToolID)
+	toolName := coalesceStr(strings.TrimSpace(msg.ToolName), strings.TrimSpace(ev.Author))
+	argsJSON := ""
+	author := ev.Author
+	startedAt := time.Time{}
+	if toolID != "" {
+		if cached, ok := p.toolCalls[toolID]; ok {
+			toolName = coalesceStr(toolName, cached.name)
+			argsJSON = cached.argsJSON
+			author = coalesceStr(author, cached.author)
+			startedAt = cached.startedAt
+		}
+		if argsJSON == "" {
+			argsJSON = p.lookupToolCallArgs(ev, toolID)
 		}
 	}
+
+	resultRaw, _ := json.Marshal(msg.Content)
+	resultJSON := string(resultRaw)
+	status := "success"
+	errorCode := ""
+	var errMsg string
+	if ev.Response.Error != nil {
+		status = "failed"
+		errorCode = coalesceStr(ev.Response.Error.Type, "tool_error")
+		errMsg = ev.Response.Error.Message
+		if resultRaw == nil || string(resultRaw) == "null" || string(resultRaw) == `""` {
+			resultRaw, _ = json.Marshal(map[string]string{"error": errMsg})
+		}
+	}
+
+	finishedAt := time.Now().UTC()
+	if !ev.Timestamp.IsZero() {
+		finishedAt = ev.Timestamp.UTC()
+	}
+	var durationMS int64
+	if !startedAt.IsZero() {
+		durationMS = finishedAt.Sub(startedAt).Milliseconds()
+		if durationMS < 0 {
+			durationMS = 0
+		}
+	}
+
+	env.ToolCall = p.buildToolCallEnvelope(ctx, toolID, toolName, argsJSON, resultJSON, status, author, startedAt, &finishedAt, durationMS, errorCode, false)
+	if errMsg != "" && env.ToolCall.ResultJSON != "" {
+		env.ToolCall.ResultJSON = mergeToolErrorResult(env.ToolCall.ResultJSON, errMsg)
+	}
+	p.attachActivityMetadata(&env)
 	return env
+}
+
+func (p *EventProjector) buildToolCallEnvelope(
+	ctx context.Context,
+	id, name, argsJSON, resultJSON, status, author string,
+	startedAt time.Time,
+	finishedAt *time.Time,
+	durationMS int64,
+	errorCode string,
+	isLongRunning bool,
+) *event.EnvelopeToolCall {
+	metaInput := BuildActivityMeta(ctx, ActivityMetaInput{
+		ToolName:      name,
+		ArgumentsJSON: argsJSON,
+		ResultJSON:    resultJSON,
+		Status:        status,
+		Author:        author,
+		StartedAt:     startedAt,
+		FinishedAt:    finishedAt,
+		DurationMS:    durationMS,
+		ErrorCode:     errorCode,
+	}, p.metaResolver)
+	agentName := firstNonEmptyStr(metaInput.AgentName, p.projectMeta.AgentDisplayName, author, metaInput.AgentKey)
+	return &event.EnvelopeToolCall{
+		ID:            id,
+		Name:          name,
+		ArgumentsJSON: metaInput.ArgumentsJSON,
+		ResultJSON:    metaInput.ResultJSON,
+		Status:        status,
+		DurationMS:    durationMS,
+		IsLongRunning: isLongRunning,
+		ActivityKind:  metaInput.ActivityKind,
+		DisplayLabel:  metaInput.DisplayLabel,
+		IconKey:       metaInput.IconKey,
+		Summary:       metaInput.Summary,
+		StartedAt:     metaInput.StartedAt,
+		FinishedAt:    metaInput.FinishedAt,
+		ErrorCode:     metaInput.ErrorCode,
+		AgentKey:      metaInput.AgentKey,
+		AgentID:       firstNonEmptyStr(metaInput.AgentID, p.projectMeta.AgentID),
+		AgentName:     agentName,
+		RunID:         strings.TrimSpace(p.projectMeta.RunID),
+		TraceID:       strings.TrimSpace(p.projectMeta.TraceID),
+	}
+}
+
+func (p *EventProjector) attachActivityMetadata(env *event.Envelope) {
+	if env == nil || env.ToolCall == nil {
+		return
+	}
+	tc := env.ToolCall
+	if env.Metadata == nil {
+		env.Metadata = make(map[string]any, 4)
+	}
+	env.Metadata["activity_kind"] = tc.ActivityKind
+	env.Metadata["display_label"] = tc.DisplayLabel
+	if tc.Summary != "" {
+		env.Metadata["summary"] = tc.Summary
+	}
+	if tc.RunID != "" {
+		env.Metadata["run_id"] = tc.RunID
+	}
+	if tc.TraceID != "" {
+		env.Metadata["trace_id"] = tc.TraceID
+	}
+	if tc.AgentName != "" {
+		env.Metadata["agent_name"] = tc.AgentName
+	}
+}
+
+func (p *EventProjector) lookupToolCallArgs(ev *trpcevent.Event, toolID string) string {
+	argsByID, ok, err := trpcevent.GetExtension[map[string]string](ev, trpcevent.ToolCallArgsExtensionKey)
+	if err != nil || !ok {
+		return ""
+	}
+	return argsByID[toolID]
+}
+
+func mergeToolErrorResult(resultJSON, errMsg string) string {
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(resultJSON), &parsed); err != nil || parsed == nil {
+		out, _ := json.Marshal(map[string]string{"error": errMsg})
+		return string(out)
+	}
+	if _, ok := parsed["error"]; !ok && errMsg != "" {
+		parsed["error"] = errMsg
+	}
+	out, err := json.Marshal(parsed)
+	if err != nil {
+		return resultJSON
+	}
+	return string(out)
 }
 
 func (p *EventProjector) buildTransferEnvelope(ev *trpcevent.Event, meta ProjectMeta) event.Envelope {
@@ -361,9 +585,12 @@ func (p *EventProjector) projectMemberText(ev *trpcevent.Event, meta ProjectMeta
 		p.memberStarted[author] = true
 		out = append(out, p.BuildMemberMessageStartEnvelope(author, meta.SessionID, meta.TeamID, ev.Branch))
 	}
-	combined := strings.TrimSpace(text)
+	key := streamKey(author, meta)
+	textDelta := p.visibleStreamDelta(key, text)
+	reasoningDelta := p.visibleStreamDelta(key+":reasoning", reasoning)
+	combined := strings.TrimSpace(textDelta)
 	if combined == "" {
-		combined = strings.TrimSpace(reasoning)
+		combined = strings.TrimSpace(reasoningDelta)
 	}
 	if combined == "" {
 		return out
@@ -381,6 +608,33 @@ func coalesceStr(a, b string) string {
 		return a
 	}
 	return b
+}
+
+func streamKey(author string, meta ProjectMeta) string {
+	key := strings.TrimSpace(author)
+	if key == "" {
+		key = strings.TrimSpace(meta.SessionID)
+	}
+	return key
+}
+
+func (p *EventProjector) streamBuilder(key string) *strings.Builder {
+	if p.streamText == nil {
+		p.streamText = make(map[string]*strings.Builder)
+	}
+	b, ok := p.streamText[key]
+	if !ok {
+		b = &strings.Builder{}
+		p.streamText[key] = b
+	}
+	return b
+}
+
+func (p *EventProjector) visibleStreamDelta(key, chunk string) string {
+	if strings.TrimSpace(chunk) == "" {
+		return ""
+	}
+	return provider.VisibleStreamingDelta(p.streamBuilder(key), chunk)
 }
 
 func roughTokenEstimateFromText(text string) int {

@@ -12,6 +12,21 @@
       <q-separator />
 
       <q-card-section class="create-agent-card__body">
+        <div class="agent-kind-row q-mb-md">
+          <div class="text-subtitle2 q-mb-sm">Agent 类型</div>
+          <q-btn-toggle
+            v-model="agentKindModel"
+            spread
+            no-caps
+            rounded
+            unelevated
+            toggle-color="primary"
+            color="grey-3"
+            text-color="grey-9"
+            :options="agentKindOptions"
+          />
+        </div>
+
         <div class="create-agent-layout row q-col-gutter-lg">
           <div class="col-12 col-md-auto column items-center avatar-column">
             <div class="avatar-picker-hit cursor-pointer" @click="avatarPickerOpen = true">
@@ -40,16 +55,30 @@
               <q-select v-model="categoryIndustry" class="col-12 col-md-4 agent-dialog-control" dense outlined clearable emit-value map-options label="行业" :options="industryOptions" />
               <q-select v-model="categoryDepartment" class="col-12 col-md-4 agent-dialog-control" dense outlined clearable emit-value map-options label="部门" :options="departmentOptions" :disable="!categoryIndustry" />
               <q-select v-model="form.category_position_id" class="col-12 col-md-4 agent-dialog-control" dense outlined clearable emit-value map-options label="职位" :options="positionOptions" :disable="!categoryDepartment" />
+              <template v-if="isA2AProxy">
+                <q-input
+                  v-model.trim="a2aProxy.remote_url"
+                  class="col-12 agent-dialog-control"
+                  dense
+                  outlined
+                  label="远程 A2A URL *"
+                  hint="例如 http://host:8087/"
+                />
+                <q-toggle v-model="a2aProxy.enable_streaming" class="col-12 col-md-4" color="primary" label="流式响应" />
+                <q-input v-model.number="a2aProxy.timeout_seconds" class="col-12 col-md-4 agent-dialog-control" dense outlined type="number" min="5" label="超时（秒）" />
+              </template>
+              <template v-else>
               <q-select v-model="form.provider" class="col-12 col-md-5 agent-dialog-control" dense outlined emit-value map-options label="Provider *" :options="providerOptions" />
               <q-select v-model="form.model" class="col-12 col-md-5 agent-dialog-control" dense outlined emit-value map-options label="模型 *" :options="modelOptions" />
               <div class="col-12 col-md-2">
                 <q-btn class="model-check-btn full-width" outline rounded color="primary" label="检查" :disable="!form.provider || !form.model" :loading="checkingModel" @click="$emit('check-model')" />
               </div>
+              </template>
             </div>
           </div>
         </div>
 
-        <section class="description-block">
+        <section v-if="!isA2AProxy" class="description-block">
           <div class="text-subtitle2">描述您的 Agent</div>
           <div class="row q-gutter-xs q-mt-sm">
             <q-chip
@@ -76,7 +105,7 @@
           />
         </section>
 
-        <q-card flat bordered class="self-evolve-card">
+        <q-card flat bordered class="self-evolve-card" v-if="!isA2AProxy">
           <q-card-section class="row items-center justify-between">
             <div>
               <div class="text-subtitle2">自我进化</div>
@@ -102,6 +131,7 @@ import { useQuasar } from "quasar";
 import AgentAvatarPicker from "../avatar/AgentAvatarPicker.vue";
 import AgentAvatarQ from "../avatar/AgentAvatarQ.vue";
 import { descriptionTemplates } from "./agentUi";
+import type { AgentKind, A2AProxyConfig } from "../../features/agents/types";
 
 type CreateForm = {
   agent_key: string;
@@ -116,7 +146,10 @@ type CreateForm = {
 const props = defineProps<{
   modelValue: boolean;
   form: CreateForm;
+  a2aProxy: A2AProxyConfig;
+  isA2AProxy: boolean;
   selfEvolve: boolean;
+  agentKind: AgentKind;
   categoryIndustry: string | null;
   categoryDepartment: string | null;
   industryOptions: Array<{ label: string; value: string }>;
@@ -134,6 +167,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   "update:modelValue": [value: boolean];
   "update:selfEvolve": [value: boolean];
+  "update:agentKind": [value: AgentKind];
+  "update:a2aProxy": [value: A2AProxyConfig];
   "update:categoryIndustry": [value: string | null];
   "update:categoryDepartment": [value: string | null];
   "apply-template": [template: (typeof descriptionTemplates)[number]];
@@ -164,6 +199,16 @@ const categoryDepartment = computed({
 });
 
 const avatarPickerOpen = ref(false);
+
+const agentKindOptions = [
+  { label: "LLM Agent", value: "llm" },
+  { label: "A2A 远程代理", value: "a2a_proxy" }
+];
+
+const agentKindModel = computed({
+  get: () => props.agentKind || "llm",
+  set: (value: AgentKind) => emit("update:agentKind", value)
+});
 </script>
 
 <style scoped>

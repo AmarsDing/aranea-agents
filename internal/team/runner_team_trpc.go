@@ -12,6 +12,7 @@ import (
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	"aranea-agents/internal/agent"
+	"aranea-agents/internal/chatactivity"
 	"aranea-agents/internal/agent/intent"
 	"aranea-agents/internal/biz"
 	rt "aranea-agents/internal/runtime"
@@ -69,9 +70,6 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 		}()
 	}
 
-	publishTeamMonitor(ctx, r.td.Pipeline.Bus, "INFO", fmt.Sprintf(
-		"team_turn phase=start session_id=%s run_id=%s team_id=%s mode=%s members=%d",
-		sess.ID, run.ID, teamRow.ID, mode, len(members)), sess.ID)
 	if r.td.Pipeline.Bus != nil {
 		cp := run
 		env := event.NewEnvelope(event.EnvelopeTypeTeamRunStarted, "team-runner", sess.ID)
@@ -81,6 +79,7 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 	}
 
 	t0 := time.Now()
+	biz.DefaultTurnCompletionBridge().RegisterTurnStart(sess.ID, run.ID, t0)
 	anchorMem := members[0]
 	if want := strings.TrimSpace(def.IntentAnchorAgentID); want != "" {
 		found := false
@@ -140,9 +139,6 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 	if teamEmitter != nil {
 		teamEmitter.LogDone("team.run.build", "团队 Agent 已构建", event.P("mode", mode))
 	}
-	publishTeamMonitor(ctx, r.td.Pipeline.Bus, "INFO", fmt.Sprintf(
-		"team_turn phase=team_built session_id=%s run_id=%s mode=%s",
-		sess.ID, run.ID, mode), sess.ID)
 
 	var plugins []trpcplugin.Plugin
 	if r.pluginManager != nil {
@@ -217,13 +213,6 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 		env.Metadata = intent.BuildIntentPassPayload(intRes, meta)
 		r.td.Pipeline.Bus.Publish(ctx, env)
 	}
-	if r.td.Pipeline.Bus != nil {
-		level, msg := intent.MonitorLogEntry(intRes, "team", meta)
-		logEnv := event.NewEnvelope(event.EnvelopeTypeLog, "intent-pass", sess.ID)
-		logEnv.Metadata = map[string]any{"level": level, "source": "intent-pass"}
-		logEnv.Content = &event.EnvelopeContent{Text: msg}
-		r.td.Pipeline.Bus.Publish(ctx, logEnv)
-	}
 
 	userMsg = biz.ChatMessage{
 		ID:               uuid.NewString(),
@@ -256,18 +245,15 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 	if r.knowledgeRetriever != nil {
 		runCtx = knowledgetool.WithRetriever(runCtx, r.knowledgeRetriever)
 	}
-	publishTeamMonitor(ctx, r.td.Pipeline.Bus, "INFO", fmt.Sprintf(
-		"team_turn phase=trpc_run_start session_id=%s run_id=%s",
-		sess.ID, run.ID), sess.ID)
 	if teamEmitter != nil {
 		teamEmitter.LogStart("team.run.execute", "执行团队任务", event.P("mode", mode))
 	}
 
 	events, err := agent.RunTRPCUserTurn(runCtx, runner, uid, sess.ID, sendText)
 	if err != nil {
-		publishTeamMonitor(ctx, r.td.Pipeline.Bus, "WARN", fmt.Sprintf(
-			"team_turn phase=run_error session_id=%s run_id=%s err=%v",
-			sess.ID, run.ID, err), sess.ID)
+		if teamEmitter != nil {
+			teamEmitter.LogError("team.run.execute", err.Error(), event.P("mode", mode))
+		}
 		turnStatus = "error"
 		r.finishRunErr(ctx, &run, t0, err.Error())
 		return userMsg, biz.ChatMessage{}, err
@@ -277,13 +263,23 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 	for _, k := range memberKeys {
 		memberKeySet[k] = struct{}{}
 	}
+	traceID := ""
+	if teamEmitter != nil {
+		traceID = teamEmitter.TraceID()
+	}
 	projectMeta := agent.ProjectMeta{
 		SessionID:       sess.ID,
 		RequestID:       run.ID,
+		InvocationID:    run.ID,
+		RunID:           run.ID,
+		TraceID:         traceID,
 		TeamID:          teamRow.ID,
+		AgentID:         firstAg.ID,
+		AgentDisplayName: firstAg.DisplayName,
 		MemberAgentKeys: memberKeySet,
 	}
-	result := agent.ConsumeEventStream(runCtx, events, r.td.Pipeline.Bus, projectMeta)
+	streamOpts := chatactivity.NewStreamConsumeOptions(r.td.Catalog.ToolUC, r.td.Catalog.Agents, r.td.Sessions)
+	result := agent.ConsumeEventStream(runCtx, events, r.td.Pipeline.Bus, projectMeta, streamOpts)
 	if runCtx.Err() != nil {
 		hint := ""
 		switch {
@@ -294,17 +290,14 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 		case errors.Is(runCtx.Err(), context.Canceled):
 			hint = " hint=client_disconnect_or_abort"
 		}
-		publishTeamMonitor(ctx, r.td.Pipeline.Bus, "WARN", fmt.Sprintf(
-			"team_turn phase=cancelled session_id=%s run_id=%s err=%v%s",
-			sess.ID, run.ID, runCtx.Err(), hint), sess.ID)
+		if teamEmitter != nil {
+			teamEmitter.LogError("team.run.execute", runCtx.Err().Error()+hint, event.P("mode", mode))
+		}
 		turnStatus = "error"
 		r.finishRunErr(ctx, &run, t0, runCtx.Err().Error())
 		return userMsg, biz.ChatMessage{}, runCtx.Err()
 	}
 
-	publishTeamMonitor(ctx, r.td.Pipeline.Bus, "INFO", fmt.Sprintf(
-		"team_turn phase=events_done session_id=%s run_id=%s",
-		sess.ID, run.ID), sess.ID)
 	if teamEmitter != nil {
 		teamEmitter.LogDone("team.run.execute", "团队任务执行完成", event.P("mode", mode))
 	}

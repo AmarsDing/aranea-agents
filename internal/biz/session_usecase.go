@@ -278,13 +278,15 @@ type SessionRepository interface {
 	AppendChatTurn(ctx context.Context, sessionID string, user, assistant ChatMessage) error
 	// AppendChatMessage inserts a single message row and updates session aggregates.
 	AppendChatMessage(ctx context.Context, sessionID string, msg ChatMessage, bumpModelCall bool) error
+	// UpsertChatActivityMessage inserts or updates a chat.activity/v1 row keyed by message id.
+	UpsertChatActivityMessage(ctx context.Context, sessionID string, msg ChatMessage) error
 	// UpdateRunnerSnapshotJSON persists Runner session snapshot (events + KV state).
 	UpdateRunnerSnapshotJSON(ctx context.Context, sessionID string, snapshotJSON string) error
 	// UpdateSessionContextFromLLMUsage updates context bar fields from the latest model call (prompt vs context window).
 	UpdateSessionContextFromLLMUsage(ctx context.Context, sessionID string, promptTokens, completionTokens, contextWindow int) error
 	// UpdateSessionContextAfterCompression sets estimated prompt usage after ADK snapshot compaction (summary + tail).
 	UpdateSessionContextAfterCompression(ctx context.Context, sessionID string, estimatedPromptTokens int, contextWindow int) error
-	// Session summaries (session_summaries DDL via sessionmemory.EnsureSchema).
+	// Session summaries (session_summaries DDL via data.EnsureSessionMemorySchema).
 	InsertSessionSummary(ctx context.Context, row SessionSummary) error
 	MaxSessionSummaryToTurn(ctx context.Context, sessionID string) (int, error)
 	ListSessionSummaries(ctx context.Context, sessionID string) ([]SessionSummary, error)
@@ -301,6 +303,10 @@ type SessionRepository interface {
 	GetSessionTurn(ctx context.Context, id string) (SessionTurn, error)
 	// IncrementInvocationCounts bumps session-level tool / MCP / skill counters after a runtime invocation.
 	IncrementInvocationCounts(ctx context.Context, sessionID string, toolDelta, mcpDelta, skillDelta int) error
+	// ListSessionsForBatch returns sessions matching search scope with limit/offset pagination.
+	ListSessionsForBatch(ctx context.Context, q SessionSearchQuery) ([]Session, error)
+	ArchiveSessionsByIDs(ctx context.Context, ids []string) (processed int, failed []string, err error)
+	DeleteSessionsByIDs(ctx context.Context, ids []string) (processed int, failed []string, err error)
 }
 
 // SessionUsecase handles session CRUD + timeline（不包含发送消息）.
@@ -386,10 +392,38 @@ func (uc *SessionUsecase) Restore(ctx context.Context, id string) (Session, erro
 }
 
 func (uc *SessionUsecase) Archive(ctx context.Context, id string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return validationErr("session id is required")
+	}
+	sess, err := uc.sessions.GetSessionByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if sess.Status == "running" {
+		return validationErr("running session cannot be archived")
+	}
+	if sess.Status == "archived" {
+		return nil
+	}
 	return uc.sessions.ArchiveSession(ctx, id)
 }
 
 func (uc *SessionUsecase) Delete(ctx context.Context, id string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return validationErr("session id is required")
+	}
+	sess, err := uc.sessions.GetSessionByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if sess.Status == "running" {
+		return validationErr("running session cannot be deleted")
+	}
+	if strings.TrimSpace(sess.DeletedAt) != "" {
+		return nil
+	}
 	return uc.sessions.DeleteSession(ctx, id)
 }
 
@@ -432,6 +466,21 @@ func (uc *SessionUsecase) AppendChatMessage(ctx context.Context, sessionID strin
 		_ = uc.maybeAutoTitleFromUserMessage(ctx, sessionID, msg.ContentMarkdown)
 	}
 	return nil
+}
+
+// UpsertChatActivityMessage persists a tool/MCP/Skill execution card for chat history restore.
+func (uc *SessionUsecase) UpsertChatActivityMessage(ctx context.Context, sessionID string, msg ChatMessage) error {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return validationErr("session id is required")
+	}
+	if strings.TrimSpace(msg.ID) == "" {
+		return validationErr("message id is required")
+	}
+	if _, err := uc.sessions.GetSessionByID(ctx, sessionID); err != nil {
+		return err
+	}
+	return uc.sessions.UpsertChatActivityMessage(ctx, sessionID, msg)
 }
 
 // UpdateRunnerSnapshotJSON persists the Runner session snapshot.

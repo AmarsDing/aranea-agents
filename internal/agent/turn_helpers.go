@@ -57,13 +57,19 @@ func NewRunnerDepsFromRuntime(trpcSession trpcsession.Service, memory trpcmemory
 	return deps
 }
 
+type StreamConsumeOptions struct {
+	MetaResolver      ActivityMetaResolver
+	ActivityPersister ActivityPersister
+}
+
 func ConsumeEventStream(
 	ctx context.Context,
 	events <-chan *trpcevent.Event,
 	eventBus event.Bus,
 	projectMeta ProjectMeta,
+	opts *StreamConsumeOptions,
 ) EventStreamResult {
-	return ConsumeEventStreamWithFirstByte(ctx, ctx, events, eventBus, projectMeta, nil)
+	return ConsumeEventStreamWithFirstByte(ctx, ctx, events, eventBus, projectMeta, nil, opts)
 }
 
 func ConsumeEventStreamWithFirstByte(
@@ -73,6 +79,7 @@ func ConsumeEventStreamWithFirstByte(
 	eventBus event.Bus,
 	projectMeta ProjectMeta,
 	firstByteReceived *bool,
+	opts *StreamConsumeOptions,
 ) EventStreamResult {
 	var result EventStreamResult
 
@@ -81,6 +88,9 @@ func ConsumeEventStreamWithFirstByte(
 		projector = NewEventProjector(eventBus)
 		if projectMeta.TeamID != "" && len(projectMeta.MemberAgentKeys) > 0 {
 			projector.memberStarted = make(map[string]bool)
+		}
+		if opts != nil {
+			projector.Configure(projectMeta, opts.MetaResolver)
 		}
 	}
 
@@ -108,7 +118,13 @@ func ConsumeEventStreamWithFirstByte(
 		}
 
 		if projector != nil {
-			projector.ProjectAndPublish(turnCtx, ev, projectMeta)
+			envelopes := projector.Project(turnCtx, ev, projectMeta)
+			for _, env := range envelopes {
+				eventBus.Publish(turnCtx, env)
+			}
+			if opts != nil {
+				PublishActivityEnvelopes(turnCtx, projectMeta, opts.ActivityPersister, envelopes)
+			}
 		}
 
 		if ev.IsRunnerCompletion() {

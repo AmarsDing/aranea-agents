@@ -52,8 +52,8 @@ func (r *usageRepo) RecordTokenUsageEvent(ctx context.Context, e biz.TokenUsageE
 			     output_tokens = output_tokens + ?,
 			     total_tokens = total_tokens + ?,
 			     total_cost_micro_usd = total_cost_micro_usd + ?,
-			     provider = ?,
-			     model = ?,
+			     last_provider = ?,
+			     last_model = ?,
 			     updated_at = ?
 			 WHERE id = ? AND deleted_at = ''`,
 			e.CallCount, e.InputTokens, e.OutputTokens, e.TotalTokens, e.TotalCostMicroUSD,

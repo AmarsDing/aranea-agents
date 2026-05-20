@@ -49,6 +49,8 @@ export type IntentPassResult = {
   search_hints_count?: number;
 };
 
+export type ActivityKind = "tool" | "skill" | "mcp" | "subagent" | "memory" | "knowledge" | "session";
+
 export type ToolUseEvent = {
   id: string;
   phase: "before" | "after" | string;
@@ -66,4 +68,14 @@ export type ToolUseEvent = {
   duration_ms?: number;
   is_long_running?: boolean;
   message_hint?: string;
+  activity_kind?: ActivityKind;
+  display_label?: string;
+  icon_key?: string;
+  summary?: string;
+  started_at?: string;
+  finished_at?: string;
+  error_code?: string;
+  run_id?: string;
+  trace_id?: string;
+  expanded?: boolean;
 };

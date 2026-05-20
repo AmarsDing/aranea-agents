@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/go-kratos/kratos/v2/errors"
@@ -9,15 +10,16 @@ import (
 
 // SystemSetting is the singleton platform configuration row.
 type SystemSetting struct {
-	RootDirectory           string
-	WorkDirectory           string
-	GlobalMonthlyMicroUSD   int64
-	UpdateTime              time.Time
+	RootDirectory         string
+	WorkDirectory         string
+	GlobalMonthlyMicroUSD int64
+	A2APublicBaseURL      string
+	UpdateTime            time.Time
 }
 
 type SystemSettingRepo interface {
 	Get(ctx context.Context) (SystemSetting, error)
-	Update(ctx context.Context, rootDir, workDir string, globalMonthlyMicroUSD int64) (SystemSetting, error)
+	Update(ctx context.Context, rootDir, workDir string, globalMonthlyMicroUSD int64, a2aPublicBaseURL string) (SystemSetting, error)
 }
 
 type SystemSettingUsecase struct {
@@ -43,11 +45,15 @@ func (u *SystemSettingUsecase) Get(ctx context.Context) (SystemSetting, error) {
 	return s, nil
 }
 
-func (u *SystemSettingUsecase) Update(ctx context.Context, rootDir, workDir string, globalMonthlyMicroUSD int64) (SystemSetting, error) {
+func (u *SystemSettingUsecase) Update(ctx context.Context, rootDir, workDir string, globalMonthlyMicroUSD int64, a2aPublicBaseURL string) (SystemSetting, error) {
 	if globalMonthlyMicroUSD < 0 {
 		return SystemSetting{}, errors.BadRequest("SYSTEM_SETTING", "global_monthly_micro_usd must be >= 0")
 	}
-	s, err := u.repo.Update(ctx, rootDir, workDir, globalMonthlyMicroUSD)
+	a2aPublicBaseURL = strings.TrimRight(strings.TrimSpace(a2aPublicBaseURL), "/")
+	if a2aPublicBaseURL != "" && !strings.HasPrefix(a2aPublicBaseURL, "http://") && !strings.HasPrefix(a2aPublicBaseURL, "https://") {
+		return SystemSetting{}, errors.BadRequest("SYSTEM_SETTING", "a2a_public_base_url must start with http:// or https://")
+	}
+	s, err := u.repo.Update(ctx, rootDir, workDir, globalMonthlyMicroUSD, a2aPublicBaseURL)
 	if err != nil {
 		return SystemSetting{}, err
 	}

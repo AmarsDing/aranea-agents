@@ -53,6 +53,7 @@ Agent 创建弹窗：采集创建 Agent 所需最小字段（名称、标识、�
 3. **P3**：Agent 标识（agent_key）唯一性校验仅在提交时做，无前端防抖实时检查。
 4. **P2**：创建失败时缺少结构化错误提示策略（如 agent_key 冲突、Provider 不可用等），前端仅展示通用错误。
 5. **P3**：创建成功后的跳转行为未明确（需求 §1 写"关闭弹窗并刷新列表或跳转详情"，两种行为需产品决策）。
+6. ~~**P1（A2A）**：创建对话框 Agent 类型~~ → ✅ 已实现（LLM / A2A Proxy），见 [changelog/2026-05-20-A2A-Phase1-2.md](../changelog/2026-05-20-A2A-Phase1-2.md)
 
 ---
 
@@ -60,6 +61,7 @@ Agent 创建弹窗：采集创建 Agent 所需最小字段（名称、标识、�
 
 - **Phase 1**：Provider/Model 可用性校验接口 + 前端"检查"按钮
 - **Phase 2**：Agent 模板系统（预设模板 → 自动填充字段）
+- **Phase 2（A2A）**：创建对话框 Agent 类型选择 + A2A Proxy 表单（与 [26-a2a-development.md](./26-a2a-development.md) Phase 2 对齐）
 - **Phase 3**：agent_key 前端防抖实时查重
 
 ---
@@ -76,6 +78,9 @@ Agent 创建弹窗：采集创建 Agent 所需最小字段（名称、标识、�
 | 6 | 前端创建弹窗：agent_key 防抖查重 + inline error | 前端 | P3 | — | 需求 §3.2 |
 | 7 | 前端创建弹窗：结构化错误提示（冲突/不可用/校验失败） | 前端 | P2 | — | 需求 §4 |
 | 8 | 单测覆盖 AgentUsecase CRUD | 后端 | P1 | EP-TEST-01 | — |
+| 9 | Proto `agent_kind` + `A2AProxyConfig` | 后端 | P1 | — | 需求 §9 | ✅ |
+| 10 | 创建弹窗：Agent 类型 LLM / A2A Proxy | 前端 | P1 | — | 需求 §9 | ✅ |
+| 11 | 创建弹窗：远程 URL + 流式/超时 | 前端 | P1 | — | 需求 §9.3 | ✅ |
 
 ---
 
@@ -85,6 +90,7 @@ Agent 创建弹窗：采集创建 Agent 所需最小字段（名称、标识、�
 - [ ] 模板选择后自动填充名称/描述/Provider/Model
 - [ ] agent_key 输入后 500ms 防抖查重，冲突时 inline error
 - [ ] 创建失败时前端展示结构化错误（非通用 toast）
+- [x] 可创建 A2A 远程代理 Agent（`agent_kind=a2a_proxy`）并在列表展示 **A2A ↗** 徽章
 - [ ] `go test ./internal/biz/... -run TestAgent` 通过
 
 ---

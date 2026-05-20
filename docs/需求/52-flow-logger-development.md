@@ -18,7 +18,7 @@
 | 核心 | `internal/event/trace_context.go`、`flow_log.go`、`trace_emitter.go`、`system_flow.go` |
 | 集成 | `internal/service/trpc_turn.go`、`turn_usage.go` |
 | WS | `internal/server/ws.go`（`flow_log` 免 `enable_log`） |
-| 前端 Logs | `web/src/features/monitor/flow.ts`、`api.ts`、`LogStream.vue` |
+| 前端 Logs | `web/src/features/monitor/flow.ts`、`api.ts`、`useLogStreamHub.ts`、`LogStreamPanel.vue` |
 | 前端 Traces | `FlowTracePanel.vue`、`FlowLogExportButton.vue`、`TraceList.vue` |
 
 ---
@@ -31,7 +31,7 @@
 | `EnvelopeTypeFlowLog` | ✅ | `envelope.go` |
 | TraceEmitter + Span 合并 | ✅ | `trace_emitter.go`；`turn_spans.go` 已删 |
 | `trpc_turn` 迁移 | ✅ | `NewTraceEmitterForRun` |
-| Monitor Logs 收 `flow_log` | ✅ | `api.ts` + `LogStream.vue` |
+| Monitor Logs 收 `flow_log` | ✅ | `useLogStreamHub` + `FlowLogStream.vue` |
 | Traces 详情「流程」Tab | ✅ | `FlowTracePanel.vue` + `TraceList` Tab |
 | JSONL 导出 | ✅ | `FlowLogExportButton.vue` + `buildFlowDiagnosticJsonl` |
 | 详情按 trace 过滤 WS | ✅ | `flowLogMatchesTrace` + 详情页订阅 |
@@ -70,6 +70,16 @@
 | FL-1b-03 | `FlowLogExportButton.vue` | ✅ |
 | FL-1b-04 | 详情按 `trace_id`/`run_id` 过滤 WS | ✅ |
 | FL-1b-05 | `flow.spec.ts` | ✅ |
+
+### Phase 1c — Logs Tab 拆分 + legacy log 清理（进行中 — 2026-05-20）
+
+| ID | 任务 | 状态 |
+|----|------|------|
+| FL-1c-01 | `useLogStreamHub` + Panel/Flow/Process 组件 | ✅ |
+| FL-1c-02 | WS `enable_log` globalMode channel 修复 | ✅ |
+| FL-1c-03 | 删除 intent/team 重复 `EnvelopeTypeLog` | ✅ |
+| FL-1c-04 | `chat_native` / `session_compress` → flow_log | ✅ |
+| FL-1c-05 | 文档 + changelog 同步 | ✅ |
 
 ### Phase 2 — 持久化（可选）
 

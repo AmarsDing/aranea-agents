@@ -64,6 +64,8 @@ export function useAgentSettingsPage() {
     display_name: "",
     provider: "",
     model: "",
+    agent_kind: "",
+    a2a_proxy_config: undefined,
     status: "active",
     is_default: false,
     is_favorite: false,
@@ -969,6 +971,17 @@ export function useAgentSettingsPage() {
     $q.notify({ type: "positive", message: "Agent 标识已复制" });
   }
 
+  async function reloadAgent() {
+    const id = String(route.params.id ?? "").trim();
+    if (!id) return;
+    try {
+      const agent = await detailStore.fetchById(id);
+      await applyLoadedAgent(agent);
+    } catch (e) {
+      $q.notify({ type: "negative", message: e instanceof Error ? e.message : "刷新 Agent 失败" });
+    }
+  }
+
   return {
     tab,
     form,
@@ -979,6 +992,7 @@ export function useAgentSettingsPage() {
     promptDialog,
     advancedDialog,
     toggleFavorite,
+    reloadAgent,
     saveAgent,
     promptModes,
     statusOptions,

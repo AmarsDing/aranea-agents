@@ -10,6 +10,7 @@ import (
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/chatactivity"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/knowledge"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
@@ -35,6 +36,7 @@ type ChatService struct {
 	teams         biz.TeamRepository
 	teamsNative   *team.Runner
 	usage         *biz.UsageUsecase
+	monitor       *biz.MonitorUsecase
 	td            rt.TurnDeps
 	pluginRT      *plugintrpc.Runtime
 	pluginManager *plugintrpc.Manager
@@ -55,6 +57,7 @@ type ChatServiceDeps struct {
 	Teams         biz.TeamRepository
 	TeamsNative   *team.Runner
 	Usage         *biz.UsageUsecase
+	Monitor       *biz.MonitorUsecase
 	PluginRT      *plugintrpc.Runtime
 	PluginManager *plugintrpc.Manager
 	SkillDBRepo   trpcskill.Repository
@@ -75,6 +78,7 @@ func NewChatService(deps ChatServiceDeps) *ChatService {
 		teams:         deps.Teams,
 		teamsNative:   deps.TeamsNative,
 		usage:         deps.Usage,
+		monitor:       deps.Monitor,
 		pluginRT:      deps.PluginRT,
 		pluginManager: deps.PluginManager,
 		skillDBRepo:   deps.SkillDBRepo,
@@ -116,6 +120,12 @@ func (s *ChatService) StopGeneration(ctx context.Context, req *chatv1.StopGenera
 		}
 		s.publishRunStatus(sessionID, runID, "cancelled", "")
 		s.persistRunStatus(ctx, sessionID, runID, "cancelled", "")
+		if _, err := chatactivity.CancelRunningActivityMessages(ctx, s.td.Sessions, sessionID); err != nil {
+			event.CtxFlowLogWarn(ctx, "chat.activity.cancel", "取消执行卡片查询失败",
+				event.P("session_id", sessionID),
+				event.P("error", err.Error()),
+			)
+		}
 	}
 	return &chatv1.StopGenerationResponse{Stopped: stopped}, nil
 }
@@ -223,18 +233,7 @@ func (s *ChatService) setRunStatus(sessionID, runID, status, errMsg string) {
 }
 
 func (s *ChatService) publishRunStatus(sessionID, runID, status, errMsg string) {
-	bus := s.td.Pipeline.Bus
-	if bus == nil || strings.TrimSpace(sessionID) == "" {
-		return
-	}
-	env := event.NewEnvelope(event.EnvelopeTypeRunStatus, "chat-service", sessionID)
-	env.Channel = event.RouteChannel(env)
-	env.Metadata = map[string]any{
-		"run_id":        runID,
-		"status":        status,
-		"error_message": errMsg,
-	}
-	bus.Publish(context.Background(), env)
+	PublishRunStatus(s.td.Pipeline.Bus, sessionID, runID, status, errMsg)
 }
 
 // publishMessageQueued notifies WS clients that a user message was accepted into the

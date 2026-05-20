@@ -10,6 +10,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/monitor/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/conf"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
@@ -17,11 +18,12 @@ import (
 type MonitorService struct {
 	v1.UnimplementedMonitorServiceServer
 
-	uc *biz.MonitorUsecase
+	uc     *biz.MonitorUsecase
+	server *conf.Server
 }
 
-func NewMonitorService(uc *biz.MonitorUsecase) *MonitorService {
-	return &MonitorService{uc: uc}
+func NewMonitorService(uc *biz.MonitorUsecase, server *conf.Server) *MonitorService {
+	return &MonitorService{uc: uc, server: server}
 }
 
 func bizAuditToProto(a biz.AuditLog) *v1.AuditLog {
@@ -236,17 +238,25 @@ func (s *MonitorService) GetRunnerMetrics(ctx context.Context, req *v1.GetRunner
 
 func (s *MonitorService) GetMonitorLogs(context.Context, *v1.GetMonitorLogsRequest) (*v1.GetMonitorLogsResponse, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
+	enabled := true
+	if s.server != nil {
+		enabled = s.server.ProcessLogEnabled()
+	}
+	msg := "Process logs disabled in server.monitor.process_log_enabled."
+	if enabled {
+		msg = "Process logs follow server.monitor.process_log_enabled; subscribe via WebSocket /v1/ws."
+	}
 	return &v1.GetMonitorLogsResponse{
 		Items: []*v1.MonitorLogLine{{
 			Id:        "ws-hint",
 			Time:      now,
 			Level:     "INFO",
-			Message:   "Live log lines are pushed via WebSocket (server.ws port); GET snapshot here lists hints only.",
+			Message:   "Live log lines are pushed via WebSocket; flow_log always on, process log gated by config.",
 			Source:    "monitor",
 			CreatedAt: now,
 		}},
-		Enabled: true,
-		Message: "Use WebSocket /v1/ws to subscribe to monitor channels (logs, events).",
+		Enabled: enabled,
+		Message: msg,
 	}, nil
 }
 

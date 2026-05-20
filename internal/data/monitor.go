@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -256,6 +257,96 @@ func monitorTracesWhere(q biz.MonitorTracesQuery) (string, []any) {
 		return "", args
 	}
 	return " AND " + strings.Join(parts, " AND "), args
+}
+
+func (r *monitorRepo) ExistsRunnerCompletion(ctx context.Context, sessionID, invocationID string) (bool, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	invocationID = strings.TrimSpace(invocationID)
+	if sessionID == "" || invocationID == "" {
+		return false, nil
+	}
+	var n int
+	err := r.data.RawDB().QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM monitor_events WHERE deleted_at = '' AND event_key = 'runner.completion'
+		 AND json_extract(metadata_json, '$.session_id') = ?
+		 AND json_extract(metadata_json, '$.invocation_id') = ?`,
+		sessionID, invocationID,
+	).Scan(&n)
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
+func (r *monitorRepo) PatchRunnerCompletionMetadata(ctx context.Context, sessionID, runID, invocationID, patchJSON string) (bool, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	runID = strings.TrimSpace(runID)
+	invocationID = strings.TrimSpace(invocationID)
+	if sessionID == "" || strings.TrimSpace(patchJSON) == "" {
+		return false, nil
+	}
+	if patched, err := r.patchRunnerCompletionByKey(ctx, sessionID, "run_id", runID, patchJSON); err != nil || patched {
+		return patched, err
+	}
+	if invocationID != "" && invocationID != runID {
+		return r.patchRunnerCompletionByKey(ctx, sessionID, "invocation_id", invocationID, patchJSON)
+	}
+	return false, nil
+}
+
+func (r *monitorRepo) patchRunnerCompletionByKey(ctx context.Context, sessionID, jsonKey, jsonValue, patchJSON string) (bool, error) {
+	jsonValue = strings.TrimSpace(jsonValue)
+	if jsonValue == "" {
+		return false, nil
+	}
+	var id, existing string
+	query := fmt.Sprintf(
+		`SELECT id, metadata_json FROM monitor_events WHERE deleted_at = '' AND event_key = 'runner.completion'
+		 AND json_extract(metadata_json, '$.session_id') = ?
+		 AND json_extract(metadata_json, '$.%s') = ?
+		 ORDER BY created_at DESC LIMIT 1`, jsonKey)
+	err := r.data.RawDB().QueryRowContext(ctx, query, sessionID, jsonValue).Scan(&id, &existing)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	merged, err := mergeJSONMetadata(existing, patchJSON)
+	if err != nil {
+		return false, err
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	res, err := r.data.RawDB().ExecContext(ctx,
+		`UPDATE monitor_events SET metadata_json = ?, updated_at = ? WHERE id = ?`,
+		merged, now, id,
+	)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
+}
+
+func mergeJSONMetadata(existing, patch string) (string, error) {
+	base := map[string]any{}
+	if strings.TrimSpace(existing) != "" {
+		if err := json.Unmarshal([]byte(existing), &base); err != nil {
+			base = map[string]any{}
+		}
+	}
+	delta := map[string]any{}
+	if err := json.Unmarshal([]byte(patch), &delta); err != nil {
+		return existing, err
+	}
+	for k, v := range delta {
+		base[k] = v
+	}
+	raw, err := json.Marshal(base)
+	if err != nil {
+		return existing, err
+	}
+	return string(raw), nil
 }
 
 func (r *monitorRepo) GetMonitorTrace(ctx context.Context, id string) (biz.MonitorPlatformRow, error) {

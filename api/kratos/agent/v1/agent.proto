@@ -125,6 +125,16 @@ message AgentPromptFile {
   string updated_at = 7;
 }
 
+// A2AProxyConfig connects an a2a_proxy catalog agent to a remote A2A service.
+message A2AProxyConfig {
+  string remote_url = 1;
+  string agent_card_url = 2;
+  bool enable_streaming = 3;
+  string auth_type = 4;
+  string auth_config_json = 5;
+  int32 timeout_seconds = 6;
+}
+
 message Agent {
   string id = 1;
   string agent_key = 2;
@@ -146,6 +156,11 @@ message Agent {
   string deleted_at = 18;
   AgentRuntimeSettings settings = 19;
   repeated AgentPromptFile files = 20;
+  // agent_kind: "" | "llm" | "a2a_proxy"
+  string agent_kind = 21;
+  A2AProxyConfig a2a_proxy_config = 22;
+  // a2a_endpoint_enabled: true when A2A AgentCard is enabled (list enrichment).
+  bool a2a_endpoint_enabled = 23;
 }
 
 message ListAgentsRequest {
@@ -167,8 +182,9 @@ message ListAgentsResponse {
 message CreateAgentRequest {
   string agent_key = 1 [(google.api.field_behavior) = REQUIRED];
   string display_name = 2 [(google.api.field_behavior) = REQUIRED];
-  string provider = 3 [(google.api.field_behavior) = REQUIRED];
-  string model = 4 [(google.api.field_behavior) = REQUIRED];
+  // Required for llm; omit for agent_kind=a2a_proxy (server defaults provider=a2a, model=proxy).
+  string provider = 3;
+  string model = 4;
   string icon = 5;
   string agent_description = 6;
   string category_position_id = 7;
@@ -178,6 +194,8 @@ message CreateAgentRequest {
   string config_json = 11;
   AgentRuntimeSettings settings = 12;
   repeated AgentPromptFile files = 13;
+  string agent_kind = 14;
+  A2AProxyConfig a2a_proxy_config = 15;
 }
 
 message GetAgentRequest {

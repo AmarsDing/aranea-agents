@@ -10,6 +10,10 @@ server:
     enable: true
     network: tcp
     addr: 0.0.0.0:8002
+  monitor:
+    process_log_enabled: true
+  # Public A2A endpoint prefix (no trailing slash). Prefer System Settings UI or env A2A_PUBLIC_BASE_URL.
+  # a2a_public_base_url: ""
 data:
   sqlite:
     enable: true

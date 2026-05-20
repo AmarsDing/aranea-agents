@@ -75,6 +75,7 @@ type WSServer struct {
 	eventBuffer *event.Buffer
 	canceller   RunCanceller
 	sender      ChatSender
+	serverConf  *conf.Server
 	upgrader    websocket.Upgrader
 	closed      bool
 }
@@ -89,6 +90,7 @@ func NewWSServer(c *conf.Server, eventBus event.Bus, eventBuffer *event.Buffer, 
 		eventBuffer: eventBuffer,
 		canceller:   canceller,
 		sender:      sender,
+		serverConf:  c,
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool {
 				o := strings.TrimSpace(r.Header.Get("Origin"))
@@ -210,6 +212,9 @@ func (s *WSServer) handleWS(w http.ResponseWriter, r *http.Request) {
 
 	lastEventID := strings.TrimSpace(r.URL.Query().Get("last_event_id"))
 	logEnabled := r.URL.Query().Get("log_enabled") == "1" || r.URL.Query().Get("log_enabled") == "true"
+	if globalMode && !logEnabled && s.serverConf != nil && s.serverConf.ProcessLogEnabled() {
+		logEnabled = true
+	}
 	filterKey := strings.TrimSpace(r.URL.Query().Get("filter_key"))
 
 	channels := map[string]bool{
@@ -504,12 +509,18 @@ func (s *WSServer) handleUpstream(wc *wsConn, raw []byte) {
 		if !ok {
 			return
 		}
-		if enabled, _ := payload["enabled"].(bool); enabled {
+		enabled, _ := payload["enabled"].(bool)
+		if enabled && s.serverConf != nil && !s.serverConf.ProcessLogEnabled() {
+			return
+		}
+		if enabled {
 			wc.logEnabled = true
 			wc.channels["monitor"] = true
 		} else {
 			wc.logEnabled = false
-			delete(wc.channels, "monitor")
+			if !wc.globalMode {
+				delete(wc.channels, "monitor")
+			}
 		}
 
 	case "user_message":

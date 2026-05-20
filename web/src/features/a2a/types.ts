@@ -12,6 +12,24 @@ export type A2AAgentCard = {
   enabled: boolean;
   capabilities: A2ACapability[];
   updated_at: string;
+  /** local | remote */
+  source?: string;
+  endpoint_url?: string;
+  remote_url?: string;
+};
+
+export type A2ARuntimeConfig = {
+  public_base_url: string;
+  public_base_url_source: string;
+};
+
+export type A2AGatewayEntry = {
+  card: A2AAgentCard;
+  source: string;
+  registry_id: string;
+  endpoint_url: string;
+  remote_url: string;
+  healthy: boolean;
 };
 
 export type A2AInvokeInput = {
@@ -20,6 +38,36 @@ export type A2AInvokeInput = {
   payload_json: string;
   caller_session_id?: string;
   timeout_seconds?: number;
+  workspace?: string;
+};
+
+export type A2ARemoteAgent = {
+  id: string;
+  workspace: string;
+  display_name: string;
+  remote_url: string;
+  agent_card_url: string;
+  auth_type: string;
+  enabled: boolean;
+  discovered_card?: A2AAgentCard;
+  created_at: string;
+  updated_at: string;
+};
+
+export type RegisterRemoteAgentInput = {
+  workspace?: string;
+  remote_url: string;
+  agent_card_url?: string;
+  display_name?: string;
+  auth_type?: string;
+  auth_config_json?: string;
+  enabled?: boolean;
+};
+
+export type DiscoverRemoteInput = {
+  remote_url: string;
+  auth_type?: string;
+  auth_config_json?: string;
 };
 
 export type A2AInvokeResult = {

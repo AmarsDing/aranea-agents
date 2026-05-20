@@ -58,6 +58,21 @@ func TestTraceEmitterPublishesFlowLog(t *testing.T) {
 	}
 }
 
+func TestTraceEmitterSkipsChatErrorForMonitorOnlySteps(t *testing.T) {
+	bus := &captureBus{}
+	em := NewTraceEmitter(bus, nil, TraceContext{SessionID: "sess_1"})
+	em.LogError("chat.usage_record", "用量落库失败")
+	time.Sleep(50 * time.Millisecond)
+
+	bus.mu.Lock()
+	defer bus.mu.Unlock()
+	for _, env := range bus.envs {
+		if env.Type == EnvelopeTypeError {
+			t.Fatalf("expected no chat error envelope for chat.usage_record, got %+v", env)
+		}
+	}
+}
+
 func TestTraceEmitterMetadataJSON(t *testing.T) {
 	em := NewTraceEmitter(nil, nil, TraceContext{TraceID: "tr_x", RunID: "r1"})
 	em.FinishRoot("ok")

@@ -636,7 +636,8 @@ web/src/features/agents/
     ├── AgentEvolutionTab.vue       ← 进化 Tab
     ├── AgentHeartbeatCard.vue      ← 心跳卡片
     ├── AgentFilesTab.vue           ← 文件 Tab（见 6 agent-setting-file.design.md）
-    └── AgentPermissionsTab.vue     ← 权限 Tab
+    ├── AgentPermissionsTab.vue     ← 权限 Tab
+    └── AgentSettingsA2ATab.vue     ← A2A Tab（Endpoint / Proxy，见 §7.4）
 ```
 
 ### 7.2 TypeScript 类型
@@ -1092,6 +1093,41 @@ const promptModes = [
     </QCardSection>
   </QCard>
 </template>
+```
+
+### 7.4 AgentSettingsA2ATab — A2A Endpoint / Proxy
+
+> 需求：[5 agent-setting.md](./5%20agent-setting.md) §10 · A2A 架构：[26 a2a-protocol.design.md](./26%20a2a-protocol.design.md) §11.6
+
+**API 复用**：
+- `GET/PUT /v1/a2a/agents/{agent_id}/card` — AgentCard CRUD
+- `GET /v1/a2a/discover` — Discover 预览
+- Proxy 连接测试：可选 `POST /v1/a2a/invoke` 或专用 `DiscoverRemoteAgent`
+
+**Composable**：`useAgentA2ASettings.ts`
+
+| 分支 | 主要状态 | 操作 |
+|------|----------|------|
+| `agent_kind=llm` | `card.enabled`, `capabilities[]`, `streaming` | `updateCard`；Toggle 启用 Endpoint |
+| `agent_kind=a2a_proxy` | `a2a_proxy_config`, 远程 `card`（只读） | PATCH Agent + 重新发现 Card |
+
+**类型扩展**（`features/agents/types.ts`）：
+
+```typescript
+export type AgentKind = "" | "llm" | "a2a_proxy";
+
+export type A2AProxyConfig = {
+  remote_url: string;
+  agent_card_url?: string;
+  enable_streaming?: boolean;
+  auth_type?: "none" | "api_key" | "mtls";
+  auth_config_json?: string;
+  timeout_seconds?: number;
+};
+
+// Agent 类型增加：
+//   agent_kind?: AgentKind;
+//   a2a_proxy_config?: A2AProxyConfig;
 ```
 
 ### 7.5 自动保存策略

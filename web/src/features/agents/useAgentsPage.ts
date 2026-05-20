@@ -2,6 +2,7 @@ import { storeToRefs } from "pinia";
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { copyToClipboard, useQuasar } from "quasar";
 import type { Agent } from "./api";
+import type { AgentKind, A2AProxyConfig } from "./types";
 import type { PlatformResource, PlatformResourceTreeNode } from "../platform/api";
 import { descriptionTemplates, statusOptions } from "../../components/agents/agentUi";
 import { useAgentsPageStore } from "../../stores/agents";
@@ -61,6 +62,12 @@ export function useAgentsPage() {
   const deleteTarget = ref<Agent | null>(null);
   const creating = ref(false);
   const selfEvolve = ref(true);
+  const agentKind = ref<AgentKind>("llm");
+  const a2aProxy = reactive<A2AProxyConfig>({
+    remote_url: "",
+    enable_streaming: true,
+    timeout_seconds: 30
+  });
   const viewMode = ref<ViewMode>((localStorage.getItem(LS_VIEW) as ViewMode) || "grid");
   const categoryIndustry = ref<string | null>(null);
   const categoryDepartment = ref<string | null>(null);
@@ -106,9 +113,14 @@ export function useAgentsPage() {
     if (!form.agent_key) return "";
     return /^[a-z0-9]+(-[a-z0-9]+)*$/.test(form.agent_key) ? "" : "仅支持小写字母、数字、连字符";
   });
-  const canCreate = computed(
-    () => Boolean(form.display_name && form.agent_key && !agentKeyError.value && form.provider && form.model && modelCheckPassed.value)
-  );
+  const isA2AProxyCreate = computed(() => agentKind.value === "a2a_proxy");
+  const canCreate = computed(() => {
+    const base = Boolean(form.display_name && form.agent_key && !agentKeyError.value);
+    if (isA2AProxyCreate.value) {
+      return base && Boolean(a2aProxy.remote_url.trim());
+    }
+    return base && Boolean(form.provider && form.model && modelCheckPassed.value);
+  });
 
   async function runLoadList() {
     try {
@@ -200,19 +212,28 @@ export function useAgentsPage() {
     selectedTemplateKey.value = "";
     modelCheckPassed.value = false;
     selfEvolve.value = true;
+    agentKind.value = "llm";
+    Object.assign(a2aProxy, { remote_url: "", enable_streaming: true, timeout_seconds: 30 });
   }
 
   async function onCreate() {
     if (!canCreate.value) return;
     creating.value = true;
     try {
-      await appStore.addAgent({
+      const payload: Parameters<typeof appStore.addAgent>[0] = {
         ...form,
+        agent_kind: agentKind.value,
         config_json: JSON.stringify({
           self_evolve: selfEvolve.value,
           description_template_key: selectedTemplateKey.value
         })
-      });
+      };
+      if (isA2AProxyCreate.value) {
+        payload.provider = "a2a";
+        payload.model = "proxy";
+        payload.a2a_proxy_config = { ...a2aProxy };
+      }
+      await appStore.addAgent(payload);
       pageStore.resetListFiltersAfterCreate();
       await runLoadList();
       resetForm();
@@ -285,6 +306,9 @@ export function useAgentsPage() {
     checkingModel,
     modelCheckPassed,
     selfEvolve,
+    agentKind,
+    a2aProxy,
+    isA2AProxyCreate,
     viewMode,
     categoryIndustry,
     categoryDepartment,

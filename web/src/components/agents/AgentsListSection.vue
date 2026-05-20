@@ -86,7 +86,7 @@
 
 <script setup lang="ts">
 import type { QTableColumn } from "quasar";
-import type { Agent } from "../../features/agents/api";
+import type { Agent } from "../../features/agents/types";
 import AgentCard from "./AgentCard.vue";
 import AgentAvatarQ from "../avatar/AgentAvatarQ.vue";
 import { formatContext, selfEvolveEnabled } from "./agentUi";

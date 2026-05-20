@@ -31,6 +31,7 @@ Agent 设置页：管理 Agent 的详细配置，包括系统提示、工具选�
 | Effective MCP 计算 | ✅ | `agent_mcp_effective.go` |
 | PromptFile 管理 | ✅ | 独立 RPC + 表 |
 | ToolOverride | 🟡 | proto 有 `agent_override_count` 字段，但无 biz Usecase / Repo / Service |
+| **A2A Endpoint Tab** | ✅ | `AgentSettingsA2AEndpointTab.vue` + Proxy Tab |
 | 系统提示模式切换 | ✅ | `system_prompt_mode` 字段 + `FilesForMode` |
 | Prompt 预览 | ✅ | `GetAgentPromptPreview` RPC |
 
@@ -58,6 +59,7 @@ Agent 设置页：管理 Agent 的详细配置，包括系统提示、工具选�
 3. **P2**：`other_config` PATCH 时需深度合并 JSON，当前可能覆盖整块配置。需明确 merge 策略（RFC 7396 JSON Merge Patch 或自定义）。
 4. **P3**：系统提示模式切换后，"文件"Tab 应联动显示当前模式下哪些文件生效，当前未实现联动。
 5. **P3**：Agent 设置页各分区缺少"重置为默认值"功能。
+6. ~~**P1（A2A）**：Agent 设置页 A2A Tab~~ → ✅ 已实现
 
 ---
 
@@ -65,6 +67,7 @@ Agent 设置页：管理 Agent 的详细配置，包括系统提示、工具选�
 
 - **Phase 1（EP-BIZ-06）**：补 `biz/tool_override.go` + Repo + Service CRUD + 前端页面
 - **Phase 2**：`other_config` JSON Merge Patch 策略 + 记忆配置分组折叠
+- **Phase 2（A2A）**：`AgentSettingsA2ATab.vue` — Endpoint / Proxy 视图（与 [26-a2a-development.md](./26-a2a-development.md) 2.6 对齐）
 - **Phase 3**：系统提示模式联动 + 重置默认值
 
 ---
@@ -82,6 +85,7 @@ Agent 设置页：管理 Agent 的详细配置，包括系统提示、工具选�
 | 7 | 记忆配置分组折叠 UI | 前端 | P3 | — | 需求 §9 |
 | 8 | 系统提示模式与文件 Tab 联动 | 前端 | P3 | — | 需求 §5 |
 | 9 | 各分区"重置为默认值"按钮 | 前端 | P3 | — | — |
+| 10 | Agent 设置 A2A Tab（Endpoint + Proxy） | 前端 | P1 | — | [5 agent-setting.md](./5%20agent-setting.md) §10 | ✅ |
 
 ---
 

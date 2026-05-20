@@ -18,6 +18,9 @@ var (
 		"/v1/admins/login": {},
 		"/healthz":         {},
 	}
+	noAuthPathPrefixes = []string{
+		"/v1/a2a/public/",
+	}
 	// authSecretKey is the secret key used for signing JWT tokens.
 	authSecretKey = authSecretFromEnv("KRATOS_AUTH_SECRET")
 	// cookieName is the name of the cookie that stores the authorization token.
@@ -37,6 +40,27 @@ func RegisterNoAuthPath(path string) {
 	noAuthPaths[path] = struct{}{}
 }
 
+// RegisterNoAuthPathPrefix marks paths with the given prefix as not requiring authentication.
+func RegisterNoAuthPathPrefix(prefix string) {
+	prefix = strings.TrimSpace(prefix)
+	if prefix == "" {
+		return
+	}
+	noAuthPathPrefixes = append(noAuthPathPrefixes, prefix)
+}
+
+func isNoAuthPath(path string) bool {
+	if _, ok := noAuthPaths[path]; ok {
+		return true
+	}
+	for _, prefix := range noAuthPathPrefixes {
+		if strings.HasPrefix(path, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
 // Middleware is an authentication middleware for HTTP servers.
 func Middleware() httpm.FilterFunc {
 	return func(next http.Handler) http.Handler {
@@ -49,7 +73,7 @@ func Middleware() httpm.FilterFunc {
 				next.ServeHTTP(w, r)
 				return
 			}
-			if _, ok := noAuthPaths[r.URL.Path]; ok {
+			if isNoAuthPath(r.URL.Path) {
 				next.ServeHTTP(w, r)
 				return
 			}

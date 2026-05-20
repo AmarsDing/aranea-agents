@@ -2,11 +2,15 @@
 
 > 对标 `pkg/trpc-agent-go/agent/a2aagent` + `internal/a2a`，实现 Agent-to-Agent 通信协议。
 >
-> **2026-05-19 现状对齐**：
-> - ✅ `internal/a2a/tool.go` 已暴露 `call_agent` 工具；`internal/biz/a2a.go` / `internal/data/a2a.go` / `internal/service/a2a.go` 已通；`api/kratos/a2a/v1/*` proto/HTTP 已生成；Wire 注入已完成；前端 API + Store 已实现。
+> **2026-05-20 现状对齐**：
+> - ✅ `internal/a2a/tool.go` 已暴露 `call_agent` 工具；`internal/biz/a2a.go` / `internal/data/a2a.go` / `internal/service/a2a.go` 已通；`api/kratos/a2a/v1/*` proto/HTTP 已生成；Wire 注入已完成；前端 API + Store + `A2APage` 已实现。
 > - ⚠️ `call_agent` 工具已通过 `toolsets.go` 条件注入（当 Agent 的 effective tools 包含 `call_agent` 时），但 **Context 注入缺失**：`WithA2AUsecase`、`WithCallerAgentID`、`WithInvoker` 在 service 层运行时未被调用，导致工具执行时报 "invoker not configured"。
-> - ❌ 跨实例 A2A（远程 Agent 发现/通信、A2A Server、消息转换、流式通信、Graph 恢复）尚未实现。
-> - ❌ 远端鉴权 / mTLS / 流式请求 尚未实现。
+> - ❌ **Agent Kind `a2a_proxy`**（创建时选择「A2A 远程代理」）尚未实现；目录内 Agent 仍全部按 LLM 构建。
+> - ❌ LLM Agent 的 **A2A Endpoint**（设置页暴露为 A2A 服务 + AgentCard）尚未产品化。
+> - ❌ 跨实例 A2A（A2A Server、远程注册、流式通信、Graph 恢复）尚未实现。
+> - ❌ 远端鉴权 / mTLS 尚未实现。
+>
+> **产品模型（2026-05-20）**：A2A 拆为两种语义 — **A2A Proxy**（远程代理，作为 Agent 创建变种）与 **A2A Endpoint**（本地 LLM Agent 的能力开关）。详见 §2.5、§3.10–§3.11。技术设计见 [26 a2a-protocol.design.md](./26%20a2a-protocol.design.md) §十一。
 >
 > 后续以 `guides/execution-plan.md` 为准。
 
@@ -97,6 +101,26 @@ func New(opts ...Option) (*A2AServer, error)
 4. **DataPart 映射**：FunctionCall/FunctionResponse/CodeExecution 等 DataPart 类型映射
 5. **状态传递**：通过 metadata 传递 session state
 6. **Graph 恢复**：A2A 任务与 Graph 工作流的中断/恢复集成
+
+### 2.5 产品模型：Agent Kind 与 A2A 语义拆分
+
+trpc-agent-go 中 `a2aagent.A2AAgent` 与 `llmagent.LLMAgent` 均实现 `agent.Agent` 接口，**运行时是一等公民**；产品层需区分两种 A2A 语义，避免与独立注册表页 `/a2a` 混淆：
+
+| 语义 | 产品形态 | 创建入口 | 运行时 |
+|------|----------|----------|--------|
+| **A2A Proxy（远程代理）** | Agent 目录中的一种 **Agent Kind**（`a2a_proxy`） | 创建 Agent 时选择「A2A 远程代理」 | 包装 `a2aagent`，对话经 A2A 协议转发至远程服务 |
+| **A2A Endpoint（本地暴露）** | 普通 LLM Agent 的 **能力开关** | Agent 设置页「A2A」Tab | LLM Agent + `server/a2a` + AgentCard；可被 `call_agent` 或外部客户端调用 |
+| **平台内互调** | LLM Agent 的工具能力 | Agent 设置启用 `call_agent` | 同工作区经 `A2AUsecase` 派发，非新 Agent 类型 |
+
+**页面分工**：
+
+| 页面 | 职责 |
+|------|------|
+| `/agents` 创建对话框 | 选择 LLM / A2A 远程代理；Proxy 采集远程 URL、鉴权、流式开关 |
+| `/agents/:id/settings` → A2A Tab | LLM Agent 的 Endpoint：AgentCard、capabilities、暴露开关 |
+| `/a2a`（注册表） | 工作区级发现、审计、Invoke 测试、远程 Agent 注册表（运维视图） |
+
+与 Team / Graph 的关系：Team、Graph 为独立编排实体；**A2A Proxy 可作为 Team 成员或 Graph Agent 节点**，与 LLM Agent 同等可选。创建流程见 [2 agents-create.md](./2%20agents-create.md) §9；Endpoint 设置见 [5 agent-setting.md](./5%20agent-setting.md) §10。
 
 ---
 
@@ -200,14 +224,52 @@ func New(opts ...Option) (*A2AServer, error)
 
 ### 3.9 前端管理页面（P1）
 
-**需求**：A2A AgentCard 管理与审计浏览
+**需求**：A2A 注册表页（工作区级治理）
 
 **实现要点**：
-- `A2AAgentCardPage.vue`：AgentCard 列表 + 启用/禁用 + 能力编辑
-- `A2AAuditPage.vue`：审计日志浏览
-- `A2ARemoteAgentDialog.vue`：注册远程 Agent
+- `A2APage.vue`：Discover / Audit / Invoke 三 Tab（✅ 已实现）
+- 待补：`A2ARemoteAgentDialog` — 注册远程 Agent 至工作区注册表（与 catalog 中 `a2a_proxy` Agent 可互相同步，见设计文档）
 
-**验收标准**：通过前端可管理 A2A AgentCard、浏览审计日志
+**验收标准**：通过 `/a2a` 可发现 AgentCard、浏览审计、测试 Invoke
+
+### 3.10 Agent Kind：A2A 远程代理（P1）
+
+**需求**：创建 Agent 时可选择 **A2A 远程代理**，在目录中表现为普通 Agent，运行时通过 A2A 协议连接外部服务。
+
+**用户故事**：
+- 作为管理员，我希望在创建 Agent 时选择「A2A 远程代理」，填写远程 URL 并自动发现 AgentCard，以便在 Chat 中像本地 Agent 一样使用外部 A2A 服务。
+- 作为开发者，我希望 A2A Proxy Agent 出现在 Agent 列表并带 `A2A ↗` 标识，以便与 LLM Agent 区分。
+
+**功能要点**：
+- 创建对话框增加 Agent 类型：`LLM Agent`（默认）| `A2A 远程代理`
+- Proxy 类型：必填远程 URL；可选「发现 AgentCard」；流式开关、超时、鉴权（none / api_key / mtls）
+- Proxy 类型**不要求** Provider / Model；隐藏记忆 L0–L4、Skill、进化等 LLM 专属配置
+- 创建成功后写入 `agents` 行（`agent_kind=a2a_proxy`）并同步/缓存远程 AgentCard
+- Chat、Team 成员、Graph Agent 节点均可选用 A2A Proxy Agent
+
+**验收标准**：
+- [ ] 可通过创建对话框创建 `a2a_proxy` Agent，列表展示 `A2A ↗` 徽章
+- [ ] Chat 选择该 Agent 可对话，事件流经 A2A 协议到达远程服务
+- [ ] 远程 URL 不可达时返回明确错误，不 silent fallback 为 LLM
+
+### 3.11 LLM Agent 的 A2A Endpoint 配置（P1）
+
+**需求**：普通 LLM Agent 可在设置页配置为 **A2A 提供方**（Endpoint），而非新建独立 Agent 类型。
+
+**用户故事**：
+- 作为 Agent 所有者，我希望在 Agent 设置中启用「暴露为 A2A 服务」并编辑 AgentCard 能力列表，以便同工作区其他 Agent 通过 `call_agent` 或外部客户端调用我。
+- 作为管理员，我希望 Endpoint 默认关闭，显式启用后才出现在 Discover 列表。
+
+**功能要点**：
+- Agent 设置页新增 **A2A** Tab（仅 `agent_kind=llm` 显示完整 Endpoint 配置；Proxy 类型仅展示远程连接信息与只读 Card）
+- 配置项：启用 A2A、capabilities 编辑、流式能力声明、暴露路径（由平台分配）
+- 与现有 `a2a_agent_cards` 表及 `UpdateAgentCard` API 对齐
+- 默认 `enabled=false`（与 §6.1 一致）
+
+**验收标准**：
+- [ ] LLM Agent 在设置页可启用 A2A 并发布 capabilities
+- [ ] 启用后出现在 `/a2a` Discover 与 `call_agent` 可选目标中
+- [ ] 未启用时 `call_agent` 调用返回明确错误
 
 ---
 
@@ -262,6 +324,9 @@ func New(opts ...Option) (*A2AServer, error)
 9. ❌ A2A 通信支持流式响应
 10. ❌ A2A 长时间任务可中断/恢复 Graph
 11. ❌ A2A 网关注册中心
+12. ❌ 创建 Agent 时可选择 A2A 远程代理（`agent_kind=a2a_proxy`）
+13. ❌ LLM Agent 设置页 A2A Endpoint Tab
+14. ❌ A2A Proxy Agent 可在 Chat / Team / Graph 中选用
 
 ---
 

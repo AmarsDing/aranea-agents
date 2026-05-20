@@ -60,6 +60,33 @@ func TestBuildAgentEffectiveTools_syntheticShellWhenMissingFromCatalog(t *testin
 	}
 }
 
+func TestBuildAgentEffectiveTools_catalogDisableBlocksDefaultEnabledTool(t *testing.T) {
+	settings := AgentRuntimeSettings{ToolsEnabled: true, ToolsProfile: "research"}
+	cat := []Tool{
+		{
+			Key:         "gemini_web_fetch",
+			DisplayName: "Gemini 抓取",
+			Category:    "web",
+			Source:      "builtin",
+			Enabled:     false,
+		},
+	}
+	eff := buildAgentEffectiveTools(settings, cat)
+	for _, it := range eff.Items {
+		if it.ToolKey != "gemini_web_fetch" {
+			continue
+		}
+		if it.Enabled {
+			t.Fatalf("catalog-disabled gemini_web_fetch must not be effective under research profile, got %#v", it)
+		}
+		if it.Reason != "agent_deny" {
+			t.Fatalf("reason=%q want agent_deny", it.Reason)
+		}
+		return
+	}
+	t.Fatal("gemini_web_fetch missing from effective items")
+}
+
 func TestBuildAgentEffectiveTools_noSyntheticShellWhenNotInPolicy(t *testing.T) {
 	settings := AgentRuntimeSettings{ToolsEnabled: true, ToolsProfile: "read_only"}
 	cat := []Tool{{Key: "read_file", DisplayName: "读取文件", Category: "filesystem", Source: "builtin", Enabled: true}}

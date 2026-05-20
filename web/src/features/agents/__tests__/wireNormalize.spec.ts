@@ -125,4 +125,9 @@ describe("normalizeAgentFromService", () => {
     const agent = normalizeAgentFromService({ id: "ag-4", agentKey: "x" });
     expect(agent.status).toBe("active");
   });
+
+  it("maps a2a_endpoint_enabled", () => {
+    const agent = normalizeAgentFromService({ id: "ag-5", agentKey: "ep", a2aEndpointEnabled: true });
+    expect(agent.a2a_endpoint_enabled).toBe(true);
+  });
 });

@@ -2,7 +2,6 @@ package biz
 
 import (
 	"context"
-	"encoding/json"
 
 	"aranea-agents/internal/event"
 	"strings"
@@ -34,21 +33,3 @@ func (w *TurnMemoryWorker) OnRunnerCompletion(_ context.Context, de DomainEvent)
 	event.SessionSysLogWarn(context.Background(), sid, "system.memory_worker.enqueue", "自动记忆任务已入队")
 }
 
-// monitorRunnerCompletionMeta builds JSON metadata for monitor_events.
-func monitorRunnerCompletionMeta(de DomainEvent) string {
-	meta := map[string]any{
-		"session_id": de.SessionID,
-		"author":     de.Author,
-		"team_id":    de.TeamID,
-	}
-	if de.Usage != nil {
-		meta["prompt_tokens"] = de.Usage.PromptTokens
-		meta["completion_tokens"] = de.Usage.CompletionTokens
-		meta["total_tokens"] = de.Usage.TotalTokens
-	}
-	if de.Error != nil {
-		meta["error"] = de.Error.Message
-	}
-	raw, _ := json.Marshal(meta)
-	return string(raw)
-}

@@ -40,6 +40,7 @@
         :sending="sending"
         :is-awaiting-user="isAwaitingUser"
         :ws-replaying="wsReplaying"
+        :is-team-session="selectedEntityKind === 'team'"
         :pending-messages="pendingMessages"
         @update:dialog-mode="onModeChange"
         @update:model-provider="onProviderChange"

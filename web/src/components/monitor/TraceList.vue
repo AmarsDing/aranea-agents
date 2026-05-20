@@ -2,8 +2,8 @@
   <q-card flat bordered class="monitor-card">
     <q-card-section class="row items-center q-col-gutter-md">
       <div class="col-12 col-md">
-        <div class="text-h6 text-weight-bold">Traces</div>
-        <div class="text-caption text-grey-7">Token usage traces with flow timeline and span waterfall</div>
+        <div class="text-h6 text-weight-bold">Runs</div>
+        <div class="text-caption text-grey-7">单次对话运行真相源（Token 用量 + Flow / Waterfall / Span）</div>
       </div>
       <q-input v-model="keyword" dense outlined clearable debounce="200" class="col-12 col-md-4" label="Search">
         <template #prepend><q-icon name="search" /></template>
@@ -66,6 +66,15 @@
           </div>
         </div>
         <div class="row q-gutter-sm items-center">
+          <q-btn
+            v-if="activeCorrelation.sessionId"
+            flat
+            no-caps
+            icon="chat"
+            label="打开会话"
+            color="primary"
+            @click="openChatSession(activeCorrelation.sessionId)"
+          />
           <flow-log-export-button :trace-id="activeCorrelation.traceId" :lines="flowLines" />
           <q-btn flat icon="content_copy" label="Copy JSON" @click="copyDetail" />
           <q-btn flat round dense icon="close" v-close-popup />
@@ -150,6 +159,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { useMonitorRunNavigation } from "../../features/monitor/useMonitorRunNavigation";
 import { copyToClipboard, Notify, type QTableColumn } from "quasar";
 import type { MonitorLogLine, MonitorTraceEvent } from "../../features/monitor/types";
 import { compactJSON, formatCount, formatDate, formatLatency, formatMoney, parseJSON } from "../../features/monitor/utils";
@@ -170,11 +180,14 @@ type TreeNode = {
 const props = defineProps<{
   rows: MonitorTraceEvent[];
   loading: boolean;
+  highlightUsageEventId?: string;
 }>();
 
 defineEmits<{
   reload: [];
 }>();
+
+const { openChatSession } = useMonitorRunNavigation();
 
 const keyword = ref("");
 const detail = ref<MonitorTraceEvent | null>(null);
@@ -237,6 +250,16 @@ function openTrace(row: MonitorTraceEvent) {
   detailOpen.value = true;
   startFlowStream();
 }
+
+function tryOpenHighlightedRun() {
+  const hit = (props.highlightUsageEventId || "").trim();
+  if (!hit || props.rows.length === 0) return;
+  const row = props.rows.find((r) => String(r.id || "").trim() === hit);
+  if (row) openTrace(row);
+}
+
+watch(() => props.highlightUsageEventId, tryOpenHighlightedRun);
+watch(() => props.rows, tryOpenHighlightedRun, { deep: true });
 
 function startFlowStream() {
   stopFlowStream();

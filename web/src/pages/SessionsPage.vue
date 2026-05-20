@@ -21,9 +21,27 @@
       @search="loadRows"
     />
 
+    <SessionsBulkToolbar
+      :selection-mode="selectionMode"
+      @toggle-selection="toggleSelectionMode"
+      @retention-archive="openRetention('archive')"
+      @retention-delete="openRetention('delete')"
+    />
+
+    <SessionsBulkProgressBar :progress="bulkProgress" />
+
+    <SessionsBulkSelectionBar
+      v-if="selectionMode && selectedCount > 0"
+      :count="selectedCount"
+      :archiving="bulkArchiving"
+      :deleting="bulkDeleting"
+      @archive-selected="archiveSelected()"
+      @delete-selected="promptDeleteSelected()"
+    />
+
     <SessionsErrorBanner v-if="error" :message="error" @retry="loadRows" />
 
-    <SessionsSelectedDetail v-if="selected" :session="selected" @archive="archiveSelected" />
+    <SessionsSelectedDetail v-if="selected" :session="selected" @archive="archiveSelectedDetail" />
 
     <SessionsTableSection
       :rows="rows"
@@ -33,17 +51,43 @@
       :page-max="pageMax"
       :total="total"
       :page-size-options="pageSizeSelectOptions"
+      :selection-mode="selectionMode"
+      :is-row-selected="isRowSelected"
+      :page-all-selected="isPageFullySelected()"
       @update:page="page = $event"
       @update:page-size="pageSize = $event"
+      @toggle-row="toggleRowSelection"
+      @toggle-page="togglePageSelection"
       @archive-row="archiveRow"
+      @delete-row="promptDelete([$event])"
+    />
+
+    <SessionDeleteConfirmDialog
+      v-model="deleteDialogOpen"
+      :count="deleteTargetIds.length"
+      :loading="deleteLoading"
+      @confirm="confirmDeleteDialog"
+    />
+
+    <SessionRetentionDialog
+      v-model="retentionOpen"
+      :mode="retentionMode"
+      :preview="retentionPreview"
+      :preview-loading="retentionPreviewLoading"
+      :loading="retentionLoading"
+      @preview="previewRetention"
+      @confirm="confirmRetention"
     />
   </q-page>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
-import { useRoute } from "vue-router";
-import { archiveSession, getSession, searchSessions, type Session } from "../features/session/api";
+import { computed, onMounted } from "vue";
+import SessionsBulkProgressBar from "../components/sessions/SessionsBulkProgressBar.vue";
+import SessionsBulkSelectionBar from "../components/sessions/SessionsBulkSelectionBar.vue";
+import SessionsBulkToolbar from "../components/sessions/SessionsBulkToolbar.vue";
+import SessionDeleteConfirmDialog from "../components/sessions/SessionDeleteConfirmDialog.vue";
+import SessionRetentionDialog from "../components/sessions/SessionRetentionDialog.vue";
 import SessionsErrorBanner from "../components/sessions/SessionsErrorBanner.vue";
 import SessionsFilterBar from "../components/sessions/SessionsFilterBar.vue";
 import SessionsPageHero from "../components/sessions/SessionsPageHero.vue";
@@ -57,90 +101,57 @@ import {
   pageSizeSelectOptions,
   statusFilterOptions
 } from "../components/sessions/sessionUi";
+import { useSessionsPage } from "../features/session/useSessionsPage";
 
-const route = useRoute();
+const {
+  rows,
+  selected,
+  total,
+  loading,
+  error,
+  keyword,
+  ownerType,
+  status,
+  contextStatus,
+  page,
+  pageSize,
+  pageMax,
+  selectionMode,
+  selectedCount,
+  bulkProgress,
+  bulkArchiving,
+  bulkDeleting,
+  deleteDialogOpen,
+  deleteTargetIds,
+  deleteLoading,
+  retentionOpen,
+  retentionMode,
+  retentionPreview,
+  retentionPreviewLoading,
+  retentionLoading,
+  onKeywordUpdate,
+  resetFilters,
+  loadRows,
+  toggleSelectionMode,
+  toggleRowSelection,
+  togglePageSelection,
+  isRowSelected,
+  isPageFullySelected,
+  promptDelete,
+  confirmDeleteDialog,
+  openRetention,
+  previewRetention,
+  confirmRetention,
+  archiveRow,
+  promptDeleteSelected,
+  archiveSelected
+} = useSessionsPage();
 
-const rows = ref<Session[]>([]);
-const selected = ref<Session | null>(null);
-const total = ref(0);
-const loading = ref(false);
-const error = ref("");
-const keyword = ref("");
-const ownerType = ref<string | null>(null);
-const status = ref<string | null>(null);
-const contextStatus = ref<string | null>(null);
-const page = ref(1);
-const pageSize = ref(20);
-
-const pageMax = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
 const summaryCards = computed(() => buildSessionsSummaryCards(rows.value, total.value));
 
 onMounted(loadRows);
 
-watch([keyword, ownerType, status, contextStatus], () => {
-  page.value = 1;
-  loadRows();
-});
-
-watch([page, pageSize], loadRows);
-
-watch(
-  () => route.params.sessionId,
-  () => loadSelected()
-);
-
-function onKeywordUpdate(value: string | number | null) {
-  keyword.value = value == null || value === "" ? "" : String(value);
-}
-
-async function loadRows() {
-  loading.value = true;
-  error.value = "";
-  try {
-    const result = await searchSessions({
-      keyword: keyword.value || undefined,
-      owner_type: ownerType.value || undefined,
-      status: status.value || undefined,
-      context_status: contextStatus.value || undefined,
-      limit: pageSize.value,
-      offset: (page.value - 1) * pageSize.value
-    });
-    rows.value = result.items;
-    total.value = result.total;
-    await loadSelected();
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : "加载 Session 失败";
-  } finally {
-    loading.value = false;
-  }
-}
-
-async function loadSelected() {
-  const id = String(route.params.sessionId || "");
-  if (!id) {
-    selected.value = null;
-    return;
-  }
-  selected.value = rows.value.find((item) => item.id === id) ?? (await getSession(id));
-}
-
-function resetFilters() {
-  keyword.value = "";
-  ownerType.value = null;
-  status.value = null;
-  contextStatus.value = null;
-  page.value = 1;
-}
-
-async function archiveRow(id: string) {
-  await archiveSession(id);
-  if (selected.value?.id === id) {
-    selected.value = { ...selected.value, status: "archived" };
-  }
-  await loadRows();
-}
-
-async function archiveSelected() {
+async function archiveSelectedDetail() {
   if (!selected.value) return;
   await archiveRow(selected.value.id);
 }

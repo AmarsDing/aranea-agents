@@ -150,9 +150,9 @@
 | **Audit** | 审计日志表 |
 | **Events** | 实时/持久化 Monitor 事件 |
 | **Traces** | LLM 调用 Trace 列表；详情含流程 Tab、瀑布图、Span 树、JSONL 导出 |
-| **Logs** | 进程日志 + **flow_log** 流程日志（中文步骤，WS 订阅） |
+| **Logs** | **流程日志**（`flow_log`，默认连接）+ **进程日志**（`log`，`enable_log` 开关）；`LogStreamPanel` 共享单 WS |
 
-相关：`features/monitor/*`、`components/monitor/*`（`LogStream`、`TraceWaterfall`、`FlowTracePanel` 等）。
+相关：`features/monitor/*`（含 `useLogStreamHub`）、`components/monitor/*`（`LogStreamPanel`、`FlowLogStream`、`ProcessLogStream`、`TraceWaterfall`、`FlowTracePanel` 等）。
 
 ---
 
@@ -178,6 +178,7 @@
 
 - 筛选：关键词、owner 类型、状态、上下文占用。
 - 摘要卡、表格、选中详情、归档。
+- **批量治理（待实现）**：行删除、批量选择、按保留天数归档/删除；详见 [10 session.md §7.2](./10%20session.md#72-历史列表页)。
 - 跳转：`/sessions/:id` 或 Chat 继续会话。
 
 #### 会话详情 `/sessions/:sessionId`
@@ -206,7 +207,9 @@
 #### Agent 列表 `/agents`
 
 - 卡片/表格视图、分类/Provider/状态筛选、收藏、分页。
-- 新建 Agent（`AgentCreateDialog`）、删除、复制 Key、跳转设置页。
+- 新建 Agent（`AgentCreateDialog`）：支持 **LLM Agent** / **A2A 远程代理** 两种类型（后者见 [2 agents-create.md](./2%20agents-create.md) §9）。
+- 列表徽章：`A2A ↗`（远程代理）、`A2A ↙`（LLM 且已启用 Endpoint）。
+- 删除、复制 Key、跳转设置页。
 - Store：`stores/agents`；编排：`features/agents/useAgentsPage.ts`。
 
 #### Agent 设置 `/agents/:id/settings`
@@ -222,6 +225,7 @@
 | Skill | 绑定 Skill |
 | 进化 | 自进化相关 |
 | 钩子 | `AgentHooksPanel` / Callback |
+| **A2A** | LLM：Endpoint（AgentCard、capabilities、暴露开关）；Proxy：远程 URL 与只读 Card（[5 agent-setting.md](./5%20agent-setting.md) §10） |
 | 用户实例 | 多实例配置 |
 
 子面板：`AgentToolOverridesPanel`、`AgentFilesPanel` 等；Store：`useAgentDetailStore`。
@@ -315,15 +319,22 @@ Store：`stores/graph`；API：`features/graph/api.ts`。
 
 #### A2A `/a2a`
 
-三 Tab：
+**定位**：工作区级 A2A **注册表 / 运维** 页；per-Agent 的 Endpoint / Proxy 配置在 Agent 设置 A2A Tab。
+
+四 Tab + 远程注册：
 
 | Tab | 功能 |
 |-----|------|
-| 发现 | AgentCard 列表（workspace/capability 筛选） |
+| 发现 | AgentCard 列表（本地 + 远程 registry 合并；workspace/capability 筛选） |
+| 远程注册 | 注册/预览/删除远程 Agent（api_key / bearer / mTLS） |
 | 审计 | Invoke 审计记录 |
-| Invoke | 测试调用目标 Agent |
+| Invoke | 测试调用目标 Agent（可选 workspace，Admin 工作区策略） |
 
-编排：`useA2APage.ts`；mapper 单测：`features/a2a/__tests__/mappers.spec.ts`。
+公开 Endpoint URL（LLM Agent 启用 AgentCard 后）：`/v1/a2a/public/{agent_id}`（A2A 协议：一元或 SSE 流式，非 WebSocket）。
+
+联邦网关：`GET /v1/a2a/gateway/discover`（local + remote，可选 `check_health`）。
+
+编排：`useA2APage.ts`；组件：`A2ARemoteAgentPanel.vue` 等；mapper 单测：`features/a2a/__tests__/mappers.spec.ts`。
 
 ---
 
@@ -406,7 +417,7 @@ flowchart LR
 ```
 
 - Chat/Team：**主实时通道**为 WebSocket，非 SSE（与后端文档口径一致）。
-- Monitor Logs：`flow_log` 类型无需开启进程 `enable_log` 即可展示中文流程步骤。
+- Monitor Logs：二级 Tab **流程** / **进程**；`flow_log` 始终可用；进程 log 由 `server.monitor.process_log_enabled` 控制，切到进程 Tab 自动恢复接收。
 - Traces：usage 元数据 `metadata_json.spans` + 详情瀑布图（`TraceWaterfall.vue`）。
 
 ---

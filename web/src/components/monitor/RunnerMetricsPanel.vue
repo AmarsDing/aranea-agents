@@ -21,21 +21,30 @@
       <div class="row q-col-gutter-md">
         <div class="col-6 col-md-3">
           <div class="text-caption text-grey">总运行次数</div>
-          <div class="text-h5 text-weight-bold">{{ metrics.total_runs }}</div>
+          <q-btn flat dense no-caps class="q-pa-none" @click="drillToRuns">
+            <div class="text-h5 text-weight-bold text-primary">{{ metrics.total_runs }}</div>
+          </q-btn>
         </div>
         <div class="col-6 col-md-3">
           <div class="text-caption text-grey">错误次数</div>
-          <div class="text-h5 text-weight-bold text-negative">{{ metrics.error_runs }}</div>
+          <q-btn flat dense no-caps class="q-pa-none" @click="drillToRuns">
+            <div class="text-h5 text-weight-bold text-negative">{{ metrics.error_runs }}</div>
+          </q-btn>
         </div>
         <div class="col-6 col-md-3">
           <div class="text-caption text-grey">错误率</div>
-          <div class="text-h5 text-weight-bold">{{ formatPercent(metrics.error_rate) }}</div>
+          <q-btn flat dense no-caps class="q-pa-none" @click="drillToRuns">
+            <div class="text-h5 text-weight-bold">{{ formatPercent(metrics.error_rate) }}</div>
+          </q-btn>
         </div>
         <div class="col-6 col-md-3">
           <div class="text-caption text-grey">成功率</div>
-          <div class="text-h5 text-weight-bold">{{ formatPercent(metrics.success_rate) }}</div>
+          <q-btn flat dense no-caps class="q-pa-none" @click="drillToRuns">
+            <div class="text-h5 text-weight-bold">{{ formatPercent(metrics.success_rate) }}</div>
+          </q-btn>
         </div>
       </div>
+      <div class="text-caption text-grey-7 q-mt-sm">点击指标下钻到 Runs（Traces）列表</div>
     </q-card-section>
   </q-card>
 </template>
@@ -43,6 +52,9 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from "vue";
 import { getRunnerMetrics, type RunnerMetricsSummary } from "../../features/monitor/api";
+import { useMonitorRunNavigation } from "../../features/monitor/useMonitorRunNavigation";
+
+const { openRunsTab } = useMonitorRunNavigation();
 
 const windowMinutes = ref(60);
 const metrics = ref<RunnerMetricsSummary | null>(null);
@@ -67,6 +79,10 @@ async function load() {
   } finally {
     loading.value = false;
   }
+}
+
+function drillToRuns() {
+  openRunsTab({ tab: "traces" });
 }
 
 watch(windowMinutes, () => void load());

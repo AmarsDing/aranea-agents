@@ -49,6 +49,7 @@ CREATE INDEX IF NOT EXISTS idx_usage_events_agent_time ON model_token_usage_even
 CREATE INDEX IF NOT EXISTS idx_usage_events_session ON model_token_usage_events(session_id);
 CREATE INDEX IF NOT EXISTS idx_usage_events_status ON model_token_usage_events(status, occurred_at);
 CREATE INDEX IF NOT EXISTS idx_usage_daily_date_model ON model_token_usage_daily(date_key, provider_code, model_api_id);
+CREATE INDEX IF NOT EXISTS idx_usage_hourly_hour ON model_token_usage_hourly(hour_key);
 CREATE INDEX IF NOT EXISTS idx_pricing_rules_model_active ON model_pricing_rules(provider_code, model_api_id, is_active, effective_from);
 
 -- Attachment 索引

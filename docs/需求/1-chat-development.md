@@ -1,7 +1,8 @@
 # Chat 对话 — 开发计划
 
 > **版本**：2026-05-19 | **状态**：✅ 端到端可用（WS/EventBus 主通道；RunRegistry + EnqueueUserMessage；AwaitUserReply UI 已接入）
-> **需求**：[1 chat.md](./1%20chat.md) · **设计**：[1 chat.design.md](./1%20chat.design.md)
+> **需求**：[1 chat.md](./1%20chat.md) · **设计**：[1 chat.design.md](./1%20chat.design.md)  
+> **执行卡片 v2**：[1 chat-execution-trace.md](./1%20chat-execution-trace.md) · [1 chat-execution-trace.design.md](./1%20chat-execution-trace.design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：—
 
 ---
@@ -78,7 +79,8 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 | 3 | AwaitUserReply 后端 + Chat UI | ✅ |
 | 4 | 数据一致性（pending_id、session_turns、Channel 互斥） | ✅ |
 | 5 | Team `member_*` + 成员流消费 | ✅ 协议通；UX 待增强 |
-| 6 | 工具可观测 UI | ⏳ |
+| 6 | 工具可观测 UI（基础卡片） | ✅ |
+| 6b | 执行过程卡片 v2（Skill/MCP/默认折叠/持久化 schema） | ✅ P0 |
 | 7 | Reasoning 展示 | ⏳ |
 | 8 | 附件 / RunStatus 持久化 | 🟡 |
 
@@ -106,6 +108,8 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 | 16 | RunStatus 持久化 | P3 | 🟡 |
 | 17 | ChatService / WS 单测 | P1 | ⏳ |
 | 18 | RunRegistry + EnqueueUserMessage | P0 | ✅ |
+| 19 | 执行过程卡片 v2（EnvelopeToolCall v2、ChatExecutionCard） | P0 | ✅ |
+| 20 | 执行卡片持久化 + catalog 名 + Team 标识 + 流式修复 | P1 | ✅ |
 
 ---
 

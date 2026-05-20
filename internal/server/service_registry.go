@@ -1,6 +1,9 @@
 package server
 
-import "aranea-agents/internal/service"
+import (
+	a2atrpc "aranea-agents/internal/a2a/trpc"
+	"aranea-agents/internal/service"
+)
 
 // ServiceRegistry bundles all service references to avoid parameter bloat in
 // NewHTTPServer / NewGRPCServer constructors. When a new service is added,
@@ -31,6 +34,7 @@ type ServiceRegistry struct {
 	Knowledge      *service.KnowledgeService
 	Eval           *service.EvaluationService
 	A2A            *service.A2AService
+	A2APublic      *a2atrpc.EndpointRegistry
 	Ecosystem      *service.EcosystemService
 	ChannelIngress *service.ChannelIngress
 }
@@ -62,6 +66,7 @@ func NewServiceRegistry(
 	knowledgeSvc *service.KnowledgeService,
 	evalSvc *service.EvaluationService,
 	a2aSvc *service.A2AService,
+	a2aPublic *a2atrpc.EndpointRegistry,
 	ecosystemSvc *service.EcosystemService,
 	channelIngress *service.ChannelIngress,
 ) *ServiceRegistry {
@@ -90,6 +95,7 @@ func NewServiceRegistry(
 		Knowledge:      knowledgeSvc,
 		Eval:           evalSvc,
 		A2A:            a2aSvc,
+		A2APublic:      a2aPublic,
 		Ecosystem:      ecosystemSvc,
 		ChannelIngress: channelIngress,
 	}

@@ -58,7 +58,8 @@ import {
   type UseEnvelopeStreamReturn
 } from "../useEnvelopeStream";
 import type { Envelope, WsUpstream } from "../envelope";
-import { upsertToolMessage } from "../envelopeToolCall";
+import { mergeSessionMessages } from "../mergeSessionMessages";
+import { upsertToolMessage, cancelRunningToolMessages } from "../envelopeToolCall";
 import { runStatusFromEnvelope } from "../envelopeRunStatus";
 import { patchStreamingMessage } from "../streamContentPatch";
 import type { TeamDefinition } from "../../teams/types";
@@ -370,45 +371,105 @@ export function useChatWorkspace() {
     return ordered;
   }
 
-  async function selectAgent(agent: Agent) {
+  function sessionOwnerIsTeam(session: Session) {
+    return session.owner_type === "team" || Boolean(session.team_id?.trim());
+  }
+
+  async function resolveSessionById(sessionId: string): Promise<Session | null> {
+    const fromAgentList = store.sessions.find((item) => item.id === sessionId);
+    if (fromAgentList) return fromAgentList;
+
+    if (selectedTeamId.value) {
+      const fromCurrentTeam = teamSessions.value[selectedTeamId.value]?.find((item) => item.id === sessionId);
+      if (fromCurrentTeam) return fromCurrentTeam;
+    }
+
+    for (const sessions of Object.values(teamSessions.value)) {
+      const hit = sessions.find((item) => item.id === sessionId);
+      if (hit) return hit;
+    }
+
+    try {
+      return await getSession(sessionId);
+    } catch {
+      return null;
+    }
+  }
+
+  async function selectAgent(agent: Agent, options?: { sessionId?: string }) {
     selectedEntityKind.value = "agent";
     selectedTeamId.value = null;
     teamSelectedSessionId.value = null;
     store.selectedAgent = agent;
     await store.loadSessions();
     await nextTick();
-    store.selectedSession = store.sessions[0] ?? null;
+    const preferredId = options?.sessionId?.trim();
+    store.selectedSession = preferredId
+      ? store.sessions.find((item) => item.id === preferredId) ?? store.sessions[0] ?? null
+      : store.sessions[0] ?? null;
     store.messages = [];
     if (store.selectedSession) await store.loadMessages();
   }
 
-  async function selectTeam(team: TeamRow) {
+  async function selectTeam(team: TeamRow, options?: { sessionId?: string }) {
     selectedEntityKind.value = "team";
     selectedTeamId.value = team.id;
     store.selectedSession = null;
     store.messages = [];
     await loadTeamSessions(team.id);
-    teamSelectedSessionId.value = teamSessions.value[team.id]?.[0]?.id ?? null;
+    const preferredId = options?.sessionId?.trim();
+    const teamList = teamSessions.value[team.id] ?? [];
+    teamSelectedSessionId.value = preferredId
+      ? teamList.find((item) => item.id === preferredId)?.id ?? preferredId
+      : teamList[0]?.id ?? null;
     if (teamSelectedSessionId.value) {
       teamMessages.value[teamSelectedSessionId.value] = await listMessages(teamSelectedSessionId.value);
     }
   }
 
   async function onSelectSession(sessionId: string) {
-    if (selectedEntityKind.value === "team") {
+    const resolved = await resolveSessionById(sessionId);
+    if (!resolved) return;
+
+    if (sessionOwnerIsTeam(resolved)) {
+      const teamId = resolved.team_id?.trim();
+      if (!teamId) return;
+      const team = displayTeams.value.find((item) => item.id === teamId);
+      if (!team) {
+        $q.notify({ type: "warning", message: "找不到该会话所属的 Team" });
+        return;
+      }
+      if (selectedEntityKind.value !== "team" || selectedTeamId.value !== teamId) {
+        await selectTeam(team, { sessionId });
+        ensureTeamStream(sessionId);
+        return;
+      }
       teamSelectedSessionId.value = sessionId;
       teamMessages.value[sessionId] = await listMessages(sessionId);
+      ensureTeamStream(sessionId);
       return;
     }
 
-    const session = store.sessions.find((item) => item.id === sessionId) ?? null;
+    const agentId = resolved.agent_id?.trim();
+    if (!agentId) return;
+    const agent =
+      store.agents.find((item) => item.id === agentId) ?? displayAgents.value.find((item) => item.id === agentId);
+    if (!agent) {
+      $q.notify({ type: "warning", message: "找不到该会话所属的 Agent" });
+      return;
+    }
+    if (selectedEntityKind.value !== "agent" || store.selectedAgent?.id !== agentId) {
+      await selectAgent(agent, { sessionId });
+      ensureChatStream(sessionId);
+      return;
+    }
+
+    const session = store.sessions.find((item) => item.id === sessionId) ?? resolved;
     store.selectedSession = session;
     store.messages = [];
     if (session) {
       await store.loadMessages();
-      if (selectedEntityKind.value === "agent") {
-        ensureChatStream(session.id);
-      }
+      ensureChatStream(session.id);
     }
   }
 
@@ -582,6 +643,10 @@ export function useChatWorkspace() {
       }
     });
     chatStream.onType("error", (env: Envelope) => {
+      const errType = env.error?.type ?? "";
+      if (errType.startsWith("flow_")) {
+        return;
+      }
       const msg = env.error?.message ?? "stream failed";
       $q.notify({ type: "negative", message: msg });
       markSendingDone();
@@ -702,6 +767,10 @@ export function useChatWorkspace() {
       }
     });
     teamStream.onType("error", (env: Envelope) => {
+      const errType = env.error?.type ?? "";
+      if (errType.startsWith("flow_")) {
+        return;
+      }
       const msg = env.error?.message ?? "stream failed";
       $q.notify({ type: "negative", message: msg });
       markSendingDone();
@@ -1261,6 +1330,13 @@ export function useChatWorkspace() {
     runStatus.value = rs.status;
     isAwaitingUser.value = rs.status === "awaiting_user";
     awaitingRunId.value = rs.runId;
+    if (rs.status === "cancelled") {
+      store.messages = cancelRunningToolMessages(store.messages);
+      const sid = selectedSessionForUi.value?.id;
+      if (sid && teamMessages.value[sid]) {
+        teamMessages.value[sid] = cancelRunningToolMessages(teamMessages.value[sid]);
+      }
+    }
   }
 
   async function refreshRunStatus() {

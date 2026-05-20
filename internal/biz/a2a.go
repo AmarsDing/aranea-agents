@@ -25,6 +25,9 @@ type A2AAgentCard struct {
 	Enabled      bool
 	Capabilities []A2ACapability
 	UpdatedAt    string
+	Source       string
+	EndpointURL  string
+	RemoteURL    string
 }
 
 // A2AInvocation records one call from one agent to another.
@@ -66,6 +69,15 @@ type A2ARepo interface {
 
 	InsertAudit(ctx context.Context, entry A2AAuditEntry) error
 	ListAudit(ctx context.Context, callerID, calleeID string, limit, offset int) ([]A2AAuditEntry, int, error)
+
+	// MapEndpointEnabled returns agent_id -> enabled for the given catalog ids.
+	MapEndpointEnabled(ctx context.Context, agentIDs []string) (map[string]bool, error)
+
+	CreateRemoteAgent(ctx context.Context, agent A2ARemoteAgent) (A2ARemoteAgent, error)
+	ListRemoteAgents(ctx context.Context, workspace string) ([]A2ARemoteAgent, error)
+	DeleteRemoteAgent(ctx context.Context, id string) error
+	GetRemoteAgent(ctx context.Context, id string) (A2ARemoteAgent, error)
+	DiscoverRemoteCard(ctx context.Context, in RemoteCardDiscoverInput) (A2AAgentCard, error)
 }
 
 // A2AUsecase implements A2A card management and invocation logic.
@@ -104,7 +116,67 @@ func (u *A2AUsecase) GetAgentCard(ctx context.Context, agentID string) (A2AAgent
 
 // Discover returns A2A-enabled agents in a workspace, optionally filtered by capability.
 func (u *A2AUsecase) Discover(ctx context.Context, workspace, capability string) ([]A2AAgentCard, error) {
-	return u.repo.ListEnabledCards(ctx, workspace, capability)
+	local, err := u.repo.ListEnabledCards(ctx, workspace, capability)
+	if err != nil {
+		return nil, err
+	}
+	remote, err := u.repo.ListRemoteAgents(ctx, workspace)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]A2AAgentCard, 0, len(local)+len(remote))
+	for _, c := range local {
+		c.Source = A2ASourceLocal
+		out = append(out, c)
+	}
+	for _, r := range remote {
+		if !r.Enabled {
+			continue
+		}
+		card := r.DiscoveredCard
+		if card.AgentID == "" {
+			card.AgentID = r.ID
+		}
+		if card.DisplayName == "" {
+			card.DisplayName = r.DisplayName
+		}
+		if card.Workspace == "" {
+			card.Workspace = r.Workspace
+		}
+		card.Enabled = true
+		card.Source = A2ASourceRemote
+		card.RemoteURL = r.RemoteURL
+		if capability != "" {
+			found := false
+			for _, c := range card.Capabilities {
+				if c.Name == capability {
+					found = true
+					break
+				}
+			}
+			if !found {
+				continue
+			}
+		}
+		out = append(out, card)
+	}
+	return out, nil
+}
+
+// GetRemoteAgent returns one remote registry entry by id.
+func (u *A2AUsecase) GetRemoteAgent(ctx context.Context, id string) (A2ARemoteAgent, error) {
+	if u == nil || u.repo == nil {
+		return A2ARemoteAgent{}, errors.InternalServer("A2A", "a2a repo not configured")
+	}
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return A2ARemoteAgent{}, errors.BadRequest("A2A", "id is required")
+	}
+	agent, err := u.repo.GetRemoteAgent(ctx, id)
+	if err != nil {
+		return A2ARemoteAgent{}, err
+	}
+	return agent, nil
 }
 
 // StartInvocation records a new invocation and returns it in status=pending.
@@ -152,4 +224,12 @@ func (u *A2AUsecase) ListAudit(ctx context.Context, callerID, calleeID string, l
 		limit = 50
 	}
 	return u.repo.ListAudit(ctx, callerID, calleeID, limit, offset)
+}
+
+// MapEndpointEnabled batch-loads a2a_agent_cards.enabled for catalog agent ids.
+func (u *A2AUsecase) MapEndpointEnabled(ctx context.Context, agentIDs []string) (map[string]bool, error) {
+	if u == nil || u.repo == nil {
+		return map[string]bool{}, nil
+	}
+	return u.repo.MapEndpointEnabled(ctx, agentIDs)
 }

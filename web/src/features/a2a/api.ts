@@ -1,8 +1,6 @@
 /**
  * A2A 协议：**`createA2AService()`** → **`/v1/a2a/...`**。
- *
- * 注意：A2A Invoke 后端尚为 stub（EP-A2A-01），远端鉴权未完成（EP-A2A-02）。
- * 前端展示 AgentCard / Discover 是可用的，发起 Invoke 需注意当前为演示状态。
+ * Invoke 经 AgentTurnRunner 分发；AgentCard / Discover / Audit 可用。
  */
 import { createA2AService } from "../../services";
 import { asRecord, pickBool, pickI32, pickStr } from "../../shared/wireJson";
@@ -15,7 +13,12 @@ import type {
   DiscoverParams,
   ListAuditParams,
   ListAuditResult,
-  UpdateAgentCardInput
+  DiscoverRemoteInput,
+  RegisterRemoteAgentInput,
+  A2ARemoteAgent,
+  UpdateAgentCardInput,
+  A2AGatewayEntry,
+  A2ARuntimeConfig
 } from "./types";
 
 const svc = createA2AService();
@@ -40,7 +43,10 @@ function mapAgentCard(raw: unknown): A2AAgentCard {
     workspace: pickStr(r, "workspace", "workspace"),
     enabled: pickBool(r, "enabled", "enabled"),
     capabilities,
-    updated_at: pickStr(r, "updated_at", "updatedAt")
+    updated_at: pickStr(r, "updated_at", "updatedAt"),
+    source: pickStr(r, "source", "source"),
+    endpoint_url: pickStr(r, "endpoint_url", "endpointUrl"),
+    remote_url: pickStr(r, "remote_url", "remoteUrl")
   };
 }
 
@@ -89,7 +95,7 @@ export async function updateAgentCard(agentId: string, input: UpdateAgentCardInp
 
 // ---------- Invoke ----------
 
-/** Invoke 当前为演示状态（EP-A2A-01），实际派发逻辑待后端完善。 */
+/** Invoke dispatches via ChatService / NewInvoker (Admin 鉴权 + 工作区策略). */
 export async function invokeA2A(input: A2AInvokeInput): Promise<A2AInvokeResult> {
   const res = asRecord(
     await svc.Invoke({
@@ -97,7 +103,8 @@ export async function invokeA2A(input: A2AInvokeInput): Promise<A2AInvokeResult>
       capability: input.capability,
       payloadJson: input.payload_json,
       callerSessionId: input.caller_session_id ?? "",
-      timeoutSeconds: input.timeout_seconds ?? 0
+      timeoutSeconds: input.timeout_seconds ?? 0,
+      workspace: input.workspace ?? ""
     })
   );
   return {
@@ -123,4 +130,89 @@ export async function listA2AAudit(params: ListAuditParams = {}): Promise<ListAu
   const itemsRaw = res.items ?? res.Items;
   const items = Array.isArray(itemsRaw) ? itemsRaw.map(mapAuditEntry) : [];
   return { items, total: pickI32(res, "total", "total") || items.length };
+}
+
+function mapRemoteAgent(raw: unknown): A2ARemoteAgent {
+  const r = asRecord(raw);
+  const cardRaw = r.discoveredCard ?? r.discovered_card;
+  return {
+    id: pickStr(r, "id", "id"),
+    workspace: pickStr(r, "workspace", "workspace"),
+    display_name: pickStr(r, "display_name", "displayName"),
+    remote_url: pickStr(r, "remote_url", "remoteUrl"),
+    agent_card_url: pickStr(r, "agent_card_url", "agentCardUrl"),
+    auth_type: pickStr(r, "auth_type", "authType"),
+    enabled: pickBool(r, "enabled", "enabled"),
+    discovered_card: cardRaw ? mapAgentCard(cardRaw) : undefined,
+    created_at: pickStr(r, "created_at", "createdAt"),
+    updated_at: pickStr(r, "updated_at", "updatedAt")
+  };
+}
+
+export async function listRemoteAgents(workspace = ""): Promise<A2ARemoteAgent[]> {
+  const res = asRecord(await svc.ListRemoteAgents({ workspace }));
+  const itemsRaw = res.items ?? res.Items;
+  return Array.isArray(itemsRaw) ? itemsRaw.map(mapRemoteAgent) : [];
+}
+
+export async function registerRemoteAgent(input: RegisterRemoteAgentInput): Promise<A2ARemoteAgent> {
+  const raw = await svc.RegisterRemoteAgent({
+    workspace: input.workspace ?? "",
+    remoteUrl: input.remote_url,
+    agentCardUrl: input.agent_card_url ?? "",
+    displayName: input.display_name ?? "",
+    authType: input.auth_type ?? "",
+    authConfigJson: input.auth_config_json ?? "",
+    enabled: input.enabled ?? true
+  });
+  return mapRemoteAgent(raw);
+}
+
+export async function deleteRemoteAgent(id: string): Promise<void> {
+  await svc.DeleteRemoteAgent({ id });
+}
+
+export async function discoverRemoteAgent(input: DiscoverRemoteInput): Promise<A2AAgentCard> {
+  const raw = await svc.DiscoverRemoteAgent({
+    remoteUrl: input.remote_url,
+    authType: input.auth_type ?? "",
+    authConfigJson: input.auth_config_json ?? ""
+  });
+  return mapAgentCard(raw);
+}
+
+export async function getA2AConfig(): Promise<A2ARuntimeConfig> {
+  const r = asRecord(await svc.GetA2AConfig({}));
+  return {
+    public_base_url: pickStr(r, "public_base_url", "publicBaseUrl"),
+    public_base_url_source: pickStr(r, "public_base_url_source", "publicBaseUrlSource")
+  };
+}
+
+export async function gatewayDiscoverAgents(params: {
+  workspace?: string;
+  capability?: string;
+  check_health?: boolean;
+} = {}): Promise<A2AGatewayEntry[]> {
+  const res = asRecord(
+    await svc.GatewayDiscover({
+      workspace: params.workspace ?? "",
+      capability: params.capability ?? "",
+      checkHealth: params.check_health ?? false
+    })
+  );
+  const itemsRaw = res.items ?? res.Items;
+  if (!Array.isArray(itemsRaw)) return [];
+  return itemsRaw.map((raw) => {
+    const r = asRecord(raw);
+    const cardRaw = r.card ?? r.Card;
+    return {
+      card: mapAgentCard(cardRaw),
+      source: pickStr(r, "source", "source"),
+      registry_id: pickStr(r, "registry_id", "registryId"),
+      endpoint_url: pickStr(r, "endpoint_url", "endpointUrl"),
+      remote_url: pickStr(r, "remote_url", "remoteUrl"),
+      healthy: pickBool(r, "healthy", "healthy")
+    };
+  });
 }

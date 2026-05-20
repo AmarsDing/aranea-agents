@@ -41,9 +41,9 @@ func BuildTRPCTeam(ctx context.Context, def Definition, deps TRPCTeamBuilderDeps
 		}
 		var trpcAg trpcagent.Agent
 		if deps.UseCache {
-			trpcAg, err = chatagent.BuildTRPCLLMAgentCached(ctx, ag, deps.BuilderDeps)
+			trpcAg, err = chatagent.BuildTRPCAgentCached(ctx, ag, deps.BuilderDeps)
 		} else {
-			trpcAg, err = chatagent.BuildTRPCLLMAgent(ctx, ag, deps.BuilderDeps)
+			trpcAg, err = chatagent.BuildTRPCAgent(ctx, ag, deps.BuilderDeps)
 		}
 		if err != nil {
 			return nil, kerrors.InternalServer("TEAM", fmt.Sprintf("build member %s: %v", m.AgentID, err))

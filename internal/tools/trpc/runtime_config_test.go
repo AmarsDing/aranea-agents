@@ -19,3 +19,19 @@ func TestApplyRuntimeConfigMaps_filesystemAndGoogle(t *testing.T) {
 		t.Fatalf("GeminiModel=%q", cfg.GeminiModel)
 	}
 }
+
+func TestResolveGeminiFetchModel_agentFallback(t *testing.T) {
+	cfg := &ToolsetConfig{GeminiFetch: true}
+	ResolveGeminiFetchModel(cfg, "google", "gemini-2.5-flash")
+	if cfg.GeminiModel != "gemini-2.5-flash" {
+		t.Fatalf("GeminiModel=%q", cfg.GeminiModel)
+	}
+}
+
+func TestResolveGeminiFetchModel_skipsWhenConfigured(t *testing.T) {
+	cfg := &ToolsetConfig{GeminiFetch: true, GeminiModel: "gemini-2.0"}
+	ResolveGeminiFetchModel(cfg, "google", "gemini-2.5-flash")
+	if cfg.GeminiModel != "gemini-2.0" {
+		t.Fatalf("GeminiModel=%q", cfg.GeminiModel)
+	}
+}

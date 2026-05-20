@@ -39,7 +39,7 @@ func bizAgentFactoryForKey(deps TRPCBuilderDeps, agentKey string) trpcrunner.Age
 		if err != nil {
 			return nil, err
 		}
-		return BuildTRPCLLMAgentCached(ctx, ag, deps)
+		return BuildTRPCAgentCached(ctx, ag, deps)
 	}
 }
 

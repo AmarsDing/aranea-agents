@@ -26,8 +26,13 @@ func (s *ChatService) recordTurnUsage(
 	if emitter != nil {
 		meta = emitter.MetadataJSON()
 	}
+	usageID := uuid.NewString()
+	traceID := ""
+	if emitter != nil {
+		traceID = emitter.TraceID()
+	}
 	ev := biz.TokenUsageEvent{
-		ID:               uuid.NewString(),
+		ID:               usageID,
 		SessionID:        sessionID,
 		AgentKey:         agentKey,
 		AgentID:          agentID,
@@ -58,5 +63,16 @@ func (s *ChatService) recordTurnUsage(
 			event.P("usage_kind", ev.UsageKind),
 			event.P("status", status),
 		)
+		return
+	}
+	if s.monitor != nil && sessionID != "" && runID != "" {
+		linkCtx, linkCancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+		defer linkCancel()
+		if err := s.monitor.LinkRunnerCompletionUsage(linkCtx, sessionID, runID, usageID, traceID); err != nil && emitter != nil {
+			emitter.LogWarn("chat.completion_link", "关联 runner.completion 失败", err.Error(),
+				event.P("run_id", runID),
+				event.P("usage_event_id", usageID),
+			)
+		}
 	}
 }

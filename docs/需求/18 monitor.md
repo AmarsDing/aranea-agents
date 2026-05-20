@@ -20,20 +20,22 @@
 | 用户问题 | 对应页面 / Tab | 数据来源 | 实现状态 |
 |----------|----------------|----------|----------|
 | 系统最近发生了哪些管理操作？ | 活动日志 Audit | `audit_logs` / `/api/v1/monitor/audit` | ✅ 已实现 |
-| Team / Agent 运行时现在正在发生什么？ | 实时事件 Events | `/v1/ws` + EventBus Envelope、`monitor_events` | ✅ 基础已实现 |
-| 哪些模型调用慢、失败、成本高？ | Usage / Traces | `model_token_usage_events`、`model_token_usage_daily`、`monitor_traces` | ✅ 已实现 |
-| 某次对话为什么失败？ | Trace 详情 | Trace + spans + error payload | ✅ 已实现 |
-| Gateway / 后端进程是否有异常日志？ | Logs | WS 推送 + 内存快照 | ✅ 已实现 |
+| Team / Agent 运行时现在正在发生什么？ | 实时事件 Events | `/v1/ws`（`team_run_*`、`alert.fired` 等） | ✅ 基础已实现；Phase 1d 收窄 Chat `runner.completion` 列表展示 |
+| 刚才那轮对话是否成功结束？耗时/Token 多少？ | **Runs（Traces Tab）** | `model_token_usage_events`（`recordTurnUsage`） | ✅ 已实现；Phase 1d 增强关联与跳转 |
+| 哪些模型调用慢、失败、成本高？ | Usage 总览 + **Runs** | `model_token_usage_events` 聚合 + 单次运行列表 | ✅ 已实现 |
+| 某次对话为什么失败？ | **Runs 详情**（原 Trace 详情） | Summary + Flow（trace_id）+ Waterfall + Span | ✅ 已实现 |
+| 某次对话/Team 执行卡在哪一步？ | Logs → **流程日志** | WS `flow_log`（`TraceEmitter`） | ✅ 已实现 |
+| Gateway / 插件底层 stderr 是否正常？ | Logs → **进程日志** | WS `log` + `enable_log` | ✅ 已实现 |
 
 ### 0.2 模块实现状态
 
 | 模块 | 状态 | 说明 |
 |------|------|------|
 | Audit | ✅ 已实现 | 表格、刷新、分页（limit/offset）、事件类型/实体类型/操作者/关键字筛选、详情弹窗、扩展字段（actor/ip/user_agent/severity/metadata_json） |
-| Events | ✅ 基础已实现 | 持久化事件列表 + WS 实时运行事件、分类 Tab（全部/任务/消息/Agent/工具/系统）、JSON 详情、暂停/恢复/清除 |
-| Traces | ✅ 已实现 | 列表与 JSON 详情、Span 树提取、Agent/Provider/Model/Status 过滤、分页 |
-| Usage | ✅ 已实现 | 总览卡（请求数/成功率/Token/费用）、Top 模型、Top Agent、最近异常、时间范围选择 |
-| Logs | ✅ 已实现 | WS 日志流、级别过滤、关键字搜索、实时状态指示、暂停/恢复/清除 |
+| Events | 🟡 基础已实现 | WS 实时流 + `alert.fired`；Phase 1d（**方案 C**）：Chat `runner.completion` **默认不出现在主列表**，避免与 Runs 重复 |
+| Runs（UI 标签仍为 Traces） | ✅ 单次运行真相源 | `ListUsageEvents` 列表 + 详情（Flow/Waterfall/Span）；Phase 1d 增加「打开会话」与 correlation |
+| Usage | ✅ 已实现 | 总览（请求/Token/费用、Top 模型/Agent）+ Runner 指标；Phase 1d 指标卡下钻 Runs |
+| Logs | ✅ 已实现 | **二级 Tab**：流程日志（默认连接）+ 进程日志（config 控制）；共享一条 WS；流程 Tab 可暂停/清除；进程 Tab 切换时自动恢复 |
 
 ### 0.3 非目标
 
@@ -45,59 +47,87 @@
 
 ## 1. 日志（Logs）
 
-面向运维与开发：展示 **Gateway / 运行时** 文本日志流（类终端），支持级别过滤与关键字过滤。
+Monitor **Logs** 一级 Tab 内拆为 **两个二级 Tab**，分别服务不同排障场景（详见 [52-flow-logger.md](./52-flow-logger.md) §2）：
 
-> 实现状态：✅ 已实现。通过 `LogStream.vue` 组件 + WebSocket 推送 + HTTP REST 快照。
+| 二级 Tab | 面向 | Envelope | 默认行为 |
+|----------|------|----------|----------|
+| **流程日志** | 业务用户 / 产品运维：「这次对话卡在哪？」 | `flow_log` | 进入 Tab 即连接 WS，**无需手动开启** |
+| **进程日志** | 开发 / SRE：Gateway、插件 stderr | `log` | **`server.monitor.process_log_enabled`**（默认 `true`）；进入进程 Tab 自动恢复接收；无 UI 开关 |
 
-### 1.1 页面结构
+> 实现状态：✅ 已实现。`LogStreamPanel.vue` + 共享 `useLogStreamHub`（一条 `session_id=*` WS，全局上限 3 连接）。
+
+### 1.1 页面结构（Logs 一级 Tab）
 
 | 区域 | 内容 |
 |------|------|
-| **标题** | 「日志」 |
-| **副标题** | 当前追踪级别说明，如「正在实时追踪 **info** 级别」 |
-| **右上** | **实时** 状态指示（绿色）；**停止**（暂停拉流）；**清除**（清空当前视图缓冲） |
-| **工具行** | 搜索框，占位「过滤日志…」；级别 **DEBUG** \| **INFO** \| **WARN** \| **ERROR**（可多选或单选高亮）；右侧 **已显示/匹配条数**（如 `101/101`） |
-| **主体** | 等宽字体、深色背景、可横向滚动；自底向上或自顶向下追加，视产品定 |
+| **二级 Tab** | **流程日志**（默认） \| **进程日志** |
+| **流程 Tab 工具行** | 状态 Badge；**暂停/恢复**（仅停本 Tab 缓冲写入）；关键字；级别；**清除** |
+| **进程 Tab 工具行** | 状态 Badge；关键字；级别；按 source 筛选；清除（**无**开启/暂停按钮；切换 Tab 自动恢复） |
+| **主体** | 等宽深色控制台；流程行展示 `title` + `message` + severity 色条 |
 
-### 1.2 行格式（示例）
+### 1.2 行格式
+
+**流程日志（flow_log）示例：**
 
 ```text
-20:50:51 [WARN] no channels enabled
-20:50:51 [INFO] goclaw gateway starting agents=[] channels=[] protocol=3 tools=38 version=dev
+12:00:01 [INFO] 调用语言模型 — 模型已返回，开始处理输出流 (3240ms)
+12:00:05 [ERROR] 对话超时 — Turn 超过 5 分钟
 ```
 
-| 片段 | 说明 |
-|------|------|
-| 时间戳 | `HH:mm:ss` 或 ISO8601 |
-| 级别 | `DEBUG` / `INFO` / `WARN` / `ERROR` |
-| 正文 | 自由文本；可含 `key=value` 片段便于检索 |
+**进程日志（log）示例：**
+
+```text
+12:00:01 [WARN][hook] execute failed tool=search error=timeout
+```
 
 ### 1.3 数据来源与行为
 
-| 项 | 实现 |
-|------|------|
-| 传输 | WebSocket（`subscribeMonitorLogsWs`）+ HTTP REST（`getMonitorLogs` 快照） |
-| 过滤 | 前端在已收流上按关键字子串过滤时，更新「匹配数/总数」 |
-| 缓冲 | 前端最多保留最近 5,000 行；用户可清空视图但不删除后端日志 |
+| 项 | 流程日志 | 进程日志 |
+|------|----------|----------|
+| 传输 | WS `flow_log`，channel=`monitor` | WS `log`；服务端 `process_log_enabled` + 客户端 `enable_log` |
+| HTTP 快照 | 无（Phase 2 `ListFlowLogs` 规划） | `GET /v1/monitor/logs` 返回 `enabled`（镜像 config）+ hint |
+| 过滤 | trace_id / step_id / title / 关键字 | source / 级别 / 关键字 |
+| 缓冲 | 各 Tab 独立，最多 5,000 行 | 同左 |
+| 暂停 | 不断 WS，仅停止追加本 Tab 缓冲 | 离开进程 Tab 时 **丢弃** 入站行（不缓冲）；切回 Tab 自动恢复 |
 
-### 1.4 空态与异常态
+### 1.4 连接状态
+
+| 状态 | UI | 说明 |
+|------|-----|------|
+| `connecting` | 橙色「连接中」 | WS 握手中 |
+| `connected` | 绿色「已连接」 | 收到 WS `connected` 帧，等待数据 |
+| `live` | 绿色「实时」 | 已收到至少一条对应类型日志 |
+| `paused` | 灰色「已暂停」 | 用户暂停本 Tab |
+| `error` | 红色「连接异常」 | WS 错误或 429（全局连接满） |
+
+### 1.5 空态与异常态
 
 | 场景 | 表现 |
 |------|------|
-| 后端未实现日志流 | 显示提示：「日志流尚未启用，请使用 Audit / Events / Traces 查看结构化监控」 |
-| WS 断开 | 顶部实时状态变为灰色；显示「已断开，点击重连」按钮 |
-| 大量日志 | 前端最多保留最近 5,000 行 |
+| 流程 Tab 无数据 | 「已连接。发起一次对话后可看到流程日志。」 |
+| 进程 Tab config 关闭 | 「进程日志已在 config.yaml 中关闭（server.monitor.process_log_enabled: false）。」 |
+| 进程 Tab 已暂停（非当前 Tab） | 「已暂停接收（切换到本 Tab 后自动恢复）。」 |
+| WS 429 | 提示「全局监控连接已达上限(3)，请关闭其他 Monitor/Chat 页签」 |
+| 大量日志 | 各 Tab 缓冲最多 5,000 行 |
 
-### 1.5 Quasar 映射（日志）
+### 1.6 进程日志配置
+
+| 项 | 说明 |
+|----|------|
+| 配置项 | `configs/config.yaml` → `server.monitor.process_log_enabled` |
+| 默认值 | `true`（省略 `monitor` 块时同 true） |
+| HTTP | `GET /v1/monitor/logs` 的 `enabled` 字段镜像该配置 |
+| WS | globalMode（`session_id=*`）连接时，若 config 为 true 则自动 `logEnabled`；客户端 `enable_log(true)` 在 config 为 false 时被服务端忽略 |
+| UI | 无「开启进程日志」按钮；进程 Tab 切离时暂停（丢弃入站），切回自动恢复 |
+
+### 1.7 Quasar 映射
 
 | 区域 | Quasar 组件 |
 |------|-------------|
-| 页面骨架 | `QPage` + `QCard` |
-| 实时 / 停止 / 清除 | `QBtn`；实时状态用 `QBadge` color=`positive` |
-| 过滤行 | `QInput` `debounce="300"` + `clearable`；级别用 `QBtnToggle` |
-| 计数 | `span.text-caption` |
-| 日志主体 | `QScrollArea` + `<pre>` 按级别上色 |
-| 长列表性能 | `QVirtualScroll` |
+| 二级 Tab | `QTabs` + `QTabPanels`（嵌在 Logs 一级 Tab 内） |
+| 状态 | `QBadge` |
+| 工具行 | `QInput`、`QBtnToggle`、`QBtn` |
+| 日志主体 | `QCard` + 等宽行列表（流程行带 severity class） |
 
 ---
 
@@ -154,10 +184,21 @@
 
 ## 3. 实时事件（Real-time Events）
 
-展示 **Team / Agent** 侧经 **WebSocket + EventBus Envelope** 推送的**结构化事件流**。
+展示 **Team 编排实时动态**、**告警触发** 及 **无 Runs 记录时的运行结束降级提示**；**不**作为 Chat 单次对话排障的主入口（见 §4 Runs）。
 
-> 实现状态：✅ 已实现。通过 `RealtimeEvents.vue` 组件 + `MonitorService.ListMonitorEvents` + WS 推送。
-> 增强项：分类 Tab（全部/任务/消息/Agent/工具/系统）、事件类型/Agent ID/状态过滤、分页。
+> 实现状态：✅ 连接与列表已实现（`RealtimeEvents.vue` + `ListMonitorEvents` + WS）。
+> **Phase 1d（方案 C）**：Events 与 Runs 分工、correlation 落库、统一 Runs 详情；见 [18 monitor.design.md §九](./18%20monitor.design.md#九方案-cruns--events--runnercompletion) · [18-monitor-development.md](./18-monitor-development.md)。
+
+### 3.0 产品定位（方案 C：Runs 列表 + Events 实时流）
+
+| Tab | 回答的问题 | 不应承担 |
+|-----|------------|----------|
+| **Runs（Traces）** | 单次运行：成败、Token、延迟、Provider/Model、Flow/Span | Team 实时步骤流、管理审计 |
+| **Events** | Team WS（`team_run_*`）、`alert.fired`、**无 Usage 行时的** completion 降级 | Chat 完整排障详情（与 Runs 重复） |
+| **Logs → 流程** | 卡在哪一步 | 聚合错误率 |
+| **Usage** | 窗口内统计、Top 排行 | 单次运行逐步日志 |
+
+**`runner.completion`（后端仍落库）**：用于 `runner.error_rate` 告警、`RunnerMetricsPanel` 计数、Memory Worker；Chat 主路径已有 `recordTurnUsage` → Runs 行，**Events 主列表默认隐藏** persisted `runner.completion`（有 `usage_event_id` / `trace_id` 关联时提示「在 Runs 中查看」）。
 
 ### 3.1 页面结构
 
@@ -172,34 +213,68 @@
 
 | 分类 | 匹配规则 |
 |------|----------|
-| 任务 | `run.*`、`team_run.*` |
+| 任务 | `run.*`、`team_run.*`（不含 `runner.completion`） |
 | 消息 | `message.*`、`chat.*` |
 | Agent | `agent.*`、`agent_link.*` |
-| 工具 | `tool.*` |
-| 系统 | `system.*`、`runtime.*` |
+| 工具 | `tool.*`、含 `step` 的 team 步骤 |
+| 系统 | `system.*`、`runtime.*`、`alert.*`、`runner.completion`（仅降级卡片） |
 
-### 3.3 详情弹窗（JSON）
+### 3.3 列表过滤（`runner.completion`）
 
-点击卡片打开 Modal：语法高亮 JSON，带复制、关闭。
+| 场景 | Events 列表行为 |
+|------|-----------------|
+| Chat 且 metadata 含 `usage_event_id` 或可对上 Runs 行 | **不展示** persisted `runner.completion`（避免与 Runs 重复） |
+| Team/Cron/无 Usage 行的 completion | 展示降级卡片：「运行已结束（无用量记录）」+ 会话链接 |
+| 有 `usage_event_id` 的降级场景 | 主操作：**在 Runs 中查看**（打开 Trace 详情） |
+| WS `runner_completion` | 可与 persisted 去重；不单独做第二套详情弹窗 |
 
-### 3.4 实时连接状态
+### 3.4 详情弹窗（Events 非 Runs 事件）
 
-| 状态 | UI |
-|------|----|
-| connecting | 黄色点 +「连接中」 |
-| live | 绿色点 +「实时」 |
-| paused | 灰色点 +「已暂停」 |
-| error | 红色点 + 错误摘要 +「重连」 |
+- **Team / 告警 / 降级 completion**：保留 JSON 详情 + 复制；completion 降级卡片可增加「在 Runs 中查看」。
+- **Chat 完整排障**：不在 Events 建平行详情；统一使用 **§4 Runs 详情**（已有 Summary / Flow / Waterfall / Span）。
+
+### 3.5 用户故事与验收（Phase 1d · 方案 C）
+
+| ID | 用户故事 | 验收标准 |
+|----|----------|----------|
+| RUN-01 | 作为运维，Chat 结束后在 Runs 看到这次运行 | 发一条 Chat 后 Runs（Traces）列表出现一行，含 Agent/Token/延迟/status |
+| RUN-02 | 作为运维，从 Runs 详情排障 | 详情含 Flow（trace_id 过滤）、Waterfall、Span；可 **打开会话** |
+| RUN-03 | 作为运维，Events 不重复刷屏 | Events 主列表不出现与 Runs 重复的 Chat `runner.completion` |
+| RUN-04 | 作为运维，告警与 Runner 指标仍准确 | `runner.error_rate`、`RunnerMetricsPanel` 仍基于 `monitor_events` 计数 |
+| RUN-05 | 作为运维，无 Usage 时仍有信号 | 无 Runs 行时 Events 显示降级 completion + 会话链接 |
+| RUN-06 | 数据质量 | 同一 `session_id`+`invocation_id` 不重复插入 completion；metadata 含 `trace_id` / `usage_event_id` |
+
+### 3.6 实时连接状态
+
+| 状态 | UI | 说明 |
+|------|-----|------|
+| connecting | 橙色「连接中」 | WS 握手中 |
+| connected | 绿色「已连接」 | 已握手，尚无新事件 |
+| live | 绿色「实时」 | 已收到 WS 运行时事件 |
+| paused | 灰色「已暂停」 | 用户暂停 |
+| error | 红色「连接异常」 | WS 失败或全局连接满（3） |
 
 ---
 
-## 4. 追踪（LLM Traces）与 Usage 总览
+## 4. Runs（单次运行 · UI 标签 Traces）与 Usage 总览
 
-展示 **LLM 调用链** 与性能：**Span 树**、Token 进出、延迟；支持按 Agent、Provider、Model 筛选。
+**方案 C 真相源**：单次 Agent/Team **运行**以本 Tab 为主（数据源 `model_token_usage_events`，`trpc_turn` → `recordTurnUsage`）。与 Events 中 `runner.completion` 的关系为 **关联键 + 告警计数**，非平行详情页。
 
 > 实现状态：✅ 已实现。
 > - Usage 总览：通过 `UsageOverview.vue` + `UsageService` API
-> - Trace 列表：通过 `TraceList.vue` + `UsageService.ListUsageEvents` + `MonitorService.ListMonitorTraces`
+> - Runs 列表：`TraceList.vue` + `ListUsageEvents`（即 `/v1/usage/events`）
+> - Phase 1d：Runner 指标下钻、详情「打开会话」、`runner.completion` metadata 关联
+
+### 4.0 Runs 与 Events 分工（方案 C）
+
+| 维度 | Runs（Traces） | Events |
+|------|----------------|--------|
+| 主数据 | `model_token_usage_events` | WS + `monitor_events`（告警、降级 completion） |
+| Chat 排障 | ✅ 默认入口 | ❌ 不重复列表 |
+| 详情壳 | `TraceList` 最大化对话框（Flow/Waterfall/Span） | 仅非 Runs 类事件 |
+| `runner.completion` | 通过 `trace_id` / `usage_event_id` 关联 | 落库但不主显 |
+
+**默认用户路径**：发起对话 → Monitor → **Traces（Runs）** → 打开行详情 → Flow / Waterfall。
 
 ### 4.0 Usage 总览
 
@@ -278,7 +353,7 @@ Tab 状态同步到 query：`/monitor/logs?tab=audit`，便于刷新后保留当
 |------|------|
 | `PaginatedResult<T>` | `items: T[]`、`total: number` |
 | `LoadState` | `idle` / `loading` / `success` / `empty` / `error` |
-| `StreamState` | `connecting` / `live` / `paused` / `error` |
+| `StreamState` | `connecting` / `connected` / `live` / `paused` / `error` |
 
 ### 6.2 前端模块
 
@@ -289,7 +364,9 @@ Tab 状态同步到 query：`/monitor/logs?tab=audit`，便于刷新后保留当
 | `components/monitor/AuditTable.vue` | 活动日志表格（筛选 + 分页） |
 | `components/monitor/RealtimeEvents.vue` | WS 事件流 |
 | `components/monitor/TraceList.vue` | Trace 列表与详情 |
-| `components/monitor/LogStream.vue` | 日志流 |
+| `components/monitor/LogStreamPanel.vue` | Logs 二级 Tab 容器 + 共享 WS Hub |
+| `components/monitor/FlowLogStream.vue` | 流程日志流 |
+| `components/monitor/ProcessLogStream.vue` | 进程日志流 |
 | `features/monitor/api.ts` | Monitor API（含分页/过滤参数） |
 | `features/monitor/types.ts` | 类型定义（含 AuditQuery/PaginatedResult） |
 | `features/monitor/utils.ts` | 格式化工具 |
@@ -312,11 +389,11 @@ Tab 状态同步到 query：`/monitor/logs?tab=audit`，便于刷新后保留当
 - [x] 实时事件：WS 连接状态清晰；支持暂停、恢复、清除、JSON 详情；分类 Tab。
 - [x] Usage：总览卡、Top 模型、Top Agent、最近异常能从 `/api/v1/usage/*` 加载。
 - [x] 追踪：列表与详情能展示 Token、耗时、状态、错误信息；存在 spans 时展示 Span 树。
-- [x] 日志流：支持开始/停止、级别过滤、关键字过滤、计数。
+- [x] 日志流：流程/进程二级 Tab 独立缓冲；流程默认连接；进程 `enable_log` 开关；级别/关键字过滤；连接状态含 `connected`。
 - [x] 所有 JSON 详情支持复制，复制成功有 `Notify`。
 - [x] 大量数据场景不明显卡顿：长列表使用分页、虚拟滚动或限制前端缓冲。
 - [x] 敏感字段已脱敏，不展示明文密钥、Token、Cookie。
 
 ---
 
-*文档版本：2026-05-18 — 与当前代码实现完全对齐，标注各模块实现状态，补充分页/过滤/Usage 整合等设计。*
+*文档版本：2026-05-20 — Logs Tab 拆分为流程/进程二级 Tab；连接状态增加 `connected`；对齐 FlowLogger v2 分工。*

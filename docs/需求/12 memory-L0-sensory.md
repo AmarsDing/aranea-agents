@@ -630,7 +630,7 @@ POST /api/v1/sessions/{id}/l0/preview
 | 层次 | 已实现 | 说明 |
 |------|--------|------|
 | Runner MemoryService | 是 | `internal/agent/adk_memory.go` — `RunnerMemoryService(store)`：有 `sessionmemory.Store` → `SessionSQLiteMemoryService`，否则 `memory.InMemoryService()` |
-| SQLite 会话记忆链 | 是 | `internal/data/sessionmemory` + `memory_chain.sql`（L0 装配快照、L1–L4、entities 等） |
+| SQLite 会话记忆链 | 是 | `internal/data/sessionmemory` + `internal/data/sql/memory_chain.sql`（L0 装配快照、L1–L4、entities 等） |
 | 对外 API | 是 | `internal/service/memory.go`（`memory/v1` gRPC）对外查询 L0/L1/…，**不是**会话 Runner Memory 的一环 |
 | 桥接 | 部分 | `SessionSQLiteMemoryService` 在注入 Store 时起效；**`AddSessionToMemory` 仍为 no-op**，与 L0 写入链路的对齐仍可完善 |
 | Postgres pgvector | 是（独立业务线） | `internal/biz/memory.go`（`Remember` / `Search`）、`internal/data/memory.go` 对 `agent_memory` 的读写，**不在** Chat Runner 默认路径内自动挂载 |

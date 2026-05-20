@@ -38,9 +38,11 @@ export const useMonitorStore = defineStore("monitor", () => {
   function startRuntimeEventsStream(
     sessionId: string,
     onEvent: (event: TeamRunEvent) => void,
-    onError?: (error: string) => void
+    onError?: (error: string) => void,
+    onConnected?: () => void,
+    onDisconnected?: () => void
   ) {
-    return subscribeMonitorRuntimeEventsWs(sessionId, onEvent, onError);
+    return subscribeMonitorRuntimeEventsWs(sessionId, onEvent, onError, onConnected, onDisconnected);
   }
 
   function startLogsStream(

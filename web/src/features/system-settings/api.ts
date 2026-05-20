@@ -10,7 +10,13 @@ export async function getSystemSettings(): Promise<SystemSettings> {
 export async function updateSystemSettings(
   rootDirectory: string,
   workDirectory: string,
-  globalMonthlyMicroUsd = 0
+  globalMonthlyMicroUsd = 0,
+  a2aPublicBaseUrl = ""
 ): Promise<SystemSettings> {
-  return api.UpdateSystemSettings({ rootDirectory, workDirectory, globalMonthlyMicroUsd });
+  return api.UpdateSystemSettings({
+    rootDirectory,
+    workDirectory,
+    globalMonthlyMicroUsd,
+    a2aPublicBaseUrl
+  });
 }

@@ -1,9 +1,23 @@
+export type AgentKind = "" | "llm" | "a2a_proxy";
+
+export type A2AProxyConfig = {
+  remote_url: string;
+  agent_card_url?: string;
+  enable_streaming?: boolean;
+  auth_type?: string;
+  auth_config_json?: string;
+  timeout_seconds?: number;
+};
+
 export type Agent = {
   id: string;
   agent_key: string;
   display_name: string;
   provider: string;
   model: string;
+  agent_kind?: AgentKind;
+  a2a_proxy_config?: A2AProxyConfig;
+  a2a_endpoint_enabled?: boolean;
   status: string;
   is_default: boolean;
   is_favorite: boolean;

@@ -15,6 +15,8 @@ import (
 
 	artifacttrpc "aranea-agents/internal/artifact/trpc"
 	"aranea-agents/internal/biz"
+	a2apkg "aranea-agents/internal/a2a"
+	a2atrpc "aranea-agents/internal/a2a/trpc"
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/cronrunner"
 	"aranea-agents/internal/cronrunner/jobs"
@@ -131,6 +133,7 @@ func provideChatServiceDeps(
 	artifacts *biz.ArtifactUsecase,
 	mcpUC *biz.MCPServerUsecase,
 	knowledgeRetriever *knowledge.Retriever,
+	mon *biz.MonitorUsecase,
 ) service.ChatServiceDeps {
 	mcpobserve.SetBus(eventBus)
 	mcpobserve.SetMetadataRecorder(func(ctx context.Context, serverKey string, at time.Time) {
@@ -158,6 +161,7 @@ func provideChatServiceDeps(
 		Teams:         teams,
 		TeamsNative:   teamsNative,
 		Usage:         usage,
+		Monitor:       mon,
 		PluginRT:      pluginRT,
 		PluginManager: pluginMgr,
 		SkillDBRepo:   skillDBRepo,
@@ -252,6 +256,60 @@ func provideWireOut(app *kratos.App, runner *cronrunner.Runner, skillWatch *watc
 	return wireOut{App: app, CronRunner: runner, SkillWatch: skillWatch, AutoMemory: autoMem, MCPHealthProbe: mcpHealth}
 }
 
+func provideA2APublicBaseInput(c *conf.Server) a2apkg.PublicBaseURLInput {
+	configURL := ""
+	if c != nil {
+		configURL = c.GetA2APublicBaseUrl()
+	}
+	addr := ":8000"
+	if c != nil && c.GetHttp() != nil && strings.TrimSpace(c.GetHttp().GetAddr()) != "" {
+		addr = strings.TrimSpace(c.GetHttp().GetAddr())
+	}
+	return a2apkg.PublicBaseURLInput{
+		EnvOverride: os.Getenv("A2A_PUBLIC_BASE_URL"),
+		ConfigURL:   configURL,
+		HTTPAddr:    addr,
+		PathPrefix:  strings.TrimSuffix(a2atrpc.PublicPathPrefix, "/"),
+	}
+}
+
+func providePublicBaseURLStore(input a2apkg.PublicBaseURLInput, sys biz.SystemSettingRepo, logger log.Logger) *a2apkg.PublicBaseURLStore {
+	dbURL := ""
+	if sys != nil {
+		if s, err := sys.Get(context.Background()); err == nil {
+			dbURL = s.A2APublicBaseURL
+		}
+	}
+	in := input
+	in.DBURL = dbURL
+	result := a2apkg.ResolvePublicBaseURL(in)
+	if result.Source == a2apkg.PublicBaseSourceDerived {
+		log.NewHelper(logger).Warnf(
+			"A2A public base URL derived as %q; set in System Settings, A2A_PUBLIC_BASE_URL, or server.a2a_public_base_url for production",
+			result.URL,
+		)
+	}
+	return a2apkg.NewPublicBaseURLStore(result)
+}
+
+func provideA2AEndpointRegistry(builder *service.A2AEndpointBuilder, uc *biz.A2AUsecase, store *a2apkg.PublicBaseURLStore) *a2atrpc.EndpointRegistry {
+	return a2atrpc.NewEndpointRegistry(builder, uc, store)
+}
+
+func provideA2APublicBaseReloader(store *a2apkg.PublicBaseURLStore, reg *a2atrpc.EndpointRegistry, input a2apkg.PublicBaseURLInput) *service.A2APublicBaseReloader {
+	return service.NewA2APublicBaseReloader(store, reg, input)
+}
+
+func provideA2AService(
+	uc *biz.A2AUsecase,
+	chat *service.ChatService,
+	agents biz.AgentRepository,
+	reg *a2atrpc.EndpointRegistry,
+	store *a2apkg.PublicBaseURLStore,
+) *service.A2AService {
+	return service.NewA2AService(uc, chat, agents, reg, store)
+}
+
 // wireApp init kratos application.
 func wireApp(*conf.Server, *conf.Data, log.Logger) (wireOut, func(), error) {
 	panic(wire.Build(
@@ -287,6 +345,11 @@ func wireApp(*conf.Server, *conf.Data, log.Logger) (wireOut, func(), error) {
 		provideMonitorUsecase,
 		provideUsageUsecase,
 		provideSystemSettingUsecase,
+		provideA2APublicBaseInput,
+		providePublicBaseURLStore,
+		provideA2AEndpointRegistry,
+		provideA2APublicBaseReloader,
+		provideA2AService,
 		wire.Bind(new(biz.UsageQuotaRepo), new(biz.UsageRepo)),
 		newApp,
 		provideWireOut,

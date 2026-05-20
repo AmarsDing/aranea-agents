@@ -15,8 +15,10 @@ import {
   normalizeAgentFromService,
   partialAgentToWire,
   promptFileToWire,
-  runtimeSettingsToWire
+  runtimeSettingsToWire,
+  a2aProxyToWire
 } from "./wireNormalize";
+import type { A2AProxyConfig, AgentKind } from "./types";
 
 export type {
   Agent,
@@ -56,6 +58,8 @@ export async function createAgent(payload: {
   display_name: string;
   provider: string;
   model: string;
+  agent_kind?: AgentKind;
+  a2a_proxy_config?: A2AProxyConfig;
   icon?: string;
   agent_description?: string;
   category_position_id?: string;
@@ -72,6 +76,8 @@ export async function createAgent(payload: {
     displayName: payload.display_name,
     provider: payload.provider,
     model: payload.model,
+    agentKind: payload.agent_kind,
+    a2aProxyConfig: payload.a2a_proxy_config ? a2aProxyToWire(payload.a2a_proxy_config) : undefined,
     icon: payload.icon,
     agentDescription: payload.agent_description,
     categoryPositionId: payload.category_position_id,

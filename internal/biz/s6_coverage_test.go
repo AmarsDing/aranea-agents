@@ -343,6 +343,28 @@ func (m *memA2ARepo) ListEnabledCards(_ context.Context, _, _ string) ([]biz.A2A
 	}
 	return out, nil
 }
+func (m *memA2ARepo) MapEndpointEnabled(_ context.Context, agentIDs []string) (map[string]bool, error) {
+	out := make(map[string]bool, len(agentIDs))
+	for _, id := range agentIDs {
+		if c, ok := m.cards[id]; ok {
+			out[id] = c.Enabled
+		}
+	}
+	return out, nil
+}
+func (m *memA2ARepo) CreateRemoteAgent(_ context.Context, agent biz.A2ARemoteAgent) (biz.A2ARemoteAgent, error) {
+	return agent, nil
+}
+func (m *memA2ARepo) ListRemoteAgents(_ context.Context, _ string) ([]biz.A2ARemoteAgent, error) {
+	return nil, nil
+}
+func (m *memA2ARepo) DeleteRemoteAgent(_ context.Context, _ string) error { return nil }
+func (m *memA2ARepo) GetRemoteAgent(_ context.Context, id string) (biz.A2ARemoteAgent, error) {
+	return biz.A2ARemoteAgent{}, biz.ErrNotFound
+}
+func (m *memA2ARepo) DiscoverRemoteCard(_ context.Context, _ biz.RemoteCardDiscoverInput) (biz.A2AAgentCard, error) {
+	return biz.A2AAgentCard{}, nil
+}
 func (m *memA2ARepo) CreateInvocation(_ context.Context, inv biz.A2AInvocation) (biz.A2AInvocation, error) {
 	m.invocations[inv.ID] = inv
 	return inv, nil

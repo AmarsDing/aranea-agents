@@ -50,6 +50,8 @@
 - Team 模板后端库 / 自定义模板保存
 - 实时 WS 事件增强：step_started / 进度百分比 / 事件回放与断线续传
 - A2A call_agent 工具注入
+- **Agent Kind `a2a_proxy`**：创建时接入远程 A2A 服务（见 [26 a2a-protocol.md](./26%20a2a-protocol.md) §3.10）
+- LLM Agent **A2A Endpoint** 设置页（见 [26 a2a-protocol.md](./26%20a2a-protocol.md) §3.11）
 - Team 运行结果结构化汇总（成员贡献度、工具调用统计）
 
 ## 3. 用户场景

@@ -151,6 +151,7 @@ var stepTitleRegistry = map[string]string{
 	"system.monitor.alert_webhook_fail": "告警 Webhook 失败",
 	"system.monitor.alert_channel_fail": "告警通道发送失败",
 	"system.builtin_tools_sync_fail": "内置工具同步失败",
+	"system.session.compress":      "会话上下文压缩",
 	"system.safego.panic":          "协程 panic 已恢复",
 	"system.grpc.unauthenticated":  "gRPC 未认证请求",
 	"system.data.builtin_tool_sync": "内置工具同步",

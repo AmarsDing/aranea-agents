@@ -17,6 +17,7 @@ import (
 	knowledgetool "aranea-agents/internal/tools/knowledge"
 	serviceawaitreply "aranea-agents/internal/tools/serviceawaitreply"
 	"aranea-agents/pkg/safego"
+	"aranea-agents/pkg/strutil"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
@@ -44,6 +45,7 @@ func (s *ChatService) runSingleAgentViaTRPC(
 
 	runID := uuid.NewString()
 	turnStart := time.Now()
+	biz.DefaultTurnCompletionBridge().RegisterTurnStart(sessionID, runID, turnStart)
 	turnStatus := "ok"
 	var turnErr error
 	var resultPromptTok, resultCompletionTok int
@@ -89,7 +91,7 @@ func (s *ChatService) runSingleAgentViaTRPC(
 		MemoryAdmin:        s.td.Persist.Memory.Admin,
 		KnowledgeRetriever: s.knowledgeRetriever,
 	}
-	root, err := chatagent.BuildTRPCLLMAgentCached(ctx, ag, deps)
+	root, err := chatagent.BuildTRPCAgentCached(ctx, ag, deps)
 	if err != nil {
 		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
 		emitter.LogError("chat.agent.build", "构建Agent实例失败", event.P("agent_id", ag.ID), event.P("error", err.Error()))
@@ -137,33 +139,32 @@ func (s *ChatService) runSingleAgentViaTRPC(
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
 	sendText := content
-	emitter.LogStart("chat.intent.pass", "意图识别开始", event.P("provider", prov), event.P("model", mod), event.P("content_len", len(content)))
-	intRes := intent.Run(ctx, intent.IntentPassFromAgent(ag), s.td.Catalog.LLM, s.td.LLMHTTP, prov, mod, content)
-	if intRes.Artifact != nil {
-		emitter.LogDone("chat.intent.pass", "意图识别完成", event.P("outcome", intRes.Outcome), event.P("intent_kind", intRes.Artifact.IntentKind), event.P("refined_goal_len", len(intRes.Artifact.RefinedGoal)), event.P("duration_ms", intRes.Duration.Milliseconds()))
-		if strings.TrimSpace(intRes.RawJSON) != "" {
-			merged, merr := intent.MergeIntoUserOptionsJSON(userOpts, intRes.RawJSON)
-			if merr != nil {
-				emitter.LogWarn("chat.intent.merge_fail", "意图合并失败", "将继续执行但不包含 intent_artifact", event.P("error", merr.Error()))
-			} else {
-				userOpts = merged
+	if !biz.IsA2AProxyAgent(ag) {
+		emitter.LogStart("chat.intent.pass", "意图识别开始", event.P("provider", prov), event.P("model", mod), event.P("content_len", len(content)))
+		intRes := intent.Run(ctx, intent.IntentPassFromAgent(ag), s.td.Catalog.LLM, s.td.LLMHTTP, prov, mod, content)
+		if intRes.Artifact != nil {
+			emitter.LogDone("chat.intent.pass", "意图识别完成", event.P("outcome", intRes.Outcome), event.P("intent_kind", intRes.Artifact.IntentKind), event.P("refined_goal_len", len(intRes.Artifact.RefinedGoal)), event.P("duration_ms", intRes.Duration.Milliseconds()))
+			if strings.TrimSpace(intRes.RawJSON) != "" {
+				merged, merr := intent.MergeIntoUserOptionsJSON(userOpts, intRes.RawJSON)
+				if merr != nil {
+					emitter.LogWarn("chat.intent.merge_fail", "意图合并失败", "将继续执行但不包含 intent_artifact", event.P("error", merr.Error()))
+				} else {
+					userOpts = merged
+				}
 			}
+			sendText = intent.WrapUserMessage(content, intRes.Artifact)
+		} else {
+			emitter.LogSkip("chat.intent.pass", "意图识别跳过", event.P("outcome", intRes.Outcome), event.P("duration_ms", intRes.Duration.Milliseconds()))
 		}
-		sendText = intent.WrapUserMessage(content, intRes.Artifact)
+		meta := intent.RunMeta{AgentID: ag.ID, SessionID: sessionID}
+		intentPayload := intent.BuildIntentPassPayload(intRes, meta)
+		if s.td.Pipeline.Bus != nil {
+			env := event.NewEnvelope(event.EnvelopeTypeIntentPass, ag.ID, sessionID)
+			env.Metadata = intentPayload
+			s.td.Pipeline.Bus.Publish(ctx, env)
+		}
 	} else {
-		emitter.LogSkip("chat.intent.pass", "意图识别跳过", event.P("outcome", intRes.Outcome), event.P("duration_ms", intRes.Duration.Milliseconds()))
-	}
-	meta := intent.RunMeta{AgentID: ag.ID, SessionID: sessionID}
-	intentPayload := intent.BuildIntentPassPayload(intRes, meta)
-	if s.td.Pipeline.Bus != nil {
-		env := event.NewEnvelope(event.EnvelopeTypeIntentPass, ag.ID, sessionID)
-		env.Metadata = intentPayload
-		s.td.Pipeline.Bus.Publish(ctx, env)
-	}
-	if s.td.Pipeline.Bus != nil {
-		level, msg := intent.MonitorLogEntry(intRes, "chat", meta)
-		env := chatagent.NewEventProjector(s.td.Pipeline.Bus).BuildLogEnvelope(level, msg, "intent-pass", sessionID)
-		s.td.Pipeline.Bus.Publish(ctx, env)
+		emitter.LogSkip("chat.intent.pass", "A2A Proxy Agent 跳过意图识别", event.P("agent_kind", ag.Kind))
 	}
 
 	now := chatagent.RFC3339Now()
@@ -241,11 +242,17 @@ func (s *ChatService) runSingleAgentViaTRPC(
 	firstByteReceived := false
 
 	projectMeta := chatagent.ProjectMeta{
-		SessionID: sessionID,
-		RequestID: sessionID,
+		SessionID:        sessionID,
+		RequestID:        sessionID,
+		InvocationID:     runID,
+		RunID:            runID,
+		TraceID:          emitter.TraceID(),
+		AgentID:          ag.ID,
+		AgentDisplayName: ag.DisplayName,
 	}
 	events = event.WrapEventsWithTraceEmitter(events, emitter)
-	result := chatagent.ConsumeEventStreamWithFirstByte(firstByteCtx, runCtx, events, s.td.Pipeline.Bus, projectMeta, &firstByteReceived)
+	streamOpts := NewChatStreamConsumeOptions(s.td.Catalog.ToolUC, s.td.Catalog.Agents, s.td.Sessions)
+	result := chatagent.ConsumeEventStreamWithFirstByte(firstByteCtx, runCtx, events, s.td.Pipeline.Bus, projectMeta, &firstByteReceived, streamOpts)
 	resultPromptTok = result.PromptTok
 	resultCompletionTok = result.CompletionTok
 	firstByteCancel()
@@ -387,10 +394,7 @@ func (s *ChatService) recordSessionTurn(ctx context.Context, sessionID string, a
 		return
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	preview := contentPreview
-	if len(preview) > 200 {
-		preview = preview[:200]
-	}
+	preview := strutil.ProtoPreview(contentPreview, 200)
 	turn := biz.SessionTurn{
 		SessionID:           sessionID,
 		UserMessageID:       userMsgID,
@@ -427,10 +431,7 @@ func (s *ChatService) recordTeamSessionTurn(ctx context.Context, sessionID, team
 		return
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	preview := contentPreview
-	if len(preview) > 200 {
-		preview = preview[:200]
-	}
+	preview := strutil.ProtoPreview(contentPreview, 200)
 	turn := biz.SessionTurn{
 		SessionID:           sessionID,
 		UserMessageID:       userMsgID,

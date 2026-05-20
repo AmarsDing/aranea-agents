@@ -102,6 +102,7 @@ func (u *AgentUsecase) hydrate(ctx context.Context, agent Agent) (Agent, error) 
 	}
 	agent.Settings = &settings
 	agent.Files = files
+	HydrateAgentKind(&agent)
 	return agent, nil
 }
 
@@ -111,14 +112,40 @@ func (u *AgentUsecase) Create(ctx context.Context, in Agent) (Agent, error) {
 	in.DisplayName = strings.TrimSpace(in.DisplayName)
 	in.Provider = strings.TrimSpace(in.Provider)
 	in.Model = strings.TrimSpace(in.Model)
-	if in.AgentKey == "" || in.DisplayName == "" || in.Provider == "" || in.Model == "" {
-		return Agent{}, kerrors.BadRequest("AGENT", "agent_key, display_name, provider, and model are required")
+	in.Kind = NormalizeAgentKind(in.Kind)
+	HydrateAgentKind(&in)
+
+	if in.AgentKey == "" || in.DisplayName == "" {
+		return Agent{}, kerrors.BadRequest("AGENT", "agent_key and display_name are required")
+	}
+	switch in.Kind {
+	case AgentKindA2AProxy:
+		if in.A2AProxy == nil || strings.TrimSpace(in.A2AProxy.RemoteURL) == "" {
+			return Agent{}, kerrors.BadRequest("AGENT", "a2a_proxy remote_url is required")
+		}
+		if in.Provider == "" {
+			in.Provider = "a2a"
+		}
+		if in.Model == "" {
+			in.Model = "proxy"
+		}
+	default:
+		if in.Provider == "" || in.Model == "" {
+			return Agent{}, kerrors.BadRequest("AGENT", "provider and model are required")
+		}
+		in.Kind = AgentKindLLM
 	}
 	if in.ID == "" {
 		in.ID = newAgentCatalogID()
 	}
 	settings := withSettingDefaults(settingsFromAgentInput(in))
 	settings.AgentID = in.ID
+	if in.Kind == AgentKindA2AProxy {
+		settings.IntentPassEnabled = false
+		settings.ToolsEnabled = false
+		settings.MemoryEnabled = false
+		settings.SelfEvolve = false
+	}
 	files := filesFromAgentInput(in)
 	for i := range files {
 		files[i].AgentID = in.ID
@@ -127,6 +154,7 @@ func (u *AgentUsecase) Create(ctx context.Context, in Agent) (Agent, error) {
 	if strings.TrimSpace(in.ConfigJSON) == "" {
 		in.ConfigJSON = configJSONFromSettings(settings, files)
 	}
+	in.ConfigJSON = EmbedAgentKindInConfigJSON(in.ConfigJSON, in.Kind, in.A2AProxy)
 	in.Status = strings.TrimSpace(in.Status)
 	if in.Status == "" {
 		in.Status = "active"
@@ -156,7 +184,13 @@ func (u *AgentUsecase) Update(ctx context.Context, id string, patch Agent) (Agen
 	if err != nil {
 		return Agent{}, err
 	}
+	HydrateAgentKind(&patch)
+	HydrateAgentKind(&current)
+	if strings.TrimSpace(patch.Kind) != "" && NormalizeAgentKind(patch.Kind) != NormalizeAgentKind(current.Kind) {
+		return Agent{}, kerrors.BadRequest("AGENT", "agent_kind is immutable")
+	}
 	merged := mergeAgentCatalog(current, patch)
+	merged.Kind = current.Kind
 	settings := withSettingDefaults(settingsFromAgentInput(merged))
 	settings.AgentID = id
 	files := merged.Files
@@ -170,6 +204,13 @@ func (u *AgentUsecase) Update(ctx context.Context, id string, patch Agent) (Agen
 	}
 	merged.Settings = &settings
 	merged.Files = files
+	HydrateAgentKind(&merged)
+	if IsA2AProxyAgent(merged) {
+		if merged.A2AProxy == nil || strings.TrimSpace(merged.A2AProxy.RemoteURL) == "" {
+			return Agent{}, kerrors.BadRequest("AGENT", "a2a_proxy remote_url is required")
+		}
+	}
+	merged.ConfigJSON = EmbedAgentKindInConfigJSON(merged.ConfigJSON, merged.Kind, merged.A2AProxy)
 	if _, err := u.repo.UpdateAgent(ctx, merged); err != nil {
 		return Agent{}, err
 	}
@@ -316,6 +357,8 @@ func (u *AgentUsecase) syncConfigJSON(ctx context.Context, id string) (Agent, er
 		return Agent{}, err
 	}
 	a.ConfigJSON = configJSONFromSettings(withSettingDefaults(settings), files)
+	HydrateAgentKind(&a)
+	a.ConfigJSON = EmbedAgentKindInConfigJSON(a.ConfigJSON, a.Kind, a.A2AProxy)
 	return u.repo.UpdateAgent(ctx, a)
 }
 
@@ -352,6 +395,9 @@ func mergeAgentCatalog(current, patch Agent) Agent {
 	}
 	if len(patch.Files) > 0 {
 		out.Files = patch.Files
+	}
+	if patch.A2AProxy != nil && IsA2AProxyAgent(out) {
+		out.A2AProxy = patch.A2AProxy
 	}
 	return out
 }

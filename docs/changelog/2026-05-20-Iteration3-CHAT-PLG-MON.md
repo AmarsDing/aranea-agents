@@ -18,6 +18,7 @@
 ### Plugin（I2-PLG-01）
 
 - 表 `plugin_runs`（`docs/sql/13_plugin_run.sql`，运行时 DDL：`internal/data/sql/plugin_run.sql`）
+- 会话记忆链等 SQLite 合集（`docs/sql/16_memory_chain.sql` 说明，`internal/data/sql/memory_chain.sql`；Usage 段与 `08_usage.sql` 同步）
 - `GET /v1/plugins/runs`；`RepoStatsRecorder` 异步写入运行行
 
 ### Monitor（MON-01）

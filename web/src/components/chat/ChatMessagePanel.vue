@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <q-card flat bordered class="col column chat-mid-card" style="min-height: 0; border-radius: 18px">
     <q-banner v-if="wsReplaying" dense rounded class="q-mx-md q-mt-sm bg-blue-1 text-dark">
       <template #avatar>
@@ -13,7 +13,7 @@
       <div class="col ellipsis">
         <div class="chat-message-header__title ellipsis">{{ sessionTitle }}</div>
         <div class="chat-message-header__subtitle text-caption ellipsis">
-          {{ props.messages.length }} {{ t("chat.assistant") }} · {{ Math.round(props.contextRatio * 100) }}% ctx
+          {{ props.messages.length }} {{ t("chat.assistant") }} 路 {{ Math.round(props.contextRatio * 100) }}% ctx
         </div>
       </div>
     </q-card-section>
@@ -31,130 +31,33 @@
         <div class="chat-empty-state__title q-mt-md">{{ t("chat.emptyMessages") }}</div>
         <div class="chat-empty-state__hint text-caption q-mt-xs">{{ t("chat.inputLabel") }}</div>
       </div>
-      <q-chat-message
-        v-for="(message, idx) in props.messages"
-        :key="message.id"
-        class="chat-q-message"
-        :class="{
-          'chat-q-message--continued': isContinued(idx),
-          'chat-q-message--streaming': isStreaming(message),
-          'chat-q-message--member': isTeamMember(message)
-        }"
-        :sent="message.role === 'user'"
-        size="grow"
+      <q-virtual-scroll
+        v-else-if="useVirtualMessageList"
+        ref="virtualScrollRef"
+        scroll-target=".chat-messages"
+        :items="props.messages"
+        :virtual-scroll-item-size="virtualRowSize"
+        :virtual-scroll-slice-size="24"
+        v-slot="{ item, index }"
       >
-        <template #avatar>
-          <q-avatar
-            v-if="message.role === 'user'"
-            :size="messageAvatarSize"
-            color="white"
-            text-color="primary"
-            class="message-avatar message-avatar--user self-start"
-            rounded
-            icon="person"
-            :aria-label="displayMessageName(message)"
-          />
-          <q-avatar
-            v-else
-            :size="messageAvatarSize"
-            :color="messageAvatarColor(message)"
-            text-color="white"
-            class="message-avatar self-start"
-            :aria-label="displayMessageName(message)"
-          >
-            <resolved-avatar-img
-              v-if="shouldRenderAgentAvatarImage(messageAvatarRawIcon(message))"
-              :icon="messageAvatarRawIcon(message)"
-              :alt="displayMessageName(message)"
-            />
-            <q-icon v-else-if="messageAvatarIcon(message)" :name="messageAvatarIcon(message)" :size="messageAvatarIconSize" />
-            <span v-else class="message-avatar__initials">{{ messageAvatarInitials(message) }}</span>
-          </q-avatar>
-        </template>
-        <div
-          class="chat-message-bubble"
-          :class="{
-            'chat-message-bubble--sent': message.role === 'user',
-            'chat-message-bubble--received': message.role !== 'user',
-            'chat-message-bubble--dark': props.isDark,
-            'chat-message-bubble--member': isTeamMember(message),
-            'chat-message-bubble--tool': isToolEventMessage(message),
-            'chat-message-bubble--tool-running': message.status === 'tool_running',
-            'chat-message-bubble--tool-failed': message.status === 'tool_failed'
-          }"
-          :style="bubbleAccentStyle(message)"
-        >
-          <div class="message-meta-row" :class="{ 'message-meta-row--sent': message.role === 'user' }">
-            <span class="message-name">{{ displayMessageName(message) }}</span>
-            <q-chip
-              v-if="teamMemberMeta(message)?.role"
-              dense
-              size="sm"
-              outline
-              color="primary"
-              class="q-ml-xs"
-            >
-              {{ teamMemberMeta(message)?.role }}
-            </q-chip>
-            <span class="message-stamp">{{ formatStamp(message.created_at) }}</span>
-          </div>
-          <ChatToolCallCard v-if="structuredToolEvent(message)" :event="structuredToolEvent(message)!" />
-          <details
-            v-else-if="isCollapsibleToolDetail(message)"
-            class="chat-tool-details"
-          >
-            <summary class="chat-tool-details__summary">
-              <span class="chat-tool-details__summary-text">{{ toolCollapseSummary(message) }}</span>
-              <span class="chat-tool-details__hint text-caption" aria-hidden="true" />
-            </summary>
-            <div
-              class="chat-message-content chat-tool-details__body"
-              :class="{
-                'chat-message-content--sent': message.role === 'user',
-                'chat-message-content--dark': message.role !== 'user' && props.isDark
-              }"
-              v-html="renderMarkdown(toolCollapseDetail(message))"
-            />
-          </details>
-          <template v-else>
-            <details
-              v-if="reasoningMarkdown(message)"
-              class="chat-reasoning-details q-mb-sm"
-            >
-              <summary class="text-caption text-weight-medium">{{ t("chat.reasoningTitle", "思考过程") }}</summary>
-              <div
-                class="chat-message-content chat-reasoning-details__body"
-                :class="{ 'chat-message-content--dark': props.isDark }"
-                v-html="renderMarkdown(reasoningMarkdown(message))"
-              />
-            </details>
-            <div
-              v-else
-              class="chat-message-content"
-              :class="{
-                'chat-message-content--sent': message.role === 'user',
-                'chat-message-content--dark': message.role !== 'user' && props.isDark
-              }"
-              v-html="isStreaming(message) ? renderStreamingMarkdown(message.content_markdown) : renderMarkdown(message.content_markdown)"
-            />
-          </template>
-          <div
-            v-if="message.role !== 'user' && message.status === 'error' && assistantErrorDetail(message)"
-            class="text-caption text-negative q-mt-xs chat-assistant-error"
-          >
-            {{ assistantErrorDetail(message) }}
-          </div>
-          <div
-            v-if="message.role === 'user'"
-            class="message-send-tags message-send-tags--sent text-caption"
-          >
-            {{ userSendTagLine(message) }}
-          </div>
-          <span v-if="isStreaming(message)" class="chat-typing" aria-label="正在输入">
-            <i /><i /><i />
-          </span>
-        </div>
-      </q-chat-message>
+        <ChatMessageRow
+          :message="item"
+          :index="index"
+          :messages="props.messages"
+          :is-dark="props.isDark"
+          :is-team-session="props.isTeamSession"
+        />
+      </q-virtual-scroll>
+      <ChatMessageRow
+        v-for="(message, idx) in props.messages"
+        v-else
+        :key="message.id"
+        :message="message"
+        :index="idx"
+        :messages="props.messages"
+        :is-dark="props.isDark"
+        :is-team-session="props.isTeamSession"
+      />
       <div v-if="props.pendingMessages?.length" class="chat-pending-list">
         <div class="chat-pending-label">{{ t("chat.pendingQueue") }}</div>
         <div v-for="pm in props.pendingMessages" :key="pm.id" class="chat-pending-item">
@@ -248,7 +151,7 @@
         <template #avatar>
           <q-icon name="hourglass_top" color="amber-9" />
         </template>
-        {{ t("chat.awaitingUserHint", "Agent 正在等待你的回复，在下方输入后点击「提交回复」") }}
+        {{ t("chat.awaitingUserHint", "Agent 正在等待你的回复，在下方输入后点击「提交回复」。") }}
         <template #action>
           <q-btn
             flat
@@ -408,15 +311,14 @@
 </template>
 
 <script setup lang="ts">
-import DOMPurify from "dompurify";
-import MarkdownIt from "markdown-it";
-import { nextTick, onBeforeUnmount, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import ResolvedAvatarImg from "../avatar/ResolvedAvatarImg.vue";
-import ChatToolCallCard from "./ChatToolCallCard.vue";
-import { isAvatarAssetRef, shouldRenderAgentAvatarImage } from "../../features/avatar/iconModel";
-import { reasoningMarkdown } from "../../features/chat/streamContentPatch";
-import type { ToolUseEvent } from "../../features/chat/types";
+import type { QVirtualScroll } from "quasar";
+import ChatMessageRow from "./ChatMessageRow.vue";
+import {
+  CHAT_VIRTUAL_ROW_ESTIMATE,
+  CHAT_VIRTUAL_SCROLL_THRESHOLD,
+} from "../../features/chat/chatListVirtual";
 import type { ChatAttachment, Message } from "./types";
 
 type Option = { label: string; value: string; caption?: string };
@@ -435,6 +337,7 @@ const props = defineProps<{
   sending?: boolean;
   isAwaitingUser?: boolean;
   wsReplaying?: boolean;
+  isTeamSession?: boolean;
   pendingMessages?: { id: string; content: string; status: string; created_at: string }[];
 }>();
 
@@ -453,297 +356,12 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
-const messageAvatarSize = "44px";
-const messageAvatarIconSize = "24px";
+const useVirtualMessageList = computed(() => props.messages.length >= CHAT_VIRTUAL_SCROLL_THRESHOLD);
+const virtualRowSize = CHAT_VIRTUAL_ROW_ESTIMATE;
+const virtualScrollRef = ref<QVirtualScroll | null>(null);
 
 const editingPendingId = ref("");
 const editingPendingContent = ref("");
-
-/**
- * 头像调色板：name 给 QAvatar 用（Quasar 颜色），hex 给气泡 accent 条用。
- * 选用低饱和、长时间观看不刺眼的色阶。
- */
-const AVATAR_PALETTE = [
-  { name: "indigo", hex: "#5c6bc0" },
-  { name: "cyan", hex: "#26c6da" },
-  { name: "purple", hex: "#ab47bc" },
-  { name: "teal", hex: "#26a69a" },
-  { name: "deep-purple", hex: "#7e57c2" },
-  { name: "deep-orange", hex: "#ff7043" },
-  { name: "blue", hex: "#42a5f5" },
-  { name: "pink", hex: "#ec407a" },
-  { name: "green", hex: "#66bb6a" },
-  { name: "amber", hex: "#ffa726" }
-] as const;
-
-type TeamMemberMessageMeta = {
-  agent_id?: string;
-  agent_key?: string;
-  name?: string;
-  role?: string;
-  icon?: string;
-};
-
-type AgentMessageMeta = {
-  agent_id?: string;
-  agent_key?: string;
-  name?: string;
-  icon?: string;
-};
-
-type ToolMessageMeta = ToolUseEvent;
-
-const markdown = new MarkdownIt({
-  breaks: true,
-  html: false,
-  linkify: true
-});
-markdown.enable(["table", "strikethrough"]);
-
-// 自定义代码块：增加 header（语言标签 + 复制按钮），按钮通过事件代理处理
-markdown.renderer.rules.fence = (tokens, idx) => {
-  const token = tokens[idx]!;
-  const info = (token.info || "").trim();
-  const lang = info ? info.split(/\s+/)[0]! : "";
-  const langLabel = lang || "code";
-  const safeCode = markdown.utils.escapeHtml(token.content);
-  const codeClass = lang ? ` class="language-${markdown.utils.escapeHtml(lang)}"` : "";
-  return `<div class="code-block">
-    <div class="code-block__header">
-      <span class="code-block__lang">${markdown.utils.escapeHtml(langLabel)}</span>
-      <button type="button" class="code-block__copy" aria-label="复制代码">
-        <span class="code-block__copy-icon" aria-hidden="true"></span>
-        <span class="code-block__copy-text">复制</span>
-      </button>
-    </div>
-    <pre><code${codeClass}>${safeCode}</code></pre>
-  </div>`;
-};
-
-function formatStamp(iso: string) {
-  if (!iso) return "";
-  try {
-    const d = new Date(iso);
-    const now = new Date();
-    const sameDay = d.toDateString() === now.toDateString();
-    if (sameDay) {
-      return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
-    }
-    const diffDays = Math.floor((now.getTime() - d.getTime()) / 86_400_000);
-    if (diffDays < 7) {
-      return d.toLocaleString(undefined, {
-        weekday: "short",
-        hour: "2-digit",
-        minute: "2-digit"
-      });
-    }
-    return d.toLocaleString(undefined, {
-      month: "short",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit"
-    });
-  } catch {
-    return iso;
-  }
-}
-
-function renderMarkdown(content: string) {
-  return DOMPurify.sanitize(markdown.render(content || ""), {
-    ADD_TAGS: ["button"],
-    ADD_ATTR: ["type", "aria-label", "aria-hidden"]
-  });
-}
-
-function closeOpenFences(src: string): string {
-  let count = 0;
-  for (const line of src.split("\n")) {
-    if (/^\s*```/.test(line)) count++;
-  }
-  if (count % 2 !== 0) return src + "\n```";
-  return src;
-}
-
-function renderStreamingMarkdown(content: string) {
-  const patched = closeOpenFences(content || "");
-  return DOMPurify.sanitize(markdown.render(patched), {
-    ADD_TAGS: ["button"],
-    ADD_ATTR: ["type", "aria-label", "aria-hidden"]
-  });
-}
-
-function displayMessageName(message: Message) {
-  if (message.role === "user") return t("chat.me");
-  const member = teamMemberMeta(message);
-  if (member?.name) {
-    return member.role ? `${member.name} (${member.role})` : member.name;
-  }
-  const agent = agentMeta(message);
-  if (agent?.name) return agent.name;
-  if (message.model_name?.startsWith("team/")) {
-    const [, role, name] = message.model_name.split("/");
-    if (name && role) return `${name} (${role})`;
-    if (name) return name;
-  }
-  return t("chat.assistant");
-}
-
-function messageIdentityKey(message: Message): string {
-  if (message.role === "user") return "user";
-  const meta = teamMemberMeta(message) ?? agentMeta(message);
-  if (meta?.agent_id) return meta.agent_id;
-  if (meta?.agent_key) return meta.agent_key;
-  if (message.model_name?.trim()) return message.model_name;
-  return message.id || "assistant";
-}
-
-function assistantErrorDetail(message: Message): string {
-  const raw = message.error_message?.trim();
-  if (raw) return raw;
-  const body = message.content_markdown?.trim() || "";
-  if (body === "对话生成失败。") {
-    return "未返回详细错误，请查看用量事件或后端日志。";
-  }
-  return "";
-}
-
-function userSendTagLine(message: Message): string {
-  let agentLabel = "—";
-  let ctx = "0%";
-  let intentKind = "";
-  try {
-    const raw = JSON.parse(message.options_json || "{}") as {
-      agent?: { name?: string; display_name?: string };
-      send_meta?: { context_pct?: number };
-      intent_artifact?: { intent_kind?: string };
-    };
-    const n = raw.agent?.name || raw.agent?.display_name;
-    if (n) agentLabel = n;
-    if (typeof raw.send_meta?.context_pct === "number") {
-      ctx = `${Math.round(raw.send_meta.context_pct)}%`;
-    }
-    if (raw.intent_artifact?.intent_kind) {
-      intentKind = raw.intent_artifact.intent_kind;
-    }
-  } catch {
-    /* ignore */
-  }
-  const parts: string[] = [agentLabel, `${ctx} CTX`];
-  if (intentKind) parts.push(intentKind);
-  const st = message.status?.trim();
-  if (st && st !== "ok") parts.push(st);
-  const err = message.error_message?.trim();
-  if (err) parts.push(err);
-  return parts.join(" · ");
-}
-
-function isTeamMember(message: Message): boolean {
-  return message.role !== "user" && (Boolean(teamMemberMeta(message)) || Boolean(message.model_name?.startsWith("team/")));
-}
-
-function isStreaming(message: Message): boolean {
-  return message.status === "streaming" || message.status === "tool_running";
-}
-
-function isContinued(idx: number): boolean {
-  if (idx <= 0) return false;
-  const cur = props.messages[idx];
-  const prev = props.messages[idx - 1];
-  if (!cur || !prev) return false;
-  if (prev.role !== cur.role) return false;
-  return messageIdentityKey(prev) === messageIdentityKey(cur);
-}
-
-function paletteIndex(message: Message): number {
-  const key = messageIdentityKey(message);
-  let h = 0;
-  for (let i = 0; i < key.length; i += 1) h = (h * 31 + key.charCodeAt(i)) >>> 0;
-  return h % AVATAR_PALETTE.length;
-}
-
-function messageAvatarColor(message: Message): string {
-  return AVATAR_PALETTE[paletteIndex(message)]?.name || "indigo";
-}
-
-function memberAccentHex(message: Message): string {
-  return AVATAR_PALETTE[paletteIndex(message)]?.hex || "#5c6bc0";
-}
-
-function bubbleAccentStyle(message: Message): Record<string, string> | undefined {
-  if (!isTeamMember(message)) return undefined;
-  return { "--bubble-accent": memberAccentHex(message) };
-}
-
-function teamMemberMeta(message: Message): TeamMemberMessageMeta | null {
-  try {
-    const raw = JSON.parse(message.options_json || "{}") as {
-      team_member?: TeamMemberMessageMeta;
-      member_agent_key?: string;
-      display_name?: string;
-    };
-    if (raw.team_member) return raw.team_member;
-    if (raw.member_agent_key) {
-      return { agent_key: raw.member_agent_key, name: raw.display_name || raw.member_agent_key };
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-function structuredToolEvent(message: Message): ToolUseEvent | null {
-  const ev = toolEventMeta(message);
-  if (!ev?.tool_name && !ev?.id) return null;
-  return ev;
-}
-
-function agentMeta(message: Message): AgentMessageMeta | null {
-  try {
-    const raw = JSON.parse(message.options_json || "{}") as { agent?: AgentMessageMeta };
-    return raw.agent ?? null;
-  } catch {
-    return null;
-  }
-}
-
-function toolEventMeta(message: Message): ToolMessageMeta | null {
-  try {
-    const raw = JSON.parse(message.options_json || "{}") as { tool_event?: ToolMessageMeta };
-    return raw.tool_event ?? null;
-  } catch {
-    return null;
-  }
-}
-
-function isToolEventMessage(message: Message): boolean {
-  return Boolean(toolEventMeta(message)) || message.status.startsWith("tool_");
-}
-
-/** 首行作为摘要，其余（含 read_file 大段代码等）放入可折叠区。 */
-function toolCollapseParts(message: Message): { summary: string; detail: string } {
-  const md = message.content_markdown?.trim() ?? "";
-  const nl = md.indexOf("\n");
-  if (nl === -1) {
-    return { summary: toolCollapsePlainLine(md), detail: "" };
-  }
-  const first = md.slice(0, nl).trim();
-  const rest = md.slice(nl + 1).trim();
-  return { summary: toolCollapsePlainLine(first), detail: rest };
-}
-
-function toolCollapsePlainLine(s: string): string {
-  let t = s.replace(/\*\*/g, "").replace(/`/g, "").trim();
-  if (t.length > 220) t = `${t.slice(0, 220)}…`;
-  return t || "工具";
-}
-
-function toolCollapseSummary(message: Message): string {
-  return toolCollapseParts(message).summary;
-}
-
-function toolCollapseDetail(message: Message): string {
-  return toolCollapseParts(message).detail;
-}
 
 function startEditPending(pm: { id: string; content: string }) {
   editingPendingId.value = pm.id;
@@ -761,41 +379,6 @@ function confirmEditPending(pendingId: string) {
 function cancelEditPending() {
   editingPendingId.value = "";
   editingPendingContent.value = "";
-}
-
-/** 工具「进行中」保持单行展开；有后续段落/代码块时默认折叠详情。 */
-function isCollapsibleToolDetail(message: Message): boolean {
-  if (!isToolEventMessage(message)) return false;
-  if (message.status === "tool_running") return false;
-  return toolCollapseParts(message).detail.length > 0;
-}
-
-function messageAvatarRawIcon(message: Message): string {
-  return teamMemberMeta(message)?.icon || agentMeta(message)?.icon || "";
-}
-
-function messageAvatarIcon(message: Message): string {
-  if (message.role === "user") return "person";
-  const icon = messageAvatarRawIcon(message);
-  if (icon && !isAvatarAssetRef(icon)) return icon;
-  if (isAvatarAssetRef(icon)) return "";
-  return isTeamMember(message) ? "" : "smart_toy";
-}
-
-function messageAvatarInitials(message: Message): string {
-  const raw = displayMessageName(message);
-  const compact = raw.replace(/[()（）]/g, " ").replace(/\s+/g, " ").trim();
-  if (!compact) return "…";
-  const parts = compact.split(" ").filter(Boolean);
-  if (parts.length >= 2) {
-    const a = parts[0]!.slice(0, 1);
-    const b = parts[1]!.slice(0, 1);
-    return (a + b).toUpperCase();
-  }
-  const w = parts[0] || compact;
-  if (/[\u4e00-\u9fff]/.test(w) && w.length >= 2) return w.slice(0, 2);
-  if (/[\u4e00-\u9fff]/.test(w)) return w.slice(0, 1);
-  return w.length <= 2 ? w.toUpperCase() : w.slice(0, 2).toUpperCase();
 }
 
 function onInputKeydown(event: KeyboardEvent) {
@@ -823,6 +406,12 @@ function onMessagesScroll() {
 }
 
 function scrollToBottom(smooth = false) {
+  if (useVirtualMessageList.value && virtualScrollRef.value && props.messages.length > 0) {
+    virtualScrollRef.value.scrollTo(props.messages.length - 1, smooth ? "start" : "start-force");
+    stickToBottom.value = true;
+    showScrollBtn.value = false;
+    return;
+  }
   const el = messagesScrollEl.value;
   if (!el) return;
   el.scrollTo({ top: el.scrollHeight, behavior: smooth ? "smooth" : "auto" });
@@ -838,7 +427,6 @@ watch(
   }
 );
 
-// 流式增量到达时（最后一条消息内容增长）也保持贴底
 watch(
   () => props.messages[props.messages.length - 1]?.content_markdown ?? "",
   () => {
@@ -906,10 +494,13 @@ $msg-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04), 0 2px 8px rgba(15, 23, 42, 0.0
 $msg-shadow-md: 0 4px 14px rgba(15, 23, 42, 0.08), 0 1px 3px rgba(15, 23, 42, 0.04)
 $msg-shadow-dark: 0 2px 8px rgba(0, 0, 0, 0.32), 0 8px 24px rgba(0, 0, 0, 0.18)
 $msg-shadow-sent: 0 6px 18px rgba(99, 102, 241, 0.28), 0 1px 3px rgba(79, 70, 229, 0.22)
-$msg-opposite-gutter: 150px
-$msg-edge-gutter: 80px
+$msg-user-max: 46rem
+$msg-opposite-gutter: 0px
+$msg-edge-gutter: 12px
+$msg-block-gap: 36px
+$msg-continued-gap: 14px
 
-// Soft canvas tints for subtle depth — feels less flat
+// Soft canvas tints for subtle depth 鈥?feels less flat
 $canvas-light: linear-gradient(180deg, rgba(248, 250, 252, 0.55) 0%, rgba(241, 245, 249, 0.0) 320px)
 $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42, 0.0) 320px)
 
@@ -937,23 +528,23 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
   height: 28px
   margin-right: 10px
   border-radius: 50%
-  background: rgba(34, 197, 94, 0.12)
+  background: rgba(233, 162, 59, 0.14)
 
 .chat-message-header__dot
   width: 9px
   height: 9px
   border-radius: 50%
-  background: var(--color-accent-green-light)
-  box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.6)
+  background: var(--color-accent)
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 55%, transparent)
   animation: chat-pulse 2.4s ease-in-out infinite
 
 @keyframes chat-pulse
   0%
-    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.55)
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 50%, transparent)
   70%
-    box-shadow: 0 0 0 8px rgba(34, 197, 94, 0)
+    box-shadow: 0 0 0 8px transparent
   100%
-    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0)
+    box-shadow: 0 0 0 0 transparent
 
 .chat-message-header__title
   color: var(--color-surface-solid)
@@ -980,12 +571,13 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
 .chat-messages
   min-width: 0
   max-width: 100%
-  padding: 32px $msg-edge-gutter 40px
+  padding: 28px $msg-edge-gutter 36px
   background: $canvas-light
   overflow-x: hidden
   scroll-behavior: smooth
+  box-sizing: border-box
 
-  // Custom scrollbar — subtle but discoverable
+  // Custom scrollbar 鈥?subtle but discoverable
   &::-webkit-scrollbar
     width: 10px
   &::-webkit-scrollbar-track
@@ -1072,17 +664,17 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
     opacity: 1
 
 // ===== Quasar QChatMessage layout =====
-// size="grow" + 内容自适应宽度（fit-content + max-width 上限），短消息不再撑满
+// 占满中间栏宽度，仅保留窄边距
 .chat-q-message
   width: 100%
+  max-width: 100%
   animation: chat-message-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) both
 
   & + .chat-q-message
-    margin-top: 36px // 不同发送者间距大
+    margin-top: $msg-block-gap
 
   & + .chat-q-message--continued
-    margin-top: 6px // 同一发送者连续消息紧贴
-
+    margin-top: $msg-continued-gap
   :deep(.q-message)
     min-width: 0
     max-width: 100%
@@ -1093,9 +685,13 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
     min-width: 0
     width: 100%
     max-width: 100%
-    column-gap: 14px
+    column-gap: 12px
     box-sizing: border-box
     align-items: flex-start
+
+  :deep(.q-message-avatar)
+    margin-top: 2px
+    flex-shrink: 0
 
   :deep(.q-message-received .q-message-container)
     padding-right: $msg-opposite-gutter
@@ -1103,25 +699,26 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
   :deep(.q-message-sent .q-message-container)
     padding-left: $msg-opposite-gutter
 
-  // 内容列：允许收缩到 fit-content；agent 比用户略宽，便于长文/表格
+  // 鍐呭鍒楋細鍏佽鏀剁缉鍒?fit-content锛沘gent 姣旂敤鎴风暐瀹斤紝渚夸簬闀挎枃/琛ㄦ牸
   :deep(.col-grow)
-    flex: 0 1 auto
+    flex: 1 1 auto
     display: flex
     flex-direction: column
     min-width: 0
+    max-width: 100%
 
   :deep(.q-message-sent .col-grow)
     align-items: flex-end
+    flex: 0 1 auto
     margin-left: auto
-    max-width: min(720px, 100%)
+    max-width: min($msg-user-max, 92%)
 
   :deep(.q-message-received .col-grow)
     align-items: flex-start
-    max-width: min(1000px, 100%)
+    max-width: 100%
 
-  // Quasar 把外层气泡 .q-message-text 当容器，我们再自带一个 inner 子 div .chat-message-bubble
-  // 关键：把 Quasar 自带的 bg/color/padding 全部重置成透明继承，让我们的 .chat-message-bubble 接管所有视觉
-  :deep(.q-message-text)
+  // Quasar 鎶婂灞傛皵娉?.q-message-text 褰撳鍣紝鎴戜滑鍐嶈嚜甯︿竴涓?inner 瀛?div .chat-message-bubble
+  // 鍏抽敭锛氭妸 Quasar 鑷甫鐨?bg/color/padding 鍏ㄩ儴閲嶇疆鎴愰€忔槑缁ф壙锛岃鎴戜滑鐨?.chat-message-bubble 鎺ョ鎵€鏈夎瑙?  :deep(.q-message-text)
     width: auto
     max-width: 100%
     min-width: 0
@@ -1148,13 +745,10 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
     padding: 0 !important
     margin: 0 !important
 
-// 隐藏连续消息中的头像（避免列堆叠重复头像，依然预留头像列宽度）
+// 连续消息：保留头像列占位，仅隐藏头像图形
 .chat-q-message--continued
   :deep(.q-message-avatar)
     visibility: hidden
-    height: 0
-    margin-top: 0
-    margin-bottom: 0
 
 @keyframes chat-message-in
   0%
@@ -1164,41 +758,29 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
     opacity: 1
     transform: translateY(0) scale(1)
 
-// ===== Bubble (我们自管的 inner 卡片) =====
+// ===== Bubble (鎴戜滑鑷鐨?inner 鍗＄墖) =====
 .chat-message-bubble
   position: relative
-  width: fit-content
+  width: 100%
   max-width: 100%
   min-width: 0
-  padding: 12px 16px
+  padding: 18px 22px
   border-radius: $msg-radius
   font-size: 15px
-  line-height: 1.78
+  line-height: 1.8
   box-sizing: border-box
   transition: box-shadow 0.22s ease, transform 0.22s ease
   overflow: hidden
   overflow-wrap: anywhere
 
-.chat-message-bubble--received
-  background: var(--color-on-accent)
-  color: var(--color-surface-solid)
-  border: 1px solid rgba(148, 163, 184, 0.22)
-  box-shadow: $msg-shadow-md
-  background-image: linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(248, 250, 252, 0.92))
-
-.chat-message-bubble--sent
-  color: var(--color-on-accent)
-  border: 1px solid rgba(99, 102, 241, 0.45)
-  background: linear-gradient(135deg, var(--color-accent-indigo) 0%, var(--color-accent-indigo-light) 50%, var(--color-accent-indigo-lighter) 100%)
-  box-shadow: $msg-shadow-sent
-  // 顶部柔和高光
-  &::after
-    content: ""
-    position: absolute
-    inset: 0
-    pointer-events: none
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0) 38%)
-    border-radius: inherit
+// 气泡昼夜材质见 app-global.sass「聊天消息气泡」
+.chat-message-bubble--sent::after
+  content: ""
+  position: absolute
+  inset: 0
+  pointer-events: none
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0) 40%)
+  border-radius: inherit
 
 .chat-q-message--member
   margin-left: 8px
@@ -1214,7 +796,7 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
   font-size: 13px
   opacity: 0.92
 
-// 团队成员气泡：左侧 4px 彩色 accent 条（颜色与头像一致）
+// 鍥㈤槦鎴愬憳姘旀场锛氬乏渚?4px 褰╄壊 accent 鏉★紙棰滆壊涓庡ご鍍忎竴鑷达級
 .chat-message-bubble--member
   padding-left: 18px
   &::before
@@ -1224,7 +806,7 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
     top: 0
     bottom: 0
     width: 4px
-    background: var(--bubble-accent, var(--color-accent-indigo-light))
+    background: var(--bubble-accent, var(--color-accent))
     border-radius: 4px 0 0 4px
 
 .chat-message-bubble--tool
@@ -1246,31 +828,6 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
 .chat-message-bubble--dark.chat-message-bubble--tool-failed
   background-image: linear-gradient(180deg, rgba(239, 68, 68, 0.18), rgba(30, 41, 59, 0.92))
   border-color: rgba(248, 113, 113, 0.42)
-
-.chat-q-message:hover .chat-message-bubble--received
-  box-shadow: 0 6px 22px rgba(15, 23, 42, 0.10), 0 2px 4px rgba(15, 23, 42, 0.05)
-
-.chat-q-message:hover .chat-message-bubble--sent
-  box-shadow: 0 8px 24px rgba(99, 102, 241, 0.36), 0 2px 4px rgba(79, 70, 229, 0.24)
-
-// Dark mode（由父组件 props.isDark 直接控制 .chat-message-bubble--dark，避免依赖全局 body--dark）
-.chat-message-bubble--dark.chat-message-bubble--received
-  background: var(--color-surface-soft)
-  background-image: linear-gradient(180deg, rgba(71, 85, 105, 0.55) 0%, rgba(30, 41, 59, 0.92) 100%)
-  color: var(--color-text-primary)
-  border-color: rgba(148, 163, 184, 0.18)
-  box-shadow: $msg-shadow-dark
-
-.chat-message-bubble--dark.chat-message-bubble--sent
-  background: linear-gradient(135deg, var(--color-accent-indigo-darker) 0%, var(--color-accent-indigo-dark) 55%, var(--color-accent-indigo) 100%)
-  border-color: rgba(99, 102, 241, 0.6)
-  color: rgba(255, 255, 255, 0.95)
-
-.chat-q-message:hover .chat-message-bubble--dark.chat-message-bubble--received
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.3)
-
-.chat-q-message:hover .chat-message-bubble--dark.chat-message-bubble--sent
-  box-shadow: 0 10px 30px rgba(99, 102, 241, 0.45), 0 2px 8px rgba(79, 70, 229, 0.3)
 
 // ===== Avatar =====
 .message-avatar
@@ -1297,12 +854,12 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
   font-size: 14px
   line-height: 1.1
 
-// ===== Name + Stamp row（在气泡之外，QChatMessage 的 #name 插槽） =====
+// ===== Name + Stamp row锛堝湪姘旀场涔嬪锛孮ChatMessage 鐨?#name 鎻掓Ы锛?=====
 .message-meta-row
   display: flex
   align-items: baseline
   gap: 10px
-  margin-bottom: 10px
+  margin-bottom: 0
   padding: 0
   flex-wrap: wrap
 
@@ -1311,19 +868,20 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
   flex-direction: row-reverse
 
 .message-name
-  font-size: 14px
-  font-weight: 700
+  font-size: 13px
+  font-weight: 650
   letter-spacing: 0.01em
-  color: var(--color-surface-solid)
-  line-height: 1.2
+  color: var(--color-text-primary)
+  line-height: 1.25
 
 .message-stamp
-  font-size: 11.5px
+  font-size: 11px
   font-weight: 500
-  letter-spacing: 0.02em
-  color: rgba(71, 85, 105, 0.7)
-  line-height: 1.2
+  letter-spacing: 0.03em
+  color: var(--color-text-secondary)
+  line-height: 1.25
   font-variant-numeric: tabular-nums
+  opacity: 0.88
 
 .message-send-tags
   display: block
@@ -1341,24 +899,6 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
 
 :global(.body--dark) .message-send-tags:not(.message-send-tags--sent)
   color: rgba(148, 163, 184, 0.95)
-
-:global(.body--dark) .message-name
-  color: var(--color-text-primary)
-:global(.body--dark) .message-stamp
-  color: rgba(203, 213, 225, 0.62)
-
-.chat-message-bubble--sent .message-name,
-.chat-message-bubble--sent .message-stamp
-  color: rgba(255, 255, 255, 0.94)
-
-.chat-message-bubble--sent .message-stamp
-  color: rgba(255, 255, 255, 0.72)
-
-.chat-message-bubble--dark.chat-message-bubble--received .message-name
-  color: var(--color-text-primary)
-
-.chat-message-bubble--dark.chat-message-bubble--received .message-stamp
-  color: rgba(203, 213, 225, 0.68)
 
 // ===== Streaming typing indicator =====
 .chat-typing
@@ -1390,13 +930,11 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
     transform: translateY(-4px)
     opacity: 1
 
-// 流式中的气泡左边缘加柔和闪烁高光
-.chat-q-message--streaming .chat-message-bubble
-  &::before
-    background: linear-gradient(180deg, var(--bubble-accent, var(--color-accent-indigo-light)) 0%, var(--bubble-accent, var(--color-accent-indigo-light)) 100%) !important
-    animation: chat-stream-glow 1.6s ease-in-out infinite
+// 流式强调条见 app-global（inset box-shadow）；成员左条保留 ::before
+.chat-q-message--streaming.chat-q-message--member .chat-message-bubble::before
+  animation: chat-stream-accent 1.6s ease-in-out infinite
 
-@keyframes chat-stream-glow
+@keyframes chat-stream-accent
   0%, 100%
     opacity: 0.55
   50%
@@ -1421,7 +959,7 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
   opacity: 0
   transform: translateY(8px) scale(0.92)
 
-// ===== 工具调用结果：默认折叠，点开展开详情（read_file / shell 输出等）=====
+// ===== 宸ュ叿璋冪敤缁撴灉锛氶粯璁ゆ姌鍙狅紝鐐瑰紑灞曞紑璇︽儏锛坮ead_file / shell 杈撳嚭绛夛級=====
 .chat-tool-details
   width: 100%
   min-width: 0
@@ -1452,17 +990,17 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
   font-weight: 600
   font-size: 14px
   line-height: 1.45
-  color: var(--color-surface-solid)
+  color: var(--color-text-primary)
 
 .chat-tool-details__hint
   flex-shrink: 0
   letter-spacing: 0.02em
   &::after
-    content: "展开详情"
+    content: "灞曞紑璇︽儏"
     color: rgba(71, 85, 105, 0.92)
 
 .chat-tool-details[open] .chat-tool-details__hint::after
-  content: "收起"
+  content: "鏀惰捣"
 
 .chat-tool-details__body
   margin-top: 8px
@@ -1501,21 +1039,21 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
   :deep(h5),
   :deep(h6)
     margin: 0.9em 0 0.45em
-    color: var(--color-surface-solid)
+    color: var(--color-text-heading)
     font-weight: 700
     line-height: 1.28
     letter-spacing: -0.005em
 
   :deep(h1)
-    font-size: 24px
+    font-size: 1.25rem
   :deep(h2)
-    font-size: 21px
+    font-size: 1.125rem
   :deep(h3)
-    font-size: 18px
+    font-size: 1.05rem
   :deep(h4),
   :deep(h5),
   :deep(h6)
-    font-size: 16px
+    font-size: 1rem
 
   :deep(h1:first-child),
   :deep(h2:first-child),
@@ -1537,13 +1075,13 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
     margin-top: 0.2em
 
   :deep(a)
-    color: var(--color-accent-indigo)
+    color: var(--color-accent)
     text-decoration: none
-    border-bottom: 1px solid rgba(79, 70, 229, 0.35)
+    border-bottom: 1px solid rgba(233, 162, 59, 0.4)
     transition: color 0.15s ease, border-color 0.15s ease
   :deep(a:hover)
-    color: var(--color-accent-indigo-dark)
-    border-bottom-color: rgba(79, 70, 229, 0.85)
+    color: var(--color-accent-hover)
+    border-bottom-color: rgba(212, 140, 26, 0.85)
 
   :deep(table)
     display: block
@@ -1551,17 +1089,17 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
     max-width: 100%
     overflow-x: auto
     table-layout: auto
-    margin: 0.85em 0 1em
+    margin: 0.75em 0
     border-collapse: collapse
-    border: 1px solid rgba(100, 116, 139, 0.32)
+    border: 1px solid var(--glass-border)
     border-radius: 12px
-    background: rgba(255, 255, 255, 0.78)
+    background: color-mix(in srgb, var(--glass-surface) 92%, transparent)
     font-size: 13px
-    line-height: 1.55
-    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04)
+    line-height: 1.5
+    box-shadow: none
 
   :deep(thead)
-    background: rgba(99, 102, 241, 0.08)
+    background: color-mix(in srgb, var(--glass-surface) 88%, transparent)
 
   :deep(th),
   :deep(td)
@@ -1572,7 +1110,7 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
     vertical-align: top
 
   :deep(th)
-    color: var(--color-surface-solid)
+    color: var(--color-text-primary)
     font-weight: 700
     letter-spacing: 0.01em
   :deep(td)
@@ -1652,7 +1190,7 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
     overflow-x: auto
     white-space: pre
 
-  // 兜底：万一未走 fence renderer 的 <pre>
+  // 鍏滃簳锛氫竾涓€鏈蛋 fence renderer 鐨?<pre>
   :deep(pre)
     width: 100%
     max-width: 100%
@@ -1685,10 +1223,10 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
   :deep(blockquote)
     margin: 0.8em 0
     padding: 0.4em 0.95em
-    border-left: 3px solid rgba(99, 102, 241, 0.55)
-    background: rgba(99, 102, 241, 0.06)
+    border-left: 3px solid rgba(233, 162, 59, 0.55)
+    background: rgba(233, 162, 59, 0.08)
     border-radius: 0 8px 8px 0
-    color: rgba(31, 41, 55, 0.82)
+    color: var(--color-text-secondary)
 
   :deep(hr)
     margin: 1.1em 0
@@ -1699,10 +1237,11 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
     max-width: 100%
     border-radius: 10px
 
-// ===== Sent (user) variant — text on gradient bubble =====
+// ===== Sent (user) variant =====
 .chat-message-content--sent
   text-align: right
 
+:global(body:not(.body--dark)) .chat-message-content--sent
   :deep(h1),
   :deep(h2),
   :deep(h3),
@@ -1715,44 +1254,28 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
 
   :deep(a)
     color: var(--color-on-accent)
-    border-bottom-color: rgba(255, 255, 255, 0.55)
-  :deep(a:hover)
-    border-bottom-color: var(--color-on-accent)
+    border-bottom-color: rgba(255, 255, 255, 0.45)
 
   :deep(code)
-    background: rgba(255, 255, 255, 0.20)
+    background: rgba(255, 255, 255, 0.18)
     color: var(--color-on-accent)
 
   :deep(.code-block)
     background: rgba(15, 23, 42, 0.62)
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16)
 
-  :deep(.code-block__header)
-    background: rgba(15, 23, 42, 0.55)
-    border-bottom-color: rgba(255, 255, 255, 0.18)
-
-  :deep(.code-block__copy)
-    border-color: rgba(255, 255, 255, 0.32)
-    background: rgba(255, 255, 255, 0.10)
-    color: var(--color-on-accent)
-  :deep(.code-block__copy:hover)
-    background: rgba(255, 255, 255, 0.20)
-    border-color: rgba(255, 255, 255, 0.6)
-
   :deep(blockquote)
-    background: rgba(255, 255, 255, 0.10)
-    border-left-color: rgba(255, 255, 255, 0.7)
-    color: rgba(255, 255, 255, 0.95)
+    background: rgba(255, 255, 255, 0.1)
+    border-left-color: rgba(255, 255, 255, 0.65)
+    color: rgba(255, 255, 255, 0.92)
 
   :deep(table)
-    background: rgba(255, 255, 255, 0.10)
-    border-color: rgba(255, 255, 255, 0.30)
-  :deep(thead)
-    background: rgba(255, 255, 255, 0.18)
+    background: rgba(255, 255, 255, 0.1)
+    border-color: rgba(255, 255, 255, 0.28)
   :deep(th),
   :deep(td)
     color: var(--color-on-accent)
-    border-color: rgba(255, 255, 255, 0.24)
+    border-color: rgba(255, 255, 255, 0.22)
 
 // ===== Dark theme content =====
 .chat-message-content--dark
@@ -1764,7 +1287,7 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
   :deep(h4),
   :deep(h5),
   :deep(h6)
-    color: var(--color-text-primary)
+    color: var(--color-text-heading)
 
   :deep(p),
   :deep(li),
@@ -1785,23 +1308,23 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
     background: rgba(15, 23, 42, 0.55)
     border-color: rgba(203, 213, 225, 0.22)
   :deep(thead)
-    background: rgba(99, 102, 241, 0.22)
+    background: rgba(0, 229, 255, 0.1)
   :deep(th)
-    color: var(--color-text-primary)
+    color: var(--color-text-heading)
   :deep(td)
-    color: var(--color-text-dark)
+    color: var(--color-text-primary)
   :deep(th),
   :deep(td)
-    border-color: rgba(203, 213, 225, 0.18)
+    border-color: rgba(148, 163, 184, 0.2)
 
   :deep(code)
-    background: rgba(226, 232, 240, 0.14)
+    background: rgba(148, 163, 184, 0.14)
     color: var(--color-text-dark)
 
   :deep(blockquote)
-    background: rgba(99, 102, 241, 0.12)
-    color: rgba(248, 250, 252, 0.85)
-    border-left-color: rgba(147, 197, 253, 0.7)
+    background: rgba(0, 229, 255, 0.08)
+    color: var(--color-text-secondary)
+    border-left-color: rgba(0, 229, 255, 0.55)
 
   :deep(hr)
     border-top-color: rgba(203, 213, 225, 0.18)
@@ -1809,36 +1332,16 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
 // ===== Responsive =====
 @media (max-width: 1280px)
   .chat-messages
-    padding-left: 56px
-    padding-right: 56px
-
-  .chat-q-message
-    :deep(.q-message-received .q-message-container)
-      padding-right: 96px
-    :deep(.q-message-sent .q-message-container)
-      padding-left: 96px
-    :deep(.q-message-sent .col-grow)
-      max-width: min(640px, 100%)
-    :deep(.q-message-received .col-grow)
-      max-width: min(900px, 100%)
+    padding-left: 16px
+    padding-right: 16px
 
 @media (max-width: 900px)
   .chat-messages
     padding-left: 28px
     padding-right: 28px
 
-  .chat-q-message
-    :deep(.q-message-received .q-message-container)
-      padding-right: 56px
-    :deep(.q-message-sent .q-message-container)
-      padding-left: 56px
-    :deep(.q-message-sent .col-grow)
-      max-width: min(520px, 100%)
-    :deep(.q-message-received .col-grow)
-      max-width: min(720px, 100%)
-
   .chat-message-bubble
-    padding: 11px 14px
+    padding: 16px 18px
 
 @media (max-width: 599px)
   .chat-messages
@@ -1849,9 +1352,9 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
 
   .chat-q-message
     & + .chat-q-message
-      margin-top: 22px
+      margin-top: 28px
     & + .chat-q-message--continued
-      margin-top: 4px
+      margin-top: 12px
     :deep(.q-message-received .q-message-container),
     :deep(.q-message-sent .q-message-container)
       padding-left: 0
@@ -1861,9 +1364,9 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
       max-width: 100%
 
   .chat-message-bubble
-    padding: 10px 12px
+    padding: 14px 16px
     font-size: 14.5px
-    line-height: 1.7
+    line-height: 1.75
 
   .chat-message-bubble--member
     padding-left: 14px
@@ -1887,7 +1390,7 @@ $canvas-dark: linear-gradient(180deg, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42
   .chat-message-header__dot,
   .chat-empty-state__halo::before,
   .chat-typing i,
-  .chat-q-message--streaming .chat-message-bubble::before
+  .chat-q-message--streaming.chat-q-message--member .chat-message-bubble::before
     animation: none !important
   .message-avatar,
   .chat-message-bubble

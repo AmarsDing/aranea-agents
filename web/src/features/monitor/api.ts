@@ -14,7 +14,7 @@ import type {
 } from "./types";
 import { listModelUsageEvents } from "../usage/api";
 import { useEnvelopeStream } from "../chat/useEnvelopeStream";
-import type { Envelope, EnvelopeType } from "../chat/envelope";
+import type { Envelope } from "../chat/envelope";
 import { monitorLogLineFromFlowEnvelope } from "./flow";
 import { TEAM_RUNTIME_ENVELOPE_TYPES, teamRunEventFromEnvelope } from "../teams/teamRunEventFromEnvelope";
 
@@ -140,6 +140,7 @@ export function subscribeMonitorLogsWs(
     channels: ["monitor", "system"],
     autoConnect: false,
     logEnabled: false,
+    onConnected: () => onConnected?.(),
   });
 
   stream.onType("flow_log", (env: Envelope) => {
@@ -167,10 +168,6 @@ export function subscribeMonitorLogsWs(
     onError?.(env.error?.message ?? "monitor ws error");
   });
 
-  stream.onType("connected" as EnvelopeType, () => {
-    onConnected?.();
-  });
-
   stream.connect();
 
   return {
@@ -180,17 +177,24 @@ export function subscribeMonitorLogsWs(
   };
 }
 
+export { createMonitorLogHub, useMonitorLogHub } from "./useLogStreamHub";
+export type { MonitorLogHub } from "./useLogStreamHub";
+
 /** Team / runtime monitor events via `WS /v1/ws` (global `session_id=*` by default). */
 export function subscribeMonitorRuntimeEventsWs(
   sessionId: string,
   onEvent: (event: TeamRunEvent) => void,
-  onError?: (error: string) => void
+  onError?: (error: string) => void,
+  onConnected?: () => void,
+  onDisconnected?: () => void
 ): MonitorWsSub {
   const stream = useEnvelopeStream({
     sessionId: resolveMonitorSessionId(sessionId),
     channels: ["monitor", "team", "system"],
     autoConnect: false,
     logEnabled: false,
+    onConnected: () => onConnected?.(),
+    onDisconnected: () => onDisconnected?.(),
   });
 
   const dispatch = (env: Envelope) => {

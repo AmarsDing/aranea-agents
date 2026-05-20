@@ -7,6 +7,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/session/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/strutil"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 
@@ -17,12 +18,13 @@ import (
 type SessionService struct {
 	v1.UnimplementedSessionServiceServer
 
-	uc *biz.SessionUsecase
+	uc  *biz.SessionUsecase
+	mon *biz.MonitorUsecase
 }
 
 // NewSessionService constructs the service.
-func NewSessionService(uc *biz.SessionUsecase) *SessionService {
-	return &SessionService{uc: uc}
+func NewSessionService(uc *biz.SessionUsecase, mon *biz.MonitorUsecase) *SessionService {
+	return &SessionService{uc: uc, mon: mon}
 }
 
 func toProtoSession(s biz.Session) *v1.Session {
@@ -240,6 +242,7 @@ func (s *SessionService) DeleteSession(ctx context.Context, req *v1.DeleteSessio
 	if err := s.uc.Delete(ctx, req.GetId()); err != nil {
 		return nil, mapSessionErr(err)
 	}
+	biz.RecordAdminAudit(ctx, s.mon, "delete.session", "session", req.GetId(), "single delete")
 	return &emptypb.Empty{}, nil
 }
 
@@ -248,6 +251,7 @@ func (s *SessionService) ArchiveSession(ctx context.Context, req *v1.ArchiveSess
 	if err := s.uc.Archive(ctx, req.GetId()); err != nil {
 		return nil, mapSessionErr(err)
 	}
+	biz.RecordAdminAudit(ctx, s.mon, "archive.session", "session", req.GetId(), "single archive")
 	return &emptypb.Empty{}, nil
 }
 
@@ -351,9 +355,9 @@ func toProtoSessionTurn(t biz.SessionTurn) *v1.SessionTurn {
 		TotalCostMicroUsd:   t.TotalCostMicroUSD,
 		FinalProvider:       t.FinalProvider,
 		FinalModel:          t.FinalModel,
-		FinalContentPreview: t.FinalContentPreview,
+		FinalContentPreview: strutil.ValidUTF8(t.FinalContentPreview),
 		ErrorCode:           t.ErrorCode,
-		ErrorMessage:        t.ErrorMessage,
+		ErrorMessage:        strutil.ValidUTF8(t.ErrorMessage),
 		MetadataJson:        t.MetadataJSON,
 		CreatedAt:           t.CreatedAt,
 		UpdatedAt:           t.UpdatedAt,

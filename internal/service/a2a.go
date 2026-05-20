@@ -8,11 +8,14 @@ import (
 	v1 "aranea-agents/api/kratos/a2a/v1"
 	a2apkg "aranea-agents/internal/a2a"
 	"aranea-agents/internal/biz"
+	a2atrpc "aranea-agents/internal/a2a/trpc"
 	"aranea-agents/pkg/auth"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
 var (
@@ -31,14 +34,33 @@ var (
 // A2AService implements kratos a2a.v1.
 type A2AService struct {
 	v1.UnimplementedA2AServiceServer
-	uc     *biz.A2AUsecase
-	runner a2apkg.AgentTurnRunner
-	agents biz.AgentRepository
+	uc          *biz.A2AUsecase
+	runner      a2apkg.AgentTurnRunner
+	agents      biz.AgentRepository
+	endpoints          *a2atrpc.EndpointRegistry
+	publicBaseStore    *a2apkg.PublicBaseURLStore
 }
 
 // NewA2AService constructs an A2AService.
-func NewA2AService(uc *biz.A2AUsecase, runner a2apkg.AgentTurnRunner, agents biz.AgentRepository) *A2AService {
-	return &A2AService{uc: uc, runner: runner, agents: agents}
+func NewA2AService(uc *biz.A2AUsecase, runner a2apkg.AgentTurnRunner, agents biz.AgentRepository, endpoints *a2atrpc.EndpointRegistry, publicBaseStore *a2apkg.PublicBaseURLStore) *A2AService {
+	return &A2AService{
+		uc:              uc,
+		runner:          runner,
+		agents:          agents,
+		endpoints:       endpoints,
+		publicBaseStore: publicBaseStore,
+	}
+}
+
+func (s *A2AService) effectivePublicBase() (url, source string) {
+	if s.publicBaseStore != nil {
+		r := s.publicBaseStore.Get()
+		return r.URL, r.Source
+	}
+	if s.endpoints != nil {
+		return s.endpoints.BaseURL(), a2apkg.PublicBaseSourceDerived
+	}
+	return "", ""
 }
 
 // Discover returns A2A-enabled agents, optionally filtered by workspace/capability.
@@ -47,9 +69,15 @@ func (s *A2AService) Discover(ctx context.Context, req *v1.DiscoverRequest) (*v1
 	if err != nil {
 		return nil, err
 	}
+	endpointEnabled, _ := s.uc.MapEndpointEnabled(ctx, biz.AgentIDsFromCards(cards))
+	publicBase, _ := s.effectivePublicBase()
 	out := make([]*v1.A2AAgentCard, 0, len(cards))
 	for _, c := range cards {
-		out = append(out, toProtoA2ACard(c))
+		protoCard := toProtoA2ACard(c)
+		if c.Source == biz.A2ASourceLocal && endpointEnabled[c.AgentID] && publicBase != "" {
+			protoCard.EndpointUrl = publicBase + "/" + c.AgentID
+		}
+		out = append(out, protoCard)
 	}
 	return &v1.DiscoverResponse{Agents: out}, nil
 }
@@ -69,21 +97,38 @@ func (s *A2AService) Invoke(ctx context.Context, req *v1.A2AInvokeRequest) (*v1.
 		return nil, kerrors.BadRequest("A2A", "capability is required")
 	}
 
-	card, err := s.uc.GetAgentCard(ctx, calleeID)
-	if err != nil || !card.Enabled {
+	target, err := a2apkg.ResolveInvokeTarget(ctx, s.uc, calleeID)
+	if err != nil {
 		a2aInvokeTotal.WithLabelValues("", calleeID, "forbidden").Inc()
-		return nil, kerrors.Forbidden("A2A", "agent "+calleeID+" is not A2A-enabled")
+		return nil, err
 	}
-	foundCap := false
-	for _, c := range card.Capabilities {
-		if c.Name == capability {
-			foundCap = true
-			break
+	var card biz.A2AAgentCard
+	switch target.Kind {
+	case a2apkg.InvokeTargetLocal:
+		card = target.Local
+		if err := a2apkg.CheckCalleeCard(card, nil, capability); err != nil {
+			a2aInvokeTotal.WithLabelValues("", calleeID, "forbidden").Inc()
+			return nil, err
 		}
-	}
-	if !foundCap {
+	case a2apkg.InvokeTargetRemote:
+		card = target.Remote.DiscoveredCard
+		if card.AgentID == "" {
+			card.AgentID = target.Remote.ID
+		}
+		if card.Workspace == "" {
+			card.Workspace = target.Remote.Workspace
+		}
+		if err := a2apkg.CheckCalleeCard(card, nil, capability); err != nil {
+			a2aInvokeTotal.WithLabelValues("", calleeID, "forbidden").Inc()
+			return nil, err
+		}
+	default:
 		a2aInvokeTotal.WithLabelValues("", calleeID, "forbidden").Inc()
-		return nil, kerrors.BadRequest("A2A", "capability "+capability+" is not advertised by agent "+calleeID)
+		return nil, kerrors.InternalServer("A2A", "unknown invoke target")
+	}
+	if err := a2apkg.ValidateAdminInvokeWorkspace(ctx, req.GetWorkspace(), card); err != nil {
+		a2aInvokeTotal.WithLabelValues("", calleeID, "forbidden").Inc()
+		return nil, err
 	}
 
 	timeoutSec := int(req.GetTimeoutSeconds())
@@ -102,15 +147,11 @@ func (s *A2AService) Invoke(ctx context.Context, req *v1.A2AInvokeRequest) (*v1.
 		return nil, err
 	}
 
-	if s.runner == nil {
-		a2aInvokeTotal.WithLabelValues("", calleeID, "error").Inc()
-		return nil, kerrors.InternalServer("A2A", "agent turn runner not configured")
-	}
+	invoker := a2apkg.NewInvoker(s.runner, s.uc, s.agents)
 
-	input := a2apkg.PayloadToInput(req.GetPayloadJson(), capability)
 	timer := prometheus.NewTimer(a2aInvokeDuration)
 	start := time.Now()
-	result, runErr := s.runner.RunAgentTurn(ctx, calleeID, input, timeoutSec)
+	result, runErr := invoker(ctx, calleeID, capability, req.GetPayloadJson(), timeoutSec)
 	durationMs := int(time.Since(start).Milliseconds())
 	timer.ObserveDuration()
 
@@ -162,24 +203,30 @@ func (s *A2AService) UpdateAgentCard(ctx context.Context, req *v1.UpdateAgentCar
 		})
 	}
 	workspace := ""
+	displayName := ""
 	if s.agents != nil {
 		if ag, err := s.agents.GetAgentByID(ctx, req.GetAgentId()); err == nil {
+			displayName = strings.TrimSpace(ag.DisplayName)
 			if ag.Settings != nil {
 				workspace = strings.TrimSpace(ag.Settings.GetIdentity().Workspace)
 			}
 			if workspace == "" {
-				workspace = strings.TrimSpace(ag.DisplayName)
+				workspace = displayName
 			}
 		}
 	}
 	card, err := s.uc.UpdateAgentCard(ctx, biz.A2AAgentCard{
 		AgentID:      req.GetAgentId(),
+		DisplayName:  displayName,
 		Workspace:    workspace,
 		Enabled:      req.GetEnabled(),
 		Capabilities: caps,
 	})
 	if err != nil {
 		return nil, err
+	}
+	if s.endpoints != nil {
+		s.endpoints.Invalidate(req.GetAgentId())
 	}
 	return toProtoA2ACard(card), nil
 }
@@ -216,6 +263,101 @@ func (s *A2AService) ListAudit(ctx context.Context, req *v1.ListAuditRequest) (*
 	return &v1.ListAuditResponse{Items: out, Total: int32(total)}, nil
 }
 
+// RegisterRemoteAgent adds an external agent to the workspace registry.
+func (s *A2AService) RegisterRemoteAgent(ctx context.Context, req *v1.RegisterRemoteAgentRequest) (*v1.A2ARemoteAgent, error) {
+	if err := requireA2AAdmin(ctx); err != nil {
+		return nil, err
+	}
+	enabled := true
+	if req.Enabled != nil {
+		enabled = req.GetEnabled()
+	}
+	item, err := s.uc.RegisterRemoteAgent(ctx, biz.RegisterRemoteAgentInput{
+		Workspace:      req.GetWorkspace(),
+		RemoteURL:      req.GetRemoteUrl(),
+		AgentCardURL:   req.GetAgentCardUrl(),
+		DisplayName:    req.GetDisplayName(),
+		AuthType:       req.GetAuthType(),
+		AuthConfigJSON: req.GetAuthConfigJson(),
+		Enabled:        enabled,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return toProtoRemoteAgent(item), nil
+}
+
+// ListRemoteAgents returns registry entries for a workspace.
+func (s *A2AService) ListRemoteAgents(ctx context.Context, req *v1.ListRemoteAgentsRequest) (*v1.ListRemoteAgentsResponse, error) {
+	items, err := s.uc.ListRemoteAgents(ctx, req.GetWorkspace())
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*v1.A2ARemoteAgent, 0, len(items))
+	for _, item := range items {
+		out = append(out, toProtoRemoteAgent(item))
+	}
+	return &v1.ListRemoteAgentsResponse{Items: out}, nil
+}
+
+// DeleteRemoteAgent removes a remote registry entry.
+func (s *A2AService) DeleteRemoteAgent(ctx context.Context, req *v1.DeleteRemoteAgentRequest) (*emptypb.Empty, error) {
+	if err := requireA2AAdmin(ctx); err != nil {
+		return nil, err
+	}
+	if err := s.uc.DeleteRemoteAgent(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
+	return &emptypb.Empty{}, nil
+}
+
+// DiscoverRemoteAgent fetches AgentCard metadata from a URL without persisting.
+func (s *A2AService) DiscoverRemoteAgent(ctx context.Context, req *v1.DiscoverRemoteAgentRequest) (*v1.A2AAgentCard, error) {
+	card, err := s.uc.DiscoverRemoteAgent(ctx, biz.RemoteCardDiscoverInput{
+		RemoteURL:      req.GetRemoteUrl(),
+		AuthType:       req.GetAuthType(),
+		AuthConfigJSON: req.GetAuthConfigJson(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return toProtoA2ACard(card), nil
+}
+
+// GatewayDiscover returns federated local endpoints and remote registry entries.
+func (s *A2AService) GatewayDiscover(ctx context.Context, req *v1.GatewayDiscoverRequest) (*v1.GatewayDiscoverResponse, error) {
+	publicBase, _ := s.effectivePublicBase()
+	items, err := s.uc.GatewayDiscover(ctx, biz.GatewayDiscoverInput{
+		Workspace:   req.GetWorkspace(),
+		Capability:  req.GetCapability(),
+		CheckHealth: req.GetCheckHealth(),
+	}, publicBase)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*v1.A2AGatewayEntry, 0, len(items))
+	for _, item := range items {
+		out = append(out, &v1.A2AGatewayEntry{
+			Card:        toProtoA2ACard(item.Card),
+			Source:      item.Source,
+			RegistryId:  item.RegistryID,
+			EndpointUrl: item.EndpointURL,
+			RemoteUrl:   item.RemoteURL,
+			Healthy:     item.Healthy,
+		})
+	}
+	return &v1.GatewayDiscoverResponse{Items: out}, nil
+}
+
+// GetA2AConfig returns read-only runtime settings for admin UI.
+func (s *A2AService) GetA2AConfig(context.Context, *emptypb.Empty) (*v1.A2ARuntimeConfig, error) {
+	url, source := s.effectivePublicBase()
+	return &v1.A2ARuntimeConfig{
+		PublicBaseUrl:       url,
+		PublicBaseUrlSource: source,
+	}, nil
+}
+
 // requireA2AAdmin enforces EP-A2A-02: HTTP Invoke requires authenticated admin.
 func requireA2AAdmin(ctx context.Context) error {
 	a, ok := auth.FromContext(ctx)
@@ -247,5 +389,23 @@ func toProtoA2ACard(c biz.A2AAgentCard) *v1.A2AAgentCard {
 		Enabled:      c.Enabled,
 		Capabilities: caps,
 		UpdatedAt:    c.UpdatedAt,
+		Source:       c.Source,
+		EndpointUrl:  c.EndpointURL,
+		RemoteUrl:    c.RemoteURL,
+	}
+}
+
+func toProtoRemoteAgent(r biz.A2ARemoteAgent) *v1.A2ARemoteAgent {
+	return &v1.A2ARemoteAgent{
+		Id:             r.ID,
+		Workspace:      r.Workspace,
+		DisplayName:    r.DisplayName,
+		RemoteUrl:      r.RemoteURL,
+		AgentCardUrl:   r.AgentCardURL,
+		AuthType:       r.AuthType,
+		Enabled:        r.Enabled,
+		DiscoveredCard: toProtoA2ACard(r.DiscoveredCard),
+		CreatedAt:      r.CreatedAt,
+		UpdatedAt:      r.UpdatedAt,
 	}
 }

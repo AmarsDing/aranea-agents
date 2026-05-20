@@ -279,15 +279,27 @@ internal/service/
 
 ## 6. 前端设计
 
-### 6.1 Monitor Logs（已实现）
+### 6.1 Monitor Logs（Phase 1c — 流程/进程拆分）
 
 | 组件 | 路径 | 行为 |
 |------|------|------|
-| `LogStream.vue` | `web/src/components/monitor/LogStream.vue` | 订阅 `flow_log`；筛选 全部/流程/进程 |
-| `flow.ts` | `web/src/features/monitor/flow.ts` | `monitorLogLineFromFlowEnvelope` |
-| `api.ts` | `subscribeMonitorLogsWs` | `onType("flow_log")` + `onType("log")` 分流 |
+| `LogStreamPanel.vue` | `web/src/components/monitor/LogStreamPanel.vue` | 二级 Tab；挂载 `useLogStreamHub` |
+| `FlowLogStream.vue` | 流程 Tab | 仅 `flow_log`；默认连接 |
+| `ProcessLogStream.vue` | 进程 Tab | 仅 `log`；`process_log_enabled` + Tab 切换自动恢复 |
+| `useLogStreamHub.ts` | `web/src/features/monitor/useLogStreamHub.ts` | 单 WS、分流、connected 状态 |
+| `flow.ts` | `monitorLogLineFromFlowEnvelope` | 不变 |
 
-展示：`title` 加粗 + `message`；`severity` → level / CSS class。
+> 废弃：`LogStream.vue` 单卡片 + viewMode 三态切换（由 Panel 替代）。
+
+### 6.1.1 legacy `EnvelopeTypeLog` 迁移（Phase 1c 后端）
+
+| 发射点 | 动作 |
+|--------|------|
+| `trpc_turn` / `runner_team_trpc` → `intent-pass` log | **删除**（已有 `TraceEmitter`） |
+| `publishTeamMonitor` | **删除**（已有 `team.run.*` flow_log） |
+| `chat_native` team_invoke | → `flow.LogStart("chat.team.invoke", ...)` |
+| `session_compress` | → `SessionSysLogInfo/Warn` |
+| `plugin/trpc/safe_logger.go` | **保留** 进程 `log` |
 
 ### 6.2 Traces 详情「流程」Tab（Phase 1b，已实现）
 

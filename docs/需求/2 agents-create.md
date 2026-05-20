@@ -311,4 +311,55 @@
 
 ---
 
-*文档版本：与 `2 agent.md` 主表、`4.agent-type.md` 业务分类及 **`50 Avatar.md`（§3.8 头像）** 对齐；界面以当前「创建 Agent」弹窗为准。trpc 对齐需求见 §8。*
+*文档版本：与 `2 agent.md` 主表、`4.agent-type.md` 业务分类及 **`50 Avatar.md`（§3.8 头像）** 对齐；界面以当前「创建 Agent」弹窗为准。trpc 对齐需求见 §8。A2A 远程代理创建见 §9。*
+
+---
+
+## 9. Agent 类型：LLM 与 A2A 远程代理（2026-05-20）
+
+> 完整 A2A 协议与 Endpoint 语义见 [26 a2a-protocol.md](./26%20a2a-protocol.md) §2.5。技术设计见 [26 a2a-protocol.design.md](./26%20a2a-protocol.design.md) §十一。
+
+### 9.1 类型选择
+
+创建对话框顶部增加 **Agent 类型**（单选，默认 LLM）：
+
+| 类型 | 说明 | 用户可见标识 |
+|------|------|--------------|
+| **LLM Agent** | 现有行为：Provider + Model + 描述 + 进化等 | 无额外徽章 |
+| **A2A 远程代理** | 接入外部 A2A 服务，无需本地 LLM | 列表/卡片 `A2A ↗` |
+
+与 `agents.agent_type`（技术开放类型，如 `open`）、`category_position_id`（业务分类）**三者独立**。
+
+### 9.2 LLM Agent 表单（默认）
+
+与 §3 一致，无变更。
+
+### 9.3 A2A 远程代理表单
+
+选择「A2A 远程代理」后：
+
+| 控件 | 必填 | 说明 |
+|------|------|------|
+| 显示名称、Agent 标识、头像、业务分类 | 同 LLM | 与 §3.1–3.3、§3.8 一致 |
+| **远程 URL** | ✅ | A2A 服务根地址；旁侧「发现 AgentCard」按钮 |
+| 流式响应 | — | `QToggle`，默认跟随远程 Card |
+| 超时（秒） | — | 默认 30 |
+| 鉴权类型 | — | none / api_key / mtls；展开对应配置项 |
+
+**隐藏或禁用**：Provider、模型检查、描述模板（可选保留简短描述）、自我进化、记忆/Skill 相关（创建时不展示）。
+
+**提交字段**：`agent_kind=a2a_proxy` + `a2a_proxy_config`（见设计文档）；`provider`/`model` 可为空或占位。
+
+### 9.4 创建后行为
+
+- 列表刷新并展示 `A2A ↗` 徽章
+- 可选：自动跳转 Agent 设置 → A2A Tab 展示只读远程 AgentCard
+- Chat 侧栏可选该 Agent，交互与 LLM Agent 一致
+
+### 9.5 验收要点（A2A Proxy）
+
+- [ ] 类型切换时表单字段正确显隐
+- [ ] 远程 URL 为空时不可提交
+- [ ] 「发现 AgentCard」成功后可预览远程名称与 capabilities
+- [ ] 创建成功后 Chat 可选用该 Agent
+- [ ] 与 LLM 创建流程互不干扰（默认仍为 LLM）

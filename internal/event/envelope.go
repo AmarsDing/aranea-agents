@@ -85,6 +85,19 @@ type EnvelopeToolCall struct {
 	Status        string `json:"status"`
 	DurationMS    int64  `json:"duration_ms,omitempty"`
 	IsLongRunning bool   `json:"is_long_running,omitempty"`
+
+	ActivityKind string `json:"activity_kind,omitempty"`
+	DisplayLabel string `json:"display_label,omitempty"`
+	IconKey      string `json:"icon_key,omitempty"`
+	Summary      string `json:"summary,omitempty"`
+	StartedAt    string `json:"started_at,omitempty"`
+	FinishedAt   string `json:"finished_at,omitempty"`
+	ErrorCode    string `json:"error_code,omitempty"`
+	AgentKey     string `json:"agent_key,omitempty"`
+	AgentID      string `json:"agent_id,omitempty"`
+	AgentName    string `json:"agent_name,omitempty"`
+	RunID        string `json:"run_id,omitempty"`
+	TraceID      string `json:"trace_id,omitempty"`
 }
 
 type EnvelopeStateDelta struct {

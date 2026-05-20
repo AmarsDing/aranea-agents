@@ -14,11 +14,12 @@ import (
 type SystemSettingService struct {
 	v1.UnimplementedSystemSettingServiceServer
 
-	uc *biz.SystemSettingUsecase
+	uc              *biz.SystemSettingUsecase
+	a2aPublicBase   *A2APublicBaseReloader
 }
 
-func NewSystemSettingService(uc *biz.SystemSettingUsecase) *SystemSettingService {
-	return &SystemSettingService{uc: uc}
+func NewSystemSettingService(uc *biz.SystemSettingUsecase, a2aPublicBase *A2APublicBaseReloader) *SystemSettingService {
+	return &SystemSettingService{uc: uc, a2aPublicBase: a2aPublicBase}
 }
 
 func (s *SystemSettingService) GetSystemSettings(ctx context.Context, _ *emptypb.Empty) (*v1.SystemSettings, error) {
@@ -30,9 +31,12 @@ func (s *SystemSettingService) GetSystemSettings(ctx context.Context, _ *emptypb
 }
 
 func (s *SystemSettingService) UpdateSystemSettings(ctx context.Context, req *v1.UpdateSystemSettingsRequest) (*v1.SystemSettings, error) {
-	row, err := s.uc.Update(ctx, req.GetRootDirectory(), req.GetWorkDirectory(), req.GetGlobalMonthlyMicroUsd())
+	row, err := s.uc.Update(ctx, req.GetRootDirectory(), req.GetWorkDirectory(), req.GetGlobalMonthlyMicroUsd(), req.GetA2APublicBaseUrl())
 	if err != nil {
 		return nil, err
+	}
+	if s.a2aPublicBase != nil {
+		s.a2aPublicBase.Reload(row.A2APublicBaseURL)
 	}
 	return toProtoSystemSettings(row), nil
 }
@@ -43,5 +47,6 @@ func toProtoSystemSettings(row biz.SystemSetting) *v1.SystemSettings {
 		UpdateTime:              timestamppb.New(row.UpdateTime),
 		RootDirectory:           row.RootDirectory,
 		GlobalMonthlyMicroUsd:   row.GlobalMonthlyMicroUSD,
+		A2APublicBaseUrl:        row.A2APublicBaseURL,
 	}
 }

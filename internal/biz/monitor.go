@@ -123,6 +123,9 @@ type MonitorRepo interface {
 	ListAlertRules(ctx context.Context) ([]MonitorAlertRule, error)
 	ReplaceAlertRules(ctx context.Context, rules []MonitorAlertRule) error
 	CountMonitorEventsSince(ctx context.Context, eventKey, status, sinceRFC3339 string) (int32, error)
+	ExistsRunnerCompletion(ctx context.Context, sessionID, invocationID string) (bool, error)
+	// PatchRunnerCompletionMetadata returns patched=true when a row was updated.
+	PatchRunnerCompletionMetadata(ctx context.Context, sessionID, runID, invocationID, patchJSON string) (bool, error)
 }
 
 type MonitorUsecase struct {

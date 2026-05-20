@@ -27,6 +27,15 @@ export const pageSizeSelectOptions = [10, 20, 50].map((value) => ({
   value
 }));
 
+export const sessionsTableSelectionColumn = {
+  name: "select",
+  label: "",
+  field: "id",
+  align: "left" as const,
+  sortable: false,
+  style: "width: 48px"
+};
+
 export const sessionsTableColumns = [
   { name: "session", label: "会话", field: "title", align: "left" as const, sortable: false },
   { name: "owner", label: "类型 / 归属", field: "owner_type", align: "left" as const, sortable: false },

@@ -75,6 +75,14 @@ func (r *alertMonitorRepo) CountMonitorEventsSince(ctx context.Context, eventKey
 	return r.total, nil
 }
 
+func (r *alertMonitorRepo) ExistsRunnerCompletion(ctx context.Context, sessionID, invocationID string) (bool, error) {
+	return false, nil
+}
+
+func (r *alertMonitorRepo) PatchRunnerCompletionMetadata(ctx context.Context, sessionID, runID, invocationID, patchJSON string) (bool, error) {
+	return false, nil
+}
+
 func TestEvaluateAlerts_cooldownSuppressesRepeatFire(t *testing.T) {
 	repo := &alertMonitorRepo{total: 10, errors: 8}
 	spy := &alertNotifySpy{}

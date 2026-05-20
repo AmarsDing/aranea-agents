@@ -18,7 +18,10 @@ type Agent struct {
 	BudgetMonthlyCents int
 	ConfigJSON         string
 	Roles              []string
-	CreatedAt          string
+	Kind                 string // llm | a2a_proxy
+	A2AProxy             *A2AProxyConfig
+	A2AEndpointEnabled   bool // list/get enrichment from a2a_agent_cards.enabled
+	CreatedAt            string
 	UpdatedAt          string
 	DeletedAt          string
 	Settings           *AgentRuntimeSettings

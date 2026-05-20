@@ -99,7 +99,7 @@ export type MonitorLogSnapshot = {
 };
 
 export type LoadState = "idle" | "loading" | "success" | "empty" | "error";
-export type StreamState = "connecting" | "live" | "paused" | "error";
+export type StreamState = "connecting" | "connected" | "live" | "paused" | "error";
 
 export type MonitorAlertRule = {
   id: string;

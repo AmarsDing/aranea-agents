@@ -46,17 +46,10 @@ func (h *runnerCompletionHandler) Handle(ctx context.Context, de DomainEvent) {
 		h.memWorker.OnRunnerCompletion(ctx, de)
 	}
 	if h.monitor != nil {
-		status := "ok"
-		if de.Error != nil {
-			status = "error"
+		if started, ok := DefaultTurnCompletionBridge().TurnStart(de.SessionID, de.RunID); ok && de.DurationMS == 0 {
+			de.DurationMS = CompletionDurationMS(de, started)
 		}
-		if err := h.monitor.RecordMonitorEvent(ctx, MonitorEventWrite{
-			EventKey:     "runner.completion",
-			Name:         "Runner completed",
-			Description:  strings.TrimSpace(de.Author),
-			Status:       status,
-			MetadataJSON: monitorRunnerCompletionMeta(de),
-		}); err != nil {
+		if err := h.monitor.RecordRunnerCompletion(ctx, de); err != nil {
 			event.SessionSysLogError(context.Background(), de.SessionID, "event_bus.monitor.persist", "监控事件写入失败", event.P("error", err))
 		}
 		h.monitor.EvaluateAlerts(ctx)

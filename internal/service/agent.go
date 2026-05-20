@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	stderrors "errors"
 	"fmt"
+	"strings"
 
 	v1 "aranea-agents/api/kratos/agent/v1"
 	"aranea-agents/internal/biz"
@@ -21,11 +22,12 @@ type AgentService struct {
 	uc    *biz.AgentUsecase
 	evoUC *biz.EvolutionUsecase
 	mon   *biz.MonitorUsecase
+	a2aUC *biz.A2AUsecase
 }
 
 // NewAgentService constructs the service.
-func NewAgentService(uc *biz.AgentUsecase, evoUC *biz.EvolutionUsecase, mon *biz.MonitorUsecase) *AgentService {
-	return &AgentService{uc: uc, evoUC: evoUC, mon: mon}
+func NewAgentService(uc *biz.AgentUsecase, evoUC *biz.EvolutionUsecase, mon *biz.MonitorUsecase, a2aUC *biz.A2AUsecase) *AgentService {
+	return &AgentService{uc: uc, evoUC: evoUC, mon: mon, a2aUC: a2aUC}
 }
 
 func fromProtoRuntime(pb *v1.AgentRuntimeSettings) *biz.AgentRuntimeSettings {
@@ -271,6 +273,38 @@ func toProtoFile(b biz.AgentPromptFile) *v1.AgentPromptFile {
 	}
 }
 
+func fromProtoA2AProxy(pb *v1.A2AProxyConfig) *biz.A2AProxyConfig {
+	if pb == nil {
+		return nil
+	}
+	cfg := &biz.A2AProxyConfig{
+		RemoteURL:       pb.GetRemoteUrl(),
+		AgentCardURL:    pb.GetAgentCardUrl(),
+		EnableStreaming: pb.GetEnableStreaming(),
+		AuthType:        pb.GetAuthType(),
+		AuthConfigJSON:  pb.GetAuthConfigJson(),
+		TimeoutSeconds:  int(pb.GetTimeoutSeconds()),
+	}
+	if cfg.RemoteURL == "" && cfg.AgentCardURL == "" {
+		return nil
+	}
+	return cfg
+}
+
+func toProtoA2AProxy(cfg *biz.A2AProxyConfig) *v1.A2AProxyConfig {
+	if cfg == nil {
+		return nil
+	}
+	return &v1.A2AProxyConfig{
+		RemoteUrl:       cfg.RemoteURL,
+		AgentCardUrl:    cfg.AgentCardURL,
+		EnableStreaming: cfg.EnableStreaming,
+		AuthType:        cfg.AuthType,
+		AuthConfigJson:  cfg.AuthConfigJSON,
+		TimeoutSeconds:  int32(cfg.TimeoutSeconds),
+	}
+}
+
 func fromProtoAgent(pb *v1.Agent) biz.Agent {
 	if pb == nil {
 		return biz.Agent{}
@@ -294,7 +328,10 @@ func fromProtoAgent(pb *v1.Agent) biz.Agent {
 		CreatedAt:          pb.GetCreatedAt(),
 		UpdatedAt:          pb.GetUpdatedAt(),
 		DeletedAt:          pb.GetDeletedAt(),
+		Kind:               pb.GetAgentKind(),
+		A2AProxy:           fromProtoA2AProxy(pb.GetA2AProxyConfig()),
 	}
+	biz.HydrateAgentKind(&a)
 	if s := fromProtoRuntime(pb.GetSettings()); s != nil {
 		a.Settings = s
 	}
@@ -305,6 +342,7 @@ func fromProtoAgent(pb *v1.Agent) biz.Agent {
 }
 
 func toProtoAgent(b biz.Agent) *v1.Agent {
+	biz.HydrateAgentKind(&b)
 	out := &v1.Agent{
 		Id:                 b.ID,
 		AgentKey:           b.AgentKey,
@@ -325,6 +363,9 @@ func toProtoAgent(b biz.Agent) *v1.Agent {
 		UpdatedAt:          b.UpdatedAt,
 		DeletedAt:          b.DeletedAt,
 		Settings:           toProtoRuntime(b.Settings),
+		AgentKind:          b.Kind,
+		A2AProxyConfig:     toProtoA2AProxy(b.A2AProxy),
+		A2AEndpointEnabled: b.A2AEndpointEnabled,
 	}
 	for i := range b.Files {
 		out.Files = append(out.Files, toProtoFile(b.Files[i]))
@@ -348,7 +389,10 @@ func fromProtoCreate(req *v1.CreateAgentRequest) biz.Agent {
 		ContextWindow:      int(req.GetContextWindow()),
 		BudgetMonthlyCents: int(req.GetBudgetMonthlyCents()),
 		ConfigJSON:         req.GetConfigJson(),
+		Kind:               req.GetAgentKind(),
+		A2AProxy:           fromProtoA2AProxy(req.GetA2AProxyConfig()),
 	}
+	biz.HydrateAgentKind(&a)
 	if s := fromProtoRuntime(req.GetSettings()); s != nil {
 		a.Settings = s
 	}
@@ -356,6 +400,41 @@ func fromProtoCreate(req *v1.CreateAgentRequest) biz.Agent {
 		a.Files = append(a.Files, fromProtoFile(f))
 	}
 	return a
+}
+
+func (s *AgentService) enrichEndpointFlags(ctx context.Context, agents []biz.Agent) {
+	if s == nil || s.a2aUC == nil || len(agents) == 0 {
+		return
+	}
+	ids := make([]string, 0, len(agents))
+	for i := range agents {
+		if id := strings.TrimSpace(agents[i].ID); id != "" {
+			ids = append(ids, id)
+		}
+	}
+	enabled, err := s.a2aUC.MapEndpointEnabled(ctx, ids)
+	if err != nil {
+		return
+	}
+	for i := range agents {
+		agents[i].A2AEndpointEnabled = enabled[agents[i].ID]
+	}
+}
+
+func (s *AgentService) enrichAgentEndpoint(ctx context.Context, a *biz.Agent) {
+	if s == nil || s.a2aUC == nil || a == nil || strings.TrimSpace(a.ID) == "" {
+		return
+	}
+	enabled, err := s.a2aUC.MapEndpointEnabled(ctx, []string{a.ID})
+	if err != nil {
+		return
+	}
+	a.A2AEndpointEnabled = enabled[a.ID]
+}
+
+func (s *AgentService) toProtoAgentEnriched(ctx context.Context, a biz.Agent) *v1.Agent {
+	s.enrichAgentEndpoint(ctx, &a)
+	return toProtoAgent(a)
 }
 
 // ListAgents implements GET /v1/agents.
@@ -371,6 +450,7 @@ func (s *AgentService) ListAgents(ctx context.Context, req *v1.ListAgentsRequest
 	if err != nil {
 		return nil, err
 	}
+	s.enrichEndpointFlags(ctx, page.Items)
 	out := &v1.ListAgentsResponse{
 		Total:  int32(page.Total),
 		Limit:  int32(page.Limit),
@@ -389,7 +469,7 @@ func (s *AgentService) CreateAgent(ctx context.Context, req *v1.CreateAgentReque
 		return nil, err
 	}
 	biz.RecordAdminAudit(ctx, s.mon, "agent.create", "agent", created.ID, fmt.Sprintf("key=%s", created.AgentKey))
-	return toProtoAgent(created), nil
+	return s.toProtoAgentEnriched(ctx, created), nil
 }
 
 // GetAgent implements GET /v1/agents/{id}.
@@ -401,7 +481,7 @@ func (s *AgentService) GetAgent(ctx context.Context, req *v1.GetAgentRequest) (*
 		}
 		return nil, err
 	}
-	return toProtoAgent(a), nil
+	return s.toProtoAgentEnriched(ctx, a), nil
 }
 
 // UpdateAgent implements PATCH /v1/agents/{id}.
@@ -418,7 +498,7 @@ func (s *AgentService) UpdateAgent(ctx context.Context, req *v1.UpdateAgentReque
 		return nil, err
 	}
 	biz.RecordAdminAudit(ctx, s.mon, "agent.update", "agent", a.ID, fmt.Sprintf("key=%s", a.AgentKey))
-	return toProtoAgent(a), nil
+	return s.toProtoAgentEnriched(ctx, a), nil
 }
 
 // DeleteAgent implements DELETE /v1/agents/{id}.
@@ -439,7 +519,7 @@ func (s *AgentService) ToggleFavorite(ctx context.Context, req *v1.ToggleFavorit
 		}
 		return nil, err
 	}
-	return toProtoAgent(a), nil
+	return s.toProtoAgentEnriched(ctx, a), nil
 }
 
 // GetAgentPromptPreview implements GET /v1/agents/{id}/system-prompt/preview.

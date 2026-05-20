@@ -3,7 +3,6 @@ package team
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 	"time"
 
@@ -77,16 +76,6 @@ func mergeTeamUserTurnMetaJSON(userOpts string, displayContent, sendText string)
 	return string(out), nil
 }
 
-func publishTeamMonitor(ctx context.Context, bus event.Bus, level, msg, sessionID string) {
-	if bus == nil || strings.TrimSpace(msg) == "" {
-		return
-	}
-	env := event.NewEnvelope(event.EnvelopeTypeLog, "team-runner", sessionID)
-	env.Metadata = map[string]any{"level": level, "source": "team-runner"}
-	env.Content = &event.EnvelopeContent{Text: msg}
-	bus.Publish(ctx, env)
-}
-
 func (r *Runner) finishRunErr(ctx context.Context, run *biz.TeamRun, t0 time.Time, msg string) {
 	if run == nil {
 		return
@@ -109,7 +98,8 @@ func (r *Runner) finishRunErr(ctx context.Context, run *biz.TeamRun, t0 time.Tim
 		r.td.Pipeline.Bus.Publish(ctx, failEnv)
 	}
 	r.publishTeamRunSummary(ctx, *run)
-	publishTeamMonitor(ctx, r.td.Pipeline.Bus, "WARN", fmt.Sprintf("team_run failed team_id=%s run_id=%s session_id=%s: %s", run.TeamID, run.ID, strings.TrimSpace(run.SessionID), msg), strings.TrimSpace(run.SessionID))
+	event.SessionSysLogWarn(ctx, strings.TrimSpace(run.SessionID), "team.run.finish", msg,
+		event.P("team_id", run.TeamID), event.P("run_id", run.ID))
 }
 
 func (r *Runner) publishTeamRunSummary(ctx context.Context, run biz.TeamRun) {

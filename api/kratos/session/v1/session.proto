@@ -237,6 +237,60 @@ message ListSessionTurnsResponse {
   int32 total = 2;
 }
 
+message SessionBatchScope {
+  string owner_type = 1;
+  string agent_id = 2;
+  string team_id = 3;
+  string status = 4;
+  string context_status = 5;
+  string keyword = 6;
+  string user_id = 7;
+}
+
+// BatchPreviewSessionsRequest targets sessions by explicit ids and/or retention cutoff within scope.
+// When ids is non-empty: only those sessions are candidates; older_than_days further filters by activity time.
+// When ids is empty: all sessions matching scope are scanned (paginated server-side); older_than_days >= 1 is required.
+message BatchPreviewSessionsRequest {
+  repeated string ids = 1;
+  int32 older_than_days = 2;
+  SessionBatchScope scope = 3;
+  bool include_archived = 4;
+  // archive | delete
+  string mode = 5 [(google.api.field_behavior) = REQUIRED];
+}
+
+message BatchPreviewSessionsResponse {
+  int32 matched = 1;
+  int32 skipped_running = 2;
+  repeated string sample_ids = 3;
+  int32 skipped_not_found = 4;
+  bool truncated = 5;
+}
+
+// BatchArchiveSessionsRequest: ids and/or older_than_days + scope (same semantics as BatchPreviewSessionsRequest).
+message BatchArchiveSessionsRequest {
+  repeated string ids = 1;
+  int32 older_than_days = 2;
+  SessionBatchScope scope = 3;
+}
+
+// BatchDeleteSessionsRequest: ids and/or older_than_days + scope; include_archived applies to delete mode only.
+message BatchDeleteSessionsRequest {
+  repeated string ids = 1;
+  int32 older_than_days = 2;
+  SessionBatchScope scope = 3;
+  bool include_archived = 4;
+}
+
+message BatchSessionsResponse {
+  int32 matched = 1;
+  int32 processed = 2;
+  int32 skipped_running = 3;
+  repeated string failed_ids = 4;
+  int32 skipped_not_found = 5;
+  bool truncated = 6;
+}
+
 service SessionService {
   rpc SearchSessions(SearchSessionsRequest) returns (SearchSessionsResponse) {
     option (google.api.http) = {get: "/v1/sessions"};
@@ -282,5 +336,23 @@ service SessionService {
   }
   rpc ListSessionTurns(ListSessionTurnsRequest) returns (ListSessionTurnsResponse) {
     option (google.api.http) = {get: "/v1/sessions/{session_id}/turns"};
+  }
+  rpc BatchPreviewSessions(BatchPreviewSessionsRequest) returns (BatchPreviewSessionsResponse) {
+    option (google.api.http) = {
+      post: "/v1/sessions:batchPreview"
+      body: "*"
+    };
+  }
+  rpc BatchArchiveSessions(BatchArchiveSessionsRequest) returns (BatchSessionsResponse) {
+    option (google.api.http) = {
+      post: "/v1/sessions:batchArchive"
+      body: "*"
+    };
+  }
+  rpc BatchDeleteSessions(BatchDeleteSessionsRequest) returns (BatchSessionsResponse) {
+    option (google.api.http) = {
+      post: "/v1/sessions:batchDelete"
+      body: "*"
+    };
   }
 }

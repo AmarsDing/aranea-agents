@@ -1,6 +1,8 @@
 -- ============================================================
 -- Usage 相关表: model_token_usage_events, model_token_usage_daily,
---              model_pricing_rules
+--              model_pricing_rules, usage_quotas, budget_alerts,
+--              model_token_usage_hourly
+-- 运行时同步：internal/data/sql/memory_chain.sql（Usage 段）
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS model_token_usage_events (

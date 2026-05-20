@@ -175,6 +175,11 @@ export default {
     saveFailed: "Save failed",
     globalQuotaTitle: "Platform monthly budget",
     globalQuotaHint: "Platform-wide LLM spend cap (USD); 0 = unlimited. Synced to usage_quotas (global). Enforced before each chat turn.",
-    globalQuotaUsd: "Monthly budget (USD)"
+    globalQuotaUsd: "Monthly budget (USD)",
+    a2aPublicBaseTitle: "A2A public endpoint prefix",
+    a2aPublicBaseUrl: "Public URL prefix",
+    a2aPublicBaseHint: "Used when external A2A clients connect to local agents on this instance. Leave empty to fall back to env, config file, or dev-derived URL. Takes effect immediately after save.",
+    a2aPublicBaseEmptyHint: "When empty, env/config/derived chain applies",
+    a2aPublicBaseEffective: "Effective now: {url}"
   }
 };

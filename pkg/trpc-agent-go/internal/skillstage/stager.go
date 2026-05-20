@@ -13,7 +13,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -377,6 +379,14 @@ func (s *Stager) RemoveWorkspacePath(
 	}
 	if eng == nil || eng.Runner() == nil {
 		return fmt.Errorf("workspace runner is not configured")
+	}
+	if ws.Path != "" {
+		hostPath := filepath.Join(ws.Path, filepath.FromSlash(strings.TrimPrefix(target, "/")))
+		if err := os.RemoveAll(hostPath); err == nil {
+			if _, statErr := os.Stat(hostPath); os.IsNotExist(statErr) {
+				return nil
+			}
+		}
 	}
 	var sb strings.Builder
 	sb.WriteString("set -e; if [ -e ")

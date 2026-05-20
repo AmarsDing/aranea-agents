@@ -9,6 +9,8 @@ export type UseEnvelopeStreamOptions = {
   lastEventId?: string;
   autoConnect?: boolean;
   logEnabled?: boolean;
+  onConnected?: (info: { sessionId: string; lastEventId?: string }) => void;
+  onDisconnected?: () => void;
   onServerShutdown?: (reason: string) => void;
   onReplayState?: (replaying: boolean, count?: number) => void;
 };
@@ -61,9 +63,11 @@ export function createEnvelopeStream(opts: UseEnvelopeStreamOptions): UseEnvelop
             t.subscribe(ch);
           }
         }
+        opts.onConnected?.(info);
       },
       onDisconnected: () => {
         connected.value = false;
+        opts.onDisconnected?.();
       },
       onError: () => {
         connected.value = false;
