@@ -7,6 +7,16 @@
             <div class="text-h5 text-weight-bold text-cream-text">模型消耗概览</div>
             <div class="text-caption text-cream-muted">Token、费用、调用次数与异常请求运营看板</div>
           </div>
+          <div class="col-12 col-md-auto flex items-center">
+            <q-btn
+              flat
+              no-caps
+              color="primary"
+              icon="receipt_long"
+              label="查看明细"
+              :to="{ path: '/usage/events', query: { range: filters.range || '30d' } }"
+            />
+          </div>
           <div class="col-12 col-sm-6 col-md-2">
             <q-select v-model="filters.range" dense outlined emit-value map-options label="时间范围" :options="rangeOptions" @update:model-value="loadOverview" />
           </div>
@@ -19,6 +29,18 @@
           <div class="col-12 col-sm-6 col-md-2">
             <q-select v-model="filters.status" dense outlined clearable emit-value map-options label="状态" :options="statusOptions" @update:model-value="loadOverview" />
           </div>
+          <div class="col-12 col-sm-6 col-md-2">
+            <q-select
+              v-model="trendGranularity"
+              dense
+              outlined
+              emit-value
+              map-options
+              label="趋势粒度"
+              :options="granularityOptions"
+              @update:model-value="loadOverview"
+            />
+          </div>
         </q-card-section>
       </q-card>
 
@@ -30,7 +52,7 @@
 
       <div class="row q-col-gutter-md q-mt-md">
         <div class="col-12 col-lg-8">
-          <UsageTrendPanel :points="overview?.trends ?? []" />
+          <UsageTrendPanel :points="overview?.trends ?? []" :hourly="trendGranularity === 'hour'" />
         </div>
         <div class="col-12 col-lg-4">
           <q-card flat bordered class="usage-summary-card">
@@ -69,6 +91,10 @@
         </div>
       </div>
 
+      <div v-if="(overview?.inefficient_models?.length ?? 0) > 0" class="q-mt-md">
+        <UsageInefficientModels :rows="overview?.inefficient_models ?? []" />
+      </div>
+
       <div class="q-mt-md">
         <UsageAnomalyList :rows="overview?.anomalies ?? []" />
       </div>
@@ -77,59 +103,30 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
-import { getModelUsageOverview, type ModelUsageOverview, type ModelUsageQuery } from "../features/usage/api";
+import { onMounted } from "vue";
+import { useOverviewPage } from "../features/usage/useOverviewPage";
 import UsageAnomalyList from "../components/usage/UsageAnomalyList.vue";
+import UsageInefficientModels from "../components/usage/UsageInefficientModels.vue";
 import UsageMetricCards from "../components/usage/UsageMetricCards.vue";
 import UsageTopAgents from "../components/usage/UsageTopAgents.vue";
 import UsageTopModels from "../components/usage/UsageTopModels.vue";
 import UsageTrendPanel from "../components/usage/UsageTrendPanel.vue";
 
-const overview = ref<ModelUsageOverview | null>(null);
-const loading = ref(false);
-const filters = reactive<ModelUsageQuery>({
-  range: "30d",
-  provider_code: "",
-  model_api_id: "",
-  status: ""
-});
+const {
+  overview,
+  loading,
+  trendGranularity,
+  filters,
+  rangeOptions,
+  statusOptions,
+  granularityOptions,
+  loadOverview,
+  formatCount,
+  formatMoney,
+  formatPercent
+} = useOverviewPage();
 
-const rangeOptions = [
-  { label: "今日", value: "today" },
-  { label: "7 天", value: "7d" },
-  { label: "30 天", value: "30d" },
-  { label: "本月", value: "month" }
-];
-
-const statusOptions = [
-  { label: "成功", value: "success" },
-  { label: "失败", value: "failed" },
-  { label: "取消", value: "cancelled" },
-  { label: "超时", value: "timeout" }
-];
-
-onMounted(loadOverview);
-
-async function loadOverview() {
-  loading.value = true;
-  try {
-    overview.value = await getModelUsageOverview(filters);
-  } finally {
-    loading.value = false;
-  }
-}
-
-function formatCount(value?: number) {
-  return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 0 }).format(value ?? 0);
-}
-
-function formatMoney(value?: number) {
-  return `$${((value ?? 0) / 1_000_000).toFixed(4)}`;
-}
-
-function formatPercent(value?: number) {
-  return `${Math.round((value ?? 0) * 100)}%`;
-}
+onMounted(() => void loadOverview());
 </script>
 
 <style scoped>

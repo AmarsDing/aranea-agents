@@ -166,7 +166,7 @@ Cron Scheduler
 
 ### 1.7 用量记录
 
-- 每次对话后通过 `recordChatIngressUsage()` 写入 `model_token_usage_events` 表
+- 每次对话后通过 `recordTurnUsage()`（`trpc_turn` defer）写入 `model_token_usage_events`；`recordChatIngressUsage` 仅 `CHAT_RECORD_USAGE_INGRESS=1` 时备用
 - 支持流式/非流式两种记录路径
 - 可通过 `CHAT_RECORD_USAGE_INGRESS=0` 禁用（用于双写过渡期）
 - 记录字段包含：session_id、agent_key、team_id、model_api_id、input/output_tokens、latency_ms、tokens_per_second、stream_enabled、usage_kind、provider_code、prompt_mode

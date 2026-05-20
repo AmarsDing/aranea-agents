@@ -76,14 +76,14 @@
             <section class="settings-section">
               <div class="section-heading">
                 <div>
-                  <div class="text-subtitle1 text-weight-bold">模型与预算</div>
-                  <div class="text-caption text-grey-7">选择数据库已录入的模型；上下文大小在 Provider 管理中维护。</div>
+                  <div class="text-subtitle1 text-weight-bold">模型</div>
+                  <div class="text-caption text-grey-7">选择数据库已录入的模型；单价在 Provider 管理中维护并同步至 model_pricing_rules。</div>
                 </div>
               </div>
               <div class="row q-col-gutter-md">
                 <q-select
                   :model-value="selectedProviderModelID"
-                  class="col-12 col-md-6"
+                  class="col-12"
                   dense
                   outlined
                   emit-value
@@ -107,8 +107,12 @@
                     </q-item>
                   </template>
                 </q-select>
-                <q-input v-model.number="budgetUSD" class="col-12 col-md-6" dense outlined type="number" prefix="$" label="月度预算" />
               </div>
+              <q-banner rounded class="q-mt-md settings-info-banner">
+                月度费用上限请在
+                <a href="#" class="text-primary" @click.prevent="tab = 'permissions'">「权限」</a>
+                Tab 的「用量配额」中配置（写入 usage_quotas，Chat Turn 前生效）。Agent 表上的 budget_monthly_cents 字段已弃用展示。
+              </q-banner>
             </section>
 
             <section class="settings-section">
@@ -414,7 +418,10 @@
         </q-tab-panel>
 
         <q-tab-panel name="permissions">
-          <q-banner rounded class="settings-placeholder-banner">权限与用户可见范围将按独立 PRD 接入。当前保留入口。</q-banner>
+          <div class="settings-grid">
+            <agent-usage-quota-panel v-if="form.id" :agent-id="form.id" />
+            <q-banner v-else rounded class="settings-placeholder-banner">加载 Agent 后可配置用量配额。</q-banner>
+          </div>
         </q-tab-panel>
 
         <q-tab-panel name="skills">
@@ -612,6 +619,7 @@ import AgentSettingsHeader from "../components/agents/AgentSettingsHeader.vue";
 import AgentAdvancedDialog from "../components/agents/AgentAdvancedDialog.vue";
 import AgentToolsSection from "../components/agents/AgentToolsSection.vue";
 import AgentHooksPanel from "../components/agents/AgentHooksPanel.vue";
+import AgentUsageQuotaPanel from "../components/agents/AgentUsageQuotaPanel.vue";
 import { useAgentSettingsPage } from "../features/agents/useAgentSettingsPage";
 
 const {
@@ -633,7 +641,6 @@ const {
   loadingProviderModels,
   filterProviderModels,
   selectProviderModel,
-  budgetUSD,
   toolProfileOptions,
   toolSelectOptions,
   loadingCatalogTools,

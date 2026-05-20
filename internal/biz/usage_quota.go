@@ -2,13 +2,25 @@ package biz
 
 import (
 	"context"
-	"database/sql"
 	stderrors "errors"
 	"fmt"
 	"strings"
 
 	"github.com/go-kratos/kratos/v2/errors"
 )
+
+func mapUsageRepoErr(err error) error {
+	if err == nil {
+		return nil
+	}
+	if stderrors.Is(err, ErrUsageScopeRequired) {
+		return errors.BadRequest("USAGE", "scope_type and scope_id are required")
+	}
+	if stderrors.Is(err, ErrBudgetAlertNotFound) {
+		return errors.NotFound("USAGE_ALERT", "budget alert not found")
+	}
+	return err
+}
 
 // UsageQuota is a monthly spend cap for a scope (agent / user / global).
 type UsageQuota struct {
@@ -33,10 +45,10 @@ type UsageQuotaCheck struct {
 func (u *UsageUsecase) GetQuota(ctx context.Context, scopeType, scopeID string) (UsageQuota, error) {
 	q, err := u.repo.GetQuota(ctx, scopeType, scopeID)
 	if err != nil {
-		if stderrors.Is(err, sql.ErrNoRows) {
+		if stderrors.Is(err, ErrQuotaNotFound) {
 			return UsageQuota{}, errors.NotFound("USAGE_QUOTA", "quota not configured")
 		}
-		return UsageQuota{}, err
+		return UsageQuota{}, mapUsageRepoErr(err)
 	}
 	return q, nil
 }
@@ -48,7 +60,8 @@ func (u *UsageUsecase) SetQuota(ctx context.Context, quota UsageQuota) (UsageQuo
 	if quota.MonthlyMicroUSD < 0 {
 		return UsageQuota{}, errors.BadRequest("USAGE_QUOTA", "monthly_micro_usd must be >= 0")
 	}
-	return u.repo.SetQuota(ctx, quota)
+	q, err := u.repo.SetQuota(ctx, quota)
+	return q, mapUsageRepoErr(err)
 }
 
 // CheckQuota returns whether another chat turn is allowed under the configured cap.
@@ -60,7 +73,7 @@ func (u *UsageUsecase) CheckQuota(ctx context.Context, scopeType, scopeID string
 	}
 	q, err := u.repo.GetQuota(ctx, scopeType, scopeID)
 	if err != nil {
-		if stderrors.Is(err, sql.ErrNoRows) {
+		if stderrors.Is(err, ErrQuotaNotFound) {
 			return UsageQuotaCheck{Allowed: true, Reason: "no quota configured"}, nil
 		}
 		return UsageQuotaCheck{}, err
@@ -93,8 +106,9 @@ func (u *UsageUsecase) CheckQuota(ctx context.Context, scopeType, scopeID string
 
 func (u *UsageUsecase) quotaSpent(ctx context.Context, scopeType, scopeID string, q UsageQuota) (int64, error) {
 	switch scopeType {
-	case "agent":
-		return u.repo.SumAgentCostInPeriod(ctx, scopeID, q.PeriodStart, q.PeriodEnd)
+	case "agent", "user", "global":
+		spent, err := u.repo.SumScopeCostInPeriod(ctx, scopeType, scopeID, q.PeriodStart, q.PeriodEnd)
+		return spent, mapUsageRepoErr(err)
 	default:
 		return 0, ErrQuotaUnsupportedScope
 	}

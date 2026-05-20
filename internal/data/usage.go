@@ -25,8 +25,8 @@ func (r *usageRepo) GetModelUsageSummary(ctx context.Context, query biz.UsageQue
 	where, args := usageWhere(query)
 	q := `SELECT
 		 COALESCE(SUM(call_count), 0), COUNT(*),
-		 COALESCE(SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END), 0),
-		 COALESCE(SUM(CASE WHEN status = 'failed' OR status = 'timeout' THEN 1 ELSE 0 END), 0),
+		 COALESCE(SUM(CASE WHEN `+sqlUsageStatusSuccess+` THEN 1 ELSE 0 END), 0),
+		 COALESCE(SUM(CASE WHEN `+sqlUsageStatusFailed+` THEN 1 ELSE 0 END), 0),
 		 COALESCE(SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END), 0),
 		 COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0), COALESCE(SUM(total_tokens), 0),
 		 COALESCE(SUM(total_cost_micro_usd), 0), COALESCE(AVG(latency_ms), 0), COALESCE(AVG(tokens_per_second), 0)
@@ -51,8 +51,8 @@ func (r *usageRepo) ListModelUsageTrends(ctx context.Context, query biz.UsageQue
 		 COALESCE(SUM(call_count), 0),
 		 COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0), COALESCE(SUM(total_tokens), 0),
 		 COALESCE(SUM(total_cost_micro_usd), 0),
-		 COALESCE(SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END), 0),
-		 COALESCE(SUM(CASE WHEN status = 'failed' OR status = 'timeout' THEN 1 ELSE 0 END), 0),
+		 COALESCE(SUM(CASE WHEN `+sqlUsageStatusSuccess+` THEN 1 ELSE 0 END), 0),
+		 COALESCE(SUM(CASE WHEN `+sqlUsageStatusFailed+` THEN 1 ELSE 0 END), 0),
 		 COALESCE(SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END), 0),
 		 COALESCE(AVG(latency_ms), 0), COALESCE(AVG(tokens_per_second), 0)
 		 FROM model_token_usage_events`+where+` GROUP BY date_key ORDER BY date_key ASC`,
@@ -80,7 +80,7 @@ func (r *usageRepo) ListTopModelUsage(ctx context.Context, query biz.UsageQuery)
 		`SELECT provider_code, model_api_id, MAX(model_display_name),
 		 COALESCE(SUM(call_count), 0), COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0), COALESCE(SUM(total_tokens), 0),
 		 COALESCE(SUM(total_cost_micro_usd), 0), COALESCE(AVG(latency_ms), 0), COALESCE(AVG(tokens_per_second), 0),
-		 COALESCE(1.0 * SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 0)
+		 COALESCE(1.0 * SUM(CASE WHEN `+sqlUsageStatusSuccess+` THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 0)
 		 FROM model_token_usage_events`+where+` GROUP BY provider_code, model_api_id ORDER BY total_cost_micro_usd DESC, call_count DESC LIMIT ?`,
 		args...,
 	)
@@ -106,7 +106,7 @@ func (r *usageRepo) ListTopAgentUsage(ctx context.Context, query biz.UsageQuery)
 		`SELECT agent_id, agent_key,
 		 COALESCE(SUM(call_count), 0), COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0), COALESCE(SUM(total_tokens), 0),
 		 COALESCE(SUM(total_cost_micro_usd), 0), COALESCE(AVG(latency_ms), 0), COALESCE(AVG(tokens_per_second), 0),
-		 COALESCE(1.0 * SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 0)
+		 COALESCE(1.0 * SUM(CASE WHEN `+sqlUsageStatusSuccess+` THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 0)
 		 FROM model_token_usage_events`+where+` GROUP BY agent_id, agent_key ORDER BY total_cost_micro_usd DESC, call_count DESC LIMIT ?`,
 		args...,
 	)
@@ -198,9 +198,12 @@ func usageWhere(query biz.UsageQuery) (string, []any) {
 		args = append(args, query.AgentID)
 	}
 	if query.Status != "" {
-		if query.Status == "abnormal" {
-			parts = append(parts, "status <> 'success'")
-		} else {
+		switch query.Status {
+		case "abnormal", "error":
+			parts = append(parts, "(status NOT IN ('success', 'ok'))")
+		case "success":
+			parts = append(parts, "(status IN ('success', 'ok'))")
+		default:
 			parts = append(parts, "status = ?")
 			args = append(args, query.Status)
 		}

@@ -102,3 +102,8 @@ func SessionSysLogWarn(ctx context.Context, sessionID, stepID, message string, e
 func SessionSysLogInfo(ctx context.Context, sessionID, stepID, message string, extra ...Pair) {
 	emitSystem(ctx, sessionID, "", stepID, FlowPhaseDone, FlowSeverityOK, message, extra)
 }
+
+// SessionSysLogError emits an error-severity flow log scoped to a session.
+func SessionSysLogError(ctx context.Context, sessionID, stepID, message string, extra ...Pair) {
+	emitSystem(ctx, sessionID, "", stepID, FlowPhaseError, FlowSeverityError, message, extra)
+}

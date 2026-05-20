@@ -85,6 +85,7 @@
     <evaluation-results-dialog
       v-model:open="resultsOpen"
       :run-id="resultsRun?.id ?? ''"
+      :run="resultsRun"
       :rows="caseResults"
       :loading="resultsLoading"
       :saving-id="savingResultId"

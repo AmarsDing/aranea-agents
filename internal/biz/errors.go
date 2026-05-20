@@ -1,6 +1,17 @@
 package biz
 
-import "github.com/go-kratos/kratos/v2/errors"
+import (
+	stderrors "errors"
+
+	"github.com/go-kratos/kratos/v2/errors"
+)
+
+// Data-layer sentinels (stdlib); mapped to kerrors in Usecase.
+var (
+	ErrUsageScopeRequired  = stderrors.New("usage scope required")
+	ErrBudgetAlertNotFound = stderrors.New("budget alert not found after upsert")
+	ErrQuotaNotFound       = stderrors.New("usage quota not configured")
+)
 
 var (
 	// Admin

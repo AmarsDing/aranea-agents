@@ -158,6 +158,8 @@ var stepTitleRegistry = map[string]string{
 	"chat.usage_record_fail":       "会话用量记录失败",
 	"team.intent.merge_fail":       "团队意图合并失败",
 	"team.intent_anchor_fallback":  "团队意图锚点回退",
+	"team.usage_record_fail":     "团队成员用量记录失败",
+	"team.turn.usage":            "团队轮次用量",
 }
 
 func stepTitle(stepID string) string {

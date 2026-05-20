@@ -438,25 +438,45 @@ func (s *UsageService) ListUsageEvents(ctx, *v1.UsageQuery) (*v1.ListUsageEvents
 func (s *UsageService) RecordTokenUsageEvent(ctx, *v1.TokenUsageEvent) (*v1.TokenUsageEvent, error)
 ```
 
-### 5.2 用量记录入口
+### 5.2 用量记录入口（2026-05-20）
 
-文件：`internal/service/chat_usage_ingress.go`
+**主路径**：`internal/service/turn_usage.go` → `recordTurnUsage`（`trpc_turn` defer）
 
-`recordChatIngressUsage` 在 native chat turn 完成后自动调用，写入一条 `model_token_usage_events` 记录：
+- 字段完整：`agent_id` / `provider_code` / `model_api_id` / `usage_kind=chat_turn` / Trace `metadata_json`
+- 经 `UsageUsecase.RecordTokenUsageEvent`：`NormalizeUsageStatus` + `enrichTokenUsagePricing` + 事务落库
 
-- 从 chat response 的 `am` map 提取 token_in / token_out / latency / status 等
-- 当 API 未返回 token 数时，使用 `roughTokenEstimateFromText` 估算
-- 通过 `CHAT_RECORD_USAGE_INGRESS` 环境变量控制开关（默认开启）
-- 使用独立 45s 超时 context，避免因记录失败影响 chat 响应
+**可选路径**：
 
-### 5.3 待新增（P2/P3）
+| 入口 | 开关 | 说明 |
+|------|------|------|
+| `event_bus_runner_handler` | `CHAT_RECORD_RUNNER_USAGE=1` | Runner completion；需带 `id`（uuid） |
+| `recordChatIngressUsage` | `CHAT_RECORD_USAGE_INGRESS=1` | 遗留；**不再**由 `SendChatMessage` 自动调用，避免与主路径双写 |
+
+配额拦截：`chat_native.runNativeAgentTurn`（单 Agent）、`checkTeamMemberQuotas`（Team 成员）。
+
+**Team 明细**：`internal/team/usage_record.go` → `usage_kind=team_member`（`persistStep` 有 tokens 时）；落库失败 → `CtxFlowLogWarn`（`team.usage_record_fail`，**禁 slog**）。
+
+**定价回退**：`GetActiveModelPricing` → `model_pricing_rules`，否则 `llm_provider_models.config_json`。
+
+**告警**：`EvaluateBudgetAlerts` → 监控事件 `usage.budget_alert`（60min 冷却）。
+
+### 5.3 Quota / Alert / Export RPC（已实现）
 
 ```go
-func (s *UsageService) GetUsageQuota(ctx, *v1.GetUsageQuotaRequest) (*v1.UsageQuota, error)
-func (s *UsageService) SetUsageQuota(ctx, *v1.SetUsageQuotaRequest) (*v1.UsageQuota, error)
-func (s *UsageService) CheckUsageQuota(ctx, *v1.CheckUsageQuotaRequest) (*v1.CheckUsageQuotaResponse, error)
-func (s *UsageService) ListBudgetAlerts(ctx, *v1.ListBudgetAlertsRequest) (*v1.ListBudgetAlertsResponse, error)
-func (s *UsageService) SetBudgetAlert(ctx, *v1.SetBudgetAlertRequest) (*v1.BudgetAlert, error)
+func (s *UsageService) GetUsageQuota(...)
+func (s *UsageService) SetUsageQuota(...)
+func (s *UsageService) CheckUsageQuota(...)
+func (s *UsageService) ListBudgetAlerts(...)
+func (s *UsageService) SetBudgetAlert(...)
+func (s *UsageService) ExportUsageEvents(...)
+```
+
+`UsageOverview.quota_dashboard`；`UsageQuery.granularity`（`hour` → `model_token_usage_hourly`）。
+
+### 5.4 待新增（P3）
+
+```go
+// 低性价比模型识别等 — 见 29-token-development.md #24
 ```
 
 P2 quota 检查需在 Chat turn 前执行（`ChatService.RunNativeTurnUnary` 入口处），增加约 1 次 DB 查询延迟。

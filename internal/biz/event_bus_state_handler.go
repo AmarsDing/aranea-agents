@@ -22,7 +22,7 @@ func (h *stateDeltaHandler) Handle(ctx context.Context, de DomainEvent) {
 	if de.StateDelta.Path == "__state__" {
 		err := h.sessions.UpdateRunnerSnapshotJSON(ctx, de.SessionID, de.StateDelta.ValueJSON)
 		if err != nil {
-			event.SessionSysLogWarn(context.Background(), de.SessionID, "event_bus.state.persist", "会话状态增量持久化失败", event.P("error", err))
+			event.SessionSysLogError(context.Background(), de.SessionID, "event_bus.state.persist", "会话状态增量持久化失败", event.P("error", err))
 		}
 		return
 	}
@@ -32,6 +32,6 @@ func (h *stateDeltaHandler) Handle(ctx context.Context, de DomainEvent) {
 		ValueJSON: de.StateDelta.ValueJSON,
 	})
 	if err != nil {
-		event.SessionSysLogWarn(context.Background(), de.SessionID, "event_bus.state.apply", "会话状态增量应用失败", event.P("error", err), event.P("path", de.StateDelta.Path))
+		event.SessionSysLogError(context.Background(), de.SessionID, "event_bus.state.apply", "会话状态增量应用失败", event.P("error", err), event.P("path", de.StateDelta.Path))
 	}
 }

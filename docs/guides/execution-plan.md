@@ -4,7 +4,7 @@
 >
 > **关联文档**：[0 系统框图.md](../需求/0%20系统框图.md) · [0-system-development.md](../需求/0-system-development.md) · [README-development.md](../需求/README-development.md)
 >
-> **更新时间**：2026-05-20（迭代 5：Runner 指标 / cost_guard / Ecosystem MVP / EventBus 拆分 ✅）
+> **更新时间**：2026-05-20（迭代 7：FlowLogger Phase 3 · Eval 报告导出 ✅）
 
 ---
 
@@ -26,7 +26,7 @@
 
 - **主链路可用**：Chat / Agent / Team / Graph 经 `trpc-agent-go` Runner 与 EventBus + `/v1/ws` 串联；RunRegistry + RunnerManager + RunGateway 已落地。
 - **架构红线保持**：`internal/biz` 不 import `trpc-agent-go`；`internal/server` 不直接调 Agent runtime；实时主通道为 `/v1/ws`（SSE 仅限 A2A/MCP 等外部协议）。
-- **当前优先级**：迭代 5 后 — Knowledge Rerank、Evaluation 人工评估、A2A 远程发现、Trace 瀑布图 UI。
+- **当前优先级**：迭代 7 后 — FlowLogger Phase 2 落库、Knowledge OCR、A2A 远程发现、Span 语义优化。
 
 ---
 
@@ -115,9 +115,20 @@
 
 **迭代 6 备注（观测）**：I6-TEL-02 / KN-01 / EVAL-02 review 已合入；`chat.usage_record` 失败用 FlowLogger（见 [changelog Iteration6](../changelog/2026-05-20-Iteration6-TRACE-EVAL-KN.md) §后续优化）。
 
-**FlowLogger v2**：📋 [需求](../需求/52-flow-logger.md) · [设计](../需求/52-flow-logger.design.md) · [开发计划](../需求/52-flow-logger-development.md) — Phase 1a/1b 已合入；Phase 2 落库 / Phase 3 扩展域待做。
+**FlowLogger v2**：📋 [需求](../需求/52-flow-logger.md) · [设计](../需求/52-flow-logger.design.md) · [开发计划](../需求/52-flow-logger-development.md) — Phase 1a/1b/3 ✅；Phase 2 落库待做。
 
-**当前冲刺焦点**：FlowLogger v2 Phase 1 · Channel · Knowledge OCR · Evaluation 报告导出。
+**当前冲刺焦点**：FlowLogger Phase 2 落库 · Knowledge OCR · A2A 远程发现 · Telemetry Span 语义。
+
+### 迭代 7（优化升级）任务板 — 2026-05-20
+
+| ID | 任务 | 优先级 | 状态 | 验收 |
+|----|------|--------|------|------|
+| I7-FL-01 | Team `TraceEmitter`（`team.run.*`） | P2 | ✅ | `runner_team_trpc.go` + Monitor Logs |
+| I7-FL-02 | Rerank fallback → `knowledge.rerank.fallback` | P2 | ✅ | 无 slog；向量序静默降级 |
+| I7-FL-03 | EventBus 失败 `SessionSysLogError` | P2 | ✅ | usage/state/monitor 持久化 |
+| I7-FL-04 | `chat.turn.enter` 步骤 ID 对齐 | P2 | ✅ | `chat_native` + 注册表别名 |
+| I7-EVAL-01 | 评估报告 CSV/JSON 导出 | P2 | ✅ | `EvaluationResultsDialog` 按钮 |
+| I7-DOC-01 | 进度文档同步 | P2 | ✅ | 本文 + changelog Iteration7 |
 
 ---
 
@@ -160,6 +171,7 @@
 - [x] MCP：Broker 自动挂载、`auth`、`session_reconnect_max`、OAuth2、认证 UI
 - [x] MemoryWorker + L4 prompt 注入 + L4 图自动写入（`L4GraphWriter`）
 - [x] Quota MVP + 前端 `/usage/quotas`；Admin Audit（Tool/MCP/Agent CRUD）
+- [x] Token §8.6：Ent quota/alert/hourly、异步预算告警、低性价比模型、user/global quota API、`team_turn` 用量（2026-05-20，见 [changelog](../changelog/2026-05-20-Usage-Quota-Events.md) 迭代三）
 - [x] MCP 会话 `mcp_call_count` / `tool_call_count` / `skill_call_count`
 
 **待做**

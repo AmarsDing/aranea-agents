@@ -18,6 +18,7 @@ message UsageQuery {
   string agent_id = 6;
   string status = 7;
   int32 limit = 8;
+  string granularity = 9; // "" | "day" | "hour"
 }
 
 message UsageSummary {
@@ -63,6 +64,20 @@ message UsageBreakdownRow {
   double avg_latency_ms = 11;
   double avg_tokens_per_second = 12;
   double success_rate = 13;
+}
+
+// UsageModelInsight marks models with high cost and poor efficiency (low TPS / failures).
+message UsageModelInsight {
+  string provider_code = 1;
+  string model_api_id = 2;
+  string model_display_name = 3;
+  int32 call_count = 4;
+  int32 total_tokens = 5;
+  int64 total_cost_micro_usd = 6;
+  double avg_latency_ms = 7;
+  double avg_tokens_per_second = 8;
+  double success_rate = 9;
+  repeated string flags = 10;
 }
 
 message TokenUsageEvent {
@@ -118,6 +133,13 @@ message TokenUsageEvent {
   string created_at = 50;
 }
 
+message UsageQuotaDashboard {
+  int32 configured_count = 1;
+  int64 total_cap_micro_usd = 2;
+  int64 total_spent_micro_usd = 3;
+  double max_utilization_ratio = 4;
+}
+
 message UsageOverview {
   UsageSummary today = 1;
   UsageSummary yesterday = 2;
@@ -127,6 +149,39 @@ message UsageOverview {
   repeated UsageBreakdownRow top_models = 6;
   repeated UsageBreakdownRow top_agents = 7;
   repeated TokenUsageEvent anomalies = 8;
+  UsageQuotaDashboard quota_dashboard = 9;
+  repeated UsageModelInsight inefficient_models = 10;
+}
+
+message BudgetAlert {
+  string id = 1;
+  string scope_type = 2;
+  string scope_id = 3;
+  double alert_ratio = 4;
+  bool enabled = 5;
+  string last_fired_at = 6;
+  string created_at = 7;
+  string updated_at = 8;
+}
+
+message ListBudgetAlertsRequest {
+  string scope_type = 1;
+  string scope_id = 2;
+}
+
+message ListBudgetAlertsResponse {
+  repeated BudgetAlert items = 1;
+}
+
+message SetBudgetAlertRequest {
+  string scope_type = 1;
+  string scope_id = 2;
+  double alert_ratio = 3;
+  bool enabled = 4;
+}
+
+message ExportUsageEventsResponse {
+  string csv = 1;
 }
 
 message ListUsageTrendsResponse {
@@ -212,5 +267,17 @@ service UsageService {
   }
   rpc CheckUsageQuota(CheckUsageQuotaRequest) returns (CheckUsageQuotaResponse) {
     option (google.api.http) = {get: "/v1/usage/quotas/{scope_type}/{scope_id}/check"};
+  }
+  rpc ListBudgetAlerts(ListBudgetAlertsRequest) returns (ListBudgetAlertsResponse) {
+    option (google.api.http) = {get: "/v1/usage/budget-alerts"};
+  }
+  rpc SetBudgetAlert(SetBudgetAlertRequest) returns (BudgetAlert) {
+    option (google.api.http) = {
+      post: "/v1/usage/budget-alerts"
+      body: "*"
+    };
+  }
+  rpc ExportUsageEvents(UsageQuery) returns (ExportUsageEventsResponse) {
+    option (google.api.http) = {get: "/v1/usage/events/export"};
   }
 }

@@ -1,7 +1,7 @@
 # Flow Log v2：移除 SlogBridge，全项目 slog 迁移
 
 > **日期**：2026-05-20  
-> **关联**：[Agent 无响应与 FlowLogger 初版](./2026-05-20-Agent-No-Response-Debug-And-FlowLogger.md) · [52-flow-logger 开发计划](../需求/52-flow-logger-development.md) · [步骤注册表](../guides/flow-log-step-registry.md)
+> **关联**：[Agent 无响应与 FlowLogger 初版](./2026-05-20-Agent-No-Response-Debug-And-FlowLogger.md) · [52-flow-logger 开发计划](../需求/52-flow-logger-development.md) · [步骤注册表](../需求/52-flow-logger.design.md) §5.1
 
 ---
 
@@ -54,7 +54,7 @@ v1 通过 `SlogBridge` 将 Go `slog` 桥接到 `EnvelopeTypeLog`，在 Turn/插�
 
 ## 5. 文档同步
 
-已更新：`52-flow-logger*.md`、`34-event-development.md`、`24-telemetry-development.md`、`flow-log-step-registry.md`、`execution-plan.md`、消息/事件设计文档中对 SlogBridge 的引用。
+已更新：`52-flow-logger*.md`（步骤注册表并入 design §5.1）、`34-event-development.md`、`24-telemetry-development.md`、`execution-plan.md`、消息/事件设计文档中对 SlogBridge 的引用。
 
 ---
 

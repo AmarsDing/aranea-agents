@@ -94,12 +94,13 @@ internal/data           ← Repo 实现（Ent ORM + SQLite，单 sql.Open）
 | **某功能的产品需求** | `需求/<编号> <模块名>.md` | 用户故事、功能规格、验收标准 |
 | **某功能的技术设计** | `需求/<编号> <模块名>.design.md` | 架构方案、接口设计、数据模型 |
 | **某功能的开发计划** | `需求/<编号>-<模块名>-development.md` | 迭代计划、任务拆分 |
-| **流程日志 / 链路排障** | [需求](./需求/52-flow-logger.md) · [设计](./需求/52-flow-logger.design.md) · [开发计划](./需求/52-flow-logger-development.md) · [步骤注册表](./guides/flow-log-step-registry.md) · [Slog 移除 changelog](./changelog/2026-05-20-FlowLog-V2-SlogRemoval.md) | TraceEmitter、trace_id、severity；**禁止 slog / SlogBridge** |
+| **流程日志 / 链路排障** | [需求](./需求/52-flow-logger.md) · [设计](./需求/52-flow-logger.design.md)（含 §5.1 步骤注册表）· [开发计划](./需求/52-flow-logger-development.md) · [Slog 移除 changelog](./changelog/2026-05-20-FlowLog-V2-SlogRemoval.md) | TraceEmitter、trace_id、severity；**禁止 slog / SlogBridge** |
 
 ### 5.3 前端参考
 
 | 场景 | 读取文档 | 说明 |
 |------|----------|------|
+| **页面与功能总览** | [需求/frontend-pages.md](./需求/frontend-pages.md) | ★ 路由、侧栏、各页能力、features/stores 对照（基于代码梳理） |
 | **UX 主题与视觉规范** | [frontend/UX.md](./frontend/UX.md) | 日夜双模、玻璃材质、CSS 变量、排版、组件数值 |
 | **Vue 架构与分层** | [frontend/vue-design/vue-design.md](./frontend/vue-design/vue-design.md) | 数据流、目录映射、各层细则、迁移剧本、端到端示例 |
 | **AI 系统提示精简版** | [frontend/vue-design/vue-design-agent-rules.md](./frontend/vue-design/vue-design-agent-rules.md) | MUST/MUST NOT 英文版，便于粘贴到系统提示 |

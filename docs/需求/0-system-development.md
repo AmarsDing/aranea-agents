@@ -221,8 +221,8 @@ AI 接到任何模块任务时，必须按以下顺序拆解：
 | ID | 待优化项 | 优先级 | 现状 | 目标 | 关联文档 |
 |----|----------|--------|------|------|----------|
 | SYS-01 | `ChatService` 仍持有 `awaitChans` / `pendingQueue` | P2 | 运行控制已抽 `RunRegistry` | await/pending 下沉 biz 或专用 coordinator | [35-gateway-development.md](./35-gateway-development.md) |
-| SYS-02 | `StopGeneration` 未统一 `publishRunStatus(cancelled)` | P2 | Cancel 成功但 WS 可能无终态 | 取消与 `run_status` Envelope 一致 | [1-chat-development.md](./1-chat-development.md) |
-| SYS-03 | `EventBusConsumer` 职责聚合（Usage/Buffer/StateDelta） | P2 | 单消费者承载多类型 | 按 `EnvelopeType` 拆消费者 | [34-event-development.md](./34-event-development.md) |
+| SYS-02 | `StopGeneration` 未统一 `publishRunStatus(cancelled)` | P2 | ✅ `chat_stop_generation_test` | — | [1-chat-development.md](./1-chat-development.md) |
+| SYS-03 | `EventBusConsumer` 职责聚合（Usage/Buffer/StateDelta） | P2 | ✅ buffer/runner/state 三 handler | — | [34-event-development.md](./34-event-development.md) |
 | SYS-04 | 核心模块五面（Contract/Domain/Runtime/Persistence/UI）未全建档 | P2 | Chat/Agent/Runner 较完整 | Graph/Channel/Ecosystem 补全五面表 | 本文 §4 |
 | SYS-05 | 前端 `features` 与 `stores` 双路径并存 | P2 | 新模块 page 直连 api + store 空转 | 统一 `page → composable/store → api` 策略 | [frontend-guide.md](../guides/frontend-guide.md) |
 | SYS-06 | 巨型文件可读性 | P2 | `useChatWorkspace` 已薄；`AgentSettingsPage` 等仍大 | `page-to-components` 拆分 | `web/.cursor/rules/page-to-components.mdc` |
@@ -244,9 +244,9 @@ AI 接到任何模块任务时，必须按以下顺序拆解：
 
 | ID | 待优化项 | 优先级 | 现状 | 目标 | 关联文档 |
 |----|----------|--------|------|------|----------|
-| TEAM-01 | Team 结构化汇总 Envelope | P1 | member_* 流已有 | 统一 `team_summary` 可观测输出 | [11-multi-agent-development.md](./11-multi-agent-development.md) |
-| GRAPH-01 | Graph LLM / Tool 节点 | P1 | Function/Agent/Router 已有 | LLM 节点、Tool 节点、Input/OutputMapper | [36-graph-development.md](./36-graph-development.md) |
-| GRAPH-02 | ExecutionSummary / 运行记录 UI | P2 | 执行有 checkpoint | 前端展示执行摘要与失败定位 | [36-graph-development.md](./36-graph-development.md) |
+| TEAM-01 | Team 结构化汇总 Envelope | P1 | ✅ `team_summary` WS | — | [11-multi-agent-development.md](./11-multi-agent-development.md) |
+| GRAPH-01 | Graph LLM / Tool 节点 | P1 | ✅ builder 接线 | — | [36-graph-development.md](./36-graph-development.md) |
+| GRAPH-02 | ExecutionSummary / 运行记录 UI | P2 | ✅ `graph_execution_done` metadata | 前端 Graph 运行记录页待补 | [36-graph-development.md](./36-graph-development.md) |
 | RUN-01 | 独立 `CancelRun` RPC（可选） | P3 | `StopGeneration` + WS `cancel` 已通 | 与 Chat proto 解耦的通用取消 RPC | [40-runner-development.md](./40-runner-development.md) |
 
 ### 8.5 Tools / MCP / Plugin / Callback
@@ -264,7 +264,7 @@ AI 接到任何模块任务时，必须按以下顺序拆解：
 |----|----------|--------|------|------|----------|
 | MEM-01 | L4 图冲突检测与级联更新 | P2 | ✅ 冲突/级联/衰减 MVP | 冲突策略、级联、衰减 | [12-16 memory-development.md](./12-16%20memory-development.md) |
 | MEM-02 | MemoryWorker 与多租户 Session 边界 | P2 | TurnMemoryWorker 30s 去重已有 | 工作区级隔离与失败重试 | [12-16 memory-development.md](./12-16%20memory-development.md) |
-| KN-01 | Rerank / OCR 规划与实现 | P2 | 向量检索主路径已有 | 检索质量可配置 pipeline | [37-knowledge-development.md](./37-knowledge-development.md) |
+| KN-01 | Rerank / OCR 规划与实现 | P2 | Rerank ✅（`KRATOS_KNOWLEDGE_RERANKER`）；OCR 待补 | OCR + rerank fallback FlowLog ✅ | [37-knowledge-development.md](./37-knowledge-development.md) |
 | KN-02 | Knowledge PG 多租户与稳定性 | P2 | `EnsureKnowledgeSchema` 启动调用已有 | 无 PG 时降级策略文档化 + 压测 | [37-knowledge-development.md](./37-knowledge-development.md) |
 
 ### 8.7 Evaluation / A2A / Artifact
@@ -272,7 +272,7 @@ AI 接到任何模块任务时，必须按以下顺序拆解：
 | ID | 待优化项 | 优先级 | 现状 | 目标 | 关联文档 |
 |----|----------|--------|------|------|----------|
 | EVAL-01 | DeleteRun / UpdateDataset API | P2 | CRUD + Run 已有 | 数据集迭代与 run 清理 | [33-evaluation-development.md](./33-evaluation-development.md) |
-| EVAL-02 | 人工评估与报告导出 | P2 | 自动 4 指标已有 | 标注 UI + 报告 | [33-evaluation-development.md](./33-evaluation-development.md) |
+| EVAL-02 | 人工评估与报告导出 | P2 | 标注 ✅；CSV/JSON 客户端导出 ✅ | DeleteRun、服务端聚合报告 | [33-evaluation-development.md](./33-evaluation-development.md) |
 | EVAL-03 | AfterTurn 自动评估触发 | P3 | 无 Hook | 可选质量门禁 | [33-evaluation-development.md](./33-evaluation-development.md) |
 | A2A-01 | 远程 Agent 发现与注册中心 | P2 | 本地 Invoke 已有 | URL 发现、跨实例 Card | [26-a2a-development.md](./26-a2a-development.md) |
 | A2A-02 | A2A Server 暴露 + 流式 SSE | P3 | admin Invoke 已有 | 标准 `server/a2a` 或框架 a2aagent | [26-a2a-development.md](./26-a2a-development.md) |
@@ -282,8 +282,8 @@ AI 接到任何模块任务时，必须按以下顺序拆解：
 
 | ID | 待优化项 | 优先级 | 现状 | 目标 | 关联文档 |
 |----|----------|--------|------|------|----------|
-| CH-01 | Channel Webhook 入站 | P1 | ✅ 飞书/钉钉/企微 | 外部消息进入 RunGateway | [17-channel-development.md](./17-channel-development.md) |
-| CH-02 | Channel 出站投递与适配器 | P1 | ✅ 三平台 TextSender | Agent 回复推送到外部平台 | [17-channel-development.md](./17-channel-development.md) |
+| CH-01 | Channel Webhook 入站 | P1 | ✅ | — | [17-channel-development.md](./17-channel-development.md) |
+| CH-02 | Channel 出站投递与适配器 | P1 | ✅ | 更多平台适配器 | [17-channel-development.md](./17-channel-development.md) |
 | MON-01 | Monitor Dashboard 与告警规则 | P2 | 告警规则 + Webhook/Channel 出站 ✅ | Dashboard latency 指标 | [18-monitor-development.md](./18-monitor-development.md) |
 | TEL-01 | Telemetry 业务 Span / OTel UI | P3 | 指标部分已有 | 链路 UI 与采样配置 | [24-telemetry-development.md](./24-telemetry-development.md) |
 | ECO-01 | Ecosystem 后端与市场模型 | P3 | 前端 mock | API + 安装流程 | [30-ecosystem-development.md](./30-ecosystem-development.md) |
@@ -306,7 +306,7 @@ AI 接到任何模块任务时，必须按以下顺序拆解：
 | P0 | Runner 框架能力、Team/Tools/Plugin 主闭环 | ✅ | M1–M3 |
 | P1 | Evaluation EvalSet + LLMJudge、A2A Invoke、Artifact 预览 | ✅ | M3 |
 | P1 | Chat 工具卡片 / Reasoning / run_status WS / Team UX | ✅ | 2026-05-19 迭代 |
-| P1 | Team 结构化汇总、Graph LLM/Tool 节点、Channel 投递 | 🚧 | 见 §8.4、§8.8 |
+| P1 | Team 结构化汇总、Graph LLM/Tool 节点、Channel 投递 | ✅ | 迭代 2–5 已验收 |
 | P2 | 前端治理、Memory 图治理、Plugin 产品化、MCP 稳定性 | 🚧 | 见 §8.5–§8.9 |
 | P3 | 多模态、RunStatus 持久化、Ecosystem/Telemetry/CLI/TTS | ⏳ | 见 §8.3、§8.8 |
 

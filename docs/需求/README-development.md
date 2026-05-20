@@ -7,6 +7,7 @@
 | 模块 | 开发计划 |
 |------|----------|
 | System | [0-system-development.md](./0-system-development.md) |
+| **前端（页面总览）** | [frontend-pages.md](./frontend-pages.md) |
 | Message | [message-development.md](./message-development.md) |
 | Admin/Auth | [admin-auth.design.md](./admin-auth.design.md) · [admin-auth-development.md](./admin-auth-development.md) |
 
@@ -75,9 +76,9 @@
 
 ---
 
-## 进度快照（2026-05-20，修订）
+## 进度快照（2026-05-20，迭代 7 修订）
 
-> **真相源**：[execution-plan.md](../guides/execution-plan.md)。下表为索引级摘要，细节以各模块 `*-development.md` 为准。
+> **真相源**：[execution-plan.md](../guides/execution-plan.md) · **本轮**：[changelog/2026-05-20-Optimization-Iteration7.md](../changelog/2026-05-20-Optimization-Iteration7.md)
 
 ### 里程碑
 
@@ -122,17 +123,22 @@
 | 有管理页、Runtime 待补 | **Knowledge**（Embedder 提供商 UI/摄取 WS 推送）、**Artifact**（PreviewRPC/Chat 附件）、**Evaluation**（EvalSet 对齐/LLMJudge）、**A2A**（Invoke 派发/鉴权） | UI 入口可达，但核心能力不完整 |
 | 早期/占位 | Evolution、Channel 投递、Ecosystem、CLI 产品化、TTS | 不能作为可组合模块 |
 
+### 近期已完成（迭代 7 — 2026-05-20）
+
+| 模块 | 交付物 |
+|------|--------|
+| FlowLogger | Phase 3：Team TraceEmitter、Rerank fallback、EventBus error 级、chat 步骤 ID |
+| Evaluation | 结果对话框 CSV/JSON 报告导出 |
+
 ### 当前开发顺序（下一迭代起点）
 
 > **待优化项完整表**：[0-system-development.md § 8](./0-system-development.md)。
 
-1. **P2 — Plugin**：`model_router` 真路由（非 noop）。
-2. **P2 — MCP**：重连可观测 + 前端状态提示。
-3. **P3 — Chat**：await 通道跨重启恢复（EventBuffer 或等价方案）；模型选项统一。
-4. **P2 — Monitor**：告警通知出站（Channel/Webhook）；高级 Dashboard。
-5. **P3 — Ecosystem / Telemetry UI / CLI / TTS**：占位模块补边界或实现。
-
-**迭代 3 已完成**：Chat 多模态附件 + RunStatus `state_json` ✅ · PluginRun + `ListPluginRuns` ✅ · Monitor 告警规则 + Alerts UI ✅。
+1. **P2 — FlowLogger Phase 2**：`ListFlowLogs` 落库 + HTTP 历史查询。
+2. **P2 — Knowledge**：OCR pipeline 规划与实现。
+3. **P2 — A2A**：远程 Agent 发现与注册。
+4. **P2 — Telemetry**：Span 语义合并、Usage 三路径运维手册。
+5. **P3 — Evaluation**：DeleteRun API、AfterTurn 自动评估、服务端聚合报告。
 
 ### 模块文档同步状态（本轮）
 

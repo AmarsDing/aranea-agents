@@ -3,9 +3,9 @@
     <q-card-section class="row items-center justify-between">
       <div>
         <div class="text-h6">消耗趋势</div>
-        <div class="text-caption text-grey-7">按天展示调用、Token 和费用变化</div>
+        <div class="text-caption text-grey-7">{{ hourly ? "按小时展示调用、Token 和费用变化" : "按天展示调用、Token 和费用变化" }}</div>
       </div>
-      <q-chip dense color="blue-1" text-color="primary">{{ points.length }} 天</q-chip>
+      <q-chip dense color="blue-1" text-color="primary">{{ points.length }} {{ hourly ? "小时" : "天" }}</q-chip>
     </q-card-section>
     <q-separator />
     <q-card-section>
@@ -31,6 +31,7 @@ import type { ModelUsageTrendPoint } from "../../features/usage/types";
 
 const props = defineProps<{
   points: ModelUsageTrendPoint[];
+  hourly?: boolean;
 }>();
 
 const maxTokens = computed(() => Math.max(1, ...props.points.map((point) => point.total_tokens)));

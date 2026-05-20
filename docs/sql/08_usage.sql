@@ -103,3 +103,57 @@ CREATE TABLE IF NOT EXISTS model_pricing_rules (
   updated_at TEXT NOT NULL DEFAULT '',
   UNIQUE(provider_code, model_api_id, effective_from)
 );
+
+CREATE TABLE IF NOT EXISTS usage_quotas (
+  id TEXT PRIMARY KEY,
+  scope_type TEXT NOT NULL,
+  scope_id TEXT NOT NULL,
+  monthly_micro_usd INTEGER NOT NULL DEFAULT 0,
+  period_start TEXT NOT NULL DEFAULT '',
+  period_end TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(scope_type, scope_id)
+);
+
+CREATE TABLE IF NOT EXISTS budget_alerts (
+  id TEXT PRIMARY KEY,
+  scope_type TEXT NOT NULL,
+  scope_id TEXT NOT NULL,
+  alert_ratio REAL NOT NULL DEFAULT 0.8,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  last_fired_at TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(scope_type, scope_id, alert_ratio)
+);
+
+CREATE TABLE IF NOT EXISTS model_token_usage_hourly (
+  id TEXT PRIMARY KEY,
+  hour_key TEXT NOT NULL,
+  workspace_id TEXT NOT NULL DEFAULT '',
+  agent_id TEXT NOT NULL DEFAULT '',
+  agent_key TEXT NOT NULL DEFAULT '',
+  provider_code TEXT NOT NULL DEFAULT '',
+  model_api_id TEXT NOT NULL DEFAULT '',
+  usage_kind TEXT NOT NULL DEFAULT 'chat',
+  call_count INTEGER NOT NULL DEFAULT 0,
+  request_count INTEGER NOT NULL DEFAULT 0,
+  success_count INTEGER NOT NULL DEFAULT 0,
+  failed_count INTEGER NOT NULL DEFAULT 0,
+  cancelled_count INTEGER NOT NULL DEFAULT 0,
+  input_tokens INTEGER NOT NULL DEFAULT 0,
+  output_tokens INTEGER NOT NULL DEFAULT 0,
+  cached_input_tokens INTEGER NOT NULL DEFAULT 0,
+  reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+  embedding_tokens INTEGER NOT NULL DEFAULT 0,
+  total_tokens INTEGER NOT NULL DEFAULT 0,
+  total_cost_micro_usd INTEGER NOT NULL DEFAULT 0,
+  avg_latency_ms REAL NOT NULL DEFAULT 0,
+  avg_tokens_per_second REAL NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(hour_key, workspace_id, agent_id, provider_code, model_api_id, usage_kind)
+);
+
+CREATE INDEX IF NOT EXISTS idx_usage_hourly_hour ON model_token_usage_hourly(hour_key);

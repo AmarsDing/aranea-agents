@@ -7,6 +7,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // runnerCompletionHandler processes runner.completion domain events (monitor, usage, memory worker).
@@ -55,7 +57,7 @@ func (h *runnerCompletionHandler) Handle(ctx context.Context, de DomainEvent) {
 			Status:       status,
 			MetadataJSON: monitorRunnerCompletionMeta(de),
 		}); err != nil {
-			event.SessionSysLogWarn(context.Background(), de.SessionID, "event_bus.monitor.persist", "监控事件写入失败", event.P("error", err))
+			event.SessionSysLogError(context.Background(), de.SessionID, "event_bus.monitor.persist", "监控事件写入失败", event.P("error", err))
 		}
 		h.monitor.EvaluateAlerts(ctx)
 	}
@@ -71,8 +73,10 @@ func (h *runnerCompletionHandler) Handle(ctx context.Context, de DomainEvent) {
 		status = "error"
 	}
 	_, err := h.usage.RecordTokenUsageEvent(ctx, TokenUsageEvent{
+		ID:            uuid.NewString(),
 		SessionID:     de.SessionID,
 		AgentID:       de.Author,
+		UsageKind:     "runner_completion",
 		InputTokens:   de.Usage.PromptTokens,
 		OutputTokens:  de.Usage.CompletionTokens,
 		TotalTokens:   de.Usage.TotalTokens,
@@ -81,8 +85,9 @@ func (h *runnerCompletionHandler) Handle(ctx context.Context, de DomainEvent) {
 		HourKey:       now.Format("2006-01-02T15"),
 		Status:        status,
 		StreamEnabled: true,
+		MetadataJSON:  `{"source":"event_bus.runner_completion"}`,
 	})
 	if err != nil {
-		event.SessionSysLogWarn(context.Background(), de.SessionID, "event_bus.usage.record", "用量事件写入失败", event.P("error", err))
+		event.SessionSysLogError(context.Background(), de.SessionID, "event_bus.usage.record", "用量事件写入失败", event.P("error", err))
 	}
 }

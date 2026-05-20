@@ -10,6 +10,7 @@ import (
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	a2apkg "aranea-agents/internal/a2a"
+	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	"aranea-agents/pkg/strutil"
@@ -149,7 +150,7 @@ func (s *ChatService) nativeSendChatMessage(ctx context.Context, req *chatv1.Sen
 	} else {
 		out.AgentMessage = st
 	}
-	recordChatIngressUsage(ctx, s.usage, req, am, false)
+	// 用量由 trpc_turn defer → recordTurnUsage 写入；勿再调用 recordChatIngressUsage 以免双写。
 	if tid := strings.TrimSpace(req.GetTeamId()); tid != "" {
 		if s.td.Pipeline.Bus != nil {
 			env := event.NewEnvelope(event.EnvelopeTypeTeamRunFinished, "chat-native", "")
@@ -218,6 +219,14 @@ func (s *ChatService) runNativeAgentTurn(ctx context.Context, req *chatv1.SendCh
 			unlock()
 			return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.InternalServer("CHAT_TEAM_NATIVE", "team runner not wired")
 		}
+		if qerr := enforceChatTurnQuotas(ctx, s.usage, "", chatagent.UserIDFromCtx(ctx)); qerr != nil {
+			unlock()
+			return biz.ChatMessage{}, biz.ChatMessage{}, qerr
+		}
+		if qerr := s.checkTeamMemberQuotas(ctx, strings.TrimSpace(sess.TeamID)); qerr != nil {
+			unlock()
+			return biz.ChatMessage{}, biz.ChatMessage{}, qerr
+		}
 		if s.td.Pipeline.Bus != nil {
 			env := event.NewEnvelope(event.EnvelopeTypeLog, "chat-native", sess.ID)
 			env.Metadata = map[string]any{"level": "INFO", "source": "chat-native"}
@@ -269,16 +278,9 @@ func (s *ChatService) runNativeAgentTurn(ctx context.Context, req *chatv1.SendCh
 	// #region debug-point D:agent-state
 	flow.LogDone("chat.agent_hydrate", "Agent配置已加载", event.P("agent_key", ag.AgentKey), event.P("provider", ag.Provider), event.P("model", ag.Model))
 	// #endregion
-	if s.usage != nil {
-		check, qerr := s.usage.CheckQuota(ctx, "agent", agentID)
-		if qerr != nil {
-			unlock()
-			return biz.ChatMessage{}, biz.ChatMessage{}, qerr
-		}
-		if !check.Allowed {
-			unlock()
-			return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.Forbidden("USAGE_QUOTA", check.Reason)
-		}
+	if err := enforceChatTurnQuotas(ctx, s.usage, agentID, chatagent.UserIDFromCtx(ctx)); err != nil {
+		unlock()
+		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
 
 	opts := req.GetOptions()
@@ -301,7 +303,7 @@ func (s *ChatService) runNativeAgentTurn(ctx context.Context, req *chatv1.SendCh
 	}
 
 	// #region debug-point E:enter-turn
-	flow.LogStart("chat.turn_enter", "进入Agent Turn执行", event.P("dialog_mode", dialogMode), event.P("provider", prov), event.P("model", mod), event.P("attachments", attN))
+	flow.LogStart("chat.turn.enter", "进入Agent Turn执行", event.P("dialog_mode", dialogMode), event.P("provider", prov), event.P("model", mod), event.P("attachments", attN))
 	// #endregion
 
 	s.runs.StorePlaceholder(sessionID)

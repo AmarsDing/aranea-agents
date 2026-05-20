@@ -27,7 +27,6 @@ var ProviderSet = wire.NewSet(
 	NewSessionUsecase,
 	NewToolUsecase,
 	NewChannelUsecase,
-	NewUsageUsecase,
 	NewSystemSettingUsecase,
 	NewAgentMCPTooling,
 	NewEvolutionUsecase,

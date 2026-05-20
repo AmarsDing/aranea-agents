@@ -123,7 +123,7 @@ func (r *Runner) publishTeamRunSummary(ctx context.Context, run biz.TeamRun) {
 	r.td.Pipeline.Bus.Publish(ctx, TeamSummaryEnvelope(run, steps))
 }
 
-func (r *Runner) persistStep(ctx context.Context, run biz.TeamRun, teamID string, sortIdx int, m MemberDef, ag biz.Agent, userContent string, asst biz.ChatMessage) {
+func (r *Runner) persistStep(ctx context.Context, run biz.TeamRun, teamID string, sortIdx int, m MemberDef, ag biz.Agent, userContent string, asst biz.ChatMessage, prov, mod, dialogMode string) {
 	step := biz.TeamRunStep{
 		ID:            uuid.NewString(),
 		RunID:         run.ID,
@@ -149,6 +149,7 @@ func (r *Runner) persistStep(ctx context.Context, run biz.TeamRun, teamID string
 	if err != nil {
 		return
 	}
+	r.recordMemberUsage(ctx, run, teamID, ag, asst, prov, mod, dialogMode, saved.ID)
 	if r.td.Pipeline.Bus != nil {
 		env := event.NewEnvelope(event.EnvelopeTypeTeamStepFinished, ag.AgentKey, run.SessionID)
 		env.TeamID = teamID

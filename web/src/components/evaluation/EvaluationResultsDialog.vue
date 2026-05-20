@@ -54,6 +54,24 @@
         </q-table>
       </q-card-section>
       <q-card-actions align="right">
+        <q-btn
+          v-if="run"
+          flat
+          color="primary"
+          icon="download"
+          label="导出 CSV"
+          :disable="!rows.length"
+          @click="onExportCsv"
+        />
+        <q-btn
+          v-if="run"
+          flat
+          color="primary"
+          icon="code"
+          label="导出 JSON"
+          :disable="!rows.length"
+          @click="onExportJson"
+        />
         <q-btn flat label="关闭" @click="$emit('update:open', false)" />
       </q-card-actions>
     </q-card>
@@ -61,16 +79,28 @@
 </template>
 
 <script setup lang="ts">
-import type { EvalCaseResult } from "../../features/evaluation/types";
+import { exportEvalRunCsv, exportEvalRunJson } from "../../features/evaluation/exportRunResults";
+import type { EvalCaseResult, EvalRun } from "../../features/evaluation/types";
 
-defineProps<{
+const props = defineProps<{
   open: boolean;
   runId: string;
+  run?: EvalRun | null;
   rows: EvalCaseResult[];
   loading: boolean;
   savingId?: string;
   columns: { name: string; label: string; field: string | ((row: EvalCaseResult) => unknown); align: "left" | "center" | "right" }[];
 }>();
+
+function onExportCsv(): void {
+  if (!props.run) return;
+  exportEvalRunCsv(props.run, props.rows);
+}
+
+function onExportJson(): void {
+  if (!props.run) return;
+  exportEvalRunJson(props.run, props.rows);
+}
 
 const emit = defineEmits<{
   "update:open": [value: boolean];

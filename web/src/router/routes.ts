@@ -8,7 +8,6 @@ import AgentSettingsPage from "../pages/AgentSettingsPage.vue";
 import MonitorPage from "../pages/MonitorPage.vue";
 import OverviewPage from "../pages/OverviewPage.vue";
 import UsageEventsPage from "../pages/UsageEventsPage.vue";
-import UsageQuotasPage from "../pages/UsageQuotasPage.vue";
 import ResourceManagerPage from "../pages/ResourceManagerPage.vue";
 import EcosystemPage from "../pages/EcosystemPage.vue";
 import AgentCategoriesPage from "../pages/AgentCategoriesPage.vue";
@@ -50,7 +49,7 @@ export const routes: RouteRecordRaw[] = [
       { path: "", redirect: "/overview" },
       { path: "overview", name: "overview", component: OverviewPage },
       { path: "usage/events", name: "usage-events", component: UsageEventsPage },
-      { path: "usage/quotas", name: "usage-quotas", component: UsageQuotasPage },
+      { path: "usage/quotas", redirect: { name: "agents" } },
       { path: "chat", name: "chat", component: ChatPage },
       { path: "sessions", name: "sessions", component: SessionsPage },
       { path: "sessions/:sessionId", name: "session-detail", component: SessionDetailPage },

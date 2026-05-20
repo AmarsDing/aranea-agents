@@ -246,7 +246,7 @@ type FlowLogger struct {
 | 需求 | [52-flow-logger.md](../需求/52-flow-logger.md) |
 | 设计 | [52-flow-logger.design.md](../需求/52-flow-logger.design.md) |
 | 开发计划 | [52-flow-logger-development.md](../需求/52-flow-logger-development.md) |
-| 步骤注册表 | [flow-log-step-registry.md](../guides/flow-log-step-registry.md) |
+| 步骤注册表 | [52-flow-logger.design.md](../需求/52-flow-logger.design.md) §5.1 |
 
 ---
 

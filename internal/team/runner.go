@@ -21,6 +21,7 @@ import (
 
 type Runner struct {
 	teams             biz.TeamRepository
+	usage             *biz.UsageUsecase
 	td                rt.TurnDeps
 	pluginRT          *plugintrpc.Runtime
 	pluginManager     *plugintrpc.Manager
@@ -32,6 +33,7 @@ type Runner struct {
 
 func NewRunner(
 	teams biz.TeamRepository,
+	usage *biz.UsageUsecase,
 	sessions *biz.SessionUsecase,
 	agents biz.AgentRepository,
 	agentsUC *biz.AgentUsecase,
@@ -49,6 +51,7 @@ func NewRunner(
 ) *Runner {
 	return &Runner{
 		teams:         teams,
+		usage:         usage,
 		pluginRT:      pluginRT,
 		pluginManager: pluginManager,
 		skillDBRepo:   skillDBRepo,

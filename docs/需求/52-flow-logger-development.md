@@ -1,8 +1,8 @@
 # FlowLogger 流程日志 — 开发计划
 
-> **版本**：2026-05-20 | **状态**：v2 Phase 1a 已完成；SlogBridge 已移除（见 [changelog](../changelog/2026-05-20-FlowLog-V2-SlogRemoval.md)）；1b 进行中  
+> **版本**：2026-05-20 | **状态**：v2 Phase 1a/1b/3 ✅；SlogBridge 已移除（见 [changelog](../changelog/2026-05-20-FlowLog-V2-SlogRemoval.md)）；Phase 2 落库待做  
 > **需求**：[52-flow-logger.md](./52-flow-logger.md) · **设计**：[52-flow-logger.design.md](./52-flow-logger.design.md)  
-> **步骤注册表**：[flow-log-step-registry.md](../guides/flow-log-step-registry.md)  
+> **步骤注册表**：[52-flow-logger.design.md](./52-flow-logger.design.md) §5.1  
 > **进度**：[execution-plan.md](../guides/execution-plan.md)
 
 ---
@@ -36,9 +36,9 @@
 | JSONL 导出 | ✅ | `FlowLogExportButton.vue` + `buildFlowDiagnosticJsonl` |
 | 详情按 trace 过滤 WS | ✅ | `flowLogMatchesTrace` + 详情页订阅 |
 | `ListFlowLogs` 落库 | ❌ | Phase 2 |
-| Team Runner `TraceEmitter` | ❌ | Phase 3 |
-| Knowledge rerank FlowLog | ❌ | Phase 3 |
-| EventBus 域（部分） | 🟡 | `event_bus.usage/state/monitor` 已 `SysLog*`；runner 完成待补 |
+| Team Runner `TraceEmitter` | ✅ | `runner_team_trpc.go`（迭代 7） |
+| Knowledge rerank FlowLog | ✅ | `knowledge.rerank.fallback`（迭代 7） |
+| EventBus 域（部分） | ✅ | 持久化/用量失败 `SessionSysLogError`（迭代 7） |
 | 全项目 slog 移除 / SlogBridge 删除 | ✅ | [changelog](../changelog/2026-05-20-FlowLog-V2-SlogRemoval.md) |
 | 系统域 `SysLog*` 基础设施打点 | ✅ | `system_flow.go` + 步骤注册表 §Plugin/System |
 
@@ -79,14 +79,14 @@
 | FL-2-02 | `monitor.proto` `ListFlowLogs` |
 | FL-2-03 | Traces/Logs HTTP 拉历史 |
 
-### Phase 3 — 扩展域（可选）
+### Phase 3 — 扩展域（已完成 — 2026-05-20 迭代 7）
 
-| ID | 任务 |
-|----|------|
-| FL-3-01 | `runner_team_trpc.go` TraceEmitter |
-| FL-3-02 | Knowledge rerank fallback → FlowLog |
-| FL-3-03 | `event_bus` 用量失败 → `FlowLogError` |
-| FL-3-04 | `chat_native` 统一步骤 ID |
+| ID | 任务 | 状态 |
+|----|------|------|
+| FL-3-01 | `runner_team_trpc.go` TraceEmitter | ✅ |
+| FL-3-02 | Knowledge rerank fallback → FlowLog | ✅ |
+| FL-3-03 | `event_bus` 用量失败 → `SessionSysLogError` | ✅ |
+| FL-3-04 | `chat_native` 统一步骤 ID（`chat.turn.enter`） | ✅ |
 
 ---
 

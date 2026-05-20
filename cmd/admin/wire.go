@@ -98,6 +98,12 @@ func provideMonitorUsecase(repo biz.MonitorRepo, notifier biz.AlertNotifier) *bi
 	return biz.NewMonitorUsecase(repo, notifier)
 }
 
+func provideUsageUsecase(repo biz.UsageRepo, mon *biz.MonitorUsecase) *biz.UsageUsecase {
+	uc := biz.NewUsageUsecase(repo)
+	uc.SetAlertNotifier(service.NewMonitorBudgetAlertNotifier(mon))
+	return uc
+}
+
 func provideChatServiceDeps(
 	runs *rt.RunRegistry,
 	teams biz.TeamRepository,
@@ -275,6 +281,7 @@ func wireApp(*conf.Server, *conf.Data, log.Logger) (wireOut, func(), error) {
 		provideMCPHealthRunner,
 		provideMonitorAlertNotifier,
 		provideMonitorUsecase,
+		provideUsageUsecase,
 		newApp,
 		provideWireOut,
 	))

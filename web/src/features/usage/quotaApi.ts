@@ -1,4 +1,8 @@
+import { createUsageService } from "../../services/index";
 import { kratosApi } from "../../services/axiosHandler";
+import type { BudgetAlert } from "./types";
+
+const usage = createUsageService();
 
 export type UsageQuota = {
   id?: string;
@@ -73,4 +77,38 @@ export async function checkUsageQuota(scopeType: string, scopeId: string): Promi
 /** micro-USD → USD display */
 export function microUsdToUsd(micro: number): string {
   return (micro / 1_000_000).toFixed(2);
+}
+
+function budgetAlertFromUnknown(raw: unknown): BudgetAlert {
+  const o = raw !== null && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  return {
+    id: String(o.id ?? ""),
+    scope_type: String(o.scope_type ?? o.scopeType ?? ""),
+    scope_id: String(o.scope_id ?? o.scopeId ?? ""),
+    alert_ratio: Number(o.alert_ratio ?? o.alertRatio ?? 0),
+    enabled: Boolean(o.enabled ?? true),
+    last_fired_at: String(o.last_fired_at ?? o.lastFiredAt ?? ""),
+    created_at: String(o.created_at ?? o.createdAt ?? ""),
+    updated_at: String(o.updated_at ?? o.updatedAt ?? "")
+  };
+}
+
+export async function listBudgetAlerts(scopeType: string, scopeId: string): Promise<BudgetAlert[]> {
+  const raw = await usage.ListBudgetAlerts({ scopeType, scopeId });
+  const items = (raw as { items?: unknown[] }).items ?? [];
+  return items.map(budgetAlertFromUnknown);
+}
+
+export async function setBudgetAlert(
+  scopeType: string,
+  scopeId: string,
+  body: { alert_ratio: number; enabled: boolean }
+): Promise<BudgetAlert> {
+  const raw = await usage.SetBudgetAlert({
+    scopeType,
+    scopeId,
+    alertRatio: body.alert_ratio,
+    enabled: body.enabled
+  });
+  return budgetAlertFromUnknown(raw);
 }

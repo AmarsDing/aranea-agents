@@ -25,7 +25,8 @@ const props = defineProps<{
 const cards = computed(() => {
   const today = props.overview?.today;
   const month = props.overview?.month;
-  return [
+  const dash = props.overview?.quota_dashboard;
+  const base = [
     {
       label: "今日调用",
       value: formatCount(today?.call_count),
@@ -63,6 +64,16 @@ const cards = computed(() => {
       tone: "text-grey-7"
     }
   ];
+  if (dash && dash.configured_count > 0) {
+    const util = dash.max_utilization_ratio ?? 0;
+    base.unshift({
+      label: "月预算使用率",
+      value: `${Math.round(util * 100)}%`,
+      caption: `${dash.configured_count} 个 Agent · 已用 $${((dash.total_spent_micro_usd ?? 0) / 1_000_000).toFixed(2)} / $${((dash.total_cap_micro_usd ?? 0) / 1_000_000).toFixed(2)}`,
+      tone: util >= 0.9 ? "text-negative" : util >= 0.7 ? "text-warning" : "text-grey-7"
+    });
+  }
+  return base;
 });
 
 function formatCount(value?: number) {

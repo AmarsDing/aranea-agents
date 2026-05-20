@@ -3,7 +3,7 @@
 > **版本**：2026-05-20 | **状态**：v2 实施中（Phase 1a 已合入）  
 > **设计**：[52-flow-logger.design.md](./52-flow-logger.design.md)  
 > **开发计划**：[52-flow-logger-development.md](./52-flow-logger-development.md)  
-> **步骤注册表**：[flow-log-step-registry.md](../guides/flow-log-step-registry.md)  
+> **步骤注册表**：[52-flow-logger.design.md](./52-flow-logger.design.md) §5.1  
 > **背景**：[changelog FlowLogger 初版](../changelog/2026-05-20-Agent-No-Response-Debug-And-FlowLogger.md)
 
 ---
@@ -97,7 +97,7 @@
 
 ### 4.2 步骤（Step）
 
-- 命名：`{domain}.{subsystem}.{action}`，登记于 [flow-log-step-registry.md](../guides/flow-log-step-registry.md)。
+- 命名：`{domain}.{subsystem}.{action}`，登记于 [52-flow-logger.design.md](./52-flow-logger.design.md) §5.1。
 - **禁止**随意字符串。
 
 ### 4.3 严重级别（severity）与展示色
