@@ -33,15 +33,16 @@ var (
 // KnowledgeService implements kratos knowledge.v1.
 type KnowledgeService struct {
 	v1.UnimplementedKnowledgeServiceServer
-	uc       *biz.KnowledgeUsecase
-	chunker  *knowledge.Chunker
-	embedder *knowledge.Embedder
-	bus      event.Bus
+	uc         *biz.KnowledgeUsecase
+	chunker    *knowledge.Chunker
+	embedder   *knowledge.Embedder
+	retriever  *knowledge.Retriever
+	bus        event.Bus
 }
 
 // NewKnowledgeService constructs a KnowledgeService.
-func NewKnowledgeService(uc *biz.KnowledgeUsecase, chunker *knowledge.Chunker, embedder *knowledge.Embedder, bus event.Bus) *KnowledgeService {
-	return &KnowledgeService{uc: uc, chunker: chunker, embedder: embedder, bus: bus}
+func NewKnowledgeService(uc *biz.KnowledgeUsecase, chunker *knowledge.Chunker, embedder *knowledge.Embedder, retriever *knowledge.Retriever, bus event.Bus) *KnowledgeService {
+	return &KnowledgeService{uc: uc, chunker: chunker, embedder: embedder, retriever: retriever, bus: bus}
 }
 
 // CreateCollection creates a new vector collection.
@@ -196,20 +197,24 @@ func (s *KnowledgeService) Search(ctx context.Context, req *v1.SearchRequest) (*
 		return nil, kerrors.BadRequest("KNOWLEDGE", "query is required")
 	}
 
-	vec, err := s.embedder.Embed(ctx, query)
-	if err != nil {
-		return nil, kerrors.InternalServer("KNOWLEDGE", "embed query: "+err.Error())
+	if s.retriever == nil {
+		return nil, kerrors.ServiceUnavailable("KNOWLEDGE", "knowledge retriever not configured")
 	}
-
-	chunks, err := s.uc.Search(ctx, biz.KnowledgeSearchQuery{
-		CollectionID: req.GetCollectionId(),
-		Query:        query,
-		TopK:         int(req.GetTopK()),
-		MinScore:     req.GetMinScore(),
-		FilterJSON:   req.GetFilterJson(),
-	}, vec)
+	q := biz.KnowledgeSearchQuery{
+		CollectionID:     req.GetCollectionId(),
+		Query:            query,
+		TopK:             int(req.GetTopK()),
+		MinScore:         req.GetMinScore(),
+		FilterJSON:       req.GetFilterJson(),
+		RerankCandidates: int(req.GetRerankCandidates()),
+	}
+	if req.UseRerank != nil {
+		v := req.GetUseRerank()
+		q.UseRerank = &v
+	}
+	chunks, err := s.retriever.Search(ctx, q)
 	if err != nil {
-		return nil, err
+		return nil, kerrors.InternalServer("KNOWLEDGE", err.Error())
 	}
 
 	out := make([]*v1.KnowledgeChunk, 0, len(chunks))

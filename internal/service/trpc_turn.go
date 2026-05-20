@@ -2,8 +2,8 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"log/slog"
 	"strings"
 	"time"
 
@@ -14,13 +14,13 @@ import (
 	"aranea-agents/internal/event"
 	arametrics "aranea-agents/internal/metrics"
 	rt "aranea-agents/internal/runtime"
+	knowledgetool "aranea-agents/internal/tools/knowledge"
 	serviceawaitreply "aranea-agents/internal/tools/serviceawaitreply"
 	"aranea-agents/pkg/safego"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
 )
 
@@ -39,11 +39,24 @@ func (s *ChatService) runSingleAgentViaTRPC(
 	sessionID := strings.TrimSpace(req.GetSessionId())
 	content := strings.TrimSpace(req.GetContent())
 	if ak := strings.TrimSpace(req.GetAgentKey()); ak != "" && !strings.EqualFold(ak, ag.AgentKey) {
-		return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.Forbidden("CHAT_AGENT", "agent_key does not match this session")
+		return biz.ChatMessage{}, biz.ChatMessage{}, TurnError(TurnErrAgentForbidden, "")
 	}
 
 	runID := uuid.NewString()
-	flow := event.NewFlowLogger(s.td.Pipeline.Bus, sessionID, ag.AgentKey)
+	turnStart := time.Now()
+	turnStatus := "ok"
+	var turnErr error
+	var resultPromptTok, resultCompletionTok int
+	var turnErrMsg string
+	ctx, turnSpan := startTurnSpan(ctx, "chat.turn", sessionID, ag.AgentKey, runID)
+	emitter := event.NewTraceEmitterForRun(ctx, s.td.Pipeline.Bus, s.td.Pipeline.Buffer, sessionID, runID, ag.AgentKey, ag.ID)
+	ctx = event.WithTraceEmitter(ctx, emitter)
+	defer func() {
+		emitter.FinishRoot(turnStatus)
+		endTurnSpan(turnSpan, turnErr)
+		s.recordTurnUsage(ctx, emitter, sessionID, runID, ag.AgentKey, ag.ID, prov, mod, turnStatus,
+			resultPromptTok, resultCompletionTok, time.Since(turnStart), turnErrMsg)
+	}()
 
 	// Apply a turn-level timeout so a hanging LLM does not block the HTTP
 	// caller indefinitely. If the parent context already has a shorter
@@ -71,17 +84,19 @@ func (s *ChatService) runSingleAgentViaTRPC(
 		// EP-RT-02: inject await-reply hook so the tool blocks mid-turn.
 		AwaitHook: s.makeAwaitReplyFunc(ctx, sessionID, runID),
 		// EP-RT-05: signal whether a MemoryService will back the runner.
-		HasMemory:     s.td.Persist.Memory.Available(),
-		PluginManager: s.pluginManager,
-		MemoryAdmin:   s.td.Persist.Memory.Admin,
+		HasMemory:          s.td.Persist.Memory.Available(),
+		PluginManager:      s.pluginManager,
+		MemoryAdmin:        s.td.Persist.Memory.Admin,
+		KnowledgeRetriever: s.knowledgeRetriever,
 	}
 	root, err := chatagent.BuildTRPCLLMAgentCached(ctx, ag, deps)
 	if err != nil {
-		flow.LogError("chat.agent_build", "构建Agent实例失败", event.P("agent_id", ag.ID), event.P("error", err.Error()))
+		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
+		emitter.LogError("chat.agent.build", "构建Agent实例失败", event.P("agent_id", ag.ID), event.P("error", err.Error()))
 		s.runs.Finish(sessionID)
-		return biz.ChatMessage{}, biz.ChatMessage{}, err
+		return biz.ChatMessage{}, biz.ChatMessage{}, TurnError(TurnErrAgentBuildFailed, err.Error())
 	}
-	flow.LogDone("chat.agent_build", "Agent实例已构建", event.P("provider", prov), event.P("model", mod))
+	emitter.LogDone("chat.agent.build", "Agent实例已构建", event.P("provider", prov), event.P("model", mod))
 
 	var plugins []trpcplugin.Plugin
 	if s.pluginManager != nil {
@@ -89,11 +104,12 @@ func (s *ChatService) runSingleAgentViaTRPC(
 	} else if s.pluginRT != nil {
 		plugins = s.pluginRT.PluginsForAgent(ag.ID)
 	}
-	flow.LogDone("chat.plugins_load", "插件已加载", event.P("plugin_count", len(plugins)))
+	emitter.LogDone("chat.plugins_load", "插件已加载", event.P("plugin_count", len(plugins)))
 	deps.Plugins = plugins
 	if s.td.RunnerMgr == nil {
 		s.td.RunnerMgr = rt.NewRunnerManagerFromPersist(s.td.Persist)
 	}
+	emitter.LogStart("chat.runner.create", "创建 Runner", event.P("agent_key", ag.AgentKey), event.P("plugin_count", len(plugins)))
 	runner, err := s.td.RunnerMgr.NewTurnRunner(root, rt.TurnRunnerSpec{
 		Plugins:               plugins,
 		AwaitUserReplyRouting: deps.AwaitHook != nil,
@@ -101,35 +117,41 @@ func (s *ChatService) runSingleAgentViaTRPC(
 		AgentFactoryKeys:      []string{ag.AgentKey},
 	})
 	if err != nil {
+		emitter.LogError("chat.runner.create", "Runner 创建失败", event.P("error", err.Error()))
+		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
 		s.runs.Finish(sessionID)
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
+	emitter.LogDone("chat.runner.create", "Runner 已创建")
 	s.runs.StoreRunner(sessionID, runID, runner)
 	s.setRunStatus(sessionID, runID, "running", "")
-	flow.LogStart("chat.turn_execute", "开始执行Turn", event.P("run_id", runID))
-	turnStart := time.Now()
+	emitter.LogStart("chat.turn.execute", "开始执行对话轮次", event.P("run_id", runID))
 	defer func() {
 		s.runs.Finish(sessionID)
 		runner.Close()
 		s.processPendingQueue(sessionID, sess, ag, dialogMode, prov, mod)
 	}()
-
 	userOpts, err := chatagent.UserOptionsJSON(ag, dialogMode, prov, mod, sess.ContextUsedRatio, nil)
 	if err != nil {
+		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
 	sendText := content
+	emitter.LogStart("chat.intent.pass", "意图识别开始", event.P("provider", prov), event.P("model", mod), event.P("content_len", len(content)))
 	intRes := intent.Run(ctx, intent.IntentPassFromAgent(ag), s.td.Catalog.LLM, s.td.LLMHTTP, prov, mod, content)
 	if intRes.Artifact != nil {
+		emitter.LogDone("chat.intent.pass", "意图识别完成", event.P("outcome", intRes.Outcome), event.P("intent_kind", intRes.Artifact.IntentKind), event.P("refined_goal_len", len(intRes.Artifact.RefinedGoal)), event.P("duration_ms", intRes.Duration.Milliseconds()))
 		if strings.TrimSpace(intRes.RawJSON) != "" {
 			merged, merr := intent.MergeIntoUserOptionsJSON(userOpts, intRes.RawJSON)
 			if merr != nil {
-				slog.Warn("intent merge into user options_json failed; continuing without intent_artifact", "error", merr)
+				emitter.LogWarn("chat.intent.merge_fail", "意图合并失败", "将继续执行但不包含 intent_artifact", event.P("error", merr.Error()))
 			} else {
 				userOpts = merged
 			}
 		}
 		sendText = intent.WrapUserMessage(content, intRes.Artifact)
+	} else {
+		emitter.LogSkip("chat.intent.pass", "意图识别跳过", event.P("outcome", intRes.Outcome), event.P("duration_ms", intRes.Duration.Milliseconds()))
 	}
 	meta := intent.RunMeta{AgentID: ag.ID, SessionID: sessionID}
 	intentPayload := intent.BuildIntentPassPayload(intRes, meta)
@@ -156,9 +178,10 @@ func (s *ChatService) runSingleAgentViaTRPC(
 		AttachmentsCount: attN,
 	}
 	if err := s.td.Sessions.AppendChatMessage(ctx, sessionID, userMsg, false); err != nil {
+		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
-	flow.LogDone("chat.user_msg_persist", "用户消息已持久化")
+	emitter.LogDone("chat.user_msg_persist", "用户消息已持久化")
 
 	uid := chatagent.UserIDFromCtx(ctx)
 	runOpts := []trpcagent.RunOption{trpcagent.WithRequestID(sessionID)}
@@ -171,40 +194,69 @@ func (s *ChatService) runSingleAgentViaTRPC(
 	// HTTP caller indefinitely. If the parent context already has a shorter
 	// deadline we keep it as-is.
 	const defaultTurnTimeout = 5 * time.Minute
+	const firstByteTimeout = 30 * time.Second
 	if deadline, hasDeadline := ctx.Deadline(); !hasDeadline || time.Until(deadline) > defaultTurnTimeout {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, defaultTurnTimeout)
 		defer cancel()
 	}
-	// EP-RT-02: inject the await-reply hook into the run context so the
-	// ServiceTool can retrieve it at call time.
 	runCtx := serviceawaitreply.WithReplyFunc(ctx, deps.AwaitHook)
 	runCtx = s.injectA2AContext(runCtx, ag.ID)
+	if s.knowledgeRetriever != nil {
+		runCtx = knowledgetool.WithRetriever(runCtx, s.knowledgeRetriever)
+	}
 
-	// Debug: fire a goroutine that logs if the LLM call is still running after 60s.
-	go func() {
+	safego.Go(runCtx, "llm-call-timeout-log", func() {
 		select {
 		case <-time.After(60 * time.Second):
-			flow.Log("chat.llm_call", event.FlowPhaseStart, "LLM调用超过60秒仍在等待", event.P("run_id", runID))
+			emitter.Log("chat.llm.invoke", event.FlowPhaseStart, "语言模型调用超过 60 秒仍在等待", event.P("run_id", runID))
 		case <-runCtx.Done():
 		}
-	}()
-	flow.LogStart("chat.llm_call", "调用LLM模型")
-	events, err := chatagent.RunTRPCUserTurn(runCtx, runner, uid, sessionID, sendText, runOpts...)
+	})
+	emitter.LogStart("chat.llm.invoke", "正在调用语言模型")
+	var attachmentRefs []*chatv1.AttachmentRef
+	if req.GetOptions() != nil {
+		attachmentRefs = req.GetOptions().GetAttachments()
+	}
+	userTurnMsg, err := s.buildUserMessage(runCtx, sessionID, sendText, attachmentRefs)
 	if err != nil {
-		flow.LogError("chat.llm_call", "LLM调用失败", event.P("error", err.Error()))
+		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
+		emitter.LogError("chat.llm.invoke", "附件装配失败", event.P("error", err.Error()))
+		s.setRunStatus(sessionID, runID, "failed", err.Error())
+		return userMsg, biz.ChatMessage{}, TurnError(TurnErrAttachmentFailed, err.Error())
+	}
+	events, err := chatagent.RunTRPCUserTurnMsg(runCtx, runner, uid, sessionID, userTurnMsg, runOpts...)
+	if err != nil {
+		turnStatus = "error"
+		turnErr = err
+		turnErrMsg = err.Error()
+		emitter.LogError("chat.llm.invoke", "语言模型调用失败", event.P("error", err.Error()))
 		arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "error").Observe(time.Since(turnStart).Seconds())
 		s.setRunStatus(sessionID, runID, "failed", err.Error())
-		return userMsg, biz.ChatMessage{}, err
+		return userMsg, biz.ChatMessage{}, TurnError(TurnErrLLMCallFailed, err.Error())
 	}
-	flow.LogDone("chat.llm_call", "LLM调用返回，开始消费事件流")
+	emitter.LogDone("chat.llm.invoke", "模型已返回，开始处理输出流")
+
+	firstByteCtx, firstByteCancel := context.WithTimeout(runCtx, firstByteTimeout)
+	firstByteReceived := false
 
 	projectMeta := chatagent.ProjectMeta{
 		SessionID: sessionID,
 		RequestID: sessionID,
 	}
-	result := chatagent.ConsumeEventStream(ctx, events, s.td.Pipeline.Bus, projectMeta)
-	flow.LogDone("chat.stream_consume", "事件流消费完成",
+	events = event.WrapEventsWithTraceEmitter(events, emitter)
+	result := chatagent.ConsumeEventStreamWithFirstByte(firstByteCtx, runCtx, events, s.td.Pipeline.Bus, projectMeta, &firstByteReceived)
+	resultPromptTok = result.PromptTok
+	resultCompletionTok = result.CompletionTok
+	firstByteCancel()
+	if !firstByteReceived && runCtx.Err() == nil {
+		markTurnError(&turnStatus, &turnErr, &turnErrMsg, errors.New("first byte timeout"))
+		emitter.LogCritical("chat.first_byte_timeout", "首字节超时，模型响应过慢", event.P("timeout", firstByteTimeout.String()))
+		arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "first_byte_timeout").Observe(time.Since(turnStart).Seconds())
+		s.setRunStatus(sessionID, runID, "failed", "first byte timeout")
+		return userMsg, biz.ChatMessage{}, TurnError(TurnErrFirstByteTimeout, firstByteTimeout.String())
+	}
+	emitter.LogDone("chat.stream.consume", "模型输出流处理完成",
 		event.P("reply_len", result.Reply.Len()),
 		event.P("has_error", result.HasError),
 		event.P("has_content", result.HasContent),
@@ -212,31 +264,34 @@ func (s *ChatService) runSingleAgentViaTRPC(
 		event.P("completion_tok", result.CompletionTok),
 	)
 	if ctx.Err() != nil {
-		flow.LogError("chat.turn_timeout", "请求超时", event.P("timeout", defaultTurnTimeout.String()))
-		fallback := fmt.Sprintf("Request timed out after %v. The AI service may be unavailable. Please try again.", defaultTurnTimeout)
+		turnStatus = "timeout"
+		turnErr = ctx.Err()
+		turnErrMsg = "turn timeout"
+		emitter.LogCritical("chat.turn.timeout", "对话请求超时", event.P("timeout", defaultTurnTimeout.String()))
 		arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "timeout").Observe(time.Since(turnStart).Seconds())
-		s.setRunStatus(sessionID, runID, "failed", fallback)
-		return userMsg, biz.ChatMessage{}, kerrors.InternalServer("CHAT_AGENT", fallback)
+		s.setRunStatus(sessionID, runID, "failed", "turn timeout")
+		return userMsg, biz.ChatMessage{}, TurnError(TurnErrTurnTimeout, defaultTurnTimeout.String())
 	}
 
-	// Empty reply detection: when the agent produces no visible text output,
-	// surface the underlying error or a user-friendly fallback instead of
-	// returning a silent empty message.
 	replyText := strings.TrimSpace(result.Reply.String())
 	if replyText == "" {
-		flow.LogError("chat.empty_reply", "Agent未产生任何响应", event.P("has_error", result.HasError), event.P("last_error", result.LastError), event.P("has_content", result.HasContent))
-		fallback := "I received your message but was unable to generate a response."
+		emitter.LogCritical("chat.turn.empty_reply", "未收到助手回复", event.P("has_error", result.HasError), event.P("last_error", result.LastError), event.P("has_content", result.HasContent))
+		detail := ""
 		if result.HasError {
-			fallback = fmt.Sprintf("AI service error: %s. Please check your configuration or try again later.", result.LastError)
+			detail = result.LastError
 		} else if !result.HasContent {
-			fallback = "The AI model did not produce any output. This may indicate a configuration issue with the model or provider."
+			detail = "no content produced"
 		}
+		if detail == "" {
+			detail = "empty reply"
+		}
+		markTurnError(&turnStatus, &turnErr, &turnErrMsg, errors.New(detail))
 		arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "empty_reply").Observe(time.Since(turnStart).Seconds())
-		s.setRunStatus(sessionID, runID, "failed", fallback)
-		return userMsg, biz.ChatMessage{}, kerrors.InternalServer("CHAT_AGENT", fallback)
+		s.setRunStatus(sessionID, runID, "failed", detail)
+		return userMsg, biz.ChatMessage{}, TurnError(TurnErrEmptyReply, detail)
 	}
 
-	promptTok, completionTok := result.PromptTok, result.CompletionTok
+	promptTok, completionTok := resultPromptTok, resultCompletionTok
 	if promptTok <= 0 && completionTok <= 0 && replyText != "" {
 		promptTok = roughTokenEstimateFromText(content + replyText)
 		completionTok = roughTokenEstimateFromText(replyText)
@@ -244,10 +299,12 @@ func (s *ChatService) runSingleAgentViaTRPC(
 
 	assistantOptsStr, err := chatagent.AssistantOptionsJSON(ag, nil)
 	if err != nil {
+		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
 		return userMsg, biz.ChatMessage{}, err
 	}
 	if s := result.Reasoning.String(); s != "" {
 		if assistantOptsStr, err = chatagent.MergeReasoningIntoAssistantOptionsJSON(assistantOptsStr, s); err != nil {
+			markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
 			return userMsg, biz.ChatMessage{}, err
 		}
 	}
@@ -265,15 +322,16 @@ func (s *ChatService) runSingleAgentViaTRPC(
 		TokenOut:        completionTok,
 	}
 	if err := s.td.Sessions.AppendChatMessage(ctx, sessionID, assistantMsg, true); err != nil {
+		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
 		return userMsg, biz.ChatMessage{}, err
 	}
-	flow.LogDone("chat.assistant_msg_persist", "助手消息已持久化", event.P("reply_len", len(replyText)))
+	emitter.LogDone("chat.assistant_msg_persist", "助手消息已持久化", event.P("reply_len", len(replyText)))
 	patchSessionContextUsage(ctx, s, sessionID, ag, promptTok, completionTok)
 
 	arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "ok").Observe(time.Since(turnStart).Seconds())
 	s.recordSessionTurn(ctx, sessionID, ag, userMsg.ID, assistantMsg.ID, prov, mod, promptTok, completionTok, assistantMsg.ContentMarkdown)
 	s.setRunStatus(sessionID, runID, "completed", "")
-	flow.LogDone("chat.turn_execute", "Turn执行完成",
+	emitter.LogDone("chat.turn.execute", "对话轮次执行完成",
 		event.P("run_id", runID),
 		event.P("reply_len", len(replyText)),
 		event.P("prompt_tok", promptTok),
@@ -288,6 +346,8 @@ func (s *ChatService) processPendingQueue(sessionID string, sess biz.Session, ag
 	if !ok {
 		return
 	}
+	pendingEmitter := event.NewFlowLogger(s.td.Pipeline.Bus, s.td.Pipeline.Buffer, sessionID, ag.AgentKey)
+	pendingEmitter.LogStart("chat.pending_dequeue", "排队消息开始处理", event.P("entry_id", entry.ID), event.P("content_len", len(entry.Content)))
 	safego.Go(context.Background(), "pending-queue", func() {
 		bgCtx, cancel := context.WithTimeout(context.Background(), 600*time.Second)
 		s.runs.SetPendingCancel(sessionID, cancel)
@@ -305,14 +365,19 @@ func (s *ChatService) processPendingQueue(sessionID string, sess biz.Session, ag
 		} else {
 			_, _, err = s.runSingleAgentViaTRPC(bgCtx, sess, req, ag, dialogMode, prov, mod, 0)
 		}
-		if err != nil && s.td.Pipeline.Bus != nil {
-			env := event.NewEnvelope(event.EnvelopeTypeError, "pending-queue", sessionID)
-			env.Error = &event.EnvelopeError{
-				Type:      "pending_failed",
-				Message:   fmt.Sprintf("pending message failed: %s", err.Error()),
-				PendingID: entry.ID,
+		if err != nil {
+			pendingEmitter.LogError("chat.pending_dequeue", "排队消息处理失败", event.P("entry_id", entry.ID), event.P("error", err.Error()))
+			if s.td.Pipeline.Bus != nil {
+				env := event.NewEnvelope(event.EnvelopeTypeError, "pending-queue", sessionID)
+				env.Error = &event.EnvelopeError{
+					Type:      "pending_failed",
+					Message:   fmt.Sprintf("pending message failed: %s", err.Error()),
+					PendingID: entry.ID,
+				}
+				s.td.Pipeline.Bus.Publish(bgCtx, env)
 			}
-			s.td.Pipeline.Bus.Publish(bgCtx, env)
+		} else {
+			pendingEmitter.LogDone("chat.pending_dequeue", "排队消息处理完成", event.P("entry_id", entry.ID))
 		}
 	})
 }
@@ -344,8 +409,17 @@ func (s *ChatService) recordSessionTurn(ctx context.Context, sessionID string, a
 		FinalContentPreview: preview,
 	}
 	if _, err := s.td.Sessions.CreateTurn(ctx, turn); err != nil {
-		slog.Warn("recordSessionTurn failed", "session_id", sessionID, "error", err)
+		event.CtxFlowLogWarn(ctx, "chat.usage_record_fail", "会话轮次记录失败", event.P("session_id", sessionID), event.P("error", err.Error()))
 	}
+}
+
+func markTurnError(turnStatus *string, turnErr *error, turnErrMsg *string, err error) {
+	if err == nil {
+		return
+	}
+	*turnStatus = "error"
+	*turnErr = err
+	*turnErrMsg = err.Error()
 }
 
 func (s *ChatService) recordTeamSessionTurn(ctx context.Context, sessionID, teamID, userMsgID, assistantMsgID, prov, mod string, promptTok, completionTok int, contentPreview string) {
@@ -375,6 +449,6 @@ func (s *ChatService) recordTeamSessionTurn(ctx context.Context, sessionID, team
 		FinalContentPreview: preview,
 	}
 	if _, err := s.td.Sessions.CreateTurn(ctx, turn); err != nil {
-		slog.Warn("recordTeamSessionTurn failed", "session_id", sessionID, "team_id", teamID, "error", err)
+		event.CtxFlowLogWarn(ctx, "chat.usage_record_fail", "团队会话轮次记录失败", event.P("session_id", sessionID), event.P("team_id", teamID), event.P("error", err.Error()))
 	}
 }

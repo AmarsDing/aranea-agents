@@ -20,6 +20,7 @@ const (
 	EnvelopeTypeRunStatus          EnvelopeType = "run_status"
 	EnvelopeTypeError              EnvelopeType = "error"
 	EnvelopeTypeLog                EnvelopeType = "log"
+	EnvelopeTypeFlowLog            EnvelopeType = "flow_log"
 	EnvelopeTypeGraphNodeStart     EnvelopeType = "graph_node_start"
 	EnvelopeTypeGraphNodeEnd       EnvelopeType = "graph_node_end"
 	EnvelopeTypeCheckpoint         EnvelopeType = "checkpoint"
@@ -38,6 +39,8 @@ const (
 	EnvelopeTypeGraphNodeError     EnvelopeType = "graph_node_error"
 	EnvelopeTypeGraphNodeCustom    EnvelopeType = "graph_node_custom"
 	EnvelopeTypeKnowledgeIngest    EnvelopeType = "knowledge_ingest"
+	EnvelopeTypeMCPSessionReconnect EnvelopeType = "mcp.session.reconnect"
+	EnvelopeTypeAlertNotify        EnvelopeType = "alert.notify"
 )
 
 type Envelope struct {
@@ -131,7 +134,7 @@ func NewEnvelope(typ EnvelopeType, author, sessionID string) Envelope {
 
 func RouteChannel(env Envelope) string {
 	switch env.Type {
-	case EnvelopeTypeLog:
+	case EnvelopeTypeLog, EnvelopeTypeFlowLog:
 		return "monitor"
 	case EnvelopeTypeMemberMessageStart, EnvelopeTypeMemberDelta, EnvelopeTypeMemberMessageDone,
 		EnvelopeTypeTeamRunStarted, EnvelopeTypeTeamRunFinished, EnvelopeTypeTeamStepStarted,
@@ -143,6 +146,8 @@ func RouteChannel(env Envelope) string {
 		return "graph"
 	case EnvelopeTypeKnowledgeIngest:
 		return "knowledge"
+	case EnvelopeTypeMCPSessionReconnect, EnvelopeTypeAlertNotify:
+		return "monitor"
 	default:
 		if env.TeamID != "" {
 			return "team"

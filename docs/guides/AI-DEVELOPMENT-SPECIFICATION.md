@@ -13,6 +13,7 @@
   - [红线（违反即停）](#红线违反即停)
   - [决策树（我的代码该放哪？）](#决策树我的代码该放哪)
   - [任务速查卡](#任务速查卡)
+  - [代码探索约束（CodeGraph）](#代码探索约束codegraph)
 - [第一章：架构总纲](#第一章架构总纲)
 - [第二章：分层编码规范](#第二章分层编码规范)
 - [第三章：Agent 运行时规范](#第三章agent-运行时规范)
@@ -46,6 +47,21 @@
 | 12 | 不得在 Server 层写业务路由或手写 `HandleFunc` | 只做 `Register*HTTPServer`/`Register*ServiceServer` |
 | 13 | 所有 `go func()` 必须走 `pkg/safego.Go` / `pkg/safego.GoRecover` | 禁止裸 `go func()` 不处理 panic |
 | 14 | 不得在 biz 层使用 `fmt.Errorf` 返回业务错误 | 统一使用 `kerrors.BadRequest/NotFound/InternalServer` |
+
+### 代码探索约束（CodeGraph）
+
+> 本项目已配置 CodeGraph MCP（`.codegraph/` 存在）。**编码前先查结构，禁止盲目 grep 扫库。**
+
+| # | 约束 | 说明 |
+|---|------|------|
+| C1 | 结构性查询 **必须优先 CodeGraph** | 符号定义、调用链、影响面、模块上下文 → `codegraph_*` 工具 |
+| C2 | **禁止** 按符号名 grep 先于 CodeGraph | `codegraph_search` 一次返回 kind + 位置 + 签名 |
+| C3 | **禁止** 用 grep 重复验证 CodeGraph 结构结果 | AST 索引为准；浪费 token 且更易漏 |
+| C4 | grep / Read **仅用于** 非结构场景 | 字符串字面量、注释、日志文案；或已定位文件内的局部阅读 |
+| C5 | 需要模块全貌时用 `codegraph_context` 或 `codegraph_explore` | 不要 `codegraph_search` + 多次 Read 拼装 |
+| C6 | 索引缺失时先问用户是否 `codegraph init -i` | 未初始化前可退回 grep，但应提示初始化 |
+
+工具选型速查：`search` 找符号 · `callers`/`callees` 追调用 · `impact` 看改动半径 · `node` 看签名/源码 · `context`/`explore` 理解模块。完整说明见 [docs/README.md §4.1](../README.md#41-代码探索约束codegraph) 与 `.cursor/rules/codegraph.mdc`。
 
 ### 决策树（我的代码该放哪？）
 
@@ -567,6 +583,11 @@ type AgentRepository interface {
 ---
 
 ## 第七章：AI 编码自检清单
+
+### 改动前（代码探索）
+
+- [ ] **结构性问题已用 CodeGraph**：符号 / 调用链 / 影响面 / 模块上下文，未 grep 先于 `codegraph_*`
+- [ ] **探索结果可信**：未对 CodeGraph 返回的结构信息做重复 grep 验证
 
 ### 改动中（逐层检查）
 

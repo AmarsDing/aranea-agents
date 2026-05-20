@@ -1,6 +1,7 @@
 import { computed, onMounted, ref } from "vue";
 import { storeToRefs } from "pinia";
 import { useQuasar } from "quasar";
+import { annotateCaseResult } from "./api";
 import type { EvalCaseResult, EvalRun } from "./types";
 import { useEvaluationStore } from "../../stores/evaluation";
 
@@ -20,6 +21,7 @@ export function useEvaluationPage() {
   const resultsLoading = ref(false);
   const resultsRun = ref<EvalRun | null>(null);
   const caseResults = ref<EvalCaseResult[]>([]);
+  const savingResultId = ref("");
 
   const createForm = ref({ name: "", description: "" });
   const runForm = ref({ agent_id: "", metrics: "", num_runs: 1 });
@@ -44,6 +46,10 @@ export function useEvaluationPage() {
     { name: "case_id", label: "Case", field: "case_id", align: "left" as const },
     { name: "exact_match", label: "Exact", field: "exact_match", align: "center" as const },
     { name: "contains_match", label: "Contains", field: "contains_match", align: "center" as const },
+    { name: "human_pass", label: "人工", field: "human_pass", align: "center" as const },
+    { name: "human_score", label: "分数", field: "human_score", align: "center" as const },
+    { name: "human_comment", label: "评语", field: "human_comment", align: "left" as const },
+    { name: "annotate", label: "", field: "id", align: "right" as const },
     { name: "error_message", label: "错误", field: "error_message", align: "left" as const }
   ];
 
@@ -155,6 +161,30 @@ export function useEvaluationPage() {
     }
   }
 
+  function updateResultRow(row: EvalCaseResult) {
+    caseResults.value = caseResults.value.map((r) => (r.id === row.id ? row : r));
+  }
+
+  async function saveAnnotation(row: EvalCaseResult) {
+    if (!resultsRun.value) return;
+    savingResultId.value = row.id;
+    try {
+      const updated = await annotateCaseResult({
+        run_id: resultsRun.value.id,
+        result_id: row.id,
+        human_pass: row.human_pass,
+        human_score: row.human_score,
+        human_comment: row.human_comment
+      });
+      updateResultRow(updated);
+      $q.notify({ type: "positive", message: "标注已保存" });
+    } catch (e) {
+      $q.notify({ type: "negative", message: e instanceof Error ? e.message : "保存失败" });
+    } finally {
+      savingResultId.value = "";
+    }
+  }
+
   async function openResults(run: EvalRun) {
     resultsRun.value = run;
     resultsOpen.value = true;
@@ -201,6 +231,9 @@ export function useEvaluationPage() {
     submitCreate,
     confirmDeleteDataset,
     submitRun,
-    openResults
+    openResults,
+    savingResultId,
+    updateResultRow,
+    saveAnnotation
   };
 }

@@ -2,6 +2,7 @@ package biz_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"aranea-agents/internal/biz"
@@ -227,8 +228,41 @@ func (m *memEvalRepo2) InsertCaseResult(_ context.Context, r biz.EvalCaseResult)
 	m.results = append(m.results, r)
 	return nil
 }
-func (m *memEvalRepo2) ListCaseResults(_ context.Context, _ string, _, _ int) ([]biz.EvalCaseResult, int, error) {
-	return m.results, len(m.results), nil
+func (m *memEvalRepo2) ListCaseResults(_ context.Context, runID string, _, _ int) ([]biz.EvalCaseResult, int, error) {
+	var out []biz.EvalCaseResult
+	for _, r := range m.results {
+		if r.RunID == runID {
+			out = append(out, r)
+		}
+	}
+	return out, len(out), nil
+}
+func (m *memEvalRepo2) GetCaseResult(_ context.Context, runID, resultID string) (biz.EvalCaseResult, error) {
+	for _, r := range m.results {
+		if r.RunID == runID && r.ID == resultID {
+			return r, nil
+		}
+	}
+	return biz.EvalCaseResult{}, errors.New("not found")
+}
+func (m *memEvalRepo2) UpdateCaseResultAnnotation(_ context.Context, runID, resultID string, patch biz.EvalCaseResultAnnotation) (biz.EvalCaseResult, error) {
+	for i, r := range m.results {
+		if r.RunID == runID && r.ID == resultID {
+			if patch.HumanPass != nil {
+				m.results[i].HumanPass = patch.HumanPass
+			}
+			if patch.HumanScore != nil {
+				m.results[i].HumanScore = patch.HumanScore
+			}
+			if patch.HumanComment != nil {
+				m.results[i].HumanComment = *patch.HumanComment
+			}
+			m.results[i].AnnotatedAt = "now"
+			m.results[i].AnnotatedBy = patch.AnnotatedBy
+			return m.results[i], nil
+		}
+	}
+	return biz.EvalCaseResult{}, errors.New("not found")
 }
 
 func TestEvalUsecase_CreateDataset(t *testing.T) {

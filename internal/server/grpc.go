@@ -11,6 +11,7 @@ import (
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	cronv1 "aranea-agents/api/kratos/cron/v1"
 	evaluationv1 "aranea-agents/api/kratos/evaluation/v1"
+	ecosystemv1 "aranea-agents/api/kratos/ecosystem/v1"
 	graphv1 "aranea-agents/api/kratos/graph/v1"
 	hookv1 "aranea-agents/api/kratos/hook/v1"
 	knowledgev1 "aranea-agents/api/kratos/knowledge/v1"
@@ -80,5 +81,6 @@ func NewGRPCServer(c *conf.Server, s *ServiceRegistry) *grpc.Server {
 	knowledgev1.RegisterKnowledgeServiceServer(srv, s.Knowledge)
 	evaluationv1.RegisterEvaluationServiceServer(srv, s.Eval)
 	a2av1.RegisterA2AServiceServer(srv, s.A2A)
+	ecosystemv1.RegisterEcosystemServiceServer(srv, s.Ecosystem)
 	return srv
 }

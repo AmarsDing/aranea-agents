@@ -9,6 +9,7 @@ export type EnvelopeType =
   | "run_status"
   | "error"
   | "log"
+  | "flow_log"
   | "graph_node_start"
   | "graph_node_end"
   | "checkpoint"

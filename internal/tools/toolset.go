@@ -16,6 +16,8 @@ import (
 	trpcemail "trpc.group/trpc-go/trpc-agent-go/tool/email"
 	trpcfile "trpc.group/trpc-go/trpc-agent-go/tool/file"
 	trpcgooglesearch "trpc.group/trpc-go/trpc-agent-go/tool/google/search"
+	"aranea-agents/internal/tools/mcpobserve"
+
 	trpchostexec "trpc.group/trpc-go/trpc-agent-go/tool/hostexec"
 	trpcmcp "trpc.group/trpc-go/trpc-agent-go/tool/mcp"
 	trpcmcpbroker "trpc.group/trpc-go/trpc-agent-go/tool/mcpbroker"
@@ -459,12 +461,16 @@ func buildMCPToolSet(cfg MCPServerConfig) (ToolSet, error) {
 		Timeout:   mcpTimeoutDuration(cfg.TimeoutSec),
 	}
 
-	opts := []trpcmcp.ToolSetOption{trpcmcp.WithName(cfg.Name)}
+	opts := []trpcmcp.ToolSetOption{
+		trpcmcp.WithName(cfg.Name),
+		trpcmcp.WithReconnectObserver(mcpobserve.ObserverForServer(cfg.Name)),
+	}
 	if pred := ToolFilterForPrefix(cfg.ToolPrefix); pred != nil {
 		opts = append(opts, trpcmcp.WithToolFilterFunc(pred))
 	}
-	if cfg.SessionReconnectMax > 0 {
-		opts = append(opts, trpcmcp.WithSessionReconnect(cfg.SessionReconnectMax))
+	reconnectMax := mcpobserve.EffectiveSessionReconnectMax(transport, cfg.SessionReconnectMax)
+	if reconnectMax > 0 {
+		opts = append(opts, trpcmcp.WithSessionReconnect(reconnectMax))
 	}
 
 	return trpcmcp.NewMCPToolSet(connCfg, opts...), nil

@@ -17,8 +17,11 @@
 | Audit | `audit_logs` 表 | HTTP REST | 管理操作审计，支持分页/过滤 |
 | Events | `monitor_events` 表 + WS 推送 | HTTP REST + WebSocket | 持久化事件 + 实时运行事件 |
 | Usage | `model_token_usage_events` / `model_token_usage_daily` | HTTP REST（`UsageService`） | 模型用量总览、趋势、Top 排行 |
-| Traces | `monitor_traces` 表 + `model_token_usage_events` | HTTP REST + WebSocket | LLM 调用链追踪与 Span 树 |
-| Logs | WS 推送 + 内存快照 | WebSocket + HTTP REST | Gateway/运行时文本日志流 |
+| Traces | `model_token_usage_events`（`metadata_json.spans`） | HTTP REST + WebSocket | 耗时瀑布图；v2 与 FlowLog **同源 Span 投影** |
+| **Flow 流程日志**（v2） | WS `flow_log`（+ Phase 2 `flow_log_events`） | WebSocket | 业务时间线、severity；[52-flow-logger.design](./52-flow-logger.design.md) |
+| Logs | WS 推送 + 内存快照 | WebSocket + HTTP REST | Gateway/运行时**进程**文本日志（非业务 Trace） |
+
+> **Tracing 与 Flow 分工**（v2）：OTel → Jaeger（运维）；Monitor 内 **FlowLog**（Logs Tab）+ **Span**（瀑布图），一次 `TraceEmitter` 写入。见 [52-flow-logger.design.md](./52-flow-logger.design.md)。
 
 ---
 

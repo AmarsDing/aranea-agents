@@ -154,6 +154,86 @@ func (s *MonitorService) GetMonitorTrace(ctx context.Context, in *v1.GetMonitorT
 	}, nil
 }
 
+func toProtoAlertRule(r biz.MonitorAlertRule) *v1.MonitorAlertRule {
+	return &v1.MonitorAlertRule{
+		Id:               r.ID,
+		Name:             r.Name,
+		MetricKey:        r.MetricKey,
+		Threshold:        r.Threshold,
+		WindowMinutes:    int32(r.WindowMinutes),
+		Enabled:          r.Enabled,
+		Severity:         r.Severity,
+		NotifyWebhookUrl: r.NotifyWebhookURL,
+		NotifyChannelId:  r.NotifyChannelID,
+		CooldownMinutes:  int32(r.CooldownMinutes),
+	}
+}
+
+func fromProtoAlertRule(r *v1.MonitorAlertRule) biz.MonitorAlertRule {
+	if r == nil {
+		return biz.MonitorAlertRule{}
+	}
+	return biz.MonitorAlertRule{
+		ID:               r.GetId(),
+		Name:             r.GetName(),
+		MetricKey:        r.GetMetricKey(),
+		Threshold:        r.GetThreshold(),
+		WindowMinutes:    int(r.GetWindowMinutes()),
+		Enabled:          r.GetEnabled(),
+		Severity:         r.GetSeverity(),
+		NotifyWebhookURL: r.GetNotifyWebhookUrl(),
+		NotifyChannelID:  r.GetNotifyChannelId(),
+		CooldownMinutes:  int(r.GetCooldownMinutes()),
+	}
+}
+
+func (s *MonitorService) ListMonitorAlertRules(ctx context.Context, _ *v1.GetMonitorLogsRequest) (*v1.ListMonitorAlertRulesResponse, error) {
+	rules, err := s.uc.ListAlertRules(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(rules) == 0 {
+		rules = []biz.MonitorAlertRule{{
+			ID: "default-runner-errors", Name: "Runner error rate",
+			MetricKey: "runner.error_rate", Threshold: 0.25, WindowMinutes: 60, Enabled: true, Severity: "warning",
+		}}
+	}
+	resp := &v1.ListMonitorAlertRulesResponse{Items: make([]*v1.MonitorAlertRule, 0, len(rules))}
+	for i := range rules {
+		resp.Items = append(resp.Items, toProtoAlertRule(rules[i]))
+	}
+	return resp, nil
+}
+
+func (s *MonitorService) PutMonitorAlertRules(ctx context.Context, req *v1.PutMonitorAlertRulesRequest) (*v1.PutMonitorAlertRulesResponse, error) {
+	rules := make([]biz.MonitorAlertRule, 0, len(req.GetItems()))
+	for _, item := range req.GetItems() {
+		rules = append(rules, fromProtoAlertRule(item))
+	}
+	if err := s.uc.ReplaceAlertRules(ctx, rules); err != nil {
+		return nil, err
+	}
+	listed, err := s.ListMonitorAlertRules(ctx, &v1.GetMonitorLogsRequest{})
+	if err != nil {
+		return nil, err
+	}
+	return &v1.PutMonitorAlertRulesResponse{Items: listed.GetItems()}, nil
+}
+
+func (s *MonitorService) GetRunnerMetrics(ctx context.Context, req *v1.GetRunnerMetricsRequest) (*v1.RunnerMetricsSummary, error) {
+	m, err := s.uc.GetRunnerMetrics(ctx, int(req.GetWindowMinutes()))
+	if err != nil {
+		return nil, err
+	}
+	return &v1.RunnerMetricsSummary{
+		WindowMinutes: int32(m.WindowMinutes),
+		TotalRuns:     m.TotalRuns,
+		ErrorRuns:     m.ErrorRuns,
+		ErrorRate:     m.ErrorRate,
+		SuccessRate:   m.SuccessRate,
+	}, nil
+}
+
 func (s *MonitorService) GetMonitorLogs(context.Context, *v1.GetMonitorLogsRequest) (*v1.GetMonitorLogsResponse, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	return &v1.GetMonitorLogsResponse{

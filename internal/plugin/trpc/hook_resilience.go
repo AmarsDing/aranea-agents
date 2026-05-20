@@ -2,7 +2,6 @@ package plugintrpc
 
 import (
 	"context"
-	"log/slog"
 
 	"aranea-agents/internal/agent/callbacks"
 	"aranea-agents/internal/metrics"
@@ -78,6 +77,6 @@ func resilientHookErr(point string, err error) error {
 	if metrics.IsBlockedErr(err) {
 		return err
 	}
-	slog.Warn("hook: non-block error suppressed", "point", point, "error", err)
+	hookLogger.Warn("hook: non-block error suppressed", "point", point, "error", err)
 	return nil
 }

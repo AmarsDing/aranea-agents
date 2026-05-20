@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"aranea-agents/pkg/safego"
+
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
 )
@@ -546,7 +548,9 @@ func (uc *SessionUsecase) maybeAutoTitleFromUserMessage(ctx context.Context, ses
 	if snippet != "" {
 		_, _ = uc.Rename(ctx, sessionID, snippet)
 	}
-	go uc.generateTitleAsync(sessionID, content)
+	safego.Go(context.Background(), "generate-title-async", func() {
+		uc.generateTitleAsync(sessionID, content)
+	})
 	return nil
 }
 

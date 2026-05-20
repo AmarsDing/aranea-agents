@@ -38,7 +38,8 @@ type PersistenceSet struct {
 // EventPipeline wraps the event bus used for projecting runtime events
 // to WebSocket subscribers and internal consumers.
 type EventPipeline struct {
-	Bus event.Bus
+	Bus    event.Bus
+	Buffer *event.Buffer
 }
 
 // TurnDeps is the consolidated dependency set threaded through each chat turn.

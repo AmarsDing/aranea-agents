@@ -51,6 +51,22 @@ func (m *Manager) MergeChain(ctx context.Context, agentID, agentKey string, base
 	return base.Append(entries...)
 }
 
+// ModelRouterConfigForAgent returns model_router config when enabled for the agent.
+func (m *Manager) ModelRouterConfigForAgent(agentID string) (ModelRouterConfig, bool) {
+	if m == nil || m.rt == nil {
+		return ModelRouterConfig{}, false
+	}
+	return m.rt.ModelRouterConfigForAgent(agentID)
+}
+
+// CostGuardConfigForAgent returns cost_guard config when enabled for the agent.
+func (m *Manager) CostGuardConfigForAgent(agentID string) (CostGuardConfig, bool) {
+	if m == nil || m.rt == nil {
+		return CostGuardConfig{}, false
+	}
+	return m.rt.CostGuardConfigForAgent(agentID)
+}
+
 // Plugins returns DB-backed runner plugins (without the event bridge).
 func (m *Manager) Plugins() []trpcplugin.Plugin {
 	if m == nil || m.rt == nil {

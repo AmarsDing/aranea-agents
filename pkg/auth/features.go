@@ -1,7 +1,7 @@
 package auth
 
 import (
-	"log/slog"
+	"fmt"
 	"os"
 	"strings"
 )
@@ -21,13 +21,13 @@ func HTTPAuthBypassEnabled() bool {
 	}
 	// DEPLOY_ENV not set → allow bypass but emit a warning so operators notice.
 	if deployEnv == "" {
-		slog.Warn("[SECURITY] KRATOS_HTTP_AUTH_DISABLED is set but DEPLOY_ENV is not 'dev'. " +
-			"Auth bypass is active. Set DEPLOY_ENV=production to refuse bypass.")
+		fmt.Fprintln(os.Stderr, "[flow][system] system.auth.bypass_warn: KRATOS_HTTP_AUTH_DISABLED set but DEPLOY_ENV unset; bypass active")
+		_ = os.Stderr.Sync()
 		return true
 	}
 	// Any other DEPLOY_ENV (e.g. "production", "staging") → refuse bypass.
-	slog.Error("[SECURITY] KRATOS_HTTP_AUTH_DISABLED is set but DEPLOY_ENV=" + deployEnv +
-		". Auth bypass is REFUSED in non-dev environments.")
+	fmt.Fprintf(os.Stderr, "[flow][system] system.auth.bypass_refused: KRATOS_HTTP_AUTH_DISABLED set but DEPLOY_ENV=%s\n", deployEnv)
+	_ = os.Stderr.Sync()
 	return false
 }
 
@@ -35,9 +35,8 @@ func HTTPAuthBypassEnabled() bool {
 // Call this once from main() after config is loaded.
 func WarnIfBypassEnabled() {
 	if HTTPAuthBypassEnabled() {
-		slog.Warn("⚠ AUTH BYPASS ACTIVE — KRATOS_HTTP_AUTH_DISABLED=1 " +
-			"All requests are authenticated as UserID=1 (admin). " +
-			"DO NOT use in production.")
+		fmt.Fprintln(os.Stderr, "[flow][system] system.auth.bypass_active: AUTH BYPASS ACTIVE — all requests as UserID=1 (admin); DO NOT use in production")
+		_ = os.Stderr.Sync()
 	}
 }
 

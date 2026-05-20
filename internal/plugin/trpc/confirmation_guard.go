@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 
 	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
@@ -19,18 +20,19 @@ type confirmationGuardConfig struct {
 }
 
 type ConfirmationGuardPlugin struct {
-	name  string
-	cfg   confirmationGuardConfig
-	stats StatsRecorder
+	name   string
+	cfg    confirmationGuardConfig
+	stats  StatsRecorder
+	logger *PluginSafeLogger
 }
 
 var _ trpcplugin.Plugin = (*ConfirmationGuardPlugin)(nil)
 
-func NewConfirmationGuardPlugin(p biz.Plugin, stats StatsRecorder) *ConfirmationGuardPlugin {
+func NewConfirmationGuardPlugin(p biz.Plugin, stats StatsRecorder, bus event.Bus) *ConfirmationGuardPlugin {
 	var cfg confirmationGuardConfig
 	cfg.DefaultAction = "reject"
 	parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg)
-	return &ConfirmationGuardPlugin{name: p.Key, cfg: cfg, stats: stats}
+	return &ConfirmationGuardPlugin{name: p.Key, cfg: cfg, stats: stats, logger: NewPluginSafeLogger(p.Key, bus)}
 }
 
 func (c *ConfirmationGuardPlugin) Name() string { return c.name }
@@ -44,13 +46,16 @@ func (c *ConfirmationGuardPlugin) beforeTool(ctx context.Context, args *trpctool
 		return &trpctool.BeforeToolResult{Context: ctx}, nil
 	}
 	if !c.needsConfirm(args) {
+		c.logger.Info("plugin.confirmation_guard.before_tool", "status", "ok", "tool", args.ToolName, "needs_confirm", false)
 		c.record(ctx, "before_tool", "ok")
 		return &trpctool.BeforeToolResult{Context: ctx}, nil
 	}
 	if strings.EqualFold(strings.TrimSpace(c.cfg.DefaultAction), "allow") {
+		c.logger.Info("plugin.confirmation_guard.before_tool", "status", "ok", "tool", args.ToolName, "needs_confirm", true, "default_action", "allow")
 		c.record(ctx, "before_tool", "ok")
 		return &trpctool.BeforeToolResult{Context: ctx}, nil
 	}
+	c.logger.Info("plugin.confirmation_guard.before_tool", "status", "blocked", "tool", args.ToolName, "needs_confirm", true, "default_action", "reject")
 	c.record(ctx, "before_tool", "blocked")
 	msg := fmt.Sprintf("confirmation_guard: tool %q requires confirmation (no human channel; default_action=reject)", args.ToolName)
 	return &trpctool.BeforeToolResult{

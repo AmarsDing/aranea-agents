@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
@@ -24,17 +25,16 @@ type auditConfig struct {
 	RedactSensitive  bool `json:"redact_sensitive"`
 }
 
-// AuditLogPlugin records agent/model/tool lifecycle events via the structured logger.
 type AuditLogPlugin struct {
-	name  string
-	cfg   auditConfig
-	stats StatsRecorder
+	name   string
+	cfg    auditConfig
+	stats  StatsRecorder
+	logger *PluginSafeLogger
 }
 
 var _ trpcplugin.Plugin = (*AuditLogPlugin)(nil)
 
-// NewAuditLogPlugin builds the runtime audit plugin from a DB row (audit_log / runtime_audit).
-func NewAuditLogPlugin(p biz.Plugin, stats StatsRecorder) *AuditLogPlugin {
+func NewAuditLogPlugin(p biz.Plugin, stats StatsRecorder, bus event.Bus) *AuditLogPlugin {
 	var cfg auditConfig
 	cfg.LogModelRequest = true
 	cfg.LogModelResponse = true
@@ -45,7 +45,13 @@ func NewAuditLogPlugin(p biz.Plugin, stats StatsRecorder) *AuditLogPlugin {
 	if cfg.MaxContentLength <= 0 {
 		cfg.MaxContentLength = 500
 	}
-	return &AuditLogPlugin{name: p.Key, cfg: cfg, stats: stats}
+	name := p.Key
+	return &AuditLogPlugin{
+		name:   name,
+		cfg:    cfg,
+		stats:  stats,
+		logger: NewPluginSafeLogger(name, bus),
+	}
 }
 
 func (a *AuditLogPlugin) Name() string { return a.name }
@@ -156,9 +162,6 @@ func (a *AuditLogPlugin) onEvent(
 	if kind == "" {
 		kind = "event"
 	}
-	// Use stderr directly instead of slog to avoid deadlocking when
-	// the slog handler (SlogBridge) tries to publish to the event bus
-	// while the bus mutex is already held by the caller.
 	fmt.Fprintf(os.Stderr, "[audit_log.on_event] plugin=%s session_id=%s agent_key=%s event_object=%s author=%s\n",
 		a.name, sid, akey, kind, e.Author)
 	os.Stderr.Sync()
@@ -166,25 +169,31 @@ func (a *AuditLogPlugin) onEvent(
 	return e, nil
 }
 
-func (a *AuditLogPlugin) summarizeMessages(req *trpcmodel.Request) string {
-	if req == nil {
-		return ""
-	}
-	var parts []string
-	for _, m := range req.Messages {
-		line := strings.TrimSpace(string(m.Role) + ": " + m.Content)
-		if line != "" {
-			parts = append(parts, truncateString(a.maybeRedact(line), a.cfg.MaxContentLength))
-		}
-	}
-	return strings.Join(parts, " | ")
-}
-
 func (a *AuditLogPlugin) maybeRedact(s string) string {
 	if !a.cfg.RedactSensitive {
 		return s
 	}
 	return redactText(s, true, true, true)
+}
+
+func (a *AuditLogPlugin) summarizeMessages(req *trpcmodel.Request) string {
+	if req == nil {
+		return ""
+	}
+	var b strings.Builder
+	for i, msg := range req.Messages {
+		if i > 0 {
+			b.WriteString("; ")
+		}
+		role := string(msg.Role)
+		content := strings.TrimSpace(msg.Content)
+		if content == "" {
+			continue
+		}
+		content = truncateString(content, a.cfg.MaxContentLength)
+		fmt.Fprintf(&b, "[%s]%s", role, content)
+	}
+	return b.String()
 }
 
 func (a *AuditLogPlugin) record(ctx context.Context, point, status string) {
@@ -195,38 +204,10 @@ func (a *AuditLogPlugin) record(ctx context.Context, point, status string) {
 
 func (a *AuditLogPlugin) logLifecycle(point, sessionID, agentKey string, extra ...any) {
 	kv := []any{
-		"plugin", a.name,
 		"point", point,
 		"session_id", sessionID,
 		"agent_key", agentKey,
-		"at", time.Now().UTC().Format(time.RFC3339),
 	}
 	kv = append(kv, extra...)
-	// Use stderr directly instead of slog to avoid deadlocking when
-	// the slog handler (SlogBridge) tries to publish to the event bus
-	// while the bus mutex is already held by the caller.
-	var buf strings.Builder
-	buf.WriteString("[audit_log] lifecycle")
-	for i := 0; i+1 < len(kv); i += 2 {
-		fmt.Fprintf(&buf, " %v=%v", kv[i], kv[i+1])
-	}
-	fmt.Fprintln(os.Stderr, buf.String())
-	os.Stderr.Sync()
-}
-
-func sessionAgentKey(ctx context.Context, inv *trpcagent.Invocation) (sessionID, agentKey string) {
-	if inv != nil {
-		agentKey = inv.AgentName
-		if inv.Session != nil {
-			sessionID = inv.Session.ID
-		}
-		return sessionID, agentKey
-	}
-	if i, ok := trpcagent.InvocationFromContext(ctx); ok && i != nil {
-		agentKey = i.AgentName
-		if i.Session != nil {
-			sessionID = i.Session.ID
-		}
-	}
-	return sessionID, agentKey
+	a.logger.Info("plugin.audit_log."+point, kv...)
 }

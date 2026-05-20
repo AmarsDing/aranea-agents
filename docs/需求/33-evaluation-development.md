@@ -37,7 +37,7 @@ Evaluation 评估：对 Agent 的输出质量进行结构化评估，支持自�
 | DeleteRun API | ❌ | Proto 和 Service 均无 DeleteRun |
 | UpdateDataset API | ❌ | 无更新数据集接口 |
 | 自动评估触发 | ❌ | 无 AfterTurn Hook 机制 |
-| 人工评估标注 | ❌ | 无人工标注字段和 UI |
+| 人工评估标注 | ✅ | `AnnotateCaseResult` + Results 对话框 |
 | 评估报告 | ❌ | 无报告生成和导出 |
 | 前端页面 | ✅ | EvaluationPage.vue；路由 /evaluation 已注册；eatures/evaluation/ api/types/mapper/store 均已实现 |
 | trpc AgentEvaluator 集成 | ❌ | 使用自建 Runner，未集成框架评估器 |
@@ -82,7 +82,7 @@ Evaluation 评估：对 Agent 的输出质量进行结构化评估，支持自�
 | 7 | 前端：评估结果页（汇总分数 + 逐用例详情） | P1 | — | Phase 2 | ✅ EvaluationPage.vue 已集成 |
 | 8 | 自动评估触发（AfterTurn Hook + 关联数据集配置） | P2 | — | Phase 3 |
 | 9 | 评估报告生成 + 导出（JSON/CSV） | P2 | — | Phase 3 |
-| 10 | 人工评估标注（标注字段 + API + 前端） | P3 | — | Phase 4 |
+| 10 | 人工评估标注（标注字段 + API + 前端） | P3 | ✅ | Phase 4 |
 | 11 | 集成 trpc AgentEvaluator（替换自建 Runner） | P3 | — | Phase 5 |
 | 12 | 引入 EvalSet 完整模型 + ToolTrajectory/FinalResponse 评估 | P3 | — | Phase 5 |
 | 13 | MultiRun + UserSimulation + pass@k | P3 | — | Phase 5 |

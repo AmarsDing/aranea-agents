@@ -114,12 +114,10 @@ grpc.Middleware(
 
 ### 4.5 Log-Trace 关联
 
-**`internal/event/slog_bridge.go`** 中的 `traceHandler` 包装器：
-
-- 在 `Handle(ctx, r)` 时从 `ctx` 提取 `trace.SpanContext`
-- 若 Span 有效，自动向 `slog.Record` 添加 `trace_id` 和 `span_id` 属性
-- 无论是否启用 `LOG_BRIDGE_ENABLED`，`traceHandler` 始终生效
-- 所有 `slog.Info/Error/Warn/Debug` 调用自动获得 Trace 关联
+- **HTTP/gRPC**：Kratos `tracing` 中间件传播 W3C TraceContext。
+- **FlowLog**：`internal/event/trace_context.go` 的 `NewTraceContext` 从 `ctx` 读取 OTel `SpanContext`，写入 `correlation.trace_id`。
+- **Turn**：`TraceEmitter` 与 usage `metadata_json.spans` 共用同一 `trace_id`。
+- **已移除**：`slog_bridge.go` / `traceHandler` / `LOG_BRIDGE_*`（2026-05-20，见 [changelog](../changelog/2026-05-20-FlowLog-V2-SlogRemoval.md)）。
 
 ---
 
@@ -143,8 +141,9 @@ grpc.Middleware(
 | `OTEL_EXPORTER_OTLP_PROTOCOL` | `http` | 导出协议：`http` 或 `grpc` |
 | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | （继承 ENDPOINT） | Trace 端点覆盖 |
 | `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` | （继承 ENDPOINT） | Metrics 端点覆盖 |
-| `LOG_BRIDGE_ENABLED` | （空） | 设为 `1` 启用 slog→EventBus 桥接 |
-| `LOG_BRIDGE_LEVEL` | `INFO` | EventBus 桥接的最低日志级别 |
+| `FLOW_LOG_STDERR` | （空） | 设为 `1` 时 FlowLog 同步写 stderr（调试） |
+| ~~`LOG_BRIDGE_ENABLED`~~ | — | **已废弃**（SlogBridge 已删除） |
+| ~~`LOG_BRIDGE_LEVEL`~~ | — | **已废弃** |
 
 ---
 

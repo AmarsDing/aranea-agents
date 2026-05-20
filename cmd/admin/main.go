@@ -67,9 +67,8 @@ func newApp(
 		kratos.Server(srv...),
 		kratos.BeforeStart(func(context.Context) error {
 			consumer.Start(consumerCtx)
-			if event.InstallSlogBridge(eventBus) {
-				logger.Log(log.LevelInfo, "msg", "slog bridge installed (LOG_BRIDGE_ENABLED=1)")
-			}
+			event.SetGlobalBus(eventBus)
+			logger.Log(log.LevelInfo, "msg", "flow log v2 global bus wired")
 			return nil
 		}),
 		kratos.AfterStop(func(context.Context) error {

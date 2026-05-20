@@ -16,6 +16,7 @@ import (
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	cronv1 "aranea-agents/api/kratos/cron/v1"
 	evaluationv1 "aranea-agents/api/kratos/evaluation/v1"
+	ecosystemv1 "aranea-agents/api/kratos/ecosystem/v1"
 	graphv1 "aranea-agents/api/kratos/graph/v1"
 	hookv1 "aranea-agents/api/kratos/hook/v1"
 	knowledgev1 "aranea-agents/api/kratos/knowledge/v1"
@@ -98,6 +99,7 @@ func registerProtoServices(srv *kratoshttp.Server, s *ServiceRegistry) {
 	knowledgev1.RegisterKnowledgeServiceHTTPServer(srv, s.Knowledge)
 	evaluationv1.RegisterEvaluationServiceHTTPServer(srv, s.Eval)
 	a2av1.RegisterA2AServiceHTTPServer(srv, s.A2A)
+	ecosystemv1.RegisterEcosystemServiceHTTPServer(srv, s.Ecosystem)
 }
 
 // registerCustomRoutes registers cross-cutting operational routes that bypass proto

@@ -152,6 +152,51 @@ func (u *MCPServerUsecase) PersistHealth(ctx context.Context, id string, result 
 	return u.persistHealth(ctx, &row, result)
 }
 
+// RecordReconnectMetadata updates last_reconnect_at and reconnect_count for the server key.
+func (u *MCPServerUsecase) RecordReconnectMetadata(ctx context.Context, serverKey string, at time.Time) error {
+	if u == nil || u.repo == nil {
+		return nil
+	}
+	serverKey = strings.TrimSpace(serverKey)
+	if serverKey == "" {
+		return nil
+	}
+	rows, err := u.repo.ListMCPServers(ctx)
+	if err != nil {
+		return err
+	}
+	var row *MCPServer
+	for i := range rows {
+		if strings.TrimSpace(rows[i].Key) == serverKey {
+			row = &rows[i]
+			break
+		}
+	}
+	if row == nil {
+		return nil
+	}
+	var metadata map[string]any
+	if json.Unmarshal([]byte(defaultMetaJSON(row.MetadataJSON)), &metadata) != nil {
+		metadata = map[string]any{}
+	}
+	metadata["last_reconnect_at"] = at.UTC().Format(time.RFC3339)
+	switch v := metadata["reconnect_count"].(type) {
+	case float64:
+		metadata["reconnect_count"] = int(v) + 1
+	case int:
+		metadata["reconnect_count"] = v + 1
+	default:
+		metadata["reconnect_count"] = 1
+	}
+	raw, err := json.Marshal(metadata)
+	if err != nil {
+		return err
+	}
+	row.MetadataJSON = string(raw)
+	_, err = u.repo.UpdateMCPServer(ctx, *row)
+	return err
+}
+
 func (u *MCPServerUsecase) persistHealth(ctx context.Context, row *MCPServer, result probe.TestResult) error {
 	var metadata map[string]any
 	if json.Unmarshal([]byte(defaultMetaJSON(row.MetadataJSON)), &metadata) != nil {

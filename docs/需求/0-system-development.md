@@ -231,8 +231,8 @@ AI 接到任何模块任务时，必须按以下顺序拆解：
 
 | ID | 待优化项 | 优先级 | 现状 | 目标 | 关联文档 |
 |----|----------|--------|------|------|----------|
-| CHAT-01 | 多模态附件（上传、持久化、Vision） | P3 | 前端占位 | 附件 API + 对象存储 + Runner 输入装配 | [1-chat-development.md](./1-chat-development.md) |
-| CHAT-02 | `awaiting_user` / RunStatus 进程重启可恢复 | P3 | 进程内 `RunRegistry` + `awaitChans` | 持久化或 EventBuffer 恢复策略 | [1 chat.md](./1%20chat.md) §4.2 |
+| CHAT-01 | 多模态附件（上传、持久化、Vision） | P3 | Artifact parts 已装配 | 消息气泡内嵌预览；跨会话检索 | [1-chat-development.md](./1-chat-development.md) |
+| CHAT-02 | `awaiting_user` / RunStatus 进程重启可恢复 | P3 | `state_json` + resume 新 turn ✅ | mid-turn goroutine 恢复（非本期） | [1-chat-development.md](./1-chat-development.md) |
 | CHAT-03 | 模型选项单一真相源 | P3 | Platform 优先 + `GetChatOptions` 回退 | 长期统一一处配置源 | [1-chat-development.md](./1-chat-development.md) |
 | CHAT-04 | `tool_result` 部分路径缺稳定 `tool_call_id` | P2 | 前端用 `env.id` 回退合并 | Projector 保证 id 一致 | [message-development.md](./message-development.md) |
 | CHAT-05 | Chat / WS 关键路径单测 | P2 | service 层部分覆盖 | `TestChat*` / envelope 投影回归 | [1-chat-development.md](./1-chat-development.md) |
@@ -253,16 +253,16 @@ AI 接到任何模块任务时，必须按以下顺序拆解：
 
 | ID | 待优化项 | 优先级 | 现状 | 目标 | 关联文档 |
 |----|----------|--------|------|------|----------|
-| MCP-01 | MCP 生产级重连与可观测 | P2 | timeout/OAuth2/Broker 挂载已有 | 重连策略验证、连接状态 UI | [19-mcp-development.md](./19-mcp-development.md) |
-| PLG-01 | Plugin `UpdatePluginScope` / 运行记录 | P2 | 种子 + Schema + Scope 过滤已有 | 可审计的运行记录表与 Scope API | [22-plugin-development.md](./22-plugin-development.md) |
-| PLG-02 | `model_router` 真正改写模型配置 | P2 | 策略层记录为主 | 运行时路由到指定 model | [22-plugin-development.md](./22-plugin-development.md) |
+| MCP-01 | MCP 生产级重连与可观测 | P2 | ReconnectObserver + Events/Prometheus ✅ | metadata 重连计数持久化 | [19-mcp-development.md](./19-mcp-development.md) |
+| PLG-01 | Plugin `UpdatePluginScope` / 运行记录 | P2 | ✅ | Scope API + `plugin_runs` + `ListPluginRuns` | [22-plugin-development.md](./22-plugin-development.md) |
+| PLG-02 | `model_router` 真正改写模型配置 | P2 | `ModelSelector` 真路由 ✅ | `cost_guard` 同模式 | [22-plugin-development.md](./22-plugin-development.md) |
 | CB-01 | Callback 产品化配置与 Audit 查询体验 | P2 | 全链路挂载已有 | 管理端可筛 phase/agent/结果 | [28-callback-development.md](./28-callback-development.md) |
 
 ### 8.6 Memory / Knowledge
 
 | ID | 待优化项 | 优先级 | 现状 | 目标 | 关联文档 |
 |----|----------|--------|------|------|----------|
-| MEM-01 | L4 图冲突检测与级联更新 | P2 | L4 注入 + AutoMemory 写入已有 | 冲突策略、级联、衰减 | [12-16 memory-development.md](./12-16%20memory-development.md) |
+| MEM-01 | L4 图冲突检测与级联更新 | P2 | ✅ 冲突/级联/衰减 MVP | 冲突策略、级联、衰减 | [12-16 memory-development.md](./12-16%20memory-development.md) |
 | MEM-02 | MemoryWorker 与多租户 Session 边界 | P2 | TurnMemoryWorker 30s 去重已有 | 工作区级隔离与失败重试 | [12-16 memory-development.md](./12-16%20memory-development.md) |
 | KN-01 | Rerank / OCR 规划与实现 | P2 | 向量检索主路径已有 | 检索质量可配置 pipeline | [37-knowledge-development.md](./37-knowledge-development.md) |
 | KN-02 | Knowledge PG 多租户与稳定性 | P2 | `EnsureKnowledgeSchema` 启动调用已有 | 无 PG 时降级策略文档化 + 压测 | [37-knowledge-development.md](./37-knowledge-development.md) |
@@ -282,9 +282,9 @@ AI 接到任何模块任务时，必须按以下顺序拆解：
 
 | ID | 待优化项 | 优先级 | 现状 | 目标 | 关联文档 |
 |----|----------|--------|------|------|----------|
-| CH-01 | Channel Webhook 入站 | P1 | CRUD 仅有 | 外部消息进入 RunGateway | [17-channel-development.md](./17-channel-development.md) |
-| CH-02 | Channel 出站投递与适配器 | P1 | 无 delivery | Agent 回复推送到飞书/微信等 | [17-channel-development.md](./17-channel-development.md) |
-| MON-01 | Monitor Dashboard 与告警规则 | P2 | audit/monitor_events 落库已有 | 可配置告警 + 聚合视图 | [18-monitor-development.md](./18-monitor-development.md) |
+| CH-01 | Channel Webhook 入站 | P1 | ✅ 飞书/钉钉/企微 | 外部消息进入 RunGateway | [17-channel-development.md](./17-channel-development.md) |
+| CH-02 | Channel 出站投递与适配器 | P1 | ✅ 三平台 TextSender | Agent 回复推送到外部平台 | [17-channel-development.md](./17-channel-development.md) |
+| MON-01 | Monitor Dashboard 与告警规则 | P2 | 告警规则 + Webhook/Channel 出站 ✅ | Dashboard latency 指标 | [18-monitor-development.md](./18-monitor-development.md) |
 | TEL-01 | Telemetry 业务 Span / OTel UI | P3 | 指标部分已有 | 链路 UI 与采样配置 | [24-telemetry-development.md](./24-telemetry-development.md) |
 | ECO-01 | Ecosystem 后端与市场模型 | P3 | 前端 mock | API + 安装流程 | [30-ecosystem-development.md](./30-ecosystem-development.md) |
 | CLI-01 | CLI 产品化（非 OpenClaw 复制） | P3 | 文档占位 | 需求 + API + 分发 | [25-cli-development.md](./25-cli-development.md) |
@@ -294,8 +294,8 @@ AI 接到任何模块任务时，必须按以下顺序拆解：
 
 | ID | 待优化项 | 优先级 | 现状 | 目标 | 关联文档 |
 |----|----------|--------|------|------|----------|
-| FE-01 | `KnowledgePage` / `EvaluationPage` / `A2APage` 组件拆分 | P2 | 路由与 API 已通 | 弹窗/表格抽独立组件 | `page-to-components.mdc` |
-| FE-02 | feature mapper 单测 | P2 | 几乎仅 `app.store` 测试 | knowledge/evaluation/a2a mapper 回归 | 各 `features/*/mappers` |
+| FE-01 | `KnowledgePage` / `EvaluationPage` / `A2APage` 组件拆分 | P2 | ✅ 三页均 <300 行 | 弹窗/表格抽独立组件 | `page-to-components.mdc` |
+| FE-02 | feature mapper 单测 | P2 | A2A mapper 单测 ✅ | knowledge/evaluation mapper 回归 | 各 `features/*/mappers` |
 | FE-03 | 减少 `as any`（Chat/Team stream） | P3 | 部分 mapper 有 any | 严格 Envelope 类型 | `web/src/features/chat/` |
 
 ### 8.10 开发顺序总表（里程碑视角）

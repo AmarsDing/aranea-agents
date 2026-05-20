@@ -31,6 +31,7 @@ type ServiceRegistry struct {
 	Knowledge      *service.KnowledgeService
 	Eval           *service.EvaluationService
 	A2A            *service.A2AService
+	Ecosystem      *service.EcosystemService
 	ChannelIngress *service.ChannelIngress
 }
 
@@ -61,6 +62,7 @@ func NewServiceRegistry(
 	knowledgeSvc *service.KnowledgeService,
 	evalSvc *service.EvaluationService,
 	a2aSvc *service.A2AService,
+	ecosystemSvc *service.EcosystemService,
 	channelIngress *service.ChannelIngress,
 ) *ServiceRegistry {
 	return &ServiceRegistry{
@@ -88,6 +90,7 @@ func NewServiceRegistry(
 		Knowledge:      knowledgeSvc,
 		Eval:           evalSvc,
 		A2A:            a2aSvc,
+		Ecosystem:      ecosystemSvc,
 		ChannelIngress: channelIngress,
 	}
 }

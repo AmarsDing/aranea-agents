@@ -111,6 +111,8 @@ message SearchRequest {
   int32 top_k = 3;            // default 5
   float min_score = 4;        // minimum similarity threshold (0 = no filter)
   string filter_json = 5;     // optional metadata filter (JSON)
+  optional bool use_rerank = 6;       // unset = use global reranker when configured
+  int32 rerank_candidates = 7;        // vector candidates before rerank (0 = default)
 }
 
 message SearchResponse {

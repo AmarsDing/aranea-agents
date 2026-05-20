@@ -87,7 +87,10 @@
       :run-id="resultsRun?.id ?? ''"
       :rows="caseResults"
       :loading="resultsLoading"
+      :saving-id="savingResultId"
       :columns="resultColumns"
+      @annotate="saveAnnotation"
+      @update-row="updateResultRow"
     />
   </q-page>
 </template>
@@ -126,7 +129,10 @@ const {
   submitCreate,
   confirmDeleteDataset,
   submitRun,
-  openResults
+  openResults,
+  savingResultId,
+  updateResultRow,
+  saveAnnotation
 } = useEvaluationPage();
 </script>
 

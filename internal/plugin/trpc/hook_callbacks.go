@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -143,6 +142,17 @@ func executeHookAction(ctx context.Context, rh biz.ResolvedHook, point, agentID,
 		}
 		metrics.PluginInvokeTotal.WithLabelValues("hook:"+rh.Hook.Key, point, st).Inc()
 		metrics.ObserveCallback("hook", point, start, err)
+		durationMS := time.Since(start).Milliseconds()
+		hookLogger.Info("hook.execute",
+			"hook_key", rh.Hook.Key,
+			"point", point,
+			"action", action,
+			"status", st,
+			"agent_id", agentID,
+			"agent_key", agentKey,
+			"tool", toolName,
+			"duration_ms", durationMS,
+		)
 	}()
 
 	switch action {
@@ -189,11 +199,11 @@ func executeHookAction(ctx context.Context, rh biz.ResolvedHook, point, agentID,
 		case "before_tool":
 			// ModifiedArguments returned by caller after executeHookAction.
 		default:
-			slog.Debug("hook.modify skipped for point", "hook", rh.Hook.Key, "point", point)
+			hookLogger.Debug("hook.modify skipped for point", "hook", rh.Hook.Key, "point", point)
 		}
 		return nil
 	default:
-		slog.Warn("hook: unknown action type", "hook", rh.Hook.Key, "action", action)
+		hookLogger.Warn("hook: unknown action type", "hook", rh.Hook.Key, "action", action)
 		return nil
 	}
 }
@@ -217,37 +227,37 @@ func logHookAction(rh biz.ResolvedHook, point, agentID, agentKey, toolName, acti
 	}
 	switch level {
 	case "debug":
-		slog.Debug(msg, attrs...)
+		hookLogger.Debug(msg, attrs...)
 	case "warn", "warning":
-		slog.Warn(msg, attrs...)
+		hookLogger.Warn(msg, attrs...)
 	case "error":
-		slog.Error(msg, attrs...)
+		hookLogger.Error(msg, attrs...)
 	default:
-		slog.Info(msg, attrs...)
+		hookLogger.Info(msg, attrs...)
 	}
 }
 
 func postHookWebhook(url string, payload map[string]any) {
 	body, err := json.Marshal(payload)
 	if err != nil {
-		slog.Warn("hook.notify: marshal failed", "error", err)
+		hookLogger.Warn("hook.notify: marshal failed", "error", err)
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
-		slog.Warn("hook.notify: request failed", "error", err)
+		hookLogger.Warn("hook.notify: request failed", "error", err)
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		slog.Warn("hook.notify: post failed", "url", url, "error", err)
+		hookLogger.Warn("hook.notify: post failed", "url", url, "error", err)
 		return
 	}
 	_ = resp.Body.Close()
 	if resp.StatusCode >= 400 {
-		slog.Warn("hook.notify: bad status", "url", url, "status", resp.StatusCode)
+		hookLogger.Warn("hook.notify: bad status", "url", url, "status", resp.StatusCode)
 	}
 }

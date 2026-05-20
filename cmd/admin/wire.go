@@ -6,6 +6,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -20,6 +21,8 @@ import (
 	"aranea-agents/internal/data"
 	"aranea-agents/internal/data/sessionmemory"
 	"aranea-agents/internal/event"
+	"aranea-agents/internal/knowledge"
+	"aranea-agents/internal/tools/mcpobserve"
 	graphadapter "aranea-agents/internal/graph/adapter"
 	graphtrpc "aranea-agents/internal/graph/trpc"
 	"aranea-agents/internal/mcp/health"
@@ -87,6 +90,14 @@ func provideRunRegistry() *rt.RunRegistry {
 	return rt.NewRunRegistry()
 }
 
+func provideMonitorAlertNotifier(channels *biz.ChannelUsecase, eventBus event.Bus) biz.AlertNotifier {
+	return service.NewMonitorAlertNotifier(channels, eventBus)
+}
+
+func provideMonitorUsecase(repo biz.MonitorRepo, notifier biz.AlertNotifier) *biz.MonitorUsecase {
+	return biz.NewMonitorUsecase(repo, notifier)
+}
+
 func provideChatServiceDeps(
 	runs *rt.RunRegistry,
 	teams biz.TeamRepository,
@@ -107,7 +118,14 @@ func provideChatServiceDeps(
 	pluginMgr *plugintrpc.Manager,
 	skillDBRepo trpcskill.Repository,
 	a2aUC *biz.A2AUsecase,
+	artifacts *biz.ArtifactUsecase,
+	mcpUC *biz.MCPServerUsecase,
+	knowledgeRetriever *knowledge.Retriever,
 ) service.ChatServiceDeps {
+	mcpobserve.SetBus(eventBus)
+	mcpobserve.SetMetadataRecorder(func(ctx context.Context, serverKey string, at time.Time) {
+		_ = mcpUC.RecordReconnectMetadata(ctx, serverKey, at)
+	})
 	return service.ChatServiceDeps{
 		TurnDeps: rt.TurnDeps{
 			Catalog: rt.Catalog{
@@ -120,7 +138,7 @@ func provideChatServiceDeps(
 				Settings: sys,
 			},
 			Persist:   persist,
-			Pipeline:  rt.EventPipeline{Bus: eventBus},
+			Pipeline:  func() rt.EventPipeline { return rt.EventPipeline{Bus: eventBus, Buffer: event.NewBuffer()} }(),
 			LLMHTTP:   &http.Client{Timeout: 300 * time.Second},
 			Sessions:  sessions,
 			Compress:  compress,
@@ -133,7 +151,9 @@ func provideChatServiceDeps(
 		PluginRT:      pluginRT,
 		PluginManager: pluginMgr,
 		SkillDBRepo:   skillDBRepo,
-		A2AUC:         a2aUC,
+		A2AUC:              a2aUC,
+		Artifacts:          artifacts,
+		KnowledgeRetriever: knowledgeRetriever,
 	}
 }
 
@@ -205,8 +225,8 @@ func provideMCPHealthRunner(deps health.Deps) *health.Runner {
 	return health.NewRunner(deps)
 }
 
-func providePluginStatsRecorder(repo biz.PluginRepo) plugintrpc.StatsRecorder {
-	return plugintrpc.NewRepoStatsRecorder(repo)
+func providePluginStatsRecorder(repo biz.PluginRepo, runs biz.PluginRunRepo) plugintrpc.StatsRecorder {
+	return plugintrpc.NewRepoStatsRecorder(repo, runs)
 }
 
 // wireOut is non-cleanup inject outputs (cleanup must be a top-level injector return for Wire).
@@ -253,6 +273,8 @@ func wireApp(*conf.Server, *conf.Data, log.Logger) (wireOut, func(), error) {
 		provideAutoMemoryWorker,
 		provideMCPHealthRunnerDeps,
 		provideMCPHealthRunner,
+		provideMonitorAlertNotifier,
+		provideMonitorUsecase,
 		newApp,
 		provideWireOut,
 	))

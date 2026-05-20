@@ -60,6 +60,11 @@ message EvalCaseResult {
   float  tool_call_accuracy = 8;
   string error_message = 9;
   string created_at = 10;
+  optional bool human_pass = 11;
+  optional float human_score = 12;
+  string human_comment = 13;
+  string annotated_at = 14;
+  string annotated_by = 15;
 }
 
 // --- Requests / Responses ---
@@ -133,6 +138,14 @@ message GetRunResultsResponse {
   int32 total = 2;
 }
 
+message AnnotateCaseResultRequest {
+  string run_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string result_id = 2 [(google.api.field_behavior) = REQUIRED];
+  optional bool human_pass = 3;
+  optional float human_score = 4;
+  optional string human_comment = 5;
+}
+
 service EvaluationService {
   // Datasets
   rpc CreateDataset(CreateDatasetRequest) returns (EvalDataset) {
@@ -183,6 +196,12 @@ service EvaluationService {
   rpc GetRunResults(GetRunResultsRequest) returns (GetRunResultsResponse) {
     option (google.api.http) = {
       get: "/v1/evaluation/runs/{run_id}/results"
+    };
+  }
+  rpc AnnotateCaseResult(AnnotateCaseResultRequest) returns (EvalCaseResult) {
+    option (google.api.http) = {
+      patch: "/v1/evaluation/runs/{run_id}/results/{result_id}/annotation"
+      body: "*"
     };
   }
 }

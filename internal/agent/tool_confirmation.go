@@ -3,7 +3,8 @@ package agent
 import (
 	"context"
 	"fmt"
-	"log/slog"
+
+	"aranea-agents/internal/event"
 	"os"
 	"strings"
 	"time"
@@ -167,12 +168,12 @@ func recordToolInvocationWrite(ctx context.Context, write biz.ToolInvocationWrit
 		bg := context.Background()
 		if deps.ToolUC != nil {
 			if err := deps.ToolUC.RecordToolInvocation(bg, write); err != nil {
-				slog.Warn("tool invocation record failed", "tool", write.ToolKey, "error", err)
+				event.CtxFlowLogWarn(ctx, "system.tool.record_fail", "工具调用记录失败", event.P("tool", write.ToolKey), event.P("error", err))
 			}
 		}
 		if countSession {
 			if err := deps.Sessions.IncrementInvocationCounts(bg, sessionID, toolDelta, mcpDelta, skillDelta); err != nil {
-				slog.Warn("session invocation counters failed", "session_id", sessionID, "tool", write.ToolKey, "error", err)
+				event.SessionSysLogWarn(ctx, sessionID, "system.tool.record_fail", "会话工具调用计数更新失败", event.P("tool", write.ToolKey), event.P("error", err))
 			}
 		}
 	})

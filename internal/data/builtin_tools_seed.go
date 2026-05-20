@@ -3,7 +3,8 @@ package data
 import (
 	"context"
 	"fmt"
-	"log/slog"
+
+	"aranea-agents/internal/event"
 	"strings"
 	"time"
 
@@ -108,7 +109,7 @@ func ensureBuiltinPlatformTools(ctx context.Context, client *ent.Client) error {
 		}
 	}
 	if err := syncBuiltinToolsFromRegistry(ctx, client); err != nil {
-		slog.Warn("sync builtin tools from registry failed", "error", err)
+		event.SysLogWarn("system.data.builtin_tool_sync", "内置工具批量同步失败", event.P("error", err))
 	}
 	return nil
 }
@@ -150,7 +151,7 @@ func syncBuiltinToolsFromRegistry(ctx context.Context, client *ent.Client) error
 			now, seed.key,
 		)
 		if err != nil {
-			slog.Warn("sync builtin tool from registry failed", "tool_key", seed.key, "registry_name", regName, "error", err)
+			event.SysLogWarn("system.data.builtin_tool_sync", "内置工具同步失败", event.P("tool_key", seed.key), event.P("registry_name", regName), event.P("error", err))
 		}
 	}
 	return nil

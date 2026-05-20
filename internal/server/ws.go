@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -205,7 +204,7 @@ func (s *WSServer) handleWS(w http.ResponseWriter, r *http.Request) {
 
 	conn, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		slog.Warn("ws upgrade failed", "error", err)
+		event.SysLogWarn("system.ws.upgrade_failed", "WebSocket 升级失败", event.P("error", err))
 		return
 	}
 
@@ -401,7 +400,7 @@ func (s *WSServer) readPump(wc *wsConn, eventCh <-chan event.Envelope) {
 		_, message, err := wc.conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure) {
-				slog.Debug("ws read error", "error", err, "session_id", wc.sessionID)
+				event.SessionSysLogWarn(context.Background(), wc.sessionID, "system.ws.read_error", "WebSocket 读错误", event.P("error", err))
 			}
 			return
 		}
@@ -420,6 +419,7 @@ func (s *WSServer) eventPump(wc *wsConn, eventCh <-chan event.Envelope) {
 		if env.Type == event.EnvelopeTypeLog && !wc.logEnabled {
 			continue
 		}
+		// flow_log is always delivered on monitor channel (no enable_log gate).
 		if wc.filterKey != "" && !event.MatchFilterKey(wc.filterKey, env.FilterKey) {
 			continue
 		}
@@ -435,7 +435,7 @@ func (s *WSServer) eventPump(wc *wsConn, eventCh <-chan event.Envelope) {
 		select {
 		case wc.send <- data:
 		default:
-			slog.Warn("ws send buffer full, dropping event", "session_id", wc.sessionID, "type", env.Type)
+			event.SessionSysLogWarn(context.Background(), wc.sessionID, "system.ws.send_drop", "WebSocket 发送缓冲区满，丢弃事件", event.P("type", env.Type))
 		}
 	}
 }
@@ -443,7 +443,7 @@ func (s *WSServer) eventPump(wc *wsConn, eventCh <-chan event.Envelope) {
 func (s *WSServer) handleUpstream(wc *wsConn, raw []byte) {
 	var up wsUpstream
 	if err := json.Unmarshal(raw, &up); err != nil {
-		slog.Warn("ws upstream parse error", "error", err)
+		event.SysLogWarn("system.ws.parse_error", "WebSocket 上行消息解析失败", event.P("error", err))
 		return
 	}
 	if up.Direction != "client_to_server" {
@@ -549,7 +549,7 @@ func (s *WSServer) handleUserMessage(wc *wsConn, up wsUpstream) {
 		defer cancel()
 		_, err := s.sender.SendChatMessage(ctx, req)
 		if err != nil {
-			slog.Warn("ws user_message send failed", "error", err, "session_id", sessionID)
+			event.SessionSysLogWarn(context.Background(), sessionID, "system.ws.send_failed", "WebSocket 用户消息发送失败", event.P("error", err))
 			env := event.NewEnvelope(event.EnvelopeTypeError, "ws-handler", sessionID)
 			env.Error = &event.EnvelopeError{
 				Type:    "send_failed",
@@ -581,7 +581,7 @@ func (s *WSServer) handleEnqueueMessage(wc *wsConn, up wsUpstream) {
 		defer cancel()
 		resp, err := s.sender.EnqueueUserMessage(ctx, req)
 		if err != nil {
-			slog.Warn("ws enqueue_message send failed", "error", err, "session_id", sessionID)
+			event.SessionSysLogWarn(context.Background(), sessionID, "system.ws.send_failed", "WebSocket 入队消息发送失败", event.P("error", err))
 			env := event.NewEnvelope(event.EnvelopeTypeError, "ws-handler", sessionID)
 			env.Error = &event.EnvelopeError{
 				Type:    "enqueue_failed",

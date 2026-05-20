@@ -6,43 +6,66 @@ import (
 	"sync"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 
 	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
 )
 
 type runtimeEntry struct {
-	plugin trpcplugin.Plugin
-	scope  string
-	key    string
+	plugin      trpcplugin.Plugin
+	scope       string
+	key         string
+	enabled     bool
+	modelRouter *ModelRouterConfig
+	costGuard   *CostGuardConfig
 }
 
-// Runtime manages the set of active trpc-agent-go plugin.Plugin instances
-// derived from enabled biz.Plugin DB rows.  It is safe for concurrent use.
-//
-// Call Apply whenever the enabled state of any plugin changes; the next runner
-// creation will pick up the updated plugin slice automatically.
 type Runtime struct {
 	mu      sync.RWMutex
 	active  []runtimeEntry
 	stats   StatsRecorder
+	bus     event.Bus
 }
 
-// NewRuntime creates an empty Runtime (no active plugins).
 func NewRuntime(stats StatsRecorder) *Runtime {
 	return &Runtime{stats: stats}
 }
 
-// Apply replaces the active plugin set from the supplied DB snapshot.
-// Only enabled plugins with a known built-in key are instantiated.
+func (rt *Runtime) SetBus(bus event.Bus) {
+	rt.mu.Lock()
+	rt.bus = bus
+	rt.mu.Unlock()
+	InitHookLogger(bus)
+}
+
 func (rt *Runtime) Apply(_ context.Context, plugins []biz.Plugin) {
+	rt.mu.RLock()
+	bus := rt.bus
+	stats := rt.stats
+	rt.mu.RUnlock()
 	built := make([]runtimeEntry, 0, len(plugins))
 	for _, p := range plugins {
-		if tp := adapt(p, rt.stats); tp != nil {
-			built = append(built, runtimeEntry{
-				plugin: tp,
-				scope:  strings.TrimSpace(p.Scope),
-				key:    p.Key,
-			})
+		if !p.Enabled {
+			continue
+		}
+		if tp := adapt(p, stats, bus); tp != nil {
+			e := runtimeEntry{
+				plugin:  tp,
+				scope:   strings.TrimSpace(p.Scope),
+				key:     p.Key,
+				enabled: true,
+			}
+			if p.Key == "model_router" {
+				var cfg ModelRouterConfig
+				parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg)
+				e.modelRouter = &cfg
+			}
+			if p.Key == "cost_guard" {
+				var cfg CostGuardConfig
+				parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg)
+				e.costGuard = &cfg
+			}
+			built = append(built, e)
 		}
 	}
 	rt.mu.Lock()
@@ -75,6 +98,36 @@ func (rt *Runtime) PluginsForAgent(agentID string) []trpcplugin.Plugin {
 		}
 	}
 	return out
+}
+
+// ModelRouterConfigForAgent returns model_router config when the plugin is enabled for the agent.
+func (rt *Runtime) ModelRouterConfigForAgent(agentID string) (ModelRouterConfig, bool) {
+	rt.mu.RLock()
+	defer rt.mu.RUnlock()
+	for _, e := range rt.active {
+		if e.key != "model_router" || e.modelRouter == nil {
+			continue
+		}
+		if PluginMatchesScope(e.scope, agentID) {
+			return *e.modelRouter, true
+		}
+	}
+	return ModelRouterConfig{}, false
+}
+
+// CostGuardConfigForAgent returns cost_guard config when the plugin is enabled for the agent.
+func (rt *Runtime) CostGuardConfigForAgent(agentID string) (CostGuardConfig, bool) {
+	rt.mu.RLock()
+	defer rt.mu.RUnlock()
+	for _, e := range rt.active {
+		if e.key != "cost_guard" || e.costGuard == nil {
+			continue
+		}
+		if PluginMatchesScope(e.scope, agentID) {
+			return *e.costGuard, true
+		}
+	}
+	return CostGuardConfig{}, false
 }
 
 // Plugins returns all active plugins (no scope filter). Prefer PluginsForAgent at turn time.

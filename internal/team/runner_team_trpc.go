@@ -5,7 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log/slog"
+
+	"aranea-agents/internal/event"
 	"strings"
 	"time"
 
@@ -13,8 +14,8 @@ import (
 	"aranea-agents/internal/agent"
 	"aranea-agents/internal/agent/intent"
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
 	rt "aranea-agents/internal/runtime"
+	knowledgetool "aranea-agents/internal/tools/knowledge"
 	"aranea-agents/internal/tools/serviceawaitreply"
 	"aranea-agents/pkg/strutil"
 
@@ -76,8 +77,8 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 			}
 		}
 		if !found {
-			slog.Warn("team run: intent_anchor_agent_id not in enabled members; using first member",
-				"intent_anchor_agent_id", want, "team_id", teamRow.ID)
+			event.CtxFlowLogWarn(ctx, "team.intent_anchor_fallback", "团队意图锚点不在成员列表，使用首个成员",
+				event.P("intent_anchor_agent_id", want), event.P("team_id", teamRow.ID))
 		}
 	}
 	firstAg, err := r.catalogAgent(ctx, anchorMem.AgentID)
@@ -107,7 +108,8 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 		SkillDBRepo: r.skillDBRepo,
 		HasMemory:     r.td.Persist.Memory.Available(),
 		PluginManager: r.pluginManager,
-		MemoryAdmin:   r.td.Persist.Memory.Admin,
+		MemoryAdmin:        r.td.Persist.Memory.Admin,
+		KnowledgeRetriever: r.knowledgeRetriever,
 	}
 	if r.awaitHookProvider != nil {
 		builderDeps.AwaitHook = r.awaitHookProvider(ctx, sess.ID, run.ID)
@@ -173,7 +175,7 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 		if strings.TrimSpace(intRes.RawJSON) != "" {
 			merged, merr := intent.MergeIntoUserOptionsJSON(userOpts, intRes.RawJSON)
 			if merr != nil {
-				slog.Warn("intent merge into user options_json failed; continuing without intent_artifact", "error", merr)
+				event.CtxFlowLogWarn(ctx, "team.intent.merge_fail", "团队意图合并失败，将继续执行", event.P("error", merr))
 			} else {
 				userOpts = merged
 			}
@@ -226,6 +228,9 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 	}
 	if builderDeps.AwaitHook != nil {
 		runCtx = serviceawaitreply.WithReplyFunc(runCtx, builderDeps.AwaitHook)
+	}
+	if r.knowledgeRetriever != nil {
+		runCtx = knowledgetool.WithRetriever(runCtx, r.knowledgeRetriever)
 	}
 	publishTeamMonitor(ctx, r.td.Pipeline.Bus, "INFO", fmt.Sprintf(
 		"team_turn phase=trpc_run_start session_id=%s run_id=%s",

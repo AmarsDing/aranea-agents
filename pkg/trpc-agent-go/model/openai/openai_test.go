@@ -14,6 +14,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -2267,6 +2268,18 @@ func (testStubStrategy) TailorMessages(ctx context.Context, messages []model.Mes
 	return append([]model.Message{messages[0]}, messages[2:]...), nil
 }
 
+type overflowTailoringStrategy struct {
+	tailored []model.Message
+}
+
+func (s overflowTailoringStrategy) TailorMessages(
+	ctx context.Context,
+	messages []model.Message,
+	maxTokens int,
+) ([]model.Message, error) {
+	return s.tailored, errors.New("minimal protected context exceeds token budget")
+}
+
 type captureMaxTokensStrategy struct {
 	maxTokens int
 	called    bool
@@ -2313,6 +2326,27 @@ func TestWithTokenTailoring(t *testing.T) {
 	require.NotNil(t, captured, "expected request callback to capture request")
 	// After tailoring, OpenAI messages should be 1 user message (system omitted in this test).
 	require.Len(t, captured.Messages, 1, "expected 1 message after tailoring, got %d", len(captured.Messages))
+}
+
+func TestWithTokenTailoring_UsesProtectedContextOnOverflow(t *testing.T) {
+	tailored := []model.Message{
+		model.NewSystemMessage("sys"),
+		model.NewUserMessage("q"),
+	}
+	m := New("test-model",
+		WithEnableTokenTailoring(true),
+		WithMaxInputTokens(1),
+		WithTailoringStrategy(overflowTailoringStrategy{tailored: tailored}),
+	)
+	req := &model.Request{Messages: []model.Message{
+		model.NewSystemMessage("sys"),
+		model.NewUserMessage("old"),
+		model.NewUserMessage("q"),
+	}}
+
+	m.applyTokenTailoring(context.Background(), req)
+
+	require.Equal(t, tailored, req.Messages)
 }
 
 func TestWithTokenTailoring_ReservesRequestMaxTokens(t *testing.T) {
@@ -8513,6 +8547,112 @@ func TestAppendUserContentParts_SkipsInternalFiles(t *testing.T) {
 	})
 	require.Nil(t, fields)
 	require.Empty(t, dst)
+}
+
+func TestConvertContentPart_FileURLFallsBackToText(t *testing.T) {
+	m := &Model{}
+	part := model.ContentPart{
+		Type: model.ContentTypeFile,
+		File: &model.File{
+			Name:     "report.pdf",
+			URL:      "https://example.com/report.pdf",
+			MimeType: "application/pdf",
+		},
+	}
+	got := m.convertContentPart(part)
+	require.NotNil(t, got)
+	require.NotNil(t, got.OfText)
+	require.Nil(t, got.OfFile)
+	require.Equal(t, "File URL: report.pdf (application/pdf): https://example.com/report.pdf", got.OfText.Text)
+}
+
+func TestAppendUserContentParts_FileURLPreservedForTextOnlyVariant(t *testing.T) {
+	m := &Model{variantConfig: variantConfig{textOnlyMessageContent: true}}
+	dst := []openai.ChatCompletionContentPartUnionParam{}
+	fields := m.appendUserContentParts(&dst, []model.ContentPart{
+		{
+			Type: model.ContentTypeFile,
+			File: &model.File{
+				Name:     "report.pdf",
+				URL:      "https://example.com/report.pdf",
+				MimeType: "application/pdf",
+			},
+		},
+	})
+	require.Nil(t, fields)
+	require.Len(t, dst, 1)
+	require.NotNil(t, dst[0].OfText)
+	require.Equal(t, "File URL: report.pdf (application/pdf): https://example.com/report.pdf", dst[0].OfText.Text)
+}
+
+func TestAppendUserContentParts_FileURLWithDataSkippedForTextOnlyVariant(t *testing.T) {
+	m := &Model{variantConfig: variantConfig{textOnlyMessageContent: true}}
+	dst := []openai.ChatCompletionContentPartUnionParam{}
+	fields := m.appendUserContentParts(&dst, []model.ContentPart{
+		{
+			Type: model.ContentTypeFile,
+			File: &model.File{
+				Name:     "report.pdf",
+				URL:      "https://example.com/report.pdf",
+				Data:     []byte("pdf"),
+				MimeType: "application/pdf",
+			},
+		},
+	})
+	require.Nil(t, fields)
+	require.Empty(t, dst)
+}
+
+func TestAppendUserContentParts_FileURLPreservedForSkipFileTypeVariant(t *testing.T) {
+	m := &Model{variantConfig: variantConfig{skipFileTypeInContent: true}}
+	dst := []openai.ChatCompletionContentPartUnionParam{}
+	fields := m.appendUserContentParts(&dst, []model.ContentPart{
+		{
+			Type: model.ContentTypeFile,
+			File: &model.File{
+				Name:     "report.pdf",
+				URL:      "https://example.com/report.pdf",
+				MimeType: "application/pdf",
+			},
+		},
+	})
+	require.Nil(t, fields)
+	require.Len(t, dst, 1)
+	require.NotNil(t, dst[0].OfText)
+	require.Equal(t, "File URL: report.pdf (application/pdf): https://example.com/report.pdf", dst[0].OfText.Text)
+}
+
+func TestAppendUserContentParts_FileURLWithDataSkippedForSkipFileTypeVariant(t *testing.T) {
+	m := &Model{variantConfig: variantConfig{skipFileTypeInContent: true}}
+	dst := []openai.ChatCompletionContentPartUnionParam{}
+	fields := m.appendUserContentParts(&dst, []model.ContentPart{
+		{
+			Type: model.ContentTypeFile,
+			File: &model.File{
+				Name:     "report.pdf",
+				URL:      "https://example.com/report.pdf",
+				Data:     []byte("pdf"),
+				MimeType: "application/pdf",
+			},
+		},
+	})
+	require.Nil(t, fields)
+	require.Empty(t, dst)
+}
+
+func TestOmittedContentHint_FileURLFallbackNotCounted(t *testing.T) {
+	m := &Model{variantConfig: variantConfig{textOnlyMessageContent: true}}
+	got := m.omittedContentHint([]model.ContentPart{
+		{
+			Type: model.ContentTypeFile,
+			File: &model.File{
+				Name:     "report.pdf",
+				URL:      "https://example.com/report.pdf",
+				MimeType: "application/pdf",
+			},
+		},
+	})
+	require.Empty(t, got)
 }
 
 // TestChatRequestCallbackSynchronous verifies that

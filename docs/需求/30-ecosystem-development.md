@@ -1,6 +1,6 @@
 # Ecosystem 生态 — 开发计划
 
-> **版本**：2026-05-17 | **状态**：❌ 未实现
+> **版本**：2026-05-20 | **状态**：🟡 MVP 已落地（List/Publish/Install）
 > **需求**：[30 ecosystem.md](./30%20ecosystem.md) · **设计**：[30 ecosystem.design.md](./30%20ecosystem.design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：—
 
@@ -11,7 +11,9 @@
 Ecosystem 生态：Agent/Tool/Skill/Plugin 的市场与分享平台，支持发布、发现、安装和评价。
 
 **代码锚点**：
-- 无对应代码实现
+- `api/kratos/ecosystem/v1/ecosystem.proto`
+- `internal/biz/ecosystem.go` · `internal/data/ecosystem.go` · `internal/service/ecosystem.go`
+- `web/src/pages/EcosystemPage.vue`（路由 `/shop`）
 
 ---
 

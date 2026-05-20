@@ -1,50 +1,44 @@
-// Package plugintrpc bridges biz.Plugin DB rows to trpc-agent-go plugin.Plugin
-// instances. Only plugins with known built-in keys are instantiated; unknown
-// keys are silently skipped so that database experiments do not break the runner.
 package plugintrpc
 
 import (
 	"strings"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 
 	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
 )
 
-// builtin returns a concrete plugin.Plugin for known built-in plugin keys.
-// Returns nil if the key has no matching implementation.
-func builtin(p biz.Plugin, stats StatsRecorder) trpcplugin.Plugin {
+func builtin(p biz.Plugin, stats StatsRecorder, bus event.Bus) trpcplugin.Plugin {
 	key := strings.ToLower(strings.TrimSpace(p.Key))
 	switch key {
 	case "audit_log", "audit-log", "auditlog", "runtime_audit":
-		return NewAuditLogPlugin(p, stats)
+		return NewAuditLogPlugin(p, stats, bus)
 	case "skill_usage_tracker":
-		return NewSkillUsageTrackerPlugin(p, stats)
+		return NewSkillUsageTrackerPlugin(p, stats, bus)
 	case "retry_and_reflect":
-		return NewRetryAndReflectPlugin(p, stats)
+		return NewRetryAndReflectPlugin(p, stats, bus)
 	case "sensitive_data_mask":
-		return NewSensitiveDataMaskPlugin(p, stats)
+		return NewSensitiveDataMaskPlugin(p, stats, bus)
 	case "confirmation_guard":
-		return NewConfirmationGuardPlugin(p, stats)
+		return NewConfirmationGuardPlugin(p, stats, bus)
 	case "cost_guard":
-		return NewCostGuardPlugin(p, stats)
+		return NewCostGuardPlugin(p, stats, bus)
 	case "model_router":
-		return NewModelRouterPlugin(p, stats)
+		return NewModelRouterPlugin(p, stats, bus)
 	case "permission_guard":
-		return NewPermissionGuardPlugin(p, stats)
+		return NewPermissionGuardPlugin(p, stats, bus)
 	case "output_policy":
-		return NewOutputPolicyPlugin(p, stats)
+		return NewOutputPolicyPlugin(p, stats, bus)
 	default:
 		return nil
 	}
 }
 
-// adapt converts a biz.Plugin to a trpcplugin.Plugin.
-// Returns nil when the plugin is disabled or has no built-in implementation.
-func adapt(p biz.Plugin, stats StatsRecorder) trpcplugin.Plugin {
+func adapt(p biz.Plugin, stats StatsRecorder, bus event.Bus) trpcplugin.Plugin {
 	if !p.Enabled {
 		return nil
 	}
 	ValidatePluginCallbackPoints(p)
-	return builtin(p, stats)
+	return builtin(p, stats, bus)
 }

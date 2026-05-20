@@ -8,9 +8,10 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 
-	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
+	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
 )
 
 type costGuardConfig struct {
@@ -21,23 +22,36 @@ type costGuardConfig struct {
 	AdminBypass      bool     `json:"admin_bypass"`
 }
 
-type CostGuardPlugin struct {
-	name  string
-	cfg   costGuardConfig
-	stats StatsRecorder
+// CostGuardConfig is the product configuration for cost_guard plugin routing.
+type CostGuardConfig = costGuardConfig
 
-	mu      sync.Mutex
-	day     string
-	tokens  int
+// ResolveCostGuardFallbackModel returns fallback model when base model is blocked.
+func ResolveCostGuardFallbackModel(model string, cfg CostGuardConfig) string {
+	model = strings.TrimSpace(model)
+	if toolInList(model, cfg.BlockedModels) {
+		return strings.TrimSpace(cfg.FallbackModel)
+	}
+	return ""
+}
+
+type CostGuardPlugin struct {
+	name   string
+	cfg    costGuardConfig
+	stats  StatsRecorder
+	logger *PluginSafeLogger
+
+	mu     sync.Mutex
+	day    string
+	tokens int
 }
 
 var _ trpcplugin.Plugin = (*CostGuardPlugin)(nil)
 
-func NewCostGuardPlugin(p biz.Plugin, stats StatsRecorder) *CostGuardPlugin {
+func NewCostGuardPlugin(p biz.Plugin, stats StatsRecorder, bus event.Bus) *CostGuardPlugin {
 	var cfg costGuardConfig
 	cfg.AdminBypass = true
 	parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg)
-	return &CostGuardPlugin{name: p.Key, cfg: cfg, stats: stats}
+	return &CostGuardPlugin{name: p.Key, cfg: cfg, stats: stats, logger: NewPluginSafeLogger(p.Key, bus)}
 }
 
 func (c *CostGuardPlugin) Name() string { return c.name }
@@ -52,6 +66,7 @@ func (c *CostGuardPlugin) beforeModel(ctx context.Context, args *trpcmodel.Befor
 	}
 	model := modelNameFromContext(ctx)
 	if toolInList(model, c.cfg.BlockedModels) {
+		c.logger.Info("plugin.cost_guard.before_model", "status", "blocked", "model", model, "reason", "model_blocked")
 		c.record(ctx, "before_model", "blocked")
 		return &trpcmodel.BeforeModelResult{
 			Context:        ctx,
@@ -62,9 +77,11 @@ func (c *CostGuardPlugin) beforeModel(ctx context.Context, args *trpcmodel.Befor
 	if c.cfg.MaxPromptTokens > 0 && est > c.cfg.MaxPromptTokens {
 		if fb := strings.TrimSpace(c.cfg.FallbackModel); fb != "" {
 			patchRequestModelHint(args.Request, fb)
+			c.logger.Info("plugin.cost_guard.before_model", "status", "fallback", "model", model, "fallback_model", fb, "est_tokens", est, "reason", "max_prompt_tokens_exceeded")
 			c.record(ctx, "before_model", "ok")
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
+		c.logger.Info("plugin.cost_guard.before_model", "status", "blocked", "model", model, "est_tokens", est, "reason", "max_prompt_tokens_exceeded")
 		c.record(ctx, "before_model", "blocked")
 		return &trpcmodel.BeforeModelResult{
 			Context:        ctx,
@@ -74,15 +91,18 @@ func (c *CostGuardPlugin) beforeModel(ctx context.Context, args *trpcmodel.Befor
 	if c.cfg.DailyTokenBudget > 0 && !c.allowDaily(est) {
 		if fb := strings.TrimSpace(c.cfg.FallbackModel); fb != "" && !toolInList(fb, c.cfg.BlockedModels) {
 			patchRequestModelHint(args.Request, fb)
+			c.logger.Info("plugin.cost_guard.before_model", "status", "fallback", "model", model, "fallback_model", fb, "reason", "daily_budget_exceeded")
 			c.record(ctx, "before_model", "ok")
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
+		c.logger.Info("plugin.cost_guard.before_model", "status", "blocked", "model", model, "reason", "daily_budget_exceeded")
 		c.record(ctx, "before_model", "blocked")
 		return &trpcmodel.BeforeModelResult{
 			Context:        ctx,
 			CustomResponse: blockedModelResponse("cost_guard: daily token budget exceeded"),
 		}, nil
 	}
+	c.logger.Info("plugin.cost_guard.before_model", "status", "ok", "model", model, "est_tokens", est)
 	c.record(ctx, "before_model", "ok")
 	return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 }

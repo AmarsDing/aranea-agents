@@ -55,6 +55,17 @@ func ConsumeEventStream(
 	eventBus event.Bus,
 	projectMeta ProjectMeta,
 ) EventStreamResult {
+	return ConsumeEventStreamWithFirstByte(ctx, ctx, events, eventBus, projectMeta, nil)
+}
+
+func ConsumeEventStreamWithFirstByte(
+	firstByteCtx context.Context,
+	turnCtx context.Context,
+	events <-chan *trpcevent.Event,
+	eventBus event.Bus,
+	projectMeta ProjectMeta,
+	firstByteReceived *bool,
+) EventStreamResult {
 	var result EventStreamResult
 
 	var projector *EventProjector
@@ -65,22 +76,31 @@ func ConsumeEventStream(
 		}
 	}
 
+	received := false
 	for ev := range events {
-		if ctx.Err() != nil {
+		if turnCtx.Err() != nil {
+			return result
+		}
+		if !received {
+			received = true
+			if firstByteReceived != nil {
+				*firstByteReceived = true
+			}
+		}
+		if firstByteCtx.Err() != nil && !received {
 			return result
 		}
 		if ev == nil {
 			continue
 		}
 
-		// Track error events so callers can surface them to users.
 		if ev.Response != nil && ev.Response.Error != nil {
 			result.HasError = true
 			result.LastError = ev.Response.Error.Message
 		}
 
 		if projector != nil {
-			projector.ProjectAndPublish(ctx, ev, projectMeta)
+			projector.ProjectAndPublish(turnCtx, ev, projectMeta)
 		}
 
 		if ev.IsRunnerCompletion() {
@@ -91,7 +111,6 @@ func ConsumeEventStream(
 			continue
 		}
 
-		// Runner completion events may still carry an error set.
 		if ev.Response != nil && ev.Response.Error != nil {
 			result.HasError = true
 			result.LastError = ev.Response.Error.Message

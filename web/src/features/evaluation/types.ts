@@ -37,6 +37,19 @@ export type EvalCaseResult = {
   tool_call_accuracy: number;
   error_message: string;
   created_at: string;
+  human_pass?: boolean | null;
+  human_score?: number | null;
+  human_comment?: string;
+  annotated_at?: string;
+  annotated_by?: string;
+};
+
+export type AnnotateCaseResultInput = {
+  run_id: string;
+  result_id: string;
+  human_pass?: boolean | null;
+  human_score?: number | null;
+  human_comment?: string;
 };
 
 export type CreateDatasetInput = {

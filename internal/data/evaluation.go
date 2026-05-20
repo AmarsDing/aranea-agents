@@ -67,13 +67,28 @@ func EnsureEvalSchema(ctx context.Context, db *sql.DB) error {
 			llm_judge_score   REAL NOT NULL DEFAULT 0,
 			tool_call_accuracy REAL NOT NULL DEFAULT 0,
 			error_message     TEXT NOT NULL DEFAULT '',
-			created_at        TEXT NOT NULL
+			created_at        TEXT NOT NULL,
+			human_pass        INTEGER,
+			human_score       REAL,
+			human_comment     TEXT NOT NULL DEFAULT '',
+			annotated_at      TEXT NOT NULL DEFAULT '',
+			annotated_by      TEXT NOT NULL DEFAULT ''
 		)`,
 	}
 	for _, s := range stmts {
 		if _, err := db.ExecContext(ctx, s); err != nil {
 			return fmt.Errorf("eval schema: %w", err)
 		}
+	}
+	migrations := []string{
+		`ALTER TABLE eval_case_results ADD COLUMN human_pass INTEGER`,
+		`ALTER TABLE eval_case_results ADD COLUMN human_score REAL`,
+		`ALTER TABLE eval_case_results ADD COLUMN human_comment TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE eval_case_results ADD COLUMN annotated_at TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE eval_case_results ADD COLUMN annotated_by TEXT NOT NULL DEFAULT ''`,
+	}
+	for _, s := range migrations {
+		_, _ = db.ExecContext(ctx, s) // best-effort for existing DBs
 	}
 	return nil
 }
@@ -249,6 +264,35 @@ func (r *evalRepo) ListRuns(ctx context.Context, datasetID, agentID string, limi
 
 // --- Case Results ---
 
+const evalCaseResultSelect = `SELECT id,run_id,case_id,actual_output,exact_match,contains_match,llm_judge_score,tool_call_accuracy,error_message,created_at,
+	human_pass,human_score,human_comment,annotated_at,annotated_by
+	FROM eval_case_results`
+
+func scanEvalCaseResult(row interface {
+	Scan(dest ...any) error
+}) (biz.EvalCaseResult, error) {
+	var res biz.EvalCaseResult
+	var em, cm int
+	var humanPass sql.NullInt64
+	var humanScore sql.NullFloat64
+	if err := row.Scan(&res.ID, &res.RunID, &res.CaseID, &res.ActualOutput, &em, &cm,
+		&res.LLMJudgeScore, &res.ToolCallAccuracy, &res.ErrorMessage, &res.CreatedAt,
+		&humanPass, &humanScore, &res.HumanComment, &res.AnnotatedAt, &res.AnnotatedBy); err != nil {
+		return biz.EvalCaseResult{}, err
+	}
+	res.ExactMatch = em == 1
+	res.ContainsMatch = cm == 1
+	if humanPass.Valid {
+		v := humanPass.Int64 == 1
+		res.HumanPass = &v
+	}
+	if humanScore.Valid {
+		v := float32(humanScore.Float64)
+		res.HumanScore = &v
+	}
+	return res, nil
+}
+
 func (r *evalRepo) InsertCaseResult(ctx context.Context, res biz.EvalCaseResult) error {
 	res.CreatedAt = now()
 	em := 0
@@ -275,8 +319,7 @@ func (r *evalRepo) ListCaseResults(ctx context.Context, runID string, limit, off
 		return nil, 0, err
 	}
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT id,run_id,case_id,actual_output,exact_match,contains_match,llm_judge_score,tool_call_accuracy,error_message,created_at
-		 FROM eval_case_results WHERE run_id=? ORDER BY created_at LIMIT ? OFFSET ?`,
+		evalCaseResultSelect+` WHERE run_id=? ORDER BY created_at LIMIT ? OFFSET ?`,
 		runID, limit, offset)
 	if err != nil {
 		return nil, 0, err
@@ -284,15 +327,63 @@ func (r *evalRepo) ListCaseResults(ctx context.Context, runID string, limit, off
 	defer rows.Close()
 	var out []biz.EvalCaseResult
 	for rows.Next() {
-		var res biz.EvalCaseResult
-		var em, cm int
-		if err := rows.Scan(&res.ID, &res.RunID, &res.CaseID, &res.ActualOutput, &em, &cm,
-			&res.LLMJudgeScore, &res.ToolCallAccuracy, &res.ErrorMessage, &res.CreatedAt); err != nil {
+		res, err := scanEvalCaseResult(rows)
+		if err != nil {
 			return nil, 0, err
 		}
-		res.ExactMatch = em == 1
-		res.ContainsMatch = cm == 1
 		out = append(out, res)
 	}
 	return out, total, rows.Err()
+}
+
+func (r *evalRepo) GetCaseResult(ctx context.Context, runID, resultID string) (biz.EvalCaseResult, error) {
+	row := r.db.QueryRowContext(ctx, evalCaseResultSelect+` WHERE run_id=? AND id=?`, runID, resultID)
+	res, err := scanEvalCaseResult(row)
+	if err == sql.ErrNoRows {
+		return biz.EvalCaseResult{}, sql.ErrNoRows
+	}
+	return res, err
+}
+
+func (r *evalRepo) UpdateCaseResultAnnotation(ctx context.Context, runID, resultID string, patch biz.EvalCaseResultAnnotation) (biz.EvalCaseResult, error) {
+	cur, err := r.GetCaseResult(ctx, runID, resultID)
+	if err != nil {
+		return biz.EvalCaseResult{}, err
+	}
+	if patch.HumanPass != nil {
+		cur.HumanPass = patch.HumanPass
+	}
+	if patch.HumanScore != nil {
+		cur.HumanScore = patch.HumanScore
+	}
+	if patch.HumanComment != nil {
+		cur.HumanComment = *patch.HumanComment
+	}
+	cur.AnnotatedAt = now()
+	cur.AnnotatedBy = patch.AnnotatedBy
+
+	var humanPass any
+	if cur.HumanPass != nil {
+		if *cur.HumanPass {
+			humanPass = 1
+		} else {
+			humanPass = 0
+		}
+	} else {
+		humanPass = nil
+	}
+	var humanScore any
+	if cur.HumanScore != nil {
+		humanScore = *cur.HumanScore
+	} else {
+		humanScore = nil
+	}
+
+	_, err = r.db.ExecContext(ctx,
+		`UPDATE eval_case_results SET human_pass=?, human_score=?, human_comment=?, annotated_at=?, annotated_by=? WHERE run_id=? AND id=?`,
+		humanPass, humanScore, cur.HumanComment, cur.AnnotatedAt, cur.AnnotatedBy, runID, resultID)
+	if err != nil {
+		return biz.EvalCaseResult{}, err
+	}
+	return cur, nil
 }

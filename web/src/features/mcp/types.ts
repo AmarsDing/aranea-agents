@@ -38,6 +38,8 @@ export type McpServerMetadata = {
   health_status?: McpHealthStatus;
   last_health_at?: string;
   last_error_message?: string;
+  last_reconnect_at?: string;
+  reconnect_count?: number;
   [key: string]: unknown;
 };
 

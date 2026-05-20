@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -214,7 +213,7 @@ func (r *Runner) executeTask(ctx context.Context, task biz.CronTask, cfg cronTas
 			task.Status = "dead"
 			task.Enabled = false
 			cronJobDeadTotal.WithLabelValues(task.ID).Inc()
-			slog.Warn("cron job entered dead state", "job_id", task.ID, "task_key", task.TaskKey, "failure_count", meta.FailureCount)
+			event.SysLogWarn("system.cron.job_dead", "定时任务进入死信", event.P("job_id", task.ID), event.P("task_key", task.TaskKey), event.P("failure_count", meta.FailureCount))
 			r.publishDeadLetterEvent(ctx, task)
 		}
 	} else {
@@ -257,7 +256,7 @@ func (r *Runner) dispatchWithRetry(ctx context.Context, task biz.CronTask, cfg c
 		}
 		if attempt < len(backoff) {
 			delay := backoff[attempt]
-			slog.Warn("cron job attempt failed, retrying", "job_id", task.ID, "attempt", attempt+1, "delay", delay, "error", err)
+			event.SysLogWarn("system.cron.retry", "定时任务重试", event.P("job_id", task.ID), event.P("attempt", attempt+1), event.P("delay", delay), event.P("error", err))
 			select {
 			case <-ctx.Done():
 				return cronDispatchResult{}, ctx.Err()
@@ -273,7 +272,7 @@ func (r *Runner) dispatchSafe(ctx context.Context, task biz.CronTask, cfg cronTa
 	defer func() {
 		if rec := recover(); rec != nil {
 			retErr = fmt.Errorf("cron panic: %v", rec)
-			slog.Error("cron task panicked", "job_id", task.ID, "panic", rec)
+			event.SysLogError("system.cron.panic", "定时任务 panic", event.P("job_id", task.ID), event.P("panic", rec))
 		}
 	}()
 	return r.dispatchCronTask(ctx, task, cfg)
@@ -503,7 +502,7 @@ func (r *Runner) skipCronWhenSessionBusy(sessionID string) (cronDispatchResult, 
 	if !ok || !ctrl.HasActiveRun(sessionID) {
 		return cronDispatchResult{}, false
 	}
-	slog.Info("cron dispatch skipped: session has active run", "session_id", sessionID)
+	event.SessionSysLogWarn(context.Background(), sessionID, "system.cron.dispatch_skipped", "定时任务跳过：会话有活跃 Run")
 	return cronDispatchResult{SessionID: sessionID}, true
 }
 

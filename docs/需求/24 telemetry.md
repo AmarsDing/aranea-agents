@@ -7,7 +7,7 @@
 > - ✅ EventBus / Cron 已加业务指标；HTTP / gRPC Kratos 默认指标已开。
 > - ✅ OTLP Trace 导出已通：`internal/server/telemetry.go` 支持 HTTP + gRPC 协议，环境变量 `OTEL_EXPORTER_OTLP_ENDPOINT` 驱动。
 > - ✅ OTLP Metrics 导出已通：委托 trpc-agent-go `telemetry/metric` 包，框架级指标（Chat/Tool/InvokeAgent）自动注册。
-> - ✅ Log-Trace 关联已实现：`internal/event/slog_bridge.go` 中 `traceHandler` 自动注入 `trace_id` / `span_id`。
+> - ✅ Log-Trace 关联：`TraceContext` 对齐 OTel TraceID；FlowLog `correlation.trace_id`（SlogBridge 已移除，见 [changelog](../changelog/2026-05-20-FlowLog-V2-SlogRemoval.md)）。
 > - ❌ Agent/Team/Graph 运行无自定义 Span（EP-OBS-06 待实现）。
 > - ❌ 前端 Trace 可视化面板未实现（EP-OBS-06 待实现）。
 > - ❌ Trace 采样策略未配置。

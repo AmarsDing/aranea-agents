@@ -45,11 +45,29 @@ internal/data           ← Repo 实现（Ent ORM + SQLite，单 sql.Open）
 1. 阅读本 README → 了解项目全貌 + 文档索引
 2. 阅读对应规范文档（按 §5 索引精确读取）
 3. 阅读对应需求文档与 *.design.md → 理解功能规格
-4. 按规范编码 → 遵循分层、依赖方向、红线、命名约定
-5. 后端验证：make wire && make api && make build && make test && make runtime-boundary
-6. 前端验证：cd web && pnpm i && pnpm lint && pnpm test && pnpm build
-7. 更新文档：changelog/ + execution-plan.md（如涉及进度变更）
+4. 探索 / 查询代码 → 优先 CodeGraph（见 §4.1）；禁止未查文档就先 grep 扫符号
+5. 按规范编码 → 遵循分层、依赖方向、红线、命名约定
+6. 后端验证：make wire && make api && make build && make test && make runtime-boundary
+7. 前端验证：cd web && pnpm i && pnpm lint && pnpm test && pnpm build
+8. 更新文档：changelog/ + execution-plan.md（如涉及进度变更）
 ```
+
+### 4.1 代码探索约束（CodeGraph）
+
+本项目已初始化 CodeGraph（`.codegraph/` 存在）。AI **在动手改代码前**，对**结构性**问题必须优先走 CodeGraph MCP，而不是先用 grep / glob / 全库 Read 扫文件。
+
+| 问题类型 | 优先工具 | 仍可用 grep / Read 的场景 |
+|----------|----------|---------------------------|
+| 符号在哪定义、签名是什么 | `codegraph_search` / `codegraph_node` | — |
+| 谁调用了 X、X 调用了谁 | `codegraph_callers` / `codegraph_callees` | — |
+| 改 X 会影响哪些代码 | `codegraph_impact` | — |
+| 理解某模块 / 任务上下文 | `codegraph_context` / `codegraph_explore` | — |
+| 查字符串字面量、注释、日志文案 | — | grep |
+| 已打开文件内的局部阅读 | — | Read |
+
+**禁止**：按符号名检索时 **grep 先于 CodeGraph**；CodeGraph 已返回的结构信息 **不得再用 grep 重复验证**。
+
+索引未初始化时：先询问是否执行 `codegraph init -i`。细则见 [guides/AI-DEVELOPMENT-SPECIFICATION.md §速查卡](./guides/AI-DEVELOPMENT-SPECIFICATION.md#代码探索约束codegraph) 与 `.cursor/rules/codegraph.mdc`。
 
 ---
 
@@ -60,6 +78,7 @@ internal/data           ← Repo 实现（Ent ORM + SQLite，单 sql.Open）
 | 场景 | 读取文档 | 说明 |
 |------|----------|------|
 | **任何后端编码** | [guides/AI-DEVELOPMENT-SPECIFICATION.md](./guides/AI-DEVELOPMENT-SPECIFICATION.md) | ★ **唯一后端编码行为准则**：红线、决策树、分层规则、运行时规范、API/Proto、Go 风格、自检清单 |
+| **探索 / 查询代码结构** | 本文 [§4.1](./README.md#41-代码探索约束codegraph) + `.cursor/rules/codegraph.mdc` | CodeGraph 优先于 grep；符号、调用链、影响面、模块上下文 |
 | **判断代码该放 Kratos 哪层** | [guides/kratos-framework-guide.md](./guides/kratos-framework-guide.md) | Kratos 各层职责边界、依赖方向、Proto/Wire/中间件/错误处理/配置 |
 | **使用 trpc-agent-go 框架** | [guides/trpc-agent-go-framework.md](./guides/trpc-agent-go-framework.md) | 框架目录结构、核心接口、项目内桥接函数、常见实现场景、官方文档索引 |
 | **任何前端编码** | [guides/frontend-guide.md](./guides/frontend-guide.md) | ★ **唯一前端编码行为准则**：数据流、分层、红线、UX 主题、迁移剧本 |
@@ -75,6 +94,7 @@ internal/data           ← Repo 实现（Ent ORM + SQLite，单 sql.Open）
 | **某功能的产品需求** | `需求/<编号> <模块名>.md` | 用户故事、功能规格、验收标准 |
 | **某功能的技术设计** | `需求/<编号> <模块名>.design.md` | 架构方案、接口设计、数据模型 |
 | **某功能的开发计划** | `需求/<编号>-<模块名>-development.md` | 迭代计划、任务拆分 |
+| **流程日志 / 链路排障** | [需求](./需求/52-flow-logger.md) · [设计](./需求/52-flow-logger.design.md) · [开发计划](./需求/52-flow-logger-development.md) · [步骤注册表](./guides/flow-log-step-registry.md) · [Slog 移除 changelog](./changelog/2026-05-20-FlowLog-V2-SlogRemoval.md) | TraceEmitter、trace_id、severity；**禁止 slog / SlogBridge** |
 
 ### 5.3 前端参考
 

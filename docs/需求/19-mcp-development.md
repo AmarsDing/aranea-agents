@@ -41,7 +41,7 @@ MCP（Model Context Protocol）集成：支持 Agent 通过 MCP 协议连接外�
 | 健康检查定时任务 | ✅ | `internal/mcphealth/runner.go`：后台定时探活，写入 metadata_json 的 health_status / last_health_at |
 | MCP 工具调用超时 | ✅ | 未配置时默认 60s；`buildMCPToolSet` / MCPBroker 传入 `ConnectionConfig.Timeout` |
 | MCP Server 认证 | ❌ | 仅 headers 传静态 key，无 OAuth2 / API Key 动态认证 |
-| MCP 会话重连 | ❌ | SSE/StreamableHTTP 断线后无自动重连 |
+| MCP 会话重连 | ✅ | `ReconnectObserver` → Events/Prometheus；`RecordReconnectMetadata` 写 `metadata_json` |
 | MCP 运行时发现 | 🟡 | MCPBroker 已提供 `mcp_list_servers` 等工具，但未在 Agent 默认启用 |
 | MCP 调用统计闭环 | ❌ | 未与 session 的 `MCPCallCount` 统计打通 |
 

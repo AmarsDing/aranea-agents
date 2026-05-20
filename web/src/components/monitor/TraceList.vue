@@ -2,13 +2,13 @@
   <q-card flat bordered class="monitor-card">
     <q-card-section class="row items-center q-col-gutter-md">
       <div class="col-12 col-md">
-        <div class="text-h6 text-weight-bold">追踪</div>
-        <div class="text-caption text-grey-7">来自真实模型调用事件的 Trace、Token、延迟与错误上下文</div>
+        <div class="text-h6 text-weight-bold">Traces</div>
+        <div class="text-caption text-grey-7">Token usage traces with flow timeline and span waterfall</div>
       </div>
-      <q-input v-model="keyword" dense outlined clearable debounce="200" class="col-12 col-md-4" label="搜索 Trace">
+      <q-input v-model="keyword" dense outlined clearable debounce="200" class="col-12 col-md-4" label="Search">
         <template #prepend><q-icon name="search" /></template>
       </q-input>
-      <q-btn flat rounded icon="refresh" label="刷新" :loading="loading" @click="$emit('reload')" />
+      <q-btn flat rounded icon="refresh" label="Reload" :loading="loading" @click="$emit('reload')" />
     </q-card-section>
     <q-separator />
     <q-table flat :rows="filteredRows" :columns="columns" row-key="id" :loading="loading" :pagination="{ rowsPerPage: 12 }">
@@ -45,22 +45,29 @@
       <template #body-cell-actions="props">
         <q-td :props="props">
           <q-btn flat dense round icon="account_tree" color="primary" @click="openTrace(props.row)">
-            <q-tooltip>查看详情</q-tooltip>
+            <q-tooltip>Details</q-tooltip>
           </q-btn>
         </q-td>
       </template>
     </q-table>
   </q-card>
 
-  <q-dialog v-model="detailOpen" maximized>
+  <q-dialog v-model="detailOpen" maximized @hide="stopFlowStream">
     <q-card class="monitor-trace-dialog">
       <q-card-section class="row items-start justify-between">
         <div>
-          <div class="text-h6">追踪详情</div>
-          <div class="text-caption text-grey-7">{{ detail?.agent_key || detail?.agent_id }} / {{ detail?.provider_code }} / {{ detail?.model_api_id }}</div>
+          <div class="text-h6">Trace detail</div>
+          <div class="text-caption text-grey-7">
+            {{ detail?.agent_key || detail?.agent_id }} / {{ detail?.provider_code }} / {{ detail?.model_api_id }}
+          </div>
+          <div v-if="activeCorrelation.traceId" class="text-caption text-grey-6 q-mt-xs">
+            trace_id: {{ activeCorrelation.traceId }}
+            <span v-if="activeCorrelation.runId"> / run_id: {{ activeCorrelation.runId }}</span>
+          </div>
         </div>
-        <div class="row q-gutter-sm">
-          <q-btn flat icon="content_copy" label="复制追踪" @click="copyDetail" />
+        <div class="row q-gutter-sm items-center">
+          <flow-log-export-button :trace-id="activeCorrelation.traceId" :lines="flowLines" />
+          <q-btn flat icon="content_copy" label="Copy JSON" @click="copyDetail" />
           <q-btn flat round dense icon="close" v-close-popup />
         </div>
       </q-card-section>
@@ -69,7 +76,7 @@
         <div class="col-12 col-md-4">
           <q-card flat bordered class="monitor-card">
             <q-card-section>
-              <div class="text-subtitle1 text-weight-bold">摘要</div>
+              <div class="text-subtitle1 text-weight-bold">Summary</div>
               <q-list dense>
                 <q-item>
                   <q-item-section>Status</q-item-section>
@@ -104,15 +111,34 @@
         <div class="col-12 col-md-8">
           <q-card flat bordered class="monitor-card">
             <q-card-section>
-              <div class="text-subtitle1 text-weight-bold">Span 树</div>
-              <q-tree :nodes="spanNodes" node-key="id" default-expand-all />
+              <q-tabs v-model="detailTab" dense align="left" active-color="primary">
+                <q-tab name="flow" label="Flow" icon="timeline" />
+                <q-tab name="waterfall" label="Waterfall" icon="waterfall_chart" />
+                <q-tab name="tree" label="Span tree" icon="account_tree" />
+              </q-tabs>
+              <q-separator class="q-mt-sm" />
+              <q-tab-panels v-model="detailTab" animated class="q-mt-md">
+                <q-tab-panel name="flow" class="q-pa-none">
+                  <div class="row items-center q-mb-sm q-gutter-sm">
+                    <q-badge outline color="teal">{{ flowLines.length }} flow logs</q-badge>
+                    <span class="text-caption text-grey-7">Live capture while detail is open (filtered by trace_id)</span>
+                  </div>
+                  <flow-trace-panel :lines="flowLines" />
+                </q-tab-panel>
+                <q-tab-panel name="waterfall" class="q-pa-none">
+                  <trace-waterfall :spans="spanList" />
+                </q-tab-panel>
+                <q-tab-panel name="tree" class="q-pa-none">
+                  <q-tree :nodes="spanNodes" node-key="id" default-expand-all />
+                </q-tab-panel>
+              </q-tab-panels>
             </q-card-section>
           </q-card>
         </div>
         <div class="col-12">
           <q-card flat bordered class="monitor-card">
             <q-card-section>
-              <div class="text-subtitle1 text-weight-bold">原始 JSON</div>
+              <div class="text-subtitle1 text-weight-bold">Raw JSON</div>
               <pre class="monitor-json">{{ detailJSON }}</pre>
             </q-card-section>
           </q-card>
@@ -123,10 +149,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { copyToClipboard, Notify, type QTableColumn } from "quasar";
-import type { MonitorTraceEvent } from "../../features/monitor/types";
+import type { MonitorLogLine, MonitorTraceEvent } from "../../features/monitor/types";
 import { compactJSON, formatCount, formatDate, formatLatency, formatMoney, parseJSON } from "../../features/monitor/utils";
+import { flowLogMatchesTrace, traceCorrelationFromUsageRow } from "../../features/monitor/flow";
+import { subscribeMonitorLogsWs } from "../../features/monitor/api";
+import { GLOBAL_WS_SESSION_ID } from "../../config/runtime";
+import TraceWaterfall from "./TraceWaterfall.vue";
+import FlowTracePanel from "./FlowTracePanel.vue";
+import FlowLogExportButton from "./FlowLogExportButton.vue";
 
 type TreeNode = {
   id: string;
@@ -147,15 +179,19 @@ defineEmits<{
 const keyword = ref("");
 const detail = ref<MonitorTraceEvent | null>(null);
 const detailOpen = ref(false);
+const detailTab = ref<"flow" | "waterfall" | "tree">("flow");
+const flowLines = ref<MonitorLogLine[]>([]);
+
+let flowWsSub: ReturnType<typeof subscribeMonitorLogsWs> | null = null;
 
 const columns: QTableColumn<MonitorTraceEvent>[] = [
-  { name: "name", label: "名称", field: "agent_key", align: "left" },
-  { name: "tokens", label: "令牌 in / out", field: "total_tokens", align: "left" },
-  { name: "latency", label: "延迟", field: "latency_ms", align: "left" },
-  { name: "cost", label: "费用", field: "total_cost_micro_usd", align: "left" },
-  { name: "error", label: "错误", field: "error_message", align: "left" },
-  { name: "time", label: "时间", field: "occurred_at", align: "left" },
-  { name: "actions", label: "操作", field: "id", align: "right" }
+  { name: "name", label: "Agent", field: "agent_key", align: "left" },
+  { name: "tokens", label: "Token in / out", field: "total_tokens", align: "left" },
+  { name: "latency", label: "Latency", field: "latency_ms", align: "left" },
+  { name: "cost", label: "Cost", field: "total_cost_micro_usd", align: "left" },
+  { name: "error", label: "Error", field: "error_message", align: "left" },
+  { name: "time", label: "Time", field: "occurred_at", align: "left" },
+  { name: "actions", label: "Actions", field: "id", align: "right" }
 ];
 
 const filteredRows = computed(() => {
@@ -167,17 +203,26 @@ const filteredRows = computed(() => {
   );
 });
 
+const activeCorrelation = computed(() => {
+  if (!detail.value) return { traceId: "", runId: "", sessionId: "" };
+  return traceCorrelationFromUsageRow(detail.value);
+});
+
 const detailJSON = computed(() => compactJSON(detail.value ?? {}));
-const spanNodes = computed<TreeNode[]>(() => {
+const spanList = computed(() => {
   if (!detail.value) return [];
   const metadata = parseJSON(detail.value.metadata_json || "");
-  const metadataSpans = Array.isArray(metadata.spans) ? metadata.spans : [];
+  return Array.isArray(metadata.spans) ? metadata.spans : [];
+});
+const spanNodes = computed<TreeNode[]>(() => {
+  if (!detail.value) return [];
+  const metadataSpans = spanList.value;
   if (metadataSpans.length) return metadataSpans.map((span, index) => spanToNode(span, index));
   return [
     {
       id: detail.value.id,
       label: `${detail.value.provider_code || "provider"} / ${detail.value.model_api_id || "model"}`,
-      caption: `${detail.value.status} · ${formatLatency(detail.value.latency_ms)} · ${formatCount(detail.value.total_tokens)} tokens`,
+      caption: `${detail.value.status} | ${formatLatency(detail.value.latency_ms)} | ${formatCount(detail.value.total_tokens)} tokens`,
       children: detail.value.error_message
         ? [{ id: `${detail.value.id}-error`, label: "error", caption: detail.value.error_message }]
         : undefined
@@ -187,8 +232,33 @@ const spanNodes = computed<TreeNode[]>(() => {
 
 function openTrace(row: MonitorTraceEvent) {
   detail.value = row;
+  detailTab.value = "flow";
+  flowLines.value = [];
   detailOpen.value = true;
+  startFlowStream();
 }
+
+function startFlowStream() {
+  stopFlowStream();
+  const corr = activeCorrelation.value;
+  if (!corr.traceId && !corr.runId) return;
+  const maxLines = 500;
+  flowWsSub = subscribeMonitorLogsWs(GLOBAL_WS_SESSION_ID, (line) => {
+    if (!flowLogMatchesTrace(line, corr)) return;
+    flowLines.value = [...flowLines.value, line].slice(-maxLines);
+  });
+}
+
+function stopFlowStream() {
+  flowWsSub?.close();
+  flowWsSub = null;
+}
+
+watch(detailOpen, (open) => {
+  if (!open) stopFlowStream();
+});
+
+onBeforeUnmount(() => stopFlowStream());
 
 function spanToNode(span: unknown, index: number): TreeNode {
   const row = (span && typeof span === "object" ? span : {}) as Record<string, unknown>;
@@ -196,18 +266,18 @@ function spanToNode(span: unknown, index: number): TreeNode {
   return {
     id: String(row.id || row.name || `span-${index}`),
     label: String(row.name || row.type || row.kind || `span #${index + 1}`),
-    caption: [row.status, row.duration_ms ? `${row.duration_ms}ms` : "", row.model].filter(Boolean).join(" · "),
+    caption: [row.status, row.duration_ms ? `${row.duration_ms}ms` : "", row.model, row.tool_name].filter(Boolean).join(" | "),
     children
   };
 }
 
 async function copyDetail() {
   await copyToClipboard(detailJSON.value);
-  Notify.create({ message: "已复制", color: "positive", position: "top" });
+  Notify.create({ message: "Copied", color: "positive", position: "top" });
 }
 
 function statusColor(status?: string) {
-  if (status === "success") return "positive";
+  if (status === "ok" || status === "success") return "positive";
   if (status === "cancelled") return "grey";
   if (status === "timeout") return "orange";
   return "negative";

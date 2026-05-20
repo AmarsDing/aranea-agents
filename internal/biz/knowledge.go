@@ -52,11 +52,13 @@ type KnowledgeChunk struct {
 
 // KnowledgeSearchQuery holds search parameters.
 type KnowledgeSearchQuery struct {
-	CollectionID string
-	Query        string
-	TopK         int
-	MinScore     float32
-	FilterJSON   string
+	CollectionID     string
+	Query            string
+	TopK             int
+	MinScore         float32
+	FilterJSON       string
+	UseRerank        *bool // nil = use global reranker when configured
+	RerankCandidates int   // vector search limit before rerank; 0 = default oversample
 }
 
 // KnowledgeRepo is the persistence interface for knowledge base operations.

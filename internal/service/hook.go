@@ -4,7 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"log/slog"
+
+	"aranea-agents/internal/event"
 
 	v1 "aranea-agents/api/kratos/hook/v1"
 	"aranea-agents/internal/biz"
@@ -34,7 +35,7 @@ func (s *HookService) reloadHooks(ctx context.Context) {
 	}
 	safego.Go(ctx, "hook.reload", func() {
 		if err := s.mgr.ReloadHooks(context.Background()); err != nil {
-			slog.Warn("hook.reload: failed", "error", err)
+			event.SysLogWarn("system.hook.reload_fail", "Hook 重载失败", event.P("error", err))
 		}
 	})
 }

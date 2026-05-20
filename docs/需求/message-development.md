@@ -17,7 +17,7 @@ Message 消息：统一的事件模型和传输机制，以 EventBus + Envelope 
 | 事件定义 | `internal/event/envelope.go` | Envelope 结构 + 25 种 EnvelopeType 常量 |
 | 事件路由 | `internal/event/bus.go` | 统一事件总线（Subscribe/Publish/DropPolicy） |
 | 事件缓冲 | `internal/event/buffer.go` | 环形缓冲区 + TTL 驱逐 + WS 重放 |
-| 日志桥接 | `internal/event/slog_bridge.go` | Go slog → EnvelopeTypeLog 自动桥接 |
+| 流程日志 v2 | `internal/event/trace_emitter.go`、`system_flow.go` | `EnvelopeTypeFlowLog` → Monitor WS |
 | 事件投影 | `internal/agent/event_projector.go` | trpc event.Event → Envelope 投影 + 发布 |
 | 事件消费 | `internal/biz/event_bus_consumer.go` | 内部消费者（Buffer 追加 / StateDelta 持久化 / Usage 记录） |
 | WS 服务 | `internal/server/ws.go` | WebSocket 服务（挂入 Kratos HTTP Server） |
@@ -41,7 +41,7 @@ Message 消息：统一的事件模型和传输机制，以 EventBus + Envelope 
 | 双向通信 | ✅ | cancel / user_message / enqueue_message（→ `EnqueueUserMessage` RPC）/ subscribe / enable_log 上行 |
 | 背压控制 | ✅ | 三级 DropPolicy（DropOldest/DropNewest/BlockUpTo）+ Prometheus 丢弃计数 |
 | 事件缓冲与重放 | ✅ | `event.Buffer`（环形缓冲区 + TTL 30min + 每会话 200 上限）+ WS 同步屏障 |
-| Monitor 日志统一 | ✅ | `SlogBridge` + `EnvelopeTypeLog` + WS channel:monitor |
+| Monitor 流程日志 | ✅ | `flow_log` + `TraceEmitter` / `SysLog*` + WS channel:monitor |
 | 全局监控模式 | ✅ | `session_id=*` 连接可订阅所有会话的 Monitor/Team/Graph 事件（限 3 连接） |
 | 服务端优雅关闭 | ✅ | `server_shutdown` 系统消息广播 |
 | 前端分发器 | ✅ | `EnvelopeDispatcher` 类（onType/onChannel/on + matchFilterKey） |
@@ -123,7 +123,7 @@ Message 消息：统一的事件模型和传输机制，以 EventBus + Envelope 
 | 双向通信（cancel/user_message/enqueue） | ✅ |
 | 背压控制（三级 DropPolicy） | ✅ |
 | EventBuffer + WS 重放同步屏障 | ✅ |
-| SlogBridge + Monitor 日志统一 | ✅ |
+| Flow Log v2 + Monitor 流程日志 | ✅ |
 | 全局监控模式 | ✅ |
 | 前端 EnvelopeDispatcher + 场景 Hooks | ✅ |
 | 服务端优雅关闭 | ✅ |
@@ -179,7 +179,7 @@ Message 消息：统一的事件模型和传输机制，以 EventBus + Envelope 
 - [x] 双向通信：cancel / user_message / enqueue_message 上行
 - [x] 背压控制：三级 DropPolicy + Prometheus 丢弃计数
 - [x] 事件缓冲与重放：断连后自动重连 + 事件重放
-- [x] Monitor 日志统一：SlogBridge 自动桥接
+- [x] Monitor 流程日志：Flow Log v2（`flow_log`）；SlogBridge 已移除
 - [x] 全局监控：session_id=* 跨会话订阅
 - [x] 前端分发器 + 场景 Hooks
 

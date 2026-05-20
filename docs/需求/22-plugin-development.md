@@ -59,10 +59,10 @@ Plugin 插件系统：运行时回调扩展机制，在 Agent 执行过程中插
 
 ## 3. 差距与优化
 
-1. **P2**：`model_router` / `cost_guard` 模型改写经 `Request.ExtraFields["aranea_model_override"]` 提示，需 Runner 侧消费（或后续 Hook modify 对齐）。
+1. ~~**P2**：`model_router` 真路由~~ ✅ 迭代 4：`PluginModelSelector` + `ResolveModelAPI`（`cost_guard` 仍待 Selector 对齐）。
 2. **P2**：`retry_and_reflect` 本期仅 slog 反思提示，不自动重试工具调用。
 3. **P2**：Agent 绑定（`scope`）运行时未消费；无 `UpdatePluginScope` API。
-4. **P2**：Plugin 运行记录（PluginRun）未建表。
+4. ~~**P2**：Plugin 运行记录（PluginRun）~~ ✅ `plugin_runs` + `GET /v1/plugins/runs`（2026-05-20）。
 5. **P2**：Plugin 无沙箱隔离。
 6. **P3**：Plugin 无版本管理。
 
@@ -492,7 +492,7 @@ Plugin 插件系统：运行时回调扩展机制，在 Agent 执行过程中插
 ### Phase 3 验收
 
 - [ ] Plugin 按 Agent 维度生效（scope 过滤）
-- [ ] Plugin 运行记录可查询
+- [x] Plugin 运行记录可查询（`ListPluginRuns`）
 
 ### Phase 4 验收
 

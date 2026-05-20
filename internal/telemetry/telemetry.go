@@ -2,8 +2,9 @@ package telemetry
 
 import (
 	"context"
-	"log/slog"
 	"os"
+
+	"aranea-agents/internal/event"
 	"strings"
 
 	"go.opentelemetry.io/otel"
@@ -25,7 +26,7 @@ const (
 func Init(serviceName, serviceVersion string) (shutdown func(context.Context) error) {
 	endpoint := strings.TrimSpace(os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"))
 	if endpoint == "" {
-		slog.Debug("OTel: OTEL_EXPORTER_OTLP_ENDPOINT not set; using noop providers")
+		event.SysLogDebug("system.telemetry.noop", "OTEL_EXPORTER_OTLP_ENDPOINT 未配置，使用 noop 提供者")
 		return func(context.Context) error { return nil }
 	}
 
@@ -41,7 +42,7 @@ func Init(serviceName, serviceVersion string) (shutdown func(context.Context) er
 		),
 	)
 	if err != nil {
-		slog.Error("OTel: failed to create resource", "error", err)
+		event.SysLogError("system.telemetry.error", "OTel 资源创建失败", event.P("error", err))
 		return func(context.Context) error { return nil }
 	}
 
@@ -53,12 +54,12 @@ func Init(serviceName, serviceVersion string) (shutdown func(context.Context) er
 		tpShutdown, err = initHTTPTracerProvider(context.Background(), res, endpoint)
 	}
 	if err != nil {
-		slog.Error("OTel: failed to init tracer provider", "protocol", protocol, "error", err)
+		event.SysLogError("system.telemetry.error", "OTel Tracer 初始化失败", event.P("protocol", protocol), event.P("error", err))
 		return func(context.Context) error { return nil }
 	}
 
 	if err := initMeterProvider(context.Background(), serviceName, serviceVersion, endpoint, protocol); err != nil {
-		slog.Warn("OTel: meter provider init failed; metrics will use noop", "error", err)
+		event.SysLogWarn("system.telemetry.error", "OTel Meter 初始化失败，指标使用 noop", event.P("error", err))
 	}
 
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
@@ -66,7 +67,7 @@ func Init(serviceName, serviceVersion string) (shutdown func(context.Context) er
 		propagation.Baggage{},
 	))
 
-	slog.Info("OTel: telemetry initialised", "endpoint", endpoint, "protocol", protocol, "service", serviceName)
+	event.SysLogInfo("system.telemetry.init", "遥测已初始化", event.P("endpoint", endpoint), event.P("protocol", protocol), event.P("service", serviceName))
 	return func(ctx context.Context) error {
 		var errs []error
 		if err := tpShutdown(ctx); err != nil {

@@ -169,7 +169,7 @@ func (s *ChatService) runNativeAgentTurn(ctx context.Context, req *chatv1.SendCh
 	}
 
 	// #region debug-point A:turn-entry
-	flow := event.NewFlowLogger(s.td.Pipeline.Bus, sessionID, "")
+	flow := event.NewFlowLogger(s.td.Pipeline.Bus, s.td.Pipeline.Buffer, sessionID, "")
 	flow.LogStart("chat.receive", "收到用户消息", event.P("content_len", len(content)))
 	// #endregion
 

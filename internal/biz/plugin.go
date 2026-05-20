@@ -80,15 +80,51 @@ type PluginRepo interface {
 	UpdatePluginEnabled(ctx context.Context, id string, enabled bool) (Plugin, error)
 	UpdatePluginConfig(ctx context.Context, id string, configJSON string) (Plugin, error)
 	UpdateSortOrder(ctx context.Context, id string, sortOrder int) (Plugin, error)
+	UpdatePluginScope(ctx context.Context, id string, scope string) (Plugin, error)
 	IncrementStats(ctx context.Context, pluginKey string, delta PluginStatUpdate) error
+}
+
+// PluginRun is one plugin callback invocation audit row.
+type PluginRun struct {
+	ID             string
+	PluginKey      string
+	PluginID       string
+	SessionID      string
+	AgentID        string
+	CallbackPoint  string
+	Status         string
+	DurationMS     int
+	DetailJSON     string
+	CreatedAt      string
+}
+
+type PluginRunQuery struct {
+	PluginKey string
+	PluginID  string
+	SessionID string
+	Limit     int
+	Offset    int
+}
+
+type PluginRunListResult struct {
+	Items  []PluginRun
+	Total  int32
+	Limit  int
+	Offset int
+}
+
+type PluginRunRepo interface {
+	Insert(ctx context.Context, run PluginRun) error
+	List(ctx context.Context, q PluginRunQuery) (PluginRunListResult, error)
 }
 
 type PluginUsecase struct {
 	repo PluginRepo
+	runs PluginRunRepo
 }
 
-func NewPluginUsecase(repo PluginRepo) *PluginUsecase {
-	return &PluginUsecase{repo: repo}
+func NewPluginUsecase(repo PluginRepo, runs PluginRunRepo) *PluginUsecase {
+	return &PluginUsecase{repo: repo, runs: runs}
 }
 
 func (u *PluginUsecase) List(ctx context.Context, q PluginListQuery) (PluginListResult, error) {
@@ -178,4 +214,32 @@ func (u *PluginUsecase) UpdateSortOrder(ctx context.Context, id string, sortOrde
 		return Plugin{}, errors.BadRequest("PLUGIN", "id is required")
 	}
 	return u.repo.UpdateSortOrder(ctx, id, sortOrder)
+}
+
+func (u *PluginUsecase) UpdateScope(ctx context.Context, id string, scope string) (Plugin, error) {
+	if strings.TrimSpace(id) == "" {
+		return Plugin{}, errors.BadRequest("PLUGIN", "id is required")
+	}
+	scope = strings.TrimSpace(scope)
+	if scope == "" {
+		scope = "global"
+	}
+	return u.repo.UpdatePluginScope(ctx, id, scope)
+}
+
+func (u *PluginUsecase) RecordRun(ctx context.Context, run PluginRun) error {
+	if u == nil || u.runs == nil {
+		return nil
+	}
+	return u.runs.Insert(ctx, run)
+}
+
+func (u *PluginUsecase) ListRuns(ctx context.Context, q PluginRunQuery) (PluginRunListResult, error) {
+	if u == nil || u.runs == nil {
+		return PluginRunListResult{}, nil
+	}
+	if q.Limit <= 0 {
+		q.Limit = 50
+	}
+	return u.runs.List(ctx, q)
 }

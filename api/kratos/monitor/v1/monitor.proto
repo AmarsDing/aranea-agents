@@ -118,6 +118,43 @@ message GetMonitorLogsResponse {
 
 message GetMonitorLogsRequest {}
 
+message MonitorAlertRule {
+  string id = 1;
+  string name = 2;
+  string metric_key = 3;
+  double threshold = 4;
+  int32 window_minutes = 5;
+  bool enabled = 6;
+  string severity = 7;
+  string notify_webhook_url = 8;
+  string notify_channel_id = 9;
+  int32 cooldown_minutes = 10;
+}
+
+message ListMonitorAlertRulesResponse {
+  repeated MonitorAlertRule items = 1;
+}
+
+message PutMonitorAlertRulesRequest {
+  repeated MonitorAlertRule items = 1;
+}
+
+message PutMonitorAlertRulesResponse {
+  repeated MonitorAlertRule items = 1;
+}
+
+message GetRunnerMetricsRequest {
+  int32 window_minutes = 1;
+}
+
+message RunnerMetricsSummary {
+  int32 window_minutes = 1;
+  int32 total_runs = 2;
+  int32 error_runs = 3;
+  double error_rate = 4;
+  double success_rate = 5;
+}
+
 service MonitorService {
   rpc ListAuditLogs(ListAuditLogsRequest) returns (ListAuditLogsResponse) {
     option (google.api.http) = {get: "/v1/monitor/audit"};
@@ -137,5 +174,17 @@ service MonitorService {
   // Snapshot hint only; live lines use WebSocket GET /v1/ws (session_id=* or session-scoped, channel=monitor, type=log).
   rpc GetMonitorLogs(GetMonitorLogsRequest) returns (GetMonitorLogsResponse) {
     option (google.api.http) = {get: "/v1/monitor/logs"};
+  }
+  rpc ListMonitorAlertRules(GetMonitorLogsRequest) returns (ListMonitorAlertRulesResponse) {
+    option (google.api.http) = {get: "/v1/monitor/alert-rules"};
+  }
+  rpc PutMonitorAlertRules(PutMonitorAlertRulesRequest) returns (PutMonitorAlertRulesResponse) {
+    option (google.api.http) = {
+      put: "/v1/monitor/alert-rules"
+      body: "*"
+    };
+  }
+  rpc GetRunnerMetrics(GetRunnerMetricsRequest) returns (RunnerMetricsSummary) {
+    option (google.api.http) = {get: "/v1/monitor/runner-metrics"};
   }
 }

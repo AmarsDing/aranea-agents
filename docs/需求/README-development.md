@@ -14,7 +14,7 @@
 
 | 模块 | 开发计划 |
 |------|----------|
-| Chat | [1-chat-development.md](./1-chat-development.md)（WS ✅；工具卡片/Reasoning/run_status ✅；多模态/持久化 P3） |
+| Chat | [1-chat-development.md](./1-chat-development.md)（WS ✅；多模态 + RunStatus ✅；await 跨重启 resume MVP ✅） |
 | Agent Create | [2-agents-create-development.md](./2-agents-create-development.md) |
 | Agent List | [3-agent-list-development.md](./3-agent-list-development.md) |
 | Agent Type | [4-agent-type-development.md](./4-agent-type-development.md) |
@@ -34,6 +34,7 @@
 | Memory | [12-16 memory-development.md](./12-16%20memory-development.md) |
 | Channel | [17-channel-development.md](./17-channel-development.md) |
 | Monitor | [18-monitor-development.md](./18-monitor-development.md) |
+| FlowLogger | [52-flow-logger.md](./52-flow-logger.md) · [design](./52-flow-logger.design.md) · [开发计划](./52-flow-logger-development.md) · [Slog 移除](../changelog/2026-05-20-FlowLog-V2-SlogRemoval.md) |
 | MCP | [19-mcp-development.md](./19-mcp-development.md) |
 | Skill | [20-skill-development.md](./20-skill-development.md) |
 | Cron | [21-cron-development.md](./21-cron-development.md) |
@@ -74,7 +75,7 @@
 
 ---
 
-## 进度快照（2026-05-19，修订）
+## 进度快照（2026-05-20，修订）
 
 > **真相源**：[execution-plan.md](../guides/execution-plan.md)。下表为索引级摘要，细节以各模块 `*-development.md` 为准。
 
@@ -86,7 +87,16 @@
 | M1 Runner 与 Gateway | ✅ 完成 | RunRegistry、RunnerManager、Enqueue、ArtifactService/SessionIngestor/AgentFactory/AwaitUserReplyRouting 注入；Chat/Team/Cron/Channel 共用 RunGateway |
 | M2 架构边界康复 | ✅ 完成 | Memory 端口（RuntimeSet）、Data provider 上移、Provider 拆环（llminspect）、Skill Import service 化 |
 | M3 模块闭环 | ✅ 主项完成 | Evaluation/A2A/Artifact/Knowledge/Chat UX（工具卡片/run_status）已通；Rerank/OCR、Memory 图治理、前端拆分留 P2 |
-| M4 平台运营 | ⏳ 未开始 | Monitor/Telemetry/Token、Channel、Ecosystem |
+| M4 平台运营 | 🚧 进行中 | Monitor/Token/Quota 部分已通；飞书/钉钉/企微 Channel ✅；Ecosystem/Telemetry UI 待补 |
+
+### 近期已完成（迭代 4 — 2026-05-20）
+
+| 模块 | 交付物 | 备注 |
+|------|--------|------|
+| MCP | `ReconnectObserver` → `mcp.session.reconnect` + 前端重连 chip | 见 [changelog](../changelog/2026-05-20-Iteration4-PLATFORM-P2.md) |
+| Plugin | `model_router`：`WithModelSelector` + `ResolveModelAPI` | BeforeModel 仍可做 audit |
+| Chat | `AwaitUserReply` 跨进程 resume（新 turn + `await_resumed`） | 非 mid-turn 恢复 |
+| Monitor | 告警 Webhook/Channel + `cooldown_minutes` + `alert.notify` | 内存冷却 |
 
 ### 近期已完成（M3 延续）
 
@@ -116,15 +126,13 @@
 
 > **待优化项完整表**：[0-system-development.md § 8](./0-system-development.md)。
 
-1. **P1 — Channel**：Webhook 入站 + 出站投递 + 平台适配器（EP-BIZ-08）。
-2. **P1 — Graph**：LLM/Tool 节点 + ExecutionSummary。
-3. **P1 — Team**：结构化汇总 Envelope。
-4. **P2 — 前端治理**：Knowledge/Evaluation/A2A `page-to-components`；store 策略；mapper 单测。
-5. **P2 — Memory**：L4 冲突检测、级联、衰减。
-6. **P2 — Plugin 产品化**：UpdateScope、运行记录、`model_router` 真路由。
-7. **P2 — MCP**：生产级重连与连接状态可观测。
-8. **P3 — Chat**：多模态附件、RunStatus 持久化、模型选项统一。
-9. **P3 — Ecosystem / Telemetry UI / CLI / TTS**：占位模块补边界或实现。
+1. **P2 — Plugin**：`model_router` 真路由（非 noop）。
+2. **P2 — MCP**：重连可观测 + 前端状态提示。
+3. **P3 — Chat**：await 通道跨重启恢复（EventBuffer 或等价方案）；模型选项统一。
+4. **P2 — Monitor**：告警通知出站（Channel/Webhook）；高级 Dashboard。
+5. **P3 — Ecosystem / Telemetry UI / CLI / TTS**：占位模块补边界或实现。
+
+**迭代 3 已完成**：Chat 多模态附件 + RunStatus `state_json` ✅ · PluginRun + `ListPluginRuns` ✅ · Monitor 告警规则 + Alerts UI ✅。
 
 ### 模块文档同步状态（本轮）
 

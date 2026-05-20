@@ -43,8 +43,8 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 | WS 回放提示 | ✅ | `replay_start/end` → 顶栏「正在同步历史事件…」 |
 | Team 成员流 UX | ✅ | `team_member` 元数据 + 左侧色条分栏 |
 | 模型选项 | 🟡 | Platform 优先 + `GetChatOptions("model")` 回退 |
-| 附件 / Vision | ❌ | 前端占位 |
-| RunStatus 持久化 | ❌ | 进程内状态 |
+| 附件 / Vision | ✅ | Artifact 上传 + `buildUserMessage` 多 part 装配 |
+| RunStatus 持久化 | ✅ | `state_json` + trpc `PendingAwaitUserReplyRoute`；resume 同步清状态 + `resumeInFlight` 防双 turn |
 
 ---
 
@@ -80,7 +80,7 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 | 5 | Team `member_*` + 成员流消费 | ✅ 协议通；UX 待增强 |
 | 6 | 工具可观测 UI | ⏳ |
 | 7 | Reasoning 展示 | ⏳ |
-| 8 | 附件 / RunStatus 持久化 | ⏳ |
+| 8 | 附件 / RunStatus 持久化 | 🟡 |
 
 ---
 
@@ -101,9 +101,9 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 | 11 | Reasoning 展示规格与实现 | P1 | ✅ |
 | 12 | EventBuffer TTL | P2 | ✅ |
 | 13 | RunStatus WS 事件驱动 | P2 | ✅ |
-| 14 | 多模态附件后端 | P3 | ⏳ |
+| 14 | 多模态附件后端 | P3 | ✅ |
 | 15 | 模型选项单一来源（长期） | P3 | 🟡 回退已实现 |
-| 16 | RunStatus 持久化 | P3 | ⏳ |
+| 16 | RunStatus 持久化 | P3 | 🟡 |
 | 17 | ChatService / WS 单测 | P1 | ⏳ |
 | 18 | RunRegistry + EnqueueUserMessage | P0 | ✅ |
 

@@ -64,19 +64,31 @@ func (w *L4GraphWriter) WriteFromUserText(ctx context.Context, agentID, userID, 
 
 	if m := l4NamePattern.FindStringSubmatch(text); len(m) > 1 {
 		name := strings.TrimSpace(m[1])
+		nameNorm := strings.ToLower(name)
+		existing, _, _ := w.store.GetEntityByScopeKey(ctx, "agent", agentID, "person", nameNorm)
+		if existing.ID == "" {
+			if prior, ok, _ := w.store.GetFirstEntityByType(ctx, "agent", agentID, "person"); ok {
+				existing = prior
+			}
+		}
+		prepared, conflict := preparePersonUpsert(existing, name, text)
 		entID := fmt.Sprintf("l4-person-%s-%s", agentID, slugEntityName(name))
+		if existing.ID != "" {
+			entID = existing.ID
+		}
+		meta := mergeConflictMetadata(prepared.MetadataJSON, conflict, existing.Name)
 		if err := w.store.UpsertEventEntity(ctx, sessionmemory.EventEntityParams{
 			ID:               entID,
 			ScopeType:        "agent",
 			ScopeID:          agentID,
 			UserID:           userID,
 			EntityType:       "person",
-			Name:             name,
-			NameNormalized:   strings.ToLower(name),
-			Description:      text,
+			Name:             prepared.Name,
+			NameNormalized:   prepared.NameNormalized,
+			Description:      prepared.Description,
 			Importance:       0.85,
-			Confidence:       0.75,
-			MetadataJSON:     `{"source":"auto_memory"}`,
+			Confidence:       prepared.Confidence,
+			MetadataJSON:     meta,
 			CreatedAtRFC3339: now,
 			UpdatedAtRFC3339: now,
 		}); err == nil {
@@ -87,8 +99,10 @@ func (w *L4GraphWriter) WriteFromUserText(ctx context.Context, agentID, userID, 
 				TargetID:     entID,
 				RelationType: "knows_as",
 				Weight:       1.0,
-				Confidence:   0.75,
+				Confidence:   prepared.Confidence,
 			})
+			cascade := cascadeProfileTouch(anchorID, userID, agentID, name, now)
+			_ = w.store.UpsertEventEntity(ctx, cascade)
 			written++
 		}
 	}
@@ -123,6 +137,7 @@ func (w *L4GraphWriter) WriteFromUserText(ctx context.Context, agentID, userID, 
 			written++
 		}
 	}
+	w.runDecay(ctx, agentID)
 	return written, nil
 }
 

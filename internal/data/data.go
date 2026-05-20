@@ -38,6 +38,7 @@ var ProviderSet = wire.NewSet(
 	NewHookRepo,
 	NewCronRepo,
 	NewPluginRepo,
+	NewPluginRunRepo,
 	NewMCPServerRepo,
 	NewSkillRepo,
 	NewSessionRepo,
@@ -57,6 +58,7 @@ var ProviderSet = wire.NewSet(
 	NewKnowledgeRepoFromData,
 	NewEvalRepoFromData,
 	NewA2ARepoFromData,
+	NewEcosystemRepo,
 )
 
 // Data: Ent/SQLite holds app CRUD; Postgres (optional) holds pgvector agent memory only.
@@ -280,6 +282,15 @@ func ensureAllSchemas(rawDB *sql.DB, entClient *ent.Client) error {
 	}
 	if err := EnsureUsageQuotaSchema(ctxSchema, rawDB); err != nil {
 		return fmt.Errorf("usage quota schema: %w", err)
+	}
+	if err := EnsurePluginRunSchema(ctxSchema, entClient); err != nil {
+		return fmt.Errorf("plugin run schema: %w", err)
+	}
+	if err := EnsureMonitorAlertSchema(ctxSchema, entClient); err != nil {
+		return fmt.Errorf("monitor alert schema: %w", err)
+	}
+	if err := EnsureEcosystemSchema(ctxSchema, entClient); err != nil {
+		return fmt.Errorf("ecosystem schema: %w", err)
 	}
 	return nil
 }

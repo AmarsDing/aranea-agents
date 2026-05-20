@@ -4,7 +4,7 @@
 >
 > **关联文档**：[0 系统框图.md](../需求/0%20系统框图.md) · [0-system-development.md](../需求/0-system-development.md) · [README-development.md](../需求/README-development.md)
 >
-> **更新时间**：2026-05-20（迭代 2 启动：飞书 Channel 闭环 ✅；Team `team_summary` ✅；Graph LLM/Tool 进行中）
+> **更新时间**：2026-05-20（迭代 5：Runner 指标 / cost_guard / Ecosystem MVP / EventBus 拆分 ✅）
 
 ---
 
@@ -26,7 +26,7 @@
 
 - **主链路可用**：Chat / Agent / Team / Graph 经 `trpc-agent-go` Runner 与 EventBus + `/v1/ws` 串联；RunRegistry + RunnerManager + RunGateway 已落地。
 - **架构红线保持**：`internal/biz` 不 import `trpc-agent-go`；`internal/server` 不直接调 Agent runtime；实时主通道为 `/v1/ws`（SSE 仅限 A2A/MCP 等外部协议）。
-- **当前优先级**：迭代 2（M4-P1）— Graph LLM/Tool 节点与 ExecutionSummary；多平台 Channel 适配；P2 前端治理与 Memory 图治理。
+- **当前优先级**：迭代 5 后 — Knowledge Rerank、Evaluation 人工评估、A2A 远程发现、Trace 瀑布图 UI。
 
 ---
 
@@ -36,9 +36,9 @@
 |------|------|------|
 | **核心可用** | Chat(1)、Agent 全家桶(2–8/50)、Provider(9)、Session(10)、Skill(20)、Tools(23)、Cron(21)、Message/WS(51/34)、Plugin/Callback(22/28)、Gateway/Runner(35/40) | 可创建、运行、配置、观测 |
 | **可用需闭环** | Graph(36)、MCP(19)、Memory(12–16)、Monitor/Token(18/29) | Graph 节点类型待补；MCP 重连可观测；Memory 冲突/级联 |
-| **可用需闭环** | Team(11)、Channel(17) | Team `team_summary` WS ✅；飞书入站+出站 ✅；其他平台适配待补 |
+| **可用需闭环** | Team(11)、Channel(17) | Team `team_summary` WS ✅；飞书/钉钉/企微入站+出站 ✅；更多平台待补 |
 | **有页、Runtime 已通主项** | Knowledge(37)、Artifact(27)、Evaluation(33)、A2A(26) | 管理页 + Runner 注入 ✅；Rerank/OCR、高级评估、远程 A2A 待补 |
-| **早期/占位** | Evolution(7)、Ecosystem(30)、CLI(25)、TTS、Telemetry UI(24) | 不可作为可组合模块；文档须标 API-only 或 mock |
+| **早期/占位** | Evolution(7)、CLI(25)、TTS | Ecosystem MVP ✅（`/v1/ecosystem/products`）；Telemetry Span 已通 turn，Trace UI 待补 |
 
 ---
 
@@ -60,7 +60,7 @@
 | 10 | Team RunTeamTest / CancelTeamRun / member_* WS | Team | ✅ P1 |
 | 11 | ToolOverride + `requires_confirmation` + 调用统计 + TestTool | Tools | ✅ P1 |
 | 12 | Plugin Chain + Hook + OnEvent；9 内置 `builtin()` | Plugin/Callback | ✅ P1 |
-| 13 | MCP 60s 超时、OAuth2、Broker 挂载、会话 `*_call_count` | MCP | ✅ P2（重连可观测待补） |
+| 13 | MCP 60s 超时、OAuth2、Broker 挂载、会话 `*_call_count`、重连可观测 | MCP | ✅ P2 |
 | 14 | Knowledge / Artifact / Evaluation / A2A 管理页 + Runtime 主项 | 多模块 | ✅ P2 |
 | 15 | Memory L4 注入 + MemoryWorker + AutoMemory 图写入 | Memory | ✅ P2（冲突/级联/衰减待补） |
 | 16 | Monitor 落库 + Provider 指标 + Quota MVP + Usage 事件 | Monitor/Token | ✅ M4 部分 |
@@ -78,12 +78,46 @@
 | I2-TEAM-01 | `team_summary` Envelope（成员 token/耗时/状态） | P1 | ✅ | WS `team_summary`；Monitor 可订阅 |
 | I2-GRAPH-01 | Graph `AddLLMNode` / `AddToolsNode` builder 接线 | P1 | ✅ | `BuildDeps` + `wireNode`；`SetEntryPoint`/`SetFinishPoint` |
 | I2-GRAPH-02 | ExecutionSummary 写入 `graph_execution_done` | P2 | ✅ | `execution_summary` metadata on WS done event |
-| I2-FE-01 | Knowledge/Evaluation/A2A `page-to-components` | P2 | ⏳ | 单文件 <300 行 |
-| I2-MEM-01 | L4 冲突检测、级联、衰减 | P2 | ⏳ | AutoMemory 写入治理 |
-| I2-PLG-01 | Plugin UpdateScope + 运行记录 | P2 | ⏳ | 管理端可审计 |
-| I2-CHAT-01 | 多模态附件、RunStatus 持久化 | P3 | ⏳ | 重启后可恢复 awaiting |
+| I2-FE-01 | Knowledge/Evaluation/A2A `page-to-components` | P2 | ✅ | A2A 拆组件 + mapper 单测；Knowledge/Evaluation 已 <300 行 |
+| I2-MEM-01 | L4 冲突检测、级联、衰减 | P2 | ✅ | `l4_governance.go` + `entity_lookup` |
+| I2-PLG-01 | Plugin UpdateScope + 运行记录 | P2 | ✅ | `PATCH scope` + `plugin_runs` + `GET /v1/plugins/runs` |
+| I2-CH-03 | 企微 Webhook 入站 + 出站 | P1 | ✅ | `internal/channel/wecom` + `channel_ingress_wecom.go` |
+| I2-CHAT-01 | 多模态附件、RunStatus 持久化 | P3 | ✅ | Artifact parts + `state_json`；await 通道仍进程内 |
+| MON-01 | Monitor 告警规则 + Alerts UI | P2 | ✅ | `alert-rules` API + `runner.error_rate` 评估 |
 
-**当前冲刺焦点**：I2-FE-01（前端治理）→ I2-MEM-01 → 企微 Channel（I2-CH-03）。
+### 迭代 4（Platform P2）任务板 — 2026-05-20
+
+| ID | 任务 | 优先级 | 状态 | 验收 |
+|----|------|--------|------|------|
+| I4-OBS-01 | 统一 Envelope + Prometheus：`mcp.session.reconnect` / `alert.notify` | P2 | ✅ | Monitor Events + counter |
+| I4-MCP-01 | MCP `ReconnectObserver` + 默认 `session_reconnect_max` + 前端 chip | P2 | ✅ | 断线重连可见 |
+| I4-PLG-02 | `model_router` → `WithModelSelector` 真路由 | P2 | ✅ | Usage/audit model 切换 |
+| I4-CHAT-02 | `AwaitUserReply` 跨进程 resume（新 turn） | P3 | ✅ | 重启后提交回复继续 |
+| I4-MON-02 | 告警 Webhook/Channel 出站 + 冷却 | P2 | ✅ | POST + `alert.notify` |
+
+### 迭代 5（Platform P2 收尾）任务板 — 2026-05-20
+
+| ID | 任务 | 优先级 | 状态 | 验收 |
+|----|------|--------|------|------|
+| I5-MCP-01 | MCP `metadata_json` 重连计数持久化 | P2 | ✅ | `RecordReconnectMetadata` + 单测 + 前端 chip |
+| I5-MON-01 | Runner 指标 Dashboard | P2 | ✅ | `GET /v1/monitor/runner-metrics` + `RunnerMetricsPanel` |
+| I5-MON-02 | 告警 Channel 下拉 | P2 | ✅ | `MonitorAlertRules` q-select |
+| I5-SYS-02 | StopGeneration → `run_status` cancelled | P2 | ✅ | `chat_stop_generation_test` |
+| I5-PLG-03 | `cost_guard` ModelSelector | P2 | ✅ | `ChainedModelSelector` + `CostGuardConfigForAgent` |
+| I5-SYS-03 | EventBusConsumer 拆分 | P2 | ✅ | buffer / runner / state 三 handler |
+| I5-FE-02 | knowledge/evaluation mapper 模块化 | P2 | ✅ | `features/*/mappers.ts` |
+| I6-ECO-01 | Ecosystem proto + MVP | P3 | ✅ | List/Publish/Install + `EcosystemPage` |
+| I6-TEL-01 | Chat turn OTel Span | P3 | ✅ | `chat.turn` in `trpc_turn` |
+
+| I6-TEL-02 | Monitor Trace 瀑布图 + usage spans | P2 | ✅ | `turn_spans` + `TraceWaterfall.vue` |
+| KN-01 | Knowledge Rerank（trpc reranker） | P2 | ✅ | `KRATOS_KNOWLEDGE_RERANKER` + Retriever |
+| EVAL-02 | Evaluation 人工标注 API + UI | P2 | ✅ | `AnnotateCaseResult` + Results 对话框 |
+
+**迭代 6 备注（观测）**：I6-TEL-02 / KN-01 / EVAL-02 review 已合入；`chat.usage_record` 失败用 FlowLogger（见 [changelog Iteration6](../changelog/2026-05-20-Iteration6-TRACE-EVAL-KN.md) §后续优化）。
+
+**FlowLogger v2**：📋 [需求](../需求/52-flow-logger.md) · [设计](../需求/52-flow-logger.design.md) · [开发计划](../需求/52-flow-logger-development.md) — Phase 1a/1b 已合入；Phase 2 落库 / Phase 3 扩展域待做。
+
+**当前冲刺焦点**：FlowLogger v2 Phase 1 · Channel · Knowledge OCR · Evaluation 报告导出。
 
 ---
 
@@ -132,13 +166,14 @@
 
 - [x] Channel 飞书入站 + 出站（`internal/service/channel_ingress.go` + `internal/channel/lark`）
 - [x] Channel 钉钉入站 + 出站（I2-CH-02）
-- [ ] Channel 企微等平台（I2-CH-03）
+- [x] Channel 企微入站 + 出站（I2-CH-03，`internal/channel/wecom`）
 - [x] Graph LLM/Tool 节点 + ExecutionSummary（I2-GRAPH-01/02）
 - [x] Team 结构化汇总 `team_summary` Envelope（`internal/team/summary.go`）
-- [ ] Ecosystem 后端与市场模型（P3）
+- [ ] Ecosystem 后端与市场模型（P3） — MVP ✅ 见迭代 5
 - [ ] Telemetry 业务 Span / OTel UI（P3）
-- [ ] Monitor Dashboard 与告警规则（P2）
-- [ ] 前端 page-to-components + mapper 单测（P2）
+- [x] Monitor 告警规则 + Alerts UI（MON-01）；Usage 总览已有
+- [ ] Monitor 高级 Dashboard / 通知出站（P2 后续）
+- [x] 前端 page-to-components + A2A mapper 单测（P2）；Knowledge/Evaluation 此前已拆分
 
 ---
 
@@ -154,7 +189,7 @@
 | Memory L0–L4 与 MemoryService 主从（`RuntimeSet`） | ✅ |
 | 核心模块五面定义完整（Graph/Channel/Ecosystem） | ⏳ |
 | `internal/service` 无复杂运行状态机（await/pending 可接受短期） | ⏳ |
-| 前端 feature 模板 + mapper 单测 | ⏳ |
+| 前端 feature 模板 + mapper 单测 | 🟡（A2A mapper 单测 ✅；其余 feature 待补） |
 | TTS/Ecosystem/CLI 文档标占位 | ⏳ |
 
 ---

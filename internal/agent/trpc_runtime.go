@@ -87,6 +87,25 @@ func RunTRPCUserTurn(
 	return ch, err
 }
 
+// RunTRPCUserTurnMsg runs a turn with a pre-built user message (multimodal attachments).
+func RunTRPCUserTurnMsg(ctx context.Context, r trpcrunner.Runner, userID, sessionID string, msg trpcmodel.Message, opts ...trpcagent.RunOption) (<-chan *trpcevent.Event, error) {
+	if r == nil {
+		return nil, errors.New("trpc runtime: runner is nil")
+	}
+	userID = strings.TrimSpace(userID)
+	sessionID = strings.TrimSpace(sessionID)
+	if userID == "" {
+		return nil, errors.New("trpc runtime: user id is required")
+	}
+	if sessionID == "" {
+		return nil, errors.New("trpc runtime: session id is required")
+	}
+	if msg.Role == "" {
+		msg.Role = trpcmodel.RoleUser
+	}
+	return r.Run(ctx, userID, sessionID, msg, opts...)
+}
+
 func CancelTRPCRun(r trpcrunner.Runner, requestID string) bool {
 	mr, ok := r.(trpcrunner.ManagedRunner)
 	if !ok {

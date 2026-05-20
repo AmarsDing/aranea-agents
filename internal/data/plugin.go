@@ -217,6 +217,20 @@ func (r *pluginRepo) UpdateSortOrder(ctx context.Context, id string, sortOrder i
 	return r.GetPlugin(ctx, id)
 }
 
+func (r *pluginRepo) UpdatePluginScope(ctx context.Context, id string, scope string) (biz.Plugin, error) {
+	err := r.data.entClient.PlatformPlugin.UpdateOneID(id).
+		SetScope(strings.TrimSpace(scope)).
+		SetUpdatedAt(nowRFC3339()).
+		Exec(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return biz.Plugin{}, sql.ErrNoRows
+		}
+		return biz.Plugin{}, err
+	}
+	return r.GetPlugin(ctx, id)
+}
+
 func (r *pluginRepo) IncrementStats(ctx context.Context, pluginKey string, delta biz.PluginStatUpdate) error {
 	pluginKey = strings.TrimSpace(pluginKey)
 	if pluginKey == "" {

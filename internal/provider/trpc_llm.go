@@ -3,8 +3,9 @@ package provider
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"net/http"
+
+	"aranea-agents/internal/event"
 	"strings"
 	"time"
 
@@ -28,21 +29,17 @@ func TRPCModelForProviderModel(ctx context.Context, catalog *biz.LlmProviderMode
 	}
 	pm, err := catalog.GetByProviderAndModel(ctx, strings.TrimSpace(prov), strings.TrimSpace(modelAPI))
 	if err != nil {
-		slog.Error("provider.catalog_lookup_failed", "provider", prov, "model", modelAPI, "error", err)
+		event.CtxFlowLogError(ctx, "system.provider.catalog_fail", "模型目录查询失败", event.P("provider", prov), event.P("model", modelAPI), event.P("error", err))
 		return nil, err
 	}
 	cfg, err := CatalogFromModel(ModelCatalogInput{Model: pm.Model, ConfigJSON: pm.ConfigJSON})
 	if err != nil {
-		slog.Error("provider.catalog_parse_failed", "provider", prov, "model", modelAPI, "error", err)
+		event.CtxFlowLogError(ctx, "system.provider.catalog_fail", "模型目录配置解析失败", event.P("provider", prov), event.P("model", modelAPI), event.P("error", err))
 		return nil, err
 	}
 	cfg = MergeCatalogConfig(cfg, pm.ConfigJSON)
-	slog.Info("provider.config_resolved",
-		"provider", prov, "model", modelAPI,
-		"provider_type", cfg.ProviderType, "variant", cfg.Variant,
-		"base_url", cfg.BaseURL, "has_api_key", cfg.APIKey != "",
-		"ha_mode", cfg.HAMode,
-	)
+	event.CtxFlowLogDone(ctx, "system.provider.config_resolved", "模型配置已解析",
+		event.P("provider", prov), event.P("model", modelAPI), event.P("provider_type", cfg.ProviderType), event.P("ha_mode", cfg.HAMode))
 	return trpcModelFromCatalogConfig(ctx, cfg, rt)
 }
 
@@ -63,11 +60,11 @@ func trpcModelFromCatalogConfig(ctx context.Context, cfg CatalogConfig, rt *Roun
 			client := &http.Client{Timeout: 15 * time.Second}
 			resp, err := client.Do(probeReq)
 			if err != nil {
-				slog.Error("provider.preflight_probe_failed", "url", baseURL, "error", err)
+				event.CtxFlowLogError(ctx, "system.provider.preflight_fail", "模型 API 预检失败", event.P("url", baseURL), event.P("error", err))
 				return nil, fmt.Errorf("LLM API unreachable (%s): %w", baseURL, err)
 			}
 			resp.Body.Close()
-			slog.Info("provider.preflight_probe_ok", "url", baseURL, "status", resp.StatusCode)
+			event.CtxFlowLogDone(ctx, "system.provider.preflight_ok", "模型 API 预检通过", event.P("url", baseURL), event.P("status", resp.StatusCode))
 		}
 	}
 

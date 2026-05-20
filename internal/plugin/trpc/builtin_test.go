@@ -15,7 +15,7 @@ func TestBuiltin_AllKeysConstruct(t *testing.T) {
 	}
 	for _, key := range keys {
 		p := biz.Plugin{Key: key, Enabled: true, ConfigJSON: "{}"}
-		if builtin(p, nil) == nil {
+		if builtin(p, nil, nil) == nil {
 			t.Fatalf("expected plugin for key %q", key)
 		}
 	}
@@ -26,7 +26,7 @@ func TestConfirmationGuard_NeedsConfirm(t *testing.T) {
 		Key:        "confirmation_guard",
 		ConfigJSON: `{"confirm_tools":["delete_file"],"default_action":"reject"}`,
 	}
-	plug := NewConfirmationGuardPlugin(p, nil)
+	plug := NewConfirmationGuardPlugin(p, nil, nil)
 	if !plug.needsConfirm(&trpctool.BeforeToolArgs{ToolName: "delete_file", Arguments: []byte(`{}`)}) {
 		t.Fatal("expected confirm for delete_file")
 	}

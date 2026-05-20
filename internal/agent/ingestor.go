@@ -2,7 +2,8 @@ package agent
 
 import (
 	"context"
-	"log/slog"
+
+	"aranea-agents/internal/event"
 
 	trpcmemory "trpc.group/trpc-go/trpc-agent-go/memory"
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
@@ -31,7 +32,7 @@ func (ing *BizSessionIngestor) IngestSession(ctx context.Context, sess *trpcsess
 	_ = ctx
 	_ = opts
 	// Auto-memory extraction is handled by runner.enqueueAutoMemoryJob → EnqueueAutoMemoryJob.
-	slog.Debug("session ingest hook (noop until external backend is wired)",
-		"session_id", sess.ID, "app", sess.AppName, "user_id", sess.UserID)
+	event.SysLogDebug("system.memory_worker.enqueue", "会话 ingest hook（外部后端未接入）",
+		event.P("session_id", sess.ID), event.P("app", sess.AppName), event.P("user_id", sess.UserID))
 	return nil
 }

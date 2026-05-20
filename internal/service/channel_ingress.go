@@ -88,6 +88,9 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 		case "dingtalk":
 			_ = h.handleDingTalkWebhook(w, r, chRow)
 			return nil
+		case "wecom", "wecom-app":
+			_ = h.handleWeComWebhook(w, r, chRow)
+			return nil
 		case "feishu":
 			// continue below
 		default:

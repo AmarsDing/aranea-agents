@@ -841,6 +841,20 @@ body.body--dark .monitor-log-level
 .monitor-log-line--error .monitor-log-level
   color: var(--color-danger)
 
+.monitor-log-line--flow-ok .monitor-log-title,
+.monitor-log-line--flow-info .monitor-log-title
+  color: var(--color-success, #21ba45)
+
+.monitor-log-line--flow-warn .monitor-log-title
+  color: var(--color-warning)
+
+.monitor-log-line--flow-error .monitor-log-title,
+.monitor-log-line--flow-critical .monitor-log-title
+  color: var(--color-danger)
+
+.monitor-log-line--flow-critical
+  font-weight: 600
+
 .monitor-log-empty
   color: var(--color-text-secondary)
   display: grid

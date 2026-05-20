@@ -313,6 +313,15 @@ func (m *memPluginRepoB) UpdateSortOrder(_ context.Context, id string, sortOrder
 	m.items[id] = p
 	return p, nil
 }
+func (m *memPluginRepoB) UpdatePluginScope(_ context.Context, id string, scope string) (biz.Plugin, error) {
+	p, ok := m.items[id]
+	if !ok {
+		return biz.Plugin{}, fmt.Errorf("not found")
+	}
+	p.Scope = scope
+	m.items[id] = p
+	return p, nil
+}
 
 func (m *memPluginRepoB) IncrementStats(_ context.Context, pluginKey string, delta biz.PluginStatUpdate) error {
 	for id, p := range m.items {
@@ -333,7 +342,7 @@ func (m *memPluginRepoB) IncrementStats(_ context.Context, pluginKey string, del
 func TestPluginUsecase_ListAndToggle(t *testing.T) {
 	repo := newMemPluginRepoB()
 	repo.items["p1"] = biz.Plugin{ID: "p1", Enabled: false}
-	uc := biz.NewPluginUsecase(repo)
+	uc := biz.NewPluginUsecase(repo, nil)
 	ctx := context.Background()
 
 	result, err := uc.List(ctx, biz.PluginListQuery{})
@@ -354,7 +363,7 @@ func TestPluginUsecase_ListAndToggle(t *testing.T) {
 }
 
 func TestPluginUsecase_Toggle_EmptyID(t *testing.T) {
-	uc := biz.NewPluginUsecase(newMemPluginRepoB())
+	uc := biz.NewPluginUsecase(newMemPluginRepoB(), nil)
 	ctx := context.Background()
 	_, err := uc.ToggleEnabled(ctx, "", true)
 	if err == nil {
@@ -365,7 +374,7 @@ func TestPluginUsecase_Toggle_EmptyID(t *testing.T) {
 func TestPluginUsecase_UpdateConfig(t *testing.T) {
 	repo := newMemPluginRepoB()
 	repo.items["p2"] = biz.Plugin{ID: "p2"}
-	uc := biz.NewPluginUsecase(repo)
+	uc := biz.NewPluginUsecase(repo, nil)
 	ctx := context.Background()
 
 	out, err := uc.UpdateConfig(ctx, "p2", `{"key":"val"}`)
@@ -383,7 +392,7 @@ func TestPluginUsecase_UpdateConfig_SchemaValidation(t *testing.T) {
 		ID:               "audit",
 		ConfigSchemaJSON: `{"type":"object","properties":{"max_content_length":{"type":"integer"}}}`,
 	}
-	uc := biz.NewPluginUsecase(repo)
+	uc := biz.NewPluginUsecase(repo, nil)
 	ctx := context.Background()
 
 	_, err := uc.UpdateConfig(ctx, "audit", `{"max_content_length":"bad"}`)

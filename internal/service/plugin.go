@@ -4,10 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"log/slog"
-
 	v1 "aranea-agents/api/kratos/plugin/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	"aranea-agents/pkg/safego"
 
@@ -40,11 +39,11 @@ func (s *PluginService) seedBuiltinPlugins(ctx context.Context) {
 			continue
 		}
 		if !errors.Is(err, sql.ErrNoRows) {
-			slog.Warn("plugin.seed: get by key failed", "key", def.Key, "error", err)
+			event.SysLogWarn("system.plugin.seed_fail", "插件种子查询失败", event.P("key", def.Key), event.P("error", err))
 			continue
 		}
 		if _, err := s.uc.Create(ctx, def.ToBizPlugin()); err != nil {
-			slog.Warn("plugin.seed: create failed", "key", def.Key, "error", err)
+			event.SysLogWarn("system.plugin.seed_fail", "插件种子创建失败", event.P("key", def.Key), event.P("error", err))
 		}
 	}
 	s.reloadRuntime(ctx)
@@ -58,7 +57,7 @@ func (s *PluginService) reloadRuntime(ctx context.Context) {
 	safego.Go(ctx, "plugin.reloadRuntime", func() {
 		result, err := s.uc.List(context.Background(), biz.PluginListQuery{Enabled: "true", Limit: 200})
 		if err != nil {
-			slog.Warn("plugin.reloadRuntime: list enabled failed", "error", err)
+			event.SysLogWarn("system.plugin.reload_fail", "插件运行时重载列表失败", event.P("error", err))
 			return
 		}
 		s.runtime.Apply(context.Background(), result.Items)
@@ -156,4 +155,55 @@ func (s *PluginService) UpdatePluginSortOrder(ctx context.Context, req *v1.Updat
 	}
 	s.reloadRuntime(ctx)
 	return toProtoPlugin(out), nil
+}
+
+func (s *PluginService) UpdatePluginScope(ctx context.Context, req *v1.UpdatePluginScopeRequest) (*v1.Plugin, error) {
+	out, err := s.uc.UpdateScope(ctx, req.GetId(), req.GetScope())
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, kerrors.NotFound("PLUGIN", "plugin not found")
+		}
+		return nil, err
+	}
+	s.reloadRuntime(ctx)
+	return toProtoPlugin(out), nil
+}
+
+func toProtoPluginRun(r biz.PluginRun) *v1.PluginRun {
+	return &v1.PluginRun{
+		Id:            r.ID,
+		PluginKey:     r.PluginKey,
+		PluginId:      r.PluginID,
+		SessionId:     r.SessionID,
+		AgentId:       r.AgentID,
+		CallbackPoint: r.CallbackPoint,
+		Status:        r.Status,
+		DurationMs:    int32(r.DurationMS),
+		DetailJson:    r.DetailJSON,
+		CreatedAt:     r.CreatedAt,
+	}
+}
+
+func (s *PluginService) ListPluginRuns(ctx context.Context, req *v1.ListPluginRunsRequest) (*v1.ListPluginRunsResponse, error) {
+	limit, offset, page, pageSize := biz.PageToLimitOffset(req.GetPage(), req.GetPageSize())
+	result, err := s.uc.ListRuns(ctx, biz.PluginRunQuery{
+		PluginKey: req.GetPluginKey(),
+		PluginID:  req.GetPluginId(),
+		SessionID: req.GetSessionId(),
+		Limit:     limit,
+		Offset:    offset,
+	})
+	if err != nil {
+		return nil, err
+	}
+	resp := &v1.ListPluginRunsResponse{
+		Total:    result.Total,
+		Page:     page,
+		PageSize: pageSize,
+		Items:    make([]*v1.PluginRun, 0, len(result.Items)),
+	}
+	for i := range result.Items {
+		resp.Items = append(resp.Items, toProtoPluginRun(result.Items[i]))
+	}
+	return resp, nil
 }

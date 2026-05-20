@@ -72,7 +72,7 @@ func NewMCPToolSet(config ConnectionConfig, opts ...ToolSetOption) *ToolSet {
 	}
 
 	// Create session manager
-	sessionManager := newMCPSessionManager(cfg.connectionConfig, cfg.mcpOptions, cfg.sessionReconnectConfig)
+	sessionManager := newMCPSessionManagerWithObserver(cfg.connectionConfig, cfg.mcpOptions, cfg.sessionReconnectConfig, cfg.name, cfg.reconnectObserver)
 
 	toolSet := &ToolSet{
 		config:         cfg,
@@ -181,6 +181,8 @@ type mcpSessionManager struct {
 	config                 ConnectionConfig
 	mcpOptions             []mcp.ClientOption      // MCP client options
 	sessionReconnectConfig *SessionReconnectConfig // Session reconnection configuration
+	serverName             string
+	reconnectObserver      ReconnectObserver
 	client                 mcp.Connector
 	mu                     sync.RWMutex
 	connected              bool
@@ -188,12 +190,25 @@ type mcpSessionManager struct {
 	reconnectGroup         singleflight.Group // Ensures only one reconnection happens at a time
 }
 
-// newMCPSessionManager creates a new MCP session manager.
+// newMCPSessionManager creates a new MCP session manager (tests and legacy callers).
 func newMCPSessionManager(config ConnectionConfig, mcpOptions []mcp.ClientOption, sessionReconnectConfig *SessionReconnectConfig) *mcpSessionManager {
+	return newMCPSessionManagerWithObserver(config, mcpOptions, sessionReconnectConfig, "", nil)
+}
+
+// newMCPSessionManagerWithObserver creates a session manager with reconnect telemetry.
+func newMCPSessionManagerWithObserver(
+	config ConnectionConfig,
+	mcpOptions []mcp.ClientOption,
+	sessionReconnectConfig *SessionReconnectConfig,
+	serverName string,
+	reconnectObserver ReconnectObserver,
+) *mcpSessionManager {
 	manager := &mcpSessionManager{
 		config:                 config,
 		mcpOptions:             mcpOptions,
 		sessionReconnectConfig: sessionReconnectConfig,
+		serverName:             serverName,
+		reconnectObserver:      reconnectObserver,
 	}
 
 	return manager
@@ -489,11 +504,13 @@ func (m *mcpSessionManager) executeWithSessionReconnect(ctx context.Context, ope
 		if reconnectErr := m.recreateSession(ctx); reconnectErr != nil {
 			log.ErrorfContext(ctx, "Session reconnection failed (attempt=%d/%d, reconnect_error=%v, "+
 				"original_error=%v)", attempt, maxAttempts, reconnectErr, err)
+			m.emitReconnect(ctx, attempt, maxAttempts, false, reconnectErr)
 
 			// If this was the last attempt, return the original error.
 			if attempt >= maxAttempts {
 				log.WarnfContext(ctx, "Max session reconnect attempts reached for this operation, "+
 					"giving up (attempts=%d/%d)", attempt, maxAttempts)
+				m.emitReconnect(ctx, attempt, maxAttempts, false, err)
 				return err
 			}
 
@@ -501,14 +518,15 @@ func (m *mcpSessionManager) executeWithSessionReconnect(ctx context.Context, ope
 			continue
 		}
 
-		log.DebugfContext(ctx, "Session reconnection successful, retrying operation (attempt=%d)",
-			attempt)
+		log.InfofContext(ctx, "Session reconnection successful, retrying operation (attempt=%d/%d, server=%q)",
+			attempt, maxAttempts, m.serverName)
 
 		// Retry the operation after successful reconnection.
 		err = operation()
 		if err == nil {
-			log.DebugfContext(ctx, "Operation succeeded after session reconnection (attempt=%d)",
-				attempt)
+			log.InfofContext(ctx, "Operation succeeded after session reconnection (attempt=%d, server=%q)",
+				attempt, m.serverName)
+			m.emitReconnect(ctx, attempt, maxAttempts, true, nil)
 			return nil
 		}
 
@@ -527,7 +545,21 @@ func (m *mcpSessionManager) executeWithSessionReconnect(ctx context.Context, ope
 
 	// All attempts exhausted.
 	log.WarnfContext(ctx, "All reconnection attempts exhausted for this operation (max_attempts=%d)", maxAttempts)
+	m.emitReconnect(ctx, maxAttempts, maxAttempts, false, err)
 	return err
+}
+
+func (m *mcpSessionManager) emitReconnect(ctx context.Context, attempt, maxAttempts int, success bool, reconnectErr error) {
+	if m.reconnectObserver == nil {
+		return
+	}
+	m.reconnectObserver(ctx, ReconnectEvent{
+		ServerName:  m.serverName,
+		Attempt:     attempt,
+		MaxAttempts: maxAttempts,
+		Success:     success,
+		Err:         reconnectErr,
+	})
 }
 
 // shouldAttemptSessionReconnect determines if session reconnection should be attempted

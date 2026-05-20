@@ -45,7 +45,7 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 | Gemini/HuggingFace Embedding | ❌ | 仅 OpenAI/Ollama |
 | AgenticFilter | ❌ | 未实现 |
 | OCR / Extractor | ❌ | 未实现 |
-| Reranker | ❌ | 未实现 |
+| Reranker | ✅ | `KRATOS_KNOWLEDGE_RERANKER`（topk/cohere/infinity） |
 | 多租户隔离 | ❌ | 未实现 |
 | code_search 工具 | ❌ | 未实现 |
 

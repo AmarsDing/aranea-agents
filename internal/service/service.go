@@ -44,8 +44,10 @@ var ProviderSet = wire.NewSet(
 	NewKnowledgeService,
 	NewEvaluationService,
 	NewA2AService,
+	NewEcosystemService,
 	NewKnowledgeChunker,
 	NewKnowledgeEmbedder,
+	NewKnowledgeRetriever,
 	NewEvaluationRunner,
 	NewSkillDBRepository,
 )

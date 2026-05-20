@@ -2,10 +2,10 @@ package plugintrpc
 
 import (
 	"context"
-	"log/slog"
 	"sync"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
@@ -13,24 +13,25 @@ import (
 )
 
 type retryReflectConfig struct {
-	MaxRetries                 int      `json:"max_retries"`
-	ExcludedTools              []string `json:"excluded_tools"`
-	HighRiskToolsNeedConfirm   bool     `json:"high_risk_tools_need_confirm"`
-	ErrorIfRetryExceeded       bool     `json:"error_if_retry_exceeded"`
+	MaxRetries               int      `json:"max_retries"`
+	ExcludedTools            []string `json:"excluded_tools"`
+	HighRiskToolsNeedConfirm bool     `json:"high_risk_tools_need_confirm"`
+	ErrorIfRetryExceeded     bool     `json:"error_if_retry_exceeded"`
 }
 
 type RetryAndReflectPlugin struct {
-	name  string
-	cfg   retryReflectConfig
-	stats StatsRecorder
+	name   string
+	cfg    retryReflectConfig
+	stats  StatsRecorder
+	logger *PluginSafeLogger
 
-	mu     sync.Mutex
+	mu      sync.Mutex
 	retries map[string]int
 }
 
 var _ trpcplugin.Plugin = (*RetryAndReflectPlugin)(nil)
 
-func NewRetryAndReflectPlugin(p biz.Plugin, stats StatsRecorder) *RetryAndReflectPlugin {
+func NewRetryAndReflectPlugin(p biz.Plugin, stats StatsRecorder, bus event.Bus) *RetryAndReflectPlugin {
 	var cfg retryReflectConfig
 	cfg.MaxRetries = 3
 	cfg.HighRiskToolsNeedConfirm = true
@@ -38,10 +39,12 @@ func NewRetryAndReflectPlugin(p biz.Plugin, stats StatsRecorder) *RetryAndReflec
 	if cfg.MaxRetries <= 0 {
 		cfg.MaxRetries = 3
 	}
+	name := p.Key
 	return &RetryAndReflectPlugin{
-		name:    p.Key,
+		name:    name,
 		cfg:     cfg,
 		stats:   stats,
+		logger:  NewPluginSafeLogger(name, bus),
 		retries: make(map[string]int),
 	}
 }
@@ -58,6 +61,7 @@ func (r *RetryAndReflectPlugin) afterTool(ctx context.Context, args *trpctool.Af
 		return &trpctool.AfterToolResult{}, nil
 	}
 	if toolInList(args.ToolName, r.cfg.ExcludedTools) {
+		r.logger.Info("plugin.retry_reflect.after_tool", "status", "skip", "tool", args.ToolName, "reason", "excluded")
 		r.record(ctx, "after_tool", "ok")
 		return &trpctool.AfterToolResult{}, nil
 	}
@@ -67,23 +71,14 @@ func (r *RetryAndReflectPlugin) afterTool(ctx context.Context, args *trpctool.Af
 		status := "ok"
 		if r.cfg.ErrorIfRetryExceeded {
 			status = "error"
-			slog.Warn("retry_and_reflect.max_retries",
-				"plugin", r.name,
-				"tool", args.ToolName,
-				"retries", n,
-			)
+			r.logger.Warn("plugin.retry_reflect.after_tool", "status", "max_retries_exceeded", "tool", args.ToolName, "retries", n)
+		} else {
+			r.logger.Info("plugin.retry_reflect.after_tool", "status", "max_retries_exceeded", "tool", args.ToolName, "retries", n)
 		}
 		r.record(ctx, "after_tool", status)
 		return &trpctool.AfterToolResult{}, nil
 	}
-	slog.Info("retry_and_reflect.hint",
-		"plugin", r.name,
-		"tool", args.ToolName,
-		"attempt", n,
-		"max_retries", r.cfg.MaxRetries,
-		"error", args.Error.Error(),
-		"hint", "model may retry with adjusted arguments",
-	)
+	r.logger.Info("plugin.retry_reflect.after_tool", "status", "retry_hint", "tool", args.ToolName, "attempt", n, "max_retries", r.cfg.MaxRetries, "error", args.Error.Error())
 	r.record(ctx, "after_tool", "ok")
 	return &trpctool.AfterToolResult{}, nil
 }

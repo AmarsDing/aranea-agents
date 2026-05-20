@@ -4,6 +4,7 @@ import type {
   AuditLog,
   AuditQuery,
   ModelUsageQuery,
+  MonitorAlertRule,
   MonitorLogLine,
   MonitorLogSnapshot,
   MonitorTraceEvent,
@@ -14,6 +15,7 @@ import type {
 import { listModelUsageEvents } from "../usage/api";
 import { useEnvelopeStream } from "../chat/useEnvelopeStream";
 import type { Envelope, EnvelopeType } from "../chat/envelope";
+import { monitorLogLineFromFlowEnvelope } from "./flow";
 import { TEAM_RUNTIME_ENVELOPE_TYPES, teamRunEventFromEnvelope } from "../teams/teamRunEventFromEnvelope";
 
 const monitor = createMonitorService();
@@ -140,7 +142,15 @@ export function subscribeMonitorLogsWs(
     logEnabled: false,
   });
 
+  stream.onType("flow_log", (env: Envelope) => {
+    const line = monitorLogLineFromFlowEnvelope(env);
+    if (line) onLine(line);
+  });
+
   stream.onType("log", (env: Envelope) => {
+    if (env.metadata?.flow_step || env.metadata?.schema_version === "flow_log/v1") {
+      return;
+    }
     const level = (env.metadata?.level as MonitorLogLine["level"]) ?? "INFO";
     onLine({
       id: env.id,
@@ -149,6 +159,7 @@ export function subscribeMonitorLogsWs(
       message: env.content?.text ?? "",
       source: env.author ?? "monitor",
       created_at: env.timestamp,
+      kind: "process"
     });
   });
 
@@ -207,4 +218,65 @@ export function subscribeMonitorRuntimeEventsWs(
 export async function listMonitorTraceEvents(query: ModelUsageQuery = {}): Promise<MonitorTraceEvent[]> {
   const rows = await listModelUsageEvents(query);
   return rows as MonitorTraceEvent[];
+}
+
+function alertRuleFromWire(raw: unknown): MonitorAlertRule {
+  const r = obj(raw);
+  return {
+    id: String(r.id ?? ""),
+    name: String(r.name ?? ""),
+    metric_key: String(r.metric_key ?? r.metricKey ?? ""),
+    threshold: Number(r.threshold ?? 0),
+    window_minutes: Number(r.window_minutes ?? r.windowMinutes ?? 60),
+    enabled: Boolean(r.enabled ?? true),
+    severity: String(r.severity ?? "warning"),
+    notify_webhook_url: String(r.notify_webhook_url ?? r.notifyWebhookUrl ?? ""),
+    notify_channel_id: String(r.notify_channel_id ?? r.notifyChannelId ?? ""),
+    cooldown_minutes: Number(r.cooldown_minutes ?? r.cooldownMinutes ?? 60)
+  };
+}
+
+export async function listMonitorAlertRules(): Promise<MonitorAlertRule[]> {
+  const res = await monitor.ListMonitorAlertRules({});
+  const items = (res as { items?: unknown[] }).items ?? [];
+  return items.map(alertRuleFromWire);
+}
+
+export async function putMonitorAlertRules(rules: MonitorAlertRule[]): Promise<MonitorAlertRule[]> {
+  const res = await monitor.PutMonitorAlertRules({
+    items: rules.map((r) => ({
+      id: r.id,
+      name: r.name,
+      metric_key: r.metric_key,
+      threshold: r.threshold,
+      window_minutes: r.window_minutes,
+      enabled: r.enabled,
+      severity: r.severity,
+      notify_webhook_url: r.notify_webhook_url ?? "",
+      notify_channel_id: r.notify_channel_id ?? "",
+      cooldown_minutes: r.cooldown_minutes ?? 60
+    }))
+  });
+  const items = (res as { items?: unknown[] }).items ?? [];
+  return items.map(alertRuleFromWire);
+}
+
+export type RunnerMetricsSummary = {
+  window_minutes: number;
+  total_runs: number;
+  error_runs: number;
+  error_rate: number;
+  success_rate: number;
+};
+
+export async function getRunnerMetrics(windowMinutes = 60): Promise<RunnerMetricsSummary> {
+  const res = await monitor.GetRunnerMetrics({ windowMinutes });
+  const r = obj(res);
+  return {
+    window_minutes: Number(r.window_minutes ?? r.windowMinutes ?? windowMinutes),
+    total_runs: Number(r.total_runs ?? r.totalRuns ?? 0),
+    error_runs: Number(r.error_runs ?? r.errorRuns ?? 0),
+    error_rate: Number(r.error_rate ?? r.errorRate ?? 0),
+    success_rate: Number(r.success_rate ?? r.successRate ?? 0)
+  };
 }

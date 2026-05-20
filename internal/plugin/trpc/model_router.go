@@ -5,30 +5,35 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 
-	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
+	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
 )
 
-type modelRouterConfig struct {
-	DefaultModel      string `json:"default_model"`
-	CodeModel         string `json:"code_model"`
-	LongContextModel  string `json:"long_context_model"`
-	FallbackModel     string `json:"fallback_model"`
+// ModelRouterConfig is the product configuration for model_router plugin routing.
+type ModelRouterConfig struct {
+	DefaultModel     string `json:"default_model"`
+	CodeModel        string `json:"code_model"`
+	LongContextModel string `json:"long_context_model"`
+	FallbackModel    string `json:"fallback_model"`
 }
 
+type modelRouterConfig = ModelRouterConfig
+
 type ModelRouterPlugin struct {
-	name  string
-	cfg   modelRouterConfig
-	stats StatsRecorder
+	name   string
+	cfg    modelRouterConfig
+	stats  StatsRecorder
+	logger *PluginSafeLogger
 }
 
 var _ trpcplugin.Plugin = (*ModelRouterPlugin)(nil)
 
-func NewModelRouterPlugin(p biz.Plugin, stats StatsRecorder) *ModelRouterPlugin {
+func NewModelRouterPlugin(p biz.Plugin, stats StatsRecorder, bus event.Bus) *ModelRouterPlugin {
 	var cfg modelRouterConfig
 	parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg)
-	return &ModelRouterPlugin{name: p.Key, cfg: cfg, stats: stats}
+	return &ModelRouterPlugin{name: p.Key, cfg: cfg, stats: stats, logger: NewPluginSafeLogger(p.Key, bus)}
 }
 
 func (m *ModelRouterPlugin) Name() string { return m.name }
@@ -41,21 +46,31 @@ func (m *ModelRouterPlugin) beforeModel(ctx context.Context, args *trpcmodel.Bef
 	if args == nil || args.Request == nil {
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 	}
-	prompt := strings.ToLower(promptText(args.Request))
-	target := strings.TrimSpace(m.cfg.DefaultModel)
-	switch {
-	case m.cfg.CodeModel != "" && looksLikeCodeTask(prompt):
-		target = strings.TrimSpace(m.cfg.CodeModel)
-	case m.cfg.LongContextModel != "" && len(prompt) > 12000:
-		target = strings.TrimSpace(m.cfg.LongContextModel)
-	}
-	if target != "" {
+	origModel := modelNameFromContext(ctx)
+	if target := ResolveModelAPI(promptText(args.Request), m.cfg); target != "" {
 		patchRequestModelHint(args.Request, target)
-	} else if fb := strings.TrimSpace(m.cfg.FallbackModel); fb != "" && modelNameFromContext(ctx) == "" {
-		patchRequestModelHint(args.Request, fb)
+		m.logger.Info("plugin.model_router.before_model", "status", "routed", "orig_model", origModel, "target_model", target)
+	} else {
+		m.logger.Info("plugin.model_router.before_model", "status", "no_route", "orig_model", origModel)
 	}
 	m.record(ctx, "before_model", "ok")
 	return &trpcmodel.BeforeModelResult{Context: ctx}, nil
+}
+
+// ResolveModelAPI picks a catalog model API id from prompt heuristics and plugin config.
+func ResolveModelAPI(prompt string, cfg ModelRouterConfig) string {
+	prompt = strings.ToLower(prompt)
+	target := strings.TrimSpace(cfg.DefaultModel)
+	switch {
+	case cfg.CodeModel != "" && looksLikeCodeTask(prompt):
+		target = strings.TrimSpace(cfg.CodeModel)
+	case cfg.LongContextModel != "" && len(prompt) > 12000:
+		target = strings.TrimSpace(cfg.LongContextModel)
+	}
+	if target != "" {
+		return target
+	}
+	return strings.TrimSpace(cfg.FallbackModel)
 }
 
 func promptText(req *trpcmodel.Request) string {

@@ -10,6 +10,9 @@
           <q-chip v-if="metadata.health_status" dense outline :color="healthColor">
             {{ metadata.health_status }}
           </q-chip>
+          <q-chip v-if="recentReconnect" dense outline color="warning">
+            近期重连
+          </q-chip>
         </div>
         <div class="text-caption text-grey-7 ellipsis">{{ server.key }}</div>
         <div class="row q-col-gutter-sm q-mt-sm text-body2">
@@ -27,6 +30,10 @@
           <div class="col-12 col-sm-4">工具前缀：{{ config.tool_prefix || derivedPrefix }}</div>
           <div class="col-12 col-sm-4">超时：{{ config.timeout_sec || 60 }}s</div>
           <div class="col-12 col-sm-4">用户凭据：{{ config.require_user_credentials ? "需要" : "不需要" }}</div>
+        </div>
+        <div v-if="metadata.last_reconnect_at" class="text-caption text-warning q-mt-xs">
+          最近重连：{{ formatReconnectAt(metadata.last_reconnect_at) }}
+          <span v-if="metadata.reconnect_count">（累计 {{ metadata.reconnect_count }} 次）</span>
         </div>
         <div v-if="metadata.last_error_message" class="text-caption text-negative q-mt-xs ellipsis">
           {{ metadata.last_error_message }}
@@ -79,6 +86,19 @@ const healthColor = computed(() => {
   if (metadata.value.health_status === "degraded") return "warning";
   return "grey";
 });
+const recentReconnect = computed(() => {
+  const at = metadata.value.last_reconnect_at;
+  if (!at) return false;
+  const t = Date.parse(at);
+  if (Number.isNaN(t)) return false;
+  return Date.now() - t < 24 * 60 * 60 * 1000;
+});
+
+function formatReconnectAt(iso: string): string {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return iso;
+  return new Date(t).toLocaleString();
+}
 
 function parseJSON<T>(value: string | undefined, fallback: T): T {
   if (!value) return fallback;

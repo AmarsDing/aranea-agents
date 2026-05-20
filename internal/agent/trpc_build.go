@@ -3,13 +3,16 @@ package agent
 import (
 	"context"
 	"encoding/json"
-	"log/slog"
+	"fmt"
 	"os"
+
+	"aranea-agents/internal/event"
 	"strings"
 	"time"
 
 	agentplanner "aranea-agents/internal/agent/planner"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/knowledge"
 	aramemory "aranea-agents/internal/memory"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	"aranea-agents/internal/skill/storage"
@@ -60,6 +63,8 @@ type TRPCBuilderDeps struct {
 	PluginManager *plugintrpc.Manager
 	// MemoryAdmin is the L0–L4 session memory port for prompt injection (EP-BIZ-04).
 	MemoryAdmin aramemory.SessionAdminStore
+	// KnowledgeRetriever is injected into tool context for knowledge_search (KN-01).
+	KnowledgeRetriever *knowledge.Retriever
 }
 
 func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) (trpcagent.Agent, error) {
@@ -98,11 +103,33 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) 
 
 	opts := []trpcllmagent.Option{
 		trpcllmagent.WithModel(m),
+	}
+	hasPluginModelRouter := false
+	hasPluginCostGuard := false
+	var modelSelectors []trpcagent.ModelSelector
+	if deps.PluginManager != nil {
+		if routerCfg, ok := deps.PluginManager.ModelRouterConfigForAgent(ag.ID); ok {
+			hasPluginModelRouter = true
+			modelSelectors = append(modelSelectors,
+				PluginModelSelector(prov, mod, deps.Catalog, deps.RT, routerCfg),
+			)
+		}
+		if cgCfg, ok := deps.PluginManager.CostGuardConfigForAgent(ag.ID); ok {
+			hasPluginCostGuard = true
+			modelSelectors = append(modelSelectors,
+				PluginCostGuardSelector(prov, mod, deps.Catalog, deps.RT, cgCfg),
+			)
+		}
+	}
+	if len(modelSelectors) > 0 {
+		opts = append(opts, trpcllmagent.WithModelSelector(ChainedModelSelector(modelSelectors...)))
+	}
+	opts = append(opts,
 		trpcllmagent.WithInstruction(sys),
 		trpcllmagent.WithDescription(strings.TrimSpace(ag.DisplayName)),
 		trpcllmagent.WithChannelBufferSize(256),
 		trpcllmagent.WithGenerationConfig(trpcmodel.GenerationConfig{Stream: true}),
-	}
+	)
 
 	if p := agentplanner.Select(deps.DialogMode, plannerKind(ag)); p != nil {
 		opts = append(opts, trpcllmagent.WithPlanner(p))
@@ -146,8 +173,8 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) 
 				opts = append(opts, trpcllmagent.WithTools(memTools))
 			}
 		} else {
-			slog.WarnContext(ctx, "agent has MemoryEnabled=true but no MemoryService is configured; memory tools disabled",
-				"agent_id", ag.ID)
+			event.CtxFlowLogWarn(ctx, "system.agent.memory_disabled", "Agent 已启用记忆但未配置 MemoryService，记忆工具已禁用",
+				event.P("agent_id", ag.ID))
 		}
 	}
 
@@ -156,7 +183,7 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) 
 	}
 
 	if ag.Settings != nil {
-		opts = append(opts, buildTRPCRuntimeOptions(ag.Settings)...)
+		opts = append(opts, buildTRPCRuntimeOptions(ag.Settings, hasPluginModelRouter || hasPluginCostGuard)...)
 
 		if toolFilter := buildToolFilter(ag.Settings); toolFilter != nil {
 			opts = append(opts, trpcllmagent.WithToolFilter(toolFilter))
@@ -180,8 +207,10 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) 
 func buildSkillDeps(ctx context.Context, deps TRPCBuilderDeps) (trpcskill.Repository, trpcskill.VisibilityFilter, codeexecutor.CodeExecutor, error) {
 	slugs, err := deps.SkillUC.ListEnabledPublishedSkillKeys(ctx)
 	if err != nil || len(slugs) == 0 {
+		event.CtxFlowLogWarn(ctx, "system.agent.skill_build", "技能构建：无可用技能", event.P("error", err), event.P("slug_count", len(slugs)))
 		return nil, nil, nil, err
 	}
+	event.CtxFlowLogDone(ctx, "system.agent.skill_build", "技能构建：解析中", event.P("slug_count", len(slugs)))
 
 	// Always resolve rootDir so the executor has a valid path regardless of
 	// which repo backend is selected.
@@ -211,6 +240,7 @@ func buildSkillDeps(ctx context.Context, deps TRPCBuilderDeps) (trpcskill.Reposi
 	}
 
 	exec := skilltrpc.NewExecutor(os.Getenv("CODE_EXECUTOR_BACKEND"), rootDir)
+	event.CtxFlowLogDone(ctx, "system.agent.skill_build", "技能构建完成", event.P("slug_count", len(slugs)), event.P("repo_type", fmt.Sprintf("%T", repo)))
 	return repo, filter, exec, nil
 }
 
@@ -259,13 +289,18 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 		!cfg.Email && !cfg.Todo && !cfg.AwaitReply && !cfg.ClaudeCode && !cfg.WorkspaceExec &&
 		!cfg.KnowledgeSearch && !cfg.CallAgent &&
 		len(cfg.MCPServers) == 0 && cfg.MCPBroker == nil {
+		event.CtxFlowLogDone(ctx, "system.agent.tool_build", "工具构建：未启用任何工具", event.P("agent_id", ag.ID))
 		return nil, nil
 	}
+	event.CtxFlowLogDone(ctx, "system.agent.tool_build", "工具构建中", event.P("agent_id", ag.ID), event.P("filesystem", cfg.Filesystem), event.P("mcp_servers", len(cfg.MCPServers)))
 	applyRuntimeToolConfigs(ctx, ag.ID, eff, deps, &cfg)
 	ts, err := tooltrpc.BuildToolsets(ctx, cfg)
 	if err != nil || ts == nil {
+		event.CtxFlowLogError(ctx, "system.agent.tool_build", "工具构建失败", event.P("agent_id", ag.ID), event.P("error", err))
 		return ts, err
 	}
+	toolCount := len(ts.Tools) + len(ts.ToolSets)
+	event.CtxFlowLogDone(ctx, "system.agent.tool_build", "工具构建完成", event.P("agent_id", ag.ID), event.P("tool_count", toolCount))
 	if confirm := buildToolConfirmationPolicy(ctx, ag, deps); len(confirm) > 0 {
 		tooltrpc.ApplyConfirmationPolicy(ts, confirm)
 	}
@@ -464,7 +499,7 @@ func loadEffectiveToolKeys(ctx context.Context, deps TRPCBuilderDeps, agentID st
 	return m
 }
 
-func buildTRPCRuntimeOptions(s *biz.AgentRuntimeSettings) []trpcllmagent.Option {
+func buildTRPCRuntimeOptions(s *biz.AgentRuntimeSettings, skipRuntimeModelSelector bool) []trpcllmagent.Option {
 	var opts []trpcllmagent.Option
 
 	if s.ModelInstructionsJSON != "" && s.ModelInstructionsJSON != "{}" {
@@ -499,7 +534,7 @@ func buildTRPCRuntimeOptions(s *biz.AgentRuntimeSettings) []trpcllmagent.Option 
 		}
 	}
 
-	if s.ModelSelector != "" && s.ModelSelector != "default" {
+	if !skipRuntimeModelSelector && s.ModelSelector != "" && s.ModelSelector != "default" {
 		selector := buildModelSelector(s.ModelSelector)
 		if selector != nil {
 			opts = append(opts, trpcllmagent.WithModelSelector(selector))

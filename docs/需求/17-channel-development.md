@@ -1,6 +1,6 @@
 # Channel 渠道 — 开发计划
 
-> **版本**：2026-05-17 | **状态**：🟡 基础 CRUD 可用；❌ Webhook/消息投递未实现
+> **版本**：2026-05-20 | **状态**：🟢 飞书/钉钉/企微 Webhook 入站+出站已通；CRUD 可用
 > **需求**：[17 channel.md](./17%20channel.md) · **设计**：[17 channel.design.md](./17%20channel.design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：EP-BIZ-08
 
@@ -26,9 +26,9 @@ Channel 渠道管理：管理多平台消息渠道（飞书/微信/钉钉/Slack 
 | Channel CRUD | ✅ | Create/Update/Delete/Get/List |
 | 渠道类型 | ✅ | `config_json.type` 字段 |
 | 凭据管理 | ✅ | `channel_credential` 关联表 |
-| Webhook 接收 | ❌ | 无 Webhook 接收端点 |
-| 消息投递 | ❌ | 无 `channel_delivery` 实现 |
-| 平台适配器 | ❌ | 无各平台 SDK 集成 |
+| Webhook 接收 | ✅ | `POST /webhooks/{channel_key}`（feishu/dingtalk/wecom） |
+| 消息投递 | ✅ | RunGateway 回复 + 各平台 TextSender |
+| 平台适配器 | 🟡 | `internal/channel/lark`、`dingtalk`、`wecom` |
 | 连接状态检测 | ❌ | 无健康检查 |
 
 ---

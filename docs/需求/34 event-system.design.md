@@ -42,7 +42,7 @@ trpc-agent-go Runner
   └──────┬──────────┬──────────┬────────────────┘
          │          │          │
          ▼          ▼          ▼
-   EventBusConsumer  WSServer  SlogBridge
+   EventBusConsumer  WSServer  FlowLog (TraceEmitter / SysLog)
    (StateDelta应用)  (WS推流)  (日志桥接)
          │          │
          ▼          ▼
@@ -286,11 +286,18 @@ func MatchFilterKey(subscriberKey, eventKey string) bool {
 
 将 Graph 执行事件桥接到 EventBus，映射 trpc-agent-go Graph ObjectType 到 EnvelopeType。
 
-### 5.3 SlogBridge
+### 5.3 Flow Log v2（替代 SlogBridge）
 
-`internal/event/slog_bridge.go`
+| 文件 | 职责 |
+|------|------|
+| `internal/event/trace_emitter.go` | Turn 热路径：`EnvelopeTypeFlowLog` + span 缓冲 |
+| `internal/event/system_flow.go` | 基础设施：`SysLog*` / `SessionSysLog*`（异步 Publish） |
+| `internal/event/flow_context.go` | `CtxFlowLog*`、`SetGlobalBus` |
 
-将 slog 日志桥接到 EventBus，生成 EnvelopeTypeLog 事件，路由到 monitor Channel。
+- Monitor 业务日志主类型为 **`flow_log`**（`schema_version: flow_log/v1`），非全局 `slog` 桥接。
+- **`slog_bridge.go` 已删除**（2026-05-20）；`LOG_BRIDGE_ENABLED` 已废弃。
+- 进程 Gateway 文本日志仍为 `EnvelopeTypeLog`（如 `PluginSafeLogger`），与 `flow_log` 前端分流。
+- 详见 [52-flow-logger.design.md](./52-flow-logger.design.md)、[changelog](../changelog/2026-05-20-FlowLog-V2-SlogRemoval.md)。
 
 ---
 
@@ -556,7 +563,8 @@ GET /v1/events?session_id=xxx&since=2025-01-01T00:00:00Z&until=2025-01-02T00:00:
 | `internal/event/bus.go` | Bus 接口 + 背压策略 + 路由匹配 |
 | `internal/event/envelope.go` | Envelope 结构 + EnvelopeType 枚举 + Clone / MatchFilterKey / ContainsTag |
 | `internal/event/buffer.go` | 环形缓冲 + TTL 淘汰 + Replay |
-| `internal/event/slog_bridge.go` | slog → EventBus 桥接 |
+| `internal/event/trace_emitter.go` | Flow Log v2 + usage spans |
+| `internal/event/system_flow.go` | 系统域 FlowLog（`SetGlobalBus`） |
 | `internal/event/wire.go` | Wire ProviderSet |
 | `internal/agent/event_projector.go` | trpc Event → Envelope 投影 |
 | `internal/agent/turn_helpers.go` | ConsumeEventStream 事件消费 |

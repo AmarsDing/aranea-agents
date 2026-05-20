@@ -3,7 +3,8 @@ package biz
 import (
 	"context"
 	"encoding/json"
-	"log/slog"
+
+	"aranea-agents/internal/event"
 	"strings"
 	"time"
 
@@ -30,7 +31,7 @@ func (w *TurnMemoryWorker) OnRunnerCompletion(_ context.Context, de DomainEvent)
 		SessionID:  sid,
 		EnqueuedAt: time.Now().UTC(),
 	})
-	slog.Debug("memory_worker: enqueued auto-memory job", "session_id", sid)
+	event.SessionSysLogWarn(context.Background(), sid, "system.memory_worker.enqueue", "自动记忆任务已入队")
 }
 
 // monitorRunnerCompletionMeta builds JSON metadata for monitor_events.

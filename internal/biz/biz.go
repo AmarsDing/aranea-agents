@@ -28,7 +28,6 @@ var ProviderSet = wire.NewSet(
 	NewToolUsecase,
 	NewChannelUsecase,
 	NewUsageUsecase,
-	NewMonitorUsecase,
 	NewSystemSettingUsecase,
 	NewAgentMCPTooling,
 	NewEvolutionUsecase,
@@ -38,6 +37,7 @@ var ProviderSet = wire.NewSet(
 	NewKnowledgeUsecase,
 	NewEvalUsecase,
 	NewA2AUsecase,
+	NewEcosystemUsecase,
 	ProvideAgentExistenceChecker,
 )
 

@@ -67,6 +67,19 @@ type EvalCaseResult struct {
 	ToolCallAccuracy float32
 	ErrorMessage     string
 	CreatedAt        string
+	HumanPass        *bool
+	HumanScore       *float32
+	HumanComment     string
+	AnnotatedAt      string
+	AnnotatedBy      string
+}
+
+// EvalCaseResultAnnotation is a partial update for human review (EVAL-02).
+type EvalCaseResultAnnotation struct {
+	HumanPass    *bool
+	HumanScore   *float32
+	HumanComment *string
+	AnnotatedBy  string
 }
 
 // EvalRepo is the persistence interface for evaluation operations.
@@ -87,6 +100,8 @@ type EvalRepo interface {
 
 	InsertCaseResult(ctx context.Context, r EvalCaseResult) error
 	ListCaseResults(ctx context.Context, runID string, limit, offset int) ([]EvalCaseResult, int, error)
+	GetCaseResult(ctx context.Context, runID, resultID string) (EvalCaseResult, error)
+	UpdateCaseResultAnnotation(ctx context.Context, runID, resultID string, patch EvalCaseResultAnnotation) (EvalCaseResult, error)
 }
 
 // EvalUsecase implements dataset/run management.
@@ -227,6 +242,17 @@ func (u *EvalUsecase) ListCaseResults(ctx context.Context, runID string, limit, 
 // InsertCaseResult persists one case result.
 func (u *EvalUsecase) InsertCaseResult(ctx context.Context, r EvalCaseResult) error {
 	return u.repo.InsertCaseResult(ctx, r)
+}
+
+// AnnotateCaseResult updates human review fields for one case result (EVAL-02).
+func (u *EvalUsecase) AnnotateCaseResult(ctx context.Context, runID, resultID string, patch EvalCaseResultAnnotation) (EvalCaseResult, error) {
+	if strings.TrimSpace(runID) == "" || strings.TrimSpace(resultID) == "" {
+		return EvalCaseResult{}, errors.BadRequest("EVAL", "run_id and result_id are required")
+	}
+	if strings.TrimSpace(patch.AnnotatedBy) == "" {
+		patch.AnnotatedBy = "system"
+	}
+	return u.repo.UpdateCaseResultAnnotation(ctx, runID, resultID, patch)
 }
 
 // ListCases returns all cases for a dataset.

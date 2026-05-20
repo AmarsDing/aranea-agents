@@ -2,7 +2,8 @@ package health
 
 import (
 	"context"
-	"log/slog"
+
+	"aranea-agents/internal/event"
 	"os"
 	"strings"
 	"sync"
@@ -80,7 +81,7 @@ func (r *Runner) probeAll(ctx context.Context) {
 
 	servers, err := r.deps.MCP.ListMCPServers(ctx)
 	if err != nil {
-		slog.Error("mcp health: list servers failed", "error", err)
+		event.SysLogError("system.mcp.health_list_fail", "MCP 健康检查列表失败", event.P("error", err))
 		return
 	}
 	for _, srv := range servers {
@@ -109,6 +110,6 @@ func (r *Runner) probeOne(ctx context.Context, srv biz.MCPServer) {
 	probeDuration.WithLabelValues(srv.Key).Observe(elapsed.Seconds())
 
 	if err := r.deps.UC.PersistHealth(ctx, srv.ID, result); err != nil {
-		slog.Error("mcp health: persist failed", "server_key", srv.Key, "error", err)
+		event.SysLogError("system.mcp.health_persist_fail", "MCP 健康状态保存失败", event.P("server_key", srv.Key), event.P("error", err))
 	}
 }

@@ -48,6 +48,7 @@ import {
   saveModelToStorage
 } from "../../../config/chatOptions";
 import { useAppStore } from "../../../stores/app";
+import { uploadArtifact } from "../../artifact/api";
 import { useAuthStore } from "../../../stores/auth";
 import { useArtifactStore } from "../../../stores/artifact";
 import type { ArtifactMeta } from "../../artifact/types";
@@ -1133,27 +1134,48 @@ export function useChatWorkspace() {
     fileRef.value?.click();
   }
 
-  function onFileChange(event: Event) {
+  async function readFileAsBase64(file: File): Promise<string> {
+    const buf = await file.arrayBuffer();
+    const bytes = new Uint8Array(buf);
+    let binary = "";
+    for (let i = 0; i < bytes.length; i += 1) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+  }
+
+  async function onFileChange(event: Event) {
     const input = event.target as HTMLInputElement;
     if (!input.files?.length) return;
 
-    Array.from(input.files).forEach((file, i) => {
-      const record: ChatAttachment = { id: `f-${Date.now()}-${i}`, name: file.name, progress: 0 };
+    const sessionId = selectedSessionForUi.value?.id ?? store.selectedSession?.id ?? "";
+    if (!sessionId) {
+      $q.notify({ type: "warning", message: "请先创建或选择会话再上传附件" });
+      input.value = "";
+      return;
+    }
+
+    for (const file of Array.from(input.files)) {
+      const tempId = `pending-${Date.now()}-${file.name}`;
+      const record: ChatAttachment = { id: tempId, name: file.name, progress: 0.1 };
       attachments.value.push(record);
-      const timer = setInterval(() => {
-        const stillExists = attachments.value.some((item) => item.id === record.id);
-        if (!stillExists) {
-          clearInterval(timer);
-          return;
-        }
-        record.progress = Math.min(1, record.progress + 0.2);
-        if (record.progress >= 1) {
-          clearInterval(timer);
-          delete record.timer;
-        }
-      }, 200);
-      record.timer = timer;
-    });
+      try {
+        const meta = await uploadArtifact({
+          session_id: sessionId,
+          name: file.name,
+          mime_type: file.type || "application/octet-stream",
+          data_base64: await readFileAsBase64(file)
+        });
+        record.id = meta.id;
+        record.progress = 1;
+      } catch (e) {
+        attachments.value = attachments.value.filter((item) => item.id !== tempId);
+        $q.notify({
+          type: "negative",
+          message: e instanceof Error ? e.message : "附件上传失败"
+        });
+      }
+    }
 
     input.value = "";
   }
@@ -1319,6 +1341,14 @@ export function useChatWorkspace() {
         runStatus.value = "running";
         $q.notify({ type: "positive", message: t("chat.awaitReplySent", "已提交回复，继续执行") });
         void refreshRunStatus();
+      } else {
+        $q.notify({
+          type: "warning",
+          message: t(
+            "chat.awaitReplyRestartHint",
+            "服务已重启，请重新发送消息以继续（或稍后再试提交回复）"
+          ),
+        });
       }
     } catch (err) {
       $q.notify({

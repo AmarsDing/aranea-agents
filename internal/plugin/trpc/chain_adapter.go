@@ -1,7 +1,6 @@
 package plugintrpc
 
 import (
-	"log/slog"
 	"strings"
 
 	"aranea-agents/internal/biz"
@@ -50,7 +49,7 @@ func ValidatePluginCallbackPoints(p biz.Plugin) {
 	for _, pt := range p.CallbackPoints {
 		norm := strings.ToLower(strings.TrimSpace(pt))
 		if _, ok := declSet[norm]; !ok {
-			slog.Warn("plugin: callback_point not implemented by builtin",
+			hookLogger.Warn("plugin: callback_point not implemented by builtin",
 				"plugin", p.Key,
 				"point", pt,
 				"implemented", declared,

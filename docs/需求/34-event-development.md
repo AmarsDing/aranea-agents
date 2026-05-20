@@ -41,7 +41,8 @@ Event 事件系统：基于事件总线的发布/订阅机制，支持系统内�
 | 前端 WsTransport | ✅ | `web/src/features/chat/ws-transport.ts` 自动重连 + 心跳 |
 | 前端 useEnvelopeStream | ✅ | `web/src/features/chat/useEnvelopeStream.ts` composable |
 | DomainEvent 适配 | ✅ | `internal/biz/domain_event.go` + `domain_event_adapter.go` |
-| SlogBridge 日志桥接 | ✅ | `internal/event/slog_bridge.go` |
+| Flow Log v2（`flow_log`） | ✅ | `trace_emitter.go` + `system_flow.go`；SlogBridge 已删除 |
+| 系统域基础设施打点 | ✅ | `SysLog*` / `SessionSysLog*`；Bus drop → `system.bus.drop` |
 | Graph 事件桥接 | ✅ | `internal/graph/trpc/event_bridge.go` |
 | Metrics 指标 | ✅ | `internal/metrics/vars.go` EventBusPublished / EventBusDropped |
 | 事件持久化 | ❌ | 无事件存储，系统重启后事件丢失 |

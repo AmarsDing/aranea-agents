@@ -144,6 +144,21 @@ func modelNameFromContext(ctx context.Context) string {
 	return ""
 }
 
+func sessionAgentKey(ctx context.Context, inv *trpcagent.Invocation) (sessionID, agentKey string) {
+	if inv == nil {
+		if i, ok := trpcagent.InvocationFromContext(ctx); ok && i != nil {
+			inv = i
+		}
+	}
+	if inv != nil {
+		if inv.Session != nil {
+			sessionID = inv.Session.ID
+		}
+		agentKey = inv.AgentName
+	}
+	return
+}
+
 func patchRequestModelHint(req *trpcmodel.Request, model string) {
 	if req == nil || strings.TrimSpace(model) == "" {
 		return

@@ -9,6 +9,7 @@ import (
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+	"aranea-agents/internal/knowledge"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	rt "aranea-agents/internal/runtime"
 	tooltrpc "aranea-agents/internal/tools/trpc"
@@ -25,7 +26,8 @@ type Runner struct {
 	pluginManager     *plugintrpc.Manager
 	skillDBRepo       trpcskill.Repository
 	runs              *rt.RunRegistry
-	awaitHookProvider func(runCtx context.Context, sessionID, runID string) tooltrpc.ReplyFunc
+	awaitHookProvider    func(runCtx context.Context, sessionID, runID string) tooltrpc.ReplyFunc
+	knowledgeRetriever   *knowledge.Retriever
 }
 
 func NewRunner(
@@ -61,7 +63,7 @@ func NewRunner(
 				Settings: sys,
 			},
 			Persist:   persist,
-			Pipeline:  rt.EventPipeline{Bus: eventBus},
+			Pipeline:  rt.EventPipeline{Bus: eventBus, Buffer: event.NewBuffer()},
 			LLMHTTP:   &http.Client{Timeout: 0},
 			Sessions:  sessions,
 			Compress:  compress,
@@ -72,6 +74,10 @@ func NewRunner(
 
 func (r *Runner) SetAwaitHookProvider(fn func(runCtx context.Context, sessionID, runID string) tooltrpc.ReplyFunc) {
 	r.awaitHookProvider = fn
+}
+
+func (r *Runner) SetKnowledgeRetriever(ret *knowledge.Retriever) {
+	r.knowledgeRetriever = ret
 }
 
 // SetRunRegistry shares the chat gateway run registry for cancel/status/enqueue.

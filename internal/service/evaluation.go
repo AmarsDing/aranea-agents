@@ -2,11 +2,15 @@ package service
 
 import (
 	"context"
+	"database/sql"
+	"errors"
+	"fmt"
 	"strings"
 
 	v1 "aranea-agents/api/kratos/evaluation/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/evaluation"
+	"aranea-agents/pkg/auth"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
@@ -137,6 +141,39 @@ func (s *EvaluationService) GetRunResults(ctx context.Context, req *v1.GetRunRes
 	return &v1.GetRunResultsResponse{Items: out, Total: int32(total)}, nil
 }
 
+func (s *EvaluationService) AnnotateCaseResult(ctx context.Context, req *v1.AnnotateCaseResultRequest) (*v1.EvalCaseResult, error) {
+	runID := strings.TrimSpace(req.GetRunId())
+	resultID := strings.TrimSpace(req.GetResultId())
+	if runID == "" || resultID == "" {
+		return nil, kerrors.BadRequest("EVAL", "run_id and result_id are required")
+	}
+	by := "system"
+	if a, ok := auth.FromContext(ctx); ok && a.UserID > 0 {
+		by = fmt.Sprintf("user:%d", a.UserID)
+	}
+	patch := biz.EvalCaseResultAnnotation{AnnotatedBy: by}
+	if req.HumanPass != nil {
+		v := req.GetHumanPass()
+		patch.HumanPass = &v
+	}
+	if req.HumanScore != nil {
+		v := req.GetHumanScore()
+		patch.HumanScore = &v
+	}
+	if req.HumanComment != nil {
+		c := strings.TrimSpace(req.GetHumanComment())
+		patch.HumanComment = &c
+	}
+	res, err := s.uc.AnnotateCaseResult(ctx, runID, resultID, patch)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, kerrors.NotFound("EVAL_NOT_FOUND", "case result not found")
+		}
+		return nil, err
+	}
+	return toProtoCaseResult(res), nil
+}
+
 // --- proto conversion helpers ---
 
 func toProtoDataset(d biz.EvalDataset) *v1.EvalDataset {
@@ -171,7 +208,7 @@ func toProtoRun(r biz.EvalRun) *v1.EvalRun {
 }
 
 func toProtoCaseResult(r biz.EvalCaseResult) *v1.EvalCaseResult {
-	return &v1.EvalCaseResult{
+	out := &v1.EvalCaseResult{
 		Id:               r.ID,
 		RunId:            r.RunID,
 		CaseId:           r.CaseID,
@@ -182,5 +219,17 @@ func toProtoCaseResult(r biz.EvalCaseResult) *v1.EvalCaseResult {
 		ToolCallAccuracy: r.ToolCallAccuracy,
 		ErrorMessage:     r.ErrorMessage,
 		CreatedAt:        r.CreatedAt,
+		HumanComment:     r.HumanComment,
+		AnnotatedAt:      r.AnnotatedAt,
+		AnnotatedBy:      r.AnnotatedBy,
 	}
+	if r.HumanPass != nil {
+		v := *r.HumanPass
+		out.HumanPass = &v
+	}
+	if r.HumanScore != nil {
+		v := *r.HumanScore
+		out.HumanScore = &v
+	}
+	return out
 }

@@ -34,6 +34,7 @@
           mobile-arrows
         >
           <q-tab name="usage" icon="dashboard" label="Usage" />
+          <q-tab name="alerts" icon="notifications_active" label="Alerts" />
           <q-tab name="audit" icon="fact_check" label="Audit" />
           <q-tab name="events" icon="sensors" label="Events" />
           <q-tab name="traces" icon="account_tree" label="Traces" />
@@ -44,7 +45,11 @@
 
     <q-tab-panels v-model="tab" animated class="monitor-panels">
       <q-tab-panel name="usage">
+        <RunnerMetricsPanel />
         <UsageOverview />
+      </q-tab-panel>
+      <q-tab-panel name="alerts">
+        <MonitorAlertRules />
       </q-tab-panel>
       <q-tab-panel name="audit">
         <AuditTable :rows="auditRows" :total="auditTotal" :loading="loadingAudit" @reload="loadAudit" />
@@ -73,12 +78,14 @@ import LogStream from "../components/monitor/LogStream.vue";
 import RealtimeEvents from "../components/monitor/RealtimeEvents.vue";
 import TraceList from "../components/monitor/TraceList.vue";
 import UsageOverview from "../components/monitor/UsageOverview.vue";
+import RunnerMetricsPanel from "../components/monitor/RunnerMetricsPanel.vue";
+import MonitorAlertRules from "../components/monitor/MonitorAlertRules.vue";
 import { listMonitorAudit, listMonitorEvents, listMonitorTraceEvents } from "../features/monitor/api";
 import type { AuditLog, ModelUsageQuery, MonitorTraceEvent, PlatformResource } from "../features/monitor/types";
 
 const route = useRoute();
 const router = useRouter();
-const validTabs = ["usage", "audit", "events", "traces", "logs"];
+const validTabs = ["usage", "alerts", "audit", "events", "traces", "logs"];
 const initialTab = String(route.query.tab || "usage");
 const tab = ref(validTabs.includes(initialTab) ? initialTab : "usage");
 const auditRows = ref<AuditLog[]>([]);
