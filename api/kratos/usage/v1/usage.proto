@@ -19,6 +19,8 @@ message UsageQuery {
   string status = 7;
   int32 limit = 8;
   string granularity = 9; // "" | "day" | "hour"
+  string team_id = 10;
+  string usage_kind = 11; // exact kind filter (detail/export); aggregates always billable (exclude team_turn)
 }
 
 message UsageSummary {

@@ -172,6 +172,9 @@ export default {
     reload: "重新加载",
     lastSaved: "上次更新：{time}",
     saveOk: "已保存",
-    saveFailed: "保存失败"
+    saveFailed: "保存失败",
+    globalQuotaTitle: "全平台月预算",
+    globalQuotaHint: "全平台 LLM 费用上限（USD）；0 表示不限制。保存后同步到用量配额（global）。Chat 每次对话前校验。",
+    globalQuotaUsd: "月预算 (USD)"
   }
 };

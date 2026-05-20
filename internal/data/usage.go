@@ -22,7 +22,7 @@ func (r *usageRepo) ent() *ent.Client {
 }
 
 func (r *usageRepo) GetModelUsageSummary(ctx context.Context, query biz.UsageQuery) (biz.UsageSummary, error) {
-	where, args := usageWhere(query)
+	where, args := usageWhere(query, true)
 	q := `SELECT
 		 COALESCE(SUM(call_count), 0), COUNT(*),
 		 COALESCE(SUM(CASE WHEN `+sqlUsageStatusSuccess+` THEN 1 ELSE 0 END), 0),
@@ -45,7 +45,7 @@ func (r *usageRepo) GetModelUsageSummary(ctx context.Context, query biz.UsageQue
 }
 
 func (r *usageRepo) ListModelUsageTrends(ctx context.Context, query biz.UsageQuery) ([]biz.UsageTrendPoint, error) {
-	where, args := usageWhere(query)
+	where, args := usageWhere(query, true)
 	rows, err := r.ent().QueryContext(ctx,
 		`SELECT date_key,
 		 COALESCE(SUM(call_count), 0),
@@ -74,7 +74,7 @@ func (r *usageRepo) ListModelUsageTrends(ctx context.Context, query biz.UsageQue
 }
 
 func (r *usageRepo) ListTopModelUsage(ctx context.Context, query biz.UsageQuery) ([]biz.UsageBreakdownRow, error) {
-	where, args := usageWhere(query)
+	where, args := usageWhere(query, true)
 	args = append(args, usageLimit(query.Limit))
 	rows, err := r.ent().QueryContext(ctx,
 		`SELECT provider_code, model_api_id, MAX(model_display_name),
@@ -100,7 +100,7 @@ func (r *usageRepo) ListTopModelUsage(ctx context.Context, query biz.UsageQuery)
 }
 
 func (r *usageRepo) ListTopAgentUsage(ctx context.Context, query biz.UsageQuery) ([]biz.UsageBreakdownRow, error) {
-	where, args := usageWhere(query)
+	where, args := usageWhere(query, true)
 	args = append(args, usageLimit(query.Limit))
 	rows, err := r.ent().QueryContext(ctx,
 		`SELECT agent_id, agent_key,
@@ -126,7 +126,7 @@ func (r *usageRepo) ListTopAgentUsage(ctx context.Context, query biz.UsageQuery)
 }
 
 func (r *usageRepo) ListModelUsageEvents(ctx context.Context, query biz.UsageQuery) ([]biz.TokenUsageEvent, error) {
-	where, args := usageWhere(query)
+	where, args := usageWhere(query, false)
 	args = append(args, usageLimit(query.Limit))
 	rows, err := r.ent().QueryContext(ctx,
 		`SELECT id, occurred_at, date_key, hour_key, workspace_id, user_id, team_id, agent_id, agent_key, session_id, message_id, request_id,
@@ -174,9 +174,12 @@ func scanTokenUsageEvent(row scanner) (biz.TokenUsageEvent, error) {
 	return v, err
 }
 
-func usageWhere(query biz.UsageQuery) (string, []any) {
+func usageWhere(query biz.UsageQuery, billableOnly bool) (string, []any) {
 	parts := []string{}
 	args := []any{}
+	if billableOnly {
+		parts = append(parts, sqlUsageBillableKind)
+	}
 	if query.StartDate != "" {
 		parts = append(parts, "date_key >= ?")
 		args = append(args, query.StartDate)
@@ -196,6 +199,14 @@ func usageWhere(query biz.UsageQuery) (string, []any) {
 	if query.AgentID != "" {
 		parts = append(parts, "agent_id = ?")
 		args = append(args, query.AgentID)
+	}
+	if query.TeamID != "" {
+		parts = append(parts, "team_id = ?")
+		args = append(args, query.TeamID)
+	}
+	if query.UsageKind != "" {
+		parts = append(parts, "usage_kind = ?")
+		args = append(args, query.UsageKind)
 	}
 	if query.Status != "" {
 		switch query.Status {

@@ -17,10 +17,19 @@ type UsageQuery struct {
 	ProviderCode string
 	ModelAPIID   string
 	AgentID      string
+	TeamID       string
+	UsageKind    string // exact filter; empty = all kinds (detail list only)
 	Status       string
 	Limit        int
 	Granularity  string // "" | "day" | "hour"
 }
+
+// usage_kind values written to model_token_usage_events.usage_kind.
+const (
+	UsageKindChatTurn   = "chat_turn"
+	UsageKindTeamMember = "team_member"
+	UsageKindTeamTurn   = "team_turn" // run-level reconciliation; excluded from billable aggregates
+)
 
 type UsageSummary struct {
 	CallCount          int

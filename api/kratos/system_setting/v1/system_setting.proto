@@ -16,11 +16,14 @@ message SystemSettings {
   google.protobuf.Timestamp update_time = 2;
   // Platform root path (install / deployment root for data and resources).
   string root_directory = 3;
+  // Platform-wide monthly spend cap (micro-USD). 0 = disabled. Synced to usage_quotas scope global/global.
+  int64 global_monthly_micro_usd = 4;
 }
 
 message UpdateSystemSettingsRequest {
   string work_directory = 1;
   string root_directory = 2;
+  int64 global_monthly_micro_usd = 3;
 }
 
 service SystemSettingService {

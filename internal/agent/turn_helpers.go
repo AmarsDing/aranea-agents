@@ -15,11 +15,19 @@ import (
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 )
 
+// MemberTokenUsage is per team member (agent_key) usage observed in the event stream.
+type MemberTokenUsage struct {
+	PromptTokens     int
+	CompletionTokens int
+}
+
 type EventStreamResult struct {
 	Reply         strings.Builder
 	Reasoning     strings.Builder
 	PromptTok     int
 	CompletionTok int
+	// MemberUsage maps agent_key → latest usage from member completion events (Team parallel/swarm).
+	MemberUsage map[string]MemberTokenUsage
 	// HasError is true when at least one error event was observed during the turn.
 	HasError bool
 	// LastError records the last error message from the event stream.
@@ -121,8 +129,7 @@ func ConsumeEventStreamWithFirstByte(
 			continue
 		}
 		if usage := ev.Response.Usage; usage != nil {
-			result.PromptTok = usage.PromptTokens
-			result.CompletionTok = usage.CompletionTokens
+			accumulateStreamUsage(&result, ev, projectMeta, usage.PromptTokens, usage.CompletionTokens)
 		}
 		for _, choice := range ev.Response.Choices {
 			msg := choice.Message
@@ -138,4 +145,29 @@ func ConsumeEventStreamWithFirstByte(
 	}
 
 	return result
+}
+
+func accumulateStreamUsage(result *EventStreamResult, ev *trpcevent.Event, meta ProjectMeta, promptTok, completionTok int) {
+	if result == nil {
+		return
+	}
+	result.PromptTok = promptTok
+	result.CompletionTok = completionTok
+	if !isTeamMemberAuthor(ev.Author, meta) {
+		return
+	}
+	key := strings.TrimSpace(ev.Author)
+	if key == "" {
+		return
+	}
+	if result.MemberUsage == nil {
+		result.MemberUsage = make(map[string]MemberTokenUsage)
+	}
+	prev := result.MemberUsage[key]
+	if promptTok >= prev.PromptTokens || completionTok >= prev.CompletionTokens {
+		result.MemberUsage[key] = MemberTokenUsage{
+			PromptTokens:     promptTok,
+			CompletionTokens: completionTok,
+		}
+	}
 }

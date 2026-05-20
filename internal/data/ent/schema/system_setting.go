@@ -17,6 +17,7 @@ func (SystemSetting) Fields() []ent.Field {
 		field.Int("id"),
 		field.Text("root_directory").Default(""),
 		field.Text("work_directory").Default(""),
+		field.Int64("global_monthly_micro_usd").Default(0),
 		field.Time("update_time").Default(time.Now).UpdateDefault(time.Now),
 	}
 }

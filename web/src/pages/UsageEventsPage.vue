@@ -20,6 +20,8 @@
         <q-input v-model="filters.provider_code" class="col-12 col-md-2" dense outlined clearable label="Provider" />
         <q-input v-model="filters.model_api_id" class="col-12 col-md-2" dense outlined clearable label="模型" />
         <q-input v-model="filters.agent_id" class="col-12 col-md-2" dense outlined clearable label="Agent ID" />
+        <q-input v-model="filters.team_id" class="col-12 col-md-2" dense outlined clearable label="Team ID" />
+        <q-select v-model="filters.usage_kind" class="col-12 col-md-2" dense outlined clearable emit-value map-options label="来源" :options="usageKindOptions" />
         <q-select v-model="filters.status" class="col-12 col-md-2" dense outlined clearable emit-value map-options label="状态" :options="statusOptions" />
         <div class="col-12 col-md-2 flex items-center">
           <q-btn color="primary" unelevated label="查询" class="full-width" @click="load" />
@@ -62,6 +64,7 @@ const {
   filters,
   rangeOptions,
   statusOptions,
+  usageKindOptions,
   load,
   exportCsv,
   formatMoney,

@@ -16,6 +16,8 @@ func fromProtoUsageQuery(in *v1.UsageQuery) biz.UsageQuery {
 		ProviderCode: in.GetProviderCode(),
 		ModelAPIID:   in.GetModelApiId(),
 		AgentID:      in.GetAgentId(),
+		TeamID:       in.GetTeamId(),
+		UsageKind:    in.GetUsageKind(),
 		Status:       in.GetStatus(),
 		Limit:        int(in.GetLimit()),
 		Granularity:  in.GetGranularity(),

@@ -104,7 +104,7 @@
 
 #### 系统设置 `/settings`
 
-- 工作区根目录、工作目录（`SystemSetting` API）。
+- 工作区根目录、工作目录、**全平台月预算**（`SystemSetting.global_monthly_micro_usd`，保存时同步 `usage_quotas` global/global）。
 - 页面直连 `features/system-settings/api`（无独立 store）。
 
 ---
@@ -115,6 +115,7 @@
 
 - **模型消耗看板**：时间范围、Provider/模型/状态筛选；趋势粒度 **按天 / 按小时**（`granularity=hour`）。
 - 指标卡（含 **月预算使用率**，有 `usage_quotas` 时展示）、趋势图、Top 模型/Agent、异常请求列表；**「查看明细」**跳转 `/usage/events`（携带当前 `range`）。
+- **统计口径**：概览/排行/配额已用额仅计 `chat_turn` + `team_member`（不含 `team_turn`）；详见 `29 token.md` §3.6。
 - 数据：`features/usage/api` + `UsageMetricCards` 等组件。
 - 写入真相源：`trpc_turn` → `recordTurnUsage`（非 `recordChatIngressUsage` 默认路径）。
 
@@ -122,10 +123,11 @@
 
 - **只读明细**：`model_token_usage_events` 逐条记录（一次模型调用）。
 - **列**：时间、来源 `usage_kind`、Provider、模型、Agent、Session、Tokens、费用 `total_cost_micro_usd`、延迟、状态、错误摘要。
-- **筛选**：范围、Provider、模型、Agent ID、状态（`success` 含历史 `ok`；`error` 含 failed/timeout 等异常）。
+- **筛选**：范围、Provider、模型、Agent ID、**Team ID**、**来源 `usage_kind`**、状态（`success` 含历史 `ok`；`error` 含 failed/timeout 等异常）。
+- **说明**：明细含 `team_turn`（整轮对账行）；概览聚合已排除，避免与 `team_member` 重复计费。
 - **导出**：`GET /v1/usage/events/export` → CSV 下载。
 - **数据 API**：`GET /v1/usage/events`（`features/usage/api.ts`）。
-- **来源**：`usage_kind` 含 `chat_turn`、`team_member`（Team 成员 step）等。
+- **来源**：`usage_kind` 含 `chat_turn`、`team_member`（Team 成员 step，parallel 模式按事件流 `agent_key` 回写）、`team_turn`（整轮聚合）等。
 - **费用**：`model_pricing_rules` 优先，否则 Provider 模型 `config_json` 单价；须在 `/models` 配置否则 `total_cost_micro_usd=0` 且配额 SUM 无效。
 
 #### 用量配额（按 Agent，无独立菜单）

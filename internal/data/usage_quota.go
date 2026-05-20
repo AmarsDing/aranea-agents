@@ -91,7 +91,7 @@ func (r *usageRepo) SumScopeCostInPeriod(ctx context.Context, scopeType, scopeID
 	scopeID = strings.TrimSpace(scopeID)
 	periodStart = strings.TrimSpace(periodStart)
 	periodEnd = strings.TrimSpace(periodEnd)
-	q := `SELECT COALESCE(SUM(total_cost_micro_usd), 0) FROM model_token_usage_events WHERE date_key >= ? AND date_key <= ?`
+	q := `SELECT COALESCE(SUM(total_cost_micro_usd), 0) FROM model_token_usage_events WHERE date_key >= ? AND date_key <= ? AND ` + sqlUsageBillableKind
 	args := []any{periodStart, periodEnd}
 	switch scopeType {
 	case "agent":

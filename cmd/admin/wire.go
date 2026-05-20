@@ -104,6 +104,10 @@ func provideUsageUsecase(repo biz.UsageRepo, mon *biz.MonitorUsecase) *biz.Usage
 	return uc
 }
 
+func provideSystemSettingUsecase(repo biz.SystemSettingRepo, quota biz.UsageQuotaRepo) *biz.SystemSettingUsecase {
+	return biz.NewSystemSettingUsecase(repo, quota)
+}
+
 func provideChatServiceDeps(
 	runs *rt.RunRegistry,
 	teams biz.TeamRepository,
@@ -282,6 +286,8 @@ func wireApp(*conf.Server, *conf.Data, log.Logger) (wireOut, func(), error) {
 		provideMonitorAlertNotifier,
 		provideMonitorUsecase,
 		provideUsageUsecase,
+		provideSystemSettingUsecase,
+		wire.Bind(new(biz.UsageQuotaRepo), new(biz.UsageRepo)),
 		newApp,
 		provideWireOut,
 	))

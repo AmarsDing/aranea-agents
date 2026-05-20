@@ -40,7 +40,7 @@ Evaluation 评估：对 Agent 的输出质量进行结构化评估，支持自�
 | 人工评估标注 | ✅ | `AnnotateCaseResult` + Results 对话框 |
 | 评估报告导出 | ✅ | `exportRunResults.ts` CSV/JSON（客户端，迭代 7） |
 | 评估报告服务端生成 | ❌ | 无聚合 PDF/定时报告 API |
-| 前端页面 | ✅ | EvaluationPage.vue；路由 /evaluation 已注册；eatures/evaluation/ api/types/mapper/store 均已实现 |
+| 前端页面 | ✅ | EvaluationPage.vue；路由 /evaluation 已注册；features/evaluation/ api/types/mapper/store 均已实现 |
 | trpc AgentEvaluator 集成 | ❌ | 使用自建 Runner，未集成框架评估器 |
 | MultiRun / UserSimulation | ❌ | 未实现 |
 | ToolTrajectory / FinalResponse 多维度 | ❌ | 仅有简化版 exact/contains/tool_call_accuracy |

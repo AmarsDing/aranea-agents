@@ -10,7 +10,6 @@ import (
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
-const globalQuotaScopeID = "global"
 
 // enforceQuota blocks when the scope monthly cap is exceeded (no-op if quota unset).
 func enforceQuota(ctx context.Context, usage *biz.UsageUsecase, scopeType, scopeID string) error {
@@ -40,7 +39,7 @@ func enforceChatTurnQuotas(ctx context.Context, usage *biz.UsageUsecase, agentID
 	if err := enforceQuota(ctx, usage, "user", userID); err != nil {
 		return err
 	}
-	return enforceQuota(ctx, usage, "global", globalQuotaScopeID)
+	return enforceQuota(ctx, usage, biz.QuotaScopeGlobal, biz.GlobalQuotaScopeID)
 }
 
 // checkTeamMemberQuotas rejects the turn when any enabled team member exceeds agent scope quota.

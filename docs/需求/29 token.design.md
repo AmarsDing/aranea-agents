@@ -44,7 +44,7 @@ service UsageService {
 
 | Message | 说明 |
 |---------|------|
-| `UsageQuery` | 查询参数：range / start_date / end_date / provider_code / model_api_id / agent_id / status / limit |
+| `UsageQuery` | 查询参数：range / start_date / end_date / provider_code / model_api_id / agent_id / team_id / usage_kind / status / limit / granularity |
 | `UsageSummary` | 汇总：call_count / request_count / success/failed/cancelled / input/output/total_tokens / total_cost_micro_usd / avg_latency_ms / avg_tokens_per_second / success_rate |
 | `UsageTrendPoint` | 趋势点：date_key + UsageSummary 核心字段 |
 | `UsageBreakdownRow` | 占比行：provider_code / model_api_id / model_display_name / agent_id / agent_key + 汇总字段 + success_rate |
@@ -395,15 +395,47 @@ CREATE TABLE IF NOT EXISTS budget_alerts (
 
 ### 4.3 查询构建
 
-`usageWhere(query)` 根据 `UsageQuery` 动态构建 WHERE 子句：
+`usageWhere(query, billableOnly)` 根据 `UsageQuery` 动态构建 WHERE 子句：
 
-- `start_date` / `end_date` → `date_key >= ? AND date_key <= ?`
-- `provider_code` → `provider_code = ?`
-- `model_api_id` → `model_api_id = ?`
-- `agent_id` → `agent_id = ?`
-- `status` → `status = ?`（特殊值 `abnormal` 映射为 `status <> 'success'`）
+| 参数 | 条件 |
+|------|------|
+| `start_date` / `end_date` | `date_key >= ? AND date_key <= ?` |
+| `provider_code` | `provider_code = ?` |
+| `model_api_id` | `model_api_id = ?` |
+| `agent_id` | `agent_id = ?` |
+| `team_id` | `team_id = ?` |
+| `usage_kind` | `usage_kind = ?`（仅明细/导出；与 `billableOnly` 独立） |
+| `status` | `status = ?`；`abnormal` → `status <> 'success'` |
 
 `usageLimit(limit)` 限制范围 [1, 200]，默认 10。
+
+### 4.5 统计口径矩阵（可计费 vs 对账）
+
+常量：`internal/data/usage_sql.go` → `sqlUsageBillableKind`
+
+```sql
+(usage_kind IS NULL OR usage_kind = '' OR usage_kind <> 'team_turn')
+```
+
+| API / 读路径 | `billableOnly` | 说明 |
+|--------------|----------------|------|
+| `GetModelUsageSummary` / Overview 各段 | `true` | 今日/昨日/本月/range |
+| `ListModelUsageTrends` | `true` | 日趋势；`granularity=hour` 时 `model_token_usage_hourly` 同样带 billable 子句 |
+| `ListTopModelUsage` / `ListTopAgentUsage` | `true` | 排行 |
+| `SumScopeCostInPeriod`（配额已用额） | 固定 billable | `usage_quota.go` |
+| `ListModelUsageEvents` / `ExportUsageEvents` | `false` | 明细含 `team_turn`；可用 `usage_kind` / `team_id` 精确筛选 |
+
+**写入 `usage_kind`（`internal/biz/usage.go` 常量）**
+
+| 值 | 写入路径 | 聚合 |
+|----|----------|------|
+| `chat_turn` | `recordTurnUsage` | 可计费 |
+| `team_member` | Team `persistStep` → `recordMemberUsage` | 可计费；Team 总额 = `SUM(...) WHERE team_id=? AND usage_kind='team_member'` |
+| `team_turn` | `recordTeamRunUsage` | **排除**默认可计费聚合；明细可见 |
+
+**Team 并行（O4）**：`EventStreamResult.MemberUsage` 按 `agent_key` 汇总 → `stepTokensForMember`；无成员级 usage 时 anchor（sortIdx=0）回退整轮 tokens。
+
+**P3 暂缓**：`model_token_usage_daily` / hourly upsert 仍可能写入 `team_turn` 维度行；读层已过滤，rollup 表对齐见开发计划 §9.3。
 
 ### 4.4 费用计算
 
@@ -454,7 +486,14 @@ func (s *UsageService) RecordTokenUsageEvent(ctx, *v1.TokenUsageEvent) (*v1.Toke
 
 配额拦截：`chat_native.runNativeAgentTurn`（单 Agent）、`checkTeamMemberQuotas`（Team 成员）。
 
-**Team 明细**：`internal/team/usage_record.go` → `usage_kind=team_member`（`persistStep` 有 tokens 时）；落库失败 → `CtxFlowLogWarn`（`team.usage_record_fail`，**禁 slog**）。
+**Team 明细**：
+
+| kind | 路径 | 说明 |
+|------|------|------|
+| `team_member` | `ConsumeEventStream` → `MemberUsage[agent_key]` → `stepTokensForMember` → `persistStep` → `recordMemberUsage` | parallel/swarm 子 Agent 在事件流带 `Usage` 时按成员落库 |
+| `team_turn` | `recordTeamRunUsage` | 整轮 `promptTok`/`completionTok` 聚合一行（anchor Agent） |
+
+落库失败 → `CtxFlowLogWarn`（`team.usage_record_fail`，**禁 slog**）。成员流未带 `Usage` 时仅 anchor 成员（sortIdx=0）继承整轮 tokens。
 
 **定价回退**：`GetActiveModelPricing` → `model_pricing_rules`，否则 `llm_provider_models.config_json`。
 

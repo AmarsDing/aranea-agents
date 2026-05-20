@@ -21,6 +21,20 @@
           dense
           class="q-mb-sm"
         />
+        <q-separator class="q-my-md" />
+        <div class="text-subtitle2 q-mb-xs">{{ t("settingsPage.globalQuotaTitle") }}</div>
+        <div class="text-caption text-grey-7 q-mb-sm">{{ t("settingsPage.globalQuotaHint") }}</div>
+        <q-input
+          v-model.number="globalMonthlyUsd"
+          :label="t('settingsPage.globalQuotaUsd')"
+          outlined
+          dense
+          type="number"
+          min="0"
+          step="0.01"
+          prefix="$"
+          class="q-mb-sm"
+        />
         <div v-if="lastSavedLabel" class="text-caption text-grey-7 q-mb-md">{{ lastSavedLabel }}</div>
         <div class="row q-gutter-sm">
           <q-btn color="primary" unelevated no-caps :loading="saving" :label="t('settingsPage.save')" @click="save" />
@@ -41,6 +55,7 @@ const { t } = useI18n();
 const $q = useQuasar();
 const rootDir = ref("");
 const workDir = ref("");
+const globalMonthlyUsd = ref<number | null>(null);
 const updateTime = ref<string | undefined>(undefined);
 const loading = ref(false);
 const saving = ref(false);
@@ -52,6 +67,16 @@ const lastSavedLabel = computed(() => {
   return t("settingsPage.lastSaved", { time: ts });
 });
 
+function usdToMicroUsd(usd: number | null | undefined): number {
+  if (usd == null || !Number.isFinite(usd) || usd <= 0) return 0;
+  return Math.round(usd * 1_000_000);
+}
+
+function microUsdToUsd(micro: number | undefined): number | null {
+  if (micro == null || !Number.isFinite(micro) || micro <= 0) return null;
+  return micro / 1_000_000;
+}
+
 onMounted(load);
 
 async function load() {
@@ -61,6 +86,7 @@ async function load() {
     const res = await getSystemSettings();
     rootDir.value = res.rootDirectory ?? "";
     workDir.value = res.workDirectory ?? "";
+    globalMonthlyUsd.value = microUsdToUsd(res.globalMonthlyMicroUsd);
     updateTime.value = res.updateTime;
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : String(e);
@@ -73,9 +99,14 @@ async function save() {
   saving.value = true;
   error.value = "";
   try {
-    const res = await updateSystemSettings(rootDir.value, workDir.value);
+    const res = await updateSystemSettings(
+      rootDir.value,
+      workDir.value,
+      usdToMicroUsd(globalMonthlyUsd.value)
+    );
     rootDir.value = res.rootDirectory ?? "";
     workDir.value = res.workDirectory ?? "";
+    globalMonthlyUsd.value = microUsdToUsd(res.globalMonthlyMicroUsd);
     updateTime.value = res.updateTime;
     $q.notify({ type: "positive", message: t("settingsPage.saveOk") });
   } catch (e: unknown) {

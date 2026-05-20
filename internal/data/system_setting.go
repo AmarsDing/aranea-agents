@@ -22,9 +22,10 @@ func entToBizSystemSetting(e *ent.SystemSetting) biz.SystemSetting {
 		return biz.SystemSetting{}
 	}
 	return biz.SystemSetting{
-		RootDirectory: e.RootDirectory,
-		WorkDirectory: e.WorkDirectory,
-		UpdateTime:    e.UpdateTime,
+		RootDirectory:         e.RootDirectory,
+		WorkDirectory:         e.WorkDirectory,
+		GlobalMonthlyMicroUSD: e.GlobalMonthlyMicroUsd,
+		UpdateTime:            e.UpdateTime,
 	}
 }
 
@@ -39,10 +40,11 @@ func (r *systemSettingRepo) Get(ctx context.Context) (biz.SystemSetting, error) 
 	return entToBizSystemSetting(row), nil
 }
 
-func (r *systemSettingRepo) Update(ctx context.Context, rootDir, workDir string) (biz.SystemSetting, error) {
+func (r *systemSettingRepo) Update(ctx context.Context, rootDir, workDir string, globalMonthlyMicroUSD int64) (biz.SystemSetting, error) {
 	row, err := r.data.entClient.SystemSetting.UpdateOneID(systemSettingSingletonID).
 		SetRootDirectory(rootDir).
 		SetWorkDirectory(workDir).
+		SetGlobalMonthlyMicroUsd(globalMonthlyMicroUSD).
 		Save(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {

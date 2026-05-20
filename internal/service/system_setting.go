@@ -26,21 +26,22 @@ func (s *SystemSettingService) GetSystemSettings(ctx context.Context, _ *emptypb
 	if err != nil {
 		return nil, err
 	}
-	return &v1.SystemSettings{
-		WorkDirectory: row.WorkDirectory,
-		UpdateTime:    timestamppb.New(row.UpdateTime),
-		RootDirectory: row.RootDirectory,
-	}, nil
+	return toProtoSystemSettings(row), nil
 }
 
 func (s *SystemSettingService) UpdateSystemSettings(ctx context.Context, req *v1.UpdateSystemSettingsRequest) (*v1.SystemSettings, error) {
-	row, err := s.uc.Update(ctx, req.GetRootDirectory(), req.GetWorkDirectory())
+	row, err := s.uc.Update(ctx, req.GetRootDirectory(), req.GetWorkDirectory(), req.GetGlobalMonthlyMicroUsd())
 	if err != nil {
 		return nil, err
 	}
+	return toProtoSystemSettings(row), nil
+}
+
+func toProtoSystemSettings(row biz.SystemSetting) *v1.SystemSettings {
 	return &v1.SystemSettings{
-		WorkDirectory: row.WorkDirectory,
-		UpdateTime:    timestamppb.New(row.UpdateTime),
-		RootDirectory: row.RootDirectory,
-	}, nil
+		WorkDirectory:           row.WorkDirectory,
+		UpdateTime:              timestamppb.New(row.UpdateTime),
+		RootDirectory:           row.RootDirectory,
+		GlobalMonthlyMicroUsd:   row.GlobalMonthlyMicroUSD,
+	}
 }

@@ -39,7 +39,7 @@ func (s *ChatService) recordTurnUsage(
 		TotalTokens:      promptTok + completionTok,
 		LatencyMS:        int(latency.Milliseconds()),
 		Status:           status,
-		UsageKind:        "chat_turn",
+		UsageKind:        biz.UsageKindChatTurn,
 		MetadataJSON:     meta,
 		OccurredAt:       now.Format(time.RFC3339),
 		DateKey:          now.Format("2006-01-02"),

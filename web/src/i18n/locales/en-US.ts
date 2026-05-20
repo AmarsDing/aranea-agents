@@ -172,6 +172,9 @@ export default {
     reload: "Reload",
     lastSaved: "Last updated: {time}",
     saveOk: "Saved",
-    saveFailed: "Save failed"
+    saveFailed: "Save failed",
+    globalQuotaTitle: "Platform monthly budget",
+    globalQuotaHint: "Platform-wide LLM spend cap (USD); 0 = unlimited. Synced to usage_quotas (global). Enforced before each chat turn.",
+    globalQuotaUsd: "Monthly budget (USD)"
   }
 };

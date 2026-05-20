@@ -75,6 +75,38 @@
 
 - `29-token-development.md` §8.6 状态表更新。
 
+## 迭代七（billable 统计口径 · 读层）
+
+### 口径
+
+- 可计费聚合：`chat_turn` + `team_member`；**排除** `team_turn`（整轮对账）。
+- Team 整体：`SUM(team_member WHERE team_id=?)`；明细页仍展示全部 kind。
+
+### 后端
+
+- `sqlUsageBillableKind`、`usageWhere(query, billableOnly)`；概览/趋势/Top/配额 SUM 使用 `billableOnly=true`。
+- `UsageQuery.team_id` / `usage_kind`（Proto #10/#11）；`usage_where_test.go`。
+
+### 前端
+
+- `/usage/events` 筛选 Team ID、来源 `usage_kind`。
+
+### 文档
+
+- `29 token.md` §3.6 · `29 token.design.md` §4.5 · `29-token-development.md` §9 · `frontend-pages.md` §4.2。
+
+## 迭代六（O4 · Team 成员用量回写）
+
+- `EventStreamResult.MemberUsage`：`internal/agent/turn_helpers.go` 按 `ev.Author`（agent_key）累积成员 `Usage`。
+- `stepTokensForMember`：`internal/team/usage_tokens.go`；`runner_team_trpc` 不再仅给 sortIdx=0 填 tokens。
+- 单测：`turn_helpers_test.go`、`usage_tokens_test.go`。
+
+## 迭代五（系统设置 · 全局配额）
+
+- `system_setting.global_monthly_micro_usd` + Proto/API/Ent。
+- 保存系统设置时 `SystemSettingUsecase` 同步 `usage_quotas`（`global`/`global`）。
+- 前端 `/settings` 增加「全平台月预算」表单项。
+
 ## 迭代四（架构/SRP 复盘）
 
 ### 后端

@@ -20,6 +20,12 @@ export function useUsageEventsPage() {
     { label: "超时", value: "timeout" },
     { label: "取消", value: "cancelled" }
   ];
+  const usageKindOptions = [
+    { label: "全部", value: "" },
+    { label: "Chat Turn", value: "chat_turn" },
+    { label: "Team 成员", value: "team_member" },
+    { label: "Team 整轮", value: "team_turn" }
+  ];
 
   async function load() {
     await usageStore.loadEvents(filters.value);
@@ -54,6 +60,7 @@ export function useUsageEventsPage() {
     filters,
     rangeOptions,
     statusOptions,
+    usageKindOptions,
     load,
     exportCsv,
     formatMoney,

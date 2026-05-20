@@ -21,7 +21,7 @@ Token 用量管理：记录和统计 Agent / Team 运行的 Token 消耗，支�
 | 明细表 `model_token_usage_events` | ✅ | `docs/sql/08_usage.sql` · `internal/data/sessionmemory/memory_chain.sql` |
 | 日聚合表 `model_token_usage_daily` | ✅ | 写入时自动 upsert |
 | 价格规则表 `model_pricing_rules` | ✅ | `internal/data/ent/schema/model_pricing_rule.go` |
-| 用量记录写入 | ✅ | 主路径 `recordTurnUsage`；Team `usage_kind=team_member`（`internal/team/usage_record.go`） |
+| 用量记录写入 | ✅ | 主路径 `recordTurnUsage`；Team `team_member` + `team_turn`（`usage_record.go`、`usage_tokens.go`、`turn_helpers.MemberUsage`） |
 | Session 聚合更新 | ✅ | `internal/data/usage_write.go` 事务内 UPDATE sessions |
 | 日聚合 upsert | ✅ | `internal/data/usage_write.go` → `upsertModelTokenUsageDaily` |
 | 用量概览 API | ✅ | `GetUsageOverview` + `quota_dashboard`（活跃 Agent 配额汇总） |
@@ -30,7 +30,8 @@ Token 用量管理：记录和统计 Agent / Team 运行的 Token 消耗，支�
 | Top Agent 排行 API | ✅ | `UsageService.ListTopAgents` |
 | 明细列表 API | ✅ | `UsageService.ListUsageEvents` |
 | 用量事件写入 API | ✅ | `UsageService.RecordTokenUsageEvent` |
-| 查询筛选（Provider/Model/Agent/Status/时间） | ✅ | `UsageQuery` + `usageWhere()` |
+| 查询筛选（Provider/Model/Agent/Team/Kind/Status/时间） | ✅ | `UsageQuery` + `usageWhere(billableOnly)` |
+| 可计费聚合（排除 team_turn） | ✅ | `sqlUsageBillableKind`；概览/趋势/Top/配额 SUM |
 | 异常请求筛选 | ✅ | `status = "abnormal"` → `status <> 'success'` |
 | Wire 注入 | ✅ | `NewUsageRepo` / `NewUsageUsecase` / `NewUsageService` |
 | 用量限额（quota） | ✅ | `usage_quotas` + `CheckQuota`（单 Agent + Team 成员）；`internal/data/usage_quota.go` |
@@ -63,8 +64,8 @@ Token 用量管理：记录和统计 Agent / Team 运行的 Token 消耗，支�
 
 | 优先级 | 差距 | 影响 |
 |--------|------|------|
-| P2 | 仅 `scope_type=agent` 配额；user/global 未实现 | 多租户预算粒度不足 |
-| P2 | user/global 配额 scope | 多租户预算粒度不足 |
+| P3 | daily/hourly rollup 与 billable 口径完全对齐 | 读层已过滤；写入 rollup 仍含 team_turn 维度 |
+| P3 | Team 维度概览 API / 前端 Team 用量卡片 | 需 `team_id` 汇总接口或复用 events 聚合 |
 | P3 | 低性价比模型识别（#24） | 运营分析增强 |
 | P3 | Provider 独立定价 UI | 单价维护入口分散在模型页 |
 | P3 | `cancelled` 流式中断落库路径未统一验证 | 验收 §5.1 部分项待补测 |
@@ -206,7 +207,7 @@ Token 用量管理：记录和统计 Agent / Team 运行的 Token 消耗，支�
 
 | 域 | 项 | 证据 |
 |----|-----|------|
-| Team | 成员 step 写入 `usage_kind=team_member` | `internal/team/usage_record.go`、`persistStep` |
+| Team | 成员 step + 整轮聚合 | `usage_record.go`、`usage_tokens.go`、`agent/turn_helpers.go`、`persistStep` |
 | Data | `budget_alerts`、`model_token_usage_hourly` | `ent/schema/*`、`08_usage.sql` |
 | API | `quota_dashboard`、`ListBudgetAlerts`、`ExportUsageEvents`、`granularity` | `usage.proto` |
 | 定价 | Provider `config_json` 回退 | `usage_pricing.go` |
@@ -248,7 +249,8 @@ Token 用量管理：记录和统计 Agent / Team 运行的 Token 消耗，支�
 | Runner 辅助路径 | `CHAT_RECORD_RUNNER_USAGE=1` 时 EventBus 写入，字段较少 |
 | 费用为 0 | Provider 模型未配置单价 → 配额 SUM 无效；需在 `/models` 维护价格 |
 | `agents.budget_monthly_cents` | 未接入 `CheckQuota`，仅 DB 兼容 |
-| Team 用量明细 | `team_member` 在 `persistStep` 写入；并行 fan-out 子成员若 tokens=0 仍无行 |
+| Team 用量明细 | `team_member`：`ConsumeEventStream` 按 `agent_key` 汇总 `MemberUsage` 后 `persistStep` 写入；无成员级 usage 时 anchor（sortIdx=0）回退整轮 tokens |
+| 聚合重复计费 | 读层默认排除 `team_turn` | `usage_sql.go` + `usageWhere(..., true)`；明细 `billableOnly=false` |
 
 ### 8.5 规范复盘修复（2026-05-20）
 
@@ -269,8 +271,8 @@ Token 用量管理：记录和统计 Agent / Team 运行的 Token 消耗，支�
 | O1 | `budget_alerts` / `hourly` Ent Schema | ✅ | `ent/schema/budget_alert.go`、`model_token_usage_hourly.go`、`usage_quota.go`；移除 `EnsureUsageExtraSchema` / `usage_schema_extra.go`；`make generate` |
 | O2 | `data.SetBudgetAlert` 错误类型 | ✅ | `biz.ErrBudgetAlertNotFound`、`ErrUsageScopeRequired`；`mapUsageRepoErr` |
 | O3 | `EvaluateBudgetAlerts` 热路径成本 | ✅ | `scheduleBudgetAlerts` → `safego.Go`；`TotalCostMicroUSD<=0` 跳过 |
-| O4 | Team 并行成员 tokens=0 | ⚠️ 部分 | 新增 `usage_kind=team_turn` 聚合写入；`team_member` 仍依赖 step 有 token；并行 fan-out 无 token 子成员仍无行 |
-| O5 | user/global `usage_quotas` scope | ✅ | `SumScopeCostInPeriod` + `quotaSpent`；Chat Turn 前 `enforceChatTurnQuotas`（agent/user/`global` scope_id） |
+| O4 | Team 并行成员 tokens=0 | ✅ | `EventStreamResult.MemberUsage`（`ev.Author` + `Usage`）；`stepTokensForMember` → `persistStep` → `team_member`；整轮聚合仍写 `team_turn`；框架未上报成员 usage 时 anchor 回退 |
+| O5 | user/global `usage_quotas` scope | ✅ | `SumScopeCostInPeriod` + `quotaSpent`；Chat Turn 前 `enforceChatTurnQuotas`；**全局配额**在 **系统设置** `/settings` 配置（`global_monthly_micro_usd` → 同步 `usage_quotas` global/global） |
 | O6 | 低性价比模型识别（#24） | ✅ | `InefficientModels` + `UsageOverview.inefficient_models`；`UsageInefficientModels.vue` |
 | O7 | Provider 独立定价 UI | 暂缓 | `/models`（`ResourceManagerPage`）已可维护单价；独立定价页非本期 |
 | O8 | `quota` 延迟基准测试 | ✅ | `internal/biz/usage_quota_bench_test.go`；`go test -bench=BenchmarkCheckQuota` |
@@ -286,6 +288,39 @@ Chat Turn 结束 → service/turn_usage.recordTurnUsage
               → biz.RecordTokenUsageEvent（归一 status + 定价 + 费用）
               → data/usage_write（events + sessions 聚合 + daily upsert）
 
+Team RunTurn 结束 → agent.ConsumeEventStream（MemberUsage 按 agent_key）
+                 → team.persistStep → recordMemberUsage（usage_kind=team_member）
+                 → team.recordTeamRunUsage（usage_kind=team_turn，整轮聚合）
+
 （可选）CHAT_RECORD_RUNNER_USAGE=1 → event_bus_runner_handler
 （已停用默认）CHAT_RECORD_USAGE_INGRESS=1 → recordChatIngressUsage
 ```
+
+---
+
+## 9. Team 统计整合（2026-05-20）
+
+**目标**：平台可计费口径 = `chat_turn` + `team_member`，`team_turn` 仅对账；Team 整体 = 同 `team_id` 的 `team_member` 之和。需求 §3.6 · 设计 §4.5。
+
+### 9.1 任务与状态
+
+| 优先级 | 任务 | 层 | 状态 | 证据 |
+|--------|------|-----|------|------|
+| P0 | 文档：需求 §3.6、设计 §4.5、本 §9 | Docs | ✅ | 三文档边界已拆分 |
+| P1 | 读层 `sqlUsageBillableKind` + `usageWhere(billableOnly)` | Data | ✅ | `usage.go`、`usage_quota.go`、`usage_hourly.go` |
+| P1 | `UsageQuery.team_id` / `usage_kind`；Proto 字段 | API/Biz | ✅ | `usage.proto`、`usage_mapper.go`、`biz/usage.go` 常量 |
+| P1 | 单元测试 billable WHERE | Test | ✅ | `usage_where_test.go` |
+| P2 | 明细页筛选 `team_id`、`usage_kind` | Web | ✅ | `UsageEventsPage`、`types.ts`、`api.ts` |
+| P3 | daily/hourly upsert 不写或 rollup 查询排除 `team_turn` | Data | 暂缓 | 读层已正确；表内历史行可保留 |
+| P3 | `GetTeamUsageSummary(team_id)` 或概览 Team 卡片 | Biz/Service/Web | 待办 | 产品需 Team 页展示时再开 |
+
+### 9.2 验收
+
+1. 同一 Team 一轮 parallel 运行：概览/Top Agent 费用 ≈ 各 `team_member` 之和，**不**再加 `team_turn`。
+2. `/usage/events` 可筛 `usage_kind=team_turn` 且仍出现在列表。
+3. `CheckQuota` / `SumScopeCostInPeriod` 与概览 SUM 使用同一 billable 子句。
+4. `go test ./internal/data/... -run UsageWhere` 通过。
+
+### 9.3 与 execution-plan
+
+进度登记见 [execution-plan.md](../guides/execution-plan.md) M4 Token 行；changelog [2026-05-20-Usage-Quota-Events.md](../changelog/2026-05-20-Usage-Quota-Events.md) 迭代七（billable 读层）。

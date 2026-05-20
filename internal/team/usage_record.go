@@ -60,7 +60,7 @@ func (r *Runner) recordMemberUsage(
 		TokensPerSecond:  tps,
 		Status:           status,
 		ErrorMessage:     asst.ErrorMessage,
-		UsageKind:        "team_member",
+		UsageKind:        biz.UsageKindTeamMember,
 		PromptMode:       dialogMode,
 		MetadataJSON:     string(meta),
 		OccurredAt: now.Format(time.RFC3339),
@@ -108,7 +108,7 @@ func (r *Runner) recordTeamRunUsage(
 		InputTokens:      promptTok,
 		OutputTokens:     completionTok,
 		TotalTokens:      promptTok + completionTok,
-		UsageKind:        "team_turn",
+		UsageKind:        biz.UsageKindTeamTurn,
 		PromptMode:       dialogMode,
 		Status:           "success",
 		MetadataJSON:     string(meta),
@@ -121,7 +121,7 @@ func (r *Runner) recordTeamRunUsage(
 			event.P("error", err.Error()),
 			event.P("team_id", teamID),
 			event.P("run_id", run.ID),
-			event.P("usage_kind", "team_turn"),
+			event.P("usage_kind", biz.UsageKindTeamTurn),
 		)
 	}
 }

@@ -172,6 +172,7 @@
 - [x] MemoryWorker + L4 prompt 注入 + L4 图自动写入（`L4GraphWriter`）
 - [x] Quota MVP + 前端 `/usage/quotas`；Admin Audit（Tool/MCP/Agent CRUD）
 - [x] Token §8.6：Ent quota/alert/hourly、异步预算告警、低性价比模型、user/global quota API、`team_turn` 用量（2026-05-20，见 [changelog](../changelog/2026-05-20-Usage-Quota-Events.md) 迭代三）
+- [x] Token §9 billable 读层：`chat_turn`+`team_member` 聚合，排除 `team_turn`；明细 `team_id`/`usage_kind` 筛选（见 changelog 迭代七、`29-token-development.md` §9）
 - [x] MCP 会话 `mcp_call_count` / `tool_call_count` / `skill_call_count`
 
 **待做**

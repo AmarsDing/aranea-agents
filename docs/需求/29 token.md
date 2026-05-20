@@ -48,6 +48,10 @@
 
 > 作为管理员，我想在用量达到预算阈值时收到通知，以便及时关注和处理。
 
+### US-10：Team 与 Agent 用量不重复计费（P2）
+
+> 作为运营人员，我想在概览、排行和配额统计中看到「可计费」用量，且 Team 并行运行时成员消耗计入对应 Agent，而整轮 `team_turn` 仅用于对账、不重复叠加到平台总额。
+
 ---
 
 ## 3. 功能规格
@@ -84,7 +88,21 @@
 | Provider | 按 provider_code 筛选 |
 | 模型 | 按 model_api_id 筛选 |
 | Agent | 按 agent_id 筛选 |
+| Team | 按 team_id 筛选（明细页；Team 整体费用见 §3.6） |
+| 来源 | 按 usage_kind 筛选（明细页；`chat_turn` / `team_member` / `team_turn` 等） |
 | 状态 | success / failed / cancelled / timeout / abnormal（非 success） |
+
+### 3.6 统计口径（可计费 vs 对账）
+
+| 场景 | 计入规则 | 用户可见含义 |
+|------|----------|--------------|
+| 平台概览、趋势、Top 模型/Agent | **可计费**：单 Agent 对话 `chat_turn` + Team 成员 step `team_member`；**不含**整轮 `team_turn` | 避免 Team 一轮运行被「成员 + 整轮」重复统计 |
+| Agent 排行 / 单 Agent 配额已用额 | 同上（按 `agent_id` 汇总可计费行） | 与 Chat 拦截一致 |
+| Team 整体消耗 | `team_member` 且 `team_id` 一致之和（无成员明细时由 anchor 成员承载整轮 tokens） | Team 页/报表按 Team 维度展示时使用 |
+| 用量明细 `/usage/events` | **全部** `usage_kind`（含 `team_turn`） | 排障与对账可看整轮聚合行 |
+| `team_turn` | 仅对账、审计；**默认不进**概览/排行/配额 SUM | 与 `team_member` 成员明细互补 |
+
+技术实现与 SQL 常量见 [29 token.design.md](./29%20token.design.md) §4.5；迭代任务见 [29-token-development.md](./29-token-development.md) §9。
 
 ### 3.4 用量限额（P2）
 
@@ -173,8 +191,9 @@
 - [ ] 趋势 API 按天返回 Token、费用、调用次数、成功率
 - [ ] Top 模型 API 按费用排序返回模型排行
 - [ ] Top Agent API 按费用排序返回 Agent 排行
-- [ ] 明细 API 支持按 Provider/Model/Agent/状态/时间范围筛选
+- [ ] 明细 API 支持按 Provider/Model/Agent/Team/来源/状态/时间范围筛选
 - [ ] 异常请求 API 返回非 success 状态的请求
+- [ ] 概览/排行/配额 SUM **不包含** `team_turn`；Team 整体可按 `team_id` 汇总 `team_member`
 
 ### 5.3 前端看板
 

@@ -17,7 +17,11 @@ export const useSystemSettingsStore = defineStore("systemSettings", () => {
   }
 
   async function saveSettings(rootDirectory: string, workDirectory: string) {
-    settings.value = await updateSystemSettings(rootDirectory, workDirectory);
+    settings.value = await updateSystemSettings(
+      rootDirectory,
+      workDirectory,
+      settings.value?.globalMonthlyMicroUsd ?? 0
+    );
     return settings.value;
   }
 

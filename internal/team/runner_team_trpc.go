@@ -374,13 +374,7 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 			continue
 		}
 		stepMsg := assistantMsg
-		if i == 0 {
-			stepMsg.TokenIn = promptTok
-			stepMsg.TokenOut = completionTok
-		} else {
-			stepMsg.TokenIn = 0
-			stepMsg.TokenOut = 0
-		}
+		stepMsg.TokenIn, stepMsg.TokenOut = stepTokensForMember(ag.AgentKey, i, result, promptTok, completionTok)
 		r.persistStep(ctx, run, teamRow.ID, i, m, ag, content, stepMsg, prov0, mod0, dialogMode)
 	}
 	r.recordTeamRunUsage(ctx, run, teamRow.ID, firstAg, promptTok, completionTok, prov0, mod0, dialogMode)

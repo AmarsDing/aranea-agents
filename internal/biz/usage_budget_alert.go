@@ -65,7 +65,7 @@ func (u *UsageUsecase) EvaluateBudgetAlerts(ctx context.Context, e TokenUsageEve
 	if id := strings.TrimSpace(e.UserID); id != "" {
 		u.evaluateBudgetAlertsForScope(ctx, "user", id)
 	}
-	u.evaluateBudgetAlertsForScope(ctx, "global", "global")
+	u.evaluateBudgetAlertsForScope(ctx, QuotaScopeGlobal, GlobalQuotaScopeID)
 }
 
 func (u *UsageUsecase) evaluateBudgetAlertsForScope(ctx context.Context, scopeType, scopeID string) {

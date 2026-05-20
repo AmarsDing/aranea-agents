@@ -10,6 +10,8 @@ export type ModelUsageQuery = {
   provider_code?: string;
   model_api_id?: string;
   agent_id?: string;
+  team_id?: string;
+  usage_kind?: string;
   status?: string;
   limit?: number;
   /** "" | "day" | "hour" — hour uses model_token_usage_hourly */

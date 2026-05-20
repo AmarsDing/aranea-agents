@@ -37,7 +37,7 @@ func (r *usageRepo) ListModelUsageHourlyTrends(ctx context.Context, query biz.Us
 }
 
 func usageHourlyWhere(query biz.UsageQuery) (string, []any) {
-	parts := []string{}
+	parts := []string{sqlUsageBillableKind}
 	args := []any{}
 	if query.StartDate != "" {
 		parts = append(parts, "hour_key >= ?")

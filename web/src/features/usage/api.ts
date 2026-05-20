@@ -182,7 +182,7 @@ function overviewToLegacy(body: unknown): ModelUsageOverview {
 }
 
 function queryToKratos(q: ModelUsageQuery): KUsageQuery {
-  return {
+  const out: KUsageQuery = {
     range: q.range,
     startDate: q.start_date,
     endDate: q.end_date,
@@ -193,6 +193,9 @@ function queryToKratos(q: ModelUsageQuery): KUsageQuery {
     limit: q.limit,
     granularity: q.granularity
   };
+  if (q.team_id?.trim()) out.teamId = q.team_id.trim();
+  if (q.usage_kind?.trim()) out.usageKind = q.usage_kind.trim();
+  return out;
 }
 
 /** `POST /v1/usage/token-events`：与 `api/kratos/usage/v1/usage.pb.go` 中 `TokenUsageEvent` 的 `json:"…"` 键一致。 */
