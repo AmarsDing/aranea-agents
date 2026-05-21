@@ -77,3 +77,8 @@ export function parseHookConfig(raw: string): HookRuleConfig {
 export function serializeHookConfig(cfg: HookRuleConfig): string {
   return JSON.stringify(cfg, null, 2);
 }
+
+/** Plain-object clone; safe for reactive Proxy values from v-model. */
+export function cloneHookRuleConfig(cfg: HookRuleConfig): HookRuleConfig {
+  return parseHookConfig(serializeHookConfig(cfg));
+}

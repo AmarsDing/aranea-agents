@@ -1,4 +1,4 @@
-import { computed, ref, type Ref } from "vue";
+import { computed, ref, toValue, type MaybeRefOrGetter } from "vue";
 import { listPlatformResources, type PlatformResource } from "../platform/api";
 import type { Agent } from "./types";
 
@@ -13,7 +13,7 @@ function providerContextWindowK(row: PlatformResource) {
 }
 
 /** Provider model dropdown for Agent settings. */
-export function useAgentProviderModelPicker(form: Ref<Agent> | Agent) {
+export function useAgentProviderModelPicker(form: MaybeRefOrGetter<Agent>) {
   const providerModels = ref<PlatformResource[]>([]);
   const providerModelSearch = ref("");
   const loadingProviderModels = ref(false);
@@ -43,11 +43,12 @@ export function useAgentProviderModelPicker(form: Ref<Agent> | Agent) {
     );
   });
 
-  const selectedProviderModelID = computed(
-    () =>
-      providerModelOptions.value.find((row) => row.provider === form.provider && row.model === form.model)?.value ??
-      "",
-  );
+  const selectedProviderModelID = computed(() => {
+    const f = toValue(form);
+    return (
+      providerModelOptions.value.find((row) => row.provider === f.provider && row.model === f.model)?.value ?? ""
+    );
+  });
 
   async function loadProviderModels() {
     loadingProviderModels.value = true;
@@ -59,14 +60,15 @@ export function useAgentProviderModelPicker(form: Ref<Agent> | Agent) {
   }
 
   function selectProviderModel(value: string | null) {
+    const f = toValue(form);
     const selected = providerModels.value.find((row) => row.id === value);
     if (!selected) {
-      form.provider = "";
-      form.model = "";
+      f.provider = "";
+      f.model = "";
       return;
     }
-    form.provider = selected.provider;
-    form.model = selected.model;
+    f.provider = selected.provider;
+    f.model = selected.model;
   }
 
   function filterProviderModels(value: string, update: (callback: () => void) => void) {

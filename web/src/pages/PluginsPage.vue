@@ -188,8 +188,6 @@ import PluginSchemaForm from "../components/plugins/PluginSchemaForm.vue";
 const $q = useQuasar();
 const rows = ref<Plugin[]>([]);
 const total = ref(0);
-const page = ref(1);
-const pageSize = ref(20);
 const tablePagination = ref({ page: 1, rowsPerPage: 20, rowsNumber: 0 });
 const scopeMode = ref<"global" | "agent">("global");
 const scopeAgentId = ref("");
@@ -234,7 +232,10 @@ const configError = computed(() => {
   }
 });
 
-async function loadRows(page = tablePagination.value.page, size = tablePagination.value.rowsPerPage) {
+async function loadRows(
+  nextPage = tablePagination.value.page,
+  nextPageSize = tablePagination.value.rowsPerPage
+) {
   loading.value = true;
   error.value = "";
   try {
@@ -243,13 +244,11 @@ async function loadRows(page = tablePagination.value.page, size = tablePaginatio
       category: category.value,
       enabled: enabled.value,
       callback_point: callbackPoint.value,
-      page,
-      page_size: size
+      page: nextPage,
+      page_size: nextPageSize
     });
     rows.value = data.items;
     total.value = data.total;
-    page.value = data.page;
-    pageSize.value = data.page_size;
     tablePagination.value = { page: data.page, rowsPerPage: data.page_size, rowsNumber: data.total };
   } catch (err) {
     error.value = err instanceof Error ? err.message : "加载 Plugin 失败";
