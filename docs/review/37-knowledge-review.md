@@ -13,7 +13,8 @@
 |------|------|------|------|
 | 需求符合度 | 15 | 20 | 管理页 + Embedder UI + 摄取 WS + Rerank ✅；OCR/多租户待规划 |
 | 架构一致性 | 21 | 25 | `internal/knowledge` 独立适配层 ✅；Knowledge search tool 经 `internal/tools/knowledge/tool.go` 挂载 ✅ |
-| 后端实现质量 | 17 | 20 | 分块/解析/EmbedBatch Phase 2 ✅；Rerank（`KRATOS_KNOWLEDGE_RERANKER`）✅；OCR 待补 |
+| 后端实现质量 | 17 | 20 | 分块/解析/EmbedBatch ✅；OCR（`internal/knowledge/ocr.go`）✅ |
+| OCR pipeline | ✅ |
 | 前端实现质量 | 12 | 15 | 集合列表 + 文档面板 + 语义检索测试 ✅；Embedder 配置面板 ✅；Rerank 选项 ✅ |
 | 测试与验证 | 5 | 10 | 基础功能有测试；分块/嵌入路径无专项测试 |
 | 文档一致性 | 6 | 10 | `37-knowledge-development.md` 管理页 G0 对齐良好 |
@@ -32,7 +33,7 @@
 | Rerank（trpc reranker，KN-01）| ✅ |
 | Knowledge search tool（Agent 工具链）| ✅ |
 | 语义检索测试面板 | ✅ |
-| OCR pipeline | ❌ P2 |
+| OCR pipeline | ✅ `internal/knowledge/ocr.go` |
 | 多租户 pgvector | 🟡 |
 | AgenticFilter | ❌ |
 | 跨集合检索 | ❌ |
@@ -45,7 +46,7 @@
 
 | ID | 问题 | 建议修复 |
 |----|------|---------|
-| KN-P1-01 | OCR pipeline 未规划：PDF/图片文档无法摄取文本内容 | 规划 OCR 方案（Tesseract/Cloud OCR）并集成到摄取流程 |
+| KN-P1-01 | OCR pipeline | ✅ 已实现基础 OCR 适配 |
 | KN-P1-02 | 分块/嵌入路径（chunker → embedder → pgvector）无专项测试 | 补嵌入路径集成测试 |
 
 ### P2

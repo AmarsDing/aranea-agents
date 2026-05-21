@@ -267,7 +267,7 @@ func (s *ChatService) runSingleAgentViaTRPC(
 		AgentID:          ag.ID,
 		AgentDisplayName: ag.DisplayName,
 	}
-	events = event.WrapFrameworkEvents(events, emitter, traceBridge)
+	events = event.WrapFrameworkEventsWithOtel(events, emitter, traceBridge, traceBridge)
 	streamOpts := NewChatStreamConsumeOptions(s.td.Catalog.ToolUC, s.td.Catalog.Agents, s.td.Sessions)
 	result := chatagent.ConsumeEventStreamWithFirstByte(firstByteCtx, runCtx, events, s.td.Pipeline.Bus, projectMeta, &firstByteReceived, streamOpts)
 	resultPromptTok = result.PromptTok

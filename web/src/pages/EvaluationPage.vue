@@ -1,10 +1,10 @@
 <template>
   <q-page class="app-page-cream evaluation-page q-pa-sm q-pa-md-md">
-    <section class="evaluation-hero">
+    <section class="app-page-hero">
       <div>
-        <div class="evaluation-kicker">EvalSet / metrics</div>
-        <h1 class="evaluation-title">评估管理</h1>
-        <p class="evaluation-subtitle">EvalSet + FrameworkBridge（LLM UserSim / 扩展指标 / 趋势对比已接入）。</p>
+        <div class="app-page-kicker">EvalSet / metrics</div>
+        <h1 class="app-page-title">评估管理</h1>
+        <p class="app-page-subtitle">EvalSet + FrameworkBridge（LLM UserSim / 扩展指标 / 趋势对比已接入）。</p>
       </div>
       <div class="row q-gutter-sm">
         <q-btn color="primary" rounded unelevated icon="add" label="新建数据集" @click="createOpen = true" />
@@ -154,31 +154,3 @@ const {
   submitCompare
 } = useEvaluationPage();
 </script>
-
-<style scoped>
-.evaluation-hero {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 1.25rem;
-}
-.evaluation-kicker {
-  font-size: 0.75rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--q-primary);
-  font-weight: 600;
-}
-.evaluation-title {
-  margin: 0.25rem 0;
-  font-size: 1.75rem;
-  font-weight: 700;
-}
-.evaluation-subtitle {
-  margin: 0;
-  color: #666;
-  max-width: 36rem;
-}
-</style>

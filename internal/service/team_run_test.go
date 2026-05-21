@@ -27,6 +27,8 @@ func (r *summaryTeamRepo) ListTeamRunSteps(_ context.Context, runID string) ([]b
 	return r.steps[runID], nil
 }
 
+func (r *summaryTeamRepo) UpdateTeamRunSummaryJSON(_ context.Context, _, _ string) error { return nil }
+
 func (r *summaryTeamRepo) GetTeamByID(_ context.Context, id string) (biz.Team, error) {
 	if id == "t1" {
 		return biz.Team{ID: "t1"}, nil

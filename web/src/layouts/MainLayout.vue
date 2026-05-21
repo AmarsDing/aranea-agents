@@ -1,8 +1,8 @@
 <template>
   <q-layout view="hHh LpR fFf" class="app-layout-root">
     <q-header
-      :elevated="!isDark"
-      :class="isDark ? 'bg-grey-9 text-white' : 'cream-header'"
+      :elevated="false"
+      :class="isDark ? 'dark-header' : 'cream-header'"
     >
       <q-toolbar class="q-px-sm-md">
         <q-btn
@@ -26,10 +26,10 @@
           {{ t("common.appTitle") }}
         </q-toolbar-title>
         <q-space />
-        <div v-if="isDesktop" class="row items-center q-gutter-sm q-mr-sm" :class="{ 'cream-header__user': !isDark }">
-          <q-btn round flat :color="isDark ? 'white' : 'primary'" icon="notifications_none" size="md" />
+        <div v-if="isDesktop" class="row items-center q-gutter-sm q-mr-sm app-header-actions">
+          <q-btn round flat class="app-header-icon-btn" icon="notifications_none" size="md" />
           <q-btn round flat dense class="cursor-pointer">
-            <q-avatar size="36px" color="secondary" text-color="white" font-size="14px">
+            <q-avatar size="36px" class="app-header-avatar" font-size="14px">
               {{ auth.avatarLetter }}
             </q-avatar>
             <q-menu anchor="bottom right" self="top right">
@@ -61,8 +61,7 @@
           :dark="isDark"
           borderless
           options-dense
-          class="q-ml-sm"
-          color="primary"
+          class="app-header-locale q-ml-sm"
           style="min-width: 110px"
         />
       </q-toolbar>
@@ -140,7 +139,9 @@ const drawerMini = ref(true);
 
 const isDesktop = computed(() => $q.screen.gt.xs);
 const isDark = computed(() => $q.dark.isActive);
-const drawerItemActiveClass = computed(() => (isDark.value ? "bg-primary text-white" : "cream-menu-item--active"));
+const drawerItemActiveClass = computed(() =>
+  isDark.value ? "dark-menu-item--active" : "cream-menu-item--active"
+);
 
 const localeOptions = [
   { label: "中文", value: "zh-CN" as const },

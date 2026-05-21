@@ -189,6 +189,7 @@ message RunnerMetricsSummary {
   int32 error_runs = 3;
   double error_rate = 4;
   double success_rate = 5;
+  double avg_duration_ms = 6;
 }
 
 message CodeExecutorCapability {

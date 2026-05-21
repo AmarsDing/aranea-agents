@@ -14,7 +14,7 @@
 | 需求符合度 | 16 | 20 | 6 Tab 运维页 + Dashboard 概览均已落地；latency 聚合 / Phase 4 自动刷新 / Grafana 待补 |
 | 架构一致性 | 21 | 25 | Monitor 正确消费 EventBus；LogStreamHub 共享单 WS ✅；Monitor 方案 C（Runs+Events）✅ |
 | 后端实现质量 | 17 | 20 | audit_logs / monitor_events / runner.completion 落库 ✅；告警 Webhook/Channel + 冷却 ✅ |
-| 前端实现质量 | 13 | 15 | 6 Tab 完整 ✅；`MonitorPage.vue` 直连 `features/monitor/api` 违反分层；ECharts 趋势 ✅ |
+| 前端实现质量 | 13 | 15 | 6 Tab 完整 ✅；`useMonitorPage.ts` composable ✅；ECharts 趋势 ✅ |
 | 测试与验证 | 5 | 10 | Monitor 各 Tab 功能手动验证；自动测试薄弱 |
 | 文档一致性 | 6 | 10 | 三件套 + Dashboard 三件套对齐；Usage Tab 去重、文件树与 Dashboard 分工 2026-05-21 已更新 |
 
@@ -40,7 +40,7 @@
 | Audit | 审计日志表（Tool/MCP/Agent CRUD）| ✅ |
 | Events | 实时/持久化 Monitor 事件 | ✅ |
 | Traces | LLM Trace 列表 + 瀑布图 + Span 树 | ✅ I6-TEL-02 |
-| Logs | 流程日志（flow_log）+ 进程日志 | ✅（Phase 2 落库待补）|
+| Logs | 流程日志（flow_log）+ 进程日志 | ✅ Phase 2 落库 + Logs Tab |
 
 ---
 
@@ -82,7 +82,7 @@
 
 ## 建议优化路径
 
-1. 重构 `MonitorPage.vue`，引入 composable 封装（P1）。
-2. 实现 FlowLogger Phase 2 落库（P1）。
-3. 实现 latency 聚合 API（P2）。
-4. 规划 Dashboard 自动刷新（P2）。
+1. ~~`useMonitorPage.ts` composable~~ ✅
+2. ~~FlowLogger Phase 2 落库~~ ✅
+3. ~~latency `avg_duration_ms` + 30s 自动刷新~~ ✅ Phase C
+4. **下迭代**：Grafana JSON 与 metrics 路径对齐；Alert Channel UX 测试

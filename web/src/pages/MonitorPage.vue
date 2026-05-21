@@ -73,8 +73,6 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from "vue";
-import { useRoute, useRouter } from "vue-router";
 import MonitorErrorBanner from "../components/monitor/MonitorErrorBanner.vue";
 import MonitorGlassPanel from "../components/monitor/MonitorGlassPanel.vue";
 import MonitorHeroSection from "../components/monitor/MonitorHeroSection.vue";
@@ -85,95 +83,25 @@ import TraceList from "../components/monitor/TraceList.vue";
 import MonitorUsageDashboardLink from "../components/monitor/MonitorUsageDashboardLink.vue";
 import MonitorRunnerMetrics from "../components/monitor/MonitorRunnerMetrics.vue";
 import MonitorAlertRules from "../components/monitor/MonitorAlertRules.vue";
-import { listMonitorAudit, listMonitorEvents, listMonitorTraceEvents } from "../features/monitor/api";
-import type { AuditLog, ModelUsageQuery, MonitorTraceEvent, PlatformResource } from "../features/monitor/types";
+import { useMonitorPage } from "../features/monitor/useMonitorPage";
 
-const route = useRoute();
-const router = useRouter();
-const validTabs = ["usage", "alerts", "audit", "events", "traces", "logs"];
-const initialTab = String(route.query.tab || "usage");
-const tab = ref(validTabs.includes(initialTab) ? initialTab : "usage");
-const highlightUsageEventId = ref(String(route.query.usage_event_id || "").trim());
-const auditRows = ref<AuditLog[]>([]);
-const auditTotal = ref(0);
-const events = ref<PlatformResource[]>([]);
-const traces = ref<MonitorTraceEvent[]>([]);
-const loadingAudit = ref(false);
-const loadingEvents = ref(false);
-const loadingTraces = ref(false);
-const error = ref("");
-
-const filters = reactive<ModelUsageQuery>({
-  range: "30d",
-  limit: 50
-});
-
-const rangeOptions = [
-  { label: "今日", value: "today" },
-  { label: "7 天", value: "7d" },
-  { label: "30 天", value: "30d" },
-  { label: "本月", value: "month" }
-];
-
-const loading = computed(() => loadingAudit.value || loadingEvents.value || loadingTraces.value);
-
-onMounted(loadAll);
-
-watch(tab, async (value) => {
-  if (!validTabs.includes(value)) {
-    tab.value = "usage";
-    return;
-  }
-  await router.replace({ query: { ...route.query, tab: value } });
-});
-
-watch(
-  () => route.query.usage_event_id,
-  (id) => {
-    highlightUsageEventId.value = String(id || "").trim();
-    if (highlightUsageEventId.value && tab.value !== "traces") {
-      tab.value = "traces";
-    }
-  }
-);
-
-async function loadAll() {
-  error.value = "";
-  try {
-    await Promise.all([loadAudit(), loadEvents(), loadTraces()]);
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : "加载监控数据失败";
-  }
-}
-
-async function loadAudit() {
-  loadingAudit.value = true;
-  try {
-    const result = await listMonitorAudit({ limit: 200 });
-    auditRows.value = result.items;
-    auditTotal.value = result.total;
-  } finally {
-    loadingAudit.value = false;
-  }
-}
-
-async function loadEvents() {
-  loadingEvents.value = true;
-  try {
-    events.value = await listMonitorEvents();
-  } finally {
-    loadingEvents.value = false;
-  }
-}
-
-async function loadTraces() {
-  loadingTraces.value = true;
-  try {
-    traces.value = await listMonitorTraceEvents({ ...filters, limit: 100 });
-  } finally {
-    loadingTraces.value = false;
-  }
-}
+const {
+  tab,
+  highlightUsageEventId,
+  auditRows,
+  auditTotal,
+  events,
+  traces,
+  loadingAudit,
+  loadingTraces,
+  error,
+  filters,
+  rangeOptions,
+  loading,
+  loadAll,
+  loadAudit,
+  loadTraces
+} = useMonitorPage();
 </script>
 
 <style scoped lang="sass">

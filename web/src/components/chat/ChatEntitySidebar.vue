@@ -298,9 +298,9 @@ function parseTeamDefinition(raw?: string) {
 
 <style scoped>
 .chat-side--left {
-  width: 300px;
-  min-width: 280px;
-  flex: 0 0 300px;
+  width: var(--chat-side-left-width, 280px);
+  min-width: min(var(--chat-side-left-width, 280px), 100%);
+  flex: 0 0 var(--chat-side-left-width, 280px);
 }
 
 .chat-entity-group {

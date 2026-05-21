@@ -71,14 +71,15 @@ const waterfallRows = computed((): SpanRow[] => {
 .trace-waterfall-track {
   position: relative;
   height: 12px;
-  background: rgba(0, 0, 0, 0.06);
+  background: var(--color-border-soft);
   border-radius: 6px;
   overflow: hidden;
 }
+
 .trace-waterfall-bar {
   height: 100%;
   min-width: 4px;
-  background: linear-gradient(90deg, #1976d2, #26a69a);
+  background: linear-gradient(90deg, var(--color-info), var(--color-success));
   border-radius: 6px;
 }
 </style>

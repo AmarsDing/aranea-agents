@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcgraph "trpc.group/trpc-go/trpc-agent-go/graph"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
@@ -37,41 +38,60 @@ func nodeOptions(n NodeDef) []trpcgraph.Option {
 	return opts
 }
 
-func wireNode(ctx context.Context, sg *trpcgraph.StateGraph, n NodeDef, deps *BuildDeps) error {
+func wireNode(ctx context.Context, sg *trpcgraph.StateGraph, n NodeDef, deps *BuildDeps) ([]trpcagent.Agent, error) {
 	opts := nodeOptions(n)
 	switch normalizeNodeType(n.Type) {
 	case "llm":
 		if deps == nil || deps.Models == nil {
-			return fmt.Errorf("graph: node %q type llm requires BuildDeps.Models", n.ID)
+			return nil, fmt.Errorf("graph: node %q type llm requires BuildDeps.Models", n.ID)
 		}
 		mdl, err := deps.Models.ResolveModel(ctx, n.ModelName)
 		if err != nil {
-			return fmt.Errorf("graph: node %q llm model: %w", n.ID, err)
+			return nil, fmt.Errorf("graph: node %q llm model: %w", n.ID, err)
 		}
 		toolMap := map[string]trpctool.Tool{}
 		if deps.Tools != nil && len(n.ToolNames) > 0 {
 			toolMap, err = deps.Tools.ResolveTools(ctx, n.ToolNames)
 			if err != nil {
-				return fmt.Errorf("graph: node %q llm tools: %w", n.ID, err)
+				return nil, fmt.Errorf("graph: node %q llm tools: %w", n.ID, err)
 			}
 		}
 		sg.AddLLMNode(n.ID, mdl, n.Instruction, toolMap, opts...)
-		return nil
+		return nil, nil
 	case "tool", "tools":
 		if deps == nil || deps.Tools == nil {
-			return fmt.Errorf("graph: node %q type tool requires BuildDeps.Tools", n.ID)
+			return nil, fmt.Errorf("graph: node %q type tool requires BuildDeps.Tools", n.ID)
 		}
 		toolMap, err := deps.Tools.ResolveTools(ctx, n.ToolNames)
 		if err != nil {
-			return fmt.Errorf("graph: node %q tools: %w", n.ID, err)
+			return nil, fmt.Errorf("graph: node %q tools: %w", n.ID, err)
 		}
 		sg.AddToolsNode(n.ID, toolMap, opts...)
-		return nil
+		return nil, nil
+	case "agent":
+		ref := strings.TrimSpace(n.AgentName)
+		if ref == "" {
+			ref = strings.TrimSpace(n.ID)
+		}
+		if deps == nil || deps.Agents == nil {
+			return nil, fmt.Errorf("graph: node %q type agent requires BuildDeps.Agents", n.ID)
+		}
+		sub, err := deps.Agents.ResolveAgent(ctx, ref)
+		if err != nil {
+			return nil, fmt.Errorf("graph: node %q agent %q: %w", n.ID, ref, err)
+		}
+		sg.AddAgentNode(n.ID, opts...)
+		return []trpcagent.Agent{sub}, nil
+	case "router":
+		sg.AddNode(n.ID, func(ctx context.Context, state trpcgraph.State) (any, error) {
+			return state, nil
+		}, opts...)
+		return nil, nil
 	default:
 		if n.Func == nil {
-			return fmt.Errorf("graph: node %q has no Func (type=%q FuncRef=%q)", n.ID, n.Type, n.FuncRef)
+			return nil, fmt.Errorf("graph: node %q has no Func (type=%q FuncRef=%q)", n.ID, n.Type, n.FuncRef)
 		}
 		sg.AddNode(n.ID, n.Func, opts...)
-		return nil
+		return nil, nil
 	}
 }

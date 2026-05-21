@@ -79,9 +79,11 @@ const closeLabel = computed(() => t("common.close", "关闭"));
   background: var(--glass-elevated);
   border-color: var(--glass-border);
 }
+
 .a2ui-modal-entry {
   cursor: pointer;
 }
+
 .a2ui-modal-card {
   min-width: 280px;
   max-width: 90vw;

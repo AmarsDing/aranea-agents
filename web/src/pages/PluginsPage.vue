@@ -1,10 +1,10 @@
 <template>
   <q-page class="app-page-cream plugins-page">
-    <section class="plugins-hero">
+    <section class="app-page-hero">
       <div>
-        <div class="plugins-kicker">ADK Runner plugins</div>
-        <h1 class="plugins-title">Plugin 管理</h1>
-        <p class="plugins-subtitle">配置 ADK Runner 运行时插件，替代手工维护 ADK_RUNNER_PLUGINS 环境变量。</p>
+        <div class="app-page-kicker">ADK Runner plugins</div>
+        <h1 class="app-page-title">Plugin 管理</h1>
+        <p class="app-page-subtitle">配置 ADK Runner 运行时插件，替代手工维护 ADK_RUNNER_PLUGINS 环境变量。</p>
       </div>
       <div class="row q-gutter-sm">
         <q-btn outline rounded color="primary" icon="history" label="运行记录" to="/plugins/runs" />
@@ -132,13 +132,13 @@
             </div>
           </q-expansion-item>
           <q-expansion-item dense-toggle label="配置 JSON">
-            <pre class="plugin-json-preview">{{ prettyJSON(detailTarget.config_json, "暂无配置") }}</pre>
+            <pre class="app-code-block app-code-block--compact">{{ prettyJSON(detailTarget.config_json, "暂无配置") }}</pre>
           </q-expansion-item>
           <q-expansion-item dense-toggle label="默认配置">
-            <pre class="plugin-json-preview">{{ prettyJSON(detailTarget.default_config_json, "暂无默认配置") }}</pre>
+            <pre class="app-code-block app-code-block--compact">{{ prettyJSON(detailTarget.default_config_json, "暂无默认配置") }}</pre>
           </q-expansion-item>
           <q-expansion-item dense-toggle label="配置 Schema">
-            <pre class="plugin-json-preview">{{ prettyJSON(detailTarget.config_schema_json, "暂无 Schema") }}</pre>
+            <pre class="app-code-block app-code-block--compact">{{ prettyJSON(detailTarget.config_schema_json, "暂无 Schema") }}</pre>
           </q-expansion-item>
         </q-card-section>
       </q-card>
@@ -165,8 +165,8 @@
             </q-tab-panel>
           </q-tab-panels>
           <q-expansion-item icon="schema" label="默认配置 / Schema 参考">
-            <pre class="plugin-json-preview">{{ configTarget?.default_config_json || "{}" }}</pre>
-            <pre class="plugin-json-preview">{{ configTarget?.config_schema_json || "{}" }}</pre>
+            <pre class="app-code-block app-code-block--compact">{{ configTarget?.default_config_json || "{}" }}</pre>
+            <pre class="app-code-block app-code-block--compact">{{ configTarget?.config_schema_json || "{}" }}</pre>
           </q-expansion-item>
         </q-card-section>
         <q-card-actions align="right">
@@ -181,8 +181,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
 import { useQuasar, type QTableColumn, type QTableProps } from "quasar";
-import { listPlugins, togglePluginEnabled, updatePluginConfig, updatePluginScope, updatePluginSortOrder } from "../features/plugins/api";
-import type { Plugin } from "../features/plugins/types";
+import { listPlugins, togglePluginEnabled, updatePluginConfig, updatePluginScope, updatePluginSortOrder } from "../features/plugins/usePluginsPage";
+import type { Plugin } from "../features/plugins/usePluginsPage";
 import PluginSchemaForm from "../components/plugins/PluginSchemaForm.vue";
 
 const $q = useQuasar();
@@ -362,53 +362,22 @@ onMounted(() => loadRows());
 
 <style scoped lang="sass">
 .plugins-page
-  padding: 24px
-
-.plugins-hero
-  display: flex
-  align-items: flex-start
-  justify-content: space-between
-  gap: 16px
-  margin-bottom: 18px
-
-.plugins-kicker
-  color: var(--q-primary)
-  font-size: 12px
-  font-weight: 700
-  letter-spacing: .12em
-  text-transform: uppercase
-
-.plugins-title
-  margin: 4px 0
-  font-size: 34px
-  line-height: 1.15
-
-.plugins-subtitle
-  margin: 0
-  color: var(--q-grey-7)
+  padding: var(--space-6)
 
 .plugin-filter-card,
 .plugin-table-card
   border-radius: 22px
 
 .plugin-description
-  color: var(--q-grey-8)
+  color: var(--color-text-secondary)
   line-height: 1.45
 
 .plugin-detail-card
   width: 760px
   max-width: 94vw
 
-.plugin-json-preview
-  white-space: pre-wrap
-  background: rgba(0, 0, 0, .04)
-  border-radius: 12px
-  padding: 12px
-  max-height: 180px
-  overflow: auto
-
 @media (max-width: 720px)
-  .plugins-hero
+  .app-page-hero
     flex-direction: column
     align-items: stretch
 </style>

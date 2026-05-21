@@ -1,10 +1,10 @@
 <template>
   <q-page class="app-page-cream hooks-page q-pa-md">
-    <section class="hooks-hero row items-center justify-between q-mb-md">
+    <section class="app-page-hero">
       <div>
-        <div class="hooks-kicker">Callback rules</div>
-        <h1 class="hooks-title">Hook / Callback rules</h1>
-        <p class="hooks-subtitle text-grey-7">
+        <div class="app-page-kicker">Callback rules</div>
+        <h1 class="app-page-title">Hook / Callback rules</h1>
+        <p class="app-page-subtitle">
           Configure lifecycle hooks for Agent, Model, Tool, and Runner events (log, notify, block, modify).
         </p>
       </div>
@@ -255,17 +255,3 @@ function confirmDelete(row: HookRow) {
 
 onMounted(loadRows);
 </script>
-
-<style scoped>
-.hooks-kicker {
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #6b7280;
-}
-.hooks-title {
-  margin: 4px 0;
-  font-size: 28px;
-  font-weight: 700;
-}
-</style>

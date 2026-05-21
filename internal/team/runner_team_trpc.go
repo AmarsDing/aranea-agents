@@ -282,7 +282,7 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 		r.finishRunErr(ctx, &run, t0, err.Error())
 		return userMsg, biz.ChatMessage{}, err
 	}
-	events = event.WrapFrameworkEvents(events, teamEmitter, teamBridge)
+	events = event.WrapFrameworkEventsWithOtel(events, teamEmitter, teamBridge, teamBridge)
 
 	memberKeySet := make(map[string]struct{}, len(memberKeys))
 	for _, k := range memberKeys {

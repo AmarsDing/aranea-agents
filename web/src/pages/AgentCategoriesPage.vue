@@ -1,10 +1,10 @@
 <template>
-  <q-page :class="['agent-categories-page', { 'is-dark': isDark }]">
-    <section class="category-hero">
+  <q-page :class="['app-entity-page app-entity-page--warm agent-categories-page', { 'is-dark': isDark }]">
+    <section class="app-page-hero">
       <div>
-        <div class="category-kicker">Agent Type</div>
-        <h1 class="category-title">Agent 行业分类</h1>
-        <p class="category-subtitle">按行业、部门、职位三层组织 Agent 业务画像。创建 Agent 时仅绑定职位叶子，列表筛选同源读取数据库。</p>
+        <div class="app-page-kicker">Agent Type</div>
+        <h1 class="app-page-title">Agent 行业分类</h1>
+        <p class="app-page-subtitle">按行业、部门、职位三层组织 Agent 业务画像。创建 Agent 时仅绑定职位叶子，列表筛选同源读取数据库。</p>
       </div>
       <div class="category-actions">
         <q-btn outline rounded color="primary" icon="refresh" label="刷新" :loading="loading" @click="loadTree" />
@@ -12,7 +12,7 @@
       </div>
     </section>
 
-    <q-card flat bordered class="category-toolbar">
+    <q-card flat bordered class="app-entity-glass-panel category-toolbar">
       <q-card-section class="row q-col-gutter-md items-center">
         <div class="col-12 col-md-5">
           <q-input v-model="keyword" dense outlined clearable debounce="200" placeholder="搜索行业、部门或职位..." class="category-control">
@@ -21,9 +21,9 @@
         </div>
         <div class="col-12 col-md">
           <div class="category-stats">
-            <div><strong>{{ stats.industries }}</strong><span>行业</span></div>
-            <div><strong>{{ stats.departments }}</strong><span>部门</span></div>
-            <div><strong>{{ stats.positions }}</strong><span>职位</span></div>
+            <div class="app-entity-stat"><strong>{{ stats.industries }}</strong><span>行业</span></div>
+            <div class="app-entity-stat"><strong>{{ stats.departments }}</strong><span>部门</span></div>
+            <div class="app-entity-stat"><strong>{{ stats.positions }}</strong><span>职位</span></div>
           </div>
         </div>
         <div class="col-12 col-md-auto">
@@ -32,8 +32,8 @@
       </q-card-section>
     </q-card>
 
-    <div v-if="loading" class="category-grid q-mt-lg">
-      <q-card v-for="i in 3" :key="i" flat bordered class="industry-card">
+    <div v-if="loading" class="app-entity-grid category-grid q-mt-lg">
+      <q-card v-for="i in 3" :key="i" flat bordered class="app-entity-glass-panel industry-card">
         <q-card-section>
           <q-skeleton type="text" width="42%" />
           <q-skeleton class="q-mt-md" height="80px" />
@@ -41,7 +41,7 @@
       </q-card>
     </div>
 
-    <q-card v-else-if="filteredTree.length === 0" flat bordered class="category-empty q-mt-lg">
+    <q-card v-else-if="filteredTree.length === 0" flat bordered class="app-entity-glass-panel category-empty q-mt-lg">
       <q-card-section class="column items-center text-center">
         <div class="category-empty__visual"><q-icon name="account_tree" size="44px" color="primary" /></div>
         <div class="text-h6 q-mt-md">暂无匹配分类</div>
@@ -50,8 +50,8 @@
       </q-card-section>
     </q-card>
 
-    <section v-else class="category-grid q-mt-lg">
-      <q-card v-for="industry in filteredTree" :key="industry.id" flat bordered class="industry-card">
+    <section v-else class="app-entity-grid category-grid q-mt-lg">
+      <q-card v-for="industry in filteredTree" :key="industry.id" flat bordered class="app-entity-glass-panel industry-card">
         <q-card-section class="industry-card__header">
           <div class="row items-start q-gutter-md no-wrap">
             <q-avatar rounded color="primary" text-color="white" icon="domain" class="industry-avatar" />
@@ -365,358 +365,3 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "";
 }
 </script>
-
-<style scoped>
-.agent-categories-page {
-  min-height: 100%;
-  padding: 28px;
-  background:
-    radial-gradient(circle at 86% 0%, rgb(25 118 210 / 12%), transparent 28%),
-    radial-gradient(circle at 10% 16%, rgb(245 158 11 / 9%), transparent 24%),
-    linear-gradient(180deg, var(--color-page-tint) 0%, var(--color-page-tint-alt) 46%, var(--color-on-accent) 100%);
-}
-
-.category-hero,
-.category-actions,
-.category-stats,
-.industry-card__header {
-  display: flex;
-  align-items: center;
-}
-
-.category-hero {
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.category-kicker {
-  display: inline-flex;
-  align-items: center;
-  height: 28px;
-  padding: 0 12px;
-  border: 1px solid rgb(25 118 210 / 14%);
-  border-radius: 999px;
-  background: rgb(255 255 255 / 78%);
-  color: var(--color-link);
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  box-shadow: 0 8px 24px rgb(16 24 40 / 4%);
-}
-
-.category-title {
-  margin: 12px 0 0;
-  color: var(--color-text-dark);
-  font-size: clamp(32px, 5vw, 52px);
-  font-weight: 800;
-  letter-spacing: -0.055em;
-  line-height: 1;
-}
-
-.category-subtitle {
-  max-width: 720px;
-  margin: 10px 0 0;
-  color: var(--color-text-tertiary);
-  font-size: 15px;
-  line-height: 1.65;
-}
-
-.category-actions {
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.category-toolbar,
-.industry-card,
-.category-empty {
-  border: 1px solid rgb(15 23 42 / 8%);
-  border-radius: 24px;
-  background: rgb(255 255 255 / 86%);
-  box-shadow: 0 18px 48px rgb(16 24 40 / 6%);
-  backdrop-filter: blur(16px);
-}
-
-.category-toolbar {
-  margin-top: 22px;
-}
-
-.category-control :deep(.q-field__control) {
-  min-height: 44px;
-  border-radius: 16px;
-  background: var(--color-on-accent);
-}
-
-.category-control :deep(.q-field__control::before) {
-  border-color: rgb(15 23 42 / 12%);
-}
-
-.category-stats {
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.category-stats div {
-  min-width: 96px;
-  padding: 10px 14px;
-  border: 1px solid rgb(15 23 42 / 8%);
-  border-radius: 16px;
-  background: var(--color-page-tint);
-}
-
-.category-stats strong {
-  display: block;
-  color: var(--color-text-dark);
-  font-size: 20px;
-  line-height: 1;
-}
-
-.category-stats span {
-  color: var(--color-text-tertiary);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.category-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
-  gap: 18px;
-}
-
-.industry-card {
-  overflow: hidden;
-}
-
-.industry-card__header {
-  justify-content: space-between;
-  gap: 14px;
-  padding: 18px;
-  background:
-    linear-gradient(180deg, rgb(255 255 255 / 98%), rgb(251 252 255 / 92%)),
-    radial-gradient(circle at top right, rgb(25 118 210 / 8%), transparent 34%);
-}
-
-.industry-avatar {
-  box-shadow: 0 14px 34px rgb(25 118 210 / 20%);
-}
-
-.system-chip,
-.custom-chip {
-  font-weight: 700;
-}
-
-.system-chip {
-  border: 1px solid rgb(25 118 210 / 18%);
-  background: var(--color-info-soft);
-  color: var(--color-link);
-}
-
-.custom-chip {
-  border: 1px solid rgb(34 197 94 / 18%);
-  background: var(--color-success-soft);
-  color: var(--color-accent-green);
-}
-
-.department-list {
-  padding: 14px;
-}
-
-.department-item {
-  margin-bottom: 10px;
-  border: 1px solid rgb(15 23 42 / 8%);
-  border-radius: 18px;
-  background: var(--color-page-tint);
-  overflow: hidden;
-}
-
-.position-list {
-  display: grid;
-  gap: 8px;
-  padding: 0 14px 14px 64px;
-}
-
-.position-item {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 12px;
-  border: 1px solid rgb(15 23 42 / 8%);
-  border-radius: 14px;
-  background: var(--color-on-accent);
-}
-
-.position-path {
-  line-height: 1.35;
-}
-
-.position-desc-chain {
-  color: var(--color-text-tertiary);
-  line-height: 1.5;
-}
-
-.category-desc-line {
-  line-height: 1.55;
-}
-
-.position-item__actions {
-  flex-shrink: 0;
-  align-self: center;
-}
-
-.category-empty {
-  background:
-    radial-gradient(circle at center 26%, rgb(25 118 210 / 8%), transparent 22%),
-    linear-gradient(180deg, var(--color-on-accent), var(--color-page-tint));
-}
-
-.category-empty :deep(.q-card__section) {
-  min-height: 250px;
-  padding: 38px 24px;
-}
-
-.category-empty__visual {
-  display: grid;
-  place-items: center;
-  width: 108px;
-  height: 108px;
-  border: 1px solid rgb(25 118 210 / 12%);
-  border-radius: 32px;
-  background: linear-gradient(180deg, rgb(255 255 255 / 90%), rgb(238 246 255 / 90%));
-  box-shadow: 0 18px 42px rgb(16 24 40 / 8%);
-}
-
-.category-dialog {
-  width: 640px;
-  max-width: 94vw;
-  border-radius: 24px;
-  overflow: hidden;
-}
-
-.category-dialog :deep(.q-card__actions) {
-  padding: 14px 22px 20px;
-  background: rgb(248 250 252 / 58%);
-}
-
-.min-width-0 {
-  min-width: 0;
-}
-
-.agent-categories-page.is-dark {
-  background:
-    radial-gradient(circle at 86% 0%, rgb(59 130 246 / 16%), transparent 30%),
-    radial-gradient(circle at 10% 16%, rgb(245 158 11 / 10%), transparent 24%),
-    linear-gradient(160deg, var(--canvas-base) 0%, var(--color-surface-elevated) 48%, var(--color-surface-solid) 100%);
-  color: var(--color-border-soft);
-}
-
-.agent-categories-page.is-dark .category-kicker {
-  border-color: rgb(96 165 250 / 22%);
-  background: rgb(15 23 42 / 74%);
-  color: var(--color-link);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 28%);
-}
-
-.agent-categories-page.is-dark .category-title {
-  color: var(--color-surface-soft);
-}
-
-.agent-categories-page.is-dark .category-subtitle {
-  color: var(--color-text-tertiary);
-}
-
-.agent-categories-page.is-dark .category-toolbar,
-.agent-categories-page.is-dark .industry-card,
-.agent-categories-page.is-dark .category-empty,
-.agent-categories-page.is-dark .category-dialog {
-  border-color: rgb(148 163 184 / 16%);
-  background: rgb(17 24 39 / 88%);
-  box-shadow: 0 14px 38px rgb(0 0 0 / 32%);
-}
-
-.agent-categories-page.is-dark .category-control :deep(.q-field__control) {
-  background: rgb(30 41 59 / 76%);
-}
-
-.agent-categories-page.is-dark .category-control :deep(.q-field__control::before) {
-  border-color: rgb(148 163 184 / 18%);
-}
-
-.agent-categories-page.is-dark .category-stats div {
-  border-color: rgb(148 163 184 / 16%);
-  background: rgb(30 41 59 / 72%);
-}
-
-.agent-categories-page.is-dark .category-stats strong {
-  color: var(--color-surface-soft);
-}
-
-.agent-categories-page.is-dark .category-stats span {
-  color: var(--color-text-tertiary);
-}
-
-.agent-categories-page.is-dark .industry-card__header {
-  background:
-    linear-gradient(180deg, rgb(17 24 39 / 96%), rgb(15 23 42 / 90%)),
-    radial-gradient(circle at top right, rgb(59 130 246 / 14%), transparent 34%);
-}
-
-.agent-categories-page.is-dark .system-chip {
-  border-color: rgb(96 165 250 / 28%);
-  background: rgb(30 64 175 / 24%);
-  color: var(--color-link);
-}
-
-.agent-categories-page.is-dark .custom-chip {
-  border-color: rgb(34 197 94 / 28%);
-  background: rgb(22 101 52 / 24%);
-  color: var(--color-accent-green);
-}
-
-.agent-categories-page.is-dark .department-item {
-  border-color: rgb(148 163 184 / 14%);
-  background: rgb(15 23 42 / 76%);
-}
-
-.agent-categories-page.is-dark .position-item {
-  border-color: rgb(148 163 184 / 14%);
-  background: rgb(30 41 59 / 70%);
-}
-
-.agent-categories-page.is-dark .position-desc-chain,
-.agent-categories-page.is-dark .category-dept-desc,
-.agent-categories-page.is-dark .category-desc-line {
-  color: var(--color-text-tertiary);
-}
-
-.agent-categories-page.is-dark .category-empty {
-  background:
-    radial-gradient(circle at center 26%, rgb(59 130 246 / 12%), transparent 22%),
-    linear-gradient(180deg, rgb(17 24 39 / 94%), rgb(15 23 42 / 92%));
-}
-
-.agent-categories-page.is-dark .category-empty__visual {
-  border-color: rgb(96 165 250 / 20%);
-  background: linear-gradient(180deg, rgb(30 41 59 / 86%), rgb(15 23 42 / 90%));
-  box-shadow: 0 18px 42px rgb(0 0 0 / 32%);
-}
-
-.agent-categories-page.is-dark .category-dialog :deep(.q-card__actions) {
-  background: rgb(15 23 42 / 72%);
-}
-
-@media (width <= 599px) {
-  .agent-categories-page {
-    padding: 18px;
-  }
-
-  .category-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .position-list {
-    padding-left: 14px;
-  }
-}
-</style>

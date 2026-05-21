@@ -107,23 +107,28 @@ async function onPreviewDownload(meta: ArtifactMeta) {
   flex-direction: column;
   gap: 2px;
 }
+
 .artifact-list__item {
   padding: 6px 8px;
   border-radius: 6px;
   cursor: pointer;
   transition: background 0.15s;
 }
+
 .artifact-list__item:hover {
-  background: rgba(0, 0, 0, 0.04);
+  background: rgb(0 0 0 / 4%);
 }
+
 .artifact-list__name {
   font-size: 13px;
   font-weight: 500;
   line-height: 1.3;
 }
+
 .artifact-list__meta {
   line-height: 1.2;
 }
+
 .ellipsis {
   overflow: hidden;
   text-overflow: ellipsis;

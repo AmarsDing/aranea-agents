@@ -110,6 +110,11 @@ func (r *Runner) publishTeamRunSummary(ctx context.Context, run biz.TeamRun) {
 	if err != nil {
 		steps = nil
 	}
+	data := biz.BuildTeamRunSummaryData(run, steps)
+	summary := SummaryMapFromData(data)
+	if b, err := json.Marshal(summary); err == nil {
+		_ = r.teams.UpdateTeamRunSummaryJSON(ctx, run.ID, string(b))
+	}
 	r.td.Pipeline.Bus.Publish(ctx, TeamSummaryEnvelope(run, steps))
 }
 

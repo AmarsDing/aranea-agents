@@ -36,6 +36,7 @@ import SystemSettingsPage from "../pages/SystemSettingsPage.vue";
 import GraphsPage from "../pages/GraphsPage.vue";
 import GraphEditorPage from "../pages/GraphEditorPage.vue";
 import GraphRunPage from "../pages/GraphRunPage.vue";
+import ThemePreviewPage from "../pages/ThemePreviewPage.vue";
 
 export const routes: RouteRecordRaw[] = [
   {
@@ -160,7 +161,10 @@ export const routes: RouteRecordRaw[] = [
       { path: "cron/runs", name: "cron-runs", component: CronRunsPage },
       { path: "monitor/logs", name: "monitor-logs", component: MonitorPage },
       { path: "shop", name: "shop", component: EcosystemPage },
-      { path: "settings", name: "settings", component: SystemSettingsPage, meta: { titleKey: "menu.settings" } }
+      { path: "settings", name: "settings", component: SystemSettingsPage, meta: { titleKey: "menu.settings" } },
+      ...(import.meta.env.DEV
+        ? [{ path: "dev/theme-preview", name: "theme-preview", component: ThemePreviewPage }]
+        : [])
     ]
   }
 ];

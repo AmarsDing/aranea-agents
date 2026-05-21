@@ -1,10 +1,10 @@
 <template>
   <q-page :class="['graphs-page', { 'is-dark': isDark }]">
-    <section class="graphs-hero">
+    <section class="app-page-hero">
       <div>
-        <div class="graphs-kicker">Graph 工作流</div>
-        <h1 class="graphs-title">Graph 管理</h1>
-        <p class="graphs-subtitle">可视化构建可观测、可干预、可回溯的确定性工作流，支持条件路由、人工审批和状态回溯。</p>
+        <div class="app-page-kicker">Graph 工作流</div>
+        <h1 class="app-page-title">Graph 管理</h1>
+        <p class="app-page-subtitle">可视化构建可观测、可干预、可回溯的确定性工作流，支持条件路由、人工审批和状态回溯。</p>
       </div>
       <q-btn color="primary" rounded unelevated icon="add" label="新增 Graph" @click="openCreate" />
     </section>
@@ -198,43 +198,6 @@ async function removeGraph(graph: GraphDefinition) {
     linear-gradient(180deg, var(--color-page-tint) 0%, var(--color-page-tint-alt) 46%, var(--color-on-accent) 100%);
 }
 
-.graphs-hero {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.graphs-kicker {
-  display: inline-flex;
-  padding: 5px 11px;
-  border: 1px solid rgb(25 118 210 / 14%);
-  border-radius: 999px;
-  background: rgb(255 255 255 / 78%);
-  color: var(--color-link);
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.graphs-title {
-  margin: 12px 0 0;
-  color: var(--color-text-dark);
-  font-size: clamp(34px, 5vw, 54px);
-  font-weight: 800;
-  letter-spacing: -0.055em;
-  line-height: 1;
-}
-
-.graphs-subtitle {
-  max-width: 720px;
-  margin: 10px 0 0;
-  color: var(--color-text-tertiary);
-  line-height: 1.65;
-}
-
 .graphs-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
@@ -283,20 +246,6 @@ async function removeGraph(graph: GraphDefinition) {
     radial-gradient(circle at 86% 0%, rgb(59 130 246 / 16%), transparent 30%),
     linear-gradient(160deg, var(--canvas-base) 0%, var(--color-surface-elevated) 48%, var(--color-surface-solid) 100%);
   color: var(--color-border-soft);
-}
-
-.graphs-page.is-dark .graphs-kicker {
-  border-color: rgb(96 165 250 / 22%);
-  background: rgb(30 64 175 / 24%);
-  color: var(--color-link);
-}
-
-.graphs-page.is-dark .graphs-title {
-  color: var(--color-surface-soft);
-}
-
-.graphs-page.is-dark .graphs-subtitle {
-  color: var(--color-text-tertiary);
 }
 
 .graph-card.is-dark {

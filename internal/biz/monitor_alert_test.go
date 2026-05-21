@@ -75,6 +75,10 @@ func (r *alertMonitorRepo) CountMonitorEventsSince(ctx context.Context, eventKey
 	return r.total, nil
 }
 
+func (r *alertMonitorRepo) AvgRunnerCompletionDurationMsSince(ctx context.Context, sinceRFC3339 string) (float64, error) {
+	return 0, nil
+}
+
 func (r *alertMonitorRepo) ExistsRunnerCompletion(ctx context.Context, sessionID, invocationID string) (bool, error) {
 	return false, nil
 }

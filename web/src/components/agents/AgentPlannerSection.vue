@@ -164,16 +164,19 @@ const a2uiSchemaFields: { key: keyof PlannerFormState["a2ui"]; label: string }[]
   border-radius: 24px;
   background: var(--glass-surface);
 }
+
 .section-heading {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   margin-bottom: 14px;
 }
+
 .settings-info-banner {
   background: var(--glass-elevated);
   color: var(--color-text-secondary);
 }
+
 .planner-schema-expansion {
   border: 1px solid var(--glass-border);
   border-radius: 12px;

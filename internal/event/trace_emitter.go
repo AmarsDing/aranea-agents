@@ -183,6 +183,33 @@ func (e *TraceEmitter) RunID() string {
 	return strings.TrimSpace(e.tc.RunID)
 }
 
+// SyncOtelSpanIDs copies OTel child span ids onto usage waterfall rows (otel_id field).
+func (e *TraceEmitter) SyncOtelSpanIDs(src OtelSpanIDSource) {
+	if e == nil || src == nil {
+		return
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for i := range e.spans {
+		name, _ := e.spans[i]["name"].(string)
+		switch name {
+		case "llm.call":
+			if id := src.LLMSpanOtelID(); id != "" {
+				e.spans[i]["otel_id"] = id
+			}
+		case "tool.call":
+			tid, _ := e.spans[i]["tool_call_id"].(string)
+			if id := src.ToolSpanOtelID(tid); id != "" {
+				e.spans[i]["otel_id"] = id
+			}
+		case "chat.turn":
+			if e.otelRootID != "" {
+				e.spans[i]["otel_id"] = e.otelRootID
+			}
+		}
+	}
+}
+
 // MetadataJSON returns spans + trace_id for usage.metadata_json.
 func (e *TraceEmitter) MetadataJSON() string {
 	if e == nil {

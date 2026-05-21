@@ -74,41 +74,42 @@
 
 ### P0 — 须立即核查
 
-| ID | 模块 | 风险描述 |
-|----|------|---------|
-| P0-001 | Memory | `internal/biz/memory_runtime_set.go` 疑似 import `pkg/trpc-agent-go/memory`，违反 biz 不 import trpc-agent-go 红线；需用 `make runtime-boundary` 验证 |
-| P0-002 | Session | Session 服务若有遗留 `sessionmemory.Store` 直连（未经 biz Usecase 端口）需核查 |
-| P0-003 | Chat | `useChatWorkspace.ts` 约 1500 行，若含业务状态机逻辑须拆分，否则 bug 传播风险高 |
+| ID | 模块 | 风险描述 | 状态 |
+|----|------|---------|------|
+| P0-001 | Memory | biz import trpc-agent-go | ✅ 已迁至 `internal/runtime/memory_set.go`；`make runtime-boundary` CI |
+| P0-002 | Chat | `useChatWorkspace.ts` 编排过重 | ✅ 已拆至 ~500 行 + 子 composable |
+| P0-003 | Session | `sessionmemory.Store` 直连 service | ✅ 主链路经 data/runtime/wire 注入 |
 
 ### P1 — 当前迭代修复
 
-| ID | 模块 | 风险描述 |
-|----|------|---------|
-| P1-001 | 系统架构 | `PendingMessageQueue` 仍在 Service 层，应下沉 runtime 或 Usecase |
-| P1-002 | Agent Settings | `AgentSettingsPage.vue` 约 488 行，功能高度集中，测试缺失 |
-| P1-003 | Frontend 分层 | `SystemSettingsPage`、`EcosystemPage`、`MonitorPage`、`PluginsPage` 等直连 API，违反 Page→composable/store→feature API 分层 |
-| P1-004 | Provider | `internal/biz` 与 `internal/provider` 概念双向依赖（模型 inspect 与模型目录边界不稳） |
-| P1-005 | Memory | L0-L4 产品层与 `trpc-agent-go/memory.Service` 双轨共存，未明确主从 |
-| P1-006 | Data | `internal/data.go` 绑定 trpc session / graph checkpoint，应上移至 `internal/runtime` 或 Wire |
-| P1-007 | Skill | `server/skill_import_http.go` 绕过 proto/service 层鉴权与观测 |
-| P1-008 | Monitor | FlowLogger Phase 2 落库（`ListFlowLogs` HTTP 查询）尚未实现 |
-| P1-009 | Telemetry | Span 语义（per-span otel_id、gRPC 采样）待补；Trace UI 体验仍弱 |
-| P1-010 | 前端测试 | 多数域仅有 mapper 单测，E2E 几乎为零 |
+| ID | 模块 | 风险描述 | 状态 |
+|----|------|---------|------|
+| P1-001 | 系统架构 | PendingMessageQueue 在 Service | ✅ 已下沉 `internal/runtime/pending_queue.go` |
+| P1-002 | Agent Settings | AgentSettingsPage 过重 | 🚧 Tab 已拆；页壳续瘦身 P2 |
+| P1-003 | Frontend 分层 | 大 Page 直连 API | 🟡 Monitor/Plugins/Settings/Ecosystem 已迁 composable；ResourceManager 仍重 |
+| P1-004 | Provider | biz↔provider 双向依赖 | 🚧 待收敛 |
+| P1-005 | Memory | L0-L4 双轨未定义 | ✅ `12-16 memory.design.md` §1.1 |
+| P1-006 | Data | data 绑定 graph checkpoint | ✅ 已上移 runtime（M2） |
+| P1-007 | Skill | skill_import HTTP 旁路 | 🚧 设计例外，文档化 |
+| P1-008 | Monitor | FlowLogger Phase 2 落库 | ✅ `ListFlowLogs` + Logs Tab |
+| P1-009 | Session | 批量治理 UI | ✅ `SessionsBulkToolbar.vue` |
+| P1-010 | Telemetry | per-span otel_id | ✅ `TraceEmitter.SyncOtelSpanIDs` |
+| P1-011 | 前端测试 | E2E 薄弱 | 🚧 WS/Team/MemoryWorker 单测续补中 |
 
 ### P2 — 下迭代修复
 
-| ID | 模块 | 风险描述 |
-|----|------|---------|
-| P2-001 | A2A | Phase 4：网关健康 Cron + 速率限制尚未实现 |
-| P2-002 | Team | `team_summary` WS ✅；RunTest UI / step_started / Summary RPC 仍待补 |
-| P2-003 | Session | 批量治理（批量删除/归档）前端 UI 缺失 |
-| P2-004 | Knowledge | OCR pipeline、多租户 pgvector 稳定性待规划 |
-| P2-005 | Artifact | Chat 内附件引用、跨会话制品检索、签名下载待补 |
-| P2-006 | Graph | LLM/Tool 节点待补全；Checkpoint/HITL 产品化 |
-| P2-007 | Evolution | 趋势图/diff/护栏待补；`GenerateAgentTitle` 未实现 |
-| P2-008 | Monitor | latency 聚合 / Phase 4 自动刷新 / Grafana 集成待补 |
-| P2-009 | Token | 定价规则未配置时 `total_cost_micro_usd=0`，配额 SUM 失效，需文档化 |
-| P2-010 | Plugin | rules[] 沙箱/版本（Phase 4）未实现 |
+| ID | 模块 | 风险描述 | 状态 |
+|----|------|---------|------|
+| P2-001 | A2A | 网关健康 Cron + 速率限制 | 🟡 Cron ✅；速率限制 60/min ✅ |
+| P2-002 | Team | RunTest / step_started / Summary | ✅ Phase 3 已闭合 |
+| P2-003 | Session | 批量治理 UI | ✅ |
+| P2-004 | Knowledge | OCR / pgvector | 🟡 OCR ✅；pgvector 多租户待补 |
+| P2-005 | Artifact | Chat 引用 / 签名下载 | 🟡 HTTP 签名 + Chat 打开 signed URL ✅；proto RPC 已有 |
+| P2-006 | Graph | Agent/Router 节点 | 🟡 `node_wiring` agent/router + CatalogAgentResolver ✅ |
+| P2-007 | Evolution | 趋势图/diff/护栏 | 🚧 backlog |
+| P2-008 | Monitor | latency 聚合 / 自动刷新 | 🟡 30s 刷新 ✅；`avg_duration_ms` API ✅ |
+| P2-009 | Token | 定价未配置 UX | ✅ `pricingWarning.ts` |
+| P2-010 | Plugin | 沙箱/版本 Phase 4 | 🚧 `plugin_sandbox.go` 类型占位 |
 
 ---
 
@@ -116,7 +117,7 @@
 
 | 红线 | 状态 | 说明 |
 |------|------|------|
-| `internal/biz` 不 import `trpc-agent-go` | ⚠️ 待确认 | `memory_runtime_set.go` 需用 `make runtime-boundary` 验证 |
+| `internal/biz` 不 import `trpc-agent-go` | ✅ | MemorySet 在 `internal/runtime` |
 | `internal/server` 不调 Runner/Agent/LLM | ✅ | 传输注册正常；`skill_import_http.go` 有旁路但不直调 Runner |
 | Chat/Team/Monitor 主实时通道为 `/v1/ws` | ✅ | SSE 仅限 A2A/MCP 外部协议 |
 | 前端分层 Page→store→feature API | 🟡 | SystemSettings/Ecosystem/Monitor/Plugins 存在直连漂移 |

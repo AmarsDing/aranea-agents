@@ -148,6 +148,12 @@ export default {
       copyAuditHint:
         "Copied content may include sensitive data. For full audit trails, open Monitor → Traces."
     },
+    react: {
+      planning: "Planning",
+      reasoning: "Reasoning",
+      action: "Action",
+      replanning: "Re-planning"
+    },
     teamNoBackend: "Team list is sample data until the API is connected.",
     workspaceKicker: "ADK Multi-Agent",
     workspaceTitle: "Chat workspace",

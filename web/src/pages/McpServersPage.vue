@@ -1,10 +1,10 @@
 <template>
   <q-page class="app-page-cream mcp-page q-pa-sm q-pa-md-md">
-    <section class="mcp-hero">
+    <section class="app-page-hero">
       <div>
-        <div class="mcp-kicker">Model Context Protocol</div>
-        <h1 class="mcp-title">MCP 服务器</h1>
-        <p class="mcp-subtitle">管理 Model Context Protocol 服务器连接、传输配置与健康状态。</p>
+        <div class="app-page-kicker">Model Context Protocol</div>
+        <h1 class="app-page-title">MCP 服务器</h1>
+        <p class="app-page-subtitle">管理 Model Context Protocol 服务器连接、传输配置与健康状态。</p>
       </div>
       <div class="row q-gutter-sm">
         <q-btn color="primary" rounded unelevated icon="add" label="添加服务器" @click="openCreate" />
@@ -219,41 +219,6 @@ function parseJSON<T>(value: string | undefined, fallback: T): T {
 </script>
 
 <style scoped>
-.mcp-page {
-  min-height: 100%;
-}
-
-.mcp-hero {
-  align-items: center;
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 18px 4px 20px;
-}
-
-.mcp-kicker {
-  color: var(--color-cream-accent);
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-}
-
-.mcp-title {
-  color: var(--color-cream-accent-dark);
-  font-size: clamp(28px, 4vw, 44px);
-  font-weight: 900;
-  letter-spacing: -0.04em;
-  line-height: 1.05;
-  margin: 4px 0;
-}
-
-.mcp-subtitle {
-  color: var(--color-text-secondary);
-  margin: 0;
-  max-width: 720px;
-}
-
 .mcp-toolbar,
 .mcp-list-card {
   border-radius: 18px;
@@ -295,18 +260,5 @@ function parseJSON<T>(value: string | undefined, fallback: T): T {
   display: grid;
   gap: 8px;
   min-height: 240px;
-}
-
-body.body--dark .mcp-title,
-body.body--dark .mcp-kicker,
-body.body--dark .mcp-subtitle {
-  color: inherit;
-}
-
-@media (width <= 720px) {
-  .mcp-hero {
-    align-items: stretch;
-    flex-direction: column;
-  }
 }
 </style>

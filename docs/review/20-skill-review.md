@@ -76,6 +76,6 @@
 
 ## 建议优化路径
 
-1. 将 `skill_import_http.go` 迁入 `SkillService`（P1 架构修复）。
-2. 规划 Skill 版本管理。
-3. 规划 Skill RBAC。
+1. **设计例外**：`skill_import_http.go` 经 Service 鉴权；迁入 `SkillService` 为 P3 可选（见 [README-development §技术预览与 P3](../需求/README-development.md)）。
+2. 规划 Skill 版本管理（P2）。
+3. 规划 Skill RBAC（P3）。

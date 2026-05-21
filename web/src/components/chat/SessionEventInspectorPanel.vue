@@ -106,7 +106,7 @@ defineExpose({ reload, clearEvents });
 }
 
 .inspector-branch {
-  border-right: 1px solid var(--glass-border, rgba(0, 0, 0, 0.08));
+  border-right: 1px solid var(--glass-border, rgb(0 0 0 / 8%));
 }
 
 .ellipsis-3-lines {

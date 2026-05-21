@@ -123,7 +123,8 @@ features/chat/api.ts → services/kratos/chat/
 
 ## 建议优化路径
 
-1. **高优**：拆分 `useChatWorkspace.ts`，按功能域创建独立 composable（流、发送、Pending、Await）。
-2. **本迭代**：实现 WS 驱动的 Pending 刷新（`message_queued` hint 监听）。
-3. **下迭代**：将 `PendingMessageQueue` 从 Service 下沉到 runtime。
-4. **长期**：补全 WS 集成测试，覆盖 cancel/enqueue/replay 场景。
+1. ~~拆分 `useChatWorkspace.ts`~~ ✅ ~505 行 + 子 composable（Phase A–C）
+2. ~~WS 驱动 Pending 刷新~~ ✅ `useFollowUpQueue` + `messageQueuedFromEnvelope`
+3. ~~PendingQueue 下沉 runtime~~ ✅
+4. **本迭代**：工具卡/ReAct 标签 i18n ✅ `chat.react.*`；WS 全链路 E2E 续补
+5. **下迭代**：`run_status` 全量 WS 驱动，替代 HTTP 快照轮询

@@ -1,10 +1,10 @@
 <template>
   <q-page class="app-page-cream artifacts-page q-pa-sm q-pa-md-md">
-    <section class="artifacts-hero">
+    <section class="app-page-hero">
       <div>
-        <div class="artifacts-kicker">Session artifacts</div>
-        <h1 class="artifacts-title">制品管理</h1>
-        <p class="artifacts-subtitle">上传、浏览与删除会话关联的文件制品。存储后端依部署配置（本地或对象存储）。</p>
+        <div class="app-page-kicker">Session artifacts</div>
+        <h1 class="app-page-title">制品管理</h1>
+        <p class="app-page-subtitle">上传、浏览与删除会话关联的文件制品。存储后端依部署配置（本地或对象存储）。</p>
       </div>
       <div class="row q-gutter-sm">
         <q-btn color="primary" rounded unelevated icon="upload" label="上传" @click="uploadOpen = true" />
@@ -247,31 +247,3 @@ onMounted(() => {
   void loadRows();
 });
 </script>
-
-<style scoped>
-.artifacts-hero {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 1.25rem;
-}
-.artifacts-kicker {
-  font-size: 0.75rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--q-primary);
-  font-weight: 600;
-}
-.artifacts-title {
-  margin: 0.25rem 0;
-  font-size: 1.75rem;
-  font-weight: 700;
-}
-.artifacts-subtitle {
-  margin: 0;
-  color: #666;
-  max-width: 36rem;
-}
-</style>

@@ -493,3 +493,43 @@ func mergeAgentCatalog(current, patch Agent) Agent {
 	}
 	return out
 }
+
+// AgentBatchUpdateInput is LIST-04 bulk enable/disable/delete.
+type AgentBatchUpdateInput struct {
+	IDs     []string
+	Status  string // optional: active | inactive
+	Delete  bool
+}
+
+// BatchUpdateAgents applies status changes or deletes for many agents.
+func (u *AgentUsecase) BatchUpdateAgents(ctx context.Context, in AgentBatchUpdateInput) (int, error) {
+	if u == nil || u.repo == nil {
+		return 0, kerrors.InternalServer("AGENT", "agent repository not configured")
+	}
+	n := 0
+	for _, id := range in.IDs {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if in.Delete {
+			if err := u.repo.DeleteAgent(ctx, id); err != nil {
+				return n, err
+			}
+			n++
+			continue
+		}
+		if st := strings.TrimSpace(in.Status); st != "" {
+			a, err := u.repo.GetAgentByID(ctx, id)
+			if err != nil {
+				return n, err
+			}
+			a.Status = st
+			if _, err := u.repo.UpdateAgent(ctx, a); err != nil {
+				return n, err
+			}
+			n++
+		}
+	}
+	return n, nil
+}

@@ -31,11 +31,13 @@ defineProps<{
   max-height: 200px;
   border-radius: 8px;
 }
+
 .a2ui-video {
   max-width: 100%;
   max-height: 240px;
   border-radius: 8px;
 }
+
 .a2ui-divider {
   margin: 8px 0;
 }

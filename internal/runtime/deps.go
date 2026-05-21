@@ -30,7 +30,7 @@ type Catalog struct {
 // PersistenceSet groups the session and memory persistence services for a turn.
 type PersistenceSet struct {
 	Session  trpcsession.Service    // SQLite-backed or in-memory session service
-	Memory   biz.RuntimeSet         // TRPC memory service + L0–L4 admin port
+	Memory   MemorySet              // TRPC memory service + L0–L4 admin port
 	AgentMCP *biz.AgentMCPTooling   // per-agent MCP tool configuration
 	Artifact trpcartifact.Service   // optional; wired from biz.ArtifactUsecase adapter
 }
@@ -70,9 +70,9 @@ func (d TurnDeps) SQLiteSessionMemory() bool {
 // NewPersistenceSet constructs a PersistenceSet from its three components.
 // Used by Wire when wiring the dependency graph.
 func NewPersistenceSet(store *sessionmemory.Store, mcp *biz.AgentMCPTooling, sess trpcsession.Service, artifact trpcartifact.Service) PersistenceSet {
-	var mem biz.RuntimeSet
+	var mem MemorySet
 	if store != nil {
-		mem = biz.RuntimeSet{
+		mem = MemorySet{
 			TRPC:  memtrpc.NewSQLiteMemoryService(store),
 			Admin: biz.WrapSessionAdminStore(store),
 		}

@@ -1,10 +1,10 @@
 <template>
   <q-page class="app-page-cream skills-page">
-    <section class="skills-hero">
+    <section class="app-page-hero">
       <div>
-        <div class="skills-kicker">Skill registry</div>
-        <h1 class="skills-title">Skill 管理</h1>
-        <p class="skills-subtitle">查看 Skill 使用频率、成功失败统计、最近调用 Agent，并维护启用状态。</p>
+        <div class="app-page-kicker">Skill registry</div>
+        <h1 class="app-page-title">Skill 管理</h1>
+        <p class="app-page-subtitle">查看 Skill 使用频率、成功失败统计、最近调用 Agent，并维护启用状态。</p>
       </div>
     </section>
 
@@ -206,36 +206,8 @@ onMounted(loadRows);
 
 <style scoped lang="sass">
 .skills-page
-  padding: 24px
-
-.skills-hero
-  display: flex
-  justify-content: space-between
-  gap: 16px
-  align-items: flex-start
-  margin-bottom: 18px
-
-.skills-kicker
-  color: var(--q-primary)
-  font-size: 12px
-  font-weight: 700
-  letter-spacing: .12em
-  text-transform: uppercase
-
-.skills-title
-  margin: 4px 0
-  font-size: 34px
-  line-height: 1.15
-
-.skills-subtitle
-  margin: 0
-  color: var(--q-grey-7)
+  padding: var(--space-6)
 
 .skills-empty-card
   border-radius: 22px
-
-@media (max-width: 720px)
-  .skills-hero
-    flex-direction: column
-    align-items: stretch
 </style>

@@ -350,3 +350,14 @@ func (r *teamRepo) CreateTeamRunStep(ctx context.Context, step biz.TeamRunStep) 
 	}
 	return entTeamRunStepToBiz(row), nil
 }
+
+func (r *teamRepo) UpdateTeamRunSummaryJSON(ctx context.Context, runID, summaryJSON string) error {
+	if strings.TrimSpace(runID) == "" {
+		return fmt.Errorf("team run id is required")
+	}
+	now := nowRFC3339()
+	_, err := r.data.entClient.ExecContext(ctx,
+		`UPDATE team_runs SET summary_json=?, updated_at=? WHERE id=?`,
+		summaryJSON, now, runID)
+	return err
+}

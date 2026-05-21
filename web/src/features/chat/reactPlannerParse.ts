@@ -1,24 +1,29 @@
 /** Parse ReAct planner tags embedded in assistant content_markdown. */
 
+import { i18n } from "../../i18n";
 import type { ReactParsedContent, ReactStep, ReactStepKind } from "./reactPlannerTypes";
 
 export type { ReactParsedContent, ReactStep, ReactStepKind } from "./reactPlannerTypes";
 
-const TAG_DEFS: { tag: string; kind: ReactStepKind; title: string }[] = [
-  { tag: "/*PLANNING*/", kind: "planning", title: "规划" },
-  { tag: "/*REASONING*/", kind: "reasoning", title: "推理" },
-  { tag: "/*ACTION*/", kind: "action", title: "动作" },
-  { tag: "/*REPLANNING*/", kind: "replanning", title: "重新规划" },
+const TAG_DEFS: { tag: string; kind: ReactStepKind }[] = [
+  { tag: "/*PLANNING*/", kind: "planning" },
+  { tag: "/*REASONING*/", kind: "reasoning" },
+  { tag: "/*ACTION*/", kind: "action" },
+  { tag: "/*REPLANNING*/", kind: "replanning" },
 ];
+
+function reactStepTitle(kind: ReactStepKind): string {
+  return String(i18n.global.t(`chat.react.${kind}`));
+}
 
 const FINAL_TAG = "/*FINAL_ANSWER*/";
 
-function findEarliestTag(text: string, from: number): { index: number; tag: string; kind?: ReactStepKind; title?: string; isFinal?: boolean } | null {
-  let best: { index: number; tag: string; kind?: ReactStepKind; title?: string; isFinal?: boolean } | null = null;
+function findEarliestTag(text: string, from: number): { index: number; tag: string; kind?: ReactStepKind; isFinal?: boolean } | null {
+  let best: { index: number; tag: string; kind?: ReactStepKind; isFinal?: boolean } | null = null;
   for (const def of TAG_DEFS) {
     const i = text.indexOf(def.tag, from);
     if (i >= 0 && (best === null || i < best.index)) {
-      best = { index: i, tag: def.tag, kind: def.kind, title: def.title };
+      best = { index: i, tag: def.tag, kind: def.kind };
     }
   }
   const fi = text.indexOf(FINAL_TAG, from);
@@ -56,8 +61,8 @@ export function parseReactPlannerContent(text: string): ReactParsedContent | nul
     const next = findEarliestTag(raw, contentStart);
     const segmentEnd = next ? next.index : raw.length;
     const body = raw.slice(contentStart, segmentEnd).trim();
-    if (hit.kind && hit.title) {
-      steps.push({ kind: hit.kind, title: hit.title, body });
+    if (hit.kind) {
+      steps.push({ kind: hit.kind, title: reactStepTitle(hit.kind), body });
     }
     pos = segmentEnd;
   }

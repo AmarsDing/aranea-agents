@@ -34,6 +34,7 @@ description: >-
 |------|------|
 | 新 token | `web/src/css/theme/_css-vars-*.sass` |
 | 页面/聊天全局类 | `web/src/css/app-global.sass`（`.chat-page` 等） |
+| 页面 Hero / 登录 / 代码块 | `web/src/css/theme/_page-patterns.sass`（`.app-page-hero`、`.app-code-block`） |
 | 布局/动画（仅本组件） | `web/src/components/**` scoped sass |
 | 展示组件 | 无 Store/API；props/emits only |
 
@@ -62,3 +63,5 @@ description: >-
 ```bash
 cd web && pnpm run build
 ```
+
+开发环境主题验收页：`http://localhost:9001/dev/theme-preview`（仅 `import.meta.env.DEV` 注册路由）。

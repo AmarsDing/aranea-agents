@@ -106,38 +106,43 @@ watch(() => [props.artifactId, props.version], loadPreview, { immediate: true })
 
 <style scoped>
 .artifact-preview__text {
-  border: 1px solid rgba(0, 0, 0, 0.12);
+  border: 1px solid var(--glass-border);
   border-radius: 8px;
   overflow: hidden;
 }
+
 .artifact-preview__code {
   margin: 0;
   padding: 12px;
   max-height: 480px;
   overflow: auto;
   white-space: pre-wrap;
-  word-break: break-word;
-  font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+  overflow-wrap: anywhere;
+  font-family: "SF Mono", "Fira Code", Consolas, monospace;
   font-size: 13px;
   line-height: 1.5;
-  background: var(--q-dark-page, #fafafa);
-  color: var(--q-dark, #333);
+  background: var(--canvas-base);
+  color: var(--color-text-primary);
 }
+
 .artifact-preview__image {
   text-align: center;
 }
+
 .artifact-preview__img {
   max-width: 100%;
   max-height: 480px;
   border-radius: 8px;
 }
+
 .artifact-preview__pdf {
   width: 100%;
 }
+
 .artifact-preview__iframe {
   width: 100%;
   height: 480px;
-  border: 1px solid rgba(0, 0, 0, 0.12);
+  border: 1px solid var(--glass-border);
   border-radius: 8px;
 }
 </style>

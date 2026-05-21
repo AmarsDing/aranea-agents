@@ -15,9 +15,3 @@ func TestWrapSessionAdminStoreNil(t *testing.T) {
 		t.Fatal("expected nil admin store")
 	}
 }
-
-func TestRuntimeSetAvailable(t *testing.T) {
-	if (RuntimeSet{}).Available() {
-		t.Fatal("empty set should not be available")
-	}
-}

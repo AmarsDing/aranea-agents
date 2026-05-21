@@ -296,7 +296,8 @@ func (r *a2aRepo) ListRemoteAgents(ctx context.Context, workspace string) ([]biz
 	if r == nil || r.db == nil {
 		return nil, nil
 	}
-	q := `SELECT id,workspace,display_name,remote_url,agent_card_url,auth_type,auth_config_json,enabled,card_json,created_at,updated_at
+	q := `SELECT id,workspace,display_name,remote_url,agent_card_url,auth_type,auth_config_json,enabled,card_json,
+	      COALESCE(last_health_at,''),COALESCE(last_health_ok,0),COALESCE(last_health_error,''),created_at,updated_at
 	      FROM a2a_remote_agents WHERE 1=1`
 	args := []any{}
 	if strings.TrimSpace(workspace) != "" {
@@ -337,7 +338,8 @@ func (r *a2aRepo) GetRemoteAgent(ctx context.Context, id string) (biz.A2ARemoteA
 		return biz.A2ARemoteAgent{}, biz.ErrNotFound
 	}
 	row := r.db.QueryRowContext(ctx,
-		`SELECT id,workspace,display_name,remote_url,agent_card_url,auth_type,auth_config_json,enabled,card_json,created_at,updated_at
+		`SELECT id,workspace,display_name,remote_url,agent_card_url,auth_type,auth_config_json,enabled,card_json,
+		 COALESCE(last_health_at,''),COALESCE(last_health_ok,0),COALESCE(last_health_error,''),created_at,updated_at
 		 FROM a2a_remote_agents WHERE id=?`, id)
 	agent, err := scanRemoteAgent(row)
 	if err == sql.ErrNoRows {
@@ -346,15 +348,37 @@ func (r *a2aRepo) GetRemoteAgent(ctx context.Context, id string) (biz.A2ARemoteA
 	return agent, err
 }
 
+func (r *a2aRepo) UpdateRemoteAgentHealth(ctx context.Context, id string, ok bool, errMsg string) error {
+	if r == nil || r.db == nil {
+		return fmt.Errorf("a2a db nil")
+	}
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return fmt.Errorf("id is required")
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	okInt := 0
+	if ok {
+		okInt = 1
+	}
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE a2a_remote_agents SET last_health_at=?, last_health_ok=?, last_health_error=?, updated_at=? WHERE id=?`,
+		now, okInt, strings.TrimSpace(errMsg), now, id)
+	return err
+}
+
 func scanRemoteAgent(row scannable) (biz.A2ARemoteAgent, error) {
 	var agent biz.A2ARemoteAgent
 	var enabled int
+	var healthOK int
 	var cardJSON string
 	if err := row.Scan(&agent.ID, &agent.Workspace, &agent.DisplayName, &agent.RemoteURL, &agent.AgentCardURL,
-		&agent.AuthType, &agent.AuthConfigJSON, &enabled, &cardJSON, &agent.CreatedAt, &agent.UpdatedAt); err != nil {
+		&agent.AuthType, &agent.AuthConfigJSON, &enabled, &cardJSON,
+		&agent.LastHealthAt, &healthOK, &agent.LastHealthError, &agent.CreatedAt, &agent.UpdatedAt); err != nil {
 		return biz.A2ARemoteAgent{}, err
 	}
 	agent.Enabled = enabled == 1
+	agent.LastHealthOK = healthOK == 1
 	_ = json.Unmarshal([]byte(cardJSON), &agent.DiscoveredCard)
 	if agent.DiscoveredCard.AgentID == "" {
 		agent.DiscoveredCard.AgentID = agent.ID

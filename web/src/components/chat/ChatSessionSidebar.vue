@@ -301,10 +301,10 @@ function saveIDs(key: string, ids: Set<string>) {
 
 <style scoped>
 .chat-side--right {
-  width: 380px;
-  min-width: 360px;
+  width: var(--chat-side-right-width, 340px);
+  min-width: min(var(--chat-side-right-width, 340px), 100%);
   max-width: 100%;
-  flex: 0 0 380px;
+  flex: 0 0 var(--chat-side-right-width, 340px);
   box-sizing: border-box;
   overflow-x: hidden;
 }
@@ -330,7 +330,7 @@ function saveIDs(key: string, ids: Set<string>) {
 .chat-session-scroll :deep(.q-scrollarea__thumb--h) {
   display: none !important;
   height: 0 !important;
-  opacity: 0 !important;
+  opacity: 0% !important;
 }
 
 .chat-session-list {
@@ -389,7 +389,7 @@ function saveIDs(key: string, ids: Set<string>) {
   color: var(--color-accent);
   border-color: color-mix(in srgb, var(--color-accent) 48%, var(--glass-border));
   background: color-mix(in srgb, var(--color-accent) 22%, var(--glass-elevated));
-  box-shadow: var(--glass-inner-highlight), 0 0 14px rgba(0, 229, 255, 0.12);
+  box-shadow: var(--glass-inner-highlight), 0 0 14px rgb(0 229 255 / 12%);
 }
 
 .chat-session-item {
@@ -468,6 +468,14 @@ function saveIDs(key: string, ids: Set<string>) {
   padding-right: 2px;
 }
 
+.chat-session-item--active .chat-session-title {
+  color: var(--color-text-heading);
+}
+
+:global(.body--dark) .chat-session-item--active .chat-session-title {
+  color: var(--color-text-primary);
+}
+
 .chat-session-item:not(.chat-session-item--active) .chat-session-title {
   color: var(--color-text-secondary);
 }
@@ -482,7 +490,7 @@ function saveIDs(key: string, ids: Set<string>) {
   font-size: 18px !important;
   font-weight: 600;
   line-height: 1.45;
-  word-break: break-word;
+  overflow-wrap: anywhere;
   white-space: normal;
   background: var(--glass-elevated) !important;
   color: var(--color-text-heading) !important;
@@ -511,12 +519,12 @@ function saveIDs(key: string, ids: Set<string>) {
   color: var(--color-text-tertiary);
 }
 
-.chat-session-item:not(.chat-session-item--active) .chat-session-progress__label {
-  color: var(--color-text-tertiary);
-}
-
 .chat-session-item--active .chat-session-progress__label {
   color: var(--color-accent);
+}
+
+.chat-session-item:not(.chat-session-item--active) .chat-session-progress__label {
+  color: var(--color-text-tertiary);
 }
 
 .chat-timeline-label {
@@ -545,6 +553,12 @@ function saveIDs(key: string, ids: Set<string>) {
   -webkit-backdrop-filter: blur(8px);
 }
 
+.chat-session-item--active .chat-session-time-badge {
+  background: color-mix(in srgb, var(--color-accent) 12%, var(--glass-surface-hover));
+  border-color: color-mix(in srgb, var(--color-accent) 35%, var(--glass-border));
+  color: var(--color-accent);
+}
+
 .chat-session-item:not(.chat-session-item--active) .chat-session-time-badge {
   color: var(--color-text-tertiary);
   background: color-mix(in srgb, var(--glass-surface) 75%, transparent);
@@ -566,6 +580,12 @@ function saveIDs(key: string, ids: Set<string>) {
   border: 1px solid var(--glass-border);
 }
 
+.chat-session-item--active .chat-session-menu-btn {
+  color: var(--color-accent);
+  border-color: color-mix(in srgb, var(--color-accent) 35%, var(--glass-border));
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--glass-surface-hover));
+}
+
 .chat-session-item:not(.chat-session-item--active) .chat-session-menu-btn {
   color: var(--color-icon-muted);
 }
@@ -576,29 +596,9 @@ function saveIDs(key: string, ids: Set<string>) {
   background: var(--glass-surface-hover);
 }
 
-.chat-session-item--active .chat-session-menu-btn {
-  color: var(--color-accent);
-  border-color: color-mix(in srgb, var(--color-accent) 35%, var(--glass-border));
-  background: color-mix(in srgb, var(--color-accent) 10%, var(--glass-surface-hover));
-}
-
 :global(.body--dark) .chat-session-item:not(.chat-session-item--active) .chat-session-menu-btn {
   color: var(--color-text-slate-400);
   background: color-mix(in srgb, var(--glass-surface) 90%, transparent);
-}
-
-.chat-session-item--active .chat-session-title {
-  color: var(--color-text-heading);
-}
-
-:global(.body--dark) .chat-session-item--active .chat-session-title {
-  color: var(--color-text-primary);
-}
-
-.chat-session-item--active .chat-session-time-badge {
-  background: color-mix(in srgb, var(--color-accent) 12%, var(--glass-surface-hover));
-  border-color: color-mix(in srgb, var(--color-accent) 35%, var(--glass-border));
-  color: var(--color-accent);
 }
 
 .chat-session-item--active {
@@ -609,11 +609,11 @@ function saveIDs(key: string, ids: Set<string>) {
   box-shadow: var(--glass-inner-highlight), inset 3px 0 0 color-mix(in srgb, var(--color-accent) 72%, transparent) !important;
 }
 
-@media (max-width: 900px) {
+@media (width <= 900px) {
   .chat-side--right {
-    width: 300px;
-    min-width: 280px;
-    flex: 0 0 300px;
+    width: var(--chat-side-right-width, 300px);
+    min-width: min(var(--chat-side-right-width, 280px), 100%);
+    flex: 0 0 var(--chat-side-right-width, 300px);
   }
 }
 </style>

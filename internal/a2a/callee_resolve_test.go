@@ -53,6 +53,9 @@ func (r *resolveRepo) InsertAudit(context.Context, biz.A2AAuditEntry) error     
 func (r *resolveRepo) ListAudit(context.Context, string, string, int, int) ([]biz.A2AAuditEntry, int, error) {
 	return nil, 0, nil
 }
+func (r *resolveRepo) UpdateRemoteAgentHealth(context.Context, string, bool, string) error {
+	return nil
+}
 
 func TestResolveInvokeTarget_LocalDisabledDoesNotFallbackRemote(t *testing.T) {
 	t.Parallel()

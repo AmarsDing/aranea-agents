@@ -147,6 +147,12 @@ export default {
       metadata: "元数据",
       copyAuditHint: "复制内容可能包含敏感信息；完整审计请前往 Monitor → Traces。"
     },
+    react: {
+      planning: "规划",
+      reasoning: "推理",
+      action: "动作",
+      replanning: "重新规划"
+    },
     teamNoBackend: "Team 与后端联调中，本列表为展示数据。",
     workspaceKicker: "ADK Multi-Agent",
     workspaceTitle: "对话工作台",

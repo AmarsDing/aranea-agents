@@ -237,6 +237,7 @@ func (s *MonitorService) GetRunnerMetrics(ctx context.Context, req *v1.GetRunner
 		ErrorRuns:     m.ErrorRuns,
 		ErrorRate:     m.ErrorRate,
 		SuccessRate:   m.SuccessRate,
+		AvgDurationMs: m.AvgDurationMs,
 	}, nil
 }
 

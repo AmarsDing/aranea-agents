@@ -25,7 +25,7 @@
       @toggle="leftOpen = !leftOpen"
     />
 
-    <div class="col column no-wrap" style="min-width: 0; min-height: 0">
+    <div class="chat-workspace-main col column no-wrap">
       <ChatMessagePanel
         v-model="inputText"
         v-model:dialog-mode="dialogMode"

@@ -1,0 +1,124 @@
+// 全站页面模式：Hero、奶油/驾驶舱页底、登录、代码块、表格/表单夜间增强
+// 引用 docs/frontend/UX.md token；页面优先用 class，少写 scoped rgb/hex
+
+body:not(.body--dark)
+  .app-page-cream,
+  .system-settings-page,
+  .monitor-page,
+  .memory-page,
+  .resource-manager-page
+    min-height: 100%
+    color: var(--color-text-primary)
+
+body.body--dark
+  .app-page-cream,
+  .system-settings-page,
+  .monitor-page,
+  .memory-page,
+  .resource-manager-page
+    min-height: 100%
+    color: var(--color-text-primary)
+    background: var(--gradient-page)
+
+  .q-table
+    background: transparent
+    color: var(--color-text-primary)
+
+  .q-table thead tr th
+    background: var(--glass-surface)
+    color: var(--color-text-secondary)
+    backdrop-filter: blur(var(--glass-blur-default))
+    -webkit-backdrop-filter: blur(var(--glass-blur-default))
+    border-color: var(--glass-border)
+
+  .q-table tbody tr:hover
+    background: var(--glass-surface-hover)
+
+  .q-table tbody td
+    border-color: var(--glass-border)
+
+  .q-field--outlined .q-field__control
+    background: color-mix(in srgb, var(--glass-surface) 88%, transparent)
+    border-color: var(--glass-border)
+
+  .q-field--outlined.q-field--focused .q-field__control
+    border-color: var(--color-accent)
+
+  .q-banner:not(.bg-negative):not(.bg-positive):not(.bg-warning)
+    background: var(--glass-surface)
+    color: var(--color-text-primary)
+    border: 1px solid var(--glass-border)
+
+// --- 页面 Hero（registry / admin 通用）---
+.app-page-hero
+  display: flex
+  flex-wrap: wrap
+  align-items: flex-start
+  justify-content: space-between
+  gap: var(--space-4)
+  margin-bottom: var(--space-4)
+
+.app-page-kicker
+  display: inline-flex
+  font-size: var(--text-xs)
+  font-weight: 700
+  letter-spacing: 0.08em
+  text-transform: uppercase
+  color: var(--color-accent)
+
+.app-page-title
+  margin: var(--space-1) 0
+  font-size: clamp(1.35rem, 2.5vw, 1.75rem)
+  font-weight: 700
+  letter-spacing: -0.03em
+  line-height: 1.15
+  color: var(--color-text-primary)
+
+body.body--dark .app-page-title
+  text-shadow: 0 0 12px color-mix(in srgb, var(--color-accent) 12%, transparent)
+
+.app-page-subtitle
+  margin: 0
+  max-width: 42rem
+  font-size: var(--text-base)
+  line-height: 1.55
+  color: var(--color-text-secondary)
+
+.app-page-shell
+  max-width: var(--layout-max-width)
+  margin: 0 auto
+  padding: var(--space-3) var(--space-4) var(--space-8)
+
+.app-code-block
+  white-space: pre-wrap
+  overflow: auto
+  padding: var(--space-3)
+  border-radius: 12px
+  font-family: "SF Mono", "Fira Code", Consolas, monospace
+  font-size: var(--text-sm)
+  line-height: 1.5
+  background: var(--color-code-block-bg)
+  border: 1px solid var(--glass-border)
+  color: var(--color-text-primary)
+
+.app-code-block--compact
+  max-height: 180px
+
+// --- 登录页 ---
+.login-page
+  min-height: 100vh
+  padding: var(--space-6)
+  background: var(--gradient-page)
+
+.login-card
+  width: 100%
+  max-width: 420px
+  border-radius: 20px !important
+  background: var(--glass-elevated) !important
+  border: 1px solid var(--glass-border) !important
+  box-shadow: var(--shadow-login) !important
+  backdrop-filter: blur(var(--glass-blur-elevated))
+  -webkit-backdrop-filter: blur(var(--glass-blur-elevated))
+
+.login-card .text-grey-7
+  color: var(--color-text-secondary) !important

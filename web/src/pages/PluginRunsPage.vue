@@ -1,10 +1,10 @@
 <template>
   <q-page class="app-page-cream plugin-runs-page">
-    <section class="plugin-runs-hero">
+    <section class="app-page-hero">
       <div>
-        <div class="plugin-runs-kicker">Callback observability</div>
-        <h1 class="plugin-runs-title">Callback / Plugin 运行记录</h1>
-        <p class="plugin-runs-subtitle">按生命周期点（phase）、Agent、Plugin 与结果筛选；Hook 阻断/错误以 <code>hook:&lt;key&gt;</code> 落库。</p>
+        <div class="app-page-kicker">Callback observability</div>
+        <h1 class="app-page-title">Callback / Plugin 运行记录</h1>
+        <p class="app-page-subtitle">按生命周期点（phase）、Agent、Plugin 与结果筛选；Hook 阻断/错误以 <code>hook:&lt;key&gt;</code> 落库。</p>
       </div>
       <div class="row q-gutter-sm">
         <q-btn outline rounded color="primary" icon="rule" label="Hook 规则" to="/hooks" />
@@ -243,30 +243,7 @@ onMounted(() => {
 
 <style scoped lang="sass">
 .plugin-runs-page
-  padding: 24px
-
-.plugin-runs-hero
-  display: flex
-  align-items: flex-start
-  justify-content: space-between
-  gap: 16px
-  margin-bottom: 18px
-  flex-wrap: wrap
-
-.plugin-runs-kicker
-  color: var(--q-primary)
-  font-size: 12px
-  font-weight: 700
-  letter-spacing: .12em
-  text-transform: uppercase
-
-.plugin-runs-title
-  margin: 4px 0
-  font-size: 34px
-
-.plugin-runs-subtitle
-  margin: 0
-  color: var(--q-grey-7)
+  padding: var(--space-6)
 
 .plugin-runs-filter,
 .plugin-runs-table-card
@@ -275,6 +252,6 @@ onMounted(() => {
 .plugin-run-detail
   margin: 0
   white-space: pre-wrap
-  word-break: break-word
-  font-size: 12px
+  overflow-wrap: anywhere
+  font-size: var(--text-xs)
 </style>

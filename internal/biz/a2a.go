@@ -78,6 +78,7 @@ type A2ARepo interface {
 	DeleteRemoteAgent(ctx context.Context, id string) error
 	GetRemoteAgent(ctx context.Context, id string) (A2ARemoteAgent, error)
 	DiscoverRemoteCard(ctx context.Context, in RemoteCardDiscoverInput) (A2AAgentCard, error)
+	UpdateRemoteAgentHealth(ctx context.Context, id string, ok bool, errMsg string) error
 }
 
 // A2AUsecase implements A2A card management and invocation logic.

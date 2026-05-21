@@ -131,6 +131,15 @@ func (s *A2AService) Invoke(ctx context.Context, req *v1.A2AInvokeRequest) (*v1.
 		return nil, err
 	}
 
+	callerKey := strings.TrimSpace(req.GetWorkspace())
+	if callerKey == "" {
+		callerKey = "admin"
+	}
+	if !biz.DefaultA2AInvokeLimiter().Allow(callerKey, calleeID) {
+		a2aInvokeTotal.WithLabelValues(callerKey, calleeID, "rate_limited").Inc()
+		return nil, kerrors.New(429, "A2A", "invoke rate limit exceeded")
+	}
+
 	timeoutSec := int(req.GetTimeoutSeconds())
 	if timeoutSec <= 0 {
 		timeoutSec = 30

@@ -133,12 +133,14 @@ defineProps<{
   display: grid;
   gap: 18px;
 }
+
 .settings-section {
   padding: 20px;
   border: 1px solid var(--glass-border);
   border-radius: 24px;
   background: var(--glass-surface);
 }
+
 .section-heading {
   display: flex;
   justify-content: space-between;

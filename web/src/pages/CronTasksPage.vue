@@ -1,10 +1,10 @@
 <template>
   <q-page class="app-page-cream cron-page q-pa-sm q-pa-md-md">
-    <section class="cron-hero">
+    <section class="app-page-hero">
       <div>
-        <div class="cron-kicker">Scheduled tasks</div>
-        <h1 class="cron-title">定时任务</h1>
-        <p class="cron-subtitle">安排定期 Agent 任务，查看最近执行、失败次数和下一次触发时间。</p>
+        <div class="app-page-kicker">Scheduled tasks</div>
+        <h1 class="app-page-title">定时任务</h1>
+        <p class="app-page-subtitle">安排定期 Agent 任务，查看最近执行、失败次数和下一次触发时间。</p>
       </div>
       <div class="row q-gutter-sm">
         <q-btn color="orange" text-color="white" rounded unelevated icon="add" label="新建任务" @click="openCreate" />
@@ -373,41 +373,6 @@ function formatDate(value?: string) {
 </script>
 
 <style scoped>
-.cron-page {
-  min-height: 100%;
-}
-
-.cron-hero {
-  align-items: center;
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 18px 4px 20px;
-}
-
-.cron-kicker {
-  color: var(--color-cream-accent);
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-}
-
-.cron-title {
-  color: var(--color-cream-accent-dark);
-  font-size: clamp(28px, 4vw, 44px);
-  font-weight: 900;
-  letter-spacing: -0.04em;
-  line-height: 1.05;
-  margin: 4px 0;
-}
-
-.cron-subtitle {
-  color: var(--color-text-secondary);
-  margin: 0;
-  max-width: 720px;
-}
-
 .cron-toolbar,
 .cron-table-card {
   border-radius: 18px;
@@ -423,18 +388,5 @@ function formatDate(value?: string) {
   display: grid;
   gap: 10px;
   min-height: 280px;
-}
-
-body.body--dark .cron-title,
-body.body--dark .cron-kicker,
-body.body--dark .cron-subtitle {
-  color: inherit;
-}
-
-@media (width <= 720px) {
-  .cron-hero {
-    align-items: stretch;
-    flex-direction: column;
-  }
 }
 </style>

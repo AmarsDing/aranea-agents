@@ -1,4 +1,4 @@
-export type NodeType = "function" | "llm" | "tool" | "agent" | "router" | "join";
+export type NodeType = "function" | "llm" | "tool" | "agent" | "router" | "join" | "hitl";
 
 export type ReducerType = "append" | "replace" | "merge" | "custom";
 
@@ -145,6 +145,7 @@ export const NODE_TYPE_STYLES: Record<NodeType, NodeStyleConfig> = {
   agent: { shape: "box", fillColor: "#e8f5e9", borderColor: "#4caf50", icon: "smart_toy", label: "Agent" },
   router: { shape: "diamond", fillColor: "#eeeeee", borderColor: "#757575", icon: "alt_route", label: "Router" },
   join: { shape: "diamond", fillColor: "#f3e5f5", borderColor: "#9c27b0", icon: "merge_type", label: "Join" },
+  hitl: { shape: "box", fillColor: "#fff8e1", borderColor: "#ffc107", icon: "front_hand", label: "HITL" },
 };
 
 export const EXECUTION_STATUS_STYLES: Record<string, { color: string; icon: string; label: string }> = {

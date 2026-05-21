@@ -19,6 +19,7 @@ type TeamRepository interface {
 	ListTeamRunSteps(ctx context.Context, runID string) ([]TeamRunStep, error)
 	CreateTeamRun(ctx context.Context, r TeamRun) (TeamRun, error)
 	UpdateTeamRun(ctx context.Context, r TeamRun) error
+	UpdateTeamRunSummaryJSON(ctx context.Context, runID, summaryJSON string) error
 	CreateTeamRunStep(ctx context.Context, s TeamRunStep) (TeamRunStep, error)
 }
 
@@ -206,6 +207,13 @@ func (u *TeamUsecase) UpdateRun(ctx context.Context, r TeamRun) error {
 		return kerrors.BadRequest("TEAM", "run id is required")
 	}
 	return u.repo.UpdateTeamRun(ctx, r)
+}
+
+func (u *TeamUsecase) UpdateRunSummaryJSON(ctx context.Context, runID, summaryJSON string) error {
+	if strings.TrimSpace(runID) == "" {
+		return kerrors.BadRequest("TEAM", "run id is required")
+	}
+	return u.repo.UpdateTeamRunSummaryJSON(ctx, runID, summaryJSON)
 }
 
 func (u *TeamUsecase) ListRunSteps(ctx context.Context, runID string) ([]TeamRunStep, error) {

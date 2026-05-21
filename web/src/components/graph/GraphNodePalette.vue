@@ -38,6 +38,7 @@ const nodeTypes: Array<{ type: NodeType; style: typeof NODE_TYPE_STYLES[NodeType
   { type: "function", style: NODE_TYPE_STYLES.function, desc: "纯逻辑处理/数据转换" },
   { type: "router", style: NODE_TYPE_STYLES.router, desc: "条件路由，根据状态选择分支" },
   { type: "join", style: NODE_TYPE_STYLES.join, desc: "汇聚并行分支" },
+  { type: "hitl", style: NODE_TYPE_STYLES.hitl, desc: "人工确认/输入，复用 Chat await_user 语义" },
 ];
 
 function onDragStart(event: DragEvent, type: NodeType) {

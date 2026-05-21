@@ -123,6 +123,7 @@ type MonitorRepo interface {
 	ListAlertRules(ctx context.Context) ([]MonitorAlertRule, error)
 	ReplaceAlertRules(ctx context.Context, rules []MonitorAlertRule) error
 	CountMonitorEventsSince(ctx context.Context, eventKey, status, sinceRFC3339 string) (int32, error)
+	AvgRunnerCompletionDurationMsSince(ctx context.Context, sinceRFC3339 string) (float64, error)
 	ExistsRunnerCompletion(ctx context.Context, sessionID, invocationID string) (bool, error)
 	// PatchRunnerCompletionMetadata returns patched=true when a row was updated.
 	PatchRunnerCompletionMetadata(ctx context.Context, sessionID, runID, invocationID, patchJSON string) (bool, error)
@@ -296,6 +297,7 @@ type RunnerMetricsSummary struct {
 	ErrorRuns     int32
 	ErrorRate     float64
 	SuccessRate   float64
+	AvgDurationMs float64
 }
 
 func (u *MonitorUsecase) GetRunnerMetrics(ctx context.Context, windowMinutes int) (RunnerMetricsSummary, error) {
@@ -321,6 +323,9 @@ func (u *MonitorUsecase) GetRunnerMetrics(ctx context.Context, windowMinutes int
 	if total > 0 {
 		out.ErrorRate = float64(errors) / float64(total)
 		out.SuccessRate = 1 - out.ErrorRate
+	}
+	if avg, err := u.repo.AvgRunnerCompletionDurationMsSince(ctx, since); err == nil {
+		out.AvgDurationMs = avg
 	}
 	return out, nil
 }

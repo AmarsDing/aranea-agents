@@ -1,10 +1,10 @@
 <template>
   <q-page class="app-page-cream cron-runs-page q-pa-sm q-pa-md-md">
-    <section class="cron-runs-hero">
+    <section class="app-page-hero">
       <div>
-        <div class="cron-runs-kicker">Scheduled task runs</div>
-        <h1 class="cron-runs-title">执行历史</h1>
-        <p class="cron-runs-subtitle">查看定时任务触发记录、结果和失败摘要。</p>
+        <div class="app-page-kicker">Scheduled task runs</div>
+        <h1 class="app-page-title">执行历史</h1>
+        <p class="app-page-subtitle">查看定时任务触发记录、结果和失败摘要。</p>
       </div>
       <q-btn outline rounded color="primary" icon="refresh" label="刷新" :loading="loading" @click="loadRuns" />
     </section>
@@ -185,41 +185,6 @@ function formatDate(value?: string) {
 </script>
 
 <style scoped>
-.cron-runs-page {
-  min-height: 100%;
-}
-
-.cron-runs-hero {
-  align-items: center;
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 18px 4px 20px;
-}
-
-.cron-runs-kicker {
-  color: var(--color-cream-accent);
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-}
-
-.cron-runs-title {
-  color: var(--color-cream-accent-dark);
-  font-size: clamp(28px, 4vw, 44px);
-  font-weight: 900;
-  letter-spacing: -0.04em;
-  line-height: 1.05;
-  margin: 4px 0;
-}
-
-.cron-runs-subtitle {
-  color: var(--color-text-secondary);
-  margin: 0;
-  max-width: 720px;
-}
-
 .cron-runs-filter,
 .cron-runs-table {
   border-radius: 18px;
@@ -227,18 +192,5 @@ function formatDate(value?: string) {
 
 .cron-run-error {
   max-width: 360px;
-}
-
-body.body--dark .cron-runs-title,
-body.body--dark .cron-runs-kicker,
-body.body--dark .cron-runs-subtitle {
-  color: inherit;
-}
-
-@media (width <= 720px) {
-  .cron-runs-hero {
-    align-items: stretch;
-    flex-direction: column;
-  }
 }
 </style>

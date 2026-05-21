@@ -1,10 +1,10 @@
 <template>
   <q-page class="app-page-cream knowledge-page q-pa-sm q-pa-md-md">
-    <section class="knowledge-hero">
+    <section class="app-page-hero">
       <div>
-        <div class="knowledge-kicker">RAG / pgvector</div>
-        <h1 class="knowledge-title">知识库</h1>
-        <p class="knowledge-subtitle">管理向量集合、文档入库与语义检索。需后端配置 Postgres + pgvector。</p>
+        <div class="app-page-kicker">RAG / pgvector</div>
+        <h1 class="app-page-title">知识库</h1>
+        <p class="app-page-subtitle">管理向量集合、文档入库与语义检索。需后端配置 Postgres + pgvector。</p>
       </div>
       <div class="row q-gutter-sm">
         <q-btn color="primary" rounded unelevated icon="add" label="新建集合" @click="openCreateCollection" />
@@ -154,31 +154,3 @@ onMounted(() => {
   void knowledgeStore.loadEmbedderConfig();
 });
 </script>
-
-<style scoped>
-.knowledge-hero {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 1.25rem;
-}
-.knowledge-kicker {
-  font-size: 0.75rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--q-primary);
-  font-weight: 600;
-}
-.knowledge-title {
-  margin: 0.25rem 0;
-  font-size: 1.75rem;
-  font-weight: 700;
-}
-.knowledge-subtitle {
-  margin: 0;
-  color: #666;
-  max-width: 36rem;
-}
-</style>

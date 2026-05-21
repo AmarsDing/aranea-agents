@@ -46,7 +46,7 @@ function shortTime(ts: string): string {
 
 <style scoped>
 .branch-tree-node--active {
-  background: rgba(25, 118, 210, 0.08);
+  background: var(--color-accent-blue-soft);
   border-radius: 8px;
 }
 </style>

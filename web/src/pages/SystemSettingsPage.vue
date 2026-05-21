@@ -1,5 +1,5 @@
 <template>
-  <q-page class="q-pa-md system-settings-page">
+  <q-page class="app-page-cream q-pa-md system-settings-page">
     <q-card flat bordered>
       <q-card-section class="text-h6">{{ t("settingsPage.title") }}</q-card-section>
       <q-separator />
@@ -105,7 +105,7 @@
 import { computed, onMounted, reactive, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useQuasar } from "quasar";
-import { getSystemSettings, updateSystemSettings } from "../features/system-settings/api";
+import { getSystemSettings, updateSystemSettings } from "../features/system-settings/useSystemSettingsPage";
 import {
   knowledgeEmbedFromSettings,
   knowledgeEmbedToPatch
@@ -113,7 +113,7 @@ import {
 import { DEFAULT_EVAL_LLM_FORM, evalLLMFromSettings } from "../features/system-settings/eval-llm";
 import { DEFAULT_KNOWLEDGE_EMBED_FORM } from "../features/knowledge/embedder-constants";
 import KnowledgeEmbedderFields from "../components/knowledge/KnowledgeEmbedderFields.vue";
-import { getA2AConfig } from "../features/a2a/api";
+import { getA2AConfig } from "../features/system-settings/useSystemSettingsPage";
 
 const { t } = useI18n();
 const $q = useQuasar();

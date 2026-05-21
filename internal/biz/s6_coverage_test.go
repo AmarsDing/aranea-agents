@@ -434,6 +434,10 @@ func (m *memA2ARepo) ListAudit(_ context.Context, _, _ string, _, _ int) ([]biz.
 	return m.audit, len(m.audit), nil
 }
 
+func (m *memA2ARepo) UpdateRemoteAgentHealth(_ context.Context, _ string, _ bool, _ string) error {
+	return nil
+}
+
 func TestA2AUsecase_UpdateAndGetCard(t *testing.T) {
 	uc := biz.NewA2AUsecase(newMemA2ARepo())
 	card, err := uc.UpdateAgentCard(context.Background(), biz.A2AAgentCard{

@@ -1,0 +1,968 @@
+// ChatMessagePanel 样式（自 ChatMessagePanel.vue 提取，使用 --chat-* token）
+// stylelint-disable color-no-hex -- token 引用文件
+
+.chat-mid-card
+  background-clip: padding-box
+
+// ===== Header =====
+.chat-message-header
+  position: relative
+  min-height: 52px
+  padding-top: 10px
+  padding-bottom: 10px
+  background: linear-gradient(180deg, var(--chat-header-bg-top) 0%, var(--chat-header-bg-bottom) 100%)
+  backdrop-filter: blur(8px)
+  -webkit-backdrop-filter: blur(8px)
+
+body.body--dark .chat-message-header
+  background: linear-gradient(180deg, var(--chat-surface-muted-60) 0%, var(--chat-header-bg-bottom-dark-alt) 100%)
+
+.chat-message-header__pulse
+  display: flex
+  align-items: center
+  justify-content: center
+  width: 28px
+  height: 28px
+  margin-right: 10px
+  border-radius: 50%
+  background: var(--chat-accent-soft)
+
+.chat-message-header__dot
+  width: 9px
+  height: 9px
+  border-radius: 50%
+  background: var(--color-accent)
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 55%, transparent)
+  animation: chat-pulse 2.4s ease-in-out infinite
+
+@keyframes chat-pulse
+  0%
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 50%, transparent)
+  70%
+    box-shadow: 0 0 0 8px transparent
+  100%
+    box-shadow: 0 0 0 0 transparent
+
+.chat-message-header__title
+  color: var(--color-surface-solid)
+  font-size: 15px
+  font-weight: 800
+  letter-spacing: 0.01em
+  line-height: 1.25
+
+.chat-message-header__subtitle
+  margin-top: 2px
+  color: var(--chat-text-muted)
+  font-size: 11.5px
+  font-weight: 500
+  letter-spacing: 0.04em
+  text-transform: uppercase
+
+body.body--dark .chat-message-header__title
+  color: var(--color-text-primary)
+
+body.body--dark .chat-message-header__subtitle
+  color: var(--chat-text-muted)
+
+// ===== Messages canvas =====
+.chat-messages
+  min-width: 0
+  max-width: 100%
+  padding: 28px var(--chat-edge-gutter) 36px
+  background: var(--chat-canvas-light)
+  overflow-x: hidden
+  scroll-behavior: smooth
+  box-sizing: border-box
+
+  // Custom scrollbar 鈥?subtle but discoverable
+  &::-webkit-scrollbar
+    width: 10px
+  &::-webkit-scrollbar-track
+    background: transparent
+  &::-webkit-scrollbar-thumb
+    border-radius: 8px
+    border: 2px solid transparent
+    background-clip: content-box
+    background-color: var(--chat-scrollbar-thumb)
+  &::-webkit-scrollbar-thumb:hover
+    background-color: var(--chat-scrollbar-thumb-hover)
+
+body.body--dark .chat-messages
+  background: var(--chat-canvas-dark)
+  &::-webkit-scrollbar-thumb
+    background-color: var(--chat-scrollbar-thumb-dark)
+  &::-webkit-scrollbar-thumb:hover
+    background-color: var(--chat-scrollbar-thumb-hover-dark)
+
+// ===== Empty state =====
+.chat-empty-state
+  min-height: 220px
+  padding: 24px
+
+.chat-empty-state__halo
+  position: relative
+  display: flex
+  align-items: center
+  justify-content: center
+  width: 88px
+  height: 88px
+  border-radius: 50%
+  background: radial-gradient(closest-side, var(--chat-indigo-soft) 0%, var(--chat-indigo-faint) 70%, rgba(99, 102, 241, 0) 100%)
+  &::before
+    content: ""
+    position: absolute
+    inset: 0
+    border-radius: 50%
+    border: 1px dashed var(--chat-indigo-border)
+    animation: chat-empty-spin 22s linear infinite
+
+@keyframes chat-empty-spin
+  to
+    transform: rotate(360deg)
+
+.chat-empty-state__title
+  color: var(--color-text-primary)
+  font-size: 15px
+  font-weight: 700
+
+.chat-empty-state__hint
+  color: var(--chat-text-muted)
+
+body.body--dark .chat-empty-state__title
+  color: var(--color-text-primary)
+
+body.body--dark .chat-empty-state__hint
+  color: var(--chat-text-muted)
+
+// ===== File tile =====
+.chat-file-tile
+  position: relative
+  min-width: 30px
+  min-height: 30px
+  max-width: 120px
+  padding: 2px 4px
+  background: var(--chat-file-tile-bg)
+  border: 1px solid var(--color-border-soft)
+  border-radius: 6px
+  transition: transform 0.18s ease, box-shadow 0.18s ease
+
+  &:hover
+    transform: translateY(-1px)
+    box-shadow: 0 4px 12px var(--chat-shadow-8)
+
+  .chat-file-tile__close
+    position: absolute
+    top: -4px
+    right: -4px
+    opacity: 0
+    transition: opacity 0.15s ease
+
+  &:hover .chat-file-tile__close
+    opacity: 1
+
+// ===== Quasar QChatMessage layout =====
+// 占满中间栏宽度，仅保留窄边距
+.chat-q-message
+  width: 100%
+  max-width: 100%
+  animation: chat-message-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) both
+
+  & + .chat-q-message
+    margin-top: var(--chat-block-gap)
+
+  & + .chat-q-message--continued
+    margin-top: var(--chat-continued-gap)
+  .q-message
+    min-width: 0
+    max-width: 100%
+    margin-bottom: 0
+    padding-bottom: 0
+
+  .q-message-container
+    min-width: 0
+    width: 100%
+    max-width: 100%
+    column-gap: 12px
+    box-sizing: border-box
+    align-items: flex-start
+
+  .q-message-avatar
+    margin-top: 2px
+    flex-shrink: 0
+
+  .q-message-received .q-message-container
+    padding-right: var(--chat-opposite-gutter)
+
+  .q-message-sent .q-message-container
+    padding-left: var(--chat-opposite-gutter)
+
+  // 鍐呭鍒楋細鍏佽鏀剁缉鍒?fit-content锛沘gent 姣旂敤鎴风暐瀹斤紝渚夸簬闀挎枃/琛ㄦ牸
+  .col-grow
+    flex: 1 1 auto
+    display: flex
+    flex-direction: column
+    min-width: 0
+    max-width: 100%
+
+  .q-message-sent .col-grow
+    align-items: flex-end
+    flex: 0 1 auto
+    margin-left: auto
+    max-width: min(var(--chat-user-max-width), 92%)
+
+  .q-message-received .col-grow
+    align-items: flex-start
+    max-width: 100%
+
+  // Quasar 鎶婂灞傛皵娉?.q-message-text 褰撳鍣紝鎴戜滑鍐嶈嚜甯︿竴涓?inner 瀛?div .chat-message-bubble
+  // 鍏抽敭锛氭妸 Quasar 鑷甫鐨?bg/color/padding 鍏ㄩ儴閲嶇疆鎴愰€忔槑缁ф壙锛岃鎴戜滑鐨?.chat-message-bubble 鎺ョ鎵€鏈夎瑙?   .q-message-text
+    width: auto
+    max-width: 100%
+    min-width: 0
+    background: transparent !important
+    background-color: transparent !important
+    box-shadow: none !important
+    padding: 0 !important
+    border-radius: 0
+    color: inherit !important
+    border: none !important
+
+  .q-message-text:before,
+  .q-message-text:after
+    display: none !important
+
+  .q-message-text-content
+    display: block
+    min-width: 0
+    width: 100%
+    max-width: 100%
+    background: transparent !important
+    background-color: transparent !important
+    color: inherit !important
+    padding: 0 !important
+    margin: 0 !important
+
+// 连续消息：保留头像列占位，仅隐藏头像图形
+.chat-q-message--continued
+  .q-message-avatar
+    visibility: hidden
+
+@keyframes chat-message-in
+  0%
+    opacity: 0
+    transform: translateY(6px) scale(0.985)
+  100%
+    opacity: 1
+    transform: translateY(0) scale(1)
+
+// ===== Bubble (鎴戜滑鑷鐨?inner 鍗＄墖) =====
+.chat-message-bubble
+  position: relative
+  width: 100%
+  max-width: 100%
+  min-width: 0
+  padding: 18px 22px
+  border-radius: var(--chat-bubble-radius)
+  font-size: 15px
+  line-height: 1.8
+  box-sizing: border-box
+  transition: box-shadow 0.22s ease, transform 0.22s ease
+  overflow: hidden
+  overflow-wrap: anywhere
+
+// 气泡昼夜材质见 app-global.sass「聊天消息气泡」
+.chat-message-bubble--sent::after
+  content: ""
+  position: absolute
+  inset: 0
+  pointer-events: none
+  background: linear-gradient(180deg, var(--chat-bubble-highlight) 0%, rgba(255, 255, 255, 0) 40%)
+  border-radius: inherit
+
+.chat-q-message--member
+  margin-left: 8px
+  padding-left: 6px
+  border-left: 2px solid var(--chat-indigo-border)
+
+.chat-reasoning-details summary
+  cursor: pointer
+  color: var(--color-text-secondary)
+
+.chat-reasoning-details__body
+  margin-top: 6px
+  font-size: 13px
+  opacity: 0.92
+
+// 鍥㈤槦鎴愬憳姘旀场锛氬乏渚?4px 褰╄壊 accent 鏉★紙棰滆壊涓庡ご鍍忎竴鑷达級
+.chat-message-bubble--member
+  padding-left: 18px
+  &::before
+    content: ""
+    position: absolute
+    left: 0
+    top: 0
+    bottom: 0
+    width: 4px
+    background: var(--bubble-accent, var(--color-accent))
+    border-radius: 4px 0 0 4px
+
+.chat-message-bubble--tool
+  border-style: dashed
+  background-image: linear-gradient(180deg, var(--color-info-soft), var(--chat-info-faint))
+
+.chat-message-bubble--tool-running
+  border-color: var(--chat-info-border)
+  box-shadow: 0 8px 24px var(--chat-info-soft), 0 1px 3px var(--chat-shadow-6)
+
+.chat-message-bubble--tool-failed
+  border-color: var(--chat-danger-border)
+  background-image: linear-gradient(180deg, var(--color-danger-soft), var(--chat-danger-faint))
+
+.chat-message-bubble--dark.chat-message-bubble--tool
+  background-image: linear-gradient(180deg, rgba(14, 165, 233, 0.16), rgba(30, 41, 59, 0.92))
+  border-color: var(--chat-info-border-dark)
+
+.chat-message-bubble--dark.chat-message-bubble--tool-failed
+  background-image: linear-gradient(180deg, var(--chat-danger-soft), rgba(30, 41, 59, 0.92))
+  border-color: var(--chat-danger-border-dark)
+
+// ===== Avatar =====
+.message-avatar
+  position: relative
+  flex-shrink: 0
+  font-weight: 700
+  letter-spacing: 0.02em
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.18), 0 0 0 3px var(--chat-text-on-accent)
+  border: none
+  transition: transform 0.22s ease, box-shadow 0.22s ease
+
+  &:hover
+    transform: translateY(-1px) scale(1.04)
+
+  &--user
+    box-shadow: 0 8px 20px rgba(99, 102, 241, 0.30), 0 0 0 3px rgba(255, 255, 255, 0.95)
+
+body.body--dark .message-avatar
+  box-shadow: 0 8px 20px var(--chat-shadow-overlay), 0 0 0 3px rgba(30, 41, 59, 0.95)
+  &--user
+    box-shadow: 0 8px 20px var(--chat-indigo-border-strong), 0 0 0 3px rgba(30, 41, 59, 0.95)
+
+.message-avatar__initials
+  font-size: 14px
+  line-height: 1.1
+
+// ===== Name + Stamp row锛堝湪姘旀场涔嬪锛孮ChatMessage 鐨?#name 鎻掓Ы锛?=====
+.message-meta-row
+  display: flex
+  align-items: baseline
+  gap: 10px
+  margin-bottom: 0
+  padding: 0
+  flex-wrap: wrap
+
+.message-meta-row--sent
+  justify-content: flex-end
+  flex-direction: row-reverse
+
+.message-name
+  font-size: 13px
+  font-weight: 650
+  letter-spacing: 0.01em
+  color: var(--color-text-primary)
+  line-height: 1.25
+
+.message-stamp
+  font-size: 11px
+  font-weight: 500
+  letter-spacing: 0.03em
+  color: var(--color-text-secondary)
+  line-height: 1.25
+  font-variant-numeric: tabular-nums
+  opacity: 0.88
+
+.message-send-tags
+  display: block
+  width: 100%
+  margin-top: 8px
+  text-align: right
+  align-self: flex-end
+  font-weight: 600
+  letter-spacing: 0.01em
+  line-height: 1.35
+  opacity: 0.92
+
+.message-send-tags--sent
+  color: var(--chat-text-on-accent-soft)
+
+body.body--dark .message-send-tags:not(.message-send-tags--sent)
+  color: rgba(148, 163, 184, 0.95)
+
+// ===== Streaming typing indicator =====
+.chat-typing
+  display: inline-flex
+  align-items: center
+  gap: 5px
+  margin-top: 6px
+  padding: 4px 0
+  vertical-align: middle
+
+  i
+    width: 6px
+    height: 6px
+    border-radius: 50%
+    background: currentColor
+    opacity: 0.45
+    animation: chat-typing-bounce 1.2s ease-in-out infinite
+
+  i:nth-child(2)
+    animation-delay: 0.18s
+  i:nth-child(3)
+    animation-delay: 0.36s
+
+@keyframes chat-typing-bounce
+  0%, 60%, 100%
+    transform: translateY(0)
+    opacity: 0.4
+  30%
+    transform: translateY(-4px)
+    opacity: 1
+
+// 流式强调条见 app-global（inset box-shadow）；成员左条保留 ::before
+.chat-q-message--streaming.chat-q-message--member .chat-message-bubble::before
+  animation: chat-stream-accent 1.6s ease-in-out infinite
+
+@keyframes chat-stream-accent
+  0%, 100%
+    opacity: 0.55
+  50%
+    opacity: 1
+
+// ===== Scroll-to-bottom button =====
+.chat-scroll-bottom
+  position: absolute
+  right: 24px
+  bottom: 18px
+  z-index: 5
+  width: 44px
+  height: 44px
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.22), 0 2px 4px var(--chat-shadow-8)
+
+.chat-scroll-fade-enter-active,
+.chat-scroll-fade-leave-active
+  transition: opacity 0.18s ease, transform 0.22s cubic-bezier(0.22, 1, 0.36, 1)
+
+.chat-scroll-fade-enter-from,
+.chat-scroll-fade-leave-to
+  opacity: 0
+  transform: translateY(8px) scale(0.92)
+
+// ===== 宸ュ叿璋冪敤缁撴灉锛氶粯璁ゆ姌鍙狅紝鐐瑰紑灞曞紑璇︽儏锛坮ead_file / shell 杈撳嚭绛夛級=====
+.chat-tool-details
+  width: 100%
+  min-width: 0
+  margin-top: 2px
+
+.chat-tool-details__summary
+  cursor: pointer
+  list-style: none
+  display: flex
+  flex-wrap: wrap
+  align-items: baseline
+  gap: 8px 12px
+  padding: 6px 4px
+  border-radius: 10px
+  user-select: none
+  outline: none
+  &::-webkit-details-marker
+    display: none
+  &:hover
+    background: rgba(14, 165, 233, 0.09)
+
+.chat-tool-details[open] > .chat-tool-details__summary
+  margin-bottom: 4px
+
+.chat-tool-details__summary-text
+  flex: 1
+  min-width: 0
+  font-weight: 600
+  font-size: 14px
+  line-height: 1.45
+  color: var(--color-text-primary)
+
+.chat-tool-details__hint
+  flex-shrink: 0
+  letter-spacing: 0.02em
+  &::after
+    content: "灞曞紑璇︽儏"
+    color: var(--chat-text-muted-strong)
+
+.chat-tool-details[open] .chat-tool-details__hint::after
+  content: "鏀惰捣"
+
+.chat-tool-details__body
+  margin-top: 8px
+  padding-top: 10px
+  border-top: 1px dashed var(--chat-scrollbar-thumb-hover-dark)
+
+.chat-message-bubble--dark .chat-tool-details__summary-text
+  color: var(--color-text-primary)
+
+.chat-message-bubble--dark .chat-tool-details__hint::after
+  color: rgba(148, 163, 184, 0.92)
+
+.chat-message-bubble--dark .chat-tool-details__summary:hover
+  background: var(--chat-info-soft-dark)
+
+.chat-message-bubble--dark .chat-tool-details__body
+  border-top-color: rgba(148, 163, 184, 0.28)
+
+// ===== Markdown content =====
+.chat-message-content
+  width: 100%
+  max-width: 100%
+  min-width: 0
+  box-sizing: border-box
+  font-size: 15px
+  overflow-wrap: anywhere
+  white-space: normal
+  line-height: 1.78
+  position: relative
+  z-index: 1
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6
+    margin: 0.9em 0 0.45em
+    color: var(--color-text-heading)
+    font-weight: 700
+    line-height: 1.28
+    letter-spacing: -0.005em
+
+  h1
+    font-size: 1.25rem
+  h2
+    font-size: 1.125rem
+  h3
+    font-size: 1.05rem
+  h4,
+  h5,
+  h6
+    font-size: 1rem
+
+  h1:first-child,
+  h2:first-child,
+  h3:first-child
+    margin-top: 0
+
+  p
+    margin: 0 0 0.65em
+  p:last-child
+    margin-bottom: 0
+  p:first-child
+    margin-top: 0
+
+  ul,
+  ol
+    margin: 0.35em 0 0.8em
+    padding-left: 1.35em
+  li + li
+    margin-top: 0.2em
+
+  a
+    color: var(--color-accent)
+    text-decoration: none
+    border-bottom: 1px solid var(--chat-accent-border)
+    transition: color 0.15s ease, border-color 0.15s ease
+  a:hover
+    color: var(--color-accent-hover)
+    border-bottom-color: var(--color-accent-hover)
+
+  table
+    display: block
+    width: 100%
+    max-width: 100%
+    overflow-x: auto
+    table-layout: auto
+    margin: 0.75em 0
+    border-collapse: collapse
+    border: 1px solid var(--glass-border)
+    border-radius: 12px
+    background: color-mix(in srgb, var(--glass-surface) 92%, transparent)
+    font-size: 13px
+    line-height: 1.5
+    box-shadow: none
+
+  thead
+    background: color-mix(in srgb, var(--glass-surface) 88%, transparent)
+
+  th,
+  td
+    min-width: 96px
+    padding: 9px 12px
+    border: 1px solid rgba(100, 116, 139, 0.22)
+    text-align: left
+    vertical-align: top
+
+  th
+    color: var(--color-text-primary)
+    font-weight: 700
+    letter-spacing: 0.01em
+  td
+    color: var(--color-text-slate-700)
+
+  // ===== Code block (with header: lang label + copy button) =====
+  .code-block
+    width: 100%
+    max-width: 100%
+    min-width: 0
+    margin: 0.85em 0
+    border-radius: 12px
+    overflow: hidden
+    background: linear-gradient(180deg, var(--color-surface-solid) 0%, var(--canvas-base) 100%)
+    box-shadow: inset 0 0 0 1px var(--chat-border-muted)
+    text-align: left
+
+  .code-block__header
+    display: flex
+    align-items: center
+    justify-content: space-between
+    padding: 6px 12px
+    background: var(--chat-surface-dark-78)
+    border-bottom: 1px solid var(--chat-border-muted)
+
+  .code-block__lang
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace
+    font-size: 11.5px
+    font-weight: 600
+    letter-spacing: 0.06em
+    text-transform: uppercase
+    color: var(--chat-text-muted)
+
+  .code-block__copy
+    display: inline-flex
+    align-items: center
+    gap: 5px
+    padding: 4px 9px
+    border: 1px solid var(--chat-scrollbar-thumb-dark)
+    border-radius: 6px
+    background: var(--chat-surface-light-4)
+    color: rgba(226, 232, 240, 0.82)
+    font-size: 11.5px
+    font-weight: 600
+    letter-spacing: 0.02em
+    cursor: pointer
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease
+
+  .code-block__copy:hover
+    background: var(--chat-indigo-soft)
+    border-color: var(--chat-indigo-border-strong)
+    color: var(--color-on-accent)
+
+  .code-block__copy.is-copied
+    background: var(--color-success-soft)
+    border-color: var(--chat-success-border)
+    color: var(--color-accent-green-bright)
+
+  .code-block__copy-icon
+    width: 12px
+    height: 12px
+    border-radius: 2px
+    border: 1.5px solid currentColor
+    box-shadow: 2px -2px 0 0 var(--chat-border-light), -1px 1px 0 0 currentColor
+
+  .code-block pre
+    max-width: 100%
+    min-width: 0
+    margin: 0
+    padding: 14px 16px
+    background: transparent
+    box-shadow: none
+    border-radius: 0
+    color: var(--color-text-dark)
+    line-height: 1.6
+    font-size: 13.5px
+    overflow-x: auto
+    white-space: pre
+
+  // 鍏滃簳锛氫竾涓€鏈蛋 fence renderer 鐨?<pre>
+  pre
+    width: 100%
+    max-width: 100%
+    min-width: 0
+    overflow-x: auto
+    margin: 0.8em 0
+    padding: 14px 16px
+    border-radius: 12px
+    background: linear-gradient(180deg, var(--color-surface-solid) 0%, var(--canvas-base) 100%)
+    color: var(--color-text-dark)
+    line-height: 1.6
+    font-size: 13.5px
+    box-shadow: inset 0 0 0 1px var(--chat-border-subtle)
+
+  code
+    padding: 0.14em 0.42em
+    border-radius: 6px
+    background: var(--chat-shadow-8)
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace
+    font-size: 0.92em
+
+  pre code
+    display: block
+    min-width: 0
+    padding: 0
+    background: transparent
+    font-size: inherit
+    white-space: pre
+
+  blockquote
+    margin: 0.8em 0
+    padding: 0.4em 0.95em
+    border-left: 3px solid var(--chat-accent-border)
+    background: var(--chat-accent-soft)
+    border-radius: 0 8px 8px 0
+    color: var(--color-text-secondary)
+
+  hr
+    margin: 1.1em 0
+    border: 0
+    border-top: 1px solid rgba(100, 116, 139, 0.22)
+
+  img
+    max-width: 100%
+    border-radius: 10px
+
+// ===== Sent (user) variant =====
+.chat-message-content--sent
+  text-align: right
+
+body:not(.body--dark) .chat-message-content--sent
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  p,
+  li
+    color: var(--color-on-accent)
+
+  a
+    color: var(--color-on-accent)
+    border-bottom-color: var(--chat-border-light)
+
+  code
+    background: var(--chat-surface-light-18)
+    color: var(--color-on-accent)
+
+  .code-block
+    background: var(--chat-surface-dark-62)
+    box-shadow: inset 0 0 0 1px var(--chat-border-subtle)
+
+  blockquote
+    background: var(--chat-surface-light-10)
+    border-left-color: var(--chat-header-bg-top)
+    color: var(--chat-text-on-accent)
+
+  table
+    background: var(--chat-surface-light-10)
+    border-color: var(--chat-border-light-strong)
+  th,
+  td
+    color: var(--color-on-accent)
+    border-color: var(--chat-border-light)
+
+// ===== Dark theme content =====
+.chat-message-content--dark
+  color: var(--color-text-primary)
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6
+    color: var(--color-text-heading)
+
+  p,
+  li,
+  span,
+  strong,
+  em,
+  del
+    color: inherit
+
+  a
+    color: var(--color-link)
+    border-bottom-color: var(--chat-info-border)
+  a:hover
+    color: var(--color-accent-blue-light)
+    border-bottom-color: var(--chat-info-border-strong)
+
+  table
+    background: rgba(15, 23, 42, 0.55)
+    border-color: rgba(203, 213, 225, 0.22)
+  thead
+    background: rgba(0, 229, 255, 0.1)
+  th
+    color: var(--color-text-heading)
+  td
+    color: var(--color-text-primary)
+  th,
+  td
+    border-color: rgba(148, 163, 184, 0.2)
+
+  code
+    background: var(--chat-border-subtle)
+    color: var(--color-text-dark)
+
+  blockquote
+    background: rgba(0, 229, 255, 0.08)
+    color: var(--color-text-secondary)
+    border-left-color: rgba(0, 229, 255, 0.55)
+
+  hr
+    border-top-color: var(--chat-border-muted)
+
+// ===== Responsive =====
+@media (max-width: 1280px)
+  .chat-messages
+    padding-left: 16px
+    padding-right: 16px
+
+@media (max-width: 900px)
+  .chat-messages
+    padding-left: 28px
+    padding-right: 28px
+
+  .chat-message-bubble
+    padding: 16px 18px
+
+@media (max-width: 599px)
+  .chat-messages
+    padding-left: 14px
+    padding-right: 14px
+    padding-top: 18px
+    padding-bottom: 24px
+
+  .chat-q-message
+    & + .chat-q-message
+      margin-top: 28px
+    & + .chat-q-message--continued
+      margin-top: 12px
+    .q-message-received .q-message-container,
+    .q-message-sent .q-message-container
+      padding-left: 0
+      padding-right: 0
+      column-gap: 10px
+    .col-grow
+      max-width: 100%
+
+  .chat-message-bubble
+    padding: 14px 16px
+    font-size: 14.5px
+    line-height: 1.75
+
+  .chat-message-bubble--member
+    padding-left: 14px
+
+  .message-meta-row
+    gap: 8px
+  .message-name
+    font-size: 13.5px
+  .message-stamp
+    font-size: 11px
+
+  .chat-scroll-bottom
+    right: 12px
+    bottom: 12px
+    width: 40px
+    height: 40px
+
+// Reduced motion
+@media (prefers-reduced-motion: reduce)
+  .chat-q-message,
+  .chat-message-header__dot,
+  .chat-empty-state__halo::before,
+  .chat-typing i,
+  .chat-q-message--streaming.chat-q-message--member .chat-message-bubble::before
+    animation: none !important
+  .message-avatar,
+  .chat-message-bubble
+    transition: none
+
+.chat-pending-list
+  margin: 8px 16px
+  padding: 8px 12px
+  border-radius: 12px
+  background: var(--color-warning-soft)
+  border: 1px solid var(--chat-warning-border)
+
+.chat-pending-label
+  font-size: 12px
+  font-weight: 600
+  color: var(--color-accent-amber-dark)
+  margin-bottom: 6px
+  text-transform: uppercase
+  letter-spacing: 0.04em
+
+body.body--dark .chat-pending-label
+  color: var(--color-accent-amber)
+
+.chat-pending-item
+  padding: 6px 8px
+  border-radius: 8px
+  background: var(--chat-pending-item-bg)
+  margin-bottom: 4px
+  &:last-child
+    margin-bottom: 0
+
+body.body--dark .chat-pending-item
+  background: var(--chat-surface-dark-35)
+
+.chat-pending-item__content
+  font-size: 13px
+  color: var(--color-text-primary)
+  line-height: 1.4
+
+body.body--dark .chat-pending-item__content
+  color: var(--color-text-dark)
+
+.chat-pending-item__meta
+  display: flex
+  gap: 8px
+  margin-top: 2px
+  font-size: 11px
+  color: var(--color-text-tertiary)
+
+body.body--dark .chat-pending-item__meta
+  color: var(--color-text-tertiary)
+
+.chat-pending-item__status
+  font-weight: 600
+  text-transform: uppercase
+
+.chat-pending-item__cancel
+  margin-left: auto
+  opacity: 0.6
+  &:hover
+    opacity: 1
+
+.chat-pending-item__edit-btn
+  opacity: 0.6
+  &:hover
+    opacity: 1
+
+.chat-pending-item__edit
+  display: flex
+  align-items: flex-start
+  gap: 4px
+
+.chat-pending-item__edit-input
+  flex: 1
+
+.chat-pending-item__edit-confirm,
+.chat-pending-item__edit-cancel
+  margin-top: 4px

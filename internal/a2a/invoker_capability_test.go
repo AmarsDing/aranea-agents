@@ -67,6 +67,9 @@ func (m *memA2ARepo) InsertAudit(context.Context, biz.A2AAuditEntry) error      
 func (m *memA2ARepo) ListAudit(context.Context, string, string, int, int) ([]biz.A2AAuditEntry, int, error) {
 	return nil, 0, nil
 }
+func (m *memA2ARepo) UpdateRemoteAgentHealth(context.Context, string, bool, string) error {
+	return nil
+}
 
 func TestNewInvoker_RequiresEnabledCapability(t *testing.T) {
 	t.Parallel()

@@ -18,6 +18,9 @@ type A2ARemoteAgent struct {
 	AuthConfigJSON string
 	Enabled        bool
 	DiscoveredCard A2AAgentCard
+	LastHealthAt    string
+	LastHealthOK    bool
+	LastHealthError string
 	CreatedAt      string
 	UpdatedAt      string
 }
@@ -110,4 +113,16 @@ func (u *A2AUsecase) DiscoverRemoteAgent(ctx context.Context, in RemoteCardDisco
 		return A2AAgentCard{}, errors.BadRequest("A2A", "remote_url is required")
 	}
 	return u.repo.DiscoverRemoteCard(ctx, in)
+}
+
+// PersistRemoteHealth stores the latest gateway health probe result for a remote registry entry.
+func (u *A2AUsecase) PersistRemoteHealth(ctx context.Context, id string, ok bool, errMsg string) error {
+	if u == nil || u.repo == nil {
+		return errors.InternalServer("A2A", "a2a repo not configured")
+	}
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return errors.BadRequest("A2A", "id is required")
+	}
+	return u.repo.UpdateRemoteAgentHealth(ctx, id, ok, errMsg)
 }

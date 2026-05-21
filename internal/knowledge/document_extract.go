@@ -2,6 +2,7 @@ package knowledge
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -13,11 +14,25 @@ import (
 
 // ExtractDocumentText decodes uploaded bytes into plain text for chunking.
 // Binary formats (PDF, DOCX, …) use trpc-agent-go document readers.
+// Image uploads use OCR when KNOWLEDGE_OCR is configured.
 func ExtractDocumentText(raw []byte, source, mimeType string) (string, error) {
+	return ExtractDocumentTextWithOCR(context.Background(), nil, raw, source, mimeType)
+}
+
+// ExtractDocumentTextWithOCR allows injecting an OCR provider (tests / Wire).
+func ExtractDocumentTextWithOCR(ctx context.Context, ocr OCRProvider, raw []byte, source, mimeType string) (string, error) {
 	if len(raw) == 0 {
 		return "", fmt.Errorf("document content is empty")
 	}
+	if ocr == nil {
+		ocr = NewOCRProviderFromEnv()
+	}
 	ext := resolveDocumentExtension(source, mimeType)
+	if isImageMime(mimeType) || ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".webp" {
+		if text, err := tryOCR(ctx, ocr, raw, mimeType, source); err == nil {
+			return text, nil
+		}
+	}
 	if ext == ".html" || ext == ".htm" {
 		return stripHTML(string(raw)), nil
 	}

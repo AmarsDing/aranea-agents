@@ -11,7 +11,7 @@
 
 | 维度 | 得分 | 满分 | 评述 |
 |------|------|------|------|
-| 需求符合度 | 14 | 20 | Chat/Team/Graph turn OTel Span + HTTP 采样 ✅；gRPC 采样 / per-span otel_id / Trace UI 待补 |
+| 需求符合度 | 14 | 20 | Chat/Team/Graph turn OTel Span + HTTP 采样 ✅；gRPC 采样 / Trace UI 待补；per-span otel_id ✅ |
 | 架构一致性 | 20 | 25 | `internal/telemetry` 独立初始化层 ✅；OTel SDK 桥接 trpc-agent-go telemetry ✅；双轨（OTLP + Prometheus）清晰 |
 | 后端实现质量 | 16 | 20 | `telemetry.Init`（OTLP exporter）✅；`turntrace/bridge.go`（trpc Span 桥接）✅；采样率 HTTP 配置 ✅ |
 | 前端实现质量 | 11 | 15 | Monitor Traces Tab + `TraceWaterfall.vue` ✅；Trace 详情 + Span 树 ✅；JSONL 导出 ✅；Trace UI 体验仍弱 |
@@ -43,7 +43,7 @@
 | HTTP 采样率配置 | ✅ |
 | Prometheus Provider 指标 | ✅ M4 |
 | gRPC 采样配置 | ❌ 待补 |
-| per-span `otel_id` | ❌ 待补 |
+| per-span `otel_id` | ✅ `TraceEmitter.SyncOtelSpanIDs` |
 | Trace UI 体验优化 | 🟡 基础可用 |
 
 ---
@@ -55,7 +55,7 @@
 | ID | 问题 | 建议修复 |
 |----|------|---------|
 | TEL-P1-01 | gRPC 采样配置（当使用 gRPC transport 时的 Span 采样率）未实现 | 补充 gRPC 采样配置项 |
-| TEL-P1-02 | per-span `otel_id` 缺失：Span 与 WS Envelope 事件无法对应 | 在 FlowLog + OTel Span 中统一 `otel_id` 关联 |
+| TEL-P1-02 | per-span `otel_id` | ✅ FlowLog + OTel Span 已同步 |
 | TEL-P1-03 | Trace UI 体验弱：Span 树缺乏过滤、时间轴对比、Span 详情侧边栏 | 规划 Trace 详情 UI 增强 |
 
 ### P2

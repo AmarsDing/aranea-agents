@@ -1,6 +1,6 @@
 # Runner 运行器 — 开发计划
 
-> **版本**：2026-05-19 | **状态**：✅ M1 完成（RunRegistry / RunGateway / RunnerManager）
+> **版本**：2026-05-21 | **状态**：✅ M1 完成（RunRegistry / RunGateway / RunnerManager）；Review Phase D 文档同步
 > **需求**：[40 runner.md](./40%20runner.md) · **设计**：[40 runner.design.md](./40%20runner.design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：M20
 
@@ -34,7 +34,7 @@ Runner 运行器：管理 Agent/Team 的运行生命周期，包括启动、停�
 | Team 运行 | ✅ | `teamsNative.RunTurn` |
 | 停止运行 | ✅ | HTTP `StopGeneration` + WS `cancel` → `RunRegistry.Cancel`（ManagedRunner / Team cancel / pending 取消） |
 | 运行状态查询 | ✅ | `GetRunStatus` RPC → `RunRegistry.GetStatus` |
-| 待执行队列 | ✅ | `pendingQueue` + `processPendingQueue`（仍由 ChatService 持有） |
+| 待执行队列 | ✅ | `internal/runtime/pending_queue.go` + ChatService 桥接 |
 | RunRegistry | ✅ | `internal/runtime/run_registry.go`；单测 `run_registry_test.go` |
 | 插件注入 | ✅ | `plugintrpc.Runtime` + `WithPlugins` |
 | AwaitUserReply（Service 层） | ✅ | `serviceawaitreply.ServiceTool` + `AwaitUserReply` RPC |

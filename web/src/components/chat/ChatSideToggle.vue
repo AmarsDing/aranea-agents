@@ -1,8 +1,5 @@
 <template>
-  <div
-    class="chat-side__toggle column flex-center"
-    :class="{ 'chat-side__toggle--shrink': !open }"
-  >
+  <div class="chat-side__toggle column flex-center">
     <q-btn
       round
       dense

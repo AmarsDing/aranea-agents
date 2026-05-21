@@ -1,10 +1,10 @@
 <template>
   <q-page class="app-page-cream a2a-page q-pa-sm q-pa-md-md">
-    <section class="a2a-hero">
+    <section class="app-page-hero">
       <div>
-        <div class="a2a-kicker">Agent-to-Agent</div>
-        <h1 class="a2a-title">A2A 管理</h1>
-        <p class="a2a-subtitle">
+        <div class="app-page-kicker">Agent-to-Agent</div>
+        <h1 class="app-page-title">A2A 管理</h1>
+        <p class="app-page-subtitle">
           发现 AgentCard、注册远程 Agent、查看调用审计、测试 Invoke（Admin 鉴权 + 工作区策略）。
         </p>
       </div>
@@ -139,31 +139,3 @@ const {
   reload
 } = useA2APage();
 </script>
-
-<style scoped>
-.a2a-hero {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 1rem;
-}
-.a2a-kicker {
-  font-size: 0.75rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--q-primary);
-  font-weight: 600;
-}
-.a2a-title {
-  margin: 0.25rem 0;
-  font-size: 1.75rem;
-  font-weight: 700;
-}
-.a2a-subtitle {
-  margin: 0;
-  color: #666;
-  max-width: 42rem;
-}
-</style>

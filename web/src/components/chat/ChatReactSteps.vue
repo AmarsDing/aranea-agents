@@ -63,21 +63,25 @@ function renderBody(body: string): string {
   flex-direction: column;
   gap: 8px;
 }
+
 .chat-react-step {
   padding: 10px 12px;
   border-radius: 14px;
   border: 1px solid var(--glass-border);
   background: var(--glass-elevated);
 }
+
 .chat-react-step__head {
   display: flex;
   align-items: center;
   color: var(--color-text-secondary);
   margin-bottom: 4px;
 }
+
 .chat-react-step__body :deep(p:last-child) {
   margin-bottom: 0;
 }
+
 .chat-react-step__tools :deep(.chat-execution-card) {
   border-radius: 10px;
 }

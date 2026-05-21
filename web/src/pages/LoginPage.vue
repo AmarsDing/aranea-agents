@@ -2,7 +2,7 @@
   <q-layout view="hHh Lpr lff">
     <q-page-container>
       <q-page class="row items-center justify-center login-page">
-        <q-card flat bordered class="login-card" :class="{ 'login-card--dark': isDark }">
+        <q-card flat bordered class="login-card">
           <q-card-section class="text-center">
             <div class="text-h5 text-weight-bold">{{ t("common.appTitle") }}</div>
             <div class="text-caption text-grey-7 q-mt-xs">{{ t("auth.subtitle") }}</div>
@@ -101,7 +101,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useQuasar } from "quasar";
 import { useI18n } from "vue-i18n";
@@ -116,7 +116,6 @@ const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
 
-const isDark = computed(() => $q.dark.isActive);
 const mode = ref<AuthIdentityMode>("username");
 const identity = ref("");
 const password = ref("");
@@ -188,21 +187,3 @@ async function submit() {
   }
 }
 </script>
-
-<style scoped>
-.login-page {
-  padding: 24px;
-}
-
-.login-card {
-  width: 100%;
-  max-width: 420px;
-  border-radius: 20px !important;
-  box-shadow: 0 22px 50px rgb(15 23 42 / 8%);
-}
-
-.login-card--dark {
-  box-shadow: 0 22px 50px rgb(0 0 0 / 35%);
-  border-color: rgb(255 255 255 / 8%) !important;
-}
-</style>

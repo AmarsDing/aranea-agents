@@ -29,6 +29,9 @@ jobs:
       - name: Run araneactl lint
         run: go run ./cmd/araneactl/lint --root .
 
+      - name: Runtime boundary check
+        run: make runtime-boundary
+
       - name: go vet
         run: go vet ./...
 

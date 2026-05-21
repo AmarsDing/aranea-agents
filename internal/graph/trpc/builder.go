@@ -190,9 +190,11 @@ func BuildStateGraphWithAgents(ctx context.Context, cfg GraphBuildConfig, deps *
 	sg := trpcgraph.NewStateGraph(schema)
 
 	for _, n := range cfg.Nodes {
-		if err := wireNode(ctx, sg, n, deps); err != nil {
+		extras, err := wireNode(ctx, sg, n, deps)
+		if err != nil {
 			return nil, nil, err
 		}
+		allAgents = append(allAgents, extras...)
 	}
 
 	for _, sub := range cfg.Subgraphs {
@@ -250,19 +252,25 @@ func BuildStateGraphWithAgents(ctx context.Context, cfg GraphBuildConfig, deps *
 }
 
 type GraphAgent struct {
-	graph    *trpcgraph.Graph
-	executor *trpcgraph.Executor
-	name     string
-	saver    trpcgraph.CheckpointSaver
+	graph      *trpcgraph.Graph
+	executor   *trpcgraph.Executor
+	name       string
+	saver      trpcgraph.CheckpointSaver
+	subAgents  []trpcagent.Agent
 }
 
 var _ trpcagent.Agent = (*GraphAgent)(nil)
 
-func NewGraphAgent(name string, g *trpcgraph.Graph, enableCheckpoint bool) (*GraphAgent, error) {
+func NewGraphAgent(name string, g *trpcgraph.Graph, enableCheckpoint bool, subAgents ...trpcagent.Agent) (*GraphAgent, error) {
+	return NewGraphAgentWithSubAgents(name, g, enableCheckpoint, nil, subAgents)
+}
+
+func NewGraphAgentWithSubAgents(name string, g *trpcgraph.Graph, enableCheckpoint bool, saver trpcgraph.CheckpointSaver, subAgents []trpcagent.Agent) (*GraphAgent, error) {
 	var execOpts []trpcgraph.ExecutorOption
-	var saver trpcgraph.CheckpointSaver
-	if enableCheckpoint {
+	if enableCheckpoint && saver == nil {
 		saver = trpcgraphcheckpoint.NewSaver()
+	}
+	if saver != nil {
 		execOpts = append(execOpts, trpcgraph.WithCheckpointSaver(saver))
 	}
 	exec, err := trpcgraph.NewExecutor(g, execOpts...)
@@ -270,14 +278,15 @@ func NewGraphAgent(name string, g *trpcgraph.Graph, enableCheckpoint bool) (*Gra
 		return nil, fmt.Errorf("graph agent: %w", err)
 	}
 	return &GraphAgent{
-		graph:    g,
-		executor: exec,
-		name:     name,
-		saver:    saver,
+		graph:     g,
+		executor:  exec,
+		name:      name,
+		saver:     saver,
+		subAgents: append([]trpcagent.Agent(nil), subAgents...),
 	}, nil
 }
 
-func NewGraphAgentWithSaver(name string, g *trpcgraph.Graph, saver trpcgraph.CheckpointSaver, engine ExecutionEngineType) (*GraphAgent, error) {
+func NewGraphAgentWithSaver(name string, g *trpcgraph.Graph, saver trpcgraph.CheckpointSaver, engine ExecutionEngineType, subAgents ...trpcagent.Agent) (*GraphAgent, error) {
 	var execOpts []trpcgraph.ExecutorOption
 	if saver != nil {
 		execOpts = append(execOpts, trpcgraph.WithCheckpointSaver(saver))
@@ -293,14 +302,15 @@ func NewGraphAgentWithSaver(name string, g *trpcgraph.Graph, saver trpcgraph.Che
 		return nil, fmt.Errorf("graph agent: %w", err)
 	}
 	return &GraphAgent{
-		graph:    g,
-		executor: exec,
-		name:     name,
-		saver:    saver,
+		graph:     g,
+		executor:  exec,
+		name:      name,
+		saver:     saver,
+		subAgents: append([]trpcagent.Agent(nil), subAgents...),
 	}, nil
 }
 
-func NewGraphAgentWithEngine(name string, g *trpcgraph.Graph, enableCheckpoint bool, engine ExecutionEngineType) (*GraphAgent, error) {
+func NewGraphAgentWithEngine(name string, g *trpcgraph.Graph, enableCheckpoint bool, engine ExecutionEngineType, subAgents ...trpcagent.Agent) (*GraphAgent, error) {
 	var execOpts []trpcgraph.ExecutorOption
 	var saver trpcgraph.CheckpointSaver
 	if enableCheckpoint {
@@ -318,10 +328,11 @@ func NewGraphAgentWithEngine(name string, g *trpcgraph.Graph, enableCheckpoint b
 		return nil, fmt.Errorf("graph agent: %w", err)
 	}
 	return &GraphAgent{
-		graph:    g,
-		executor: exec,
-		name:     name,
-		saver:    saver,
+		graph:     g,
+		executor:  exec,
+		name:      name,
+		saver:     saver,
+		subAgents: append([]trpcagent.Agent(nil), subAgents...),
 	}, nil
 }
 
@@ -341,10 +352,21 @@ func (a *GraphAgent) Info() trpcagent.Info {
 }
 
 func (a *GraphAgent) SubAgents() []trpcagent.Agent {
-	return nil
+	if len(a.subAgents) == 0 {
+		return nil
+	}
+	return append([]trpcagent.Agent(nil), a.subAgents...)
 }
 
 func (a *GraphAgent) FindSubAgent(name string) trpcagent.Agent {
+	for _, sub := range a.subAgents {
+		if sub == nil {
+			continue
+		}
+		if info := sub.Info(); info.Name == name {
+			return sub
+		}
+	}
 	return nil
 }
 

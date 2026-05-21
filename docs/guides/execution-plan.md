@@ -4,7 +4,15 @@
 >
 > **关联文档**：[0 系统框图.md](../需求/0%20系统框图.md) · [0-system-development.md](../需求/0-system-development.md) · [README-development.md](../需求/README-development.md)
 >
-> **更新时间**：2026-05-21（迭代 8：Agent Builder / 查重 / config 合并 ✅）
+> **更新时间**：2026-05-21（Review 优化 Phase D：ResourceManager composable · Agent 页壳 · A2A/Team/Graph 测 · LIST-04 biz · Chat i18n）
+
+---
+
+## 当前结论
+
+- **主链路可用**：Chat / Agent / Team / Graph 经 `trpc-agent-go` Runner 与 EventBus + `/v1/ws` 串联；RunRegistry + RunnerManager + RunGateway 已落地。
+- **架构红线保持**：`internal/biz` 不 import `trpc-agent-go`；`internal/server` 不直接调 Agent runtime；实时主通道为 `/v1/ws`（SSE 仅限 A2A/MCP 等外部协议）。
+- **当前优先级（backlog）**：Provider biz↔provider 收敛 · Evolution 趋势图 · Artifact Chat 引用 · Graph HITL UI · LIST-04 列表 UI · pgvector 多租户测 · Telemetry gRPC 采样。
 
 ---
 
@@ -19,14 +27,6 @@
 | 5. 验证命令 | 后端：`make wire && make api && make build && make test && make runtime-boundary`；前端：`cd web && pnpm i && pnpm lint && pnpm test && pnpm build` |
 
 **文档状态优先级**：`0 系统框图.md` + `0-system-development.md` + **本文** > 模块 `*-development.md` > `*.design.md` > 历史需求正文。
-
----
-
-## 当前结论
-
-- **主链路可用**：Chat / Agent / Team / Graph 经 `trpc-agent-go` Runner 与 EventBus + `/v1/ws` 串联；RunRegistry + RunnerManager + RunGateway 已落地。
-- **架构红线保持**：`internal/biz` 不 import `trpc-agent-go`；`internal/server` 不直接调 Agent runtime；实时主通道为 `/v1/ws`（SSE 仅限 A2A/MCP 等外部协议）。
-- **当前优先级**：迭代 7 后 — FlowLogger Phase 2 落库、Knowledge OCR、**A2A Phase 4（网关健康 Cron）**、Span 语义优化。
 
 ---
 
@@ -117,7 +117,7 @@
 
 **迭代 6 备注（观测）**：I6-TEL-02 / KN-01 / EVAL-02 review 已合入；`chat.usage_record` 失败用 FlowLogger（见 [changelog Iteration6](../changelog/2026-05-20-Iteration6-TRACE-EVAL-KN.md) §后续优化）。
 
-**FlowLogger v2**：📋 [需求](../需求/52-flow-logger.md) · [设计](../需求/52-flow-logger.design.md) · [开发计划](../需求/52-flow-logger-development.md) — Phase 1a/1b/3 ✅；Phase 2 落库待做。
+**FlowLogger v2**：📋 [需求](../需求/52-flow-logger.md) · [设计](../需求/52-flow-logger.design.md) · [开发计划](../需求/52-flow-logger-development.md) — Phase 1a/1b/2/3 ✅。
 
 ### 迭代 7（Plugin P0–P3）任务板 — 2026-05-21
 
@@ -140,7 +140,7 @@
 | I7-PLG-15 | 工具确认专用 UI | P2 | ✅ | await_kind + Approve/Deny |
 | I7-PLG-16 | rules[] 可视化编辑器 | P2 | ✅ | ModelRouterRulesEditor |
 
-**当前冲刺焦点**：FlowLogger Phase 2 落库 · Knowledge OCR · **A2A Phase 3.5（流式/Graph resume）** · Telemetry Span 语义 · Plugin P3 沙箱/版本。
+**当前冲刺焦点**：Team 五模式 E2E · Graph Agent/Router · Artifact Chat 引用 · A2A 速率限制 · Monitor latency · Plugin P4 沙箱。
 
 ### 迭代 7（优化升级）任务板 — 2026-05-20
 
@@ -269,16 +269,18 @@
 
 | 项 | 状态 |
 |----|------|
-| `internal/biz` 不 import `trpc-agent-go` | ✅ |
+| `internal/biz` 不 import `trpc-agent-go` | ✅（`MemorySet` 已移至 `internal/runtime`） |
 | `internal/server` 不调 Runner / Agent / LLM | ✅ |
 | `internal/data` 不绑定 Runner/Graph runtime 组装 | ✅ |
 | Chat/Team/Monitor 实时主链路 `/v1/ws` | ✅ |
 | RunRegistry：status / cancel / enqueue / artifact / ingest | ✅ |
-| Memory L0–L4 与 MemoryService 主从（`RuntimeSet`） | ✅ |
+| Memory L0–L4 与 MemoryService 主从（`MemorySet`） | ✅ |
+| `make runtime-boundary` CI 门禁 | ✅ |
 | 核心模块五面定义完整（Graph/Channel/Ecosystem） | ⏳ |
-| `internal/service` 无复杂运行状态机（await meta/resume 可接受短期） | ⏳ ChatUsecase 已接入；PendingQueue 仍在 Service |
+| `internal/service` 无复杂运行状态机（await meta/resume 可接受短期） | ⏳ ChatUsecase 已接入；PendingQueue 已下沉至 `internal/runtime` |
 | 前端 feature 模板 + mapper 单测 | 🟡（A2A mapper 单测 ✅；其余 feature 待补） |
-| TTS/Ecosystem/CLI 文档标占位 | ⏳ |
+| FlowLogger Phase 2 落库 + TraceList | ✅ |
+| TTS/Ecosystem/CLI 文档标占位 | 🟡（见 README-development 技术预览） |
 
 ---
 

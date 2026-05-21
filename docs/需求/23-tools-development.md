@@ -1,6 +1,6 @@
 # Tools 工具 — 开发计划
 
-> **版本**：5.0（修订）| **状态**：✅ 核心已实现；MCP 工程化（timeout/重连/认证/Broker 发现）待补
+> **版本**：5.1（2026-05-21）| **状态**：✅ 核心已实现；Override/统计/TestTool/MCP Broker ✅；per-tool 监控维度为 P2 backlog
 > **需求**：[23 tools.md](./23%20tools.md) · **设计**：[23 tools.design.md](./23%20tools.design.md) · **结构**：[23 tools struct design.md](./23%20tools%20struct%20design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：—
 

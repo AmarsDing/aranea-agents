@@ -61,6 +61,7 @@ func (m *memTeamRepoB) CreateTeamRun(_ context.Context, r biz.TeamRun) (biz.Team
 	return r, nil
 }
 func (m *memTeamRepoB) UpdateTeamRun(_ context.Context, _ biz.TeamRun) error { return nil }
+func (m *memTeamRepoB) UpdateTeamRunSummaryJSON(_ context.Context, _, _ string) error { return nil }
 func (m *memTeamRepoB) CreateTeamRunStep(_ context.Context, s biz.TeamRunStep) (biz.TeamRunStep, error) {
 	return s, nil
 }

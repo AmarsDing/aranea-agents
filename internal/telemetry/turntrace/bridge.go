@@ -215,6 +215,28 @@ func (b *Bridge) TraceID() string {
 	return sc.TraceID().String()
 }
 
+// LLMSpanOtelID returns the OTel span id for the active llm.call child span.
+func (b *Bridge) LLMSpanOtelID() string {
+	if b == nil || b.llm == nil {
+		return ""
+	}
+	return b.llm.SpanContext().SpanID().String()
+}
+
+// ToolSpanOtelID returns the OTel span id for a tool call child span.
+func (b *Bridge) ToolSpanOtelID(toolCallID string) string {
+	if b == nil || toolCallID == "" {
+		return ""
+	}
+	b.mu.Lock()
+	sp := b.tool[toolCallID]
+	b.mu.Unlock()
+	if sp == nil {
+		return ""
+	}
+	return sp.SpanContext().SpanID().String()
+}
+
 func (b *Bridge) tracer() trace.Tracer {
 	if b == nil || b.domain == "" {
 		return otel.Tracer(tracerPrefix + string(DomainChat))

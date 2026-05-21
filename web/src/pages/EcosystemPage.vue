@@ -1,5 +1,8 @@
 <template>
   <q-page class="app-page-cream q-pa-lg">
+    <q-banner rounded class="bg-info text-white q-mb-md">
+      生态市场为<strong>技术预览</strong>：安装与发布流程尚未纳入核心 SLA，数据可能重置。
+    </q-banner>
     <div class="row items-center q-mb-md">
       <div class="text-h5 text-weight-bold">生态市场</div>
       <q-space />
@@ -39,8 +42,14 @@
         <q-card-section class="q-gutter-sm">
           <q-input v-model="draft.name" dense outlined label="标识名" />
           <q-input v-model="draft.display_name" dense outlined label="显示名" />
-          <q-input v-model="draft.type" dense outlined label="类型" hint="skill_pack / agent_template" />
-          <q-input v-model="draft.description" dense outlined type="textarea" label="描述" />
+          <q-input v-model="draft.description" dense outlined autogrow type="textarea" label="描述" />
+          <q-select
+            v-model="draft.type"
+            dense
+            outlined
+            label="类型"
+            :options="['skill_pack', 'agent_template', 'tool_bundle']"
+          />
         </q-card-section>
         <q-card-actions align="right">
           <q-btn flat label="取消" v-close-popup />
@@ -52,56 +61,18 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
-import { useQuasar } from "quasar";
-import { installEcosystemProduct, listEcosystemProducts, publishEcosystemProduct, type EcosystemProduct } from "../features/ecosystem/api";
+import { useEcosystemPage } from "../features/ecosystem/useEcosystemPage";
 
-const $q = useQuasar();
-const products = ref<EcosystemProduct[]>([]);
-const search = ref("");
-const loading = ref(false);
-const publishing = ref(false);
-const publishOpen = ref(false);
-const installingId = ref("");
-const draft = reactive({ name: "", display_name: "", description: "", type: "skill_pack" });
-
-async function load() {
-  loading.value = true;
-  try {
-    products.value = await listEcosystemProducts(search.value.trim());
-  } catch (e) {
-    $q.notify({ type: "negative", message: e instanceof Error ? e.message : "加载失败" });
-  } finally {
-    loading.value = false;
-  }
-}
-
-async function install(p: EcosystemProduct) {
-  installingId.value = p.id;
-  try {
-    await installEcosystemProduct(p.id);
-    $q.notify({ type: "positive", message: "安装成功" });
-    await load();
-  } catch (e) {
-    $q.notify({ type: "negative", message: e instanceof Error ? e.message : "安装失败" });
-  } finally {
-    installingId.value = "";
-  }
-}
-
-async function publish() {
-  publishing.value = true;
-  try {
-    await publishEcosystemProduct({ ...draft });
-    publishOpen.value = false;
-    $q.notify({ type: "positive", message: "已发布" });
-    await load();
-  } catch (e) {
-    $q.notify({ type: "negative", message: e instanceof Error ? e.message : "发布失败" });
-  } finally {
-    publishing.value = false;
-  }
-}
-
-onMounted(() => void load());
+const {
+  products,
+  search,
+  loading,
+  publishing,
+  publishOpen,
+  installingId,
+  draft,
+  load,
+  install,
+  publish,
+} = useEcosystemPage();
 </script>

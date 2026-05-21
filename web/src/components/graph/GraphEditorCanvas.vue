@@ -67,7 +67,7 @@ const nodeTypes: Record<string, any> = {
 const defaultEdgeOptions = {
   type: "smoothstep",
   animated: false,
-  style: { stroke: "#757575", strokeWidth: 2 },
+  style: { stroke: "var(--color-icon-muted)", strokeWidth: 2 },
 };
 
 const internalNodes = ref<Node[]>([]);

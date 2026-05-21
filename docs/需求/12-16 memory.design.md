@@ -16,6 +16,17 @@
 
 五层记忆架构：L0 感官（最近对话）、L1 工作（结构化状态）、L2 情景（重要事件）、L3 语义（向量知识）、L4 持久（身份图谱）。L0-L2/L4 通过 `sessionmemory.Store` 存储在 SQLite，L3 通过 pgvector 存储。
 
+### 1.1 双轨关系（Runner 注入 vs 产品治理）
+
+| 层 | 框架 `trpc-agent-go/memory.Service` | Aranea 产品 L0–L4 |
+|----|-------------------------------------|-------------------|
+| 主从 | **框架接口为 Runner 真相源** | **产品层为实现与治理面** |
+| 注入 | `internal/runtime.MemorySet.TRPC`（Wire 注入 SQLite adapter） | 不进入 `internal/biz` |
+| 治理 | AutoMemory / EnqueueAutoMemoryJob | `MemoryService` gRPC、`SessionAdminStore`、L4 图谱、MemoryWorker |
+| Admin | — | `MemorySet.Admin` = `biz.SessionAdminStore` |
+
+`MemorySet` 定义于 `internal/runtime/memory_set.go`，由 `NewPersistenceSet` 在 Wire 阶段组装。
+
 核心能力包括：
 1. **五层记忆存储与检索**：L0-L4 各层的 CRUD 和向量检索
 2. **自动提取**：🟡 MVP — `TurnMemoryWorker` 入队 + `AutoMemoryWorker` 启发式（regex → L4）；完整 LLM 提取管道待 Phase 2

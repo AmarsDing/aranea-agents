@@ -1,0 +1,71 @@
+package biz
+
+import (
+	"testing"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
+)
+
+func TestTeamOrchestrationModesAccepted(t *testing.T) {
+	modes := []string{
+		"sequential",
+		"parallel",
+		"coordinator",
+		"critic_loop",
+		"swarm",
+		"adaptive",
+	}
+	for _, mode := range modes {
+		t.Run(mode, func(t *testing.T) {
+			raw := `{"version":1,"mode":"` + mode + `","members":[]}`
+			if err := validateTeamDefinition(raw); err != nil {
+				t.Fatalf("mode %q: %v", mode, err)
+			}
+		})
+	}
+}
+
+func TestTeamOrchestrationModeRejected(t *testing.T) {
+	err := validateTeamDefinition(`{"version":1,"mode":"invalid","members":[]}`)
+	if err == nil {
+		t.Fatal("expected error for invalid mode")
+	}
+	if kerrors.FromError(err).Reason != "TEAM" {
+		t.Fatalf("unexpected reason: %v", err)
+	}
+}
+
+func TestTeamCriticLoopRequiresRoles(t *testing.T) {
+	err := validateTeamDefinition(`{"version":1,"mode":"critic_loop","members":[{"agent_id":"a1","role":"generator","enabled":true}]}`)
+	if err == nil {
+		t.Fatal("expected critic_loop role validation error")
+	}
+}
+
+func TestTeamParallelRequiresSynthesizer(t *testing.T) {
+	err := validateTeamDefinition(`{"version":1,"mode":"parallel","members":[{"agent_id":"a1","role":"worker","enabled":true},{"agent_id":"a2","role":"worker","enabled":true}]}`)
+	if err == nil {
+		t.Fatal("expected parallel synthesizer validation error")
+	}
+}
+
+func TestTeamSwarmMembersOptional(t *testing.T) {
+	raw := `{"version":1,"mode":"swarm","members":[{"agent_id":"a1","enabled":true}]}`
+	if err := validateTeamDefinition(raw); err != nil {
+		t.Fatalf("swarm with member: %v", err)
+	}
+}
+
+func TestTeamSequentialMultipleMembersAccepted(t *testing.T) {
+	raw := `{"version":1,"mode":"sequential","members":[{"agent_id":"a1","enabled":true},{"agent_id":"a2","enabled":true}]}`
+	if err := validateTeamDefinition(raw); err != nil {
+		t.Fatalf("sequential: %v", err)
+	}
+}
+
+func TestTeamAdaptiveModeAccepted(t *testing.T) {
+	raw := `{"version":1,"mode":"adaptive","members":[{"agent_id":"a1","enabled":true}]}`
+	if err := validateTeamDefinition(raw); err != nil {
+		t.Fatalf("adaptive: %v", err)
+	}
+}

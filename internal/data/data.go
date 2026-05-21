@@ -291,6 +291,12 @@ func ensureAllSchemas(rawDB *sql.DB, entClient *ent.Client) error {
 	if err := EnsureA2ASchema(ctxSchema, rawDB); err != nil {
 		return fmt.Errorf("a2a schema: %w", err)
 	}
+	if err := ensureA2ARemoteHealthPatches(ctxSchema, entClient); err != nil {
+		return fmt.Errorf("a2a remote health patches: %w", err)
+	}
+	if err := ensureTeamRunSummaryPatches(ctxSchema, entClient); err != nil {
+		return fmt.Errorf("team run summary patches: %w", err)
+	}
 	if err := EnsurePluginRunSchema(ctxSchema, entClient); err != nil {
 		return fmt.Errorf("plugin run schema: %w", err)
 	}

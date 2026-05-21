@@ -68,6 +68,18 @@
           </q-card>
         </div>
       </div>
+      <div v-if="metrics?.tool_success_series?.length" class="evolution-trend q-mt-md">
+        <div class="text-subtitle2 text-weight-bold q-mb-sm">工具成功率趋势</div>
+        <div class="evolution-trend__bars">
+          <div
+            v-for="(pt, idx) in metrics.tool_success_series"
+            :key="idx"
+            class="evolution-trend__bar"
+            :style="{ height: `${Math.max(4, Math.round((pt.value ?? 0) * 100))}%` }"
+            :title="`${pt.date}: ${formatPercent(pt.value)}`"
+          />
+        </div>
+      </div>
     </section>
 
     <section v-if="suggestions.length > 0" class="settings-section q-mt-md">
@@ -335,5 +347,23 @@ body.body--dark .evolution-info-banner {
 body.body--dark .guardrails-section {
   border-color: color-mix(in srgb, var(--color-success) 35%, var(--glass-border));
   background: color-mix(in srgb, var(--color-success) 12%, var(--glass-surface));
+}
+
+.evolution-trend__bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 72px;
+  padding: 8px 4px;
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  background: var(--glass-surface);
+}
+
+.evolution-trend__bar {
+  flex: 1;
+  min-width: 6px;
+  background: color-mix(in srgb, var(--color-primary) 75%, transparent);
+  border-radius: 3px 3px 0 0;
 }
 </style>

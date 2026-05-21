@@ -45,6 +45,10 @@ func (r *completionMonitorRepo) ReplaceAlertRules(ctx context.Context, rules []M
 func (r *completionMonitorRepo) CountMonitorEventsSince(ctx context.Context, eventKey, status, sinceRFC3339 string) (int32, error) {
 	return 0, nil
 }
+
+func (r *completionMonitorRepo) AvgRunnerCompletionDurationMsSince(ctx context.Context, sinceRFC3339 string) (float64, error) {
+	return 0, nil
+}
 func (r *completionMonitorRepo) ExistsRunnerCompletion(ctx context.Context, sessionID, invocationID string) (bool, error) {
 	return r.exists, nil
 }

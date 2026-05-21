@@ -81,13 +81,16 @@ function formatPayload(payload: Record<string, unknown>): string {
   border: 1px solid var(--glass-border);
   background: var(--glass-elevated);
 }
+
 .chat-a2ui-line {
   margin-bottom: 8px;
 }
+
 .chat-a2ui-line--err {
   border-left: 3px solid var(--q-negative);
   padding-left: 8px;
 }
+
 .chat-a2ui-line__json {
   margin: 4px 0 0;
   padding: 8px;
@@ -96,8 +99,9 @@ function formatPayload(payload: Record<string, unknown>): string {
   font-size: 12px;
   overflow-x: auto;
   white-space: pre-wrap;
-  word-break: break-word;
+  overflow-wrap: anywhere;
 }
+
 .settings-info-banner {
   background: var(--glass-elevated);
   color: var(--color-text-secondary);

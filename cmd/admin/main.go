@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"time"
 
+	a2ahealth "aranea-agents/internal/a2a/health"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/cronrunner"
@@ -171,6 +172,12 @@ func main() {
 		mcpInterval := health.DefaultInterval()
 		go out.MCPHealthProbe.Start(cronCtx, mcpInterval)
 		logger.Log(log.LevelInfo, "msg", "mcp health probe started", "interval", mcpInterval.String())
+	}
+
+	if out.A2AGatewayHealthProbe != nil {
+		a2aInterval := a2ahealth.DefaultInterval()
+		go out.A2AGatewayHealthProbe.Start(cronCtx, a2aInterval)
+		logger.Log(log.LevelInfo, "msg", "a2a gateway health probe started", "interval", a2aInterval.String())
 	}
 
 	if out.EvolutionScanner != nil {

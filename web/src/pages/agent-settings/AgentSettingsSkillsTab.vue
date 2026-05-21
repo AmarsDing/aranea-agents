@@ -193,23 +193,27 @@ const fallbackHint = computed(() => {
   display: grid;
   gap: 18px;
 }
+
 .settings-section {
   padding: 20px;
   border: 1px solid var(--glass-border);
   border-radius: 24px;
   background: var(--glass-surface);
 }
+
 .section-heading {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   margin-bottom: 14px;
 }
+
 .capability-card {
   border-color: var(--glass-border);
   border-radius: 18px;
   background: var(--glass-elevated);
 }
+
 .settings-info-banner {
   background: var(--glass-elevated);
   color: var(--color-text-secondary);

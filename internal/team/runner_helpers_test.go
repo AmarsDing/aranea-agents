@@ -19,6 +19,8 @@ func (r *stepBusRepo) CreateTeamRunStep(_ context.Context, step biz.TeamRunStep)
 	return step, nil
 }
 
+func (r *stepBusRepo) UpdateTeamRunSummaryJSON(_ context.Context, _, _ string) error { return nil }
+
 func TestPersistStep_EmitsStartedAndFinished(t *testing.T) {
 	bus := event.NewBus()
 	ch, unsub := bus.Subscribe(event.SubscribeOptions{BufferSize: 8})

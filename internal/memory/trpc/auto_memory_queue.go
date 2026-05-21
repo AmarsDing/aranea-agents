@@ -59,3 +59,10 @@ func EnqueueAutoMemory(r AutoMemoryJobRequest) {
 }
 
 func GlobalAutoMemoryQueue() *MemoryJobQueue { return globalAutoMemoryQueue }
+
+// SetGlobalAutoMemoryQueueForTest swaps the process-wide queue (tests only).
+func SetGlobalAutoMemoryQueueForTest(q *MemoryJobQueue) *MemoryJobQueue {
+	prev := globalAutoMemoryQueue
+	globalAutoMemoryQueue = q
+	return prev
+}

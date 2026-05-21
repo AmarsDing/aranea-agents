@@ -71,29 +71,35 @@ function showMessage(line: MonitorLogLine): boolean {
   overflow-y: auto;
   padding: 4px 0;
 }
+
 .flow-trace-row {
   display: flex;
   gap: 12px;
   align-items: flex-start;
 }
+
 .flow-trace-marker {
   width: 4px;
   min-height: 48px;
   border-radius: 2px;
-  background: rgba(0, 0, 0, 0.12);
+  background: var(--color-border-soft);
   flex-shrink: 0;
 }
+
 .flow-trace-row--ok .flow-trace-marker,
 .flow-trace-row--info .flow-trace-marker {
-  background: var(--color-success, #21ba45);
+  background: var(--color-success);
 }
+
 .flow-trace-row--warn .flow-trace-marker {
-  background: var(--color-warning, #f2c037);
+  background: var(--color-warning);
 }
+
 .flow-trace-row--error .flow-trace-marker,
 .flow-trace-row--critical .flow-trace-marker {
-  background: var(--color-danger, #c10015);
+  background: var(--color-danger);
 }
+
 .flow-trace-body {
   flex: 1;
   min-width: 0;

@@ -43,6 +43,7 @@ func (r *cancelTeamRunRepo) UpdateTeamRun(_ context.Context, run biz.TeamRun) er
 	r.runs[run.ID] = run
 	return nil
 }
+func (r *cancelTeamRunRepo) UpdateTeamRunSummaryJSON(_ context.Context, _, _ string) error { return nil }
 func (r *cancelTeamRunRepo) CreateTeamRunStep(_ context.Context, step biz.TeamRunStep) (biz.TeamRunStep, error) {
 	return step, nil
 }

@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"database/sql"
 	"strings"
 	"time"
 
@@ -76,4 +77,20 @@ func (r *monitorRepo) CountMonitorEventsSince(ctx context.Context, eventKey, sta
 	var n int32
 	err := r.data.RawDB().QueryRowContext(ctx, q, args...).Scan(&n)
 	return n, err
+}
+
+func (r *monitorRepo) AvgRunnerCompletionDurationMsSince(ctx context.Context, sinceRFC3339 string) (float64, error) {
+	var avg sql.NullFloat64
+	err := r.data.RawDB().QueryRowContext(ctx, `
+SELECT AVG(CAST(json_extract(metadata_json, '$.duration_ms') AS REAL))
+FROM monitor_events
+WHERE deleted_at = '' AND event_key = 'runner.completion' AND created_at >= ?
+  AND json_extract(metadata_json, '$.duration_ms') IS NOT NULL`, sinceRFC3339).Scan(&avg)
+	if err != nil {
+		return 0, err
+	}
+	if !avg.Valid {
+		return 0, nil
+	}
+	return avg.Float64, nil
 }

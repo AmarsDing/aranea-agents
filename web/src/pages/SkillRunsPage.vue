@@ -1,10 +1,10 @@
 <template>
   <q-page class="app-page-cream skill-runs-page">
-    <section class="skill-runs-hero">
+    <section class="app-page-hero">
       <div>
-        <div class="skill-runs-kicker">Skill observability</div>
-        <h1 class="skill-runs-title">Skill 运行记录</h1>
-        <p class="skill-runs-subtitle">按 Skill、Agent、结果筛选调用明细，用于追踪使用频率和执行质量。</p>
+        <div class="app-page-kicker">Skill observability</div>
+        <h1 class="app-page-title">Skill 运行记录</h1>
+        <p class="app-page-subtitle">按 Skill、Agent、结果筛选调用明细，用于追踪使用频率和执行质量。</p>
       </div>
       <q-btn outline rounded color="primary" icon="arrow_back" label="返回 Skill 管理" to="/skills" />
     </section>
@@ -109,36 +109,8 @@ onMounted(loadRows);
 
 <style scoped lang="sass">
 .skill-runs-page
-  padding: 24px
-
-.skill-runs-hero
-  display: flex
-  justify-content: space-between
-  gap: 16px
-  align-items: flex-start
-  margin-bottom: 18px
-
-.skill-runs-kicker
-  color: var(--q-primary)
-  font-size: 12px
-  font-weight: 700
-  letter-spacing: .12em
-  text-transform: uppercase
-
-.skill-runs-title
-  margin: 4px 0
-  font-size: 34px
-  line-height: 1.15
-
-.skill-runs-subtitle
-  margin: 0
-  color: var(--q-grey-7)
+  padding: var(--space-6)
 
 .skill-runs-filter
   border-radius: 22px
-
-@media (max-width: 720px)
-  .skill-runs-hero
-    flex-direction: column
-    align-items: stretch
 </style>

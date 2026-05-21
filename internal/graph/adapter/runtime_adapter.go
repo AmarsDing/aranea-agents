@@ -304,12 +304,12 @@ func trpcCfgToBiz(cfg graphtrpc.GraphBuildConfig) biz.GraphBuildConfig {
 
 func (f *trpcGraphBuilderFactory) BuildAndRun(ctx context.Context, cfg biz.GraphBuildConfig, sessionID, graphID, execID string, initialState map[string]any) (biz.GraphRuntime, <-chan biz.GraphRuntimeEvent, error) {
 	trpcCfg := bizCfgToTrpc(cfg)
-	g, _, err := graphtrpc.BuildStateGraphWithRegistry(ctx, trpcCfg, f.registry, f.buildDeps)
+	g, subAgents, err := graphtrpc.BuildStateGraphWithRegistry(ctx, trpcCfg, f.registry, f.buildDeps)
 	if err != nil {
 		return nil, nil, err
 	}
 	name := cfg.EntryPoint
-	graphAgent, err := f.createAgent(name, g, cfg.EnableCheckpoint, graphtrpc.ExecutionEngineType(cfg.ExecutionEngine))
+	graphAgent, err := f.createAgent(name, g, cfg.EnableCheckpoint, graphtrpc.ExecutionEngineType(cfg.ExecutionEngine), subAgents)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -326,12 +326,12 @@ func (f *trpcGraphBuilderFactory) BuildAndRun(ctx context.Context, cfg biz.Graph
 
 func (f *trpcGraphBuilderFactory) BuildAndResume(ctx context.Context, cfg biz.GraphBuildConfig, sessionID, graphID, execID, lineageID string, resumeValue map[string]any) (biz.GraphRuntime, <-chan biz.GraphRuntimeEvent, error) {
 	trpcCfg := bizCfgToTrpc(cfg)
-	g, _, err := graphtrpc.BuildStateGraphWithRegistry(ctx, trpcCfg, f.registry, f.buildDeps)
+	g, subAgents, err := graphtrpc.BuildStateGraphWithRegistry(ctx, trpcCfg, f.registry, f.buildDeps)
 	if err != nil {
 		return nil, nil, err
 	}
 	name := cfg.EntryPoint
-	graphAgent, err := f.createAgent(name, g, cfg.EnableCheckpoint, graphtrpc.ExecutionEngineType(cfg.ExecutionEngine))
+	graphAgent, err := f.createAgent(name, g, cfg.EnableCheckpoint, graphtrpc.ExecutionEngineType(cfg.ExecutionEngine), subAgents)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -417,11 +417,11 @@ func (f *trpcGraphBuilderFactory) FindNodeDef(cfg biz.GraphBuildConfig, nodeID s
 	return nil
 }
 
-func (f *trpcGraphBuilderFactory) createAgent(name string, g *trpcgraph.Graph, enableCheckpoint bool, ee graphtrpc.ExecutionEngineType) (*graphtrpc.GraphAgent, error) {
+func (f *trpcGraphBuilderFactory) createAgent(name string, g *trpcgraph.Graph, enableCheckpoint bool, ee graphtrpc.ExecutionEngineType, subAgents []trpcagent.Agent) (*graphtrpc.GraphAgent, error) {
 	if f.saver != nil && enableCheckpoint {
-		return graphtrpc.NewGraphAgentWithSaver(name, g, f.saver, ee)
+		return graphtrpc.NewGraphAgentWithSaver(name, g, f.saver, ee, subAgents...)
 	} else if ee != "" && ee != graphtrpc.EngineBSP {
-		return graphtrpc.NewGraphAgentWithEngine(name, g, enableCheckpoint, ee)
+		return graphtrpc.NewGraphAgentWithEngine(name, g, enableCheckpoint, ee, subAgents...)
 	}
-	return graphtrpc.NewGraphAgent(name, g, enableCheckpoint)
+	return graphtrpc.NewGraphAgent(name, g, enableCheckpoint, subAgents...)
 }

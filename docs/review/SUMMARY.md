@@ -1,8 +1,11 @@
 # Aranea-Agents 模块 Review 综合汇总
 
 > **生成时间**：2026-05-21  
+> **最后同步**：2026-05-21（Review 优化 Phase A：Chat composable 续拆至 ~505 行）  
 > **覆盖模块**：33 个（含占位模块 CLI/Ecosystem/TTS）  
 > **基准文档**：`docs/需求/README-development.md` · `docs/guides/execution-plan.md`
+
+> **状态说明**：下列 P0/P1 条目中，标注 ✅ 的项已在代码或文档中闭合，**勿重复排期**；详见 `docs/changelog/2026-05-21-Review-Optimization-Phase0.md`。
 
 ---
 
@@ -35,23 +38,23 @@
 | 14 | Agent 2–8 | **80** | 核心功能已通 |
 | 14 | Tools (23) | **80** | Override/统计 ✅ |
 | 14 | MCP (19) | **80** | OAuth/重连 ✅ |
-| 17 | FlowLogger (52) | **79** | Phase 2 落库待补 |
-| 17 | Session (10) | **79** | 批量 UI 缺失 |
-| 17 | Token/Usage (29) | **79** | 定价提示待补 |
+| 17 | FlowLogger (52) | **82** | Phase 2 落库 ✅ |
+| 17 | Session (10) | **79** | 批量 UI ✅ |
+| 17 | Token/Usage (29) | **81** | 定价 UX 横幅已补 |
 | 20 | Graph (36) | **77** | 节点类型待补 |
-| 21 | Knowledge (37) | **76** | OCR 待规划 |
-| 21 | Channel (17) | **76** | 测试薄弱 |
-| 23 | Memory (12–16) | **74** | P0 边界风险 |
-| 24 | Telemetry (24) | **73** | Span 语义待补 |
+| 21 | Knowledge (37) | **78** | OCR pipeline ✅ |
+| 21 | Channel (17) | **78** | 验签单测已有 |
+| 23 | Memory (12–16) | **78** | P0 边界 ✅；双轨已文档化 |
+| 24 | Telemetry (24) | **76** | otel_id 已关联 |
 | 25 | Artifact (27) | **72** | 附件引用缺失 |
 | 26 | Avatar (50) | **70** | 功能简单但规范 |
-| 27 | Admin/Auth | **75** | 缺需求文档 |
-| 28 | Skill (20) | **78** | HTTP 旁路问题 |
-| 29 | Monitor (18) | **78** | 分层漂移 |
+| 27 | Admin/Auth | **78** | `admin-auth.md` ✅ |
+| 28 | Skill (20) | **78** | multipart 为设计例外 |
+| 29 | Monitor (18) | **80** | composable 迁移 ✅ |
 | 30 | CodeExecutor (32) | **78** | 测试待补 |
-| — | CLI (25) | **42** | 早期占位 |
-| — | Ecosystem (30) | **38** | 接近 mock |
-| — | TTS | **25** | 占位 |
+| — | CLI (25) | **42** | 技术预览 |
+| — | Ecosystem (30) | **38** | 技术预览 |
+| — | TTS | **25** | 技术预览 |
 
 ---
 
@@ -59,9 +62,9 @@
 
 | ID | 模块 | 风险描述 | 验证方法 |
 |----|------|---------|---------|
-| **P0-001** | Memory | `internal/biz/memory_runtime_set.go` 疑似 import `pkg/trpc-agent-go/memory`，违反 biz 不 import trpc-agent-go 红线 | `make runtime-boundary` |
-| **P0-002** | Chat | `useChatWorkspace.ts` 约 1500 行，业务状态机高度集中，Bug 传播风险极高 | 代码 review + 拆分 |
-| **P0-003** | Session | 确认无 `sessionmemory.Store` 直连残留（service 层不绕过 biz Usecase 端口） | CodeGraph callers |
+| ~~**P0-001**~~ | Memory | ~~`memory_runtime_set.go` import trpc~~ | ✅ `make runtime-boundary` 通过；`MemorySet` 在 `internal/runtime` |
+| ~~**P0-002**~~ | Chat | ~~`useChatWorkspace.ts` 过大~~ | ✅ 续拆至 ~505 行（`useChatEntityNav` 等 7 个 composable） |
+| ~~**P0-003**~~ | Session | ~~`sessionmemory.Store` 直连~~ | ✅ `internal/service` 无直连；Store 经 data/runtime 注入 |
 
 ---
 
@@ -71,37 +74,31 @@
 
 | ID | 模块 | 风险描述 |
 |----|------|---------|
-| P1-001 | 系统/Chat | `PendingMessageQueue` 实现在 `internal/service/chat_pending.go`，应下沉到 `internal/runtime` |
-| P1-002 | 系统/Graph | `internal/data.go` 绑定 trpc session/graph checkpoint，Data 层与 runtime 耦合 |
-| P1-003 | Provider | `biz <-> provider` 双向依赖（`internal/llminspect` 拆环未完成）|
-| P1-004 | Skill | `server/skill_import_http.go` 绕过 proto/service 层鉴权与观测 |
-| P1-005 | Memory | L0-L4 产品层与框架 MemoryService 双轨，主从未明确 |
+| ~~P1-001~~ | 系统/Chat | ✅ PendingQueue 已在 `internal/runtime` |
+| ~~P1-002~~ | 系统/Graph | ✅ data 层无 trpc runtime 绑定 |
+| P1-003 | Provider | `biz <-> provider` 轻度类型引用（`llminspect` 已拆主环）|
+| ~~P1-004~~ | Skill | ✅ multipart 经 Service 鉴权，设计例外 |
+| ~~P1-005~~ | Memory | ✅ 双轨见 `12-16 memory.design.md` §1.1 |
 
 ### 功能缺口
 
 | ID | 模块 | 风险描述 |
 |----|------|---------|
-| P1-006 | FlowLogger | Phase 2 落库（`ListFlowLogs` HTTP 历史查询）尚未实现 |
-| P1-007 | Team | RunTest UI / `step_started` Envelope / Summary 持久化待补 |
-| P1-008 | A2A | Phase 4：网关健康 Cron 未实现 |
-| P1-009 | Session | 批量治理前端 UI 缺失 |
-| P1-010 | Auth | 缺少 `admin-auth.md` 需求文档 |
-
-### 前端分层
-
-| ID | 模块 | 风险描述 |
-|----|------|---------|
-| P1-011 | 前端（多处）| `MonitorPage`、`EcosystemPage`、`SystemSettingsPage`、`PluginsPage` 直连 API，违反 Page→composable 分层 |
-| P1-012 | Agent | `AgentSettingsPage.vue` 约 488 行，目标 < 300 行 |
+| ~~P1-006~~ | FlowLogger | ✅ Phase 2 落库 + TraceList |
+| P1-007 | Team | RunTest UI ✅；Summary 持久化 ✅；五模式 E2E 待补 |
+| ~~P1-008~~ | A2A | ✅ 健康 Cron `internal/a2a/health` |
+| ~~P1-009~~ | Session | ✅ 批量治理 UI（`SessionsBulkToolbar`） |
+| P1-011 | 前端 | Ecosystem composable ✅；ResourceManager 等大页待迁 |
+| ~~P1-012~~ | Agent | Tab 拆分 ✅；页壳行数仍偏多（P2） |
 
 ### 测试缺失
 
 | ID | 模块 | 风险描述 |
 |----|------|---------|
-| P1-013 | Chat/WS | WS 协议层无集成测试（连接→Envelope→断连） |
+| P1-013 | Chat/WS | WS 集成测试已加 stub；全链路 E2E 续补 |
 | P1-014 | Memory | `MemoryWorker` 无测试 |
-| P1-015 | Channel | 三平台 Webhook 验签无自动化测试 |
-| P1-016 | Quota | `CheckQuota` Turn 前拦截无单测 |
+| ~~P1-015~~ | Channel | ✅ lark/dingtalk/wecom webhook_test |
+| ~~P1-016~~ | Quota | ✅ `usage_quota_test.go` |
 
 ---
 
@@ -109,13 +106,13 @@
 
 | ID | 模块 | 风险描述 |
 |----|------|---------|
-| P2-001 | Memory | 衰减算法未实现；图谱与进化 Tab 为占位 |
-| P2-002 | Knowledge | OCR pipeline 未规划 |
-| P2-003 | Artifact | 签名下载 URL、Chat 附件引用、CodeExecutor→Artifact 管道缺失 |
-| P2-004 | Graph | LLM/Tool 节点属性面板不完整；HITL 产品化 |
-| P2-005 | Monitor | latency 聚合 / Dashboard 自动刷新未实现 |
-| P2-006 | Telemetry | per-span `otel_id` 缺失；gRPC 采样配置待补 |
-| P2-007 | Token | 定价规则未配置时无用户提示 |
+| P2-001 | Memory | L4 衰减 ✅；图谱 Tab 仍占位 |
+| ~~P2-002~~ | Knowledge | ✅ OCR `internal/knowledge/ocr.go` |
+| P2-003 | Artifact | 签名下载 ✅；附件引用、CodeExecutor 管道待补 |
+| P2-004 | Graph | Agent/Router 节点、HITL 产品化 |
+| P2-005 | Monitor | latency 聚合；自动刷新 🟡 |
+| ~~P2-006~~ | Telemetry | ✅ otel_id 关联 FlowLog span |
+| ~~P2-007~~ | Token | ✅ 定价 UX 横幅 |
 | P2-008 | A2A | 速率限制（Phase 4）未实现 |
 | P2-009 | Plugin | Phase 4 沙箱/版本时间线未规划 |
 | P2-010 | Evolution | 趋势图/diff/护栏（AGT-16）待补 |
@@ -156,12 +153,12 @@
 
 | 红线 | 状态 | 说明 |
 |------|------|------|
-| `internal/biz` 不 import `trpc-agent-go` | ⚠️ **须验证** | `biz/memory_runtime_set.go` 需 `make runtime-boundary` 确认 |
-| `internal/server` 不调 Runner/Agent/LLM | ✅ | `skill_import_http.go` 有旁路但不直调 Runner；P1 修复计划中 |
+| `internal/biz` 不 import `trpc-agent-go` | ✅ | `MemorySet` 在 `internal/runtime`；CI `make runtime-boundary` |
+| `internal/server` 不调 Runner/Agent/LLM | ✅ | Skill multipart 为 Service 设计例外 |
 | Chat/Team/Monitor 实时主通道为 `/v1/ws` | ✅ | SSE 仅用于 A2A/MCP 外部协议 |
-| `internal/data` 不绑定 trpc runtime | 🟡 | Graph checkpoint 仍在 data.go；P1 改进计划中 |
-| 前端分层 Page→store→feature API | 🟡 | 多处存在漂移；P1 规范化计划中 |
-| `make runtime-boundary` 通过 | ⚠️ **须运行** | 验证 biz/memory 边界 |
+| `internal/data` 不绑定 trpc runtime | ✅ | checkpoint 已上移 Wire |
+| 前端分层 Page→store→feature API | 🟡 | Monitor/Plugins/SystemSettings/Ecosystem composable ✅ |
+| `make runtime-boundary` 通过 | ✅ | 见 changelog 2026-05-21 |
 
 ---
 
@@ -174,7 +171,7 @@
 | 开发计划待同步 | 2 | `40-runner-development.md`、`23-tools-development.md` |
 | 需求正文含实现细节 | 1 | `50 Avatar.md` |
 | 模块编号跳号/缺失 | 1 | 31 缺失（Memory 内部引用"31 记忆管理界面"）|
-| 占位模块未明确标注 | 3 | CLI、Ecosystem、TTS |
+| 占位模块未明确标注 | ~~3~~ | CLI、Ecosystem、TTS 已在 README-development 标 **技术预览** |
 
 ---
 
@@ -182,9 +179,9 @@
 
 ### 立即（本周内）
 
-1. 运行 `make runtime-boundary`，确认并修复 `biz/memory_runtime_set.go` 边界（P0-001）。
-2. 开始拆分 `useChatWorkspace.ts`，提取 `useFollowUpQueue`、`useAwaitReply`（P0-002）。
-3. 将 `server/skill_import_http.go` 迁入 `SkillService`（P1-004）。
+1. ~~运行 `make runtime-boundary`~~ ✅ P0-001 已闭合。
+2. 续拆 `useChatWorkspace.ts`（已抽 follow-up / await composable）。
+3. ~~FlowLogger Phase 2~~ ✅ 勿重复开发。
 
 ### 本迭代（2 周内）
 

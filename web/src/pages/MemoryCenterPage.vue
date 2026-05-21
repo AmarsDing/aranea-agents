@@ -16,7 +16,7 @@
         <q-tab name="overview" icon="hub" label="总览" />
         <q-tab name="knowledge" icon="psychology" label="知识库" />
         <q-tab name="sessions" icon="account_tree" label="会话记忆" />
-        <q-tab name="evolution" icon="auto_awesome" label="图谱与进化" />
+        <q-tab v-if="showGraphTab" name="evolution" icon="auto_awesome" label="图谱与进化" />
         <q-tab name="settings" icon="tune" label="设置" />
       </q-tabs>
     </q-card>
@@ -58,7 +58,7 @@
         />
       </q-tab-panel>
 
-      <q-tab-panel name="evolution">
+      <q-tab-panel v-if="showGraphTab" name="evolution">
         <memory-evolution-panel :panels="evolutionPanels" />
       </q-tab-panel>
 
@@ -107,6 +107,7 @@ import {
 } from "../features/memory/api";
 
 const tab = ref("overview");
+const showGraphTab = import.meta.env.VITE_MEMORY_GRAPH_TAB === "1";
 const agents = ref<Agent[]>([]);
 const sessions = ref<Session[]>([]);
 const facts = ref<MemoryFact[]>([]);

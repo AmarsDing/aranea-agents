@@ -28,7 +28,7 @@
 | 2 | Admin 鉴权、管理页、`/a2a` 路由 | ✅ |
 | 3 | A2A Server 暴露、远程注册、mTLS、Invoke 工作区策略 | ✅ |
 | 3.5 | 联邦 Gateway、Graph metadata、远程 Invoke、流式 | ✅ |
-| 4 | 网关健康 Cron + 速率限制 | ❌ |
+| 4 | 网关健康 Cron + 速率限制 | 🟡 Cron ✅；Invoke 60/min 限流 ✅ |
 
 ---
 
@@ -46,8 +46,8 @@
 | Graph metadata（A2A discover 包含 graph 信息）| ✅ |
 | A2A 审计记录 | ✅ |
 | A2A Invoke 测试 Tab | ✅ |
-| 网关健康 Cron | ❌ Phase 4 |
-| 速率限制 | ❌ Phase 4 |
+| 网关健康 Cron | ✅ `internal/a2a/health/runner.go` |
+| 速率限制 | ✅ `internal/biz/a2a_limit.go`（60/min per workspace+callee） |
 
 ---
 
@@ -63,20 +63,21 @@ A2A 公开 Endpoint（`/v1/a2a/public/{agent_id}`）使用 **HTTP/SSE**，**非 
 
 | ID | 问题 | 建议修复 |
 |----|------|---------|
-| A2A-P1-01 | 网关健康 Cron 未实现：外部远程 Agent 断线后网关不知晓 | 实现 Phase 4 健康 Cron |
+| A2A-P1-01 | 网关健康 Cron | ✅ Phase 4 Cron 已实现 |
 | A2A-P1-02 | 后端 Invoke 路径（含 mTLS）无自动化测试 | 补 Invoke 集成测试 |
 
 ### P2
 
 | ID | 问题 | 建议修复 |
 |----|------|---------|
-| A2A-P2-01 | 速率限制未实现 | 规划 Phase 4 速率限制（per-Agent 或 per-caller）|
+| A2A-P2-01 | 速率限制 | ✅ 基础 per-caller 限流已落地；可扩展 per-Agent 策略 |
 | A2A-P2-02 | `check_health` 参数在联邦发现时超时行为需文档化 | 补充 `check_health` 超时文档 |
 
 ---
 
 ## 建议优化路径
 
-1. 实现网关健康 Cron（Phase 4，P1）。
-2. 补 Invoke 集成测试（P1）。
-3. 规划速率限制（Phase 4，P2）。
+1. ~~网关健康 Cron~~ ✅ `internal/a2a/health`
+2. ~~Invoke 集成测试~~ ✅ `invoke_integration_test.go`（workspace + chat）
+3. ~~速率限制~~ ✅ `a2a_limit.go` + service 层 `DefaultA2AInvokeLimiter`
+4. **下迭代**：mTLS 远程 Invoke 全链路集成测；`check_health` 超时文档化

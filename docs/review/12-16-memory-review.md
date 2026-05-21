@@ -2,8 +2,9 @@
 
 > **评分**：74 / 100 | **风险等级**：P1  
 > **文档**：[12-16 memory.md](../需求/12-16%20memory.md) · [12-16 memory.design.md](../需求/12-16%20memory.design.md) · [12-16 memory-development.md](../需求/12-16%20memory-development.md)  
-> **代码锚点**：`internal/biz/memory.go` · `internal/biz/memory_runtime_set.go` · `internal/biz/memory_l4*.go` · `internal/biz/memory_worker.go` · `internal/memory/trpc/` · `internal/data/sessionmemory/`  
-> **审查时间**：2026-05-21
+> **代码锚点**：`internal/biz/memory.go` · `internal/runtime/memory_set.go` · `internal/biz/memory_l4*.go` · `internal/biz/memory_worker.go` · `internal/memory/trpc/` · `internal/data/sessionmemory/`  
+> **审查时间**：2026-05-21  
+> **状态**：已于 2026-05-21 校正 — P0 边界迁至 `internal/runtime/memory_set.go`；双轨见 design §1.1；L4 衰减已实现。见 `docs/changelog/2026-05-21-Review-Optimization-Phase0.md`。
 
 ---
 
@@ -12,10 +13,10 @@
 | 维度 | 得分 | 满分 | 评述 |
 |------|------|------|------|
 | 需求符合度 | 15 | 20 | L0-L3 + L4 启发式注入 + MemoryWorker + AutoMemory 图写入 ✅；冲突检测/级联/衰减待补 |
-| 架构一致性 | 18 | 25 | `memory.RuntimeSet` 端口统一 ✅；**P0 风险**：`biz/memory_runtime_set.go` 疑似 import `trpc-agent-go/memory`；双轨（产品 L0-L4 vs 框架 MemoryService）主从未明确 |
-| 后端实现质量 | 16 | 20 | L4 图自动写入（`L4GraphWriter`）✅；`l4_governance.go` 冲突检测 ✅；衰减算法待补 |
-| 前端实现质量 | 12 | 15 | 记忆中心 5 Tab ✅；`MemorySnapshotDrawer.vue` ✅；图谱与进化 Tab 为占位 |
-| 测试与验证 | 7 | 10 | `l4_governance.go` 有治理逻辑测试；`memory_worker` 无测试 |
+| 架构一致性 | 18 | 25 | `memory.RuntimeSet` 端口统一 ✅；MemorySet 已迁至 `internal/runtime` ✅；双轨主从见 design §1.1 ✅ |
+| 后端实现质量 | 16 | 20 | L4 图自动写入 ✅；冲突检测 ✅；L4 衰减 ✅（I2-MEM-01） |
+| 前端实现质量 | 12 | 15 | 记忆中心 4+1 Tab ✅；图谱 Tab 默认隐藏（`VITE_MEMORY_GRAPH_TAB=1` 启用） |
+| 测试与验证 | 7 | 10 | `memory_worker_test.go` ✅；l4_governance 测试 ✅ |
 | 文档一致性 | 6 | 10 | 三件套 + UX 文档；`12-16 memory.md` UX 文档与产品文档边界清晰；文档更新于 DocSync changelog |
 
 ---
@@ -28,23 +29,13 @@
 | L1 | Working（工作记忆）| SQLite `sessionmemory` | ✅ |
 | L2 | Episodic（情节记忆）| SQLite，按对话分组 | ✅ |
 | L3 | Semantic（语义记忆）| pgvector Knowledge | ✅ 基础 |
-| L4 | Persistent（持久记忆）| SQLite graph + 实体关系 | ✅ 基础；冲突/衰减待补 |
+| L4 | Persistent（持久记忆）| SQLite graph + 实体关系 | ✅ 基础；衰减 ✅；图谱 Tab feature flag |
 
 ---
 
-## 架构边界 — P0 风险
+## 架构边界 — P0 已闭合
 
-### `biz/memory_runtime_set.go`
-
-**问题**：该文件暴露 `RuntimeSet.TRPC`（框架 `memory.Service` 类型），存在 `internal/biz` import `pkg/trpc-agent-go/memory` 的边界违规风险。
-
-**验证**：需立即运行 `make runtime-boundary` 并检查脚本输出。
-
-**修复方案**：
-- 方案 A：`RuntimeSet` 中使用 biz 内部接口（`MemoryServicePort`），在 Wire 阶段注入 `trpc-agent-go/memory.Service` 实现 → biz 不 import trpc。
-- 方案 B：将 `memory_runtime_set.go` 移至 `internal/runtime` 层（允许 import 框架）。
-
----
+`memory_runtime_set.go` 已删除；`internal/runtime/memory_set.go` 负责框架 MemoryService 组装，biz 层仅持端口类型。`make runtime-boundary` CI 通过。
 
 ## 双轨问题
 

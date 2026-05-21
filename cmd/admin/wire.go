@@ -14,7 +14,9 @@ import (
 	"time"
 
 	a2apkg "aranea-agents/internal/a2a"
+	a2ahealth "aranea-agents/internal/a2a/health"
 	a2atrpc "aranea-agents/internal/a2a/trpc"
+	chatagent "aranea-agents/internal/agent"
 	localexec "aranea-agents/internal/agent/codeexecutor"
 	artifacttrpc "aranea-agents/internal/artifact/trpc"
 	"aranea-agents/internal/biz"
@@ -220,14 +222,29 @@ func provideGraphCheckpointSaver(d *data.Data) (*graphtrpc.SQLiteCheckpointSaver
 	return rt.NewGraphCheckpointSaver(d.RawDB())
 }
 
-func provideGraphBuildDeps(catalog *biz.LlmProviderModelUsecase, toolUC *biz.ToolUsecase) *graphtrpc.BuildDeps {
+func provideGraphBuildDeps(
+	catalog *biz.LlmProviderModelUsecase,
+	toolUC *biz.ToolUsecase,
+	agentUC *biz.AgentUsecase,
+	agents biz.AgentRepository,
+	sys biz.SystemSettingRepo,
+) *graphtrpc.BuildDeps {
 	if catalog == nil || toolUC == nil {
 		return nil
 	}
 	rtTrip := &provider.RoundTrip{HTTP: &http.Client{Timeout: 120 * time.Second}}
+	builderDeps := chatagent.TRPCBuilderDeps{
+		Catalog: catalog,
+		AgentUC: agentUC,
+		Agents:  agents,
+		RT:      rtTrip,
+		ToolUC:  toolUC,
+		Sys:     sys,
+	}
 	return &graphtrpc.BuildDeps{
 		Models: graphadapter.NewCatalogModelResolver(catalog, rtTrip),
 		Tools:  graphadapter.NewCatalogToolResolver(toolUC),
+		Agents: graphadapter.NewCatalogAgentResolver(builderDeps),
 	}
 }
 
@@ -316,6 +333,17 @@ func provideMCPHealthRunner(deps health.Deps) *health.Runner {
 	return health.NewRunner(deps)
 }
 
+func provideA2AGatewayHealthRunnerDeps(a2aUC *biz.A2AUsecase) a2ahealth.Deps {
+	return a2ahealth.Deps{A2A: a2aUC}
+}
+
+func provideA2AGatewayHealthRunner(deps a2ahealth.Deps) *a2ahealth.Runner {
+	if strings.TrimSpace(os.Getenv("A2A_HEALTH_DISABLED")) == "1" {
+		return nil
+	}
+	return a2ahealth.NewRunner(deps)
+}
+
 func providePluginRuntime(stats plugintrpc.StatsRecorder, usage biz.PluginCostGuardUsageRepo, tools *biz.ToolUsecase, deliveries biz.HookDeliveryRepo) *plugintrpc.Runtime {
 	rt := plugintrpc.NewRuntime(stats)
 	if usage != nil {
@@ -366,6 +394,7 @@ type wireOut struct {
 	SkillWatch             *watch.Runner
 	AutoMemory             *jobs.AutoMemoryWorker
 	MCPHealthProbe         *health.Runner
+	A2AGatewayHealthProbe  *a2ahealth.Runner
 	EvolutionScanner       *jobs.EvolutionScanner
 	ProviderHealthScanner  *jobs.ProviderHealthScanner
 	ChannelHealthScanner   *jobs.ChannelHealthScanner
@@ -381,6 +410,7 @@ func provideWireOut(
 	skillWatch *watch.Runner,
 	autoMem *jobs.AutoMemoryWorker,
 	mcpHealth *health.Runner,
+	a2aHealth *a2ahealth.Runner,
 	evoScan *jobs.EvolutionScanner,
 	providerHealth *jobs.ProviderHealthScanner,
 	channelHealth *jobs.ChannelHealthScanner,
@@ -391,7 +421,7 @@ func provideWireOut(
 ) wireOut {
 	return wireOut{
 		App: app, CronRunner: runner, SkillWatch: skillWatch, AutoMemory: autoMem,
-		MCPHealthProbe: mcpHealth, EvolutionScanner: evoScan, ProviderHealthScanner: providerHealth,
+		MCPHealthProbe: mcpHealth, A2AGatewayHealthProbe: a2aHealth, EvolutionScanner: evoScan, ProviderHealthScanner: providerHealth,
 		ChannelHealthScanner: channelHealth, ChannelDeliveryScanner: channelDelivery,
 		EventStoreCleanup: eventStoreCleanup, ToolAuditCleanup: toolAuditCleanup,
 		FlowLogCleanup: flowLogCleanup,
@@ -495,6 +525,8 @@ func wireApp(*conf.Server, *conf.Data, log.Logger) (wireOut, func(), error) {
 		provideFlowLogCleanup,
 		provideMCPHealthRunnerDeps,
 		provideMCPHealthRunner,
+		provideA2AGatewayHealthRunnerDeps,
+		provideA2AGatewayHealthRunner,
 		provideMonitorAlertNotifier,
 		provideMonitorUsecase,
 		provideUsageUsecase,

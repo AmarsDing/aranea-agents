@@ -11,12 +11,12 @@
 
 | 维度 | 得分 | 满分 | 评述 |
 |------|------|------|------|
-| 需求符合度 | 16 | 20 | 基础 CRUD、摘要、压缩、批量 bulk-ops Phase 1b 已完成；前端批量治理 UI 待实现 |
+| 需求符合度 | 16 | 20 | 基础 CRUD、摘要、压缩、批量 bulk-ops ✅；批量治理 UI ✅ |
 | 架构一致性 | 21 | 25 | biz/data 分层合理；`session_batch.go` 拆文件分责；trpc session adapter 位于 `internal/session/trpc` 正确位置 |
 | 后端实现质量 | 17 | 20 | 压缩、摘要、标题生成均已实现；批量操作接口已有；`IncrementInvocationCounts` 工具/MCP/Skill 调用计数同步 |
-| 前端实现质量 | 13 | 15 | 会话列表页基本功能完整；批量选择/删除/归档 UI 缺失；`/sessions/:id` 详情页三 Tab 已有 |
-| 测试与验证 | 6 | 10 | `session_batch_test.go` 已有；摘要/压缩路径无专项测试 |
-| 文档一致性 | 6 | 10 | Session 三件套对齐；Bulk Ops Phase 1b changelog 已同步；批量治理 PRD 与当前 UI 状态存在差距 |
+| 前端实现质量 | 13 | 15 | 会话列表 + `SessionsBulkToolbar` 批量操作 ✅；详情页三 Tab ✅ |
+| 测试与验证 | 6 | 10 | `session_batch_test.go` + `session_timeline_test.go` ✅ |
+| 文档一致性 | 6 | 10 | Session 三件套对齐；Bulk Ops 与 UI 已同步 |
 
 ---
 
@@ -57,7 +57,7 @@ Session 管理用户与 Agent/Team 的对话上下文，包括：
 
 | ID | 问题 | 建议修复 |
 |----|------|---------|
-| SESS-P1-01 | `session_usecase.go` 约 1058 行，领域规则密集，可读性降低 | 按功能域（压缩/摘要/批量/消息）拆分为更细粒度的 Usecase 文件 |
+| SESS-P1-01 | `session_usecase.go` 领域规则密集 | 🟡 `session_timeline.go` 已拆分 Timeline；压缩/摘要续拆 |
 | SESS-P1-02 | 上下文压缩路径（`NativeTurnCompressor`）无专项测试；`sessionCompressMinGap` 硬编码 10min | 补压缩单测；将 `minGap` 提升为可配置参数 |
 
 ### P2

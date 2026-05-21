@@ -3,6 +3,7 @@ package graph
 import (
 	"context"
 
+	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
@@ -17,8 +18,14 @@ type ToolResolver interface {
 	ResolveTools(ctx context.Context, toolNames []string) (map[string]trpctool.Tool, error)
 }
 
-// BuildDeps supplies runtime dependencies for typed graph nodes (LLM / Tool).
+// AgentResolver resolves a catalog agent for graph agent nodes.
+type AgentResolver interface {
+	ResolveAgent(ctx context.Context, agentRef string) (trpcagent.Agent, error)
+}
+
+// BuildDeps supplies runtime dependencies for typed graph nodes (LLM / Tool / Agent).
 type BuildDeps struct {
 	Models ModelResolver
 	Tools  ToolResolver
+	Agents AgentResolver
 }

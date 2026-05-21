@@ -1,10 +1,10 @@
 <template>
-  <q-page :class="['teams-page', { 'is-dark': isDark }]">
-    <section class="teams-hero">
+  <q-page :class="['app-entity-page teams-page', { 'is-dark': isDark }]">
+    <section class="app-page-hero">
       <div>
-        <div class="teams-kicker">ADK Multi-Agent</div>
-        <h1 class="teams-title">Team 管理</h1>
-        <p class="teams-subtitle">参照 ADK Web 的 App / Session / Trace 工作台，将多个 Agent 编排成可运行、可观测的协作团队。</p>
+        <div class="app-page-kicker">ADK Multi-Agent</div>
+        <h1 class="app-page-title">Team 管理</h1>
+        <p class="app-page-subtitle">参照 ADK Web 的 App / Session / Trace 工作台，将多个 Agent 编排成可运行、可观测的协作团队。</p>
       </div>
       <q-btn color="primary" rounded unelevated icon="add" label="新增 Team" @click="openCreate" />
     </section>
@@ -24,7 +24,7 @@
       <template #action><q-btn flat color="white" label="重试" @click="loadRows" /></template>
     </q-banner>
 
-    <section class="teams-grid q-mt-lg">
+    <section class="app-entity-grid q-mt-lg">
       <TeamCard
         v-for="team in filteredTeams"
         :key="team.id"
@@ -40,7 +40,7 @@
       />
     </section>
 
-    <q-card v-if="!loading && filteredTeams.length === 0" flat bordered :class="['teams-empty', { 'is-dark': isDark }, 'q-mt-lg']">
+    <q-card v-if="!loading && filteredTeams.length === 0" flat bordered :class="['app-entity-empty', { 'is-dark': isDark }, 'q-mt-lg']">
       <q-card-section class="column items-center text-center q-pa-xl">
         <q-avatar size="72px" color="primary" text-color="white" icon="hub" />
         <div class="text-h6 q-mt-md">暂无 Team</div>
@@ -454,101 +454,3 @@ function upsertRunStep(step: TeamRunStep) {
 }
 
 </script>
-
-<style scoped>
-.teams-page {
-  min-height: 100%;
-  padding: 28px;
-  background:
-    radial-gradient(circle at 86% 0%, rgb(25 118 210 / 12%), transparent 28%),
-    linear-gradient(180deg, var(--color-page-tint) 0%, var(--color-page-tint-alt) 46%, var(--color-on-accent) 100%);
-}
-
-.teams-hero {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.teams-kicker {
-  display: inline-flex;
-  padding: 5px 11px;
-  border: 1px solid rgb(25 118 210 / 14%);
-  border-radius: 999px;
-  background: rgb(255 255 255 / 78%);
-  color: var(--color-link);
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.teams-title {
-  margin: 12px 0 0;
-  color: var(--color-text-dark);
-  font-size: clamp(34px, 5vw, 54px);
-  font-weight: 800;
-  letter-spacing: -0.055em;
-  line-height: 1;
-}
-
-.teams-subtitle {
-  max-width: 720px;
-  margin: 10px 0 0;
-  color: var(--color-text-tertiary);
-  line-height: 1.65;
-}
-
-.teams-empty {
-  border: 1px solid rgb(15 23 42 / 8%);
-  border-radius: 24px;
-  background: rgb(255 255 255 / 86%);
-  box-shadow: 0 18px 48px rgb(16 24 40 / 6%);
-  backdrop-filter: blur(16px);
-}
-
-.teams-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
-  gap: 18px;
-}
-
-.teams-page.is-dark {
-  background:
-    radial-gradient(circle at 86% 0%, rgb(59 130 246 / 16%), transparent 30%),
-    linear-gradient(160deg, var(--canvas-base) 0%, var(--color-surface-elevated) 48%, var(--color-surface-solid) 100%);
-  color: var(--color-border-soft);
-}
-
-.teams-page.is-dark .teams-kicker {
-  border-color: rgb(96 165 250 / 22%);
-  background: rgb(30 64 175 / 24%);
-  color: var(--color-link);
-}
-
-.teams-page.is-dark .teams-title {
-  color: var(--color-surface-soft);
-}
-
-.teams-page.is-dark .teams-subtitle {
-  color: var(--color-text-tertiary);
-}
-
-.teams-empty.is-dark {
-  border-color: rgb(148 163 184 / 16%);
-  background: rgb(17 24 39 / 90%);
-  box-shadow: 0 14px 38px rgb(0 0 0 / 32%);
-}
-
-@media (width <= 599px) {
-  .teams-page {
-    padding: 18px;
-  }
-
-  .teams-grid {
-    grid-template-columns: 1fr;
-  }
-}
-</style>
