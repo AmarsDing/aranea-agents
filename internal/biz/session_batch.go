@@ -2,8 +2,6 @@ package biz
 
 import (
 	"context"
-	"database/sql"
-	stderrors "errors"
 	"strings"
 	"time"
 )
@@ -138,22 +136,26 @@ type batchLoadResult struct {
 
 func (uc *SessionUsecase) loadBatchCandidates(ctx context.Context, ids []string, scope SessionBatchScope) (batchLoadResult, error) {
 	if len(ids) > 0 {
-		out := make([]Session, 0, len(ids))
-		var notFound []string
+		trimmed := make([]string, 0, len(ids))
 		for _, id := range ids {
 			id = strings.TrimSpace(id)
-			if id == "" {
-				continue
+			if id != "" {
+				trimmed = append(trimmed, id)
 			}
-			s, err := uc.sessions.GetSessionByID(ctx, id)
-			if err != nil {
-				if stderrors.Is(err, sql.ErrNoRows) {
-					notFound = append(notFound, id)
-					continue
-				}
-				return batchLoadResult{}, err
+		}
+		out, err := uc.sessions.ListSessionsByIDs(ctx, trimmed)
+		if err != nil {
+			return batchLoadResult{}, err
+		}
+		found := make(map[string]struct{}, len(out))
+		for _, s := range out {
+			found[s.ID] = struct{}{}
+		}
+		var notFound []string
+		for _, id := range trimmed {
+			if _, ok := found[id]; !ok {
+				notFound = append(notFound, id)
 			}
-			out = append(out, s)
 		}
 		return batchLoadResult{sessions: out, notFoundIDs: notFound}, nil
 	}

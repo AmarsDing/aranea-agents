@@ -1,8 +1,8 @@
-# Session 历史存储与编排设计
+# Session 会话历史
 
-本文档设计 **会话历史存储（Session History）**，覆盖数据库表、后端 session 模块、前端展示界面，以及 session 在 **Agent / Team 编排**中的核心作用。目标不是只保存聊天记录，而是把一次用户任务从输入、编排、模型调用、上下文窗口消耗到最终结果都串成可回放、可分析、可治理的运行实例。
+本文档描述 **会话历史（Session）** 的产品目标、用户故事与验收口径：会话列表与治理、历史追踪时间轴、上下文消耗、Team/Agent 编排索引。技术方案见 [`10 session.design.md`](./10%20session.design.md)；**实现差距与任务以 [`10-session-development.md`](./10-session-development.md) 为准**（本文不写修复记录或迭代状态表）。
 
-> **框架对齐**：本设计遵循 `AI-DEVELOPMENT-SPECIFICATION.md` 分层规范和 `plan.md` M5 Session 管理模块，逐步向 trpc-agent-go `session.Service` 对齐。当前阶段以 SQLite + Ent 为主存储，后续可桥接 trpc session.Service 多后端（Redis/PG/MySQL）。
+> **框架对齐**：运行时以 trpc-agent-go `session.Service` 为长期目标；当前业务会话主存储为 SQLite + Ent（`sessions` / `messages`），Runner 状态经 `runner_snapshot_json` 持久化。分层见 `AI-DEVELOPMENT-SPECIFICATION.md` 与 `AGENT_RUNTIME_BOUNDARY.md`。
 
 ---
 
@@ -1095,9 +1095,9 @@ DELETE /api/v1/sessions/{id}
 
 删除使用**软删除**（`deleted_at` + `status=deleted`），保留 usage 明细用于统计与审计；**对用户不可恢复**（列表/搜索默认排除）。真正物理清理放到后台 retention job。
 
-### 6.7 批量归档 / 批量删除（待实现）
+### 6.7 批量归档 / 批量删除（已实现）
 
-> 设计详情见 [10 session.design.md §2.3](./10%20session.design.md#23-批量操作-rpc新增) · 开发计划 [10-session-development.md §Phase 1b](./10-session-development.md#phase-1b--会话历史批量治理)
+> 设计详情见 [10 session.design.md §2.3](./10%20session.design.md#23-批量操作-rpcphase-1b--已实现) · 开发计划 [10-session-development.md §Phase 1b](./10-session-development.md#phase-1b--会话历史批量治理)
 
 #### 6.7.1 语义约定
 
@@ -1478,9 +1478,9 @@ export const useSessionStore = defineStore("sessions", {
 
 ---
 
-## 9. 与现有代码的落地顺序
+## 9. 分阶段落地（索引）
 
-建议分阶段实现，避免一次性重构聊天链路。
+分阶段任务、状态与代码锚点见 **[10-session-development.md](./10-session-development.md)**。以下为产品阶段的摘要索引（非实现真相源）。
 
 ### Phase 0：代码清理与命名对齐（✅ 已完成）
 
@@ -1768,33 +1768,17 @@ export const useSessionStore = defineStore("sessions", {
 
 ---
 
-## 13. 当前实施状态总览
+## 13. 能力矩阵（产品口径）
 
-| 模块 | 功能 | 状态 |
-|------|------|------|
-| Session CRUD | Create/Get/Update/Delete/Search | ✅ |
-| Session 归档/恢复 | ArchiveSession/RestoreSession | ✅ |
-| Session 列表行删除 | DeleteSession + 确认弹窗 | ❌ 待实现 |
-| Session 批量选择归档/删除 | 前端 selection + 进度条 | ❌ 待实现 |
-| Session 按保留天数批量归档/删除 | BatchArchive/BatchDelete/BatchPreview RPC | ❌ 待实现 |
-| Session 部分更新 | UpdateSession（title/tags/visibility/metadata/dialog_mode/provider/model） | ✅ |
-| Timeline 聚合 | GetSessionTimeline + kind_filter/sort_order/limit/offset | ✅ |
-| 消息列表 | ListSessionMessages + limit/offset 分页 | ✅ |
-| 上下文压缩 | SessionCompressor.AfterNativeTurn | ✅ |
-| 标题生成 | LLMSessionTitleGenerator + 截取双策略 | ✅ |
-| Session Turns | CreateTurn/UpdateTurn/ListTurns | ✅ |
-| Session State KV | GetSessionState/SaveSessionState/ApplyStateDelta | ✅ |
-| Runner Snapshot | UpdateRunnerSnapshotJSON | ✅ |
-| Session Summaries | InsertSessionSummary/ListSessionSummaries | ✅ |
-| Session 置顶 | pinned_at + PinSession/UnpinSession | ❌ 待实现 |
-| Session 导出 | ExportSession（Markdown/JSON） | ❌ 待实现 |
-| 消息搜索 | SearchMessages（全文检索） | ❌ 待实现 |
-| session_runs | 编排运行记录 | ❌ 待实现 |
-| session_run_steps | 编排步骤记录 | ❌ 待实现 |
-| session_participants | Team 参与者 | ❌ 待实现 |
-| session_trace_spans | 完整追踪链路 | ❌ 待实现 |
-| session_context_snapshots | Context 趋势 | ❌ 待实现 |
-| session_model_summaries | 多模型分布 | ❌ 待实现 |
-| trpc session.Service 适配器 | 桥接 trpc-agent-go | ❌ 待实现 |
-| 多后端支持 | Redis/PG/MySQL/ClickHouse | ❌ 待实现 |
-| Session Ingestor | 自动摄入外部记忆平台 | ❌ 待实现 |
+实现状态与任务 ID 以 **[10-session-development.md](./10-session-development.md)** 为准。
+
+| 能力 | 验收要点 |
+|------|----------|
+| Session CRUD / 搜索 / 部分更新 / 归档恢复 | `GET/POST/PATCH/DELETE /v1/sessions` |
+| 列表治理 | 行内删除、批量勾选归档/删除、按保留天数预览与执行 |
+| Timeline / 消息 / 轮次 | 历史追踪弹窗、消息分页、Turn 列表 |
+| 上下文与摘要 | `context_used_ratio`、异步 `SessionCompressor`、`session_summaries` |
+| Runner 持久化 | `runner_snapshot_json` 读写 |
+| 消息搜索 | `SearchSessionMessages`（FTS5 优先，LIKE 回退） |
+| 编排可观测（远期） | `session_runs` / `steps` / `trace_spans` / `participants` |
+| 框架对齐（远期） | trpc `session.Service` 多后端、Ingestor |

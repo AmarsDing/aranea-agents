@@ -108,18 +108,17 @@ func (c *SessionCompressor) runCompress(ctx context.Context, sessionID string, a
 		}
 	}
 
-	msgs, err := c.Sessions.ListMessages(ctx, sessionID)
+	maxSummarized, err := c.Sessions.MaxSessionSummaryToTurn(ctx, sessionID)
+	if err != nil {
+		return err
+	}
+	msgs, err := c.Sessions.ListMessagesAfterTurn(ctx, sessionID, maxSummarized)
 	if err != nil {
 		return err
 	}
 	timeline := timelineUserAssistant(msgs)
 	if len(timeline) == 0 {
 		return nil
-	}
-
-	maxSummarized, err := c.Sessions.MaxSessionSummaryToTurn(ctx, sessionID)
-	if err != nil {
-		return err
 	}
 
 	keepRows := 2 * max(1, keepTurns)

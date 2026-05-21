@@ -43,7 +43,19 @@ func (m *batchSessionRepo) DeleteSession(context.Context, string) error  { retur
 func (m *batchSessionRepo) DeleteSessionsByAgentID(context.Context, string) error {
 	return nil
 }
-func (m *batchSessionRepo) ListMessagesBySession(context.Context, string) ([]biz.ChatMessage, error) {
+func (m *batchSessionRepo) CountMessagesBySession(context.Context, string) (int, error) {
+	return 0, nil
+}
+func (m *batchSessionRepo) ListMessagesBySession(context.Context, string, int, int) ([]biz.ChatMessage, error) {
+	return nil, nil
+}
+func (m *batchSessionRepo) ListMessagesAfterTurn(context.Context, string, int) ([]biz.ChatMessage, error) {
+	return nil, nil
+}
+func (m *batchSessionRepo) ListMessagesByStatus(context.Context, string, string, int) ([]biz.ChatMessage, error) {
+	return nil, nil
+}
+func (m *batchSessionRepo) ListMessagesRecent(context.Context, string, int) ([]biz.ChatMessage, error) {
 	return nil, nil
 }
 func (m *batchSessionRepo) ListToolInvocationsBySession(context.Context, string, int) ([]biz.ToolInvocationView, error) {
@@ -97,6 +109,15 @@ func (m *batchSessionRepo) GetSessionTurn(context.Context, string) (biz.SessionT
 }
 func (m *batchSessionRepo) IncrementInvocationCounts(context.Context, string, int, int, int) error {
 	return nil
+}
+func (m *batchSessionRepo) ListSessionsByIDs(_ context.Context, ids []string) ([]biz.Session, error) {
+	out := make([]biz.Session, 0, len(ids))
+	for _, id := range ids {
+		if s, ok := m.sessions[id]; ok {
+			out = append(out, s)
+		}
+	}
+	return out, nil
 }
 func (m *batchSessionRepo) ListSessionsForBatch(_ context.Context, q biz.SessionSearchQuery) ([]biz.Session, error) {
 	out := make([]biz.Session, 0, len(m.sessions))

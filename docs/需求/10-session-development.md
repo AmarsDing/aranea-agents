@@ -1,25 +1,33 @@
 # Session — 开发计划
 
-> **版本**：2026-05-20 | **状态**：🟢 Phase 1b 批量治理已实现
+> **版本**：2026-05-21 | **状态**：🟢 Phase 1b 已完成 · P1/P3 性能优化已落地
 > **需求**：[10 session.md](./10%20session.md) · **设计**：[10 session.design.md](./10%20session.design.md)
-> **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：—
+> **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **规范**：[docs/README.md](../README.md)
 
 ---
 
 ## 1. 模块定位
 
-Session 管理：管理用户与 Agent/Team 的对话会话，包括会话创建、列表、删除、标题更新、上下文压缩、轮次记录、状态管理等。
+Session 管理：用户与 Agent/Team 的对话会话（创建、列表、删除、归档、标题、上下文压缩、轮次、状态、批量治理、消息检索）。
 
-**代码锚点**：
-- `api/kratos/session/v1/` — Session CRUD RPC
-- `internal/service/session.go` — SessionService
-- `internal/service/session_compress.go` — 上下文压缩
-- `internal/biz/session_usecase.go` — SessionUsecase
-- `internal/biz/session_state.go` — Session State KV
-- `internal/biz/session_title.go` — SessionTitleGenerator
-- `internal/data/session_repo.go` — SessionRepo
-- `internal/data/session_repo_summaries.go` — SessionSummaryRepo
-- `internal/data/session_turn_repo.go` — SessionTurnRepo
+**代码锚点**（按职责拆分，避免 `session_usecase.go` 无限膨胀）：
+
+| 文件 | 职责 |
+|------|------|
+| `api/kratos/session/v1/session.proto` | RPC 契约 |
+| `internal/service/session.go` | SessionService：CRUD、Timeline、消息、Turn、SearchMessages |
+| `internal/service/session_batch.go` | BatchPreview / BatchArchive / BatchDelete + Audit |
+| `internal/service/session_compress.go` | 异步上下文压缩（`NativeTurnCompressor`） |
+| `internal/biz/session_usecase.go` | 领域用例：CRUD、Timeline、消息、Turn、State |
+| `internal/biz/session_batch.go` | 批量 cutoff / scope 扫描（单一职责） |
+| `internal/biz/session_state.go` | State KV / ApplyStateDelta |
+| `internal/biz/session_title.go` | `SessionTitleGenerator` |
+| `internal/data/session_repo.go` | 主表与消息 |
+| `internal/data/session_repo_batch.go` | 批量 UPDATE |
+| `internal/data/session_repo_summaries.go` | `session_summaries` 原生 SQL |
+| `internal/data/session_turn_repo.go` | `session_turns` |
+| `internal/data/message_search.go` | FTS5 / LIKE 消息搜索 |
+| `web/src/features/session/` | API + `useSessionsPage` 编排 |
 
 ---
 
@@ -28,175 +36,131 @@ Session 管理：管理用户与 Agent/Team 的对话会话，包括会话创建
 | 项 | 状态 | 证据 |
 |----|------|------|
 | Session CRUD | ✅ | Create/Get/Update/Delete/Search |
-| Session 归档/恢复 | ✅ | ArchiveSession/RestoreSession RPC |
-| Session 部分更新 | ✅ | UpdateSession（title/tags/visibility/metadata/dialog_mode/provider/model） |
-| 消息列表 | ✅ | `ListMessages` RPC + limit/offset 分页 |
-| Timeline 聚合 | ✅ | `GetSessionTimeline` + kind_filter/sort_order/limit/offset |
-| 上下文压缩 | ✅ | `SessionCompressor.AfterNativeTurn` |
-| 标题生成 | ✅ | `LLMSessionTitleGenerator` + 截取双策略 |
+| Session 归档/恢复 | ✅ | ArchiveSession/RestoreSession |
+| Session 部分更新 | ✅ | UpdateSession（多字段 PATCH） |
+| 列表行内删除 + 批量治理 | ✅ | DeleteSession + Batch* RPC + 前端 Phase 1b |
+| 消息列表 | ✅ | ListSessionMessages + **DB** limit/offset（`CountMessagesBySession`） |
+| 消息搜索 | ✅ | SearchSessionMessages（`messages_fts` 或 LIKE） |
+| Timeline 聚合 | ✅ | GetSessionTimeline；消息最多拉取 `TimelineMessageMaxFetch`（2000）条后与 tool/skill 合并 |
+| 上下文压缩 | ✅ | SessionCompressor.AfterNativeTurn |
+| 标题生成 | ✅ | LLMSessionTitleGenerator + 截取 |
 | Session Turns | ✅ | CreateTurn/UpdateTurn/ListTurns |
-| Session State KV | ✅ | GetSessionState/SaveSessionState/ApplyStateDelta |
+| Session State KV | ✅ | Get/Save/ApplyStateDelta |
 | Runner Snapshot | ✅ | UpdateRunnerSnapshotJSON |
-| Session Summaries | ✅ | InsertSessionSummary/ListSessionSummaries |
+| Session Summaries | ✅ | Insert/List/MaxToTurn |
 | Session 类型 | ✅ | agent / team |
+| session_runs / trace / participants | ❌ | 表与 Chat/Team 写入未接 |
+| Session 置顶 / 导出 | ❌ | Proto 未定义 |
+| trpc session.Service 多后端 | 🟡 | `internal/session/trpc` 部分能力，业务仍以 Ent 为主 |
 
 ---
 
 ## 3. 差距与优化
 
-### 3.0 会话历史批量治理（Phase 1b — 2026-05-20 新增）
+### 3.0 架构质量（持续）
 
-| 项 | 状态 | 说明 |
+| 项 | 说明 | 状态 |
 |----|------|------|
-| 列表行内删除 + 确认 | ✅ | `DeleteSession` + `SessionDeleteConfirmDialog` |
-| 批量选择 + 勾选归档/删除 | ✅ | `SessionsBulkToolbar` + 进度条；勾选归档无二次确认 |
-| 按保留天数批量归档 | ✅ | `BatchPreviewSessions` + `BatchArchiveSessions` RPC |
-| 按保留天数批量删除 | ✅ | `BatchPreviewSessions` + `BatchDeleteSessions` RPC |
-| 批量 Audit | ✅ | `archive.session.batch` / `delete.session.batch` |
+| biz 不 import trpc-agent-go | Session 领域与框架解耦 | ✅ |
+| 批量逻辑独立 `session_batch.go` | 降低 CRUD 文件变更影响面 | ✅ |
+| Chat 写会话不经 SessionService RPC | 经 `ChatService` → `SessionUsecase` 仓储方法 | ✅ |
+| data 层 kerrors 一致 | `session_repo_summaries` 等于其他 repo | ✅ O1 |
 
-### 3.1 代码优化
+### 3.1 代码优化（审查 P1–P3）
 
-1. **P1**：`session_repo_summaries.go` 使用 `errors.New` 而非 `kerrors`，需替换为 `kerrors.BadRequest`/`kerrors.InternalServer`，对齐开发规范 §10 原则 10。
-2. **P2**：Timeline 聚合全量加载 messages + tools + skills 再内存排序分页，大量数据时性能差；应改为 DB 层分页。
-3. **P2**：`ListToolInvocationsBySession` 硬编码 `limit=100`，应支持调用方传入 limit。
-4. **P2**：压缩防抖策略 `sessionCompressMinGap = 10min` 硬编码，应从 Agent Settings 读取。
-5. **P3**：`AppendChatTurn` 事务内两次查询（`maxMessageTurnTx` + session 查询），可合并为一次。
-6. **P3**：SessionCompressor 压缩模型选择 fallback 逻辑分散，应统一为策略模式。
+| ID | 项 | 优先级 | 状态 |
+|----|-----|--------|------|
+| **P1** | 消息 DB 分页：`ListMessagesPaged` / `CountMessagesBySession`；Timeline `ListMessagesRecent`；压缩 `ListMessagesAfterTurn`；取消卡片 `ListMessagesByStatus` | P1 | ✅ |
+| **P3** | 批量 ids：`ListSessionsByIDs` 替代 N×`GetSessionByID` | P3 | ✅ |
+| O1 | `session_repo_summaries.go` 使用 kerrors | P1 | ✅ |
+| O2 | Timeline 超长会话：当前 cap 2000 条；完整 UNION 分页待办 | P2 | 部分 |
+| O3 | Timeline 工具/Skill limit 随查询缩放 | P2 | ✅ |
+| O4 | `AppendChatTurn` 事务内查询合并 | P3 | 待办 |
+| O5 | 压缩防抖 `sessionCompressMinGap` 可配置（Agent L0 设置） | P2 | 待办 |
+| O6 | SessionCompressor 模型选择策略收敛 | P3 | 待办 |
+| **P2** | 拆分 `session_timeline.go` / `session_repository.go` 独立文件 | P2 | 待办（逻辑已收敛到 usecase 常量与方法） |
+
+**常量**（`internal/biz/session_usecase.go`）：`MessageListMaxLimit=500`、`TimelineMessageMaxFetch=2000`、`CompressMessageMaxRows=512`、`ActivityCancelScanLimit=64`。
 
 ### 3.2 功能差距
 
-1. **P2**：Session 无"置顶"功能，用户无法固定重要会话。
-2. **P2**：session_runs / session_run_steps 编排记录未实现，无法追踪完整 Run 生命周期。
-3. **P2**：session_participants 未实现，Team Session 缺少参与者角色与贡献指标。
-4. **P3**：Session 无"导出"功能，用户无法导出对话记录。
-5. **P3**：Session 消息无"搜索"功能，用户无法在历史消息中搜索关键词。
-6. **P3**：session_trace_spans 未实现，缺少完整追踪链路。
-7. **P3**：session_context_snapshots 未实现，缺少 Context ratio 趋势数据。
-8. **P3**：session_model_summaries 未实现，缺少多模型分布汇总。
-9. **P3**：trpc session.Service 适配器未实现，无法桥接 trpc-agent-go 框架。
-10. **P4**：多后端支持（Redis/PG）未实现。
-11. **P4**：Session Ingestor 未实现，无法自动摄入外部记忆平台。
+| ID | 项 | 优先级 |
+|----|-----|--------|
+| F1 | Session 置顶（`pinned_at` + Pin/Unpin RPC） | P2 |
+| F2 | Session 导出（Markdown/JSON） | P3 |
+| F4–F6 | session_runs / steps / participants + Team UI | P2 |
+| F7–F9 | trace_spans / context_snapshots / model_summaries | P3 |
+| F10–F14 | trpc session.Service 适配器、多后端、Ingestor | P3–P4 |
 
 ---
 
 ## 4. 开发阶段
 
-### Phase 1b — 会话历史批量治理
+### Phase 1b — 会话历史批量治理 ✅
 
-| ID | 任务 | 优先级 | 状态 |
-|----|------|--------|------|
-| SES-1b-01 | Proto：`BatchPreview/BatchArchive/BatchDelete` + `make api` | P1 | ✅ |
-| SES-1b-02 | `SessionUsecase` + Repo 批量 cutoff 查询与批量 UPDATE | P1 | ✅ |
-| SES-1b-03 | `SessionService` 实现 + Audit 写入 | P1 | ✅ |
-| SES-1b-04 | 前端：行删除 + `SessionDeleteConfirmDialog` | P1 | ✅ |
-| SES-1b-05 | 前端：批量选择 + `SessionsBulkSelectionBar` + 进度条 | P1 | ✅ |
-| SES-1b-06 | 前端：`SessionRetentionDialog`（按天数归档/删除） | P1 | ✅ |
-| SES-1b-07 | `useSessionsPage.ts` 拆分 SessionsPage 编排 | P2 | ✅ |
-| SES-1b-08 | 单测：cutoff 边界、running 排除、UTF-8 preview（已有） | P2 | ✅ |
+| ID | 任务 | 状态 |
+|----|------|------|
+| SES-1b-01 | Proto：BatchPreview/BatchArchive/BatchDelete | ✅ |
+| SES-1b-02 | `session_batch.go` + `session_repo_batch.go` | ✅ |
+| SES-1b-03 | Service + Audit | ✅ |
+| SES-1b-04–07 | 前端删除/批量/RetentionDialog/`useSessionsPage` | ✅ |
 
-**验收**：
+### Phase 1 — 近期优化
 
-1. 列表每行可删除，确认后永久从列表消失（软删除）。
-2. 「批量选择」后勾选归档：无弹窗，显示进度条，完成后 notify。
-3. 「批量选择」后勾选删除：确认弹窗 + 进度条。
-4. 「按天数归档/删除」：输入保留天数 → 预览 matched → 确认 → 进度 + 刷新。
-5. `running` session 不被批量/单条删除；批量删除默认不含已归档。
-6. `go build ./...` · `cd web && pnpm build`。
+- O1 ✅ · O3 ✅
+- O5：压缩防抖可配置
+- F1：Session 置顶
 
-### Phase 1（近期优化）
-- O1: `session_repo_summaries.go` 错误处理统一（kerrors）
-- O5: 压缩防抖策略可配置化
-- F1: Session 置顶功能（pinned_at 字段 + PinSession RPC + 前端置顶分组）
+### Phase 2–5
 
-### Phase 2（编排增强）
-- F4: session_runs 编排记录
-- F5: session_run_steps 步骤记录
-- F6: session_participants Team 参与者
-- F17: 前端 Team Session 专属展示（Participants Panel / Handoff Badge）
-
-### Phase 3（可观测性）
-- F7: session_trace_spans 完整追踪链路
-- F8: session_context_snapshots Context 趋势
-- F9: session_model_summaries 多模型分布
-- F15: 前端 Trace 链路页（树形/瀑布视图）
-- F16: 前端 Context 趋势线
-
-### Phase 4（导出与搜索）
-- F2: Session 导出功能（Markdown/JSON）
-- F3: 消息搜索功能（全文检索）
-
-### Phase 5（框架对齐）
-- F10: trpc session.Service 适配器
-- F11: Event 分页
-- F12: Session Track
-- F13: Session Ingestor
-- F14: 多后端支持（Redis/PG/MySQL/ClickHouse）
+见 [10 session.design.md §10.3](./10%20session.design.md#103-开发阶段建议) 与下文任务表。
 
 ---
 
 ## 5. 任务清单
 
-| # | 任务 | 优先级 | 阶段 |
-|---|------|--------|------|
-| O1 | `session_repo_summaries.go` 错误处理统一 | P1 | Phase 1 |
-| O5 | 压缩防抖策略可配置化 | P2 | Phase 1 |
-| 1 | Session 表增加 `pinned_at` 字段 + PinSession/UnpinSession RPC | P2 | Phase 1 |
-| 2 | session_runs 表 + CreateRun/UpdateRun/ListRuns | P2 | Phase 2 |
-| 3 | session_run_steps 表 + CreateStep/UpdateStep/ListSteps | P2 | Phase 2 |
-| 4 | session_participants 表 + CRUD + 贡献指标 | P2 | Phase 2 |
-| 5 | 前端 Team Session Participants Panel | P2 | Phase 2 |
-| 6 | session_trace_spans 表 + Trace API | P3 | Phase 3 |
-| 7 | session_context_snapshots 表 + 快照 API | P3 | Phase 3 |
-| 8 | session_model_summaries 表 + 模型分布 API | P3 | Phase 3 |
-| 9 | 前端 Trace 链路页 | P3 | Phase 3 |
-| 10 | 前端 Context 趋势线 | P3 | Phase 3 |
-| 11 | ExportSession RPC（Markdown/JSON） | P3 | Phase 4 |
-| 12 | SearchMessages RPC（全文检索） | P3 | Phase 4 |
-| **13** | **Session 批量治理 Phase 1b（见上表 SES-1b-*）** | **P1** | **Phase 1b** |
-| 14 | trpc session.Service 适配器 | P3 | Phase 5 |
-| 15 | Event 分页 + Session Track | P3 | Phase 5 |
-| 16 | Session Ingestor | P4 | Phase 5 |
-| 17 | 多后端支持（Redis/PG） | P4 | Phase 5 |
+| # | 任务 | 优先级 | 阶段 | 状态 |
+|---|------|--------|------|------|
+| O1 | summaries repo kerrors | P1 | 1 | ✅ |
+| P1 | 消息 DB 分页 + Timeline/压缩/取消路径 | P1 | 1 | ✅ |
+| P3 | 批量 `ListSessionsByIDs` | P3 | 1 | ✅ |
+| O3 | Timeline inv limit | P2 | 1 | ✅ |
+| O5 | 压缩防抖可配置 | P2 | 1 | 待办 |
+| 1 | `pinned_at` + Pin/Unpin | P2 | 1 | 待办 |
+| 2–4 | runs / steps / participants | P2 | 2 | 待办 |
+| 6–10 | trace / snapshots / 前端 Trace | P3 | 3 | 待办 |
+| 11–12 | 导出 / 搜索增强 | P3 | 4 | 搜索 RPC ✅，导出待办 |
+| 13 | Phase 1b 批量治理 | P1 | 1b | ✅ |
+| 14–17 | trpc 适配 / Ingestor / 多后端 | P3–P4 | 5 | 待办 |
 
 ---
 
 ## 6. 验收标准
 
-### Phase 1b
-- [x] 行内删除 + 永久删除确认
-- [x] 批量选择：勾选归档（进度条、无确认）/ 勾选删除（确认+进度）
-- [x] 按保留天数：批量归档 / 批量删除（预览弹窗 + 进度）
-- [x] Batch RPC + Audit
+### Phase 1b ✅
+
+- [x] 行内删除、批量勾选归档/删除、按天数预览与执行
+- [x] Batch RPC + Audit；`running` 排除
 
 ### Phase 1
-- [ ] `session_repo_summaries.go` 全部使用 kerrors
-- [ ] 压缩防抖间隔可从 Agent Settings 读取
-- [ ] 用户可置顶/取消置顶会话
-- [ ] 置顶会话在列表中优先显示
 
-### Phase 2
-- [ ] 可查看 Session 的 Run 列表和步骤详情
-- [ ] Team Session 可查看参与者列表和贡献指标
-- [ ] 前端展示 Team Session 参与者面板
+- [x] `session_repo_summaries` 使用 kerrors
+- [ ] 压缩防抖可从 Agent L0 设置读取
+- [ ] 置顶会话列表优先
 
-### Phase 3
-- [ ] 可查看 Session 的完整追踪链路
-- [ ] 可查看 Context ratio 趋势图
-- [ ] 可查看模型分布统计
+### Phase 2–5
 
-### Phase 4
-- [ ] 可导出会话为 Markdown/JSON
-- [ ] 可在历史消息中搜索关键词
-
-### Phase 5
-- [ ] trpc session.Service 接口可用
-- [ ] 支持 Redis/PG 后端
+- [ ] Run/Step/参与者可查询；Team 参与者 UI
+- [ ] Trace/Context 趋势/模型分布
+- [ ] 导出 Markdown/JSON
+- [ ] trpc session.Service 可按配置切换后端
 
 ---
 
 ## 7. 依赖与风险
 
-- 全文检索需评估 SQLite FTS5 或引入搜索引擎
-- session_runs / session_run_steps 需与 ChatService/TeamRunner 的生命周期对齐
-- trpc session.Service 适配器需与 trpc-agent-go 框架版本同步
-- 多后端支持需抽象 Repository 接口，确保 Ent 方案可替换
+- 消息 FTS 依赖 `messages_fts` 迁移；无表时自动 LIKE 回退（`message_search.go`）。
+- `session_runs` 写入须与 `ChatService` / Team Runner 生命周期同一事务边界设计。
+- trpc `session.Service` 与 Ent 业务 `sessions` 双写期需明确 transcript 真相源（见 `0-system-development.md` Session 行）。
+- Timeline 消息已 cap 2000；超过部分不进入合并（summary 统计窗口内条目）。完整游标分页见 O2。
+- Ent `sessions` 与 trpc `trpc_*` session 表并存：业务 transcript 以 `messages` 为准（见 design §〇）。

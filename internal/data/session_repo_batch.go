@@ -12,6 +12,39 @@ import (
 	entsql "entgo.io/ent/dialect/sql"
 )
 
+func (r *sessionRepo) ListSessionsByIDs(ctx context.Context, ids []string) ([]biz.Session, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	seen := make(map[string]struct{}, len(ids))
+	unique := make([]string, 0, len(ids))
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		unique = append(unique, id)
+	}
+	if len(unique) == 0 {
+		return nil, nil
+	}
+	rows, err := r.data.entClient.Session.Query().
+		Where(entsession.IDIn(unique...), entsession.DeletedAtEQ("")).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]biz.Session, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, entSessionToBiz(row))
+	}
+	return out, nil
+}
+
 func (r *sessionRepo) ListSessionsForBatch(ctx context.Context, q biz.SessionSearchQuery) ([]biz.Session, error) {
 	c := r.data.entClient
 	limit := q.Limit

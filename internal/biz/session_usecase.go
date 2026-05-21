@@ -112,6 +112,12 @@ type MessageSearchResult struct {
 	Total int
 }
 
+// MessageListResult is paginated session messages (DB limit/offset).
+type MessageListResult struct {
+	Items []ChatMessage
+	Total int
+}
+
 // ChatMessage is one messages row for timeline assembly.
 type ChatMessage struct {
 	ID               string
@@ -224,6 +230,47 @@ type TimelineQuery struct {
 	SortOrder  string
 }
 
+const (
+	timelineDefaultInvLimit = 100
+	timelineMaxInvLimit     = 500
+
+	MessageListDefaultLimit = 100
+	MessageListMaxLimit     = 500
+	TimelineMessageMaxFetch = 2000
+	CompressMessageMaxRows  = 512
+	ActivityCancelScanLimit = 64
+)
+
+func timelineMessageFetchLimit(q TimelineQuery) int {
+	need := q.Limit + q.Offset
+	if need <= 0 || need > TimelineMessageMaxFetch {
+		return TimelineMessageMaxFetch
+	}
+	return need
+}
+
+func clampMessageListLimit(limit int) int {
+	if limit <= 0 {
+		return MessageListDefaultLimit
+	}
+	if limit > MessageListMaxLimit {
+		return MessageListMaxLimit
+	}
+	return limit
+}
+
+// timelineInvocationLimit bounds tool/skill rows loaded before merge-sort (see Timeline).
+func timelineInvocationLimit(q TimelineQuery) int {
+	limit := q.Limit
+	if limit <= 0 {
+		limit = timelineDefaultInvLimit
+	}
+	if limit > timelineMaxInvLimit {
+		limit = timelineMaxInvLimit
+	}
+	return limit
+}
+
 type SessionTurn struct {
 	ID                  string
 	SessionID           string
@@ -295,7 +342,11 @@ type SessionRepository interface {
 	ArchiveSession(ctx context.Context, id string) error
 	DeleteSession(ctx context.Context, id string) error
 	DeleteSessionsByAgentID(ctx context.Context, agentID string) error
-	ListMessagesBySession(ctx context.Context, sessionID string) ([]ChatMessage, error)
+	CountMessagesBySession(ctx context.Context, sessionID string) (int, error)
+	ListMessagesBySession(ctx context.Context, sessionID string, limit, offset int) ([]ChatMessage, error)
+	ListMessagesAfterTurn(ctx context.Context, sessionID string, afterTurn int) ([]ChatMessage, error)
+	ListMessagesByStatus(ctx context.Context, sessionID, status string, limit int) ([]ChatMessage, error)
+	ListMessagesRecent(ctx context.Context, sessionID string, limit int) ([]ChatMessage, error)
 	SearchMessages(ctx context.Context, q MessageSearchQuery) (MessageSearchResult, error)
 	ListToolInvocationsBySession(ctx context.Context, sessionID string, limit int) ([]ToolInvocationView, error)
 	ListSkillInvocationsBySession(ctx context.Context, sessionID string, limit int) ([]SkillInvocationView, error)
@@ -330,11 +381,12 @@ type SessionRepository interface {
 	IncrementInvocationCounts(ctx context.Context, sessionID string, toolDelta, mcpDelta, skillDelta int) error
 	// ListSessionsForBatch returns sessions matching search scope with limit/offset pagination.
 	ListSessionsForBatch(ctx context.Context, q SessionSearchQuery) ([]Session, error)
+	ListSessionsByIDs(ctx context.Context, ids []string) ([]Session, error)
 	ArchiveSessionsByIDs(ctx context.Context, ids []string) (processed int, failed []string, err error)
 	DeleteSessionsByIDs(ctx context.Context, ids []string) (processed int, failed []string, err error)
 }
 
-// SessionUsecase handles session CRUD + timeline（不包含发送消息）.
+// SessionUsecase handles session CRUD + timeline. Chat 写消息经 AppendChat* 等仓储方法，不经 SessionService RPC.
 type SessionUsecase struct {
 	sessions       SessionRepository
 	agents         AgentRepository
@@ -474,14 +526,62 @@ func (uc *SessionUsecase) SearchMessages(ctx context.Context, q MessageSearchQue
 }
 
 func (uc *SessionUsecase) ListMessages(ctx context.Context, sessionID string) ([]ChatMessage, error) {
+	res, err := uc.ListMessagesPaged(ctx, sessionID, 0, 0)
+	if err != nil {
+		return nil, err
+	}
+	return res.Items, nil
+}
+
+// ListMessagesPaged returns messages with DB pagination (default limit when limit<=0).
+func (uc *SessionUsecase) ListMessagesPaged(ctx context.Context, sessionID string, limit, offset int) (MessageListResult, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return MessageListResult{}, validationErr("session id is required")
+	}
+	if _, err := uc.sessions.GetSessionByID(ctx, sessionID); err != nil {
+		return MessageListResult{}, err
+	}
+	total, err := uc.sessions.CountMessagesBySession(ctx, sessionID)
+	if err != nil {
+		return MessageListResult{}, err
+	}
+	limit = clampMessageListLimit(limit)
+	if offset < 0 {
+		offset = 0
+	}
+	items, err := uc.sessions.ListMessagesBySession(ctx, sessionID, limit, offset)
+	if err != nil {
+		return MessageListResult{}, err
+	}
+	return MessageListResult{Items: items, Total: total}, nil
+}
+
+// ListMessagesAfterTurn loads rows with turn_index > afterTurn (compression path).
+func (uc *SessionUsecase) ListMessagesAfterTurn(ctx context.Context, sessionID string, afterTurn int) ([]ChatMessage, error) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
 		return nil, validationErr("session id is required")
 	}
-	if _, err := uc.sessions.GetSessionByID(ctx, sessionID); err != nil {
-		return nil, err
+	return uc.sessions.ListMessagesAfterTurn(ctx, sessionID, afterTurn)
+}
+
+// ListMessagesByStatus loads recent rows matching status (e.g. tool_running cancel path).
+func (uc *SessionUsecase) ListMessagesByStatus(ctx context.Context, sessionID, status string, limit int) ([]ChatMessage, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return nil, validationErr("session id is required")
 	}
-	return uc.sessions.ListMessagesBySession(ctx, sessionID)
+	return uc.sessions.ListMessagesByStatus(ctx, sessionID, status, limit)
+}
+
+// ListMessagesRecent loads the latest N messages in chronological order (timeline / cron).
+func (uc *SessionUsecase) ListMessagesRecent(ctx context.Context, sessionID string, limit int) ([]ChatMessage, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return nil, validationErr("session id is required")
+	}
+	return uc.sessions.ListMessagesRecent(ctx, sessionID, limit)
 }
 
 // AppendChatTurn persists a user + assistant pair (native chat).
@@ -707,15 +807,17 @@ func (uc *SessionUsecase) Timeline(ctx context.Context, id string, q TimelineQue
 		return SessionTimeline{}, err
 	}
 
-	messages, err := uc.sessions.ListMessagesBySession(ctx, id)
+	msgFetch := timelineMessageFetchLimit(q)
+	messages, err := uc.sessions.ListMessagesRecent(ctx, id, msgFetch)
 	if err != nil {
 		return SessionTimeline{}, err
 	}
-	tools, err := uc.sessions.ListToolInvocationsBySession(ctx, id, 100)
+	invLimit := timelineInvocationLimit(q)
+	tools, err := uc.sessions.ListToolInvocationsBySession(ctx, id, invLimit)
 	if err != nil {
 		return SessionTimeline{}, err
 	}
-	skills, err := uc.sessions.ListSkillInvocationsBySession(ctx, id, 100)
+	skills, err := uc.sessions.ListSkillInvocationsBySession(ctx, id, invLimit)
 	if err != nil {
 		return SessionTimeline{}, err
 	}

@@ -18,7 +18,7 @@ func CancelRunningActivityMessages(ctx context.Context, sessions *biz.SessionUse
 	if sessionID == "" {
 		return 0, nil
 	}
-	msgs, err := sessions.ListMessages(ctx, sessionID)
+	msgs, err := sessions.ListMessagesByStatus(ctx, sessionID, "tool_running", biz.ActivityCancelScanLimit)
 	if err != nil {
 		return 0, err
 	}

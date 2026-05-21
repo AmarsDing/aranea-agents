@@ -326,34 +326,113 @@ func (r *sessionRepo) DeleteSessionsByAgentID(ctx context.Context, agentID strin
 	return err
 }
 
-func (r *sessionRepo) ListMessagesBySession(ctx context.Context, sessionID string) ([]biz.ChatMessage, error) {
-	c := r.data.entClient
-	rows, err := c.Message.Query().
+func entMessageToBiz(m *ent.Message) biz.ChatMessage {
+	if m == nil {
+		return biz.ChatMessage{}
+	}
+	return biz.ChatMessage{
+		ID: m.ID, SessionID: m.SessionID, ParentMessageID: m.ParentMessageID,
+		TurnIndex: m.TurnIndex, Role: m.Role, ContentMarkdown: m.ContentMarkdown,
+		ModelName: m.ModelName, TokenIn: m.TokenIn, TokenOut: m.TokenOut,
+		LatencyMS: m.LatencyMs, Status: m.Status, AttachmentsCount: m.AttachmentsCount,
+		OptionsJSON: m.OptionsJSON, ErrorMessage: m.ErrorMessage, CreatedAt: m.CreatedAt,
+	}
+}
+
+func (r *sessionRepo) CountMessagesBySession(ctx context.Context, sessionID string) (int, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return 0, kerrors.BadRequest("SESSION", "session id is required")
+	}
+	return r.data.entClient.Message.Query().Where(message.SessionIDEQ(sessionID)).Count(ctx)
+}
+
+func (r *sessionRepo) ListMessagesBySession(ctx context.Context, sessionID string, limit, offset int) ([]biz.ChatMessage, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return nil, kerrors.BadRequest("SESSION", "session id is required")
+	}
+	if limit <= 0 {
+		limit = biz.MessageListDefaultLimit
+	}
+	if limit > biz.MessageListMaxLimit {
+		limit = biz.MessageListMaxLimit
+	}
+	rows, err := r.data.entClient.Message.Query().
 		Where(message.SessionIDEQ(sessionID)).
 		Order(message.ByTurnIndex(entsql.OrderAsc()), message.ByCreatedAt(entsql.OrderAsc())).
-		All(ctx)
+		Limit(limit).Offset(clampOffset(offset)).All(ctx)
 	if err != nil {
 		return nil, err
 	}
 	out := make([]biz.ChatMessage, 0, len(rows))
 	for _, m := range rows {
-		out = append(out, biz.ChatMessage{
-			ID:               m.ID,
-			SessionID:        m.SessionID,
-			ParentMessageID:  m.ParentMessageID,
-			TurnIndex:        m.TurnIndex,
-			Role:             m.Role,
-			ContentMarkdown:  m.ContentMarkdown,
-			ModelName:        m.ModelName,
-			TokenIn:          m.TokenIn,
-			TokenOut:         m.TokenOut,
-			LatencyMS:        m.LatencyMs,
-			Status:           m.Status,
-			AttachmentsCount: m.AttachmentsCount,
-			OptionsJSON:      m.OptionsJSON,
-			ErrorMessage:     m.ErrorMessage,
-			CreatedAt:        m.CreatedAt,
-		})
+		out = append(out, entMessageToBiz(m))
+	}
+	return out, nil
+}
+
+func (r *sessionRepo) ListMessagesAfterTurn(ctx context.Context, sessionID string, afterTurn int) ([]biz.ChatMessage, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return nil, kerrors.BadRequest("SESSION", "session id is required")
+	}
+	q := r.data.entClient.Message.Query().Where(message.SessionIDEQ(sessionID))
+	if afterTurn > 0 {
+		q = q.Where(message.TurnIndexGT(afterTurn))
+	}
+	rows, err := q.Order(message.ByTurnIndex(entsql.OrderAsc()), message.ByCreatedAt(entsql.OrderAsc())).
+		Limit(biz.CompressMessageMaxRows).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]biz.ChatMessage, 0, len(rows))
+	for _, m := range rows {
+		out = append(out, entMessageToBiz(m))
+	}
+	return out, nil
+}
+
+func (r *sessionRepo) ListMessagesByStatus(ctx context.Context, sessionID, status string, limit int) ([]biz.ChatMessage, error) {
+	sessionID, status = strings.TrimSpace(sessionID), strings.TrimSpace(status)
+	if sessionID == "" || status == "" {
+		return nil, kerrors.BadRequest("SESSION", "session id and status are required")
+	}
+	if limit <= 0 || limit > biz.ActivityCancelScanLimit {
+		limit = biz.ActivityCancelScanLimit
+	}
+	rows, err := r.data.entClient.Message.Query().
+		Where(message.SessionIDEQ(sessionID), message.StatusEQ(status)).
+		Order(message.ByTurnIndex(entsql.OrderDesc()), message.ByCreatedAt(entsql.OrderDesc())).
+		Limit(limit).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]biz.ChatMessage, 0, len(rows))
+	for _, m := range rows {
+		out = append(out, entMessageToBiz(m))
+	}
+	return out, nil
+}
+
+func (r *sessionRepo) ListMessagesRecent(ctx context.Context, sessionID string, limit int) ([]biz.ChatMessage, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return nil, kerrors.BadRequest("SESSION", "session id is required")
+	}
+	if limit <= 0 || limit > biz.TimelineMessageMaxFetch {
+		limit = biz.TimelineMessageMaxFetch
+	}
+	rows, err := r.data.entClient.Message.Query().
+		Where(message.SessionIDEQ(sessionID)).
+		Order(message.ByTurnIndex(entsql.OrderDesc()), message.ByCreatedAt(entsql.OrderDesc())).
+		Limit(limit).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]biz.ChatMessage, 0, len(rows))
+	for i := len(rows) - 1; i >= 0; i-- {
+		out = append(out, entMessageToBiz(rows[i]))
 	}
 	return out, nil
 }

@@ -287,32 +287,15 @@ func toProtoChatMessageRow(m biz.ChatMessage) *v1.ChatMessageRow {
 
 // ListSessionMessages implements GET /v1/sessions/{id}/messages.
 func (s *SessionService) ListSessionMessages(ctx context.Context, req *v1.ListSessionMessagesRequest) (*v1.ListSessionMessagesResponse, error) {
-	rows, err := s.uc.ListMessages(ctx, req.GetId())
+	res, err := s.uc.ListMessagesPaged(ctx, req.GetId(), int(req.GetLimit()), int(req.GetOffset()))
 	if err != nil {
 		return nil, mapSessionErr(err)
 	}
-	total := len(rows)
-	offset := int(req.GetOffset())
-	limit := int(req.GetLimit())
-	if offset < 0 {
-		offset = 0
+	out := make([]*v1.ChatMessageRow, 0, len(res.Items))
+	for i := range res.Items {
+		out = append(out, toProtoChatMessageRow(res.Items[i]))
 	}
-	if offset > total {
-		offset = total
-	}
-	if limit <= 0 {
-		limit = total
-	}
-	end := offset + limit
-	if end > total {
-		end = total
-	}
-	paged := rows[offset:end]
-	out := make([]*v1.ChatMessageRow, 0, len(paged))
-	for i := range paged {
-		out = append(out, toProtoChatMessageRow(paged[i]))
-	}
-	return &v1.ListSessionMessagesResponse{Items: out, Total: int32(total)}, nil
+	return &v1.ListSessionMessagesResponse{Items: out, Total: int32(res.Total)}, nil
 }
 
 // SearchSessionMessages implements GET /v1/sessions/messages/search.

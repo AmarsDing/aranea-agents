@@ -135,14 +135,9 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 		}
 	}
 
-	msgs, err := w.sessions.ListMessages(ctx, sid)
+	msgs, err := w.sessions.ListMessagesRecent(ctx, sid, autoMemoryMaxMessages)
 	if err != nil {
 		return err
-	}
-
-	// Only examine the last autoMemoryMaxMessages messages.
-	if len(msgs) > autoMemoryMaxMessages {
-		msgs = msgs[len(msgs)-autoMemoryMaxMessages:]
 	}
 
 	uk := trpcmemory.UserKey{AppName: req.AppName, UserID: req.UserID}

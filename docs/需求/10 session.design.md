@@ -1,7 +1,27 @@
 # Session 管理模块 — 实现设计文档
 
-> 对应需求：`10 session.md`
-> 遵循规范：`AI-DEVELOPMENT-SPECIFICATION.md`
+> 对应需求：[10 session.md](./10%20session.md) · 开发计划：[10-session-development.md](./10-session-development.md)
+> 遵循规范：[AI-DEVELOPMENT-SPECIFICATION.md](../guides/AI-DEVELOPMENT-SPECIFICATION.md) · 运行时边界：[AGENT_RUNTIME_BOUNDARY.md](../AGENT_RUNTIME_BOUNDARY.md)
+
+---
+
+## 〇、分层与单一职责（影响域）
+
+| 层 / 包 | 职责 | 禁止 |
+|---------|------|------|
+| `api/kratos/session/v1` | 对外 RPC/HTTP 契约 | 业务分支 |
+| `internal/service/session.go` | Proto ↔ biz、Audit、**不含**消息发送/Runner Run | import `pkg/trpc-agent-go` 编排 |
+| `internal/service/session_batch.go` | 批量预览/归档/删除 RPC | 与 Timeline 聚合混写 |
+| `internal/service/session_compress.go` | 异步上下文压缩、`NativeTurnCompressor` | 直接写 Ent |
+| `internal/biz/session_usecase.go` | CRUD、Timeline 聚合、消息追加、Turn/State | import trpc-agent-go |
+| `internal/biz/session_batch.go` | cutoff 解析、scope 扫描、批量命中（与 CRUD 分文件） | SQL |
+| `internal/data/session_repo*.go` | Ent/SQL 持久化 | 业务规则（running 不可删在 biz 校验） |
+| `internal/data/message_search.go` | 消息 FTS/LIKE 检索 | — |
+| `internal/agent` + `sessionmemory` | Runner 事件投影、L0 记忆链 | 替代 `SessionUsecase` 做列表 CRUD |
+
+**Chat 发送路径**：`ChatService` → `SessionUsecase.AppendChat*` / `UpdateRunnerSnapshotJSON` / `SessionCompressor`；**不**在 `SessionService` 内调用 Runner。
+
+**批量治理影响域**：`Batch*` RPC → `session_batch.go` (biz) → `session_repo_batch.go` (data)；Monitor Audit `archive.session.batch` / `delete.session.batch`。
 
 ---
 
@@ -301,8 +321,22 @@ service SessionService {
   rpc ListSessionTurns(ListSessionTurnsRequest) returns (ListSessionTurnsResponse) {
     option (google.api.http) = {get: "/v1/sessions/{session_id}/turns"};
   }
+  rpc SearchSessionMessages(SearchSessionMessagesRequest) returns (SearchSessionMessagesResponse) {
+    option (google.api.http) = {get: "/v1/sessions/messages/search"};
+  }
+  rpc BatchPreviewSessions(BatchPreviewSessionsRequest) returns (BatchPreviewSessionsResponse) {
+    option (google.api.http) = {post: "/v1/sessions:batchPreview" body: "*"};
+  }
+  rpc BatchArchiveSessions(BatchArchiveSessionsRequest) returns (BatchSessionsResponse) {
+    option (google.api.http) = {post: "/v1/sessions:batchArchive" body: "*"};
+  }
+  rpc BatchDeleteSessions(BatchDeleteSessionsRequest) returns (BatchSessionsResponse) {
+    option (google.api.http) = {post: "/v1/sessions:batchDelete" body: "*"};
+  }
 }
 ```
+
+> 完整定义以仓库内 `api/kratos/session/v1/session.proto` 为准；上文为设计索引，非逐字拷贝。
 
 ### 2.2 RPC 与 HTTP 路由映射
 
@@ -626,7 +660,11 @@ type SessionRepository interface {
     ArchiveSession(ctx context.Context, id string) error
     DeleteSession(ctx context.Context, id string) error
     DeleteSessionsByAgentID(ctx context.Context, agentID string) error
-    ListMessagesBySession(ctx context.Context, sessionID string) ([]ChatMessage, error)
+    CountMessagesBySession(ctx context.Context, sessionID string) (int, error)
+    ListMessagesBySession(ctx context.Context, sessionID string, limit, offset int) ([]ChatMessage, error)
+    ListMessagesAfterTurn(ctx context.Context, sessionID string, afterTurn int) ([]ChatMessage, error)
+    ListMessagesByStatus(ctx context.Context, sessionID, status string, limit int) ([]ChatMessage, error)
+    ListMessagesRecent(ctx context.Context, sessionID string, limit int) ([]ChatMessage, error)
     ListToolInvocationsBySession(ctx context.Context, sessionID string, limit int) ([]ToolInvocationView, error)
     ListSkillInvocationsBySession(ctx context.Context, sessionID string, limit int) ([]SkillInvocationView, error)
     AppendChatTurn(ctx context.Context, sessionID string, user, assistant ChatMessage) error
@@ -645,6 +683,11 @@ type SessionRepository interface {
     UpdateSessionTurn(ctx context.Context, id string, fields SessionTurnUpdateFields) (SessionTurn, error)
     ListSessionTurns(ctx context.Context, sessionID string, limit, offset int) (SessionTurnListResult, error)
     GetSessionTurn(ctx context.Context, id string) (SessionTurn, error)
+    SearchMessages(ctx context.Context, q MessageSearchQuery) (MessageSearchResult, error)
+    IncrementInvocationCounts(ctx context.Context, sessionID string, toolDelta, mcpDelta, skillDelta int) error
+    ListSessionsForBatch(ctx context.Context, q SessionSearchQuery) ([]Session, error)
+    ArchiveSessionsByIDs(ctx context.Context, ids []string) (processed int, failed []string, err error)
+    DeleteSessionsByIDs(ctx context.Context, ids []string) (processed int, failed []string, err error)
 }
 ```
 
@@ -670,6 +713,8 @@ func (uc *SessionUsecase) Archive(ctx context.Context, id string) error
 func (uc *SessionUsecase) Delete(ctx context.Context, id string) error
 func (uc *SessionUsecase) DeleteByAgent(ctx context.Context, agentID string) error
 func (uc *SessionUsecase) ListMessages(ctx context.Context, sessionID string) ([]ChatMessage, error)
+func (uc *SessionUsecase) ListMessagesPaged(ctx context.Context, sessionID string, limit, offset int) (MessageListResult, error)
+func (uc *SessionUsecase) ListMessagesAfterTurn / ListMessagesByStatus / ListMessagesRecent(...)
 func (uc *SessionUsecase) AppendChatTurn(ctx context.Context, sessionID string, user, assistant ChatMessage) error
 func (uc *SessionUsecase) AppendChatMessage(ctx context.Context, sessionID string, msg ChatMessage, bumpModelCall bool) error
 func (uc *SessionUsecase) UpdateRunnerSnapshotJSON(ctx context.Context, sessionID string, snapshotJSON string) error
@@ -687,6 +732,9 @@ func (uc *SessionUsecase) CreateTurn(ctx context.Context, turn SessionTurn) (Ses
 func (uc *SessionUsecase) UpdateTurn(ctx context.Context, id string, fields SessionTurnUpdateFields) (SessionTurn, error)
 func (uc *SessionUsecase) ListTurns(ctx context.Context, sessionID string, limit, offset int) (SessionTurnListResult, error)
 func (uc *SessionUsecase) Timeline(ctx context.Context, id string, q TimelineQuery) (SessionTimeline, error)
+func (uc *SessionUsecase) SearchMessages(ctx context.Context, q MessageSearchQuery) (MessageSearchResult, error)
+func (uc *SessionUsecase) PreviewBatch / BatchArchive / BatchDelete(...)  // 见 session_batch.go
+func (uc *SessionUsecase) IncrementInvocationCounts(...)  // 工具/MCP/Skill 计数回填 sessions
 ```
 
 ### 3.4 关键业务逻辑
@@ -1315,7 +1363,8 @@ func (s *SessionService) GetSession(ctx context.Context, req *v1.GetSessionReque
 }
 
 func (s *SessionService) UpdateSession(ctx context.Context, req *v1.UpdateSessionRequest) (*v1.Session, error) {
-    out, err := s.uc.Rename(ctx, req.GetId(), req.GetTitle())
+    // 映射 SessionUpdateFields：title / tags_json / visibility / metadata / dialog_mode / default_provider / default_model
+    out, err := s.uc.Update(ctx, req.GetId(), fields)
     if err != nil { return nil, mapSessionErr(err) }
     return toProtoSession(out), nil
 }
@@ -1852,9 +1901,11 @@ export function buildSessionsSummaryCards(rows: Session[], total: number): Sessi
 
 | # | 优化项 | 说明 | 优先级 |
 |---|--------|------|--------|
-| O1 | `session_repo_summaries.go` 错误处理 | 将 `errors.New` 替换为 `kerrors.BadRequest`/`kerrors.InternalServer`，对齐 §10 原则 10 | P1 |
-| O2 | Timeline 聚合性能优化 | 当前全量加载 messages + tools + skills 再内存排序分页，大量数据时性能差；可改为 DB 层分页 | P2 |
-| O3 | ListToolInvocationsBySession 硬编码 limit=100 | 应支持调用方传入 limit，或默认跟随 TimelineQuery.Limit | P2 |
+| O1 | `session_repo_summaries.go` 错误处理 | 将 `errors.New` 替换为 `kerrors.BadRequest`/`kerrors.InternalServer`，对齐 §10 原则 10 | ✅ 2026-05-21 |
+| P1 | 消息加载 | `ListMessagesBySession(limit,offset)` + `CountMessagesBySession`；Timeline `ListMessagesRecent`（cap `TimelineMessageMaxFetch`）；压缩 `ListMessagesAfterTurn`；取消 `ListMessagesByStatus` | ✅ 2026-05-21 |
+| P3 | 批量 ids | `ListSessionsByIDs` + biz `loadBatchCandidates` 一次查询 | ✅ 2026-05-21 |
+| O2 | Timeline 超长会话 | 已 cap 2000 消息；完整 DB UNION/游标分页仍待办 | 部分 |
+| O3 | Timeline 工具/Skill 拉取上限 | `timelineInvocationLimit(q)`：默认 100、最大 500 | ✅ 2026-05-21 |
 | O4 | AppendChatTurn 事务内两次查询 | `maxMessageTurnTx` + session 查询可合并为一次 | P3 |
 | O5 | 压缩防抖策略可配置化 | 当前 `sessionCompressMinGap = 10min` 硬编码，应从 Agent Settings 读取 | P2 |
 | O6 | SessionCompressor 压缩模型选择 | 当前 fallback 逻辑分散，应统一为策略模式 | P3 |
