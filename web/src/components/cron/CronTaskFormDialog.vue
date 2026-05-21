@@ -5,7 +5,7 @@
 -->
 <template>
   <q-dialog :model-value="modelValue" persistent @update:model-value="$emit('update:modelValue', $event)">
-    <q-card class="cron-form-dialog" :class="{ 'is-dark': $q.dark.isActive }">
+    <q-card class="cron-form-dialog app-dialog-card app-dialog-card--md" :class="{ 'is-dark': $q.dark.isActive }">
       <q-card-section class="row items-start justify-between q-gutter-md">
         <div>
           <div class="text-h6 text-primary-contrast">{{ row ? "编辑定时任务" : "创建定时任务" }}</div>
@@ -95,21 +95,7 @@ async function onFormSubmit() {
 
 <style scoped>
 .cron-form-dialog {
-  width: 760px;
-  max-width: 96vw;
-  border: 1px solid var(--glass-border);
-  border-radius: 24px;
-  background: var(--glass-elevated);
-  backdrop-filter: blur(var(--glass-blur-elevated));
-  -webkit-backdrop-filter: blur(var(--glass-blur-elevated));
-  box-shadow: var(--glass-inner-highlight);
-}
-
-.cron-form-dialog.is-dark {
-  background: var(--glass-surface);
-  border-color: var(--glass-border);
-  backdrop-filter: blur(var(--glass-blur-default));
-  -webkit-backdrop-filter: blur(var(--glass-blur-default));
+  /* glass + width from app-dialog-card */
 }
 
 .cron-form-subtitle {

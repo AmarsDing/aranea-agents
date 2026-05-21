@@ -4,7 +4,7 @@
 -->
 <template>
   <q-dialog :model-value="modelValue" persistent @update:model-value="$emit('update:modelValue', $event)">
-    <q-card :class="['team-editor', { 'is-dark': isDark }]">
+    <q-card :class="['team-editor app-dialog-card app-dialog-card--xl', { 'is-dark': isDark }]">
       <q-card-section class="row items-center justify-between">
         <div>
           <div class="text-h6">{{ editingId ? "编辑 Team" : "新增 Team" }}</div>
@@ -13,15 +13,16 @@
         <q-btn flat round icon="close" @click="$emit('update:modelValue', false)" />
       </q-card-section>
       <q-separator />
-      <q-card-section class="q-gutter-md">
-        <q-card flat bordered class="template-panel">
-          <q-card-section class="row q-col-gutter-md items-center">
-            <div class="col-12 col-md-5">
+      <q-scroll-area class="team-editor-scroll">
+      <q-card-section class="app-dialog-body q-gutter-md">
+        <div class="app-dialog-section">
+          <div class="app-form-field-grid app-form-field-grid--2col items-center">
+            <div class="app-grid-span-full">
               <div class="text-subtitle2">Team 模板</div>
               <div class="text-caption text-grey-7">选择模板可快速生成成员角色和编排参数。</div>
             </div>
             <q-select
-              class="col-12 col-md-5 team-control"
+              class="team-control app-field-md"
               dense
               outlined
               clearable
@@ -32,22 +33,19 @@
               :options="teamTemplateOptions"
               @update:model-value="onTemplatePick"
             />
-            <div class="col-12 col-md-2 row justify-end">
-              <q-icon name="auto_awesome" color="primary" size="28px" />
-            </div>
-          </q-card-section>
-        </q-card>
+          </div>
+        </div>
 
-        <div class="row q-col-gutter-md">
-          <q-input v-model.trim="form.display_name" class="col-12 col-md-6 team-control" dense outlined label="Team 名称 *" />
-          <q-input v-model.trim="form.team_key" class="col-12 col-md-6 team-control" dense outlined label="Team Key *" hint="小写字母、数字、连字符" />
-          <q-input v-model.trim="form.app_name" class="col-12 col-md-6 team-control" dense outlined label="App Name" hint="应用标识，留空则使用 Team Key" />
-          <q-select v-model="definition.mode" class="col-12 col-md-4 team-control" dense outlined emit-value map-options label="编排模式" :options="modeOptions" />
-          <q-select v-model="form.status" class="col-12 col-md-4 team-control" dense outlined emit-value map-options label="状态" :options="statusOptions" />
+        <div class="app-form-field-grid app-form-field-grid--wide">
+          <q-input v-model.trim="form.display_name" class="team-control" dense outlined label="Team 名称 *" />
+          <q-input v-model.trim="form.team_key" class="team-control" dense outlined label="Team Key *" hint="小写字母、数字、连字符" />
+          <q-input v-model.trim="form.app_name" class="team-control" dense outlined label="App Name" hint="应用标识，留空则使用 Team Key" />
+          <q-select v-model="definition.mode" class="team-control" dense outlined emit-value map-options label="编排模式" :options="modeOptions" />
+          <q-select v-model="form.status" class="team-control" dense outlined emit-value map-options label="状态" :options="statusOptions" />
           <q-input
             v-if="definition.mode === 'parallel'"
             v-model.number="definition.max_concurrency"
-            class="col-12 col-md-4 team-control"
+            class="team-control"
             dense
             outlined
             type="number"
@@ -58,7 +56,7 @@
           <q-input
             v-else-if="definition.mode === 'coordinator' || definition.mode === 'adaptive'"
             v-model.number="definition.loop_max_iterations"
-            class="col-12 col-md-4 team-control"
+            class="team-control"
             dense
             outlined
             type="number"
@@ -70,7 +68,7 @@
           <q-input
             v-else-if="definition.mode === 'critic_loop'"
             v-model.number="criticLoopMaxIterations"
-            class="col-12 col-md-4 team-control"
+            class="team-control"
             dense
             outlined
             type="number"
@@ -79,14 +77,13 @@
             label="评审迭代次数"
             hint="对应 critic_loop.max_iterations"
           />
-          <div v-else class="col-12 col-md-4" />
-          <q-input v-model="definition.description" class="col-12 team-control" dense outlined autogrow type="textarea" label="Team 说明" />
+          <q-input v-model="definition.description" class="team-control app-field-long" dense outlined autogrow type="textarea" label="Team 说明" />
         </div>
 
-        <div class="row q-col-gutter-md">
+        <div class="app-form-field-grid app-form-field-grid--wide">
           <q-input
             v-model.number="definition.timeout_seconds"
-            class="col-12 col-md-4 team-control"
+            class="team-control"
             dense
             outlined
             type="number"
@@ -97,7 +94,7 @@
           />
           <q-select
             v-model="definition.intent_anchor_agent_id"
-            class="col-12 col-md-8 team-control"
+            class="team-control app-field-md"
             dense
             outlined
             clearable
@@ -110,12 +107,12 @@
         </div>
 
         <q-expansion-item icon="sync_alt" label="A2A 协议">
-          <div class="row q-col-gutter-md q-mt-sm">
-            <q-toggle v-model="a2aEnabled" class="col-12 col-md-3" color="primary" label="启用 A2A 信封" />
-            <q-input v-model="a2aEnvelopeVersion" class="col-12 col-md-3 team-control" dense outlined label="Envelope Version" />
-            <q-select v-model="a2aMessageFormat" class="col-12 col-md-3 team-control" dense outlined emit-value map-options label="消息格式" :options="a2aFormatOptions" />
-            <q-input v-model.number="a2aMaxPayloadChars" class="col-12 col-md-3 team-control" dense outlined type="number" min="500" label="最大载荷字符" />
-            <q-toggle v-model="a2aIncludeTrace" class="col-12" color="primary" label="包含 trace metadata" />
+          <div class="app-form-field-grid q-mt-sm">
+            <q-toggle v-model="a2aEnabled" color="primary" label="启用 A2A 信封" />
+            <q-input v-model="a2aEnvelopeVersion" class="team-control" dense outlined label="Envelope Version" />
+            <q-select v-model="a2aMessageFormat" class="team-control" dense outlined emit-value map-options label="消息格式" :options="a2aFormatOptions" />
+            <q-input v-model.number="a2aMaxPayloadChars" class="team-control" dense outlined type="number" min="500" label="最大载荷字符" />
+            <q-toggle v-model="a2aIncludeTrace" class="app-grid-span-full" color="primary" label="包含 trace metadata" />
           </div>
         </q-expansion-item>
 
@@ -126,13 +123,15 @@
         </div>
         <div class="member-editor-list">
           <q-card v-for="(member, index) in definition.members" :key="index" flat bordered class="member-editor">
-            <q-card-section class="row q-col-gutter-sm items-center">
-              <q-select v-model="member.agent_id" class="col-12 col-md-4 team-control" dense outlined emit-value map-options label="Agent" :options="agentOptions" />
-              <q-select v-model="member.role" class="col-12 col-md-2 team-control" dense outlined emit-value map-options label="角色" :options="roleOptions" />
-              <q-input v-model="member.name" class="col-12 col-md-3 team-control" dense outlined label="成员名称" />
-              <q-input v-model.number="member.sort_order" class="col-6 col-md-1 team-control" dense outlined type="number" label="顺序" />
-              <q-toggle v-model="member.enabled" class="col-3 col-md-1" color="primary" />
-              <q-btn class="col-3 col-md-1" flat dense round color="negative" icon="delete" @click="$emit('removeMember', index)" />
+            <q-card-section class="app-form-field-grid app-form-field-grid--wide items-center">
+              <q-select v-model="member.agent_id" class="team-control" dense outlined emit-value map-options label="Agent" :options="agentOptions" />
+              <q-select v-model="member.role" class="team-control" dense outlined emit-value map-options label="角色" :options="roleOptions" />
+              <q-input v-model="member.name" class="team-control" dense outlined label="成员名称" />
+              <q-input v-model.number="member.sort_order" class="team-control" dense outlined type="number" label="顺序" />
+              <q-toggle v-model="member.enabled" color="primary" />
+              <div class="app-actions-bar app-actions-bar--start">
+                <q-btn flat dense round color="negative" icon="delete" @click="$emit('removeMember', index)" />
+              </div>
             </q-card-section>
           </q-card>
         </div>
@@ -166,9 +165,10 @@
           <pre class="definition-json">{{ definitionJSON }}</pre>
         </q-expansion-item>
       </q-card-section>
-      <q-card-actions align="right">
-        <q-btn flat rounded label="取消" @click="$emit('update:modelValue', false)" />
-        <q-btn color="primary" rounded unelevated label="保存" :loading="saving" :disable="!canSave" @click="$emit('save')" />
+      </q-scroll-area>
+      <q-card-actions align="right" class="app-actions-bar">
+        <q-btn flat rounded no-caps label="取消" @click="$emit('update:modelValue', false)" />
+        <q-btn color="primary" rounded unelevated no-caps label="保存" :loading="saving" :disable="!canSave" @click="$emit('save')" />
       </q-card-actions>
     </q-card>
   </q-dialog>
@@ -278,19 +278,13 @@ function graphNodeIcon(type: string) {
 </script>
 
 <style scoped>
-.team-editor {
-  width: 920px;
-  max-width: 94vw;
-  border: 1px solid rgb(15 23 42 / 8%);
-  border-radius: 24px;
-  background: rgb(255 255 255 / 86%);
-  box-shadow: 0 18px 48px rgb(16 24 40 / 6%);
-  backdrop-filter: blur(16px);
+.team-editor-scroll {
+  max-height: min(72vh, 820px);
 }
 
 .team-control :deep(.q-field__control) {
   border-radius: 16px;
-  background: var(--color-on-accent);
+  background: var(--glass-elevated);
 }
 
 .member-editor-list {
@@ -299,17 +293,11 @@ function graphNodeIcon(type: string) {
 }
 
 .member-editor {
-  gap: 10px;
-  padding: 10px 12px;
-  border: 1px solid rgb(15 23 42 / 8%);
+  border: 1px solid var(--glass-border);
   border-radius: 16px;
-  background: var(--color-page-tint);
-}
-
-.template-panel {
-  border: 1px solid rgb(15 23 42 / 8%);
-  border-radius: 18px;
-  background: rgb(238 246 255 / 55%);
+  background: var(--glass-surface);
+  backdrop-filter: blur(var(--glass-blur-default));
+  -webkit-backdrop-filter: blur(var(--glass-blur-default));
 }
 
 .topology-preview {
@@ -324,19 +312,19 @@ function graphNodeIcon(type: string) {
   align-items: center;
   gap: 6px;
   padding: 7px 10px;
-  border: 1px solid rgb(25 118 210 / 12%);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 18%, transparent);
   border-radius: 999px;
-  background: var(--color-info-soft);
-  color: var(--color-link);
+  background: color-mix(in srgb, var(--color-accent) 8%, var(--glass-surface));
+  color: var(--color-accent);
   font-size: 12px;
   font-weight: 700;
 }
 
 .graph-preview {
   padding: 12px;
-  border: 1px solid rgb(15 23 42 / 8%);
+  border: 1px solid var(--glass-border);
   border-radius: 18px;
-  background: rgb(248 250 252 / 82%);
+  background: var(--glass-surface);
 }
 
 .graph-canvas,
@@ -355,19 +343,19 @@ function graphNodeIcon(type: string) {
   align-items: center;
   gap: 8px;
   padding: 10px 12px;
-  border: 1px solid rgb(25 118 210 / 12%);
+  border: 1px solid var(--glass-border);
   border-radius: 14px;
-  background: var(--color-on-accent);
+  background: var(--glass-elevated);
 }
 
 .graph-edge {
   flex-wrap: wrap;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-secondary);
   font-size: 12px;
 }
 
 .graph-node {
-  color: var(--color-link);
+  color: var(--color-text-primary);
 }
 
 .definition-json {
@@ -376,44 +364,12 @@ function graphNodeIcon(type: string) {
   overflow: auto;
   padding: 12px;
   border-radius: 14px;
-  background: rgb(15 23 42 / 6%);
-}
-
-.team-editor.is-dark,
-.team-editor.is-dark .member-editor,
-.team-editor.is-dark .template-panel {
-  border-color: rgb(148 163 184 / 16%);
-  background: rgb(17 24 39 / 90%);
-  box-shadow: 0 14px 38px rgb(0 0 0 / 32%);
+  border: 1px solid var(--glass-border);
+  background: var(--glass-elevated);
+  color: var(--color-text-primary);
 }
 
 .team-editor.is-dark .team-control :deep(.q-field__control) {
-  border-color: rgb(148 163 184 / 14%);
-  background: rgb(30 41 59 / 76%);
-}
-
-.team-editor.is-dark .topology-node {
-  border-color: rgb(96 165 250 / 22%);
-  background: rgb(30 64 175 / 24%);
-  color: var(--color-link);
-}
-
-.team-editor.is-dark .graph-preview,
-.team-editor.is-dark .graph-node,
-.team-editor.is-dark .graph-edge {
-  border-color: rgb(148 163 184 / 14%);
-  background: rgb(30 41 59 / 76%);
-}
-
-.team-editor.is-dark .graph-node {
-  color: var(--color-link);
-}
-
-.team-editor.is-dark .graph-edge {
-  color: var(--color-text-slate-300);
-}
-
-.team-editor.is-dark .definition-json {
-  background: rgb(15 23 42 / 86%);
+  background: color-mix(in srgb, var(--glass-surface) 88%, transparent);
 }
 </style>

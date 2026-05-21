@@ -1,8 +1,8 @@
 <template>
   <q-table
     flat
-    bordered
-    class="skill-table"
+    dense
+    class="app-registry-table skill-table"
     row-key="id"
     :rows="rows"
     :columns="columns"
@@ -12,14 +12,22 @@
   >
     <template #body-cell-name="props">
       <q-td :props="props">
-        <div class="text-weight-medium">{{ props.row.name }}</div>
-        <div class="text-caption text-grey-7">{{ props.row.slug }}</div>
+        <div class="app-registry-cell-primary">{{ props.row.name }}</div>
+        <div class="app-registry-cell-sub">{{ props.row.slug }}</div>
+      </q-td>
+    </template>
+
+    <template #body-cell-description="props">
+      <q-td :props="props">
+        <div class="app-registry-cell-desc skill-table-desc" :title="props.row.description || ''">
+          {{ props.row.description || "暂无描述" }}
+        </div>
       </q-td>
     </template>
 
     <template #body-cell-tags="props">
       <q-td :props="props">
-        <div class="row q-gutter-xs">
+        <div class="app-registry-chip-wrap">
           <q-chip v-for="tag in props.row.tags" :key="tag.name" dense :outline="tag.source === 'system'" color="primary" text-color="white">
             {{ tag.name }}
           </q-chip>
@@ -30,8 +38,10 @@
 
     <template #body-cell-status="props">
       <q-td :props="props">
-        <q-badge rounded :color="statusColor(props.row.status)">{{ statusLabel(props.row.status) }}</q-badge>
-        <div class="text-caption text-grey-7 q-mt-xs">{{ props.row.current_version?.version ?? "无版本" }}</div>
+        <div class="skill-status-cell">
+          <q-badge rounded :color="statusColor(props.row.status)">{{ statusLabel(props.row.status) }}</q-badge>
+          <span class="skill-status-cell__version">{{ props.row.current_version?.version ?? "无版本" }}</span>
+        </div>
       </q-td>
     </template>
 
@@ -61,7 +71,8 @@
     </template>
 
     <template #body-cell-actions="props">
-      <q-td :props="props" class="q-gutter-xs">
+      <q-td :props="props">
+        <div class="app-registry-cell-actions">
         <q-btn
           v-if="props.row.status === 'draft'"
           flat
@@ -81,6 +92,7 @@
         <q-btn flat dense round color="negative" icon="delete" :disable="!props.row.permissions.can_delete" @click="emit('delete', props.row)">
           <q-tooltip>删除</q-tooltip>
         </q-btn>
+        </div>
       </q-td>
     </template>
   </q-table>
@@ -90,6 +102,7 @@
 import type { QTableColumn } from "quasar";
 import SkillStatsStrip from "./SkillStatsStrip.vue";
 import type { Skill } from "../../features/skills/types";
+import { registryCol } from "../../features/ui/registryTableColumns";
 
 defineProps<{
   rows: Skill[];
@@ -109,14 +122,14 @@ const emit = defineEmits<{
 const tablePagination = { rowsPerPage: 0 };
 
 const columns: QTableColumn<Skill>[] = [
-  { name: "name", label: "名称", field: "name", align: "left" },
-  { name: "description", label: "描述", field: "description", align: "left", style: "max-width: 260px; white-space: normal;" },
-  { name: "tags", label: "标签", field: "tags", align: "left" },
-  { name: "status", label: "状态 / 版本", field: "status", align: "left" },
-  { name: "enabled", label: "启用", field: "enabled", align: "center" },
-  { name: "stats", label: "使用统计", field: "invoke_count", align: "left" },
-  { name: "last", label: "最近调用", field: "last_invoked_at", align: "left" },
-  { name: "actions", label: "操作", field: "id", align: "right" }
+  { name: "name", label: "名称", field: "name", align: "left", ...registryCol.name },
+  { name: "description", label: "描述", field: "description", align: "left", ...registryCol.desc },
+  { name: "tags", label: "标签", field: "tags", align: "left", ...registryCol.chips },
+  { name: "status", label: "状态 / 版本", field: "status", align: "left", ...registryCol.status },
+  { name: "enabled", label: "启用", field: "enabled", align: "center", ...registryCol.toggle },
+  { name: "stats", label: "使用统计", field: "invoke_count", align: "left", style: "width: 248px; min-width: 220px" },
+  { name: "last", label: "最近调用", field: "last_invoked_at", align: "left", ...registryCol.time },
+  { name: "actions", label: "操作", field: "id", align: "right", ...registryCol.actions }
 ];
 
 function statusLabel(status: string) {
@@ -135,6 +148,32 @@ function formatDate(value?: string) {
 
 <style scoped lang="sass">
 .skill-table
-  border-radius: 22px
-  overflow: hidden
+  background: transparent
+
+  :deep(thead tr th),
+  :deep(tbody tr td)
+    vertical-align: middle
+
+  :deep(thead tr th)
+    padding-top: 10px
+    padding-bottom: 10px
+    font-size: 12px
+
+  :deep(tbody tr td)
+    padding-top: 12px
+    padding-bottom: 12px
+
+.skill-table-desc
+  max-width: 100%
+
+.skill-status-cell
+  display: flex
+  flex-direction: column
+  align-items: flex-start
+  gap: 4px
+
+.skill-status-cell__version
+  font-size: 11px
+  line-height: 1.3
+  color: var(--color-text-secondary)
 </style>

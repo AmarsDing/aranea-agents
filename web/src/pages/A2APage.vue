@@ -1,5 +1,5 @@
 <template>
-  <q-page class="app-page-cream a2a-page q-pa-sm q-pa-md-md">
+  <q-page class="app-page-cream app-registry-page a2a-page">
     <section class="app-page-hero">
       <div>
         <div class="app-page-kicker">Agent-to-Agent</div>
@@ -8,17 +8,21 @@
           发现 AgentCard、注册远程 Agent、查看调用审计、测试 Invoke（Admin 鉴权 + 工作区策略）。
         </p>
       </div>
-      <q-btn outline rounded color="primary" icon="refresh" label="刷新" :loading="loading" @click="reload" />
+      <div class="app-actions-bar">
+        <q-btn outline rounded no-caps color="primary" icon="refresh" label="刷新" :loading="loading" @click="reload" />
+      </div>
     </section>
 
     <A2ARuntimeConfigBanner />
 
-    <q-tabs v-model="tab" dense align="left" class="text-primary q-mb-md">
+    <div class="app-tab-shell">
+    <q-tabs v-model="tab" dense align="left" class="text-primary">
       <q-tab name="discover" label="发现" />
       <q-tab name="remote" label="远程注册" />
       <q-tab name="audit" label="审计" />
       <q-tab name="invoke" label="Invoke" />
     </q-tabs>
+    </div>
 
     <q-banner v-if="error" rounded class="bg-negative text-white q-mb-md">
       {{ error }}
@@ -39,17 +43,17 @@
         />
       </q-tab-panel>
       <q-tab-panel name="remote" class="q-pa-none q-gutter-md">
-        <div class="row q-col-gutter-md q-mb-md">
+        <div class="app-form-field-grid items-end q-mb-md">
           <q-input
             v-model="remoteWorkspace"
-            class="col-12 col-md-4"
+            class="app-field-md"
             dense
             outlined
             label="筛选工作区"
             hint="留空列出全部"
           />
-          <div class="col-12 col-md-4 flex items-center">
-            <q-btn outline color="primary" label="刷新列表" :loading="remoteLoading" @click="loadRemote" />
+          <div class="app-actions-bar app-actions-bar--start">
+            <q-btn outline no-caps color="primary" label="刷新列表" :loading="remoteLoading" @click="loadRemote" />
           </div>
         </div>
         <A2ARemoteAgentPanel
@@ -59,11 +63,12 @@
           @register="submitRemoteRegister"
           @discover="previewRemote"
         />
+        <div class="app-registry-table-shell">
         <q-table
           flat
-          bordered
+          dense
+          class="app-registry-table"
           row-key="id"
-          title="已注册远程 Agent"
           :rows="remoteAgents"
           :columns="remoteColumns"
           :loading="remoteLoading"
@@ -76,10 +81,13 @@
           </template>
           <template #body-cell-actions="props">
             <q-td :props="props">
-              <q-btn flat dense color="negative" icon="delete" @click="removeRemote(props.row.id)" />
+              <div class="app-registry-cell-actions">
+                <q-btn flat dense round color="negative" icon="delete" @click="removeRemote(props.row.id)" />
+              </div>
             </q-td>
           </template>
         </q-table>
+        </div>
       </q-tab-panel>
       <q-tab-panel name="audit" class="q-pa-none">
         <A2AAuditPanel :rows="auditRows" :loading="auditLoading" :columns="auditColumns" :status-color="auditStatusColor" />

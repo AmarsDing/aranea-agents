@@ -2,7 +2,7 @@
   Cron 表单：计划类型与参数（纯展示子块，v-model:form）。
 -->
 <template>
-  <div class="col-12">
+  <div class="app-grid-span-full">
     <div class="section-label q-mb-sm">计划类型</div>
     <q-btn-toggle v-model="form.schedule_type" spread no-caps unelevated toggle-color="primary" class="cron-btn-toggle" :options="cronScheduleToggleOptions" />
   </div>
@@ -10,7 +10,7 @@
   <q-input
     v-if="form.schedule_type === 'interval'"
     v-model.number="form.interval_minutes"
-    class="col-12 col-md-6 cron-field"
+    class="cron-field"
     dense
     outlined
     type="number"
@@ -22,7 +22,7 @@
   <q-input
     v-if="form.schedule_type === 'cron'"
     v-model="form.cron_expression"
-    class="col-12 cron-field"
+    class="cron-field app-grid-span-full app-field-long"
     dense
     outlined
     label="Cron 表达式 *"
@@ -31,7 +31,7 @@
     :rules="[cronExpressionRule]"
   />
   <template v-if="form.schedule_type === 'once'">
-    <q-input v-model="form.run_at_date" class="col-12 col-md-6 cron-field" dense outlined mask="####-##-##" label="执行日期 *" placeholder="2026-04-22">
+    <q-input v-model="form.run_at_date" class="cron-field" dense outlined mask="####-##-##" label="执行日期 *" placeholder="2026-04-22">
       <template #append>
         <q-icon name="event" class="cursor-pointer">
           <q-popup-proxy cover transition-show="scale" transition-hide="scale">
@@ -40,7 +40,7 @@
         </q-icon>
       </template>
     </q-input>
-    <q-input v-model="form.run_at_time" class="col-12 col-md-6 cron-field" dense outlined mask="##:##" label="执行时间 *" placeholder="09:00">
+    <q-input v-model="form.run_at_time" class="cron-field" dense outlined mask="##:##" label="执行时间 *" placeholder="09:00">
       <template #append>
         <q-icon name="access_time" class="cursor-pointer">
           <q-popup-proxy cover transition-show="scale" transition-hide="scale">

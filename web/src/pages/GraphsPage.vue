@@ -61,17 +61,17 @@
     </q-card>
 
     <q-dialog v-model="runDialogOpen" persistent>
-      <q-card :class="['graph-run-dialog', { 'is-dark': isDark }]">
+      <q-card :class="['graph-run-dialog app-dialog-card app-dialog-card--sm', { 'is-dark': isDark }]">
         <q-card-section>
           <div class="text-h6">执行 Graph</div>
           <div class="text-caption text-grey-7">为 {{ runDialogGraph?.name }} 启动一次执行</div>
         </q-card-section>
         <q-separator />
-        <q-card-section class="q-gutter-md">
-          <q-input v-model="runSessionId" dense outlined label="Session ID" hint="关联的会话 ID" />
-          <q-input v-model="runInitialState" dense outlined autogrow type="textarea" label="初始状态 (JSON)" hint="可选，JSON 格式的初始状态" />
+        <q-card-section class="app-dialog-body q-gutter-md">
+          <q-input v-model="runSessionId" class="app-field-md" dense outlined label="Session ID" hint="关联的会话 ID" />
+          <q-input v-model="runInitialState" class="app-field-long" dense outlined autogrow type="textarea" label="初始状态 (JSON)" hint="可选，JSON 格式的初始状态" />
         </q-card-section>
-        <q-card-actions align="right">
+        <q-card-actions align="right" class="app-actions-bar">
           <q-btn flat rounded label="取消" @click="runDialogOpen = false" />
           <q-btn color="primary" rounded unelevated label="执行" :loading="runLoading" @click="executeRun" />
         </q-card-actions>
@@ -231,16 +231,6 @@ async function removeGraph(graph: GraphDefinition) {
   backdrop-filter: blur(16px);
 }
 
-.graph-run-dialog {
-  width: 480px;
-  max-width: 94vw;
-  border: 1px solid var(--glass-border, rgb(235 220 200 / 70%));
-  border-radius: 24px;
-  background: var(--glass-elevated, rgb(255 255 255 / 72%));
-  backdrop-filter: blur(var(--glass-blur-default, 18px));
-  -webkit-backdrop-filter: blur(var(--glass-blur-default, 18px));
-}
-
 .graphs-page.is-dark {
   background:
     radial-gradient(circle at 86% 0%, rgb(59 130 246 / 16%), transparent 30%),
@@ -257,11 +247,6 @@ async function removeGraph(graph: GraphDefinition) {
   border-color: rgb(148 163 184 / 16%);
   background: rgb(17 24 39 / 90%);
   box-shadow: 0 14px 38px rgb(0 0 0 / 32%);
-}
-
-.graph-run-dialog.is-dark {
-  border-color: rgb(255 255 255 / 8%);
-  background: rgb(18 24 34 / 90%);
 }
 
 @media (width <= 599px) {

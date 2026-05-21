@@ -1,7 +1,9 @@
 <template>
+  <div class="app-registry-table-shell">
   <q-table
     flat
-    class="sessions-table"
+    dense
+    class="app-registry-table"
     row-key="id"
     :rows="rows"
     :columns="tableColumns"
@@ -27,15 +29,15 @@
 
     <template #body-cell-session="props">
       <q-td :props="props">
-        <div class="text-weight-medium" style="color: var(--color-text-primary)">{{ props.row.title }}</div>
-        <div class="sessions-muted text-caption ellipsis">{{ props.row.summary || props.row.id }}</div>
+        <div class="app-registry-cell-primary">{{ props.row.title }}</div>
+        <div class="app-registry-cell-sub ellipsis">{{ props.row.summary || props.row.id }}</div>
       </q-td>
     </template>
 
     <template #body-cell-owner="props">
       <q-td :props="props">
         <q-chip dense :color="ownerChipColor(props.row.owner_type)" text-color="white">{{ ownerLabel(props.row.owner_type) }}</q-chip>
-        <div class="sessions-muted text-caption">{{ props.row.owner_type === "team" ? props.row.team_id : props.row.agent_id }}</div>
+        <div class="app-registry-cell-sub">{{ props.row.owner_type === "team" ? props.row.team_id : props.row.agent_id }}</div>
       </q-td>
     </template>
 
@@ -47,14 +49,14 @@
           :value="ratioValue(props.row.context_used_ratio)"
           :color="contextProgressColor(props.row.context_status)"
         />
-        <div class="sessions-muted text-caption q-mt-xs">{{ formatPercent(props.row.context_used_ratio) }} · {{ props.row.context_status }}</div>
+        <div class="app-registry-cell-sub q-mt-xs">{{ formatPercent(props.row.context_used_ratio) }} · {{ props.row.context_status }}</div>
       </q-td>
     </template>
 
     <template #body-cell-usage="props">
       <q-td :props="props">
-        <div style="color: var(--color-text-primary)">{{ formatNumber(props.row.total_tokens) }} tokens</div>
-        <div class="sessions-muted text-caption">
+        <div class="app-registry-cell-primary">{{ formatNumber(props.row.total_tokens) }} tokens</div>
+        <div class="app-registry-cell-sub">
           {{ props.row.model_call_count }} model · {{ props.row.tool_call_count + props.row.skill_call_count + props.row.mcp_call_count }} calls
         </div>
       </q-td>
@@ -62,8 +64,8 @@
 
     <template #body-cell-time="props">
       <q-td :props="props">
-        <div style="color: var(--color-text-primary)">{{ formatSessionDate(props.row.last_message_at || props.row.updated_at) }}</div>
-        <div class="sessions-muted text-caption">创建 {{ formatSessionDate(props.row.created_at) }}</div>
+        <div class="app-registry-cell-primary">{{ formatSessionDate(props.row.last_message_at || props.row.updated_at) }}</div>
+        <div class="app-registry-cell-sub">创建 {{ formatSessionDate(props.row.created_at) }}</div>
       </q-td>
     </template>
 
@@ -75,10 +77,11 @@
 
     <template #body-cell-actions="props">
       <q-td :props="props">
-        <q-btn flat dense round class="sessions-table-action" icon="visibility" :to="{ name: 'session-detail', params: { sessionId: props.row.id } }">
+        <div class="app-registry-cell-actions">
+        <q-btn flat dense round icon="visibility" color="primary" :to="{ name: 'session-detail', params: { sessionId: props.row.id } }">
           <q-tooltip>查看详情</q-tooltip>
         </q-btn>
-        <q-btn flat dense round icon="archive" class="sessions-table-action-muted" :disable="props.row.status === 'archived' || props.row.status === 'running'" @click="$emit('archive-row', props.row.id)">
+        <q-btn flat dense round icon="archive" color="primary" :disable="props.row.status === 'archived' || props.row.status === 'running'" @click="$emit('archive-row', props.row.id)">
           <q-tooltip>{{ props.row.status === 'running' ? '运行中不可归档' : props.row.status === 'archived' ? '已归档' : '归档' }}</q-tooltip>
         </q-btn>
         <q-btn
@@ -86,18 +89,20 @@
           dense
           round
           icon="delete"
-          class="sessions-table-action-muted"
+          color="negative"
           :disable="props.row.status === 'running'"
           @click="$emit('delete-row', props.row.id)"
         >
           <q-tooltip>{{ props.row.status === 'running' ? '运行中不可删除' : '永久删除' }}</q-tooltip>
         </q-btn>
+        </div>
       </q-td>
     </template>
   </q-table>
+  </div>
 
-  <div class="row items-center justify-between q-mt-md sessions-pagination">
-    <div class="sessions-muted text-caption">共 {{ total }} 个 Session</div>
+  <div class="app-registry-pagination q-mt-md">
+    <div class="text-caption">共 {{ total }} 个 Session</div>
     <div class="row items-center q-gutter-sm">
       <q-select
         :model-value="pageSize"
@@ -105,7 +110,7 @@
         outlined
         emit-value
         map-options
-        class="sessions-page-size-select"
+        class="app-field-sm"
         :options="pageSizeOptions"
         @update:model-value="$emit('update:pageSize', $event)"
       />
@@ -115,7 +120,7 @@
         :max-pages="6"
         direction-links
         boundary-links
-        class="sessions-pagination-control"
+        color="primary"
         @update:model-value="$emit('update:page', $event)"
       />
     </div>
@@ -164,10 +169,3 @@ const tableColumns = computed(() =>
   props.selectionMode ? [sessionsTableSelectionColumn, ...sessionsTableColumns] : sessionsTableColumns
 );
 </script>
-
-<style scoped>
-.sessions-page-size-select {
-  width: 110px;
-  min-width: 110px;
-}
-</style>

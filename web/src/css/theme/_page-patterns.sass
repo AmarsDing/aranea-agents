@@ -104,6 +104,94 @@ body.body--dark .app-page-title
 .app-code-block--compact
   max-height: 180px
 
+// --- KPI / 统计卡网格（避免末行 2 卡被拉宽）---
+.app-metrics-grid
+  display: grid
+  gap: var(--space-4)
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr))
+  margin-bottom: var(--space-4)
+
+.app-metrics-grid--4
+  grid-template-columns: repeat(4, minmax(0, 1fr))
+
+  @media (width <= 899px)
+    grid-template-columns: repeat(2, minmax(0, 1fr))
+
+  @media (width <= 479px)
+    grid-template-columns: 1fr
+
+.app-metrics-grid--5
+  grid-template-columns: repeat(5, minmax(0, 1fr))
+
+  @media (width <= 1279px)
+    grid-template-columns: repeat(3, minmax(0, 1fr))
+
+  @media (width <= 767px)
+    grid-template-columns: repeat(2, minmax(0, 1fr))
+
+  @media (width <= 479px)
+    grid-template-columns: 1fr
+
+.app-metrics-grid__item
+  min-width: 0
+
+// --- 警告 Banner / Notify token 对齐 ---
+.app-banner-warning,
+.q-banner.app-banner-warning
+  background: var(--color-status-warning-bg) !important
+  color: var(--color-status-warning-text-dark) !important
+  border: 1px solid color-mix(in srgb, var(--color-warning) 35%, transparent)
+
+// Quasar notify 警告色与 UX token 对齐
+.q-notification.bg-warning,
+.q-notification.bg-orange
+  background: var(--color-status-warning-bg) !important
+  color: var(--color-status-warning-text-dark) !important
+  border: 1px solid color-mix(in srgb, var(--color-warning) 35%, transparent)
+
+// --- 评估页双栏布局 ---
+.app-split-layout,
+.evaluation-layout
+  display: grid
+  gap: var(--space-4)
+  grid-template-columns: minmax(260px, 340px) minmax(0, 1fr)
+
+  @media (width <= 1023px)
+    grid-template-columns: 1fr
+
+// Template D — 双栏编辑/列表页（知识库 / 评估 / Memory 等）
+.app-pane-card
+  border: 1px solid var(--glass-border)
+  border-radius: 20px
+  background: var(--glass-surface)
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+  box-shadow: var(--glass-inner-highlight)
+  overflow: hidden
+  min-height: 320px
+  display: flex
+  flex-direction: column
+
+.app-pane-card__header
+  padding: var(--space-4) var(--space-5)
+  font-size: var(--text-md)
+  font-weight: 700
+  color: var(--color-text-primary)
+  border-bottom: 1px solid var(--glass-border)
+
+.app-pane-card__body
+  flex: 1
+  min-height: 0
+
+.app-registry-empty--compact
+  min-height: 180px
+  padding: var(--space-6)
+  border: none
+  border-radius: 0
+  background: transparent
+  backdrop-filter: none
+  -webkit-backdrop-filter: none
+
 // --- 登录页 ---
 .login-page
   min-height: 100vh

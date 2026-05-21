@@ -37,12 +37,12 @@
     </div>
 
     <q-dialog v-model="publishOpen">
-      <q-card style="min-width: 360px">
+      <q-card class="app-dialog-card app-dialog-card--sm">
         <q-card-section class="text-h6">发布产品</q-card-section>
-        <q-card-section class="q-gutter-sm">
-          <q-input v-model="draft.name" dense outlined label="标识名" />
-          <q-input v-model="draft.display_name" dense outlined label="显示名" />
-          <q-input v-model="draft.description" dense outlined autogrow type="textarea" label="描述" />
+        <q-card-section class="app-dialog-body q-gutter-sm q-pt-none">
+          <q-input v-model="draft.name" class="app-field-md" dense outlined label="标识名" />
+          <q-input v-model="draft.display_name" class="app-field-md" dense outlined label="显示名" />
+          <q-input v-model="draft.description" class="app-field-long" dense outlined autogrow type="textarea" label="描述" />
           <q-select
             v-model="draft.type"
             dense
@@ -51,9 +51,9 @@
             :options="['skill_pack', 'agent_template', 'tool_bundle']"
           />
         </q-card-section>
-        <q-card-actions align="right">
-          <q-btn flat label="取消" v-close-popup />
-          <q-btn color="primary" unelevated label="发布" :loading="publishing" @click="publish" />
+        <q-card-actions align="right" class="app-actions-bar">
+          <q-btn flat no-caps label="取消" v-close-popup />
+          <q-btn color="primary" unelevated no-caps label="发布" :loading="publishing" @click="publish" />
         </q-card-actions>
       </q-card>
     </q-dialog>

@@ -1,8 +1,9 @@
 <template>
-  <tool-glass-panel>
+  <div class="app-registry-table-shell">
     <q-table
       flat
-      class="tools-data-table"
+      dense
+      class="app-registry-table tools-data-table"
       row-key="id"
       :rows="rows"
       :columns="columns"
@@ -12,8 +13,8 @@
     >
       <template #body-cell-name="props">
         <q-td :props="props">
-          <div class="text-weight-medium">{{ props.row.display_name }}</div>
-          <div class="text-caption muted-caption">{{ props.row.key }}</div>
+          <div class="app-registry-cell-primary">{{ props.row.display_name }}</div>
+          <div class="app-registry-cell-sub muted-caption">{{ props.row.key }}</div>
         </q-td>
       </template>
 
@@ -60,7 +61,8 @@
       </template>
 
       <template #body-cell-actions="props">
-        <q-td :props="props" class="q-gutter-xs">
+        <q-td :props="props">
+          <div class="app-registry-cell-actions">
           <q-btn flat dense round class="tool-icon-btn" color="primary" icon="visibility" @click="$emit('viewDetail', props.row)">
             <q-tooltip>查看</q-tooltip>
           </q-btn>
@@ -79,15 +81,15 @@
           >
             <q-tooltip>删除</q-tooltip>
           </q-btn>
+          </div>
         </q-td>
       </template>
     </q-table>
-  </tool-glass-panel>
+  </div>
 </template>
 
 <script setup lang="ts">
 import type { QTableColumn } from "quasar";
-import ToolGlassPanel from "./ToolGlassPanel.vue";
 import type { Tool } from "../../features/tools/types";
 import {
   riskLabel,
@@ -95,6 +97,7 @@ import {
   runtimeKindHint,
   runtimeStatusLabel
 } from "./toolUi";
+import { registryCol } from "../../features/ui/registryTableColumns";
 
 defineProps<{
   rows: Tool[];
@@ -112,13 +115,13 @@ defineEmits<{
 const tablePagination = { rowsPerPage: 0 };
 
 const columns: QTableColumn<Tool>[] = [
-  { name: "name", label: "Tool", field: "display_name", align: "left" },
-  { name: "category", label: "分类 / 来源", field: "category", align: "left" },
-  { name: "risk", label: "风险", field: "risk_level", align: "left" },
-  { name: "runtime", label: "运行时", field: "runtime_status", align: "left" },
-  { name: "enabled", label: "启用", field: "enabled", align: "left" },
-  { name: "stats", label: "调用", field: "invoke_count", align: "left" },
-  { name: "actions", label: "操作", field: "id", align: "right" }
+  { name: "name", label: "Tool", field: "display_name", align: "left", ...registryCol.name },
+  { name: "category", label: "分类 / 来源", field: "category", align: "left", ...registryCol.chips },
+  { name: "risk", label: "风险", field: "risk_level", align: "left", ...registryCol.status },
+  { name: "runtime", label: "运行时", field: "runtime_status", align: "left", ...registryCol.chips },
+  { name: "enabled", label: "启用", field: "enabled", align: "left", ...registryCol.toggle },
+  { name: "stats", label: "调用", field: "invoke_count", align: "left", ...registryCol.stats },
+  { name: "actions", label: "操作", field: "id", align: "right", ...registryCol.actions }
 ];
 </script>
 

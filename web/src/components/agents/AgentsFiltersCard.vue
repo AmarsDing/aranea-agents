@@ -1,67 +1,57 @@
 <template>
   <q-card flat bordered class="agents-filter-card">
-    <q-card-section class="agents-filter-card__body row q-col-gutter-sm items-center">
-      <div class="col-12 col-md-4">
-        <q-input v-model="keyword" dense outlined clearable debounce="350" placeholder="搜索 Agent..." class="agent-control">
-          <template #prepend><q-icon name="search" /></template>
-        </q-input>
-      </div>
-      <div class="col-12 col-sm-6 col-md-2">
-        <q-select
-          v-model="selectedStatus"
-          dense
-          outlined
-          clearable
-          emit-value
-          map-options
-          label="All Types"
-          :options="statusOptions"
-          class="agent-control"
-        />
-      </div>
-      <div class="col-12 col-sm-6 col-md-2">
-        <q-select
-          v-model="selectedCreator"
-          dense
-          outlined
-          clearable
-          emit-value
-          map-options
-          label="创建者"
-          :options="creatorOptions"
-          option-value="user_id"
-          option-label="label"
-          class="agent-control"
-        />
-      </div>
-      <div class="col-12 col-sm-6 col-md-2">
-        <q-select
-          v-model="selectedCategory"
-          dense
-          outlined
-          clearable
-          emit-value
-          map-options
-          use-input
-          label="业务分类"
-          :options="categoryPositionOptions"
-          class="agent-control"
-        />
-      </div>
-      <div class="col-12 col-sm-6 col-md-2">
-        <q-select
-          v-model="selectedProvider"
-          dense
-          outlined
-          clearable
-          emit-value
-          map-options
-          label="Provider"
-          :options="providerOptions"
-          class="agent-control"
-        />
-      </div>
-      <div class="col-12 col-sm-6 col-md-1 row justify-end">
+    <q-card-section class="agents-filter-card__body app-form-field-grid items-end">
+      <q-input v-model="keyword" class="app-field-md agent-control" dense outlined clearable debounce="350" placeholder="搜索 Agent...">
+        <template #prepend><q-icon name="search" /></template>
+      </q-input>
+      <q-select
+        v-model="selectedStatus"
+        dense
+        outlined
+        clearable
+        emit-value
+        map-options
+        label="All Types"
+        :options="statusOptions"
+        class="agent-control"
+      />
+      <q-select
+        v-model="selectedCreator"
+        dense
+        outlined
+        clearable
+        emit-value
+        map-options
+        label="创建者"
+        :options="creatorOptions"
+        option-value="user_id"
+        option-label="label"
+        class="agent-control"
+      />
+      <q-select
+        v-model="selectedCategory"
+        dense
+        outlined
+        clearable
+        emit-value
+        map-options
+        use-input
+        label="业务分类"
+        :options="categoryPositionOptions"
+        class="agent-control"
+      />
+      <q-select
+        v-model="selectedProvider"
+        dense
+        outlined
+        clearable
+        emit-value
+        map-options
+        label="Provider"
+        :options="providerOptions"
+        class="agent-control"
+      />
+      <div class="app-actions-bar app-actions-bar--start">
         <q-btn-toggle
           v-model="viewMode"
           dense

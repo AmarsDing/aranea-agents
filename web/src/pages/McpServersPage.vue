@@ -13,11 +13,11 @@
     </section>
 
     <q-card flat bordered class="mcp-toolbar q-mb-md">
-      <q-card-section class="row q-col-gutter-md items-center">
-        <q-input v-model="search" class="col-12 col-md-5" dense outlined clearable debounce="200" placeholder="搜索服务器...">
+      <q-card-section class="app-form-field-grid items-end">
+        <q-input v-model="search" class="app-field-md" dense outlined clearable debounce="200" placeholder="搜索服务器...">
           <template #prepend><q-icon name="search" /></template>
         </q-input>
-        <div class="col-12 col-md text-caption text-grey-7">
+        <div class="text-caption text-grey-7">
           共 {{ filteredRows.length }} 个服务器，{{ enabledCount }} 个已启用
         </div>
       </q-card-section>

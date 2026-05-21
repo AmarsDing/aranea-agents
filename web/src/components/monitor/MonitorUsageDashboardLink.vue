@@ -8,7 +8,7 @@
         完整用量与成本大盘在<strong>概览</strong>页维护；本 Tab 仅保留 Runner 运行时指标。时间范围请使用页面顶栏筛选（与 Traces 共用）。
       </q-banner>
     </q-card-section>
-    <q-card-section class="row q-gutter-sm">
+    <q-card-section class="app-actions-bar app-actions-bar--start">
       <q-btn
         unelevated
         no-caps

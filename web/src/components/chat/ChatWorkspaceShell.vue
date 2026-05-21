@@ -1,10 +1,13 @@
 <template>
   <q-page
-    class="app-page-cream chat-page chat-workspace-shell fit column no-wrap q-pa-md"
-    :class="{ 'chat-workspace-shell--dark': isDark }"
+    class="app-page-cream chat-page chat-workspace-shell fit column no-wrap"
+    :class="{
+      'chat-workspace-shell--compact': compact,
+      'chat-workspace-shell--dark': isDark
+    }"
     style="min-height: 0"
   >
-    <header class="chat-workspace-hero">
+    <header v-if="!compact" class="chat-workspace-hero">
       <div class="chat-workspace-hero__text">
         <div class="chat-workspace-kicker">{{ t("chat.workspaceKicker") }}</div>
         <h1 class="chat-workspace-title">{{ t("chat.workspaceTitle") }}</h1>
@@ -25,12 +28,27 @@ import { computed } from "vue";
 import { useQuasar } from "quasar";
 import { useI18n } from "vue-i18n";
 
+withDefaults(
+  defineProps<{
+    compact?: boolean;
+  }>(),
+  {
+    compact: true
+  }
+);
+
 const { t } = useI18n();
 const $q = useQuasar();
 const isDark = computed(() => $q.dark.isActive);
 </script>
 
 <style scoped lang="sass">
+.chat-workspace-shell
+  padding: var(--space-3) var(--space-4) var(--space-3)
+
+.chat-workspace-shell--compact
+  padding: var(--space-2) var(--space-3) var(--space-2)
+
 .chat-workspace-hero
   flex: 0 0 auto
   margin-bottom: 16px

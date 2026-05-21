@@ -32,4 +32,12 @@ globs:
 
 ## 代表路由（浏览器抽检，不必全站截图）
 
-`/chat` · `/overview` · `/agents` · `/graphs` · `/monitor/logs` · `/settings` · `/plugins` · `/dev/theme-preview`
+`/chat` · `/overview` · `/agents` · `/graphs` · `/monitor/logs` · `/settings` · `/plugins` · `/models` · `/dev/theme-preview`
+
+## 实体页排错（复用经验）
+
+改 Registry 列表、Provider/Team 弹窗、趋势图时，先读 skill 内 **「实体页 / Registry / Dialog 优化 Playbook」**（`.cursor/skills/aranea-frontend-ux/SKILL.md`）：
+
+- 列表空 → 先查组件 `import`；列错位 → 共用 grid `--*-col-template` + ListHeader
+- 弹窗突兀 → 不用饱和 Stepper/实心 primary；玻璃向导 + 底部统一操作栏
+- 图表占位 → 复用 `usageEcharts` / `useUsageChart`，KPI + 240px 图 + detail grid

@@ -4,6 +4,12 @@ import { echarts, ensureUsageEcharts } from "./usageEcharts";
 
 const RESIZE_DEBOUNCE_MS = 150;
 
+function watchBodyClass(onChange: () => void) {
+  const observer = new MutationObserver(onChange);
+  observer.observe(document.body, { attributes: true, attributeFilter: ["class"] });
+  return () => observer.disconnect();
+}
+
 /**
  * Host ECharts in a DOM ref; option builder stays in the caller (SRP).
  */
@@ -14,6 +20,7 @@ export function useUsageChart(
 ) {
   const chartRef = shallowRef<EChartsType | null>(null);
   let resizeTimer: ReturnType<typeof setTimeout> | null = null;
+  let stopThemeWatch: (() => void) | null = null;
 
   function render() {
     if (!chartEl.value) return;
@@ -33,10 +40,12 @@ export function useUsageChart(
   onMounted(() => {
     render();
     window.addEventListener("resize", scheduleRender);
+    stopThemeWatch = watchBodyClass(scheduleRender);
   });
 
   onBeforeUnmount(() => {
     window.removeEventListener("resize", scheduleRender);
+    stopThemeWatch?.();
     if (resizeTimer) clearTimeout(resizeTimer);
     chartRef.value?.dispose();
     chartRef.value = null;

@@ -1,14 +1,12 @@
 <template>
-  <div class="row q-col-gutter-md q-mb-md">
-    <div v-for="card in cards" :key="card.label" class="col-12 col-sm-6 col-lg-3">
-      <q-card flat class="sessions-summary-card">
-        <q-card-section>
-          <div class="sessions-muted text-caption">{{ card.label }}</div>
-          <div class="text-h5 text-weight-bold q-mt-xs" style="color: var(--color-text-primary)">{{ card.value }}</div>
-          <div class="sessions-muted text-caption q-mt-xs">{{ card.hint }}</div>
-        </q-card-section>
-      </q-card>
-    </div>
+  <div class="app-metrics-grid app-metrics-grid--4">
+    <q-card v-for="card in cards" :key="card.label" flat class="app-metrics-card app-metrics-grid__item">
+      <q-card-section>
+        <div class="app-metrics-card__label">{{ card.label }}</div>
+        <div class="app-metrics-card__value">{{ card.value }}</div>
+        <div class="app-metrics-card__hint">{{ card.hint }}</div>
+      </q-card-section>
+    </q-card>
   </div>
 </template>
 

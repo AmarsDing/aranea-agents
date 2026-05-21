@@ -1,5 +1,5 @@
 <template>
-  <q-page class="app-page-cream tools-page">
+  <q-page class="app-page-cream app-registry-page tools-page">
     <tool-hero-section kicker="Tool registry" title="Tools 管理" subtitle="统一管理 Tool 元数据、运行时绑定、风险策略、配置 Schema 与调用记录。">
       <template #actions>
         <q-btn outline rounded no-caps class="tool-outline-btn" icon="policy" label="审计日志" :to="{ name: 'tool-audits' }" />
@@ -196,9 +196,6 @@ onMounted(loadRows);
 </script>
 
 <style scoped lang="sass">
-.tools-page
-  padding: 24px
-
 .tools-error-banner
   background: rgba(229, 92, 92, 0.92)
   color: var(--color-on-accent)

@@ -63,10 +63,10 @@ func ensureAgentRuntimePatches(ctx context.Context, c *ent.Client) error {
 func sqliteColumnExists(ctx context.Context, c *ent.Client, table, column string) (bool, error) {
 	table = strings.TrimSpace(table)
 	column = strings.TrimSpace(column)
-	if table != "agent_runtime_settings" || column == "" {
+	if table == "" || column == "" {
 		return false, nil
 	}
-	rows, err := c.QueryContext(ctx, `SELECT 1 FROM pragma_table_info('agent_runtime_settings') WHERE name = ? LIMIT 1`, column)
+	rows, err := c.QueryContext(ctx, `SELECT 1 FROM pragma_table_info(?) WHERE name = ? LIMIT 1`, table, column)
 	if err != nil {
 		return false, err
 	}

@@ -6,13 +6,12 @@
         <div class="text-caption text-grey-7">此 Agent 通过 A2A 协议连接外部服务，无需本地 LLM。</div>
       </div>
     </div>
-    <div class="row q-col-gutter-md">
-      <q-input v-model.trim="proxyForm.remote_url" class="col-12 col-md-8" dense outlined label="远程 URL *" />
-      <q-toggle v-model="proxyForm.enable_streaming" class="col-12 col-md-4" color="primary" label="流式响应" />
-      <q-input v-model.number="proxyForm.timeout_seconds" class="col-12 col-md-4" dense outlined type="number" min="5" label="超时（秒）" />
+    <div class="app-form-field-grid">
+      <q-input v-model.trim="proxyForm.remote_url" class="app-field-long" dense outlined label="远程 URL *" />
+      <q-toggle v-model="proxyForm.enable_streaming" color="primary" label="流式响应" />
+      <q-input v-model.number="proxyForm.timeout_seconds" dense outlined type="number" min="5" label="超时（秒）" />
       <q-select
         v-model="proxyForm.auth_type"
-        class="col-12 col-md-4"
         dense
         outlined
         emit-value
@@ -23,7 +22,7 @@
       <q-input
         v-if="proxyForm.auth_type === 'api_key' || proxyForm.auth_type === 'bearer'"
         v-model="authSecret"
-        class="col-12 col-md-8"
+        class="app-field-long"
         dense
         outlined
         :type="showSecret ? 'text' : 'password'"
@@ -34,13 +33,13 @@
         </template>
       </q-input>
       <template v-if="proxyForm.auth_type === 'mtls'">
-        <q-input v-model="mtls.cert_file" class="col-12 col-md-4" dense outlined label="客户端证书路径 (cert_file)" />
-        <q-input v-model="mtls.key_file" class="col-12 col-md-4" dense outlined label="私钥路径 (key_file)" />
-        <q-input v-model="mtls.ca_file" class="col-12 col-md-4" dense outlined label="CA 路径 (ca_file，可选)" />
+        <q-input v-model="mtls.cert_file" dense outlined label="客户端证书路径 (cert_file)" />
+        <q-input v-model="mtls.key_file" dense outlined label="私钥路径 (key_file)" />
+        <q-input v-model="mtls.ca_file" dense outlined label="CA 路径 (ca_file，可选)" />
       </template>
-      <div class="col-12">
-        <q-btn color="primary" rounded unelevated label="保存连接" :loading="saving" @click="saveProxy" />
-      </div>
+    </div>
+    <div class="app-actions-bar app-actions-bar--start q-mt-md">
+      <q-btn color="primary" rounded unelevated no-caps label="保存连接" :loading="saving" @click="saveProxy" />
     </div>
   </section>
 </template>

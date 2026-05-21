@@ -1,103 +1,124 @@
 <template>
-  <q-page class="app-page-cream q-pa-md system-settings-page">
-    <q-card flat bordered>
-      <q-card-section class="text-h6">{{ t("settingsPage.title") }}</q-card-section>
-      <q-separator />
-      <q-card-section>
-        <q-banner v-if="error" rounded class="bg-negative text-white q-mb-md">{{ error }}</q-banner>
-        <q-input
-          v-model="rootDir"
-          :label="t('settingsPage.rootDir')"
-          :hint="t('settingsPage.rootDirHint')"
-          outlined
-          dense
-          class="q-mb-sm"
-        />
-        <q-input
-          v-model="workDir"
-          :label="t('settingsPage.workDir')"
-          :hint="t('settingsPage.workDirHint')"
-          outlined
-          dense
-          class="q-mb-sm"
-        />
-        <q-separator class="q-my-md" />
-        <div class="text-subtitle2 q-mb-xs">{{ t("settingsPage.a2aPublicBaseTitle") }}</div>
-        <div class="text-caption text-grey-7 q-mb-sm">{{ t("settingsPage.a2aPublicBaseHint") }}</div>
-        <q-input
-          v-model.trim="a2aPublicBaseUrl"
-          :label="t('settingsPage.a2aPublicBaseUrl')"
-          :hint="effectiveA2AHint"
-          outlined
-          dense
-          class="q-mb-sm"
-        />
-        <q-separator class="q-my-md" />
-        <div class="text-subtitle2 q-mb-xs">{{ t("settingsPage.credentialKeyTitle") }}</div>
-        <div class="text-caption text-grey-7 q-mb-sm">{{ t("settingsPage.credentialKeyHint") }}</div>
-        <q-banner dense rounded class="bg-blue-1 text-primary q-mb-sm">
-          {{
-            credentialKeyConfigured
-              ? t("settingsPage.credentialKeyConfigured")
-              : t("settingsPage.credentialKeyPending")
-          }}
-        </q-banner>
-        <q-separator class="q-my-md" />
-        <div class="text-subtitle2 q-mb-xs">{{ t("settingsPage.globalQuotaTitle") }}</div>
-        <div class="text-caption text-grey-7 q-mb-sm">{{ t("settingsPage.globalQuotaHint") }}</div>
-        <q-input
-          v-model.number="globalMonthlyUsd"
-          :label="t('settingsPage.globalQuotaUsd')"
-          outlined
-          dense
-          type="number"
-          min="0"
-          step="0.01"
-          prefix="$"
-          class="q-mb-sm"
-        />
-        <q-separator class="q-my-md" />
-        <div class="text-subtitle2 q-mb-xs">{{ t("settingsPage.mcpAdhocTitle") }}</div>
-        <div class="text-caption text-grey-7 q-mb-sm">{{ t("settingsPage.mcpAdhocHint") }}</div>
-        <q-toggle v-model="mcpAllowAdhocHttp" :label="t('settingsPage.mcpAdhocToggle')" class="q-mb-sm" />
-        <q-separator class="q-my-md" />
-        <div class="text-subtitle2 q-mb-xs">{{ t("settingsPage.knowledgeEmbedTitle") }}</div>
-        <div class="text-caption text-grey-7 q-mb-sm">{{ t("settingsPage.knowledgeEmbedHint") }}</div>
-        <knowledge-embedder-fields
-          :form="knowledgeEmbedForm"
-          :configured="knowledgeEmbedConfigured"
-          :has-api-key="knowledgeEmbedHasApiKey"
-          show-status
-        />
-        <q-separator class="q-my-md" />
-        <div class="text-subtitle2 q-mb-xs">评估 LLM（UserSim / Judge）</div>
-        <div class="text-caption text-grey-7 q-mb-sm">
-          持久化到 system_settings；运行时 env（KRATOS_EVAL_SIM_* / KRATOS_EVAL_JUDGE_*）优先。Judge 未填时回退 Sim。
+  <q-page class="app-page-cream system-settings-page">
+    <div class="app-page-shell">
+      <section class="app-page-hero q-mb-md">
+        <div>
+          <div class="app-page-kicker">{{ t("settingsPage.kicker", "System") }}</div>
+          <h1 class="app-page-title">{{ t("settingsPage.title") }}</h1>
+          <p class="app-page-subtitle">{{ t("settingsPage.subtitle", "全局路径、A2A、配额与嵌入模型配置。") }}</p>
         </div>
-        <div class="row q-col-gutter-sm q-mb-sm">
-          <div class="col-12 col-md-6">
-            <q-input v-model="evalLLMForm.simProvider" label="UserSim Provider" outlined dense />
+      </section>
+
+      <q-card flat class="app-settings-shell">
+        <q-card-section class="app-settings-shell__body">
+          <q-banner v-if="error" rounded class="bg-negative text-white q-mb-md">{{ error }}</q-banner>
+
+          <div class="app-form-shell">
+            <section class="app-settings-section">
+              <h2 class="app-settings-section__title">{{ t("settingsPage.pathsTitle", "路径") }}</h2>
+              <p class="app-settings-section__hint">{{ t("settingsPage.rootDirHint") }}</p>
+              <div class="q-gutter-sm">
+                <q-input
+                  v-model="rootDir"
+                  class="app-field-long"
+                  :label="t('settingsPage.rootDir')"
+                  outlined
+                  dense
+                />
+                <q-input
+                  v-model="workDir"
+                  class="app-field-long"
+                  :label="t('settingsPage.workDir')"
+                  :hint="t('settingsPage.workDirHint')"
+                  outlined
+                  dense
+                />
+              </div>
+            </section>
+
+            <section class="app-settings-section">
+              <h2 class="app-settings-section__title">{{ t("settingsPage.a2aPublicBaseTitle") }}</h2>
+              <p class="app-settings-section__hint">{{ t("settingsPage.a2aPublicBaseHint") }}</p>
+              <q-input
+                v-model.trim="a2aPublicBaseUrl"
+                class="app-field-long"
+                :label="t('settingsPage.a2aPublicBaseUrl')"
+                :hint="effectiveA2AHint"
+                outlined
+                dense
+              />
+            </section>
+
+            <section class="app-settings-section">
+              <h2 class="app-settings-section__title">{{ t("settingsPage.credentialKeyTitle") }}</h2>
+              <p class="app-settings-section__hint">{{ t("settingsPage.credentialKeyHint") }}</p>
+              <q-banner dense rounded class="settings-info-banner">
+                {{
+                  credentialKeyConfigured
+                    ? t("settingsPage.credentialKeyConfigured")
+                    : t("settingsPage.credentialKeyPending")
+                }}
+              </q-banner>
+            </section>
+
+            <section class="app-settings-section">
+              <h2 class="app-settings-section__title">{{ t("settingsPage.globalQuotaTitle") }}</h2>
+              <p class="app-settings-section__hint">{{ t("settingsPage.globalQuotaHint") }}</p>
+              <q-input
+                v-model.number="globalMonthlyUsd"
+                class="app-field-sm"
+                :label="t('settingsPage.globalQuotaUsd')"
+                outlined
+                dense
+                type="number"
+                min="0"
+                step="0.01"
+                prefix="$"
+              />
+            </section>
+
+            <section class="app-settings-section">
+              <h2 class="app-settings-section__title">{{ t("settingsPage.mcpAdhocTitle") }}</h2>
+              <p class="app-settings-section__hint">{{ t("settingsPage.mcpAdhocHint") }}</p>
+              <q-toggle v-model="mcpAllowAdhocHttp" :label="t('settingsPage.mcpAdhocToggle')" />
+            </section>
+
+            <section class="app-settings-section">
+              <h2 class="app-settings-section__title">{{ t("settingsPage.knowledgeEmbedTitle") }}</h2>
+              <p class="app-settings-section__hint">{{ t("settingsPage.knowledgeEmbedHint") }}</p>
+              <knowledge-embedder-fields
+                :form="knowledgeEmbedForm"
+                :configured="knowledgeEmbedConfigured"
+                :has-api-key="knowledgeEmbedHasApiKey"
+                show-status
+              />
+            </section>
+
+            <section class="app-settings-section">
+              <h2 class="app-settings-section__title">评估 LLM（UserSim / Judge）</h2>
+              <p class="app-settings-section__hint">
+                持久化到 system_settings；运行时 env（KRATOS_EVAL_SIM_* / KRATOS_EVAL_JUDGE_*）优先。Judge 未填时回退 Sim。
+              </p>
+              <div class="app-form-field-grid app-form-field-grid--2col">
+                <q-input v-model="evalLLMForm.simProvider" label="UserSim Provider" outlined dense />
+                <q-input v-model="evalLLMForm.simModel" label="UserSim Model" outlined dense />
+                <q-input v-model="evalLLMForm.judgeProvider" label="Judge Provider（可选）" outlined dense />
+                <q-input v-model="evalLLMForm.judgeModel" label="Judge Model（可选）" outlined dense />
+              </div>
+              <q-banner v-if="evalLLMConfigured" dense rounded class="settings-info-banner q-mt-md">
+                评估 LLM 已配置
+              </q-banner>
+            </section>
+
+            <div v-if="lastSavedLabel" class="text-caption text-grey-7 q-mb-md">{{ lastSavedLabel }}</div>
+            <div class="app-actions-bar app-actions-bar--start">
+              <q-btn color="primary" unelevated no-caps :loading="saving" :label="t('settingsPage.save')" @click="save" />
+              <q-btn outline color="primary" no-caps :loading="loading" :label="t('settingsPage.reload')" @click="load" />
+            </div>
           </div>
-          <div class="col-12 col-md-6">
-            <q-input v-model="evalLLMForm.simModel" label="UserSim Model" outlined dense />
-          </div>
-          <div class="col-12 col-md-6">
-            <q-input v-model="evalLLMForm.judgeProvider" label="Judge Provider（可选）" outlined dense />
-          </div>
-          <div class="col-12 col-md-6">
-            <q-input v-model="evalLLMForm.judgeModel" label="Judge Model（可选）" outlined dense />
-          </div>
-        </div>
-        <q-banner v-if="evalLLMConfigured" dense rounded class="bg-green-1 text-positive q-mb-sm">
-          评估 LLM 已配置
-        </q-banner>
-        <div v-if="lastSavedLabel" class="text-caption text-grey-7 q-mb-md q-mt-md">{{ lastSavedLabel }}</div>
-        <div class="row q-gutter-sm">
-          <q-btn color="primary" unelevated no-caps :loading="saving" :label="t('settingsPage.save')" @click="save" />
-          <q-btn outline color="primary" no-caps :loading="loading" :label="t('settingsPage.reload')" @click="load" />
-        </div>
-      </q-card-section>
-    </q-card>
+        </q-card-section>
+      </q-card>
+    </div>
   </q-page>
 </template>
 
@@ -222,3 +243,13 @@ async function save() {
   }
 }
 </script>
+
+<style scoped lang="sass">
+.settings-info-banner
+  background: var(--color-status-info-bg-alt)
+  color: var(--color-status-info-text)
+
+body.body--dark .settings-info-banner
+  background: rgb(30 58 138 / 35%)
+  color: var(--color-accent-blue-light)
+</style>

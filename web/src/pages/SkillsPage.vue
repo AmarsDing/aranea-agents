@@ -1,15 +1,20 @@
 <template>
-  <q-page class="app-page-cream skills-page">
+  <q-page class="app-page-cream app-registry-page skills-page">
     <section class="app-page-hero">
       <div>
         <div class="app-page-kicker">Skill registry</div>
         <h1 class="app-page-title">Skill 管理</h1>
         <p class="app-page-subtitle">查看 Skill 使用频率、成功失败统计、最近调用 Agent，并维护启用状态。</p>
       </div>
+      <div class="app-actions-bar">
+        <q-btn outline rounded no-caps color="primary" icon="upload_file" label="上传 Skill" @click="openUpload" />
+        <q-btn outline rounded no-caps color="primary" icon="history" label="运行记录" to="/skills/runs" />
+        <q-btn color="primary" unelevated rounded no-caps icon="refresh" label="刷新" :loading="loading" @click="loadRows" />
+      </div>
     </section>
 
     <skill-upload-placeholder
-      class="q-mb-md"
+      ref="uploadRef"
       :upload-skill-zip="uploadSkillZip"
       :get-skill-import-job="getSkillImportJob"
       :refine-skill-conflict-group="refineSkillConflictGroup"
@@ -34,7 +39,7 @@
       </template>
     </q-banner>
 
-    <q-card v-if="!loading && rows.length === 0" flat bordered class="skills-empty-card">
+    <q-card v-if="!loading && rows.length === 0" flat class="app-registry-empty skills-empty-card">
       <q-card-section class="column items-center text-center q-pa-xl">
         <q-avatar size="72px" color="primary" text-color="white" icon="psychology" />
         <div class="text-h6 q-mt-md">{{ search ? "没有匹配的 Skill" : "暂无 Skill" }}</div>
@@ -42,19 +47,22 @@
       </q-card-section>
     </q-card>
 
-    <skill-table
-      v-else
-      :rows="rows"
-      :loading="loading"
-      :toggling-id="togglingId"
-      :publishing-id="publishingId"
-      @toggle-enabled="onToggleEnabled"
-      @publish="onPublishSkill"
-      @edit="openEditor"
-      @delete="confirmDelete"
-    />
+    <template v-else>
+      <div class="app-registry-table-shell">
+        <skill-table
+          :rows="rows"
+          :loading="loading"
+          :toggling-id="togglingId"
+          :publishing-id="publishingId"
+          @toggle-enabled="onToggleEnabled"
+          @publish="onPublishSkill"
+          @edit="openEditor"
+          @delete="confirmDelete"
+        />
+      </div>
 
-    <skill-pagination v-model:page="page" v-model:page-size="pageSize" :page-max="pageMax" :total="total" :loading="loading" label="条 Skill" />
+      <skill-pagination v-model:page="page" v-model:page-size="pageSize" :page-max="pageMax" :total="total" :loading="loading" label="条 Skill" />
+    </template>
     <skill-delete-dialog v-model="deleteOpen" :skill="deleteTarget" :loading="deleting" @confirm="deleteTargetSkill" />
     <skill-editor-dialog
       v-model="editorOpen"
@@ -89,6 +97,12 @@ import {
   uploadSkillZip
 } from "../features/skills/api";
 import type { Skill } from "../features/skills/types";
+
+const uploadRef = ref<{ openDialog: () => void } | null>(null);
+
+function openUpload() {
+  uploadRef.value?.openDialog();
+}
 
 const $q = useQuasar();
 const search = ref("");
@@ -205,9 +219,11 @@ onMounted(loadRows);
 </script>
 
 <style scoped lang="sass">
-.skills-page
-  padding: var(--space-6)
-
 .skills-empty-card
-  border-radius: 22px
+  place-items: center
+  display: grid
+  gap: var(--space-3)
+  min-height: 280px
+  padding: var(--space-8)
+  text-align: center
 </style>

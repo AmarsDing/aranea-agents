@@ -1,14 +1,12 @@
 <template>
-  <div class="row q-col-gutter-md overview-metrics-row">
-    <div v-for="item in cards" :key="item.label" class="col-6 col-sm-6 col-md-4 col-xl-3">
-      <q-card flat class="overview-metric-card">
-        <q-card-section class="overview-metric-card__body">
-          <div class="overview-metric-card__label">{{ item.label }}</div>
-          <div class="overview-metric-card__value">{{ item.value }}</div>
-          <div class="overview-metric-card__caption" :class="item.toneClass">{{ item.caption }}</div>
-        </q-card-section>
-      </q-card>
-    </div>
+  <div class="app-metrics-grid overview-metrics-row">
+    <q-card v-for="item in cards" :key="item.label" flat class="overview-metric-card app-metrics-grid__item">
+      <q-card-section class="overview-metric-card__body">
+        <div class="overview-metric-card__label">{{ item.label }}</div>
+        <div class="overview-metric-card__value">{{ item.value }}</div>
+        <div class="overview-metric-card__caption" :class="item.toneClass">{{ item.caption }}</div>
+      </q-card-section>
+    </q-card>
   </div>
 </template>
 

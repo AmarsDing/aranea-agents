@@ -1,24 +1,24 @@
 <template>
-  <q-page class="app-page-cream cron-page q-pa-sm q-pa-md-md">
+  <q-page class="app-page-cream app-registry-page cron-page">
     <section class="app-page-hero">
       <div>
         <div class="app-page-kicker">Scheduled tasks</div>
         <h1 class="app-page-title">定时任务</h1>
         <p class="app-page-subtitle">安排定期 Agent 任务，查看最近执行、失败次数和下一次触发时间。</p>
       </div>
-      <div class="row q-gutter-sm">
-        <q-btn color="orange" text-color="white" rounded unelevated icon="add" label="新建任务" @click="openCreate" />
-        <q-btn outline rounded color="primary" icon="refresh" label="刷新" :loading="loading" @click="loadAll" />
+      <div class="app-actions-bar">
+        <q-btn color="orange" text-color="white" rounded unelevated no-caps icon="add" label="新建任务" @click="openCreate" />
+        <q-btn outline rounded no-caps color="primary" icon="refresh" label="刷新" :loading="loading" @click="loadAll" />
       </div>
     </section>
 
-    <q-card flat bordered class="cron-toolbar q-mb-md">
-      <q-card-section class="row q-col-gutter-md items-center">
-        <q-input v-model="search" class="col-12 col-md-5" dense outlined rounded clearable debounce="300" placeholder="搜索定时任务...">
+    <q-card flat class="app-registry-panel">
+      <q-card-section class="app-form-field-grid app-registry-toolbar items-end">
+        <q-input v-model="search" class="app-field-md" dense outlined rounded clearable debounce="300" placeholder="搜索定时任务...">
           <template #prepend><q-icon name="search" /></template>
         </q-input>
-        <q-select v-model="statusFilter" class="col-12 col-md-3" dense outlined clearable emit-value map-options label="状态" :options="statusOptions" />
-        <div class="col text-caption text-grey-7">共 {{ filteredRows.length }} 个任务，{{ activeCount }} 个启用</div>
+        <q-select v-model="statusFilter" dense outlined clearable emit-value map-options label="状态" :options="statusOptions" />
+        <div class="text-caption text-grey-7">共 {{ filteredRows.length }} 个任务，{{ activeCount }} 个启用</div>
       </q-card-section>
     </q-card>
 
@@ -29,10 +29,12 @@
       </template>
     </q-banner>
 
-    <q-card flat bordered class="cron-table-card">
+    <div class="app-registry-table-shell">
       <q-table
         v-if="filteredRows.length || loading"
         flat
+        dense
+        class="app-registry-table"
         row-key="id"
         :rows="filteredRows"
         :columns="columns"
@@ -41,14 +43,14 @@
       >
         <template #body-cell-name="props">
           <q-td :props="props">
-            <div class="text-weight-bold">{{ props.row.name }}</div>
-            <div class="text-caption text-grey-7">{{ props.row.key }}</div>
+            <div class="app-registry-cell-primary">{{ props.row.name }}</div>
+            <div class="app-registry-cell-sub">{{ props.row.key }}</div>
           </q-td>
         </template>
 
         <template #body-cell-description="props">
           <q-td :props="props">
-            <div class="ellipsis cron-description">{{ props.row.description || "—" }}</div>
+            <div class="app-registry-cell-desc" :title="props.row.description || ''">{{ props.row.description || "—" }}</div>
             <q-tooltip v-if="props.row.description">{{ props.row.description }}</q-tooltip>
           </q-td>
         </template>
@@ -105,7 +107,8 @@
         </template>
 
         <template #body-cell-actions="props">
-          <q-td :props="props" class="q-gutter-xs">
+          <q-td :props="props">
+            <div class="app-registry-cell-actions">
             <q-toggle :model-value="props.row.enabled" color="primary" dense :disable="savingId === props.row.id" @update:model-value="toggleRow(props.row, Boolean($event))" />
             <q-btn flat dense round icon="history" color="primary" @click="openRuns(props.row)">
               <q-tooltip>执行历史</q-tooltip>
@@ -122,19 +125,20 @@
             <q-btn flat dense round icon="delete" color="negative" @click="confirmDelete(props.row)">
               <q-tooltip>删除</q-tooltip>
             </q-btn>
+            </div>
           </q-td>
         </template>
       </q-table>
 
-      <q-card-section v-else class="cron-empty">
+      <div v-else class="app-registry-empty cron-empty">
         <q-avatar size="80px" color="grey-9" text-color="grey-5">
           <q-icon name="schedule" size="46px" />
         </q-avatar>
         <div class="text-h6">暂无定时任务</div>
         <div class="text-body2 text-grey-7">创建定时任务以安排定期 Agent 任务。</div>
-        <q-btn color="orange" text-color="white" rounded unelevated icon="add" label="新建任务" @click="openCreate" />
-      </q-card-section>
-    </q-card>
+        <q-btn color="orange" text-color="white" rounded unelevated no-caps icon="add" label="新建任务" @click="openCreate" />
+      </div>
+    </div>
 
     <CronTaskFormDialog
       v-model="editorOpen"
@@ -155,6 +159,7 @@ import { useQuasar, type QTableColumn } from "quasar";
 import type { Agent } from "../features/agents/api";
 import type { Team } from "../features/teams/api";
 import CronTaskFormDialog from "../components/cron/CronTaskFormDialog.vue";
+import { registryCol } from "../features/ui/registryTableColumns";
 import { createCronTask, deleteCronTask, listCronAgents, listCronTasks, listCronTeams, parseCronConfig, parseCronMetadata, resetCronTaskFailures, triggerCronTask, updateCronTask } from "../features/cron/api";
 import type { PlatformResourceInput } from "../features/platform/api";
 import type { CronFailureSummary, CronTaskConfig, CronTaskMetadata, CronTaskRow } from "../features/cron/types";
@@ -176,15 +181,15 @@ const formSubmitting = ref(false);
 const formServerError = ref("");
 
 const columns: QTableColumn<CronTaskRow>[] = [
-  { name: "name", label: "名称", field: "name", align: "left", sortable: true },
-  { name: "description", label: "描述", field: "description", align: "left" },
-  { name: "schedule", label: "计划", field: "config_json", align: "left" },
-  { name: "agent", label: "目标", field: "agent_id", align: "left" },
-  { name: "counts", label: "执行统计", field: "metadata_json", align: "left" },
-  { name: "status", label: "状态", field: "status", align: "left" },
-  { name: "last", label: "上次运行", field: "metadata_json", align: "left" },
-  { name: "next", label: "下次运行", field: "metadata_json", align: "left" },
-  { name: "actions", label: "操作", field: "id", align: "right" }
+  { name: "name", label: "名称", field: "name", align: "left", sortable: true, ...registryCol.name },
+  { name: "description", label: "描述", field: "description", align: "left", ...registryCol.desc },
+  { name: "schedule", label: "计划", field: "config_json", align: "left", ...registryCol.chips },
+  { name: "agent", label: "目标", field: "agent_id", align: "left", ...registryCol.agent },
+  { name: "counts", label: "执行统计", field: "metadata_json", align: "left", ...registryCol.stats },
+  { name: "status", label: "状态", field: "status", align: "left", ...registryCol.status },
+  { name: "last", label: "上次运行", field: "metadata_json", align: "left", ...registryCol.time },
+  { name: "next", label: "下次运行", field: "metadata_json", align: "left", ...registryCol.time },
+  { name: "actions", label: "操作", field: "id", align: "right", ...registryCol.actions }
 ];
 const statusOptions = [
   { label: "启用", value: "active" },
@@ -373,20 +378,13 @@ function formatDate(value?: string) {
 </script>
 
 <style scoped>
-.cron-toolbar,
-.cron-table-card {
-  border-radius: 18px;
-}
-
-.cron-description {
-  max-width: 240px;
-}
-
 .cron-empty {
   place-items: center center;
   color: var(--color-text-tertiary);
   display: grid;
   gap: 10px;
   min-height: 280px;
+  padding: var(--space-8);
+  text-align: center;
 }
 </style>

@@ -1,11 +1,16 @@
 <template>
   <q-dialog :model-value="open" persistent @update:model-value="$emit('update:open', $event)">
-    <q-card style="min-width: 480px; max-width: 94vw">
-      <q-card-section class="text-h6">文档入库</q-card-section>
-      <q-card-section class="q-gutter-md">
-        <q-input :model-value="source" dense outlined label="来源标识" @update:model-value="$emit('update:source', String($event ?? ''))" />
+    <q-card class="app-dialog-card app-dialog-card--sm">
+      <q-card-section class="row items-center justify-between">
+        <div class="text-h6">文档入库</div>
+        <q-btn flat round dense icon="close" v-close-popup />
+      </q-card-section>
+      <q-separator />
+      <q-card-section class="app-dialog-body q-gutter-md">
+        <q-input :model-value="source" class="app-field-md" dense outlined label="来源标识" @update:model-value="$emit('update:source', String($event ?? ''))" />
         <q-input
           :model-value="mimeType"
+          class="app-field-sm"
           dense
           outlined
           label="MIME 类型"
@@ -15,6 +20,7 @@
         <q-file :model-value="file" label="选择文件" outlined dense accept=".txt,.md,.json,.csv" @update:model-value="$emit('update:file', $event)" />
         <q-input
           :model-value="text"
+          class="app-field-long"
           dense
           outlined
           type="textarea"
@@ -23,9 +29,9 @@
           @update:model-value="$emit('update:text', String($event ?? ''))"
         />
       </q-card-section>
-      <q-card-actions align="right">
-        <q-btn flat label="取消" @click="$emit('update:open', false)" />
-        <q-btn color="primary" unelevated label="入库" :loading="loading" @click="$emit('submit')" />
+      <q-card-actions align="right" class="app-actions-bar">
+        <q-btn flat no-caps label="取消" v-close-popup />
+        <q-btn color="primary" unelevated no-caps label="入库" :loading="loading" @click="$emit('submit')" />
       </q-card-actions>
     </q-card>
   </q-dialog>
@@ -45,7 +51,7 @@ defineEmits<{
   "update:source": [value: string];
   "update:mimeType": [value: string];
   "update:text": [value: string];
-  "update:file": [file: File | null];
+  "update:file": [value: File | null];
   submit: [];
 }>();
 </script>

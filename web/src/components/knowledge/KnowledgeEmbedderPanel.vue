@@ -1,20 +1,18 @@
 <template>
-  <q-card flat bordered class="q-mb-md">
-    <q-card-section>
-      <div class="text-subtitle2 q-mb-sm">{{ t("knowledgeEmbed.title") }}</div>
-      <knowledge-embedder-fields
-        :form="form"
-        :configured="config?.configured"
-        :has-api-key="config?.has_api_key"
-        show-status
-      >
-        <template #actions>
-          <q-btn color="primary" unelevated :label="t('knowledgeEmbed.save')" :loading="saving" @click="save" />
-        </template>
-      </knowledge-embedder-fields>
-      <div class="text-caption text-grey-7 q-mt-sm">{{ t("knowledgeEmbed.hint") }}</div>
-    </q-card-section>
-  </q-card>
+  <section class="app-settings-section knowledge-embedder-panel">
+    <h3 class="app-settings-section__title">{{ t("knowledgeEmbed.title") }}</h3>
+    <knowledge-embedder-fields
+      :form="form"
+      :configured="config?.configured"
+      :has-api-key="config?.has_api_key"
+      show-status
+    >
+      <template #actions>
+        <q-btn color="primary" unelevated no-caps :label="t('knowledgeEmbed.save')" :loading="saving" @click="save" />
+      </template>
+    </knowledge-embedder-fields>
+    <p class="app-settings-section__hint q-mb-none q-mt-md">{{ t("knowledgeEmbed.hint") }}</p>
+  </section>
 </template>
 
 <script setup lang="ts">

@@ -15,6 +15,11 @@ body.body--dark .app-entity-page
   grid-template-columns: repeat(auto-fit, minmax(360px, 1fr))
   gap: 18px
 
+.teams-page .app-entity-grid
+  grid-template-columns: repeat(auto-fill, minmax(300px, 380px))
+  gap: 14px
+  align-items: start
+
 .app-entity-empty
   border: 1px solid var(--glass-border)
   border-radius: 24px
@@ -95,10 +100,62 @@ body.body--dark .app-entity-page--warm,
 
 .category-stats
   gap: 10px
-  flex-wrap: wrap
+  flex-wrap: nowrap
 
 .category-toolbar
   margin-top: 22px
+
+.category-toolbar__inner
+  display: flex
+  flex-wrap: wrap
+  align-items: center
+  gap: var(--space-3) var(--space-4)
+  padding: 14px 16px
+
+.category-toolbar__search
+  flex: 1 1 280px
+  min-width: min(100%, 240px)
+  max-width: 420px
+
+.category-toolbar__aside
+  display: flex
+  flex-wrap: wrap
+  align-items: center
+  gap: var(--space-3) var(--space-4)
+  margin-left: auto
+
+.category-toolbar .app-entity-stat
+  min-width: 72px
+  padding: 8px 12px
+  text-align: center
+
+.category-toolbar .app-entity-stat strong
+  font-size: 18px
+
+.category-toolbar__toggle
+  flex-shrink: 0
+  white-space: nowrap
+
+@media (width <= 767px)
+  .category-toolbar__aside
+    width: 100%
+    margin-left: 0
+    justify-content: space-between
+
+  .category-toolbar__search
+    max-width: none
+    flex-basis: 100%
+
+@media (width <= 479px)
+  .category-stats
+    flex-wrap: wrap
+
+  .category-toolbar__aside
+    flex-direction: column
+    align-items: stretch
+
+  .category-toolbar__toggle
+    justify-content: space-between
 
 .category-control .q-field__control
   min-height: 44px
@@ -191,17 +248,104 @@ body.body--dark .app-entity-page--warm,
   box-shadow: var(--shadow-entity-panel)
 
 .category-dialog
-  width: 640px
+  width: 720px
   max-width: 94vw
-  border-radius: 24px
+  border-radius: 20px
   overflow: hidden
+  display: flex
+  flex-direction: column
+  max-height: min(88vh, 640px)
+
+.category-dialog__head
+  flex-shrink: 0
+  padding: 16px 20px 12px
+
+.category-dialog__title
+  color: var(--color-text-heading)
+  font-size: 18px
+  font-weight: 800
+  line-height: 1.3
+
+.category-dialog__subtitle
+  margin-top: 4px
+  color: var(--color-text-secondary)
+  font-size: 12px
+  line-height: 1.45
+
+.category-dialog__body
+  flex: 1
+  min-height: 0
+  overflow-y: auto
+  padding: 14px 20px 16px
+
+.category-dialog__form
+  margin-bottom: 12px
+
+.category-dialog__meta
+  display: grid
+  grid-template-columns: repeat(2, minmax(0, 1fr))
+  gap: 10px
+  margin-bottom: 14px
+
+.category-meta-item
+  display: flex
+  flex-direction: column
+  gap: 4px
+  min-width: 0
+  padding: 8px 12px
+  border: 1px solid var(--glass-border)
+  border-radius: 12px
+  background: color-mix(in srgb, var(--glass-elevated) 82%, transparent)
+
+.category-meta-item__label
+  color: var(--color-text-tertiary)
+  font-size: 11px
+  font-weight: 700
+  letter-spacing: 0.04em
+  text-transform: uppercase
+
+.category-meta-item__value
+  color: var(--color-text-primary)
+  font-size: 13px
+  font-weight: 600
+  line-height: 1.35
+
+.category-dialog__desc-label
+  margin-bottom: 6px
+  color: var(--color-text-secondary)
+  font-size: 12px
+  font-weight: 600
+
+.category-dialog__desc-input .q-field__control
+  max-height: 168px
+
+.category-dialog__desc-input textarea
+  max-height: 140px
+  overflow-y: auto !important
+  resize: none
+  line-height: 1.55
+
+.category-dialog__actions
+  flex-shrink: 0
+  padding: 12px 20px 16px
 
 .category-dialog .q-card__actions
-  padding: 14px 22px 20px
+  padding: 12px 20px 16px
   background: color-mix(in srgb, var(--color-page-tint-cool) 58%, transparent)
 
 body.body--dark .agent-categories-page .category-control .q-field__control
   background: color-mix(in srgb, var(--color-surface-soft) 76%, transparent)
+
+body.body--dark .agent-categories-page .category-meta-item
+  background: color-mix(in srgb, var(--glass-elevated) 55%, transparent)
+  border-color: var(--glass-border)
+
+body.body--dark .agent-categories-page .category-meta-item__value
+  color: var(--color-text-heading)
+
+@media (width <= 599px)
+  .category-dialog__meta
+    grid-template-columns: 1fr
 
 body.body--dark .agent-categories-page .industry-card__header
   background: var(--gradient-entity-panel-header-dark)
@@ -258,8 +402,90 @@ body.body--dark .agent-categories-page .category-dialog .q-card__actions
 .provider-header
   background: linear-gradient(135deg, var(--color-on-accent) 0%, var(--color-page-tint-blue) 100%)
 
+.provider-page-hero
+  margin-bottom: var(--space-4)
+
+.provider-card
+  overflow: hidden
+
+.provider-toolbar__inner
+  display: flex
+  flex-wrap: wrap
+  align-items: flex-end
+  gap: var(--space-3) var(--space-4)
+  padding: 14px 16px
+
+.provider-toolbar__search
+  flex: 1 1 280px
+  min-width: min(100%, 240px)
+  max-width: 420px
+
+.provider-toolbar__filter
+  flex: 1 1 220px
+  min-width: min(100%, 200px)
+  max-width: 360px
+
+.provider-control :deep(.q-field__control)
+  min-height: 44px
+  border-radius: 16px
+  background: var(--glass-elevated)
+
+.provider-control :deep(.q-field__control::before)
+  border-color: var(--glass-border)
+
+.provider-table
+  --provider-col-template: minmax(220px, 1.45fr) 64px 76px 60px minmax(148px, 1fr) 88px 136px
+  overflow-x: auto
+
+.provider-table__head,
+.provider-table__body
+  min-width: 920px
+
+.provider-table__head
+  display: flex
+  align-items: center
+  gap: 12px
+  padding: 7px 16px
+  border-bottom: 1px solid var(--glass-border)
+  background: color-mix(in srgb, var(--glass-elevated) 72%, transparent)
+
+.provider-table__head .provider-table__grid
+  color: var(--color-text-tertiary)
+  font-size: 11px
+  font-weight: 700
+  letter-spacing: 0.05em
+  line-height: 1.3
+  text-transform: uppercase
+
+.provider-table__head .provider-table__cell--size,
+.provider-table__head .provider-table__cell--ctx,
+.provider-table__head .provider-table__cell--tps
+  text-align: center
+
+.provider-table__head .provider-table__cell--actions
+  text-align: right
+
+.provider-table__avatar-spacer
+  flex: 0 0 32px
+  width: 32px
+
+.provider-table__grid
+  display: grid
+  flex: 1
+  grid-template-columns: var(--provider-col-template)
+  gap: 0 10px
+  align-items: center
+  min-width: 0
+
+.provider-table__body
+  min-height: 80px
+
+.provider-list-shell
+  min-height: 120px
+
 .provider-list
-  background: var(--color-on-accent)
+  background: transparent
+  min-height: 80px
 
 body.body--dark .resource-manager-page.is-dark .provider-card,
 body.body--dark .resource-manager-page.is-dark .resource-card,
@@ -268,11 +494,32 @@ body.body--dark .resource-manager-page.is-dark .resource-dialog-card
   background: var(--glass-surface)
   box-shadow: var(--shadow-entity-panel-dark)
 
-body.body--dark .resource-manager-page.is-dark .provider-header
-  background: var(--gradient-entity-panel-header-dark)
+body.body--dark .resource-manager-page.is-dark .provider-dialog .q-field__control
+  background: color-mix(in srgb, var(--glass-surface) 82%, transparent)
+
+body.body--dark .resource-manager-page.is-dark .provider-dialog .q-field__native,
+body.body--dark .resource-manager-page.is-dark .provider-dialog .q-field__input
+  color: var(--color-text-primary)
+
+body.body--dark .resource-manager-page.is-dark .provider-dialog .q-field__label
+  color: var(--color-text-secondary)
+
+body.body--dark .resource-manager-page.is-dark .provider-wizard-nav
+  background: color-mix(in srgb, var(--glass-elevated) 36%, transparent)
 
 body.body--dark .resource-manager-page.is-dark .provider-list
-  background: color-mix(in srgb, var(--color-surface-solid) 86%, transparent)
+  background: transparent
+
+body.body--dark .resource-manager-page.is-dark .provider-table__head,
+body.body--dark .resource-manager-page.is-dark .provider-table__head--dark
+  background: color-mix(in srgb, var(--glass-elevated) 58%, transparent)
+  border-bottom-color: var(--glass-border)
+
+body.body--dark .resource-manager-page.is-dark .provider-table__head .provider-table__grid
+  color: var(--color-text-secondary)
+
+body.body--dark .resource-manager-page.is-dark .provider-row:hover
+  background: color-mix(in srgb, var(--color-accent) 8%, var(--glass-surface))
 
 body.body--dark .resource-manager-page.is-dark .q-field__control
   background: color-mix(in srgb, var(--glass-surface) 76%, transparent)

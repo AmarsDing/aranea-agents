@@ -1,9 +1,8 @@
 <template>
   <div class="callback-editor q-gutter-md">
-    <div class="row q-col-gutter-md">
+    <div class="app-form-field-grid">
       <q-select
         v-model="localRule.callback_point"
-        class="col-12 col-md-4"
         dense
         outlined
         emit-value
@@ -14,7 +13,6 @@
       />
       <q-select
         v-model="localRule.action.type"
-        class="col-12 col-md-4"
         dense
         outlined
         emit-value
@@ -25,7 +23,6 @@
       />
       <q-input
         v-model.number="sortOrder"
-        class="col-12 col-md-4"
         dense
         outlined
         type="number"
@@ -35,10 +32,9 @@
     </div>
 
     <q-expansion-item dense-toggle default-open label="触发条件">
-      <div class="row q-col-gutter-md q-pa-sm">
+      <div class="app-form-field-grid q-pa-sm">
         <q-input
           v-model="localRule.condition.agent_id"
-          class="col-12 col-md-4"
           dense
           outlined
           clearable
@@ -48,7 +44,6 @@
         />
         <q-input
           v-model="localRule.condition.tool_name"
-          class="col-12 col-md-4"
           dense
           outlined
           clearable
@@ -58,7 +53,6 @@
         />
         <q-input
           v-model="localRule.condition.event_type"
-          class="col-12 col-md-4"
           dense
           outlined
           clearable
@@ -75,15 +69,15 @@
         <template v-if="localRule.action.type === 'notify'">
           <q-input
             v-model="localRule.action.webhook_url"
+            class="app-field-long"
             dense
             outlined
             label="Webhook URL"
             @update:model-value="emitChange"
           />
-          <div class="row q-col-gutter-sm">
+          <div class="app-form-field-grid app-form-field-grid--2col">
             <q-input
               v-model.number="localRule.action.notify_max_retries"
-              class="col-6"
               dense
               outlined
               type="number"
@@ -95,7 +89,6 @@
             />
             <q-input
               v-model.number="localRule.action.notify_timeout_sec"
-              class="col-6"
               dense
               outlined
               type="number"
@@ -136,6 +129,7 @@
           </div>
           <q-input
             v-model="modifyPatchText"
+            class="app-field-long"
             dense
             outlined
             type="textarea"

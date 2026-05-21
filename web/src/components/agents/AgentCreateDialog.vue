@@ -1,6 +1,6 @@
 <template>
   <q-dialog v-model="dialogModel" persistent>
-    <q-card :class="['create-agent-card', { 'create-agent-card--dark': isDark }]">
+    <q-card :class="['create-agent-card app-dialog-card app-dialog-card--lg', { 'create-agent-card--dark': isDark }]">
       <q-toolbar class="create-agent-card__toolbar">
         <div>
           <q-toolbar-title class="q-pa-none">创建 Agent</q-toolbar-title>
@@ -41,10 +41,10 @@
           </div>
 
           <div class="col">
-            <div class="form-panel row q-col-gutter-md">
+            <div class="form-panel app-form-field-grid">
               <q-input
                 v-model.trim="form.display_name"
-                class="col-12 col-md-6 agent-dialog-control"
+                class="agent-dialog-control"
                 dense
                 outlined
                 label="显示名称 *"
@@ -55,7 +55,7 @@
               </q-input>
               <q-input
                 v-model.trim="form.agent_key"
-                class="col-12 col-md-6 agent-dialog-control"
+                class="agent-dialog-control"
                 dense
                 outlined
                 label="Agent 标识 *"
@@ -63,13 +63,13 @@
                 :error="Boolean(agentKeyError)"
                 :error-message="agentKeyError"
               />
-              <q-select v-model="categoryIndustry" class="col-12 col-md-4 agent-dialog-control" dense outlined clearable emit-value map-options label="行业" :options="industryOptions" />
-              <q-select v-model="categoryDepartment" class="col-12 col-md-4 agent-dialog-control" dense outlined clearable emit-value map-options label="部门" :options="departmentOptions" :disable="!categoryIndustry" />
-              <q-select v-model="form.category_position_id" class="col-12 col-md-4 agent-dialog-control" dense outlined clearable emit-value map-options label="职位" :options="positionOptions" :disable="!categoryDepartment" />
+              <q-select v-model="categoryIndustry" class="agent-dialog-control" dense outlined clearable emit-value map-options label="行业" :options="industryOptions" />
+              <q-select v-model="categoryDepartment" class="agent-dialog-control" dense outlined clearable emit-value map-options label="部门" :options="departmentOptions" :disable="!categoryIndustry" />
+              <q-select v-model="form.category_position_id" class="agent-dialog-control" dense outlined clearable emit-value map-options label="职位" :options="positionOptions" :disable="!categoryDepartment" />
               <template v-if="isA2AProxy">
                 <q-input
                   v-model.trim="a2aProxy.remote_url"
-                  class="col-12 agent-dialog-control"
+                  class="agent-dialog-control app-field-long"
                   dense
                   outlined
                   label="远程 A2A URL *"
@@ -77,13 +77,13 @@
                   :error="Boolean(remoteUrlError)"
                   :error-message="remoteUrlError"
                 />
-                <q-toggle v-model="a2aProxy.enable_streaming" class="col-12 col-md-4" color="primary" label="流式响应" />
-                <q-input v-model.number="a2aProxy.timeout_seconds" class="col-12 col-md-4 agent-dialog-control" dense outlined type="number" min="5" label="超时（秒）" />
+                <q-toggle v-model="a2aProxy.enable_streaming" color="primary" label="流式响应" />
+                <q-input v-model.number="a2aProxy.timeout_seconds" class="agent-dialog-control" dense outlined type="number" min="5" label="超时（秒）" />
               </template>
               <template v-else>
               <q-select
                 v-model="form.provider"
-                class="col-12 col-md-5 agent-dialog-control"
+                class="agent-dialog-control"
                 dense
                 outlined
                 emit-value
@@ -95,7 +95,7 @@
               />
               <q-select
                 v-model="form.model"
-                class="col-12 col-md-5 agent-dialog-control"
+                class="agent-dialog-control"
                 dense
                 outlined
                 emit-value
@@ -104,8 +104,8 @@
                 :options="modelOptions"
                 :error="Boolean(providerModelError)"
               />
-              <div class="col-12 col-md-2">
-                <q-btn class="model-check-btn full-width" outline rounded color="primary" label="检查" :disable="!form.provider || !form.model" :loading="checkingModel" @click="$emit('check-model')" />
+              <div class="app-actions-bar app-actions-bar--start">
+                <q-btn class="model-check-btn" outline rounded no-caps color="primary" label="检查" :disable="!form.provider || !form.model" :loading="checkingModel" @click="$emit('check-model')" />
               </div>
               </template>
             </div>
@@ -130,7 +130,7 @@
           </div>
           <q-input
             v-model="form.agent_description"
-            class="agent-dialog-control q-mt-sm"
+            class="agent-dialog-control app-field-long q-mt-sm"
             outlined
             type="textarea"
             rows="7"
@@ -150,7 +150,7 @@
         </q-card>
       </q-card-section>
 
-      <q-card-actions align="right" class="create-agent-card__actions">
+      <q-card-actions align="right" class="create-agent-card__actions app-actions-bar">
         <q-btn flat rounded label="取消" v-close-popup />
         <q-btn color="primary" rounded unelevated label="创建" :disable="!canCreate" :loading="creating" @click="$emit('create')" />
       </q-card-actions>
@@ -254,20 +254,13 @@ const agentKindModel = computed({
 
 <style scoped>
 .create-agent-card {
-  width: 880px;
-  max-width: 94vw;
-  border: 1px solid rgb(15 23 42 / 8%);
-  border-radius: 28px;
-  background:
-    radial-gradient(circle at 8% 0%, rgb(25 118 210 / 10%), transparent 32%),
-    radial-gradient(circle at 88% 16%, rgb(245 158 11 / 8%), transparent 28%),
-    var(--color-on-accent);
-  box-shadow: 0 30px 90px rgb(16 24 40 / 20%);
+  overflow: hidden;
 }
 
 .create-agent-card__toolbar {
   padding: 22px 26px;
-  background: linear-gradient(180deg, var(--color-on-accent), var(--color-page-tint));
+  background: var(--glass-elevated);
+  border-bottom: 1px solid var(--glass-border);
 }
 
 .create-agent-card__body {
@@ -281,12 +274,11 @@ const agentKindModel = computed({
 .avatar-column {
   width: 190px;
   padding: 18px 16px;
-  border: 1px solid rgb(15 23 42 / 8%);
+  border: 1px solid var(--glass-border);
   border-radius: 24px;
-  background:
-    linear-gradient(180deg, rgb(255 255 255 / 72%), rgb(248 250 252 / 92%)),
-    radial-gradient(circle at top, rgb(25 118 210 / 10%), transparent 54%);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 90%);
+  background: var(--glass-surface);
+  backdrop-filter: blur(var(--glass-blur-default));
+  -webkit-backdrop-filter: blur(var(--glass-blur-default));
 }
 
 .avatar-picker-hit {
@@ -391,7 +383,6 @@ const agentKindModel = computed({
 
 .create-agent-card__actions {
   padding: 14px 22px 20px;
-  background: rgb(248 250 252 / 58%);
 }
 
 .create-agent-card__actions :deep(.q-btn) {
@@ -400,66 +391,17 @@ const agentKindModel = computed({
   font-weight: 700;
 }
 
-.create-agent-card.create-agent-card--dark {
-  border-color: rgb(148 163 184 / 16%);
-  background:
-    radial-gradient(circle at 8% 0%, rgb(59 130 246 / 14%), transparent 32%),
-    radial-gradient(circle at 88% 16%, rgb(245 158 11 / 10%), transparent 28%),
-    var(--color-surface-elevated);
-  color: var(--color-border-soft);
-  box-shadow: 0 30px 90px rgb(0 0 0 / 55%);
-}
-
 .create-agent-card.create-agent-card--dark .create-agent-card__toolbar {
-  background: linear-gradient(180deg, rgb(17 24 39 / 98%), rgb(15 23 42 / 94%));
+  background: var(--glass-elevated);
 }
 
-.create-agent-card.create-agent-card--dark .avatar-column,
-.create-agent-card.create-agent-card--dark .description-block,
-.create-agent-card.create-agent-card--dark .self-evolve-card {
-  border-color: rgb(148 163 184 / 16%);
-  background:
-    linear-gradient(180deg, rgb(30 41 59 / 68%), rgb(15 23 42 / 82%)),
-    radial-gradient(circle at top, rgb(59 130 246 / 12%), transparent 54%);
-  box-shadow: 0 12px 30px rgb(0 0 0 / 25%);
-}
-
-.create-agent-card.create-agent-card--dark .avatar-picker {
-  border-color: rgb(15 23 42 / 90%);
-}
-
-.create-agent-card.create-agent-card--dark .avatar-column__hint {
-  color: var(--color-text-tertiary);
+.create-agent-card.create-agent-card--dark .avatar-column {
+  background: var(--glass-surface);
+  border-color: var(--glass-border);
 }
 
 .create-agent-card.create-agent-card--dark .agent-dialog-control :deep(.q-field__control) {
-  background: rgb(30 41 59 / 76%);
-}
-
-.create-agent-card.create-agent-card--dark .agent-dialog-control :deep(.q-field__control::before) {
-  border-color: rgb(148 163 184 / 18%);
-}
-
-.create-agent-card.create-agent-card--dark .agent-dialog-control :deep(textarea) {
-  color: var(--color-border-soft);
-}
-
-.create-agent-card.create-agent-card--dark .description-block :deep(.q-chip) {
-  background: rgb(30 41 59 / 72%);
-}
-
-.create-agent-card.create-agent-card--dark .description-block :deep(.q-chip:hover) {
-  background: rgb(51 65 85 / 78%);
-}
-
-.create-agent-card.create-agent-card--dark .template-chip--active {
-  border-color: rgb(245 158 11 / 36%);
-  background: rgb(120 53 15 / 32%);
-  color: var(--color-accent-amber);
-}
-
-.create-agent-card.create-agent-card--dark .create-agent-card__actions {
-  background: rgb(15 23 42 / 72%);
+  background: color-mix(in srgb, var(--glass-surface) 88%, transparent);
 }
 
 @media (width <= 767px) {

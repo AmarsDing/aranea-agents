@@ -1,0 +1,423 @@
+// 表单布局、按钮宽度、Dialog 玻璃 — 全站共享（docs/frontend/UX.md §7）
+// 页面模板 A（配置表单）/ C（实体 Dialog）统一落点
+
+\:root,
+body.body--dark
+  --form-max-width: 960px
+  --form-wide-max-width: 1200px
+  --form-field-sm: 320px
+  --form-field-md: 480px
+  --form-field-long: 72ch
+  --composer-max-width: 900px
+
+// ── 页面壳 ──
+.app-page-shell
+  width: 100%
+  max-width: var(--layout-max-width)
+  margin: 0 auto
+  padding: var(--space-3) var(--space-4) var(--space-8)
+  box-sizing: border-box
+
+.app-entity-page
+  max-width: var(--layout-max-width)
+  margin: 0 auto
+  width: 100%
+  box-sizing: border-box
+
+.app-page-cream:not(.monitor-page):not(.graph-editor-page)
+  > .app-page-hero,
+  > .q-banner,
+  > .q-card,
+  > section:not(.app-entity-grid)
+    width: 100%
+    max-width: var(--layout-max-width)
+    margin-left: auto
+    margin-right: auto
+    box-sizing: border-box
+
+// ── 配置表单区 ──
+.app-form-shell
+  width: 100%
+  max-width: var(--form-max-width)
+
+.app-form-wide
+  width: 100%
+  max-width: var(--form-wide-max-width)
+
+.app-field-sm
+  max-width: var(--form-field-sm)
+
+.app-field-md
+  max-width: var(--form-field-md)
+
+.app-field-long
+  max-width: var(--form-field-long)
+
+// 自适应字段网格（替代 col-12 col-md-3 在超宽屏拉跑道）
+.app-form-field-grid
+  display: grid
+  gap: var(--space-4)
+  grid-template-columns: repeat(auto-fill, minmax(200px, 280px))
+
+.app-form-field-grid--wide
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr))
+  max-width: 100%
+
+.app-form-field-grid--2col
+  grid-template-columns: repeat(2, minmax(0, 1fr))
+
+  @media (width <= 599px)
+    grid-template-columns: 1fr
+
+// Embedder / Provider 配置：首行 4 列 + API Key 通栏
+.app-form-field-grid--embedder
+  grid-template-columns: minmax(148px, 1fr) minmax(200px, 1.6fr) minmax(160px, 1.2fr) minmax(88px, 112px)
+  max-width: 100%
+
+  @media (width <= 899px)
+    grid-template-columns: repeat(2, minmax(0, 1fr))
+
+  @media (width <= 599px)
+    grid-template-columns: 1fr
+
+.app-form-field-grid > .app-grid-span-full
+  grid-column: 1 / -1
+
+// ── 操作条 / 按钮 ──
+.app-actions-bar
+  display: flex
+  flex-wrap: wrap
+  align-items: center
+  justify-content: flex-end
+  gap: var(--space-3)
+
+  .q-btn
+    flex: 0 0 auto
+    width: auto
+    min-width: 96px
+
+.app-actions-bar--start
+  justify-content: flex-start
+
+// 配置页主按钮禁止 full-width（移动端除外）
+.app-form-shell,
+.settings-grid,
+.app-dialog-body
+  .q-btn.full-width:not(.app-btn-block-mobile)
+    width: auto
+    min-width: 96px
+
+@media (width <= 599px)
+  .app-btn-block-mobile
+    width: 100%
+
+// ── L1 配置页外壳（系统设置等）──
+.app-settings-shell
+  width: 100%
+  max-width: var(--layout-max-width)
+  margin: 0 auto
+  border-radius: 24px
+  border: 1px solid var(--glass-border)
+  background: var(--glass-surface)
+  overflow: hidden
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+
+.app-settings-shell__header
+  padding: var(--space-5) var(--space-6)
+  border-bottom: 1px solid var(--glass-border)
+  background: var(--glass-elevated)
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+
+.app-settings-shell__body
+  padding: var(--space-5) var(--space-6)
+
+.app-settings-section
+  padding: var(--space-5)
+  margin-bottom: var(--space-5)
+  border: 1px solid var(--glass-border)
+  border-radius: 20px
+  background: var(--glass-elevated)
+  backdrop-filter: blur(12px)
+  -webkit-backdrop-filter: blur(12px)
+
+  &:last-child
+    margin-bottom: 0
+
+.app-settings-section__title
+  margin: 0 0 var(--space-1)
+  font-size: var(--text-md)
+  font-weight: 700
+  color: var(--color-text-primary)
+  padding-left: var(--space-3)
+  border-left: 3px solid var(--color-accent)
+
+.app-settings-section__hint
+  margin: 0 0 var(--space-4)
+  font-size: var(--text-sm)
+  line-height: 1.55
+  color: var(--color-text-secondary)
+
+// ── Dialog 玻璃（UX §5.2a）──
+.q-dialog .q-card.app-dialog-card,
+.q-dialog .q-card:not(.q-dark):not(.bg-transparent)
+  border-radius: 24px
+  border: 1px solid var(--glass-border)
+  background: var(--glass-elevated)
+  box-shadow: var(--glass-inner-highlight)
+  backdrop-filter: blur(var(--glass-blur-elevated))
+  -webkit-backdrop-filter: blur(var(--glass-blur-elevated))
+
+.q-dialog .q-card__actions
+  padding: var(--space-3) var(--space-5) var(--space-5)
+  border-top: 1px solid var(--glass-border)
+  background: color-mix(in srgb, var(--glass-surface) 80%, transparent)
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+
+.app-dialog-card
+  width: 860px
+  max-width: 94vw
+
+.app-dialog-card--sm
+  width: 640px
+
+.app-dialog-card--md
+  width: 720px
+
+.app-dialog-card--lg
+  width: 880px
+
+.app-dialog-card--xl
+  width: 980px
+
+.app-dialog-body
+  padding: var(--space-4) var(--space-5)
+
+.app-dialog-section
+  padding: var(--space-4)
+  margin-bottom: var(--space-4)
+  border: 1px solid var(--glass-border)
+  border-radius: 18px
+  background: var(--glass-surface)
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+
+  &:last-child
+    margin-bottom: 0
+
+// Provider 编辑向导（ResourceManager Dialog）
+.provider-dialog__head
+  padding: 16px 18px 14px
+
+.provider-dialog__title
+  color: var(--color-text-heading)
+  font-size: 17px
+  font-weight: 700
+  line-height: 1.3
+
+.provider-dialog__subtitle
+  color: var(--color-text-secondary)
+  font-size: 12px
+  margin-top: 4px
+
+.provider-wizard-nav
+  display: grid
+  grid-template-columns: repeat(4, minmax(0, 1fr))
+  gap: 6px
+  padding: 10px 16px 12px
+  border-bottom: 1px solid var(--glass-border)
+  background: color-mix(in srgb, var(--glass-elevated) 42%, transparent)
+
+.provider-wizard-step
+  align-items: center
+  background: transparent
+  border: 1px solid transparent
+  border-radius: 12px
+  color: var(--color-text-secondary)
+  cursor: pointer
+  display: flex
+  gap: 8px
+  min-width: 0
+  padding: 8px 10px
+  text-align: left
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease
+
+  &:hover
+    background: color-mix(in srgb, var(--glass-elevated) 72%, transparent)
+    border-color: var(--glass-border)
+
+  &.is-active
+    background: color-mix(in srgb, var(--color-accent) 7%, var(--glass-elevated))
+    border-color: color-mix(in srgb, var(--color-accent) 20%, var(--glass-border))
+    color: var(--color-text-heading)
+
+  &.is-done:not(.is-active) .provider-wizard-step__index
+    border-color: color-mix(in srgb, var(--color-accent) 28%, var(--glass-border))
+    color: var(--color-text-heading)
+
+.provider-wizard-step__index
+  align-items: center
+  background: color-mix(in srgb, var(--glass-surface) 88%, transparent)
+  border: 1px solid var(--glass-border)
+  border-radius: 999px
+  display: inline-flex
+  flex: 0 0 22px
+  font-size: 11px
+  font-weight: 700
+  height: 22px
+  justify-content: center
+  width: 22px
+
+.provider-wizard-step.is-active .provider-wizard-step__index
+  background: color-mix(in srgb, var(--color-accent) 14%, var(--glass-surface))
+  border-color: color-mix(in srgb, var(--color-accent) 32%, var(--glass-border))
+  color: var(--color-text-heading)
+
+.provider-wizard-step__text
+  display: flex
+  flex-direction: column
+  gap: 1px
+  min-width: 0
+
+.provider-wizard-step__label
+  font-size: 12px
+  font-weight: 650
+  line-height: 1.25
+
+.provider-wizard-step__caption
+  color: var(--color-text-tertiary)
+  font-size: 10px
+  line-height: 1.2
+  overflow: hidden
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.provider-wizard-step.is-active .provider-wizard-step__caption
+  color: var(--color-text-secondary)
+
+.provider-wizard-scroll
+  max-height: min(62vh, 620px)
+  overflow-x: hidden
+  overflow-y: auto
+  scrollbar-width: none
+
+  &::-webkit-scrollbar
+    display: none
+
+.provider-wizard-body
+  padding: 14px 18px 18px
+
+.provider-wizard-panel
+  animation: provider-wizard-fade 0.2s ease
+
+@keyframes provider-wizard-fade
+  from
+    opacity: 0.6
+  to
+    opacity: 1
+
+.provider-step-heading
+  margin: 0 0 4px
+  font-size: 15px
+  font-weight: 650
+  color: var(--color-text-heading)
+
+.provider-step-hint
+  margin: 0 0 14px
+  font-size: 12px
+  line-height: 1.5
+  color: var(--color-text-secondary)
+
+.provider-dialog-actions
+  padding: 12px 18px 14px
+
+.provider-inspect-btn
+  color: var(--color-text-secondary)
+  font-size: 12px
+
+  &:hover:not(.disabled)
+    color: var(--color-accent)
+
+.provider-dialog .app-form-field-grid
+  gap: 12px
+
+.provider-dialog .q-toggle__inner--truthy
+  color: color-mix(in srgb, var(--color-accent) 68%, var(--glass-surface)) !important
+
+.provider-rating-slider :deep(.q-slider__track-container--h .q-slider__track)
+  background: color-mix(in srgb, var(--color-accent) 22%, var(--glass-border))
+
+.provider-rating-slider :deep(.q-slider__thumb)
+  color: var(--color-accent)
+
+.provider-dialog-save
+  background: color-mix(in srgb, var(--color-accent) 16%, var(--glass-elevated)) !important
+  border: 1px solid color-mix(in srgb, var(--color-accent) 28%, var(--glass-border)) !important
+  color: var(--color-text-heading) !important
+  min-width: 96px
+
+  &:hover:not(.disabled)
+    background: color-mix(in srgb, var(--color-accent) 22%, var(--glass-elevated)) !important
+    border-color: color-mix(in srgb, var(--color-accent) 38%, var(--glass-border)) !important
+
+@media (width <= 767px)
+  .provider-wizard-nav
+    grid-template-columns: repeat(2, minmax(0, 1fr))
+
+  .provider-wizard-step__caption
+    display: none
+
+// ── Chat composer 限宽 ──
+.chat-composer-inner
+  width: 100%
+  max-width: var(--composer-max-width)
+  margin: 0 auto
+
+.chat-composer .q-banner
+  max-width: var(--composer-max-width)
+  margin-left: auto
+  margin-right: auto
+
+.chat-composer .q-banner:not(.bg-negative):not(.bg-positive):not(.bg-warning)
+  background: var(--glass-surface)
+  color: var(--color-text-primary)
+  border: 1px solid var(--glass-border)
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+
+body.body--dark .chat-composer .q-banner.bg-orange-1,
+body.body--dark .chat-composer .q-banner.bg-amber-1,
+body:not(.body--dark) .chat-composer .q-banner.bg-orange-1,
+body:not(.body--dark) .chat-composer .q-banner.bg-amber-1
+  background: var(--color-status-warning-bg)
+  color: var(--color-status-warning-text-dark)
+  border: 1px solid color-mix(in srgb, var(--color-warning) 35%, transparent)
+
+// Registry 页玻璃面板（Template C — 详见 _registry-page.sass）
+.app-page-cream .app-glass-panel,
+.app-page-cream .app-registry-panel,
+.app-page-cream .app-pane-card,
+.app-page-cream .app-settings-section,
+.app-page-cream .app-registry-table-shell,
+.app-page-cream .app-registry-empty,
+.app-page-cream .skills-empty-card,
+.app-page-cream .knowledge-page > .q-card
+  border: 1px solid var(--glass-border)
+  border-radius: 20px
+  background: var(--glass-surface)
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+
+// ── 侧栏操作按钮（Chat）──
+.chat-session-actions
+  display: flex
+  flex-wrap: wrap
+  gap: var(--space-2)
+  padding: var(--space-3)
+
+  .q-btn
+    flex: 1 1 calc(50% - var(--space-2))
+    min-width: 0
+    max-width: 100%

@@ -6,42 +6,42 @@
           <div class="text-h6 text-weight-bold">活动日志</div>
           <div class="text-caption text-grey-7">管理与配置变更审计记录</div>
         </div>
-        <q-select
-          v-model="actionFilter"
-          dense
-          outlined
-          emit-value
-          map-options
-          clearable
-          class="col-12 col-md-2"
-          label="事件类型"
-          :options="actionOptions"
-        />
-        <q-select
-          v-model="resourceFilter"
-          dense
-          outlined
-          emit-value
-          map-options
-          clearable
-          class="col-12 col-md-2"
-          label="实体类型"
-          :options="resourceOptions"
-        />
-        <q-input
-          v-model="keyword"
-          dense
-          outlined
-          clearable
-          debounce="200"
-          class="col-12 col-md-3"
-          label="搜索事件 / 资源 / 详情"
-        >
-          <template #prepend>
-            <q-icon name="search" />
-          </template>
-        </q-input>
-        <q-btn flat rounded icon="refresh" label="刷新" :loading="loading" @click="$emit('reload')" />
+        <div class="app-form-field-grid items-center">
+          <q-select
+            v-model="actionFilter"
+            dense
+            outlined
+            emit-value
+            map-options
+            clearable
+            label="事件类型"
+            :options="actionOptions"
+          />
+          <q-select
+            v-model="resourceFilter"
+            dense
+            outlined
+            emit-value
+            map-options
+            clearable
+            label="实体类型"
+            :options="resourceOptions"
+          />
+          <q-input
+            v-model="keyword"
+            class="app-field-md"
+            dense
+            outlined
+            clearable
+            debounce="200"
+            label="搜索事件 / 资源 / 详情"
+          >
+            <template #prepend>
+              <q-icon name="search" />
+            </template>
+          </q-input>
+        </div>
+        <q-btn flat rounded no-caps icon="refresh" label="刷新" :loading="loading" @click="$emit('reload')" />
       </q-card-section>
       <q-separator />
       <q-table
@@ -88,7 +88,7 @@
     </q-card>
 
     <q-dialog v-model="detailOpen">
-      <q-card class="monitor-detail-card">
+      <q-card class="monitor-detail-card app-dialog-card app-dialog-card--lg">
         <q-card-section class="row items-start justify-between">
           <div>
             <div class="text-h6">Audit 详情</div>
@@ -114,10 +114,10 @@
               </q-item-section>
             </q-item>
           </q-list>
-          <pre class="monitor-json">{{ selectedJSON }}</pre>
+          <pre class="monitor-json app-code-block">{{ selectedJSON }}</pre>
         </q-card-section>
-        <q-card-actions align="right">
-          <q-btn flat label="复制 JSON" icon="content_copy" @click="copyJSON" />
+        <q-card-actions align="right" class="app-actions-bar">
+          <q-btn flat no-caps label="复制 JSON" icon="content_copy" @click="copyJSON" />
         </q-card-actions>
       </q-card>
     </q-dialog>

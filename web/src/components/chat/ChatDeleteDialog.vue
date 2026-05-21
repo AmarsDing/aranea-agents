@@ -1,36 +1,40 @@
 <template>
   <q-dialog :model-value="modelValue" @update:model-value="$emit('update:modelValue', $event)">
-    <q-card class="q-pa-md" style="min-width: 320px">
+    <q-card class="app-dialog-card app-dialog-card--sm">
       <q-card-section class="text-h6 text-negative">{{ title }}</q-card-section>
-      <q-banner v-if="blockedBusy" class="bg-negative text-white q-mb-md" rounded>
-        {{ t("chat.deleteBlockedBusy") }}
-      </q-banner>
-      <q-card-section v-if="kind !== 'all' && kind !== 'session' && !blockedBusy" class="q-pt-none">
-        <p class="text-cream-muted text-body2 q-mb-sm">
-          {{ t("chat.deleteConfirmHint") }} <strong>{{ expectedName }}</strong>
+      <q-card-section class="app-dialog-body q-pt-none">
+        <q-banner v-if="blockedBusy" class="bg-negative text-white q-mb-md" rounded>
+          {{ t("chat.deleteBlockedBusy") }}
+        </q-banner>
+        <template v-if="kind !== 'all' && kind !== 'session' && !blockedBusy">
+          <p class="text-body2 q-mb-sm" style="color: var(--color-text-secondary)">
+            {{ t("chat.deleteConfirmHint") }} <strong>{{ expectedName }}</strong>
+          </p>
+          <q-input
+            :model-value="nameInput"
+            class="app-field-md"
+            dense
+            outlined
+            :disable="blockedBusy"
+            @update:model-value="$emit('update:nameInput', String($event ?? ''))"
+          />
+          <p v-if="hasNameError" class="text-negative text-caption q-mt-sm">
+            {{ t("chat.deleteNameMismatch") }}
+          </p>
+        </template>
+        <p v-else-if="kind === 'session'" class="text-body2 q-mb-none" style="color: var(--color-text-secondary)">
+          {{ t("chat.deleteSessionConfirm") }} <strong>{{ expectedName }}</strong>
         </p>
-        <q-input
-          :model-value="nameInput"
-          dense
-          outlined
-          :disable="blockedBusy"
-          @update:model-value="$emit('update:nameInput', String($event ?? ''))"
-        />
-        <p v-if="hasNameError" class="text-negative text-caption q-mt-sm">
-          {{ t("chat.deleteNameMismatch") }}
+        <p v-else-if="kind === 'all'" class="text-body2 q-mb-none" style="color: var(--color-text-secondary)">
+          {{ t("chat.deleteAllConfirm") }}
         </p>
       </q-card-section>
-      <q-card-section v-else-if="kind === 'session'" class="q-pt-none text-cream-muted text-body2">
-        {{ t("chat.deleteSessionConfirm") }} <strong>{{ expectedName }}</strong>
-      </q-card-section>
-      <q-card-section v-else-if="kind === 'all'" class="q-pt-none text-cream-muted text-body2">
-        {{ t("chat.deleteAllConfirm") }}
-      </q-card-section>
-      <q-card-actions align="right">
-        <q-btn flat :label="t('chat.cancel')" :disable="deleting" v-close-popup />
+      <q-card-actions align="right" class="app-actions-bar">
+        <q-btn flat no-caps :label="t('chat.cancel')" :disable="deleting" v-close-popup />
         <q-btn
           v-if="!blockedBusy"
           unelevated
+          no-caps
           color="negative"
           :label="t('chat.confirmDelete')"
           :disable="!canConfirm"

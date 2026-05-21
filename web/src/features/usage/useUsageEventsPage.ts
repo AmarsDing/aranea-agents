@@ -52,6 +52,11 @@ export function useUsageEventsPage() {
     return `${s.slice(0, max)}…`;
   }
 
+  function resetFilters() {
+    filters.value = { range: "7d", limit: 200 };
+    void load();
+  }
+
   return {
     events,
     loading: eventsLoading,
@@ -63,6 +68,7 @@ export function useUsageEventsPage() {
     usageKindOptions,
     load,
     exportCsv,
+    resetFilters,
     formatMoney,
     truncate
   };

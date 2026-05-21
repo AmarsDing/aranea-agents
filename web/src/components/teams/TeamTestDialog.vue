@@ -3,7 +3,7 @@
 -->
 <template>
   <q-dialog :model-value="modelValue" @update:model-value="$emit('update:modelValue', $event)">
-    <q-card :class="['team-test-dialog', { 'is-dark': isDark }]" style="min-width: min(520px, 94vw)">
+    <q-card :class="['team-test-dialog app-dialog-card app-dialog-card--sm', { 'is-dark': isDark }]">
       <q-card-section class="row items-center justify-between">
         <div>
           <div class="text-h6">运行测试</div>
@@ -15,6 +15,7 @@
       <q-card-section>
         <q-input
           v-model="localContent"
+          class="app-field-long"
           type="textarea"
           autogrow
           outlined
@@ -31,7 +32,7 @@
           Run {{ run.status }} · {{ run.duration_ms }}ms · in {{ run.token_in }} / out {{ run.token_out }}
         </div>
       </q-card-section>
-      <q-card-actions align="right">
+      <q-card-actions align="right" class="app-actions-bar">
         <q-btn flat label="关闭" @click="$emit('update:modelValue', false)" />
         <q-btn color="primary" unelevated icon="science" label="执行测试" :loading="loading" @click="$emit('run', localContent)" />
       </q-card-actions>
@@ -71,29 +72,16 @@ watch(
 </script>
 
 <style scoped>
-.team-test-dialog {
-  border-radius: 20px;
-  border: 1px solid rgb(15 23 42 / 8%);
-  background: rgb(255 255 255 / 96%);
-  backdrop-filter: blur(16px);
-}
-
 .team-test-reply {
   white-space: pre-wrap;
   padding: 12px;
   border-radius: 14px;
-  border: 1px solid rgb(15 23 42 / 8%);
-  background: var(--color-page-tint);
+  border: 1px solid var(--glass-border);
+  background: var(--glass-surface);
   line-height: 1.55;
 }
 
-.team-test-dialog.is-dark {
-  border-color: rgb(148 163 184 / 16%);
-  background: rgb(17 24 39 / 94%);
-}
-
 .team-test-dialog.is-dark .team-test-reply {
-  border-color: rgb(148 163 184 / 14%);
-  background: rgb(30 41 59 / 76%);
+  background: var(--glass-elevated);
 }
 </style>

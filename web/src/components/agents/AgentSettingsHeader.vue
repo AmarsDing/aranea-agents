@@ -78,9 +78,10 @@ defineEmits<{
   gap: 16px;
   flex-wrap: wrap;
   padding: 22px 24px;
-  background:
-    radial-gradient(circle at top left, rgb(25 118 210 / 8%), transparent 28%),
-    linear-gradient(180deg, var(--color-on-accent), var(--color-page-tint));
+  background: var(--glass-elevated);
+  border-bottom: 1px solid var(--glass-border);
+  backdrop-filter: blur(var(--glass-blur-default));
+  -webkit-backdrop-filter: blur(var(--glass-blur-default));
 }
 
 .settings-avatar {
@@ -136,9 +137,8 @@ defineEmits<{
 }
 
 body.body--dark .settings-header {
-  background:
-    radial-gradient(circle at top left, rgb(59 130 246 / 16%), transparent 30%),
-    linear-gradient(180deg, var(--color-text-gray-800), var(--color-surface-elevated));
+  background: var(--glass-elevated);
+  border-bottom-color: var(--glass-border);
 }
 
 body.body--dark .header-icon-btn {

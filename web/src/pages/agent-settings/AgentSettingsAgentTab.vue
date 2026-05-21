@@ -8,33 +8,32 @@
 
     <section class="settings-section">
       <div class="section-heading">
-        <div>
-          <div class="text-subtitle1 text-weight-bold">Agent 个性</div>
-          <div class="text-caption text-grey-7">身份、状态、分类与对外描述。</div>
+        <div class="section-title">
+          <span class="section-title__text">Agent 个性</span>
         </div>
+        <div class="text-caption text-grey-7">身份、状态、分类与对外描述。</div>
       </div>
-      <div class="row q-col-gutter-md">
-        <q-input v-model="form.display_name" class="col-12 col-md-6" dense outlined label="显示名称" />
-        <q-input v-model="form.agent_key" class="col-12 col-md-6" dense outlined readonly label="Agent 标识">
+      <div class="app-form-field-grid app-form-field-grid--2col">
+        <q-input v-model="form.display_name" dense outlined label="显示名称" />
+        <q-input v-model="form.agent_key" dense outlined readonly label="Agent 标识">
           <template #append><q-btn flat round dense icon="content_copy" @click="$emit('copy-key')" /></template>
         </q-input>
-        <q-select v-model="form.status" class="col-12 col-md-6" dense outlined emit-value map-options label="状态" :options="statusOptions" />
-        <q-toggle v-model="form.is_default" class="col-12 col-md-6" color="primary" label="默认 Agent" />
-        <q-input v-model="form.agent_description" class="col-12" outlined autogrow type="textarea" label="专业摘要 / 能力描述" />
+        <q-select v-model="form.status" dense outlined emit-value map-options label="状态" :options="statusOptions" />
+        <q-toggle v-model="form.is_default" color="primary" label="默认 Agent" />
+        <q-input v-model="form.agent_description" class="app-field-long" outlined autogrow type="textarea" label="专业摘要 / 能力描述" />
       </div>
     </section>
 
     <section class="settings-section">
       <div class="section-heading">
-        <div>
-          <div class="text-subtitle1 text-weight-bold">模型</div>
-          <div class="text-caption text-grey-7">选择数据库已录入的模型；单价在 Provider 管理中维护并同步至 model_pricing_rules。</div>
+        <div class="section-title">
+          <span class="section-title__text">模型</span>
         </div>
+        <div class="text-caption text-grey-7">选择数据库已录入的模型；单价在 Provider 管理中维护并同步至 model_pricing_rules。</div>
       </div>
-      <div class="row q-col-gutter-md">
+      <div class="app-field-md">
         <q-select
           :model-value="selectedProviderModelID"
-          class="col-12"
           dense
           outlined
           emit-value
@@ -72,10 +71,10 @@
 
     <section class="settings-section">
       <div class="section-heading">
-        <div>
-          <div class="text-subtitle1 text-weight-bold">能力</div>
-          <div class="text-caption text-grey-7">子 Agent 与工具策略。冲突工具会在保存前提示。</div>
+        <div class="section-title">
+          <span class="section-title__text">能力</span>
         </div>
+        <div class="text-caption text-grey-7">子 Agent 与工具策略。冲突工具会在保存前提示。</div>
       </div>
       <div class="row q-col-gutter-md">
         <div class="col-12 col-lg-6">
@@ -88,13 +87,13 @@
               <q-toggle v-model="config.subagents.enabled" color="primary" />
             </q-card-section>
             <q-separator />
-            <q-card-section v-if="config.subagents.enabled" class="row q-col-gutter-sm">
-              <q-input v-model.number="config.subagents.max_concurrency" class="col-6" dense outlined type="number" label="最大并发数" />
-              <q-input v-model.number="config.subagents.max_generation_depth" class="col-6" dense outlined type="number" label="最大生成深度" />
-              <q-input v-model.number="config.subagents.max_children_per_agent" class="col-6" dense outlined type="number" label="每 Agent 最大子数" />
-              <q-input v-model.number="config.subagents.archive_after_minutes" class="col-6" dense outlined type="number" label="归档时间 (分钟)" />
-              <q-input v-model.number="config.subagents.max_retries" class="col-6" dense outlined type="number" label="最大重试次数" />
-              <q-input v-model="config.subagents.model_override" class="col-6" dense outlined label="模型覆盖" placeholder="继承自 Agent" />
+            <q-card-section v-if="config.subagents.enabled" class="app-form-field-grid">
+              <q-input v-model.number="config.subagents.max_concurrency" dense outlined type="number" label="最大并发数" />
+              <q-input v-model.number="config.subagents.max_generation_depth" dense outlined type="number" label="最大生成深度" />
+              <q-input v-model.number="config.subagents.max_children_per_agent" dense outlined type="number" label="每 Agent 最大子数" />
+              <q-input v-model.number="config.subagents.archive_after_minutes" dense outlined type="number" label="归档时间 (分钟)" />
+              <q-input v-model.number="config.subagents.max_retries" dense outlined type="number" label="最大重试次数" />
+              <q-input v-model="config.subagents.model_override" dense outlined label="模型覆盖" placeholder="继承自 Agent" />
             </q-card-section>
           </q-card>
         </div>
@@ -176,12 +175,12 @@
               <q-toggle v-model="config.tools.retry.enabled" color="primary" />
             </q-card-section>
             <q-separator />
-            <q-card-section v-if="config.tools.retry.enabled" class="row q-col-gutter-sm">
-              <q-input v-model.number="config.tools.retry.max_attempts" class="col-6" dense outlined type="number" label="最大重试次数" hint="含首次调用" />
-              <q-input v-model.number="config.tools.retry.initial_interval_ms" class="col-6" dense outlined type="number" label="初始间隔 (ms)" />
-              <q-input v-model.number="config.tools.retry.backoff_factor" class="col-6" dense outlined type="number" step="0.1" label="退避因子" />
-              <q-input v-model.number="config.tools.retry.max_interval_ms" class="col-6" dense outlined type="number" label="最大间隔 (ms)" />
-              <q-toggle v-model="config.tools.retry.jitter" class="col-6" color="primary" label="随机抖动" />
+            <q-card-section v-if="config.tools.retry.enabled" class="app-form-field-grid app-form-field-grid--2col">
+              <q-input v-model.number="config.tools.retry.max_attempts" dense outlined type="number" label="最大重试次数" hint="含首次调用" />
+              <q-input v-model.number="config.tools.retry.initial_interval_ms" dense outlined type="number" label="初始间隔 (ms)" />
+              <q-input v-model.number="config.tools.retry.backoff_factor" dense outlined type="number" step="0.1" label="退避因子" />
+              <q-input v-model.number="config.tools.retry.max_interval_ms" dense outlined type="number" label="最大间隔 (ms)" />
+              <q-toggle v-model="config.tools.retry.jitter" color="primary" label="随机抖动" />
             </q-card-section>
           </q-card>
         </div>
@@ -194,9 +193,9 @@
               </div>
             </q-card-section>
             <q-separator />
-            <q-card-section class="row q-col-gutter-sm">
-              <q-toggle v-model="config.tools.parallel_enabled" class="col-12" color="primary" label="并行工具调用" hint="模型发出多个工具调用时并行执行" />
-              <q-toggle v-model="config.tools.streaming_enabled" class="col-12" color="primary" label="流式工具" hint="启用支持 StreamableCall 的工具流式输出" />
+            <q-card-section class="app-form-field-grid app-form-field-grid--2col">
+              <q-toggle v-model="config.tools.parallel_enabled" color="primary" label="并行工具调用" hint="模型发出多个工具调用时并行执行" />
+              <q-toggle v-model="config.tools.streaming_enabled" color="primary" label="流式工具" hint="启用支持 StreamableCall 的工具流式输出" />
             </q-card-section>
           </q-card>
         </div>
@@ -220,19 +219,19 @@
 
     <section class="settings-section">
       <div class="section-heading">
-        <div>
-          <div class="text-subtitle1 text-weight-bold">记忆与心跳</div>
-          <div class="text-caption text-grey-7">语义检索、Dreaming 与 HEARTBEAT.MD 注入。</div>
+        <div class="section-title">
+          <span class="section-title__text">记忆与心跳</span>
         </div>
+        <div class="text-caption text-grey-7">语义检索、Dreaming 与 HEARTBEAT.MD 注入。</div>
       </div>
-      <div class="row q-col-gutter-md">
-        <q-toggle v-model="config.memory.enabled" class="col-12 col-md-3" color="primary" label="记忆启用" />
-        <q-input v-model.number="config.memory.max_chunk_length" class="col-12 col-md-3" dense outlined type="number" label="最大块长度" />
-        <q-input v-model.number="config.memory.max_results" class="col-12 col-md-3" dense outlined type="number" label="最大结果数" />
-        <q-input v-model.number="config.memory.min_score" class="col-12 col-md-3" dense outlined type="number" step="0.01" label="最低分数" />
-        <q-toggle v-model="config.heartbeat.enabled" class="col-12 col-md-3" color="negative" label="心跳启用" />
-        <q-input v-model.number="config.heartbeat.interval_minutes" class="col-12 col-md-3" dense outlined type="number" suffix="min" label="间隔" />
-        <q-input v-model="heartbeatFile.body" class="col-12 col-md-6" dense outlined autogrow type="textarea" label="检查清单 (HEARTBEAT.MD)" />
+      <div class="app-form-field-grid">
+        <q-toggle v-model="config.memory.enabled" color="primary" label="记忆启用" />
+        <q-input v-model.number="config.memory.max_chunk_length" dense outlined type="number" label="最大块长度" />
+        <q-input v-model.number="config.memory.max_results" dense outlined type="number" label="最大结果数" />
+        <q-input v-model.number="config.memory.min_score" dense outlined type="number" step="0.01" label="最低分数" />
+        <q-toggle v-model="config.heartbeat.enabled" color="negative" label="心跳启用" />
+        <q-input v-model.number="config.heartbeat.interval_minutes" dense outlined type="number" suffix="min" label="间隔" />
+        <q-input v-model="heartbeatFile.body" class="app-field-long" dense outlined autogrow type="textarea" label="检查清单 (HEARTBEAT.MD)" />
       </div>
     </section>
   </div>
@@ -292,31 +291,7 @@ defineEmits<{
 </script>
 
 <style scoped>
-.settings-grid {
-  display: grid;
-  gap: 18px;
-}
-
-.settings-section {
-  padding: 20px;
-  border: 1px solid var(--glass-border);
-  border-radius: 24px;
-  background: var(--glass-surface);
-}
-
-.section-heading {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 14px;
-}
-
-.capability-card {
-  border-color: var(--glass-border);
-  border-radius: 18px;
-  background: var(--glass-elevated);
-}
-
+/* 组件特有样式；通用 .settings-section / .capability-card 由 agent-settings-page.scss 控制 */
 .settings-info-banner,
 .settings-warning-banner {
   background: var(--glass-elevated);

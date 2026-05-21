@@ -1,6 +1,6 @@
 <template>
   <q-dialog :model-value="modelValue" persistent @update:model-value="$emit('update:modelValue', $event)">
-    <q-card class="sessions-dialog-card" style="min-width: 400px; max-width: 480px">
+    <q-card class="sessions-dialog-card app-dialog-card app-dialog-card--sm">
       <q-card-section>
         <div class="text-h6 text-weight-bold">{{ title }}</div>
         <div class="text-caption q-mt-xs" style="color: var(--color-text-secondary)">{{ subtitle }}</div>
@@ -34,7 +34,7 @@
           <span class="text-caption">正在预览…</span>
         </div>
       </q-card-section>
-      <q-card-actions align="right" class="q-pa-md q-pt-none">
+      <q-card-actions align="right" class="app-actions-bar q-pa-md q-pt-none">
         <q-btn flat rounded label="取消" class="sessions-btn-ghost" @click="$emit('update:modelValue', false)" />
         <q-btn
           flat

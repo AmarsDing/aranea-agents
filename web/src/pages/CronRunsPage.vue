@@ -1,5 +1,5 @@
 <template>
-  <q-page class="app-page-cream cron-runs-page q-pa-sm q-pa-md-md">
+  <q-page class="app-page-cream app-registry-page cron-runs-page">
     <section class="app-page-hero">
       <div>
         <div class="app-page-kicker">Scheduled task runs</div>
@@ -9,11 +9,11 @@
       <q-btn outline rounded color="primary" icon="refresh" label="刷新" :loading="loading" @click="loadRuns" />
     </section>
 
-    <q-card flat bordered class="cron-runs-filter q-mb-md">
-      <q-card-section class="row q-col-gutter-md items-center">
+    <q-card flat class="app-registry-panel">
+      <q-card-section class="app-form-field-grid app-registry-toolbar items-end">
         <q-select
           v-model="taskId"
-          class="col-12 col-md-5"
+          class="app-field-md"
           dense
           outlined
           clearable
@@ -25,7 +25,6 @@
         />
         <q-select
           v-model="status"
-          class="col-12 col-md-3"
           dense
           outlined
           clearable
@@ -35,9 +34,9 @@
           :options="statusOptions"
           @update:model-value="syncQueryAndLoad"
         />
-        <div class="col row justify-end q-gutter-sm">
-          <q-btn flat rounded icon="restart_alt" label="清空" @click="resetFilters" />
-          <q-btn color="primary" rounded unelevated icon="manage_search" label="查询" :loading="loading" @click="syncQueryAndLoad" />
+        <div class="app-actions-bar app-actions-bar--start">
+          <q-btn flat rounded no-caps icon="restart_alt" label="清空" @click="resetFilters" />
+          <q-btn color="primary" rounded unelevated no-caps icon="manage_search" label="查询" :loading="loading" @click="syncQueryAndLoad" />
         </div>
       </q-card-section>
     </q-card>
@@ -49,10 +48,11 @@
       </template>
     </q-banner>
 
+    <div class="app-registry-table-shell">
     <q-table
       flat
-      bordered
-      class="cron-runs-table"
+      dense
+      class="app-registry-table"
       row-key="id"
       :rows="runs"
       :columns="columns"
@@ -61,8 +61,8 @@
     >
       <template #body-cell-task="props">
         <q-td :props="props">
-          <div class="text-weight-medium">{{ props.row.task_name || taskLabel(props.row.task_id) }}</div>
-          <div class="text-caption text-grey-7">{{ props.row.task_id }}</div>
+          <div class="app-registry-cell-primary">{{ props.row.task_name || taskLabel(props.row.task_id) }}</div>
+          <div class="app-registry-cell-sub">{{ props.row.task_id }}</div>
         </q-td>
       </template>
       <template #body-cell-time="props">
@@ -78,19 +78,22 @@
       </template>
       <template #body-cell-error="props">
         <q-td :props="props">
-          <div class="ellipsis cron-run-error">{{ props.row.error_message || "—" }}</div>
+          <div class="app-registry-cell-desc" :title="props.row.error_message || ''">{{ props.row.error_message || "—" }}</div>
           <q-tooltip v-if="props.row.error_message">{{ props.row.error_message }}</q-tooltip>
         </q-td>
       </template>
       <template #body-cell-run="props">
         <q-td :props="props">
+          <div class="app-registry-cell-actions">
           <q-btn v-if="props.row.run_id" flat dense round icon="open_in_new" color="primary">
             <q-tooltip>关联运行：{{ props.row.run_id }}</q-tooltip>
           </q-btn>
           <span v-else>—</span>
+          </div>
         </q-td>
       </template>
     </q-table>
+    </div>
   </q-page>
 </template>
 
@@ -100,6 +103,7 @@ import { useRoute, useRouter } from "vue-router";
 import type { QTableColumn } from "quasar";
 import { listCronTaskRuns, listCronTasks } from "../features/cron/api";
 import type { CronTaskRow, CronTaskRun } from "../features/cron/types";
+import { registryCol } from "../features/ui/registryTableColumns";
 
 const route = useRoute();
 const router = useRouter();
@@ -111,12 +115,12 @@ const taskId = ref(String(route.query.cron_task_id || ""));
 const status = ref(String(route.query.status || ""));
 
 const columns: QTableColumn<CronTaskRun>[] = [
-  { name: "task", label: "任务名称", field: "task_name", align: "left" },
-  { name: "time", label: "时间", field: "started_at", align: "left" },
-  { name: "status", label: "结果", field: "status", align: "left" },
-  { name: "error", label: "错误摘要", field: "error_message", align: "left" },
-  { name: "trigger", label: "触发", field: "trigger", align: "left" },
-  { name: "run", label: "Agent 运行", field: "run_id", align: "right" }
+  { name: "task", label: "任务名称", field: "task_name", align: "left", ...registryCol.name },
+  { name: "time", label: "时间", field: "started_at", align: "left", ...registryCol.time },
+  { name: "status", label: "结果", field: "status", align: "left", ...registryCol.status },
+  { name: "error", label: "错误摘要", field: "error_message", align: "left", ...registryCol.error },
+  { name: "trigger", label: "触发", field: "trigger", align: "left", ...registryCol.trigger },
+  { name: "run", label: "Agent 运行", field: "run_id", align: "right", ...registryCol.actions }
 ];
 const taskOptions = computed(() => tasks.value.map((task) => ({ label: task.name, value: task.id })));
 const statusOptions = [
@@ -184,13 +188,3 @@ function formatDate(value?: string) {
 }
 </script>
 
-<style scoped>
-.cron-runs-filter,
-.cron-runs-table {
-  border-radius: 18px;
-}
-
-.cron-run-error {
-  max-width: 360px;
-}
-</style>

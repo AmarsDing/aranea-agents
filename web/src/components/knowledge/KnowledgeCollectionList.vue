@@ -1,8 +1,7 @@
 <template>
-  <q-card flat bordered class="knowledge-list-card">
-    <q-card-section class="text-subtitle1 text-weight-bold">集合</q-card-section>
-    <q-separator />
-    <q-list separator>
+  <q-card flat class="app-pane-card knowledge-list-card">
+    <div class="app-pane-card__header">集合</div>
+    <q-list v-if="collections.length" separator class="app-pane-card__body">
       <q-item
         v-for="col in collections"
         :key="col.id"
@@ -22,8 +21,14 @@
         </q-item-section>
       </q-item>
     </q-list>
-    <q-card-section v-if="!loading && !collections.length" class="text-grey-7 text-center">
-      暂无集合，点击「新建集合」开始。
+    <div v-else-if="!loading" class="app-registry-empty app-registry-empty--compact app-pane-card__body">
+      <q-icon name="folder_open" size="40px" color="grey-6" />
+      <div class="text-subtitle1">暂无集合</div>
+      <div class="text-body2">点击右上角「新建集合」开始。</div>
+    </div>
+    <q-card-section v-else class="app-pane-card__body">
+      <q-skeleton type="rect" height="48px" class="q-mb-sm" />
+      <q-skeleton type="rect" height="48px" />
     </q-card-section>
   </q-card>
 </template>

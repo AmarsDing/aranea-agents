@@ -4,21 +4,15 @@
       L3 facts 暂时不可用。请检查 **`memory/v1`** 网关（**`GET /v1/memory/l3/facts`**）或筛选条件。
     </q-banner>
     <q-card flat bordered class="memory-card">
-      <q-card-section class="row q-col-gutter-sm items-center">
-        <div class="col-12 col-md-4">
-          <q-input :model-value="factKeyword" dense outlined clearable debounce="300" label="搜索知识、偏好或规则" @update:model-value="$emit('update:factKeyword', String($event ?? ''))">
-            <template #prepend><q-icon name="search" /></template>
-          </q-input>
-        </div>
-        <div class="col-12 col-sm-6 col-md-2">
-          <q-select :model-value="factScope" dense outlined clearable emit-value map-options label="Scope" :options="scopeOptions" @update:model-value="$emit('update:factScope', $event as string | null)" />
-        </div>
-        <div class="col-12 col-sm-6 col-md-2">
-          <q-select :model-value="factStatus" dense outlined clearable emit-value map-options label="状态" :options="factStatusOptions" @update:model-value="$emit('update:factStatus', $event as string | null)" />
-        </div>
-        <div class="col-12 col-md-4 row justify-end q-gutter-sm">
-          <q-btn flat rounded icon="restart_alt" label="重置" @click="$emit('reset')" />
-          <q-btn unelevated rounded color="primary" icon="manage_search" label="查询" :loading="loadingFacts" @click="$emit('search')" />
+      <q-card-section class="app-form-field-grid items-end">
+        <q-input :model-value="factKeyword" class="app-field-md" dense outlined clearable debounce="300" label="搜索知识、偏好或规则" @update:model-value="$emit('update:factKeyword', String($event ?? ''))">
+          <template #prepend><q-icon name="search" /></template>
+        </q-input>
+        <q-select :model-value="factScope" dense outlined clearable emit-value map-options label="Scope" :options="scopeOptions" @update:model-value="$emit('update:factScope', $event as string | null)" />
+        <q-select :model-value="factStatus" dense outlined clearable emit-value map-options label="状态" :options="factStatusOptions" @update:model-value="$emit('update:factStatus', $event as string | null)" />
+        <div class="app-actions-bar app-actions-bar--start">
+          <q-btn flat rounded no-caps icon="restart_alt" label="重置" @click="$emit('reset')" />
+          <q-btn unelevated rounded no-caps color="primary" icon="manage_search" label="查询" :loading="loadingFacts" @click="$emit('search')" />
         </div>
       </q-card-section>
       <q-table

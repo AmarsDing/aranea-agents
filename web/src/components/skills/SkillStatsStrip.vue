@@ -1,19 +1,21 @@
 <template>
-  <div class="skill-stats-strip">
-    <div class="skill-stat">
-      <span class="skill-stat__label">使用</span>
-      <strong>{{ skill.invoke_count }}</strong>
-      <span class="skill-stat__hint">近 7 日 {{ skill.usage_count_7d ?? 0 }}</span>
+  <div class="skill-stats-strip" role="group" aria-label="使用统计">
+    <div class="skill-stats-metric">
+      <span class="skill-stats-metric__label">使用</span>
+      <span class="skill-stats-metric__value">{{ skill.invoke_count }}</span>
+      <span class="skill-stats-metric__meta">7d {{ skill.usage_count_7d ?? 0 }}</span>
     </div>
-    <div class="skill-stat">
-      <span class="skill-stat__label">成功 / 失败</span>
-      <strong class="text-positive">{{ skill.success_count }}</strong>
-      <span class="skill-stat__hint text-negative">{{ skill.failure_count }}</span>
+    <span class="skill-stats-sep" aria-hidden="true" />
+    <div class="skill-stats-metric">
+      <span class="skill-stats-metric__label">成功</span>
+      <span class="skill-stats-metric__value text-positive">{{ skill.success_count }}</span>
+      <span class="skill-stats-metric__meta text-negative">败 {{ skill.failure_count }}</span>
     </div>
-    <div class="skill-stat">
-      <span class="skill-stat__label">平均耗时</span>
-      <strong>{{ formatDuration(skill.avg_duration_ms) }}</strong>
-      <span class="skill-stat__hint">最近 {{ formatDuration(skill.last_duration_ms) }}</span>
+    <span class="skill-stats-sep" aria-hidden="true" />
+    <div class="skill-stats-metric">
+      <span class="skill-stats-metric__label">耗时</span>
+      <span class="skill-stats-metric__value">{{ formatDuration(skill.avg_duration_ms) }}</span>
+      <span class="skill-stats-metric__meta">近 {{ formatDuration(skill.last_duration_ms) }}</span>
     </div>
   </div>
 </template>
@@ -33,23 +35,52 @@ function formatDuration(value?: number | null) {
 </script>
 
 <style scoped lang="sass">
-// 玻璃与边：`app-global.sass` 在 `.skills-page` 下处理 `.skill-stat`
 .skill-stats-strip
   display: flex
-  flex-wrap: wrap
+  align-items: center
+  flex-wrap: nowrap
   gap: 10px
+  min-width: 0
+  max-width: 100%
 
-.skill-stat
-  min-width: 84px
+.skill-stats-metric
+  display: grid
+  grid-template-columns: auto auto
+  grid-template-rows: auto auto
+  column-gap: 6px
+  row-gap: 1px
+  align-items: baseline
+  min-width: 0
 
-.skill-stat__label,
-.skill-stat__hint
-  display: block
+.skill-stats-metric__label
+  grid-column: 1
+  grid-row: 1 / span 2
+  align-self: center
   font-size: 11px
+  font-weight: 600
   color: var(--color-text-secondary)
+  white-space: nowrap
 
-.skill-stat strong
-  display: inline-block
-  margin-top: 2px
-  font-size: 15px
+.skill-stats-metric__value
+  grid-column: 2
+  grid-row: 1
+  font-size: 13px
+  font-weight: 700
+  line-height: 1.2
+  color: var(--color-text-primary)
+  white-space: nowrap
+
+.skill-stats-metric__meta
+  grid-column: 2
+  grid-row: 2
+  font-size: 11px
+  line-height: 1.2
+  color: var(--color-text-tertiary)
+  white-space: nowrap
+
+.skill-stats-sep
+  flex: 0 0 1px
+  align-self: stretch
+  min-height: 28px
+  background: var(--glass-border)
 </style>

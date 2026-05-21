@@ -1,8 +1,8 @@
 <template>
   <q-dialog :model-value="modelValue" persistent @update:model-value="$emit('update:modelValue', $event)">
-    <q-card class="channel-editor-card">
-      <q-card-section class="row items-start justify-between q-gutter-md">
-        <div>
+    <q-card class="channel-editor-card app-dialog-card app-dialog-card--xl">
+      <q-card-section class="channel-editor-header row items-start justify-between no-wrap">
+        <div class="col min-width-0">
           <div class="text-h6">{{ row ? "编辑 Channel" : "新增 Channel" }}</div>
           <div class="text-caption text-grey-7">配置非敏感参数，密钥字段留空表示不修改。</div>
         </div>
@@ -10,26 +10,29 @@
       </q-card-section>
       <q-separator />
 
-      <q-card-section class="q-gutter-md">
-        <div v-if="!row" class="q-gutter-sm">
-          <div class="section-label">选择平台</div>
-          <ChannelCatalogPicker v-model="selectedType" :catalog="catalog" />
-        </div>
+      <div class="channel-editor-scroll">
+        <q-card-section class="app-dialog-body channel-editor-body">
+          <div v-if="!row" class="channel-editor-section">
+            <div class="section-label">选择平台</div>
+            <p class="section-hint">已接入平台可直接配置；其余平台可先预览规格，接入后自动可用。</p>
+            <div class="channel-catalog-shell">
+              <ChannelCatalogPicker v-model="selectedType" :catalog="catalog" />
+            </div>
+          </div>
 
-        <q-card v-if="selectedCatalog" flat bordered class="selected-channel-card">
-          <q-card-section class="q-pa-md">
-            <div class="row q-col-gutter-md items-start">
-              <div class="col-12 col-md">
-                <div class="row items-center q-gutter-sm">
-                  <q-avatar color="primary" text-color="white" size="34px">{{ selectedCatalog.label.slice(0, 1) }}</q-avatar>
-                  <div>
-                    <div class="text-subtitle1 text-weight-bold">{{ selectedCatalog.label }}</div>
-                    <div class="text-caption text-grey-7">{{ selectedCatalog.type }} · {{ selectedCatalog.group }}</div>
+          <q-card v-if="selectedCatalog" flat bordered class="selected-channel-card channel-editor-section">
+            <q-card-section class="selected-channel-card__body">
+              <div class="selected-channel-summary">
+                <div class="selected-channel-summary__main">
+                  <div class="row items-center no-wrap q-gutter-sm">
+                    <q-avatar color="primary" text-color="white" size="36px">{{ selectedCatalog.label.slice(0, 1) }}</q-avatar>
+                    <div class="min-width-0">
+                      <div class="text-subtitle1 text-weight-bold ellipsis">{{ selectedCatalog.label }}</div>
+                      <div class="text-caption text-grey-7">{{ selectedCatalog.type }} · {{ selectedCatalog.group }}</div>
+                    </div>
                   </div>
+                  <div class="text-body2 text-grey-7 q-mt-sm">{{ selectedCatalog.description }}</div>
                 </div>
-                <div class="text-body2 text-grey-8 q-mt-sm">{{ selectedCatalog.description }}</div>
-              </div>
-              <div class="col-12 col-md-5">
                 <div class="detail-grid">
                   <div>
                     <span class="detail-label">接入方式</span>
@@ -49,74 +52,83 @@
                   </div>
                 </div>
               </div>
+            </q-card-section>
+          </q-card>
+
+          <div class="channel-editor-section">
+            <div class="section-label">基础配置</div>
+            <div class="app-form-field-grid app-form-field-grid--2col items-start">
+              <q-input v-model="form.name" dense outlined label="名称 *" />
+              <q-input v-model="form.key" dense outlined label="Key *">
+                <template #append>
+                  <q-icon name="info_outline" class="cursor-pointer text-grey-6">
+                    <q-tooltip max-width="240px">同平台多实例可用 telegram_support 这类命名</q-tooltip>
+                  </q-icon>
+                </template>
+              </q-input>
+              <q-input v-model="form.description" class="app-grid-span-full" dense outlined autogrow type="textarea" label="描述" />
+              <q-select
+                v-model="receiveMode"
+                dense
+                outlined
+                emit-value
+                map-options
+                label="接入方式"
+                :options="receiveModeOptions"
+              />
+              <q-input v-model="webhookPath" dense outlined label="Webhook Path" :disable="receiveMode !== 'webhook' && receiveMode !== 'event'" />
+              <q-input
+                v-if="webhookPreview"
+                :model-value="webhookPreview"
+                class="app-grid-span-full"
+                dense
+                outlined
+                readonly
+                label="Webhook 回调 URL"
+              >
+                <template #append>
+                  <q-btn flat dense round icon="content_copy" aria-label="复制 Webhook URL" @click="copyWebhookPreview" />
+                </template>
+              </q-input>
+              <q-input v-model="defaultAgentId" dense outlined label="默认 Agent" placeholder="main" />
+              <q-input v-model="externalId" dense outlined label="外部 ID" />
+              <q-input v-model="iconUrl" dense outlined label="自定义图标 URL" />
+              <div class="channel-editor-toggle">
+                <q-toggle v-model="form.enabled" color="primary" label="启用 Channel" />
+              </div>
             </div>
-          </q-card-section>
-        </q-card>
-
-        <div class="row q-col-gutter-md">
-          <q-input v-model="form.name" class="col-12 col-md-6" dense outlined label="名称 *" />
-          <q-input v-model="form.key" class="col-12 col-md-6" dense outlined label="Key *" hint="同平台多实例可用 telegram_support 这类命名" />
-          <q-input v-model="form.description" class="col-12" dense outlined autogrow type="textarea" label="描述" />
-          <q-select
-            v-model="receiveMode"
-            class="col-12 col-md-4"
-            dense
-            outlined
-            emit-value
-            map-options
-            label="接入方式"
-            :options="receiveModeOptions"
-          />
-          <q-input v-model="webhookPath" class="col-12 col-md-8" dense outlined label="Webhook Path" :disable="receiveMode !== 'webhook' && receiveMode !== 'event'" />
-          <q-input
-            v-if="webhookPreview"
-            :model-value="webhookPreview"
-            class="col-12"
-            dense
-            outlined
-            readonly
-            label="Webhook 回调 URL"
-          >
-            <template #append>
-              <q-btn flat dense round icon="content_copy" aria-label="复制 Webhook URL" @click="copyWebhookPreview" />
-            </template>
-          </q-input>
-          <q-input v-model="defaultAgentId" class="col-12 col-md-6" dense outlined label="默认 Agent" placeholder="main" />
-          <q-input v-model="externalId" class="col-12 col-md-6" dense outlined label="外部 ID" />
-          <q-input v-model="iconUrl" class="col-12 col-md-6" dense outlined label="自定义图标 URL" />
-          <q-toggle v-model="form.enabled" class="col-12 col-md-6" color="primary" label="启用 Channel" />
-        </div>
-
-        <q-expansion-item default-open icon="key" label="凭据">
-          <div class="row q-col-gutter-md q-pt-sm">
-            <q-input
-              v-for="key in credentialKeys"
-              :key="key"
-              v-model="credentialDraft[key]"
-              class="col-12 col-md-6"
-              dense
-              outlined
-              :type="showSecrets ? 'text' : 'password'"
-              :label="credentialLabel(key)"
-              :hint="credentialHint(key)"
-            />
-            <q-toggle v-model="showSecrets" class="col-12" color="primary" label="显示本次输入的密钥" />
           </div>
-        </q-expansion-item>
 
-        <q-expansion-item icon="data_object" label="高级 JSON">
-          <div class="row q-col-gutter-md q-pt-sm">
-            <q-input v-model="configExtraText" class="col-12" dense outlined autogrow type="textarea" label="config_json.config 额外字段" :error="Boolean(configError)" :error-message="configError" />
-            <q-input v-model="metadataExtraText" class="col-12" dense outlined autogrow type="textarea" label="metadata_json 额外字段" :error="Boolean(metadataError)" :error-message="metadataError" />
-          </div>
-        </q-expansion-item>
-      </q-card-section>
+          <q-expansion-item default-open icon="key" label="凭据" class="channel-editor-expansion">
+            <div class="app-form-field-grid app-form-field-grid--2col items-start q-pt-sm">
+              <q-input
+                v-for="key in credentialKeys"
+                :key="key"
+                v-model="credentialDraft[key]"
+                dense
+                outlined
+                :type="showSecrets ? 'text' : 'password'"
+                :label="credentialLabel(key)"
+                :hint="credentialHint(key)"
+              />
+              <q-toggle v-model="showSecrets" class="app-grid-span-full" color="primary" label="显示本次输入的密钥" />
+            </div>
+          </q-expansion-item>
+
+          <q-expansion-item icon="data_object" label="高级 JSON" class="channel-editor-expansion">
+            <div class="app-form-field-grid q-pt-sm">
+              <q-input v-model="configExtraText" class="app-grid-span-full" dense outlined autogrow type="textarea" label="config_json.config 额外字段" :error="Boolean(configError)" :error-message="configError" />
+              <q-input v-model="metadataExtraText" class="app-grid-span-full" dense outlined autogrow type="textarea" label="metadata_json 额外字段" :error="Boolean(metadataError)" :error-message="metadataError" />
+            </div>
+          </q-expansion-item>
+        </q-card-section>
+      </div>
 
       <q-separator />
-      <q-card-actions align="right">
-        <q-btn flat rounded label="取消" @click="$emit('update:modelValue', false)" />
-        <q-btn outline color="primary" rounded icon="science" label="保存并测试" :loading="testing" :disable="!canSave || saving" @click="saveAndTest" />
-        <q-btn color="primary" rounded unelevated label="保存" :loading="saving" :disable="!canSave" @click="save" />
+      <q-card-actions align="right" class="app-actions-bar channel-editor-actions">
+        <q-btn flat rounded no-caps label="取消" @click="$emit('update:modelValue', false)" />
+        <q-btn outline color="primary" rounded no-caps icon="science" label="保存并测试" :loading="testing" :disable="!canSave || saving" @click="saveAndTest" />
+        <q-btn color="primary" rounded unelevated no-caps label="保存" :loading="saving" :disable="!canSave" @click="save" />
       </q-card-actions>
     </q-card>
   </q-dialog>
@@ -392,22 +404,85 @@ function parseJSON<T>(value: string | undefined, fallback: T): T {
 
 <style scoped>
 .channel-editor-card {
-  width: 960px;
-  max-width: 96vw;
+  display: flex;
+  flex-direction: column;
+  width: min(1080px, 96vw);
+  max-height: min(92vh, 920px);
+}
+
+.channel-editor-header {
+  flex-shrink: 0;
+  padding: var(--space-4) var(--space-5);
+}
+
+.channel-editor-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.channel-editor-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding-top: var(--space-4);
+  padding-bottom: var(--space-5);
+}
+
+.channel-editor-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.channel-editor-section + .channel-editor-section {
+  margin-top: 0;
 }
 
 .section-label {
+  margin: 0;
+  font-size: var(--text-sm);
   font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.section-hint {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+}
+
+.channel-catalog-shell {
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 2px 4px 2px 0;
 }
 
 .selected-channel-card {
-  border-radius: 14px;
-  background: rgb(25 118 210 / 4%);
+  border-radius: 16px;
+  border-color: color-mix(in srgb, var(--color-accent) 22%, var(--glass-border));
+  background: color-mix(in srgb, var(--color-accent) 6%, var(--glass-surface));
+}
+
+.selected-channel-card__body {
+  padding: var(--space-4);
+}
+
+.selected-channel-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(220px, 0.9fr);
+  gap: var(--space-4);
+  align-items: start;
 }
 
 .detail-grid {
   display: grid;
-  gap: 6px;
+  gap: 8px;
+  padding: var(--space-3);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--glass-surface) 88%, transparent);
   font-size: 13px;
 }
 
@@ -418,7 +493,34 @@ function parseJSON<T>(value: string | undefined, fallback: T): T {
 }
 
 .detail-label {
-  color: var(--color-text-tertiary);
+  color: var(--color-text-secondary);
   flex: 0 0 auto;
+}
+
+.channel-editor-toggle {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  padding-top: 4px;
+}
+
+.channel-editor-expansion {
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.channel-editor-actions {
+  flex-shrink: 0;
+}
+
+.min-width-0 {
+  min-width: 0;
+}
+
+@media (width <= 767px) {
+  .selected-channel-summary {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

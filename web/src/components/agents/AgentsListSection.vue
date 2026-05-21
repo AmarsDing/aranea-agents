@@ -1,15 +1,13 @@
 <template>
-  <div v-if="loading" class="row q-col-gutter-md q-mt-md">
-    <div v-for="i in rowsPerPage" :key="i" class="col-12 col-sm-6 col-lg-4">
-      <q-card flat bordered class="agent-card">
-        <q-card-section>
-          <q-skeleton type="QAvatar" size="52px" />
-          <q-skeleton class="q-mt-md" type="text" />
-          <q-skeleton type="text" width="70%" />
-          <q-skeleton class="q-mt-md" height="72px" />
-        </q-card-section>
-      </q-card>
-    </div>
+  <div v-if="loading" class="app-entity-grid q-mt-md">
+    <q-card v-for="i in rowsPerPage" :key="i" flat bordered class="agent-card">
+      <q-card-section>
+        <q-skeleton type="QAvatar" size="52px" />
+        <q-skeleton class="q-mt-md" type="text" />
+        <q-skeleton type="text" width="70%" />
+        <q-skeleton class="q-mt-md" height="72px" />
+      </q-card-section>
+    </q-card>
   </div>
 
   <q-card v-else-if="agents.length === 0" flat bordered class="empty-agent-card q-mt-md">
@@ -24,20 +22,20 @@
   </q-card>
 
   <section v-else class="q-mt-md">
-    <div v-if="viewMode === 'grid'" class="row q-col-gutter-md">
-      <div v-for="agent in agents" :key="agent.id" class="col-12 col-sm-6 col-lg-4">
-        <agent-card
-          :agent="agent"
-          :favorite="isFavorite(agent.id)"
-          :category-label="getCategoryLabel(agent.category_position_id)"
-          :context-label="formatLastRunContext(agent)"
-          :evolving="isAgentEvolving(agent)"
-          @toggle-favorite="$emit('toggle-favorite', $event)"
-          @copy-key="$emit('copy-key', $event)"
-          @delete="$emit('delete', $event)"
-          @duplicate="$emit('duplicate', $event)"
-        />
-      </div>
+    <div v-if="viewMode === 'grid'" class="app-entity-grid">
+      <agent-card
+        v-for="agent in agents"
+        :key="agent.id"
+        :agent="agent"
+        :favorite="isFavorite(agent.id)"
+        :category-label="getCategoryLabel(agent.category_position_id)"
+        :context-label="formatLastRunContext(agent)"
+        :evolving="isAgentEvolving(agent)"
+        @toggle-favorite="$emit('toggle-favorite', $event)"
+        @copy-key="$emit('copy-key', $event)"
+        @delete="$emit('delete', $event)"
+        @duplicate="$emit('duplicate', $event)"
+      />
     </div>
 
     <q-table

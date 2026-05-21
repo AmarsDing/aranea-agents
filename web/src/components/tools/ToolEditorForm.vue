@@ -1,13 +1,12 @@
 <template>
   <div class="column q-gutter-md">
-    <div class="row q-col-gutter-sm">
-      <q-input class="col-12 col-md-6" :model-value="form.key" dense outlined label="Key" :disable="Boolean(editingId)" @update:model-value="patch({ key: $event })" />
-      <q-input class="col-12 col-md-6" :model-value="form.display_name" dense outlined label="显示名称" @update:model-value="patch({ display_name: $event })" />
-      <q-input class="col-12" :model-value="form.description" dense outlined autogrow label="描述" @update:model-value="patch({ description: $event })" />
-      <q-input class="col-12 col-md-4" :model-value="form.category" dense outlined label="分类" @update:model-value="patch({ category: $event })" />
-      <q-input class="col-12 col-md-4" :model-value="form.source" dense outlined label="来源" @update:model-value="patch({ source: $event })" />
+    <div class="app-form-field-grid app-form-field-grid--2col">
+      <q-input :model-value="form.key" dense outlined label="Key" :disable="Boolean(editingId)" @update:model-value="patch({ key: $event })" />
+      <q-input :model-value="form.display_name" dense outlined label="显示名称" @update:model-value="patch({ display_name: $event })" />
+      <q-input class="app-grid-span-full" :model-value="form.description" dense outlined autogrow label="描述" @update:model-value="patch({ description: $event })" />
+      <q-input :model-value="form.category" dense outlined label="分类" @update:model-value="patch({ category: $event })" />
+      <q-input :model-value="form.source" dense outlined label="来源" @update:model-value="patch({ source: $event })" />
       <q-select
-        class="col-12 col-md-4"
         :model-value="form.risk_level"
         dense
         outlined
@@ -18,7 +17,7 @@
         @update:model-value="patch({ risk_level: $event })"
       />
     </div>
-    <div class="row q-col-gutter-sm items-center">
+    <div class="app-actions-bar app-actions-bar--start q-gutter-sm">
       <q-toggle class="col-auto" :model-value="form.enabled" label="启用" @update:model-value="patch({ enabled: $event })" />
       <q-toggle class="col-auto" :model-value="form.readonly" label="只读" @update:model-value="patch({ readonly: $event })" />
       <q-toggle class="col-auto" :model-value="form.requires_confirmation" label="需确认" @update:model-value="patch({ requires_confirmation: $event })" />
@@ -26,6 +25,7 @@
       <q-toggle class="col-auto" :model-value="form.supports_concurrency" label="并发" @update:model-value="patch({ supports_concurrency: $event })" />
     </div>
     <q-input
+      class="app-field-long"
       :model-value="form.parameters_schema_json"
       type="textarea"
       outlined
@@ -35,6 +35,7 @@
       @update:model-value="patch({ parameters_schema_json: $event })"
     />
     <q-input
+      class="app-field-long"
       :model-value="form.result_schema_json"
       type="textarea"
       outlined
@@ -44,6 +45,7 @@
       @update:model-value="patch({ result_schema_json: $event })"
     />
     <q-input
+      class="app-field-long"
       :model-value="form.config_schema_json"
       type="textarea"
       outlined

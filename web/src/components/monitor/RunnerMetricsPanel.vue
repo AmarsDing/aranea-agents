@@ -21,27 +21,27 @@
       <q-btn flat rounded icon="refresh" label="刷新" :loading="loading" @click="emit('refresh')" />
     </q-card-section>
     <q-separator />
-    <q-card-section v-if="metrics">
-      <div class="row q-col-gutter-md">
-        <div class="col-6 col-md-3">
+    <q-card-section v-if="metrics" :class="{ 'runner-metrics__body--compact': variant === 'overview' }">
+      <div class="app-metrics-grid runner-metrics__grid">
+        <div class="app-metrics-grid__item">
           <div class="text-caption text-grey">总运行次数</div>
           <q-btn flat dense no-caps class="q-pa-none" @click="emit('drill')">
             <div class="text-h5 text-weight-bold text-primary">{{ metrics.total_runs }}</div>
           </q-btn>
         </div>
-        <div class="col-6 col-md-3">
+        <div class="app-metrics-grid__item">
           <div class="text-caption text-grey">错误次数</div>
           <q-btn flat dense no-caps class="q-pa-none" @click="emit('drill')">
             <div class="text-h5 text-weight-bold text-negative">{{ metrics.error_runs }}</div>
           </q-btn>
         </div>
-        <div class="col-6 col-md-3">
+        <div class="app-metrics-grid__item">
           <div class="text-caption text-grey">错误率</div>
           <q-btn flat dense no-caps class="q-pa-none" @click="emit('drill')">
             <div class="text-h5 text-weight-bold">{{ formatPercent(metrics.error_rate) }}</div>
           </q-btn>
         </div>
-        <div class="col-6 col-md-3">
+        <div class="app-metrics-grid__item">
           <div class="text-caption text-grey">成功率</div>
           <q-btn flat dense no-caps class="q-pa-none" @click="emit('drill')">
             <div class="text-h5 text-weight-bold">{{ formatPercent(metrics.success_rate) }}</div>
@@ -99,3 +99,13 @@ function formatPercent(v: number): string {
   return `${(v * 100).toFixed(1)}%`;
 }
 </script>
+
+<style scoped lang="sass">
+.runner-metrics__grid
+  margin-bottom: 0
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr))
+
+.runner-metrics__body--compact
+  padding-top: 12px
+  padding-bottom: 12px
+</style>

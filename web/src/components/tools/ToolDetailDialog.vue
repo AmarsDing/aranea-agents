@@ -1,6 +1,6 @@
 <template>
   <q-dialog :model-value="open" @update:model-value="$emit('update:open', $event)">
-    <q-card class="tool-dialog-card tool-dialog-card--detail">
+    <q-card class="tool-dialog-card tool-dialog-card--detail app-dialog-card app-dialog-card--lg">
       <q-card-section class="row items-start justify-between q-gutter-md">
         <div>
           <div class="text-h6">{{ tool?.display_name }}</div>

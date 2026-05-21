@@ -21,68 +21,56 @@
         <q-card-section class="q-pb-sm">
           <div class="text-subtitle2 text-weight-medium overview-section-label">筛选</div>
         </q-card-section>
-        <q-card-section class="q-pt-none">
-          <div class="row q-col-gutter-md items-end">
-            <div class="col-12 col-sm-6 col-md-4 col-lg-2">
-              <q-select
-                v-model="filters.range"
-                dense
-                outlined
-                emit-value
-                map-options
-                label="时间范围"
-                :options="rangeOptions"
-                @update:model-value="loadOverview"
-              />
-            </div>
-            <div class="col-12 col-sm-6 col-md-4 col-lg-2">
-              <q-input
-                v-model="filters.provider_code"
-                dense
-                outlined
-                clearable
-                label="Provider"
-                debounce="300"
-                @update:model-value="loadOverview"
-              />
-            </div>
-            <div class="col-12 col-sm-6 col-md-4 col-lg-2">
-              <q-input
-                v-model="filters.model_api_id"
-                dense
-                outlined
-                clearable
-                label="模型"
-                debounce="300"
-                @update:model-value="loadOverview"
-              />
-            </div>
-            <div class="col-12 col-sm-6 col-md-4 col-lg-2">
-              <q-select
-                v-model="filters.status"
-                dense
-                outlined
-                clearable
-                emit-value
-                map-options
-                label="状态"
-                :options="statusOptions"
-                @update:model-value="loadOverview"
-              />
-            </div>
-            <div class="col-12 col-sm-6 col-md-4 col-lg-2">
-              <q-select
-                v-model="trendGranularity"
-                dense
-                outlined
-                emit-value
-                map-options
-                label="趋势粒度"
-                :options="granularityOptions"
-                @update:model-value="loadOverview"
-              />
-            </div>
-          </div>
+        <q-card-section class="q-pt-none app-form-field-grid items-end">
+          <q-select
+            v-model="filters.range"
+            dense
+            outlined
+            emit-value
+            map-options
+            label="时间范围"
+            :options="rangeOptions"
+            @update:model-value="loadOverview"
+          />
+          <q-input
+            v-model="filters.provider_code"
+            dense
+            outlined
+            clearable
+            label="Provider"
+            debounce="300"
+            @update:model-value="loadOverview"
+          />
+          <q-input
+            v-model="filters.model_api_id"
+            dense
+            outlined
+            clearable
+            label="模型"
+            debounce="300"
+            @update:model-value="loadOverview"
+          />
+          <q-select
+            v-model="filters.status"
+            dense
+            outlined
+            clearable
+            emit-value
+            map-options
+            label="状态"
+            :options="statusOptions"
+            @update:model-value="loadOverview"
+          />
+          <q-select
+            v-model="trendGranularity"
+            dense
+            outlined
+            emit-value
+            map-options
+            label="趋势粒度"
+            :options="granularityOptions"
+            @update:model-value="loadOverview"
+          />
         </q-card-section>
       </q-card>
 

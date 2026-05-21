@@ -25,7 +25,7 @@
     </div>
 
     <q-dialog v-model="previewOpen" transition-show="slide-up" transition-hide="slide-down">
-      <q-card style="min-width: 480px; max-width: 94vw">
+      <q-card class="app-dialog-card app-dialog-card--sm">
         <q-card-section class="row items-center q-pb-none">
           <div class="text-subtitle1 ellipsis col">{{ previewMeta?.name }}</div>
           <q-btn flat round dense icon="close" v-close-popup />

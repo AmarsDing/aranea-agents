@@ -13,21 +13,25 @@
     </section>
 
     <q-card flat bordered class="app-entity-glass-panel category-toolbar">
-      <q-card-section class="row q-col-gutter-md items-center">
-        <div class="col-12 col-md-5">
-          <q-input v-model="keyword" dense outlined clearable debounce="200" placeholder="搜索行业、部门或职位..." class="category-control">
-            <template #prepend><q-icon name="search" /></template>
-          </q-input>
-        </div>
-        <div class="col-12 col-md">
+      <q-card-section class="category-toolbar__inner">
+        <q-input
+          v-model="keyword"
+          class="category-toolbar__search category-control"
+          dense
+          outlined
+          clearable
+          debounce="200"
+          placeholder="搜索行业、部门或职位..."
+        >
+          <template #prepend><q-icon name="search" /></template>
+        </q-input>
+        <div class="category-toolbar__aside">
           <div class="category-stats">
             <div class="app-entity-stat"><strong>{{ stats.industries }}</strong><span>行业</span></div>
             <div class="app-entity-stat"><strong>{{ stats.departments }}</strong><span>部门</span></div>
             <div class="app-entity-stat"><strong>{{ stats.positions }}</strong><span>职位</span></div>
           </div>
-        </div>
-        <div class="col-12 col-md-auto">
-          <q-toggle v-model="onlyCustom" color="primary" label="仅看自建" />
+          <q-toggle v-model="onlyCustom" class="category-toolbar__toggle" color="primary" label="仅看自建" />
         </div>
       </q-card-section>
     </q-card>
@@ -122,25 +126,48 @@
     </section>
 
     <q-dialog v-model="dialogOpen" persistent>
-      <q-card class="category-dialog">
-        <q-card-section class="row items-center justify-between">
-          <div>
-            <div class="text-h6">{{ editingId ? "编辑分类" : `新增${levelLabel(form.level)}` }}</div>
-            <div class="text-caption text-grey-7">固定三层结构：行业 → 部门 → 职位。</div>
+      <q-card class="category-dialog app-dialog-card app-dialog-card--md">
+        <q-card-section class="category-dialog__head row items-start justify-between no-wrap">
+          <div class="min-width-0">
+            <div class="category-dialog__title">{{ editingId ? "编辑分类" : `新增${levelLabel(form.level)}` }}</div>
+            <div class="category-dialog__subtitle">固定三层结构：行业 → 部门 → 职位</div>
           </div>
-          <q-btn flat round icon="close" v-close-popup />
+          <q-btn flat round dense icon="close" v-close-popup />
         </q-card-section>
         <q-separator />
-        <q-card-section class="row q-col-gutter-md">
-          <q-input v-model.trim="form.name" class="col-12 col-md-7 category-control" dense outlined label="名称 *" />
-          <q-input v-model.number="form.sort_order" class="col-12 col-md-5 category-control" dense outlined type="number" label="排序" />
-          <q-input :model-value="levelLabel(form.level)" class="col-12 col-md-6 category-control" dense outlined readonly label="层级" />
-          <q-input :model-value="parentName" class="col-12 col-md-6 category-control" dense outlined readonly label="父级" />
-          <q-input v-model="form.description" class="col-12 category-control" dense outlined autogrow type="textarea" label="描述" />
+        <q-card-section class="category-dialog__body">
+          <div class="app-form-field-grid app-form-field-grid--2col category-dialog__form">
+            <q-input v-model.trim="form.name" class="category-control" dense outlined label="名称 *" />
+            <q-input v-model.number="form.sort_order" class="category-control" dense outlined type="number" label="排序" />
+          </div>
+
+          <div class="category-dialog__meta">
+            <div class="category-meta-item">
+              <span class="category-meta-item__label">层级</span>
+              <span class="category-meta-item__value">{{ levelLabel(form.level) }}</span>
+            </div>
+            <div class="category-meta-item">
+              <span class="category-meta-item__label">父级</span>
+              <span class="category-meta-item__value ellipsis">{{ parentName }}</span>
+            </div>
+          </div>
+
+          <div class="category-dialog__desc">
+            <div class="category-dialog__desc-label">描述</div>
+            <q-input
+              v-model="form.description"
+              class="category-control category-dialog__desc-input"
+              dense
+              outlined
+              type="textarea"
+              :rows="4"
+              placeholder="可选，补充该分类的业务说明…"
+            />
+          </div>
         </q-card-section>
-        <q-card-actions align="right">
-          <q-btn flat rounded label="取消" v-close-popup />
-          <q-btn color="primary" rounded unelevated label="保存" :loading="saving" @click="saveNode" />
+        <q-card-actions align="right" class="app-actions-bar category-dialog__actions">
+          <q-btn flat rounded no-caps label="取消" v-close-popup />
+          <q-btn color="primary" rounded unelevated no-caps label="保存" :loading="saving" @click="saveNode" />
         </q-card-actions>
       </q-card>
     </q-dialog>

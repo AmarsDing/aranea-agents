@@ -9,9 +9,9 @@
         </div>
         <div class="text-caption text-grey-7">Team / Agent 运行时事件与持久化监控事件</div>
       </div>
-      <q-select v-model="category" dense outlined emit-value map-options class="col-12 col-md-2" label="分类" :options="categoryOptions" />
-      <q-btn flat rounded :icon="paused ? 'play_arrow' : 'pause'" :label="paused ? '恢复' : '暂停'" @click="toggleStream" />
-      <q-btn flat rounded icon="delete_sweep" label="清除" @click="runtimeEvents = []" />
+      <q-select v-model="category" class="app-field-sm" dense outlined emit-value map-options label="分类" :options="categoryOptions" />
+      <q-btn flat rounded no-caps :icon="paused ? 'play_arrow' : 'pause'" :label="paused ? '恢复' : '暂停'" @click="toggleStream" />
+      <q-btn flat rounded no-caps icon="delete_sweep" label="清除" @click="runtimeEvents = []" />
     </q-card-section>
     <q-separator />
     <q-card-section>
@@ -64,7 +64,7 @@
   </q-card>
 
   <q-dialog v-model="detailOpen">
-    <q-card class="monitor-detail-card">
+    <q-card class="monitor-detail-card app-dialog-card app-dialog-card--lg">
       <q-card-section class="row items-start justify-between">
         <div>
           <div class="text-h6">事件详情</div>
@@ -74,10 +74,10 @@
       </q-card-section>
       <q-separator />
       <q-card-section>
-        <pre class="monitor-json">{{ selectedJSON }}</pre>
+        <pre class="monitor-json app-code-block">{{ selectedJSON }}</pre>
       </q-card-section>
-      <q-card-actions align="right">
-        <q-btn flat label="复制 JSON" icon="content_copy" @click="copyJSON" />
+      <q-card-actions align="right" class="app-actions-bar">
+        <q-btn flat no-caps label="复制 JSON" icon="content_copy" @click="copyJSON" />
       </q-card-actions>
     </q-card>
   </q-dialog>

@@ -1,5 +1,5 @@
 <template>
-  <q-page class="app-page-cream sessions-page q-pa-md">
+  <q-page class="app-page-cream app-registry-page">
     <SessionsPageHero :loading="loading" @refresh="loadRows" />
 
     <SessionsSummaryCards :cards="summaryCards" />
@@ -10,6 +10,7 @@
       :status="status"
       :context-status="contextStatus"
       :loading="loading"
+      :selection-mode="selectionMode"
       :owner-options="ownerFilterOptions"
       :status-options="statusFilterOptions"
       :context-options="contextFilterOptions"
@@ -19,10 +20,6 @@
       @update:context-status="contextStatus = $event"
       @reset="resetFilters"
       @search="loadRows"
-    />
-
-    <SessionsBulkToolbar
-      :selection-mode="selectionMode"
       @toggle-selection="toggleSelectionMode"
       @retention-archive="openRetention('archive')"
       @retention-delete="openRetention('delete')"
@@ -85,7 +82,6 @@
 import { computed, onMounted } from "vue";
 import SessionsBulkProgressBar from "../components/sessions/SessionsBulkProgressBar.vue";
 import SessionsBulkSelectionBar from "../components/sessions/SessionsBulkSelectionBar.vue";
-import SessionsBulkToolbar from "../components/sessions/SessionsBulkToolbar.vue";
 import SessionDeleteConfirmDialog from "../components/sessions/SessionDeleteConfirmDialog.vue";
 import SessionRetentionDialog from "../components/sessions/SessionRetentionDialog.vue";
 import SessionsErrorBanner from "../components/sessions/SessionsErrorBanner.vue";
@@ -156,9 +152,3 @@ async function archiveSelectedDetail() {
   await archiveRow(selected.value.id);
 }
 </script>
-
-<style scoped>
-.sessions-page {
-  min-height: 100%;
-}
-</style>

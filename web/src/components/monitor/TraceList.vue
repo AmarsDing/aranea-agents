@@ -5,10 +5,12 @@
         <div class="text-h6 text-weight-bold">Runs</div>
         <div class="text-caption text-grey-7">单次对话运行真相源（Token 用量 + Flow / Waterfall / Span）</div>
       </div>
-      <q-input v-model="keyword" dense outlined clearable debounce="200" class="col-12 col-md-4" label="Search">
-        <template #prepend><q-icon name="search" /></template>
-      </q-input>
-      <q-btn flat rounded icon="refresh" label="Reload" :loading="loading" @click="$emit('reload')" />
+      <div class="app-form-field-grid items-center">
+        <q-input v-model="keyword" class="app-field-md" dense outlined clearable debounce="200" label="Search">
+          <template #prepend><q-icon name="search" /></template>
+        </q-input>
+      </div>
+      <q-btn flat rounded no-caps icon="refresh" label="Reload" :loading="loading" @click="$emit('reload')" />
     </q-card-section>
     <q-separator />
     <q-table flat :rows="filteredRows" :columns="columns" row-key="id" :loading="loading" :pagination="{ rowsPerPage: 12 }">

@@ -2,11 +2,11 @@
   <div class="settings-grid">
     <section class="settings-section">
       <div class="section-heading">
-        <div>
-          <div class="text-subtitle1 text-weight-bold">平台 Skill 挂载策略</div>
-          <div class="text-caption text-grey-7">
-            控制本会话中 ADK 可见的已发布 Skill：Agent 白名单/黑名单、必选标签，以及是否根据用户话术做意图收窄（详见仓库文档「20 skill struct design」十三′）。
-          </div>
+        <div class="section-title">
+          <span class="section-title__text">平台 Skill 挂载策略</span>
+        </div>
+        <div class="text-caption text-grey-7">
+          控制本会话中 ADK 可见的已发布 Skill：Agent 白名单/黑名单、必选标签，以及是否根据用户话术做意图收窄（详见仓库文档「20 skill struct design」十三′）。
         </div>
         <div class="row q-gutter-sm">
           <q-btn outline rounded dense color="primary" label="刷新 Skill 列表" :loading="loadingSkillSlugs" @click="$emit('load-skill-slugs')" />
@@ -27,10 +27,9 @@
               <q-toggle v-model="config.skillRuntime.intent_routing_enabled" color="primary" />
             </q-card-section>
             <q-separator />
-            <q-card-section class="row q-col-gutter-sm">
+            <q-card-section class="app-form-field-grid app-form-field-grid--2col">
               <q-input
                 v-model.number="config.skillRuntime.intent_max_paths"
-                class="col-6"
                 dense
                 outlined
                 type="number"
@@ -40,7 +39,6 @@
               />
               <q-input
                 v-model.number="config.skillRuntime.max_skills_in_toolset"
-                class="col-6"
                 dense
                 outlined
                 type="number"
@@ -118,6 +116,7 @@
           </div>
           <q-select
             v-model="config.code_executor_type"
+            class="app-field-md"
             dense
             outlined
             emit-value
@@ -189,31 +188,7 @@ const fallbackHint = computed(() => {
 </script>
 
 <style scoped>
-.settings-grid {
-  display: grid;
-  gap: 18px;
-}
-
-.settings-section {
-  padding: 20px;
-  border: 1px solid var(--glass-border);
-  border-radius: 24px;
-  background: var(--glass-surface);
-}
-
-.section-heading {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 14px;
-}
-
-.capability-card {
-  border-color: var(--glass-border);
-  border-radius: 18px;
-  background: var(--glass-elevated);
-}
-
+/* 通用样式由 agent-settings-page.scss 控制；仅保留组件特有 */
 .settings-info-banner {
   background: var(--glass-elevated);
   color: var(--color-text-secondary);

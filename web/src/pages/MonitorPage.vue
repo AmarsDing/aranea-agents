@@ -1,5 +1,6 @@
 <template>
   <q-page class="app-page-cream monitor-page">
+    <div class="monitor-page-shell">
     <MonitorHeroSection
       kicker="Observability"
       title="运行监控"
@@ -69,6 +70,7 @@
         <LogStreamPanel />
       </q-tab-panel>
     </q-tab-panels>
+    </div>
   </q-page>
 </template>
 
@@ -107,10 +109,20 @@ const {
 <style scoped lang="sass">
 .monitor-page
   min-height: 100%
-  padding: 24px
+  padding: var(--space-6)
   display: flex
   flex-direction: column
   min-height: calc(100dvh - 56px)
+
+.monitor-page-shell
+  width: 100%
+  max-width: var(--layout-max-width)
+  margin: 0 auto
+  flex: 1
+  min-height: 0
+  display: flex
+  flex-direction: column
+  box-sizing: border-box
 
 .monitor-panels--logs-fill
   flex: 1

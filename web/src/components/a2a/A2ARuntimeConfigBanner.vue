@@ -1,5 +1,5 @@
 <template>
-  <q-banner v-if="config" rounded class="bg-blue-1 text-primary q-mb-md">
+  <q-banner v-if="config" rounded class="app-info-banner">
     <div class="text-subtitle2">A2A 公开 Endpoint</div>
     <div class="text-body2">{{ config.public_base_url || "—" }}</div>
     <div class="text-caption">

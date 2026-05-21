@@ -12,6 +12,7 @@
 
     <q-select
       v-model="form.kind"
+      class="app-field-md"
       dense
       outlined
       emit-value
@@ -35,7 +36,7 @@
       Chat 历史消息仍可按正文标签展示 ReAct/A2UI，与持久化 kind 无关。
     </q-banner>
 
-    <div v-if="form.kind === 'builtin'" class="q-mt-md q-gutter-sm">
+    <div v-if="form.kind === 'builtin'" class="q-mt-md app-form-field-grid">
       <div class="text-subtitle2">Builtin 推理参数</div>
       <q-select
         v-model="form.builtin.reasoning_effort"
@@ -77,7 +78,7 @@
 
     <div v-else-if="form.kind === 'a2ui'" class="q-mt-md q-gutter-sm">
       <div class="text-subtitle2">A2UI 协议</div>
-      <q-input v-model="form.a2ui.instruction" outlined autogrow type="textarea" label="自定义指令 (instruction)" />
+      <q-input v-model="form.a2ui.instruction" class="app-field-long" outlined autogrow type="textarea" label="自定义指令 (instruction)" />
       <q-expansion-item
         dense
         expand-separator
@@ -158,13 +159,6 @@ const a2uiSchemaFields: { key: keyof PlannerFormState["a2ui"]; label: string }[]
 </script>
 
 <style scoped>
-.settings-section {
-  padding: 20px;
-  border: 1px solid var(--glass-border);
-  border-radius: 24px;
-  background: var(--glass-surface);
-}
-
 .section-heading {
   display: flex;
   justify-content: space-between;

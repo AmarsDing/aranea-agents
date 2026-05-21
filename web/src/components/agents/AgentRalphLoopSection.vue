@@ -14,10 +14,9 @@
       关闭时 Runner 不包装 Ralph Loop；与「规划模式」独立。
     </q-banner>
 
-    <div v-else class="row q-col-gutter-md q-mt-sm">
+    <div v-else class="app-form-field-grid q-mt-sm">
       <q-input
         v-model.number="form.max_iterations"
-        class="col-12 col-md-4"
         dense
         outlined
         type="number"
@@ -27,7 +26,7 @@
       />
       <q-input
         v-model="form.completion_promise"
-        class="col-12 col-md-8"
+        class="app-field-long"
         dense
         outlined
         label="完成承诺 (completion_promise)"
@@ -35,7 +34,7 @@
       />
       <q-input
         v-model="form.verify_command"
-        class="col-12"
+        class="app-field-long"
         dense
         outlined
         label="验证命令 (verify_command)"
@@ -43,7 +42,6 @@
       />
       <q-input
         v-model="form.verify_work_dir"
-        class="col-12 col-md-6"
         dense
         outlined
         label="验证命令工作目录"
@@ -51,7 +49,6 @@
       />
       <q-input
         v-model.number="form.verify_timeout_seconds"
-        class="col-12 col-md-3"
         dense
         outlined
         type="number"
@@ -61,7 +58,6 @@
       />
       <q-input
         v-model="form.promise_tag_open"
-        class="col-12 col-md-6"
         dense
         outlined
         label="承诺开始标签"
@@ -69,7 +65,6 @@
       />
       <q-input
         v-model="form.promise_tag_close"
-        class="col-12 col-md-6"
         dense
         outlined
         label="承诺结束标签"
@@ -86,13 +81,6 @@ const form = defineModel<RalphLoopFormState>("form", { required: true });
 </script>
 
 <style scoped>
-.settings-section {
-  padding: 20px;
-  border: 1px solid var(--glass-border);
-  border-radius: 24px;
-  background: var(--glass-surface);
-}
-
 .section-heading {
   display: flex;
   justify-content: space-between;

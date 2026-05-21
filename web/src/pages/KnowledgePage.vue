@@ -1,18 +1,18 @@
 <template>
-  <q-page class="app-page-cream knowledge-page q-pa-sm q-pa-md-md">
+  <q-page class="app-page-cream app-registry-page knowledge-page">
     <section class="app-page-hero">
       <div>
         <div class="app-page-kicker">RAG / pgvector</div>
         <h1 class="app-page-title">知识库</h1>
         <p class="app-page-subtitle">管理向量集合、文档入库与语义检索。需后端配置 Postgres + pgvector。</p>
       </div>
-      <div class="row q-gutter-sm">
-        <q-btn color="primary" rounded unelevated icon="add" label="新建集合" @click="openCreateCollection" />
-        <q-btn outline rounded color="primary" icon="refresh" label="刷新" :loading="loading" @click="loadCollections" />
+      <div class="app-actions-bar">
+        <q-btn color="primary" unelevated rounded no-caps icon="add" label="新建集合" @click="openCreateCollection" />
+        <q-btn outline rounded no-caps color="primary" icon="refresh" label="刷新" :loading="loading" @click="loadCollections" />
       </div>
     </section>
 
-    <q-banner v-if="unavailable" rounded class="bg-warning text-dark q-mb-md">
+    <q-banner v-if="unavailable" rounded class="app-banner-warning q-mb-md">
       知识库服务不可用：{{ unavailable }}。请确认 Postgres / pgvector 已配置。
     </q-banner>
     <knowledge-embedder-panel
@@ -27,31 +27,30 @@
       </template>
     </q-banner>
 
-    <div class="row q-col-gutter-md">
-      <div class="col-12 col-lg-4">
-        <knowledge-collection-list
-          :collections="collections"
-          :selected-id="selectedId"
-          :loading="loading"
-          @select="selectCollection"
-        />
-      </div>
+    <div class="app-split-layout">
+      <knowledge-collection-list
+        :collections="collections"
+        :selected-id="selectedId"
+        :loading="loading"
+        @select="selectCollection"
+      />
 
-      <div class="col-12 col-lg-8">
-        <q-card v-if="selectedCollection" flat bordered>
+      <div>
+        <q-card v-if="selectedCollection" flat class="app-pane-card">
           <q-card-section class="row items-center justify-between">
             <div>
-              <div class="text-h6">{{ selectedCollection.name }}</div>
-              <div class="text-caption text-grey-7">{{ selectedCollection.description || "无描述" }}</div>
+              <div class="app-registry-cell-primary text-h6">{{ selectedCollection.name }}</div>
+              <div class="app-registry-cell-sub">{{ selectedCollection.description || "无描述" }}</div>
             </div>
-            <q-btn flat color="negative" icon="delete" label="删除集合" @click="confirmDeleteCollection" />
+            <q-btn flat no-caps color="negative" icon="delete" label="删除集合" @click="confirmDeleteCollection" />
           </q-card-section>
-          <q-tabs v-model="tab" dense align="left" class="text-primary">
-            <q-tab name="documents" label="文档" />
-            <q-tab name="search" label="检索" />
-          </q-tabs>
-          <q-separator />
-          <q-tab-panels v-model="tab" animated>
+          <div class="app-tab-shell app-tab-shell--inset">
+            <q-tabs v-model="tab" dense align="left" class="text-primary">
+              <q-tab name="documents" label="文档" />
+              <q-tab name="search" label="检索" />
+            </q-tabs>
+          </div>
+          <q-tab-panels v-model="tab" animated class="app-pane-card__body">
             <q-tab-panel name="documents" class="q-pa-md">
               <knowledge-documents-panel
                 :documents="documents"
@@ -73,9 +72,11 @@
             </q-tab-panel>
           </q-tab-panels>
         </q-card>
-        <q-card v-else flat bordered class="q-pa-lg text-center text-grey-7">
-          请从左侧选择一个集合，或新建集合。
-        </q-card>
+        <div v-else class="app-registry-empty app-pane-card">
+          <q-icon name="library_books" size="48px" color="grey-6" />
+          <div class="text-h6">请选择一个集合</div>
+          <div class="text-body2">从左侧列表选择集合，或点击「新建集合」创建。</div>
+        </div>
       </div>
     </div>
 

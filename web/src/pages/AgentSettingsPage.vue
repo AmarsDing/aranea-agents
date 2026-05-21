@@ -117,7 +117,7 @@
     </q-card>
 
     <q-dialog v-model="promptDialog">
-      <q-card class="prompt-dialog">
+      <q-card class="prompt-dialog app-dialog-card">
         <q-card-section class="row items-center justify-between">
           <div>
             <div class="text-h6">系统提示词</div>
@@ -136,7 +136,7 @@
     </q-dialog>
 
     <q-dialog v-model="aiEditOpen">
-      <q-card style="width: 560px; max-width: 92vw">
+      <q-card class="app-dialog-card app-dialog-card--sm">
         <q-card-section class="row items-center justify-between">
           <div>
             <div class="text-h6">AI 编辑</div>
@@ -144,12 +144,12 @@
           </div>
           <q-btn flat round icon="close" v-close-popup />
         </q-card-section>
-        <q-card-section>
-          <q-input v-model="aiInstruction" outlined type="textarea" rows="6" label="编辑指令" placeholder="例如：使 Agent 更正式、添加中文支持..." />
+        <q-card-section class="app-dialog-body">
+          <q-input v-model="aiInstruction" class="app-field-long" outlined type="textarea" rows="6" label="编辑指令" placeholder="例如：使 Agent 更正式、添加中文支持..." />
         </q-card-section>
-        <q-card-actions align="right">
-          <q-btn flat rounded label="取消" v-close-popup />
-          <q-btn color="primary" rounded unelevated label="重新生成" :loading="aiEditing" @click="applyAiEdit" />
+        <q-card-actions align="right" class="app-actions-bar">
+          <q-btn flat rounded no-caps label="取消" v-close-popup />
+          <q-btn color="primary" rounded unelevated no-caps label="重新生成" :loading="aiEditing" @click="applyAiEdit" />
         </q-card-actions>
       </q-card>
     </q-dialog>

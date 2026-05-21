@@ -30,43 +30,37 @@
         <q-btn-toggle v-model="rangeModel" rounded unelevated toggle-color="primary" :options="rangeOptions" />
       </div>
       <q-inner-loading :showing="metricsLoading" label="加载指标..." />
-      <div v-if="!metricsLoading" class="row q-col-gutter-md q-mt-sm">
-        <div class="col-12 col-md-4">
-          <q-card flat bordered class="metric-card">
-            <q-card-section>
-              <div class="row items-center q-gutter-sm">
-                <q-icon name="query_stats" color="primary" size="26px" />
-                <div class="text-subtitle2">工具成功率</div>
-              </div>
-              <div class="text-h5 q-mt-sm">{{ formatPercent(metrics?.tool_success_rate) }}</div>
-              <div class="text-caption text-grey-7">共 {{ metrics?.total_episodes ?? 0 }} 个会话</div>
-            </q-card-section>
-          </q-card>
-        </div>
-        <div class="col-12 col-md-4">
-          <q-card flat bordered class="metric-card">
-            <q-card-section>
-              <div class="row items-center q-gutter-sm">
-                <q-icon name="travel_explore" color="primary" size="26px" />
-                <div class="text-subtitle2">检索质量</div>
-              </div>
-              <div class="text-h5 q-mt-sm">{{ formatPercent(metrics?.retrieval_quality) }}</div>
-              <div class="text-caption text-grey-7">记忆工具调用成功率</div>
-            </q-card-section>
-          </q-card>
-        </div>
-        <div class="col-12 col-md-4">
-          <q-card flat bordered class="metric-card">
-            <q-card-section>
-              <div class="row items-center q-gutter-sm">
-                <q-icon name="tips_and_updates" color="primary" size="26px" />
-                <div class="text-subtitle2">建议</div>
-              </div>
-              <div class="text-h5 q-mt-sm">{{ pendingSuggestionsCount }}</div>
-              <div class="text-caption text-grey-7">待处理改进建议</div>
-            </q-card-section>
-          </q-card>
-        </div>
+      <div v-if="!metricsLoading" class="app-metrics-grid q-mt-sm">
+        <q-card flat bordered class="metric-card capability-card app-metrics-grid__item">
+          <q-card-section>
+            <div class="row items-center q-gutter-sm">
+              <q-icon name="query_stats" color="primary" size="26px" />
+              <div class="text-subtitle2">工具成功率</div>
+            </div>
+            <div class="text-h5 q-mt-sm">{{ formatPercent(metrics?.tool_success_rate) }}</div>
+            <div class="text-caption text-grey-7">共 {{ metrics?.total_episodes ?? 0 }} 个会话</div>
+          </q-card-section>
+        </q-card>
+        <q-card flat bordered class="metric-card capability-card app-metrics-grid__item">
+          <q-card-section>
+            <div class="row items-center q-gutter-sm">
+              <q-icon name="travel_explore" color="primary" size="26px" />
+              <div class="text-subtitle2">检索质量</div>
+            </div>
+            <div class="text-h5 q-mt-sm">{{ formatPercent(metrics?.retrieval_quality) }}</div>
+            <div class="text-caption text-grey-7">记忆工具调用成功率</div>
+          </q-card-section>
+        </q-card>
+        <q-card flat bordered class="metric-card capability-card app-metrics-grid__item">
+          <q-card-section>
+            <div class="row items-center q-gutter-sm">
+              <q-icon name="tips_and_updates" color="primary" size="26px" />
+              <div class="text-subtitle2">建议</div>
+            </div>
+            <div class="text-h5 q-mt-sm">{{ pendingSuggestionsCount }}</div>
+            <div class="text-caption text-grey-7">待处理改进建议</div>
+          </q-card-section>
+        </q-card>
       </div>
       <div v-if="metrics?.tool_success_series?.length" class="evolution-trend q-mt-md">
         <div class="text-subtitle2 text-weight-bold q-mb-sm">工具成功率趋势</div>
@@ -122,10 +116,10 @@
           <div class="text-caption text-grey-7">限制自动调整幅度，样本不足或表现下降时回滚。</div>
         </div>
       </div>
-      <div class="row q-col-gutter-md q-mt-xs">
-        <q-input v-model.number="guardrails.max_change_per_period" class="col-12 col-md-4" dense outlined type="number" step="0.01" label="每周期最大变化" />
-        <q-input v-model.number="guardrails.min_data_points" class="col-12 col-md-4" dense outlined type="number" label="最少数据点" />
-        <q-input v-model.number="guardrails.rollback_on_decline_percent" class="col-12 col-md-4" dense outlined type="number" suffix="%" label="下降时回滚" />
+      <div class="app-form-field-grid q-mt-xs">
+        <q-input v-model.number="guardrails.max_change_per_period" dense outlined type="number" step="0.01" label="每周期最大变化" />
+        <q-input v-model.number="guardrails.min_data_points" dense outlined type="number" label="最少数据点" />
+        <q-input v-model.number="guardrails.rollback_on_decline_percent" dense outlined type="number" suffix="%" label="下降时回滚" />
       </div>
     </section>
   </div>
@@ -260,16 +254,6 @@ watch(
   gap: 16px;
 }
 
-.settings-section {
-  padding: 20px;
-  border: 1px solid var(--glass-border);
-  border-radius: 24px;
-  background: var(--glass-surface);
-  backdrop-filter: blur(var(--glass-blur-default));
-  -webkit-backdrop-filter: blur(var(--glass-blur-default));
-  box-shadow: none;
-}
-
 .section-title-row {
   display: flex;
   justify-content: space-between;
@@ -333,10 +317,6 @@ watch(
 .guardrails-section {
   border-color: color-mix(in srgb, var(--color-success) 28%, var(--glass-border));
   background: color-mix(in srgb, var(--color-success) 9%, var(--glass-surface));
-}
-
-body.body--dark .settings-section {
-  box-shadow: none;
 }
 
 body.body--dark .evolution-info-banner {

@@ -1,12 +1,11 @@
 <template>
   <q-dialog :model-value="modelValue" @update:model-value="$emit('update:modelValue', $event)">
-    <q-card class="q-pa-md" style="min-width: 320px">
-      <q-card-section class="text-h6 text-cream-text">
-        {{ title }}
-      </q-card-section>
-      <q-card-section v-if="mode === 'agent'" class="q-gutter-y-sm">
+    <q-card class="app-dialog-card app-dialog-card--sm">
+      <q-card-section class="text-h6">{{ title }}</q-card-section>
+      <q-card-section v-if="mode === 'agent'" class="app-dialog-body q-gutter-y-sm q-pt-none">
         <q-input
           :model-value="name"
+          class="app-field-md"
           :label="t('chat.nameField')"
           outlined
           dense
@@ -14,6 +13,7 @@
         />
         <q-input
           :model-value="agentKey"
+          class="app-field-md"
           :label="t('chat.keyField')"
           outlined
           dense
@@ -21,6 +21,7 @@
         />
         <q-input
           :model-value="provider"
+          class="app-field-sm"
           :label="t('chat.providerField')"
           outlined
           dense
@@ -28,24 +29,26 @@
         />
         <q-input
           :model-value="model"
+          class="app-field-md"
           :label="t('chat.modelField')"
           outlined
           dense
           @update:model-value="$emit('update:model', String($event ?? ''))"
         />
       </q-card-section>
-      <q-card-section v-else-if="mode === 'team'">
+      <q-card-section v-else-if="mode === 'team'" class="app-dialog-body q-pt-none">
         <q-input
           :model-value="name"
+          class="app-field-md"
           :label="t('chat.nameField')"
           outlined
           dense
           @update:model-value="$emit('update:name', String($event ?? ''))"
         />
       </q-card-section>
-      <q-card-actions align="right">
-        <q-btn flat :label="t('chat.cancel')" :disable="saving" v-close-popup />
-        <q-btn unelevated color="primary" :label="t('chat.save')" :loading="saving" @click="$emit('save')" />
+      <q-card-actions align="right" class="app-actions-bar">
+        <q-btn flat no-caps :label="t('chat.cancel')" :disable="saving" v-close-popup />
+        <q-btn unelevated no-caps color="primary" :label="t('chat.save')" :loading="saving" @click="$emit('save')" />
       </q-card-actions>
     </q-card>
   </q-dialog>

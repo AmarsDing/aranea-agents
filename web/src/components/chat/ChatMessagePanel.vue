@@ -1,6 +1,6 @@
 ﻿<template>
   <q-card flat bordered class="col column chat-mid-card" style="min-height: 0; border-radius: 18px">
-    <q-banner v-if="wsReplaying" dense rounded class="q-mx-md q-mt-sm bg-blue-1 text-dark">
+    <q-banner v-if="wsReplaying" dense rounded class="q-mx-md q-mt-sm app-info-banner">
       <template #avatar>
         <q-spinner-dots color="primary" size="20px" />
       </template>
@@ -13,7 +13,7 @@
       <div class="col ellipsis">
         <div class="chat-message-header__title ellipsis">{{ sessionTitle }}</div>
         <div class="chat-message-header__subtitle text-caption ellipsis">
-          {{ props.messages.length }} {{ t("chat.assistant") }} 路 {{ Math.round(props.contextRatio * 100) }}% ctx
+          {{ props.messages.length }} {{ t("chat.assistant") }} · {{ Math.round(props.contextRatio * 100) }}% ctx
         </div>
         <ChatRunnerStatus
           v-if="runStatus && runStatus !== 'idle' && runStatus !== 'completed' && runStatus !== 'cancelled' && runStatus !== 'failed'"
@@ -163,11 +163,11 @@
       <q-banner
         v-if="props.isAwaitingUser && props.awaitKind === AWAIT_KIND_TOOL_CONFIRM"
         rounded
-        class="q-mb-sm bg-orange-1 text-dark"
+        class="q-mb-sm app-banner-warning"
         dense
       >
         <template #avatar>
-          <q-icon name="gpp_maybe" color="orange-9" />
+          <q-icon name="gpp_maybe" color="warning" />
         </template>
         <div class="text-body2">
           {{ t("chat.toolConfirmHint") }}
@@ -198,7 +198,7 @@
       <q-banner
         v-else-if="props.isAwaitingUser"
         rounded
-        class="q-mb-sm bg-amber-1 text-dark"
+        class="q-mb-sm app-banner-warning"
         dense
       >
         <template #avatar>
@@ -216,6 +216,7 @@
           />
         </template>
       </q-banner>
+      <div class="chat-composer-inner">
       <div v-if="attachments.length" class="chat-attachments row q-gutter-xs q-mb-sm">
         <div
           v-for="file in attachments"
@@ -258,14 +259,14 @@
         :label="t('chat.inputLabel')"
         type="textarea"
         autogrow
-        :input-style="{ minHeight: '100px' }"
+        :input-style="{ minHeight: '72px' }"
         :dark="isDark"
         :disable="inputDisabled ?? sending"
         @keydown="onInputKeydown"
         @update:model-value="$emit('update:modelValue', String($event ?? ''))"
       />
 
-      <div class="chat-toolbar row items-center q-col-gutter-sm q-mt-sm">
+      <div class="chat-toolbar chat-toolbar-grid q-mt-sm">
         <q-select
           :model-value="dialogMode"
           dense
@@ -275,7 +276,7 @@
           emit-value
           map-options
           :label="t('chat.dialogMode')"
-          class="chat-toolbar-field col-12 col-md-4"
+          class="chat-toolbar-field"
           :dark="isDark"
           @update:model-value="$emit('update:dialogMode', String($event ?? ''))"
         />
@@ -288,7 +289,7 @@
           emit-value
           map-options
           :label="t('chat.modelProvider')"
-          class="chat-toolbar-field col-12 col-md-4"
+          class="chat-toolbar-field"
           :dark="isDark"
           @update:model-value="$emit('update:modelProvider', String($event ?? ''))"
         >
@@ -301,7 +302,7 @@
             </q-item>
           </template>
         </q-select>
-        <div class="chat-toolbar-actions col-12 col-md-4 row items-center no-wrap q-gutter-sm">
+        <div class="chat-toolbar-actions row items-center no-wrap q-gutter-sm">
           <div class="chat-context-pill row items-center no-wrap">
             <span class="text-caption text-no-wrap q-mr-sm">
               {{ t("chat.contextUse") }}
@@ -365,6 +366,7 @@
             <q-icon name="send" />
           </q-btn>
         </div>
+      </div>
       </div>
     </q-card-section>
   </q-card>

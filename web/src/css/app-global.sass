@@ -72,12 +72,14 @@ body:not(.body--dark)
   .text-grey-7
     color: $cream-text-muted !important
 
-// 主布局：顶栏（白昼）
+// 主布局：顶栏（白昼 — 毛玻璃，与侧栏同系）
 .cream-header
-  background: $cream-header !important
+  background: var(--nav-bg-light) !important
   color: $cream-text !important
-  box-shadow: 0 1px 16px $cream-shadow-soft !important
-  border-bottom: 1px solid $cream-border-soft
+  backdrop-filter: blur(var(--nav-blur)) saturate(1.08)
+  -webkit-backdrop-filter: blur(var(--nav-blur)) saturate(1.08)
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.45), 0 8px 24px $cream-shadow-soft !important
+  border-bottom: 1px solid rgba(141, 110, 99, 0.12)
 
   .q-toolbar
     color: $cream-text
@@ -88,61 +90,12 @@ body:not(.body--dark)
   .q-select .q-field__control
     color: $cream-text
 
-// 侧栏通用排版（左右分栏、图标不挤占标题）
-.q-drawer .q-list
-  .q-item__label--header
-    font-weight: 600
-    letter-spacing: 0.04em
-    padding: 8px 12px 4px
-
-  .q-item
-    min-height: 46px
-    border-radius: 12px
-    margin: 2px 6px
-    line-height: 1.4
-
-  .q-item__section--main
-    font-size: 0.9rem
-    min-width: 0
-    word-break: break-word
-
-  .q-item__section--avatar
-    min-width: 40px
-    max-width: 40px
-    padding-right: 0
-    align-items: center
-
-  .q-icon:not(img)
-    font-size: 22px
-    width: 1em
-    height: 1em
-    line-height: 1
-
-// 侧栏（白昼）配色
-.cream-drawer
-  background: $cream-page-alt !important
-  border-right: 1px solid $cream-border-soft !important
-  -webkit-font-smoothing: antialiased
-
-  .q-item__label--header
-    color: $cream-text-muted !important
-
-  .q-icon:not(img)
-    color: $cream-text-light
-
-// 侧栏当前项：脏粉浅底 + 深棕字，不用高饱和蓝
-.cream-menu-item--active
-  background: $cream-accent-tint !important
-  color: $cream-text !important
-  font-weight: 600
-  border-radius: 12px
-
-  .q-item__section--avatar .q-icon
-    color: $cream-text
-
 // --- App Shell（昼夜布局壳；UX.md §5.4 / §7）---
 .app-layout-root
   background: var(--canvas-base)
+
+body.body--dark .app-layout-root
+  background: var(--gradient-page)
 
 .app-toolbar-title
   font-size: var(--text-md)
@@ -190,10 +143,10 @@ body.body--dark
 .dark-header
   background: var(--nav-bg-dark) !important
   color: var(--color-text-primary) !important
-  backdrop-filter: blur(20px)
-  -webkit-backdrop-filter: blur(20px)
+  backdrop-filter: blur(var(--nav-blur)) saturate(1.15)
+  -webkit-backdrop-filter: blur(var(--nav-blur)) saturate(1.15)
   border-bottom: 1px solid var(--nav-divider-dark)
-  box-shadow: none !important
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.16) !important
 
   .q-toolbar,
   .q-btn,
@@ -208,35 +161,6 @@ body.body--dark
 
   .app-header-locale .q-field__control
     color: var(--color-text-primary)
-
-.dark-drawer
-  background: var(--glass-surface) !important
-  border-right: 1px solid var(--glass-border) !important
-  backdrop-filter: blur(var(--glass-blur-default))
-  -webkit-backdrop-filter: blur(var(--glass-blur-default))
-
-  .q-item__label--header
-    color: var(--color-text-secondary) !important
-
-  .q-icon:not(img)
-    color: var(--color-icon-muted)
-
-  .q-item
-    color: var(--color-text-secondary)
-
-    &:hover
-      background: var(--glass-surface-hover) !important
-      color: var(--color-text-primary)
-
-.dark-menu-item--active
-  background: var(--glass-surface-hover) !important
-  color: var(--color-text-primary) !important
-  font-weight: 600
-  border-radius: 12px
-  box-shadow: var(--glass-inner-highlight), inset 3px 0 0 var(--color-accent) !important
-
-  .q-item__section--avatar .q-icon
-    color: var(--color-accent)
 
 // Quasar 组件默认色 → design token（全站）
 body:not(.body--dark)
@@ -326,7 +250,7 @@ body.body--dark .theme-preview-page
   width: 100%
   height: 100%
   overflow: hidden
-  gap: 12px
+  gap: 10px
   align-items: stretch
 
 .chat-workspace-main
@@ -400,8 +324,8 @@ body.body--dark .theme-preview-page
   text-align: center
 
 .chat-session-header
-  min-height: 42px
-  padding: 10px 12px 4px
+  min-height: 44px
+  padding: 12px 14px 8px
 
 .chat-session-list
   padding: 4px 6px 8px
@@ -423,12 +347,36 @@ body.body--dark .theme-preview-page
   padding: 10px 12px
 
 .chat-input textarea
-  min-height: 100px
+  min-height: 72px
   max-height: 400px
 
 .chat-toolbar
   min-height: 40px
   align-items: stretch
+
+.chat-toolbar-grid
+  display: grid
+  gap: var(--space-3)
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto
+  align-items: end
+  width: 100%
+
+  .chat-toolbar-field
+    width: 100%
+    max-width: none
+    min-width: 0
+
+  @media (max-width: 899px)
+    grid-template-columns: 1fr
+
+    .chat-toolbar-actions
+      grid-column: 1 / -1
+      justify-content: flex-start
+
+.chat-side--left,
+.chat-side--right
+  overflow-x: hidden
+  overflow-y: hidden
 
 .chat-toolbar-field .q-field__control
   min-height: 44px
@@ -440,7 +388,10 @@ body.body--dark .theme-preview-page
   height: 100vh
   min-height: 0
   box-sizing: border-box
-  padding: 0 !important
+  // 仅清零上/右/下；不可 padding:0 —— 会覆盖 Quasar 为 q-drawer 注入的 padding-left，导致聊天页被侧栏遮挡
+  padding-top: 0 !important
+  padding-right: 0 !important
+  padding-bottom: 0 !important
 
   .chat-page
     flex: 1 1 auto
@@ -555,8 +506,8 @@ body:not(.body--dark)
 
 body.body--dark
   .chat-page
-    background: linear-gradient(160deg, var(--canvas-base) 0%, #111827 48%, #0f172a 100%)
-    color: var(--color-text-primary)
+    background: var(--chat-page-bg)
+    color: var(--chat-text-primary)
     .chat-mid-card
       background: var(--glass-surface) !important
       border: 1px solid var(--glass-border)
@@ -564,7 +515,7 @@ body.body--dark
       backdrop-filter: blur(var(--glass-blur-default))
       -webkit-backdrop-filter: blur(var(--glass-blur-default))
     .chat-messages
-      background: linear-gradient(180deg, rgba(15, 23, 42, 0.7), rgba(17, 24, 39, 0.94))
+      background: var(--chat-canvas-dark)
     .chat-composer
       background: rgba(15, 23, 42, 0.96)
       border-top-color: rgba(148, 163, 184, 0.14)
@@ -582,11 +533,11 @@ body.body--dark
       border-color: rgba(0, 229, 255, 0.55)
       box-shadow: 0 0 0 2px rgba(0, 229, 255, 0.22)
     .text-cream-text
-      color: #f8fafc !important
+      color: var(--chat-text-primary) !important
     .text-cream-muted
-      color: #94a3b8 !important
+      color: var(--chat-text-muted) !important
     .chat-context-pill
-      color: #cbd5e1
+      color: var(--chat-text-secondary)
       background: rgba(30, 41, 59, 0.74)
       border: 1px solid rgba(148, 163, 184, 0.16)
     .chat-side__toggle-btn,
@@ -602,7 +553,7 @@ body.body--dark
     .chat-icon-btn,
     .chat-action-btn
       background: rgba(30, 41, 59, 0.72) !important
-      color: #cbd5e1 !important
+      color: var(--chat-text-secondary) !important
       border: 1px solid rgba(148, 163, 184, 0.12)
     .chat-danger-btn,
     .chat-outline-danger-btn
@@ -612,19 +563,18 @@ body.body--dark
     .chat-entity-item,
     .chat-session-item
       min-height: 56px
-      background: rgba(30, 41, 59, 0.54)
-      border: 1px solid rgba(148, 163, 184, 0.12)
-      transition: transform 0.16s ease, background 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease
+      background: var(--chat-idle-surface)
+      border: 1px solid var(--chat-idle-border)
+      transition: transform 0.16s ease, background 0.16s ease, border-color 0.16s ease
       &:hover
-        background: var(--glass-surface-hover)
-        border-color: var(--glass-border-hover)
-        box-shadow: var(--glass-inner-highlight)
+        background: var(--chat-idle-surface-hover)
+        border-color: var(--chat-idle-border-hover)
         transform: translateY(-1px)
     .chat-session-item--active
       background: var(--glass-surface-hover) !important
       border-color: color-mix(in srgb, var(--color-accent) 42%, var(--glass-border)) !important
       box-shadow: var(--glass-inner-highlight), inset 3px 0 0 color-mix(in srgb, var(--color-accent) 72%, transparent) !important
-      color: var(--color-text-primary) !important
+      color: var(--chat-text-active) !important
       transform: none
 
 // --- 聊天消息气泡（UX.md §5.2 玻璃卡片；昼夜仅换 token）---
@@ -924,7 +874,7 @@ body.body--dark .chat-page .chat-q-message--streaming .chat-message-bubble--rece
 @media (max-width: 900px)
   :root
     --chat-side-left-width: 240px
-    --chat-side-right-width: 280px
+    --chat-side-right-width: 320px
   .chat-toolbar-actions
     justify-content: flex-start
 

@@ -1,6 +1,10 @@
-﻿.agent-settings {
+// Agent 设置页样式 — 三级玻璃层次 + 强调色锚点 + 表单限宽
+// L0 canvas-base → L1 settings-shell → L2 settings-section → L2a capability-card
+
+.agent-settings {
   display: flex;
   flex-direction: column;
+  align-items: center;
   min-height: 100%;
   padding: 28px;
   background: var(--canvas-base);
@@ -13,45 +17,12 @@
   min-height: calc(100dvh - 52px);
 }
 
-.settings-shell,
-.settings-section {
-  border-radius: 24px;
-}
-
-.agent-settings-tabs {
-  padding: 8px 16px 0;
-  background: var(--nav-bg-light, var(--glass-surface));
-  backdrop-filter: blur(var(--glass-blur-default));
-  -webkit-backdrop-filter: blur(var(--glass-blur-default));
-}
-
-.agent-settings-tabs :deep(.q-tab) {
-  min-height: 46px;
-  border-radius: 14px 14px 0 0;
-  font-weight: 700;
-  color: var(--color-text-secondary);
-}
-
-.agent-settings-tabs :deep(.q-tab--active) {
-  color: var(--color-text-primary);
-  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
-}
-
-.agent-settings-tabs :deep(.q-tab__indicator) {
-  height: 3px;
-  border-radius: 2px;
-  background: var(--color-accent);
-}
-
-.settings-panels {
-  background: transparent;
-}
-
-.settings-panels :deep(.q-tab-panel) {
-  padding: 18px;
-}
-
+// ── L1 外壳 ──
 .settings-shell {
+  width: 100%;
+  max-width: var(--layout-max-width);
+  margin: 0 auto;
+  border-radius: 24px;
   border: 1px solid var(--glass-border);
   background: var(--glass-surface);
   box-shadow: none;
@@ -86,27 +57,132 @@
   flex-direction: column;
 }
 
-.settings-grid {
-  display: grid;
-  gap: 18px;
-}
-
-.settings-section {
-  padding: 20px;
-  border: 1px solid var(--glass-border);
-  background: var(--glass-surface);
-  box-shadow: none;
+// ── Tab 栏 ──
+.agent-settings-tabs {
+  padding: 8px 16px 0;
+  background: var(--nav-bg-light, var(--glass-surface));
   backdrop-filter: blur(var(--glass-blur-default));
   -webkit-backdrop-filter: blur(var(--glass-blur-default));
 }
 
+.agent-settings-tabs :deep(.q-tab) {
+  min-height: 46px;
+  border-radius: 14px 14px 0 0;
+  font-weight: 700;
+  color: var(--color-text-secondary);
+  transition: color 180ms ease, background 180ms ease;
+}
+
+.agent-settings-tabs :deep(.q-tab--active) {
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+}
+
+.agent-settings-tabs :deep(.q-tab__indicator) {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--color-accent);
+}
+
+.settings-panels {
+  background: transparent;
+}
+
+.settings-panels :deep(.q-tab-panel) {
+  padding: 20px;
+}
+
+// ── L2 区块：提升不透明度，与外壳拉开层次 ──
+.settings-grid {
+  display: grid;
+  gap: 20px;
+  max-width: 960px;
+}
+
+// 含并排能力卡的区块不限宽
+.settings-grid:has(.capability-card) {
+  max-width: 100%;
+}
+
+.settings-section {
+  padding: 24px;
+  border: 1px solid var(--glass-border);
+  border-radius: 20px;
+  background: var(--glass-elevated);
+  box-shadow: none;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: background 180ms ease, border-color 180ms ease;
+}
+
+.settings-section:hover {
+  background: var(--glass-surface-hover);
+  border-color: color-mix(in srgb, var(--color-accent) 18%, var(--glass-border));
+}
+
+// ── 标题强调条 ──
 .section-heading {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 14px;
+  margin-bottom: 16px;
 }
 
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.section-title__text {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  letter-spacing: -0.01em;
+  padding-left: 12px;
+  border-left: 3px solid var(--color-accent);
+}
+
+// ── L2a 嵌套能力卡 ──
+.capability-card {
+  border-color: var(--glass-border);
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--glass-surface);
+  backdrop-filter: blur(var(--glass-blur-default));
+  -webkit-backdrop-filter: blur(var(--glass-blur-default));
+  transition: border-color 180ms ease;
+}
+
+.capability-card:hover {
+  border-color: color-mix(in srgb, var(--color-accent) 14%, var(--glass-border));
+}
+
+.capability-card :deep(.q-card__section:first-child) {
+  background: var(--glass-elevated);
+}
+
+// ── 表单控件 ──
+.settings-section :deep(.q-field__control) {
+  border-radius: 14px;
+  background: var(--glass-elevated);
+}
+
+.settings-section .app-form-field-grid :deep(.q-field),
+.settings-section .app-form-field-grid .q-toggle {
+  min-width: 0;
+}
+
+.settings-section .app-field-long {
+  width: 100%;
+}
+
+.settings-section :deep(.q-toggle__label) {
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+// ── Prompt 模式卡 ──
 .prompt-mode-card {
   height: 100%;
   border-color: var(--glass-border);
@@ -138,29 +214,7 @@
   font-weight: 700;
 }
 
-.capability-card {
-  border-color: var(--glass-border);
-  border-radius: 20px;
-  overflow: hidden;
-  background: var(--glass-surface);
-  backdrop-filter: blur(var(--glass-blur-default));
-  -webkit-backdrop-filter: blur(var(--glass-blur-default));
-}
-
-.capability-card :deep(.q-card__section:first-child) {
-  background: var(--glass-elevated);
-}
-
-.settings-section :deep(.q-field__control) {
-  border-radius: 14px;
-  background: var(--glass-elevated);
-}
-
-.settings-section :deep(.q-toggle__label) {
-  font-weight: 600;
-  color: var(--color-text-primary);
-}
-
+// ── Banner ──
 .settings-warning-banner {
   background: var(--color-status-warning-bg);
   color: var(--color-status-warning-text-dark);
@@ -176,6 +230,7 @@
   color: var(--color-text-primary);
 }
 
+// ── 对话框 ──
 .prompt-dialog {
   width: 860px;
   max-width: 94vw;
@@ -205,6 +260,7 @@
   min-width: 0;
 }
 
+// ── 夜间 ──
 body.body--dark .agent-settings {
   background: var(--canvas-base);
   color: var(--color-text-primary);
@@ -223,14 +279,19 @@ body.body--dark .agent-settings-tabs {
 }
 
 body.body--dark .agent-settings-tabs :deep(.q-tab--active) {
-  color: var(--color-surface-soft);
-  background: color-mix(in srgb, var(--color-accent) 22%, transparent);
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 16%, transparent);
 }
 
 body.body--dark .settings-section {
   border-color: var(--glass-border);
-  background: var(--glass-surface);
+  background: var(--glass-elevated);
   box-shadow: none;
+}
+
+body.body--dark .settings-section:hover {
+  background: var(--glass-surface-hover);
+  border-color: var(--glass-border-hover);
 }
 
 body.body--dark .prompt-mode-card,
@@ -257,6 +318,10 @@ body.body--dark .prompt-mode-card__token {
 
 body.body--dark .capability-card :deep(.q-card__section:first-child) {
   background: rgb(30 41 59 / 86%);
+}
+
+body.body--dark .capability-card:hover {
+  border-color: color-mix(in srgb, var(--color-accent) 22%, var(--glass-border));
 }
 
 body.body--dark .settings-section :deep(.q-field__control) {
@@ -298,6 +363,7 @@ body.body--dark .agent-prompt-preview {
   color: var(--color-text-primary);
 }
 
+// ── 响应式 ──
 @media (width <= 599px) {
   .agent-settings {
     padding: 18px;
@@ -305,5 +371,9 @@ body.body--dark .agent-prompt-preview {
 
   .settings-panels :deep(.q-tab-panel) {
     padding: 14px;
+  }
+
+  .settings-grid {
+    max-width: 100%;
   }
 }

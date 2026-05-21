@@ -1,6 +1,6 @@
 <template>
   <q-dialog v-model="dialogModel">
-    <q-card class="avatar-picker-card">
+    <q-card class="avatar-picker-card app-dialog-card app-dialog-card--md">
       <q-card-section class="avatar-picker-card__header">
         <div>
           <div class="text-h6">选择头像</div>
@@ -97,14 +97,6 @@ function confirm() {
 
 <style scoped>
 .avatar-picker-card {
-  width: 560px;
-  max-width: 94vw;
-  border: 1px solid var(--glass-border);
-  border-radius: 26px;
-  background: var(--glass-surface);
-  backdrop-filter: blur(var(--glass-blur-elevated));
-  -webkit-backdrop-filter: blur(var(--glass-blur-elevated));
-  box-shadow: none;
   overflow: hidden;
 }
 

@@ -1,5 +1,6 @@
 <template>
-  <q-page class="memory-page q-pa-md">
+  <q-page class="memory-page">
+    <div class="app-page-shell">
     <memory-hero v-model:selected-agent-id="selectedAgentId" :agent-options="agentOptions" :loading="loading" @refresh="loadAll" />
 
     <q-banner v-if="error" rounded class="bg-negative text-white q-mb-md">
@@ -69,6 +70,7 @@
 
     <memory-snapshot-drawer v-model="snapshotDrawer" :snapshot="selectedSnapshot" />
     <memory-fact-drawer v-model="factDrawer" :fact="selectedFact" />
+    </div>
   </q-page>
 </template>
 
@@ -456,9 +458,12 @@ function formatDate(value?: string) {
 }
 
 .memory-card,
-.memory-metric-card,
 .memory-tabs-card {
   border-radius: 18px;
+  border: 1px solid var(--glass-border);
+  background: var(--glass-surface);
+  backdrop-filter: blur(var(--glass-blur-default));
+  -webkit-backdrop-filter: blur(var(--glass-blur-default));
 }
 
 .memory-tabs-card {
@@ -516,26 +521,23 @@ function formatDate(value?: string) {
 }
 
 body.body--dark .memory-page {
-  background:
-    radial-gradient(circle at 8% 0%, rgb(59 130 246 / 18%), transparent 32%),
-    radial-gradient(circle at 92% 12%, rgb(168 85 247 / 13%), transparent 30%),
-    linear-gradient(180deg, var(--color-surface-solid) 0%, var(--color-surface-elevated) 48%, var(--canvas-base) 100%);
+  background: var(--canvas-base);
 }
 
 body.body--dark .memory-title {
-  color: var(--color-surface-soft);
+  color: var(--color-text-primary);
 }
 
 body.body--dark .memory-subtitle,
 body.body--dark .memory-page .text-grey-7 {
-  color: var(--color-text-tertiary) !important;
+  color: var(--color-text-secondary) !important;
 }
 
 body.body--dark .memory-card,
-body.body--dark .memory-metric-card,
 body.body--dark .memory-tabs-card {
-  background: rgb(17 24 39 / 88%);
-  border-color: rgb(148 163 184 / 18%);
+  background: var(--glass-surface);
+  border-color: var(--glass-border);
+  box-shadow: none;
 }
 
 body.body--dark .memory-flow-node {

@@ -1,8 +1,8 @@
 <template>
-  <q-card flat bordered>
+  <q-card flat class="app-entity-glass-panel evaluation-analytics-panel">
     <q-card-section class="row items-center justify-between q-pb-none">
-      <div class="text-subtitle2">趋势与对比</div>
-      <div class="row q-gutter-sm items-center">
+      <div class="text-subtitle2 text-weight-bold">趋势与对比</div>
+      <div class="app-form-field-grid items-end" style="grid-template-columns: minmax(180px, 240px) auto">
         <q-select
           v-model="localAgentId"
           dense
@@ -11,44 +11,40 @@
           map-options
           :options="agentOptions"
           label="Agent"
-          style="min-width: 180px"
           @update:model-value="onAgentChange"
         />
-        <q-btn flat dense icon="refresh" :loading="trendLoading" @click="emit('refresh-trend')" />
+        <q-btn flat dense round icon="refresh" :loading="trendLoading" @click="emit('refresh-trend')" />
       </div>
     </q-card-section>
 
     <q-card-section>
       <div v-if="trendLoading" class="text-grey-7 q-py-md">加载趋势…</div>
       <div v-else-if="!trendPoints.length" class="text-grey-7 q-py-md">暂无已完成运行记录</div>
-      <q-table
-        v-else
-        flat
-        dense
-        :rows="trendPoints"
-        :columns="trendColumns"
-        row-key="run_id"
-        :pagination="{ rowsPerPage: 5 }"
-      />
+      <div v-else class="app-data-table-shell">
+        <q-table flat dense :rows="trendPoints" :columns="trendColumns" row-key="run_id" :pagination="{ rowsPerPage: 5 }" />
+      </div>
     </q-card-section>
 
     <q-separator />
 
     <q-card-section>
       <div class="text-caption text-grey-7 q-mb-sm">勾选 2 条以上运行记录进行 A/B 对比（以最早一条为基线）</div>
-      <q-table
-        flat
-        dense
-        selection="multiple"
-        v-model:selected="localSelected"
-        :rows="runs"
-        :columns="compareSelectColumns"
-        row-key="id"
-        :pagination="{ rowsPerPage: 5 }"
-      />
-      <div class="row q-gutter-sm q-mt-sm">
+      <div class="app-data-table-shell">
+        <q-table
+          flat
+          dense
+          selection="multiple"
+          v-model:selected="localSelected"
+          :rows="runs"
+          :columns="compareSelectColumns"
+          row-key="id"
+          :pagination="{ rowsPerPage: 5 }"
+        />
+      </div>
+      <div class="app-actions-bar app-actions-bar--start q-mt-sm">
         <q-btn
           outline
+          no-caps
           color="primary"
           label="对比选中"
           :disable="localSelected.length < 2"
@@ -56,16 +52,9 @@
           @click="emitCompare"
         />
       </div>
-      <q-table
-        v-if="comparisons.length"
-        flat
-        dense
-        class="q-mt-md"
-        :rows="comparisons"
-        :columns="comparisonColumns"
-        row-key="run_id"
-        :pagination="{ rowsPerPage: 10 }"
-      />
+      <div v-if="comparisons.length" class="app-data-table-shell q-mt-md">
+        <q-table flat dense :rows="comparisons" :columns="comparisonColumns" row-key="run_id" :pagination="{ rowsPerPage: 10 }" />
+      </div>
     </q-card-section>
   </q-card>
 </template>

@@ -4,14 +4,14 @@
 -->
 <template>
   <q-card flat bordered :class="['teams-toolbar', { 'is-dark': isDark }]">
-    <q-card-section class="row q-col-gutter-md items-center">
-      <q-input :model-value="search" class="col-12 col-md-5 team-control" dense outlined clearable debounce="250" placeholder="搜索 Team / Key / 说明" @update:model-value="$emit('update:search', String($event ?? ''))">
+    <q-card-section class="app-form-field-grid items-end">
+      <q-input :model-value="search" class="app-field-md team-control" dense outlined clearable debounce="250" placeholder="搜索 Team / Key / 说明" @update:model-value="$emit('update:search', String($event ?? ''))">
         <template #prepend><q-icon name="search" /></template>
       </q-input>
-      <q-select :model-value="modeFilter" class="col-12 col-md-3 team-control" dense outlined clearable emit-value map-options label="编排模式" :options="modeOptions" @update:model-value="$emit('update:modeFilter', String($event ?? ''))" />
-      <q-select :model-value="statusFilter" class="col-12 col-md-2 team-control" dense outlined clearable emit-value map-options label="状态" :options="statusOptions" @update:model-value="$emit('update:statusFilter', String($event ?? ''))" />
-      <div class="col-12 col-md-2 row justify-end">
-        <q-btn flat rounded color="primary" icon="refresh" label="刷新" :loading="loading" @click="$emit('refresh')" />
+      <q-select :model-value="modeFilter" class="team-control" dense outlined clearable emit-value map-options label="编排模式" :options="modeOptions" @update:model-value="$emit('update:modeFilter', String($event ?? ''))" />
+      <q-select :model-value="statusFilter" class="team-control" dense outlined clearable emit-value map-options label="状态" :options="statusOptions" @update:model-value="$emit('update:statusFilter', String($event ?? ''))" />
+      <div class="app-actions-bar app-actions-bar--start">
+        <q-btn flat rounded no-caps color="primary" icon="refresh" label="刷新" :loading="loading" @click="$emit('refresh')" />
       </div>
     </q-card-section>
   </q-card>
@@ -38,26 +38,33 @@ defineEmits<{
 
 <style scoped>
 .teams-toolbar {
-  border: 1px solid rgb(15 23 42 / 8%);
+  border: 1px solid var(--glass-border);
   border-radius: 24px;
-  background: rgb(255 255 255 / 86%);
-  box-shadow: 0 18px 48px rgb(16 24 40 / 6%);
+  background: var(--glass-surface);
+  box-shadow: var(--shadow-entity-panel);
   backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
 }
 
 .team-control :deep(.q-field__control) {
   border-radius: 16px;
-  background: var(--color-on-accent);
+  background: var(--glass-elevated);
 }
 
 .teams-toolbar.is-dark {
-  border-color: rgb(148 163 184 / 16%);
-  background: rgb(17 24 39 / 90%);
-  box-shadow: 0 14px 38px rgb(0 0 0 / 32%);
+  border-color: var(--glass-border);
+  background: var(--glass-surface);
+  box-shadow: var(--shadow-entity-panel-dark);
 }
 
 .teams-toolbar.is-dark .team-control :deep(.q-field__control) {
-  border-color: rgb(148 163 184 / 14%);
-  background: rgb(30 41 59 / 76%);
+  border-color: var(--glass-border);
+  background: color-mix(in srgb, var(--glass-elevated) 88%, transparent);
+}
+
+.teams-toolbar.is-dark .team-control :deep(.q-field__native),
+.teams-toolbar.is-dark .team-control :deep(.q-field__input),
+.teams-toolbar.is-dark .team-control :deep(.q-field__label) {
+  color: var(--color-text-primary);
 }
 </style>

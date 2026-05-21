@@ -1,25 +1,25 @@
 <template>
-  <q-page class="app-page-cream plugins-page">
+  <q-page class="app-page-cream app-registry-page plugins-page">
     <section class="app-page-hero">
       <div>
         <div class="app-page-kicker">ADK Runner plugins</div>
         <h1 class="app-page-title">Plugin 管理</h1>
         <p class="app-page-subtitle">配置 ADK Runner 运行时插件，替代手工维护 ADK_RUNNER_PLUGINS 环境变量。</p>
       </div>
-      <div class="row q-gutter-sm">
-        <q-btn outline rounded color="primary" icon="history" label="运行记录" to="/plugins/runs" />
-        <q-btn color="primary" rounded unelevated icon="refresh" label="刷新" :loading="loading" @click="loadRows" />
+      <div class="app-actions-bar">
+        <q-btn outline rounded no-caps color="primary" icon="history" label="运行记录" to="/plugins/runs" />
+        <q-btn color="primary" unelevated rounded no-caps icon="refresh" label="刷新" :loading="loading" @click="loadRows" />
       </div>
     </section>
 
-    <q-card flat bordered class="plugin-filter-card q-mb-md">
-      <q-card-section class="row q-col-gutter-md items-center">
-        <q-input v-model="search" class="col-12 col-md-4" dense outlined clearable debounce="250" label="搜索 Plugin">
+    <q-card flat class="app-registry-panel q-mb-md">
+      <q-card-section class="app-form-field-grid items-end">
+        <q-input v-model="search" class="app-field-md" dense outlined clearable debounce="250" label="搜索 Plugin">
           <template #prepend><q-icon name="search" /></template>
         </q-input>
-        <q-select v-model="category" class="col-12 col-md-3" dense outlined clearable emit-value map-options label="类型" :options="categoryOptions" />
-        <q-select v-model="enabled" class="col-12 col-md-2" dense outlined clearable emit-value map-options label="启用状态" :options="enabledOptions" />
-        <q-input v-model="callbackPoint" class="col-12 col-md-3" dense outlined clearable label="Callback" placeholder="before_model" />
+        <q-select v-model="category" class="app-field-sm" dense outlined clearable emit-value map-options label="类型" :options="categoryOptions" />
+        <q-select v-model="enabled" class="app-field-sm" dense outlined clearable emit-value map-options label="启用状态" :options="enabledOptions" />
+        <q-input v-model="callbackPoint" class="app-field-sm" dense outlined clearable label="Callback" placeholder="before_model" />
       </q-card-section>
     </q-card>
 
@@ -30,9 +30,11 @@
       </template>
     </q-banner>
 
-    <q-card flat bordered class="plugin-table-card">
+    <div class="app-registry-table-shell">
       <q-table
         flat
+        dense
+        class="app-registry-table plugins-table"
         :rows="rows"
         :columns="columns"
         row-key="id"
@@ -43,24 +45,30 @@
       >
         <template #body-cell-name="props">
           <q-td :props="props">
-            <div class="text-weight-bold">{{ props.row.name }}</div>
-            <div class="text-caption text-grey-7">{{ props.row.key }}</div>
+            <div class="app-registry-cell-primary">{{ props.row.name }}</div>
+            <div class="app-registry-cell-sub">{{ props.row.key }}</div>
           </q-td>
         </template>
         <template #body-cell-description="props">
           <q-td :props="props">
-            <div class="plugin-description">{{ props.row.description || "暂无说明" }}</div>
+            <div class="app-registry-cell-desc" :title="props.row.description || ''">
+              {{ props.row.description || "暂无说明" }}
+            </div>
           </q-td>
         </template>
         <template #body-cell-category="props">
           <q-td :props="props">
-            <q-chip dense square color="primary" text-color="white">{{ props.row.category }}</q-chip>
-            <q-chip dense square :color="riskColor(props.row.risk_level)" text-color="white">{{ props.row.risk_level }}</q-chip>
+            <div class="app-registry-chip-wrap">
+              <q-chip dense square color="primary" text-color="white">{{ props.row.category }}</q-chip>
+              <q-chip dense square :color="riskColor(props.row.risk_level)" text-color="white">{{ props.row.risk_level }}</q-chip>
+            </div>
           </q-td>
         </template>
         <template #body-cell-callbacks="props">
           <q-td :props="props">
-            <q-chip v-for="point in props.row.callback_points" :key="point" dense outline color="primary">{{ point }}</q-chip>
+            <div class="app-registry-chip-wrap">
+              <q-chip v-for="point in props.row.callback_points" :key="point" dense outline color="primary">{{ point }}</q-chip>
+            </div>
           </q-td>
         </template>
         <template #body-cell-enabled="props">
@@ -84,19 +92,21 @@
         </template>
         <template #body-cell-actions="props">
           <q-td :props="props">
-            <q-btn flat dense round color="primary" icon="visibility" :disable="!props.row.permissions?.can_view" @click="openDetail(props.row)">
-              <q-tooltip>查看详情</q-tooltip>
-            </q-btn>
-            <q-btn flat dense round color="primary" icon="settings" :disable="!props.row.permissions?.can_edit_config" @click="openConfig(props.row)">
-              <q-tooltip>编辑配置</q-tooltip>
-            </q-btn>
+            <div class="app-registry-cell-actions">
+              <q-btn flat dense round color="primary" icon="visibility" :disable="!props.row.permissions?.can_view" @click="openDetail(props.row)">
+                <q-tooltip>查看详情</q-tooltip>
+              </q-btn>
+              <q-btn flat dense round color="primary" icon="settings" :disable="!props.row.permissions?.can_edit_config" @click="openConfig(props.row)">
+                <q-tooltip>编辑配置</q-tooltip>
+              </q-btn>
+            </div>
           </q-td>
         </template>
       </q-table>
-    </q-card>
+    </div>
 
     <q-dialog v-model="detailOpen">
-      <q-card class="plugin-detail-card">
+      <q-card class="plugin-detail-card app-dialog-card app-dialog-card--md">
         <q-card-section class="row items-start justify-between q-gutter-md">
           <div>
             <div class="text-h6">{{ detailTarget?.name }}</div>
@@ -106,7 +116,7 @@
         </q-card-section>
         <q-separator />
         <q-card-section v-if="detailTarget" class="q-gutter-md">
-          <q-banner rounded class="bg-grey-2 text-grey-9">{{ detailTarget.description || "暂无说明" }}</q-banner>
+          <q-banner rounded dense class="app-banner-warning">{{ detailTarget.description || "暂无说明" }}</q-banner>
           <div class="row q-col-gutter-sm">
             <div class="col-6"><b>类型：</b>{{ detailTarget.category }}</div>
             <div class="col-6"><b>风险：</b>{{ detailTarget.risk_level }}</div>
@@ -122,11 +132,11 @@
               <q-radio v-model="scopeMode" val="global" label="全局生效" />
               <q-radio v-model="scopeMode" val="agent" label="指定 Agent" />
               <q-input v-if="scopeMode === 'agent'" v-model="scopeAgentId" dense outlined label="Agent ID" />
-              <q-btn color="primary" rounded unelevated label="保存作用域" :loading="savingScope" @click="saveScope" />
+              <q-btn color="primary" rounded unelevated no-caps label="保存作用域" :loading="savingScope" @click="saveScope" />
             </div>
           </q-expansion-item>
           <q-expansion-item dense-toggle default-opened label="Callback">
-            <div class="q-gutter-xs">
+            <div class="app-registry-chip-wrap">
               <q-chip v-for="point in detailTarget.callback_points" :key="point" dense outline color="primary">{{ point }}</q-chip>
               <span v-if="!detailTarget.callback_points.length" class="text-grey-7">暂无 Callback</span>
             </div>
@@ -145,13 +155,16 @@
     </q-dialog>
 
     <q-dialog v-model="configOpen" persistent>
-      <q-card style="width: 760px; max-width: 94vw">
-        <q-card-section>
-          <div class="text-h6">配置 {{ configTarget?.name }}</div>
-          <div class="text-caption text-grey-7">Schema 驱动表单或 JSON 编辑；保存后 Runner 热重载生效。</div>
+      <q-card class="app-dialog-card app-dialog-card--md">
+        <q-card-section class="row items-center justify-between">
+          <div>
+            <div class="text-h6">配置 {{ configTarget?.name }}</div>
+            <div class="text-caption text-grey-7">Schema 驱动表单或 JSON 编辑；保存后 Runner 热重载生效。</div>
+          </div>
+          <q-btn flat round dense icon="close" v-close-popup />
         </q-card-section>
         <q-separator />
-        <q-card-section class="q-gutter-md">
+        <q-card-section class="app-dialog-body q-gutter-md">
           <q-tabs v-model="configMode" dense align="left" class="text-primary">
             <q-tab name="form" label="表单" />
             <q-tab name="json" label="JSON" />
@@ -169,9 +182,9 @@
             <pre class="app-code-block app-code-block--compact">{{ configTarget?.config_schema_json || "{}" }}</pre>
           </q-expansion-item>
         </q-card-section>
-        <q-card-actions align="right">
-          <q-btn flat rounded label="取消" v-close-popup />
-          <q-btn color="primary" rounded unelevated label="保存" :loading="savingConfig" :disable="Boolean(configError)" @click="saveConfig" />
+        <q-card-actions align="right" class="app-actions-bar">
+          <q-btn flat rounded no-caps label="取消" v-close-popup />
+          <q-btn color="primary" rounded unelevated no-caps label="保存" :loading="savingConfig" :disable="Boolean(configError)" @click="saveConfig" />
         </q-card-actions>
       </q-card>
     </q-dialog>
@@ -184,6 +197,7 @@ import { useQuasar, type QTableColumn, type QTableProps } from "quasar";
 import { listPlugins, togglePluginEnabled, updatePluginConfig, updatePluginScope, updatePluginSortOrder } from "../features/plugins/usePluginsPage";
 import type { Plugin } from "../features/plugins/usePluginsPage";
 import PluginSchemaForm from "../components/plugins/PluginSchemaForm.vue";
+import { registryCol } from "../features/ui/registryTableColumns";
 
 const $q = useQuasar();
 const rows = ref<Plugin[]>([]);
@@ -213,14 +227,14 @@ const enabledOptions = [
   { label: "已停用", value: false }
 ];
 const columns: QTableColumn<Plugin>[] = [
-  { name: "name", label: "Plugin", field: "name", align: "left" as const },
-  { name: "description", label: "说明", field: "description", align: "left" as const, style: "max-width: 280px; white-space: normal;" },
-  { name: "category", label: "类型 / 风险", field: "category", align: "left" as const },
-  { name: "callbacks", label: "Callback", field: "callback_points", align: "left" as const },
-  { name: "enabled", label: "启用", field: "enabled", align: "center" as const },
-  { name: "scope", label: "作用域", field: "scope", align: "left" as const },
-  { name: "sort_order", label: "顺序", field: "sort_order", align: "left" as const },
-  { name: "actions", label: "操作", field: "id", align: "right" as const }
+  { name: "name", label: "Plugin", field: "name", align: "left", ...registryCol.name },
+  { name: "description", label: "说明", field: "description", align: "left", ...registryCol.desc },
+  { name: "category", label: "类型 / 风险", field: "category", align: "left", ...registryCol.chips },
+  { name: "callbacks", label: "Callback", field: "callback_points", align: "left", ...registryCol.callbacks },
+  { name: "enabled", label: "启用", field: "enabled", align: "center", ...registryCol.toggle },
+  { name: "scope", label: "作用域", field: "scope", align: "left", ...registryCol.scope },
+  { name: "sort_order", label: "顺序", field: "sort_order", align: "left", ...registryCol.sort },
+  { name: "actions", label: "操作", field: "id", align: "right", ...registryCol.actions }
 ];
 
 const configError = computed(() => {
@@ -361,23 +375,6 @@ onMounted(() => loadRows());
 </script>
 
 <style scoped lang="sass">
-.plugins-page
-  padding: var(--space-6)
-
-.plugin-filter-card,
-.plugin-table-card
-  border-radius: 22px
-
-.plugin-description
-  color: var(--color-text-secondary)
-  line-height: 1.45
-
-.plugin-detail-card
-  width: 760px
-  max-width: 94vw
-
-@media (max-width: 720px)
-  .app-page-hero
-    flex-direction: column
-    align-items: stretch
+.plugins-table
+  background: transparent
 </style>

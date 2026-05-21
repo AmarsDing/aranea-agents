@@ -1,5 +1,5 @@
 <template>
-  <q-page :class="['agents-page', { 'is-dark': isDark }]">
+  <q-page :class="['app-entity-page agents-page', { 'is-dark': isDark }]">
     <agents-workspace-hero @create="openCreate" @open-migration="migrationOpen = true" />
 
     <agents-filters-card
@@ -63,26 +63,26 @@
     />
 
     <q-dialog v-model="deleteOpen">
-      <q-card style="width: 420px; max-width: 92vw">
+      <q-card class="app-dialog-card app-dialog-card--sm">
         <q-card-section>
           <div class="text-h6">删除 Agent</div>
           <div class="text-body2 text-grey-7 q-mt-sm">确认删除「{{ deleteTarget?.display_name }}」？此操作会软删除，列表中不再显示。</div>
         </q-card-section>
-        <q-card-actions align="right">
-          <q-btn flat rounded label="取消" v-close-popup />
-          <q-btn color="negative" rounded unelevated label="删除" @click="deleteAgentTarget" />
+        <q-card-actions align="right" class="app-actions-bar">
+          <q-btn flat rounded no-caps label="取消" v-close-popup />
+          <q-btn color="negative" rounded unelevated no-caps label="删除" @click="deleteAgentTarget" />
         </q-card-actions>
       </q-card>
     </q-dialog>
 
     <q-dialog v-model="migrationOpen">
-      <q-card style="width: 520px; max-width: 92vw">
+      <q-card class="app-dialog-card app-dialog-card--sm">
         <q-card-section>
           <div class="text-h6">Agent 迁移</div>
           <div class="text-body2 text-grey-7 q-mt-sm">导入、导出、批量映射与冲突处理将在单独流程中实现；当前先保留入口。</div>
         </q-card-section>
-        <q-card-actions align="right">
-          <q-btn color="primary" flat rounded label="知道了" v-close-popup />
+        <q-card-actions align="right" class="app-actions-bar">
+          <q-btn color="primary" flat rounded no-caps label="知道了" v-close-popup />
         </q-card-actions>
       </q-card>
     </q-dialog>
@@ -162,13 +162,10 @@ const {
 <style scoped>
 .agents-page {
   min-height: 100%;
-  padding: 28px;
-  background: var(--canvas-base);
   color: var(--color-text-primary);
 }
 
 .agents-page.is-dark {
-  background: var(--canvas-base);
   color: var(--color-text-primary);
 }
 
@@ -238,11 +235,5 @@ const {
 
 .agents-page.is-dark :deep(.agents-table tbody tr:hover) {
   background: var(--glass-surface-hover);
-}
-
-@media (width <= 599px) {
-  .agents-page {
-    padding: 18px;
-  }
 }
 </style>

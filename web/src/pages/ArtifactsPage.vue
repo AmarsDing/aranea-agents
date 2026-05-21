@@ -1,21 +1,21 @@
 <template>
-  <q-page class="app-page-cream artifacts-page q-pa-sm q-pa-md-md">
+  <q-page class="app-page-cream app-registry-page artifacts-page">
     <section class="app-page-hero">
       <div>
         <div class="app-page-kicker">Session artifacts</div>
         <h1 class="app-page-title">制品管理</h1>
         <p class="app-page-subtitle">上传、浏览与删除会话关联的文件制品。存储后端依部署配置（本地或对象存储）。</p>
       </div>
-      <div class="row q-gutter-sm">
-        <q-btn color="primary" rounded unelevated icon="upload" label="上传" @click="uploadOpen = true" />
-        <q-btn outline rounded color="primary" icon="refresh" label="刷新" :loading="loading" @click="loadRows" />
+      <div class="app-actions-bar">
+        <q-btn color="primary" unelevated rounded no-caps icon="upload" label="上传" @click="uploadOpen = true" />
+        <q-btn outline rounded no-caps color="primary" icon="refresh" label="刷新" :loading="loading" @click="loadRows" />
       </div>
     </section>
 
-    <q-card flat bordered class="q-mb-md">
-      <q-card-section class="row q-col-gutter-md items-center">
-        <q-input v-model="sessionFilter" class="col-12 col-md-5" dense outlined clearable label="按 Session ID 筛选" />
-        <q-input v-model="search" class="col-12 col-md-5" dense outlined clearable debounce="200" label="搜索名称 / MIME" />
+    <q-card flat class="app-registry-panel">
+      <q-card-section class="app-form-field-grid app-registry-toolbar app-form-field-grid--2col items-center">
+        <q-input v-model="sessionFilter" class="app-field-md" dense outlined clearable label="按 Session ID 筛选" />
+        <q-input v-model="search" class="app-field-md" dense outlined clearable debounce="200" label="搜索名称 / MIME" />
       </q-card-section>
     </q-card>
 
@@ -26,13 +26,19 @@
       </template>
     </q-banner>
 
-    <q-card flat bordered>
-      <q-table flat :rows="filteredRows" :columns="columns" row-key="id" :loading="loading" :pagination="{ rowsPerPage: 15 }">
+    <div class="app-registry-table-shell">
+      <q-table flat dense class="app-registry-table" :rows="filteredRows" :columns="columns" row-key="id" :loading="loading" :pagination="{ rowsPerPage: 15 }">
+        <template #body-cell-name="props">
+          <q-td :props="props">
+            <div class="app-registry-cell-primary">{{ props.row.name }}</div>
+          </q-td>
+        </template>
         <template #body-cell-size="props">
           <q-td :props="props">{{ formatBytes(props.row.size) }}</q-td>
         </template>
         <template #body-cell-actions="props">
           <q-td :props="props">
+            <div class="app-registry-cell-actions">
             <q-btn flat dense round color="primary" icon="visibility" @click="openDetail(props.row)">
               <q-tooltip>查看</q-tooltip>
             </q-btn>
@@ -42,31 +48,32 @@
             <q-btn flat dense round color="negative" icon="delete" @click="confirmDelete(props.row)">
               <q-tooltip>删除</q-tooltip>
             </q-btn>
+            </div>
           </q-td>
         </template>
       </q-table>
-    </q-card>
+    </div>
 
     <q-dialog v-model="uploadOpen" persistent>
-      <q-card style="min-width: 420px; max-width: 94vw">
+      <q-card class="app-dialog-card app-dialog-card--sm">
         <q-card-section class="text-h6">上传制品</q-card-section>
-        <q-card-section class="q-gutter-md">
-          <q-input v-model="uploadForm.session_id" dense outlined label="Session ID" />
-          <q-input v-model="uploadForm.name" dense outlined label="文件名" />
-          <q-input v-model="uploadForm.mime_type" dense outlined label="MIME" placeholder="application/octet-stream" />
+        <q-card-section class="app-dialog-body q-gutter-md q-pt-none">
+          <q-input v-model="uploadForm.session_id" class="app-field-md" dense outlined label="Session ID" />
+          <q-input v-model="uploadForm.name" class="app-field-md" dense outlined label="文件名" />
+          <q-input v-model="uploadForm.mime_type" class="app-field-sm" dense outlined label="MIME" placeholder="application/octet-stream" />
           <q-file v-model="uploadFile" label="选择文件" outlined dense @update:model-value="onUploadFile" />
         </q-card-section>
-        <q-card-actions align="right">
-          <q-btn flat label="取消" v-close-popup />
-          <q-btn color="primary" unelevated label="上传" :loading="uploadLoading" @click="submitUpload" />
+        <q-card-actions align="right" class="app-actions-bar">
+          <q-btn flat no-caps label="取消" v-close-popup />
+          <q-btn color="primary" unelevated no-caps label="上传" :loading="uploadLoading" @click="submitUpload" />
         </q-card-actions>
       </q-card>
     </q-dialog>
 
     <q-dialog v-model="detailOpen">
-      <q-card style="min-width: 520px; max-width: 96vw">
+      <q-card class="app-dialog-card app-dialog-card--md">
         <q-card-section class="text-h6">{{ detailMeta?.name }}</q-card-section>
-        <q-card-section v-if="detailMeta" class="q-gutter-sm text-body2">
+        <q-card-section v-if="detailMeta" class="app-dialog-body q-gutter-sm q-pt-none text-body2">
           <div><b>ID：</b>{{ detailMeta.id }}</div>
           <div><b>Session：</b>{{ detailMeta.session_id }}</div>
           <div><b>SHA256：</b><span class="text-caption">{{ detailMeta.sha256 }}</span></div>
@@ -76,8 +83,8 @@
         <q-card-section v-if="detailArtifactId">
           <ArtifactPreview :artifact-id="detailArtifactId" :show-download="true" @download="onPreviewDownload" />
         </q-card-section>
-        <q-card-actions align="right">
-          <q-btn flat label="关闭" v-close-popup />
+        <q-card-actions align="right" class="app-actions-bar">
+          <q-btn flat no-caps label="关闭" v-close-popup />
         </q-card-actions>
       </q-card>
     </q-dialog>
@@ -90,6 +97,7 @@ import { useQuasar } from "quasar";
 import { deleteArtifact, listArtifacts, signDownloadUrl, artifactDownloadHref, uploadArtifact } from "../features/artifact/api";
 import ArtifactPreview from "../features/artifact/ArtifactPreview.vue";
 import type { ArtifactMeta } from "../features/artifact/types";
+import { registryCol } from "../features/ui/registryTableColumns";
 
 const $q = useQuasar();
 const rows = ref<ArtifactMeta[]>([]);
@@ -106,13 +114,13 @@ const detailMeta = ref<ArtifactMeta | null>(null);
 const detailArtifactId = ref("");
 
 const columns = [
-  { name: "name", label: "名称", field: "name", align: "left" as const, sortable: true },
-  { name: "session_id", label: "Session", field: "session_id", align: "left" as const },
-  { name: "mime_type", label: "MIME", field: "mime_type", align: "left" as const },
-  { name: "size", label: "大小", field: "size", align: "right" as const },
-  { name: "version", label: "版本", field: "version", align: "right" as const },
-  { name: "created_at", label: "创建时间", field: "created_at", align: "left" as const },
-  { name: "actions", label: "", field: "id", align: "right" as const }
+  { name: "name", label: "名称", field: "name", align: "left" as const, sortable: true, ...registryCol.name },
+  { name: "session_id", label: "Session", field: "session_id", align: "left" as const, ...registryCol.session },
+  { name: "mime_type", label: "MIME", field: "mime_type", align: "left" as const, ...registryCol.mime },
+  { name: "size", label: "大小", field: "size", align: "right" as const, ...registryCol.size },
+  { name: "version", label: "版本", field: "version", align: "right" as const, ...registryCol.version },
+  { name: "created_at", label: "创建时间", field: "created_at", align: "left" as const, ...registryCol.time },
+  { name: "actions", label: "", field: "id", align: "right" as const, ...registryCol.actions }
 ];
 
 const filteredRows = computed(() => {

@@ -15,11 +15,10 @@
     </section>
 
     <q-card flat bordered class="q-mb-md">
-      <q-card-section class="row q-col-gutter-sm items-center">
-        <q-input v-model="hookKey" class="col-12 col-md-3" dense outlined clearable debounce="350" label="Hook Key" @update:model-value="onFilterChange" />
+      <q-card-section class="app-form-field-grid items-end">
+        <q-input v-model="hookKey" dense outlined clearable debounce="350" label="Hook Key" @update:model-value="onFilterChange" />
         <q-select
           v-model="status"
-          class="col-12 col-md-2"
           dense
           outlined
           clearable
@@ -29,8 +28,8 @@
           :options="statusOptions"
           @update:model-value="onFilterChange"
         />
-        <q-input v-model="from" class="col-12 col-md-3" dense outlined clearable type="datetime-local" label="起始时间" @update:model-value="onFilterChange" />
-        <q-input v-model="to" class="col-12 col-md-3" dense outlined clearable type="datetime-local" label="结束时间" @update:model-value="onFilterChange" />
+        <q-input v-model="from" dense outlined clearable type="datetime-local" label="起始时间" @update:model-value="onFilterChange" />
+        <q-input v-model="to" dense outlined clearable type="datetime-local" label="结束时间" @update:model-value="onFilterChange" />
       </q-card-section>
     </q-card>
 
@@ -66,15 +65,15 @@
     </q-card>
 
     <q-dialog v-model="detailOpen">
-      <q-card style="min-width: 420px; max-width: 90vw">
+      <q-card class="app-dialog-card app-dialog-card--sm">
         <q-card-section class="text-h6">投递详情</q-card-section>
-        <q-card-section>
+        <q-card-section class="app-dialog-body q-pt-none">
           <div class="text-caption text-grey-7">{{ detailUrl }}</div>
-          <pre class="hook-delivery-detail">{{ detailText }}</pre>
+          <pre class="hook-delivery-detail app-code-block">{{ detailText }}</pre>
           <div v-if="detailError" class="text-negative q-mt-sm">{{ detailError }}</div>
         </q-card-section>
-        <q-card-actions align="right">
-          <q-btn flat label="关闭" v-close-popup />
+        <q-card-actions align="right" class="app-actions-bar">
+          <q-btn flat no-caps label="关闭" v-close-popup />
         </q-card-actions>
       </q-card>
     </q-dialog>

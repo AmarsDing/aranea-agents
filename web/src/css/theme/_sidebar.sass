@@ -1,0 +1,225 @@
+// App Shell — 左侧导航（浮动玻璃 Card）
+// 结构：q-drawer.app-sidebar（透明槽）> .app-sidebar-card（玻璃面板）> 菜单
+
+body.body--dark .q-drawer.app-sidebar,
+body:not(.body--dark) .q-drawer.app-sidebar
+  background: transparent !important
+  border-right: none !important
+  box-shadow: none !important
+  padding: var(--sidebar-inset-y) var(--sidebar-inset-x)
+
+body.body--dark .q-drawer.app-sidebar .q-drawer__content,
+body:not(.body--dark) .q-drawer.app-sidebar .q-drawer__content
+  background: transparent !important
+  overflow: hidden !important
+  scrollbar-width: none
+  -ms-overflow-style: none
+
+  &::-webkit-scrollbar
+    display: none
+    width: 0
+    height: 0
+
+.app-layout-root .q-drawer--standard,
+.app-layout-root .q-drawer--mini,
+.app-layout-root .q-drawer--design-mini
+  background: transparent !important
+
+.app-sidebar-card
+  display: flex
+  flex-direction: column
+  height: 100%
+  min-height: 0
+  border: 1px solid var(--sidebar-border)
+  border-radius: var(--sidebar-radius)
+  background: var(--sidebar-bg) !important
+  backdrop-filter: blur(var(--sidebar-blur)) saturate(var(--sidebar-saturate))
+  -webkit-backdrop-filter: blur(var(--sidebar-blur)) saturate(var(--sidebar-saturate))
+  box-shadow: var(--sidebar-shadow)
+  overflow: hidden
+  position: relative
+  isolation: isolate
+
+  &::before
+    content: ""
+    position: absolute
+    inset: 0
+    pointer-events: none
+    background: var(--sidebar-overlay)
+    border-radius: inherit
+    z-index: 0
+
+.app-sidebar__scroll
+  position: relative
+  z-index: 1
+  flex: 1
+  min-height: 0
+  padding: var(--sidebar-padding-y) 0
+  overflow-x: hidden
+  overflow-y: auto
+  overscroll-behavior: contain
+  scrollbar-width: none
+  -ms-overflow-style: none
+
+  &::-webkit-scrollbar
+    display: none
+    width: 0
+    height: 0
+
+.app-sidebar-nav
+  padding: 0 var(--sidebar-padding-x) !important
+  background: transparent !important
+
+  .app-sidebar-group__items
+    padding-left: var(--sidebar-item-indent)
+    padding-right: 2px
+    box-sizing: border-box
+
+  .q-item__label--header,
+  .app-sidebar-section-label
+    padding: var(--sidebar-section-padding)
+    margin: 0
+    font-size: var(--sidebar-section-font-size)
+    font-weight: 700
+    letter-spacing: 0.08em
+    text-transform: uppercase
+    line-height: 1.35
+    color: var(--sidebar-section-color) !important
+
+  .q-item
+    min-height: var(--sidebar-item-min-height)
+    border-radius: var(--sidebar-item-radius)
+    margin: var(--sidebar-item-gap) 0
+    padding: var(--sidebar-item-padding-y) var(--sidebar-item-padding-x)
+    gap: var(--sidebar-icon-gap)
+    color: var(--sidebar-item-color) !important
+    font-size: var(--sidebar-item-font-size)
+    line-height: 1.45
+    font-weight: 500
+    transition: background 0.16s ease, color 0.16s ease, box-shadow 0.16s ease, opacity 0.16s ease
+
+    .q-item__section--main,
+    .q-item__label
+      color: inherit !important
+
+    &:hover
+      background: var(--sidebar-item-hover-bg) !important
+      color: var(--sidebar-item-hover-color) !important
+
+  .q-item__section--main
+    min-width: 0
+    padding-left: 0
+    word-break: break-word
+
+  .q-item__section--avatar
+    flex: 0 0 var(--sidebar-icon-size)
+    min-width: var(--sidebar-icon-size)
+    max-width: var(--sidebar-icon-size)
+    padding-right: 0
+    align-items: center
+    justify-content: center
+
+  .q-icon:not(img)
+    font-size: var(--sidebar-icon-size)
+    width: 1em
+    height: 1em
+    line-height: 1
+    color: var(--sidebar-icon-color) !important
+    opacity: var(--sidebar-icon-opacity)
+    transition: color 0.16s ease
+
+  .q-item:hover .q-icon:not(img)
+    color: var(--sidebar-icon-hover-color, var(--sidebar-item-hover-color)) !important
+
+.app-sidebar-item--active,
+.q-item.app-sidebar-item--active
+  background: var(--sidebar-item-active-bg) !important
+  color: var(--sidebar-item-active-color) !important
+  font-weight: 600
+  box-shadow: var(--sidebar-item-active-shadow) !important
+
+  .q-item__section--main,
+  .q-item__label
+    color: var(--sidebar-item-active-color) !important
+
+  .q-item__section--avatar .q-icon,
+  .q-icon:not(img)
+    color: var(--sidebar-icon-active-color) !important
+    opacity: 1
+
+.app-sidebar-divider
+  margin: var(--space-3) var(--sidebar-padding-x)
+  background: var(--sidebar-border) !important
+  opacity: 0.9
+
+// 夜间：Quiet Rail — 未选中透明，悬停淡 wash，选中保留左侧霓虹条
+body.body--dark .app-sidebar-nav
+  .app-sidebar-section-label
+    color: var(--sidebar-idle-section) !important
+    letter-spacing: 0.1em
+    opacity: 0.92
+
+  .q-item:not(.app-sidebar-item--active)
+    background: transparent !important
+    border: none !important
+    box-shadow: none !important
+    backdrop-filter: none !important
+    -webkit-backdrop-filter: none !important
+    color: var(--sidebar-idle-text) !important
+    font-weight: 500
+
+    .q-item__section--main,
+    .q-item__label
+      color: var(--sidebar-idle-text) !important
+
+    .q-icon:not(img)
+      color: var(--sidebar-idle-icon) !important
+      opacity: var(--sidebar-idle-icon-opacity)
+      filter: none
+
+    &:hover
+      background: var(--sidebar-item-hover-bg) !important
+      color: var(--sidebar-item-hover-color) !important
+
+      .q-item__section--main,
+      .q-item__label
+        color: var(--sidebar-item-hover-color) !important
+
+      .q-icon:not(img)
+        color: var(--sidebar-icon-hover-color) !important
+        opacity: 1
+
+  .q-item.app-sidebar-item--active,
+  .app-sidebar-item--active
+    border: none !important
+    backdrop-filter: none !important
+    -webkit-backdrop-filter: none !important
+    text-shadow: none
+
+    .q-item__section--main,
+    .q-item__label
+      text-shadow: none
+
+    .q-icon:not(img)
+      filter: none
+
+.q-drawer--mini .app-sidebar-nav,
+.q-drawer--design-mini .app-sidebar-nav
+  padding: 0 var(--sidebar-mini-padding-x) !important
+
+  .app-sidebar-group__items
+    padding-left: 0
+
+  .q-item
+    justify-content: center
+    padding: var(--sidebar-item-padding-y) var(--space-3)
+
+  .q-item__section--avatar
+    padding-right: 0
+    min-width: auto
+    max-width: none
+
+.q-drawer--mini.app-sidebar,
+.q-drawer--design-mini.app-sidebar
+  padding-left: var(--space-2)
+  padding-right: var(--space-2)

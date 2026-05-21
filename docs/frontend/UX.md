@@ -193,6 +193,12 @@ backdrop-filter: blur(var(--glass-blur-default));
 | 间距刻度 | `4, 8, 12, 16, 20, 24, 32, 48, 64` px；**昼夜同一套** |
 | 圆角 | 控件 5–8px；卡片/面板 16–20px；大模块 28–36px；胶囊 56–980px；圆 `50%` |
 | 密度 | 营销宽留白；数据页可更密 |
+| 表单区宽度 | 单列表单 `max-width: 960px`（`.app-form-shell` / `.settings-grid`）；双栏能力卡 `1200px`（`.app-form-wide`） |
+| 字段宽度 | 短字段 `320px`（`.app-field-sm`）；名称/下拉 `480px`（`.app-field-md`）；描述/Prompt `72ch`（`.app-field-long`） |
+| 字段网格 | 多列配置用 `.app-form-field-grid`（`auto-fill, minmax(200px, 280px)`），禁止裸 `col-12` 拉满超宽屏 |
+| 按钮 | 主操作 **auto width**，`.app-actions-bar` 右对齐；**禁止**配置页 `full-width` 主按钮（移动 `.app-btn-block-mobile` 除外） |
+| Chat composer | `.chat-composer-inner` 限宽 `900px` 居中，与消息区对齐 |
+| Dialog | `.app-dialog-card` + `--glass-elevated`；宽 `640–860px` |
 | Z / 层级 | L0=`--canvas-base`；L1/L2 用玻璃不透明度与 blur 差、边框亮度区分；焦点昼 `#E9A23B`、夜霓虹边。**摒弃**靠重投影分层层级 |
 
 ---

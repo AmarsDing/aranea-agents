@@ -1,42 +1,34 @@
 <template>
-  <div class="row q-col-gutter-md">
-    <div class="col-12 col-md-3">
-      <q-select
-        v-model="form.provider"
-        dense
-        outlined
-        :label="t('knowledgeEmbed.provider')"
-        :options="providerOptions"
-        emit-value
-        map-options
-      />
-    </div>
-    <div class="col-12 col-md-5">
-      <q-input
-        v-model="form.base_url"
-        dense
-        outlined
-        :label="t('knowledgeEmbed.baseUrl')"
-        placeholder="https://api.openai.com"
-      />
-    </div>
-    <div class="col-12 col-md-4">
-      <q-input v-model="form.model" dense outlined :label="t('knowledgeEmbed.model')" />
-    </div>
-    <div class="col-12 col-md-3">
-      <q-input v-model.number="form.dim" dense outlined type="number" :label="t('knowledgeEmbed.dim')" />
-    </div>
-    <div class="col-12 col-md-5">
-      <q-input
-        v-model="form.api_key"
-        dense
-        outlined
-        :label="t('knowledgeEmbed.apiKey')"
-        type="password"
-        :placeholder="hasApiKey ? t('knowledgeEmbed.apiKeyPlaceholderSet') : t('knowledgeEmbed.apiKeyPlaceholderEmpty')"
-      />
-    </div>
-    <div v-if="showStatus" class="col-12 col-md-4 flex items-center q-gutter-sm">
+  <div class="app-form-field-grid app-form-field-grid--embedder">
+    <q-select
+      v-model="form.provider"
+      class="app-field-sm"
+      dense
+      outlined
+      :label="t('knowledgeEmbed.provider')"
+      :options="providerOptions"
+      emit-value
+      map-options
+    />
+    <q-input
+      v-model="form.base_url"
+      dense
+      outlined
+      :label="t('knowledgeEmbed.baseUrl')"
+      placeholder="https://api.openai.com"
+    />
+    <q-input v-model="form.model" class="app-field-md" dense outlined :label="t('knowledgeEmbed.model')" />
+    <q-input v-model.number="form.dim" class="app-field-sm" dense outlined type="number" :label="t('knowledgeEmbed.dim')" />
+    <q-input
+      v-model="form.api_key"
+      class="app-grid-span-full app-field-long"
+      dense
+      outlined
+      :label="t('knowledgeEmbed.apiKey')"
+      type="password"
+      :placeholder="hasApiKey ? t('knowledgeEmbed.apiKeyPlaceholderSet') : t('knowledgeEmbed.apiKeyPlaceholderEmpty')"
+    />
+    <div v-if="showStatus" class="app-grid-span-full app-actions-bar app-actions-bar--start">
       <q-badge :color="configured ? 'positive' : 'warning'">
         {{ configured ? t("knowledgeEmbed.configured") : t("knowledgeEmbed.notConfigured") }}
       </q-badge>

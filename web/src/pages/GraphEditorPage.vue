@@ -31,16 +31,16 @@
     </div>
 
     <q-dialog v-model="runDialogOpen" persistent>
-      <q-card :class="['graph-run-dialog', { 'is-dark': isDark }]">
+      <q-card class="graph-run-dialog app-dialog-card app-dialog-card--sm">
         <q-card-section>
           <div class="text-h6">执行 Graph</div>
         </q-card-section>
         <q-separator />
-        <q-card-section class="q-gutter-md">
-          <q-input v-model="runSessionId" dense outlined label="Session ID" />
-          <q-input v-model="runInitialState" dense outlined autogrow type="textarea" label="初始状态 (JSON)" />
+        <q-card-section class="app-dialog-body q-gutter-md">
+          <q-input v-model="runSessionId" class="app-field-md" dense outlined label="Session ID" />
+          <q-input v-model="runInitialState" class="app-field-long" dense outlined autogrow type="textarea" label="初始状态 (JSON)" />
         </q-card-section>
-        <q-card-actions align="right">
+        <q-card-actions align="right" class="app-actions-bar">
           <q-btn flat rounded label="取消" @click="runDialogOpen = false" />
           <q-btn color="primary" rounded unelevated label="执行" :loading="runLoading" @click="executeRun" />
         </q-card-actions>
@@ -230,16 +230,6 @@ onBeforeRouteLeave((_to, _from, next) => {
   overflow: hidden;
 }
 
-.graph-run-dialog {
-  width: 480px;
-  max-width: 94vw;
-  border: 1px solid var(--glass-border, rgb(235 220 200 / 70%));
-  border-radius: 24px;
-  background: var(--glass-elevated, rgb(255 255 255 / 72%));
-  backdrop-filter: blur(var(--glass-blur-default, 18px));
-  -webkit-backdrop-filter: blur(var(--glass-blur-default, 18px));
-}
-
 .graph-editor-page.is-dark {
   background: var(--canvas-base, var(--canvas-base));
 }
@@ -247,10 +237,5 @@ onBeforeRouteLeave((_to, _from, next) => {
 .graph-editor-page.is-dark .graph-editor-page__toolbar {
   border-color: rgb(255 255 255 / 8%);
   background: rgb(18 24 34 / 65%);
-}
-
-.graph-run-dialog.is-dark {
-  border-color: rgb(255 255 255 / 8%);
-  background: rgb(18 24 34 / 90%);
 }
 </style>

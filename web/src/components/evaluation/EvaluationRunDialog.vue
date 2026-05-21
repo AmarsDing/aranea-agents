@@ -1,10 +1,11 @@
 <template>
   <q-dialog :model-value="open" persistent @update:model-value="$emit('update:open', $event)">
-    <q-card style="min-width: 420px">
+    <q-card class="app-dialog-card app-dialog-card--sm">
       <q-card-section class="text-h6">启动评估</q-card-section>
-      <q-card-section class="q-gutter-md">
+      <q-card-section class="app-dialog-body q-gutter-md q-pt-none">
         <q-select
           :model-value="agentId"
+          class="app-field-md"
           dense
           outlined
           emit-value
@@ -15,6 +16,7 @@
         />
         <q-input
           :model-value="metrics"
+          class="app-field-long"
           dense
           outlined
           label="指标（逗号分隔，留空=全部）"
@@ -22,6 +24,7 @@
         />
         <q-input
           :model-value="numRuns"
+          class="app-field-sm"
           dense
           outlined
           type="number"
@@ -32,9 +35,9 @@
           @update:model-value="$emit('update:numRuns', Number($event) || 1)"
         />
       </q-card-section>
-      <q-card-actions align="right">
-        <q-btn flat label="取消" @click="$emit('update:open', false)" />
-        <q-btn color="primary" unelevated label="运行" :loading="loading" @click="$emit('submit')" />
+      <q-card-actions align="right" class="app-actions-bar">
+        <q-btn flat no-caps label="取消" @click="$emit('update:open', false)" />
+        <q-btn color="primary" unelevated no-caps label="运行" :loading="loading" @click="$emit('submit')" />
       </q-card-actions>
     </q-card>
   </q-dialog>

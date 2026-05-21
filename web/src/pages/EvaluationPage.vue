@@ -1,14 +1,14 @@
 <template>
-  <q-page class="app-page-cream evaluation-page q-pa-sm q-pa-md-md">
+  <q-page class="app-page-cream app-registry-page evaluation-page">
     <section class="app-page-hero">
       <div>
         <div class="app-page-kicker">EvalSet / metrics</div>
         <h1 class="app-page-title">评估管理</h1>
         <p class="app-page-subtitle">EvalSet + FrameworkBridge（LLM UserSim / 扩展指标 / 趋势对比已接入）。</p>
       </div>
-      <div class="row q-gutter-sm">
-        <q-btn color="primary" rounded unelevated icon="add" label="新建数据集" @click="createOpen = true" />
-        <q-btn outline rounded color="primary" icon="refresh" label="刷新" :loading="loading" @click="loadDatasets" />
+      <div class="app-actions-bar">
+        <q-btn color="primary" rounded unelevated no-caps icon="add" label="新建数据集" @click="createOpen = true" />
+        <q-btn outline rounded no-caps color="primary" icon="refresh" label="刷新" :loading="loading" @click="loadDatasets" />
       </div>
     </section>
 
@@ -19,32 +19,31 @@
       </template>
     </q-banner>
 
-    <div class="row q-col-gutter-md">
-      <div class="col-12 col-lg-4">
-        <evaluation-dataset-list
-          :datasets="datasets"
-          :selected-id="selectedDatasetId"
-          :loading="loading"
-          @select="selectDataset"
-        />
-      </div>
+    <div class="evaluation-layout">
+      <evaluation-dataset-list
+        :datasets="datasets"
+        :selected-id="selectedDatasetId"
+        :loading="loading"
+        @select="selectDataset"
+      />
 
-      <div class="col-12 col-lg-8">
-        <q-card v-if="selectedDataset" flat bordered>
+      <div>
+        <q-card v-if="selectedDataset" flat class="app-entity-glass-panel evaluation-detail-card">
           <q-card-section class="row items-center justify-between">
             <div>
               <div class="text-h6">{{ selectedDataset.name }}</div>
               <div class="text-caption text-grey-7">{{ selectedDataset.description || "无描述" }}</div>
             </div>
-            <div class="row q-gutter-sm">
-              <q-btn outline color="primary" icon="play_arrow" label="启动评估" @click="runOpen = true" />
-              <q-btn flat color="negative" icon="delete" label="删除" @click="confirmDeleteDataset" />
+            <div class="app-actions-bar app-actions-bar--start">
+              <q-btn outline no-caps color="primary" icon="play_arrow" label="启动评估" @click="runOpen = true" />
+              <q-btn flat no-caps color="negative" icon="delete" label="删除" @click="confirmDeleteDataset" />
             </div>
           </q-card-section>
           <q-separator />
           <q-card-section>
             <div class="text-subtitle2 q-mb-sm">运行记录</div>
-            <q-table flat :rows="runs" :columns="runColumns" row-key="id" :loading="runsLoading" :pagination="{ rowsPerPage: 8 }">
+            <div class="app-registry-table-shell">
+            <q-table flat dense class="app-registry-table" :rows="runs" :columns="runColumns" row-key="id" :loading="runsLoading" :pagination="{ rowsPerPage: 8 }">
               <template #body-cell-status="props">
                 <q-td :props="props">
                   <q-chip dense :color="runStatusColor(props.row.status)" text-color="white" size="sm">{{ props.row.status }}</q-chip>
@@ -56,9 +55,14 @@
                 </q-td>
               </template>
             </q-table>
+            </div>
           </q-card-section>
         </q-card>
-        <q-card v-else flat bordered class="q-pa-lg text-center text-grey-7">请选择或新建数据集</q-card>
+        <div v-else class="app-registry-empty app-entity-empty">
+          <q-icon name="analytics" size="48px" color="grey-6" />
+          <div class="text-h6">请选择或新建数据集</div>
+          <div class="text-body2">左侧选择 EvalSet，或点击右上角「新建数据集」开始评估。</div>
+        </div>
 
         <evaluation-analytics-panel
           v-if="selectedDataset"

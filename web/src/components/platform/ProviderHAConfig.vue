@@ -2,6 +2,7 @@
   <div class="q-gutter-md">
     <q-select
       :model-value="modelValue.haMode"
+      class="app-field-md"
       :options="haModeOptions"
       label="高可用模式"
       emit-value
@@ -16,12 +17,11 @@
         :key="idx"
         flat
         bordered
-        class="q-pa-sm"
+        class="capability-card q-pa-sm"
       >
-        <div class="row q-col-gutter-sm items-center">
+        <div class="app-form-field-grid app-form-field-grid--wide items-end">
           <q-input
             :model-value="candidate.name"
-            class="col-12 col-md-3"
             label="模型名"
             dense
             outlined
@@ -29,7 +29,6 @@
           />
           <q-select
             :model-value="candidate.providerType"
-            class="col-12 col-md-3"
             :options="providerTypeOptions"
             label="Provider"
             emit-value
@@ -40,7 +39,6 @@
           />
           <q-input
             :model-value="candidate.baseUrl"
-            class="col-12 col-md-3"
             label="Base URL"
             dense
             outlined
@@ -48,7 +46,6 @@
           />
           <q-input
             :model-value="candidate.apiKey"
-            class="col-12 col-md-2"
             label="API Key"
             type="password"
             :placeholder="candidate.apiKey ? undefined : '留空不修改'"
@@ -56,13 +53,18 @@
             outlined
             @update:model-value="updateCandidate(idx, 'apiKey', String($event ?? ''))"
           />
-          <q-btn flat round dense icon="close" color="negative" @click="removeCandidate(idx)" />
+          <div class="app-actions-bar app-actions-bar--start">
+            <q-btn flat round dense icon="close" color="negative" @click="removeCandidate(idx)" />
+          </div>
         </div>
       </q-card>
-      <q-btn flat label="+ 添加候选模型" color="primary" icon="add" @click="addCandidate" />
+      <div class="app-actions-bar app-actions-bar--start">
+        <q-btn flat no-caps label="+ 添加候选模型" color="primary" icon="add" @click="addCandidate" />
+      </div>
       <q-input
         v-if="modelValue.haMode === 'hedge'"
         :model-value="modelValue.haHedgeDelayMs"
+        class="app-field-sm"
         type="number"
         min="0"
         label="Hedge 延迟"

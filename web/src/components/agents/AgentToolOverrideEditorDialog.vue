@@ -1,9 +1,9 @@
 <template>
   <q-dialog :model-value="open" persistent @update:model-value="$emit('update:open', $event)">
-    <q-card style="max-width: 480px; width: 90vw">
+    <q-card class="app-dialog-card app-dialog-card--sm">
       <q-card-section class="text-h6">{{ editing ? "编辑工具覆盖" : "添加工具覆盖" }}</q-card-section>
       <q-separator />
-      <q-card-section class="q-gutter-sm">
+      <q-card-section class="app-dialog-body q-gutter-sm q-pt-none">
         <div class="text-body2 text-weight-medium">{{ row?.display_name }} ({{ row?.tool_key }})</div>
         <q-select
           :model-value="form.mode"
@@ -31,7 +31,7 @@
           @update:model-value="emitFormPatch({ config_override_json: String($event ?? '{}') })"
         />
       </q-card-section>
-      <q-card-actions align="right">
+      <q-card-actions align="right" class="app-actions-bar">
         <q-btn flat no-caps label="取消" @click="$emit('update:open', false)" />
         <q-btn no-caps unelevated color="primary" label="保存" :loading="saving" @click="$emit('save')" />
       </q-card-actions>

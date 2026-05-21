@@ -1,6 +1,6 @@
 <template>
   <q-dialog :model-value="open" persistent transition-show="slide-up" transition-hide="slide-down" @update:model-value="$emit('update:open', $event)">
-    <q-card class="advanced-dialog">
+    <q-card class="advanced-dialog app-dialog-card app-dialog-card--md">
       <q-card-section class="row items-center justify-between dialog-header">
         <div class="row items-center q-gutter-sm">
           <q-icon name="settings" size="22px" color="primary" />
@@ -24,10 +24,9 @@
                 <div class="text-caption text-grey-7">绑定 Agent 与消息入口通道及默认会话。</div>
               </div>
             </div>
-            <div class="row q-col-gutter-md">
+            <div class="app-form-field-grid app-form-field-grid--2col">
               <q-select
                 v-model="selectedChannelId"
-                class="col-12 col-md-6"
                 dense
                 outlined
                 emit-value
@@ -41,7 +40,6 @@
               />
               <q-input
                 v-model="chatId"
-                class="col-12 col-md-6"
                 dense
                 outlined
                 label="Chat ID"
@@ -59,7 +57,7 @@
                 <div class="text-caption text-grey-7">Agent 运行时的文件系统根路径。</div>
               </div>
             </div>
-            <q-input v-model="workspace" dense outlined label="工作区路径" hint="如 ~/.aranea/workspace/{agent_key}" />
+            <q-input v-model="workspace" class="app-field-long" dense outlined label="工作区路径" hint="如 ~/.aranea/workspace/{agent_key}" />
           </section>
 
           <section class="adv-section">
@@ -70,10 +68,9 @@
                 <div class="text-caption text-grey-7">控制模型推理深度；仅当所选模型支持 Reasoning 时生效。</div>
               </div>
             </div>
-            <div class="row q-col-gutter-md">
+            <div class="app-form-field-grid app-form-field-grid--2col">
               <q-select
                 v-model="reasoningMode"
-                class="col-12 col-md-6"
                 dense
                 outlined
                 emit-value
@@ -83,7 +80,6 @@
               />
               <q-select
                 v-model="reasoningLevel"
-                class="col-12 col-md-6"
                 dense
                 outlined
                 emit-value
@@ -103,9 +99,9 @@
                 <div class="text-caption text-grey-7">长对话自动压缩与摘要策略。</div>
               </div>
             </div>
-            <div class="row q-col-gutter-md">
-              <q-toggle v-model="compactionEnabled" class="col-12 col-md-6" color="primary" label="启用上下文压缩" />
-              <q-toggle v-model="sessionSummaryEnabled" class="col-12 col-md-6" color="primary" label="会话摘要" />
+            <div class="app-form-field-grid app-form-field-grid--2col">
+              <q-toggle v-model="compactionEnabled" color="primary" label="启用上下文压缩" />
+              <q-toggle v-model="sessionSummaryEnabled" color="primary" label="会话摘要" />
             </div>
           </section>
 
@@ -117,10 +113,9 @@
                 <div class="text-caption text-grey-7">控制上下文窗口溢出时的裁剪行为。</div>
               </div>
             </div>
-            <div class="row q-col-gutter-md">
+            <div class="app-form-field-grid">
               <q-select
                 v-model="truncateStrategy"
-                class="col-12 col-md-6"
                 dense
                 outlined
                 emit-value
@@ -128,9 +123,9 @@
                 label="裁剪策略"
                 :options="truncateStrategyOptions"
               />
-              <q-input v-model.number="recentWindowTurns" class="col-12 col-md-6" dense outlined type="number" label="保留最近轮数" />
-              <q-input v-model.number="recentWindowTokens" class="col-12 col-md-6" dense outlined type="number" label="保留最近 Token" />
-              <q-input v-model.number="summaryKeepTurns" class="col-12 col-md-6" dense outlined type="number" label="摘要保留轮数" />
+              <q-input v-model.number="recentWindowTurns" dense outlined type="number" label="保留最近轮数" />
+              <q-input v-model.number="recentWindowTokens" dense outlined type="number" label="保留最近 Token" />
+              <q-input v-model.number="summaryKeepTurns" dense outlined type="number" label="摘要保留轮数" />
             </div>
           </section>
 
@@ -149,9 +144,9 @@
         </div>
       </q-scroll-area>
 
-      <q-card-actions align="right" class="dialog-footer">
-        <q-btn flat rounded label="取消" v-close-popup />
-        <q-btn color="primary" rounded unelevated label="保存" :loading="saving" @click="onSave" />
+      <q-card-actions align="right" class="app-actions-bar dialog-footer">
+        <q-btn flat rounded no-caps label="取消" v-close-popup />
+        <q-btn color="primary" rounded unelevated no-caps label="保存" :loading="saving" @click="onSave" />
       </q-card-actions>
     </q-card>
   </q-dialog>
@@ -294,16 +289,9 @@ watch(
 
 <style scoped>
 .advanced-dialog {
-  width: 720px;
-  max-width: 94vw;
   max-height: 88vh;
   display: flex;
   flex-direction: column;
-  border-radius: 24px;
-  background: var(--glass-surface);
-  backdrop-filter: blur(var(--glass-blur-default));
-  -webkit-backdrop-filter: blur(var(--glass-blur-default));
-  border: 1px solid var(--glass-border);
 }
 
 .dialog-header {
@@ -341,11 +329,6 @@ watch(
   border: 1px solid var(--glass-border);
   background: var(--glass-elevated);
   color: var(--color-text-secondary);
-}
-
-body.body--dark .advanced-dialog {
-  background: var(--glass-surface);
-  border-color: var(--glass-border);
 }
 
 body.body--dark .adv-section {

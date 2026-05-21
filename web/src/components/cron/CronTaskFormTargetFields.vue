@@ -2,7 +2,7 @@
   Cron 表单：目标类型（纯展示子块，v-model:form + props）。
 -->
 <template>
-  <div class="col-12">
+  <div class="app-grid-span-full">
     <div class="section-label q-mb-sm">目标类型</div>
     <q-btn-toggle v-model="form.target_type" spread no-caps unelevated toggle-color="primary" class="cron-btn-toggle" :options="cronTargetToggleOptions" />
   </div>
@@ -10,7 +10,7 @@
   <q-select
     v-if="form.target_type === 'agent'"
     v-model="form.agent_id"
-    class="col-12 cron-field"
+    class="cron-field app-grid-span-full app-field-md"
     dense
     outlined
     clearable
@@ -23,7 +23,7 @@
   <q-select
     v-else
     v-model="form.team_id"
-    class="col-12 cron-field"
+    class="cron-field app-grid-span-full app-field-md"
     dense
     outlined
     emit-value

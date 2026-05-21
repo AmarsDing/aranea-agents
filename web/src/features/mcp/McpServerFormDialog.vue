@@ -1,6 +1,6 @@
 <template>
   <q-dialog :model-value="modelValue" persistent @update:model-value="$emit('update:modelValue', $event)">
-    <q-card class="mcp-form-card">
+    <q-card class="mcp-form-card app-dialog-card app-dialog-card--xl">
       <q-card-section class="row items-start justify-between q-gutter-md">
         <div>
           <div class="text-h6">{{ row ? "编辑 MCP 服务器" : "添加 MCP 服务器" }}</div>
@@ -11,20 +11,19 @@
       <q-separator />
 
       <q-card-section class="mcp-form-scroll">
-        <q-form class="row q-col-gutter-md" @submit.prevent="save">
+        <q-form class="app-form-field-grid app-form-field-grid--2col" @submit.prevent="save">
           <q-input
             v-model="form.name"
-            class="col-12 col-md-6"
             dense
             outlined
             label="name *"
             placeholder="my-mcp-server"
             :rules="[slugRule]"
           />
-          <q-input v-model="form.display_name" class="col-12 col-md-6" dense outlined label="display_name" placeholder="sqlserver" />
-          <q-input v-model="form.description" class="col-12" dense outlined autogrow type="textarea" label="描述" />
+          <q-input v-model="form.display_name" dense outlined label="display_name" placeholder="sqlserver" />
+          <q-input v-model="form.description" class="app-grid-span-full" dense outlined autogrow type="textarea" label="描述" />
 
-          <div class="col-12">
+          <div class="app-grid-span-full">
             <div class="section-label q-mb-sm">传输方式 *</div>
             <q-btn-toggle
               v-model="form.transport"
@@ -41,7 +40,7 @@
           <q-input
             v-if="usesUrl"
             v-model="form.url"
-            class="col-12"
+            class="app-grid-span-full app-field-long"
             dense
             outlined
             label="URL *"
@@ -50,10 +49,9 @@
           />
 
           <template v-else>
-            <q-input v-model="form.command" class="col-12 col-md-6" dense outlined label="Command *" placeholder="node" :rules="[commandRule]" />
+            <q-input v-model="form.command" dense outlined label="Command *" placeholder="node" :rules="[commandRule]" />
             <q-input
               v-model="form.argsText"
-              class="col-12 col-md-6"
               dense
               outlined
               autogrow
@@ -63,13 +61,12 @@
             />
           </template>
 
-          <q-input v-model="form.tool_prefix" class="col-12 col-md-6" dense outlined label="工具前缀" hint="Tools: mcp_{prefix}__{tool}">
+          <q-input v-model="form.tool_prefix" dense outlined label="工具前缀" hint="Tools: mcp_{prefix}__{tool}">
             <template #prepend>mcp_</template>
           </q-input>
-          <q-input v-model.number="form.timeout_sec" class="col-12 col-md-2" dense outlined type="number" min="1" suffix="s" label="超时" />
+          <q-input v-model.number="form.timeout_sec" dense outlined type="number" min="1" suffix="s" label="超时" />
           <q-input
             v-model.number="form.session_reconnect_max"
-            class="col-12 col-md-2"
             dense
             outlined
             type="number"
@@ -78,15 +75,14 @@
             label="SSE 重连次数"
             hint="0=关闭"
           />
-          <q-toggle v-model="form.enabled" class="col-12 col-md-2" color="primary" label="启用" />
-          <q-toggle v-model="form.require_user_credentials" class="col-12" color="primary" label="每个用户须配置自己的凭据，否则无法使用" />
+          <q-toggle v-model="form.enabled" color="primary" label="启用" />
+          <q-toggle v-model="form.require_user_credentials" class="app-grid-span-full" color="primary" label="每个用户须配置自己的凭据，否则无法使用" />
 
-          <div v-if="usesUrl" class="col-12">
+          <div v-if="usesUrl" class="app-grid-span-full">
             <div class="section-label q-mb-sm">API 认证（可选）</div>
-            <div class="row q-col-gutter-md q-mb-md">
+            <div class="app-form-field-grid q-mb-md">
               <q-select
                 v-model="form.auth_type"
-                class="col-12 col-md-4"
                 dense
                 outlined
                 emit-value
@@ -97,7 +93,6 @@
               <q-input
                 v-if="form.auth_type"
                 v-model="form.auth_header_name"
-                class="col-12 col-md-4"
                 dense
                 outlined
                 label="Header 名称"
@@ -107,7 +102,6 @@
               <q-input
                 v-if="form.auth_type && !isOAuthAuth"
                 v-model="form.auth_api_key"
-                class="col-12 col-md-4"
                 dense
                 outlined
                 type="password"
@@ -115,20 +109,18 @@
                 placeholder="sk-..."
               />
               <template v-if="isOAuthAuth">
-                <q-input v-model="form.auth_token_url" class="col-12" dense outlined label="Token URL" placeholder="https://provider/oauth/token" />
-                <q-input v-model="form.auth_client_id" class="col-12 col-md-6" dense outlined label="Client ID" />
+                <q-input v-model="form.auth_token_url" class="app-grid-span-full app-field-long" dense outlined label="Token URL" placeholder="https://provider/oauth/token" />
+                <q-input v-model="form.auth_client_id" dense outlined label="Client ID" />
                 <q-input
                   v-model="form.auth_client_secret"
-                  class="col-12 col-md-6"
                   dense
                   outlined
                   type="password"
                   label="Client Secret"
                 />
-                <q-input v-model="form.auth_scope" class="col-12 col-md-6" dense outlined label="Scope" placeholder="openid profile" />
+                <q-input v-model="form.auth_scope" dense outlined label="Scope" placeholder="openid profile" />
                 <q-input
                   v-model="form.auth_access_token"
-                  class="col-12 col-md-6"
                   dense
                   outlined
                   type="password"
@@ -137,7 +129,7 @@
                 <q-input
                   v-if="form.auth_type === 'oauth2_refresh'"
                   v-model="form.auth_refresh_token"
-                  class="col-12"
+                  class="app-grid-span-full"
                   dense
                   outlined
                   type="password"
@@ -147,43 +139,42 @@
             </div>
             <div class="row items-center justify-between q-mb-xs">
               <div class="section-label">请求头</div>
-              <q-btn flat dense rounded color="primary" icon="add" label="添加请求头" @click="addPair('headers')" />
+              <q-btn flat dense rounded no-caps color="primary" icon="add" label="添加请求头" @click="addPair('headers')" />
             </div>
-            <div v-for="(item, index) in form.headers" :key="`header-${index}`" class="row q-col-gutter-sm q-mb-sm">
-              <q-input v-model="item.key" class="col-12 col-md-5" dense outlined placeholder="Header 名称" />
-              <q-input v-model="item.value" class="col-12 col-md" dense outlined :type="isSensitiveKey(item.key) ? 'password' : 'text'" placeholder="值" />
-              <div class="col-12 col-md-auto">
+            <div v-for="(item, index) in form.headers" :key="`header-${index}`" class="app-form-field-grid app-form-field-grid--wide items-end q-mb-sm">
+              <q-input v-model="item.key" dense outlined placeholder="Header 名称" />
+              <q-input v-model="item.value" dense outlined :type="isSensitiveKey(item.key) ? 'password' : 'text'" placeholder="值" />
+              <div class="app-actions-bar app-actions-bar--start">
                 <q-btn flat dense round icon="delete" color="negative" aria-label="删除请求头" @click="removePair('headers', index)" />
               </div>
             </div>
           </div>
 
-          <div class="col-12">
+          <div class="app-grid-span-full">
             <div class="row items-center justify-between q-mb-xs">
               <div class="section-label">环境变量</div>
-              <q-btn flat dense rounded color="primary" icon="add" label="添加变量" @click="addPair('env')" />
+              <q-btn flat dense rounded no-caps color="primary" icon="add" label="添加变量" @click="addPair('env')" />
             </div>
-            <div v-for="(item, index) in form.env" :key="`env-${index}`" class="row q-col-gutter-sm q-mb-sm">
-              <q-input v-model="item.key" class="col-12 col-md-5" dense outlined placeholder="变量名称" />
-              <q-input v-model="item.value" class="col-12 col-md" dense outlined :type="isSensitiveKey(item.key) ? 'password' : 'text'" placeholder="值" />
-              <div class="col-12 col-md-auto">
+            <div v-for="(item, index) in form.env" :key="`env-${index}`" class="app-form-field-grid app-form-field-grid--wide items-end q-mb-sm">
+              <q-input v-model="item.key" dense outlined placeholder="变量名称" />
+              <q-input v-model="item.value" dense outlined :type="isSensitiveKey(item.key) ? 'password' : 'text'" placeholder="值" />
+              <div class="app-actions-bar app-actions-bar--start">
                 <q-btn flat dense round icon="delete" color="negative" aria-label="删除变量" @click="removePair('env', index)" />
               </div>
             </div>
           </div>
 
-          <div v-if="serverError" class="col-12 text-negative">{{ serverError }}</div>
+          <div v-if="serverError" class="app-grid-span-full text-negative">{{ serverError }}</div>
         </q-form>
       </q-card-section>
 
       <q-separator />
-      <q-card-actions align="between">
-        <q-btn outline rounded color="secondary" icon="rule" label="预检配置" :loading="validating" :disable="!canSave || saving" @click="runValidate" />
-        <q-btn outline rounded color="primary" icon="science" label="测试连接" :loading="testing" :disable="!canSave || saving" @click="saveAndTest" />
-        <div class="row q-gutter-sm">
-          <q-btn flat rounded label="取消" @click="$emit('update:modelValue', false)" />
-          <q-btn color="primary" rounded unelevated :label="row ? '保存' : '创建'" :loading="saving" :disable="!canSave" @click="save" />
-        </div>
+      <q-card-actions class="app-actions-bar">
+        <q-btn outline rounded no-caps color="secondary" icon="rule" label="预检配置" :loading="validating" :disable="!canSave || saving" @click="runValidate" />
+        <q-btn outline rounded no-caps color="primary" icon="science" label="测试连接" :loading="testing" :disable="!canSave || saving" @click="saveAndTest" />
+        <q-space />
+        <q-btn flat rounded no-caps label="取消" @click="$emit('update:modelValue', false)" />
+        <q-btn color="primary" rounded unelevated no-caps :label="row ? '保存' : '创建'" :loading="saving" :disable="!canSave" @click="save" />
       </q-card-actions>
     </q-card>
   </q-dialog>
@@ -452,11 +443,6 @@ function isSensitiveKey(key: string) {
 </script>
 
 <style scoped>
-.mcp-form-card {
-  width: 980px;
-  max-width: 96vw;
-}
-
 .mcp-form-scroll {
   max-height: min(70vh, 720px);
   overflow: auto;

@@ -33,15 +33,18 @@
     </q-expansion-item>
 
     <q-dialog v-model="editOpen" persistent>
-      <q-card style="width: 720px; max-width: 94vw">
-        <q-card-section class="text-h6">编辑 Hook</q-card-section>
+      <q-card class="app-dialog-card app-dialog-card--md">
+        <q-card-section class="row items-center justify-between">
+          <div class="text-h6">编辑 Hook</div>
+          <q-btn flat round dense icon="close" v-close-popup />
+        </q-card-section>
         <q-separator />
-        <q-card-section>
+        <q-card-section class="app-dialog-body">
           <callback-editor v-if="editRow" v-model="editRule" v-model:sort-order="editSort" :agent-id="agentId" :agent-key="agentKey" />
         </q-card-section>
-        <q-card-actions align="right">
-          <q-btn flat label="取消" v-close-popup />
-          <q-btn color="primary" unelevated label="保存" :loading="saving" @click="saveEdit" />
+        <q-card-actions align="right" class="app-actions-bar">
+          <q-btn flat no-caps label="取消" v-close-popup />
+          <q-btn color="primary" unelevated no-caps label="保存" :loading="saving" @click="saveEdit" />
         </q-card-actions>
       </q-card>
     </q-dialog>

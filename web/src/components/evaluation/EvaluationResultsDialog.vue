@@ -1,8 +1,8 @@
 <template>
   <q-dialog :model-value="open" @update:model-value="$emit('update:open', $event)">
-    <q-card style="min-width: 720px; max-width: 96vw">
+    <q-card class="app-dialog-card app-dialog-card--md">
       <q-card-section class="text-h6">用例结果 · {{ runId }}</q-card-section>
-      <q-card-section>
+      <q-card-section class="app-dialog-body q-pt-none">
         <q-table flat :rows="rows" :columns="columns" row-key="id" :loading="loading" :pagination="{ rowsPerPage: 10 }">
           <template #body-cell-human_pass="props">
             <q-td :props="props">
@@ -53,7 +53,7 @@
           </template>
         </q-table>
       </q-card-section>
-      <q-card-actions align="right">
+      <q-card-actions align="right" class="app-actions-bar">
         <q-btn
           v-if="run"
           flat

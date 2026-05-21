@@ -1,0 +1,83 @@
+// Tech Night — 夜间科技感排版（冷蓝灰字色 + 青霓虹仅用于焦点/选中）
+// 表面结构（透明底 / 悬停 wash / 选中条）见 _sidebar.sass、app-global.sass
+
+body.body--dark
+  color: var(--color-text-primary)
+  -webkit-font-smoothing: antialiased
+
+  .text-grey-7,
+  .text-grey-6,
+  .text-grey-5
+    color: var(--color-text-secondary) !important
+
+  .text-cream-text
+    color: var(--chat-text-primary, var(--color-text-primary)) !important
+
+  .text-cream-muted
+    color: var(--chat-text-muted, var(--color-text-secondary)) !important
+
+// ── 聊天工作台字色 ──
+body.body--dark .chat-page
+  background: var(--chat-page-bg)
+  color: var(--chat-text-primary)
+
+  .chat-message-header__title
+    color: var(--chat-text-heading)
+
+  .chat-message-header__subtitle
+    color: var(--chat-text-muted)
+
+  .chat-section-label,
+  .chat-entity-group__label
+    color: var(--chat-idle-label) !important
+    letter-spacing: 0.06em
+
+  .chat-entity-item:not(.chat-entity-item--active)
+    color: var(--chat-idle-text)
+
+    .chat-entity-name
+      color: var(--chat-idle-text)
+      font-weight: 600
+
+  .chat-entity-item--active
+    color: var(--chat-text-active)
+
+    .chat-entity-name
+      color: var(--chat-text-active)
+
+  .chat-session-header__label
+    color: var(--chat-idle-label)
+
+  .chat-session-title
+    color: var(--chat-idle-text)
+    font-weight: 600
+
+  .chat-session-item:not(.chat-session-item--active) .chat-session-time-badge
+    color: var(--chat-idle-meta)
+
+  .chat-session-item--active .chat-session-title
+    color: var(--chat-text-active)
+
+  .chat-timeline-label
+    color: var(--chat-idle-label)
+
+  .chat-empty-state__title
+    color: var(--chat-text-heading)
+
+  .chat-empty-state__hint
+    color: var(--chat-text-muted)
+
+  .message-name
+    color: var(--chat-text-heading)
+
+  .message-stamp
+    color: var(--chat-text-muted)
+
+  .chat-message-content--dark
+    color: var(--chat-text-primary)
+
+  .chat-workspace-title
+    color: var(--chat-text-heading)
+
+  .chat-workspace-subtitle
+    color: var(--chat-text-muted)

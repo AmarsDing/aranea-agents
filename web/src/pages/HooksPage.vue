@@ -1,5 +1,5 @@
 <template>
-  <q-page class="app-page-cream hooks-page q-pa-md">
+  <q-page class="app-page-cream app-registry-page hooks-page">
     <section class="app-page-hero">
       <div>
         <div class="app-page-kicker">Callback rules</div>
@@ -8,21 +8,20 @@
           Configure lifecycle hooks for Agent, Model, Tool, and Runner events (log, notify, block, modify).
         </p>
       </div>
-      <div class="row q-gutter-sm">
-        <q-btn outline rounded icon="send" label="投递队列" to="/hooks/deliveries" />
-        <q-btn outline rounded icon="history" label="运行记录" to="/plugins/runs" />
-        <q-btn color="primary" rounded unelevated icon="add" label="New Hook" @click="openCreate" />
+      <div class="app-actions-bar">
+        <q-btn outline rounded no-caps icon="send" label="投递队列" to="/hooks/deliveries" />
+        <q-btn outline rounded no-caps icon="history" label="运行记录" to="/plugins/runs" />
+        <q-btn color="primary" rounded unelevated no-caps icon="add" label="New Hook" @click="openCreate" />
       </div>
     </section>
 
-    <q-card flat bordered class="q-mb-md">
-      <q-card-section class="row q-col-gutter-md items-center">
-        <q-input v-model="search" class="col-12 col-md-4" dense outlined clearable debounce="200" label="Search">
+    <q-card flat class="app-registry-panel">
+      <q-card-section class="app-form-field-grid app-registry-toolbar items-end">
+        <q-input v-model="search" class="app-field-md" dense outlined clearable debounce="200" label="Search">
           <template #prepend><q-icon name="search" /></template>
         </q-input>
         <q-select
           v-model="filterPoint"
-          class="col-12 col-md-3"
           dense
           outlined
           clearable
@@ -31,7 +30,9 @@
           label="回调点"
           :options="callbackPointOptions"
         />
-        <q-btn outline rounded icon="refresh" label="Refresh" :loading="loading" @click="loadRows" />
+        <div class="app-actions-bar app-actions-bar--start">
+          <q-btn outline rounded no-caps icon="refresh" label="Refresh" :loading="loading" @click="loadRows" />
+        </div>
       </q-card-section>
     </q-card>
 
@@ -42,7 +43,8 @@
       </template>
     </q-banner>
 
-    <q-table flat bordered :rows="filteredRows" :columns="columns" row-key="id" :loading="loading">
+    <div class="app-registry-table-shell">
+    <q-table flat dense class="app-registry-table" :rows="filteredRows" :columns="columns" row-key="id" :loading="loading">
       <template #body-cell-enabled="props">
         <q-td :props="props">
           <q-toggle
@@ -55,20 +57,25 @@
       </template>
       <template #body-cell-rule="props">
         <q-td :props="props">
+          <div class="app-registry-chip-wrap">
           <q-chip dense outline color="primary">{{ ruleOf(props.row).callback_point }}</q-chip>
           <q-chip dense outline>{{ ruleOf(props.row).action.type }}</q-chip>
+          </div>
         </q-td>
       </template>
       <template #body-cell-actions="props">
         <q-td :props="props">
+          <div class="app-registry-cell-actions">
           <q-btn flat dense round icon="history" color="secondary" @click="openRuns(props.row)">
             <q-tooltip>查看阻断/错误记录</q-tooltip>
           </q-btn>
           <q-btn flat dense round icon="edit" color="primary" @click="openEdit(props.row)" />
           <q-btn flat dense round icon="delete" color="negative" @click="confirmDelete(props.row)" />
+          </div>
         </q-td>
       </template>
     </q-table>
+    </div>
 
     <q-dialog v-model="editorOpen" persistent maximized>
       <q-card>
@@ -77,18 +84,18 @@
           <q-btn flat round dense icon="close" v-close-popup />
         </q-card-section>
         <q-separator />
-        <q-card-section class="q-gutter-md">
-          <div class="row q-col-gutter-md">
-            <q-input v-model="form.key" class="col-12 col-md-4" dense outlined label="Key" :disable="Boolean(editingId)" />
-            <q-input v-model="form.name" class="col-12 col-md-4" dense outlined label="Name" />
-            <q-toggle v-model="form.enabled" class="col-12 col-md-4" label="Enabled" />
+        <q-card-section class="q-gutter-md app-form-wide">
+          <div class="app-form-field-grid app-form-field-grid--2col">
+            <q-input v-model="form.key" dense outlined label="Key" :disable="Boolean(editingId)" />
+            <q-input v-model="form.name" dense outlined label="Name" />
+            <q-toggle v-model="form.enabled" label="Enabled" />
           </div>
-          <q-input v-model="form.description" dense outlined type="textarea" autogrow label="Description" />
+          <q-input v-model="form.description" class="app-field-long" dense outlined type="textarea" autogrow label="Description" />
           <callback-editor v-model="form.rule" v-model:sort-order="form.sort_order" />
         </q-card-section>
-        <q-card-actions align="right">
-          <q-btn flat label="Cancel" v-close-popup />
-          <q-btn color="primary" unelevated label="Save" :loading="saving" @click="saveHook" />
+        <q-card-actions align="right" class="app-actions-bar">
+          <q-btn flat no-caps label="Cancel" v-close-popup />
+          <q-btn color="primary" unelevated no-caps label="Save" :loading="saving" @click="saveHook" />
         </q-card-actions>
       </q-card>
     </q-dialog>
@@ -104,6 +111,7 @@ import CallbackEditor from "../components/hooks/CallbackEditor.vue";
 import { CALLBACK_POINT_OPTIONS } from "../features/callback/constants";
 import { defaultHookRuleConfig, parseHookConfig, type HookRow, type HookRuleConfig } from "../features/hooks/types";
 import { useHooksStore } from "../stores/hooks";
+import { registryCol } from "../features/ui/registryTableColumns";
 
 const $q = useQuasar();
 const router = useRouter();
@@ -129,11 +137,11 @@ const form = reactive({
 });
 
 const columns = [
-  { name: "name", label: "Name", field: "name", align: "left" as const },
-  { name: "key", label: "Key", field: "key", align: "left" as const },
-  { name: "rule", label: "Rule", field: "id", align: "left" as const },
-  { name: "enabled", label: "Enabled", field: "enabled", align: "center" as const },
-  { name: "actions", label: "Actions", field: "id", align: "right" as const }
+  { name: "name", label: "Name", field: "name", align: "left" as const, ...registryCol.name },
+  { name: "key", label: "Key", field: "key", align: "left" as const, ...registryCol.name },
+  { name: "rule", label: "Rule", field: "id", align: "left" as const, ...registryCol.callbacks },
+  { name: "enabled", label: "Enabled", field: "enabled", align: "center" as const, ...registryCol.toggle },
+  { name: "actions", label: "Actions", field: "id", align: "right" as const, ...registryCol.actions }
 ];
 
 const filteredRows = computed(() => {

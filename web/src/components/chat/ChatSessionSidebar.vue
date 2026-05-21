@@ -17,66 +17,64 @@
               v-for="session in group.sessions"
               :key="session.id"
               clickable
-              class="chat-session-item rounded-borders q-mb-sm"
+              class="chat-session-item rounded-borders"
               :class="{ 'chat-session-item--active': selectedSessionId === session.id }"
               @click="$emit('select', session.id)"
             >
               <q-item-section class="chat-session-main">
-                <div class="chat-session-row row items-center no-wrap full-width">
-                  <div class="chat-session-copy col">
-                    <div class="chat-session-title-wrap">
-                      <div class="chat-session-title">
-                        {{ session.title }}
-                      </div>
-                      <q-tooltip
-                        v-if="session.title"
-                        anchor="top middle"
-                        self="bottom middle"
-                        :offset="[0, 8]"
-                        :delay="300"
-                        content-class="chat-session-title-tooltip"
-                      >
-                        {{ session.title }}
-                      </q-tooltip>
+                <div class="chat-session-title-row row items-center no-wrap">
+                  <div class="chat-session-title-wrap col">
+                    <div class="chat-session-title">
+                      {{ session.title }}
                     </div>
-                    <q-icon
-                      v-if="isFavorite(session.id)"
-                      class="chat-session-fav"
-                      name="star"
-                      color="amber-7"
-                      size="14px"
-                    />
+                    <q-tooltip
+                      v-if="session.title"
+                      anchor="top middle"
+                      self="bottom middle"
+                      :offset="[0, 8]"
+                      :delay="300"
+                      content-class="chat-session-title-tooltip"
+                    >
+                      {{ session.title }}
+                    </q-tooltip>
                   </div>
-
-                  <div class="chat-session-trailing col-auto row items-center no-wrap">
-                    <q-badge
-                      class="chat-session-time-badge"
-                      rounded
-                      :label="shortTime(session)"
-                    />
-                    <q-circular-progress
-                      :value="session.context_used_ratio * 100"
-                      show-value
-                      size="28px"
-                      :thickness="0.24"
-                      :color="sessionProgressColor(session.id)"
-                      track-color="transparent"
-                      class="chat-session-progress"
-                    >
-                      <span class="chat-session-progress__label">
-                        {{ Math.round(session.context_used_ratio * 100) }}%
-                      </span>
-                    </q-circular-progress>
-                    <q-btn
-                      dense
-                      round
-                      flat
-                      size="sm"
-                      icon="more_horiz"
-                      class="chat-session-menu-btn"
-                      :aria-label="t('chat.sessionMore')"
-                      @click.stop
-                    >
+                  <q-icon
+                    v-if="isFavorite(session.id)"
+                    class="chat-session-fav col-auto"
+                    name="star"
+                    color="amber-7"
+                    size="16px"
+                  />
+                </div>
+                <div class="chat-session-meta-row row items-center no-wrap">
+                  <q-badge
+                    class="chat-session-time-badge"
+                    rounded
+                    :label="shortTime(session)"
+                  />
+                  <q-circular-progress
+                    :value="session.context_used_ratio * 100"
+                    show-value
+                    size="32px"
+                    :thickness="0.22"
+                    :color="sessionProgressColor(session.id)"
+                    track-color="transparent"
+                    class="chat-session-progress"
+                  >
+                    <span class="chat-session-progress__label">
+                      {{ Math.round(session.context_used_ratio * 100) }}%
+                    </span>
+                  </q-circular-progress>
+                  <q-btn
+                    dense
+                    round
+                    flat
+                    size="sm"
+                    icon="more_horiz"
+                    class="chat-session-menu-btn"
+                    :aria-label="t('chat.sessionMore')"
+                    @click.stop
+                  >
                       <q-menu anchor="bottom right" self="top right" class="chat-session-menu">
                         <q-list dense style="min-width: 136px">
                           <q-item clickable v-close-popup @click="renameSession(session)">
@@ -118,7 +116,6 @@
                         </q-list>
                       </q-menu>
                     </q-btn>
-                  </div>
                 </div>
               </q-item-section>
             </q-item>
@@ -126,11 +123,11 @@
         </q-list>
       </q-scroll-area>
       <q-separator class="cream-sep" />
-      <div class="chat-session-actions row no-wrap q-gutter-sm">
+      <div class="chat-session-actions">
         <q-btn
           unelevated
           dense
-          class="chat-primary-btn col"
+          class="chat-primary-btn"
           color="primary"
           no-caps
           :label="t('chat.newSession')"
@@ -139,7 +136,7 @@
         <q-btn
           outline
           dense
-          class="chat-outline-danger-btn col"
+          class="chat-outline-danger-btn"
           color="negative"
           no-caps
           :label="t('chat.clearAllSession')"
@@ -301,10 +298,10 @@ function saveIDs(key: string, ids: Set<string>) {
 
 <style scoped>
 .chat-side--right {
-  width: var(--chat-side-right-width, 340px);
-  min-width: min(var(--chat-side-right-width, 340px), 100%);
+  width: var(--chat-side-right-width, 360px);
+  min-width: min(var(--chat-side-right-width, 360px), 100%);
   max-width: 100%;
-  flex: 0 0 var(--chat-side-right-width, 340px);
+  flex: 0 0 var(--chat-side-right-width, 360px);
   box-sizing: border-box;
   overflow-x: hidden;
 }
@@ -337,7 +334,7 @@ function saveIDs(key: string, ids: Set<string>) {
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
-  padding: 4px 6px 8px !important;
+  padding: 6px 10px 10px !important;
 }
 
 .chat-session-list :deep(.q-item) {
@@ -362,6 +359,7 @@ function saveIDs(key: string, ids: Set<string>) {
 .chat-session-header__label {
   letter-spacing: 0.08em;
   font-weight: 700;
+  font-size: 13px;
 }
 
 .chat-session-count-badge {
@@ -395,8 +393,9 @@ function saveIDs(key: string, ids: Set<string>) {
 .chat-session-item {
   width: 100%;
   max-width: 100%;
-  min-height: 52px;
-  padding: 8px 10px !important;
+  min-height: 64px;
+  padding: 10px 12px !important;
+  margin-bottom: 8px;
   color: var(--color-text-secondary);
   overflow: hidden;
   box-sizing: border-box;
@@ -410,45 +409,31 @@ function saveIDs(key: string, ids: Set<string>) {
   max-width: 100%;
   padding: 0;
   overflow: hidden;
-}
-
-.chat-session-row {
-  width: 100%;
-  max-width: 100%;
+  display: flex;
+  flex-direction: column;
   gap: 8px;
-  overflow: hidden;
 }
 
-.chat-session-copy {
-  flex: 1 1 0;
+.chat-session-title-row {
+  width: 100%;
   min-width: 0;
-  max-width: 100%;
-  position: relative;
-  padding-right: 4px;
-  overflow: hidden;
+  gap: 6px;
 }
 
 .chat-session-title-wrap {
   min-width: 0;
-  max-width: 100%;
+  flex: 1 1 auto;
   overflow: hidden;
 }
 
-.chat-session-trailing {
-  flex: 0 0 auto;
-  flex-shrink: 0;
-  max-width: 108px;
-  gap: 4px;
-}
-
-.chat-session-progress {
-  flex-shrink: 0;
+.chat-session-meta-row {
+  width: 100%;
+  gap: 8px;
+  justify-content: flex-start;
 }
 
 .chat-session-fav {
-  position: absolute;
-  right: 0;
-  bottom: 0;
+  flex-shrink: 0;
 }
 
 .chat-session-title {
@@ -456,16 +441,15 @@ function saveIDs(key: string, ids: Set<string>) {
   width: 100%;
   max-width: 100%;
   color: var(--color-text-secondary);
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 700;
-  line-height: 1.35;
+  line-height: 1.4;
   text-align: left;
   direction: ltr;
   unicode-bidi: plaintext;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  padding-right: 2px;
 }
 
 .chat-session-item--active .chat-session-title {
@@ -513,7 +497,7 @@ function saveIDs(key: string, ids: Set<string>) {
 }
 
 .chat-session-progress__label {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   line-height: 1;
   color: var(--color-text-tertiary);
@@ -528,10 +512,11 @@ function saveIDs(key: string, ids: Set<string>) {
 }
 
 .chat-timeline-label {
-  padding: 12px 8px 6px;
+  padding: 14px 10px 8px;
   color: var(--color-text-secondary);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 800;
+  letter-spacing: 0.04em;
 }
 
 :global(.body--dark) .chat-timeline-label {
@@ -539,16 +524,17 @@ function saveIDs(key: string, ids: Set<string>) {
 }
 
 .chat-session-time-badge {
-  max-width: 56px;
+  max-width: 64px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   background: color-mix(in srgb, var(--glass-surface-hover) 88%, transparent);
   color: var(--color-text-tertiary);
   border: 1px solid var(--glass-border);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.02em;
+  padding: 4px 8px;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
 }
@@ -572,9 +558,10 @@ function saveIDs(key: string, ids: Set<string>) {
 
 .chat-session-menu-btn {
   flex-shrink: 0;
-  width: 28px;
-  height: 28px;
-  min-height: 28px;
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
+  margin-left: auto;
   color: var(--color-icon-muted);
   background: color-mix(in srgb, var(--glass-surface-hover) 85%, transparent);
   border: 1px solid var(--glass-border);
@@ -611,9 +598,9 @@ function saveIDs(key: string, ids: Set<string>) {
 
 @media (width <= 900px) {
   .chat-side--right {
-    width: var(--chat-side-right-width, 300px);
-    min-width: min(var(--chat-side-right-width, 280px), 100%);
-    flex: 0 0 var(--chat-side-right-width, 300px);
+    width: var(--chat-side-right-width, 320px);
+    min-width: min(var(--chat-side-right-width, 320px), 100%);
+    flex: 0 0 var(--chat-side-right-width, 320px);
   }
 }
 </style>

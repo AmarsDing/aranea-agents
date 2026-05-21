@@ -56,16 +56,16 @@
     </div>
 
     <q-dialog v-model="resumeDialogOpen" persistent>
-      <q-card :class="['graph-resume-dialog', { 'is-dark': isDark }]">
+      <q-card class="graph-resume-dialog app-dialog-card app-dialog-card--sm">
         <q-card-section>
           <div class="text-h6">恢复执行</div>
           <div class="text-caption text-grey-7">输入恢复值后继续执行</div>
         </q-card-section>
         <q-separator />
-        <q-card-section>
-          <q-input v-model="resumeValue" dense outlined autogrow type="textarea" label="恢复值 (JSON)" />
+        <q-card-section class="app-dialog-body">
+          <q-input v-model="resumeValue" class="app-field-long" dense outlined autogrow type="textarea" label="恢复值 (JSON)" />
         </q-card-section>
-        <q-card-actions align="right">
+        <q-card-actions align="right" class="app-actions-bar">
           <q-btn flat rounded label="取消" @click="resumeDialogOpen = false" />
           <q-btn color="primary" rounded unelevated label="恢复" :loading="resumeLoading" @click="doResume" />
         </q-card-actions>

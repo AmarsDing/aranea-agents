@@ -9,14 +9,14 @@
 
     <q-inner-loading :showing="loading" />
 
-    <div v-if="card" class="row q-col-gutter-md">
-      <q-toggle v-model="card.enabled" class="col-12" color="primary" label="启用 A2A" />
-      <div class="col-12">
+    <div v-if="card" class="q-gutter-md">
+      <q-toggle v-model="card.enabled" color="primary" label="启用 A2A" />
+      <div>
         <div class="text-caption text-grey-7 q-mb-sm">Capabilities（JSON 名称列表，每行一个能力名）</div>
-        <q-input v-model="capabilityLines" outlined type="textarea" rows="4" hint="例如 chat、summarize" />
+        <q-input v-model="capabilityLines" class="app-field-long" outlined type="textarea" rows="4" hint="例如 chat、summarize" />
       </div>
-      <div class="col-12">
-        <q-btn color="primary" rounded unelevated label="保存 AgentCard" :loading="saving" @click="saveEndpoint" />
+      <div class="app-actions-bar app-actions-bar--start">
+        <q-btn color="primary" rounded unelevated no-caps label="保存 AgentCard" :loading="saving" @click="saveEndpoint" />
       </div>
     </div>
   </section>

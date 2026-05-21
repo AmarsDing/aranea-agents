@@ -35,7 +35,7 @@
                 :key="agent.id"
                 clickable
                 :active="selectedKind === 'agent' && selectedAgentId === agent.id"
-                :active-class="isDark ? 'bg-primary' : 'cream-menu-item--active'"
+                active-class="app-sidebar-item--active"
                 class="chat-entity-item rounded-borders q-mb-sm"
                 :class="{ 'chat-entity-item--active': selectedKind === 'agent' && selectedAgentId === agent.id }"
                 @click="$emit('select-agent', agent)"
@@ -105,7 +105,7 @@
                 :key="team.id"
                 clickable
                 :active="selectedKind === 'team' && selectedTeamId === team.id"
-                :active-class="isDark ? 'bg-primary' : 'cream-menu-item--active'"
+                active-class="app-sidebar-item--active"
                 class="chat-entity-item rounded-borders q-mb-sm"
                 :class="{ 'chat-entity-item--active': selectedKind === 'team' && selectedTeamId === team.id }"
                 @click="$emit('select-team', team)"
@@ -301,6 +301,7 @@ function parseTeamDefinition(raw?: string) {
   width: var(--chat-side-left-width, 280px);
   min-width: min(var(--chat-side-left-width, 280px), 100%);
   flex: 0 0 var(--chat-side-left-width, 280px);
+  overflow: hidden;
 }
 
 .chat-entity-group {
@@ -316,7 +317,7 @@ function parseTeamDefinition(raw?: string) {
   color: var(--color-text-secondary);
   font-size: 11px;
   font-weight: 800;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.06em;
 }
 
 .chat-entity-group__label span {
@@ -330,8 +331,9 @@ function parseTeamDefinition(raw?: string) {
 .chat-entity-item {
   align-items: center;
   min-height: 56px;
-  padding: 8px 6px;
+  padding: 8px;
   color: var(--color-text-primary);
+  overflow: hidden;
 }
 
 .chat-entity-name {
@@ -339,25 +341,16 @@ function parseTeamDefinition(raw?: string) {
   max-width: 100%;
   overflow: hidden;
   color: inherit;
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 1.25;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-:global(.body--dark) .chat-entity-item {
-  color: var(--color-text-primary);
-}
-
-:global(.body--dark) .chat-entity-name {
-  color: var(--color-text-primary);
-  text-shadow: 0 1px 1px rgb(0 0 0 / 35%);
-}
-
 .chat-entity-item--active,
 :global(.body--dark) .chat-entity-item--active {
-  color: var(--color-on-accent) !important;
+  color: var(--chat-text-active, var(--color-on-accent)) !important;
 }
 
 .chat-status-icon {
@@ -408,50 +401,91 @@ function parseTeamDefinition(raw?: string) {
 .chat-status-pill {
   display: inline-flex;
   align-items: center;
-  min-height: 18px;
-  padding: 0 7px;
+  min-height: 20px;
+  padding: 2px 8px;
   border: 1px solid rgb(102 112 133 / 16%);
   border-radius: 999px;
   background: rgb(248 250 252 / 88%);
-  color: var(--color-text-tertiary);
-  font-size: 10px;
+  color: var(--color-text-secondary);
+  font-size: 11px;
   font-weight: 800;
-  line-height: 1;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
 }
 
 .chat-status-pill.is-working {
-  border-color: rgb(239 68 68 / 22%);
-  background: rgb(254 242 242 / 92%);
+  border-color: rgb(239 68 68 / 28%);
+  background: rgb(254 242 242 / 96%);
   color: var(--color-danger-text);
 }
 
 .chat-status-pill.is-idle {
-  border-color: rgb(34 197 94 / 22%);
-  background: rgb(240 253 244 / 92%);
+  border-color: color-mix(in srgb, var(--color-success) 28%, transparent);
+  background: color-mix(in srgb, var(--color-success) 10%, var(--glass-surface));
   color: var(--color-accent-green);
 }
 
 .chat-status-pill.is-inactive {
-  border-color: rgb(102 112 133 / 20%);
-  background: rgb(242 244 247 / 92%);
-  color: var(--color-text-tertiary);
+  border-color: color-mix(in srgb, var(--color-text-secondary) 24%, transparent);
+  background: color-mix(in srgb, var(--glass-surface) 96%, transparent);
+  color: var(--color-text-secondary);
 }
 
-:global(.body--dark) .chat-entity-group__label,
-:global(.body--dark) .chat-section-label,
-:global(.body--dark) .chat-side-hint {
-  color: var(--color-text-secondary) !important;
+:global(.body--dark) .chat-status-pill.is-working {
+  border-color: color-mix(in srgb, var(--color-danger) 42%, transparent);
+  background: color-mix(in srgb, var(--color-danger) 20%, var(--glass-surface));
+  color: var(--color-danger-text);
 }
 
-:global(.body--dark) .chat-status-pill {
-  border-color: rgb(203 213 225 / 22%);
-  background: rgb(15 23 42 / 46%);
-  color: rgb(248 250 252 / 86%);
+:global(.body--dark) .chat-status-pill.is-idle {
+  border-color: color-mix(in srgb, var(--color-success) 45%, transparent);
+  background: color-mix(in srgb, var(--color-success) 18%, var(--glass-surface));
+  color: var(--color-accent-green);
 }
 
-.chat-entity-item--active .chat-status-pill {
-  border-color: rgb(255 255 255 / 35%);
-  background: rgb(255 255 255 / 18%);
+:global(.body--dark) .chat-status-pill.is-inactive {
+  border-color: var(--glass-border);
+  background: color-mix(in srgb, var(--glass-surface) 92%, transparent);
+  color: var(--color-text-primary);
+}
+
+.chat-entity-item--active .chat-status-pill.is-idle {
+  border-color: color-mix(in srgb, var(--color-success) 45%, transparent);
+  background: color-mix(in srgb, var(--color-accent-green) 72%, var(--canvas-base));
   color: var(--color-on-accent);
+}
+
+.chat-entity-item--active .chat-status-pill.is-working {
+  border-color: color-mix(in srgb, var(--color-danger) 45%, transparent);
+  background: color-mix(in srgb, var(--color-danger) 55%, var(--canvas-base));
+  color: var(--color-on-accent);
+}
+
+.chat-entity-item--active .chat-status-pill.is-inactive {
+  border-color: color-mix(in srgb, var(--color-text-secondary) 35%, transparent);
+  background: color-mix(in srgb, var(--glass-surface-hover) 88%, var(--canvas-base));
+  color: var(--color-on-accent);
+}
+
+:global(.body--dark) .chat-entity-item--active .chat-status-pill.is-idle {
+  border-color: color-mix(in srgb, var(--color-success) 55%, transparent);
+  background: color-mix(in srgb, var(--color-success) 32%, var(--canvas-base));
+  color: var(--color-text-primary);
+}
+
+:global(.body--dark) .chat-entity-item--active .chat-status-pill.is-working {
+  border-color: color-mix(in srgb, var(--color-danger) 55%, transparent);
+  background: color-mix(in srgb, var(--color-danger) 35%, var(--canvas-base));
+  color: var(--color-text-primary);
+}
+
+:global(.body--dark) .chat-entity-item--active .chat-status-pill.is-inactive {
+  border-color: var(--glass-border-hover);
+  background: color-mix(in srgb, var(--glass-surface-hover) 90%, var(--canvas-base));
+  color: var(--color-text-primary);
+}
+
+:global(.body--dark) .chat-side-hint {
+  color: var(--chat-idle-meta) !important;
 }
 </style>

@@ -1,47 +1,42 @@
 <template>
   <channel-glass-panel dense class="q-mb-md">
-    <q-card-section class="row q-col-gutter-md items-center">
-      <div class="col-12 col-md-4">
-        <q-input
-          :model-value="search"
-          dense
-          outlined
-          clearable
-          debounce="200"
-          label="搜索 Channel"
-          placeholder="名称、Key、描述、类型…"
-          @update:model-value="$emit('update:search', $event ?? '')"
-        >
-          <template #prepend><q-icon name="search" /></template>
-        </q-input>
-      </div>
-      <div class="col-12 col-md-3">
-        <q-select
-          :model-value="typeFilter"
-          dense
-          outlined
-          clearable
-          emit-value
-          map-options
-          label="平台类型"
-          :options="typeOptions"
-          @update:model-value="$emit('update:typeFilter', $event ?? '')"
-        />
-      </div>
-      <div class="col-12 col-md-3">
-        <q-select
-          :model-value="statusFilter"
-          dense
-          outlined
-          clearable
-          emit-value
-          map-options
-          label="状态"
-          :options="statusOptions"
-          @update:model-value="$emit('update:statusFilter', $event ?? '')"
-        />
-      </div>
-      <div class="col-12 col-md-2 row justify-end q-gutter-sm">
+    <q-card-section class="app-form-field-grid items-end">
+      <q-input
+        :model-value="search"
+        class="app-field-md"
+        dense
+        outlined
+        clearable
+        debounce="200"
+        label="搜索 Channel"
+        placeholder="名称、Key、描述、类型…"
+        @update:model-value="$emit('update:search', $event ?? '')"
+      >
+        <template #prepend><q-icon name="search" /></template>
+      </q-input>
+      <q-select
+        :model-value="typeFilter"
+        dense
+        outlined
+        clearable
+        emit-value
+        map-options
+        label="平台类型"
+        :options="typeOptions"
+        @update:model-value="$emit('update:typeFilter', $event ?? '')"
+      />
+      <q-select
+        :model-value="statusFilter"
+        dense
+        outlined
+        clearable
+        emit-value
+        map-options
+        label="状态"
+        :options="statusOptions"
+        @update:model-value="$emit('update:statusFilter', $event ?? '')"
+      />
+      <div class="app-actions-bar app-actions-bar--start">
         <q-btn flat rounded no-caps icon="restart_alt" label="重置" class="channel-toolbar-btn" @click="$emit('reset')" />
         <q-btn flat rounded no-caps icon="refresh" label="刷新" class="channel-toolbar-btn" :loading="loading" @click="$emit('refresh')" />
       </div>

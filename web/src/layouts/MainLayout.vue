@@ -70,48 +70,52 @@
     <q-drawer
       v-model="drawerOpen"
       show-if-above
-      bordered
       :width="256"
       :mini="drawerMini"
-      :mini-width="64"
+      :mini-width="90"
       :breakpoint="1024"
-      :class="[isDark ? 'dark-drawer' : 'cream-drawer', { 'q-drawer--design-mini': drawerMini }]"
+      :class="['app-sidebar', { 'q-drawer--design-mini': drawerMini }]"
     >
-      <q-scroll-area class="fit q-py-sm">
-        <q-list padding :dense="drawerMini">
+      <div class="app-sidebar-card">
+        <div class="app-sidebar__scroll fit">
+        <q-list class="app-sidebar-nav" :dense="drawerMini">
           <template v-for="(group, gi) in sideNavGroups" :key="`g-${gi}`">
             <q-item-label
               v-show="!drawerMini"
               header
-              class="text-grey-7 text-caption text-uppercase q-pt-md q-pb-xs"
+              class="app-sidebar-section-label"
             >
               {{ t(group.labelKey) }}
             </q-item-label>
-            <q-item
-              v-for="(item, ii) in group.items"
-              v-ripple
-              :key="`g-${gi}-i-${ii}`"
-              clickable
-              :active="isNavItemActive(item)"
-              :active-class="drawerItemActiveClass"
-              @click="navigateTo(item.to)"
-            >
-              <q-tooltip v-if="drawerMini" anchor="center right" self="center left" :offset="[8, 0]">
-                {{ t(item.labelKey) }}
-              </q-tooltip>
-              <q-item-section avatar>
-                <q-icon :name="item.icon" />
-              </q-item-section>
-              <q-item-section v-show="!drawerMini">{{ t(item.labelKey) }}</q-item-section>
-            </q-item>
+            <div class="app-sidebar-group__items">
+              <q-item
+                v-for="(item, ii) in group.items"
+                v-ripple
+                :key="`g-${gi}-i-${ii}`"
+                clickable
+                class="app-sidebar-nav-item"
+                :active="isNavItemActive(item)"
+                active-class="app-sidebar-item--active"
+                @click="navigateTo(item.to)"
+              >
+                <q-tooltip v-if="drawerMini" anchor="center right" self="center left" :offset="[8, 0]">
+                  {{ t(item.labelKey) }}
+                </q-tooltip>
+                <q-item-section avatar>
+                  <q-icon :name="item.icon" />
+                </q-item-section>
+                <q-item-section v-show="!drawerMini">{{ t(item.labelKey) }}</q-item-section>
+              </q-item>
+            </div>
             <q-separator
               v-if="gi < sideNavGroups.length - 1"
               v-show="!drawerMini"
-              class="q-my-sm"
+              class="app-sidebar-divider"
             />
           </template>
         </q-list>
-      </q-scroll-area>
+        </div>
+      </div>
     </q-drawer>
 
     <q-page-container class="app-page-container">
@@ -139,9 +143,6 @@ const drawerMini = ref(true);
 
 const isDesktop = computed(() => $q.screen.gt.xs);
 const isDark = computed(() => $q.dark.isActive);
-const drawerItemActiveClass = computed(() =>
-  isDark.value ? "dark-menu-item--active" : "cream-menu-item--active"
-);
 
 const localeOptions = [
   { label: "中文", value: "zh-CN" as const },

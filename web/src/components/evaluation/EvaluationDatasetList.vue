@@ -1,5 +1,5 @@
 <template>
-  <q-card flat bordered>
+  <q-card flat class="app-entity-glass-panel evaluation-dataset-list">
     <q-card-section class="text-subtitle1 text-weight-bold">数据集</q-card-section>
     <q-separator />
     <q-list separator>

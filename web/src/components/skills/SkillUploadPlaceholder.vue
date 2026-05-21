@@ -1,20 +1,6 @@
 <template>
-  <q-card flat bordered class="skill-upload-card">
-    <q-card-section class="row items-center q-col-gutter-md">
-      <div class="col">
-        <div class="text-subtitle1 text-weight-medium">上传 Skill 与 AI 炼化</div>
-        <div class="text-body2 text-grey-7 q-mt-xs">
-          上传 zip 后会严格校验 SKILL.md，先检查名称重复，再通过已配置模型输出相似度指标并按冲突组炼化。
-        </div>
-      </div>
-      <div class="col-auto row q-gutter-sm">
-        <q-btn color="primary" rounded unelevated icon="upload_file" label="上传 Skill" @click="dialogOpen = true" />
-      </div>
-    </q-card-section>
-  </q-card>
-
   <q-dialog v-model="dialogOpen" persistent>
-    <q-card class="skill-import-dialog">
+    <q-card class="skill-import-dialog app-dialog-card app-dialog-card--md">
       <q-card-section class="row items-start justify-between q-gutter-md">
         <div>
           <div class="text-h6">上传 Skill</div>
@@ -25,7 +11,7 @@
 
       <q-separator />
 
-      <q-card-section class="q-gutter-md">
+      <q-card-section class="q-gutter-md skill-import-scroll">
         <q-file v-model="file" outlined dense accept=".zip" label="选择 Skill zip" :disable="busy">
           <template #prepend><q-icon name="upload_file" /></template>
         </q-file>
@@ -92,7 +78,7 @@
                     <div class="text-subtitle1 text-weight-medium">冲突组：{{ percent(group.highest_similarity_score) }} 相似</div>
                     <div class="text-body2 text-grey-7">{{ group.reason }}</div>
                   </div>
-                  <q-btn color="primary" rounded unelevated icon="auto_fix_high" label="炼化" :loading="refiningGroupId === group.group_id" :disable="!group.can_refine || busy" @click="refineGroup(group.group_id)" />
+                  <q-btn color="primary" rounded unelevated no-caps icon="auto_fix_high" label="炼化" :loading="refiningGroupId === group.group_id" :disable="!group.can_refine || busy" @click="refineGroup(group.group_id)" />
                 </div>
                 <div class="metrics-grid q-mt-md">
                   <div v-for="metric in metricItems(group.metrics)" :key="metric.label" class="metric-pill">
@@ -120,10 +106,10 @@
         </div>
       </q-card-section>
 
-      <q-card-actions align="right">
-        <q-btn flat rounded label="关闭" :disable="busy" v-close-popup />
-        <q-btn outline rounded color="primary" label="开始上传检查" :disable="!file || busy" :loading="uploading" @click="startUpload" />
-        <q-btn color="primary" rounded unelevated label="应用导入" :disable="!canApply || busy" :loading="applying" @click="applyImportResult" />
+      <q-card-actions align="right" class="app-actions-bar">
+        <q-btn flat rounded no-caps label="关闭" :disable="busy" v-close-popup />
+        <q-btn outline rounded no-caps color="primary" label="开始上传检查" :disable="!file || busy" :loading="uploading" @click="startUpload" />
+        <q-btn color="primary" rounded unelevated no-caps label="应用导入" :disable="!canApply || busy" :loading="applying" @click="applyImportResult" />
       </q-card-actions>
     </q-card>
   </q-dialog>
@@ -180,6 +166,12 @@ const allBlockMessages = computed(() => {
   const messages = job.value.candidates.flatMap((candidate) => candidate.blocks.map((item) => item.message)).filter(Boolean);
   return messages.length ? Array.from(new Set(messages)).join("；") : "上传检查被阻塞";
 });
+
+function openDialog() {
+  dialogOpen.value = true;
+}
+
+defineExpose({ openDialog });
 
 async function startUpload() {
   if (!file.value) return;
@@ -292,11 +284,9 @@ function firstRefinedGroup(groups: SkillConflictGroup[], candidateIds: string[])
 </script>
 
 <style scoped lang="sass">
-// 卡片玻璃与 token 见 app-global.sass（.skill-upload-card / .metric-pill）；此处仅布局与对话框尺寸（UX.md §5.2a）
-.skill-import-dialog
-  width: min(920px, 94vw)
-  max-height: 92vh
-  border-radius: 24px !important
+.skill-import-scroll
+  max-height: min(68vh, 640px)
+  overflow: auto
 
 .conflict-card
   border-radius: 18px !important

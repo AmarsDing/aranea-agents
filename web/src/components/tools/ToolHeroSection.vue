@@ -5,7 +5,7 @@
       <h1 class="app-page-title">{{ title }}</h1>
       <p v-if="subtitle" class="app-page-subtitle">{{ subtitle }}</p>
     </div>
-    <div v-if="$slots.actions" class="row q-gutter-sm">
+    <div v-if="$slots.actions" class="app-actions-bar">
       <slot name="actions" />
     </div>
   </section>
