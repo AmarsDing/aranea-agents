@@ -98,14 +98,18 @@
         </div>
 
         <div class="provider-secret">
-          <div class="field-label">API 密钥</div>
-          <div v-if="hasApiKey" class="row items-center no-wrap q-gutter-xs">
-            <span class="masked-secret">{{ listKeyVisible ? listRevealedApiKey : "••••••••••••" }}</span>
+          <div class="field-label">{{ secretFieldLabel }}</div>
+          <div v-if="hasApiKey" class="provider-secret-row">
+            <span
+              class="provider-secret-value"
+              :class="{ 'provider-secret-value--masked': !listKeyVisible }"
+            >{{ listSecretDisplay }}</span>
             <q-btn
               flat
               dense
               round
               size="sm"
+              class="provider-secret-toggle"
               :icon="listKeyVisible ? 'visibility_off' : 'visibility'"
               :loading="listKeyRevealing"
               :aria-label="listKeyVisible ? '隐藏 API 密钥' : '查看 API 密钥'"
@@ -144,7 +148,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { useQuasar } from "quasar";
 import { revealProviderModelCredentials, type PlatformResource } from "../../features/platform/api";
 
@@ -199,9 +203,23 @@ const modelDisplayName = computed(() => props.row.name || props.row.model || "�
 const hasApiKey = computed(() =>
   Boolean(config.value.api_key_set || config.value.api_key || config.value.secret_id || config.value.aws_region)
 );
+const secretFieldLabel = computed(() => {
+  if (config.value.secret_id?.trim() && !config.value.api_key_set) return "Secret Key";
+  if (config.value.aws_region?.trim() && !config.value.api_key_set) return "AWS 凭据";
+  return "API 密钥";
+});
 const listKeyVisible = ref(false);
 const listRevealedApiKey = ref("");
 const listKeyRevealing = ref(false);
+const listSecretDisplay = computed(() => (listKeyVisible.value ? listRevealedApiKey.value : "••••••••••••"));
+
+watch(
+  () => props.row.id,
+  () => {
+    listKeyVisible.value = false;
+    listRevealedApiKey.value = "";
+  }
+);
 
 async function toggleListApiKeyVisibility() {
   if (listKeyVisible.value) {
@@ -212,13 +230,22 @@ async function toggleListApiKeyVisibility() {
   listKeyRevealing.value = true;
   try {
     const creds = await revealProviderModelCredentials(props.row.id);
-    if (creds.api_key) {
-      listRevealedApiKey.value = creds.api_key;
-    } else if (creds.secret_key) {
-      listRevealedApiKey.value = creds.secret_key;
-    } else {
-      listRevealedApiKey.value = "(已配置)";
+    const plain = creds.api_key?.trim() || creds.secret_key?.trim() || "";
+    if (!plain) {
+      const cannotDecrypt =
+        creds.has_api_key ||
+        creds.has_secret_key ||
+        config.value.api_key_set ||
+        Boolean(config.value.secret_id?.trim());
+      $q.notify({
+        type: "warning",
+        message: cannotDecrypt
+          ? "密钥已保存，但无法解密显示。请在「系统设置」确认凭据加密密钥，或在编辑页重新保存 API Key。"
+          : "未找到可显示的密钥，请在编辑页配置。"
+      });
+      return;
     }
+    listRevealedApiKey.value = plain;
     listKeyVisible.value = true;
   } catch (error) {
     const msg = error instanceof Error ? error.message : "无法读取密钥";
@@ -322,15 +349,38 @@ function toNullableNumber(value: unknown) {
 
 .provider-identity,
 .provider-types,
-.provider-usage,
-.masked-secret {
-  font-family: ui-monospace, monospace;
-  letter-spacing: 0.08em;
-  color: var(--q-color-grey-8);
+.provider-usage {
+  min-width: 0;
 }
 
 .provider-secret {
   min-width: 0;
+}
+
+.provider-secret-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+}
+
+.provider-secret-value {
+  flex: 1;
+  min-width: 0;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  word-break: break-all;
+  color: var(--q-color-grey-8);
+}
+
+.provider-secret-value--masked {
+  letter-spacing: 0.08em;
+}
+
+.provider-secret-toggle {
+  flex-shrink: 0;
+  margin-top: 1px;
 }
 
 .provider-metrics {

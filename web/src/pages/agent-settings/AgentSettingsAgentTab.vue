@@ -251,22 +251,37 @@ import type { RalphLoopFormState } from "../../features/agents/ralphLoopConfig";
 const plannerForm = defineModel<PlannerFormState>("plannerForm", { required: true });
 const ralphLoopForm = defineModel<RalphLoopFormState>("ralphLoopForm", { required: true });
 
-defineProps<{
-  form: Agent;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  config: any;
-  agentId: string;
-  promptModes: { value: string; label: string; caption: string; tokens: string }[];
-  statusOptions: { label: string; value: string }[];
-  selectedProviderModelID: string;
-  filteredProviderModelOptions: { label: string; value: string; caption?: string }[];
-  loadingProviderModels: boolean;
-  toolProfileOptions: { label: string; value: string }[];
-  toolSelectOptions: { label: string; value: string }[];
-  loadingCatalogTools: boolean;
-  toolConflicts: string[];
-  heartbeatFile: AgentFile;
-}>();
+withDefaults(
+  defineProps<{
+    form: Agent;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    config: any;
+    agentId?: string;
+    promptModes?: { value: string; label: string; caption: string; tokens: string }[];
+    statusOptions?: { label: string; value: string }[];
+    selectedProviderModelID?: string;
+    filteredProviderModelOptions?: { label: string; value: string; caption?: string }[];
+    loadingProviderModels?: boolean;
+    toolProfileOptions?: { label: string; value: string }[];
+    toolSelectOptions?: { label: string; value: string }[];
+    loadingCatalogTools?: boolean;
+    toolConflicts?: string[];
+    heartbeatFile?: AgentFile;
+  }>(),
+  {
+    agentId: "",
+    promptModes: () => [],
+    statusOptions: () => [],
+    selectedProviderModelID: "",
+    filteredProviderModelOptions: () => [],
+    loadingProviderModels: false,
+    toolProfileOptions: () => [],
+    toolSelectOptions: () => [],
+    loadingCatalogTools: false,
+    toolConflicts: () => [],
+    heartbeatFile: () => ({ name: "HEARTBEAT.MD", caption: "", body: "" })
+  }
+);
 
 defineEmits<{
   "copy-key": [];

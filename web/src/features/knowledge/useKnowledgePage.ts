@@ -27,16 +27,15 @@ export function useKnowledgePage() {
   const createForm = ref({ name: "", description: "", embedding_model: "text-embedding-3-small" });
   const ingestForm = ref({ source: "", mime_type: "text/plain", text: "" });
   const embedderConfig = computed<EmbedderConfig | null>(() => knowledgeStore.embedderConfig);
+  const collections = computed(() => knowledgeStore.collections);
+  const loading = computed(() => knowledgeStore.loading);
+  const documents = computed(() => knowledgeStore.documentsByCollection[selectedId.value] ?? []);
+  const selectedCollection = computed(() => collections.value.find((c) => c.id === selectedId.value));
 
   useKnowledgeIngestWs(
     () => (hasIndexingDocuments(documents.value) ? selectedId.value : ""),
     () => void loadDocuments()
   );
-
-  const collections = computed(() => knowledgeStore.collections);
-  const loading = computed(() => knowledgeStore.loading);
-  const documents = computed(() => knowledgeStore.documentsByCollection[selectedId.value] ?? []);
-  const selectedCollection = computed(() => collections.value.find((c) => c.id === selectedId.value));
 
   function friendlyError(err: unknown): string {
     const msg = err instanceof Error ? err.message : String(err);

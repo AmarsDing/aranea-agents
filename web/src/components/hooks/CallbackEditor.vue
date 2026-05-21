@@ -156,6 +156,7 @@ import { computed, ref, watch } from "vue";
 import {
   ACTION_TYPE_OPTIONS,
   CALLBACK_POINT_OPTIONS,
+  cloneHookRuleConfig,
   defaultHookRuleConfig,
   type HookRuleConfig
 } from "../../features/hooks/types";
@@ -193,7 +194,9 @@ const toolPoint = computed(
 watch(
   () => props.modelValue,
   (v) => {
-    localRule.value = structuredClone(v ?? defaultHookRuleConfig(props.agentId, props.agentKey));
+    localRule.value = v
+      ? cloneHookRuleConfig(v)
+      : defaultHookRuleConfig(props.agentId, props.agentKey);
     syncModifyText();
   },
   { immediate: true, deep: true }
@@ -213,7 +216,7 @@ function syncModifyText() {
 }
 
 function emitChange() {
-  emit("update:modelValue", structuredClone(localRule.value));
+  emit("update:modelValue", cloneHookRuleConfig(localRule.value));
 }
 
 function emitMeta() {

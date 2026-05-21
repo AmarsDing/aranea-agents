@@ -95,7 +95,10 @@ const editorOpen = ref(false);
 const editingRow = ref<McpServerRow | null>(null);
 const credDialogOpen = ref(false);
 const credServer = ref<McpServerRow | null>(null);
-const credUserId = computed(() => auth.user?.id?.trim() || "");
+const credUserId = computed(() => {
+  const id = auth.user?.id;
+  return id != null && id > 0 ? String(id) : "";
+});
 
 const enabledCount = computed(() => rows.value.filter((row) => row.enabled).length);
 const filteredRows = computed(() => {

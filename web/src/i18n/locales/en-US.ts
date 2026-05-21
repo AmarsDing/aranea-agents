@@ -97,6 +97,8 @@ export default {
     inputLabel: "Type a message",
     untitledSession: "New chat",
     emptyMessages: "No messages yet",
+    wsReplaying: "Syncing historical events…",
+    reasoningTitle: "Reasoning",
     pendingQueue: "Pending Queue",
     cancelPending: "Cancel Pending",
     editPending: "Edit",
@@ -134,6 +136,18 @@ export default {
     toolConfirmTool: "Tool",
     toolConfirmDeny: "Deny",
     toolConfirmApprove: "Allow",
+    toolLongRunning: "Long-running",
+    toolArgs: "Arguments",
+    toolResult: "Result",
+    activity: {
+      running: "Running",
+      blocked: "Awaiting confirmation",
+      cancelled: "Cancelled",
+      failed: "Failed",
+      metadata: "Metadata",
+      copyAuditHint:
+        "Copied content may include sensitive data. For full audit trails, open Monitor → Traces."
+    },
     teamNoBackend: "Team list is sample data until the API is connected.",
     workspaceKicker: "ADK Multi-Agent",
     workspaceTitle: "Chat workspace",

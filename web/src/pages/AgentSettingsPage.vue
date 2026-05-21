@@ -35,12 +35,12 @@
             v-model:planner-form="plannerForm"
             v-model:ralph-loop-form="ralphLoopForm"
             :config="config"
-            :agent-id="agentId"
+            :agent-id="toValue(agentId)"
             :prompt-modes="promptModes"
             :status-options="statusOptions"
-            :selected-provider-model-id="selectedProviderModelID"
-            :filtered-provider-model-options="filteredProviderModelOptions"
-            :loading-provider-models="loadingProviderModels"
+            :selected-provider-model-id="toValue(selectedProviderModelID)"
+            :filtered-provider-model-options="toValue(filteredProviderModelOptions)"
+            :loading-provider-models="toValue(loadingProviderModels)"
             :tool-profile-options="toolProfileOptions"
             :tool-select-options="toolSelectOptions"
             :loading-catalog-tools="loadingCatalogTools"
@@ -174,6 +174,7 @@
 </template>
 
 <script setup lang="ts">
+import { toValue } from "vue";
 import AgentAvatarPicker from "../components/avatar/AgentAvatarPicker.vue";
 import AgentEvolutionPanel from "../components/agents/AgentEvolutionPanel.vue";
 import AgentFilesPanel from "../components/agents/AgentFilesPanel.vue";
