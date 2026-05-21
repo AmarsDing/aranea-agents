@@ -12,6 +12,8 @@ server:
     enable: true
     network: tcp
     addr: 0.0.0.0:8002
+  monitor:
+    process_log_enabled: true
 data:
   sqlite:
     enable: true

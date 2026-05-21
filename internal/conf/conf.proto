@@ -29,6 +29,15 @@ message Server {
   HTTP http = 1;
   GRPC grpc = 2;
   WS ws = 4;
+  // Public base URL for A2A endpoints (no trailing slash), e.g. https://host/v1/a2a/public
+  // Override via env A2A_PUBLIC_BASE_URL. Required in production behind TLS/reverse proxy.
+  string a2a_public_base_url = 5;
+  Monitor monitor = 6;
+}
+
+message Monitor {
+  // Gateway process log (EnvelopeTypeLog) pushed on WS when true. Default in config.yaml: true.
+  bool process_log_enabled = 1;
 }
 
 message Data {

@@ -4,19 +4,66 @@ import type {
   AuditLog,
   AuditQuery,
   ModelUsageQuery,
+  MonitorAlertRule,
   MonitorLogLine,
   MonitorLogSnapshot,
   MonitorTraceEvent,
   PaginatedResult,
   PlatformResource,
+  RunnerMetricsSummary,
   TeamRunEvent
 } from "./types";
 import { listModelUsageEvents } from "../usage/api";
 import { useEnvelopeStream } from "../chat/useEnvelopeStream";
-import type { Envelope, EnvelopeType } from "../chat/envelope";
+import type { Envelope } from "../chat/envelope";
+import { flowSeverityToLevel, monitorLogLineFromFlowEnvelope } from "./flow";
 import { TEAM_RUNTIME_ENVELOPE_TYPES, teamRunEventFromEnvelope } from "../teams/teamRunEventFromEnvelope";
 
 const monitor = createMonitorService();
+
+export async function listFlowLogs(params: {
+  traceId?: string;
+  sessionId?: string;
+  runId?: string;
+  severity?: string;
+  domain?: string;
+  since?: string;
+  until?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<{ items: MonitorLogLine[]; total: number }> {
+  const data = await monitor.ListFlowLogs({
+    traceId: params.traceId,
+    sessionId: params.sessionId,
+    runId: params.runId,
+    severity: params.severity,
+    domain: params.domain,
+    since: params.since,
+    until: params.until,
+    limit: params.limit,
+    offset: params.offset
+  });
+  const items = (data.items ?? []).map((row) => {
+    const r = obj(row);
+    const severity = String(r.severity ?? "info");
+    return {
+      id: String(r.id ?? ""),
+      time: String(r.createdAt ?? r.created_at ?? ""),
+      level: flowSeverityToLevel(severity),
+      message: [r.title, r.message].filter(Boolean).join(" — ") || String(r.stepId ?? ""),
+      source: String(r.agentKey ?? r.agent_key ?? "flow"),
+      created_at: String(r.createdAt ?? r.created_at ?? ""),
+      kind: "flow" as const,
+      severity,
+      title: String(r.title ?? ""),
+      step_id: String(r.stepId ?? r.step_id ?? ""),
+      trace_id: String(r.traceId ?? r.trace_id ?? ""),
+      run_id: String(r.runId ?? r.run_id ?? ""),
+      session_id: String(r.sessionId ?? r.session_id ?? "")
+    };
+  });
+  return { items, total: Number(data.total ?? items.length) };
+}
 
 function obj(v: unknown): Record<string, unknown> {
   return v !== null && typeof v === "object" ? (v as Record<string, unknown>) : {};
@@ -138,9 +185,18 @@ export function subscribeMonitorLogsWs(
     channels: ["monitor", "system"],
     autoConnect: false,
     logEnabled: false,
+    onConnected: () => onConnected?.(),
+  });
+
+  stream.onType("flow_log", (env: Envelope) => {
+    const line = monitorLogLineFromFlowEnvelope(env);
+    if (line) onLine(line);
   });
 
   stream.onType("log", (env: Envelope) => {
+    if (env.metadata?.flow_step || env.metadata?.schema_version === "flow_log/v1") {
+      return;
+    }
     const level = (env.metadata?.level as MonitorLogLine["level"]) ?? "INFO";
     onLine({
       id: env.id,
@@ -149,15 +205,12 @@ export function subscribeMonitorLogsWs(
       message: env.content?.text ?? "",
       source: env.author ?? "monitor",
       created_at: env.timestamp,
+      kind: "process"
     });
   });
 
   stream.onType("error", (env: Envelope) => {
     onError?.(env.error?.message ?? "monitor ws error");
-  });
-
-  stream.onType("connected" as EnvelopeType, () => {
-    onConnected?.();
   });
 
   stream.connect();
@@ -169,17 +222,24 @@ export function subscribeMonitorLogsWs(
   };
 }
 
+export { createMonitorLogHub, useMonitorLogHub } from "./useLogStreamHub";
+export type { MonitorLogHub } from "./useLogStreamHub";
+
 /** Team / runtime monitor events via `WS /v1/ws` (global `session_id=*` by default). */
 export function subscribeMonitorRuntimeEventsWs(
   sessionId: string,
   onEvent: (event: TeamRunEvent) => void,
-  onError?: (error: string) => void
+  onError?: (error: string) => void,
+  onConnected?: () => void,
+  onDisconnected?: () => void
 ): MonitorWsSub {
   const stream = useEnvelopeStream({
     sessionId: resolveMonitorSessionId(sessionId),
     channels: ["monitor", "team", "system"],
     autoConnect: false,
     logEnabled: false,
+    onConnected: () => onConnected?.(),
+    onDisconnected: () => onDisconnected?.(),
   });
 
   const dispatch = (env: Envelope) => {
@@ -207,4 +267,78 @@ export function subscribeMonitorRuntimeEventsWs(
 export async function listMonitorTraceEvents(query: ModelUsageQuery = {}): Promise<MonitorTraceEvent[]> {
   const rows = await listModelUsageEvents(query);
   return rows as MonitorTraceEvent[];
+}
+
+function alertRuleFromWire(raw: unknown): MonitorAlertRule {
+  const r = obj(raw);
+  return {
+    id: String(r.id ?? ""),
+    name: String(r.name ?? ""),
+    metric_key: String(r.metric_key ?? r.metricKey ?? ""),
+    threshold: Number(r.threshold ?? 0),
+    window_minutes: Number(r.window_minutes ?? r.windowMinutes ?? 60),
+    enabled: Boolean(r.enabled ?? true),
+    severity: String(r.severity ?? "warning"),
+    notify_webhook_url: String(r.notify_webhook_url ?? r.notifyWebhookUrl ?? ""),
+    notify_channel_id: String(r.notify_channel_id ?? r.notifyChannelId ?? ""),
+    cooldown_minutes: Number(r.cooldown_minutes ?? r.cooldownMinutes ?? 60)
+  };
+}
+
+export async function listMonitorAlertRules(): Promise<MonitorAlertRule[]> {
+  const res = await monitor.ListMonitorAlertRules({});
+  const items = (res as { items?: unknown[] }).items ?? [];
+  return items.map(alertRuleFromWire);
+}
+
+export async function putMonitorAlertRules(rules: MonitorAlertRule[]): Promise<MonitorAlertRule[]> {
+  const res = await monitor.PutMonitorAlertRules({
+    items: rules.map((r) => ({
+      id: r.id,
+      name: r.name,
+      metric_key: r.metric_key,
+      threshold: r.threshold,
+      window_minutes: r.window_minutes,
+      enabled: r.enabled,
+      severity: r.severity,
+      notify_webhook_url: r.notify_webhook_url ?? "",
+      notify_channel_id: r.notify_channel_id ?? "",
+      cooldown_minutes: r.cooldown_minutes ?? 60
+    }))
+  });
+  const items = (res as { items?: unknown[] }).items ?? [];
+  return items.map(alertRuleFromWire);
+}
+
+export type { RunnerMetricsSummary } from "./types";
+
+export async function getRunnerMetrics(windowMinutes = 60): Promise<RunnerMetricsSummary> {
+  const res = await monitor.GetRunnerMetrics({ windowMinutes });
+  const r = obj(res);
+  return {
+    window_minutes: Number(r.window_minutes ?? r.windowMinutes ?? windowMinutes),
+    total_runs: Number(r.total_runs ?? r.totalRuns ?? 0),
+    error_runs: Number(r.error_runs ?? r.errorRuns ?? 0),
+    error_rate: Number(r.error_rate ?? r.errorRate ?? 0),
+    success_rate: Number(r.success_rate ?? r.successRate ?? 0)
+  };
+}
+
+export type CodeExecutorCapability = {
+  type: string;
+  available: boolean;
+  reason?: string;
+};
+
+export async function getCodeExecutorCapabilities(): Promise<CodeExecutorCapability[]> {
+  const res = await monitor.GetCodeExecutorCapabilities({});
+  const backends = (res as { backends?: unknown[] }).backends ?? [];
+  return backends.map((raw) => {
+    const r = obj(raw);
+    return {
+      type: String(r.type ?? ""),
+      available: Boolean(r.available ?? false),
+      reason: String(r.reason ?? "")
+    };
+  });
 }

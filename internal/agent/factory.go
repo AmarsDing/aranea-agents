@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcrunner "trpc.group/trpc-go/trpc-agent-go/runner"
@@ -38,7 +39,7 @@ func bizAgentFactoryForKey(deps TRPCBuilderDeps, agentKey string) trpcrunner.Age
 		if err != nil {
 			return nil, err
 		}
-		return BuildTRPCLLMAgentCached(ctx, ag, deps)
+		return BuildTRPCAgentCached(ctx, ag, deps)
 	}
 }
 
@@ -50,14 +51,17 @@ func resolveBizAgentByKey(ctx context.Context, deps TRPCBuilderDeps, agentKey st
 	if deps.Agents != nil {
 		ag, err := deps.Agents.GetAgentByAgentKey(ctx, key)
 		if err == nil {
+			event.CtxFlowLogDone(ctx, "system.agent.db_resolve", "Agent 数据库解析成功", event.P("agent_key", key), event.P("agent_id", ag.ID))
 			if deps.AgentUC != nil {
 				return deps.AgentUC.Get(ctx, ag.ID)
 			}
 			return ag, nil
 		}
 		if !errors.Is(err, sql.ErrNoRows) {
+			event.CtxFlowLogError(ctx, "system.agent.db_resolve", "Agent 数据库解析失败", event.P("agent_key", key), event.P("error", err))
 			return biz.Agent{}, err
 		}
 	}
+	event.CtxFlowLogWarn(ctx, "system.agent.db_resolve", "Agent 未找到", event.P("agent_key", key))
 	return biz.Agent{}, errors.New("agent not found: " + key)
 }

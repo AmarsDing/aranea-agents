@@ -13,6 +13,7 @@
   - [红线（违反即停）](#红线违反即停)
   - [决策树（我的代码该放哪？）](#决策树我的代码该放哪)
   - [任务速查卡](#任务速查卡)
+  - [代码探索约束（CodeGraph）](#代码探索约束codegraph)
 - [第一章：架构总纲](#第一章架构总纲)
 - [第二章：分层编码规范](#第二章分层编码规范)
 - [第三章：Agent 运行时规范](#第三章agent-运行时规范)
@@ -46,6 +47,21 @@
 | 12 | 不得在 Server 层写业务路由或手写 `HandleFunc` | 只做 `Register*HTTPServer`/`Register*ServiceServer` |
 | 13 | 所有 `go func()` 必须走 `pkg/safego.Go` / `pkg/safego.GoRecover` | 禁止裸 `go func()` 不处理 panic |
 | 14 | 不得在 biz 层使用 `fmt.Errorf` 返回业务错误 | 统一使用 `kerrors.BadRequest/NotFound/InternalServer` |
+
+### 代码探索约束（CodeGraph）
+
+> 本项目已配置 CodeGraph MCP（`.codegraph/` 存在）。**编码前先查结构，禁止盲目 grep 扫库。**
+
+| # | 约束 | 说明 |
+|---|------|------|
+| C1 | 结构性查询 **必须优先 CodeGraph** | 符号定义、调用链、影响面、模块上下文 → `codegraph_*` 工具 |
+| C2 | **禁止** 按符号名 grep 先于 CodeGraph | `codegraph_search` 一次返回 kind + 位置 + 签名 |
+| C3 | **禁止** 用 grep 重复验证 CodeGraph 结构结果 | AST 索引为准；浪费 token 且更易漏 |
+| C4 | grep / Read **仅用于** 非结构场景 | 字符串字面量、注释、日志文案；或已定位文件内的局部阅读 |
+| C5 | 需要模块全貌时用 `codegraph_context` 或 `codegraph_explore` | 不要 `codegraph_search` + 多次 Read 拼装 |
+| C6 | 索引缺失时先问用户是否 `codegraph init -i` | 未初始化前可退回 grep，但应提示初始化 |
+
+工具选型速查：`search` 找符号 · `callers`/`callees` 追调用 · `impact` 看改动半径 · `node` 看签名/源码 · `context`/`explore` 理解模块。完整说明见 [docs/README.md §4.1](../README.md#41-代码探索约束codegraph) 与 `.cursor/rules/codegraph.mdc`。
 
 ### 决策树（我的代码该放哪？）
 
@@ -272,7 +288,9 @@ internal/agent          ← Agent 构建（BuildLLMAgent、Memory、Plugins）
 internal/team           ← Team 工作流（BuildWorkflowRoot、Runner）
 internal/tools          ← 工具注册中心 + Assemble 装配（Registry + AssemblyConfig）
 internal/tools/trpc     ← 向后兼容适配层（ToolsetConfig → AssemblyConfig → Assemble）
-internal/tools/mcpmount ← MCP 服务器发现与 ToolSet 装配
+internal/mcp/config|probe|metadata|health ← MCP 配置解析、探活、元数据、定时健康检查
+internal/agent/tool_assembly.go ← Agent 回合 MCP 解析与 OAuth 头注入
+internal/tools/toolset.go      ← MCPToolSet / MCPBroker 装配（trpc tool/mcp）
 internal/tools/skillruntime ← Skill 工具集解析
 internal/tools/skillrouter  ← Skill 检测与分类
 internal/tools/custom   ← 自定义工具实现
@@ -286,7 +304,6 @@ internal/graph          ← 图编排（TRPC Graph Builder）
 internal/channel        ← 渠道集成（飞书 Webhook 等）
 internal/cronrunner     ← 定时任务（Cron 调度与执行）
 internal/llminspect     ← LLM 调试检查（模型连通性探测）
-internal/mcpprobe       ← MCP 探针（服务可用性评估）
 ```
 
 ### 3.3 Agent 构建规范
@@ -460,7 +477,7 @@ make config  # 仅改 conf.proto 时
 
 | 场景 | 规范 | ✅ 示例 | ❌ 示例 |
 |------|------|---------|---------|
-| 包名 | 小写单词，不用下划线 | `agent`, `mcpmount` | `agent_svc`, `MCPMount` |
+| 包名 | 小写单词，不用下划线 | `agent`, `mcp/config` | `agent_svc`, `MCPMount` |
 | 文件名 | 小写+下划线，按职责拆分 | `agent_repo.go`, `trpc_build.go` | `agentRepo.go` |
 | 结构体 | 大驼峰，名词 | `AgentUsecase`, `TurnMount` | `agentUsecase` |
 | 接口 | 大驼峰，名词+后缀 | `AgentRepository`, `MemoryService` | `AgentRepo`, `IMemory` |
@@ -502,6 +519,37 @@ return Agent{}, kerrors.InternalServer("AGENT", err.Error())
 1. **Wire ProviderSet**：每层一个，在 `biz.go`/`data.go`/`service.go`/`server.go` 中定义
 2. **构造函数参数**：只接收接口或具体依赖，不接收 `*Data` 之外的"上帝对象"
 3. **禁止手动编辑 `wire_gen.go`**：必须通过 `make wire` 生成
+4. **`cmd/admin/wire.go` 只做组装**：`wire.Build(...)` + 少量跨层 `provide*`；**禁止**在 provider 内做进程级全局注册
+5. **全局/副作用注册归属**：
+
+| 场景 | 正确位置 | 禁止 |
+|------|----------|------|
+| Repo 就绪后注册 biz 解析器（如凭据 AES key） | `data.NewXxxRepo` / `biz.NewXxxUsecase` 构造函数 | `provideXxxBootstrap` + 占位 `*Bootstrap` 类型挂进 `wireOut` |
+| EventBus 等进程单例 | `main.newApp` 的 `kratos.BeforeStart` / `AfterStop` | `cmd/admin/wire.go` 内 `SetGlobal*` |
+| 观测/工具包全局钩子 | 对应包的 `New*` 或 `service` 层构造函数 | Wire provider 内 `mcpobserve.Set*` 等 |
+| 实例依赖注入 | `New*` 返回后调用 `obj.SetDep(...)` | —（允许） |
+
+6. **Review / CI 必跑**：改 Wire 后 `make wire` + `make wire-clean`；`make lint` 含 **R11**（禁止 wire.go 全局 bootstrap）
+
+**反模式示例（已禁止）**：
+
+```go
+// ❌ cmd/admin/wire.go — 占位类型 + 全局副作用，且会被复制进 wire_gen.go
+type credentialKeyBootstrap struct{}
+func provideCredentialKeyBootstrap(repo biz.SystemSettingRepo) *credentialKeyBootstrap {
+    biz.SetCredentialKeyResolver(...)
+    return &credentialKeyBootstrap{}
+}
+
+// ✅ internal/data/system_setting.go — Repo 构造时注册
+func NewSystemSettingRepo(d *Data) biz.SystemSettingRepo {
+    repo := &systemSettingRepo{data: d}
+    biz.SetCredentialKeyResolver(func(ctx context.Context) ([]byte, error) {
+        return biz.ResolveCredentialAESKey(ctx, repo)
+    })
+    return repo
+}
+```
 
 ### 5.5 并发与资源
 
@@ -568,6 +616,11 @@ type AgentRepository interface {
 
 ## 第七章：AI 编码自检清单
 
+### 改动前（代码探索）
+
+- [ ] **结构性问题已用 CodeGraph**：符号 / 调用链 / 影响面 / 模块上下文，未 grep 先于 `codegraph_*`
+- [ ] **探索结果可信**：未对 CodeGraph 返回的结构信息做重复 grep 验证
+
 ### 改动中（逐层检查）
 
 - [ ] **Service 层**：只做映射和编排，无业务逻辑
@@ -586,6 +639,8 @@ type AgentRepository interface {
 
 - [ ] `make api` 已执行（如改了 proto）
 - [ ] `make wire` 已执行（如改了 Wire 声明）
+- [ ] `make wire-clean` 通过（`wire_gen.go` 与 `wire.go` 同步，CI `wire-clean` job）
+- [ ] `make lint` 通过（含 R11：wire.go 无全局 bootstrap）
 - [ ] `go build ./cmd/admin` 通过
 - [ ] 无红线违反
 - [ ] 新增能力两处生效（Chat + Team 共用装配路径）

@@ -65,6 +65,8 @@ CREATE TABLE IF NOT EXISTS tool_invocations (
   error_code TEXT NOT NULL DEFAULT '',
   error_message TEXT NOT NULL DEFAULT '',
   redaction_applied INTEGER NOT NULL DEFAULT 1,
+  streaming INTEGER NOT NULL DEFAULT 0,
+  chunk_count INTEGER NOT NULL DEFAULT 0,
   metadata_json TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL
 );

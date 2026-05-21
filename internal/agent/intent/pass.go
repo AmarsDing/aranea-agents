@@ -5,7 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
+
+	"aranea-agents/internal/event"
 	"net/http"
 	"os"
 	"regexp"
@@ -174,7 +175,7 @@ func Run(ctx context.Context, agentIntentPassEnabled bool, catalog *biz.LlmProvi
 		res.Outcome = "skipped_parse"
 		return
 	}
-	slog.Info("intent pass completed", "intent_kind", art.IntentKind, "refined_goal_len", len(art.RefinedGoal))
+	event.CtxFlowLogDone(ctx, "chat.intent.pass", "意图识别完成", event.P("intent_kind", art.IntentKind), event.P("refined_goal_len", len(art.RefinedGoal)))
 	res.Artifact = art
 	res.RawJSON = raw
 	res.Outcome = "completed"

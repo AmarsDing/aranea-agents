@@ -608,9 +608,18 @@ func (m *Model) applyTokenTailoring(ctx context.Context, request *model.Request)
 	// Apply token tailoring.
 	tailored, err := m.tailoringStrategy.TailorMessages(ctx, request.Messages, maxInputTokens)
 	if err != nil {
+		if len(tailored) > 0 {
+			log.WarnContext(
+				ctx,
+				"token tailoring returned best-effort messages in gemini.Model",
+				err,
+			)
+			request.Messages = tailored
+			return
+		}
 		log.WarnContext(
 			ctx,
-			"token tailoring failed in openai.Model",
+			"token tailoring failed in gemini.Model",
 			err,
 		)
 		return
@@ -835,6 +844,14 @@ func (m *Model) convertContentPart(part model.ContentPart) *genai.Part {
 	case model.ContentTypeFile:
 		if part.File == nil {
 			return nil
+		}
+		if len(part.File.Data) == 0 {
+			if text := model.FileURLText(part.File); text != "" {
+				return &genai.Part{
+					Text: text,
+				}
+			}
+			return genai.NewPartFromBytes(part.File.Data, part.File.MimeType)
 		}
 		return genai.NewPartFromBytes(part.File.Data, part.File.MimeType)
 	}

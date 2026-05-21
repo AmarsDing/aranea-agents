@@ -1,13 +1,13 @@
 <template>
   <transition name="chat-side">
     <aside v-show="open" class="chat-side chat-side--right column no-wrap">
-      <div class="chat-session-header row items-center justify-between">
-        <div class="text-caption text-cream-muted text-uppercase">
+      <div class="chat-session-header row items-center justify-between no-wrap">
+        <div class="text-caption text-cream-muted text-uppercase chat-session-header__label">
           Session
         </div>
-        <q-badge rounded color="primary" :label="sessions.length" />
+        <span class="chat-session-count-badge">{{ sessions.length }}</span>
       </div>
-      <q-scroll-area class="col">
+      <q-scroll-area class="col chat-session-scroll">
         <q-list class="chat-session-list" dense>
           <template v-for="group in timelineGroups" :key="group.key">
             <q-item-label header class="chat-timeline-label">
@@ -17,97 +17,109 @@
               v-for="session in group.sessions"
               :key="session.id"
               clickable
-              :active="selectedSessionId === session.id"
-              :active-class="isDark ? 'bg-primary' : 'cream-menu-item--active'"
-              class="chat-session-item rounded-borders q-mb-sm q-px-sm"
+              class="chat-session-item rounded-borders q-mb-sm"
               :class="{ 'chat-session-item--active': selectedSessionId === session.id }"
               @click="$emit('select', session.id)"
             >
-              <q-item-section side>
-                <q-circular-progress
-                  :value="session.context_used_ratio * 100"
-                  show-value
-                  size="32px"
-                  :thickness="0.22"
-                  color="primary"
-                >
-                  <span class="text-caption" style="font-size: 0.6rem">
-                    {{ Math.round(session.context_used_ratio * 100) }}%
-                  </span>
-                </q-circular-progress>
-              </q-item-section>
+              <q-item-section class="chat-session-main">
+                <div class="chat-session-row row items-center no-wrap full-width">
+                  <div class="chat-session-copy col">
+                    <div class="chat-session-title-wrap">
+                      <div class="chat-session-title">
+                        {{ session.title }}
+                      </div>
+                      <q-tooltip
+                        v-if="session.title"
+                        anchor="top middle"
+                        self="bottom middle"
+                        :offset="[0, 8]"
+                        :delay="300"
+                        content-class="chat-session-title-tooltip"
+                      >
+                        {{ session.title }}
+                      </q-tooltip>
+                    </div>
+                    <q-icon
+                      v-if="isFavorite(session.id)"
+                      class="chat-session-fav"
+                      name="star"
+                      color="amber-7"
+                      size="14px"
+                    />
+                  </div>
 
-              <q-item-section class="ellipsis" style="max-width: 1px">
-                <div class="row items-center no-wrap justify-end q-gutter-xs">
-                  <q-icon
-                    v-if="isFavorite(session.id)"
-                    name="star"
-                    color="amber-7"
-                    size="14px"
-                  />
-                  <q-badge
-                    class="chat-session-time-badge"
-                    rounded
-                    :label="shortTime(session)"
-                  />
+                  <div class="chat-session-trailing col-auto row items-center no-wrap">
+                    <q-badge
+                      class="chat-session-time-badge"
+                      rounded
+                      :label="shortTime(session)"
+                    />
+                    <q-circular-progress
+                      :value="session.context_used_ratio * 100"
+                      show-value
+                      size="28px"
+                      :thickness="0.24"
+                      :color="sessionProgressColor(session.id)"
+                      track-color="transparent"
+                      class="chat-session-progress"
+                    >
+                      <span class="chat-session-progress__label">
+                        {{ Math.round(session.context_used_ratio * 100) }}%
+                      </span>
+                    </q-circular-progress>
+                    <q-btn
+                      dense
+                      round
+                      flat
+                      size="sm"
+                      icon="more_horiz"
+                      class="chat-session-menu-btn"
+                      :aria-label="t('chat.sessionMore')"
+                      @click.stop
+                    >
+                      <q-menu anchor="bottom right" self="top right" class="chat-session-menu">
+                        <q-list dense style="min-width: 136px">
+                          <q-item clickable v-close-popup @click="renameSession(session)">
+                            <q-item-section avatar><q-icon name="edit" size="18px" /></q-item-section>
+                            <q-item-section>{{ t("chat.rename") }}</q-item-section>
+                          </q-item>
+                          <q-item clickable v-close-popup @click="togglePin(session.id)">
+                            <q-item-section avatar>
+                              <q-icon :name="isPinned(session.id) ? 'push_pin' : 'push_pin'" size="18px" />
+                            </q-item-section>
+                            <q-item-section>{{ isPinned(session.id) ? t("chat.unpin") : t("chat.pin") }}</q-item-section>
+                          </q-item>
+                          <q-item clickable v-close-popup @click="toggleFavorite(session.id)">
+                            <q-item-section avatar>
+                              <q-icon :name="isFavorite(session.id) ? 'star' : 'star_border'" size="18px" />
+                            </q-item-section>
+                            <q-item-section>{{ isFavorite(session.id) ? t("chat.unfavorite") : t("chat.favorite") }}</q-item-section>
+                          </q-item>
+                          <q-item clickable v-close-popup @click.stop="openTrace(session.id)">
+                            <q-item-section avatar><q-icon name="timeline" size="18px" /></q-item-section>
+                            <q-item-section>历史追踪</q-item-section>
+                          </q-item>
+                          <q-item clickable v-close-popup @click.stop="openDetail(session.id)">
+                            <q-item-section avatar><q-icon name="open_in_new" size="18px" /></q-item-section>
+                            <q-item-section>详情页</q-item-section>
+                          </q-item>
+                          <q-item v-if="session.status === 'archived'" clickable v-close-popup @click.stop="$emit('restore', session.id)">
+                            <q-item-section avatar><q-icon name="restore" size="18px" /></q-item-section>
+                            <q-item-section>恢复会话</q-item-section>
+                          </q-item>
+                          <q-item v-else clickable v-close-popup @click.stop="$emit('archive', session.id)">
+                            <q-item-section avatar><q-icon name="archive" size="18px" /></q-item-section>
+                            <q-item-section>归档</q-item-section>
+                          </q-item>
+                          <q-item clickable v-close-popup class="text-negative" @click="$emit('delete', 'session', session.id)">
+                            <q-item-section avatar><q-icon name="delete" size="18px" /></q-item-section>
+                            <q-item-section>{{ t("chat.remove") }}</q-item-section>
+                          </q-item>
+                        </q-list>
+                      </q-menu>
+                    </q-btn>
+                  </div>
                 </div>
-                <q-item-label class="chat-session-title ellipsis" lines="2" style="text-align: right">
-                  {{ session.title }}
-                </q-item-label>
-              </q-item-section>
-
-              <q-item-section side class="chat-session-menu-section">
-                <q-btn
-                  dense
-                  round
-                  flat
-                  size="sm"
-                  icon="more_horiz"
-                  class="chat-session-menu-btn"
-                  :aria-label="t('chat.sessionMore')"
-                  @click.stop
-                >
-                  <q-menu anchor="bottom right" self="top right" class="chat-session-menu">
-                    <q-list dense style="min-width: 136px">
-                      <q-item clickable v-close-popup @click="renameSession(session)">
-                        <q-item-section avatar><q-icon name="edit" size="18px" /></q-item-section>
-                        <q-item-section>{{ t("chat.rename") }}</q-item-section>
-                      </q-item>
-                      <q-item clickable v-close-popup @click="togglePin(session.id)">
-                        <q-item-section avatar>
-                          <q-icon :name="isPinned(session.id) ? 'push_pin' : 'push_pin'" size="18px" />
-                        </q-item-section>
-                        <q-item-section>{{ isPinned(session.id) ? t("chat.unpin") : t("chat.pin") }}</q-item-section>
-                      </q-item>
-                      <q-item clickable v-close-popup @click="toggleFavorite(session.id)">
-                        <q-item-section avatar>
-                          <q-icon :name="isFavorite(session.id) ? 'star' : 'star_border'" size="18px" />
-                        </q-item-section>
-                        <q-item-section>{{ isFavorite(session.id) ? t("chat.unfavorite") : t("chat.favorite") }}</q-item-section>
-                      </q-item>
-                      <q-item clickable v-close-popup @click.stop="openTrace(session.id)">
-                        <q-item-section avatar><q-icon name="timeline" size="18px" /></q-item-section>
-                        <q-item-section>历史追踪</q-item-section>
-                      </q-item>
-                      <q-item clickable v-close-popup @click.stop="openDetail(session.id)">
-                        <q-item-section avatar><q-icon name="open_in_new" size="18px" /></q-item-section>
-                        <q-item-section>详情页</q-item-section>
-                      </q-item>
-                      <q-item v-if="session.status === 'archived'" clickable v-close-popup @click.stop="$emit('restore', session.id)">
-                        <q-item-section avatar><q-icon name="restore" size="18px" /></q-item-section>
-                        <q-item-section>恢复会话</q-item-section>
-                      </q-item>
-                      <q-item v-else clickable v-close-popup @click.stop="$emit('archive', session.id)">
-                        <q-item-section avatar><q-icon name="archive" size="18px" /></q-item-section>
-                        <q-item-section>归档</q-item-section>
-                      </q-item>
-                      <q-item clickable v-close-popup class="text-negative" @click="$emit('delete', 'session', session.id)">
-                        <q-item-section avatar><q-icon name="delete" size="18px" /></q-item-section>
-                        <q-item-section>{{ t("chat.remove") }}</q-item-section>
-                      </q-item>
-                    </q-list>
-                  </q-menu>
-                </q-btn>
               </q-item-section>
             </q-item>
           </template>
@@ -232,6 +244,12 @@ function toggleFavorite(id: string) {
   saveIDs(FAVORITE_KEY, favoriteIDs.value);
 }
 
+function sessionProgressColor(sessionId: string) {
+  const active = props.selectedSessionId === sessionId;
+  if (active) return props.isDark ? "cyan-4" : "amber-8";
+  return props.isDark ? "blue-grey-5" : "brown-5";
+}
+
 function shortTime(session: SessionView) {
   const time = sessionTime(session);
   if (!time) return session.at || "—";
@@ -283,25 +301,222 @@ function saveIDs(key: string, ids: Set<string>) {
 
 <style scoped>
 .chat-side--right {
-  width: 300px;
-  min-width: 280px;
-  flex: 0 0 300px;
+  width: 380px;
+  min-width: 360px;
+  max-width: 100%;
+  flex: 0 0 380px;
+  box-sizing: border-box;
+  overflow-x: hidden;
+}
+
+.chat-session-scroll {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.chat-session-scroll :deep(.q-scrollarea__container) {
+  overflow-x: hidden !important;
+}
+
+.chat-session-scroll :deep(.q-scrollarea__content) {
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow-x: hidden !important;
+}
+
+.chat-session-scroll :deep(.q-scrollarea__bar--h),
+.chat-session-scroll :deep(.q-scrollarea__thumb--h) {
+  display: none !important;
+  height: 0 !important;
+  opacity: 0 !important;
+}
+
+.chat-session-list {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 4px 6px 8px !important;
+}
+
+.chat-session-list :deep(.q-item) {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.chat-session-list :deep(.q-item__section--main) {
+  min-width: 0 !important;
+  max-width: 100%;
+}
+
+.chat-session-list :deep(.q-item__label--header) {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-session-header__label {
+  letter-spacing: 0.08em;
+  font-weight: 700;
+}
+
+.chat-session-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  min-width: 40px;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-accent) 16%, var(--glass-elevated));
+  color: var(--color-text-primary);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 28%, var(--glass-border));
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  box-shadow: var(--glass-inner-highlight);
+  backdrop-filter: blur(var(--glass-blur-default));
+  -webkit-backdrop-filter: blur(var(--glass-blur-default));
+}
+
+:global(.body--dark) .chat-session-count-badge {
+  color: var(--color-accent);
+  border-color: color-mix(in srgb, var(--color-accent) 48%, var(--glass-border));
+  background: color-mix(in srgb, var(--color-accent) 22%, var(--glass-elevated));
+  box-shadow: var(--glass-inner-highlight), 0 0 14px rgba(0, 229, 255, 0.12);
 }
 
 .chat-session-item {
-  min-height: 58px;
-  color: var(--color-text-primary);
+  width: 100%;
+  max-width: 100%;
+  min-height: 52px;
+  padding: 8px 10px !important;
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  box-sizing: border-box;
+  border-radius: 14px !important;
+  backdrop-filter: blur(var(--glass-blur-default));
+  -webkit-backdrop-filter: blur(var(--glass-blur-default));
 }
 
-:global(.body--dark) .chat-session-item {
-  color: var(--color-text-primary);
+.chat-session-main {
+  min-width: 0;
+  max-width: 100%;
+  padding: 0;
+  overflow: hidden;
+}
+
+.chat-session-row {
+  width: 100%;
+  max-width: 100%;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.chat-session-copy {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 100%;
+  position: relative;
+  padding-right: 4px;
+  overflow: hidden;
+}
+
+.chat-session-title-wrap {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.chat-session-trailing {
+  flex: 0 0 auto;
+  flex-shrink: 0;
+  max-width: 108px;
+  gap: 4px;
+}
+
+.chat-session-progress {
+  flex-shrink: 0;
+}
+
+.chat-session-fav {
+  position: absolute;
+  right: 0;
+  bottom: 0;
 }
 
 .chat-session-title {
-  margin-top: 4px;
-  color: inherit;
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  color: var(--color-text-secondary);
+  font-size: 13px;
   font-weight: 700;
   line-height: 1.35;
+  text-align: left;
+  direction: ltr;
+  unicode-bidi: plaintext;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-right: 2px;
+}
+
+.chat-session-item:not(.chat-session-item--active) .chat-session-title {
+  color: var(--color-text-secondary);
+}
+
+.chat-session-item:hover:not(.chat-session-item--active) .chat-session-title {
+  color: var(--color-text-primary);
+}
+
+:global(.chat-session-title-tooltip) {
+  max-width: min(400px, 92vw);
+  padding: 12px 14px !important;
+  font-size: 18px !important;
+  font-weight: 600;
+  line-height: 1.45;
+  word-break: break-word;
+  white-space: normal;
+  background: var(--glass-elevated) !important;
+  color: var(--color-text-heading) !important;
+  border: 1px solid var(--glass-border) !important;
+  border-radius: 14px;
+  box-shadow: var(--glass-inner-highlight);
+  backdrop-filter: blur(var(--glass-blur-elevated));
+  -webkit-backdrop-filter: blur(var(--glass-blur-elevated));
+}
+
+:global(.chat-session-title-tooltip .q-tooltip__content) {
+  font-size: 18px;
+  line-height: 1.45;
+}
+
+:global(.body--dark .chat-session-title-tooltip) {
+  background: color-mix(in srgb, var(--glass-elevated) 92%, var(--canvas-base)) !important;
+  color: var(--color-text-heading) !important;
+  border: 1px solid var(--glass-border-hover) !important;
+}
+
+.chat-session-progress__label {
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--color-text-tertiary);
+}
+
+.chat-session-item:not(.chat-session-item--active) .chat-session-progress__label {
+  color: var(--color-text-tertiary);
+}
+
+.chat-session-item--active .chat-session-progress__label {
+  color: var(--color-accent);
 }
 
 .chat-timeline-label {
@@ -316,50 +531,89 @@ function saveIDs(key: string, ids: Set<string>) {
 }
 
 .chat-session-time-badge {
-  background: rgb(25 118 210 / 10%);
-  color: var(--color-link, var(--color-accent-blue));
-  font-size: 10px;
-  font-weight: 800;
+  max-width: 56px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: color-mix(in srgb, var(--glass-surface-hover) 88%, transparent);
+  color: var(--color-text-tertiary);
+  border: 1px solid var(--glass-border);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
-:global(.body--dark) .chat-session-time-badge {
-  background: rgb(147 197 253 / 18%);
-  color: var(--color-link-dark, var(--color-accent-blue-bright));
+.chat-session-item:not(.chat-session-item--active) .chat-session-time-badge {
+  color: var(--color-text-tertiary);
+  background: color-mix(in srgb, var(--glass-surface) 75%, transparent);
 }
 
-.chat-session-menu-section {
-  padding-left: 4px;
+:global(.body--dark) .chat-session-item:not(.chat-session-item--active) .chat-session-time-badge {
+  color: var(--color-text-slate-400);
+  background: color-mix(in srgb, var(--glass-surface) 88%, transparent);
+  border-color: var(--glass-border);
 }
 
 .chat-session-menu-btn {
-  color: rgb(102 112 133 / 92%);
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  color: var(--color-icon-muted);
+  background: color-mix(in srgb, var(--glass-surface-hover) 85%, transparent);
+  border: 1px solid var(--glass-border);
 }
 
-:global(.body--dark) .chat-session-menu-btn {
-  color: rgb(248 250 252 / 82%);
+.chat-session-item:not(.chat-session-item--active) .chat-session-menu-btn {
+  color: var(--color-icon-muted);
 }
 
-:global(.body--dark) .chat-session-time {
-  color: rgb(203 213 225 / 76%) !important;
+.chat-session-item:hover:not(.chat-session-item--active) .chat-session-menu-btn {
+  color: var(--color-text-secondary);
+  border-color: var(--glass-border-hover);
+  background: var(--glass-surface-hover);
 }
 
-.chat-session-item--active,
-:global(.body--dark) .chat-session-item--active {
-  color: var(--color-on-accent, var(--color-on-accent)) !important;
-}
-
-.chat-session-item--active .chat-session-time,
-.chat-session-item--active .chat-action-btn,
 .chat-session-item--active .chat-session-menu-btn {
-  color: rgb(255 255 255 / 86%) !important;
+  color: var(--color-accent);
+  border-color: color-mix(in srgb, var(--color-accent) 35%, var(--glass-border));
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--glass-surface-hover));
+}
+
+:global(.body--dark) .chat-session-item:not(.chat-session-item--active) .chat-session-menu-btn {
+  color: var(--color-text-slate-400);
+  background: color-mix(in srgb, var(--glass-surface) 90%, transparent);
+}
+
+.chat-session-item--active .chat-session-title {
+  color: var(--color-text-heading);
+}
+
+:global(.body--dark) .chat-session-item--active .chat-session-title {
+  color: var(--color-text-primary);
 }
 
 .chat-session-item--active .chat-session-time-badge {
-  background: rgb(255 255 255 / 20%);
-  color: var(--color-on-accent, var(--color-on-accent));
+  background: color-mix(in srgb, var(--color-accent) 12%, var(--glass-surface-hover));
+  border-color: color-mix(in srgb, var(--color-accent) 35%, var(--glass-border));
+  color: var(--color-accent);
 }
 
-:global(.body--dark) .chat-action-btn {
-  background: rgb(15 23 42 / 34%);
+.chat-session-item--active {
+  box-shadow: var(--glass-inner-highlight), inset 3px 0 0 var(--color-accent) !important;
+}
+
+:global(.body--dark) .chat-session-item--active {
+  box-shadow: var(--glass-inner-highlight), inset 3px 0 0 color-mix(in srgb, var(--color-accent) 72%, transparent) !important;
+}
+
+@media (max-width: 900px) {
+  .chat-side--right {
+    width: 300px;
+    min-width: 280px;
+    flex: 0 0 300px;
+  }
 }
 </style>

@@ -1,0 +1,94 @@
+syntax = "proto3";
+
+package kratos.ecosystem.v1;
+
+import "google/api/annotations.proto";
+import "google/protobuf/empty.proto";
+
+option go_package = "aranea-agents/api/kratos/ecosystem/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.kratos.ecosystem.v1";
+
+message Product {
+  string id = 1;
+  string name = 2;
+  string display_name = 3;
+  string description = 4;
+  string type = 5;
+  string author_id = 6;
+  string version = 7;
+  string price_model = 8;
+  int64 price_cents = 9;
+  double rating = 10;
+  int64 install_count = 11;
+  string config_json = 12;
+  string status = 13;
+  string created_at = 14;
+  string updated_at = 15;
+  bool installed = 16;
+}
+
+message ListProductsRequest {
+  string type = 1;
+  string search = 2;
+  int32 limit = 3;
+  int32 offset = 4;
+}
+
+message ListProductsResponse {
+  repeated Product items = 1;
+  int32 total = 2;
+}
+
+message GetProductRequest {
+  string id = 1;
+}
+
+message PublishProductRequest {
+  string name = 1;
+  string display_name = 2;
+  string description = 3;
+  string type = 4;
+  string version = 5;
+  string price_model = 6;
+  int64 price_cents = 7;
+  string config_json = 8;
+}
+
+message InstallProductRequest {
+  string id = 1;
+}
+
+message InstallResult {
+  string product_id = 1;
+  repeated string installed_ids = 2;
+  string message = 3;
+}
+
+message UninstallProductRequest {
+  string id = 1;
+}
+
+service EcosystemService {
+  rpc ListProducts(ListProductsRequest) returns (ListProductsResponse) {
+    option (google.api.http) = {get: "/v1/ecosystem/products"};
+  }
+  rpc GetProduct(GetProductRequest) returns (Product) {
+    option (google.api.http) = {get: "/v1/ecosystem/products/{id}"};
+  }
+  rpc PublishProduct(PublishProductRequest) returns (Product) {
+    option (google.api.http) = {
+      post: "/v1/ecosystem/products"
+      body: "*"
+    };
+  }
+  rpc InstallProduct(InstallProductRequest) returns (InstallResult) {
+    option (google.api.http) = {
+      post: "/v1/ecosystem/products/{id}/install"
+      body: "*"
+    };
+  }
+  rpc UninstallProduct(UninstallProductRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {delete: "/v1/ecosystem/products/{id}/install"};
+  }
+}

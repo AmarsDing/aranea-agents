@@ -172,11 +172,32 @@ rpc CreateAgent(CreateAgentRequest) returns (Agent) {
 | | `settings` | AgentRuntimeSettings | ❌ | 运行时设置 |
 | | `files` | AgentPromptFile[] | ❌ | 提示词文件列表 |
 
-### 2.3 无需新增 Proto
+### 2.3 待扩展 Proto（Agent Kind / A2A Proxy）
 
-创建弹窗是纯前端交互，调用已有 `CreateAgent` RPC。
+> 需求见 [2 agents-create.md](./2%20agents-create.md) §9；A2A 整体设计见 [26 a2a-protocol.design.md](./26%20a2a-protocol.design.md) §11.2。
 
----
+```protobuf
+message A2AProxyConfig {
+  string remote_url = 1 [(google.api.field_behavior) = REQUIRED];
+  string agent_card_url = 2;
+  bool enable_streaming = 3;
+  string auth_type = 4;        // none | api_key | mtls
+  string auth_config_json = 5;
+  int32 timeout_seconds = 6;
+}
+
+// Agent / CreateAgentRequest 扩展：
+//   string agent_kind = N;           // "" | "llm" | "a2a_proxy"
+//   A2AProxyConfig a2a_proxy_config = N+1;
+```
+
+**Biz 校验**：
+- `a2a_proxy`：`remote_url` 必填；跳过 provider/model 校验
+- `llm`：provider/model 必填；忽略 `a2a_proxy_config`
+
+**运行时**：`internal/agent/trpc_build_router.go` → `BuildTRPCAgent`；详见 A2A 设计 §11.3。
+
+### 2.4 无需新增 RPC（创建本身）
 
 ## 三、Biz 层
 

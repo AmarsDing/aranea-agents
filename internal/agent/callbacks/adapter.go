@@ -124,3 +124,22 @@ func (h *BeforeToolHookFunc) Priority() int        { return h.priority }
 func (h *BeforeToolHookFunc) HandleBeforeTool(ctx context.Context, args *trpctool.BeforeToolArgs) (*trpctool.BeforeToolResult, error) {
 	return h.fn(ctx, args)
 }
+
+// AfterToolHookFunc wraps a plain function as an AfterToolHook.
+type AfterToolHookFunc struct {
+	priority int
+	fn       trpctool.AfterToolCallbackStructured
+}
+
+var _ AfterToolHook = (*AfterToolHookFunc)(nil)
+
+// NewAfterToolHook creates an AfterToolHookFunc with a given priority and handler.
+func NewAfterToolHook(priority int, fn trpctool.AfterToolCallbackStructured) *AfterToolHookFunc {
+	return &AfterToolHookFunc{priority: priority, fn: fn}
+}
+
+func (h *AfterToolHookFunc) Point() CallbackPoint { return PointAfterTool }
+func (h *AfterToolHookFunc) Priority() int        { return h.priority }
+func (h *AfterToolHookFunc) HandleAfterTool(ctx context.Context, args *trpctool.AfterToolArgs) (*trpctool.AfterToolResult, error) {
+	return h.fn(ctx, args)
+}

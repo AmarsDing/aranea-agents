@@ -105,6 +105,8 @@ func bizInvocationToProto(x biz.ToolInvocation) *v1.ToolInvocation {
 		RedactionApplied: x.RedactionApplied,
 		MetadataJson:     x.MetadataJSON,
 		CreatedAt:        x.CreatedAt,
+		Streaming:        x.Streaming,
+		ChunkCount:       int32(x.ChunkCount),
 	}
 }
 
@@ -276,7 +278,6 @@ func (s *ToolService) ListToolRuns(ctx context.Context, req *v1.ListToolRunsRequ
 func (s *ToolService) ListToolRunsForTool(ctx context.Context, req *v1.ListToolRunsForToolRequest) (*v1.ListToolRunsResponse, error) {
 	limit, offset, page, pageSize := biz.PageToLimitOffset(req.GetPage(), req.GetPageSize())
 	q := biz.ToolRunQuery{
-		ToolKey:   req.GetToolId(),
 		AgentID:   req.GetAgentId(),
 		SessionID: req.GetSessionId(),
 		Status:    req.GetStatus(),
@@ -285,7 +286,7 @@ func (s *ToolService) ListToolRunsForTool(ctx context.Context, req *v1.ListToolR
 		Limit:     limit,
 		Offset:    offset,
 	}
-	result, err := s.uc.ListRuns(ctx, q)
+	result, err := s.uc.ListRunsForTool(ctx, req.GetToolId(), q)
 	if err != nil {
 		return nil, err
 	}
@@ -407,5 +408,56 @@ func (s *ToolService) TestTool(ctx context.Context, req *v1.TestToolRequest) (*v
 		ResultPreview: res.ResultPreview,
 		ErrorMessage:  res.ErrorMessage,
 		DurationMs:    int32(res.DurationMS),
+	}, nil
+}
+
+func bizToolInvocationAuditToProto(a biz.ToolInvocationAudit) *v1.ToolInvocationAudit {
+	return &v1.ToolInvocationAudit{
+		Id:            a.ID,
+		InvocationId:  a.InvocationID,
+		ToolKey:       a.ToolKey,
+		AgentId:       a.AgentID,
+		UserId:        a.UserID,
+		SessionId:     a.SessionID,
+		Action:        a.Action,
+		ResultSummary: a.ResultSummary,
+		Status:        a.Status,
+		Source:        a.Source,
+		CreatedAt:     a.CreatedAt,
+	}
+}
+
+func (s *ToolService) ListToolInvocationAudits(ctx context.Context, req *v1.ListToolInvocationAuditsRequest) (*v1.ListToolInvocationAuditsResponse, error) {
+	limit, offset, page, pageSize := biz.PageToLimitOffset(req.GetPage(), req.GetPageSize())
+	toolKey := req.GetToolKey()
+	if toolKey != "" {
+		if resolved, err := s.uc.ResolveToolKey(ctx, toolKey); err == nil {
+			toolKey = resolved
+		}
+	}
+	q := biz.ToolAuditQuery{
+		ToolKey:   toolKey,
+		AgentID:   req.GetAgentId(),
+		UserID:    req.GetUserId(),
+		SessionID: req.GetSessionId(),
+		Status:    req.GetStatus(),
+		From:      req.GetFrom(),
+		To:        req.GetTo(),
+		Limit:     limit,
+		Offset:    offset,
+	}
+	result, err := s.uc.ListInvocationAudits(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]*v1.ToolInvocationAudit, 0, len(result.Items))
+	for i := range result.Items {
+		items = append(items, bizToolInvocationAuditToProto(result.Items[i]))
+	}
+	return &v1.ListToolInvocationAuditsResponse{
+		Items:    items,
+		Total:    int32(result.Total),
+		Page:     page,
+		PageSize: pageSize,
 	}, nil
 }

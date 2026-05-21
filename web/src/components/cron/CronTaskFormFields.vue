@@ -20,6 +20,17 @@
     <CronTaskFormScheduleFields v-model:form="form" />
 
     <q-input v-model="form.timezone" class="col-12 col-md-6 cron-field" dense outlined label="时区" placeholder="Asia/Shanghai" />
+    <q-input
+      v-model.number="form.retry_max_attempts"
+      class="col-12 col-md-6 cron-field"
+      dense
+      outlined
+      type="number"
+      min="0"
+      max="4"
+      label="失败重试次数"
+      hint="0=不重试，默认 3 次（30s/2m/10m 退避，不含首次执行）"
+    />
     <q-toggle v-model="form.enabled" class="col-12 col-md-6" color="primary" label="启用任务" />
     <q-input
       v-model="form.message"

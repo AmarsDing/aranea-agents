@@ -10,11 +10,13 @@ import {
   listSessionTurns,
   getSessionTimeline,
   listSessionChatMessages,
+  previewSessionBatch,
+  batchArchiveSessions,
+  batchDeleteSessions,
   type Session,
-  type SessionListResult,
-  type SessionTurn,
-  type SessionTimeline
+  type SessionListResult
 } from "../../features/session/api";
+import type { BatchOperationResult, BatchPreviewResult, SessionBatchScope } from "../../features/session/types";
 import type { Message } from "../../features/chat/types";
 
 export const useSessionStore = defineStore("session", () => {
@@ -33,6 +35,17 @@ export const useSessionStore = defineStore("session", () => {
     } finally {
       loading.value = false;
     }
+  }
+
+  async function searchPage(params: {
+    keyword?: string;
+    owner_type?: string;
+    status?: string;
+    context_status?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<SessionListResult> {
+    return searchSessions(params);
   }
 
   async function fetchSession(id: string) {
@@ -69,12 +82,39 @@ export const useSessionStore = defineStore("session", () => {
     activeSession.value = s;
   }
 
+  async function previewBatch(payload: {
+    mode: "archive" | "delete";
+    ids?: string[];
+    older_than_days?: number;
+    scope?: SessionBatchScope;
+    include_archived?: boolean;
+  }): Promise<BatchPreviewResult> {
+    return previewSessionBatch(payload);
+  }
+
+  async function batchArchive(payload: {
+    ids?: string[];
+    older_than_days?: number;
+    scope?: SessionBatchScope;
+  }): Promise<BatchOperationResult> {
+    return batchArchiveSessions(payload);
+  }
+
+  async function batchDelete(payload: {
+    ids?: string[];
+    older_than_days?: number;
+    scope?: SessionBatchScope;
+    include_archived?: boolean;
+  }): Promise<BatchOperationResult> {
+    return batchDeleteSessions(payload);
+  }
+
   // EP-FE-01: store-level actions so components don't need to import features/*/api directly.
-  async function fetchTurns(sessionId: string, limit = 20, offset = 0): Promise<{ items: SessionTurn[]; total: number }> {
+  async function fetchTurns(sessionId: string, limit = 20, offset = 0) {
     return listSessionTurns(sessionId, limit, offset);
   }
 
-  async function fetchTimeline(sessionId: string): Promise<SessionTimeline> {
+  async function fetchTimeline(sessionId: string) {
     return getSessionTimeline(sessionId);
   }
 
@@ -82,5 +122,25 @@ export const useSessionStore = defineStore("session", () => {
     return listSessionChatMessages(sessionId);
   }
 
-  return { sessions, activeSession, loading, total, keyword, loadSessions, fetchSession, newSession, removeSession, archive, rename, setActiveSession, fetchTurns, fetchTimeline, fetchMessages };
+  return {
+    sessions,
+    activeSession,
+    loading,
+    total,
+    keyword,
+    loadSessions,
+    searchPage,
+    fetchSession,
+    newSession,
+    removeSession,
+    archive,
+    rename,
+    setActiveSession,
+    previewBatch,
+    batchArchive,
+    batchDelete,
+    fetchTurns,
+    fetchTimeline,
+    fetchMessages
+  };
 });

@@ -4,9 +4,11 @@ import (
 	"context"
 	"database/sql"
 	stderrors "errors"
+	"strings"
 
 	v1 "aranea-agents/api/kratos/session/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/strutil"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 
@@ -17,12 +19,13 @@ import (
 type SessionService struct {
 	v1.UnimplementedSessionServiceServer
 
-	uc *biz.SessionUsecase
+	uc  *biz.SessionUsecase
+	mon *biz.MonitorUsecase
 }
 
 // NewSessionService constructs the service.
-func NewSessionService(uc *biz.SessionUsecase) *SessionService {
-	return &SessionService{uc: uc}
+func NewSessionService(uc *biz.SessionUsecase, mon *biz.MonitorUsecase) *SessionService {
+	return &SessionService{uc: uc, mon: mon}
 }
 
 func toProtoSession(s biz.Session) *v1.Session {
@@ -240,6 +243,7 @@ func (s *SessionService) DeleteSession(ctx context.Context, req *v1.DeleteSessio
 	if err := s.uc.Delete(ctx, req.GetId()); err != nil {
 		return nil, mapSessionErr(err)
 	}
+	biz.RecordAdminAudit(ctx, s.mon, "delete.session", "session", req.GetId(), "single delete")
 	return &emptypb.Empty{}, nil
 }
 
@@ -248,6 +252,7 @@ func (s *SessionService) ArchiveSession(ctx context.Context, req *v1.ArchiveSess
 	if err := s.uc.Archive(ctx, req.GetId()); err != nil {
 		return nil, mapSessionErr(err)
 	}
+	biz.RecordAdminAudit(ctx, s.mon, "archive.session", "session", req.GetId(), "single archive")
 	return &emptypb.Empty{}, nil
 }
 
@@ -310,6 +315,32 @@ func (s *SessionService) ListSessionMessages(ctx context.Context, req *v1.ListSe
 	return &v1.ListSessionMessagesResponse{Items: out, Total: int32(total)}, nil
 }
 
+// SearchSessionMessages implements GET /v1/sessions/messages/search.
+func (s *SessionService) SearchSessionMessages(ctx context.Context, req *v1.SearchSessionMessagesRequest) (*v1.SearchSessionMessagesResponse, error) {
+	result, err := s.uc.SearchMessages(ctx, biz.MessageSearchQuery{
+		SessionID: strings.TrimSpace(req.GetSessionId()),
+		Keyword:   strings.TrimSpace(req.GetKeyword()),
+		Limit:     int(req.GetLimit()),
+		Offset:    int(req.GetOffset()),
+	})
+	if err != nil {
+		return nil, mapSessionErr(err)
+	}
+	out := make([]*v1.MessageSearchHit, 0, len(result.Items))
+	for i := range result.Items {
+		h := result.Items[i]
+		out = append(out, &v1.MessageSearchHit{
+			Id:              h.ID,
+			SessionId:       h.SessionID,
+			Role:            h.Role,
+			ContentMarkdown: h.ContentMarkdown,
+			Highlight:       h.Highlight,
+			CreatedAt:       h.CreatedAt,
+		})
+	}
+	return &v1.SearchSessionMessagesResponse{Items: out, Total: int32(result.Total)}, nil
+}
+
 // GetSessionTimeline implements GET /v1/sessions/{id}/timeline.
 func (s *SessionService) GetSessionTimeline(ctx context.Context, req *v1.GetSessionTimelineRequest) (*v1.SessionTimeline, error) {
 	q := biz.TimelineQuery{
@@ -351,9 +382,9 @@ func toProtoSessionTurn(t biz.SessionTurn) *v1.SessionTurn {
 		TotalCostMicroUsd:   t.TotalCostMicroUSD,
 		FinalProvider:       t.FinalProvider,
 		FinalModel:          t.FinalModel,
-		FinalContentPreview: t.FinalContentPreview,
+		FinalContentPreview: strutil.ValidUTF8(t.FinalContentPreview),
 		ErrorCode:           t.ErrorCode,
-		ErrorMessage:        t.ErrorMessage,
+		ErrorMessage:        strutil.ValidUTF8(t.ErrorMessage),
 		MetadataJson:        t.MetadataJSON,
 		CreatedAt:           t.CreatedAt,
 		UpdatedAt:           t.UpdatedAt,

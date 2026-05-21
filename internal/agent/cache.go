@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+
+	"aranea-agents/internal/event"
 	"time"
 
 	"aranea-agents/internal/biz"
@@ -161,10 +163,12 @@ func InvalidateAgentCache(agentID string) {
 func BuildTRPCLLMAgentCached(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) (trpcagent.Agent, error) {
 	key := BuildCacheKey(ag, deps)
 	if cached := globalBuildCache.get(key); cached != nil {
-		arametrics.AgentBuildCacheHits.Inc() // EP-OBS-04
+		arametrics.AgentBuildCacheHits.Inc()
+		event.CtxFlowLogDone(ctx, "system.agent.cache_hit", "Agent 构建缓存命中", event.P("agent_id", ag.ID), event.P("agent_key", ag.AgentKey), event.P("cache_key", key))
 		return cached, nil
 	}
-	arametrics.AgentBuildCacheMisses.Inc() // EP-OBS-04
+	arametrics.AgentBuildCacheMisses.Inc()
+	event.CtxFlowLogDone(ctx, "system.agent.cache_miss", "Agent 构建缓存未命中", event.P("agent_id", ag.ID), event.P("agent_key", ag.AgentKey), event.P("cache_key", key))
 	built, err := BuildTRPCLLMAgent(ctx, ag, deps)
 	if err != nil {
 		return nil, err

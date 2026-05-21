@@ -10,28 +10,30 @@
 
 | 能力 | 状态 | 证据 |
 |------|------|------|
-| Agent 运行 + 事件流 | ✅ | `NewTRPCRunner` 返回 `ManagedRunner` |
-| 运行状态查询 | ✅ | `GetRunStatus` RPC + `runStatuses` sync.Map |
-| 停止/取消运行 | ✅ | `StopGeneration` RPC + `CancelRun` + `CancelTRPCRun` |
-| 待执行队列 | ✅ | `pendingQueue` + `processPendingQueue` |
-| 插件注入 | ✅ | `plugintrpc.Runtime` + `WithPlugins` 传入 Runner |
-| AwaitUserReply（Service 层） | ✅ | `serviceawaitreply.ServiceTool` + `AwaitUserReply` RPC |
-| ArtifactService 适配器 | ✅ | `internal/artifact/trpc/service.go` 实现 `trpcartifact.Service` |
-| SteerableRunner 支持 | ✅ | `EnqueueTRPCUserMessage` 辅助函数 |
-| BuildCache LRU + TTL | ✅ | `cache.go` 已有 TTL 过期清理 |
+| Agent 运行 + 事件流 | ✅ | `NewTRPCRunner` → `ManagedRunner` |
+| 运行状态查询 | ✅ | `GetRunStatus` RPC；`RunRegistry` + 运行中合并 `ManagedRunner.RunStatus` |
+| 停止/取消运行 | ✅ | `StopGeneration` / WS `cancel` → `RunRegistry.Cancel` |
+| 运行中追加消息 | ✅ | `EnqueueUserMessage` RPC + WS `enqueue_message` |
+| 待执行队列 | ✅ | `internal/runtime/pending_queue.go` + `ChatUsecase` |
+| 插件注入 | ✅ | `plugintrpc.Runtime` + `WithPlugins` |
+| ArtifactService | ✅ | `PersistenceSet.Artifact` → `WithArtifactService` |
+| AgentFactory | ✅ | `BizAgentFactoryOptions` 按 `agent_key` 注册 |
+| SessionIngestor | 🟡 | `BizSessionIngestor` 已注入；外部 backend 占位（避免与 auto-memory 重复） |
+| AwaitUserReply（Service 层） | ✅ | `serviceawaitreply` + `AwaitUserReply` RPC |
+| AwaitUserReplyRouting（框架层） | ✅ | `AwaitHook != nil` 时 `RunnerManager` 启用 |
+| SteerableRunner | ✅ | `trpcrunner.EnqueueUserMessage` / `RunRegistry.EnqueueUserMessage` |
+| BuildCache LRU + TTL | ✅ | `internal/agent/cache.go` |
+| RunRegistry / RunnerManager | ✅ | `internal/runtime/run_registry.go`、`runner_manager.go` |
 
-### 缺失能力
+### 缺失或规划项
 
 | 能力 | 状态 | 说明 |
 |------|------|------|
-| AgentFactory 动态创建 | ❌ | Runner 层面未注册 `WithAgentFactory` |
-| SessionIngestor | ❌ | 未实现 `WithSessionIngestor`，Session 完成后无外部记忆摄入 |
-| AwaitUserReplyRouting（框架层） | ❌ | 未启用 `WithAwaitUserReplyRouting`，当前路由由 Service 层自行处理 |
-| AgentLookup | ❌ | Runner 未维护 Agent 注册表，TransferTool 无法按名称查找 |
-| RalphLoop | ❌ | 未配置 `WithRalphLoop`，无迭代验证循环 |
-| ArtifactService 注入 Runner | ❌ | 适配器已实现但未通过 `WithArtifactService` 注入 Runner |
-| RunnerRegistry / RunnerManager | ❌ | 无多 Runner 实例管理，当前每次请求创建临时 Runner |
-| CancelRun / EnqueueUserMessage RPC | ❌ | Proto 仅有 `StopGeneration`，缺少细粒度的 `CancelRun` 和 `EnqueueUserMessage` RPC |
+| AgentLookup / TransferTool 按名解析 | ✅ | `WithAgent` 注册实例 + `WithAgentFactory` 回退（agent_key） |
+| RalphLoop（Aranea 配置） | ✅ | `agent_runtime_settings` + `RalphLoopConfigFromSettings` |
+| 外部 Session 摄入（Mem0 等） | 🟡 | ingest hook 已接；Mem0 等外部 backend 待扩展 |
+| 独立 `CancelRun` RPC | — | 非目标；沿用 `StopGeneration` + WS `cancel` |
+| Web 运行状态 / 追加消息 UI | ✅ | `ChatRunnerStatus.vue`、`ChatEnqueueMessage.vue` |
 
 ---
 

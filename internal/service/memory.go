@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	v1 "aranea-agents/api/kratos/memory/v1"
-	aramemory "aranea-agents/internal/memory"
+	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/jsonutil"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -15,10 +15,10 @@ import (
 type MemoryService struct {
 	v1.UnimplementedMemoryServiceServer
 
-	admin aramemory.SessionAdminStore
+	admin *biz.MemoryAdminUsecase
 }
 
-func NewMemoryService(admin aramemory.SessionAdminStore) *MemoryService {
+func NewMemoryService(admin *biz.MemoryAdminUsecase) *MemoryService {
 	return &MemoryService{admin: admin}
 }
 
@@ -446,7 +446,7 @@ func (s *MemoryService) UpsertMemoryFact(ctx context.Context, req *v1.UpsertMemo
 	if f == nil {
 		return nil, kerrors.BadRequest("MEMORY", "fact is required")
 	}
-	raw, err := s.admin.UpsertFactRow(ctx, aramemory.FactUpsert{
+	raw, err := s.admin.UpsertFactRow(ctx, biz.FactUpsert{
 		ID:                    strings.TrimSpace(f.GetId()),
 		ScopeType:             strings.TrimSpace(f.GetScopeType()),
 		ScopeID:               strings.TrimSpace(f.GetScopeId()),
@@ -493,7 +493,7 @@ func (s *MemoryService) AppendEvolutionEvent(ctx context.Context, req *v1.Append
 	if aid == "" {
 		return nil, kerrors.BadRequest("MEMORY", "agent_id is required")
 	}
-	raw, err := s.admin.InsertEvolutionEventRow(ctx, aramemory.EvolutionEventInsert{
+	raw, err := s.admin.InsertEvolutionEventRow(ctx, biz.EvolutionEventInsert{
 		AgentID:       aid,
 		WorkspaceID:   strings.TrimSpace(req.GetWorkspaceId()),
 		EventKind:     strings.TrimSpace(req.GetEventKind()),

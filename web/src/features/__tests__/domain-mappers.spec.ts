@@ -10,22 +10,10 @@
 
 import { describe, it, expect } from "vitest";
 import { asRecord, pickBool, pickI32, pickNum, pickStr } from "../../shared/wireJson";
+import { mapCollection } from "../knowledge/mappers";
+import { mapDataset, mapRun } from "../evaluation/mappers";
 
 // ── Knowledge collection mapper ──────────────────────────────────────────────
-
-function mapCollection(raw: unknown) {
-  const r = asRecord(raw);
-  return {
-    id: pickStr(r, "id", "id"),
-    name: pickStr(r, "name", "name"),
-    embedding_model: pickStr(r, "embedding_model", "embeddingModel"),
-    dim: pickI32(r, "dim", "dim"),
-    status: pickStr(r, "status", "status"),
-    document_count: pickI32(r, "document_count", "documentCount"),
-    chunk_count: pickI32(r, "chunk_count", "chunkCount"),
-    created_at: pickStr(r, "created_at", "createdAt"),
-  };
-}
 
 describe("knowledge mapCollection", () => {
   it("maps snake_case fields correctly", () => {
@@ -130,29 +118,6 @@ describe("artifact mapMeta", () => {
 });
 
 // ── Evaluation dataset/run mapper ────────────────────────────────────────────
-
-function mapDataset(raw: unknown) {
-  const r = asRecord(raw);
-  return {
-    id: pickStr(r, "id", "id"),
-    name: pickStr(r, "name", "name"),
-    case_count: pickI32(r, "case_count", "caseCount"),
-    created_at: pickStr(r, "created_at", "createdAt"),
-  };
-}
-
-function mapRun(raw: unknown) {
-  const r = asRecord(raw);
-  return {
-    id: pickStr(r, "id", "id"),
-    dataset_id: pickStr(r, "dataset_id", "datasetId"),
-    agent_id: pickStr(r, "agent_id", "agentId"),
-    status: pickStr(r, "status", "status"),
-    total_cases: pickI32(r, "total_cases", "totalCases"),
-    completed_cases: pickI32(r, "completed_cases", "completedCases"),
-    exact_match_score: pickNum(r, "exact_match_score", "exactMatchScore"),
-  };
-}
 
 describe("evaluation mapDataset", () => {
   it("handles snake_case case_count", () => {

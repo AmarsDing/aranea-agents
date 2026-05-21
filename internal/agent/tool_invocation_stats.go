@@ -3,14 +3,17 @@ package agent
 import (
 	"context"
 	"strings"
+
+	"aranea-agents/internal/mcp/classify"
 )
 
 // classifyToolInvocation returns whether a tool call should bump MCP / skill session counters.
-func classifyToolInvocation(ctx context.Context, toolKey string, deps TRPCBuilderDeps) (mcp, skill bool) {
-	key := strings.ToLower(strings.TrimSpace(toolKey))
-	if key == "mcp_call" {
+func classifyToolInvocation(ctx context.Context, toolKey string, result any, deps TRPCBuilderDeps) (mcp, skill bool) {
+	_ = ctx
+	if classify.IsMCPToolInvocation(toolKey, result) {
 		return true, false
 	}
+	key := strings.ToLower(strings.TrimSpace(toolKey))
 	switch key {
 	case "use_skill", "skill_search":
 		return false, true

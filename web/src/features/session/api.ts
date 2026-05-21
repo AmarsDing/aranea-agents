@@ -9,6 +9,7 @@ import type {
   SessionTurn as KratosSessionTurn
 } from "../../services/kratos/session/v1/index";
 import { asRecord, pickStr } from "../../shared/wireJson";
+import type { BatchOperationResult, BatchPreviewResult, SessionBatchScope } from "./types";
 import type { Message } from "../chat/types";
 
 const sessionApi = createSessionService();
@@ -252,6 +253,83 @@ export async function archiveSession(id: string): Promise<void> {
   await sessionApi.ArchiveSession({ id });
 }
 
+function toBatchScope(scope: SessionBatchScope = {}) {
+  return {
+    ownerType: scope.owner_type,
+    agentId: scope.agent_id,
+    teamId: scope.team_id,
+    status: scope.status,
+    contextStatus: scope.context_status,
+    keyword: scope.keyword,
+    userId: undefined
+  };
+}
+
+export async function previewSessionBatch(payload: {
+  mode: "archive" | "delete";
+  ids?: string[];
+  older_than_days?: number;
+  scope?: SessionBatchScope;
+  include_archived?: boolean;
+}): Promise<BatchPreviewResult> {
+  const data = await sessionApi.BatchPreviewSessions({
+    mode: payload.mode,
+    ids: payload.ids,
+    olderThanDays: payload.older_than_days,
+    scope: toBatchScope(payload.scope),
+    includeArchived: payload.include_archived
+  });
+  return {
+    matched: data.matched ?? 0,
+    skipped_running: data.skippedRunning ?? 0,
+    skipped_not_found: data.skippedNotFound ?? 0,
+    truncated: data.truncated ?? false,
+    sample_ids: data.sampleIds ?? []
+  };
+}
+
+export async function batchArchiveSessions(payload: {
+  ids?: string[];
+  older_than_days?: number;
+  scope?: SessionBatchScope;
+}): Promise<BatchOperationResult> {
+  const data = await sessionApi.BatchArchiveSessions({
+    ids: payload.ids,
+    olderThanDays: payload.older_than_days,
+    scope: toBatchScope(payload.scope)
+  });
+  return {
+    matched: data.matched ?? 0,
+    processed: data.processed ?? 0,
+    skipped_running: data.skippedRunning ?? 0,
+    skipped_not_found: data.skippedNotFound ?? 0,
+    truncated: data.truncated ?? false,
+    failed_ids: data.failedIds ?? []
+  };
+}
+
+export async function batchDeleteSessions(payload: {
+  ids?: string[];
+  older_than_days?: number;
+  scope?: SessionBatchScope;
+  include_archived?: boolean;
+}): Promise<BatchOperationResult> {
+  const data = await sessionApi.BatchDeleteSessions({
+    ids: payload.ids,
+    olderThanDays: payload.older_than_days,
+    scope: toBatchScope(payload.scope),
+    includeArchived: payload.include_archived
+  });
+  return {
+    matched: data.matched ?? 0,
+    processed: data.processed ?? 0,
+    skipped_running: data.skippedRunning ?? 0,
+    skipped_not_found: data.skippedNotFound ?? 0,
+    truncated: data.truncated ?? false,
+    failed_ids: data.failedIds ?? []
+  };
+}
+
 export async function updateSessionTitle(id: string, title: string): Promise<Session> {
   const data = await sessionApi.UpdateSession({ id, title, tagsJson: undefined, visibility: undefined, metadataJson: undefined, dialogMode: undefined, defaultProvider: undefined, defaultModel: undefined });
   return kratosSessionToLegacy(data);
@@ -285,6 +363,39 @@ function kratosChatRowToMessage(row: ChatMessageRow): Message {
 export async function listSessionChatMessages(sessionID: string): Promise<Message[]> {
   const data = await sessionApi.ListSessionMessages({ id: sessionID, limit: undefined, offset: undefined });
   return (data.items ?? []).map(kratosChatRowToMessage);
+}
+
+export type MessageSearchResult = {
+  id: string;
+  session_id: string;
+  role: string;
+  content_markdown: string;
+  highlight: string;
+  created_at: string;
+};
+
+/** `GET /v1/sessions/messages/search` — FTS5 全文检索（需 messages_fts 表）。 */
+export async function searchSessionMessages(params: {
+  sessionId?: string;
+  keyword: string;
+  limit?: number;
+  offset?: number;
+}): Promise<{ items: MessageSearchResult[]; total: number }> {
+  const data = await sessionApi.SearchSessionMessages({
+    sessionId: params.sessionId,
+    keyword: params.keyword,
+    limit: params.limit,
+    offset: params.offset
+  });
+  const items = (data.items ?? []).map((row) => ({
+    id: String(row.id ?? ""),
+    session_id: String(row.sessionId ?? ""),
+    role: String(row.role ?? ""),
+    content_markdown: String(row.contentMarkdown ?? ""),
+    highlight: String(row.highlight ?? ""),
+    created_at: String(row.createdAt ?? "")
+  }));
+  return { items, total: Number(data.total ?? items.length) };
 }
 
 export async function restoreSession(id: string): Promise<Session> {

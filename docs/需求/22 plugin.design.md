@@ -15,6 +15,8 @@ Plugin 是 ADK 运行时的回调扩展机制，用于在 Agent 执行过程中�
 
 当前系统管理内置 Plugin 的启用、配置、排序和绑定关系，不支持用户上传任意 Go 插件代码。
 
+**回调编排（2026-05-21）**：实现以 `internal/plugin/trpc/orchestration.go` 为权威。DB 内置 Plugin 走 Runner `WithPlugins`（按 `sort_order`）；产品 Tool 确认与 Hook 走 LLMAgent Callback Chain；`model_router` / `cost_guard` 的 catalog 换模走 `agent.ModelSelector`，Plugin BeforeModel 仅 telemetry / 预算拦截。
+
 ---
 
 ## 二、Proto 层

@@ -198,6 +198,9 @@ func wireApp(*conf.Server, *conf.Data, log.Logger) (wireOut, func(), error) {
 2. 运行 `make wire` 生成 `wire_gen.go`
 3. **禁止手动编辑 `wire_gen.go`**
 4. 每层新增构造器后，需更新对应层的 `ProviderSet`
+5. **`wire.go` 禁止全局 bootstrap**：不得在 provider 内调用 `SetGlobal*` / `SetCredentialKeyResolver` / `mcpobserve.Set*`；副作用放进 `data`/`biz`/`service` 的 `New*` 或 `main` 生命周期钩子（详见 [AI-DEVELOPMENT-SPECIFICATION.md §5.4](./AI-DEVELOPMENT-SPECIFICATION.md#54-依赖注入)）
+6. 改 Wire 后本地 **`make wire-clean`**；PR 须通过 CI `wire-clean` job
+7. **`make lint` R11** 自动扫描 `cmd/admin/wire.go` 中的 bootstrap 反模式
 
 ---
 

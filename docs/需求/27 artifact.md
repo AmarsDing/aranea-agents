@@ -2,15 +2,17 @@
 
 > 对标 `pkg/trpc-agent-go/artifact` 包，实现制品存储和版本管理。
 >
-> **2026-05-19 现状对齐**：
+> **2026-05-21 现状对齐**：
 > - ✅ Proto / Service / Biz / FS Repo / Wire / HTTP+gRPC 已注册。
 > - ✅ trpc ServiceAdapter 已实现（`internal/artifact/trpc/service.go`），桥接 biz.ArtifactUsecase 到 trpc artifact.Service 接口。
 > - ✅ 版本管理：FS Repo 支持同 session+name 多版本存储与按版本加载。
 > - ✅ 前端 API 层 + Store 层已实现（`features/artifact/` + `stores/artifact/`）。
-> - 🟡 Runner 侧制品闭环：`TRPCRunnerDeps` 尚未注入 `ArtifactService`，Agent 运行时无法通过 `artifact.ServiceKey` 访问制品。
+> - ✅ Runner 侧制品闭环：`TRPCRunnerDeps` 已注入 `ArtifactService`，Agent 运行时可通过 `artifact.ServiceKey` 访问制品。
+> - ✅ CodeExecutor 产出物自动保存：`artifactSavingExecutor` + `WrapWithArtifactSave`。
+> - ✅ PreviewArtifact RPC 已实现；前端 `ArtifactPreview.vue` 独立组件支持图片/PDF/代码预览。
+> - ✅ 签名下载 URL 已实现（`artifact/sign.go` HMAC-SHA256 + `ServeSignedDownload` HTTP handler）。
+> - ✅ 前端制品列表/预览组件已实现（`ArtifactList.vue` + `ArtifactPreview.vue` + `ChatSessionArtifactsPanel`）。
 > - ❌ S3 / COS 后端未启用，仅本地 FS；多租户路径隔离待 M2（EP-WS-01）。
-> - ❌ 前端制品列表/预览组件未实现（仅 API + Store）。
-> - ❌ 签名下载 URL 未实现。
 >
 > 进度以 `guides/execution-plan.md` 附录 A 为准。运维要点见设计文档 §6。
 
@@ -93,11 +95,11 @@ trpc-agent-go `artifact` 包定义了 Agent 运行时制品的核心抽象：
 |---|----------|--------|------|
 | 1 | 制品可上传/下载/列出/删除 | P1 | ✅ |
 | 2 | 同一文件名可保存多个版本，可按版本加载 | P2 | ✅ |
-| 3 | Agent 运行时可通过 artifact.Service 保存/加载制品 | P1 | 🟡 适配器已实现，Runner 未注入 |
-| 4 | 代码执行产出物自动保存为制品 | P1 | ❌ |
+| 3 | Agent 运行时可通过 artifact.Service 保存/加载制品 | P1 | ✅ |
+| 4 | 代码执行产出物自动保存为制品 | P1 | ✅ |
 | 5 | 通过 REST/gRPC API 可管理制品完整生命周期 | P1 | ✅ |
-| 6 | 图片/PDF/代码可在浏览器中预览 | P2 | ❌ |
-| 7 | 下载链接有时效性签名 | P3 | ❌ |
+| 6 | 图片/PDF/代码可在浏览器中预览 | P2 | ✅ |
+| 7 | 下载链接有时效性签名 | P3 | ✅ |
 | 8 | 制品可存储到 S3/COS，按租户隔离 | P3 | ❌ |
 
 ---

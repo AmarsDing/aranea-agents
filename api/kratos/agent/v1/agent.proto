@@ -113,6 +113,18 @@ message AgentRuntimeSettings {
   string reasoning_level = 99;
   // planner_kind selects the planning strategy: "" | "builtin" | "react" | "a2ui"
   string planner_kind = 100;
+  // code_executor_type selects Skill code execution backend: local | docker | e2b | container
+  string code_executor_type = 101;
+  // planner_config_json holds planner-specific options (shape depends on planner_kind)
+  string planner_config_json = 102;
+  // Ralph Loop: iterative run until completion_promise and/or verify_command succeeds
+  int32 ralph_loop_max_iterations = 103;
+  string ralph_loop_completion_promise = 104;
+  string ralph_loop_verify_command = 105;
+  int32 ralph_loop_verify_timeout_seconds = 106;
+  string ralph_loop_promise_tag_open = 107;
+  string ralph_loop_promise_tag_close = 108;
+  string ralph_loop_verify_work_dir = 109;
 }
 
 message AgentPromptFile {
@@ -123,6 +135,16 @@ message AgentPromptFile {
   int32 sort_order = 5;
   string created_at = 6;
   string updated_at = 7;
+}
+
+// A2AProxyConfig connects an a2a_proxy catalog agent to a remote A2A service.
+message A2AProxyConfig {
+  string remote_url = 1;
+  string agent_card_url = 2;
+  bool enable_streaming = 3;
+  string auth_type = 4;
+  string auth_config_json = 5;
+  int32 timeout_seconds = 6;
 }
 
 message Agent {
@@ -146,6 +168,17 @@ message Agent {
   string deleted_at = 18;
   AgentRuntimeSettings settings = 19;
   repeated AgentPromptFile files = 20;
+  // agent_kind: "" | "llm" | "a2a_proxy"
+  string agent_kind = 21;
+  A2AProxyConfig a2a_proxy_config = 22;
+  // a2a_endpoint_enabled: true when A2A AgentCard is enabled (list enrichment).
+  bool a2a_endpoint_enabled = 23;
+  // List enrichment: latest session run lifecycle (runtime.status) or idle/completed.
+  string last_run_status = 24;
+  string last_run_at = 25;
+  int32 pending_evolution_count = 26;
+  // Creator user id (stringified auth UserID).
+  string created_by = 27;
 }
 
 message ListAgentsRequest {
@@ -155,6 +188,17 @@ message ListAgentsRequest {
   string category_id = 4;
   int32 limit = 5;
   int32 offset = 6;
+  // Filter by creator: empty = all; "mine" = current user; otherwise specific user id.
+  string created_by = 7;
+}
+
+message AgentCreator {
+  string user_id = 1;
+  string label = 2;
+}
+
+message ListAgentCreatorsResponse {
+  repeated AgentCreator items = 1;
 }
 
 message ListAgentsResponse {
@@ -167,8 +211,9 @@ message ListAgentsResponse {
 message CreateAgentRequest {
   string agent_key = 1 [(google.api.field_behavior) = REQUIRED];
   string display_name = 2 [(google.api.field_behavior) = REQUIRED];
-  string provider = 3 [(google.api.field_behavior) = REQUIRED];
-  string model = 4 [(google.api.field_behavior) = REQUIRED];
+  // Required for llm; omit for agent_kind=a2a_proxy (server defaults provider=a2a, model=proxy).
+  string provider = 3;
+  string model = 4;
   string icon = 5;
   string agent_description = 6;
   string category_position_id = 7;
@@ -178,6 +223,8 @@ message CreateAgentRequest {
   string config_json = 11;
   AgentRuntimeSettings settings = 12;
   repeated AgentPromptFile files = 13;
+  string agent_kind = 14;
+  A2AProxyConfig a2a_proxy_config = 15;
 }
 
 message GetAgentRequest {
@@ -272,6 +319,15 @@ message EstimateTokensResponse {
   repeated FileTokenEstimate file_estimates = 2;
 }
 
+message CheckAgentKeyRequest {
+  string agent_key = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message CheckAgentKeyResponse {
+  bool available = 1;
+  string message = 2;
+}
+
 message GetAgentEvolutionMetricsRequest {
   string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
   string time_range = 2;
@@ -322,6 +378,34 @@ message ApplyEvolutionSuggestionRequest {
 message RejectEvolutionSuggestionRequest {
   string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
   string suggestion_id = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message EditPromptFileByAIRequest {
+  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string file_id = 2 [(google.api.field_behavior) = REQUIRED];
+  string instruction = 3 [(google.api.field_behavior) = REQUIRED];
+}
+
+message EditPromptFileByAIResponse {
+  AgentPromptFile file = 1;
+}
+
+message AgentTemplate {
+  string key = 1;
+  string label = 2;
+  string icon = 3;
+  string description = 4;
+  string display_name = 5;
+  string provider = 6;
+  string model = 7;
+}
+
+message ListAgentTemplatesResponse {
+  repeated AgentTemplate items = 1;
+}
+
+message DuplicateAgentRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
 }
 
 service AgentService {
@@ -381,6 +465,24 @@ service AgentService {
   }
   rpc EstimateTokens(EstimateTokensRequest) returns (EstimateTokensResponse) {
     option (google.api.http) = {post: "/v1/agents/{agent_id}/files/estimate-tokens" body: "*"};
+  }
+  rpc EditPromptFileByAI(EditPromptFileByAIRequest) returns (EditPromptFileByAIResponse) {
+    option (google.api.http) = {
+      post: "/v1/agents/{agent_id}/files/{file_id}/ai-edit"
+      body: "*"
+    };
+  }
+  rpc ListAgentTemplates(google.protobuf.Empty) returns (ListAgentTemplatesResponse) {
+    option (google.api.http) = {get: "/v1/agent-templates"};
+  }
+  rpc ListAgentCreators(google.protobuf.Empty) returns (ListAgentCreatorsResponse) {
+    option (google.api.http) = {get: "/v1/agents/creators"};
+  }
+  rpc DuplicateAgent(DuplicateAgentRequest) returns (Agent) {
+    option (google.api.http) = {post: "/v1/agents/{id}/duplicate" body: "*"};
+  }
+  rpc CheckAgentKey(CheckAgentKeyRequest) returns (CheckAgentKeyResponse) {
+    option (google.api.http) = {get: "/v1/agent-keys/check"};
   }
   rpc GetAgentEvolutionMetrics(GetAgentEvolutionMetricsRequest) returns (EvolutionMetricsResponse) {
     option (google.api.http) = {get: "/v1/agents/{agent_id}/evolution/metrics"};

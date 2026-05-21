@@ -95,6 +95,7 @@ func RuntimeCapabilityCue(ctx context.Context, d Deps, ag biz.Agent) string {
 				}
 				if len(keys) > 0 {
 					b.WriteString("- Effective tool keys this turn: " + strings.Join(keys, ", ") + "\n")
+					b.WriteString("- Call tools by their runtime function names: save_file (not write_file), exec_command (not shell_exec), list_file (not list_files).\n")
 				} else {
 					b.WriteString("- Effective tool keys: (none under current profile and allow list)\n")
 				}

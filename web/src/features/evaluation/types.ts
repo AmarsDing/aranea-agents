@@ -20,6 +20,11 @@ export type EvalRun = {
   contains_match_score: number;
   llm_judge_score: number;
   tool_call_accuracy: number;
+  pass_at_k?: number;
+  pass_hat_k?: number;
+  trigger_source?: string;
+  num_runs?: number;
+  scores_json?: string;
   error_message: string;
   started_at: string;
   finished_at: string;
@@ -35,8 +40,22 @@ export type EvalCaseResult = {
   contains_match: boolean;
   llm_judge_score: number;
   tool_call_accuracy: number;
+  scores_json?: string;
   error_message: string;
   created_at: string;
+  human_pass?: boolean | null;
+  human_score?: number | null;
+  human_comment?: string;
+  annotated_at?: string;
+  annotated_by?: string;
+};
+
+export type AnnotateCaseResultInput = {
+  run_id: string;
+  result_id: string;
+  human_pass?: boolean | null;
+  human_score?: number | null;
+  human_comment?: string;
 };
 
 export type CreateDatasetInput = {
@@ -47,10 +66,11 @@ export type CreateDatasetInput = {
 export type RunEvaluationInput = {
   dataset_id: string;
   agent_id: string;
-  /** comma-separated list of metrics; empty = all */
+  /** comma-separated list of metrics; empty = all core four; extended: json_match,xml_match,rouge_l,tool_trajectory */
   metrics?: string;
   /** AgentEvaluator MultiRun repeat count (default 1) */
   num_runs?: number;
+  use_user_simulation?: boolean;
 };
 
 export type ListDatasetsParams = {
@@ -78,4 +98,33 @@ export type ListRunsResult = {
 export type GetRunResultsResult = {
   items: EvalCaseResult[];
   total: number;
+};
+
+export type EvalTrendPoint = {
+  run_id: string;
+  created_at: string;
+  trigger_source: string;
+  exact_match_score: number;
+  contains_match_score: number;
+  llm_judge_score: number;
+  tool_call_accuracy: number;
+  pass_at_k: number;
+  pass_hat_k: number;
+};
+
+export type EvalRunComparison = {
+  run_id: string;
+  agent_id: string;
+  dataset_id: string;
+  created_at: string;
+  exact_match_score: number;
+  contains_match_score: number;
+  llm_judge_score: number;
+  tool_call_accuracy: number;
+  pass_at_k: number;
+  pass_hat_k: number;
+  delta_exact_match: number;
+  delta_contains_match: number;
+  delta_llm_judge: number;
+  delta_tool_call_accuracy: number;
 };

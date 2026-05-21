@@ -1,6 +1,6 @@
 # Session — 开发计划
 
-> **版本**：2026-05-18 | **状态**：✅ 端到端可用
+> **版本**：2026-05-20 | **状态**：🟢 Phase 1b 批量治理已实现
 > **需求**：[10 session.md](./10%20session.md) · **设计**：[10 session.design.md](./10%20session.design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：—
 
@@ -44,6 +44,16 @@ Session 管理：管理用户与 Agent/Team 的对话会话，包括会话创建
 
 ## 3. 差距与优化
 
+### 3.0 会话历史批量治理（Phase 1b — 2026-05-20 新增）
+
+| 项 | 状态 | 说明 |
+|----|------|------|
+| 列表行内删除 + 确认 | ✅ | `DeleteSession` + `SessionDeleteConfirmDialog` |
+| 批量选择 + 勾选归档/删除 | ✅ | `SessionsBulkToolbar` + 进度条；勾选归档无二次确认 |
+| 按保留天数批量归档 | ✅ | `BatchPreviewSessions` + `BatchArchiveSessions` RPC |
+| 按保留天数批量删除 | ✅ | `BatchPreviewSessions` + `BatchDeleteSessions` RPC |
+| 批量 Audit | ✅ | `archive.session.batch` / `delete.session.batch` |
+
 ### 3.1 代码优化
 
 1. **P1**：`session_repo_summaries.go` 使用 `errors.New` 而非 `kerrors`，需替换为 `kerrors.BadRequest`/`kerrors.InternalServer`，对齐开发规范 §10 原则 10。
@@ -70,6 +80,28 @@ Session 管理：管理用户与 Agent/Team 的对话会话，包括会话创建
 ---
 
 ## 4. 开发阶段
+
+### Phase 1b — 会话历史批量治理
+
+| ID | 任务 | 优先级 | 状态 |
+|----|------|--------|------|
+| SES-1b-01 | Proto：`BatchPreview/BatchArchive/BatchDelete` + `make api` | P1 | ✅ |
+| SES-1b-02 | `SessionUsecase` + Repo 批量 cutoff 查询与批量 UPDATE | P1 | ✅ |
+| SES-1b-03 | `SessionService` 实现 + Audit 写入 | P1 | ✅ |
+| SES-1b-04 | 前端：行删除 + `SessionDeleteConfirmDialog` | P1 | ✅ |
+| SES-1b-05 | 前端：批量选择 + `SessionsBulkSelectionBar` + 进度条 | P1 | ✅ |
+| SES-1b-06 | 前端：`SessionRetentionDialog`（按天数归档/删除） | P1 | ✅ |
+| SES-1b-07 | `useSessionsPage.ts` 拆分 SessionsPage 编排 | P2 | ✅ |
+| SES-1b-08 | 单测：cutoff 边界、running 排除、UTF-8 preview（已有） | P2 | ✅ |
+
+**验收**：
+
+1. 列表每行可删除，确认后永久从列表消失（软删除）。
+2. 「批量选择」后勾选归档：无弹窗，显示进度条，完成后 notify。
+3. 「批量选择」后勾选删除：确认弹窗 + 进度条。
+4. 「按天数归档/删除」：输入保留天数 → 预览 matched → 确认 → 进度 + 刷新。
+5. `running` session 不被批量/单条删除；批量删除默认不含已归档。
+6. `go build ./...` · `cd web && pnpm build`。
 
 ### Phase 1（近期优化）
 - O1: `session_repo_summaries.go` 错误处理统一（kerrors）
@@ -120,14 +152,21 @@ Session 管理：管理用户与 Agent/Team 的对话会话，包括会话创建
 | 10 | 前端 Context 趋势线 | P3 | Phase 3 |
 | 11 | ExportSession RPC（Markdown/JSON） | P3 | Phase 4 |
 | 12 | SearchMessages RPC（全文检索） | P3 | Phase 4 |
-| 13 | trpc session.Service 适配器 | P3 | Phase 5 |
-| 14 | Event 分页 + Session Track | P3 | Phase 5 |
-| 15 | Session Ingestor | P4 | Phase 5 |
-| 16 | 多后端支持（Redis/PG） | P4 | Phase 5 |
+| **13** | **Session 批量治理 Phase 1b（见上表 SES-1b-*）** | **P1** | **Phase 1b** |
+| 14 | trpc session.Service 适配器 | P3 | Phase 5 |
+| 15 | Event 分页 + Session Track | P3 | Phase 5 |
+| 16 | Session Ingestor | P4 | Phase 5 |
+| 17 | 多后端支持（Redis/PG） | P4 | Phase 5 |
 
 ---
 
 ## 6. 验收标准
+
+### Phase 1b
+- [x] 行内删除 + 永久删除确认
+- [x] 批量选择：勾选归档（进度条、无确认）/ 勾选删除（确认+进度）
+- [x] 按保留天数：批量归档 / 批量删除（预览弹窗 + 进度）
+- [x] Batch RPC + Audit
 
 ### Phase 1
 - [ ] `session_repo_summaries.go` 全部使用 kerrors

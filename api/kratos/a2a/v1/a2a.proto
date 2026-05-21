@@ -4,6 +4,7 @@ package kratos.a2a.v1;
 
 import "google/api/annotations.proto";
 import "google/api/field_behavior.proto";
+import "google/protobuf/empty.proto";
 
 option go_package = "aranea-agents/api/kratos/a2a/v1;v1";
 option java_multiple_files = true;
@@ -25,6 +26,12 @@ message A2AAgentCard {
   bool   enabled = 4;
   repeated A2ACapability capabilities = 5;
   string updated_at = 6;
+  // source classifies discover/gateway entries: local | remote
+  string source = 7;
+  // endpoint_url is the public A2A URL when source=local and endpoint is enabled.
+  string endpoint_url = 8;
+  // remote_url is set when source=remote.
+  string remote_url = 9;
 }
 
 // A2AInvokeRequest sends a request from one agent to another.
@@ -36,6 +43,51 @@ message A2AInvokeRequest {
   string caller_session_id = 4;
   // timeout_seconds overrides the default invocation timeout.
   int32  timeout_seconds = 5;
+  // workspace scopes Admin Invoke to a workspace (must match callee card workspace).
+  string workspace = 6;
+}
+
+// A2ARemoteAgent is a workspace-scoped registry entry for an external A2A service.
+message A2ARemoteAgent {
+  string id = 1;
+  string workspace = 2;
+  string display_name = 3;
+  string remote_url = 4;
+  string agent_card_url = 5;
+  string auth_type = 6;
+  // auth_config_json is opaque JSON (api_key, token, mtls cert paths); never returned on read.
+  bool enabled = 7;
+  A2AAgentCard discovered_card = 8;
+  string created_at = 9;
+  string updated_at = 10;
+}
+
+message RegisterRemoteAgentRequest {
+  string workspace = 1;
+  string remote_url = 2 [(google.api.field_behavior) = REQUIRED];
+  string agent_card_url = 3;
+  string display_name = 4;
+  string auth_type = 5;
+  string auth_config_json = 6;
+  optional bool enabled = 7;
+}
+
+message ListRemoteAgentsRequest {
+  string workspace = 1;
+}
+
+message ListRemoteAgentsResponse {
+  repeated A2ARemoteAgent items = 1;
+}
+
+message DeleteRemoteAgentRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message DiscoverRemoteAgentRequest {
+  string remote_url = 1 [(google.api.field_behavior) = REQUIRED];
+  string auth_type = 2;
+  string auth_config_json = 3;
 }
 
 // A2AInvokeResponse returns the result from the callee agent.
@@ -79,6 +131,34 @@ message DiscoverRequest {
 
 message DiscoverResponse {
   repeated A2AAgentCard agents = 1;
+}
+
+// A2AGatewayEntry aggregates local endpoints and remote registry rows for federation.
+message A2AGatewayEntry {
+  A2AAgentCard card = 1;
+  string source = 2; // local | remote
+  string registry_id = 3;
+  string endpoint_url = 4;
+  string remote_url = 5;
+  bool healthy = 6;
+}
+
+message GatewayDiscoverRequest {
+  string workspace = 1;
+  string capability = 2;
+  // check_health probes remote AgentCard URLs when true.
+  bool check_health = 3;
+}
+
+message GatewayDiscoverResponse {
+  repeated A2AGatewayEntry items = 1;
+}
+
+// A2ARuntimeConfig exposes effective deployment settings for the A2A admin UI.
+message A2ARuntimeConfig {
+  string public_base_url = 1;
+  // env | config | derived
+  string public_base_url_source = 2;
 }
 
 message ListAuditRequest {
@@ -126,6 +206,48 @@ service A2AService {
   rpc ListAudit(ListAuditRequest) returns (ListAuditResponse) {
     option (google.api.http) = {
       get: "/v1/a2a/audit"
+    };
+  }
+
+  // RegisterRemoteAgent adds an external A2A agent to the workspace registry.
+  rpc RegisterRemoteAgent(RegisterRemoteAgentRequest) returns (A2ARemoteAgent) {
+    option (google.api.http) = {
+      post: "/v1/a2a/remote-agents"
+      body: "*"
+    };
+  }
+
+  rpc ListRemoteAgents(ListRemoteAgentsRequest) returns (ListRemoteAgentsResponse) {
+    option (google.api.http) = {
+      get: "/v1/a2a/remote-agents"
+    };
+  }
+
+  rpc DeleteRemoteAgent(DeleteRemoteAgentRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      delete: "/v1/a2a/remote-agents/{id}"
+    };
+  }
+
+  // DiscoverRemoteAgent fetches AgentCard from a URL without persisting.
+  rpc DiscoverRemoteAgent(DiscoverRemoteAgentRequest) returns (A2AAgentCard) {
+    option (google.api.http) = {
+      post: "/v1/a2a/remote-discover"
+      body: "*"
+    };
+  }
+
+  // GatewayDiscover lists federated local endpoints + remote registry entries.
+  rpc GatewayDiscover(GatewayDiscoverRequest) returns (GatewayDiscoverResponse) {
+    option (google.api.http) = {
+      get: "/v1/a2a/gateway/discover"
+    };
+  }
+
+  // GetA2AConfig returns read-only runtime configuration (public URL source, etc.).
+  rpc GetA2AConfig(google.protobuf.Empty) returns (A2ARuntimeConfig) {
+    option (google.api.http) = {
+      get: "/v1/a2a/config"
     };
   }
 }

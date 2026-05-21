@@ -154,7 +154,7 @@ func BuildToolsets(ctx context.Context, cfg ToolsetConfig) (*AssembledToolsets, 
 		customTools = append(customTools, serviceawaitreply.New())
 	}
 
-	return tools.Assemble(ctx, tools.AssemblyConfig{
+	assembled, err := tools.Assemble(ctx, tools.AssemblyConfig{
 		EnabledTools:  enabled,
 		FilesystemDir: cfg.FilesystemDir,
 		GeminiModel:   cfg.GeminiModel,
@@ -167,4 +167,9 @@ func BuildToolsets(ctx context.Context, cfg ToolsetConfig) (*AssembledToolsets, 
 		MCPBroker:     mcpBroker,
 		CustomTools:   customTools,
 	})
+	if err != nil {
+		return nil, err
+	}
+	tools.ApplyRuntimeNameAliases(ctx, assembled)
+	return assembled, nil
 }

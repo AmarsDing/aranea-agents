@@ -6,6 +6,15 @@ import (
 	trpcllmagent "trpc.group/trpc-go/trpc-agent-go/agent/llmagent"
 )
 
+func TestTurnDeps_CoalesceRunnerManager(t *testing.T) {
+	var d TurnDeps
+	m1 := d.CoalesceRunnerManager()
+	m2 := d.CoalesceRunnerManager()
+	if m1 == nil || m1 != m2 {
+		t.Fatal("expected single coalesced RunnerManager instance")
+	}
+}
+
 func TestRunnerInstanceRegistryReplace(t *testing.T) {
 	mgr := NewRunnerManager(RunnerFactoryDeps{})
 	root := trpcllmagent.New("a")

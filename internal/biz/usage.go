@@ -3,6 +3,7 @@ package biz
 import (
 	"context"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-kratos/kratos/v2/errors"
@@ -16,9 +17,19 @@ type UsageQuery struct {
 	ProviderCode string
 	ModelAPIID   string
 	AgentID      string
+	TeamID       string
+	UsageKind    string // exact filter; empty = all kinds (detail list only)
 	Status       string
 	Limit        int
+	Granularity  string // "" | "day" | "hour"
 }
+
+// usage_kind values written to model_token_usage_events.usage_kind.
+const (
+	UsageKindChatTurn   = "chat_turn"
+	UsageKindTeamMember = "team_member"
+	UsageKindTeamTurn   = "team_turn" // run-level reconciliation; excluded from billable aggregates
+)
 
 type UsageSummary struct {
 	CallCount          int
@@ -120,31 +131,33 @@ type TokenUsageEvent struct {
 }
 
 type UsageOverview struct {
-	Today     UsageSummary
-	Yesterday UsageSummary
-	Month     UsageSummary
-	Range     UsageSummary
-	Trends    []UsageTrendPoint
-	TopModels []UsageBreakdownRow
-	TopAgents []UsageBreakdownRow
-	Anomalies []TokenUsageEvent
+	Today          UsageSummary
+	Yesterday      UsageSummary
+	Month          UsageSummary
+	Range          UsageSummary
+	Trends         []UsageTrendPoint
+	TopModels      []UsageBreakdownRow
+	TopAgents      []UsageBreakdownRow
+	Anomalies      []TokenUsageEvent
+	QuotaDashboard     QuotaDashboard
+	InefficientModels  []UsageModelInsight
 }
 
-type UsageRepo interface {
-	GetModelUsageSummary(ctx context.Context, query UsageQuery) (UsageSummary, error)
-	ListModelUsageTrends(ctx context.Context, query UsageQuery) ([]UsageTrendPoint, error)
-	ListTopModelUsage(ctx context.Context, query UsageQuery) ([]UsageBreakdownRow, error)
-	ListTopAgentUsage(ctx context.Context, query UsageQuery) ([]UsageBreakdownRow, error)
-	ListModelUsageEvents(ctx context.Context, query UsageQuery) ([]TokenUsageEvent, error)
-	RecordTokenUsageEvent(ctx context.Context, event TokenUsageEvent) (TokenUsageEvent, error)
-	GetQuota(ctx context.Context, scopeType, scopeID string) (UsageQuota, error)
-	SetQuota(ctx context.Context, quota UsageQuota) (UsageQuota, error)
-	SumAgentCostInPeriod(ctx context.Context, agentID, periodStart, periodEnd string) (int64, error)
+// ModelPricingSnapshot is the active per-1k price row for a provider/model pair.
+type ModelPricingSnapshot struct {
+	InputPriceMicroUSDPer1K       int64
+	OutputPriceMicroUSDPer1K      int64
+	CachedInputPriceMicroUSDPer1K int64
+	ReasoningPriceMicroUSDPer1K   int64
+	EmbeddingPriceMicroUSDPer1K   int64
 }
 
 type UsageUsecase struct {
-	repo UsageRepo
-	now  func() time.Time
+	repo          UsageRepo
+	now           func() time.Time
+	alertNotifier UsageAlertNotifier
+	alertFired    map[string]time.Time
+	alertFiredMu  sync.Mutex
 }
 
 func NewUsageUsecase(repo UsageRepo) *UsageUsecase {
@@ -220,7 +233,7 @@ func (u *UsageUsecase) Overview(ctx context.Context, query UsageQuery) (UsageOve
 	if err != nil {
 		return UsageOverview{}, err
 	}
-	trends, err := u.repo.ListModelUsageTrends(ctx, rangeQuery)
+	trends, err := u.Trends(ctx, rangeQuery)
 	if err != nil {
 		return UsageOverview{}, err
 	}
@@ -239,20 +252,35 @@ func (u *UsageUsecase) Overview(ctx context.Context, query UsageQuery) (UsageOve
 		return UsageOverview{}, err
 	}
 
+	quotaDash, qErr := u.QuotaDashboard(ctx)
+	if qErr != nil {
+		quotaDash = QuotaDashboard{}
+	}
+	inefficient, iErr := u.InefficientModels(ctx, rangeQuery)
+	if iErr != nil {
+		inefficient = nil
+	}
+
 	return UsageOverview{
-		Today:     today,
-		Yesterday: yesterdaySummary,
-		Month:     month,
-		Range:     rangeSummary,
-		Trends:    trends,
-		TopModels: topModels,
-		TopAgents: topAgents,
-		Anomalies: anomalies,
+		Today:             today,
+		Yesterday:         yesterdaySummary,
+		Month:             month,
+		Range:             rangeSummary,
+		Trends:            trends,
+		TopModels:         topModels,
+		TopAgents:         topAgents,
+		Anomalies:         anomalies,
+		QuotaDashboard:    quotaDash,
+		InefficientModels: inefficient,
 	}, nil
 }
 
 func (u *UsageUsecase) Trends(ctx context.Context, query UsageQuery) ([]UsageTrendPoint, error) {
-	return u.repo.ListModelUsageTrends(ctx, u.normalizeQuery(query, u.now()))
+	q := u.normalizeQuery(query, u.now())
+	if strings.EqualFold(strings.TrimSpace(q.Granularity), "hour") {
+		return u.repo.ListModelUsageHourlyTrends(ctx, q)
+	}
+	return u.repo.ListModelUsageTrends(ctx, q)
 }
 
 func (u *UsageUsecase) TopModels(ctx context.Context, query UsageQuery) ([]UsageBreakdownRow, error) {
@@ -291,7 +319,8 @@ func normalizeTokenUsageEventForInsert(e TokenUsageEvent, now time.Time) TokenUs
 	if e.CallCount <= 0 {
 		e.CallCount = 1
 	}
-	if strings.TrimSpace(e.Status) == "" {
+	e.Status = NormalizeUsageStatus(e.Status)
+	if e.Status == "" {
 		e.Status = "success"
 	}
 	if strings.TrimSpace(e.ModelCategoryJSON) == "" {
@@ -303,11 +332,38 @@ func normalizeTokenUsageEventForInsert(e TokenUsageEvent, now time.Time) TokenUs
 	return e
 }
 
+func (u *UsageUsecase) enrichTokenUsagePricing(ctx context.Context, e *TokenUsageEvent) {
+	if e == nil {
+		return
+	}
+	prov := strings.TrimSpace(e.ProviderCode)
+	mod := strings.TrimSpace(e.ModelAPIID)
+	if prov == "" || mod == "" {
+		ApplyTokenUsageCosts(e)
+		return
+	}
+	if e.InputPriceMicroUSDPer1K == 0 && e.OutputPriceMicroUSDPer1K == 0 {
+		if snap, ok, err := u.repo.GetActiveModelPricing(ctx, prov, mod); err == nil && ok {
+			e.InputPriceMicroUSDPer1K = snap.InputPriceMicroUSDPer1K
+			e.OutputPriceMicroUSDPer1K = snap.OutputPriceMicroUSDPer1K
+			e.CachedInputPriceMicroUSDPer1K = snap.CachedInputPriceMicroUSDPer1K
+			e.ReasoningPriceMicroUSDPer1K = snap.ReasoningPriceMicroUSDPer1K
+			e.EmbeddingPriceMicroUSDPer1K = snap.EmbeddingPriceMicroUSDPer1K
+		}
+	}
+	ApplyTokenUsageCosts(e)
+}
+
 // RecordTokenUsageEvent inserts one usage row, updates session aggregates, and upserts daily rollup (parity with pkg/backend).
 func (u *UsageUsecase) RecordTokenUsageEvent(ctx context.Context, e TokenUsageEvent) (TokenUsageEvent, error) {
 	if strings.TrimSpace(e.ID) == "" {
 		return TokenUsageEvent{}, errors.BadRequest("USAGE", "id is required")
 	}
 	e = normalizeTokenUsageEventForInsert(e, u.now())
-	return u.repo.RecordTokenUsageEvent(ctx, e)
+	u.enrichTokenUsagePricing(ctx, &e)
+	out, err := u.repo.RecordTokenUsageEvent(ctx, e)
+	if err == nil {
+		u.scheduleBudgetAlerts(ctx, out)
+	}
+	return out, err
 }

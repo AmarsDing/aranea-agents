@@ -125,10 +125,32 @@ export default {
     confirmDelete: "确认删除",
     cancel: "取消",
     voicePlaceholder: "语音输入功能将在后续版本接入。",
+    awaitingUserHint: "Agent 正在等待你的回复，在下方输入后点击「提交回复」。",
+    submitAwaitReply: "提交回复",
+    awaitReplySent: "已提交回复，继续执行",
+    awaitReplyRestartHint: "服务已重启，请重新发送消息以继续",
+    awaitReplyFailed: "提交回复失败",
+    toolConfirmHint: "Agent 请求执行工具，请确认是否允许。",
+    toolConfirmTool: "工具",
+    toolConfirmDeny: "拒绝",
+    toolConfirmApprove: "允许",
     teamNoBackend: "Team 与后端联调中，本列表为展示数据。",
     workspaceKicker: "ADK Multi-Agent",
     workspaceTitle: "对话工作台",
     workspaceSubtitle: "在 Agent 与 Team 之间切换会话，模型与上下文在此保持一致。"
+  },
+  plugins: {
+    rulesAdd: "添加规则",
+    rulesTargetModel: "目标模型",
+    rulesTargetModelHint: "匹配后路由到的 model id",
+    rulesPriority: "优先级",
+    rulesPriorityHint: "越大越优先",
+    rulesMinChars: "最少字符",
+    rulesMinCharsHint: "0 表示不限",
+    rulesContains: "包含关键词（每行一项）",
+    rulesRegex: "正则表达式（可选）",
+    rulesRegexInvalid: "正则表达式无效",
+    rulesEmptyHint: "暂无路由规则；按 priority 降序匹配 contains / regex / min_chars。"
   },
   menu: {
     groupMain: "常用",
@@ -172,6 +194,39 @@ export default {
     reload: "重新加载",
     lastSaved: "上次更新：{time}",
     saveOk: "已保存",
-    saveFailed: "保存失败"
+    saveFailed: "保存失败",
+    globalQuotaTitle: "全平台月预算",
+    globalQuotaHint: "全平台 LLM 费用上限（USD）；0 表示不限制。保存后同步到用量配额（global）。Chat 每次对话前校验。",
+    globalQuotaUsd: "月预算 (USD)",
+    a2aPublicBaseTitle: "A2A 公开 Endpoint 前缀",
+    a2aPublicBaseUrl: "公开 URL 前缀",
+    a2aPublicBaseHint: "外部 A2A 客户端连接本实例本地 Agent 时使用。留空则使用环境变量、配置文件或开发推导地址。保存后立即生效，无需重启。",
+    a2aPublicBaseEmptyHint: "留空时使用推导或 env/config 链；保存后可在 /a2a 页查看当前生效地址",
+    a2aPublicBaseEffective: "当前生效：{url}",
+    credentialKeyTitle: "凭据加密密钥",
+    credentialKeyHint: "用于 Provider / Channel API 密钥的 AES-256-GCM 加密。首次启动或打开本页时自动生成并保存在数据库；环境变量 ARANEA_CREDENTIAL_KEY 可覆盖。",
+    credentialKeyConfigured: "已配置（密钥仅存于服务端，不在此展示）",
+    credentialKeyPending: "尚未生成（服务启动后将自动创建；请重启后端或等待初始化完成）",
+    knowledgeEmbedTitle: "Knowledge Embedder 默认",
+    knowledgeEmbedHint:
+      "RAG 向量嵌入默认配置，写入 system_settings；与 Knowledge 页互通。启动时 env KRATOS_KNOWLEDGE_EMBED_* 优先于数据库。",
+    mcpAdhocTitle: "MCP Broker AdHoc HTTP",
+    mcpAdhocHint:
+      "允许 MCP Broker 通过 mcp_call 连接未预注册的 HTTP 端点。生产环境默认关闭；需同时满足 MCP Server 配置 allow_adhoc_http。写入 system_settings.mcp_allow_adhoc_http。",
+    mcpAdhocToggle: "允许 MCP Broker AdHoc HTTP"
+  },
+  knowledgeEmbed: {
+    title: "Embedder 配置",
+    provider: "Provider",
+    baseUrl: "Base URL",
+    model: "Model",
+    dim: "Dim",
+    apiKey: "API Key",
+    apiKeyPlaceholderSet: "已配置（留空不修改）",
+    apiKeyPlaceholderEmpty: "sk-...",
+    configured: "已配置",
+    notConfigured: "未配置",
+    save: "保存",
+    hint: "运行时生效；保存后写入 system_settings；启动时 env KRATOS_KNOWLEDGE_EMBED_* 优先于数据库。"
   }
 };

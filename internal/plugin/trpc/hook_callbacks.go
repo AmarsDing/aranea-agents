@@ -1,19 +1,14 @@
 package plugintrpc
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"log/slog"
-	"net/http"
 	"strings"
 	"time"
 
 	"aranea-agents/internal/agent/callbacks"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/metrics"
-	"aranea-agents/pkg/safego"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 
@@ -25,7 +20,7 @@ import (
 const hookCallbackPriorityBase = 300
 
 // HookCallbacks converts resolved hook rules into Chain entries.
-func HookCallbacks(resolved []biz.ResolvedHook, agentID, agentKey string) []callbacks.Callback {
+func HookCallbacks(resolved []biz.ResolvedHook, agentID, agentKey string, stats StatsRecorder, notifier *HookNotifier) []callbacks.Callback {
 	if len(resolved) == 0 {
 		return nil
 	}
@@ -34,40 +29,40 @@ func HookCallbacks(resolved []biz.ResolvedHook, agentID, agentKey string) []call
 		if rh.Rule.CallbackPoint == "on_event" {
 			continue
 		}
-		if cb := hookToCallback(rh, agentID, agentKey); cb != nil {
+		if cb := hookToCallback(rh, agentID, agentKey, stats, notifier); cb != nil {
 			out = append(out, cb)
 		}
 	}
 	return out
 }
 
-func hookToCallback(rh biz.ResolvedHook, agentID, agentKey string) callbacks.Callback {
+func hookToCallback(rh biz.ResolvedHook, agentID, agentKey string, stats StatsRecorder, notifier *HookNotifier) callbacks.Callback {
 	priority := hookCallbackPriorityBase + rh.Hook.SortOrder
 	switch rh.Rule.CallbackPoint {
 	case "before_agent":
 		return callbacks.NewBeforeAgentHook(priority, func(ctx context.Context, args *trpcagent.BeforeAgentArgs) (*trpcagent.BeforeAgentResult, error) {
-			if err := executeHookAction(ctx, rh, "before_agent", agentID, agentKey, "", args); err != nil {
+			if err := executeHookAction(ctx, stats, notifier, rh, "before_agent", agentID, agentKey, "", args); err != nil {
 				return nil, err
 			}
 			return &trpcagent.BeforeAgentResult{Context: ctx}, nil
 		})
 	case "after_agent":
 		return callbacks.NewAfterAgentHook(priority, func(ctx context.Context, args *trpcagent.AfterAgentArgs) (*trpcagent.AfterAgentResult, error) {
-			if err := executeHookAction(ctx, rh, "after_agent", agentID, agentKey, "", args); err != nil {
+			if err := executeHookAction(ctx, stats, notifier, rh, "after_agent", agentID, agentKey, "", args); err != nil {
 				return nil, err
 			}
 			return &trpcagent.AfterAgentResult{Context: ctx}, nil
 		})
 	case "before_model":
 		return callbacks.NewBeforeModelHook(priority, func(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
-			if err := executeHookAction(ctx, rh, "before_model", agentID, agentKey, "", args); err != nil {
+			if err := executeHookAction(ctx, stats, notifier, rh, "before_model", agentID, agentKey, "", args); err != nil {
 				return nil, err
 			}
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		})
 	case "after_model":
 		return callbacks.NewAfterModelHook(priority, func(ctx context.Context, args *trpcmodel.AfterModelArgs) (*trpcmodel.AfterModelResult, error) {
-			if err := executeHookAction(ctx, rh, "after_model", agentID, agentKey, "", args); err != nil {
+			if err := executeHookAction(ctx, stats, notifier, rh, "after_model", agentID, agentKey, "", args); err != nil {
 				return nil, err
 			}
 			return &trpcmodel.AfterModelResult{Context: ctx}, nil
@@ -81,7 +76,7 @@ func hookToCallback(rh biz.ResolvedHook, agentID, agentKey string) callbacks.Cal
 			if !biz.HookAppliesToTool(rh.Rule.Condition, toolName) {
 				return &trpctool.BeforeToolResult{Context: ctx}, nil
 			}
-			if err := executeHookAction(ctx, rh, "before_tool", agentID, agentKey, toolName, args); err != nil {
+			if err := executeHookAction(ctx, stats, notifier, rh, "before_tool", agentID, agentKey, toolName, args); err != nil {
 				return nil, err
 			}
 			mod := ApplyToolModifyPatch(args, rh.Rule.Action.ModifyPatch)
@@ -97,6 +92,8 @@ func hookToCallback(rh biz.ResolvedHook, agentID, agentKey string) callbacks.Cal
 			rh:       rh,
 			agentID:  agentID,
 			agentKey: agentKey,
+			stats:    stats,
+			notifier: notifier,
 		}
 	default:
 		return nil
@@ -108,6 +105,8 @@ type hookAfterToolCallback struct {
 	rh       biz.ResolvedHook
 	agentID  string
 	agentKey string
+	stats    StatsRecorder
+	notifier *HookNotifier
 }
 
 func (h *hookAfterToolCallback) Point() callbacks.CallbackPoint { return callbacks.PointAfterTool }
@@ -121,11 +120,11 @@ func (h *hookAfterToolCallback) HandleAfterTool(ctx context.Context, args *trpct
 	if !biz.HookAppliesToTool(h.rh.Rule.Condition, toolName) {
 		return &trpctool.AfterToolResult{}, nil
 	}
-	err := executeHookAction(ctx, h.rh, "after_tool", h.agentID, h.agentKey, toolName, args)
+	err := executeHookAction(ctx, h.stats, h.notifier, h.rh, "after_tool", h.agentID, h.agentKey, toolName, args)
 	return &trpctool.AfterToolResult{}, err
 }
 
-func executeHookAction(ctx context.Context, rh biz.ResolvedHook, point, agentID, agentKey, toolName string, hookCtx any) error {
+func executeHookAction(ctx context.Context, stats StatsRecorder, notifier *HookNotifier, rh biz.ResolvedHook, point, agentID, agentKey, toolName string, hookCtx any) error {
 	start := time.Now()
 	action := strings.ToLower(strings.TrimSpace(rh.Rule.Action.Type))
 	if action == "" {
@@ -143,6 +142,18 @@ func executeHookAction(ctx context.Context, rh biz.ResolvedHook, point, agentID,
 		}
 		metrics.PluginInvokeTotal.WithLabelValues("hook:"+rh.Hook.Key, point, st).Inc()
 		metrics.ObserveCallback("hook", point, start, err)
+		durationMS := time.Since(start).Milliseconds()
+		hookLogger.Info("hook.execute",
+			"hook_key", rh.Hook.Key,
+			"point", point,
+			"action", action,
+			"status", st,
+			"agent_id", agentID,
+			"agent_key", agentKey,
+			"tool", toolName,
+			"duration_ms", durationMS,
+		)
+		recordHookAudit(stats, ctx, rh, point, st, agentID, durationMS)
 	}()
 
 	switch action {
@@ -164,9 +175,16 @@ func executeHookAction(ctx context.Context, rh biz.ResolvedHook, point, agentID,
 			"tool_name": toolName,
 			"timestamp": time.Now().UTC().Format(time.RFC3339),
 		}
-		safego.Go(ctx, "hook.notify."+rh.Hook.Key, func() {
-			postHookWebhook(url, payload)
-		})
+		n := notifier
+		if n == nil {
+			n = NewHookNotifier(nil)
+		}
+		if enqueueErr := n.EnqueueNotify(ctx, rh, payload); enqueueErr != nil {
+			err = enqueueErr
+			status = "error"
+			return err
+		}
+		status = "queued"
 		return nil
 	case "block":
 		msg := strings.TrimSpace(rh.Rule.Action.Message)
@@ -189,11 +207,11 @@ func executeHookAction(ctx context.Context, rh biz.ResolvedHook, point, agentID,
 		case "before_tool":
 			// ModifiedArguments returned by caller after executeHookAction.
 		default:
-			slog.Debug("hook.modify skipped for point", "hook", rh.Hook.Key, "point", point)
+			hookLogger.Debug("hook.modify skipped for point", "hook", rh.Hook.Key, "point", point)
 		}
 		return nil
 	default:
-		slog.Warn("hook: unknown action type", "hook", rh.Hook.Key, "action", action)
+		hookLogger.Warn("hook: unknown action type", "hook", rh.Hook.Key, "action", action)
 		return nil
 	}
 }
@@ -217,37 +235,13 @@ func logHookAction(rh biz.ResolvedHook, point, agentID, agentKey, toolName, acti
 	}
 	switch level {
 	case "debug":
-		slog.Debug(msg, attrs...)
+		hookLogger.Debug(msg, attrs...)
 	case "warn", "warning":
-		slog.Warn(msg, attrs...)
+		hookLogger.Warn(msg, attrs...)
 	case "error":
-		slog.Error(msg, attrs...)
+		hookLogger.Error(msg, attrs...)
 	default:
-		slog.Info(msg, attrs...)
+		hookLogger.Info(msg, attrs...)
 	}
 }
 
-func postHookWebhook(url string, payload map[string]any) {
-	body, err := json.Marshal(payload)
-	if err != nil {
-		slog.Warn("hook.notify: marshal failed", "error", err)
-		return
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
-	if err != nil {
-		slog.Warn("hook.notify: request failed", "error", err)
-		return
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		slog.Warn("hook.notify: post failed", "url", url, "error", err)
-		return
-	}
-	_ = resp.Body.Close()
-	if resp.StatusCode >= 400 {
-		slog.Warn("hook.notify: bad status", "url", url, "status", resp.StatusCode)
-	}
-}

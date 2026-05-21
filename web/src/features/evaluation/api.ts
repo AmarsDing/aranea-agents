@@ -1,12 +1,13 @@
 /**
  * Evaluation 评估：**`createEvaluationService()`** → **`/v1/evaluation/...`**。
  *
- * 注意：后端 Evaluation Runtime 尚未完整接入（EP-DATA-01 / EP-RT-08）。
- * 启动评估运行（RunEvaluation）在 runtime nil 的情况下会返回错误。
+ * Runtime：FrameworkBridge + ChatService.RunNativeTurnUnary；LLMJudge 需 Provider 目录或 env。
  */
+import { requestHandler } from "../../services/axiosHandler";
 import { createEvaluationService } from "../../services";
 import { asRecord, pickBool, pickI32, pickNum, pickStr } from "../../shared/wireJson";
 import type {
+  AnnotateCaseResultInput,
   CreateDatasetInput,
   EvalCaseResult,
   EvalDataset,
@@ -16,7 +17,9 @@ import type {
   ListDatasetsResult,
   ListRunsParams,
   ListRunsResult,
-  RunEvaluationInput
+  RunEvaluationInput,
+  EvalTrendPoint,
+  EvalRunComparison
 } from "./types";
 
 const svc = createEvaluationService();
@@ -47,6 +50,11 @@ function mapRun(raw: unknown): EvalRun {
     contains_match_score: pickNum(r, "contains_match_score", "containsMatchScore"),
     llm_judge_score: pickNum(r, "llm_judge_score", "llmJudgeScore"),
     tool_call_accuracy: pickNum(r, "tool_call_accuracy", "toolCallAccuracy"),
+    pass_at_k: pickNum(r, "pass_at_k", "passAtK"),
+    pass_hat_k: pickNum(r, "pass_hat_k", "passHatK"),
+    trigger_source: pickStr(r, "trigger_source", "triggerSource"),
+    num_runs: pickI32(r, "num_runs", "numRuns"),
+    scores_json: pickStr(r, "scores_json", "scoresJson"),
     error_message: pickStr(r, "error_message", "errorMessage"),
     started_at: pickStr(r, "started_at", "startedAt"),
     finished_at: pickStr(r, "finished_at", "finishedAt"),
@@ -56,7 +64,7 @@ function mapRun(raw: unknown): EvalRun {
 
 function mapCaseResult(raw: unknown): EvalCaseResult {
   const r = asRecord(raw);
-  return {
+  const out: EvalCaseResult = {
     id: pickStr(r, "id", "id"),
     run_id: pickStr(r, "run_id", "runId"),
     case_id: pickStr(r, "case_id", "caseId"),
@@ -65,9 +73,33 @@ function mapCaseResult(raw: unknown): EvalCaseResult {
     contains_match: pickBool(r, "contains_match", "containsMatch"),
     llm_judge_score: pickNum(r, "llm_judge_score", "llmJudgeScore"),
     tool_call_accuracy: pickNum(r, "tool_call_accuracy", "toolCallAccuracy"),
+    scores_json: pickStr(r, "scores_json", "scoresJson"),
     error_message: pickStr(r, "error_message", "errorMessage"),
-    created_at: pickStr(r, "created_at", "createdAt")
+    created_at: pickStr(r, "created_at", "createdAt"),
+    human_comment: pickStr(r, "human_comment", "humanComment"),
+    annotated_at: pickStr(r, "annotated_at", "annotatedAt"),
+    annotated_by: pickStr(r, "annotated_by", "annotatedBy")
   };
+  if ("humanPass" in r || "human_pass" in r) {
+    out.human_pass = pickBool(r, "human_pass", "humanPass");
+  }
+  if ("humanScore" in r || "human_score" in r) {
+    out.human_score = pickNum(r, "human_score", "humanScore");
+  }
+  return out;
+}
+
+export async function annotateCaseResult(input: AnnotateCaseResultInput): Promise<EvalCaseResult> {
+  const body: Record<string, unknown> = {};
+  if (input.human_pass !== undefined && input.human_pass !== null) body.human_pass = input.human_pass;
+  if (input.human_score !== undefined && input.human_score !== null) body.human_score = input.human_score;
+  if (input.human_comment !== undefined) body.human_comment = input.human_comment;
+  const raw = await requestHandler({
+    path: `v1/evaluation/runs/${encodeURIComponent(input.run_id)}/results/${encodeURIComponent(input.result_id)}/annotation`,
+    method: "PATCH",
+    body
+  });
+  return mapCaseResult(raw);
 }
 
 // ---------- Datasets ----------
@@ -106,7 +138,8 @@ export async function runEvaluation(input: RunEvaluationInput): Promise<EvalRun>
     datasetId: input.dataset_id,
     agentId: input.agent_id,
     metrics: input.metrics ?? "",
-    numRuns: input.num_runs ?? 1
+    numRuns: input.num_runs ?? 1,
+    useUserSimulation: input.use_user_simulation ?? false
   });
   return mapRun(raw);
 }
@@ -140,4 +173,61 @@ export async function getRunResults(
   const itemsRaw = res.items ?? res.Items;
   const items = Array.isArray(itemsRaw) ? itemsRaw.map(mapCaseResult) : [];
   return { items, total: pickI32(res, "total", "total") || items.length };
+}
+
+function mapTrendPoint(raw: unknown): EvalTrendPoint {
+  const r = asRecord(raw);
+  return {
+    run_id: pickStr(r, "run_id", "runId"),
+    created_at: pickStr(r, "created_at", "createdAt"),
+    trigger_source: pickStr(r, "trigger_source", "triggerSource"),
+    exact_match_score: pickNum(r, "exact_match_score", "exactMatchScore"),
+    contains_match_score: pickNum(r, "contains_match_score", "containsMatchScore"),
+    llm_judge_score: pickNum(r, "llm_judge_score", "llmJudgeScore"),
+    tool_call_accuracy: pickNum(r, "tool_call_accuracy", "toolCallAccuracy"),
+    pass_at_k: pickNum(r, "pass_at_k", "passAtK"),
+    pass_hat_k: pickNum(r, "pass_hat_k", "passHatK")
+  };
+}
+
+function mapRunComparison(raw: unknown): EvalRunComparison {
+  const r = asRecord(raw);
+  return {
+    run_id: pickStr(r, "run_id", "runId"),
+    agent_id: pickStr(r, "agent_id", "agentId"),
+    dataset_id: pickStr(r, "dataset_id", "datasetId"),
+    created_at: pickStr(r, "created_at", "createdAt"),
+    exact_match_score: pickNum(r, "exact_match_score", "exactMatchScore"),
+    contains_match_score: pickNum(r, "contains_match_score", "containsMatchScore"),
+    llm_judge_score: pickNum(r, "llm_judge_score", "llmJudgeScore"),
+    tool_call_accuracy: pickNum(r, "tool_call_accuracy", "toolCallAccuracy"),
+    pass_at_k: pickNum(r, "pass_at_k", "passAtK"),
+    pass_hat_k: pickNum(r, "pass_hat_k", "passHatK"),
+    delta_exact_match: pickNum(r, "delta_exact_match", "deltaExactMatch"),
+    delta_contains_match: pickNum(r, "delta_contains_match", "deltaContainsMatch"),
+    delta_llm_judge: pickNum(r, "delta_llm_judge", "deltaLlmJudge"),
+    delta_tool_call_accuracy: pickNum(r, "delta_tool_call_accuracy", "deltaToolCallAccuracy")
+  };
+}
+
+export async function getAgentEvalTrend(params: {
+  agent_id: string;
+  dataset_id?: string;
+  limit?: number;
+}): Promise<EvalTrendPoint[]> {
+  const res = asRecord(
+    await svc.GetAgentEvalTrend({
+      agentId: params.agent_id,
+      datasetId: params.dataset_id ?? "",
+      limit: params.limit ?? 20
+    })
+  );
+  const pointsRaw = res.points ?? res.Points;
+  return Array.isArray(pointsRaw) ? pointsRaw.map(mapTrendPoint) : [];
+}
+
+export async function compareEvalRuns(runIds: string[]): Promise<EvalRunComparison[]> {
+  const res = asRecord(await svc.CompareEvalRuns({ runIds }));
+  const itemsRaw = res.items ?? res.Items;
+  return Array.isArray(itemsRaw) ? itemsRaw.map(mapRunComparison) : [];
 }

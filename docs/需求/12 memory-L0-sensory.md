@@ -4,19 +4,19 @@
 
 L0 的设计原则是**轻量、可观测、可裁剪**：不在 SQL 中保存 L0 的内容（内容仍由 `messages` 表承载），而是把「上下文窗口构造、滑动窗口、压缩裁剪、窗口快照」这一整套行为变成 aranea 后端可以编排、监控、配置的能力，作为 L1～L4 的入口与出口。
 
-> 关联文档：[Memory 知识体系（合并）](./memory.md)（下文 §0）、`10 session.md` §4.5/§4.7、`5 agent-setting.md`、`7 agent-evolution.md`。
+> 关联文档：[Memory 知识体系（合并）](./38%20memory.md)（下文 §0）、[开发计划](./12-16%20memory-development.md)、`10 session.md` §4.5/§4.7、`5 agent-setting.md`、`7 agent-evolution.md`。
 
 ---
 
 ## 0. 指导思想（与 Memory 统一思想对齐）
 
-在 **Memory = (Raw Ledger, Derived Views, Policy)** 的最小闭包中（见梳理副本 §2 命题 B），本层实现的是 **Interface / Context Bridge**（梳理副本 §20）：把来自 L1/L3/L4、摘要与 `messages` 等多路 **Views** 压入**有限上下文**，供 System 1（单次 LLM 调用）消费。
+在 **Memory = (Raw Ledger, Derived Views, Policy)** 的最小闭包中（见 [38 memory.md](./38%20memory.md) §2 命题 B），本层实现的是 **Interface / Context Bridge**（梳理副本 §20）：把来自 L1/L3/L4、摘要与 `messages` 等多路 **Views** 压入**有限上下文**，供 System 1（单次 LLM 调用）消费。
 
-- **价值在「通道」而非堆砌原文**（[`memory.md`](./memory.md) 命题 A）：能力取决于历史能否以可注入形式**影响当前一步的决策分布**；L0 不追求存更多字，而追求在 token 上限内提高**有效信息密度**。**Context Bridge 带宽**是非参数化记忆的主要瓶颈之一（[`memory.md`](./memory.md) §8），因此必须有滑动窗口、摘要与裁剪策略的可配置与可度量。
+- **价值在「通道」而非堆砌原文**（[38 memory.md](./38%20memory.md) 命题 A）：能力取决于历史能否以可注入形式**影响当前一步的决策分布**；L0 不追求存更多字，而追求在 token 上限内提高**有效信息密度**。**Context Bridge 带宽**是非参数化记忆的主要瓶颈之一（[38 memory.md](./38%20memory.md) §8），因此必须有滑动窗口、摘要与裁剪策略的可配置与可度量。
 - **可溯源**：各装配段须在 `segments_json` / 快照 / `memory_recall` span 中记录 **来源**（对应梳理副本 §4 结论链——views 必须能**回指**权威事实）；禁止「大块匿名拼接」难以排障。
 - **与 STM 控制的类比**：InfMem 等对上下文的 **FILTER/SUMMARY**（梳理副本 §11）在工程中对应本文的 **`l0_truncate_strategy` + `SummaryService`**——控制进入模型的即时噪声，而非单靠更长窗口。
 
-延伸阅读（观点与文献，不等同本文验收标准）：[`memory.md`](./memory.md)。
+延伸阅读（观点与文献，不等同本文验收标准）：[38 memory.md](./38%20memory.md)。
 
 ---
 
@@ -30,7 +30,7 @@ L0 的设计原则是**轻量、可观测、可裁剪**：不在 SQL 中保存 L
 | 持久性 | 不持久化；只保留**最近 N 轮**消息和**当前轮工具结果** |
 | 时效 | 单轮对话内，请求结束即丢弃 |
 | 访问模式 | LLM 原生注意力机制，由 ChatService / TeamRuntime 在调用前装配 |
-| 与 ADK 对齐 | 对应 `Session.events` + `Session.state` 中的「即时上下文 + 滑动窗口」 |
+| 与 trpc-agent-go 对齐 | 对应 `session.Session` events/state 与 Runner 装配前的「即时上下文 + 滑动窗口」 |
 
 ### 1.2 与其它层的边界
 
@@ -386,7 +386,7 @@ type MemoryL0Service interface {
 
 ### 5.3 与现有 ChatService / TeamRuntime 集成
 
-`ChatService.SendMessage()` 当前调用 `ADKAdapter` 直接构造 prompt。改造点：
+`ChatService.SendMessage()` 经 trpc Runner 装配 prompt（`internal/agent/trpc_build.go`）。改造点：
 
 ```go
 // 旧
@@ -482,9 +482,9 @@ POST /api/v1/sessions/{id}/l0/preview
 
 | 模块 | 改造点 |
 |------|--------|
-| `internal/runtime/adk_adapter.go` | 用 `MemoryL0Service.Assemble` 替换内部 message 拼装；不再直接读 messages |
+| `internal/agent/trpc_build.go` | 用 `MemoryL0Service.Assemble`（或等价装配）替换内部 message 拼装；不再直接读 messages |
 | `internal/service/chat_service.go` | 在 `SendMessage` / `SendMessageStream` 调用 `Assemble`、`RecordActual` |
-| `internal/service/team_runtime.go` | 每个子 step 单独 `Assemble`，并把 `result.PromptMessages` 传给 ADK |
+| `internal/team` Runner | 每个子 step 单独 `Assemble`，并把 `result.PromptMessages` 传给 trpc LLM Agent |
 | `internal/service/session_service.go` | 新增 `RecordContextSnapshot`（已规划），由 L0 驱动写入 |
 | `internal/service/summary_service.go`（新） | `SummarizeRange` 接口；写 `session_summaries` |
 | `internal/transport/sessions.go` | 暴露 §6.2 的 `/l0/snapshots` 和 `/l0/preview` 接口 |
@@ -621,21 +621,21 @@ POST /api/v1/sessions/{id}/l0/preview
 
 ## 14. 运行时实现与演进方向
 
-> 本节整合自 `architecture/agent-skills-tools-mcp-memory.md` 与 `architecture/session-context-compression.md`，描述记忆系统在 Agent 运行时的装配机制、上下文压缩策略与后续演进方向。
+> **实现真相**以 [12-16 memory-development.md](./12-16%20memory-development.md) §1–§2 为准。本节描述 L0 在运行时的装配与压缩；术语对齐 **trpc-agent-go**（非 ADK）。
 
 ### 14.1 运行时记忆装配
 
-运行时里「记忆」在代码中拆成几条**互不自动打通**的线，需分开理解。
-
 | 层次 | 已实现 | 说明 |
 |------|--------|------|
-| Runner MemoryService | 是 | `internal/agent/adk_memory.go` — `RunnerMemoryService(store)`：有 `sessionmemory.Store` → `SessionSQLiteMemoryService`，否则 `memory.InMemoryService()` |
-| SQLite 会话记忆链 | 是 | `internal/data/sessionmemory` + `memory_chain.sql`（L0 装配快照、L1–L4、entities 等） |
-| 对外 API | 是 | `internal/service/memory.go`（`memory/v1` gRPC）对外查询 L0/L1/…，**不是**会话 Runner Memory 的一环 |
-| 桥接 | 部分 | `SessionSQLiteMemoryService` 在注入 Store 时起效；**`AddSessionToMemory` 仍为 no-op**，与 L0 写入链路的对齐仍可完善 |
-| Postgres pgvector | 是（独立业务线） | `internal/biz/memory.go`（`Remember` / `Search`）、`internal/data/memory.go` 对 `agent_memory` 的读写，**不在** Chat Runner 默认路径内自动挂载 |
+| Runner `memory.Service` | ✅ | `internal/memory/trpc/sqlite_adapter.go` — `NewSQLiteMemoryService(sessionmemory.Store)`；无 Store 时框架 `InMemoryService` |
+| SQLite 会话记忆链 | ✅ | `internal/data/sessionmemory` + `memory_chain.sql`（L0 快照、L1–L4、entities） |
+| 管理/观测 API | ✅ | `internal/service/memory.go` → `MemoryAdminUsecase`；**不** import `pkg/trpc-agent-go` |
+| L0 压缩 | ✅ | `internal/service/session_compress.go`（`SessionCompressor.AfterNativeTurn`） |
+| L4 Prompt 注入 | ✅ | `internal/agent/l4_prompt.go` via `trpc_build.go` |
+| Postgres pgvector | 🟡 可选 | `internal/biz/memory.go` — 独立业务线，**不在**默认 Chat Turn 自动挂载 |
+| 框架会话同步 | 🟡 | `AddSessionToMemory` 与 L2/L3 写入对齐仍待产品化 |
 
-**接入点**：`adk_turn.go`、`team/runner.go` 通过 `adkdeps.Runtime.SessionMemory`（Wire 注入 `NewSessionMemoryStore`）。`load_memory` / `preload_memory` 使用 Runner 挂载的 `MemoryService`。
+**接入点**：`internal/agent/trpc_build.go`、`internal/team` Runner；`biz.RuntimeSet`（`TRPC` + `Admin`）经 `PersistenceSet.Memory` 注入。`load_memory` / `preload_memory` 使用 Runner 挂载的 `trpcmemory.Service`。
 
 ### 14.2 会话上下文压缩
 
@@ -679,7 +679,7 @@ POST /api/v1/sessions/{id}/l0/preview
 5. L3/L4 检索段（若有）
 6. 本轮 user 输入
 
-**与 ADK 会话持久态的协同**：首版采用**装配层优先**——不改变 `adk_snapshot_json` 内全量事件，仅在构造发往 LLM 的 messages 时应用摘要 + tail。实现集中、可逆、与现有 messages 账本一致。
+**与 trpc 会话持久态的协同**：首版采用**装配层优先**——不改变会话快照内全量 events，仅在构造发往 LLM 的 messages 时应用摘要 + tail。实现集中、可逆、与现有 `messages` 账本一致。
 
 **Team 会话**：每个子 Agent 应有独立的摘要区间与 `session_summaries` 维度，避免 Host 与子 Agent 上下文串扰。
 
@@ -689,9 +689,9 @@ POST /api/v1/sessions/{id}/l0/preview
 
 | 方向 | 现状 | 建议 |
 |------|------|------|
-| MemoryService 可插拔 | 全域使用 `InMemoryService`，`SessionSQLiteMemoryService` 已实现却未注入 Runner | 通过 Wire 注入 `memory.Service`：有 `sessionmemory.Store` 时选用 SQLite 适配器或组合式；`AddSessionToMemory` 与 adksvc 会话快照/装配流水线对齐 |
-| 记忆工具业务含义 | `load_memory`/`preload_memory` 走框架默认语义，但底层仍是空/in-memory | 要么默认关闭直至后端就绪并在 `RuntimeCapabilityCue` 中如实描述，要么实现 Composite `SearchMemory` 聚合 SQLite entities + pgvector |
-| 向量记忆与 Runner 统一 | Postgres pgvector 是独立业务线，与 Runner Memory 语义割裂 | 为 `biz.MemoryUsecase` 增加显式工具或统一 `SearchMemory` 后端，避免 pgvector 能力与对话路径永远平行 |
-| 闭环会话记忆 | `AddSessionToMemory` 仍为 no-op | 实现 `AddSessionToMemory` 与 L0–L4 写入路径一致；grpc `memory/v1` 继续作为观测面，或与 Run 共用同一底层 |
+| MemoryService 可插拔 | 有 Store 时已注入 SQLite 适配器 | 无 Store 时仍回退 `InMemoryService`；Composite `SearchMemory`（SQLite + pgvector）待 P2 |
+| 记忆工具业务含义 | `load_memory`/`preload_memory` 走 trpc 默认语义 | `RuntimeCapabilityCue` 需如实描述 Store 是否就绪 |
+| 向量记忆与 Runner 统一 | pgvector 独立业务线 | P2：显式工具或统一 `SearchMemory` 聚合 |
+| 闭环会话记忆 | `AddSessionToMemory` 对齐待完善 | 与 L2/L3 写入路径一致；`memory/v1` 作观测面 |
 | 摘要多条记录合并 | 首版采用区间链式（保留多条记录，装配时按 `from_turn` 排序拼接） | 二期可演进为单条滚动（每次压缩后把旧摘要 + 新区间对话一并输入，产出一条覆盖 `[0, current_to]` 的新摘要） |
 | 压缩调用成本 | 压缩模型与对话模型共用 | 可配置更小模型、更长触发间隔、批量区间合并以控 latency/cost |

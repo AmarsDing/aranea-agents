@@ -8,7 +8,9 @@ import (
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	"aranea-agents/internal/biz"
+	localexec "aranea-agents/internal/agent/codeexecutor"
 	"aranea-agents/internal/event"
+	"aranea-agents/internal/knowledge"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	rt "aranea-agents/internal/runtime"
 	tooltrpc "aranea-agents/internal/tools/trpc"
@@ -20,16 +22,20 @@ import (
 
 type Runner struct {
 	teams             biz.TeamRepository
+	usage             *biz.UsageUsecase
 	td                rt.TurnDeps
 	pluginRT          *plugintrpc.Runtime
 	pluginManager     *plugintrpc.Manager
 	skillDBRepo       trpcskill.Repository
 	runs              *rt.RunRegistry
-	awaitHookProvider func(runCtx context.Context, sessionID, runID string) tooltrpc.ReplyFunc
+	awaitHookProvider    func(runCtx context.Context, sessionID, runID string) tooltrpc.ReplyFunc
+	knowledgeRetriever   *knowledge.Retriever
+	codeExecFactory      *localexec.Factory
 }
 
 func NewRunner(
 	teams biz.TeamRepository,
+	usage *biz.UsageUsecase,
 	sessions *biz.SessionUsecase,
 	agents biz.AgentRepository,
 	agentsUC *biz.AgentUsecase,
@@ -44,12 +50,15 @@ func NewRunner(
 	pluginRT *plugintrpc.Runtime,
 	pluginManager *plugintrpc.Manager,
 	skillDBRepo trpcskill.Repository,
+	codeExecFactory *localexec.Factory,
 ) *Runner {
 	return &Runner{
 		teams:         teams,
+		usage:         usage,
 		pluginRT:      pluginRT,
 		pluginManager: pluginManager,
 		skillDBRepo:   skillDBRepo,
+		codeExecFactory: codeExecFactory,
 		td: rt.TurnDeps{
 			Catalog: rt.Catalog{
 				Agents:   agents,
@@ -61,7 +70,7 @@ func NewRunner(
 				Settings: sys,
 			},
 			Persist:   persist,
-			Pipeline:  rt.EventPipeline{Bus: eventBus},
+			Pipeline:  rt.EventPipeline{Bus: eventBus, Buffer: event.NewBuffer()},
 			LLMHTTP:   &http.Client{Timeout: 0},
 			Sessions:  sessions,
 			Compress:  compress,
@@ -72,6 +81,10 @@ func NewRunner(
 
 func (r *Runner) SetAwaitHookProvider(fn func(runCtx context.Context, sessionID, runID string) tooltrpc.ReplyFunc) {
 	r.awaitHookProvider = fn
+}
+
+func (r *Runner) SetKnowledgeRetriever(ret *knowledge.Retriever) {
+	r.knowledgeRetriever = ret
 }
 
 // SetRunRegistry shares the chat gateway run registry for cancel/status/enqueue.

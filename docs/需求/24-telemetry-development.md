@@ -1,22 +1,30 @@
 # Telemetry 遥测 — 开发计划
 
-> **版本**：2026-05-18 | **状态**：🟡 部分实现
+> **版本**：2026-05-21 | **状态**：🟢 Prometheus + OTLP + Runs UI + 细粒度 Span/采样 ✅；🟡 Jaeger 全链路 UI 非目标
 > **需求**：[24 telemetry.md](./24%20telemetry.md) · **设计**：[24 telemetry.design.md](./24%20telemetry.design.md)
-> **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：EP-OBS-01/02/04/05 ✅, EP-OBS-06 待实现
+> **进度真相**：[execution-plan.md](../guides/execution-plan.md)（I6-TEL-01/02）· **Monitor UI**：[18-monitor-development.md](./18-monitor-development.md)
 
 ---
 
 ## 1. 模块定位
 
-Telemetry 遥测：基于 OpenTelemetry 的分布式追踪和指标采集，为系统提供可观测性。
+基于 OpenTelemetry + Prometheus 的可观测性：传输层 Trace、业务 Metrics、Chat Run 的 FlowLog/Usage spans 投影。
 
 **代码锚点**：
-- `internal/server/telemetry.go` — OTel TracerProvider + MeterProvider 初始化入口
-- `internal/server/http.go` — OTEL 中间件注册 + `/metrics` 端点
-- `internal/server/grpc.go` — OTEL gRPC 拦截器
-- `internal/metrics/vars.go` — Prometheus 业务指标定义
-- `internal/event/slog_bridge.go` — Log-Trace 关联（traceHandler）
-- `configs/` — OTEL 环境变量配置
+
+| 层 | 路径 |
+|----|------|
+| OTLP 初始化 | `internal/telemetry/telemetry.go` |
+| 传输中间件 | `internal/server/http.go`、`internal/server/grpc.go` |
+| Prometheus | `internal/metrics/vars.go` |
+| OTel Chat Span | `internal/telemetry/turntrace/`、`turn_trace.go`、`trpc_turn.go` |
+| 应用 Trace | `internal/event/trace_context.go`、`trace_emitter.go` |
+| Usage 投影 | `internal/service/turn_usage.go` |
+| Team Run | `internal/team/runner_team_trpc.go` |
+| 前端 Runs | `web/src/components/monitor/TraceList.vue`、`TraceWaterfall.vue` |
+| 启动 | `cmd/admin/main.go` → `telemetry.Init` |
+| Grafana | `docs/observability/grafana-aranea.json` |
+| FlowLogger | [52-flow-logger-development.md](./52-flow-logger-development.md) |
 
 ---
 
@@ -24,33 +32,49 @@ Telemetry 遥测：基于 OpenTelemetry 的分布式追踪和指标采集，为�
 
 | 项 | 状态 | 证据 |
 |----|------|------|
-| HTTP OTEL 中间件 | ✅ | `http.go` 中 `tracing.Server()` |
-| gRPC OTEL 拦截器 | ✅ | `grpc.go` 中 `tracing.Server()` |
+| HTTP OTEL 中间件 | ✅ | `http.go` → `tracing.Server()` |
+| gRPC OTEL 中间件 | ✅ | `grpc.go` → `tracing.Server()` |
 | Trace 传播 | ✅ | W3C TraceContext + Baggage |
-| OTLP Trace 导出（HTTP） | ✅ | `telemetry.go` → `initHTTPTracerProvider` |
-| OTLP Trace 导出（gRPC） | ✅ | `telemetry.go` → `initGRPCTracerProvider`（委托 trpc-agent-go `telemetry/trace`） |
-| OTLP Metrics 导出 | ✅ | `telemetry.go` → `initMeterProvider`（委托 trpc-agent-go `telemetry/metric`） |
-| Prometheus `/metrics` | ✅ | `internal/metrics/vars.go` + `http.go` Route 注册 |
-| Log-Trace 关联 | ✅ | `slog_bridge.go` → `traceHandler` 自动注入 trace_id/span_id |
-| 自定义 Span | ❌ | Agent/Team/Graph 运行无自定义 Span（EP-OBS-06） |
-| 前端 Trace 面板 | ❌ | MonitorDashboard 无 Trace 列表/瀑布图（EP-OBS-06） |
-| Trace 采样策略 | ❌ | 当前全量采样，无 Sampler 配置 |
+| OTLP Trace HTTP | ✅ | `initHTTPTracerProvider` |
+| OTLP Trace gRPC | ✅ | `initGRPCTracerProvider` → trpc `telemetry/trace`（service name/version 正确传入） |
+| OTLP Metrics | ✅ | `initMeterProvider` → trpc `telemetry/metric` |
+| Prometheus `/metrics` | ✅ | `metrics/vars.go` + Route 注册 |
+| FlowLog trace_id | ✅ | `NewTraceContext` + OTel 中间件 |
+| OTel Chat 根 Span | ✅ | I6-TEL-01：`startTurnSpan("chat.turn")` |
+| Usage spans + Waterfall | ✅ | I6-TEL-02：`TraceEmitter` + `TraceWaterfall.vue` |
+| Monitor Runs UI | ✅ | `TraceList` 列表 + 详情 Flow/Waterfall/Span |
+| `chat.usage_record` Flow 步骤 | ✅ | 落库失败可见于 monitor flow |
+| OTel LLM/Tool 细粒度 Span | ✅ Chat/Team | `turntrace` + hook 关闭 tool |
+| Graph OTel Span | ✅ Service 层 | `GraphService.ExecuteGraph` + biz 回调 |
+| Team usage spans 投影 | ✅ | turn + member metadata |
+| Trace 采样策略 | ✅ HTTP / ❌ gRPC | `OTEL_TRACES_SAMPLER*`（HTTP only） |
+| OTel ↔ usage 关联 | ✅ root | `otel_trace_id` / `otel_root_span_id` |
 
 ---
 
 ## 3. 差距与优化
 
-1. **P2**：Agent/Team/Graph 运行过程无自定义 Span，无法追踪 LLM 调用、工具调用等关键步骤（EP-OBS-06）。
-2. **P3**：无 Trace 采样策略，高负载下全量采样可能造成存储和性能压力。
-3. **P3**：前端无 Trace 可视化面板，运维无法在 UI 中查看链路追踪。
+| 优先级 | 项 | 说明 |
+|--------|-----|------|
+| P1 | gRPC Tracer service.name 修复 | ✅ 2026-05-21：不再误用 `resource.SchemaURL()` |
+| P2 | OTel 细粒度 Span | ✅ Chat/Team（hook 关 tool） |
+| P2 | Graph 执行 Span | ✅ Service 层 + biz 完成回调 |
+| P2 | 流式 Span 合并、tool 真实耗时 | ✅ hook 唯一关闭路径 |
+| P3 | Trace 采样 | ✅ HTTP；gRPC 待 trpc 暴露 Sampler |
+| P3 | OTel ↔ usage 关联 | ✅ root span id |
+| P3 | Team usage parity | ✅ turn + member metadata |
 
 ---
 
 ## 4. 开发阶段
 
-- **Phase 1** ✅：OTLP Trace/Metrics 导出 + Prometheus 指标 + Log-Trace 关联
-- **Phase 2**：Agent/Team/Graph 运行关键步骤添加自定义 Span（EP-OBS-06）
-- **Phase 3**：Trace 采样策略 + 前端 Trace 面板
+| 阶段 | 内容 | 状态 |
+|------|------|------|
+| Phase 1 | OTLP Trace/Metrics + Prometheus + FlowLog trace_id | ✅ |
+| Phase 1b | I6-TEL-01 Chat OTel 根 Span | ✅ |
+| Phase 1c | I6-TEL-02 Runs Waterfall + usage spans | ✅ |
+| Phase 2 | LLM/Tool/Graph OTel 细粒度 Span | ✅ |
+| Phase 3 | Trace 采样 | ✅ |
 
 ---
 
@@ -59,30 +83,47 @@ Telemetry 遥测：基于 OpenTelemetry 的分布式追踪和指标采集，为�
 | # | 任务 | 优先级 | EP | 状态 |
 |---|------|--------|-----|------|
 | 1 | OTLP Trace 导出（HTTP + gRPC） | P1 | EP-OBS-02 | ✅ |
-| 2 | OTLP Metrics 导出（trpc-agent-go 框架指标） | P2 | EP-OBS-02 | ✅ |
-| 3 | Prometheus `/metrics` 端点 | P0 | EP-OBS-01 | ✅ |
-| 4 | Log-Trace 关联（slog traceHandler） | P2 | EP-OBS-05 | ✅ |
-| 5 | `/metrics` 端点合规（Route 替代 HandleFunc） | P1 | R4/R12 | ✅ |
-| 6 | `trpc_turn.go`：LLM 调用 / 工具调用添加自定义 Span | P2 | EP-OBS-06 | ❌ |
-| 7 | Graph 执行添加自定义 Span | P2 | EP-OBS-06 | ❌ |
-| 8 | Trace 采样策略配置 | P3 | — | ❌ |
-| 9 | 前端 Trace 面板 | P3 | EP-OBS-06 | ❌ |
+| 2 | OTLP Metrics 导出（trpc 框架指标） | P2 | EP-OBS-02 | ✅ |
+| 3 | Prometheus `/metrics` | P0 | EP-OBS-01 | ✅ |
+| 4 | Log-Trace 关联（TraceContext + FlowLog） | P2 | EP-OBS-05 | ✅ |
+| 5 | `/metrics` Route 注册（绕过 auth） | P1 | R4/R12 | ✅ |
+| 6 | `telemetry` 包独立 + `Init` 入口 | P1 | 架构 | ✅ |
+| 7 | gRPC Tracer `service.name` / `service.version` | P1 | 质量 | ✅ 2026-05-21 |
+| 8 | Chat OTel 根 Span `chat.turn` | P2 | I6-TEL-01 | ✅ |
+| 9 | Monitor Runs + Waterfall | P2 | I6-TEL-02 | ✅ |
+| 10 | `trpc_turn` LLM/Tool OTel Span | P2 | EP-OBS-06 | ✅ |
+| 11 | Graph 执行 OTel Span | P2 | EP-OBS-06 | ✅ |
+| 12 | Trace 采样策略（HTTP） | P3 | — | ✅ |
+| 13 | Span 语义 / Team parity | P2 | — | ✅ |
 
 ---
 
 ## 6. 验收标准
 
-- [x] `OTEL_EXPORTER_OTLP_ENDPOINT` 设置后，Jaeger 可看到 HTTP/gRPC 请求的 Trace
-- [x] `OTEL_EXPORTER_OTLP_ENDPOINT` 设置后，trpc-agent-go 框架指标通过 OTLP 导出
-- [x] Prometheus 可采集系统 Metrics（`/metrics` 端点）
-- [x] 日志包含 `trace_id` / `span_id` 字段（当请求在 Trace 上下文中时）
-- [ ] Jaeger 可看到 Agent 运行的完整自定义 Span（LLM 调用、工具调用等）
-- [ ] 前端 MonitorDashboard 可查看 Trace 列表和 Span 瀑布图
+- [x] `OTEL_EXPORTER_OTLP_ENDPOINT` 设置后 Jaeger 可见 HTTP/gRPC 请求 Trace
+- [x] OTLP Metrics 导出 trpc-agent-go 框架指标
+- [x] Prometheus scrape `/metrics`
+- [x] FlowLog / Usage 含一致 `trace_id`
+- [x] Monitor Runs 详情可查看 Flow + Waterfall + Span JSON
+- [x] gRPC 协议下 Jaeger `service.name` 为 admin 服务名（非 schema URL）
+- [x] Jaeger 可见 LLM/Tool 等细粒度 OTel Span（`llm.call` / `tool.call` / `chat.llm.invoke`）
+- [x] 可配置 Trace 采样率（HTTP exporter；`OTEL_TRACES_SAMPLER`）
+- [ ] gRPC exporter 采样（依赖 trpc `telemetry/trace` 扩展）
+
+**验证命令**：
+
+```bash
+go test ./internal/telemetry/...
+make build && make test
+cd web && pnpm lint && pnpm test && pnpm build
+```
+
+**手工**：配置 OTEL → Chat 一轮 → Jaeger 见 API + `chat.turn` → Monitor Runs 见 Waterfall。
 
 ---
 
 ## 7. 依赖与风险
 
-- 需部署 OTEL Collector + Jaeger/Prometheus（开发环境可用 `pkg/trpc-agent-go/examples/telemetry/jaeger-prometheus/docker-compose.yml`）
-- 自定义 Span 需注意性能开销；建议 Phase 2 配合采样策略
-- trpc-agent-go 框架已内置 `telemetry/` 包，Aranea 通过 `internal/server/telemetry.go` 桥接，遵循 R1 红线
+- 开发环境 OTEL：参考 `pkg/trpc-agent-go/examples/telemetry/jaeger-prometheus/docker-compose.yaml`
+- 细粒度 Span 需配合采样，避免高 QPS 存储压力
+- Runs UI 与 Jaeger 职责分离：产品排障以 Runs/Flow 为主，Jaeger 供 SRE 全链路

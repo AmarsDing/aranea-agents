@@ -92,6 +92,7 @@ func entTeamRunStepToBiz(e *ent.TeamRunStep) biz.TeamRunStep {
 		StartedAt:     e.StartedAt,
 		FinishedAt:    e.FinishedAt,
 		CreatedAt:     e.CreatedAt,
+		ToolCallCount: e.ToolCallCount,
 	}
 }
 
@@ -338,6 +339,7 @@ func (r *teamRepo) CreateTeamRunStep(ctx context.Context, step biz.TeamRunStep) 
 		SetStartedAt(step.StartedAt).
 		SetFinishedAt(step.FinishedAt).
 		SetCreatedAt(step.CreatedAt).
+		SetToolCallCount(step.ToolCallCount).
 		Save(ctx)
 	if err != nil {
 		return biz.TeamRunStep{}, err

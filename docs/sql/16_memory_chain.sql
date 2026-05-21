@@ -1,0 +1,10 @@
+-- ============================================================
+-- SQLite 运行时 DDL 合集（会话记忆链 + 平台核心表）
+-- 启动时由 data.EnsureSessionMemorySchema 执行（go:embed）
+-- 权威副本：internal/data/sql/memory_chain.sql
+--
+-- 模块化参考（手工 sqlite3 .read）：docs/sql/00_init.sql
+-- Usage 表段须与 docs/sql/08_usage.sql 保持同步
+-- 另见独立运行时 DDL：13_plugin_run、14_monitor_alert、15_ecosystem_product
+--   → internal/data/sql/*.sql + Ensure*Schema
+-- ============================================================

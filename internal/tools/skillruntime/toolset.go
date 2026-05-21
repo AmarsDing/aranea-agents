@@ -20,7 +20,7 @@ func BuildTRPCSkillTools(ctx context.Context, skillUC *biz.SkillUsecase, sys biz
 	if opts == nil {
 		slugs, err = skillUC.ListEnabledPublishedSkillKeys(ctx)
 	} else {
-		slugs, err = resolveSkillSlugs(ctx, skillUC, opts)
+		slugs, err = ResolveSkillSlugs(ctx, skillUC, opts)
 	}
 	if err != nil || len(slugs) == 0 {
 		return nil, err

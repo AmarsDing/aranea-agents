@@ -206,6 +206,7 @@ type FlowLogger struct {
 | 13 | `chat.turn_execute` | done | Turn执行完成 | run_id, reply_len, prompt_tok, completion_tok |
 | 14 | `chat.turn_timeout` | error | 请求超时 | timeout |
 | 15 | `chat.empty_reply` | error | Agent未产生响应 | has_error, last_error, has_content |
+| 16 | `chat.usage_record` | error | Token 用量（含 spans）落库失败 | error, run_id, usage_kind, status |
 
 ## 五、调试探针清理
 
@@ -233,3 +234,22 @@ type FlowLogger struct {
 4. **调试信息应可观测**：仅输出到 stderr 的调试信息对前端和运维不可见，需要通过事件总线等机制输送到前端 monitor 面板。
 
 5. **结构化日志优于格式化字符串**：`FlowLogger` 的 step/phase/extra 结构比 `fmt.Fprintf` 的自由文本更易于前端解析和展示。
+
+---
+
+## 七、v2 重设计（2026-05-20）
+
+初版 FlowLogger 仅覆盖 Chat Turn 与 `EnvelopeTypeLog`。v2 目标：按 **trace_id** 聚合链路、**severity** 红/黄/绿、人类可读 title/message、AI 可导出 JSONL。
+
+| 文档 | 路径 |
+|------|------|
+| 需求 | [52-flow-logger.md](../需求/52-flow-logger.md) |
+| 设计 | [52-flow-logger.design.md](../需求/52-flow-logger.design.md) |
+| 开发计划 | [52-flow-logger-development.md](../需求/52-flow-logger-development.md) |
+| 步骤注册表 | [52-flow-logger.design.md](../需求/52-flow-logger.design.md) §5.1 |
+
+---
+
+## 八、SlogBridge 移除（2026-05-20）
+
+v2 落地后已 **删除 `slog_bridge.go`**，全项目 `internal/` 不再使用 `slog`；基础设施改用 `system_flow.go`。详见 [FlowLog-V2-SlogRemoval](./2026-05-20-FlowLog-V2-SlogRemoval.md)。

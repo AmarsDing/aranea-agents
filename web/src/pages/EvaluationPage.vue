@@ -4,17 +4,13 @@
       <div>
         <div class="evaluation-kicker">EvalSet / metrics</div>
         <h1 class="evaluation-title">评估管理</h1>
-        <p class="evaluation-subtitle">管理评估数据集与运行记录（EvalSet + LLMJudge 已接入 EP-RT-08）。</p>
+        <p class="evaluation-subtitle">EvalSet + FrameworkBridge（LLM UserSim / 扩展指标 / 趋势对比已接入）。</p>
       </div>
       <div class="row q-gutter-sm">
         <q-btn color="primary" rounded unelevated icon="add" label="新建数据集" @click="createOpen = true" />
         <q-btn outline rounded color="primary" icon="refresh" label="刷新" :loading="loading" @click="loadDatasets" />
       </div>
     </section>
-
-    <q-banner rounded class="bg-info text-white q-mb-md">
-      RunEvaluation 依赖后端 Evaluation Runtime；未配置时运行会返回错误，数据集 CRUD 仍可用。
-    </q-banner>
 
     <q-banner v-if="error" rounded class="bg-negative text-white q-mb-md">
       {{ error }}
@@ -63,6 +59,20 @@
           </q-card-section>
         </q-card>
         <q-card v-else flat bordered class="q-pa-lg text-center text-grey-7">请选择或新建数据集</q-card>
+
+        <evaluation-analytics-panel
+          v-if="selectedDataset"
+          class="q-mt-md"
+          v-model:agent-id="trendAgentId"
+          :agent-options="agentOptions"
+          :runs="runs"
+          :trend-points="trendPoints"
+          :comparisons="comparisons"
+          :trend-loading="trendLoading"
+          :compare-loading="compareLoading"
+          @refresh-trend="loadTrend"
+          @compare="submitCompare"
+        />
       </div>
     </div>
 
@@ -85,14 +95,19 @@
     <evaluation-results-dialog
       v-model:open="resultsOpen"
       :run-id="resultsRun?.id ?? ''"
+      :run="resultsRun"
       :rows="caseResults"
       :loading="resultsLoading"
+      :saving-id="savingResultId"
       :columns="resultColumns"
+      @annotate="saveAnnotation"
+      @update-row="updateResultRow"
     />
   </q-page>
 </template>
 
 <script setup lang="ts">
+import EvaluationAnalyticsPanel from "../components/evaluation/EvaluationAnalyticsPanel.vue";
 import EvaluationDatasetList from "../components/evaluation/EvaluationDatasetList.vue";
 import EvaluationCreateDialog from "../components/evaluation/EvaluationCreateDialog.vue";
 import EvaluationRunDialog from "../components/evaluation/EvaluationRunDialog.vue";
@@ -126,7 +141,17 @@ const {
   submitCreate,
   confirmDeleteDataset,
   submitRun,
-  openResults
+  openResults,
+  savingResultId,
+  updateResultRow,
+  saveAnnotation,
+  trendAgentId,
+  trendPoints,
+  trendLoading,
+  comparisons,
+  compareLoading,
+  loadTrend,
+  submitCompare
 } = useEvaluationPage();
 </script>
 

@@ -29,12 +29,17 @@ func (s *statsRepoStub) UpdatePluginConfig(context.Context, string, string) (biz
 func (s *statsRepoStub) UpdateSortOrder(context.Context, string, int) (biz.Plugin, error) {
 	return biz.Plugin{}, nil
 }
+func (s *statsRepoStub) UpdatePluginScope(context.Context, string, string) (biz.Plugin, error) {
+	return biz.Plugin{}, nil
+}
 func (s *statsRepoStub) IncrementStats(_ context.Context, pluginKey string, delta biz.PluginStatUpdate) error {
 	if pluginKey == s.key {
 		s.count += delta.InvokeCount
 	}
 	return nil
 }
+
+func (s *statsRepoStub) Record(context.Context, string, string, string) {}
 
 func TestRepoStatsRecorder_IncrementStats(t *testing.T) {
 	repo := &statsRepoStub{key: "audit_log"}
@@ -47,7 +52,7 @@ func TestRepoStatsRecorder_IncrementStats(t *testing.T) {
 	if repo.count != 1 {
 		t.Fatalf("count=%d", repo.count)
 	}
-	rec := NewRepoStatsRecorder(repo)
+	rec := NewRepoStatsRecorder(repo, nil)
 	rec.Record(context.Background(), "audit_log", "after_tool", "ok")
 }
 

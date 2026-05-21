@@ -83,6 +83,16 @@ func (m *memPluginRepo) UpdateSortOrder(_ context.Context, id string, sortOrder 
 	return p, nil
 }
 
+func (m *memPluginRepo) UpdatePluginScope(_ context.Context, id string, scope string) (biz.Plugin, error) {
+	p, ok := m.items[id]
+	if !ok {
+		return biz.Plugin{}, fmt.Errorf("plugin not found: %s", id)
+	}
+	p.Scope = scope
+	m.items[id] = p
+	return p, nil
+}
+
 func (m *memPluginRepo) IncrementStats(_ context.Context, pluginKey string, delta biz.PluginStatUpdate) error {
 	for id, p := range m.items {
 		if p.Key == pluginKey {
@@ -102,7 +112,7 @@ func (m *memPluginRepo) IncrementStats(_ context.Context, pluginKey string, delt
 func newPluginService() *service.PluginService {
 	repo := newMemPluginRepo()
 	repo.items["p1"] = biz.Plugin{ID: "p1", Key: "test-plugin", Name: "Test Plugin", Enabled: false}
-	return service.NewPluginService(biz.NewPluginUsecase(repo), nil)
+	return service.NewPluginService(biz.NewPluginUsecase(repo, nil, nil), nil)
 }
 
 func TestPluginService_List(t *testing.T) {
@@ -157,5 +167,18 @@ func TestPluginService_UpdateSortOrder(t *testing.T) {
 	}
 	if out.GetSortOrder() != 5 {
 		t.Errorf("sort_order mismatch: %d", out.GetSortOrder())
+	}
+}
+
+func TestPluginService_UpdateScope(t *testing.T) {
+	svc := newPluginService()
+	ctx := context.Background()
+
+	out, err := svc.UpdatePluginScope(ctx, &v1.UpdatePluginScopeRequest{Id: "p1", Scope: "agent-42"})
+	if err != nil {
+		t.Fatalf("update scope: %v", err)
+	}
+	if out.GetScope() != "agent-42" {
+		t.Errorf("scope mismatch: %s", out.GetScope())
 	}
 }

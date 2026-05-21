@@ -40,6 +40,7 @@
       :testing-id="testingId"
       @toggle-enabled="toggleRow"
       @test-connection="testRow"
+      @copy-webhook="copyWebhook"
       @edit="openEdit"
       @remove="confirmDelete"
     />
@@ -61,7 +62,7 @@ import { useQuasar } from "quasar";
 import ChannelCatalogFilters from "../components/channels/ChannelCatalogFilters.vue";
 import ChannelHeroSection from "../components/channels/ChannelHeroSection.vue";
 import ChannelsTable from "../components/channels/ChannelsTable.vue";
-import { channelConfig, channelMetadata } from "../components/channels/channelUi";
+import { channelConfig, channelMetadata, copyChannelWebhookURL } from "../components/channels/channelUi";
 import ChannelEditorDialog from "../features/channels/ChannelEditorDialog.vue";
 import { deleteChannel, listChannelCatalog, listChannelCredentials, listChannels, testChannel, toggleChannel } from "../features/channels/api";
 import type { ChannelCatalogItem, ChannelCredential, ChannelRow } from "../features/channels/types";
@@ -166,6 +167,15 @@ async function testRow(row: ChannelRow) {
     $q.notify({ type: "negative", message: err instanceof Error ? err.message : "测试失败" });
   } finally {
     testingId.value = "";
+  }
+}
+
+async function copyWebhook(row: ChannelRow) {
+  try {
+    const url = await copyChannelWebhookURL(row);
+    $q.notify({ type: "positive", message: `已复制 Webhook URL：${url}` });
+  } catch (err) {
+    $q.notify({ type: "negative", message: err instanceof Error ? err.message : "复制失败" });
   }
 }
 

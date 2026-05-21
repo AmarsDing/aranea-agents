@@ -112,7 +112,7 @@
 | **控件** | `QSelect`：占位「所有创建者」 |
 | **选项** | 当前租户/空间下出现过创建者的用户列表（需后端 `created_by` 或审计字段支持） |
 | **行为** | 变更即第 1 页刷新 |
-| **库表** | 建议在 `agents` 增加 `created_by`（UUID，FK `users.id`）；若暂无，可先按「仅我的 / 全部」简化 |
+| **库表** | ✅ 已实现 `agents.created_by`（TEXT，auth `UserID` 字符串）；筛选参数 `created_by` 支持空 / `mine` / 具体用户 id；见 [3-agent-list-development.md](./3-agent-list-development.md) |
 
 ### 3.8 视图切换 — 网格 / 列表
 

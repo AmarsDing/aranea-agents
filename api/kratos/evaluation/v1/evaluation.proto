@@ -46,6 +46,12 @@ message EvalRun {
   string started_at = 12;
   string finished_at = 13;
   string created_at = 14;
+  string trigger_source = 15; // manual | after_turn
+  int32  num_runs = 16;
+  float  pass_at_k = 17;
+  float  pass_hat_k = 18;
+  // scores_json holds extended metric averages (json_match, rouge_l, tool_trajectory, etc.).
+  string scores_json = 19;
 }
 
 // EvalCaseResult is the output for one case in a run.
@@ -60,6 +66,12 @@ message EvalCaseResult {
   float  tool_call_accuracy = 8;
   string error_message = 9;
   string created_at = 10;
+  optional bool human_pass = 11;
+  optional float human_score = 12;
+  string human_comment = 13;
+  string annotated_at = 14;
+  string annotated_by = 15;
+  string scores_json = 16;
 }
 
 // --- Requests / Responses ---
@@ -87,6 +99,12 @@ message DeleteDatasetRequest {
   string id = 1 [(google.api.field_behavior) = REQUIRED];
 }
 
+message UpdateDatasetRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string name = 2 [(google.api.field_behavior) = REQUIRED];
+  string description = 3;
+}
+
 message UploadCasesRequest {
   string dataset_id = 1 [(google.api.field_behavior) = REQUIRED];
   // cases_json is a JSON array of {input, expected_output, metadata_json} objects.
@@ -104,9 +122,15 @@ message RunEvaluationRequest {
   string metrics = 3;
   // num_runs repeats each case N times (AgentEvaluator MultiRun, default 1).
   int32 num_runs = 4;
+  // use_user_simulation enables scripted user simulation when cases define metadata_json.user_simulation.
+  bool use_user_simulation = 5;
 }
 
 message GetRunRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message DeleteRunRequest {
   string id = 1 [(google.api.field_behavior) = REQUIRED];
 }
 
@@ -133,6 +157,61 @@ message GetRunResultsResponse {
   int32 total = 2;
 }
 
+message AnnotateCaseResultRequest {
+  string run_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string result_id = 2 [(google.api.field_behavior) = REQUIRED];
+  optional bool human_pass = 3;
+  optional float human_score = 4;
+  optional string human_comment = 5;
+}
+
+message GetAgentEvalTrendRequest {
+  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string dataset_id = 2;
+  int32 limit = 3;
+}
+
+message EvalTrendPoint {
+  string run_id = 1;
+  string created_at = 2;
+  string trigger_source = 3;
+  float exact_match_score = 4;
+  float contains_match_score = 5;
+  float llm_judge_score = 6;
+  float tool_call_accuracy = 7;
+  float pass_at_k = 8;
+  float pass_hat_k = 9;
+}
+
+message GetAgentEvalTrendResponse {
+  repeated EvalTrendPoint points = 1;
+}
+
+message CompareEvalRunsRequest {
+  repeated string run_ids = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message EvalRunComparison {
+  string run_id = 1;
+  string agent_id = 2;
+  string dataset_id = 3;
+  string created_at = 4;
+  float exact_match_score = 5;
+  float contains_match_score = 6;
+  float llm_judge_score = 7;
+  float tool_call_accuracy = 8;
+  float pass_at_k = 9;
+  float pass_hat_k = 10;
+  float delta_exact_match = 11;
+  float delta_contains_match = 12;
+  float delta_llm_judge = 13;
+  float delta_tool_call_accuracy = 14;
+}
+
+message CompareEvalRunsResponse {
+  repeated EvalRunComparison items = 1;
+}
+
 service EvaluationService {
   // Datasets
   rpc CreateDataset(CreateDatasetRequest) returns (EvalDataset) {
@@ -156,6 +235,12 @@ service EvaluationService {
       delete: "/v1/evaluation/datasets/{id}"
     };
   }
+  rpc UpdateDataset(UpdateDatasetRequest) returns (EvalDataset) {
+    option (google.api.http) = {
+      patch: "/v1/evaluation/datasets/{id}"
+      body: "*"
+    };
+  }
   rpc UploadCases(UploadCasesRequest) returns (UploadCasesResponse) {
     option (google.api.http) = {
       post: "/v1/evaluation/datasets/{dataset_id}/cases"
@@ -175,6 +260,11 @@ service EvaluationService {
       get: "/v1/evaluation/runs/{id}"
     };
   }
+  rpc DeleteRun(DeleteRunRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      delete: "/v1/evaluation/runs/{id}"
+    };
+  }
   rpc ListRuns(ListRunsRequest) returns (ListRunsResponse) {
     option (google.api.http) = {
       get: "/v1/evaluation/runs"
@@ -183,6 +273,23 @@ service EvaluationService {
   rpc GetRunResults(GetRunResultsRequest) returns (GetRunResultsResponse) {
     option (google.api.http) = {
       get: "/v1/evaluation/runs/{run_id}/results"
+    };
+  }
+  rpc AnnotateCaseResult(AnnotateCaseResultRequest) returns (EvalCaseResult) {
+    option (google.api.http) = {
+      patch: "/v1/evaluation/runs/{run_id}/results/{result_id}/annotation"
+      body: "*"
+    };
+  }
+  rpc GetAgentEvalTrend(GetAgentEvalTrendRequest) returns (GetAgentEvalTrendResponse) {
+    option (google.api.http) = {
+      get: "/v1/evaluation/agents/{agent_id}/trend"
+    };
+  }
+  rpc CompareEvalRuns(CompareEvalRunsRequest) returns (CompareEvalRunsResponse) {
+    option (google.api.http) = {
+      post: "/v1/evaluation/runs/compare"
+      body: "*"
     };
   }
 }

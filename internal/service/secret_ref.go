@@ -1,13 +1,16 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
+
+	"aranea-agents/internal/biz"
 )
 
-// ResolveSecretRef resolves MVP secret_ref forms. Supported: env:VAR_NAME.
-func ResolveSecretRef(ref string) (string, error) {
+// ResolveSecretRef resolves secret_ref forms: env:VAR_NAME and enc: (AES-GCM blob).
+func ResolveSecretRef(ctx context.Context, ref string) (string, error) {
 	ref = strings.TrimSpace(ref)
 	if ref == "" {
 		return "", fmt.Errorf("empty secret_ref")
@@ -23,8 +26,15 @@ func ResolveSecretRef(ref string) (string, error) {
 		}
 		return v, nil
 	}
-	if strings.HasPrefix(ref, "local:") {
-		return "", fmt.Errorf("local: secret_ref cannot be resolved at runtime; configure env:VAR_NAME instead")
+	if strings.HasPrefix(ref, "enc:") {
+		plain, err := biz.DecryptChannelSecretRef(ctx, ref)
+		if err != nil {
+			return "", err
+		}
+		return plain, nil
 	}
-	return "", fmt.Errorf("unsupported secret_ref (use env:NAME)")
+	if strings.HasPrefix(ref, "local:") {
+		return "", fmt.Errorf("local: secret_ref is deprecated; re-save credentials or use env:VAR_NAME")
+	}
+	return "", fmt.Errorf("unsupported secret_ref (use env:NAME or enc:)")
 }

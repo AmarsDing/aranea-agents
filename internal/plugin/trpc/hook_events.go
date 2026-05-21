@@ -19,7 +19,13 @@ func (m *Manager) dispatchHookOnEvent(
 		return e, nil
 	}
 	_, agentKey := sessionAgentKey(ctx, invocation)
-	agentID := ""
+	agentID := m.platformAgentID(ctx, agentKey)
+	if agentID == "" {
+		agentID = agentKeyFromInvocation(invocation)
+	}
+	if agentID == "" {
+		agentID = agentKey
+	}
 	resolved := m.hooks.Resolve(agentID, agentKey)
 	if len(resolved) == 0 {
 		return e, nil
@@ -32,7 +38,13 @@ func (m *Manager) dispatchHookOnEvent(
 		if !hookEventMatches(rh.Rule.Condition, eventType) {
 			continue
 		}
-		if err := executeHookAction(ctx, rh, "on_event", agentID, agentKey, "", e); err != nil {
+		var stats StatsRecorder
+		var notifier *HookNotifier
+		if m.rt != nil {
+			stats = m.rt.stats
+			notifier = m.rt.HookNotifier()
+		}
+		if err := executeHookAction(ctx, stats, notifier, rh, "on_event", agentID, agentKey, "", e); err != nil {
 			return e, err
 		}
 		_ = i // hook executed

@@ -112,6 +112,34 @@ export type ToolInvocation = {
   redaction_applied: boolean;
   metadata_json: string;
   created_at: string;
+  streaming?: boolean;
+  chunk_count?: number;
+};
+
+export type ToolInvocationAudit = {
+  id: string;
+  invocation_id: string;
+  tool_key: string;
+  agent_id: string;
+  user_id: string;
+  session_id: string;
+  action: string;
+  result_summary: string;
+  status: string;
+  source: string;
+  created_at: string;
+};
+
+export type ToolAuditQuery = {
+  tool_key?: string;
+  agent_id?: string;
+  user_id?: string;
+  session_id?: string;
+  status?: string;
+  from?: string;
+  to?: string;
+  page?: number;
+  page_size?: number;
 };
 
 export type ToolRunQuery = {

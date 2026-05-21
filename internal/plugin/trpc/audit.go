@@ -3,11 +3,11 @@ package plugintrpc
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
@@ -24,17 +24,16 @@ type auditConfig struct {
 	RedactSensitive  bool `json:"redact_sensitive"`
 }
 
-// AuditLogPlugin records agent/model/tool lifecycle events via the structured logger.
 type AuditLogPlugin struct {
-	name  string
-	cfg   auditConfig
-	stats StatsRecorder
+	name   string
+	cfg    auditConfig
+	stats  StatsRecorder
+	logger *PluginSafeLogger
 }
 
 var _ trpcplugin.Plugin = (*AuditLogPlugin)(nil)
 
-// NewAuditLogPlugin builds the runtime audit plugin from a DB row (audit_log / runtime_audit).
-func NewAuditLogPlugin(p biz.Plugin, stats StatsRecorder) *AuditLogPlugin {
+func NewAuditLogPlugin(p biz.Plugin, stats StatsRecorder, bus event.Bus) *AuditLogPlugin {
 	var cfg auditConfig
 	cfg.LogModelRequest = true
 	cfg.LogModelResponse = true
@@ -45,7 +44,13 @@ func NewAuditLogPlugin(p biz.Plugin, stats StatsRecorder) *AuditLogPlugin {
 	if cfg.MaxContentLength <= 0 {
 		cfg.MaxContentLength = 500
 	}
-	return &AuditLogPlugin{name: p.Key, cfg: cfg, stats: stats}
+	name := p.Key
+	return &AuditLogPlugin{
+		name:   name,
+		cfg:    cfg,
+		stats:  stats,
+		logger: NewPluginSafeLogger(name, bus),
+	}
 }
 
 func (a *AuditLogPlugin) Name() string { return a.name }
@@ -85,9 +90,12 @@ func (a *AuditLogPlugin) beforeModel(ctx context.Context, args *trpcmodel.Before
 	sid, akey := sessionAgentKey(ctx, nil)
 	if a.cfg.LogModelRequest && args != nil && args.Request != nil {
 		summary := a.summarizeMessages(args.Request)
-		fmt.Fprintf(os.Stderr, "[audit_log] model_request plugin=%s session_id=%s agent_key=%s model=%s summary=%s\n",
-			a.name, sid, akey, modelNameFromContext(ctx), summary)
-		os.Stderr.Sync()
+		a.logger.Info("plugin.audit_log.before_model",
+			"session_id", sid,
+			"agent_key", akey,
+			"model", modelNameFromContext(ctx),
+			"summary", summary,
+		)
 	} else {
 		a.logLifecycle("before_model", sid, akey)
 	}
@@ -104,9 +112,12 @@ func (a *AuditLogPlugin) afterModel(ctx context.Context, args *trpcmodel.AfterMo
 	if a.cfg.LogModelResponse && args != nil && args.Response != nil {
 		text := a.maybeRedact(responseText(args.Response))
 		text = truncateString(text, a.cfg.MaxContentLength)
-		fmt.Fprintf(os.Stderr, "[audit_log] model_response plugin=%s session_id=%s agent_key=%s status=%s summary=%s\n",
-			a.name, sid, akey, status, text)
-		os.Stderr.Sync()
+		a.logger.Info("plugin.audit_log.after_model",
+			"session_id", sid,
+			"agent_key", akey,
+			"status", status,
+			"summary", text,
+		)
 	} else {
 		a.logLifecycle("after_model", sid, akey, "status", status)
 	}
@@ -118,9 +129,12 @@ func (a *AuditLogPlugin) beforeTool(ctx context.Context, args *trpctool.BeforeTo
 	if args != nil && a.cfg.LogToolArgs {
 		preview := truncateString(a.maybeRedact(string(args.Arguments)), a.cfg.MaxContentLength)
 		sid, akey := sessionAgentKey(ctx, nil)
-		fmt.Fprintf(os.Stderr, "[audit_log] tool_call plugin=%s tool=%s session_id=%s agent_key=%s args_preview=%s phase=before\n",
-			a.name, args.ToolName, sid, akey, preview)
-		os.Stderr.Sync()
+		a.logger.Info("plugin.audit_log.before_tool",
+			"tool", args.ToolName,
+			"session_id", sid,
+			"agent_key", akey,
+			"args_preview", preview,
+		)
 	}
 	a.record(ctx, "before_tool", "ok")
 	return &trpctool.BeforeToolResult{Context: ctx}, nil
@@ -136,9 +150,13 @@ func (a *AuditLogPlugin) afterTool(ctx context.Context, args *trpctool.AfterTool
 		status = "error"
 	}
 	sid, akey := sessionAgentKey(ctx, nil)
-	fmt.Fprintf(os.Stderr, "[audit_log] tool_call plugin=%s tool=%s session_id=%s agent_key=%s status=%s phase=after at=%s\n",
-		a.name, args.ToolName, sid, akey, status, time.Now().UTC().Format(time.RFC3339))
-	os.Stderr.Sync()
+	a.logger.Info("plugin.audit_log.after_tool",
+		"tool", args.ToolName,
+		"session_id", sid,
+		"agent_key", akey,
+		"status", status,
+		"at", time.Now().UTC().Format(time.RFC3339),
+	)
 	a.record(ctx, "after_tool", status)
 	return &trpctool.AfterToolResult{}, nil
 }
@@ -156,28 +174,14 @@ func (a *AuditLogPlugin) onEvent(
 	if kind == "" {
 		kind = "event"
 	}
-	// Use stderr directly instead of slog to avoid deadlocking when
-	// the slog handler (SlogBridge) tries to publish to the event bus
-	// while the bus mutex is already held by the caller.
-	fmt.Fprintf(os.Stderr, "[audit_log.on_event] plugin=%s session_id=%s agent_key=%s event_object=%s author=%s\n",
-		a.name, sid, akey, kind, e.Author)
-	os.Stderr.Sync()
+	a.logger.Info("plugin.audit_log.on_event",
+		"session_id", sid,
+		"agent_key", akey,
+		"event_object", kind,
+		"author", e.Author,
+	)
 	a.record(ctx, "on_event", "ok")
 	return e, nil
-}
-
-func (a *AuditLogPlugin) summarizeMessages(req *trpcmodel.Request) string {
-	if req == nil {
-		return ""
-	}
-	var parts []string
-	for _, m := range req.Messages {
-		line := strings.TrimSpace(string(m.Role) + ": " + m.Content)
-		if line != "" {
-			parts = append(parts, truncateString(a.maybeRedact(line), a.cfg.MaxContentLength))
-		}
-	}
-	return strings.Join(parts, " | ")
 }
 
 func (a *AuditLogPlugin) maybeRedact(s string) string {
@@ -185,6 +189,26 @@ func (a *AuditLogPlugin) maybeRedact(s string) string {
 		return s
 	}
 	return redactText(s, true, true, true)
+}
+
+func (a *AuditLogPlugin) summarizeMessages(req *trpcmodel.Request) string {
+	if req == nil {
+		return ""
+	}
+	var b strings.Builder
+	for i, msg := range req.Messages {
+		if i > 0 {
+			b.WriteString("; ")
+		}
+		role := string(msg.Role)
+		content := strings.TrimSpace(msg.Content)
+		if content == "" {
+			continue
+		}
+		content = truncateString(content, a.cfg.MaxContentLength)
+		fmt.Fprintf(&b, "[%s]%s", role, content)
+	}
+	return b.String()
 }
 
 func (a *AuditLogPlugin) record(ctx context.Context, point, status string) {
@@ -195,38 +219,10 @@ func (a *AuditLogPlugin) record(ctx context.Context, point, status string) {
 
 func (a *AuditLogPlugin) logLifecycle(point, sessionID, agentKey string, extra ...any) {
 	kv := []any{
-		"plugin", a.name,
 		"point", point,
 		"session_id", sessionID,
 		"agent_key", agentKey,
-		"at", time.Now().UTC().Format(time.RFC3339),
 	}
 	kv = append(kv, extra...)
-	// Use stderr directly instead of slog to avoid deadlocking when
-	// the slog handler (SlogBridge) tries to publish to the event bus
-	// while the bus mutex is already held by the caller.
-	var buf strings.Builder
-	buf.WriteString("[audit_log] lifecycle")
-	for i := 0; i+1 < len(kv); i += 2 {
-		fmt.Fprintf(&buf, " %v=%v", kv[i], kv[i+1])
-	}
-	fmt.Fprintln(os.Stderr, buf.String())
-	os.Stderr.Sync()
-}
-
-func sessionAgentKey(ctx context.Context, inv *trpcagent.Invocation) (sessionID, agentKey string) {
-	if inv != nil {
-		agentKey = inv.AgentName
-		if inv.Session != nil {
-			sessionID = inv.Session.ID
-		}
-		return sessionID, agentKey
-	}
-	if i, ok := trpcagent.InvocationFromContext(ctx); ok && i != nil {
-		agentKey = i.AgentName
-		if i.Session != nil {
-			sessionID = i.Session.ID
-		}
-	}
-	return sessionID, agentKey
+	a.logger.Info("plugin.audit_log."+point, kv...)
 }

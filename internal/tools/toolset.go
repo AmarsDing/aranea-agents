@@ -16,6 +16,8 @@ import (
 	trpcemail "trpc.group/trpc-go/trpc-agent-go/tool/email"
 	trpcfile "trpc.group/trpc-go/trpc-agent-go/tool/file"
 	trpcgooglesearch "trpc.group/trpc-go/trpc-agent-go/tool/google/search"
+	"aranea-agents/internal/tools/mcpobserve"
+
 	trpchostexec "trpc.group/trpc-go/trpc-agent-go/tool/hostexec"
 	trpcmcp "trpc.group/trpc-go/trpc-agent-go/tool/mcp"
 	trpcmcpbroker "trpc.group/trpc-go/trpc-agent-go/tool/mcpbroker"
@@ -82,11 +84,8 @@ func Registry() []*ToolRegistration {
 				Description: "Gemini web fetch tool (Gemini-powered page extraction)",
 				Category:    "web",
 				Factory: func(ctx context.Context) (Tool, error) {
-					t, err := trpcgeminifetch.NewTool("")
-					if err != nil {
-						return nil, fmt.Errorf("geminifetch: %w", err)
-					}
-					return t, nil
+					// Instantiated in Assemble when AssemblyConfig.GeminiModel is set.
+					return nil, nil
 				},
 				EnabledByDefault: false,
 				RiskLevel:        "medium",
@@ -106,7 +105,8 @@ func Registry() []*ToolRegistration {
 				Description: "Google Custom Search ToolSet",
 				Category:    "search",
 				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
-					return trpcgooglesearch.NewToolSet(ctx)
+					// Instantiated in Assemble when AssemblyConfig has API key + engine ID.
+					return nil, nil
 				},
 				EnabledByDefault: false,
 				RiskLevel:        "medium",
@@ -319,32 +319,28 @@ func Assemble(ctx context.Context, cfg AssemblyConfig) (*AssembledToolsets, erro
 		}
 	}
 
-	if enabled["geminifetch"] && cfg.GeminiModel != "" {
-		t, err := trpcgeminifetch.NewTool(cfg.GeminiModel)
-		if err != nil {
-			return nil, fmt.Errorf("geminifetch: %w", err)
-		}
-		for i, existing := range out.Tools {
-			if decl := existing.Declaration(); decl != nil && decl.Name == "gemini_web_fetch" {
-				out.Tools[i] = t
-				break
+	if enabled["geminifetch"] {
+		if model := strings.TrimSpace(cfg.GeminiModel); model != "" {
+			t, err := trpcgeminifetch.NewTool(model)
+			if err != nil {
+				return nil, fmt.Errorf("geminifetch: %w", err)
 			}
+			out.Tools = append(out.Tools, t)
 		}
 	}
 
-	if enabled["google_search"] && cfg.GoogleAPIKey != "" && cfg.GoogleCX != "" {
-		ts, err := trpcgooglesearch.NewToolSet(ctx,
-			trpcgooglesearch.WithAPIKey(cfg.GoogleAPIKey),
-			trpcgooglesearch.WithEngineID(cfg.GoogleCX),
-		)
-		if err != nil {
-			return nil, fmt.Errorf("google search: %w", err)
-		}
-		for i, existing := range out.ToolSets {
-			if existing.Name() == "google_search" {
-				out.ToolSets[i] = ts
-				break
+	if enabled["google_search"] {
+		apiKey := strings.TrimSpace(cfg.GoogleAPIKey)
+		cx := strings.TrimSpace(cfg.GoogleCX)
+		if apiKey != "" && cx != "" {
+			ts, err := trpcgooglesearch.NewToolSet(ctx,
+				trpcgooglesearch.WithAPIKey(apiKey),
+				trpcgooglesearch.WithEngineID(cx),
+			)
+			if err != nil {
+				return nil, fmt.Errorf("google search: %w", err)
 			}
+			out.ToolSets = append(out.ToolSets, ts)
 		}
 	}
 
@@ -459,12 +455,16 @@ func buildMCPToolSet(cfg MCPServerConfig) (ToolSet, error) {
 		Timeout:   mcpTimeoutDuration(cfg.TimeoutSec),
 	}
 
-	opts := []trpcmcp.ToolSetOption{trpcmcp.WithName(cfg.Name)}
+	opts := []trpcmcp.ToolSetOption{
+		trpcmcp.WithName(cfg.Name),
+		trpcmcp.WithReconnectObserver(mcpobserve.ObserverForServer(cfg.Name)),
+	}
 	if pred := ToolFilterForPrefix(cfg.ToolPrefix); pred != nil {
 		opts = append(opts, trpcmcp.WithToolFilterFunc(pred))
 	}
-	if cfg.SessionReconnectMax > 0 {
-		opts = append(opts, trpcmcp.WithSessionReconnect(cfg.SessionReconnectMax))
+	reconnectMax := mcpobserve.EffectiveSessionReconnectMax(transport, cfg.SessionReconnectMax)
+	if reconnectMax > 0 {
+		opts = append(opts, trpcmcp.WithSessionReconnect(reconnectMax))
 	}
 
 	return trpcmcp.NewMCPToolSet(connCfg, opts...), nil

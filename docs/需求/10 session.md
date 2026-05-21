@@ -1086,14 +1086,57 @@ GET /api/v1/sessions/{id}/context-snapshots
 
 用于详情页绘制 context ratio 趋势线。
 
-### 6.6 归档 / 删除
+### 6.6 归档 / 删除（单条，已实现）
 
 ```http
 POST /api/v1/sessions/{id}/archive
 DELETE /api/v1/sessions/{id}
 ```
 
-删除建议仍使用软删除，保留 usage 明细用于统计。真正物理清理放到后台 retention job。
+删除使用**软删除**（`deleted_at` + `status=deleted`），保留 usage 明细用于统计与审计；**对用户不可恢复**（列表/搜索默认排除）。真正物理清理放到后台 retention job。
+
+### 6.7 批量归档 / 批量删除（待实现）
+
+> 设计详情见 [10 session.design.md §2.3](./10%20session.design.md#23-批量操作-rpc新增) · 开发计划 [10-session-development.md §Phase 1b](./10-session-development.md#phase-1b--会话历史批量治理)
+
+#### 6.7.1 语义约定
+
+| 概念 | 说明 |
+|------|------|
+| **保留 N 天** | 以 `last_message_at`（空则 `updated_at`，再空则 `created_at`）为基准，**最近 N 天内**的 session **保留** |
+| **清理范围** | **早于** cutoff 的 session 进入批量归档或批量删除 |
+| **用户侧「永久删除」** | 从 UI 不可恢复；后端仍为软删除，符合 §12 原则 6 |
+| **安全排除** | 默认不处理 `status=running` 的 session；已 `deleted` 的跳过 |
+
+#### 6.7.2 新增 RPC（Proto 契约）
+
+```http
+POST /v1/sessions:batchArchive
+POST /v1/sessions:batchDelete
+POST /v1/sessions:batchPreview   # dry_run，返回 matched 数量与样例 id
+```
+
+**BatchPreviewRequest**（归档/删除预览共用）：
+
+| 字段 | 说明 |
+|------|------|
+| `ids[]` | 可选；与 `older_than_days` 二选一或组合（ids 优先） |
+| `older_than_days` | 保留天数；清理 cutoff 之前的 session |
+| `owner_type` / `agent_id` / `team_id` | 继承当前列表筛选作用域 |
+| `include_archived` | 批量删除时是否包含已归档（默认 false） |
+
+**BatchArchiveSessionsResponse / BatchDeleteSessionsResponse**：
+
+| 字段 | 说明 |
+|------|------|
+| `matched` | 命中总数 |
+| `processed` | 成功数 |
+| `failed_ids[]` | 失败 id |
+| `skipped_running` | 因 running 跳过的数量 |
+
+#### 6.7.3 审计
+
+批量与单条删除/归档均写入 Monitor Audit（`action=archive.session` / `delete.session`，`metadata_json` 含 `batch=true`、`count`、`retention_days`）。
 
 ---
 
@@ -1117,7 +1160,37 @@ DELETE /api/v1/sessions/{id}
 | 顶部统计 | 总会话数、活跃会话、平均上下文消耗、近 7 日 Token |
 | 筛选 | 类型 `全部 / Agent / Team`、状态、上下文状态、Agent、Team、模型、时间范围、关键字 |
 | 主表 | `QTable` 服务端分页 |
-| 行操作 | 打开详情、继续会话、归档、删除 |
+| **批量工具栏** | 「批量选择」「按天数归档」「按天数删除」 |
+| 行操作 | 查看详情、继续会话、归档、**删除** |
+
+#### 7.2.1 行内删除
+
+| 项 | 说明 |
+|----|------|
+| 入口 | 操作列 `delete` 图标按钮（`SessionsTableSection`） |
+| 确认 | `QDialog`：「永久删除后无法在历史列表中恢复，usage 统计仍保留。是否继续？」 |
+| 行为 | 调用 `DELETE /v1/sessions/{id}`；成功后刷新列表 + `$q.notify` 成功 |
+| 禁用 | `status=running` 时禁用并 tooltip「运行中会话不可删除」 |
+
+#### 7.2.2 批量选择模式
+
+| 项 | 说明 |
+|----|------|
+| 入口 | 筛选栏右侧「批量选择」toggle |
+| 表格 | 首列显示 `QCheckbox`；表头全选（当前页） |
+| 选中后工具栏 | 显示「已选 N 项」+ **归档** + **删除** + 「取消选择」 |
+| **批量归档** | **无二次确认**；显示顶部 `QLinearProgress`（determinate）；按 10 条/批调用 `ArchiveSession` 或 `batchArchive`；完成后 notify「已归档 N 个会话」 |
+| **批量删除** | `QDialog` 确认（同单条永久删除文案）；进度条同上；调用 `batchDelete` 或逐条 `DeleteSession` |
+| 退出 | 取消 toggle 或操作完成后清空 selection |
+
+#### 7.2.3 按保留天数批量治理
+
+| 操作 | 弹窗 | 确认内容 |
+|------|------|----------|
+| **按天数归档** | `SessionRetentionDialog` mode=archive | 输入保留天数（默认 30）；预览「将归档 **X** 个会话，**保留最近 N 天**」；确认后显示进度条 + 成功 notify |
+| **按天数删除** | `SessionRetentionDialog` mode=delete | 同上 + 强调「永久删除，不可恢复」；可选「包含已归档」checkbox |
+
+弹窗流程：`batchPreview` → 展示 matched → 用户确认 → `batchArchive` / `batchDelete` → 进度 + 刷新列表。
 
 表格列：
 
@@ -1130,7 +1203,7 @@ DELETE /api/v1/sessions/{id}
 | 时间 | 创建时间 + 最后消息时间 |
 | 消耗 | Token、费用、模型/工具/Skill/MCP 调用次数 |
 | 状态 | active / running / completed / failed / archived |
-| 操作 | 详情、继续、归档、删除 |
+| 操作 | 详情、继续、归档、**删除** |
 
 Quasar 组件映射：
 
@@ -1142,7 +1215,9 @@ Quasar 组件映射：
 | 表格 | `QTable` + server-side pagination |
 | 上下文进度 | `QLinearProgress` / `QCircularProgress` |
 | 状态 | `QBadge` / `QChip` |
-| 删除确认 | `QDialog` |
+| 删除确认 | `QDialog`（单条 / 批量删除 / 按天数删除） |
+| 保留天数弹窗 | `SessionRetentionDialog`（归档 / 删除预览 + 确认） |
+| 批量进度 | 页面顶部 `QLinearProgress` + `$q.notify` |
 
 ### 7.3 Session 详情页
 
@@ -1699,6 +1774,9 @@ export const useSessionStore = defineStore("sessions", {
 |------|------|------|
 | Session CRUD | Create/Get/Update/Delete/Search | ✅ |
 | Session 归档/恢复 | ArchiveSession/RestoreSession | ✅ |
+| Session 列表行删除 | DeleteSession + 确认弹窗 | ❌ 待实现 |
+| Session 批量选择归档/删除 | 前端 selection + 进度条 | ❌ 待实现 |
+| Session 按保留天数批量归档/删除 | BatchArchive/BatchDelete/BatchPreview RPC | ❌ 待实现 |
 | Session 部分更新 | UpdateSession（title/tags/visibility/metadata/dialog_mode/provider/model） | ✅ |
 | Timeline 聚合 | GetSessionTimeline + kind_filter/sort_order/limit/offset | ✅ |
 | 消息列表 | ListSessionMessages + limit/offset 分页 | ✅ |

@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -20,7 +19,6 @@ import (
 	"aranea-agents/pkg/safego"
 	"aranea-agents/pkg/strutil"
 
-	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
@@ -75,8 +73,9 @@ type Deps struct {
 
 // Runner executes due cron_task rows on an interval (ported from pkg/backend CronRunner).
 type Runner struct {
-	deps Deps
-	mu   sync.Mutex
+	deps   Deps
+	mu     sync.Mutex
+	taskMu sync.Map // task id -> *sync.Mutex
 }
 
 // NewRunner constructs a runner.
@@ -135,13 +134,14 @@ func (r *Runner) runDue(ctx context.Context) {
 		}
 		cfg, err := parseCronTaskConfig(task.ConfigJSON)
 		if err != nil || strings.TrimSpace(cfg.Message) == "" {
-			r.recordSkipped(ctx, task, now, strutil.FirstNonEmpty(errString(err), "cron message is required"))
+			badCfg, _ := parseCronTaskConfig(task.ConfigJSON)
+			r.recordScheduleFailure(ctx, task, badCfg, now, strutil.FirstNonEmpty(errString(err), "cron message is required"))
 			continue
 		}
 		meta := parseCronTaskMetadata(task.MetadataJSON)
 		dueAt, due, err := cronTaskDueAt(task.UpdatedAt, cfg, meta, now)
 		if err != nil {
-			r.recordSkipped(ctx, task, now, err.Error())
+			r.recordScheduleFailure(ctx, task, cfg, now, err.Error())
 			continue
 		}
 		if !due {
@@ -151,105 +151,51 @@ func (r *Runner) runDue(ctx context.Context) {
 			}
 			continue
 		}
-		r.executeTask(ctx, task, cfg, meta, now)
+		r.executeTask(ctx, task, cfg, meta, now, "schedule")
 	}
 }
 
-func (r *Runner) executeTask(ctx context.Context, task biz.CronTask, cfg cronTaskConfig, meta cronTaskMetadata, now time.Time) {
-	runID := uuid.NewString()
-	started := now.Format(time.RFC3339)
-	outputPending := mustMarshalJSON(map[string]any{"trigger": "schedule"})
-	if err := r.deps.Cron.InsertCronTaskRun(ctx, biz.CronTaskRunInput{
-		ID:         runID,
-		TaskID:     task.ID,
-		Status:     "pending",
-		StartedAt:  started,
-		OutputJSON: outputPending,
-		CreatedAt:  started,
-	}); err != nil {
-		return
+// TriggerTask enqueues a manual run (async). Returns the pending cron_task_run row immediately.
+func (r *Runner) TriggerTask(ctx context.Context, taskID string) (biz.CronTaskRun, error) {
+	if r == nil {
+		return biz.CronTaskRun{}, biz.ErrCronRunnerDisabled
 	}
-
-	startedTime := time.Now()
-	result, execErr := r.dispatchWithRetry(ctx, task, cfg)
-	elapsed := time.Since(startedTime)
-
-	cronJobDuration.WithLabelValues(task.ID).Observe(elapsed.Seconds())
-
-	finishedAt := time.Now().UTC()
-	output := map[string]any{
-		"trigger":          "schedule",
-		"target_type":      cronTargetType(cfg),
-		"session_id":       result.SessionID,
-		"user_message_id":  result.UserMessageID,
-		"agent_message_id": result.AgentMessageID,
-		"run_id":           result.AgentMessageID,
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		return biz.CronTaskRun{}, validationErr("task id is required")
 	}
-	outJSON := mustMarshalJSON(output)
-	finished := finishedAt.Format(time.RFC3339)
-	status := "success"
-	errMsg := ""
-	if execErr != nil {
-		status = "failure"
-		errMsg = execErr.Error()
-	}
-	cronJobRunsTotal.WithLabelValues(task.ID, status).Inc()
-	_ = r.deps.Cron.UpdateCronTaskRun(ctx, runID, status, finished, outJSON, errMsg)
-
-	meta.RunCount++
-	meta.LastRunAt = finished
-	meta.LastRunStatus = status
-	if execErr != nil {
-		meta.FailureCount++
-		meta.LastError = execErr.Error()
-		meta.RecentFailure = append([]cronFailureSummary{{
-			StartedAt:    started,
-			ErrorMessage: execErr.Error(),
-		}}, meta.RecentFailure...)
-		if len(meta.RecentFailure) > 5 {
-			meta.RecentFailure = meta.RecentFailure[:5]
-		}
-		// Dead-letter: mark job as dead after maxDeadFailures consecutive failures.
-		if meta.FailureCount >= maxDeadFailures && task.Status != "dead" {
-			task.Status = "dead"
-			task.Enabled = false
-			cronJobDeadTotal.WithLabelValues(task.ID).Inc()
-			slog.Warn("cron job entered dead state", "job_id", task.ID, "task_key", task.TaskKey, "failure_count", meta.FailureCount)
-			r.publishDeadLetterEvent(ctx, task)
-		}
-	} else {
-		meta.SuccessCount++
-		meta.LastError = ""
-		meta.FailureCount = 0
-	}
-	if cfg.ScheduleType == "once" {
-		task.Enabled = false
-		if task.Status != "dead" {
-			task.Status = "paused"
-		}
-		meta.NextRunAt = ""
-	} else if next, err := nextCronRunAfter(cfg, finishedAt); err == nil {
-		meta.NextRunAt = next.Format(time.RFC3339)
-	}
-	rawMeta, err := json.Marshal(meta)
+	task, err := r.deps.Cron.GetCronTask(ctx, taskID)
 	if err != nil {
-		return
+		return biz.CronTaskRun{}, err
 	}
-	task.MetadataJSON = string(rawMeta)
-	_, _ = r.deps.Cron.UpdateCronTask(ctx, task)
+	if task.DeletedAt != "" {
+		return biz.CronTaskRun{}, biz.ErrCronTaskDeleted
+	}
+	cfg, err := parseCronTaskConfig(task.ConfigJSON)
+	if err != nil {
+		return biz.CronTaskRun{}, err
+	}
+	if strings.TrimSpace(cfg.Message) == "" {
+		return biz.CronTaskRun{}, validationErr("cron message is required")
+	}
+	now := time.Now().UTC()
+	unlock := r.lockTask(taskID)
+	runID, started, ok := r.insertPendingRun(ctx, task.ID, "manual", now)
+	unlock()
+	if !ok {
+		return biz.CronTaskRun{}, errors.New("cron trigger failed to create run record")
+	}
+	cfgSnapshot := cfg
+	safego.Go(ctx, "cron.manual_trigger", func() {
+		r.runManualTask(context.Background(), taskID, runID, started, cfgSnapshot)
+	})
+	return r.deps.Cron.GetCronTaskRun(ctx, runID)
 }
 
 // dispatchWithRetry runs dispatchCronTask with exponential back-off retries (30s/2m/10m).
 // It recovers from panics on each attempt via safego.RecoverFunc.
 func (r *Runner) dispatchWithRetry(ctx context.Context, task biz.CronTask, cfg cronTaskConfig) (res cronDispatchResult, err error) {
-	if cfg.RetryMaxAttempts == 0 {
-		return r.dispatchSafe(ctx, task, cfg)
-	}
-	backoff := defaultRetryBackoff
-	if cfg.RetryMaxAttempts > 0 && cfg.RetryMaxAttempts-1 < len(defaultRetryBackoff) {
-		backoff = defaultRetryBackoff[:cfg.RetryMaxAttempts-1]
-	}
-	attempts := len(backoff) + 1
+	attempts, backoff := retryPlan(effectiveRetryMaxAttempts(cfg))
 	for attempt := 0; attempt < attempts; attempt++ {
 		res, err = r.dispatchSafe(ctx, task, cfg)
 		if err == nil {
@@ -257,7 +203,7 @@ func (r *Runner) dispatchWithRetry(ctx context.Context, task biz.CronTask, cfg c
 		}
 		if attempt < len(backoff) {
 			delay := backoff[attempt]
-			slog.Warn("cron job attempt failed, retrying", "job_id", task.ID, "attempt", attempt+1, "delay", delay, "error", err)
+			event.SysLogWarn("system.cron.retry", "定时任务重试", event.P("job_id", task.ID), event.P("attempt", attempt+1), event.P("delay", delay), event.P("error", err))
 			select {
 			case <-ctx.Done():
 				return cronDispatchResult{}, ctx.Err()
@@ -273,7 +219,7 @@ func (r *Runner) dispatchSafe(ctx context.Context, task biz.CronTask, cfg cronTa
 	defer func() {
 		if rec := recover(); rec != nil {
 			retErr = fmt.Errorf("cron panic: %v", rec)
-			slog.Error("cron task panicked", "job_id", task.ID, "panic", rec)
+			event.SysLogError("system.cron.panic", "定时任务 panic", event.P("job_id", task.ID), event.P("panic", rec))
 		}
 	}()
 	return r.dispatchCronTask(ctx, task, cfg)
@@ -324,8 +270,8 @@ func (r *Runner) dispatchCronTask(ctx context.Context, task biz.CronTask, cfg cr
 		}
 		var res cronDispatchResult
 		if r.deps.Chat != nil {
-			if busy, skip := r.skipCronWhenSessionBusy(sess.ID); skip {
-				return busy, nil
+			if err := r.sessionBusyErr(sess.ID); err != nil {
+				return cronDispatchResult{SessionID: sess.ID}, err
 			}
 			// EP-RT-07: in-process dispatch via plugin runtime.
 			uid, aid, rerr := r.deps.Chat.RunCronTurn(ctx, sess.ID, cfg.Message, teamID)
@@ -362,8 +308,8 @@ func (r *Runner) dispatchCronTask(ctx context.Context, task biz.CronTask, cfg cr
 			return cronDispatchResult{}, err
 		}
 		if r.deps.Chat != nil {
-			if busy, skip := r.skipCronWhenSessionBusy(sess.ID); skip {
-				return busy, nil
+			if err := r.sessionBusyErr(sess.ID); err != nil {
+				return cronDispatchResult{SessionID: sess.ID}, err
 			}
 			// EP-RT-07: in-process dispatch via plugin runtime.
 			uid, aid, rerr := r.deps.Chat.RunCronTurn(ctx, sess.ID, cfg.Message, "")
@@ -398,20 +344,6 @@ func (r *Runner) resolveCronAgent(ctx context.Context, task biz.CronTask) (biz.A
 		return res.Items[0], nil
 	}
 	return biz.Agent{}, validationErr("no agent available for cron task")
-}
-
-func (r *Runner) recordSkipped(ctx context.Context, task biz.CronTask, now time.Time, message string) {
-	meta := parseCronTaskMetadata(task.MetadataJSON)
-	meta.RunCount++
-	meta.FailureCount++
-	meta.LastRunAt = now.Format(time.RFC3339)
-	meta.LastRunStatus = "failure"
-	meta.LastError = message
-	meta.RecentFailure = append([]cronFailureSummary{{StartedAt: meta.LastRunAt, ErrorMessage: message}}, meta.RecentFailure...)
-	if len(meta.RecentFailure) > 5 {
-		meta.RecentFailure = meta.RecentFailure[:5]
-	}
-	r.persistMetadata(ctx, task, meta)
 }
 
 func (r *Runner) persistMetadata(ctx context.Context, task biz.CronTask, meta cronTaskMetadata) {
@@ -495,16 +427,16 @@ func (r *Runner) postChat(ctx context.Context, in sendMessagePayload) (cronDispa
 	}, nil
 }
 
-func (r *Runner) skipCronWhenSessionBusy(sessionID string) (cronDispatchResult, bool) {
+func (r *Runner) sessionBusyErr(sessionID string) error {
 	if r == nil || r.deps.Chat == nil {
-		return cronDispatchResult{}, false
+		return nil
 	}
 	ctrl, ok := r.deps.Chat.(SessionRunControl)
 	if !ok || !ctrl.HasActiveRun(sessionID) {
-		return cronDispatchResult{}, false
+		return nil
 	}
-	slog.Info("cron dispatch skipped: session has active run", "session_id", sessionID)
-	return cronDispatchResult{SessionID: sessionID}, true
+	event.SessionSysLogWarn(context.Background(), sessionID, "system.cron.dispatch_skipped", "定时任务跳过：会话有活跃 Run")
+	return biz.ErrCronSessionBusy
 }
 
 func validationErr(format string, args ...any) error {

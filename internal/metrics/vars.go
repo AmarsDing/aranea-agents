@@ -109,4 +109,28 @@ var (
 		Name: "aranea_artifact_storage_bytes",
 		Help: "Approximate total bytes used by artifact storage.",
 	})
+
+	// MCPSessionReconnectTotal counts MCP transport session reconnect attempts by server and outcome.
+	MCPSessionReconnectTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "aranea_mcp_session_reconnect_total",
+		Help: "MCP session reconnect attempts by server_key and outcome (success, failed, exhausted).",
+	}, []string{"server_key", "outcome"})
+
+	// MCPInvocationTotal counts MCP-classified tool invocations by tool name and outcome.
+	MCPInvocationTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "aranea_mcp_invocation_total",
+		Help: "MCP tool invocations classified at runtime, labelled by tool name and status.",
+	}, []string{"tool", "status"})
+
+	// AlertNotifyTotal counts monitor alert outbound delivery attempts.
+	AlertNotifyTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "aranea_alert_notify_total",
+		Help: "Monitor alert notification delivery by channel type and status.",
+	}, []string{"channel", "status"})
+
+	// ModelRouterFallbackTotal counts model_router fallbacks to the base model.
+	ModelRouterFallbackTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "aranea_model_router_fallback_total",
+		Help: "Model router fallbacks to base model by reason.",
+	}, []string{"reason"})
 )

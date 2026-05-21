@@ -1,0 +1,68 @@
+﻿
+> arenea-frontend@0.1.0 build F:\project\aranea-agents\web
+> quasar build
+
+
+ .d88888b.
+d88P" "Y88b
+888     888
+888     888 888  888  8888b.  .d8888b   8888b.  888d888
+888     888 888  888     "88b 88K          "88b 888P"
+888 Y8b 888 888  888 .d888888 "Y8888b. .d888888 888
+Y88b.Y8b88P Y88b 888 888  888      X88 888  888 888
+ "Y888888"   "Y88888 "Y888888  88888P' "Y888888 888
+       Y8b
+
+
+ Build mode............. spa
+ Pkg quasar............. v2.19.3
+ Pkg @quasar/app-vite... v2.6.0
+ Pkg vite............... v6.4.2
+ Debugging.............. no
+ Publishing............. no
+
+ App 鈥?Using quasar.config.ts in "ts" format
+ App 鈥? WAIT  鈥?Compiling of SPA UI with Vite in progress...
+node.exe : 鉁?Build failed in 1.23s
+所在位置 C:\Users\Administrator\AppData\Roaming\npm\pnpm.ps1:24 字符: 5
++     & "node$exe"  "$basedir/node_modules/pnpm/bin/pnpm.cjs" $args
++     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (鉁?Build failed in 1.23s:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Build failed with 1 error:
+
+[31m[builtin:vite-transform] [0mLogical expressions and coalesce expressions cannot be mixed
+    [38;5;246m鈺?[0m[38;5;246m鈹€[0m[38;5;246m[[0m src/features/chat/a2ui/useA2UIComponent.ts:20:10 [38;5;246m][0m
+    [38;5;246m鈹?[0m
+ [38;5;246m20 鈹?[0m [38;5;249m [0m[38;5;249m [0m[38;5;249mr[0m[38;5;249me[0m[38;5;249mt[0m[38;5;249mu[0m[
+38;5;249mr[0m[38;5;249mn[0m[38;5;249m [0mmap[name] ?? name.replace(/([A-Z])/g, "_$1").toLowerCase().replace(/^_/, 
+"") || "help"[38;5;249m;[0m
+ [38;5;240m   鈹?[0m          鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹攢
+鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€  
+ [38;5;240m   鈹?[0m                                                     鈺扳攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹
+€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ 
+ [38;5;240m   鈹?[0m 
+ [38;5;240m   鈹?[0m [38;5;115mHelp[0m: Wrap either expression by parentheses
+[38;5;246m鈹€鈹€鈹€鈹€鈺?[0m
+
+    at aggregateBindingErrorsIntoJsError (file:///F:/project/aranea-agents/web/node_modules/.pnpm/rolldown@1.0.1/node_m
+odules/rolldown/dist/shared/error-CkdMJ9ps.mjs:48:18)
+    at unwrapBindingResult (file:///F:/project/aranea-agents/web/node_modules/.pnpm/rolldown@1.0.1/node_modules/rolldow
+n/dist/shared/error-CkdMJ9ps.mjs:18:128)
+    at #build (file:///F:/project/aranea-agents/web/node_modules/.pnpm/rolldown@1.0.1/node_modules/rolldown/dist/shared
+/rolldown-build-BVD3dIdE.mjs:3275:34)
+    at async buildEnvironment (file:///F:/project/aranea-agents/web/node_modules/.pnpm/vite@8.0.13_@types+node@24._cb78
+e57a0ea2b42d183a70e083ceba4f/node_modules/vite/dist/node/chunks/node.js:33133:64)
+    at async Object.build (file:///F:/project/aranea-agents/web/node_modules/.pnpm/vite@8.0.13_@types+node@24._cb78e57a
+0ea2b42d183a70e083ceba4f/node_modules/vite/dist/node/chunks/node.js:33555:19)
+    at async QuasarModeBuilder.buildWithVite (file:///F:/project/aranea-agents/web/node_modules/.pnpm/@quasar+app-vite@
+2.6.0_@qua_ef64862d42534dcdb435b4ac82593ee1/node_modules/@quasar/app-vite/lib/app-tool.js:30:5)
+    at async QuasarModeBuilder.build (file:///F:/project/aranea-agents/web/node_modules/.pnpm/@quasar+app-vite@2.6.0_@q
+ua_ef64862d42534dcdb435b4ac82593ee1/node_modules/@quasar/app-vite/lib/modes/spa/spa-builder.js:7:5) {
+  errors: [Getter/Setter]
+}
+
+ App 鈥?鈿狅笍   FAIL  App build failed (check the log above)
+
+鈥塃LIFECYCLE鈥?Command failed with exit code 1.

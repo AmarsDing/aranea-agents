@@ -2,6 +2,7 @@ package biz_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"aranea-agents/internal/biz"
@@ -227,8 +228,94 @@ func (m *memEvalRepo2) InsertCaseResult(_ context.Context, r biz.EvalCaseResult)
 	m.results = append(m.results, r)
 	return nil
 }
-func (m *memEvalRepo2) ListCaseResults(_ context.Context, _ string, _, _ int) ([]biz.EvalCaseResult, int, error) {
-	return m.results, len(m.results), nil
+func (m *memEvalRepo2) ListCaseResults(_ context.Context, runID string, _, _ int) ([]biz.EvalCaseResult, int, error) {
+	var out []biz.EvalCaseResult
+	for _, r := range m.results {
+		if r.RunID == runID {
+			out = append(out, r)
+		}
+	}
+	return out, len(out), nil
+}
+func (m *memEvalRepo2) GetCaseResult(_ context.Context, runID, resultID string) (biz.EvalCaseResult, error) {
+	for _, r := range m.results {
+		if r.RunID == runID && r.ID == resultID {
+			return r, nil
+		}
+	}
+	return biz.EvalCaseResult{}, errors.New("not found")
+}
+
+func (m *memEvalRepo2) DeleteRun(_ context.Context, id string) error {
+	delete(m.runs, id)
+	return nil
+}
+
+func (m *memEvalRepo2) UpdateDataset(_ context.Context, id, name, description string) (biz.EvalDataset, error) {
+	d, ok := m.datasets[id]
+	if !ok {
+		return biz.EvalDataset{}, errors.New("not found")
+	}
+	d.Name = name
+	d.Description = description
+	m.datasets[id] = d
+	return d, nil
+}
+func (m *memEvalRepo2) UpdateCaseResultAnnotation(_ context.Context, runID, resultID string, patch biz.EvalCaseResultAnnotation) (biz.EvalCaseResult, error) {
+	for i, r := range m.results {
+		if r.RunID == runID && r.ID == resultID {
+			if patch.HumanPass != nil {
+				m.results[i].HumanPass = patch.HumanPass
+			}
+			if patch.HumanScore != nil {
+				m.results[i].HumanScore = patch.HumanScore
+			}
+			if patch.HumanComment != nil {
+				m.results[i].HumanComment = *patch.HumanComment
+			}
+			m.results[i].AnnotatedAt = "now"
+			m.results[i].AnnotatedBy = patch.AnnotatedBy
+			return m.results[i], nil
+		}
+	}
+	return biz.EvalCaseResult{}, errors.New("not found")
+}
+
+func (m *memEvalRepo2) ListTrendPoints(_ context.Context, agentID, datasetID string, limit int) ([]biz.EvalTrendPoint, error) {
+	var out []biz.EvalTrendPoint
+	for _, r := range m.runs {
+		if r.AgentID != agentID || r.Status != "completed" {
+			continue
+		}
+		if datasetID != "" && r.DatasetID != datasetID {
+			continue
+		}
+		out = append(out, biz.EvalTrendPoint{
+			RunID:              r.ID,
+			CreatedAt:          r.CreatedAt,
+			TriggerSource:      r.TriggerSource,
+			ExactMatchScore:    r.ExactMatchScore,
+			ContainsMatchScore: r.ContainsMatchScore,
+			LLMJudgeScore:      r.LLMJudgeScore,
+			ToolCallAccuracy:   r.ToolCallAccuracy,
+			PassAtK:            r.PassAtK,
+			PassHatK:           r.PassHatK,
+		})
+		if limit > 0 && len(out) >= limit {
+			break
+		}
+	}
+	return out, nil
+}
+
+func (m *memEvalRepo2) GetRunsByIDs(_ context.Context, ids []string) ([]biz.EvalRun, error) {
+	out := make([]biz.EvalRun, 0, len(ids))
+	for _, id := range ids {
+		if r, ok := m.runs[id]; ok {
+			out = append(out, r)
+		}
+	}
+	return out, nil
 }
 
 func TestEvalUsecase_CreateDataset(t *testing.T) {
@@ -308,6 +395,28 @@ func (m *memA2ARepo) ListEnabledCards(_ context.Context, _, _ string) ([]biz.A2A
 		}
 	}
 	return out, nil
+}
+func (m *memA2ARepo) MapEndpointEnabled(_ context.Context, agentIDs []string) (map[string]bool, error) {
+	out := make(map[string]bool, len(agentIDs))
+	for _, id := range agentIDs {
+		if c, ok := m.cards[id]; ok {
+			out[id] = c.Enabled
+		}
+	}
+	return out, nil
+}
+func (m *memA2ARepo) CreateRemoteAgent(_ context.Context, agent biz.A2ARemoteAgent) (biz.A2ARemoteAgent, error) {
+	return agent, nil
+}
+func (m *memA2ARepo) ListRemoteAgents(_ context.Context, _ string) ([]biz.A2ARemoteAgent, error) {
+	return nil, nil
+}
+func (m *memA2ARepo) DeleteRemoteAgent(_ context.Context, _ string) error { return nil }
+func (m *memA2ARepo) GetRemoteAgent(_ context.Context, id string) (biz.A2ARemoteAgent, error) {
+	return biz.A2ARemoteAgent{}, biz.ErrNotFound
+}
+func (m *memA2ARepo) DiscoverRemoteCard(_ context.Context, _ biz.RemoteCardDiscoverInput) (biz.A2AAgentCard, error) {
+	return biz.A2AAgentCard{}, nil
 }
 func (m *memA2ARepo) CreateInvocation(_ context.Context, inv biz.A2AInvocation) (biz.A2AInvocation, error) {
 	m.invocations[inv.ID] = inv

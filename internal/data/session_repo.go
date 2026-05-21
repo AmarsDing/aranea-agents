@@ -11,7 +11,6 @@ import (
 	"aranea-agents/internal/data/ent/agent"
 	"aranea-agents/internal/data/ent/message"
 	"aranea-agents/internal/data/ent/platformskill"
-	"aranea-agents/internal/data/ent/predicate"
 	entsession "aranea-agents/internal/data/ent/session"
 	skillinvocationpkg "aranea-agents/internal/data/ent/skillinvocation"
 	toolinvocationpkg "aranea-agents/internal/data/ent/toolinvocation"
@@ -113,32 +112,7 @@ func (r *sessionRepo) SearchSessions(ctx context.Context, q biz.SessionSearchQue
 	limit := clampSessionLimit(q.Limit)
 	offset := clampOffset(q.Offset)
 
-	wheres := []predicate.Session{entsession.DeletedAtEQ("")}
-	if q.OwnerType != "" {
-		wheres = append(wheres, entsession.OwnerTypeEQ(q.OwnerType))
-	}
-	if q.AgentID != "" {
-		wheres = append(wheres, entsession.AgentIDEQ(q.AgentID))
-	}
-	if q.TeamID != "" {
-		wheres = append(wheres, entsession.TeamIDEQ(q.TeamID))
-	}
-	if q.UserID != "" {
-		wheres = append(wheres, entsession.UserIDEQ(q.UserID))
-	}
-	if q.Status != "" {
-		wheres = append(wheres, entsession.StatusEQ(q.Status))
-	}
-	if q.ContextStatus != "" {
-		wheres = append(wheres, entsession.ContextStatusEQ(q.ContextStatus))
-	}
-	if kw := strings.TrimSpace(q.Keyword); kw != "" {
-		wheres = append(wheres, entsession.Or(
-			entsession.TitleContainsFold(kw),
-			entsession.SummaryContainsFold(kw),
-			entsession.IDContainsFold(kw),
-		))
-	}
+	wheres := sessionSearchWheres(q)
 
 	wherePred := entsession.And(wheres...)
 	total, err := c.Session.Query().Where(wherePred).Count(ctx)
@@ -755,6 +729,74 @@ func sessionSearchOrder(sortBy, sortOrder string) []entsession.OrderOption {
 	}
 }
 
+func (r *sessionRepo) UpsertChatActivityMessage(ctx context.Context, sessionID string, msg biz.ChatMessage) error {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return kerrors.BadRequest("SESSION", "session id is required")
+	}
+	msg.ID = strings.TrimSpace(msg.ID)
+	if msg.ID == "" {
+		return kerrors.BadRequest("SESSION", "message id is required")
+	}
+	tx, err := r.data.entClient.Tx(ctx)
+	if err != nil {
+		return err
+	}
+	rollback := func(e error) error {
+		_ = tx.Rollback()
+		return e
+	}
+	if _, err = tx.Session.Query().Where(entsession.IDEQ(sessionID), entsession.DeletedAtEQ("")).Only(ctx); err != nil {
+		return rollback(err)
+	}
+	existing, err := tx.Message.Query().Where(message.IDEQ(msg.ID), message.SessionIDEQ(sessionID)).Only(ctx)
+	if err != nil {
+		if !ent.IsNotFound(err) {
+			return rollback(err)
+		}
+		msg.SessionID = sessionID
+		maxTurn, merr := r.maxMessageTurnTx(ctx, tx, sessionID)
+		if merr != nil {
+			return rollback(merr)
+		}
+		msg.TurnIndex = maxTurn + 1
+		if strings.TrimSpace(msg.CreatedAt) == "" {
+			msg.CreatedAt = nowRFC3339()
+		}
+		if err = r.insertMessageTx(ctx, tx, msg); err != nil {
+			return rollback(err)
+		}
+		if _, err = tx.Session.UpdateOneID(sessionID).
+			AddMessageCount(1).
+			SetLastMessageAt(msg.CreatedAt).
+			SetUpdatedAt(nowRFC3339()).
+			Save(ctx); err != nil {
+			return rollback(err)
+		}
+		return tx.Commit()
+	}
+	lastAt := msg.CreatedAt
+	if strings.TrimSpace(lastAt) == "" {
+		lastAt = existing.CreatedAt
+	}
+	if _, err = tx.Message.UpdateOneID(msg.ID).
+		SetContentMarkdown(msg.ContentMarkdown).
+		SetOptionsJSON(msg.OptionsJSON).
+		SetStatus(msg.Status).
+		SetLatencyMs(msg.LatencyMS).
+		SetErrorMessage(msg.ErrorMessage).
+		Save(ctx); err != nil {
+		return rollback(err)
+	}
+	if _, err = tx.Session.UpdateOneID(sessionID).
+		SetLastMessageAt(lastAt).
+		SetUpdatedAt(nowRFC3339()).
+		Save(ctx); err != nil {
+		return rollback(err)
+	}
+	return tx.Commit()
+}
+
 func (r *sessionRepo) AppendChatMessage(ctx context.Context, sessionID string, msg biz.ChatMessage, bumpModelCall bool) error {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
@@ -777,6 +819,10 @@ func (r *sessionRepo) AppendChatMessage(ctx context.Context, sessionID string, m
 	}
 	msg.TurnIndex = maxTurn + 1
 	if err = r.insertMessageTx(ctx, tx, msg); err != nil {
+		if ent.IsConstraintError(err) {
+			_ = tx.Rollback()
+			return nil
+		}
 		return rollback(err)
 	}
 	upd := tx.Session.UpdateOneID(sessionID).

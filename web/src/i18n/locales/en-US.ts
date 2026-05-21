@@ -125,10 +125,32 @@ export default {
     confirmDelete: "Delete",
     cancel: "Cancel",
     voicePlaceholder: "Voice capture will be wired in a later release.",
+    awaitingUserHint: "The agent is waiting for your reply. Type below and click Submit reply.",
+    submitAwaitReply: "Submit reply",
+    awaitReplySent: "Reply submitted; execution continues",
+    awaitReplyRestartHint: "The server restarted. Send your message again to continue.",
+    awaitReplyFailed: "Failed to submit reply",
+    toolConfirmHint: "The agent wants to run a tool. Allow or deny?",
+    toolConfirmTool: "Tool",
+    toolConfirmDeny: "Deny",
+    toolConfirmApprove: "Allow",
     teamNoBackend: "Team list is sample data until the API is connected.",
     workspaceKicker: "ADK Multi-Agent",
     workspaceTitle: "Chat workspace",
     workspaceSubtitle: "Switch agents and teams; keep model choice and session context aligned."
+  },
+  plugins: {
+    rulesAdd: "Add rule",
+    rulesTargetModel: "Target model",
+    rulesTargetModelHint: "Model id after a match",
+    rulesPriority: "Priority",
+    rulesPriorityHint: "Higher runs first",
+    rulesMinChars: "Min characters",
+    rulesMinCharsHint: "0 means no limit",
+    rulesContains: "Contains keywords (one per line)",
+    rulesRegex: "Regular expression (optional)",
+    rulesRegexInvalid: "Invalid regular expression",
+    rulesEmptyHint: "No routing rules yet. Rules match by priority, then contains / regex / min_chars."
   },
   menu: {
     groupMain: "Main",
@@ -172,6 +194,39 @@ export default {
     reload: "Reload",
     lastSaved: "Last updated: {time}",
     saveOk: "Saved",
-    saveFailed: "Save failed"
+    saveFailed: "Save failed",
+    globalQuotaTitle: "Platform monthly budget",
+    globalQuotaHint: "Platform-wide LLM spend cap (USD); 0 = unlimited. Synced to usage_quotas (global). Enforced before each chat turn.",
+    globalQuotaUsd: "Monthly budget (USD)",
+    a2aPublicBaseTitle: "A2A public endpoint prefix",
+    a2aPublicBaseUrl: "Public URL prefix",
+    a2aPublicBaseHint: "Used when external A2A clients connect to local agents on this instance. Leave empty to fall back to env, config file, or dev-derived URL. Takes effect immediately after save.",
+    a2aPublicBaseEmptyHint: "When empty, env/config/derived chain applies",
+    a2aPublicBaseEffective: "Effective now: {url}",
+    credentialKeyTitle: "Credential encryption key",
+    credentialKeyHint: "AES-256-GCM key for Provider / Channel API secrets. Auto-generated on first boot or when you open this page; stored in the database. ARANEA_CREDENTIAL_KEY env overrides.",
+    credentialKeyConfigured: "Configured (key is server-side only and not shown here)",
+    credentialKeyPending: "Not generated yet (created on service startup; restart backend if this persists)",
+    knowledgeEmbedTitle: "Knowledge embedder defaults",
+    knowledgeEmbedHint:
+      "Default RAG embedding config stored in system_settings; shared with the Knowledge page. Env KRATOS_KNOWLEDGE_EMBED_* overrides DB at startup.",
+    mcpAdhocTitle: "MCP Broker AdHoc HTTP",
+    mcpAdhocHint:
+      "Allow MCP Broker mcp_call against unregistered HTTP endpoints. Off by default in production; MCP Server must also set allow_adhoc_http. Stored in system_settings.mcp_allow_adhoc_http.",
+    mcpAdhocToggle: "Allow MCP Broker AdHoc HTTP"
+  },
+  knowledgeEmbed: {
+    title: "Embedder configuration",
+    provider: "Provider",
+    baseUrl: "Base URL",
+    model: "Model",
+    dim: "Dim",
+    apiKey: "API Key",
+    apiKeyPlaceholderSet: "Configured (leave empty to keep)",
+    apiKeyPlaceholderEmpty: "sk-...",
+    configured: "Configured",
+    notConfigured: "Not configured",
+    save: "Save",
+    hint: "Applied at runtime; persisted to system_settings. Env KRATOS_KNOWLEDGE_EMBED_* overrides DB at startup."
   }
 };

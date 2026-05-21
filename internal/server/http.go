@@ -16,6 +16,9 @@ import (
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	cronv1 "aranea-agents/api/kratos/cron/v1"
 	evaluationv1 "aranea-agents/api/kratos/evaluation/v1"
+	ecosystemv1 "aranea-agents/api/kratos/ecosystem/v1"
+	eventv1 "aranea-agents/api/kratos/event/v1"
+	gatewayv1 "aranea-agents/api/kratos/gateway/v1"
 	graphv1 "aranea-agents/api/kratos/graph/v1"
 	hookv1 "aranea-agents/api/kratos/hook/v1"
 	knowledgev1 "aranea-agents/api/kratos/knowledge/v1"
@@ -30,6 +33,7 @@ import (
 	teamv1 "aranea-agents/api/kratos/team/v1"
 	toolv1 "aranea-agents/api/kratos/tool/v1"
 	usagev1 "aranea-agents/api/kratos/usage/v1"
+	a2atrpc "aranea-agents/internal/a2a/trpc"
 	"aranea-agents/internal/conf"
 	servermw "aranea-agents/internal/server/middleware"
 	"aranea-agents/internal/service"
@@ -66,7 +70,7 @@ func NewHTTPServer(c *conf.Server, s *ServiceRegistry, wsSrv *WSServer) *kratosh
 	srv := kratoshttp.NewServer(opts...)
 
 	registerProtoServices(srv, s)
-	registerCustomRoutes(srv, s.ChannelIngress, s.Skill, s.Artifact)
+	registerCustomRoutes(srv, s.ChannelIngress, s.Skill, s.Artifact, s.A2APublic)
 	registerInfrastructureRoutes(srv)
 	wsSrv.RegisterOnKratos(srv)
 
@@ -98,6 +102,9 @@ func registerProtoServices(srv *kratoshttp.Server, s *ServiceRegistry) {
 	knowledgev1.RegisterKnowledgeServiceHTTPServer(srv, s.Knowledge)
 	evaluationv1.RegisterEvaluationServiceHTTPServer(srv, s.Eval)
 	a2av1.RegisterA2AServiceHTTPServer(srv, s.A2A)
+	ecosystemv1.RegisterEcosystemServiceHTTPServer(srv, s.Ecosystem)
+	eventv1.RegisterEventServiceHTTPServer(srv, s.Event)
+	gatewayv1.RegisterGatewayServiceHTTPServer(srv, s.Gateway)
 }
 
 // registerCustomRoutes registers cross-cutting operational routes that bypass proto
@@ -114,6 +121,7 @@ func registerCustomRoutes(
 	channelIngress *service.ChannelIngress,
 	skillSvc *service.SkillService,
 	artifactSvc *service.ArtifactService,
+	a2aPublic *a2atrpc.EndpointRegistry,
 ) {
 	if channelIngress != nil {
 		auth.RegisterWebhookPath("/webhooks/")
@@ -128,6 +136,10 @@ func registerCustomRoutes(
 			artifactSvc.ServeSignedDownload(ctx.Response(), ctx.Request())
 			return nil
 		})
+	}
+	if a2aPublic != nil {
+		auth.RegisterNoAuthPathPrefix(a2atrpc.PublicPathPrefix)
+		srv.HandlePrefix(a2atrpc.PublicPathPrefix, a2aPublic)
 	}
 }
 

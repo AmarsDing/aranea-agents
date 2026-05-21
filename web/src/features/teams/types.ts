@@ -111,6 +111,39 @@ export type TeamRunStep = {
   started_at: string;
   finished_at: string;
   created_at: string;
+  tool_call_count?: number;
+};
+
+export type TeamRunMemberSummary = {
+  agent_id: string;
+  agent_key: string;
+  agent_name: string;
+  role: string;
+  sort_order: number;
+  status: string;
+  token_in: number;
+  token_out: number;
+  duration_ms: number;
+  cost_micro_usd: number;
+  output_preview: string;
+  tool_call_count: number;
+};
+
+export type TeamRunSummary = {
+  run_id: string;
+  team_id: string;
+  session_id: string;
+  mode: string;
+  status: string;
+  duration_ms: number;
+  token_in: number;
+  token_out: number;
+  cost_micro_usd: number;
+  member_count: number;
+  tool_call_count: number;
+  output_preview: string;
+  error_message: string;
+  members: TeamRunMemberSummary[];
 };
 
 export type TeamRunEvent = {

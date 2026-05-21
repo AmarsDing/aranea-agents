@@ -94,8 +94,8 @@ func toolWhereClause(q biz.ToolListQuery) (string, []any) {
 	args := []any{}
 	if search := strings.TrimSpace(q.Search); search != "" {
 		like := "%" + strings.ToLower(search) + "%"
-		where = append(where, "(LOWER(t.tool_key) LIKE ? OR LOWER(t.display_name) LIKE ? OR LOWER(t.description) LIKE ?)")
-		args = append(args, like, like, like)
+		where = append(where, "(LOWER(t.tool_key) LIKE ? OR LOWER(t.display_name) LIKE ? OR LOWER(t.description) LIKE ? OR LOWER(t.category) LIKE ?)")
+		args = append(args, like, like, like, like)
 	}
 	if q.Category != "" {
 		where = append(where, "t.category = ?")
@@ -460,7 +460,9 @@ func (r *toolRepo) SearchToolInvocations(ctx context.Context, q biz.ToolRunQuery
 		       ti.agent_id, ti.agent_key, COALESCE(a.display_name, ''), ti.session_id, ti.message_id, ti.user_id,
 		       ti.source, ti.status, ti.started_at, ti.ended_at, ti.duration_ms,
 		       ti.input_preview, ti.input_hash, ti.output_preview, ti.output_hash,
-		       ti.error_code, ti.error_message, ti.redaction_applied, ti.metadata_json, ti.created_at
+		       ti.error_code, ti.error_message, ti.redaction_applied,
+		       COALESCE(ti.streaming, 0), COALESCE(ti.chunk_count, 0),
+		       ti.metadata_json, ti.created_at
 		FROM tool_invocations ti
 		LEFT JOIN tools t ON t.tool_key = ti.tool_key
 		LEFT JOIN agents a ON a.id = ti.agent_id
@@ -475,16 +477,18 @@ func (r *toolRepo) SearchToolInvocations(ctx context.Context, q biz.ToolRunQuery
 	for rows.Next() {
 		var item biz.ToolInvocation
 		var redact int64
+		var streaming int64
 		if err := rows.Scan(
 			&item.ID, &item.RequestID, &item.InvocationID, &item.ToolID, &item.ToolKey, &item.ToolDisplayName,
 			&item.AgentID, &item.AgentKey, &item.AgentDisplayName, &item.SessionID, &item.MessageID, &item.UserID,
 			&item.Source, &item.Status, &item.StartedAt, &item.EndedAt, &item.DurationMS,
 			&item.InputPreview, &item.InputHash, &item.OutputPreview, &item.OutputHash,
-			&item.ErrorCode, &item.ErrorMessage, &redact, &item.MetadataJSON, &item.CreatedAt,
+			&item.ErrorCode, &item.ErrorMessage, &redact, &streaming, &item.ChunkCount, &item.MetadataJSON, &item.CreatedAt,
 		); err != nil {
 			return biz.ToolRunResult{}, err
 		}
 		item.RedactionApplied = redact != 0
+		item.Streaming = streaming != 0
 		items = append(items, item)
 	}
 	if err := rows.Err(); err != nil {
@@ -517,7 +521,7 @@ func (r *toolRepo) RecordToolInvocation(ctx context.Context, in biz.ToolInvocati
 	}
 	source := strings.TrimSpace(in.Source)
 	if source == "" {
-		source = "adk"
+		source = biz.ToolInvocationSourceRuntime
 	}
 	inputPreview := in.InputPreview
 	if len(inputPreview) > 2000 {
@@ -528,6 +532,12 @@ func (r *toolRepo) RecordToolInvocation(ctx context.Context, in biz.ToolInvocati
 		outputPreview = outputPreview[:2000]
 	}
 	id := uniqueToolID("tinv")
+	if tcid := strings.TrimSpace(in.ToolCallID); tcid != "" {
+		id = "tinv-" + tcid
+		if len(id) > 200 {
+			id = id[:200]
+		}
+	}
 	_, err := client.ToolInvocation.Create().
 		SetID(id).
 		SetToolKey(strings.TrimSpace(in.ToolKey)).
@@ -547,8 +557,38 @@ func (r *toolRepo) RecordToolInvocation(ctx context.Context, in biz.ToolInvocati
 		SetErrorCode(strings.TrimSpace(in.ErrorCode)).
 		SetErrorMessage(strings.TrimSpace(in.ErrorMessage)).
 		SetRedactionApplied(true).
+		SetStreaming(in.Streaming).
+		SetChunkCount(in.ChunkCount).
 		SetMetadataJSON(invocationMetaJSON(in)).
 		SetCreatedAt(now).
+		Save(ctx)
+	if err == nil {
+		return nil
+	}
+	if !ent.IsConstraintError(err) {
+		return err
+	}
+	_, err = client.ToolInvocation.UpdateOneID(id).
+		SetToolKey(strings.TrimSpace(in.ToolKey)).
+		SetAgentID(strings.TrimSpace(in.AgentID)).
+		SetAgentKey(strings.TrimSpace(in.AgentKey)).
+		SetSessionID(strings.TrimSpace(in.SessionID)).
+		SetUserID(strings.TrimSpace(in.UserID)).
+		SetSource(source).
+		SetStatus(status).
+		SetStartedAt(started).
+		SetEndedAt(ended).
+		SetDurationMs(in.DurationMS).
+		SetInputPreview(inputPreview).
+		SetInputHash(hashTrim(in.InputHash, in.InputPreview)).
+		SetOutputPreview(outputPreview).
+		SetOutputHash(hashTrim(in.OutputHash, in.OutputPreview)).
+		SetErrorCode(strings.TrimSpace(in.ErrorCode)).
+		SetErrorMessage(strings.TrimSpace(in.ErrorMessage)).
+		SetRedactionApplied(true).
+		SetStreaming(in.Streaming).
+		SetChunkCount(in.ChunkCount).
+		SetMetadataJSON(invocationMetaJSON(in)).
 		Save(ctx)
 	return err
 }
@@ -569,9 +609,15 @@ func hashTrim(explicit, fallback string) string {
 }
 
 func invocationMetaJSON(in biz.ToolInvocationWrite) string {
-	m := map[string]string{}
+	m := map[string]any{}
 	if in.ToolCallID != "" {
 		m["tool_call_id"] = in.ToolCallID
+	}
+	if in.Streaming {
+		m["streaming"] = true
+	}
+	if in.ChunkCount > 0 {
+		m["chunk_count"] = in.ChunkCount
 	}
 	if len(m) == 0 {
 		return "{}"
@@ -638,15 +684,17 @@ func scanToolAgentOverrides(rows *sql.Rows) ([]biz.ToolAgentOverride, error) {
 	return result, rows.Err()
 }
 
-func (r *toolRepo) UpsertToolAgentOverride(ctx context.Context, in biz.ToolAgentOverrideInput) (biz.ToolAgentOverride, error) {
+func (r *toolRepo) UpsertToolAgentOverride(ctx context.Context, in biz.ToolAgentOverrideInput, toolID string) (biz.ToolAgentOverride, error) {
 	client := r.data.Ent()
 	if client == nil {
 		return biz.ToolAgentOverride{}, errors.New("ent client unavailable")
 	}
 	now := nowRFC3339()
+	toolID = strings.TrimSpace(toolID)
 	const q = `INSERT INTO tool_agent_overrides (id, tool_id, tool_key, agent_id, enabled, mode, config_override_json, requires_confirmation, created_at, updated_at, deleted_at)
-		VALUES (?, '', ?, ?, ?, ?, ?, ?, ?, ?, '')
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '')
 		ON CONFLICT(tool_key, agent_id) DO UPDATE SET
+			tool_id = excluded.tool_id,
 			enabled = excluded.enabled,
 			mode = excluded.mode,
 			config_override_json = excluded.config_override_json,
@@ -655,7 +703,7 @@ func (r *toolRepo) UpsertToolAgentOverride(ctx context.Context, in biz.ToolAgent
 			deleted_at = ''`
 	id := uniqueToolID("tao")
 	_, err := client.ExecContext(ctx, q,
-		id, in.ToolKey, in.AgentID, b2i(in.Enabled), in.Mode, in.ConfigOverrideJSON, b2i(in.RequiresConfirmation),
+		id, toolID, in.ToolKey, in.AgentID, b2i(in.Enabled), in.Mode, in.ConfigOverrideJSON, b2i(in.RequiresConfirmation),
 		now, now,
 	)
 	if err != nil {

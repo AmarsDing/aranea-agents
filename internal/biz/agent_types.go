@@ -1,5 +1,7 @@
 package biz
 
+import "strings"
+
 // Agent is the catalog agent aggregate (legacy agents table + hydrated runtime state).
 type Agent struct {
 	ID                 string
@@ -18,7 +20,14 @@ type Agent struct {
 	BudgetMonthlyCents int
 	ConfigJSON         string
 	Roles              []string
-	CreatedAt          string
+	Kind                 string // llm | a2a_proxy
+	A2AProxy             *A2AProxyConfig
+	A2AEndpointEnabled   bool // list/get enrichment from a2a_agent_cards.enabled
+	LastRunStatus        string // list enrichment: latest session runtime.status or idle/completed
+	LastRunAt            string
+	PendingEvolutionCount int
+	CreatedBy            string
+	CreatedAt            string
 	UpdatedAt          string
 	DeletedAt          string
 	Settings           *AgentRuntimeSettings
@@ -34,7 +43,7 @@ type Agent struct {
 //   - Reasoning : ReasoningMode, ReasoningLevel
 //   - Memory    : MemoryEnabled, MemoryMax*, HeartbeatEnabled, L0–L4 fields
 //   - Tools     : ToolsEnabled, ToolsProfile, ToolsToolCallPrefix, ToolsAllow/Deny, ToolsRetry*, ToolsParallel*, ToolsStreaming*
-//   - Skills    : SkillRuntimeJSON, IntentPassEnabled, SkillLoadMode
+//   - Skills    : SkillRuntimeJSON, IntentPassEnabled, SkillLoadMode, CodeExecutorType
 //   - Plugins   : (reserved)
 //   - Evolution : SelfEvolve, Subagents*, Evolution*, Guardrail*, Evo*
 //   - Context   : ContextCompactionEnabled, SessionSummaryEnabled, OutputSchemaJSON, ModelSelector, PlannerKind
@@ -135,6 +144,8 @@ type AgentRuntimeSettings struct {
 	SessionSummaryEnabled bool
 	// SkillLoadMode controls skill loading strategy: "auto" | "manual" | "none".
 	SkillLoadMode string
+	// CodeExecutorType selects the Skill code execution backend: local | docker | e2b | container.
+	CodeExecutorType string
 	// OutputSchemaJSON is a JSON Schema that forces the LLM to produce structured output.
 	OutputSchemaJSON string
 	// ModelSelector controls dynamic model selection: "default" | "auto".
@@ -158,6 +169,17 @@ type AgentRuntimeSettings struct {
 	// PlannerKind selects the planning strategy: "" | "builtin" | "react" | "a2ui".
 	// Empty string inherits the legacy dialog-mode based selection (builtin when dialogMode="plan").
 	PlannerKind string
+	// PlannerConfigJSON holds planner-specific options; shape depends on PlannerKind.
+	PlannerConfigJSON string
+	// Ralph Loop: enabled when any of MaxIterations / CompletionPromise / VerifyCommand is set;
+	// persistence requires CompletionPromise and/or VerifyCommand (see ValidateRalphLoopSettings).
+	RalphLoopMaxIterations        int
+	RalphLoopCompletionPromise    string
+	RalphLoopVerifyCommand        string
+	RalphLoopVerifyTimeoutSeconds int
+	RalphLoopPromiseTagOpen       string
+	RalphLoopPromiseTagClose      string
+	RalphLoopVerifyWorkDir        string
 	CreatedAt   string
 	UpdatedAt   string
 }
@@ -263,6 +285,18 @@ func (s *AgentRuntimeSettings) GetSkills() SkillsCfg {
 	}
 }
 
+// GetCodeExecutor returns the code executor domain view.
+func (s *AgentRuntimeSettings) GetCodeExecutor() CodeExecutorCfg {
+	if s == nil {
+		return CodeExecutorCfg{Type: "local"}
+	}
+	t := strings.TrimSpace(s.CodeExecutorType)
+	if t == "" {
+		t = "local"
+	}
+	return CodeExecutorCfg{Type: t}
+}
+
 // GetEvolution returns the Evolution domain view.
 func (s *AgentRuntimeSettings) GetEvolution() EvolutionCfg {
 	return EvolutionCfg{
@@ -299,6 +333,7 @@ func (s *AgentRuntimeSettings) GetContext() ContextCfg {
 		OutputSchemaJSON:      s.OutputSchemaJSON,
 		ModelSelector:         s.ModelSelector,
 		PlannerKind:           s.PlannerKind,
+		PlannerConfigJSON:     s.PlannerConfigJSON,
 	}
 }
 
@@ -319,8 +354,15 @@ type AgentListQuery struct {
 	Status     string
 	Provider   string
 	CategoryID string
+	CreatedBy  string
 	Limit      int
 	Offset     int
+}
+
+// AgentCreator is a distinct agent creator for list filters.
+type AgentCreator struct {
+	UserID string
+	Label  string
 }
 
 // AgentListResult is a page of agents without per-row hydration unless noted.

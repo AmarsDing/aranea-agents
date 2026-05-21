@@ -58,8 +58,26 @@
         <q-td :props="props">{{ formatChannelDate(props.row.updated_at) }}</q-td>
       </template>
 
+      <template #body-cell-external_id="props">
+        <q-td :props="props">
+          <span class="ellipsis">{{ channelExternalID(props.row) }}</span>
+        </q-td>
+      </template>
+
       <template #body-cell-actions="props">
         <q-td :props="props" class="q-gutter-xs">
+          <q-btn
+            v-if="channelSupportsWebhook(props.row, catalog)"
+            flat
+            dense
+            round
+            class="channel-icon-btn"
+            icon="link"
+            color="primary"
+            @click="$emit('copyWebhook', props.row)"
+          >
+            <q-tooltip>复制 Webhook URL</q-tooltip>
+          </q-btn>
           <q-btn
             flat
             dense
@@ -90,8 +108,10 @@ import ChannelGlassPanel from "./ChannelGlassPanel.vue";
 import type { ChannelCatalogItem, ChannelRow } from "../../features/channels/types";
 import {
   catalogLabelForType,
+  channelExternalID,
   channelMetadata,
   channelStatusBadgeText,
+  channelSupportsWebhook,
   channelType,
   formatChannelDate,
   isChannelConnected,
@@ -110,6 +130,7 @@ defineProps<{
 defineEmits<{
   toggleEnabled: [row: ChannelRow, value: boolean];
   testConnection: [row: ChannelRow];
+  copyWebhook: [row: ChannelRow];
   edit: [row: ChannelRow];
   remove: [row: ChannelRow];
 }>();
@@ -119,6 +140,7 @@ const tablePagination = { rowsPerPage: 12 };
 const columns: QTableColumn<ChannelRow>[] = [
   { name: "name", label: "名称", field: "name", align: "left" },
   { name: "type", label: "平台", field: "config_json", align: "left" },
+  { name: "external_id", label: "外部 ID", field: "metadata_json", align: "left" },
   { name: "status", label: "连接状态", field: "status", align: "left" },
   { name: "enabled", label: "启用", field: "enabled", align: "center" },
   { name: "updated", label: "最近更新", field: "updated_at", align: "left" },

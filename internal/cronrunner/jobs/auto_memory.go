@@ -4,13 +4,12 @@ package jobs
 
 import (
 	"context"
-	"log/slog"
 	"regexp"
 	"strings"
 	"time"
 
 	"aranea-agents/internal/biz"
-	aramemory "aranea-agents/internal/memory"
+	"aranea-agents/internal/event"
 	memtrpc "aranea-agents/internal/memory/trpc"
 	servmetrics "aranea-agents/internal/metrics"
 
@@ -42,14 +41,10 @@ type AutoMemoryWorker struct {
 	sessions *biz.SessionUsecase
 	agents   *biz.AgentUsecase
 	memory   trpcmemory.Service
-	l4       *aramemory.L4GraphWriter
+	l4       biz.L4GraphWriter
 }
 
-// NewAutoMemoryWorker creates a worker with the given polling interval.
-// Pass ≤0 to use the default 10-second interval.
-// sessions and memory may be nil; the worker will still drain the queue but
-// skip writing extracted facts to the store.
-func NewAutoMemoryWorker(interval time.Duration, sessions *biz.SessionUsecase, agents *biz.AgentUsecase, memory trpcmemory.Service, l4 *aramemory.L4GraphWriter) *AutoMemoryWorker {
+func NewAutoMemoryWorker(interval time.Duration, sessions *biz.SessionUsecase, agents *biz.AgentUsecase, memory trpcmemory.Service, l4 biz.L4GraphWriter) *AutoMemoryWorker {
 	if interval <= 0 {
 		interval = 10 * time.Second
 	}
@@ -107,17 +102,11 @@ func (w *AutoMemoryWorker) processWithRetry(ctx context.Context, req memtrpc.Aut
 			return
 		}
 		lastErr = err
-		slog.Warn("auto_memory.extract failed",
-			"attempt", attempt+1,
-			"session_id", req.SessionID,
-			"error", err,
-		)
+		event.SessionSysLogWarn(ctx, req.SessionID, "system.auto_memory.extract_fail", "自动记忆提取失败",
+			event.P("attempt", attempt+1), event.P("error", err))
 	}
 	servmetrics.AutoMemoryJobTotal.WithLabelValues("dead").Inc()
-	slog.Error("auto_memory.extract: max retries exceeded",
-		"session_id", req.SessionID,
-		"error", lastErr,
-	)
+	event.SessionSysLogWarn(ctx, req.SessionID, "system.auto_memory.extract_max_retry", "自动记忆提取重试耗尽", event.P("error", lastErr))
 }
 
 // extract performs heuristic keyword-based memory extraction for the session.
@@ -130,8 +119,7 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 		return nil
 	}
 	if w.sessions == nil || w.memory == nil {
-		slog.Debug("auto_memory.extract: skipping (no sessions/memory injected)",
-			"session_id", sid)
+		event.SysLogDebug("system.auto_memory.extract_fail", "自动记忆跳过：未注入 sessions/memory", event.P("session_id", sid))
 		return nil
 	}
 
@@ -175,8 +163,7 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 			if m := pat.FindStringSubmatch(text); len(m) > 1 {
 				fact := strings.TrimSpace(m[0])
 				if err := w.memory.AddMemory(ctx, uk, fact, nil); err != nil {
-					slog.Warn("auto_memory.extract: AddMemory failed",
-						"session_id", sid, "fact", fact, "error", err)
+					event.SessionSysLogWarn(ctx, sid, "system.auto_memory.extract_fail", "自动记忆 AddMemory 失败", event.P("fact", fact), event.P("error", err))
 				} else {
 					added++
 				}
@@ -185,18 +172,17 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 		if l4Enabled && w.l4 != nil && agentID != "" {
 			n, err := w.l4.WriteFromUserText(ctx, agentID, uk.UserID, text)
 			if err != nil {
-				slog.Warn("auto_memory.extract: L4 graph write failed", "session_id", sid, "error", err)
+				event.SessionSysLogWarn(ctx, sid, "system.auto_memory.l4_fail", "L4 图谱写入失败", event.P("error", err))
 			} else {
 				l4Written += n
 			}
 		}
 	}
 
-	slog.Info("auto_memory.extract: done",
-		"session_id", sid,
-		"messages_scanned", len(msgs),
-		"facts_added", added,
-		"l4_entities", l4Written,
+	event.SessionSysLogInfo(ctx, sid, "system.auto_memory.done", "自动记忆提取完成",
+		event.P("messages_scanned", len(msgs)),
+		event.P("facts_added", added),
+		event.P("l4_entities", l4Written),
 	)
 	return nil
 }

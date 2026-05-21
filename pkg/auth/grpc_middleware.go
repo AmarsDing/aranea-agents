@@ -2,7 +2,8 @@ package auth
 
 import (
 	"context"
-	"log/slog"
+	"fmt"
+	"os"
 	"strings"
 
 	"github.com/go-kratos/kratos/v2/middleware"
@@ -32,7 +33,8 @@ func GRPCMiddleware() middleware.Middleware {
 			if token == "" {
 				// No auth credentials – allow with a debug log.
 				// Note: gRPC port should be internal-only (not exposed to internet).
-				slog.Debug("gRPC: unauthenticated request; gRPC is internal-network-only (EP-SEC-04 M2: enforce)")
+				fmt.Fprintln(os.Stderr, "[flow][system] system.grpc.unauthenticated: gRPC request without credentials (internal-only until M2)")
+				_ = os.Stderr.Sync()
 				return handler(ctx, req)
 			}
 

@@ -7,6 +7,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/llm_provider_model/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 
@@ -107,6 +108,38 @@ func (s *LlmProviderModelService) GetProviderModel(ctx context.Context, req *v1.
 	return toProtoPM(m), nil
 }
 
+// RevealProviderModelCredentials GET /v1/llm-provider-models/{id}/credentials.
+func (s *LlmProviderModelService) RevealProviderModelCredentials(ctx context.Context, req *v1.RevealProviderModelCredentialsRequest) (*v1.RevealProviderModelCredentialsResponse, error) {
+	resourceID := req.GetId()
+	out, err := s.uc.RevealCredentials(ctx, resourceID)
+	if err != nil {
+		logRevealCredentialsDenied(ctx, resourceID, err)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, kerrors.NotFound("LLM_PROVIDER_MODEL", "provider model not found")
+		}
+		return nil, err
+	}
+	event.CtxFlowLogWarn(ctx, "admin.provider.credentials_reveal", "管理员查看 Provider 模型凭据明文",
+		event.P("resource_id", resourceID),
+		event.P("has_api_key", out.HasAPIKey),
+		event.P("has_secret_key", out.HasSecretKey),
+		event.P("ha_candidate_count", len(out.HACandidates)),
+	)
+	resp := &v1.RevealProviderModelCredentialsResponse{
+		ApiKey:       out.APIKey,
+		SecretKey:    out.SecretKey,
+		HasApiKey:    out.HasAPIKey,
+		HasSecretKey: out.HasSecretKey,
+	}
+	for _, ha := range out.HACandidates {
+		resp.HaCandidates = append(resp.HaCandidates, &v1.HACandidateCredential{
+			Name:   ha.Name,
+			ApiKey: ha.APIKey,
+		})
+	}
+	return resp, nil
+}
+
 // UpdateProviderModel PATCH /v1/llm-provider-models/{id}.
 func (s *LlmProviderModelService) UpdateProviderModel(ctx context.Context, req *v1.UpdateProviderModelRequest) (*v1.ProviderModel, error) {
 	if req.GetProviderModel() == nil {
@@ -139,6 +172,10 @@ func (s *LlmProviderModelService) InspectProviderModel(ctx context.Context, req 
 		ModelAPIID:   req.GetModelApiId(),
 		APIBaseURL:   req.GetApiBaseUrl(),
 		APIKey:       req.GetApiKey(),
+		Variant:      req.GetVariant(),
+		SecretID:     req.GetSecretId(),
+		SecretKey:    req.GetSecretKey(),
+		AWSRegion:    req.GetAwsRegion(),
 	})
 	if err != nil {
 		return nil, err
@@ -160,6 +197,10 @@ func (s *LlmProviderModelService) InspectProviderModel(ctx context.Context, req 
 		EmbeddingPriceMicroUsdPer_1K:   out.EmbeddingPriceMicroUSDPer1K,
 		Source:                         out.Source,
 		RawMetadataJson:                out.RawMetadataJSON,
+		Variant:                        out.Variant,
+		EnableTokenTailoring:           out.EnableTokenTailoring,
+		SupportsCache:                  out.SupportsCache,
+		SupportsThinking:               out.SupportsThinking,
 	}, nil
 }
 
@@ -170,4 +211,26 @@ func (s *LlmProviderModelService) ValidateProviderPair(ctx context.Context, req 
 		return nil, err
 	}
 	return &v1.ValidateProviderPairResponse{Ok: ok, Message: msg}, nil
+}
+
+func logRevealCredentialsDenied(ctx context.Context, resourceID string, err error) {
+	reason := "error"
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		reason = "not_found"
+	default:
+		if se := kerrors.FromError(err); se != nil {
+			switch se.Code {
+			case 400:
+				reason = "bad_request"
+			case 404:
+				reason = "not_found"
+			}
+		}
+	}
+	event.CtxFlowLogWarn(ctx, "admin.provider.credentials_reveal_denied", "Provider 凭据查看被拒绝或失败",
+		event.P("resource_id", resourceID),
+		event.P("reason", reason),
+		event.P("error", err.Error()),
+	)
 }

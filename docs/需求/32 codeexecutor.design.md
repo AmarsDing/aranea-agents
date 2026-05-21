@@ -15,61 +15,93 @@
 - 项目自定义 `Executor` 接口（`internal/agent/codeexecutor`）负责底层执行，通过适配层转换为框架 `codeexecutor.CodeExecutor` 接口
 - 适配层位于 `internal/skill/trpc/executor.go`，将项目执行器适配为框架接口供 Skill 工具使用
 - 框架 `codeexecutor` 包提供完整的 Workspace / Interactive / Artifact 生态，项目按需集成
-- Agent 级别通过 `AgentRuntimeSettings.CodeExecutorType` 字段配置执行器类型（待实现）
+- Agent 级别通过 `AgentRuntimeSettings.CodeExecutorType` 字段配置执行器类型（**已实现**；biz 校验 + 前端 Skill Tab）
+- Skill 装配门控：仅 `deps.SkillUC != nil` 时注入 `WithCodeExecutor`
 
 ---
 
 ## 二、架构方案
 
-### 2.1 当前架构
+### 2.1 当前架构（已实现 Phase 1–2 + Review 修复）
 
 ```
-trpc_build.go
+Wire 单例
+  provideCodeExecutorFactory() → *codeexecutor.Factory
+    ├── ChatService / Team.Runner / MonitorService 共享
+    └── TRPCBuilderDeps.CodeExecFactory
+
+trpc_build.go（deps.SkillUC != nil 时）
   └── buildSkillDeps()
-        └── skilltrpc.NewExecutor(backend, workDir)
-              ├── backend == "docker"
-              │     └── dockerExecutorAdapter
-              │           └── internal/agent/codeexecutor.DockerExecutor
-              │                 └── docker run --rm (one-shot container)
-              └── backend != "docker" (default)
-                    └── trpclocal.New() (框架 local 执行器)
-                          └── 子进程执行
+        ├── runtime.GetCodeExecutor().Type   // 领域视图
+        └── skilltrpc.NewExecutorForAgent(ctx, factory, type, rootDir)
+              └── factory.Resolve(ctx, type, workDir)
+                    ├── local    → getLocal(workDir) → trpclocal + wrapMetrics
+                    ├── docker   → wrapMetrics(dockerRuntimeFallback → dockerAdapter)
+                    ├── e2b      → getE2B() lazy sync.Once → e2bexec.New (需 E2B_API_KEY)
+                    └── container→ getContainer() lazy (build tag codeexec_container)
+              └── WrapWithArtifactSave(exec)   // 产出物 → SaveArtifactHelper
 
-Skill 工具路径:
-  trpcllmagent.WithCodeExecutor(exec) → skill_run 工具使用框架 CodeExecutor 接口
+回退链:
+  1. Resolve probe: DockerAvailable / IsBackendAvailable → local + FlowLog
+  2. 运行时: dockerRuntimeFallback.ExecuteCode err → local + ResetDockerProbe
+  3. 生产: ARANEA_ENV=production 且 local → FlowLog（AllowLocalInProd 可关闭告警）
 
-环境变量控制:
-  CODE_EXECUTOR_BACKEND = "docker" | "" (默认 local)
-  CODE_EXECUTOR_DOCKER_IMAGE = 自定义镜像
-  CODE_EXECUTOR_TIMEOUT = 超时时间
+可观测 / 配置面:
+  GET /v1/monitor/code-executor-capabilities  → Factory.Capabilities()
+  biz.ValidateCodeExecutorType                → API 400
+  配置优先级: Agent.CodeExecutorType > CODE_EXECUTOR_BACKEND > local
 ```
 
-### 2.2 目标架构
+#### 架构图（Mermaid）
+
+```mermaid
+flowchart TD
+  subgraph wire [Wire 单例]
+    F[Factory]
+  end
+
+  A[buildSkillDeps] --> F
+  F --> R{Resolve type}
+  R -->|local| L[getLocal + metrics]
+  R -->|docker| D[metrics → dockerRuntimeFallback → dockerAdapter]
+  R -->|e2b| E[getE2B lazy Once]
+  R -->|container| C[getContainer lazy Once]
+
+  D -->|ExecuteCode err| L
+  E -->|nil / unavailable| L
+  C -->|nil / unavailable| L
+
+  L --> AR[WrapWithArtifactSave]
+  D --> AR
+  E --> AR
+  C --> AR
+  AR --> ADK[WithCodeExecutor]
+
+  MON[Monitor capabilities API] --> F
+  UI[Agent Settings Skill Tab] --> MON
+  BIZ[biz ValidateCodeExecutorType] --> DB[(agent_runtime_settings)]
+```
+
+#### 双 Local 说明
+
+| 实现 | 路径 | 用途 |
+|------|------|------|
+| 框架 `trpclocal.New()` | Skill 主路径（Factory.getLocal） | 与 LLMAgent CodeExecutor 契约一致 |
+| 项目 `LocalExecutor` | `internal/agent/codeexecutor/executor.go` | 独立 `Executor` 接口；单测与 Docker 同级底层 |
+
+### 2.2 规划架构（P3 待实现）
 
 ```
-trpc_build.go
-  └── buildSkillDeps()
-        └── ExecutorRegistry.Get(agentSettings.CodeExecutorType)
-              ├── "local"    → trpclocal.New() (框架 local)
-              ├── "docker"   → dockerExecutorAdapter (项目 DockerExecutor)
-              ├── "e2b"      → e2bAdapter (框架 e2b.CodeExecutor)
-              ├── "jupyter"  → jupyterAdapter (框架 jupyter.CodeExecutor)
-              └── "container"→ containerAdapter (框架 container.CodeExecutor)
-
-配置优先级:
-  1. AgentRuntimeSettings.CodeExecutorType (Agent 级别)
-  2. CODE_EXECUTOR_BACKEND 环境变量 (全局回退)
-  3. "local" (系统默认)
-
-Workspace 生态:
-  WorkspaceRegistry → Session 级工作区复用
-  WorkspaceFS       → 输入文件准备 + 输出文件收集
-  ArtifactService   → 产出物自动持久化
+Factory.Resolve（扩展注册项，lazy 同 E2B/Container）
+  ├── "jupyter"  → jupyter.New(...)     // 需 Jupyter 服务
+  └── WorkspaceRegistry → Session 级工作区复用（框架 WorkspaceFS / InputSpec / OutputSpec）
 
 Interactive 生态:
   InteractiveProgramRunner → 多轮交互式执行
   ProgramSession           → 状态保持 + 输入/输出/终止
 ```
+
+与已实现 **Factory** 的关系：P3 仅在 `Factory` 中增加 lazy 注册项；**不再**单独引入 `ExecutorRegistry` 类型（开发计划 Phase 1 原 Registry 已由 `factory.go` 落地）。
 
 ### 2.3 双接口关系
 
@@ -80,14 +112,14 @@ Interactive 生态:
 | `Executor` | `internal/agent/codeexecutor` | 底层代码执行（语言→进程→结果） | Docker 适配器 |
 | `codeexecutor.CodeExecutor` | `pkg/trpc-agent-go/codeexecutor` | 框架标准接口（CodeBlock→Output+Files） | Skill 工具、LLMAgent |
 
-适配层 `dockerExecutorAdapter` 将项目 `Executor` 接口转换为框架 `CodeExecutor` 接口：
+适配层 `dockerAdapter` 将项目 `Executor` 接口转换为框架 `CodeExecutor` 接口：
 
 ```
 codeexecutor.CodeExecutor.ExecuteCode(input)
-  → dockerExecutorAdapter.ExecuteCode()
+  → dockerAdapter.ExecuteCode()
     → 遍历 input.CodeBlocks
     → DockerExecutor.Run(ctx, block.Language, block.Code, timeout)
-    → 拼接 stdout/stderr → CodeExecutionResult.Output
+    → 拼接 stdout/stderr / [exit N] → CodeExecutionResult.Output
 ```
 
 ---
@@ -209,66 +241,57 @@ func NewEnvInjectingCodeExecutor(exec CodeExecutor, provider RunEnvProvider) Cod
 
 ## 四、适配层设计
 
-### 4.1 当前适配层（已实现）
+### 4.1 Skill 适配层（已实现）
 
-`internal/skill/trpc/executor.go` 提供两个构造函数：
+`internal/skill/trpc/executor.go` + `artifact_executor.go`：
 
 | 函数 | 返回 | 说明 |
 |------|------|------|
-| `NewLocalExecutor(workDir)` | `codeexecutor.CodeExecutor` | 框架 local 执行器 |
-| `NewExecutor(backend, workDir)` | `codeexecutor.CodeExecutor` | 根据 backend 选择执行器 |
+| `NewExecutorForAgent(ctx, factory, agentType, workDir)` | `codeexecutor.CodeExecutor` | Factory.Resolve + `WrapWithArtifactSave` |
+| `NewLocalExecutor(factory, workDir)` | `codeexecutor.CodeExecutor` | 强制 local |
+| `WrapWithArtifactSave(inner)` | `codeexecutor.CodeExecutor` | 产出物持久化（`artifact_executor.go`） |
 
-`dockerExecutorAdapter` 适配逻辑：
+`dockerAdapter`（`internal/agent/codeexecutor/docker_adapter.go`）适配逻辑：
 
-- `CodeBlockDelimiter()` → 返回标准 markdown 三反引号分隔符
-- `ExecuteCode()` → 遍历 CodeBlocks，逐个调用 `DockerExecutor.Run()`，拼接输出
+- `CodeBlockDelimiter()` → markdown 三反引号
+- `ExecuteCode()` → 遍历 CodeBlocks → `DockerExecutor.Run()` → 拼接 stdout/stderr / `[exit N]` / timeout / OOM
+- 输出目录 → `CollectOutputDirFiles` → `CodeExecutionResult.OutputFiles`
 
-### 4.2 目标适配层
+### 4.2 Factory（已实现，原 Phase 1 Registry 计划）
 
-新增适配器将框架执行器统一注册到 `ExecutorRegistry`：
+项目级 **Factory**（`internal/agent/codeexecutor/factory.go`）负责 backend 解析与 lazy 注册；与框架 **WorkspaceRegistry**（Session 工作区复用，Phase 4）职责分离。
 
-| 适配器 | 框架执行器 | 适配方式 |
-|--------|-----------|----------|
-| `dockerExecutorAdapter` | 项目 `DockerExecutor` | 已实现，直接复用 |
-| `e2bAdapter` | 框架 `e2b.CodeExecutor` | 直接使用，无需适配（已实现 `CodeExecutor` 接口） |
-| `jupyterAdapter` | 框架 `jupyter.CodeExecutor` | 直接使用，无需适配 |
-| `containerAdapter` | 框架 `container.CodeExecutor` | 直接使用，无需适配 |
+| 类型 | 构造来源 | 注册方式 |
+|------|----------|----------|
+| `local` | `trpclocal.New()` | `getLocal(workDir)`，按 workDir 缓存 |
+| `docker` | `dockerAdapter` → 项目 `DockerExecutor` | 单例 + `dockerRuntimeFallback` |
+| `e2b` | `e2bexec.New(...)` | lazy `sync.Once`，需 `E2B_API_KEY` |
+| `container` | `containerexec.New(...)` | lazy + build tag `codeexec_container` |
+| `jupyter` | `jupyter.New(...)` | ❌ Phase 3 |
 
-`ExecutorRegistry` 设计：
+核心 API：
 
 ```go
-type ExecutorRegistry struct {
-    entries map[string]codeexecutor.CodeExecutor
-    wsReg   *codeexecutor.WorkspaceRegistry
-}
-
-func (r *ExecutorRegistry) Register(typ string, exec codeexecutor.CodeExecutor)
-func (r *ExecutorRegistry) Get(typ string) (codeexecutor.CodeExecutor, bool)
+func NewFactory() *Factory                                    // Wire 单例
+func (f *Factory) Resolve(ctx, agentType, workDir string) codeexecutor.CodeExecutor
+func (f *Factory) Capabilities() []Capability                   // Monitor / 前端
+func (f *Factory) RegisteredTypes() []string                    // 可用 backend 列表
 ```
+
+装饰链：`Resolve` 出口经 `wrapMetrics`；Skill 路径最外层 `WrapWithArtifactSave`。
 
 ---
 
 ## 五、配置设计
 
-### 5.1 Agent 级别配置
+### 5.1 Agent 级别配置（已实现）
 
-在 `AgentRuntimeSettings` 中新增字段：
+`AgentRuntimeSettings.CodeExecutorType`（`local` / `docker` / `e2b` / `container`）：
 
-```
-CodeExecutorType string  // "local"/"docker"/"e2b"/"jupyter"/"container"，默认 "local"
-```
-
-在 `agent_runtime_settings` Ent Schema 中新增：
-
-```
-field.String("code_executor_type").Default("local")
-```
-
-在 `agent_runtime_settings` 表中新增列：
-
-```sql
-ALTER TABLE agent_runtime_settings ADD COLUMN code_executor_type TEXT NOT NULL DEFAULT 'local';
-```
+- biz：`ValidateCodeExecutorType` — 非法值 API 400
+- 默认：`"local"`（`agent_defaults.go` + DB DEFAULT）
+- Ent：`code_executor_type`；迁移见 `docs/sql/02_agent_code_executor_type.sql`
+- 前端：Agent 设置 Skill Tab + Monitor capabilities 禁用不可用项
 
 ### 5.2 Docker 后端配置
 
@@ -337,7 +360,11 @@ ALTER TABLE agent_runtime_settings ADD COLUMN code_executor_type TEXT NOT NULL D
 
 ### 6.2 回退策略
 
-Docker 不可用时回退到 `LocalExecutor` 并发出告警日志。未来可扩展 `firecracker` 或 `nsjail` 轻量 VM 后端。
+**目标（Phase 1，待实现）**：Docker daemon 不可用或 `docker run` 失败时，回退到框架 `trpclocal` 并记录 FlowLog 告警（`system.codeexec.docker_fallback`）。
+
+**当前**：无自动回退；Docker 失败直接返回错误。
+
+未来可扩展 `firecracker` 或 `nsjail` 轻量 VM 后端。
 
 ---
 
@@ -350,6 +377,10 @@ Docker 不可用时回退到 `LocalExecutor` 并发出告警日志。未来可�
 | `aranea_codeexec_runs_total` | `kind`, `status` | 总执行次数（success/error/timeout/oom） |
 | `aranea_codeexec_duration_seconds` | `kind` | 执行时长直方图 |
 | `aranea_codeexec_oom_total` | `kind` | OOM kill 计数 |
+
+**覆盖范围（当前）**：仅 `internal/agent/codeexecutor` 的 `LocalExecutor` / `DockerExecutor`（`kind=local|docker`）。
+
+**缺口**：Skill 默认路径使用框架 `trpclocal`，不经过上述指标。Phase 1 Registry 应增加统一 metrics 装饰器，覆盖所有 Skill 路径执行。
 
 ### 7.2 框架 Engine 能力描述
 
@@ -377,35 +408,19 @@ Docker 不可用时回退到 `LocalExecutor` 并发出告警日志。未来可�
 | `LocalConfig` | 本地执行器配置 |
 | `DockerConfig` | Docker 执行器配置 |
 
-### 8.2 待新增模型
+### 8.2 已新增模型（Phase 1）
 
-#### AgentRuntimeSettings 扩展
+#### AgentRuntimeSettings 扩展 ✅
 
-在 `internal/biz/agent_types.go` 的 `AgentRuntimeSettings` 中新增：
+`internal/biz/agent_types.go` — `CodeExecutorType`；`GetCodeExecutor()` 领域视图。
 
-```
-CodeExecutorType string  // 执行器类型选择
-```
+#### biz 校验 ✅
 
-在 `internal/biz/agent_defaults.go` 的 `DefaultAgentRuntimeSettings()` 中新增：
+`internal/biz/code_executor.go` — `ValidateCodeExecutorType`（与 `codeexecutor.ValidTypes` 枚举需手动同步，R2 不 cross-import）。
 
-```
-CodeExecutorType: "local",
-```
+#### Ent / SQL ✅
 
-#### Ent Schema 扩展
-
-在 `internal/data/ent/schema/agent_runtime_setting.go` 的 Fields 中新增：
-
-```
-field.String("code_executor_type").Default("local")
-```
-
-#### SQL 迁移
-
-```sql
-ALTER TABLE agent_runtime_settings ADD COLUMN code_executor_type TEXT NOT NULL DEFAULT 'local';
-```
+`code_executor_type` 列；启动 patch + `docs/sql/02_agent_code_executor_type.sql`。
 
 ---
 
@@ -413,15 +428,19 @@ ALTER TABLE agent_runtime_settings ADD COLUMN code_executor_type TEXT NOT NULL D
 
 | 文件 | 状态 | 说明 |
 |------|------|------|
-| `internal/agent/codeexecutor/executor.go` | ✅ 已实现 | 项目 Executor 接口 + Local/Docker 实现 |
-| `internal/agent/codeexecutor/executor_test.go` | ✅ 已实现 | 基础测试 |
-| `internal/skill/trpc/executor.go` | ✅ 已实现 | 适配层：项目 Executor → 框架 CodeExecutor |
-| `internal/skill/trpc/tools.go` | ✅ 已实现 | Skill 工具集构建 |
-| `internal/agent/trpc_build.go` | 🟡 需修改 | 接入 ExecutorRegistry + Agent 配置 |
-| `internal/biz/agent_types.go` | ❌ 待新增 | CodeExecutorType 字段 |
-| `internal/biz/agent_defaults.go` | ❌ 待新增 | CodeExecutorType 默认值 |
-| `internal/data/ent/schema/agent_runtime_setting.go` | ❌ 待新增 | code_executor_type 列 |
-| `internal/agent/codeexecutor/registry.go` | ❌ 待新建 | ExecutorRegistry |
-| `internal/agent/codeexecutor/e2b_adapter.go` | ❌ 待新建 | E2B 执行器适配 |
-| `internal/agent/codeexecutor/jupyter_adapter.go` | ❌ 待新建 | Jupyter 执行器适配 |
-| `internal/agent/codeexecutor/container_adapter.go` | ❌ 待新建 | Container 执行器适配 |
+| `internal/agent/codeexecutor/factory.go` | ✅ | Factory + Resolve + lazy E2B/Container |
+| `internal/agent/codeexecutor/capabilities.go` | ✅ | Capabilities / IsBackendAvailable |
+| `internal/agent/codeexecutor/docker_fallback.go` | ✅ | 运行时 docker→local |
+| `internal/agent/codeexecutor/metrics_executor.go` | ✅ | Prometheus + blocks_total |
+| `internal/agent/codeexecutor/docker_adapter.go` | ✅ | DockerExecutor → 框架 CodeExecutor |
+| `internal/agent/codeexecutor/output_files.go` | ✅ | CollectOutputDirFiles |
+| `internal/agent/codeexecutor/executor.go` | ✅ | 项目 Executor + Local/Docker 底层 |
+| `internal/skill/trpc/executor.go` | ✅ | NewExecutorForAgent + Factory 注入 |
+| `internal/skill/trpc/artifact_executor.go` | ✅ | WrapWithArtifactSave |
+| `internal/agent/trpc_build.go` | ✅ | buildSkillDeps + CodeExecFactory |
+| `internal/biz/code_executor.go` | ✅ | ValidateCodeExecutorType |
+| `cmd/admin/wire.go` | ✅ | provideCodeExecutorFactory |
+| `api/kratos/monitor/v1/monitor.proto` | ✅ | GetCodeExecutorCapabilities |
+| `web/.../AgentSettingsSkillsTab.vue` | ✅ | 执行器选择 + capabilities 提示 |
+| `docker-compose.executor.yml` | ✅ | Docker 后端运维示例 |
+| `pkg/trpc-agent-go/codeexecutor/{jupyter}/` | 📦 | Phase 3 |

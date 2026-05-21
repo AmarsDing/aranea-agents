@@ -1,0 +1,161 @@
+package service_test
+
+import (
+	"context"
+	"database/sql"
+	"testing"
+
+	v1 "aranea-agents/api/kratos/session/v1"
+	"aranea-agents/internal/biz"
+	"aranea-agents/internal/service"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
+)
+
+type batchSessionRepo struct {
+	sessions map[string]biz.Session
+}
+
+func (m *batchSessionRepo) SearchSessions(context.Context, biz.SessionSearchQuery) (biz.SessionListResult, error) {
+	return biz.SessionListResult{}, nil
+}
+func (m *batchSessionRepo) CreateSession(context.Context, biz.Session) (biz.Session, error) {
+	return biz.Session{}, nil
+}
+func (m *batchSessionRepo) GetSessionByID(_ context.Context, id string) (biz.Session, error) {
+	s, ok := m.sessions[id]
+	if !ok {
+		return biz.Session{}, sql.ErrNoRows
+	}
+	return s, nil
+}
+func (m *batchSessionRepo) UpdateSessionTitle(context.Context, string, string) (biz.Session, error) {
+	return biz.Session{}, nil
+}
+func (m *batchSessionRepo) UpdateSession(context.Context, string, biz.SessionUpdateFields) (biz.Session, error) {
+	return biz.Session{}, nil
+}
+func (m *batchSessionRepo) RestoreSession(context.Context, string) (biz.Session, error) {
+	return biz.Session{}, nil
+}
+func (m *batchSessionRepo) ArchiveSession(context.Context, string) error { return nil }
+func (m *batchSessionRepo) DeleteSession(context.Context, string) error  { return nil }
+func (m *batchSessionRepo) DeleteSessionsByAgentID(context.Context, string) error {
+	return nil
+}
+func (m *batchSessionRepo) ListMessagesBySession(context.Context, string) ([]biz.ChatMessage, error) {
+	return nil, nil
+}
+func (m *batchSessionRepo) ListToolInvocationsBySession(context.Context, string, int) ([]biz.ToolInvocationView, error) {
+	return nil, nil
+}
+func (m *batchSessionRepo) ListSkillInvocationsBySession(context.Context, string, int) ([]biz.SkillInvocationView, error) {
+	return nil, nil
+}
+func (m *batchSessionRepo) AppendChatTurn(context.Context, string, biz.ChatMessage, biz.ChatMessage) error {
+	return nil
+}
+func (m *batchSessionRepo) SearchMessages(context.Context, biz.MessageSearchQuery) (biz.MessageSearchResult, error) {
+	return biz.MessageSearchResult{}, nil
+}
+
+func (m *batchSessionRepo) AppendChatMessage(context.Context, string, biz.ChatMessage, bool) error {
+	return nil
+}
+func (m *batchSessionRepo) UpsertChatActivityMessage(context.Context, string, biz.ChatMessage) error {
+	return nil
+}
+func (m *batchSessionRepo) UpdateRunnerSnapshotJSON(context.Context, string, string) error { return nil }
+func (m *batchSessionRepo) UpdateSessionContextFromLLMUsage(context.Context, string, int, int, int) error {
+	return nil
+}
+func (m *batchSessionRepo) UpdateSessionContextAfterCompression(context.Context, string, int, int) error {
+	return nil
+}
+func (m *batchSessionRepo) InsertSessionSummary(context.Context, biz.SessionSummary) error { return nil }
+func (m *batchSessionRepo) MaxSessionSummaryToTurn(context.Context, string) (int, error)     { return 0, nil }
+func (m *batchSessionRepo) ListSessionSummaries(context.Context, string) ([]biz.SessionSummary, error) {
+	return nil, nil
+}
+func (m *batchSessionRepo) LatestSessionSummaryTime(context.Context, string) (string, error) { return "", nil }
+func (m *batchSessionRepo) UpdateSessionListSummary(context.Context, string, string) error   { return nil }
+func (m *batchSessionRepo) GetSessionState(context.Context, string) (map[string]string, error) {
+	return nil, nil
+}
+func (m *batchSessionRepo) SaveSessionState(context.Context, string, map[string]string) error { return nil }
+func (m *batchSessionRepo) CreateSessionTurn(context.Context, biz.SessionTurn) (biz.SessionTurn, error) {
+	return biz.SessionTurn{}, nil
+}
+func (m *batchSessionRepo) UpdateSessionTurn(context.Context, string, biz.SessionTurnUpdateFields) (biz.SessionTurn, error) {
+	return biz.SessionTurn{}, nil
+}
+func (m *batchSessionRepo) ListSessionTurns(context.Context, string, int, int) (biz.SessionTurnListResult, error) {
+	return biz.SessionTurnListResult{}, nil
+}
+func (m *batchSessionRepo) GetSessionTurn(context.Context, string) (biz.SessionTurn, error) {
+	return biz.SessionTurn{}, nil
+}
+func (m *batchSessionRepo) IncrementInvocationCounts(context.Context, string, int, int, int) error {
+	return nil
+}
+func (m *batchSessionRepo) ListSessionsForBatch(_ context.Context, q biz.SessionSearchQuery) ([]biz.Session, error) {
+	out := make([]biz.Session, 0, len(m.sessions))
+	for _, s := range m.sessions {
+		out = append(out, s)
+	}
+	if q.Limit > 0 && len(out) > q.Offset {
+		start := q.Offset
+		end := start + q.Limit
+		if end > len(out) {
+			end = len(out)
+		}
+		out = out[start:end]
+	}
+	return out, nil
+}
+func (m *batchSessionRepo) ArchiveSessionsByIDs(_ context.Context, ids []string) (int, []string, error) {
+	return len(ids), nil, nil
+}
+func (m *batchSessionRepo) DeleteSessionsByIDs(_ context.Context, ids []string) (int, []string, error) {
+	return len(ids), nil, nil
+}
+
+func TestSessionService_BatchPreviewSessions_validation(t *testing.T) {
+	uc := biz.NewSessionUsecase(&batchSessionRepo{sessions: map[string]biz.Session{}}, nil, nil, nil)
+	svc := service.NewSessionService(uc, nil)
+
+	_, err := svc.BatchPreviewSessions(context.Background(), &v1.BatchPreviewSessionsRequest{})
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	if !kerrors.IsBadRequest(err) {
+		t.Fatalf("expected bad request, got %v", err)
+	}
+
+	_, err = svc.BatchArchiveSessions(context.Background(), &v1.BatchArchiveSessionsRequest{})
+	if err == nil || !kerrors.IsBadRequest(err) {
+		t.Fatalf("expected bad request for archive, got %v", err)
+	}
+}
+
+func TestSessionService_BatchPreviewSessions_skippedNotFound(t *testing.T) {
+	repo := &batchSessionRepo{sessions: map[string]biz.Session{
+		"s1": {ID: "s1", Status: "completed", CreatedAt: "2020-01-01T00:00:00Z"},
+	}}
+	uc := biz.NewSessionUsecase(repo, nil, nil, nil)
+	svc := service.NewSessionService(uc, nil)
+
+	resp, err := svc.BatchPreviewSessions(context.Background(), &v1.BatchPreviewSessionsRequest{
+		Mode: "delete",
+		Ids:  []string{"s1", "missing"},
+	})
+	if err != nil {
+		t.Fatalf("preview: %v", err)
+	}
+	if resp.GetSkippedNotFound() != 1 {
+		t.Fatalf("skipped_not_found: got %d want 1", resp.GetSkippedNotFound())
+	}
+	if resp.GetMatched() != 1 {
+		t.Fatalf("matched: got %d want 1", resp.GetMatched())
+	}
+}

@@ -5,7 +5,7 @@
         <q-item v-for="file in files" :key="file.name" clickable :active="activeFile === file.name" active-class="file-item--active" class="file-item" @click="$emit('update:activeFile', file.name)">
           <q-item-section>
             <q-item-label>{{ file.name }}</q-item-label>
-            <q-item-label caption>{{ tokenText(file.body) }}</q-item-label>
+            <q-item-label caption>{{ fileTokenLabel(file.name, file.body) }}</q-item-label>
           </q-item-section>
         </q-item>
       </q-list>
@@ -25,7 +25,7 @@
           </div>
         </div>
         <q-input v-model="bodyModel" class="q-mt-md markdown-editor" outlined type="textarea" label="Markdown" />
-        <div class="file-editor__footer flex-shrink-0">Token 估算：{{ tokenEstimateFor(bodyModel) }}</div>
+        <div class="file-editor__footer flex-shrink-0">Token 估算：{{ activeTokenCount }}</div>
       </div>
     </template>
   </q-splitter>
@@ -41,7 +41,21 @@ const props = defineProps<{
   activeFile: string;
   splitter: number;
   dirty: boolean;
+  fileTokenByName?: Record<string, number>;
 }>();
+
+function fileTokenLabel(name: string, body: string) {
+  const n = props.fileTokenByName?.[name];
+  if (n != null && n > 0) return `约 ${n} token（服务端）`;
+  return tokenText(body);
+}
+
+const activeTokenCount = computed(() => {
+  const name = props.activeFile;
+  const n = props.fileTokenByName?.[name];
+  if (n != null && n > 0) return n;
+  return tokenEstimateFor(bodyModel.value);
+});
 
 const emit = defineEmits<{
   "update:activeFile": [value: string];

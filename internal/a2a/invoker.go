@@ -3,7 +3,6 @@ package a2a
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 
 	"aranea-agents/internal/biz"
@@ -79,37 +78,67 @@ func NewInvoker(exec AgentTurnRunner, uc *biz.A2AUsecase, agents biz.AgentReposi
 		calleeAgentID = strings.TrimSpace(calleeAgentID)
 		capability = strings.TrimSpace(capability)
 		if calleeAgentID == "" {
-			return "", fmt.Errorf("callee agent_id is required")
+			return "", kerrors.BadRequest("A2A", "callee agent_id is required")
 		}
 		if capability == "" {
-			return "", fmt.Errorf("capability is required")
+			return "", kerrors.BadRequest("A2A", "capability is required")
 		}
 
 		if callerID := callerAgentIDFromContext(ctx); callerID != "" {
 			callerWS := agentWorkspace(ctx, uc, agents, callerID)
-			calleeWS := agentWorkspace(ctx, uc, agents, calleeAgentID)
+			calleeWS := resolveCalleeWorkspace(ctx, uc, agents, calleeAgentID)
 			if err := ValidateSameWorkspace(callerWS, calleeWS); err != nil {
 				return "", err
 			}
 		}
 
-		if exec == nil {
-			return "", fmt.Errorf("agent turn runner not configured")
-		}
-		input := PayloadToInput(payloadJSON, capability)
-		out, err := exec.RunAgentTurn(ctx, calleeAgentID, input, timeoutSec)
+		target, err := ResolveInvokeTarget(ctx, uc, calleeAgentID)
 		if err != nil {
 			return "", err
 		}
-		result, err := json.Marshal(map[string]any{
-			"capability": capability,
-			"output":     out,
-		})
-		if err != nil {
-			return out, nil
+		switch target.Kind {
+		case InvokeTargetLocal:
+			if err := CheckCalleeCard(target.Local, nil, capability); err != nil {
+				return "", err
+			}
+			return invokeLocal(exec, ctx, calleeAgentID, capability, payloadJSON, timeoutSec)
+		case InvokeTargetRemote:
+			return InvokeRemoteRegistry(ctx, target.Remote, capability, payloadJSON, timeoutSec)
+		default:
+			return "", kerrors.InternalServer("A2A", "unknown invoke target")
 		}
-		return string(result), nil
 	}
+}
+
+func invokeLocal(exec AgentTurnRunner, ctx context.Context, calleeAgentID, capability, payloadJSON string, timeoutSec int) (string, error) {
+	if exec == nil {
+		return "", kerrors.InternalServer("A2A", "agent turn runner not configured")
+	}
+	input := PayloadToInput(payloadJSON, capability)
+	out, err := exec.RunAgentTurn(ctx, calleeAgentID, input, timeoutSec)
+	if err != nil {
+		return "", err
+	}
+	result, err := json.Marshal(map[string]any{
+		"capability": capability,
+		"output":     out,
+	})
+	if err != nil {
+		return out, nil
+	}
+	return string(result), nil
+}
+
+func resolveCalleeWorkspace(ctx context.Context, uc *biz.A2AUsecase, agents biz.AgentRepository, calleeAgentID string) string {
+	if ws := agentWorkspace(ctx, uc, agents, calleeAgentID); ws != "" {
+		return ws
+	}
+	if uc != nil {
+		if remote, err := uc.GetRemoteAgent(ctx, calleeAgentID); err == nil {
+			return strings.TrimSpace(remote.Workspace)
+		}
+	}
+	return ""
 }
 
 // InjectRunContext attaches A2A usecase, caller id, and invoker to a tool run context.

@@ -14,7 +14,7 @@ package tools
 //	│                    Existing callers (trpc_build.go) continue to use BuildToolsets().
 //	├── custom/        — Custom tool implementations (user-defined tools)
 //	│                    Add your own tools here following the demo pattern.
-//	├── mcpmount/      — MCP server discovery and ToolSet assembly (to be migrated to trpc tool/mcp)
+// MCP 连接配置见 internal/mcp/config；运行时装配见 internal/agent/tool_assembly.go + toolset.go
 //	├── skillrouter/   — Skill detection and taxonomy
 //	└── skillruntime/  — Skill-based toolset resolution
 //
@@ -119,8 +119,8 @@ package tools
 //	  transfer/   — TransferTool — injected by Team编排 automatically
 //	  codeexec/   — CodeExecutionTool — injected via llmagent.WithCodeExecutor
 //	  skill/      — Skill tools — injected via llmagent.WithSkills
-//	  mcp/        — MCP ToolSet — pending migration from ADK
-//	  mcpbroker/  — MCP Broker — pending implementation
+//	  mcp/        — MCP ToolSet — internal/tools/toolset.go buildMCPToolSet
+//	  mcpbroker/  — MCP Broker — internal/tools/toolset.go buildMCPBrokerTools
 //
 // Custom tool guide:
 //

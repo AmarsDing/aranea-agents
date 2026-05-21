@@ -9,6 +9,7 @@ export type EnvelopeType =
   | "run_status"
   | "error"
   | "log"
+  | "flow_log"
   | "graph_node_start"
   | "graph_node_end"
   | "checkpoint"
@@ -26,7 +27,9 @@ export type EnvelopeType =
   | "graph_execution_done"
   | "graph_node_error"
   | "graph_node_custom"
-  | "knowledge_ingest";
+  | "knowledge_ingest"
+  | "mcp.session.reconnect"
+  | "alert.notify";
 
 export type EnvelopeContent = {
   text: string;
@@ -42,6 +45,18 @@ export type EnvelopeToolCall = {
   status: string;
   duration_ms?: number;
   is_long_running?: boolean;
+  activity_kind?: string;
+  display_label?: string;
+  icon_key?: string;
+  summary?: string;
+  started_at?: string;
+  finished_at?: string;
+  error_code?: string;
+  agent_key?: string;
+  agent_id?: string;
+  agent_name?: string;
+  run_id?: string;
+  trace_id?: string;
 };
 
 export type EnvelopeStateDelta = {

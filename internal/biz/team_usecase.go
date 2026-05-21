@@ -216,6 +216,18 @@ func (u *TeamUsecase) ListRunSteps(ctx context.Context, runID string) ([]TeamRun
 	return u.repo.ListTeamRunSteps(ctx, runID)
 }
 
+func (u *TeamUsecase) GetRunSummary(ctx context.Context, runID string) (TeamRunSummaryData, error) {
+	run, err := u.GetRun(ctx, runID)
+	if err != nil {
+		return TeamRunSummaryData{}, err
+	}
+	steps, err := u.ListRunSteps(ctx, run.ID)
+	if err != nil {
+		return TeamRunSummaryData{}, err
+	}
+	return BuildTeamRunSummaryData(run, steps), nil
+}
+
 func (u *TeamUsecase) UpdateSwarmMembers(ctx context.Context, teamID string, addIDs []string, removeIDs []string) (bool, error) {
 	teamID = strings.TrimSpace(teamID)
 	if teamID == "" {

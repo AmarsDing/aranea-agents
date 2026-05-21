@@ -6,11 +6,13 @@
       v-model:keyword="keyword"
       v-model:selected-status="selectedStatus"
       v-model:selected-category="selectedCategory"
+      v-model:selected-creator="selectedCreator"
       v-model:selected-provider="selectedProvider"
       v-model:view-mode="viewMode"
       :status-options="statusOptions"
       :category-position-options="categoryPositionOptions"
       :provider-options="providerOptions"
+      :creator-options="creatorOptions"
     />
 
     <agents-list-section
@@ -26,6 +28,7 @@
       @toggle-favorite="toggleFavorite"
       @copy-key="copyAgentKey"
       @delete="confirmDelete"
+      @duplicate="duplicateListedAgent"
     />
 
     <agents-pagination-bar v-model:page="page" v-model:rows-per-page="rowsPerPage" :total="total" :page-max="pageMax" />
@@ -33,16 +36,24 @@
     <agent-create-dialog
       v-model="createOpen"
       v-model:self-evolve="selfEvolve"
+      v-model:agent-kind="agentKind"
       v-model:category-industry="categoryIndustry"
       v-model:category-department="categoryDepartment"
       :form="form"
+      :a2a-proxy="a2aProxy"
+      :is-a2a-proxy="isA2AProxyCreate"
       :industry-options="industryOptions"
       :department-options="departmentOptions"
       :position-options="positionOptions"
       :provider-options="providerOptions"
       :model-options="modelOptions"
       :selected-template-key="selectedTemplateKey"
+      :templates="createTemplates"
       :agent-key-error="agentKeyError"
+      :display-name-error="displayNameError"
+      :provider-model-error="providerModelError"
+      :remote-url-error="remoteUrlError"
+      :create-form-error="createFormError"
       :can-create="canCreate"
       :creating="creating"
       :checking-model="checkingModel"
@@ -97,6 +108,8 @@ const {
   selectedStatus,
   selectedProvider,
   selectedCategory,
+  selectedCreator,
+  creatorOptions,
   page,
   rowsPerPage,
   total,
@@ -108,11 +121,16 @@ const {
   creating,
   checkingModel,
   selfEvolve,
+  agentKind,
+  a2aProxy,
+  isA2AProxyCreate,
   viewMode,
   categoryIndustry,
   categoryDepartment,
   form,
   selectedTemplateKey,
+  createTemplates,
+  duplicateListedAgent,
   providerOptions,
   modelOptions,
   industryOptions,
@@ -122,6 +140,10 @@ const {
   pageMax,
   tableColumns,
   agentKeyError,
+  displayNameError,
+  providerModelError,
+  remoteUrlError,
+  createFormError,
   canCreate,
   statusOptions,
   checkModel,

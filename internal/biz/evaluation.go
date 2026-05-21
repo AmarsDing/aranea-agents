@@ -49,6 +49,11 @@ type EvalRun struct {
 	ContainsMatchScore float32
 	LLMJudgeScore      float32
 	ToolCallAccuracy   float32
+	PassAtK            float32
+	PassHatK           float32
+	TriggerSource      string
+	NumRuns            int
+	ScoresJSON         string
 	ErrorMessage       string
 	StartedAt          string
 	FinishedAt         string
@@ -67,6 +72,20 @@ type EvalCaseResult struct {
 	ToolCallAccuracy float32
 	ErrorMessage     string
 	CreatedAt        string
+	HumanPass        *bool
+	HumanScore       *float32
+	HumanComment     string
+	AnnotatedAt      string
+	AnnotatedBy      string
+	ScoresJSON       string
+}
+
+// EvalCaseResultAnnotation is a partial update for human review (EVAL-02).
+type EvalCaseResultAnnotation struct {
+	HumanPass    *bool
+	HumanScore   *float32
+	HumanComment *string
+	AnnotatedBy  string
 }
 
 // EvalRepo is the persistence interface for evaluation operations.
@@ -75,6 +94,7 @@ type EvalRepo interface {
 	GetDataset(ctx context.Context, id string) (EvalDataset, error)
 	ListDatasets(ctx context.Context, workspace string, limit, offset int) ([]EvalDataset, int, error)
 	DeleteDataset(ctx context.Context, id string) error
+	UpdateDataset(ctx context.Context, id, name, description string) (EvalDataset, error)
 	UpdateDatasetCaseCount(ctx context.Context, id string, delta int) error
 
 	InsertCases(ctx context.Context, cases []EvalCase) error
@@ -83,10 +103,16 @@ type EvalRepo interface {
 	CreateRun(ctx context.Context, r EvalRun) (EvalRun, error)
 	GetRun(ctx context.Context, id string) (EvalRun, error)
 	UpdateRun(ctx context.Context, r EvalRun) error
+	DeleteRun(ctx context.Context, id string) error
 	ListRuns(ctx context.Context, datasetID, agentID string, limit, offset int) ([]EvalRun, int, error)
 
 	InsertCaseResult(ctx context.Context, r EvalCaseResult) error
 	ListCaseResults(ctx context.Context, runID string, limit, offset int) ([]EvalCaseResult, int, error)
+	GetCaseResult(ctx context.Context, runID, resultID string) (EvalCaseResult, error)
+	UpdateCaseResultAnnotation(ctx context.Context, runID, resultID string, patch EvalCaseResultAnnotation) (EvalCaseResult, error)
+
+	ListTrendPoints(ctx context.Context, agentID, datasetID string, limit int) ([]EvalTrendPoint, error)
+	GetRunsByIDs(ctx context.Context, ids []string) ([]EvalRun, error)
 }
 
 // EvalUsecase implements dataset/run management.
@@ -143,6 +169,19 @@ func (u *EvalUsecase) DeleteDataset(ctx context.Context, id string) error {
 	return u.repo.DeleteDataset(ctx, id)
 }
 
+// UpdateDataset updates dataset name and/or description.
+func (u *EvalUsecase) UpdateDataset(ctx context.Context, id, name, description string) (EvalDataset, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return EvalDataset{}, errors.BadRequest("EVAL", "id is required")
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return EvalDataset{}, errors.BadRequest("EVAL", "name is required")
+	}
+	return u.repo.UpdateDataset(ctx, id, name, description)
+}
+
 // UploadCases parses casesJSON (array) and bulk-inserts into the dataset.
 func (u *EvalUsecase) UploadCases(ctx context.Context, datasetID, casesJSON string) (int, error) {
 	datasetID = strings.TrimSpace(datasetID)
@@ -192,6 +231,12 @@ func (u *EvalUsecase) CreateRun(ctx context.Context, in EvalRun) (EvalRun, error
 	if in.Status == "" {
 		in.Status = "pending"
 	}
+	if strings.TrimSpace(in.TriggerSource) == "" {
+		in.TriggerSource = "manual"
+	}
+	if in.NumRuns <= 0 {
+		in.NumRuns = 1
+	}
 	return u.repo.CreateRun(ctx, in)
 }
 
@@ -216,6 +261,14 @@ func (u *EvalUsecase) UpdateRun(ctx context.Context, r EvalRun) error {
 	return u.repo.UpdateRun(ctx, r)
 }
 
+// DeleteRun removes a run and its case results.
+func (u *EvalUsecase) DeleteRun(ctx context.Context, id string) error {
+	if strings.TrimSpace(id) == "" {
+		return errors.BadRequest("EVAL", "id is required")
+	}
+	return u.repo.DeleteRun(ctx, id)
+}
+
 // ListCaseResults returns per-case results for a run.
 func (u *EvalUsecase) ListCaseResults(ctx context.Context, runID string, limit, offset int) ([]EvalCaseResult, int, error) {
 	if limit <= 0 {
@@ -227,6 +280,17 @@ func (u *EvalUsecase) ListCaseResults(ctx context.Context, runID string, limit, 
 // InsertCaseResult persists one case result.
 func (u *EvalUsecase) InsertCaseResult(ctx context.Context, r EvalCaseResult) error {
 	return u.repo.InsertCaseResult(ctx, r)
+}
+
+// AnnotateCaseResult updates human review fields for one case result (EVAL-02).
+func (u *EvalUsecase) AnnotateCaseResult(ctx context.Context, runID, resultID string, patch EvalCaseResultAnnotation) (EvalCaseResult, error) {
+	if strings.TrimSpace(runID) == "" || strings.TrimSpace(resultID) == "" {
+		return EvalCaseResult{}, errors.BadRequest("EVAL", "run_id and result_id are required")
+	}
+	if strings.TrimSpace(patch.AnnotatedBy) == "" {
+		patch.AnnotatedBy = "system"
+	}
+	return u.repo.UpdateCaseResultAnnotation(ctx, runID, resultID, patch)
 }
 
 // ListCases returns all cases for a dataset.

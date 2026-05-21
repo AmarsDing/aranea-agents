@@ -10,8 +10,12 @@ export type ModelUsageQuery = {
   provider_code?: string;
   model_api_id?: string;
   agent_id?: string;
+  team_id?: string;
+  usage_kind?: string;
   status?: string;
   limit?: number;
+  /** "" | "day" | "hour" — hour uses model_token_usage_hourly */
+  granularity?: string;
 };
 
 export type ModelUsageSummary = {
@@ -113,6 +117,37 @@ export type ModelTokenUsageEvent = {
   created_at?: string;
 };
 
+export type UsageQuotaDashboard = {
+  configured_count: number;
+  total_cap_micro_usd: number;
+  total_spent_micro_usd: number;
+  max_utilization_ratio: number;
+};
+
+export type BudgetAlert = {
+  id: string;
+  scope_type: string;
+  scope_id: string;
+  alert_ratio: number;
+  enabled: boolean;
+  last_fired_at?: string;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type UsageModelInsight = {
+  provider_code: string;
+  model_api_id: string;
+  model_display_name: string;
+  call_count: number;
+  total_tokens: number;
+  total_cost_micro_usd: number;
+  avg_latency_ms: number;
+  avg_tokens_per_second: number;
+  success_rate: number;
+  flags: string[];
+};
+
 export type ModelUsageOverview = {
   today: ModelUsageSummary;
   yesterday: ModelUsageSummary;
@@ -122,4 +157,6 @@ export type ModelUsageOverview = {
   top_models: ModelUsageBreakdownRow[];
   top_agents: ModelUsageBreakdownRow[];
   anomalies: ModelTokenUsageEvent[];
+  quota_dashboard?: UsageQuotaDashboard;
+  inefficient_models?: UsageModelInsight[];
 };

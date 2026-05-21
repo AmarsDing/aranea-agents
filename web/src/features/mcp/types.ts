@@ -38,6 +38,8 @@ export type McpServerMetadata = {
   health_status?: McpHealthStatus;
   last_health_at?: string;
   last_error_message?: string;
+  last_reconnect_at?: string;
+  reconnect_count?: number;
   [key: string]: unknown;
 };
 
@@ -74,4 +76,24 @@ export type McpServerTestResult = {
   status: McpHealthStatus;
   message: string;
   details?: Record<string, unknown>;
+};
+
+export type McpServerValidateResult = McpServerTestResult;
+
+export type McpUserCredential = {
+  id: string;
+  mcp_server_id: string;
+  user_id: string;
+  credential_key: string;
+  status: string;
+  configured: boolean;
+  masked_preview: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type McpUserCredentialInput = {
+  credential_key: string;
+  secret: string;
+  status?: string;
 };

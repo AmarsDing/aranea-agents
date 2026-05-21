@@ -44,3 +44,29 @@ export type PluginListQuery = {
   page?: number;
   page_size?: number;
 };
+
+export type PluginRun = {
+  id: string;
+  plugin_key: string;
+  plugin_id: string;
+  session_id: string;
+  agent_id: string;
+  callback_point: string;
+  status: string;
+  duration_ms: number;
+  detail_json: string;
+  created_at: string;
+};
+
+export type PluginRunListQuery = {
+  plugin_key?: string;
+  plugin_id?: string;
+  session_id?: string;
+  agent_id?: string;
+  callback_point?: string;
+  status?: string;
+  from?: string;
+  to?: string;
+  page?: number;
+  page_size?: number;
+};

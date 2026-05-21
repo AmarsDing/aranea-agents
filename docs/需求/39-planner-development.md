@@ -1,97 +1,115 @@
 # Planner 规划 — 开发计划
 
-> **版本**：2026-05-19 | **状态**：🟡 运行时选择器已实现；❌ 数据层/配置/前端未完成
+> **版本**：2026-05-21 | **状态**：🟢 P0–P3 + Phase B/C + Review 打磨已落地
 > **需求**：[39 planner.md](./39%20planner.md) · **设计**：[39 planner.design.md](./39%20planner.design.md)
-> **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：—
+> **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **变更**：[changelog/2026-05-21-Planner-Review-Followup.md](../changelog/2026-05-21-Planner-Review-Followup.md)
 
 ---
 
 ## 1. 模块定位
 
-Planner 规划：为 Agent 提供规划能力，支持 BuiltinPlanner（内置思维）、ReActPlanner（结构化推理）和 A2UIPlanner（A2UI 协议规划）。
+Planner 规划：为 Agent 提供 BuiltinPlanner、ReActPlanner、A2UIPlanner 三种规划能力（运行时 `internal/agent/planner.Select`）。
 
 **代码锚点**：
-- `internal/agent/planner/selector.go` — `Select(dialogMode, plannerKind)` 规划器选择
-- `internal/agent/trpc_build.go` — `agentplanner.Select()` 调用 + `plannerKind(ag)` 提取
-- `internal/biz/agent_types.go` — `AgentRuntimeSettings.PlannerKind` 字段
-- `api/kratos/agent/v1/agent.proto` — `planner_kind = 100` 字段
+
+| 层 | 路径 |
+|----|------|
+| 后端校验 | `internal/biz/planner.go` |
+| 运行时桥接 | `internal/agent/planner/{selector,build,config}.go` |
+| SQL | `docs/sql/02_agent_planner.sql`、`02_agent_planner_legacy_cleanup.sql` |
+| 设置表单 | `features/agents/plannerConfig.ts`、`components/agents/AgentPlannerSection.vue` |
+| ReAct 类型/解析 | `features/chat/reactPlannerTypes.ts`、`reactPlannerParse.ts` |
+| ReAct 工具链接 | `features/chat/reactPlannerToolLink.ts`、`reactToolLinkIndex.ts` |
+| 展示门面 | `features/chat/messagePlannerPresentation.ts` |
+| Chat 类型 | `features/chat/types.ts`（`Message`、`ReactToolLinkIndex`） |
+| A2UI | `a2uiParse.ts`、`a2uiSurfaceState.ts`、`a2ui/kinds/*`、`a2ui/a2uiKindRegistry.ts`、`a2uiUserAction.ts`、`a2uiUserActionDisplay.ts` |
+| Chat 编排 | `features/chat/composables/useChatWorkspace.ts`（`buildReactToolLinkIndex`、`activePlannerKind`） |
+| Chat UI | `ChatMessagePanel`（**必填** `reactToolLinkIndex`）、`ChatMessageRow`、`ChatReactSteps`、`ChatA2UIPreview` |
 
 ---
 
-## 2. 现状评估
+## 2. 现状评估（2026-05-21）
 
 | 项 | 状态 | 证据 |
 |----|------|------|
-| BuiltinPlanner 运行时选择 | ✅ | `selector.go`: `case "builtin"` → `trpcbuiltin.New(trpcbuiltin.Options{})` |
-| ReActPlanner 运行时选择 | ✅ | `selector.go`: `case "react"` → `trpcreact.New()` |
-| A2UIPlanner 运行时选择 | ✅ | `selector.go`: `case "a2ui"` → `trpca2ui.New()` |
-| DialogMode 兼容 | ✅ | `selector.go`: 默认分支 `dialogMode == "plan"` → BuiltinPlanner |
-| Agent 构建集成 | ✅ | `trpc_build.go`: `agentplanner.Select(deps.DialogMode, plannerKind(ag))` |
-| Proto 字段 | ✅ | `agent.proto`: `planner_kind = 100` |
-| Biz 字段 | ✅ | `agent_types.go`: `PlannerKind string` |
-| Service 映射 | ✅ | `agent.go`: proto ↔ biz 映射 |
-| Ent Schema 字段 | ❌ | `agent_runtime_setting.go` 缺少 `planner_kind` 字段 |
-| Data 层映射 | ❌ | `agent_repo.go` 的 `entRuntimeToBiz`/`applyBizRuntimeToCreate` 缺少映射 |
-| planner_config_json 字段 | ❌ | 全链路缺失（Proto/Biz/Ent/Data/Service） |
-| BuiltinPlanner 参数配置 | ❌ | `selector.go` 始终使用 `trpcbuiltin.Options{}`（空配置） |
-| A2UIPlanner 参数配置 | ❌ | `selector.go` 始终使用 `trpca2ui.New()`（无 Option） |
-| 前端配置 UI | ❌ | 无规划模式配置组件 |
-| Chat 页面规划步骤展示 | ❌ | 无 ReAct 步骤卡片、无 A2UI 渲染预览 |
+| 后端持久化 + 参数注入 | ✅ | `ValidatePlannerKind` / `ValidatePlannerConfigJSON` |
+| Agent 设置规划表单 | ✅ | `AgentPlannerSection` + `validatePlannerForm`（含 `reasoning_effort` 枚举） |
+| Chat ReAct 步骤卡 | ✅ | `ChatReactSteps` + `reactPlannerParse` |
+| ReAct ACTION ↔ tool_call | ✅ | `reactToolLinkIndex` O(n) + `buildMessagePresentation` 去重 |
+| Chat A2UI 组件树 | ✅ | `A2UIComponentNode` + `a2uiKindRegistry` 表驱动 |
+| A2UI userAction 上行 | ✅ | WS `user_message` 单行 JSON（[51 消息机制](./51%20消息机制.md) §4.5） |
+| userAction 用户气泡摘要 | ✅ | `a2uiUserActionDisplay.ts` |
+| Chat settings 补全 | ✅ | `hydrateAgentSettings` |
+| 空 kind 三态文案 + biz | ✅ | UI banner + 非 `{}` config 400 |
+| 历史脏 config 清理脚本 | ✅ | `02_agent_planner_legacy_cleanup.sql` |
 
 ---
 
-## 3. 差距与优化
+## 3. 差距与后续（backlog）
 
-1. **P0**：`planner_kind` 数据层断裂 — Proto/Biz/Service 已有字段，但 Ent Schema 和 Data 映射缺失，导致字段无法持久化。这是阻塞性缺陷。
-2. **P1**：规划器参数不可配置 — BuiltinPlanner 的 reasoning_effort/thinking_enabled/thinking_tokens 和 A2UIPlanner 的 Schema 均使用默认值，无法按 Agent 定制。
-3. **P2**：前端无规划模式配置 UI — 用户无法通过界面配置规划模式。
-4. **P2**：Chat 页面无规划步骤展示 — ReAct 步骤和 A2UI 渲染预览缺失。
+| 优先级 | 项 | 说明 |
+|--------|-----|------|
+| P5 | A2UI 表单可编辑 | TextField/CheckBox + dataModel 双向绑定 |
+| P5 | StandardCatalog 长尾 | Carousel / WebView 等 |
+| P5 | ReAct 链接增强 | 多 ACTION↔多 tool、Team 会话、流式乱序（设计 §7.3 已记录局限） |
+| P5 | 性能 | 按 `message.id` memo `parseReactPlannerContent`（列表极长时） |
 
 ---
 
 ## 4. 开发阶段
 
-- **Phase 1**：修复数据层断裂（Ent Schema + Data 映射 + DB 迁移）
-- **Phase 2**：规划器参数配置（planner_config_json 全链路 + selector 扩展）
-- **Phase 3**：前端配置面板 + Chat 页面集成
+| 阶段 | 内容 | 状态 |
+|------|------|------|
+| Phase 1 | Ent + Data + SQL + Biz 校验 | ✅ |
+| Phase 2 | `planner_config_json` + runtime build | ✅ |
+| Phase 3 | 设置 UI + Chat ReAct/A2UI MVP 预览 | ✅ |
+| Phase B | A2UI 组件树 + userAction 上行 + settings hydrate | ✅ |
+| Phase C | StandardCatalog 余量 + ReAct↔tool_call 内嵌卡片 | ✅ |
+| Review | `reactToolLinkIndex`、去 O(n²)、类型统一、三态、枚举校验 | ✅ |
+| 打磨 | 必填 index、无行内 enrich、`reactPlannerTypes`、`cached !== undefined` | ✅ |
+
+**Changelog 索引**：`2026-05-21-Planner-DocSync-P0-P1`、`Phase3-Frontend`、`PhaseB-A2UI-UserAction`、`PhaseC-Catalog-ReactTools`、`P2-P3-Optimization`、`Review-Fixes`、`Review-Followup`。
 
 ---
 
-## 5. 任务清单
+## 5. 任务清单（摘要）
 
-| # | 任务 | 优先级 | EP | 涉及文件 |
-|---|------|--------|-----|---------|
-| 1 | Ent Schema 增加 `planner_kind` 字段 | P0 | — | `internal/data/ent/schema/agent_runtime_setting.go` |
-| 2 | Data 映射增加 `PlannerKind` | P0 | — | `internal/data/agent_repo.go` |
-| 3 | 数据库迁移 | P0 | — | `sql/` |
-| 4 | Proto 增加 `planner_config_json` 字段 | P1 | — | `api/kratos/agent/v1/agent.proto` |
-| 5 | Biz 增加 `PlannerConfigJSON` 字段 + 配置结构 | P1 | — | `internal/biz/agent_types.go`, `internal/biz/agent_settings.go` |
-| 6 | Service 增加 `PlannerConfigJSON` 映射 | P1 | — | `internal/service/agent.go` |
-| 7 | Ent Schema 增加 `planner_config_json` 字段 | P1 | — | `internal/data/ent/schema/agent_runtime_setting.go` |
-| 8 | Data 映射增加 `PlannerConfigJSON` | P1 | — | `internal/data/agent_repo.go` |
-| 9 | selector.go 扩展 `Select()` 接受配置参数 | P1 | — | `internal/agent/planner/selector.go` |
-| 10 | trpc_build.go 传入配置参数 | P1 | — | `internal/agent/trpc_build.go` |
-| 11 | 前端 types + wire 增加 `planner_config_json` | P2 | — | `web/src/features/agents/types.ts`, `wireNormalize.ts` |
-| 12 | 前端规划模式配置面板 | P2 | — | `web/src/features/agents/` |
-| 13 | Chat 页面 ReAct 步骤展示 | P2 | — | `web/src/features/chat/` |
-| 14 | Chat 页面 A2UI 渲染预览 | P2 | — | `web/src/features/chat/` |
+| # | 任务 | 状态 |
+|---|------|------|
+| 1–10 | 后端 P0–P1 | ✅ |
+| 11–15 | 前端设置 + Chat MVP 展示 | ✅ |
+| 16–19 | A2UI 组件树 + tool 链接 + 去重 | ✅ |
+| 20 | `reactToolLinkIndex` 会话级索引 | ✅ |
+| 21 | `messagePlannerPresentation` 单一入口 + 必填 index | ✅ |
+| 22 | `reactPlannerTypes` + `a2uiKindRegistry` | ✅ |
+| 23 | `reasoning_effort` 前后端枚举 + hydrate 清洗 | ✅ |
 
 ---
 
 ## 6. 验收标准
 
-- [ ] `planner_kind` 可持久化到数据库（Ent Schema + Data 映射完整）
-- [ ] `planner_config_json` 全链路贯通（Proto → Biz → Data → Service）
-- [ ] BuiltinPlanner 参数可配置（reasoning_effort/thinking_enabled/thinking_tokens）
-- [ ] A2UIPlanner 参数可配置（Instruction/Schema 等）
-- [ ] 前端可配置规划模式和参数
-- [ ] Chat 页面展示 ReAct 规划步骤
-- [ ] Chat 页面展示 A2UI 渲染预览
+- [x] `planner_kind` / `planner_config_json` 持久化与 API 往返
+- [x] Builtin / A2UI 参数可在 Agent 设置页配置并保存
+- [x] 空 `planner_kind` 仅允许 `{}`；非法 `reasoning_effort` 前后端拒绝
+- [x] Chat ReAct 步骤卡 + ACTION 内嵌工具卡；独立 tool activity 行去重
+- [x] Chat A2UI 组件树；Button `userAction` 上行；用户消息友好摘要
+- [x] `ChatMessagePanel` / `ChatMessageRow` 必填 `reactToolLinkIndex`
+- [x] 侧栏选 Agent 时 `getAgent` 补全 `planner_kind`（无 settings 或 kind 为空）
 
 ---
 
 ## 7. 依赖与风险
 
-- P0 数据层断裂是阻塞性缺陷：当前 `planner_kind` 通过 API 设置后无法持久化，重启后丢失
-- 规划器参数配置依赖 `planner_config_json` 全链路实现
-- A2UI 渲染预览组件复杂度较高，需评估是否独立迭代
+- 新库执行 `docs/sql/02_agent_planner.sql`；升级后可选 `02_agent_planner_legacy_cleanup.sql`。
+- **空 kind 三态**：API 保存 / 运行时 Builtin / Chat 展示启发式 — 须在 UI 区分（见 design §7.2）。
+- **ReAct 链接**：流式过程中工具行可能短暂重复，索引随 `displayMessages` 刷新后收敛。
+- 列表 API 省略 `settings` 时依赖 `hydrateAgentSettings`；正文标签仍作 `planner_kind` 为空时的展示兜底。
+
+---
+
+## 8. 测试
+
+| 范围 | 命令 |
+|------|------|
+| 前端 Chat + planner 表单 | `cd web && pnpm vitest run src/features/chat/__tests__ src/features/agents/__tests__/plannerConfig.spec.ts` |
+| 后端 biz | `go test ./internal/biz/... -run TestValidatePlanner` |

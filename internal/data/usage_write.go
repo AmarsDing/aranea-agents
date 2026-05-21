@@ -52,8 +52,8 @@ func (r *usageRepo) RecordTokenUsageEvent(ctx context.Context, e biz.TokenUsageE
 			     output_tokens = output_tokens + ?,
 			     total_tokens = total_tokens + ?,
 			     total_cost_micro_usd = total_cost_micro_usd + ?,
-			     provider = ?,
-			     model = ?,
+			     last_provider = ?,
+			     last_model = ?,
 			     updated_at = ?
 			 WHERE id = ? AND deleted_at = ''`,
 			e.CallCount, e.InputTokens, e.OutputTokens, e.TotalTokens, e.TotalCostMicroUSD,
@@ -65,6 +65,9 @@ func (r *usageRepo) RecordTokenUsageEvent(ctx context.Context, e biz.TokenUsageE
 	}
 
 	if err = upsertModelTokenUsageDaily(ctx, c, e); err != nil {
+		return biz.TokenUsageEvent{}, err
+	}
+	if err = upsertModelTokenUsageHourly(ctx, c, e); err != nil {
 		return biz.TokenUsageEvent{}, err
 	}
 
@@ -119,6 +122,55 @@ func upsertModelTokenUsageDaily(ctx context.Context, c execer, e biz.TokenUsageE
 		 avg_tokens_per_second = ((avg_tokens_per_second * request_count) + excluded.avg_tokens_per_second) / (request_count + excluded.request_count),
 		 updated_at = excluded.updated_at`,
 		id, e.DateKey, e.WorkspaceID, e.AgentID, e.AgentKey, e.ProviderCode, e.ModelAPIID, e.UsageKind,
+		e.CallCount, successCount, failedCount, cancelledCount,
+		e.InputTokens, e.OutputTokens, e.CachedInputTokens, e.ReasoningTokens, e.EmbeddingTokens, e.TotalTokens,
+		e.TotalCostMicroUSD, float64(e.LatencyMS), e.TokensPerSecond, now, now,
+	)
+	return err
+}
+
+func upsertModelTokenUsageHourly(ctx context.Context, c execer, e biz.TokenUsageEvent) error {
+	hourKey := strings.TrimSpace(e.HourKey)
+	if hourKey == "" {
+		return nil
+	}
+	successCount := 0
+	failedCount := 0
+	cancelledCount := 0
+	switch e.Status {
+	case "success":
+		successCount = 1
+	case "cancelled":
+		cancelledCount = 1
+	default:
+		failedCount = 1
+	}
+	id := strings.Join([]string{hourKey, e.WorkspaceID, e.AgentID, e.ProviderCode, e.ModelAPIID, e.UsageKind}, ":")
+	now := nowRFC3339()
+	_, err := c.ExecContext(ctx,
+		`INSERT INTO model_token_usage_hourly(
+		 id, hour_key, workspace_id, agent_id, agent_key, provider_code, model_api_id, usage_kind,
+		 call_count, request_count, success_count, failed_count, cancelled_count,
+		 input_tokens, output_tokens, cached_input_tokens, reasoning_tokens, embedding_tokens, total_tokens,
+		 total_cost_micro_usd, avg_latency_ms, avg_tokens_per_second, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(hour_key, workspace_id, agent_id, provider_code, model_api_id, usage_kind) DO UPDATE SET
+		 call_count = call_count + excluded.call_count,
+		 request_count = request_count + excluded.request_count,
+		 success_count = success_count + excluded.success_count,
+		 failed_count = failed_count + excluded.failed_count,
+		 cancelled_count = cancelled_count + excluded.cancelled_count,
+		 input_tokens = input_tokens + excluded.input_tokens,
+		 output_tokens = output_tokens + excluded.output_tokens,
+		 cached_input_tokens = cached_input_tokens + excluded.cached_input_tokens,
+		 reasoning_tokens = reasoning_tokens + excluded.reasoning_tokens,
+		 embedding_tokens = embedding_tokens + excluded.embedding_tokens,
+		 total_tokens = total_tokens + excluded.total_tokens,
+		 total_cost_micro_usd = total_cost_micro_usd + excluded.total_cost_micro_usd,
+		 avg_latency_ms = ((avg_latency_ms * request_count) + excluded.avg_latency_ms) / (request_count + excluded.request_count),
+		 avg_tokens_per_second = ((avg_tokens_per_second * request_count) + excluded.avg_tokens_per_second) / (request_count + excluded.request_count),
+		 updated_at = excluded.updated_at`,
+		id, hourKey, e.WorkspaceID, e.AgentID, e.AgentKey, e.ProviderCode, e.ModelAPIID, e.UsageKind,
 		e.CallCount, successCount, failedCount, cancelledCount,
 		e.InputTokens, e.OutputTokens, e.CachedInputTokens, e.ReasoningTokens, e.EmbeddingTokens, e.TotalTokens,
 		e.TotalCostMicroUSD, float64(e.LatencyMS), e.TokensPerSecond, now, now,

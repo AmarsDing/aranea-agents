@@ -1,0 +1,22 @@
+package trpc
+
+import "strings"
+
+// PruneUnconfiguredToolFlags turns off tool switches that are enabled in policy but lack
+// required runtime configuration, so Assemble does not fail the whole agent build.
+// Returns catalog tool_key values that were skipped (for logging).
+func PruneUnconfiguredToolFlags(cfg *ToolsetConfig) []string {
+	if cfg == nil {
+		return nil
+	}
+	var skipped []string
+	if cfg.GeminiFetch && strings.TrimSpace(cfg.GeminiModel) == "" {
+		cfg.GeminiFetch = false
+		skipped = append(skipped, "gemini_web_fetch")
+	}
+	if cfg.GoogleSearch && (strings.TrimSpace(cfg.GoogleAPIKey) == "" || strings.TrimSpace(cfg.GoogleCX) == "") {
+		cfg.GoogleSearch = false
+		skipped = append(skipped, "google_search")
+	}
+	return skipped
+}

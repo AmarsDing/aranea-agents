@@ -29,7 +29,7 @@ const confirmationGuardSchema = `{"type":"object","properties":{"confirm_tools":
 
 const costGuardSchema = `{"type":"object","properties":{"daily_token_budget":{"type":"integer","default":0},"max_prompt_tokens":{"type":"integer","default":0},"blocked_models":{"type":"array","items":{"type":"string"},"default":[]},"fallback_model":{"type":"string","default":""},"admin_bypass":{"type":"boolean","default":true}}}`
 
-const modelRouterSchema = `{"type":"object","properties":{"rules":{"type":"array","items":{"type":"object"},"default":[]},"default_model":{"type":"string","default":""},"code_model":{"type":"string","default":""},"long_context_model":{"type":"string","default":""},"fallback_model":{"type":"string","default":""}}}`
+const modelRouterSchema = `{"type":"object","properties":{"rules":{"type":"array","items":{"type":"object","properties":{"model":{"type":"string"},"contains":{"type":"array","items":{"type":"string"}},"regex":{"type":"string"},"min_chars":{"type":"integer"},"priority":{"type":"integer"}}},"default":[]},"default_model":{"type":"string","default":""},"code_model":{"type":"string","default":""},"long_context_model":{"type":"string","default":""},"fallback_model":{"type":"string","default":""}}}`
 
 const permissionGuardSchema = `{"type":"object","properties":{"deny_tools":{"type":"array","items":{"type":"string"},"default":[]},"confirm_tools":{"type":"array","items":{"type":"string"},"default":[]},"agent_allowlist":{"type":"array","items":{"type":"string"},"default":[]},"role_rules":{"type":"array","items":{"type":"object"},"default":[]}}}`
 
@@ -51,7 +51,7 @@ func BuiltinPluginDefs() []BuiltinPluginDef {
 		{
 			Key: "skill_usage_tracker", Name: "Skill 使用追踪",
 			Description: "追踪 Skill 工具调用与执行摘要",
-			Category: "observability", RiskLevel: "low",
+			Category: "tracking", RiskLevel: "low",
 			DefaultEnabled: false, Scope: "global",
 			CallbackPoints: []string{"before_tool", "after_tool"},
 			SortOrder: 110, ConfigSchemaJSON: skillTrackerSchema, DefaultConfigJSON: "{}",

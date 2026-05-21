@@ -85,8 +85,10 @@ func (s *statusMap) load(key string) (*RunStatusEntry, bool) {
 func (s *statusMap) store(key string, val *RunStatusEntry) { s.m.Store(key, val) }
 func (s *statusMap) delete(key string)                     { s.m.Delete(key) }
 
-// RunRegistry owns per-session runtime state shared by chat, websocket, and
-// future runner control entrypoints.
+// RunRegistry owns per-session runtime state shared by chat, websocket, team,
+// cron, channel, and gateway ingress.
+//
+// trpc runner request_id is the session_id (see trpcagent.WithRequestID in chat/team turns).
 type RunRegistry struct {
 	activeRuns     activeRunMap
 	pendingCancels cancelMap
@@ -158,32 +160,32 @@ func (r *RunRegistry) ClearPendingCancel(sessionID string) {
 	r.pendingCancels.delete(sessionID)
 }
 
-func (r *RunRegistry) Cancel(sessionID string) bool {
+func (r *RunRegistry) Cancel(sessionID string) (bool, string) {
 	if r == nil {
-		return false
+		return false, ""
 	}
 	if cancelFn, ok := r.pendingCancels.loadAndDelete(sessionID); ok {
 		cancelFn()
 	}
 	run, ok := r.activeRuns.load(sessionID)
 	if !ok {
-		return false
+		return false, ""
 	}
 	if run.cancel != nil {
 		run.cancel()
 		r.SetStatus(sessionID, run.runID, "cancelled", "")
 		r.activeRuns.delete(sessionID)
-		return true
+		return true, run.runID
 	}
 	if run.placeholder || run.runner == nil {
-		return false
+		return false, ""
 	}
 	if mr, ok := run.runner.(trpcrunner.ManagedRunner); ok && mr.Cancel(sessionID) {
-		return true
+		return true, run.runID
 	}
 	_ = run.runner.Close()
 	r.activeRuns.delete(sessionID)
-	return true
+	return true, run.runID
 }
 
 func (r *RunRegistry) EnqueueUserMessage(sessionID, content string) (bool, error) {

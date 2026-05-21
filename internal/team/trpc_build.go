@@ -25,42 +25,61 @@ type TRPCTeamBuilderDeps struct {
 	UseCache    bool
 }
 
-func BuildTRPCTeam(ctx context.Context, def Definition, deps TRPCTeamBuilderDeps, catalogAgent func(ctx context.Context, id string) (biz.Agent, error)) (trpcagent.Agent, error) {
+// BuildTeamMemberAgents builds member trpc agents and a runner lookup map keyed by agent_key.
+func BuildTeamMemberAgents(
+	ctx context.Context,
+	def Definition,
+	deps TRPCTeamBuilderDeps,
+	catalogAgent func(ctx context.Context, id string) (biz.Agent, error),
+) ([]trpcagent.Agent, map[string]trpcagent.Agent, error) {
+	members := EnabledMembers(def)
+	memberAgents := make([]trpcagent.Agent, 0, len(members))
+	lookup := make(map[string]trpcagent.Agent, len(members))
+	for _, m := range members {
+		ag, err := catalogAgent(ctx, strings.TrimSpace(m.AgentID))
+		if err != nil {
+			return nil, nil, kerrors.BadRequest("TEAM", fmt.Sprintf("member %s: %v", m.AgentID, err))
+		}
+		var trpcAg trpcagent.Agent
+		if deps.UseCache {
+			trpcAg, err = chatagent.BuildTRPCAgentCached(ctx, ag, deps.BuilderDeps)
+		} else {
+			trpcAg, err = chatagent.BuildTRPCAgent(ctx, ag, deps.BuilderDeps)
+		}
+		if err != nil {
+			return nil, nil, kerrors.InternalServer("TEAM", fmt.Sprintf("build member %s: %v", m.AgentID, err))
+		}
+		memberAgents = append(memberAgents, trpcAg)
+		if key := strings.TrimSpace(ag.AgentKey); key != "" {
+			lookup[key] = trpcAg
+		}
+	}
+	return memberAgents, lookup, nil
+}
+
+func BuildTRPCTeam(ctx context.Context, def Definition, deps TRPCTeamBuilderDeps, catalogAgent func(ctx context.Context, id string) (biz.Agent, error)) (trpcagent.Agent, map[string]trpcagent.Agent, error) {
 	members := EnabledMembers(def)
 	if len(members) == 0 {
-		return nil, kerrors.BadRequest("TEAM", "no enabled members")
+		return nil, nil, kerrors.BadRequest("TEAM", "no enabled members")
 	}
 
 	mode := strings.ToLower(strings.TrimSpace(def.Mode))
 
-	memberAgents := make([]trpcagent.Agent, 0, len(members))
-	for _, m := range members {
-		ag, err := catalogAgent(ctx, strings.TrimSpace(m.AgentID))
-		if err != nil {
-			return nil, kerrors.BadRequest("TEAM", fmt.Sprintf("member %s: %v", m.AgentID, err))
-		}
-		var trpcAg trpcagent.Agent
-		if deps.UseCache {
-			trpcAg, err = chatagent.BuildTRPCLLMAgentCached(ctx, ag, deps.BuilderDeps)
-		} else {
-			trpcAg, err = chatagent.BuildTRPCLLMAgent(ctx, ag, deps.BuilderDeps)
-		}
-		if err != nil {
-			return nil, kerrors.InternalServer("TEAM", fmt.Sprintf("build member %s: %v", m.AgentID, err))
-		}
-		memberAgents = append(memberAgents, trpcAg)
+	memberAgents, lookup, err := BuildTeamMemberAgents(ctx, def, deps, catalogAgent)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	switch mode {
 	case "sequential":
 		return chainagent.New("team-sequential",
 			chainagent.WithSubAgents(memberAgents),
-		), nil
+		), lookup, nil
 
 	case "parallel":
 		return parallelagent.New("team-parallel",
 			parallelagent.WithSubAgents(memberAgents),
-		), nil
+		), lookup, nil
 
 	case "critic_loop":
 		maxIter := 3
@@ -72,29 +91,31 @@ func BuildTRPCTeam(ctx context.Context, def Definition, deps TRPCTeamBuilderDeps
 			cycleagent.WithSubAgents(memberAgents),
 			cycleagent.WithMaxIterations(maxIter),
 			cycleagent.WithEscalationFunc(escFn),
-		), nil
+		), lookup, nil
 
 	case "swarm":
-		return buildSwarmTeam(def, memberAgents)
+		root, err := buildSwarmTeam(def, memberAgents)
+		return root, lookup, err
 
 	case "adaptive":
 		if len(memberAgents) < 2 {
-			return memberAgents[0], nil
+			return memberAgents[0], lookup, nil
 		}
-		return buildAdaptiveSwarm(def, memberAgents)
+		root, err := buildAdaptiveSwarm(def, memberAgents)
+		return root, lookup, err
 
 	default:
 		if len(memberAgents) < 2 {
-			return memberAgents[0], nil
+			return memberAgents[0], lookup, nil
 		}
 		coordinator := memberAgents[0]
 		rest := memberAgents[1:]
 		opts := buildCoordinatorOptions(def)
 		t, err := trpcteam.New(coordinator, rest, opts...)
 		if err != nil {
-			return nil, kerrors.InternalServer("TEAM", fmt.Sprintf("new coordinator: %v", err))
+			return nil, nil, kerrors.InternalServer("TEAM", fmt.Sprintf("new coordinator: %v", err))
 		}
-		return t, nil
+		return t, lookup, nil
 	}
 }
 

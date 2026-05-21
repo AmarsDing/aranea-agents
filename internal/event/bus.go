@@ -23,8 +23,14 @@ const (
 )
 
 // SubscribeOptions configures a single Bus subscription.
+type ChannelPriority int
+
+const (
+	ChannelPriorityCritical ChannelPriority = iota
+	ChannelPriorityNormal
+)
+
 type SubscribeOptions struct {
-	// Routing filters — at least one must match for an event to be delivered.
 	SessionID   string
 	TeamID      string
 	Channel     string
@@ -32,12 +38,13 @@ type SubscribeOptions struct {
 	EventTypes  []EnvelopeType
 	LevelFilter string
 
-	// Backpressure controls.
-	BufferSize int                     // channel capacity (default 128, capped at 512)
-	Reliable   bool                    // shorthand: sets DropPolicy=BlockUpTo(100ms) for known critical types
-	DropPolicy DropPolicy              // default DropOldest
-	BlockFor   time.Duration           // used when DropPolicy=BlockUpTo (default 100ms if Reliable=true)
-	Selector   func(EnvelopeType) bool // additional per-type filter (nil = accept all)
+	Priority ChannelPriority
+
+	BufferSize int
+	Reliable   bool
+	DropPolicy DropPolicy
+	BlockFor   time.Duration
+	Selector   func(EnvelopeType) bool
 }
 
 // Bus is the in-process event fanout hub.
@@ -83,38 +90,54 @@ func (b *bus) Publish(ctx context.Context, env Envelope) {
 	if env.Channel == "" {
 		env.Channel = RouteChannel(env)
 	}
-	arametrics.EventBusPublished.WithLabelValues(string(env.Type)).Inc() // EP-OBS-04
+	arametrics.EventBusPublished.WithLabelValues(string(env.Type)).Inc()
 	_, isCritical := criticalTypes()[env.Type]
 
 	b.mu.RLock()
-	defer b.mu.RUnlock()
+	criticalSubs := make([]*subscriber, 0, len(b.subscribers))
+	normalSubs := make([]*subscriber, 0, len(b.subscribers))
 	for _, sub := range b.subscribers {
-		if !b.matchSubscriber(sub.opts, env) {
-			continue
+		if sub.opts.Priority == ChannelPriorityCritical {
+			criticalSubs = append(criticalSubs, sub)
+		} else {
+			normalSubs = append(normalSubs, sub)
 		}
-		if sub.opts.Selector != nil && !sub.opts.Selector(env.Type) {
-			continue
-		}
+	}
+	b.mu.RUnlock()
 
-		policy := sub.opts.DropPolicy
-		blockFor := sub.opts.BlockFor
+	for _, sub := range criticalSubs {
+		b.deliverToSubscriber(sub, env, isCritical)
+	}
+	for _, sub := range normalSubs {
+		b.deliverToSubscriber(sub, env, isCritical)
+	}
+}
 
-		// Reliable subscriptions or critical event types get block-up-to semantics.
-		if sub.opts.Reliable || isCritical {
-			policy = BlockUpTo
-			if blockFor <= 0 {
-				blockFor = 100 * time.Millisecond
-			}
-		}
+func (b *bus) deliverToSubscriber(sub *subscriber, env Envelope, isCritical bool) {
+	if !b.matchSubscriber(sub.opts, env) {
+		return
+	}
+	if sub.opts.Selector != nil && !sub.opts.Selector(env.Type) {
+		return
+	}
 
-		switch policy {
-		case BlockUpTo:
-			b.deliverBlockUpTo(sub, env, blockFor)
-		case DropNewest:
-			b.deliverDropNewest(sub, env)
-		default: // DropOldest
-			b.deliverDropOldest(sub, env)
+	policy := sub.opts.DropPolicy
+	blockFor := sub.opts.BlockFor
+
+	if sub.opts.Reliable || isCritical {
+		policy = BlockUpTo
+		if blockFor <= 0 {
+			blockFor = 100 * time.Millisecond
 		}
+	}
+
+	switch policy {
+	case BlockUpTo:
+		b.deliverBlockUpTo(sub, env, blockFor)
+	case DropNewest:
+		b.deliverDropNewest(sub, env)
+	default:
+		b.deliverDropOldest(sub, env)
 	}
 }
 
@@ -149,11 +172,15 @@ func (b *bus) deliverDropOldest(sub *subscriber, env Envelope) {
 			case sub.ch <- env:
 			default:
 				b.dropCount.Add(1)
-				arametrics.EventBusDropped.WithLabelValues(string(env.Type), "drop_oldest").Inc() // EP-OBS-04
+				arametrics.EventBusDropped.WithLabelValues(string(env.Type), "drop_oldest").Inc()
+				SessionSysLogWarn(context.Background(), env.SessionID, "system.bus.drop", "事件总线丢弃消息（drop_oldest）",
+					P("type", string(env.Type)), P("channel", env.Channel), P("policy", "drop_oldest"), P("total_drops", b.dropCount.Load()))
 			}
 		default:
 			b.dropCount.Add(1)
-			arametrics.EventBusDropped.WithLabelValues(string(env.Type), "drop_oldest").Inc() // EP-OBS-04
+			arametrics.EventBusDropped.WithLabelValues(string(env.Type), "drop_oldest").Inc()
+			SessionSysLogWarn(context.Background(), env.SessionID, "system.bus.drop", "事件总线丢弃消息（drop_oldest）",
+				P("type", string(env.Type)), P("channel", env.Channel), P("policy", "drop_oldest"), P("total_drops", b.dropCount.Load()))
 		}
 	}
 }
@@ -163,7 +190,9 @@ func (b *bus) deliverDropNewest(sub *subscriber, env Envelope) {
 	case sub.ch <- env:
 	default:
 		b.dropCount.Add(1)
-		arametrics.EventBusDropped.WithLabelValues(string(env.Type), "drop_newest").Inc() // EP-OBS-04
+		arametrics.EventBusDropped.WithLabelValues(string(env.Type), "drop_newest").Inc()
+		SessionSysLogWarn(context.Background(), env.SessionID, "system.bus.drop", "事件总线丢弃消息（drop_newest）",
+			P("type", string(env.Type)), P("channel", env.Channel), P("policy", "drop_newest"), P("total_drops", b.dropCount.Load()))
 	}
 }
 

@@ -3,7 +3,6 @@ package team
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 	"time"
 
@@ -77,16 +76,6 @@ func mergeTeamUserTurnMetaJSON(userOpts string, displayContent, sendText string)
 	return string(out), nil
 }
 
-func publishTeamMonitor(ctx context.Context, bus event.Bus, level, msg, sessionID string) {
-	if bus == nil || strings.TrimSpace(msg) == "" {
-		return
-	}
-	env := event.NewEnvelope(event.EnvelopeTypeLog, "team-runner", sessionID)
-	env.Metadata = map[string]any{"level": level, "source": "team-runner"}
-	env.Content = &event.EnvelopeContent{Text: msg}
-	bus.Publish(ctx, env)
-}
-
 func (r *Runner) finishRunErr(ctx context.Context, run *biz.TeamRun, t0 time.Time, msg string) {
 	if run == nil {
 		return
@@ -109,7 +98,8 @@ func (r *Runner) finishRunErr(ctx context.Context, run *biz.TeamRun, t0 time.Tim
 		r.td.Pipeline.Bus.Publish(ctx, failEnv)
 	}
 	r.publishTeamRunSummary(ctx, *run)
-	publishTeamMonitor(ctx, r.td.Pipeline.Bus, "WARN", fmt.Sprintf("team_run failed team_id=%s run_id=%s session_id=%s: %s", run.TeamID, run.ID, strings.TrimSpace(run.SessionID), msg), strings.TrimSpace(run.SessionID))
+	event.SessionSysLogWarn(ctx, strings.TrimSpace(run.SessionID), "team.run.finish", msg,
+		event.P("team_id", run.TeamID), event.P("run_id", run.ID))
 }
 
 func (r *Runner) publishTeamRunSummary(ctx context.Context, run biz.TeamRun) {
@@ -123,7 +113,7 @@ func (r *Runner) publishTeamRunSummary(ctx context.Context, run biz.TeamRun) {
 	r.td.Pipeline.Bus.Publish(ctx, TeamSummaryEnvelope(run, steps))
 }
 
-func (r *Runner) persistStep(ctx context.Context, run biz.TeamRun, teamID string, sortIdx int, m MemberDef, ag biz.Agent, userContent string, asst biz.ChatMessage) {
+func (r *Runner) persistStep(ctx context.Context, run biz.TeamRun, teamID string, sortIdx int, m MemberDef, ag biz.Agent, userContent string, asst biz.ChatMessage, prov, mod, dialogMode string, toolCallCount int) {
 	step := biz.TeamRunStep{
 		ID:            uuid.NewString(),
 		RunID:         run.ID,
@@ -144,11 +134,21 @@ func (r *Runner) persistStep(ctx context.Context, run biz.TeamRun, teamID string
 		StartedAt:     asst.CreatedAt,
 		FinishedAt:    asst.CreatedAt,
 		CreatedAt:     agent.RFC3339Now(),
+		ToolCallCount: toolCallCount,
+	}
+	if r.td.Pipeline.Bus != nil {
+		started := step
+		started.Status = "running"
+		envStart := event.NewEnvelope(event.EnvelopeTypeTeamStepStarted, ag.AgentKey, run.SessionID)
+		envStart.TeamID = teamID
+		envStart.Metadata = map[string]any{"run_id": run.ID, "step": started}
+		r.td.Pipeline.Bus.Publish(ctx, envStart)
 	}
 	saved, err := r.teams.CreateTeamRunStep(ctx, step)
 	if err != nil {
 		return
 	}
+	r.recordMemberUsage(ctx, run, teamID, ag, asst, prov, mod, dialogMode, saved.ID)
 	if r.td.Pipeline.Bus != nil {
 		env := event.NewEnvelope(event.EnvelopeTypeTeamStepFinished, ag.AgentKey, run.SessionID)
 		env.TeamID = teamID

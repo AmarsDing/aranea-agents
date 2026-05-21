@@ -320,6 +320,120 @@ service SessionService {
 | `ListSessionMessages` | `GET /v1/sessions/{id}/messages` | 获取会话消息列表，支持 limit/offset 分页 |
 | `ListSessionTurns` | `GET /v1/sessions/{session_id}/turns` | 获取会话轮次列表，支持 limit/offset 分页 |
 
+### 2.3 批量操作 RPC（Phase 1b — 已实现）
+
+> 需求来源：会话历史列表批量治理（2026-05-20）。契约以 `api/kratos/session/v1/session.proto` 为准。
+
+#### 2.3.1 Proto（现行）
+
+```protobuf
+message SessionBatchScope {
+  string owner_type = 1;
+  string agent_id = 2;
+  string team_id = 3;
+  string status = 4;
+  string context_status = 5;
+  string keyword = 6;
+  string user_id = 7;
+}
+
+// ids 非空：仅在这些 ID 上应用规则；older_than_days 进一步按 activity 过滤。
+// ids 为空：在 scope 匹配集上分页扫描（服务端）；须 older_than_days >= 1。
+message BatchPreviewSessionsRequest {
+  repeated string ids = 1;
+  int32 older_than_days = 2;
+  SessionBatchScope scope = 3;
+  bool include_archived = 4;
+  string mode = 5;  // "archive" | "delete"（REQUIRED）
+}
+
+message BatchPreviewSessionsResponse {
+  int32 matched = 1;
+  int32 skipped_running = 2;
+  repeated string sample_ids = 3;  // 最多 5 条
+  int32 skipped_not_found = 4;     // ids 模式中不存在的 ID 数
+  bool truncated = 5;              // scope 扫描达 SessionBatchMaxScan 上限
+}
+
+message BatchArchiveSessionsRequest {
+  repeated string ids = 1;
+  int32 older_than_days = 2;
+  SessionBatchScope scope = 3;
+}
+
+message BatchDeleteSessionsRequest {
+  repeated string ids = 1;
+  int32 older_than_days = 2;
+  SessionBatchScope scope = 3;
+  bool include_archived = 4;
+}
+
+message BatchSessionsResponse {
+  int32 matched = 1;
+  int32 processed = 2;
+  int32 skipped_running = 3;
+  repeated string failed_ids = 4;
+  int32 skipped_not_found = 5;
+  bool truncated = 6;
+}
+```
+
+> **语义**：`matched` 为 biz 解析命中数；`processed` 为 SQL 实际更新行数。二者差额（扣除 `failed_ids`）表示执行时因状态变化（如变为 running）被 SQL WHERE 跳过，前端 notify 展示为「执行时跳过」。
+
+#### 2.3.2 HTTP 路由
+
+| RPC | HTTP | 说明 |
+|-----|------|------|
+| `BatchPreviewSessions` | `POST /v1/sessions:batchPreview` | dry-run：matched / skipped_running / skipped_not_found / truncated |
+| `BatchArchiveSessions` | `POST /v1/sessions:batchArchive` | 批量归档（ids 或 older_than_days + scope） |
+| `BatchDeleteSessions` | `POST /v1/sessions:batchDelete` | 批量软删除 |
+
+#### 2.3.3 Cutoff 与扫描（Biz 统一）
+
+实现：`internal/biz/session_batch.go`
+
+| 常量 | 值 | 说明 |
+|------|-----|------|
+| `SessionBatchPageSize` | 1000 | scope 分页每页大小 |
+| `SessionBatchMaxScan` | 100000 | scope 模式最大扫描行数；超出则 `truncated=true` |
+
+```go
+// effectiveActivityAt：last_message_at → updated_at → created_at
+// cutoff = now.UTC().AddDate(0, 0, -olderThanDays)
+// 命中：effectiveActivityAt(s) < cutoff && deleted_at=="" && status != "running"
+// 归档额外：status != "archived"
+// 删除额外：include_archived 或 status != "archived"（默认不含已归档）
+
+// resolveBatchOperation：Preview / BatchArchive / BatchDelete 共用（单次 load + resolve）
+// loadBatchCandidatesByScope：按 SessionBatchPageSize 循环直到扫完或达 SessionBatchMaxScan
+```
+
+#### 2.3.4 Repo 扩展
+
+```go
+// internal/biz — SessionRepository
+ListSessionsForBatch(ctx context.Context, q SessionSearchQuery) ([]Session, error)
+ArchiveSessionsByIDs(ctx context.Context, ids []string) (processed int, failed []string, err error)
+DeleteSessionsByIDs(ctx context.Context, ids []string) (processed int, failed []string, err error)
+```
+
+实现要点（`internal/data/session_repo_batch.go`）：
+
+- 查询与 `SearchSessions` 共用 `sessionSearchWheres()` predicate
+- **`ListSessionsForBatch` 固定 `ORDER BY id ASC`**，保证 offset 分页稳定
+- 批量 `UPDATE` 每批 ≤500；WHERE 含 `deleted_at==""`、`status!='running'`；归档额外 `status!='archived'`
+- `failed_ids`：仅 chunk 级 DB 错误；部分行因 WHERE 未更新不计入 failed_ids（由 matched−processed 体现）
+
+#### 2.3.5 Service / Audit
+
+`SessionService.BatchArchiveSessions` / `BatchDeleteSessions`：
+
+1. HTTP 校验：`older_than_days >= 1` 或 `len(ids) > 0`；preview 另校验 `mode` 非空
+2. 委托 `SessionUsecase.BatchArchive` / `BatchDelete` / `PreviewBatch`
+3. 错误经 `mapSessionErr`；Audit：`archive.session.batch` / `delete.session.batch`（detail 含 matched/processed/skipped/truncated）
+
+单条 `DeleteSession` / `ArchiveSession`：`running` 不可删/归档；已删幂等；列表行操作复用上述 RPC。
+
 ---
 
 ## 三、Biz 层
@@ -832,7 +946,7 @@ func (Message) Fields() []ent.Field {
 
 ### 4.3 Session Summaries 表（原生 SQL）
 
-通过 `sessionmemory.EnsureSchema` 创建，不使用 Ent Schema：
+通过 `data.EnsureSessionMemorySchema`（`internal/data/sql/memory_chain.sql`）创建，不使用 Ent Schema：
 
 ```sql
 CREATE TABLE IF NOT EXISTS session_summaries (
@@ -1573,35 +1687,99 @@ Props：
 
 ### 8.5 SessionsPage 管理页面
 
-文件：`web/src/pages/SessionsPage.vue`
+> **2026-05-20 增量**：行删除、批量选择、按保留天数归档/删除。组件拆分见 §8.5.1。
+
+文件：`web/src/pages/SessionsPage.vue`（编排） + `features/session/useSessionsPage.ts`（状态/composable）
 
 布局：
 ```
-┌──────────────────────────────────────────────────┐
-│ Session 管理                          [刷新]     │  ← SessionsPageHero
-├──────────────────────────────────────────────────┤
-│ [当前页会话: 20] [活跃: 15] [平均上下文: 42%]    │  ← SessionsSummaryCards
-│ [Token: 125,000]                                 │
-├──────────────────────────────────────────────────┤
-│ 关键词[___] 类型[▼] 状态[▼] 上下文[▼] [重置][搜索]│  ← SessionsFilterBar
-├──────────────────────────────────────────────────┤
-│ [选中详情卡片]                                    │  ← SessionsSelectedDetail
-│  标题 · Agent · active                           │
-│  Context 进度条 · 消息数 · 模型调用 · Token · 费用│
-│  [继续会话] [归档]                                │
-├──────────────────────────────────────────────────┤
-│ 会话 │ 类型/归属 │ 上下文 │ 消耗 │ 时间 │ 状态 │操作│  ← SessionsTableSection
-│ ─── │ ──────── │ ────── │ ──── │ ──── │ ──── │── │
-│ ... │ Agent    │ ████░░ │ 1.2K │ 4/26 │active│👁📦│
-├──────────────────────────────────────────────────┤
-│ 共 50 个 Session          [20/页 ▼] < 1 2 3 >   │  ← 分页
-└──────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│ Session 管理                                    [刷新]           │
+├──────────────────────────────────────────────────────────────────┤
+│ [KPI 卡片 ×4]                                                    │
+├──────────────────────────────────────────────────────────────────┤
+│ 关键词[___] 类型[▼] 状态[▼] 上下文[▼] [重置][搜索]               │
+│ [批量选择] [按天数归档] [按天数删除]                              │  ← SessionsBulkToolbar
+├──────────────────────────────────────────────────────────────────┤
+│ ████████████░░░░  批量归档中 12/40                               │  ← 仅 bulk 进行时显示
+├──────────────────────────────────────────────────────────────────┤
+│ [选中详情卡片]                                                    │
+├──────────────────────────────────────────────────────────────────┤
+│ ☐ │ 会话 │ 类型 │ 上下文 │ 消耗 │ 时间 │ 状态 │ 操作            │
+│ ☐ │ ...  │      │        │      │      │      │ 👁 📦 🗑       │
+├──────────────────────────────────────────────────────────────────┤
+│ 共 N 个 Session                         [20/页 ▼] < 1 2 3 >      │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
-筛选选项：
-- `owner_type`: Agent / Team
-- `status`: active / running / completed / failed / archived
-- `context_status`: normal / warning / critical / exceeded
+**批量选择模式激活时**，筛选栏下方追加：
+
+```
+已选 3 项    [归档] [删除] [取消选择]
+```
+
+| 操作 | 确认 | 进度 / 反馈 |
+|------|------|-------------|
+| 行内删除 | `QDialog` 永久删除 | notify |
+| 批量删除（勾选） | `QDialog` | `QLinearProgress` + notify |
+| 批量归档（勾选） | **无** | `QLinearProgress` + notify「归档成功」 |
+| 按天数归档 | `SessionRetentionDialog` 预览+确认 | 进度条 + notify |
+| 按天数删除 | `SessionRetentionDialog` 预览+确认 | 进度条 + notify |
+
+#### 8.5.1 前端文件结构（新增/变更）
+
+```
+web/src/
+├── pages/SessionsPage.vue                    ← 挂载 composable，不含裸 API
+├── features/session/
+│   ├── api.ts                                ← batchPreview/batchArchive/batchDelete/deleteSession
+│   ├── types.ts                              ← BatchPreviewResult, BulkProgress
+│   └── useSessionsPage.ts                    ← ★ 列表加载、selection、bulk 进度、dialog 状态
+├── components/sessions/
+│   ├── SessionsTableSection.vue              ← checkbox 列、行删除、emit selection
+│   ├── SessionsBulkToolbar.vue               ← 批量选择 toggle、按天数按钮
+│   ├── SessionsBulkSelectionBar.vue          ← 已选 N + 归档/删除
+│   ├── SessionDeleteConfirmDialog.vue        ← 单条/批量删除确认
+│   ├── SessionRetentionDialog.vue            ← 保留天数 + preview + 归档/删除确认
+│   └── sessionUi.ts                          ← 列定义（含 selection 列）
+└── stores/session/index.ts                   ← 可选：bulk 进度全局态（或 composable 内 ref）
+```
+
+**分层纪律**（`frontend-guide.md`）：
+
+| 层 | 职责 |
+|----|------|
+| `SessionsPage.vue` | 组合子组件、绑定 composable |
+| `useSessionsPage.ts` | selection、bulk 分块、进度、调 `features/session/api` |
+| `components/sessions/*` | 纯展示 + `emit`；**不** import api/store |
+| `features/session/api.ts` | HTTP 封装 |
+
+#### 8.5.2 批量进度实现
+
+勾选模式与按天数模式共用 `runBulkOperation`：
+
+```typescript
+async function runBulkOperation(
+  ids: string[],
+  op: "archive" | "delete",
+  onProgress: (done: number, total: number) => void
+): Promise<{ processed: number; failed: string[] }>
+```
+
+- 优先调用 `batchArchive` / `batchDelete`（单次 RPC，服务端批处理）
+- 若后端未就绪，fallback：每批 10 个 id 串行 `archiveSession` / `deleteSession`
+- `onProgress` 驱动 `QLinearProgress`（`:value="done/total"`）
+- 完成后 `$q.notify({ type: 'positive', message: '已归档 N 个会话' })`
+
+#### 8.5.3 SessionRetentionDialog
+
+| 字段 | 组件 |
+|------|------|
+| 保留天数 | `QInput` type=number，min=1，default=30 |
+| 预览 | 调用 `batchPreview` 后展示 matched / skipped_running |
+| 模式 archive | 文案：「将归档 cutoff 之前的 **X** 个会话，**保留最近 N 天**」 |
+| 模式 delete | 文案 + `QCheckbox`「包含已归档会话」 |
+| 按钮 | 取消 / 确认归档 / 确认删除（destructive color） |
 
 表格列定义：
 | 列 | 字段 | 内容 |
@@ -1612,7 +1790,8 @@ Props：
 | 消耗 | total_tokens | Token 数 + model/tool/skill/mcp 调用数 |
 | 时间 | last_message_at | 最后活跃 + 创建时间 |
 | 状态 | status | QBadge |
-| 操作 | id | 查看详情 + 归档 |
+| 操作 | id | 查看详情 + 归档 + **删除** |
+| 选择 | — | 批量模式首列 QCheckbox（仅 selectionMode=true） |
 
 ### 8.6 工具函数
 

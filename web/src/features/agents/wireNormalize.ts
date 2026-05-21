@@ -1,7 +1,8 @@
 import type {
   Agent,
   AgentPromptFile,
-  AgentRuntimeSettings
+  AgentRuntimeSettings,
+  A2AProxyConfig
 } from "./types";
 import type {
   Agent as KratosAgentWire,
@@ -152,6 +153,7 @@ export function normalizeRuntimeSettingsFromWire(raw: unknown): AgentRuntimeSett
     context_compaction_enabled: pickBoolOpt(w, "contextCompactionEnabled", "context_compaction_enabled"),
     session_summary_enabled: pickBoolOpt(w, "sessionSummaryEnabled", "session_summary_enabled"),
     skill_load_mode: pickStrOpt(w, "skillLoadMode", "skill_load_mode"),
+    code_executor_type: pickStrOpt(w, "codeExecutorType", "code_executor_type"),
     output_schema_json: pickStrOpt(w, "outputSchemaJson", "output_schema_json"),
     model_selector: pickStrOpt(w, "modelSelector", "model_selector"),
     channel_id: pickStrOpt(w, "channelId", "channel_id"),
@@ -160,8 +162,42 @@ export function normalizeRuntimeSettingsFromWire(raw: unknown): AgentRuntimeSett
     reasoning_mode: pickStrOpt(w, "reasoningMode", "reasoning_mode"),
     reasoning_level: pickStrOpt(w, "reasoningLevel", "reasoning_level"),
     planner_kind: pickStrOpt(w, "plannerKind", "planner_kind"),
+    planner_config_json: pickStrOpt(w, "plannerConfigJson", "planner_config_json"),
+    ralph_loop_max_iterations: pickNumOpt(w, "ralphLoopMaxIterations", "ralph_loop_max_iterations"),
+    ralph_loop_completion_promise: pickStrOpt(w, "ralphLoopCompletionPromise", "ralph_loop_completion_promise"),
+    ralph_loop_verify_command: pickStrOpt(w, "ralphLoopVerifyCommand", "ralph_loop_verify_command"),
+    ralph_loop_verify_timeout_seconds: pickNumOpt(w, "ralphLoopVerifyTimeoutSeconds", "ralph_loop_verify_timeout_seconds"),
+    ralph_loop_promise_tag_open: pickStrOpt(w, "ralphLoopPromiseTagOpen", "ralph_loop_promise_tag_open"),
+    ralph_loop_promise_tag_close: pickStrOpt(w, "ralphLoopPromiseTagClose", "ralph_loop_promise_tag_close"),
+    ralph_loop_verify_work_dir: pickStrOpt(w, "ralphLoopVerifyWorkDir", "ralph_loop_verify_work_dir"),
     created_at: pickStrOpt(w, "createdAt", "created_at"),
     updated_at: pickStrOpt(w, "updatedAt", "updated_at")
+  };
+}
+
+export function normalizeA2AProxyFromWire(raw: unknown): A2AProxyConfig | undefined {
+  if (raw === null || raw === undefined) return undefined;
+  const w = asWireRecord(raw);
+  const remote = pickStr(w, "remoteUrl", "remote_url");
+  if (!remote) return undefined;
+  return {
+    remote_url: remote,
+    agent_card_url: pickStrOpt(w, "agentCardUrl", "agent_card_url"),
+    enable_streaming: pickBoolOpt(w, "enableStreaming", "enable_streaming"),
+    auth_type: pickStrOpt(w, "authType", "auth_type"),
+    auth_config_json: pickStrOpt(w, "authConfigJson", "auth_config_json"),
+    timeout_seconds: pickNumOpt(w, "timeoutSeconds", "timeout_seconds")
+  };
+}
+
+export function a2aProxyToWire(cfg: A2AProxyConfig) {
+  return {
+    remoteUrl: cfg.remote_url,
+    agentCardUrl: cfg.agent_card_url,
+    enableStreaming: cfg.enable_streaming,
+    authType: cfg.auth_type,
+    authConfigJson: cfg.auth_config_json,
+    timeoutSeconds: cfg.timeout_seconds
   };
 }
 
@@ -188,9 +224,16 @@ export function normalizeAgentFromService(raw: unknown): Agent {
     context_window: pickNum(w, "contextWindow", "context_window", 0),
     budget_monthly_cents: pickNum(w, "budgetMonthlyCents", "budget_monthly_cents", 0),
     config_json: pickStr(w, "configJson", "config_json"),
+    created_by: pickStrOpt(w, "createdBy", "created_by"),
     created_at: pickStr(w, "createdAt", "created_at"),
     updated_at: pickStr(w, "updatedAt", "updated_at"),
     deleted_at: pickStr(w, "deletedAt", "deleted_at"),
+    agent_kind: (pickStr(w, "agentKind", "agent_kind", "llm") || "llm") as Agent["agent_kind"],
+    a2a_proxy_config: normalizeA2AProxyFromWire(w.a2aProxyConfig ?? w.a2a_proxy_config),
+    a2a_endpoint_enabled: pickBool(w, "a2aEndpointEnabled", "a2a_endpoint_enabled", false),
+    last_run_status: pickStrOpt(w, "lastRunStatus", "last_run_status"),
+    last_run_at: pickStrOpt(w, "lastRunAt", "last_run_at"),
+    pending_evolution_count: pickNum(w, "pendingEvolutionCount", "pending_evolution_count", 0),
     settings: normalizeRuntimeSettingsFromWire(w.settings),
     files
   };
@@ -280,6 +323,7 @@ export function runtimeSettingsToWire(s: AgentRuntimeSettings): KratosRuntimeWir
     contextCompactionEnabled: s.context_compaction_enabled,
     sessionSummaryEnabled: s.session_summary_enabled,
     skillLoadMode: s.skill_load_mode,
+    codeExecutorType: s.code_executor_type,
     outputSchemaJson: s.output_schema_json,
     modelSelector: s.model_selector,
     toolsRetryEnabled: s.tools_retry_enabled,
@@ -296,6 +340,14 @@ export function runtimeSettingsToWire(s: AgentRuntimeSettings): KratosRuntimeWir
     reasoningMode: s.reasoning_mode,
     reasoningLevel: s.reasoning_level,
     plannerKind: s.planner_kind,
+    plannerConfigJson: s.planner_config_json,
+    ralphLoopMaxIterations: s.ralph_loop_max_iterations,
+    ralphLoopCompletionPromise: s.ralph_loop_completion_promise,
+    ralphLoopVerifyCommand: s.ralph_loop_verify_command,
+    ralphLoopVerifyTimeoutSeconds: s.ralph_loop_verify_timeout_seconds,
+    ralphLoopPromiseTagOpen: s.ralph_loop_promise_tag_open,
+    ralphLoopPromiseTagClose: s.ralph_loop_promise_tag_close,
+    ralphLoopVerifyWorkDir: s.ralph_loop_verify_work_dir,
     createdAt: s.created_at,
     updatedAt: s.updated_at,
   };
@@ -335,5 +387,7 @@ export function partialAgentToWire(payload: Partial<Agent>): KratosAgentWire {
   if (payload.deleted_at !== undefined) o.deletedAt = payload.deleted_at;
   if (payload.settings !== undefined) o.settings = runtimeSettingsToWire(payload.settings);
   if (payload.files !== undefined) o.files = payload.files.map(promptFileToWire);
+  if (payload.agent_kind !== undefined) o.agentKind = payload.agent_kind;
+  if (payload.a2a_proxy_config !== undefined) o.a2aProxyConfig = a2aProxyToWire(payload.a2a_proxy_config);
   return o as KratosAgentWire;
 }

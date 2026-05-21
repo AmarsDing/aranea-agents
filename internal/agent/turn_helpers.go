@@ -15,11 +15,21 @@ import (
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 )
 
+// MemberTokenUsage is per team member (agent_key) usage observed in the event stream.
+type MemberTokenUsage struct {
+	PromptTokens     int
+	CompletionTokens int
+}
+
 type EventStreamResult struct {
 	Reply         strings.Builder
 	Reasoning     strings.Builder
 	PromptTok     int
 	CompletionTok int
+	// MemberUsage maps agent_key → latest usage from member completion events (Team parallel/swarm).
+	MemberUsage map[string]MemberTokenUsage
+	// MemberToolCalls maps agent_key → tool_call envelope count observed during the turn.
+	MemberToolCalls map[string]int
 	// HasError is true when at least one error event was observed during the turn.
 	HasError bool
 	// LastError records the last error message from the event stream.
@@ -49,11 +59,29 @@ func NewRunnerDepsFromRuntime(trpcSession trpcsession.Service, memory trpcmemory
 	return deps
 }
 
+type StreamConsumeOptions struct {
+	MetaResolver      ActivityMetaResolver
+	ActivityPersister ActivityPersister
+}
+
 func ConsumeEventStream(
 	ctx context.Context,
 	events <-chan *trpcevent.Event,
 	eventBus event.Bus,
 	projectMeta ProjectMeta,
+	opts *StreamConsumeOptions,
+) EventStreamResult {
+	return ConsumeEventStreamWithFirstByte(ctx, ctx, events, eventBus, projectMeta, nil, opts)
+}
+
+func ConsumeEventStreamWithFirstByte(
+	firstByteCtx context.Context,
+	turnCtx context.Context,
+	events <-chan *trpcevent.Event,
+	eventBus event.Bus,
+	projectMeta ProjectMeta,
+	firstByteReceived *bool,
+	opts *StreamConsumeOptions,
 ) EventStreamResult {
 	var result EventStreamResult
 
@@ -63,24 +91,51 @@ func ConsumeEventStream(
 		if projectMeta.TeamID != "" && len(projectMeta.MemberAgentKeys) > 0 {
 			projector.memberStarted = make(map[string]bool)
 		}
+		if opts != nil {
+			projector.Configure(projectMeta, opts.MetaResolver)
+		}
 	}
 
+	received := false
 	for ev := range events {
-		if ctx.Err() != nil {
+		if turnCtx.Err() != nil {
+			return result
+		}
+		if !received {
+			received = true
+			if firstByteReceived != nil {
+				*firstByteReceived = true
+			}
+		}
+		if firstByteCtx.Err() != nil && !received {
 			return result
 		}
 		if ev == nil {
 			continue
 		}
 
-		// Track error events so callers can surface them to users.
 		if ev.Response != nil && ev.Response.Error != nil {
 			result.HasError = true
 			result.LastError = ev.Response.Error.Message
 		}
 
 		if projector != nil {
-			projector.ProjectAndPublish(ctx, ev, projectMeta)
+			envelopes := projector.Project(turnCtx, ev, projectMeta)
+			for _, env := range envelopes {
+				if projectMeta.TeamID != "" && env.Type == event.EnvelopeTypeToolCall {
+					author := strings.TrimSpace(env.Author)
+					if author != "" && isTeamMemberAuthor(author, projectMeta) {
+						if result.MemberToolCalls == nil {
+							result.MemberToolCalls = make(map[string]int)
+						}
+						result.MemberToolCalls[author]++
+					}
+				}
+				eventBus.Publish(turnCtx, env)
+			}
+			if opts != nil {
+				PublishActivityEnvelopes(turnCtx, projectMeta, opts.ActivityPersister, envelopes)
+			}
 		}
 
 		if ev.IsRunnerCompletion() {
@@ -91,7 +146,6 @@ func ConsumeEventStream(
 			continue
 		}
 
-		// Runner completion events may still carry an error set.
 		if ev.Response != nil && ev.Response.Error != nil {
 			result.HasError = true
 			result.LastError = ev.Response.Error.Message
@@ -102,8 +156,7 @@ func ConsumeEventStream(
 			continue
 		}
 		if usage := ev.Response.Usage; usage != nil {
-			result.PromptTok = usage.PromptTokens
-			result.CompletionTok = usage.CompletionTokens
+			accumulateStreamUsage(&result, ev, projectMeta, usage.PromptTokens, usage.CompletionTokens)
 		}
 		for _, choice := range ev.Response.Choices {
 			msg := choice.Message
@@ -119,4 +172,29 @@ func ConsumeEventStream(
 	}
 
 	return result
+}
+
+func accumulateStreamUsage(result *EventStreamResult, ev *trpcevent.Event, meta ProjectMeta, promptTok, completionTok int) {
+	if result == nil {
+		return
+	}
+	result.PromptTok = promptTok
+	result.CompletionTok = completionTok
+	if !isTeamMemberAuthor(ev.Author, meta) {
+		return
+	}
+	key := strings.TrimSpace(ev.Author)
+	if key == "" {
+		return
+	}
+	if result.MemberUsage == nil {
+		result.MemberUsage = make(map[string]MemberTokenUsage)
+	}
+	prev := result.MemberUsage[key]
+	if promptTok >= prev.PromptTokens || completionTok >= prev.CompletionTokens {
+		result.MemberUsage[key] = MemberTokenUsage{
+			PromptTokens:     promptTok,
+			CompletionTokens: completionTok,
+		}
+	}
 }

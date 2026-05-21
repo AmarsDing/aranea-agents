@@ -10,6 +10,9 @@
           <q-chip v-if="metadata.health_status" dense outline :color="healthColor">
             {{ metadata.health_status }}
           </q-chip>
+          <q-chip v-if="recentReconnect" dense outline color="warning">
+            近期重连
+          </q-chip>
         </div>
         <div class="text-caption text-grey-7 ellipsis">{{ server.key }}</div>
         <div class="row q-col-gutter-sm q-mt-sm text-body2">
@@ -28,6 +31,10 @@
           <div class="col-12 col-sm-4">超时：{{ config.timeout_sec || 60 }}s</div>
           <div class="col-12 col-sm-4">用户凭据：{{ config.require_user_credentials ? "需要" : "不需要" }}</div>
         </div>
+        <div v-if="metadata.last_reconnect_at" class="text-caption text-warning q-mt-xs">
+          最近重连：{{ formatReconnectAt(metadata.last_reconnect_at) }}
+          <span v-if="metadata.reconnect_count">（累计 {{ metadata.reconnect_count }} 次）</span>
+        </div>
         <div v-if="metadata.last_error_message" class="text-caption text-negative q-mt-xs ellipsis">
           {{ metadata.last_error_message }}
           <q-tooltip>{{ metadata.last_error_message }}</q-tooltip>
@@ -35,6 +42,16 @@
       </div>
 
       <div class="col-12 col-md-auto row justify-end items-center q-gutter-xs">
+        <q-btn
+          v-if="config.require_user_credentials"
+          flat
+          dense
+          rounded
+          icon="vpn_key"
+          color="secondary"
+          label="用户凭据"
+          @click="$emit('credentials', server)"
+        />
         <q-btn flat dense rounded icon="science" color="primary" label="测试连接" :loading="testing" @click="$emit('test', server)" />
         <q-btn flat dense rounded icon="edit" color="primary" label="编辑" @click="$emit('edit', server)" />
         <q-btn flat dense rounded icon="delete" color="negative" label="删除" @click="$emit('delete', server)" />
@@ -56,6 +73,7 @@ defineEmits<{
   edit: [server: McpServerRow];
   delete: [server: McpServerRow];
   test: [server: McpServerRow];
+  credentials: [server: McpServerRow];
 }>();
 
 const config = computed(() => parseJSON<McpServerConfig>(props.server.config_json, {}));
@@ -79,6 +97,19 @@ const healthColor = computed(() => {
   if (metadata.value.health_status === "degraded") return "warning";
   return "grey";
 });
+const recentReconnect = computed(() => {
+  const at = metadata.value.last_reconnect_at;
+  if (!at) return false;
+  const t = Date.parse(at);
+  if (Number.isNaN(t)) return false;
+  return Date.now() - t < 24 * 60 * 60 * 1000;
+});
+
+function formatReconnectAt(iso: string): string {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return iso;
+  return new Date(t).toLocaleString();
+}
 
 function parseJSON<T>(value: string | undefined, fallback: T): T {
   if (!value) return fallback;

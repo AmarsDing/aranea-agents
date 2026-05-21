@@ -1,14 +1,15 @@
 package biz
 
 import (
-	"aranea-agents/internal/mcp/probe"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"aranea-agents/internal/mcp/metadata"
+	"aranea-agents/internal/mcp/probe"
 
 	"github.com/go-kratos/kratos/v2/errors"
 )
@@ -22,13 +23,6 @@ func newMCPServerID() string {
 		return hex.EncodeToString([]byte{byte(n >> 56), byte(n >> 48), byte(n >> 40), byte(n >> 32), byte(n >> 24), byte(n >> 16), byte(n >> 8), byte(n)})
 	}
 	return hex.EncodeToString(buf)
-}
-
-func defaultMetaJSON(raw string) string {
-	if strings.TrimSpace(raw) == "" {
-		return "{}"
-	}
-	return raw
 }
 
 // MCPServer matches legacy PlatformResource for mcp-servers.
@@ -152,25 +146,71 @@ func (u *MCPServerUsecase) PersistHealth(ctx context.Context, id string, result 
 	return u.persistHealth(ctx, &row, result)
 }
 
-func (u *MCPServerUsecase) persistHealth(ctx context.Context, row *MCPServer, result probe.TestResult) error {
-	var metadata map[string]any
-	if json.Unmarshal([]byte(defaultMetaJSON(row.MetadataJSON)), &metadata) != nil {
-		metadata = map[string]any{}
+// RecordReconnectMetadata updates last_reconnect_at and reconnect_count for the server key.
+func (u *MCPServerUsecase) RecordReconnectMetadata(ctx context.Context, serverKey string, at time.Time) error {
+	if u == nil || u.repo == nil {
+		return nil
 	}
-	metadata["health_status"] = result.Status
-	metadata["last_health_at"] = time.Now().UTC().Format(time.RFC3339)
-	if result.OK {
-		metadata["last_error_message"] = ""
-		row.Status = "active"
-	} else {
-		metadata["last_error_message"] = result.Message
-		row.Status = "error"
+	serverKey = strings.TrimSpace(serverKey)
+	if serverKey == "" {
+		return nil
 	}
-	raw, err := json.Marshal(metadata)
+	rows, err := u.repo.ListMCPServers(ctx)
 	if err != nil {
 		return err
 	}
-	row.MetadataJSON = string(raw)
+	var row *MCPServer
+	for i := range rows {
+		if strings.TrimSpace(rows[i].Key) == serverKey {
+			row = &rows[i]
+			break
+		}
+	}
+	if row == nil {
+		return nil
+	}
+	meta := metadata.Parse(row.MetadataJSON)
+	metadata.ApplyReconnect(meta, at)
+	raw, err := metadata.Marshal(meta)
+	if err != nil {
+		return err
+	}
+	row.MetadataJSON = raw
+	_, err = u.repo.UpdateMCPServer(ctx, *row)
+	return err
+}
+
+// MarkHealthAlertEmitted records last_health_alert_at in metadata_json to debounce monitor events.
+func (u *MCPServerUsecase) MarkHealthAlertEmitted(ctx context.Context, id string, at time.Time) error {
+	row, err := u.repo.GetMCPServer(ctx, id)
+	if err != nil {
+		return err
+	}
+	meta := metadata.Parse(row.MetadataJSON)
+	metadata.MarkHealthAlert(meta, at)
+	raw, err := metadata.Marshal(meta)
+	if err != nil {
+		return err
+	}
+	row.MetadataJSON = raw
+	_, err = u.repo.UpdateMCPServer(ctx, row)
+	return err
+}
+
+// ValidateConfig runs probe without persisting (pre-create URL check).
+func (u *MCPServerUsecase) ValidateConfig(enabled bool, configJSON string) probe.TestResult {
+	return probe.Evaluate(enabled, configJSON)
+}
+
+func (u *MCPServerUsecase) persistHealth(ctx context.Context, row *MCPServer, result probe.TestResult) error {
+	meta := metadata.Parse(row.MetadataJSON)
+	at := time.Now().UTC()
+	row.Status = metadata.ApplyHealth(meta, result.Status, result.OK, result.Message, at)
+	raw, err := metadata.Marshal(meta)
+	if err != nil {
+		return err
+	}
+	row.MetadataJSON = raw
 	_, err = u.repo.UpdateMCPServer(ctx, *row)
 	return err
 }

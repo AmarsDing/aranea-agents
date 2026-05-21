@@ -72,14 +72,41 @@
 
     <q-expansion-item dense-toggle default-open label="执行动作">
       <div class="q-pa-sm q-gutter-md">
-        <q-input
-          v-if="localRule.action.type === 'notify'"
-          v-model="localRule.action.webhook_url"
-          dense
-          outlined
-          label="Webhook URL"
-          @update:model-value="emitChange"
-        />
+        <template v-if="localRule.action.type === 'notify'">
+          <q-input
+            v-model="localRule.action.webhook_url"
+            dense
+            outlined
+            label="Webhook URL"
+            @update:model-value="emitChange"
+          />
+          <div class="row q-col-gutter-sm">
+            <q-input
+              v-model.number="localRule.action.notify_max_retries"
+              class="col-6"
+              dense
+              outlined
+              type="number"
+              min="1"
+              max="10"
+              label="最大重试"
+              hint="默认 3"
+              @update:model-value="emitChange"
+            />
+            <q-input
+              v-model.number="localRule.action.notify_timeout_sec"
+              class="col-6"
+              dense
+              outlined
+              type="number"
+              min="1"
+              max="60"
+              label="超时(秒)"
+              hint="默认 8"
+              @update:model-value="emitChange"
+            />
+          </div>
+        </template>
         <q-select
           v-if="localRule.action.type === 'log'"
           v-model="localRule.action.log_level"
@@ -103,7 +130,9 @@
         />
         <template v-if="localRule.action.type === 'modify'">
           <div class="text-caption text-grey-7">
-            before_model: generation_config / append_system / append_user; before_tool: arguments / merge_arguments
+            before_model: generation_config / append_system / append_user。
+            before_tool: <strong>arguments</strong> 整包替换；
+            <strong>merge_arguments</strong> 深度合并（嵌套对象递归，标量/数组以 patch 为准）。
           </div>
           <q-input
             v-model="modifyPatchText"

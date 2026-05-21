@@ -2,38 +2,45 @@ package plugintrpc
 
 import (
 	"context"
-	"log/slog"
 	"strings"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
-	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
+	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
 )
 
 type outputPolicyConfig struct {
-	BlockedPatterns         []string `json:"blocked_patterns"`
-	DangerousCommandCheck   bool     `json:"dangerous_command_check"`
-	BlockOnViolation        bool     `json:"block_on_violation"`
-	ReplacementMessage      string   `json:"replacement_message"`
+	BlockedPatterns       []string `json:"blocked_patterns"`
+	DangerousCommandCheck bool     `json:"dangerous_command_check"`
+	BlockOnViolation      bool     `json:"block_on_violation"`
+	ReplacementMessage    string   `json:"replacement_message"`
 }
 
 type OutputPolicyPlugin struct {
-	name  string
-	cfg   outputPolicyConfig
-	stats StatsRecorder
+	name   string
+	cfg    outputPolicyConfig
+	stats  StatsRecorder
+	logger *PluginSafeLogger
 }
 
 var _ trpcplugin.Plugin = (*OutputPolicyPlugin)(nil)
 
-func NewOutputPolicyPlugin(p biz.Plugin, stats StatsRecorder) *OutputPolicyPlugin {
+func NewOutputPolicyPlugin(p biz.Plugin, stats StatsRecorder, bus event.Bus) *OutputPolicyPlugin {
 	var cfg outputPolicyConfig
 	cfg.DangerousCommandCheck = true
 	cfg.BlockOnViolation = true
 	parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg)
-	return &OutputPolicyPlugin{name: p.Key, cfg: cfg, stats: stats}
+	name := p.Key
+	return &OutputPolicyPlugin{
+		name:   name,
+		cfg:    cfg,
+		stats:  stats,
+		logger: NewPluginSafeLogger(name, bus),
+	}
 }
 
 func (o *OutputPolicyPlugin) Name() string { return o.name }
@@ -49,6 +56,7 @@ func (o *OutputPolicyPlugin) afterModel(ctx context.Context, args *trpcmodel.Aft
 	}
 	text := responseText(args.Response)
 	if viol, pat := o.violation(text); viol {
+		o.logger.Info("plugin.output_policy.after_model", "status", "blocked", "pattern", pat, "block_on_violation", o.cfg.BlockOnViolation)
 		o.record(ctx, "after_model", "blocked")
 		if o.cfg.BlockOnViolation {
 			msg := strings.TrimSpace(o.cfg.ReplacementMessage)
@@ -60,7 +68,8 @@ func (o *OutputPolicyPlugin) afterModel(ctx context.Context, args *trpcmodel.Aft
 				CustomResponse: blockedModelResponse(msg),
 			}, nil
 		}
-		slog.Warn("output_policy.violation", "plugin", o.name, "pattern", pat)
+	} else {
+		o.logger.Info("plugin.output_policy.after_model", "status", "ok")
 	}
 	o.record(ctx, "after_model", "ok")
 	return &trpcmodel.AfterModelResult{Context: ctx}, nil
@@ -81,7 +90,7 @@ func (o *OutputPolicyPlugin) onEvent(
 	if viol, pat := o.violation(text); viol {
 		o.record(ctx, "on_event", "blocked")
 		if o.cfg.BlockOnViolation {
-			slog.Warn("output_policy.event_blocked", "plugin", o.name, "pattern", pat)
+			o.logger.Warn("output_policy.event_blocked", "plugin", o.name, "pattern", pat)
 		}
 	}
 	return e, nil

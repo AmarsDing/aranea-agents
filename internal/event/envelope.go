@@ -20,6 +20,7 @@ const (
 	EnvelopeTypeRunStatus          EnvelopeType = "run_status"
 	EnvelopeTypeError              EnvelopeType = "error"
 	EnvelopeTypeLog                EnvelopeType = "log"
+	EnvelopeTypeFlowLog            EnvelopeType = "flow_log"
 	EnvelopeTypeGraphNodeStart     EnvelopeType = "graph_node_start"
 	EnvelopeTypeGraphNodeEnd       EnvelopeType = "graph_node_end"
 	EnvelopeTypeCheckpoint         EnvelopeType = "checkpoint"
@@ -38,6 +39,9 @@ const (
 	EnvelopeTypeGraphNodeError     EnvelopeType = "graph_node_error"
 	EnvelopeTypeGraphNodeCustom    EnvelopeType = "graph_node_custom"
 	EnvelopeTypeKnowledgeIngest    EnvelopeType = "knowledge_ingest"
+	EnvelopeTypeMCPSessionReconnect EnvelopeType = "mcp.session.reconnect"
+	EnvelopeTypeMCPHealthAlert      EnvelopeType = "mcp.health.alert"
+	EnvelopeTypeAlertNotify        EnvelopeType = "alert.notify"
 )
 
 type Envelope struct {
@@ -82,6 +86,19 @@ type EnvelopeToolCall struct {
 	Status        string `json:"status"`
 	DurationMS    int64  `json:"duration_ms,omitempty"`
 	IsLongRunning bool   `json:"is_long_running,omitempty"`
+
+	ActivityKind string `json:"activity_kind,omitempty"`
+	DisplayLabel string `json:"display_label,omitempty"`
+	IconKey      string `json:"icon_key,omitempty"`
+	Summary      string `json:"summary,omitempty"`
+	StartedAt    string `json:"started_at,omitempty"`
+	FinishedAt   string `json:"finished_at,omitempty"`
+	ErrorCode    string `json:"error_code,omitempty"`
+	AgentKey     string `json:"agent_key,omitempty"`
+	AgentID      string `json:"agent_id,omitempty"`
+	AgentName    string `json:"agent_name,omitempty"`
+	RunID        string `json:"run_id,omitempty"`
+	TraceID      string `json:"trace_id,omitempty"`
 }
 
 type EnvelopeStateDelta struct {
@@ -131,7 +148,7 @@ func NewEnvelope(typ EnvelopeType, author, sessionID string) Envelope {
 
 func RouteChannel(env Envelope) string {
 	switch env.Type {
-	case EnvelopeTypeLog:
+	case EnvelopeTypeLog, EnvelopeTypeFlowLog:
 		return "monitor"
 	case EnvelopeTypeMemberMessageStart, EnvelopeTypeMemberDelta, EnvelopeTypeMemberMessageDone,
 		EnvelopeTypeTeamRunStarted, EnvelopeTypeTeamRunFinished, EnvelopeTypeTeamStepStarted,
@@ -143,6 +160,8 @@ func RouteChannel(env Envelope) string {
 		return "graph"
 	case EnvelopeTypeKnowledgeIngest:
 		return "knowledge"
+	case EnvelopeTypeMCPSessionReconnect, EnvelopeTypeMCPHealthAlert, EnvelopeTypeAlertNotify:
+		return "monitor"
 	default:
 		if env.TeamID != "" {
 			return "team"

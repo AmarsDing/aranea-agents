@@ -15,7 +15,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -31,6 +30,7 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/internal/state/appender"
 	"trpc.group/trpc-go/trpc-agent-go/internal/state/barrier"
 	"trpc.group/trpc-go/trpc-agent-go/internal/state/flush"
+	"trpc.group/trpc-go/trpc-agent-go/internal/state/sessionroute"
 	"trpc.group/trpc-go/trpc-agent-go/internal/state/steer"
 	"trpc.group/trpc-go/trpc-agent-go/log"
 	"trpc.group/trpc-go/trpc-agent-go/memory"
@@ -372,7 +372,6 @@ func NewRunnerWithAgentFactory(
 // Close closes the runner and cleans up owned resources.
 // It's safe to call Close multiple times.
 // Only resources created by this runner will be closed.
-
 func (r *runner) Close() error {
 	var closeErr error
 	r.closeOnce.Do(func() {
@@ -456,8 +455,6 @@ func (r *runner) Run(
 	}
 
 	sess, err := r.getOrCreateSession(execCtx, sessionKey)
-	fmt.Fprintf(os.Stderr, "[DEBUG:agent-no-response] runner.getOrCreateSession done session_id=%s err=%v\n", sessionID, err)
-	os.Stderr.Sync()
 	if err != nil {
 		execCancel()
 		return nil, err
@@ -476,8 +473,6 @@ func (r *runner) Run(
 	}
 
 	ag, err := r.selectAgent(execCtx, ro)
-	fmt.Fprintf(os.Stderr, "[DEBUG:agent-no-response] runner.selectAgent done session_id=%s err=%v\n", sessionID, err)
-	os.Stderr.Sync()
 	if err != nil {
 		execCancel()
 		return nil, fmt.Errorf("select agent: %w", err)
@@ -490,8 +485,6 @@ func (r *runner) Run(
 		message,
 		ro,
 	)
-	fmt.Fprintf(os.Stderr, "[DEBUG:agent-no-response] runner.resolveCurrentTurnMessages done session_id=%s err=%v\n", sessionID, err)
-	os.Stderr.Sync()
 	if err != nil {
 		execCancel()
 		return nil, err
@@ -524,12 +517,20 @@ func (r *runner) Run(
 			rootLookupName,
 		)
 	}
+	currentTurnSession, err := sessionroute.ResolveCurrentTurnSession(
+		execCtx,
+		r.sessionService,
+		sess,
+		ag,
+	)
+	if err != nil {
+		execCancel()
+		return nil, err
+	}
 
 	queuedUserMessages := steer.NewQueue()
 	steer.Attach(invocation, queuedUserMessages)
 
-	fmt.Fprintf(os.Stderr, "[DEBUG:agent-no-response] runner calling registerRun session_id=%s\n", sessionID)
-	os.Stderr.Sync()
 	handle, err := r.registerRun(
 		ro.RequestID,
 		RunStatus{
@@ -546,12 +547,10 @@ func (r *runner) Run(
 		execCancel()
 		return nil, err
 	}
-	fmt.Fprintf(os.Stderr, "[DEBUG:agent-no-response] runner.registerRun done, calling persistCurrentTurnMessages session_id=%s\n", sessionID)
-	os.Stderr.Sync()
 
 	if err := r.persistCurrentTurnMessages(
 		execCtx,
-		sess,
+		currentTurnSession,
 		invocation,
 		ag,
 		message,
@@ -563,8 +562,6 @@ func (r *runner) Run(
 		execCancel()
 		return nil, err
 	}
-	fmt.Fprintf(os.Stderr, "[DEBUG:agent-no-response] runner.persistCurrentTurnMessages done session_id=%s\n", sessionID)
-	os.Stderr.Sync()
 
 	// Ensure the invocation can be accessed by downstream components (e.g., tools)
 	// by embedding it into the context. This is necessary for tools like
@@ -579,16 +576,19 @@ func (r *runner) Run(
 		if e == nil {
 			return nil
 		}
-		return r.sessionService.AppendEvent(ctx, sess, e)
+		persistSession, ok := sessionroute.RouteEvent(
+			invocation,
+			e,
+		)
+		if !ok || persistSession == nil {
+			persistSession = sess
+		}
+		return r.sessionService.AppendEvent(ctx, persistSession, e)
 	})
 	barrier.Enable(invocation)
 
 	// Run the agent and get the event channel.
-	fmt.Fprintf(os.Stderr, "[DEBUG:agent-no-response] runner calling agent.RunWithPlugins session_id=%s\n", sessionID)
-	os.Stderr.Sync()
 	agentEventCh, err := agent.RunWithPlugins(execCtx, invocation, ag)
-	fmt.Fprintf(os.Stderr, "[DEBUG:agent-no-response] runner agent.RunWithPlugins returned session_id=%s err=%v\n", sessionID, err)
-	os.Stderr.Sync()
 	if err != nil {
 		// Attempt to persist the error event so the session reflects the failure.
 		errorEvent := event.NewErrorEvent(
@@ -601,7 +601,7 @@ func (r *runner) Run(
 		ensureErrorEventContent(errorEvent)
 		errorEvent = r.applyEventPlugins(execCtx, invocation, errorEvent)
 
-		appendErr := r.sessionService.AppendEvent(execCtx, sess, errorEvent)
+		appendErr := r.sessionService.AppendEvent(execCtx, currentTurnSession, errorEvent)
 		if appendErr != nil {
 			log.Errorf("failed to append agent run error event: %v", appendErr)
 		}
@@ -695,16 +695,10 @@ func (r *runner) appendIncomingMessage(
 	ro agent.RunOptions,
 	historySeeded bool,
 ) error {
-	fmt.Fprintf(os.Stderr, "[DEBUG:agent-no-response] appendIncomingMessage ENTRY hasPayload=%v historySeeded=%v\n", model.HasPayload(message), historySeeded)
-	os.Stderr.Sync()
 	if !model.HasPayload(message) {
-		fmt.Fprintf(os.Stderr, "[DEBUG:agent-no-response] appendIncomingMessage early-return: no payload\n")
-		os.Stderr.Sync()
 		return nil
 	}
 	if historySeeded && !shouldAppendUserMessage(message, ro.Messages) {
-		fmt.Fprintf(os.Stderr, "[DEBUG:agent-no-response] appendIncomingMessage early-return: shouldAppend=false\n")
-		os.Stderr.Sync()
 		return nil
 	}
 	evt := event.NewResponseEvent(
@@ -713,15 +707,8 @@ func (r *runner) appendIncomingMessage(
 		&model.Response{Done: false, Choices: []model.Choice{{Index: 0, Message: message}}},
 	)
 	agent.InjectIntoEvent(invocation, evt)
-	fmt.Fprintf(os.Stderr, "[DEBUG:agent-no-response] appendIncomingMessage calling applyEventPlugins\n")
-	os.Stderr.Sync()
 	evt = r.applyEventPlugins(ctx, invocation, evt)
-	fmt.Fprintf(os.Stderr, "[DEBUG:agent-no-response] appendIncomingMessage applyEventPlugins done, calling AppendEvent session_id=%s\n", sess.ID)
-	os.Stderr.Sync()
-	err := r.sessionService.AppendEvent(ctx, sess, evt)
-	fmt.Fprintf(os.Stderr, "[DEBUG:agent-no-response] appendIncomingMessage AppendEvent returned session_id=%s err=%v\n", sess.ID, err)
-	os.Stderr.Sync()
-	return err
+	return r.sessionService.AppendEvent(ctx, sess, evt)
 }
 
 func (r *runner) Cancel(requestID string) bool {
@@ -1042,18 +1029,26 @@ func (r *runner) processSingleAgentEvent(ctx context.Context, loop *eventLoopCon
 		log.Errorf("agentEvent is nil")
 		return nil
 	}
-
+	routeEvent := sessionroute.SnapshotEventIdentity(agentEvent)
 	agentEvent = r.applyEventPlugins(ctx, loop.invocation, agentEvent)
 	if agentEvent == nil {
 		return nil
 	}
-
-	// Capture graph-level completion snapshot for final event.
-	if isGraphCompletionSnapshotEvent(agentEvent) {
-		loop.graphCompletionSeen = true
-		loop.finalStateDelta, loop.finalChoices = r.captureGraphCompletion(agentEvent)
+	persistSession, routedEvent := sessionroute.RouteEvent(
+		loop.invocation,
+		routeEvent,
+	)
+	excludeRootCompletion := routedEvent && !sameSession(persistSession, loop.sess)
+	if excludeRootCompletion {
+		r.captureRoutedCompletionError(loop, agentEvent)
+	} else {
+		// Capture graph-level completion snapshot for final event.
+		if isGraphCompletionSnapshotEvent(agentEvent) {
+			loop.graphCompletionSeen = true
+			loop.finalStateDelta, loop.finalChoices = r.captureGraphCompletion(agentEvent)
+		}
+		r.captureCompletionFallback(loop, agentEvent)
 	}
-	r.captureCompletionFallback(loop, agentEvent)
 	r.markCompletionSnapshotOnly(loop, agentEvent)
 	if shouldSuppressGraphCompletionEvent(loop, agentEvent) {
 		return nil
@@ -1068,12 +1063,20 @@ func (r *runner) processSingleAgentEvent(ctx context.Context, loop *eventLoopCon
 	shouldForwardEvent := loop.streamFilter.Allows(agentEvent)
 
 	// Append qualifying events to session and trigger summarization.
-	persisted := r.handleEventPersistence(ctx, loop.invocation, loop.sess, agentEvent)
-	r.recordPersistedAssistantEvent(
-		loop,
+	persisted := r.handleEventPersistence(
+		ctx,
+		loop.invocation,
+		loop.sess,
+		persistSession,
 		agentEvent,
-		persisted,
 	)
+	if !excludeRootCompletion {
+		r.recordPersistedAssistantEvent(
+			loop,
+			agentEvent,
+			persisted,
+		)
+	}
 
 	// Notify completion if required.
 	if agentEvent.RequiresCompletion {
@@ -1086,8 +1089,10 @@ func (r *runner) processSingleAgentEvent(ctx context.Context, loop *eventLoopCon
 		return nil
 	}
 
-	r.recordEmittedAssistantResponseID(loop, agentEvent)
-	r.recordVisibleCompletionEmission(loop, agentEvent)
+	if !excludeRootCompletion {
+		r.recordEmittedAssistantResponseID(loop, agentEvent)
+		r.recordVisibleCompletionEmission(loop, agentEvent)
+	}
 
 	// Emit event to output channel.
 	if err := event.EmitEvent(ctx, loop.processedEventCh, agentEvent); err != nil {
@@ -1184,26 +1189,9 @@ func (r *runner) applyEventPlugins(
 		return nil
 	}
 	if invocation == nil || invocation.Plugins == nil {
-		fmt.Fprintf(os.Stderr, "[DEBUG:agent-no-response] applyEventPlugins skip: inv=%v plugins=%v\n", invocation != nil, invocation != nil && invocation.Plugins != nil)
-		os.Stderr.Sync()
 		return e
 	}
-	fmt.Fprintf(os.Stderr, "[DEBUG:agent-no-response] applyEventPlugins calling Plugins.OnEvent plugins_type=%T\n", invocation.Plugins)
-	os.Stderr.Sync()
-
-	// Apply a 30-second timeout to plugin event processing to prevent
-	// a misbehaving or deadlocked plugin from blocking the entire turn.
-	pluginCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-
-	updated, err := invocation.Plugins.OnEvent(pluginCtx, invocation, e)
-	if pluginCtx.Err() != nil {
-		fmt.Fprintf(os.Stderr, "[DEBUG:agent-no-response] applyEventPlugins TIMEOUT after 30s, returning original event\n")
-		os.Stderr.Sync()
-		return e
-	}
-	fmt.Fprintf(os.Stderr, "[DEBUG:agent-no-response] applyEventPlugins Plugins.OnEvent returned err=%v updated_nil=%v\n", err, updated == nil)
-	os.Stderr.Sync()
+	updated, err := invocation.Plugins.OnEvent(ctx, invocation, e)
 	if err != nil {
 		log.ErrorfContext(ctx, "plugin OnEvent failed: %v", err)
 		return e
@@ -1341,6 +1329,7 @@ func (r *runner) handleEventPersistence(
 	ctx context.Context,
 	invocation *agent.Invocation,
 	sess *session.Session,
+	persistSession *session.Session,
 	agentEvent *event.Event,
 ) bool {
 	// Ensure error events have content so they are valid for persistence.
@@ -1349,6 +1338,9 @@ func (r *runner) handleEventPersistence(
 	// Append event to session if it's complete (not partial).
 	if !r.shouldPersistEvent(agentEvent) {
 		return false
+	}
+	if persistSession == nil {
+		persistSession = sess
 	}
 
 	persistEvent := agentEvent
@@ -1364,7 +1356,7 @@ func (r *runner) handleEventPersistence(
 
 	if err := r.sessionService.AppendEvent(
 		ctx,
-		sess,
+		persistSession,
 		persistEvent,
 	); err != nil {
 		log.Errorf("Failed to append event to session: %v", err)
@@ -1404,7 +1396,7 @@ func (r *runner) handleEventPersistence(
 	// Use EnqueueSummaryJob for true asynchronous processing.
 	// Prefer filter-specific summarization to avoid scanning all filters.
 	if err := r.sessionService.EnqueueSummaryJob(
-		ctx, sess, agentEvent.FilterKey, false,
+		ctx, persistSession, agentEvent.FilterKey, false,
 	); err != nil {
 		log.DebugfContext(ctx, "Auto summarize after append skipped or failed: %v.", err)
 	}
@@ -1510,6 +1502,29 @@ func (r *runner) captureCompletionFallback(
 	// the terminal outcome seen by the runner.
 	loop.finalError = cloneResponseError(agentEvent.Response.Error)
 	loop.sawTerminalError = agentEvent.IsTerminalError()
+}
+
+func (r *runner) captureRoutedCompletionError(
+	loop *eventLoopContext,
+	agentEvent *event.Event,
+) {
+	if loop == nil || agentEvent == nil {
+		return
+	}
+	if agentEvent.Response == nil || agentEvent.IsPartial {
+		return
+	}
+	if agentEvent.Response.Error != nil {
+		loop.finalError = cloneResponseError(agentEvent.Response.Error)
+	}
+	loop.sawTerminalError = agentEvent.IsTerminalError()
+}
+
+func sameSession(a *session.Session, b *session.Session) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return a.AppName == b.AppName && a.UserID == b.UserID && a.ID == b.ID
 }
 
 func mergeCompletionFallbackStateDelta(
@@ -1703,8 +1718,19 @@ func (r *runner) emitRunnerCompletion(ctx context.Context, loop *eventLoopContex
 		log.Errorf("Failed to append runner completion event to session: %v", err)
 	}
 
-	// Send the runner completion event to output channel.
-	agent.EmitEvent(ctx, loop.invocation, loop.processedEventCh, runnerCompletionEvent)
+	// Use a context to deliver runner-completion after cancellation without blocking cleanup indefinitely.
+	func() {
+		emitCtx, emitCancel := context.WithTimeout(
+			context.WithoutCancel(ctx),
+			time.Second,
+		)
+		defer emitCancel()
+		if err := agent.EmitEvent(
+			emitCtx, loop.invocation, loop.processedEventCh, runnerCompletionEvent,
+		); err != nil {
+			log.Errorf("Failed to emit runner completion event: %v", err)
+		}
+	}()
 
 	// Enqueue auto memory extraction job if memory service is configured.
 	r.enqueueAutoMemoryJob(ctx, loop.sess)
@@ -2234,19 +2260,12 @@ func (r *runner) persistCurrentTurnMessages(
 	persistedCurrentTurnMessages []model.Message,
 	ro agent.RunOptions,
 ) error {
-	fmt.Fprintf(os.Stderr, "[DEBUG:agent-no-response] runner.persistCurrentTurnMessages entry\n")
-	os.Stderr.Sync()
 	if ro.UserMessageRewriter == nil {
 		historySeeded, err := r.seedSessionHistory(ctx, sess, invocation, ag, ro)
-		fmt.Fprintf(os.Stderr, "[DEBUG:agent-no-response] runner.seedSessionHistory done err=%v historySeeded=%v\n", err, historySeeded)
-		os.Stderr.Sync()
 		if err != nil {
 			return err
 		}
-		err = r.appendIncomingMessage(ctx, sess, invocation, message, ro, historySeeded)
-		fmt.Fprintf(os.Stderr, "[DEBUG:agent-no-response] runner.appendIncomingMessage done err=%v\n", err)
-		os.Stderr.Sync()
-		return err
+		return r.appendIncomingMessage(ctx, sess, invocation, message, ro, historySeeded)
 	}
 	if sess.GetEventCount() == 0 {
 		initialMessages := mergeCurrentTurnMessagesIntoSeed(

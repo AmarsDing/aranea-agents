@@ -39,11 +39,7 @@ type AgentToolPolicyInput struct {
 }
 
 func jsonStringList(raw string) []string {
-	var result []string
-	if json.Unmarshal([]byte(strings.TrimSpace(raw)), &result) != nil {
-		return []string{}
-	}
-	return result
+	return JSONStringList(raw)
 }
 
 var toolGroupsFilesystem = []string{"read_file", "read_multiple_files", "save_file", "list_file", "search_file", "search_content", "replace_content"}
@@ -54,6 +50,7 @@ var toolGroupsMedia = []string{"read_image", "read_document", "create_image", "t
 var toolGroupsRuntime = []string{"shell_exec", "claude_code", "workspace_exec"}
 var toolGroupsMessaging = []string{"send_email"}
 var toolGroupsSession = []string{"await_user_reply", "todo_write"}
+var toolGroupsIntegration = []string{"call_agent", "knowledge_search", "mcp_tool_set", "mcp_broker"}
 
 // syntheticShellExecCatalogTool matches internal/data builtin seeds when the tools table has no shell_exec row.
 func syntheticShellExecCatalogTool() Tool {
@@ -126,6 +123,8 @@ func expandToolGroup(name string, catalog []Tool) []string {
 		return append([]string{}, toolGroupsMessaging...)
 	case "session":
 		return append([]string{}, toolGroupsSession...)
+	case "integration":
+		return append([]string{}, toolGroupsIntegration...)
 	case "cli_admin":
 		return cliAdminKeysFromCatalog(catalog)
 	default:
@@ -148,12 +147,36 @@ func profileAllowSet(profile string, catalog []Tool) map[string]bool {
 	return result
 }
 
+// catalogOptInOnlyKeys matches platform seeds with enabled=false: catalog row off still allows
+// profile/allow JSON to opt in (e.g. shell_exec on "full"). Default-enabled tools (gemini_web_fetch)
+// administratively disabled in Tools UI are forced into denySet so profiles cannot re-enable them.
+var catalogOptInOnlyKeys = map[string]bool{
+	"shell_exec":      true,
+	"send_email":      true,
+	"claude_code":     true,
+	"workspace_exec":  true,
+	"create_image":    true,
+	"tts":             true,
+}
+
+func applyCatalogAdminDenials(catalog []Tool, deny map[string]bool) {
+	if deny == nil {
+		return
+	}
+	for _, tool := range catalog {
+		if tool.Enabled || catalogOptInOnlyKeys[tool.Key] {
+			continue
+		}
+		deny[tool.Key] = true
+	}
+}
+
 var toolProfiles = map[string][]string{
 	"chat_only": {},
 	"read_only": {"datetime", "read_file", "read_multiple_files", "list_file", "search_file", "search_content", "todo_write"},
 	"coding":    {"group:filesystem", "group:web", "group:skill", "group:session", "datetime"},
 	"research":  {"duckduckgo_search", "web_fetch", "gemini_web_fetch", "google_search", "arxiv_search", "wikipedia_search", "read_file", "read_multiple_files", "list_file", "search_file", "search_content", "skill_search", "memory_search", "todo_write", "datetime"},
-	"full":      {"group:filesystem", "group:web", "group:skill", "group:memory", "group:media", "group:runtime", "group:messaging", "group:session", "group:cli_admin", "datetime"},
+	"full":      {"group:filesystem", "group:web", "group:skill", "group:memory", "group:media", "group:runtime", "group:messaging", "group:session", "group:integration", "group:cli_admin", "datetime"},
 
 	"minimal":      {},
 	"safe":         {"datetime", "read_file", "read_multiple_files", "list_file", "search_file", "search_content", "todo_write"},
@@ -258,6 +281,7 @@ func buildAgentEffectiveTools(settings AgentRuntimeSettings, catalog []Tool) Age
 	prof := strings.TrimSpace(settings.ToolsProfile)
 	allowedSet := computePolicyAllowedSet(prof, allow, catalog)
 	denySet := computePolicyDenySet(deny, catalog)
+	applyCatalogAdminDenials(catalog, denySet)
 
 	catalogKeys := make(map[string]bool, len(catalog))
 	for _, tool := range catalog {

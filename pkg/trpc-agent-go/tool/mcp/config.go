@@ -10,6 +10,7 @@
 package mcp
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -79,6 +80,18 @@ type ConnectionConfig struct {
 	ClientInfo mcp.Implementation `json:"client_info,omitempty"`
 }
 
+// ReconnectEvent describes one MCP session reconnect attempt observed during tool execution.
+type ReconnectEvent struct {
+	ServerName  string
+	Attempt     int
+	MaxAttempts int
+	Success     bool
+	Err         error
+}
+
+// ReconnectObserver is invoked when the session manager attempts transport reconnection.
+type ReconnectObserver func(ctx context.Context, ev ReconnectEvent)
+
 // SessionReconnectConfig defines configuration for automatic session reconnection.
 type SessionReconnectConfig struct {
 	// EnableAutoReconnect enables automatic session reconnection when session expires.
@@ -96,6 +109,7 @@ type toolSetConfig struct {
 	toolFilterFunc         tool.FilterFunc         // Tool filter function.
 	mcpOptions             []mcp.ClientOption      // MCP client options.
 	sessionReconnectConfig *SessionReconnectConfig // Session reconnection configuration.
+	reconnectObserver      ReconnectObserver       // Optional product-layer reconnect telemetry.
 	name                   string                  // ToolSet name for identification and conflict resolution.
 }
 
@@ -161,6 +175,13 @@ func WithSessionReconnectConfig(config SessionReconnectConfig) ToolSetOption {
 			config.MaxReconnectAttempts = maxReconnectAttemptsLimit
 		}
 		c.sessionReconnectConfig = &config
+	}
+}
+
+// WithReconnectObserver registers a callback for MCP session reconnect attempts.
+func WithReconnectObserver(observer ReconnectObserver) ToolSetOption {
+	return func(c *toolSetConfig) {
+		c.reconnectObserver = observer
 	}
 }
 

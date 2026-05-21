@@ -6,13 +6,17 @@ import (
 	"database/sql"
 	"encoding/hex"
 	stderrors "errors"
+	"regexp"
 	"strings"
 	"sync/atomic"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
-var agentIDRand uint64
+var (
+	agentIDRand     uint64
+	agentKeyPattern = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
+)
 
 func newAgentCatalogID() string {
 	buf := make([]byte, 12)
@@ -41,6 +45,8 @@ type AgentRepository interface {
 	CreateAgentPromptFile(ctx context.Context, f AgentPromptFile) (AgentPromptFile, error)
 	UpdateAgentPromptFile(ctx context.Context, f AgentPromptFile) (AgentPromptFile, error)
 	DeleteAgentPromptFile(ctx context.Context, agentID, id string) error
+	ListExtrasForAgents(ctx context.Context, agentIDs []string) (map[string]AgentListExtras, error)
+	ListAgentCreators(ctx context.Context) ([]AgentCreator, error)
 }
 
 // AgentUsecase is catalog agent CRUD + prompt preview.
@@ -53,9 +59,58 @@ func NewAgentUsecase(repo AgentRepository, tools ToolRepo) *AgentUsecase {
 	return &AgentUsecase{repo: repo, tools: tools}
 }
 
+// ListAgentCreators returns distinct creators for list filter options.
+func (u *AgentUsecase) ListAgentCreators(ctx context.Context) ([]AgentCreator, error) {
+	if u == nil || u.repo == nil {
+		return nil, nil
+	}
+	return u.repo.ListAgentCreators(ctx)
+}
+
 // List returns a page of agents without per-row hydration (settings/files).
 func (u *AgentUsecase) List(ctx context.Context, q AgentListQuery) (AgentListResult, error) {
-	return u.repo.SearchAgents(ctx, q)
+	page, err := u.repo.SearchAgents(ctx, q)
+	if err != nil {
+		return AgentListResult{}, err
+	}
+	if len(page.Items) == 0 {
+		return page, nil
+	}
+	ids := make([]string, 0, len(page.Items))
+	for i := range page.Items {
+		ids = append(ids, page.Items[i].ID)
+	}
+	extras, err := u.repo.ListExtrasForAgents(ctx, ids)
+	if err != nil {
+		return AgentListResult{}, err
+	}
+	for i := range page.Items {
+		if ex, ok := extras[page.Items[i].ID]; ok {
+			page.Items[i].LastRunStatus = ex.LastRunStatus
+			page.Items[i].LastRunAt = ex.LastRunAt
+			page.Items[i].PendingEvolutionCount = ex.PendingEvolutionCount
+		}
+	}
+	return page, nil
+}
+
+// CheckAgentKeyAvailability reports whether agent_key is free for a new catalog agent.
+func (u *AgentUsecase) CheckAgentKeyAvailability(ctx context.Context, agentKey string) (available bool, message string, err error) {
+	agentKey = strings.TrimSpace(agentKey)
+	if agentKey == "" {
+		return false, "agent_key is required", kerrors.BadRequest("AGENT", "agent_key is required")
+	}
+	if !agentKeyPattern.MatchString(agentKey) {
+		return false, "invalid agent_key format", kerrors.BadRequest("AGENT_KEY_INVALID", "agent_key must be lowercase letters, digits, and hyphens")
+	}
+	_, err = u.repo.GetAgentByAgentKey(ctx, agentKey)
+	if err == nil {
+		return false, "agent_key already in use", nil
+	}
+	if !stderrors.Is(err, sql.ErrNoRows) {
+		return false, "", err
+	}
+	return true, "available", nil
 }
 
 // Get returns one agent with settings and prompt files hydrated.
@@ -102,6 +157,14 @@ func (u *AgentUsecase) hydrate(ctx context.Context, agent Agent) (Agent, error) 
 	}
 	agent.Settings = &settings
 	agent.Files = files
+	HydrateAgentKind(&agent)
+	if extras, err := u.repo.ListExtrasForAgents(ctx, []string{agent.ID}); err == nil {
+		if ex, ok := extras[agent.ID]; ok {
+			agent.LastRunStatus = ex.LastRunStatus
+			agent.LastRunAt = ex.LastRunAt
+			agent.PendingEvolutionCount = ex.PendingEvolutionCount
+		}
+	}
 	return agent, nil
 }
 
@@ -111,14 +174,52 @@ func (u *AgentUsecase) Create(ctx context.Context, in Agent) (Agent, error) {
 	in.DisplayName = strings.TrimSpace(in.DisplayName)
 	in.Provider = strings.TrimSpace(in.Provider)
 	in.Model = strings.TrimSpace(in.Model)
-	if in.AgentKey == "" || in.DisplayName == "" || in.Provider == "" || in.Model == "" {
-		return Agent{}, kerrors.BadRequest("AGENT", "agent_key, display_name, provider, and model are required")
+	in.Kind = NormalizeAgentKind(in.Kind)
+	HydrateAgentKind(&in)
+
+	if in.AgentKey == "" || in.DisplayName == "" {
+		return Agent{}, kerrors.BadRequest("AGENT", "agent_key and display_name are required")
+	}
+	switch in.Kind {
+	case AgentKindA2AProxy:
+		if in.A2AProxy == nil || strings.TrimSpace(in.A2AProxy.RemoteURL) == "" {
+			return Agent{}, kerrors.BadRequest("AGENT", "a2a_proxy remote_url is required")
+		}
+		if in.Provider == "" {
+			in.Provider = "a2a"
+		}
+		if in.Model == "" {
+			in.Model = "proxy"
+		}
+	default:
+		if in.Provider == "" || in.Model == "" {
+			return Agent{}, kerrors.BadRequest("AGENT", "provider and model are required")
+		}
+		in.Kind = AgentKindLLM
 	}
 	if in.ID == "" {
 		in.ID = newAgentCatalogID()
 	}
 	settings := withSettingDefaults(settingsFromAgentInput(in))
 	settings.AgentID = in.ID
+	if err := ValidateCodeExecutorType(settings.CodeExecutorType); err != nil {
+		return Agent{}, err
+	}
+	if err := ValidatePlannerKind(settings.PlannerKind); err != nil {
+		return Agent{}, err
+	}
+	if err := ValidatePlannerConfigJSON(settings.PlannerKind, settings.PlannerConfigJSON); err != nil {
+		return Agent{}, err
+	}
+	if err := ValidateRalphLoopSettings(&settings); err != nil {
+		return Agent{}, err
+	}
+	if in.Kind == AgentKindA2AProxy {
+		settings.IntentPassEnabled = false
+		settings.ToolsEnabled = false
+		settings.MemoryEnabled = false
+		settings.SelfEvolve = false
+	}
 	files := filesFromAgentInput(in)
 	for i := range files {
 		files[i].AgentID = in.ID
@@ -127,11 +228,18 @@ func (u *AgentUsecase) Create(ctx context.Context, in Agent) (Agent, error) {
 	if strings.TrimSpace(in.ConfigJSON) == "" {
 		in.ConfigJSON = configJSONFromSettings(settings, files)
 	}
+	in.ConfigJSON = EmbedAgentKindInConfigJSON(in.ConfigJSON, in.Kind, in.A2AProxy)
 	in.Status = strings.TrimSpace(in.Status)
 	if in.Status == "" {
 		in.Status = "active"
 	}
+	if strings.TrimSpace(in.CreatedBy) == "" {
+		in.CreatedBy = AgentCreatedByFromContext(ctx)
+	}
 	if _, err := u.repo.CreateAgent(ctx, in); err != nil {
+		if isAgentKeyDuplicate(err) {
+			return Agent{}, kerrors.BadRequest("AGENT_KEY_CONFLICT", "agent_key already in use")
+		}
 		return Agent{}, err
 	}
 	if _, err := u.repo.UpsertAgentRuntimeSettings(ctx, settings); err != nil {
@@ -156,9 +264,27 @@ func (u *AgentUsecase) Update(ctx context.Context, id string, patch Agent) (Agen
 	if err != nil {
 		return Agent{}, err
 	}
+	HydrateAgentKind(&patch)
+	HydrateAgentKind(&current)
+	if strings.TrimSpace(patch.Kind) != "" && NormalizeAgentKind(patch.Kind) != NormalizeAgentKind(current.Kind) {
+		return Agent{}, kerrors.BadRequest("AGENT", "agent_kind is immutable")
+	}
 	merged := mergeAgentCatalog(current, patch)
+	merged.Kind = current.Kind
 	settings := withSettingDefaults(settingsFromAgentInput(merged))
 	settings.AgentID = id
+	if err := ValidateCodeExecutorType(settings.CodeExecutorType); err != nil {
+		return Agent{}, err
+	}
+	if err := ValidatePlannerKind(settings.PlannerKind); err != nil {
+		return Agent{}, err
+	}
+	if err := ValidatePlannerConfigJSON(settings.PlannerKind, settings.PlannerConfigJSON); err != nil {
+		return Agent{}, err
+	}
+	if err := ValidateRalphLoopSettings(&settings); err != nil {
+		return Agent{}, err
+	}
 	files := merged.Files
 	if len(files) == 0 {
 		files = current.Files
@@ -170,6 +296,13 @@ func (u *AgentUsecase) Update(ctx context.Context, id string, patch Agent) (Agen
 	}
 	merged.Settings = &settings
 	merged.Files = files
+	HydrateAgentKind(&merged)
+	if IsA2AProxyAgent(merged) {
+		if merged.A2AProxy == nil || strings.TrimSpace(merged.A2AProxy.RemoteURL) == "" {
+			return Agent{}, kerrors.BadRequest("AGENT", "a2a_proxy remote_url is required")
+		}
+	}
+	merged.ConfigJSON = EmbedAgentKindInConfigJSON(merged.ConfigJSON, merged.Kind, merged.A2AProxy)
 	if _, err := u.repo.UpdateAgent(ctx, merged); err != nil {
 		return Agent{}, err
 	}
@@ -316,6 +449,8 @@ func (u *AgentUsecase) syncConfigJSON(ctx context.Context, id string) (Agent, er
 		return Agent{}, err
 	}
 	a.ConfigJSON = configJSONFromSettings(withSettingDefaults(settings), files)
+	HydrateAgentKind(&a)
+	a.ConfigJSON = EmbedAgentKindInConfigJSON(a.ConfigJSON, a.Kind, a.A2AProxy)
 	return u.repo.UpdateAgent(ctx, a)
 }
 
@@ -345,13 +480,16 @@ func mergeAgentCatalog(current, patch Agent) Agent {
 	out.ContextWindow = patch.ContextWindow
 	out.BudgetMonthlyCents = patch.BudgetMonthlyCents
 	if strings.TrimSpace(patch.ConfigJSON) != "" {
-		out.ConfigJSON = patch.ConfigJSON
+		out.ConfigJSON = MergeAgentConfigJSON(current.ConfigJSON, patch.ConfigJSON)
 	}
 	if patch.Settings != nil {
 		out.Settings = patch.Settings
 	}
 	if len(patch.Files) > 0 {
 		out.Files = patch.Files
+	}
+	if patch.A2AProxy != nil && IsA2AProxyAgent(out) {
+		out.A2AProxy = patch.A2AProxy
 	}
 	return out
 }

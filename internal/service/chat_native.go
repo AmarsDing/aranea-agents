@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -10,6 +11,7 @@ import (
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	a2apkg "aranea-agents/internal/a2a"
+	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	"aranea-agents/pkg/strutil"
@@ -108,9 +110,15 @@ func (s *ChatService) nativeGetModelOptions(ctx context.Context) (*chatv1.GetCha
 		if row.Enabled == false {
 			continue
 		}
+		type modelMeta struct {
+			Provider string `json:"provider,omitempty"`
+			Model    string `json:"model,omitempty"`
+		}
 		mj := "{}"
 		if row.Provider != "" || row.Model != "" {
-			mj = fmt.Sprintf(`{"provider":"%s","model":"%s"}`, row.Provider, row.Model)
+			if b, err := json.Marshal(modelMeta{Provider: row.Provider, Model: row.Model}); err == nil {
+				mj = string(b)
+			}
 		}
 		label := row.Name
 		if label == "" {
@@ -149,7 +157,7 @@ func (s *ChatService) nativeSendChatMessage(ctx context.Context, req *chatv1.Sen
 	} else {
 		out.AgentMessage = st
 	}
-	recordChatIngressUsage(ctx, s.usage, req, am, false)
+	// 用量由 trpc_turn defer → recordTurnUsage 写入；勿再调用 recordChatIngressUsage 以免双写。
 	if tid := strings.TrimSpace(req.GetTeamId()); tid != "" {
 		if s.td.Pipeline.Bus != nil {
 			env := event.NewEnvelope(event.EnvelopeTypeTeamRunFinished, "chat-native", "")
@@ -169,7 +177,7 @@ func (s *ChatService) runNativeAgentTurn(ctx context.Context, req *chatv1.SendCh
 	}
 
 	// #region debug-point A:turn-entry
-	flow := event.NewFlowLogger(s.td.Pipeline.Bus, sessionID, "")
+	flow := event.NewFlowLogger(s.td.Pipeline.Bus, s.td.Pipeline.Buffer, sessionID, "")
 	flow.LogStart("chat.receive", "收到用户消息", event.P("content_len", len(content)))
 	// #endregion
 
@@ -181,19 +189,13 @@ func (s *ChatService) runNativeAgentTurn(ctx context.Context, req *chatv1.SendCh
 	if hasActive {
 		if _, _, ok := s.runs.ActiveRunner(sessionID); ok {
 			unlock()
-			enqueued, err := s.runs.EnqueueUserMessage(sessionID, content)
+			accepted, _, _, rejectReason, err := s.chatUC.EnqueueUserMessage(sessionID, content)
 			if err != nil {
 				return biz.ChatMessage{}, biz.ChatMessage{}, err
 			}
-			if enqueued {
-				s.publishMessageQueued(sessionID)
-				return biz.ChatMessage{}, biz.ChatMessage{}, nil
+			if !accepted {
+				return biz.ChatMessage{}, biz.ChatMessage{}, enqueueRejectError(rejectReason)
 			}
-			pendingID := s.pending.Enqueue(sessionID, content)
-			if pendingID == "" {
-				return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.BadRequest("CHAT", "pending queue is full for this session")
-			}
-			s.publishMessageQueued(sessionID)
 			return biz.ChatMessage{}, biz.ChatMessage{}, nil
 		}
 		// Stale placeholder from a crashed/partial run — clear and start a fresh turn.
@@ -218,14 +220,16 @@ func (s *ChatService) runNativeAgentTurn(ctx context.Context, req *chatv1.SendCh
 			unlock()
 			return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.InternalServer("CHAT_TEAM_NATIVE", "team runner not wired")
 		}
-		if s.td.Pipeline.Bus != nil {
-			env := event.NewEnvelope(event.EnvelopeTypeLog, "chat-native", sess.ID)
-			env.Metadata = map[string]any{"level": "INFO", "source": "chat-native"}
-			env.Content = &event.EnvelopeContent{Text: fmt.Sprintf(
-				"chat_native phase=team_invoke session_id=%s team_id=%s content_len=%d",
-				sess.ID, strings.TrimSpace(sess.TeamID), len(content))}
-			s.td.Pipeline.Bus.Publish(ctx, env)
+		if qerr := enforceChatTurnQuotas(ctx, s.usage, "", chatagent.UserIDFromCtx(ctx)); qerr != nil {
+			unlock()
+			return biz.ChatMessage{}, biz.ChatMessage{}, qerr
 		}
+		if qerr := s.checkTeamMemberQuotas(ctx, strings.TrimSpace(sess.TeamID)); qerr != nil {
+			unlock()
+			return biz.ChatMessage{}, biz.ChatMessage{}, qerr
+		}
+		flow.LogStart("chat.team.invoke", "委派团队会话",
+			event.P("team_id", strings.TrimSpace(sess.TeamID)), event.P("content_len", len(content)))
 		runID := uuid.NewString()
 		teamCtx, teamCancel := context.WithCancel(ctx)
 		s.runs.StoreCancelable(sessionID, runID, teamCancel)
@@ -269,16 +273,9 @@ func (s *ChatService) runNativeAgentTurn(ctx context.Context, req *chatv1.SendCh
 	// #region debug-point D:agent-state
 	flow.LogDone("chat.agent_hydrate", "Agent配置已加载", event.P("agent_key", ag.AgentKey), event.P("provider", ag.Provider), event.P("model", ag.Model))
 	// #endregion
-	if s.usage != nil {
-		check, qerr := s.usage.CheckQuota(ctx, "agent", agentID)
-		if qerr != nil {
-			unlock()
-			return biz.ChatMessage{}, biz.ChatMessage{}, qerr
-		}
-		if !check.Allowed {
-			unlock()
-			return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.Forbidden("USAGE_QUOTA", check.Reason)
-		}
+	if err := enforceChatTurnQuotas(ctx, s.usage, agentID, chatagent.UserIDFromCtx(ctx)); err != nil {
+		unlock()
+		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
 
 	opts := req.GetOptions()
@@ -301,7 +298,7 @@ func (s *ChatService) runNativeAgentTurn(ctx context.Context, req *chatv1.SendCh
 	}
 
 	// #region debug-point E:enter-turn
-	flow.LogStart("chat.turn_enter", "进入Agent Turn执行", event.P("dialog_mode", dialogMode), event.P("provider", prov), event.P("model", mod), event.P("attachments", attN))
+	flow.LogStart("chat.turn.enter", "进入Agent Turn执行", event.P("dialog_mode", dialogMode), event.P("provider", prov), event.P("model", mod), event.P("attachments", attN))
 	// #endregion
 
 	s.runs.StorePlaceholder(sessionID)
@@ -339,15 +336,19 @@ func (s *ChatService) RunAgentTurn(ctx context.Context, agentID, input string, t
 	runCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSec)*time.Second)
 	defer cancel()
 
+	uid := chatagent.UserIDFromCtx(runCtx)
+	if uid == "" {
+		uid = "system"
+	}
 	sess, err := s.td.Sessions.Create(runCtx, biz.Session{
 		ID:        uuid.NewString(),
 		AgentID:   strings.TrimSpace(agentID),
 		OwnerType: "agent",
 		Title:     fmt.Sprintf("a2a-%s", agentID),
-		UserID:    "1",
+		UserID:    uid,
 	})
 	if err != nil {
-		return "", fmt.Errorf("a2a: create session: %w", err)
+		return "", kerrors.InternalServer("A2A", "create session: "+err.Error())
 	}
 	_, asst, err := s.RunNativeTurnUnary(runCtx, &chatv1.SendChatMessageRequest{
 		SessionId: sess.ID,
@@ -398,4 +399,18 @@ func patchSessionContextUsage(ctx context.Context, s *ChatService, sessionID str
 	if s.td.Compress != nil {
 		s.td.Compress.AfterNativeTurn(ctx, sessionID, ag)
 	}
+}
+
+// notifyNativeTurnHooks runs post-turn side effects (compression usage already handled separately).
+func notifyNativeTurnHooks(ctx context.Context, s *ChatService, sessionID string, ag biz.Agent, userInput, assistantOutput string) {
+	if s == nil || s.td.AfterTurn == nil {
+		return
+	}
+	s.td.AfterTurn.AfterNativeTurn(ctx, biz.NativeTurnEvent{
+		AgentID:         ag.ID,
+		AgentConfigJSON: ag.ConfigJSON,
+		SessionID:       sessionID,
+		UserInput:       userInput,
+		AssistantOutput: assistantOutput,
+	})
 }

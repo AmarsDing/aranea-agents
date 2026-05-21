@@ -24,6 +24,7 @@ type TRPCRunnerDeps struct {
 	ArtifactService       trpcartifact.Service
 	Ingestor              trpcsession.Ingestor
 	AwaitUserReplyRouting bool
+	RalphLoop             *trpcrunner.RalphLoopConfig
 	// Plugins is an optional list of runner-level plugins injected at runner creation.
 	// Populate via plugintrpc.Runtime.Plugins() after hot-loading from the DB.
 	Plugins []trpcplugin.Plugin
@@ -54,6 +55,9 @@ func NewTRPCRunner(root trpcagent.Agent, deps TRPCRunnerDeps, opts ...trpcrunner
 	}
 	if deps.AwaitUserReplyRouting {
 		opts = append(opts, trpcrunner.WithAwaitUserReplyRouting(true))
+	}
+	if deps.RalphLoop != nil {
+		opts = append(opts, trpcrunner.WithRalphLoop(*deps.RalphLoop))
 	}
 	r := trpcrunner.NewRunner(appName, root, opts...)
 	mr, ok := r.(trpcrunner.ManagedRunner)
@@ -87,6 +91,25 @@ func RunTRPCUserTurn(
 	return ch, err
 }
 
+// RunTRPCUserTurnMsg runs a turn with a pre-built user message (multimodal attachments).
+func RunTRPCUserTurnMsg(ctx context.Context, r trpcrunner.Runner, userID, sessionID string, msg trpcmodel.Message, opts ...trpcagent.RunOption) (<-chan *trpcevent.Event, error) {
+	if r == nil {
+		return nil, errors.New("trpc runtime: runner is nil")
+	}
+	userID = strings.TrimSpace(userID)
+	sessionID = strings.TrimSpace(sessionID)
+	if userID == "" {
+		return nil, errors.New("trpc runtime: user id is required")
+	}
+	if sessionID == "" {
+		return nil, errors.New("trpc runtime: session id is required")
+	}
+	if msg.Role == "" {
+		msg.Role = trpcmodel.RoleUser
+	}
+	return r.Run(ctx, userID, sessionID, msg, opts...)
+}
+
 func CancelTRPCRun(r trpcrunner.Runner, requestID string) bool {
 	mr, ok := r.(trpcrunner.ManagedRunner)
 	if !ok {
@@ -104,9 +127,5 @@ func TRPCRunStatus(r trpcrunner.Runner, requestID string) (trpcrunner.RunStatus,
 }
 
 func EnqueueTRPCUserMessage(r trpcrunner.Runner, requestID string, content string) error {
-	sr, ok := r.(trpcrunner.SteerableRunner)
-	if !ok {
-		return errors.New("runner does not support steerable operations")
-	}
-	return sr.EnqueueUserMessage(requestID, trpcmodel.NewUserMessage(content))
+	return trpcrunner.EnqueueUserMessage(r, requestID, trpcmodel.NewUserMessage(content))
 }

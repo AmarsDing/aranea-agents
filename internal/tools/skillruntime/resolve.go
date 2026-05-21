@@ -16,7 +16,8 @@ type SkillToolsetOptions struct {
 	UserQuery string
 }
 
-func resolveSkillSlugs(ctx context.Context, skillUC *biz.SkillUsecase, opts *SkillToolsetOptions) ([]string, error) {
+// ResolveSkillSlugs applies Layer A (allow/deny) and Layer B (intent + tags + score cap).
+func ResolveSkillSlugs(ctx context.Context, skillUC *biz.SkillUsecase, opts *SkillToolsetOptions) ([]string, error) {
 	candidates, err := skillUC.ListEnabledPublishedSkillCandidates(ctx)
 	if err != nil {
 		return nil, err

@@ -6,7 +6,7 @@ L3 区别于 L2：L2 记录「发生了什么」，L3 记录「什么是真的�
 
 aranea 当前已有一个轻量级 `memory_items` 表，本文档**扩展并兼容**该表，引入完整的事实-反馈-巩固机制，使 L3 真正可用于生产。
 
-> 关联文档：[Memory 知识体系（合并）](./memory.md)（下文 §0）、`12～14` 上层、`5 agent-setting.md`、`7 agent-evolution.md`、`30 ecosystem.md`。
+> 关联文档：[Memory 知识体系](./38%20memory.md) · [开发计划](./12-16%20memory-development.md)、`12～14` 上层、`5 agent-setting.md`、`7 agent-evolution.md`、`30 ecosystem.md`。
 
 ---
 
@@ -19,7 +19,7 @@ aranea 当前已有一个轻量级 `memory_items` 表，本文档**扩展并兼�
 - **Declarative vs Procedural**：L3 聚焦「是什么」的断言单元（梳理副本 §12）；「怎么做」的路径技能由 L4 / 工具与演化承载，与本层 complementary。
 - **MemWeaver 式混合**：抽象 **Passage 级 fact**（可溯源段落）为未来与 **L4 图谱**并用的接口预留空间（梳理副本 §16）。
 
-延伸阅读：[`memory.md`](./memory.md)。
+延伸阅读：[38 memory.md](./38%20memory.md)。
 
 ---
 
@@ -32,7 +32,7 @@ aranea 当前已有一个轻量级 `memory_items` 表，本文档**扩展并兼�
 | 容量 | 单条 ≤ 500 tokens；总数建议 500~5000 条 / 作用域 |
 | 持久性 | 跨会话（数天～数月） |
 | 访问模式 | 向量语义检索 + 元数据过滤 + BM25 兜底 |
-| 与 ADK 对齐 | 对应 `MemoryService.add_session_to_memory` / `search_memory`（生产用 `VertexAiMemoryBankService`） |
+| 与 trpc-agent-go 对齐 | 对应 `trpcmemory.Service`：`AddMemory` / `SearchMemory` / `AddSessionToMemory`（SQLite 适配器或 pgvector 业务线） |
 | 与 Aranea 现状对齐 | 复用并扩展 `memory_items`；新增 `memory_facts`（结构化版本） + 周边表 |
 
 ### 1.2 与其它层的边界

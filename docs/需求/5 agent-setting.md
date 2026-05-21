@@ -55,6 +55,7 @@
 | **进化** | §7 |
 | **钩子** | 钩子列表与编辑（与 Agent 区内「钩子」摘要卡片可二选一或互链） |
 | **用户实例** | 多租户/用户级覆盖；单独 PRD |
+| **A2A** | LLM Agent：Endpoint（暴露为 A2A 服务 + AgentCard）；A2A Proxy Agent：只读远程连接与 Card（见 §10） |
 
 实现：`QTabs` + `QTabPanels` 或 Vue Router 子路由 `children`。
 
@@ -347,6 +348,52 @@
 
 ---
 
+## 10. Tab「A2A」— Endpoint 与 Proxy 视图（2026-05-20）
+
+> A2A 产品语义见 [26 a2a-protocol.md](./26%20a2a-protocol.md) §2.5。实现设计见 [26 a2a-protocol.design.md](./26%20a2a-protocol.design.md) §11.6。
+
+### 10.1 显示条件
+
+| `agent_kind` | Tab 内容 |
+|--------------|----------|
+| `llm`（默认） | **A2A Endpoint** 完整配置 |
+| `a2a_proxy` | 远程连接信息 + 只读 AgentCard +「测试连接」 |
+
+### 10.2 LLM Agent — Endpoint 配置
+
+| 控件 | 说明 |
+|------|------|
+| **启用 A2A** | `QToggle`；默认关；对应 `a2a_agent_cards.enabled` |
+| **Capabilities** | 能力列表 CRUD（name、description、input/output schema） |
+| **流式能力** | 是否声明 `Streaming`（写入 AgentCard） |
+| **暴露地址** | 只读展示平台分配的 A2A URL / AgentCard 路径 |
+| **Discover 预览** | 展示其他 Agent 调用此 Endpoint 时看到的 Card |
+
+保存：调用现有 `UpdateAgentCard` API；启用后列表卡片可选展示 `A2A ↙` 徽章。
+
+### 10.3 A2A Proxy Agent — 只读视图
+
+| 控件 | 说明 |
+|------|------|
+| 远程 URL | 可编辑 PATCH（变更后重新发现 Card） |
+| 鉴权 | 编辑 auth_type / auth_config（敏感字段掩码） |
+| AgentCard | 只读展示远程发现结果 |
+| 测试连接 | 触发一次远程 Invoke 或 Card 拉取 |
+
+### 10.4 与 `/a2a` 页关系
+
+- **本 Tab**：配置「我这个 Agent」的 A2A 身份（提供方或代理连接）
+- **`/a2a` 注册表页**：工作区级 Discover、Audit、Invoke 测试；不重复编辑单个 Agent 的全部 Endpoint 字段
+
+### 10.5 验收要点（A2A Tab）
+
+- [ ] LLM Agent 可启用/禁用 A2A 并编辑 capabilities
+- [ ] 启用后出现在 `/a2a` Discover 列表
+- [ ] Proxy Agent 可编辑远程 URL 并重新发现 Card
+- [ ] Tab 对 `a2a_proxy` 隐藏 LLM 专属项（记忆/Skill 等仍在其它 Tab）
+
+---
+
 ## 15. 验收要点
 
 - [ ] 顶栏信息与列表/详情一致；头像点击打开 **`AgentAvatarPicker`**。  
@@ -361,4 +408,6 @@
 
 ---
 
-*文档版本：基于 Agent 设置线稿整理；库表以 `前端.md` `agents` 为准；头像 **`50 Avatar.md`**，分类 **`4.agent-type.md`**，创建表单 **`2 agents-create.md`**。*
+*文档版本：基于 Agent 设置线稿整理；库表以 `前端.md` `agents` 为准；头像 **`50 Avatar.md`**，分类 **`4.agent-type.md`**，创建表单 **`2 agents-create.md`**，A2A **`26 a2a-protocol.md` §3.11**。*
+
+---

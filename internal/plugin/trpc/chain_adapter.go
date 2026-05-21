@@ -1,7 +1,6 @@
 package plugintrpc
 
 import (
-	"log/slog"
 	"strings"
 
 	"aranea-agents/internal/biz"
@@ -34,6 +33,8 @@ func BuiltinCallbackPoints(pluginKey string) []string {
 	return nil
 }
 
+// Plugin lifecycle mirroring into LLMAgent Chain lives in plugin_chain_mirror.go (orchestration_policy.go).
+//
 // ValidatePluginCallbackPoints logs when DB callback_points_json diverges from built-in registry.
 func ValidatePluginCallbackPoints(p biz.Plugin) {
 	declared := BuiltinCallbackPoints(p.Key)
@@ -50,7 +51,7 @@ func ValidatePluginCallbackPoints(p biz.Plugin) {
 	for _, pt := range p.CallbackPoints {
 		norm := strings.ToLower(strings.TrimSpace(pt))
 		if _, ok := declSet[norm]; !ok {
-			slog.Warn("plugin: callback_point not implemented by builtin",
+			hookLogger.Warn("plugin: callback_point not implemented by builtin",
 				"plugin", p.Key,
 				"point", pt,
 				"implemented", declared,

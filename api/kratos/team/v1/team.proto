@@ -64,6 +64,47 @@ message TeamRunStep {
   string started_at = 17;
   string finished_at = 18;
   string created_at = 19;
+  int32 tool_call_count = 20;
+}
+
+message TeamRunMemberSummary {
+  string agent_id = 1;
+  string agent_key = 2;
+  string agent_name = 3;
+  string role = 4;
+  int32 sort_order = 5;
+  string status = 6;
+  int32 token_in = 7;
+  int32 token_out = 8;
+  int32 duration_ms = 9;
+  int64 cost_micro_usd = 10;
+  string output_preview = 11;
+  int32 tool_call_count = 12;
+}
+
+message TeamRunSummary {
+  string run_id = 1;
+  string team_id = 2;
+  string session_id = 3;
+  string mode = 4;
+  string status = 5;
+  int32 duration_ms = 6;
+  int32 token_in = 7;
+  int32 token_out = 8;
+  int64 cost_micro_usd = 9;
+  int32 member_count = 10;
+  int32 tool_call_count = 11;
+  string output_preview = 12;
+  string error_message = 13;
+  repeated TeamRunMemberSummary members = 14;
+}
+
+message GetTeamRunSummaryRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message GetTeamRunSummaryResponse {
+  TeamRunSummary summary = 1;
 }
 
 message ListTeamsRequest {}
@@ -226,5 +267,8 @@ service TeamService {
   }
   rpc ExportTeamStructure(ExportTeamStructureRequest) returns (ExportTeamStructureResponse) {
     option (google.api.http) = {get: "/v1/teams/{team_id}/structure"};
+  }
+  rpc GetTeamRunSummary(GetTeamRunSummaryRequest) returns (GetTeamRunSummaryResponse) {
+    option (google.api.http) = {get: "/v1/team-runs/{id}/summary"};
   }
 }

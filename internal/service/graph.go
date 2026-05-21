@@ -7,9 +7,11 @@ import (
 	graphv1 "aranea-agents/api/kratos/graph/v1"
 	"aranea-agents/internal/biz"
 	graphtrpc "aranea-agents/internal/graph/trpc"
+	"aranea-agents/internal/telemetry/turntrace"
 
 	trpcgraph "trpc.group/trpc-go/trpc-agent-go/graph"
 
+	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -19,10 +21,11 @@ type GraphService struct {
 
 	uc     *biz.GraphUsecase
 	taskUC *biz.TaskUsecase
+	graphTel *GraphExecutionTelemetry
 }
 
-func NewGraphService(uc *biz.GraphUsecase, taskUC *biz.TaskUsecase) *GraphService {
-	return &GraphService{uc: uc, taskUC: taskUC}
+func NewGraphService(uc *biz.GraphUsecase, taskUC *biz.TaskUsecase, graphTel *GraphExecutionTelemetry) *GraphService {
+	return &GraphService{uc: uc, taskUC: taskUC, graphTel: graphTel}
 }
 
 func (s *GraphService) CreateGraph(ctx context.Context, req *graphv1.CreateGraphRequest) (*graphv1.CreateGraphResponse, error) {
@@ -177,8 +180,22 @@ func (s *GraphService) ExecuteGraph(ctx context.Context, req *graphv1.ExecuteGra
 	if req.InitialState != nil {
 		initialState = req.InitialState.AsMap()
 	}
-	exec, err := s.uc.ExecuteGraph(ctx, req.GraphId, req.SessionId, initialState)
+	execID := uuid.NewString()
+	ctx, traceBridge, _ := turntrace.Start(ctx, turntrace.Config{
+		Domain:    turntrace.DomainGraph,
+		SpanName:  "graph.execute",
+		SessionID: req.GetSessionId(),
+		RunID:     execID,
+		AgentKey:  req.GetGraphId(),
+	})
+	if s.graphTel != nil {
+		s.graphTel.Bind(execID, traceBridge)
+	}
+	exec, err := s.uc.ExecuteGraph(ctx, req.GraphId, req.SessionId, execID, initialState)
 	if err != nil {
+		if s.graphTel != nil {
+			s.graphTel.EnsureFinished(execID, err)
+		}
 		return nil, err
 	}
 	resp := &graphv1.ExecuteGraphResponse{

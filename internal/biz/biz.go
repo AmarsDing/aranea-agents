@@ -10,6 +10,8 @@ type AgentExistenceCheckerFunc func(agentName string) bool
 
 var ProviderSet = wire.NewSet(
 	NewEventBusConsumer,
+	NewEventBusSideConsumers,
+	NewFlowLogUsecase,
 	NewTurnMemoryWorker,
 	NewAdminUsecase,
 	NewAvatarUsecase,
@@ -19,6 +21,7 @@ var ProviderSet = wire.NewSet(
 	NewAgentCategoryUsecase,
 	NewLlmProviderModelUsecase,
 	NewHookUsecase,
+	NewHookDeliveryUsecase,
 	NewHookResolver,
 	NewCronUsecase,
 	NewPluginUsecase,
@@ -27,17 +30,17 @@ var ProviderSet = wire.NewSet(
 	NewSessionUsecase,
 	NewToolUsecase,
 	NewChannelUsecase,
-	NewUsageUsecase,
-	NewMonitorUsecase,
-	NewSystemSettingUsecase,
 	NewAgentMCPTooling,
 	NewEvolutionUsecase,
-	NewGraphUsecase,
 	NewTaskUsecase,
 	NewArtifactUsecase,
 	NewKnowledgeUsecase,
 	NewEvalUsecase,
 	NewA2AUsecase,
+	NewEcosystemUsecase,
+	NewEventStoreUsecase,
+	NewWebhookUsecase,
+	NewWebhookDispatcher,
 	ProvideAgentExistenceChecker,
 )
 

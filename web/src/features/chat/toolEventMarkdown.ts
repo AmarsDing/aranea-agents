@@ -86,7 +86,13 @@ export function formatToolEventMarkdown(event: ToolUseEvent): string {
   if (event.status === "running") {
     return `工具调用：${agent} 正在使用 **${label}**${argHint}`;
   }
-  const failed = event.status === "failed" || event.status === "error" || event.status === "blocked";
+  if (event.status === "blocked") {
+    return `工具调用待确认：${agent} 使用 **${label}**${argHint}`;
+  }
+  if (event.status === "cancelled") {
+    return `工具调用已取消：${agent} 使用 **${label}**${argHint}`;
+  }
+  const failed = event.status === "failed" || event.status === "error";
   if (failed) {
     const body = formatToolResultSummary(event);
     return `工具调用失败：${agent} 使用 **${label}**${argHint}\n\n${event.error || "未知错误"}${body}`;
@@ -97,10 +103,10 @@ export function formatToolEventMarkdown(event: ToolUseEvent): string {
 }
 
 export function toolEventToMessage(sessionID: string, event: ToolUseEvent): Message {
-  const failed = event.status === "failed" || event.status === "error" || event.status === "blocked";
-  const status = event.status === "running" ? "tool_running" : failed ? "tool_failed" : "tool_success";
+  const status = toolEventMessageStatus(event.status);
+  const messageId = event.id?.trim() ? `act-${event.id.trim()}` : `tool-${event.agent_id || event.agent_key || "agent"}-${event.id || event.tool_name}`;
   return {
-    id: `tool-${event.agent_id || event.agent_key || "agent"}-${event.id || event.tool_name}`,
+    id: messageId,
     session_id: sessionID,
     parent_message_id: "",
     turn_index: 0,
@@ -113,6 +119,7 @@ export function toolEventToMessage(sessionID: string, event: ToolUseEvent): Mess
     status,
     attachments_count: 0,
     options_json: JSON.stringify({
+      schema: "chat.activity/v1",
       agent: {
         agent_id: event.agent_id,
         agent_key: event.agent_key,
@@ -124,4 +131,20 @@ export function toolEventToMessage(sessionID: string, event: ToolUseEvent): Mess
     error_message: event.error || "",
     created_at: event.occurred_at || new Date().toISOString()
   };
+}
+
+function toolEventMessageStatus(status: string): string {
+  switch (status) {
+    case "running":
+      return "tool_running";
+    case "blocked":
+      return "tool_blocked";
+    case "cancelled":
+      return "tool_cancelled";
+    case "failed":
+    case "error":
+      return "tool_failed";
+    default:
+      return "tool_success";
+  }
 }

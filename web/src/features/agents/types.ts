@@ -1,9 +1,26 @@
+export type AgentKind = "" | "llm" | "a2a_proxy";
+
+export type A2AProxyConfig = {
+  remote_url: string;
+  agent_card_url?: string;
+  enable_streaming?: boolean;
+  auth_type?: string;
+  auth_config_json?: string;
+  timeout_seconds?: number;
+};
+
 export type Agent = {
   id: string;
   agent_key: string;
   display_name: string;
   provider: string;
   model: string;
+  agent_kind?: AgentKind;
+  a2a_proxy_config?: A2AProxyConfig;
+  a2a_endpoint_enabled?: boolean;
+  last_run_status?: string;
+  last_run_at?: string;
+  pending_evolution_count?: number;
   status: string;
   is_default: boolean;
   is_favorite: boolean;
@@ -17,6 +34,7 @@ export type Agent = {
   created_at: string;
   updated_at: string;
   deleted_at: string;
+  created_by?: string;
   settings?: AgentRuntimeSettings;
   files?: AgentPromptFile[];
 };
@@ -112,6 +130,7 @@ export type AgentRuntimeSettings = {
   context_compaction_enabled?: boolean;
   session_summary_enabled?: boolean;
   skill_load_mode?: string;
+  code_executor_type?: string;
   output_schema_json?: string;
   model_selector?: string;
   channel_id?: string;
@@ -120,6 +139,14 @@ export type AgentRuntimeSettings = {
   reasoning_mode?: string;
   reasoning_level?: string;
   planner_kind?: string;
+  planner_config_json?: string;
+  ralph_loop_max_iterations?: number;
+  ralph_loop_completion_promise?: string;
+  ralph_loop_verify_command?: string;
+  ralph_loop_verify_timeout_seconds?: number;
+  ralph_loop_promise_tag_open?: string;
+  ralph_loop_promise_tag_close?: string;
+  ralph_loop_verify_work_dir?: string;
   created_at?: string;
   updated_at?: string;
 };
@@ -139,8 +166,25 @@ export type AgentListQuery = {
   status?: string;
   provider?: string;
   category_id?: string;
+  /** empty = all; "mine" = current user; otherwise user id */
+  created_by?: string;
   limit?: number;
   offset?: number;
+};
+
+export type AgentCreatorOption = {
+  user_id: string;
+  label: string;
+};
+
+export type AgentTemplatePreset = {
+  key: string;
+  label: string;
+  icon: string;
+  description: string;
+  display_name?: string;
+  provider?: string;
+  model?: string;
 };
 
 export type AgentListResult = {

@@ -4,6 +4,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/compress"
 	a2apkg "aranea-agents/internal/a2a"
+	"aranea-agents/internal/knowledge"
 	"aranea-agents/internal/skill/importer"
 	"aranea-agents/internal/team"
 
@@ -15,6 +16,7 @@ var ProviderSet = wire.NewSet(
 	wire.Bind(new(biz.NativeTurnCompressor), new(*SessionCompressor)),
 	wire.Bind(new(compress.Compressor), new(*compress.LLMService)),
 	wire.Bind(new(a2apkg.AgentTurnRunner), new(*ChatService)),
+	wire.Bind(new(EvalTurnGateway), new(*ChatService)),
 	NewCompressHTTPClient,
 	compress.NewLLMService,
 	team.ProviderSet,
@@ -26,7 +28,7 @@ var ProviderSet = wire.NewSet(
 	NewLlmProviderModelService,
 	NewHookService,
 	NewCronService,
-	NewPluginService,
+	NewPluginServiceWithBootstrap,
 	NewMCPServerService,
 	importer.NewEngine,
 	NewSkillService,
@@ -37,15 +39,21 @@ var ProviderSet = wire.NewSet(
 	NewMonitorService,
 	NewSystemSettingService,
 	NewChannelIngress,
-	NewChatService,
+	ProvideChatService,
+	ProvideEvaluationRunner,
+	NewGraphExecutionTelemetry,
+	ProvideGraphUsecase,
 	NewGraphService,
 	NewSessionCompressor,
 	NewArtifactService,
 	NewKnowledgeService,
 	NewEvaluationService,
-	NewA2AService,
+	NewA2AEndpointBuilder,
+	NewEcosystemService,
+	NewGatewayService,
 	NewKnowledgeChunker,
 	NewKnowledgeEmbedder,
-	NewEvaluationRunner,
+	wire.Bind(new(biz.EmbeddingService), new(*knowledge.Embedder)),
+	NewKnowledgeRetriever,
 	NewSkillDBRepository,
 )

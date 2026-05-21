@@ -72,7 +72,29 @@ type callAgentTool struct{}
 func (t *callAgentTool) Declaration() *trpctool.Declaration {
 	return &trpctool.Declaration{
 		Name:        "call_agent",
-		Description: "Invoke a named capability on another A2A-enabled agent in the same workspace.",
+		Description: "Invoke a named capability on another A2A-enabled agent in the same workspace. The target agent must have A2A Endpoint enabled with the requested capability.",
+		InputSchema: &trpctool.Schema{
+			Type:        "object",
+			Description: "Agent-to-agent invocation request",
+			Required:    []string{"agent_id", "capability"},
+			Properties: map[string]*trpctool.Schema{
+				"agent_id": {
+					Type:        "string",
+					Description: "Target agent ID (from A2A Discover or agent catalog)",
+				},
+				"capability": {
+					Type:        "string",
+					Description: "Capability name advertised on the target AgentCard (e.g. chat)",
+				},
+				"payload": {
+					Description: "Optional JSON payload forwarded to the target agent (e.g. {\"message\":\"...\"})",
+				},
+				"timeout_seconds": {
+					Type:        "integer",
+					Description: "Timeout in seconds (default 30)",
+				},
+			},
+		},
 	}
 }
 
@@ -102,25 +124,6 @@ func (t *callAgentTool) Call(ctx context.Context, args []byte) (any, error) {
 
 	uc := A2AUsecaseFromContext(ctx)
 	invoker := invokerFromContext(ctx)
-
-	// Verify that the target agent has A2A enabled before dispatching.
-	if uc != nil {
-		card, err := uc.GetAgentCard(ctx, in.AgentID)
-		if err != nil || !card.Enabled {
-			return nil, fmt.Errorf("call_agent: agent %q is not A2A-enabled", in.AgentID)
-		}
-		// Check that the requested capability is advertised.
-		found := false
-		for _, c := range card.Capabilities {
-			if c.Name == in.Capability {
-				found = true
-				break
-			}
-		}
-		if !found {
-			return nil, fmt.Errorf("call_agent: agent %q does not expose capability %q", in.AgentID, in.Capability)
-		}
-	}
 
 	if invoker == nil {
 		return nil, fmt.Errorf("call_agent: invoker not configured")

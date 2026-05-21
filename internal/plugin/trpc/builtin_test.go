@@ -4,8 +4,6 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
-
-	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
 func TestBuiltin_AllKeysConstruct(t *testing.T) {
@@ -15,22 +13,19 @@ func TestBuiltin_AllKeysConstruct(t *testing.T) {
 	}
 	for _, key := range keys {
 		p := biz.Plugin{Key: key, Enabled: true, ConfigJSON: "{}"}
-		if builtin(p, nil) == nil {
+		if builtin(p, nil, nil, NewRuntime(nil)) == nil {
 			t.Fatalf("expected plugin for key %q", key)
 		}
 	}
 }
 
-func TestConfirmationGuard_NeedsConfirm(t *testing.T) {
-	p := biz.Plugin{
-		Key:        "confirmation_guard",
-		ConfigJSON: `{"confirm_tools":["delete_file"],"default_action":"reject"}`,
-	}
-	plug := NewConfirmationGuardPlugin(p, nil)
-	if !plug.needsConfirm(&trpctool.BeforeToolArgs{ToolName: "delete_file", Arguments: []byte(`{}`)}) {
+func TestConfirmationGuard_MatchPolicy(t *testing.T) {
+	var cfg ConfirmationGuardConfig
+	parsePluginConfig(`{"confirm_tools":["delete_file"],"default_action":"reject"}`, "{}", &cfg)
+	if !MatchConfirmationGuard(cfg, "delete_file", []byte(`{}`)) {
 		t.Fatal("expected confirm for delete_file")
 	}
-	if plug.needsConfirm(&trpctool.BeforeToolArgs{ToolName: "read_file", Arguments: []byte(`{}`)}) {
+	if MatchConfirmationGuard(cfg, "read_file", []byte(`{}`)) {
 		t.Fatal("did not expect confirm for read_file")
 	}
 }

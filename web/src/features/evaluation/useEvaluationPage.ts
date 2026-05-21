@@ -1,7 +1,8 @@
 import { computed, onMounted, ref } from "vue";
 import { storeToRefs } from "pinia";
 import { useQuasar } from "quasar";
-import type { EvalCaseResult, EvalRun } from "./types";
+import { annotateCaseResult, compareEvalRuns, getAgentEvalTrend } from "./api";
+import type { EvalCaseResult, EvalRun, EvalRunComparison, EvalTrendPoint } from "./types";
 import { useEvaluationStore } from "../../stores/evaluation";
 
 export function useEvaluationPage() {
@@ -20,6 +21,13 @@ export function useEvaluationPage() {
   const resultsLoading = ref(false);
   const resultsRun = ref<EvalRun | null>(null);
   const caseResults = ref<EvalCaseResult[]>([]);
+  const savingResultId = ref("");
+
+  const trendAgentId = ref("");
+  const trendPoints = ref<EvalTrendPoint[]>([]);
+  const trendLoading = ref(false);
+  const comparisons = ref<EvalRunComparison[]>([]);
+  const compareLoading = ref(false);
 
   const createForm = ref({ name: "", description: "" });
   const runForm = ref({ agent_id: "", metrics: "", num_runs: 1 });
@@ -44,6 +52,10 @@ export function useEvaluationPage() {
     { name: "case_id", label: "Case", field: "case_id", align: "left" as const },
     { name: "exact_match", label: "Exact", field: "exact_match", align: "center" as const },
     { name: "contains_match", label: "Contains", field: "contains_match", align: "center" as const },
+    { name: "human_pass", label: "人工", field: "human_pass", align: "center" as const },
+    { name: "human_score", label: "分数", field: "human_score", align: "center" as const },
+    { name: "human_comment", label: "评语", field: "human_comment", align: "left" as const },
+    { name: "annotate", label: "", field: "id", align: "right" as const },
     { name: "error_message", label: "错误", field: "error_message", align: "left" as const }
   ];
 
@@ -58,6 +70,10 @@ export function useEvaluationPage() {
     await evaluationStore.loadAgentOptions();
     if (agentOptions.value.length && !runForm.value.agent_id) {
       runForm.value.agent_id = agentOptions.value[0].value;
+    }
+    if (agentOptions.value.length && !trendAgentId.value) {
+      trendAgentId.value = agentOptions.value[0].value;
+      void loadTrend();
     }
   }
 
@@ -79,6 +95,9 @@ export function useEvaluationPage() {
     runsLoading.value = true;
     try {
       await evaluationStore.loadRuns({ dataset_id: selectedDatasetId.value, limit: 50 });
+      if (trendAgentId.value) {
+        void loadTrend();
+      }
     } catch (e) {
       $q.notify({ type: "negative", message: e instanceof Error ? e.message : "加载运行记录失败" });
     } finally {
@@ -155,6 +174,57 @@ export function useEvaluationPage() {
     }
   }
 
+  function updateResultRow(row: EvalCaseResult) {
+    caseResults.value = caseResults.value.map((r) => (r.id === row.id ? row : r));
+  }
+
+  async function saveAnnotation(row: EvalCaseResult) {
+    if (!resultsRun.value) return;
+    savingResultId.value = row.id;
+    try {
+      const updated = await annotateCaseResult({
+        run_id: resultsRun.value.id,
+        result_id: row.id,
+        human_pass: row.human_pass,
+        human_score: row.human_score,
+        human_comment: row.human_comment
+      });
+      updateResultRow(updated);
+      $q.notify({ type: "positive", message: "标注已保存" });
+    } catch (e) {
+      $q.notify({ type: "negative", message: e instanceof Error ? e.message : "保存失败" });
+    } finally {
+      savingResultId.value = "";
+    }
+  }
+
+  async function loadTrend() {
+    if (!trendAgentId.value) return;
+    trendLoading.value = true;
+    try {
+      trendPoints.value = await getAgentEvalTrend({
+        agent_id: trendAgentId.value,
+        dataset_id: selectedDatasetId.value || undefined,
+        limit: 20
+      });
+    } catch (e) {
+      $q.notify({ type: "negative", message: e instanceof Error ? e.message : "加载趋势失败" });
+    } finally {
+      trendLoading.value = false;
+    }
+  }
+
+  async function submitCompare(runIds: string[]) {
+    compareLoading.value = true;
+    try {
+      comparisons.value = await compareEvalRuns(runIds);
+    } catch (e) {
+      $q.notify({ type: "negative", message: e instanceof Error ? e.message : "对比失败" });
+    } finally {
+      compareLoading.value = false;
+    }
+  }
+
   async function openResults(run: EvalRun) {
     resultsRun.value = run;
     resultsOpen.value = true;
@@ -201,6 +271,16 @@ export function useEvaluationPage() {
     submitCreate,
     confirmDeleteDataset,
     submitRun,
-    openResults
+    openResults,
+    savingResultId,
+    updateResultRow,
+    saveAnnotation,
+    trendAgentId,
+    trendPoints,
+    trendLoading,
+    comparisons,
+    compareLoading,
+    loadTrend,
+    submitCompare
   };
 }

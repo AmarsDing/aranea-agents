@@ -22,11 +22,11 @@ func (r *usageRepo) ent() *ent.Client {
 }
 
 func (r *usageRepo) GetModelUsageSummary(ctx context.Context, query biz.UsageQuery) (biz.UsageSummary, error) {
-	where, args := usageWhere(query)
+	where, args := usageWhere(query, true)
 	q := `SELECT
 		 COALESCE(SUM(call_count), 0), COUNT(*),
-		 COALESCE(SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END), 0),
-		 COALESCE(SUM(CASE WHEN status = 'failed' OR status = 'timeout' THEN 1 ELSE 0 END), 0),
+		 COALESCE(SUM(CASE WHEN `+sqlUsageStatusSuccess+` THEN 1 ELSE 0 END), 0),
+		 COALESCE(SUM(CASE WHEN `+sqlUsageStatusFailed+` THEN 1 ELSE 0 END), 0),
 		 COALESCE(SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END), 0),
 		 COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0), COALESCE(SUM(total_tokens), 0),
 		 COALESCE(SUM(total_cost_micro_usd), 0), COALESCE(AVG(latency_ms), 0), COALESCE(AVG(tokens_per_second), 0)
@@ -45,14 +45,14 @@ func (r *usageRepo) GetModelUsageSummary(ctx context.Context, query biz.UsageQue
 }
 
 func (r *usageRepo) ListModelUsageTrends(ctx context.Context, query biz.UsageQuery) ([]biz.UsageTrendPoint, error) {
-	where, args := usageWhere(query)
+	where, args := usageWhere(query, true)
 	rows, err := r.ent().QueryContext(ctx,
 		`SELECT date_key,
 		 COALESCE(SUM(call_count), 0),
 		 COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0), COALESCE(SUM(total_tokens), 0),
 		 COALESCE(SUM(total_cost_micro_usd), 0),
-		 COALESCE(SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END), 0),
-		 COALESCE(SUM(CASE WHEN status = 'failed' OR status = 'timeout' THEN 1 ELSE 0 END), 0),
+		 COALESCE(SUM(CASE WHEN `+sqlUsageStatusSuccess+` THEN 1 ELSE 0 END), 0),
+		 COALESCE(SUM(CASE WHEN `+sqlUsageStatusFailed+` THEN 1 ELSE 0 END), 0),
 		 COALESCE(SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END), 0),
 		 COALESCE(AVG(latency_ms), 0), COALESCE(AVG(tokens_per_second), 0)
 		 FROM model_token_usage_events`+where+` GROUP BY date_key ORDER BY date_key ASC`,
@@ -74,13 +74,13 @@ func (r *usageRepo) ListModelUsageTrends(ctx context.Context, query biz.UsageQue
 }
 
 func (r *usageRepo) ListTopModelUsage(ctx context.Context, query biz.UsageQuery) ([]biz.UsageBreakdownRow, error) {
-	where, args := usageWhere(query)
+	where, args := usageWhere(query, true)
 	args = append(args, usageLimit(query.Limit))
 	rows, err := r.ent().QueryContext(ctx,
 		`SELECT provider_code, model_api_id, MAX(model_display_name),
 		 COALESCE(SUM(call_count), 0), COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0), COALESCE(SUM(total_tokens), 0),
 		 COALESCE(SUM(total_cost_micro_usd), 0), COALESCE(AVG(latency_ms), 0), COALESCE(AVG(tokens_per_second), 0),
-		 COALESCE(1.0 * SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 0)
+		 COALESCE(1.0 * SUM(CASE WHEN `+sqlUsageStatusSuccess+` THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 0)
 		 FROM model_token_usage_events`+where+` GROUP BY provider_code, model_api_id ORDER BY total_cost_micro_usd DESC, call_count DESC LIMIT ?`,
 		args...,
 	)
@@ -100,13 +100,13 @@ func (r *usageRepo) ListTopModelUsage(ctx context.Context, query biz.UsageQuery)
 }
 
 func (r *usageRepo) ListTopAgentUsage(ctx context.Context, query biz.UsageQuery) ([]biz.UsageBreakdownRow, error) {
-	where, args := usageWhere(query)
+	where, args := usageWhere(query, true)
 	args = append(args, usageLimit(query.Limit))
 	rows, err := r.ent().QueryContext(ctx,
 		`SELECT agent_id, agent_key,
 		 COALESCE(SUM(call_count), 0), COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0), COALESCE(SUM(total_tokens), 0),
 		 COALESCE(SUM(total_cost_micro_usd), 0), COALESCE(AVG(latency_ms), 0), COALESCE(AVG(tokens_per_second), 0),
-		 COALESCE(1.0 * SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 0)
+		 COALESCE(1.0 * SUM(CASE WHEN `+sqlUsageStatusSuccess+` THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 0)
 		 FROM model_token_usage_events`+where+` GROUP BY agent_id, agent_key ORDER BY total_cost_micro_usd DESC, call_count DESC LIMIT ?`,
 		args...,
 	)
@@ -126,7 +126,7 @@ func (r *usageRepo) ListTopAgentUsage(ctx context.Context, query biz.UsageQuery)
 }
 
 func (r *usageRepo) ListModelUsageEvents(ctx context.Context, query biz.UsageQuery) ([]biz.TokenUsageEvent, error) {
-	where, args := usageWhere(query)
+	where, args := usageWhere(query, false)
 	args = append(args, usageLimit(query.Limit))
 	rows, err := r.ent().QueryContext(ctx,
 		`SELECT id, occurred_at, date_key, hour_key, workspace_id, user_id, team_id, agent_id, agent_key, session_id, message_id, request_id,
@@ -174,9 +174,12 @@ func scanTokenUsageEvent(row scanner) (biz.TokenUsageEvent, error) {
 	return v, err
 }
 
-func usageWhere(query biz.UsageQuery) (string, []any) {
+func usageWhere(query biz.UsageQuery, billableOnly bool) (string, []any) {
 	parts := []string{}
 	args := []any{}
+	if billableOnly {
+		parts = append(parts, sqlUsageBillableKind)
+	}
 	if query.StartDate != "" {
 		parts = append(parts, "date_key >= ?")
 		args = append(args, query.StartDate)
@@ -197,10 +200,21 @@ func usageWhere(query biz.UsageQuery) (string, []any) {
 		parts = append(parts, "agent_id = ?")
 		args = append(args, query.AgentID)
 	}
+	if query.TeamID != "" {
+		parts = append(parts, "team_id = ?")
+		args = append(args, query.TeamID)
+	}
+	if query.UsageKind != "" {
+		parts = append(parts, "usage_kind = ?")
+		args = append(args, query.UsageKind)
+	}
 	if query.Status != "" {
-		if query.Status == "abnormal" {
-			parts = append(parts, "status <> 'success'")
-		} else {
+		switch query.Status {
+		case "abnormal", "error":
+			parts = append(parts, "(status NOT IN ('success', 'ok'))")
+		case "success":
+			parts = append(parts, "(status IN ('success', 'ok'))")
+		default:
 			parts = append(parts, "status = ?")
 			args = append(args, query.Status)
 		}

@@ -228,7 +228,9 @@ body:not(.body--dark) .dashboard-side-toggle .dashboard-sell
   padding: 10px 12px 4px
 
 .chat-session-list
-  padding: 8px 10px 10px
+  padding: 4px 6px 8px
+  box-sizing: border-box
+  max-width: 100%
 
 .chat-session-actions
   min-height: 54px
@@ -357,11 +359,18 @@ body:not(.body--dark)
     .chat-session-item
       min-height: 56px
       background: rgba(255, 255, 255, 0.54)
-      transition: transform 0.16s ease, background 0.16s ease, box-shadow 0.16s ease
+      transition: transform 0.16s ease, background 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease
       &:hover
-        background: rgba(255, 255, 255, 0.86)
-        box-shadow: 0 6px 18px rgba(93, 64, 55, 0.08)
+        background: var(--glass-surface-hover)
+        border-color: color-mix(in srgb, var(--color-accent) 22%, $cream-border-soft)
+        box-shadow: var(--glass-inner-highlight)
         transform: translateY(-1px)
+    .chat-session-item--active
+      background: var(--glass-elevated) !important
+      border-color: color-mix(in srgb, var(--color-accent) 38%, $cream-border-soft) !important
+      box-shadow: var(--glass-inner-highlight), inset 3px 0 0 var(--color-accent) !important
+      color: var(--color-text-primary) !important
+      transform: none
     .chat-session-actions
       background: rgba(255, 248, 231, 0.92)
   .chat-entity-item,
@@ -429,14 +438,315 @@ body.body--dark
       min-height: 56px
       background: rgba(30, 41, 59, 0.54)
       border: 1px solid rgba(148, 163, 184, 0.12)
-      transition: transform 0.16s ease, background 0.16s ease, box-shadow 0.16s ease
+      transition: transform 0.16s ease, background 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease
       &:hover
-        background: rgba(51, 65, 85, 0.78)
-        box-shadow: 0 8px 22px rgba(0, 0, 0, 0.28)
+        background: var(--glass-surface-hover)
+        border-color: var(--glass-border-hover)
+        box-shadow: var(--glass-inner-highlight)
         transform: translateY(-1px)
+    .chat-session-item--active
+      background: var(--glass-surface-hover) !important
+      border-color: color-mix(in srgb, var(--color-accent) 42%, var(--glass-border)) !important
+      box-shadow: var(--glass-inner-highlight), inset 3px 0 0 color-mix(in srgb, var(--color-accent) 72%, transparent) !important
+      color: var(--color-text-primary) !important
+      transform: none
+
+// --- 聊天消息气泡（UX.md §5.2 玻璃卡片；昼夜仅换 token）---
+$chat-bubble-radius: 18px
+$chat-bubble-pad-y: 18px
+$chat-bubble-pad-x: 22px
+$chat-msg-gap: 20px
+$chat-user-max: 46rem
+
+.chat-page .chat-q-message .q-message-received .q-message-text,
+.chat-page .chat-q-message .q-message-sent .q-message-text,
+.chat-page .chat-q-message .q-message-text--received,
+.chat-page .chat-q-message .q-message-text--sent,
+.chat-page .chat-q-message .q-message-text-content
+  background: transparent !important
+  background-color: transparent !important
+  box-shadow: none !important
+  padding: 0 !important
+  border: none !important
+  outline: none !important
+  color: inherit !important
+
+// Quasar 默认 received 易落到 $positive（鼠尾草绿）— 必须打掉
+.chat-page .chat-q-message .q-message-text.bg-positive,
+.chat-page .chat-q-message .text-positive.q-message-text
+  background: transparent !important
+  color: inherit !important
+
+.chat-page .chat-q-message .q-message-text:before,
+.chat-page .chat-q-message .q-message-text:after
+  display: none !important
+
+.chat-page .chat-messages
+  padding-left: 12px
+  padding-right: 12px
+
+.chat-page .chat-q-message
+  width: 100%
+  max-width: 100%
+
+.chat-page .chat-message-stack
+  display: flex
+  flex-direction: column
+  align-items: flex-start
+  gap: 10px
+  width: 100%
+  max-width: 100%
+  min-width: 0
+
+.chat-page .chat-message-stack--sent
+  align-items: flex-end
+  margin-left: auto
+  width: fit-content
+  max-width: min($chat-user-max, 92%)
+
+.chat-page .chat-message-stack .message-meta-row
+  margin-bottom: 0
+  padding: 0 4px
+  gap: 8px
+
+.chat-page .chat-message-stack--sent .message-meta-row
+  justify-content: flex-end
+
+.chat-page .chat-message-bubble--received
+  width: 100%
+
+.chat-page .chat-message-bubble--sent
+  width: fit-content
+  max-width: 100%
+
+.chat-page .chat-message-bubble
+  border-radius: $chat-bubble-radius
+  padding: $chat-bubble-pad-y $chat-bubble-pad-x
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+  outline: none
+
+// Markdown 正文区（阅读宽度 ~42rem、段落节奏、表格可扫读）
+.chat-page .chat-message-prose
+  font-size: 15px
+  line-height: 1.72
+  color: inherit
+  max-width: 100%
+
+.chat-page .chat-message-prose :is(h1, h2, h3, h4, h5, h6)
+  margin: 0
+  font-weight: 650
+  line-height: 1.35
+  letter-spacing: -0.01em
+  color: var(--color-text-heading)
+
+.chat-page .chat-message-prose :is(h1, h2, h3, h4, h5, h6):not(:first-child)
+  margin-top: 1.35em
+
+.chat-page .chat-message-prose :is(h1, h2, h3, h4, h5, h6) + :is(p, ul, ol, table, blockquote, pre, .code-block)
+  margin-top: 0.5em
+
+.chat-page .chat-message-prose h1
+  font-size: 1.2rem
+.chat-page .chat-message-prose h2
+  font-size: 1.1rem
+  padding-bottom: 0.35em
+  border-bottom: 1px solid var(--glass-border)
+.chat-page .chat-message-prose h3
+  font-size: 1.02rem
+.chat-page .chat-message-prose h4,
+.chat-page .chat-message-prose h5,
+.chat-page .chat-message-prose h6
+  font-size: 0.98rem
+
+.chat-page .chat-message-prose p
+  margin: 0 0 0.9em
+.chat-page .chat-message-prose p:last-child
+  margin-bottom: 0
+
+.chat-page .chat-message-prose :is(ul, ol)
+  margin: 0.35em 0 1em
+  padding-left: 1.4em
+.chat-page .chat-message-prose ul
+  list-style-type: disc
+.chat-page .chat-message-prose ol
+  list-style-type: decimal
+.chat-page .chat-message-prose li
+  padding-left: 0.15em
+.chat-page .chat-message-prose li + li
+  margin-top: 0.45em
+.chat-page .chat-message-prose li > :is(ul, ol)
+  margin-top: 0.35em
+  margin-bottom: 0.25em
+
+.chat-page .chat-message-prose hr
+  margin: 1.15em 0
+  border: 0
+  border-top: 1px solid var(--glass-border)
+
+.chat-page .chat-message-prose table
+  display: block
+  width: 100%
+  max-width: 100%
+  margin: 0.65em 0 0.85em
+  overflow-x: auto
+  border-collapse: collapse
+  border-radius: 12px
+  border: 1px solid var(--glass-border)
+  font-size: 13px
+  line-height: 1.55
+  -webkit-overflow-scrolling: touch
+
+.chat-page .chat-message-prose thead
+  background: color-mix(in srgb, var(--glass-surface) 88%, transparent)
+
+.chat-page .chat-message-prose th,
+.chat-page .chat-message-prose td
+  padding: 12px 16px
+  border: 1px solid var(--glass-border)
+  text-align: left
+  vertical-align: top
+
+.chat-page .chat-message-prose th
+  font-weight: 650
+  color: var(--color-text-secondary)
+  font-size: 12px
+  min-width: 7.5rem
+  width: 32%
+
+.chat-page .chat-message-prose td
+  color: var(--color-text-primary)
+  word-break: break-word
+
+.chat-page .chat-message-prose blockquote
+  margin: 0.75em 0
+  padding: 0.35em 0.85em
+  border-left: 3px solid color-mix(in srgb, var(--color-accent) 55%, transparent)
+  border-radius: 0 8px 8px 0
+  background: color-mix(in srgb, var(--glass-surface) 65%, transparent)
+  color: var(--color-text-secondary)
+
+.chat-page .chat-message-prose code
+  padding: 0.12em 0.4em
+  border-radius: 6px
+  font-size: 0.9em
+  background: color-mix(in srgb, var(--canvas-base) 12%, var(--glass-surface))
+
+body:not(.body--dark) .chat-page
+  .chat-message-bubble--received
+    background: var(--glass-elevated)
+    border: 1px solid var(--glass-border)
+    box-shadow: var(--glass-inner-highlight)
+    color: var(--color-text-primary)
+  .chat-message-bubble--received .message-name
+    color: var(--color-text-primary)
+  .chat-message-bubble--received .message-stamp
+    color: var(--color-text-secondary)
+  .chat-message-bubble--sent
+    background: var(--color-accent)
+    border: 1px solid rgba(233, 162, 59, 0.42)
+    box-shadow: var(--glass-inner-highlight)
+    color: var(--color-on-accent)
+  .chat-message-bubble--sent .message-name,
+  .chat-message-bubble--sent .message-stamp
+    color: rgba(255, 255, 255, 0.94)
+  .chat-message-bubble--sent .message-stamp
+    color: rgba(255, 255, 255, 0.78)
+  .chat-q-message:hover .chat-message-bubble--received
+    background: var(--glass-surface-hover)
+    border-color: rgba(235, 220, 200, 0.85)
+  .chat-q-message:hover .chat-message-bubble--sent
+    background: var(--color-accent-hover)
+  .message-avatar--user
+    background: var(--glass-elevated) !important
+    color: var(--color-accent) !important
+    border: 1px solid var(--glass-border)
+  .chat-message-content :is(h1, h2, h3, h4, h5, h6)
+    color: var(--color-text-heading)
+  .chat-message-content a
+    color: var(--color-accent)
+    border-bottom-color: rgba(233, 162, 59, 0.45)
+  .chat-message-content a:hover
+    color: var(--color-accent-hover)
+  .chat-message-content th
+    color: var(--color-text-primary)
+    background: rgba(233, 162, 59, 0.1)
+  .chat-tool-details__summary-text
+    color: var(--color-text-primary)
+
+body.body--dark .chat-page
+  .chat-message-bubble--received,
+  .chat-message-bubble--dark.chat-message-bubble--received
+    background: var(--glass-surface)
+    border: 1px solid var(--glass-border) !important
+    box-shadow: var(--glass-inner-highlight) !important
+    color: var(--color-text-primary)
+  .chat-message-bubble--received .message-name,
+  .chat-message-bubble--dark.chat-message-bubble--received .message-name
+    color: var(--color-text-primary)
+  .chat-message-bubble--received .message-stamp,
+  .chat-message-bubble--dark.chat-message-bubble--received .message-stamp
+    color: var(--color-text-secondary)
+  .chat-message-bubble--sent,
+  .chat-message-bubble--dark.chat-message-bubble--sent
+    background: rgba(0, 229, 255, 0.12)
+    border: 1px solid rgba(0, 229, 255, 0.42)
+    box-shadow: 0 0 16px rgba(0, 229, 255, 0.12)
+    color: var(--color-text-primary)
+  .chat-message-bubble--sent .message-name,
+  .chat-message-bubble--sent .message-stamp,
+  .chat-message-bubble--dark.chat-message-bubble--sent .message-name,
+  .chat-message-bubble--dark.chat-message-bubble--sent .message-stamp
+    color: var(--color-text-primary)
+  .chat-message-bubble--sent .message-stamp,
+  .chat-message-bubble--dark.chat-message-bubble--sent .message-stamp
+    opacity: 0.72
+  .chat-q-message:hover .chat-message-bubble--received,
+  .chat-q-message:hover .chat-message-bubble--dark.chat-message-bubble--received
+    background: var(--glass-surface-hover)
+    border-color: var(--glass-border-hover)
+    box-shadow: var(--glass-inner-highlight)
+  .chat-q-message:hover .chat-message-bubble--sent,
+  .chat-q-message:hover .chat-message-bubble--dark.chat-message-bubble--sent
+    background: rgba(0, 229, 255, 0.18)
+    box-shadow: 0 0 20px rgba(0, 229, 255, 0.15)
+  .message-avatar--user
+    background: var(--glass-elevated) !important
+    color: var(--color-accent) !important
+    border: 1px solid var(--glass-border)
+    box-shadow: 0 0 12px rgba(0, 229, 255, 0.12)
+  .chat-message-content :is(h1, h2, h3, h4, h5, h6)
+    color: var(--color-text-heading)
+  .chat-message-content--dark :is(h1, h2, h3, h4, h5, h6),
+  .chat-message-bubble--received .chat-message-content :is(h1, h2, h3, h4, h5, h6)
+    color: var(--color-text-heading)
+  .chat-message-content--sent :is(h1, h2, h3, h4, h5, h6),
+  .chat-message-content--sent :is(p, li)
+    color: var(--color-text-primary)
+  .chat-message-content a
+    color: var(--color-link)
+  .chat-message-content th
+    color: var(--color-text-primary)
+    background: rgba(0, 229, 255, 0.1)
+  .chat-tool-details__summary-text
+    color: var(--color-text-primary)
+
+  .chat-message-prose thead
+    background: color-mix(in srgb, var(--glass-surface-hover) 90%, transparent)
+
+  .chat-message-prose blockquote
+    border-left-color: color-mix(in srgb, var(--color-accent) 45%, transparent)
+    background: color-mix(in srgb, var(--glass-surface) 80%, transparent)
+
+// 流式生成：左侧细强调条，禁止整卡绿色外框
+.chat-page .chat-q-message--streaming .chat-message-bubble--received
+  box-shadow: var(--glass-inner-highlight), inset 3px 0 0 var(--color-accent)
+
+body.body--dark .chat-page .chat-q-message--streaming .chat-message-bubble--received
+  box-shadow: var(--glass-inner-highlight), inset 3px 0 0 color-mix(in srgb, var(--color-accent) 70%, transparent)
 
 @media (max-width: 900px)
-  .chat-side
+  .chat-side--left
     width: 180px
     flex-basis: 180px
   .chat-toolbar-actions
@@ -729,6 +1039,347 @@ body.body--dark
   .skill-ux-dialog-card
     box-shadow: 0 0 24px rgba(0, 229, 255, 0.12)
 
+// Session detail + timeline（UX.md §2 玻璃 token）
+.session-detail-page,
+.session-timeline-dialog
+  .sessions-muted
+    color: var(--color-text-secondary)
+
+  .sessions-icon-btn
+    color: var(--color-icon-muted)
+    &:hover
+      color: var(--color-accent)
+
+  .sessions-sep
+    background: var(--glass-border)
+
+.session-timeline
+  &__toolbar
+    flex-wrap: wrap
+
+  &__filter
+    min-width: 140px
+
+  &__filter--sort
+    min-width: 120px
+
+  &__state
+    display: flex
+    flex-direction: column
+    align-items: center
+    justify-content: center
+    min-height: 200px
+    text-align: center
+    color: var(--color-text-secondary)
+
+  &__state--error
+    color: var(--color-danger)
+
+  &__rail
+    display: flex
+    flex-direction: column
+    gap: 0
+    padding: 4px 0 8px
+
+.session-timeline-stat
+  display: flex
+  align-items: center
+  gap: 12px
+  padding: 14px 16px
+  border-radius: 16px
+  background: var(--glass-surface)
+  border: 1px solid var(--glass-border)
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+  box-shadow: var(--glass-inner-highlight)
+  transition: background 0.18s ease, border-color 0.18s ease
+
+  &__icon
+    display: flex
+    align-items: center
+    justify-content: center
+    width: 36px
+    height: 36px
+    border-radius: 10px
+    flex-shrink: 0
+    color: var(--color-icon-muted)
+    background: color-mix(in srgb, var(--glass-surface) 60%, var(--color-accent) 8%)
+
+  &__value
+    font-size: 20px
+    font-weight: 850
+    line-height: 1.1
+    color: var(--color-text-primary)
+
+  &__label
+    margin-top: 2px
+    font-size: 11px
+    font-weight: 700
+    letter-spacing: 0.06em
+    text-transform: uppercase
+    color: var(--color-text-secondary)
+
+  &--message .session-timeline-stat__icon
+    color: var(--color-accent)
+
+  &--tool .session-timeline-stat__icon
+    color: var(--color-accent)
+
+  &--skill .session-timeline-stat__icon
+    color: var(--color-warning)
+
+  &--mcp .session-timeline-stat__icon
+    color: var(--color-success)
+
+.session-timeline-entry
+  display: flex
+  gap: 16px
+  align-items: stretch
+
+  &__axis
+    display: flex
+    flex-direction: column
+    align-items: center
+    width: 28px
+    flex-shrink: 0
+    padding-top: 4px
+
+  &__dot
+    display: flex
+    align-items: center
+    justify-content: center
+    width: 28px
+    height: 28px
+    border-radius: 50%
+    border: 2px solid var(--glass-border)
+    background: var(--glass-surface)
+    color: var(--color-icon-muted)
+    z-index: 1
+
+  &__line
+    flex: 1
+    width: 2px
+    min-height: 16px
+    margin-top: 4px
+    background: var(--glass-border)
+    border-radius: 1px
+
+  &:last-child .session-timeline-entry__line
+    display: none
+
+  &__card
+    flex: 1
+    min-width: 0
+    margin-bottom: 16px
+    padding: 14px 16px
+    border-radius: 16px
+    background: var(--glass-surface)
+    border: 1px solid var(--glass-border)
+    backdrop-filter: blur(var(--glass-blur-default))
+    -webkit-backdrop-filter: blur(var(--glass-blur-default))
+    box-shadow: var(--glass-inner-highlight)
+    transition: background 0.18s ease, border-color 0.18s ease
+
+  &--message .session-timeline-entry__card
+    padding: 16px 18px
+
+  &__header
+    margin: 0
+
+  &__title-row
+    display: flex
+    flex-wrap: wrap
+    align-items: center
+    gap: 8px
+
+  &__title
+    margin: 0
+    font-size: 14px
+    font-weight: 750
+    line-height: 1.35
+    color: var(--color-text-primary)
+
+  &--message .session-timeline-entry__title
+    font-size: 15px
+    font-weight: 800
+
+  &__tag
+    display: inline-flex
+    align-items: center
+    padding: 2px 8px
+    border-radius: 999px
+    font-size: 10px
+    font-weight: 700
+    letter-spacing: 0.04em
+    text-transform: uppercase
+    border: 1px solid var(--glass-border)
+    color: var(--color-text-secondary)
+    background: color-mix(in srgb, var(--glass-surface) 70%, transparent)
+
+  &__tag--user
+    color: var(--color-text-secondary)
+
+  &__tag--tool
+    color: var(--color-accent)
+    border-color: color-mix(in srgb, var(--color-accent) 35%, var(--glass-border))
+
+  &__tag--skill
+    color: var(--color-warning)
+    border-color: color-mix(in srgb, var(--color-warning) 35%, var(--glass-border))
+
+  &__tag--mcp
+    color: var(--color-success)
+    border-color: color-mix(in srgb, var(--color-success) 35%, var(--glass-border))
+
+  &__meta
+    margin-top: 6px
+    font-size: 12px
+    color: var(--color-text-secondary)
+
+  &__status
+    color: var(--color-danger)
+
+  &__preview
+    margin: 10px 0 0
+    font-size: 13px
+    line-height: 1.55
+    color: var(--color-text-primary)
+    white-space: pre-wrap
+    overflow-wrap: break-word
+
+  &__expansion
+    margin-top: 10px
+    border-radius: 12px
+    border: 1px solid var(--glass-border)
+    overflow: hidden
+
+  &__expansion-header
+    font-size: 12px
+    font-weight: 650
+    color: var(--color-text-secondary)
+
+  &__meta-row
+    display: flex
+    flex-wrap: wrap
+    gap: 4px 12px
+    padding: 10px 14px 0
+    font-size: 12px
+
+  &__meta-key
+    color: var(--color-text-secondary)
+    font-weight: 700
+    text-transform: uppercase
+    letter-spacing: 0.05em
+
+  &__meta-val
+    color: var(--color-text-primary)
+    font-weight: 650
+
+  &__detail
+    max-height: 320px
+    margin: 10px 14px 14px
+    overflow: auto
+    border-radius: 10px
+    border: 1px solid var(--glass-border)
+    background: color-mix(in srgb, var(--canvas-base) 6%, transparent)
+    color: var(--color-text-primary)
+    padding: 12px
+    white-space: pre-wrap
+    overflow-wrap: break-word
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace
+    font-size: 12px
+    line-height: 1.5
+
+  &__detail--empty
+    color: var(--color-text-secondary)
+    font-family: inherit
+
+  // Accent: user message
+  &--user .session-timeline-entry__dot
+    border-color: color-mix(in srgb, var(--color-icon-muted) 50%, var(--glass-border))
+    color: var(--color-icon-muted)
+
+  &--user .session-timeline-entry__card
+    border-left: 3px solid color-mix(in srgb, var(--color-icon-muted) 45%, transparent)
+
+  // Accent: agent message
+  &--agent .session-timeline-entry__dot
+    border-color: color-mix(in srgb, var(--color-accent) 55%, var(--glass-border))
+    color: var(--color-accent)
+
+  &--agent .session-timeline-entry__card
+    border-left: 3px solid color-mix(in srgb, var(--color-accent) 50%, transparent)
+
+  // Accent: tool
+  &--tool .session-timeline-entry__dot
+    border-color: color-mix(in srgb, var(--color-accent) 45%, var(--glass-border))
+    color: var(--color-accent)
+
+  // Accent: skill (warning/violet — not error red)
+  &--skill .session-timeline-entry__dot
+    border-color: color-mix(in srgb, var(--color-warning) 50%, var(--glass-border))
+    color: var(--color-warning)
+
+  // Accent: mcp
+  &--mcp .session-timeline-entry__dot
+    border-color: color-mix(in srgb, var(--color-success) 50%, var(--glass-border))
+    color: var(--color-success)
+
+  // Accent: error
+  &--error .session-timeline-entry__dot
+    border-color: var(--color-danger)
+    color: var(--color-danger)
+    background: color-mix(in srgb, var(--color-danger) 12%, var(--glass-surface))
+
+  &--error .session-timeline-entry__card
+    border-left: 3px solid var(--color-danger)
+
+body:not(.body--dark)
+  .session-timeline-stat:hover
+    background: var(--glass-surface-hover)
+    border-color: var(--glass-border)
+
+  .session-timeline-entry__card:hover
+    background: var(--glass-surface-hover)
+
+  .session-timeline-entry--skill .session-timeline-entry__dot
+    color: var(--color-warning)
+
+  .session-timeline__filter .q-field__control
+    background: rgba(255, 255, 255, 0.5)
+    border-radius: 14px
+    backdrop-filter: blur(8px)
+    -webkit-backdrop-filter: blur(8px)
+
+body.body--dark
+  .session-timeline-stat:hover
+    background: var(--glass-surface-hover)
+    border-color: var(--glass-border-hover)
+
+  .session-timeline-entry__card:hover
+    background: var(--glass-surface-hover)
+    border-color: var(--glass-border-hover)
+
+  .session-timeline-entry--skill .session-timeline-entry__dot
+    border-color: color-mix(in srgb, var(--color-neon-violet) 55%, var(--glass-border))
+    color: var(--color-neon-violet)
+
+  .session-timeline-stat--skill .session-timeline-stat__icon
+    color: var(--color-neon-violet)
+
+  .session-timeline-entry__tag--skill
+    color: var(--color-neon-violet)
+    border-color: color-mix(in srgb, var(--color-neon-violet) 35%, var(--glass-border))
+
+  .session-timeline__filter .q-field__control
+    background: rgba(18, 24, 34, 0.45)
+    border-radius: 14px
+    backdrop-filter: blur(8px)
+    -webkit-backdrop-filter: blur(8px)
+
+  .session-timeline__filter .q-field--focused .q-field__control
+    border-color: var(--color-accent) !important
+
 body.body--dark .skill-editor-card
   box-shadow: 0 0 32px rgba(0, 229, 255, 0.1)
 
@@ -808,6 +1459,48 @@ body.body--dark .monitor-log-banner
   backdrop-filter: blur(var(--glass-blur-default))
   -webkit-backdrop-filter: blur(var(--glass-blur-default))
 
+.monitor-info-banner
+  background: var(--color-status-info-bg-alt)
+  color: var(--color-status-info-text)
+  border: 1px solid var(--glass-border)
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+
+  :deep(.q-banner__content)
+    color: inherit
+
+body:not(.body--dark) .monitor-alert-rule-row
+  background: var(--interaction-surface-hover, var(--glass-elevated))
+  border: 1px solid var(--glass-border)
+
+body.body--dark .monitor-info-banner
+  background: rgb(30 58 138 / 35%)
+  color: var(--color-status-info-text-light)
+  border-color: var(--glass-border)
+
+body.body--dark .monitor-alert-rule-row
+  background: rgb(15 23 42 / 55%)
+  border: 1px solid var(--glass-border)
+
+body.body--dark .monitor-alert-rules
+  color: var(--color-text-primary)
+
+  .text-h6
+    color: var(--color-text-primary)
+
+  :deep(.q-field__control)
+    background: rgb(15 23 42 / 72%)
+
+  :deep(.q-field__native),
+  :deep(.q-field__input)
+    color: var(--color-text-primary)
+
+  :deep(.q-field__label)
+    color: var(--color-text-secondary)
+
+  :deep(.q-toggle__label)
+    color: var(--color-text-primary)
+
 .monitor-log-console
   background: color-mix(in srgb, var(--canvas-base) 6%, #0f172a)
   border-radius: 16px
@@ -817,6 +1510,169 @@ body.body--dark .monitor-log-banner
   min-height: 320px
   overflow: auto
   padding: 14px
+
+.monitor-log-stream-card
+  display: flex
+  flex-direction: column
+  flex: 1
+  min-height: 0
+  height: 100%
+
+.monitor-log-stream-toolbar
+  flex: 0 0 auto
+  display: flex
+  flex-wrap: wrap
+  align-items: center
+  justify-content: space-between
+  gap: 12px 16px
+
+.monitor-log-stream-toolbar__info
+  flex: 1 1 240px
+  min-width: 0
+
+$monitor-log-control-h: 36px
+
+.monitor-log-toolbar-controls
+  display: flex
+  flex-wrap: wrap
+  align-items: center
+  justify-content: flex-end
+  gap: 8px
+  flex: 1 1 420px
+
+.monitor-log-toolbar-controls > *
+  flex: 0 0 auto
+
+.monitor-log-toolbar-field
+  height: $monitor-log-control-h
+
+  :deep(.q-field)
+    height: $monitor-log-control-h
+    font-size: 13px
+
+  :deep(.q-field__inner)
+    height: $monitor-log-control-h
+    min-height: $monitor-log-control-h
+    padding-bottom: 0
+
+  :deep(.q-field__control)
+    height: $monitor-log-control-h !important
+    min-height: $monitor-log-control-h !important
+
+  :deep(.q-field__control-container)
+    padding-top: 0 !important
+
+  :deep(.q-field__marginal)
+    height: $monitor-log-control-h !important
+
+  :deep(.q-field__native),
+  :deep(.q-field__input)
+    min-height: $monitor-log-control-h !important
+    line-height: $monitor-log-control-h !important
+    padding-top: 0 !important
+    padding-bottom: 0 !important
+
+  :deep(.q-field__append)
+    height: $monitor-log-control-h !important
+
+.monitor-log-toolbar-field--filter
+  width: 176px
+
+.monitor-log-toolbar-field--source
+  width: 140px
+
+.monitor-log-toolbar-btn
+  height: $monitor-log-control-h !important
+  min-height: $monitor-log-control-h !important
+  padding: 0 12px !important
+  font-size: 13px
+
+  :deep(.q-btn__content)
+    min-height: $monitor-log-control-h
+    align-items: center
+
+  :deep(.q-icon)
+    font-size: 18px
+
+.monitor-log-level-toggle
+  display: inline-flex
+  align-items: center
+  gap: 2px
+  height: $monitor-log-control-h
+  box-sizing: border-box
+  padding: 3px
+  border-radius: 8px
+  border: 1px solid var(--glass-border)
+  background: color-mix(in srgb, var(--canvas-base) 8%, transparent)
+  flex-shrink: 0
+
+.monitor-log-level-toggle__btn
+  border: 1px solid transparent
+  border-radius: 6px
+  height: calc(#{$monitor-log-control-h} - 6px)
+  display: inline-flex
+  align-items: center
+  justify-content: center
+  padding: 0 10px
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace
+  font-size: 11px
+  font-weight: 700
+  letter-spacing: 0.05em
+  line-height: 1
+  cursor: pointer
+  color: var(--color-text-secondary)
+  background: transparent
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease
+
+  &:hover:not(.monitor-log-level-toggle__btn--active)
+    background: color-mix(in srgb, var(--color-text-primary) 6%, transparent)
+    color: var(--color-text-primary)
+
+  &--active
+    box-shadow: 0 1px 4px color-mix(in srgb, var(--canvas-base) 40%, transparent)
+
+  &--active.monitor-log-level-toggle__btn--debug
+    background: color-mix(in srgb, #64748b 22%, transparent)
+    border-color: color-mix(in srgb, #94a3b8 45%, transparent)
+    color: #cbd5e1
+
+  &--active.monitor-log-level-toggle__btn--info
+    background: color-mix(in srgb, var(--color-accent) 24%, transparent)
+    border-color: color-mix(in srgb, var(--color-accent) 50%, transparent)
+    color: var(--color-accent-hover)
+
+  &--active.monitor-log-level-toggle__btn--warn
+    background: color-mix(in srgb, #f59e0b 22%, transparent)
+    border-color: color-mix(in srgb, #fbbf24 45%, transparent)
+    color: #fcd34d
+
+  &--active.monitor-log-level-toggle__btn--error
+    background: color-mix(in srgb, #ef4444 22%, transparent)
+    border-color: color-mix(in srgb, #f87171 45%, transparent)
+    color: #fca5a5
+
+body:not(.body--dark) .monitor-log-level-toggle__btn--active.monitor-log-level-toggle__btn--debug
+  color: #475569
+
+body:not(.body--dark) .monitor-log-level-toggle__btn--active.monitor-log-level-toggle__btn--info
+  color: var(--color-accent)
+
+body:not(.body--dark) .monitor-log-level-toggle__btn--active.monitor-log-level-toggle__btn--warn
+  color: #b45309
+
+body:not(.body--dark) .monitor-log-level-toggle__btn--active.monitor-log-level-toggle__btn--error
+  color: #b91c1c
+
+.monitor-log-stream-body
+  flex: 1
+  min-height: 0
+  display: flex
+  flex-direction: column
+
+.monitor-log-console--fill
+  flex: 1
+  min-height: 0
+  height: 100%
 
 .monitor-log-line
   display: flex
@@ -841,6 +1697,20 @@ body.body--dark .monitor-log-level
 .monitor-log-line--error .monitor-log-level
   color: var(--color-danger)
 
+.monitor-log-line--flow-ok .monitor-log-title,
+.monitor-log-line--flow-info .monitor-log-title
+  color: var(--color-success, #21ba45)
+
+.monitor-log-line--flow-warn .monitor-log-title
+  color: var(--color-warning)
+
+.monitor-log-line--flow-error .monitor-log-title,
+.monitor-log-line--flow-critical .monitor-log-title
+  color: var(--color-danger)
+
+.monitor-log-line--flow-critical
+  font-weight: 600
+
 .monitor-log-empty
   color: var(--color-text-secondary)
   display: grid
@@ -863,3 +1733,229 @@ body.body--dark
 
   .monitor-json
     border-color: var(--glass-border)
+
+// --- 概览页（Usage Overview）— UX.md 玻璃 token，昼夜仅换变量 ---
+.overview-page
+  color: var(--color-text-primary)
+
+body:not(.body--dark) .overview-page
+  background: linear-gradient(160deg, #FFF8E7 0%, var(--canvas-base) 42%, #F0E6D8 100%)
+
+body.body--dark .overview-page
+  background: linear-gradient(165deg, var(--canvas-base) 0%, #0c1220 48%, #151b28 100%)
+
+.overview-page__shell
+  max-width: 1440px
+  margin: 0 auto
+  padding: 12px 12px 28px
+  @media (min-width: 1024px)
+    padding: 16px 24px 36px
+
+.overview-section
+  margin-top: 16px
+
+.overview-metrics-row
+  margin-bottom: 4px
+
+.overview-content
+  position: relative
+  min-height: 120px
+
+.overview-section-title
+  color: var(--color-text-primary)
+  font-weight: 600
+
+.overview-section-caption,
+.overview-section-label,
+.overview-item-caption
+  color: var(--color-text-secondary) !important
+
+.overview-filter-card,
+.overview-panel,
+.overview-metric-card
+  border-radius: 18px !important
+  background: var(--glass-surface) !important
+  border: 1px solid var(--glass-border) !important
+  box-shadow: var(--glass-inner-highlight) !important
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+  transition: background 0.18s ease, border-color 0.18s ease
+
+body:not(.body--dark) .overview-filter-card:hover,
+body:not(.body--dark) .overview-panel:hover,
+body:not(.body--dark) .overview-metric-card:hover
+  background: var(--glass-surface-hover) !important
+
+body.body--dark .overview-filter-card:hover,
+body.body--dark .overview-panel:hover,
+body.body--dark .overview-metric-card:hover
+  background: var(--glass-surface-hover) !important
+  border-color: var(--glass-border-hover) !important
+
+.overview-metric-card__body
+  padding: 14px 16px !important
+
+.overview-metric-card__label
+  font-size: 0.75rem
+  font-weight: 600
+  color: var(--color-text-secondary)
+
+.overview-metric-card__value
+  font-size: clamp(1.25rem, 2vw, 1.5rem)
+  font-weight: 800
+  line-height: 1.2
+  margin: 6px 0 4px
+  color: var(--color-text-primary)
+
+.overview-metric-card__caption
+  font-size: 0.75rem
+  color: var(--color-text-secondary)
+
+.overview-metric-card__caption--up
+  color: var(--color-success) !important
+
+.overview-metric-card__caption--down
+  color: var(--color-danger) !important
+
+.overview-metric-card__caption--warn
+  color: var(--color-warning) !important
+
+.overview-metric-card__caption--danger
+  color: var(--color-danger) !important
+
+.overview-primary-btn
+  background: var(--color-accent) !important
+  color: var(--color-on-accent, #fff) !important
+  border-radius: 12px
+  font-weight: 600
+
+body:not(.body--dark) .overview-primary-btn:hover
+  background: var(--color-accent-hover) !important
+
+body.body--dark .overview-primary-btn
+  border: 1px solid var(--color-accent) !important
+  background: rgba(0, 229, 255, 0.14) !important
+  color: var(--color-accent) !important
+  box-shadow: 0 0 14px rgba(0, 229, 255, 0.2)
+
+.overview-summary-panel
+  min-height: 100%
+
+.overview-summary-list .q-item
+  min-height: 40px
+
+.overview-summary-label
+  color: var(--color-text-secondary)
+
+.overview-summary-value
+  font-weight: 700
+  color: var(--color-text-primary)
+
+.overview-separator
+  background: var(--glass-border) !important
+
+.overview-chip
+  color: var(--color-accent) !important
+  border: 1px solid var(--glass-border) !important
+  background: var(--color-info-soft) !important
+
+.overview-trend-grid
+  align-items: end
+  display: grid
+  grid-template-columns: repeat(auto-fill, minmax(36px, 1fr))
+  gap: 10px
+  min-height: 200px
+  padding-top: 8px
+
+.overview-trend-bar
+  display: flex
+  flex-direction: column
+  align-items: center
+  gap: 6px
+  min-width: 0
+
+.overview-trend-bar__track
+  width: 100%
+  max-width: 48px
+  height: 160px
+  display: flex
+  align-items: flex-end
+  border-radius: 999px
+  background: var(--color-info-soft)
+  overflow: hidden
+
+.overview-trend-bar__fill
+  width: 100%
+  border-radius: 999px 999px 4px 4px
+  min-height: 4px
+
+body:not(.body--dark) .overview-trend-bar__fill
+  background: linear-gradient(180deg, var(--color-accent-hover), var(--color-accent))
+
+body.body--dark .overview-trend-bar__fill
+  background: linear-gradient(180deg, var(--color-neon-violet), var(--color-neon-cyan))
+
+.overview-trend-bar__label
+  color: var(--color-text-secondary)
+  font-size: 0.7rem
+
+.overview-empty
+  min-height: 180px
+  display: grid
+  place-items: center
+  color: var(--color-text-secondary)
+
+.overview-empty--compact
+  min-height: 80px
+
+.overview-empty-inline
+  color: var(--color-text-secondary)
+
+.overview-rank-value
+  font-weight: 700
+  color: var(--color-text-primary)
+
+.overview-agent-avatar
+  background: var(--color-info-soft) !important
+  color: var(--color-accent) !important
+
+body.body--dark .overview-agent-avatar
+  border: 1px solid var(--glass-border)
+
+.overview-anomaly-table
+  background: transparent !important
+
+.overview-anomaly-table thead th
+  color: var(--color-text-secondary)
+  font-weight: 600
+  font-size: 0.75rem
+  border-bottom: 1px solid var(--glass-border)
+
+.overview-anomaly-table tbody td
+  color: var(--color-text-primary)
+  border-bottom: 1px solid var(--glass-border)
+
+.overview-anomaly-error
+  max-width: 280px
+  color: var(--color-text-secondary)
+
+.overview-status-badge--error
+  color: var(--color-danger) !important
+  border-color: rgba(229, 92, 92, 0.45) !important
+  background: var(--color-danger-soft) !important
+
+.overview-flag-chip
+  color: var(--color-warning) !important
+  border-color: rgba(240, 155, 84, 0.45) !important
+  background: var(--color-warning-soft) !important
+
+body:not(.body--dark) .overview-page .q-field--outlined .q-field__control
+  background: rgba(255, 253, 245, 0.65)
+
+body.body--dark .overview-page .q-field--outlined .q-field__control
+  background: rgba(30, 41, 59, 0.55)
+  border-color: var(--glass-border) !important
+
+body.body--dark .overview-page .q-field--focused .q-field__control
+  border-color: var(--color-accent) !important
+  box-shadow: 0 0 0 2px rgba(0, 229, 255, 0.18)

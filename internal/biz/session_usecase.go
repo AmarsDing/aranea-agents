@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"aranea-agents/pkg/safego"
+
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
 )
@@ -84,6 +86,30 @@ type SessionListResult struct {
 	Total  int
 	Limit  int
 	Offset int
+}
+
+// MessageSearchQuery filters message full-text search.
+type MessageSearchQuery struct {
+	SessionID string
+	Keyword   string
+	Limit     int
+	Offset    int
+}
+
+// MessageSearchHit is one search result row.
+type MessageSearchHit struct {
+	ID               string
+	SessionID        string
+	Role             string
+	ContentMarkdown  string
+	Highlight        string
+	CreatedAt        string
+}
+
+// MessageSearchResult is paginated message search output.
+type MessageSearchResult struct {
+	Items []MessageSearchHit
+	Total int
 }
 
 // ChatMessage is one messages row for timeline assembly.
@@ -270,19 +296,22 @@ type SessionRepository interface {
 	DeleteSession(ctx context.Context, id string) error
 	DeleteSessionsByAgentID(ctx context.Context, agentID string) error
 	ListMessagesBySession(ctx context.Context, sessionID string) ([]ChatMessage, error)
+	SearchMessages(ctx context.Context, q MessageSearchQuery) (MessageSearchResult, error)
 	ListToolInvocationsBySession(ctx context.Context, sessionID string, limit int) ([]ToolInvocationView, error)
 	ListSkillInvocationsBySession(ctx context.Context, sessionID string, limit int) ([]SkillInvocationView, error)
 	// AppendChatTurn inserts user + assistant rows and updates session aggregates (native chat).
 	AppendChatTurn(ctx context.Context, sessionID string, user, assistant ChatMessage) error
 	// AppendChatMessage inserts a single message row and updates session aggregates.
 	AppendChatMessage(ctx context.Context, sessionID string, msg ChatMessage, bumpModelCall bool) error
+	// UpsertChatActivityMessage inserts or updates a chat.activity/v1 row keyed by message id.
+	UpsertChatActivityMessage(ctx context.Context, sessionID string, msg ChatMessage) error
 	// UpdateRunnerSnapshotJSON persists Runner session snapshot (events + KV state).
 	UpdateRunnerSnapshotJSON(ctx context.Context, sessionID string, snapshotJSON string) error
 	// UpdateSessionContextFromLLMUsage updates context bar fields from the latest model call (prompt vs context window).
 	UpdateSessionContextFromLLMUsage(ctx context.Context, sessionID string, promptTokens, completionTokens, contextWindow int) error
 	// UpdateSessionContextAfterCompression sets estimated prompt usage after ADK snapshot compaction (summary + tail).
 	UpdateSessionContextAfterCompression(ctx context.Context, sessionID string, estimatedPromptTokens int, contextWindow int) error
-	// Session summaries (session_summaries DDL via sessionmemory.EnsureSchema).
+	// Session summaries (session_summaries DDL via data.EnsureSessionMemorySchema).
 	InsertSessionSummary(ctx context.Context, row SessionSummary) error
 	MaxSessionSummaryToTurn(ctx context.Context, sessionID string) (int, error)
 	ListSessionSummaries(ctx context.Context, sessionID string) ([]SessionSummary, error)
@@ -299,6 +328,10 @@ type SessionRepository interface {
 	GetSessionTurn(ctx context.Context, id string) (SessionTurn, error)
 	// IncrementInvocationCounts bumps session-level tool / MCP / skill counters after a runtime invocation.
 	IncrementInvocationCounts(ctx context.Context, sessionID string, toolDelta, mcpDelta, skillDelta int) error
+	// ListSessionsForBatch returns sessions matching search scope with limit/offset pagination.
+	ListSessionsForBatch(ctx context.Context, q SessionSearchQuery) ([]Session, error)
+	ArchiveSessionsByIDs(ctx context.Context, ids []string) (processed int, failed []string, err error)
+	DeleteSessionsByIDs(ctx context.Context, ids []string) (processed int, failed []string, err error)
 }
 
 // SessionUsecase handles session CRUD + timeline（不包含发送消息）.
@@ -384,10 +417,38 @@ func (uc *SessionUsecase) Restore(ctx context.Context, id string) (Session, erro
 }
 
 func (uc *SessionUsecase) Archive(ctx context.Context, id string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return validationErr("session id is required")
+	}
+	sess, err := uc.sessions.GetSessionByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if sess.Status == "running" {
+		return validationErr("running session cannot be archived")
+	}
+	if sess.Status == "archived" {
+		return nil
+	}
 	return uc.sessions.ArchiveSession(ctx, id)
 }
 
 func (uc *SessionUsecase) Delete(ctx context.Context, id string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return validationErr("session id is required")
+	}
+	sess, err := uc.sessions.GetSessionByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if sess.Status == "running" {
+		return validationErr("running session cannot be deleted")
+	}
+	if strings.TrimSpace(sess.DeletedAt) != "" {
+		return nil
+	}
 	return uc.sessions.DeleteSession(ctx, id)
 }
 
@@ -399,6 +460,19 @@ func (uc *SessionUsecase) DeleteByAgent(ctx context.Context, agentID string) err
 }
 
 // ListMessages returns raw chat rows for a session (same store as timeline messages).
+func (uc *SessionUsecase) SearchMessages(ctx context.Context, q MessageSearchQuery) (MessageSearchResult, error) {
+	if uc == nil || uc.sessions == nil {
+		return MessageSearchResult{}, nil
+	}
+	if strings.TrimSpace(q.SessionID) == "" {
+		return MessageSearchResult{}, validationErr("session_id is required")
+	}
+	if strings.TrimSpace(q.Keyword) == "" {
+		return MessageSearchResult{}, validationErr("keyword is required")
+	}
+	return uc.sessions.SearchMessages(ctx, q)
+}
+
 func (uc *SessionUsecase) ListMessages(ctx context.Context, sessionID string) ([]ChatMessage, error) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
@@ -430,6 +504,21 @@ func (uc *SessionUsecase) AppendChatMessage(ctx context.Context, sessionID strin
 		_ = uc.maybeAutoTitleFromUserMessage(ctx, sessionID, msg.ContentMarkdown)
 	}
 	return nil
+}
+
+// UpsertChatActivityMessage persists a tool/MCP/Skill execution card for chat history restore.
+func (uc *SessionUsecase) UpsertChatActivityMessage(ctx context.Context, sessionID string, msg ChatMessage) error {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return validationErr("session id is required")
+	}
+	if strings.TrimSpace(msg.ID) == "" {
+		return validationErr("message id is required")
+	}
+	if _, err := uc.sessions.GetSessionByID(ctx, sessionID); err != nil {
+		return err
+	}
+	return uc.sessions.UpsertChatActivityMessage(ctx, sessionID, msg)
 }
 
 // UpdateRunnerSnapshotJSON persists the Runner session snapshot.
@@ -546,7 +635,9 @@ func (uc *SessionUsecase) maybeAutoTitleFromUserMessage(ctx context.Context, ses
 	if snippet != "" {
 		_, _ = uc.Rename(ctx, sessionID, snippet)
 	}
-	go uc.generateTitleAsync(sessionID, content)
+	safego.Go(context.Background(), "generate-title-async", func() {
+		uc.generateTitleAsync(sessionID, content)
+	})
 	return nil
 }
 

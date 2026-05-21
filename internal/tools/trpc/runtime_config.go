@@ -60,3 +60,21 @@ func configString(m map[string]any, keys ...string) string {
 	}
 	return ""
 }
+
+// ResolveGeminiFetchModel fills GeminiModel when gemini_web_fetch is enabled but the tool
+// has no per-agent override; uses the agent's chat model when its provider is Gemini-like.
+func ResolveGeminiFetchModel(cfg *ToolsetConfig, agentProvider, agentModel string) {
+	if cfg == nil || !cfg.GeminiFetch || strings.TrimSpace(cfg.GeminiModel) != "" {
+		return
+	}
+	model := strings.TrimSpace(agentModel)
+	if model == "" || !isGeminiLikeProvider(agentProvider) {
+		return
+	}
+	cfg.GeminiModel = model
+}
+
+func isGeminiLikeProvider(provider string) bool {
+	p := strings.ToLower(strings.TrimSpace(provider))
+	return strings.Contains(p, "gemini") || strings.Contains(p, "google")
+}

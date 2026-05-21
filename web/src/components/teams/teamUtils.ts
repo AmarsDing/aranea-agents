@@ -10,7 +10,11 @@ export const modeOptions = [
   { label: "并行 parallel", value: "parallel" },
   { label: "主控 coordinator", value: "coordinator" },
   { label: "生成评审 critic_loop", value: "critic_loop" },
-  { label: "自适应 adaptive", value: "adaptive" }
+  {
+    label: "群智 adaptive（Swarm）",
+    value: "adaptive",
+    description: "成员间 transfer_to_agent 协作；后端与 swarm 共用 Swarm 运行时。"
+  }
 ];
 
 export const statusOptions = ["draft", "active", "archived"].map((value) => ({ label: value, value }));

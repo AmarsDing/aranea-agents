@@ -2,9 +2,13 @@ import { defineStore } from "pinia";
 import { ref } from "vue";
 import {
   discoverAgents,
+  discoverRemoteAgent,
+  deleteRemoteAgent,
   getAgentCard,
   invokeA2A,
   listA2AAudit,
+  listRemoteAgents,
+  registerRemoteAgent,
   updateAgentCard
 } from "../../features/a2a/api";
 import type {
@@ -12,9 +16,12 @@ import type {
   A2AAuditEntry,
   A2AInvokeInput,
   A2AInvokeResult,
+  A2ARemoteAgent,
   DiscoverParams,
+  DiscoverRemoteInput,
   ListAuditParams,
   ListAuditResult,
+  RegisterRemoteAgentInput,
   UpdateAgentCardInput
 } from "../../features/a2a/types";
 
@@ -22,6 +29,7 @@ export const useA2AStore = defineStore("a2a", () => {
   const agentCards = ref<A2AAgentCard[]>([]);
   const auditLog = ref<A2AAuditEntry[]>([]);
   const auditTotal = ref(0);
+  const remoteAgents = ref<A2ARemoteAgent[]>([]);
   const loading = ref(false);
 
   async function discover(params: DiscoverParams = {}): Promise<A2AAgentCard[]> {
@@ -58,15 +66,40 @@ export const useA2AStore = defineStore("a2a", () => {
     return result;
   }
 
+  async function loadRemoteAgents(workspace = ""): Promise<A2ARemoteAgent[]> {
+    remoteAgents.value = await listRemoteAgents(workspace);
+    return remoteAgents.value;
+  }
+
+  async function registerRemote(input: RegisterRemoteAgentInput): Promise<A2ARemoteAgent> {
+    const created = await registerRemoteAgent(input);
+    remoteAgents.value = [created, ...remoteAgents.value.filter((r) => r.id !== created.id)];
+    return created;
+  }
+
+  async function removeRemote(id: string): Promise<void> {
+    await deleteRemoteAgent(id);
+    remoteAgents.value = remoteAgents.value.filter((r) => r.id !== id);
+  }
+
+  async function previewRemote(input: DiscoverRemoteInput): Promise<A2AAgentCard> {
+    return discoverRemoteAgent(input);
+  }
+
   return {
     agentCards,
     auditLog,
     auditTotal,
+    remoteAgents,
     loading,
     discover,
     refreshCard,
     updateCard,
     invoke,
-    loadAudit
+    loadAudit,
+    loadRemoteAgents,
+    registerRemote,
+    removeRemote,
+    previewRemote
   };
 });

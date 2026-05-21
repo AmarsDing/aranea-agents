@@ -2,41 +2,51 @@ package plugintrpc
 
 import (
 	"context"
-	"encoding/json"
-	"log/slog"
-	"time"
+	"fmt"
+	"strings"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 
 	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
-type skillTrackerConfig struct {
-	TrackSuccess          bool `json:"track_success"`
-	TrackFailure          bool `json:"track_failure"`
-	CaptureInputPreview     bool `json:"capture_input_preview"`
-	CaptureOutputPreview    bool `json:"capture_output_preview"`
-	MaxPreviewLength        int  `json:"max_preview_length"`
+type skillUsageConfig struct {
+	TrackSuccess         bool `json:"track_success"`
+	TrackFailure         bool `json:"track_failure"`
+	CaptureInputPreview  bool `json:"capture_input_preview"`
+	CaptureOutputPreview bool `json:"capture_output_preview"`
+	MaxPreviewLength     int  `json:"max_preview_length"`
 }
 
 type SkillUsageTrackerPlugin struct {
-	name  string
-	cfg   skillTrackerConfig
-	stats StatsRecorder
+	name   string
+	cfg    skillUsageConfig
+	stats  StatsRecorder
+	logger *PluginSafeLogger
 }
 
 var _ trpcplugin.Plugin = (*SkillUsageTrackerPlugin)(nil)
 
-func NewSkillUsageTrackerPlugin(p biz.Plugin, stats StatsRecorder) *SkillUsageTrackerPlugin {
-	var cfg skillTrackerConfig
+func NewSkillUsageTrackerPlugin(p biz.Plugin, stats StatsRecorder, bus event.Bus) *SkillUsageTrackerPlugin {
+	var cfg skillUsageConfig
 	cfg.TrackSuccess = true
 	cfg.TrackFailure = true
 	cfg.CaptureInputPreview = true
 	cfg.CaptureOutputPreview = true
 	cfg.MaxPreviewLength = 500
 	parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg)
-	return &SkillUsageTrackerPlugin{name: p.Key, cfg: cfg, stats: stats}
+	if cfg.MaxPreviewLength <= 0 {
+		cfg.MaxPreviewLength = 500
+	}
+	name := p.Key
+	return &SkillUsageTrackerPlugin{
+		name:   name,
+		cfg:    cfg,
+		stats:  stats,
+		logger: NewPluginSafeLogger(name, bus),
+	}
 }
 
 func (s *SkillUsageTrackerPlugin) Name() string { return s.name }
@@ -46,61 +56,64 @@ func (s *SkillUsageTrackerPlugin) Register(r *trpcplugin.Registry) {
 	r.AfterTool(s.afterTool)
 }
 
+func isSkillTool(name string) bool {
+	name = strings.ToLower(strings.TrimSpace(name))
+	switch name {
+	case "use_skill", "skill_search":
+		return true
+	}
+	return strings.HasPrefix(name, "skill_")
+}
+
 func (s *SkillUsageTrackerPlugin) beforeTool(ctx context.Context, args *trpctool.BeforeToolArgs) (*trpctool.BeforeToolResult, error) {
-	if args != nil && s.cfg.CaptureInputPreview {
+	if args == nil || !isSkillTool(args.ToolName) {
+		return &trpctool.BeforeToolResult{Context: ctx}, nil
+	}
+	if s.cfg.CaptureInputPreview {
 		preview := truncateString(string(args.Arguments), s.cfg.MaxPreviewLength)
-		sid, akey := sessionAgentKey(ctx, nil)
-		slog.Info("skill_usage.before_tool",
-			"plugin", s.name,
+		s.logger.Info("plugin.skill_tracker.before_tool",
 			"tool", args.ToolName,
-			"session_id", sid,
-			"agent_key", akey,
-			"args_preview", preview,
+			"input_preview", preview,
 		)
 	}
-	s.record(ctx, "before_tool", "ok")
 	return &trpctool.BeforeToolResult{Context: ctx}, nil
 }
 
 func (s *SkillUsageTrackerPlugin) afterTool(ctx context.Context, args *trpctool.AfterToolArgs) (*trpctool.AfterToolResult, error) {
-	status := "ok"
-	if args != nil && args.Error != nil {
+	if args == nil || !isSkillTool(args.ToolName) {
+		return &trpctool.AfterToolResult{}, nil
+	}
+	status := "success"
+	if args.Error != nil {
 		status = "error"
 	}
-	if args != nil {
-		if (status == "ok" && s.cfg.TrackSuccess) || (status == "error" && s.cfg.TrackFailure) {
-			out := ""
-			if s.cfg.CaptureOutputPreview && args.Result != nil {
-				out = truncateString(fmtAny(args.Result), s.cfg.MaxPreviewLength)
-			}
-			sid, akey := sessionAgentKey(ctx, nil)
-			slog.Info("skill_usage.after_tool",
-				"plugin", s.name,
-				"tool", args.ToolName,
-				"session_id", sid,
-				"agent_key", akey,
-				"status", status,
-				"output_preview", out,
-				"at", time.Now().UTC().Format(time.RFC3339),
-			)
-		}
+	if status == "error" && !s.cfg.TrackFailure {
+		return &trpctool.AfterToolResult{}, nil
 	}
+	if status == "success" && !s.cfg.TrackSuccess {
+		return &trpctool.AfterToolResult{}, nil
+	}
+	fields := []any{"tool", args.ToolName, "status", status}
+	if s.cfg.CaptureOutputPreview && args.Result != nil {
+		fields = append(fields, "output_preview", truncateString(formatToolResult(args.Result), s.cfg.MaxPreviewLength))
+	}
+	s.logger.Info("plugin.skill_tracker.after_tool", fields...)
 	s.record(ctx, "after_tool", status)
 	return &trpctool.AfterToolResult{}, nil
 }
 
-func fmtAny(v any) string {
-	if v == nil {
+func formatToolResult(result any) string {
+	if result == nil {
 		return ""
 	}
-	if s, ok := v.(string); ok {
-		return s
+	switch v := result.(type) {
+	case string:
+		return v
+	case []byte:
+		return string(v)
+	default:
+		return fmt.Sprintf("%v", v)
 	}
-	b, err := json.Marshal(v)
-	if err != nil {
-		return ""
-	}
-	return string(b)
 }
 
 func (s *SkillUsageTrackerPlugin) record(ctx context.Context, point, status string) {

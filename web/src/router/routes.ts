@@ -8,7 +8,6 @@ import AgentSettingsPage from "../pages/AgentSettingsPage.vue";
 import MonitorPage from "../pages/MonitorPage.vue";
 import OverviewPage from "../pages/OverviewPage.vue";
 import UsageEventsPage from "../pages/UsageEventsPage.vue";
-import UsageQuotasPage from "../pages/UsageQuotasPage.vue";
 import ResourceManagerPage from "../pages/ResourceManagerPage.vue";
 import EcosystemPage from "../pages/EcosystemPage.vue";
 import AgentCategoriesPage from "../pages/AgentCategoriesPage.vue";
@@ -16,13 +15,16 @@ import TeamsPage from "../pages/TeamsPage.vue";
 import SkillsPage from "../pages/SkillsPage.vue";
 import SkillRunsPage from "../pages/SkillRunsPage.vue";
 import PluginsPage from "../pages/PluginsPage.vue";
+import PluginRunsPage from "../pages/PluginRunsPage.vue";
 import HooksPage from "../pages/HooksPage.vue";
+import HookDeliveriesPage from "../pages/HookDeliveriesPage.vue";
 import KnowledgePage from "../pages/KnowledgePage.vue";
 import ArtifactsPage from "../pages/ArtifactsPage.vue";
 import EvaluationPage from "../pages/EvaluationPage.vue";
 import A2APage from "../pages/A2APage.vue";
 import ToolsPage from "../pages/ToolsPage.vue";
 import ToolRunsPage from "../pages/ToolRunsPage.vue";
+import ToolAuditsPage from "../pages/ToolAuditsPage.vue";
 import SessionsPage from "../pages/SessionsPage.vue";
 import SessionDetailPage from "../pages/SessionDetailPage.vue";
 import ChannelsPage from "../pages/ChannelsPage.vue";
@@ -50,7 +52,7 @@ export const routes: RouteRecordRaw[] = [
       { path: "", redirect: "/overview" },
       { path: "overview", name: "overview", component: OverviewPage },
       { path: "usage/events", name: "usage-events", component: UsageEventsPage },
-      { path: "usage/quotas", name: "usage-quotas", component: UsageQuotasPage },
+      { path: "usage/quotas", redirect: { name: "agents" } },
       { path: "chat", name: "chat", component: ChatPage },
       { path: "sessions", name: "sessions", component: SessionsPage },
       { path: "sessions/:sessionId", name: "session-detail", component: SessionDetailPage },
@@ -101,9 +103,19 @@ export const routes: RouteRecordRaw[] = [
         component: PluginsPage
       },
       {
+        path: "plugins/runs",
+        name: "plugin-runs",
+        component: PluginRunsPage
+      },
+      {
         path: "hooks",
         name: "hooks",
         component: HooksPage
+      },
+      {
+        path: "hooks/deliveries",
+        name: "hook-deliveries",
+        component: HookDeliveriesPage
       },
       {
         path: "knowledge",
@@ -124,6 +136,11 @@ export const routes: RouteRecordRaw[] = [
         path: "a2a",
         name: "a2a",
         component: A2APage
+      },
+      {
+        path: "tools/audits",
+        name: "tool-audits",
+        component: ToolAuditsPage
       },
       {
         path: "tools/runs",

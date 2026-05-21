@@ -34,6 +34,7 @@
           mobile-arrows
         >
           <q-tab name="usage" icon="dashboard" label="Usage" />
+          <q-tab name="alerts" icon="notifications_active" label="Alerts" />
           <q-tab name="audit" icon="fact_check" label="Audit" />
           <q-tab name="events" icon="sensors" label="Events" />
           <q-tab name="traces" icon="account_tree" label="Traces" />
@@ -42,21 +43,30 @@
       </MonitorGlassPanel>
     </div>
 
-    <q-tab-panels v-model="tab" animated class="monitor-panels">
+    <q-tab-panels v-model="tab" animated class="monitor-panels" :class="{ 'monitor-panels--logs-fill': tab === 'logs' }">
       <q-tab-panel name="usage">
-        <UsageOverview />
+        <MonitorRunnerMetrics />
+        <MonitorUsageDashboardLink :range="filters.range" />
+      </q-tab-panel>
+      <q-tab-panel name="alerts">
+        <MonitorAlertRules />
       </q-tab-panel>
       <q-tab-panel name="audit">
         <AuditTable :rows="auditRows" :total="auditTotal" :loading="loadingAudit" @reload="loadAudit" />
       </q-tab-panel>
       <q-tab-panel name="events">
-        <RealtimeEvents :persisted-events="events" />
+        <RealtimeEvents :persisted-events="events" :traces="traces" />
       </q-tab-panel>
       <q-tab-panel name="traces">
-        <TraceList :rows="traces" :loading="loadingTraces" @reload="loadTraces" />
+        <TraceList
+          :rows="traces"
+          :loading="loadingTraces"
+          :highlight-usage-event-id="highlightUsageEventId"
+          @reload="loadTraces"
+        />
       </q-tab-panel>
-      <q-tab-panel name="logs">
-        <LogStream />
+      <q-tab-panel name="logs" class="monitor-logs-panel">
+        <LogStreamPanel />
       </q-tab-panel>
     </q-tab-panels>
   </q-page>
@@ -69,18 +79,21 @@ import MonitorErrorBanner from "../components/monitor/MonitorErrorBanner.vue";
 import MonitorGlassPanel from "../components/monitor/MonitorGlassPanel.vue";
 import MonitorHeroSection from "../components/monitor/MonitorHeroSection.vue";
 import AuditTable from "../components/monitor/AuditTable.vue";
-import LogStream from "../components/monitor/LogStream.vue";
+import LogStreamPanel from "../components/monitor/LogStreamPanel.vue";
 import RealtimeEvents from "../components/monitor/RealtimeEvents.vue";
 import TraceList from "../components/monitor/TraceList.vue";
-import UsageOverview from "../components/monitor/UsageOverview.vue";
+import MonitorUsageDashboardLink from "../components/monitor/MonitorUsageDashboardLink.vue";
+import MonitorRunnerMetrics from "../components/monitor/MonitorRunnerMetrics.vue";
+import MonitorAlertRules from "../components/monitor/MonitorAlertRules.vue";
 import { listMonitorAudit, listMonitorEvents, listMonitorTraceEvents } from "../features/monitor/api";
 import type { AuditLog, ModelUsageQuery, MonitorTraceEvent, PlatformResource } from "../features/monitor/types";
 
 const route = useRoute();
 const router = useRouter();
-const validTabs = ["usage", "audit", "events", "traces", "logs"];
+const validTabs = ["usage", "alerts", "audit", "events", "traces", "logs"];
 const initialTab = String(route.query.tab || "usage");
 const tab = ref(validTabs.includes(initialTab) ? initialTab : "usage");
+const highlightUsageEventId = ref(String(route.query.usage_event_id || "").trim());
 const auditRows = ref<AuditLog[]>([]);
 const auditTotal = ref(0);
 const events = ref<PlatformResource[]>([]);
@@ -113,6 +126,16 @@ watch(tab, async (value) => {
   }
   await router.replace({ query: { ...route.query, tab: value } });
 });
+
+watch(
+  () => route.query.usage_event_id,
+  (id) => {
+    highlightUsageEventId.value = String(id || "").trim();
+    if (highlightUsageEventId.value && tab.value !== "traces") {
+      tab.value = "traces";
+    }
+  }
+);
 
 async function loadAll() {
   error.value = "";
@@ -157,6 +180,27 @@ async function loadTraces() {
 .monitor-page
   min-height: 100%
   padding: 24px
+  display: flex
+  flex-direction: column
+  min-height: calc(100dvh - 56px)
+
+.monitor-panels--logs-fill
+  flex: 1
+  min-height: 0
+  display: flex
+  flex-direction: column
+
+.monitor-panels--logs-fill :deep(.q-panel)
+  flex: 1
+  min-height: 0
+  display: flex
+  flex-direction: column
+
+.monitor-logs-panel
+  flex: 1
+  min-height: 0
+  display: flex
+  flex-direction: column
 
 .monitor-range
   min-width: 150px

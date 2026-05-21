@@ -11,13 +11,9 @@ import (
 	evalresultinmemory "trpc.group/trpc-go/trpc-agent-go/evaluation/evalresult/inmemory"
 	evalsetinmemory "trpc.group/trpc-go/trpc-agent-go/evaluation/evalset/inmemory"
 	"trpc.group/trpc-go/trpc-agent-go/evaluation/evaluator/registry"
-	"trpc.group/trpc-go/trpc-agent-go/evaluation/metric"
-	"trpc.group/trpc-go/trpc-agent-go/evaluation/metric/criterion"
-	"trpc.group/trpc-go/trpc-agent-go/evaluation/metric/criterion/finalresponse"
-	"trpc.group/trpc-go/trpc-agent-go/evaluation/metric/criterion/text"
-	"trpc.group/trpc-go/trpc-agent-go/evaluation/metric/criterion/tooltrajectory"
 	metricinmemory "trpc.group/trpc-go/trpc-agent-go/evaluation/metric/inmemory"
 	"trpc.group/trpc-go/trpc-agent-go/evaluation/status"
+	"trpc.group/trpc-go/trpc-agent-go/evaluation/usersimulation"
 	"trpc.group/trpc-go/trpc-agent-go/runner"
 )
 
@@ -25,18 +21,24 @@ import (
 type FrameworkBridge struct {
 	runFactory func(agentID string) (runner.Runner, error)
 	llmJudge   LLMJudge
+	llmUserSim usersimulation.Simulator
 }
 
 // NewFrameworkBridge constructs a FrameworkBridge.
-func NewFrameworkBridge(runFactory func(agentID string) (runner.Runner, error), judge LLMJudge) *FrameworkBridge {
-	return &FrameworkBridge{runFactory: runFactory, llmJudge: judge}
+func NewFrameworkBridge(
+	runFactory func(agentID string) (runner.Runner, error),
+	judge LLMJudge,
+	llmUserSim usersimulation.Simulator,
+) *FrameworkBridge {
+	return &FrameworkBridge{runFactory: runFactory, llmJudge: judge, llmUserSim: llmUserSim}
 }
 
 // RunConfig holds per-run framework options.
 type RunConfig struct {
-	AgentID  string
-	NumRuns  int
-	Metrics  map[string]bool
+	AgentID             string
+	NumRuns             int
+	Metrics             map[string]bool
+	UseUserSimulation   bool
 }
 
 // Execute runs AgentEvaluator and returns biz case results + aggregate scores.
@@ -45,9 +47,9 @@ func (b *FrameworkBridge) Execute(
 	dataset biz.EvalDataset,
 	cases []biz.EvalCase,
 	cfg RunConfig,
-) ([]biz.EvalCaseResult, map[string]float32, error) {
+) ([]biz.EvalCaseResult, map[string]float32, float32, float32, error) {
 	if b == nil || b.runFactory == nil {
-		return nil, nil, fmt.Errorf("framework bridge not configured")
+		return nil, nil, 0, 0, fmt.Errorf("framework bridge not configured")
 	}
 	numRuns := cfg.NumRuns
 	if numRuns <= 0 {
@@ -55,7 +57,7 @@ func (b *FrameworkBridge) Execute(
 	}
 	run, err := b.runFactory(cfg.AgentID)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, 0, 0, err
 	}
 	defer run.Close()
 
@@ -66,36 +68,44 @@ func (b *FrameworkBridge) Execute(
 
 	evalSetID := dataset.ID
 	if _, err := evalSetMgr.Create(ctx, AppName, evalSetID); err != nil {
-		return nil, nil, fmt.Errorf("create eval set: %w", err)
+		return nil, nil, 0, 0, fmt.Errorf("create eval set: %w", err)
 	}
 	es := BizCasesToEvalSet(dataset, cases)
 	for _, c := range es.EvalCases {
 		if err := evalSetMgr.AddCase(ctx, AppName, evalSetID, c); err != nil {
-			return nil, nil, fmt.Errorf("add eval case: %w", err)
+			return nil, nil, 0, 0, fmt.Errorf("add eval case: %w", err)
 		}
 	}
-	if err := registerFrameworkMetrics(ctx, metricMgr, evalSetID, cfg.Metrics); err != nil {
-		return nil, nil, err
+	if err := registerFrameworkMetrics(ctx, metricMgr, evalSetID, metricSet(cfg.Metrics)); err != nil {
+		return nil, nil, 0, 0, err
 	}
 
-	evaluator, err := trpceval.New(
-		AppName,
-		run,
+	opts := []trpceval.Option{
 		trpceval.WithEvalSetManager(evalSetMgr),
 		trpceval.WithMetricManager(metricMgr),
 		trpceval.WithEvalResultManager(resultMgr),
 		trpceval.WithRegistry(reg),
 		trpceval.WithNumRuns(numRuns),
+	}
+	if sim := resolveUserSimulator(cases, cfg, b.llmUserSim); sim != nil {
+		opts = append(opts, trpceval.WithUserSimulator(sim))
+	}
+
+	evaluator, err := trpceval.New(
+		AppName,
+		run,
+		opts...,
 	)
 	if err != nil {
-		return nil, nil, fmt.Errorf("create agent evaluator: %w", err)
+		return nil, nil, 0, 0, fmt.Errorf("create agent evaluator: %w", err)
 	}
 	defer evaluator.Close()
 
 	result, err := evaluator.Evaluate(ctx, evalSetID, trpceval.WithRunDetailsEnabled(true))
 	if err != nil {
-		return nil, nil, fmt.Errorf("framework evaluate: %w", err)
+		return nil, nil, 0, 0, fmt.Errorf("framework evaluate: %w", err)
 	}
+	passAtK, passHatK := computePassMetrics(result, numRuns)
 
 	caseByID := make(map[string]biz.EvalCase, len(cases))
 	for _, c := range cases {
@@ -112,8 +122,9 @@ func (b *FrameworkBridge) Execute(
 			continue
 		}
 		res := biz.EvalCaseResult{
-			ID:     newEvalResultID(),
-			CaseID: bc.ID,
+			ID:         newEvalResultID(),
+			CaseID:     bc.ID,
+			ScoresJSON: "{}",
 		}
 		if len(cr.RunDetails) > 0 {
 			rd := cr.RunDetails[len(cr.RunDetails)-1]
@@ -141,14 +152,7 @@ func (b *FrameworkBridge) Execute(
 			score := float32(mr.Score)
 			agg[name] += score
 			aggCount[name]++
-			switch name {
-			case MetricExactMatch:
-				res.ExactMatch = score >= float32(mr.Threshold)
-			case MetricContainsMatch:
-				res.ContainsMatch = score >= float32(mr.Threshold)
-			case MetricToolCallAccuracy:
-				res.ToolCallAccuracy = score
-			}
+			applyMetricResult(&res, name, score, mr.Threshold)
 		}
 		if cfg.Metrics[MetricLLMAsJudge] && b.llmJudge != nil && res.ActualOutput != "" {
 			score, judgeErr := b.llmJudge(ctx, bc.Input, bc.ExpectedOutput, res.ActualOutput)
@@ -167,58 +171,5 @@ func (b *FrameworkBridge) Execute(
 			scores[name] = sum / aggCount[name]
 		}
 	}
-	return out, scores, nil
-}
-
-func registerFrameworkMetrics(ctx context.Context, mgr metric.Manager, evalSetID string, want map[string]bool) error {
-	type spec struct {
-		name      string
-		threshold float64
-		crit      *criterion.Criterion
-	}
-	specs := []spec{}
-	if want[MetricExactMatch] {
-		specs = append(specs, spec{
-			name:      MetricExactMatch,
-			threshold: 1.0,
-			crit: criterion.New(criterion.WithFinalResponse(finalresponse.New(
-				finalresponse.WithTextCriterion(&text.TextCriterion{MatchStrategy: text.TextMatchStrategyExact}),
-			))),
-		})
-	}
-	if want[MetricContainsMatch] {
-		specs = append(specs, spec{
-			name:      MetricContainsMatch,
-			threshold: 1.0,
-			crit: criterion.New(criterion.WithFinalResponse(finalresponse.New(
-				finalresponse.WithTextCriterion(&text.TextCriterion{MatchStrategy: text.TextMatchStrategyContains}),
-			))),
-		})
-	}
-	if want[MetricToolCallAccuracy] {
-		specs = append(specs, spec{
-			name:      MetricToolCallAccuracy,
-			threshold: 1.0,
-			crit:      criterion.New(criterion.WithToolTrajectory(tooltrajectory.New())),
-		})
-	}
-	if len(specs) == 0 {
-		specs = append(specs, spec{
-			name:      MetricExactMatch,
-			threshold: 1.0,
-			crit: criterion.New(criterion.WithFinalResponse(finalresponse.New(
-				finalresponse.WithTextCriterion(&text.TextCriterion{MatchStrategy: text.TextMatchStrategyExact}),
-			))),
-		})
-	}
-	for _, s := range specs {
-		if err := mgr.Add(ctx, AppName, evalSetID, &metric.EvalMetric{
-			MetricName: s.name,
-			Threshold:  s.threshold,
-			Criterion:  s.crit,
-		}); err != nil {
-			return fmt.Errorf("register metric %s: %w", s.name, err)
-		}
-	}
-	return nil
+	return out, scores, passAtK, passHatK, nil
 }

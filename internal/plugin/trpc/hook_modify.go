@@ -44,28 +44,7 @@ func ApplyToolModifyPatch(args *trpctool.BeforeToolArgs, patch map[string]any) [
 	if args == nil || len(patch) == 0 {
 		return nil
 	}
-	if raw, ok := patch["arguments"]; ok && raw != nil {
-		b, err := json.Marshal(raw)
-		if err == nil {
-			return b
-		}
-	}
-	mergeMap, _ := patch["merge_arguments"].(map[string]any)
-	if len(mergeMap) == 0 {
-		return nil
-	}
-	cur := map[string]any{}
-	if len(args.Arguments) > 0 {
-		_ = json.Unmarshal(args.Arguments, &cur)
-	}
-	for k, v := range mergeMap {
-		cur[k] = v
-	}
-	b, err := json.Marshal(cur)
-	if err != nil {
-		return nil
-	}
-	return b
+	return mergeToolArgumentsJSON(args.Arguments, patch)
 }
 
 func decodeGenerationOverlay(raw any) trpcmodel.GenerationConfig {

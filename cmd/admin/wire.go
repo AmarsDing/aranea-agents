@@ -6,12 +6,16 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os"
 	"strings"
 	"time"
 
+	a2apkg "aranea-agents/internal/a2a"
+	a2atrpc "aranea-agents/internal/a2a/trpc"
+	localexec "aranea-agents/internal/agent/codeexecutor"
 	artifacttrpc "aranea-agents/internal/artifact/trpc"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/conf"
@@ -22,8 +26,9 @@ import (
 	"aranea-agents/internal/event"
 	graphadapter "aranea-agents/internal/graph/adapter"
 	graphtrpc "aranea-agents/internal/graph/trpc"
+	"aranea-agents/internal/knowledge"
+	"aranea-agents/internal/mcp/alert"
 	"aranea-agents/internal/mcp/health"
-	aramemory "aranea-agents/internal/memory"
 	memtrpc "aranea-agents/internal/memory/trpc"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	"aranea-agents/internal/provider"
@@ -75,6 +80,14 @@ func provideSkillWatchRunner(skillUC *biz.SkillUsecase, sys biz.SystemSettingRep
 	return watch.NewRunner(skillUC, sys, logger)
 }
 
+func providePromptFileAIEditor(catalog *biz.LlmProviderModelUsecase, _ rt.PersistenceSet) *service.PromptFileAIEditor {
+	if catalog == nil {
+		return nil
+	}
+	httpClient := &http.Client{Timeout: 90 * time.Second}
+	return service.NewPromptFileAIEditor(catalog, &provider.RoundTrip{HTTP: httpClient})
+}
+
 func provideSessionTitleGenerator(catalog *biz.LlmProviderModelUsecase, _ rt.PersistenceSet) biz.SessionTitleGenerator {
 	if catalog == nil {
 		return biz.NewNoopSessionTitleGenerator()
@@ -85,6 +98,36 @@ func provideSessionTitleGenerator(catalog *biz.LlmProviderModelUsecase, _ rt.Per
 
 func provideRunRegistry() *rt.RunRegistry {
 	return rt.NewRunRegistry()
+}
+
+func providePendingMessageQueue() *rt.PendingMessageQueue {
+	return rt.NewPendingMessageQueue()
+}
+
+func provideCodeExecutorFactory() *localexec.Factory {
+	return localexec.NewFactory()
+}
+
+func provideMonitorAlertNotifier(channels *biz.ChannelUsecase, eventBus event.Bus) biz.AlertNotifier {
+	return service.NewMonitorAlertNotifier(channels, eventBus)
+}
+
+func provideMonitorUsecase(repo biz.MonitorRepo, notifier biz.AlertNotifier) *biz.MonitorUsecase {
+	return biz.NewMonitorUsecase(repo, notifier)
+}
+
+func provideUsageUsecase(repo biz.UsageRepo, mon *biz.MonitorUsecase) *biz.UsageUsecase {
+	uc := biz.NewUsageUsecase(repo)
+	uc.SetAlertNotifier(service.NewMonitorBudgetAlertNotifier(mon))
+	return uc
+}
+
+func provideSystemSettingUsecase(repo biz.SystemSettingRepo, quota biz.UsageQuotaRepo) *biz.SystemSettingUsecase {
+	return biz.NewSystemSettingUsecase(repo, quota)
+}
+
+func provideEventService(store *biz.EventStoreUsecase, sessions *biz.SessionUsecase) *service.EventService {
+	return service.NewEventService(store, sessions)
 }
 
 func provideChatServiceDeps(
@@ -103,10 +146,17 @@ func provideChatServiceDeps(
 	persist rt.PersistenceSet,
 	compress biz.NativeTurnCompressor,
 	eventBus event.Bus,
+	eventBuffer *event.Buffer,
 	pluginRT *plugintrpc.Runtime,
 	pluginMgr *plugintrpc.Manager,
 	skillDBRepo trpcskill.Repository,
 	a2aUC *biz.A2AUsecase,
+	artifacts *biz.ArtifactUsecase,
+	mcpUC *biz.MCPServerUsecase,
+	knowledgeRetriever *knowledge.Retriever,
+	mon *biz.MonitorUsecase,
+	codeExecFactory *localexec.Factory,
+	pendingQueue *rt.PendingMessageQueue,
 ) service.ChatServiceDeps {
 	return service.ChatServiceDeps{
 		TurnDeps: rt.TurnDeps{
@@ -120,20 +170,27 @@ func provideChatServiceDeps(
 				Settings: sys,
 			},
 			Persist:   persist,
-			Pipeline:  rt.EventPipeline{Bus: eventBus},
+			Pipeline:  rt.EventPipeline{Bus: eventBus, Buffer: eventBuffer},
 			LLMHTTP:   &http.Client{Timeout: 300 * time.Second},
 			Sessions:  sessions,
 			Compress:  compress,
+			AfterTurn: biz.NoopNativeTurnAfter{},
 			RunnerMgr: rt.NewRunnerManagerFromPersist(persist),
 		},
-		Runs:          runs,
-		Teams:         teams,
-		TeamsNative:   teamsNative,
-		Usage:         usage,
-		PluginRT:      pluginRT,
-		PluginManager: pluginMgr,
-		SkillDBRepo:   skillDBRepo,
-		A2AUC:         a2aUC,
+		Runs:               runs,
+		Teams:              teams,
+		TeamsNative:        teamsNative,
+		Usage:              usage,
+		Monitor:            mon,
+		PluginRT:           pluginRT,
+		PluginManager:      pluginMgr,
+		SkillDBRepo:        skillDBRepo,
+		A2AUC:              a2aUC,
+		Artifacts:          artifacts,
+		KnowledgeRetriever: knowledgeRetriever,
+		CodeExecFactory:    codeExecFactory,
+		MCPServers:         mcpUC,
+		PendingQueue:       pendingQueue,
 	}
 }
 
@@ -145,8 +202,8 @@ func provideChatSender(svc *service.ChatService) server.ChatSender {
 	return svc
 }
 
-func provideMemoryService(persist rt.PersistenceSet) *service.MemoryService {
-	return service.NewMemoryService(persist.Memory.Admin)
+func provideMemoryService(persist rt.PersistenceSet, vec *biz.MemoryUsecase) *service.MemoryService {
+	return service.NewMemoryService(biz.NewMemoryAdminUsecase(persist.Memory.Admin, vec))
 }
 
 func provideTRPCSessionService(d *data.Data) trpcsession.Service {
@@ -188,13 +245,67 @@ func provideAutoMemoryWorker(sessions *biz.SessionUsecase, agents *biz.AgentUsec
 	if memStore != nil {
 		mem = memtrpc.NewSQLiteMemoryService(memStore)
 	}
-	return jobs.NewAutoMemoryWorker(0, sessions, agents, mem, aramemory.NewL4GraphWriter(memStore))
+	return jobs.NewAutoMemoryWorker(0, sessions, agents, mem, data.NewL4GraphWriterAdapter(data.NewL4GraphUsecaseFromStore(memStore)))
 }
 
-func provideMCPHealthRunnerDeps(mcpRepo biz.MCPServerRepo, mcpUC *biz.MCPServerUsecase) health.Deps {
+func provideEvolutionScanner(evo *biz.EvolutionUsecase, logger log.Logger) *jobs.EvolutionScanner {
+	if strings.TrimSpace(os.Getenv("EVOLUTION_SCANNER_DISABLED")) == "1" {
+		return nil
+	}
+	return jobs.NewEvolutionScanner(0, evo, logger)
+}
+
+func provideProviderHealthScanner(uc *biz.LlmProviderModelUsecase, logger log.Logger) *jobs.ProviderHealthScanner {
+	if strings.TrimSpace(os.Getenv("PROVIDER_HEALTH_DISABLED")) == "1" {
+		return nil
+	}
+	return jobs.NewProviderHealthScanner(0, uc, logger)
+}
+
+func provideChannelHealthScanner(uc *biz.ChannelUsecase, logger log.Logger) *jobs.ChannelHealthScanner {
+	if strings.TrimSpace(os.Getenv("CHANNEL_HEALTH_DISABLED")) == "1" {
+		return nil
+	}
+	return jobs.NewChannelHealthScanner(0, uc, logger)
+}
+
+func provideChannelDeliveryWorker(channels *biz.ChannelUsecase, ingress *service.ChannelIngress) *service.ChannelDeliveryWorker {
+	return service.NewChannelDeliveryWorker(channels, ingress)
+}
+
+func provideEventStoreCleanup(store *biz.EventStoreUsecase, logger log.Logger) *jobs.EventStoreCleanup {
+	if jobs.EventStoreCleanupDisabled() {
+		return nil
+	}
+	return jobs.NewEventStoreCleanup(0, store, logger)
+}
+
+func provideToolAuditCleanup(tools *biz.ToolUsecase, logger log.Logger) *jobs.ToolAuditCleanup {
+	if jobs.ToolAuditCleanupDisabled() {
+		return nil
+	}
+	return jobs.NewToolAuditCleanup(0, tools, logger)
+}
+
+func provideFlowLogCleanup(flowLogs *biz.FlowLogUsecase, logger log.Logger) *jobs.FlowLogCleanup {
+	if jobs.FlowLogCleanupDisabled() {
+		return nil
+	}
+	return jobs.NewFlowLogCleanup(0, flowLogs, logger)
+}
+
+func provideChannelDeliveryScanner(worker *service.ChannelDeliveryWorker, logger log.Logger) *jobs.ChannelDeliveryWorker {
+	if strings.TrimSpace(os.Getenv("CHANNEL_DELIVERY_DISABLED")) == "1" {
+		return nil
+	}
+	return jobs.NewChannelDeliveryWorker(0, worker, logger)
+}
+
+func provideMCPHealthRunnerDeps(mcpRepo biz.MCPServerRepo, mcpUC *biz.MCPServerUsecase, bus event.Bus) health.Deps {
 	return health.Deps{
-		MCP: mcpRepo,
-		UC:  mcpUC,
+		MCP:    mcpRepo,
+		UC:     mcpUC,
+		Alerts: alert.NewPublisher(bus, mcpUC),
 	}
 }
 
@@ -205,21 +316,140 @@ func provideMCPHealthRunner(deps health.Deps) *health.Runner {
 	return health.NewRunner(deps)
 }
 
-func providePluginStatsRecorder(repo biz.PluginRepo) plugintrpc.StatsRecorder {
-	return plugintrpc.NewRepoStatsRecorder(repo)
+func providePluginRuntime(stats plugintrpc.StatsRecorder, usage biz.PluginCostGuardUsageRepo, tools *biz.ToolUsecase, deliveries biz.HookDeliveryRepo) *plugintrpc.Runtime {
+	rt := plugintrpc.NewRuntime(stats)
+	if usage != nil {
+		rt.SetCostGuardUsageRepo(usage)
+	}
+	if deliveries != nil {
+		rt.SetHookDeliveryRepo(deliveries)
+	}
+	if tools != nil {
+		rt.SetCatalogConfirmChecker(func(ctx context.Context, agentID, toolName string) bool {
+			return tools.RequiresConfirmationForAgent(ctx, agentID, toolName)
+		})
+	}
+	return rt
+}
+
+func providePluginStatsRecorder(repo biz.PluginRepo, runs biz.PluginRunRepo, agents biz.AgentRepository) plugintrpc.StatsRecorder {
+	rec := plugintrpc.NewRepoStatsRecorder(repo, runs)
+	if rec != nil {
+		rec.SetAgentKeyResolver(agentKeyToID(agents))
+	}
+	return rec
+}
+
+func providePluginManager(rt *plugintrpc.Runtime, hooks *biz.HookResolver, agents biz.AgentRepository) *plugintrpc.Manager {
+	m := plugintrpc.NewManager(rt, hooks)
+	m.SetAgentKeyResolver(agentKeyToID(agents))
+	return m
+}
+
+func agentKeyToID(agents biz.AgentRepository) plugintrpc.AgentKeyResolver {
+	if agents == nil {
+		return nil
+	}
+	return func(ctx context.Context, agentKey string) string {
+		ag, err := agents.GetAgentByAgentKey(ctx, strings.TrimSpace(agentKey))
+		if err != nil {
+			return ""
+		}
+		return strings.TrimSpace(ag.ID)
+	}
 }
 
 // wireOut is non-cleanup inject outputs (cleanup must be a top-level injector return for Wire).
 type wireOut struct {
-	App            *kratos.App
-	CronRunner     *cronrunner.Runner
-	SkillWatch     *watch.Runner
-	AutoMemory     *jobs.AutoMemoryWorker
-	MCPHealthProbe *health.Runner
+	App                    *kratos.App
+	CronRunner             *cronrunner.Runner
+	SkillWatch             *watch.Runner
+	AutoMemory             *jobs.AutoMemoryWorker
+	MCPHealthProbe         *health.Runner
+	EvolutionScanner       *jobs.EvolutionScanner
+	ProviderHealthScanner  *jobs.ProviderHealthScanner
+	ChannelHealthScanner   *jobs.ChannelHealthScanner
+	ChannelDeliveryScanner *jobs.ChannelDeliveryWorker
+	EventStoreCleanup      *jobs.EventStoreCleanup
+	ToolAuditCleanup       *jobs.ToolAuditCleanup
+	FlowLogCleanup         *jobs.FlowLogCleanup
 }
 
-func provideWireOut(app *kratos.App, runner *cronrunner.Runner, skillWatch *watch.Runner, autoMem *jobs.AutoMemoryWorker, mcpHealth *health.Runner) wireOut {
-	return wireOut{App: app, CronRunner: runner, SkillWatch: skillWatch, AutoMemory: autoMem, MCPHealthProbe: mcpHealth}
+func provideWireOut(
+	app *kratos.App,
+	runner *cronrunner.Runner,
+	skillWatch *watch.Runner,
+	autoMem *jobs.AutoMemoryWorker,
+	mcpHealth *health.Runner,
+	evoScan *jobs.EvolutionScanner,
+	providerHealth *jobs.ProviderHealthScanner,
+	channelHealth *jobs.ChannelHealthScanner,
+	channelDelivery *jobs.ChannelDeliveryWorker,
+	eventStoreCleanup *jobs.EventStoreCleanup,
+	toolAuditCleanup *jobs.ToolAuditCleanup,
+	flowLogCleanup *jobs.FlowLogCleanup,
+) wireOut {
+	return wireOut{
+		App: app, CronRunner: runner, SkillWatch: skillWatch, AutoMemory: autoMem,
+		MCPHealthProbe: mcpHealth, EvolutionScanner: evoScan, ProviderHealthScanner: providerHealth,
+		ChannelHealthScanner: channelHealth, ChannelDeliveryScanner: channelDelivery,
+		EventStoreCleanup: eventStoreCleanup, ToolAuditCleanup: toolAuditCleanup,
+		FlowLogCleanup: flowLogCleanup,
+	}
+}
+
+func provideA2APublicBaseInput(c *conf.Server) a2apkg.PublicBaseURLInput {
+	configURL := ""
+	if c != nil {
+		configURL = c.GetA2APublicBaseUrl()
+	}
+	addr := ":8000"
+	if c != nil && c.GetHttp() != nil && strings.TrimSpace(c.GetHttp().GetAddr()) != "" {
+		addr = strings.TrimSpace(c.GetHttp().GetAddr())
+	}
+	return a2apkg.PublicBaseURLInput{
+		EnvOverride: os.Getenv("A2A_PUBLIC_BASE_URL"),
+		ConfigURL:   configURL,
+		HTTPAddr:    addr,
+		PathPrefix:  strings.TrimSuffix(a2atrpc.PublicPathPrefix, "/"),
+	}
+}
+
+func providePublicBaseURLStore(input a2apkg.PublicBaseURLInput, sys biz.SystemSettingRepo, logger log.Logger) *a2apkg.PublicBaseURLStore {
+	dbURL := ""
+	if sys != nil {
+		if s, err := sys.Get(context.Background()); err == nil {
+			dbURL = s.A2APublicBaseURL
+		}
+	}
+	in := input
+	in.DBURL = dbURL
+	result := a2apkg.ResolvePublicBaseURL(in)
+	if result.Source == a2apkg.PublicBaseSourceDerived {
+		log.NewHelper(logger).Warnf(
+			"A2A public base URL derived as %q; set in System Settings, A2A_PUBLIC_BASE_URL, or server.a2a_public_base_url for production",
+			result.URL,
+		)
+	}
+	return a2apkg.NewPublicBaseURLStore(result)
+}
+
+func provideA2AEndpointRegistry(builder *service.A2AEndpointBuilder, uc *biz.A2AUsecase, store *a2apkg.PublicBaseURLStore) *a2atrpc.EndpointRegistry {
+	return a2atrpc.NewEndpointRegistry(builder, uc, store)
+}
+
+func provideA2APublicBaseReloader(store *a2apkg.PublicBaseURLStore, reg *a2atrpc.EndpointRegistry, input a2apkg.PublicBaseURLInput) *service.A2APublicBaseReloader {
+	return service.NewA2APublicBaseReloader(store, reg, input)
+}
+
+func provideA2AService(
+	uc *biz.A2AUsecase,
+	chat *service.ChatService,
+	agents biz.AgentRepository,
+	reg *a2atrpc.EndpointRegistry,
+	store *a2apkg.PublicBaseURLStore,
+) *service.A2AService {
+	return service.NewA2AService(uc, chat, agents, reg, store)
 }
 
 // wireApp init kratos application.
@@ -232,9 +462,13 @@ func wireApp(*conf.Server, *conf.Data, log.Logger) (wireOut, func(), error) {
 		service.ProviderSet,
 		provideCronRunnerDeps,
 		provideCronRunner,
+		wire.Bind(new(biz.CronTaskTrigger), new(*cronrunner.Runner)),
 		provideSkillWatchRunner,
+		providePromptFileAIEditor,
 		provideSessionTitleGenerator,
 		provideRunRegistry,
+		providePendingMessageQueue,
+		provideCodeExecutorFactory,
 		provideChatServiceDeps,
 		provideRunCanceller,
 		provideChatSender,
@@ -245,14 +479,33 @@ func wireApp(*conf.Server, *conf.Data, log.Logger) (wireOut, func(), error) {
 		wire.Bind(new(trpcgraph.CheckpointSaver), new(*graphtrpc.SQLiteCheckpointSaver)),
 		rt.NewPersistenceSet,
 		providePluginStatsRecorder,
-		plugintrpc.NewRuntime,
-		plugintrpc.NewManager,
+		providePluginManager,
+		providePluginRuntime,
 		graphtrpc.NewRegistry,
 		provideGraphBuildDeps,
 		graphadapter.NewGraphBuilderFactory,
 		provideAutoMemoryWorker,
+		provideEvolutionScanner,
+		provideProviderHealthScanner,
+		provideChannelHealthScanner,
+		provideChannelDeliveryWorker,
+		provideChannelDeliveryScanner,
+		provideEventStoreCleanup,
+		provideToolAuditCleanup,
+		provideFlowLogCleanup,
 		provideMCPHealthRunnerDeps,
 		provideMCPHealthRunner,
+		provideMonitorAlertNotifier,
+		provideMonitorUsecase,
+		provideUsageUsecase,
+		provideSystemSettingUsecase,
+		provideA2APublicBaseInput,
+		providePublicBaseURLStore,
+		provideA2AEndpointRegistry,
+		provideA2APublicBaseReloader,
+		provideA2AService,
+		provideEventService,
+		wire.Bind(new(biz.UsageQuotaRepo), new(biz.UsageRepo)),
 		newApp,
 		provideWireOut,
 	))

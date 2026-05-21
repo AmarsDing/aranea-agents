@@ -1,413 +1,326 @@
 # A2A 协议模块 — 实现设计文档
 
-> 对应需求：`26 a2a-protocol.md`
-> 遵循规范：`AI-DEVELOPMENT-SPECIFICATION.md`
-> 最后更新：2026-05-19
+> 对应需求：[26 a2a-protocol.md](./26%20a2a-protocol.md)
+> 遵循规范：[AI-DEVELOPMENT-SPECIFICATION.md](../guides/AI-DEVELOPMENT-SPECIFICATION.md)
+> 关联：Agent 创建 [2 agents-create.design.md](./2%20agents-create.design.md) · Agent 设置 [5 agent-setting.design.md](./5%20agent-setting.design.md)
+> 进度差距：[26-a2a-development.md](./26-a2a-development.md)
 
 ---
 
 ## 一、模块概述
 
-Agent-to-Agent 通信协议：AgentCard 管理、call_agent 工具调用、远程 Agent 发现与通信。
+Agent-to-Agent：平台内 `call_agent`、Admin Invoke、LLM **公开 Endpoint**、`a2a_proxy` 远程代理、工作区远程注册与联邦 Discover。
 
-项目 A2A 分为两个层次：
+**设计目标**：
 
-1. **平台内 A2A（已实现）**：同工作区内 Agent 通过 `call_agent` 工具互调，AgentCard 管理、审计、Prometheus 指标。
-2. **跨实例 A2A（待实现）**：基于 trpc-agent-go `a2aagent` + `a2aserver`，与远程 A2A Agent 通信，支持 AgentCard URL 发现、消息转换、流式通信、Graph 恢复。
+1. **biz 不 import trpc-agent-go** — 领域在 `internal/biz`；框架包装在 `internal/a2a/trpc`
+2. **单一 Invoker 派发** — tool 与 HTTP Invoke 共用 `NewInvoker` + `RunAgentTurn` / `InvokeRemoteRegistry`
+3. **Agent Kind 路由** — `BuildTRPCAgent` 分发 `llm` | `a2a_proxy`
+4. **传输三分工** — A2A HTTP（外部）/ Admin JSON（运维）/ WebSocket（Chat UI）
+
+**与 Agent 模块边界**：`agent_kind`、`A2AProxyConfig` 持久化见 `internal/biz/agent_kind.go`；创建/设置 UI 见 Agent 模块设计文档。
 
 ---
 
-## 二、Proto 层
+## 二、分层架构（已实现）
 
-### 2.1 已实现
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Server                                                      │
+│  http.go — A2AService + HandlePrefix(/v1/a2a/public/...)     │
+│  auth — PublicPathPrefix 免 Admin JWT                        │
+├─────────────────────────────────────────────────────────────┤
+│  Service                                                     │
+│  a2a.go           — Discover/Invoke/Card/Audit/Remote/Gateway│
+│  a2a_endpoint.go  — A2AEndpointBuilder → 公开 handler 缓存    │
+│  chat_native.go   — RunAgentTurn + injectA2AContext          │
+│  trpc_turn.go     — runCtx 注入 A2A；Proxy 跳过 intent        │
+├─────────────────────────────────────────────────────────────┤
+│  internal/a2a（协议桥接，可 import biz，不 import trpc 运行时）│
+│  tool.go          — call_agent                               │
+│  invoker.go       — NewInvoker、工作区校验、InjectRunContext  │
+│  callee_resolve.go— ResolveInvokeTarget                      │
+│  card_validate.go — CheckCalleeCard                          │
+│  remote_client.go — FetchRemoteAgentCard、MTLSHTTPClient     │
+│  remote_invoke.go — InvokeRemoteRegistry                     │
+│  graph_resume.go  — BuildGraphResumeMetadata                 │
+│  public_base_url.go — ResolvePublicBaseURL                   │
+├─────────────────────────────────────────────────────────────┤
+│  internal/a2a/trpc（框架包装）                              │
+│  agent.go         — BuildTRPCA2AAgent                        │
+│  server.go        — BuildA2AEndpointServer                   │
+│  registry.go      — EndpointRegistry                         │
+│  auth.go          — ProxyClientAuthOptions                   │
+├─────────────────────────────────────────────────────────────┤
+│  Biz                                                         │
+│  a2a.go · a2a_remote.go · a2a_gateway.go                     │
+├─────────────────────────────────────────────────────────────┤
+│  Data                                                        │
+│  a2a.go — a2a_agent_cards / a2a_invocations / a2a_audit /   │
+│           a2a_remote_agents                                  │
+└─────────────────────────────────────────────────────────────┘
+         ↓
+pkg/trpc-agent-go — a2aagent、server/a2a（框架真相源）
+```
+
+### 2.1 平台内调用数据流
+
+```
+LLM Turn (call_agent 工具)
+  → tool.go 校验 Card/capability
+  → invokerFunc (NewInvoker)
+       ├─ ResolveInvokeTarget → 本地 catalog agent
+       │     → ChatService.RunAgentTurn
+       └─ 或 remote registry id
+             → InvokeRemoteRegistry (remote_client)
+Admin POST /v1/a2a/invoke
+  → ValidateAdminInvokeWorkspace
+  → 同一 NewInvoker
+  → FinishInvocation + audit + Prometheus
+```
+
+### 2.2 公开 Endpoint 数据流
+
+```
+GET/POST /v1/a2a/public/{agent_id}/...
+  → EndpointRegistry.Get(agentID)
+  → A2AEndpointBuilder.BuildHandler
+       → catalog Agent (非 a2a_proxy) + Card.enabled
+       → BuildA2AEndpointServer(runner, card, publicURL, streaming)
+  → trpc-agent-go server/a2a 处理 A2A JSON-RPC / SSE
+```
+
+---
+
+## 三、Proto 层（已实现）
 
 文件：`api/kratos/a2a/v1/a2a.proto`
 
-```protobuf
-service A2AService {
-  rpc Discover(DiscoverRequest) returns (DiscoverResponse) {
-    option (google.api.http) = { get: "/v1/a2a/discover" };
-  }
-  rpc Invoke(A2AInvokeRequest) returns (A2AInvokeResponse) {
-    option (google.api.http) = { post: "/v1/a2a/invoke" body: "*" };
-  }
-  rpc UpdateAgentCard(UpdateAgentCardRequest) returns (A2AAgentCard) {
-    option (google.api.http) = { put: "/v1/a2a/agents/{agent_id}/card" body: "*" };
-  }
-  rpc GetAgentCard(GetAgentCardRequest) returns (A2AAgentCard) {
-    option (google.api.http) = { get: "/v1/a2a/agents/{agent_id}/card" };
-  }
-  rpc ListAudit(ListAuditRequest) returns (ListAuditResponse) {
-    option (google.api.http) = { get: "/v1/a2a/audit" };
-  }
-}
-```
+| RPC | HTTP | 职责 |
+|-----|------|------|
+| `Discover` | GET `/v1/a2a/discover` | 扁平列表（本地 Card + 远程 registry） |
+| `GatewayDiscover` | GET `/v1/a2a/gateway/discover` | 联邦条目（source、healthy、endpoint_url） |
+| `Invoke` | POST `/v1/a2a/invoke` | Admin 测试调用 |
+| `UpdateAgentCard` / `GetAgentCard` | PUT/GET `.../card` | Card CRUD |
+| `ListAudit` | GET `/v1/a2a/audit` | 审计 |
+| `RegisterRemoteAgent` 等 | `/v1/a2a/remote-agents` | 远程注册 |
+| `DiscoverRemoteAgent` | POST `/v1/a2a/remote-discover` | 预览 Card（不落库） |
+| `GetA2AConfig` | GET `/v1/a2a/config` | 公开 URL + source |
 
-核心消息：
+`A2AAgentCard` 扩展字段：`source`、`endpoint_url`、`remote_url`（Discover/Gateway 展示用）。
 
-| 消息 | 用途 |
-|------|------|
-| `A2ACapability` | 一个可调用能力（name, description, input/output_schema_json） |
-| `A2AAgentCard` | Agent 的 A2A 公开档案（agent_id, display_name, workspace, enabled, capabilities） |
-| `A2AInvokeRequest` | 跨 Agent 调用请求（callee_agent_id, capability, payload_json, caller_session_id, timeout_seconds） |
-| `A2AInvokeResponse` | 调用结果（invoke_id, status, result_json, error_message, duration_ms） |
-| `A2AAuditEntry` | 审计日志条目 |
-
-### 2.2 待新增（跨实例 A2A）
-
-```protobuf
-rpc RegisterRemoteAgent(RegisterRemoteAgentRequest) returns (A2ARemoteAgent) {
-  option (google.api.http) = { post: "/v1/a2a/remote-agents" body: "*" };
-}
-rpc ListRemoteAgents(ListRemoteAgentsRequest) returns (ListRemoteAgentsResponse) {
-  option (google.api.http) = { get: "/v1/a2a/remote-agents" };
-}
-rpc DeleteRemoteAgent(DeleteRemoteAgentRequest) returns (google.protobuf.Empty) {
-  option (google.api.http) = { delete: "/v1/a2a/remote-agents/{id}" };
-}
-rpc DiscoverRemoteAgent(DiscoverRemoteAgentRequest) returns (A2AAgentCard) {
-  option (google.api.http) = { get: "/v1/a2a/remote-discover" };
-}
-```
+Agent proto：`api/kratos/agent/v1/agent.proto` — `agent_kind`、`A2AProxyConfig`、`a2a_endpoint_enabled`（列表 enrichment）。
 
 ---
 
-## 三、Biz 层
+## 四、Biz 层（已实现）
 
-### 3.1 已实现领域模型
+### 4.1 核心模型 — `internal/biz/a2a.go`
 
-文件：`internal/biz/a2a.go`
+- `A2ACapability`、`A2AAgentCard`、`A2AInvocation`、`A2AAuditEntry`
+- `A2ARepo`：Card、Invocation、Audit
+- `A2AUsecase`：Discover、Start/FinishInvocation、AppendAudit
+
+### 4.2 远程注册 — `internal/biz/a2a_remote.go`
+
+- `A2ARemoteAgent`：workspace、remote_url、auth_type、discovered_card
+- Register / List / Delete / DiscoverRemote（预览）
+
+### 4.3 联邦 — `internal/biz/a2a_gateway.go`
+
+- `GatewayDiscover`：合并本地 Endpoint 与远程 registry；可选 `check_health` 同步探测
+
+### 4.4 Agent Kind — `internal/biz/agent_kind.go`
 
 ```go
-type A2ACapability struct {
-    Name             string
-    Description      string
-    InputSchemaJSON  string
-    OutputSchemaJSON string
-}
-
-type A2AAgentCard struct {
-    AgentID      string
-    DisplayName  string
-    Workspace    string
-    Enabled      bool
-    Capabilities []A2ACapability
-    UpdatedAt    string
-}
-
-type A2AInvocation struct {
-    ID              string
-    CallerAgentID   string
-    CalleeAgentID   string
-    CallerSessionID string
-    Capability      string
-    PayloadJSON     string
-    Status          string // pending | running | success | error | timeout
-    ResultJSON      string
-    ErrorMessage    string
-    DurationMs      int
+const (
+    AgentKindLLM      = "llm"
+    AgentKindA2AProxy = "a2a_proxy"
+)
+type A2AProxyConfig struct {
+    RemoteURL, AgentCardURL, AuthType, AuthConfigJSON string
+    EnableStreaming bool
     TimeoutSeconds  int
 }
-
-type A2AAuditEntry struct {
-    ID            string
-    InvokeID      string
-    CallerAgentID string
-    CalleeAgentID string
-    Capability    string
-    Status        string
-    DurationMs    int
-    Workspace     string
-    CreatedAt     string
-}
 ```
 
-### 3.2 已实现 Repo 接口
-
-```go
-type A2ARepo interface {
-    UpsertAgentCard(ctx context.Context, card A2AAgentCard) (A2AAgentCard, error)
-    GetAgentCard(ctx context.Context, agentID string) (A2AAgentCard, error)
-    ListEnabledCards(ctx context.Context, workspace, capability string) ([]A2AAgentCard, error)
-
-    CreateInvocation(ctx context.Context, inv A2AInvocation) (A2AInvocation, error)
-    UpdateInvocation(ctx context.Context, inv A2AInvocation) error
-
-    InsertAudit(ctx context.Context, entry A2AAuditEntry) error
-    ListAudit(ctx context.Context, callerID, calleeID string, limit, offset int) ([]A2AAuditEntry, int, error)
-}
-```
-
-### 3.3 已实现 Usecase
-
-```go
-func (u *A2AUsecase) UpdateAgentCard(ctx, card A2AAgentCard) (A2AAgentCard, error)
-func (u *A2AUsecase) GetAgentCard(ctx, agentID string) (A2AAgentCard, error)
-func (u *A2AUsecase) Discover(ctx, workspace, capability string) ([]A2AAgentCard, error)
-func (u *A2AUsecase) StartInvocation(ctx, inv A2AInvocation) (A2AInvocation, error)
-func (u *A2AUsecase) FinishInvocation(ctx, inv A2AInvocation) error
-func (u *A2AUsecase) AppendAudit(ctx, entry A2AAuditEntry) error
-func (u *A2AUsecase) ListAudit(ctx, callerID, calleeID string, limit, offset int) ([]A2AAuditEntry, int, error)
-```
-
-### 3.4 待新增领域模型（跨实例 A2A）
-
-```go
-type A2ARemoteAgent struct {
-    ID          string
-    Name        string
-    RemoteURL   string
-    AgentCard   *A2AAgentCard
-    Workspace   string
-    Status      string // online | offline | unknown
-    AuthType    string // none | api_key | mtls
-    AuthConfig  string
-    CreatedAt   string
-    UpdatedAt   string
-}
-```
-
-### 3.5 待新增 Usecase（跨实例 A2A）
-
-```go
-func (u *A2AUsecase) RegisterRemoteAgent(ctx, cfg A2ARemoteAgent) (A2ARemoteAgent, error)
-func (u *A2AUsecase) DiscoverRemoteAgent(ctx, url string) (*A2AAgentCard, error)
-func (u *A2AUsecase) SendRemoteMessage(ctx, remoteURL string, msg A2AInvocation) (A2AInvocation, error)
-```
+- 持久化：`config_json` 内 `agent_kind` + `a2a_proxy`；`Kind` 字段与 Hydrate/Embed 同步
+- `agent_kind` 更新不可变（BadRequest）
 
 ---
 
-## 四、Data 层
+## 五、Data 层（已实现）
 
-### 4.1 已实现
-
-文件：`internal/data/a2a.go`
-
-使用 raw SQL + SQLite，由 `EnsureA2ASchema(ctx, db)` 自动建表。
-
-数据库表：
+`internal/data/a2a.go` — SQLite，`EnsureA2ASchema`：
 
 | 表 | 用途 |
 |----|------|
-| `a2a_agent_cards` | AgentCard 持久化（agent_id PK, display_name, workspace, enabled, capabilities JSON, updated_at） |
-| `a2a_invocations` | 调用记录（id PK, caller/callee_agent_id, capability, payload_json, status, result_json, error_message, duration_ms, timeout_seconds, created_at） |
-| `a2a_audit` | 审计日志（id PK, invoke_id, caller/callee_agent_id, capability, status, duration_ms, workspace, created_at） |
+| `a2a_agent_cards` | Card（agent_id PK, capabilities JSON, enabled） |
+| `a2a_invocations` | 调用记录 |
+| `a2a_audit` | 审计 |
+| `a2a_remote_agents` | 远程注册 |
 
-Repo 实现：`NewA2ARepo(db *sql.DB) biz.A2ARepo`，Wire 注入通过 `NewA2ARepoFromData(d *Data) biz.A2ARepo`。
-
-### 4.2 待新增（跨实例 A2A）
-
-- `a2a_remote_agents` 表：远程 Agent 注册信息
-- `internal/a2a/client.go`：A2A HTTP Client，封装远程 AgentCard 发现和消息发送
-
-```go
-type A2AClient struct {
-    httpClient *http.Client
-}
-
-func (c *A2AClient) Discover(ctx context.Context, url string) (*A2AAgentCard, error)
-func (c *A2AClient) SendMessage(ctx context.Context, url string, msg A2AInvocation) (A2AInvocation, error)
-```
+`GetAgentCard`：无行时返回 `ErrNotFound`（非 disabled 空卡）。
 
 ---
 
-## 五、运行时层
+## 六、运行时与 Agent 构建（已实现）
 
-### 5.1 已实现：call_agent 工具
+### 6.1 call_agent
 
-文件：`internal/a2a/tool.go`
+- 注入：`InjectRunContext(ctx, a2aUC, callerAgentID, NewInvoker(...))`
+- 条件装配：`toolsets.go` 在 effective tools 含 `call_agent` 时注入
 
-`call_agent` 工具已实现并通过 `toolsets.go` 条件注入：
-
-```
-trpc_build.go → buildToolsetsForAgent → cfg.CallAgent = eff["call_agent"]
-toolsets.go → if cfg.CallAgent { customTools = append(customTools, a2a.NewCallAgentTool()) }
-```
-
-工具流程：
-1. 解析 `callAgentInput`（agent_id, capability, payload, timeout_seconds）
-2. 验证目标 Agent 的 AgentCard（enabled=true + capability 存在）
-3. 调用 `invokerFunc` 执行实际调用
-4. 写入审计条目（success 或 error）
-
-**关键缺口**：`WithA2AUsecase`、`WithCallerAgentID`、`WithInvoker` 三个 Context 注入函数已定义，但 service 层在创建 Agent 运行时上下文时**未调用**，导致 `call_agent` 工具运行时 `invokerFromContext` 返回 nil，报错 "invoker not configured"。
-
-### 5.2 待实现：Context 注入
-
-在 `internal/service/trpc_turn.go`（或其他创建 Agent 运行时上下文的位置）注入 A2A 上下文：
-
-```go
-ctx = a2a.WithA2AUsecase(ctx, a2aUsecase)
-ctx = a2a.WithCallerAgentID(ctx, agentID)
-ctx = a2a.WithInvoker(ctx, invokerFunc)
-```
-
-`invokerFunc` 签名：
-
-```go
-type invokerFunc func(ctx context.Context, calleeAgentID, capability, payloadJSON string, timeoutSec int) (string, error)
-```
-
-实现策略：invokerFunc 内部调用 `A2AUsecase.StartInvocation`，然后通过 Agent 运行时执行目标 Agent，最后 `FinishInvocation` 更新结果。
-
-### 5.3 待实现：A2A Agent 构建（跨实例）
-
-```go
-// internal/a2a/trpc/agent.go
-func BuildA2AAgent(ctx context.Context, cfg A2ARemoteAgent, deps) (agent.Agent, error)
-```
-
-包装 trpc-agent-go `a2aagent.New`，将远程 Agent 包装为本地可用的 `agent.Agent`。
-
-### 5.4 待实现：A2A Server（跨实例）
-
-```go
-// internal/a2a/trpc/server.go
-func NewA2AServer(ctx context.Context, agent agent.Agent, opts ...a2aserver.Option) (*a2aserver.A2AServer, error)
-```
-
-使用 `trpc.group/trpc-go/trpc-agent-go/server/a2a` 将本地 Agent 暴露为 A2A 服务。
-
-### 5.5 待实现：Graph 恢复集成
-
-```go
-// internal/a2a/graph_resume.go
-func ResumeFromA2A(ctx context.Context, graph *trpcgraph.StateGraph, msg A2AInvocation) error
-```
-
-对标 trpc-agent-go `internal/a2a/graph_resume.go`，A2A 长时间任务触发 Graph 中断，任务完成后恢复执行。
-
----
-
-## 六、Service 层
-
-### 6.1 已实现
-
-文件：`internal/service/a2a.go`
-
-| 方法 | HTTP | 说明 |
-|------|------|------|
-| `Discover` | `GET /v1/a2a/discover` | 按工作区/能力发现 A2A Agent |
-| `Invoke` | `POST /v1/a2a/invoke` | 发起跨 Agent 调用（当前为 stub，仅记录 pending） |
-| `UpdateAgentCard` | `PUT /v1/a2a/agents/{agent_id}/card` | 更新 Agent A2A Card |
-| `GetAgentCard` | `GET /v1/a2a/agents/{agent_id}/card` | 获取 Agent A2A Card |
-| `ListAudit` | `GET /v1/a2a/audit` | 浏览审计日志 |
-
-Prometheus 指标：
-
-| 指标 | 标签 | 说明 |
-|------|------|------|
-| `aranea_a2a_invoke_total` | `caller, callee, status` | 总调用次数 |
-| `aranea_a2a_invoke_duration_seconds` | — | 调用延迟直方图 |
-
-### 6.2 待新增（跨实例 A2A）
-
-| 方法 | HTTP | 说明 |
-|------|------|------|
-| `RegisterRemoteAgent` | `POST /v1/a2a/remote-agents` | 注册远程 A2A Agent |
-| `ListRemoteAgents` | `GET /v1/a2a/remote-agents` | 列出已注册远程 Agent |
-| `DeleteRemoteAgent` | `DELETE /v1/a2a/remote-agents/{id}` | 移除远程 Agent |
-| `DiscoverRemoteAgent` | `GET /v1/a2a/remote-discover` | 通过 URL 发现远程 AgentCard |
-
----
-
-## 七、Wire 注入
-
-### 7.1 已实现
+### 6.2 BuildTRPCAgent — `internal/agent/trpc_build_router.go`
 
 ```
-data.ProviderSet  → NewA2ARepoFromData
-biz.ProviderSet   → NewA2AUsecase
-service.ProviderSet → NewA2AService
+kind "" | "llm"  → BuildTRPCLLMAgentCached
+kind "a2a_proxy" → BuildTRPCA2AAgent (internal/a2a/trpc/agent.go)
 ```
 
-HTTP/gRPC 注册：`internal/server/http.go` + `grpc.go` 已注册 `A2AService`。
+- Proxy：跳过 intent pass（`trpc_turn.go`）
+- Endpoint：仅 LLM + enabled Card；`A2AEndpointBuilder` 拒绝 Proxy
 
-### 7.2 待新增（跨实例 A2A）
+### 6.3 Invoker 职责边界（SRP）
 
-```
-data.ProviderSet  → NewA2ARemoteAgentRepo
-biz.ProviderSet   → (扩展 A2AUsecase 或新增 A2ARemoteUsecase)
-service.ProviderSet → (扩展 A2AService)
-```
-
----
-
-## 八、Web 前端设计
-
-### 8.1 已实现
-
-| 文件 | 说明 |
+| 模块 | 职责 |
 |------|------|
-| `web/src/features/a2a/types.ts` | A2A 类型定义（A2ACapability, A2AAgentCard, A2AInvokeInput, A2AInvokeResult, A2AAuditEntry） |
-| `web/src/features/a2a/api.ts` | API 调用封装（discoverAgents, getAgentCard, updateAgentCard, invokeA2A, listA2AAudit） |
-| `web/src/stores/a2a/index.ts` | Pinia Store（useA2AStore：discover, refreshCard, updateCard, invoke, loadAudit） |
-| `web/src/components/teams/TeamEditorDialog.vue` | Team 编辑器中的 A2A 协议配置区（envelope, message_format, max_payload_chars, include_trace） |
+| `card_validate.go` | Card enabled + capability 存在 |
+| `callee_resolve.go` | 本地 vs 远程 target；disabled 不 fallback |
+| `invoker.go` | 编排校验 + 调用 exec |
+| `remote_invoke.go` | 远程 HTTP 消息发送 + capability metadata |
+| `chat_native.go` | `AgentTurnRunner` 实现（会话创建 + Turn） |
 
-### 8.2 待实现
+---
 
-| 组件 | 说明 |
+## 七、Service 层（已实现）
+
+`internal/service/a2a.go`：RPC 适配、Prometheus、`Invoke` 工作区校验。
+
+`internal/service/a2a_endpoint.go`：`A2AEndpointBuilder` 实现 `a2atrpc.EndpointBuilder`。
+
+Wire：`NewA2AEndpointBuilder`、`A2APublicBaseReloader`（系统设置保存后热更新 + 清 Endpoint 缓存）。
+
+---
+
+## 八、Web 前端（已实现）
+
+| 路径 | 说明 |
 |------|------|
-| `A2AAgentCardPage.vue` | A2A AgentCard 管理：列表 + 启用/禁用 + 能力编辑 |
-| `A2AAuditPage.vue` | A2A 审计日志浏览 |
-| `A2ARemoteAgentDialog.vue` | 注册远程 Agent，输入 URL → 自动发现 AgentCard |
+| `pages/A2APage.vue` | 运维主页 |
+| `features/a2a/useA2APage.ts` | 页面编排（SRP：页面薄、逻辑在 composable） |
+| `features/a2a/mappers.ts` + `__tests__/mappers.spec.ts` | DTO 映射 |
+| `components/a2a/*` | Discover / Audit / Invoke / Remote / Banner 面板 |
+| `stores/a2a/index.ts` | Pinia |
+| `AgentSettingsA2ATab.vue` | Proxy 远程连接 |
+| `AgentSettingsA2AEndpointTab.vue` | LLM Endpoint + Card |
 
-### 8.3 待新增 API（跨实例 A2A）
-
-```typescript
-export async function registerRemoteAgent(req: RegisterRemoteAgentRequest): Promise<A2ARemoteAgent>
-export async function listRemoteAgents(): Promise<A2ARemoteAgent[]>
-export async function deleteRemoteAgent(id: string): Promise<void>
-export async function discoverRemoteAgent(url: string): Promise<A2AAgentCard>
-```
+数据流：`features/a2a/api.ts` → store / composable → 面板组件（符合 frontend-guide 分层）。
 
 ---
 
 ## 九、安全设计
 
-| 控制点 | 实现 | 状态 |
-|--------|------|------|
-| 默认关闭 | 每个 Agent `enabled=false` | ✅ |
-| 工作区隔离 | `ListEnabledCards` 按工作区过滤 | ✅ |
-| 审计 | 每次调用写入 `a2a_audit` | ✅ |
-| AgentCard 验证 | call_agent 工具验证 enabled + capability | ✅ |
-| 速率限制 | API 网关层 | ❌ |
-| 远端鉴权 / mTLS | 跨实例 A2A | ❌ |
-| 跨工作区调用禁止 | service 层检查 | ❌（需在 Invoke 中增加 workspace 校验） |
+| 控制点 | 实现 |
+|--------|------|
+| 默认关闭 | Card `enabled=false` |
+| 工作区隔离 | Invoker + Admin Invoke `workspace` |
+| 审计 | 每次调用 `a2a_audit` |
+| Card 校验 | `CheckCalleeCard` |
+| 公开路径 | 仅 enabled LLM Endpoint；免 JWT 前缀注册 |
+| 远程鉴权 | api_key / bearer / mtls（`auth_config_json`） |
+| 速率限制 | 待 Phase 4（Ingress） |
+| Server mTLS 终止 | 文档化；建议反向代理 |
 
 ---
 
-## 十、涉及文件总览
+## 十、涉及文件（代码锚点）
 
-### 已实现
+### 后端
 
 | 文件 | 说明 |
 |------|------|
-| `api/kratos/a2a/v1/a2a.proto` | Proto 定义 + HTTP 映射 |
-| `internal/biz/a2a.go` | 领域模型 + A2ARepo 接口 + A2AUsecase |
-| `internal/data/a2a.go` | SQLite 持久化 + EnsureA2ASchema |
-| `internal/service/a2a.go` | Kratos 服务适配器 + Prometheus |
-| `internal/a2a/tool.go` | call_agent 工具 + Context 辅助函数 |
-| `internal/tools/trpc/toolsets.go` | call_agent 条件注入 |
-| `internal/biz/agent_mcp_effective.go` | ToolKeyCallAgent 常量 |
-| `internal/server/http.go` | HTTP 路由注册 |
-| `internal/server/grpc.go` | gRPC 注册 |
-| `web/src/features/a2a/types.ts` | 前端类型 |
-| `web/src/features/a2a/api.ts` | 前端 API |
-| `web/src/stores/a2a/index.ts` | Pinia Store |
+| `api/kratos/a2a/v1/a2a.proto` | 契约 |
+| `internal/biz/a2a.go` · `a2a_remote.go` · `a2a_gateway.go` | 用例 |
+| `internal/data/a2a.go` | 持久化 |
+| `internal/service/a2a.go` · `a2a_endpoint.go` | 传输 |
+| `internal/a2a/*.go` · `internal/a2a/trpc/*.go` | 协议桥接 |
+| `internal/agent/trpc_build_router.go` | Kind 路由 |
 
-### 待新增/修改
+### 前端
 
-| 文件 | 操作 | 说明 |
+| 文件 | 说明 |
+|------|------|
+| `web/src/features/a2a/` | api · types · mappers · useA2APage |
+| `web/src/pages/A2APage.vue` | 路由页 |
+| `web/src/components/a2a/` | 面板 |
+| `web/src/components/agents/AgentSettingsA2A*.vue` | 设置 Tab |
+
+---
+
+## 十一、Agent Kind 与 Endpoint（已实现）
+
+与需求 §2 产品模型一致：`a2a_proxy` 使用 `BuildTRPCA2AAgent`；LLM Endpoint 使用 `BuildA2AEndpointServer`。
+
+- 消息转换：使用框架 `a2a_converter.go`，**禁止**复制到 `internal/`
+- 公开 URL：`ResolvePublicBaseURL`；系统设置字段 `a2a_public_base_url` 经 `PublicBaseURLStore` 热更新
+
+---
+
+## 十二、传输与流式语义
+
+> **结论：SSE 不是全平台唯一通道；按场景选型。**
+
+### 12.1 三层传输
+
+| 层 | 入口 | 传输 | 说明 |
+|----|------|------|------|
+| A2A 外部 | `/v1/a2a/public/{agent_id}` | A2A JSON-RPC + HTTP 流（SSE） | 遵循 A2A 规范；按 AgentCard `streaming` |
+| Admin 运维 | `POST /v1/a2a/invoke` | 一元 JSON | 聚合最终文本，非 token 流 |
+| Chat UI | `/v1/ws` | WebSocket Envelope | 平台主通道；非标准 A2A |
+
+### 12.2 流式矩阵
+
+| 场景 | 配置 | 框架 |
 |------|------|------|
-| `internal/service/trpc_turn.go` | 修改 | 注入 A2A 上下文（WithA2AUsecase, WithCallerAgentID, WithInvoker） |
-| `internal/a2a/trpc/agent.go` | 新建 | A2AAgent 适配器（跨实例） |
-| `internal/a2a/trpc/server.go` | 新建 | A2A Server（跨实例） |
-| `internal/a2a/trpc/converter.go` | 新建 | 消息转换（trpc Event ↔ A2A Message） |
-| `internal/a2a/client.go` | 新建 | A2A HTTP Client |
-| `internal/a2a/graph_resume.go` | 新建 | Graph 恢复集成 |
-| `api/kratos/a2a/v1/a2a.proto` | 修改 | 新增远程 Agent RPC |
-| `internal/biz/a2a.go` | 修改 | 新增 A2ARemoteAgent 模型 + 方法 |
-| `internal/data/a2a.go` | 修改 | 新增 a2a_remote_agents 表 + Repo |
-| `internal/service/a2a.go` | 修改 | 新增远程 Agent 服务方法 |
-| `web/src/features/a2a/` | 修改 | 新增远程 Agent API + 管理页面 |
+| Public Endpoint | Card streaming + `BuildA2AEndpointServer(..., streaming)` | `server/a2a` |
+| A2A Proxy Chat | `A2AProxyConfig.enable_streaming` | `a2aagent` |
+| call_agent / Admin Invoke | 非流式 | `RunAgentTurn` 聚合 |
+
+### 12.3 Graph Resume
+
+- Public Endpoint：`server/a2a` 内置 `GraphResumeStateFromMetadata`
+- 项目：`BuildGraphResumeMetadata`（flattened 根级字段，与框架 envelope 对齐）
+
+### 12.4 GatewayDiscover vs Discover
+
+| API | 用途 |
+|-----|------|
+| `Discover` | 运维/工具扁平列表 |
+| `GatewayDiscover` | 联邦：`source`、`endpoint_url`、`remote_url`、`healthy` |
+
+远程 registry 的 `agent_id` = registry `id`；`ResolveInvokeTarget` 路由至 `InvokeRemoteRegistry`。
+
+### 12.5 公开 URL 优先级
+
+```
+env (A2A_PUBLIC_BASE_URL)
+  > system_settings.a2a_public_base_url (DB，/settings 编辑，保存即生效)
+  > configs server.a2a_public_base_url
+  > derived (HTTP listen addr)
+```
+
+- 只读：`GET /v1/a2a/config` + `/a2a` `A2ARuntimeConfigBanner`
+
+---
+
+## 十三、Phase 4 设计预留（待实现）
+
+| 项 | 方向 |
+|----|------|
+| 健康 Cron | `internal/biz` 或 cron 模块调度；写 `a2a_gateway_healthy` |
+| 联邦路由 | `GatewayDiscover` 消费 healthy 标记选路 |
+| 速率限制 | Kratos middleware 或 Ingress 文档 |
+| Admin Invoke 流式 | 可选 SSE；默认保持非流式 |
+
+实现任务与验收见 [26-a2a-development.md](./26-a2a-development.md) Phase 4。

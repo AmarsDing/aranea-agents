@@ -1,6 +1,6 @@
 # Message 消息 — 开发计划
 
-> **版本**：2026-05-19 | **状态**：✅ 核心机制端到端可用
+> **版本**：2026-05-21 | **状态**：✅ 核心 + P2 搜索 + P3 独立消费者已落地
 > **需求**：[51 消息机制](./51%20消息机制.md) · **后端设计**：[51a 后端消息机制](./51a%20后端消息机制.md) · **前端设计**：[51b 前端消息机制](./51b%20前端消息机制.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：—
 
@@ -14,12 +14,12 @@ Message 消息：统一的事件模型和传输机制，以 EventBus + Envelope 
 
 | 层 | 文件 | 职责 |
 |----|------|------|
-| 事件定义 | `internal/event/envelope.go` | Envelope 结构 + 25 种 EnvelopeType 常量 |
+| 事件定义 | `internal/event/envelope.go` | Envelope 结构 + **31 种** EnvelopeType 常量 |
 | 事件路由 | `internal/event/bus.go` | 统一事件总线（Subscribe/Publish/DropPolicy） |
 | 事件缓冲 | `internal/event/buffer.go` | 环形缓冲区 + TTL 驱逐 + WS 重放 |
-| 日志桥接 | `internal/event/slog_bridge.go` | Go slog → EnvelopeTypeLog 自动桥接 |
+| 流程日志 v2 | `internal/event/trace_emitter.go`、`system_flow.go` | `EnvelopeTypeFlowLog` → Monitor WS |
 | 事件投影 | `internal/agent/event_projector.go` | trpc event.Event → Envelope 投影 + 发布 |
-| 事件消费 | `internal/biz/event_bus_consumer.go` | 内部消费者（Buffer 追加 / StateDelta 持久化 / Usage 记录） |
+| 事件消费 | `internal/biz/event_bus_consumer.go` + `event_bus_*_handler.go` | 编排器 + buffer/runner/state/persist 四 handler |
 | WS 服务 | `internal/server/ws.go` | WebSocket 服务（挂入 Kratos HTTP Server） |
 | HTTP 后台入口 | `internal/service/chat.go` | `SendChatMessage` unary 入口；WS 上行、Channel、Cron 复用同一 native turn |
 | 前端传输 | `web/src/features/chat/ws-transport.ts` | createWsTransport（心跳/重连/pending 队列） |
@@ -34,14 +34,16 @@ Message 消息：统一的事件模型和传输机制，以 EventBus + Envelope 
 
 | 项 | 状态 | 证据 |
 |----|------|------|
-| 统一事件模型 | ✅ | Envelope + EnvelopeType（25 种），Chat/Team/Graph/Monitor 共享 |
+| 统一事件模型 | ✅ | Envelope + EnvelopeType（31 种），Chat/Team/Graph/Monitor/Knowledge 共享 |
 | 统一事件总线 | ✅ | `event.Bus` 接口，支持 session_id / team_id / channel / filter_key 路由 |
 | 事件投影 | ✅ | `EventProjector.ProjectAndPublish`，Service 层不再直接处理事件 |
 | WebSocket 统一传输 | ✅ | 单连接多路复用（chat/monitor/team/graph/system），挂入 Kratos |
 | 双向通信 | ✅ | cancel / user_message / enqueue_message（→ `EnqueueUserMessage` RPC）/ subscribe / enable_log 上行 |
 | 背压控制 | ✅ | 三级 DropPolicy（DropOldest/DropNewest/BlockUpTo）+ Prometheus 丢弃计数 |
 | 事件缓冲与重放 | ✅ | `event.Buffer`（环形缓冲区 + TTL 30min + 每会话 200 上限）+ WS 同步屏障 |
-| Monitor 日志统一 | ✅ | `SlogBridge` + `EnvelopeTypeLog` + WS channel:monitor |
+| Monitor 流程日志 | ✅ | `flow_log` 免 `enable_log`；进程 `log` 门控；`useLogStreamHub` 分流 |
+| EventBusConsumer SRP | ✅ | buffer / runner / state / persist 四 handler（2026-05-21 文档对齐） |
+| event_store 持久化 | ✅ | `event_persist_handler` 异步队列（与 34-event 对齐） |
 | 全局监控模式 | ✅ | `session_id=*` 连接可订阅所有会话的 Monitor/Team/Graph 事件（限 3 连接） |
 | 服务端优雅关闭 | ✅ | `server_shutdown` 系统消息广播 |
 | 前端分发器 | ✅ | `EnvelopeDispatcher` 类（onType/onChannel/on + matchFilterKey） |
@@ -52,11 +54,11 @@ Message 消息：统一的事件模型和传输机制，以 EventBus + Envelope 
 
 | 项 | 优先级 | 说明 |
 |----|--------|------|
-| 消息搜索 | P2 | 历史消息全文检索（SQLite FTS5） |
-| 消息引用/回复 | P3 | 引用历史消息 |
-| ToolCallConsumer | P3 | 工具调用持久化消费者（从 EventBusConsumer 拆分） |
-| CallbackConsumer | P3 | 回调通知消费者（Webhook / 回调 URL） |
-| MessageStoreConsumer | P3 | 消息存储消费者（结构化消息落库） |
+| 消息搜索 | P2 | ✅ FTS5 + `SearchSessionMessages` |
+| 消息引用/回复 | P3 | 引用历史消息（待做） |
+| ToolCallConsumer | P3 | ✅ 独立订阅 `tool_result` |
+| CallbackConsumer | P3 | ✅ 独立订阅 `run_status` 终态 → Webhook |
+| MessageStoreConsumer | P3 | ✅ `member_message_done` → `role=member` + `team_member` 元数据（与 51b WS 一致） |
 | Webhook 投射 | P3 | 同一 Envelope 投射到 Webhook 通道 |
 | 事件持久化升级 | P3 | EventBuffer → 外部存储（Redis/SQLite），支持跨重启重放 |
 
@@ -66,7 +68,7 @@ Message 消息：统一的事件模型和传输机制，以 EventBus + Envelope 
 
 ### 3.1 P2 — 消息搜索
 
-**现状**：消息存储在 `chat_messages` 表，无全文索引，无法按关键词搜索历史消息。
+**现状**：`messages_fts` FTS5 + `GET /v1/sessions/messages/search`（须 `session_id`）；Team 成员消息经 `MessageStoreConsumer` 落库。
 
 **方案**：
 - SQLite FTS5 虚拟表，对 `content` 字段建立全文索引
@@ -82,14 +84,13 @@ Message 消息：统一的事件模型和传输机制，以 EventBus + Envelope 
 - Envelope 扩展 `quote` 字段
 - 前端引用 UI
 
-### 3.3 P3 — 内部消费者拆分
+### 3.3 P3 — 按 EnvelopeType 的独立消费者（待做）
 
-**现状**：`EventBusConsumer` 承担 Buffer 追加 + StateDelta 持久化 + Usage 记录，职责过重。
+**现状（✅ I5-SYS-03）**：`EventBusConsumer` 已拆为 `eventBufferHandler` / `runnerCompletionHandler` / `stateDeltaHandler` / `eventPersistHandler`，编排器只做委托。
 
-**方案**：
-- 拆分为独立消费者：`ToolCallConsumer` / `CallbackConsumer` / `MessageStoreConsumer`
-- 各消费者独立订阅 EventBus，按 EnvelopeType 过滤
-- 支持独立错误处理和重试
+**待做**：
+- 从编排路径再拆 **独立 Bus 订阅**：`ToolCallConsumer` / `CallbackConsumer` / `MessageStoreConsumer`
+- 各消费者按 `SubscribeOptions.EventTypes` 过滤，独立重试与指标
 
 ### 3.4 P3 — Webhook 投射
 
@@ -123,7 +124,7 @@ Message 消息：统一的事件模型和传输机制，以 EventBus + Envelope 
 | 双向通信（cancel/user_message/enqueue） | ✅ |
 | 背压控制（三级 DropPolicy） | ✅ |
 | EventBuffer + WS 重放同步屏障 | ✅ |
-| SlogBridge + Monitor 日志统一 | ✅ |
+| Flow Log v2 + Monitor 流程日志 | ✅ |
 | 全局监控模式 | ✅ |
 | 前端 EnvelopeDispatcher + 场景 Hooks | ✅ |
 | 服务端优雅关闭 | ✅ |
@@ -179,19 +180,19 @@ Message 消息：统一的事件模型和传输机制，以 EventBus + Envelope 
 - [x] 双向通信：cancel / user_message / enqueue_message 上行
 - [x] 背压控制：三级 DropPolicy + Prometheus 丢弃计数
 - [x] 事件缓冲与重放：断连后自动重连 + 事件重放
-- [x] Monitor 日志统一：SlogBridge 自动桥接
+- [x] Monitor 流程日志：Flow Log v2（`flow_log`）；SlogBridge 已移除
 - [x] 全局监控：session_id=* 跨会话订阅
 - [x] 前端分发器 + 场景 Hooks
 
-### Phase 1
+### Phase 1（✅）
 
-- [ ] 可搜索历史消息（关键词 + 分页 + 高亮）
-- [ ] 搜索延迟 < 200ms（10 万条消息以内）
+- [x] 可搜索历史消息（关键词 + 分页 + FTS snippet 高亮）
+- [ ] 搜索延迟 < 200ms（10 万条消息以内，待压测）
 
-### Phase 2
+### Phase 2（✅ 消费者）
 
-- [ ] 工具调用独立持久化（从 EventBusConsumer 拆分）
-- [ ] 回调通知可发送到外部 URL
+- [x] 工具调用独立持久化（`toolCallConsumer`）
+- [x] 回调通知可发送到外部 URL（`callbackConsumer`）
 - [ ] 消息可引用历史消息
 
 ### Phase 3

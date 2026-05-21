@@ -6,43 +6,126 @@ import (
 	"sync"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 
 	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
 )
 
 type runtimeEntry struct {
-	plugin trpcplugin.Plugin
-	scope  string
-	key    string
+	plugin            trpcplugin.Plugin
+	scope             string
+	key               string
+	enabled           bool
+	sortOrder         int
+	orchestration     PluginOrchestrationPath
+	modelRouter       *ModelRouterConfig
+	costGuard         *CostGuardConfig
+	confirmationGuard *ConfirmationGuardConfig
 }
 
-// Runtime manages the set of active trpc-agent-go plugin.Plugin instances
-// derived from enabled biz.Plugin DB rows.  It is safe for concurrent use.
-//
-// Call Apply whenever the enabled state of any plugin changes; the next runner
-// creation will pick up the updated plugin slice automatically.
 type Runtime struct {
-	mu      sync.RWMutex
-	active  []runtimeEntry
-	stats   StatsRecorder
+	mu             sync.RWMutex
+	active         []runtimeEntry
+	stats          StatsRecorder
+	notifier       *HookNotifier
+	bus            event.Bus
+	budgets        *CostGuardBudgetRegistry
+	resolveAgent   AgentKeyResolver
+	catalogConfirm CatalogConfirmChecker
 }
 
-// NewRuntime creates an empty Runtime (no active plugins).
 func NewRuntime(stats StatsRecorder) *Runtime {
-	return &Runtime{stats: stats}
+	return &Runtime{
+		stats:   stats,
+		budgets: NewCostGuardBudgetRegistry(),
+	}
 }
 
-// Apply replaces the active plugin set from the supplied DB snapshot.
-// Only enabled plugins with a known built-in key are instantiated.
+// SetHookDeliveryRepo enables durable Hook notify delivery with retries.
+func (rt *Runtime) SetHookDeliveryRepo(repo biz.HookDeliveryRepo) {
+	if rt == nil {
+		return
+	}
+	rt.mu.Lock()
+	rt.notifier = NewHookNotifier(repo)
+	rt.mu.Unlock()
+}
+
+// HookNotifier returns the configured Hook notify worker.
+func (rt *Runtime) HookNotifier() *HookNotifier {
+	if rt == nil {
+		return nil
+	}
+	rt.mu.RLock()
+	defer rt.mu.RUnlock()
+	return rt.notifier
+}
+
+// SetAgentKeyResolver enables agent_key → agent_id lookup for scoped plugins.
+func (rt *Runtime) SetAgentKeyResolver(fn AgentKeyResolver) {
+	rt.mu.Lock()
+	rt.resolveAgent = fn
+	rt.mu.Unlock()
+}
+
+// SetCatalogConfirmChecker wires catalog requires_confirmation lookup for plugins.
+func (rt *Runtime) SetCatalogConfirmChecker(fn CatalogConfirmChecker) {
+	rt.mu.Lock()
+	rt.catalogConfirm = fn
+	rt.mu.Unlock()
+}
+
+// CostGuardBudgetTracker returns the global budget tracker (legacy; prefer CostGuardBudgetTrackerForAgent).
+func (rt *Runtime) CostGuardBudgetTracker() *CostGuardBudgetTracker {
+	if rt == nil || rt.budgets == nil {
+		return NewCostGuardBudgetTracker()
+	}
+	return rt.budgets.TrackerForScope("global")
+}
+
+func (rt *Runtime) SetBus(bus event.Bus) {
+	rt.mu.Lock()
+	rt.bus = bus
+	rt.mu.Unlock()
+	InitHookLogger(bus)
+}
+
 func (rt *Runtime) Apply(_ context.Context, plugins []biz.Plugin) {
+	rt.mu.RLock()
+	bus := rt.bus
+	stats := rt.stats
+	rt.mu.RUnlock()
 	built := make([]runtimeEntry, 0, len(plugins))
 	for _, p := range plugins {
-		if tp := adapt(p, rt.stats); tp != nil {
-			built = append(built, runtimeEntry{
-				plugin: tp,
-				scope:  strings.TrimSpace(p.Scope),
-				key:    p.Key,
-			})
+		if !p.Enabled {
+			continue
+		}
+		if tp := adapt(p, stats, bus, rt); tp != nil {
+			ValidatePluginCallbackPoints(p)
+			e := runtimeEntry{
+				plugin:        tp,
+				scope:         strings.TrimSpace(p.Scope),
+				key:           p.Key,
+				enabled:       true,
+				sortOrder:     p.SortOrder,
+				orchestration: ResolvePluginOrchestration(p),
+			}
+			if p.Key == "model_router" {
+				var cfg ModelRouterConfig
+				parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg)
+				e.modelRouter = &cfg
+			}
+			if p.Key == "cost_guard" {
+				var cfg CostGuardConfig
+				parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg)
+				e.costGuard = &cfg
+			}
+			if p.Key == "confirmation_guard" {
+				var cfg ConfirmationGuardConfig
+				parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg)
+				e.confirmationGuard = &cfg
+			}
+			built = append(built, e)
 		}
 	}
 	rt.mu.Lock()
@@ -64,17 +147,95 @@ func PluginMatchesScope(scope, agentID string) bool {
 	return scope == agentID
 }
 
-// PluginsForAgent returns plugins whose scope is global or matches agentID.
+// PluginsForAgent returns Runner-orchestrated plugins for the agent (excludes chain-only).
 func (rt *Runtime) PluginsForAgent(agentID string) []trpcplugin.Plugin {
 	rt.mu.RLock()
 	defer rt.mu.RUnlock()
 	out := make([]trpcplugin.Plugin, 0, len(rt.active))
 	for _, e := range rt.active {
+		if e.orchestration == OrchestrationChain {
+			continue
+		}
 		if PluginMatchesScope(e.scope, agentID) {
 			out = append(out, e.plugin)
 		}
 	}
 	return out
+}
+
+// ChainPluginsForAgent returns plugins mirrored into LLMAgent Callback Chain for the agent.
+func (rt *Runtime) ChainPluginsForAgent(agentID string) ([]trpcplugin.Plugin, []int) {
+	rt.mu.RLock()
+	defer rt.mu.RUnlock()
+	plugins := make([]trpcplugin.Plugin, 0)
+	orders := make([]int, 0)
+	for _, e := range rt.active {
+		if e.orchestration != OrchestrationChain {
+			continue
+		}
+		if PluginMatchesScope(e.scope, agentID) {
+			plugins = append(plugins, e.plugin)
+			orders = append(orders, e.sortOrder)
+		}
+	}
+	return plugins, orders
+}
+
+// ModelRouterConfigForAgent returns model_router config when the plugin is enabled for the agent.
+func (rt *Runtime) ModelRouterConfigForAgent(agentID string) (ModelRouterConfig, bool) {
+	rt.mu.RLock()
+	defer rt.mu.RUnlock()
+	for _, e := range rt.active {
+		if e.key != "model_router" || e.modelRouter == nil {
+			continue
+		}
+		if PluginMatchesScope(e.scope, agentID) {
+			return *e.modelRouter, true
+		}
+	}
+	return ModelRouterConfig{}, false
+}
+
+// SetCostGuardUsageRepo enables cross-process daily token persistence.
+func (rt *Runtime) SetCostGuardUsageRepo(repo biz.PluginCostGuardUsageRepo) {
+	if rt == nil {
+		return
+	}
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	if rt.budgets != nil {
+		rt.budgets.SetUsageRepo(repo)
+	}
+}
+
+// CostGuardConfigForAgent returns cost_guard config when the plugin is enabled for the agent.
+func (rt *Runtime) CostGuardConfigForAgent(agentID string) (CostGuardConfig, bool) {
+	rt.mu.RLock()
+	defer rt.mu.RUnlock()
+	for _, e := range rt.active {
+		if e.key != "cost_guard" || e.costGuard == nil {
+			continue
+		}
+		if PluginMatchesScope(e.scope, agentID) {
+			return *e.costGuard, true
+		}
+	}
+	return CostGuardConfig{}, false
+}
+
+// ConfirmationGuardConfigForAgent returns confirmation_guard config when enabled for the agent.
+func (rt *Runtime) ConfirmationGuardConfigForAgent(agentID string) (ConfirmationGuardConfig, bool) {
+	rt.mu.RLock()
+	defer rt.mu.RUnlock()
+	for _, e := range rt.active {
+		if e.key != "confirmation_guard" || e.confirmationGuard == nil {
+			continue
+		}
+		if PluginMatchesScope(e.scope, agentID) {
+			return *e.confirmationGuard, true
+		}
+	}
+	return ConfirmationGuardConfig{}, false
 }
 
 // Plugins returns all active plugins (no scope filter). Prefer PluginsForAgent at turn time.

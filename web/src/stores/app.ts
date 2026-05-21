@@ -14,6 +14,7 @@ import {
   type SendMessageOptions,
   type IntentPassResult
 } from "../features/chat/api";
+import { mergeSessionMessages } from "../features/chat/mergeSessionMessages";
 import { createAgent, deleteAgent, listAgents, updateAgent, type Agent } from "../features/agents/api";
 
 export const useAppStore = defineStore("app", {
@@ -111,7 +112,8 @@ export const useAppStore = defineStore("app", {
     },
     async loadMessages() {
       if (!this.selectedSession) return;
-      this.messages = await listMessages(this.selectedSession.id);
+      const server = await listMessages(this.selectedSession.id);
+      this.messages = mergeSessionMessages(server, this.messages);
     },
     async send(content: string, options?: SendMessageOptions) {
       if (!this.selectedSession || !this.selectedAgent) return;

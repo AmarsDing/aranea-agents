@@ -5,9 +5,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"aranea-agents/internal/biz"
+	a2apkg "aranea-agents/internal/a2a"
 )
 
 // a2aRepo implements biz.A2ARepo using raw SQL.
@@ -59,6 +61,19 @@ func EnsureA2ASchema(ctx context.Context, db *sql.DB) error {
 			workspace       TEXT NOT NULL DEFAULT '',
 			created_at      TEXT NOT NULL
 		)`,
+		`CREATE TABLE IF NOT EXISTS a2a_remote_agents (
+			id               TEXT PRIMARY KEY,
+			workspace        TEXT NOT NULL DEFAULT '',
+			display_name     TEXT NOT NULL DEFAULT '',
+			remote_url       TEXT NOT NULL,
+			agent_card_url   TEXT NOT NULL DEFAULT '',
+			auth_type        TEXT NOT NULL DEFAULT '',
+			auth_config_json TEXT NOT NULL DEFAULT '',
+			enabled          INTEGER NOT NULL DEFAULT 1,
+			card_json        TEXT NOT NULL DEFAULT '{}',
+			created_at       TEXT NOT NULL,
+			updated_at       TEXT NOT NULL
+		)`,
 	}
 	for _, s := range stmts {
 		if _, err := db.ExecContext(ctx, s); err != nil {
@@ -97,7 +112,11 @@ func (r *a2aRepo) UpsertAgentCard(ctx context.Context, card biz.A2AAgentCard) (b
 func (r *a2aRepo) GetAgentCard(ctx context.Context, agentID string) (biz.A2AAgentCard, error) {
 	row := r.db.QueryRowContext(ctx,
 		`SELECT agent_id,display_name,workspace,enabled,capabilities,updated_at FROM a2a_agent_cards WHERE agent_id=?`, agentID)
-	return scanA2ACard(row)
+	card, err := scanA2ACard(row)
+	if err == sql.ErrNoRows {
+		return biz.A2AAgentCard{}, biz.ErrNotFound
+	}
+	return card, err
 }
 
 func (r *a2aRepo) ListEnabledCards(ctx context.Context, workspace, capability string) ([]biz.A2AAgentCard, error) {
@@ -129,6 +148,49 @@ func (r *a2aRepo) ListEnabledCards(ctx context.Context, workspace, capability st
 			}
 		}
 		out = append(out, card)
+	}
+	return out, rows.Err()
+}
+
+func (r *a2aRepo) MapEndpointEnabled(ctx context.Context, agentIDs []string) (map[string]bool, error) {
+	out := make(map[string]bool)
+	if r == nil || r.db == nil || len(agentIDs) == 0 {
+		return out, nil
+	}
+	seen := make(map[string]struct{}, len(agentIDs))
+	var ids []string
+	for _, id := range agentIDs {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	placeholders := strings.Repeat("?,", len(ids))
+	placeholders = placeholders[:len(placeholders)-1]
+	q := fmt.Sprintf(`SELECT agent_id FROM a2a_agent_cards WHERE enabled=1 AND agent_id IN (%s)`, placeholders)
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		args[i] = id
+	}
+	rows, err := r.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out[id] = true
 	}
 	return out, rows.Err()
 }
@@ -194,6 +256,110 @@ func (r *a2aRepo) ListAudit(ctx context.Context, callerID, calleeID string, limi
 		out = append(out, e)
 	}
 	return out, total, rows.Err()
+}
+
+func (r *a2aRepo) DiscoverRemoteCard(ctx context.Context, in biz.RemoteCardDiscoverInput) (biz.A2AAgentCard, error) {
+	return a2apkg.FetchRemoteAgentCard(ctx, in.RemoteURL, in.AuthType, in.AuthConfigJSON)
+}
+
+func (r *a2aRepo) CreateRemoteAgent(ctx context.Context, agent biz.A2ARemoteAgent) (biz.A2ARemoteAgent, error) {
+	if r == nil || r.db == nil {
+		return biz.A2ARemoteAgent{}, fmt.Errorf("a2a db nil")
+	}
+	if agent.ID == "" {
+		agent.ID = fmt.Sprintf("remote-%d", time.Now().UnixNano())
+	}
+	cardJSON, err := json.Marshal(agent.DiscoveredCard)
+	if err != nil {
+		return biz.A2ARemoteAgent{}, err
+	}
+	enabled := 0
+	if agent.Enabled {
+		enabled = 1
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err = r.db.ExecContext(ctx,
+		`INSERT INTO a2a_remote_agents
+		 (id,workspace,display_name,remote_url,agent_card_url,auth_type,auth_config_json,enabled,card_json,created_at,updated_at)
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+		agent.ID, agent.Workspace, agent.DisplayName, agent.RemoteURL, agent.AgentCardURL,
+		agent.AuthType, agent.AuthConfigJSON, enabled, string(cardJSON), now, now)
+	if err != nil {
+		return biz.A2ARemoteAgent{}, err
+	}
+	agent.CreatedAt = now
+	agent.UpdatedAt = now
+	return agent, nil
+}
+
+func (r *a2aRepo) ListRemoteAgents(ctx context.Context, workspace string) ([]biz.A2ARemoteAgent, error) {
+	if r == nil || r.db == nil {
+		return nil, nil
+	}
+	q := `SELECT id,workspace,display_name,remote_url,agent_card_url,auth_type,auth_config_json,enabled,card_json,created_at,updated_at
+	      FROM a2a_remote_agents WHERE 1=1`
+	args := []any{}
+	if strings.TrimSpace(workspace) != "" {
+		q += ` AND workspace=?`
+		args = append(args, workspace)
+	}
+	q += ` ORDER BY updated_at DESC`
+	rows, err := r.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []biz.A2ARemoteAgent
+	for rows.Next() {
+		item, err := scanRemoteAgent(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, item)
+	}
+	return out, rows.Err()
+}
+
+func (r *a2aRepo) DeleteRemoteAgent(ctx context.Context, id string) error {
+	if r == nil || r.db == nil {
+		return fmt.Errorf("a2a db nil")
+	}
+	_, err := r.db.ExecContext(ctx, `DELETE FROM a2a_remote_agents WHERE id=?`, id)
+	return err
+}
+
+func (r *a2aRepo) GetRemoteAgent(ctx context.Context, id string) (biz.A2ARemoteAgent, error) {
+	if r == nil || r.db == nil {
+		return biz.A2ARemoteAgent{}, fmt.Errorf("a2a db nil")
+	}
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return biz.A2ARemoteAgent{}, biz.ErrNotFound
+	}
+	row := r.db.QueryRowContext(ctx,
+		`SELECT id,workspace,display_name,remote_url,agent_card_url,auth_type,auth_config_json,enabled,card_json,created_at,updated_at
+		 FROM a2a_remote_agents WHERE id=?`, id)
+	agent, err := scanRemoteAgent(row)
+	if err == sql.ErrNoRows {
+		return biz.A2ARemoteAgent{}, biz.ErrNotFound
+	}
+	return agent, err
+}
+
+func scanRemoteAgent(row scannable) (biz.A2ARemoteAgent, error) {
+	var agent biz.A2ARemoteAgent
+	var enabled int
+	var cardJSON string
+	if err := row.Scan(&agent.ID, &agent.Workspace, &agent.DisplayName, &agent.RemoteURL, &agent.AgentCardURL,
+		&agent.AuthType, &agent.AuthConfigJSON, &enabled, &cardJSON, &agent.CreatedAt, &agent.UpdatedAt); err != nil {
+		return biz.A2ARemoteAgent{}, err
+	}
+	agent.Enabled = enabled == 1
+	_ = json.Unmarshal([]byte(cardJSON), &agent.DiscoveredCard)
+	if agent.DiscoveredCard.AgentID == "" {
+		agent.DiscoveredCard.AgentID = agent.ID
+	}
+	return agent, nil
 }
 
 // --- helpers ---

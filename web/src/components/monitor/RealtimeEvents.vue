@@ -26,16 +26,39 @@
             <div class="row q-gutter-xs q-mt-xs">
               <q-chip dense outline>{{ event.source }}</q-chip>
               <q-chip dense :color="eventColor(event.type)" text-color="white">{{ event.type }}</q-chip>
+              <q-chip v-if="event.canOpenInRuns" dense outline color="teal">已关联 Runs</q-chip>
             </div>
           </q-item-section>
-          <q-item-section side class="text-caption text-grey-7">
-            {{ event.time }}
+          <q-item-section side>
+            <div class="column items-end q-gutter-xs">
+              <span class="text-caption text-grey-7">{{ event.time }}</span>
+              <q-btn
+                v-if="event.canOpenInRuns && event.completionMeta"
+                flat
+                dense
+                no-caps
+                size="sm"
+                color="primary"
+                label="在 Runs 中查看"
+                @click.stop="openLinkedRun(event)"
+              />
+              <q-btn
+                v-else-if="event.completionSessionId"
+                flat
+                dense
+                no-caps
+                size="sm"
+                color="primary"
+                label="打开会话"
+                @click.stop="openChatSession(event.completionSessionId!)"
+              />
+            </div>
           </q-item-section>
         </q-item>
       </q-list>
       <div v-else class="monitor-empty">
         <q-icon name="sensors" size="36px" color="grey-5" />
-        <div>暂无实时事件</div>
+        <div>{{ emptyHint }}</div>
       </div>
     </q-card-section>
   </q-card>
@@ -66,7 +89,19 @@ import { copyToClipboard, Notify } from "quasar";
 import { GLOBAL_WS_SESSION_ID } from "../../config/runtime";
 import { useMonitorStore } from "../../stores/monitor/index";
 import type { PlatformResource, StreamState, TeamRunEvent } from "../../features/monitor/types";
+import {
+  completionFallbackSubtitle,
+  completionCanOpenInRuns,
+  completionFallbackTitle,
+  isRunnerCompletionRow,
+  runnerCompletionMetaFromRow,
+  shouldHideCompletionInEvents,
+  shouldHideWsRunnerCompletion,
+  type RunnerCompletionMeta
+} from "../../features/monitor/runCorrelation";
+import { useMonitorRunNavigation } from "../../features/monitor/useMonitorRunNavigation";
 import { compactJSON, formatDate, parseJSON } from "../../features/monitor/utils";
+import type { MonitorTraceEvent } from "../../features/monitor/types";
 
 type ViewEvent = {
   id: string;
@@ -77,11 +112,17 @@ type ViewEvent = {
   source: string;
   time: string;
   raw: unknown;
+  completionMeta?: RunnerCompletionMeta;
+  canOpenInRuns?: boolean;
+  completionSessionId?: string;
 };
 
 const props = defineProps<{
   persistedEvents: PlatformResource[];
+  traces?: MonitorTraceEvent[];
 }>();
+
+const { openChatSession, openRunsTab } = useMonitorRunNavigation();
 
 const category = ref("all");
 const state = ref<StreamState>("connecting");
@@ -91,6 +132,7 @@ const selected = ref<ViewEvent | null>(null);
 const detailOpen = ref(false);
 const monitorStore = useMonitorStore();
 let wsSub: ReturnType<typeof monitorStore.startRuntimeEventsStream> | null = null;
+let hasRuntimeEvent = false;
 
 const categoryOptions = [
   { label: "全部", value: "all" },
@@ -101,32 +143,67 @@ const categoryOptions = [
   { label: "系统", value: "system" }
 ];
 
-const persistedViewEvents = computed<ViewEvent[]>(() =>
-  props.persistedEvents.map((row) => {
-    const cfg = parseJSON(row.config_json);
-    const type = String(cfg.type || row.key || "monitor.event");
-    return {
-      id: row.id,
-      type,
-      title: row.name || type,
-      subtitle: row.description || JSON.stringify(cfg),
-      category: categoryFor(type),
-      source: "persisted",
-      time: formatDate(row.created_at),
-      raw: { ...row, config: cfg, metadata: parseJSON(row.metadata_json) }
-    };
-  })
-);
+const persistedViewEvents = computed<ViewEvent[]>(() => {
+  const traces = props.traces ?? [];
+  return props.persistedEvents
+    .filter((row) => {
+      if (!isRunnerCompletionRow(row)) return true;
+      const meta = runnerCompletionMetaFromRow(row);
+      return !shouldHideCompletionInEvents(meta, traces);
+    })
+    .map((row) => {
+      const cfg = parseJSON(row.config_json);
+      const type = String(cfg.type || row.key || "monitor.event");
+      const completion = isRunnerCompletionRow(row);
+      const meta = completion ? runnerCompletionMetaFromRow(row) : undefined;
+      return {
+        id: row.id,
+        type,
+        title: completion ? completionFallbackTitle(meta!, row.name) : row.name || type,
+        subtitle: completion ? completionFallbackSubtitle(meta!, row.description) : row.description || JSON.stringify(cfg),
+        category: categoryFor(type),
+        source: "persisted",
+        time: formatDate(row.created_at),
+        raw: { ...row, config: cfg, metadata: parseJSON(row.metadata_json) },
+        completionMeta: meta,
+        canOpenInRuns: completion && meta ? completionCanOpenInRuns(meta, traces) : false,
+        completionSessionId: completion ? String(meta?.session_id || "").trim() || undefined : undefined
+      };
+    });
+});
 
 const visibleEvents = computed(() => {
-  const items = [...runtimeEvents.value, ...persistedViewEvents.value];
+  const wsItems = runtimeEvents.value.filter((ev) => !shouldHideWsRunnerCompletion(ev.type));
+  const items = [...wsItems, ...persistedViewEvents.value];
   if (category.value === "all") return items;
   return items.filter((event) => event.category === category.value);
 });
 
 const selectedJSON = computed(() => compactJSON(selected.value?.raw ?? {}));
-const streamColor = computed(() => state.value === "live" ? "positive" : state.value === "error" ? "negative" : state.value === "paused" ? "grey" : "orange");
-const streamText = computed(() => ({ connecting: "连接中", live: "实时", paused: "已暂停", error: "连接异常" }[state.value]));
+const emptyHint = computed(() => {
+  if (state.value === "connected") {
+    return "已连接，等待运行时事件（发起 Team / Agent 运行后可看到实时推送）";
+  }
+  if (state.value === "connecting") {
+    return "正在连接 WebSocket…";
+  }
+  return "暂无实时事件";
+});
+const streamTextMap: Record<StreamState, string> = {
+  connecting: "连接中",
+  connected: "已连接",
+  live: "实时",
+  paused: "已暂停",
+  error: "连接异常"
+};
+const streamText = computed(() => streamTextMap[state.value]);
+const streamColor = computed(() => {
+  const s = state.value;
+  if (s === "live" || s === "connected") return "positive";
+  if (s === "error") return "negative";
+  if (s === "paused") return "grey";
+  return "orange";
+});
 
 onMounted(startStream);
 onBeforeUnmount(stopStream);
@@ -140,14 +217,34 @@ watch(paused, (isPaused) => {
   }
 });
 
+function refreshStreamState() {
+  if (paused.value) {
+    state.value = "paused";
+    return;
+  }
+  if (!wsSub?.connected.value) {
+    state.value = "connecting";
+    return;
+  }
+  state.value = hasRuntimeEvent ? "live" : "connected";
+}
+
 function startStream() {
   stopStream();
+  hasRuntimeEvent = false;
   state.value = "connecting";
   wsSub = monitorStore.startRuntimeEventsStream(
     GLOBAL_WS_SESSION_ID,
     (event) => {
+      hasRuntimeEvent = true;
       state.value = "live";
       runtimeEvents.value = [teamRunEventToView(event), ...runtimeEvents.value].slice(0, 1000);
+    },
+    () => {
+      if (!paused.value) state.value = "error";
+    },
+    () => {
+      if (!paused.value) refreshStreamState();
     },
     () => {
       if (!paused.value) state.value = "error";
@@ -213,6 +310,20 @@ function eventColor(type: string) {
 function openDetail(event: ViewEvent) {
   selected.value = event;
   detailOpen.value = true;
+}
+
+function openLinkedRun(event: ViewEvent) {
+  const meta = event.completionMeta;
+  if (!meta) return;
+  const traces = props.traces ?? [];
+  const byUsage = meta.usage_event_id ? findRunByUsageEventId(traces, meta.usage_event_id) : undefined;
+  const byTrace = meta.trace_id ? findRunByTraceId(traces, meta.trace_id) : undefined;
+  const run = byUsage || byTrace;
+  openRunsTab({
+    session: meta.session_id,
+    trace: meta.trace_id,
+    usageEventId: run?.id || meta.usage_event_id
+  });
 }
 
 async function copyJSON() {

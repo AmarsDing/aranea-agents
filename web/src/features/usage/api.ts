@@ -114,6 +114,8 @@ function tokenEventFromUnknown(raw: unknown): ModelTokenUsageEvent {
     provider_display_name: String(e.provider_display_name ?? e.providerDisplayName ?? ""),
     model_api_id: String(e.model_api_id ?? e.modelApiId ?? ""),
     model_display_name: String(e.model_display_name ?? e.modelDisplayName ?? ""),
+    usage_kind: String(e.usage_kind ?? e.usageKind ?? ""),
+    team_id: String(e.team_id ?? e.teamId ?? ""),
     call_count: num(e.call_count ?? e.callCount),
     input_tokens: num(e.input_tokens ?? e.inputTokens),
     output_tokens: num(e.output_tokens ?? e.outputTokens),
@@ -137,6 +139,10 @@ function overviewToLegacy(body: unknown): ModelUsageOverview {
   const topModelsRaw = o.top_models ?? o.topModels;
   const topAgentsRaw = o.top_agents ?? o.topAgents;
   const anomaliesRaw = o.anomalies;
+  const inefficientRaw = o.inefficient_models ?? o.inefficientModels;
+
+  const dashRaw = o.quota_dashboard ?? o.quotaDashboard;
+  const dash = obj(dashRaw);
 
   return {
     today: summaryFromUnknown(o.today),
@@ -146,12 +152,37 @@ function overviewToLegacy(body: unknown): ModelUsageOverview {
     trends: Array.isArray(trendsRaw) ? trendsRaw.map(trendFromUnknown) : [],
     top_models: Array.isArray(topModelsRaw) ? topModelsRaw.map(breakdownFromUnknown) : [],
     top_agents: Array.isArray(topAgentsRaw) ? topAgentsRaw.map(breakdownFromUnknown) : [],
-    anomalies: Array.isArray(anomaliesRaw) ? anomaliesRaw.map(tokenEventFromUnknown) : []
+    anomalies: Array.isArray(anomaliesRaw) ? anomaliesRaw.map(tokenEventFromUnknown) : [],
+    inefficient_models: Array.isArray(inefficientRaw)
+      ? inefficientRaw.map((raw: unknown) => {
+          const m = obj(raw);
+          return {
+            provider_code: String(m.provider_code ?? m.providerCode ?? ""),
+            model_api_id: String(m.model_api_id ?? m.modelApiId ?? ""),
+            model_display_name: String(m.model_display_name ?? m.modelDisplayName ?? ""),
+            call_count: num(m.call_count ?? m.callCount),
+            total_tokens: num(m.total_tokens ?? m.totalTokens),
+            total_cost_micro_usd: num(m.total_cost_micro_usd ?? m.totalCostMicroUsd),
+            avg_latency_ms: num(m.avg_latency_ms ?? m.avgLatencyMs),
+            avg_tokens_per_second: num(m.avg_tokens_per_second ?? m.avgTokensPerSecond),
+            success_rate: num(m.success_rate ?? m.successRate),
+            flags: Array.isArray(m.flags) ? m.flags.map((f) => String(f)) : []
+          };
+        })
+      : [],
+    quota_dashboard: dashRaw
+      ? {
+          configured_count: num(dash.configured_count ?? dash.configuredCount),
+          total_cap_micro_usd: num(dash.total_cap_micro_usd ?? dash.totalCapMicroUsd),
+          total_spent_micro_usd: num(dash.total_spent_micro_usd ?? dash.totalSpentMicroUsd),
+          max_utilization_ratio: num(dash.max_utilization_ratio ?? dash.maxUtilizationRatio)
+        }
+      : undefined
   };
 }
 
 function queryToKratos(q: ModelUsageQuery): KUsageQuery {
-  return {
+  const out: KUsageQuery = {
     range: q.range,
     startDate: q.start_date,
     endDate: q.end_date,
@@ -159,8 +190,12 @@ function queryToKratos(q: ModelUsageQuery): KUsageQuery {
     modelApiId: q.model_api_id,
     agentId: q.agent_id,
     status: q.status,
-    limit: q.limit
+    limit: q.limit,
+    granularity: q.granularity
   };
+  if (q.team_id?.trim()) out.teamId = q.team_id.trim();
+  if (q.usage_kind?.trim()) out.usageKind = q.usage_kind.trim();
+  return out;
 }
 
 /** `POST /v1/usage/token-events`：与 `api/kratos/usage/v1/usage.pb.go` 中 `TokenUsageEvent` 的 `json:"…"` 键一致。 */
@@ -292,6 +327,11 @@ export async function listModelUsageEvents(query: ModelUsageQuery = {}): Promise
 }
 
 /** Persists one usage row + session counters + daily rollup (`usage/v1` ingest). */
+export async function exportUsageEventsCsv(query: ModelUsageQuery = {}): Promise<string> {
+  const raw = await usage.ExportUsageEvents(queryToKratos(query));
+  return String((raw as { csv?: string }).csv ?? "");
+}
+
 export async function recordModelTokenUsageEvent(e: ModelTokenUsageEvent): Promise<ModelTokenUsageEvent> {
   const { data } = await kratosApi.post<unknown>("/v1/usage/token-events", usageTokenEventIngestBody(e), {
     headers: { "Content-Type": "application/json" }

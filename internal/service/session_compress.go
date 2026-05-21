@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strings"
 	"sync"
@@ -71,12 +70,9 @@ func (c *SessionCompressor) AfterNativeTurn(ctx context.Context, sessionID strin
 		runCtx, cancel := context.WithTimeout(context.Background(), sessionCompressRunTimeout)
 		defer cancel()
 		if err := c.runCompress(runCtx, sid, ag); err != nil {
-			_ = fmt.Sprintf("session_compress: session=%s err=%v", sid, err) // logged via EventBus below
 			if c.EventBus != nil {
-				env := event.NewEnvelope(event.EnvelopeTypeLog, "session_compress", sid)
-				env.Metadata = map[string]any{"level": "ERROR", "source": "session_compress"}
-				env.Content = &event.EnvelopeContent{Text: fmt.Sprintf("session_compress: session=%s err=%v", sid, err)}
-				c.EventBus.Publish(runCtx, env)
+				event.SessionSysLogWarn(runCtx, sid, "system.session.compress", "会话压缩失败",
+					event.P("error", err.Error()))
 			}
 		}
 	})
@@ -158,13 +154,14 @@ func (c *SessionCompressor) runCompress(ctx context.Context, sessionID string, a
 	if md == "" {
 		return nil
 	}
-	line := fmt.Sprintf("session_compress: session=%s ok compress_provider=%s compress_model=%s prompt_tokens=%d completion_tokens=%d duration_ms=%d prompt_ver=%s",
-		sessionID, res.Provider, res.Model, res.PromptTokens, res.CompletionTokens, time.Since(t0).Milliseconds(), res.PromptVersion)
 	if c.EventBus != nil {
-		env := event.NewEnvelope(event.EnvelopeTypeLog, "session_compress", sessionID)
-		env.Metadata = map[string]any{"level": "INFO", "source": "session_compress"}
-		env.Content = &event.EnvelopeContent{Text: line}
-		c.EventBus.Publish(ctx, env)
+		event.SessionSysLogInfo(ctx, sessionID, "system.session.compress", "会话压缩完成",
+			event.P("compress_provider", res.Provider),
+			event.P("compress_model", res.Model),
+			event.P("prompt_tokens", res.PromptTokens),
+			event.P("completion_tokens", res.CompletionTokens),
+			event.P("duration_ms", time.Since(t0).Milliseconds()),
+			event.P("prompt_ver", res.PromptVersion))
 	}
 
 	fromTurn := body[0].TurnIndex

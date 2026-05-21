@@ -1,8 +1,11 @@
 package event
 
 import (
+	"context"
 	"sync"
 	"time"
+
+	"aranea-agents/pkg/safego"
 )
 
 type Buffer struct {
@@ -30,7 +33,7 @@ func NewBuffer() *Buffer {
 		lastAcc: make(map[string]time.Time),
 		stopCh:  make(chan struct{}),
 	}
-	go b.evictLoop()
+	safego.Go(context.Background(), "buffer-evict", b.evictLoop)
 	return b
 }
 

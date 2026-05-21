@@ -71,6 +71,44 @@ message UpdatePluginSortOrderRequest {
   int32 sort_order = 2;
 }
 
+message UpdatePluginScopeRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string scope = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message PluginRun {
+  string id = 1;
+  string plugin_key = 2;
+  string plugin_id = 3;
+  string session_id = 4;
+  string agent_id = 5;
+  string callback_point = 6;
+  string status = 7;
+  int32 duration_ms = 8;
+  string detail_json = 9;
+  string created_at = 10;
+}
+
+message ListPluginRunsRequest {
+  string plugin_key = 1;
+  string plugin_id = 2;
+  string session_id = 3;
+  string agent_id = 4;
+  string callback_point = 5;
+  string status = 6;
+  string from = 7;
+  string to = 8;
+  int32 page = 9;
+  int32 page_size = 10;
+}
+
+message ListPluginRunsResponse {
+  repeated PluginRun items = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+}
+
 service PluginService {
   rpc ListPlugins(ListPluginsRequest) returns (ListPluginsResponse) {
     option (google.api.http) = {get: "/v1/plugins"};
@@ -92,5 +130,14 @@ service PluginService {
       patch: "/v1/plugins/{id}/sort-order"
       body: "*"
     };
+  }
+  rpc UpdatePluginScope(UpdatePluginScopeRequest) returns (Plugin) {
+    option (google.api.http) = {
+      patch: "/v1/plugins/{id}/scope"
+      body: "*"
+    };
+  }
+  rpc ListPluginRuns(ListPluginRunsRequest) returns (ListPluginRunsResponse) {
+    option (google.api.http) = {get: "/v1/plugins/runs"};
   }
 }

@@ -76,6 +76,9 @@ func (u *HookUsecase) Create(ctx context.Context, in Hook) (Hook, error) {
 	if in.Status == "" {
 		in.Status = "active"
 	}
+	if err := ValidateHookConfigForSave(in.ConfigJSON); err != nil {
+		return Hook{}, err
+	}
 	return u.repo.CreateHook(ctx, in)
 }
 
@@ -110,6 +113,9 @@ func (u *HookUsecase) Update(ctx context.Context, id string, patch Hook) (Hook, 
 	}
 	if merged.Status == "" {
 		merged.Status = cur.Status
+	}
+	if err := ValidateHookConfigForSave(merged.ConfigJSON); err != nil {
+		return Hook{}, err
 	}
 	return u.repo.UpdateHook(ctx, merged)
 }

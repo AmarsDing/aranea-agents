@@ -5,7 +5,7 @@
 import { createMCPServerService } from "../../services";
 import type { PlatformResource, PlatformResourceInput } from "../platform/api";
 import { asRecord, pickBool, pickI32, pickStr } from "../../shared/wireJson";
-import type { McpServerTestResult } from "./types";
+import type { McpServerTestResult, McpServerValidateResult, McpUserCredential, McpUserCredentialInput } from "./types";
 
 export type { PlatformResource, PlatformResourceInput } from "../platform/api";
 
@@ -81,6 +81,25 @@ export async function deleteMcpServer(id: string): Promise<void> {
   await svc.DeleteMCPServer({ id });
 }
 
+export async function validateMcpServer(enabled: boolean, configJson: string): Promise<McpServerValidateResult> {
+  const res = asRecord(await svc.ValidateMCPServer({ enabled, configJson }));
+  const detailsJson = pickStr(res, "details_json", "detailsJson");
+  let details: Record<string, unknown> | undefined;
+  if (detailsJson) {
+    try {
+      details = JSON.parse(detailsJson) as Record<string, unknown>;
+    } catch {
+      details = undefined;
+    }
+  }
+  return {
+    ok: pickBool(res, "ok", "ok"),
+    status: pickStr(res, "status", "status"),
+    message: pickStr(res, "message", "message"),
+    details
+  };
+}
+
 export async function testMcpServer(id: string): Promise<McpServerTestResult> {
   const res = asRecord(await svc.TestMCPServer({ id }));
   const detailsJson = pickStr(res, "details_json", "detailsJson");
@@ -98,4 +117,44 @@ export async function testMcpServer(id: string): Promise<McpServerTestResult> {
     message: pickStr(res, "message", "message"),
     details
   };
+}
+
+function mcpUserCredFromWire(raw: unknown): McpUserCredential {
+  const r = asRecord(raw);
+  return {
+    id: pickStr(r, "id", "id"),
+    mcp_server_id: pickStr(r, "mcp_server_id", "mcpServerId"),
+    user_id: pickStr(r, "user_id", "userId"),
+    credential_key: pickStr(r, "credential_key", "credentialKey"),
+    status: pickStr(r, "status", "status"),
+    configured: pickBool(r, "configured", "configured"),
+    masked_preview: pickStr(r, "masked_preview", "maskedPreview"),
+    created_at: pickStr(r, "created_at", "createdAt"),
+    updated_at: pickStr(r, "updated_at", "updatedAt")
+  };
+}
+
+export async function listMcpUserCredentials(mcpServerId: string, userId: string): Promise<McpUserCredential[]> {
+  const res = asRecord(await svc.ListMCPServerUserCredentials({ mcpServerId, userId }));
+  const items = res.items ?? res.Items;
+  return Array.isArray(items) ? items.map(mcpUserCredFromWire) : [];
+}
+
+export async function upsertMcpUserCredential(
+  mcpServerId: string,
+  userId: string,
+  input: McpUserCredentialInput
+): Promise<McpUserCredential> {
+  const row = await svc.UpsertMCPServerUserCredential({
+    mcpServerId,
+    userId,
+    credentialKey: input.credential_key,
+    secret: input.secret,
+    status: input.status ?? "active"
+  });
+  return mcpUserCredFromWire(row);
+}
+
+export async function deleteMcpUserCredential(mcpServerId: string, userId: string, credentialKey: string): Promise<void> {
+  await svc.DeleteMCPServerUserCredential({ mcpServerId, userId, credentialKey });
 }

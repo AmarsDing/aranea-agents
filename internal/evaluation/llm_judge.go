@@ -3,7 +3,6 @@ package evaluation
 import (
 	"context"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -18,13 +17,13 @@ const llmJudgePrompt = `You are an evaluation judge. Score how well ACTUAL match
 Reply with ONLY a decimal number between 0 and 1 (e.g. 0.85). No explanation.`
 
 // NewLLMJudge builds an LLM-as-Judge scorer from the provider catalog (EP-RT-08).
-// Env overrides: KRATOS_EVAL_JUDGE_PROVIDER, KRATOS_EVAL_JUDGE_MODEL
-func NewLLMJudge(catalog *biz.LlmProviderModelUsecase, rt *provider.RoundTrip) LLMJudge {
+// Precedence: env KRATOS_EVAL_JUDGE_* → system_settings → env KRATOS_EVAL_SIM_* → catalog mini/flash.
+func NewLLMJudge(catalog *biz.LlmProviderModelUsecase, rt *provider.RoundTrip, sys EvalLLMSettingsReader) LLMJudge {
 	if catalog == nil || rt == nil {
 		return nil
 	}
 	return func(ctx context.Context, input, expected, actual string) (float32, error) {
-		m, err := resolveJudgeModel(ctx, catalog, rt)
+		m, err := resolveJudgeModel(ctx, catalog, rt, sys)
 		if err != nil {
 			return 0, err
 		}
@@ -58,26 +57,6 @@ func NewLLMJudge(catalog *biz.LlmProviderModelUsecase, rt *provider.RoundTrip) L
 		}
 		return parseJudgeScore(sb.String())
 	}
-}
-
-func resolveJudgeModel(ctx context.Context, catalog *biz.LlmProviderModelUsecase, rt *provider.RoundTrip) (trpcmodel.Model, error) {
-	prov := strings.TrimSpace(os.Getenv("KRATOS_EVAL_JUDGE_PROVIDER"))
-	mod := strings.TrimSpace(os.Getenv("KRATOS_EVAL_JUDGE_MODEL"))
-	if rt == nil {
-		rt = &provider.RoundTrip{}
-	}
-	if prov != "" && mod != "" {
-		return provider.TRPCModelForProviderModel(ctx, catalog, rt, prov, mod)
-	}
-	models, err := catalog.List(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if len(models) == 0 {
-		return nil, fmt.Errorf("no models in catalog")
-	}
-	pm := pickJudgeModel(models)
-	return provider.TRPCModelForProviderModel(ctx, catalog, rt, pm.Provider, pm.Model)
 }
 
 func pickJudgeModel(models []biz.ProviderModel) biz.ProviderModel {

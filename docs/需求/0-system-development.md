@@ -1,6 +1,6 @@
 ﻿# System 系统 — 架构健康度诊断与综合开发计划
 
-> **版本**：2026-05-19（待优化项梳理）| **状态**：M0–M3 ✅；M4 进行中（Monitor/Token/Quota/MCP 部分已通；Channel/Ecosystem/Telemetry UI 待补）  
+> **版本**：2026-05-21（Agent 优化）| **状态**：M0–M3 ✅；M4 进行中（Monitor/Token/Quota/MCP 部分已通；Channel/Ecosystem/Telemetry UI 待补）  
 > **系统总览**：[0 系统框图.md](./0%20系统框图.md)  
 > **模块索引**：[README-development.md](./README-development.md)  
 > **进度真相**：[../guides/execution-plan.md](../guides/execution-plan.md)
@@ -23,14 +23,14 @@
 | 标杆能力 | Aranea 对齐位置 | 当前差距 | 康复方向 |
 |----------|-----------------|----------|----------|
 | Runner | `internal/agent/trpc_runtime.go` + `internal/runtime/runner_manager.go` | ✅ RunnerRegistry（per-session cancel/status/enqueue）+ RunnerManager（统一装配）已落地；ArtifactService/SessionIngestor/AgentFactory/AwaitUserReplyRouting 已注入；RalphLoop 仍为 OpenClaw 侧实现 | 已通：Chat/Team/Cron/Channel 共用 RunGateway |
-| Agent | `internal/agent/trpc_build.go` | Builder 汇聚 Provider / Tool / Skill / Memory / Callback，依赖较重 | 保持 Builder，收敛依赖 DTO 与缓存策略 |
+| Agent | `internal/agent/trpc_build.go` + `builder_deps.go` | Builder 汇聚 Provider / Tool / Skill / Memory / Callback；`TRPC*Deps` 分组类型已落地 | 保持 Builder；`AgentSettingsPage` 拆分、列表运行态聚合 |
 | Session | `internal/session/trpc` + `biz.SessionUsecase` | 框架 session 与业务 session 边界需更清晰 | Session transcript 与业务索引分工定稿 |
 | Memory | `internal/memory/trpc` + L0-L4 | 框架 MemoryService 与 Aranea L0-L4 双轨 | L0-L4 作为 MemoryService 的产品实现 |
 | Tool/MCP | `internal/tools` + `internal/tools/trpc` | ✅ ToolOverride/requires_confirmation/调用统计/TestTool/MCP 默认超时60s 已落地；MCP 认证/重连/Broker 默认发现仍待闭环 | 工具能力矩阵已通主路径；MCP 工程化待补 |
-| Event | `internal/agent/event_projector.go` + `internal/event` | ✅ Chat/Team/Monitor 主通道 `/v1/ws`；`run_status` Envelope 已通 | 持续收敛 EventBusConsumer 职责；外部协议 SSE 仅限 A2A/MCP |
+| Event | `internal/agent/event_projector.go` + `internal/event` | ✅ `/v1/ws` + 31 EnvelopeType；Consumer 已拆 + P3 侧效订阅（Tool/Callback/MessageStore/FlowLog） | SSE 仅限 A2A/MCP |
 | Plugin/Callback | `internal/plugin/trpc` + `internal/agent/callbacks` | 9 内置插件 + Chain+Hook+OnEvent ✅；治理类插件多为策略/记录层 | 产品化：UpdateScope、运行记录表、`model_router` 真改模型 |
 | Team/Graph | `internal/team`、`internal/graph` | Team member_* WS + 前端分栏 ✅；Graph LLM/Tool 节点、ExecutionSummary 待补 | 编排输出统一 Envelope；Graph 节点类型补全 |
-| Evaluation/A2A | `internal/evaluation`、`internal/a2a` | ✅ EvalSet 对齐（`BizCasesToEvalSet`）、LLMJudge、管理页；A2A Invoke + `call_agent` + admin 鉴权已通 | 高级评估（人工标注/报告/自动触发）、A2A 远程发现与流式 |
+| Evaluation/A2A | `internal/evaluation`、`internal/a2a` | ✅ Phase 5：FrameworkBridge、扩展指标、LLM UserSim、趋势/A/B、Eval LLM 系统配置；A2A Invoke + 联邦 Gateway | 质量门禁产品化、A2A Phase 4 Cron/限流 |
 
 OpenClaw 在 `pkg/trpc-agent-go/openclaw` 中完整存在，可直接对照。吸收三件事：
 1. Runner 为执行中心（session-scoped run control）—— Aranea 已用 `RunRegistry` + `RunnerManager` 实现对应模式；
@@ -46,10 +46,10 @@ OpenClaw 在 `pkg/trpc-agent-go/openclaw` 中完整存在，可直接对照。�
 | 等级 | 模块 | 判断 | 问题 | 目标边界 |
 |------|------|------|------|----------|
 | 清晰 | `internal/biz` | 领域模型、Usecase、Repo 接口明确 | 少量领域与 provider inspect 概念交叉 | 只定义业务规则和端口 |
-| 清晰 | `internal/event` | Envelope、Bus、Buffer 职责单一 | EventBusConsumer 后续可能变胖 | 拆消费者，Bus 只管发布订阅 |
+| 清晰 | `internal/event` | Envelope、Bus、Buffer、TraceEmitter 职责单一 | — | Bus 只管发布订阅；副作用在 biz handler |
 | 清晰 | `internal/graph` | Graph runtime adapter 与 biz 端口较清楚 | Data 层 checkpoint 绑定框架 | adapter 管框架，data 管存储 |
-| 中等 | `internal/service` | 本应是 proto ↔ biz/runtime 桥 | `awaitChans` / `pendingQueue` 仍在 ChatService；运行控制已抽到 `RunRegistry` | Service 只翻译请求；await/pending 可下沉 Usecase |
-| 中等 | `internal/agent` | 构建 Agent / Runner 的正确位置 | Builder 依赖 Catalog、Tools、Skill、MCP、Memory、Callback 过多 | 定义 BuilderDeps 分组和稳定扩展点 |
+| 中等 | `internal/service` | 本应是 proto ↔ biz/runtime 桥 | `ChatUsecase` 已编排入队/排队/await；`PendingMessageQueue` 实现仍在 Service；`setRunStatus` 与 Webhook 触发留 Service | PendingQueue 下沉 runtime；终态通知可经 EventBus 解耦 |
+| 中等 | `internal/agent` | 构建 Agent / Runner 的正确位置 | ✅ `TRPCBuilderDeps` + `TRPC*Deps` 分组（`builder_deps.go`） | 巨型设置页拆分、列表 `last_run_status` |
 | 中等 | `internal/tools` | 工具注册与装配合理 | Tool catalog、runtime mount、统计闭环分散 | Catalog / Policy / Runtime / Invocation 分层 |
 | 中等 | `internal/memory*` | 产品 L0-L4 与框架 MemoryService 都合理 | 双轨未定主从，service/agent 直连 store | L0-L4 是产品模型，MemoryService 是 Runner 适配口 |
 | 清晰 | Gateway / RunRegistry | `RunRegistry` + `RunnerManager` + `RunGateway` 已通 | `StopGeneration` 未统一 `publishRunStatus(cancelled)` | 取消路径与 WS `run_status` 完全对齐 |
@@ -67,7 +67,7 @@ OpenClaw 在 `pkg/trpc-agent-go/openclaw` 中完整存在，可直接对照。�
 | `biz <-> provider` | 存在概念双向依赖 | 偏弱 | 模型 inspect 与模型目录边界不稳 | 抽 `internal/llminspect` 或 biz 端口 |
 | `data -> trpc runtime` | 存在 | 偏弱 | Data 层绑定 graph/session 框架类型 | provider 上移到 runtime/wire |
 | `agent/team/tools -> biz` | 构建运行时需要领域配置 | 可接受 | Builder 编译面较大 | 用 Catalog DTO 稳定依赖 |
-| `event -> consumers` | EventBusConsumer 承载多职责 | 中等 | Usage/Buffer/StateDelta 后续耦合 | 按 EnvelopeType 拆消费者 |
+| `event -> consumers` | EventBusConsumer + EventBusSideConsumers | 良好 | 成员消息与 Runner 汇总语义需产品持续对齐 | 保持按 EnvelopeType 扩展 |
 | `frontend pages -> features/stores` | 混合 | 偏弱 | 页面巨型化、store 空转 | 统一 page -> composable/store -> api |
 
 ### 3.3 模块功能完整度
@@ -80,10 +80,10 @@ OpenClaw 在 `pkg/trpc-agent-go/openclaw` 中完整存在，可直接对照。�
 | 半闭环 | Memory | RuntimeSet 端口统一；L4 prompt 注入；MemoryWorker；AutoMemory 图写入 ✅ | 冲突检测、级联更新、衰减算法 | 长期语义记忆治理 |
 | 半闭环 | Plugin/Callback | 9 内置 + Chain+Hook+OnEvent + Schema/Scope ✅ | 产品化配置、运行记录、Audit 查询体验 | 横切治理可配置化 |
 | 半闭环 | Monitor/Telemetry/Token | Audit 落库、Usage 事件、Quota MVP、Provider 指标 ✅ | Dashboard、业务 Span UI、告警规则 | 运营闭环 |
-| 半闭环 | Evaluation | EvalSet 对齐、LLMJudge、4 指标、管理页、异步 Runner ✅ | DeleteRun、人工标注、报告导出、AfterTurn 自动评估 | 质量门禁与迭代闭环 |
+| 核心可用 | Evaluation | Phase 5 ✅：4+扩展指标、UserSim、pass@k、AfterTurn、趋势/A/B、Eval LLM 系统配置 | 质量门禁与迭代闭环产品化 |
 | 半闭环 | A2A | Invoke 派发、call_agent、admin 鉴权、管理页 ✅ | 远程发现、A2A Server 暴露、流式、Graph 恢复 | 跨工作区与标准协议互通 |
 | 半闭环 | Knowledge | 管理页、Embedder UI、摄取 WS、EnsureKnowledgeSchema ✅ | Rerank/OCR、PG 多租户稳定性 | 检索质量与工程化 |
-| 闭环较好 | Artifact | Preview、签名下载、Chat 制品面板、CodeExecutor 自动保存 ✅ | 对话内附件引用、跨会话制品检索 | 与 Chat 多模态联动 |
+| 闭环较好 | Artifact | Preview、签名下载、Chat 制品面板、CodeExecutor Docker 产出物→Artifact 🟡 | 对话内附件引用、跨会话制品检索；Local/OutputSpec 产出物 | 与 Chat 多模态联动 |
 | 占位 | Ecosystem、TTS | 文档或 mock | 后端模型、API、运行时集成 | 不能作为可组合模块 |
 
 ## 4. 目标架构：乐高式模块模型
@@ -130,7 +130,7 @@ AI 新增或优化模块时，必须先填这五个面。缺任一面则只能�
 
 | 顺序 | 任务 | 开发内容 | 验收 |
 |------|------|----------|------|
-| 1 | ✅ Gateway 状态机独立 | `RunRegistry`（`internal/runtime/run_registry.go`）+ `RunnerManager`（`internal/runtime/runner_manager.go`）均已落地；Chat/Team/Cron/Channel 共用 `RunGateway` 接口 | `ChatService` 已接入 `RunRegistry`，旧 `pendingQueue`/`awaitChans` 已移除；`RunnerManager.NewTurnRunner` 统一装配 |
+| 1 | ✅ Gateway 状态机独立 | `RunRegistry` + `RunnerManager` + `ChatUsecase`；出站 Webhook Phase 3 ✅ | Chat/Team/Cron/Channel 共用 `RunGateway`；`GatewayService` 管理回调配置 |
 | 2 | ✅ Runner 生命周期统一 | 单 Agent / Team / Cron / Channel 共用 `RunGateway`（`RunRegistry`）入口 | cancel/status/enqueue 行为一致；Cron/Channel 经 `RunNativeTurnUnary`/`RunCronTurn` 接入 |
 | 3 | ✅ Runner 框架能力补齐 | ArtifactService（`provideArtifactRuntimeService`）、SessionIngestor（`BizSessionIngestor`）、AgentFactory（`BizAgentFactoryOptions`）、AwaitUserReplyRouting（`AwaitHook` 配置时启用）均已注入；RalphLoop 为 OpenClaw 侧能力，Aranea 不复制 | `40-runner-development.md` P1/P2 已验收 |
 | 4 | Memory 端口统一 | 收敛 `sessionmemory.Store` 直连，定稿 L0-L4 与 MemoryService 主从 | service/agent 不直接 import data store |
@@ -220,9 +220,9 @@ AI 接到任何模块任务时，必须按以下顺序拆解：
 
 | ID | 待优化项 | 优先级 | 现状 | 目标 | 关联文档 |
 |----|----------|--------|------|------|----------|
-| SYS-01 | `ChatService` 仍持有 `awaitChans` / `pendingQueue` | P2 | 运行控制已抽 `RunRegistry` | await/pending 下沉 biz 或专用 coordinator | [35-gateway-development.md](./35-gateway-development.md) |
-| SYS-02 | `StopGeneration` 未统一 `publishRunStatus(cancelled)` | P2 | Cancel 成功但 WS 可能无终态 | 取消与 `run_status` Envelope 一致 | [1-chat-development.md](./1-chat-development.md) |
-| SYS-03 | `EventBusConsumer` 职责聚合（Usage/Buffer/StateDelta） | P2 | 单消费者承载多类型 | 按 `EnvelopeType` 拆消费者 | [34-event-development.md](./34-event-development.md) |
+| SYS-01 | `PendingMessageQueue` 仍在 Service 层 | P2 | 入队/排队已委托 `ChatUsecase` | 队列实现下沉 runtime | [35-gateway-development.md](./35-gateway-development.md) Phase 2 |
+| SYS-02 | `StopGeneration` 未统一 `publishRunStatus(cancelled)` | P2 | ✅ `chat_stop_generation_test` | — | [1-chat-development.md](./1-chat-development.md) |
+| SYS-03 | `EventBusConsumer` 职责聚合（Usage/Buffer/StateDelta/Persist） | P2 | ✅ buffer/runner/state/persist 四 handler | P3 独立 ToolCall 订阅 | [34-event-development.md](./34-event-development.md) · [message-development.md](./message-development.md) |
 | SYS-04 | 核心模块五面（Contract/Domain/Runtime/Persistence/UI）未全建档 | P2 | Chat/Agent/Runner 较完整 | Graph/Channel/Ecosystem 补全五面表 | 本文 §4 |
 | SYS-05 | 前端 `features` 与 `stores` 双路径并存 | P2 | 新模块 page 直连 api + store 空转 | 统一 `page → composable/store → api` 策略 | [frontend-guide.md](../guides/frontend-guide.md) |
 | SYS-06 | 巨型文件可读性 | P2 | `useChatWorkspace` 已薄；`AgentSettingsPage` 等仍大 | `page-to-components` 拆分 | `web/.cursor/rules/page-to-components.mdc` |
@@ -231,8 +231,8 @@ AI 接到任何模块任务时，必须按以下顺序拆解：
 
 | ID | 待优化项 | 优先级 | 现状 | 目标 | 关联文档 |
 |----|----------|--------|------|------|----------|
-| CHAT-01 | 多模态附件（上传、持久化、Vision） | P3 | 前端占位 | 附件 API + 对象存储 + Runner 输入装配 | [1-chat-development.md](./1-chat-development.md) |
-| CHAT-02 | `awaiting_user` / RunStatus 进程重启可恢复 | P3 | 进程内 `RunRegistry` + `awaitChans` | 持久化或 EventBuffer 恢复策略 | [1 chat.md](./1%20chat.md) §4.2 |
+| CHAT-01 | 多模态附件（上传、持久化、Vision） | P3 | Artifact parts 已装配 | 消息气泡内嵌预览；跨会话检索 | [1-chat-development.md](./1-chat-development.md) |
+| CHAT-02 | `awaiting_user` / RunStatus 进程重启可恢复 | P3 | `state_json` + resume 新 turn ✅ | mid-turn goroutine 恢复（非本期） | [1-chat-development.md](./1-chat-development.md) |
 | CHAT-03 | 模型选项单一真相源 | P3 | Platform 优先 + `GetChatOptions` 回退 | 长期统一一处配置源 | [1-chat-development.md](./1-chat-development.md) |
 | CHAT-04 | `tool_result` 部分路径缺稳定 `tool_call_id` | P2 | 前端用 `env.id` 回退合并 | Projector 保证 id 一致 | [message-development.md](./message-development.md) |
 | CHAT-05 | Chat / WS 关键路径单测 | P2 | service 层部分覆盖 | `TestChat*` / envelope 投影回归 | [1-chat-development.md](./1-chat-development.md) |
@@ -244,27 +244,27 @@ AI 接到任何模块任务时，必须按以下顺序拆解：
 
 | ID | 待优化项 | 优先级 | 现状 | 目标 | 关联文档 |
 |----|----------|--------|------|------|----------|
-| TEAM-01 | Team 结构化汇总 Envelope | P1 | member_* 流已有 | 统一 `team_summary` 可观测输出 | [11-multi-agent-development.md](./11-multi-agent-development.md) |
-| GRAPH-01 | Graph LLM / Tool 节点 | P1 | Function/Agent/Router 已有 | LLM 节点、Tool 节点、Input/OutputMapper | [36-graph-development.md](./36-graph-development.md) |
-| GRAPH-02 | ExecutionSummary / 运行记录 UI | P2 | 执行有 checkpoint | 前端展示执行摘要与失败定位 | [36-graph-development.md](./36-graph-development.md) |
+| TEAM-01 | Team 结构化汇总 Envelope | P1 | ✅ `team_summary` WS | — | [11-multi-agent-development.md](./11-multi-agent-development.md) |
+| GRAPH-01 | Graph LLM / Tool 节点 | P1 | ✅ builder 接线 | — | [36-graph-development.md](./36-graph-development.md) |
+| GRAPH-02 | ExecutionSummary / 运行记录 UI | P2 | ✅ `graph_execution_done` metadata | 前端 Graph 运行记录页待补 | [36-graph-development.md](./36-graph-development.md) |
 | RUN-01 | 独立 `CancelRun` RPC（可选） | P3 | `StopGeneration` + WS `cancel` 已通 | 与 Chat proto 解耦的通用取消 RPC | [40-runner-development.md](./40-runner-development.md) |
 
 ### 8.5 Tools / MCP / Plugin / Callback
 
 | ID | 待优化项 | 优先级 | 现状 | 目标 | 关联文档 |
 |----|----------|--------|------|------|----------|
-| MCP-01 | MCP 生产级重连与可观测 | P2 | timeout/OAuth2/Broker 挂载已有 | 重连策略验证、连接状态 UI | [19-mcp-development.md](./19-mcp-development.md) |
-| PLG-01 | Plugin `UpdatePluginScope` / 运行记录 | P2 | 种子 + Schema + Scope 过滤已有 | 可审计的运行记录表与 Scope API | [22-plugin-development.md](./22-plugin-development.md) |
-| PLG-02 | `model_router` 真正改写模型配置 | P2 | 策略层记录为主 | 运行时路由到指定 model | [22-plugin-development.md](./22-plugin-development.md) |
-| CB-01 | Callback 产品化配置与 Audit 查询体验 | P2 | 全链路挂载已有 | 管理端可筛 phase/agent/结果 | [28-callback-development.md](./28-callback-development.md) |
+| MCP-01 | MCP 生产级重连与可观测 | P2 | ReconnectObserver + Events/Prometheus ✅ | metadata 重连计数持久化 | [19-mcp-development.md](./19-mcp-development.md) |
+| PLG-01 | Plugin `UpdatePluginScope` / 运行记录 | P2 | ✅ | Scope API + `plugin_runs` + `ListPluginRuns` | [22-plugin-development.md](./22-plugin-development.md) |
+| PLG-02 | `model_router` 真正改写模型配置 | P2 | `ModelSelector` 真路由 ✅ | `cost_guard` 同模式 | [22-plugin-development.md](./22-plugin-development.md) |
+| CB-01 | Callback 产品化配置与 Audit 查询体验 | P2 | ✅ | `/plugins/runs` 筛选 + Hook `hook:` 落库 | [28-callback-development.md](./28-callback-development.md) |
 
 ### 8.6 Memory / Knowledge
 
 | ID | 待优化项 | 优先级 | 现状 | 目标 | 关联文档 |
 |----|----------|--------|------|------|----------|
-| MEM-01 | L4 图冲突检测与级联更新 | P2 | L4 注入 + AutoMemory 写入已有 | 冲突策略、级联、衰减 | [12-16 memory-development.md](./12-16%20memory-development.md) |
+| MEM-01 | L4 图冲突检测与级联更新 | P2 | ✅ 冲突/级联/衰减 MVP | 冲突策略、级联、衰减 | [12-16 memory-development.md](./12-16%20memory-development.md) |
 | MEM-02 | MemoryWorker 与多租户 Session 边界 | P2 | TurnMemoryWorker 30s 去重已有 | 工作区级隔离与失败重试 | [12-16 memory-development.md](./12-16%20memory-development.md) |
-| KN-01 | Rerank / OCR 规划与实现 | P2 | 向量检索主路径已有 | 检索质量可配置 pipeline | [37-knowledge-development.md](./37-knowledge-development.md) |
+| KN-01 | Rerank / OCR 规划与实现 | P2 | Rerank ✅（`KRATOS_KNOWLEDGE_RERANKER`）；OCR 待补 | OCR + rerank fallback FlowLog ✅ | [37-knowledge-development.md](./37-knowledge-development.md) |
 | KN-02 | Knowledge PG 多租户与稳定性 | P2 | `EnsureKnowledgeSchema` 启动调用已有 | 无 PG 时降级策略文档化 + 压测 | [37-knowledge-development.md](./37-knowledge-development.md) |
 
 ### 8.7 Evaluation / A2A / Artifact
@@ -272,8 +272,9 @@ AI 接到任何模块任务时，必须按以下顺序拆解：
 | ID | 待优化项 | 优先级 | 现状 | 目标 | 关联文档 |
 |----|----------|--------|------|------|----------|
 | EVAL-01 | DeleteRun / UpdateDataset API | P2 | CRUD + Run 已有 | 数据集迭代与 run 清理 | [33-evaluation-development.md](./33-evaluation-development.md) |
-| EVAL-02 | 人工评估与报告导出 | P2 | 自动 4 指标已有 | 标注 UI + 报告 | [33-evaluation-development.md](./33-evaluation-development.md) |
-| EVAL-03 | AfterTurn 自动评估触发 | P3 | 无 Hook | 可选质量门禁 | [33-evaluation-development.md](./33-evaluation-development.md) |
+| EVAL-02 | 人工评估与报告导出 | P2 | 标注 ✅；CSV/JSON ✅；趋势/A/B 前端 ✅ | 服务端 PDF 报告 | [33-evaluation-development.md](./33-evaluation-development.md) |
+| EVAL-03 | AfterTurn 自动评估触发 | P3 | ✅ NativeTurnAfterHook | — | [33-evaluation-development.md](./33-evaluation-development.md) |
+| EVAL-04 | Phase 5 扩展评估 | P3 | ✅ 扩展指标/UserSim/Eval LLM 系统配置 | — | [33-evaluation-development.md](./33-evaluation-development.md) |
 | A2A-01 | 远程 Agent 发现与注册中心 | P2 | 本地 Invoke 已有 | URL 发现、跨实例 Card | [26-a2a-development.md](./26-a2a-development.md) |
 | A2A-02 | A2A Server 暴露 + 流式 SSE | P3 | admin Invoke 已有 | 标准 `server/a2a` 或框架 a2aagent | [26-a2a-development.md](./26-a2a-development.md) |
 | ART-01 | Chat 多模态引用制品 | P3 | 会话制品面板已有 | 消息气泡内嵌 artifact 预览 | [27-artifact-development.md](./27-artifact-development.md) |
@@ -282,20 +283,46 @@ AI 接到任何模块任务时，必须按以下顺序拆解：
 
 | ID | 待优化项 | 优先级 | 现状 | 目标 | 关联文档 |
 |----|----------|--------|------|------|----------|
-| CH-01 | Channel Webhook 入站 | P1 | CRUD 仅有 | 外部消息进入 RunGateway | [17-channel-development.md](./17-channel-development.md) |
-| CH-02 | Channel 出站投递与适配器 | P1 | 无 delivery | Agent 回复推送到飞书/微信等 | [17-channel-development.md](./17-channel-development.md) |
-| MON-01 | Monitor Dashboard 与告警规则 | P2 | audit/monitor_events 落库已有 | 可配置告警 + 聚合视图 | [18-monitor-development.md](./18-monitor-development.md) |
+| CH-01 | Channel Webhook 入站 | P1 | ✅ | — | [17-channel-development.md](./17-channel-development.md) |
+| CH-02 | Channel 出站投递与适配器 | P1 | ✅ | 更多平台适配器 | [17-channel-development.md](./17-channel-development.md) |
+| MON-01 | Monitor Dashboard 与告警规则 | P2 | 告警 ✅；概览 `/overview` ECharts + Usage Tab 去重 ✅ | latency 聚合、Phase 4 自动刷新 | [18-monitor-dashboard-development.md](./18-monitor-dashboard-development.md) |
 | TEL-01 | Telemetry 业务 Span / OTel UI | P3 | 指标部分已有 | 链路 UI 与采样配置 | [24-telemetry-development.md](./24-telemetry-development.md) |
 | ECO-01 | Ecosystem 后端与市场模型 | P3 | 前端 mock | API + 安装流程 | [30-ecosystem-development.md](./30-ecosystem-development.md) |
 | CLI-01 | CLI 产品化（非 OpenClaw 复制） | P3 | 文档占位 | 需求 + API + 分发 | [25-cli-development.md](./25-cli-development.md) |
 | TTS-01 | TTS 运行时闭环 | P3 | 几乎无后端 | 标注 API-only 或补实现 | [tts-development.md](./tts-development.md) |
 
+### 8.11 Agent 全家桶（2–8 / 50）
+
+> **模块开发计划**（实现差距以 `*-development.md` 为准，需求/设计正文为产品规格）：  
+> [2–8 横切](./2-8-agent-modules-development.md) · [2 创建](./2-agents-create-development.md) · [3 列表](./3-agent-list-development.md) · [4 分类](./4-agent-type-development.md) · [5 设置](./5-agent-setting-development.md) · [6 文件](./6-agent-setting-file-development.md) · [7 进化](./7-agent-evolution-development.md) · [8 顶栏](./8-agent-title-development.md)
+
+| ID | 模块 | 待优化项 | 优先级 | 现状 |
+|----|------|----------|--------|------|
+| AGT-01 | 运行时 | `TRPCBuilderDeps` 分组 + `system.agent.build` FlowLog | P2 | ✅ |
+| AGT-02 | 5 设置 | `config_json` PATCH 浅合并 | P2 | ✅ |
+| AGT-03 | 2 创建 | agent_key 查重 `GET /v1/agent-keys/check` | P3 | ✅ |
+| AGT-04 | 2 创建 | Provider/Model `validate-model` | P2 | ✅ |
+| AGT-05 | 5 设置 | ToolOverride 全链路 | P2 | ✅ |
+| AGT-06 | 2 创建 | 后端 Agent 模板 API | P2 | ✅ 迭代 10 |
+| AGT-07 | 3 列表 | `last_run_status` / `created_by` | P2 | ✅ 运行态 + `created_by` 列/筛选（2026-05-21） |
+| AGT-08 | 5 设置 | `AgentSettingsPage` 拆分 | P2 | ✅ 迭代 10 |
+| AGT-09 | 7 进化 | EvolutionScanner + 自动建议 | P2 | ✅ 迭代 10 |
+| AGT-10 | 3 列表 | `DuplicateAgent` | P3 | ✅ 迭代 10；副本 `created_by` 归属当前用户（2026-05-21 审查） |
+| AGT-11 | 6 文件 | AI 编辑（真实 LLM） | P2 | ✅ 迭代 10 |
+| AGT-12 | 6 文件 | `EstimateTokens` 前端对接 | P2 | ✅ |
+| AGT-13 | 4 分类 | 删除前 Agent 计数 / 拖拽排序 | P2–P3 | ✅ 计数；排序 ❌ |
+| AGT-14 | 8 顶栏 | 「进化中」与 pending 建议对齐 | P2 | ✅ |
+| AGT-15 | 8 顶栏 | `GenerateAgentTitle` | P3 | ❌ |
+| AGT-16 | 7 进化 | 指标趋势图表 | P3 | ❌ |
+| — | 横切 | 迭代 10 审查：ListExtras 批量、终态 `runtime.status`、`ApplySuggestion(prompt)` | — | ✅ [Iteration10](../changelog/2026-05-21-Agent-Iteration10.md) |
+| — | 2/3 | LIST-02：`created_by`、模板全字段、结构化创建错误 | P2 | ✅ [CreatedBy-Templates-Errors](../changelog/2026-05-21-Agent-CreatedBy-Templates-Errors.md) |
+
 ### 8.9 前端治理（横切）
 
 | ID | 待优化项 | 优先级 | 现状 | 目标 | 关联文档 |
 |----|----------|--------|------|------|----------|
-| FE-01 | `KnowledgePage` / `EvaluationPage` / `A2APage` 组件拆分 | P2 | 路由与 API 已通 | 弹窗/表格抽独立组件 | `page-to-components.mdc` |
-| FE-02 | feature mapper 单测 | P2 | 几乎仅 `app.store` 测试 | knowledge/evaluation/a2a mapper 回归 | 各 `features/*/mappers` |
+| FE-01 | `KnowledgePage` / `EvaluationPage` / `A2APage` 组件拆分 | P2 | ✅ 三页均 <300 行 | 弹窗/表格抽独立组件 | `page-to-components.mdc` |
+| FE-02 | feature mapper 单测 | P2 | A2A mapper 单测 ✅ | knowledge/evaluation mapper 回归 | 各 `features/*/mappers` |
 | FE-03 | 减少 `as any`（Chat/Team stream） | P3 | 部分 mapper 有 any | 严格 Envelope 类型 | `web/src/features/chat/` |
 
 ### 8.10 开发顺序总表（里程碑视角）
@@ -306,7 +333,7 @@ AI 接到任何模块任务时，必须按以下顺序拆解：
 | P0 | Runner 框架能力、Team/Tools/Plugin 主闭环 | ✅ | M1–M3 |
 | P1 | Evaluation EvalSet + LLMJudge、A2A Invoke、Artifact 预览 | ✅ | M3 |
 | P1 | Chat 工具卡片 / Reasoning / run_status WS / Team UX | ✅ | 2026-05-19 迭代 |
-| P1 | Team 结构化汇总、Graph LLM/Tool 节点、Channel 投递 | 🚧 | 见 §8.4、§8.8 |
+| P1 | Team 结构化汇总、Graph LLM/Tool 节点、Channel 投递 | ✅ | 迭代 2–5 已验收 |
 | P2 | 前端治理、Memory 图治理、Plugin 产品化、MCP 稳定性 | 🚧 | 见 §8.5–§8.9 |
 | P3 | 多模态、RunStatus 持久化、Ecosystem/Telemetry/CLI/TTS | ⏳ | 见 §8.3、§8.8 |
 
@@ -332,7 +359,7 @@ AI 接到任何模块任务时，必须按以下顺序拆解：
 | 架构边界 | **良好** | `biz` / `server` / `data` 红线基本守住；`internal/runtime` 新包职责清晰 |
 | 运行时集成 | **良好** | RunnerManager/RunRegistry 模式正确；tRPC-Agent-Go 框架 API 使用合规，未复制内部实现 |
 | Plugin/Tool | **良好** | 9 个内置插件均有实现；ToolOverride + confirmation + 统计形成闭环；StatsRecorder 模式值得复用 |
-| Evaluation | **良好** | EvalSet 对齐 + LLMJudge 已注入；待补 DeleteRun、人工标注、报告与 AfterTurn 触发 |
+| Evaluation | **良好** | Phase 5 完整；Eval LLM 可系统设置；待补服务端 PDF 报告 |
 | A2A | **良好** | Invoke + call_agent + 鉴权已通；待补远程发现、A2A Server、流式 |
 | 测试覆盖 | **中等** | `internal/runtime`、`internal/agent`、`internal/biz` 有单测；`internal/plugin/trpc`、`internal/tools` 有单测；`internal/evaluation`、`internal/a2a` 测试覆盖偏少 |
 | 生成文件噪音 | **低风险** | `*.pb.go` / `wire_gen.go` 均在 `.gitignore` 之外但不应手改；`api/kratos/tool/v1/tool.proto` 有重复路径（同时在 `??` 和 ` M` 区段），需排查 wire 依赖是否正确 |

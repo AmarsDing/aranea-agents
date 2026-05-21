@@ -25,6 +25,10 @@ type Input struct {
 	ModelAPIID   string
 	APIBaseURL   string
 	APIKey       string
+	Variant      string
+	SecretID     string
+	SecretKey    string
+	AWSRegion    string
 }
 
 type Result struct {
@@ -44,6 +48,10 @@ type Result struct {
 	EmbeddingPriceMicroUSDPer1K   int64
 	Source                        string
 	RawMetadataJSON               string
+	Variant                       string
+	EnableTokenTailoring          bool
+	SupportsCache                 bool
+	SupportsThinking              bool
 }
 
 func deepSeekOpenAICompatBase(apiBase string) bool {
@@ -62,6 +70,10 @@ func Run(in Input) (Result, error) {
 	in.ModelAPIID = strings.TrimSpace(in.ModelAPIID)
 	in.APIBaseURL = strings.TrimSpace(in.APIBaseURL)
 	in.APIKey = strings.TrimSpace(in.APIKey)
+	in.Variant = strings.TrimSpace(in.Variant)
+	in.SecretID = strings.TrimSpace(in.SecretID)
+	in.SecretKey = strings.TrimSpace(in.SecretKey)
+	in.AWSRegion = strings.TrimSpace(in.AWSRegion)
 	if in.ProviderCode == "" || in.ModelAPIID == "" {
 		return Result{}, kerrors.BadRequest("LLM_INSPECT", "provider_code and model_api_id are required")
 	}
@@ -71,8 +83,18 @@ func Run(in Input) (Result, error) {
 	if deepSeekOpenAICompatBase(in.APIBaseURL) {
 		return inspectOpenAICompatibleModel(in)
 	}
-	if strings.Contains(strings.ToLower(in.ProviderType), "anthropic") {
+	pt := strings.ToLower(in.ProviderType)
+	switch pt {
+	case "anthropic":
 		return inspectAnthropicModel(in)
+	case "gemini":
+		return inspectGeminiModel(in)
+	case "ollama":
+		return inspectOllamaModel(in)
+	case "hunyuan":
+		return inspectHunyuanModel(in)
+	case "bedrock":
+		return inspectBedrockModel(in)
 	}
 	return inspectOpenAICompatibleModel(in)
 }
@@ -223,6 +245,145 @@ func anthropicKnownModelDefaults(in Input) Result {
 		result.OutputPriceMicroUSDPer1K = 15000
 	}
 	return result
+}
+
+func inspectGeminiModel(in Input) (Result, error) {
+	base := strutil.FirstNonEmpty(in.APIBaseURL, "https://generativelanguage.googleapis.com/v1beta")
+	endpoint := strings.TrimRight(base, "/") + "/models"
+	if in.APIKey != "" {
+		endpoint += "?key=" + url.QueryEscape(in.APIKey)
+	}
+	var out struct {
+		Models []struct {
+			Name                       string `json:"name"`
+			DisplayName                string `json:"displayName"`
+			InputTokenLimit            int    `json:"inputTokenLimit"`
+			OutputTokenLimit           int    `json:"outputTokenLimit"`
+			SupportedGenerationMethods []string `json:"supportedGenerationMethods"`
+		} `json:"models"`
+	}
+	if err := getProviderJSON(endpoint, "", nil, &out); err != nil {
+		return Result{OK: false, Message: "Gemini 模型参数请求失败：" + err.Error(), ProviderCode: in.ProviderCode, ProviderType: "gemini", ModelAPIID: in.ModelAPIID}, nil
+	}
+	want := in.ModelAPIID
+	if !strings.HasPrefix(want, "models/") {
+		want = "models/" + want
+	}
+	for _, item := range out.Models {
+		if item.Name != want && item.Name != in.ModelAPIID && !strings.HasSuffix(item.Name, "/"+in.ModelAPIID) {
+			continue
+		}
+		raw, _ := json.Marshal(item)
+		display := strutil.FirstNonEmpty(item.DisplayName, in.ModelAPIID)
+		return Result{
+			OK:                   true,
+			Message:              "已从 Gemini 获取模型参数",
+			ProviderCode:         in.ProviderCode,
+			ProviderType:         "gemini",
+			ModelAPIID:           in.ModelAPIID,
+			ModelDisplayName:     display,
+			ModelSizeLabel:       inferModelSizeLabel(display),
+			ContextWindowK:       tokensToK(item.InputTokenLimit),
+			MaxOutputTokens:      item.OutputTokenLimit,
+			Source:               "gemini",
+			RawMetadataJSON:      string(raw),
+			EnableTokenTailoring: true,
+			SupportsCache:        true,
+		}, nil
+	}
+	return Result{OK: false, Message: "Gemini 未找到该模型", ProviderCode: in.ProviderCode, ProviderType: "gemini", ModelAPIID: in.ModelAPIID}, nil
+}
+
+func inspectOllamaModel(in Input) (Result, error) {
+	base := strutil.FirstNonEmpty(in.APIBaseURL, "http://127.0.0.1:11434")
+	endpoint := strings.TrimRight(base, "/") + "/api/tags"
+	var out struct {
+		Models []struct {
+			Name       string `json:"name"`
+			Model      string `json:"model"`
+			Size       int64  `json:"size"`
+			Details    struct {
+				ParameterSize string `json:"parameter_size"`
+			} `json:"details"`
+		} `json:"models"`
+	}
+	if err := getProviderJSON(endpoint, in.APIKey, nil, &out); err != nil {
+		return Result{OK: false, Message: "Ollama 模型参数请求失败：" + err.Error(), ProviderCode: in.ProviderCode, ProviderType: "ollama", ModelAPIID: in.ModelAPIID}, nil
+	}
+	for _, item := range out.Models {
+		name := strutil.FirstNonEmpty(item.Name, item.Model)
+		if name != in.ModelAPIID && !strings.HasPrefix(name, in.ModelAPIID+":") {
+			continue
+		}
+		raw, _ := json.Marshal(item)
+		sizeLabel := item.Details.ParameterSize
+		if sizeLabel == "" {
+			sizeLabel = inferModelSizeLabel(name)
+		}
+		return Result{
+			OK:                   true,
+			Message:              "已从 Ollama 获取本地模型",
+			ProviderCode:         in.ProviderCode,
+			ProviderType:         "ollama",
+			ModelAPIID:           in.ModelAPIID,
+			ModelDisplayName:     name,
+			ModelSizeLabel:       sizeLabel,
+			Source:               "ollama",
+			RawMetadataJSON:      string(raw),
+			EnableTokenTailoring: true,
+		}, nil
+	}
+	return Result{OK: false, Message: "Ollama 未找到该模型", ProviderCode: in.ProviderCode, ProviderType: "ollama", ModelAPIID: in.ModelAPIID}, nil
+}
+
+func inspectHunyuanModel(in Input) (Result, error) {
+	if in.SecretID == "" || in.SecretKey == "" {
+		if in.APIKey == "" {
+			return Result{OK: false, Message: "混元检查需要 SecretId 与 SecretKey", ProviderCode: in.ProviderCode, ProviderType: "hunyuan", ModelAPIID: in.ModelAPIID}, nil
+		}
+		result, err := inspectOpenAICompatibleModel(in)
+		if err == nil && result.OK {
+			result.ProviderType = "hunyuan"
+			result.Source = "hunyuan"
+		}
+		return result, err
+	}
+	probe := in
+	probe.ProviderType = "hunyuan"
+	probe.APIBaseURL = strutil.FirstNonEmpty(probe.APIBaseURL, "https://api.hunyuan.cloud.tencent.com/v1")
+	probe.APIKey = probe.SecretKey
+	result, err := inspectOpenAICompatibleModel(probe)
+	if err != nil {
+		return result, err
+	}
+	if result.OK {
+		result.ProviderType = "hunyuan"
+		result.Source = "hunyuan"
+		result.Message = "已验证混元模型存在"
+		result.ProviderCode = in.ProviderCode
+	}
+	return result, nil
+}
+
+func inspectBedrockModel(in Input) (Result, error) {
+	if in.AWSRegion == "" {
+		return Result{OK: false, Message: "Bedrock 检查需要 AWS Region", ProviderCode: in.ProviderCode, ProviderType: "bedrock", ModelAPIID: in.ModelAPIID}, nil
+	}
+	raw, _ := json.Marshal(map[string]string{
+		"model_id":   in.ModelAPIID,
+		"aws_region": in.AWSRegion,
+	})
+	return Result{
+		OK:               true,
+		Message:          "Bedrock 模型 ID 已登记（运行时通过 AWS SDK 调用）",
+		ProviderCode:     in.ProviderCode,
+		ProviderType:     "bedrock",
+		ModelAPIID:       in.ModelAPIID,
+		ModelDisplayName: in.ModelAPIID,
+		Source:           "bedrock",
+		RawMetadataJSON:  string(raw),
+		SupportsCache:    true,
+	}, nil
 }
 
 func getProviderJSON(endpoint string, apiKey string, headers map[string]string, out any) error {

@@ -2,6 +2,9 @@ package biz
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
 	"time"
 
 	"aranea-agents/internal/event"
@@ -46,6 +49,8 @@ func (a *eventBusAdapter) SubscribeDomainEvents() (<-chan DomainEvent, func()) {
 					select {
 					case out <- *de:
 					default:
+						event.SysLogWarn("domain_event.adapter.drop", "DomainEvent 输出缓冲满，丢弃事件",
+							event.P("type", string(de.Type)), event.P("session_id", de.SessionID))
 					}
 				}
 			}
@@ -189,5 +194,49 @@ func envelopeToDomainEvent(env event.Envelope) *DomainEvent {
 		de.ToolCall = &DomainToolCall{}
 		copyToolCallFromEnvelope(env.ToolCall, de.ToolCall)
 	}
+	applyEnvelopeCorrelation(de, env)
 	return de
+}
+
+func applyEnvelopeCorrelation(de *DomainEvent, env event.Envelope) {
+	de.RequestID = strings.TrimSpace(env.RequestID)
+	de.InvocationID = strings.TrimSpace(env.InvocationID)
+	if env.Metadata != nil {
+		if v := metaString(env.Metadata, "run_id"); v != "" {
+			de.RunID = v
+		}
+		if v := metaString(env.Metadata, "trace_id"); v != "" {
+			de.TraceID = v
+		}
+		if v := metaString(env.Metadata, "agent_id"); v != "" {
+			de.AgentID = v
+		}
+		if v := metaString(env.Metadata, "agent_display_name"); v != "" {
+			de.AgentDisplayName = v
+		}
+		if v := metaString(env.Metadata, "run_kind"); v != "" {
+			de.RunKind = v
+		}
+		if v := metaString(env.Metadata, "usage_event_id"); v != "" {
+			de.UsageEventID = v
+		}
+	}
+	if de.RunID == "" {
+		de.RunID = de.InvocationID
+	}
+}
+
+func metaString(meta map[string]any, key string) string {
+	v, ok := meta[key]
+	if !ok || v == nil {
+		return ""
+	}
+	switch t := v.(type) {
+	case string:
+		return strings.TrimSpace(t)
+	case json.Number:
+		return t.String()
+	default:
+		return strings.TrimSpace(fmt.Sprint(t))
+	}
 }

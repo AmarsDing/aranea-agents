@@ -110,6 +110,9 @@
             <q-btn flat dense round icon="history" color="primary" @click="openRuns(props.row)">
               <q-tooltip>执行历史</q-tooltip>
             </q-btn>
+            <q-btn flat dense round icon="play_arrow" color="primary" :loading="triggeringId === props.row.id" @click="runNow(props.row)">
+              <q-tooltip>立即执行</q-tooltip>
+            </q-btn>
             <q-btn flat dense round icon="edit" color="primary" @click="openEdit(props.row)">
               <q-tooltip>编辑</q-tooltip>
             </q-btn>
@@ -152,7 +155,7 @@ import { useQuasar, type QTableColumn } from "quasar";
 import type { Agent } from "../features/agents/api";
 import type { Team } from "../features/teams/api";
 import CronTaskFormDialog from "../components/cron/CronTaskFormDialog.vue";
-import { createCronTask, deleteCronTask, listCronAgents, listCronTasks, listCronTeams, parseCronConfig, parseCronMetadata, updateCronTask } from "../features/cron/api";
+import { createCronTask, deleteCronTask, listCronAgents, listCronTasks, listCronTeams, parseCronConfig, parseCronMetadata, resetCronTaskFailures, triggerCronTask, updateCronTask } from "../features/cron/api";
 import type { PlatformResourceInput } from "../features/platform/api";
 import type { CronFailureSummary, CronTaskConfig, CronTaskMetadata, CronTaskRow } from "../features/cron/types";
 
@@ -168,6 +171,7 @@ const statusFilter = ref("");
 const editorOpen = ref(false);
 const editingRow = ref<CronTaskRow | null>(null);
 const savingId = ref("");
+const triggeringId = ref("");
 const formSubmitting = ref(false);
 const formServerError = ref("");
 
@@ -287,14 +291,34 @@ function openRuns(row: CronTaskRow, status = "") {
 async function resetDeadTask(row: CronTaskRow) {
   savingId.value = row.id;
   try {
-    const resetMeta = { ...parseCronMetadata(row), failure_count: 0, last_error: "", recent_failures: [] };
-    const updated = await updateCronTask(row.id, { ...row, enabled: true, status: "active", metadata_json: JSON.stringify(resetMeta) });
+    const updated = await resetCronTaskFailures(row.id);
     onSaved(updated);
     $q.notify({ type: "positive", message: "已重置失败计数，任务重新启用" });
   } catch (err) {
     $q.notify({ type: "negative", message: err instanceof Error ? err.message : "重置失败" });
   } finally {
     savingId.value = "";
+  }
+}
+
+async function runNow(row: CronTaskRow) {
+  triggeringId.value = row.id;
+  try {
+    const run = await triggerCronTask(row.id);
+    if (run.status === "pending") {
+      $q.notify({ type: "info", message: "已提交执行，请在执行历史中查看结果" });
+      openRuns(row);
+      return;
+    }
+    await loadAll();
+    $q.notify({
+      type: run.status === "success" ? "positive" : "negative",
+      message: run.status === "success" ? "手动触发已完成" : run.error_message || "手动触发失败"
+    });
+  } catch (err) {
+    $q.notify({ type: "negative", message: err instanceof Error ? err.message : "触发失败" });
+  } finally {
+    triggeringId.value = "";
   }
 }
 

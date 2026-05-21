@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	sessiontrpc "aranea-agents/internal/session/trpc"
+	"aranea-agents/pkg/safego"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
@@ -20,7 +21,7 @@ type staticTRPCAgent struct {
 
 func (a staticTRPCAgent) Run(ctx context.Context, inv *trpcagent.Invocation) (<-chan *trpcevent.Event, error) {
 	ch := make(chan *trpcevent.Event, 1)
-	go func() {
+	safego.Go(ctx, "static-agent-reply", func() {
 		defer close(ch)
 		select {
 		case <-ctx.Done():
@@ -35,7 +36,7 @@ func (a staticTRPCAgent) Run(ctx context.Context, inv *trpcagent.Invocation) (<-
 				}},
 			})
 		}
-	}()
+	})
 	return ch, nil
 }
 

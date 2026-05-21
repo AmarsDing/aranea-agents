@@ -81,6 +81,15 @@ export type MonitorLogLine = {
   message: string;
   source: string;
   created_at: string;
+  /** flow_log (v2) vs gateway process log */
+  kind?: "flow" | "process";
+  severity?: string;
+  title?: string;
+  step_id?: string;
+  trace_id?: string;
+  run_id?: string;
+  session_id?: string;
+  hint?: string;
 };
 
 export type MonitorLogSnapshot = {
@@ -90,4 +99,25 @@ export type MonitorLogSnapshot = {
 };
 
 export type LoadState = "idle" | "loading" | "success" | "empty" | "error";
-export type StreamState = "connecting" | "live" | "paused" | "error";
+export type StreamState = "connecting" | "connected" | "live" | "paused" | "error";
+
+export type RunnerMetricsSummary = {
+  window_minutes: number;
+  total_runs: number;
+  error_runs: number;
+  error_rate: number;
+  success_rate: number;
+};
+
+export type MonitorAlertRule = {
+  id: string;
+  name: string;
+  metric_key: string;
+  threshold: number;
+  window_minutes: number;
+  enabled: boolean;
+  severity: string;
+  notify_webhook_url?: string;
+  notify_channel_id?: string;
+  cooldown_minutes?: number;
+};

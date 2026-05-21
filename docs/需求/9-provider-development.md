@@ -48,15 +48,17 @@ Provider 管理：基于 trpc-agent-go `model` 体系的多厂商 LLM Provider �
 | 前端列表行 | ✅ | ProviderModelRow：类型 Chip、分类 Chip、热度、用量、密钥状态、Toggle |
 | 前端趋势看板 | ✅ | ProviderTrendDialog：30 天趋势柱状图、汇总卡片、详情表 |
 | 前端管理页面 | ✅ | ResourceManagerPage：搜索、分页、创建/编辑弹窗 |
-| Inspect 请求扩展字段 | ⏳ | Proto 缺 variant / secret_id / secret_key / aws_region；biz InspectMerge 缺同字段 |
-| Inspect 响应扩展字段 | ⏳ | Proto 缺 variant / enable_token_tailoring / supports_cache / supports_thinking |
-| mergeInspectConfigJSON 扩展 | ⏳ | 当前仅合并 provider_type / api_base_url / api_key，缺 variant / secret_id / secret_key / aws_region |
-| 前端 Variant Chip | ⏳ | ProviderModelRow 未展示 Variant Chip |
-| 前端 HA Chip | ⏳ | ProviderModelRow 未展示 Failover/Hedge Chip |
-| 前端四步表单 | ⏳ | 当前为单弹窗表单，非设计文档 §6 的四步表单 |
-| Gemini/Ollama/Hunyuan Inspect | ⏳ | llminspect 仅支持 OpenRouter / OpenAI-Compatible / Anthropic 三条路径 |
-| HuggingFace/Bedrock Provider | ⏳ | trpc 上游未注册到 provider 工厂；前端预设已预留 |
-| 凭据加密 | ⏳ | api_key 明文存 SQLite config_json |
+| Inspect 请求扩展字段 | ✅ | Proto + biz + service + 前端 Inspect 入参 |
+| Inspect 响应扩展字段 | ✅ | Proto + service 映射 |
+| mergeInspectConfigJSON 扩展 | ✅ | 含 variant / secret_id / secret_key / aws_region；needInspectMerge 支持混元/Bedrock |
+| 前端 Variant Chip | ✅ | ProviderModelRow |
+| 前端 HA Chip | ✅ | ProviderModelRow |
+| 前端四步表单 | ✅ | ResourceManagerPage QStepper + ProviderHAConfig |
+| Gemini/Ollama/Hunyuan Inspect | ✅ | llminspect 专属路径 + 单测 |
+| HuggingFace/Bedrock Provider | ✅ | register_extra.go + MapProviderType |
+| 凭据加密 | ✅ | AES-256-GCM（ARANEA_CREDENTIAL_KEY）；List/Get 脱敏 |
+| 速率限制 | ✅ | config_json rate_limit_rpm + RoundTrip 令牌桶 |
+| 健康检查 | ✅ | ProviderHealthScanner 5min |
 
 ---
 
@@ -106,14 +108,14 @@ Provider 管理：基于 trpc-agent-go `model` 体系的多厂商 LLM Provider �
 
 ## 6. 验收标准
 
-- [ ] Inspect 请求/响应包含 variant / secret_id / secret_key / aws_region 等扩展字段
-- [ ] Hunyuan Provider Inspect 能从已保存配置回填 SecretId/SecretKey
-- [ ] 前端列表行展示 Variant Chip 和 HA Chip
-- [ ] 前端添加/编辑弹窗为四步表单
-- [ ] Gemini / Ollama / Hunyuan Inspect 有专属探测路径
-- [ ] api_key 在数据库中为密文
-- [ ] 速率限制在 Agent 运行时生效
-- [ ] Provider 异常时自动标记状态
+- [x] Inspect 请求/响应包含 variant / secret_id / secret_key / aws_region 等扩展字段
+- [x] Hunyuan Provider Inspect 能从已保存配置回填 SecretId/SecretKey
+- [x] 前端列表行展示 Variant Chip 和 HA Chip
+- [x] 前端添加/编辑弹窗为四步表单
+- [x] Gemini / Ollama / Hunyuan Inspect 有专属探测路径
+- [x] api_key 在数据库中为密文（需配置 ARANEA_CREDENTIAL_KEY）
+- [x] 速率限制在 Agent 运行时生效
+- [x] Provider 异常时自动标记状态（degraded）
 
 ---
 

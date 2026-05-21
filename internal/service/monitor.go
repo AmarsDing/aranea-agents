@@ -5,11 +5,14 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
 	v1 "aranea-agents/api/kratos/monitor/v1"
+	"aranea-agents/internal/agent/codeexecutor"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/conf"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
@@ -17,11 +20,14 @@ import (
 type MonitorService struct {
 	v1.UnimplementedMonitorServiceServer
 
-	uc *biz.MonitorUsecase
+	uc              *biz.MonitorUsecase
+	flowLogs        *biz.FlowLogUsecase
+	server          *conf.Server
+	codeExecFactory *codeexecutor.Factory
 }
 
-func NewMonitorService(uc *biz.MonitorUsecase) *MonitorService {
-	return &MonitorService{uc: uc}
+func NewMonitorService(uc *biz.MonitorUsecase, flowLogs *biz.FlowLogUsecase, server *conf.Server, codeExecFactory *codeexecutor.Factory) *MonitorService {
+	return &MonitorService{uc: uc, flowLogs: flowLogs, server: server, codeExecFactory: codeExecFactory}
 }
 
 func bizAuditToProto(a biz.AuditLog) *v1.AuditLog {
@@ -154,20 +160,178 @@ func (s *MonitorService) GetMonitorTrace(ctx context.Context, in *v1.GetMonitorT
 	}, nil
 }
 
+func toProtoAlertRule(r biz.MonitorAlertRule) *v1.MonitorAlertRule {
+	return &v1.MonitorAlertRule{
+		Id:               r.ID,
+		Name:             r.Name,
+		MetricKey:        r.MetricKey,
+		Threshold:        r.Threshold,
+		WindowMinutes:    int32(r.WindowMinutes),
+		Enabled:          r.Enabled,
+		Severity:         r.Severity,
+		NotifyWebhookUrl: r.NotifyWebhookURL,
+		NotifyChannelId:  r.NotifyChannelID,
+		CooldownMinutes:  int32(r.CooldownMinutes),
+	}
+}
+
+func fromProtoAlertRule(r *v1.MonitorAlertRule) biz.MonitorAlertRule {
+	if r == nil {
+		return biz.MonitorAlertRule{}
+	}
+	return biz.MonitorAlertRule{
+		ID:               r.GetId(),
+		Name:             r.GetName(),
+		MetricKey:        r.GetMetricKey(),
+		Threshold:        r.GetThreshold(),
+		WindowMinutes:    int(r.GetWindowMinutes()),
+		Enabled:          r.GetEnabled(),
+		Severity:         r.GetSeverity(),
+		NotifyWebhookURL: r.GetNotifyWebhookUrl(),
+		NotifyChannelID:  r.GetNotifyChannelId(),
+		CooldownMinutes:  int(r.GetCooldownMinutes()),
+	}
+}
+
+func (s *MonitorService) ListMonitorAlertRules(ctx context.Context, _ *v1.GetMonitorLogsRequest) (*v1.ListMonitorAlertRulesResponse, error) {
+	rules, err := s.uc.ListAlertRules(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(rules) == 0 {
+		rules = []biz.MonitorAlertRule{{
+			ID: "default-runner-errors", Name: "Runner error rate",
+			MetricKey: "runner.error_rate", Threshold: 0.25, WindowMinutes: 60, Enabled: true, Severity: "warning",
+		}}
+	}
+	resp := &v1.ListMonitorAlertRulesResponse{Items: make([]*v1.MonitorAlertRule, 0, len(rules))}
+	for i := range rules {
+		resp.Items = append(resp.Items, toProtoAlertRule(rules[i]))
+	}
+	return resp, nil
+}
+
+func (s *MonitorService) PutMonitorAlertRules(ctx context.Context, req *v1.PutMonitorAlertRulesRequest) (*v1.PutMonitorAlertRulesResponse, error) {
+	rules := make([]biz.MonitorAlertRule, 0, len(req.GetItems()))
+	for _, item := range req.GetItems() {
+		rules = append(rules, fromProtoAlertRule(item))
+	}
+	if err := s.uc.ReplaceAlertRules(ctx, rules); err != nil {
+		return nil, err
+	}
+	listed, err := s.ListMonitorAlertRules(ctx, &v1.GetMonitorLogsRequest{})
+	if err != nil {
+		return nil, err
+	}
+	return &v1.PutMonitorAlertRulesResponse{Items: listed.GetItems()}, nil
+}
+
+func (s *MonitorService) GetRunnerMetrics(ctx context.Context, req *v1.GetRunnerMetricsRequest) (*v1.RunnerMetricsSummary, error) {
+	m, err := s.uc.GetRunnerMetrics(ctx, int(req.GetWindowMinutes()))
+	if err != nil {
+		return nil, err
+	}
+	return &v1.RunnerMetricsSummary{
+		WindowMinutes: int32(m.WindowMinutes),
+		TotalRuns:     m.TotalRuns,
+		ErrorRuns:     m.ErrorRuns,
+		ErrorRate:     m.ErrorRate,
+		SuccessRate:   m.SuccessRate,
+	}, nil
+}
+
+func (s *MonitorService) ListFlowLogs(ctx context.Context, in *v1.ListFlowLogsRequest) (*v1.ListFlowLogsResponse, error) {
+	if s == nil || s.flowLogs == nil {
+		return &v1.ListFlowLogsResponse{}, nil
+	}
+	since, until, err := parseFlowLogTimeBounds(in.GetSince(), in.GetUntil())
+	if err != nil {
+		return nil, kerrors.BadRequest("MONITOR", err.Error())
+	}
+	result, err := s.flowLogs.List(ctx, biz.FlowLogQuery{
+		TraceID:   in.GetTraceId(),
+		SessionID: in.GetSessionId(),
+		RunID:     in.GetRunId(),
+		Severity:  in.GetSeverity(),
+		Domain:    in.GetDomain(),
+		Since:     since,
+		Until:     until,
+		Limit:     int(in.GetLimit()),
+		Offset:    int(in.GetOffset()),
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*v1.FlowLogEntry, 0, len(result.Items))
+	for i := range result.Items {
+		r := result.Items[i]
+		out = append(out, &v1.FlowLogEntry{
+			Id:          r.ID,
+			TraceId:     r.TraceID,
+			SessionId:   r.SessionID,
+			RunId:       r.RunID,
+			TeamId:      r.TeamID,
+			Domain:      r.Domain,
+			AgentKey:    r.AgentKey,
+			StepId:      r.StepID,
+			FlowPhase:   r.FlowPhase,
+			Severity:    r.Severity,
+			Title:       r.Title,
+			Message:     r.Message,
+			PayloadJson: r.PayloadJSON,
+			CreatedAt:   r.CreatedAt.UTC().Format(time.RFC3339Nano),
+		})
+	}
+	return &v1.ListFlowLogsResponse{Items: out, Total: int32(result.Total)}, nil
+}
+
 func (s *MonitorService) GetMonitorLogs(context.Context, *v1.GetMonitorLogsRequest) (*v1.GetMonitorLogsResponse, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
+	enabled := true
+	if s.server != nil {
+		enabled = s.server.ProcessLogEnabled()
+	}
+	msg := "Process logs disabled in server.monitor.process_log_enabled."
+	if enabled {
+		msg = "Process logs follow server.monitor.process_log_enabled; subscribe via WebSocket /v1/ws."
+	}
 	return &v1.GetMonitorLogsResponse{
 		Items: []*v1.MonitorLogLine{{
 			Id:        "ws-hint",
 			Time:      now,
 			Level:     "INFO",
-			Message:   "Live log lines are pushed via WebSocket (server.ws port); GET snapshot here lists hints only.",
+			Message:   "Live log lines are pushed via WebSocket; flow_log always on, process log gated by config.",
 			Source:    "monitor",
 			CreatedAt: now,
 		}},
-		Enabled: true,
-		Message: "Use WebSocket /v1/ws to subscribe to monitor channels (logs, events).",
+		Enabled: enabled,
+		Message: msg,
 	}, nil
+}
+
+func parseFlowLogTimeBounds(sinceRaw, untilRaw string) (since, until time.Time, err error) {
+	if s := strings.TrimSpace(sinceRaw); s != "" {
+		since, err = time.Parse(time.RFC3339Nano, s)
+		if err != nil {
+			if since, err = time.Parse(time.RFC3339, s); err != nil {
+				return time.Time{}, time.Time{}, fmt.Errorf("invalid since: %w", err)
+			}
+		}
+		since = since.UTC()
+	}
+	if u := strings.TrimSpace(untilRaw); u != "" {
+		until, err = time.Parse(time.RFC3339Nano, u)
+		if err != nil {
+			if until, err = time.Parse(time.RFC3339, u); err != nil {
+				return time.Time{}, time.Time{}, fmt.Errorf("invalid until: %w", err)
+			}
+		}
+		until = until.UTC()
+	}
+	if !since.IsZero() && !until.IsZero() && until.Before(since) {
+		return time.Time{}, time.Time{}, fmt.Errorf("until must be after since")
+	}
+	return since, until, nil
 }
 
 func sanitizeJSONString(raw string) string {
@@ -238,4 +402,22 @@ func traceSpansRaw(config map[string]any) []any {
 		}
 	}
 	return []any{}
+}
+
+func (s *MonitorService) GetCodeExecutorCapabilities(ctx context.Context, _ *v1.GetMonitorLogsRequest) (*v1.GetCodeExecutorCapabilitiesResponse, error) {
+	_ = ctx
+	factory := s.codeExecFactory
+	if factory == nil {
+		factory = codeexecutor.NewFactory()
+	}
+	caps := factory.Capabilities()
+	out := make([]*v1.CodeExecutorCapability, 0, len(caps))
+	for _, c := range caps {
+		out = append(out, &v1.CodeExecutorCapability{
+			Type:      c.Type,
+			Available: c.Available,
+			Reason:    c.Reason,
+		})
+	}
+	return &v1.GetCodeExecutorCapabilitiesResponse{Backends: out}, nil
 }

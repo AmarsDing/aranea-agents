@@ -38,9 +38,21 @@
         :context-ratio="selectedSessionForUi?.context_used_ratio ?? 0"
         :is-dark="isDark"
         :sending="sending"
+        :input-disabled="inputDisabled"
         :is-awaiting-user="isAwaitingUser"
+        :await-kind="awaitKind"
+        :await-tool-key="awaitToolKey"
         :ws-replaying="wsReplaying"
+        :is-team-session="selectedEntityKind === 'team'"
+        :planner-kind="activePlannerKind"
+        :react-tool-link-index="reactToolLinkIndex"
         :pending-messages="pendingMessages"
+        :run-status="runStatus"
+        :run-agent-name="runMeta?.agentName"
+        :run-started-at="runMeta?.startedAt"
+        :run-event-count="runMeta?.eventCount"
+        :show-enqueue="isRunnerActive"
+        @enqueue-message="onEnqueueWhileRunning"
         @update:dialog-mode="onModeChange"
         @update:model-provider="onProviderChange"
         @remove-attachment="removeAttachment"
@@ -51,6 +63,9 @@
         @cancel-pending="onCancelPending"
         @update-pending="onUpdatePending"
         @submit-await-reply="submitAwaitingReply"
+        @submit-tool-confirm="submitToolConfirm"
+        @open-events="openSessionEvents"
+        @a2ui-user-action="submitA2UIUserAction"
       />
       <chat-session-artifacts-panel
         :session-id="selectedSessionForUi?.id ?? ''"
@@ -113,6 +128,8 @@
         v-model="traceOpen"
         :session-id="traceSessionId"
         :session-title="traceSessionTitle"
+        :initial-tab="traceInitialTab"
+        :stream-deps="traceStreamDeps"
       />
     </template>
   </ChatWorkspaceShell>
@@ -145,7 +162,10 @@ const {
   inputText,
   dialogMode,
   modelProvider,
+  activePlannerKind,
+  reactToolLinkIndex,
   sending,
+  inputDisabled,
   modeOpts,
   provOpts,
   attachments,
@@ -164,6 +184,8 @@ const {
   traceOpen,
   traceSessionId,
   traceSessionTitle,
+  traceInitialTab,
+  traceStreamDeps,
   settingsTitle,
   displaySessions,
   selectedSessionForUi,
@@ -180,11 +202,13 @@ const {
   onSelectSession,
   onRenameSession,
   openSessionTrace,
+  openSessionEvents,
   onRestoreSession,
   onArchiveSession,
   onSessionDetail,
   onNewSession,
   onSend,
+  submitA2UIUserAction,
   onModeChange,
   onProviderChange,
   stopStreaming,
@@ -196,9 +220,16 @@ const {
   onFileChange,
   removeAttachment,
   pendingMessages,
+  runMeta,
+  isRunnerActive,
+  onEnqueueWhileRunning,
+  runStatus,
   isAwaitingUser,
+  awaitKind,
+  awaitToolKey,
   wsReplaying,
   submitAwaitingReply,
+  submitToolConfirm,
   sessionArtifacts,
   sessionArtifactsLoading,
   openSessionArtifact,

@@ -38,6 +38,9 @@ var ProviderSet = wire.NewSet(
 	NewHookRepo,
 	NewCronRepo,
 	NewPluginRepo,
+	NewPluginRunRepo,
+	NewHookDeliveryRepo,
+	NewPluginCostGuardUsageRepo,
 	NewMCPServerRepo,
 	NewSkillRepo,
 	NewSessionRepo,
@@ -57,6 +60,10 @@ var ProviderSet = wire.NewSet(
 	NewKnowledgeRepoFromData,
 	NewEvalRepoFromData,
 	NewA2ARepoFromData,
+	NewEcosystemRepo,
+	NewEventStoreRepo,
+	NewFlowLogRepo,
+	NewWebhookRepo,
 )
 
 // Data: Ent/SQLite holds app CRUD; Postgres (optional) holds pgvector agent memory only.
@@ -256,7 +263,7 @@ func ensureAllSchemas(rawDB *sql.DB, entClient *ent.Client) error {
 	if err := sessionmemory.EnsurePatches(context.Background(), entClient); err != nil {
 		return fmt.Errorf("session memory patches: %w", err)
 	}
-	if err := sessionmemory.EnsureSchema(context.Background(), entClient); err != nil {
+	if err := EnsureSessionMemorySchema(context.Background(), entClient); err != nil {
 		return fmt.Errorf("session memory schema: %w", err)
 	}
 	if err := sessionmemory.EnsureMonitorSchemaPatches(context.Background(), entClient); err != nil {
@@ -268,8 +275,14 @@ func ensureAllSchemas(rawDB *sql.DB, entClient *ent.Client) error {
 	if err := ensureBuiltinPlatformTools(context.Background(), entClient); err != nil {
 		return err
 	}
+	if err := ensureSystemSettingPatches(context.Background(), entClient); err != nil {
+		return fmt.Errorf("system setting patches: %w", err)
+	}
 	if err := ensureDefaultSystemSetting(context.Background(), entClient); err != nil {
 		return err
+	}
+	if err := ensureDefaultCredentialEncryptionKey(context.Background(), entClient); err != nil {
+		return fmt.Errorf("credential encryption key: %w", err)
 	}
 	ctxSchema := context.Background()
 	if err := EnsureEvalSchema(ctxSchema, rawDB); err != nil {
@@ -278,8 +291,23 @@ func ensureAllSchemas(rawDB *sql.DB, entClient *ent.Client) error {
 	if err := EnsureA2ASchema(ctxSchema, rawDB); err != nil {
 		return fmt.Errorf("a2a schema: %w", err)
 	}
-	if err := EnsureUsageQuotaSchema(ctxSchema, rawDB); err != nil {
-		return fmt.Errorf("usage quota schema: %w", err)
+	if err := EnsurePluginRunSchema(ctxSchema, entClient); err != nil {
+		return fmt.Errorf("plugin run schema: %w", err)
+	}
+	if err := EnsureHookDeliverySchema(ctxSchema, entClient); err != nil {
+		return fmt.Errorf("hook delivery schema: %w", err)
+	}
+	if err := EnsureFlowLogSchema(ctxSchema, entClient); err != nil {
+		return fmt.Errorf("flow log schema: %w", err)
+	}
+	if err := EnsureMessageFTSSchema(ctxSchema, rawDB); err != nil {
+		return fmt.Errorf("message fts schema: %w", err)
+	}
+	if err := EnsureMonitorAlertSchema(ctxSchema, entClient); err != nil {
+		return fmt.Errorf("monitor alert schema: %w", err)
+	}
+	if err := EnsureEcosystemSchema(ctxSchema, entClient); err != nil {
+		return fmt.Errorf("ecosystem schema: %w", err)
 	}
 	return nil
 }

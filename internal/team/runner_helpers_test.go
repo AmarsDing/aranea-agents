@@ -1,36 +1,63 @@
 package team
 
 import (
-	"encoding/json"
-	"strings"
+	"context"
 	"testing"
+
+	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
+	rt "aranea-agents/internal/runtime"
 )
 
-func Test_mergeTeamUserTurnMetaJSON_previewAndFlags(t *testing.T) {
-	raw, err := mergeTeamUserTurnMetaJSON(`{"dialog_mode":"plan"}`, "Hi", "Hi\nwrapped")
-	if err != nil {
-		t.Fatal(err)
+type stepBusRepo struct {
+	biz.TeamRepository
+	steps []biz.TeamRunStep
+}
+
+func (r *stepBusRepo) CreateTeamRunStep(_ context.Context, step biz.TeamRunStep) (biz.TeamRunStep, error) {
+	r.steps = append(r.steps, step)
+	return step, nil
+}
+
+func TestPersistStep_EmitsStartedAndFinished(t *testing.T) {
+	bus := event.NewBus()
+	ch, unsub := bus.Subscribe(event.SubscribeOptions{BufferSize: 8})
+	defer unsub()
+
+	runner := &Runner{
+		teams: &stepBusRepo{},
+		td: rt.TurnDeps{
+			Pipeline: rt.EventPipeline{Bus: bus},
+		},
 	}
-	var m map[string]any
-	if err := json.Unmarshal([]byte(raw), &m); err != nil {
-		t.Fatal(err)
+	run := biz.TeamRun{ID: "run-1", SessionID: "sess-1"}
+	ag := biz.Agent{ID: "a1", AgentKey: "worker-a", DisplayName: "Worker A"}
+	m := MemberDef{Role: "worker"}
+	asst := biz.ChatMessage{Role: "assistant", ContentMarkdown: "done", Status: "ok", CreatedAt: "2026-01-01T00:00:00Z"}
+
+	runner.persistStep(context.Background(), run, "team-1", 0, m, ag, "hello", asst, "", "", "default", 2)
+
+	repo := runner.teams.(*stepBusRepo)
+	if len(repo.steps) != 1 {
+		t.Fatalf("steps=%d", len(repo.steps))
 	}
-	if m["dialog_mode"] != "plan" {
-		t.Fatalf("preserve existing key: %v", m)
+	if repo.steps[0].ToolCallCount != 2 {
+		t.Fatalf("tool_call_count=%d", repo.steps[0].ToolCallCount)
 	}
-	if m["team_user_send_differs_from_display"] != true {
-		t.Fatalf("expected send differs: %v", m)
+	var started, finished bool
+	for i := 0; i < 2; i++ {
+		select {
+		case env := <-ch:
+			switch env.Type {
+			case event.EnvelopeTypeTeamStepStarted:
+				started = true
+			case event.EnvelopeTypeTeamStepFinished:
+				finished = true
+			}
+		default:
+		}
 	}
-	wantLen := float64(len([]rune("Hi\nwrapped")))
-	if got := m["user_turn_length"]; got != wantLen {
-		t.Fatalf("user_turn_length: got %v want %v", got, wantLen)
-	}
-	prev, ok := m["team_user_send_preview"].(string)
-	if !ok || !strings.HasPrefix(prev, "Hi") {
-		t.Fatalf("preview: %q", prev)
-	}
-	prev2, ok2 := m["user_text_preview"].(string)
-	if !ok2 || prev2 != prev {
-		t.Fatalf("user_text_preview: %q want %q", prev2, prev)
+	if !started || !finished {
+		t.Fatalf("started=%v finished=%v", started, finished)
 	}
 }

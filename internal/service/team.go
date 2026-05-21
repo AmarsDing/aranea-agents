@@ -12,6 +12,7 @@ import (
 	v1 "aranea-agents/api/kratos/team/v1"
 	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/internal/team"
 
@@ -27,6 +28,7 @@ type TeamService struct {
 	sessions   *biz.SessionUsecase
 	teamRunner *team.Runner
 	runs       *rt.RunRegistry
+	eventBus   event.Bus
 }
 
 func NewTeamService(
@@ -34,8 +36,9 @@ func NewTeamService(
 	sessions *biz.SessionUsecase,
 	teamRunner *team.Runner,
 	runs *rt.RunRegistry,
+	eventBus event.Bus,
 ) *TeamService {
-	return &TeamService{uc: uc, sessions: sessions, teamRunner: teamRunner, runs: runs}
+	return &TeamService{uc: uc, sessions: sessions, teamRunner: teamRunner, runs: runs, eventBus: eventBus}
 }
 
 func toProtoTeam(t biz.Team) *v1.Team {
@@ -76,6 +79,41 @@ func toProtoTeamRun(r biz.TeamRun) *v1.TeamRun {
 	}
 }
 
+func toProtoTeamRunSummary(data biz.TeamRunSummaryData) *v1.TeamRunSummary {
+	out := &v1.TeamRunSummary{
+		RunId:         data.RunID,
+		TeamId:        data.TeamID,
+		SessionId:     data.SessionID,
+		Mode:          data.Mode,
+		Status:        data.Status,
+		DurationMs:    int32(data.DurationMS),
+		TokenIn:       int32(data.TokenIn),
+		TokenOut:      int32(data.TokenOut),
+		CostMicroUsd:  data.CostMicroUSD,
+		MemberCount:   int32(data.MemberCount),
+		ToolCallCount: int32(data.ToolCallCount),
+		OutputPreview: data.OutputPreview,
+		ErrorMessage:  data.ErrorMessage,
+	}
+	for _, m := range data.Members {
+		out.Members = append(out.Members, &v1.TeamRunMemberSummary{
+			AgentId:       m.AgentID,
+			AgentKey:      m.AgentKey,
+			AgentName:     m.AgentName,
+			Role:          m.Role,
+			SortOrder:     int32(m.SortOrder),
+			Status:        m.Status,
+			TokenIn:       int32(m.TokenIn),
+			TokenOut:      int32(m.TokenOut),
+			DurationMs:    int32(m.DurationMS),
+			CostMicroUsd:  m.CostMicroUSD,
+			OutputPreview: m.OutputPreview,
+			ToolCallCount: int32(m.ToolCallCount),
+		})
+	}
+	return out
+}
+
 func toProtoTeamRunStep(s biz.TeamRunStep) *v1.TeamRunStep {
 	return &v1.TeamRunStep{
 		Id:            s.ID,
@@ -97,6 +135,7 @@ func toProtoTeamRunStep(s biz.TeamRunStep) *v1.TeamRunStep {
 		StartedAt:     s.StartedAt,
 		FinishedAt:    s.FinishedAt,
 		CreatedAt:     s.CreatedAt,
+		ToolCallCount: int32(s.ToolCallCount),
 	}
 }
 
@@ -219,7 +258,12 @@ func (s *TeamService) CancelTeamRun(ctx context.Context, req *v1.CancelTeamRunRe
 		return nil, kerrors.BadRequest("TEAM", "only running or pending team runs can be cancelled")
 	}
 	if s.runs != nil && strings.TrimSpace(r.SessionID) != "" {
-		_ = s.runs.Cancel(r.SessionID)
+		_, _ = s.runs.Cancel(r.SessionID)
+		runID := strings.TrimSpace(r.ID)
+		if entry, ok := s.runs.GetStatus(r.SessionID); ok && strings.TrimSpace(entry.RunID) != "" {
+			runID = entry.RunID
+		}
+		CancelSessionRunSideEffects(ctx, s.eventBus, s.sessions, r.SessionID, runID)
 	}
 	now := agent.RFC3339Now()
 	r.Status = "cancelled"
@@ -330,4 +374,12 @@ func (s *TeamService) ExportTeamStructure(ctx context.Context, req *v1.ExportTea
 		resp.Surfaces = append(resp.Surfaces, &v1.StructureSurface{NodeId: sf.NodeID, Name: sf.Name})
 	}
 	return resp, nil
+}
+
+func (s *TeamService) GetTeamRunSummary(ctx context.Context, req *v1.GetTeamRunSummaryRequest) (*v1.GetTeamRunSummaryResponse, error) {
+	data, err := s.uc.GetRunSummary(ctx, req.GetId())
+	if err != nil {
+		return nil, mapTeamErr(err)
+	}
+	return &v1.GetTeamRunSummaryResponse{Summary: toProtoTeamRunSummary(data)}, nil
 }
