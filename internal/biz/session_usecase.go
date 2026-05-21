@@ -88,6 +88,30 @@ type SessionListResult struct {
 	Offset int
 }
 
+// MessageSearchQuery filters message full-text search.
+type MessageSearchQuery struct {
+	SessionID string
+	Keyword   string
+	Limit     int
+	Offset    int
+}
+
+// MessageSearchHit is one search result row.
+type MessageSearchHit struct {
+	ID               string
+	SessionID        string
+	Role             string
+	ContentMarkdown  string
+	Highlight        string
+	CreatedAt        string
+}
+
+// MessageSearchResult is paginated message search output.
+type MessageSearchResult struct {
+	Items []MessageSearchHit
+	Total int
+}
+
 // ChatMessage is one messages row for timeline assembly.
 type ChatMessage struct {
 	ID               string
@@ -272,6 +296,7 @@ type SessionRepository interface {
 	DeleteSession(ctx context.Context, id string) error
 	DeleteSessionsByAgentID(ctx context.Context, agentID string) error
 	ListMessagesBySession(ctx context.Context, sessionID string) ([]ChatMessage, error)
+	SearchMessages(ctx context.Context, q MessageSearchQuery) (MessageSearchResult, error)
 	ListToolInvocationsBySession(ctx context.Context, sessionID string, limit int) ([]ToolInvocationView, error)
 	ListSkillInvocationsBySession(ctx context.Context, sessionID string, limit int) ([]SkillInvocationView, error)
 	// AppendChatTurn inserts user + assistant rows and updates session aggregates (native chat).
@@ -435,6 +460,19 @@ func (uc *SessionUsecase) DeleteByAgent(ctx context.Context, agentID string) err
 }
 
 // ListMessages returns raw chat rows for a session (same store as timeline messages).
+func (uc *SessionUsecase) SearchMessages(ctx context.Context, q MessageSearchQuery) (MessageSearchResult, error) {
+	if uc == nil || uc.sessions == nil {
+		return MessageSearchResult{}, nil
+	}
+	if strings.TrimSpace(q.SessionID) == "" {
+		return MessageSearchResult{}, validationErr("session_id is required")
+	}
+	if strings.TrimSpace(q.Keyword) == "" {
+		return MessageSearchResult{}, validationErr("keyword is required")
+	}
+	return uc.sessions.SearchMessages(ctx, q)
+}
+
 func (uc *SessionUsecase) ListMessages(ctx context.Context, sessionID string) ([]ChatMessage, error) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {

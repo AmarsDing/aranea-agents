@@ -819,6 +819,10 @@ func (r *sessionRepo) AppendChatMessage(ctx context.Context, sessionID string, m
 	}
 	msg.TurnIndex = maxTurn + 1
 	if err = r.insertMessageTx(ctx, tx, msg); err != nil {
+		if ent.IsConstraintError(err) {
+			_ = tx.Rollback()
+			return nil
+		}
 		return rollback(err)
 	}
 	upd := tx.Session.UpdateOneID(sessionID).

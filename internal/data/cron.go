@@ -170,6 +170,24 @@ func (r *cronRepo) DeleteCronTask(ctx context.Context, id string) error {
 		Exec(ctx)
 }
 
+func (r *cronRepo) GetCronTaskRun(ctx context.Context, id string) (biz.CronTaskRun, error) {
+	run, err := r.data.entClient.CronTaskRun.Query().
+		Where(crontaskrun.IDEQ(id)).
+		Only(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return biz.CronTaskRun{}, sql.ErrNoRows
+		}
+		return biz.CronTaskRun{}, err
+	}
+	task, err := r.GetCronTask(ctx, run.TaskID)
+	taskName := ""
+	if err == nil {
+		taskName = task.Name
+	}
+	return entToBizCronTaskRun(run, taskName), nil
+}
+
 func (r *cronRepo) ListCronTaskRuns(ctx context.Context, q biz.CronTaskRunQuery) ([]biz.CronTaskRun, error) {
 	limit := q.Limit
 	if limit <= 0 {

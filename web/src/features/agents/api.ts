@@ -8,11 +8,14 @@ import type {
   AgentListResult,
   AgentPromptFile,
   AgentRuntimeSettings,
+  AgentCreatorOption,
+  AgentTemplatePreset,
   EvolutionMetrics,
   EvolutionSuggestion
 } from "./types";
 import {
   normalizeAgentFromService,
+  normalizePromptFileFromWire,
   partialAgentToWire,
   promptFileToWire,
   runtimeSettingsToWire,
@@ -26,6 +29,8 @@ export type {
   AgentListResult,
   AgentPromptFile,
   AgentRuntimeSettings,
+  AgentCreatorOption,
+  AgentTemplatePreset,
   EvolutionMetrics,
   EvolutionSuggestion
 } from "./types";
@@ -37,6 +42,7 @@ export async function listAgentsPaged(query: AgentListQuery = {}): Promise<Agent
     status: query.status,
     provider: query.provider,
     categoryId: query.category_id,
+    createdBy: query.created_by,
     limit: query.limit,
     offset: query.offset
   });
@@ -70,7 +76,6 @@ export async function createAgent(payload: {
   settings?: AgentRuntimeSettings;
   files?: AgentPromptFile[];
 }): Promise<Agent> {
-  const svc = createAgentService();
   const req: KratosCreateAgentRequest = {
     agentKey: payload.agent_key,
     displayName: payload.display_name,
@@ -88,6 +93,7 @@ export async function createAgent(payload: {
     settings: payload.settings ? runtimeSettingsToWire(payload.settings) : undefined,
     files: payload.files?.map(promptFileToWire)
   };
+  const svc = createAgentService();
   const data = await svc.CreateAgent(req);
   return normalizeAgentFromService(data);
 }
@@ -105,6 +111,61 @@ export async function updateAgent(id: string, payload: Partial<Agent>): Promise<
     agent: partialAgentToWire(payload)
   });
   return normalizeAgentFromService(data);
+}
+
+export async function listAgentTemplates(): Promise<AgentTemplatePreset[]> {
+  const svc = createAgentService();
+  const res = await svc.ListAgentTemplates({});
+  return (res.items ?? []).map((row) => ({
+    key: row.key ?? "",
+    label: row.label ?? "",
+    icon: row.icon ?? "",
+    description: row.description ?? "",
+    display_name: row.displayName ?? row.display_name ?? "",
+    provider: row.provider ?? "",
+    model: row.model ?? ""
+  }));
+}
+
+export async function listAgentCreators(): Promise<AgentCreatorOption[]> {
+  const svc = createAgentService();
+  const res = await svc.ListAgentCreators({});
+  return (res.items ?? []).map((row) => ({
+    user_id: row.userId ?? row.user_id ?? "",
+    label: row.label ?? row.userId ?? row.user_id ?? ""
+  }));
+}
+
+export async function duplicateAgent(id: string): Promise<Agent> {
+  const svc = createAgentService();
+  const res = await svc.DuplicateAgent({ id });
+  return normalizeAgentFromService(res);
+}
+
+export async function editPromptFileByAI(
+  agentId: string,
+  fileId: string,
+  instruction: string
+): Promise<AgentPromptFile> {
+  const svc = createAgentService();
+  const res = await svc.EditPromptFileByAI({ agentId, fileId, instruction });
+  return normalizePromptFileFromWire(res.file);
+}
+
+export async function estimateAgentTokens(agentId: string): Promise<{
+  total_tokens: number;
+  file_estimates: Array<{ file_id: string; file_name: string; estimated_tokens: number }>;
+}> {
+  const svc = createAgentService();
+  const res = await svc.EstimateTokens({ agentId });
+  return {
+    total_tokens: Number(res.totalTokens ?? 0),
+    file_estimates: (res.fileEstimates ?? []).map((row) => ({
+      file_id: row.fileId ?? "",
+      file_name: row.fileName ?? "",
+      estimated_tokens: Number(row.estimatedTokens ?? 0)
+    }))
+  };
 }
 
 export async function getAgentPromptPreview(id: string, mode?: string): Promise<string> {
@@ -177,6 +238,15 @@ export async function applyEvolutionSuggestion(
     diff_preview: res.diffPreview ?? "",
     created_at: res.createdAt ?? "",
     applied_at: res.appliedAt ?? ""
+  };
+}
+
+export async function checkAgentKey(agentKey: string): Promise<{ available: boolean; message: string }> {
+  const svc = createAgentService();
+  const res = await svc.CheckAgentKey({ agentKey });
+  return {
+    available: Boolean(res.available),
+    message: res.message ?? ""
   };
 }
 

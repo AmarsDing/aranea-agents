@@ -9,9 +9,11 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	mcpconfig "aranea-agents/internal/mcp/config"
 )
 
-func resolveMCPAuthToken(ctx context.Context, auth mcpAuthConfigJSON) (string, error) {
+func resolveMCPAuthToken(ctx context.Context, auth mcpconfig.AuthConfig) (string, error) {
 	authType := strings.ToLower(strings.TrimSpace(auth.Type))
 	switch authType {
 	case "oauth2", "oauth2_client_credentials":
@@ -25,7 +27,7 @@ func resolveMCPAuthToken(ctx context.Context, auth mcpAuthConfigJSON) (string, e
 	}
 }
 
-func fetchOAuth2ClientCredentials(ctx context.Context, auth mcpAuthConfigJSON) (string, error) {
+func fetchOAuth2ClientCredentials(ctx context.Context, auth mcpconfig.AuthConfig) (string, error) {
 	if t := strings.TrimSpace(auth.AccessToken); t != "" && strings.TrimSpace(auth.TokenURL) == "" {
 		return t, nil
 	}
@@ -43,7 +45,7 @@ func fetchOAuth2ClientCredentials(ctx context.Context, auth mcpAuthConfigJSON) (
 	return postOAuth2Token(ctx, tokenURL, form, clientID, clientSecret)
 }
 
-func fetchOAuth2RefreshToken(ctx context.Context, auth mcpAuthConfigJSON) (string, error) {
+func fetchOAuth2RefreshToken(ctx context.Context, auth mcpconfig.AuthConfig) (string, error) {
 	tokenURL := strings.TrimSpace(auth.TokenURL)
 	refresh := strings.TrimSpace(auth.RefreshToken)
 	if tokenURL == "" || refresh == "" {

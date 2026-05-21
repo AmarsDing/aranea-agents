@@ -10,13 +10,13 @@
 
 Skill 是可安装、可版本化的能力包，由文件资产（SKILL.md + 附件）组成，通过上下文注入方式增强 Agent 能力。Skill 不替代 Tool 执行语义，而是作为 Tool 的上游——在运行时由 Assembler 选出并注入 Agent 工具链。
 
-核心链路：**注册（CRUD / 导入）→ 发布 → 启用 → 运行时路由 → ADK Toolset 装配 → 执行追踪**。
+核心链路：**注册（CRUD / 导入）→ 发布 → 启用 → 运行时路由 → trpc-agent-go Skill 工具链 → 执行追踪**。
 
 ---
 
 ## 二、Proto 层
 
-### 2.1 已实现 Proto
+### 2.1 已实现 Proto（18 RPC）
 
 文件：`api/kratos/skill/v1/skill.proto`
 
@@ -64,16 +64,30 @@ service SkillService {
   rpc ListSkillRuns(ListSkillRunsRequest) returns (ListSkillRunsResponse) {
     option (google.api.http) = { get: "/v1/skill-runs" };
   }
+  // ImportSkillZip: multipart POST /v1/skills/import via RegisterSkillImportMultipart
+  rpc ImportSkillZip(google.protobuf.Empty) returns (ImportSkillZipResponse);
+  rpc GetSkillImportJob(GetSkillImportJobRequest) returns (SkillImportJob) {
+    option (google.api.http) = { get: "/v1/skills/import/{job_id}" };
+  }
+  rpc ApplySkillImport(ApplySkillImportRequest) returns (SkillImportApplyResult) {
+    option (google.api.http) = { post: "/v1/skills/import/{job_id}/apply" body: "*" };
+  }
+  rpc RefineSkillImportConflict(RefineSkillImportConflictRequest) returns (SkillRefineResult) {
+    option (google.api.http) = {
+      post: "/v1/skills/import/{job_id}/conflict-groups/{group_id}/refine"
+      body: "*"
+    };
+  }
 }
 ```
 
-### 2.2 ZIP 导入 HTTP 端点（手写路由，不在 proto 内）
+### 2.2 ZIP 导入 multipart 端点
 
-文件：`internal/server/skill_import_http.go`
+文件：`internal/service/skill_import_http.go`（由 `internal/server/http.go` 挂载）
 
 | 端点 | 方法 | 用途 |
 |------|------|------|
-| `/v1/skills/import` | POST | 上传 ZIP，返回 `job_id` |
+| `/v1/skills/import` | POST | 上传 ZIP（multipart；`ImportSkillZip` 无 HTTP annotation） |
 | `/v1/skills/import/{job_id}` | GET | 轮询导入状态 |
 | `/v1/skills/import/{job_id}/apply` | POST | 应用导入结果 |
 | `/v1/skills/import/{job_id}/conflict-groups/{group_id}/refine` | POST | AI 炼化冲突组 |
@@ -297,11 +311,13 @@ type SkillImportApplyRequest struct {
 文件：`internal/agent/trpc_build.go` → `buildSkillDeps`
 
 流程：
-1. `SkillUC.ListEnabledPublishedSkillKeys()` 获取已启用 + 已发布的 slug 列表
-2. 优先使用 `SkillDBRepo`（`DBRepositoryAdapter`，DB-backed + TTL 缓存）；否则回退到 `FSRepositoryAdapter`（磁盘 FS）
-3. 构建 `FilteredRepository`（按 slug 白名单过滤）
-4. 构建 `CodeExecutor`（local / docker，按 `CODE_EXECUTOR_BACKEND` 环境变量选择）
-5. 传入 `trpcllmagent.WithSkills(repo)` + `WithSkillFilter(filter)` + `WithSkillToolProfile(SkillToolProfileFull)`
+1. `ListEnabledPublishedSkillKeys()` 确认存在已启用 + 已发布 Skill
+2. 优先 `SkillDBRepo`（`DBRepositoryAdapter`）；否则 `FSRepositoryAdapter`
+3. `skillruntime.NewAgentVisibilityFilter(SkillUC, ag.Settings)` — Layer A/B，按 invocation 读取 turn query
+4. `CodeExecutor`（local / docker，`CODE_EXECUTOR_BACKEND`；产出物经 `artifact_executor.go`）
+5. `WithSkills` + `WithSkillFilter` + `WithSkillToolProfile(SkillToolProfileFull)`
+
+Turn query 注入：`internal/service/trpc_turn.go` · `internal/team/runner_team_trpc.go` → `skillruntime.RunOptionWithTurnQuery`
 
 ### 5.2 运行时路由
 
@@ -312,7 +328,7 @@ type SkillImportApplyRequest struct {
 **Layer A**（`applyLayerA`）：
 - 按 `SkillRuntimePolicy.AllowedSlugs` / `DeniedSlugs` 过滤
 
-**Layer B**（`resolveSkillSlugs`）：
+**Layer B**（`ResolveSkillSlugs`）：
 - `skillrouter.DetectIntentPaths(query, maxPaths)` → 分类路径关键词匹配
 - `filterByIntentPaths()` → 按分类路径缩小候选
 - `filterByAllTags()` → 按 `AllowedTags` + `ExtractTagHints()` 过滤
@@ -332,8 +348,8 @@ type SkillImportApplyRequest struct {
 - `repository.go`：`FSRepositoryAdapter` — 磁盘 FS → `trpcskill.Repository`
 - `db_repository.go`：`DBRepositoryAdapter` — DB + TTL 缓存 → `trpcskill.Repository`
 - `filter.go`：`NewFilteredRepository(base, allowedSlugs)` → `trpcskill.ContextRepository`
-- `tools.go`：`BuildSkillTools()` 产出 4 个 ADK 工具（LoadTool / RunTool / ListDocsTool / SelectDocsTool）
-- `executor.go`：`CodeExecutor` 适配（local / docker）
+- `tools.go`：`BuildSkillTools()` 产出 4 个内置 Skill 工具（Load / Run / ListDocs / SelectDocs）
+- `executor.go`：`CodeExecutor` 适配（local / docker）；`artifact_executor.go`：产出物 `WrapWithArtifactSave`
 
 ### 5.5 运行时策略存储
 
@@ -387,13 +403,7 @@ type SkillImportApplyRequest struct {
 
 ### 7.2 HTTP 路由
 
-文件：`internal/server/skill_import_http.go`
-
-4 个端点（手写路由，不在 proto 内）：
-- `POST /v1/skills/import` — 上传 ZIP
-- `GET /v1/skills/import/{job_id}` — 轮询状态
-- `POST /v1/skills/import/{job_id}/apply` — 应用结果
-- `POST /v1/skills/import/{job_id}/conflict-groups/{group_id}/refine` — AI 炼化
+业务逻辑在 `internal/service/skill_import.go`；multipart 挂载见 §2.2。
 
 ---
 
@@ -436,50 +446,29 @@ func (s *SkillService) ListSkillRuns(ctx, req) (*ListSkillRunsResponse, error)
 
 ## 十、Web 前端设计
 
-### 10.1 文件结构
+### 10.1 文件结构（与代码一致）
 
 ```
-web/src/features/skills/
-├── api.ts
-├── types.ts
-├── SkillEditorDialog.vue
-├── SkillItem.vue
-├── SkillImportDialog.vue
-└── components/
-    ├── SkillListPage.vue
-    ├── SkillDetailPage.vue
-    ├── SkillFileEditor.vue
-    └── SkillRuntimePreview.vue
+web/src/
+├── pages/
+│   ├── SkillsPage.vue              # 列表 + SkillUploadPlaceholder + SkillEditorDialog
+│   └── SkillRunsPage.vue
+├── pages/agent-settings/
+│   └── AgentSettingsSkillsTab.vue  # skill_runtime_json
+├── components/skills/
+│   ├── SkillTable.vue · SkillFilterBar.vue · SkillStatsStrip.vue
+│   ├── SkillEditorDialog.vue · SkillUploadPlaceholder.vue
+│   ├── SkillDeleteDialog.vue · SkillRunsTable.vue · SkillPagination.vue
+├── features/skills/
+│   ├── api.ts · types.ts
+└── stores/skills/index.ts
 ```
 
-### 10.2 组件设计
+路由：`/skills` · `/skills/runs`（见 `frontend-pages.md` §4.6）
 
-**SkillEditorDialog.vue**：
+**SkillEditorDialog.vue** — 全屏 Dialog，左侧文件树 + 右侧内容编辑（`ListSkillFiles` / `GetSkillFile` / `UpdateSkillFile`）。
 
-| 控件 | 绑定 | 说明 |
-|------|------|------|
-| `QInput` 名称 | `name` | 必填 |
-| `QInput` 描述 | `description` | 可选 |
-| `QSelect` 标签 | `tags` | 多选，支持 `file_type:*` / `domain:*` |
-| `QSelect` 类型 | `kind` | markdown / prompt_pack / workflow / tool_backed |
-| `QSelect` 风险等级 | `riskLevel` | low / medium / high |
-| `QEditor` 正文 | `bodyMarkdown` | Markdown 编辑器 |
-
-**SkillFileEditor.vue**：
-
-| 控件 | 绑定 | 说明 |
-|------|------|------|
-| 文件树 | `files` | 左侧文件列表 |
-| 代码编辑器 | `fileContent` | 右侧编辑区 |
-| 保存按钮 | — | `UpdateSkillFile` |
-
-**SkillImportDialog.vue**：
-
-| 控件 | 绑定 | 说明 |
-|------|------|------|
-| 文件上传 | `zipFile` | ZIP 文件选择 |
-| 进度显示 | `jobStatus` | 轮询导入状态 |
-| 冲突解决 | `conflictGroups` | AI 炼化 / 手动选择 |
+**SkillUploadPlaceholder.vue** — 上传 zip、轮询导入任务、冲突组炼化（调用 `features/skills/api` import 端点）。
 
 ### 10.3 API
 

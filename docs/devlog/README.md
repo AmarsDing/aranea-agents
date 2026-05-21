@@ -12,3 +12,4 @@
 | [2026-05-16-Session-Optimize.md](./2026-05-16-Session-Optimize.md) | Session 优化实现细节 |
 | [2026-05-17-Session-Turns.md](./2026-05-17-Session-Turns.md) | Session Turns 实现细节 |
 | [2026-05-17-optimization-code-audit.md](./2026-05-17-optimization-code-audit.md) | 2026-05-17 优化项代码层审计（含 §0 修正声明） |
+| [2026-05-21-Agent-Iteration10-Plan.md](./2026-05-21-Agent-Iteration10-Plan.md) | Agent 迭代 10 实施详案（AGT-08～10） |

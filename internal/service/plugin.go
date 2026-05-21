@@ -22,10 +22,21 @@ type PluginService struct {
 }
 
 func NewPluginService(uc *biz.PluginUsecase, runtime *plugintrpc.Runtime) *PluginService {
-	s := &PluginService{uc: uc, runtime: runtime}
-	if runtime != nil {
-		s.seedBuiltinPlugins(context.Background())
+	return &PluginService{uc: uc, runtime: runtime}
+}
+
+// Bootstrap seeds built-in plugins and hot-reloads runtime (call once at process start).
+func (s *PluginService) Bootstrap(ctx context.Context) {
+	if s == nil {
+		return
 	}
+	s.seedBuiltinPlugins(ctx)
+}
+
+// NewPluginServiceWithBootstrap constructs PluginService and runs one-time bootstrap.
+func NewPluginServiceWithBootstrap(uc *biz.PluginUsecase, runtime *plugintrpc.Runtime) *PluginService {
+	s := NewPluginService(uc, runtime)
+	s.Bootstrap(context.Background())
 	return s
 }
 
@@ -187,11 +198,16 @@ func toProtoPluginRun(r biz.PluginRun) *v1.PluginRun {
 func (s *PluginService) ListPluginRuns(ctx context.Context, req *v1.ListPluginRunsRequest) (*v1.ListPluginRunsResponse, error) {
 	limit, offset, page, pageSize := biz.PageToLimitOffset(req.GetPage(), req.GetPageSize())
 	result, err := s.uc.ListRuns(ctx, biz.PluginRunQuery{
-		PluginKey: req.GetPluginKey(),
-		PluginID:  req.GetPluginId(),
-		SessionID: req.GetSessionId(),
-		Limit:     limit,
-		Offset:    offset,
+		PluginKey:     req.GetPluginKey(),
+		PluginID:      req.GetPluginId(),
+		SessionID:     req.GetSessionId(),
+		AgentID:       req.GetAgentId(),
+		CallbackPoint: req.GetCallbackPoint(),
+		Status:        req.GetStatus(),
+		From:          req.GetFrom(),
+		To:            req.GetTo(),
+		Limit:         limit,
+		Offset:        offset,
 	})
 	if err != nil {
 		return nil, err

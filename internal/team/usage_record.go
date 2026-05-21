@@ -38,11 +38,17 @@ func (r *Runner) recordMemberUsage(
 	if latency > 0 && tout > 0 {
 		tps = float64(tout) / (float64(latency) / 1000.0)
 	}
-	meta, _ := json.Marshal(map[string]any{
-		"source":  "team_member_step",
-		"run_id":  run.ID,
-		"step_id": stepID,
-	})
+	meta := "{}"
+	if em := event.TraceEmitterFromContext(ctx); em != nil {
+		meta = em.MetadataJSON()
+	} else {
+		b, _ := json.Marshal(map[string]any{
+			"source":  "team_member_step",
+			"run_id":  run.ID,
+			"step_id": stepID,
+		})
+		meta = string(b)
+	}
 	ev := biz.TokenUsageEvent{
 		ID:               uuid.NewString(),
 		TeamID:           teamID,
@@ -62,7 +68,7 @@ func (r *Runner) recordMemberUsage(
 		ErrorMessage:     asst.ErrorMessage,
 		UsageKind:        biz.UsageKindTeamMember,
 		PromptMode:       dialogMode,
-		MetadataJSON:     string(meta),
+		MetadataJSON:     meta,
 		OccurredAt: now.Format(time.RFC3339),
 	}
 	recCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 45*time.Second)
@@ -91,10 +97,16 @@ func (r *Runner) recordTeamRunUsage(
 		return
 	}
 	now := time.Now().UTC()
-	meta, _ := json.Marshal(map[string]any{
-		"source": "team_run",
-		"run_id": run.ID,
-	})
+	meta := "{}"
+	if em := event.TraceEmitterFromContext(ctx); em != nil {
+		meta = em.MetadataJSON()
+	} else {
+		b, _ := json.Marshal(map[string]any{
+			"source": "team_run",
+			"run_id": run.ID,
+		})
+		meta = string(b)
+	}
 	ev := biz.TokenUsageEvent{
 		ID:               uuid.NewString(),
 		TeamID:           teamID,
@@ -111,7 +123,7 @@ func (r *Runner) recordTeamRunUsage(
 		UsageKind:        biz.UsageKindTeamTurn,
 		PromptMode:       dialogMode,
 		Status:           "success",
-		MetadataJSON:     string(meta),
+		MetadataJSON:     meta,
 		OccurredAt:       now.Format(time.RFC3339),
 	}
 	recCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 45*time.Second)

@@ -4,12 +4,15 @@ import type {
   Team,
   TeamRun,
   TeamRunEvent,
-  TeamRunStep
+  TeamRunStep,
+  TeamRunSummary
 } from "./types";
 import type {
   Team as WireTeam,
   TeamRun as WireTeamRun,
-  TeamRunStep as WireTeamRunStep
+  TeamRunStep as WireTeamRunStep,
+  TeamRunSummary as WireTeamRunSummary,
+  TeamRunMemberSummary as WireTeamRunMemberSummary
 } from "../../services/kratos/team/v1/index";
 import { GLOBAL_WS_SESSION_ID } from "../../config/runtime";
 import { createEnvelopeStream } from "../chat/useEnvelopeStream";
@@ -24,7 +27,8 @@ export type {
   TeamDefinitionMember,
   TeamRun,
   TeamRunEvent,
-  TeamRunStep
+  TeamRunStep,
+  TeamRunSummary
 } from "./types";
 
 function wireTeam(t: WireTeam | null | undefined): Team {
@@ -85,7 +89,44 @@ function wireStep(s: WireTeamRunStep | null | undefined): TeamRunStep {
     error_message: s?.errorMessage ?? "",
     started_at: s?.startedAt ?? "",
     finished_at: s?.finishedAt ?? "",
-    created_at: s?.createdAt ?? ""
+    created_at: s?.createdAt ?? "",
+    tool_call_count: s?.toolCallCount ?? 0
+  };
+}
+
+function wireMemberSummary(m: WireTeamRunMemberSummary | null | undefined) {
+  return {
+    agent_id: m?.agentId ?? "",
+    agent_key: m?.agentKey ?? "",
+    agent_name: m?.agentName ?? "",
+    role: m?.role ?? "",
+    sort_order: m?.sortOrder ?? 0,
+    status: m?.status ?? "",
+    token_in: m?.tokenIn ?? 0,
+    token_out: m?.tokenOut ?? 0,
+    duration_ms: m?.durationMs ?? 0,
+    cost_micro_usd: Number(m?.costMicroUsd ?? 0),
+    output_preview: m?.outputPreview ?? "",
+    tool_call_count: m?.toolCallCount ?? 0
+  };
+}
+
+function wireRunSummary(s: WireTeamRunSummary | null | undefined): TeamRunSummary {
+  return {
+    run_id: s?.runId ?? "",
+    team_id: s?.teamId ?? "",
+    session_id: s?.sessionId ?? "",
+    mode: s?.mode ?? "",
+    status: s?.status ?? "",
+    duration_ms: s?.durationMs ?? 0,
+    token_in: s?.tokenIn ?? 0,
+    token_out: s?.tokenOut ?? 0,
+    cost_micro_usd: Number(s?.costMicroUsd ?? 0),
+    member_count: s?.memberCount ?? 0,
+    tool_call_count: s?.toolCallCount ?? 0,
+    output_preview: s?.outputPreview ?? "",
+    error_message: s?.errorMessage ?? "",
+    members: (s?.members ?? []).map(wireMemberSummary)
   };
 }
 
@@ -153,6 +194,21 @@ export async function listTeamRunSteps(runID: string): Promise<TeamRunStep[]> {
   return items.map(wireStep);
 }
 
+export async function runTeamTest(teamID: string, content?: string): Promise<{ run: TeamRun; reply: string }> {
+  const svc = createTeamService();
+  const res = await svc.RunTeamTest({ id: teamID, content: content?.trim() || undefined });
+  return {
+    run: wireRun(res.run),
+    reply: res.reply ?? ""
+  };
+}
+
+export async function getTeamRunSummary(runID: string): Promise<TeamRunSummary> {
+  const svc = createTeamService();
+  const res = await svc.GetTeamRunSummary({ id: runID });
+  return wireRunSummary(res.summary);
+}
+
 /**
  * Team run events over `WS /v1/ws`.
  * Pass a real chat `sessionId` for session-scoped runs, or `GLOBAL_WS_SESSION_ID` (`*`) for admin-wide monitoring.
@@ -161,7 +217,8 @@ export function subscribeTeamRunEventsWs(
   sessionId: string,
   teamID: string,
   onEvent: (event: TeamRunEvent) => void,
-  onError?: (error: string) => void
+  onError?: (error: string) => void,
+  onReplayState?: (replaying: boolean) => void
 ) {
   const effectiveSession =
     sessionId.trim() === "" || sessionId === "team-monitor" ? GLOBAL_WS_SESSION_ID : sessionId;
@@ -169,6 +226,7 @@ export function subscribeTeamRunEventsWs(
     sessionId: effectiveSession,
     channels: ["team", "monitor", "system"],
     autoConnect: false,
+    onReplayState: (replaying) => onReplayState?.(replaying)
   });
 
   stream.onType(TEAM_RUNTIME_ENVELOPE_TYPES, (env: Envelope) => {

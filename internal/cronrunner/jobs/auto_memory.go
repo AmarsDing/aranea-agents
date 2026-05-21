@@ -4,14 +4,12 @@ package jobs
 
 import (
 	"context"
-
-	"aranea-agents/internal/event"
 	"regexp"
 	"strings"
 	"time"
 
 	"aranea-agents/internal/biz"
-	aramemory "aranea-agents/internal/memory"
+	"aranea-agents/internal/event"
 	memtrpc "aranea-agents/internal/memory/trpc"
 	servmetrics "aranea-agents/internal/metrics"
 
@@ -43,14 +41,10 @@ type AutoMemoryWorker struct {
 	sessions *biz.SessionUsecase
 	agents   *biz.AgentUsecase
 	memory   trpcmemory.Service
-	l4       *aramemory.L4GraphWriter
+	l4       biz.L4GraphWriter
 }
 
-// NewAutoMemoryWorker creates a worker with the given polling interval.
-// Pass ≤0 to use the default 10-second interval.
-// sessions and memory may be nil; the worker will still drain the queue but
-// skip writing extracted facts to the store.
-func NewAutoMemoryWorker(interval time.Duration, sessions *biz.SessionUsecase, agents *biz.AgentUsecase, memory trpcmemory.Service, l4 *aramemory.L4GraphWriter) *AutoMemoryWorker {
+func NewAutoMemoryWorker(interval time.Duration, sessions *biz.SessionUsecase, agents *biz.AgentUsecase, memory trpcmemory.Service, l4 biz.L4GraphWriter) *AutoMemoryWorker {
 	if interval <= 0 {
 		interval = 10 * time.Second
 	}

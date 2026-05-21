@@ -121,7 +121,8 @@ export async function ingestDocument(input: IngestDocumentInput): Promise<Knowle
     contentBase64: input.content_base64,
     metadataJson: input.metadata_json ?? "{}",
     chunkSize: input.chunk_size ?? 0,
-    chunkOverlap: input.chunk_overlap ?? 0
+    chunkOverlap: input.chunk_overlap ?? 0,
+    chunkStrategy: input.chunk_strategy ?? ""
   });
   return mapDocument(raw);
 }

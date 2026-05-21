@@ -40,6 +40,7 @@ const (
 	EnvelopeTypeGraphNodeCustom    EnvelopeType = "graph_node_custom"
 	EnvelopeTypeKnowledgeIngest    EnvelopeType = "knowledge_ingest"
 	EnvelopeTypeMCPSessionReconnect EnvelopeType = "mcp.session.reconnect"
+	EnvelopeTypeMCPHealthAlert      EnvelopeType = "mcp.health.alert"
 	EnvelopeTypeAlertNotify        EnvelopeType = "alert.notify"
 )
 
@@ -159,7 +160,7 @@ func RouteChannel(env Envelope) string {
 		return "graph"
 	case EnvelopeTypeKnowledgeIngest:
 		return "knowledge"
-	case EnvelopeTypeMCPSessionReconnect, EnvelopeTypeAlertNotify:
+	case EnvelopeTypeMCPSessionReconnect, EnvelopeTypeMCPHealthAlert, EnvelopeTypeAlertNotify:
 		return "monitor"
 	default:
 		if env.TeamID != "" {

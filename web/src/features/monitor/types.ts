@@ -101,6 +101,14 @@ export type MonitorLogSnapshot = {
 export type LoadState = "idle" | "loading" | "success" | "empty" | "error";
 export type StreamState = "connecting" | "connected" | "live" | "paused" | "error";
 
+export type RunnerMetricsSummary = {
+  window_minutes: number;
+  total_runs: number;
+  error_runs: number;
+  error_rate: number;
+  success_rate: number;
+};
+
 export type MonitorAlertRule = {
   id: string;
   name: string;

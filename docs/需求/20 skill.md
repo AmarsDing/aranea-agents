@@ -1,6 +1,8 @@
 # Skill 管理（Quasar UI + 前后端契约）
 
-本文档定义 **Skill 管理** 与 **Skill 运行记录** 的前端可开发需求。后台机制与判定规则对齐 **`go/skill.md`**：录入、验证、冲突分级、版本化、追踪与聚合。
+本文档定义 **Skill 管理** 与 **Skill 运行记录** 的前端可开发需求。后台机制与判定规则对齐 **`20 skill.design.md`** / **`20 skill struct design.md`**：录入、验证、冲突分级、版本化、追踪与聚合。
+
+> HTTP 契约以 **`api/kratos/skill/v1/skill.proto`** 为准；网关路径前缀为 **`/v1`**（下文 `/skills` 均指 `/v1/skills`）。
 
 ## 0. 需求结论
 
@@ -285,14 +287,14 @@ AI 炼化用于将一个冲突组中的相似 Skill 合并成一份新草稿。*
 
 ### 4.1 编辑入口
 
-点击列表「编辑」进入编辑页或打开全屏 `QDialog`。本期默认使用独立路由：
+点击列表「编辑」打开全屏 `QDialog`（`SkillEditorDialog`）。路由：
 
 | 路由 | 页面 |
 |------|------|
-| `/skills/new` | 新建 Skill 草稿 |
-| `/skills/:id/edit` | 编辑已有 Skill |
+| `/skills` | Skill 管理（列表 + 上传 + 编辑 Dialog） |
+| `/skills/runs` | 运行记录 |
 
-若项目当前路由结构不支持子页面，可先用全屏 `QDialog` 实现，但字段与行为保持一致。
+> 本期不使用独立 `/skills/new` 或 `/skills/:id/edit` 子路由；新建/编辑均在 Dialog 内完成。
 
 ### 4.2 表单字段
 
@@ -794,48 +796,18 @@ AI 炼化用于将一个冲突组中的相似 Skill 合并成一份新草稿。*
 
 ---
 
-## 11. 运行时实现与演进方向
+## 11. 运行时行为（产品结论）
 
-> 本节整合自 `architecture/agent-skills-tools-mcp-memory.md` 与 `architecture/trpc-agent-go-implementation-plan.md`，描述 Skill 在 Agent 运行时的装配机制与后续演进方向。
+> 实现细节见 **`20 skill struct design.md`** §2.4、§7 与 **`20-skill-development.md`**。
 
-### 11.1 运行时加载机制（已实现）
-
-Skill 在运行时通过 **trpc-agent-go ToolSet** 挂载到 `llmagent`，来源是启用且已发布的 Skill + 运行时策略与用户 query 收窄。
-
-| 环节 | 位置 | 行为 |
-|------|------|------|
-| 列举候选 | `biz.SkillUsecase` | `ListEnabledPublishedSkillCandidates` 提供 slug、标签、taxonomy 等路由元数据 |
-| 运行时策略 | `ag.Settings.SkillRuntimeJSON` | `biz.ParseSkillRuntimePolicy` → allow/deny、标签、intent 路由开关、`MaxSkillsInToolset` |
-| 按需收窄 | `skillruntime.resolveSkillSlugs` | **Layer A**：allow/deny slug 过滤；**Layer B**：`skillrouter.DetectIntentPaths` 意图路径检测 + `filterByAllTags` 标签过滤 + `scoreCandidates` 评分排序 |
-| Repository 适配 | `internal/skill/trpc/` | `DBRepositoryAdapter`（DB + TTL 缓存，优先）或 `FSRepositoryAdapter`（磁盘 FS，回退）→ `FilteredRepository`（白名单过滤） |
-| Skill Tool 构建 | `internal/skill/trpc/tools.go` | `BuildSkillTools()` 产出 4 个 ADK 工具：LoadTool / RunTool / ListDocsTool / SelectDocsTool |
-| CodeExecutor | `internal/skill/trpc/executor.go` | local / docker，按 `CODE_EXECUTOR_BACKEND` 环境变量选择 |
-| 物理根路径 | `internal/skill/storage/root.go` | `SKILL_ROOT` / `SKILL_STORAGE_ROOT` 优先；否则结合系统设置 `work_directory`，或 OS 默认目录 |
-| Agent 装配 | `internal/agent/trpc_build.go` | `buildSkillDeps` 组装 Repository + Filter + CodeExecutor → `trpcllmagent.WithSkills(repo)` + `WithSkillFilter(filter)` + `WithSkillToolProfile(SkillToolProfileFull)` |
-
-**调用点**：单 Agent / Team 均通过 `buildSkillDeps`（`internal/agent/trpc_build.go`）统一装配。Team 对**每个成员**分别调用装配，每个成员使用**自己的** `SkillRuntimeJSON` 和生效工具集。用户首轮 `content` 作为 Skill 路由 query 在成员之间共享。
-
-### 11.2 装配顺序（已实现）
-
-`buildSkillDeps` 按以下顺序装配：
-
-1. **Builtin Tools**（`ADKToolsForAgentPolicy`）
-2. **Skill Toolsets**（`BuildSkillTools` → LoadTool / RunTool / ListDocsTool / SelectDocsTool）
-3. **MCP Toolsets**（`mcpmount.AppendEffectiveMCPServerToolsets`）
-
-新增工具类型必须通过统一装配路径挂载，不另开入口。Chat 和 Team 共用同一装配逻辑。
-
-### 11.3 演进方向
-
-| 方向 | 现状 | 建议 |
-|------|------|------|
-| Team 与 Skill 路由 | Team 仅用首位成员的 `SkillRuntimeJSON` + 用户 query 生成共享 Toolsets，其余成员共用同一 Skill 挂载 | 产品上若需要「成员 A 挂载写作 skill、成员 B 挂载检索 skill」，应在 builder 层按成员拆分或复制 Toolsets；或在团队定义中显式 `skill_profile` |
-| Prompt 注入（方式 C） | 当前仅实现方式 A（FS 适配器）+ 方式 B（DB 适配器）→ ADK Toolset | 后续可增加纯 Prompt 注入：Assembler 产出 `## Available Skills` 文本块写入 system/developer message；`skilltoolset` 可选关闭 |
-| embedding 语义精排 | 当前仅关键词 + 标签路由 | 候选筛选增加向量相似度匹配，替换或增强 `scoreCandidates` |
-| Budget 中间件 | 当前仅 `MaxSkillsInToolset` 数量限制 | 注入 token 上限裁剪，按 Skill 优先级与 token 预算动态调整 |
-| Preview API 增强 | `PreviewSkillRuntime` 返回已启用 slug 列表 + 存储根 | 返回每个 Skill 的选中原因（`Reasons map[string]string`），便于调试路由策略 |
-| 配置来源统一 | Skill 根路径已统一到 `storage.ResolveRootWithPlatform()`，支持 env + 系统设置 + OS 默认 | 后续可增加热更新：系统设置变更后自动重新解析 Skill 根路径 |
+| 结论 | 说明 |
+|------|------|
+| 挂载条件 | 仅 **已发布且已启用** 的平台 Skill 参与运行时 |
+| Agent 策略 | `agent_runtime_settings.skill_runtime_json`：allow/deny slug、标签、意图收窄、数量上限 |
+| 按回合收窄 | 用户本轮输入经 RuntimeState 传入，驱动 Layer B 意图/标签路由 |
+| Team | 各成员 Agent **独立**构建，各自使用成员 Agent 的 `skill_runtime_json` |
+| 待实现 | Prompt 注入方式 C、embedding 精排、Preview 选中原因（P4） |
 
 ---
 
-*文档版本：3.3 — 更新运行时装配机制为已实现状态，对齐 `20 skill struct design.md`（2026-05-18）。*
+*文档版本：3.4 — API 前缀与编辑入口对齐代码；运行时章节收敛为产品结论（2026-05-21）。*

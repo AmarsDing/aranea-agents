@@ -1,7 +1,8 @@
 import { storeToRefs } from "pinia";
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { copyToClipboard, useQuasar } from "quasar";
-import type { Agent } from "./api";
+import { checkAgentKey, duplicateAgent, listAgentTemplates, type Agent, type AgentTemplatePreset } from "./api";
+import { mapAgentCreateFieldErrors, parseKratosApiError } from "../../utils/kratosError";
 import type { AgentKind, A2AProxyConfig } from "./types";
 import type { PlatformResource, PlatformResourceTreeNode } from "../platform/api";
 import { descriptionTemplates, statusOptions } from "../../components/agents/agentUi";
@@ -36,6 +37,8 @@ export function useAgentsPage() {
     selectedStatus,
     selectedProvider,
     selectedCategory,
+    selectedCreator,
+    creatorOptions,
     page,
     rowsPerPage,
     total,
@@ -83,6 +86,20 @@ export function useAgentsPage() {
   });
 
   const selectedTemplateKey = ref("");
+  const createTemplates = ref<AgentTemplatePreset[]>(
+    descriptionTemplates.map((t) => ({
+      key: t.key,
+      label: t.label,
+      icon: t.icon,
+      description: t.text
+    }))
+  );
+  const agentKeyServerError = ref("");
+  const displayNameError = ref("");
+  const providerModelError = ref("");
+  const remoteUrlError = ref("");
+  const createFormError = ref("");
+  let agentKeyCheckTimer: ReturnType<typeof setTimeout> | undefined;
 
   const avatars = computed(() => avatarCatalog.agentsCatalog);
 
@@ -111,7 +128,10 @@ export function useAgentsPage() {
 
   const agentKeyError = computed(() => {
     if (!form.agent_key) return "";
-    return /^[a-z0-9]+(-[a-z0-9]+)*$/.test(form.agent_key) ? "" : "仅支持小写字母、数字、连字符";
+    if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(form.agent_key)) {
+      return "仅支持小写字母、数字、连字符";
+    }
+    return agentKeyServerError.value;
   });
   const isA2AProxyCreate = computed(() => agentKind.value === "a2a_proxy");
   const canCreate = computed(() => {
@@ -136,7 +156,7 @@ export function useAgentsPage() {
     void runLoadList();
   });
   watch(page, () => void runLoadList());
-  watch([keyword, selectedStatus, selectedProvider, selectedCategory], () => {
+  watch([keyword, selectedStatus, selectedProvider, selectedCategory, selectedCreator], () => {
     page.value = 1;
     void runLoadList();
   });
@@ -161,7 +181,36 @@ export function useAgentsPage() {
     form.category_position_id = "";
   });
 
+  watch(
+    () => form.agent_key,
+    (key) => {
+      agentKeyServerError.value = "";
+      if (agentKeyCheckTimer) clearTimeout(agentKeyCheckTimer);
+      const trimmed = key.trim();
+      if (!trimmed || !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(trimmed)) return;
+      agentKeyCheckTimer = setTimeout(() => {
+        void checkAgentKey(trimmed)
+          .then((res) => {
+            if (!res.available) {
+              agentKeyServerError.value = res.message === "agent_key already in use" ? "标识已被使用" : res.message;
+            }
+          })
+          .catch(() => {
+            /* 查重失败不阻塞创建，提交时后端仍会校验 */
+          });
+      }, 500);
+    }
+  );
+
   onMounted(async () => {
+    try {
+      const remote = await listAgentTemplates();
+      if (remote.length) {
+        createTemplates.value = remote;
+      }
+    } catch {
+      // Keep local descriptionTemplates fallback.
+    }
     try {
       await Promise.all([runLoadList(), pageStore.loadAgentsDependencies()]);
     } catch (error) {
@@ -173,7 +222,16 @@ export function useAgentsPage() {
     }
   });
 
+  function clearCreateFieldErrors() {
+    agentKeyServerError.value = "";
+    displayNameError.value = "";
+    providerModelError.value = "";
+    remoteUrlError.value = "";
+    createFormError.value = "";
+  }
+
   async function openCreate() {
+    clearCreateFieldErrors();
     modelCheckPassed.value = false;
     try {
       await pageStore.loadAgentsDependencies();
@@ -210,6 +268,7 @@ export function useAgentsPage() {
     categoryIndustry.value = null;
     categoryDepartment.value = null;
     selectedTemplateKey.value = "";
+    clearCreateFieldErrors();
     modelCheckPassed.value = false;
     selfEvolve.value = true;
     agentKind.value = "llm";
@@ -218,6 +277,7 @@ export function useAgentsPage() {
 
   async function onCreate() {
     if (!canCreate.value) return;
+    clearCreateFieldErrors();
     creating.value = true;
     try {
       const payload: Parameters<typeof appStore.addAgent>[0] = {
@@ -239,17 +299,57 @@ export function useAgentsPage() {
       resetForm();
       createOpen.value = false;
       $q.notify({ type: "positive", message: "创建成功" });
+    } catch (error) {
+      const fields = mapAgentCreateFieldErrors(parseKratosApiError(error));
+      if (fields.agent_key) agentKeyServerError.value = fields.agent_key;
+      if (fields.display_name) displayNameError.value = fields.display_name;
+      if (fields.provider || fields.model) {
+        providerModelError.value = fields.provider || fields.model || "";
+      }
+      if (fields.remote_url) remoteUrlError.value = fields.remote_url;
+      if (fields.form) createFormError.value = fields.form;
+      const hasInline = Boolean(
+        fields.agent_key || fields.display_name || fields.provider || fields.model || fields.remote_url
+      );
+      if (!hasInline && fields.form) {
+        $q.notify({ type: "negative", message: fields.form });
+      }
     } finally {
       creating.value = false;
     }
   }
 
-  function applyTemplate(template: (typeof descriptionTemplates)[number]) {
+  async function duplicateListedAgent(agent: Agent) {
+    try {
+      const created = await duplicateAgent(agent.id);
+      appStore.upsertAgent(created);
+      await runLoadList();
+      $q.notify({ type: "positive", message: "Agent 已复制" });
+    } catch (error) {
+      $q.notify({ type: "negative", message: error instanceof Error ? error.message : "复制失败" });
+    }
+  }
+
+  function applyTemplate(template: AgentTemplatePreset) {
     selectedTemplateKey.value = template.key;
+    if (!form.display_name.trim()) {
+      form.display_name = template.display_name?.trim() || template.label;
+    }
+    if (!isA2AProxyCreate.value) {
+      if (template.provider?.trim()) {
+        form.provider = template.provider.trim();
+      }
+      if (template.model?.trim()) {
+        form.model = template.model.trim();
+        modelCheckPassed.value = false;
+      }
+    }
+    const text = template.description?.trim() || "";
+    if (!text) return;
     if (form.agent_description.trim()) {
-      form.agent_description = `${form.agent_description}\n\n${template.text}`;
+      form.agent_description = `${form.agent_description}\n\n${text}`;
     } else {
-      form.agent_description = template.text;
+      form.agent_description = text;
     }
   }
 
@@ -294,6 +394,8 @@ export function useAgentsPage() {
     selectedStatus,
     selectedProvider,
     selectedCategory,
+    selectedCreator,
+    creatorOptions,
     page,
     rowsPerPage,
     total,
@@ -314,6 +416,7 @@ export function useAgentsPage() {
     categoryDepartment,
     form,
     selectedTemplateKey,
+    createTemplates,
     avatars,
     providerOptions,
     modelOptions,
@@ -324,6 +427,10 @@ export function useAgentsPage() {
     pageMax,
     tableColumns,
     agentKeyError,
+    displayNameError,
+    providerModelError,
+    remoteUrlError,
+    createFormError,
     canCreate,
     statusOptions,
     categoryLabel,
@@ -335,6 +442,7 @@ export function useAgentsPage() {
     onCreate,
     applyTemplate,
     confirmDelete,
-    deleteAgentTarget
+    deleteAgentTarget,
+    duplicateListedAgent
   };
 }

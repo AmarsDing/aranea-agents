@@ -47,6 +47,7 @@ func newApp(
 	hs *http.Server,
 	wsSrv *server.WSServer,
 	consumer *biz.EventBusConsumer,
+	sideConsumers *biz.EventBusSideConsumers,
 	eventBus event.Bus,
 ) *kratos.App {
 	// EP-OBS-03: WSServer implements transport.Server (Start/Stop); register it so
@@ -67,6 +68,9 @@ func newApp(
 		kratos.Server(srv...),
 		kratos.BeforeStart(func(context.Context) error {
 			consumer.Start(consumerCtx)
+			if sideConsumers != nil {
+				sideConsumers.Start(consumerCtx)
+			}
 			event.SetGlobalBus(eventBus)
 			logger.Log(log.LevelInfo, "msg", "flow log v2 global bus wired")
 			return nil
@@ -167,6 +171,41 @@ func main() {
 		mcpInterval := health.DefaultInterval()
 		go out.MCPHealthProbe.Start(cronCtx, mcpInterval)
 		logger.Log(log.LevelInfo, "msg", "mcp health probe started", "interval", mcpInterval.String())
+	}
+
+	if out.EvolutionScanner != nil {
+		go out.EvolutionScanner.Start(cronCtx)
+		logger.Log(log.LevelInfo, "msg", "evolution scanner started", "interval", "30m")
+	}
+
+	if out.ProviderHealthScanner != nil {
+		go out.ProviderHealthScanner.Start(cronCtx)
+		logger.Log(log.LevelInfo, "msg", "provider health scanner started", "interval", "5m")
+	}
+
+	if out.ChannelHealthScanner != nil {
+		go out.ChannelHealthScanner.Start(cronCtx)
+		logger.Log(log.LevelInfo, "msg", "channel health scanner started", "interval", "10m")
+	}
+
+	if out.ChannelDeliveryScanner != nil {
+		go out.ChannelDeliveryScanner.Start(cronCtx)
+		logger.Log(log.LevelInfo, "msg", "channel delivery worker started", "interval", "5s")
+	}
+
+	if out.EventStoreCleanup != nil {
+		go out.EventStoreCleanup.Start(cronCtx)
+		logger.Log(log.LevelInfo, "msg", "event store cleanup started", "interval", "1h")
+	}
+
+	if out.ToolAuditCleanup != nil {
+		go out.ToolAuditCleanup.Start(cronCtx)
+		logger.Log(log.LevelInfo, "msg", "tool audit cleanup started", "interval", "24h", "retention_days", biz.ToolAuditRetentionDays)
+	}
+
+	if out.FlowLogCleanup != nil {
+		go out.FlowLogCleanup.Start(cronCtx)
+		logger.Log(log.LevelInfo, "msg", "flow log cleanup started", "interval", "1h")
 	}
 
 	if err := out.App.Run(); err != nil {

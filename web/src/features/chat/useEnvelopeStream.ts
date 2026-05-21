@@ -13,6 +13,7 @@ export type UseEnvelopeStreamOptions = {
   onDisconnected?: () => void;
   onServerShutdown?: (reason: string) => void;
   onReplayState?: (replaying: boolean, count?: number) => void;
+  onReconnectFailed?: () => void;
 };
 
 export type UseEnvelopeStreamReturn = {
@@ -78,6 +79,9 @@ export function createEnvelopeStream(opts: UseEnvelopeStreamOptions): UseEnvelop
       onReplayState: (replaying, count) => {
         wsReplaying.value = replaying;
         opts.onReplayState?.(replaying, count);
+      },
+      onReconnectFailed: () => {
+        opts.onReconnectFailed?.();
       },
     });
 
@@ -151,6 +155,7 @@ export function useEnvelopeStream(opts: UseEnvelopeStreamOptions): UseEnvelopeSt
 export type ChatStreamFactoryOpts = {
   onServerShutdown?: (reason: string) => void;
   onReplayState?: (replaying: boolean, count?: number) => void;
+  onReconnectFailed?: () => void;
 };
 
 /** Chat session WS stream; use in `setup()` via {@link useChatStream} or imperatively via this factory. */
@@ -161,6 +166,7 @@ export function createChatStream(sessionId: string, streamOpts?: ChatStreamFacto
     autoConnect: false,
     onServerShutdown: streamOpts?.onServerShutdown,
     onReplayState: streamOpts?.onReplayState,
+    onReconnectFailed: streamOpts?.onReconnectFailed,
   });
 }
 
@@ -244,13 +250,14 @@ export function useChatStream(sessionId: string, streamOpts?: ChatStreamFactoryO
 
 export function createTeamStream(
   sessionId: string,
-  streamOpts?: { onReplayState?: (replaying: boolean, count?: number) => void }
+  streamOpts?: { onReplayState?: (replaying: boolean, count?: number) => void; onReconnectFailed?: () => void }
 ): UseEnvelopeStreamReturn {
   return createEnvelopeStream({
     sessionId,
     channels: ["chat", "team", "system"],
     autoConnect: false,
     onReplayState: streamOpts?.onReplayState,
+    onReconnectFailed: streamOpts?.onReconnectFailed,
   });
 }
 

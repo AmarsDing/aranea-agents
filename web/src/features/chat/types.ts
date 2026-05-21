@@ -1,5 +1,7 @@
 /** Chat：消息列表走 `session/v1` `GET /v1/sessions/{id}/messages`；发送 / 流式 / options 见 **`features/chat/api.ts`** → **`/v1/chat/*`**，由 admin 进程内 trpc-agent-go 运行时处理。 */
 
+import type { ReactStep } from "./reactPlannerTypes";
+
 export type Message = {
   id: string;
   session_id: string;
@@ -78,4 +80,15 @@ export type ToolUseEvent = {
   run_id?: string;
   trace_id?: string;
   expanded?: boolean;
+};
+
+/** ReAct ACTION step with linked `chat.activity/v1` tool rows (see `reactPlannerToolLink`). */
+export type ReactStepWithTools = ReactStep & {
+  linkedTools: ToolUseEvent[];
+};
+
+/** Session-level cache: one O(n) pass over `displayMessages` for ReAct ↔ tool dedupe. */
+export type ReactToolLinkIndex = {
+  linkedToolIds: ReadonlySet<string>;
+  stepsByAssistantIndex: ReadonlyMap<number, ReactStepWithTools[]>;
 };

@@ -90,6 +90,10 @@ func MapProviderType(pt string) string {
 		return "ollama"
 	case "hunyuan":
 		return "hunyuan"
+	case "huggingface":
+		return "huggingface"
+	case "bedrock":
+		return "bedrock"
 	default:
 		return "openai"
 	}
@@ -131,8 +135,15 @@ func buildProviderOptions(cfg CatalogConfig, rt *RoundTrip) []trpcprovider.Optio
 	if cfg.MaxInputTokens > 0 {
 		opts = append(opts, trpcprovider.WithMaxInputTokens(cfg.MaxInputTokens))
 	}
+	transport := http.DefaultTransport
 	if rt != nil && rt.HTTP != nil && rt.HTTP.Transport != nil {
-		opts = append(opts, trpcprovider.WithHTTPClientTransport(rt.HTTP.Transport))
+		transport = rt.HTTP.Transport
+	}
+	if cfg.RateLimitRPM > 0 {
+		transport = wrapRateLimitTransport(transport, cfg.RateLimitRPM)
+	}
+	if transport != nil {
+		opts = append(opts, trpcprovider.WithHTTPClientTransport(transport))
 	}
 
 	opts = append(opts, buildOpenAISpecificOptions(cfg)...)
@@ -140,8 +151,28 @@ func buildProviderOptions(cfg CatalogConfig, rt *RoundTrip) []trpcprovider.Optio
 	opts = append(opts, buildGeminiSpecificOptions(cfg, rt)...)
 	opts = append(opts, buildOllamaSpecificOptions(cfg)...)
 	opts = append(opts, buildHunyuanSpecificOptions(cfg)...)
+	opts = append(opts, buildHuggingFaceSpecificOptions(cfg)...)
+	opts = append(opts, buildBedrockSpecificOptions(cfg)...)
 
 	return opts
+}
+
+func buildHuggingFaceSpecificOptions(cfg CatalogConfig) []trpcprovider.Option {
+	if strings.ToLower(cfg.ProviderType) != "huggingface" {
+		return nil
+	}
+	return nil
+}
+
+func buildBedrockSpecificOptions(cfg CatalogConfig) []trpcprovider.Option {
+	if strings.ToLower(cfg.ProviderType) != "bedrock" {
+		return nil
+	}
+	region := strings.TrimSpace(cfg.AWSRegion)
+	if region == "" {
+		return nil
+	}
+	return []trpcprovider.Option{trpcprovider.WithExtraFields(map[string]any{"aws_region": region})}
 }
 
 func buildOpenAISpecificOptions(cfg CatalogConfig) []trpcprovider.Option {

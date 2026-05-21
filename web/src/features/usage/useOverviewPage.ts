@@ -1,14 +1,19 @@
 import { reactive, ref } from "vue";
+import { useRoute } from "vue-router";
 import { storeToRefs } from "pinia";
 import { useUsageStore } from "../../stores/usage";
 import type { ModelUsageQuery } from "./types";
 
+const VALID_RANGES = new Set(["today", "7d", "30d", "month"]);
+
 export function useOverviewPage() {
+  const route = useRoute();
   const usageStore = useUsageStore();
   const { overview, loading } = storeToRefs(usageStore);
   const trendGranularity = ref<"day" | "hour">("day");
+  const initialRange = String(route.query.range || "30d");
   const filters = reactive<ModelUsageQuery>({
-    range: "30d",
+    range: VALID_RANGES.has(initialRange) ? initialRange : "30d",
     provider_code: "",
     model_api_id: "",
     status: ""

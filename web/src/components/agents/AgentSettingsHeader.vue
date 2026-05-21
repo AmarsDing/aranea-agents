@@ -17,7 +17,7 @@
           <div class="text-h5 text-weight-bold ellipsis">{{ agent.display_name || "Agent 设置" }}</div>
           <q-badge rounded :class="['settings-status', agent.status === 'active' ? 'is-active' : '']">{{ agent.status }}</q-badge>
           <q-chip dense square class="settings-chip">{{ promptModeLabel(agent.system_prompt_mode) }}</q-chip>
-          <q-chip v-if="selfEvolve" dense square class="settings-chip is-evolving" icon="auto_awesome">进化中</q-chip>
+          <q-chip v-if="showEvolving" dense square class="settings-chip is-evolving" icon="auto_awesome">进化中</q-chip>
         </div>
         <div v-if="metaCaption" class="text-caption text-grey-7">{{ metaCaption }}</div>
       </div>
@@ -41,6 +41,7 @@ import { promptModeLabel } from "./agentUi";
 const props = defineProps<{
   agent: Agent;
   selfEvolve: boolean;
+  showEvolving: boolean;
   favorite: boolean;
   saving: boolean;
 }>();

@@ -2,6 +2,7 @@
   <q-page class="app-page-cream tools-page">
     <tool-hero-section kicker="Tool registry" title="Tools 管理" subtitle="统一管理 Tool 元数据、运行时绑定、风险策略、配置 Schema 与调用记录。">
       <template #actions>
+        <q-btn outline rounded no-caps class="tool-outline-btn" icon="policy" label="审计日志" :to="{ name: 'tool-audits' }" />
         <q-btn outline rounded no-caps class="tool-outline-btn" icon="history" label="调用记录" :to="{ name: 'tool-runs' }" />
         <q-btn rounded no-caps unelevated class="tool-primary-btn" icon="add" label="新建 Tool" @click="openCreateTool()" />
       </template>

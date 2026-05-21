@@ -12,6 +12,9 @@
       <q-separator />
 
       <q-card-section class="create-agent-card__body">
+        <q-banner v-if="createFormError" dense rounded class="bg-negative text-white q-mb-md">
+          {{ createFormError }}
+        </q-banner>
         <div class="agent-kind-row q-mb-md">
           <div class="text-subtitle2 q-mb-sm">Agent 类型</div>
           <q-btn-toggle
@@ -39,7 +42,15 @@
 
           <div class="col">
             <div class="form-panel row q-col-gutter-md">
-              <q-input v-model.trim="form.display_name" class="col-12 col-md-6 agent-dialog-control" dense outlined label="显示名称 *">
+              <q-input
+                v-model.trim="form.display_name"
+                class="col-12 col-md-6 agent-dialog-control"
+                dense
+                outlined
+                label="显示名称 *"
+                :error="Boolean(displayNameError)"
+                :error-message="displayNameError"
+              >
                 <template #prepend><q-icon name="smart_toy" /></template>
               </q-input>
               <q-input
@@ -63,13 +74,36 @@
                   outlined
                   label="远程 A2A URL *"
                   hint="例如 http://host:8087/"
+                  :error="Boolean(remoteUrlError)"
+                  :error-message="remoteUrlError"
                 />
                 <q-toggle v-model="a2aProxy.enable_streaming" class="col-12 col-md-4" color="primary" label="流式响应" />
                 <q-input v-model.number="a2aProxy.timeout_seconds" class="col-12 col-md-4 agent-dialog-control" dense outlined type="number" min="5" label="超时（秒）" />
               </template>
               <template v-else>
-              <q-select v-model="form.provider" class="col-12 col-md-5 agent-dialog-control" dense outlined emit-value map-options label="Provider *" :options="providerOptions" />
-              <q-select v-model="form.model" class="col-12 col-md-5 agent-dialog-control" dense outlined emit-value map-options label="模型 *" :options="modelOptions" />
+              <q-select
+                v-model="form.provider"
+                class="col-12 col-md-5 agent-dialog-control"
+                dense
+                outlined
+                emit-value
+                map-options
+                label="Provider *"
+                :options="providerOptions"
+                :error="Boolean(providerModelError)"
+                :error-message="providerModelError"
+              />
+              <q-select
+                v-model="form.model"
+                class="col-12 col-md-5 agent-dialog-control"
+                dense
+                outlined
+                emit-value
+                map-options
+                label="模型 *"
+                :options="modelOptions"
+                :error="Boolean(providerModelError)"
+              />
               <div class="col-12 col-md-2">
                 <q-btn class="model-check-btn full-width" outline rounded color="primary" label="检查" :disable="!form.provider || !form.model" :loading="checkingModel" @click="$emit('check-model')" />
               </div>
@@ -82,7 +116,7 @@
           <div class="text-subtitle2">描述您的 Agent</div>
           <div class="row q-gutter-xs q-mt-sm">
             <q-chip
-              v-for="template in descriptionTemplates"
+              v-for="template in templates"
               :key="template.key"
               clickable
               outline
@@ -159,10 +193,17 @@ const props = defineProps<{
   modelOptions: Array<{ label: string; value: string }>;
   selectedTemplateKey: string;
   agentKeyError: string;
+  displayNameError?: string;
+  providerModelError?: string;
+  remoteUrlError?: string;
+  createFormError?: string;
   canCreate: boolean;
   creating: boolean;
   checkingModel: boolean;
+  templates?: typeof descriptionTemplates;
 }>();
+
+const templates = computed(() => props.templates ?? descriptionTemplates);
 
 const emit = defineEmits<{
   "update:modelValue": [value: boolean];

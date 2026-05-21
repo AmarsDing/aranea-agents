@@ -54,6 +54,7 @@ type TeamRunStep struct {
 	StartedAt     string `json:"started_at"`
 	FinishedAt    string `json:"finished_at"`
 	CreatedAt     string `json:"created_at"`
+	ToolCallCount int    `json:"tool_call_count"`
 }
 
 type TeamStructureSnapshot struct {
@@ -77,4 +78,38 @@ type StructureEdge struct {
 type StructureSurface struct {
 	NodeID string
 	Name   string
+}
+
+// TeamRunMemberSummaryData is per-member aggregate for a team run summary.
+type TeamRunMemberSummaryData struct {
+	AgentID       string
+	AgentKey      string
+	AgentName     string
+	Role          string
+	SortOrder     int
+	Status        string
+	TokenIn       int
+	TokenOut      int
+	DurationMS    int
+	CostMicroUSD  int64
+	ToolCallCount int
+	OutputPreview string
+}
+
+// TeamRunSummaryData aggregates run-level and per-member stats for RPC / Monitor.
+type TeamRunSummaryData struct {
+	RunID         string
+	TeamID        string
+	SessionID     string
+	Mode          string
+	Status        string
+	DurationMS    int
+	TokenIn       int
+	TokenOut      int
+	CostMicroUSD  int64
+	MemberCount   int
+	ToolCallCount int
+	OutputPreview string
+	ErrorMessage  string
+	Members       []TeamRunMemberSummaryData
 }

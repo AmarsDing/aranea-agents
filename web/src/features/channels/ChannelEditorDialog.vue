@@ -67,7 +67,20 @@
             label="接入方式"
             :options="receiveModeOptions"
           />
-          <q-input v-model="webhookPath" class="col-12 col-md-8" dense outlined label="Webhook Path" :disable="receiveMode !== 'webhook'" />
+          <q-input v-model="webhookPath" class="col-12 col-md-8" dense outlined label="Webhook Path" :disable="receiveMode !== 'webhook' && receiveMode !== 'event'" />
+          <q-input
+            v-if="webhookPreview"
+            :model-value="webhookPreview"
+            class="col-12"
+            dense
+            outlined
+            readonly
+            label="Webhook 回调 URL"
+          >
+            <template #append>
+              <q-btn flat dense round icon="content_copy" aria-label="复制 Webhook URL" @click="copyWebhookPreview" />
+            </template>
+          </q-input>
           <q-input v-model="defaultAgentId" class="col-12 col-md-6" dense outlined label="默认 Agent" placeholder="main" />
           <q-input v-model="externalId" class="col-12 col-md-6" dense outlined label="外部 ID" />
           <q-input v-model="iconUrl" class="col-12 col-md-6" dense outlined label="自定义图标 URL" />
@@ -114,6 +127,7 @@ import { computed, reactive, ref, watch } from "vue";
 import { useQuasar } from "quasar";
 import { createChannel, testChannel, updateChannel } from "./api";
 import ChannelCatalogPicker from "./ChannelCatalogPicker.vue";
+import { channelWebhookURL } from "../../components/channels/channelUi";
 import type { ChannelCatalogItem, ChannelConfig, ChannelCredential, ChannelCredentialInput, ChannelMetadata, ChannelRow } from "./types";
 
 const props = defineProps<{
@@ -156,6 +170,14 @@ const credentialKeys = computed(() => selectedCatalog.value?.credential_schema?.
 const configError = computed(() => jsonError(configExtraText.value));
 const metadataError = computed(() => jsonError(metadataExtraText.value));
 const canSave = computed(() => Boolean(form.key.trim() && form.name.trim() && selectedType.value && !configError.value && !metadataError.value));
+const webhookPreview = computed(() => {
+  if (!selectedCatalog.value?.supports_webhook) return "";
+  const path = webhookPath.value.trim();
+  const normalized = path ? (path.startsWith("/") ? path : `/${path}`) : (form.key.trim() ? `/webhooks/${form.key.trim()}` : "");
+  if (!normalized) return "";
+  if (typeof window === "undefined") return normalized;
+  return `${window.location.origin}${normalized}`;
+});
 
 watch(
   () => props.modelValue,
@@ -205,7 +227,7 @@ function applyCatalogDefaults(item: ChannelCatalogItem, previousType: string | u
   if (!item.receive_modes.includes(receiveMode.value)) {
     receiveMode.value = item.receive_modes[0] || "webhook";
   }
-  webhookPath.value = item.supports_webhook ? `/webhooks/${item.type}` : "";
+  webhookPath.value = item.supports_webhook ? `/webhooks/${form.key.trim() || item.type}` : "";
   externalId.value = "";
   configExtraText.value = JSON.stringify(defaultConfigFor(item), null, 2);
   metadataExtraText.value = JSON.stringify({
@@ -298,6 +320,38 @@ function credentialLabel(key: string) {
 function credentialHint(key: string) {
   const existing = props.credentials.find((item) => item.credential_key === key);
   return existing?.configured ? `已配置：${existing.masked_preview || "********"}；留空不修改` : "新建时建议填写";
+}
+
+async function copyWebhookPreview() {
+  const previewRow: ChannelRow = {
+    id: props.row?.id || "",
+    key: form.key.trim(),
+    name: form.name.trim(),
+    config_json: JSON.stringify({ type: selectedType.value, receive_mode: receiveMode.value, webhook: { path: webhookPath.value } }),
+    metadata_json: "{}",
+    enabled: form.enabled,
+    status: props.row?.status || "active",
+    resource: "channels",
+    description: "",
+    sort_order: 0,
+    parent_id: "",
+    level: "",
+    agent_id: "",
+    provider: "",
+    model: "",
+    created_at: "",
+    updated_at: "",
+    deleted_at: ""
+  };
+  try {
+    const url = webhookPreview.value || channelWebhookURL(previewRow);
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(url);
+    }
+    $q.notify({ type: "positive", message: `已复制 Webhook URL：${url}` });
+  } catch (err) {
+    $q.notify({ type: "negative", message: err instanceof Error ? err.message : "复制失败" });
+  }
 }
 
 function defaultConfigFor(item: ChannelCatalogItem): Record<string, unknown> {

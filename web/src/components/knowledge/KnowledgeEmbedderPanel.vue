@@ -1,55 +1,28 @@
 <template>
   <q-card flat bordered class="q-mb-md">
     <q-card-section>
-      <div class="text-subtitle2 q-mb-sm">Embedder 配置</div>
-      <div class="row q-col-gutter-md">
-        <div class="col-12 col-md-3">
-          <q-select
-            v-model="form.provider"
-            dense
-            outlined
-            label="Provider"
-            :options="providerOptions"
-            emit-value
-            map-options
-          />
-        </div>
-        <div class="col-12 col-md-5">
-          <q-input v-model="form.base_url" dense outlined label="Base URL" placeholder="https://api.openai.com" />
-        </div>
-        <div class="col-12 col-md-4">
-          <q-input v-model="form.model" dense outlined label="Model" />
-        </div>
-        <div class="col-12 col-md-3">
-          <q-input v-model.number="form.dim" dense outlined type="number" label="Dim" />
-        </div>
-        <div class="col-12 col-md-5">
-          <q-input
-            v-model="form.api_key"
-            dense
-            outlined
-            label="API Key"
-            type="password"
-            :placeholder="config?.has_api_key ? '已配置（留空不修改）' : 'sk-...'"
-          />
-        </div>
-        <div class="col-12 col-md-4 flex items-center q-gutter-sm">
-          <q-badge :color="config?.configured ? 'positive' : 'warning'">
-            {{ config?.configured ? "已配置" : "未配置" }}
-          </q-badge>
-          <q-btn color="primary" unelevated label="保存" :loading="saving" @click="save" />
-        </div>
-      </div>
-      <div class="text-caption text-grey-7 q-mt-sm">
-        运行时生效；启动时仍可通过环境变量 KRATOS_KNOWLEDGE_EMBED_* 初始化。
-      </div>
+      <div class="text-subtitle2 q-mb-sm">{{ t("knowledgeEmbed.title") }}</div>
+      <knowledge-embedder-fields
+        :form="form"
+        :configured="config?.configured"
+        :has-api-key="config?.has_api_key"
+        show-status
+      >
+        <template #actions>
+          <q-btn color="primary" unelevated :label="t('knowledgeEmbed.save')" :loading="saving" @click="save" />
+        </template>
+      </knowledge-embedder-fields>
+      <div class="text-caption text-grey-7 q-mt-sm">{{ t("knowledgeEmbed.hint") }}</div>
     </q-card-section>
   </q-card>
 </template>
 
 <script setup lang="ts">
 import { reactive, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import type { EmbedderConfig, UpdateEmbedderConfigInput } from "../../features/knowledge/types";
+import { DEFAULT_KNOWLEDGE_EMBED_FORM } from "../../features/knowledge/embedder-constants";
+import KnowledgeEmbedderFields from "./KnowledgeEmbedderFields.vue";
 
 const props = defineProps<{
   config: EmbedderConfig | null;
@@ -60,27 +33,18 @@ const emit = defineEmits<{
   save: [input: UpdateEmbedderConfigInput];
 }>();
 
-const providerOptions = [
-  { label: "OpenAI / 兼容", value: "openai" },
-  { label: "Ollama", value: "ollama" }
-];
+const { t } = useI18n();
 
-const form = reactive({
-  provider: "openai",
-  base_url: "",
-  model: "text-embedding-3-small",
-  dim: 1536,
-  api_key: ""
-});
+const form = reactive({ ...DEFAULT_KNOWLEDGE_EMBED_FORM });
 
 watch(
   () => props.config,
   (cfg) => {
     if (!cfg) return;
-    form.provider = cfg.provider || "openai";
+    form.provider = cfg.provider || DEFAULT_KNOWLEDGE_EMBED_FORM.provider;
     form.base_url = cfg.base_url || "";
-    form.model = cfg.model || "text-embedding-3-small";
-    form.dim = cfg.dim || 1536;
+    form.model = cfg.model || DEFAULT_KNOWLEDGE_EMBED_FORM.model;
+    form.dim = cfg.dim || DEFAULT_KNOWLEDGE_EMBED_FORM.dim;
     form.api_key = "";
   },
   { immediate: true }

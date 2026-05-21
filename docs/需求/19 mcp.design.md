@@ -1,13 +1,27 @@
 # MCP 集成模块 — 实现设计文档
 
-> 对应需求：`19 mcp.md`
-> 遵循规范：`AI-DEVELOPMENT-SPECIFICATION.md`
+> 对应需求：[19 mcp.md](./19%20mcp.md)
+> 遵循规范：[AI-DEVELOPMENT-SPECIFICATION.md](../guides/AI-DEVELOPMENT-SPECIFICATION.md)
+> **2026-05-21 校准**：包路径 `internal/mcp/*`；删除未用 `mcpmount`；运行时装配在 `agent/tool_assembly.go`。
 
 ---
 
 ## 一、模块概述
 
-MCP（Model Context Protocol）服务器管理：注册、发现、工具挂载、连接池。核心包 `internal/tools/mcpmount/`。
+MCP（Model Context Protocol）服务器管理：平台注册、健康探活、Agent 级挂载、Broker 运行时发现。领域逻辑在 `internal/biz`；协议客户端在 `internal/tools`（trpc-agent-go `tool/mcp` + `tool/mcpbroker`）。
+
+### 分层职责（SRP）
+
+| 包 | 职责 |
+|----|------|
+| `internal/mcp/config` | `config_json` 解析与 `ConnectionConfig` 映射 |
+| `internal/mcp/probe` | 管理面连通性评估（stdio PATH / HTTP + SSRF） |
+| `internal/mcp/metadata` | `metadata_json` 健康与重连字段合并 |
+| `internal/mcp/health` | 后台定时探活 → `MCPServerUsecase.PersistHealth` |
+| `internal/biz` | CRUD、Effective MCP 策略、`AgentMCPTooling` |
+| `internal/agent/tool_assembly.go` | Agent 回合：解析 config + OAuth 头 → `ToolsetConfig` |
+| `internal/tools/toolset.go` | `buildMCPToolSet` / `buildMCPBrokerTools` |
+| `internal/tools/mcpobserve` | 重连 EventBus + Prometheus + metadata 回写 |
 
 ---
 
@@ -38,9 +52,9 @@ service MCPServerService {
 }
 ```
 
-**MCPServer 消息**：`id` / `key` / `name` / `description` / `status` / `enabled` / `sort_order` / `config_json` / `metadata_json` / `created_at` / `updated_at` / `deleted_at`
+**MCPServer**：`id` / `key`（slug）/ `name`（展示名）/ `description` / `status` / `enabled` / `sort_order` / `config_json` / `metadata_json` / 时间戳。
 
-**MCPServerTestResponse 消息**：`ok` / `status` / `message` / `details_json`
+**MCPServerTestResponse**：`ok` / `status` / `message` / `details_json`。
 
 ---
 
@@ -50,218 +64,118 @@ service MCPServerService {
 
 ```go
 type MCPServer struct {
-    ID           string
-    Key          string
-    Name         string
-    Description  string
-    Status       string
-    Enabled      bool
-    SortOrder    int
-    ConfigJSON   string
-    MetadataJSON string
-    CreatedAt    string
-    UpdatedAt    string
-    DeletedAt    string
+    ID, Key, Name, Description, Status string
+    Enabled bool
+    SortOrder int
+    ConfigJSON, MetadataJSON string
+    CreatedAt, UpdatedAt, DeletedAt string
 }
 ```
 
-`ConfigJSON` 承载传输配置（transport / url / command / args / headers / env / tool_prefix / timeout_sec / require_user_credentials），由 `mcpmount.ServerConfig` 解析。
+- **`ConfigJSON`**：由 `mcp/config.ServerConfig` 解析（transport、url、auth、timeout 等）。
+- **`MetadataJSON`**：由 `mcp/metadata` 读写（`health_status`、`last_health_at`、`reconnect_count` 等）。
 
-`MetadataJSON` 承载健康元数据（health_status / last_health_at / last_error_message），由前端 `McpServerMetadata` 解析。
+### 3.2 Usecase（`internal/biz/mcp_server.go`）
 
-### 3.2 Usecase
+| 方法 | 说明 |
+|------|------|
+| `List` / `Get` / `Create` / `Update` / `Delete` | CRUD |
+| `TestMCPServer` | `probe.Evaluate` + `persistHealth` |
+| `PersistHealth` | 供 `mcp/health` 定时任务调用 |
+| `RecordReconnectMetadata` | `mcpobserve` 回调递增 `reconnect_count` |
 
-```go
-func (u *MCPServerUsecase) List(ctx) ([]MCPServer, error)
-func (u *MCPServerUsecase) Get(ctx, id) (MCPServer, error)
-func (u *MCPServerUsecase) Create(ctx, in MCPServer) (MCPServer, error)
-func (u *MCPServerUsecase) Update(ctx, id, patch MCPServer) (MCPServer, error)
-func (u *MCPServerUsecase) Delete(ctx, id) error
-func (u *MCPServerUsecase) TestMCPServer(ctx, id) (mcpprobe.TestResult, error)
-```
-
-### 3.3 Agent MCP 关联
+### 3.3 Agent MCP 关联（`internal/biz/agent_mcp_effective.go`）
 
 ```go
-type AgentMCPTooling struct {
-    agents *AgentUsecase
-    mcp    *MCPServerUsecase
-}
-
+type AgentMCPTooling struct { agents *AgentUsecase; mcp *MCPServerUsecase }
 func (t *AgentMCPTooling) EffectiveServersForAgent(ctx, agentID) ([]EffectiveMCPServer, error)
 ```
 
-**生效规则**：Agent 需启用 `mcp_tool_set`（`biz.ToolKeyMCPToolSet`）。在 `tools_allow_json` / `tools_deny_json` 中使用 `mcp:<server_key>` 前缀限制挂载的服务器列表；未配置任何 `mcp:` 项时为「所有已启用且 active 的平台服务器」。
+**生效规则**：
 
-### 3.4 MCP 策略过滤
-
-```go
-func MCPPolicyFromAgentEffectiveTools(eff AgentEffectiveTools) EffectiveMCPPolicy
-func FilterEffectiveMCPServers(servers []EffectiveMCPServer, pol EffectiveMCPPolicy) []EffectiveMCPServer
-```
+1. Agent 有效工具含 `mcp_tool_set` 或 `mcp_broker`（`biz.ToolKeyMCPToolSet` / `ToolKeyMCPBroker`）。
+2. 平台行：`enabled` 且 `status=active` 且未软删。
+3. `tools_allow_json` / `tools_deny_json` 中 `mcp:<server_key>` 过滤（`MCPPolicyFromAgentEffectiveTools` + `FilterEffectiveMCPServers`）。
 
 ---
 
 ## 四、Data 层
 
-### 4.1 Ent Schema
+文件：`internal/data/ent/schema/platform_mcp_server.go` → 表 `mcp_server`。
 
-文件：`internal/data/ent/schema/platform_mcp_server.go`
-
-表名 `mcp_server`，关键字段：
-- `id` (STRING, immutable, unique, max 256)
-- `server_key` (STRING, unique, max 512)
-- `name` (STRING, max 1024)
-- `description` (TEXT, default "")
-- `status` (STRING, default "active")
-- `enabled` (BOOL, default true)
-- `sort_order` (INT, default 0)
-- `config_json` (TEXT, default "")
-- `metadata_json` (TEXT, default "")
-- `created_at` / `updated_at` / `deleted_at` (STRING)
-
-### 4.2 Repo 接口
-
-```go
-type MCPServerRepo interface {
-    ListMCPServers(ctx) ([]MCPServer, error)
-    GetMCPServer(ctx, id) (MCPServer, error)
-    CreateMCPServer(ctx, m MCPServer) (MCPServer, error)
-    UpdateMCPServer(ctx, m MCPServer) (MCPServer, error)
-    DeleteMCPServer(ctx, id) error
-}
-```
-
-删除为软删除（设置 `deleted_at` + `status="deleted"`）。
+删除为软删除：`deleted_at` + `status=deleted`。
 
 ---
 
 ## 五、运行时层
 
-### 5.1 MCP 工具挂载
-
-`internal/tools/mcpmount/` 提供 `ServerConfig` 解析与 `trpcmcp.ConnectionConfig` 转换：
-
-```go
-func parseServerConfigJSON(raw string) (ServerConfig, error)
-func toTRPCConnectionConfig(sc ServerConfig) trpcmcp.ConnectionConfig
-```
-
-`internal/tools/toolset.go` 中 `buildMCPToolSet` 和 `buildMCPBrokerTools` 负责将配置转为 trpc-agent-go 的 `MCPToolSet` / `MCPBroker` 实例。
-
-### 5.2 MCPBroker
-
-`internal/tools/toolset.go` 中 `buildMCPBrokerTools` 已集成 `trpcmcpbroker.New`，提供运行时 MCP 发现工具（`mcp_list_servers` / `mcp_list_tools` / `mcp_inspect_tools` / `mcp_call`）。
-
-### 5.3 连通性探测
-
-`internal/mcpprobe/eval.go` 提供 `Evaluate(enabled, configJSON)` 函数：
-- `stdio`：校验 command 路径是否在 PATH 中
-- `sse` / `streamable_http`：HTTP GET 请求 + SSRF 校验（禁止 localhost / 私有地址）
-
-### 5.4 健康检查定时探活
-
-`internal/mcphealth/runner.go` 提供后台定时探活：
-
-```go
-type Runner struct { deps Deps }
-func (r *Runner) Start(ctx, interval)
-func (r *Runner) probeAll(ctx)
-func (r *Runner) probeOne(ctx, srv MCPServer)
-```
-
-- 默认间隔 5 分钟，可通过 `MCP_HEALTH_INTERVAL` 环境变量配置
-- 设置 `MCP_HEALTH_DISABLED=1` 可禁用
-- 遍历所有 `enabled` 且未删除的 MCP Server，调用 `mcpprobe.Evaluate` 探活
-- 探活结果通过 `MCPServerUsecase.PersistHealth` 写入 `metadata_json`（health_status / last_health_at / last_error_message）
-- 每次探活并发执行（`safego.Go`），互不阻塞
-- Prometheus 指标：`aranea_mcp_health_probe_total` / `aranea_mcp_health_probe_duration_seconds`
-
-### 5.5 运行时装配链路
+### 5.1 装配链路
 
 ```
 AgentMCPTooling.EffectiveServersForAgent
-  → MCPServerUsecase.List (过滤 enabled + active)
-  → FilterEffectiveMCPServers (apply mcp: allow/deny policy)
-  → mcpmount.ServerConfig → trpcmcp.ConnectionConfig
-  → buildMCPToolSet / buildMCPBrokerTools
-  → Agent BuilderDeps.Toolsets
+  → agent/tool_assembly.resolveMCPServers
+      → mcp/config.ParseServerConfigJSON
+      → applyMCPAuthHeaders (mcp_oauth.go)
+  → tools/trpc.BuildToolsets
+      → tools.buildMCPToolSet (timeout + ReconnectObserver)
+      → tools.buildMCPBrokerTools (有服务器行时自动挂载 Broker)
+  → llmagent.WithToolSets / WithTools
 ```
+
+### 5.2 MCP ToolSet（`internal/tools/toolset.go`）
+
+- `DefaultMCPServerTimeoutSec = 60`；`timeout_sec` 映射 `ConnectionConfig.Timeout`。
+- `mcpobserve.ObserverForServer` + `WithSessionReconnect`（SSE/Streamable 默认最多 3 次，可配置 `session_reconnect_max`）。
+
+### 5.3 MCPBroker
+
+`buildMCPBrokerTools`：`mcp_list_servers` / `mcp_list_tools` / `mcp_inspect_tools` / `mcp_call`。
+
+- 当存在有效 MCP 服务器行时，`tool_assembly` **自动**构建 `MCPBroker`（不必单独启用 `mcp_broker` 工具键）。
+- AdHoc HTTP：`ProductionAllowAdHocHTTP(server.allow_adhoc_http, system_settings.mcp_allow_adhoc_http)`。
+
+### 5.4 探活与健康
+
+| 组件 | 说明 |
+|------|------|
+| `mcp/probe.Evaluate` | 管理面测试；HTTP 探活上限 10s |
+| `mcp/health.Runner` | 默认 5min；`MCP_HEALTH_INTERVAL` / `MCP_HEALTH_DISABLED` |
+| Prometheus | `aranea_mcp_health_probe_total` / `_duration_seconds` |
+
+### 5.5 认证（`internal/agent/mcp_oauth.go`）
+
+`config_json.auth` 支持：`api_key` / `bearer` / `oauth2_static` / `oauth2_client_credentials` / `oauth2_refresh` → 合并进请求 `headers`。
 
 ---
 
 ## 六、Service 层
 
-```go
-func (s *MCPServerService) ListMCPServers(ctx, _) (*ListMCPServersResponse, error)
-func (s *MCPServerService) GetMCPServer(ctx, req) (*MCPServer, error)
-func (s *MCPServerService) CreateMCPServer(ctx, req) (*MCPServer, error)
-func (s *MCPServerService) UpdateMCPServer(ctx, req) (*MCPServer, error)
-func (s *MCPServerService) DeleteMCPServer(ctx, req) (*emptypb.Empty, error)
-func (s *MCPServerService) TestMCPServer(ctx, req) (*MCPServerTestResponse, error)
-```
-
-`TestMCPServer` 调用 `mcpprobe.Evaluate` 并持久化健康元数据到 `metadata_json`。
+`internal/service/mcp_server.go`：Proto ↔ `biz.MCPServer`；`TestMCPServer` 返回探活结果；CRUD 写 Admin Audit。
 
 ---
 
 ## 七、Wire 注入
 
-已有：`NewMCPServerUsecase(repo)` → `NewMCPServerService(uc)` → `NewAgentMCPTooling(agents, mcp)` → `runtime.PersistenceSet.AgentMCP`
-
-新增：`provideMCPHealthRunnerDeps(mcpRepo, mcpUC)` → `provideMCPHealthRunner(deps)` → `wireOut.MCPHealthProbe` → `main.go` 启动
+- `NewMCPServerUsecase` → `NewMCPServerService`
+- `NewAgentMCPTooling` → `runtime.PersistenceSet.AgentMCP`
+- `provideMCPHealthRunner` → `main` 启动后台探活
+- `chat` 启动时 `mcpobserve.SetBus` + `SetMetadataRecorder(RecordReconnectMetadata)`
 
 ---
 
-## 八、Web 前端设计
-
-### 8.1 文件结构
+## 八、Web 前端
 
 ```
 web/src/features/mcp/
-├── api.ts                    — CRUD + TestMCPServer 客户端
-├── types.ts                  — McpTransport / McpServerConfig / McpServerMetadata / McpServerFormValue
-├── McpServerFormDialog.vue   — 添加/编辑对话框
-└── McpServerItem.vue         — 服务器卡片组件
-
-web/src/pages/
-└── McpServersPage.vue        — 列表页
+├── api.ts
+├── types.ts              — McpServerConfig / McpServerMetadata / auth
+├── McpServerFormDialog.vue
+└── McpServerItem.vue
+web/src/pages/McpServersPage.vue
 ```
 
-### 8.2 组件设计
-
-**McpServerFormDialog.vue**：
-
-| 控件 | 绑定 | 说明 |
-|------|------|------|
-| `QInput` name | `form.name` | 必填，slug 校验 |
-| `QInput` display_name | `form.display_name` | 展示用名称 |
-| `QBtnToggle` transport | `form.transport` | stdio / SSE / Streamable HTTP |
-| `QInput` URL | `form.url` | SSE/HTTP 模式显示 |
-| `QInput` command | `form.command` | stdio 模式显示 |
-| `QInput` args | `form.argsText` | 每行一个参数 |
-| 动态键值 headers | `form.headers` | key + value 行 |
-| 动态键值 env | `form.env` | key + value 行 |
-| `QInput` tool_prefix | `form.tool_prefix` | 前缀 `mcp_` |
-| `QInput` timeout_sec | `form.timeout_sec` | 默认 60s |
-| `QToggle` enabled | `form.enabled` | 默认开 |
-| `QToggle` require_user_credentials | `form.require_user_credentials` | 默认关 |
-| `QBtn` 测试连接 | — | 先保存再测试 |
-
-**McpServerItem.vue**：MCP 服务器卡片，显示名称/传输/地址/状态灯/健康信息/操作按钮
-
-**McpServersPage.vue**：列表页，含搜索/状态灯/空态/刷新/CRUD
-
-### 8.3 API
-
-```typescript
-listMcpServers(): Promise<PlatformResource[]>
-createMcpServer(payload: PlatformResourceInput): Promise<PlatformResource>
-updateMcpServer(id: string, payload: Partial<PlatformResourceInput>): Promise<PlatformResource>
-deleteMcpServer(id: string): Promise<void>
-testMcpServer(id: string): Promise<McpServerTestResult>
-```
+表单 `name` → API `key`；`display_name` → API `name`；连接字段写入 `config_json`；健康灯读 `metadata_json`。
 
 ---
 
-*文档版本：2.0 — 2026-05-18 文档治理：与代码实现对齐，移除"待实现"标记（迁移至 `19-mcp-development.md`），补全 Proto/Biz/Data/Service/运行时层现状。*
+*文档版本：2.1 — 2026-05-21 包结构 SRP 与代码对齐；实现差距仅写在 `19-mcp-development.md`。*

@@ -1,7 +1,14 @@
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 import type { QTableColumn } from "quasar";
-import { deleteAgent as deleteAgentApi, listAgentsPaged, updateAgent, type Agent } from "../../features/agents/api";
+import {
+  deleteAgent as deleteAgentApi,
+  listAgentCreators,
+  listAgentsPaged,
+  updateAgent,
+  type Agent,
+  type AgentCreatorOption
+} from "../../features/agents/api";
 import {
   listPlatformResources,
   listPlatformResourceTree,
@@ -19,6 +26,8 @@ export const useAgentsPageStore = defineStore("agentsPage", () => {
   const selectedStatus = ref<string | null>(null);
   const selectedProvider = ref<string | null>(null);
   const selectedCategory = ref<string | null>(null);
+  const selectedCreator = ref<string | null>(null);
+  const creatorOptions = ref<AgentCreatorOption[]>([]);
   const page = ref(1);
   const rowsPerPage = ref(20);
   const agents = ref<Agent[]>([]);
@@ -65,6 +74,8 @@ export const useAgentsPageStore = defineStore("agentsPage", () => {
         status: selectedStatus.value || undefined,
         provider: selectedProvider.value || undefined,
         category_id: selectedCategory.value || undefined,
+        created_by:
+          selectedCreator.value && selectedCreator.value !== "" ? selectedCreator.value : undefined,
         limit: rowsPerPage.value,
         offset: (page.value - 1) * rowsPerPage.value
       });
@@ -76,12 +87,14 @@ export const useAgentsPageStore = defineStore("agentsPage", () => {
   }
 
   async function loadAgentsDependencies() {
-    const [treeRows, providerRows] = await Promise.all([
+    const [treeRows, providerRows, creators] = await Promise.all([
       listPlatformResourceTree("agent-categories"),
-      listPlatformResources("llm-provider-models")
+      listPlatformResources("llm-provider-models"),
+      listAgentCreators().catch(() => [] as AgentCreatorOption[])
     ]);
     categoryTree.value = treeRows;
     providerModels.value = providerRows;
+    creatorOptions.value = [{ user_id: "", label: "所有创建者" }, ...creators];
     const avatarCatalog = useAvatarCatalogStore();
     await avatarCatalog.ensureAgentsCatalog();
   }
@@ -122,6 +135,7 @@ export const useAgentsPageStore = defineStore("agentsPage", () => {
     selectedStatus.value = null;
     selectedProvider.value = null;
     selectedCategory.value = null;
+    selectedCreator.value = null;
     page.value = 1;
   }
 
@@ -130,6 +144,8 @@ export const useAgentsPageStore = defineStore("agentsPage", () => {
     selectedStatus,
     selectedProvider,
     selectedCategory,
+    selectedCreator,
+    creatorOptions,
     page,
     rowsPerPage,
     agents,

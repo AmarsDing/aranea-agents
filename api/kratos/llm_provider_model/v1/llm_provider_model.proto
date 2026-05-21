@@ -76,6 +76,27 @@ message InspectProviderModelRequest {
   string model_api_id = 4;
   string api_base_url = 5;
   string api_key = 6;
+  string variant = 7;
+  string secret_id = 8;
+  string secret_key = 9;
+  string aws_region = 10;
+}
+
+message RevealProviderModelCredentialsRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message HACandidateCredential {
+  string name = 1;
+  string api_key = 2;
+}
+
+message RevealProviderModelCredentialsResponse {
+  string api_key = 1;
+  string secret_key = 2;
+  bool has_api_key = 3;
+  bool has_secret_key = 4;
+  repeated HACandidateCredential ha_candidates = 5;
 }
 
 message InspectProviderModelResponse {
@@ -95,6 +116,10 @@ message InspectProviderModelResponse {
   int64 embedding_price_micro_usd_per_1k = 14;
   string source = 15;
   string raw_metadata_json = 16;
+  string variant = 17;
+  bool enable_token_tailoring = 18;
+  bool supports_cache = 19;
+  bool supports_thinking = 20;
 }
 
 service LlmProviderModelService {
@@ -109,6 +134,11 @@ service LlmProviderModelService {
   }
   rpc GetProviderModel(GetProviderModelRequest) returns (ProviderModel) {
     option (google.api.http) = {get: "/v1/llm-provider-models/{id}"};
+  }
+  // RevealProviderModelCredentials returns decrypted API secrets for admin console edit UI only.
+  // Requires the same authentication as other admin APIs; access is audit-logged (no secret values in logs).
+  rpc RevealProviderModelCredentials(RevealProviderModelCredentialsRequest) returns (RevealProviderModelCredentialsResponse) {
+    option (google.api.http) = {get: "/v1/llm-provider-models/{id}/credentials"};
   }
   rpc UpdateProviderModel(UpdateProviderModelRequest) returns (ProviderModel) {
     option (google.api.http) = {

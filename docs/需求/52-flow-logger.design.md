@@ -23,7 +23,7 @@
 
 ```text
 internal/service/trpc_turn.go
-  NewTraceEmitterForRun(ctx, bus, buffer, sessionID, runID, agentKey, agentID)
+  NewTraceEmitterForRun(TraceEmitterOpts{Ctx, Bus, Buffer, SessionID, RunID, AgentKey, AgentID, Domain})
   emitter.LogStart / LogDone / LogError / LogCritical / LogSkip
        │
        ▼
@@ -108,7 +108,7 @@ func WithTraceContext(ctx context.Context, tc TraceContext) context.Context
 // internal/event/trace_emitter.go
 
 func NewTraceEmitter(bus Bus, buffer *Buffer, tc TraceContext) *TraceEmitter
-func NewTraceEmitterForRun(ctx, bus, buffer, sessionID, runID, agentKey, agentID string) *TraceEmitter
+func NewTraceEmitterForRun(opts TraceEmitterOpts) *TraceEmitter
 
 func (e *TraceEmitter) LogStart(stepID, message string, extra ...Pair)
 func (e *TraceEmitter) LogDone(stepID, message string, extra ...Pair)
@@ -120,7 +120,7 @@ func (e *TraceEmitter) LogCritical(stepID, message string, extra ...Pair)
 func (e *TraceEmitter) FinishRoot(status string)
 func (e *TraceEmitter) MetadataJSON() string
 func (e *TraceEmitter) ObserveFrameworkEvent(ev *trpcevent.Event)
-func WrapEventsWithTraceEmitter(in <-chan *Event, e *TraceEmitter) <-chan *Event
+func WrapFrameworkEvents(in <-chan *Event, e *TraceEmitter, obs FrameworkSpanObserver) <-chan *Event
 ```
 
 上下文：`WithTraceEmitter` / `TraceEmitterFromContext`（`flow_context.go`）。  

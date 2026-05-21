@@ -93,6 +93,7 @@ func entAgentToBiz(a *ent.Agent) biz.Agent {
 		ContextWindow:      a.ContextWindow,
 		BudgetMonthlyCents: a.BudgetMonthlyCents,
 		ConfigJSON:         a.ConfigJSON,
+		CreatedBy:          a.CreatedBy,
 		CreatedAt:          a.CreatedAt,
 		UpdatedAt:          a.UpdatedAt,
 		DeletedAt:          a.DeletedAt,
@@ -195,6 +196,16 @@ func entRuntimeToBiz(e *ent.AgentRuntimeSetting) biz.AgentRuntimeSettings {
 		ContextCompactionEnabled:          e.ContextCompactionEnabled,
 		SessionSummaryEnabled:             e.SessionSummaryEnabled,
 		SkillLoadMode:                     e.SkillLoadMode,
+		CodeExecutorType:                  e.CodeExecutorType,
+		PlannerKind:                       e.PlannerKind,
+		PlannerConfigJSON:                 e.PlannerConfigJSON,
+		RalphLoopMaxIterations:            e.RalphLoopMaxIterations,
+		RalphLoopCompletionPromise:        e.RalphLoopCompletionPromise,
+		RalphLoopVerifyCommand:            e.RalphLoopVerifyCommand,
+		RalphLoopVerifyTimeoutSeconds:     e.RalphLoopVerifyTimeoutSeconds,
+		RalphLoopPromiseTagOpen:           e.RalphLoopPromiseTagOpen,
+		RalphLoopPromiseTagClose:          e.RalphLoopPromiseTagClose,
+		RalphLoopVerifyWorkDir:            e.RalphLoopVerifyWorkDir,
 		OutputSchemaJSON:                  e.OutputSchemaJSON,
 		ModelSelector:                     e.ModelSelector,
 		ToolsRetryEnabled:                 e.ToolsRetryEnabled,
@@ -314,6 +325,16 @@ func applyBizRuntimeToCreate(b *ent.AgentRuntimeSettingCreate, v biz.AgentRuntim
 		SetContextCompactionEnabled(v.ContextCompactionEnabled).
 		SetSessionSummaryEnabled(v.SessionSummaryEnabled).
 		SetSkillLoadMode(v.SkillLoadMode).
+		SetCodeExecutorType(v.CodeExecutorType).
+		SetPlannerKind(v.PlannerKind).
+		SetPlannerConfigJSON(normalizeJSONObj(v.PlannerConfigJSON)).
+		SetRalphLoopMaxIterations(v.RalphLoopMaxIterations).
+		SetRalphLoopCompletionPromise(v.RalphLoopCompletionPromise).
+		SetRalphLoopVerifyCommand(v.RalphLoopVerifyCommand).
+		SetRalphLoopVerifyTimeoutSeconds(v.RalphLoopVerifyTimeoutSeconds).
+		SetRalphLoopPromiseTagOpen(v.RalphLoopPromiseTagOpen).
+		SetRalphLoopPromiseTagClose(v.RalphLoopPromiseTagClose).
+		SetRalphLoopVerifyWorkDir(v.RalphLoopVerifyWorkDir).
 		SetOutputSchemaJSON(v.OutputSchemaJSON).
 		SetModelSelector(v.ModelSelector).
 		SetToolsRetryEnabled(v.ToolsRetryEnabled).
@@ -357,6 +378,9 @@ func (r *agentRepo) SearchAgents(ctx context.Context, q biz.AgentListQuery) (biz
 	if q.CategoryID != "" {
 		preds = append(preds, agent.CategoryPositionIDEQ(q.CategoryID))
 	}
+	if cb := strings.TrimSpace(q.CreatedBy); cb != "" {
+		preds = append(preds, agent.CreatedByEQ(cb))
+	}
 	where := agent.And(preds...)
 	c := r.data.entClient
 	total, err := c.Agent.Query().Where(where).Count(ctx)
@@ -376,6 +400,39 @@ func (r *agentRepo) SearchAgents(ctx context.Context, q biz.AgentListQuery) (biz
 		items = append(items, entAgentToBiz(row))
 	}
 	return biz.AgentListResult{Items: items, Total: total, Limit: q.Limit, Offset: q.Offset}, nil
+}
+
+func (r *agentRepo) ListAgentCreators(ctx context.Context) ([]biz.AgentCreator, error) {
+	rows, err := r.data.entClient.Agent.Query().
+		Where(agent.DeletedAtEQ(""), agent.CreatedByNEQ("")).
+		Select(agent.FieldCreatedBy).
+		GroupBy(agent.FieldCreatedBy).
+		Strings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]biz.AgentCreator, 0, len(rows)+1)
+	if biz.AgentCreatedByFromContext(ctx) != "" {
+		out = append(out, biz.AgentCreator{UserID: biz.AgentListCreatedByMine, Label: "仅我的"})
+	}
+	seen := map[string]bool{}
+	for _, id := range rows {
+		id = strings.TrimSpace(id)
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, biz.AgentCreator{UserID: id, Label: creatorLabel(id)})
+	}
+	return out, nil
+}
+
+func creatorLabel(userID string) string {
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return "未知"
+	}
+	return "用户 " + userID
 }
 
 func (r *agentRepo) GetAgentByID(ctx context.Context, id string) (biz.Agent, error) {
@@ -432,6 +489,7 @@ func (r *agentRepo) CreateAgent(ctx context.Context, a biz.Agent) (biz.Agent, er
 		SetContextWindow(a.ContextWindow).
 		SetBudgetMonthlyCents(a.BudgetMonthlyCents).
 		SetConfigJSON(a.ConfigJSON).
+		SetCreatedBy(a.CreatedBy).
 		SetCreatedAt(a.CreatedAt).
 		SetUpdatedAt(a.UpdatedAt).
 		SetDeletedAt(a.DeletedAt).

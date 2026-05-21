@@ -64,6 +64,53 @@ message MCPServerTestResponse {
   string details_json = 4;
 }
 
+message ValidateMCPServerRequest {
+  bool enabled = 1;
+  string config_json = 2;
+}
+
+message ValidateMCPServerResponse {
+  bool ok = 1;
+  string status = 2;
+  string message = 3;
+  string details_json = 4;
+}
+
+message MCPServerUserCredential {
+  string id = 1;
+  string mcp_server_id = 2;
+  string user_id = 3;
+  string credential_key = 4;
+  string status = 5;
+  bool configured = 6;
+  string masked_preview = 7;
+  string created_at = 8;
+  string updated_at = 9;
+}
+
+message ListMCPServerUserCredentialsRequest {
+  string mcp_server_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string user_id = 2;
+}
+
+message ListMCPServerUserCredentialsResponse {
+  repeated MCPServerUserCredential items = 1;
+}
+
+message UpsertMCPServerUserCredentialRequest {
+  string mcp_server_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string user_id = 2 [(google.api.field_behavior) = REQUIRED];
+  string credential_key = 3 [(google.api.field_behavior) = REQUIRED];
+  string secret = 4;
+  string status = 5;
+}
+
+message DeleteMCPServerUserCredentialRequest {
+  string mcp_server_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string user_id = 2 [(google.api.field_behavior) = REQUIRED];
+  string credential_key = 3 [(google.api.field_behavior) = REQUIRED];
+}
+
 service MCPServerService {
   rpc ListMCPServers(google.protobuf.Empty) returns (ListMCPServersResponse) {
     option (google.api.http) = {get: "/v1/mcp-servers"};
@@ -89,6 +136,27 @@ service MCPServerService {
   rpc TestMCPServer(TestMCPServerRequest) returns (MCPServerTestResponse) {
     option (google.api.http) = {
       post: "/v1/mcp-servers/{id}/test"
+      body: "*"
+    };
+  }
+  rpc ValidateMCPServer(ValidateMCPServerRequest) returns (ValidateMCPServerResponse) {
+    option (google.api.http) = {
+      post: "/v1/mcp-servers/validate"
+      body: "*"
+    };
+  }
+  rpc ListMCPServerUserCredentials(ListMCPServerUserCredentialsRequest) returns (ListMCPServerUserCredentialsResponse) {
+    option (google.api.http) = {get: "/v1/mcp-servers/{mcp_server_id}/user-credentials"};
+  }
+  rpc UpsertMCPServerUserCredential(UpsertMCPServerUserCredentialRequest) returns (MCPServerUserCredential) {
+    option (google.api.http) = {
+      post: "/v1/mcp-servers/{mcp_server_id}/user-credentials"
+      body: "*"
+    };
+  }
+  rpc DeleteMCPServerUserCredential(DeleteMCPServerUserCredentialRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      post: "/v1/mcp-servers/{mcp_server_id}/user-credentials/delete"
       body: "*"
     };
   }

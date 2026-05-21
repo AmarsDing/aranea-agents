@@ -102,6 +102,11 @@ type SkillsCfg struct {
 	IntentPassEnabled bool   `json:"intent_pass_enabled,omitempty"`
 }
 
+// CodeExecutorCfg holds per-agent code execution backend selection.
+type CodeExecutorCfg struct {
+	Type string `json:"code_executor_type,omitempty"` // local | docker | e2b | container
+}
+
 // PluginsCfg holds plugin runtime settings (reserved for future fields).
 type PluginsCfg struct{}
 
@@ -138,4 +143,5 @@ type ContextCfg struct {
 	OutputSchemaJSON      string `json:"output_schema_json,omitempty"`
 	ModelSelector         string `json:"model_selector,omitempty"`
 	PlannerKind           string `json:"planner_kind,omitempty"`
+	PlannerConfigJSON     string `json:"planner_config_json,omitempty"`
 }

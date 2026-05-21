@@ -39,5 +39,6 @@ func (TeamRunStep) Fields() []ent.Field {
 		field.String("started_at").Default(""),
 		field.String("finished_at").Default(""),
 		field.String("created_at").Default(""),
+		field.Int("tool_call_count").Default(0),
 	}
 }

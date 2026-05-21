@@ -1,7 +1,6 @@
 package probe
 
 import (
-	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -9,6 +8,8 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"aranea-agents/internal/mcp/config"
 )
 
 type TestResult struct {
@@ -18,31 +19,12 @@ type TestResult struct {
 	Details map[string]any `json:"details,omitempty"`
 }
 
-type serverConfig struct {
-	Transport              string            `json:"transport"`
-	URL                    string            `json:"url"`
-	Command                string            `json:"command"`
-	Args                   []string          `json:"args"`
-	Headers                map[string]string `json:"headers"`
-	Env                    map[string]string `json:"env"`
-	ToolPrefix             string            `json:"tool_prefix"`
-	TimeoutSec             int               `json:"timeout_sec"`
-	RequireUserCredentials bool              `json:"require_user_credentials"`
-}
-
-func defaultJSON(raw string) string {
-	if strings.TrimSpace(raw) == "" {
-		return "{}"
-	}
-	return raw
-}
-
 func Evaluate(enabled bool, configJSON string) TestResult {
 	if !enabled {
 		return TestResult{OK: false, Status: "unknown", Message: "MCP 服务器已停用，未执行连接测试"}
 	}
-	var cfg serverConfig
-	if err := json.Unmarshal([]byte(defaultJSON(configJSON)), &cfg); err != nil {
+	cfg, err := config.ParseServerConfigJSON(configJSON)
+	if err != nil {
 		return TestResult{OK: false, Status: "error", Message: "config_json 格式错误: " + err.Error()}
 	}
 	switch cfg.Transport {
@@ -55,7 +37,7 @@ func Evaluate(enabled bool, configJSON string) TestResult {
 	}
 }
 
-func evaluateStdio(cfg serverConfig) TestResult {
+func evaluateStdio(cfg config.ServerConfig) TestResult {
 	command := strings.TrimSpace(cfg.Command)
 	if command == "" {
 		return TestResult{OK: false, Status: "error", Message: "stdio 传输需要填写 command"}
@@ -71,7 +53,7 @@ func evaluateStdio(cfg serverConfig) TestResult {
 	}
 }
 
-func evaluateHTTP(cfg serverConfig) TestResult {
+func evaluateHTTP(cfg config.ServerConfig) TestResult {
 	rawURL := strings.TrimSpace(cfg.URL)
 	if rawURL == "" {
 		return TestResult{OK: false, Status: "error", Message: "HTTP 传输需要填写 URL"}
@@ -87,7 +69,7 @@ func evaluateHTTP(cfg serverConfig) TestResult {
 		return TestResult{OK: false, Status: "error", Message: "URL 校验失败: " + err.Error()}
 	}
 
-	timeout := time.Duration(cfg.TimeoutSec) * time.Second
+	timeout := config.DurationSec(cfg.TimeoutSec)
 	if timeout <= 0 || timeout > 10*time.Second {
 		timeout = 10 * time.Second
 	}

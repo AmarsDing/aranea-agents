@@ -18,7 +18,30 @@ type cronTaskConfig struct {
 	RunAt            string `json:"run_at"`
 	Timezone         string `json:"timezone"`
 	Message          string `json:"message"`
-	RetryMaxAttempts int    `json:"retry_max_attempts"`
+	RetryMaxAttempts *int `json:"retry_max_attempts"`
+}
+
+const defaultRetryMaxAttempts = 3
+
+// effectiveRetryMaxAttempts returns configured retries after first attempt: nil/missing → 3, 0 → disable.
+func effectiveRetryMaxAttempts(cfg cronTaskConfig) int {
+	if cfg.RetryMaxAttempts == nil {
+		return defaultRetryMaxAttempts
+	}
+	return *cfg.RetryMaxAttempts
+}
+
+// retryPlan returns total attempts (initial + retries) and backoff delays.
+// maxRetries is the number of retries after the first attempt; 0 disables retry.
+func retryPlan(maxRetries int) (attempts int, backoff []time.Duration) {
+	if maxRetries <= 0 {
+		return 1, nil
+	}
+	backoff = defaultRetryBackoff
+	if maxRetries < len(defaultRetryBackoff) {
+		backoff = defaultRetryBackoff[:maxRetries]
+	}
+	return len(backoff) + 1, backoff
 }
 
 type cronTaskMetadata struct {

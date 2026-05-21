@@ -98,6 +98,16 @@ service CronService {
   rpc ListCronTaskRuns(ListCronTaskRunsRequest) returns (ListCronTaskRunsResponse) {
     option (google.api.http) = {get: "/v1/cron-task-runs"};
   }
+  rpc TriggerCronTask(TriggerCronTaskRequest) returns (CronTaskRun) {
+    option (google.api.http) = {
+      post: "/v1/cron-tasks/{id}/trigger"
+      body: "*"
+    };
+  }
+}
+
+message TriggerCronTaskRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
 }
 ```
 
@@ -129,7 +139,7 @@ service CronService {
 | `run_at` | string | schedule_type=once 时必填，ISO时间 |
 | `timezone` | string | 默认 `Asia/Shanghai` |
 | `message` | string | 下发给 Agent/Team 的消息 |
-| `retry_max_attempts` | int | 重试次数，0=禁用重试，默认 3（使用 defaultRetryBackoff） |
+| `retry_max_attempts` | int | 首次失败后的重试次数；`0`=禁用；未设置默认 `3`（完整 30s/2m/10m 退避） |
 
 ### 2.3 metadata_json 结构
 
@@ -226,6 +236,7 @@ type CronRepo interface {
     CreateCronTask(ctx context.Context, t CronTask) (CronTask, error)
     UpdateCronTask(ctx context.Context, t CronTask) (CronTask, error)
     DeleteCronTask(ctx context.Context, id string) error
+    GetCronTaskRun(ctx context.Context, id string) (CronTaskRun, error)
     ListCronTaskRuns(ctx context.Context, q CronTaskRunQuery) ([]CronTaskRun, error)
     InsertCronTaskRun(ctx context.Context, in CronTaskRunInput) error
     UpdateCronTaskRun(ctx context.Context, id, status, finishedAt, outputJSON, errorMessage string) error
@@ -247,7 +258,17 @@ func (u *CronUsecase) CreateTask(ctx context.Context, in CronTask) (CronTask, er
 func (u *CronUsecase) UpdateTask(ctx context.Context, id string, patch CronTaskPatch) (CronTask, error)
 func (u *CronUsecase) DeleteTask(ctx context.Context, id string) error
 func (u *CronUsecase) ListTaskRuns(ctx context.Context, q CronTaskRunQuery) ([]CronTaskRun, error)
+func (u *CronUsecase) GetTaskRun(ctx context.Context, id string) (CronTaskRun, error)
+func (u *CronUsecase) TriggerTask(ctx context.Context, id string) (CronTaskRun, error)
+func (u *CronUsecase) ResetTaskFailures(ctx context.Context, id string) (CronTask, error)
 ```
+
+**CronTaskTrigger**（由 `*cronrunner.Runner` 实现，Wire 注入 `CronUsecase`）：
+
+```go
+type CronTaskTrigger interface {
+    TriggerTask(ctx context.Context, taskID string) (CronTaskRun, error)
+}
 
 **CreateTask 校验规则**：
 - `task_key` 和 `name` 必填
@@ -315,14 +336,35 @@ func (r *Runner) Start(ctx context.Context) error
 func (r *Runner) Stop()
 ```
 
-**调度执行流程**：
-1. 后台 runner 每 15 秒扫描 `cron_task`，筛选 `enabled=true`、`status=active` 的任务
-2. 在 Go 进程内解析 `metadata_json.next_run_at`，仅调度 `next_run_at <= now` 的到期任务
-3. 解析 `config_json.target_type`：`agent` 使用 `cron_task.agent_id`；`team` 使用 `config_json.team_id`
-4. 写入 `cron_task_run`（状态 `pending`），调用 `dispatchWithRetry`（指数退避 30s/2m/10m）
-5. 创建 Session，调用 `ChatService.Send`
-6. 写回结果：成功/失败 → 更新 `cron_task_run` + `metadata_json` 统计 + 重新计算 `next_run_at`
-7. 连续失败 ≥3 次时任务进入 `dead` 状态，不再调度
+**调度执行流程**（`internal/cronrunner/runner.go`）：
+1. `cmd/admin/main.go` 启动 `Runner.Start(ctx, interval)`；间隔由 `CRON_RUNNER_INTERVAL` 控制（**默认 1 分钟**，非 15 秒）
+2. 每 tick 用 `TryLock` 防重入，加载全部未删 `cron_task`，筛选 `enabled=true`、`status=active`
+3. 在 Go 进程内解析 `metadata_json.next_run_at`，仅调度 `next_run_at <= now` 的到期任务
+4. 解析 `config_json` 与 schedule；**无效配置/空 message/到期计算错误** → 写入 `cron_task_run`（`failure`），递增 `failure_count`，**不 dispatch**（与 dispatch 失败共用 `finalizeRun` 路径）
+5. 解析 `config_json.target_type`：`agent` 使用 `cron_task.agent_id`；`team` 使用 `config_json.team_id`
+6. 写入 `cron_task_run`（`pending`），`dispatchWithRetry` 按 `retry_max_attempts` 退避（默认 3 次：30s/2m/10m；`0`=不重试）
+7. 创建 Session（`dialog_mode=cron`），调用 **`ChatService.RunCronTurn`**（EP-RT-07 in-process）；`CRON_CHAT_DISPATCH_ORIGIN` 保留 HTTP fallback
+8. 写回 `cron_task_run` + `metadata_json` 统计 + 重算 `next_run_at`；`once` 执行后自动暂停
+9. 连续失败 ≥3 次 → `status=dead` + `cron.dead_letter` 事件 + Prometheus `aranea_cron_job_dead_total`
+
+**`cron_task_run.status` 语义**：
+
+| status | 场景 | `failure_count` / dead letter | 写入 run 行 |
+|--------|------|-------------------------------|-------------|
+| `success` | dispatch 成功 | schedule 成功清零失败链 | ✅ |
+| `failure` | 配置/schedule 错误、dispatch 失败 | schedule 递增，可 dead | ✅ |
+| `skipped` | Session 忙（`ErrCronSessionBusy`，瞬时） | **不**递增 | ✅ |
+| `pending` | 手动 trigger 已提交、尚未完成 | — | ✅ |
+
+**手动触发**（`POST /v1/cron-tasks/{id}/trigger`）：
+- 立即写入 `cron_task_run`（`pending`）并返回；后台 `safego` 异步执行。
+- `output_json.trigger=manual`。
+- **不**校验 schedule 到期；**不**推进 `next_run_at`；**不**因 manual 执行 pause `once` 任务。
+- manual 失败**不计入** dead letter 连续失败计数（仍写入 run 与 `recent_failures` 可选记录）。
+- 同一 `task_id` 与调度 tick 共用 per-task 互斥锁，避免双跑。
+
+**重置失败计数**（`POST /v1/cron-tasks/{id}/reset-failures`）：
+- 清零 `metadata_json.failure_count/last_error/recent_failures`，`status=active`、`enabled=true`。
 
 ---
 
@@ -336,7 +378,7 @@ type CronService struct {
     uc *biz.CronUsecase
 }
 
-func NewCronService(uc *biz.CronUsecase) *CronService
+func NewCronService(uc *biz.CronUsecase, runner *cronrunner.Runner) *CronService
 ```
 
 | 方法 | 转换逻辑 |
@@ -365,7 +407,7 @@ service.ProviderSet → NewCronService
 cronrunner.ProviderSet → NewRunner
 ```
 
-Runner 在 `cmd/aranea/main.go` 中通过 Wire 注入，启动时调用 `runner.Start(ctx)`，优雅关闭时调用 `runner.Stop()`。
+Runner 在 **`cmd/admin/main.go`** 中通过 Wire 注入；`CRON_RUNNER_DISABLED=1` 时不创建 Runner。启动时 `go runner.Start(cronCtx, DefaultInterval())`，随进程 ctx 取消退出。
 
 ---
 

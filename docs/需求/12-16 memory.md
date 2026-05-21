@@ -2,8 +2,8 @@
 > **本文定位**：记忆管理的 **UX 需求文档**（产品视角），定义用户看到什么、交互什么、验收什么。前端实现细节（组件选型、TypeScript 类型、API 函数、路由配置）见 [`12-16 memory.design.md`](./12-16%20memory.design.md) §九。
 >
 > 相关文档：
+> - **实现差距与进度** → [`12-16 memory-development.md`](./12-16%20memory-development.md)
 > - 后端核心实现设计 → [`12-16 memory.design.md`](./12-16%20memory.design.md)
-> - 完整实现设计（前后端）→ [`12-16 memory.design.md`](./12-16%20memory.design.md)
 > - Memory 框架对齐 → [`38 memory.md`](./38%20memory.md)
 > - L0–L4 分层需求 → [`12 memory-L0-sensory.md`](./12%20memory-L0-sensory.md) ~ [`16 memory-L4-persistent.md`](./16%20memory-L4-persistent.md)
 

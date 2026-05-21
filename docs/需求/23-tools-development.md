@@ -20,7 +20,11 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 | Data | `internal/data/tool.go` | ToolRepo：Ent ORM + 原生 SQL 混合 |
 | Registry | `internal/tools/toolset.go` | Registry() + Assemble()：注册表与装配 |
 | Adapter | `internal/tools/trpc/toolsets.go` | BuildToolsets()：ToolsetConfig → AssemblyConfig |
-| Injection | `internal/agent/trpc_build.go` | BuildTRPCLLMAgent()：工具注入 + Callbacks/Filter/Retry |
+| Injection | `internal/agent/trpc_build.go` | BuildTRPCLLMAgent()：工具注入入口 |
+| Assembly | `internal/agent/tool_assembly.go` | buildToolsetsForAgent + MCP + Override 配置合并 |
+| Recorder | `internal/agent/tool_invocation_recorder.go` | AfterTool 调用记录 + 预览截断 |
+| Runtime | `internal/agent/tool_runtime_options.go` | Filter / Retry 策略 |
+| Ref | `internal/biz/tool_ref.go` | `ResolveToolKey`：Proto `tool_id` ↔ catalog `tool_key` |
 | Policy | `internal/biz/agent_effective_tools.go` | Effective Tools 计算：profile + allow/deny |
 | Seed | `internal/data/builtin_tools_seed.go` | 内置工具种子数据 |
 
@@ -61,10 +65,19 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 | 1 | **P2** | ToolOverride 运行时生效 | ✅ `ApplyRuntimeConfigMaps` + `ApplyConfirmationPolicy` + `ApplyAgentToolOverrides` |
 | 2 | **P2** | ToolOverride 前端集成 | ✅ Agent 设置页「工具覆盖」面板 + `GET /v1/agents/{agent_id}/tool-overrides` |
 | 3 | **P3** | 自定义工具在线测试 | ✅ `TestTool` RPC + 工具详情「在线测试」 |
-| 4 | **P3** | 工具调用审计日志 | 当前 ToolInvocation 记录用于展示，缺乏结构化审计日志（谁在何时调用了什么工具、结果如何），需独立审计表 + 查询 API |
-| 5 | **P3** | BeforeTool Callback | 框架支持 BeforeTool 回调（可跳过执行、修改参数），项目尚未使用；可用于动态参数注入、权限校验等 |
-| 6 | **P4** | Tool Cache | 框架未内建工具结果缓存；对于幂等只读工具（如 search、fetch），可考虑缓存层减少重复调用 |
-| 7 | **P2** | MCP 工程化 | MCP ToolSet/Broker 基础可用（默认超时60s ✅）；但 MCP 认证、重连、MCPBroker 默认发现（标准化入口）仍待补；生产环境 MCP Server 异常无重试 |
+| 4 | **P3** | 工具调用审计日志 | ✅ `tool_invocation_audit` + `ListToolInvocationAudits`；前端审计页待补 |
+| 5 | **P3** | BeforeTool Callback | ✅ `tool_args_guard` 系统字段剥离；权限/动态注入可后续扩展 |
+| 6 | **P4** | Tool Cache | ✅ `internal/tools/cache` + Before/AfterTool hooks；`metadata_json.cache_enabled` / `cache_ttl_sec` |
+| 7 | **P2** | MCP 工程化 | ✅ 认证/重连/ Broker 自动发现；生产 `AllowAdHocHTTP` 需 `ARANEA_MCP_ALLOW_ADHOC_HTTP` |
+| 8 | **P2** | Proto `tool_id` 语义统一 | ✅ `ResolveToolKey` + `ListRunsForTool`；Override Upsert 写入 `tool_id` |
+| 9 | **P3** | `runtime_status` / `runtime_kind` 填充 | ✅ `EnrichToolCatalogRuntime`（Biz 层计算，List/Get 返回） |
+| 10 | **P3** | CreateTool 业务校验 | ✅ `validateToolUpsert` + `validateToolConfigFields`（gojsonschema） |
+| 11 | **P3** | TestTool 参数脱敏 | ✅ `RedactToolPreview` + `SanitizeToolInvocationWrite` |
+| 12 | **P3** | 工具调用审计 | ✅ 表 + API + 前端 `/tools/audits` + 90 天 cron |
+| 13 | **P3** | BeforeTool 系统字段剥离 | ✅ `tool_args_guard` BeforeTool hook |
+| 14 | **P1** | effective key → ToolsetConfig 映射 | ✅ `ToolsetConfigFromEffectiveKeys` |
+| 15 | **P2** | MCP 默认超时 | ✅ `normalizeMCPServerTimeout`（60s） |
+| 16 | **P4** | `streaming` / `chunk_count` | ✅ `tool_invocations` 列 + 记录器 + Proto |
 
 ---
 
@@ -156,9 +169,9 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 
 ### 待实现
 
-- [ ] Agent 可通过 Override 在运行时覆盖特定工具的参数/启用/确认
-- [ ] 自定义工具可在配置时在线测试
-- [ ] 工具调用可审计追溯
+- [x] Agent 可通过 Override 在运行时覆盖特定工具的参数/启用/确认
+- [x] 自定义工具可在配置时在线测试（`POST /v1/tools/{id}/test`）
+- [x] 工具调用可审计追溯（`GET /v1/tools/audits`；保留策略运维侧 90 天）
 
 ---
 

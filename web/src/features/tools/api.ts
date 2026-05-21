@@ -18,6 +18,8 @@ import type {
   ToolListQuery,
   ToolListResponse,
   ToolRunQuery,
+  ToolAuditQuery,
+  ToolInvocationAudit,
   ToolTestResult,
   ToolUpsertInput
 } from "./types";
@@ -110,7 +112,9 @@ function kratosInvocationToLegacy(x: KratosInvocation): ToolInvocation {
     error_message: x.errorMessage ?? "",
     redaction_applied: Boolean(x.redactionApplied),
     metadata_json: x.metadataJson ?? "",
-    created_at: x.createdAt ?? ""
+    created_at: x.createdAt ?? "",
+    streaming: Boolean(x.streaming),
+    chunk_count: x.chunkCount ?? 0
   };
 }
 
@@ -336,5 +340,38 @@ export async function testTool(
     result_preview: data.resultPreview ?? "",
     error_message: data.errorMessage ?? "",
     duration_ms: Number(data.durationMs ?? 0)
+  };
+}
+
+export async function listToolInvocationAudits(query: ToolAuditQuery = {}): Promise<PaginatedResponse<ToolInvocationAudit>> {
+  const data = await toolApi.ListToolInvocationAudits({
+    toolKey: query.tool_key,
+    agentId: query.agent_id,
+    userId: query.user_id,
+    sessionId: query.session_id,
+    status: query.status,
+    from: query.from,
+    to: query.to,
+    page: query.page,
+    pageSize: query.page_size
+  });
+  const items = (data.items ?? []).map((x) => ({
+    id: x.id ?? "",
+    invocation_id: x.invocationId ?? "",
+    tool_key: x.toolKey ?? "",
+    agent_id: x.agentId ?? "",
+    user_id: x.userId ?? "",
+    session_id: x.sessionId ?? "",
+    action: x.action ?? "",
+    result_summary: x.resultSummary ?? "",
+    status: x.status ?? "",
+    source: x.source ?? "",
+    created_at: x.createdAt ?? ""
+  }));
+  return {
+    items,
+    page: data.page ?? query.page ?? 1,
+    page_size: data.pageSize ?? query.page_size ?? 20,
+    total: data.total ?? items.length
   };
 }

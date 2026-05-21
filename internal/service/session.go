@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	stderrors "errors"
+	"strings"
 
 	v1 "aranea-agents/api/kratos/session/v1"
 	"aranea-agents/internal/biz"
@@ -312,6 +313,32 @@ func (s *SessionService) ListSessionMessages(ctx context.Context, req *v1.ListSe
 		out = append(out, toProtoChatMessageRow(paged[i]))
 	}
 	return &v1.ListSessionMessagesResponse{Items: out, Total: int32(total)}, nil
+}
+
+// SearchSessionMessages implements GET /v1/sessions/messages/search.
+func (s *SessionService) SearchSessionMessages(ctx context.Context, req *v1.SearchSessionMessagesRequest) (*v1.SearchSessionMessagesResponse, error) {
+	result, err := s.uc.SearchMessages(ctx, biz.MessageSearchQuery{
+		SessionID: strings.TrimSpace(req.GetSessionId()),
+		Keyword:   strings.TrimSpace(req.GetKeyword()),
+		Limit:     int(req.GetLimit()),
+		Offset:    int(req.GetOffset()),
+	})
+	if err != nil {
+		return nil, mapSessionErr(err)
+	}
+	out := make([]*v1.MessageSearchHit, 0, len(result.Items))
+	for i := range result.Items {
+		h := result.Items[i]
+		out = append(out, &v1.MessageSearchHit{
+			Id:              h.ID,
+			SessionId:       h.SessionID,
+			Role:            h.Role,
+			ContentMarkdown: h.ContentMarkdown,
+			Highlight:       h.Highlight,
+			CreatedAt:       h.CreatedAt,
+		})
+	}
+	return &v1.SearchSessionMessagesResponse{Items: out, Total: int32(result.Total)}, nil
 }
 
 // GetSessionTimeline implements GET /v1/sessions/{id}/timeline.

@@ -53,25 +53,24 @@ pkg/trpc-agent-go/runner/
 
 | 能力 | trpc-agent-go | 当前项目 | 状态 |
 |------|--------------|---------|------|
-| Runner.Run / Close | ✅ | ✅ | `NewTRPCRunner` 返回 `ManagedRunner` |
-| ManagedRunner.Cancel | ✅ | ✅ | `CancelTRPCRun` 辅助函数 |
-| ManagedRunner.RunStatus | ✅ | ✅ | `TRPCRunStatus` 辅助函数 |
-| SteerableRunner.EnqueueUserMessage | ✅ | ✅ | `EnqueueTRPCUserMessage` 辅助函数 |
+| Runner.Run / Close | ✅ | ✅ | `NewTRPCRunner` → `ManagedRunner` |
+| ManagedRunner.Cancel | ✅ | ✅ | `RunRegistry.Cancel` + `CancelTRPCRun` |
+| ManagedRunner.RunStatus | ✅ | ✅ | `GetRunStatus` 合并 `FrameworkRunStatusFromRunner` |
+| SteerableRunner.EnqueueUserMessage | ✅ | ✅ | `EnqueueUserMessage` RPC + `RunRegistry` |
 | PluginManager 注入 | ✅ | ✅ | `plugintrpc.Runtime` + `WithPlugins` |
-| AwaitUserReply（Service 层） | — | ✅ | `serviceawaitreply.ServiceTool` + `AwaitUserReply` RPC |
+| AwaitUserReply（Service 层） | — | ✅ | `serviceawaitreply` + `AwaitUserReply` RPC |
 | GetRunStatus RPC | — | ✅ | `ChatService.GetRunStatus` |
-| StopGeneration RPC | — | ✅ | `ChatService.StopGeneration` |
-| PendingQueue | — | ✅ | `pendingQueue` + `processPendingQueue` |
-| BuildCache LRU + TTL | — | ✅ | `cache.go` |
-| ArtifactService 适配器 | ✅ | 🟡 | 适配器已有，未注入 Runner |
-| AgentFactory | ✅ | ❌ | 未注册 `WithAgentFactory` |
-| SessionIngestor | ✅ | ❌ | 未实现 `WithSessionIngestor` |
-| AwaitUserReplyRouting（框架层） | ✅ | ❌ | 未启用 `WithAwaitUserReplyRouting` |
-| AgentLookup | ✅ | ❌ | Runner 未维护 Agent 注册表 |
-| RalphLoop | ✅ | ❌ | 未配置 `WithRalphLoop` |
-| CancelRun RPC | — | ❌ | 仅有 `StopGeneration`，缺少按 requestID 取消 |
-| EnqueueUserMessage RPC | — | ❌ | 仅有辅助函数，无 RPC 入口 |
-| RunnerRegistry / RunnerManager | — | ❌ | 每次请求创建临时 Runner |
+| StopGeneration / WS cancel | — | ✅ | `RunRegistry.Cancel` |
+| PendingQueue | — | ✅ | `internal/runtime/pending_queue.go` |
+| BuildCache LRU + TTL | — | ✅ | `internal/agent/cache.go` |
+| ArtifactService | ✅ | ✅ | `PersistenceSet` → `WithArtifactService` |
+| AgentFactory | ✅ | ✅ | `BizAgentFactoryOptions` |
+| SessionIngestor | ✅ | 🟡 | `BizSessionIngestor` 注入；外部 backend 待扩展 |
+| AwaitUserReplyRouting（框架层） | ✅ | ✅ | `AwaitHook != nil` 时启用 |
+| AgentLookup | ✅ | ✅ | `BizAgentRegistryOptions` + Team lookup map |
+| RalphLoop | ✅ | ✅ | Ent + `RalphLoopConfigFromSettings` |
+| 独立 CancelRun RPC | — | — | 非目标；沿用 StopGeneration |
+| RunnerInstanceRegistry / RunnerManager | — | ✅ | `RunnerManager.NewTurnRunner`；每 turn 仍 `Close` |
 
 ---
 
@@ -160,6 +159,13 @@ field.String("ralph_loop_completion_promise").Default(""),
 field.String("ralph_loop_verify_command").Default(""),
 field.Int("ralph_loop_verify_timeout_seconds").Default(0),
 ```
+
+**校验与接线**（2026-05-21）：
+
+- 持久化：`biz.ValidateRalphLoopSettings`（Create/Update Agent 与 Planner 同级）。
+- 运行时映射：`internal/agent.RalphLoopConfigFromSettings`；Turn 统一 `ResolveRalphLoopTurn`（Chat / Team / A2A）。
+- **Team**：Ralph 取自 **第一个成员 Agent** 的 `agent_runtime_settings`（领队/编排 Agent 配置生效）。
+- 无效配置：保存拒绝；历史脏数据 Turn 时 FlowLog Warn 并跳过 Ralph。
 
 ---
 
@@ -397,23 +403,17 @@ func (m *RunnerManager) CloseRunner(key string) error
 
 ## 六、Service 层
 
-### 6.1 ChatService 现有运行控制
+### 6.1 ChatService 与 Biz 分工
 
-当前 `ChatService` 已有：
+| 组件 | 职责 |
+|------|------|
+| `runtime.RunRegistry` | 每 session active runner、cancel、steerable enqueue、服务层 status |
+| `runtime.RunnerManager` | 统一 `NewTRPCRunner` 装配（Session/Memory/Artifact/Plugins/Factory/Routing） |
+| `biz.ChatUsecase` | 会话锁、pending 队列、Enqueue 编排（steerable 失败则入队） |
+| `ChatService` | RPC/WS 桥接、`setRunStatus`（含 webhook/await meta）、turn 执行 |
+| `ChatService.RunGateway()` | Cron/Channel/Team 共用 `RunGateway` |
 
-| 字段/方法 | 说明 |
-|-----------|------|
-| `activeRuns sync.Map` | sessionID → Runner 实例 |
-| `runStatuses sync.Map` | sessionID → runStatusEntry |
-| `pendingQueue sync.Map` | sessionID → []pendingEntry |
-| `pendingCancels sync.Map` | sessionID → context.CancelFunc |
-| `awaitChans sync.Map` | sessionID → chan awaitReplyCh |
-| `sessionMu sync.Map` | sessionID → *sync.Mutex |
-| `GetRunStatus` | RPC：查询运行状态 |
-| `StopGeneration` | RPC：停止生成 |
-| `CancelRun` | 内部方法：取消运行 |
-| `AwaitUserReply` | RPC：提交用户回复 |
-| `makeAwaitReplyFunc` | 构建 await_reply 阻塞回调 |
+`ChatService` 不再持有 `activeRuns`/`pendingQueue` sync.Map；运行控制经 Wire 注入的 `RunRegistry` 与 `PendingMessageQueue`。
 
 ### 6.2 ChatService 扩展
 

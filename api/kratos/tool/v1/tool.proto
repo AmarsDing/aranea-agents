@@ -159,6 +159,8 @@ message ToolInvocation {
   bool redaction_applied = 24;
   string metadata_json = 25;
   string created_at = 26;
+  bool streaming = 27;
+  int32 chunk_count = 28;
 }
 
 message ListToolRunsRequest {
@@ -265,6 +267,39 @@ message TestToolResponse {
   int32 duration_ms = 4;
 }
 
+message ToolInvocationAudit {
+  string id = 1;
+  string invocation_id = 2;
+  string tool_key = 3;
+  string agent_id = 4;
+  string user_id = 5;
+  string session_id = 6;
+  string action = 7;
+  string result_summary = 8;
+  string status = 9;
+  string source = 10;
+  string created_at = 11;
+}
+
+message ListToolInvocationAuditsRequest {
+  string tool_key = 1;
+  string agent_id = 2;
+  string user_id = 3;
+  string session_id = 4;
+  string status = 5;
+  string from = 6;
+  string to = 7;
+  int32 page = 8;
+  int32 page_size = 9;
+}
+
+message ListToolInvocationAuditsResponse {
+  repeated ToolInvocationAudit items = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+}
+
 service ToolService {
   rpc ListTools(ListToolsRequest) returns (ListToolsResponse) {
     option (google.api.http) = {get: "/v1/tools"};
@@ -328,5 +363,8 @@ service ToolService {
       post: "/v1/tools/{id}/test"
       body: "*"
     };
+  }
+  rpc ListToolInvocationAudits(ListToolInvocationAuditsRequest) returns (ListToolInvocationAuditsResponse) {
+    option (google.api.http) = {get: "/v1/tools/audits"};
   }
 }

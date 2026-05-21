@@ -46,6 +46,7 @@
       <span class="agent-card__context">{{ contextLabel }}</span>
       <div class="q-gutter-xs">
         <q-btn flat dense rounded color="primary" label="设置" :to="`/agents/${agent.id}/settings`" />
+        <q-btn flat dense rounded color="secondary" label="复制" @click="$emit('duplicate', agent)" />
         <q-btn flat dense rounded color="negative" icon="delete" label="删除" @click="$emit('delete', agent)" />
       </div>
     </q-card-actions>
@@ -70,6 +71,7 @@ defineEmits<{
   "toggle-favorite": [id: string];
   "copy-key": [key: string];
   delete: [agent: Agent];
+  duplicate: [agent: Agent];
 }>();
 
 const $q = useQuasar();

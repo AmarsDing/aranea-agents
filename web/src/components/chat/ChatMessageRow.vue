@@ -1,5 +1,6 @@
 <template>
   <q-chat-message
+    v-if="!bundle.suppressToolRow"
     class="chat-q-message"
     :class="{
       'chat-q-message--continued': row.isContinued(index),
@@ -77,8 +78,8 @@
         :style="row.bubbleAccentStyle(message)"
       >
       <ChatExecutionCard
-        v-if="row.structuredToolEvent(message)"
-        :event="row.structuredToolEvent(message)!"
+        v-if="bundle.structuredToolEvent"
+        :event="bundle.structuredToolEvent"
         :show-member-label="isTeamSession"
       />
       <details v-else-if="row.isCollapsibleToolDetail(message)" class="chat-tool-details">
@@ -96,16 +97,26 @@
         />
       </details>
       <template v-else>
-        <details v-if="row.reasoningMarkdown(message)" class="chat-reasoning-details q-mb-sm">
+        <details v-if="bundle.presentation.reasoning" class="chat-reasoning-details q-mb-sm">
           <summary class="text-caption text-weight-medium">{{ row.t("chat.reasoningTitle", "思考过程") }}</summary>
           <div
             class="chat-message-content chat-message-prose chat-reasoning-details__body"
             :class="{ 'chat-message-content--dark': isDark }"
-            v-html="renderMarkdown(row.reasoningMarkdown(message))"
+            v-html="renderMarkdown(bundle.presentation.reasoning)"
           />
         </details>
+        <ChatReactSteps
+          v-if="bundle.reactStepsWithTools.length"
+          :steps="bundle.reactStepsWithTools"
+          :is-dark="isDark"
+        />
+        <ChatA2UIPreview
+          v-if="bundle.presentation.mode === 'a2ui' && bundle.presentation.a2uiLines"
+          :lines="bundle.presentation.a2uiLines"
+          @user-action="(p) => emit('a2ui-user-action', p)"
+        />
         <div
-          v-else
+          v-if="bundle.presentation.bodyMarkdown"
           class="chat-message-content chat-message-prose"
           :class="{
             'chat-message-content--sent': message.role === 'user',
@@ -113,8 +124,8 @@
           }"
           v-html="
             row.isStreaming(message)
-              ? renderStreamingMarkdown(message.content_markdown)
-              : renderMarkdown(message.content_markdown)
+              ? renderStreamingMarkdown(bundle.presentation.bodyMarkdown)
+              : renderMarkdown(bundle.presentation.bodyMarkdown)
           "
         />
       </template>
@@ -139,6 +150,10 @@
 import { computed, toRef } from "vue";
 import ResolvedAvatarImg from "../avatar/ResolvedAvatarImg.vue";
 import ChatExecutionCard from "./ChatExecutionCard.vue";
+import ChatReactSteps from "./ChatReactSteps.vue";
+import ChatA2UIPreview from "./ChatA2UIPreview.vue";
+import { buildMessagePresentation } from "../../features/chat/messagePlannerPresentation";
+import type { Message, ReactToolLinkIndex } from "../../features/chat/types";
 import { shouldRenderAgentAvatarImage } from "../../features/avatar/iconModel";
 import {
   formatMessageStamp,
@@ -150,7 +165,11 @@ import {
   CHAT_MESSAGE_AVATAR_SIZE,
   useChatMessageRow,
 } from "../../features/chat/useChatMessageRow";
-import type { Message } from "./types";
+import type { A2UIUserActionPayload } from "../../features/chat/a2uiUserAction";
+
+const emit = defineEmits<{
+  "a2ui-user-action": [payload: A2UIUserActionPayload];
+}>();
 
 const props = defineProps<{
   message: Message;
@@ -158,10 +177,22 @@ const props = defineProps<{
   messages: Message[];
   isDark: boolean;
   isTeamSession?: boolean;
+  /** Active agent planner_kind for presentation (react / a2ui). */
+  plannerKind?: string;
+  reactToolLinkIndex: ReactToolLinkIndex;
 }>();
 
 const messagesRef = computed(() => props.messages);
 const row = useChatMessageRow(messagesRef);
+
+const bundle = computed(() =>
+  buildMessagePresentation(
+    props.plannerKind ?? "",
+    props.message,
+    props.index,
+    props.reactToolLinkIndex
+  )
+);
 const avatarSize = CHAT_MESSAGE_AVATAR_SIZE;
 const avatarIconSize = CHAT_MESSAGE_AVATAR_ICON_SIZE;
 

@@ -1,16 +1,12 @@
 package service
 
 import (
-	"database/sql"
 	"io"
 	"net/http"
 	"strings"
 
-	chatv1 "aranea-agents/api/kratos/chat/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/dingtalk"
-
-	"github.com/google/uuid"
 )
 
 func (h *ChannelIngress) handleDingTalkWebhook(w http.ResponseWriter, r *http.Request, chRow biz.Channel) error {
@@ -24,7 +20,7 @@ func (h *ChannelIngress) handleDingTalkWebhook(w http.ResponseWriter, r *http.Re
 		http.Error(w, "credentials", http.StatusInternalServerError)
 		return nil
 	}
-	secret, _ := resolveCredentialPlain(creds, "secret")
+	secret, _ := resolveCredentialPlain(r.Context(), creds, "secret")
 	if err := dingtalk.VerifySign(r.URL.Query().Get("timestamp"), r.URL.Query().Get("sign"), secret); err != nil {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return nil
@@ -43,70 +39,21 @@ func (h *ChannelIngress) handleDingTalkWebhook(w http.ResponseWriter, r *http.Re
 	}
 	peerID := ingressFirstNonEmpty(parsed.SenderStaffID, parsed.ConversationID, parsed.SenderNick)
 	peerKey := biz.PeerKeyForSession(routing.DMScope, peerID)
-	ownerType, agentID, teamID, err := biz.ResolveChannelTarget(r.Context(), h.agents, h.teams, routing, peerID)
-	if err != nil {
-		_ = h.recordDelivery(r.Context(), chRow.ID, "error", map[string]any{"phase": "resolve", "error": err.Error()}, err.Error())
-		http.Error(w, "route", http.StatusBadRequest)
-		return nil
-	}
-
-	channelKey := strings.TrimSpace(chRow.Key)
-	bind, err := h.peers.GetByChannelAndPeer(r.Context(), chRow.ID, peerKey)
-	var sessionID string
-	switch {
-	case err == nil && strings.TrimSpace(bind.SessionID) != "":
-		sessionID = bind.SessionID
-	case err != nil && err != sql.ErrNoRows:
-		_ = h.recordDelivery(r.Context(), chRow.ID, "error", map[string]any{"phase": "peer_bind", "error": err.Error()}, err.Error())
-		http.Error(w, "bind", http.StatusInternalServerError)
-		return nil
-	default:
-		title := "dingtalk:" + channelKey + ":" + peerKey
-		created, cerr := h.sessions.Create(r.Context(), biz.Session{
-			OwnerType: ownerType,
-			AgentID:   agentID,
-			TeamID:    teamID,
-			Title:     title,
-		})
-		if cerr != nil {
-			_ = h.recordDelivery(r.Context(), chRow.ID, "error", map[string]any{"phase": "session", "error": cerr.Error()}, cerr.Error())
-			http.Error(w, "session", http.StatusInternalServerError)
-			return nil
-		}
-		sessionID = created.ID
-		if _, cerr = h.peers.Create(r.Context(), biz.ChannelPeerSession{
-			ID: uuid.NewString(), ChannelID: chRow.ID, PeerKey: peerKey, SessionID: sessionID,
-		}); cerr != nil {
-			_ = h.recordDelivery(r.Context(), chRow.ID, "error", map[string]any{"phase": "peer_create", "error": cerr.Error()}, cerr.Error())
-			http.Error(w, "peer row", http.StatusInternalServerError)
-			return nil
-		}
-	}
-
-	req := &chatv1.SendChatMessageRequest{SessionId: sessionID, Content: parsed.Text}
-	if ownerType == "team" && teamID != "" {
-		tid := teamID
-		req.TeamId = &tid
-	}
-	_, asst, err := h.chat.RunNativeTurnUnary(r.Context(), req)
+	reply, err := h.runChatTurn(r.Context(), chRow, "dingtalk", peerKey, peerID, parsed.Text)
 	if err != nil {
 		_ = h.recordDelivery(r.Context(), chRow.ID, "error", map[string]any{"phase": "chat", "error": err.Error()}, err.Error())
 		http.Error(w, "agent error", http.StatusInternalServerError)
 		return nil
 	}
-	reply := strings.TrimSpace(asst.ContentMarkdown)
-	if reply == "" {
-		w.WriteHeader(http.StatusOK)
+	idempotency := "dingtalk:" + parsed.ConversationID + ":" + strings.TrimSpace(r.URL.Query().Get("timestamp"))
+	if err := h.enqueueOutboundReply(r.Context(), chRow, "dingtalk", parsed.SessionWebhook, reply, map[string]string{
+		"session_webhook": parsed.SessionWebhook,
+	}, idempotency); err != nil {
+		_ = h.recordDelivery(r.Context(), chRow.ID, "error", map[string]any{"phase": "enqueue", "error": err.Error()}, err.Error())
+		http.Error(w, "queue", http.StatusInternalServerError)
 		return nil
 	}
-	webhookURL, _ := resolveCredentialPlain(creds, "webhook_url")
-	sender := &dingtalk.TextSender{WebhookURL: webhookURL, Secret: secret, HTTP: h.http}
-	if err := sender.SendText(r.Context(), parsed.SessionWebhook, reply); err != nil {
-		_ = h.recordDelivery(r.Context(), chRow.ID, "error", map[string]any{"phase": "send", "error": err.Error()}, err.Error())
-		http.Error(w, "send", http.StatusBadGateway)
-		return nil
-	}
-	_ = h.recordDelivery(r.Context(), chRow.ID, "delivered", map[string]any{"conversation_id": parsed.ConversationID}, "")
+	_ = h.recordDelivery(r.Context(), chRow.ID, "queued", map[string]any{"conversation_id": parsed.ConversationID}, "")
 	w.WriteHeader(http.StatusOK)
 	return nil
 }

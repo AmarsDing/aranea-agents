@@ -20,6 +20,31 @@ message SystemSettings {
   int64 global_monthly_micro_usd = 4;
   // Public A2A endpoint URL prefix (no trailing slash). Empty uses env/config/derived chain.
   string a2a_public_base_url = 5;
+  // True when platform credential_encryption_key is stored (auto-generated on first use). Key value is not exposed.
+  bool credential_encryption_key_configured = 6;
+  // Knowledge RAG embedder defaults (persisted; env KRATOS_KNOWLEDGE_EMBED_* overrides at startup).
+  KnowledgeEmbedSettings knowledge_embed = 7;
+  // Allow MCP Broker mcp_call against ad-hoc HTTP endpoints (production off by default).
+  bool mcp_allow_adhoc_http = 8;
+  // Evaluation UserSim / LLM-as-Judge defaults (env KRATOS_EVAL_* overrides at runtime).
+  EvalLLMSettings eval_llm = 9;
+}
+
+message EvalLLMSettings {
+  string sim_provider = 1;
+  string sim_model = 2;
+  string judge_provider = 3;
+  string judge_model = 4;
+  bool configured = 5;
+}
+
+message KnowledgeEmbedSettings {
+  string provider = 1;   // openai | ollama | gemini | huggingface
+  string base_url = 2;   // TEI / custom API base
+  string model = 3;      // e.g. gemini-embedding-001
+  int32 dim = 4;
+  bool configured = 5;
+  bool has_api_key = 6;  // key value never returned
 }
 
 message UpdateSystemSettingsRequest {
@@ -27,6 +52,17 @@ message UpdateSystemSettingsRequest {
   string root_directory = 2;
   int64 global_monthly_micro_usd = 3;
   string a2a_public_base_url = 4;
+  string knowledge_embed_provider = 5;
+  string knowledge_embed_base_url = 6;
+  // Empty = do not change stored key; non-empty replaces.
+  string knowledge_embed_api_key = 7;
+  string knowledge_embed_model = 8;
+  int32 knowledge_embed_dim = 9;
+  bool mcp_allow_adhoc_http = 10;
+  string eval_sim_provider = 11;
+  string eval_sim_model = 12;
+  string eval_judge_provider = 13;
+  string eval_judge_model = 14;
 }
 
 service SystemSettingService {

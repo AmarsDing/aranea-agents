@@ -14,8 +14,10 @@ import (
 	"aranea-agents/internal/event"
 	arametrics "aranea-agents/internal/metrics"
 	rt "aranea-agents/internal/runtime"
+	"aranea-agents/internal/telemetry/turntrace"
 	knowledgetool "aranea-agents/internal/tools/knowledge"
 	serviceawaitreply "aranea-agents/internal/tools/serviceawaitreply"
+	"aranea-agents/internal/tools/skillruntime"
 	"aranea-agents/pkg/safego"
 	"aranea-agents/pkg/strutil"
 
@@ -50,12 +52,17 @@ func (s *ChatService) runSingleAgentViaTRPC(
 	var turnErr error
 	var resultPromptTok, resultCompletionTok int
 	var turnErrMsg string
-	ctx, turnSpan := startTurnSpan(ctx, "chat.turn", sessionID, ag.AgentKey, runID)
-	emitter := event.NewTraceEmitterForRun(ctx, s.td.Pipeline.Bus, s.td.Pipeline.Buffer, sessionID, runID, ag.AgentKey, ag.ID)
+	ctx, traceBridge, _ := startTurnSpan(ctx, "chat.turn", sessionID, ag.AgentKey, runID)
+	emitter := event.NewTraceEmitterForRun(event.TraceEmitterOpts{
+		Ctx: ctx, Bus: s.td.Pipeline.Bus, Buffer: s.td.Pipeline.Buffer,
+		SessionID: sessionID, RunID: runID, AgentKey: ag.AgentKey, AgentID: ag.ID,
+		Domain: event.TraceDomainChat,
+	})
+	emitter.SetOtelRefs(traceBridge.TraceID(), traceBridge.RootSpanID())
 	ctx = event.WithTraceEmitter(ctx, emitter)
 	defer func() {
 		emitter.FinishRoot(turnStatus)
-		endTurnSpan(turnSpan, turnErr)
+		endTurnSpan(traceBridge, turnErr)
 		s.recordTurnUsage(ctx, emitter, sessionID, runID, ag.AgentKey, ag.ID, prov, mod, turnStatus,
 			resultPromptTok, resultCompletionTok, time.Since(turnStart), turnErrMsg)
 	}()
@@ -90,6 +97,7 @@ func (s *ChatService) runSingleAgentViaTRPC(
 		PluginManager:      s.pluginManager,
 		MemoryAdmin:        s.td.Persist.Memory.Admin,
 		KnowledgeRetriever: s.knowledgeRetriever,
+		CodeExecFactory:    s.codeExecFactory,
 	}
 	root, err := chatagent.BuildTRPCAgentCached(ctx, ag, deps)
 	if err != nil {
@@ -108,15 +116,23 @@ func (s *ChatService) runSingleAgentViaTRPC(
 	}
 	emitter.LogDone("chat.plugins_load", "插件已加载", event.P("plugin_count", len(plugins)))
 	deps.Plugins = plugins
-	if s.td.RunnerMgr == nil {
-		s.td.RunnerMgr = rt.NewRunnerManagerFromPersist(s.td.Persist)
+	lookup := map[string]trpcagent.Agent{}
+	if key := strings.TrimSpace(ag.AgentKey); key != "" {
+		lookup[key] = root
+	}
+	rl := chatagent.ResolveRalphLoopTurn(ag.Settings)
+	if rl.SkipErr != nil {
+		emitter.LogWarn("chat.runner.ralph_loop", "Ralph Loop 配置无效，已跳过", "",
+			event.P("agent_id", ag.ID), event.P("error", rl.SkipErr.Error()))
 	}
 	emitter.LogStart("chat.runner.create", "创建 Runner", event.P("agent_key", ag.AgentKey), event.P("plugin_count", len(plugins)))
-	runner, err := s.td.RunnerMgr.NewTurnRunner(root, rt.TurnRunnerSpec{
+	runner, err := s.td.CoalesceRunnerManager().NewTurnRunner(root, rt.TurnRunnerSpec{
 		Plugins:               plugins,
 		AwaitUserReplyRouting: deps.AwaitHook != nil,
 		BuilderDeps:           deps,
 		AgentFactoryKeys:      []string{ag.AgentKey},
+		LookupAgents:          lookup,
+		RalphLoop:             rl.Config,
 	})
 	if err != nil {
 		emitter.LogError("chat.runner.create", "Runner 创建失败", event.P("error", err.Error()))
@@ -185,7 +201,7 @@ func (s *ChatService) runSingleAgentViaTRPC(
 	emitter.LogDone("chat.user_msg_persist", "用户消息已持久化")
 
 	uid := chatagent.UserIDFromCtx(ctx)
-	runOpts := []trpcagent.RunOption{trpcagent.WithRequestID(sessionID)}
+	runOpts := []trpcagent.RunOption{trpcagent.WithRequestID(sessionID), skillruntime.RunOptionWithTurnQuery(sendText)}
 	if ag.Settings != nil {
 		if vars := chatagent.ParseVariablesJSON(ag.Settings.VariablesJSON); vars != nil {
 			runOpts = append(runOpts, trpcagent.MergeRuntimeState(vars))
@@ -194,7 +210,6 @@ func (s *ChatService) runSingleAgentViaTRPC(
 	// Apply a turn-level timeout so a hanging LLM call does not block the
 	// HTTP caller indefinitely. If the parent context already has a shorter
 	// deadline we keep it as-is.
-	const defaultTurnTimeout = 5 * time.Minute
 	const firstByteTimeout = 30 * time.Second
 	if deadline, hasDeadline := ctx.Deadline(); !hasDeadline || time.Until(deadline) > defaultTurnTimeout {
 		var cancel context.CancelFunc
@@ -226,7 +241,9 @@ func (s *ChatService) runSingleAgentViaTRPC(
 		s.setRunStatus(sessionID, runID, "failed", err.Error())
 		return userMsg, biz.ChatMessage{}, TurnError(TurnErrAttachmentFailed, err.Error())
 	}
-	events, err := chatagent.RunTRPCUserTurnMsg(runCtx, runner, uid, sessionID, userTurnMsg, runOpts...)
+	llmCtx, llmSpan := traceBridge.StartChild(runCtx, "chat.llm.invoke")
+	events, err := chatagent.RunTRPCUserTurnMsg(llmCtx, runner, uid, sessionID, userTurnMsg, runOpts...)
+	turntrace.EndChild(llmSpan, err)
 	if err != nil {
 		turnStatus = "error"
 		turnErr = err
@@ -250,7 +267,7 @@ func (s *ChatService) runSingleAgentViaTRPC(
 		AgentID:          ag.ID,
 		AgentDisplayName: ag.DisplayName,
 	}
-	events = event.WrapEventsWithTraceEmitter(events, emitter)
+	events = event.WrapFrameworkEvents(events, emitter, traceBridge)
 	streamOpts := NewChatStreamConsumeOptions(s.td.Catalog.ToolUC, s.td.Catalog.Agents, s.td.Sessions)
 	result := chatagent.ConsumeEventStreamWithFirstByte(firstByteCtx, runCtx, events, s.td.Pipeline.Bus, projectMeta, &firstByteReceived, streamOpts)
 	resultPromptTok = result.PromptTok
@@ -338,6 +355,7 @@ func (s *ChatService) runSingleAgentViaTRPC(
 	arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "ok").Observe(time.Since(turnStart).Seconds())
 	s.recordSessionTurn(ctx, sessionID, ag, userMsg.ID, assistantMsg.ID, prov, mod, promptTok, completionTok, assistantMsg.ContentMarkdown)
 	s.setRunStatus(sessionID, runID, "completed", "")
+	notifyNativeTurnHooks(ctx, s, sessionID, ag, content, assistantMsg.ContentMarkdown)
 	emitter.LogDone("chat.turn.execute", "对话轮次执行完成",
 		event.P("run_id", runID),
 		event.P("reply_len", len(replyText)),
@@ -349,7 +367,7 @@ func (s *ChatService) runSingleAgentViaTRPC(
 }
 
 func (s *ChatService) processPendingQueue(sessionID string, sess biz.Session, ag biz.Agent, dialogMode, prov, mod string) {
-	entry, ok := s.pending.Dequeue(sessionID)
+	entry, ok := s.chatUC.DequeuePendingMessage(sessionID)
 	if !ok {
 		return
 	}
@@ -381,7 +399,9 @@ func (s *ChatService) processPendingQueue(sessionID string, sess biz.Session, ag
 					Message:   fmt.Sprintf("pending message failed: %s", err.Error()),
 					PendingID: entry.ID,
 				}
-				s.td.Pipeline.Bus.Publish(bgCtx, env)
+				publishCtx, publishCancel := context.WithTimeout(context.Background(), 3*time.Second)
+				defer publishCancel()
+				s.td.Pipeline.Bus.Publish(publishCtx, env)
 			}
 		} else {
 			pendingEmitter.LogDone("chat.pending_dequeue", "排队消息处理完成", event.P("entry_id", entry.ID))

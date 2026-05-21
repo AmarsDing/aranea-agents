@@ -21,6 +21,8 @@ type TurnRunnerSpec struct {
 	AwaitUserReplyRouting bool
 	BuilderDeps           chatagent.TRPCBuilderDeps
 	AgentFactoryKeys      []string
+	LookupAgents          map[string]trpcagent.Agent
+	RalphLoop             *trpcrunner.RalphLoopConfig
 	ExtraOpts             []trpcrunner.Option
 	// RegistryKey, when set, stores the runner in the instance registry until CloseRunner.
 	RegistryKey string
@@ -59,8 +61,10 @@ func (m *RunnerManager) NewTurnRunner(root trpcagent.Agent, spec TurnRunnerSpec)
 		spec.Plugins...,
 	)
 	runnerDeps.AwaitUserReplyRouting = spec.AwaitUserReplyRouting
+	runnerDeps.RalphLoop = spec.RalphLoop
 
 	opts := append([]trpcrunner.Option{}, spec.ExtraOpts...)
+	opts = append(opts, chatagent.BizAgentRegistryOptions(spec.LookupAgents)...)
 	if len(spec.AgentFactoryKeys) > 0 {
 		opts = append(opts, chatagent.BizAgentFactoryOptions(spec.BuilderDeps, spec.AgentFactoryKeys...)...)
 	}

@@ -39,13 +39,21 @@ export function useChatMessageRow(messages: ComputedRef<Message[]>) {
   function teamMemberMeta(message: Message): TeamMemberMessageMeta | null {
     try {
       const raw = JSON.parse(message.options_json || "{}") as {
+        schema?: string;
         team_member?: TeamMemberMessageMeta;
         member_agent_key?: string;
+        author?: string;
         display_name?: string;
       };
       if (raw.team_member) return raw.team_member;
       if (raw.member_agent_key) {
         return { agent_key: raw.member_agent_key, name: raw.display_name || raw.member_agent_key };
+      }
+      if (raw.schema === "chat.team_member/v1" && raw.author) {
+        return { agent_key: raw.author, name: raw.author };
+      }
+      if (message.role === "member" && raw.author) {
+        return { agent_key: raw.author, name: raw.author };
       }
       return null;
     } catch {
@@ -97,7 +105,10 @@ export function useChatMessageRow(messages: ComputedRef<Message[]>) {
   }
 
   function isTeamMember(message: Message): boolean {
-    return message.role !== "user" && (Boolean(teamMemberMeta(message)) || Boolean(message.model_name?.startsWith("team/")));
+    return (
+      message.role === "member" ||
+      (message.role !== "user" && (Boolean(teamMemberMeta(message)) || Boolean(message.model_name?.startsWith("team/"))))
+    );
   }
 
   function isStreaming(message: Message): boolean {
@@ -248,6 +259,7 @@ export function useChatMessageRow(messages: ComputedRef<Message[]>) {
     reasoningMarkdown,
     displayMessageName,
     teamMemberMeta,
+    messageIdentityKey,
     structuredToolEvent,
     isCollapsibleToolDetail,
     toolCollapseSummary,

@@ -33,6 +33,7 @@
         :is-dark="isDark"
         @copy-key="copyKey"
         @open-runs="openRuns"
+        @run-test="openRunTest"
         @duplicate="duplicate"
         @edit="openEdit"
         @remove="remove"
@@ -71,13 +72,28 @@
       :runs="runs"
       :steps-by-run="stepsByRun"
       :steps-loading="stepsLoading"
+      :summaries-by-run="summariesByRun"
+      :summaries-loading="summariesLoading"
       :agents="agents"
       :loading="runsLoading"
       :error="runsError"
       :live-connected="runEventsConnected"
+      :live-replaying="runEventsReplaying"
       :is-dark="isDark"
       @refresh="loadRuns"
       @show-steps="loadRunSteps"
+      @load-summary="loadRunSummary"
+    />
+
+    <TeamTestDialog
+      v-model="testOpen"
+      :team="testTeam"
+      :loading="testLoading"
+      :error="testError"
+      :reply="testReply"
+      :run="testRun"
+      :is-dark="isDark"
+      @run="executeRunTest"
     />
   </q-page>
 </template>
@@ -92,20 +108,24 @@ import {
   createTeam,
   deleteTeam,
   duplicateTeam,
+  getTeamRunSummary,
   listTeamRuns,
   listTeamRunSteps,
   listTeams,
+  runTeamTest,
   subscribeTeamRunEventsWs,
   updateTeam,
   type Team,
   type TeamDefinition,
   type TeamRun,
   type TeamRunEvent,
-  type TeamRunStep
+  type TeamRunStep,
+  type TeamRunSummary
 } from "../features/teams/api";
 import TeamCard from "../components/teams/TeamCard.vue";
 import TeamEditorDialog from "../components/teams/TeamEditorDialog.vue";
 import TeamRunsDialog from "../components/teams/TeamRunsDialog.vue";
+import TeamTestDialog from "../components/teams/TeamTestDialog.vue";
 import TeamToolbar from "../components/teams/TeamToolbar.vue";
 import { buildGraphFromDefinition, defaultDefinition, definitionFromTemplate, parseDefinition, type TeamTemplateKey } from "../components/teams/teamUtils";
 
@@ -127,10 +147,19 @@ const runsOpen = ref(false);
 const runsLoading = ref(false);
 const runsError = ref("");
 const runEventsConnected = ref(false);
+const runEventsReplaying = ref(false);
 const selectedTeam = ref<Team | null>(null);
 const runs = ref<TeamRun[]>([]);
 const stepsByRun = ref<Record<string, TeamRunStep[]>>({});
 const stepsLoading = ref<Record<string, boolean>>({});
+const summariesByRun = ref<Record<string, TeamRunSummary>>({});
+const summariesLoading = ref<Record<string, boolean>>({});
+const testOpen = ref(false);
+const testTeam = ref<Team | null>(null);
+const testLoading = ref(false);
+const testError = ref("");
+const testReply = ref("");
+const testRun = ref<TeamRun | null>(null);
 let runEventsSource: ReturnType<typeof subscribeTeamRunEventsWs> | null = null;
 
 const form = reactive({
@@ -306,8 +335,46 @@ async function copyKey(value: string) {
 async function openRuns(team: Team) {
   selectedTeam.value = team;
   runsOpen.value = true;
+  summariesByRun.value = {};
   await loadRuns();
   openRunEvents(team.id);
+}
+
+function openRunTest(team: Team) {
+  testTeam.value = team;
+  testError.value = "";
+  testReply.value = "";
+  testRun.value = null;
+  testOpen.value = true;
+}
+
+async function executeRunTest(content: string) {
+  if (!testTeam.value) return;
+  testLoading.value = true;
+  testError.value = "";
+  try {
+    const result = await runTeamTest(testTeam.value.id, content);
+    testReply.value = result.reply;
+    testRun.value = result.run;
+    $q.notify({ type: "positive", message: "Team 测试运行完成" });
+  } catch (err) {
+    testError.value = err instanceof Error ? err.message : "运行测试失败";
+  } finally {
+    testLoading.value = false;
+  }
+}
+
+async function loadRunSummary(runID: string) {
+  if (summariesByRun.value[runID] || summariesLoading.value[runID]) return;
+  summariesLoading.value = { ...summariesLoading.value, [runID]: true };
+  try {
+    const summary = await getTeamRunSummary(runID);
+    summariesByRun.value = { ...summariesByRun.value, [runID]: summary };
+  } catch (err) {
+    $q.notify({ type: "negative", message: err instanceof Error ? err.message : "加载汇总失败" });
+  } finally {
+    summariesLoading.value = { ...summariesLoading.value, [runID]: false };
+  }
 }
 
 async function loadRuns() {
@@ -345,6 +412,9 @@ function openRunEvents(teamID: string) {
     },
     () => {
       runEventsConnected.value = false;
+    },
+    (replaying) => {
+      runEventsReplaying.value = replaying;
     }
   );
 }
@@ -353,6 +423,7 @@ function closeRunEvents() {
   runEventsSource?.close();
   runEventsSource = null;
   runEventsConnected.value = false;
+  runEventsReplaying.value = false;
 }
 
 function applyRunEvent(event: TeamRunEvent) {

@@ -192,6 +192,9 @@ export interface RunStatus {
   startedAt?: string;
   lastEventAt?: string;
   eventCount?: number;
+  awaitKind?: string;
+  awaitToolKey?: string;
+  awaitToolCallId?: string;
 }
 
 export async function getRunStatus(sessionId: string): Promise<RunStatus> {
@@ -207,6 +210,9 @@ export async function getRunStatus(sessionId: string): Promise<RunStatus> {
       startedAt: data.startedAt ?? undefined,
       lastEventAt: data.lastEventAt ?? undefined,
       eventCount: data.eventCount ?? undefined,
+      awaitKind: data.awaitKind ?? undefined,
+      awaitToolKey: data.awaitToolKey ?? undefined,
+      awaitToolCallId: data.awaitToolCallId ?? undefined,
     };
   } catch {
     return { runId: "", status: "idle", errorMessage: "", updatedAt: "" };

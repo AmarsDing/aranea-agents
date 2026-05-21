@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -109,9 +110,15 @@ func (s *ChatService) nativeGetModelOptions(ctx context.Context) (*chatv1.GetCha
 		if row.Enabled == false {
 			continue
 		}
+		type modelMeta struct {
+			Provider string `json:"provider,omitempty"`
+			Model    string `json:"model,omitempty"`
+		}
 		mj := "{}"
 		if row.Provider != "" || row.Model != "" {
-			mj = fmt.Sprintf(`{"provider":"%s","model":"%s"}`, row.Provider, row.Model)
+			if b, err := json.Marshal(modelMeta{Provider: row.Provider, Model: row.Model}); err == nil {
+				mj = string(b)
+			}
 		}
 		label := row.Name
 		if label == "" {
@@ -182,19 +189,13 @@ func (s *ChatService) runNativeAgentTurn(ctx context.Context, req *chatv1.SendCh
 	if hasActive {
 		if _, _, ok := s.runs.ActiveRunner(sessionID); ok {
 			unlock()
-			enqueued, err := s.runs.EnqueueUserMessage(sessionID, content)
+			accepted, _, _, rejectReason, err := s.chatUC.EnqueueUserMessage(sessionID, content)
 			if err != nil {
 				return biz.ChatMessage{}, biz.ChatMessage{}, err
 			}
-			if enqueued {
-				s.publishMessageQueued(sessionID)
-				return biz.ChatMessage{}, biz.ChatMessage{}, nil
+			if !accepted {
+				return biz.ChatMessage{}, biz.ChatMessage{}, enqueueRejectError(rejectReason)
 			}
-			pendingID := s.pending.Enqueue(sessionID, content)
-			if pendingID == "" {
-				return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.BadRequest("CHAT", "pending queue is full for this session")
-			}
-			s.publishMessageQueued(sessionID)
 			return biz.ChatMessage{}, biz.ChatMessage{}, nil
 		}
 		// Stale placeholder from a crashed/partial run — clear and start a fresh turn.
@@ -335,12 +336,16 @@ func (s *ChatService) RunAgentTurn(ctx context.Context, agentID, input string, t
 	runCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSec)*time.Second)
 	defer cancel()
 
+	uid := chatagent.UserIDFromCtx(runCtx)
+	if uid == "" {
+		uid = "system"
+	}
 	sess, err := s.td.Sessions.Create(runCtx, biz.Session{
 		ID:        uuid.NewString(),
 		AgentID:   strings.TrimSpace(agentID),
 		OwnerType: "agent",
 		Title:     fmt.Sprintf("a2a-%s", agentID),
-		UserID:    "1",
+		UserID:    uid,
 	})
 	if err != nil {
 		return "", kerrors.InternalServer("A2A", "create session: "+err.Error())
@@ -394,4 +399,18 @@ func patchSessionContextUsage(ctx context.Context, s *ChatService, sessionID str
 	if s.td.Compress != nil {
 		s.td.Compress.AfterNativeTurn(ctx, sessionID, ag)
 	}
+}
+
+// notifyNativeTurnHooks runs post-turn side effects (compression usage already handled separately).
+func notifyNativeTurnHooks(ctx context.Context, s *ChatService, sessionID string, ag biz.Agent, userInput, assistantOutput string) {
+	if s == nil || s.td.AfterTurn == nil {
+		return
+	}
+	s.td.AfterTurn.AfterNativeTurn(ctx, biz.NativeTurnEvent{
+		AgentID:         ag.ID,
+		AgentConfigJSON: ag.ConfigJSON,
+		SessionID:       sessionID,
+		UserInput:       userInput,
+		AssistantOutput: assistantOutput,
+	})
 }

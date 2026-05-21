@@ -147,7 +147,7 @@ export function cancelRunningToolMessages(messages: Message[], reason = "用户�
   return changed ? next : messages;
 }
 
-function toolEventFromMessage(message: Message): ToolUseEvent | null {
+export function toolEventFromMessage(message: Message): ToolUseEvent | null {
   try {
     const raw = JSON.parse(message.options_json || "{}") as { tool_event?: ToolUseEvent };
     return raw.tool_event ?? null;

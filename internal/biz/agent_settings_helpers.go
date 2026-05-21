@@ -55,6 +55,8 @@ func withSettingDefaults(v AgentRuntimeSettings) AgentRuntimeSettings {
 	defaultInt(&v.EvoPersonaMaxChars, d.EvoPersonaMaxChars)
 	defaultInt(&v.EvoSystemPromptMaxAppends, d.EvoSystemPromptMaxAppends)
 	defaultString(&v.SkillRuntimeJSON, d.SkillRuntimeJSON)
+	defaultString(&v.CodeExecutorType, d.CodeExecutorType)
+	defaultString(&v.PlannerConfigJSON, d.PlannerConfigJSON)
 	defaultInt(&v.ToolsRetryMaxAttempts, d.ToolsRetryMaxAttempts)
 	defaultInt(&v.ToolsRetryInitialIntervalMs, d.ToolsRetryInitialIntervalMs)
 	defaultFloat(&v.ToolsRetryBackoffFactor, d.ToolsRetryBackoffFactor)

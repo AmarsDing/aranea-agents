@@ -17,6 +17,24 @@
             <q-chip v-if="config.provider_type" dense square color="blue-1" text-color="primary">
               {{ config.provider_type }}
             </q-chip>
+            <q-chip
+              v-if="showVariantChip"
+              dense
+              square
+              color="teal-1"
+              text-color="teal-9"
+            >
+              {{ config.variant }}
+            </q-chip>
+            <q-chip
+              v-if="haChipLabel"
+              dense
+              square
+              :color="haChipColor"
+              :text-color="haChipTextColor"
+            >
+              {{ haChipLabel }}
+            </q-chip>
           </div>
         </div>
 
@@ -81,13 +99,27 @@
 
         <div class="provider-secret">
           <div class="field-label">API 密钥</div>
+          <div v-if="hasApiKey" class="row items-center no-wrap q-gutter-xs">
+            <span class="masked-secret">{{ listKeyVisible ? listRevealedApiKey : "••••••••••••" }}</span>
+            <q-btn
+              flat
+              dense
+              round
+              size="sm"
+              :icon="listKeyVisible ? 'visibility_off' : 'visibility'"
+              :loading="listKeyRevealing"
+              :aria-label="listKeyVisible ? '隐藏 API 密钥' : '查看 API 密钥'"
+              @click="toggleListApiKeyVisibility"
+            />
+          </div>
           <q-chip
+            v-else
             dense
-            :color="hasApiKey ? 'green-1' : 'orange-1'"
-            :text-color="hasApiKey ? 'green-8' : 'orange-9'"
+            color="orange-1"
+            text-color="orange-9"
             icon="key"
           >
-            {{ hasApiKey ? "已设置API密钥" : "未设置" }}
+            未设置
           </q-chip>
         </div>
 
@@ -112,9 +144,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { useQuasar } from "quasar";
-import type { PlatformResource } from "../../features/platform/api";
+import { revealProviderModelCredentials, type PlatformResource } from "../../features/platform/api";
 
 type ModelCategory = {
   value: string;
@@ -124,7 +156,11 @@ type ModelCategory = {
 
 type ProviderConfig = {
   provider_type?: string;
+  variant?: string;
+  ha_mode?: string;
   provider_display_name?: string;
+  secret_id?: string;
+  aws_region?: string;
   api_key?: string;
   api_key_set?: boolean;
   model_category?: ModelCategory[];
@@ -160,7 +196,50 @@ const categories = computed(() => {
 });
 const providerDisplayName = computed(() => config.value.provider_display_name || props.row.provider || props.row.key);
 const modelDisplayName = computed(() => props.row.name || props.row.model || "未设置模型");
-const hasApiKey = computed(() => Boolean(config.value.api_key_set || config.value.api_key));
+const hasApiKey = computed(() =>
+  Boolean(config.value.api_key_set || config.value.api_key || config.value.secret_id || config.value.aws_region)
+);
+const listKeyVisible = ref(false);
+const listRevealedApiKey = ref("");
+const listKeyRevealing = ref(false);
+
+async function toggleListApiKeyVisibility() {
+  if (listKeyVisible.value) {
+    listKeyVisible.value = false;
+    listRevealedApiKey.value = "";
+    return;
+  }
+  listKeyRevealing.value = true;
+  try {
+    const creds = await revealProviderModelCredentials(props.row.id);
+    if (creds.api_key) {
+      listRevealedApiKey.value = creds.api_key;
+    } else if (creds.secret_key) {
+      listRevealedApiKey.value = creds.secret_key;
+    } else {
+      listRevealedApiKey.value = "(已配置)";
+    }
+    listKeyVisible.value = true;
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "无法读取密钥";
+    $q.notify({ type: "negative", message: msg });
+  } finally {
+    listKeyRevealing.value = false;
+  }
+}
+const showVariantChip = computed(() => {
+  const pt = (config.value.provider_type || "").toLowerCase();
+  const variant = (config.value.variant || "").toLowerCase();
+  return pt === "openai" && variant !== "" && variant !== "openai";
+});
+const haChipLabel = computed(() => {
+  const mode = (config.value.ha_mode || "").toLowerCase();
+  if (mode === "failover") return "Failover";
+  if (mode === "hedge") return "Hedge";
+  return "";
+});
+const haChipColor = computed(() => ((config.value.ha_mode || "").toLowerCase() === "hedge" ? "purple-1" : "light-blue-1"));
+const haChipTextColor = computed(() => ((config.value.ha_mode || "").toLowerCase() === "hedge" ? "purple-9" : "blue-9"));
 const hotnessScore = computed(() => {
   const score = toNullableNumber(config.value.model_hotness_score);
   return score === null ? 0 : Math.max(0, Math.min(100, Math.round(score)));
@@ -244,6 +323,12 @@ function toNullableNumber(value: unknown) {
 .provider-identity,
 .provider-types,
 .provider-usage,
+.masked-secret {
+  font-family: ui-monospace, monospace;
+  letter-spacing: 0.08em;
+  color: var(--q-color-grey-8);
+}
+
 .provider-secret {
   min-width: 0;
 }

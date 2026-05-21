@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	mcpconfig "aranea-agents/internal/mcp/config"
 )
 
 func TestFetchOAuth2ClientCredentials(t *testing.T) {
@@ -17,7 +19,7 @@ func TestFetchOAuth2ClientCredentials(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	tok, err := fetchOAuth2ClientCredentials(context.Background(), mcpAuthConfigJSON{
+	tok, err := fetchOAuth2ClientCredentials(context.Background(), mcpconfig.AuthConfig{
 		Type:         "oauth2_client_credentials",
 		TokenURL:     srv.URL,
 		ClientID:     "cid",

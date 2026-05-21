@@ -5,8 +5,10 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"net/http"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"aranea-agents/internal/llminspect"
 
@@ -68,6 +70,10 @@ type InspectMerge struct {
 	ModelAPIID   string
 	APIBaseURL   string
 	APIKey       string
+	Variant      string
+	SecretID     string
+	SecretKey    string
+	AWSRegion    string
 }
 
 type providerPricingConfig struct {
@@ -100,16 +106,31 @@ func NewLlmProviderModelUsecase(repo LlmProviderModelRepo) *LlmProviderModelUsec
 }
 
 func (u *LlmProviderModelUsecase) List(ctx context.Context) ([]ProviderModel, error) {
-	return u.repo.ListProviderModels(ctx)
+	items, err := u.repo.ListProviderModels(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range items {
+		items[i] = sanitizeProviderModelForAPI(items[i])
+	}
+	return items, nil
 }
 
 func (u *LlmProviderModelUsecase) Get(ctx context.Context, id string) (ProviderModel, error) {
-	return u.repo.GetProviderModel(ctx, id)
+	m, err := u.repo.GetProviderModel(ctx, id)
+	if err != nil {
+		return ProviderModel{}, err
+	}
+	return sanitizeProviderModelForAPI(m), nil
 }
 
-// GetByProviderAndModel loads a catalog row by provider + model_api_id.
+// GetByProviderAndModel loads a catalog row by provider + model_api_id (decrypted for runtime).
 func (u *LlmProviderModelUsecase) GetByProviderAndModel(ctx context.Context, provider, model string) (ProviderModel, error) {
-	return u.repo.GetProviderModelByProviderAndModel(ctx, provider, model)
+	m, err := u.repo.GetProviderModelByProviderAndModel(ctx, provider, model)
+	if err != nil {
+		return ProviderModel{}, err
+	}
+	return prepareProviderModelForRuntime(ctx, m), nil
 }
 
 func (u *LlmProviderModelUsecase) Create(ctx context.Context, in ProviderModel) (ProviderModel, error) {
@@ -124,12 +145,20 @@ func (u *LlmProviderModelUsecase) Create(ctx context.Context, in ProviderModel) 
 	if in.Status == "" {
 		in.Status = "active"
 	}
+	if err := requireCredentialKeyForPlaintext(ctx, in.ConfigJSON); err != nil {
+		return ProviderModel{}, err
+	}
+	var err error
+	in.ConfigJSON, err = processConfigJSONForStorage(ctx, in.ConfigJSON)
+	if err != nil {
+		return ProviderModel{}, err
+	}
 	out, err := u.repo.CreateProviderModel(ctx, in)
 	if err != nil {
 		return ProviderModel{}, err
 	}
 	_ = u.syncProviderModelPricing(ctx, out)
-	return out, nil
+	return sanitizeProviderModelForAPI(out), nil
 }
 
 func (u *LlmProviderModelUsecase) Update(ctx context.Context, id string, patch ProviderModel) (ProviderModel, error) {
@@ -154,7 +183,18 @@ func (u *LlmProviderModelUsecase) Update(ctx context.Context, id string, patch P
 	merged.Provider = patch.Provider
 	merged.Model = patch.Model
 	if strings.TrimSpace(patch.ConfigJSON) != "" {
-		merged.ConfigJSON = patch.ConfigJSON
+		mergedCfg, err := mergeConfigJSONForUpdate(cur.ConfigJSON, patch.ConfigJSON)
+		if err != nil {
+			return ProviderModel{}, err
+		}
+		if err := requireCredentialKeyForPlaintext(ctx, mergedCfg); err != nil {
+			return ProviderModel{}, err
+		}
+		processed, err := processConfigJSONForStorage(ctx, mergedCfg)
+		if err != nil {
+			return ProviderModel{}, err
+		}
+		merged.ConfigJSON = processed
 	}
 	if strings.TrimSpace(patch.MetadataJSON) != "" {
 		merged.MetadataJSON = patch.MetadataJSON
@@ -173,11 +213,24 @@ func (u *LlmProviderModelUsecase) Update(ctx context.Context, id string, patch P
 		return ProviderModel{}, err
 	}
 	_ = u.syncProviderModelPricing(ctx, out)
-	return out, nil
+	return sanitizeProviderModelForAPI(out), nil
 }
 
 func (u *LlmProviderModelUsecase) Delete(ctx context.Context, id string) error {
 	return u.repo.DeleteProviderModel(ctx, id)
+}
+
+// RevealCredentials returns decrypted credentials for admin edit UI (never logged).
+func (u *LlmProviderModelUsecase) RevealCredentials(ctx context.Context, id string) (ProviderCredentialsReveal, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return ProviderCredentialsReveal{}, errors.BadRequest("LLM_PROVIDER_MODEL", "id is required")
+	}
+	m, err := u.repo.GetProviderModel(ctx, id)
+	if err != nil {
+		return ProviderCredentialsReveal{}, err
+	}
+	return revealCredentialsFromConfig(ctx, m.ConfigJSON)
 }
 
 func (u *LlmProviderModelUsecase) ValidatePair(ctx context.Context, provider, model string) (bool, string, error) {
@@ -200,12 +253,12 @@ func (u *LlmProviderModelUsecase) Inspect(ctx context.Context, in InspectMerge) 
 		if in.ResourceID != "" {
 			row, err := u.repo.GetProviderModel(ctx, in.ResourceID)
 			if err == nil && row.ConfigJSON != "" {
-				mergeInspectConfigJSON(row.ConfigJSON, &in)
+				mergeInspectConfigJSON(prepareProviderModelForRuntime(ctx, row).ConfigJSON, &in)
 			}
 		} else if in.ProviderCode != "" && in.ModelAPIID != "" {
 			row, err := u.repo.GetProviderModelByProviderAndModel(ctx, in.ProviderCode, in.ModelAPIID)
 			if err == nil && row.ConfigJSON != "" {
-				mergeInspectConfigJSON(row.ConfigJSON, &in)
+				mergeInspectConfigJSON(prepareProviderModelForRuntime(ctx, row).ConfigJSON, &in)
 			}
 		}
 	}
@@ -217,11 +270,35 @@ func (u *LlmProviderModelUsecase) Inspect(ctx context.Context, in InspectMerge) 
 		ModelAPIID:   in.ModelAPIID,
 		APIBaseURL:   in.APIBaseURL,
 		APIKey:       in.APIKey,
+		Variant:      in.Variant,
+		SecretID:     in.SecretID,
+		SecretKey:    in.SecretKey,
+		AWSRegion:    in.AWSRegion,
 	})
 }
 
 func (u *LlmProviderModelUsecase) needInspectMerge(in InspectMerge) bool {
-	return !(in.APIBaseURL != "" && in.APIKey != "" && in.ProviderType != "")
+	if in.ProviderType == "" || in.APIBaseURL == "" {
+		return true
+	}
+	return !inspectCredentialsComplete(in)
+}
+
+func inspectCredentialsComplete(in InspectMerge) bool {
+	pt := strings.ToLower(strings.TrimSpace(in.ProviderType))
+	if strings.TrimSpace(in.APIKey) != "" {
+		return true
+	}
+	if pt == "hunyuan" {
+		return strings.TrimSpace(in.SecretID) != "" && strings.TrimSpace(in.SecretKey) != ""
+	}
+	if pt == "bedrock" {
+		return strings.TrimSpace(in.AWSRegion) != ""
+	}
+	if pt == "ollama" {
+		return true
+	}
+	return false
 }
 
 func mergeInspectConfigJSON(cfg string, in *InspectMerge) {
@@ -229,6 +306,10 @@ func mergeInspectConfigJSON(cfg string, in *InspectMerge) {
 		ProviderType string `json:"provider_type"`
 		APIBaseURL   string `json:"api_base_url"`
 		APIKey       string `json:"api_key"`
+		Variant      string `json:"variant"`
+		SecretID     string `json:"secret_id"`
+		SecretKey    string `json:"secret_key"`
+		AWSRegion    string `json:"aws_region"`
 	}
 	if json.Unmarshal([]byte(cfg), &c) != nil {
 		return
@@ -241,6 +322,18 @@ func mergeInspectConfigJSON(cfg string, in *InspectMerge) {
 	}
 	if in.APIKey == "" {
 		in.APIKey = c.APIKey
+	}
+	if in.Variant == "" {
+		in.Variant = c.Variant
+	}
+	if in.SecretID == "" {
+		in.SecretID = c.SecretID
+	}
+	if in.SecretKey == "" {
+		in.SecretKey = c.SecretKey
+	}
+	if in.AWSRegion == "" {
+		in.AWSRegion = c.AWSRegion
 	}
 }
 
@@ -265,4 +358,46 @@ func (u *LlmProviderModelUsecase) syncProviderModelPricing(ctx context.Context, 
 		Source:                        "model-inspect",
 		MetadataJSON:                  "{}",
 	})
+}
+
+// RunHealthChecks probes enabled provider models and marks unhealthy rows.
+func (u *LlmProviderModelUsecase) RunHealthChecks(ctx context.Context) error {
+	items, err := u.repo.ListProviderModels(ctx)
+	if err != nil {
+		return err
+	}
+	client := &http.Client{Timeout: 10 * time.Second}
+	for _, row := range items {
+		if !row.Enabled || row.DeletedAt != "" {
+			continue
+		}
+		cfg := prepareProviderModelForRuntime(ctx, row)
+		var c struct {
+			APIBaseURL string `json:"api_base_url"`
+		}
+		_ = json.Unmarshal([]byte(cfg.ConfigJSON), &c)
+		base := strings.TrimSpace(c.APIBaseURL)
+		if base == "" {
+			continue
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodHead, base, nil)
+		if err != nil {
+			continue
+		}
+		resp, err := client.Do(req)
+		if err != nil || resp.StatusCode >= 500 {
+			row.Status = "degraded"
+			_, _ = u.repo.UpdateProviderModel(ctx, row)
+			if resp != nil {
+				resp.Body.Close()
+			}
+			continue
+		}
+		resp.Body.Close()
+		if row.Status == "degraded" {
+			row.Status = "active"
+			_, _ = u.repo.UpdateProviderModel(ctx, row)
+		}
+	}
+	return nil
 }

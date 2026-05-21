@@ -1,15 +1,16 @@
 # FlowLogger 流程日志 — 产品需求
 
-> **版本**：2026-05-20 | **状态**：📋 设计中（v2 重设计）  
+> **版本**：2026-05-21 | **状态**：✅ v2 Phase 1a/1b/1c/3 已落地；Phase 2 落库可选  
 > **设计**：[52-flow-logger.design.md](./52-flow-logger.design.md)  
-> **开发计划**：[52-flow-logger-development.md](./52-flow-logger-development.md)  
-> **背景**：[changelog FlowLogger 初版](../changelog/2026-05-20-Agent-No-Response-Debug-And-FlowLogger.md)
+> **开发计划**：[52-flow-logger-development.md](./52-flow-logger-development.md)（**实现差距以开发计划为准**）  
+> **关联**：[51 消息机制](./51%20消息机制.md) · [51a 后端](./51a%20后端消息机制.md) · [changelog DocSync](../changelog/2026-05-21-Message-FlowLogger-DocSync.md)  
+> **背景**：[changelog FlowLogger 初版](../changelog/2026-05-20-Agent-No-Response-Debug-And-FlowLogger.md) · [Slog 移除](../changelog/2026-05-20-FlowLog-V2-SlogRemoval.md)
 
 ---
 
 ## 1. 背景与问题
 
-当前 `FlowLogger`（`internal/event/flow_logger.go`）已用于 Chat Turn 排障，但存在局限：
+v1 `FlowLogger`（`internal/event/flow_logger.go`，已删除）曾用于 Chat Turn 排障，存在局限；**v2 已由 `TraceEmitter` + `EnvelopeTypeFlowLog` 替代**（见开发计划）。历史局限如下：
 
 
 | 问题                               | 影响                                   |
@@ -34,8 +35,8 @@
 | 能力                     | 代码锚点                                                            | 主要输出                                           | 面向谁        | 典型 UI                  |
 | ---------------------- | --------------------------------------------------------------- | ---------------------------------------------- | ---------- | ---------------------- |
 | **OTel Tracing**       | `internal/service/turn_trace.go`、`internal/server/telemetry.go` | OTLP → Jaeger/Tempo                            | SRE、跨服务排障  | Jaeger UI              |
-| **Turn Span（业务 Span）** | `internal/service/turn_spans.go` → `recordTurnUsage`            | `model_token_usage_events.metadata_json.spans` | 产品运维       | Monitor **Traces** 瀑布图 |
-| **FlowLogger（流程日志）**   | `internal/event/flow_logger.go` → WS `monitor`                  | `EnvelopeTypeLog` / 规划 `flow_log`              | 业务用户、AI 排障 | Monitor **流程日志** 时间线   |
+| **Turn Span（业务 Span）** | `TraceEmitter.MetadataJSON()` → `recordTurnUsage`（`turn_spans.go` 已删） | `model_token_usage_events.metadata_json.spans` | 产品运维       | Monitor **Traces** 瀑布图 |
+| **FlowLogger v2（流程日志）** | `internal/event/trace_emitter.go` → WS `monitor` `flow_log`     | `EnvelopeTypeFlowLog`（与进程 `log` 分流）       | 业务用户、AI 排障 | Monitor Logs「流程」+ Traces「流程」Tab |
 
 
 ### 2.1 本质区别
@@ -218,7 +219,7 @@
 ### 4.7 框架与架构约束
 
 - 实现位于 `internal/event`，**禁止** `internal/biz` import `trpc-agent-go`。
-- Turn 热路径 **禁止** 使用 `slog`（SlogBridge 重入风险）；统一 `FlowLogger` / `TraceContext`。
+- Turn 热路径 **禁止** 使用 `slog`（SlogBridge 已移除）；统一 `TraceEmitter` + `TraceContext`。
 - `internal/service` 创建上下文并注入 `context.Context`；`internal/agent` 仅通过 context 取 logger。
 - 与 [AGENT_RUNTIME_BOUNDARY](../AGENT_RUNTIME_BOUNDARY.md) / [trpc-agent-framework-first](../../.cursor/rules/trpc-agent-framework-first.mdc) 一致。
 

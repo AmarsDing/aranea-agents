@@ -17,10 +17,14 @@ export function useMonitorRunNavigation() {
   }
 
   function openRunsTab(extra: MonitorRunNavQuery = {}) {
+    openMonitorTab(extra.tab || "traces", extra);
+  }
+
+  function openMonitorTab(tab: string, extra: MonitorRunNavQuery = {}) {
     void router.push({
       path: "/monitor/logs",
       query: {
-        tab: extra.tab || "traces",
+        tab,
         ...(extra.session ? { session: extra.session } : {}),
         ...(extra.trace ? { trace: extra.trace } : {}),
         ...(extra.usageEventId ? { usage_event_id: extra.usageEventId } : {})
@@ -28,5 +32,5 @@ export function useMonitorRunNavigation() {
     });
   }
 
-  return { openChatSession, openRunsTab };
+  return { openChatSession, openRunsTab, openMonitorTab };
 }

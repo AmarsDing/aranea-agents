@@ -16,8 +16,10 @@ import (
 	"aranea-agents/internal/agent/intent"
 	"aranea-agents/internal/biz"
 	rt "aranea-agents/internal/runtime"
+	"aranea-agents/internal/telemetry/turntrace"
 	knowledgetool "aranea-agents/internal/tools/knowledge"
 	"aranea-agents/internal/tools/serviceawaitreply"
+	"aranea-agents/internal/tools/skillruntime"
 	"aranea-agents/pkg/strutil"
 
 	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
@@ -57,9 +59,25 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 	}
 
 	turnStatus := "ok"
+	var teamBridge *turntrace.Bridge
+	ctx, teamBridge, _ = turntrace.Start(ctx, turntrace.Config{
+		Domain:    turntrace.DomainTeam,
+		SpanName:  "team.run",
+		SessionID: sess.ID,
+		RunID:     run.ID,
+		AgentKey:  teamRow.ID,
+	})
+	ctx = turntrace.WithBridge(ctx, teamBridge)
+	defer func() { teamBridge.Finish(err) }()
+
 	var teamEmitter *event.TraceEmitter
 	if r.td.Pipeline.Bus != nil {
-		teamEmitter = event.NewTraceEmitterForRun(ctx, r.td.Pipeline.Bus, r.td.Pipeline.Buffer, sess.ID, run.ID, teamRow.ID, "")
+		teamEmitter = event.NewTraceEmitterForRun(event.TraceEmitterOpts{
+			Ctx: ctx, Bus: r.td.Pipeline.Bus, Buffer: r.td.Pipeline.Buffer,
+			SessionID: sess.ID, RunID: run.ID, AgentKey: teamRow.ID,
+			Domain: event.TraceDomainTeam,
+		})
+		teamEmitter.SetOtelRefs(teamBridge.TraceID(), teamBridge.RootSpanID())
 		ctx = event.WithTraceEmitter(ctx, teamEmitter)
 		teamEmitter.LogStart("team.run.start", "开始团队协作",
 			event.P("team_id", teamRow.ID), event.P("mode", mode), event.P("members", len(members)))
@@ -125,12 +143,13 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 		PluginManager: r.pluginManager,
 		MemoryAdmin:        r.td.Persist.Memory.Admin,
 		KnowledgeRetriever: r.knowledgeRetriever,
+		CodeExecFactory:    r.codeExecFactory,
 	}
 	if r.awaitHookProvider != nil {
 		builderDeps.AwaitHook = r.awaitHookProvider(ctx, sess.ID, run.ID)
 	}
 	teamDeps := TRPCTeamBuilderDeps{BuilderDeps: builderDeps, UseCache: true}
-	root, err := BuildTRPCTeam(ctx, def, teamDeps, r.catalogAgent)
+	root, memberLookup, err := BuildTRPCTeam(ctx, def, teamDeps, r.catalogAgent)
 	if err != nil {
 		turnStatus = "error"
 		r.finishRunErr(ctx, &run, t0, err.Error())
@@ -153,14 +172,19 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 		r.finishRunErr(ctx, &run, t0, err.Error())
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
-	if r.td.RunnerMgr == nil {
-		r.td.RunnerMgr = rt.NewRunnerManagerFromPersist(r.td.Persist)
+	// Team Ralph Loop uses the first member agent's runtime settings (orchestrator / lead).
+	rl := agent.ResolveRalphLoopTurn(firstAg.Settings)
+	if rl.SkipErr != nil {
+		event.CtxFlowLogWarn(ctx, "team.runner.ralph_loop", "Ralph Loop 配置无效，已跳过",
+			event.P("agent_id", firstAg.ID), event.P("error", rl.SkipErr.Error()))
 	}
-	runner, err := r.td.RunnerMgr.NewTurnRunner(root, rt.TurnRunnerSpec{
+	runner, err := r.td.CoalesceRunnerManager().NewTurnRunner(root, rt.TurnRunnerSpec{
 		Plugins:               plugins,
 		AwaitUserReplyRouting: builderDeps.AwaitHook != nil,
 		BuilderDeps:           builderDeps,
 		AgentFactoryKeys:      memberKeys,
+		LookupAgents:          memberLookup,
+		RalphLoop:             rl.Config,
 	})
 	if err != nil {
 		turnStatus = "error"
@@ -249,7 +273,7 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 		teamEmitter.LogStart("team.run.execute", "执行团队任务", event.P("mode", mode))
 	}
 
-	events, err := agent.RunTRPCUserTurn(runCtx, runner, uid, sess.ID, sendText)
+	events, err := agent.RunTRPCUserTurn(runCtx, runner, uid, sess.ID, sendText, skillruntime.RunOptionWithTurnQuery(sendText))
 	if err != nil {
 		if teamEmitter != nil {
 			teamEmitter.LogError("team.run.execute", err.Error(), event.P("mode", mode))
@@ -258,6 +282,7 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 		r.finishRunErr(ctx, &run, t0, err.Error())
 		return userMsg, biz.ChatMessage{}, err
 	}
+	events = event.WrapFrameworkEvents(events, teamEmitter, teamBridge)
 
 	memberKeySet := make(map[string]struct{}, len(memberKeys))
 	for _, k := range memberKeys {
@@ -368,7 +393,11 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 		}
 		stepMsg := assistantMsg
 		stepMsg.TokenIn, stepMsg.TokenOut = stepTokensForMember(ag.AgentKey, i, result, promptTok, completionTok)
-		r.persistStep(ctx, run, teamRow.ID, i, m, ag, content, stepMsg, prov0, mod0, dialogMode)
+		toolCalls := 0
+		if result.MemberToolCalls != nil {
+			toolCalls = result.MemberToolCalls[ag.AgentKey]
+		}
+		r.persistStep(ctx, run, teamRow.ID, i, m, ag, content, stepMsg, prov0, mod0, dialogMode, toolCalls)
 	}
 	r.recordTeamRunUsage(ctx, run, teamRow.ID, firstAg, promptTok, completionTok, prov0, mod0, dialogMode)
 

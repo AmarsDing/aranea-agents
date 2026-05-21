@@ -4,10 +4,20 @@ import {
   listMonitorAudit,
   listMonitorEvents,
   getMonitorLogs,
+  getRunnerMetrics,
   subscribeMonitorRuntimeEventsWs,
   subscribeMonitorLogsWs
 } from "../../features/monitor/api";
-import type { AuditLog, PlatformResource, MonitorLogSnapshot, MonitorLogLine, TeamRunEvent, AuditQuery, PaginatedResult } from "../../features/monitor/types";
+import type {
+  AuditLog,
+  PlatformResource,
+  MonitorLogSnapshot,
+  MonitorLogLine,
+  TeamRunEvent,
+  AuditQuery,
+  PaginatedResult,
+  RunnerMetricsSummary
+} from "../../features/monitor/types";
 
 export const useMonitorStore = defineStore("monitor", () => {
   const auditLogs = ref<AuditLog[]>([]);
@@ -15,6 +25,8 @@ export const useMonitorStore = defineStore("monitor", () => {
   const events = ref<PlatformResource[]>([]);
   const logSnapshot = ref<MonitorLogSnapshot | null>(null);
   const loading = ref(false);
+  const runnerMetrics = ref<RunnerMetricsSummary | null>(null);
+  const runnerLoading = ref(false);
 
   async function loadAuditLogs(query: AuditQuery = {}) {
     loading.value = true;
@@ -33,6 +45,15 @@ export const useMonitorStore = defineStore("monitor", () => {
 
   async function loadLogs() {
     logSnapshot.value = await getMonitorLogs();
+  }
+
+  async function loadRunnerMetrics(windowMinutes = 60) {
+    runnerLoading.value = true;
+    try {
+      runnerMetrics.value = await getRunnerMetrics(windowMinutes);
+    } finally {
+      runnerLoading.value = false;
+    }
   }
 
   function startRuntimeEventsStream(
@@ -54,5 +75,19 @@ export const useMonitorStore = defineStore("monitor", () => {
     return subscribeMonitorLogsWs(sessionId, onLine, onError, onConnected);
   }
 
-  return { auditLogs, auditTotal, events, logSnapshot, loading, loadAuditLogs, loadEvents, loadLogs, startRuntimeEventsStream, startLogsStream };
+  return {
+    auditLogs,
+    auditTotal,
+    events,
+    logSnapshot,
+    loading,
+    runnerMetrics,
+    runnerLoading,
+    loadAuditLogs,
+    loadEvents,
+    loadLogs,
+    loadRunnerMetrics,
+    startRuntimeEventsStream,
+    startLogsStream
+  };
 });

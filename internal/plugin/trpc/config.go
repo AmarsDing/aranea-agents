@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
-	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
 
 func parsePluginConfig(configJSON, defaultJSON string, dest any) {
@@ -101,6 +100,11 @@ func stringFieldMap(m map[string]any, key string) string {
 	return ""
 }
 
+type customPattern struct {
+	Pattern     string `json:"pattern"`
+	Replacement string `json:"replacement"`
+}
+
 var (
 	emailRE = regexp.MustCompile(`[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}`)
 	phoneRE = regexp.MustCompile(`\b1[3-9]\d{9}\b`)
@@ -108,6 +112,10 @@ var (
 )
 
 func redactText(s string, maskEmail, maskPhone, maskSecret bool) string {
+	return redactTextFull(s, maskEmail, maskPhone, maskSecret, nil)
+}
+
+func redactTextFull(s string, maskEmail, maskPhone, maskSecret bool, customs []customPattern) string {
 	if s == "" {
 		return s
 	}
@@ -119,6 +127,21 @@ func redactText(s string, maskEmail, maskPhone, maskSecret bool) string {
 	}
 	if maskSecret {
 		s = secretRE.ReplaceAllString(s, "[secret redacted]")
+	}
+	for _, c := range customs {
+		pat := strings.TrimSpace(c.Pattern)
+		if pat == "" {
+			continue
+		}
+		re, err := regexp.Compile(pat)
+		if err != nil {
+			continue
+		}
+		repl := strings.TrimSpace(c.Replacement)
+		if repl == "" {
+			repl = "[redacted]"
+		}
+		s = re.ReplaceAllString(s, repl)
 	}
 	return s
 }
@@ -159,14 +182,21 @@ func sessionAgentKey(ctx context.Context, inv *trpcagent.Invocation) (sessionID,
 	return
 }
 
-func patchRequestModelHint(req *trpcmodel.Request, model string) {
-	if req == nil || strings.TrimSpace(model) == "" {
-		return
+func agentKeyFromInvocation(inv *trpcagent.Invocation) string {
+	if inv == nil {
+		return ""
 	}
-	if req.ExtraFields == nil {
-		req.ExtraFields = make(map[string]any)
+	return strings.TrimSpace(inv.AgentName)
+}
+
+func invocationMeta(ctx context.Context) (sessionID, agentKey string) {
+	if inv, ok := trpcagent.InvocationFromContext(ctx); ok && inv != nil {
+		if inv.Session != nil {
+			sessionID = inv.Session.ID
+		}
+		agentKey = strings.TrimSpace(inv.AgentName)
 	}
-	req.ExtraFields["aranea_model_override"] = model
+	return
 }
 
 func toolInList(name string, list []string) bool {

@@ -58,6 +58,7 @@ export function teamRunEventFromEnvelope(env: Envelope, defaultTeamID = ""): Tea
         payload: meta,
       };
     case "team_step_started":
+    case "team_step_started":
     case "team_step_finished":
       return {
         type: env.type,

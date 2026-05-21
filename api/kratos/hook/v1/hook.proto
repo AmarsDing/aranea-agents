@@ -53,6 +53,36 @@ message DeleteHookRequest {
   string id = 1 [(google.api.field_behavior) = REQUIRED];
 }
 
+message HookDelivery {
+  string id = 1;
+  string hook_key = 2;
+  string hook_id = 3;
+  string webhook_url = 4;
+  string payload_json = 5;
+  string status = 6;
+  int32 attempt_count = 7;
+  int32 max_attempts = 8;
+  string last_error = 9;
+  string created_at = 10;
+  string updated_at = 11;
+}
+
+message ListHookDeliveriesRequest {
+  string hook_key = 1;
+  string status = 2;
+  string from = 3;
+  string to = 4;
+  int32 page = 5;
+  int32 page_size = 6;
+}
+
+message ListHookDeliveriesResponse {
+  repeated HookDelivery items = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+}
+
 service HookService {
   rpc ListHooks(google.protobuf.Empty) returns (ListHooksResponse) {
     option (google.api.http) = {get: "/v1/hooks"};
@@ -74,5 +104,8 @@ service HookService {
   }
   rpc DeleteHook(DeleteHookRequest) returns (google.protobuf.Empty) {
     option (google.api.http) = {delete: "/v1/hooks/{id}"};
+  }
+  rpc ListHookDeliveries(ListHookDeliveriesRequest) returns (ListHookDeliveriesResponse) {
+    option (google.api.http) = {get: "/v1/hooks/deliveries"};
   }
 }

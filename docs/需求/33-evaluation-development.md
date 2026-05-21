@@ -1,113 +1,147 @@
 # Evaluation 评估 — 开发计划
 
-> **版本**：2026-05-20（修订）| **状态**：🟡 基础评估 + 人工标注 + 报告导出（客户端）可用；DeleteRun/AfterTurn/框架 Evaluator 待补
+> **版本**：2026-05-21 | **状态**：🟢 Phase 5 完整（扩展指标 + LLM UserSim + 趋势/对比前端）
 > **需求**：[33 evaluation.md](./33%20evaluation.md) · **设计**：[33 evaluation.design.md](./33%20evaluation.design.md)
-> **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：EP-DATA-01, EP-RT-08, EP-BIZ-04
+> **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：EP-DATA-01 ✅, EP-RT-08 ✅, EP-BIZ-04 ✅, EVAL-02 ✅
 
 ---
 
 ## 1. 模块定位
 
-Evaluation 评估：对 Agent 的输出质量进行结构化评估，支持自动评估（含 LLM-as-Judge）和人工评估，评估结果用于 Agent 迭代优化。
+Evaluation 评估：对 Agent 输出质量进行结构化评估，支持自动评估（含 LLM-as-Judge）、人工标注与客户端报告导出。
 
 **代码锚点**：
 - `api/kratos/evaluation/v1/evaluation.proto` — Evaluation HTTP+gRPC API
-- `internal/service/evaluation.go` — EvaluationService（proto ↔ biz 映射）
+- `internal/service/evaluation.go` — EvaluationService（传输桥点）
+- `internal/service/evaluation_runner.go` — NewEvaluationRunner（Wire 装配）
 - `internal/biz/evaluation.go` — EvalUsecase + EvalRepo 接口
-- `internal/data/evaluation.go` — EvalRepo 实现 + EnsureEvalSchema
-- `internal/evaluation/runner.go` — Runner（异步执行 + 4 种指标）
-- `internal/service/wire_providers.go` — NewEvaluationRunner 注入
-- `internal/server/http.go` / `grpc.go` — HTTP+gRPC 注册
+- `internal/data/evaluation.go` — EvalRepo + EnsureEvalSchema
+- `internal/evaluation/runner.go` — 异步调度
+- `internal/evaluation/metrics.go` — 指标解析与 legacy 计分
+- `internal/evaluation/framework.go` — trpc AgentEvaluator 桥接
+- `internal/evaluation/chat_runner.go` — ChatService → runner.Runner
+- `internal/evaluation/llm_judge.go` — LLM-as-Judge
+- `internal/evaluation/llm_simulator.go` — LLM UserSimulation + simRunner
+- `internal/evaluation/eval_llm_resolve.go` — env + system_settings 模型解析
+- `internal/evaluation/framework_metrics.go` — 扩展指标（JSON/XML/ROUGE/ToolTrajectory）
+- `internal/evaluation/scores.go` — scores_json 映射
+- `internal/evaluation/evalset_tools.go` — expected_tool_calls → ToolTrajectory
+- `internal/evaluation/pass_metrics.go` — pass@k / pass^k
+- `internal/evaluation/after_turn.go` — AfterTurn 自动评估
+- `web/src/components/evaluation/EvaluationAnalyticsPanel.vue` — 趋势 + A/B 对比
+- `web/src/features/system-settings/eval-llm.ts` — Eval LLM 表单（默认 openai/gpt-4o-mini）
+- `web/src/pages/EvaluationPage.vue` — 管理页 `/evaluation`
+- `web/src/features/evaluation/` — api / types / mappers / exportRunResults
 
 ---
 
-## 2. 现状评估
+## 2. 现状评估（2026-05-21 代码审计）
 
 | 项 | 状态 | 证据 |
 |----|------|------|
 | Dataset CRUD | ✅ | Create/Get/List/Delete + UploadCases |
+| UpdateDataset | ✅ | `PATCH /v1/evaluation/datasets/{id}` |
+| DeleteRun | ✅ | `DELETE /v1/evaluation/runs/{id}`（级联 results） |
+| DeleteDataset 级联 | ✅ | 事务删 cases + dataset |
 | EvalRun 创建/查询 | ✅ | CreateRun/GetRun/ListRuns/GetRunResults |
-| 异步 Runner | ✅ | `runner.go`（goroutine + safego） |
-| 4 种内置指标 | ✅ | exact_match / contains_match / llm_as_judge / tool_call_accuracy |
-| AgentRunner 注入 | ✅ | `NewEvaluationRunner` 经 ChatService.RunNativeTurnUnary（EP-BIZ-04 ✅） |
+| 异步 Runner | ✅ | `runner.go` + safego |
+| FrameworkBridge | ✅ | `framework.go` → trpc AgentEvaluator + MultiRun |
+| Legacy 回退路径 | ✅ | `runner_legacy.go` + `metrics.go` |
+| 4 种内置指标 | ✅ | exact / contains / llm_as_judge / tool_call_accuracy |
+| AgentRunner 注入 | ✅ | `evaluation_runner.go` → ChatService.RunNativeTurnUnary |
+| LLM-as-Judge | ✅ | `llm_judge.go`；env `KRATOS_EVAL_JUDGE_*` 或目录首 mini/flash 模型 |
+| num_runs (MultiRun) | ✅ | Proto `num_runs` → AgentEvaluator.WithNumRuns |
+| EnsureEvalSchema 启动 | ✅ | `data.go` NewData() 调用（EP-DATA-01） |
+| AnnotateCaseResult | ✅ | PATCH annotation + Results 对话框（EVAL-02） |
+| 报告导出（客户端） | ✅ | `exportRunResults.ts` CSV/JSON |
 | HTTP+gRPC 注册 | ✅ | `http.go` / `grpc.go` |
-| Prometheus 指标 | ✅ | eval_runs_total / eval_case_duration_seconds |
-| EnsureEvalSchema 启动调用 | ❌ | 函数已定义，未在 NewData() 中调用（EP-DATA-01） |
-| LLM-as-Judge 实现 | ❌ | LLMJudge hook 注入为 nil，静默跳过 |
-| DeleteRun API | ❌ | Proto 和 Service 均无 DeleteRun |
-| UpdateDataset API | ❌ | 无更新数据集接口 |
-| 自动评估触发 | ❌ | 无 AfterTurn Hook 机制 |
-| 人工评估标注 | ✅ | `AnnotateCaseResult` + Results 对话框 |
-| 评估报告导出 | ✅ | `exportRunResults.ts` CSV/JSON（客户端，迭代 7） |
-| 评估报告服务端生成 | ❌ | 无聚合 PDF/定时报告 API |
-| 前端页面 | ✅ | EvaluationPage.vue；路由 /evaluation 已注册；features/evaluation/ api/types/mapper/store 均已实现 |
-| trpc AgentEvaluator 集成 | ❌ | 使用自建 Runner，未集成框架评估器 |
-| MultiRun / UserSimulation | ❌ | 未实现 |
-| ToolTrajectory / FinalResponse 多维度 | ❌ | 仅有简化版 exact/contains/tool_call_accuracy |
+| Prometheus | ✅ | eval_runs_total / eval_case_duration_seconds |
+| 前端页面 | ✅ | EvaluationPage.vue + features/evaluation |
+| AfterTurn 自动评估 | ✅ | `NativeTurnAfterHook` + `AfterTurnTrigger` + `config_json.evaluation` |
+| GetAgentEvalTrend | ✅ | `GET /v1/evaluation/agents/{agent_id}/trend` |
+| CompareEvalRuns A/B | ✅ | `POST /v1/evaluation/runs/compare` |
+| EvalSet 多轮 turns | ✅ | `metadata_json.turns` → evalset_adapter |
+| UserSimulation 脚本 | ✅ | `scripted_simulator.go` + `use_user_simulation` |
+| UserSimulation LLM | ✅ | `llm_simulator.go` + trpc `simRunner` |
+| 扩展指标 | ✅ | `json_match` / `xml_match` / `rouge_l` / `tool_trajectory` |
+| scores_json | ✅ | run/result 扩展分数字段 |
+| 趋势/对比前端 | ✅ | `EvaluationAnalyticsPanel` + API |
+| Eval LLM 系统配置 | ✅ | `system_settings.eval_*` + Settings 页 + `eval_llm_resolve.go` |
+| pass@k / pass^k | ✅ | `pass_metrics.go` + `eval_runs.pass_at_k/pass_hat_k` |
 
 ---
 
-## 3. 差距与优化
+## 3. 差距与优化（按优先级）
 
-1. **P0**：`EnsureEvalSchema` 未在 `NewData()` 启动期调用，无表时首跑失败（EP-DATA-01）
-2. **P1**：LLM-as-Judge 未实现，llm_as_judge 指标永远跳过
-3. ~~**P1**~~：前端 Evaluation 页面已实现（EvaluationPage.vue）✅
-4. **P2**：无自动评估触发机制，评估需手动触发
-5. **P2**：无 DeleteRun / UpdateDataset API，管理能力不完整
-6. ~~**P2**~~：评估报告导出（客户端 CSV/JSON）✅ 迭代 7
-7. ~~**P3**~~：人工评估标注 ✅
-8. **P3**：未集成 trpc AgentEvaluator，无法使用框架高级能力（MultiRun/UserSimulation/ToolTrajectory 等）
+| 优先级 | 项 | 状态 |
+|--------|-----|------|
+| **P0** | EnsureEvalSchema 启动调用 | ✅ EP-DATA-01 |
+| **P1** | LLM-as-Judge 实现 | ✅ llm_judge.go |
+| **P1** | FrameworkBridge / EP-RT-08 | ✅ framework.go + chat_runner |
+| **P1** | 前端 Evaluation 页面 | ✅ EvaluationPage.vue |
+| **P2** | DeleteRun / UpdateDataset API | ✅ 2026-05-21 |
+| **P2** | DeleteDataset 级联删 cases | ✅ 2026-05-21 |
+| **P2** | Runner 指标逻辑 SRP 拆分 | ✅ metrics.go + runner_legacy.go |
+| **P2** | 自动评估触发（AfterTurn） | ✅ 2026-05-21 |
+| **P2** | 报告导出（客户端） | ✅ 迭代 7 |
+| **P3** | 人工评估标注 | ✅ EVAL-02 |
+| **P3** | 服务端评估报告 / 趋势 API | ✅ 趋势 + A/B |
+| **P3** | EvalSet 多轮 + UserSimulation + pass@k | ✅ Phase 5 |
+| **P3** | 扩展指标 + LLM UserSim + 趋势前端 | ✅ 2026-05-21 |
+| **P3** | Eval LLM → system_settings | ✅ 2026-05-21 |
 
 ---
 
 ## 4. 开发阶段
 
-- **Phase 1**：基础补全（Schema 启动调用 + LLM-as-Judge + API 补全）
-- **Phase 2**：前端评估页面（数据集管理 + 运行评估 + 结果查看）
-- **Phase 3**：自动评估触发 + 评估报告
-- **Phase 4**：人工评估标注
-- **Phase 5**：trpc AgentEvaluator 集成（高级评估能力）
+- **Phase 1**：✅ Schema 启动 + LLM-as-Judge + FrameworkBridge + DeleteRun/UpdateDataset
+- **Phase 2**：✅ 前端评估页面（数据集 / 运行 / 结果）
+- **Phase 3**：✅ 报告导出 + AfterTurn 自动评估
+- **Phase 4**：✅ 人工评估标注
+- **Phase 5**：✅ 多轮/UserSim/pass@k + 扩展指标 + LLM UserSim + tool_trajectory + 趋势对比前端 + Eval LLM 系统配置
 
 ---
 
 ## 5. 任务清单
 
-| # | 任务 | 优先级 | EP | 阶段 |
-|---|------|--------|-----|------|
-| 1 | `NewData()` 启动期调用 `EnsureEvalSchema` | P0 | EP-DATA-01 | Phase 1 |
-| 2 | 实现 LLM-as-Judge（接入 Provider/Model 配置，注入 LLMJudge hook） | P1 | — | Phase 1 |
-| 3 | 补全 DeleteRun API（Proto + Biz + Data + Service） | P2 | — | Phase 1 |
-| 4 | 补全 UpdateDataset API（名称/描述更新） | P2 | — | Phase 1 |
-| 5 | 前端：评估数据集管理页（列表/创建/删除/上传用例） | P1 | — | Phase 2 | ✅ EvaluationPage.vue 已集成 |
-| 6 | 前端：运行评估页（选择数据集+Agent → 启动 → 查看进度） | P1 | — | Phase 2 | ✅ EvaluationPage.vue 已集成 |
-| 7 | 前端：评估结果页（汇总分数 + 逐用例详情） | P1 | — | Phase 2 | ✅ EvaluationPage.vue 已集成 |
-| 8 | 自动评估触发（AfterTurn Hook + 关联数据集配置） | P2 | — | Phase 3 |
-| 9 | 评估报告导出（JSON/CSV，客户端） | P2 | ✅ | Phase 3 · 迭代 7 |
-| 10 | 人工评估标注（标注字段 + API + 前端） | P3 | ✅ | Phase 4 |
-| 11 | 集成 trpc AgentEvaluator（替换自建 Runner） | P3 | — | Phase 5 |
-| 12 | 引入 EvalSet 完整模型 + ToolTrajectory/FinalResponse 评估 | P3 | — | Phase 5 |
-| 13 | MultiRun + UserSimulation + pass@k | P3 | — | Phase 5 |
+| # | 任务 | 优先级 | 状态 |
+|---|------|--------|------|
+| 1 | `NewData()` 调用 `EnsureEvalSchema` | P0 | ✅ |
+| 2 | LLM-as-Judge（Provider 目录 + env） | P1 | ✅ |
+| 3 | FrameworkBridge + ChatRunnerAdapter | P1 | ✅ EP-RT-08 |
+| 4 | DeleteRun + UpdateDataset API | P2 | ✅ |
+| 5 | DeleteDataset 级联 + metrics SRP 拆分 | P2 | ✅ |
+| 6 | 前端 EvaluationPage | P1 | ✅ |
+| 7 | 报告导出 CSV/JSON | P2 | ✅ |
+| 8 | 人工标注 AnnotateCaseResult | P3 | ✅ |
+| 9 | AfterTurn 自动评估 Hook | P2 | ✅ |
+| 10 | EvalSet 多轮 + UserSimulation + pass@k | P3 | ✅ |
+| 11 | 趋势 / A/B Compare API + AnalyticsPanel | P3 | ✅ |
+| 12 | ROUGE/XML/JSON + LLM UserSim + tool_trajectory | P3 | ✅ |
+| 13 | Eval LLM system_settings + Settings 页 | P3 | ✅ |
 
 ---
 
 ## 6. 验收标准
 
-- [ ] `NewData()` 启动后 eval_* 表自动创建，无需手动建表
-- [ ] LLM-as-Judge 可配置 Judge 模型并返回有效分数
-- [ ] 可通过 API 删除评估运行、更新数据集
-- [x] 前端可管理评估数据集、运行评估、查看结果（EvaluationPage.vue ✅）
-- [ ] Agent 运行后可自动触发评估
-- [ ] 评估结果可人工标注
-- [x] 可导出评估报告（CSV/JSON，结果对话框）
-- [ ] `go test ./internal/evaluation/...` 通过
-- [ ] `go test ./internal/biz/... -run Eval` 通过
-- [ ] `go test ./internal/data/... -run Eval` 通过
+- [x] `NewData()` 启动后 eval_* 表自动创建
+- [x] LLM-as-Judge 可配置 Judge 模型并返回有效分数（需 Provider 目录或 env）
+- [x] 可通过 API 删除评估运行、更新数据集
+- [x] DeleteDataset 级联删除用例
+- [x] 前端可管理数据集、运行评估、查看结果、人工标注、导出报告
+- [x] Agent 运行后可自动触发评估（AfterTurn + config_json.evaluation）
+- [x] 趋势 API / A/B 对比 API + 前端趋势表与 Run 多选对比
+- [x] 扩展指标 opt-in（json_match / xml_match / rouge_l / tool_trajectory）与 scores_json
+- [x] Eval LLM 可在系统设置页配置（env 优先）
+- [x] `go test ./internal/evaluation/...` 通过
+- [x] `go test ./internal/data/... -run Eval` 通过
 
 ---
 
 ## 7. 依赖与风险
 
-- **LLM Token 成本**：LLM-as-Judge 每条用例消耗一次 LLM 调用，100 用例 ≈ 100 次 Judge 调用
-- **自动评估与 Chat 流程耦合**：AfterTurn Hook 需确保评估失败不影响正常对话
-- **trpc 框架集成复杂度**：AgentEvaluator 依赖 trpc Runner 接口，需适配当前 Kratos+ChatService 架构
-- **Schema 迁移**：Phase 5 引入 EvalSet 完整模型时需考虑现有 eval_* 表的数据迁移
+- **LLM Token 成本**：LLM-as-Judge 每条用例一次 LLM 调用；可通过 `metrics` 参数按需禁用
+- **自动评估与 Chat 耦合**：AfterTurn Hook 须确保评估失败不影响正常对话
+- **Framework 与 Legacy 双路径**：Wire 默认走 Framework；Legacy 仅 framework nil 时启用，需保持 metrics 语义一致
+- **Judge/Sim 模型来源**：env > system_settings > 目录；Settings 默认 Sim 为 openai/gpt-4o-mini
+- **Schema 迁移**：`scores_json`、`eval_*` 于 `system_settings.eval_*` 均通过 ALTER 兼容旧库

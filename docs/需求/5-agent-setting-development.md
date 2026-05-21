@@ -1,6 +1,7 @@
 # Agent 设置 — 开发计划
 
-> **版本**：2026-05-17 | **状态**：✅ 端到端可用；🟡 ToolOverride 缺失
+> **版本**：2026-05-21 | **状态**：✅ 端到端可用；Tab 子组件已拆；页壳仍偏大（~488 行）
+> **文档同步**：[changelog/2026-05-21-Agent-Modules-2-8-DocSync.md](../changelog/2026-05-21-Agent-Modules-2-8-DocSync.md)
 > **需求**：[5 agent-setting.md](./5%20agent-setting.md) · **设计**：[5 agent-setting.design.md](./5%20agent-setting.design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：EP-BIZ-06
 
@@ -30,7 +31,7 @@ Agent 设置页：管理 Agent 的详细配置，包括系统提示、工具选�
 | Effective Tools 计算 | ✅ | `agent_effective_tools.go` |
 | Effective MCP 计算 | ✅ | `agent_mcp_effective.go` |
 | PromptFile 管理 | ✅ | 独立 RPC + 表 |
-| ToolOverride | 🟡 | proto 有 `agent_override_count` 字段，但无 biz Usecase / Repo / Service |
+| ToolOverride | ✅ | `tool.proto` CRUD + `ApplyAgentToolOverrides` + `trpc_build.applyRuntimeToolConfigs` |
 | **A2A Endpoint Tab** | ✅ | `AgentSettingsA2AEndpointTab.vue` + Proxy Tab |
 | 系统提示模式切换 | ✅ | `system_prompt_mode` 字段 + `FilesForMode` |
 | Prompt 预览 | ✅ | `GetAgentPromptPreview` RPC |
@@ -39,24 +40,25 @@ Agent 设置页：管理 Agent 的详细配置，包括系统提示、工具选�
 
 | 项 | 状态 | 证据 |
 |----|------|------|
-| 设置页整体布局（QTabs） | 🟡 待验证 | 需确认 `AgentSettingsPage.vue` 是否已实现 |
-| 系统提示模式四卡片 | 🟡 待验证 | 需确认 complete/task/minimized/none 卡片选择 |
-| Agent 个性区 | 🟡 待验证 | 需确认名称/描述/状态等编辑表单 |
-| 模型与预算区 | 🟡 待验证 | 需确认 Provider/Model 下拉 |
-| 子 Agent 配置区 | 🟡 待验证 | 需确认 subagents_* 字段表单 |
-| 工具策略区 | 🟡 待验证 | 需确认 allow/deny/concurrent 多选 |
-| 记忆配置区 | 🟡 待验证 | 需确认 L0-L4 各层参数表单 |
-| ToolOverride 管理 | ❌ 未实现 | 无前端页面，无后端 CRUD |
-| 记忆分组折叠 | ❌ 未实现 | L0-L4 字段繁多，无分组折叠 UI |
-| `other_config` 深度 merge | 🟡 待验证 | PATCH 时需深度合并 JSON，避免覆盖 |
+| 设置页 QTabs | ✅ | `AgentSettingsPage.vue`（~488 行页壳）+ `pages/agent-settings/*Tab.vue`（AGT-08） |
+| 顶栏 | ✅ | `AgentSettingsHeader.vue` |
+| 系统提示模式四卡片 | ✅ | `AgentSettingsPromptSection` / agent Tab |
+| Agent 个性 / 模型 / 工具 / 记忆 | ✅ | 各 section 于 agent/memory Tab |
+| ToolOverride | ✅ | `AgentToolOverridesPanel` |
+| 文件 Tab | ✅ | `AgentFilesPanel`（见 [6-agent-setting-file-development.md](./6-agent-setting-file-development.md)） |
+| 进化 Tab | ✅ | `AgentEvolutionPanel`（见模块 7） |
+| A2A Tab | ✅ | `AgentSettingsA2ATab` / Endpoint |
+| 高级对话框 | ✅ | `AgentAdvancedDialog.vue` |
+| 记忆分组折叠 | ❌ | L0-L4 平铺表单 |
+| `config_json` PATCH merge | ✅ | `MergeAgentConfigJSON`（2026-05-21） |
 
 ---
 
 ## 3. 差距与优化
 
-1. **P2（EP-BIZ-06）**：`tool_agent_override` 表已存在（Ent schema），但无 `biz/tool_override.go` Usecase、无 Repo 实现、无 Service CRUD。Agent 设置页无法管理工具级别的参数覆盖。
-2. **P3**：Agent 设置页"记忆配置"区域（L0-L4 各层参数）字段繁多，前端无分组折叠，用户体验差。
-3. **P2**：`other_config` PATCH 时需深度合并 JSON，当前可能覆盖整块配置。需明确 merge 策略（RFC 7396 JSON Merge Patch 或自定义）。
+1. ~~**P2（EP-BIZ-06）**：ToolOverride CRUD~~ → ✅ 见 `tool.proto` 与 `AgentToolOverridesPanel`。
+2. **P3**：记忆配置区分组折叠 UI。
+3. ~~**P2**：`config_json` PATCH 覆盖~~ → ✅ 顶层键浅合并 `MergeAgentConfigJSON`；嵌套 `other_config` 对象仍为整对象替换（若需 RFC7396 再开任务）。
 4. **P3**：系统提示模式切换后，"文件"Tab 应联动显示当前模式下哪些文件生效，当前未实现联动。
 5. **P3**：Agent 设置页各分区缺少"重置为默认值"功能。
 6. ~~**P1（A2A）**：Agent 设置页 A2A Tab~~ → ✅ 已实现
@@ -91,9 +93,9 @@ Agent 设置页：管理 Agent 的详细配置，包括系统提示、工具选�
 
 ## 6. 验收标准
 
-- [ ] Agent 设置页可管理每个工具的参数覆盖
-- [ ] 覆盖参数在 `BuildTRPCLLMAgent` 装配链中生效
-- [ ] `other_config` PATCH 不覆盖未提交的字段
+- [x] Agent 设置页可管理每个工具的参数覆盖
+- [x] 覆盖参数在 `BuildTRPCLLMAgent` 装配链中生效
+- [x] `config_json` PATCH 顶层键合并（未提交键保留）
 - [ ] 记忆配置区可折叠/展开各层参数
 - [ ] `go test ./internal/biz/... -run TestToolOverride` 通过
 

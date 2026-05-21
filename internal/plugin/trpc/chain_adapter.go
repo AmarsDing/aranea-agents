@@ -33,6 +33,8 @@ func BuiltinCallbackPoints(pluginKey string) []string {
 	return nil
 }
 
+// Plugin lifecycle mirroring into LLMAgent Chain lives in plugin_chain_mirror.go (orchestration_policy.go).
+//
 // ValidatePluginCallbackPoints logs when DB callback_points_json diverges from built-in registry.
 func ValidatePluginCallbackPoints(p biz.Plugin) {
 	declared := BuiltinCallbackPoints(p.Key)

@@ -42,6 +42,8 @@ func (ToolInvocation) Fields() []ent.Field {
 		field.String("error_code").Default(""),
 		field.Text("error_message").Default(""),
 		field.Bool("redaction_applied").Default(true),
+		field.Bool("streaming").Default(false),
+		field.Int("chunk_count").Default(0),
 		field.Text("metadata_json").Default("{}"),
 		field.String("created_at"),
 	}

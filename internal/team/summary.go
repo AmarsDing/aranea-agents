@@ -9,36 +9,43 @@ import (
 
 // BuildTeamRunSummary aggregates run-level and per-member stats for Monitor / automation.
 func BuildTeamRunSummary(run biz.TeamRun, steps []biz.TeamRunStep) map[string]any {
-	members := make([]map[string]any, 0, len(steps))
-	for _, s := range steps {
+	return SummaryMapFromData(biz.BuildTeamRunSummaryData(run, steps))
+}
+
+// SummaryMapFromData serializes summary data for WS team_summary consumers.
+func SummaryMapFromData(data biz.TeamRunSummaryData) map[string]any {
+	members := make([]map[string]any, 0, len(data.Members))
+	for _, m := range data.Members {
 		members = append(members, map[string]any{
-			"agent_id":       s.AgentID,
-			"agent_key":      s.AgentKey,
-			"agent_name":     s.AgentName,
-			"role":           s.Role,
-			"sort_order":     s.SortOrder,
-			"status":         s.Status,
-			"token_in":       s.TokenIn,
-			"token_out":      s.TokenOut,
-			"duration_ms":    s.DurationMS,
-			"cost_micro_usd": s.CostMicroUSD,
-			"output_preview": preview(s.OutputPreview, 256),
+			"agent_id":        m.AgentID,
+			"agent_key":       m.AgentKey,
+			"agent_name":      m.AgentName,
+			"role":            m.Role,
+			"sort_order":      m.SortOrder,
+			"status":          m.Status,
+			"token_in":        m.TokenIn,
+			"token_out":       m.TokenOut,
+			"duration_ms":     m.DurationMS,
+			"cost_micro_usd":  m.CostMicroUSD,
+			"tool_call_count": m.ToolCallCount,
+			"output_preview":  m.OutputPreview,
 		})
 	}
 	return map[string]any{
-		"run_id":          run.ID,
-		"team_id":         run.TeamID,
-		"session_id":      run.SessionID,
-		"mode":            run.Mode,
-		"status":          run.Status,
-		"duration_ms":     run.DurationMS,
-		"token_in":        run.TokenIn,
-		"token_out":       run.TokenOut,
-		"cost_micro_usd":  run.CostMicroUSD,
-		"member_count":    len(members),
+		"run_id":          data.RunID,
+		"team_id":         data.TeamID,
+		"session_id":      data.SessionID,
+		"mode":            data.Mode,
+		"status":          data.Status,
+		"duration_ms":     data.DurationMS,
+		"token_in":        data.TokenIn,
+		"token_out":       data.TokenOut,
+		"cost_micro_usd":  data.CostMicroUSD,
+		"member_count":    data.MemberCount,
+		"tool_call_count": data.ToolCallCount,
 		"members":         members,
-		"output_preview":  preview(run.OutputPreview, 512),
-		"error_message":   strings.TrimSpace(run.ErrorMessage),
+		"output_preview":  data.OutputPreview,
+		"error_message":   data.ErrorMessage,
 	}
 }
 

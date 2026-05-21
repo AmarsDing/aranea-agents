@@ -49,6 +49,7 @@
               @edit="openEdit"
               @delete="confirmDelete"
               @test="testRow"
+              @credentials="openCredentials"
             />
           </q-item-section>
         </q-item>
@@ -63,6 +64,13 @@
     </q-card>
 
     <McpServerFormDialog v-model="editorOpen" :row="editingRow" @saved="onSaved" @tested="loadRows" />
+    <McpUserCredentialDialog
+      v-model="credDialogOpen"
+      :mcp-server-id="credServer?.id ?? ''"
+      :server-label="credServer?.name || credServer?.key || ''"
+      :user-id="credUserId"
+      @saved="loadRows"
+    />
   </q-page>
 </template>
 
@@ -70,11 +78,14 @@
 import { computed, onMounted, ref } from "vue";
 import { useQuasar } from "quasar";
 import McpServerFormDialog from "../features/mcp/McpServerFormDialog.vue";
+import McpUserCredentialDialog from "../features/mcp/McpUserCredentialDialog.vue";
 import McpServerItem from "../features/mcp/McpServerItem.vue";
+import { useAuthStore } from "../stores/auth";
 import { deleteMcpServer, listMcpServers, testMcpServer } from "../features/mcp/api";
 import type { McpServerConfig, McpServerMetadata, McpServerRow } from "../features/mcp/types";
 
 const $q = useQuasar();
+const auth = useAuthStore();
 const rows = ref<McpServerRow[]>([]);
 const search = ref("");
 const loading = ref(false);
@@ -82,6 +93,9 @@ const error = ref("");
 const testingId = ref("");
 const editorOpen = ref(false);
 const editingRow = ref<McpServerRow | null>(null);
+const credDialogOpen = ref(false);
+const credServer = ref<McpServerRow | null>(null);
+const credUserId = computed(() => auth.user?.id?.trim() || "");
 
 const enabledCount = computed(() => rows.value.filter((row) => row.enabled).length);
 const filteredRows = computed(() => {
@@ -126,6 +140,15 @@ function openCreate() {
 function openEdit(row: McpServerRow) {
   editingRow.value = row;
   editorOpen.value = true;
+}
+
+function openCredentials(row: McpServerRow) {
+  if (!credUserId.value) {
+    $q.notify({ type: "warning", message: "请先登录后再配置用户凭据" });
+    return;
+  }
+  credServer.value = row;
+  credDialogOpen.value = true;
 }
 
 function onSaved(row: McpServerRow) {

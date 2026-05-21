@@ -68,6 +68,14 @@ func (s *EvaluationService) DeleteDataset(ctx context.Context, req *v1.DeleteDat
 	return &emptypb.Empty{}, s.uc.DeleteDataset(ctx, req.GetId())
 }
 
+func (s *EvaluationService) UpdateDataset(ctx context.Context, req *v1.UpdateDatasetRequest) (*v1.EvalDataset, error) {
+	d, err := s.uc.UpdateDataset(ctx, req.GetId(), req.GetName(), req.GetDescription())
+	if err != nil {
+		return nil, err
+	}
+	return toProtoDataset(d), nil
+}
+
 func (s *EvaluationService) UploadCases(ctx context.Context, req *v1.UploadCasesRequest) (*v1.UploadCasesResponse, error) {
 	if strings.TrimSpace(req.GetDatasetId()) == "" {
 		return nil, kerrors.BadRequest("EVAL", "dataset_id is required")
@@ -94,17 +102,17 @@ func (s *EvaluationService) RunEvaluation(ctx context.Context, req *v1.RunEvalua
 	run, err := s.uc.CreateRun(ctx, biz.EvalRun{
 		DatasetID: req.GetDatasetId(),
 		AgentID:   req.GetAgentId(),
+		NumRuns:   int(req.GetNumRuns()),
 	})
 	if err != nil {
 		return nil, err
 	}
-	// Fire async runner.
 	if s.runner != nil {
 		numRuns := int(req.GetNumRuns())
 		if numRuns <= 0 {
 			numRuns = 1
 		}
-		s.runner.Start(ctx, run, req.GetMetrics(), numRuns)
+		s.runner.Start(ctx, run, req.GetMetrics(), numRuns, req.GetUseUserSimulation())
 	}
 	return toProtoRun(run), nil
 }
@@ -115,6 +123,10 @@ func (s *EvaluationService) GetRun(ctx context.Context, req *v1.GetRunRequest) (
 		return nil, err
 	}
 	return toProtoRun(run), nil
+}
+
+func (s *EvaluationService) DeleteRun(ctx context.Context, req *v1.DeleteRunRequest) (*emptypb.Empty, error) {
+	return &emptypb.Empty{}, s.uc.DeleteRun(ctx, req.GetId())
 }
 
 func (s *EvaluationService) ListRuns(ctx context.Context, req *v1.ListRunsRequest) (*v1.ListRunsResponse, error) {
@@ -174,6 +186,55 @@ func (s *EvaluationService) AnnotateCaseResult(ctx context.Context, req *v1.Anno
 	return toProtoCaseResult(res), nil
 }
 
+func (s *EvaluationService) GetAgentEvalTrend(ctx context.Context, req *v1.GetAgentEvalTrendRequest) (*v1.GetAgentEvalTrendResponse, error) {
+	points, err := s.uc.GetAgentEvalTrend(ctx, req.GetAgentId(), req.GetDatasetId(), int(req.GetLimit()))
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*v1.EvalTrendPoint, 0, len(points))
+	for _, p := range points {
+		out = append(out, &v1.EvalTrendPoint{
+			RunId:              p.RunID,
+			CreatedAt:          p.CreatedAt,
+			TriggerSource:      p.TriggerSource,
+			ExactMatchScore:    p.ExactMatchScore,
+			ContainsMatchScore: p.ContainsMatchScore,
+			LlmJudgeScore:      p.LLMJudgeScore,
+			ToolCallAccuracy:   p.ToolCallAccuracy,
+			PassAtK:            p.PassAtK,
+			PassHatK:           p.PassHatK,
+		})
+	}
+	return &v1.GetAgentEvalTrendResponse{Points: out}, nil
+}
+
+func (s *EvaluationService) CompareEvalRuns(ctx context.Context, req *v1.CompareEvalRunsRequest) (*v1.CompareEvalRunsResponse, error) {
+	items, err := s.uc.CompareEvalRuns(ctx, req.GetRunIds())
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*v1.EvalRunComparison, 0, len(items))
+	for _, c := range items {
+		out = append(out, &v1.EvalRunComparison{
+			RunId:                  c.RunID,
+			AgentId:                c.AgentID,
+			DatasetId:              c.DatasetID,
+			CreatedAt:              c.CreatedAt,
+			ExactMatchScore:        c.ExactMatchScore,
+			ContainsMatchScore:     c.ContainsMatchScore,
+			LlmJudgeScore:          c.LLMJudgeScore,
+			ToolCallAccuracy:       c.ToolCallAccuracy,
+			PassAtK:                c.PassAtK,
+			PassHatK:               c.PassHatK,
+			DeltaExactMatch:        c.DeltaExactMatch,
+			DeltaContainsMatch:     c.DeltaContainsMatch,
+			DeltaLlmJudge:          c.DeltaLLMJudge,
+			DeltaToolCallAccuracy:  c.DeltaToolAccuracy,
+		})
+	}
+	return &v1.CompareEvalRunsResponse{Items: out}, nil
+}
+
 // --- proto conversion helpers ---
 
 func toProtoDataset(d biz.EvalDataset) *v1.EvalDataset {
@@ -200,6 +261,11 @@ func toProtoRun(r biz.EvalRun) *v1.EvalRun {
 		ContainsMatchScore: r.ContainsMatchScore,
 		LlmJudgeScore:      r.LLMJudgeScore,
 		ToolCallAccuracy:   r.ToolCallAccuracy,
+		PassAtK:            r.PassAtK,
+		PassHatK:           r.PassHatK,
+		TriggerSource:      r.TriggerSource,
+		NumRuns:            int32(r.NumRuns),
+		ScoresJson:         r.ScoresJSON,
 		ErrorMessage:       r.ErrorMessage,
 		StartedAt:          r.StartedAt,
 		FinishedAt:         r.FinishedAt,
@@ -222,6 +288,7 @@ func toProtoCaseResult(r biz.EvalCaseResult) *v1.EvalCaseResult {
 		HumanComment:     r.HumanComment,
 		AnnotatedAt:      r.AnnotatedAt,
 		AnnotatedBy:      r.AnnotatedBy,
+		ScoresJson:       r.ScoresJSON,
 	}
 	if r.HumanPass != nil {
 		v := *r.HumanPass

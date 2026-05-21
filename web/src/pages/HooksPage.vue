@@ -8,14 +8,29 @@
           Configure lifecycle hooks for Agent, Model, Tool, and Runner events (log, notify, block, modify).
         </p>
       </div>
-      <q-btn color="primary" rounded unelevated icon="add" label="New Hook" @click="openCreate" />
+      <div class="row q-gutter-sm">
+        <q-btn outline rounded icon="send" label="投递队列" to="/hooks/deliveries" />
+        <q-btn outline rounded icon="history" label="运行记录" to="/plugins/runs" />
+        <q-btn color="primary" rounded unelevated icon="add" label="New Hook" @click="openCreate" />
+      </div>
     </section>
 
     <q-card flat bordered class="q-mb-md">
       <q-card-section class="row q-col-gutter-md items-center">
-        <q-input v-model="search" class="col-12 col-md-6" dense outlined clearable debounce="200" label="Search">
+        <q-input v-model="search" class="col-12 col-md-4" dense outlined clearable debounce="200" label="Search">
           <template #prepend><q-icon name="search" /></template>
         </q-input>
+        <q-select
+          v-model="filterPoint"
+          class="col-12 col-md-3"
+          dense
+          outlined
+          clearable
+          emit-value
+          map-options
+          label="回调点"
+          :options="callbackPointOptions"
+        />
         <q-btn outline rounded icon="refresh" label="Refresh" :loading="loading" @click="loadRows" />
       </q-card-section>
     </q-card>
@@ -46,6 +61,9 @@
       </template>
       <template #body-cell-actions="props">
         <q-td :props="props">
+          <q-btn flat dense round icon="history" color="secondary" @click="openRuns(props.row)">
+            <q-tooltip>查看阻断/错误记录</q-tooltip>
+          </q-btn>
           <q-btn flat dense round icon="edit" color="primary" @click="openEdit(props.row)" />
           <q-btn flat dense round icon="delete" color="negative" @click="confirmDelete(props.row)" />
         </q-td>
@@ -79,19 +97,24 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
+import { useRouter } from "vue-router";
 import { storeToRefs } from "pinia";
 import { useQuasar } from "quasar";
 import CallbackEditor from "../components/hooks/CallbackEditor.vue";
+import { CALLBACK_POINT_OPTIONS } from "../features/callback/constants";
 import { defaultHookRuleConfig, parseHookConfig, type HookRow, type HookRuleConfig } from "../features/hooks/types";
 import { useHooksStore } from "../stores/hooks";
 
 const $q = useQuasar();
+const router = useRouter();
 const hooksStore = useHooksStore();
 const { hooks: storeRows, loading: storeLoading } = storeToRefs(hooksStore);
 const loading = storeLoading;
 const saving = ref(false);
 const error = ref("");
 const search = ref("");
+const filterPoint = ref("");
+const callbackPointOptions = CALLBACK_POINT_OPTIONS;
 const rows = storeRows;
 const editorOpen = ref(false);
 const editingId = ref("");
@@ -115,9 +138,25 @@ const columns = [
 
 const filteredRows = computed(() => {
   const q = search.value.trim().toLowerCase();
-  if (!q) return rows.value;
-  return rows.value.filter((r) => r.name.toLowerCase().includes(q) || r.key.toLowerCase().includes(q));
+  const point = filterPoint.value;
+  return rows.value.filter((r) => {
+    const rule = ruleOf(r);
+    if (point && rule.callback_point !== point) return false;
+    if (!q) return true;
+    return r.name.toLowerCase().includes(q) || r.key.toLowerCase().includes(q);
+  });
 });
+
+function openRuns(row: HookRow) {
+  const rule = ruleOf(row);
+  void router.push({
+    path: "/plugins/runs",
+    query: {
+      plugin_key: `hook:${row.key}`,
+      callback_point: rule.callback_point
+    }
+  });
+}
 
 function ruleOf(row: HookRow) {
   return parseHookConfig(row.config_json);

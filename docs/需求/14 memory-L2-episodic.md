@@ -7,7 +7,7 @@ aranea 当前已有 `messages`、`session_runs`（计划中）、`team_runs` / `
 1. **`memory_episodes`**：从 L1 归档而来的「任务级 episode」，是 L2 → L3 巩固的最小单元。
 2. **`memory_l2_index`**：可选的 BM25 / 向量倒排索引，让 L2 可被 LLM 在「memory_recall」时候选。
 
-> 关联文档：[Memory 知识体系（合并）](./memory.md)（下文 §0）、`10 session.md`、`11 multi-agent.md`、`12 memory-L0-sensory.md`、`13 memory-L1-working.md`、`18 monitor.md`。
+> 关联文档：[Memory 知识体系](./38%20memory.md) · [开发计划](./12-16%20memory-development.md)、`10 session.md`、`11 multi-agent.md`、`12 memory-L0-sensory.md`、`13 memory-L1-working.md`、`18 monitor.md`。
 
 ---
 
@@ -20,7 +20,7 @@ aranea 当前已有 `messages`、`session_runs`（计划中）、`team_runs` / `
 - **transaction time**：各事件 **`occurred_at` / commit 顺序**即为默认可查的写入时序；与梳理副本 §13 **bi-temporal** 的讨论对齐——若未来要为「曾为真 / 现为真」分轨，再在 fact/边上扩展 **valid_time**，本层仍以 **可追溯事件序**为第一约束。
 - **Views 近似风险**：关键字/向量 Recall 必有漏检错检（梳理副本 §8）；故 Recall **只返摘要**、并要求 ref 回填，以降低对 **Δ** 的隐性污染。
 
-延伸阅读：[`memory.md`](./memory.md)。
+延伸阅读：[38 memory.md](./38%20memory.md)。
 
 ---
 
@@ -33,7 +33,7 @@ aranea 当前已有 `messages`、`session_runs`（计划中）、`team_runs` / `
 | 容量 | 当前会话周期全量记录，不进入 prompt（仅按需检索） |
 | 持久性 | 会话期内（数小时～数天）；归档/删除策略由 retention job 决定 |
 | 访问模式 | 时序过滤 + 关键字 / BM25 / 向量检索；按 turn / span / agent / event_type 过滤 |
-| 与 ADK 对齐 | 对应 `Runner` 自动写入的 `events` + `Artifact` 持久化 |
+| 与 trpc-agent-go 对齐 | 对应 Runner `events` + `Artifact` 持久化（`messages` / trace 为产品账本） |
 | 与 Aranea 现状对齐 | 复用 `messages` / `team_runs` / `team_run_steps` / `monitor_events` / `monitor_traces` / `model_token_usage_events` |
 
 ### 1.2 与其它层的边界

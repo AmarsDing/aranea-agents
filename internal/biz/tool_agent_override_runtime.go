@@ -1,6 +1,7 @@
 package biz
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 )
@@ -110,6 +111,32 @@ func ToolRequiresConfirmation(tool Tool, ov ToolAgentOverride, hasOverride bool)
 		return true
 	}
 	return false
+}
+
+// RequiresConfirmationForAgent reports whether toolKey requires user confirmation for agentID.
+func (u *ToolUsecase) RequiresConfirmationForAgent(ctx context.Context, agentID, toolKey string) bool {
+	if u == nil {
+		return false
+	}
+	agentID = strings.TrimSpace(agentID)
+	toolKey = strings.TrimSpace(toolKey)
+	if agentID == "" || toolKey == "" {
+		return false
+	}
+	tool, err := u.GetTool(ctx, toolKey)
+	if err != nil {
+		return false
+	}
+	overrides, err := u.ListToolAgentOverridesByAgent(ctx, agentID)
+	if err != nil {
+		overrides = nil
+	}
+	for _, o := range overrides {
+		if strings.TrimSpace(o.ToolKey) == toolKey {
+			return ToolRequiresConfirmation(tool, o, true)
+		}
+	}
+	return ToolRequiresConfirmation(tool, ToolAgentOverride{}, false)
 }
 
 func mergeJSONMap(dst map[string]any, raw string) {

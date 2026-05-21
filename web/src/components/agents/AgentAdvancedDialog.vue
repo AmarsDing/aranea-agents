@@ -11,6 +11,11 @@
 
       <q-scroll-area class="dialog-body">
         <div class="q-pa-md q-gutter-md">
+          <q-banner rounded dense class="settings-info-banner">
+            Ralph Loop（迭代验证）在
+            <strong>Agent</strong>
+            标签页的「Ralph Loop」区块配置，与规划模式独立。
+          </q-banner>
           <section class="adv-section">
             <div class="section-heading">
               <q-icon name="hub" color="primary" size="20px" />

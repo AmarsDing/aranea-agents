@@ -163,8 +163,8 @@ import { useMonitorRunNavigation } from "../../features/monitor/useMonitorRunNav
 import { copyToClipboard, Notify, type QTableColumn } from "quasar";
 import type { MonitorLogLine, MonitorTraceEvent } from "../../features/monitor/types";
 import { compactJSON, formatCount, formatDate, formatLatency, formatMoney, parseJSON } from "../../features/monitor/utils";
-import { flowLogMatchesTrace, traceCorrelationFromUsageRow } from "../../features/monitor/flow";
-import { subscribeMonitorLogsWs } from "../../features/monitor/api";
+import { flowLogMatchesTrace, sortFlowLogLines, traceCorrelationFromUsageRow } from "../../features/monitor/flow";
+import { listFlowLogs, subscribeMonitorLogsWs } from "../../features/monitor/api";
 import { GLOBAL_WS_SESSION_ID } from "../../config/runtime";
 import TraceWaterfall from "./TraceWaterfall.vue";
 import FlowTracePanel from "./FlowTracePanel.vue";
@@ -243,12 +243,36 @@ const spanNodes = computed<TreeNode[]>(() => {
   ];
 });
 
-function openTrace(row: MonitorTraceEvent) {
+async function openTrace(row: MonitorTraceEvent) {
   detail.value = row;
   detailTab.value = "flow";
   flowLines.value = [];
   detailOpen.value = true;
+  await loadFlowHistory();
   startFlowStream();
+}
+
+async function loadFlowHistory() {
+  const corr = activeCorrelation.value;
+  if (!corr.traceId && !corr.runId && !corr.sessionId) return;
+  try {
+    const { items } = await listFlowLogs({
+      traceId: corr.traceId || undefined,
+      runId: corr.runId || undefined,
+      sessionId: corr.sessionId || undefined,
+      limit: 500
+    });
+    const seen = new Set<string>();
+    const merged = [...items, ...flowLines.value].filter((line) => {
+      const key = `${line.id}-${line.time}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return flowLogMatchesTrace(line, corr);
+    });
+    flowLines.value = sortFlowLogLines(merged);
+  } catch {
+    // HTTP history is best-effort; live WS still works
+  }
 }
 
 function tryOpenHighlightedRun() {

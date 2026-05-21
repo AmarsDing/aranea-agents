@@ -15,6 +15,13 @@ type memAgentRepo struct {
 func (m *memAgentRepo) SearchAgents(context.Context, biz.AgentListQuery) (biz.AgentListResult, error) {
 	return biz.AgentListResult{}, nil
 }
+
+func (m *memAgentRepo) ListExtrasForAgents(context.Context, []string) (map[string]biz.AgentListExtras, error) {
+	return map[string]biz.AgentListExtras{}, nil
+}
+func (m *memAgentRepo) ListAgentCreators(context.Context) ([]biz.AgentCreator, error) {
+	return nil, nil
+}
 func (m *memAgentRepo) GetAgentByID(context.Context, string) (biz.Agent, error) {
 	return biz.Agent{}, nil
 }

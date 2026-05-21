@@ -67,7 +67,16 @@ func (m *memCronRepo) UpdateCronTaskRun(_ context.Context, id, status, finishedA
 }
 
 func newCronService() *service.CronService {
-	return service.NewCronService(biz.NewCronUsecase(newMemCronRepo()))
+	return service.NewCronService(biz.NewCronUsecase(newMemCronRepo(), nil))
+}
+
+func (m *memCronRepo) GetCronTaskRun(_ context.Context, id string) (biz.CronTaskRun, error) {
+	for _, run := range m.runs {
+		if run.ID == id {
+			return run, nil
+		}
+	}
+	return biz.CronTaskRun{}, fmt.Errorf("cron run not found: %s", id)
 }
 
 func TestCronService_CreateListGetDelete(t *testing.T) {

@@ -4,7 +4,7 @@
 
 L1 区别于 L0：L0 是**整段消息历史的滑动窗口**，L1 是**任务级的结构化字段**。L1 也区别于 L3：L3 是跨会话的**事实知识**，L1 只是当前任务**进行中**的状态。
 
-> 关联文档：[Memory 知识体系（合并）](./memory.md)（下文 §0）、`12 memory-L0-sensory.md`、`10 session.md`、`11 multi-agent.md`、`5 agent-setting.md`。
+> 关联文档：[Memory 知识体系](./38%20memory.md) · [开发计划](./12-16%20memory-development.md)、`12 memory-L0-sensory.md`、`10 session.md`、`11 multi-agent.md`、`5 agent-setting.md`。
 
 ---
 
@@ -12,11 +12,11 @@ L1 区别于 L0：L0 是**整段消息历史的滑动窗口**，L1 是**任务�
 
 梳理副本 §2 **命题 B** 强调 **Policy** 必须把「何时读、读多少、何时写」**显性化**为可记录的动作；本层即为 **写入工作记忆状态的 Policy 承载面**：通过 API 与 **`working_memory.*` 工具**完成 ADD/UPDATE/DELETE，并把每次变更写入 **field history / audit**，满足 **provenance / rollback**（梳理副本 §4 结论链、§10）。
 
-- **非「再造一份聊天记录」**：L1 存的是当前任务可用的**结构化决策态**（goal / constraints / decisions），对应 [`memory.md`](./memory.md) 中「把历史转成当前可用信息」的 **System 2 慢回路**一环；与只靠 prompt 暗示相比，更可治理、可回放。
+- **非「再造一份聊天记录」**：L1 存的是当前任务可用的**结构化决策态**（goal / constraints / decisions），对应 [38 memory.md](./38%20memory.md) 中「把历史转成当前可用信息」的 **System 2 慢回路**一环；与只靠 prompt 暗示相比，更可治理、可回放。
 - **Memory Algorithm Protocol 取向**：写入受 **schema、预算、`IfRevision`** 约束（UPDATE 有界、可冲突检测），而非无界覆盖；与 §5.2「写时校验」一致。
 - **与 System 1 的交界**：`RenderForPrompt` 输出的块即注入 L0 的 **证据包**；检索噪声在低层已通过「仅结构化、短预览」减负，仍须注意 **并行多 Agent** 时的命名空间隔离（梳理副本 §5 交叉项：错状态会向上污染推理）。
 
-延伸阅读：[`memory.md`](./memory.md)。
+延伸阅读：[38 memory.md](./38%20memory.md)。
 
 ---
 
@@ -29,7 +29,7 @@ L1 区别于 L0：L0 是**整段消息历史的滑动窗口**，L1 是**任务�
 | 容量 | 单 task 严格受限：建议 2K~8K tokens；行数硬上限 100 字段 |
 | 持久性 | 任务级（多轮）；任务结束（success/failed/cancelled/timeout）后归档到 L2，不再消费 |
 | 访问 | 结构化字段 + JSON Schema；通过 Service API 显式读写；无向量检索 |
-| 与 ADK 对齐 | 对应 ADK `Session.state`（魔法前缀去掉，保留结构化） |
+| 与 trpc-agent-go 对齐 | 对应 `session.Session` state / WorkingMemory 工具（结构化字段，非全量聊天） |
 | 与 ChatGPT/Claude 「Memory」 | 不同；ChatGPT 那套是 L3 跨会话偏好；L1 是「当前正在做的事」 |
 
 ### 1.2 与其它层的边界

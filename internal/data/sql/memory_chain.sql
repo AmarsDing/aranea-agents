@@ -561,6 +561,8 @@ CREATE TABLE IF NOT EXISTS tool_invocations (
   error_code TEXT NOT NULL DEFAULT '',
   error_message TEXT NOT NULL DEFAULT '',
   redaction_applied INTEGER NOT NULL DEFAULT 1,
+  streaming INTEGER NOT NULL DEFAULT 0,
+  chunk_count INTEGER NOT NULL DEFAULT 0,
   metadata_json TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL
 );
@@ -597,6 +599,20 @@ CREATE TABLE IF NOT EXISTS tool_usage_daily (
   UNIQUE(date_key, tool_key, agent_id)
 );
 
+CREATE TABLE IF NOT EXISTS tool_invocation_audit (
+  id TEXT PRIMARY KEY,
+  invocation_id TEXT NOT NULL DEFAULT '',
+  tool_key TEXT NOT NULL,
+  agent_id TEXT NOT NULL DEFAULT '',
+  user_id TEXT NOT NULL DEFAULT '',
+  session_id TEXT NOT NULL DEFAULT '',
+  action TEXT NOT NULL DEFAULT 'tool.call',
+  result_summary TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'success',
+  source TEXT NOT NULL DEFAULT 'adk',
+  created_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_sessions_agent ON sessions(agent_id, deleted_at, updated_at);
 CREATE INDEX IF NOT EXISTS idx_sessions_team ON sessions(team_id, deleted_at, updated_at);
 CREATE INDEX IF NOT EXISTS idx_team_runs_team_created ON team_runs(team_id, created_at);
@@ -629,6 +645,9 @@ CREATE INDEX IF NOT EXISTS idx_tool_invocations_session ON tool_invocations(sess
 CREATE INDEX IF NOT EXISTS idx_tool_invocations_status ON tool_invocations(status);
 CREATE INDEX IF NOT EXISTS idx_tool_invocation_params_invocation ON tool_invocation_params(invocation_id);
 CREATE INDEX IF NOT EXISTS idx_tool_invocation_params_tool_param ON tool_invocation_params(tool_key, param_name);
+CREATE INDEX IF NOT EXISTS idx_tool_invocation_audit_tool_time ON tool_invocation_audit(tool_key, created_at);
+CREATE INDEX IF NOT EXISTS idx_tool_invocation_audit_agent_time ON tool_invocation_audit(agent_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_tool_invocation_audit_user_time ON tool_invocation_audit(user_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_tool_usage_daily_tool_date ON tool_usage_daily(tool_key, date_key);
 CREATE INDEX IF NOT EXISTS idx_tool_usage_daily_agent_date ON tool_usage_daily(agent_id, date_key);
 CREATE INDEX IF NOT EXISTS idx_memory_scope ON memory_items(scope_type, scope_id);

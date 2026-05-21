@@ -45,8 +45,8 @@
 
     <q-tab-panels v-model="tab" animated class="monitor-panels" :class="{ 'monitor-panels--logs-fill': tab === 'logs' }">
       <q-tab-panel name="usage">
-        <RunnerMetricsPanel />
-        <UsageOverview />
+        <MonitorRunnerMetrics />
+        <MonitorUsageDashboardLink :range="filters.range" />
       </q-tab-panel>
       <q-tab-panel name="alerts">
         <MonitorAlertRules />
@@ -82,8 +82,8 @@ import AuditTable from "../components/monitor/AuditTable.vue";
 import LogStreamPanel from "../components/monitor/LogStreamPanel.vue";
 import RealtimeEvents from "../components/monitor/RealtimeEvents.vue";
 import TraceList from "../components/monitor/TraceList.vue";
-import UsageOverview from "../components/monitor/UsageOverview.vue";
-import RunnerMetricsPanel from "../components/monitor/RunnerMetricsPanel.vue";
+import MonitorUsageDashboardLink from "../components/monitor/MonitorUsageDashboardLink.vue";
+import MonitorRunnerMetrics from "../components/monitor/MonitorRunnerMetrics.vue";
 import MonitorAlertRules from "../components/monitor/MonitorAlertRules.vue";
 import { listMonitorAudit, listMonitorEvents, listMonitorTraceEvents } from "../features/monitor/api";
 import type { AuditLog, ModelUsageQuery, MonitorTraceEvent, PlatformResource } from "../features/monitor/types";

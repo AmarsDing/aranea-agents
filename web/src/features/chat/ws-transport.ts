@@ -13,6 +13,8 @@ export type WsTransportOptions = {
   onServerShutdown?: (reason: string) => void;
   /** Fired when EventBuffer replay starts/ends (reconnect with last_event_id). */
   onReplayState?: (replaying: boolean, count?: number) => void;
+  /** Fired when all reconnect attempts have been exhausted. */
+  onReconnectFailed?: () => void;
 };
 
 export type WsTransport = {
@@ -37,6 +39,7 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
   let reconnectAttempts = 0;
   let shutdownReceived = false;
   const maxReconnectDelay = 30_000;
+  const maxReconnectAttempts = 10;
   const heartbeatInterval = 25_000;
   const pendingQueue: WsUpstream[] = [];
 
@@ -119,6 +122,10 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
 
   function scheduleReconnect(): void {
     if (reconnectTimer) return;
+    if (reconnectAttempts >= maxReconnectAttempts) {
+      opts.onReconnectFailed?.();
+      return;
+    }
     const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), maxReconnectDelay);
     reconnectAttempts++;
     reconnectTimer = setTimeout(() => {

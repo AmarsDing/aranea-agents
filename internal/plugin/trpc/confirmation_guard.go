@@ -2,9 +2,6 @@ package plugintrpc
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
-	"strings"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
@@ -13,11 +10,7 @@ import (
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
-type confirmationGuardConfig struct {
-	ConfirmTools    []string `json:"confirm_tools"`
-	ConfirmPatterns []string `json:"confirm_patterns"`
-	DefaultAction   string   `json:"default_action"`
-}
+type confirmationGuardConfig = ConfirmationGuardConfig
 
 type ConfirmationGuardPlugin struct {
 	name   string
@@ -41,46 +34,21 @@ func (c *ConfirmationGuardPlugin) Register(r *trpcplugin.Registry) {
 	r.BeforeTool(c.beforeTool)
 }
 
+// beforeTool is telemetry-only; blocking is unified in agent.Callback Chain ConfirmGate.
 func (c *ConfirmationGuardPlugin) beforeTool(ctx context.Context, args *trpctool.BeforeToolArgs) (*trpctool.BeforeToolResult, error) {
 	if args == nil {
 		return &trpctool.BeforeToolResult{Context: ctx}, nil
 	}
-	if !c.needsConfirm(args) {
-		c.logger.Info("plugin.confirmation_guard.before_tool", "status", "ok", "tool", args.ToolName, "needs_confirm", false)
-		c.record(ctx, "before_tool", "ok")
-		return &trpctool.BeforeToolResult{Context: ctx}, nil
-	}
-	if strings.EqualFold(strings.TrimSpace(c.cfg.DefaultAction), "allow") {
-		c.logger.Info("plugin.confirmation_guard.before_tool", "status", "ok", "tool", args.ToolName, "needs_confirm", true, "default_action", "allow")
-		c.record(ctx, "before_tool", "ok")
-		return &trpctool.BeforeToolResult{Context: ctx}, nil
-	}
-	c.logger.Info("plugin.confirmation_guard.before_tool", "status", "blocked", "tool", args.ToolName, "needs_confirm", true, "default_action", "reject")
-	c.record(ctx, "before_tool", "blocked")
-	msg := fmt.Sprintf("confirmation_guard: tool %q requires confirmation (no human channel; default_action=reject)", args.ToolName)
-	return &trpctool.BeforeToolResult{
-		Context:      ctx,
-		CustomResult: map[string]any{"error": msg, "blocked": true},
-	}, nil
-}
-
-func (c *ConfirmationGuardPlugin) needsConfirm(args *trpctool.BeforeToolArgs) bool {
-	if toolInList(args.ToolName, c.cfg.ConfirmTools) {
-		return true
-	}
-	if len(c.cfg.ConfirmPatterns) == 0 {
-		return false
-	}
-	raw := string(args.Arguments)
-	if raw == "" {
-		return false
-	}
-	var m map[string]any
-	if err := json.Unmarshal(args.Arguments, &m); err != nil {
-		return containsAny(raw, c.cfg.ConfirmPatterns)
-	}
-	b, _ := json.Marshal(m)
-	return containsAny(string(b), c.cfg.ConfirmPatterns)
+	needs := MatchConfirmationGuard(c.cfg, args.ToolName, args.Arguments)
+	c.logger.Info("plugin.confirmation_guard.before_tool",
+		"status", "success",
+		"tool", args.ToolName,
+		"needs_confirm", needs,
+		"default_action", c.cfg.DefaultAction,
+		"enforced_by", "chain_confirm_gate",
+	)
+	c.record(ctx, "before_tool", "success")
+	return &trpctool.BeforeToolResult{Context: ctx}, nil
 }
 
 func (c *ConfirmationGuardPlugin) record(ctx context.Context, point, status string) {

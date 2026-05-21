@@ -1,94 +1,96 @@
 # Multi-Agent Team 编排模块 — 实现设计文档
 
-> 对应需求：`11 multi-agent.md`
-> 遵循规范：`AI-DEVELOPMENT-SPECIFICATION.md`
-> 更新时间：2026-05-18
+> 对应需求：[11 multi-agent.md](./11%20multi-agent.md)
+> 遵循规范：[AI-DEVELOPMENT-SPECIFICATION.md](../guides/AI-DEVELOPMENT-SPECIFICATION.md) · 运行时边界：[AGENT_RUNTIME_BOUNDARY.md](../AGENT_RUNTIME_BOUNDARY.md)
+> **实现差距与迭代计划**以 [11-multi-agent-development.md](./11-multi-agent-development.md) 为准
 
 ---
 
 ## 一、模块概述
 
-Team 多智能体编排系统：支持 Sequential、Parallel、Coordinator、Critic Loop、Swarm 五种编排模式。
-基于 trpc-agent-go 框架，已完成 SwarmConfig 安全限制、CrossRequestTransfer 跨请求转移、
-SwarmHandoffInputBuilder 自定义转移输入、MemberToolConfig 成员工具配置、
-动态成员管理（UpdateSwarmMembers）以及结构导出（ExportTeamStructure）。
+Team 多智能体编排：将多个 Agent 按 Definition JSON 组装为 trpc-agent-go Team / Chain / Parallel / Cycle / Swarm 运行时，经 Chat Service 桥点执行，事件经 EventBus 投影为 WS Envelope。
 
-### 当前实现状态
-
-| 模块 | 状态 | 说明 |
-|------|------|------|
-| Proto CRUD + DuplicateTeam | ✅ 已完成 | ListTeams / CreateTeam / GetTeam / UpdateTeam / DeleteTeam / DuplicateTeam |
-| Proto Run 管理 | ✅ 已完成 | ListTeamRuns / GetTeamRun / CancelTeamRun / ListTeamRunSteps |
-| Proto 高级功能 | ✅ 已完成 | UpdateSwarmMembers / ExportTeamStructure / RunTeamTest |
-| 五种编排模式 | ✅ 已完成 | sequential / parallel / coordinator / critic_loop / swarm |
-| Definition 解析与校验 | ✅ 已完成 | `internal/team/definition.go` |
-| Team 运行时 | ✅ 已完成 | `internal/team/runner_team_trpc.go` |
-| SwarmConfig 安全限制 | ✅ 已完成 | MaxHandoffs / NodeTimeout / RepetitiveHandoff |
-| CrossRequestTransfer | ✅ 已完成 | 跨请求转移开关 |
-| SwarmHandoffInputBuilder | ✅ 已完成 | 自定义转移输入构建 |
-| MemberToolConfig | ✅ 已完成 | StreamInner / InnerTextMode / HistoryScope / SkipSummarization |
-| 动态成员管理 | ✅ 已完成 | UpdateSwarmMembers API |
-| 结构导出 | ✅ 已完成 | ExportTeamStructure API |
-| escalationFunc 增强 | ✅ 已完成 | 支持 ScoreThreshold 结构化评分 |
-| Usecase 层 | ✅ 已完成 | `internal/biz/team_usecase.go` |
-| Data 层 | ✅ 已完成 | `internal/data/team_repo.go` |
-| Service 层 | ✅ 已完成 | `internal/service/team.go` |
-| WS / EventBus 事件 | ✅ 基础完成 | Team 运行事件经 EventBus / WS Envelope 投影；历史 `team_run_events` 仅作存量概念参考 |
-| 前端 Team 管理页 | ✅ 已完成 | TeamCard / TeamToolbar / TeamEditorDialog / TeamRunsDialog |
-| A2A call_agent 工具 | ❌ 缺失 | Agent 无法在 Team 中调用远程 Agent |
-| member_* WS 事件 | ❌ 缺失 | Team 对话不发射子 Agent 实时流 Envelope |
-| Team 运行结果结构化汇总 | ❌ 缺失 | 无成员贡献度 / 工具调用统计 |
-| RunTeamTest 端到端 | ⏳ 桩实现 | Service 层返回 Unimplemented |
-
-### 核心架构
+### 分层与依赖
 
 ```
-用户消息 → Team.Run()
+api/kratos/team/v1/team.proto     ← 对外契约
+        ↓
+internal/service/team.go          ← Proto ↔ biz；RunTeamTest / CancelTeamRun 桥接 Runner
+internal/service/chat_native.go   ← Team Session Turn → team.Runner
+        ↓
+internal/biz/team_usecase.go      ← 领域校验与 CRUD（禁止 import trpc-agent-go）
+        ↓
+internal/data/team_repo.go        ← Ent ORM 持久化
+        ↓
+internal/team/                    ← 框架运行时组装（definition / trpc_build / runner）
+        ↓
+pkg/trpc-agent-go/team            ← 框架 Team / Swarm 真相源
+```
+
+**红线**：`internal/biz` 不 import `pkg/trpc-agent-go`；Team 构建与 `Run` 仅在 `internal/team` + `internal/service`。
+
+### 编排模式映射
+
+| Definition `mode` | trpc-agent-go 组件 | 说明 |
+|-------------------|-------------------|------|
+| `sequential` | `chainagent.New` | 顺序链，事件传递给下一成员 |
+| `parallel` | `parallelagent.New` | 并行 worker，需 synthesizer 成员或 `synthesizer_agent_id` |
+| `coordinator` | `trpcteam.New` | 首成员为 coordinator，其余为 AgentTool |
+| `critic_loop` | `cycleagent.New` | 生成-评审循环 + `escalationFunc` |
+| `swarm` | `trpcteam.NewSwarm` | 成员间 `transfer_to_agent` |
+| `adaptive` | `trpcteam.NewSwarm` | 与 swarm 相同构建路径，UI 面向用户的 Swarm 别名 |
+
+前端 `modeOptions` 展示 `adaptive` 而非 `swarm`；API / 校验层两者均合法。
+
+### 核心执行流
+
+```
+用户消息 → ChatService (owner_type=team)
              ↓
-         switch mode:
-           ┌─ ModeCoordinator → coordinator.Run() → 成员作为 AgentTool 调用
-           ├─ ModeSwarm       → entryMember.Run() → transfer_to_agent 自由转移
-           ├─ Sequential      → chainagent 顺序执行
-           ├─ Parallel        → parallelagent 并行执行
-           └─ Critic Loop     → cycleagent 迭代执行
+         team.Runner.runTeamTRPC()
              ↓
-        事件流 → Runner 事件循环 → 持久化 + WS 推送
+         BuildTRPCTeam(def) → trpc-agent-go Agent
+             ↓
+         agent.RunTRPCUserTurn → ConsumeEventStream
+             ↓
+         EventProjector → member_* / team_* Envelope → EventBus → /v1/ws
+             ↓
+         persistStep + UpdateTeamRun + team_summary
 ```
 
 ---
 
 ## 二、Proto 层
 
-### 2.1 完整 Proto 定义
-
 文件：`api/kratos/team/v1/team.proto`
 
-核心消息：
+### 2.1 核心消息
 
 | 消息 | 用途 |
 |------|------|
 | `Team` | Team 实体 |
 | `TeamRun` | 运行记录 |
-| `TeamRunStep` | 运行步骤 |
-| `StructureNode` / `StructureEdge` / `StructureSurface` | 结构导出节点/边/面 |
+| `TeamRunStep` | 成员步骤 |
+| `StructureNode` / `StructureEdge` / `StructureSurface` | 结构导出 |
 
-核心 RPC：
+### 2.2 RPC 一览
 
 | RPC | HTTP | 用途 |
 |-----|------|------|
-| `ListTeams` | `GET /v1/teams` | 列出所有未删除 Team |
-| `CreateTeam` | `POST /v1/teams` | 创建 Team |
-| `GetTeam` | `GET /v1/teams/{id}` | 获取单个 Team |
-| `UpdateTeam` | `PATCH /v1/teams/{id}` | 更新 Team |
-| `DeleteTeam` | `DELETE /v1/teams/{id}` | 软删除 Team |
-| `DuplicateTeam` | `POST /v1/teams/{id}/duplicate` | 复制 Team |
-| `ListTeamRuns` | `GET /v1/team-runs` | 列出 Team 运行记录 |
-| `GetTeamRun` | `GET /v1/team-runs/{id}` | 获取单条运行详情 |
-| `CancelTeamRun` | `POST /v1/team-runs/{id}/cancel` | 取消正在运行的 Team Run |
-| `ListTeamRunSteps` | `GET /v1/team-runs/{run_id}/steps` | 列出运行步骤 |
-| `UpdateSwarmMembers` | `POST /v1/teams/{team_id}/swarm-members` | Swarm 动态成员管理 |
-| `ExportTeamStructure` | `GET /v1/teams/{team_id}/structure` | 导出 Team 结构快照 |
-| `RunTeamTest` | `POST /v1/teams/{id}/run-test` | 手动触发 Team 测试运行 |
+| `ListTeams` | `GET /v1/teams` | 列表 |
+| `CreateTeam` | `POST /v1/teams` | 创建 |
+| `GetTeam` | `GET /v1/teams/{id}` | 详情 |
+| `UpdateTeam` | `PATCH /v1/teams/{id}` | 更新 |
+| `DeleteTeam` | `DELETE /v1/teams/{id}` | 软删除 |
+| `DuplicateTeam` | `POST /v1/teams/{id}/duplicate` | 复制 |
+| `ListTeamRuns` | `GET /v1/team-runs` | 运行列表 |
+| `GetTeamRun` | `GET /v1/team-runs/{id}` | 运行详情 |
+| `CancelTeamRun` | `POST /v1/team-runs/{id}/cancel` | 取消（RunRegistry + run_status） |
+| `ListTeamRunSteps` | `GET /v1/team-runs/{run_id}/steps` | 步骤列表 |
+| `UpdateSwarmMembers` | `POST /v1/teams/{team_id}/swarm-members` | 动态成员 |
+| `ExportTeamStructure` | `GET /v1/teams/{team_id}/structure` | 拓扑导出 |
+| `RunTeamTest` | `POST /v1/teams/{id}/run-test` | 测试运行（临时 Session） |
+| `GetTeamRunSummary` | `GET /v1/team-runs/{id}/summary` | 结构化汇总（含 tool_call_count） |
 
 ---
 
@@ -103,7 +105,7 @@ type Team struct {
     ID             string
     TeamKey        string
     DisplayName    string
-    Status         string   // "draft" | "active" | "archived" | "deleted"
+    Status         string   // draft | active | archived | deleted
     IsDefault      bool
     DefinitionJSON string
     ADKAppName     string
@@ -113,46 +115,46 @@ type Team struct {
 }
 
 type TeamRun struct {
-    ID            string   `json:"id"`
-    TeamID        string   `json:"team_id"`
-    SessionID     string   `json:"session_id"`
-    MessageID     string   `json:"message_id"`
-    Mode          string   `json:"mode"`
-    Status        string   `json:"status"`
-    InputPreview  string   `json:"input_preview"`
-    OutputPreview string   `json:"output_preview"`
-    TokenIn       int      `json:"token_in"`
-    TokenOut      int      `json:"token_out"`
-    CostMicroUSD  int64    `json:"cost_micro_usd"`
-    DurationMS    int      `json:"duration_ms"`
-    ErrorMessage  string   `json:"error_message"`
-    TopologyJSON  string   `json:"topology_json"`
-    StartedAt     string   `json:"started_at"`
-    FinishedAt    string   `json:"finished_at"`
-    CreatedAt     string   `json:"created_at"`
-    UpdatedAt     string   `json:"updated_at"`
+    ID            string
+    TeamID        string
+    SessionID     string
+    MessageID     string
+    Mode          string
+    Status        string
+    InputPreview  string
+    OutputPreview string
+    TokenIn       int
+    TokenOut      int
+    CostMicroUSD  int64
+    DurationMS    int
+    ErrorMessage  string
+    TopologyJSON  string
+    StartedAt     string
+    FinishedAt    string
+    CreatedAt     string
+    UpdatedAt     string
 }
 
 type TeamRunStep struct {
-    ID            string   `json:"id"`
-    RunID         string   `json:"run_id"`
-    TeamID        string   `json:"team_id"`
-    AgentID       string   `json:"agent_id"`
-    AgentKey      string   `json:"agent_key"`
-    AgentName     string   `json:"agent_name"`
-    Role          string   `json:"role"`
-    SortOrder     int      `json:"sort_order"`
-    Status        string   `json:"status"`
-    InputPreview  string   `json:"input_preview"`
-    OutputPreview string   `json:"output_preview"`
-    TokenIn       int      `json:"token_in"`
-    TokenOut      int      `json:"token_out"`
-    CostMicroUSD  int64    `json:"cost_micro_usd"`
-    DurationMS    int      `json:"duration_ms"`
-    ErrorMessage  string   `json:"error_message"`
-    StartedAt     string   `json:"started_at"`
-    FinishedAt    string   `json:"finished_at"`
-    CreatedAt     string   `json:"created_at"`
+    ID            string
+    RunID         string
+    TeamID        string
+    AgentID       string
+    AgentKey      string
+    AgentName     string
+    Role          string
+    SortOrder     int
+    Status        string
+    InputPreview  string
+    OutputPreview string
+    TokenIn       int
+    TokenOut      int
+    CostMicroUSD  int64
+    DurationMS    int
+    ErrorMessage  string
+    StartedAt     string
+    FinishedAt    string
+    CreatedAt     string
 }
 
 type TeamStructureSnapshot struct {
@@ -161,66 +163,9 @@ type TeamStructureSnapshot struct {
     Edges       []StructureEdge
     Surfaces    []StructureSurface
 }
-
-type StructureNode struct {
-    NodeID string
-    Kind   string
-    Name   string
-}
-
-type StructureEdge struct {
-    FromNodeID string
-    ToNodeID   string
-}
-
-type StructureSurface struct {
-    NodeID string
-    Name   string
-}
 ```
 
-### 3.2 Team Definition 结构
-
-文件：`internal/team/definition.go`
-
-```go
-type Definition struct {
-    Version             int               `json:"version"`
-    Mode                string            `json:"mode"`
-    SynthesizerAgentID  string            `json:"synthesizer_agent_id"`
-    Members             []MemberDef       `json:"members"`
-    MaxConcurrency      int               `json:"max_concurrency"`
-    TimeoutSeconds      int               `json:"timeout_seconds"`
-    LoopMaxIterations   int               `json:"loop_max_iterations,omitempty"`
-    CriticLoop          *CriticLoopConfig `json:"critic_loop,omitempty"`
-    IntentAnchorAgentID string            `json:"intent_anchor_agent_id,omitempty"`
-    Swarm               *SwarmConfigDef   `json:"swarm,omitempty"`
-    MemberTool          *MemberToolDef    `json:"member_tool_config,omitempty"`
-}
-
-type SwarmConfigDef struct {
-    MaxHandoffs               int  `json:"max_handoffs"`
-    NodeTimeoutSeconds        int  `json:"node_timeout_seconds"`
-    RepetitiveHandoffWindow   int  `json:"repetitive_handoff_window"`
-    RepetitiveHandoffMinUnique int `json:"repetitive_handoff_min_unique"`
-    CrossRequestTransfer      bool `json:"cross_request_transfer"`
-}
-
-type MemberToolDef struct {
-    StreamInner       bool   `json:"stream_inner"`
-    InnerTextMode     string `json:"inner_text_mode"`
-    SkipSummarization bool   `json:"skip_summarization"`
-    HistoryScope      string `json:"history_scope"`
-    ToolSetName       string `json:"tool_set_name"`
-}
-
-type CriticLoopConfig struct {
-    MaxIterations  int     `json:"max_iterations"`
-    ScoreThreshold float64 `json:"score_threshold"`
-}
-```
-
-### 3.3 Repo 接口
+### 3.2 TeamRepository
 
 文件：`internal/biz/team_usecase.go`
 
@@ -240,146 +185,46 @@ type TeamRepository interface {
 }
 ```
 
-### 3.4 Usecase 方法
+### 3.3 Definition 结构
+
+文件：`internal/team/definition.go`
 
 ```go
-type TeamUsecase struct {
-    repo TeamRepository
+type Definition struct {
+    Version             int               `json:"version"`
+    Mode                string            `json:"mode"`
+    SynthesizerAgentID  string            `json:"synthesizer_agent_id"`
+    Members             []MemberDef       `json:"members"`
+    MaxConcurrency      int               `json:"max_concurrency"`
+    TimeoutSeconds      int               `json:"timeout_seconds"`
+    LoopMaxIterations   int               `json:"loop_max_iterations,omitempty"`
+    CriticLoop          *CriticLoopConfig `json:"critic_loop,omitempty"`
+    IntentAnchorAgentID string            `json:"intent_anchor_agent_id,omitempty"`
+    Swarm               *SwarmConfigDef   `json:"swarm,omitempty"`
+    MemberTool          *MemberToolDef    `json:"member_tool_config,omitempty"`
 }
-
-func NewTeamUsecase(repo TeamRepository) *TeamUsecase
-
-func (u *TeamUsecase) List(ctx context.Context) ([]Team, error)
-func (u *TeamUsecase) Get(ctx context.Context, id string) (Team, error)
-func (u *TeamUsecase) Create(ctx context.Context, in Team) (Team, error)
-func (u *TeamUsecase) Update(ctx context.Context, id string, patch Team) (Team, error)
-func (u *TeamUsecase) Delete(ctx context.Context, id string) error
-func (u *TeamUsecase) Duplicate(ctx context.Context, id string) (Team, error)
-func (u *TeamUsecase) ListRuns(ctx context.Context, teamID string, limit int) ([]TeamRun, error)
-func (u *TeamUsecase) GetRun(ctx context.Context, id string) (TeamRun, error)
-func (u *TeamUsecase) ListRunSteps(ctx context.Context, runID string) ([]TeamRunStep, error)
-func (u *TeamUsecase) UpdateSwarmMembers(ctx context.Context, teamID string, addIDs []string, removeIDs []string) (bool, error)
-func (u *TeamUsecase) ExportStructure(ctx context.Context, teamID string) (*TeamStructureSnapshot, error)
 ```
 
-### 3.5 校验规则
+### 3.4 校验规则（validateTeamDefinition）
 
-**validateTeamDefinition**：
-
-- `mode` 必须为 `sequential` / `parallel` / `coordinator` / `critic_loop` / `swarm` / `adaptive`
-- 至少一个 enabled member
-- `parallel` 模式必须有 `synthesizer` 成员或 `synthesizer_agent_id`
-- `critic_loop` 模式必须有 `generator` 和 `critic` 成员
-- 每个 member 的 `agent_id` 非空
-
-**Create 校验**：
-
-- `team_key` 和 `display_name` 必填
-- `definition_json` 为空时填充默认值
-- 调用 `validateTeamDefinition` 校验 JSON 结构
-
-**Update 合并**：
-
-- `TeamKey` / `DisplayName` / `Status` / `DefinitionJSON`：空值不覆盖
-- `ADKAppName`：空值回退到 `TeamKey`
-- 合并后再次调用 `validateTeamDefinition`
-
-**Delete 规则**：
-
-- 默认 Team（`IsDefault=true`）不允许删除，返回 `kerrors.Conflict`
-- 非默认 Team 执行软删除
-
-**UpdateSwarmMembers 规则**：
-
-- 仅 `swarm` 和 `adaptive` 模式支持
-- 解析 `definition_json`，移除 `remove_agent_ids` 中的成员，追加 `add_agent_ids` 为 worker 角色
-- 重新校验更新后的 definition
-
-**ExportStructure 规则**：
-
-- 根据 mode 生成不同拓扑：
-  - `coordinator`：星形拓扑，第一个成员为 coordinator，其余为 worker
-  - `swarm` / `adaptive`：全连接拓扑，成员间可互相转移
-  - 其他模式：线性拓扑，team 节点连接所有成员
+- `mode` ∈ sequential / parallel / coordinator / critic_loop / swarm / adaptive
+- 至少一个 enabled member；member `agent_id` 非空
+- parallel：需 synthesizer 成员或 `synthesizer_agent_id`
+- critic_loop：需 generator + critic 成员
+- 默认 Team（`IsDefault=true`）不可删除
+- UpdateSwarmMembers：仅 swarm / adaptive
 
 ---
 
 ## 四、Data 层
 
-### 4.1 Ent Schema
+文件：`internal/data/team_repo.go` · Ent Schema：`internal/data/ent/schema/team.go` 等
 
-#### teams
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | string (PK) | 唯一标识 |
-| team_key | string (Unique) | 唯一 Key |
-| display_name | string | 显示名称 |
-| status | string | 状态 |
-| is_default | bool | 是否默认 |
-| definition_json | text | 编排定义 JSON |
-| adk_app_name | string | 运行时应用名 |
-| created_at | string | 创建时间 |
-| updated_at | string | 更新时间 |
-| deleted_at | string | 软删除时间 |
-
-#### team_runs
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | string (PK) | 唯一标识 |
-| team_id | string | 关联 Team |
-| session_id | string | 关联 Session |
-| message_id | string | 关联 Message |
-| mode | string | 编排模式 |
-| status | string | 运行状态 |
-| input_preview | text | 输入预览 |
-| output_preview | text | 输出预览 |
-| token_in | int32 | 输入 Token |
-| token_out | int32 | 输出 Token |
-| cost_micro_usd | int64 | 成本 |
-| duration_ms | int32 | 耗时 |
-| error_message | text | 错误信息 |
-| topology_json | text | 拓扑 JSON |
-| started_at | string | 开始时间 |
-| finished_at | string | 结束时间 |
-| created_at | string | 创建时间 |
-| updated_at | string | 更新时间 |
-
-#### team_run_steps
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | string (PK) | 唯一标识 |
-| run_id | string | 关联 Run |
-| team_id | string | 关联 Team |
-| agent_id | string | 关联 Agent |
-| agent_key | string | Agent Key |
-| agent_name | string | Agent 名称 |
-| role | string | 角色 |
-| sort_order | int32 | 排序 |
-| status | string | 步骤状态 |
-| input_preview | text | 输入预览 |
-| output_preview | text | 输出预览 |
-| token_in | int32 | 输入 Token |
-| token_out | int32 | 输出 Token |
-| cost_micro_usd | int64 | 成本 |
-| duration_ms | int32 | 耗时 |
-| error_message | text | 错误信息 |
-| started_at | string | 开始时间 |
-| finished_at | string | 结束时间 |
-| created_at | string | 创建时间 |
-
-### 4.2 Repo 实现
-
-文件：`internal/data/team_repo.go`
-
-关键方法：
-
-- `GetTeamRunByID`：按 ID 获取单条 TeamRun，支持 NotFound 错误映射
-- `ListTeamRuns`：支持 teamID 过滤和 limit 分页
-- `CreateTeamRun` / `UpdateTeamRun`：创建和更新运行记录
-- `CreateTeamRunStep`：创建运行步骤
+| 表 | 关键字段 |
+|----|----------|
+| `teams` | id, team_key (unique), display_name, status, is_default, definition_json, adk_app_name, deleted_at |
+| `team_runs` | id, team_id, session_id, message_id, mode, status, token_*, cost_micro_usd, duration_ms, topology_json |
+| `team_run_steps` | id, run_id, team_id, agent_id, agent_key, role, sort_order, status, token_*, duration_ms |
 
 ---
 
@@ -387,176 +232,168 @@ func (u *TeamUsecase) ExportStructure(ctx context.Context, teamID string) (*Team
 
 文件：`internal/service/team.go`
 
-### 5.1 方法实现
-
-| 方法 | 实现说明 |
-|------|---------|
-| `ListTeams` | 调用 `uc.List` |
-| `CreateTeam` | 调用 `uc.Create` |
-| `GetTeam` | 调用 `uc.Get`，映射 NotFound |
-| `UpdateTeam` | 调用 `uc.Update`，校验 team body 非空 |
-| `DeleteTeam` | 调用 `uc.Delete` |
-| `DuplicateTeam` | 调用 `uc.Duplicate` |
-| `ListTeamRuns` | 调用 `uc.ListRuns` |
-| `GetTeamRun` | 调用 `uc.GetRun`，映射 NotFound |
-| `CancelTeamRun` | 校验状态为 running/pending，设置 cancelled |
-| `RunTeamTest` | 桩实现，返回 501 Unimplemented |
-| `ListTeamRunSteps` | 调用 `uc.ListRunSteps` |
-| `UpdateSwarmMembers` | 调用 `uc.UpdateSwarmMembers` |
-| `ExportTeamStructure` | 调用 `uc.ExportStructure`，映射为 Proto 结构 |
-
-### 5.2 错误映射
+### 5.1 依赖注入
 
 ```go
-func mapTeamErr(err error) error {
-    if stderrors.Is(err, sql.ErrNoRows) {
-        return kerrors.NotFound("TEAM", "team not found")
-    }
-    return err
+type TeamService struct {
+    uc         *biz.TeamUsecase
+    sessions   *biz.SessionUsecase      // RunTeamTest 临时 Session
+    teamRunner *team.Runner             // RunTeamTest → RunTurn
+    runs       *rt.RunRegistry          // CancelTeamRun
+    eventBus   event.Bus                // Cancel → run_status Envelope
 }
 ```
+
+### 5.2 关键行为
+
+| RPC | 实现要点 |
+|-----|----------|
+| `RunTeamTest` | 创建 `owner_type=team` 临时 Session → `teamRunner.RunTurn` → 查最近 TeamRun → defer 删除 Session |
+| `CancelTeamRun` | 校验 running/pending → `RunRegistry.Cancel(sessionID)` → `CancelSessionRunSideEffects` → 更新 status=cancelled |
+| `ExportTeamStructure` | biz 按 mode 生成星形 / 全连接 / 线性拓扑 |
+| 其余 CRUD | 直接委托 TeamUsecase |
+
+错误映射：`sql.ErrNoRows` → `kerrors.NotFound("TEAM", ...)`。
 
 ---
 
 ## 六、Team 运行时
 
-### 6.1 编排模式映射
-
-| 编排模式 | trpc 框架组件 | 配置选项 |
-|---------|-------------|---------|
-| `sequential` | `chainagent.New` | `WithSubAgents(memberAgents)` |
-| `parallel` | `parallelagent.New` | `WithSubAgents(workerAgents)` |
-| `coordinator` | `trpcteam.New` | `WithCoordinatorOptions(...)` |
-| `critic_loop` | `cycleagent.New` | `WithMaxIterations`, `WithEscalationFunc` |
-| `swarm` | `trpcteam.NewSwarm` | `WithSwarmConfig`, `WithCrossRequestTransfer`, `WithSwarmHandoffInputBuilder` |
-
-### 6.2 Swarm 配置构建
+### 6.1 构建
 
 文件：`internal/team/trpc_build.go`
 
-```go
-func buildSwarmOptions(def Definition) []trpcteam.Option {
-    cfg := trpcteam.DefaultSwarmConfig()
-    crossTransfer := true
-    if sc := def.Swarm; sc != nil {
-        if sc.MaxHandoffs > 0 {
-            cfg.MaxHandoffs = sc.MaxHandoffs
-        }
-        if sc.NodeTimeoutSeconds > 0 {
-            cfg.NodeTimeout = time.Duration(sc.NodeTimeoutSeconds) * time.Second
-        }
-        if sc.RepetitiveHandoffWindow > 0 {
-            cfg.RepetitiveHandoffWindow = sc.RepetitiveHandoffWindow
-        }
-        if sc.RepetitiveHandoffMinUnique > 0 {
-            cfg.RepetitiveHandoffMinUnique = sc.RepetitiveHandoffMinUnique
-        }
-        crossTransfer = sc.CrossRequestTransfer
-    }
-    return []trpcteam.Option{
-        trpcteam.WithSwarmConfig(cfg),
-        trpcteam.WithCrossRequestTransfer(crossTransfer),
-        trpcteam.WithSwarmHandoffInputBuilder(defaultSwarmHandoffInput),
-    }
-}
-```
+- `BuildTRPCTeam(ctx, def, deps, catalogAgent)`：按 mode 分发
+- `buildSwarmOptions`：SwarmConfig + CrossRequestTransfer + SwarmHandoffInputBuilder
+- `buildCoordinatorOptions`：MemberToolConfig 映射
+- `buildEscalationFunc`：CriticLoop ScoreThreshold + approved 关键字
 
-### 6.3 Escalation 函数
+成员 Agent 经 `chatagent.BuildTRPCAgent( Cached )` 构建，deps 含 `PluginsForAgent`、有效工具集。
+
+### 6.2 执行
+
+文件：`internal/team/runner_team_trpc.go` · `internal/team/runner_helpers.go`
+
+- 创建 TeamRun（status=running）→ 发射 `team_run_started`
+- `TraceEmitter`：`team.run.start` / `team.run.execute` / `team.run.finish`（FlowLogger）
+- `ConsumeEventStream` + `ProjectMeta.MemberAgentKeys` → `member_message_start` / `member_delta` / `member_message_done`
+- `persistStep` → `team_step_finished` + Usage `team_member`
+- 成功/失败 → `team_run_finished` / `team_run_failed` + `publishTeamRunSummary`
+
+### 6.3 运行汇总
+
+| 层级 | 文件 | 职责 |
+|------|------|------|
+| Biz | `internal/biz/team_summary.go` | `BuildTeamRunSummaryData` — 单一聚合源 |
+| Biz | `internal/biz/team_usecase.go` | `GetRunSummary` — 读路径收拢（GetRun + ListRunSteps） |
+| Runtime | `internal/team/summary.go` | `BuildTeamRunSummary` / `SummaryMapFromData` — WS `team_summary` |
+| Service | `internal/service/team.go` | `toProtoTeamRunSummary` — RPC 映射 |
 
 ```go
-func buildEscalationFunc(clc *CriticLoopConfig) func(ev *trpcevent.Event) bool {
-    if clc == nil || clc.ScoreThreshold <= 0 {
-        return defaultEscalationFunc
-    }
-    threshold := clc.ScoreThreshold
-    return func(ev *trpcevent.Event) bool {
-        if ev == nil || ev.Response == nil {
-            return false
-        }
-        for _, ch := range ev.Choices {
-            content := strings.ToLower(ch.Message.Content)
-            if strings.Contains(content, "approved") {
-                return true
-            }
-            score := extractScore(content)
-            if score > 0 && score >= threshold {
-                return true
-            }
-        }
-        return false
-    }
-}
+// biz
+func BuildTeamRunSummaryData(run biz.TeamRun, steps []biz.TeamRunStep) biz.TeamRunSummaryData
+func (u *TeamUsecase) GetRunSummary(ctx context.Context, runID string) (biz.TeamRunSummaryData, error)
+
+// team（WS）
+func BuildTeamRunSummary(run biz.TeamRun, steps []biz.TeamRunStep) map[string]any
+func TeamSummaryEnvelope(run biz.TeamRun, steps []biz.TeamRunStep) event.Envelope
+
+// service（RPC）
+func toProtoTeamRunSummary(data biz.TeamRunSummaryData) *v1.TeamRunSummary
 ```
 
-`extractScore` 从 critic 响应中提取数值评分，支持以下格式：
-- `score: 0.85`
-- `评分: 85`
-- `rating: 8.5/10`
+**汇总字段**（run 级 + 每成员）：
 
-### 6.4 Coordinator 配置构建
+| 字段 | run | member | 说明 |
+|------|-----|--------|------|
+| `run_id` / `team_id` / `session_id` / `mode` / `status` | ✅ | — | 来自 `TeamRun` |
+| `token_in` / `token_out` / `cost_micro_usd` / `duration_ms` | ✅ | ✅ | Usage 聚合 |
+| `tool_call_count` | ✅（求和） | ✅ | TEAM-04，`MemberToolCalls` 落 step 后汇总 |
+| `member_count` | ✅ | — | `len(steps)` |
+| `output_preview` | ✅（512） | ✅（256） | 截断预览 |
+| `error_message` | ✅ | — | run 级错误 |
+| `agent_id` / `agent_key` / `agent_name` / `role` / `sort_order` / `status` | — | ✅ | 成员身份 |
 
-```go
-func buildCoordinatorOptions(def Definition) []trpcteam.Option {
-    var opts []trpcteam.Option
-    if mt := def.MemberTool; mt != nil {
-        mtc := trpcteam.MemberToolConfig{
-            StreamInner:      mt.StreamInner,
-            InnerTextMode:    mt.InnerTextMode,
-            SkipSummarization: mt.SkipSummarization,
-            HistoryScope:     mt.HistoryScope,
-        }
-        if mt.ToolSetName != "" {
-            mtc.ToolSetName = mt.ToolSetName
-        }
-        opts = append(opts, trpcteam.WithMemberToolConfig(mtc))
-    }
-    return opts
-}
-```
+**已有库迁移**：`docs/sql/03_session_team_run_steps_tool_call_count.sql`
+
+**一致性保障**：`internal/service/team_summary_parity_test.go` 断言 WS map 与 RPC proto 字段对齐。
+
+### 6.4 call_agent 工具
+
+- 定义：`internal/a2a/tool.go` → `NewCallAgentTool()`
+- 注入：`internal/tools/trpc/toolsets.go` 在 `cfg.CallAgent == true` 时挂载
+- 开关：`internal/agent/trpc_build.go` 读取 Agent 有效工具集 `biz.ToolKeyCallAgent`
+- 执行：`internal/service/chat_native.go` 实现 `a2a.AgentTurnRunner`
 
 ---
 
-## 七、WS 事件模型
+## 七、WS / EventBus 事件模型
 
-当前主链路：`internal/event` + `internal/server/ws.go`。历史 `internal/biz/team_run_events.go` 事件结构仅作存量模型参考。
+主链路：`internal/event` + `internal/server/ws.go`。Team 相关 Envelope 类型（`internal/event/envelope.go`）：
 
-```go
-type TeamRunEvent struct {
-    Type      string         `json:"type"`
-    TeamID    string         `json:"team_id"`
-    RunID     string         `json:"run_id"`
-    SessionID string         `json:"session_id,omitempty"`
-    Run       *TeamRun       `json:"run,omitempty"`
-    Step      *TeamRunStep   `json:"step,omitempty"`
-    Payload   map[string]any `json:"payload,omitempty"`
-}
-```
+| EnvelopeType | 发射时机 |
+|--------------|----------|
+| `team_run_started` | Run 创建后 |
+| `team_run_finished` | Run 成功结束 |
+| `team_run_failed` | Run 失败 |
+| `team_step_finished` | 每成员 step 持久化后 |
+| `team_summary` | Run 结束（成功/失败）后聚合 steps |
+| `member_message_start` | 子 Agent 首次输出（EventProjector） |
+| `member_delta` | 子 Agent 流式增量 |
+| `member_message_done` | 子 Agent 输出完成 |
+| `intent_pass` | 意图传递 |
+| `transfer` | Swarm handoff |
+| `run_status` | CancelTeamRun 取消 |
 
-事件类型：
-- `run_started`：Team 运行开始
-- `step_finished`：子 Agent 步骤完成
-- `run_finished`：Team 运行结束
-- `intent_pass`：意图传递
+前端映射：
+
+- `web/src/features/teams/teamRunEventFromEnvelope.ts` — TeamRunsDialog / Monitor
+- `web/src/features/chat/useEnvelopeStream.ts` — Chat 子 Agent 流
+- `web/src/features/chat/composables/useChatStreamManager.ts` — Team 分栏
 
 ---
 
-## 八、待实现功能
+## 八、前端层
 
-### 8.1 P0 — RunTeamTest 端到端
+| 路径 | 职责 |
+|------|------|
+| `web/src/pages/TeamsPage.vue` | Team 管理主页 |
+| `web/src/components/teams/TeamCard.vue` | 卡片：模式、成员、操作 |
+| `web/src/components/teams/TeamToolbar.vue` | 搜索 / 模式 / 状态筛选 |
+| `web/src/components/teams/TeamEditorDialog.vue` | 新建 / 编辑 / 模板 |
+| `web/src/components/teams/TeamRunsDialog.vue` | 运行记录 + WS 实时 |
+| `web/src/components/teams/teamUtils.ts` | 模板、modeOptions、Definition 默认值 |
+| `web/src/features/teams/api.ts` | Kratos Client + Envelope 订阅 |
+| `web/src/stores/teams/index.ts` | Pinia 状态 |
 
-当前 Service 层为桩实现，需要：
-- 创建临时 Session
-- 调用 Team Runtime 执行
-- 返回 TeamRun 和回复内容
+数据流：`TeamsPage` → `features/teams/api` → `services/kratos/team/v1`；实时经 `createEnvelopeStream` + `GLOBAL_WS_SESSION_ID`。
 
-### 8.2 P1 — A2A call_agent 工具注入
+---
 
-在 `internal/agent/trpc_build.go` 中注入 `call_agent` 工具到 Agent 工具集，使 Agent 可在 Team 中调用远程 Agent。
+## 九、与关联模块
 
-### 8.3 P2 — member_* WS 事件
+| 模块 | 关系 |
+|------|------|
+| Chat (M1) | Team Session Turn 入口；共享 RunGateway / RunRegistry |
+| Agent (M2–8) | 成员 Agent 构建；call_agent 依赖 A2A 工具启用 |
+| Session (M10) | owner_type=team；RunTeamTest 临时 Session |
+| Monitor (M18) | EventTimeline 订阅 Team Envelope |
+| Usage/Token (M29) | `team_turn` / `team_member` usage_kind |
+| A2A (M26) | call_agent 远程 Invoke |
+| Graph (M36) | Definition JSON 含 graph 预览节点；独立 Graph 执行引擎未接入 Team |
 
-在 `chat_native.go` 的 Team turn 中发射 `member_message_start` / `member_message_delta` / `member_message_done` 事件，使前端可展示子 Agent 实时流。
+---
 
-### 8.4 P3 — Team 运行结果结构化汇总
+## 十、测试
 
-新增 API 返回各成员贡献度、工具调用统计等结构化汇总数据。
+| 文件 | 覆盖 |
+|------|------|
+| `internal/service/team_test.go` | CRUD |
+| `internal/service/team_cancel_test.go` | CancelTeamRun + run_status Envelope |
+| `internal/team/summary_test.go` | BuildTeamRunSummary · SummaryMapFromData |
+| `internal/biz/team_summary_test.go` | BuildTeamRunSummaryData · GetRunSummary |
+| `internal/service/team_summary_parity_test.go` | WS map ↔ RPC proto 字段 parity |
+| `internal/team/definition_test.go` | Definition 解析 |
+| `pkg/trpc-agent-go/team/team_test.go` | 框架 Team 行为（上游） |
+
+Runner 端到端集成测试见开发计划 EP-TEST-01。

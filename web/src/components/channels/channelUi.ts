@@ -55,3 +55,47 @@ export function formatChannelDate(value: string): string {
   if (!value) return "-";
   return new Date(value).toLocaleString();
 }
+
+export function channelWebhookPath(row: ChannelRow): string {
+  const cfg = channelConfig(row);
+  const configured = String(cfg.webhook?.path ?? "").trim();
+  if (configured) {
+    return configured.startsWith("/") ? configured : `/${configured}`;
+  }
+  const key = String(row.key || "").trim();
+  return key ? `/webhooks/${key}` : "";
+}
+
+export function channelWebhookURL(row: ChannelRow): string {
+  const path = channelWebhookPath(row);
+  if (!path) return "";
+  if (typeof window === "undefined") return path;
+  return `${window.location.origin}${path}`;
+}
+
+export function channelSupportsWebhook(row: ChannelRow, catalog: ChannelCatalogItem[]): boolean {
+  const type = channelType(row);
+  const item = catalog.find((entry) => entry.type === type);
+  if (item) return item.supports_webhook;
+  return channelConfig(row).receive_mode === "webhook" || channelConfig(row).receive_mode === "event";
+}
+
+export function channelExternalID(row: ChannelRow): string {
+  const meta = channelMetadata(row);
+  if (meta.external_id?.trim()) return meta.external_id.trim();
+  const cfg = channelConfig(row).config ?? {};
+  for (const key of ["app_id", "page_id", "bot_id", "team_id"]) {
+    const value = String((cfg as Record<string, unknown>)[key] ?? "").trim();
+    if (value) return value.length > 24 ? `${value.slice(0, 24)}…` : value;
+  }
+  return "—";
+}
+
+export async function copyChannelWebhookURL(row: ChannelRow): Promise<string> {
+  const url = channelWebhookURL(row);
+  if (!url) throw new Error("Webhook URL 不可用");
+  if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(url);
+  }
+  return url;
+}

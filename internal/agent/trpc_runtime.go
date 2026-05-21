@@ -24,6 +24,7 @@ type TRPCRunnerDeps struct {
 	ArtifactService       trpcartifact.Service
 	Ingestor              trpcsession.Ingestor
 	AwaitUserReplyRouting bool
+	RalphLoop             *trpcrunner.RalphLoopConfig
 	// Plugins is an optional list of runner-level plugins injected at runner creation.
 	// Populate via plugintrpc.Runtime.Plugins() after hot-loading from the DB.
 	Plugins []trpcplugin.Plugin
@@ -54,6 +55,9 @@ func NewTRPCRunner(root trpcagent.Agent, deps TRPCRunnerDeps, opts ...trpcrunner
 	}
 	if deps.AwaitUserReplyRouting {
 		opts = append(opts, trpcrunner.WithAwaitUserReplyRouting(true))
+	}
+	if deps.RalphLoop != nil {
+		opts = append(opts, trpcrunner.WithRalphLoop(*deps.RalphLoop))
 	}
 	r := trpcrunner.NewRunner(appName, root, opts...)
 	mr, ok := r.(trpcrunner.ManagedRunner)
@@ -123,9 +127,5 @@ func TRPCRunStatus(r trpcrunner.Runner, requestID string) (trpcrunner.RunStatus,
 }
 
 func EnqueueTRPCUserMessage(r trpcrunner.Runner, requestID string, content string) error {
-	sr, ok := r.(trpcrunner.SteerableRunner)
-	if !ok {
-		return errors.New("runner does not support steerable operations")
-	}
-	return sr.EnqueueUserMessage(requestID, trpcmodel.NewUserMessage(content))
+	return trpcrunner.EnqueueUserMessage(r, requestID, trpcmodel.NewUserMessage(content))
 }

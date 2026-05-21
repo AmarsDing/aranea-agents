@@ -7,16 +7,20 @@ import (
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 )
 
-func TestNewBizSessionIngestorNilMemory(t *testing.T) {
-	if NewBizSessionIngestor(nil) != nil {
-		t.Fatal("expected nil ingestor without memory service")
+func TestBizSessionIngestor_IngestSession(t *testing.T) {
+	ing := &BizSessionIngestor{}
+	err := ing.IngestSession(context.Background(), &trpcsession.Session{
+		ID:      "sess-1",
+		AppName: "aranea",
+		UserID:  "u1",
+	}, trpcsession.WithIngestRunID("sess-1"), trpcsession.WithIngestAgentID("agent-a"))
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
-func TestBizSessionIngestorNoop(t *testing.T) {
-	ing := &BizSessionIngestor{}
-	sess := trpcsession.NewSession("app", "user", "sess-1")
-	if err := ing.IngestSession(context.Background(), sess); err != nil {
-		t.Fatalf("IngestSession() error = %v", err)
+func TestNewBizSessionIngestor_NilMemory(t *testing.T) {
+	if NewBizSessionIngestor(nil) != nil {
+		t.Fatal("expected nil ingestor without memory")
 	}
 }

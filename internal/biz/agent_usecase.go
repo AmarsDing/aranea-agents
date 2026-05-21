@@ -6,13 +6,17 @@ import (
 	"database/sql"
 	"encoding/hex"
 	stderrors "errors"
+	"regexp"
 	"strings"
 	"sync/atomic"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
-var agentIDRand uint64
+var (
+	agentIDRand     uint64
+	agentKeyPattern = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
+)
 
 func newAgentCatalogID() string {
 	buf := make([]byte, 12)
@@ -41,6 +45,8 @@ type AgentRepository interface {
 	CreateAgentPromptFile(ctx context.Context, f AgentPromptFile) (AgentPromptFile, error)
 	UpdateAgentPromptFile(ctx context.Context, f AgentPromptFile) (AgentPromptFile, error)
 	DeleteAgentPromptFile(ctx context.Context, agentID, id string) error
+	ListExtrasForAgents(ctx context.Context, agentIDs []string) (map[string]AgentListExtras, error)
+	ListAgentCreators(ctx context.Context) ([]AgentCreator, error)
 }
 
 // AgentUsecase is catalog agent CRUD + prompt preview.
@@ -53,9 +59,58 @@ func NewAgentUsecase(repo AgentRepository, tools ToolRepo) *AgentUsecase {
 	return &AgentUsecase{repo: repo, tools: tools}
 }
 
+// ListAgentCreators returns distinct creators for list filter options.
+func (u *AgentUsecase) ListAgentCreators(ctx context.Context) ([]AgentCreator, error) {
+	if u == nil || u.repo == nil {
+		return nil, nil
+	}
+	return u.repo.ListAgentCreators(ctx)
+}
+
 // List returns a page of agents without per-row hydration (settings/files).
 func (u *AgentUsecase) List(ctx context.Context, q AgentListQuery) (AgentListResult, error) {
-	return u.repo.SearchAgents(ctx, q)
+	page, err := u.repo.SearchAgents(ctx, q)
+	if err != nil {
+		return AgentListResult{}, err
+	}
+	if len(page.Items) == 0 {
+		return page, nil
+	}
+	ids := make([]string, 0, len(page.Items))
+	for i := range page.Items {
+		ids = append(ids, page.Items[i].ID)
+	}
+	extras, err := u.repo.ListExtrasForAgents(ctx, ids)
+	if err != nil {
+		return AgentListResult{}, err
+	}
+	for i := range page.Items {
+		if ex, ok := extras[page.Items[i].ID]; ok {
+			page.Items[i].LastRunStatus = ex.LastRunStatus
+			page.Items[i].LastRunAt = ex.LastRunAt
+			page.Items[i].PendingEvolutionCount = ex.PendingEvolutionCount
+		}
+	}
+	return page, nil
+}
+
+// CheckAgentKeyAvailability reports whether agent_key is free for a new catalog agent.
+func (u *AgentUsecase) CheckAgentKeyAvailability(ctx context.Context, agentKey string) (available bool, message string, err error) {
+	agentKey = strings.TrimSpace(agentKey)
+	if agentKey == "" {
+		return false, "agent_key is required", kerrors.BadRequest("AGENT", "agent_key is required")
+	}
+	if !agentKeyPattern.MatchString(agentKey) {
+		return false, "invalid agent_key format", kerrors.BadRequest("AGENT_KEY_INVALID", "agent_key must be lowercase letters, digits, and hyphens")
+	}
+	_, err = u.repo.GetAgentByAgentKey(ctx, agentKey)
+	if err == nil {
+		return false, "agent_key already in use", nil
+	}
+	if !stderrors.Is(err, sql.ErrNoRows) {
+		return false, "", err
+	}
+	return true, "available", nil
 }
 
 // Get returns one agent with settings and prompt files hydrated.
@@ -103,6 +158,13 @@ func (u *AgentUsecase) hydrate(ctx context.Context, agent Agent) (Agent, error) 
 	agent.Settings = &settings
 	agent.Files = files
 	HydrateAgentKind(&agent)
+	if extras, err := u.repo.ListExtrasForAgents(ctx, []string{agent.ID}); err == nil {
+		if ex, ok := extras[agent.ID]; ok {
+			agent.LastRunStatus = ex.LastRunStatus
+			agent.LastRunAt = ex.LastRunAt
+			agent.PendingEvolutionCount = ex.PendingEvolutionCount
+		}
+	}
 	return agent, nil
 }
 
@@ -140,6 +202,18 @@ func (u *AgentUsecase) Create(ctx context.Context, in Agent) (Agent, error) {
 	}
 	settings := withSettingDefaults(settingsFromAgentInput(in))
 	settings.AgentID = in.ID
+	if err := ValidateCodeExecutorType(settings.CodeExecutorType); err != nil {
+		return Agent{}, err
+	}
+	if err := ValidatePlannerKind(settings.PlannerKind); err != nil {
+		return Agent{}, err
+	}
+	if err := ValidatePlannerConfigJSON(settings.PlannerKind, settings.PlannerConfigJSON); err != nil {
+		return Agent{}, err
+	}
+	if err := ValidateRalphLoopSettings(&settings); err != nil {
+		return Agent{}, err
+	}
 	if in.Kind == AgentKindA2AProxy {
 		settings.IntentPassEnabled = false
 		settings.ToolsEnabled = false
@@ -159,7 +233,13 @@ func (u *AgentUsecase) Create(ctx context.Context, in Agent) (Agent, error) {
 	if in.Status == "" {
 		in.Status = "active"
 	}
+	if strings.TrimSpace(in.CreatedBy) == "" {
+		in.CreatedBy = AgentCreatedByFromContext(ctx)
+	}
 	if _, err := u.repo.CreateAgent(ctx, in); err != nil {
+		if isAgentKeyDuplicate(err) {
+			return Agent{}, kerrors.BadRequest("AGENT_KEY_CONFLICT", "agent_key already in use")
+		}
 		return Agent{}, err
 	}
 	if _, err := u.repo.UpsertAgentRuntimeSettings(ctx, settings); err != nil {
@@ -193,6 +273,18 @@ func (u *AgentUsecase) Update(ctx context.Context, id string, patch Agent) (Agen
 	merged.Kind = current.Kind
 	settings := withSettingDefaults(settingsFromAgentInput(merged))
 	settings.AgentID = id
+	if err := ValidateCodeExecutorType(settings.CodeExecutorType); err != nil {
+		return Agent{}, err
+	}
+	if err := ValidatePlannerKind(settings.PlannerKind); err != nil {
+		return Agent{}, err
+	}
+	if err := ValidatePlannerConfigJSON(settings.PlannerKind, settings.PlannerConfigJSON); err != nil {
+		return Agent{}, err
+	}
+	if err := ValidateRalphLoopSettings(&settings); err != nil {
+		return Agent{}, err
+	}
 	files := merged.Files
 	if len(files) == 0 {
 		files = current.Files
@@ -388,7 +480,7 @@ func mergeAgentCatalog(current, patch Agent) Agent {
 	out.ContextWindow = patch.ContextWindow
 	out.BudgetMonthlyCents = patch.BudgetMonthlyCents
 	if strings.TrimSpace(patch.ConfigJSON) != "" {
-		out.ConfigJSON = patch.ConfigJSON
+		out.ConfigJSON = MergeAgentConfigJSON(current.ConfigJSON, patch.ConfigJSON)
 	}
 	if patch.Settings != nil {
 		out.Settings = patch.Settings

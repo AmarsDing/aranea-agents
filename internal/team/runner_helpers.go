@@ -113,7 +113,7 @@ func (r *Runner) publishTeamRunSummary(ctx context.Context, run biz.TeamRun) {
 	r.td.Pipeline.Bus.Publish(ctx, TeamSummaryEnvelope(run, steps))
 }
 
-func (r *Runner) persistStep(ctx context.Context, run biz.TeamRun, teamID string, sortIdx int, m MemberDef, ag biz.Agent, userContent string, asst biz.ChatMessage, prov, mod, dialogMode string) {
+func (r *Runner) persistStep(ctx context.Context, run biz.TeamRun, teamID string, sortIdx int, m MemberDef, ag biz.Agent, userContent string, asst biz.ChatMessage, prov, mod, dialogMode string, toolCallCount int) {
 	step := biz.TeamRunStep{
 		ID:            uuid.NewString(),
 		RunID:         run.ID,
@@ -134,6 +134,15 @@ func (r *Runner) persistStep(ctx context.Context, run biz.TeamRun, teamID string
 		StartedAt:     asst.CreatedAt,
 		FinishedAt:    asst.CreatedAt,
 		CreatedAt:     agent.RFC3339Now(),
+		ToolCallCount: toolCallCount,
+	}
+	if r.td.Pipeline.Bus != nil {
+		started := step
+		started.Status = "running"
+		envStart := event.NewEnvelope(event.EnvelopeTypeTeamStepStarted, ag.AgentKey, run.SessionID)
+		envStart.TeamID = teamID
+		envStart.Metadata = map[string]any{"run_id": run.ID, "step": started}
+		r.td.Pipeline.Bus.Publish(ctx, envStart)
 	}
 	saved, err := r.teams.CreateTeamRunStep(ctx, step)
 	if err != nil {
