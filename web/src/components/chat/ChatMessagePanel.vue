@@ -15,8 +15,20 @@
         <div class="chat-message-header__subtitle text-caption ellipsis">
           {{ props.messages.length }} {{ t("chat.assistant") }} 路 {{ Math.round(props.contextRatio * 100) }}% ctx
         </div>
+        <ChatRunnerStatus
+          v-if="runStatus && runStatus !== 'idle' && runStatus !== 'completed' && runStatus !== 'cancelled' && runStatus !== 'failed'"
+          :status="runStatus"
+          :agent-name="runAgentName"
+          :started-at="runStartedAt"
+          :event-count="runEventCount"
+          @cancel="emit('stop')"
+        />
       </div>
+      <q-btn flat round dense icon="bolt" aria-label="Session events" @click="emit('open-events')">
+        <q-tooltip>会话事件</q-tooltip>
+      </q-btn>
     </q-card-section>
+    <ChatTeamMemberStrip v-if="isTeamSession" :members="teamMemberLanes" />
     <q-separator class="cream-sep" />
     <div
       ref="messagesScrollEl"
@@ -46,6 +58,9 @@
           :messages="props.messages"
           :is-dark="props.isDark"
           :is-team-session="props.isTeamSession"
+          :planner-kind="props.plannerKind"
+          :react-tool-link-index="props.reactToolLinkIndex"
+          @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
         />
       </q-virtual-scroll>
       <ChatMessageRow
@@ -57,6 +72,9 @@
         :messages="props.messages"
         :is-dark="props.isDark"
         :is-team-session="props.isTeamSession"
+        :planner-kind="props.plannerKind"
+        :react-tool-link-index="props.reactToolLinkIndex"
+        @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
       />
       <div v-if="props.pendingMessages?.length" class="chat-pending-list">
         <div class="chat-pending-label">{{ t("chat.pendingQueue") }}</div>
@@ -143,7 +161,42 @@
     <q-separator class="cream-sep" />
     <q-card-section class="chat-composer q-pa-sm q-pa-md-sm">
       <q-banner
-        v-if="props.isAwaitingUser"
+        v-if="props.isAwaitingUser && props.awaitKind === AWAIT_KIND_TOOL_CONFIRM"
+        rounded
+        class="q-mb-sm bg-orange-1 text-dark"
+        dense
+      >
+        <template #avatar>
+          <q-icon name="gpp_maybe" color="orange-9" />
+        </template>
+        <div class="text-body2">
+          {{ t("chat.toolConfirmHint") }}
+        </div>
+        <div v-if="props.awaitToolKey" class="text-caption q-mt-xs">
+          {{ t("chat.toolConfirmTool") }}: <code>{{ props.awaitToolKey }}</code>
+        </div>
+        <template #action>
+          <q-btn
+            flat
+            dense
+            no-caps
+            color="negative"
+            :label="t('chat.toolConfirmDeny')"
+            class="q-mr-xs"
+            @click="$emit('submit-tool-confirm', false)"
+          />
+          <q-btn
+            flat
+            dense
+            no-caps
+            color="primary"
+            :label="t('chat.toolConfirmApprove')"
+            @click="$emit('submit-tool-confirm', true)"
+          />
+        </template>
+      </q-banner>
+      <q-banner
+        v-else-if="props.isAwaitingUser"
         rounded
         class="q-mb-sm bg-amber-1 text-dark"
         dense
@@ -151,14 +204,14 @@
         <template #avatar>
           <q-icon name="hourglass_top" color="amber-9" />
         </template>
-        {{ t("chat.awaitingUserHint", "Agent 正在等待你的回复，在下方输入后点击「提交回复」。") }}
+        {{ t("chat.awaitingUserHint") }}
         <template #action>
           <q-btn
             flat
             dense
             no-caps
             color="primary"
-            :label="t('chat.submitAwaitReply', '提交回复')"
+            :label="t('chat.submitAwaitReply')"
             @click="$emit('submit-await-reply')"
           />
         </template>
@@ -191,6 +244,13 @@
         </div>
       </div>
 
+      <ChatEnqueueMessage
+        v-if="showEnqueue"
+        :is-dark="isDark"
+        :disabled="inputDisabled ?? sending"
+        @enqueue="(text) => emit('enqueue-message', text)"
+      />
+
       <q-input
         :model-value="modelValue"
         filled
@@ -200,7 +260,7 @@
         autogrow
         :input-style="{ minHeight: '100px' }"
         :dark="isDark"
-        :disable="sending"
+        :disable="inputDisabled ?? sending"
         @keydown="onInputKeydown"
         @update:model-value="$emit('update:modelValue', String($event ?? ''))"
       />
@@ -315,11 +375,19 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import type { QVirtualScroll } from "quasar";
 import ChatMessageRow from "./ChatMessageRow.vue";
+import ChatRunnerStatus from "../../features/chat/components/ChatRunnerStatus.vue";
+import ChatEnqueueMessage from "../../features/chat/components/ChatEnqueueMessage.vue";
+import ChatTeamMemberStrip, { type TeamMemberLane } from "./ChatTeamMemberStrip.vue";
+import type { RunStatusValue } from "../../features/chat/api";
+import { useChatMessageRow } from "../../features/chat/useChatMessageRow";
+import { AWAIT_KIND_TOOL_CONFIRM } from "../../features/chat/awaitConstants";
 import {
   CHAT_VIRTUAL_ROW_ESTIMATE,
   CHAT_VIRTUAL_SCROLL_THRESHOLD,
 } from "../../features/chat/chatListVirtual";
-import type { ChatAttachment, Message } from "./types";
+import type { A2UIUserActionPayload } from "../../features/chat/a2uiUserAction";
+import type { Message, ReactToolLinkIndex } from "../../features/chat/types";
+import type { ChatAttachment } from "./types";
 
 type Option = { label: string; value: string; caption?: string };
 
@@ -335,10 +403,22 @@ const props = defineProps<{
   contextRatio: number;
   isDark: boolean;
   sending?: boolean;
+  inputDisabled?: boolean;
   isAwaitingUser?: boolean;
+  awaitKind?: string;
+  awaitToolKey?: string;
   wsReplaying?: boolean;
   isTeamSession?: boolean;
+  /** Active agent planner_kind (react / a2ui presentation). */
+  plannerKind?: string;
+  /** Session-level ReAct tool link index (O(n) once per message list). */
+  reactToolLinkIndex: ReactToolLinkIndex;
   pendingMessages?: { id: string; content: string; status: string; created_at: string }[];
+  runStatus?: RunStatusValue;
+  runAgentName?: string;
+  runStartedAt?: string;
+  runEventCount?: number;
+  showEnqueue?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -350,12 +430,36 @@ const emit = defineEmits<{
   voice: [];
   send: [];
   stop: [];
+  "enqueue-message": [content: string];
   "cancel-pending": [pendingId: string];
   "update-pending": [pendingId: string, content: string];
   "submit-await-reply": [];
+  "submit-tool-confirm": [approved: boolean];
+  "open-events": [];
+  "a2ui-user-action": [payload: A2UIUserActionPayload];
 }>();
 
 const { t } = useI18n();
+const messagesRef = computed(() => props.messages);
+const messageRow = useChatMessageRow(messagesRef);
+const teamMemberLanes = computed((): TeamMemberLane[] => {
+  if (!props.isTeamSession) return [];
+  const lanes = new Map<string, TeamMemberLane>();
+  for (const message of props.messages) {
+    if (!messageRow.isTeamMember(message)) continue;
+    const key = messageRow.messageIdentityKey(message);
+    const meta = messageRow.teamMemberMeta(message);
+    const label = meta?.name || meta?.agent_key || messageRow.displayMessageName(message);
+    const streaming = message.status === "streaming" || message.status === "tool_running";
+    const prev = lanes.get(key);
+    lanes.set(key, {
+      key,
+      label,
+      streaming: (prev?.streaming ?? false) || streaming
+    });
+  }
+  return [...lanes.values()];
+});
 const useVirtualMessageList = computed(() => props.messages.length >= CHAT_VIRTUAL_SCROLL_THRESHOLD);
 const virtualRowSize = CHAT_VIRTUAL_ROW_ESTIMATE;
 const virtualScrollRef = ref<QVirtualScroll | null>(null);

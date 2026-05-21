@@ -14,7 +14,9 @@
 api/kratos/chat/v1/chat.proto        ← 对话 API 契约（发送、选项、停止、待执行、RunStatus、AwaitUserReply）
         ↓
 internal/server/ws.go                 ← WebSocket 实时通道（订阅、回放、取消、user_message 上行）
-internal/service/chat.go              ← ChatService 主结构 + SendChatMessage/GetChatOptions/StopGeneration/GetPendingMessages/CancelPendingMessage/UpdatePendingMessage/GetRunStatus/AwaitUserReply
+internal/service/chat.go              ← ChatService 桥接 + RunStatus/AwaitUserReply；入队/排队委托 chatUC
+internal/biz/chat_usecase.go         ← Follow-up Queue 编排（EnqueueUserMessage / Pending CRUD）
+internal/service/chat_pending.go       ← PendingMessageQueue 实现（待下沉 runtime）
 internal/service/chat_native.go       ← 原生对话入口（HTTP unary + WS 上行复用）+ hydratedAgent
 internal/service/trpc_turn.go         ← trpc-agent-go 单 Agent turn 执行 + EventBus 投影
 internal/service/chat_usage_ingress.go ← 用量记录
@@ -114,6 +116,7 @@ Cron Scheduler
 | `transfer` | team | Team/Swarm 转交 |
 | `team_run_started` / `team_run_finished` / `team_run_failed` | team | Team run 生命周期 |
 | `member_message_start` / `member_delta` / `member_message_done` | team | 成员级实时消息；`EventProjector` 在 `MemberAgentKeys` 下投影，前端 `useChatWorkspace` 消费 |
+| `run_status` | chat/team | 运行生命周期；`metadata.hint=message_queued` 表示 Follow-up 入队成功 |
 | `log` | monitor | 运行日志，需客户端通过 `enable_log` 上行开启订阅 |
 
 #### 1.4.3 下行 Envelope 结构
@@ -193,8 +196,7 @@ Cron Scheduler
 - `runSingleAgentViaTRPC`：`RunRegistry.StoreRunner`；defer `Finish` + `runner.Close` + `processPendingQueue`
 - `RunTRPCUserTurn` 使用 `trpcagent.WithRequestID(sessionID)`，与 `ManagedRunner.Cancel(sessionID)` 对齐
 - **停止**：HTTP `StopGeneration` 或 WS `cancel` → `RunRegistry.Cancel`（含 pending 后台 turn 的 cancel）
-- **运行中追加**：HTTP `POST /v1/chat/enqueue`（`EnqueueUserMessage` RPC）或 WS `enqueue_message`；优先 `SteerableRunner.EnqueueUserMessage`，否则写入 `pendingQueue`
-- **`SendChatMessage`**：若 session 已有 active run，同样先尝试 steerable enqueue，再入 pending queue（与 enqueue RPC 语义一致）
+- **运行中追加（Follow-up Queue）**：见 **§1.9**；HTTP `POST /v1/chat/enqueue`、`EnqueueUserMessage` RPC，或 WS `user_message` / `enqueue_message`；`SendChatMessage` 在 active run 时自动入队而非拒绝
 - **Team cancel**：`RunRegistry.StoreCancelable` 登记 Team turn，与单 Agent 停止行为一致
 - **连接管理**：`WSServer` 负责心跳、连接数限制、断线回放和 EventBus 订阅
 
@@ -218,19 +220,71 @@ Cron Scheduler
 - `runSingleAgentViaTRPC` 执行时通过 `ParseVariablesJSON` → `MergeRuntimeState` 将变量注入 Runner State
 - 变量可在 System Prompt 中通过占位符引用
 
-### 1.9 待执行队列
+### 1.9 对话阶段连续发送（Follow-up Queue / 待发送队列）
 
-- `ChatService.pendingQueue sync.Map` 跟踪 `sessionID → []pendingEntry`
-- 单 Agent 执行中再次发送时，消息入队而非拒绝
-- 当前 turn 完成后，`processPendingQueue` 自动从队列取下一条发送
-- 前端可通过 `GetPendingMessages` 查看待执行消息
-- 前端可通过 `CancelPendingMessage` 取消待执行消息
-- 前端可通过 `UpdatePendingMessage` 编辑待执行消息内容
-- `pendingEntry` 使用 UUID 生成唯一 ID
-- `processPendingQueue` 设置 600 秒超时控制，并支持取消传播
-- **容量限制**：每个 Session 最多 32 条待执行消息（`maxPendingPerSession`），超出时返回 `BadRequest` 错误
-- **错误上报**：待执行消息执行失败时通过 EventBus/WS `error` Envelope 通知前端；`pending_id` 统一写入 `error.pending_id` 字段
-- **Team 待执行**：Team turn defer 中调用 `processPendingQueue`，内部按 `OwnerType` 路由，与单 Agent 行为一致
+> **产品定位**：对标 Cursor 等 IDE 聊天窗口——Agent 正在生成回复或执行工具时，用户仍可连续按 Enter 发送多条后续消息；消息不会丢失，也不会打断当前 turn，而是进入**对话队列**按策略处理。
+>
+> **编排归属**：Gateway 运行编排层（`ChatUsecase` + `RunRegistry` + `PendingMessageQueue`）；Chat 模块负责传输入口与 UI 展示。设计细节见 [35 gateway.design.md §3.3](./35%20gateway.design.md#33-follow-up-queue对话阶段连续发送)。
+
+#### 1.9.1 用户故事
+
+- 作为用户，当 Agent 正在思考/流式输出/调用工具时，我可以继续输入并发送多条消息，而不必等待当前回复结束。
+- 作为用户，我可以在消息区底部看到**待发送队列**中的消息，并取消或编辑尚未执行的内容。
+- 作为用户，当队列已满或运行已结束时，我应收到明确错误提示（`CHAT_QUEUE_FULL` / `CHAT_RUN_ENDED`），而不是静默失败。
+
+#### 1.9.2 双路径入队策略
+
+| 路径 | 条件 | 行为 | 队列可见性 |
+|------|------|------|------------|
+| **Steerable 直注** | Runner 实现 `SteerableRunner` 且 `EnqueueUserMessage` 成功 | 消息注入当前活跃 turn，由框架在合适时机消费 | 不进入 Pending 列表（仅本地占位气泡） |
+| **Pending FIFO 降级** | Steerable 不支持或返回 `ErrQueuedUserMessageUnsupported` | 写入 `PendingMessageQueue`，当前 turn 结束后 `processPendingQueue` 取下一条发起新 turn | 出现在「待执行队列」UI + `GetPendingMessages` |
+
+编排入口：`ChatUsecase.EnqueueUserMessage`（`internal/biz/chat_usecase.go`），由 `chat_native` / `EnqueueUserMessage` RPC / WS 上行触发。
+
+#### 1.9.3 WS 通知（`message_queued`）
+
+入队成功后，`ChatEventPublisher.PublishMessageQueued` 发布 `run_status` Envelope：
+
+```json
+{
+  "type": "run_status",
+  "metadata": { "status": "queued", "hint": "message_queued" }
+}
+```
+
+前端应监听 `hint === "message_queued"` 刷新待发送列表（替代纯轮询）。  
+`ChatService.publishMessageQueued` 已废弃，逻辑收敛至 `ChatUsecase` + `publishMessageQueuedToBus`。
+
+#### 1.9.4 队列 CRUD 与容量
+
+| API | 说明 |
+|-----|------|
+| `GET /v1/chat/pending` | 列出当前 session 的 Pending FIFO 条目 |
+| `POST /v1/chat/pending/cancel` | 取消指定 `pending_id` |
+| `POST /v1/chat/pending/update` | 编辑指定 `pending_id` 内容 |
+| `POST /v1/chat/enqueue` | 显式入队（WS `enqueue_message` 等价） |
+
+- **容量**：每 session 最多 **32** 条 Pending（`maxPendingPerSession`）；超出返回 `CHAT_QUEUE_FULL`。
+- **持久化**：可选磁盘快照（`PendingMessageQueueWithDir`），重启恢复 2h 内条目。
+- **执行**：turn 完成/失败后 defer 调用 `processPendingQueue`；单 Agent 与 Team 路径一致；失败时 `error.pending_id` 关联条目。
+- **超时**：待执行 turn 处理 600s 超时，可被 `StopGeneration` 取消。
+
+#### 1.9.5 与「停止生成」的关系
+
+- **StopGeneration / WS cancel**：取消当前 run；**不自动清空** Pending FIFO（已排队消息保留，下一空闲窗口继续处理，除非用户手动取消）。
+- 用户可在 Agent 运行时连续入队；也可随时停止当前生成，队列中未执行消息仍可见。
+
+#### 1.9.6 前端交互规格（Cursor 对齐）
+
+| 行为 | 期望 | 当前实现 |
+|------|------|----------|
+| 运行中可连续发送 | Enter 不阻塞，输入框在 `running` 时仍可用 | 🟡 `sending` 标志在首条发送后置 true，可能阻塞连续发送 |
+| 待发送列表 | 消息区底部展示 Pending 条目，支持编辑/取消 | ✅ `ChatMessagePanel` + 3s 轮询 |
+| 入队即时反馈 | WS `message_queued` 触发列表刷新 | 🟡 未监听 hint，依赖轮询 |
+| Steerable 直注 | 消息立即出现在对话流（本地占位） | ✅ `pending-user-*` 占位气泡 |
+| 队列满/运行结束 | Toast + 错误码 | ✅ `CHAT_QUEUE_FULL` / `CHAT_RUN_ENDED` |
+
+> 前端优化项见 [1-chat-development.md](./1-chat-development.md) §3 与 [35-gateway-development.md](./35-gateway-development.md) Phase 1.5。
 
 ### 1.10 RunStatus 与 AwaitUserReply
 
@@ -306,7 +360,7 @@ Cron Scheduler
 - [x] **输入框键盘行为**：`Enter` 发送，`Shift + Enter` 换行
 - [x] **Session 内切换模型**：后续发送使用当前选择的模型
 - [x] **停止按钮**：模型回复或工具执行中，发送按钮切换为停止图标，点击可暂停/停止；单 Agent 和 Team 均支持
-- [x] **待执行队列**：执行中再次发送时进入"待执行"队列，可见，执行完成后按序发送；单 Agent 和 Team 均支持
+- [x] **Follow-up Queue（对话阶段连续发送）**：运行中再次发送自动入队（Steerable 直注或 Pending FIFO）；待发送列表可见、可取消/编辑；单 Agent 与 Team 均支持
 - [x] **取消待执行消息**：前端可取消待执行队列中的消息（`CancelPendingMessage` RPC 已实现，前端 UI 已添加取消按钮）
 - [x] **RunStatus / AwaitUserReply**：后端 RPC + Chat 页 `awaiting_user` 横幅与提交回复（`useChatWorkspace` 轮询 + `ChatMessagePanel`）
 
@@ -316,6 +370,7 @@ Cron Scheduler
 |--------|-----|------|------|
 | P1 | 结构化工具事件卡片 | ✅ | `ChatToolCallCard`：参数 JSON、结果、耗时、`is_long_running` 徽章 |
 | P1 | Reasoning 展示 | ✅ | 助手气泡上方默认折叠「思考过程」 |
+| P2 | Follow-up Queue UX（Cursor 对齐） | 待做 | 运行中解除 `sending` 阻塞；监听 `message_queued` 刷新队列；可选 `pending_enqueued` Envelope |
 | P2 | RunStatus WS 驱动 | ✅ | 后端 `run_status` Envelope；前端监听 WS（切换会话 HTTP 校准） |
 | P2 | Team 成员流 UX | ✅ | `team_member` 元数据 + 成员色条分栏 |
 | P2 | WS 回放 UX | ✅ | 顶栏「正在同步历史事件…」 |

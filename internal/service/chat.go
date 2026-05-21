@@ -8,7 +8,7 @@ import (
 	"time"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
-	chatagent "aranea-agents/internal/agent"
+	localexec "aranea-agents/internal/agent/codeexecutor"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/chatactivity"
 	"aranea-agents/internal/event"
@@ -16,6 +16,8 @@ import (
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/internal/team"
+	"aranea-agents/internal/tools/mcpobserve"
+	serviceawaitreply "aranea-agents/internal/tools/serviceawaitreply"
 	tooltrpc "aranea-agents/internal/tools/trpc"
 
 	trpcrunner "trpc.group/trpc-go/trpc-agent-go/runner"
@@ -42,13 +44,13 @@ type ChatService struct {
 	pluginManager *plugintrpc.Manager
 	skillDBRepo   trpcskill.Repository
 	artifacts     *biz.ArtifactUsecase
-	runs          *rt.RunRegistry
-	pending       *PendingMessageQueue
-	awaitChans      sync.Map
-	sessionMu       sync.Map
-	resumeInFlight  sync.Map // sessionID -> struct{}; guards cross-restart await resume
+	runs           *rt.RunRegistry
+	chatUC         *biz.ChatUsecase
+	awaitMetaCache sync.Map // sessionID -> biz.ChatAwaitMeta
+	resumeInFlight sync.Map // sessionID -> struct{}; guards cross-restart await resume
 	a2aUC              *biz.A2AUsecase
 	knowledgeRetriever *knowledge.Retriever
+	codeExecFactory    *localexec.Factory
 }
 
 type ChatServiceDeps struct {
@@ -64,6 +66,9 @@ type ChatServiceDeps struct {
 	Artifacts     *biz.ArtifactUsecase
 	A2AUC              *biz.A2AUsecase
 	KnowledgeRetriever *knowledge.Retriever
+	CodeExecFactory    *localexec.Factory
+	MCPServers         *biz.MCPServerUsecase
+	PendingQueue       *rt.PendingMessageQueue
 }
 
 func coalesceRunRegistry(r *rt.RunRegistry) *rt.RunRegistry {
@@ -73,21 +78,32 @@ func coalesceRunRegistry(r *rt.RunRegistry) *rt.RunRegistry {
 	return rt.NewRunRegistry()
 }
 
+func coalescePendingQueue(q *rt.PendingMessageQueue) *rt.PendingMessageQueue {
+	if q != nil {
+		return q
+	}
+	return rt.NewPendingMessageQueue()
+}
+
 func NewChatService(deps ChatServiceDeps) *ChatService {
+	runs := coalesceRunRegistry(deps.Runs)
+	pending := coalescePendingQueue(deps.PendingQueue)
+	sessionLocks := NewSessionLockManager()
 	s := &ChatService{
-		teams:         deps.Teams,
-		teamsNative:   deps.TeamsNative,
-		usage:         deps.Usage,
-		monitor:       deps.Monitor,
-		pluginRT:      deps.PluginRT,
-		pluginManager: deps.PluginManager,
-		skillDBRepo:   deps.SkillDBRepo,
-		artifacts:     deps.Artifacts,
-		runs:          coalesceRunRegistry(deps.Runs),
-		pending:       NewPendingMessageQueue(),
+		teams:              deps.Teams,
+		teamsNative:        deps.TeamsNative,
+		usage:              deps.Usage,
+		monitor:            deps.Monitor,
+		pluginRT:           deps.PluginRT,
+		pluginManager:      deps.PluginManager,
+		skillDBRepo:        deps.SkillDBRepo,
+		artifacts:          deps.Artifacts,
+		runs:               runs,
+		chatUC:             NewChatUsecaseFromDeps(runs, pending, sessionLocks, deps.Sessions, deps.Pipeline.Bus),
 		a2aUC:              deps.A2AUC,
 		knowledgeRetriever: deps.KnowledgeRetriever,
-		td:            deps.TurnDeps,
+		codeExecFactory:    deps.CodeExecFactory,
+		td:                 deps.TurnDeps,
 	}
 	if deps.TeamsNative != nil {
 		deps.TeamsNative.SetKnowledgeRetriever(deps.KnowledgeRetriever)
@@ -96,7 +112,20 @@ func NewChatService(deps ChatServiceDeps) *ChatService {
 		})
 		deps.TeamsNative.SetRunRegistry(s.runs)
 	}
+	configureMCPObserve(deps.TurnDeps.Pipeline.Bus, deps.MCPServers)
 	return s
+}
+
+func configureMCPObserve(bus event.Bus, mcp *biz.MCPServerUsecase) {
+	if bus != nil {
+		mcpobserve.SetBus(bus)
+	}
+	if mcp == nil {
+		return
+	}
+	mcpobserve.SetMetadataRecorder(func(ctx context.Context, serverKey string, at time.Time) {
+		_ = mcp.RecordReconnectMetadata(ctx, serverKey, at)
+	})
 }
 
 func (s *ChatService) SendChatMessage(ctx context.Context, req *chatv1.SendChatMessageRequest) (*chatv1.SendChatMessageResponse, error) {
@@ -112,26 +141,31 @@ func (s *ChatService) StopGeneration(ctx context.Context, req *chatv1.StopGenera
 	if sessionID == "" {
 		return nil, kerrors.BadRequest("CHAT", "session_id is required")
 	}
-	stopped := s.runs.Cancel(sessionID)
-	if stopped {
-		runID := ""
-		if entry, ok := s.runs.GetStatus(sessionID); ok {
-			runID = entry.RunID
-		}
-		s.publishRunStatus(sessionID, runID, "cancelled", "")
-		s.persistRunStatus(ctx, sessionID, runID, "cancelled", "")
-		if _, err := chatactivity.CancelRunningActivityMessages(ctx, s.td.Sessions, sessionID); err != nil {
-			event.CtxFlowLogWarn(ctx, "chat.activity.cancel", "取消执行卡片查询失败",
-				event.P("session_id", sessionID),
-				event.P("error", err.Error()),
-			)
-		}
-	}
+	stopped := s.cancelActiveRun(ctx, sessionID)
 	return &chatv1.StopGenerationResponse{Stopped: stopped}, nil
 }
 
+// CancelRun stops the active run for a session (WS cancel and HTTP stop share this path).
 func (s *ChatService) CancelRun(ctx context.Context, sessionID string) bool {
-	return s.runs.Cancel(sessionID)
+	return s.cancelActiveRun(ctx, strings.TrimSpace(sessionID))
+}
+
+func (s *ChatService) cancelActiveRun(ctx context.Context, sessionID string) bool {
+	if s == nil || sessionID == "" {
+		return false
+	}
+	stopped, runID := s.runs.Cancel(sessionID)
+	if !stopped {
+		return false
+	}
+	s.setRunStatus(sessionID, runID, "cancelled", "")
+	if _, err := chatactivity.CancelRunningActivityMessages(ctx, s.td.Sessions, sessionID); err != nil {
+		event.CtxFlowLogWarn(ctx, "chat.activity.cancel", "取消执行卡片查询失败",
+			event.P("session_id", sessionID),
+			event.P("error", err.Error()),
+		)
+	}
+	return true
 }
 
 // RunGateway exposes the shared session run registry (Chat, Team, Cron, Channel, WS).
@@ -149,7 +183,7 @@ func (s *ChatService) GetPendingMessages(ctx context.Context, req *chatv1.GetPen
 	if sessionID == "" {
 		return nil, kerrors.BadRequest("CHAT", "session_id is required")
 	}
-	entries := s.pending.List(sessionID)
+	entries := s.chatUC.GetPendingMessages(sessionID)
 	items := make([]*chatv1.PendingMessage, 0, len(entries))
 	for i := range entries {
 		items = append(items, &chatv1.PendingMessage{
@@ -171,7 +205,7 @@ func (s *ChatService) CancelPendingMessage(ctx context.Context, req *chatv1.Canc
 	if pendingID == "" {
 		return nil, kerrors.BadRequest("CHAT", "pending_id is required")
 	}
-	cancelled := s.pending.Remove(sessionID, pendingID)
+	cancelled := s.chatUC.CancelPendingMessage(sessionID, pendingID)
 	return &chatv1.CancelPendingMessageResponse{Cancelled: cancelled}, nil
 }
 
@@ -188,7 +222,7 @@ func (s *ChatService) UpdatePendingMessage(ctx context.Context, req *chatv1.Upda
 	if content == "" {
 		return nil, kerrors.BadRequest("CHAT", "content is required")
 	}
-	updated := s.pending.Update(sessionID, pendingID, content)
+	updated := s.chatUC.UpdatePendingMessage(sessionID, pendingID, content)
 	return &chatv1.UpdatePendingMessageResponse{Updated: updated}, nil
 }
 
@@ -202,54 +236,43 @@ func (s *ChatService) EnqueueUserMessage(ctx context.Context, req *chatv1.Enqueu
 		return nil, kerrors.BadRequest("CHAT", "content is required")
 	}
 
-	unlock := s.lockSession(sessionID)
-	defer unlock()
-	if !s.runs.HasActive(sessionID) {
-		return &chatv1.EnqueueUserMessageResponse{Accepted: false}, nil
-	}
-	enqueued, err := s.runs.EnqueueUserMessage(sessionID, content)
+	accepted, queued, pendingID, rejectReason, err := s.chatUC.EnqueueUserMessage(sessionID, content)
 	if err != nil {
 		return nil, err
 	}
-	if enqueued {
-		return &chatv1.EnqueueUserMessageResponse{Accepted: true}, nil
+	if !accepted {
+		return &chatv1.EnqueueUserMessageResponse{Accepted: false}, nil
 	}
-	pendingID := s.pending.Enqueue(sessionID, content)
-	if pendingID == "" {
-		return nil, kerrors.BadRequest("CHAT", "pending queue is full for this session")
+	if queued {
+		if pendingID == "" {
+			return nil, kerrors.BadRequest("CHAT", enqueueRejectMessage(rejectReason))
+		}
+		return &chatv1.EnqueueUserMessageResponse{
+			Accepted:  true,
+			Queued:    true,
+			PendingId: pendingID,
+		}, nil
 	}
-	return &chatv1.EnqueueUserMessageResponse{
-		Accepted:  true,
-		Queued:    true,
-		PendingId: pendingID,
-	}, nil
+	return &chatv1.EnqueueUserMessageResponse{Accepted: true}, nil
 }
 
 // setRunStatus atomically updates the run status for a session and publishes a WS envelope.
 func (s *ChatService) setRunStatus(sessionID, runID, status, errMsg string) {
+	s.setRunStatusWithAwait(sessionID, runID, status, errMsg, nil)
+}
+
+func (s *ChatService) setRunStatusWithAwait(sessionID, runID, status, errMsg string, await *AwaitStatusMeta) {
 	s.runs.SetStatus(sessionID, runID, status, errMsg)
-	s.publishRunStatus(sessionID, runID, status, errMsg)
+	if await != nil {
+		PublishRunStatusMeta(s.td.Pipeline.Bus, sessionID, runID, status, errMsg, await)
+	} else {
+		PublishRunStatus(s.td.Pipeline.Bus, sessionID, runID, status, errMsg)
+	}
 	s.persistRunStatus(context.Background(), sessionID, runID, status, errMsg)
 }
 
 func (s *ChatService) publishRunStatus(sessionID, runID, status, errMsg string) {
 	PublishRunStatus(s.td.Pipeline.Bus, sessionID, runID, status, errMsg)
-}
-
-// publishMessageQueued notifies WS clients that a user message was accepted into the
-// active run (steerable enqueue or pending queue) without starting a new turn.
-func (s *ChatService) publishMessageQueued(sessionID string) {
-	bus := s.td.Pipeline.Bus
-	if bus == nil || strings.TrimSpace(sessionID) == "" {
-		return
-	}
-	env := event.NewEnvelope(event.EnvelopeTypeRunStatus, "chat-service", sessionID)
-	env.Channel = event.RouteChannel(env)
-	env.Metadata = map[string]any{
-		"status": "queued",
-		"hint":   "message_queued",
-	}
-	bus.Publish(context.Background(), env)
 }
 
 // GetRunStatus returns the current run lifecycle state for a session.
@@ -275,16 +298,21 @@ func (s *ChatService) GetRunStatus(ctx context.Context, req *chatv1.GetRunStatus
 		resp.UpdatedAt = snap.UpdatedAt
 	}
 	if runner, _, active := s.runs.ActiveRunner(sessionID); active {
-		mergeFrameworkRunStatus(resp, runner, sessionID)
+		applyFrameworkRunStatus(resp, runner, sessionID)
+	}
+	if meta := s.resolveAwaitMeta(ctx, sessionID, resp.Status); strings.TrimSpace(resp.Status) == "awaiting_user" {
+		resp.AwaitKind = meta.Kind
+		resp.AwaitToolKey = meta.ToolKey
+		resp.AwaitToolCallId = meta.ToolCallID
 	}
 	return resp, nil
 }
 
-func mergeFrameworkRunStatus(resp *chatv1.RunStatus, runner trpcrunner.Runner, requestID string) {
+func applyFrameworkRunStatus(resp *chatv1.RunStatus, runner trpcrunner.Runner, requestID string) {
 	if resp == nil || runner == nil {
 		return
 	}
-	st, ok := chatagent.TRPCRunStatus(runner, requestID)
+	st, ok := rt.FrameworkRunStatusFromRunner(runner, requestID)
 	if !ok {
 		return
 	}
@@ -300,10 +328,7 @@ func mergeFrameworkRunStatus(resp *chatv1.RunStatus, runner trpcrunner.Runner, r
 }
 
 func (s *ChatService) lockSession(sessionID string) func() {
-	val, _ := s.sessionMu.LoadOrStore(sessionID, &sync.Mutex{})
-	mu := val.(*sync.Mutex)
-	mu.Lock()
-	return mu.Unlock
+	return s.chatUC.LockSession(sessionID)
 }
 
 // makeAwaitReplyFunc returns a ReplyFunc closure that the ServiceTool calls to
@@ -314,12 +339,20 @@ func (s *ChatService) lockSession(sessionID string) func() {
 func (s *ChatService) makeAwaitReplyFunc(runCtx context.Context, sessionID, runID string) func(context.Context) (string, error) {
 	return func(toolCtx context.Context) (string, error) {
 		ch := make(chan awaitReplyCh, 1)
-		s.awaitChans.Store(sessionID, ch)
-		s.setRunStatus(sessionID, runID, "awaiting_user", "")
-		s.persistAwaitMarkers(toolCtx, sessionID, runID)
+		s.chatUC.RegisterAwaitChannel(sessionID, ch)
+		awaitMeta := AwaitStatusMeta{Kind: biz.ChatAwaitKindReply}
+		if req, ok := serviceawaitreply.ToolConfirmRequestFromContext(toolCtx); ok {
+			awaitMeta = AwaitStatusMeta{
+				Kind:       biz.ChatAwaitKindToolConfirm,
+				ToolKey:    req.ToolKey,
+				ToolCallID: req.ToolCallID,
+			}
+		}
+		s.setRunStatusWithAwait(sessionID, runID, "awaiting_user", "", &awaitMeta)
+		s.persistAwaitMarkers(toolCtx, sessionID, runID, awaitMeta, true)
 		defer func() {
-			s.awaitChans.Delete(sessionID)
-			// Restore "running" so downstream setRunStatus calls see a clean state.
+			s.chatUC.DeleteAwaitChannel(sessionID)
+			s.clearAwaitMetaCache(sessionID)
 			s.setRunStatus(sessionID, runID, "running", "")
 		}()
 		select {
@@ -343,7 +376,7 @@ func (s *ChatService) AwaitUserReply(ctx context.Context, req *chatv1.AwaitUserR
 	if reply == "" {
 		return nil, kerrors.BadRequest("CHAT", "reply is required")
 	}
-	val, ok := s.awaitChans.Load(sessionID)
+	val, ok := s.chatUC.LoadAwaitChannel(sessionID)
 	if !ok {
 		runID, canResume := s.canResumeAwait(ctx, sessionID)
 		if canResume {

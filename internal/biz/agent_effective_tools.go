@@ -39,11 +39,7 @@ type AgentToolPolicyInput struct {
 }
 
 func jsonStringList(raw string) []string {
-	var result []string
-	if json.Unmarshal([]byte(strings.TrimSpace(raw)), &result) != nil {
-		return []string{}
-	}
-	return result
+	return JSONStringList(raw)
 }
 
 var toolGroupsFilesystem = []string{"read_file", "read_multiple_files", "save_file", "list_file", "search_file", "search_content", "replace_content"}

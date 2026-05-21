@@ -1,6 +1,6 @@
 # Chat 对话 — 开发计划
 
-> **版本**：2026-05-19 | **状态**：✅ 端到端可用（WS/EventBus 主通道；RunRegistry + EnqueueUserMessage；AwaitUserReply UI 已接入）
+> **版本**：2026-05-21 | **状态**：✅ 端到端可用；Follow-up Queue 后端 ✅，Cursor 式连续发送 UX 待 Phase 1.5
 > **需求**：[1 chat.md](./1%20chat.md) · **设计**：[1 chat.design.md](./1%20chat.design.md)  
 > **执行卡片 v2**：[1 chat-execution-trace.md](./1%20chat-execution-trace.md) · [1 chat-execution-trace.design.md](./1%20chat-execution-trace.design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：—
@@ -15,7 +15,9 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 - `api/kratos/chat/v1/chat.proto` — Chat RPC（含 `EnqueueUserMessage` → `POST /v1/chat/enqueue`）
 - `internal/runtime/run_registry.go` — 会话级 active run / cancel / run status
 - `internal/server/ws.go` — WebSocket（`user_message` / `cancel` / `enqueue_message`）
-- `internal/service/chat.go` — ChatService 桥接 + awaitChans / EnqueueUserMessage
+- `internal/biz/chat_usecase.go` — Follow-up Queue 编排（EnqueueUserMessage / Pending CRUD）
+- `internal/service/chat_pending.go` — PendingMessageQueue FIFO（待下沉 runtime）
+- `internal/service/chat_run_gateway.go` — Biz 适配器 + `publishMessageQueuedToBus`
 - `internal/service/chat_native.go` — 原生对话入口（HTTP unary + WS 上行复用）
 - `internal/service/trpc_turn.go` — trpc-agent-go 单 Agent turn + EventBus 投影
 - `internal/agent/event_projector.go` — trpc event → Envelope（含 Team `member_*`）
@@ -34,7 +36,7 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 | HTTP unary 对话 | ✅ | `SendChatMessage` / `RunNativeTurnUnary` |
 | Channel / Cron 入口 | ✅ | `lockSession` + `RunRegistry` |
 | 停止 / 运行中追加 | ✅ | `StopGeneration` / WS `cancel`；`EnqueueUserMessage` |
-| 待执行队列 | ✅ | `pendingQueue` + UI 取消/编辑 |
+| 待执行 / Follow-up Queue | ✅ 后端 / 🟡 前端 | Steerable + Pending FIFO；UI 取消/编辑；连续发送 UX 待补 |
 | RunStatus + AwaitUserReply | ✅ | RPC + Chat 页横幅与提交（`useChatWorkspace` 轮询） |
 | Team member_* Envelope | ✅ | `EventProjector` + `useChatWorkspace` 成员流 |
 | WS 控制消息 | 🟡 | `ws-transport`：`connected`/`pong`/`replay_*`/`server_shutdown`；页面无回放提示 |
@@ -51,7 +53,15 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 
 ## 3. 差距与优化（按优先级）
 
-### P1 — 体验闭环
+### P1 — Follow-up Queue UX（Cursor 对齐）
+
+1. **运行中连续发送**：`useChatSender` 在 `runStatus === running` 时不应被 `sending` 阻塞；Enter 触发入队而非新 turn。
+2. **WS 驱动 Pending 刷新**：监听 `run_status.metadata.hint === message_queued"`，立即 `refreshPendingMessages`（替代纯 3s 轮询）。
+3. **（P3）** 可选 `pending_enqueued` Envelope 携带 `pending_id` + 内容预览。
+
+详见 [35-gateway-development.md Phase 1.5](./35-gateway-development.md#phase-15follow-up-queue-uxcursor-对齐p2) · [1 chat.md §1.9](./1%20chat.md#19-对话阶段连续发送follow-up-queue--待发送队列)
+
+### P1 — 体验闭环（原）
 
 1. **工具事件结构化卡片**：`tool_call`/`tool_result` → 参数 JSON、结果、耗时、`is_long_running` 折叠面板（`ChatMessagePanel` + `toolEventMarkdown` 扩展）。
 2. **Reasoning 展示规格**：产品定稿（折叠/内联/侧栏）并在助手气泡渲染 `content.reasoning`。

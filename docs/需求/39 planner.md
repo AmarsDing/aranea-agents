@@ -6,12 +6,21 @@
 
 ## 1. 现状分析
 
-项目已集成 BuiltinPlanner、ReActPlanner、A2UIPlanner 三种规划器的运行时选择逻辑，通过 `planner_kind` 字段和 `dialogMode` 参数在 Agent 构建时选择对应规划器。当前存在以下不足：
+项目已集成 BuiltinPlanner、ReActPlanner、A2UIPlanner 三种规划器的运行时选择逻辑，通过 `planner_kind`、`planner_config_json` 与 `dialogMode` 在 Agent 构建时选择并配置规划器（2026-05-21 P0–P1 已落地，详见 [39-planner-development.md](./39-planner-development.md)）。
 
-- 规划器参数不可配置（BuiltinPlanner 的 reasoning_effort/thinking_enabled/thinking_tokens、A2UIPlanner 的 Schema 等均使用默认值）
-- `planner_kind` 字段未持久化到数据库（Ent Schema 缺失，数据层映射缺失）
-- 前端无规划模式配置 UI
-- Chat 页面无 ReAct 规划步骤展示和 A2UI 渲染预览
+**已具备**：
+- 运行时选择与 `planner_config_json` 参数注入（Builtin / A2UI）
+- `planner_kind` / `planner_config_json` 数据库持久化与 API 往返
+- Web types / wire 字段贯通
+
+**前端（2026-05-21）**：
+- Agent 设置页「规划模式」表单（`AgentPlannerSection`）；`reasoning_effort` 前后端枚举校验
+- Chat ReAct 步骤卡 + ACTION 内嵌工具卡（`reactToolLinkIndex` 会话级去重）
+- Chat A2UI StandardCatalog 组件树 + Button `userAction` 上行；用户消息友好摘要
+
+**仍待完善**（见 [39-planner-development.md](./39-planner-development.md) backlog）：
+- A2UI 表单字段可编辑（dataModel 双向绑定）
+- StandardCatalog 长尾组件（Carousel / WebView 等）
 
 ---
 
@@ -75,7 +84,7 @@
 - ReAct 模式：解析 `/*PLANNING*/`/`/*REASONING*/`/`/*ACTION*/`/`/*REPLANNING*/`/`/*FINAL_ANSWER*/` 标签，以步骤卡片形式展示
 - A2UI 模式：解析 JSONL 输出，渲染 A2UI 组件预览
 
-**验收标准**：ReAct 模式下 Chat 页面展示规划步骤卡片；A2UI 模式下展示渲染预览
+**验收标准**：ReAct 模式下 Chat 展示步骤卡片（`/*PLANNING*/` 等标签）；A2UI 模式下展示 JSONL 行预览（允许的消息键）；完整组件渲染为后续迭代
 
 ---
 

@@ -73,11 +73,8 @@
           <div><b>存储：</b>{{ detailMeta.storage_kind }} — {{ detailMeta.storage_uri }}</div>
           <div><b>大小：</b>{{ formatBytes(detailMeta.size) }} · v{{ detailMeta.version }}</div>
         </q-card-section>
-        <q-card-section v-if="detailPreview">
-          <pre class="artifact-preview">{{ detailPreview }}</pre>
-        </q-card-section>
-        <q-card-section v-else-if="detailLoading" class="text-center">
-          <q-spinner color="primary" />
+        <q-card-section v-if="detailArtifactId">
+          <ArtifactPreview :artifact-id="detailArtifactId" :show-download="true" @download="onPreviewDownload" />
         </q-card-section>
         <q-card-actions align="right">
           <q-btn flat label="关闭" v-close-popup />
@@ -90,7 +87,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { useQuasar } from "quasar";
-import { deleteArtifact, listArtifacts, previewArtifact, signDownloadUrl, artifactDownloadHref, uploadArtifact } from "../features/artifact/api";
+import { deleteArtifact, listArtifacts, signDownloadUrl, artifactDownloadHref, uploadArtifact } from "../features/artifact/api";
+import ArtifactPreview from "../features/artifact/ArtifactPreview.vue";
 import type { ArtifactMeta } from "../features/artifact/types";
 
 const $q = useQuasar();
@@ -105,8 +103,7 @@ const uploadFile = ref<File | null>(null);
 const uploadForm = ref({ session_id: "", name: "", mime_type: "" });
 const detailOpen = ref(false);
 const detailMeta = ref<ArtifactMeta | null>(null);
-const detailPreview = ref("");
-const detailLoading = ref(false);
+const detailArtifactId = ref("");
 
 const columns = [
   { name: "name", label: "名称", field: "name", align: "left" as const, sortable: true },
@@ -206,25 +203,18 @@ async function submitUpload() {
   }
 }
 
-async function openDetail(row: ArtifactMeta) {
+function openDetail(row: ArtifactMeta) {
   detailMeta.value = row;
-  detailPreview.value = "";
+  detailArtifactId.value = row.id;
   detailOpen.value = true;
-  detailLoading.value = true;
+}
+
+async function onPreviewDownload(meta: ArtifactMeta) {
   try {
-    const preview = await previewArtifact(row.id);
-    detailMeta.value = preview.meta;
-    if (preview.preview_kind === "text") {
-      detailPreview.value = preview.text_content;
-    } else if (preview.preview_kind === "image" && preview.data_base64) {
-      detailPreview.value = `[图片预览] data:${preview.meta.mime_type};base64,${preview.data_base64.slice(0, 80)}…`;
-    } else {
-      detailPreview.value = `[${preview.preview_kind} 内容 ${formatBytes(preview.meta.size)}]`;
-    }
+    const signed = await signDownloadUrl(meta.id, meta.version);
+    window.open(artifactDownloadHref(signed.url), "_blank", "noopener,noreferrer");
   } catch (e) {
-    detailPreview.value = e instanceof Error ? e.message : "加载失败";
-  } finally {
-    detailLoading.value = false;
+    $q.notify({ type: "negative", message: e instanceof Error ? e.message : "获取下载链接失败" });
   }
 }
 
@@ -283,15 +273,5 @@ onMounted(() => {
   margin: 0;
   color: #666;
   max-width: 36rem;
-}
-.artifact-preview {
-  max-height: 320px;
-  overflow: auto;
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-size: 12px;
-  background: #f5f5f5;
-  padding: 12px;
-  border-radius: 8px;
 }
 </style>

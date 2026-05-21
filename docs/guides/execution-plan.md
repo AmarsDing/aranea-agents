@@ -4,7 +4,7 @@
 >
 > **关联文档**：[0 系统框图.md](../需求/0%20系统框图.md) · [0-system-development.md](../需求/0-system-development.md) · [README-development.md](../需求/README-development.md)
 >
-> **更新时间**：2026-05-20（迭代 7：FlowLogger Phase 3 · Eval 报告导出 ✅）
+> **更新时间**：2026-05-21（迭代 8：Agent Builder / 查重 / config 合并 ✅）
 
 ---
 
@@ -38,6 +38,7 @@
 | **可用需闭环** | Graph(36)、MCP(19)、Memory(12–16)、Monitor/Token(18/29) | Graph 节点类型待补；MCP 重连可观测；Memory 冲突/级联 |
 | **可用需闭环** | Team(11)、Channel(17) | Team `team_summary` WS ✅；飞书/钉钉/企微入站+出站 ✅；更多平台待补 |
 | **有页、Runtime 已通主项** | Knowledge(37)、Artifact(27)、Evaluation(33)、A2A(26) | A2A Phase 1–3.5 ✅（联邦 Gateway、远程 Invoke、Graph metadata）；网关 Cron/Admin 流式待 Phase 4 |
+| **Skill 子能力** | CodeExecutor(32) | Phase 1–2 + Review ✅：Factory / Agent 配置 / capabilities / lazy E2B — [开发计划](../需求/32-codeexecutor-development.md) · [设计架构图](../需求/32%20codeexecutor.design.md#21-当前架构已实现-phase-12--review-修复) |
 | **早期/占位** | Evolution(7)、CLI(25)、TTS | Ecosystem MVP ✅（`/v1/ecosystem/products`）；Telemetry Span 已通 turn，Trace UI 待补 |
 
 ---
@@ -112,12 +113,34 @@
 | I6-TEL-02 | Monitor Trace 瀑布图 + usage spans | P2 | ✅ | `turn_spans` + `TraceWaterfall.vue` |
 | KN-01 | Knowledge Rerank（trpc reranker） | P2 | ✅ | `KRATOS_KNOWLEDGE_RERANKER` + Retriever |
 | EVAL-02 | Evaluation 人工标注 API + UI | P2 | ✅ | `AnnotateCaseResult` + Results 对话框 |
+| EVAL-05 | Evaluation Phase 5（扩展指标/UserSim/趋势/Eval LLM 系统配置） | P3 | ✅ | [changelog](../changelog/2026-05-21-Evaluation-Phase5-Extended.md) |
 
 **迭代 6 备注（观测）**：I6-TEL-02 / KN-01 / EVAL-02 review 已合入；`chat.usage_record` 失败用 FlowLogger（见 [changelog Iteration6](../changelog/2026-05-20-Iteration6-TRACE-EVAL-KN.md) §后续优化）。
 
 **FlowLogger v2**：📋 [需求](../需求/52-flow-logger.md) · [设计](../需求/52-flow-logger.design.md) · [开发计划](../需求/52-flow-logger-development.md) — Phase 1a/1b/3 ✅；Phase 2 落库待做。
 
-**当前冲刺焦点**：FlowLogger Phase 2 落库 · Knowledge OCR · **A2A Phase 3.5（流式/Graph resume）** · Telemetry Span 语义。
+### 迭代 7（Plugin P0–P3）任务板 — 2026-05-21
+
+| ID | 任务 | 优先级 | 状态 | 验收 |
+|----|------|--------|------|------|
+| I7-PLG-01 | 回调编排边界 + orchestration.go | P0 | ✅ | 四层分工文档化 |
+| I7-PLG-02 | model_router 单一路由（ModelSelector） | P0 | ✅ | BeforeModel 不 patch model |
+| I7-PLG-03 | permission_guard 仅 deny_tools | P0 | ✅ | confirm_tools 不阻断 |
+| I7-PLG-04 | OnEvent scope + hook agent_id | P0 | ✅ | Manager + AgentKeyResolver |
+| I7-PLG-05 | audit PluginSafeLogger + telemetry enrich | P1 | ✅ | Run 含 session/agent |
+| I7-PLG-06 | ListPluginRuns 扩展筛选 | P2 | ✅ | proto + data 层 |
+| I7-PLG-07 | 前端 scope/sort/runs | P1 | ✅ | `/plugins/runs` |
+| I7-PLG-08 | Plugin 沙箱 / 版本 | P3 | 📋 | Phase 4 backlog |
+| I7-PLG-09 | ConfirmGate + AwaitUserReply 统一 | P2 | ✅ | Chain 合并 confirmation_guard |
+| I7-PLG-10 | model_router rules[] | P2 | ✅ | priority + contains/regex |
+| I7-PLG-11 | cost_guard 日预算持久化 | P2 | ✅ | `plugin_cost_guard_usage` |
+| I7-PLG-12 | Schema 配置表单 | P2 | ✅ | PluginSchemaForm + 双模式 |
+| I7-PLG-13 | retry_and_reflect 事件流反思 | P2 | ✅ | CustomResult + plugin.retry_reflect |
+| I7-PLG-14 | cost_guard Agent scope 分桶 | P2 | ✅ | CostGuardBudgetRegistry |
+| I7-PLG-15 | 工具确认专用 UI | P2 | ✅ | await_kind + Approve/Deny |
+| I7-PLG-16 | rules[] 可视化编辑器 | P2 | ✅ | ModelRouterRulesEditor |
+
+**当前冲刺焦点**：FlowLogger Phase 2 落库 · Knowledge OCR · **A2A Phase 3.5（流式/Graph resume）** · Telemetry Span 语义 · Plugin P3 沙箱/版本。
 
 ### 迭代 7（优化升级）任务板 — 2026-05-20
 
@@ -133,6 +156,51 @@
 | I7-A2A-02 | A2A Phase 3.5：Graph metadata + 远程 Invoke + GatewayDiscover + 传输文档 | P2 | ✅ | [changelog Phase35](../changelog/2026-05-20-A2A-Phase35.md) |
 | I8-MON-01 | Monitor Logs 流程/进程 Tab 拆分 + LogStreamHub + WS enable_log 修复 | P1 | ✅ | [changelog Monitor-Logs-Split](../changelog/2026-05-20-Monitor-Logs-Split.md) |
 | I8-MON-02 | Monitor 方案 C：Runs 主排障 + Events 收窄 + `runner.completion` correlation | P1 | ✅ | [changelog](../changelog/2026-05-20-Monitor-Phase1d-PlanC.md) · [18-monitor-development](../需求/18-monitor-development.md) Phase 1d |
+
+### 迭代 8（Agent 优化）任务板 — 2026-05-21
+
+| ID | 任务 | 优先级 | 状态 | 验收 |
+|----|------|--------|------|------|
+| I8-AGT-01 | `TRPCBuilderDeps` 分组类型（`builder_deps.go`） | P2 | ✅ | `TRPC*Deps` + 扁平字面量兼容 |
+| I8-AGT-02 | `system.agent.build` FlowLog | P2 | ✅ | `trpc_build_router.go` 开始/失败/完成 |
+| I8-AGT-03 | `config_json` PATCH 浅合并 | P2 | ✅ | `MergeAgentConfigJSON` + `agent_usecase.Update` |
+| I8-AGT-04 | `CheckAgentKey` RPC + 创建弹窗防抖查重 | P3 | ✅ | `GET /v1/agent-keys/check` |
+| I8-AGT-05 | Agent 开发计划与 §8.11 文档同步 | P2 | ✅ | [Optimization](../changelog/2026-05-21-Agent-Optimization.md) |
+| I8-DOC-02 | Agent 模块 2–8 开发计划与代码对齐 | P2 | ✅ | [Modules-2-8-DocSync](../changelog/2026-05-21-Agent-Modules-2-8-DocSync.md) |
+
+### 迭代 9（Agent 列表/文件/进化标签）任务板 — 2026-05-21
+
+| ID | 任务 | 优先级 | 状态 | 验收 |
+|----|------|--------|------|------|
+| I9-AGT-07 | 列表 `last_run_status` / `last_run_at` 聚合 | P2 | ✅ | `ListExtrasForAgents` + `formatLastRunContext` |
+| I9-AGT-12 | `EstimateTokens` 前端对接 | P2 | ✅ | `estimateAgentTokens` + `AgentFilesPanel` |
+| I9-AGT-14 | 进化 chip + `pending_evolution_count` | P2 | ✅ | `isAgentEvolving` 列表/设置顶栏 |
+| I9-DOC-01 | 开发计划与 §8.11 同步 | P2 | ✅ | [Iteration9](../changelog/2026-05-21-Agent-Iteration9.md) |
+
+### 迭代 10（Agent 拆分 / Scanner / AI 编辑 / 模板 / 复制）任务板 — 2026-05-21
+
+> 详案：[devlog/2026-05-21-Agent-Iteration10-Plan.md](../devlog/2026-05-21-Agent-Iteration10-Plan.md)
+
+| ID | 任务 | 优先级 | 状态 | 验收 |
+|----|------|--------|------|------|
+| I10-AGT-08 | `AgentSettingsPage` 按 Tab 拆分 | P2 | ✅ | 页壳 ~488 行；三 Tab 子组件 |
+| I10-AGT-09 | EvolutionScanner 30min + 阈值建议 | P2 | ✅ | `evolution_scan.go` + `evolution_scanner.go` |
+| I10-AGT-11 | `EditPromptFileByAI` RPC + 前端 | P2 | ✅ | 替换 placeholder |
+| I10-AGT-06 | `ListAgentTemplates` API | P2 | ✅ | `GET /v1/agent-templates` |
+| I10-AGT-10 | `DuplicateAgent` RPC + 列表入口 | P3 | ✅ | `POST /v1/agents/{id}/duplicate` |
+| I10-DOC-01 | changelog + 迭代 10 计划 | P2 | ✅ | [Iteration10](../changelog/2026-05-21-Agent-Iteration10.md) |
+| I10-REVIEW | 审查 P0–P2 加固 + 模块 `*-development.md` 同步 | P2 | ✅ | ListExtras 批量、终态 status、Apply prompt、Duplicate 深拷贝 |
+| I10-LIST-02 | `created_by` + 模板全字段 + 结构化创建错误 + 审查修正 | P2 | ✅ | [CreatedBy-Templates-Errors](../changelog/2026-05-21-Agent-CreatedBy-Templates-Errors.md) |
+
+### 迭代 11（CodeExecutor Phase 1–2 + Review）— 2026-05-21
+
+| ID | 任务 | 优先级 | 状态 | 验收 |
+|----|------|--------|------|------|
+| I11-CEX-01 | CodeExecutor 三文档 + 交叉引用与代码对齐 | P2 | ✅ | [CodeExecutor-DocSync](../changelog/2026-05-21-CodeExecutor-DocSync.md) |
+| I11-CEX-02 | Agent `code_executor_type` + Factory（Wire 单例） | P1 | ✅ | [P0-P2](../changelog/2026-05-21-CodeExecutor-P0-P2.md) · [Review-Fixes](../changelog/2026-05-21-CodeExecutor-Review-Fixes.md) |
+| I11-CEX-03 | E2B / Container lazy + capabilities API | P2 | ✅ | Monitor `code-executor-capabilities` |
+| I11-CEX-04 | 架构图写入 design 文档 | P2 | ✅ | [32 codeexecutor.design.md §2.1](../需求/32%20codeexecutor.design.md) |
+| I11-CEX-05 | WorkspaceRegistry + InputSpec/OutputSpec | P3 | 📋 | Phase 4 |
 
 ---
 
@@ -151,6 +219,7 @@
 - [x] 取消路径（HTTP `StopGeneration` + WS `cancel`）
 - [x] ArtifactService / SessionIngestor / AgentFactory / AwaitUserReplyRouting 注入
 - [x] Chat / Team / Cron / Channel 共用 `RunGateway`
+- [x] 出站 Webhook：`GatewayService` CRUD + `WebhookDispatcher` 终态回调（2026-05-21）
 
 ### M2：架构边界康复 ✅
 
@@ -188,9 +257,10 @@
 - [x] Team 结构化汇总 `team_summary` Envelope（`internal/team/summary.go`）
 - [ ] Ecosystem 后端与市场模型（P3） — MVP ✅ 见迭代 5
 - [ ] Telemetry 业务 Span / OTel UI（P3）
-- [x] Monitor 告警规则 + Alerts UI（MON-01）；Usage 总览已有
+- [x] Monitor 告警规则 + Alerts UI（MON-01）
 - [x] Monitor 方案 C：Runs/Events 分工 + completion 关联（I8-MON-02 / Phase 1d）
-- [ ] Monitor 高级 Dashboard（P2 后续）
+- [x] Monitor 概览 Dashboard `/overview`（ECharts、Runner 条、Usage Tab 去重）— [18-monitor-dashboard-development.md](../需求/18-monitor-dashboard-development.md)
+- [ ] Monitor latency 聚合 / Phase 4（自动刷新、Grafana）
 - [x] 前端 page-to-components + A2A mapper 单测（P2）；Knowledge/Evaluation 此前已拆分
 
 ---
@@ -206,7 +276,7 @@
 | RunRegistry：status / cancel / enqueue / artifact / ingest | ✅ |
 | Memory L0–L4 与 MemoryService 主从（`RuntimeSet`） | ✅ |
 | 核心模块五面定义完整（Graph/Channel/Ecosystem） | ⏳ |
-| `internal/service` 无复杂运行状态机（await/pending 可接受短期） | ⏳ |
+| `internal/service` 无复杂运行状态机（await meta/resume 可接受短期） | ⏳ ChatUsecase 已接入；PendingQueue 仍在 Service |
 | 前端 feature 模板 + mapper 单测 | 🟡（A2A mapper 单测 ✅；其余 feature 待补） |
 | TTS/Ecosystem/CLI 文档标占位 | ⏳ |
 

@@ -1,7 +1,7 @@
 import { ref, watchEffect, type Ref } from "vue";
 import { storeToRefs } from "pinia";
 import { useAvatarCatalogStore } from "../../stores/avatar";
-import { isAvatarAssetRef } from "./iconModel";
+import { resolveAvatarAssetFetchId } from "./resolveAvatarAssetFetchId";
 
 /**
  * 响应式头像展示用 data URL（库内 asset 走 Store 缓存 + ensureThumbnail）。
@@ -27,16 +27,11 @@ export function useAvatarThumbnailSrc(iconRef: Ref<string | undefined | null>) {
       cancelled = true;
     });
     void (async () => {
-      let fetchId = raw;
-      if (!isAvatarAssetRef(raw)) {
-        await store.ensureAgentsCatalog();
-        if (cancelled) return;
-        const hit = store.agentsCatalog.find((a) => a.id === raw || (a.key && a.key === raw));
-        if (!hit?.id) {
-          src.value = "";
-          return;
-        }
-        fetchId = hit.id;
+      const fetchId = await resolveAvatarAssetFetchId(store, raw);
+      if (cancelled) return;
+      if (!fetchId) {
+        src.value = "";
+        return;
       }
       await store.ensureThumbnail(fetchId);
       if (cancelled) return;

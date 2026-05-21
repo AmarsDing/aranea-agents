@@ -1,13 +1,13 @@
-package memory
+package trpcmem
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
+	aramemory "aranea-agents/internal/memory"
 	"aranea-agents/internal/data/sessionmemory"
 
 	trpcmemory "trpc.group/trpc-go/trpc-agent-go/memory"
@@ -15,53 +15,6 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/session"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
-
-// AutoMemoryJobRequest is exported so the cron worker can type-assert queue items.
-type AutoMemoryJobRequest struct {
-	AppName    string
-	SessionID  string
-	UserID     string
-	EnqueuedAt time.Time
-}
-
-// globalAutoMemoryQueue is an in-process queue for auto-memory extraction jobs.
-// The cron worker (internal/cronrunner/jobs/auto_memory.go) drains this queue.
-var autoMemoryQueue = &memoryJobQueue{ch: make(chan AutoMemoryJobRequest, 256)}
-
-var recentAutoMemoryEnqueue sync.Map // sessionID -> time.Time
-
-type memoryJobQueue struct {
-	ch chan AutoMemoryJobRequest
-}
-
-// EnqueueAutoMemory schedules a job on the global queue (deduped within 30s per session).
-func EnqueueAutoMemory(r AutoMemoryJobRequest) {
-	GlobalAutoMemoryQueue().enqueue(r)
-}
-
-func (q *memoryJobQueue) enqueue(r AutoMemoryJobRequest) {
-	if r.EnqueuedAt.IsZero() {
-		r.EnqueuedAt = time.Now()
-	}
-	if sid := strings.TrimSpace(r.SessionID); sid != "" {
-		if t, ok := recentAutoMemoryEnqueue.Load(sid); ok {
-			if time.Since(t.(time.Time)) < 30*time.Second {
-				return
-			}
-		}
-		recentAutoMemoryEnqueue.Store(sid, time.Now())
-	}
-	select {
-	case q.ch <- r:
-	default:
-		// Drop silently when channel is full; auto-memory is best-effort.
-	}
-}
-
-func (q *memoryJobQueue) Chan() <-chan AutoMemoryJobRequest { return q.ch }
-
-// GlobalAutoMemoryQueue exposes the process-wide auto-memory job queue for the cron worker.
-func GlobalAutoMemoryQueue() *memoryJobQueue { return autoMemoryQueue }
 
 type sqliteMemoryService struct {
 	store *sessionmemory.Store
@@ -95,8 +48,8 @@ func (s *sqliteMemoryService) AddMemory(ctx context.Context, uk trpcmemory.UserK
 		ScopeID:          uk.AppName,
 		UserID:           uk.UserID,
 		EntityType:       "memory_fact",
-		Name:             truncate(mem, 200),
-		NameNormalized:   strings.ToLower(truncate(mem, 200)),
+		Name:             aramemory.TruncateString(mem, 200),
+		NameNormalized:   strings.ToLower(aramemory.TruncateString(mem, 200)),
 		Description:      mem,
 		Importance:       0.5,
 		Confidence:       1.0,
@@ -118,8 +71,8 @@ func (s *sqliteMemoryService) UpdateMemory(ctx context.Context, mk trpcmemory.Ke
 		ScopeID:          mk.AppName,
 		UserID:           mk.UserID,
 		EntityType:       "memory_fact",
-		Name:             truncate(mem, 200),
-		NameNormalized:   strings.ToLower(truncate(mem, 200)),
+		Name:             aramemory.TruncateString(mem, 200),
+		NameNormalized:   strings.ToLower(aramemory.TruncateString(mem, 200)),
 		Description:      mem,
 		MetadataJSON:     topicsJSON(topics),
 		UpdatedAtRFC3339: time.Now().Format(time.RFC3339),
@@ -202,28 +155,20 @@ func (s *sqliteMemoryService) Tools() []trpctool.Tool {
 	}
 }
 
+func (s *sqliteMemoryService) Close() error {
+	return nil
+}
+
 func (s *sqliteMemoryService) EnqueueAutoMemoryJob(_ context.Context, sess *session.Session) error {
 	if s == nil || sess == nil {
 		return nil
 	}
-	// Best-effort: publish to in-memory job queue if one is registered.
-	autoMemoryQueue.enqueue(AutoMemoryJobRequest{
+	GlobalAutoMemoryQueue().Enqueue(AutoMemoryJobRequest{
 		AppName:   sess.AppName,
 		SessionID: sess.ID,
 		UserID:    sess.UserID,
 	})
 	return nil
-}
-
-func (s *sqliteMemoryService) Close() error {
-	return nil
-}
-
-func truncate(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n]
 }
 
 func topicsJSON(topics []string) string {

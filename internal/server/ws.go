@@ -225,6 +225,7 @@ func (s *WSServer) handleWS(w http.ResponseWriter, r *http.Request) {
 		channels["monitor"] = true
 		channels["team"] = true
 		channels["graph"] = true
+		channels["knowledge"] = true
 	}
 
 	wc := &wsConn{

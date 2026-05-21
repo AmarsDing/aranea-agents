@@ -1,5 +1,5 @@
 import { createPluginService } from "../../services";
-import type { PaginatedResponse, Plugin, PluginListQuery } from "./types";
+import type { PaginatedResponse, Plugin, PluginListQuery, PluginRun, PluginRunListQuery } from "./types";
 
 function mapPluginRow(row: unknown): Plugin {
   const r = row as Record<string, unknown>;
@@ -78,4 +78,58 @@ export async function updatePluginConfig(id: string, configJSON: string): Promis
   const svc = createPluginService();
   const row = await svc.UpdatePluginConfig({ id, configJson: configJSON });
   return mapPluginRow(row);
+}
+
+export async function updatePluginSortOrder(id: string, sortOrder: number): Promise<Plugin> {
+  const svc = createPluginService();
+  const row = await svc.UpdatePluginSortOrder({ id, sortOrder });
+  return mapPluginRow(row);
+}
+
+export async function updatePluginScope(id: string, scope: string): Promise<Plugin> {
+  const svc = createPluginService();
+  const row = await svc.UpdatePluginScope({ id, scope });
+  return mapPluginRow(row);
+}
+
+function mapPluginRunRow(row: unknown): PluginRun {
+  const r = row as Record<string, unknown>;
+  const s = (snake: string, camel: string) => String(r[snake] ?? r[camel] ?? "");
+  const n = (snake: string, camel: string) => Number(r[snake] ?? r[camel] ?? 0);
+  return {
+    id: s("id", "id"),
+    plugin_key: s("plugin_key", "pluginKey"),
+    plugin_id: s("plugin_id", "pluginId"),
+    session_id: s("session_id", "sessionId"),
+    agent_id: s("agent_id", "agentId"),
+    callback_point: s("callback_point", "callbackPoint"),
+    status: s("status", "status"),
+    duration_ms: n("duration_ms", "durationMs"),
+    detail_json: s("detail_json", "detailJson"),
+    created_at: s("created_at", "createdAt")
+  };
+}
+
+export async function listPluginRuns(query: PluginRunListQuery = {}): Promise<PaginatedResponse<PluginRun>> {
+  const svc = createPluginService();
+  const page = query.page ?? 1;
+  const pageSize = query.page_size ?? 20;
+  const res = await svc.ListPluginRuns({
+    pluginKey: query.plugin_key?.trim() || undefined,
+    pluginId: query.plugin_id?.trim() || undefined,
+    sessionId: query.session_id?.trim() || undefined,
+    agentId: query.agent_id?.trim() || undefined,
+    callbackPoint: query.callback_point?.trim() || undefined,
+    status: query.status?.trim() || undefined,
+    from: query.from?.trim() || undefined,
+    to: query.to?.trim() || undefined,
+    page,
+    pageSize
+  });
+  return {
+    items: (res.items ?? []).map(mapPluginRunRow),
+    total: Number(res.total ?? 0),
+    page: Number(res.page ?? page),
+    page_size: Number(res.pageSize ?? pageSize)
+  };
 }

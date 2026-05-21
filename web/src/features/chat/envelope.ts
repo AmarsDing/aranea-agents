@@ -27,7 +27,9 @@ export type EnvelopeType =
   | "graph_execution_done"
   | "graph_node_error"
   | "graph_node_custom"
-  | "knowledge_ingest";
+  | "knowledge_ingest"
+  | "mcp.session.reconnect"
+  | "alert.notify";
 
 export type EnvelopeContent = {
   text: string;

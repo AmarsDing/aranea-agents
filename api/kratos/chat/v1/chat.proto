@@ -117,6 +117,12 @@ message RunStatus {
   string last_event_at = 8;
   // event_count is the number of events observed for the invocation.
   int32 event_count = 9;
+  // await_kind distinguishes awaiting_user reasons: "" | "reply" | "tool_confirm".
+  string await_kind = 10;
+  // await_tool_key is set when await_kind == "tool_confirm".
+  string await_tool_key = 11;
+  // await_tool_call_id is set when await_kind == "tool_confirm".
+  string await_tool_call_id = 12;
 }
 
 message GetRunStatusRequest {

@@ -1,5 +1,5 @@
 // Command araneactl lint checks Aranea-Agents source code for runtime-boundary
-// violations and common structural rules (R1-R10 from master-plan §7.1).
+// violations and common structural rules (R1-R11 from master-plan §7.1).
 //
 // Usage:
 //
@@ -118,6 +118,7 @@ func checkFile(rel, path string) []violation {
 	// R3 intentionally omitted: Kratos repository pattern requires data layer to
 	// import internal/biz for interface type definitions. This is expected.
 	vs = append(vs, r4ServiceNoEntDirect(rel, imports)...)
+	vs = append(vs, r11WireNoGlobalBootstrap(rel, lines)...)
 	// R6/R7/R8/R9 only apply inside internal/ to avoid false-positives on tool source.
 	if strings.HasPrefix(rel, "internal/") {
 		vs = append(vs, r6NoExtraHTTPServer(rel, lines)...)
@@ -234,6 +235,41 @@ func r4ServiceNoEntDirect(rel string, imports []string) []violation {
 		return []violation{{file: rel, rule: "R4", message: "internal/service must not import Ent client directly; use biz layer"}}
 	}
 	return nil
+}
+
+// R11: cmd/admin/wire.go must not use dummy bootstrap types or package-level global
+// registration inside Wire providers. Register in layer constructors (data/biz/service)
+// or explicit main lifecycle hooks (kratos BeforeStart) instead.
+func r11WireNoGlobalBootstrap(rel string, lines []string) []violation {
+	if rel != "cmd/admin/wire.go" {
+		return nil
+	}
+	var vs []violation
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.Contains(trimmed, "type ") && strings.Contains(trimmed, "Bootstrap struct") {
+			vs = append(vs, violation{
+				file:    rel,
+				rule:    "R11",
+				message: "dummy *Bootstrap type in wire.go; register side effects in data/biz/service constructor instead",
+			})
+		}
+		for _, marker := range []string{
+			"SetCredentialKeyResolver(",
+			"mcpobserve.SetBus(",
+			"mcpobserve.SetMetadataRecorder(",
+			"event.SetGlobalBus(",
+		} {
+			if strings.Contains(trimmed, marker) {
+				vs = append(vs, violation{
+					file:    rel,
+					rule:    "R11",
+					message: fmt.Sprintf("package-level global registration (%s) in wire provider; move to layer constructor or main lifecycle hook", marker),
+				})
+			}
+		}
+	}
+	return vs
 }
 
 // R6: only the metrics handler is allowed to create http.Server{}.

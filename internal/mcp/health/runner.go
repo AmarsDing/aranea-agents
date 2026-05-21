@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/mcp/alert"
 	"aranea-agents/internal/mcp/probe"
 	"aranea-agents/pkg/safego"
 
@@ -31,8 +32,9 @@ var (
 )
 
 type Deps struct {
-	MCP biz.MCPServerRepo
-	UC  *biz.MCPServerUsecase
+	MCP    biz.MCPServerRepo
+	UC     *biz.MCPServerUsecase
+	Alerts *alert.Publisher
 }
 
 type Runner struct {
@@ -111,5 +113,15 @@ func (r *Runner) probeOne(ctx context.Context, srv biz.MCPServer) {
 
 	if err := r.deps.UC.PersistHealth(ctx, srv.ID, result); err != nil {
 		event.SysLogError("system.mcp.health_persist_fail", "MCP 健康状态保存失败", event.P("server_key", srv.Key), event.P("error", err))
+		return
+	}
+	if !result.OK {
+		updated, err := r.deps.MCP.GetMCPServer(ctx, srv.ID)
+		if err == nil {
+			srv = updated
+		}
+		if r.deps.Alerts != nil {
+			r.deps.Alerts.MaybeEmitAfterHealth(ctx, srv, result)
+		}
 	}
 }

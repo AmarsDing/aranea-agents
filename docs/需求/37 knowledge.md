@@ -2,15 +2,16 @@
 
 > 对标 `pkg/trpc-agent-go/knowledge` 包，实现 RAG 知识库能力。
 >
-> **2026-05-19 现状对齐**：
+> **2026-05-21 现状对齐**：
 > - ✅ Collection/Document/Chunk CRUD + 语义搜索 API 已上线（HTTP + gRPC）。
 > - ✅ `knowledge_search` 工具经 `buildToolsetsForAgent` + `ToolKeyKnowledgeSearch` 进入 Agent 装配链（需 Agent 工具开关启用）。
-> - ✅ 前端 Knowledge Store + API 层已实现。
-> - 🟡 **Postgres 依赖**：`NewKnowledgeRepoFromData` 无 PG 时返回 nil Repo；`NewData()` **未**调用 `EnsureKnowledgeSchema`（EP-DATA-01）；Embedder 需 conf/env 注入（EP-KN-01）。
-> - 🟡 摄取流水线异步为主（`safego.Go`），但进度不可观测、前端无闭环（EP-KN-02）。
-> - ❌ AgenticFilter / OCR / 多租户隔离 / Reranker 未实现。
+> - ✅ 前端 Knowledge 管理页 + Store + API；文档入库 WS 进度（`useKnowledgeIngestWs` / `knowledge_ingest` 事件）。
+> - ✅ `EnsureKnowledgeSchema` 在 `NewData()` Postgres 就绪后启动调用（EP-DATA-01）；无 PG 时 `ErrKnowledgeUnavailable` fail-fast。
+> - ✅ Embedder：env `KRATOS_KNOWLEDGE_EMBED_*` > `system_settings.knowledge_embed_*` > 运行时 Knowledge API/UI（EP-KN-01）。
+> - ✅ 检索 Reranker（`KRATOS_KNOWLEDGE_RERANKER`：topk/cohere/infinity，KN-01）；Search 支持 `use_rerank` / `rerank_candidates`。
+> - ❌ AgenticFilter / OCR / 多租户隔离 / code_search 未实现。
 >
-> 进度以 `guides/execution-plan.md` 附录 A 为准。
+> 进度以 `guides/execution-plan.md` 与 [37-knowledge-development.md](./37-knowledge-development.md) 为准。
 
 ---
 
@@ -106,11 +107,11 @@
 
 | 功能 | 说明 | 状态 |
 |------|------|------|
-| 上传文档 | base64 编码内容，异步分块+向量化 | ✅ |
+| 上传文档 | base64 + 可选 `chunk_strategy`；PDF/DOCX/HTML 自动解析 | ✅ |
 | 列出文档 | 按集合分页查询 | ✅ |
 | 删除文档 | 级联删除向量块 | ✅ |
 | 文档状态 | pending → indexing → indexed / error | ✅ |
-| 进度可观测 | 前端可查询摄取进度 | 🟡 |
+| 进度可观测 | WS `knowledge_ingest` 事件 + 管理页文档 status 轮询 | ✅ |
 
 ### 2.3 语义搜索
 
@@ -120,6 +121,8 @@
 | 元数据过滤 | filter_json 通过 JSONB `@>` 操作符 | ✅ |
 | 最低分数过滤 | min_score 阈值 | ✅ |
 | TopK 限制 | 默认 5 | ✅ |
+| Reranker | topk / cohere / infinity（env + SearchRequest 覆盖） | ✅ |
+| 重排候选 oversample | `rerank_candidates` 或默认 topK×3（上限 50） | ✅ |
 
 ### 2.4 分块策略
 
@@ -127,9 +130,9 @@
 |------|-----|------|------|
 | 按字符 | `char` | 按 N 字符窗口分割，含重叠 | ✅ |
 | 按 Token | `token` | 空格分词，近似 Token 计数 | ✅ |
-| Markdown 按标题 | — | 按标题层级分块 | ❌ |
-| JSON 结构 | — | 按 JSON 结构分块 | ❌ |
-| 递归分块 | — | 递归字符分割 | ❌ |
+| Markdown 按标题 | `markdown` | 按标题层级分块（trpc chunking） | ✅ |
+| JSON 结构 | `json` | 按 JSON 结构分块 | ✅ |
+| 递归分块 | `recursive` | 递归字符分割 | ✅ |
 
 ### 2.5 嵌入提供者
 
@@ -137,8 +140,8 @@
 |--------|------|------|
 | OpenAI 兼容 | `/v1/embeddings` 端点 | ✅ |
 | Ollama | `/api/embeddings` 端点 | ✅ |
-| Gemini | — | ❌ |
-| HuggingFace | — | ❌ |
+| Gemini | Google GenAI API | ✅ |
+| HuggingFace | TEI `/embed` 批量 | ✅ |
 
 ### 2.6 Agent 集成
 
@@ -154,7 +157,7 @@
 | 功能 | 说明 | 状态 |
 |------|------|------|
 | OCR 识别 | 图片/PDF 自动提取文本 | ❌ |
-| Reranker | 检索结果重排序（TopK/Cohere/Infinity） | ❌ |
+| Reranker | 检索结果重排序（TopK/Cohere/Infinity） | ✅ |
 | SourceSync | 数据源增量同步 | ❌ |
 | 多租户隔离 | 租户间知识库完全隔离 | ❌ |
 | Extractor | 格式转换（PDF/图片 → 文本/Markdown） | ❌ |
@@ -262,6 +265,8 @@ llmagent.New("agent",
 | GET | `/v1/knowledge/documents` | 列出文档 | ✅ |
 | DELETE | `/v1/knowledge/documents/{id}` | 删除文档 + 块 | ✅ |
 | POST | `/v1/knowledge/search` | 语义搜索 | ✅ |
+| GET | `/v1/knowledge/embedder-config` | 获取 Embedder 配置（脱敏） | ✅ |
+| PUT | `/v1/knowledge/embedder-config` | 运行时更新 Embedder | ✅ |
 
 ---
 
@@ -277,8 +282,8 @@ llmagent.New("agent",
 | 6 | 知识搜索支持动态过滤（AgenticFilter） | ❌ |
 | 7 | 图片/PDF 文档可 OCR 识别入库 | ❌ |
 | 8 | 多租户知识库隔离 | ❌ |
-| 9 | 摄取进度前端可观测 | 🟡 |
-| 10 | Embedder 配置从 conf/env 注入 | 🟡 |
+| 9 | 摄取进度前端可观测（WS / 文档 status） | ✅ |
+| 10 | Embedder 配置从 conf/env 注入 + Admin 运行时更新 | ✅ |
 
 ---
 
@@ -316,9 +321,12 @@ Knowledge 模块添加基于 pgvector 的 RAG（检索增强生成）管道。Ag
 | Retriever | `internal/knowledge/retriever.go` | 嵌入查询 → 调用 `SearchChunks` |
 | Tool | `internal/tools/knowledge/tool.go` | `knowledge_search` trpc 工具 |
 | Service | `internal/service/knowledge.go` | Kratos 服务适配器 |
-| Wire | `internal/service/wire_providers.go` | Chunker/Embedder 工厂 |
-| 前端 API | `web/src/features/knowledge/api.ts` | Knowledge API 调用 |
-| 前端 Store | `web/src/stores/knowledge/index.ts` | Knowledge Pinia Store |
+| Wire | `internal/service/knowledge_embedder.go` | Embedder 工厂（env，EP-KN-01） |
+| Retriever Wire | `internal/service/knowledge_retriever.go` | Retriever + env Reranker（KN-01） |
+| Reranker | `internal/knowledge/reranker_factory.go` | topk/cohere/infinity |
+| Ingest 流水线 | `internal/knowledge/ingest.go` | 分块 + 向量化（`BuildIndexedChunks`） |
+| 前端页面 | `web/src/pages/KnowledgePage.vue` | 集合/文档/检索/Embedder 管理 |
+| 前端 WS | `web/src/features/knowledge/useKnowledgeIngestWs.ts` | 入库进度订阅 |
 
 ### 6.3 数据库 Schema
 
@@ -361,9 +369,9 @@ knowledge_chunks        (id, doc_id, collection_id, content, embedding vector(N)
 | `openai`（默认） | `POST /v1/embeddings` | 兼容任何 OpenAI-API 服务器 |
 | `ollama` | `POST /api/embeddings` | 本地 Ollama 实例 |
 
-### 6.7 Agent 工具：`knowledge_search`
+### 6.8 Agent 工具：`knowledge_search`
 
-工具通过 `buildToolsetsForAgent` 装配链注入，需 Agent 工具配置中启用 `knowledge_search` 开关。
+工具通过 `buildToolsetsForAgent` 装配链注入，需 Agent 工具配置中启用 `knowledge_search` 开关。Retriever 经 context 注入；全局 Reranker 配置时工具搜索自动受益（可通过 Search API `use_rerank=false` 关闭）。
 
 模型可调用：
 
@@ -371,17 +379,48 @@ knowledge_chunks        (id, doc_id, collection_id, content, embedding vector(N)
 { "collection_id": "abc123", "query": "What is the refund policy?", "top_k": 5 }
 ```
 
-### 6.8 Prometheus 指标
+### 6.9 Embedder 配置（EP-KN-01）
+
+**优先级**（高 → 低）：`KRATOS_KNOWLEDGE_EMBED_*` 环境变量 → `system_settings` 数据库 → `GOOGLE_API_KEY` / `OPENAI_API_KEY`。
+
+| 来源 | 说明 |
+|------|------|
+| 环境变量 | `KRATOS_KNOWLEDGE_EMBED_PROVIDER` / `_BASE_URL` / `_API_KEY` / `_MODEL` / `_DIM` |
+| 系统设置 DB | `system_settings.knowledge_embed_*`；`GET/PUT /v1/system-settings` 字段 `knowledge_embed` |
+| Knowledge Admin API | `GET/PUT /v1/knowledge/embedder-config`（运行时 + 写回 DB） |
+| 前端 | `KnowledgeEmbedderPanel.vue`；系统设置页可写 `knowledge_embed` |
+
+| Provider | 典型 model | base_url / key |
+|----------|------------|----------------|
+| `openai` | `text-embedding-3-small` | `OPENAI_API_KEY` |
+| `ollama` | `nomic-embed-text` | 默认 `http://localhost:11434` |
+| `gemini` | `gemini-embedding-001` | `GOOGLE_API_KEY` 或 DB `knowledge_embed_api_key` |
+| `huggingface` | — | TEI `http://localhost:8080`（`knowledge_embed_base_url`） |
+
+### 6.10 Reranker（KN-01）
+
+| 环境变量 | 说明 |
+|----------|------|
+| `KRATOS_KNOWLEDGE_RERANKER` | `off` \| `topk` \| `cohere` \| `infinity` |
+| `KRATOS_KNOWLEDGE_RERANK_TOP_K` | 重排后保留条数（topk 模式） |
+| `COHERE_*` / `INFINITY_*` | 第三方 Rerank 端点与密钥 |
+
+Search RPC 可选 `use_rerank`、`rerank_candidates` 覆盖单次请求行为。
+
+### 6.11 摄取进度（EP-KN-02）
+
+异步摄取经 Event Bus 发布 `knowledge_ingest` 信封（`EnvelopeTypeKnowledgeIngest`），前端 `useKnowledgeIngestWs` 订阅 `/v1/ws` 频道 `knowledge` 并刷新文档列表。
+
+### 6.12 Prometheus 指标
 
 | 指标 | 类型 | 说明 |
 |------|------|------|
 | `aranea_knowledge_ingest_documents_total` | Counter | 成功索引的文档数 |
 | `aranea_knowledge_search_duration_seconds` | Histogram | 搜索延迟 |
 
-### 6.9 限制
+### 6.13 限制
 
-- 需要 pgvector；当 `db == nil` 时 repo 优雅降级（返回 nil）。
+- 需要 pgvector；当 Postgres 未配置时 Repo 为 nil，API 返回 `ErrKnowledgeUnavailable`。
 - 嵌入维度每个集合固定；更改需重建集合。
-- 文档内容必须可文本解码（PDF/图像提取不在当前范围）。
-- `EnsureKnowledgeSchema` 尚未在 `NewData()` 中调用（EP-DATA-01）。
-- Embedder 配置目前硬编码默认值，需从 conf/env 注入（EP-KN-01）。
+- 文档内容必须可文本解码（PDF/图像提取不在当前范围；OCR 待 Phase 4）。
+- 文档级 `metadata_json` 写入每个 Chunk 的 JSONB 列，供 `filter_json` 检索过滤。

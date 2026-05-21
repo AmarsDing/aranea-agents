@@ -2,6 +2,7 @@ package service
 
 import (
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 	"aranea-agents/internal/knowledge"
 )
 
@@ -12,6 +13,8 @@ func NewKnowledgeRetriever(emb *knowledge.Embedder, repo biz.KnowledgeRepo) *kno
 	}
 	rr, err := knowledge.NewRerankerFromEnv()
 	if err != nil {
+		event.SysLogWarn("knowledge.reranker.config", "重排器配置无效，已禁用",
+			event.P("error", err.Error()))
 		rr = nil
 	}
 	return knowledge.NewRetriever(emb, repo, rr)

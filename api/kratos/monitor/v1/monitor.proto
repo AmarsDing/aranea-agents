@@ -119,6 +119,41 @@ message GetMonitorLogsResponse {
 
 message GetMonitorLogsRequest {}
 
+message FlowLogEntry {
+  string id = 1;
+  string trace_id = 2;
+  string session_id = 3;
+  string run_id = 4;
+  string team_id = 5;
+  string domain = 6;
+  string agent_key = 7;
+  string step_id = 8;
+  string flow_phase = 9;
+  string severity = 10;
+  string title = 11;
+  string message = 12;
+  string payload_json = 13;
+  string created_at = 14;
+}
+
+message ListFlowLogsRequest {
+  string trace_id = 1;
+  string session_id = 2;
+  string run_id = 3;
+  string severity = 4;
+  string domain = 5;
+  int32 limit = 6;
+  int32 offset = 7;
+  // RFC3339 bounds (optional).
+  string since = 8;
+  string until = 9;
+}
+
+message ListFlowLogsResponse {
+  repeated FlowLogEntry items = 1;
+  int32 total = 2;
+}
+
 message MonitorAlertRule {
   string id = 1;
   string name = 2;
@@ -156,6 +191,16 @@ message RunnerMetricsSummary {
   double success_rate = 5;
 }
 
+message CodeExecutorCapability {
+  string type = 1;
+  bool available = 2;
+  string reason = 3;
+}
+
+message GetCodeExecutorCapabilitiesResponse {
+  repeated CodeExecutorCapability backends = 1;
+}
+
 service MonitorService {
   rpc ListAuditLogs(ListAuditLogsRequest) returns (ListAuditLogsResponse) {
     option (google.api.http) = {get: "/v1/monitor/audit"};
@@ -176,6 +221,9 @@ service MonitorService {
   rpc GetMonitorLogs(GetMonitorLogsRequest) returns (GetMonitorLogsResponse) {
     option (google.api.http) = {get: "/v1/monitor/logs"};
   }
+  rpc ListFlowLogs(ListFlowLogsRequest) returns (ListFlowLogsResponse) {
+    option (google.api.http) = {get: "/v1/monitor/flow-logs"};
+  }
   rpc ListMonitorAlertRules(GetMonitorLogsRequest) returns (ListMonitorAlertRulesResponse) {
     option (google.api.http) = {get: "/v1/monitor/alert-rules"};
   }
@@ -187,5 +235,8 @@ service MonitorService {
   }
   rpc GetRunnerMetrics(GetRunnerMetricsRequest) returns (RunnerMetricsSummary) {
     option (google.api.http) = {get: "/v1/monitor/runner-metrics"};
+  }
+  rpc GetCodeExecutorCapabilities(GetMonitorLogsRequest) returns (GetCodeExecutorCapabilitiesResponse) {
+    option (google.api.http) = {get: "/v1/monitor/code-executor-capabilities"};
   }
 }

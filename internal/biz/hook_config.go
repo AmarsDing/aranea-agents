@@ -21,11 +21,13 @@ type HookCondition struct {
 
 // HookAction describes what to do when the hook fires.
 type HookAction struct {
-	Type        string         `json:"type"`
-	WebhookURL  string         `json:"webhook_url"`
-	ModifyPatch map[string]any `json:"modify_patch"`
-	LogLevel    string         `json:"log_level"`
-	Message     string         `json:"message"`
+	Type             string         `json:"type"`
+	WebhookURL       string         `json:"webhook_url"`
+	ModifyPatch      map[string]any `json:"modify_patch"`
+	LogLevel         string         `json:"log_level"`
+	Message          string         `json:"message"`
+	NotifyMaxRetries int            `json:"notify_max_retries"`
+	NotifyTimeoutSec int            `json:"notify_timeout_sec"`
 }
 
 // ParseHookConfig unmarshals ConfigJSON; empty config is valid but has no point.

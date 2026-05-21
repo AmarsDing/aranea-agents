@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"aranea-agents/internal/biz"
@@ -52,6 +53,11 @@ func EnsureEvalSchema(ctx context.Context, db *sql.DB) error {
 			contains_match_score REAL NOT NULL DEFAULT 0,
 			llm_judge_score      REAL NOT NULL DEFAULT 0,
 			tool_call_accuracy   REAL NOT NULL DEFAULT 0,
+			pass_at_k            REAL NOT NULL DEFAULT 0,
+			pass_hat_k           REAL NOT NULL DEFAULT 0,
+			trigger_source       TEXT NOT NULL DEFAULT 'manual',
+			num_runs             INTEGER NOT NULL DEFAULT 1,
+			scores_json          TEXT NOT NULL DEFAULT '{}',
 			error_message        TEXT NOT NULL DEFAULT '',
 			started_at           TEXT NOT NULL DEFAULT '',
 			finished_at          TEXT NOT NULL DEFAULT '',
@@ -72,7 +78,8 @@ func EnsureEvalSchema(ctx context.Context, db *sql.DB) error {
 			human_score       REAL,
 			human_comment     TEXT NOT NULL DEFAULT '',
 			annotated_at      TEXT NOT NULL DEFAULT '',
-			annotated_by      TEXT NOT NULL DEFAULT ''
+			annotated_by      TEXT NOT NULL DEFAULT '',
+			scores_json       TEXT NOT NULL DEFAULT '{}'
 		)`,
 	}
 	for _, s := range stmts {
@@ -86,6 +93,12 @@ func EnsureEvalSchema(ctx context.Context, db *sql.DB) error {
 		`ALTER TABLE eval_case_results ADD COLUMN human_comment TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE eval_case_results ADD COLUMN annotated_at TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE eval_case_results ADD COLUMN annotated_by TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE eval_runs ADD COLUMN trigger_source TEXT NOT NULL DEFAULT 'manual'`,
+		`ALTER TABLE eval_runs ADD COLUMN num_runs INTEGER NOT NULL DEFAULT 1`,
+		`ALTER TABLE eval_runs ADD COLUMN pass_at_k REAL NOT NULL DEFAULT 0`,
+		`ALTER TABLE eval_runs ADD COLUMN pass_hat_k REAL NOT NULL DEFAULT 0`,
+		`ALTER TABLE eval_runs ADD COLUMN scores_json TEXT NOT NULL DEFAULT '{}'`,
+		`ALTER TABLE eval_case_results ADD COLUMN scores_json TEXT NOT NULL DEFAULT '{}'`,
 	}
 	for _, s := range migrations {
 		_, _ = db.ExecContext(ctx, s) // best-effort for existing DBs
@@ -144,8 +157,28 @@ func (r *evalRepo) ListDatasets(ctx context.Context, workspace string, limit, of
 }
 
 func (r *evalRepo) DeleteDataset(ctx context.Context, id string) error {
-	_, err := r.db.ExecContext(ctx, `DELETE FROM eval_datasets WHERE id=?`, id)
-	return err
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `DELETE FROM eval_cases WHERE dataset_id=?`, id); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM eval_datasets WHERE id=?`, id); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (r *evalRepo) UpdateDataset(ctx context.Context, id, name, description string) (biz.EvalDataset, error) {
+	t := now()
+	if _, err := r.db.ExecContext(ctx,
+		`UPDATE eval_datasets SET name=?, description=?, updated_at=? WHERE id=?`,
+		name, description, t, id); err != nil {
+		return biz.EvalDataset{}, err
+	}
+	return r.GetDataset(ctx, id)
 }
 
 func (r *evalRepo) UpdateDatasetCaseCount(ctx context.Context, id string, delta int) error {
@@ -194,41 +227,79 @@ func (r *evalRepo) ListCases(ctx context.Context, datasetID string) ([]biz.EvalC
 
 func (r *evalRepo) CreateRun(ctx context.Context, rn biz.EvalRun) (biz.EvalRun, error) {
 	rn.CreatedAt = now()
+	if strings.TrimSpace(rn.TriggerSource) == "" {
+		rn.TriggerSource = "manual"
+	}
+	if rn.NumRuns <= 0 {
+		rn.NumRuns = 1
+	}
 	_, err := r.db.ExecContext(ctx,
 		`INSERT INTO eval_runs
 		 (id,dataset_id,agent_id,status,total_cases,completed_cases,
 		  exact_match_score,contains_match_score,llm_judge_score,tool_call_accuracy,
+		  pass_at_k,pass_hat_k,trigger_source,num_runs,scores_json,
 		  error_message,started_at,finished_at,created_at)
-		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		rn.ID, rn.DatasetID, rn.AgentID, rn.Status, rn.TotalCases, rn.CompletedCases,
 		rn.ExactMatchScore, rn.ContainsMatchScore, rn.LLMJudgeScore, rn.ToolCallAccuracy,
+		rn.PassAtK, rn.PassHatK, rn.TriggerSource, rn.NumRuns, normalizeEvalScoresJSON(rn.ScoresJSON),
 		rn.ErrorMessage, rn.StartedAt, rn.FinishedAt, rn.CreatedAt)
 	return rn, err
 }
 
-func (r *evalRepo) GetRun(ctx context.Context, id string) (biz.EvalRun, error) {
-	row := r.db.QueryRowContext(ctx,
-		`SELECT id,dataset_id,agent_id,status,total_cases,completed_cases,
-		        exact_match_score,contains_match_score,llm_judge_score,tool_call_accuracy,
-		        error_message,started_at,finished_at,created_at
-		 FROM eval_runs WHERE id=?`, id)
+const evalRunSelect = `SELECT id,dataset_id,agent_id,status,total_cases,completed_cases,
+	exact_match_score,contains_match_score,llm_judge_score,tool_call_accuracy,
+	pass_at_k,pass_hat_k,trigger_source,num_runs,scores_json,
+	error_message,started_at,finished_at,created_at FROM eval_runs`
+
+func normalizeEvalScoresJSON(raw string) string {
+	if strings.TrimSpace(raw) == "" {
+		return "{}"
+	}
+	return raw
+}
+
+func scanEvalRun(row interface{ Scan(dest ...any) error }) (biz.EvalRun, error) {
 	var rn biz.EvalRun
 	err := row.Scan(&rn.ID, &rn.DatasetID, &rn.AgentID, &rn.Status, &rn.TotalCases, &rn.CompletedCases,
 		&rn.ExactMatchScore, &rn.ContainsMatchScore, &rn.LLMJudgeScore, &rn.ToolCallAccuracy,
+		&rn.PassAtK, &rn.PassHatK, &rn.TriggerSource, &rn.NumRuns, &rn.ScoresJSON,
 		&rn.ErrorMessage, &rn.StartedAt, &rn.FinishedAt, &rn.CreatedAt)
 	return rn, err
+}
+
+func (r *evalRepo) GetRun(ctx context.Context, id string) (biz.EvalRun, error) {
+	row := r.db.QueryRowContext(ctx, evalRunSelect+` WHERE id=?`, id)
+	return scanEvalRun(row)
 }
 
 func (r *evalRepo) UpdateRun(ctx context.Context, rn biz.EvalRun) error {
 	_, err := r.db.ExecContext(ctx,
 		`UPDATE eval_runs SET status=?,total_cases=?,completed_cases=?,
 		        exact_match_score=?,contains_match_score=?,llm_judge_score=?,tool_call_accuracy=?,
+		        pass_at_k=?,pass_hat_k=?,scores_json=?,
 		        error_message=?,started_at=?,finished_at=?
 		 WHERE id=?`,
 		rn.Status, rn.TotalCases, rn.CompletedCases,
 		rn.ExactMatchScore, rn.ContainsMatchScore, rn.LLMJudgeScore, rn.ToolCallAccuracy,
+		rn.PassAtK, rn.PassHatK, normalizeEvalScoresJSON(rn.ScoresJSON),
 		rn.ErrorMessage, rn.StartedAt, rn.FinishedAt, rn.ID)
 	return err
+}
+
+func (r *evalRepo) DeleteRun(ctx context.Context, id string) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `DELETE FROM eval_case_results WHERE run_id=?`, id); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM eval_runs WHERE id=?`, id); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (r *evalRepo) ListRuns(ctx context.Context, datasetID, agentID string, limit, offset int) ([]biz.EvalRun, int, error) {
@@ -239,10 +310,7 @@ func (r *evalRepo) ListRuns(ctx context.Context, datasetID, agentID string, limi
 		return nil, 0, err
 	}
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT id,dataset_id,agent_id,status,total_cases,completed_cases,
-		        exact_match_score,contains_match_score,llm_judge_score,tool_call_accuracy,
-		        error_message,started_at,finished_at,created_at
-		 FROM eval_runs WHERE (dataset_id=? OR ?='') AND (agent_id=? OR ?='')
+		evalRunSelect+` WHERE (dataset_id=? OR ?='') AND (agent_id=? OR ?='')
 		 ORDER BY created_at DESC LIMIT ? OFFSET ?`,
 		datasetID, datasetID, agentID, agentID, limit, offset)
 	if err != nil {
@@ -251,10 +319,8 @@ func (r *evalRepo) ListRuns(ctx context.Context, datasetID, agentID string, limi
 	defer rows.Close()
 	var out []biz.EvalRun
 	for rows.Next() {
-		var rn biz.EvalRun
-		if err := rows.Scan(&rn.ID, &rn.DatasetID, &rn.AgentID, &rn.Status, &rn.TotalCases, &rn.CompletedCases,
-			&rn.ExactMatchScore, &rn.ContainsMatchScore, &rn.LLMJudgeScore, &rn.ToolCallAccuracy,
-			&rn.ErrorMessage, &rn.StartedAt, &rn.FinishedAt, &rn.CreatedAt); err != nil {
+		rn, err := scanEvalRun(rows)
+		if err != nil {
 			return nil, 0, err
 		}
 		out = append(out, rn)
@@ -262,10 +328,73 @@ func (r *evalRepo) ListRuns(ctx context.Context, datasetID, agentID string, limi
 	return out, total, rows.Err()
 }
 
+func (r *evalRepo) ListTrendPoints(ctx context.Context, agentID, datasetID string, limit int) ([]biz.EvalTrendPoint, error) {
+	q := `SELECT id,created_at,trigger_source,exact_match_score,contains_match_score,llm_judge_score,tool_call_accuracy,pass_at_k,pass_hat_k
+		FROM eval_runs WHERE agent_id=? AND status='completed'`
+	args := []any{agentID}
+	if strings.TrimSpace(datasetID) != "" {
+		q += ` AND dataset_id=?`
+		args = append(args, datasetID)
+	}
+	q += ` ORDER BY created_at DESC LIMIT ?`
+	args = append(args, limit)
+	rows, err := r.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []biz.EvalTrendPoint
+	for rows.Next() {
+		var p biz.EvalTrendPoint
+		if err := rows.Scan(&p.RunID, &p.CreatedAt, &p.TriggerSource,
+			&p.ExactMatchScore, &p.ContainsMatchScore, &p.LLMJudgeScore, &p.ToolCallAccuracy,
+			&p.PassAtK, &p.PassHatK); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+func (r *evalRepo) GetRunsByIDs(ctx context.Context, ids []string) ([]biz.EvalRun, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	placeholders := strings.Repeat("?,", len(ids))
+	placeholders = placeholders[:len(placeholders)-1]
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		args[i] = id
+	}
+	rows, err := r.db.QueryContext(ctx, evalRunSelect+` WHERE id IN (`+placeholders+`)`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	byID := make(map[string]biz.EvalRun, len(ids))
+	for rows.Next() {
+		rn, err := scanEvalRun(rows)
+		if err != nil {
+			return nil, err
+		}
+		byID[rn.ID] = rn
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	out := make([]biz.EvalRun, 0, len(ids))
+	for _, id := range ids {
+		if rn, ok := byID[id]; ok {
+			out = append(out, rn)
+		}
+	}
+	return out, nil
+}
+
 // --- Case Results ---
 
 const evalCaseResultSelect = `SELECT id,run_id,case_id,actual_output,exact_match,contains_match,llm_judge_score,tool_call_accuracy,error_message,created_at,
-	human_pass,human_score,human_comment,annotated_at,annotated_by
+	human_pass,human_score,human_comment,annotated_at,annotated_by,scores_json
 	FROM eval_case_results`
 
 func scanEvalCaseResult(row interface {
@@ -277,7 +406,7 @@ func scanEvalCaseResult(row interface {
 	var humanScore sql.NullFloat64
 	if err := row.Scan(&res.ID, &res.RunID, &res.CaseID, &res.ActualOutput, &em, &cm,
 		&res.LLMJudgeScore, &res.ToolCallAccuracy, &res.ErrorMessage, &res.CreatedAt,
-		&humanPass, &humanScore, &res.HumanComment, &res.AnnotatedAt, &res.AnnotatedBy); err != nil {
+		&humanPass, &humanScore, &res.HumanComment, &res.AnnotatedAt, &res.AnnotatedBy, &res.ScoresJSON); err != nil {
 		return biz.EvalCaseResult{}, err
 	}
 	res.ExactMatch = em == 1
@@ -305,10 +434,11 @@ func (r *evalRepo) InsertCaseResult(ctx context.Context, res biz.EvalCaseResult)
 	}
 	_, err := r.db.ExecContext(ctx,
 		`INSERT INTO eval_case_results
-		 (id,run_id,case_id,actual_output,exact_match,contains_match,llm_judge_score,tool_call_accuracy,error_message,created_at)
-		 VALUES (?,?,?,?,?,?,?,?,?,?)`,
+		 (id,run_id,case_id,actual_output,exact_match,contains_match,llm_judge_score,tool_call_accuracy,error_message,created_at,scores_json)
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
 		res.ID, res.RunID, res.CaseID, res.ActualOutput, em, cm,
-		res.LLMJudgeScore, res.ToolCallAccuracy, res.ErrorMessage, res.CreatedAt)
+		res.LLMJudgeScore, res.ToolCallAccuracy, res.ErrorMessage, res.CreatedAt,
+		normalizeEvalScoresJSON(res.ScoresJSON))
 	return err
 }
 

@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"encoding/base64"
-	"fmt"
 	"strings"
 
 	v1 "aranea-agents/api/kratos/knowledge/v1"
@@ -33,16 +32,17 @@ var (
 // KnowledgeService implements kratos knowledge.v1.
 type KnowledgeService struct {
 	v1.UnimplementedKnowledgeServiceServer
-	uc         *biz.KnowledgeUsecase
-	chunker    *knowledge.Chunker
-	embedder   *knowledge.Embedder
-	retriever  *knowledge.Retriever
-	bus        event.Bus
+	uc          *biz.KnowledgeUsecase
+	chunker     *knowledge.Chunker
+	embedder    *knowledge.Embedder
+	retriever   *knowledge.Retriever
+	bus         event.Bus
+	systemSetting biz.SystemSettingRepo
 }
 
 // NewKnowledgeService constructs a KnowledgeService.
-func NewKnowledgeService(uc *biz.KnowledgeUsecase, chunker *knowledge.Chunker, embedder *knowledge.Embedder, retriever *knowledge.Retriever, bus event.Bus) *KnowledgeService {
-	return &KnowledgeService{uc: uc, chunker: chunker, embedder: embedder, retriever: retriever, bus: bus}
+func NewKnowledgeService(uc *biz.KnowledgeUsecase, chunker *knowledge.Chunker, embedder *knowledge.Embedder, retriever *knowledge.Retriever, bus event.Bus, systemSetting biz.SystemSettingRepo) *KnowledgeService {
+	return &KnowledgeService{uc: uc, chunker: chunker, embedder: embedder, retriever: retriever, bus: bus, systemSetting: systemSetting}
 }
 
 // CreateCollection creates a new vector collection.
@@ -117,6 +117,19 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 		return nil, err
 	}
 
+	metaJSON, err := knowledge.NormalizeMetadataJSON(req.GetMetadataJson())
+	if err != nil {
+		return nil, kerrors.BadRequest("KNOWLEDGE", err.Error())
+	}
+
+	text, err := knowledge.ExtractDocumentText(raw, req.GetSource(), req.GetMimeType())
+	if err != nil {
+		return nil, kerrors.BadRequest("KNOWLEDGE", err.Error())
+	}
+	if strings.TrimSpace(text) == "" {
+		return nil, kerrors.BadRequest("KNOWLEDGE", "document contains no extractable text")
+	}
+
 	chunkSize := int(req.GetChunkSize())
 	if chunkSize <= 0 {
 		chunkSize = 512
@@ -125,7 +138,7 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 	if chunkOverlap < 0 {
 		chunkOverlap = 64
 	}
-	chunker := knowledge.NewChunker(chunkSize, chunkOverlap, knowledge.ChunkByChar)
+	strategy := knowledge.ParseChunkStrategy(req.GetChunkStrategy())
 	embedder := s.embedder
 	uc := s.uc
 
@@ -134,25 +147,19 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 		_ = uc.UpdateDocumentStatus(bgCtx, doc.ID, "indexing", "", 0)
 		s.publishKnowledgeIngest(col.ID, doc.ID, "indexing", "", 0)
 
-		text := string(raw)
-		chunks := chunker.Split(text)
-
-		bizChunks := make([]biz.KnowledgeChunk, 0, len(chunks))
-		for i, ch := range chunks {
-			vec, err := embedder.Embed(bgCtx, ch.Content)
-			if err != nil {
-				_ = uc.UpdateDocumentStatus(bgCtx, doc.ID, "error", err.Error(), 0)
-				s.publishKnowledgeIngest(col.ID, doc.ID, "error", err.Error(), 0)
-				return
-			}
-			bizChunks = append(bizChunks, biz.KnowledgeChunk{
-				ID:           fmt.Sprintf("%s-ch-%d", doc.ID, i),
-				DocID:        doc.ID,
-				CollectionID: col.ID,
-				Content:      ch.Content,
-				Embedding:    vec,
-				ChunkIndex:   ch.ChunkIndex,
-			})
+		bizChunks, err := knowledge.BuildIndexedChunks(bgCtx, embedder, knowledge.IngestParams{
+			DocID:        doc.ID,
+			CollectionID: col.ID,
+			Text:         text,
+			MetadataJSON: metaJSON,
+			Strategy:     strategy,
+			ChunkSize:    chunkSize,
+			ChunkOverlap: chunkOverlap,
+		})
+		if err != nil {
+			_ = uc.UpdateDocumentStatus(bgCtx, doc.ID, "error", err.Error(), 0)
+			s.publishKnowledgeIngest(col.ID, doc.ID, "error", err.Error(), 0)
+			return
 		}
 
 		if err := uc.InsertChunks(bgCtx, bizChunks); err != nil {
@@ -245,10 +252,16 @@ func (s *KnowledgeService) UpdateEmbedderConfig(ctx context.Context, req *v1.Upd
 		return nil, kerrors.InternalServer("KNOWLEDGE", "embedder not configured")
 	}
 	provider := strings.TrimSpace(req.GetProvider())
-	if provider != "" && provider != "openai" && provider != "ollama" {
-		return nil, kerrors.BadRequest("KNOWLEDGE", "provider must be openai or ollama")
+	if provider != "" && provider != knowledge.ProviderOpenAI && provider != knowledge.ProviderOllama &&
+		provider != knowledge.ProviderGemini && provider != knowledge.ProviderHuggingFace {
+		return nil, kerrors.BadRequest("KNOWLEDGE", "provider must be openai, ollama, gemini, or huggingface")
 	}
 	s.embedder.Update(provider, req.GetBaseUrl(), req.GetApiKey(), req.GetModel(), int(req.GetDim()))
+	p, baseURL, model, dim, _, _ := s.embedder.Config()
+	if err := PersistKnowledgeEmbed(ctx, s.systemSetting, p, baseURL, strings.TrimSpace(req.GetApiKey()), model, dim); err != nil {
+		event.SysLogWarn("knowledge.embedder.persist", "写入 system_settings 失败",
+			event.P("error", err.Error()))
+	}
 	return &v1.UpdateEmbedderConfigResponse{Config: s.embedderConfigProto()}, nil
 }
 

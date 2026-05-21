@@ -55,6 +55,10 @@ func (m *batchSessionRepo) ListSkillInvocationsBySession(context.Context, string
 func (m *batchSessionRepo) AppendChatTurn(context.Context, string, biz.ChatMessage, biz.ChatMessage) error {
 	return nil
 }
+func (m *batchSessionRepo) SearchMessages(context.Context, biz.MessageSearchQuery) (biz.MessageSearchResult, error) {
+	return biz.MessageSearchResult{}, nil
+}
+
 func (m *batchSessionRepo) AppendChatMessage(context.Context, string, biz.ChatMessage, bool) error {
 	return nil
 }

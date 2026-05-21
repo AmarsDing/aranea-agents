@@ -13,10 +13,11 @@ import (
 
 // ModelRouterConfig is the product configuration for model_router plugin routing.
 type ModelRouterConfig struct {
-	DefaultModel     string `json:"default_model"`
-	CodeModel        string `json:"code_model"`
-	LongContextModel string `json:"long_context_model"`
-	FallbackModel    string `json:"fallback_model"`
+	Rules            []ModelRouterRule `json:"rules"`
+	DefaultModel     string            `json:"default_model"`
+	CodeModel        string            `json:"code_model"`
+	LongContextModel string            `json:"long_context_model"`
+	FallbackModel    string            `json:"fallback_model"`
 }
 
 type modelRouterConfig = ModelRouterConfig
@@ -42,14 +43,15 @@ func (m *ModelRouterPlugin) Register(r *trpcplugin.Registry) {
 	r.BeforeModel(m.beforeModel)
 }
 
+// beforeModel records telemetry only. Catalog routing is handled by agent.PluginModelSelector.
 func (m *ModelRouterPlugin) beforeModel(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
-	if args == nil || args.Request == nil {
-		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
-	}
 	origModel := modelNameFromContext(ctx)
-	if target := ResolveModelAPI(promptText(args.Request), m.cfg); target != "" {
-		patchRequestModelHint(args.Request, target)
-		m.logger.Info("plugin.model_router.before_model", "status", "routed", "orig_model", origModel, "target_model", target)
+	target := ""
+	if args != nil && args.Request != nil {
+		target = ResolveModelAPI(promptText(args.Request), m.cfg)
+	}
+	if target != "" && target != origModel {
+		m.logger.Info("plugin.model_router.before_model", "status", "routed_via_selector", "orig_model", origModel, "target_model", target)
 	} else {
 		m.logger.Info("plugin.model_router.before_model", "status", "no_route", "orig_model", origModel)
 	}
@@ -59,10 +61,13 @@ func (m *ModelRouterPlugin) beforeModel(ctx context.Context, args *trpcmodel.Bef
 
 // ResolveModelAPI picks a catalog model API id from prompt heuristics and plugin config.
 func ResolveModelAPI(prompt string, cfg ModelRouterConfig) string {
-	prompt = strings.ToLower(prompt)
+	if target := resolveModelFromRules(prompt, cfg.Rules); target != "" {
+		return target
+	}
+	promptLower := strings.ToLower(prompt)
 	target := strings.TrimSpace(cfg.DefaultModel)
 	switch {
-	case cfg.CodeModel != "" && looksLikeCodeTask(prompt):
+	case cfg.CodeModel != "" && looksLikeCodeTask(promptLower):
 		target = strings.TrimSpace(cfg.CodeModel)
 	case cfg.LongContextModel != "" && len(prompt) > 12000:
 		target = strings.TrimSpace(cfg.LongContextModel)

@@ -1,0 +1,65 @@
+syntax = "proto3";
+
+package kratos.gateway.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/empty.proto";
+
+option go_package = "aranea-agents/api/kratos/gateway/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.kratos.gateway.v1";
+
+message Webhook {
+  string id = 1;
+  string name = 2;
+  string url = 3;
+  string event_types_json = 4;
+  string secret = 5;
+  map<string, string> headers = 6;
+  bool enabled = 7;
+  string created_at = 8;
+  string updated_at = 9;
+}
+
+message CreateWebhookRequest {
+  string name = 1 [(google.api.field_behavior) = REQUIRED];
+  string url = 2 [(google.api.field_behavior) = REQUIRED];
+  string event_types_json = 3;
+  string secret = 4;
+  map<string, string> headers = 5;
+  optional bool enabled = 6;
+}
+
+message ListWebhooksResponse {
+  repeated Webhook items = 1;
+}
+
+message UpdateWebhookRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string name = 2;
+  string url = 3;
+  string event_types_json = 4;
+  string secret = 5;
+  map<string, string> headers = 6;
+  optional bool enabled = 7;
+}
+
+message DeleteWebhookRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+service GatewayService {
+  rpc CreateWebhook(CreateWebhookRequest) returns (Webhook) {
+    option (google.api.http) = { post: "/v1/gateway/webhooks" body: "*" };
+  }
+  rpc ListWebhooks(google.protobuf.Empty) returns (ListWebhooksResponse) {
+    option (google.api.http) = { get: "/v1/gateway/webhooks" };
+  }
+  rpc UpdateWebhook(UpdateWebhookRequest) returns (Webhook) {
+    option (google.api.http) = { put: "/v1/gateway/webhooks/{id}" body: "*" };
+  }
+  rpc DeleteWebhook(DeleteWebhookRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = { delete: "/v1/gateway/webhooks/{id}" };
+  }
+}

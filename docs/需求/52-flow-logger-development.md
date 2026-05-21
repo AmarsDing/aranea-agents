@@ -1,6 +1,7 @@
 # FlowLogger 流程日志 — 开发计划
 
-> **版本**：2026-05-20 | **状态**：v2 Phase 1a/1b/3 ✅；SlogBridge 已移除（见 [changelog](../changelog/2026-05-20-FlowLog-V2-SlogRemoval.md)）；Phase 2 落库待做  
+> **版本**：2026-05-21 | **状态**：v2 Phase 1 + Phase 2 落库/HTTP ✅  
+> **DocSync**：[changelog](../changelog/2026-05-21-Message-FlowLogger-DocSync.md)
 > **需求**：[52-flow-logger.md](./52-flow-logger.md) · **设计**：[52-flow-logger.design.md](./52-flow-logger.design.md)  
 > **步骤注册表**：[52-flow-logger.design.md](./52-flow-logger.design.md) §5.1  
 > **进度**：[execution-plan.md](../guides/execution-plan.md)
@@ -35,7 +36,7 @@
 | Traces 详情「流程」Tab | ✅ | `FlowTracePanel.vue` + `TraceList` Tab |
 | JSONL 导出 | ✅ | `FlowLogExportButton.vue` + `buildFlowDiagnosticJsonl` |
 | 详情按 trace 过滤 WS | ✅ | `flowLogMatchesTrace` + 详情页订阅 |
-| `ListFlowLogs` 落库 | ❌ | Phase 2 |
+| `ListFlowLogs` 落库 | ✅ | `flow_log_events` + `GET /v1/monitor/flow-logs` |
 | Team Runner `TraceEmitter` | ✅ | `runner_team_trpc.go`（迭代 7） |
 | Knowledge rerank FlowLog | ✅ | `knowledge.rerank.fallback`（迭代 7） |
 | EventBus 域（部分） | ✅ | 持久化/用量失败 `SessionSysLogError`（迭代 7） |
@@ -71,7 +72,7 @@
 | FL-1b-04 | 详情按 `trace_id`/`run_id` 过滤 WS | ✅ |
 | FL-1b-05 | `flow.spec.ts` | ✅ |
 
-### Phase 1c — Logs Tab 拆分 + legacy log 清理（进行中 — 2026-05-20）
+### Phase 1c — Logs Tab 拆分 + legacy log 清理（已完成 — 2026-05-21）
 
 | ID | 任务 | 状态 |
 |----|------|------|
@@ -81,13 +82,13 @@
 | FL-1c-04 | `chat_native` / `session_compress` → flow_log | ✅ |
 | FL-1c-05 | 文档 + changelog 同步 | ✅ |
 
-### Phase 2 — 持久化（可选）
+### Phase 2 — 持久化（✅ 2026-05-21）
 
-| ID | 任务 |
-|----|------|
-| FL-2-01 | `docs/sql/15_flow_log.sql` + data repo |
-| FL-2-02 | `monitor.proto` `ListFlowLogs` |
-| FL-2-03 | Traces/Logs HTTP 拉历史 |
+| ID | 任务 | 状态 |
+|----|------|------|
+| FL-2-01 | `docs/sql/15_flow_log.sql` + data repo | ✅ |
+| FL-2-02 | `monitor.proto` `ListFlowLogs` | ✅ |
+| FL-2-03 | Traces/Logs HTTP 拉历史 + `flowLogPersistConsumer` | ✅ |
 
 ### Phase 3 — 扩展域（已完成 — 2026-05-20 迭代 7）
 
@@ -102,8 +103,8 @@
 
 ## 4. 实施顺序（后续 AI 施工）
 
-1. 按需 **Phase 2** 落库（`ListFlowLogs`）。  
-2. **Phase 3**：Team `TraceEmitter`、Knowledge rerank FlowLog、`event_bus.runner.completion`。
+1. 按需 **Phase 2** 落库（`ListFlowLogs` + `docs/sql/15_flow_log.sql`）。  
+2. Message/Event：按 [message-development.md](./message-development.md) P3 拆 `ToolCallConsumer` 等（与 FlowLog 正交）。
 
 ---
 
@@ -127,10 +128,10 @@ cd web && pnpm lint && pnpm build
 
 - [x] Turn 热路径无 `slog`（`trpc_turn` / `turn_usage`）  
 - [x] `slog_bridge.go` 已删除；`LOG_BRIDGE_*` 已废弃  
-- [ ] 无 `TurnSpanCollector` / v1 `flow_step` 双写  
-- [ ] `internal/biz` 无 `trpc-agent-go` import  
-- [ ] Monitor 仍 6 个顶层 Tab  
-- [ ] 进程 `log` 与 `flow_log` 前端分流  
+- [x] 无 `TurnSpanCollector` / v1 `flow_step` 双写（`turn_spans.go` 已删）  
+- [x] `internal/biz` 无 `trpc-agent-go` import（FlowLog 在 `internal/event`）  
+- [x] Monitor 仍 6 个顶层 Tab  
+- [x] 进程 `log` 与 `flow_log` 前端分流（`useLogStreamHub`）  
 
 ---
 
@@ -140,5 +141,5 @@ cd web && pnpm lint && pnpm build
 - [x] Usage `metadata` 含 `trace_id` + `spans`  
 - [x] Traces 详情「流程」Tab  
 - [x] JSONL 导出供 AI 排障  
-- [ ] HTTP 按 `trace_id` 查历史（Phase 2）  
+- [x] HTTP 按 `trace_id` 查历史（Phase 2）  
 - [ ] 业务用户无需读 step_id 即可理解全流程  

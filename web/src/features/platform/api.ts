@@ -79,6 +79,10 @@ export type InspectProviderModelInput = {
   model_api_id: string;
   api_base_url: string;
   api_key?: string;
+  variant?: string;
+  secret_id?: string;
+  secret_key?: string;
+  aws_region?: string;
 };
 
 export type InspectProviderModelResult = {
@@ -98,6 +102,10 @@ export type InspectProviderModelResult = {
   embedding_price_micro_usd_per_1k: number;
   source: string;
   raw_metadata_json: string;
+  variant?: string;
+  enable_token_tailoring?: boolean;
+  supports_cache?: boolean;
+  supports_thinking?: boolean;
 };
 
 function unsupported(op: string, resource: PlatformResourceName): Error {
@@ -728,6 +736,34 @@ export async function validateModel(provider: string, model: string): Promise<Va
   return { ok: pickBool(r, "ok", "ok"), message: pickStr(r, "message", "message") };
 }
 
+export type RevealProviderCredentialsResult = {
+  api_key: string;
+  secret_key: string;
+  has_api_key: boolean;
+  has_secret_key: boolean;
+  ha_candidates: { name: string; api_key: string }[];
+};
+
+export async function revealProviderModelCredentials(id: string): Promise<RevealProviderCredentialsResult> {
+  const raw = await llmModels.RevealProviderModelCredentials({ id });
+  const r = asRecord(raw);
+  const haRaw = r.ha_candidates ?? r.haCandidates;
+  const haList = Array.isArray(haRaw) ? haRaw : [];
+  return {
+    api_key: pickStr(r, "api_key", "apiKey"),
+    secret_key: pickStr(r, "secret_key", "secretKey"),
+    has_api_key: pickBool(r, "has_api_key", "hasApiKey"),
+    has_secret_key: pickBool(r, "has_secret_key", "hasSecretKey"),
+    ha_candidates: haList.map((item) => {
+      const row = asRecord(item);
+      return {
+        name: pickStr(row, "name", "name"),
+        api_key: pickStr(row, "api_key", "apiKey")
+      };
+    })
+  };
+}
+
 export async function inspectProviderModel(payload: InspectProviderModelInput): Promise<InspectProviderModelResult> {
   const raw = await llmModels.InspectProviderModel({
     resourceId: payload.resource_id,
@@ -735,7 +771,11 @@ export async function inspectProviderModel(payload: InspectProviderModelInput): 
     providerType: payload.provider_type,
     modelApiId: payload.model_api_id,
     apiBaseUrl: payload.api_base_url,
-    apiKey: payload.api_key
+    apiKey: payload.api_key,
+    variant: payload.variant,
+    secretId: payload.secret_id,
+    secretKey: payload.secret_key,
+    awsRegion: payload.aws_region
   });
   const r = asRecord(raw);
   return {
@@ -754,7 +794,11 @@ export async function inspectProviderModel(payload: InspectProviderModelInput): 
     reasoning_price_micro_usd_per_1k: pickNum(r, "reasoning_price_micro_usd_per_1k", "reasoningPriceMicroUsdPer1k"),
     embedding_price_micro_usd_per_1k: pickNum(r, "embedding_price_micro_usd_per_1k", "embeddingPriceMicroUsdPer1k"),
     source: pickStr(r, "source", "source"),
-    raw_metadata_json: pickStr(r, "raw_metadata_json", "rawMetadataJson")
+    raw_metadata_json: pickStr(r, "raw_metadata_json", "rawMetadataJson"),
+    variant: pickStr(r, "variant", "variant"),
+    enable_token_tailoring: pickBool(r, "enable_token_tailoring", "enableTokenTailoring"),
+    supports_cache: pickBool(r, "supports_cache", "supportsCache"),
+    supports_thinking: pickBool(r, "supports_thinking", "supportsThinking")
   };
 }
 

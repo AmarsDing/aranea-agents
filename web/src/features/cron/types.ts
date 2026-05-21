@@ -13,7 +13,7 @@ export type CronTaskConfig = {
   run_at?: string;
   timezone?: string;
   message?: string;
-  retry_max_attempts?: number;
+  retry_max_attempts?: number; // retry count after first attempt; default 3; 0 = disable
 };
 
 export type CronFailureSummary = {
@@ -47,6 +47,7 @@ export type CronTaskFormValue = {
   run_at_time: string;
   timezone: string;
   message: string;
+  retry_max_attempts: number;
   enabled: boolean;
 };
 

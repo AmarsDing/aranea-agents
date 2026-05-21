@@ -65,7 +65,9 @@
 | | MCP | `/mcp-servers` | `McpServersPage` |
 | | Skill | `/skills` | `SkillsPage` |
 | | Plugin | `/plugins` | `PluginsPage` |
+| | Plugin 运行记录 | `/plugins/runs` | `PluginRunsPage` |
 | | Hook | `/hooks` | `HooksPage` |
+| | Hook 投递队列 | `/hooks/deliveries` | `HookDeliveriesPage` |
 | | 知识库 | `/knowledge` | `KnowledgePage` |
 | | 制品 | `/artifacts` | `ArtifactsPage` |
 | | 评估 | `/evaluation` | `EvaluationPage` |
@@ -105,16 +107,21 @@
 #### 系统设置 `/settings`
 
 - 工作区根目录、工作目录、**全平台月预算**（`SystemSetting.global_monthly_micro_usd`，保存时同步 `usage_quotas` global/global）。
+- **Knowledge Embedder 默认**（`system_settings.knowledge_embed_*`）：provider / base_url / model / dim；API Key 仅存库不回显。env `KRATOS_KNOWLEDGE_EMBED_*` 优先。
+- **评估 LLM 默认**（`system_settings.eval_sim_*` / `eval_judge_*`）：UserSim 与 LLM-as-Judge 模型；表单默认 Sim `openai` / `gpt-4o-mini`；env `KRATOS_EVAL_*` 优先。详见 [33 evaluation.md §3.4](./33%20evaluation.md)。
 - 页面直连 `features/system-settings/api`（无独立 store）。
 
 ---
 
 ### 4.2 运营与用量
 
-#### 概览 `/overview`
+#### 概览 `/overview`（监控 Dashboard）
+
+> 需求 / 设计 / 开发计划：[18 monitor-dashboard.md](./18%20monitor-dashboard.md) · [design](./18%20monitor-dashboard.design.md) · [development](./18-monitor-dashboard-development.md)
 
 - **模型消耗看板**：时间范围、Provider/模型/状态筛选；趋势粒度 **按天 / 按小时**（`granularity=hour`）。
-- 指标卡（含 **月预算使用率**，有 `usage_quotas` 时展示）、趋势图、Top 模型/Agent、异常请求列表；**「查看明细」**跳转 `/usage/events`（携带当前 `range`）。
+- 指标卡（含 **月预算使用率**，有 `usage_quotas` 时展示）、**ECharts 趋势**（`UsageTrendChart`）、**模型/Provider 占比**（`UsageBreakdownCharts`）、Top 模型/Agent、异常列表；**Runner 条**（`OverviewRunnerMetrics`）；**运维快捷入口**（`OverviewMonitorQuickLinks`）。
+- **「查看明细」**跳转 `/usage/events`（携带当前 `range`）。
 - **统计口径**：概览/排行/配额已用额仅计 `chat_turn` + `team_member`（不含 `team_turn`）；详见 `29 token.md` §3.6。
 - 数据：`features/usage/api` + `UsageMetricCards` 等组件。
 - 写入真相源：`trpc_turn` → `recordTurnUsage`（非 `recordChatIngressUsage` 默认路径）。
@@ -145,12 +152,12 @@
 
 | Tab | 功能 |
 |-----|------|
-| **Usage** | Runner 指标面板 + 用量总览 |
+| **Usage** | Runner 指标（`MonitorRunnerMetrics`）+ 跳转概览/明细（`MonitorUsageDashboardLink`）；完整大盘在 `/overview` |
 | **Alerts** | 告警规则、Webhook/Channel、冷却 |
 | **Audit** | 审计日志表 |
 | **Events** | 实时/持久化 Monitor 事件 |
 | **Traces** | LLM 调用 Trace 列表；详情含流程 Tab、瀑布图、Span 树、JSONL 导出 |
-| **Logs** | **流程日志**（`flow_log`，默认连接）+ **进程日志**（`log`，`enable_log` 开关）；`LogStreamPanel` 共享单 WS |
+| **Logs** | **流程日志**（`flow_log`，默认连接）+ **进程日志**（`log`，`server.monitor.process_log_enabled`）；`LogStreamPanel` 共享单 WS |
 
 相关：`features/monitor/*`（含 `useLogStreamHub`）、`components/monitor/*`（`LogStreamPanel`、`FlowLogStream`、`ProcessLogStream`、`TraceWaterfall`、`FlowTracePanel` 等）。
 
@@ -165,9 +172,9 @@
 | 区域 | 组件/能力 |
 |------|-----------|
 | 左侧 | `ChatEntitySidebar`：Agent/Team 列表、分类树、拖拽排序 |
-| 中间 | `ChatMessagePanel`：消息流、Reasoning 折叠、**工具调用卡片**、流式输出 |
+| 中间 | `ChatMessagePanel`：消息流、Reasoning 折叠、**ReAct 步骤卡**（含 ACTION 内嵌工具卡；`reactToolLinkIndex` 去重独立 tool 行）、**A2UI 组件树预览**（`a2ui` + `userAction` 回传）、工具调用卡片、流式输出 |
 | 输入 | 多模态附件、对话模式、Provider/Model 选择、发送/停止 |
-| 状态 | `run_status` WS、`awaiting_user` 回复、排队 `pending`、replay 横幅 |
+| 状态 | `run_status` WS、`awaiting_user` 回复、**Follow-up Queue**（待发送列表 + 编辑/取消；后端 `message_queued` 通知，前端连续发送 UX 待 Phase 1.5）、replay 横幅 |
 | 右侧 | 会话制品面板（`ChatSessionArtifactsPanel`） |
 
 **实时通道**：`/v1/ws` + Envelope（`features/chat/ws-transport.ts`、`useEnvelopeStream.ts`）；编排集中在 `features/chat/composables/useChatWorkspace.ts`（约 1500 行，后续宜继续拆分）。
@@ -209,18 +216,18 @@
 - 卡片/表格视图、分类/Provider/状态筛选、收藏、分页。
 - 新建 Agent（`AgentCreateDialog`）：支持 **LLM Agent** / **A2A 远程代理** 两种类型（后者见 [2 agents-create.md](./2%20agents-create.md) §9）。
 - 列表徽章：`A2A ↗`（远程代理）、`A2A ↙`（LLM 且已启用 Endpoint）。
-- 删除、复制 Key、跳转设置页。
+- 删除、**复制 Agent**（`DuplicateAgent`）、复制 Key、跳转设置页。
 - Store：`stores/agents`；编排：`features/agents/useAgentsPage.ts`。
 
 #### Agent 设置 `/agents/:id/settings`
 
-多 Tab 大页（`AgentSettingsPage`，含子目录 `pages/agent-settings/`）：
+多 Tab 页（`AgentSettingsPage` 页壳 + `pages/agent-settings/*Tab.vue`：Agent / 记忆 / Skill 等）：
 
 | Tab | 功能 |
 |-----|------|
-| Agent | 系统提示模式、Provider/Model、参数、头像 |
+| Agent | 系统提示模式、Provider/Model、**规划模式**（`planner_kind` / `planner_config_json`，`AgentPlannerSection`；空 kind 三态说明）、能力/工具、头像 |
 | 记忆 | L0–L4 与 MemoryService 相关配置 |
-| 文件 | Agent 文件/知识文件 |
+| 文件 | Agent 提示文件；**AI 编辑**（`EditPromptFileByAI`） |
 | 权限 | **用量配额**（月度 USD 上限 + 周期检查）；其余权限 PRD 待补 |
 | Skill | 绑定 Skill |
 | 进化 | 自进化相关 |
@@ -285,10 +292,11 @@ Store：`stores/graph`；API：`features/graph/api.ts`。
 - Skill 列表、启用、统计条、ZIP 导入（`SkillUploadPlaceholder` + 导入任务轮询）。
 - `/skills/runs`：调用记录表。
 
-#### Plugin `/plugins`
+#### Plugin `/plugins` · `/plugins/runs`
 
-- 9 内置 + 自定义 Plugin 表：类型、Callback 点、Scope、启用、配置 Schema 编辑。
-- 运行记录查询（对接 `ListPluginRuns`）。
+- 9 内置 Plugin 表：类型、Callback、Scope、排序、启用、JSON 配置。
+- 详情抽屉：Agent 绑定（global / agent_id）、运行统计。
+- 运行记录页：对接 `ListPluginRuns`（plugin/agent/callback/status 筛选）。
 
 #### Hook `/hooks`
 
@@ -313,8 +321,9 @@ Store：`stores/graph`；API：`features/graph/api.ts`。
 
 #### 评估 `/evaluation`
 
-- 数据集 CRUD、上传用例、启动 Eval Run、查看运行列表。
-- 用例结果对话框：**人工标注**（Pass/Fail/分数/评语）、**导出 CSV/JSON**（`exportRunResults.ts`）。
+- 数据集 CRUD、上传用例、启动 Eval Run（`metrics` / `num_runs` / `use_user_simulation`）、查看运行列表。
+- **趋势与 A/B**：`EvaluationAnalyticsPanel` — Agent 趋势表、`GetAgentEvalTrend`；多选 Run → `compareEvalRuns`。
+- 用例结果对话框：**人工标注**、**导出 CSV/JSON**（`exportRunResults.ts`）。
 - 编排：`useEvaluationPage.ts`；Store：`stores/evaluation`（部分页面亦直连 `features/evaluation/api`）。
 
 #### A2A `/a2a`
@@ -335,6 +344,19 @@ Store：`stores/graph`；API：`features/graph/api.ts`。
 联邦网关：`GET /v1/a2a/gateway/discover`（local + remote，可选 `check_health`）。
 
 编排：`useA2APage.ts`；组件：`A2ARemoteAgentPanel.vue` 等；mapper 单测：`features/a2a/__tests__/mappers.spec.ts`。
+
+#### Gateway 出站 Webhook（API-only）
+
+**无管理页**。通过 REST 管理运行终态回调配置：
+
+| 方法 | 路径 |
+|------|------|
+| POST | `/v1/gateway/webhooks` |
+| GET | `/v1/gateway/webhooks` |
+| PUT | `/v1/gateway/webhooks/{id}` |
+| DELETE | `/v1/gateway/webhooks/{id}` |
+
+`PUT` 时 `enabled` 为 optional：未传则保留原值。触发事件：`run.completed` / `run.failed` / `run.cancelled`（HMAC-SHA256 签名）。详见 [35 gateway.md](./35%20gateway.md)。
 
 ---
 
@@ -451,7 +473,8 @@ flowchart LR
 | [guides/frontend-guide.md](../guides/frontend-guide.md) | 前端编码红线与分层 |
 | [frontend/vue-design/vue-design.md](../frontend/vue-design/vue-design.md) | 详细架构与迁移剧本 |
 | [1-chat-development.md](./1-chat-development.md) | Chat/WS 需求与验收 |
-| [18-monitor-development.md](./18-monitor-development.md) | Monitor 六 Tab 需求 |
+| [18-monitor-development.md](./18-monitor-development.md) | Monitor 运维六 Tab |
+| [18-monitor-dashboard-development.md](./18-monitor-dashboard-development.md) | 概览 Dashboard `/overview` |
 | [guides/execution-plan.md](../guides/execution-plan.md) | 迭代进度真相源 |
 
 ---

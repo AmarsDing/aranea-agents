@@ -9,7 +9,7 @@
 
 ## 1. 模块定位
 
-CodeExecutor 为 Agent 提供安全的代码执行环境，使模型生成的代码可在隔离沙箱中运行并返回结果。支持多种执行后端（本地子进程、Docker 容器、E2B 云端沙箱、Jupyter 内核），覆盖从开发调试到生产隔离的全场景需求。
+CodeExecutor 为 Agent（经 **Skill 工具链**）提供安全的代码执行环境，使模型生成的代码可在隔离沙箱中运行并返回结果。支持多种执行后端（本地子进程、Docker 容器、E2B 云端沙箱、Container 引擎、Jupyter 内核），覆盖从开发调试到生产隔离的全场景需求。
 
 ---
 
@@ -59,12 +59,13 @@ CodeExecutor 为 Agent 提供安全的代码执行环境，使模型生成的代
 
 系统应支持以下执行后端，按安全级别递增排列：
 
-| 后端类型 | 隔离级别 | 网络访问 | 适用场景 |
-|----------|----------|----------|----------|
-| `local` | 无隔离（子进程） | 有 | 开发调试 |
-| `docker` | 容器隔离 | 无（`--network none`） | 生产环境 |
-| `e2b` | 云端沙箱 | 受控 | 云端隔离执行 |
-| `jupyter` | 内核隔离 | 有 | 交互式数据分析 |
+| 后端类型 | 隔离级别 | 网络访问 | 适用场景 | 当前接入 |
+|----------|----------|----------|----------|----------|
+| `local` | 无隔离（子进程） | 有 | 开发调试 | ✅ Skill 默认（框架 `trpclocal`） |
+| `docker` | 容器隔离 | 无（`--network none`） | 生产环境 | ✅ 项目 `DockerExecutor` + 适配层 |
+| `e2b` | 云端沙箱 | 受控 | 云端隔离执行 | 🟡 lazy + `E2B_API_KEY` |
+| `container` | 容器引擎 | 可配置 | 框架 Container 后端 | 🟡 lazy + build tag |
+| `jupyter` | 内核隔离 | 有 | 交互式数据分析 | ❌ Phase 3 |
 
 ### 3.2 支持的语言
 
@@ -90,67 +91,71 @@ Docker 后端必须满足以下安全约束：
 
 ### 3.4 Agent 级别执行器配置
 
-- Agent 可独立配置代码执行后端类型
-- 未配置时使用系统默认后端
-- 配置项：`code_executor_type`，可选值 `local` / `docker` / `e2b` / `jupyter`
-- 环境变量 `CODE_EXECUTOR_BACKEND` 作为全局回退
+- Agent 可独立配置代码执行后端类型（**已实现**：`code_executor_type` + 前端 Skill Tab）
+- 未配置时使用系统默认后端 `local`
+- 配置项：`code_executor_type`，可选值 `local` / `docker` / `e2b` / `container`（`jupyter` 待 Phase 3）
+- 配置优先级：Agent 字段 > 环境变量 `CODE_EXECUTOR_BACKEND` > `local`
+- biz 校验非法类型返回 400
 
 ### 3.5 交互式执行
 
-- 执行环境可跨多轮对话保持状态
+- 执行环境可跨多轮对话保持状态（**待 Phase 3**）
 - 支持向运行中的程序发送输入
 - 支持查询运行中程序的输出
 - 支持终止运行中的程序
 
 ### 3.6 工作区管理
 
-- 执行前可准备输入文件到工作区
+- 执行前可准备输入文件到工作区（**待 Phase 4**）
 - 支持从 Artifact、宿主路径、工作区相对路径导入文件
 - 执行后可按 glob 模式收集输出文件
 - 工作区可按 Session 复用
 
 ### 3.7 产出物收集
 
-- 代码执行产生的文件自动识别
-- 产出物自动保存为 Artifact
-- 支持配置产出物收集规则（glob 模式、文件数量限制、大小限制）
+- Docker 路径：执行输出目录中的文件可收集并保存为 Artifact（**部分已实现**）
+- 产出物自动保存为 Artifact（经 `SaveArtifactHelper`，需 Runner 已注入 ArtifactService）
+- 支持配置产出物收集规则（glob 模式、文件数量限制、大小限制）（**待 Phase 2–4**）
 
 ### 3.8 可观测性
 
-- 执行次数、状态（成功/失败/超时/OOM）计数
-- 执行时长直方图
+- 执行次数、状态（成功/失败/超时/OOM）计数 — Skill 全路径经 `metrics_executor` 上报 Prometheus
+- 块级计数 — `aranea_codeexec_blocks_total`
+- 执行时长直方图 — `aranea_codeexec_duration_seconds`
 - OOM Kill 事件计数
-- 执行器可用状态查询
+- 执行器可用状态查询 — **已实现** `GET /v1/monitor/code-executor-capabilities`
 
 ---
 
 ## 4. 验收标准
 
+> 实现进度以 [32-codeexecutor-development.md](./32-codeexecutor-development.md) 为准。
+
 ### 4.1 基础执行
 
-- [ ] 代码可在 Local 后端执行并返回 stdout/stderr
-- [ ] 代码可在 Docker 后端隔离执行并返回 stdout/stderr
-- [ ] 不支持的语言返回明确错误
-- [ ] 执行超时返回超时标识
+- [x] 代码可在 Local 后端执行并返回 stdout/stderr（Skill + 框架 `trpclocal`）
+- [x] 代码可在 Docker 后端隔离执行并返回 stdout/stderr
+- [x] 不支持的语言返回明确错误
+- [x] 执行超时返回超时标识
 
 ### 4.2 Docker 安全
 
-- [ ] Docker 执行的容器无网络访问
-- [ ] Docker 执行的容器根文件系统只读
-- [ ] 内存超限返回 OOM 标识
-- [ ] 执行完毕容器自动移除
+- [x] Docker 执行的容器无网络访问
+- [x] Docker 执行的容器根文件系统只读
+- [x] 内存超限返回 OOM 标识（exit 137）
+- [x] 执行完毕容器自动移除
 
 ### 4.3 多后端支持
 
-- [ ] E2B 后端可执行代码并返回结果
+- [x] E2B 后端可执行代码（lazy 注册；需 `E2B_API_KEY`；Key 缺失时 fallback local）
 - [ ] Jupyter 后端可执行代码并返回结果
-- [ ] Container 后端可执行代码并返回结果
+- [x] Container 后端可执行代码（build tag `codeexec_container`；默认 stub）
 
 ### 4.4 Agent 配置
 
-- [ ] Agent 可配置执行后端类型
-- [ ] 未配置时使用系统默认后端
-- [ ] 配置变更即时生效（新会话）
+- [x] Agent 可配置执行后端类型
+- [x] 未配置时使用系统默认后端（`local`）
+- [x] 配置变更即时生效（新 Agent 构建 / 新会话）
 
 ### 4.5 交互式执行
 
@@ -162,9 +167,10 @@ Docker 后端必须满足以下安全约束：
 
 - [ ] 执行前可准备输入文件
 - [ ] 执行后可按规则收集输出文件
-- [ ] 产出物自动保存为 Artifact
+- [x] Docker 路径产出物可自动保存为 Artifact（`WrapWithArtifactSave`）
 
 ### 4.7 可观测性
 
-- [ ] Prometheus 指标正确上报
-- [ ] 执行器可用状态可查询
+- [x] Prometheus 指标正确上报（Skill 全路径：local / docker / e2b / container）
+- [x] Skill 默认 local 路径指标覆盖
+- [x] 执行器可用状态可查询（Monitor capabilities API）

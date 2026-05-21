@@ -3,25 +3,30 @@ package service
 import (
 	"context"
 	"strings"
-	"time"
 
-	"aranea-agents/pkg/safego"
+	"aranea-agents/internal/biz"
 )
 
 type persistedRunStatus struct {
-	RunID        string
-	Status       string
-	ErrorMessage string
-	UpdatedAt    string
+	RunID           string
+	Status          string
+	ErrorMessage    string
+	UpdatedAt       string
+	AwaitKind       string
+	AwaitToolKey    string
+	AwaitToolCallID string
 }
 
 const (
-	stateKeyRunID        = "runtime.run_id"
-	stateKeyRunStatus    = "runtime.status"
-	stateKeyRunError     = "runtime.error_message"
-	stateKeyRunUpdatedAt = "runtime.updated_at"
-	stateKeyAwaitRunID   = "runtime.await_run_id"
-	stateKeyAwaitSince   = "runtime.await_since"
+	stateKeyRunID            = "runtime.run_id"
+	stateKeyRunStatus        = "runtime.status"
+	stateKeyRunError         = "runtime.error_message"
+	stateKeyRunUpdatedAt     = "runtime.updated_at"
+	stateKeyAwaitRunID       = "runtime.await_run_id"
+	stateKeyAwaitSince       = "runtime.await_since"
+	stateKeyAwaitKind        = "runtime.await_kind"
+	stateKeyAwaitToolKey     = "runtime.await_tool_key"
+	stateKeyAwaitToolCallID  = "runtime.await_tool_call_id"
 )
 
 func terminalRunStatus(status string) bool {
@@ -34,38 +39,7 @@ func terminalRunStatus(status string) bool {
 }
 
 func (s *ChatService) persistRunStatus(ctx context.Context, sessionID, runID, status, errMsg string) {
-	if s == nil || s.td.Sessions == nil {
-		return
-	}
-	sessionID = strings.TrimSpace(sessionID)
-	if sessionID == "" {
-		return
-	}
-	now := time.Now().UTC().Format(time.RFC3339)
-	safego.Go(ctx, "chat.persist_run_status", func() {
-		bg := context.Background()
-		state, err := s.td.Sessions.GetSessionState(bg, sessionID)
-		if err != nil {
-			return
-		}
-		if state == nil {
-			state = map[string]string{}
-		}
-		if terminalRunStatus(status) {
-			delete(state, stateKeyRunID)
-			delete(state, stateKeyRunStatus)
-			delete(state, stateKeyRunError)
-			delete(state, stateKeyRunUpdatedAt)
-			delete(state, stateKeyAwaitRunID)
-			delete(state, stateKeyAwaitSince)
-		} else {
-			state[stateKeyRunID] = strings.TrimSpace(runID)
-			state[stateKeyRunStatus] = strings.TrimSpace(status)
-			state[stateKeyRunError] = strings.TrimSpace(errMsg)
-			state[stateKeyRunUpdatedAt] = now
-		}
-		_ = s.td.Sessions.SaveSessionState(bg, sessionID, state)
-	})
+	persistRunStatusToSession(s.td.Sessions, ctx, sessionID, runID, status, errMsg)
 }
 
 func (s *ChatService) hydrateRunStatusFromSession(ctx context.Context, sessionID string) (persistedRunStatus, bool) {
@@ -81,35 +55,57 @@ func (s *ChatService) hydrateRunStatusFromSession(ctx context.Context, sessionID
 		return persistedRunStatus{}, false
 	}
 	return persistedRunStatus{
-		RunID:        strings.TrimSpace(state[stateKeyRunID]),
-		Status:       status,
-		ErrorMessage: strings.TrimSpace(state[stateKeyRunError]),
-		UpdatedAt:    strings.TrimSpace(state[stateKeyRunUpdatedAt]),
+		RunID:           strings.TrimSpace(state[stateKeyRunID]),
+		Status:          status,
+		ErrorMessage:    strings.TrimSpace(state[stateKeyRunError]),
+		UpdatedAt:       strings.TrimSpace(state[stateKeyRunUpdatedAt]),
+		AwaitKind:       strings.TrimSpace(state[stateKeyAwaitKind]),
+		AwaitToolKey:    strings.TrimSpace(state[stateKeyAwaitToolKey]),
+		AwaitToolCallID: strings.TrimSpace(state[stateKeyAwaitToolCallID]),
 	}, true
 }
 
-func (s *ChatService) persistAwaitMarkers(ctx context.Context, sessionID, runID string) {
-	if s == nil || s.td.Sessions == nil {
-		return
-	}
+func (s *ChatService) persistAwaitMarkers(ctx context.Context, sessionID, runID string, await AwaitStatusMeta, syncWrite bool) {
+	s.setAwaitMetaCache(sessionID, await)
+	persistAwaitMarkersToSession(s.td.Sessions, ctx, sessionID, runID, await, syncWrite)
+}
+
+func (s *ChatService) setAwaitMetaCache(sessionID string, meta biz.ChatAwaitMeta) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
 		return
 	}
-	now := time.Now().UTC().Format(time.RFC3339)
-	safego.Go(ctx, "chat.persist_await_markers", func() {
-		bg := context.Background()
-		state, err := s.td.Sessions.GetSessionState(bg, sessionID)
-		if err != nil {
-			return
+	s.awaitMetaCache.Store(sessionID, meta)
+}
+
+func (s *ChatService) getAwaitMetaCache(sessionID string) (biz.ChatAwaitMeta, bool) {
+	v, ok := s.awaitMetaCache.Load(strings.TrimSpace(sessionID))
+	if !ok {
+		return biz.ChatAwaitMeta{}, false
+	}
+	meta, ok := v.(biz.ChatAwaitMeta)
+	return meta, ok
+}
+
+func (s *ChatService) clearAwaitMetaCache(sessionID string) {
+	s.awaitMetaCache.Delete(strings.TrimSpace(sessionID))
+}
+
+func (s *ChatService) resolveAwaitMeta(ctx context.Context, sessionID, status string) biz.ChatAwaitMeta {
+	if strings.TrimSpace(status) != "awaiting_user" {
+		return biz.ChatAwaitMeta{}
+	}
+	if meta, ok := s.getAwaitMetaCache(sessionID); ok {
+		return meta
+	}
+	if snap, ok := s.hydrateRunStatusFromSession(ctx, sessionID); ok {
+		return biz.ChatAwaitMeta{
+			Kind:       snap.AwaitKind,
+			ToolKey:    snap.AwaitToolKey,
+			ToolCallID: snap.AwaitToolCallID,
 		}
-		if state == nil {
-			state = map[string]string{}
-		}
-		state[stateKeyAwaitRunID] = strings.TrimSpace(runID)
-		state[stateKeyAwaitSince] = now
-		_ = s.td.Sessions.SaveSessionState(bg, sessionID, state)
-	})
+	}
+	return biz.ChatAwaitMeta{}
 }
 
 func (s *ChatService) clearAwaitingRunStateSync(ctx context.Context, sessionID string) error {
@@ -127,35 +123,20 @@ func (s *ChatService) clearAwaitingRunStateSync(ctx context.Context, sessionID s
 	if len(state) == 0 {
 		return nil
 	}
+	s.clearAwaitMetaCache(sessionID)
 	delete(state, stateKeyRunID)
 	delete(state, stateKeyRunStatus)
 	delete(state, stateKeyRunError)
 	delete(state, stateKeyRunUpdatedAt)
 	delete(state, stateKeyAwaitRunID)
 	delete(state, stateKeyAwaitSince)
+	delete(state, stateKeyAwaitKind)
+	delete(state, stateKeyAwaitToolKey)
+	delete(state, stateKeyAwaitToolCallID)
 	return s.td.Sessions.SaveSessionState(ctx, sessionID, state)
 }
 
 func (s *ChatService) clearAwaitingRunState(ctx context.Context, sessionID string) {
-	if s == nil || s.td.Sessions == nil {
-		return
-	}
-	sessionID = strings.TrimSpace(sessionID)
-	if sessionID == "" {
-		return
-	}
-	safego.Go(ctx, "chat.clear_await_state", func() {
-		bg := context.Background()
-		state, err := s.td.Sessions.GetSessionState(bg, sessionID)
-		if err != nil || len(state) == 0 {
-			return
-		}
-		delete(state, stateKeyRunID)
-		delete(state, stateKeyRunStatus)
-		delete(state, stateKeyRunError)
-		delete(state, stateKeyRunUpdatedAt)
-		delete(state, stateKeyAwaitRunID)
-		delete(state, stateKeyAwaitSince)
-		_ = s.td.Sessions.SaveSessionState(bg, sessionID, state)
-	})
+	s.clearAwaitMetaCache(sessionID)
+	clearAwaitingRunStateFromSession(s.td.Sessions, ctx, sessionID)
 }

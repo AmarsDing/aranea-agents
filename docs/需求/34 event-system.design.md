@@ -10,18 +10,20 @@
 基于事件总线的发布/订阅机制，支持系统内部组件间的异步事件通信。核心组件为 `event.Bus`（发布/订阅 + 背压策略）+ `event.Envelope`（统一事件信封）+ `event.Buffer`（环形缓冲 + 断连重放），通过 WebSocket 统一传输至前端。
 
 **已实现能力**：
-1. EventBus 发布/订阅 + 三种背压策略（DropOldest / DropNewest / BlockUpTo）+ 可靠订阅
+1. EventBus 发布/订阅 + 三种背压策略（DropOldest / DropNewest / BlockUpTo）+ 可靠订阅 + ChannelPriority 投递顺序
 2. Envelope 统一事件信封，携带完整元数据（StateDelta / Extensions / FilterKey / Branch / Tag / Actions / Trace）
-3. EventProjector 将 trpc-agent-go Event 投影为 Envelope
-4. EventBusConsumer 消费事件，自动应用 StateDelta 到 Session State
-5. WebSocket 统一传输（Channel 路由：chat / monitor / team / graph / system）
+3. EventProjector 将 trpc-agent-go Event 投影为 Envelope（含 Activity 元数据、LongRunningToolIDs）
+4. EventBusConsumer 拆分为 buffer / runner / state 三 handler，单一职责消费
+5. WebSocket 统一传输（Channel 路由：chat / monitor / team / graph / knowledge / system）
 6. EventBuffer 环形缓冲 + TTL 淘汰 + lastEventID 断连重放
-7. 前端 Envelope 类型 + WsTransport + useEnvelopeStream composable
+7. Flow Log v2（`flow_log` + TraceEmitter / SysLog*，SlogBridge 已删除）
+8. 前端 Envelope 类型 + WsTransport + useEnvelopeStream；Monitor `RealtimeEvents` 实时事件面板
 
 **未实现能力**：
 1. 事件持久化（SQLite 存储）
 2. 事件回放 API（HTTP 按时间范围查询）
-3. 前端事件可视化组件（EventTimeline / BranchTree / StateDeltaIndicator）
+3. Chat 侧边栏事件可视化（BranchTree / StateDeltaIndicator / TransferBadge / useEventFilter）
+4. 清理或挂载未使用原型 `web/src/components/monitor/EventTimeline.vue`
 
 ---
 
@@ -42,12 +44,14 @@ trpc-agent-go Runner
   └──────┬──────────┬──────────┬────────────────┘
          │          │          │
          ▼          ▼          ▼
-   EventBusConsumer  WSServer  FlowLog (TraceEmitter / SysLog)
-   (StateDelta应用)  (WS推流)  (日志桥接)
+   EventBusConsumer  ─┬─ eventBufferHandler   (环形缓冲 Append)
+   (三 handler SRP)   ├─ runnerCompletionHandler (Monitor / Usage / TurnMemory)
+                      └─ stateDeltaHandler    (ApplyStateDelta)
          │          │
          ▼          ▼
    SessionUsecase   前端 WsTransport
    (ApplyStateDelta)   + useEnvelopeStream
+                        + Monitor RealtimeEvents
 ```
 
 ---
@@ -72,7 +76,7 @@ Envelope 是事件系统唯一的传输单元，所有事件均封装为 Envelop
 | ParentInvocationID | string | 父调用 ID（可选） |
 | Branch | string | 分支追踪（可选） |
 | FilterKey | string | 层级过滤键（可选） |
-| Tag | string | 业务标签，逗号分隔（可选） |
+| Tag | string | 业务标签，逗号分隔（可选；trpc Event 框架 TagDelimiter 为 `;`） |
 | Timestamp | string | RFC3339Nano 时间戳 |
 | Version | int | 版本号 |
 | Channel | string | 路由通道（chat / monitor / team / graph） |
@@ -116,6 +120,14 @@ Envelope 是事件系统唯一的传输单元，所有事件均封装为 Envelop
 | team_run_failed | EnvelopeTypeTeamRunFailed | team | Team 运行失败 |
 | team_step_started | EnvelopeTypeTeamStepStarted | team | Team 步骤开始 |
 | team_step_finished | EnvelopeTypeTeamStepFinished | team | Team 步骤完成 |
+| run_status | EnvelopeTypeRunStatus | chat | Chat 运行态（queued/running/await/cancelled） |
+| flow_log | EnvelopeTypeFlowLog | monitor | Flow Log v2 流程步骤（schema: flow_log/v1） |
+| team_summary | EnvelopeTypeTeamSummary | team | Team 运行摘要 |
+| knowledge_ingest | EnvelopeTypeKnowledgeIngest | knowledge | 知识库文档入库进度 |
+| mcp.session.reconnect | EnvelopeTypeMCPSessionReconnect | monitor | MCP 会话重连通知 |
+| alert.notify | EnvelopeTypeAlertNotify | monitor | 监控告警通知 |
+
+**Channel 路由补充**：`RouteChannel()` 将 `knowledge_ingest` 路由至 `knowledge`；`flow_log` / `log` / `mcp.session.reconnect` / `alert.notify` 路由至 `monitor`；TeamID 非空时默认回落 `team`。
 
 ### 3.3 Envelope 子结构
 
@@ -136,6 +148,14 @@ Envelope 是事件系统唯一的传输单元，所有事件均封装为 Envelop
 | Status | string | 状态 |
 | DurationMS | int64 | 耗时毫秒（可选） |
 | IsLongRunning | bool | 是否长时运行（可选） |
+| ActivityKind | string | 活动类型：tool / skill / mcp / subagent 等（可选） |
+| DisplayLabel | string | 展示标签（可选） |
+| IconKey | string | 图标键（可选） |
+| Summary | string | 摘要（可选） |
+| StartedAt / FinishedAt | string | RFC3339 时间（可选） |
+| ErrorCode | string | 错误码（可选） |
+| AgentKey / AgentID / AgentName | string | Agent 关联（可选） |
+| RunID / TraceID | string | 运行/追踪 ID（可选） |
 
 **EnvelopeStateDelta**：
 | 字段 | 类型 | 说明 |
@@ -185,7 +205,7 @@ Envelope 是事件系统唯一的传输单元，所有事件均封装为 Envelop
 | RouteChannel | `(env Envelope) string` | 根据 Type 自动路由到 Channel |
 | MatchFilterKey | `(subscriberKey, eventKey string) bool` | FilterKey 前缀匹配 |
 | Clone | `(e Envelope) Envelope` | 深拷贝（含所有指针字段和 map） |
-| ContainsTag | `(e Envelope, tag string) bool` | 逗号分隔标签匹配 |
+| ContainsTag | `(e Envelope, tag string) bool` | 逗号分隔标签匹配（TrimSpace 后精确匹配） |
 
 ---
 
@@ -213,6 +233,7 @@ type Bus interface {
 | FilterKey | string | 按 FilterKey 前缀匹配 |
 | EventTypes | []EnvelopeType | 按事件类型白名单过滤 |
 | LevelFilter | string | 日志级别过滤（DEBUG/INFO/WARN/ERROR） |
+| Priority | ChannelPriority | 订阅优先级：Critical 先于 Normal 投递 |
 | BufferSize | int | Channel 容量（默认 128，上限 512） |
 | Reliable | bool | 可靠订阅（关键事件 BlockUpTo 语义） |
 | DropPolicy | DropPolicy | 背压策略 |
@@ -227,7 +248,9 @@ type Bus interface {
 | DropNewest | DropPolicy(1) | 缓冲满时丢弃最新事件 |
 | BlockUpTo | DropPolicy(2) | 阻塞等待指定时长，超时后回退到 DropOldest |
 
-**可靠订阅**：`Reliable=true` 或关键事件类型（tool_result / error / runner_completion / graph_node_end / team_run_finished / team_run_failed）自动使用 BlockUpTo(100ms) 语义，确保不丢失。
+**可靠订阅**：`Reliable=true` 或关键事件类型（tool_result / error / runner_completion / graph_node_end / team_run_finished / team_run_failed）自动使用 BlockUpTo(100ms) 语义。Publish 时 Critical 优先级订阅者优先投递。
+
+**丢弃可观测**：drop 时通过 `SessionSysLogWarn(system.bus.drop)` 打点，并递增 Prometheus `EventBusDropped`。
 
 ### 4.4 路由匹配
 
@@ -271,6 +294,11 @@ func MatchFilterKey(subscriberKey, eventKey string) bool {
 | TeamID | Team ID |
 | Branch | 分支 |
 | FilterKey | 过滤键 |
+| RunID | 运行 ID |
+| TraceID | 追踪 ID |
+| AgentID | Agent ID |
+| AgentDisplayName | Agent 展示名 |
+| MemberAgentKeys | Team member_* 信封作者白名单 |
 
 **投影规则**：
 - trpc Event.Branch / FilterKey / Tag / Extensions / Actions 直接映射到 Envelope
@@ -290,7 +318,9 @@ func MatchFilterKey(subscriberKey, eventKey string) bool {
 
 | 文件 | 职责 |
 |------|------|
+| `internal/event/flow_log.go` | FlowLog 数据结构、schema_version、Envelope 构造 |
 | `internal/event/trace_emitter.go` | Turn 热路径：`EnvelopeTypeFlowLog` + span 缓冲 |
+| `internal/event/trace_context.go` | TraceContext（trace_id / run_id / agent_key） |
 | `internal/event/system_flow.go` | 基础设施：`SysLog*` / `SessionSysLog*`（异步 Publish） |
 | `internal/event/flow_context.go` | `CtxFlowLog*`、`SetGlobalBus` |
 
@@ -305,17 +335,15 @@ func MatchFilterKey(subscriberKey, eventKey string) bool {
 
 ### 6.1 EventBusConsumer
 
-`internal/biz/event_bus_consumer.go`
+`internal/biz/event_bus_consumer.go` + 三 handler（I5-SYS-03 拆分）：
 
-订阅 EventBus，处理两类关键事件：
+| Handler | 文件 | 职责 |
+|---------|------|------|
+| eventBufferHandler | `event_bus_buffer_handler.go` | 所有 Envelope 写入环形 Buffer（断连重放） |
+| runnerCompletionHandler | `event_bus_runner_handler.go` | RunnerCompletion → TurnMemoryWorker + Monitor 持久化 + Usage 记录（`CHAT_RECORD_RUNNER_USAGE`） |
+| stateDeltaHandler | `event_bus_state_handler.go` | StateDelta → SessionUsecase.ApplyStateDelta / UpdateRunnerSnapshotJSON |
 
-**RunnerCompletion**：
-- 提取 Usage 信息
-- 更新 Session 用量统计
-
-**StateDelta**：
-- 调用 `SessionUsecase.ApplyStateDelta()` 应用到 Session State
-- 特殊路径 `__state__` 走 `UpdateRunnerSnapshotJSON`
+`Start()` 以 `Reliable=true` 全局订阅 Bus，经 `envelopeToDomainEvent` 转换后按 Type 分派。
 
 ### 6.2 DomainEvent 适配
 
@@ -429,11 +457,16 @@ func (b *Buffer) Replay(sessionID, lastEventID string) []Envelope
 **Channel 路由**：
 | Channel | 默认订阅 | 包含事件类型 |
 |---------|----------|-------------|
-| chat | ✅ | text_delta / text_done / tool_call / tool_result / state_delta / transfer / runner_completion / error |
+| chat | ✅ | text_delta / text_done / tool_call / tool_result / state_delta / transfer / runner_completion / run_status / error |
 | system | ✅ | connected / pong / server_shutdown / replay_* |
-| monitor | ❌（需 enable_log 或 subscribe） | log |
-| team | ❌（需 subscribe） | member_* / team_* / intent_pass |
+| monitor | ❌（需 enable_log 或 subscribe；global 默认开） | log / flow_log / mcp.session.reconnect / alert.notify |
+| team | ❌（需 subscribe） | member_* / team_* / intent_pass / team_summary |
 | graph | ❌（需 subscribe） | graph_* / checkpoint |
+| knowledge | ❌（需 subscribe） | knowledge_ingest |
+
+**日志门控**：`EnvelopeTypeLog` 受 `log_enabled` / `enable_log` 控制；`flow_log` 始终投递（不经 log 门控）。
+
+**下行 replay 类型**：`replay_start` / `replay` / `replay_end`（非仅 `replay`）。
 
 **背压策略**：
 - 普通会话连接：Reliable=true，关键事件 BlockUpTo(100ms)
@@ -451,7 +484,7 @@ func (b *Buffer) Replay(sessionID, lastEventID string) []Envelope
 
 `web/src/features/chat/envelope.ts`
 
-前端 Envelope 类型与后端 `event.Envelope` JSON 结构一一对应，包含所有字段和子结构（EnvelopeContent / EnvelopeToolCall / EnvelopeStateDelta / EnvelopeTransfer / EnvelopeError / EnvelopeUsage / EnvelopeActions / EnvelopeTrace）。
+前端 Envelope 类型与后端 `event.Envelope` JSON 结构一一对应。辅助：`envelopeRunStatus.ts`（run_status 解析）、`teamRunEventFromEnvelope.ts`（Team 事件投影）。
 
 ### 10.2 WsTransport
 
@@ -478,79 +511,86 @@ Vue composable，封装 WsTransport + EnvelopeDispatcher：
 **衍生 composable**：
 - `useChatStream(sessionId)` — 聚合 text_delta / tool_call / runner_completion / error
 - `useTeamStream(sessionId, teamId?)` — 聚合 member_* / team_* 事件
+- `useKnowledgeIngestWs(sessionId)` — 订阅 knowledge_ingest
+
+### 10.4 Monitor 实时事件（已实现）
+
+`web/src/components/monitor/RealtimeEvents.vue`
+
+Monitor `/monitor` Events Tab 生产组件：合并 WS 运行时 Envelope 与持久化 Monitor Events，支持分类过滤、Runs 关联跳转、暂停/清除。
 
 ---
 
-## 十一、待设计：事件持久化
+## 十一、事件持久化（已实现）
 
-### 11.1 存储方案
+### 11.1 存储
 
-新增 `event_store` Ent 表：
+`event_store` Ent 表（`internal/data/ent/schema/event_store.go`），字段：id / session_id / type / author / channel / envelope_json / created_at。索引：session_id+created_at、type、created_at。
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | string | 事件 ID（= Envelope.ID） |
-| session_id | string | 会话 ID |
-| type | string | 事件类型 |
-| author | string | 作者 |
-| channel | string | 路由通道 |
-| envelope_json | string | Envelope 完整 JSON |
-| created_at | time.Time | 事件时间 |
-
-**索引**：session_id + created_at（复合）、type、created_at
-
-**TTL 清理**：后台任务定期删除超过 N 天的事件记录。
+写入：`eventPersistHandler` 异步持久化（排除 `log` / `flow_log`）。TTL：`EventStoreCleanup` 每小时，`EVENT_STORE_TTL_DAYS` 默认 7。
 
 ### 11.2 回放 API
 
-新增 HTTP API：
-
-```
-GET /v1/events?session_id=xxx&since=2025-01-01T00:00:00Z&until=2025-01-02T00:00:00Z&type=tool_call&limit=100&offset=0
-```
-
-返回 Envelope 列表 + 分页信息。
+`GET /v1/events?session_id=&since=&until=&type=&limit=&offset=` — `api/kratos/event/v1/event.proto` → `internal/service/event.go`。
 
 ---
 
-## 十二、待设计：前端事件可视化
+## 十二、Chat 会话事件检视（P3 设计）
 
-### 12.1 EventTimeline 组件
+> **产品决策**：不增加第四列固定侧边栏（左 Entity / 中 Message / 右 Session 已占满）。采用 **Dialog 双 Tab**，与现有 `SessionTimelineDialog` 入口合并。
 
-位置：`web/src/features/chat/components/EventTimeline.vue`
+### 12.1 与 Monitor 分工
 
-在 Chat 页面侧边栏展示事件时间线。
+| 维度 | Monitor `RealtimeEvents` | Chat Inspector |
+|------|--------------------------|----------------|
+| 范围 | 全局 / 多会话 | **当前 session** |
+| 数据源 | WS + Monitor Events API | WS + `GET /v1/events` |
+| 入口 | `/monitor?tab=events` | Chat 会话菜单 / MessagePanel 工具栏 |
+| 侧重 | Runs 关联、运维分类 | Branch 树、StateDelta、FilterKey/Tag |
 
-**Props**：
-| Prop | 类型 | 说明 |
+### 12.2 布局
+
+```
+ChatPage
+├── 三栏布局（不变）
+└── SessionTimelineDialog（扩展）
+      Tab「历史 Trace」— 现有 HTTP SessionTimeline
+      Tab「实时 Envelope」— SessionEventInspectorPanel
+            ├─ EventFilterBar
+            ├─ BranchTree（左 30%）
+            └─ 事件列表（StateDeltaIndicator / TransferBadge / ToolCall）
+```
+
+**入口**：
+1. `ChatSessionSidebar` 会话菜单「历史追踪」→ Dialog 默认 Trace Tab
+2. `ChatMessagePanel` 头部「事件」按钮 → Dialog 默认 Envelope Tab
+
+### 12.3 前端分层
+
+| 层级 | 路径 | 职责 |
 |------|------|------|
-| sessionId | string | 当前会话 ID |
-| filterKey | string | 过滤键（可选） |
-| visible | boolean | 是否显示 |
+| API | `features/event/api.ts` | `GET /v1/events` |
+| 纯函数 | `features/chat/eventFilter.ts` | filterEnvelopes / buildBranchTree |
+| Composable | `features/chat/composables/useEventFilter.ts` | 过滤状态 + computed |
+| Composable | `features/chat/composables/useChatEventInspector.ts` | WS + 历史合并、暂停 |
+| 展示 | `components/chat/EventFilterBar.vue` | 过滤控件 |
+| 展示 | `components/chat/BranchTree.vue` | 调用树 |
+| 展示 | `components/chat/StateDeltaIndicator.vue` | StateDelta 行 |
+| 展示 | `components/chat/TransferBadge.vue` | Transfer 标签 |
+| 展示 | `components/chat/SessionEventInspectorPanel.vue` | Tab 内容容器 |
+| 容器 | `components/chat/SessionTimelineDialog.vue` | Tab 切换 + Trace  Tab |
 
-**功能**：
-- 按事件类型 / 分支 / 标签过滤
-- 事件详情展开（StateDelta 变更指示 / Transfer 标签 / ToolCall 详情）
-- 长时运行工具进度指示
-- 时间格式化
+Branch 树由 `invocation_id` / `parent_invocation_id` 在线推导，不新增后端 API。
 
-### 12.2 BranchTree 组件
+### 12.4 EventFilterState
 
-位置：`web/src/features/chat/components/BranchTree.vue`
-
-基于 InvocationID / ParentInvocationID 构建调用树，可视化多 Agent 执行链。
-
-### 12.3 StateDeltaIndicator 组件
-
-位置：`web/src/features/chat/components/StateDeltaIndicator.vue`
-
-展示状态变更：路径、操作类型、值变更。
-
-### 12.4 useEventFilter composable
-
-位置：`web/src/features/chat/composables/useEventFilter.ts`
-
-事件过滤逻辑：类型过滤、分支过滤、标签过滤、搜索过滤。
+| 字段 | 说明 |
+|------|------|
+| typeFilter | `all` 或 EnvelopeType |
+| branchPrefix | Branch 前缀匹配 |
+| tag | Tag 逗号分隔精确匹配 |
+| keyword | 搜索 type/author/content/tool |
+| filterKey | FilterKey 前缀匹配 |
 
 ---
 
@@ -563,35 +603,45 @@ GET /v1/events?session_id=xxx&since=2025-01-01T00:00:00Z&until=2025-01-02T00:00:
 | `internal/event/bus.go` | Bus 接口 + 背压策略 + 路由匹配 |
 | `internal/event/envelope.go` | Envelope 结构 + EnvelopeType 枚举 + Clone / MatchFilterKey / ContainsTag |
 | `internal/event/buffer.go` | 环形缓冲 + TTL 淘汰 + Replay |
+| `internal/event/flow_log.go` | FlowLog 数据结构与 Envelope 构造 |
+| `internal/event/trace_context.go` | TraceContext |
 | `internal/event/trace_emitter.go` | Flow Log v2 + usage spans |
 | `internal/event/system_flow.go` | 系统域 FlowLog（`SetGlobalBus`） |
-| `internal/event/wire.go` | Wire ProviderSet |
+| `internal/event/flow_context.go` | CtxFlowLog* / SetGlobalBus |
+| `internal/event/wire.go` | Wire ProviderSet（NewBus + NewBuffer） |
 | `internal/agent/event_projector.go` | trpc Event → Envelope 投影 |
 | `internal/agent/turn_helpers.go` | ConsumeEventStream 事件消费 |
 | `internal/graph/trpc/event_bridge.go` | Graph 事件桥接 |
 | `internal/biz/domain_event.go` | DomainEvent 领域模型 |
 | `internal/biz/domain_event_adapter.go` | DomainEvent ↔ EventBus 适配 |
-| `internal/biz/event_bus_consumer.go` | EventBus 消费者（StateDelta / Usage） |
+| `internal/biz/event_bus_consumer.go` | EventBus 消费者编排 |
+| `internal/biz/event_bus_buffer_handler.go` | 缓冲写入 handler |
+| `internal/biz/event_bus_runner_handler.go` | RunnerCompletion handler |
+| `internal/biz/event_bus_state_handler.go` | StateDelta handler |
 | `internal/biz/session_usecase.go` | ApplyStateDelta / GetSessionState / SaveSessionState |
 | `internal/data/session_repo.go` | Session State 持久化 |
 | `internal/data/ent/schema/session.go` | state_json 字段 |
 | `internal/server/ws.go` | WebSocket 统一网关 |
+| `internal/service/run_status_publish.go` | run_status Envelope 发布 |
+| `internal/service/chat_run_gateway.go` | Chat 运行态 + run_status |
+| `internal/tools/mcpobserve/observe.go` | mcp.session.reconnect 发布 |
+| `internal/service/monitor_notify.go` | alert.notify 发布 |
 | `internal/metrics/vars.go` | EventBusPublished / EventBusDropped 指标 |
 | `web/src/features/chat/envelope.ts` | 前端 Envelope 类型 |
+| `web/src/features/chat/envelopeRunStatus.ts` | run_status 解析 |
 | `web/src/features/chat/ws-transport.ts` | WsTransport |
 | `web/src/features/chat/useEnvelopeStream.ts` | useEnvelopeStream composable |
+| `internal/biz/event_persist_handler.go` | 异步持久化 handler |
+| `internal/data/event_store_repo.go` | EventStore Repo |
+| `internal/service/event.go` | 回放 API Service |
+| `internal/cronrunner/jobs/event_store_cleanup.go` | TTL 清理 |
+| `web/src/features/event/api.ts` | 回放 API 门面 |
+| `web/src/features/chat/eventFilter.ts` | 过滤 + Branch 树纯函数 |
+| `web/src/components/monitor/RealtimeEvents.vue` | Monitor Events Tab（生产） |
 
-### 待实现
-
-| 文件 | 说明 |
-|------|------|
-| `internal/data/ent/schema/event_store.go` | 事件持久化表 |
-| `internal/data/event_store_repo.go` | 事件存储 Repo |
-| `internal/biz/event_store.go` | 事件存储 Usecase |
-| `api/kratos/event/v1/event.proto` | 事件回放 API Proto |
-| `internal/service/event.go` | 事件回放 Service |
-| `web/src/features/chat/components/EventTimeline.vue` | 事件时间线 |
-| `web/src/features/chat/components/BranchTree.vue` | 分支追踪树 |
-| `web/src/features/chat/components/StateDeltaIndicator.vue` | 状态变更指示器 |
-| `web/src/features/chat/components/TransferBadge.vue` | Agent 转移标签 |
-| `web/src/features/chat/composables/useEventFilter.ts` | 事件过滤 composable |
+| `web/src/components/chat/SessionEventInspectorPanel.vue` | Envelope Tab 容器 |
+| `web/src/components/chat/EventFilterBar.vue` | 过滤栏 |
+| `web/src/components/chat/BranchTree.vue` | 分支追踪树 |
+| `web/src/components/chat/StateDeltaIndicator.vue` | 状态变更指示器 |
+| `web/src/components/chat/TransferBadge.vue` | Agent 转移标签 |
+| `web/src/components/chat/SessionTimelineDialog.vue` | Trace + Envelope 双 Tab |

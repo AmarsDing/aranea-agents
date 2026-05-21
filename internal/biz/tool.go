@@ -3,6 +3,7 @@ package biz
 import (
 	"context"
 	"strings"
+	"time"
 
 	"github.com/go-kratos/kratos/v2/errors"
 )
@@ -122,6 +123,8 @@ type ToolInvocation struct {
 	ErrorCode        string
 	ErrorMessage     string
 	RedactionApplied bool
+	Streaming        bool
+	ChunkCount       int
 	MetadataJSON     string
 	CreatedAt        string
 }
@@ -144,6 +147,8 @@ type ToolInvocationWrite struct {
 	ErrorMessage  string
 	Source        string
 	ToolCallID    string
+	Streaming     bool
+	ChunkCount    int
 }
 
 type ToolInvocationParam struct {
@@ -196,6 +201,51 @@ type ToolRunResult struct {
 	Offset int
 }
 
+type ToolInvocationAuditWrite struct {
+	InvocationID  string
+	ToolKey       string
+	AgentID       string
+	UserID        string
+	SessionID     string
+	Action        string
+	ResultSummary string
+	Status        string
+	Source        string
+}
+
+type ToolInvocationAudit struct {
+	ID            string
+	InvocationID  string
+	ToolKey       string
+	AgentID       string
+	UserID        string
+	SessionID     string
+	Action        string
+	ResultSummary string
+	Status        string
+	Source        string
+	CreatedAt     string
+}
+
+type ToolAuditQuery struct {
+	ToolKey   string
+	AgentID   string
+	UserID    string
+	SessionID string
+	Status    string
+	From      string
+	To        string
+	Limit     int
+	Offset    int
+}
+
+type ToolAuditResult struct {
+	Items  []ToolInvocationAudit
+	Total  int
+	Limit  int
+	Offset int
+}
+
 type ToolRepo interface {
 	SearchTools(ctx context.Context, q ToolListQuery) (ToolListResult, error)
 	GetTool(ctx context.Context, idOrKey string) (Tool, error)
@@ -206,11 +256,14 @@ type ToolRepo interface {
 	UpdateToolConfig(ctx context.Context, idOrKey string, configJSON string) (Tool, error)
 	SearchToolInvocations(ctx context.Context, q ToolRunQuery) (ToolRunResult, error)
 	RecordToolInvocation(ctx context.Context, in ToolInvocationWrite) error
+	RecordToolInvocationAudit(ctx context.Context, in ToolInvocationAuditWrite) error
+	SearchToolInvocationAudits(ctx context.Context, q ToolAuditQuery) (ToolAuditResult, error)
+	PurgeToolInvocationAuditsBefore(ctx context.Context, cutoffRFC3339 string) (int64, error)
 	SyncBuiltinTools(ctx context.Context) error
 	GetToolInvocationParams(ctx context.Context, invocationID string) (ToolInvocationParam, error)
 	ListToolAgentOverrides(ctx context.Context, toolKey string) ([]ToolAgentOverride, error)
 	ListToolAgentOverridesByAgent(ctx context.Context, agentID string) ([]ToolAgentOverride, error)
-	UpsertToolAgentOverride(ctx context.Context, in ToolAgentOverrideInput) (ToolAgentOverride, error)
+	UpsertToolAgentOverride(ctx context.Context, in ToolAgentOverrideInput, toolID string) (ToolAgentOverride, error)
 	DeleteToolAgentOverride(ctx context.Context, toolKey string, agentID string) error
 }
 
@@ -232,30 +285,70 @@ func (u *ToolUsecase) ListTools(ctx context.Context, q ToolListQuery) (ToolListR
 	if q.Offset < 0 {
 		q.Offset = 0
 	}
-	return u.repo.SearchTools(ctx, q)
+	result, err := u.repo.SearchTools(ctx, q)
+	if err != nil {
+		return ToolListResult{}, err
+	}
+	result.Items = enrichToolList(result.Items)
+	return result, nil
 }
 
 func (u *ToolUsecase) GetTool(ctx context.Context, id string) (Tool, error) {
 	if strings.TrimSpace(id) == "" {
 		return Tool{}, errors.BadRequest("TOOL", "id is required")
 	}
-	return u.repo.GetTool(ctx, id)
+	t, err := u.repo.GetTool(ctx, id)
+	if err != nil {
+		return Tool{}, err
+	}
+	EnrichToolCatalogRuntime(&t)
+	return t, nil
 }
 
 func (u *ToolUsecase) Create(ctx context.Context, in ToolUpsertInput) (Tool, error) {
-	return u.repo.CreateTool(ctx, in)
+	if err := validateToolUpsert(in); err != nil {
+		return Tool{}, err
+	}
+	t, err := u.repo.CreateTool(ctx, in)
+	if err != nil {
+		return Tool{}, err
+	}
+	EnrichToolCatalogRuntime(&t)
+	return t, nil
 }
 
 func (u *ToolUsecase) Update(ctx context.Context, id string, in ToolUpsertInput) (Tool, error) {
 	if strings.TrimSpace(id) == "" {
 		return Tool{}, errors.BadRequest("TOOL", "id is required")
 	}
-	return u.repo.UpdateTool(ctx, id, in)
+	if err := validateToolUpsert(in); err != nil {
+		return Tool{}, err
+	}
+	existing, err := u.repo.GetTool(ctx, id)
+	if err != nil {
+		return Tool{}, err
+	}
+	if err := assertToolMutable(existing, in); err != nil {
+		return Tool{}, err
+	}
+	t, err := u.repo.UpdateTool(ctx, id, in)
+	if err != nil {
+		return Tool{}, err
+	}
+	EnrichToolCatalogRuntime(&t)
+	return t, nil
 }
 
 func (u *ToolUsecase) Delete(ctx context.Context, id string) error {
 	if strings.TrimSpace(id) == "" {
 		return errors.BadRequest("TOOL", "id is required")
+	}
+	existing, err := u.repo.GetTool(ctx, id)
+	if err != nil {
+		return err
+	}
+	if err := assertToolDeletable(existing); err != nil {
+		return err
 	}
 	return u.repo.DeleteTool(ctx, id)
 }
@@ -285,6 +378,13 @@ func (u *ToolUsecase) UpdateToolConfig(ctx context.Context, id string, configJSO
 	if configJSON == "" {
 		configJSON = "{}"
 	}
+	existing, err := u.repo.GetTool(ctx, id)
+	if err != nil {
+		return Tool{}, err
+	}
+	if err := validateToolConfigAgainstSchema(existing.ConfigSchemaJSON, configJSON); err != nil {
+		return Tool{}, err
+	}
 	return u.repo.UpdateToolConfig(ctx, id, configJSON)
 }
 
@@ -301,8 +401,39 @@ func (u *ToolUsecase) ListRuns(ctx context.Context, q ToolRunQuery) (ToolRunResu
 	return u.repo.SearchToolInvocations(ctx, q)
 }
 
-func (u *ToolUsecase) RecordToolInvocation(ctx context.Context, in ToolInvocationWrite) error {
-	return u.repo.RecordToolInvocation(ctx, in)
+// ListRunsForTool lists invocations for a tool referenced by catalog id or tool_key.
+func (u *ToolUsecase) ListRunsForTool(ctx context.Context, toolIDOrKey string, q ToolRunQuery) (ToolRunResult, error) {
+	key, err := u.ResolveToolKey(ctx, toolIDOrKey)
+	if err != nil {
+		return ToolRunResult{}, err
+	}
+	q.ToolKey = key
+	return u.ListRuns(ctx, q)
+}
+
+func (u *ToolUsecase) RecordToolInvocationAudit(ctx context.Context, in ToolInvocationAuditWrite) error {
+	return u.repo.RecordToolInvocationAudit(ctx, in)
+}
+
+func (u *ToolUsecase) ListInvocationAudits(ctx context.Context, q ToolAuditQuery) (ToolAuditResult, error) {
+	if q.Limit <= 0 {
+		q.Limit = 20
+	}
+	if q.Limit > 100 {
+		q.Limit = 100
+	}
+	if q.Offset < 0 {
+		q.Offset = 0
+	}
+	return u.repo.SearchToolInvocationAudits(ctx, q)
+}
+
+// ToolAuditRetentionDays is the default audit log retention policy.
+const ToolAuditRetentionDays = 90
+
+func (u *ToolUsecase) PurgeOldInvocationAudits(ctx context.Context) (int64, error) {
+	cutoff := time.Now().UTC().AddDate(0, 0, -ToolAuditRetentionDays).Format(time.RFC3339)
+	return u.repo.PurgeToolInvocationAuditsBefore(ctx, cutoff)
 }
 
 func (u *ToolUsecase) SyncBuiltinTools(ctx context.Context) error {
@@ -316,11 +447,12 @@ func (u *ToolUsecase) GetToolInvocationParams(ctx context.Context, invocationID 
 	return u.repo.GetToolInvocationParams(ctx, invocationID)
 }
 
-func (u *ToolUsecase) ListToolAgentOverrides(ctx context.Context, toolKey string) ([]ToolAgentOverride, error) {
-	if strings.TrimSpace(toolKey) == "" {
-		return nil, errors.BadRequest("TOOL", "tool key is required")
+func (u *ToolUsecase) ListToolAgentOverrides(ctx context.Context, toolIDOrKey string) ([]ToolAgentOverride, error) {
+	key, err := u.ResolveToolKey(ctx, toolIDOrKey)
+	if err != nil {
+		return nil, err
 	}
-	return u.repo.ListToolAgentOverrides(ctx, toolKey)
+	return u.repo.ListToolAgentOverrides(ctx, key)
 }
 
 func (u *ToolUsecase) ListToolAgentOverridesByAgent(ctx context.Context, agentID string) ([]ToolAgentOverride, error) {
@@ -332,27 +464,30 @@ func (u *ToolUsecase) ListToolAgentOverridesByAgent(ctx context.Context, agentID
 }
 
 func (u *ToolUsecase) UpsertToolAgentOverride(ctx context.Context, in ToolAgentOverrideInput) (ToolAgentOverride, error) {
-	if strings.TrimSpace(in.ToolKey) == "" {
-		return ToolAgentOverride{}, errors.BadRequest("TOOL", "tool key is required")
-	}
 	if strings.TrimSpace(in.AgentID) == "" {
 		return ToolAgentOverride{}, errors.BadRequest("TOOL", "agent id is required")
 	}
+	tool, err := u.GetTool(ctx, in.ToolKey)
+	if err != nil {
+		return ToolAgentOverride{}, err
+	}
+	in.ToolKey = tool.Key
 	if in.Mode == "" {
 		in.Mode = "inherit"
 	}
 	if in.ConfigOverrideJSON == "" {
 		in.ConfigOverrideJSON = "{}"
 	}
-	return u.repo.UpsertToolAgentOverride(ctx, in)
+	return u.repo.UpsertToolAgentOverride(ctx, in, tool.ID)
 }
 
-func (u *ToolUsecase) DeleteToolAgentOverride(ctx context.Context, toolKey string, agentID string) error {
-	if strings.TrimSpace(toolKey) == "" {
-		return errors.BadRequest("TOOL", "tool key is required")
-	}
+func (u *ToolUsecase) DeleteToolAgentOverride(ctx context.Context, toolIDOrKey string, agentID string) error {
 	if strings.TrimSpace(agentID) == "" {
 		return errors.BadRequest("TOOL", "agent id is required")
 	}
-	return u.repo.DeleteToolAgentOverride(ctx, toolKey, agentID)
+	key, err := u.ResolveToolKey(ctx, toolIDOrKey)
+	if err != nil {
+		return err
+	}
+	return u.repo.DeleteToolAgentOverride(ctx, key, agentID)
 }

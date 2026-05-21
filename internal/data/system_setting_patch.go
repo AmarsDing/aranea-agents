@@ -17,6 +17,17 @@ func ensureSystemSettingPatches(ctx context.Context, c *ent.Client) error {
 		ddl string
 	}{
 		{"a2a_public_base_url", `ALTER TABLE system_settings ADD COLUMN a2a_public_base_url TEXT NOT NULL DEFAULT ''`},
+		{"credential_encryption_key", `ALTER TABLE system_settings ADD COLUMN credential_encryption_key TEXT NOT NULL DEFAULT ''`},
+		{"knowledge_embed_provider", `ALTER TABLE system_settings ADD COLUMN knowledge_embed_provider TEXT NOT NULL DEFAULT ''`},
+		{"knowledge_embed_base_url", `ALTER TABLE system_settings ADD COLUMN knowledge_embed_base_url TEXT NOT NULL DEFAULT ''`},
+		{"knowledge_embed_api_key", `ALTER TABLE system_settings ADD COLUMN knowledge_embed_api_key TEXT NOT NULL DEFAULT ''`},
+		{"knowledge_embed_model", `ALTER TABLE system_settings ADD COLUMN knowledge_embed_model TEXT NOT NULL DEFAULT ''`},
+		{"knowledge_embed_dim", `ALTER TABLE system_settings ADD COLUMN knowledge_embed_dim INTEGER NOT NULL DEFAULT 0`},
+		{"mcp_allow_adhoc_http", `ALTER TABLE system_settings ADD COLUMN mcp_allow_adhoc_http INTEGER NOT NULL DEFAULT 0`},
+		{"eval_sim_provider", `ALTER TABLE system_settings ADD COLUMN eval_sim_provider TEXT NOT NULL DEFAULT ''`},
+		{"eval_sim_model", `ALTER TABLE system_settings ADD COLUMN eval_sim_model TEXT NOT NULL DEFAULT ''`},
+		{"eval_judge_provider", `ALTER TABLE system_settings ADD COLUMN eval_judge_provider TEXT NOT NULL DEFAULT ''`},
+		{"eval_judge_model", `ALTER TABLE system_settings ADD COLUMN eval_judge_model TEXT NOT NULL DEFAULT ''`},
 	}
 	for _, p := range patches {
 		has, err := sqliteTableHasColumn(ctx, c, "system_settings", p.col)

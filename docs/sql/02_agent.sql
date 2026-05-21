@@ -20,10 +20,13 @@ CREATE TABLE IF NOT EXISTS agents (
   budget_monthly_cents INTEGER NOT NULL DEFAULT 0,
   config_json TEXT NOT NULL DEFAULT '',
   roles_json TEXT NOT NULL DEFAULT '[]',
+  created_by TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL DEFAULT '',
   updated_at TEXT NOT NULL DEFAULT '',
   deleted_at TEXT NOT NULL DEFAULT ''
 );
+
+-- 已有库仅缺列时执行 docs/sql/02_agent_created_by.sql（列 + idx_agents_created_by）
 
 CREATE TABLE IF NOT EXISTS agent_category_nodes (
   id TEXT PRIMARY KEY,
@@ -145,6 +148,16 @@ CREATE TABLE IF NOT EXISTS agent_runtime_settings (
   context_compaction_enabled INTEGER NOT NULL DEFAULT 0,
   session_summary_enabled INTEGER NOT NULL DEFAULT 0,
   skill_load_mode TEXT NOT NULL DEFAULT 'auto',
+  code_executor_type TEXT NOT NULL DEFAULT 'local',
+  planner_kind TEXT NOT NULL DEFAULT '',
+  planner_config_json TEXT NOT NULL DEFAULT '{}',
+  ralph_loop_max_iterations INTEGER NOT NULL DEFAULT 0,
+  ralph_loop_completion_promise TEXT NOT NULL DEFAULT '',
+  ralph_loop_verify_command TEXT NOT NULL DEFAULT '',
+  ralph_loop_verify_timeout_seconds INTEGER NOT NULL DEFAULT 0,
+  ralph_loop_promise_tag_open TEXT NOT NULL DEFAULT '',
+  ralph_loop_promise_tag_close TEXT NOT NULL DEFAULT '',
+  ralph_loop_verify_work_dir TEXT NOT NULL DEFAULT '',
   output_schema_json TEXT NOT NULL DEFAULT '',
   model_selector TEXT NOT NULL DEFAULT 'default',
   tools_retry_enabled INTEGER NOT NULL DEFAULT 0,

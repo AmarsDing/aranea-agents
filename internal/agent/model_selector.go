@@ -15,27 +15,31 @@ import (
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
 
-// PluginCostGuardSelector returns a ModelSelector that switches to fallback when the base model is blocked.
+// PluginCostGuardSelector switches to fallback when blocked_models or budget limits require routing.
 func PluginCostGuardSelector(
 	baseProv, baseMod string,
 	catalog *biz.LlmProviderModelUsecase,
 	rt *provider.RoundTrip,
 	cfg plugintrpc.CostGuardConfig,
+	tracker *plugintrpc.CostGuardBudgetTracker,
 ) trpcagent.ModelSelector {
 	baseProv = strings.TrimSpace(baseProv)
 	baseMod = strings.TrimSpace(baseMod)
 	return func(ctx context.Context, inv *trpcagent.Invocation) (trpcmodel.Model, error) {
-		target := plugintrpc.ResolveCostGuardFallbackModel(baseMod, cfg)
+		est := plugintrpc.EstimateInvocationTokens(inv)
+		target := plugintrpc.ResolveCostGuardTarget(baseMod, cfg, est, tracker)
 		if target == "" || target == baseMod {
 			return nil, nil
 		}
 		m, err := provider.TRPCModelForProviderModel(ctx, catalog, rt, baseProv, target)
 		if err != nil {
-			event.CtxFlowLogWarn(ctx, "plugin.cost_guard.block", "费用保护回退到基础模型",
+			event.CtxFlowLogWarn(ctx, "plugin.cost_guard.fallback", "费用保护回退到基础模型",
 				event.P("provider", baseProv), event.P("target", target), event.P("base", baseMod), event.P("error", err))
 			metrics.ModelRouterFallbackTotal.WithLabelValues("cost_guard_catalog").Inc()
 			return nil, nil
 		}
+		event.CtxFlowLogDone(ctx, "plugin.cost_guard.fallback", "费用保护切换模型",
+			event.P("provider", baseProv), event.P("target", target), event.P("base", baseMod), event.P("est_tokens", est))
 		return m, nil
 	}
 }

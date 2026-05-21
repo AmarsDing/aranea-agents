@@ -9,6 +9,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/agent/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 
@@ -19,15 +20,16 @@ import (
 type AgentService struct {
 	v1.UnimplementedAgentServiceServer
 
-	uc    *biz.AgentUsecase
-	evoUC *biz.EvolutionUsecase
-	mon   *biz.MonitorUsecase
-	a2aUC *biz.A2AUsecase
+	uc       *biz.AgentUsecase
+	evoUC    *biz.EvolutionUsecase
+	mon      *biz.MonitorUsecase
+	a2aUC    *biz.A2AUsecase
+	promptAI *PromptFileAIEditor
 }
 
 // NewAgentService constructs the service.
-func NewAgentService(uc *biz.AgentUsecase, evoUC *biz.EvolutionUsecase, mon *biz.MonitorUsecase, a2aUC *biz.A2AUsecase) *AgentService {
-	return &AgentService{uc: uc, evoUC: evoUC, mon: mon, a2aUC: a2aUC}
+func NewAgentService(uc *biz.AgentUsecase, evoUC *biz.EvolutionUsecase, mon *biz.MonitorUsecase, a2aUC *biz.A2AUsecase, promptAI *PromptFileAIEditor) *AgentService {
+	return &AgentService{uc: uc, evoUC: evoUC, mon: mon, a2aUC: a2aUC, promptAI: promptAI}
 }
 
 func fromProtoRuntime(pb *v1.AgentRuntimeSettings) *biz.AgentRuntimeSettings {
@@ -124,6 +126,7 @@ func fromProtoRuntime(pb *v1.AgentRuntimeSettings) *biz.AgentRuntimeSettings {
 		ContextCompactionEnabled:          pb.GetContextCompactionEnabled(),
 		SessionSummaryEnabled:             pb.GetSessionSummaryEnabled(),
 		SkillLoadMode:                     pb.GetSkillLoadMode(),
+		CodeExecutorType:                  pb.GetCodeExecutorType(),
 		OutputSchemaJSON:                  pb.GetOutputSchemaJson(),
 		ModelSelector:                     pb.GetModelSelector(),
 		ToolsRetryEnabled:                 pb.GetToolsRetryEnabled(),
@@ -135,6 +138,14 @@ func fromProtoRuntime(pb *v1.AgentRuntimeSettings) *biz.AgentRuntimeSettings {
 		ToolsParallelEnabled:              pb.GetToolsParallelEnabled(),
 		ToolsStreamingEnabled:             pb.GetToolsStreamingEnabled(),
 		PlannerKind:                       pb.GetPlannerKind(),
+		PlannerConfigJSON:                 pb.GetPlannerConfigJson(),
+		RalphLoopMaxIterations:            int(pb.GetRalphLoopMaxIterations()),
+		RalphLoopCompletionPromise:        pb.GetRalphLoopCompletionPromise(),
+		RalphLoopVerifyCommand:            pb.GetRalphLoopVerifyCommand(),
+		RalphLoopVerifyTimeoutSeconds:     int(pb.GetRalphLoopVerifyTimeoutSeconds()),
+		RalphLoopPromiseTagOpen:           pb.GetRalphLoopPromiseTagOpen(),
+		RalphLoopPromiseTagClose:          pb.GetRalphLoopPromiseTagClose(),
+		RalphLoopVerifyWorkDir:            pb.GetRalphLoopVerifyWorkDir(),
 	}
 }
 
@@ -232,6 +243,7 @@ func toProtoRuntime(b *biz.AgentRuntimeSettings) *v1.AgentRuntimeSettings {
 		ContextCompactionEnabled:          b.ContextCompactionEnabled,
 		SessionSummaryEnabled:             b.SessionSummaryEnabled,
 		SkillLoadMode:                     b.SkillLoadMode,
+		CodeExecutorType:                  b.CodeExecutorType,
 		OutputSchemaJson:                  b.OutputSchemaJSON,
 		ModelSelector:                     b.ModelSelector,
 		ToolsRetryEnabled:                 b.ToolsRetryEnabled,
@@ -243,6 +255,14 @@ func toProtoRuntime(b *biz.AgentRuntimeSettings) *v1.AgentRuntimeSettings {
 		ToolsParallelEnabled:              b.ToolsParallelEnabled,
 		ToolsStreamingEnabled:             b.ToolsStreamingEnabled,
 		PlannerKind:                       b.PlannerKind,
+		PlannerConfigJson:                 b.PlannerConfigJSON,
+		RalphLoopMaxIterations:            int32(b.RalphLoopMaxIterations),
+		RalphLoopCompletionPromise:        b.RalphLoopCompletionPromise,
+		RalphLoopVerifyCommand:            b.RalphLoopVerifyCommand,
+		RalphLoopVerifyTimeoutSeconds:     int32(b.RalphLoopVerifyTimeoutSeconds),
+		RalphLoopPromiseTagOpen:           b.RalphLoopPromiseTagOpen,
+		RalphLoopPromiseTagClose:          b.RalphLoopPromiseTagClose,
+		RalphLoopVerifyWorkDir:            b.RalphLoopVerifyWorkDir,
 	}
 }
 
@@ -365,7 +385,11 @@ func toProtoAgent(b biz.Agent) *v1.Agent {
 		Settings:           toProtoRuntime(b.Settings),
 		AgentKind:          b.Kind,
 		A2AProxyConfig:     toProtoA2AProxy(b.A2AProxy),
-		A2AEndpointEnabled: b.A2AEndpointEnabled,
+		A2AEndpointEnabled:    b.A2AEndpointEnabled,
+		LastRunStatus:         b.LastRunStatus,
+		LastRunAt:             b.LastRunAt,
+		PendingEvolutionCount: int32(b.PendingEvolutionCount),
+		CreatedBy:             b.CreatedBy,
 	}
 	for i := range b.Files {
 		out.Files = append(out.Files, toProtoFile(b.Files[i]))
@@ -438,12 +462,22 @@ func (s *AgentService) toProtoAgentEnriched(ctx context.Context, a biz.Agent) *v
 }
 
 // ListAgents implements GET /v1/agents.
+// CheckAgentKey GET /v1/agent-keys/check?agent_key=
+func (s *AgentService) CheckAgentKey(ctx context.Context, req *v1.CheckAgentKeyRequest) (*v1.CheckAgentKeyResponse, error) {
+	available, msg, err := s.uc.CheckAgentKeyAvailability(ctx, req.GetAgentKey())
+	if err != nil {
+		return nil, err
+	}
+	return &v1.CheckAgentKeyResponse{Available: available, Message: msg}, nil
+}
+
 func (s *AgentService) ListAgents(ctx context.Context, req *v1.ListAgentsRequest) (*v1.ListAgentsResponse, error) {
 	page, err := s.uc.List(ctx, biz.AgentListQuery{
 		Keyword:    req.GetKeyword(),
 		Status:     req.GetStatus(),
 		Provider:   req.GetProvider(),
 		CategoryID: req.GetCategoryId(),
+		CreatedBy:  biz.ResolveListCreatedByFilter(ctx, req.GetCreatedBy()),
 		Limit:      int(req.GetLimit()),
 		Offset:     int(req.GetOffset()),
 	})
@@ -654,4 +688,83 @@ func (s *AgentService) EstimateTokens(ctx context.Context, req *v1.EstimateToken
 		})
 	}
 	return resp, nil
+}
+
+// EditPromptFileByAI implements POST /v1/agents/{agent_id}/files/{file_id}/ai-edit.
+func (s *AgentService) EditPromptFileByAI(ctx context.Context, req *v1.EditPromptFileByAIRequest) (*v1.EditPromptFileByAIResponse, error) {
+	if s.promptAI == nil {
+		return nil, kerrors.InternalServer("AGENT_FILE", "prompt file AI editor not configured")
+	}
+	agentID := strings.TrimSpace(req.GetAgentId())
+	fileID := strings.TrimSpace(req.GetFileId())
+	instruction := strings.TrimSpace(req.GetInstruction())
+	if agentID == "" || fileID == "" || instruction == "" {
+		return nil, kerrors.BadRequest("AGENT_FILE", "agent_id, file_id and instruction are required")
+	}
+	a, err := s.uc.Get(ctx, agentID)
+	if err != nil {
+		return nil, err
+	}
+	var target *biz.AgentPromptFile
+	for i := range a.Files {
+		if a.Files[i].ID == fileID {
+			target = &a.Files[i]
+			break
+		}
+	}
+	if target == nil {
+		return nil, kerrors.NotFound("AGENT_FILE", "prompt file not found")
+	}
+	revised, err := s.promptAI.Revise(ctx, a.Provider, a.Model, target.Name, target.Body, instruction)
+	if err != nil {
+		return nil, mapPromptFileAIError(err)
+	}
+	target.Body = revised
+	updated, err := s.uc.UpdatePromptFile(ctx, *target)
+	if err != nil {
+		return nil, err
+	}
+	event.CtxFlowLogDone(ctx, "agent.prompt.ai_edit", "AI 修订提示文件完成", event.P("agent_id", agentID), event.P("file_id", fileID))
+	return &v1.EditPromptFileByAIResponse{File: toProtoFile(updated)}, nil
+}
+
+// ListAgentTemplates implements GET /v1/agent-templates.
+func (s *AgentService) ListAgentTemplates(ctx context.Context, _ *emptypb.Empty) (*v1.ListAgentTemplatesResponse, error) {
+	_ = ctx
+	items := biz.ListAgentTemplates()
+	out := &v1.ListAgentTemplatesResponse{Items: make([]*v1.AgentTemplate, 0, len(items))}
+	for _, t := range items {
+		out.Items = append(out.Items, &v1.AgentTemplate{
+			Key:         t.Key,
+			Label:       t.Label,
+			Icon:        t.Icon,
+			Description: t.Description,
+			DisplayName: t.DisplayName,
+			Provider:    t.Provider,
+			Model:       t.Model,
+		})
+	}
+	return out, nil
+}
+
+// ListAgentCreators implements GET /v1/agents/creators.
+func (s *AgentService) ListAgentCreators(ctx context.Context, _ *emptypb.Empty) (*v1.ListAgentCreatorsResponse, error) {
+	items, err := s.uc.ListAgentCreators(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := &v1.ListAgentCreatorsResponse{Items: make([]*v1.AgentCreator, 0, len(items))}
+	for _, c := range items {
+		out.Items = append(out.Items, &v1.AgentCreator{UserId: c.UserID, Label: c.Label})
+	}
+	return out, nil
+}
+
+// DuplicateAgent implements POST /v1/agents/{id}/duplicate.
+func (s *AgentService) DuplicateAgent(ctx context.Context, req *v1.DuplicateAgentRequest) (*v1.Agent, error) {
+	dup, err := s.uc.Duplicate(ctx, req.GetId())
+	if err != nil {
+		return nil, err
+	}
+	return s.toProtoAgentEnriched(ctx, dup), nil
 }

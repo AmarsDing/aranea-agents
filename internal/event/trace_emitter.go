@@ -20,13 +20,17 @@ type TraceEmitter struct {
 	buffer *Buffer
 	tc     TraceContext
 
-	mu       sync.Mutex
-	timers   map[string]time.Time
-	turnStart time.Time
-	spans    []map[string]any
-	active   map[string]time.Time
-	spanSeq  int
-	rootID   string
+	mu          sync.Mutex
+	timers      map[string]time.Time
+	turnStart   time.Time
+	spans       []map[string]any
+	active      map[string]time.Time
+	openTools   map[string]string // tool_call_id -> usage span id
+	openLLMSpan string
+	spanSeq     int
+	rootID      string
+	otelTraceID string
+	otelRootID  string
 }
 
 // NewTraceEmitter creates an emitter and opens the root chat.turn span.
@@ -38,6 +42,7 @@ func NewTraceEmitter(bus Bus, buffer *Buffer, tc TraceContext) *TraceEmitter {
 		timers:    make(map[string]time.Time),
 		turnStart: time.Now(),
 		active:    make(map[string]time.Time),
+		openTools: make(map[string]string),
 	}
 	e.rootID = e.startSpan("chat.turn", "", map[string]any{
 		"trace_id":  tc.TraceID,
@@ -114,7 +119,52 @@ func (e *TraceEmitter) FinishRoot(status string) {
 	if e == nil {
 		return
 	}
-	e.endSpan(e.rootID, status)
+	e.mu.Lock()
+	llmID := e.openLLMSpan
+	e.openLLMSpan = ""
+	pending := make([]string, 0, len(e.openTools))
+	for _, spanID := range e.openTools {
+		pending = append(pending, spanID)
+	}
+	e.openTools = make(map[string]string)
+	rootID := e.rootID
+	e.mu.Unlock()
+	if llmID != "" {
+		e.endSpan(llmID, status)
+	}
+	for _, spanID := range pending {
+		e.endSpan(spanID, status)
+	}
+	e.endSpan(rootID, status)
+}
+
+// SetOtelRefs stores OTel trace/span ids for usage metadata correlation.
+func (e *TraceEmitter) SetOtelRefs(traceID, rootSpanID string) {
+	if e == nil {
+		return
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.otelTraceID = strings.TrimSpace(traceID)
+	e.otelRootID = strings.TrimSpace(rootSpanID)
+}
+
+// CompleteToolCall ends a tool.call usage span using hook-measured duration.
+func (e *TraceEmitter) CompleteToolCall(toolCallID, toolName string, durationMS int, status string) {
+	if e == nil || toolCallID == "" {
+		return
+	}
+	e.mu.Lock()
+	spanID, ok := e.openTools[toolCallID]
+	delete(e.openTools, toolCallID)
+	e.mu.Unlock()
+	if !ok {
+		spanID = e.startSpan("tool.call", e.rootID, map[string]any{
+			"tool_name":    toolName,
+			"tool_call_id": toolCallID,
+		})
+	}
+	e.endSpanWithDuration(spanID, normalizeSpanStatus(status), durationMS)
 }
 
 // TraceID returns the correlation trace id for this run.
@@ -145,6 +195,12 @@ func (e *TraceEmitter) MetadataJSON() string {
 		"spans":         e.spans,
 		"trace_root_ms": e.turnStart.UnixMilli(),
 	}
+	if e.otelTraceID != "" {
+		payload["otel_trace_id"] = e.otelTraceID
+	}
+	if e.otelRootID != "" {
+		payload["otel_root_span_id"] = e.otelRootID
+	}
 	raw, err := json.Marshal(payload)
 	if err != nil {
 		return "{}"
@@ -157,39 +213,64 @@ func (e *TraceEmitter) ObserveFrameworkEvent(ev *trpcevent.Event) {
 	if e == nil || ev == nil || ev.Response == nil {
 		return
 	}
-	if ev.Response.Usage != nil {
-		id := e.startSpan("llm.call", e.rootID, map[string]any{
-			"prompt_tokens":     ev.Response.Usage.PromptTokens,
-			"completion_tokens": ev.Response.Usage.CompletionTokens,
-		})
-		e.endSpan(id, "ok")
+	rsp := ev.Response
+	if rsp.Usage != nil {
+		e.mergeLLMSpan(rsp.Usage.PromptTokens, rsp.Usage.CompletionTokens)
 	}
-	for _, choice := range ev.Response.Choices {
-		for _, tc := range choice.Message.ToolCalls {
-			name := tc.Function.Name
-			if name == "" {
+	if rsp.IsToolCallResponse() {
+		for _, id := range rsp.GetToolCallIDs() {
+			if id == "" {
 				continue
 			}
-			id := e.startSpan("tool.call", e.rootID, map[string]any{"tool_name": name})
-			e.endSpan(id, "ok")
+			e.mu.Lock()
+			if _, exists := e.openTools[id]; exists {
+				e.mu.Unlock()
+				continue
+			}
+			e.mu.Unlock()
+			name := ToolNameFromResponse(rsp, id)
+			spanID := e.startSpan("tool.call", e.rootID, map[string]any{
+				"tool_name":    name,
+				"tool_call_id": id,
+			})
+			e.mu.Lock()
+			e.openTools[id] = spanID
+			e.mu.Unlock()
 		}
 	}
 }
 
-// WrapEventsWithTraceEmitter tees framework events into span collection.
-func WrapEventsWithTraceEmitter(in <-chan *trpcevent.Event, emitter *TraceEmitter) <-chan *trpcevent.Event {
-	if emitter == nil || in == nil {
-		return in
-	}
-	out := make(chan *trpcevent.Event, 64)
-	go func() {
-		defer close(out)
-		for ev := range in {
-			emitter.ObserveFrameworkEvent(ev)
-			out <- ev
+func (e *TraceEmitter) mergeLLMSpan(promptTok, completionTok int) {
+	e.mu.Lock()
+	if e.openLLMSpan != "" {
+		for i := range e.spans {
+			if e.spans[i]["id"] == e.openLLMSpan {
+				e.spans[i]["prompt_tokens"] = promptTok
+				e.spans[i]["completion_tokens"] = completionTok
+				e.mu.Unlock()
+				return
+			}
 		}
-	}()
-	return out
+	}
+	e.mu.Unlock()
+	id := e.startSpan("llm.call", e.rootID, map[string]any{
+		"prompt_tokens":     promptTok,
+		"completion_tokens": completionTok,
+	})
+	e.mu.Lock()
+	e.openLLMSpan = id
+	e.mu.Unlock()
+}
+
+func normalizeSpanStatus(status string) string {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "", "success", "ok":
+		return "ok"
+	case "error", "failed":
+		return "error"
+	default:
+		return status
+	}
 }
 
 func (e *TraceEmitter) emit(stepID string, phase FlowPhase, explicitSev FlowSeverity, message, titleOverride string, timing *FlowTiming, extra []Pair) {
@@ -263,6 +344,27 @@ func (e *TraceEmitter) startSpan(name, parentID string, attrs map[string]any) st
 	}
 	e.spans = append(e.spans, row)
 	return id
+}
+
+func (e *TraceEmitter) endSpanWithDuration(id, status string, durationMS int) {
+	if e == nil || id == "" {
+		return
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	start, hadActive := e.active[id]
+	delete(e.active, id)
+	for i := range e.spans {
+		if e.spans[i]["id"] == id {
+			if durationMS > 0 {
+				e.spans[i]["duration_ms"] = int64(durationMS)
+			} else if hadActive {
+				e.spans[i]["duration_ms"] = time.Since(start).Milliseconds()
+			}
+			e.spans[i]["status"] = status
+			return
+		}
+	}
 }
 
 func (e *TraceEmitter) endSpan(id, status string) {

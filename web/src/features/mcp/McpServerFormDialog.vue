@@ -178,6 +178,7 @@
 
       <q-separator />
       <q-card-actions align="between">
+        <q-btn outline rounded color="secondary" icon="rule" label="预检配置" :loading="validating" :disable="!canSave || saving" @click="runValidate" />
         <q-btn outline rounded color="primary" icon="science" label="测试连接" :loading="testing" :disable="!canSave || saving" @click="saveAndTest" />
         <div class="row q-gutter-sm">
           <q-btn flat rounded label="取消" @click="$emit('update:modelValue', false)" />
@@ -192,7 +193,7 @@
 import { computed, reactive, ref, watch } from "vue";
 import { useQuasar } from "quasar";
 import type { PlatformResourceInput } from "../platform/api";
-import { createMcpServer, testMcpServer, updateMcpServer } from "./api";
+import { createMcpServer, testMcpServer, updateMcpServer, validateMcpServer } from "./api";
 import type { McpKeyValue, McpServerConfig, McpServerFormValue, McpServerMetadata, McpServerRow } from "./types";
 
 const props = defineProps<{
@@ -209,6 +210,7 @@ const emit = defineEmits<{
 const $q = useQuasar();
 const saving = ref(false);
 const testing = ref(false);
+const validating = ref(false);
 const serverError = ref("");
 const form = reactive<McpServerFormValue>(emptyForm());
 
@@ -299,6 +301,24 @@ function resetForm() {
 
 async function save() {
   await persist({ close: true, notify: true });
+}
+
+async function runValidate() {
+  validating.value = true;
+  serverError.value = "";
+  try {
+    const payload = buildPayload();
+    const result = await validateMcpServer(payload.enabled ?? true, payload.config_json ?? "{}");
+    $q.notify({
+      type: result.ok ? "positive" : "warning",
+      message: result.message || (result.ok ? "配置有效" : result.status)
+    });
+  } catch (err) {
+    serverError.value = err instanceof Error ? err.message : "预检失败";
+    $q.notify({ type: "negative", message: serverError.value });
+  } finally {
+    validating.value = false;
+  }
 }
 
 async function saveAndTest() {

@@ -2,11 +2,11 @@ package trpc
 
 import (
 	"context"
-	"io/fs"
 	"mime"
-	"os"
 	"path/filepath"
 	"strings"
+
+	"aranea-agents/internal/event"
 
 	"trpc.group/trpc-go/trpc-agent-go/codeexecutor"
 )
@@ -56,43 +56,11 @@ func persistOutputFiles(ctx context.Context, files []codeexecutor.File) {
 		if mimeType == "" {
 			mimeType = "application/octet-stream"
 		}
-		_, _ = codeexecutor.SaveArtifactHelper(ctx, f.Name, data, mimeType)
+		if _, err := codeexecutor.SaveArtifactHelper(ctx, f.Name, data, mimeType); err != nil {
+			event.CtxFlowLogWarn(ctx, "system.codeexec.artifact_save",
+				"代码执行产出物保存失败",
+				event.P("filename", f.Name),
+				event.P("error", err.Error()))
+		}
 	}
-}
-
-// collectDockerOutputFiles walks an output directory and returns framework File entries.
-func collectDockerOutputFiles(outDir string) []codeexecutor.File {
-	if strings.TrimSpace(outDir) == "" {
-		return nil
-	}
-	var files []codeexecutor.File
-	_ = filepath.WalkDir(outDir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
-			return nil
-		}
-		info, statErr := d.Info()
-		if statErr != nil || info.Size() == 0 {
-			return nil
-		}
-		if info.Size() > 10<<20 {
-			return nil
-		}
-		data, readErr := os.ReadFile(path)
-		if readErr != nil {
-			return nil
-		}
-		name := filepath.Base(path)
-		mimeType := mime.TypeByExtension(filepath.Ext(name))
-		if mimeType == "" {
-			mimeType = "application/octet-stream"
-		}
-		files = append(files, codeexecutor.File{
-			Name:      name,
-			Content:   string(data),
-			MIMEType:  mimeType,
-			SizeBytes: info.Size(),
-		})
-		return nil
-	})
-	return files
 }

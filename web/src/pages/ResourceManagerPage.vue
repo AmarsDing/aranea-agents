@@ -6,10 +6,23 @@
           <div class="text-h5 text-weight-bold">Provider</div>
           <div class="text-body2 text-grey-7">管理 LLM Provider</div>
         </div>
-        <div class="col-12 col-md-4">
+        <div class="col-12 col-md-3">
           <q-input v-model="keyword" dense outlined clearable debounce="200" placeholder="搜索Provider...">
             <template #prepend><q-icon name="search" /></template>
           </q-input>
+        </div>
+        <div class="col-12 col-md-3">
+          <q-select
+            v-model="providerTypeFilter"
+            dense
+            outlined
+            multiple
+            use-chips
+            emit-value
+            map-options
+            label="Provider 类型"
+            :options="providerTypeFilterOptions"
+          />
         </div>
         <div class="col-auto">
           <q-btn color="primary" unelevated rounded icon="add" label="添加Provider" @click="openCreate" />
@@ -94,7 +107,10 @@
           <div class="text-caption text-grey-7">{{ dialogSubtitle }}</div>
         </q-card-section>
         <q-separator />
-        <q-card-section v-if="isProviderResource" class="row q-col-gutter-md">
+        <q-card-section v-if="isProviderResource">
+          <q-stepper v-model="providerStep" color="primary" animated flat bordered>
+            <q-step :name="1" title="连接与身份" icon="link" :done="providerStep > 1">
+              <div class="row q-col-gutter-md q-pt-sm">
           <q-select
             v-model="providerPresetKey"
             class="col-12 col-md-6"
@@ -133,9 +149,19 @@
             :type="showApiKey ? 'text' : 'password'"
             label="API 密钥"
             :hint="apiKeyFieldHint"
+            :placeholder="apiKeyMaskedPlaceholder"
+            :loading="revealingCredentials"
           >
             <template #append>
-              <q-btn flat dense round :icon="showApiKey ? 'visibility_off' : 'visibility'" :aria-label="showApiKey ? '隐藏密钥' : '显示密钥'" @click="showApiKey = !showApiKey" />
+              <q-btn
+                flat
+                dense
+                round
+                :icon="showApiKey ? 'visibility_off' : 'visibility'"
+                :aria-label="showApiKey ? '隐藏密钥' : '显示密钥'"
+                :disable="revealingCredentials"
+                @click="toggleApiKeyVisibility"
+              />
             </template>
           </q-input>
           <q-select
@@ -188,8 +214,57 @@
           <q-input v-model="providerForm.model_display_name" class="col-12 col-md-6" dense outlined label="模型展示名" />
           <q-input v-model="providerForm.api_base_url" class="col-12 col-md-6" dense outlined label="API 基础 URL" placeholder="https://..." />
           <q-toggle v-model="providerForm.enabled" class="col-12 col-md-6" color="primary" label="已启用" />
+          <q-select
+            v-if="providerForm.provider_type === 'openai'"
+            v-model="providerForm.variant"
+            class="col-12 col-md-6"
+            dense
+            outlined
+            emit-value
+            map-options
+            label="Variant"
+            :options="variantOptions"
+          />
+          <template v-if="currentAuthType === 'secret_id_key'">
+            <q-input v-model="providerForm.secret_id" class="col-12 col-md-6" dense outlined label="Secret ID" />
+            <q-input
+              v-model="providerForm.secret_key"
+              class="col-12 col-md-6"
+              dense
+              outlined
+              :type="showSecretKey ? 'text' : 'password'"
+              label="Secret Key"
+              :hint="editingId ? '留空表示不修改' : undefined"
+              :placeholder="secretKeyMaskedPlaceholder"
+              :loading="revealingCredentials"
+            >
+              <template #append>
+                <q-btn
+                  flat
+                  dense
+                  round
+                  :icon="showSecretKey ? 'visibility_off' : 'visibility'"
+                  :aria-label="showSecretKey ? '隐藏 Secret Key' : '显示 Secret Key'"
+                  :disable="revealingCredentials"
+                  @click="toggleSecretKeyVisibility"
+                />
+              </template>
+            </q-input>
+          </template>
+          <q-input
+            v-if="currentAuthType === 'aws_config'"
+            v-model="providerForm.aws_region"
+            class="col-12 col-md-6"
+            dense
+            outlined
+            label="AWS Region"
+            placeholder="us-east-1"
+          />
+              </div>
+            </q-step>
 
-          <q-separator class="col-12 q-my-sm" />
+            <q-step :name="2" title="模型规格" icon="tune" :done="providerStep > 2">
+              <div class="row q-col-gutter-md q-pt-sm">
           <div class="col-12 section-label">模型分类（能力说明）</div>
           <q-select
             v-model="providerForm.model_category"
@@ -254,6 +329,67 @@
           <q-input v-model.number="providerForm.reasoning_price_micro_usd_per_1k" class="col-12 col-md-3" dense outlined type="number" min="0" label="推理 Token 价格" />
           <q-input v-model.number="providerForm.sort_order" class="col-12 col-md-6" dense outlined type="number" label="排序" />
           <q-input v-model="providerForm.description" class="col-12" dense outlined autogrow type="textarea" label="描述" />
+              </div>
+            </q-step>
+
+            <q-step :name="3" title="高可用" icon="swap_horiz" :done="providerStep > 3">
+              <ProviderHAConfig
+                v-model="providerHAForm"
+                class="q-pt-sm"
+                :provider-type-options="providerTypeFilterOptions"
+              />
+            </q-step>
+
+            <q-step :name="4" title="高级选项" icon="settings">
+              <div class="row q-col-gutter-md q-pt-sm">
+                <q-toggle v-model="providerForm.enable_token_tailoring" class="col-12 col-md-6" label="Token Tailoring" />
+                <q-toggle
+                  v-if="providerForm.provider_type === 'openai'"
+                  v-model="providerForm.optimize_for_cache"
+                  class="col-12 col-md-6"
+                  label="Prompt Cache 优化"
+                />
+                <q-toggle
+                  v-if="providerForm.provider_type === 'openai' && providerForm.variant === 'deepseek'"
+                  v-model="providerForm.reasoning_backfill"
+                  class="col-12 col-md-6"
+                  label="Reasoning 回填"
+                />
+                <q-toggle
+                  v-if="['openai', 'anthropic'].includes(providerForm.provider_type)"
+                  v-model="providerForm.show_tool_call_delta"
+                  class="col-12 col-md-6"
+                  label="Tool Call Delta"
+                />
+                <q-input
+                  v-model.number="providerForm.rate_limit_rpm"
+                  class="col-12 col-md-6"
+                  dense
+                  outlined
+                  type="number"
+                  min="0"
+                  label="速率限制 (RPM)"
+                />
+                <q-input
+                  v-if="providerForm.provider_type === 'ollama'"
+                  v-model.number="providerForm.keep_alive_minutes"
+                  class="col-12 col-md-6"
+                  dense
+                  outlined
+                  type="number"
+                  min="0"
+                  label="Keep Alive (分钟)"
+                />
+              </div>
+            </q-step>
+
+            <template #navigation>
+              <q-stepper-navigation>
+                <q-btn v-if="providerStep > 1" flat label="上一步" @click="providerStep -= 1" />
+                <q-btn v-if="providerStep < 4" color="primary" label="下一步" @click="providerStep += 1" />
+              </q-stepper-navigation>
+            </template>
+          </q-stepper>
         </q-card-section>
 
         <q-card-section v-else class="row q-col-gutter-md">
@@ -300,6 +436,7 @@ import {
   createPlatformResource,
   deletePlatformResource,
   inspectProviderModel,
+  revealProviderModelCredentials,
   listPlatformResources,
   updatePlatformResource,
   type PlatformResource,
@@ -308,8 +445,11 @@ import {
 } from "../features/platform/api";
 import ProviderModelRow from "../components/platform/ProviderModelRow.vue";
 import ProviderTrendDialog from "../components/platform/ProviderTrendDialog.vue";
+import ProviderHAConfig, { type ProviderHAForm } from "../components/platform/ProviderHAConfig.vue";
 import {
   PROVIDER_PRESETS,
+  PROVIDER_TYPE_OPTIONS,
+  VARIANT_OPTIONS,
   findModelPreset,
   findProviderPreset,
   type ProviderModelPreset
@@ -329,9 +469,14 @@ const editingId = ref("");
 const page = ref(1);
 const rowsPerPage = ref(20);
 const showApiKey = ref(false);
+const showSecretKey = ref(false);
+const revealingCredentials = ref(false);
+const credentialsLoadedFromServer = ref(false);
 const trendDialogOpen = ref(false);
 const trendRow = ref<PlatformResource | null>(null);
 const providerPresetKey = ref("");
+const providerStep = ref(1);
+const providerTypeFilter = ref<string[]>([]);
 /** 新建 Provider：最近一次「检查」成功时的连接指纹；改动 code/model/base/key/type 后需重新检查 */
 const providerCreateInspectFingerprint = ref("");
 
@@ -343,10 +488,23 @@ type ModelCategory = {
 
 type ProviderConfig = {
   provider_type?: string;
+  variant?: string;
   provider_display_name?: string;
   api_base_url?: string;
   api_key?: string;
   api_key_set?: boolean;
+  secret_id?: string;
+  secret_key?: string;
+  aws_region?: string;
+  ha_mode?: string;
+  ha_candidates?: { name: string; provider_type: string; base_url: string; api_key?: string }[];
+  ha_hedge_delay_ms?: number;
+  enable_token_tailoring?: boolean;
+  optimize_for_cache?: boolean;
+  reasoning_content_backfill?: boolean;
+  show_tool_call_delta?: boolean;
+  keep_alive_minutes?: number;
+  rate_limit_rpm?: number;
   model_category?: ModelCategory[];
   model_size_label?: string;
   context_window_k?: number | string | null;
@@ -380,15 +538,9 @@ const categoryOptions: ModelCategory[] = [
   { value: "creative", label: "创意写作", tooltip: "文案、故事、营销" }
 ];
 
-const providerTypeOptions = [
-  { label: "OpenAI Compatible", value: "openai" },
-  { label: "Anthropic", value: "anthropic" },
-  { label: "Google Gemini", value: "gemini" },
-  { label: "Azure OpenAI", value: "openai" },
-  { label: "Ollama", value: "ollama" },
-  { label: "Hunyuan", value: "hunyuan" },
-  { label: "自定义", value: "openai" }
-];
+const providerTypeOptions = PROVIDER_TYPE_OPTIONS;
+const providerTypeFilterOptions = PROVIDER_TYPE_OPTIONS;
+const variantOptions = VARIANT_OPTIONS;
 
 const form = reactive<PlatformResourceInput>({
   key: "",
@@ -407,6 +559,7 @@ const form = reactive<PlatformResourceInput>({
 
 const providerForm = reactive({
   provider_type: "openai",
+  variant: "openai",
   model_api_id: "",
   provider_code: "",
   provider_display_name: "",
@@ -414,6 +567,9 @@ const providerForm = reactive({
   api_base_url: "",
   api_key: "",
   api_key_set: false,
+  secret_id: "",
+  secret_key: "",
+  aws_region: "",
   enabled: true,
   model_category: [] as ModelCategory[],
   model_size_label: "",
@@ -428,7 +584,19 @@ const providerForm = reactive({
   raw_metadata_json: "",
   metadata_source: "",
   sort_order: 0,
-  description: ""
+  description: "",
+  enable_token_tailoring: true,
+  optimize_for_cache: false,
+  reasoning_backfill: true,
+  show_tool_call_delta: false,
+  keep_alive_minutes: 5,
+  rate_limit_rpm: 0
+});
+
+const providerHAForm = reactive<ProviderHAForm>({
+  haMode: "",
+  haCandidates: [],
+  haHedgeDelayMs: 100
 });
 
 const columns: QTableColumn<PlatformResource>[] = [
@@ -444,10 +612,17 @@ const resource = computed(() => route.meta.resource as PlatformResourceName);
 const isProviderResource = computed(() => resource.value === "llm-provider-models");
 const pageTitle = computed(() => (route.meta.title as string) || "资源管理");
 const pageSubtitle = computed(() => (route.meta.subtitle as string) || "管理平台资源、启用状态与运行配置。");
+const currentAuthType = computed(() => currentProviderPreset.value?.authType || "api_key");
+
 const filteredRows = computed(() => {
+  let list = rows.value;
+  if (isProviderResource.value && providerTypeFilter.value.length) {
+    const allowed = new Set(providerTypeFilter.value.map((v) => v.toLowerCase()));
+    list = list.filter((row) => allowed.has((getConfig(row).provider_type || "openai").toLowerCase()));
+  }
   const q = keyword.value.trim().toLowerCase();
-  if (!q) return rows.value;
-  return rows.value.filter((row) =>
+  if (!q) return list;
+  return list.filter((row) =>
     [
       row.key,
       row.name,
@@ -486,6 +661,8 @@ const isLocalProviderModel = computed(() => {
 
 const hasInspectApiKey = computed(() => {
   if (providerForm.api_key.trim()) return true;
+  if (providerForm.secret_id.trim() && providerForm.secret_key.trim()) return true;
+  if (providerForm.aws_region.trim()) return true;
   if (editingId.value && providerForm.api_key_set) return true;
   return false;
 });
@@ -498,10 +675,102 @@ const canInspectProviderModel = computed(() => {
 
 const apiKeyFieldHint = computed(() => {
   const parts: string[] = [];
-  if (editingId.value) parts.push("留空表示不修改");
+  if (editingId.value && providerForm.api_key_set && !providerForm.api_key.trim()) {
+    parts.push("已保存密钥，点击眼睛图标查看");
+  } else if (editingId.value) {
+    parts.push("留空表示不修改");
+  }
   if (!isLocalProviderModel.value) parts.push("远程 Provider 检查模型前需填写密钥");
   return parts.join("；") || undefined;
 });
+
+const apiKeyMaskedPlaceholder = computed(() => {
+  if (editingId.value && providerForm.api_key_set && !providerForm.api_key.trim() && !showApiKey.value) {
+    return "••••••••••••";
+  }
+  return undefined;
+});
+
+const secretKeyMaskedPlaceholder = computed(() => {
+  if (editingId.value && providerForm.secret_id.trim() && !providerForm.secret_key.trim() && !showSecretKey.value) {
+    return "••••••••••••";
+  }
+  return undefined;
+});
+
+function clearRevealedCredentialsFromForm() {
+  if (credentialsLoadedFromServer.value) {
+    providerForm.api_key = "";
+    providerForm.secret_key = "";
+    providerHAForm.haCandidates = providerHAForm.haCandidates.map((c) => ({ ...c, apiKey: "" }));
+    credentialsLoadedFromServer.value = false;
+  }
+}
+
+async function loadRevealedCredentials() {
+  if (!editingId.value) return;
+  revealingCredentials.value = true;
+  try {
+    const creds = await revealProviderModelCredentials(editingId.value);
+    if (creds.api_key) providerForm.api_key = creds.api_key;
+    if (creds.secret_key) providerForm.secret_key = creds.secret_key;
+    for (const ha of creds.ha_candidates) {
+      const idx = providerHAForm.haCandidates.findIndex((c) => c.name.trim() === ha.name.trim());
+      if (idx >= 0 && ha.api_key) {
+        providerHAForm.haCandidates[idx] = { ...providerHAForm.haCandidates[idx], apiKey: ha.api_key };
+      }
+    }
+    credentialsLoadedFromServer.value = true;
+  } catch (error) {
+    $q.notify({ type: "negative", message: errorMessage(error) });
+    throw error;
+  } finally {
+    revealingCredentials.value = false;
+  }
+}
+
+async function toggleApiKeyVisibility() {
+  if (!showApiKey.value && editingId.value && providerForm.api_key_set && !providerForm.api_key.trim()) {
+    try {
+      await loadRevealedCredentials();
+      showApiKey.value = true;
+    } catch {
+      /* notified */
+    }
+    return;
+  }
+  if (showApiKey.value) {
+    clearRevealedCredentialsFromForm();
+    showApiKey.value = false;
+    return;
+  }
+  showApiKey.value = true;
+}
+
+async function toggleSecretKeyVisibility() {
+  if (!showSecretKey.value && editingId.value && providerForm.secret_id.trim() && !providerForm.secret_key.trim()) {
+    try {
+      await loadRevealedCredentials();
+      showSecretKey.value = true;
+    } catch {
+      /* notified */
+    }
+    return;
+  }
+  if (showSecretKey.value) {
+    if (credentialsLoadedFromServer.value) {
+      providerForm.secret_key = "";
+      if (!showApiKey.value) {
+        providerForm.api_key = "";
+        providerHAForm.haCandidates = providerHAForm.haCandidates.map((c) => ({ ...c, apiKey: "" }));
+        credentialsLoadedFromServer.value = false;
+      }
+    }
+    showSecretKey.value = false;
+    return;
+  }
+  showSecretKey.value = true;
+}
 
 function providerCreateInspectFingerprintValue(): string {
   return [
@@ -509,7 +778,11 @@ function providerCreateInspectFingerprintValue(): string {
     providerForm.model_api_id.trim(),
     providerForm.api_base_url.trim(),
     providerForm.api_key.trim(),
-    providerForm.provider_type.trim()
+    providerForm.provider_type.trim(),
+    providerForm.variant.trim(),
+    providerForm.secret_id.trim(),
+    providerForm.secret_key.trim(),
+    providerForm.aws_region.trim()
   ].join("\0");
 }
 
@@ -577,6 +850,7 @@ function resetForm() {
   });
   Object.assign(providerForm, {
     provider_type: "openai",
+    variant: "openai",
     model_api_id: "",
     provider_code: "",
     provider_display_name: "",
@@ -584,6 +858,9 @@ function resetForm() {
     api_base_url: "",
     api_key: "",
     api_key_set: false,
+    secret_id: "",
+    secret_key: "",
+    aws_region: "",
     enabled: true,
     model_category: [],
     model_size_label: "",
@@ -598,11 +875,22 @@ function resetForm() {
     raw_metadata_json: "",
     metadata_source: "",
     sort_order: 0,
-    description: ""
+    description: "",
+    enable_token_tailoring: true,
+    optimize_for_cache: false,
+    reasoning_backfill: true,
+    show_tool_call_delta: false,
+    keep_alive_minutes: 5,
+    rate_limit_rpm: 0
   });
+  Object.assign(providerHAForm, { haMode: "", haCandidates: [], haHedgeDelayMs: 100 });
   showApiKey.value = false;
+  showSecretKey.value = false;
+  credentialsLoadedFromServer.value = false;
+  revealingCredentials.value = false;
   providerPresetKey.value = "";
   providerCreateInspectFingerprint.value = "";
+  providerStep.value = 1;
 }
 
 function openCreate() {
@@ -632,6 +920,7 @@ function openEdit(row: PlatformResource) {
     providerPresetKey.value = findProviderPreset(row.provider)?.key || "";
     Object.assign(providerForm, {
       provider_type: normalizeProviderType(config.provider_type),
+      variant: config.variant || "openai",
       model_api_id: row.model,
       provider_code: row.provider,
       provider_display_name: config.provider_display_name || row.provider,
@@ -639,6 +928,9 @@ function openEdit(row: PlatformResource) {
       api_base_url: config.api_base_url || "",
       api_key: "",
       api_key_set: Boolean(config.api_key_set),
+      secret_id: config.secret_id || "",
+      secret_key: "",
+      aws_region: config.aws_region || "",
       enabled: row.enabled,
       model_category: getCategories(row),
       model_size_label: config.model_size_label || "",
@@ -653,10 +945,27 @@ function openEdit(row: PlatformResource) {
       raw_metadata_json: config.raw_metadata_json || "",
       metadata_source: config.metadata_source || "",
       sort_order: row.sort_order,
-      description: row.description
+      description: row.description,
+      enable_token_tailoring: config.enable_token_tailoring !== false,
+      optimize_for_cache: Boolean(config.optimize_for_cache),
+      reasoning_backfill: config.reasoning_content_backfill !== false,
+      show_tool_call_delta: Boolean(config.show_tool_call_delta),
+      keep_alive_minutes: toNumber(config.keep_alive_minutes, 5),
+      rate_limit_rpm: toNumber(config.rate_limit_rpm, 0)
+    });
+    Object.assign(providerHAForm, {
+      haMode: (config.ha_mode || "") as ProviderHAForm["haMode"],
+      haCandidates: (config.ha_candidates || []).map((c) => ({
+        name: c.name || "",
+        providerType: c.provider_type || "openai",
+        baseUrl: c.base_url || "",
+        apiKey: c.api_key || ""
+      })),
+      haHedgeDelayMs: toNumber(config.ha_hedge_delay_ms, 100)
     });
   }
   providerCreateInspectFingerprint.value = "";
+  providerStep.value = 1;
   dialogOpen.value = true;
 }
 
@@ -719,6 +1028,7 @@ function applyProviderPreset(key: string) {
   if (!preset) return;
   providerPresetKey.value = preset.key;
   providerForm.provider_type = preset.providerType;
+  providerForm.variant = preset.variant || "openai";
   providerForm.provider_code = preset.providerCode;
   providerForm.provider_display_name = preset.label;
   providerForm.api_base_url = preset.apiBaseUrl;
@@ -772,7 +1082,11 @@ async function inspectCurrentProviderModel() {
       provider_type: providerForm.provider_type,
       model_api_id: model,
       api_base_url: providerForm.api_base_url.trim(),
-      api_key: providerForm.api_key.trim()
+      api_key: providerForm.api_key.trim(),
+      variant: providerForm.variant,
+      secret_id: providerForm.secret_id.trim(),
+      secret_key: providerForm.secret_key.trim(),
+      aws_region: providerForm.aws_region.trim()
     });
     if (!result.ok) {
       if (!editingId.value) {
@@ -793,6 +1107,8 @@ async function inspectCurrentProviderModel() {
       providerCreateInspectFingerprint.value = providerCreateInspectFingerprintValue();
     }
     providerForm.provider_type = result.provider_type || providerForm.provider_type;
+    if (result.variant) providerForm.variant = result.variant;
+    if (result.enable_token_tailoring) providerForm.enable_token_tailoring = true;
     providerForm.model_display_name = result.model_display_name || providerForm.model_display_name || model;
     providerForm.model_size_label = result.model_size_label || providerForm.model_size_label;
     providerForm.context_window_k = result.context_window_k || providerForm.context_window_k;
@@ -850,13 +1166,13 @@ async function removeRow(row: PlatformResource) {
 function buildProviderPayload(): PlatformResourceInput {
   const editingRow = editingId.value ? rows.value.find((row) => row.id === editingId.value) : undefined;
   const existingConfig = editingRow ? getConfig(editingRow) : {};
-  const existingApiKey = existingConfig.api_key || "";
-  const nextApiKey = providerForm.api_key.trim() || existingApiKey;
+  const nextApiKey = providerForm.api_key.trim();
   const config: ProviderConfig = {
     provider_type: providerForm.provider_type,
+    variant: providerForm.provider_type === "openai" ? providerForm.variant : undefined,
     provider_display_name: providerForm.provider_display_name.trim(),
     api_base_url: providerForm.api_base_url.trim(),
-    api_key_set: providerForm.api_key_set || Boolean(nextApiKey),
+    api_key_set: Boolean(nextApiKey) || providerForm.api_key_set,
     model_category: providerForm.model_category,
     model_size_label: providerForm.model_size_label.trim(),
     context_window_k: providerForm.context_window_k,
@@ -876,10 +1192,36 @@ function buildProviderPayload(): PlatformResourceInput {
     raw_metadata_json: providerForm.raw_metadata_json,
     metadata_source: providerForm.metadata_source,
     last_used_at: existingConfig.last_used_at,
-    model_rating: providerForm.model_rating
+    model_rating: providerForm.model_rating,
+    ha_mode: providerHAForm.haMode || undefined,
+    ha_candidates: providerHAForm.haCandidates
+      .filter((c) => c.name.trim())
+      .map((c) => ({
+        name: c.name.trim(),
+        provider_type: c.providerType,
+        base_url: c.baseUrl.trim(),
+        api_key: c.apiKey.trim() || undefined
+      })),
+    ha_hedge_delay_ms: providerHAForm.haMode === "hedge" ? providerHAForm.haHedgeDelayMs : undefined,
+    enable_token_tailoring: providerForm.enable_token_tailoring,
+    optimize_for_cache: providerForm.optimize_for_cache,
+    reasoning_content_backfill: providerForm.reasoning_backfill,
+    show_tool_call_delta: providerForm.show_tool_call_delta,
+    keep_alive_minutes: providerForm.keep_alive_minutes,
+    rate_limit_rpm: providerForm.rate_limit_rpm || undefined
   };
   if (nextApiKey) {
     config.api_key = nextApiKey;
+    config.api_key_set = true;
+  }
+  if (providerForm.secret_id.trim()) {
+    config.secret_id = providerForm.secret_id.trim();
+  }
+  if (providerForm.secret_key.trim()) {
+    config.secret_key = providerForm.secret_key.trim();
+  }
+  if (providerForm.aws_region.trim()) {
+    config.aws_region = providerForm.aws_region.trim();
   }
 
   const code = providerForm.provider_code.trim();
@@ -903,6 +1245,8 @@ function normalizeProviderType(raw: string | undefined): string {
   if (v === "gemini" || v === "google gemini") return "gemini";
   if (v === "ollama") return "ollama";
   if (v === "hunyuan") return "hunyuan";
+  if (v === "huggingface") return "huggingface";
+  if (v === "bedrock") return "bedrock";
   return "openai";
 }
 

@@ -54,6 +54,8 @@ export type IngestDocumentInput = {
   metadata_json?: string;
   chunk_size?: number;
   chunk_overlap?: number;
+  /** char | token | markdown | json | recursive */
+  chunk_strategy?: string;
 };
 
 export type SearchKnowledgeQuery = {

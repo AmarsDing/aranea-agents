@@ -13,6 +13,13 @@ type stubAgentRepo struct {
 func (s *stubAgentRepo) SearchAgents(context.Context, AgentListQuery) (AgentListResult, error) {
 	return AgentListResult{}, nil
 }
+
+func (s *stubAgentRepo) ListExtrasForAgents(context.Context, []string) (map[string]AgentListExtras, error) {
+	return map[string]AgentListExtras{}, nil
+}
+func (s *stubAgentRepo) ListAgentCreators(context.Context) ([]AgentCreator, error) {
+	return nil, nil
+}
 func (s *stubAgentRepo) GetAgentByID(_ context.Context, id string) (Agent, error) {
 	if s.agent.ID != id {
 		return Agent{}, ErrNotFound

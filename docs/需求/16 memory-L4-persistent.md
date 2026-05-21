@@ -23,9 +23,9 @@ L4 与 L3 的根本区别：
 | 是否影响 Agent 自身 | 否，仅影响 prompt 内容 | **是，可改写 Agent 的 system prompt / 工具白名单 / 路由偏好等运行时配置** |
 | 主要消费者 | LLM Prompt 检索 | Agent 启动加载 + 巩固 Job + Evolution Worker |
 
-L4 与 ADK 模型的对应：ADK 的 `MemoryService` 主要服务 L3；L4 在 ADK 中没有直接对应，更接近「Agent 自我演化层」（ADK 0.5+ 实验性 `AgentEvolution`）。aranea 已有 `agent_runtime_settings` 中的 `evolution_*` 字段（详见 `7 agent-evolution.md`），本文档将其与 L3 / L2 串联，形成完整的「记忆 → 自我修正」闭环。
+L4 与 trpc-agent-go 的关系：框架 `memory.Service` 主要承载 L3 类事实检索；L4 身份/策略/图谱为 **Aranea 产品层**（`memory_entities` / `memory_relations` + `L4MemoryCue`）。`agent_runtime_settings` 中 `evolution_*` 字段（见 `7 agent-evolution.md`）与 L3/L2 串联，形成「记忆 → 自我修正」闭环。
 
-> 关联文档：[Memory 知识体系（合并）](./memory.md)（下文 §0）、`12～15`、`5 agent-setting.md`、`6 agent-skill.md`、`7 agent-evolution.md`、`11 multi-agent.md`、`30 ecosystem.md`。
+> 关联文档：[Memory 知识体系](./38%20memory.md) · [开发计划](./12-16%20memory-development.md)、`12～15`、`5 agent-setting.md`、`6 agent-skill.md`、`7 agent-evolution.md`、`11 multi-agent.md`、`30 ecosystem.md`。
 
 ---
 
@@ -36,9 +36,9 @@ L4 与 ADK 模型的对应：ADK 的 `MemoryService` 主要服务 L3；L4 在 AD
 - **程序性记忆（Procedural）**（梳理副本 §14、§17）：技能 / macro / 工具策略须绑定 **环境回报与再验证**（如 `last_verified`、失败率），Evolution 对 **tool_whitelist / system_prompt** 的改动应可视为 **门控后的策略更新**，并保留 **回滚与审计**（对齐梳理副本 §10 Policy、本文后面「观测与治理」章节），呼应 **非参数化 PPO 门控**思想中的「保守过滤」。
 - **五层抽象落位**（梳理副本 §20）：L4 同时覆盖 **Storage（图 + 身份档案）**、**Executable（可执行策略/技能倾向）** 与 **Learning Engine（EvolutionWorker）**——在线适应主要发生在外部状态与可插拔策略，而非单纯堆长文本。
 - **Memory tokens / latent 路线**（梳理副本 §18）：若未来引入压缩 latent 或强适配器注入，**必须**加强 **provenance、诊断、A/B、回滚**；不得因表示非人类可读而削弱治理。
-- **Latent Memory / C-D** 等未在 [`memory.md`](./memory.md) 正文展开的主题，讨论时以其中声明为准（[`memory.md`](./memory.md) §19），不得当作实现承诺写入验收。
+- **Latent Memory / C-D** 等未在 [38 memory.md](./38%20memory.md) 正文展开的主题，讨论时以其中声明为准（[38 memory.md](./38%20memory.md) §19），不得当作实现承诺写入验收。
 
-延伸阅读：[`memory.md`](./memory.md)。
+延伸阅读：[38 memory.md](./38%20memory.md)。
 
 ---
 

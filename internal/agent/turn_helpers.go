@@ -28,6 +28,8 @@ type EventStreamResult struct {
 	CompletionTok int
 	// MemberUsage maps agent_key → latest usage from member completion events (Team parallel/swarm).
 	MemberUsage map[string]MemberTokenUsage
+	// MemberToolCalls maps agent_key → tool_call envelope count observed during the turn.
+	MemberToolCalls map[string]int
 	// HasError is true when at least one error event was observed during the turn.
 	HasError bool
 	// LastError records the last error message from the event stream.
@@ -120,6 +122,15 @@ func ConsumeEventStreamWithFirstByte(
 		if projector != nil {
 			envelopes := projector.Project(turnCtx, ev, projectMeta)
 			for _, env := range envelopes {
+				if projectMeta.TeamID != "" && env.Type == event.EnvelopeTypeToolCall {
+					author := strings.TrimSpace(env.Author)
+					if author != "" && isTeamMemberAuthor(author, projectMeta) {
+						if result.MemberToolCalls == nil {
+							result.MemberToolCalls = make(map[string]int)
+						}
+						result.MemberToolCalls[author]++
+					}
+				}
 				eventBus.Publish(turnCtx, env)
 			}
 			if opts != nil {

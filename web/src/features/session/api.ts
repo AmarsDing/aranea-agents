@@ -365,6 +365,39 @@ export async function listSessionChatMessages(sessionID: string): Promise<Messag
   return (data.items ?? []).map(kratosChatRowToMessage);
 }
 
+export type MessageSearchResult = {
+  id: string;
+  session_id: string;
+  role: string;
+  content_markdown: string;
+  highlight: string;
+  created_at: string;
+};
+
+/** `GET /v1/sessions/messages/search` — FTS5 全文检索（需 messages_fts 表）。 */
+export async function searchSessionMessages(params: {
+  sessionId?: string;
+  keyword: string;
+  limit?: number;
+  offset?: number;
+}): Promise<{ items: MessageSearchResult[]; total: number }> {
+  const data = await sessionApi.SearchSessionMessages({
+    sessionId: params.sessionId,
+    keyword: params.keyword,
+    limit: params.limit,
+    offset: params.offset
+  });
+  const items = (data.items ?? []).map((row) => ({
+    id: String(row.id ?? ""),
+    session_id: String(row.sessionId ?? ""),
+    role: String(row.role ?? ""),
+    content_markdown: String(row.contentMarkdown ?? ""),
+    highlight: String(row.highlight ?? ""),
+    created_at: String(row.createdAt ?? "")
+  }));
+  return { items, total: Number(data.total ?? items.length) };
+}
+
 export async function restoreSession(id: string): Promise<Session> {
   const data = await sessionApi.RestoreSession({ id });
   return kratosSessionToLegacy(data);

@@ -34,13 +34,14 @@ func (u *ToolUsecase) TestTool(ctx context.Context, toolID, argumentsJSON string
 		return ToolTestResult{}, err
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
+	inputPreview := RedactToolPreview(argumentsJSON, 2000)
 	write := ToolInvocationWrite{
 		ToolKey:       tool.Key,
 		Status:        res.Status,
 		DurationMS:    res.DurationMS,
 		StartedAt:     now,
 		EndedAt:       now,
-		InputPreview:  argumentsJSON,
+		InputPreview:  inputPreview,
 		OutputPreview: res.ResultPreview,
 		ErrorMessage:  res.ErrorMessage,
 		Source:        "tool_test",

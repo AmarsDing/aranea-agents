@@ -49,6 +49,8 @@ func (a *eventBusAdapter) SubscribeDomainEvents() (<-chan DomainEvent, func()) {
 					select {
 					case out <- *de:
 					default:
+						event.SysLogWarn("domain_event.adapter.drop", "DomainEvent 输出缓冲满，丢弃事件",
+							event.P("type", string(de.Type)), event.P("session_id", de.SessionID))
 					}
 				}
 			}

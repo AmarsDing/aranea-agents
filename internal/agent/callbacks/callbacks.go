@@ -73,9 +73,9 @@ type AfterToolHook interface {
 	HandleAfterTool(ctx context.Context, args *trpctool.AfterToolArgs) (*trpctool.AfterToolResult, error)
 }
 
-// PluginCallback is a placeholder implemented by S4's PluginManager.
-// It must be embedded in concrete plugin structs; the interface is satisfied
-// once S4 provides a real implementation.
+// PluginCallback marks a Chain entry that originated from a DB-backed plugin.
+// Built-in plugins normally register via Runner WithPlugins; this interface is
+// reserved for future Chain mirroring when double-invocation is ruled out.
 type PluginCallback interface {
 	Callback
 	// PluginName returns the identifier of the originating plugin.

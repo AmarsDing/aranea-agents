@@ -5,10 +5,12 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
 	v1 "aranea-agents/api/kratos/monitor/v1"
+	"aranea-agents/internal/agent/codeexecutor"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/conf"
 
@@ -18,12 +20,14 @@ import (
 type MonitorService struct {
 	v1.UnimplementedMonitorServiceServer
 
-	uc     *biz.MonitorUsecase
-	server *conf.Server
+	uc              *biz.MonitorUsecase
+	flowLogs        *biz.FlowLogUsecase
+	server          *conf.Server
+	codeExecFactory *codeexecutor.Factory
 }
 
-func NewMonitorService(uc *biz.MonitorUsecase, server *conf.Server) *MonitorService {
-	return &MonitorService{uc: uc, server: server}
+func NewMonitorService(uc *biz.MonitorUsecase, flowLogs *biz.FlowLogUsecase, server *conf.Server, codeExecFactory *codeexecutor.Factory) *MonitorService {
+	return &MonitorService{uc: uc, flowLogs: flowLogs, server: server, codeExecFactory: codeExecFactory}
 }
 
 func bizAuditToProto(a biz.AuditLog) *v1.AuditLog {
@@ -236,6 +240,51 @@ func (s *MonitorService) GetRunnerMetrics(ctx context.Context, req *v1.GetRunner
 	}, nil
 }
 
+func (s *MonitorService) ListFlowLogs(ctx context.Context, in *v1.ListFlowLogsRequest) (*v1.ListFlowLogsResponse, error) {
+	if s == nil || s.flowLogs == nil {
+		return &v1.ListFlowLogsResponse{}, nil
+	}
+	since, until, err := parseFlowLogTimeBounds(in.GetSince(), in.GetUntil())
+	if err != nil {
+		return nil, kerrors.BadRequest("MONITOR", err.Error())
+	}
+	result, err := s.flowLogs.List(ctx, biz.FlowLogQuery{
+		TraceID:   in.GetTraceId(),
+		SessionID: in.GetSessionId(),
+		RunID:     in.GetRunId(),
+		Severity:  in.GetSeverity(),
+		Domain:    in.GetDomain(),
+		Since:     since,
+		Until:     until,
+		Limit:     int(in.GetLimit()),
+		Offset:    int(in.GetOffset()),
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*v1.FlowLogEntry, 0, len(result.Items))
+	for i := range result.Items {
+		r := result.Items[i]
+		out = append(out, &v1.FlowLogEntry{
+			Id:          r.ID,
+			TraceId:     r.TraceID,
+			SessionId:   r.SessionID,
+			RunId:       r.RunID,
+			TeamId:      r.TeamID,
+			Domain:      r.Domain,
+			AgentKey:    r.AgentKey,
+			StepId:      r.StepID,
+			FlowPhase:   r.FlowPhase,
+			Severity:    r.Severity,
+			Title:       r.Title,
+			Message:     r.Message,
+			PayloadJson: r.PayloadJSON,
+			CreatedAt:   r.CreatedAt.UTC().Format(time.RFC3339Nano),
+		})
+	}
+	return &v1.ListFlowLogsResponse{Items: out, Total: int32(result.Total)}, nil
+}
+
 func (s *MonitorService) GetMonitorLogs(context.Context, *v1.GetMonitorLogsRequest) (*v1.GetMonitorLogsResponse, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	enabled := true
@@ -258,6 +307,31 @@ func (s *MonitorService) GetMonitorLogs(context.Context, *v1.GetMonitorLogsReque
 		Enabled: enabled,
 		Message: msg,
 	}, nil
+}
+
+func parseFlowLogTimeBounds(sinceRaw, untilRaw string) (since, until time.Time, err error) {
+	if s := strings.TrimSpace(sinceRaw); s != "" {
+		since, err = time.Parse(time.RFC3339Nano, s)
+		if err != nil {
+			if since, err = time.Parse(time.RFC3339, s); err != nil {
+				return time.Time{}, time.Time{}, fmt.Errorf("invalid since: %w", err)
+			}
+		}
+		since = since.UTC()
+	}
+	if u := strings.TrimSpace(untilRaw); u != "" {
+		until, err = time.Parse(time.RFC3339Nano, u)
+		if err != nil {
+			if until, err = time.Parse(time.RFC3339, u); err != nil {
+				return time.Time{}, time.Time{}, fmt.Errorf("invalid until: %w", err)
+			}
+		}
+		until = until.UTC()
+	}
+	if !since.IsZero() && !until.IsZero() && until.Before(since) {
+		return time.Time{}, time.Time{}, fmt.Errorf("until must be after since")
+	}
+	return since, until, nil
 }
 
 func sanitizeJSONString(raw string) string {
@@ -328,4 +402,22 @@ func traceSpansRaw(config map[string]any) []any {
 		}
 	}
 	return []any{}
+}
+
+func (s *MonitorService) GetCodeExecutorCapabilities(ctx context.Context, _ *v1.GetMonitorLogsRequest) (*v1.GetCodeExecutorCapabilitiesResponse, error) {
+	_ = ctx
+	factory := s.codeExecFactory
+	if factory == nil {
+		factory = codeexecutor.NewFactory()
+	}
+	caps := factory.Capabilities()
+	out := make([]*v1.CodeExecutorCapability, 0, len(caps))
+	for _, c := range caps {
+		out = append(out, &v1.CodeExecutorCapability{
+			Type:      c.Type,
+			Available: c.Available,
+			Reason:    c.Reason,
+		})
+	}
+	return &v1.GetCodeExecutorCapabilitiesResponse{Backends: out}, nil
 }

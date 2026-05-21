@@ -8,7 +8,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/sessionmemory"
 	"aranea-agents/internal/event"
-	aramemory "aranea-agents/internal/memory"
+	memtrpc "aranea-agents/internal/memory/trpc"
 	"aranea-agents/internal/provider"
 
 	trpcartifact "trpc.group/trpc-go/trpc-agent-go/artifact"
@@ -30,7 +30,7 @@ type Catalog struct {
 // PersistenceSet groups the session and memory persistence services for a turn.
 type PersistenceSet struct {
 	Session  trpcsession.Service    // SQLite-backed or in-memory session service
-	Memory   aramemory.RuntimeSet   // TRPC memory service + L0–L4 admin port
+	Memory   biz.RuntimeSet         // TRPC memory service + L0–L4 admin port
 	AgentMCP *biz.AgentMCPTooling   // per-agent MCP tool configuration
 	Artifact trpcartifact.Service   // optional; wired from biz.ArtifactUsecase adapter
 }
@@ -53,6 +53,7 @@ type TurnDeps struct {
 	Sessions  *biz.SessionUsecase
 	LLMHTTP   *http.Client
 	Compress  biz.NativeTurnCompressor
+	AfterTurn biz.NativeTurnAfterHook
 	RunnerMgr *RunnerManager
 }
 
@@ -69,10 +70,27 @@ func (d TurnDeps) SQLiteSessionMemory() bool {
 // NewPersistenceSet constructs a PersistenceSet from its three components.
 // Used by Wire when wiring the dependency graph.
 func NewPersistenceSet(store *sessionmemory.Store, mcp *biz.AgentMCPTooling, sess trpcsession.Service, artifact trpcartifact.Service) PersistenceSet {
-	return PersistenceSet{Session: sess, Memory: aramemory.NewRuntimeSet(store), AgentMCP: mcp, Artifact: artifact}
+	var mem biz.RuntimeSet
+	if store != nil {
+		mem = biz.RuntimeSet{
+			TRPC:  memtrpc.NewSQLiteMemoryService(store),
+			Admin: biz.WrapSessionAdminStore(store),
+		}
+	}
+	return PersistenceSet{Session: sess, Memory: mem, AgentMCP: mcp, Artifact: artifact}
 }
 
 // NewRunnerManagerFromPersist builds a RunnerManager from a wired PersistenceSet.
 func NewRunnerManagerFromPersist(persist PersistenceSet) *RunnerManager {
 	return NewRunnerManager(RunnerFactoryDeps{Persist: persist})
+}
+
+// CoalesceRunnerManager returns the wired RunnerManager or builds one from Persist.
+// Mutates TurnDeps when RunnerMgr was nil (tests and legacy constructors).
+func (d *TurnDeps) CoalesceRunnerManager() *RunnerManager {
+	if d.RunnerMgr != nil {
+		return d.RunnerMgr
+	}
+	d.RunnerMgr = NewRunnerManagerFromPersist(d.Persist)
+	return d.RunnerMgr
 }

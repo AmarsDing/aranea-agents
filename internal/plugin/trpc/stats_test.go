@@ -39,6 +39,8 @@ func (s *statsRepoStub) IncrementStats(_ context.Context, pluginKey string, delt
 	return nil
 }
 
+func (s *statsRepoStub) Record(context.Context, string, string, string) {}
+
 func TestRepoStatsRecorder_IncrementStats(t *testing.T) {
 	repo := &statsRepoStub{key: "audit_log"}
 	if err := repo.IncrementStats(context.Background(), "audit_log", biz.PluginStatUpdate{

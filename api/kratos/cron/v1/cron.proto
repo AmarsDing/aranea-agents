@@ -79,6 +79,14 @@ message ListCronTaskRunsResponse {
   repeated CronTaskRun items = 1;
 }
 
+message TriggerCronTaskRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ResetCronTaskFailuresRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
 service CronService {
   rpc ListCronTasks(google.protobuf.Empty) returns (ListCronTasksResponse) {
     option (google.api.http) = {get: "/v1/cron-tasks"};
@@ -103,5 +111,17 @@ service CronService {
   }
   rpc ListCronTaskRuns(ListCronTaskRunsRequest) returns (ListCronTaskRunsResponse) {
     option (google.api.http) = {get: "/v1/cron-task-runs"};
+  }
+  rpc TriggerCronTask(TriggerCronTaskRequest) returns (CronTaskRun) {
+    option (google.api.http) = {
+      post: "/v1/cron-tasks/{id}/trigger"
+      body: "*"
+    };
+  }
+  rpc ResetCronTaskFailures(ResetCronTaskFailuresRequest) returns (CronTask) {
+    option (google.api.http) = {
+      post: "/v1/cron-tasks/{id}/reset-failures"
+      body: "*"
+    };
   }
 }

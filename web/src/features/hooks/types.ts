@@ -22,6 +22,8 @@ export type HookRuleConfig = {
     modify_patch?: Record<string, unknown>;
     log_level?: string;
     message?: string;
+    notify_max_retries?: number;
+    notify_timeout_sec?: number;
   };
 };
 
@@ -39,15 +41,7 @@ export type HookRow = {
   updated_at: string;
 };
 
-export const CALLBACK_POINT_OPTIONS: { label: string; value: HookCallbackPoint }[] = [
-  { label: "Before Agent", value: "before_agent" },
-  { label: "After Agent", value: "after_agent" },
-  { label: "Before Model", value: "before_model" },
-  { label: "After Model", value: "after_model" },
-  { label: "Before Tool", value: "before_tool" },
-  { label: "After Tool", value: "after_tool" },
-  { label: "On Event", value: "on_event" }
-];
+export { CALLBACK_POINT_OPTIONS } from "../callback/constants";
 
 export const ACTION_TYPE_OPTIONS: { label: string; value: HookActionType }[] = [
   { label: "Log", value: "log" },

@@ -39,6 +39,8 @@ var ProviderSet = wire.NewSet(
 	NewCronRepo,
 	NewPluginRepo,
 	NewPluginRunRepo,
+	NewHookDeliveryRepo,
+	NewPluginCostGuardUsageRepo,
 	NewMCPServerRepo,
 	NewSkillRepo,
 	NewSessionRepo,
@@ -59,6 +61,9 @@ var ProviderSet = wire.NewSet(
 	NewEvalRepoFromData,
 	NewA2ARepoFromData,
 	NewEcosystemRepo,
+	NewEventStoreRepo,
+	NewFlowLogRepo,
+	NewWebhookRepo,
 )
 
 // Data: Ent/SQLite holds app CRUD; Postgres (optional) holds pgvector agent memory only.
@@ -276,6 +281,9 @@ func ensureAllSchemas(rawDB *sql.DB, entClient *ent.Client) error {
 	if err := ensureDefaultSystemSetting(context.Background(), entClient); err != nil {
 		return err
 	}
+	if err := ensureDefaultCredentialEncryptionKey(context.Background(), entClient); err != nil {
+		return fmt.Errorf("credential encryption key: %w", err)
+	}
 	ctxSchema := context.Background()
 	if err := EnsureEvalSchema(ctxSchema, rawDB); err != nil {
 		return fmt.Errorf("eval schema: %w", err)
@@ -285,6 +293,15 @@ func ensureAllSchemas(rawDB *sql.DB, entClient *ent.Client) error {
 	}
 	if err := EnsurePluginRunSchema(ctxSchema, entClient); err != nil {
 		return fmt.Errorf("plugin run schema: %w", err)
+	}
+	if err := EnsureHookDeliverySchema(ctxSchema, entClient); err != nil {
+		return fmt.Errorf("hook delivery schema: %w", err)
+	}
+	if err := EnsureFlowLogSchema(ctxSchema, entClient); err != nil {
+		return fmt.Errorf("flow log schema: %w", err)
+	}
+	if err := EnsureMessageFTSSchema(ctxSchema, rawDB); err != nil {
+		return fmt.Errorf("message fts schema: %w", err)
 	}
 	if err := EnsureMonitorAlertSchema(ctxSchema, entClient); err != nil {
 		return fmt.Errorf("monitor alert schema: %w", err)

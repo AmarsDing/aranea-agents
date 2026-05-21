@@ -42,6 +42,16 @@
       </div>
 
       <div class="col-12 col-md-auto row justify-end items-center q-gutter-xs">
+        <q-btn
+          v-if="config.require_user_credentials"
+          flat
+          dense
+          rounded
+          icon="vpn_key"
+          color="secondary"
+          label="用户凭据"
+          @click="$emit('credentials', server)"
+        />
         <q-btn flat dense rounded icon="science" color="primary" label="测试连接" :loading="testing" @click="$emit('test', server)" />
         <q-btn flat dense rounded icon="edit" color="primary" label="编辑" @click="$emit('edit', server)" />
         <q-btn flat dense rounded icon="delete" color="negative" label="删除" @click="$emit('delete', server)" />
@@ -63,6 +73,7 @@ defineEmits<{
   edit: [server: McpServerRow];
   delete: [server: McpServerRow];
   test: [server: McpServerRow];
+  credentials: [server: McpServerRow];
 }>();
 
 const config = computed(() => parseJSON<McpServerConfig>(props.server.config_json, {}));

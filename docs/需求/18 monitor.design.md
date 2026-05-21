@@ -3,7 +3,7 @@
 > 对应需求：`18 monitor.md`
 > 遵循规范：`AI-DEVELOPMENT-SPECIFICATION.md`
 > 2026-05-20 更新：Logs Tab 拆分为 **流程日志** / **进程日志** 二级 Tab；共享 `LogStreamHub`（单 WS）；legacy `EnvelopeTypeLog` 重复发射点迁移至 `flow_log`。
-> 2026-05-20 更新：§九定为 **方案 C**（Runs 真相源 + Events 收窄 + completion correlation）；实现见 [18-monitor-development.md](./18-monitor-development.md) Phase 1d。
+> 2026-05-21 更新：对齐代码 — **6 Tab**（含 Alerts）、`GetRunnerMetrics` / 告警规则 API、方案 C Phase 1d ✅（[changelog](../changelog/2026-05-20-Monitor-Phase1d-PlanC.md)）。
 
 ---
 
@@ -16,9 +16,11 @@
 | 子模块 | 数据来源 | 传输方式 | 说明 |
 |--------|----------|----------|------|
 | Audit | `audit_logs` 表 | HTTP REST | 管理操作审计，支持分页/过滤 |
-| Events | `monitor_events` 表 + WS 推送 | HTTP REST + WebSocket | 持久化事件 + 实时运行事件 |
+| Alerts | `monitor_alert_rules` 表 | HTTP REST | `runner.error_rate` 规则；评估后 `alert.fired` + 出站通知 |
+| Runner 指标 | `monitor_events`（`runner.completion` 聚合） | HTTP REST | `GetRunnerMetrics`；Usage Tab 顶部面板 |
+| Events | `monitor_events` 表 + WS 推送 | HTTP REST + WebSocket | 持久化事件 + 实时运行事件（方案 C 过滤 completion） |
 | Usage | `model_token_usage_events` / `model_token_usage_daily` | HTTP REST（`UsageService`） | 模型用量总览、趋势、Top 排行 |
-| Traces | `model_token_usage_events`（`metadata_json.spans`） | HTTP REST + WebSocket | 耗时瀑布图；v2 与 FlowLog **同源 Span 投影** |
+| Runs（Traces Tab） | `model_token_usage_events`（`metadata_json.spans`） | HTTP REST + WS `flow_log` | 单次运行真相源；瀑布图与 FlowLog **同源 Span 投影** |
 | **Flow 流程日志** | WS `flow_log` | WebSocket | 业务时间线；Logs **流程** 二级 Tab；[52-flow-logger.design](./52-flow-logger.design.md) |
 | **Process 进程日志** | WS `log` | WebSocket + `enable_log` | Gateway/插件 stderr；Logs **进程** 二级 Tab |
 
@@ -52,8 +54,28 @@ service MonitorService {
   rpc GetMonitorLogs(GetMonitorLogsRequest) returns (GetMonitorLogsResponse) {
     option (google.api.http) = {get: "/v1/monitor/logs"};
   }
+  rpc ListMonitorAlertRules(GetMonitorLogsRequest) returns (ListMonitorAlertRulesResponse) {
+    option (google.api.http) = {get: "/v1/monitor/alert-rules"};
+  }
+  rpc PutMonitorAlertRules(PutMonitorAlertRulesRequest) returns (PutMonitorAlertRulesResponse) {
+    option (google.api.http) = { put: "/v1/monitor/alert-rules"; body: "*" };
+  }
+  rpc GetRunnerMetrics(GetRunnerMetricsRequest) returns (RunnerMetricsSummary) {
+    option (google.api.http) = {get: "/v1/monitor/runner-metrics"};
+  }
 }
 ```
+
+> `ListMonitorAlertRules` 复用空 `GetMonitorLogsRequest` 为占位入参（生成代码约定，无业务字段）。
+
+### 2.5 告警与 Runner 指标消息
+
+| 消息 | 说明 |
+|------|------|
+| `MonitorAlertRule` | `id`、`name`、`metric_key`、`threshold`、`window_minutes`、`enabled`、`severity`、`notify_webhook_url`、`notify_channel_id`、`cooldown_minutes` |
+| `RunnerMetricsSummary` | `window_minutes`、`total_runs`、`error_runs`、`error_rate`、`success_rate` |
+
+**评估**：`MonitorUsecase.EvaluateAlerts` 在 `runner.completion` 落库后由 EventBus Handler 触发；当前内置指标键 **`runner.error_rate`**。出站：`internal/service/monitor_notify.go`（Webhook POST + Channel `webhook_url`，尊重 `cooldown_minutes`）。
 
 ### 2.2 Audit 扩展字段
 
@@ -216,6 +238,8 @@ func (u *UsageUsecase) RecordTokenUsageEvent(ctx, e TokenUsageEvent) (TokenUsage
 
 **monitor_events** / **monitor_traces**：同原设计，新增 `idx_monitor_events_event_key`、`idx_monitor_events_status`、`idx_monitor_events_created_at`、`idx_monitor_traces_status`、`idx_monitor_traces_created_at` 索引。
 
+**monitor_alert_rules**（`docs/sql/14_monitor_alert.sql`）：规则持久化；索引 `idx_monitor_alert_rules_enabled`。
+
 ### 4.2 查询模式
 
 - **Audit**：`WHERE` 动态拼接（action/resource/actor/keyword），`COUNT(*)` 获取总数，`LIMIT/OFFSET` 分页
@@ -231,7 +255,9 @@ func (u *UsageUsecase) RecordTokenUsageEvent(ctx, e TokenUsageEvent) (TokenUsage
 - `ListAuditLogs`：接收 `ListAuditLogsRequest`，构造 `AuditQuery`，调用 Usecase，返回分页结果
 - `ListMonitorEvents` / `ListMonitorTraces`：同上模式
 - `GetMonitorTrace`：额外提取 `config_json` 中的 `spans`，组装 `MonitorTraceDetail`
-- `GetMonitorLogs`：返回 WS 提示信息（实际日志通过 WS 推送）
+- `GetMonitorLogs`：返回 `enabled`（镜像 `server.monitor.process_log_enabled`）+ hint；实时行走 WS
+- `ListMonitorAlertRules` / `PutMonitorAlertRules`：告警规则 CRUD；PUT 时无规则则写入默认 `runner.error_rate` 种子
+- `GetRunnerMetrics`：窗口内 completion 计数聚合 → `RunnerMetricsSummary`
 
 ### 5.2 JSON 脱敏
 
@@ -255,34 +281,41 @@ func (u *UsageUsecase) RecordTokenUsageEvent(ctx, e TokenUsageEvent) (TokenUsage
 
 ```
 web/src/
-├── pages/MonitorPage.vue              ← 页面壳、5 Tab（Usage/Audit/Events/Traces/Logs）
+├── pages/MonitorPage.vue              ← 页面壳、6 Tab；query tab / usage_event_id
 ├── components/monitor/
-│   ├── UsageOverview.vue              ← ★ 新增：模型用量总览卡片
-│   ├── AuditTable.vue                 ← 活动日志表格（增强：事件类型/实体类型筛选 + 分页）
-│   ├── RealtimeEvents.vue             ← WS 事件流
-│   ├── EventTimeline.vue              ← Envelope 事件时间线
-│   ├── TraceList.vue                  ← Trace 列表与详情
+│   ├── MonitorRunnerMetrics.vue       ← Usage Tab 容器：useRunnerMetrics + RunnerMetricsPanel
+│   ├── RunnerMetricsPanel.vue         ← Runner 指标纯展示（props/emits）
+│   ├── MonitorUsageDashboardLink.vue  ← 跳转 /overview、/usage/events
+│   ├── MonitorAlertRules.vue          ← 告警规则 CRUD
+│   ├── AuditTable.vue                 ← 活动日志（筛选 + 分页）
+│   ├── RealtimeEvents.vue             ← WS 事件流（方案 C completion 过滤）
+│   ├── TraceList.vue                  ← Runs 列表与详情
+│   ├── TraceWaterfall.vue             ← 详情瀑布图
+│   ├── FlowTracePanel.vue             ← 详情 Flow Tab
+│   ├── FlowLogExportButton.vue        ← Flow JSONL 导出
 │   ├── LogStreamPanel.vue             ← Logs 二级 Tab + 共享 Hub
 │   ├── FlowLogStream.vue              ← 流程日志（flow_log）
-│   ├── ProcessLogStream.vue           ← 进程日志（log；config + Tab 自动恢复）
+│   ├── ProcessLogStream.vue           ← 进程日志（process_log_enabled）
 │   ├── MonitorHeroSection.vue         ← 页面头部
 │   ├── MonitorGlassPanel.vue          ← 玻璃态面板
 │   └── MonitorErrorBanner.vue         ← 错误提示
 ├── features/monitor/
-│   ├── api.ts                         ← Monitor API（含分页/过滤参数）
-│   ├── types.ts                       ← 类型定义（含 AuditQuery/PaginatedResult）
+│   ├── api.ts                         ← Monitor + alert + runner-metrics API
+│   ├── useRunnerMetrics.ts            ← Runner 指标 composable → Store
+│   ├── runCorrelation.ts              ← 方案 C 关联与过滤
+│   ├── useMonitorRunNavigation.ts     ← Chat / Runs / Monitor Tab 深链
+│   ├── useLogStreamHub.ts             ← 共享 Logs WS
+│   ├── types.ts                       ← RunnerMetricsSummary 等
 │   └── utils.ts                       ← 格式化工具
-├── features/usage/
-│   ├── api.ts                         ← Usage API
-│   └── types.ts                       ← Usage 类型
-└── stores/monitor/index.ts            ← Pinia Store
+└── stores/monitor/index.ts            ← Pinia Store（含 loadRunnerMetrics）
 ```
 
 ### 7.2 页面 Tab 布局
 
 | Tab | 组件 | 数据来源 |
 |-----|------|----------|
-| **Usage** | `UsageOverview` | `UsageService.GetUsageOverview` |
+| **Usage** | `MonitorRunnerMetrics` + `MonitorUsageDashboardLink` | `GetRunnerMetrics`；用量大盘见 `/overview` |
+| **Alerts** | `MonitorAlertRules` | `ListMonitorAlertRules` / `PutMonitorAlertRules` |
 | **Audit** | `AuditTable` | `MonitorService.ListAuditLogs` |
 | **Events** | `RealtimeEvents` | WS + `ListMonitorEvents`（告警；completion 降级） |
 | **Runs（Traces）** | `TraceList` | `UsageService.ListUsageEvents`（单次运行真相源） |
@@ -331,15 +364,21 @@ subscribeMonitorLogsWs(...)  // 兼容；新代码用 createMonitorLogHub
 createMonitorLogHub(opts): MonitorLogHub
 subscribeMonitorRuntimeEventsWs(sessionId, onEvent, onError?): { close, connected }
 listMonitorTraceEvents(query: ModelUsageQuery): Promise<MonitorTraceEvent[]>
+listMonitorAlertRules(): Promise<MonitorAlertRule[]>
+putMonitorAlertRules(rules: MonitorAlertRule[]): Promise<MonitorAlertRule[]>
+getRunnerMetrics(windowMinutes?: number): Promise<RunnerMetricsSummary>
+// runCorrelation.ts: shouldHideCompletionInEvents, completionCanOpenInRuns, ...
+// useMonitorRunNavigation.ts: openRunsTab, openChatSession, ...
 ```
 
-### 7.4 UsageOverview 组件
+### 7.4 Usage Tab 与 Dashboard 分工
 
-展示内容：
-- **指标卡**：今日请求数、成功率、Token 总量、今日费用
-- **Top 模型**：按成本/调用数排序，展示 provider/model/成功率
-- **Top Agent**：按调用量/成本排序，展示 agent/tokens/成功率
-- **最近异常**：最近失败模型调用，显示时间/Agent/Provider/错误信息
+| 页面 | 组件 | 数据 |
+|------|------|------|
+| Monitor **Usage** | `MonitorRunnerMetrics`、`MonitorUsageDashboardLink` | `GET /v1/monitor/runner-metrics`；跳转携带 `filters.range` |
+| **概览** `/overview` | `UsageMetricCards`、`UsageTrendChart`、`UsageBreakdownCharts` 等 | `GET /v1/usage/overview` 等 — 见 [18 monitor-dashboard.design.md](./18%20monitor-dashboard.design.md) |
+
+已删除 `UsageOverview.vue`（避免与概览重复维护）。
 
 ---
 
@@ -406,10 +445,10 @@ Chat Turn 结束
 | 组件 | 变更 |
 |------|------|
 | `RealtimeEvents.vue` | 过滤 persisted `runner.completion`（有 `usage_event_id` 或可对上 Runs）；仅降级场景展示 |
-| `TraceList.vue` | **打开会话**；副标题改为 Runs 语义；P2 标签改名 Traces→Runs |
-| `RunnerMetricsPanel.vue` | 点击下钻 `?tab=traces` + 时间窗口 |
-| `features/monitor/runCorrelation.ts`（新建） | `shouldHideCompletionInEvents`、`openRunDetail`、`openChatSession` |
-| `pages/MonitorPage.vue` | 编排路由 query（session / trace / tab） |
+| `TraceList.vue` | ✅ **打开会话**；列表标题 Runs；路由 Tab 仍为 `traces`（P2 可改标签） |
+| `RunnerMetricsPanel.vue` | ✅ 点击下钻 `?tab=traces` |
+| `features/monitor/runCorrelation.ts` | ✅ `shouldHideCompletionInEvents`、`completionCanOpenInRuns` 等 |
+| `pages/MonitorPage.vue` | ✅ `tab` / `usage_event_id` query |
 
 **不新建** `MonitorEventDetailDialog` 用于 Chat completion。
 

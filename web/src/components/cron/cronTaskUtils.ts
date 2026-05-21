@@ -34,6 +34,7 @@ export function emptyCronTaskForm(): CronTaskFormValue {
     run_at_time: "",
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Shanghai",
     message: "",
+    retry_max_attempts: 3,
     enabled: true
   };
 }
@@ -72,6 +73,7 @@ export function applyCronRowToForm(row: CronTaskRow | null, form: CronTaskFormVa
     run_at_time: runAt.time,
     timezone: config.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Shanghai",
     message: config.message || "",
+    retry_max_attempts: config.retry_max_attempts ?? 3,
     enabled: row?.enabled ?? true
   });
 }
@@ -85,7 +87,8 @@ export function buildCronTaskConfig(form: CronTaskFormValue): CronTaskConfig {
     interval_seconds: form.schedule_type === "interval" ? Number(form.interval_minutes) * 60 : 0,
     run_at: form.schedule_type === "once" ? `${form.run_at_date}T${form.run_at_time}:00` : "",
     timezone: form.timezone.trim() || "Asia/Shanghai",
-    message: form.message.trim()
+    message: form.message.trim(),
+    retry_max_attempts: Math.max(0, form.retry_max_attempts ?? 3)
   };
 }
 

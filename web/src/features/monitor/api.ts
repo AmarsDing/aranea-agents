@@ -10,15 +10,60 @@ import type {
   MonitorTraceEvent,
   PaginatedResult,
   PlatformResource,
+  RunnerMetricsSummary,
   TeamRunEvent
 } from "./types";
 import { listModelUsageEvents } from "../usage/api";
 import { useEnvelopeStream } from "../chat/useEnvelopeStream";
 import type { Envelope } from "../chat/envelope";
-import { monitorLogLineFromFlowEnvelope } from "./flow";
+import { flowSeverityToLevel, monitorLogLineFromFlowEnvelope } from "./flow";
 import { TEAM_RUNTIME_ENVELOPE_TYPES, teamRunEventFromEnvelope } from "../teams/teamRunEventFromEnvelope";
 
 const monitor = createMonitorService();
+
+export async function listFlowLogs(params: {
+  traceId?: string;
+  sessionId?: string;
+  runId?: string;
+  severity?: string;
+  domain?: string;
+  since?: string;
+  until?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<{ items: MonitorLogLine[]; total: number }> {
+  const data = await monitor.ListFlowLogs({
+    traceId: params.traceId,
+    sessionId: params.sessionId,
+    runId: params.runId,
+    severity: params.severity,
+    domain: params.domain,
+    since: params.since,
+    until: params.until,
+    limit: params.limit,
+    offset: params.offset
+  });
+  const items = (data.items ?? []).map((row) => {
+    const r = obj(row);
+    const severity = String(r.severity ?? "info");
+    return {
+      id: String(r.id ?? ""),
+      time: String(r.createdAt ?? r.created_at ?? ""),
+      level: flowSeverityToLevel(severity),
+      message: [r.title, r.message].filter(Boolean).join(" — ") || String(r.stepId ?? ""),
+      source: String(r.agentKey ?? r.agent_key ?? "flow"),
+      created_at: String(r.createdAt ?? r.created_at ?? ""),
+      kind: "flow" as const,
+      severity,
+      title: String(r.title ?? ""),
+      step_id: String(r.stepId ?? r.step_id ?? ""),
+      trace_id: String(r.traceId ?? r.trace_id ?? ""),
+      run_id: String(r.runId ?? r.run_id ?? ""),
+      session_id: String(r.sessionId ?? r.session_id ?? "")
+    };
+  });
+  return { items, total: Number(data.total ?? items.length) };
+}
 
 function obj(v: unknown): Record<string, unknown> {
   return v !== null && typeof v === "object" ? (v as Record<string, unknown>) : {};
@@ -265,13 +310,7 @@ export async function putMonitorAlertRules(rules: MonitorAlertRule[]): Promise<M
   return items.map(alertRuleFromWire);
 }
 
-export type RunnerMetricsSummary = {
-  window_minutes: number;
-  total_runs: number;
-  error_runs: number;
-  error_rate: number;
-  success_rate: number;
-};
+export type { RunnerMetricsSummary } from "./types";
 
 export async function getRunnerMetrics(windowMinutes = 60): Promise<RunnerMetricsSummary> {
   const res = await monitor.GetRunnerMetrics({ windowMinutes });
@@ -283,4 +322,23 @@ export async function getRunnerMetrics(windowMinutes = 60): Promise<RunnerMetric
     error_rate: Number(r.error_rate ?? r.errorRate ?? 0),
     success_rate: Number(r.success_rate ?? r.successRate ?? 0)
   };
+}
+
+export type CodeExecutorCapability = {
+  type: string;
+  available: boolean;
+  reason?: string;
+};
+
+export async function getCodeExecutorCapabilities(): Promise<CodeExecutorCapability[]> {
+  const res = await monitor.GetCodeExecutorCapabilities({});
+  const backends = (res as { backends?: unknown[] }).backends ?? [];
+  return backends.map((raw) => {
+    const r = obj(raw);
+    return {
+      type: String(r.type ?? ""),
+      available: Boolean(r.available ?? false),
+      reason: String(r.reason ?? "")
+    };
+  });
 }

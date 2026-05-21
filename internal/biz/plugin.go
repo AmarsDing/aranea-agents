@@ -99,11 +99,16 @@ type PluginRun struct {
 }
 
 type PluginRunQuery struct {
-	PluginKey string
-	PluginID  string
-	SessionID string
-	Limit     int
-	Offset    int
+	PluginKey     string
+	PluginID      string
+	SessionID     string
+	AgentID       string
+	CallbackPoint string
+	Status        string
+	From          string
+	To            string
+	Limit         int
+	Offset        int
 }
 
 type PluginRunListResult struct {
@@ -119,12 +124,13 @@ type PluginRunRepo interface {
 }
 
 type PluginUsecase struct {
-	repo PluginRepo
-	runs PluginRunRepo
+	repo   PluginRepo
+	runs   PluginRunRepo
+	agents AgentRepository
 }
 
-func NewPluginUsecase(repo PluginRepo, runs PluginRunRepo) *PluginUsecase {
-	return &PluginUsecase{repo: repo, runs: runs}
+func NewPluginUsecase(repo PluginRepo, runs PluginRunRepo, agents AgentRepository) *PluginUsecase {
+	return &PluginUsecase{repo: repo, runs: runs, agents: agents}
 }
 
 func (u *PluginUsecase) List(ctx context.Context, q PluginListQuery) (PluginListResult, error) {
@@ -223,6 +229,14 @@ func (u *PluginUsecase) UpdateScope(ctx context.Context, id string, scope string
 	scope = strings.TrimSpace(scope)
 	if scope == "" {
 		scope = "global"
+	}
+	if !strings.EqualFold(scope, "global") && u.agents != nil {
+		if _, err := u.agents.GetAgentByID(ctx, scope); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return Plugin{}, errors.BadRequest("PLUGIN", "scope agent not found")
+			}
+			return Plugin{}, err
+		}
 	}
 	return u.repo.UpdatePluginScope(ctx, id, scope)
 }

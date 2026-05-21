@@ -44,8 +44,10 @@ export class EnvelopeDispatcher {
       if (!this.matchFilter(sub.filter, env)) continue;
       try {
         sub.handler(env);
-      } catch {
-        // handler errors are swallowed to avoid breaking other subscribers
+      } catch (err) {
+        if (import.meta.env.DEV) {
+          console.warn("[EnvelopeDispatcher] handler error:", err, env);
+        }
       }
     }
   }

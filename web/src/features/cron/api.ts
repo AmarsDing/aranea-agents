@@ -98,6 +98,16 @@ export async function deleteCronTask(id: string): Promise<void> {
   await cron.DeleteCronTask({ id });
 }
 
+export async function triggerCronTask(id: string): Promise<CronTaskRun> {
+  const row = await cron.TriggerCronTask({ id });
+  return wireCronTaskRun(row);
+}
+
+export async function resetCronTaskFailures(id: string): Promise<PlatformResource> {
+  const row = await cron.ResetCronTaskFailures({ id });
+  return wireCronTask(t);
+}
+
 export async function listCronTaskRuns(query: CronTaskRunQuery = {}): Promise<CronTaskRun[]> {
   const res = await cron.ListCronTaskRuns({
     cronTaskId: query.cron_task_id,

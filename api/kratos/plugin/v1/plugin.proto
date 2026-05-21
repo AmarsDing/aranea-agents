@@ -93,8 +93,13 @@ message ListPluginRunsRequest {
   string plugin_key = 1;
   string plugin_id = 2;
   string session_id = 3;
-  int32 page = 4;
-  int32 page_size = 5;
+  string agent_id = 4;
+  string callback_point = 5;
+  string status = 6;
+  string from = 7;
+  string to = 8;
+  int32 page = 9;
+  int32 page_size = 10;
 }
 
 message ListPluginRunsResponse {

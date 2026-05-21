@@ -33,6 +33,11 @@ var (
 		Name: "aranea_codeexec_oom_total",
 		Help: "OOM kills during code execution.",
 	}, []string{"kind"})
+
+	codeExecBlocksTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "aranea_codeexec_blocks_total",
+		Help: "Code blocks executed (one ExecuteCode may include multiple blocks).",
+	}, []string{"kind", "status"})
 )
 
 // Result holds the outcome of one code execution.
@@ -70,14 +75,8 @@ func NewLocalExecutor(cfg LocalConfig) *LocalExecutor {
 
 // Run executes code in a temporary file using the host language runtime.
 func (e *LocalExecutor) Run(ctx context.Context, language, code string, timeout time.Duration) (Result, error) {
-	start := time.Now()
-	kind := "local"
-	timer := prometheus.NewTimer(codeExecDuration.WithLabelValues(kind))
-	defer timer.ObserveDuration()
-
 	ext, runner := languageRuntime(language)
 	if runner == "" {
-		codeExecRunsTotal.WithLabelValues(kind, "error").Inc()
 		return Result{}, fmt.Errorf("codeexecutor: unsupported language %q", language)
 	}
 
@@ -104,8 +103,6 @@ func (e *LocalExecutor) Run(ctx context.Context, language, code string, timeout 
 	cmd.Stderr = &stderr
 
 	err = cmd.Run()
-	elapsed := time.Since(start)
-	_ = elapsed
 
 	res := Result{
 		Stdout:   stdout.String(),
@@ -118,42 +115,24 @@ func (e *LocalExecutor) Run(ctx context.Context, language, code string, timeout 
 
 	if ctx.Err() == context.DeadlineExceeded {
 		res.TimedOut = true
-		codeExecRunsTotal.WithLabelValues(kind, "timeout").Inc()
 		return res, nil
 	}
 	if err != nil {
-		codeExecRunsTotal.WithLabelValues(kind, "error").Inc()
 		return res, nil
 	}
-	codeExecRunsTotal.WithLabelValues(kind, "success").Inc()
 	return res, nil
-}
-
-// languageRuntime returns the file extension and interpreter command for a language.
-func languageRuntime(lang string) (ext, runner string) {
-	switch lang {
-	case "python", "python3":
-		return ".py", "python3"
-	case "javascript", "js", "node":
-		return ".js", "node"
-	case "bash", "sh", "shell":
-		return ".sh", "bash"
-	case "ruby":
-		return ".rb", "ruby"
-	default:
-		return "", ""
-	}
 }
 
 // DockerConfig holds settings for the Docker-based executor.
 type DockerConfig struct {
 	Image          string
-	Network        string // "none" by default for security
-	CPUQuota       int64  // microseconds per period (default 50000 = 50%)
-	MemoryBytes    int64  // container memory limit in bytes (default 256 MiB)
-	TmpSize        string // tmpfs size for /tmp (default 128m)
-	PullPolicy     string // "never" | "missing" | "always"
-	WorkspaceMount string // host path to mount read-only at /workspace
+	Network        string  // "none" by default for security
+	CPUs           float64 // docker --cpus (default 0.5)
+	CPUQuota       int64   // microseconds per period (legacy, unused when CPUs > 0)
+	MemoryBytes    int64   // container memory limit in bytes (default 256 MiB)
+	TmpSize        string  // tmpfs size for /tmp (default 128m)
+	PullPolicy     string  // "never" | "missing" | "always"
+	WorkspaceMount string  // host path to mount read-only at /workspace
 }
 
 // DefaultDockerConfig returns safe production defaults.
@@ -161,6 +140,7 @@ func DefaultDockerConfig() DockerConfig {
 	return DockerConfig{
 		Image:       "python:3.11-slim",
 		Network:     "none",
+		CPUs:        0.5,
 		CPUQuota:    50000,
 		MemoryBytes: 256 * 1024 * 1024, // 256 MiB
 		TmpSize:     "128m",
@@ -185,6 +165,9 @@ func NewDockerExecutor(cfg DockerConfig) *DockerExecutor {
 	if cfg.MemoryBytes <= 0 {
 		cfg.MemoryBytes = DefaultDockerConfig().MemoryBytes
 	}
+	if cfg.CPUs <= 0 {
+		cfg.CPUs = DefaultDockerConfig().CPUs
+	}
 	if cfg.TmpSize == "" {
 		cfg.TmpSize = "128m"
 	}
@@ -194,15 +177,8 @@ func NewDockerExecutor(cfg DockerConfig) *DockerExecutor {
 // Run executes code inside a one-shot Docker container.
 // The container is always removed after execution (--rm).
 func (e *DockerExecutor) Run(ctx context.Context, language, code string, timeout time.Duration) (Result, error) {
-	start := time.Now()
-	kind := "docker"
-	timer := prometheus.NewTimer(codeExecDuration.WithLabelValues(kind))
-	defer timer.ObserveDuration()
-	_ = start
-
 	ext, _ := languageRuntime(language)
 	if ext == "" {
-		codeExecRunsTotal.WithLabelValues(kind, "error").Inc()
 		return Result{}, fmt.Errorf("codeexecutor docker: unsupported language %q", language)
 	}
 
@@ -249,23 +225,17 @@ func (e *DockerExecutor) Run(ctx context.Context, language, code string, timeout
 
 	if ctx.Err() == context.DeadlineExceeded {
 		res.TimedOut = true
-		codeExecRunsTotal.WithLabelValues(kind, "timeout").Inc()
 		return res, nil
 	}
 
-	// Exit code 137 is OOM kill (128 + SIGKILL).
 	if res.ExitCode == 137 {
 		res.OOM = true
-		codeExecOOMTotal.WithLabelValues(kind).Inc()
-		codeExecRunsTotal.WithLabelValues(kind, "oom").Inc()
 		return res, nil
 	}
 
 	if err != nil && res.ExitCode != 0 {
-		codeExecRunsTotal.WithLabelValues(kind, "error").Inc()
 		return res, nil
 	}
-	codeExecRunsTotal.WithLabelValues(kind, "success").Inc()
 	return res, nil
 }
 
@@ -283,7 +253,7 @@ func (e *DockerExecutor) buildDockerArgs(codeFile, outDir, language string, time
 		"--network", e.cfg.Network,
 		fmt.Sprintf("--memory=%d", e.cfg.MemoryBytes),
 		fmt.Sprintf("--memory-swap=%d", e.cfg.MemoryBytes), // disable swap
-		"--cpus=0.5",
+		fmt.Sprintf("--cpus=%g", e.cfg.CPUs),
 		"--read-only",
 		"--tmpfs", "/tmp:size=" + e.cfg.TmpSize,
 		fmt.Sprintf("--stop-timeout=%d", stopTimeout),

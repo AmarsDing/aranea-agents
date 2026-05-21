@@ -3,6 +3,7 @@
     <div class="overview-page__shell">
       <OverviewPageHero>
         <template #actions>
+          <OverviewMonitorQuickLinks />
           <q-btn
             unelevated
             no-caps
@@ -13,6 +14,8 @@
           />
         </template>
       </OverviewPageHero>
+
+      <OverviewRunnerMetrics />
 
       <q-card flat class="overview-filter-card q-mb-md">
         <q-card-section class="q-pb-sm">
@@ -92,7 +95,7 @@
 
         <div class="row q-col-gutter-md overview-section">
           <div class="col-12 col-lg-8">
-            <UsageTrendPanel :points="overview?.trends ?? []" :hourly="trendGranularity === 'hour'" />
+            <UsageTrendChart :points="overview?.trends ?? []" :hourly="trendGranularity === 'hour'" />
           </div>
           <div class="col-12 col-lg-4">
             <q-card flat class="overview-panel overview-summary-panel">
@@ -122,6 +125,8 @@
           </div>
         </div>
 
+        <UsageBreakdownCharts :top-models="overview?.top_models ?? []" />
+
         <div class="row q-col-gutter-md overview-section">
           <div class="col-12 col-lg-6">
             <UsageTopModels :rows="overview?.top_models ?? []" />
@@ -144,15 +149,19 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted } from "vue";
+import { defineAsyncComponent, onMounted } from "vue";
 import { useOverviewPage } from "../features/usage/useOverviewPage";
 import OverviewPageHero from "../components/usage/OverviewPageHero.vue";
+import OverviewMonitorQuickLinks from "../components/usage/OverviewMonitorQuickLinks.vue";
+import OverviewRunnerMetrics from "../components/usage/OverviewRunnerMetrics.vue";
 import UsageAnomalyList from "../components/usage/UsageAnomalyList.vue";
 import UsageInefficientModels from "../components/usage/UsageInefficientModels.vue";
 import UsageMetricCards from "../components/usage/UsageMetricCards.vue";
 import UsageTopAgents from "../components/usage/UsageTopAgents.vue";
 import UsageTopModels from "../components/usage/UsageTopModels.vue";
-import UsageTrendPanel from "../components/usage/UsageTrendPanel.vue";
+
+const UsageTrendChart = defineAsyncComponent(() => import("../components/usage/UsageTrendChart.vue"));
+const UsageBreakdownCharts = defineAsyncComponent(() => import("../components/usage/UsageBreakdownCharts.vue"));
 
 const {
   overview,

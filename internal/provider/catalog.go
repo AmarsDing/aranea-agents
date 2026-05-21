@@ -35,6 +35,7 @@ type CatalogConfig struct {
 	HAMode               string
 	HACandidates         []HACandidateConfig
 	HAHedgeDelayMs       int
+	RateLimitRPM         int
 }
 
 type HACandidateConfig struct {
@@ -66,6 +67,7 @@ type catalogConfigJSON struct {
 	HAMode               string              `json:"ha_mode"`
 	HACandidates         []HACandidateConfig `json:"ha_candidates"`
 	HAHedgeDelayMs       int                 `json:"ha_hedge_delay_ms"`
+	RateLimitRPM         int                 `json:"rate_limit_rpm"`
 }
 
 func CatalogFromModel(in ModelCatalogInput) (CatalogConfig, error) {
@@ -159,6 +161,9 @@ func MergeCatalogConfig(cfg CatalogConfig, configJSON string) CatalogConfig {
 	if merged.HAHedgeDelayMs == 0 && c.HAHedgeDelayMs > 0 {
 		merged.HAHedgeDelayMs = c.HAHedgeDelayMs
 	}
+	if merged.RateLimitRPM == 0 && c.RateLimitRPM > 0 {
+		merged.RateLimitRPM = c.RateLimitRPM
+	}
 	return merged
 }
 
@@ -178,6 +183,7 @@ func catalogConfigToConfig(c catalogConfigJSON, modelAPI string) CatalogConfig {
 		HAMode:            strings.TrimSpace(c.HAMode),
 		HACandidates:      c.HACandidates,
 		HAHedgeDelayMs:    c.HAHedgeDelayMs,
+		RateLimitRPM:      c.RateLimitRPM,
 	}
 	if c.EnableTokenTailoring != nil {
 		cfg.EnableTokenTailoring = *c.EnableTokenTailoring

@@ -49,7 +49,7 @@ Token 用量管理：记录和统计 Agent / Team 运行的 Token 消耗，支�
 | 类型定义 | ✅ | `web/src/features/usage/types.ts` |
 | API 调用层 | ✅ | `web/src/features/usage/api.ts`（含 snake_case ↔ camelCase 转换） |
 | 核心指标卡片 | ✅ | `web/src/components/usage/UsageMetricCards.vue` |
-| 趋势图 | ✅ | `web/src/components/usage/UsageTrendPanel.vue` |
+| 趋势图 | ✅ | `web/src/components/usage/UsageTrendChart.vue` + `features/usage/usageTrendMetrics.ts` |
 | Top 模型排行 | ✅ | `web/src/components/usage/UsageTopModels.vue` |
 | Top Agent 排行 | ✅ | `web/src/components/usage/UsageTopAgents.vue` |
 | 异常请求列表 | ✅ | `web/src/components/usage/UsageAnomalyList.vue` |

@@ -17,12 +17,17 @@
 | Clone 深拷贝 | ✅ | Envelope.Clone() |
 | LongRunningToolIDs | ✅ | 投影层映射为 ToolCall.IsLongRunning |
 | FilterKey 层级过滤 | ✅ | 前缀匹配规则，WS 连接支持 filter_key 参数 |
-| Tag 业务标签 | ✅ | Envelope.ContainsTag() 分号分隔匹配 |
+| Tag 业务标签 | ✅ | Envelope.ContainsTag() 逗号分隔匹配（trpc Event 框架侧为分号） |
+| run_status 运行态 | ✅ | Chat RunGateway 发布；前端 `envelopeRunStatus.ts` 解析 |
+| flow_log 流程日志 | ✅ | TraceEmitter / SysLog*；Monitor Logs Tab 消费 |
+| team_summary 摘要 | ✅ | Team Runner 投影；`teamRunEventFromEnvelope.ts` |
+| knowledge_ingest 入库进度 | ✅ | Knowledge WS 通道 `knowledge` |
+| 可观测性事件 | ✅ | `mcp.session.reconnect` / `alert.notify` → monitor 通道 |
 | Extensions 扩展元数据 | ✅ | 命名空间化 map[string]string |
 | 事件缓冲与重放 | ✅ | 环形缓冲 + TTL 淘汰 + lastEventID 断连重放 |
-| 事件持久化 | ❌ | 无事件存储，系统重启后事件丢失 |
-| 事件回放 API | ❌ | 无按时间范围查询/回放历史事件的 API |
-| 前端事件可视化 | ❌ | 无事件时间线、分支追踪树、状态变更指示器 |
+| 事件持久化 | ✅ | SQLite `event_store` + 异步 `eventPersistHandler`（排除 log/flow_log） |
+| 事件回放 API | ✅ | `GET /v1/events` 按 session/时间/类型分页查询 |
+| 前端 Chat 事件检视 | ✅ | SessionTimelineDialog 双 Tab + Inspector 组件 |
 
 ---
 
@@ -115,18 +120,21 @@
 
 **验收标准**：可按时间范围回放事件
 
-### 2.9 前端事件可视化
+### 2.9 Chat 会话事件检视
 
-**用户故事**：作为平台使用者，我希望可视化查看事件流，以便理解 Agent 执行过程和状态变更。
+**用户故事**：作为平台使用者，我在 Chat 工作区查看当前会话的实时与历史 Envelope，理解 Agent 执行路径与状态变更。
 
 **功能规格**：
-- 事件时间线视图，按时间顺序展示事件
-- 按事件类型 / 分支 / 标签过滤
-- 事件详情展开（StateDelta 变更指示、Transfer 标签、ToolCall 详情）
-- 分支追踪树可视化
-- 长时运行工具进度指示
+- 在 Chat 工作区内打开**会话级检视面板**（Drawer/Dialog，非第四列固定侧边栏）
+- 双 Tab：**历史 Trace**（Session HTTP 时间线）与 **实时 Envelope**（WS + `GET /v1/events` 回放）
+- 实时 Tab：按事件类型 / 分支 / 标签 / 关键词过滤
+- 展示 Branch 调用树（InvocationID / ParentInvocationID）
+- 展示 StateDelta 变更（set / append / delete）与 Transfer 标签
+- 长时运行工具进度指示（ToolCall.is_long_running）
 
-**验收标准**：前端可可视化查看事件流，支持过滤和分支追踪
+**与 Monitor 分工**：Monitor Events Tab 面向跨会话运维；Chat 检视面向**当前 session** 的调试与理解执行链。
+
+**验收标准**：Chat 内可按类型/分支/标签过滤会话事件流，Branch 树与 StateDelta 指示器可用
 
 ---
 
@@ -138,6 +146,6 @@
 4. ✅ 多 Agent 场景中可追踪执行链（Branch + InvocationID / ParentInvocationID）
 5. ✅ 事件可携带自定义扩展元数据（Extensions 命名空间化）
 6. ✅ Runner 正确处理 Actions 提示（SkipSummarization）
-7. ❌ 系统重启后可查询历史事件
-8. ❌ 可按时间范围回放事件
-9. ❌ 前端事件时间线可视化（按类型 / 分支 / 标签过滤）
+7. ✅ 系统重启后可查询历史事件
+8. ✅ 可按时间范围回放事件
+9. Chat 会话事件检视：Drawer/Dialog 双 Tab（Trace + 实时 Envelope），支持类型/分支/标签过滤与 Branch 树

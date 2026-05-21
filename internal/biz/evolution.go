@@ -142,6 +142,18 @@ func (uc *EvolutionUsecase) ApplySuggestion(ctx context.Context, agentID string,
 		if err != nil {
 			return EvolutionSuggestion{}, err
 		}
+		applied := false
+		for i, f := range files {
+			name := strings.TrimSpace(f.Name)
+			if name == "AGENTS_CORE.md" || name == "AGENTS_TASK.md" || strings.HasPrefix(name, "AGENTS") {
+				files[i].Body = s.Content
+				applied = true
+				break
+			}
+		}
+		if !applied && len(files) > 0 {
+			files[0].Body = s.Content
+		}
 		if _, err := uc.agents.ReplaceAgentPromptFiles(ctx, agentID, files); err != nil {
 			return EvolutionSuggestion{}, err
 		}

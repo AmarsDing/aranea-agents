@@ -1,82 +1,157 @@
 # A2A 协议 — 开发计划
 
-> **版本**：2026-05-20（Review 修复完成） | **状态**：✅ Phase 1–3.5 + Review 项已落地
-> **需求**：[26 a2a-protocol.md](./26%20a2a-protocol.md) · **设计**：[26 a2a-protocol.design.md](./26%20a2a-protocol.design.md) §十二（传输与流式）
-> **变更记录**：[Phase 1–2](../changelog/2026-05-20-A2A-Phase1-2.md) · [Phase 3](../changelog/2026-05-20-A2A-Phase3.md) · [Phase 3.5](../changelog/2026-05-20-A2A-Phase35.md) · **[Review Fixes](../changelog/2026-05-20-A2A-Review-Fixes.md)**
+> **版本**：2026-05-21 | **状态**：🟢 Phase 1–3.5 已落地；Phase 4（网关增强）待做
+> **需求**：[26 a2a-protocol.md](./26%20a2a-protocol.md) · **设计**：[26 a2a-protocol.design.md](./26%20a2a-protocol.design.md)
+> **进度真相**：[execution-plan.md](../guides/execution-plan.md) I7-A2A · **变更**：[Phase1-2](../changelog/2026-05-20-A2A-Phase1-2.md) · [Phase3](../changelog/2026-05-20-A2A-Phase3.md) · [Phase35](../changelog/2026-05-20-A2A-Phase35.md) · [Review](../changelog/2026-05-20-A2A-Review-Fixes.md) · [DocSync](../changelog/2026-05-21-A2A-DocSync.md)
 
 ---
 
 ## 1. 模块定位
 
-（同 Phase 3，略）
+Agent-to-Agent：同工作区 `call_agent`、Admin Invoke、LLM **A2A Endpoint** 对外暴露、`a2a_proxy` 远程代理、工作区远程注册表与联邦 Discover。
 
-**传输原则（2026-05-20）**：A2A 外部协议用 **A2A HTTP（一元 + SSE 流）**；Chat UI 用 **`/v1/ws`**；Admin Invoke 用 **一元 JSON**。**SSE 不是全平台必选**，见设计文档 §十二。
+**传输原则**：A2A 外部协议用 **A2A HTTP（一元 + SSE）**；Chat UI 用 **`/v1/ws`**；Admin Invoke 用 **一元 JSON**（运维聚合，非 token 流）。详见设计文档 §十二。
+
+**代码锚点**：
+
+| 包 / 文件 | 职责 |
+|-----------|------|
+| `internal/a2a/` | 协议桥接：tool、invoker、remote_client、remote_invoke、callee_resolve、card_validate、graph_resume、public_base_url |
+| `internal/a2a/trpc/` | trpc-agent-go 包装：agent、server、registry、auth |
+| `internal/biz/a2a.go` | AgentCard / Invocation / Audit 用例 |
+| `internal/biz/a2a_remote.go` | 远程注册表用例 |
+| `internal/biz/a2a_gateway.go` | 联邦 GatewayDiscover |
+| `internal/service/a2a.go` | A2AService RPC + Prometheus |
+| `internal/service/a2a_endpoint.go` | 公开 Endpoint 构建（`A2AEndpointBuilder`） |
+| `internal/service/chat_native.go` | `RunAgentTurn` + `injectA2AContext` |
+| `internal/agent/trpc_build_router.go` | `BuildTRPCAgent`（llm / a2a_proxy） |
+| `web/src/pages/A2APage.vue` | 运维页；`features/a2a/useA2APage.ts` + 面板组件 |
 
 ---
 
-## 2. 现状评估（2026-05-20）
+## 2. 架构质量与 SRP（2026-05-21）
+
+| 原则 | 落地 |
+|------|------|
+| **biz 不 import trpc** | `A2AUsecase`、Card/远程/联邦逻辑均在 `internal/biz`；`agent_kind` 在 `agent_kind.go` |
+| **单一派发路径** | `NewInvoker` → 本地 `RunAgentTurn` 或 `InvokeRemoteRegistry`；`A2AService.Invoke` 复用同一 Invoker |
+| **Card 校验集中** | `CheckCalleeCard`（`card_validate.go`）供 tool 与 HTTP Invoke |
+| **目标解析集中** | `ResolveInvokeTarget`（`callee_resolve.go`）：本地 Card 优先，disabled 不 fallback 远程 |
+| **Endpoint 组装在 service** | `A2AEndpointBuilder` 读 catalog + Card，调用 `BuildA2AEndpointServer`；`internal/server` 只注册前缀 |
+| **前端分层** | `features/a2a`（api/types/mappers）+ `stores/a2a` + `useA2APage` + `components/a2a/*`；mapper 单测 |
+
+**依赖方向**（不变）：
+
+```
+api/kratos/a2a/v1/*.proto
+  → internal/service (A2AService, A2AEndpointBuilder)
+  → internal/biz (A2AUsecase, A2ARemote, Gateway)
+  → internal/data (SQLite)
+internal/a2a/trpc → pkg/trpc-agent-go (a2aagent, server/a2a)
+internal/service/chat_native → internal/a2a (InjectRunContext, Invoker)
+```
+
+---
+
+## 3. 现状评估
 
 | 项 | 状态 | 证据 |
 |----|------|------|
-| Phase 1–3 全部项 | ✅ | 见 [Phase 3 changelog](../changelog/2026-05-20-A2A-Phase3.md) |
-| **Public Endpoint 流式广告** | ✅ | `BuildA2AEndpointServer(..., streaming=true)`；AgentCard capabilities.streaming |
-| **Proxy 流式** | ✅ | `enable_streaming` → `a2aagent.WithEnableStreaming` |
-| **公开 URL 配置** | ✅ | env / conf / `GET /v1/a2a/config` + `/a2a` Banner |
-| **ResolveInvokeTarget** | ✅ | 本地 disabled 不 fallback 远程 |
-| **Graph resume metadata** | ✅ | flattened 根级字段 |
-| **远程 registry 直接 Invoke** | ✅ | `invoker.go` + `remote_invoke.go` |
-| **网关联邦 Discover** | ✅ | `GatewayDiscover` RPC + `a2a_gateway.go` |
-| Admin Invoke SSE 流式 | ❌ | 有意非流式（运维聚合） |
-| 网关周期性健康 / 联邦路由 | 🟡 | `check_health` 同步探测；无后台 job |
-| 速率限制 | ❌ | API 网关层 |
+| call_agent + Context 注入 | ✅ | `injectA2AContext` / `InjectRunContext` |
+| Admin Invoke 实际派发 | ✅ | `A2AService.Invoke` + `NewInvoker` |
+| 工作区隔离 | ✅ | `ValidateSameWorkspace` + Admin `workspace` 字段 |
+| agent_kind=a2a_proxy | ✅ | `trpc_build_router` + `BuildTRPCA2AAgent` |
+| LLM A2A Endpoint Tab | ✅ | `AgentSettingsA2AEndpointTab.vue` |
+| 公开 A2A HTTP | ✅ | `/v1/a2a/public/{agent_id}` + `EndpointRegistry` |
+| 远程注册 CRUD | ✅ | `a2a_remote_agents` + `/v1/a2a/remote-agents` |
+| 客户端鉴权 api_key/bearer/mtls | ✅ | `remote_client.go` + `trpc/auth.go` |
+| 公开 URL 配置 | ✅ | env > 系统设置 DB > yaml > derived；`GET /v1/a2a/config` |
+| 远程 registry Invoke | ✅ | `remote_invoke.go` + invoker 路由 |
+| GatewayDiscover 联邦 | ✅ | `GET /v1/a2a/gateway/discover` |
+| Graph resume metadata | ✅ | `graph_resume.go` |
+| Proxy/Endpoint 流式 | ✅ | `enable_streaming` / AgentCard streaming |
+| `/a2a` 运维页 | ✅ | Discover / Audit / Invoke / 远程 / Banner |
+| 网关健康 Cron | ❌ | 仅 `check_health` 同步探测 |
+| Admin Invoke SSE | ❌ | 有意非流式 |
+| API 速率限制 | ❌ | Ingress / middleware |
+| Ent 列级 agent_kind | 🟡 | 现用 `config_json` + `Kind` 字段 |
 
 ---
 
-## 3. 差距与优先级（剩余）
+## 4. 差距与优先级（剩余）
 
 | # | 差距 | 优先级 | 说明 |
 |---|------|--------|------|
-| 1 | Admin Invoke 可选流式 | **P3** | 非必须；外部客户端应走 Public Endpoint |
-| 2 | 网关健康后台 job | **P2** | Cron 探测 + Prometheus `a2a_gateway_healthy` |
+| 1 | 网关健康后台 job | **P2** | Cron 探测 + Prometheus `a2a_gateway_healthy` |
+| 2 | 联邦路由策略 | **P3** | 按 healthy/source 选路 |
 | 3 | 速率限制 | **P2** | Ingress / middleware |
-| 4 | Ent 列级 agent_kind | **P3** | schema 迁移 |
+| 4 | Admin Invoke 可选流式 | **P3** | 外部客户端应走 Public Endpoint |
+| 5 | Ent `agent_kind` 列迁移 | **P3** | 可选 schema 硬化 |
 
 ---
 
-## 4. 开发阶段
+## 5. 开发阶段
 
-### Phase 3.5 — 联邦与 Graph（P2）— ✅ MVP 已完成
+### Phase 1 — P0 平台内互调 ✅
 
 | # | 任务 | 状态 |
 |---|------|------|
-| 3.5.1 | 传输模型文档（SSE/WS/多协议） | ✅ 设计 §十二 |
-| 3.5.2 | Graph resume 元数据桥接 | ✅ `graph_resume.go` |
-| 3.5.3 | 远程 registry Invoke | ✅ `remote_invoke.go` + invoker 路由 |
-| 3.5.4 | GatewayDiscover API | ✅ `a2a_gateway.go` + proto |
-| 3.5.5 | Discover  enrichment（source/url） | ✅ proto + biz |
+| 1.1 | call_agent 工具 + 条件注入 | ✅ |
+| 1.2 | Invoker + RunAgentTurn 派发 | ✅ |
+| 1.3 | Admin Invoke 实际执行 | ✅ |
+| 1.4 | 工作区校验 | ✅ |
 
-### Phase 4 — 网关增强（P3）— 待实现
+### Phase 2 — P1 Agent Kind + 前端 ✅
+
+| # | 任务 | 状态 |
+|---|------|------|
+| 2.1 | `agent_kind` / `a2a_proxy` 创建与构建 | ✅ |
+| 2.2 | A2A 设置 Tab + 列表徽章 | ✅ |
+| 2.3 | `/a2a` Discover / Audit / Invoke | ✅ |
+
+### Phase 3 — 跨实例 Server + 远程注册 ✅
+
+| # | 任务 | 状态 |
+|---|------|------|
+| 3.1 | Public Endpoint + EndpointRegistry | ✅ |
+| 3.2 | 远程 Agent CRUD + Discover 预览 | ✅ |
+| 3.3 | mTLS / api_key / bearer 客户端 | ✅ |
+| 3.4 | Admin Invoke workspace 策略 | ✅ |
+
+### Phase 3.5 — 联邦与 Graph ✅
+
+| # | 任务 | 状态 |
+|---|------|------|
+| 3.5.1 | 传输模型文档（§十二） | ✅ |
+| 3.5.2 | Graph resume metadata | ✅ |
+| 3.5.3 | 远程 registry Invoke | ✅ |
+| 3.5.4 | GatewayDiscover | ✅ |
+| 3.5.5 | Discover enrichment（source/url） | ✅ |
+
+### Phase 4 — 网关增强（待实现）
 
 | # | 任务 | 验收标准 |
 |---|------|----------|
-| 4.1 | 健康探测 Cron | 远程 registry 离线告警 |
+| 4.1 | 健康探测 Cron | 远程离线告警 + 指标 |
 | 4.2 | 联邦路由策略 | 按 healthy/source 选路 |
-| 4.3 | 速率限制 / mTLS Server 终止 | Ingress 文档 + 可选内置 |
+| 4.3 | 速率限制 / Server mTLS 文档 | Ingress 指引 + 可选内置 |
 
 ---
 
-## 5. 验收标准（Phase 3.5 新增）
+## 6. 验收标准（Phase 3.5）
 
-- [x] 文档明确：A2A 外部协议 vs `/v1/ws` vs Admin Invoke 传输分工
+- [x] 文档明确：A2A HTTP vs `/v1/ws` vs Admin Invoke
 - [x] Public Endpoint 广告 streaming；Proxy 可配置 streaming
-- [x] Graph resume metadata 可由 `BuildGraphResumeMetadata` 编码
+- [x] `BuildGraphResumeMetadata` 可编码 resume 字段
 - [x] Discover/Gateway 远程条目可用 registry id Invoke
 - [x] `GET /v1/a2a/gateway/discover` 返回 local + remote 联邦视图
+- [x] `call_agent` 同工作区互调成功并写审计
 
 ---
 
-## 6. 依赖与风险
+## 7. 依赖与风险
 
-- **勿混用传输**：在 Chat WS 上复刻 A2A 流式事件会增加双栈维护；外部集成应使用 `/v1/a2a/public/...`。
-- **Admin Invoke 非流式**：长任务请用 Public Endpoint 或 Proxy Agent Chat 路径。
-- **Graph resume**：resume 语义以 trpc-agent-go `server/a2a` 为准；项目层仅负责 metadata 编码。
+- **勿混用传输**：Chat WS 上复刻 A2A 流式会增加双栈维护；外部集成用 `/v1/a2a/public/...`。
+- **Admin Invoke 非流式**：长任务用 Public Endpoint 或 Proxy Agent Chat。
+- **Graph resume**：语义以 `pkg/trpc-agent-go/server/a2a` 为准；项目层仅 metadata 桥接。
+- **公开 Endpoint**：须 catalog Agent + `a2a_agent_cards.enabled`；`a2a_proxy` 不挂载 Endpoint。

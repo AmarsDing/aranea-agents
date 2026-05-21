@@ -30,11 +30,12 @@
           :agent="agent"
           :favorite="isFavorite(agent.id)"
           :category-label="getCategoryLabel(agent.category_position_id)"
-          :context-label="formatContext(agent.context_window)"
-          :evolving="selfEvolveEnabled(agent)"
+          :context-label="formatLastRunContext(agent)"
+          :evolving="isAgentEvolving(agent)"
           @toggle-favorite="$emit('toggle-favorite', $event)"
           @copy-key="$emit('copy-key', $event)"
           @delete="$emit('delete', $event)"
+          @duplicate="$emit('duplicate', $event)"
         />
       </div>
     </div>
@@ -77,6 +78,7 @@
       <template #body-cell-actions="props">
         <q-td :props="props" class="q-gutter-xs">
           <q-btn flat dense rounded color="primary" label="设置" :to="`/agents/${props.row.id}/settings`" />
+          <q-btn flat dense rounded color="secondary" label="复制" @click="$emit('duplicate', props.row)" />
           <q-btn flat dense round color="negative" icon="delete" @click="$emit('delete', props.row)" />
         </q-td>
       </template>
@@ -89,7 +91,7 @@ import type { QTableColumn } from "quasar";
 import type { Agent } from "../../features/agents/types";
 import AgentCard from "./AgentCard.vue";
 import AgentAvatarQ from "../avatar/AgentAvatarQ.vue";
-import { formatContext, selfEvolveEnabled } from "./agentUi";
+import { formatLastRunContext, isAgentEvolving } from "./agentUi";
 
 type ViewMode = "grid" | "list";
 
@@ -109,6 +111,7 @@ defineEmits<{
   "toggle-favorite": [id: string];
   "copy-key": [key: string];
   delete: [agent: Agent];
+  duplicate: [agent: Agent];
 }>();
 </script>
 

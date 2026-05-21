@@ -245,6 +245,22 @@ func (m *memEvalRepo2) GetCaseResult(_ context.Context, runID, resultID string) 
 	}
 	return biz.EvalCaseResult{}, errors.New("not found")
 }
+
+func (m *memEvalRepo2) DeleteRun(_ context.Context, id string) error {
+	delete(m.runs, id)
+	return nil
+}
+
+func (m *memEvalRepo2) UpdateDataset(_ context.Context, id, name, description string) (biz.EvalDataset, error) {
+	d, ok := m.datasets[id]
+	if !ok {
+		return biz.EvalDataset{}, errors.New("not found")
+	}
+	d.Name = name
+	d.Description = description
+	m.datasets[id] = d
+	return d, nil
+}
 func (m *memEvalRepo2) UpdateCaseResultAnnotation(_ context.Context, runID, resultID string, patch biz.EvalCaseResultAnnotation) (biz.EvalCaseResult, error) {
 	for i, r := range m.results {
 		if r.RunID == runID && r.ID == resultID {
@@ -263,6 +279,43 @@ func (m *memEvalRepo2) UpdateCaseResultAnnotation(_ context.Context, runID, resu
 		}
 	}
 	return biz.EvalCaseResult{}, errors.New("not found")
+}
+
+func (m *memEvalRepo2) ListTrendPoints(_ context.Context, agentID, datasetID string, limit int) ([]biz.EvalTrendPoint, error) {
+	var out []biz.EvalTrendPoint
+	for _, r := range m.runs {
+		if r.AgentID != agentID || r.Status != "completed" {
+			continue
+		}
+		if datasetID != "" && r.DatasetID != datasetID {
+			continue
+		}
+		out = append(out, biz.EvalTrendPoint{
+			RunID:              r.ID,
+			CreatedAt:          r.CreatedAt,
+			TriggerSource:      r.TriggerSource,
+			ExactMatchScore:    r.ExactMatchScore,
+			ContainsMatchScore: r.ContainsMatchScore,
+			LLMJudgeScore:      r.LLMJudgeScore,
+			ToolCallAccuracy:   r.ToolCallAccuracy,
+			PassAtK:            r.PassAtK,
+			PassHatK:           r.PassHatK,
+		})
+		if limit > 0 && len(out) >= limit {
+			break
+		}
+	}
+	return out, nil
+}
+
+func (m *memEvalRepo2) GetRunsByIDs(_ context.Context, ids []string) ([]biz.EvalRun, error) {
+	out := make([]biz.EvalRun, 0, len(ids))
+	for _, id := range ids {
+		if r, ok := m.runs[id]; ok {
+			out = append(out, r)
+		}
+	}
+	return out, nil
 }
 
 func TestEvalUsecase_CreateDataset(t *testing.T) {

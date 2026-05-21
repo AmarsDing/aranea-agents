@@ -21,12 +21,13 @@ import (
 type HookService struct {
 	v1.UnimplementedHookServiceServer
 
-	uc  *biz.HookUsecase
-	mgr *plugintrpc.Manager
+	uc         *biz.HookUsecase
+	deliveries *biz.HookDeliveryUsecase
+	mgr        *plugintrpc.Manager
 }
 
-func NewHookService(uc *biz.HookUsecase, mgr *plugintrpc.Manager) *HookService {
-	return &HookService{uc: uc, mgr: mgr}
+func NewHookService(uc *biz.HookUsecase, deliveries *biz.HookDeliveryUsecase, mgr *plugintrpc.Manager) *HookService {
+	return &HookService{uc: uc, deliveries: deliveries, mgr: mgr}
 }
 
 func (s *HookService) reloadHooks(ctx context.Context) {
@@ -136,4 +137,46 @@ func (s *HookService) DeleteHook(ctx context.Context, req *v1.DeleteHookRequest)
 	}
 	s.reloadHooks(ctx)
 	return &emptypb.Empty{}, nil
+}
+
+func toProtoHookDelivery(d biz.HookDelivery) *v1.HookDelivery {
+	return &v1.HookDelivery{
+		Id:           d.ID,
+		HookKey:      d.HookKey,
+		HookId:       d.HookID,
+		WebhookUrl:   d.WebhookURL,
+		PayloadJson:  d.PayloadJSON,
+		Status:       string(d.Status),
+		AttemptCount: int32(d.AttemptCount),
+		MaxAttempts:  int32(d.MaxAttempts),
+		LastError:    d.LastError,
+		CreatedAt:    d.CreatedAt,
+		UpdatedAt:    d.UpdatedAt,
+	}
+}
+
+func (s *HookService) ListHookDeliveries(ctx context.Context, req *v1.ListHookDeliveriesRequest) (*v1.ListHookDeliveriesResponse, error) {
+	if s.deliveries == nil {
+		return &v1.ListHookDeliveriesResponse{}, nil
+	}
+	_, _, page, pageSize := biz.PageToLimitOffset(req.GetPage(), req.GetPageSize())
+	result, err := s.deliveries.List(ctx, biz.HookDeliveryQuery{
+		HookKey: req.GetHookKey(),
+		Status:  req.GetStatus(),
+		From:    req.GetFrom(),
+		To:      req.GetTo(),
+	}, page, pageSize)
+	if err != nil {
+		return nil, err
+	}
+	resp := &v1.ListHookDeliveriesResponse{
+		Total:    result.Total,
+		Page:     page,
+		PageSize: pageSize,
+		Items:    make([]*v1.HookDelivery, 0, len(result.Items)),
+	}
+	for i := range result.Items {
+		resp.Items = append(resp.Items, toProtoHookDelivery(result.Items[i]))
+	}
+	return resp, nil
 }

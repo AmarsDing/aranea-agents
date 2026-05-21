@@ -77,3 +77,23 @@ export type McpServerTestResult = {
   message: string;
   details?: Record<string, unknown>;
 };
+
+export type McpServerValidateResult = McpServerTestResult;
+
+export type McpUserCredential = {
+  id: string;
+  mcp_server_id: string;
+  user_id: string;
+  credential_key: string;
+  status: string;
+  configured: boolean;
+  masked_preview: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type McpUserCredentialInput = {
+  credential_key: string;
+  secret: string;
+  status?: string;
+};

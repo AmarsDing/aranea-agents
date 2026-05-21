@@ -309,3 +309,37 @@ func (r *channelRepo) AddDelivery(ctx context.Context, d biz.ChannelDelivery) (b
 	}
 	return deliveryEntToBiz(e), nil
 }
+
+func (r *channelRepo) ListPendingDeliveries(ctx context.Context, limit int) ([]biz.ChannelDelivery, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	rows, err := r.entClient().PlatformChannelDelivery.Query().
+		Where(
+			platformchanneldelivery.StatusIn(
+				biz.ChannelDeliveryStatusPending,
+				biz.ChannelDeliveryStatusRetry,
+			),
+		).
+		Order(platformchanneldelivery.ByCreatedAt(sql.OrderAsc())).
+		Limit(limit).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]biz.ChannelDelivery, 0, len(rows))
+	for _, e := range rows {
+		out = append(out, deliveryEntToBiz(e))
+	}
+	return out, nil
+}
+
+func (r *channelRepo) UpdateDelivery(ctx context.Context, d biz.ChannelDelivery) error {
+	_, err := r.entClient().PlatformChannelDelivery.UpdateOneID(strings.TrimSpace(d.ID)).
+		SetStatus(strings.TrimSpace(d.Status)).
+		SetPayloadJSON(defaultJSON(d.PayloadJSON)).
+		SetErrorMessage(strings.TrimSpace(d.ErrorMessage)).
+		SetUpdatedAt(nowRFC3339()).
+		Save(ctx)
+	return err
+}

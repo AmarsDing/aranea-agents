@@ -8,6 +8,7 @@
 > 相关文档：
 > - UX 需求（产品视角）→ [`12-16 memory.md`](./12-16%20memory.md)
 > - Memory 框架对齐 → [`38 memory.md`](./38%20memory.md)
+> - **实现差距与代码锚点** → [`12-16 memory-development.md`](./12-16%20memory-development.md) §1–§2（优先于本文历史 ADK 表述）
 
 ---
 
@@ -17,7 +18,7 @@
 
 核心能力包括：
 1. **五层记忆存储与检索**：L0-L4 各层的 CRUD 和向量检索
-2. **自动提取**：Turn 完成后自动从对话中提取 fact / episode / entity 写入 L2/L3
+2. **自动提取**：🟡 MVP — `TurnMemoryWorker` 入队 + `AutoMemoryWorker` 启发式（regex → L4）；完整 LLM 提取管道待 Phase 2
 3. **检索增强**：L3 向量检索与 Agent 运行时注入
 4. **冲突检测**：新 fact 与现有 fact 矛盾时标记冲突
 5. **级联更新**：实体属性变更时，沿图谱关系传播更新
@@ -875,12 +876,20 @@ func (EvolutionProposal) Fields() []ent.Field {
 
 ## 五、运行时层
 
-### 5.1 Runner MemoryService
+### 5.1 Runner MemoryService（实现真相）
 
 ```go
-// internal/agent/adksvc 中桥接
-func NewADKMemoryService(store *sessionmemory.Store) session.Service
+// internal/memory/trpc/sqlite_adapter.go
+func NewSQLiteMemoryService(store *sessionmemory.Store) trpcmemory.Service
+
+// internal/biz/memory_runtime_set.go
+type RuntimeSet struct {
+    TRPC  trpcmemory.Service   // Runner load_memory / preload_memory
+    Admin SessionAdminStore    // MemoryAdminUsecase / memory/v1 API
+}
 ```
+
+Wire：`PersistenceSet.Memory` → `agent.BuildTRPCLLMAgent`；**禁止**在 `internal/service` import `pkg/trpc-agent-go`。
 
 ### 5.2 记忆注入
 

@@ -114,6 +114,14 @@ func NewAgentMCPTooling(agents *AgentUsecase, mcp *MCPServerUsecase) *AgentMCPTo
 	return &AgentMCPTooling{agents: agents, mcp: mcp}
 }
 
+// MCP returns the platform MCP usecase (may be nil).
+func (t *AgentMCPTooling) MCP() *MCPServerUsecase {
+	if t == nil {
+		return nil
+	}
+	return t.mcp
+}
+
 func effectiveToolsAllowsMCP(eff AgentEffectiveTools) bool {
 	return effectiveToolsAllowsMCPServers(eff)
 }

@@ -7,11 +7,10 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
-	aramemory "aranea-agents/internal/memory"
 )
 
 // L4MemoryCue appends knowledge-graph context when L4 is enabled for the agent.
-func L4MemoryCue(ctx context.Context, admin aramemory.SessionAdminStore, ag biz.Agent) string {
+func L4MemoryCue(ctx context.Context, admin biz.SessionAdminStore, ag biz.Agent) string {
 	if admin == nil || ag.Settings == nil || !ag.Settings.L4Enabled || !ag.Settings.L0InjectL4 {
 		return ""
 	}

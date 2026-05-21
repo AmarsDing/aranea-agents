@@ -80,17 +80,14 @@ message AgentRuntimeSettings {
 }
 ```
 
-### 待扩展 Proto
-
-为支持规划器参数配置，需增加 `planner_config_json` 字段：
+### Proto 字段（已实现）
 
 ```protobuf
 message AgentRuntimeSettings {
-  // ... 已有字段 ...
-
+  // ...
   string planner_kind = 100;
-  // 规划器配置 JSON（根据 planner_kind 解析为对应结构）
-  string planner_config_json = 101;
+  string code_executor_type = 101;
+  string planner_config_json = 102;  // 规划器配置 JSON（形状随 planner_kind 变化）
 }
 ```
 
@@ -129,63 +126,32 @@ type ContextCfg struct {
 }
 ```
 
-### 3.2 待扩展 Biz 模型
+### 3.2 Biz 模型（已实现）
 
 ```go
+// internal/biz/agent_types.go
 type AgentRuntimeSettings struct {
-    // ... 已有字段 ...
-
     PlannerKind       string
     PlannerConfigJSON string
 }
 ```
 
-规划器配置结构（从 `PlannerConfigJSON` 解析）：
+持久化边界校验：`internal/biz/planner.go` — `ValidatePlannerKind`、`ValidatePlannerConfigJSON`。
 
-```go
-type BuiltinPlannerConfig struct {
-    ReasoningEffort *string
-    ThinkingEnabled *bool
-    ThinkingTokens  *int
-}
+### 3.3 运行时包结构（已实现，单一职责）
 
-type A2UIPlannerConfig struct {
-    Instruction                     string
-    ServerToClientSchemaJSON        string
-    ClientToServerSchemaJSON        string
-    ClientCapabilitiesSchemaJSON    string
-    ServerToClientOnlySchemaJSON    string
-    StandardCatalogDefinitionJSON   string
-    CatalogDescriptionSchemaJSON    string
-}
 ```
-
-### 3.3 规划器选择器（已实现）
-
-```go
-// internal/agent/planner/selector.go
-
-func Select(dialogMode, plannerKind string) trpcplanner.Planner
+internal/agent/planner/
+├── selector.go   # Select(dialogMode, plannerKind, plannerConfigJSON)
+├── config.go     # JSON → builtin / a2ui 配置结构
+└── build.go      # 构造 trpc-agent-go Planner 实例
 ```
 
 选择逻辑：
-- `plannerKind == "react"` → `trpcreact.New()`
-- `plannerKind == "a2ui"` → `trpca2ui.New()`
-- `plannerKind == "builtin"` → `trpcbuiltin.New(trpcbuiltin.Options{})`
-- 默认：`dialogMode == "plan"` → `trpcbuiltin.New(trpcbuiltin.Options{})`，否则 `nil`
-
-### 3.4 选择器扩展设计
-
-当前 `Select()` 不接受配置参数，所有规划器均使用默认值。需扩展为接受配置：
-
-```go
-func Select(dialogMode, plannerKind string, config *PlannerConfig) trpcplanner.Planner
-```
-
-扩展后逻辑：
-- `plannerKind == "builtin"` → 根据 `config.Builtin` 构造 `trpcbuiltin.Options`
-- `plannerKind == "a2ui"` → 根据 `config.A2UI` 构造 `trpca2ui.Option` 列表
-- `plannerKind == "react"` → `trpcreact.New()`（无配置项）
+- `react` → `trpcreact.New()`
+- `a2ui` → `trpca2ui.New(...Option)`（非空 JSON 字段才附加 Option）
+- `builtin` → `trpcbuiltin.New(Options{...})` 自 JSON
+- `plannerKind` 为空且 `dialogMode == "plan"` → builtin（兼容 S1）
 
 ---
 
@@ -288,82 +254,24 @@ A2UIPlanner 生成符合 A2UI 规范的结构化输出，用于 UI 交互场景�
 
 ```go
 // internal/agent/trpc_build.go
-
-if p := agentplanner.Select(deps.DialogMode, plannerKind(ag)); p != nil {
-    opts = append(opts, trpcllmagent.WithPlanner(p))
-}
-
-func plannerKind(ag biz.Agent) string {
-    if ag.Settings == nil {
-        return ""
-    }
-    return ag.Settings.PlannerKind
-}
-```
-
-### 4.5 Agent 集成扩展设计
-
-扩展 `Select()` 调用以传入配置参数：
-
-```go
-var plannerCfg *planner.PlannerConfig
-if ag.Settings != nil && ag.Settings.PlannerConfigJSON != "" {
-    plannerCfg, _ = planner.ParseConfig(ag.Settings.PlannerKind, ag.Settings.PlannerConfigJSON)
-}
-if p := agentplanner.Select(deps.DialogMode, plannerKind(ag), plannerCfg); p != nil {
+if p := agentplanner.Select(deps.DialogMode, plannerKind(ag), plannerConfigJSON(ag)); p != nil {
     opts = append(opts, trpcllmagent.WithPlanner(p))
 }
 ```
 
 ---
 
-## 五、Data 层
-
-### 5.1 当前状态
-
-`planner_kind` 字段已在 Proto（field 100）和 Biz 层定义，但 **Ent Schema 和数据层映射缺失**：
+## 五、Data 层（已实现）
 
 | 层 | planner_kind | planner_config_json |
-|----|-------------|-------------------|
-| Proto | ✅ field 100 | ❌ 未定义 |
-| Biz | ✅ `PlannerKind string` | ❌ 未定义 |
-| Service | ✅ proto ↔ biz 映射 | ❌ 未定义 |
-| Ent Schema | ❌ 缺失 | ❌ 未定义 |
-| Data 映射 | ❌ `entRuntimeToBiz` 缺失 | ❌ 未定义 |
-| Data Upsert | ❌ `applyBizRuntimeToCreate` 缺失 | ❌ 未定义 |
+|----|-------------|---------------------|
+| Proto | ✅ field 100 | ✅ field 102 |
+| Biz | ✅ | ✅ |
+| Service | ✅ | ✅ |
+| Ent Schema | ✅ | ✅ |
+| Data 映射 | ✅ `entRuntimeToBiz` / `applyBizRuntimeToCreate` | ✅ |
 
-### 5.2 Ent Schema 扩展
-
-```go
-// internal/data/ent/schema/agent_runtime_setting.go — 新增字段
-
-field.String("planner_kind").Default(""),
-field.String("planner_config_json").Default("{}"),
-```
-
-### 5.3 数据库迁移
-
-```sql
-ALTER TABLE agent_runtime_settings
-  ADD COLUMN planner_kind VARCHAR(32) NOT NULL DEFAULT '',
-  ADD COLUMN planner_config_json TEXT NOT NULL DEFAULT '{}';
-```
-
-### 5.4 Biz → Data 映射
-
-在 `entRuntimeToBiz` 中增加：
-
-```go
-PlannerKind:       e.PlannerKind,
-PlannerConfigJSON: e.PlannerConfigJSON,
-```
-
-在 `applyBizRuntimeToCreate` 中增加：
-
-```go
-SetPlannerKind(v.PlannerKind).
-SetPlannerConfigJSON(v.PlannerConfigJSON).
-```
+**迁移**：`docs/sql/02_agent_planner.sql`（已有库增量）；`docs/sql/02_agent.sql` 基线含两列。
 
 ---
 
@@ -381,33 +289,102 @@ PlannerKind: pb.GetPlannerKind(),
 PlannerKind: b.PlannerKind,
 ```
 
-### 6.2 待扩展映射
+### 6.2 映射（已实现）
 
-增加 `PlannerConfigJSON` 的 proto ↔ biz 映射。
+`PlannerConfigJSON` ↔ `planner_config_json`（`internal/service/agent.go`）。
 
 ---
 
-## 七、Web 前端设计
+## 七、Web 前端设计（已实现 2026-05-21）
 
-### 7.1 当前状态
+### 7.1 分层与文件
 
-- `planner_kind` 已在 `features/agents/types.ts` 和 `wireNormalize.ts` 中定义
-- 无规划模式配置 UI 组件
-- 无 Chat 页面规划步骤展示
+| 层 | 文件 | 职责（单一） |
+|----|------|----------------|
+| 表单契约 | `features/agents/plannerConfig.ts` | parse / serialize / `validatePlannerForm`；`VALID_REASONING_EFFORTS` 与 biz 对齐 |
+| 设置 UI | `components/agents/AgentPlannerSection.vue` | 规划模式 + 空 kind 三态 banner |
+| 设置编排 | `features/agents/useAgentSettingsPage.ts` | hydrate / save `planner_*` |
+| 共享类型 | `features/chat/types.ts` | `Message`、`ToolUseEvent`、`ReactToolLinkIndex`、`ReactStepWithTools` |
+| ReAct 类型 | `features/chat/reactPlannerTypes.ts` | `ReactStep` / `ReactParsedContent`（无解析逻辑） |
+| ReAct 解析 | `features/chat/reactPlannerParse.ts` | 标签切段，无 Vue 依赖 |
+| ReAct 链接 | `features/chat/reactPlannerToolLink.ts` | ACTION ↔ 后续 `tool_event` 启发式（仅索引构建时调用） |
+| ReAct 索引 | `features/chat/reactToolLinkIndex.ts` | `buildReactToolLinkIndex` O(n)；`isToolLinkedInReactIndex` |
+| A2UI 解析 | `features/chat/a2uiParse.ts` | JSONL 行解析 |
+| A2UI 路由 | `features/chat/a2ui/a2uiKindRegistry.ts` | kind → primitive/form/layout/container |
+| userAction 展示 | `features/chat/a2uiUserActionDisplay.ts` | 用户气泡 JSON 摘要 |
+| 展示门面 | `features/chat/messagePlannerPresentation.ts` | `buildMessagePresentation(plannerKind, message, index, reactLinkIndex)` |
+| Chat UI | `ChatMessagePanel`（必填 `reactToolLinkIndex`）、`ChatMessageRow`、`ChatReactSteps`、`ChatA2UIPreview` | 纯展示 |
+| Chat 编排 | `useChatWorkspace` | `computed(buildReactToolLinkIndex(displayMessages))` → Panel |
 
-### 7.2 配置面板设计
+### 7.2 Agent 设置 — 配置面板
 
-在 `AgentSettingsPage.vue` Agent Tab 中增加"规划模式" section：
+**位置**：`AgentSettingsAgentTab.vue`，「模型」与「能力」之间嵌入 `AgentPlannerSection`。
 
-- 下拉选择规划模式：无规划 / 内置思维 (Builtin) / ReAct 结构化规划 / A2UI 协议规划
-- Builtin 模式：推理力度选择、思维模式开关、思维 Token 长度输入
-- A2UI 模式：自定义指令、各 Schema JSON 输入
+**模式**（`planner_kind`）：
 
-### 7.3 Chat 页面集成
+| UI | API 值 | 子表单 |
+|----|--------|--------|
+| 无规划（继承对话模式） | `""` | Banner：Chat「深思考」仍可触发 Builtin |
+| 内置思维 | `builtin` | `reasoning_effort`、`thinking_enabled`（未设置/开/关）、`thinking_tokens` |
+| ReAct | `react` | 无；`planner_config_json` 固定 `{}` |
+| A2UI | `a2ui` | `instruction` + 6 个 Schema JSON（折叠高级区） |
 
-- ReAct 模式：解析 `/*PLANNING*/`/`/*REASONING*/`/`/*ACTION*/`/`/*REPLANNING*/`/`/*FINAL_ANSWER*/` 标签，以步骤卡片展示
-- A2UI 模式：解析 JSONL 输出，渲染 A2UI 组件预览
+**与 Chat `dialog_mode` 关系**（须在 UI 文案中明示）：
 
-### 7.4 Store 扩展
+- `dialog_mode=plan`（会话级「深思考」）≠ `planner_kind=builtin`（Agent 级持久化）。
+- `planner_kind` 为空时，仅当会话 `dialog_mode` 为 `plan` 时运行时启用 Builtin。
+- **持久化**：`planner_kind=""` 时 `planner_config_json` 仅允许 `{}`；非空配置须显式选择 `builtin`/`react`/`a2ui`（`ValidatePlannerConfigJSON`）。
 
-`features/agents/types.ts` 增加 `planner_config_json` 字段，wire normalization 同步更新。
+**空 `planner_kind` 三态**（须在 UI 与文档中区分，避免与 `builtin` 混淆）：
+
+| 维度 | 行为 |
+|------|------|
+| API / 保存 | 仅 `{}`；非空 config → 400 |
+| 运行时 | `planner.Select`：仅当 `dialog_mode=plan` 注入 Builtin |
+| Chat 展示 | 可按正文 `/*PLANNING*/` 等启发式展示 ReAct/A2UI，**不**写入 Agent settings |
+
+历史脏数据（`planner_kind=''` 且 `planner_config_json` 非 `{}`）见 `docs/sql/02_agent_planner_legacy_cleanup.sql`。
+
+**`reasoning_effort`**：biz 白名单 `low|medium|high|max`（与 OpenAI o 系 / DeepSeek v4 前端选项对齐）；空字符串表示不下发，由模型默认。
+
+**保存路径**：`validatePlannerForm` → `serializePlannerForm` → `buildSettingsPayload()` → `PATCH` Agent。
+
+### 7.3 Chat — ReAct 步骤展示
+
+**触发**：
+
+1. `activePlannerKind === 'react'`；或
+2. `planner_kind` 为空且正文含 `/*PLANNING*/` 等标签（启发式，兼容历史消息）。
+
+**解析**（`reactPlannerParse.ts`）：
+
+| 标签 | 步骤标题 |
+|------|----------|
+| `/*PLANNING*/` | 规划 |
+| `/*REASONING*/` | 推理 |
+| `/*ACTION*/` | 动作 |
+| `/*REPLANNING*/` | 重新规划 |
+| `/*FINAL_ANSWER*/` | 之后内容为 **主气泡 Markdown**（非步骤卡） |
+
+**布局**（`ChatMessageRow`）：`reasoning` 折叠 + `ChatReactSteps` + 主正文可叠加（不再与 reasoning 互斥二选一）。
+
+**ReAct ↔ `tool_call` 链接（`reactToolLinkIndex` + `reactPlannerToolLink`）**：
+
+- 会话级：`useChatWorkspace` 在 `displayMessages` 变更时一次 `buildReactToolLinkIndex`（O(n)）；`ChatMessagePanel` / `ChatMessageRow` **必填**传入该索引。
+- `buildMessagePresentation` **仅**读 `reactLinkIndex` 去重与 `stepsByAssistantIndex`；无 per-row enrich、无 O(n²) 回退；索引条目含空数组 `[]` 时信任缓存（`cached !== undefined`）。
+- 规则：每个 `/*ACTION*/` 至多链接其后、下一条「实质 assistant」之前的第一个未占用 `tool_event`；工具名 hint 来自 ACTION 正文正则（`functions.*` 等）。
+- **流式 / 乱序**：工具 activity 若先于 assistant 正文落库，当轮可能暂无法链接；索引随列表刷新重算，最终顺序稳定后对齐。多 ACTION / 多 tool / Team 会话不保证一一对应（见 `39-planner-development.md` backlog）。
+
+### 7.4 Chat — A2UI 预览（MVP）
+
+**触发**：`activePlannerKind === 'a2ui'` 或正文 JSONL 含允许键（`beginRendering` 等）。
+
+**Chat 行为**（`ChatA2UIPreview.vue` + `ChatA2UISurface.vue`）：`reduceA2UISurface` 折叠 JSONL 为 surface；`A2UIComponentNode` 渲染 StandardCatalog 核心组件（Text/Button/Row/Column/List/Card/Modal/Tabs/Divider/Image/Icon/Video/TextField/CheckBox）；`a2uiChildren` 支持 `explicitList` 与 `template.dataBinding`。Button 点击经 `formatUserActionMessage` 作为 WS `user_message.content` 单行 JSON 上行（与 [51 消息机制](./51%20消息机制.md) §4.5 一致）。
+
+**ReAct Chat**（`ChatReactSteps.vue`）：`reactPlannerToolLink` 将 `/*ACTION*/` 步骤与同轮次后续 `tool_call` activity 行（`options_json.tool_event`）关联，内嵌 `ChatExecutionCard` 展示。
+
+**与 ReAct 互斥**：`messagePlannerPresentation` 先判 a2ui，再 react。
+
+### 7.5 Builtin 在 Chat 的展示
+
+不新增步骤卡；继续使用 `envelope.content.reasoning` → `options_json.reasoning_markdown` →「思考过程」折叠（与 ReAct 正交）。

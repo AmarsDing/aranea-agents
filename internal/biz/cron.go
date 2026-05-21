@@ -75,9 +75,24 @@ type CronRepo interface {
 	CreateCronTask(ctx context.Context, t CronTask) (CronTask, error)
 	UpdateCronTask(ctx context.Context, t CronTask) (CronTask, error)
 	DeleteCronTask(ctx context.Context, id string) error
+	GetCronTaskRun(ctx context.Context, id string) (CronTaskRun, error)
 	ListCronTaskRuns(ctx context.Context, q CronTaskRunQuery) ([]CronTaskRun, error)
 	InsertCronTaskRun(ctx context.Context, in CronTaskRunInput) error
 	UpdateCronTaskRun(ctx context.Context, id, status, finishedAt, outputJSON, errorMessage string) error
+}
+
+// CronTaskTrigger enqueues immediate cron execution (implemented by *cronrunner.Runner).
+type CronTaskTrigger interface {
+	TriggerTask(ctx context.Context, taskID string) (CronTaskRun, error)
+}
+
+type CronUsecase struct {
+	repo    CronRepo
+	trigger CronTaskTrigger
+}
+
+func NewCronUsecase(repo CronRepo, trigger CronTaskTrigger) *CronUsecase {
+	return &CronUsecase{repo: repo, trigger: trigger}
 }
 
 type CronTaskPatch struct {
@@ -95,14 +110,6 @@ type CronTaskPatch struct {
 func StrPtr(s string) *string { return &s }
 func BoolPtr(b bool) *bool    { return &b }
 func IntPtr(i int) *int       { return &i }
-
-type CronUsecase struct {
-	repo CronRepo
-}
-
-func NewCronUsecase(repo CronRepo) *CronUsecase {
-	return &CronUsecase{repo: repo}
-}
 
 func (u *CronUsecase) ListTasks(ctx context.Context) ([]CronTask, error) {
 	return u.repo.ListCronTasks(ctx)
@@ -187,4 +194,42 @@ func (u *CronUsecase) DeleteTask(ctx context.Context, id string) error {
 
 func (u *CronUsecase) ListTaskRuns(ctx context.Context, q CronTaskRunQuery) ([]CronTaskRun, error) {
 	return u.repo.ListCronTaskRuns(ctx, q)
+}
+
+func (u *CronUsecase) GetTaskRun(ctx context.Context, id string) (CronTaskRun, error) {
+	if strings.TrimSpace(id) == "" {
+		return CronTaskRun{}, errors.BadRequest("CRON", "run id is required")
+	}
+	return u.repo.GetCronTaskRun(ctx, id)
+}
+
+func (u *CronUsecase) TriggerTask(ctx context.Context, id string) (CronTaskRun, error) {
+	if u.trigger == nil {
+		return CronTaskRun{}, ErrCronRunnerDisabled
+	}
+	if strings.TrimSpace(id) == "" {
+		return CronTaskRun{}, errors.BadRequest("CRON", "id is required")
+	}
+	return u.trigger.TriggerTask(ctx, id)
+}
+
+func (u *CronUsecase) ResetTaskFailures(ctx context.Context, id string) (CronTask, error) {
+	if strings.TrimSpace(id) == "" {
+		return CronTask{}, errors.BadRequest("CRON", "id is required")
+	}
+	cur, err := u.repo.GetCronTask(ctx, id)
+	if err != nil {
+		return CronTask{}, err
+	}
+	metaJSON, err := resetCronFailureMetadata(cur.MetadataJSON)
+	if err != nil {
+		return CronTask{}, errors.BadRequest("CRON", "invalid metadata_json")
+	}
+	enabled := true
+	status := "active"
+	return u.UpdateTask(ctx, id, CronTaskPatch{
+		Enabled:      &enabled,
+		Status:       &status,
+		MetadataJSON: &metaJSON,
+	})
 }

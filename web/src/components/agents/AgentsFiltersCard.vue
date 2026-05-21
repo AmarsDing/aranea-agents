@@ -19,7 +19,22 @@
           class="agent-control"
         />
       </div>
-      <div class="col-12 col-sm-6 col-md-3">
+      <div class="col-12 col-sm-6 col-md-2">
+        <q-select
+          v-model="selectedCreator"
+          dense
+          outlined
+          clearable
+          emit-value
+          map-options
+          label="创建者"
+          :options="creatorOptions"
+          option-value="user_id"
+          option-label="label"
+          class="agent-control"
+        />
+      </div>
+      <div class="col-12 col-sm-6 col-md-2">
         <q-select
           v-model="selectedCategory"
           dense
@@ -75,6 +90,7 @@ type ViewMode = "grid" | "list";
 const keyword = defineModel<string>("keyword", { default: "" });
 const selectedStatus = defineModel<string | null>("selectedStatus", { default: null });
 const selectedCategory = defineModel<string | null>("selectedCategory", { default: null });
+const selectedCreator = defineModel<string | null>("selectedCreator", { default: null });
 const selectedProvider = defineModel<string | null>("selectedProvider", { default: null });
 const viewMode = defineModel<ViewMode>("viewMode", { default: "grid" });
 
@@ -82,6 +98,7 @@ defineProps<{
   statusOptions: SelectOption[];
   categoryPositionOptions: SelectOption[];
   providerOptions: SelectOption[];
+  creatorOptions: { user_id: string; label: string }[];
 }>();
 </script>
 

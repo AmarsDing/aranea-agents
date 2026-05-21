@@ -144,5 +144,7 @@ CREATE TABLE IF NOT EXISTS team_run_steps (
   error_message TEXT NOT NULL DEFAULT '',
   started_at TEXT NOT NULL DEFAULT '',
   finished_at TEXT NOT NULL DEFAULT '',
-  created_at TEXT NOT NULL DEFAULT ''
+  created_at TEXT NOT NULL DEFAULT '',
+  tool_call_count INTEGER NOT NULL DEFAULT 0
 );
+-- 已有库仅缺列时执行 docs/sql/03_session_team_run_steps_tool_call_count.sql

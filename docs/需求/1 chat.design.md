@@ -388,7 +388,9 @@ tool_invocations
 
 ```
 internal/service/
-├── chat.go              ← ChatService 主结构 + SendChatMessage/GetChatOptions/StopGeneration/GetPendingMessages/CancelPendingMessage/UpdatePendingMessage/GetRunStatus/AwaitUserReply + pending queue
+├── chat.go              ← ChatService RPC；入队/排队委托 chatUC
+├── chat_run_gateway.go  ← Biz 适配器 + publishMessageQueuedToBus
+├── chat_pending.go      ← PendingMessageQueue（Follow-up FIFO，待下沉 runtime）
 ├── chat_native.go       ← 原生对话入口（HTTP unary + WS 上行复用）+ hydratedAgent
 ├── trpc_turn.go         ← trpc-agent-go 单 Agent turn 执行 + EventBus 投影 + processPendingQueue
 ├── chat_usage_ingress.go ← 用量记录
@@ -408,31 +410,27 @@ type ChatService struct {
     td             rt.TurnDeps
     pluginRT       *plugintrpc.Runtime
     skillDBRepo    trpcskill.Repository
-    runs           *RunRegistry // internal/runtime：active run、pending cancel、run status
-    pendingQueue   sync.Map    // sessionID → []pendingEntry（仍由 ChatService 持有）
-    awaitChans     sync.Map    // sessionID → await reply channel
-    awaitChans     sync.Map    // sessionID → chan awaitReplyCh
+    runs           *RunRegistry   // internal/runtime：active run、cancel、run status
+    chatUC         *biz.ChatUsecase // 编排：入队/排队/锁/await（Follow-up Queue）
+    webhooks       *biz.WebhookDispatcher
+    // awaitMetaCache / resumeInFlight — Service 层 resume 语义
 }
+```
 
-type ChatServiceDeps struct {
-    Teams        biz.TeamRepository
-    TeamsNative  *team.Runner
-    Usage        *biz.UsageUsecase
-    Sessions     *biz.SessionUsecase
-    Agents       biz.AgentRepository
-    AgentsUC     *biz.AgentUsecase
-    ToolsCatalog biz.ToolRepo
-    ToolUC       *biz.ToolUsecase
-    LLMCatalog   *biz.LlmProviderModelUsecase
-    SkillUC      *biz.SkillUsecase
-    Sys          biz.SystemSettingRepo
-    Persist      rt.PersistenceSet
-    Compress     biz.NativeTurnCompressor
-    EventBus     event.Bus
-    PluginRT     *plugintrpc.Runtime
-    SkillDBRepo  trpcskill.Repository
-}
+`PendingMessageQueue` 由 `NewChatUsecaseFromDeps` 注入 `chatUC`；`ChatService` 不再直接持有 `pendingQueue sync.Map`。
 
+#### Follow-up Queue（对话阶段连续发送）
+
+详见 [35 gateway.design.md §3.6](./35%20gateway.design.md#36-follow-up-queue对话阶段连续发送) 与 [1 chat.md §1.9](./1%20chat.md#19-对话阶段连续发送follow-up-queue--待发送队列)。
+
+**入队**：`chat_native` 检测 `HasActive` → `chatUC.EnqueueUserMessage` → Steerable 或 Pending → `PublishMessageQueued`（`run_status` + `hint: message_queued`）。
+
+**出队**：`trpc_turn` / Team defer → `processPendingQueue` → `chatUC.DequeuePendingMessage` → 新 turn。
+
+**废弃**：`ChatService.publishMessageQueued` — 使用 `ChatUsecase` + `publishMessageQueuedToBus`。
+
+```go
+// 历史结构（已移除）
 type pendingEntry struct {
     ID        string
     Content   string

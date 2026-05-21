@@ -193,6 +193,27 @@ message ListSessionMessagesResponse {
   int32 total = 2;
 }
 
+message SearchSessionMessagesRequest {
+  string session_id = 1;
+  string keyword = 2 [(google.api.field_behavior) = REQUIRED];
+  int32 limit = 3;
+  int32 offset = 4;
+}
+
+message MessageSearchHit {
+  string id = 1;
+  string session_id = 2;
+  string role = 3;
+  string content_markdown = 4;
+  string highlight = 5;
+  string created_at = 6;
+}
+
+message SearchSessionMessagesResponse {
+  repeated MessageSearchHit items = 1;
+  int32 total = 2;
+}
+
 message SessionTurn {
   string id = 1;
   string session_id = 2;
@@ -333,6 +354,9 @@ service SessionService {
   }
   rpc ListSessionMessages(ListSessionMessagesRequest) returns (ListSessionMessagesResponse) {
     option (google.api.http) = {get: "/v1/sessions/{id}/messages"};
+  }
+  rpc SearchSessionMessages(SearchSessionMessagesRequest) returns (SearchSessionMessagesResponse) {
+    option (google.api.http) = {get: "/v1/sessions/messages/search"};
   }
   rpc ListSessionTurns(ListSessionTurnsRequest) returns (ListSessionTurnsResponse) {
     option (google.api.http) = {get: "/v1/sessions/{session_id}/turns"};

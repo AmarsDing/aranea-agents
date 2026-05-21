@@ -49,3 +49,11 @@ func SliceToSet(ss []string) map[string]bool {
 	}
 	return m
 }
+
+func TruncateBytes(s string, n int) string {
+	s = strings.TrimSpace(s)
+	if len(s) <= n {
+		return s
+	}
+	return s[:n]
+}

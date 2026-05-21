@@ -125,6 +125,24 @@ func (s *MCPServerService) DeleteMCPServer(ctx context.Context, req *v1.DeleteMC
 	return &emptypb.Empty{}, nil
 }
 
+func (s *MCPServerService) ValidateMCPServer(ctx context.Context, req *v1.ValidateMCPServerRequest) (*v1.ValidateMCPServerResponse, error) {
+	res := s.uc.ValidateConfig(req.GetEnabled(), req.GetConfigJson())
+	detailsJSON := "{}"
+	if len(res.Details) > 0 {
+		b, err := json.Marshal(res.Details)
+		if err != nil {
+			return nil, err
+		}
+		detailsJSON = string(b)
+	}
+	return &v1.ValidateMCPServerResponse{
+		Ok:          res.OK,
+		Status:      res.Status,
+		Message:     res.Message,
+		DetailsJson: detailsJSON,
+	}, nil
+}
+
 func (s *MCPServerService) TestMCPServer(ctx context.Context, req *v1.TestMCPServerRequest) (*v1.MCPServerTestResponse, error) {
 	res, err := s.uc.TestMCPServer(ctx, req.GetId())
 	if err != nil {
@@ -147,4 +165,49 @@ func (s *MCPServerService) TestMCPServer(ctx context.Context, req *v1.TestMCPSer
 		Message:     res.Message,
 		DetailsJson: detailsJSON,
 	}, nil
+}
+
+func toProtoMCPUserCred(c biz.MCPServerUserCredential) *v1.MCPServerUserCredential {
+	return &v1.MCPServerUserCredential{
+		Id:            c.ID,
+		McpServerId:   c.MCPServerID,
+		UserId:        c.UserID,
+		CredentialKey: c.CredentialKey,
+		Status:        c.Status,
+		Configured:    c.Configured,
+		MaskedPreview: c.MaskedPreview,
+		CreatedAt:     c.CreatedAt,
+		UpdatedAt:     c.UpdatedAt,
+	}
+}
+
+func (s *MCPServerService) ListMCPServerUserCredentials(ctx context.Context, req *v1.ListMCPServerUserCredentialsRequest) (*v1.ListMCPServerUserCredentialsResponse, error) {
+	items, err := s.uc.ListUserCredentials(ctx, req.GetMcpServerId(), req.GetUserId())
+	if err != nil {
+		return nil, err
+	}
+	resp := &v1.ListMCPServerUserCredentialsResponse{Items: make([]*v1.MCPServerUserCredential, 0, len(items))}
+	for i := range items {
+		resp.Items = append(resp.Items, toProtoMCPUserCred(items[i]))
+	}
+	return resp, nil
+}
+
+func (s *MCPServerService) UpsertMCPServerUserCredential(ctx context.Context, req *v1.UpsertMCPServerUserCredentialRequest) (*v1.MCPServerUserCredential, error) {
+	out, err := s.uc.UpsertUserCredential(ctx, req.GetMcpServerId(), req.GetUserId(), biz.MCPServerUserCredentialInput{
+		CredentialKey: req.GetCredentialKey(),
+		Secret:        req.GetSecret(),
+		Status:        req.GetStatus(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return toProtoMCPUserCred(out), nil
+}
+
+func (s *MCPServerService) DeleteMCPServerUserCredential(ctx context.Context, req *v1.DeleteMCPServerUserCredentialRequest) (*emptypb.Empty, error) {
+	if err := s.uc.DeleteUserCredential(ctx, req.GetMcpServerId(), req.GetUserId(), req.GetCredentialKey()); err != nil {
+		return nil, err
+	}
+	return &emptypb.Empty{}, nil
 }

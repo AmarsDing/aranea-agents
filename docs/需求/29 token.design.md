@@ -554,11 +554,13 @@ web/src/features/usage/
 └── types.ts        ← TypeScript 类型定义
 
 web/src/components/usage/
-├── UsageMetricCards.vue    ← 核心指标卡片
-├── UsageTrendPanel.vue     ← 趋势图
-├── UsageTopModels.vue      ← Top 模型排行
-├── UsageTopAgents.vue      ← Top Agent 排行
-└── UsageAnomalyList.vue    ← 异常请求列表
+├── UsageMetricCards.vue       ← 核心指标卡片
+├── UsageTrendChart.vue        ← ECharts 趋势（useUsageChart + usageTrendMetrics）
+├── UsageBreakdownCharts.vue   ← 模型/Provider 占比饼图
+├── OverviewRunnerMetrics.vue  ← 概览页 Runner 条
+├── UsageTopModels.vue         ← Top 模型排行
+├── UsageTopAgents.vue         ← Top Agent 排行
+└── UsageAnomalyList.vue       ← 异常请求列表
 ```
 
 #### API 函数

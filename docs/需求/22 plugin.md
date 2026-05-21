@@ -1,6 +1,6 @@
 # Plugin 管理 — 产品需求文档
 
-> **版本**：2026-05-19 | **状态**：CRUD + Runtime 已通，内置插件待完善
+> **版本**：2026-05-21 | **状态**：Runtime + 管理页 + 运行记录已通；P3 沙箱/版本待做
 > **设计**：[22 plugin.design.md](./22%20plugin.design.md) · **开发计划**：[22-plugin-development.md](./22-plugin-development.md)
 
 ---

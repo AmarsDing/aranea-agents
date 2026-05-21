@@ -50,11 +50,14 @@ kratosApi.interceptors.response.use(
         actions: [{ label: "关闭", color: "white" }]
       });
     } else if (status && status >= 400 && status !== 401 && status !== 404) {
-      Notify.create({
-        type: "warning",
-        message: kratosMsg ?? `请求错误 (${status})`,
-        timeout: 3500
-      });
+      const skipNotify = Boolean(err.config?.skipErrorNotify);
+      if (!skipNotify) {
+        Notify.create({
+          type: "warning",
+          message: kratosMsg ?? `请求错误 (${status})`,
+          timeout: 3500
+        });
+      }
     }
 
     return Promise.reject(err);
@@ -79,20 +82,30 @@ type Request = {
   body: string | null;
 };
 
+export type RequestMeta = {
+  service: string;
+  method: string;
+  /** Suppress global 4xx toast; used for CreateAgent inline field errors. */
+  skipErrorNotify?: boolean;
+};
+
 /** 与 proto 生成的 HTTP 客户端（`v1/...`）双参 handler 签名一致；`meta` 可供拦截器或日志使用 */
 export function requestHandler(
   { path, method, body }: Request,
-  _meta?: { service: string; method: string }
+  meta?: RequestMeta
 ): Promise<unknown> {
   const headers: Record<string, string> = {};
   if (method === "POST" || method === "PUT" || method === "PATCH") {
     headers["Content-Type"] = "application/json";
   }
-  return kratosApi.request({
+  const skipErrorNotify = meta?.skipErrorNotify ?? meta?.method === "CreateAgent";
+  return kratosApi
+    .request({
       url: "/" + path.replace(/^\//, ""),
       method,
       data: body ?? undefined,
-      headers
+      headers,
+      skipErrorNotify
     })
     .then((res) => res.data);
 }

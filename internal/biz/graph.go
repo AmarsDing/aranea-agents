@@ -164,21 +164,23 @@ type GraphRunRepo interface {
 }
 
 type GraphUsecase struct {
-	repo       GraphRepo
-	runRepo    GraphRunRepo
-	factory    GraphBuilderFactory
-	mu         sync.RWMutex
-	defs       map[string]*GraphDefinition
-	executions map[string]*GraphExecution
+	repo          GraphRepo
+	runRepo       GraphRunRepo
+	factory       GraphBuilderFactory
+	execObserver  GraphExecutionObserver
+	mu            sync.RWMutex
+	defs          map[string]*GraphDefinition
+	executions    map[string]*GraphExecution
 }
 
-func NewGraphUsecase(repo GraphRepo, runRepo GraphRunRepo, factory GraphBuilderFactory) *GraphUsecase {
+func NewGraphUsecase(repo GraphRepo, runRepo GraphRunRepo, factory GraphBuilderFactory, observer GraphExecutionObserver) *GraphUsecase {
 	uc := &GraphUsecase{
-		repo:       repo,
-		runRepo:    runRepo,
-		factory:    factory,
-		defs:       make(map[string]*GraphDefinition),
-		executions: make(map[string]*GraphExecution),
+		repo:         repo,
+		runRepo:      runRepo,
+		factory:      factory,
+		execObserver: observer,
+		defs:         make(map[string]*GraphDefinition),
+		executions:   make(map[string]*GraphExecution),
 	}
 	safego.Go(context.Background(), "graph-gc-loop", func() { uc.gcLoop() })
 	return uc
@@ -276,17 +278,28 @@ func (uc *GraphUsecase) DeleteGraph(ctx context.Context, id string) error {
 	return nil
 }
 
-func (uc *GraphUsecase) ExecuteGraph(ctx context.Context, graphID string, sessionID string, initialState map[string]any) (*GraphExecution, error) {
+func (uc *GraphUsecase) notifyExecComplete(exec *GraphExecution) {
+	if uc == nil || uc.execObserver == nil || exec == nil {
+		return
+	}
+	uc.execObserver.OnGraphExecutionComplete(exec)
+}
+
+func (uc *GraphUsecase) ExecuteGraph(ctx context.Context, graphID, sessionID, execID string, initialState map[string]any) (*GraphExecution, error) {
+	if execID == "" {
+		execID = uuid.New().String()
+	}
 	def, err := uc.GetGraph(ctx, graphID)
 	if err != nil {
+		uc.notifyExecComplete(&GraphExecution{ID: execID, GraphID: graphID, SessionID: sessionID, Status: "failed", ErrorMessage: err.Error()})
 		return nil, err
 	}
 
 	cfg := defToBuildConfig(def)
-	execID := uuid.New().String()
 
 	runtime, eventCh, err := uc.factory.BuildAndRun(ctx, cfg, sessionID, graphID, execID, initialState)
 	if err != nil {
+		uc.notifyExecComplete(&GraphExecution{ID: execID, GraphID: graphID, SessionID: sessionID, Status: "failed", ErrorMessage: err.Error()})
 		return nil, err
 	}
 
@@ -301,11 +314,15 @@ func (uc *GraphUsecase) ExecuteGraph(ctx context.Context, graphID string, sessio
 	}
 
 	if err := uc.runRepo.SaveRun(ctx, exec); err != nil {
+		exec.Status = "failed"
+		exec.ErrorMessage = err.Error()
+		uc.notifyExecComplete(exec)
 		return nil, errors.FromError(ErrGraphSaveRun).WithCause(err)
 	}
 
 	safego.Go(context.Background(), "graph.consumeEvents", func() {
 		uc.consumeRuntimeEvents(eventCh, exec, execID, graphID, sessionID)
+		uc.notifyExecComplete(exec)
 	})
 
 	uc.mu.Lock()

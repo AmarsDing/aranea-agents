@@ -88,6 +88,8 @@ message IngestDocumentRequest {
   int32 chunk_size = 6;
   // chunk_overlap is the token/char overlap between consecutive chunks (0 = server default 64).
   int32 chunk_overlap = 7;
+  // chunk_strategy: char | token | markdown | json | recursive (empty = char).
+  string chunk_strategy = 8;
 }
 
 message ListDocumentsRequest {

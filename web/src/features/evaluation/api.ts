@@ -1,8 +1,7 @@
 /**
  * Evaluation 评估：**`createEvaluationService()`** → **`/v1/evaluation/...`**。
  *
- * 注意：后端 Evaluation Runtime 尚未完整接入（EP-DATA-01 / EP-RT-08）。
- * 启动评估运行（RunEvaluation）在 runtime nil 的情况下会返回错误。
+ * Runtime：FrameworkBridge + ChatService.RunNativeTurnUnary；LLMJudge 需 Provider 目录或 env。
  */
 import { requestHandler } from "../../services/axiosHandler";
 import { createEvaluationService } from "../../services";
@@ -18,7 +17,9 @@ import type {
   ListDatasetsResult,
   ListRunsParams,
   ListRunsResult,
-  RunEvaluationInput
+  RunEvaluationInput,
+  EvalTrendPoint,
+  EvalRunComparison
 } from "./types";
 
 const svc = createEvaluationService();
@@ -49,6 +50,11 @@ function mapRun(raw: unknown): EvalRun {
     contains_match_score: pickNum(r, "contains_match_score", "containsMatchScore"),
     llm_judge_score: pickNum(r, "llm_judge_score", "llmJudgeScore"),
     tool_call_accuracy: pickNum(r, "tool_call_accuracy", "toolCallAccuracy"),
+    pass_at_k: pickNum(r, "pass_at_k", "passAtK"),
+    pass_hat_k: pickNum(r, "pass_hat_k", "passHatK"),
+    trigger_source: pickStr(r, "trigger_source", "triggerSource"),
+    num_runs: pickI32(r, "num_runs", "numRuns"),
+    scores_json: pickStr(r, "scores_json", "scoresJson"),
     error_message: pickStr(r, "error_message", "errorMessage"),
     started_at: pickStr(r, "started_at", "startedAt"),
     finished_at: pickStr(r, "finished_at", "finishedAt"),
@@ -67,6 +73,7 @@ function mapCaseResult(raw: unknown): EvalCaseResult {
     contains_match: pickBool(r, "contains_match", "containsMatch"),
     llm_judge_score: pickNum(r, "llm_judge_score", "llmJudgeScore"),
     tool_call_accuracy: pickNum(r, "tool_call_accuracy", "toolCallAccuracy"),
+    scores_json: pickStr(r, "scores_json", "scoresJson"),
     error_message: pickStr(r, "error_message", "errorMessage"),
     created_at: pickStr(r, "created_at", "createdAt"),
     human_comment: pickStr(r, "human_comment", "humanComment"),
@@ -131,7 +138,8 @@ export async function runEvaluation(input: RunEvaluationInput): Promise<EvalRun>
     datasetId: input.dataset_id,
     agentId: input.agent_id,
     metrics: input.metrics ?? "",
-    numRuns: input.num_runs ?? 1
+    numRuns: input.num_runs ?? 1,
+    useUserSimulation: input.use_user_simulation ?? false
   });
   return mapRun(raw);
 }
@@ -165,4 +173,61 @@ export async function getRunResults(
   const itemsRaw = res.items ?? res.Items;
   const items = Array.isArray(itemsRaw) ? itemsRaw.map(mapCaseResult) : [];
   return { items, total: pickI32(res, "total", "total") || items.length };
+}
+
+function mapTrendPoint(raw: unknown): EvalTrendPoint {
+  const r = asRecord(raw);
+  return {
+    run_id: pickStr(r, "run_id", "runId"),
+    created_at: pickStr(r, "created_at", "createdAt"),
+    trigger_source: pickStr(r, "trigger_source", "triggerSource"),
+    exact_match_score: pickNum(r, "exact_match_score", "exactMatchScore"),
+    contains_match_score: pickNum(r, "contains_match_score", "containsMatchScore"),
+    llm_judge_score: pickNum(r, "llm_judge_score", "llmJudgeScore"),
+    tool_call_accuracy: pickNum(r, "tool_call_accuracy", "toolCallAccuracy"),
+    pass_at_k: pickNum(r, "pass_at_k", "passAtK"),
+    pass_hat_k: pickNum(r, "pass_hat_k", "passHatK")
+  };
+}
+
+function mapRunComparison(raw: unknown): EvalRunComparison {
+  const r = asRecord(raw);
+  return {
+    run_id: pickStr(r, "run_id", "runId"),
+    agent_id: pickStr(r, "agent_id", "agentId"),
+    dataset_id: pickStr(r, "dataset_id", "datasetId"),
+    created_at: pickStr(r, "created_at", "createdAt"),
+    exact_match_score: pickNum(r, "exact_match_score", "exactMatchScore"),
+    contains_match_score: pickNum(r, "contains_match_score", "containsMatchScore"),
+    llm_judge_score: pickNum(r, "llm_judge_score", "llmJudgeScore"),
+    tool_call_accuracy: pickNum(r, "tool_call_accuracy", "toolCallAccuracy"),
+    pass_at_k: pickNum(r, "pass_at_k", "passAtK"),
+    pass_hat_k: pickNum(r, "pass_hat_k", "passHatK"),
+    delta_exact_match: pickNum(r, "delta_exact_match", "deltaExactMatch"),
+    delta_contains_match: pickNum(r, "delta_contains_match", "deltaContainsMatch"),
+    delta_llm_judge: pickNum(r, "delta_llm_judge", "deltaLlmJudge"),
+    delta_tool_call_accuracy: pickNum(r, "delta_tool_call_accuracy", "deltaToolCallAccuracy")
+  };
+}
+
+export async function getAgentEvalTrend(params: {
+  agent_id: string;
+  dataset_id?: string;
+  limit?: number;
+}): Promise<EvalTrendPoint[]> {
+  const res = asRecord(
+    await svc.GetAgentEvalTrend({
+      agentId: params.agent_id,
+      datasetId: params.dataset_id ?? "",
+      limit: params.limit ?? 20
+    })
+  );
+  const pointsRaw = res.points ?? res.Points;
+  return Array.isArray(pointsRaw) ? pointsRaw.map(mapTrendPoint) : [];
+}
+
+export async function compareEvalRuns(runIds: string[]): Promise<EvalRunComparison[]> {
+  const res = asRecord(await svc.CompareEvalRuns({ runIds }));
+  const itemsRaw = res.items ?? res.Items;
+  return Array.isArray(itemsRaw) ? itemsRaw.map(mapRunComparison) : [];
 }

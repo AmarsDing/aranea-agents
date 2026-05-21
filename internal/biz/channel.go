@@ -2,8 +2,6 @@ package biz
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"strings"
 
@@ -101,6 +99,8 @@ type ChannelRepo interface {
 	DeleteCredential(ctx context.Context, channelID, credentialKey string) error
 	ListDeliveries(ctx context.Context, channelID string, limit int) ([]ChannelDelivery, error)
 	AddDelivery(ctx context.Context, d ChannelDelivery) (ChannelDelivery, error)
+	ListPendingDeliveries(ctx context.Context, limit int) ([]ChannelDelivery, error)
+	UpdateDelivery(ctx context.Context, d ChannelDelivery) error
 }
 
 type ChannelUsecase struct {
@@ -247,7 +247,11 @@ func (u *ChannelUsecase) UpsertCredentials(ctx context.Context, channelID string
 			continue
 		}
 		if secretRef == "" {
-			secretRef = localSecretRef(channelID, key, secret)
+			var encErr error
+			secretRef, encErr = EncryptChannelSecretRef(ctx, secret)
+			if encErr != nil {
+				return nil, encErr
+			}
 		}
 		status := strings.TrimSpace(input.Status)
 		if status == "" {
@@ -276,9 +280,27 @@ func (u *ChannelUsecase) UpsertCredentials(ctx context.Context, channelID string
 	return sanitizeCredentials(result), nil
 }
 
-func localSecretRef(channelID string, key string, secret string) string {
-	sum := sha256.Sum256([]byte(channelID + ":" + key + ":" + secret))
-	return "local:" + hex.EncodeToString(sum[:])
+// RunHealthChecks re-evaluates enabled channels and refreshes status/metadata.
+func (u *ChannelUsecase) RunHealthChecks(ctx context.Context) error {
+	items, err := u.repo.List(ctx)
+	if err != nil {
+		return err
+	}
+	for _, row := range items {
+		if !row.Enabled {
+			continue
+		}
+		credentials, err := u.repo.ListCredentials(ctx, row.ID)
+		if err != nil {
+			continue
+		}
+		result, err := EvaluateChannelTest(row, credentials)
+		if err != nil {
+			continue
+		}
+		_, _ = u.updateTestMetadata(ctx, row, result)
+	}
+	return nil
 }
 
 func (u *ChannelUsecase) DeleteCredential(ctx context.Context, channelID, key string) error {

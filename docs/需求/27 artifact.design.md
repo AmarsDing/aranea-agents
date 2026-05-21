@@ -2,7 +2,7 @@
 
 > 对应需求：`27 artifact.md`
 > 遵循规范：`AI-DEVELOPMENT-SPECIFICATION.md`
-> 更新日期：2026-05-19
+> 更新日期：2026-05-21
 
 ---
 
@@ -18,7 +18,7 @@
 Frontend (base64 HTTP/gRPC)
     │
     ▼
-internal/service/artifact.go        ← Kratos Service：proto ↔ biz 映射 + base64 编解码
+internal/service/artifact.go        ← Kratos Service：proto ↔ biz 映射 + base64 编解码 + PreviewArtifact + SignDownloadUrl + ServeSignedDownload
     │
     ▼
 internal/biz/artifact.go            ← ArtifactUsecase + ArtifactRepo 接口定义
@@ -28,6 +28,10 @@ internal/data/artifactfs/repo.go    ← FSArtifactRepo：本地文件系统实�
     │
     ▼
 internal/artifact/trpc/service.go   ← ServiceAdapter：桥接 biz → trpc artifact.Service
+
+internal/artifact/sign.go           ← HMAC-SHA256 签名/验签（签名下载 URL）
+
+internal/skill/trpc/artifact_executor.go ← artifactSavingExecutor：CodeExecutor 产出物自动保存
 ```
 
 依赖方向：service → biz ← data，biz 层禁止 import trpc-agent-go。
@@ -54,6 +58,12 @@ service ArtifactService {
   rpc DeleteArtifact(DeleteArtifactRequest) returns (google.protobuf.Empty) {
     option (google.api.http) = { delete: "/v1/artifacts/{id}" };
   }
+  rpc PreviewArtifact(PreviewArtifactRequest) returns (PreviewArtifactResponse) {
+    option (google.api.http) = { get: "/v1/artifacts/{id}/preview" };
+  }
+  rpc SignDownloadUrl(SignDownloadUrlRequest) returns (SignDownloadUrlResponse) {
+    option (google.api.http) = { post: "/v1/artifacts/{id}/sign-download" body: "*" };
+  }
 }
 ```
 
@@ -68,17 +78,14 @@ service ArtifactService {
 | **ListArtifactsRequest** | session_id, limit, offset | 列表请求 |
 | **ListArtifactsResponse** | items (repeated ArtifactMeta), total | 列表响应 |
 | **DeleteArtifactRequest** | id (REQUIRED) | 删除请求，删除该 ID 的所有版本 |
+| **PreviewArtifactRequest** | id (REQUIRED), version | 预览请求；返回按 MIME 类型分类的预览内容 |
+| **PreviewArtifactResponse** | meta (ArtifactMeta), preview_kind, text_content, data_base64 | 预览响应；preview_kind: text / image / pdf / binary |
+| **SignDownloadUrlRequest** | id (REQUIRED), version, ttl_seconds | 签名下载请求；ttl_seconds 最大 86400 |
+| **SignDownloadUrlResponse** | url, expires_at | 签名下载响应；url 含 HMAC-SHA256 token + expires |
 
-### 3.3 待新增（在线预览 / 签名下载）
+### 3.3 已实现（在线预览 / 签名下载）
 
-```protobuf
-rpc PreviewArtifact(PreviewArtifactRequest) returns (ArtifactPreview) {
-  option (google.api.http) = { get: "/v1/artifacts/{id}/preview" };
-}
-rpc GetDownloadUrl(GetDownloadUrlRequest) returns (SignedUrl) {
-  option (google.api.http) = { get: "/v1/artifacts/{id}/download-url" };
-}
-```
+PreviewArtifact 和 SignDownloadUrl RPC 已在 §3.1 中列出并实现。签名下载的实际文件流通过独立 HTTP 端点 `/v1/artifacts/download` 提供（非 gRPC），由 `ServeSignedDownload` 方法处理。
 
 ---
 
@@ -191,6 +198,9 @@ S3/COS 后端需实现 `biz.ArtifactRepo` 接口，通过配置选择后端。�
 | `GetArtifact` | 按 ID + version 加载，not found 返回 Kratos NotFound 错误 |
 | `ListArtifacts` | limit 默认 50，返回去重后的最新版本列表 |
 | `DeleteArtifact` | 按 ID 删除所有版本 |
+| `PreviewArtifact` | 按 MIME 分类预览：text（≤512KB 截断）/ image（base64）/ pdf（base64）/ binary |
+| `SignDownloadUrl` | 生成 HMAC-SHA256 签名 URL，TTL 可配置（默认 15 分钟，最大 24 小时） |
+| `ServeSignedDownload` | 独立 HTTP handler，验证签名后流式返回二进制文件，设置 Content-Disposition |
 
 ---
 
@@ -231,13 +241,15 @@ artifactService := service.NewArtifactService(artifactUsecase)
 
 HTTP/gRPC 注册：
 - `http.go`：`artifactv1.RegisterArtifactServiceHTTPServer(srv, artifactSvc)`
+- `http.go`：`/v1/artifacts/download` 签名下载路由（`ServeSignedDownload`）
 - `grpc.go`：`artifactv1.RegisterArtifactServiceServer(srv, artifactSvc)`
 
-### 8.2 待新增
+### 8.2 已实现（Runner 注入）
 
 ```
-TRPCRunnerDeps 增加 ArtifactService 字段
+TRPCRunnerDeps.ArtifactService 字段已添加
 NewTRPCRunner 中 trpcrunner.WithArtifactService(deps.ArtifactService) 注入
+Wire provideArtifactRuntimeService 提供 trpcartifact.Service 实例
 ```
 
 ---
@@ -248,17 +260,18 @@ NewTRPCRunner 中 trpcrunner.WithArtifactService(deps.ArtifactService) 注入
 
 | 层 | 文件 | 说明 |
 |----|------|------|
-| 类型 | `features/artifact/types.ts` | ArtifactMeta / ArtifactData / UploadArtifactInput / ListArtifactsParams / ListArtifactsResult |
-| API | `features/artifact/api.ts` | listArtifacts / getArtifact / uploadArtifact / deleteArtifact |
+| 类型 | `features/artifact/types.ts` | ArtifactMeta / ArtifactData / UploadArtifactInput / ListArtifactsParams / ListArtifactsResult / ArtifactPreview |
+| API | `features/artifact/api.ts` | listArtifacts / getArtifact / uploadArtifact / deleteArtifact / previewArtifact / signDownloadUrl / artifactDownloadHref |
 | Store | `stores/artifact/index.ts` | useArtifactStore：artifacts / total / loading / loadArtifacts / upload / get / remove |
+| 预览组件 | `features/artifact/ArtifactPreview.vue` | 独立预览组件：图片 `<img>` / PDF `<iframe>` / 代码 `<pre>` + 下载按钮 |
+| 列表组件 | `features/artifact/ArtifactList.vue` | 制品列表：MIME 图标 + 文件大小 + 版本号 + 预览弹窗 + 签名下载 |
+| 管理页面 | `pages/ArtifactsPage.vue` | 完整管理页：列表/上传/预览/签名下载/删除，使用 ArtifactPreview 组件 |
+| Chat 面板 | `components/chat/ChatSessionArtifactsPanel.vue` | Chat 会话制品面板，使用 ArtifactList 组件 |
 | 服务 | `services/index.ts` | createArtifactService → createArtifactServiceClient |
 
 ### 9.2 待实现
 
-| 组件 | 说明 |
-|------|------|
-| **ArtifactList.vue** | 制品列表（嵌入 Chat 和 Session 页面），展示名称/大小/版本/时间 |
-| **ArtifactPreview.vue** | 制品预览（图片/PDF/代码高亮），沙箱 iframe 防护 XSS |
+无。前端 P1–P3 功能已全部实现。
 
 ---
 
@@ -272,6 +285,9 @@ NewTRPCRunner 中 trpcrunner.WithArtifactService(deps.ArtifactService) 注入
 | `GET`  | `/v1/artifacts/{id}` | 下载（base64 编码），可选 `?version=N` |
 | `GET`  | `/v1/artifacts?session_id=…` | 列出会话的制品元数据 |
 | `DELETE` | `/v1/artifacts/{id}` | 删除所有版本 |
+| `GET`  | `/v1/artifacts/{id}/preview` | 预览制品（按 MIME 分类返回），可选 `?version=N` |
+| `POST` | `/v1/artifacts/{id}/sign-download` | 生成签名下载 URL |
+| `GET`  | `/v1/artifacts/download?id=…&token=…&expires=…` | 签名下载文件流（ServeSignedDownload） |
 
 #### 上传请求体
 

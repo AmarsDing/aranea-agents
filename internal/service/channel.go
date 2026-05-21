@@ -8,6 +8,8 @@ import (
 	v1 "aranea-agents/api/kratos/channel/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/lark"
+	"aranea-agents/internal/channel/slack"
+	"aranea-agents/internal/channel/telegram"
 
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
@@ -249,7 +251,7 @@ func (s *ChannelService) TestChannel(ctx context.Context, req *v1.TestChannelReq
 			if cerr != nil {
 				result = biz.ChannelTestResult{OK: false, Status: "pending_auth", Message: cerr.Error()}
 			} else {
-				sec, serr := ResolveSecretRef(appRef)
+				sec, serr := ResolveSecretRef(ctx, appRef)
 				if serr != nil {
 					result = biz.ChannelTestResult{OK: false, Status: "pending_auth", Message: serr.Error()}
 				} else {
@@ -261,6 +263,26 @@ func (s *ChannelService) TestChannel(ctx context.Context, req *v1.TestChannelReq
 					}
 				}
 			}
+		}
+	}
+	if strings.EqualFold(strings.TrimSpace(env.Type), "slack") && result.OK {
+		token, terr := resolveCredentialPlain(ctx, creds, "bot_token")
+		if terr != nil || strings.TrimSpace(token) == "" {
+			result = biz.ChannelTestResult{OK: false, Status: "pending_auth", Message: "bot_token not configured"}
+		} else if err := slack.AuthTest(ctx, lark.DefaultHTTPClient(), token); err != nil {
+			result = biz.ChannelTestResult{OK: false, Status: "error", Message: err.Error()}
+		} else {
+			result = biz.ChannelTestResult{OK: true, Status: "ok", Message: "slack auth.test ok"}
+		}
+	}
+	if strings.EqualFold(strings.TrimSpace(env.Type), "telegram") && result.OK {
+		token, terr := resolveCredentialPlain(ctx, creds, "bot_token")
+		if terr != nil || strings.TrimSpace(token) == "" {
+			result = biz.ChannelTestResult{OK: false, Status: "pending_auth", Message: "bot_token not configured"}
+		} else if err := telegram.GetMe(ctx, lark.DefaultHTTPClient(), token); err != nil {
+			result = biz.ChannelTestResult{OK: false, Status: "error", Message: err.Error()}
+		} else {
+			result = biz.ChannelTestResult{OK: true, Status: "ok", Message: "telegram getMe ok"}
 		}
 	}
 	final, err := s.uc.CommitChannelTest(ctx, row, creds, result)

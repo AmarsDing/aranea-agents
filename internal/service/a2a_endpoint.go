@@ -8,8 +8,10 @@ import (
 	chatagent "aranea-agents/internal/agent"
 	a2atrpc "aranea-agents/internal/a2a/trpc"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 	rt "aranea-agents/internal/runtime"
 
+	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
 )
 
@@ -62,6 +64,7 @@ func (b *A2AEndpointBuilder) BuildHandler(ctx context.Context, agentID, publicUR
 		PluginManager:      b.chat.pluginManager,
 		MemoryAdmin:        b.chat.td.Persist.Memory.Admin,
 		KnowledgeRetriever: b.chat.knowledgeRetriever,
+		CodeExecFactory:    b.chat.codeExecFactory,
 	}
 	var plugins []trpcplugin.Plugin
 	if b.chat.pluginManager != nil {
@@ -75,13 +78,21 @@ func (b *A2AEndpointBuilder) BuildHandler(ctx context.Context, agentID, publicUR
 	if err != nil {
 		return nil, nil, err
 	}
-	if b.chat.td.RunnerMgr == nil {
-		b.chat.td.RunnerMgr = rt.NewRunnerManagerFromPersist(b.chat.td.Persist)
+	lookup := map[string]trpcagent.Agent{}
+	if key := strings.TrimSpace(ag.AgentKey); key != "" {
+		lookup[key] = root
 	}
-	runner, err := b.chat.td.RunnerMgr.NewTurnRunner(root, rt.TurnRunnerSpec{
+	rl := chatagent.ResolveRalphLoopTurn(ag.Settings)
+	if rl.SkipErr != nil {
+		event.CtxFlowLogWarn(ctx, "a2a.runner.ralph_loop", "Ralph Loop 配置无效，已跳过",
+			event.P("agent_id", ag.ID), event.P("error", rl.SkipErr.Error()))
+	}
+	runner, err := b.chat.td.CoalesceRunnerManager().NewTurnRunner(root, rt.TurnRunnerSpec{
 		Plugins:          plugins,
 		BuilderDeps:      deps,
 		AgentFactoryKeys: []string{ag.AgentKey},
+		LookupAgents:     lookup,
+		RalphLoop:        rl.Config,
 	})
 	if err != nil {
 		return nil, nil, err

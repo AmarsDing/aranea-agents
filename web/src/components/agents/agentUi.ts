@@ -5,6 +5,7 @@ export type PromptMode = "complete" | "task" | "minimized" | "none";
 export type EvolutionKey = "self_evolve" | "skill_evolve" | "evolution_metrics_enabled" | "evolution_suggestions_enabled";
 
 export type AgentFile = {
+  id?: string;
   name: string;
   caption: string;
   body: string;
@@ -93,4 +94,34 @@ export function selfEvolveEnabled(agent: Agent) {
   } catch {
     return false;
   }
+}
+
+const runStatusLabels: Record<string, string> = {
+  idle: "空闲",
+  pending: "排队",
+  running: "运行中",
+  awaiting_user: "等待回复",
+  completed: "已完成",
+  failed: "失败",
+  cancelled: "已取消"
+};
+
+export function formatLastRunStatus(status?: string) {
+  const key = String(status ?? "idle").trim().toLowerCase() || "idle";
+  return runStatusLabels[key] ?? status ?? "空闲";
+}
+
+export function formatLastRunContext(agent: Agent) {
+  const label = formatLastRunStatus(agent.last_run_status);
+  const at = String(agent.last_run_at ?? "").trim();
+  if (at) {
+    const short = at.length >= 16 ? at.slice(0, 16).replace("T", " ") : at;
+    return `${label} · ${short}`;
+  }
+  return label;
+}
+
+/** 进化中：自我进化开启且存在待处理建议（列表 enrichment 或设置页 suggestions）。 */
+export function isAgentEvolving(agent: Agent, pendingSuggestions = agent.pending_evolution_count ?? 0) {
+  return selfEvolveEnabled(agent) && pendingSuggestions > 0;
 }

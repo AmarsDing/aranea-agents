@@ -50,8 +50,13 @@ func (r *pluginRunRepo) List(ctx context.Context, q biz.PluginRunQuery) (biz.Plu
 	where := " WHERE 1=1"
 	args := []any{}
 	if k := strings.TrimSpace(q.PluginKey); k != "" {
-		where += " AND plugin_key = ?"
-		args = append(args, k)
+		if strings.HasSuffix(k, ":") {
+			where += " AND plugin_key LIKE ?"
+			args = append(args, k+"%")
+		} else {
+			where += " AND plugin_key = ?"
+			args = append(args, k)
+		}
 	}
 	if k := strings.TrimSpace(q.PluginID); k != "" {
 		where += " AND plugin_id = ?"
@@ -59,6 +64,26 @@ func (r *pluginRunRepo) List(ctx context.Context, q biz.PluginRunQuery) (biz.Plu
 	}
 	if k := strings.TrimSpace(q.SessionID); k != "" {
 		where += " AND session_id = ?"
+		args = append(args, k)
+	}
+	if k := strings.TrimSpace(q.AgentID); k != "" {
+		where += " AND agent_id = ?"
+		args = append(args, k)
+	}
+	if k := strings.TrimSpace(q.CallbackPoint); k != "" {
+		where += " AND callback_point = ?"
+		args = append(args, k)
+	}
+	if k := strings.TrimSpace(q.Status); k != "" {
+		where += " AND status = ?"
+		args = append(args, k)
+	}
+	if k := strings.TrimSpace(q.From); k != "" {
+		where += " AND created_at >= ?"
+		args = append(args, k)
+	}
+	if k := strings.TrimSpace(q.To); k != "" {
+		where += " AND created_at <= ?"
 		args = append(args, k)
 	}
 	var total int32

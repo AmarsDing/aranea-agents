@@ -2,7 +2,7 @@
 
 > 对应需求：`37 knowledge.md`
 > 遵循规范：`AI-DEVELOPMENT-SPECIFICATION.md`
-> **2026-05-19 校准**：与实际代码对齐，移除未实现的 KnowledgeBase 模型描述。
+> **2026-05-21 校准**：与实际代码对齐；补充 Reranker、Embedder Admin API、摄取 WS 事件、`ingest.go` 流水线拆分。
 
 ---
 
@@ -22,13 +22,22 @@ Agent 调用 knowledge_search ← Tool(搜索工具) ← Retriever(检索) ← p
 
 ```
 internal/
-├── biz/knowledge.go              # 领域模型 + KnowledgeRepo 接口 + KnowledgeUsecase
+├── biz/
+│   ├── knowledge.go
+│   └── knowledge_embed_setting.go  # Embedder DB patch 合并（EP-KN-01）
 ├── data/knowledge.go             # KnowledgeRepo 实现（PostgreSQL + pgvector raw SQL）
-├── service/knowledge.go          # KnowledgeService（Kratos 传输适配）
+├── service/
+│   ├── knowledge.go              # KnowledgeService（Kratos 传输适配）
+│   ├── knowledge_embedder.go     # Embedder Wire 工厂（EP-KN-01）
+│   └── knowledge_retriever.go    # Retriever + env Reranker（KN-01）
 ├── knowledge/
 │   ├── chunker.go                # 文本分块（char/token 策略）
-│   ├── embedder.go               # 向量化（OpenAI/Ollama）
-│   └── retriever.go              # 检索器（embed + search）
+│   ├── embedder.go               # 向量化（openai/ollama/gemini/huggingface + EmbedBatch）
+│   ├── chunk_strategy.go         # trpc 高级分块桥接
+│   ├── document_extract.go       # PDF/DOCX/HTML 文本提取
+│   ├── ingest.go                 # 分块+向量化流水线
+│   ├── retriever.go              # 检索器（embed + search + optional rerank）
+│   └── reranker_factory.go       # env → trpc reranker（topk/cohere/infinity）
 ├── tools/knowledge/tool.go       # knowledge_search trpc 工具
 └── agent/trpc_build.go           # Agent 装配（KnowledgeSearch 开关）
 ```
@@ -125,6 +134,7 @@ message IngestDocumentRequest {
   string metadata_json = 5;
   int32 chunk_size = 6;       // 0 = 服务端默认 512
   int32 chunk_overlap = 7;    // 0 = 服务端默认 64
+  string chunk_strategy = 8;  // char|token|markdown|json|recursive
 }
 
 message ListDocumentsRequest {
@@ -148,7 +158,14 @@ message SearchRequest {
   int32 top_k = 3;            // default 5
   float min_score = 4;        // 最低相似度阈值（0 = 不过滤）
   string filter_json = 5;     // 可选元数据过滤（JSON）
+  optional bool use_rerank = 6;       // unset = 使用全局 reranker（若已配置）
+  int32 rerank_candidates = 7;        // 重排前向量候选数（0 = 默认 oversample）
 }
+
+message GetEmbedderConfigRequest {}
+message EmbedderConfig { /* provider, base_url, model, dim, configured, has_api_key */ }
+message UpdateEmbedderConfigRequest { /* provider, base_url, api_key, model, dim */ }
+message UpdateEmbedderConfigResponse { EmbedderConfig config = 1; }
 
 message SearchResponse {
   repeated KnowledgeChunk chunks = 1;
@@ -183,6 +200,12 @@ service KnowledgeService {
   // Search
   rpc Search(SearchRequest) returns (SearchResponse) {
     option (google.api.http) = { post: "/v1/knowledge/search" body: "*" };
+  }
+  rpc GetEmbedderConfig(GetEmbedderConfigRequest) returns (EmbedderConfig) {
+    option (google.api.http) = { get: "/v1/knowledge/embedder-config" };
+  }
+  rpc UpdateEmbedderConfig(UpdateEmbedderConfigRequest) returns (UpdateEmbedderConfigResponse) {
+    option (google.api.http) = { put: "/v1/knowledge/embedder-config" body: "*" };
   }
 }
 ```
@@ -233,11 +256,13 @@ type KnowledgeChunk struct {
 }
 
 type KnowledgeSearchQuery struct {
-    CollectionID string
-    Query        string
-    TopK         int
-    MinScore     float32
-    FilterJSON   string      // JSONB 元数据过滤
+    CollectionID     string
+    Query            string
+    TopK             int
+    MinScore         float32
+    FilterJSON       string      // JSONB 元数据过滤
+    UseRerank        *bool       // nil = 全局 reranker 启用时使用
+    RerankCandidates int         // 重排前向量候选上限
 }
 ```
 
@@ -396,9 +421,15 @@ func NewKnowledgeRepoFromData(d *Data) biz.KnowledgeRepo {
 type ChunkStrategy string
 
 const (
-    ChunkByChar  ChunkStrategy = "char"   // 按 N 字符窗口分割
-    ChunkByToken ChunkStrategy = "token"  // 空格分词，近似 Token 计数
+    ChunkByChar      ChunkStrategy = "char"
+    ChunkByToken     ChunkStrategy = "token"
+    ChunkByMarkdown  ChunkStrategy = "markdown"   // trpc MarkdownChunking
+    ChunkByJSON      ChunkStrategy = "json"       // trpc JSONChunking
+    ChunkByRecursive ChunkStrategy = "recursive"  // trpc RecursiveChunking
 )
+
+func ParseChunkStrategy(raw string) ChunkStrategy
+func SplitWithStrategy(strategy ChunkStrategy, text string, size, overlap int) ([]Chunk, error)
 
 type Chunk struct {
     Content    string
@@ -420,11 +451,24 @@ func (c *Chunker) Split(text string) []Chunk
 - `token` 策略：按空格分词后按词数窗口，近似真实 Token 计数。
 - 两者均支持重叠窗口，step = chunk_size - chunk_overlap。
 
-### 5.2 Embedder（internal/knowledge/embedder.go）
+- `char` / `token`：本地 `chunker.go` 实现。
+- `markdown` / `json` / `recursive`：桥接 trpc `chunking/*`（`chunk_strategy.go`）。
+
+### 5.2 文档解析（internal/knowledge/document_extract.go）
+
+```go
+func ExtractDocumentText(raw []byte, source, mimeType string) (string, error)
+```
+
+- PDF / DOCX：trpc `document/reader`（`readers_import.go` 侧载注册）。
+- HTML：`html_text.go` 剥离 script/style 后提取可见文本。
+- 纯文本：UTF-8 直读。
+
+### 5.3 Embedder（internal/knowledge/embedder.go）
 
 ```go
 type Embedder struct {
-    Provider string    // "openai" | "ollama"
+    Provider string    // openai | ollama | gemini | huggingface
     BaseURL  string
     APIKey   string
     Model    string    // 默认 "text-embedding-3-small"
@@ -437,26 +481,45 @@ func (e *Embedder) EmbedBatch(ctx context.Context, texts []string) ([][]float32,
 ```
 
 **设计决策**：
-- `openai` 模式：调用 `/v1/embeddings`，兼容任何 OpenAI-API 服务器。
-- `ollama` 模式：调用 `/api/embeddings`，适合本地部署。
-- `EmbedBatch` 逐条调用（非真正批量），后续可优化为批量 API。
-- Wire 工厂 `NewKnowledgeEmbedder()` 当前硬编码空配置（EP-KN-01）。
+- `openai`：`POST /v1/embeddings`，`EmbedBatch` 单次最多 32 条 input。
+- `ollama`：`POST /api/embeddings`，逐条调用。
+- `gemini`：`google.golang.org/genai` `EmbedContent`，批量 contents。
+- `huggingface`：TEI `POST /embed`，`inputs` 数组批量。
+- Wire 工厂 `NewKnowledgeEmbedder(c, SystemSettingRepo)`：env → DB → provider 默认 key（EP-KN-01 ✅）。
+- `PersistKnowledgeEmbed` / `UpdateEmbedderConfig` 写回 `system_settings`；`biz/knowledge_embed_setting.go` 负责 patch 合并。
 
-### 5.3 Retriever（internal/knowledge/retriever.go）
+### 5.4 Retriever（internal/knowledge/retriever.go）
 
 ```go
 type Retriever struct {
-    embedder *Embedder
+    embedder QueryEmbedder
     repo     biz.KnowledgeRepo
+    reranker reranker.Reranker  // 可选，来自 NewRerankerFromEnv
 }
 
-func NewRetriever(embedder *Embedder, repo biz.KnowledgeRepo) *Retriever
+func NewRetriever(embedder QueryEmbedder, repo biz.KnowledgeRepo, rr reranker.Reranker) *Retriever
 func (r *Retriever) Search(ctx context.Context, q biz.KnowledgeSearchQuery) ([]biz.KnowledgeChunk, error)
 ```
 
 **设计决策**：
-- Retriever 封装了"嵌入查询 → 向量搜索"两步，供 `knowledge_search` 工具使用。
+- Retriever 封装「嵌入查询 → 向量搜索 → 可选 Rerank」三步。
+- Rerank 失败时 FlowLog 警告并回退向量排序（`knowledge.rerank.fallback`）。
 - 通过 `knowledgetool.WithRetriever(ctx, retriever)` 注入到工具上下文。
+
+### 5.5 Ingest 流水线（internal/knowledge/ingest.go）
+
+```go
+func BuildIndexedChunks(ctx context.Context, embedder QueryEmbedder, p IngestParams) ([]biz.KnowledgeChunk, error)
+```
+
+**设计决策**：
+- Service：`ExtractDocumentText` → 异步 `BuildIndexedChunks` → Event Bus。
+- `IngestParams.Strategy` 驱动 `SplitWithStrategy`；`BatchEmbedder.EmbedBatch` 批量向量化。
+
+### 5.6 Reranker 工厂（internal/knowledge/reranker_factory.go）
+
+环境变量 `KRATOS_KNOWLEDGE_RERANKER`：`off` | `topk` | `cohere` | `infinity`。
+Wire 经 `NewKnowledgeRetriever` 装配；配置错误时 SysLog 警告并禁用 rerank。
 
 ---
 
@@ -512,9 +575,11 @@ cfg.KnowledgeSearch = eff[biz.ToolKeyKnowledgeSearch]  // "knowledge_search"
 ```go
 type KnowledgeService struct {
     v1.UnimplementedKnowledgeServiceServer
-    uc       *biz.KnowledgeUsecase
-    chunker  *knowledge.Chunker
-    embedder *knowledge.Embedder
+    uc         *biz.KnowledgeUsecase
+    chunker    *knowledge.Chunker
+    embedder   *knowledge.Embedder
+    retriever  *knowledge.Retriever
+    bus        event.Bus
 }
 ```
 
@@ -523,8 +588,9 @@ type KnowledgeService struct {
 | 方法 | 说明 |
 |------|------|
 | `CreateCollection` | 参数校验 → `uc.CreateCollection` |
-| `IngestDocument` | base64 解码 → 创建文档记录 → `safego.Go` 异步分块+向量化 |
-| `Search` | `embedder.Embed` 查询 → `uc.Search` → Prometheus 计时 |
+| `IngestDocument` | base64 解码 → 创建文档 → `safego.Go` → `BuildIndexedChunks` → 发布 `knowledge_ingest` 事件 |
+| `Search` | `retriever.Search`（含可选 rerank）→ Prometheus 计时 |
+| `GetEmbedderConfig` / `UpdateEmbedderConfig` | 脱敏读取 / 运行时更新 Embedder（EP-KN-01） |
 | `DeleteCollection` | 级联删除（数据库 CASCADE） |
 | `DeleteDocument` | 级联删除（数据库 CASCADE） |
 
@@ -532,14 +598,10 @@ type KnowledgeService struct {
 
 ```
 IngestDocument(req)
-  ├── base64.Decode(req.content_base64)
-  ├── uc.CreateDocument(status=pending) → 返回 Document
-  └── safego.Go("knowledge-ingest")
-        ├── chunker.Split(text)
-        ├── for each chunk: embedder.Embed(content)
-        ├── uc.InsertChunks(chunks)
-        ├── uc.UpdateDocumentStatus(indexed, chunkCount)
-        └── uc.UpdateCollectionCounts(docDelta=1, chunkDelta=N)
+  ├── base64.Decode → ExtractDocumentText(source/mime)
+  ├── NormalizeMetadataJSON
+  ├── uc.CreateDocument(status=pending)
+  └── safego.Go → BuildIndexedChunks(strategy, EmbedBatch) → InsertChunks
 ```
 
 **错误处理**：任何步骤失败 → `UpdateDocumentStatus(error, errMsg)` → goroutine 退出。
@@ -547,17 +609,10 @@ IngestDocument(req)
 ### 7.3 Wire 注入
 
 ```go
-// internal/service/wire_providers.go
-func NewKnowledgeChunker() *knowledge.Chunker {
-    return knowledge.NewChunker(512, 64, knowledge.ChunkByChar)
-}
-
-func NewKnowledgeEmbedder() *knowledge.Embedder {
-    return knowledge.NewEmbedder("", "", "", "", 1536)
-}
+// internal/service/wire_providers.go — Chunker 默认 512/64 char
+// internal/service/knowledge_embedder.go — NewKnowledgeEmbedder(c *conf.Data)
+// internal/service/knowledge_retriever.go — NewKnowledgeRetriever(emb, repo)
 ```
-
-**待改进**（EP-KN-01）：Embedder 配置应从 conf/env 注入，而非硬编码默认值。
 
 ---
 
@@ -565,26 +620,21 @@ func NewKnowledgeEmbedder() *knowledge.Embedder {
 
 ### 8.1 API 层（web/src/features/knowledge/api.ts）
 
-通过 `createKnowledgeService()` 生成 Kratos 客户端，提供：
-
 | 函数 | 说明 |
 |------|------|
-| `listCollections` | 列出集合 |
-| `getCollection` | 获取单个集合 |
-| `createCollection` | 创建集合 |
-| `deleteCollection` | 删除集合 |
-| `listDocuments` | 列出文档 |
-| `ingestDocument` | 上传文档 |
-| `deleteDocument` | 删除文档 |
+| `listCollections` / `getCollection` / `createCollection` / `deleteCollection` | 集合 CRUD |
+| `listDocuments` / `ingestDocument` / `deleteDocument` | 文档 CRUD |
 | `searchKnowledge` | 语义搜索 |
+| `getEmbedderConfig` / `updateEmbedderConfig` | Embedder 管理 |
 
-### 8.2 Store 层（web/src/stores/knowledge/index.ts）
+### 8.2 Store 与页面
 
-Pinia Store `useKnowledgeStore` 管理：
-- `collections` / `collectionsTotal` — 集合列表
-- `documentsByCollection` — 按集合 ID 索引的文档
-- `loading` — 加载状态
-- 完整 CRUD + search 操作
+| 路径 | 说明 |
+|------|------|
+| `web/src/stores/knowledge/index.ts` | Pinia Store |
+| `web/src/pages/KnowledgePage.vue` | 管理页（路由 `/knowledge`） |
+| `web/src/components/knowledge/*` | 集合列表、文档、检索、Embedder、入库对话框 |
+| `web/src/features/knowledge/useKnowledgeIngestWs.ts` | WS 入库进度（EP-KN-02） |
 
 ---
 
@@ -618,13 +668,15 @@ Factory 负责根据配置构建 `knowledge.Knowledge` 实例：创建 Embedder�
 
 ### 9.4 Reranker
 
+✅ 已实现：`reranker_factory.go` + Retriever 集成（KN-01）。以下为扩展方向：
+
 ```go
 type Reranker interface {
     Rerank(ctx context.Context, query string, documents []string) ([]ScoredDocument, error)
 }
 ```
 
-可选实现：TopK（简单截断）、Cohere、Infinity。
+可选扩展：请求级 rerank 策略选择、FlowLog 指标化。
 
 ### 9.5 AgenticFilter
 
@@ -651,7 +703,13 @@ SearchFilter 增加 `tenant_id`，向量存储按租户分区，API 层强制注
 | `internal/service/knowledge.go` | ✅ 已实现 | Knowledge Service |
 | `internal/knowledge/chunker.go` | ✅ 已实现 | 文本分块 |
 | `internal/knowledge/embedder.go` | ✅ 已实现 | 向量化 |
-| `internal/knowledge/retriever.go` | ✅ 已实现 | 检索器 |
+| `internal/knowledge/ingest.go` | ✅ 已实现 | 分块+向量化流水线 |
+| `internal/knowledge/retriever.go` | ✅ 已实现 | 检索 + 可选 rerank |
+| `internal/knowledge/reranker_factory.go` | ✅ 已实现 | env Reranker 工厂 |
+| `internal/service/knowledge_embedder.go` | ✅ 已实现 | Embedder Wire + DB 回落（EP-KN-01） |
+| `internal/biz/knowledge_embed_setting.go` | ✅ 已实现 | Embedder patch 合并 |
+| `api/kratos/system_setting/v1/system_setting.proto` | ✅ 已实现 | `KnowledgeEmbedSettings` |
+| `internal/service/knowledge_retriever.go` | ✅ 已实现 | Retriever Wire（KN-01） |
 | `internal/tools/knowledge/tool.go` | ✅ 已实现 | knowledge_search 工具 |
 | `internal/agent/trpc_build.go` | ✅ 已修改 | KnowledgeSearch 开关 |
 | `internal/biz/agent_mcp_effective.go` | ✅ 已修改 | ToolKeyKnowledgeSearch |

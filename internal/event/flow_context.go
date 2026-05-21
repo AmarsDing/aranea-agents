@@ -91,14 +91,30 @@ func NewFlowLogger(bus Bus, buffer *Buffer, sessionID, agentKey string) *TraceEm
 	return NewTraceEmitter(bus, buffer, tc)
 }
 
-// NewTraceEmitterForRun creates an emitter with full trace context for a chat turn.
-func NewTraceEmitterForRun(ctx context.Context, bus Bus, buffer *Buffer, sessionID, runID, agentKey, agentID string) *TraceEmitter {
-	tc := NewTraceContext(ctx, TraceOpts{
-		SessionID: sessionID,
-		RunID:     runID,
-		Domain:    TraceDomainChat,
-		AgentKey:  agentKey,
-		AgentID:   agentID,
+// TraceEmitterOpts configures a run-scoped TraceEmitter.
+type TraceEmitterOpts struct {
+	Ctx       context.Context
+	Bus       Bus
+	Buffer    *Buffer
+	SessionID string
+	RunID     string
+	AgentKey  string
+	AgentID   string
+	Domain    TraceDomain
+}
+
+// NewTraceEmitterForRun creates an emitter with full trace context for a run.
+func NewTraceEmitterForRun(opts TraceEmitterOpts) *TraceEmitter {
+	domain := opts.Domain
+	if domain == "" {
+		domain = TraceDomainChat
+	}
+	tc := NewTraceContext(opts.Ctx, TraceOpts{
+		SessionID: opts.SessionID,
+		RunID:     opts.RunID,
+		Domain:    domain,
+		AgentKey:  opts.AgentKey,
+		AgentID:   opts.AgentID,
 	})
-	return NewTraceEmitter(bus, buffer, tc)
+	return NewTraceEmitter(opts.Bus, opts.Buffer, tc)
 }

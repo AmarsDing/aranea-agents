@@ -12,10 +12,11 @@ import (
 )
 
 type sensitiveMaskConfig struct {
-	MaskEmail       bool `json:"mask_email"`
-	MaskPhone       bool `json:"mask_phone"`
-	MaskSecret      bool `json:"mask_secret"`
-	BlockLeakOutput bool `json:"block_leak_output"`
+	MaskEmail       bool            `json:"mask_email"`
+	MaskPhone       bool            `json:"mask_phone"`
+	MaskSecret      bool            `json:"mask_secret"`
+	CustomPatterns  []customPattern `json:"custom_patterns"`
+	BlockLeakOutput bool            `json:"block_leak_output"`
 }
 
 type SensitiveDataMaskPlugin struct {
@@ -50,9 +51,9 @@ func (s *SensitiveDataMaskPlugin) beforeModel(ctx context.Context, args *trpcmod
 	}
 	msgCount := len(args.Request.Messages)
 	for i := range args.Request.Messages {
-		args.Request.Messages[i].Content = redactText(
+		args.Request.Messages[i].Content = redactTextFull(
 			args.Request.Messages[i].Content,
-			s.cfg.MaskEmail, s.cfg.MaskPhone, s.cfg.MaskSecret,
+			s.cfg.MaskEmail, s.cfg.MaskPhone, s.cfg.MaskSecret, s.cfg.CustomPatterns,
 		)
 	}
 	s.logger.Info("plugin.sensitive_mask.before_model", "status", "ok", "messages", msgCount, "mask_email", s.cfg.MaskEmail, "mask_phone", s.cfg.MaskPhone, "mask_secret", s.cfg.MaskSecret)
@@ -77,7 +78,7 @@ func (s *SensitiveDataMaskPlugin) afterModel(ctx context.Context, args *trpcmode
 			CustomResponse: blockedModelResponse("sensitive_data_mask: possible secret leak in model output"),
 		}, nil
 	}
-	masked := redactText(text, s.cfg.MaskEmail, s.cfg.MaskPhone, s.cfg.MaskSecret)
+	masked := redactTextFull(text, s.cfg.MaskEmail, s.cfg.MaskPhone, s.cfg.MaskSecret, s.cfg.CustomPatterns)
 	if masked != text {
 		applyResponseText(args.Response, masked)
 		s.logger.Info("plugin.sensitive_mask.after_model", "status", "ok", "masked", true)

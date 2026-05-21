@@ -1,6 +1,16 @@
 # MCP 服务器管理
 
-本文档描述 **Model Context Protocol（MCP）服务器** 在控制台中的 **列表、CRUD、状态灯、添加/编辑表单** 的 UI 设计，以及 **数据库表字段** 与 **API** 建议。前端实现建议采用 **Quasar（Vue 3）**，与 **`18 monitor.md`** 控制台风格一致。
+> **2026-05-21 现状对齐**：
+> - ✅ 控制台 CRUD + 测试连接 + 状态灯（`metadata_json.health_*`）。
+> - ✅ API：`/v1/mcp-servers`（`MCPServerService`）；存储为 `mcp_server` + `config_json` / `metadata_json` 拆分（非扁平列）。
+> - ✅ 运行时装配：`AgentMCPTooling` → `tool_assembly.resolveMCPServers` → `tools.buildMCPToolSet` / `buildMCPBrokerTools`。
+> - ✅ 后台探活：`internal/mcp/health`；OAuth2 静态/Client Credentials/Refresh（`config_json.auth`）。
+> - 🟡 `mcp_call_count` 会话统计已有字段与分类逻辑，与全链路验收待补。
+> - ❌ 按用户动态凭据（`require_user_credentials`）独立配置页未实现。
+>
+> 进度以 [19-mcp-development.md](./19-mcp-development.md) 与 [execution-plan.md](../guides/execution-plan.md) 为准。
+
+本文档描述 **Model Context Protocol（MCP）服务器** 在控制台中的 **列表、CRUD、状态灯、添加/编辑表单** 的 UI 设计，以及 **持久化模型** 与 **HTTP API**。前端采用 **Quasar（Vue 3）**，与 Monitor 控制台风格一致。
 
 ---
 
@@ -84,8 +94,8 @@
 
 | 字段（逻辑名） | 控件 | 必填 | 校验 / 说明 |
 |----------------|------|------|-------------|
-| `name` | `QInput` | 是 | **Slug**：仅小写字母、数字、连字符；租户内唯一；占位示例 `my-mcp-server` |
-| `display_name` | `QInput` | 否 | 展示用，如 `sqlserver` |
+| `name`（表单）→ API `key` | `QInput` | 是 | **Slug**：仅小写字母、数字、连字符；平台内唯一；占位 `my-mcp-server` |
+| `display_name`（表单）→ API `name` | `QInput` | 否 | 展示用，如 `SQL Server` |
 | `transport` | **`QBtnToggle`** 或 `QOptionGroup` `inline` | 是 | **`stdio`** \| **`sse`** \| **`streamable_http`**（界面对应 Streamable HTTP） |
 | `url` | `QInput` | `sse`/`streamable_http` 必填 | HTTP(S) URL；**服务端 SSRF 校验**（截图错误示例：`resolve "mysql": no such host`） |
 | `command` / `args` | `QInput` + 多行或数组编辑 | `stdio` 时必填 | 可执行路径与参数；无 URL |
@@ -116,48 +126,63 @@
 
 ---
 
-## 4. 数据库设计
+## 4. 持久化模型（实现对齐）
 
-### 4.1 表：`mcp_server`（主表）
+### 4.1 表：`mcp_server`
 
-| 字段名 | 类型 | 约束 | 说明 |
-|--------|------|------|------|
-| `id` | BIGSERIAL / UUID | PK | |
-| `tenant_id` | BIGINT | NULL, INDEX | 多租户时 NOT NULL |
-| `name` | VARCHAR(64) | NOT NULL, UNIQUE(tenant_id, name) | Slug，小写+数字+连字符 |
-| `display_name` | VARCHAR(128) | NULL | |
-| `transport` | VARCHAR(32) | NOT NULL | `stdio` `sse` `streamable_http` |
-| `url` | VARCHAR(2048) | NULL | `sse` / `streamable_http` 使用 |
-| `command` | VARCHAR(512) | NULL | `stdio`：可执行文件路径 |
-| `args` | JSONB | NULL | `stdio`：参数数组 |
-| `headers` | JSONB | NOT NULL, DEFAULT `{}` | 请求头键值；**值敏感时加密或引用凭据表** |
-| `env` | JSONB | NOT NULL, DEFAULT `{}` | 子进程/客户端环境变量 |
-| `tool_prefix` | VARCHAR(128) | NULL | 空则服务端按 `name` 派生 |
-| `timeout_sec` | INT | NOT NULL, DEFAULT 60 | |
-| `enabled` | BOOLEAN | NOT NULL, DEFAULT TRUE | |
-| `require_user_credentials` | BOOLEAN | NOT NULL, DEFAULT FALSE | |
-| `health_status` | VARCHAR(16) | NULL | `ok` `error` `unknown` `degraded` |
-| `last_health_at` | TIMESTAMPTZ | NULL | 最近一次探活/测试时间 |
-| `last_error_message` | VARCHAR(2048) | NULL | 最近一次失败摘要（列表状态灯 Tooltip） |
-| `created_at` / `updated_at` | TIMESTAMPTZ | NOT NULL | |
-| `created_by` / `updated_by` | BIGINT | NULL | |
+| 列 | 说明 |
+|----|------|
+| `id` | 主键（随机 hex） |
+| `server_key` | Slug，对应表单 `name`、API `key`；Agent 策略前缀 `mcp:<server_key>` |
+| `name` | 展示名，对应表单 `display_name` |
+| `description` | 描述 |
+| `status` | `active` / `error` / `deleted`（探活失败时可为 `error`） |
+| `enabled` | 是否启用 |
+| `sort_order` | 排序 |
+| `config_json` | 连接配置（见下） |
+| `metadata_json` | 健康与重连元数据（见下） |
+| `created_at` / `updated_at` / `deleted_at` | 软删除时间戳 |
 
-**说明**：若 `headers` 含密钥，生产环境建议 **应用层加密** 或拆 **`mcp_server_secret`** 表（见 `17 channel.md` 凭据思路）。
+### 4.2 `config_json` 字段（逻辑）
+
+| 字段 | 说明 |
+|------|------|
+| `transport` | `stdio` \| `sse` \| `streamable_http` |
+| `url` / `command` / `args` | 按传输类型二选一 |
+| `headers` / `env` | 键值对 |
+| `auth` | `api_key` / `oauth2_*`（运行时注入 Authorization） |
+| `tool_prefix` | MCP 工具名前缀 |
+| `timeout_sec` | 默认 60s，传入 trpc `ConnectionConfig.Timeout` |
+| `session_reconnect_max` | SSE/Streamable 重连次数（0=关闭） |
+| `allow_adhoc_http` | Broker AdHoc，需叠加系统设置 `mcp_allow_adhoc_http` |
+| `require_user_credentials` | 产品标记；按用户凭据页待实现 |
+
+### 4.3 `metadata_json` 字段（逻辑）
+
+| 字段 | 说明 |
+|------|------|
+| `health_status` | `ok` / `error` / `unknown` |
+| `last_health_at` | RFC3339 |
+| `last_error_message` | 列表状态灯 Tooltip |
+| `last_reconnect_at` / `reconnect_count` | `mcpobserve` 重连可观测 |
+
+**说明**：敏感 `headers` / `auth` 不落日志明文；列表 API 可对值脱敏。
 
 
 ---
 
-## 5. API 建议
+## 5. API（已实现）
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/mcp-servers` | 列表 + 查询参数 `q` |
-| GET | `/mcp-servers/:id` | 详情（编辑预填） |
-| POST | `/mcp-servers` | 创建 |
-| PATCH | `/mcp-servers/:id` | 更新 |
-| DELETE | `/mcp-servers/:id` | 删除 |
-| POST | `/mcp-servers/:id/test` | 测试连接（不必须落库 health） |
-| POST | `/mcp-servers/validate` | 可选：仅校验 URL/SSRF，创建前预检 |
+| GET | `/v1/mcp-servers` | 列表（前端本地 `q` 过滤） |
+| GET | `/v1/mcp-servers/{id}` | 详情 |
+| POST | `/v1/mcp-servers` | 创建（`key` + `name` 必填） |
+| PATCH | `/v1/mcp-servers/{id}` | 更新（body `mcp_server`） |
+| DELETE | `/v1/mcp-servers/{id}` | 软删除 |
+| POST | `/v1/mcp-servers/{id}/test` | 探活并写入 `metadata_json` |
+
+可选预检 `POST /v1/mcp-servers/validate` **未实现**；创建前依赖「测试连接」或保存后 Test。
 
 ---
 
@@ -185,4 +210,4 @@
 
 ---
 
-*文档版本：1.3 — 2026-05-18 文档治理：§9 运行时实现与 §10 trpc 对齐需求迁移至 `19-mcp-development.md`，需求文档仅保留功能规格与运维指南。*
+*文档版本：1.4 — 2026-05-21 与 PlatformResource + config/metadata JSON 存储对齐；运行时装配见 `19 mcp.design.md`。*

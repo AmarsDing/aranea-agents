@@ -34,6 +34,16 @@ func ensureAgentRuntimePatches(ctx context.Context, c *ent.Client) error {
 		{"workspace", `ALTER TABLE agent_runtime_settings ADD COLUMN workspace TEXT NOT NULL DEFAULT ''`},
 		{"reasoning_mode", `ALTER TABLE agent_runtime_settings ADD COLUMN reasoning_mode TEXT NOT NULL DEFAULT 'provider_default'`},
 		{"reasoning_level", `ALTER TABLE agent_runtime_settings ADD COLUMN reasoning_level TEXT NOT NULL DEFAULT 'off'`},
+		{"code_executor_type", `ALTER TABLE agent_runtime_settings ADD COLUMN code_executor_type TEXT NOT NULL DEFAULT 'local'`},
+		{"planner_kind", `ALTER TABLE agent_runtime_settings ADD COLUMN planner_kind TEXT NOT NULL DEFAULT ''`},
+		{"planner_config_json", `ALTER TABLE agent_runtime_settings ADD COLUMN planner_config_json TEXT NOT NULL DEFAULT '{}'`},
+		{"ralph_loop_max_iterations", `ALTER TABLE agent_runtime_settings ADD COLUMN ralph_loop_max_iterations INTEGER NOT NULL DEFAULT 0`},
+		{"ralph_loop_completion_promise", `ALTER TABLE agent_runtime_settings ADD COLUMN ralph_loop_completion_promise TEXT NOT NULL DEFAULT ''`},
+		{"ralph_loop_verify_command", `ALTER TABLE agent_runtime_settings ADD COLUMN ralph_loop_verify_command TEXT NOT NULL DEFAULT ''`},
+		{"ralph_loop_verify_timeout_seconds", `ALTER TABLE agent_runtime_settings ADD COLUMN ralph_loop_verify_timeout_seconds INTEGER NOT NULL DEFAULT 0`},
+		{"ralph_loop_promise_tag_open", `ALTER TABLE agent_runtime_settings ADD COLUMN ralph_loop_promise_tag_open TEXT NOT NULL DEFAULT ''`},
+		{"ralph_loop_promise_tag_close", `ALTER TABLE agent_runtime_settings ADD COLUMN ralph_loop_promise_tag_close TEXT NOT NULL DEFAULT ''`},
+		{"ralph_loop_verify_work_dir", `ALTER TABLE agent_runtime_settings ADD COLUMN ralph_loop_verify_work_dir TEXT NOT NULL DEFAULT ''`},
 	}
 	for _, p := range patches {
 		has, err := sqliteColumnExists(ctx, c, "agent_runtime_settings", p.col)

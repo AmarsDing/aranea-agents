@@ -41,6 +41,9 @@
     <q-card-actions align="between" class="team-card__actions">
       <span class="team-card__foot-meta text-caption">成员 {{ definition.members.length }} · {{ formatDate(team.updated_at) }}</span>
       <div class="q-gutter-xs">
+        <q-btn flat dense round color="primary" icon="science" @click="$emit('runTest', team)">
+          <q-tooltip>运行测试（API）</q-tooltip>
+        </q-btn>
         <q-btn flat dense round color="primary" icon="play_arrow" :to="`/chat?team=${team.id}`">
           <q-tooltip>进入 Chat 测试</q-tooltip>
         </q-btn>
@@ -70,6 +73,7 @@ const props = defineProps<{
 defineEmits<{
   copyKey: [value: string];
   openRuns: [team: Team];
+  runTest: [team: Team];
   duplicate: [team: Team];
   edit: [team: Team];
   remove: [team: Team];

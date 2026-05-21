@@ -8,6 +8,7 @@ import (
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	"aranea-agents/internal/biz"
+	localexec "aranea-agents/internal/agent/codeexecutor"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/knowledge"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
@@ -29,6 +30,7 @@ type Runner struct {
 	runs              *rt.RunRegistry
 	awaitHookProvider    func(runCtx context.Context, sessionID, runID string) tooltrpc.ReplyFunc
 	knowledgeRetriever   *knowledge.Retriever
+	codeExecFactory      *localexec.Factory
 }
 
 func NewRunner(
@@ -48,6 +50,7 @@ func NewRunner(
 	pluginRT *plugintrpc.Runtime,
 	pluginManager *plugintrpc.Manager,
 	skillDBRepo trpcskill.Repository,
+	codeExecFactory *localexec.Factory,
 ) *Runner {
 	return &Runner{
 		teams:         teams,
@@ -55,6 +58,7 @@ func NewRunner(
 		pluginRT:      pluginRT,
 		pluginManager: pluginManager,
 		skillDBRepo:   skillDBRepo,
+		codeExecFactory: codeExecFactory,
 		td: rt.TurnDeps{
 			Catalog: rt.Catalog{
 				Agents:   agents,
