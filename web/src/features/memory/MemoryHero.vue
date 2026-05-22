@@ -1,3 +1,4 @@
+// Container: approved — feature-local panel/dialog; data from Page composable via props.
 <template>
   <section class="memory-hero">
     <div>

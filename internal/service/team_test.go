@@ -70,12 +70,13 @@ func (m *memTeamRepo) CreateTeamRun(_ context.Context, r biz.TeamRun) (biz.TeamR
 }
 func (m *memTeamRepo) UpdateTeamRun(_ context.Context, _ biz.TeamRun) error { return nil }
 func (m *memTeamRepo) UpdateTeamRunSummaryJSON(_ context.Context, _, _ string) error { return nil }
+func (m *memTeamRepo) UpdateTeamRunGraphExecutionID(_ context.Context, _, _ string) error { return nil }
 func (m *memTeamRepo) CreateTeamRunStep(_ context.Context, s biz.TeamRunStep) (biz.TeamRunStep, error) {
 	return s, nil
 }
 
 func newTeamService() *service.TeamService {
-	return service.NewTeamService(biz.NewTeamUsecase(newMemTeamRepo()), nil, nil, nil, nil)
+	return service.NewTeamService(biz.NewTeamUsecase(newMemTeamRepo()), nil, nil, nil, nil, nil)
 }
 
 func TestTeamService_CreateListGetDelete(t *testing.T) {

@@ -92,4 +92,5 @@ profile.cov
 /output/
 /node_modules
 /.gocache
+/workspace
 

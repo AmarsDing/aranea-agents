@@ -1,6 +1,6 @@
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { listMonitorAudit, listMonitorEvents, listMonitorTraceEvents } from "./api";
+import { useMonitorStore } from "../../stores/monitor";
 import type { AuditLog, ModelUsageQuery, MonitorTraceEvent, PlatformResource } from "./types";
 
 const VALID_TABS = ["usage", "alerts", "audit", "events", "traces", "logs"] as const;
@@ -8,6 +8,7 @@ const VALID_TABS = ["usage", "alerts", "audit", "events", "traces", "logs"] as c
 export function useMonitorPage() {
   const route = useRoute();
   const router = useRouter();
+  const monitorStore = useMonitorStore();
   const initialTab = String(route.query.tab || "usage");
   const tab = ref(VALID_TABS.includes(initialTab as (typeof VALID_TABS)[number]) ? initialTab : "usage");
   const highlightUsageEventId = ref(String(route.query.usage_event_id || "").trim());
@@ -85,7 +86,7 @@ export function useMonitorPage() {
   async function loadAudit() {
     loadingAudit.value = true;
     try {
-      const result = await listMonitorAudit({ limit: 200 });
+      const result = await monitorStore.fetchAuditPage({ limit: 200 });
       auditRows.value = result.items;
       auditTotal.value = result.total;
     } finally {
@@ -96,7 +97,7 @@ export function useMonitorPage() {
   async function loadEvents() {
     loadingEvents.value = true;
     try {
-      events.value = await listMonitorEvents();
+      events.value = await monitorStore.fetchMonitorEvents();
     } finally {
       loadingEvents.value = false;
     }
@@ -105,7 +106,7 @@ export function useMonitorPage() {
   async function loadTraces() {
     loadingTraces.value = true;
     try {
-      traces.value = await listMonitorTraceEvents({ ...filters, limit: 100 });
+      traces.value = await monitorStore.fetchTraceEvents({ ...filters, limit: 100 });
     } finally {
       loadingTraces.value = false;
     }

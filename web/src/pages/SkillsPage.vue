@@ -75,147 +75,49 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
-import { useQuasar } from "quasar";
 import SkillDeleteDialog from "../components/skills/SkillDeleteDialog.vue";
 import SkillEditorDialog from "../components/skills/SkillEditorDialog.vue";
 import SkillFilterBar from "../components/skills/SkillFilterBar.vue";
 import SkillPagination from "../components/skills/SkillPagination.vue";
 import SkillTable from "../components/skills/SkillTable.vue";
 import SkillUploadPlaceholder from "../components/skills/SkillUploadPlaceholder.vue";
-import {
-  applySkillImport,
-  deleteSkill,
+import { useSkillsPage } from "../features/skills/useSkillsPage";
+
+const {
+  uploadRef,
+  openUpload,
+  search,
+  enabled,
+  status,
+  page,
+  pageSize,
+  rows,
+  total,
+  loading,
+  error,
+  togglingId,
+  publishingId,
+  deleteOpen,
+  deleteTarget,
+  deleting,
+  editorOpen,
+  editorTarget,
+  pageMax,
+  loadRows,
+  resetFilters,
+  onPublishSkill,
+  onToggleEnabled,
+  openEditor,
+  confirmDelete,
+  deleteTargetSkill,
+  uploadSkillZip,
   getSkillImportJob,
-  listSkillFiles,
-  listSkills,
-  publishSkill,
-  readSkillFile,
   refineSkillConflictGroup,
-  toggleSkillEnabled,
-  updateSkillFile,
-  uploadSkillZip
-} from "../features/skills/api";
-import type { Skill } from "../features/skills/types";
-
-const uploadRef = ref<{ openDialog: () => void } | null>(null);
-
-function openUpload() {
-  uploadRef.value?.openDialog();
-}
-
-const $q = useQuasar();
-const search = ref("");
-const enabled = ref<boolean | null>(null);
-const status = ref("");
-const page = ref(1);
-const pageSize = ref(20);
-const rows = ref<Skill[]>([]);
-const total = ref(0);
-const loading = ref(false);
-const error = ref("");
-const togglingId = ref("");
-const publishingId = ref("");
-const deleteOpen = ref(false);
-const deleteTarget = ref<Skill | null>(null);
-const deleting = ref(false);
-const editorOpen = ref(false);
-const editorTarget = ref<Skill | null>(null);
-
-const pageMax = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
-
-async function loadRows() {
-  loading.value = true;
-  error.value = "";
-  try {
-    const data = await listSkills({
-      search: search.value,
-      enabled: enabled.value,
-      status: status.value,
-      page: page.value,
-      page_size: pageSize.value
-    });
-    rows.value = data.items;
-    total.value = data.total;
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : "加载 Skill 失败";
-  } finally {
-    loading.value = false;
-  }
-}
-
-function resetFilters() {
-  search.value = "";
-  enabled.value = null;
-  status.value = "";
-  page.value = 1;
-  void loadRows();
-}
-
-async function onPublishSkill(skill: Skill) {
-  publishingId.value = skill.id;
-  try {
-    const updated = await publishSkill(skill.id);
-    rows.value = rows.value.map((row) => (row.id === updated.id ? updated : row));
-    $q.notify({ type: "positive", message: "Skill 已发布；请在列表中打开「启用」以便 Agent 运行时挂载" });
-  } catch (err) {
-    $q.notify({ type: "negative", message: err instanceof Error ? err.message : "发布失败" });
-  } finally {
-    publishingId.value = "";
-  }
-}
-
-async function onToggleEnabled(skill: Skill, next: boolean) {
-  togglingId.value = skill.id;
-  try {
-    const updated = await toggleSkillEnabled(skill.id, next);
-    rows.value = rows.value.map((row) => (row.id === updated.id ? updated : row));
-    $q.notify({ type: "positive", message: next ? "Skill 已启用" : "Skill 已停用" });
-  } catch (err) {
-    $q.notify({ type: "negative", message: err instanceof Error ? err.message : "更新启用状态失败" });
-  } finally {
-    togglingId.value = "";
-  }
-}
-
-function openEditor(skill: Skill) {
-  editorTarget.value = skill;
-  editorOpen.value = true;
-}
-
-function confirmDelete(skill: Skill) {
-  deleteTarget.value = skill;
-  deleteOpen.value = true;
-}
-
-async function deleteTargetSkill() {
-  if (!deleteTarget.value) return;
-  deleting.value = true;
-  try {
-    await deleteSkill(deleteTarget.value.id);
-    deleteOpen.value = false;
-    $q.notify({ type: "positive", message: "Skill 已删除" });
-    await loadRows();
-    if (rows.value.length === 0 && page.value > 1) {
-      page.value -= 1;
-      await loadRows();
-    }
-  } catch (err) {
-    $q.notify({ type: "negative", message: err instanceof Error ? err.message : "删除失败" });
-  } finally {
-    deleting.value = false;
-  }
-}
-
-watch([search, enabled, status], () => {
-  page.value = 1;
-  void loadRows();
-});
-watch([page, pageSize], () => {
-  void loadRows();
-});
-
-onMounted(loadRows);
+  applySkillImport,
+  listSkillFiles,
+  readSkillFile,
+  updateSkillFile
+} = useSkillsPage();
 </script>
 
 <style scoped lang="sass">

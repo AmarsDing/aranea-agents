@@ -210,7 +210,10 @@ func (s *ChatService) runSingleAgentViaTRPC(
 	// Apply a turn-level timeout so a hanging LLM call does not block the
 	// HTTP caller indefinitely. If the parent context already has a shorter
 	// deadline we keep it as-is.
-	const firstByteTimeout = 30 * time.Second
+	firstByteTimeout := 30 * time.Second
+	if custom, ok := firstByteTimeoutFromContext(ctx); ok {
+		firstByteTimeout = custom
+	}
 	if deadline, hasDeadline := ctx.Deadline(); !hasDeadline || time.Until(deadline) > defaultTurnTimeout {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, defaultTurnTimeout)

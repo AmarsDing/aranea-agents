@@ -22,12 +22,14 @@ func AssemblyForCatalogKey(key string, merged map[string]any) (tools.AssemblyCon
 	switch key {
 	case toolKeyKnowledgeSearch, toolKeyCallAgent, toolKeyMCPToolSet, toolKeyMCPBroker:
 		return tools.AssemblyConfig{}, false
-	case "read_file", "read_multiple_files", "save_file", "list_file", "search_file", "search_content", "replace_content":
+	case "read_file", "read_multiple_files", "save_file", "list_file", "search_file", "search_content", "replace_content", "diff_edit", "patch_file":
 		cfg := tools.AssemblyConfig{EnabledTools: []string{"file"}}
 		applyFilesystemDir(&cfg, merged)
 		return cfg, true
 	case "shell_exec":
-		return tools.AssemblyConfig{EnabledTools: []string{"hostexec"}}, true
+		cfg := tools.AssemblyConfig{EnabledTools: []string{"hostexec"}}
+		applyShellExecDir(&cfg, merged)
+		return cfg, true
 	case "web_fetch":
 		return tools.AssemblyConfig{EnabledTools: []string{"httpfetch"}}, true
 	case "duckduckgo_search":
@@ -64,7 +66,7 @@ func AssemblyForCatalogKey(key string, merged map[string]any) (tools.AssemblyCon
 		}
 		return cfg, true
 	case "workspace_exec":
-		return tools.AssemblyConfig{EnabledTools: []string{"workspace_exec"}}, true
+		return tools.AssemblyConfig{}, false
 	default:
 		return tools.AssemblyConfig{}, false
 	}
@@ -73,6 +75,12 @@ func AssemblyForCatalogKey(key string, merged map[string]any) (tools.AssemblyCon
 func applyFilesystemDir(cfg *tools.AssemblyConfig, m map[string]any) {
 	if v := configString(m, "filesystem_dir", "base_dir", "working_dir", "root_dir"); v != "" {
 		cfg.FilesystemDir = v
+	}
+}
+
+func applyShellExecDir(cfg *tools.AssemblyConfig, m map[string]any) {
+	if v := configString(m, "base_dir", "shell_root", "filesystem_dir", "working_dir", "root_dir"); v != "" {
+		cfg.ShellExecDir = v
 	}
 }
 

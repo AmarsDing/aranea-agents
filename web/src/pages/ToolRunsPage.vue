@@ -35,75 +35,27 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
-import { useRoute } from "vue-router";
 import SkillPagination from "../components/skills/SkillPagination.vue";
 import ToolHeroSection from "../components/tools/ToolHeroSection.vue";
 import ToolRunsFilters from "../components/tools/ToolRunsFilters.vue";
 import ToolRunsTable from "../components/tools/ToolRunsTable.vue";
-import { toolInvocationStatusOptions } from "../components/tools/toolUi";
-import { listToolRuns } from "../features/tools/api";
-import type { ToolInvocation } from "../features/tools/types";
+import { useToolRunsPage } from "../features/tools/useToolRunsPage";
 
-const toolKey = ref("");
-const agentId = ref("");
-const status = ref("");
-const from = ref("");
-const page = ref(1);
-const pageSize = ref(20);
-const rows = ref<ToolInvocation[]>([]);
-const total = ref(0);
-const loading = ref(false);
-const error = ref("");
-const route = useRoute();
-
-const pageMax = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
-const statusOptions = [...toolInvocationStatusOptions, { label: "失败", value: "failed" }];
-
-async function loadRows() {
-  loading.value = true;
-  error.value = "";
-  try {
-    const data = await listToolRuns({
-      tool_key: toolKey.value,
-      agent_id: agentId.value,
-      status: status.value,
-      from: from.value,
-      page: page.value,
-      page_size: pageSize.value
-    });
-    rows.value = data.items;
-    total.value = data.total;
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : "加载调用记录失败";
-  } finally {
-    loading.value = false;
-  }
-}
-
-function resetFilters() {
-  toolKey.value = "";
-  agentId.value = "";
-  status.value = "";
-  from.value = "";
-  page.value = 1;
-  void loadRows();
-}
-
-watch([toolKey, agentId, status, from], () => {
-  page.value = 1;
-  void loadRows();
-});
-watch([page, pageSize], () => {
-  void loadRows();
-});
-
-onMounted(() => {
-  if (typeof route.query.tool_key === "string") {
-    toolKey.value = route.query.tool_key;
-  }
-  void loadRows();
-});
+const {
+  toolKey,
+  agentId,
+  status,
+  from,
+  page,
+  pageSize,
+  rows,
+  total,
+  loading,
+  error,
+  pageMax,
+  statusOptions,
+  resetFilters
+} = useToolRunsPage();
 </script>
 
 <style scoped lang="sass">

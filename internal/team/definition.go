@@ -5,6 +5,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"aranea-agents/internal/biz"
 )
 
 // Definition mirrors team DefinitionJSON (subset used by native runner).
@@ -16,10 +18,13 @@ type Definition struct {
 	MaxConcurrency     int               `json:"max_concurrency"`
 	TimeoutSeconds     int               `json:"timeout_seconds"`
 	LoopMaxIterations  int               `json:"loop_max_iterations,omitempty"`
+	RuntimeEngine      string            `json:"runtime_engine,omitempty"`
+	TeamGraphRuntime   bool              `json:"team_graph_runtime,omitempty"`
 	CriticLoop         *CriticLoopConfig `json:"critic_loop,omitempty"`
 	IntentAnchorAgentID string           `json:"intent_anchor_agent_id,omitempty"`
 	Swarm              *SwarmConfigDef   `json:"swarm,omitempty"`
 	MemberTool         *MemberToolDef    `json:"member_tool_config,omitempty"`
+	FailurePolicy      *biz.TeamFailurePolicy `json:"failure_policy,omitempty"`
 }
 
 type SwarmConfigDef struct {

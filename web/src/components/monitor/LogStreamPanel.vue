@@ -16,32 +16,11 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, provide, ref } from "vue";
-import { getMonitorLogs } from "../../features/monitor/api";
-import { useMonitorLogHub } from "../../features/monitor/useLogStreamHub";
+import { useMonitorLogStreamPanel } from "../../features/monitor/useMonitorLogStreamPanel";
 import FlowLogStream from "./FlowLogStream.vue";
 import ProcessLogStream from "./ProcessLogStream.vue";
 
-const subTab = ref<"flow" | "process">("flow");
-const hub = useMonitorLogHub();
-const processLogConfigured = ref(false);
-
-provide("monitorLogHub", hub);
-provide("processLogConfigured", processLogConfigured);
-
-onMounted(async () => {
-  hub.setProcessPaused(true);
-  try {
-    const snapshot = await getMonitorLogs();
-    processLogConfigured.value = Boolean(snapshot.enabled);
-    if (snapshot.enabled) {
-      hub.setProcessEnabled(true);
-    }
-  } catch {
-    processLogConfigured.value = false;
-  }
-  hub.connect();
-});
+const { subTab } = useMonitorLogStreamPanel();
 </script>
 
 <style scoped lang="sass">

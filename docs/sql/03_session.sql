@@ -119,6 +119,8 @@ CREATE TABLE IF NOT EXISTS team_runs (
   duration_ms INTEGER NOT NULL DEFAULT 0,
   error_message TEXT NOT NULL DEFAULT '',
   topology_json TEXT NOT NULL DEFAULT '{}',
+  graph_execution_id TEXT NOT NULL DEFAULT '',
+  definition_snapshot_json TEXT NOT NULL DEFAULT '',
   started_at TEXT NOT NULL DEFAULT '',
   finished_at TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL DEFAULT '',

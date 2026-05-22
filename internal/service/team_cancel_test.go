@@ -44,6 +44,7 @@ func (r *cancelTeamRunRepo) UpdateTeamRun(_ context.Context, run biz.TeamRun) er
 	return nil
 }
 func (r *cancelTeamRunRepo) UpdateTeamRunSummaryJSON(_ context.Context, _, _ string) error { return nil }
+func (r *cancelTeamRunRepo) UpdateTeamRunGraphExecutionID(_ context.Context, _, _ string) error { return nil }
 func (r *cancelTeamRunRepo) CreateTeamRunStep(_ context.Context, step biz.TeamRunStep) (biz.TeamRunStep, error) {
 	return step, nil
 }
@@ -60,7 +61,7 @@ func TestCancelTeamRun_PublishesCancelledRunStatus(t *testing.T) {
 	repo := &cancelTeamRunRepo{runs: map[string]biz.TeamRun{
 		"tr-1": {ID: "tr-1", SessionID: "sess-team-1", Status: "running"},
 	}}
-	svc := NewTeamService(biz.NewTeamUsecase(repo), nil, nil, reg, bus)
+	svc := NewTeamService(biz.NewTeamUsecase(repo), nil, nil, nil, reg, bus)
 
 	resp, err := svc.CancelTeamRun(context.Background(), &v1.CancelTeamRunRequest{Id: "tr-1"})
 	if err != nil {

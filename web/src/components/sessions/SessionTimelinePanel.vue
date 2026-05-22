@@ -2,7 +2,7 @@
   <div class="session-timeline">
     <div class="session-timeline__toolbar row items-center q-gutter-sm q-mb-md">
       <q-select
-        v-model="kindFilter"
+        :model-value="kindFilter"
         dense
         outlined
         class="session-timeline__filter"
@@ -11,9 +11,10 @@
         map-options
         label="类型过滤"
         clearable
+        @update:model-value="emit('update:kindFilter', $event)"
       />
       <q-select
-        v-model="sortOrder"
+        :model-value="sortOrder"
         dense
         outlined
         class="session-timeline__filter session-timeline__filter--sort"
@@ -21,9 +22,10 @@
         emit-value
         map-options
         label="排序"
+        @update:model-value="emit('update:sortOrder', $event)"
       />
       <q-space />
-      <q-btn flat round icon="refresh" class="sessions-icon-btn" aria-label="刷新" @click="loadTimeline" />
+      <q-btn flat round icon="refresh" class="sessions-icon-btn" aria-label="刷新" @click="emit('refresh')" />
     </div>
 
     <div v-if="loading" class="session-timeline__state column items-center q-py-xl">
@@ -60,48 +62,28 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
-import type { SessionTimeline } from "../../features/session/api";
-import { useSessionStore } from "../../stores/session/index";
+import type { SessionTimeline, SessionTimelineItem } from "../../features/session/types";
+import type { TimelineStat } from "./sessionTimelineUi";
 import SessionTimelineEntry from "./SessionTimelineEntry.vue";
 import SessionTimelineStats from "./SessionTimelineStats.vue";
-import {
-  buildTimelineStats,
-  filterTimelineItems,
-  timelineKindFilterOptions,
-  timelineSortOptions
-} from "./sessionTimelineUi";
+import { timelineKindFilterOptions, timelineSortOptions } from "./sessionTimelineUi";
 
-const props = defineProps<{
+defineProps<{
   sessionId: string;
   sessionTitle?: string;
+  focusToolId?: string;
+  timeline: SessionTimeline | null;
+  loading: boolean;
+  error: string;
+  kindFilter: string | null;
+  sortOrder: string;
+  stats: TimelineStat[];
+  filteredItems: SessionTimelineItem[];
 }>();
 
-const sessionStore = useSessionStore();
-const timeline = ref<SessionTimeline | null>(null);
-const loading = ref(false);
-const error = ref("");
-const kindFilter = ref<string | null>(null);
-const sortOrder = ref("desc");
-
-const stats = computed(() => buildTimelineStats(timeline.value?.summary));
-
-const filteredItems = computed(() =>
-  filterTimelineItems(timeline.value?.items ?? [], kindFilter.value, sortOrder.value)
-);
-
-async function loadTimeline() {
-  loading.value = true;
-  error.value = "";
-  try {
-    timeline.value = await sessionStore.fetchTimeline(props.sessionId);
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : "加载 Timeline 失败";
-    timeline.value = null;
-  } finally {
-    loading.value = false;
-  }
-}
-
-onMounted(loadTimeline);
+defineEmits<{
+  refresh: [];
+  "update:kindFilter": [value: string | null];
+  "update:sortOrder": [value: string];
+}>();
 </script>

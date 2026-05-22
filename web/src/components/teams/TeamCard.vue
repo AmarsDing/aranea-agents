@@ -73,8 +73,8 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import type { Agent } from "../../features/agents/api";
-import type { Team } from "../../features/teams/api";
+import type { Agent } from "../../features/agents/types";
+import type { Team } from "../../features/teams/types";
 import { agentName, formatDate, memberIcon, parseDefinition, topologyNodesFromDefinition } from "./teamUtils";
 
 const props = defineProps<{

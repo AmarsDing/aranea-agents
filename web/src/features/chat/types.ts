@@ -92,3 +92,20 @@ export type ReactToolLinkIndex = {
   linkedToolIds: ReadonlySet<string>;
   stepsByAssistantIndex: ReadonlyMap<number, ReactStepWithTools[]>;
 };
+
+export type RunStatusValue = "idle" | "pending" | "running" | "awaiting_user" | "completed" | "failed" | "cancelled";
+
+export interface RunStatus {
+  runId: string;
+  status: RunStatusValue;
+  errorMessage: string;
+  updatedAt: string;
+  invocationId?: string;
+  agentName?: string;
+  startedAt?: string;
+  lastEventAt?: string;
+  eventCount?: number;
+  awaitKind?: string;
+  awaitToolKey?: string;
+  awaitToolCallId?: string;
+}

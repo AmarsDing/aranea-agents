@@ -177,7 +177,6 @@ func (p *EventProjector) projectChatCompletionChunk(ctx context.Context, ev *trp
 				p.attachActivityMetadata(&env)
 				envelopes = append(envelopes, env)
 			}
-			continue
 		}
 
 		if hasContent || hasReasoning {

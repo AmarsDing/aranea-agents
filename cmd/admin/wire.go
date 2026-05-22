@@ -159,6 +159,8 @@ func provideChatServiceDeps(
 	mon *biz.MonitorUsecase,
 	codeExecFactory *localexec.Factory,
 	pendingQueue *rt.PendingMessageQueue,
+	graphFactory biz.GraphBuilderFactory,
+	graphs *biz.GraphUsecase,
 ) service.ChatServiceDeps {
 	return service.ChatServiceDeps{
 		TurnDeps: rt.TurnDeps{
@@ -193,6 +195,8 @@ func provideChatServiceDeps(
 		CodeExecFactory:    codeExecFactory,
 		MCPServers:         mcpUC,
 		PendingQueue:       pendingQueue,
+		GraphFactory:       graphFactory,
+		Graphs:             graphs,
 	}
 }
 

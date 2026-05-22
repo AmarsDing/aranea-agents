@@ -1,10 +1,9 @@
 import { storeToRefs } from "pinia";
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { copyToClipboard, useQuasar } from "quasar";
-import { checkAgentKey, duplicateAgent, listAgentTemplates, type Agent, type AgentTemplatePreset } from "./api";
 import { mapAgentCreateFieldErrors, parseKratosApiError } from "../../utils/kratosError";
-import type { AgentKind, A2AProxyConfig } from "./types";
-import type { PlatformResource, PlatformResourceTreeNode } from "../platform/api";
+import type { Agent, AgentKind, A2AProxyConfig, AgentTemplatePreset } from "./types";
+import type { PlatformResource, PlatformResourceTreeNode } from "../platform/types";
 import { descriptionTemplates, statusOptions } from "../../components/agents/agentUi";
 import { useAgentsPageStore } from "../../stores/agents";
 import { useAppStore } from "../../stores/app";
@@ -189,7 +188,7 @@ export function useAgentsPage() {
       const trimmed = key.trim();
       if (!trimmed || !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(trimmed)) return;
       agentKeyCheckTimer = setTimeout(() => {
-        void checkAgentKey(trimmed)
+        void agentsPageStore.verifyAgentKey(trimmed)
           .then((res) => {
             if (!res.available) {
               agentKeyServerError.value = res.message === "agent_key already in use" ? "标识已被使用" : res.message;
@@ -204,7 +203,7 @@ export function useAgentsPage() {
 
   onMounted(async () => {
     try {
-      const remote = await listAgentTemplates();
+      const remote = await agentsPageStore.fetchAgentTemplates();
       if (remote.length) {
         createTemplates.value = remote;
       }
@@ -321,7 +320,7 @@ export function useAgentsPage() {
 
   async function duplicateListedAgent(agent: Agent) {
     try {
-      const created = await duplicateAgent(agent.id);
+      const created = await agentsPageStore.copyAgent(agent.id);
       appStore.upsertAgent(created);
       await runLoadList();
       $q.notify({ type: "positive", message: "Agent 已复制" });

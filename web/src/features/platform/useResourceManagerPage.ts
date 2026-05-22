@@ -1,17 +1,9 @@
 ﻿import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { useQuasar, type QTableColumn } from "quasar";
-import {
-  createPlatformResource,
-  deletePlatformResource,
-  inspectProviderModel,
-  revealProviderModelCredentials,
-  listPlatformResources,
-  updatePlatformResource,
-  type PlatformResource,
-  type PlatformResourceInput,
-  type PlatformResourceName
-} from "./api";
+import type { PlatformResource, PlatformResourceInput, PlatformResourceName } from "./types";
+import { usePlatformStore } from "../../stores/platform";
+import { useProviderTrendDialog } from "../usage/useProviderTrendDialog";
 import ProviderHAConfig, { type ProviderHAForm } from "../../components/platform/ProviderHAConfig.vue";
 import {
   PROVIDER_PRESETS,
@@ -28,7 +20,8 @@ import {
 
 export function useResourceManagerPage() {
   const route = useRoute();
-const $q = useQuasar();
+  const platformStore = usePlatformStore();
+  const $q = useQuasar();
 const isDark = computed(() => $q.dark.isActive);
 
 const rows = ref<PlatformResource[]>([]);
@@ -46,6 +39,62 @@ const revealingCredentials = ref(false);
 const credentialsLoadedFromServer = ref(false);
 const trendDialogOpen = ref(false);
 const trendRow = ref<PlatformResource | null>(null);
+const providerTrend = useProviderTrendDialog(trendDialogOpen, trendRow);
+
+type ListKeyEntry = { visible: boolean; revealing: boolean; value: string };
+const listKeyById = ref<Record<string, ListKeyEntry>>({});
+
+function listKeyState(id: string): ListKeyEntry {
+  return listKeyById.value[id] ?? { visible: false, revealing: false, value: "" };
+}
+
+function setListKeyState(id: string, patch: Partial<ListKeyEntry>) {
+  const prev = listKeyState(id);
+  listKeyById.value = { ...listKeyById.value, [id]: { ...prev, ...patch } };
+}
+
+async function toggleListKeyReveal(row: PlatformResource) {
+  const id = row.id;
+  const cur = listKeyState(id);
+  if (cur.visible) {
+    setListKeyState(id, { visible: false, revealing: false, value: "" });
+    return;
+  }
+  setListKeyState(id, { revealing: true });
+  try {
+    const creds = await platformStore.revealCredentials(id);
+    const cfg = getRowConfig(row);
+    const plain = creds.api_key?.trim() || creds.secret_key?.trim() || "";
+    if (!plain) {
+      const cannotDecrypt =
+        creds.has_api_key ||
+        creds.has_secret_key ||
+        cfg.api_key_set ||
+        Boolean(cfg.secret_id?.trim());
+      $q.notify({
+        type: "warning",
+        message: cannotDecrypt
+          ? "密钥已保存，但无法解密显示。请在「系统设置」确认凭据加密密钥，或在编辑页重新保存 API Key。"
+          : "未找到可显示的密钥，请在编辑页配置。"
+      });
+      return;
+    }
+    setListKeyState(id, { visible: true, revealing: false, value: plain });
+  } catch (error) {
+    setListKeyState(id, { revealing: false });
+    $q.notify({ type: "negative", message: errorMessage(error) });
+  }
+}
+
+function getRowConfig(row: PlatformResource): ProviderConfig {
+  if (!row.config_json) return {};
+  try {
+    const value = JSON.parse(row.config_json) as ProviderConfig;
+    return value && typeof value === "object" ? value : {};
+  } catch {
+    return {};
+  }
+}
 const providerPresetKey = ref("");
 const providerStep = ref(1);
 const providerTypeFilter = ref<string[]>([]);
@@ -283,7 +332,7 @@ async function loadRevealedCredentials() {
   if (!editingId.value) return;
   revealingCredentials.value = true;
   try {
-    const creds = await revealProviderModelCredentials(editingId.value);
+    const creds = await platformStore.revealCredentials(editingId.value);
     if (creds.api_key) providerForm.api_key = creds.api_key;
     if (creds.secret_key) providerForm.secret_key = creds.secret_key;
     for (const ha of creds.ha_candidates) {
@@ -410,7 +459,7 @@ async function loadRows() {
   if (!resource.value) return;
   loading.value = true;
   try {
-    rows.value = await listPlatformResources(resource.value);
+    rows.value = await platformStore.loadResource(resource.value);
   } finally {
     loading.value = false;
   }
@@ -564,10 +613,10 @@ async function saveRow() {
   saving.value = true;
   try {
     if (editingId.value) {
-      const updated = await updatePlatformResource(resource.value, editingId.value, form);
+      const updated = await platformStore.editResource(resource.value, editingId.value, form);
       rows.value = rows.value.map((row) => (row.id === updated.id ? updated : row));
     } else {
-      const created = await createPlatformResource(resource.value, form);
+      const created = await platformStore.addResource(resource.value, form);
       rows.value = [created, ...rows.value];
     }
     dialogOpen.value = false;
@@ -593,10 +642,10 @@ async function saveProviderRow() {
   saving.value = true;
   try {
     if (editingId.value) {
-      const updated = await updatePlatformResource(resource.value, editingId.value, payload);
+      const updated = await platformStore.editResource(resource.value, editingId.value, payload);
       rows.value = rows.value.map((row) => (row.id === updated.id ? updated : row));
     } else {
-      const created = await createPlatformResource(resource.value, payload);
+      const created = await platformStore.addResource(resource.value, payload);
       rows.value = [created, ...rows.value];
     }
     dialogOpen.value = false;
@@ -659,7 +708,7 @@ async function inspectCurrentProviderModel() {
   }
   checkingModel.value = true;
   try {
-    const result = await inspectProviderModel({
+    const result = await platformStore.inspectModel({
       resource_id: editingId.value,
       provider_code: code,
       provider_type: providerForm.provider_type,
@@ -717,7 +766,7 @@ async function inspectCurrentProviderModel() {
 async function toggleEnabled(row: PlatformResource, enabled: boolean) {
   saving.value = true;
   try {
-    const updated = await updatePlatformResource(resource.value, row.id, { ...row, enabled });
+    const updated = await platformStore.editResource(resource.value, row.id, { ...row, enabled });
     rows.value = rows.value.map((item) => (item.id === updated.id ? updated : item));
   } finally {
     saving.value = false;
@@ -741,7 +790,7 @@ function openTrend(row: PlatformResource) {
 }
 
 async function removeRow(row: PlatformResource) {
-  await deletePlatformResource(resource.value, row.id);
+  await platformStore.removeResource(resource.value, row.id);
   rows.value = rows.value.filter((item) => item.id !== row.id);
   $q.notify({ type: "positive", message: "已删除" });
 }
@@ -899,6 +948,7 @@ function errorMessage(error: unknown) {
     revealingCredentials,
     trendDialogOpen,
     trendRow,
+    providerTrend,
     providerPresetKey,
     providerStep,
     providerTypeFilter,
@@ -939,6 +989,12 @@ function errorMessage(error: unknown) {
     toggleEnabled,
     confirmRemoveRow,
     openTrend,
+    listKeyState,
+    toggleListKeyReveal,
+    trendOverview: providerTrend.overview,
+    trendOverviewLoading: providerTrend.loading,
+    trendMetric: providerTrend.metric,
+    trendMetricOptions: providerTrend.metricOptions,
     providerCodeRule,
     getCategories,
     metadataLabel,

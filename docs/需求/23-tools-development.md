@@ -1,7 +1,7 @@
 # Tools 工具 — 开发计划
 
-> **版本**：5.1（2026-05-21）| **状态**：✅ 核心已实现；Override/统计/TestTool/MCP Broker ✅；per-tool 监控维度为 P2 backlog
-> **需求**：[23 tools.md](./23%20tools.md) · **设计**：[23 tools.design.md](./23%20tools.design.md) · **结构**：[23 tools struct design.md](./23%20tools%20struct%20design.md)
+> **版本**：5.5（2026-05-22）| **状态**：✅ 核心已实现；**Phase 4 片段编辑 ✅**；**Phase 5 工作区统一 ✅**
+> **需求**：[23 tools.md](./23%20tools.md) · [23 tools-fragment-edit.md](./23%20tools-fragment-edit.md) · **设计**：[23 tools.design.md](./23%20tools.design.md) · [23 tools-fragment-edit.design.md](./23%20tools-fragment-edit.design.md) · **结构**：[23 tools struct design.md](./23%20tools%20struct%20design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：—
 
 ---
@@ -55,6 +55,10 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 | 前端管理 | ✅ 已实现 | Tool 详情页 Override + Agent 设置页「工具覆盖」 |
 | TRPC 需确认 | ✅ 已实现 | `ApplyConfirmationPolicy` + BeforeTool `blocked` |
 | 调用统计闭环 | ✅ 已实现 | `duration_ms` + Prometheus + 列表 SQL 聚合 |
+| **工作区统一（file+shell）** | ✅ 已实现 | `applyToolWorkspaceDirs` + `ShellExecDir` + hostexec `WithBaseDir` |
+| **shell 参数 schema** | ✅ 已实现 | seed `workdir`；`hostexecnorm` 兼容 `working_dir` |
+| **confirm 覆盖 exec_command** | ✅ 已实现 | `runtimeConfirmAliases`：`exec_command` ↔ `shell_exec` |
+| **workspace_exec 装配** | ✅ 已修复 | registry 不独立挂载 nil executor；仅 CodeExecutor 路径 |
 
 ---
 
@@ -78,6 +82,20 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 | 14 | **P1** | effective key → ToolsetConfig 映射 | ✅ `ToolsetConfigFromEffectiveKeys` |
 | 15 | **P2** | MCP 默认超时 | ✅ `normalizeMCPServerTimeout`（60s） |
 | 16 | **P4** | `streaming` / `chunk_count` | ✅ `tool_invocations` 列 + 记录器 + Proto |
+| 17 | **P1** | 片段级文件编辑 `diff_edit` | ✅ Phase 4 |
+| 18 | **P1** | unified / hunk 补丁 `patch_file` | ✅ Phase 4 |
+| 19 | **P1** | SessionFileState 会话缓存 | ✅ `toolcache.FileView` + `editcontent.go` |
+| 20 | **P2** | `edit_file` 别名迁移至 `diff_edit` | ✅ Phase 4.10 |
+| 21 | **P2** | 大文件行区间 patch | 📋 >1MB 仅加载 hunk ±context |
+| 22 | **P2** | Activity diff 预览 | 📋 消费 `structured_patch` 字段 |
+| 23 | **P0** | 工作区统一：hostexec 绑 `workspace_root` | ✅ Phase 5 |
+| 24 | **P0** | `workdir` schema + `working_dir` 兼容映射 | ✅ Phase 5 |
+| 25 | **P0** | tool_confirm 覆盖 `exec_command` | ✅ Phase 5 |
+| 26 | **P1** | `claude_code` 默认工作区 | ✅ Phase 5 |
+| 27 | **P2** | `workspace_exec` 仅 CodeExecutor 就绪时装配 | ✅ Phase 5.2；见 [32-codeexecutor-development.md](./32-codeexecutor-development.md) |
+| 28 | **P1** | TestTool / prompt 与工作区口径同步 | ✅ Phase 5 |
+
+> **说明**：曾起草「53 Desktop App」文档，**不实施**；Shell 工作区优化归属本模块 Phase 5，不涉及 Electron/App 打包。
 
 ---
 
@@ -138,6 +156,81 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 - [ ] 审计日志支持按 Agent / 工具 / 时间范围查询
 - [ ] 审计日志有自动清理策略（默认保留 90 天）
 
+### Phase 4：片段级文件编辑（P1）
+
+**目标**：在默认 `file` ToolSet 内提供 Cursor 式片段编辑（`diff_edit` / `patch_file`）与会话缓存，降低 token 与磁盘往返。需求与设计见 [23 tools-fragment-edit.md](./23%20tools-fragment-edit.md) · [23 tools-fragment-edit.design.md](./23%20tools-fragment-edit.design.md)。
+
+**任务**：
+
+| # | 任务 | 涉及文件 | 验收标准 |
+|---|------|----------|----------|
+| 4.1 | 抽取 `textfile` 共享包（encoding / line ending / quote fuzzy） | `pkg/trpc-agent-go/tool/internal/textfile/` · `tool/claudecode/` 改 import | ✅ claudecode 复用 textfile |
+| 4.2 | 实现 `patch` 包（hunk 类型、apply、unified 解析） | `pkg/trpc-agent-go/tool/file/patch/` | ✅ `patch_test.go` |
+| 4.3 | 实现 `patch_file` 工具 | `pkg/trpc-agent-go/tool/file/patchfile.go` · `file.go` | ✅ unified + hunk；原子写盘 |
+| 4.4 | 实现 `diff_edit` 工具 | `pkg/trpc-agent-go/tool/file/diffedit.go` | ✅ 多 edit 原子；结构化错误 |
+| 4.5 | 实现 SessionFileState | `editcontent.go` · `internal/toolcache/file_views.go` | ✅ `TestFileViewCache_SkipsSecondRead` |
+| 4.6 | catalog 种子 + Effective Tools 组 | `builtin_tools_seed.go` · `agent_effective_tools.go` | ✅ filesystem 组含新 key |
+| 4.7 | testexec + Activity 标签 | `testexec/config.go` · `activity_meta.go` | ✅ 在线测试 + 活动流中文名 |
+| 4.8 | Agent Prompt 工作流 | `internal/agent/prompt.go` | ✅ diff_edit 优先工作流 |
+| 4.9 | 前端 catalog 同步（若硬编码） | `useAgentToolsCatalog.ts` | ✅ defaultNativeToolKeys |
+| 4.10 | Phase 2：`edit_file` 别名迁移（可选） | `runtime_alias.go` | ✅ `edit_file` → `diff_edit` |
+
+**验收**（与需求 §5 对齐）：
+
+- [x] `diff_edit` 单调用多片段替换且原子提交（`TestDiffEdit_MultiEditAtomic`）
+- [x] `patch_file` unified diff 应用；hunk mismatch 零副作用（`TestPatchFile_Unified`）
+- [x] SessionFileState 命中；外部 mtime 变化拒绝覆盖（`TestFileViewCache_SkipsSecondRead`）
+- [x] `replace_content` / `save_file` 无破坏性变更
+- [x] `go test ./tool/file/... ./tool/file/patch/...`（在 `pkg/trpc-agent-go` 模块内）
+
+**建议迭代顺序**：4.1 → 4.2 → 4.3 → 4.4 → 4.5 → 4.6–4.9 → 4.10
+
+---
+
+### Phase 5：工具工作区统一（P0）
+
+**目标**：Cursor 式项目根——file 与 `shell_exec` 共用 `workspace_root`；审计其余工具是否需要目录。
+
+**背景差距**（2026-05-22 排查）：
+
+- `file` 已通过 `resolveAgentFilesystemDir` 绑定工作区。
+- `hostexec` 装配未调用 `WithBaseDir`，命令落在 Server **进程当前目录**。
+- Catalog `working_dir` 与 hostexec `workdir` 不一致，Agent 传参被忽略。
+- `tool_confirm` 未覆盖运行时名 `exec_command`。
+
+**任务**：
+
+| ID | 任务 | 涉及文件 | 验收 |
+|----|------|----------|------|
+| TW-5-01 | 抽取 / 复用 `resolveToolWorkspaceRoot` | `internal/agent/tool_assembly.go` | ✅ 单次解析，file+shell 同值 |
+| TW-5-02 | `AssemblyConfig` / `ToolsetConfig` 增加 `ShellExecDir` | `toolset.go`, `trpc/toolsets.go` | ✅ 桥接层传递 |
+| TW-5-03 | hostexec `WithBaseDir(ShellExecDir)` | `internal/tools/toolset.go` | ✅ `TestAssemble_hostexecUsesShellExecDir` |
+| TW-5-04 | `shell_exec` runtime_config `base_dir` | `trpc/runtime_config.go` | ✅ Override 可覆盖 |
+| TW-5-05 | seed 参数改为 `workdir` | `builtin_tools_seed.go` | ✅ 与 hostexec schema 一致 |
+| TW-5-06 | `working_dir` → `workdir` 兼容 | `internal/tools/hostexecnorm` | ✅ 旧 JSON 仍可用 |
+| TW-5-07 | confirm 映射 `exec_command` | `tool_confirm_gate.go`, `confirmationMap` | ✅ 确认 UI 触发 |
+| TW-5-08 | 更新 `RuntimeCapabilityCue` | `internal/agent/prompt.go` | ✅ 口径与实现一致 |
+| TW-5-09 | TestTool shell 传 workspace | `testexec/config.go` | ✅ 在线测试可跑 |
+| TW-5-10 | `claude_code` 默认 `workspace_root` | `tool_assembly.go`, `runtime_config.go` | ✅ 未配 claude_code_dir 时回退 |
+
+**Phase 5.2（P2，可选同迭代）**：
+
+| ID | 任务 | 说明 |
+|----|------|------|
+| TW-5-11 | `workspace_exec` 禁止 nil executor 独立挂载 | ✅ 仅 `WithCodeExecutor` 路径启用 |
+| TW-5-12 | 文档矩阵与 Skill CodeExecutor 根目录说明 | ✅ 设计 §7.8.2；execution-plan 已同步 |
+
+**Phase 5 验收**：
+
+- [x] 设置 `ARANEA_WORKSPACE_ROOT` 为测试项目根（单元测试 + 装配路径）
+- [x] 启用 `shell_exec` + Agent profile 允许 runtime
+- [x] `exec_command` 在 workspace 内执行（`TestAssemble_hostexecUsesShellExecDir`）
+- [x] file 与 shell 共用 `resolveToolWorkspaceRoot`
+- [x] 拒绝 tool_confirm → `blocked`（`exec_command` 别名覆盖）
+- [x] 无需 App 壳；Web 联调即可验证
+
+**建议顺序**：TW-5-01 → 5-03 → 5-05/5-06 → 5-07 → 5-08/5-09 → 5-10 → 5-11
+
 ---
 
 ## 5. 任务清单
@@ -149,6 +242,12 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 | 3 | `TestTool` RPC + 在线测试 | P3 | 2 | — | `tool.proto` / `tool.go` |
 | 4 | `tool_invocation_audit` 表 + 写入 | P3 | 3 | — | Ent schema / `trpc_build.go` |
 | 5 | 审计查询 API + 前端页 | P3 | 3 | #4 | `tool.proto` / 前端 |
+| 6 | 片段编辑 `diff_edit` + `patch_file` | P1 | 4 | — | ✅ `pkg/trpc-agent-go/tool/file/` |
+| 7 | SessionFileState 会话缓存 | P1 | 4 | #6 | ✅ `toolcache.FileView` |
+| 8 | catalog / Prompt / Activity 集成 | P1 | 4 | #6 | ✅ seed / prompt / activity_meta |
+| 9 | `edit_file` 别名迁移（可选） | P2 | 4 | #6 | ✅ → `diff_edit` |
+| 10 | 工作区统一（hostexec + schema + confirm） | **P0** | **5** | — | ✅ TW-5-01–5-10 |
+| 11 | `workspace_exec` / CodeExecutor 装配 | P2 | 5.2 | 10 | ✅ `toolset.go` registry nil |
 
 ---
 
@@ -173,6 +272,19 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 - [x] 自定义工具可在配置时在线测试（`POST /v1/tools/{id}/test`）
 - [x] 工具调用可审计追溯（`GET /v1/tools/audits`；保留策略运维侧 90 天）
 
+### Phase 4（片段级文件编辑）
+
+- [x] `diff_edit` / `patch_file` 运行时可用（默认 file ToolSet）
+- [x] SessionFileState 同 invocation 缓存生效（`toolcache.FileView`）
+- [x] catalog / Effective Tools / Prompt / Activity 集成完成
+
+### Phase 5（工具工作区统一）
+
+- [x] file 与 shell 共用 `workspace_root`
+- [x] `workdir` schema 与 `working_dir` 兼容
+- [x] `exec_command` 纳入 tool_confirm
+- [x] Web 联调验收通过（不依赖 App 打包）
+
 ---
 
 ## 7. 依赖与风险
@@ -184,3 +296,8 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 | 审计日志 | 需注意存储膨胀；建议自动清理策略（默认 90 天） |
 | BeforeTool Callback | 框架已支持但项目未使用；可用于动态参数注入、权限校验、审批流前置检查 |
 | MCP 工具安全 | MCP Broker 的 `mcp_call` 可动态调用任意已注册 MCP 工具，需在生产环境限制 AdHoc HTTP |
+| 片段编辑与 claudecode 重复 | 抽取 `tool/internal/textfile` 共享逻辑，避免双份 patch 实现；claudecode 仍负责 Bash / Notebook |
+| SessionFileState 删盘边界 | 同 invocation 内删盘后仍可用 cache 编辑（`TestFileViewCache_SkipsSecondRead`）；外部变更靠 `mtime_ms`；见 [Phase 4 Review FRAG-P2-03](../review/2026-05-22-Tools-Phase4-Fragment-Edit-Review.md) |
+| 别名迁移 | `edit_file` → `diff_edit`（2026-05-22）；**`runtime_alias.go` 与 `tool_policy_keys.go` 须同步** |
+| **工作区统一** | ✅ Phase 5：`ShellExecDir` + `hostexecnorm` + confirm 别名 |
+| **53 Desktop App 文档** | 已删除、不实施；Shell 优化归属 Phase 5（已完成） |

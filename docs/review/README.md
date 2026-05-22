@@ -39,13 +39,13 @@
 | **Session** | 10 | 79 | 16 | 21 | 17 | 13 | 6 | 6 | P1 | [10-session-review.md](./10-session-review.md) |
 | **Team / Multi-Agent** | 11 | 83 | 17 | 22 | 18 | 14 | 6 | 6 | P1 | [11-team-review.md](./11-team-review.md) |
 | **Memory L0–L4** | 12–16 | 74 | 15 | 18 | 16 | 12 | 7 | 6 | P1 | [12-16-memory-review.md](./12-16-memory-review.md) |
-| **Channel** | 17 | **92** | 19 | 23 | 19 | 14 | 8 | 9 | P2 | [17-channel-review.md](./17-channel-review.md) |
+| **Channel** | 17 | **92** | 19 | 23 | 19 | 14 | 8 | 9 | P2 | [17-channel-review.md](./17-channel-review.md) · [IM Preview](./2026-05-23-Channel-IM-Preview-Review.md) |
 | **Monitor / Dashboard** | 18 | 78 | 16 | 21 | 17 | 13 | 5 | 6 | P1 | [18-monitor-review.md](./18-monitor-review.md) |
 | **MCP** | 19 | 80 | 16 | 22 | 17 | 13 | 6 | 6 | P1 | [19-mcp-review.md](./19-mcp-review.md) |
 | **Skill** | 20 | 78 | 16 | 21 | 17 | 12 | 6 | 6 | P1 | [20-skill-review.md](./20-skill-review.md) |
 | **Cron** | 21 | 82 | 17 | 22 | 18 | 13 | 6 | 6 | P2 | [21-cron-review.md](./21-cron-review.md) |
 | **Plugin / Callback** | 22/28 | 81 | 16 | 22 | 17 | 14 | 6 | 6 | P1 | [22-28-plugin-callback-review.md](./22-28-plugin-callback-review.md) |
-| **Tools** | 23 | 80 | 16 | 22 | 17 | 13 | 6 | 6 | P1 | [23-tools-review.md](./23-tools-review.md) |
+| **Tools** | 23 | **86** | 18 | 23 | 18 | 13 | 7 | 7 | P2 | [23-tools-review.md](./23-tools-review.md) · [P4](./2026-05-22-Tools-Phase4-Fragment-Edit-Review.md) · [P5](./2026-05-22-Tools-Phase5-Workspace-Unification-Review.md) |
 | **Telemetry** | 24 | 73 | 14 | 20 | 16 | 11 | 6 | 6 | P1 | [24-telemetry-review.md](./24-telemetry-review.md) |
 | **CLI** | 25 | 42 | 8 | 12 | 8 | 7 | 3 | 4 | P3 | [25-cli-review.md](./25-cli-review.md) |
 | **A2A** | 26 | 81 | 17 | 22 | 17 | 13 | 6 | 6 | P1 | [26-a2a-review.md](./26-a2a-review.md) |

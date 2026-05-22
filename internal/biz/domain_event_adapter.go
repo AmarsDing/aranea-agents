@@ -240,3 +240,18 @@ func metaString(meta map[string]any, key string) string {
 		return strings.TrimSpace(fmt.Sprint(t))
 	}
 }
+
+func metaBool(meta map[string]any, key string) bool {
+	v, ok := meta[key]
+	if !ok || v == nil {
+		return false
+	}
+	switch t := v.(type) {
+	case bool:
+		return t
+	case string:
+		return strings.EqualFold(strings.TrimSpace(t), "true") || strings.TrimSpace(t) == "1"
+	default:
+		return false
+	}
+}

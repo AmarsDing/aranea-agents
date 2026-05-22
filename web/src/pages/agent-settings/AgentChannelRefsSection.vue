@@ -19,12 +19,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { useRouter } from "vue-router";
-import { listChannels } from "../../features/channels/api";
-import { channelsReferencingAgent } from "../../features/channels/channelAgentRefs";
-import type { ChannelRow } from "../../features/channels/types";
+import { useAgentChannelRefs } from "../../features/agents/useAgentChannelRefs";
 
 const props = defineProps<{
   agentId: string;
@@ -32,29 +28,9 @@ const props = defineProps<{
 }>();
 
 const { t } = useI18n();
-const router = useRouter();
-const all = ref<ChannelRow[]>([]);
 
-const refs = computed(() => channelsReferencingAgent(all.value, props.agentId, props.agentKey));
-
-onMounted(async () => {
-  try {
-    all.value = await listChannels();
-  } catch {
-    all.value = [];
-  }
-});
-
-function channelTypeLabel(ch: ChannelRow): string {
-  try {
-    const cfg = JSON.parse(ch.config_json || "{}") as { type?: string };
-    return cfg.type || "channel";
-  } catch {
-    return "channel";
-  }
-}
-
-function openChannels() {
-  void router.push({ name: "channels" });
-}
+const { refs, channelTypeLabel, openChannels } = useAgentChannelRefs(
+  () => props.agentId,
+  () => props.agentKey
+);
 </script>

@@ -1,7 +1,14 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
-import { listPlugins, togglePluginEnabled, updatePluginConfig } from "../../features/plugins/api";
-import type { Plugin, PluginListQuery, PaginatedResponse } from "../../features/plugins/types";
+import {
+  listPlugins,
+  listPluginRuns,
+  togglePluginEnabled,
+  updatePluginConfig,
+  updatePluginScope,
+  updatePluginSortOrder
+} from "../../features/plugins/api";
+import type { Plugin, PluginListQuery, PluginRunListQuery, PluginRun, PaginatedResponse } from "../../features/plugins/types";
 
 export const usePluginsStore = defineStore("plugins", () => {
   const plugins = ref<Plugin[]>([]);
@@ -31,5 +38,21 @@ export const usePluginsStore = defineStore("plugins", () => {
     return updated;
   }
 
-  return { plugins, total, loading, loadPlugins, toggle, setConfig };
+  async function setScope(id: string, scope: string) {
+    const updated = await updatePluginScope(id, scope);
+    plugins.value = plugins.value.map((p) => (p.id === id ? updated : p));
+    return updated;
+  }
+
+  async function bumpSort(id: string, sortOrder: number) {
+    const updated = await updatePluginSortOrder(id, sortOrder);
+    plugins.value = plugins.value.map((p) => (p.id === id ? updated : p));
+    return updated;
+  }
+
+  async function loadPluginRuns(query: PluginRunListQuery = {}): Promise<PaginatedResponse<PluginRun>> {
+    return listPluginRuns(query);
+  }
+
+  return { plugins, total, loading, loadPlugins, loadPluginRuns, toggle, setConfig, setScope, bumpSort };
 });

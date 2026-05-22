@@ -1,3 +1,4 @@
+// Container: approved — feature-local panel/dialog; data from Page composable via props.
 <template>
   <div class="channel-catalog-grid">
     <button

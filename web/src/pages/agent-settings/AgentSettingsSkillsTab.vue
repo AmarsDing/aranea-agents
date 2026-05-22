@@ -135,7 +135,7 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import type { CodeExecutorCapability } from "../../features/monitor/api";
+import type { CodeExecutorCapability } from "../../features/monitor/types";
 
 const baseExecutorOptions = [
   { label: "Local（子进程，开发用）", value: "local" },

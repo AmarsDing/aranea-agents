@@ -47,7 +47,8 @@
               <div class="trend-chart-caption">近 30 天 · {{ metricCaption }}</div>
             </div>
             <q-btn-toggle
-              v-model="metric"
+              :model-value="metric"
+              @update:model-value="emit('update:metric', $event)"
               dense
               no-caps
               unelevated
@@ -74,20 +75,16 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { graphic, type EChartsCoreOption } from "echarts/core";
-import type { ModelUsageOverview } from "../../features/usage/api";
-import type { PlatformResource } from "../../features/platform/api";
-import { useUsageStore } from "../../stores/usage/index";
+import type { ModelUsageOverview } from "../../features/usage/types";
+import type { PlatformResource } from "../../features/platform/types";
 import { baseChartOption, usageChartPalette } from "../../features/usage/usageEcharts";
 import { useUsageChart } from "../../features/usage/useUsageChart";
 import {
-  USAGE_TREND_METRIC_OPTIONS,
   formatTrendLabel,
   trendMetricValue,
   trendMetricYAxisName,
   type UsageTrendMetric
 } from "../../features/usage/usageTrendMetrics";
-
-const usageStore = useUsageStore();
 
 type ProviderConfig = {
   provider_display_name?: string;
@@ -101,21 +98,22 @@ type ProviderConfig = {
 const props = defineProps<{
   modelValue: boolean;
   row: PlatformResource | null;
+  metric: UsageTrendMetric;
+  metricOptions: { label: string; value: UsageTrendMetric }[];
+  overview: ModelUsageOverview | null;
+  loading: boolean;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   "update:modelValue": [value: boolean];
+  "update:metric": [value: UsageTrendMetric];
 }>();
 
-const metricOptions = USAGE_TREND_METRIC_OPTIONS.filter((o) => o.value !== "success_rate");
-const metric = ref<UsageTrendMetric>("tokens");
 const config = computed(() => (props.row ? getConfig(props.row) : {}));
-const overview = ref<ModelUsageOverview | null>(null);
-const loading = ref(false);
 const chartEl = ref<HTMLElement | null>(null);
 
-const trends = computed(() => overview.value?.trends ?? []);
-const metricCaption = computed(() => metricOptions.find((o) => o.value === metric.value)?.label ?? "");
+const trends = computed(() => props.overview?.trends ?? []);
+const metricCaption = computed(() => props.metricOptions.find((o) => o.value === props.metric)?.label ?? "");
 const providerDisplayName = computed(() =>
   props.row ? config.value.provider_display_name || props.row.provider || props.row.key : ""
 );
@@ -132,45 +130,21 @@ const hotnessScore = computed(() => {
 });
 
 const detailItems = computed(() => [
-  { label: "成功率", value: formatPercent(overview.value?.range.success_rate) },
-  { label: "平均延迟", value: formatLatency(overview.value?.range.avg_latency_ms) },
-  { label: "TPS", value: formatTps(overview.value?.range.avg_tokens_per_second ?? config.value.tokens_per_second) },
+  { label: "成功率", value: formatPercent(props.overview?.range.success_rate) },
+  { label: "平均延迟", value: formatLatency(props.overview?.range.avg_latency_ms) },
+  { label: "TPS", value: formatTps(props.overview?.range.avg_tokens_per_second ?? config.value.tokens_per_second) },
   { label: "最近调用", value: latestUsedAt.value },
   { label: "上下文", value: formatContextWindow(config.value.context_window_k) },
   { label: "最大输出", value: formatCount(config.value.max_output_tokens) }
 ]);
-
-watch(
-  () => [props.modelValue, props.row?.id],
-  () => {
-    if (props.modelValue && props.row) {
-      void loadOverview();
-    }
-  },
-  { immediate: true }
-);
-
-async function loadOverview() {
-  if (!props.row) return;
-  loading.value = true;
-  try {
-    overview.value = await usageStore.fetchOverview({
-      range: "30d",
-      provider_code: props.row.provider,
-      model_api_id: props.row.model
-    });
-  } finally {
-    loading.value = false;
-  }
-}
 
 function buildChartOption(): EChartsCoreOption {
   const palette = usageChartPalette();
   const accent = palette.series[2] ?? "#00e5ff";
   const points = trends.value;
   const labels = points.map((p) => formatTrendLabel(p.date_key, false));
-  const isCost = metric.value === "cost";
-  const data = points.map((p) => trendMetricValue(p, metric.value));
+  const isCost = props.metric === "cost";
+  const data = points.map((p) => trendMetricValue(p, props.metric));
 
   return baseChartOption({
     animationDuration: 480,
@@ -192,7 +166,7 @@ function buildChartOption(): EChartsCoreOption {
     },
     yAxis: {
       type: "value",
-      name: trendMetricYAxisName(metric.value),
+      name: trendMetricYAxisName(props.metric),
       nameTextStyle: { color: palette.text, fontSize: 11, padding: [0, 0, 0, 4] },
       axisLine: { show: false },
       axisTick: { show: false },
@@ -226,7 +200,7 @@ function buildChartOption(): EChartsCoreOption {
   });
 }
 
-useUsageChart(chartEl, buildChartOption, () => [trends.value, metric.value, loading.value]);
+useUsageChart(chartEl, buildChartOption, () => [trends.value, props.metric, props.loading]);
 
 function getConfig(row: PlatformResource): ProviderConfig {
   if (!row.config_json) return {};

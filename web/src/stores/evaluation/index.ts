@@ -2,8 +2,11 @@ import { defineStore } from "pinia";
 import { ref } from "vue";
 import { listAgents } from "../../features/agents/api";
 import {
+  annotateCaseResult,
+  compareEvalRuns,
   createDataset,
   deleteDataset,
+  getAgentEvalTrend,
   getRun,
   getRunResults,
   listDatasets,
@@ -12,10 +15,13 @@ import {
   uploadCases
 } from "../../features/evaluation/api";
 import type {
+  AnnotateCaseResultInput,
   CreateDatasetInput,
   EvalCaseResult,
   EvalDataset,
   EvalRun,
+  EvalRunComparison,
+  EvalTrendPoint,
   GetRunResultsResult,
   ListDatasetsParams,
   ListDatasetsResult,
@@ -98,6 +104,22 @@ export const useEvaluationStore = defineStore("evaluation", () => {
     return getRunResults(runId, params);
   }
 
+  async function annotateResult(input: AnnotateCaseResultInput): Promise<EvalCaseResult> {
+    return annotateCaseResult(input);
+  }
+
+  async function loadAgentTrend(params: {
+    agent_id: string;
+    metric?: string;
+    limit?: number;
+  }): Promise<EvalTrendPoint[]> {
+    return getAgentEvalTrend(params);
+  }
+
+  async function compareRuns(runIds: string[]): Promise<EvalRunComparison[]> {
+    return compareEvalRuns(runIds);
+  }
+
   return {
     datasets,
     datasetsTotal,
@@ -113,6 +135,9 @@ export const useEvaluationStore = defineStore("evaluation", () => {
     startRun,
     loadRuns,
     refreshRun,
-    loadRunResults
+    loadRunResults,
+    annotateResult,
+    loadAgentTrend,
+    compareRuns
   };
 });

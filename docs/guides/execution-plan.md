@@ -4,7 +4,7 @@
 >
 > **关联文档**：[0 系统框图.md](../需求/0%20系统框图.md) · [0-system-development.md](../需求/0-system-development.md) · [README-development.md](../需求/README-development.md)
 >
-> **更新时间**：2026-05-21（Review 优化 Phase D：ResourceManager composable · Agent 页壳 · A2A/Team/Graph 测 · LIST-04 biz · Chat i18n）
+> **更新时间**：2026-05-23（M53 Phase 4 优化：快照 + 编译真相源）
 
 ---
 
@@ -36,7 +36,7 @@
 |------|------|------|
 | **核心可用** | Chat(1)、Agent 全家桶(2–8/50)、Provider(9)、Session(10)、Skill(20)、Tools(23)、Cron(21)、Message/WS(51/34)、Plugin/Callback(22/28)、Gateway/Runner(35/40) | 可创建、运行、配置、观测 |
 | **可用需闭环** | Graph(36)、MCP(19)、Memory(12–16)、Monitor/Token(18/29) | Graph 节点类型待补；MCP 重连可观测；Memory 冲突/级联 |
-| **可用需闭环** | Team(11)、Channel(17) | Team `team_summary` WS ✅；飞书/钉钉/企微入站+出站 ✅；更多平台待补 |
+| **可用需闭环** | Team(11)、Channel(17) | Team `team_summary` WS ✅；**M53** Phase 0.5–4 ✅；Phase 5 Graph 框架 ⏳ |
 | **有页、Runtime 已通主项** | Knowledge(37)、Artifact(27)、Evaluation(33)、A2A(26) | A2A Phase 1–3.5 ✅（联邦 Gateway、远程 Invoke、Graph metadata）；网关 Cron/Admin 流式待 Phase 4 |
 | **Skill 子能力** | CodeExecutor(32) | Phase 1–2 + Review ✅：Factory / Agent 配置 / capabilities / lazy E2B — [开发计划](../需求/32-codeexecutor-development.md) · [设计架构图](../需求/32%20codeexecutor.design.md#21-当前架构已实现-phase-12--review-修复) |
 | **早期/占位** | Evolution(7)、CLI(25)、TTS | Ecosystem MVP ✅（`/v1/ecosystem/products`）；Telemetry Span 已通 turn，Trace UI 待补 |
@@ -118,6 +118,112 @@
 **迭代 6 备注（观测）**：I6-TEL-02 / KN-01 / EVAL-02 review 已合入；`chat.usage_record` 失败用 FlowLogger（见 [changelog Iteration6](../changelog/2026-05-20-Iteration6-TRACE-EVAL-KN.md) §后续优化）。
 
 **FlowLogger v2**：📋 [需求](../需求/52-flow-logger.md) · [设计](../需求/52-flow-logger.design.md) · [开发计划](../需求/52-flow-logger-development.md) — Phase 1a/1b/2/3 ✅。
+
+### 迭代 E（Channel 长任务 Phase E）任务板 — 2026-05-22
+
+> 详案：[17-channel-development.md §10](../需求/17-channel-development.md#10-长任务异步执行phase-e) · 需求 [17 channel.md §8](../需求/17%20channel.md#8-长任务场景飞书-channel) · 设计 [17 channel.design.md §十二](../需求/17%20channel.design.md#十二长任务异步执行设计)
+
+| ID | 任务 | 优先级 | 状态 | 验收 |
+|----|------|--------|------|------|
+| I-E0-1 | `ChannelLongTaskConfig` 解析 | P0 | ✅ | biz 单测 |
+| I-E1-1 | Webhook Accept → 200 → async Execute | P0 | ✅ | LT-04 |
+| I-E1-2 | ACK / `ack_on_queued` IM 出站 | P0 | ✅ | LT-01 / LT-03 |
+| I-E2-1 | Channel 级 `turn_timeout_sec` / `first_byte_timeout_sec` | P0 | ✅ | LT-05 / LT-02 |
+| I-E3-1 | `channel_turn_job` 表 + Repo | P1 | ✅ | LT-07 |
+| I-E4-1 | `ChannelProgressProjector`（tool/Team/heartbeat） | P1 | ✅ | LT-02 |
+| I-E5-1 | Channel 编辑 UI：长任务配置项 | P1 | ✅ | config_json 持久化 |
+| I-E6-1 | `execution_mode=async` → Graph/Cron | P2 | ✅ | 超长任务 |
+
+**迭代 E-a 焦点（约 1 周）**：E0–E6 ✅；待 E2E 验收 LT-01–07。
+
+### 迭代 E-b（Channel IM Preview）— 2026-05-23
+
+> 详案：[17 channel.design.md §12.9](../需求/17%20channel.design.md#129-im-preview-投影turnpreviewcoordinator2026-05-23) · [changelog](../changelog/2026-05-23-Channel-IM-Preview.md)
+
+| ID | 任务 | 优先级 | 状态 | 验收 |
+|----|------|--------|------|------|
+| I-Eb-1 | `ChannelIMRenderPolicy` + legacy `progress_mode` 映射 | P0 | ✅ | `channel_im_render_test.go` |
+| I-Eb-2 | `internal/channel/preview` Transcript + Renderer | P0 | ✅ | 正文→工具→正文顺序 |
+| I-Eb-3 | `TurnPreviewCoordinator` 替代 ProgressProjector + OnReplyDelta | P0 | ✅ | EventBus 单消费 |
+| I-Eb-4 | ACK defer + `preview_message_id` 写 Job | P0 | ✅ | accept_test streaming |
+| I-Eb-5 | Unary transcript 出站 | P1 | ✅ | accumulate 模式 |
+| I-Eb-6 | Channel 编辑 UI：`im_render_mode` 等 | P2 | ✅ | `channelPlatformFields` + presets |
+| I-Eb-7 | 飞书 Card 工具追加 + 超长分页 | P2 | ✅ | `feishu_card.go` + `split.go` + scenario_test |
+| I-Eb-8 | EventProjector 同 chunk tool+text | P2 | ✅ | `event_projector_chunk_test.go` |
+| I-Eb-9 | E2E 场景测试 LT-01–07 | P1 | ✅ | `channel_turn_preview_scenario_test.go` |
+| I-Eb-10 | 运维 preset `feishu_ops_reasoning` | P3 | ✅ | `channelLongTaskPresets.ts` |
+| I-Eb-11 | Review P1–P3 优化闭合 | P1 | ✅ | [IM Preview Review](../review/2026-05-23-Channel-IM-Preview-Review.md) |
+| I-Eb-12 | P0 心跳 + Card upsert + E2E 清单 | P0 | ✅ | `channel_turn_preview_integration_test.go` · [E2E](../guides/channel-im-preview-e2e.md) |
+
+**迭代 E-b 焦点**：IM 与 Web Chat Envelope 顺序对齐；长任务推荐 `im_render_mode=transcript`；Card 终态单发 + Session 深链。
+
+### 迭代 TG（Team × Graph 融合 M53）— 2026-05-23
+
+> 详案：[53-team-graph-orchestration-development.md](../需求/53-team-graph-orchestration-development.md)
+
+| ID | 任务 | 优先级 | 状态 | 验收 |
+|----|------|--------|------|------|
+| TG-OBS-01 | `biz.AgentNodeStatus` + ApplyEnvelope | P0 | ✅ | orchestration_status_test |
+| TG-OBS-02 | `orchestration_agent_status` Envelope | P0 | ✅ | RouteChannel team |
+| TG-OBS-03 | `team/status_projector.go` | P0 | ✅ | status_projector_test |
+| TG-OBS-04 | Runner 挂钩 | P0 | ✅ | Team Run 推送 status WS |
+| TG-OBS-05 | 前端 orchestration types | P0 | ✅ | features/orchestration |
+| TG-FE-01 | Kanban + StatusChip | P1 | ✅ | OBS-02 |
+| TG-FE-02 | TeamRunObservatoryPage | P1 | ✅ | `/teams/:id/runs/:runId/observatory` |
+| TG-FE-03 | GraphFlowNode 细态 subtitle | P1 | ✅ | fineStatus |
+| TG-FE-04 | Kanban ↔ Graph focus 联动 | P1 | ✅ | fitView + scrollIntoView |
+| TG-FE-05 | useOrchestrationStream | P1 | ✅ | orchestration_agent_status |
+| TG-API-01 | GetTeamRunObservatory RPC | P1 | ✅ | REST 首屏 |
+| TG-API-02 | Graph Run StatusProjector | P1 | ✅ | graph 通道 |
+| TG-API-03 | definition_snapshot_json + Observatory 读快照 | P1 | ✅ | Run 冻结 + GetTeamRunObservatory |
+| TG-API-04 | HasActiveRun 锁定 UpdateTeam | P1 | ✅ | Conflict |
+| TG-OPT-01 | Observatory compiled_topology 后端 Compile | P1 | ✅ | [Phase4 Optimization changelog](../changelog/2026-05-23-Team-Graph-M53-Phase4-Optimization.md) |
+| TG-OPT-02 | embedded definition.graph 编译 | P1 | ✅ | embedded_graph_test |
+| TG-OPT-03 | linked_graph Team Run 路径 | P2 | ✅ | GraphBuildConfigLoader |
+| TG-OPT-04 | 前端 has_active_run 编排只读 | P2 | ✅ | TeamOrchestratePage banner |
+| TG-CMP-01 | CompileToGraphBuildConfig | P1 | ✅ | graph_compile_test 六 mode |
+| TG-CMP-02 | CompileTeamGraph RPC | P1 | ✅ | POST compile-graph |
+| TG-CMP-03 | TeamOrchestratePage | P1 | ✅ | 编排画布 + 保存 |
+| TG-CMP-04 | ExportTeamStructure 编译器 | P1 | ✅ | structure API |
+| TG-CMP-05 | linked_graph_id | P1 | ✅ | definition_json 投影 |
+| TG-RT-01 | Team Run GraphAgent 路径 | P2 | ✅ | `ARANEA_TEAM_GRAPH_RUNTIME=1` + `runtime_engine=graph` |
+| TG-RT-02 | `TeamRun.graph_execution_id` | P2 | ✅ | proto + repo + WS 投影 |
+| TG-RT-03 | coordinator/adaptive transfer 边 | P2 | ✅ | `edge_kind` 编译 |
+| TG-RT-04 | transfer 虚线边 UI | P2 | ✅ | GraphEditorCanvas |
+| TG-FP-01 | FailurePolicy + node RetryPolicy | P2 | ✅ | definition_json → WithRetryPolicy |
+| TG-FP-02 | skip 编译 + 运行时 failure 恢复 | P2 | ✅ | `skip_on_failure` + `fallback_agent` AfterNode |
+| TG-FP-03 | Task → waiting_review 投影 | P2 | ✅ | `graph_task_status` WS |
+| TG-FP-05 | ParallelFail continue 并行分支恢复 | P2 | ✅ | `ApplyParallelFailContinue` + join 拓扑检测 |
+| TG-RT-E2E | Graph 运行时 compile→build E2E | P2 | ✅ | graph_runtime_e2e_test |
+| TG-RT-05 | adaptive/swarm Graph 运行时 | P2 | ✅ | Destinations + 过滤 transfer 边 |
+| TG-RT-PARITY | 六 mode Native vs Graph 对比 E2E | P2+ | ⏳ | 终态前置 |
+| TG-RT-UI | runtime_engine 前端 + 字段保留 | P2+ | ⏳ | 见 development §8 |
+| TG-RT-METRICS | graph_execution_id / fallback 监控 | P2+ | ⏳ | Canary 仪表盘 |
+| TG-RT-FLAG | 生产 Graph runtime rollout | P2+ | ⏳ | env 默认仍 off |
+| TG-RT-DEFAULT | 新 Team 默认 runtime_engine=graph | P3 | 📋 | Phase 6 |
+| TG-RT-RETIRE | 移除 BuildTRPCTeam 主路径 | P3 | 📋 | Phase 7 单链终态 |
+
+**当前焦点**：Phase 5 执行收敛（parity → UI → metrics → Canary）。终态路线图：[53-team-graph-orchestration-development.md §8](../需求/53-team-graph-orchestration-development.md#8-终态路线图team-规格--graph-执行单链)。
+
+### Tools Phase 5（工作区统一）— 2026-05-22
+
+> 详案：[23-tools-development.md §Phase 5](../需求/23-tools-development.md#phase-5工具工作区统一p0)
+
+| ID | 任务 | 优先级 | 状态 | 验收 |
+|----|------|--------|------|------|
+| TW-5-01–10 | file + shell + claude_code 共用 `workspace_root` | P0 | ✅ | [changelog](../changelog/2026-05-22-Tools-Phase5-Workspace-Unification.md) |
+| TW-5-11 | `workspace_exec` 禁止 nil executor 独立挂载 | P2 | ✅ | registry nil；CodeExecutor 路径 |
+| TW-5-12 | 工具×目录矩阵文档同步 | P1 | ✅ | 设计 §7.8 + 开发计划 ✅ |
+
+### Tools Phase 4（片段编辑）— 2026-05-22
+
+> 详案：[23-tools-development.md §Phase 4](../需求/23-tools-development.md#phase-4片段级文件编辑p1)
+
+| ID | 任务 | 优先级 | 状态 | 验收 |
+|----|------|--------|------|------|
+| TW-4-01–10 | `diff_edit` / `patch_file` + SessionFileState | P1 | ✅ | [changelog](../changelog/2026-05-22-Tools-Phase4-Fragment-Edit.md) · [Review](../review/2026-05-22-Tools-Phase4-Fragment-Edit-Review.md) |
+| TW-4-11 | Activity `structured_patch` 摘要 | P2 | ✅ | Summary 含 applied/hunk 计数 |
+| TW-4-12 | `edit_file` → `diff_edit` 别名 | P2 | ✅ | `runtime_alias.go` |
 
 ### 迭代 7（Plugin P0–P3）任务板 — 2026-05-21
 

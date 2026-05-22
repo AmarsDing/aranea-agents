@@ -1,4 +1,23 @@
-import type { PlatformResource } from "../platform/api";
+import type { PlatformResource } from "../platform/types";
+
+export type ChannelTurnJobRow = {
+  id: string;
+  channel_id: string;
+  session_id: string;
+  peer_id: string;
+  peer_key: string;
+  idempotency_key: string;
+  status: string;
+  preview_message_id: string;
+  content_preview: string;
+  async_target_type: string;
+  async_target_id: string;
+  error_message: string;
+  started_at: string;
+  finished_at: string;
+  created_at: string;
+  updated_at: string;
+};
 
 export type ChannelCatalogItem = {
   type: string;

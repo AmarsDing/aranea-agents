@@ -51,9 +51,9 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import type { QForm } from "quasar";
-import type { Agent } from "../../features/agents/api";
+import type { Agent } from "../../features/agents/types";
 import type { CronTaskFormValue } from "../../features/cron/types";
-import type { Team } from "../../features/teams/api";
+import type { Team } from "../../features/teams/types";
 import CronTaskFormScheduleFields from "./CronTaskFormScheduleFields.vue";
 import CronTaskFormTargetFields from "./CronTaskFormTargetFields.vue";
 import { cronMessageRule, cronSlugRule } from "./cronTaskUtils";

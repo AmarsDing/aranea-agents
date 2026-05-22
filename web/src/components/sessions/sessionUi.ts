@@ -1,4 +1,4 @@
-import type { Session } from "../../features/session/api";
+import type { Session } from "../../features/session/types";
 import { registryCol } from "../../features/ui/registryTableColumns";
 
 /** 列表摘要卡片（纯展示文案来源） */

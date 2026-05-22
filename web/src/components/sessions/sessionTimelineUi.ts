@@ -1,4 +1,4 @@
-import type { SessionTimelineItem, SessionTimelineSummary } from "../../features/session/api";
+import type { SessionTimelineItem, SessionTimelineSummary } from "../../features/session/types";
 
 export type TimelineAccent = "user" | "agent" | "tool" | "skill" | "mcp" | "error";
 

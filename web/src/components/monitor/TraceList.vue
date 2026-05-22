@@ -1,3 +1,6 @@
+<!--
+  Container：Flow/WS 经 useMonitorTraceFlow + monitorStore；列表数据由 MonitorPage props 注入。
+-->
 <template>
   <q-card flat bordered class="monitor-card">
     <q-card-section class="row items-center q-col-gutter-md">
@@ -46,7 +49,7 @@
       </template>
       <template #body-cell-actions="props">
         <q-td :props="props">
-          <q-btn flat dense round icon="account_tree" color="primary" @click="openTrace(props.row)">
+          <q-btn flat dense round icon="account_tree" color="primary" @click="onOpenTrace(props.row)">
             <q-tooltip>Details</q-tooltip>
           </q-btn>
         </q-td>
@@ -160,14 +163,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import { useMonitorRunNavigation } from "../../features/monitor/useMonitorRunNavigation";
+import { useMonitorTraceFlow } from "../../features/monitor/useMonitorTraceFlow";
 import { copyToClipboard, Notify, type QTableColumn } from "quasar";
-import type { MonitorLogLine, MonitorTraceEvent } from "../../features/monitor/types";
+import type { MonitorTraceEvent } from "../../features/monitor/types";
 import { compactJSON, formatCount, formatDate, formatLatency, formatMoney, parseJSON } from "../../features/monitor/utils";
-import { flowLogMatchesTrace, sortFlowLogLines, traceCorrelationFromUsageRow } from "../../features/monitor/flow";
-import { listFlowLogs, subscribeMonitorLogsWs } from "../../features/monitor/api";
-import { GLOBAL_WS_SESSION_ID } from "../../config/runtime";
 import TraceWaterfall from "./TraceWaterfall.vue";
 import FlowTracePanel from "./FlowTracePanel.vue";
 import FlowLogExportButton from "./FlowLogExportButton.vue";
@@ -195,9 +196,8 @@ const keyword = ref("");
 const detail = ref<MonitorTraceEvent | null>(null);
 const detailOpen = ref(false);
 const detailTab = ref<"flow" | "waterfall" | "tree">("flow");
-const flowLines = ref<MonitorLogLine[]>([]);
 
-let flowWsSub: ReturnType<typeof subscribeMonitorLogsWs> | null = null;
+const { flowLines, activeCorrelation, stopFlowStream, openTraceDetail } = useMonitorTraceFlow(detail, detailOpen);
 
 const columns: QTableColumn<MonitorTraceEvent>[] = [
   { name: "name", label: "Agent", field: "agent_key", align: "left" },
@@ -216,11 +216,6 @@ const filteredRows = computed(() => {
     [row.agent_key, row.agent_id, row.provider_code, row.provider_display_name, row.model_api_id, row.model_display_name, row.status, row.error_code, row.error_message]
       .some((value) => String(value || "").toLowerCase().includes(q))
   );
-});
-
-const activeCorrelation = computed(() => {
-  if (!detail.value) return { traceId: "", runId: "", sessionId: "" };
-  return traceCorrelationFromUsageRow(detail.value);
 });
 
 const detailJSON = computed(() => compactJSON(detail.value ?? {}));
@@ -245,69 +240,20 @@ const spanNodes = computed<TreeNode[]>(() => {
   ];
 });
 
-async function openTrace(row: MonitorTraceEvent) {
-  detail.value = row;
+async function onOpenTrace(row: MonitorTraceEvent) {
   detailTab.value = "flow";
-  flowLines.value = [];
-  detailOpen.value = true;
-  await loadFlowHistory();
-  startFlowStream();
-}
-
-async function loadFlowHistory() {
-  const corr = activeCorrelation.value;
-  if (!corr.traceId && !corr.runId && !corr.sessionId) return;
-  try {
-    const { items } = await listFlowLogs({
-      traceId: corr.traceId || undefined,
-      runId: corr.runId || undefined,
-      sessionId: corr.sessionId || undefined,
-      limit: 500
-    });
-    const seen = new Set<string>();
-    const merged = [...items, ...flowLines.value].filter((line) => {
-      const key = `${line.id}-${line.time}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return flowLogMatchesTrace(line, corr);
-    });
-    flowLines.value = sortFlowLogLines(merged);
-  } catch {
-    // HTTP history is best-effort; live WS still works
-  }
+  await openTraceDetail(row);
 }
 
 function tryOpenHighlightedRun() {
   const hit = (props.highlightUsageEventId || "").trim();
   if (!hit || props.rows.length === 0) return;
   const row = props.rows.find((r) => String(r.id || "").trim() === hit);
-  if (row) openTrace(row);
+  if (row) void onOpenTrace(row);
 }
 
 watch(() => props.highlightUsageEventId, tryOpenHighlightedRun);
 watch(() => props.rows, tryOpenHighlightedRun, { deep: true });
-
-function startFlowStream() {
-  stopFlowStream();
-  const corr = activeCorrelation.value;
-  if (!corr.traceId && !corr.runId) return;
-  const maxLines = 500;
-  flowWsSub = subscribeMonitorLogsWs(GLOBAL_WS_SESSION_ID, (line) => {
-    if (!flowLogMatchesTrace(line, corr)) return;
-    flowLines.value = [...flowLines.value, line].slice(-maxLines);
-  });
-}
-
-function stopFlowStream() {
-  flowWsSub?.close();
-  flowWsSub = null;
-}
-
-watch(detailOpen, (open) => {
-  if (!open) stopFlowStream();
-});
-
-onBeforeUnmount(() => stopFlowStream());
 
 function spanToNode(span: unknown, index: number): TreeNode {
   const row = (span && typeof span === "object" ? span : {}) as Record<string, unknown>;

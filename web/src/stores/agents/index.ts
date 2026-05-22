@@ -2,20 +2,21 @@ import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 import type { QTableColumn } from "quasar";
 import {
+  checkAgentKey,
   deleteAgent as deleteAgentApi,
+  duplicateAgent,
   listAgentCreators,
+  listAgentTemplates,
   listAgentsPaged,
-  updateAgent,
-  type Agent,
-  type AgentCreatorOption
+  updateAgent
 } from "../../features/agents/api";
+import type { Agent, AgentCreatorOption, AgentTemplatePreset } from "../../features/agents/types";
 import {
   listPlatformResources,
   listPlatformResourceTree,
-  validateModel,
-  type PlatformResource,
-  type PlatformResourceTreeNode
+  validateModel
 } from "../../features/platform/api";
+import type { PlatformResource, PlatformResourceTreeNode } from "../../features/platform/types";
 import { flattenCategoryPositions, formatContext } from "../../components/agents/agentUi";
 import { useAppStore } from "../app";
 import { useAvatarCatalogStore } from "../avatar";
@@ -130,6 +131,18 @@ export const useAgentsPageStore = defineStore("agentsPage", () => {
     }
   }
 
+  async function verifyAgentKey(agentKey: string) {
+    return checkAgentKey(agentKey);
+  }
+
+  async function fetchAgentTemplates(): Promise<AgentTemplatePreset[]> {
+    return listAgentTemplates();
+  }
+
+  async function copyAgent(id: string): Promise<Agent> {
+    return duplicateAgent(id);
+  }
+
   function resetListFiltersAfterCreate() {
     keyword.value = "";
     selectedStatus.value = null;
@@ -167,7 +180,10 @@ export const useAgentsPageStore = defineStore("agentsPage", () => {
     removeListedAgent,
     toggleAgentFavorite,
     validateCreateModel,
-    resetListFiltersAfterCreate
+    resetListFiltersAfterCreate,
+    verifyAgentKey,
+    fetchAgentTemplates,
+    copyAgent
   };
 });
 

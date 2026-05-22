@@ -25,6 +25,7 @@ type TeamService struct {
 	v1.UnimplementedTeamServiceServer
 
 	uc         *biz.TeamUsecase
+	agents     *biz.AgentUsecase
 	sessions   *biz.SessionUsecase
 	teamRunner *team.Runner
 	runs       *rt.RunRegistry
@@ -33,12 +34,13 @@ type TeamService struct {
 
 func NewTeamService(
 	uc *biz.TeamUsecase,
+	agents *biz.AgentUsecase,
 	sessions *biz.SessionUsecase,
 	teamRunner *team.Runner,
 	runs *rt.RunRegistry,
 	eventBus event.Bus,
 ) *TeamService {
-	return &TeamService{uc: uc, sessions: sessions, teamRunner: teamRunner, runs: runs, eventBus: eventBus}
+	return &TeamService{uc: uc, agents: agents, sessions: sessions, teamRunner: teamRunner, runs: runs, eventBus: eventBus}
 }
 
 func toProtoTeam(t biz.Team) *v1.Team {
@@ -53,6 +55,7 @@ func toProtoTeam(t biz.Team) *v1.Team {
 		CreatedAt:      t.CreatedAt,
 		UpdatedAt:      t.UpdatedAt,
 		DeletedAt:      t.DeletedAt,
+		LinkedGraphId:  team.LinkedGraphIDFromDefinition(t.DefinitionJSON),
 	}
 }
 
@@ -71,8 +74,10 @@ func toProtoTeamRun(r biz.TeamRun) *v1.TeamRun {
 		CostMicroUsd:  r.CostMicroUSD,
 		DurationMs:    int32(r.DurationMS),
 		ErrorMessage:  r.ErrorMessage,
-		TopologyJson:  r.TopologyJSON,
-		StartedAt:     r.StartedAt,
+		TopologyJson:             r.TopologyJSON,
+		GraphExecutionId:         r.GraphExecutionID,
+		DefinitionSnapshotJson:     r.DefinitionSnapshotJSON,
+		StartedAt:                  r.StartedAt,
 		FinishedAt:    r.FinishedAt,
 		CreatedAt:     r.CreatedAt,
 		UpdatedAt:     r.UpdatedAt,
@@ -199,7 +204,11 @@ func (s *TeamService) GetTeam(ctx context.Context, req *v1.GetTeamRequest) (*v1.
 	if err != nil {
 		return nil, mapTeamErr(err)
 	}
-	return toProtoTeam(t), nil
+	out := toProtoTeam(t)
+	if active, aerr := s.uc.HasActiveRun(ctx, t.ID); aerr == nil {
+		out.HasActiveRun = active
+	}
+	return out, nil
 }
 
 func (s *TeamService) UpdateTeam(ctx context.Context, req *v1.UpdateTeamRequest) (*v1.Team, error) {
@@ -207,6 +216,19 @@ func (s *TeamService) UpdateTeam(ctx context.Context, req *v1.UpdateTeamRequest)
 		return nil, kerrors.BadRequest("TEAM", "team body is required")
 	}
 	patch := teamFromProto(req.GetTeam())
+	if pb := req.GetTeam(); pb != nil {
+		base := patch.DefinitionJSON
+		if strings.TrimSpace(base) == "" {
+			current, err := s.uc.Get(ctx, req.GetId())
+			if err != nil {
+				return nil, mapTeamErr(err)
+			}
+			base = current.DefinitionJSON
+		}
+		if merged, err := team.MergeLinkedGraphID(base, pb.GetLinkedGraphId()); err == nil {
+			patch.DefinitionJSON = merged
+		}
+	}
 	t, err := s.uc.Update(ctx, req.GetId(), patch)
 	if err != nil {
 		return nil, mapTeamErr(err)
@@ -357,7 +379,7 @@ func (s *TeamService) UpdateSwarmMembers(ctx context.Context, req *v1.UpdateSwar
 }
 
 func (s *TeamService) ExportTeamStructure(ctx context.Context, req *v1.ExportTeamStructureRequest) (*v1.ExportTeamStructureResponse, error) {
-	snap, err := s.uc.ExportStructure(ctx, req.GetTeamId())
+	snap, err := s.exportStructureViaCompiler(ctx, req.GetTeamId())
 	if err != nil {
 		return nil, mapTeamErr(err)
 	}

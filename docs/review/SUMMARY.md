@@ -1,7 +1,7 @@
 # Aranea-Agents 模块 Review 综合汇总
 
 > **生成时间**：2026-05-21  
-> **最后同步**：2026-05-21（Review 优化 Phase A：Chat composable 续拆至 ~505 行）  
+> **最后同步**：2026-05-23（Channel IM Preview Review P1–P3 闭合）  
 > **覆盖模块**：33 个（含占位模块 CLI/Ecosystem/TTS）  
 > **基准文档**：`docs/需求/README-development.md` · `docs/guides/execution-plan.md`
 
@@ -36,7 +36,7 @@
 | 10 | A2A (26) | **81** | Phase 3.5 完整 |
 | 10 | Planner (39) | **81** | ReAct/A2UI ✅ |
 | 14 | Agent 2–8 | **80** | 核心功能已通 |
-| 14 | Tools (23) | **80** | Override/统计 ✅ |
+| 14 | Tools (23) | **86** | Phase 4 片段编辑 + Phase 5 工作区 ✅ |
 | 14 | MCP (19) | **80** | OAuth/重连 ✅ |
 | 17 | FlowLogger (52) | **82** | Phase 2 落库 ✅ |
 | 17 | Session (10) | **79** | 批量 UI ✅ |

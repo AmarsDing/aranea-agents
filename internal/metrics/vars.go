@@ -164,4 +164,29 @@ var (
 		Name: "aranea_channel_stream_update_total",
 		Help: "Channel streaming preview updates by platform, phase (delta|flush), and result (ok|error).",
 	}, []string{"platform", "phase", "result"})
+
+	// ChannelTurnDuration tracks inbound turn latency from execute start to completion.
+	ChannelTurnDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "aranea_channel_turn_duration_seconds",
+		Help:    "Duration of a channel inbound turn (execute phase).",
+		Buckets: []float64{0.5, 1, 2, 5, 10, 30, 60, 120, 300, 600},
+	}, []string{"platform"})
+
+	// ChannelTurnJobTotal counts channel turn job state transitions by channel and status.
+	ChannelTurnJobTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "aranea_channel_turn_job_total",
+		Help: "Channel turn job lifecycle events by channel_id and status.",
+	}, []string{"channel_id", "status"})
+
+	// ChannelProgressPatchTotal counts IM progress PATCH updates during long turns.
+	ChannelProgressPatchTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "aranea_channel_progress_patch_total",
+		Help: "Channel progress PATCH updates by platform and result (ok|error).",
+	}, []string{"platform", "result"})
+
+	// ChannelToolCardTotal counts Feishu interactive tool card build/send attempts.
+	ChannelToolCardTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "aranea_channel_tool_card_total",
+		Help: "Channel IM tool card operations by platform, phase (build|send), and result.",
+	}, []string{"platform", "phase", "result"})
 )

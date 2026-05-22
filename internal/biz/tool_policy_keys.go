@@ -10,7 +10,7 @@ var toolPolicyKeyAliases = map[string]string{
 	"shell":            "shell_exec",
 	"web_search":       "duckduckgo_search",
 	"write_file":       "save_file",
-	"edit_file":        "replace_content",
+	"edit_file":        "diff_edit",
 	"list_files":       "list_file",
 	"workspace_search": "search_content",
 	"gemini_fetch":     "gemini_web_fetch",

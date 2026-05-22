@@ -36,6 +36,8 @@ import SystemSettingsPage from "../pages/SystemSettingsPage.vue";
 import GraphsPage from "../pages/GraphsPage.vue";
 import GraphEditorPage from "../pages/GraphEditorPage.vue";
 import GraphRunPage from "../pages/GraphRunPage.vue";
+import TeamRunObservatoryPage from "../pages/TeamRunObservatoryPage.vue";
+import TeamOrchestratePage from "../pages/TeamOrchestratePage.vue";
 import ThemePreviewPage from "../pages/ThemePreviewPage.vue";
 
 export const routes: RouteRecordRaw[] = [
@@ -62,6 +64,8 @@ export const routes: RouteRecordRaw[] = [
       { path: "settings/agent-categories", name: "agent-categories", component: AgentCategoriesPage },
       { path: "agents/:id/settings", name: "agent-settings", component: AgentSettingsPage },
       { path: "team", name: "team", component: TeamsPage },
+      { path: "teams/:teamId/runs/:runId/observatory", name: "team-run-observatory", component: TeamRunObservatoryPage },
+      { path: "teams/:teamId/orchestrate", name: "team-orchestrate", component: TeamOrchestratePage },
       { path: "graphs", name: "graphs", component: GraphsPage },
       { path: "graphs/new", name: "graph-editor-new", component: GraphEditorPage },
       { path: "graphs/:id", name: "graph-editor", component: GraphEditorPage },

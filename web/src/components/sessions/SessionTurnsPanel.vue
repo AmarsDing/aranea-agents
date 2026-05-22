@@ -49,22 +49,14 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, computed } from "vue";
-import type { SessionTurn } from "../../features/session/api";
-import { useSessionStore } from "../../stores/session/index";
+import { toRef } from "vue";
+import { useSessionTurnsPanel } from "../../features/session/useSessionTurnsPanel";
 
 const props = defineProps<{ sessionId: string }>();
 
-const sessionStore = useSessionStore();
-
-const turns = ref<SessionTurn[]>([]);
-const total = ref(0);
-const loading = ref(false);
-const error = ref("");
-const offset = ref(0);
-const pageSize = 20;
-
-const pageLabel = computed(() => `${offset.value + 1}–${Math.min(offset.value + pageSize, total.value)} / ${total.value}`);
+const { turns, total, loading, error, offset, pageSize, pageLabel, prevPage, nextPage } = useSessionTurnsPanel(
+  toRef(() => props.sessionId),
+);
 
 function formatDate(value: string) {
   if (!value) return "—";
@@ -84,32 +76,6 @@ function turnStatusColor(status: string) {
   if (status === "failed") return "negative";
   return "grey";
 }
-
-async function loadTurns() {
-  loading.value = true;
-  error.value = "";
-  try {
-    const result = await sessionStore.fetchTurns(props.sessionId, pageSize, offset.value);
-    turns.value = result.items;
-    total.value = result.total;
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : "加载 Turn 失败";
-  } finally {
-    loading.value = false;
-  }
-}
-
-function prevPage() {
-  offset.value = Math.max(0, offset.value - pageSize);
-  loadTurns();
-}
-
-function nextPage() {
-  offset.value += pageSize;
-  loadTurns();
-}
-
-onMounted(loadTurns);
 </script>
 
 <style scoped>

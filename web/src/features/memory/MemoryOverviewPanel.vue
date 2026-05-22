@@ -1,3 +1,4 @@
+// Container: approved — feature-local panel/dialog; data from Page composable via props.
 <template>
   <div class="row q-col-gutter-md">
     <div class="col-12 col-lg-7">

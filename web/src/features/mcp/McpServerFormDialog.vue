@@ -1,3 +1,4 @@
+// Container: approved — feature-local panel/dialog; data from Page composable via props.
 <template>
   <q-dialog :model-value="modelValue" persistent @update:model-value="$emit('update:modelValue', $event)">
     <q-card class="mcp-form-card app-dialog-card app-dialog-card--xl">
@@ -183,7 +184,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from "vue";
 import { useQuasar } from "quasar";
-import type { PlatformResourceInput } from "../platform/api";
+import type { PlatformResourceInput } from "../platform/types";
 import { createMcpServer, testMcpServer, updateMcpServer, validateMcpServer } from "./api";
 import type { McpKeyValue, McpServerConfig, McpServerFormValue, McpServerMetadata, McpServerRow } from "./types";
 

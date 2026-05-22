@@ -28,7 +28,7 @@
             <div class="text-h6 graph-card__name">{{ graph.name }}</div>
             <q-icon name="account_tree" size="20px" color="primary" />
           </div>
-          <div v-if="graph.description" class="text-caption text-grey-7 q-mt-xs">{{ graph.description }}</div>
+          <div v-if="graph.description" class="text-caption app-text-secondary q-mt-xs">{{ graph.description }}</div>
           <div class="row q-gutter-sm q-mt-sm">
             <q-badge rounded color="blue-grey">{{ graph.nodes?.length ?? 0 }} 节点</q-badge>
             <q-badge rounded color="blue-grey">{{ graph.edges?.length ?? 0 }} 连线</q-badge>
@@ -55,23 +55,24 @@
       <q-card-section class="column items-center text-center q-pa-xl">
         <q-avatar size="72px" color="primary" text-color="white" icon="account_tree" />
         <div class="text-h6 q-mt-md">暂无 Graph</div>
-        <div class="text-body2 text-grey-7 q-mt-sm">创建一个 Graph 工作流，可视化编排 Agent、条件路由和并行分支。</div>
+        <div class="text-body2 app-text-secondary q-mt-sm">创建一个 Graph 工作流，可视化编排 Agent、条件路由和并行分支。</div>
         <q-btn class="q-mt-md" color="primary" rounded unelevated icon="add" label="新增 Graph" @click="openCreate" />
       </q-card-section>
     </q-card>
 
     <q-dialog v-model="runDialogOpen" persistent>
-      <q-card :class="['graph-run-dialog app-dialog-card app-dialog-card--sm', { 'is-dark': isDark }]">
-        <q-card-section>
-          <div class="text-h6">执行 Graph</div>
-          <div class="text-caption text-grey-7">为 {{ runDialogGraph?.name }} 启动一次执行</div>
+      <q-card :class="['graph-run-dialog app-dialog-card app-dialog-card--sm app-glass-dialog', { 'is-dark': isDark }]">
+        <q-card-section class="app-glass-dialog__head">
+          <div class="app-glass-dialog__title">执行 Graph</div>
+          <div class="app-glass-dialog__subtitle">为 {{ runDialogGraph?.name }} 启动一次执行</div>
         </q-card-section>
         <q-separator />
-        <q-card-section class="app-dialog-body q-gutter-md">
+        <q-card-section class="app-dialog-body app-glass-dialog__body q-gutter-md">
           <q-input v-model="runSessionId" class="app-field-md" dense outlined label="Session ID" hint="关联的会话 ID" />
           <q-input v-model="runInitialState" class="app-field-long" dense outlined autogrow type="textarea" label="初始状态 (JSON)" hint="可选，JSON 格式的初始状态" />
         </q-card-section>
-        <q-card-actions align="right" class="app-actions-bar">
+        <q-separator />
+        <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
           <q-btn flat rounded label="取消" @click="runDialogOpen = false" />
           <q-btn color="primary" rounded unelevated label="执行" :loading="runLoading" @click="executeRun" />
         </q-card-actions>
@@ -81,112 +82,26 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
-import { useQuasar } from "quasar";
-import { useRouter } from "vue-router";
-import {
-  listGraphs,
-  createGraph,
-  deleteGraph,
-  executeGraph,
-  type GraphDefinition,
-} from "../features/graph/api";
+import { useGraphsPage } from "../features/graph/useGraphsPage";
 
-const $q = useQuasar();
-const router = useRouter();
-const isDark = computed(() => $q.dark.isActive);
-const rows = ref<GraphDefinition[]>([]);
-const loading = ref(false);
-const error = ref("");
-const runDialogOpen = ref(false);
-const runDialogGraph = ref<GraphDefinition | null>(null);
-const runSessionId = ref("");
-const runInitialState = ref("");
-const runLoading = ref(false);
-
-onMounted(loadRows);
-
-async function loadRows() {
-  loading.value = true;
-  error.value = "";
-  try {
-    const result = await listGraphs();
-    rows.value = result.items;
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : "加载 Graph 列表失败";
-  } finally {
-    loading.value = false;
-  }
-}
-
-function openCreate() {
-  router.push({ name: "graph-editor-new" });
-}
-
-function openEditor(id: string) {
-  router.push({ name: "graph-editor", params: { id } });
-}
-
-function openRunDialog(graph: GraphDefinition) {
-  runDialogGraph.value = graph;
-  runSessionId.value = `graph-${Date.now()}`;
-  runInitialState.value = "";
-  runDialogOpen.value = true;
-}
-
-async function executeRun() {
-  if (!runDialogGraph.value) return;
-  runLoading.value = true;
-  try {
-    let initialState: Record<string, unknown> | undefined;
-    if (runInitialState.value.trim()) {
-      initialState = JSON.parse(runInitialState.value);
-    }
-    const result = await executeGraph(runDialogGraph.value.id, runSessionId.value, initialState);
-    runDialogOpen.value = false;
-    $q.notify({ type: "positive", message: `Graph 执行已启动：${result.executionId}` });
-    router.push({
-      name: "graph-run",
-      params: { id: runDialogGraph.value.id, execId: result.executionId },
-    });
-  } catch (err) {
-    $q.notify({ type: "negative", message: err instanceof Error ? err.message : "执行失败" });
-  } finally {
-    runLoading.value = false;
-  }
-}
-
-async function duplicateGraph(graph: GraphDefinition) {
-  try {
-    const created = await createGraph({
-      name: `${graph.name} (副本)`,
-      description: graph.description,
-      stateFields: graph.stateFields,
-      nodes: graph.nodes,
-      edges: graph.edges,
-      conditionalEdges: graph.conditionalEdges,
-      subgraphs: graph.subgraphs,
-      entryPoint: graph.entryPoint,
-      finishPoint: graph.finishPoint,
-      enableCheckpoint: graph.enableCheckpoint,
-      executionEngine: graph.executionEngine,
-    });
-    rows.value = [created, ...rows.value];
-    $q.notify({ type: "positive", message: "Graph 已复制" });
-  } catch (err) {
-    $q.notify({ type: "negative", message: err instanceof Error ? err.message : "复制失败" });
-  }
-}
-
-async function removeGraph(graph: GraphDefinition) {
-  try {
-    await deleteGraph(graph.id);
-    rows.value = rows.value.filter((g) => g.id !== graph.id);
-    $q.notify({ type: "info", message: "Graph 已删除" });
-  } catch (err) {
-    $q.notify({ type: "negative", message: err instanceof Error ? err.message : "删除失败" });
-  }
-}
+const {
+  isDark,
+  rows,
+  loading,
+  error,
+  runDialogOpen,
+  runDialogGraph,
+  runSessionId,
+  runInitialState,
+  runLoading,
+  loadRows,
+  openCreate,
+  openEditor,
+  openRunDialog,
+  executeRun,
+  duplicateGraph,
+  removeGraph
+} = useGraphsPage();
 </script>
 
 <style scoped>
@@ -211,11 +126,10 @@ async function removeGraph(graph: GraphDefinition) {
   background: var(--glass-surface, rgb(255 253 245 / 65%));
   backdrop-filter: blur(var(--glass-blur-default, 18px));
   -webkit-backdrop-filter: blur(var(--glass-blur-default, 18px));
-  transition: box-shadow 0.2s, transform 0.15s;
+  transition: transform 0.15s;
 }
 
 .graph-card:hover {
-  box-shadow: 0 8px 24px rgb(16 24 40 / 8%);
   transform: translateY(-2px);
 }
 
@@ -227,7 +141,6 @@ async function removeGraph(graph: GraphDefinition) {
   border: 1px solid rgb(15 23 42 / 8%);
   border-radius: 24px;
   background: rgb(255 255 255 / 86%);
-  box-shadow: 0 18px 48px rgb(16 24 40 / 6%);
   backdrop-filter: blur(16px);
 }
 
@@ -246,7 +159,6 @@ async function removeGraph(graph: GraphDefinition) {
 .graphs-empty.is-dark {
   border-color: rgb(148 163 184 / 16%);
   background: rgb(17 24 39 / 90%);
-  box-shadow: 0 14px 38px rgb(0 0 0 / 32%);
 }
 
 @media (width <= 599px) {

@@ -1,5 +1,7 @@
 # Multi-Agent / Team 编排需求文档
 
+> **编排融合（M53）**：[53 team-graph-orchestration.md](./53%20team-graph-orchestration.md) — Team 与 Graph 统一拓扑、Agent 状态观测、Kanban 看板。
+
 ## 1. 背景与目标
 
 当前系统已具备 Agent 管理、Session、Tool、Skill、Plugin、模型管理和运行审计等模块。Multi-Agent 基于 `Team` 概念扩展为**多智能体编排单元**，让用户把多个专业 Agent 组织成可运行、可观测、可配置的协作团队。

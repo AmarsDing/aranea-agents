@@ -257,6 +257,12 @@ internal/service/
 | `channel.feishu.ws.panic` | error | 飞书 WebSocket 入站 panic |
 | `channel.feishu.ws.inbound_fail` | warn | 飞书 WebSocket ProcessInbound 失败 |
 | `channel.runtime.credentials_fail` | warn | Channel Runtime Reload 读凭据失败 |
+| `channel.inbound.accept` | info | 入站 ACK 已发送（Accept 阶段） |
+| `channel.turn.execute` | info | Channel Turn Execute 开始 |
+| `channel.turn.done` | info | Channel Turn 正常结束 |
+| `channel.turn.timeout` | error | Channel Turn 超时或 deadline exceeded |
+| `channel.turn.cancel` | info | 用户 IM 取消命令（CancelRun） |
+| `channel.progress.patch` | info | 长静默进度 PATCH（debug 级 SysLog） |
 | `chat.intent.merge_fail` | warn | 意图结果合并失败 |
 | `chat.usage_record_fail` | warn | 用量/轮次记录失败 |
 | `team.usage_record_fail` | warn | Team 成员 step 用量落库失败（`internal/team/usage_record.go`） |

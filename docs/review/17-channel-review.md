@@ -3,7 +3,7 @@
 > **评分**：92 / 100 | **风险等级**：P2（生产 soak / 全链路 E2E）  
 > **文档**：[17-channel-development.md](../需求/17-channel-development.md) · [17 channel.design.md](../需求/17%20channel.design.md)  
 > **代码锚点**：`internal/channel/` · `internal/channel/runtime/` · `internal/service/channel*.go` · `web/src/features/channels/`  
-> **审查时间**：2026-05-22（Review 优化项闭合后复审）  
+> **审查时间**：2026-05-22（Review 优化项闭合后复审）· **IM Preview 专项**：[2026-05-23-Channel-IM-Preview-Review.md](./2026-05-23-Channel-IM-Preview-Review.md)（88/100，P2）  
 > **入站专项**：[2026-05-22-Channel-Inbound-Review.md](./2026-05-22-Channel-Inbound-Review.md)
 
 ---
@@ -63,14 +63,28 @@ Webhook 统一入站 · delivery 指数退避 · OutboundRegistry · QQ botgo ·
 
 ---
 
-## 入站消息路径（当前）
+## 入站消息路径（当前 — Phase E）
 
 ```
-Webhook POST /webhooks/{key}  ─┐
-Runtime Manager (connectors) ──┼→ ProcessInbound
-                               │    ├─ streaming_enabled → processInboundStreaming
-                               │    │       → RunNativeTurnStreaming → OnReplyDelta → StreamSender
-                               │    └─ unary → processInboundCore → delivery queue → platformAdapters.outbound
+Webhook POST /webhooks/{key}  ──→ processInboundHTTP
+                                    ├─ acceptInbound（ACK / 门控 / cancel / async 判定）
+                                    ├─ HTTP 200
+                                    └─ safego → executeInboundTurn | dispatchAsyncInbound
+
+Runtime / QQ 例外：
+  · Runtime WS / Discord / Lark WS → ProcessInbound（长连接内同步 execute 或 async goroutine）
+  · 微信被动（!active_mode）→ processInboundCore 同步 XML（不支持 LONG TASK，见编辑器提示）
+  · QQ 官方 Webhook → processInboundHTTP ✅（2026-05-22 Review 跟进）
+```
+
+**Execute 路径：**
+
+```
+executeInboundTurn
+  ├─ ChannelTurnJobUsecase.CreateAccepted（幂等真实 id）
+  ├─ running → completed | queued | failed | timeout
+  ├─ deliverTurnErrorReply（IM 固定文案）
+  └─ streaming → TurnPreviewCoordinator（2026-05-23，替代 ChannelProgressProjector）
 ```
 
 ---
@@ -83,6 +97,28 @@ Runtime Manager (connectors) ──┼→ ProcessInbound
 | CH-P2-SOAK | 多实例 Runtime 生产 soak | 断网 / 凭据轮换压测 |
 | CH-P2-STREAM-MORE | 钉钉/Discord 流式 | Phase D 后续 |
 | CH-P2-WEBHOOK-TEST | 全平台验签单测 | 补 discord、qq 负例 |
+| CH-E-P1-QQ | QQ Webhook 同步阻塞 | ✅ `processInboundHTTP` |
+| CH-E-P1-WECHAT-PASSIVE | 被动模式无 LONG TASK | ✅ UI 禁用 + `processInboundCore` queued 文案 |
+| CH-E-P2-ASYNC-JOB | async_queued 终态 / watch | ✅ 幂等保护 + Graph 完成/超时更新 Job |
+| CH-E-P2-ERR-LEAK | IM 错误泄露内部信息 | ✅ 固定用户文案 |
+
+---
+
+## IM Preview 优化闭合（2026-05-23，迭代 E-b）
+
+| ID | 问题 | 状态 |
+|----|------|------|
+| IM-P1-01 | 心跳覆盖 preview transcript | ✅ 合并 render + heartbeat |
+| IM-P1-02 | Feishu Card HTTP 无单测 | ✅ `interactive_card_test.go` |
+| IM-P2-01 | 工具 Card 双消息刷屏 | ✅ 终态 `tool_result` 单发 |
+| IM-P2-02 | Session Web 深链 | ✅ `?focus=tool&tool_id=` |
+| IM-P2-03 | Web origin 语义 | ✅ `web_app_origin` + `ResolveChannelWebOrigin` |
+| IM-P2-04 | Card 失败静默 | ✅ FlowLog + `aranea_channel_tool_card_total` |
+| IM-P3-01 | `logTurnFlow` 位置 | ✅ `channel_ingress_flow.go` |
+| IM-P0-01 | 心跳阻塞 EventBus | ✅ select 合并 ticker |
+| IM-P2-CARD-UPDATE | Card message_id 复用 | ✅ `UpsertToolCard` |
+
+详评见 [2026-05-23-Channel-IM-Preview-Review.md](./2026-05-23-Channel-IM-Preview-Review.md)。
 
 ---
 
@@ -93,6 +129,7 @@ Runtime Manager (connectors) ──┼→ ProcessInbound
 | `aranea_channel_delivery_total` | `platform`, `status` |
 | `aranea_channel_runtime_reconnect_total` | `platform`, `receive_mode`, `outcome` |
 | `aranea_channel_stream_update_total` | `platform`, `phase`, `result` |
+| `aranea_channel_tool_card_total` | `platform`, `status` |
 
 环境变量：`CHANNEL_RUNTIME_RELOAD_INTERVAL`（默认 `2m`）
 

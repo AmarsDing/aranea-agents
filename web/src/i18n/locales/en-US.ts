@@ -306,8 +306,15 @@ export default {
       base: { title: "BASE", hint: "Instance identity and platform credentials" },
       connection: { title: "CONNECTION", hint: "Webhook or persistent connection mode" },
       routing: { title: "ROUTING", hint: "Message routing and access control" },
+      long_task: { title: "LONG TASK", hint: "Long-task ACK, timeouts, progress, and async mode" },
       avatar: { title: "AVATAR", hint: "Leave empty to use the platform default icon" }
     },
+    longTaskPresetLabel: "Recommended preset",
+    longTaskPresetPlaceholder: "Pick a template to fill fields below",
+    turnJobsTitle: "Recent turn jobs (ops)",
+    turnJobsHint: "Newest first; for LT-07 troubleshooting.",
+    turnJobsRefresh: "Refresh",
+    turnJobsEmpty: "No turn jobs yet",
     status: {
       pendingSave: "Pending save",
       configured: "✔ Configured",

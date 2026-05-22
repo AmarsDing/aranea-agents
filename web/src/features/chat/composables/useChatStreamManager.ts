@@ -13,7 +13,7 @@ import type { Envelope, EnvelopeType, WsUpstream } from "../envelope";
 import { upsertToolMessage, cancelRunningToolMessages } from "../envelopeToolCall";
 import { runStatusFromEnvelope } from "../envelopeRunStatus";
 import { patchStreamingMessage } from "../streamContentPatch";
-import type { RunStatusValue } from "../api";
+import type { RunStatusValue } from "../types";
 import type { Message } from "../../../components/chat/types";
 import type { TeamDefinition } from "../../teams/types";
 import type { TeamRow } from "../../../components/chat/types";

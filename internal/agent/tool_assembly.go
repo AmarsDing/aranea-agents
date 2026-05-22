@@ -55,13 +55,9 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 		event.CtxFlowLogWarn(ctx, "system.agent.tool_build", "已跳过未配置凭证的工具，避免构建失败",
 			event.P("agent_id", ag.ID), event.P("skipped_tools", skipped))
 	}
-	if cfg.Filesystem {
-		dir, err := resolveAgentFilesystemDir(ctx, ag, deps, cfg.FilesystemDir)
-		if err != nil {
-			event.CtxFlowLogError(ctx, "system.agent.tool_build", "工具构建失败", event.P("agent_id", ag.ID), event.P("error", err))
-			return nil, err
-		}
-		cfg.FilesystemDir = dir
+	if err := applyToolWorkspaceDirs(ctx, ag, deps, &cfg); err != nil {
+		event.CtxFlowLogError(ctx, "system.agent.tool_build", "工具构建失败", event.P("agent_id", ag.ID), event.P("error", err))
+		return nil, err
 	}
 	ts, err := tooltrpc.BuildToolsets(ctx, cfg)
 	if err != nil || ts == nil {
@@ -124,10 +120,45 @@ func loadEffectiveToolKeys(ctx context.Context, deps TRPCBuilderDeps, agentID st
 	return m
 }
 
+func applyToolWorkspaceDirs(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, cfg *tooltrpc.ToolsetConfig) error {
+	if cfg == nil {
+		return nil
+	}
+	if !cfg.Filesystem && !cfg.ShellExec && !cfg.ClaudeCode {
+		return nil
+	}
+	configured := strings.TrimSpace(cfg.FilesystemDir)
+	root, err := resolveToolWorkspaceRoot(ctx, ag, deps, configured)
+	if err != nil {
+		return err
+	}
+	if cfg.Filesystem {
+		cfg.FilesystemDir = root
+	}
+	if cfg.ShellExec {
+		shellDir := strings.TrimSpace(cfg.ShellExecDir)
+		if shellDir == "" {
+			cfg.ShellExecDir = root
+		} else if err := ensureToolWorkspaceDir(shellDir); err != nil {
+			event.CtxFlowLogWarn(ctx, "system.agent.tool_build", "Shell 工作目录无效，回退到统一工作区",
+				event.P("agent_id", ag.ID), event.P("configured_dir", shellDir), event.P("error", err))
+			cfg.ShellExecDir = root
+		}
+	}
+	if cfg.ClaudeCode && strings.TrimSpace(cfg.ClaudeCodeDir) == "" {
+		cfg.ClaudeCodeDir = root
+	}
+	return nil
+}
+
+func resolveToolWorkspaceRoot(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, configured string) (string, error) {
+	return resolveAgentFilesystemDir(ctx, ag, deps, configured)
+}
+
 func resolveAgentFilesystemDir(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, configured string) (string, error) {
 	configured = strings.TrimSpace(configured)
 	if configured != "" {
-		if err := ensureFilesystemWorkspaceDir(configured); err != nil {
+		if err := ensureToolWorkspaceDir(configured); err != nil {
 			event.CtxFlowLogWarn(ctx, "system.agent.tool_build", "工具工作区路径无效，回退到默认目录",
 				event.P("agent_id", ag.ID), event.P("configured_dir", configured), event.P("error", err))
 		} else {
@@ -150,10 +181,14 @@ func resolveAgentFilesystemDir(ctx context.Context, ag biz.Agent, deps TRPCBuild
 	if agentKey != "" {
 		dir = filepath.Join(dir, agentKey)
 	}
-	if err := ensureFilesystemWorkspaceDir(dir); err != nil {
+	if err := ensureToolWorkspaceDir(dir); err != nil {
 		return "", err
 	}
 	return dir, nil
+}
+
+func ensureToolWorkspaceDir(dir string) error {
+	return ensureFilesystemWorkspaceDir(dir)
 }
 
 func ensureFilesystemWorkspaceDir(dir string) error {

@@ -93,7 +93,20 @@
           />
         </q-tab-panel>
         <q-tab-panel name="evolution">
-          <agent-evolution-panel v-model:range="evolutionRange" :agent-id="agentId" :evolution="config.evolution" :guardrails="config.evolution_guardrails" />
+          <agent-evolution-panel
+            v-model:range="evolutionRange"
+            :agent-id="agentId"
+            :evolution="config.evolution"
+            :guardrails="config.evolution_guardrails"
+            :metrics-loading="evolutionMetricsLoading"
+            :metrics="evolutionMetrics"
+            :suggestions="evolutionSuggestions"
+            :applying-id="evolutionApplyingId"
+            :rejecting-id="evolutionRejectingId"
+            :pending-suggestions-count="evolutionPendingCount"
+            @apply="applyEvolutionSuggestion"
+            @reject="rejectEvolutionSuggestion"
+          />
         </q-tab-panel>
 
         <q-tab-panel name="hooks">
@@ -156,6 +169,8 @@
     <agent-advanced-dialog
       v-model:open="advancedDialog"
       :saving="saving"
+      :channel-options="advancedChannelOptions"
+      :loading-channels="loadingAdvancedChannels"
       :channel-id="advancedState.channel_id"
       :chat-id-input="advancedState.chat_id"
       :workspace-input="advancedState.workspace"
@@ -187,6 +202,7 @@ import AgentSettingsSkillsTab from "./agent-settings/AgentSettingsSkillsTab.vue"
 import AgentSettingsA2ATab from "../components/agents/AgentSettingsA2ATab.vue";
 import AgentSettingsA2AEndpointTab from "../components/agents/AgentSettingsA2AEndpointTab.vue";
 import AgentUsageQuotaPanel from "../components/agents/AgentUsageQuotaPanel.vue";
+import { useAgentEvolutionPanel } from "../features/agents/useAgentEvolutionPanel";
 import { useAgentSettingsPage } from "../features/agents/useAgentSettingsPage";
 
 const {
@@ -200,6 +216,8 @@ const {
   avatarPickerOpen,
   promptDialog,
   advancedDialog,
+  advancedChannelOptions,
+  loadingAdvancedChannels,
   toggleFavorite,
   reloadAgent,
   saveAgent,
@@ -244,6 +262,17 @@ const {
   advancedState,
   onAdvancedSave
 } = useAgentSettingsPage();
+
+const {
+  metricsLoading: evolutionMetricsLoading,
+  metrics: evolutionMetrics,
+  suggestions: evolutionSuggestions,
+  applyingId: evolutionApplyingId,
+  rejectingId: evolutionRejectingId,
+  pendingSuggestionsCount: evolutionPendingCount,
+  onApply: applyEvolutionSuggestion,
+  onReject: rejectEvolutionSuggestion
+} = useAgentEvolutionPanel(() => agentId, () => evolutionRange);
 </script>
 
 <style scoped lang="scss">

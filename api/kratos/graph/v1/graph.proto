@@ -576,6 +576,19 @@ message ReportBlockedResponse {
   Task task = 1;
 }
 
+// --- ReviewTask ---
+
+message ReviewTaskRequest {
+  string task_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string reviewer_agent = 2 [(google.api.field_behavior) = REQUIRED];
+  bool approved = 3;
+  string comment = 4;
+}
+
+message ReviewTaskResponse {
+  Task task = 1;
+}
+
 // --- ListTaskComments ---
 
 message ListTaskCommentsRequest {
@@ -746,6 +759,12 @@ service GraphService {
   rpc ReportBlocked(ReportBlockedRequest) returns (ReportBlockedResponse) {
     option (google.api.http) = {
       post: "/v1/graph/tasks/{task_id}/blocked"
+      body: "*"
+    };
+  }
+  rpc ReviewTask(ReviewTaskRequest) returns (ReviewTaskResponse) {
+    option (google.api.http) = {
+      post: "/v1/graph/tasks/{task_id}/review"
       body: "*"
     };
   }

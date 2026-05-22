@@ -31,6 +31,13 @@ type StreamSender struct {
 // ID implements channel.Identified.
 func (s *StreamSender) ID() string { return "slack" }
 
+// PreviewMessageID returns the Slack message timestamp after the first successful send.
+func (s *StreamSender) PreviewMessageID() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return strings.TrimSpace(s.messageTS)
+}
+
 // Update sends or edits the preview message. force bypasses throttle (final flush).
 func (s *StreamSender) Update(ctx context.Context, channelID, text string, force bool) error {
 	channelID = strings.TrimSpace(channelID)

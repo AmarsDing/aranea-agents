@@ -169,7 +169,7 @@
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import type { Agent, ChatEntityKind, DeleteKind, TeamRow } from "./types";
-import type { PlatformResourceTreeNode } from "../../features/platform/api";
+import type { PlatformResourceTreeNode } from "../../features/platform/types";
 
 type EntityGroup<T> = {
   key: string;

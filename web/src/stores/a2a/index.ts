@@ -4,6 +4,7 @@ import {
   discoverAgents,
   discoverRemoteAgent,
   deleteRemoteAgent,
+  getA2AConfig,
   getAgentCard,
   invokeA2A,
   listA2AAudit,
@@ -17,6 +18,7 @@ import type {
   A2AInvokeInput,
   A2AInvokeResult,
   A2ARemoteAgent,
+  A2ARuntimeConfig,
   DiscoverParams,
   DiscoverRemoteInput,
   ListAuditParams,
@@ -31,6 +33,16 @@ export const useA2AStore = defineStore("a2a", () => {
   const auditTotal = ref(0);
   const remoteAgents = ref<A2ARemoteAgent[]>([]);
   const loading = ref(false);
+  const runtimeConfig = ref<A2ARuntimeConfig | null>(null);
+
+  async function loadRuntimeConfig() {
+    try {
+      runtimeConfig.value = await getA2AConfig();
+    } catch {
+      runtimeConfig.value = null;
+    }
+    return runtimeConfig.value;
+  }
 
   async function discover(params: DiscoverParams = {}): Promise<A2AAgentCard[]> {
     loading.value = true;
@@ -92,6 +104,8 @@ export const useA2AStore = defineStore("a2a", () => {
     auditTotal,
     remoteAgents,
     loading,
+    runtimeConfig,
+    loadRuntimeConfig,
     discover,
     refreshCard,
     updateCard,

@@ -61,7 +61,9 @@ func entTeamRunToBiz(e *ent.TeamRun) biz.TeamRun {
 		DurationMS:    e.DurationMs,
 		ErrorMessage:  e.ErrorMessage,
 		TopologyJSON:  e.TopologyJSON,
-		StartedAt:     e.StartedAt,
+		GraphExecutionID:         e.GraphExecutionID,
+		DefinitionSnapshotJSON:   e.DefinitionSnapshotJSON,
+		StartedAt:                e.StartedAt,
 		FinishedAt:    e.FinishedAt,
 		CreatedAt:     e.CreatedAt,
 		UpdatedAt:     e.UpdatedAt,
@@ -273,6 +275,8 @@ func (r *teamRepo) CreateTeamRun(ctx context.Context, run biz.TeamRun) (biz.Team
 		SetDurationMs(run.DurationMS).
 		SetErrorMessage(run.ErrorMessage).
 		SetTopologyJSON(run.TopologyJSON).
+		SetGraphExecutionID(run.GraphExecutionID).
+		SetDefinitionSnapshotJSON(run.DefinitionSnapshotJSON).
 		SetStartedAt(run.StartedAt).
 		SetFinishedAt(run.FinishedAt).
 		SetCreatedAt(run.CreatedAt).
@@ -359,5 +363,16 @@ func (r *teamRepo) UpdateTeamRunSummaryJSON(ctx context.Context, runID, summaryJ
 	_, err := r.data.entClient.ExecContext(ctx,
 		`UPDATE team_runs SET summary_json=?, updated_at=? WHERE id=?`,
 		summaryJSON, now, runID)
+	return err
+}
+
+func (r *teamRepo) UpdateTeamRunGraphExecutionID(ctx context.Context, runID, graphExecutionID string) error {
+	if strings.TrimSpace(runID) == "" {
+		return fmt.Errorf("team run id is required")
+	}
+	now := nowRFC3339()
+	_, err := r.data.entClient.ExecContext(ctx,
+		`UPDATE team_runs SET graph_execution_id=?, updated_at=? WHERE id=?`,
+		graphExecutionID, now, runID)
 	return err
 }

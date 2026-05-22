@@ -269,11 +269,14 @@ UI 支持 **JSON 数组** 或 **英文逗号分隔** 字符串；保存后 **重
 
 ### 7.1 双路径入站
 
-**A. Webhook 路径（已实现）**  
+**A. Webhook 路径（已实现；长任务 Phase E 将改为 Accept 后 200）**  
 `POST /webhooks/{channel_key}` → 验签 → 解析 → 路由 → Session → Agent Turn → 异步入队出站
 
 **B. 长连接路径（已实现）**  
 `ChannelRuntimeManager` 按实例启动 goroutine（larkws / ding stream / socketmode / polling / discordgo）→ 标准化 `InboundEvent` → 同 A 后半段
+
+**长任务（Phase E，规划）**  
+Webhook 与 WS 统一 **Accept（ACK + 200）→ 异步 Execute Turn**；详见 [§8](./17%20channel.md#8-长任务场景飞书-channel)。
 
 **入站统一门禁（2026-05-22）**  
 飞书 WS / Webhook 先经 **`lark.AcceptFeishuInbound`**（同一规则：仅 `sender_type=user`、必须有 `message_id`、群聊需 @）→ `ChannelIngress.ProcessInbound` → **`channel_inbound_receipt`**（同一 `feishu:{message_id}` 只 Turn 一次）→ `checkInboundAccess` → Agent Turn。
@@ -283,7 +286,8 @@ UI 支持 **JSON 数组** 或 **英文逗号分隔** 字符串；保存后 **重
 ### 7.2 出站与流式
 
 - 默认：完整回复经 `channel_delivery` 异步发送  
-- Phase 2：流式编辑（MuseBot `MsgChan` + 平台 edit message）— Telegram / 飞书 / Slack
+- 流式（MVP ✅）：Telegram / 飞书 / Slack — `config.streaming_enabled`；长任务场景 **建议开启**（见 §8）  
+- 长任务 ACK / 进度 / 排队提示：Phase E（见 [开发计划 §10](./17-channel-development.md#10-长任务异步执行phase-e)）
 
 ### 7.3 健康与运维
 
@@ -292,7 +296,111 @@ UI 支持 **JSON 数组** 或 **英文逗号分隔** 字符串；保存后 **重
 
 ---
 
-## 8. 验收标准
+## 8. 长任务场景（飞书 Channel）
+
+> **技术设计**：[17 channel.design.md §十二](./17%20channel.design.md#十二长任务异步执行设计)  
+> **开发计划**：[17-channel-development.md §10](./17-channel-development.md#10-长任务异步执行phase-e)  
+> **跨模块**：[17-channel-agent-team-integration.md §3.4](./17-channel-agent-team-integration.md#34-长任务与-im-体验)
+
+### 8.1 问题陈述
+
+管理员通过飞书 Channel 向 Agent / Team 下发命令时，常见任务耗时远超 IM 平台回调 SLA（通常 3–5 秒）或单次 Turn 默认上限（5 分钟）。用户侧表现为：长时间无回复、Webhook 重试导致重复入站、并发消息静默、工具/Team 编排阶段「假死」、超时后仅收到笼统错误。
+
+Channel **不负责** LLM 编排；本需求定义 **IM 侧体验与受理语义**，运行时仍经 `ChatService` 与 Web Chat 共用 Session / Turn 机制。
+
+### 8.2 用户故事
+
+| ID | 角色 | 故事 | 价值 |
+|----|------|------|------|
+| LT-U01 | 飞书用户 | 发送分析类指令后 **1–2 秒内** 收到「已受理」反馈 | 确认机器人在线，降低重复发送 |
+| LT-U02 | 飞书用户 | 任务执行 **数分钟** 内能看到 **进度或流式文本** | 长生成/多工具/Team 流水线可感知 |
+| LT-U03 | 飞书用户 | 当前任务未完成时再发消息，收到 **「已排队」** 提示 | 与 Web Chat 排队语义一致 |
+| LT-U04 | 飞书用户 | 任务失败或超时，收到 **明确原因**（非空白） | 可重试或联系运维 |
+| LT-U05 | 管理员 | 为客服/研报 Channel 配置 **更长 Turn 超时** 与 **流式/进度** 开关 | 按业务线差异化 SLA |
+| LT-U06 | 运维 | 按 peer / session / job 追溯长任务状态 | 排障不依赖用户截图 |
+
+### 8.3 产品能力（分阶段）
+
+| 阶段 | 能力 | 说明 |
+|------|------|------|
+| **P0** | 入站快速 ACK | Webhook HTTP 在验签与幂等后立即 200；飞书侧即时文案 |
+| **P0** | 流式默认推荐 | 长生成场景开启 `streaming_enabled`，IM 消息随输出 PATCH |
+| **P0** | 入队可见反馈 | Session 有 active run 时，Channel 出站「已排队」文案 |
+| **P1** | Channel 级超时 | `turn_timeout_sec` / `first_byte_timeout_sec` 覆盖全局默认 |
+| **P1** | Turn Job 可追踪 | 每次入站 Turn 有 job 状态（accepted / running / completed / failed / timeout） |
+| **P1** | 长静默进度 | 工具调用、Team 成员切换期间 PATCH 进度文案或心跳 |
+| **P2** | 超长任务异步模式 | 预期 >15min 走 Graph / Cron，IM 立即返回 task_id |
+| **P2** | 飞书取消 / 卡片 | 用户发「取消」或卡片按钮终止 Turn（可选） |
+
+### 8.4 配置项（`config_json.config`，P0–P1）
+
+| 字段 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `streaming_enabled` | bool | `false` | 流式 PATCH（飞书/Telegram/Slack）；长任务 **建议 true** |
+| `ack_message` | string | `收到，正在处理…` | 受理后立即出站；空则不发 ACK |
+| `ack_on_queued` | string | 见设计文档 | active run 时入队提示；支持 `{{pending_id}}` |
+| `turn_timeout_sec` | int | `300` | 覆盖 Channel Turn 上限（秒）；Team 流水线可设 900 |
+| `first_byte_timeout_sec` | int | `30` | 首 token/首 delta 超时（秒）；重工具场景可设 120 |
+| `progress_mode` | enum | `off` | `off` \| `text` \| `steps`（Team 成员摘要，P1） |
+| `progress_quiet_sec` | int | `20` | 无输出时心跳间隔（秒）；0 关闭 |
+| `heartbeat_message` | string | `仍在处理中…` | 心跳文案；可含 `{{elapsed}}` |
+| `execution_mode` | enum | `sync` | `sync` \| `async` \| `auto`（P2，对接 Graph/Cron） |
+
+配置写入 DB，保存后 **Runtime Reload** 生效；不要求改代码。
+
+### 8.5 运行时行为（产品语义）
+
+1. **受理与执行分离**：飞书回调 SLA 与 Agent Turn 耗时解耦；用户先见 ACK，再见进度/结果。  
+2. **与 Web Chat 一致**：同一 `session_id` 下 Session 锁、pending queue、Run 状态与 Web 共用；Channel 额外负责 IM 出站投影。  
+3. **幂等不变**：同一 `message_id` 仍只 Turn 一次；快速 200 不触发重复执行。  
+4. **失败可观测**：拒绝、超时、流式 PATCH 失败均写入投递/Job 审计，运维可按 Session 反查。
+
+### 8.6 推荐配置（飞书长任务）
+
+单 Agent + 重工具：
+
+```json
+{
+  "receive_mode": "websocket",
+  "config": {
+    "streaming_enabled": true,
+    "ack_message": "收到，正在处理，请稍候…",
+    "turn_timeout_sec": 600,
+    "first_byte_timeout_sec": 120,
+    "progress_mode": "text",
+    "progress_quiet_sec": 20
+  }
+}
+```
+
+Team 流水线（群 @）：
+
+```json
+{
+  "config": {
+    "require_mention": true,
+    "streaming_enabled": true,
+    "turn_timeout_sec": 900,
+    "progress_mode": "steps"
+  }
+}
+```
+
+### 8.7 验收标准
+
+| ID | 场景 | 预期 |
+|----|------|------|
+| LT-01 | 单 Agent 生成约 2 分钟 | ≤2s ACK；流式 PATCH；最终完整回复 |
+| LT-02 | Team 流水线约 5 分钟 | 进度文案；不因 30s 首字节默认超时失败 |
+| LT-03 | 任务进行中再发一条 | 飞书收到「已排队」；队列满按 Web Chat 规则拒绝 |
+| LT-04 | Webhook 模式 10 分钟任务 | HTTP ≤3s 返回 200；无重复 Turn |
+| LT-05 | Channel 设 `turn_timeout_sec=900` | 5min 全局默认不提前 kill |
+| LT-06 | Turn 超时或失败 | 飞书明确错误 + Job/投递可审计 |
+| LT-07 | 运维 | Monitor / Session 可按 `session_id` 查看 Channel Turn 与 FlowLog |
+
+---
+
+## 9. 验收标准（基础能力）
 
 | ID | 场景 | 预期 |
 |----|------|------|
@@ -307,9 +415,10 @@ UI 支持 **JSON 数组** 或 **英文逗号分隔** 字符串；保存后 **重
 
 ---
 
-## 9. 文档修订记录
+## 10. 文档修订记录
 
 | 版本 | 日期 | 说明 |
 |------|------|------|
 | 3.0 | 2026-05-22 | 以 MuseBot 平台连接能力为参考重写；移除 GoClaw/trpc channel 主导；扩展 Catalog 至 MuseBot 10 平台 |
 | 3.1 | 2026-05-22 | §6 访问控制：`allowed_user_ids` / `allowed_group_ids` / `require_mention` 入站强制执行与用法说明 |
+| 3.2 | 2026-05-22 | §8 长任务场景：用户故事、配置项、验收 LT-01–07；与 Phase E 开发计划对齐 |

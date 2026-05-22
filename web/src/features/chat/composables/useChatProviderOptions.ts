@@ -1,6 +1,7 @@
 import { ref, type Ref } from "vue";
 import { listChatOptions } from "../api";
-import { listPlatformResources, type PlatformResource } from "../../platform/api";
+import { listPlatformResources } from "../../platform/api";
+import type { PlatformResource } from "../../platform/types";
 import type { ChatOption } from "../types";
 import {
   loadDialogModeFromStorage,

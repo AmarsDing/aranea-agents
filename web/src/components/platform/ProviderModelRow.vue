@@ -58,7 +58,7 @@
           <template v-if="hasApiKey">
             <span
               class="provider-secret-value"
-              :class="{ 'provider-secret-value--masked': !listKeyVisible }"
+              :class="{ 'provider-secret-value--masked': !props.listKeyVisible }"
             >{{ listSecretDisplay }}</span>
             <q-btn
               flat
@@ -66,10 +66,10 @@
               round
               size="xs"
               class="provider-secret-toggle"
-              :icon="listKeyVisible ? 'visibility_off' : 'visibility'"
-              :loading="listKeyRevealing"
-              :aria-label="listKeyVisible ? '隐藏 API 密钥' : '查看 API 密钥'"
-              @click="toggleListApiKeyVisibility"
+              :icon="props.listKeyVisible ? 'visibility_off' : 'visibility'"
+              :loading="props.listKeyRevealing"
+              :aria-label="props.listKeyVisible ? '隐藏 API 密钥' : '查看 API 密钥'"
+              @click="emit('toggle-reveal-key', props.row)"
             />
           </template>
           <q-chip v-else dense square color="orange-1" text-color="orange-9" icon="key">未设置</q-chip>
@@ -96,9 +96,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed } from "vue";
 import { useQuasar } from "quasar";
-import { revealProviderModelCredentials, type PlatformResource } from "../../features/platform/api";
+import type { PlatformResource } from "../../features/platform/types";
 
 type ModelCategory = {
   value: string;
@@ -130,10 +130,14 @@ type ProviderConfig = {
 const props = defineProps<{
   row: PlatformResource;
   saving?: boolean;
+  listKeyVisible?: boolean;
+  listKeyRevealing?: boolean;
+  listRevealedApiKey?: string;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   "toggle-enabled": [row: PlatformResource, enabled: boolean];
+  "toggle-reveal-key": [row: PlatformResource];
   trend: [row: PlatformResource];
   edit: [row: PlatformResource];
   delete: [row: PlatformResource];
@@ -151,52 +155,10 @@ const modelDisplayName = computed(() => props.row.name || props.row.model || "�
 const hasApiKey = computed(() =>
   Boolean(config.value.api_key_set || config.value.api_key || config.value.secret_id || config.value.aws_region)
 );
-const listKeyVisible = ref(false);
-const listRevealedApiKey = ref("");
-const listKeyRevealing = ref(false);
-const listSecretDisplay = computed(() => (listKeyVisible.value ? listRevealedApiKey.value : "••••••"));
-
-watch(
-  () => props.row.id,
-  () => {
-    listKeyVisible.value = false;
-    listRevealedApiKey.value = "";
-  }
+const listSecretDisplay = computed(() =>
+  props.listKeyVisible ? props.listRevealedApiKey || "••••••" : "••••••"
 );
 
-async function toggleListApiKeyVisibility() {
-  if (listKeyVisible.value) {
-    listKeyVisible.value = false;
-    listRevealedApiKey.value = "";
-    return;
-  }
-  listKeyRevealing.value = true;
-  try {
-    const creds = await revealProviderModelCredentials(props.row.id);
-    const plain = creds.api_key?.trim() || creds.secret_key?.trim() || "";
-    if (!plain) {
-      const cannotDecrypt =
-        creds.has_api_key ||
-        creds.has_secret_key ||
-        config.value.api_key_set ||
-        Boolean(config.value.secret_id?.trim());
-      $q.notify({
-        type: "warning",
-        message: cannotDecrypt
-          ? "密钥已保存，但无法解密显示。请在「系统设置」确认凭据加密密钥，或在编辑页重新保存 API Key。"
-          : "未找到可显示的密钥，请在编辑页配置。"
-      });
-      return;
-    }
-    listRevealedApiKey.value = plain;
-    listKeyVisible.value = true;
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : "无法读取密钥";
-    $q.notify({ type: "negative", message: msg });
-  } finally {
-    listKeyRevealing.value = false;
-  }
-}
 const showVariantChip = computed(() => {
   const pt = (config.value.provider_type || "").toLowerCase();
   const variant = (config.value.variant || "").toLowerCase();

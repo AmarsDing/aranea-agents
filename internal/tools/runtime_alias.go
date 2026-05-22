@@ -11,7 +11,7 @@ import (
 // LLM calls using common aliases still resolve.
 var RuntimeToolNameAliases = map[string]string{
 	"write_file":       "save_file",
-	"edit_file":        "replace_content",
+	"edit_file":        "diff_edit",
 	"list_files":       "list_file",
 	"workspace_search": "search_content",
 	"shell":            "exec_command",

@@ -2,7 +2,8 @@ import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useQuasar } from "quasar";
 import { useRoute } from "vue-router";
-import { enqueueUserMessage, getRunStatus, type RunStatus, type RunStatusValue } from "../api";
+import { enqueueUserMessage, getRunStatus } from "../api";
+import type { RunStatus, RunStatusValue } from "../types";
 import type {
   Agent,
   ChatEntityKind,

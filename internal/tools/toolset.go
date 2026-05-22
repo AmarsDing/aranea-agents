@@ -17,6 +17,7 @@ import (
 	trpcfile "trpc.group/trpc-go/trpc-agent-go/tool/file"
 	trpcgooglesearch "trpc.group/trpc-go/trpc-agent-go/tool/google/search"
 	"aranea-agents/internal/tools/mcpobserve"
+	"aranea-agents/internal/tools/hostexecnorm"
 
 	trpchostexec "trpc.group/trpc-go/trpc-agent-go/tool/hostexec"
 	trpcmcp "trpc.group/trpc-go/trpc-agent-go/tool/mcp"
@@ -26,7 +27,6 @@ import (
 	trpcgeminifetch "trpc.group/trpc-go/trpc-agent-go/tool/webfetch/geminifetch"
 	trpchttpfetch "trpc.group/trpc-go/trpc-agent-go/tool/webfetch/httpfetch"
 	trpcwikipedia "trpc.group/trpc-go/trpc-agent-go/tool/wikipedia"
-	trpcworkspaceexec "trpc.group/trpc-go/trpc-agent-go/tool/workspaceexec"
 )
 
 var (
@@ -178,7 +178,8 @@ func Registry() []*ToolRegistration {
 				Description: "Workspace execution tools (exec, write_stdin, kill_session)",
 				Category:    "execution",
 				Factory: func(ctx context.Context) (Tool, error) {
-					return trpcworkspaceexec.NewExecTool(nil), nil
+					// Mounted by llmagent when WithCodeExecutor is wired; not via catalog assembly alone.
+					return nil, nil
 				},
 				EnabledByDefault:     false,
 				RiskLevel:            "critical",
@@ -254,6 +255,7 @@ type MCPBrokerConfig struct {
 type AssemblyConfig struct {
 	EnabledTools  []string
 	FilesystemDir string
+	ShellExecDir  string
 	GeminiModel   string
 	GoogleAPIKey  string
 	GoogleCX      string
@@ -319,6 +321,20 @@ func Assemble(ctx context.Context, cfg AssemblyConfig) (*AssembledToolsets, erro
 		}
 	}
 
+	if enabled["hostexec"] && cfg.ShellExecDir != "" {
+		ts, err := trpchostexec.NewToolSet(trpchostexec.WithBaseDir(cfg.ShellExecDir))
+		if err != nil {
+			return nil, fmt.Errorf("hostexec toolset with dir: %w", err)
+		}
+		wrapped := hostexecnorm.WrapToolSet(ts)
+		for i, existing := range out.ToolSets {
+			if existing.Name() == "hostexec" {
+				out.ToolSets[i] = wrapped
+				break
+			}
+		}
+	}
+
 	if enabled["geminifetch"] {
 		if model := strings.TrimSpace(cfg.GeminiModel); model != "" {
 			t, err := trpcgeminifetch.NewTool(model)
@@ -376,18 +392,6 @@ func Assemble(ctx context.Context, cfg AssemblyConfig) (*AssembledToolsets, erro
 			return nil, fmt.Errorf("openapi %s: %w", spec.Name, err)
 		}
 		out.ToolSets = append(out.ToolSets, ts)
-	}
-
-	if enabled["workspace_exec"] {
-		execTool := trpcworkspaceexec.NewExecTool(nil)
-		for i, existing := range out.Tools {
-			if decl := existing.Declaration(); decl != nil && decl.Name == "workspace_exec" {
-				out.Tools[i] = execTool
-				break
-			}
-		}
-		out.Tools = append(out.Tools, trpcworkspaceexec.NewWriteStdinTool(execTool))
-		out.Tools = append(out.Tools, trpcworkspaceexec.NewKillSessionTool(execTool))
 	}
 
 	for _, atCfg := range cfg.AgentTools {

@@ -62,9 +62,36 @@ func buildCatalogConfirmTools(ctx context.Context, ag biz.Agent, deps TRPCBuilde
 		ov, hasOV := overrideByKey[key]
 		if biz.ToolRequiresConfirmation(tool, ov, hasOV) {
 			out[key] = true
+			for _, alias := range runtimeConfirmAliases(key) {
+				out[alias] = true
+			}
 		}
 	}
 	return out
+}
+
+// runtimeConfirmAliases maps catalog tool_key to mounted runtime declaration names.
+func runtimeConfirmAliases(catalogKey string) []string {
+	switch strings.TrimSpace(catalogKey) {
+	case "shell_exec":
+		return []string{"exec_command"}
+	default:
+		return nil
+	}
+}
+
+func catalogRequiresConfirm(catalog map[string]bool, toolName string) bool {
+	if catalog == nil {
+		return false
+	}
+	toolName = strings.TrimSpace(toolName)
+	if catalog[toolName] {
+		return true
+	}
+	if toolName == "exec_command" && catalog["shell_exec"] {
+		return true
+	}
+	return false
 }
 
 func (g *toolConfirmGate) needsConfirm(toolName string, args []byte) bool {
@@ -72,7 +99,7 @@ func (g *toolConfirmGate) needsConfirm(toolName string, args []byte) bool {
 		return false
 	}
 	toolName = strings.TrimSpace(toolName)
-	if g.catalog != nil && g.catalog[toolName] {
+	if catalogRequiresConfirm(g.catalog, toolName) {
 		return true
 	}
 	if g.hasPlugin && plugintrpc.MatchConfirmationGuard(g.plugin, toolName, args) {
@@ -85,7 +112,7 @@ func (g *toolConfirmGate) pluginAllowWithoutChannel(toolName string, args []byte
 	if g == nil || !g.hasPlugin || !plugintrpc.ConfirmationDefaultAllow(g.plugin) {
 		return false
 	}
-	if g.catalog != nil && g.catalog[strings.TrimSpace(toolName)] {
+	if g.catalog != nil && catalogRequiresConfirm(g.catalog, strings.TrimSpace(toolName)) {
 		return false
 	}
 	return plugintrpc.MatchConfirmationGuard(g.plugin, toolName, args)

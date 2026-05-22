@@ -3,11 +3,11 @@
  * 更新操作先 GET 获取当前状态，merge 后再 PATCH，与 channel 保持一致的全字段替换语义。
  */
 import { createMCPServerService } from "../../services";
-import type { PlatformResource, PlatformResourceInput } from "../platform/api";
+import type { PlatformResource, PlatformResourceInput } from "../platform/types";
 import { asRecord, pickBool, pickI32, pickStr } from "../../shared/wireJson";
 import type { McpServerTestResult, McpServerValidateResult, McpUserCredential, McpUserCredentialInput } from "./types";
 
-export type { PlatformResource, PlatformResourceInput } from "../platform/api";
+export type { PlatformResource, PlatformResourceInput } from "../platform/types";
 
 const svc = createMCPServerService();
 

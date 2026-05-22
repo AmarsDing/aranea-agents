@@ -1,5 +1,5 @@
 import type { Envelope } from "./envelope";
-import type { RunStatusValue } from "./api";
+import type { RunStatusValue } from "./types";
 import { AWAIT_KIND_REPLY, AWAIT_KIND_TOOL_CONFIRM } from "./awaitConstants";
 
 export type RunStatusFromWs = {

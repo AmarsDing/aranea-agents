@@ -1,9 +1,9 @@
 import { computed, reactive, ref, watch, type Ref } from "vue";
 import { useQuasar } from "quasar";
 import { listAgents } from "../agents/api";
-import type { Agent } from "../agents/api";
+import type { Agent } from "../agents/types";
 import { listTeams } from "../teams/api";
-import type { Team } from "../teams/api";
+import type { Team } from "../teams/types";
 import { createChannel, testChannel, updateChannel } from "./api";
 import {
   buildPlatformSections,

@@ -126,6 +126,18 @@ func (u *AgentUsecase) Get(ctx context.Context, id string) (Agent, error) {
 	return u.hydrate(ctx, a)
 }
 
+func (u *AgentUsecase) GetByAgentKey(ctx context.Context, agentKey string) (Agent, error) {
+	agentKey = strings.TrimSpace(agentKey)
+	if agentKey == "" {
+		return Agent{}, kerrors.BadRequest("AGENT", "agent_key is required")
+	}
+	a, err := u.repo.GetAgentByAgentKey(ctx, agentKey)
+	if err != nil {
+		return Agent{}, err
+	}
+	return u.hydrate(ctx, a)
+}
+
 func (u *AgentUsecase) hydrate(ctx context.Context, agent Agent) (Agent, error) {
 	settings, err := u.repo.GetAgentRuntimeSettings(ctx, agent.ID)
 	if err != nil {

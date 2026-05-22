@@ -48,6 +48,7 @@ var ProviderSet = wire.NewSet(
 	NewChannelRepo,
 	NewChannelPeerSessionRepo,
 	NewChannelInboundReceiptRepo,
+	NewChannelTurnJobRepo,
 	NewUsageRepo,
 	NewMonitorRepo,
 	NewSystemSettingRepo,
@@ -312,6 +313,9 @@ func ensureAllSchemas(rawDB *sql.DB, entClient *ent.Client) error {
 	}
 	if err := EnsureChannelInboundSchema(ctxSchema, rawDB); err != nil {
 		return fmt.Errorf("channel inbound schema: %w", err)
+	}
+	if err := EnsureChannelTurnJobSchema(ctxSchema, rawDB); err != nil {
+		return fmt.Errorf("channel turn job schema: %w", err)
 	}
 	if err := EnsureMonitorAlertSchema(ctxSchema, entClient); err != nil {
 		return fmt.Errorf("monitor alert schema: %w", err)

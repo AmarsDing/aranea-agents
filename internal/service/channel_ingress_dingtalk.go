@@ -33,7 +33,7 @@ func (h *ChannelIngress) handleDingTalkWebhook(w http.ResponseWriter, r *http.Re
 	}
 	peerID := ingressFirstNonEmpty(parsed.SenderStaffID, parsed.ConversationID, parsed.SenderNick)
 	idempotency := "dingtalk:" + parsed.ConversationID + ":" + strings.TrimSpace(r.URL.Query().Get("timestamp"))
-	h.processInboundHTTP(w, r, chRow, port.InboundEvent{
+	writeInboundHTTPResponse(w, h.processInboundHTTP(r, chRow, port.InboundEvent{
 		PlatformType:   "dingtalk",
 		PeerID:         peerID,
 		Text:           parsed.Text,
@@ -42,6 +42,6 @@ func (h *ChannelIngress) handleDingTalkWebhook(w http.ResponseWriter, r *http.Re
 			"recipient":       parsed.SessionWebhook,
 			"session_webhook": parsed.SessionWebhook,
 		},
-	})
+	}))
 	return nil
 }

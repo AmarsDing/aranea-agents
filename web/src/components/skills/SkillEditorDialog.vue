@@ -1,6 +1,6 @@
 <template>
   <q-dialog :model-value="modelValue" maximized @update:model-value="emit('update:modelValue', $event)">
-    <q-card class="skill-editor-card">
+    <q-card class="skill-editor-card app-dialog-card app-glass-dialog">
       <q-card-section class="row items-center justify-between q-pb-sm">
         <div>
           <div class="text-h6">编辑 Skill 文件</div>

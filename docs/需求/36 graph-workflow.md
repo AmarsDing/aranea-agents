@@ -1,5 +1,7 @@
 # M4: Graph 工作流 — 详细需求（v3）
 
+> **编排融合（M53）**：[53 team-graph-orchestration.md](./53%20team-graph-orchestration.md) — Team mode 编译为 Graph、统一运行观测。
+
 > 对标 `pkg/trpc-agent-go/graph` 包，构建"LangGraph for Go"级别的确定性工作流引擎。
 > 本文档从四个核心维度梳理 Graph 的产品定位、需求层级和演进路线。
 

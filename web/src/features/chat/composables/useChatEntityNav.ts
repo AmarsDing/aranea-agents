@@ -11,7 +11,8 @@ import {
   updateSessionTitle,
 } from "../../session/api";
 import { listTeams, updateTeam } from "../../teams/api";
-import { listPlatformResourceTree, type PlatformResourceTreeNode } from "../../platform/api";
+import { listPlatformResourceTree } from "../../platform/api";
+import type { PlatformResourceTreeNode } from "../../platform/types";
 import type { Agent, ChatEntityKind, Message, Session, TeamRow } from "../../../components/chat/types";
 import { hydrateAgentSettings } from "../agentPlannerSettings";
 import { formatSessionTime } from "./chatWorkspaceUtils";

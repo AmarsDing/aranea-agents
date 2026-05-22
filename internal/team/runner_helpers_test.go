@@ -20,6 +20,7 @@ func (r *stepBusRepo) CreateTeamRunStep(_ context.Context, step biz.TeamRunStep)
 }
 
 func (r *stepBusRepo) UpdateTeamRunSummaryJSON(_ context.Context, _, _ string) error { return nil }
+func (r *stepBusRepo) UpdateTeamRunGraphExecutionID(_ context.Context, _, _ string) error { return nil }
 
 func TestPersistStep_EmitsStartedAndFinished(t *testing.T) {
 	bus := event.NewBus()

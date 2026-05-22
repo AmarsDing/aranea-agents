@@ -126,7 +126,8 @@
 import { computed, onMounted, reactive, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useQuasar } from "quasar";
-import { getSystemSettings, updateSystemSettings } from "../features/system-settings/useSystemSettingsPage";
+import { useSystemSettingsStore } from "../stores/system-settings";
+import { useA2AStore } from "../stores/a2a";
 import {
   knowledgeEmbedFromSettings,
   knowledgeEmbedToPatch
@@ -134,10 +135,10 @@ import {
 import { DEFAULT_EVAL_LLM_FORM, evalLLMFromSettings } from "../features/system-settings/eval-llm";
 import { DEFAULT_KNOWLEDGE_EMBED_FORM } from "../features/knowledge/embedder-constants";
 import KnowledgeEmbedderFields from "../components/knowledge/KnowledgeEmbedderFields.vue";
-import { getA2AConfig } from "../features/system-settings/useSystemSettingsPage";
-
 const { t } = useI18n();
 const $q = useQuasar();
+const settingsStore = useSystemSettingsStore();
+const a2aStore = useA2AStore();
 const rootDir = ref("");
 const workDir = ref("");
 const a2aPublicBaseUrl = ref("");
@@ -182,7 +183,10 @@ async function load() {
   loading.value = true;
   error.value = "";
   try {
-    const [res, a2aCfg] = await Promise.all([getSystemSettings(), getA2AConfig().catch(() => null)]);
+    await settingsStore.loadSettings();
+    const res = settingsStore.settings;
+    if (!res) return;
+    const a2aCfg = await a2aStore.loadRuntimeConfig().catch(() => null);
     rootDir.value = res.rootDirectory ?? "";
     workDir.value = res.workDirectory ?? "";
     a2aPublicBaseUrl.value = res.a2aPublicBaseUrl ?? "";
@@ -209,7 +213,7 @@ async function save() {
   saving.value = true;
   error.value = "";
   try {
-    const res = await updateSystemSettings({
+    const res = await settingsStore.saveAll({
       rootDirectory: rootDir.value,
       workDirectory: workDir.value,
       globalMonthlyMicroUsd: usdToMicroUsd(globalMonthlyUsd.value),
@@ -221,7 +225,7 @@ async function save() {
     rootDir.value = res.rootDirectory ?? "";
     workDir.value = res.workDirectory ?? "";
     a2aPublicBaseUrl.value = res.a2aPublicBaseUrl ?? "";
-    const a2aCfg = await getA2AConfig().catch(() => null);
+    const a2aCfg = await a2aStore.loadRuntimeConfig().catch(() => null);
     effectiveA2AUrl.value = a2aCfg?.public_base_url ?? "";
     globalMonthlyUsd.value = microUsdToUsd(res.globalMonthlyMicroUsd);
     mcpAllowAdhocHttp.value = Boolean(res.mcpAllowAdhocHttp ?? res.mcp_allow_adhoc_http);

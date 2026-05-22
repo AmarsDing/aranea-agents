@@ -38,10 +38,12 @@ const (
 	EnvelopeTypeGraphExecutionDone EnvelopeType = "graph_execution_done"
 	EnvelopeTypeGraphNodeError     EnvelopeType = "graph_node_error"
 	EnvelopeTypeGraphNodeCustom    EnvelopeType = "graph_node_custom"
+	EnvelopeTypeGraphTaskStatus    EnvelopeType = "graph_task_status"
 	EnvelopeTypeKnowledgeIngest    EnvelopeType = "knowledge_ingest"
 	EnvelopeTypeMCPSessionReconnect EnvelopeType = "mcp.session.reconnect"
 	EnvelopeTypeMCPHealthAlert      EnvelopeType = "mcp.health.alert"
-	EnvelopeTypeAlertNotify        EnvelopeType = "alert.notify"
+	EnvelopeTypeAlertNotify                 EnvelopeType = "alert.notify"
+	EnvelopeTypeOrchestrationAgentStatus    EnvelopeType = "orchestration_agent_status"
 )
 
 type Envelope struct {
@@ -152,11 +154,12 @@ func RouteChannel(env Envelope) string {
 		return "monitor"
 	case EnvelopeTypeMemberMessageStart, EnvelopeTypeMemberDelta, EnvelopeTypeMemberMessageDone,
 		EnvelopeTypeTeamRunStarted, EnvelopeTypeTeamRunFinished, EnvelopeTypeTeamStepStarted,
-		EnvelopeTypeTeamStepFinished, EnvelopeTypeTeamRunFailed, EnvelopeTypeTeamSummary:
+		EnvelopeTypeTeamStepFinished, EnvelopeTypeTeamRunFailed, EnvelopeTypeTeamSummary,
+		EnvelopeTypeOrchestrationAgentStatus:
 		return "team"
 	case EnvelopeTypeGraphNodeStart, EnvelopeTypeGraphNodeEnd, EnvelopeTypeCheckpoint,
 		EnvelopeTypeGraphStep, EnvelopeTypeGraphExecutionDone, EnvelopeTypeGraphNodeError,
-		EnvelopeTypeGraphNodeCustom:
+		EnvelopeTypeGraphNodeCustom, EnvelopeTypeGraphTaskStatus:
 		return "graph"
 	case EnvelopeTypeKnowledgeIngest:
 		return "knowledge"

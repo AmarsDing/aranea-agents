@@ -6,109 +6,73 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
+	"aranea-agents/pkg/safego"
 )
 
-// processInboundCore resolves routing, runs the agent turn, and returns the reply text.
+const defaultChannelPassiveQueuedReply = "当前有任务进行中，请稍后再试。"
+
+// processInboundCore runs a synchronous turn and returns reply text for platforms that
+// must embed the assistant reply in the webhook HTTP body (e.g. WeChat passive mode).
 func (h *ChannelIngress) processInboundCore(ctx context.Context, chRow biz.Channel, ev port.InboundEvent) (reply string, err error) {
 	if h == nil || h.chat == nil || h.peers == nil || h.sessions == nil {
 		return "", nil
 	}
-	platform := strings.TrimSpace(ev.PlatformType)
-	if platform == "" {
-		platform = channelTypeFromConfig(chRow.ConfigJSON)
-	}
-	routing, err := biz.ParseChannelRouting(chRow.ConfigJSON)
+	platform := inboundPlatform(chRow, ev)
+	result, err := h.runChatTurnWithOutcome(ctx, chRow, platform, ev)
 	if err != nil {
-		_ = h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "routing", "error": err.Error()}, err.Error())
 		return "", err
 	}
-	peerKey := ev.PeerKey
-	if peerKey == "" {
-		peerKey = biz.PeerKeyForSession(routing.DMScope, ev.PeerID)
+	switch result.Outcome {
+	case biz.ChannelTurnOutcomeQueued:
+		ltCfg := biz.ParseChannelLongTaskConfig(chRow.ConfigJSON)
+		text := strings.TrimSpace(ltCfg.AckOnQueued)
+		if text == "" {
+			text = defaultChannelPassiveQueuedReply
+		}
+		return biz.RenderChannelTemplate(text, map[string]string{"pending_id": result.PendingID}), nil
+	default:
+		return result.Reply, nil
 	}
-	reply, err = h.runChatTurn(ctx, chRow, platform, peerKey, ev.PeerID, ev.Text)
-	if err != nil {
-		_ = h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "chat", "error": err.Error()}, err.Error())
-		return "", err
-	}
-	return reply, nil
 }
 
-// ProcessInbound runs agent turn + outbound enqueue for a normalized channel message.
+// processWeChatPassiveInbound gates idempotency/access then runs a sync turn for XML reply.
+func (h *ChannelIngress) processWeChatPassiveInbound(ctx context.Context, chRow biz.Channel, ev port.InboundEvent) (reply string, err error) {
+	platform := "wechat"
+	proceed, denyReply, err := h.gateInboundBeforeTurn(ctx, chRow, ev, true)
+	if err != nil {
+		return "", err
+	}
+	if !proceed {
+		return denyReply, nil
+	}
+	defer h.releaseInboundInflight(ev, platform)
+
+	if handled, cancelReply, cerr := h.resolveCancelInboundTurn(ctx, chRow, ev, platform); handled {
+		return cancelReply, cerr
+	}
+	return h.processInboundCore(ctx, chRow, ev)
+}
+
+// ProcessInbound runs accept + synchronous execute (runtime WS path).
 func (h *ChannelIngress) ProcessInbound(ctx context.Context, chRow biz.Channel, ev port.InboundEvent) error {
-	return h.processInbound(ctx, chRow, ev, false)
-}
-
-// ProcessInboundWebhook is ProcessInbound with webhook-only guards (e.g. skip when WS mode is active).
-func (h *ChannelIngress) ProcessInboundWebhook(ctx context.Context, chRow biz.Channel, ev port.InboundEvent) error {
-	return h.processInbound(ctx, chRow, ev, true)
-}
-
-func (h *ChannelIngress) processInbound(ctx context.Context, chRow biz.Channel, ev port.InboundEvent, viaWebhook bool) error {
-	platform := strings.TrimSpace(ev.PlatformType)
-	if platform == "" {
-		platform = channelTypeFromConfig(chRow.ConfigJSON)
-	}
-	dedupKey := biz.InboundIdempotencyKey(platform, ev.IdempotencyKey, ev.PeerID, ev.Text)
-	defer h.inboundInflight.release(dedupKey)
-
-	viaLabel := "runtime"
-	if viaWebhook {
-		viaLabel = "webhook"
-	}
-	ok, skipReason, err := h.shouldProcessInbound(ctx, chRow, ev, viaWebhook)
+	outcome, err := h.acceptInbound(ctx, chRow, ev, false)
 	if err != nil {
 		return err
 	}
-	if !ok {
-		_ = h.recordDelivery(ctx, chRow.ID, "skipped_"+skipReason, map[string]any{
-			"peer_id":         ev.PeerID,
-			"idempotency_key": ev.IdempotencyKey,
-			"ingress_source":  strings.TrimSpace(ev.OutboundMeta["ingress_source"]),
-			"via":             viaLabel,
-			"text_preview":    truncateForLog(ev.Text, 80),
-		}, "")
+	platform := inboundPlatform(chRow, ev)
+	if outcome.DispatchAsync {
+		ltCfg := biz.ParseChannelLongTaskConfig(chRow.ConfigJSON)
+		safego.Go(context.Background(), "channel.inbound.async", func() {
+			procCtx := context.WithoutCancel(ctx)
+			defer h.releaseInboundInflight(ev, platform)
+			if err := h.dispatchAsyncInbound(procCtx, chRow, ev, platform, ltCfg); err != nil {
+				_ = h.deliverTurnErrorReply(procCtx, chRow, ev, platform, err)
+			}
+		})
 		return nil
 	}
-	h.logInboundAccepted(ctx, chRow, ev, viaLabel)
-	allowed, reason, err := h.checkInboundAccess(ctx, chRow, ev)
-	if err != nil {
-		_ = h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "access", "error": err.Error()}, err.Error())
-		return err
+	if !outcome.ExecuteSync {
+		return nil
 	}
-	if !allowed {
-		return h.rejectInboundAccess(ctx, chRow, ev, reason)
-	}
-	if biz.ChannelStreamingEnabled(chRow.ConfigJSON) {
-		return h.processInboundStreaming(ctx, chRow, ev)
-	}
-	return h.processInboundUnary(ctx, chRow, ev, "")
-}
-
-func (h *ChannelIngress) processInboundUnary(ctx context.Context, chRow biz.Channel, ev port.InboundEvent, platformHint string) error {
-	reply, err := h.processInboundCore(ctx, chRow, ev)
-	if err != nil {
-		return err
-	}
-	platform := strings.TrimSpace(platformHint)
-	if platform == "" {
-		platform = strings.TrimSpace(ev.PlatformType)
-	}
-	if platform == "" {
-		platform = channelTypeFromConfig(chRow.ConfigJSON)
-	}
-	recipient := strings.TrimSpace(ev.OutboundMeta["recipient"])
-	if recipient == "" {
-		recipient = ev.PeerID
-	}
-	idempotency := strings.TrimSpace(ev.IdempotencyKey)
-	if idempotency == "" {
-		idempotency = platform + ":" + ev.PeerID
-	}
-	if err := h.enqueueOutboundReply(ctx, chRow, platform, recipient, reply, ev.OutboundMeta, idempotency); err != nil {
-		_ = h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "enqueue", "error": err.Error()}, err.Error())
-		return err
-	}
-	_ = h.recordDelivery(ctx, chRow.ID, "queued", map[string]any{"peer_id": ev.PeerID}, "")
-	return nil
+	return h.executeInboundTurn(ctx, chRow, ev)
 }

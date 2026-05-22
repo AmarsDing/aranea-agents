@@ -2,7 +2,7 @@ import { computed, onMounted, reactive, ref, watch } from "vue";
 import { copyToClipboard, useQuasar } from "quasar";
 import { useRoute, useRouter } from "vue-router";
 import { storeToRefs } from "pinia";
-import type { Agent } from "./api";
+import type { Agent } from "./types";
 import { useAgentDetailStore } from "../../stores/agents";
 import { statusOptions, tokenEstimateFor } from "../../components/agents/agentUi";
 import { useAppStore } from "../../stores/app";

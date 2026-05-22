@@ -138,6 +138,63 @@ flowchart LR
 - **Channel 额外约束**：出站适配器只消费**文本聚合结果**（流式时由 `OnReplyDelta` 推平台）。
 - **可观测**：运维应用 `session_id`（来自 `channel_peer_session`）在 Monitor / Session 页订阅 WS，与 Web Chat 共用 Envelope 类型。
 
+### 4.4 长任务路径
+
+> **需求**：[17 channel.md §8](./17%20channel.md#8-长任务场景飞书-channel) · **设计**：[17 channel.design.md §十二](./17%20channel.design.md#十二长任务异步执行设计)
+
+**现状问题**（2026-05-22）：
+
+```
+Webhook: processInboundHTTP 同步 ProcessInbound → 阻塞至 Turn 结束
+Channel: runChatTurn → RunNativeTurnUnary → 最长 5min
+入队:    hasActive → EnqueueUserMessage → reply="" → 无 IM 出站
+Team:    teamsNative.RunTurn 数分钟 → 仅最终 ContentMarkdown 回飞书
+```
+
+**目标数据流（Phase E）**：
+
+```mermaid
+sequenceDiagram
+  participant IM as 飞书
+  participant IG as ChannelIngress
+  participant JOB as channel_turn_job
+  participant RT as ChatService
+  participant EB as EventBus
+  participant PR as ProgressProjector
+
+  IM->>IG: 入站消息
+  IG->>IG: acceptInbound（幂等+ACK）
+  IG->>JOB: status=accepted
+  IG-->>IM: ACK 文案
+  Note over IG,IM: Webhook HTTP 200
+
+  IG->>RT: executeInboundTurn（async）
+  IG->>JOB: status=running
+  RT->>EB: tool/member/delta 事件
+  EB->>PR: 进度 PATCH
+  PR->>IM: 流式/进度消息
+  RT->>IG: assistant 完成
+  IG->>JOB: status=completed
+  IG->>IM: flush 最终文本
+```
+
+**与 Team / Chat 边界**：
+
+| 层 | 长任务职责 |
+|----|------------|
+| `ChatService` | Session 锁、Turn 超时（可被 Channel ctx 覆盖）、pending queue |
+| `teamsNative.RunTurn` | 成员编排、落库、`member_*` Envelope（不变） |
+| `ChannelIngress` | ACK、Job、IM 投影；**不**解析 Team 图 |
+| `ChannelProgressProjector` | 消费 Envelope → 飞书 PATCH；Web Chat UI 不变 |
+
+**TurnOutcome 契约**（service 层，Web RPC 兼容）：
+
+| Outcome | IM 动作 | Session 消息 |
+|---------|---------|--------------|
+| `completed` | flush 回复 | user + assistant 落库 |
+| `queued` | `ack_on_queued` | 仅 user 入 pending |
+| `failed` / `timeout` | 错误文案 | 按 Turn 错误策略 |
+
 ---
 
 ## 五、差距清单与实现建议
@@ -152,6 +209,12 @@ flowchart LR
 | I-05 | Channel Turn 与 WS 默认订阅 | 🟡 | 文档约定；可选在 Envelope 加 `source=channel` |
 | I-06 | `ensureChannelSession` 忽略 routing 解析的 agent/team | 代码 smell | 创建 Session 时已用 `ResolveChannelTarget`；删除无用 `_ = ownerType` 或用于校验一致性 |
 | I-07 | 并发入站 | 🟡 Session 锁 | 与 Web Chat 相同：`lockSession` + enqueue；飞书侧重试由平台保证 |
+| I-09 | Webhook 同步阻塞 Turn | ❌ Phase E1 | `acceptInbound` + HTTP 200 后 async execute |
+| I-10 | 入队无 IM 反馈 | ❌ Phase E1-4 | `TurnOutcome=queued` → `ack_on_queued` |
+| I-11 | 长静默无进度 | ❌ Phase E4 | `ChannelProgressProjector` + `progress_mode` |
+| I-12 | Turn Job 审计 | ❌ Phase E3 | `channel_turn_job` 表 |
+| I-13 | Channel 级 Turn 超时 | ❌ Phase E2 | `turn_timeout_sec` / `first_byte_timeout_sec` |
+| I-14 | 超长任务 async | ❌ Phase E6 | `execution_mode` → Graph/Cron |
 
 ---
 
@@ -182,7 +245,11 @@ flowchart LR
   },
   "config": {
     "require_mention": true,
-    "allowed_group_ids": ["oc_xxx"]
+    "allowed_group_ids": ["oc_xxx"],
+    "streaming_enabled": true,
+    "turn_timeout_sec": 900,
+    "progress_mode": "steps",
+    "ack_message": "收到，Team 流水线已启动…"
   }
 }
 ```
@@ -212,6 +279,8 @@ flowchart LR
 | CAT-03 | 改 routing 后旧 peer session `agent_id` 不变 |
 | CAT-04 | `channel_ingress_access_test.go` |
 | CAT-05 | `streaming_enabled` + `stream_outbound` 假客户端 |
+| LT-01 | mock 慢 Turn + ACK 时序断言 |
+| LT-03 | active run + 第二条入站 → queued outbound |
 
 ---
 
@@ -220,3 +289,4 @@ flowchart LR
 | 版本 | 日期 | 说明 |
 |------|------|------|
 | 1.0 | 2026-05-22 | 集成设计首版：数据流、绑定模型、Team/消息机制、差距表 |
+| 1.1 | 2026-05-22 | §4.4 长任务路径；差距 I-09–I-14；Team 模板增长任务配置 |

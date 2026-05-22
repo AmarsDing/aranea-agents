@@ -194,12 +194,15 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
 import { useQuasar, type QTableColumn, type QTableProps } from "quasar";
-import { listPlugins, togglePluginEnabled, updatePluginConfig, updatePluginScope, updatePluginSortOrder } from "../features/plugins/usePluginsPage";
-import type { Plugin } from "../features/plugins/usePluginsPage";
+import { storeToRefs } from "pinia";
+import { usePluginsStore } from "../stores/plugins";
+import type { Plugin } from "../features/plugins/types";
 import PluginSchemaForm from "../components/plugins/PluginSchemaForm.vue";
 import { registryCol } from "../features/ui/registryTableColumns";
 
 const $q = useQuasar();
+const pluginsStore = usePluginsStore();
+const { plugins: storePlugins, total: storeTotal } = storeToRefs(pluginsStore);
 const rows = ref<Plugin[]>([]);
 const total = ref(0);
 const tablePagination = ref({ page: 1, rowsPerPage: 20, rowsNumber: 0 });
@@ -253,7 +256,7 @@ async function loadRows(
   loading.value = true;
   error.value = "";
   try {
-    const data = await listPlugins({
+    await pluginsStore.loadPlugins({
       search: search.value,
       category: category.value,
       enabled: enabled.value,
@@ -261,9 +264,9 @@ async function loadRows(
       page: nextPage,
       page_size: nextPageSize
     });
-    rows.value = data.items;
-    total.value = data.total;
-    tablePagination.value = { page: data.page, rowsPerPage: data.page_size, rowsNumber: data.total };
+    rows.value = [...storePlugins.value];
+    total.value = storeTotal.value;
+    tablePagination.value = { page: nextPage, rowsPerPage: nextPageSize, rowsNumber: storeTotal.value };
   } catch (err) {
     error.value = err instanceof Error ? err.message : "加载 Plugin 失败";
   } finally {
@@ -278,7 +281,7 @@ const onTableRequest: QTableProps["onRequest"] = (props) => {
 async function toggleEnabled(plugin: Plugin, next: boolean) {
   togglingId.value = plugin.id;
   try {
-    const updated = await togglePluginEnabled(plugin.id, next);
+    const updated = await pluginsStore.toggle(plugin.id, next);
     rows.value = rows.value.map((row) => (row.id === updated.id ? updated : row));
     $q.notify({ type: "positive", message: next ? "Plugin 已启用" : "Plugin 已停用" });
   } catch (err) {
@@ -306,7 +309,7 @@ async function saveConfig() {
   if (!configTarget.value || configError.value) return;
   savingConfig.value = true;
   try {
-    const updated = await updatePluginConfig(configTarget.value.id, JSON.stringify(JSON.parse(configText.value)));
+    const updated = await pluginsStore.setConfig(configTarget.value.id, JSON.stringify(JSON.parse(configText.value)));
     rows.value = rows.value.map((row) => (row.id === updated.id ? updated : row));
     configOpen.value = false;
     $q.notify({ type: "positive", message: "Plugin 配置已保存" });
@@ -331,7 +334,7 @@ function prettyJSON(value: string, emptyLabel = "{}") {
 
 async function bumpSort(plugin: Plugin, delta: number) {
   try {
-    const updated = await updatePluginSortOrder(plugin.id, Math.max(0, plugin.sort_order + delta));
+    const updated = await pluginsStore.bumpSort(plugin.id, Math.max(0, plugin.sort_order + delta));
     rows.value = rows.value.map((row) => (row.id === updated.id ? updated : row));
     $q.notify({ type: "positive", message: "执行顺序已更新" });
   } catch (err) {
@@ -344,7 +347,7 @@ async function saveScope() {
   savingScope.value = true;
   try {
     const scope = scopeMode.value === "global" ? "global" : scopeAgentId.value.trim();
-    const updated = await updatePluginScope(detailTarget.value.id, scope);
+    const updated = await pluginsStore.setScope(detailTarget.value.id, scope);
     rows.value = rows.value.map((row) => (row.id === updated.id ? updated : row));
     detailTarget.value = updated;
     $q.notify({ type: "positive", message: "作用域已保存，下次对话生效" });

@@ -47,9 +47,9 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from "vue";
 import { useQuasar } from "quasar";
-import type { Agent } from "../../features/agents/api";
-import type { Team } from "../../features/teams/api";
-import type { PlatformResourceInput } from "../../features/platform/api";
+import type { Agent } from "../../features/agents/types";
+import type { Team } from "../../features/teams/types";
+import type { PlatformResourceInput } from "../../features/platform/types";
 import type { CronTaskFormValue, CronTaskRow } from "../../features/cron/types";
 import CronTaskFormFields from "./CronTaskFormFields.vue";
 import {

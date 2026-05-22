@@ -1,4 +1,4 @@
-import type { PlatformResource } from "../platform/api";
+import type { PlatformResource } from "../platform/types";
 
 export type McpTransport = "stdio" | "sse" | "streamable_http";
 export type McpHealthStatus = "ok" | "error" | "unknown" | "degraded" | string;

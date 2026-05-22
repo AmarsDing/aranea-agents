@@ -51,8 +51,8 @@ func RuntimeCapabilityCue(ctx context.Context, d Deps, ag biz.Agent) string {
 	st := ag.Settings
 	var b strings.Builder
 	b.WriteString("## Runtime capability policy (system)\n")
-	b.WriteString("When tools are enabled below, this server may execute matching filesystem functions via the model's tool calls (paths are confined to the configured workspace root; override with env ARANEA_WORKSPACE_ROOT or WORKSPACE_ROOT).\n")
-	b.WriteString("shell_exec runs with cwd inside that sandbox only: Windows %USERPROFILE%\\Desktop and other paths outside the workspace root will fail. Use relative paths under the workspace (e.g. mkdir notes). If stderr reports access/path errors, explain the sandbox limit once—do not loop repeating the same shell command.\n")
+	b.WriteString("When tools are enabled below, filesystem tools operate under a shared workspace root (override with env ARANEA_WORKSPACE_ROOT or WORKSPACE_ROOT).\n")
+	b.WriteString("exec_command (shell_exec) uses that workspace as default cwd; optional JSON field workdir sets a subdirectory or absolute path allowed by the OS user. Prefer relative paths under the workspace (e.g. mkdir notes). If stderr reports access errors, explain once—do not loop repeating the same shell command.\n")
 	b.WriteString("list_files: call at most once per directory path for the same user task; if you already have a listing, proceed with read_file on specific paths or answer—do not repeat list_files on the same path.\n")
 	if st.SubagentsEnabled {
 		fmt.Fprintf(&b, "- Subagents: enabled; max_concurrency=%d, max_depth=%d, max_children_per_agent=%d\n",
@@ -100,7 +100,7 @@ func RuntimeCapabilityCue(ctx context.Context, d Deps, ag biz.Agent) string {
 					b.WriteString("- Effective tool keys: (none under current profile and allow list)\n")
 				}
 				if hasWorkspaceSearch {
-					b.WriteString("- search_content: use to locate symbols or string literals across the workspace before listing directories; preferred order: search_content → read_file (use start_line/end_line for large files) → replace_content/save_file. Avoid list_file at repo root without a narrowed path or keyword.\n")
+					b.WriteString("- search_content: use to locate symbols or string literals across the workspace before listing directories; preferred order: search_content → read_file (use start_line/end_line for large files) → diff_edit (or patch_file when you have unified diff). Use save_file only for new files or small full rewrites; use replace_content for simple single replacements. Avoid list_file at repo root without a narrowed path or keyword.\n")
 				}
 				b.WriteString("- Execution planning: state 3-7 verifiable steps before substantive edits; prefer tests or builds on affected packages when tools allow; if intent_artifact appears in session metadata, align steps with refined_goal and use search_hints for search_content queries.\n")
 				if memCue {

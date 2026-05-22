@@ -42,7 +42,7 @@ func jsonStringList(raw string) []string {
 	return JSONStringList(raw)
 }
 
-var toolGroupsFilesystem = []string{"read_file", "read_multiple_files", "save_file", "list_file", "search_file", "search_content", "replace_content"}
+var toolGroupsFilesystem = []string{"read_file", "read_multiple_files", "save_file", "list_file", "search_file", "search_content", "replace_content", "diff_edit", "patch_file"}
 var toolGroupsWeb = []string{"duckduckgo_search", "web_fetch", "gemini_web_fetch", "google_search", "arxiv_search", "wikipedia_search"}
 var toolGroupsMemory = []string{"memory_search", "memory_get"}
 var toolGroupsSkill = []string{"skill_search", "use_skill"}
@@ -63,7 +63,7 @@ func syntheticShellExecCatalogTool() Tool {
 		RiskLevel:            "critical",
 		Enabled:              false,
 		RequiresConfirmation: true,
-		ParametersSchemaJSON: `{"type":"object","properties":{"command":{"type":"string"},"working_dir":{"type":"string"}},"required":["command"]}`,
+		ParametersSchemaJSON: `{"type":"object","properties":{"command":{"type":"string"},"workdir":{"type":"string"}},"required":["command"]}`,
 	}
 }
 

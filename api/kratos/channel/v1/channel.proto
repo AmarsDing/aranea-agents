@@ -159,6 +159,34 @@ message ListChannelDeliveriesResponse {
   repeated ChannelDelivery items = 1;
 }
 
+message ChannelTurnJob {
+  string id = 1;
+  string channel_id = 2;
+  string session_id = 3;
+  string peer_id = 4;
+  string peer_key = 5;
+  string idempotency_key = 6;
+  string status = 7;
+  string preview_message_id = 8;
+  string content_preview = 9;
+  string async_target_type = 10;
+  string async_target_id = 11;
+  string error_message = 12;
+  string started_at = 13;
+  string finished_at = 14;
+  string created_at = 15;
+  string updated_at = 16;
+}
+
+message ListChannelTurnJobsRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  int32 limit = 2;
+}
+
+message ListChannelTurnJobsResponse {
+  repeated ChannelTurnJob items = 1;
+}
+
 service ChannelService {
   rpc ListChannelCatalog(google.protobuf.Empty) returns (ListChannelCatalogResponse) {
     option (google.api.http) = {get: "/v1/channels/catalog"};
@@ -210,5 +238,8 @@ service ChannelService {
   }
   rpc ListChannelDeliveries(ListChannelDeliveriesRequest) returns (ListChannelDeliveriesResponse) {
     option (google.api.http) = {get: "/v1/channels/{id}/deliveries"};
+  }
+  rpc ListChannelTurnJobs(ListChannelTurnJobsRequest) returns (ListChannelTurnJobsResponse) {
+    option (google.api.http) = {get: "/v1/channels/{id}/turn-jobs"};
   }
 }

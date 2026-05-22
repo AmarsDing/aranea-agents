@@ -1,6 +1,10 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
-import { getSystemSettings, updateSystemSettings } from "../../features/system-settings/api";
+import {
+  getSystemSettings,
+  updateSystemSettings,
+  type UpdateSystemSettingsInput
+} from "../../features/system-settings/api";
 import type { SystemSettings } from "../../services/kratos/system_setting/v1/index";
 
 export const useSystemSettingsStore = defineStore("systemSettings", () => {
@@ -26,5 +30,10 @@ export const useSystemSettingsStore = defineStore("systemSettings", () => {
     return settings.value;
   }
 
-  return { settings, loading, loadSettings, saveSettings };
+  async function saveAll(input: UpdateSystemSettingsInput) {
+    settings.value = await updateSystemSettings(input);
+    return settings.value;
+  }
+
+  return { settings, loading, loadSettings, saveSettings, saveAll };
 });

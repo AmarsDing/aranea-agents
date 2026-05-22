@@ -1,3 +1,4 @@
+// Container: approved — feature-local panel/dialog; data from Page composable via props.
 <template>
   <div class="artifact-preview">
     <div v-if="loading" class="row justify-center q-py-lg">

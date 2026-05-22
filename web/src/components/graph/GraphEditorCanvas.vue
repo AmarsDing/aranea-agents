@@ -45,7 +45,10 @@ import { NODE_TYPE_STYLES } from "../../features/graph/types";
 const props = defineProps<{
   graphDef: GraphDefinition;
   isDark: boolean;
-  execNodeStates: Map<string, { status: string }>;
+  execNodeStates: Map<string, { status: string; fineStatus?: string }>;
+  selectedNodeId?: string | null;
+  /** When true, pans/zooms to selected node (Observatory focus sync). */
+  focusSelectedNode?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -53,7 +56,7 @@ const emit = defineEmits<{
   updateGraph: [];
 }>();
 
-const { project, addNodes, addEdges, removeNodes, getNodes } = useVueFlow();
+const { project, fitView } = useVueFlow();
 
 const nodeTypes: Record<string, any> = {
   function: GraphFlowNode,
@@ -90,12 +93,14 @@ function buildNodes(): Node[] {
       id: n.id,
       type: n.type,
       position: pos,
+      selected: n.id === props.selectedNodeId,
       data: {
         nodeId: n.id,
         nodeType: n.type as NodeType,
         label: n.id,
         instruction: n.instruction,
         execStatus: execState?.status,
+        fineStatus: execState?.fineStatus,
       },
       style: isDiamond
         ? {}
@@ -110,11 +115,18 @@ function buildNodes(): Node[] {
 function buildEdges(): Edge[] {
   const edges: Edge[] = [];
   for (const e of props.graphDef.edges) {
+    const isTransfer = (e.kind ?? "").toLowerCase() === "transfer";
+    const isDispatch = (e.kind ?? "").toLowerCase() === "dispatch";
     edges.push({
       id: `e-${e.from}-${e.to}`,
       source: e.from,
       target: e.to,
       type: "smoothstep",
+      animated: isTransfer,
+      style: isTransfer
+        ? { stroke: "var(--color-icon-muted)", strokeWidth: 1.5, strokeDasharray: "6 4" }
+        : { stroke: "var(--color-icon-muted)", strokeWidth: 2 },
+      label: isTransfer ? "transfer" : isDispatch ? "dispatch" : undefined,
     });
   }
   for (const ce of props.graphDef.conditionalEdges) {
@@ -134,7 +146,7 @@ function buildEdges(): Edge[] {
 }
 
 watch(
-  () => [props.graphDef.nodes, props.graphDef.edges, props.graphDef.conditionalEdges, props.execNodeStates],
+  () => [props.graphDef.nodes, props.graphDef.edges, props.graphDef.conditionalEdges, props.execNodeStates, props.selectedNodeId],
   () => {
     syncingFromProp = true;
     internalNodes.value = buildNodes();
@@ -144,6 +156,18 @@ watch(
     });
   },
   { immediate: true, deep: true }
+);
+
+watch(
+  () => props.selectedNodeId,
+  (nodeId) => {
+    if (!props.focusSelectedNode || !nodeId) return;
+    nextTick(() => {
+      if (internalNodes.value.some((n) => n.id === nodeId)) {
+        fitView({ nodes: [nodeId], padding: 0.35, duration: 280, maxZoom: 1.25 });
+      }
+    });
+  }
 );
 
 function onNodeClick({ node }: { node: Node }) {

@@ -1,10 +1,10 @@
 /**
  * Cron 表单纯逻辑（无网络）。与 `components/cron/*.vue` 共址，见 vue-design.md §2。
  */
-import type { Agent } from "../../features/agents/api";
-import type { PlatformResourceInput } from "../../features/platform/api";
+import type { Agent } from "../../features/agents/types";
+import type { PlatformResourceInput } from "../../features/platform/types";
 import type { CronTaskConfig, CronTaskFormValue, CronTaskMetadata, CronTaskRow } from "../../features/cron/types";
-import type { Team } from "../../features/teams/api";
+import type { Team } from "../../features/teams/types";
 
 export const cronScheduleToggleOptions = [
   { label: "每隔", value: "interval" as const },

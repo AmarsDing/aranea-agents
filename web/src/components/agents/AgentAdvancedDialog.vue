@@ -153,15 +153,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
-import type { PlatformResource } from "../../features/platform/api";
-import { useChannelsStore } from "../../stores/channels/index";
+import { ref, watch } from "vue";
 
-const channelsStore = useChannelsStore();
+type ChannelOption = { label: string; value: string; caption?: string };
 
 const props = defineProps<{
   open: boolean;
   saving: boolean;
+  channelOptions: ChannelOption[];
+  loadingChannels: boolean;
   channelId: string;
   chatIdInput: string;
   workspaceInput: string;
@@ -204,18 +204,6 @@ const recentWindowTurns = ref(props.recentWindowTurnsInput || 20);
 const recentWindowTokens = ref(props.recentWindowTokensInput || 0);
 const summaryKeepTurns = ref(props.summaryKeepTurnsInput || 4);
 
-const loadingChannels = ref(false);
-
-const channelOptions = computed(() =>
-  channelsStore.channels
-    .filter((ch: PlatformResource) => ch.enabled)
-    .map((ch: PlatformResource) => ({
-      label: `${ch.name}（${ch.key}）`,
-      value: ch.id,
-      caption: ch.description
-    }))
-);
-
 const reasoningModeOptions = [
   { label: "跟随厂商", value: "provider_default" },
   { label: "自定义", value: "custom" }
@@ -238,17 +226,6 @@ function onChannelChange() {
   chatId.value = "";
 }
 
-async function fetchChannels() {
-  loadingChannels.value = true;
-  try {
-    await channelsStore.loadChannels();
-  } catch {
-    // error handled by store
-  } finally {
-    loadingChannels.value = false;
-  }
-}
-
 function onSave() {
   emit("save", {
     channel_id: selectedChannelId.value,
@@ -269,20 +246,18 @@ function onSave() {
 watch(
   () => props.open,
   (isOpen) => {
-    if (isOpen) {
-      selectedChannelId.value = props.channelId;
-      chatId.value = props.chatIdInput;
-      workspace.value = props.workspaceInput;
-      reasoningMode.value = props.reasoningModeInput || "provider_default";
-      reasoningLevel.value = props.reasoningLevelInput || "off";
-      compactionEnabled.value = props.compactionEnabledInput;
-      sessionSummaryEnabled.value = props.sessionSummaryEnabledInput;
-      truncateStrategy.value = props.truncateStrategyInput || "sliding";
-      recentWindowTurns.value = props.recentWindowTurnsInput || 20;
-      recentWindowTokens.value = props.recentWindowTokensInput || 0;
-      summaryKeepTurns.value = props.summaryKeepTurnsInput || 4;
-      fetchChannels();
-    }
+    if (!isOpen) return;
+    selectedChannelId.value = props.channelId;
+    chatId.value = props.chatIdInput;
+    workspace.value = props.workspaceInput;
+    reasoningMode.value = props.reasoningModeInput || "provider_default";
+    reasoningLevel.value = props.reasoningLevelInput || "off";
+    compactionEnabled.value = props.compactionEnabledInput;
+    sessionSummaryEnabled.value = props.sessionSummaryEnabledInput;
+    truncateStrategy.value = props.truncateStrategyInput || "sliding";
+    recentWindowTurns.value = props.recentWindowTurnsInput || 20;
+    recentWindowTokens.value = props.recentWindowTokensInput || 0;
+    summaryKeepTurns.value = props.summaryKeepTurnsInput || 4;
   }
 );
 </script>

@@ -37,6 +37,13 @@ type StreamSender struct {
 // ID implements channel.Identified.
 func (s *StreamSender) ID() string { return "feishu" }
 
+// PreviewMessageID returns the platform message id after the first successful send.
+func (s *StreamSender) PreviewMessageID() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return strings.TrimSpace(s.messageID)
+}
+
 // Update sends or patches the preview message. force bypasses throttle (final flush).
 func (s *StreamSender) Update(ctx context.Context, receiveOpenID, text string, force bool) error {
 	text = strings.TrimSpace(text)

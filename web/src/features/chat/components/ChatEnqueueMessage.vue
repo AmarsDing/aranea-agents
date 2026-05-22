@@ -1,3 +1,4 @@
+// Container: approved — feature-local panel/dialog; data from Page composable via props.
 <template>
   <div v-if="visible" class="chat-enqueue row items-end no-wrap q-gutter-x-sm q-mt-sm">
     <q-input

@@ -33,7 +33,7 @@ func (h *ChannelIngress) handleTelegramWebhook(w http.ResponseWriter, r *http.Re
 	}
 	peerID := ingressFirstNonEmpty(parsed.Username, telegramChatRecipient(parsed.ChatID))
 	recipient := telegramChatRecipient(parsed.ChatID)
-	h.processInboundHTTP(w, r, chRow, port.InboundEvent{
+	writeInboundHTTPResponse(w, h.processInboundHTTP(r, chRow, port.InboundEvent{
 		PlatformType:   "telegram",
 		PeerID:         peerID,
 		Text:           parsed.Text,
@@ -42,6 +42,6 @@ func (h *ChannelIngress) handleTelegramWebhook(w http.ResponseWriter, r *http.Re
 			"recipient": recipient,
 			"chat_id":   recipient,
 		},
-	})
+	}))
 	return nil
 }

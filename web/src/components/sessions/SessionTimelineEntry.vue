@@ -64,7 +64,7 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import type { SessionTimelineItem } from "../../features/session/api";
+import type { SessionTimelineItem } from "../../features/session/types";
 import {
   formatTimelineDuration,
   formatTimelineTime,

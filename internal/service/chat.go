@@ -12,6 +12,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/chatactivity"
 	"aranea-agents/internal/event"
+	graphadapter "aranea-agents/internal/graph/adapter"
 	"aranea-agents/internal/knowledge"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	rt "aranea-agents/internal/runtime"
@@ -56,6 +57,7 @@ type ChatService struct {
 type ChatServiceDeps struct {
 	rt.TurnDeps
 	Runs          *rt.RunRegistry
+	PendingQueue  *rt.PendingMessageQueue
 	Teams         biz.TeamRepository
 	TeamsNative   *team.Runner
 	Usage         *biz.UsageUsecase
@@ -68,7 +70,8 @@ type ChatServiceDeps struct {
 	KnowledgeRetriever *knowledge.Retriever
 	CodeExecFactory    *localexec.Factory
 	MCPServers         *biz.MCPServerUsecase
-	PendingQueue       *rt.PendingMessageQueue
+	GraphFactory       biz.GraphBuilderFactory
+	Graphs             *biz.GraphUsecase
 }
 
 func coalesceRunRegistry(r *rt.RunRegistry) *rt.RunRegistry {
@@ -111,6 +114,14 @@ func NewChatService(deps ChatServiceDeps) *ChatService {
 			return s.makeAwaitReplyFunc(runCtx, sessionID, runID)
 		})
 		deps.TeamsNative.SetRunRegistry(s.runs)
+		if deps.Graphs != nil {
+			deps.TeamsNative.SetGraphBuildConfigLoader(graphadapter.NewLinkedGraphBuildConfigLoader(deps.Graphs))
+		}
+		if deps.GraphFactory != nil {
+			if builder, ok := deps.GraphFactory.(graphadapter.TeamGraphRootBuilder); ok {
+				deps.TeamsNative.SetGraphRootBuilder(builder)
+			}
+		}
 	}
 	configureMCPObserve(deps.TurnDeps.Pipeline.Bus, deps.MCPServers)
 	return s
@@ -176,6 +187,18 @@ func (s *ChatService) RunGateway() rt.RunGateway {
 // HasActiveRun reports whether a session has an in-flight run on the shared gateway.
 func (s *ChatService) HasActiveRun(sessionID string) bool {
 	return s.runs.HasActive(sessionID)
+}
+
+// LastPendingMessageID returns the most recently enqueued pending message id for a session, if any.
+func (s *ChatService) LastPendingMessageID(sessionID string) string {
+	if s == nil || s.chatUC == nil {
+		return ""
+	}
+	entries := s.chatUC.GetPendingMessages(sessionID)
+	if len(entries) == 0 {
+		return ""
+	}
+	return entries[len(entries)-1].ID
 }
 
 func (s *ChatService) GetPendingMessages(ctx context.Context, req *chatv1.GetPendingMessagesRequest) (*chatv1.GetPendingMessagesResponse, error) {

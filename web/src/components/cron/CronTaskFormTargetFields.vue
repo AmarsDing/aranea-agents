@@ -36,9 +36,9 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import type { Agent } from "../../features/agents/api";
+import type { Agent } from "../../features/agents/types";
 import type { CronTaskFormValue } from "../../features/cron/types";
-import type { Team } from "../../features/teams/api";
+import type { Team } from "../../features/teams/types";
 import { cronAgentSelectOptions, cronTargetToggleOptions, cronTeamRule, cronTeamSelectOptions } from "./cronTaskUtils";
 
 const form = defineModel<CronTaskFormValue>("form", { required: true });

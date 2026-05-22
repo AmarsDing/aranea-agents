@@ -18,13 +18,14 @@ import (
 type ChannelService struct {
 	v1.UnimplementedChannelServiceServer
 
-	uc      *biz.ChannelUsecase
-	peers   biz.ChannelPeerSessionRepo
-	runtime *ChannelRuntime
+	uc         *biz.ChannelUsecase
+	turnJobs   *biz.ChannelTurnJobUsecase
+	peers      biz.ChannelPeerSessionRepo
+	runtime    *ChannelRuntime
 }
 
-func NewChannelService(uc *biz.ChannelUsecase, peers biz.ChannelPeerSessionRepo, runtime *ChannelRuntime) *ChannelService {
-	return &ChannelService{uc: uc, peers: peers, runtime: runtime}
+func NewChannelService(uc *biz.ChannelUsecase, turnJobs *biz.ChannelTurnJobUsecase, peers biz.ChannelPeerSessionRepo, runtime *ChannelRuntime) *ChannelService {
+	return &ChannelService{uc: uc, turnJobs: turnJobs, peers: peers, runtime: runtime}
 }
 
 func (s *ChannelService) reloadRuntime(ctx context.Context) {
@@ -358,4 +359,41 @@ func (s *ChannelService) ListChannelDeliveries(ctx context.Context, req *v1.List
 		out = append(out, bizDeliveryToProto(d))
 	}
 	return &v1.ListChannelDeliveriesResponse{Items: out}, nil
+}
+
+func bizTurnJobToProto(j biz.ChannelTurnJob) *v1.ChannelTurnJob {
+	return &v1.ChannelTurnJob{
+		Id:               j.ID,
+		ChannelId:        j.ChannelID,
+		SessionId:        j.SessionID,
+		PeerId:           j.PeerID,
+		PeerKey:          j.PeerKey,
+		IdempotencyKey:   j.IdempotencyKey,
+		Status:           j.Status,
+		PreviewMessageId: j.PreviewMessageID,
+		ContentPreview:   j.ContentPreview,
+		AsyncTargetType:  j.AsyncTargetType,
+		AsyncTargetId:    j.AsyncTargetID,
+		ErrorMessage:     j.ErrorMessage,
+		StartedAt:        j.StartedAt,
+		FinishedAt:       j.FinishedAt,
+		CreatedAt:        j.CreatedAt,
+		UpdatedAt:        j.UpdatedAt,
+	}
+}
+
+func (s *ChannelService) ListChannelTurnJobs(ctx context.Context, req *v1.ListChannelTurnJobsRequest) (*v1.ListChannelTurnJobsResponse, error) {
+	if s == nil || s.turnJobs == nil {
+		return &v1.ListChannelTurnJobsResponse{}, nil
+	}
+	limit := int(req.GetLimit())
+	items, err := s.turnJobs.ListByChannel(ctx, req.GetId(), limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*v1.ChannelTurnJob, 0, len(items))
+	for _, job := range items {
+		out = append(out, bizTurnJobToProto(job))
+	}
+	return &v1.ListChannelTurnJobsResponse{Items: out}, nil
 }

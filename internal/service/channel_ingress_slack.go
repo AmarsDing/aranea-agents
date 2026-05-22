@@ -39,7 +39,7 @@ func (h *ChannelIngress) handleSlackWebhook(w http.ResponseWriter, r *http.Reque
 		return nil
 	}
 	peerID := ingressFirstNonEmpty(msg.UserID, msg.ChannelID)
-	h.processInboundHTTP(w, r, chRow, port.InboundEvent{
+	writeInboundHTTPResponse(w, h.processInboundHTTP(r, chRow, port.InboundEvent{
 		PlatformType:   "slack",
 		PeerID:         peerID,
 		Text:           msg.Text,
@@ -48,6 +48,6 @@ func (h *ChannelIngress) handleSlackWebhook(w http.ResponseWriter, r *http.Reque
 			"recipient": msg.ChannelID,
 			"channel":   msg.ChannelID,
 		},
-	})
+	}))
 	return nil
 }

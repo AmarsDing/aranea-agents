@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -73,6 +74,9 @@ func ClassifyActivityKind(toolName string) string {
 var builtinDisplayLabels = map[string]string{
 	"read_file":        "读取文件",
 	"save_file":        "保存文件",
+	"replace_content":  "替换内容",
+	"diff_edit":        "片段编辑",
+	"patch_file":       "应用补丁",
 	"exec_command":     "执行命令",
 	"workspace_exec":   "执行命令",
 	"skill_load":       "加载 Skill",
@@ -102,7 +106,7 @@ func ResolveDisplayLabel(toolName string) string {
 func ResolveIconKey(kind, toolName string) string {
 	name := strings.ToLower(strings.TrimSpace(toolName))
 	switch name {
-	case "read_file", "save_file", "write_file":
+	case "read_file", "save_file", "write_file", "replace_content", "diff_edit", "patch_file":
 		return "description"
 	case "exec_command", "workspace_exec", "shell_exec":
 		return "terminal"
@@ -158,7 +162,17 @@ func BuildSummary(kind, toolName string, argsJSON []byte) string {
 			return truncateRunes(query, 40)
 		}
 	}
-	if path := firstStringArg(args, "path", "file_path"); path != "" {
+	if path := firstStringArg(args, "file_name", "path", "file_path"); path != "" {
+		switch strings.ToLower(strings.TrimSpace(toolName)) {
+		case "diff_edit":
+			if n := diffEditCountFromArgs(args); n > 0 {
+				return "`" + path + "` · " + fmt.Sprintf("%d edit(s)", n)
+			}
+		case "patch_file":
+			if n := patchHunkCountFromArgs(args); n > 0 {
+				return "`" + path + "` · " + fmt.Sprintf("%d hunk(s)", n)
+			}
+		}
 		return "`" + path + "`"
 	}
 	if cmd := firstStringArg(args, "command", "cmd"); cmd != "" {
@@ -171,6 +185,15 @@ func BuildActivityMeta(ctx context.Context, in ActivityMetaInput, resolver Activ
 	kind := ClassifyActivityKind(in.ToolName)
 	argsSanitized := SanitizeJSONString(in.ArgumentsJSON)
 	resultSanitized := truncateJSONString(SanitizeJSONString(in.ResultJSON), maxChatResultJSONBytes)
+
+	summary := BuildSummary(kind, in.ToolName, []byte(argsSanitized))
+	if extra := fileEditResultSummary(in.ToolName, resultSanitized); extra != "" {
+		if summary != "" {
+			summary = summary + " · " + extra
+		} else {
+			summary = extra
+		}
+	}
 
 	displayLabel := ResolveDisplayLabel(in.ToolName)
 	if resolver != nil {
@@ -194,7 +217,7 @@ func BuildActivityMeta(ctx context.Context, in ActivityMetaInput, resolver Activ
 		ActivityKind:  kind,
 		DisplayLabel:  displayLabel,
 		IconKey:       ResolveIconKey(kind, in.ToolName),
-		Summary:       BuildSummary(kind, in.ToolName, []byte(argsSanitized)),
+		Summary:       summary,
 		ArgumentsJSON: argsSanitized,
 		ResultJSON:    resultSanitized,
 		DurationMS:    in.DurationMS,
@@ -302,6 +325,54 @@ func truncateRunes(s string, max int) string {
 		return s
 	}
 	return string(runes[:max]) + "…"
+}
+
+func diffEditCountFromArgs(args map[string]any) int {
+	raw, ok := args["edits"]
+	if !ok || raw == nil {
+		return 0
+	}
+	items, ok := raw.([]any)
+	if !ok {
+		return 0
+	}
+	return len(items)
+}
+
+func patchHunkCountFromArgs(args map[string]any) int {
+	if raw, ok := args["hunks"]; ok {
+		if items, ok := raw.([]any); ok && len(items) > 0 {
+			return len(items)
+		}
+	}
+	if patch := firstStringArg(args, "patch"); patch != "" {
+		return 1
+	}
+	return 0
+}
+
+func fileEditResultSummary(toolName, resultJSON string) string {
+	name := strings.ToLower(strings.TrimSpace(toolName))
+	if name != "diff_edit" && name != "patch_file" && name != "edit_file" {
+		return ""
+	}
+	obj := parseJSONObject([]byte(resultJSON))
+	if len(obj) == 0 {
+		return ""
+	}
+	if applied, ok := obj["applied_edits"].(float64); ok && applied > 0 {
+		if total, ok := obj["total_replacements"].(float64); ok && total > 0 {
+			return fmt.Sprintf("%d applied · %d repl", int(applied), int(total))
+		}
+		return fmt.Sprintf("%d edit(s) applied", int(applied))
+	}
+	if applied, ok := obj["applied_hunks"].(float64); ok && applied > 0 {
+		return fmt.Sprintf("%d hunk(s) applied", int(applied))
+	}
+	if hunks, ok := obj["structured_patch"].([]any); ok && len(hunks) > 0 {
+		return fmt.Sprintf("%d hunk(s)", len(hunks))
+	}
+	return ""
 }
 
 // CatalogLookupKeysForRuntimeName returns catalog keys to query for a runtime tool name.

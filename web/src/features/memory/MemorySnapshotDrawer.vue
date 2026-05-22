@@ -1,3 +1,4 @@
+// Container: approved — feature-local panel/dialog; data from Page composable via props.
 <template>
   <q-drawer :model-value="modelValue" side="right" overlay bordered :width="520" class="memory-drawer" @update:model-value="$emit('update:modelValue', $event)">
     <q-scroll-area class="fit">
@@ -19,7 +20,7 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import type { L0AssemblySegment, L0AssemblySnapshot } from "./api";
+import type { L0AssemblySegment, L0AssemblySnapshot } from "./types";
 
 const props = defineProps<{
   modelValue: boolean;

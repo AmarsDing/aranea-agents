@@ -1,6 +1,6 @@
 import type { ModelTokenUsageEvent, ModelUsageQuery } from "../usage/types";
 import type { TeamRunEvent } from "../teams/types";
-import type { PlatformResource } from "../platform/api";
+import type { PlatformResource } from "../platform/types";
 
 export type {
   ModelTokenUsageEvent,
@@ -107,6 +107,12 @@ export type RunnerMetricsSummary = {
   error_runs: number;
   error_rate: number;
   success_rate: number;
+};
+
+export type CodeExecutorCapability = {
+  type: string;
+  available: boolean;
+  reason?: string;
 };
 
 export type MonitorAlertRule = {

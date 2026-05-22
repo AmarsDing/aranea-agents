@@ -1,17 +1,15 @@
 import { ref, readonly, onUnmounted } from "vue";
-import { getRunStatus, awaitUserReply } from "../features/chat/api";
-import type { RunStatus, RunStatusValue } from "../features/chat/api";
+import type { RunStatus, RunStatusValue } from "../features/chat/types";
+import { useChatStore } from "../stores/chat";
 
 const POLL_INTERVAL_MS = 2000;
 
 /**
  * useRunStatus polls GetRunStatus for a given session and exposes reactive
  * status, helpers for submitting a user reply, and stopping/starting generation.
- *
- * Usage:
- *   const { status, isAwaiting, submitReply, startPolling, stopPolling } = useRunStatus(sessionId);
  */
 export function useRunStatus(sessionId: string) {
+  const chatStore = useChatStore();
   const status = ref<RunStatusValue>("idle");
   const runId = ref("");
   const errorMessage = ref("");
@@ -22,7 +20,7 @@ export function useRunStatus(sessionId: string) {
 
   async function poll() {
     if (!sessionId) return;
-    const rs: RunStatus = await getRunStatus(sessionId);
+    const rs: RunStatus = await chatStore.fetchRunStatus(sessionId);
     status.value = rs.status;
     runId.value = rs.runId;
     errorMessage.value = rs.errorMessage;
@@ -44,7 +42,7 @@ export function useRunStatus(sessionId: string) {
   }
 
   async function submitReply(reply: string): Promise<boolean> {
-    return awaitUserReply(sessionId, reply, runId.value || undefined);
+    return chatStore.submitAwaitReply(sessionId, reply, runId.value || undefined);
   }
 
   onUnmounted(() => stopPolling());
@@ -58,6 +56,6 @@ export function useRunStatus(sessionId: string) {
     startPolling,
     stopPolling,
     submitReply,
-    refresh: poll,
+    refresh: poll
   };
 }

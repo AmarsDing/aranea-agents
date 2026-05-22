@@ -10,6 +10,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "check:layer": "node scripts/check-frontend-layer.mjs",
     "stylelint": "stylelint \"src/**/*.{vue,css,sass,scss}\" --config .stylelintrc.json",
     "stylelint:fix": "stylelint \"src/**/*.{vue,css,sass,scss}\" --config .stylelintrc.json --fix",
     "clean-config": "node clean-backend.cjs",

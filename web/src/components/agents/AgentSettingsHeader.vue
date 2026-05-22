@@ -34,7 +34,7 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import type { Agent } from "../../features/agents/api";
+import type { Agent } from "../../features/agents/types";
 import AgentAvatarQ from "../avatar/AgentAvatarQ.vue";
 import { promptModeLabel } from "./agentUi";
 

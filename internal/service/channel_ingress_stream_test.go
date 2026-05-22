@@ -15,7 +15,11 @@ func TestProcessInboundStreamingUnsupportedPlatformUnaryFallback(t *testing.T) {
 	h := &ChannelIngress{channels: uc}
 	ch := biz.Channel{ID: "ch1", ConfigJSON: `{"type":"dingtalk","config":{"streaming_enabled":true}}`}
 	ev := port.InboundEvent{PlatformType: "dingtalk", PeerID: "p1", Text: "hi"}
-	err := h.processInboundStreaming(context.Background(), ch, ev)
+	ltCfg := biz.ParseChannelLongTaskConfig(ch.ConfigJSON)
+	var preview string
+	var previewMsgID string
+	var queued bool
+	err := h.processInboundStreaming(context.Background(), ch, ev, "dingtalk", ltCfg, "", &preview, &previewMsgID, &queued)
 	if err != nil {
 		t.Fatalf("unexpected err: %v", err)
 	}

@@ -1,3 +1,4 @@
+// Container: approved — feature-local panel/dialog; data from Page composable via props.
 <template>
   <div>
     <q-banner v-if="!factsEndpointReady" rounded class="memory-info-banner q-mb-md">
@@ -59,7 +60,7 @@
 
 <script setup lang="ts">
 import type { QTableProps } from "quasar";
-import type { MemoryFact } from "./api";
+import type { MemoryFact } from "./types";
 
 defineProps<{
   factsEndpointReady: boolean;

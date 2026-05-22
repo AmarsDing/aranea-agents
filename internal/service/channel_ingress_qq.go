@@ -72,17 +72,19 @@ func (h *ChannelIngress) handleQQWebhook(w http.ResponseWriter, r *http.Request,
 		IdempotencyKey: idem,
 		OutboundMeta:   meta,
 	}
-	if err := h.ProcessInbound(r.Context(), chRow, ev); err != nil {
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		_, _ = w.Write([]byte(qqwebhook.GenDispatchACK(false)))
-		return nil
-	}
+	result := h.processInboundHTTP(r, chRow, ev)
 	if parsed.DispatchACK != "" {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		if result.Err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(qqwebhook.GenDispatchACK(false)))
+			return nil
+		}
+		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(parsed.DispatchACK))
 		return nil
 	}
-	w.WriteHeader(http.StatusOK)
+	writeInboundHTTPResponse(w, result)
 	return nil
 }
 

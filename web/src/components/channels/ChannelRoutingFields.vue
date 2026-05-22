@@ -80,14 +80,14 @@
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import ChannelConfigRow from "./ChannelConfigRow.vue";
-import type { Agent } from "../../features/agents/api";
+import type { Agent } from "../../features/agents/types";
 import {
   channelAgentSelectOptions,
   channelRoutingTargetToggleOptions,
   channelTeamSelectOptions,
   type ChannelRoutingTargetType
 } from "../../features/channels/channelRoutingUtils";
-import type { Team } from "../../features/teams/api";
+import type { Team } from "../../features/teams/types";
 
 const { t } = useI18n();
 

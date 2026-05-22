@@ -6,12 +6,18 @@ import {
   createPlatformResource,
   updatePlatformResource,
   deletePlatformResource,
+  revealProviderModelCredentials,
   validateModel,
-  type PlatformResource,
-  type PlatformResourceTreeNode,
-  type PlatformResourceInput,
-  type PlatformResourceName
+  inspectProviderModel
 } from "../../features/platform/api";
+import type {
+  PlatformResource,
+  PlatformResourceTreeNode,
+  PlatformResourceInput,
+  PlatformResourceName,
+  InspectProviderModelInput,
+  InspectProviderModelResult
+} from "../../features/platform/types";
 
 export const usePlatformStore = defineStore("platform", () => {
   const providerModels = ref<PlatformResource[]>([]);
@@ -51,5 +57,26 @@ export const usePlatformStore = defineStore("platform", () => {
     return validateModel(provider, model);
   }
 
-  return { providerModels, categoryTree, loading, loadProviderModels, loadCategoryTree, loadResource, addResource, editResource, removeResource, checkModel };
+  async function revealCredentials(modelId: string) {
+    return revealProviderModelCredentials(modelId);
+  }
+
+  async function inspectModel(payload: InspectProviderModelInput): Promise<InspectProviderModelResult> {
+    return inspectProviderModel(payload);
+  }
+
+  return {
+    providerModels,
+    categoryTree,
+    loading,
+    loadProviderModels,
+    loadCategoryTree,
+    loadResource,
+    addResource,
+    editResource,
+    removeResource,
+    checkModel,
+    revealCredentials,
+    inspectModel
+  };
 });

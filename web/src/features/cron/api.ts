@@ -1,12 +1,12 @@
 import { createCronService } from "../../services";
 import { listAgents } from "../agents/api";
 import { listTeams } from "../teams/api";
-import type { Agent } from "../agents/api";
-import type { Team } from "../teams/api";
-import type { PlatformResource, PlatformResourceInput } from "../platform/api";
+import type { Agent } from "../agents/types";
+import type { Team } from "../teams/types";
+import type { PlatformResource, PlatformResourceInput } from "../platform/types";
 import type { CronTaskRun, CronTaskRunQuery } from "./types";
 
-export type { PlatformResource, PlatformResourceInput } from "../platform/api";
+export type { PlatformResource, PlatformResourceInput } from "../platform/types";
 import type { CronTask as WireCronTask, CronTaskRun as WireCronTaskRun } from "../../services/kratos/cron/v1/index";
 import type { CronTaskConfig, CronTaskMetadata } from "./types";
 

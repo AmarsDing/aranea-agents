@@ -11,7 +11,7 @@ func ToolsetConfigFromEffectiveKeys(eff map[string]bool) ToolsetConfig {
 	has := func(key string) bool { return eff[key] }
 	cfg := ToolsetConfig{
 		Filesystem: has("read_file") || has("read_multiple_files") || has("save_file") ||
-			has("list_file") || has("search_file") || has("search_content") || has("replace_content"),
+			has("list_file") || has("search_file") || has("search_content") || has("replace_content") || has("diff_edit") || has("patch_file"),
 		ShellExec:       has("shell_exec"),
 		WebFetch:        has("web_fetch"),
 		WebSearch:       has("duckduckgo_search"),

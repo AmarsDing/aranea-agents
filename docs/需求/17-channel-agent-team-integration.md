@@ -99,6 +99,28 @@ sequenceDiagram
 | 取消/插队 | WS `cancel` / `enqueue_message` | 当前以单轮为主；并发 Turn 走 Session 锁与排队策略 |
 | 可观测 | 用户可见全过程 | 运维查 Session、投递记录、`channel_delivery` |
 
+### 3.4 长任务与 IM 体验
+
+飞书用户下发 **分析、研报、多 Agent Team 流水线** 等命令时，Turn 常超过 IM 回调 SLA 或默认 5 分钟上限。
+
+| 用户期望 | 产品承诺（Phase E） |
+|----------|---------------------|
+| 发送后立刻有反馈 | `ack_message` 受理文案（≤2s） |
+| 等待数分钟仍知进展 | `streaming_enabled` + `progress_mode` |
+| 上一条未完成再发 | `ack_on_queued`（与 Web pending queue 一致） |
+| 失败能看懂原因 | 明确错误 + Session/Job 可审计 |
+
+**业务建议**：
+
+| 场景 | 路由 | Channel 配置要点 |
+|------|------|------------------|
+| 快速 FAQ | 单 Agent | `streaming_enabled=true`；默认超时即可 |
+| 多工具分析 | 单 Agent | `first_byte_timeout_sec=120`，`turn_timeout_sec=600` |
+| Team 流水线 | Team | `progress_mode=steps`，`turn_timeout_sec=900` |
+| 小时级批处理 | Graph/Cron（P2） | `execution_mode=async` |
+
+完整规格见 [17 channel.md §8](./17%20channel.md#8-长任务场景飞书-channel)。
+
 ---
 
 ## 4. 路由决策（业务规则）
@@ -131,6 +153,8 @@ sequenceDiagram
 | CAT-04 | 非白名单用户 | 飞书收到拒绝文案；无 Session Turn；`access_denied` 投递 |
 | CAT-05 | 流式开启 | 飞书侧消息随生成 PATCH；失败则 fail-fast 并记指标 |
 | CAT-06 | 运维排障 | 能在 Session 列表按标题/filter 找到 `feishu:channel_key:peer` 会话并查看消息 |
+| LT-01 | 飞书长任务 ACK + 流式 | ≤2s 受理；2min 生成有 PATCH；见 [17 channel.md §8.7](./17%20channel.md#87-验收标准) |
+| LT-03 | 并发入站排队 | 飞书收到排队提示，非静默 |
 
 ---
 
@@ -140,11 +164,17 @@ sequenceDiagram
 
 | 优先级 | 差距 | 业务影响 |
 |--------|------|----------|
+| **P0** | Webhook 同步阻塞 Turn | 飞书重试、HTTP 长时间占用；见 Phase E1 |
+| **P0** | 入队无 IM 反馈 | 长任务中再发消息用户无感知；见 Phase E1-4 |
+| **P1** | 工具/Team 长静默 | 仅 text delta 流式，工具阶段「假死」；见 Phase E4 |
+| **P1** | Turn Job 不可查 | 运维只能靠 Session 猜状态；见 Phase E3 |
+| **P1** | Channel 级超时不可配 | Team 5min 易超时；见 Phase E2 |
 | P1 | `rules` 前端未完整 | 多群分流可在高级 JSON 配置；`dm_scope` 已在路由区 ✅ |
 | P1 | 路由变更与旧 Session | 保存 Channel 时清除 peer 绑定 ✅；旧 Session 行仍保留作审计 |
 | P1 | 飞书有回复、Web Chat 空白 | 全局 WS 同步 + 打开渠道 Session 流式 Markdown ✅ |
-| P2 | Channel Team 无 IM 侧成员过程展示 | 飞书只见汇总；Web Team Session 可见成员事件 |
-| P2 | Channel 与 Monitor 联动弱 | 飞书问题需靠 Session/投递表反查 |
+| P2 | Channel Team 无 IM 侧成员过程展示 | 飞书只见汇总；Web Team Session 可见成员事件 → E4 `progress_mode=steps` |
+| P2 | Channel 与 Monitor 联动弱 | 飞书问题需靠 Session/投递表反查 → E3 Job + FlowLog |
+| P2 | 超长任务无 async 模式 | 小时级任务不应占 Turn；见 Phase E6 |
 | P2 | Agent Channel 引用反查 | Agent 设置页「渠道引用」✅ |
 
 ---
@@ -155,3 +185,4 @@ sequenceDiagram
 |------|------|------|
 | 1.0 | 2026-05-22 | 首版：Channel / Agent / Team / Session / 消息五模块业务关系与飞书主链 |
 | 1.1 | 2026-05-22 | §6 差距表对齐实现：Chat 同步、dm_scope、peer 重置、Agent 渠道引用 |
+| 1.2 | 2026-05-22 | §3.4 长任务 IM 体验；§6 增 Phase E 差距项；验收 LT-01/03 |

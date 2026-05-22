@@ -4,12 +4,15 @@ import {
   listTools, getTool, createTool, updateTool, deleteTool, toggleToolEnabled,
   getAgentEffectiveTools, listToolAgentOverrides, listToolAgentOverridesByAgent,
   upsertToolAgentOverride, deleteToolAgentOverride,   listToolRunsForTool,
+  listToolRuns,
+  listToolInvocationAudits,
   testTool
 } from "../../features/tools/api";
 import type { ToolTestResult } from "../../features/tools/types";
 import type {
   Tool, ToolListQuery, ToolUpsertInput, ToolListResponse,
-  AgentEffectiveTools, ToolAgentOverride, ToolInvocation, ToolRunQuery, PaginatedResponse
+  AgentEffectiveTools, ToolAgentOverride, ToolInvocation, ToolRunQuery,
+  ToolAuditQuery, ToolInvocationAudit, PaginatedResponse
 } from "../../features/tools/types";
 
 export const useToolsStore = defineStore("tools", () => {
@@ -96,6 +99,14 @@ export const useToolsStore = defineStore("tools", () => {
     return listToolRunsForTool(toolId, query);
   }
 
+  async function loadToolRuns(query: ToolRunQuery = {}): Promise<PaginatedResponse<ToolInvocation>> {
+    return listToolRuns(query);
+  }
+
+  async function loadToolAudits(query: ToolAuditQuery = {}): Promise<PaginatedResponse<ToolInvocationAudit>> {
+    return listToolInvocationAudits(query);
+  }
+
   async function runToolTest(toolId: string, argumentsJson: string, timeoutSec: number): Promise<ToolTestResult> {
     return testTool(toolId, argumentsJson, timeoutSec);
   }
@@ -104,6 +115,6 @@ export const useToolsStore = defineStore("tools", () => {
     tools, activeTool, total, summary, loading,
     loadTools, fetchTool, addTool, editTool, remove, toggle,
     fetchCatalog, fetchEffectiveTools, fetchOverrides, fetchOverridesByAgent,
-    saveOverride, removeOverride, fetchToolRuns, runToolTest
+    saveOverride, removeOverride, fetchToolRuns, loadToolRuns, loadToolAudits, runToolTest
   };
 });

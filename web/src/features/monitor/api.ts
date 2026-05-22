@@ -3,6 +3,7 @@ import { GLOBAL_WS_SESSION_ID } from "../../config/runtime";
 import type {
   AuditLog,
   AuditQuery,
+  CodeExecutorCapability,
   ModelUsageQuery,
   MonitorAlertRule,
   MonitorLogLine,
@@ -13,6 +14,8 @@ import type {
   RunnerMetricsSummary,
   TeamRunEvent
 } from "./types";
+
+export type { CodeExecutorCapability } from "./types";
 import { listModelUsageEvents } from "../usage/api";
 import { useEnvelopeStream } from "../chat/useEnvelopeStream";
 import type { Envelope } from "../chat/envelope";
@@ -323,12 +326,6 @@ export async function getRunnerMetrics(windowMinutes = 60): Promise<RunnerMetric
     success_rate: Number(r.success_rate ?? r.successRate ?? 0)
   };
 }
-
-export type CodeExecutorCapability = {
-  type: string;
-  available: boolean;
-  reason?: string;
-};
 
 export async function getCodeExecutorCapabilities(): Promise<CodeExecutorCapability[]> {
   const res = await monitor.GetCodeExecutorCapabilities({});

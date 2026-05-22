@@ -10,6 +10,11 @@ import (
 
 type channelStreamCallbackKey struct{}
 
+// streamPreviewUpdater patches in-place IM preview messages during a channel turn.
+type streamPreviewUpdater interface {
+	Update(ctx context.Context, recipient, text string, force bool) error
+}
+
 // ChannelStreamCallback is invoked with accumulated assistant text during a native turn.
 type ChannelStreamCallback func(accumulated string) error
 

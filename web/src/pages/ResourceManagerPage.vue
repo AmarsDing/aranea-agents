@@ -53,7 +53,11 @@
               :key="row.id"
               :row="row"
               :saving="saving"
+              :list-key-visible="listKeyState(row.id).visible"
+              :list-key-revealing="listKeyState(row.id).revealing"
+              :list-revealed-api-key="listKeyState(row.id).value"
               @toggle-enabled="toggleEnabled"
+              @toggle-reveal-key="toggleListKeyReveal"
               @trend="openTrend"
               @edit="openEdit"
               @delete="confirmRemoveRow"
@@ -458,7 +462,15 @@
       </q-card>
     </q-dialog>
 
-    <ProviderTrendDialog v-model="trendDialogOpen" :row="trendRow" />
+    <ProviderTrendDialog
+      v-model="trendDialogOpen"
+      :row="trendRow"
+      :metric="trendMetric"
+      :metric-options="trendMetricOptions"
+      :overview="trendOverview"
+      :loading="trendOverviewLoading"
+      @update:metric="trendMetric = $event"
+    />
     </div>
   </q-page>
 </template>
@@ -533,6 +545,12 @@ const {
   toggleEnabled,
   confirmRemoveRow,
   openTrend,
+  listKeyState,
+  toggleListKeyReveal,
+  trendOverview,
+  trendOverviewLoading,
+  trendMetric,
+  trendMetricOptions,
   providerCodeRule,
   getCategories,
   metadataLabel

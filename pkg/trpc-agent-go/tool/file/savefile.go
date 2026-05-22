@@ -40,7 +40,7 @@ type saveFileResponse struct {
 
 // saveFile performs the save file operation.
 func (f *fileToolSet) saveFile(
-	_ context.Context,
+	ctx context.Context,
 	req *saveFileRequest,
 ) (*saveFileResponse, error) {
 	rsp := &saveFileResponse{
@@ -100,6 +100,7 @@ func (f *fileToolSet) saveFile(
 		)
 		return rsp, fmt.Errorf("writing to file '%s': %w", req.FileName, err)
 	}
+	storeSaveFileView(ctx, filePath, req.Contents, f.createFileMode)
 	rsp.Message = fmt.Sprintf("Successfully saved: %s", req.FileName)
 	return rsp, nil
 }

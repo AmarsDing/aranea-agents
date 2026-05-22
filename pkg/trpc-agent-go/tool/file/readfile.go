@@ -38,6 +38,7 @@ type readFileResponse struct {
 	BaseDirectory string `json:"base_directory"`
 	FileName      string `json:"file_name"`
 	Contents      string `json:"contents"`
+	MtimeMs       *int64 `json:"mtime_ms,omitempty" jsonschema:"description=File modification time in milliseconds; pass to diff_edit or patch_file as expected_mtime_ms"`
 	Message       string `json:"message"`
 }
 
@@ -248,6 +249,9 @@ func (f *fileToolSet) readFileFromDiskOrCache(
 		rsp.Message = fmt.Sprintf("Error: %v", err)
 		return err
 	}
+	storeFileViewAfterRead(ctx, filePath, contents, stat)
+	mtimeMs := fileMtimeMs(stat)
+	rsp.MtimeMs = &mtimeMs
 	chunk, startLine, endLine, total, empty, err := f.sliceReadFile(
 		req,
 		string(contents),
@@ -388,7 +392,8 @@ func (f *fileToolSet) readFileTool() tool.CallableTool {
 		function.WithDescription(
 			"Read a text file under base_directory. Supports "+
 				"workspace:// and artifact:// refs. Optional "+
-				"start_line and num_lines select line ranges.",
+				"start_line and num_lines select line ranges. "+
+				"Response includes mtime_ms for optimistic locking in diff_edit/patch_file.",
 		),
 	)
 }

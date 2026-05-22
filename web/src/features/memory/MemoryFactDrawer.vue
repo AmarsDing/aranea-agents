@@ -1,3 +1,4 @@
+// Container: approved — feature-local panel/dialog; data from Page composable via props.
 <template>
   <q-drawer :model-value="modelValue" side="right" overlay bordered :width="520" class="memory-drawer" @update:model-value="$emit('update:modelValue', $event)">
     <q-scroll-area class="fit">
@@ -28,7 +29,7 @@
 </template>
 
 <script setup lang="ts">
-import type { MemoryFact } from "./api";
+import type { MemoryFact } from "./types";
 
 defineProps<{
   modelValue: boolean;

@@ -1,7 +1,7 @@
 # Tools 工具管理 — 产品需求
 
-> **版本**：4.0 | **状态**：✅ 核心已实现
-> **设计**：[23 tools.design.md](./23%20tools.design.md) · **开发计划**：[23-tools-development.md](./23-tools-development.md)
+> **版本**：4.3 | **状态**：✅ 核心已实现；**片段编辑 ✅ Phase 4**；**工作区统一 ✅ Phase 5**
+> **设计**：[23 tools.design.md](./23%20tools.design.md) · **开发计划**：[23-tools-development.md](./23-tools-development.md) · **片段编辑**：[23 tools-fragment-edit.md](./23%20tools-fragment-edit.md)
 
 ---
 
@@ -25,6 +25,8 @@
 | MCP Tool 发现 | 后续增强 | 本期先预留 `source=mcp`，可先展示已注册 MCP 工具 |
 | 工具在线测试 | ✅ 已实现 | `TestTool` RPC + 工具详情「在线测试」 |
 | 工具调用审计日志 | 后续 | 工具调用无审计日志，无法追溯谁在何时调用了什么工具 |
+| 片段级文件编辑 | ✅ 已实现 | `diff_edit` / `patch_file` + SessionFileState；见 [23 tools-fragment-edit.md](./23%20tools-fragment-edit.md) |
+| **工具工作区统一** | ✅ 已实现 | file / shell / claude_code 共用 `workspace_root`；见 [23-tools-development.md §Phase 5](./23-tools-development.md#phase-5工具工作区统一p0) |
 
 ### 0.2 默认产品决策
 
@@ -86,6 +88,22 @@
 
 模型只能控制 `parameters_schema_json` 中声明为可见的字段。`tenant_id`、`agent_id`、`workspace_id`、`session_id`、`request_id` 这类系统字段由后端注入，不进入模型可写参数。
 
+### 2.1 工具工作区（Workspace Root）
+
+Agent 运行时对「需要目录」的工具共用 **单一工作区根** `workspace_root`（Cursor 式：Agent 在用户选定的项目目录内读写文件、跑 shell）。
+
+| 决策项 | 默认值 |
+|--------|--------|
+| 工作区含义 | 绝对路径目录；file 工具路径均相对或受限于此根 |
+| 解析来源 | 系统 `root_directory` + `workspace/{agent_key}`；Tool 配置 `filesystem_dir` / `base_dir`；环境变量 `ARANEA_WORKSPACE_ROOT` / `WORKSPACE_ROOT`（见设计 §7.8） |
+| file 工具 | 严格限制在工作区内 |
+| `shell_exec` | 默认 cwd = 工作区根；调用参数 `workdir` 可指定子目录或（在 OS 权限内）绝对路径 |
+| `claude_code` | 未单独配置 `claude_code_dir` 时与工作区根相同 |
+| 不需工作区的工具 | web 搜索/抓取、email、todo、MCP、memory、knowledge 等（见设计 §7.8 矩阵） |
+| `workspace_exec` | 依赖 CodeExecutor 工作区，与 file/shell 根目录 **可能不同**；不替代日常 `shell_exec` |
+
+**验收**：同一 turn 内 `save_file` 写入的文件，紧随其后的 `exec_command` 可在工作区内访问；shell 不再落在 Server 进程当前目录。
+
 ---
 
 ## 3. Tool 分类与内置工具
@@ -128,6 +146,8 @@
 | `search_file` | 文件搜索 | filesystem | low | 启用 | 按文件名模式搜索 |
 | `search_content` | 内容搜索 | filesystem | low | 启用 | 在工作区内搜索文本内容 |
 | `replace_content` | 替换内容 | filesystem | medium | 启用 | 按精确匹配替换文件中的文本 |
+| `diff_edit` | 片段编辑 | filesystem | medium | 启用 | 多片段 SEARCH/REPLACE，原子提交；见 [23 tools-fragment-edit.md](./23%20tools-fragment-edit.md) |
+| `patch_file` | 应用补丁 | filesystem | medium | 启用 | unified diff / 结构化 hunk；见同上 |
 | `skill_search` | Skill 搜索 | skill | low | 启用 | 搜索当前系统可用 Skill |
 | `use_skill` | 使用 Skill | skill | low | 启用 | 标记本次运行使用某个 Skill |
 | `memory_search` | Memory 搜索 | memory | low | 启用 | 搜索 Agent 长期记忆 |
@@ -136,7 +156,7 @@
 | `read_document` | 文档理解 | media | medium | 启用 | 分析 PDF、Office、CSV 等文档 |
 | `create_image` | 图片生成 | media | medium | 停用 | 根据文本提示生成图片 |
 | `tts` | 文本转语音 | media | medium | 停用 | 将文本转换成语音文件 |
-| `shell_exec` | Shell 命令 | runtime | critical | 停用 | 执行本地 shell 命令，需确认 |
+| `shell_exec` | Shell 命令 | runtime | critical | 停用 | 本机 shell；默认 cwd 与 **工作区根**一致；需确认 |
 | `send_email` | 邮件发送 | messaging | high | 停用 | 发送电子邮件，需确认 |
 | `todo_write` | 待办管理 | system | low | 启用 | 管理待办事项列表 |
 | `await_user_reply` | 等待回复 | session | low | 启用 | 暂停执行并等待用户回复 |
@@ -380,6 +400,7 @@
 
 | 需求 | 优先级 | 说明 |
 |------|--------|------|
+| **片段级文件编辑** | ✅ **P1** | Phase 4 已实现；[changelog](../changelog/2026-05-22-Tools-Phase4-Fragment-Edit.md) |
 | 工具在线测试 | P3 | 自定义工具可在配置时在线测试 |
 | 工具调用审计日志 | P3 | `tool_invocation_audit` 表 + 查询 API |
 | 工作区搜索增强 | P1 | `workspace_search` 字面检索工具（P0-WS） |

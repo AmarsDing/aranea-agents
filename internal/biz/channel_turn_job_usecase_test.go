@@ -1,0 +1,110 @@
+package biz
+
+import (
+	"context"
+	"testing"
+)
+
+type turnJobRepoStub struct {
+	jobs map[string]ChannelTurnJob
+}
+
+func (s *turnJobRepoStub) Create(_ context.Context, job ChannelTurnJob) (string, error) {
+	key := job.ChannelID + ":" + job.IdempotencyKey
+	if existing, ok := s.jobs[key]; ok {
+		return existing.ID, nil
+	}
+	if job.ID == "" {
+		job.ID = NewChannelTurnJobID()
+	}
+	s.jobs[key] = job
+	return job.ID, nil
+}
+
+func (s *turnJobRepoStub) UpdateStatus(_ context.Context, id, status, errMsg, previewMsgID, contentPreview string) error {
+	for k, job := range s.jobs {
+		if job.ID == id {
+			job.Status = NormalizeChannelTurnJobStatus(status)
+			if errMsg != "" {
+				job.ErrorMessage = errMsg
+			}
+			s.jobs[k] = job
+			return nil
+		}
+	}
+	return nil
+}
+
+func (s *turnJobRepoStub) UpdateAsyncTarget(_ context.Context, id, targetType, targetID string) error {
+	for k, job := range s.jobs {
+		if job.ID == id {
+			job.AsyncTargetType = targetType
+			job.AsyncTargetID = targetID
+			s.jobs[k] = job
+			return nil
+		}
+	}
+	return nil
+}
+
+func (s *turnJobRepoStub) GetByIdempotency(_ context.Context, channelID, idempotencyKey string) (ChannelTurnJob, error) {
+	return s.jobs[channelID+":"+idempotencyKey], nil
+}
+
+func (s *turnJobRepoStub) ListByChannel(_ context.Context, channelID string, limit int) ([]ChannelTurnJob, error) {
+	limit = NormalizeChannelTurnJobListLimit(limit)
+	var out []ChannelTurnJob
+	for _, job := range s.jobs {
+		if job.ChannelID == channelID {
+			out = append(out, job)
+		}
+	}
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
+func TestChannelTurnJobUsecaseCreateAcceptedReturnsStableID(t *testing.T) {
+	repo := &turnJobRepoStub{jobs: map[string]ChannelTurnJob{}}
+	uc := NewChannelTurnJobUsecase(nil, repo)
+
+	id1, err := uc.CreateAccepted(context.Background(), ChannelTurnJob{
+		ID:             "a",
+		ChannelID:      "ch-1",
+		IdempotencyKey: "idem",
+	})
+	if err != nil || id1 != "a" {
+		t.Fatalf("first create: id=%q err=%v", id1, err)
+	}
+	id2, err := uc.CreateAccepted(context.Background(), ChannelTurnJob{
+		ID:             "b",
+		ChannelID:      "ch-1",
+		IdempotencyKey: "idem",
+	})
+	if err != nil || id2 != "a" {
+		t.Fatalf("second create: id=%q err=%v", id2, err)
+	}
+}
+
+func TestChannelTurnJobUsecaseCancelRunningForSession(t *testing.T) {
+	repo := &turnJobRepoStub{jobs: map[string]ChannelTurnJob{
+		"ch-1:k1": {ID: "j1", ChannelID: "ch-1", SessionID: "sess-1", Status: ChannelTurnJobStatusRunning, IdempotencyKey: "k1"},
+	}}
+	uc := NewChannelTurnJobUsecase(nil, repo)
+	if err := uc.CancelRunningForSession(context.Background(), "ch-1", "sess-1"); err != nil {
+		t.Fatal(err)
+	}
+	if repo.jobs["ch-1:k1"].Status != ChannelTurnJobStatusCancelled {
+		t.Fatalf("status=%q", repo.jobs["ch-1:k1"].Status)
+	}
+}
+
+func TestNormalizeChannelTurnJobListLimit(t *testing.T) {
+	if got := NormalizeChannelTurnJobListLimit(0); got != 50 {
+		t.Fatalf("default limit = %d", got)
+	}
+	if got := NormalizeChannelTurnJobListLimit(999); got != MaxChannelTurnJobListLimit {
+		t.Fatalf("cap limit = %d", got)
+	}
+}

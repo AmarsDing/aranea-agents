@@ -54,10 +54,10 @@ func (h *ChannelIngress) handleWeChatWebhook(w http.ResponseWriter, r *http.Requ
 		},
 	}
 	if wechat.ActiveModeFromConfig(chRow.ConfigJSON) {
-		h.processInboundHTTP(w, r, chRow, ev)
+		writeInboundHTTPResponse(w, h.processInboundHTTP(r, chRow, ev))
 		return nil
 	}
-	reply, err := h.processInboundCore(r.Context(), chRow, ev)
+	reply, err := h.processWeChatPassiveInbound(r.Context(), chRow, ev)
 	if err != nil {
 		http.Error(w, "agent error", http.StatusInternalServerError)
 		return nil
@@ -99,12 +99,12 @@ func (h *ChannelIngress) handleOneBotWebhook(w http.ResponseWriter, r *http.Requ
 	if parsed.GroupID != "" {
 		meta["recipient"] = parsed.GroupID
 	}
-	h.processInboundHTTP(w, r, chRow, port.InboundEvent{
+	writeInboundHTTPResponse(w, h.processInboundHTTP(r, chRow, port.InboundEvent{
 		PlatformType:   "personal_qq",
 		PeerID:         parsed.PeerID,
 		Text:           parsed.Text,
 		IdempotencyKey: "onebot:" + strings.TrimSpace(parsed.MessageID),
 		OutboundMeta:   meta,
-	})
+	}))
 	return nil
 }

@@ -30,6 +30,7 @@ var ProviderSet = wire.NewSet(
 	NewSessionUsecase,
 	NewToolUsecase,
 	NewChannelUsecase,
+	NewChannelTurnJobUsecase,
 	NewAgentMCPTooling,
 	NewEvolutionUsecase,
 	NewTaskUsecase,

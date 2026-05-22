@@ -1,3 +1,4 @@
+// Container: approved — feature-local panel/dialog; data from Page composable via props.
 <template>
   <div v-if="visible" class="chat-runner-status row items-center no-wrap q-gutter-x-sm">
     <q-badge :color="badgeColor" :label="statusLabel" class="chat-runner-status__badge" />
@@ -23,7 +24,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
-import type { RunStatusValue } from "../api";
+import type { RunStatusValue } from "../types";
 
 const props = defineProps<{
   status: RunStatusValue;

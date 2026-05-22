@@ -227,6 +227,7 @@ func bizCfgToTrpc(cfg biz.GraphBuildConfig) graphtrpc.GraphBuildConfig {
 			AssignmentStrategy: n.AssignmentStrategy, ReviewerAgent: n.ReviewerAgent, ReviewRules: n.ReviewRules,
 			TimeoutSeconds: n.TimeoutSeconds, HeartbeatIntervalSeconds: n.HeartbeatIntervalSeconds,
 			EnableLeaseExtension: n.EnableLeaseExtension,
+			RetryMaxAttempts: n.RetryMaxAttempts, FailureAction: n.FailureAction, FallbackAgent: n.FallbackAgent,
 		}
 	}
 	edges := make([]graphtrpc.EdgeDef, len(cfg.Edges))
@@ -270,6 +271,7 @@ func trpcCfgToBiz(cfg graphtrpc.GraphBuildConfig) biz.GraphBuildConfig {
 			AssignmentStrategy: n.AssignmentStrategy, ReviewerAgent: n.ReviewerAgent, ReviewRules: n.ReviewRules,
 			TimeoutSeconds: n.TimeoutSeconds, HeartbeatIntervalSeconds: n.HeartbeatIntervalSeconds,
 			EnableLeaseExtension: n.EnableLeaseExtension,
+			RetryMaxAttempts: n.RetryMaxAttempts, FailureAction: n.FailureAction, FallbackAgent: n.FallbackAgent,
 		}
 	}
 	edges := make([]biz.EdgeDef, len(cfg.Edges))

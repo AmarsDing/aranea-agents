@@ -305,8 +305,15 @@ export default {
       base: { title: "BASE", hint: "实例标识与平台凭据" },
       connection: { title: "CONNECTION", hint: "Webhook / 长连接接入方式" },
       routing: { title: "ROUTING", hint: "消息路由与访问控制" },
+      long_task: { title: "LONG TASK", hint: "长任务 ACK、超时、进度与异步模式" },
       avatar: { title: "AVATAR", hint: "留空使用平台默认图标" }
     },
+    longTaskPresetLabel: "推荐预设",
+    longTaskPresetPlaceholder: "选择模板快速填充下方字段",
+    turnJobsTitle: "近期 Turn Job（运维）",
+    turnJobsHint: "按 created_at 倒序；用于 LT-07 排障。",
+    turnJobsRefresh: "刷新",
+    turnJobsEmpty: "暂无 Turn Job 记录",
     status: {
       pendingSave: "待保存",
       configured: "✔ 已配置",

@@ -23,8 +23,14 @@ const (
 	RegionLark = "lark"
 )
 
+// testAPIBase overrides APIBase in tests when non-nil.
+var testAPIBase func(string) string
+
 // APIBase returns the REST API origin for the region.
 func APIBase(region string) string {
+	if testAPIBase != nil {
+		return testAPIBase(region)
+	}
 	switch strings.ToLower(strings.TrimSpace(region)) {
 	case RegionLark:
 		return "https://open.larksuite.com"

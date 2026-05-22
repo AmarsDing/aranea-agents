@@ -8,15 +8,7 @@ import (
 	"aranea-agents/internal/channel/port"
 )
 
-type streamPreviewUpdater interface {
-	Update(ctx context.Context, recipient, text string, force bool) error
-}
-
-func (h *ChannelIngress) processInboundStreaming(ctx context.Context, chRow biz.Channel, ev port.InboundEvent) error {
-	platform := strings.TrimSpace(ev.PlatformType)
-	if platform == "" {
-		platform = channelTypeFromConfig(chRow.ConfigJSON)
-	}
+func (h *ChannelIngress) processInboundStreaming(ctx context.Context, chRow biz.Channel, ev port.InboundEvent, platform string, ltCfg biz.ChannelLongTaskConfig, sessionID string, contentPreview *string, previewMessageID *string, turnQueued *bool) error {
 	meta := ev.OutboundMeta
 	if meta == nil {
 		meta = map[string]string{}
@@ -26,26 +18,71 @@ func (h *ChannelIngress) processInboundStreaming(ctx context.Context, chRow biz.
 		return err
 	}
 	if updater == nil {
-		return h.processInboundUnary(ctx, chRow, ev, platform)
+		preview, msgID, queued, err := h.processInboundUnaryWithOutcome(ctx, chRow, ev, platform, ltCfg, sessionID)
+		if contentPreview != nil {
+			*contentPreview = preview
+		}
+		if previewMessageID != nil {
+			*previewMessageID = msgID
+		}
+		if turnQueued != nil {
+			*turnQueued = queued
+		}
+		return err
 	}
 
-	recipient := strings.TrimSpace(meta["recipient"])
-	if recipient == "" {
-		recipient = ev.PeerID
+	routing, err := biz.ParseChannelRouting(chRow.ConfigJSON)
+	if err != nil {
+		return err
 	}
-	var lastText string
-	_, _, err = h.runChatTurnStreaming(ctx, chRow, platform, ev, func(accumulated string) error {
-		lastText = accumulated
-		uerr := updater.Update(ctx, recipient, accumulated, false)
-		recordStreamUpdate(platform, "delta", uerr)
-		return uerr
-	})
+	peerKey := ev.PeerKey
+	if peerKey == "" {
+		peerKey = biz.PeerKeyForSession(routing.DMScope, ev.PeerID)
+	}
+	req, err := h.prepareChannelChatRequest(ctx, chRow, platform, peerKey, ev.PeerID, ev.Text)
+	if err != nil {
+		return err
+	}
+	if sessionID == "" {
+		sessionID = strings.TrimSpace(req.GetSessionId())
+	}
+	wasActive := h.chat != nil && h.chat.HasActiveRun(sessionID)
+
+	recipient := outboundRecipient(ev)
+	previewCoord, stopPreview := h.startTurnPreview(ctx, sessionID, platform, recipient, updater, chRow, ev, ltCfg)
+	defer stopPreview()
+
+	_, _, err = h.chat.RunNativeTurnUnary(ctx, req)
 	if err != nil {
 		_ = h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "stream", "error": err.Error()}, err.Error())
 		return err
 	}
-	if strings.TrimSpace(lastText) != "" {
-		if err := updater.Update(ctx, recipient, lastText, true); err != nil {
+
+	rendered := previewCoord.RenderedText()
+	if wasActive && strings.TrimSpace(rendered) == "" {
+		pendingID := ""
+		if h.chat != nil {
+			pendingID = h.chat.LastPendingMessageID(sessionID)
+		}
+		if err := h.sendInboundQueuedAck(ctx, chRow, ev, platform, ltCfg, pendingID); err != nil {
+			_ = h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "queued_ack", "error": err.Error()}, err.Error())
+			return err
+		}
+		_ = h.recordDelivery(ctx, chRow.ID, "queued", map[string]any{"peer_id": ev.PeerID, "pending_id": pendingID}, "")
+		if turnQueued != nil {
+			*turnQueued = true
+		}
+		return nil
+	}
+
+	if strings.TrimSpace(rendered) != "" {
+		if contentPreview != nil {
+			*contentPreview = previewCoord.ContentPreview(200)
+		}
+		if previewMessageID != nil {
+			*previewMessageID = previewCoord.PreviewMessageID()
+		}
+		if err := previewCoord.Flush(ctx, true); err != nil {
 			recordStreamUpdate(platform, "flush", err)
 			_ = h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "stream_flush", "error": err.Error()}, err.Error())
 			return err
@@ -54,29 +91,4 @@ func (h *ChannelIngress) processInboundStreaming(ctx context.Context, chRow biz.
 	}
 	_ = h.recordDelivery(ctx, chRow.ID, "streamed", map[string]any{"peer_id": ev.PeerID, "platform": platform}, "")
 	return nil
-}
-
-func (h *ChannelIngress) runChatTurnStreaming(
-	ctx context.Context,
-	chRow biz.Channel,
-	platform string,
-	ev port.InboundEvent,
-	onDelta ChannelStreamCallback,
-) (biz.ChatMessage, biz.ChatMessage, error) {
-	if h == nil || h.chat == nil {
-		return biz.ChatMessage{}, biz.ChatMessage{}, nil
-	}
-	routing, err := biz.ParseChannelRouting(chRow.ConfigJSON)
-	if err != nil {
-		return biz.ChatMessage{}, biz.ChatMessage{}, err
-	}
-	peerKey := ev.PeerKey
-	if peerKey == "" {
-		peerKey = biz.PeerKeyForSession(routing.DMScope, ev.PeerID)
-	}
-	req, err := h.prepareChannelChatRequest(ctx, chRow, platform, peerKey, ev.PeerID, ev.Text)
-	if err != nil {
-		return biz.ChatMessage{}, biz.ChatMessage{}, err
-	}
-	return h.chat.RunNativeTurnStreaming(ctx, req, onDelta)
 }

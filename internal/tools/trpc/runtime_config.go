@@ -38,12 +38,16 @@ func applyConfigMap(cfg *ToolsetConfig, toolKey string, m map[string]any) {
 		if v := configString(m, "base_dir", "claude_code_dir", "working_dir"); v != "" {
 			cfg.ClaudeCodeDir = v
 		}
+	case toolKey == "shell_exec":
+		if v := configString(m, "base_dir", "shell_root", "filesystem_dir", "working_dir", "root_dir"); v != "" {
+			cfg.ShellExecDir = v
+		}
 	}
 }
 
 func isFilesystemToolKey(key string) bool {
 	switch key {
-	case "read_file", "read_multiple_files", "save_file", "list_file", "search_file", "search_content", "replace_content":
+	case "read_file", "read_multiple_files", "save_file", "list_file", "search_file", "search_content", "replace_content", "diff_edit", "patch_file":
 		return true
 	default:
 		return false

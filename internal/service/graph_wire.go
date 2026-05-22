@@ -8,6 +8,8 @@ func ProvideGraphUsecase(
 	runRepo biz.GraphRunRepo,
 	factory biz.GraphBuilderFactory,
 	telemetry *GraphExecutionTelemetry,
+	orchProjector *GraphOrchestrationProjector,
 ) *biz.GraphUsecase {
-	return biz.NewGraphUsecase(repo, runRepo, factory, telemetry)
+	observer := compositeGraphExecutionObserver{telemetry, orchProjector}
+	return biz.NewGraphUsecase(repo, runRepo, factory, observer)
 }

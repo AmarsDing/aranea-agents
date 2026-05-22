@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/channel/port"
 	arametrics "aranea-agents/internal/metrics"
 
 	"github.com/go-kratos/kratos/v2/log"
@@ -22,15 +23,16 @@ func (h *ChannelIngress) runChatTurn(
 	peerID string,
 	content string,
 ) (reply string, err error) {
-	req, err := h.prepareChannelChatRequest(ctx, chRow, titlePrefix, peerKey, peerID, content)
+	ev := port.InboundEvent{PeerID: peerID, PeerKey: peerKey, Text: content}
+	platform := strings.TrimSpace(titlePrefix)
+	if platform == "" {
+		platform = channelTypeFromConfig(chRow.ConfigJSON)
+	}
+	result, err := h.runChatTurnWithOutcome(ctx, chRow, platform, ev)
 	if err != nil {
 		return "", err
 	}
-	_, asst, err := h.chat.RunNativeTurnUnary(ctx, req)
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(asst.ContentMarkdown), nil
+	return result.Reply, nil
 }
 
 func (h *ChannelIngress) enqueueOutboundReply(

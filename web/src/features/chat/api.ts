@@ -13,7 +13,9 @@ import type {
   SendMessageOptions,
   SendMessageResult,
   ToolUseEvent,
-  IntentPassResult
+  IntentPassResult,
+  RunStatus,
+  RunStatusValue
 } from "./types";
 
 export type {
@@ -22,7 +24,9 @@ export type {
   SendMessageOptions,
   SendMessageResult,
   ToolUseEvent,
-  IntentPassResult
+  IntentPassResult,
+  RunStatus,
+  RunStatusValue
 } from "./types";
 
 const chatService = createChatService();
@@ -178,23 +182,6 @@ export async function enqueueUserMessage(sessionId: string, content: string): Pr
   } catch {
     return { accepted: false, queued: false, pendingId: "" };
   }
-}
-
-export type RunStatusValue = "idle" | "pending" | "running" | "awaiting_user" | "completed" | "failed" | "cancelled";
-
-export interface RunStatus {
-  runId: string;
-  status: RunStatusValue;
-  errorMessage: string;
-  updatedAt: string;
-  invocationId?: string;
-  agentName?: string;
-  startedAt?: string;
-  lastEventAt?: string;
-  eventCount?: number;
-  awaitKind?: string;
-  awaitToolKey?: string;
-  awaitToolCallId?: string;
 }
 
 export async function getRunStatus(sessionId: string): Promise<RunStatus> {

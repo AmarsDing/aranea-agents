@@ -28,7 +28,9 @@ type TeamRun struct {
 	DurationMS    int    `json:"duration_ms"`
 	ErrorMessage  string `json:"error_message"`
 	TopologyJSON  string `json:"topology_json"`
-	StartedAt     string `json:"started_at"`
+	GraphExecutionID         string `json:"graph_execution_id,omitempty"`
+	DefinitionSnapshotJSON   string `json:"definition_snapshot_json,omitempty"`
+	StartedAt                string `json:"started_at"`
 	FinishedAt    string `json:"finished_at"`
 	CreatedAt     string `json:"created_at"`
 	UpdatedAt     string `json:"updated_at"`

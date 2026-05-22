@@ -129,7 +129,7 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import type { Session } from "../../features/session/api";
+import type { Session } from "../../features/session/types";
 import {
   contextProgressColor,
   formatNumber,

@@ -10,6 +10,7 @@ import (
 	"aranea-agents/internal/biz"
 	localexec "aranea-agents/internal/agent/codeexecutor"
 	"aranea-agents/internal/event"
+	graphadapter "aranea-agents/internal/graph/adapter"
 	"aranea-agents/internal/knowledge"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	rt "aranea-agents/internal/runtime"
@@ -31,6 +32,16 @@ type Runner struct {
 	awaitHookProvider    func(runCtx context.Context, sessionID, runID string) tooltrpc.ReplyFunc
 	knowledgeRetriever   *knowledge.Retriever
 	codeExecFactory      *localexec.Factory
+	graphRoot            graphadapter.TeamGraphRootBuilder
+	graphLoader          GraphBuildConfigLoader
+}
+
+// SetGraphBuildConfigLoader wires linked_graph_id resolution for GraphAgent runtime (M53 P2).
+func (r *Runner) SetGraphBuildConfigLoader(l GraphBuildConfigLoader) {
+	if r == nil {
+		return
+	}
+	r.graphLoader = l
 }
 
 func NewRunner(
@@ -90,6 +101,14 @@ func (r *Runner) SetKnowledgeRetriever(ret *knowledge.Retriever) {
 // SetRunRegistry shares the chat gateway run registry for cancel/status/enqueue.
 func (r *Runner) SetRunRegistry(reg *rt.RunRegistry) {
 	r.runs = reg
+}
+
+// SetGraphRootBuilder wires GraphAgent team runtime (Phase 3). Nil disables graph path.
+func (r *Runner) SetGraphRootBuilder(b graphadapter.TeamGraphRootBuilder) {
+	if r == nil {
+		return
+	}
+	r.graphRoot = b
 }
 
 func (r *Runner) catalogAgent(ctx context.Context, id string) (biz.Agent, error) {

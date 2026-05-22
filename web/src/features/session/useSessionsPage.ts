@@ -3,7 +3,7 @@ import { useRoute } from "vue-router";
 import { useQuasar } from "quasar";
 import { formatBatchNotifyMessage } from "./batchNotify";
 import type { BatchPreviewResult, BulkProgress, RetentionDialogMode, SessionBatchScope } from "./types";
-import type { Session } from "./api";
+import type { Session } from "./types";
 import { useSessionStore } from "../../stores/session/index";
 
 export function useSessionsPage() {

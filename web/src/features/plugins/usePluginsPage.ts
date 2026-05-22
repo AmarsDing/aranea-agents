@@ -1,8 +1,2 @@
-export {
-  listPlugins,
-  togglePluginEnabled,
-  updatePluginConfig,
-  updatePluginScope,
-  updatePluginSortOrder
-} from "./api";
+export { usePluginsStore } from "../../stores/plugins";
 export type { Plugin } from "./types";

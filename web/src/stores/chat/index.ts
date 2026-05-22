@@ -4,9 +4,10 @@ import {
   sendMessage,
   listChatOptions,
   stopGeneration,
-  type ChatOption
+  getRunStatus,
+  awaitUserReply
 } from "../../features/chat/api";
-import type { Message, SendMessageOptions } from "../../features/chat/types";
+import type { ChatOption, Message, RunStatus, SendMessageOptions } from "../../features/chat/types";
 
 export const useChatStore = defineStore("chat", () => {
   const messages = ref<Message[]>([]);
@@ -44,5 +45,26 @@ export const useChatStore = defineStore("chat", () => {
     if (!id) clearMessages();
   }
 
-  return { messages, chatOptions, sending, activeSessionId, loadChatOptions, send, stop, appendMessage, clearMessages, setActiveSession };
+  async function fetchRunStatus(sessionId: string): Promise<RunStatus> {
+    return getRunStatus(sessionId);
+  }
+
+  async function submitAwaitReply(sessionId: string, reply: string, runId?: string): Promise<boolean> {
+    return awaitUserReply(sessionId, reply, runId);
+  }
+
+  return {
+    messages,
+    chatOptions,
+    sending,
+    activeSessionId,
+    loadChatOptions,
+    send,
+    stop,
+    appendMessage,
+    clearMessages,
+    setActiveSession,
+    fetchRunStatus,
+    submitAwaitReply
+  };
 });

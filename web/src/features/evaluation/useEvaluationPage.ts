@@ -1,7 +1,6 @@
 import { computed, onMounted, ref } from "vue";
 import { storeToRefs } from "pinia";
 import { useQuasar } from "quasar";
-import { annotateCaseResult, compareEvalRuns, getAgentEvalTrend } from "./api";
 import type { EvalCaseResult, EvalRun, EvalRunComparison, EvalTrendPoint } from "./types";
 import { useEvaluationStore } from "../../stores/evaluation";
 
@@ -182,7 +181,7 @@ export function useEvaluationPage() {
     if (!resultsRun.value) return;
     savingResultId.value = row.id;
     try {
-      const updated = await annotateCaseResult({
+      const updated = await evaluationStore.annotateResult({
         run_id: resultsRun.value.id,
         result_id: row.id,
         human_pass: row.human_pass,
@@ -202,7 +201,7 @@ export function useEvaluationPage() {
     if (!trendAgentId.value) return;
     trendLoading.value = true;
     try {
-      trendPoints.value = await getAgentEvalTrend({
+      trendPoints.value = await evaluationStore.loadAgentTrend({
         agent_id: trendAgentId.value,
         dataset_id: selectedDatasetId.value || undefined,
         limit: 20
@@ -217,7 +216,7 @@ export function useEvaluationPage() {
   async function submitCompare(runIds: string[]) {
     compareLoading.value = true;
     try {
-      comparisons.value = await compareEvalRuns(runIds);
+      comparisons.value = await evaluationStore.compareRuns(runIds);
     } catch (e) {
       $q.notify({ type: "negative", message: e instanceof Error ? e.message : "对比失败" });
     } finally {

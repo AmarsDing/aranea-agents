@@ -12,8 +12,8 @@
     <q-table flat bordered :rows="scopedRows" :columns="columns" row-key="id" :loading="loading" hide-pagination :pagination="{ rowsPerPage: 20 }">
       <template #body-cell-rule="props">
         <q-td :props="props">
-          <q-chip dense outline color="primary">{{ ruleOf(props.row).callback_point }}</q-chip>
-          <q-chip dense outline>{{ ruleOf(props.row).action.type }}</q-chip>
+          <q-chip dense outline color="primary">{{ ruleCallbackPoint(props.row) }}</q-chip>
+          <q-chip dense outline>{{ ruleActionType(props.row) }}</q-chip>
         </q-td>
       </template>
       <template #body-cell-actions="props">
@@ -52,118 +52,42 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
-import { useQuasar } from "quasar";
 import CallbackEditor from "../hooks/CallbackEditor.vue";
-import { defaultHookRuleConfig, parseHookConfig, type HookRow, type HookRuleConfig } from "../../features/hooks/types";
-import { useHooksStore } from "../../stores/hooks";
+import { parseHookConfig, type HookRow } from "../../features/hooks/types";
+import { useAgentHooksPanel } from "../../features/agents/useAgentHooksPanel";
 
 const props = defineProps<{
   agentId: string;
   agentKey: string;
 }>();
 
-const $q = useQuasar();
-const hooksStore = useHooksStore();
-const loading = ref(false);
-const saving = ref(false);
-const loadError = ref("");
-const rows = ref<HookRow[]>([]);
-const editorExpanded = ref(true);
-const draftRule = ref<HookRuleConfig>(defaultHookRuleConfig());
-const draftSort = ref(0);
-const editOpen = ref(false);
-const editRow = ref<HookRow | null>(null);
-const editRule = ref<HookRuleConfig>(defaultHookRuleConfig());
-const editSort = ref(0);
-
-const columns = [
-  { name: "name", label: "名称", field: "name", align: "left" as const },
-  { name: "rule", label: "规则", field: "id", align: "left" as const }
-];
-
-const scopedRows = computed(() => {
-  const id = props.agentId.trim();
-  const key = props.agentKey.trim();
-  return rows.value.filter((row) => {
-    const cond = ruleOf(row).condition?.agent_id?.trim() ?? "";
-    if (!cond) return false;
-    return cond === id || cond === key;
-  });
-});
+const {
+  loading,
+  saving,
+  loadError,
+  scopedRows,
+  columns,
+  editorExpanded,
+  draftRule,
+  draftSort,
+  editOpen,
+  editRow,
+  editRule,
+  editSort,
+  createScopedHook,
+  openEdit,
+  saveEdit
+} = useAgentHooksPanel(() => props.agentId, () => props.agentKey);
 
 function ruleOf(row: HookRow) {
   return parseHookConfig(row.config_json);
 }
 
-function resetDraft() {
-  draftRule.value = defaultHookRuleConfig(props.agentId, props.agentKey);
-  if (!draftRule.value.condition.agent_id) {
-    draftRule.value.condition.agent_id = props.agentId || props.agentKey;
-  }
-  draftSort.value = 0;
+function ruleCallbackPoint(row: HookRow) {
+  return ruleOf(row).callback_point;
 }
 
-watch(
-  () => [props.agentId, props.agentKey],
-  () => resetDraft(),
-  { immediate: true }
-);
-
-async function loadRows() {
-  loading.value = true;
-  loadError.value = "";
-  try {
-    rows.value = await hooksStore.loadHooks();
-  } catch (e) {
-    loadError.value = e instanceof Error ? e.message : String(e);
-  } finally {
-    loading.value = false;
-  }
+function ruleActionType(row: HookRow) {
+  return ruleOf(row).action.type;
 }
-
-async function createScopedHook() {
-  const key = `${props.agentKey || props.agentId}-hook-${Date.now()}`.replace(/[^a-zA-Z0-9_-]/g, "_");
-  saving.value = true;
-  try {
-    await hooksStore.addHook({
-      key,
-      name: `${props.agentKey || props.agentId} callback`,
-      enabled: true,
-      sort_order: draftSort.value,
-      rule: draftRule.value
-    });
-    await loadRows();
-    $q.notify({ type: "positive", message: "Hook 已创建" });
-    resetDraft();
-  } catch (e) {
-    $q.notify({ type: "negative", message: e instanceof Error ? e.message : String(e) });
-  } finally {
-    saving.value = false;
-  }
-}
-
-function openEdit(row: HookRow) {
-  editRow.value = row;
-  editRule.value = ruleOf(row);
-  editSort.value = row.sort_order;
-  editOpen.value = true;
-}
-
-async function saveEdit() {
-  if (!editRow.value) return;
-  saving.value = true;
-  try {
-    await hooksStore.saveHook(editRow.value.id, { sort_order: editSort.value, rule: editRule.value });
-    editOpen.value = false;
-    await loadRows();
-    $q.notify({ type: "positive", message: "已保存" });
-  } catch (e) {
-    $q.notify({ type: "negative", message: e instanceof Error ? e.message : String(e) });
-  } finally {
-    saving.value = false;
-  }
-}
-
-onMounted(loadRows);
 </script>

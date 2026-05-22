@@ -1,3 +1,4 @@
+// Container: approved — feature-local panel/dialog; data from Page composable via props.
 <template>
   <div class="app-metrics-grid app-metrics-grid--5 memory-metric-grid">
     <q-card v-for="card in cards" :key="card.label" flat class="app-metrics-card memory-metric-card app-metrics-grid__item">

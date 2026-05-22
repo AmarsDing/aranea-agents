@@ -67,6 +67,9 @@ type NodeDef struct {
 	TimeoutSeconds           int
 	HeartbeatIntervalSeconds int
 	EnableLeaseExtension     bool
+	RetryMaxAttempts         int
+	FailureAction            string
+	FallbackAgent            string
 }
 
 type EdgeDef struct {

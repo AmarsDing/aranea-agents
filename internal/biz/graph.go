@@ -3,6 +3,7 @@ package biz
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"sync"
 	"time"
 
@@ -62,12 +63,17 @@ type NodeDef struct {
 	TimeoutSeconds           int
 	HeartbeatIntervalSeconds int
 	EnableLeaseExtension     bool
+	RetryMaxAttempts         int
+	FailureAction            string
+	FallbackAgent            string
 }
 
 // EdgeDef is a directed edge between two graph nodes.
 type EdgeDef struct {
 	From string
 	To   string
+	// Kind is optional metadata for visualization (e.g. "transfer" dashed edges). Runtime ignores unknown kinds.
+	Kind string
 }
 
 // ConditionalEdgeDef is a conditional routing edge.
@@ -100,6 +106,7 @@ type GraphBuildConfig struct {
 	ExecutionEngine  ExecutionEngineType
 	InterruptBefore  []string
 	InterruptAfter   []string
+	FailurePolicy    *TeamFailurePolicy
 }
 
 type GraphDefinition struct {
@@ -296,6 +303,51 @@ func (uc *GraphUsecase) ExecuteGraph(ctx context.Context, graphID, sessionID, ex
 	}
 
 	cfg := defToBuildConfig(def)
+
+	runtime, eventCh, err := uc.factory.BuildAndRun(ctx, cfg, sessionID, graphID, execID, initialState)
+	if err != nil {
+		uc.notifyExecComplete(&GraphExecution{ID: execID, GraphID: graphID, SessionID: sessionID, Status: "failed", ErrorMessage: err.Error()})
+		return nil, err
+	}
+
+	exec := &GraphExecution{
+		ID:        execID,
+		GraphID:   graphID,
+		SessionID: sessionID,
+		Status:    "running",
+		runtime:   runtime,
+		LineageID: runtime.GetLineageID(),
+		StartedAt: time.Now(),
+	}
+
+	if err := uc.runRepo.SaveRun(ctx, exec); err != nil {
+		exec.Status = "failed"
+		exec.ErrorMessage = err.Error()
+		uc.notifyExecComplete(exec)
+		return nil, errors.FromError(ErrGraphSaveRun).WithCause(err)
+	}
+
+	safego.Go(context.Background(), "graph.consumeEvents", func() {
+		uc.consumeRuntimeEvents(eventCh, exec, execID, graphID, sessionID)
+		uc.notifyExecComplete(exec)
+	})
+
+	uc.mu.Lock()
+	uc.executions[execID] = exec
+	uc.mu.Unlock()
+	return exec, nil
+}
+
+// ExecuteGraphBuildConfig runs a graph from an explicit build config (compiled team path).
+func (uc *GraphUsecase) ExecuteGraphBuildConfig(ctx context.Context, graphID, sessionID, execID string, cfg GraphBuildConfig, initialState map[string]any) (*GraphExecution, error) {
+	if execID == "" {
+		execID = uuid.New().String()
+	}
+	cfg = FinalizeGraphFailurePolicy(cfg)
+	graphID = strings.TrimSpace(graphID)
+	if graphID == "" {
+		graphID = "compiled-graph"
+	}
 
 	runtime, eventCh, err := uc.factory.BuildAndRun(ctx, cfg, sessionID, graphID, execID, initialState)
 	if err != nil {
@@ -540,6 +592,14 @@ func (uc *GraphUsecase) FindNodeDef(ctx context.Context, graphID string, nodeID 
 }
 
 func defToBuildConfig(def *GraphDefinition) GraphBuildConfig {
+	return BuildConfigFromGraphDefinition(def)
+}
+
+// BuildConfigFromGraphDefinition maps a persisted graph definition to runtime build config.
+func BuildConfigFromGraphDefinition(def *GraphDefinition) GraphBuildConfig {
+	if def == nil {
+		return GraphBuildConfig{}
+	}
 	return GraphBuildConfig{
 		Nodes:            def.Nodes,
 		Edges:            def.Edges,

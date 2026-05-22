@@ -13,6 +13,7 @@
     <div v-if="data.execStatus" class="graph-flow-node__status">
       <q-icon :name="statusIcon" size="12px" />
       <span>{{ statusLabel }}</span>
+      <span v-if="fineStatusLabel" class="graph-flow-node__fine-status">· {{ fineStatusLabel }}</span>
     </div>
     <Handle type="source" :position="Position.Right" />
   </div>
@@ -22,6 +23,8 @@
 import { computed } from "vue";
 import { Handle, Position } from "@vue-flow/core";
 import { NODE_TYPE_STYLES, EXECUTION_STATUS_STYLES, type NodeType } from "../../features/graph/types";
+import { AGENT_NODE_STATUS_STYLES } from "../../features/orchestration/agentNodeStatusStyles";
+import type { AgentNodeStatus } from "../../features/orchestration/types";
 
 const props = defineProps<{
   id: string;
@@ -31,6 +34,7 @@ const props = defineProps<{
     label: string;
     instruction?: string;
     execStatus?: string;
+    fineStatus?: string;
   };
   selected?: boolean;
 }>();
@@ -49,6 +53,12 @@ const statusConfig = computed(() => {
 
 const statusIcon = computed(() => statusConfig.value.icon);
 const statusLabel = computed(() => statusConfig.value.label);
+
+const fineStatusLabel = computed(() => {
+  const key = props.data.fineStatus as AgentNodeStatus | undefined;
+  if (!key) return "";
+  return AGENT_NODE_STATUS_STYLES[key]?.label ?? key;
+});
 
 function truncate(text: string, max: number) {
   return text.length > max ? text.slice(0, max) + "…" : text;
@@ -125,6 +135,11 @@ function truncate(text: string, max: number) {
   margin-top: 6px;
   font-size: 10px;
   font-weight: 600;
+}
+
+.graph-flow-node__fine-status {
+  opacity: 0.75;
+  font-weight: 500;
 }
 
 @keyframes pulse-glow {

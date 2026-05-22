@@ -5,9 +5,9 @@ import {
   createTeam,
   updateTeam,
   duplicateTeam,
-  deleteTeam,
-  type Team
+  deleteTeam
 } from "../../features/teams/api";
+import type { Team } from "../../features/teams/types";
 
 export const useTeamsStore = defineStore("teams", () => {
   const teams = ref<Team[]>([]);
@@ -49,9 +49,22 @@ export const useTeamsStore = defineStore("teams", () => {
     if (activeTeam.value?.id === id) activeTeam.value = null;
   }
 
+  async function fetchTeam(id: string) {
+    let team = teams.value.find((t) => t.id === id) ?? null;
+    if (!team) {
+      await loadTeams();
+      team = teams.value.find((t) => t.id === id) ?? null;
+    }
+    if (!team) {
+      throw new Error("Team not found");
+    }
+    activeTeam.value = team;
+    return team;
+  }
+
   function setActiveTeam(t: Team | null) {
     activeTeam.value = t;
   }
 
-  return { teams, activeTeam, loading, loadTeams, addTeam, editTeam, copy, remove, setActiveTeam };
+  return { teams, activeTeam, loading, loadTeams, fetchTeam, addTeam, editTeam, copy, remove, setActiveTeam };
 });

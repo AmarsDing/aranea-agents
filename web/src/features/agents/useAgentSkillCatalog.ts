@@ -1,6 +1,7 @@
 import { ref } from "vue";
 import { listSkills } from "../skills/api";
-import { getCodeExecutorCapabilities, type CodeExecutorCapability } from "../monitor/api";
+import { getCodeExecutorCapabilities } from "../monitor/api";
+import type { CodeExecutorCapability } from "../monitor/types";
 
 /** Skill slug options and code-executor capabilities for Agent settings. */
 export function useAgentSkillCatalog() {

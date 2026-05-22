@@ -3,13 +3,18 @@ import { ref } from "vue";
 import {
   listChannels,
   listChannelCatalog,
+  listChannelCredentials,
   createChannel,
   updateChannel,
   deleteChannel,
   toggleChannel,
+  testChannel,
+  listChannelTurnJobs,
   type ChannelRow,
   type ChannelCatalogItem,
-  type ChannelResourceInput
+  type ChannelCredential,
+  type ChannelResourceInput,
+  type ChannelTurnJobRow
 } from "../../features/channels/api";
 
 export const useChannelsStore = defineStore("channels", () => {
@@ -53,5 +58,31 @@ export const useChannelsStore = defineStore("channels", () => {
     return updated;
   }
 
-  return { channels, catalog, loading, loadChannels, loadCatalog, addChannel, editChannel, removeChannel, toggle };
+  async function fetchCredentials(channelId: string): Promise<ChannelCredential[]> {
+    return listChannelCredentials(channelId);
+  }
+
+  async function testConnection(channelId: string) {
+    return testChannel(channelId);
+  }
+
+  async function loadTurnJobs(channelId: string, limit = 30): Promise<ChannelTurnJobRow[]> {
+    const data = await listChannelTurnJobs(channelId, limit);
+    return data.items;
+  }
+
+  return {
+    channels,
+    catalog,
+    loading,
+    loadChannels,
+    loadCatalog,
+    addChannel,
+    editChannel,
+    removeChannel,
+    toggle,
+    fetchCredentials,
+    testConnection,
+    loadTurnJobs
+  };
 });

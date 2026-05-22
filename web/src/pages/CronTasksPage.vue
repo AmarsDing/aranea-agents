@@ -153,228 +153,41 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
-import { useRouter } from "vue-router";
-import { useQuasar, type QTableColumn } from "quasar";
-import type { Agent } from "../features/agents/api";
-import type { Team } from "../features/teams/api";
 import CronTaskFormDialog from "../components/cron/CronTaskFormDialog.vue";
-import { registryCol } from "../features/ui/registryTableColumns";
-import { createCronTask, deleteCronTask, listCronAgents, listCronTasks, listCronTeams, parseCronConfig, parseCronMetadata, resetCronTaskFailures, triggerCronTask, updateCronTask } from "../features/cron/api";
-import type { PlatformResourceInput } from "../features/platform/api";
-import type { CronFailureSummary, CronTaskConfig, CronTaskMetadata, CronTaskRow } from "../features/cron/types";
+import { useCronTasksPage } from "../features/cron/useCronTasksPage";
 
-const $q = useQuasar();
-const router = useRouter();
-const rows = ref<CronTaskRow[]>([]);
-const agents = ref<Agent[]>([]);
-const teams = ref<Team[]>([]);
-const loading = ref(false);
-const error = ref("");
-const search = ref("");
-const statusFilter = ref("");
-const editorOpen = ref(false);
-const editingRow = ref<CronTaskRow | null>(null);
-const savingId = ref("");
-const triggeringId = ref("");
-const formSubmitting = ref(false);
-const formServerError = ref("");
-
-const columns: QTableColumn<CronTaskRow>[] = [
-  { name: "name", label: "名称", field: "name", align: "left", sortable: true, ...registryCol.name },
-  { name: "description", label: "描述", field: "description", align: "left", ...registryCol.desc },
-  { name: "schedule", label: "计划", field: "config_json", align: "left", ...registryCol.chips },
-  { name: "agent", label: "目标", field: "agent_id", align: "left", ...registryCol.agent },
-  { name: "counts", label: "执行统计", field: "metadata_json", align: "left", ...registryCol.stats },
-  { name: "status", label: "状态", field: "status", align: "left", ...registryCol.status },
-  { name: "last", label: "上次运行", field: "metadata_json", align: "left", ...registryCol.time },
-  { name: "next", label: "下次运行", field: "metadata_json", align: "left", ...registryCol.time },
-  { name: "actions", label: "操作", field: "id", align: "right", ...registryCol.actions }
-];
-const statusOptions = [
-  { label: "启用", value: "active" },
-  { label: "暂停", value: "paused" },
-  { label: "死信", value: "dead" }
-];
-const activeCount = computed(() => rows.value.filter((row) => row.enabled).length);
-const filteredRows = computed(() => {
-  const keyword = search.value.trim().toLowerCase();
-  return rows.value.filter((row) => {
-    const cfg = config(row);
-    if (statusFilter.value === "active" && !row.enabled) return false;
-    if (statusFilter.value === "paused" && row.enabled) return false;
-    if (statusFilter.value === "dead" && row.status !== "dead") return false;
-    if (!keyword) return true;
-    return [row.key, row.name, row.description, cfg.schedule_type, cfg.cron_expression, cfg.message, targetLabel(row)]
-      .some((value) => String(value || "").toLowerCase().includes(keyword));
-  });
-});
-
-onMounted(loadAll);
-
-watch(editorOpen, (open) => {
-  if (open) formServerError.value = "";
-});
-
-async function onFormSubmit(payload: PlatformResourceInput) {
-  formServerError.value = "";
-  formSubmitting.value = true;
-  try {
-    const row = editingRow.value ? await updateCronTask(editingRow.value.id, payload) : await createCronTask(payload);
-    onSaved(row);
-    editorOpen.value = false;
-    $q.notify({ type: "positive", message: "定时任务已保存" });
-  } catch (err) {
-    formServerError.value = err instanceof Error ? err.message : "保存失败";
-    $q.notify({ type: "negative", message: formServerError.value });
-  } finally {
-    formSubmitting.value = false;
-  }
-}
-
-async function loadAll() {
-  loading.value = true;
-  error.value = "";
-  try {
-    const [taskRows, agentRows, teamRows] = await Promise.all([listCronTasks(), listCronAgents(), listCronTeams()]);
-    rows.value = taskRows;
-    agents.value = agentRows;
-    teams.value = teamRows;
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : "加载定时任务失败";
-  } finally {
-    loading.value = false;
-  }
-}
-
-function openCreate() {
-  editingRow.value = null;
-  editorOpen.value = true;
-}
-
-function openEdit(row: CronTaskRow) {
-  editingRow.value = row;
-  editorOpen.value = true;
-}
-
-function onSaved(row: CronTaskRow) {
-  const index = rows.value.findIndex((item) => item.id === row.id);
-  if (index >= 0) rows.value[index] = row;
-  else rows.value.unshift(row);
-}
-
-async function toggleRow(row: CronTaskRow, enabled: boolean) {
-  savingId.value = row.id;
-  try {
-    const updated = await updateCronTask(row.id, { ...row, enabled, status: enabled ? "active" : "paused" });
-    onSaved(updated);
-    $q.notify({ type: "positive", message: enabled ? "定时任务已启用" : "定时任务已暂停" });
-  } catch (err) {
-    $q.notify({ type: "negative", message: err instanceof Error ? err.message : "启停失败" });
-  } finally {
-    savingId.value = "";
-  }
-}
-
-function confirmDelete(row: CronTaskRow) {
-  $q.dialog({
-    title: "确认删除定时任务？",
-    message: `删除「${row.name}」后将不再触发该任务。`,
-    cancel: true,
-    persistent: true
-  }).onOk(async () => {
-    await deleteCronTask(row.id);
-    rows.value = rows.value.filter((item) => item.id !== row.id);
-    $q.notify({ type: "positive", message: "定时任务已删除" });
-  });
-}
-
-function openRuns(row: CronTaskRow, status = "") {
-  void router.push({ name: "cron-runs", query: { cron_task_id: row.id, status } });
-}
-
-async function resetDeadTask(row: CronTaskRow) {
-  savingId.value = row.id;
-  try {
-    const updated = await resetCronTaskFailures(row.id);
-    onSaved(updated);
-    $q.notify({ type: "positive", message: "已重置失败计数，任务重新启用" });
-  } catch (err) {
-    $q.notify({ type: "negative", message: err instanceof Error ? err.message : "重置失败" });
-  } finally {
-    savingId.value = "";
-  }
-}
-
-async function runNow(row: CronTaskRow) {
-  triggeringId.value = row.id;
-  try {
-    const run = await triggerCronTask(row.id);
-    if (run.status === "pending") {
-      $q.notify({ type: "info", message: "已提交执行，请在执行历史中查看结果" });
-      openRuns(row);
-      return;
-    }
-    await loadAll();
-    $q.notify({
-      type: run.status === "success" ? "positive" : "negative",
-      message: run.status === "success" ? "手动触发已完成" : run.error_message || "手动触发失败"
-    });
-  } catch (err) {
-    $q.notify({ type: "negative", message: err instanceof Error ? err.message : "触发失败" });
-  } finally {
-    triggeringId.value = "";
-  }
-}
-
-function scheduleLabel(row: CronTaskRow) {
-  const cfg = config(row);
-  if (cfg.schedule_type === "cron") return `cron: ${cfg.cron_expression || "-"}`;
-  if (cfg.schedule_type === "once") return `一次 · ${formatDate(cfg.run_at)}`;
-  return `每隔 ${Math.max(1, Math.round((cfg.interval_seconds || 0) / 60))} 分钟`;
-}
-
-function agentLabel(agentId: string) {
-  if (!agentId) return "默认";
-  const agent = agents.value.find((item) => item.id === agentId);
-  return agent?.display_name || agent?.agent_key || agentId;
-}
-
-function teamLabel(teamId: string) {
-  const team = teams.value.find((item) => item.id === teamId);
-  return team?.display_name || team?.team_key || teamId || "未选择 Team";
-}
-
-function targetLabel(row: CronTaskRow) {
-  const cfg = config(row);
-  if (cfg.target_type === "team" || cfg.team_id) return `Team · ${teamLabel(cfg.team_id || "")}`;
-  return `Agent · ${agentLabel(row.agent_id)}`;
-}
-
-function statusColor(row: CronTaskRow) {
-  if (!row.enabled || row.status === "paused") return "grey";
-  if (row.status === "dead") return "negative";
-  return "positive";
-}
-
-function recentFailures(row: CronTaskRow): CronFailureSummary[] {
-  const failures = metadata(row).recent_failures;
-  return Array.isArray(failures) ? failures : [];
-}
-
-function config(row: CronTaskRow): CronTaskConfig {
-  return parseCronConfig(row);
-}
-
-function metadata(row: CronTaskRow): CronTaskMetadata {
-  return parseCronMetadata(row);
-}
-
-function formatDate(value?: string) {
-  if (!value) return "—";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
-}
+const {
+  agents,
+  teams,
+  loading,
+  error,
+  search,
+  statusFilter,
+  editorOpen,
+  editingRow,
+  savingId,
+  triggeringId,
+  formSubmitting,
+  formServerError,
+  columns,
+  statusOptions,
+  activeCount,
+  filteredRows,
+  loadAll,
+  onFormSubmit,
+  openCreate,
+  openEdit,
+  toggleRow,
+  confirmDelete,
+  openRuns,
+  resetDeadTask,
+  runNow,
+  scheduleLabel,
+  targetLabel,
+  statusColor,
+  recentFailures,
+  formatDate
+} = useCronTasksPage();
 </script>
 
 <style scoped>

@@ -30,6 +30,16 @@ type StreamSender struct {
 // ID implements channel.Identified.
 func (s *StreamSender) ID() string { return "telegram" }
 
+// PreviewMessageID returns the Telegram message id after the first successful send.
+func (s *StreamSender) PreviewMessageID() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.messageID == 0 {
+		return ""
+	}
+	return strconv.FormatInt(s.messageID, 10)
+}
+
 // Update sends or edits the preview message. force bypasses throttle (final flush).
 func (s *StreamSender) Update(ctx context.Context, chatID, text string, force bool) error {
 	text = strings.TrimSpace(text)

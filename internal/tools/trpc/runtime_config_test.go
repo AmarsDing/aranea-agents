@@ -35,3 +35,13 @@ func TestResolveGeminiFetchModel_skipsWhenConfigured(t *testing.T) {
 		t.Fatalf("GeminiModel=%q", cfg.GeminiModel)
 	}
 }
+
+func TestApplyRuntimeConfigMaps_shellExecDir(t *testing.T) {
+	cfg := &ToolsetConfig{}
+	ApplyRuntimeConfigMaps(cfg, map[string]map[string]any{
+		"shell_exec": {"base_dir": "/data/shell"},
+	})
+	if cfg.ShellExecDir != "/data/shell" {
+		t.Fatalf("ShellExecDir=%q", cfg.ShellExecDir)
+	}
+}

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	"aranea-agents/internal/biz"
+
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcgraph "trpc.group/trpc-go/trpc-agent-go/graph"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
@@ -35,6 +37,10 @@ func nodeOptions(n NodeDef) []trpcgraph.Option {
 			opts = append(opts, trpcgraph.WithEndsMap(ends))
 		}
 	}
+	if n.RetryMaxAttempts > 0 {
+		opts = append(opts, trpcgraph.WithRetryPolicy(trpcgraph.WithSimpleRetry(n.RetryMaxAttempts)))
+	}
+	opts = append(opts, failureRecoveryOptions(n)...)
 	return opts
 }
 
@@ -80,8 +86,26 @@ func wireNode(ctx context.Context, sg *trpcgraph.StateGraph, n NodeDef, deps *Bu
 		if err != nil {
 			return nil, fmt.Errorf("graph: node %q agent %q: %w", n.ID, ref, err)
 		}
+		extras := []trpcagent.Agent{sub}
+		if fb := strings.TrimSpace(n.FallbackAgent); fb != "" {
+			fallback, ferr := deps.Agents.ResolveAgent(ctx, fb)
+			if ferr != nil {
+				return nil, fmt.Errorf("graph: node %q fallback agent %q: %w", n.ID, fb, ferr)
+			}
+			extras = append(extras, fallback)
+		}
 		sg.AddAgentNode(n.ID, opts...)
-		return []trpcagent.Agent{sub}, nil
+		return extras, nil
+	case "function":
+		if n.Func != nil {
+			sg.AddNode(n.ID, n.Func, opts...)
+			return nil, nil
+		}
+		if strings.TrimSpace(n.FuncRef) == biz.SkipNodeFuncRef {
+			sg.AddNode(n.ID, SkipNodeFunc(n.ID), opts...)
+			return nil, nil
+		}
+		return nil, fmt.Errorf("graph: node %q type function requires Func or %q FuncRef", n.ID, biz.SkipNodeFuncRef)
 	case "router":
 		sg.AddNode(n.ID, func(ctx context.Context, state trpcgraph.State) (any, error) {
 			return state, nil

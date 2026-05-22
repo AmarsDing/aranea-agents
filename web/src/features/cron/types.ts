@@ -1,4 +1,4 @@
-import type { PlatformResource } from "../platform/api";
+import type { PlatformResource } from "../platform/types";
 
 export type CronScheduleType = "interval" | "cron" | "once";
 export type CronTaskStatus = "active" | "paused" | "dead" | string;

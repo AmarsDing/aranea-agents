@@ -902,6 +902,7 @@ type ToolRegistration struct {
 type AssemblyConfig struct {
     EnabledTools  []string
     FilesystemDir string
+    ShellExecDir  string   // Phase 5：hostexec WithBaseDir；默认同 FilesystemDir / workspace_root
     GeminiModel   string
     GoogleAPIKey  string
     GoogleCX      string
@@ -1106,6 +1107,64 @@ internal/tools/
 ├── skillrouter/                     — Skill 检测与分类
 └── skillruntime/                    — Skill 工具集解析
 ```
+
+### 7.8 工具工作区统一（Phase 5）
+
+**目标**：Cursor 式单一项目根——需要「目录」的运行时工具共用 `workspace_root`；装配层一次解析、多处注入。
+
+#### 7.8.1 解析链
+
+文件路径：`internal/agent/tool_assembly.go`（`resolveToolWorkspaceRoot` ✅）
+
+```text
+Tool / Override config: filesystem_dir | base_dir | working_dir | root_dir
+  → system_settings.root_directory
+  → env ARANEA_WORKSPACE_ROOT | WORKSPACE_ROOT
+  → {root}/workspace/{agent_key}
+  → mkdir 校验
+= workspace_root
+```
+
+`buildToolsetsForAgent` 在 desktop 联调与将来 Electron 打包下语义相同：均解析为 **本机绝对路径**。
+
+#### 7.8.2 工具 × 目录矩阵
+
+| 注册名 | Catalog / 运行时 | 需要工作区？ | 现状 |
+|--------|------------------|-------------|------|
+| `file` | `read_file` … `patch_file` | ✅ 严格 | `FilesystemDir` = `workspace_root` ✅ |
+| `hostexec` | `shell_exec` → `exec_command` | ✅ 默认 cwd | `ShellExecDir` = `workspace_root` ✅ |
+| `claudecode` | `claude_code` | ✅ 可选独立 | 默认 `workspace_root`；可 Override ✅ |
+| `workspace_exec` | `workspace_exec` | ✅ CodeExecutor | 仅 `WithCodeExecutor` 路径 ✅ |
+| Skill `CodeExecutor` | Skill 脚本执行 | ✅ Skill 根 | `buildSkillDeps` 独立 `rootDir`；与 agent workspace 可不同 |
+| `httpfetch` / 搜索类 | web / search | ❌ | — |
+| `email` / `todo` / `await_user_reply` | — | ❌ | — |
+| `mcp` / `mcpbroker` / `openapi` | integration | ❌ | 远端/契约 |
+| Memory / `knowledge_search` | memory | ❌ | 后端存储 |
+| `agent` / `call_agent` | composition | ❌ | — |
+
+#### 7.8.3 装配改动
+
+| 文件 | 改动 |
+|------|------|
+| `internal/tools/toolset.go` | `enabled["hostexec"] && ShellExecDir != ""` → `hostexec.NewToolSet(WithBaseDir(ShellExecDir))` |
+| `internal/tools/trpc/toolsets.go` | `ToolsetConfig.ShellExecDir`；Build 时写入 `AssemblyConfig` |
+| `internal/agent/tool_assembly.go` | 解析 `workspace_root` → 同时赋 `FilesystemDir`、`ShellExecDir`；`ClaudeCodeDir` 空则回退 |
+| `internal/tools/trpc/runtime_config.go` | `shell_exec` config 支持 `base_dir` / `shell_root` |
+| `internal/data/builtin_tools_seed.go` | `shell_exec` 参数改为 `workdir`（与 hostexec 一致） |
+| `internal/tools/testexec/config.go` | 在线测试 shell 时传入 workspace |
+
+#### 7.8.4 Shell 参数与确认
+
+| 项 | 设计 |
+|----|------|
+| 调用参数 | `command`（必填）、`workdir`（可选，相对 `workspace_root`） |
+| 兼容 | Tool 层将 `working_dir` 映射为 `workdir` |
+| 确认门控 | `tool_confirm_gate` 同时匹配 `shell_exec` 与 `exec_command` |
+| Prompt | `RuntimeCapabilityCue` 表述默认 cwd=工作区，删除与错误实现绑定的 sandbox 文案 |
+
+#### 7.8.5 与 Electron / App 打包
+
+App 壳、Electron 打包 **不在本模块范围**（曾起草编号 53 文档，**不实施**）。工作区路径仍通过系统设置 / 环境变量 / Tool 配置注入，与是否 Electron 无关。
 
 ---
 
@@ -1655,4 +1714,21 @@ type RetryPolicy struct {
 
 ---
 
-*文档版本：3.0 — 对齐 trpc-agent-go 框架，整合 Callbacks/Filter/Retry（§12）、Stream 流式机制（§9）、Memory 记忆工具（§10）、AgentTool/MCPBroker（§11）设计。*
+## 十三、片段级文件编辑（扩展）
+
+> **状态**：✅ 已实现（2026-05-22） | **详设**：[23 tools-fragment-edit.design.md](./23%20tools-fragment-edit.design.md) · **需求**：[23 tools-fragment-edit.md](./23%20tools-fragment-edit.md) · **Review**：[2026-05-22-Tools-Phase4-Fragment-Edit-Review.md](../review/2026-05-22-Tools-Phase4-Fragment-Edit-Review.md) · **changelog**：[Phase 4](../changelog/2026-05-22-Tools-Phase4-Fragment-Edit.md) · [Follow-up](../changelog/2026-05-22-Tools-Phase4-Review-Followup.md)
+
+在 §7 运行时层 `file` ToolSet 上扩展两个 CallableTool：
+
+| 工具 | 职责 |
+|------|------|
+| `diff_edit` | 多片段 SEARCH/REPLACE，内存原子 apply |
+| `patch_file` | unified diff 或结构化 hunk 应用 |
+
+**实现包**：`pkg/trpc-agent-go/tool/file`（非新 Registry 项）。**会话缓存** 经 `internal/toolcache.FileView` 与 `read_file` / 写工具联动，详见扩展设计文档 §4–§6。
+
+本文 §7 注册表与 Assemble 流程**不变**；catalog 种子与 Prompt 集成见开发计划 Phase 4。
+
+---
+
+*文档版本：3.1 — 增加 §十三 片段编辑扩展索引（2026-05-22）。详设见 [23 tools-fragment-edit.design.md](./23%20tools-fragment-edit.design.md)。*

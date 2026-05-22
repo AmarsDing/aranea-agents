@@ -1,5 +1,6 @@
 import { computed, ref, toValue, type MaybeRefOrGetter } from "vue";
-import { listPlatformResources, type PlatformResource } from "../platform/api";
+import { listPlatformResources } from "../platform/api";
+import type { PlatformResource } from "../platform/types";
 import type { Agent } from "./types";
 
 function providerContextWindowK(row: PlatformResource) {

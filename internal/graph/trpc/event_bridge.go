@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
@@ -88,6 +89,12 @@ func (b *EventBridge) convertEvent(e *trpcevent.Event) *event.Envelope {
 		}
 		if len(meta.OutputKeys) > 0 {
 			env.Metadata["output_keys"] = meta.OutputKeys
+			for _, key := range meta.OutputKeys {
+				if key == biz.SkippedNodeOutputKey {
+					env.Metadata["skipped"] = true
+					break
+				}
+			}
 		}
 
 	case trpcgraph.ObjectTypeGraphNodeError:
@@ -101,6 +108,9 @@ func (b *EventBridge) convertEvent(e *trpcevent.Event) *event.Envelope {
 			"node_id":      meta.NodeID,
 			"node_type":    string(meta.NodeType),
 			"error":        meta.Error,
+			"retrying":     meta.Retrying,
+			"attempt":      meta.Attempt,
+			"max_attempts": meta.MaxAttempts,
 		}
 		env.Error = &event.EnvelopeError{
 			Type:    "graph_node_error",

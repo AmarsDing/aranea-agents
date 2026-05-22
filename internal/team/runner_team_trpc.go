@@ -26,6 +26,8 @@ import (
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
+
+	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 )
 
 func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.SendChatMessageRequest, teamRow biz.Team, def Definition, mode string) (userMsg biz.ChatMessage, assistantMsg biz.ChatMessage, err error) {
@@ -42,16 +44,17 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 	}
 
 	run := biz.TeamRun{
-		ID:           uuid.NewString(),
-		TeamID:       teamRow.ID,
-		SessionID:    sess.ID,
-		Mode:         mode,
-		Status:       "running",
-		InputPreview: preview(content, 512),
-		TopologyJSON: topologyJSON(def),
-		StartedAt:    agent.RFC3339Now(),
-		CreatedAt:    agent.RFC3339Now(),
-		UpdatedAt:    agent.RFC3339Now(),
+		ID:                     uuid.NewString(),
+		TeamID:                 teamRow.ID,
+		SessionID:              sess.ID,
+		Mode:                   mode,
+		Status:                 "running",
+		InputPreview:           preview(content, 512),
+		TopologyJSON:           topologyJSON(def),
+		DefinitionSnapshotJSON: strings.TrimSpace(teamRow.DefinitionJSON),
+		StartedAt:              agent.RFC3339Now(),
+		CreatedAt:              agent.RFC3339Now(),
+		UpdatedAt:              agent.RFC3339Now(),
 	}
 	run, err = r.teams.CreateTeamRun(ctx, run)
 	if err != nil {
@@ -149,14 +152,53 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 		builderDeps.AwaitHook = r.awaitHookProvider(ctx, sess.ID, run.ID)
 	}
 	teamDeps := TRPCTeamBuilderDeps{BuilderDeps: builderDeps, UseCache: true}
-	root, memberLookup, err := BuildTRPCTeam(ctx, def, teamDeps, r.catalogAgent)
-	if err != nil {
-		turnStatus = "error"
-		r.finishRunErr(ctx, &run, t0, err.Error())
-		return biz.ChatMessage{}, biz.ChatMessage{}, err
+
+	graphExecID := ""
+	var root trpcagent.Agent
+	var memberLookup map[string]trpcagent.Agent
+	if r.graphRoot != nil && TeamGraphRuntimeEnabled(def) && SupportsTeamGraphRuntimeMode(mode) {
+		graphExecID = uuid.NewString()
+		cfg, cerr := CompileToGraphRuntimeConfigFromJSON(ctx, def, teamRow.DefinitionJSON, func(agentID string) string {
+			ag, gerr := r.catalogAgent(ctx, agentID)
+			if gerr != nil {
+				return ""
+			}
+			return strings.TrimSpace(ag.AgentKey)
+		}, r.graphLoader)
+		if cerr != nil {
+			event.CtxFlowLogWarn(ctx, "team.graph_runtime.compile", "Graph 编译失败，回退 native 运行时", event.P("error", cerr.Error()))
+		} else {
+			groot, gerr := r.graphRoot.BuildTeamGraphRoot(ctx, cfg)
+			if gerr != nil {
+				event.CtxFlowLogWarn(ctx, "team.graph_runtime.build", "GraphAgent 构建失败，回退 native 运行时", event.P("error", gerr.Error()))
+			} else {
+				root = groot
+				_, memberLookup, err = BuildTeamMemberAgents(ctx, def, teamDeps, r.catalogAgent)
+				if err != nil {
+					turnStatus = "error"
+					r.finishRunErr(ctx, &run, t0, err.Error())
+					return biz.ChatMessage{}, biz.ChatMessage{}, err
+				}
+				run.GraphExecutionID = graphExecID
+				if uerr := r.teams.UpdateTeamRunGraphExecutionID(ctx, run.ID, graphExecID); uerr != nil {
+					event.CtxFlowLogWarn(ctx, "team.graph_runtime.persist", "graph_execution_id 持久化失败", event.P("error", uerr.Error()))
+				}
+				if teamEmitter != nil {
+					teamEmitter.LogDone("team.run.graph", "Team GraphAgent 已构建", event.P("graph_execution_id", graphExecID))
+				}
+			}
+		}
 	}
-	if teamEmitter != nil {
-		teamEmitter.LogDone("team.run.build", "团队 Agent 已构建", event.P("mode", mode))
+	if root == nil {
+		root, memberLookup, err = BuildTRPCTeam(ctx, def, teamDeps, r.catalogAgent)
+		if err != nil {
+			turnStatus = "error"
+			r.finishRunErr(ctx, &run, t0, err.Error())
+			return biz.ChatMessage{}, biz.ChatMessage{}, err
+		}
+		if teamEmitter != nil {
+			teamEmitter.LogDone("team.run.build", "团队 Agent 已构建", event.P("mode", mode))
+		}
 	}
 
 	var plugins []trpcplugin.Plugin
@@ -172,6 +214,36 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 		r.finishRunErr(ctx, &run, t0, err.Error())
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
+
+	var stopObsProjector context.CancelFunc
+	if r.td.Pipeline.Bus != nil {
+		obsReg := BuildOrchestrationRegistry(def,
+			func(agentID string) string {
+				ag, cerr := r.catalogAgent(ctx, agentID)
+				if cerr != nil {
+					return ""
+				}
+				return strings.TrimSpace(ag.AgentKey)
+			},
+			func(agentID string) string {
+				ag, cerr := r.catalogAgent(ctx, agentID)
+				if cerr != nil {
+					return ""
+				}
+				return strings.TrimSpace(ag.DisplayName)
+			},
+		)
+		stopObsProjector = StartOrchestrationStatusProjector(ctx, r.td.Pipeline.Bus, OrchestrationProjectorConfig{
+			RunID:     run.ID,
+			TeamID:    teamRow.ID,
+			SessionID: sess.ID,
+			Registry:  obsReg,
+		})
+	}
+	if stopObsProjector != nil {
+		defer stopObsProjector()
+	}
+
 	// Team Ralph Loop uses the first member agent's runtime settings (orchestrator / lead).
 	rl := agent.ResolveRalphLoopTurn(firstAg.Settings)
 	if rl.SkipErr != nil {

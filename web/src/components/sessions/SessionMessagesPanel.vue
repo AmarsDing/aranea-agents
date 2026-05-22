@@ -30,16 +30,12 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
-import type { Message } from "../../features/chat/types";
-import { useSessionStore } from "../../stores/session/index";
+import { toRef } from "vue";
+import { useSessionMessagesPanel } from "../../features/session/useSessionMessagesPanel";
 
 const props = defineProps<{ sessionId: string }>();
 
-const sessionStore = useSessionStore();
-const messages = ref<Message[]>([]);
-const loading = ref(false);
-const error = ref("");
+const { messages, loading, error } = useSessionMessagesPanel(toRef(() => props.sessionId));
 
 function roleLabel(role: string) {
   if (role === "user") return "用户";
@@ -54,20 +50,6 @@ function formatDate(value: string) {
   if (Number.isNaN(d.getTime())) return value;
   return d.toLocaleString();
 }
-
-async function loadMessages() {
-  loading.value = true;
-  error.value = "";
-  try {
-    messages.value = await sessionStore.fetchMessages(props.sessionId);
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : "加载消息失败";
-  } finally {
-    loading.value = false;
-  }
-}
-
-onMounted(loadMessages);
 </script>
 
 <style scoped>

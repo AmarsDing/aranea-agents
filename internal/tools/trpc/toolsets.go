@@ -18,6 +18,7 @@ type ToolsetConfig struct {
 	Filesystem    bool
 	FilesystemDir string
 	ShellExec     bool
+	ShellExecDir  string
 	WebFetch      bool
 	WebSearch     bool
 	GeminiFetch   bool
@@ -157,6 +158,7 @@ func BuildToolsets(ctx context.Context, cfg ToolsetConfig) (*AssembledToolsets, 
 	assembled, err := tools.Assemble(ctx, tools.AssemblyConfig{
 		EnabledTools:  enabled,
 		FilesystemDir: cfg.FilesystemDir,
+		ShellExecDir:  cfg.ShellExecDir,
 		GeminiModel:   cfg.GeminiModel,
 		GoogleAPIKey:  cfg.GoogleAPIKey,
 		GoogleCX:      cfg.GoogleCX,

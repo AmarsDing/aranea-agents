@@ -1,3 +1,4 @@
+// Container: approved — feature-local panel/dialog; data from Page composable via props.
 <template>
   <q-card flat bordered class="memory-card">
     <q-card-section>

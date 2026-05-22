@@ -95,10 +95,10 @@
           </q-item-section>
           <q-item-section side>
             <div v-if="s.status === 'pending'" class="row q-gutter-xs">
-              <q-btn flat round dense icon="check" color="positive" size="sm" :loading="applyingId === s.id" @click="onApply(s.id)">
+              <q-btn flat round dense icon="check" color="positive" size="sm" :loading="applyingId === s.id" @click="emit('apply', s.id)">
                 <q-tooltip>应用</q-tooltip>
               </q-btn>
-              <q-btn flat round dense icon="close" color="negative" size="sm" :loading="rejectingId === s.id" @click="onReject(s.id)">
+              <q-btn flat round dense icon="close" color="negative" size="sm" :loading="rejectingId === s.id" @click="emit('reject', s.id)">
                 <q-tooltip>拒绝</q-tooltip>
               </q-btn>
             </div>
@@ -126,12 +126,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed } from "vue";
 import type { EvolutionKey } from "./agentUi";
-import type { EvolutionMetrics, EvolutionSuggestion } from "../../features/agents/api";
-import { useAgentDetailStore } from "../../stores/agents/detail";
-
-const agentDetailStore = useAgentDetailStore();
+import type { EvolutionMetrics, EvolutionSuggestion } from "../../features/agents/types";
 
 const props = defineProps<{
   agentId: string;
@@ -142,10 +139,18 @@ const props = defineProps<{
     rollback_on_decline_percent: number;
   };
   range: string;
+  metricsLoading: boolean;
+  metrics: EvolutionMetrics | null;
+  suggestions: EvolutionSuggestion[];
+  applyingId: string | null;
+  rejectingId: string | null;
+  pendingSuggestionsCount: number;
 }>();
 
 const emit = defineEmits<{
   "update:range": [value: string];
+  apply: [id: string];
+  reject: [id: string];
 }>();
 
 const rangeModel = computed({
@@ -160,14 +165,6 @@ const evolutionToggles: Array<{ key: EvolutionKey; title: string; caption: strin
   { key: "evolution_metrics_enabled", title: "进化指标", caption: "记录工具效果、检索质量、反馈等。" },
   { key: "evolution_suggestions_enabled", title: "进化建议", caption: "基于指标生成改进建议。" }
 ];
-
-const metricsLoading = ref(false);
-const metrics = ref<EvolutionMetrics | null>(null);
-const suggestions = ref<EvolutionSuggestion[]>([]);
-const applyingId = ref<string | null>(null);
-const rejectingId = ref<string | null>(null);
-
-const pendingSuggestionsCount = computed(() => suggestions.value.filter((s) => s.status === "pending").length);
 
 function formatPercent(v: number | undefined): string {
   if (v === undefined || v === null) return "—";
@@ -196,56 +193,6 @@ function suggestionTypeColor(type: string): string {
   }
 }
 
-async function fetchMetrics() {
-  if (!props.agentId) return;
-  metricsLoading.value = true;
-  try {
-    metrics.value = await agentDetailStore.fetchEvolutionMetrics(props.agentId, props.range);
-  } catch {
-    metrics.value = null;
-  } finally {
-    metricsLoading.value = false;
-  }
-}
-
-async function fetchSuggestions() {
-  if (!props.agentId) return;
-  try {
-    suggestions.value = await agentDetailStore.fetchEvolutionSuggestions(props.agentId, "pending");
-  } catch {
-    suggestions.value = [];
-  }
-}
-
-async function onApply(id: string) {
-  applyingId.value = id;
-  try {
-    await agentDetailStore.applyEvolution(props.agentId, id);
-    await fetchSuggestions();
-    await fetchMetrics();
-  } finally {
-    applyingId.value = null;
-  }
-}
-
-async function onReject(id: string) {
-  rejectingId.value = id;
-  try {
-    await agentDetailStore.rejectEvolution(props.agentId, id);
-    await fetchSuggestions();
-  } finally {
-    rejectingId.value = null;
-  }
-}
-
-watch(
-  () => [props.agentId, props.range],
-  () => {
-    fetchMetrics();
-    fetchSuggestions();
-  },
-  { immediate: true }
-);
 </script>
 
 <style scoped>

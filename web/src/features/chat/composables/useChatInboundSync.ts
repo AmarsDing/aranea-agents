@@ -9,7 +9,7 @@ import type { Envelope } from "../envelope";
 import type { UseEnvelopeStreamReturn } from "../useEnvelopeStream";
 import { useAppStore } from "../../../stores/app";
 import { parseChannelSessionMeta } from "../channelSessionMeta";
-import type { Session } from "../../session/api";
+import type { Session } from "../../session/types";
 
 export type ChatInboundSyncDeps = {
   selectedEntityKind: Ref<"agent" | "team">;

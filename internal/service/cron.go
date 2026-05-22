@@ -155,6 +155,14 @@ func (s *CronService) TriggerCronTask(ctx context.Context, req *v1.TriggerCronTa
 	return toProtoCronTaskRun(run), nil
 }
 
+// GetTaskRun returns a cron task run row for internal async completion watchers.
+func (s *CronService) GetTaskRun(ctx context.Context, id string) (biz.CronTaskRun, error) {
+	if s == nil || s.uc == nil {
+		return biz.CronTaskRun{}, kerrors.InternalServer("CRON", "cron service not configured")
+	}
+	return s.uc.GetTaskRun(ctx, id)
+}
+
 func (s *CronService) ResetCronTaskFailures(ctx context.Context, req *v1.ResetCronTaskFailuresRequest) (*v1.CronTask, error) {
 	out, err := s.uc.ResetTaskFailures(ctx, req.GetId())
 	if err != nil {

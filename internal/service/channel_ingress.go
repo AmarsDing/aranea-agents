@@ -8,23 +8,36 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/lark"
+	"aranea-agents/internal/event"
+
+	graphv1 "aranea-agents/api/kratos/graph/v1"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	khttp "github.com/go-kratos/kratos/v2/transport/http"
 	"github.com/gorilla/mux"
 )
 
+// channelAsyncGraphExecutor runs async graph/team_graph targets from channel ingress.
+type channelAsyncGraphExecutor interface {
+	ExecuteGraph(ctx context.Context, req *graphv1.ExecuteGraphRequest) (*graphv1.ExecuteGraphResponse, error)
+	ExecuteGraphBuildConfig(ctx context.Context, graphID, sessionID string, cfg biz.GraphBuildConfig, initialState map[string]any) (*graphv1.ExecuteGraphResponse, error)
+}
+
 // ChannelIngress bridges external channel webhooks to in-process chat (native runner via ChatService).
 type ChannelIngress struct {
-	channels         *biz.ChannelUsecase
-	peers            biz.ChannelPeerSessionRepo
-	inboundReceipts  biz.ChannelInboundReceiptRepo
-	sessions         *biz.SessionUsecase
-	agents           biz.AgentRepository
-	teams            biz.TeamRepository
-	chat             *ChatService
-	http             *http.Client
-	inboundInflight  inboundInflightSet
+	channels        *biz.ChannelUsecase
+	peers           biz.ChannelPeerSessionRepo
+	inboundReceipts biz.ChannelInboundReceiptRepo
+	turnJobs        *biz.ChannelTurnJobUsecase
+	sessions        *biz.SessionUsecase
+	agents          biz.AgentRepository
+	teams           biz.TeamRepository
+	chat            *ChatService
+	graphs          channelAsyncGraphExecutor
+	cron            *CronService
+	eventBus        event.Bus
+	http            *http.Client
+	inboundInflight inboundInflightSet
 }
 
 // NewChannelIngress wires channel runtime ingress.
@@ -32,19 +45,27 @@ func NewChannelIngress(
 	channels *biz.ChannelUsecase,
 	peers biz.ChannelPeerSessionRepo,
 	inboundReceipts biz.ChannelInboundReceiptRepo,
+	turnJobs *biz.ChannelTurnJobUsecase,
 	sessions *biz.SessionUsecase,
 	agents biz.AgentRepository,
 	teams biz.TeamRepository,
 	chat *ChatService,
+	graphs *GraphService,
+	cron *CronService,
+	eventBus event.Bus,
 ) *ChannelIngress {
 	return &ChannelIngress{
 		channels:        channels,
 		peers:           peers,
 		inboundReceipts: inboundReceipts,
+		turnJobs:        turnJobs,
 		sessions:        sessions,
 		agents:          agents,
 		teams:           teams,
 		chat:            chat,
+		graphs:          graphs,
+		cron:            cron,
+		eventBus:        eventBus,
 		http:            lark.DefaultHTTPClient(),
 	}
 }
@@ -150,7 +171,7 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 			w.WriteHeader(http.StatusOK)
 			return nil
 		}
-		h.processInboundHTTP(w, r, chRow, ev)
+		writeInboundHTTPResponse(w, h.processInboundHTTP(r, chRow, ev))
 		return nil
 	}
 }

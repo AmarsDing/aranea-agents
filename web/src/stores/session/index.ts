@@ -13,9 +13,9 @@ import {
   previewSessionBatch,
   batchArchiveSessions,
   batchDeleteSessions,
-  type Session,
-  type SessionListResult
+  restoreSession
 } from "../../features/session/api";
+import type { Session, SessionListResult } from "../../features/session/types";
 import type { BatchOperationResult, BatchPreviewResult, SessionBatchScope } from "../../features/session/types";
 import type { Message } from "../../features/chat/types";
 
@@ -141,6 +141,7 @@ export const useSessionStore = defineStore("session", () => {
     batchDelete,
     fetchTurns,
     fetchTimeline,
-    fetchMessages
+    fetchMessages,
+    restore: restoreSession
   };
 });

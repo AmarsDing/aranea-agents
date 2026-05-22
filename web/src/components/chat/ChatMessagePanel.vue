@@ -380,7 +380,7 @@ import ChatMessageRow from "./ChatMessageRow.vue";
 import ChatRunnerStatus from "../../features/chat/components/ChatRunnerStatus.vue";
 import ChatEnqueueMessage from "../../features/chat/components/ChatEnqueueMessage.vue";
 import ChatTeamMemberStrip, { type TeamMemberLane } from "./ChatTeamMemberStrip.vue";
-import type { RunStatusValue } from "../../features/chat/api";
+import type { RunStatusValue } from "../../features/chat/types";
 import { useChatMessageRow } from "../../features/chat/useChatMessageRow";
 import { AWAIT_KIND_TOOL_CONFIRM } from "../../features/chat/awaitConstants";
 import {

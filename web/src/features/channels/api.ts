@@ -1,4 +1,6 @@
 import { createChannelService } from "../../services/index";
+import { requestHandler } from "../../services/axiosHandler";
+import { asRecord, pickStr } from "../../shared/wireJson";
 import type {
   Channel as KratosChannel,
   ChannelCatalogItem as KratosCatalogItem,
@@ -11,7 +13,8 @@ import type {
   ChannelCredentialInput,
   ChannelResourceInput,
   ChannelRow,
-  ChannelTestResult
+  ChannelTestResult,
+  ChannelTurnJobRow
 } from "./types";
 
 const channelApi = createChannelService();
@@ -186,7 +189,49 @@ export async function deleteChannelCredential(channelId: string, credentialKey: 
   await channelApi.DeleteChannelCredential({ channelId, credentialKey });
 }
 
-export type { ChannelRow, ChannelCatalogItem, ChannelResourceInput, ChannelCredential, ChannelCredentialInput, ChannelTestResult } from "./types";
+export type {
+  ChannelRow,
+  ChannelCatalogItem,
+  ChannelResourceInput,
+  ChannelCredential,
+  ChannelCredentialInput,
+  ChannelTestResult,
+  ChannelTurnJobRow
+} from "./types";
+
+function wireChannelTurnJob(raw: unknown): ChannelTurnJobRow {
+  const r = asRecord(raw);
+  return {
+    id: pickStr(r, "id", "id"),
+    channel_id: pickStr(r, "channel_id", "channelId"),
+    session_id: pickStr(r, "session_id", "sessionId"),
+    peer_id: pickStr(r, "peer_id", "peerId"),
+    peer_key: pickStr(r, "peer_key", "peerKey"),
+    idempotency_key: pickStr(r, "idempotency_key", "idempotencyKey"),
+    status: pickStr(r, "status", "status"),
+    preview_message_id: pickStr(r, "preview_message_id", "previewMessageId"),
+    content_preview: pickStr(r, "content_preview", "contentPreview"),
+    async_target_type: pickStr(r, "async_target_type", "asyncTargetType"),
+    async_target_id: pickStr(r, "async_target_id", "asyncTargetId"),
+    error_message: pickStr(r, "error_message", "errorMessage"),
+    started_at: pickStr(r, "started_at", "startedAt"),
+    finished_at: pickStr(r, "finished_at", "finishedAt"),
+    created_at: pickStr(r, "created_at", "createdAt"),
+    updated_at: pickStr(r, "updated_at", "updatedAt")
+  };
+}
+
+/** TECH-DEBT: use channelApi.ListChannelTurnJobs after `make api` regenerates web client. */
+export async function listChannelTurnJobs(channelId: string, limit = 30): Promise<{ items: ChannelTurnJobRow[] }> {
+  const q = limit > 0 ? `?limit=${limit}` : "";
+  const res = await requestHandler({
+    path: `v1/channels/${encodeURIComponent(channelId)}/turn-jobs${q}`,
+    method: "GET",
+    body: null
+  });
+  const items = (res as { items?: unknown[] }).items ?? [];
+  return { items: items.map(wireChannelTurnJob) };
+}
 
 export type ChannelDeliveryRow = {
   id: string;

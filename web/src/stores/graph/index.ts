@@ -6,7 +6,12 @@ import {
   createGraph,
   updateGraph,
   deleteGraph,
-  type GraphDefinition
+  executeGraph,
+  getGraphExecution,
+  cancelGraphExecution,
+  resumeGraph,
+  type GraphDefinition,
+  type GraphExecution
 } from "../../features/graph/api";
 
 export const useGraphStore = defineStore("graph", () => {
@@ -52,5 +57,35 @@ export const useGraphStore = defineStore("graph", () => {
     if (activeGraph.value?.id === id) activeGraph.value = null;
   }
 
-  return { graphs, activeGraph, loading, total, loadGraphs, fetchGraph, addGraph, editGraph, removeGraph };
+  async function runGraph(id: string, sessionId: string, initialState?: Record<string, unknown>) {
+    return executeGraph(id, sessionId, initialState);
+  }
+
+  async function fetchExecution(executionId: string): Promise<GraphExecution> {
+    return getGraphExecution(executionId);
+  }
+
+  async function cancelExecution(executionId: string) {
+    return cancelGraphExecution(executionId);
+  }
+
+  async function resumeExecution(executionId: string, resumeValue?: Record<string, unknown>) {
+    return resumeGraph(executionId, resumeValue);
+  }
+
+  return {
+    graphs,
+    activeGraph,
+    loading,
+    total,
+    loadGraphs,
+    fetchGraph,
+    addGraph,
+    editGraph,
+    removeGraph,
+    runGraph,
+    fetchExecution,
+    cancelExecution,
+    resumeExecution
+  };
 });

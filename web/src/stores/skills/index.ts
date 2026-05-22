@@ -1,7 +1,21 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
-import { listSkills, toggleSkillEnabled, publishSkill, duplicateSkill, deleteSkill } from "../../features/skills/api";
-import type { Skill, SkillListQuery, PaginatedResponse } from "../../features/skills/types";
+import {
+  listSkills,
+  listSkillRuns,
+  toggleSkillEnabled,
+  publishSkill,
+  duplicateSkill,
+  deleteSkill,
+  listSkillFiles,
+  readSkillFile,
+  updateSkillFile,
+  uploadSkillZip,
+  getSkillImportJob,
+  refineSkillConflictGroup,
+  applySkillImport
+} from "../../features/skills/api";
+import type { Skill, SkillListQuery, SkillRunQuery, PaginatedResponse } from "../../features/skills/types";
 
 export const useSkillsStore = defineStore("skills", () => {
   const skills = ref<Skill[]>([]);
@@ -14,9 +28,14 @@ export const useSkillsStore = defineStore("skills", () => {
       const result: PaginatedResponse<Skill> = await listSkills(query);
       skills.value = result.items ?? [];
       total.value = result.total ?? skills.value.length;
+      return result;
     } finally {
       loading.value = false;
     }
+  }
+
+  async function loadSkillRuns(query?: SkillRunQuery) {
+    return listSkillRuns(query);
   }
 
   async function toggle(id: string, enabled: boolean) {
@@ -42,5 +61,22 @@ export const useSkillsStore = defineStore("skills", () => {
     skills.value = skills.value.filter((s) => s.id !== id);
   }
 
-  return { skills, total, loading, loadSkills, toggle, publish, duplicate, remove };
+  return {
+    skills,
+    total,
+    loading,
+    loadSkills,
+    loadSkillRuns,
+    toggle,
+    publish,
+    duplicate,
+    remove,
+    listSkillFiles,
+    readSkillFile,
+    updateSkillFile,
+    uploadSkillZip,
+    getSkillImportJob,
+    refineSkillConflictGroup,
+    applySkillImport
+  };
 });

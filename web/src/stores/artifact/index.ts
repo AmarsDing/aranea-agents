@@ -4,11 +4,15 @@ import {
   deleteArtifact,
   getArtifact,
   listArtifacts,
-  uploadArtifact
+  uploadArtifact,
+  signDownloadUrl,
+  artifactDownloadHref,
+  previewArtifact
 } from "../../features/artifact/api";
 import type {
   ArtifactData,
   ArtifactMeta,
+  ArtifactPreview,
   ListArtifactsParams,
   ListArtifactsResult,
   UploadArtifactInput
@@ -48,5 +52,24 @@ export const useArtifactStore = defineStore("artifact", () => {
     total.value = Math.max(0, total.value - 1);
   }
 
-  return { artifacts, total, loading, loadArtifacts, upload, get, remove };
+  async function signDownload(id: string, version?: number) {
+    return signDownloadUrl(id, version);
+  }
+
+  async function loadPreview(id: string, version?: number): Promise<ArtifactPreview> {
+    return previewArtifact(id, version);
+  }
+
+  return {
+    artifacts,
+    total,
+    loading,
+    loadArtifacts,
+    upload,
+    get,
+    remove,
+    signDownload,
+    loadPreview,
+    artifactDownloadHref
+  };
 });

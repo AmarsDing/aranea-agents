@@ -6,10 +6,14 @@ import {
   updateMcpServer,
   deleteMcpServer,
   testMcpServer,
+  validateMcpServer,
+  listMcpUserCredentials,
+  upsertMcpUserCredential,
+  deleteMcpUserCredential,
   type PlatformResource,
   type PlatformResourceInput
 } from "../../features/mcp/api";
-import type { McpServerTestResult } from "../../features/mcp/types";
+import type { McpServerTestResult, McpServerValidateResult, McpUserCredential, McpUserCredentialInput } from "../../features/mcp/types";
 
 export const useMcpStore = defineStore("mcp", () => {
   const servers = ref<PlatformResource[]>([]);
@@ -45,5 +49,33 @@ export const useMcpStore = defineStore("mcp", () => {
     return testMcpServer(id);
   }
 
-  return { servers, loading, loadServers, addServer, editServer, removeServer, test };
+  async function validate(enabled: boolean, configJson: string): Promise<McpServerValidateResult> {
+    return validateMcpServer(enabled, configJson);
+  }
+
+  async function fetchUserCredentials(mcpServerId: string, userId: string): Promise<McpUserCredential[]> {
+    return listMcpUserCredentials(mcpServerId, userId);
+  }
+
+  async function saveUserCredential(mcpServerId: string, userId: string, input: McpUserCredentialInput) {
+    return upsertMcpUserCredential(mcpServerId, userId, input);
+  }
+
+  async function removeUserCredential(mcpServerId: string, userId: string, credentialKey: string) {
+    return deleteMcpUserCredential(mcpServerId, userId, credentialKey);
+  }
+
+  return {
+    servers,
+    loading,
+    loadServers,
+    addServer,
+    editServer,
+    removeServer,
+    test,
+    validate,
+    fetchUserCredentials,
+    saveUserCredential,
+    removeUserCredential
+  };
 });

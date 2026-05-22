@@ -176,7 +176,7 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import type { TeamDefinition } from "../../features/teams/api";
+import type { TeamDefinition } from "../../features/teams/types";
 import { buildGraphFromDefinition, modeOptions, roleOptions, statusOptions, teamTemplateOptions, topologyNodesFromDefinition, type TeamTemplateKey } from "./teamUtils";
 
 const props = withDefaults(

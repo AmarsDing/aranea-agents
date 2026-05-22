@@ -2,8 +2,8 @@
  * Team 展示用纯函数（无网络）。与 `components/teams/*.vue` 共址，见 vue-design.md §2 路径硬性约定。
  * 类型来自 `features/teams/api`（仅 type import）。
  */
-import type { Agent } from "../../features/agents/api";
-import type { Team, TeamDefinition, TeamDefinitionGraphNode } from "../../features/teams/api";
+import type { Agent } from "../../features/agents/types";
+import type { Team, TeamDefinition, TeamDefinitionGraphNode } from "../../features/teams/types";
 
 export const modeOptions = [
   { label: "顺序 sequential", value: "sequential" },

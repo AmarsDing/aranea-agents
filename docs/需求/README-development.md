@@ -26,7 +26,8 @@
 | Agent Title | [8-agent-title-development.md](./8-agent-title-development.md) | ✅ 顶栏+预览；❌ 标题自动生成 |
 | Provider | [9-provider-development.md](./9-provider-development.md) |
 | Session | [10-session-development.md](./10-session-development.md) |
-| Multi-Agent / Team | [11-multi-agent-development.md](./11-multi-agent-development.md) | ✅ 编排+RunTest+Summary+WS；P3 闭环完成 |
+| Multi-Agent / Team | [11-multi-agent-development.md](./11-multi-agent-development.md) | ✅ 编排+RunTest+Summary+WS；**M53** 编译/观测 ✅，执行双轨 ⏳ |
+| **Team × Graph 融合 (M53)** | [53-team-graph-orchestration-development.md](./53-team-graph-orchestration-development.md) | ✅ 编译/观测单链；⏳ 执行收敛 Phase 5–7 |
 | Runner | [40-runner-development.md](./40-runner-development.md) |
 
 ## 能力与运行时
@@ -34,14 +35,14 @@
 | 模块 | 开发计划 |
 |------|----------|
 | Memory | [12-16 memory-development.md](./12-16%20memory-development.md) |
-| Channel | [17-channel-development.md](./17-channel-development.md) · [× Agent/Team 集成](./17-channel-agent-team-integration.md) |
+| Channel | [17-channel-development.md](./17-channel-development.md) · [× Agent/Team 集成](./17-channel-agent-team-integration.md) · [**长任务 Phase E**](./17-channel-development.md#10-长任务异步执行phase-e) |
 | Monitor | [18-monitor-development.md](./18-monitor-development.md)（运维 `/monitor/logs`）· [Dashboard 概览](./18-monitor-dashboard-development.md)（`/overview`） |
 | FlowLogger | [52-flow-logger.md](./52-flow-logger.md) · [design](./52-flow-logger.design.md) · [开发计划](./52-flow-logger-development.md) · [Slog 移除](../changelog/2026-05-20-FlowLog-V2-SlogRemoval.md) |
 | MCP | [19-mcp-development.md](./19-mcp-development.md) | 🟢 CRUD+探活+ToolSet/Broker+OAuth+重连 ✅；🟡 统计闭环 |
 | Skill | [20-skill-development.md](./20-skill-development.md) | ✅ 管理面 + Layer A/B 运行时；❌ 版本回滚/RBAC/Preview 原因 |
 | Cron | [21-cron-development.md](./21-cron-development.md) |
 | Plugin | [22-plugin-development.md](./22-plugin-development.md) |
-| Tools | [23-tools-development.md](./23-tools-development.md) |
+| Tools | [23-tools-development.md](./23-tools-development.md) | ✅ Phase 4 片段编辑 + Phase 5 工作区统一 |
 | Telemetry | [24-telemetry-development.md](./24-telemetry-development.md) | 🟢 otel_id + FlowLog 关联 ✅；gRPC 采样待办 |
 | **CLI（技术预览）** | [25-cli-development.md](./25-cli-development.md) | ⚠️ 非核心可用；UI/CLI 为早期占位 |
 | A2A | [26-a2a-development.md](./26-a2a-development.md) | 🟢 Phase 1–3.5 + 健康 Cron ✅；❌ 速率限制 |
@@ -59,6 +60,7 @@
 | Event System | [34-event-development.md](./34-event-development.md) | 🟢 Bus/Envelope/WS/event_store ✅；Monitor RealtimeEvents ✅；Chat Inspector Dialog 双 Tab ✅ |
 | Gateway | [35-gateway-development.md](./35-gateway-development.md) | ✅ RunRegistry/ChatUsecase/Webhook；🟡 Follow-up Queue 前端 UX |
 | Graph | [36-graph-development.md](./36-graph-development.md) |
+| **Team × Graph (M53)** | [53-team-graph-orchestration-development.md](./53-team-graph-orchestration-development.md) |
 | Knowledge | [37-knowledge-development.md](./37-knowledge-development.md) |
 | Planner | [39-planner-development.md](./39-planner-development.md) | 🟢 持久化 + 设置 UI + Chat ReAct/A2UI 组件树 + tool 去重 + Review 打磨 ✅；🟡 表单可编辑 / 长尾组件 |
 | Avatar | [50-avatar-development.md](./50-avatar-development.md) |
@@ -89,7 +91,7 @@
 | M1 Runner 与 Gateway | ✅ 完成 | RunRegistry、RunnerManager、Enqueue、ArtifactService/SessionIngestor/AgentFactory/AwaitUserReplyRouting 注入；Chat/Team/Cron/Channel 共用 RunGateway |
 | M2 架构边界康复 | ✅ 完成 | Memory 端口（RuntimeSet）、Data provider 上移、Provider 拆环（llminspect）、Skill Import service 化 |
 | M3 模块闭环 | ✅ 主项完成 | Evaluation/A2A/Artifact/Knowledge/Chat UX（工具卡片/run_status）已通；Rerank/OCR、Memory 图治理、前端拆分留 P2 |
-| M4 平台运营 | 🚧 进行中 | Monitor/Token/Quota 部分已通；飞书/钉钉/企微 Channel ✅；Ecosystem/Telemetry UI 待补 |
+| M4 平台运营 | 🚧 进行中 | Monitor/Token/Quota 部分已通；飞书/钉钉/企微 Channel ✅；**Channel 长任务 Phase E** ⏳；Ecosystem/Telemetry UI 待补 |
 
 ### 近期已完成（迭代 4 — 2026-05-20）
 
@@ -234,7 +236,7 @@
 | [5 agent-setting.md](./5%20agent-setting.md) / [5-agent-setting-development.md](./5-agent-setting-development.md) | **2026-05-20**：§10 A2A Tab |
 | [frontend-pages.md](./frontend-pages.md) | **2026-05-20**：Agent 创建/设置/A2A 页分工 |
 | [40-runner-development.md](./40-runner-development.md) | **2026-05-21**：PendingQueue runtime、Review Phase D 同步 |
-| [23-tools-development.md](./23-tools-development.md) | **2026-05-21**：v5.1 状态表；MCP 主项 ✅ |
+| [23-tools-development.md](./23-tools-development.md) | **2026-05-22**：Phase 4+5 ✅；[Review](../review/23-tools-review.md) 86 分 |
 | [changelog/2026-05-21-Review-Optimization-PhaseD.md](../changelog/2026-05-21-Review-Optimization-PhaseD.md) | Phase D：ResourceManager composable、LIST-04 biz、测试与 i18n |
 
 ---

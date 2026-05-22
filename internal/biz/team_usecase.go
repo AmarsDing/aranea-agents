@@ -19,6 +19,7 @@ type TeamRepository interface {
 	ListTeamRunSteps(ctx context.Context, runID string) ([]TeamRunStep, error)
 	CreateTeamRun(ctx context.Context, r TeamRun) (TeamRun, error)
 	UpdateTeamRun(ctx context.Context, r TeamRun) error
+	UpdateTeamRunGraphExecutionID(ctx context.Context, runID, graphExecutionID string) error
 	UpdateTeamRunSummaryJSON(ctx context.Context, runID, summaryJSON string) error
 	CreateTeamRunStep(ctx context.Context, s TeamRunStep) (TeamRunStep, error)
 }
@@ -132,10 +133,49 @@ func (u *TeamUsecase) Create(ctx context.Context, in Team) (Team, error) {
 	return u.repo.CreateTeam(ctx, in)
 }
 
+func (u *TeamUsecase) GetRunObservatory(ctx context.Context, runID string) (TeamRunObservatory, error) {
+	run, err := u.GetRun(ctx, runID)
+	if err != nil {
+		return TeamRunObservatory{}, err
+	}
+	steps, err := u.ListRunSteps(ctx, run.ID)
+	if err != nil {
+		return TeamRunObservatory{}, err
+	}
+	definitionJSON := strings.TrimSpace(run.DefinitionSnapshotJSON)
+	if definitionJSON == "" {
+		teamRow, terr := u.Get(ctx, run.TeamID)
+		if terr != nil {
+			return TeamRunObservatory{}, terr
+		}
+		definitionJSON = teamRow.DefinitionJSON
+	}
+	return BuildTeamRunObservatory(run, steps, definitionJSON), nil
+}
+
+func (u *TeamUsecase) HasActiveRun(ctx context.Context, teamID string) (bool, error) {
+	teamID = strings.TrimSpace(teamID)
+	if teamID == "" {
+		return false, kerrors.BadRequest("TEAM", "team_id is required")
+	}
+	runs, err := u.repo.ListTeamRuns(ctx, teamID, 50)
+	if err != nil {
+		return false, err
+	}
+	return HasActiveTeamRun(runs), nil
+}
+
 func (u *TeamUsecase) Update(ctx context.Context, id string, patch Team) (Team, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return Team{}, kerrors.BadRequest("TEAM", "id is required")
+	}
+	active, err := u.HasActiveRun(ctx, id)
+	if err != nil {
+		return Team{}, err
+	}
+	if active {
+		return Team{}, kerrors.Conflict("TEAM", "team has an active run; orchestration is read-only until the run finishes")
 	}
 	current, err := u.repo.GetTeamByID(ctx, id)
 	if err != nil {

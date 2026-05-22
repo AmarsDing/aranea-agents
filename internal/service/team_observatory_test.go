@@ -1,0 +1,84 @@
+package service
+
+import (
+	"context"
+	"fmt"
+	"testing"
+
+	v1 "aranea-agents/api/kratos/team/v1"
+	"aranea-agents/internal/biz"
+)
+
+type observatoryTeamRepo struct {
+	team  biz.Team
+	run   biz.TeamRun
+	steps []biz.TeamRunStep
+	runs  []biz.TeamRun
+}
+
+func (r *observatoryTeamRepo) ListTeams(context.Context) ([]biz.Team, error) { return nil, nil }
+func (r *observatoryTeamRepo) GetTeamByID(_ context.Context, id string) (biz.Team, error) {
+	if id == r.team.ID {
+		return r.team, nil
+	}
+	return biz.Team{}, fmt.Errorf("team not found")
+}
+func (r *observatoryTeamRepo) CreateTeam(context.Context, biz.Team) (biz.Team, error) {
+	return biz.Team{}, nil
+}
+func (r *observatoryTeamRepo) UpdateTeam(context.Context, biz.Team) (biz.Team, error) {
+	return biz.Team{}, nil
+}
+func (r *observatoryTeamRepo) DeleteTeam(context.Context, string) error { return nil }
+func (r *observatoryTeamRepo) ListTeamRuns(_ context.Context, teamID string, _ int) ([]biz.TeamRun, error) {
+	if teamID == r.team.ID {
+		return r.runs, nil
+	}
+	return nil, nil
+}
+func (r *observatoryTeamRepo) GetTeamRunByID(_ context.Context, id string) (biz.TeamRun, error) {
+	if id == r.run.ID {
+		return r.run, nil
+	}
+	return biz.TeamRun{}, fmt.Errorf("run not found")
+}
+func (r *observatoryTeamRepo) ListTeamRunSteps(_ context.Context, runID string) ([]biz.TeamRunStep, error) {
+	if runID == r.run.ID {
+		return r.steps, nil
+	}
+	return nil, nil
+}
+func (r *observatoryTeamRepo) CreateTeamRun(context.Context, biz.TeamRun) (biz.TeamRun, error) {
+	return biz.TeamRun{}, nil
+}
+func (r *observatoryTeamRepo) UpdateTeamRun(context.Context, biz.TeamRun) error { return nil }
+func (r *observatoryTeamRepo) UpdateTeamRunSummaryJSON(context.Context, string, string) error {
+	return nil
+}
+func (r *observatoryTeamRepo) UpdateTeamRunGraphExecutionID(context.Context, string, string) error {
+	return nil
+}
+func (r *observatoryTeamRepo) CreateTeamRunStep(context.Context, biz.TeamRunStep) (biz.TeamRunStep, error) {
+	return biz.TeamRunStep{}, nil
+}
+
+func TestGetTeamRunObservatory(t *testing.T) {
+	repo := &observatoryTeamRepo{
+		team: biz.Team{
+			ID:             "t1",
+			DefinitionJSON: `{"members":[{"agent_id":"a1","sort_order":1,"name":"A"}]}`,
+		},
+		run: biz.TeamRun{ID: "run-1", TeamID: "t1", SessionID: "s1", Status: "success", Mode: "sequential"},
+		steps: []biz.TeamRunStep{
+			{AgentID: "a1", AgentKey: "k1", AgentName: "A", SortOrder: 1, Status: "ok", OutputPreview: "done"},
+		},
+	}
+	svc := &TeamService{uc: biz.NewTeamUsecase(repo)}
+	resp, err := svc.GetTeamRunObservatory(context.Background(), &v1.GetTeamRunObservatoryRequest{RunId: "run-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Nodes) != 1 || resp.Nodes[0].Status != "success" {
+		t.Fatalf("resp: %+v", resp.Nodes)
+	}
+}

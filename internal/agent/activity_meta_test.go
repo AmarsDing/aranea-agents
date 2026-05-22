@@ -47,13 +47,44 @@ func TestResolveIconKey(t *testing.T) {
 }
 
 func TestBuildSummary(t *testing.T) {
-	summary := BuildSummary("tool", "read_file", []byte(`{"path":"/tmp/a.txt"}`))
+	summary := BuildSummary("tool", "read_file", []byte(`{"file_name":"/tmp/a.txt"}`))
 	if !strings.Contains(summary, "/tmp/a.txt") {
 		t.Fatalf("summary: %q", summary)
+	}
+	summary = BuildSummary("tool", "diff_edit", []byte(`{"file_name":"foo.go","edits":[{"search":"a","replace":"b"}]}`))
+	if !strings.Contains(summary, "foo.go") || !strings.Contains(summary, "1 edit") {
+		t.Fatalf("diff_edit summary: %q", summary)
 	}
 	summary = BuildSummary("mcp", "mcp_call", []byte(`{"server_key":"github","tool_name":"list_issues"}`))
 	if summary != "github/list_issues" {
 		t.Fatalf("mcp summary: %q", summary)
+	}
+}
+
+func TestFileEditResultSummary(t *testing.T) {
+	got := fileEditResultSummary("diff_edit", `{"applied_edits":2,"total_replacements":3,"structured_patch":[]}`)
+	if got != "2 applied · 3 repl" {
+		t.Fatalf("got %q", got)
+	}
+	got = fileEditResultSummary("patch_file", `{"applied_hunks":2,"structured_patch":[{"old_start":1}]}`)
+	if got != "2 hunk(s) applied" {
+		t.Fatalf("patch_file applied_hunks: got %q", got)
+	}
+	got = fileEditResultSummary("patch_file", `{"structured_patch":[{"old_start":1}]}`)
+	if got != "1 hunk(s)" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestBuildActivityMetaFileEditSummary(t *testing.T) {
+	meta := BuildActivityMeta(context.Background(), ActivityMetaInput{
+		ToolName:      "diff_edit",
+		ArgumentsJSON: `{"file_name":"x.go","edits":[{"search":"a","replace":"b"}]}`,
+		ResultJSON:    `{"applied_edits":1,"total_replacements":1}`,
+		Status:        "success",
+	}, nil)
+	if !strings.Contains(meta.Summary, "x.go") || !strings.Contains(meta.Summary, "applied") {
+		t.Fatalf("summary: %q", meta.Summary)
 	}
 }
 

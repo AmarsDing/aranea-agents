@@ -1,5 +1,5 @@
-import type { Agent } from "../agents/api";
-import type { Team } from "../teams/api";
+import type { Agent } from "../agents/types";
+import type { Team } from "../teams/types";
 
 export type ChannelRoutingTargetType = "agent" | "team";
 

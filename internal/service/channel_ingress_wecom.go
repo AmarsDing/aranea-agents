@@ -33,7 +33,7 @@ func (h *ChannelIngress) handleWeComWebhook(w http.ResponseWriter, r *http.Reque
 	}
 	peerID := ingressFirstNonEmpty(parsed.SenderUserID, parsed.ChatID)
 	idempotency := "wecom:" + ingressFirstNonEmpty(parsed.ChatID, parsed.SenderUserID) + ":" + strings.TrimSpace(r.URL.Query().Get("timestamp"))
-	h.processInboundHTTP(w, r, chRow, port.InboundEvent{
+	writeInboundHTTPResponse(w, h.processInboundHTTP(r, chRow, port.InboundEvent{
 		PlatformType:   "wecom",
 		PeerID:         peerID,
 		Text:           parsed.Text,
@@ -42,6 +42,6 @@ func (h *ChannelIngress) handleWeComWebhook(w http.ResponseWriter, r *http.Reque
 			"recipient":    parsed.ResponseURL,
 			"response_url": parsed.ResponseURL,
 		},
-	})
+	}))
 	return nil
 }

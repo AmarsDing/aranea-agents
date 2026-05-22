@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	graphv1 "aranea-agents/api/kratos/graph/v1"
 	"aranea-agents/internal/biz"
@@ -19,13 +20,14 @@ import (
 type GraphService struct {
 	graphv1.UnimplementedGraphServiceServer
 
-	uc     *biz.GraphUsecase
-	taskUC *biz.TaskUsecase
-	graphTel *GraphExecutionTelemetry
+	uc            *biz.GraphUsecase
+	taskUC        *biz.TaskUsecase
+	graphTel      *GraphExecutionTelemetry
+	orchProjector *GraphOrchestrationProjector
 }
 
-func NewGraphService(uc *biz.GraphUsecase, taskUC *biz.TaskUsecase, graphTel *GraphExecutionTelemetry) *GraphService {
-	return &GraphService{uc: uc, taskUC: taskUC, graphTel: graphTel}
+func NewGraphService(uc *biz.GraphUsecase, taskUC *biz.TaskUsecase, graphTel *GraphExecutionTelemetry, orchProjector *GraphOrchestrationProjector) *GraphService {
+	return &GraphService{uc: uc, taskUC: taskUC, graphTel: graphTel, orchProjector: orchProjector}
 }
 
 func (s *GraphService) CreateGraph(ctx context.Context, req *graphv1.CreateGraphRequest) (*graphv1.CreateGraphResponse, error) {
@@ -191,12 +193,16 @@ func (s *GraphService) ExecuteGraph(ctx context.Context, req *graphv1.ExecuteGra
 	if s.graphTel != nil {
 		s.graphTel.Bind(execID, traceBridge)
 	}
+	def, defErr := s.uc.GetGraph(ctx, req.GraphId)
 	exec, err := s.uc.ExecuteGraph(ctx, req.GraphId, req.SessionId, execID, initialState)
 	if err != nil {
 		if s.graphTel != nil {
 			s.graphTel.EnsureFinished(execID, err)
 		}
 		return nil, err
+	}
+	if defErr == nil && def != nil && s.orchProjector != nil {
+		s.orchProjector.Start(context.Background(), req.GetSessionId(), execID, req.GetGraphId(), def)
 	}
 	resp := &graphv1.ExecuteGraphResponse{
 		ExecutionId: exec.ID,
@@ -769,6 +775,7 @@ func (s *GraphService) ClaimTask(ctx context.Context, req *graphv1.ClaimTaskRequ
 	if err != nil {
 		return nil, err
 	}
+	s.publishTaskOrchestrationStatus(ctx, task, nil)
 	return &graphv1.ClaimTaskResponse{Task: toProtoTask(task)}, nil
 }
 
@@ -777,6 +784,7 @@ func (s *GraphService) SubmitTaskResult(ctx context.Context, req *graphv1.Submit
 	if err != nil {
 		return nil, err
 	}
+	s.publishTaskOrchestrationStatus(ctx, task, nil)
 	return &graphv1.SubmitTaskResultResponse{Task: toProtoTask(task)}, nil
 }
 
@@ -793,7 +801,24 @@ func (s *GraphService) ReportBlocked(ctx context.Context, req *graphv1.ReportBlo
 	if err != nil {
 		return nil, err
 	}
+	s.publishTaskOrchestrationStatus(ctx, task, nil)
 	return &graphv1.ReportBlockedResponse{Task: toProtoTask(task)}, nil
+}
+
+func (s *GraphService) ReviewTask(ctx context.Context, req *graphv1.ReviewTaskRequest) (*graphv1.ReviewTaskResponse, error) {
+	task, err := s.taskUC.ReviewTask(ctx, req.TaskId, req.ReviewerAgent, req.Approved, req.Comment)
+	if err != nil {
+		return nil, err
+	}
+	extra := map[string]any{}
+	if !req.Approved {
+		extra["review_rejected"] = true
+		if c := strings.TrimSpace(req.Comment); c != "" {
+			extra["review_comment"] = c
+		}
+	}
+	s.publishTaskOrchestrationStatus(ctx, task, extra)
+	return &graphv1.ReviewTaskResponse{Task: toProtoTask(task)}, nil
 }
 
 func (s *GraphService) ListTaskComments(ctx context.Context, req *graphv1.ListTaskCommentsRequest) (*graphv1.ListTaskCommentsResponse, error) {

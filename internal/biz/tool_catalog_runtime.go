@@ -22,7 +22,7 @@ const (
 // registryBackedToolKeys are catalog rows with a direct Registry / ToolSet factory path.
 var registryBackedToolKeys = map[string]struct{}{
 	"read_file": {}, "read_multiple_files": {}, "save_file": {}, "list_file": {},
-	"search_file": {}, "search_content": {}, "replace_content": {},
+	"search_file": {}, "search_content": {}, "replace_content": {}, "diff_edit": {}, "patch_file": {},
 	"shell_exec": {}, "web_fetch": {}, "duckduckgo_search": {}, "gemini_web_fetch": {},
 	"google_search": {}, "arxiv_search": {}, "wikipedia_search": {},
 	"send_email": {}, "todo_write": {}, "await_user_reply": {},

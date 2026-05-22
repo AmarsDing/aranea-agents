@@ -219,3 +219,136 @@ ProcessInbound → processInboundStreaming → RunNativeTurnStreaming
 | `ARANEA_CREDENTIAL_KEY` | 凭据加密 |
 
 Webhook 默认：`/webhooks/{channel_key}`。
+
+---
+
+## 10. 长任务异步执行（Phase E）
+
+> **需求**：[17 channel.md §8](./17%20channel.md#8-长任务场景飞书-channel)  
+> **设计**：[17 channel.design.md §十二](./17%20channel.design.md#十二长任务异步执行设计)  
+> **验收 ID**：LT-01 – LT-07
+
+### 10.1 目标与原则
+
+- **Accept ≠ Execute**：Ingress 快速响应平台；Turn 在后台完成。  
+- **SRP**：受理 / 执行 / 进度 / 出站 分文件；biz 只做 Job 与配置。  
+- **复用 Chat 路径**：不复制 `trpc_turn`；Channel 仅加 IM 投影与 Job 审计。  
+- **影响域可控**：P0 仅改 `channel_ingress*` + config helper；P1 加表与 Projector；P2 才触 Graph/Cron。
+
+### 10.2 任务板
+
+#### E0 — 配置与契约（P0 前置，1d）
+
+| ID | 任务 | 包 / 文件 | 状态 | 验收 |
+|----|------|-----------|------|------|
+| E0-1 | `ChannelLongTaskConfig` 解析 + 单测 | `biz/channel_config_helpers.go` | ✅ | 默认值与 §8.4 一致 |
+| E0-2 | `TurnOutcome` 枚举（ok / queued / rejected / error） | `biz/channel_turn_outcome.go` + `runChatTurnWithOutcome` | ✅ | `runChatTurn*` 可返回 |
+| E0-3 | 文档 / Catalog schema 补字段说明 | `17 channel.md` · 前端 schema（可选） | ✅ | 需求 §8.4 已定义 |
+
+#### E1 — 快速 ACK + Webhook 异步（P0，2–3d）
+
+| ID | 任务 | 包 / 文件 | 状态 | 验收 |
+|----|------|-----------|------|------|
+| E1-1 | `acceptInbound`：ACK 出站 + delivery 记录 | `service/channel_ingress_accept.go` | ✅ | LT-01 ACK ≤2s |
+| E1-2 | Webhook：`200` 后 `safego` 执行 Turn | `service/channel_ingress_http.go` | ✅ | LT-04 HTTP ≤3s |
+| E1-3 | WS：`HandleWSInbound` 统一走 accept → execute | `channel/lark/ws_inbound.go` · `ProcessInbound` | ✅ | 与 Webhook 行为一致 |
+| E1-4 | 入队时 outbound `ack_on_queued` | `service/channel_ingress_execute.go` + stream | ✅ | LT-03 |
+| E1-5 | 单测：ctx timeout / config 解析 | `channel_turn_context_test.go` · `channel_config_helpers_test.go` | ✅ | CI 绿 |
+
+**依赖**：E0-1、E0-2。  
+**不影响**：Web Chat RPC、gRPC Chat API（TurnOutcome 对 Web 透明）。
+
+#### E2 — Channel 级超时（P0，1d）
+
+| ID | 任务 | 包 / 文件 | 状态 | 验收 |
+|----|------|-----------|------|------|
+| E2-1 | Execute 层注入 `turn_timeout_sec` / `first_byte_timeout_sec` | `service/channel_ingress_execute.go` → ctx | ✅ | LT-05 |
+| E2-2 | `trpc_turn` 读取 ctx 可选 first-byte deadline | `service/trpc_turn.go` | ✅ | Team 5min 工具场景 |
+| E2-3 | 超时 IM 错误文案 + FlowLog `channel.turn.timeout` | ingress + `lark/ws_inbound` notify | ✅ | `channel.turn.execute/done/timeout` + SysLog |
+
+**依赖**：E1。  
+**影响域**：仅 Channel 入站 ctx；Web Chat 仍用全局默认。
+
+#### E3 — ChannelTurnJob（P1，3–4d）
+
+| ID | 任务 | 包 / 文件 | 状态 | 验收 |
+|----|------|-----------|------|------|
+| E3-1 | Ent schema + SQL + Repo | `data/channel_turn_job*.go` · `docs/sql/04_channel.sql` | ✅ | 启动 Ensure + SQL 文档 |
+| E3-2 | `biz.ChannelTurnJob` + Repo 接口 | `biz/channel_turn_job.go` | ✅ | 幂等键唯一 |
+| E3-3 | Execute 创建 Job accepted→running→终态 | `channel_ingress_job.go` · execute | ✅ | LT-07 可查询 |
+| E3-4 | Prometheus `aranea_channel_turn_*` | `internal/metrics/vars.go` | ✅ | duration + job_total |
+| E3-5 | Admin API `ListChannelTurnJobs`（可选 P1.5） | `api/.../channel.proto` · `ChannelTurnJobsPanel` | ✅ | GET `/v1/channels/{id}/turn-jobs` |
+
+**依赖**：E1。  
+**SRP**：Job 持久化不在 Ingress 文件内联 SQL。
+
+#### E4 — 进度投影（P1，3–4d）
+
+| ID | 任务 | 包 / 文件 | 状态 | 验收 |
+|----|------|-----------|------|------|
+| E4-1 | `ChannelProgressProjector` 注册 / 注销 | `service/channel_progress_projector.go` | ✅ | Turn 结束 defer 取消 |
+| E4-2 | 订阅 tool / member / heartbeat | 同上 + EventBus filter | ✅ | LT-02 工具有文案 |
+| E4-3 | `progress_mode` / `progress_quiet_sec` 配置门控 | `biz/channel_config_helpers.go` | ✅ | off 时不订阅 |
+| E4-4 | 指标 `aranea_channel_progress_patch_total` | metrics | ✅ | ok/error 计数 |
+
+**依赖**：E1、E3（preview_message_id）。  
+**不影响**：WebSocket 客户端 Envelope 语义。
+
+#### E5 — 前端配置（P1，1–2d）
+
+| ID | 任务 | 包 / 文件 | 状态 | 验收 |
+|----|------|-----------|------|------|
+| E5-1 | Channel 编辑：ACK / 超时 / progress 表单项 | `channelPlatformFields.ts` · `useChannelEditorForm.ts` | ✅ | LONG TASK 分区保存 config_json |
+| E5-2 | 长任务推荐预设（客服 / Team 模板） | `channelLongTaskPresets.ts` | ✅ | 与 §8.6 一致 |
+
+**依赖**：E0-1。
+
+#### E6 — 超长任务 async（P2，5d+）
+
+| ID | 任务 | 包 / 文件 | 状态 | 验收 |
+|----|------|-----------|------|------|
+| E6-1 | `execution_mode=async` Accept 触发 Graph/Cron | `channel_ingress_async.go` · accept | ✅ | 立即 async ACK |
+| E6-2 | 完成事件 → IM 出站 | `watchAsyncGraphCompletion` | ✅ | Graph done 通知 |
+| E6-3 | `/async` 命令或意图路由（auto） | `biz.ShouldRunAsync` | ✅ | auto 模式 |
+| E6-4 | 飞书「取消」→ `CancelRun` | `channel_ingress_cancel.go` | ✅ | 取消/ cancel / /cancel |
+
+**依赖**：E3；Graph/Cron 稳定 API。  
+**影响域**：Graph(36)、Cron(21)、Event(34)。
+
+### 10.3 推荐迭代顺序
+
+```
+迭代 E-a（P0，约 1 周）
+  E0 → E1 → E2 → 验收 LT-01/03/04/05/06
+
+迭代 E-b（P1，约 1.5 周）
+  E3 → E4 → E5 → 验收 LT-02/07
+
+迭代 E-c（P2，按需）
+  E6 + 飞书交互卡片
+```
+
+### 10.4 验证命令
+
+```bash
+make wire && make api && make build
+go test ./internal/biz/... ./internal/service/... -count=1
+make runtime-boundary
+```
+
+### 10.5 文档与 changelog
+
+| 交付 | 路径 |
+|------|------|
+| 需求 | `17 channel.md` §8 |
+| 设计 | `17 channel.design.md` §十二 |
+| 集成差距 | `17-channel-agent-team-integration.md` §6 |
+| 实现完成后 | `changelog/YYYY-MM-DD-Channel-Long-Task-Phase-E.md` |
+
+---
+
+## 11. 文档修订记录
+
+| 版本 | 日期 | 说明 |
+|------|------|------|
+| 1.1 | 2026-05-22 | §10 Phase E 长任务：任务板 E0–E6、迭代顺序、验收映射 |

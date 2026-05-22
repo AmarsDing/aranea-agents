@@ -81,7 +81,21 @@
         </q-tab-panel>
 
         <q-tab-panel name="timeline" class="q-pa-none q-mt-md">
-          <SessionTimelinePanel :session-id="session.id" :session-title="session.title || '未命名会话'" />
+          <SessionTimelinePanel
+            :session-id="session.id"
+            :session-title="session.title || '未命名会话'"
+            :focus-tool-id="focusToolId"
+            :timeline="timelinePanel.timeline.value"
+            :loading="timelinePanel.loading.value"
+            :error="timelinePanel.error.value"
+            :kind-filter="timelinePanel.kindFilter.value"
+            :sort-order="timelinePanel.sortOrder.value"
+            :stats="timelinePanel.stats.value"
+            :filtered-items="timelinePanel.filteredItems.value"
+            @refresh="timelinePanel.loadTimeline"
+            @update:kind-filter="timelinePanel.kindFilter.value = $event"
+            @update:sort-order="timelinePanel.sortOrder.value = $event"
+          />
         </q-tab-panel>
       </q-tab-panels>
     </template>
@@ -89,14 +103,6 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
-import { useRoute, useRouter } from "vue-router";
-import {
-  archiveSession,
-  getSession,
-  restoreSession,
-  type Session
-} from "../features/session/api";
 import {
   contextProgressColor,
   formatCostMicroUsd,
@@ -110,14 +116,19 @@ import {
 import SessionTurnsPanel from "../components/sessions/SessionTurnsPanel.vue";
 import SessionMessagesPanel from "../components/sessions/SessionMessagesPanel.vue";
 import SessionTimelinePanel from "../components/sessions/SessionTimelinePanel.vue";
+import { useSessionDetailPage } from "../features/session/useSessionDetailPage";
 
-const route = useRoute();
-const router = useRouter();
-
-const session = ref<Session | null>(null);
-const loadingSession = ref(true);
-const sessionError = ref("");
-const activeTab = ref("turns");
+const {
+  router,
+  session,
+  loadingSession,
+  sessionError,
+  activeTab,
+  focusToolId,
+  handleArchive,
+  handleRestore,
+  timelinePanel
+} = useSessionDetailPage();
 
 function formatDate(value: string) {
   if (!value) return "—";
@@ -125,41 +136,6 @@ function formatDate(value: string) {
   if (Number.isNaN(d.getTime())) return value;
   return d.toLocaleString();
 }
-
-async function loadSession() {
-  const id = String(route.params.sessionId || "");
-  if (!id) {
-    sessionError.value = "Missing session ID";
-    loadingSession.value = false;
-    return;
-  }
-  loadingSession.value = true;
-  sessionError.value = "";
-  try {
-    session.value = await getSession(id);
-  } catch (err) {
-    sessionError.value = err instanceof Error ? err.message : "Failed to load session";
-  } finally {
-    loadingSession.value = false;
-  }
-}
-
-async function handleArchive() {
-  if (!session.value) return;
-  await archiveSession(session.value.id);
-  session.value = { ...session.value, status: "archived" };
-}
-
-async function handleRestore() {
-  if (!session.value) return;
-  try {
-    session.value = await restoreSession(session.value.id);
-  } catch (err) {
-    console.error("Restore failed", err);
-  }
-}
-
-onMounted(loadSession);
 </script>
 
 <style scoped>

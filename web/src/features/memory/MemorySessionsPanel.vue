@@ -1,3 +1,4 @@
+// Container: approved — feature-local panel/dialog; data from Page composable via props.
 <template>
   <div class="row q-col-gutter-md">
     <div class="col-12 col-lg-5">
@@ -103,7 +104,7 @@
 
 <script setup lang="ts">
 import type { QTableProps } from "quasar";
-import type { Session } from "../../features/session/api";
+import type { Session } from "../../features/session/types";
 import type { L0AssemblySegment, L0AssemblySnapshot, L1Task } from "../../features/memory/types";
 
 defineProps<{

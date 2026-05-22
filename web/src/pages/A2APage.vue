@@ -13,7 +13,7 @@
       </div>
     </section>
 
-    <A2ARuntimeConfigBanner />
+    <A2ARuntimeConfigBanner :config="runtimeConfig" />
 
     <div class="app-tab-shell">
     <q-tabs v-model="tab" dense align="left" class="text-primary">
@@ -144,6 +144,7 @@ const {
   submitRemoteRegister,
   previewRemote,
   removeRemote,
-  reload
+  reload,
+  runtimeConfig
 } = useA2APage();
 </script>

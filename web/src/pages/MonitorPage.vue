@@ -50,7 +50,14 @@
         <MonitorUsageDashboardLink :range="filters.range" />
       </q-tab-panel>
       <q-tab-panel name="alerts">
-        <MonitorAlertRules />
+        <MonitorAlertRules
+          :rules="alertRules"
+          :channel-options="alertChannelOptions"
+          :loading="alertRulesLoading"
+          :saving="alertRulesSaving"
+          @reload="loadAlertRules"
+          @save="saveAlertRules"
+        />
       </q-tab-panel>
       <q-tab-panel name="audit">
         <AuditTable :rows="auditRows" :total="auditTotal" :loading="loadingAudit" @reload="loadAudit" />
@@ -85,6 +92,7 @@ import TraceList from "../components/monitor/TraceList.vue";
 import MonitorUsageDashboardLink from "../components/monitor/MonitorUsageDashboardLink.vue";
 import MonitorRunnerMetrics from "../components/monitor/MonitorRunnerMetrics.vue";
 import MonitorAlertRules from "../components/monitor/MonitorAlertRules.vue";
+import { useMonitorAlertRules } from "../features/monitor/useMonitorAlertRules";
 import { useMonitorPage } from "../features/monitor/useMonitorPage";
 
 const {
@@ -104,6 +112,15 @@ const {
   loadAudit,
   loadTraces
 } = useMonitorPage();
+
+const {
+  rules: alertRules,
+  channelOptions: alertChannelOptions,
+  loading: alertRulesLoading,
+  saving: alertRulesSaving,
+  load: loadAlertRules,
+  save: saveAlertRules
+} = useMonitorAlertRules();
 </script>
 
 <style scoped lang="sass">
