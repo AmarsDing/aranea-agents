@@ -276,7 +276,9 @@ UI 支持 **JSON 数组** 或 **英文逗号分隔** 字符串；保存后 **重
 `ChannelRuntimeManager` 按实例启动 goroutine（larkws / ding stream / socketmode / polling / discordgo）→ 标准化 `InboundEvent` → 同 A 后半段
 
 **入站统一门禁（2026-05-22）**  
-Webhook 与 Runtime 均经 `ChannelIngress.ProcessInbound` → `checkInboundAccess`（读取 `config.allowed_*` / `require_mention`）→ 通过后才 `ResolveChannelTarget` + Agent Turn。
+飞书 WS / Webhook 先经 **`lark.AcceptFeishuInbound`**（同一规则：仅 `sender_type=user`、必须有 `message_id`、群聊需 @）→ `ChannelIngress.ProcessInbound` → **`channel_inbound_receipt`**（同一 `feishu:{message_id}` 只 Turn 一次）→ `checkInboundAccess` → Agent Turn。
+
+详见 [changelog/2026-05-22-Channel-Inbound-Root-Cause.md](../changelog/2026-05-22-Channel-Inbound-Root-Cause.md)。
 
 ### 7.2 出站与流式
 

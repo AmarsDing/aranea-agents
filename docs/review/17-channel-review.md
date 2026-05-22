@@ -3,7 +3,8 @@
 > **评分**：92 / 100 | **风险等级**：P2（生产 soak / 全链路 E2E）  
 > **文档**：[17-channel-development.md](../需求/17-channel-development.md) · [17 channel.design.md](../需求/17%20channel.design.md)  
 > **代码锚点**：`internal/channel/` · `internal/channel/runtime/` · `internal/service/channel*.go` · `web/src/features/channels/`  
-> **审查时间**：2026-05-22（Review 优化项闭合后复审）
+> **审查时间**：2026-05-22（Review 优化项闭合后复审）  
+> **入站专项**：[2026-05-22-Channel-Inbound-Review.md](./2026-05-22-Channel-Inbound-Review.md)
 
 ---
 
@@ -52,6 +53,9 @@
 | CH-P3-RELOAD-WARN | Reload 凭据失败静默 | ✅ `channel.runtime.credentials_fail`（FlowLog，禁 slog） |
 | CH-P3-FEISHU-WS | larkws 同步入站 + open_id 出站 | ✅ `safego` 异步 + `chat_id` + FlowLog |
 | CH-P3-REGISTRY-NAME | registry 文件命名 | ✅ `channel_platform_registry.go` |
+| CH-P1-INBOUND-GATE | WS/Webhook 入站规则不一致 | ✅ `AcceptFeishuInbound` 统一门控 |
+| CH-P1-DUAL-WS | 定期 Reload 双 larkws 连接 | ✅ fingerprint 去掉 `UpdatedAt` + 关停 `done` 等待 |
+| CH-P2-INBOUND-HEUR | 2 分钟同文本 / 分钟桶幂等 | ✅ 已移除（见 Inbound-Review） |
 
 ### 历史 P1–P2（已闭合）
 

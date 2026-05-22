@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
@@ -47,9 +48,12 @@ func lookupStarter(channelType, receiveMode string) (Starter, bool) {
 	return fn, ok
 }
 
+const runtimeReplaceShutdownWait = 15 * time.Second
+
 type runningInstance struct {
 	cancel      context.CancelFunc
 	fingerprint string
+	done        chan struct{} // closed when runSupervised goroutine exits
 }
 
 // Manager supervises long-running channel connectors per DB instance.
@@ -101,15 +105,20 @@ func (m *Manager) Reload(ctx context.Context) error {
 		want[ch.ID] = runtimeFingerprint(ch, mode, CredentialsRevision(creds))
 	}
 
+	stopping := make([]runningInstance, 0)
 	m.mu.Lock()
 	for id, inst := range m.running {
 		fp, keep := want[id]
 		if !keep || fp != inst.fingerprint {
 			inst.cancel()
+			stopping = append(stopping, inst)
 			delete(m.running, id)
 		}
 	}
 	m.mu.Unlock()
+	for _, inst := range stopping {
+		waitRuntimeInstanceDone(inst.done, runtimeReplaceShutdownWait)
+	}
 
 	for _, ch := range items {
 		fp, ok := want[ch.ID]
@@ -122,7 +131,8 @@ func (m *Manager) Reload(ctx context.Context) error {
 			continue
 		}
 		runCtx, cancel := context.WithCancel(ctx)
-		m.running[ch.ID] = runningInstance{cancel: cancel, fingerprint: fp}
+		done := make(chan struct{})
+		m.running[ch.ID] = runningInstance{cancel: cancel, fingerprint: fp, done: done}
 		m.mu.Unlock()
 
 		chCopy := ch
@@ -131,22 +141,45 @@ func (m *Manager) Reload(ctx context.Context) error {
 		st, _ := lookupStarter(cfg.Type, mode)
 		platform := cfg.Type
 		go func(starter Starter, fingerprint, plat, recvMode string) {
+			defer close(done)
 			m.runSupervised(runCtx, chCopy, fingerprint, starter, plat, recvMode)
 		}(st, fp, platform, mode)
+		event.SysLogInfo("channel.runtime.connector_start", "Channel Runtime 启动连接器",
+			event.P("channel_id", chCopy.ID),
+			event.P("platform", platform),
+			event.P("receive_mode", mode),
+			event.P("fingerprint", fp),
+		)
 	}
 	return nil
 }
 
+// runtimeFingerprint hashes only fields that should restart a connector.
+// Do not include UpdatedAt: health-check metadata updates must not spawn duplicate WS clients.
 func runtimeFingerprint(ch biz.Channel, mode, credRev string) string {
 	sum := sha256.Sum256([]byte(strings.Join([]string{
 		ch.ID,
 		ch.ConfigJSON,
-		ch.UpdatedAt,
 		fmt.Sprint(ch.Enabled),
 		mode,
 		credRev,
 	}, "|")))
 	return hex.EncodeToString(sum[:8])
+}
+
+func waitRuntimeInstanceDone(done chan struct{}, timeout time.Duration) {
+	if done == nil {
+		return
+	}
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case <-done:
+	case <-timer.C:
+		event.SysLogWarn("channel.runtime.connector_stop_timeout", "Channel Runtime 旧连接器退出超时",
+			event.P("wait_ms", timeout.Milliseconds()),
+		)
+	}
 }
 
 func (m *Manager) remove(id string) {

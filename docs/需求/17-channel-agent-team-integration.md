@@ -77,7 +77,8 @@ sequenceDiagram
 
   U->>FS: 发文本 / @机器人
   FS->>CH: WS 或 Webhook 事件
-  CH->>CH: 访问控制（白名单/@）
+  CH->>CH: AcceptFeishuInbound（user / message_id / 群@）
+  CH->>CH: 入站幂等 receipt + 访问控制（白名单/@）
   CH->>CH: 解析路由 → Agent 或 Team
   CH->>S: 确保 channel_peer_session → session_id
   CH->>RT: RunNativeTurn（用户消息）

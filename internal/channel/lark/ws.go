@@ -32,7 +32,7 @@ func RunWebSocket(
 	onMessage := func(_ context.Context, message *larkim.P2MessageReceiveV1) error {
 		ev, ok := InboundEventFromWSMessage(message)
 		if !ok {
-			return nil
+			return nil // filtered by AcceptFeishuInbound (non-user, no message_id, group w/o @, etc.)
 		}
 		ev.PlatformType = "feishu"
 		// Feishu event ctx may cancel when the handler returns; process async like MuseBot.

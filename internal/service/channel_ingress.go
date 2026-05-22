@@ -8,7 +8,6 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/lark"
-	"aranea-agents/internal/channel/port"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	khttp "github.com/go-kratos/kratos/v2/transport/http"
@@ -17,32 +16,36 @@ import (
 
 // ChannelIngress bridges external channel webhooks to in-process chat (native runner via ChatService).
 type ChannelIngress struct {
-	channels *biz.ChannelUsecase
-	peers    biz.ChannelPeerSessionRepo
-	sessions *biz.SessionUsecase
-	agents   biz.AgentRepository
-	teams    biz.TeamRepository
-	chat     *ChatService
-	http     *http.Client
+	channels         *biz.ChannelUsecase
+	peers            biz.ChannelPeerSessionRepo
+	inboundReceipts  biz.ChannelInboundReceiptRepo
+	sessions         *biz.SessionUsecase
+	agents           biz.AgentRepository
+	teams            biz.TeamRepository
+	chat             *ChatService
+	http             *http.Client
+	inboundInflight  inboundInflightSet
 }
 
 // NewChannelIngress wires channel runtime ingress.
 func NewChannelIngress(
 	channels *biz.ChannelUsecase,
 	peers biz.ChannelPeerSessionRepo,
+	inboundReceipts biz.ChannelInboundReceiptRepo,
 	sessions *biz.SessionUsecase,
 	agents biz.AgentRepository,
 	teams biz.TeamRepository,
 	chat *ChatService,
 ) *ChannelIngress {
 	return &ChannelIngress{
-		channels: channels,
-		peers:    peers,
-		sessions: sessions,
-		agents:   agents,
-		teams:    teams,
-		chat:     chat,
-		http:     lark.DefaultHTTPClient(),
+		channels:        channels,
+		peers:           peers,
+		inboundReceipts: inboundReceipts,
+		sessions:        sessions,
+		agents:          agents,
+		teams:           teams,
+		chat:            chat,
+		http:            lark.DefaultHTTPClient(),
 	}
 }
 
@@ -129,27 +132,25 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 			h.writeJSON(w, http.StatusOK, map[string]string{"challenge": parsed.Challenge})
 			return nil
 		}
-		if parsed.EventType != "im.message.receive_v1" || strings.TrimSpace(parsed.Text) == "" {
+		if parsed.EventType != "im.message.receive_v1" {
 			w.WriteHeader(http.StatusOK)
 			return nil
 		}
-
-		peerID := ingressFirstNonEmpty(parsed.SenderOpenID, parsed.ChatID)
-		recipient, receiveType := lark.ResolveReceiveTarget(parsed.SenderOpenID, "", parsed.ChatID)
-		chatType := lark.InferChatTypeFromChatID(parsed.ChatID)
-		h.processInboundHTTP(w, r, chRow, port.InboundEvent{
-			PlatformType:   "feishu",
-			PeerID:         peerID,
-			Text:           parsed.Text,
-			IdempotencyKey: "feishu:" + parsed.MessageID,
-			OutboundMeta: map[string]string{
-				"recipient":        recipient,
-				"receive_id_type":  receiveType,
-				"chat_id":          parsed.ChatID,
-				"chat_type":        chatType,
-				"sender_open_id":   parsed.SenderOpenID,
-			},
-		})
+		if channelReceiveModeFromConfig(chRow.ConfigJSON) == "websocket" {
+			w.WriteHeader(http.StatusOK)
+			return nil
+		}
+		ev, ok, rejectReason := lark.InboundEventFromWebhook(parsed)
+		if !ok {
+			_ = h.recordDelivery(r.Context(), chRow.ID, "skipped_"+rejectReason, map[string]any{
+				"message_id": parsed.MessageID,
+				"peer_id":    ingressFirstNonEmpty(parsed.SenderOpenID, parsed.ChatID),
+				"via":        "webhook",
+			}, "")
+			w.WriteHeader(http.StatusOK)
+			return nil
+		}
+		h.processInboundHTTP(w, r, chRow, ev)
 		return nil
 	}
 }
@@ -160,6 +161,14 @@ func channelTypeFromConfig(configJSON string) string {
 	}
 	_ = json.Unmarshal([]byte(configJSON), &env)
 	return strings.TrimSpace(strings.ToLower(env.Type))
+}
+
+func channelReceiveModeFromConfig(configJSON string) string {
+	var env struct {
+		ReceiveMode string `json:"receive_mode"`
+	}
+	_ = json.Unmarshal([]byte(configJSON), &env)
+	return strings.TrimSpace(strings.ToLower(env.ReceiveMode))
 }
 
 func (h *ChannelIngress) recordDelivery(ctx context.Context, channelID, status string, payload map[string]any, errMsg string) error {

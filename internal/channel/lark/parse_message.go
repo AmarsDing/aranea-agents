@@ -36,15 +36,11 @@ func feishuChatType(message *larkim.P2MessageReceiveV1) string {
 	return strings.TrimSpace(*message.Event.Message.ChatType)
 }
 
-// shouldProcessFeishuMessage mirrors MuseBot group @ gate: group events without mentions are ignored.
-func shouldProcessFeishuMessage(message *larkim.P2MessageReceiveV1) bool {
-	if message == nil || message.Event == nil || message.Event.Message == nil {
-		return false
+func feishuSenderType(message *larkim.P2MessageReceiveV1) string {
+	if message == nil || message.Event == nil || message.Event.Sender == nil || message.Event.Sender.SenderType == nil {
+		return ""
 	}
-	if !strings.EqualFold(feishuChatType(message), "group") {
-		return true
-	}
-	return len(message.Event.Message.Mentions) > 0
+	return strings.TrimSpace(*message.Event.Sender.SenderType)
 }
 
 func parseFeishuTextBody(content string, mentions []*larkim.MentionEvent) string {
@@ -64,20 +60,10 @@ func InboundEventFromWSMessage(message *larkim.P2MessageReceiveV1) (port.Inbound
 	if message == nil || message.Event == nil || message.Event.Message == nil {
 		return port.InboundEvent{}, false
 	}
-	if !shouldProcessFeishuMessage(message) {
-		return port.InboundEvent{}, false
-	}
 	msg := message.Event.Message
-	if msg.MessageType == nil || *msg.MessageType != "text" {
-		return port.InboundEvent{}, false
-	}
 	content := ""
 	if msg.Content != nil {
 		content = *msg.Content
-	}
-	text := parseFeishuTextBody(content, msg.Mentions)
-	if text == "" {
-		return port.InboundEvent{}, false
 	}
 	openID := ""
 	userID := ""
@@ -97,22 +83,23 @@ func InboundEventFromWSMessage(message *larkim.P2MessageReceiveV1) (port.Inbound
 	if msg.MessageId != nil {
 		msgID = strings.TrimSpace(*msg.MessageId)
 	}
-	recipient, receiveType := ResolveReceiveTarget(openID, userID, chatID)
-	mentioned := len(msg.Mentions) > 0
-	return port.InboundEvent{
-		PeerID:         firstNonEmptyPeerID(openID, userID, chatID),
-		Text:           text,
-		IdempotencyKey: "feishu:" + msgID,
-		OutboundMeta: map[string]string{
-			"recipient":       recipient,
-			"receive_id_type": receiveType,
-			"chat_id":         chatID,
-			"chat_type":       feishuChatType(message),
-			"sender_open_id":  openID,
-			"sender_user_id":  userID,
-			"mentioned":       boolMeta(mentioned),
-		},
-	}, true
+	msgType := ""
+	if msg.MessageType != nil {
+		msgType = strings.TrimSpace(*msg.MessageType)
+	}
+	ev, ok, _ := BuildFeishuInboundEvent(FeishuInboundParams{
+		MessageID:     msgID,
+		ChatID:        chatID,
+		ChatType:      feishuChatType(message),
+		SenderType:    feishuSenderType(message),
+		MessageType:   msgType,
+		Text:          parseFeishuTextBody(content, msg.Mentions),
+		Mentioned:     len(msg.Mentions) > 0,
+		OpenID:        openID,
+		UserID:        userID,
+		IngressSource: "websocket",
+	})
+	return ev, ok
 }
 
 func boolMeta(v bool) string {

@@ -47,6 +47,7 @@ var ProviderSet = wire.NewSet(
 	NewToolRepo,
 	NewChannelRepo,
 	NewChannelPeerSessionRepo,
+	NewChannelInboundReceiptRepo,
 	NewUsageRepo,
 	NewMonitorRepo,
 	NewSystemSettingRepo,
@@ -308,6 +309,9 @@ func ensureAllSchemas(rawDB *sql.DB, entClient *ent.Client) error {
 	}
 	if err := EnsureMessageFTSSchema(ctxSchema, rawDB); err != nil {
 		return fmt.Errorf("message fts schema: %w", err)
+	}
+	if err := EnsureChannelInboundSchema(ctxSchema, rawDB); err != nil {
+		return fmt.Errorf("channel inbound schema: %w", err)
 	}
 	if err := EnsureMonitorAlertSchema(ctxSchema, entClient); err != nil {
 		return fmt.Errorf("monitor alert schema: %w", err)

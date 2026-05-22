@@ -260,10 +260,12 @@ body.body--dark .theme-preview-page
   overflow: hidden
 
 .chat-mid-card
+  flex: 1 1 0
   min-height: 0
   min-width: 0
   max-width: 100%
   overflow: hidden
+  flex-wrap: nowrap
 
 .chat-composer
   flex: 0 0 auto
@@ -314,9 +316,14 @@ body.body--dark .theme-preview-page
   min-height: 28px
   border-radius: 12px !important
 
+.chat-message-header
+  flex: 0 0 auto
+
 .chat-messages
+  flex: 1 1 0
   min-height: 0
-  overflow: auto
+  overflow-x: hidden
+  overflow-y: auto
   position: relative
 
 .chat-empty-state
@@ -382,12 +389,20 @@ body.body--dark .theme-preview-page
   min-height: 44px
   border-radius: 14px
 
+// 聊天页：锁定 layout 视口高度，避免消息列表把整页撑长（须在 .chat-messages 内滚动）
+.app-layout-root:has(.chat-page)
+  height: 100vh
+  max-height: 100dvh
+  overflow: hidden
+
 .app-page-container:has(.chat-page)
   display: flex
   flex-direction: column
-  // 勿用 100vh：page-container 已在 layout 内占位，全视口高度会把内容顶到 fixed q-header 下
+  flex: 1 1 auto
   min-height: 0
   height: 100%
+  max-height: 100%
+  overflow: hidden
   box-sizing: border-box
   // 仅清零右/下装饰内边距；不可 padding:0 —— 会覆盖 Quasar 为 q-drawer 注入的 padding-left
   // 亦不可清零 padding-top —— Quasar 用其为 fixed q-header 留白，否则聊天区顶部被顶栏遮挡
@@ -395,9 +410,9 @@ body.body--dark .theme-preview-page
   padding-bottom: 0 !important
 
   .chat-page
-    flex: 1 1 auto
-    height: auto
+    flex: 1 1 0
     min-height: 0 !important
+    overflow: hidden
 
 .chat-toolbar-actions
   justify-content: flex-end

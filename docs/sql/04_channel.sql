@@ -52,6 +52,17 @@ CREATE TABLE IF NOT EXISTS channel_peer_session (
   UNIQUE(channel_id, peer_key)
 );
 
+-- Inbound idempotency: one agent turn per platform message_id (or dedup key).
+CREATE TABLE IF NOT EXISTS channel_inbound_receipt (
+  id TEXT PRIMARY KEY,
+  channel_id TEXT NOT NULL,
+  idempotency_key TEXT NOT NULL,
+  peer_id TEXT NOT NULL DEFAULT '',
+  text_preview TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT '',
+  UNIQUE(channel_id, idempotency_key)
+);
+
 CREATE TABLE IF NOT EXISTS hooks (
   id TEXT PRIMARY KEY,
   hook_key TEXT NOT NULL UNIQUE,

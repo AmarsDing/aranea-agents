@@ -36,6 +36,41 @@ func (h *ChannelIngress) processInboundCore(ctx context.Context, chRow biz.Chann
 
 // ProcessInbound runs agent turn + outbound enqueue for a normalized channel message.
 func (h *ChannelIngress) ProcessInbound(ctx context.Context, chRow biz.Channel, ev port.InboundEvent) error {
+	return h.processInbound(ctx, chRow, ev, false)
+}
+
+// ProcessInboundWebhook is ProcessInbound with webhook-only guards (e.g. skip when WS mode is active).
+func (h *ChannelIngress) ProcessInboundWebhook(ctx context.Context, chRow biz.Channel, ev port.InboundEvent) error {
+	return h.processInbound(ctx, chRow, ev, true)
+}
+
+func (h *ChannelIngress) processInbound(ctx context.Context, chRow biz.Channel, ev port.InboundEvent, viaWebhook bool) error {
+	platform := strings.TrimSpace(ev.PlatformType)
+	if platform == "" {
+		platform = channelTypeFromConfig(chRow.ConfigJSON)
+	}
+	dedupKey := biz.InboundIdempotencyKey(platform, ev.IdempotencyKey, ev.PeerID, ev.Text)
+	defer h.inboundInflight.release(dedupKey)
+
+	viaLabel := "runtime"
+	if viaWebhook {
+		viaLabel = "webhook"
+	}
+	ok, skipReason, err := h.shouldProcessInbound(ctx, chRow, ev, viaWebhook)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		_ = h.recordDelivery(ctx, chRow.ID, "skipped_"+skipReason, map[string]any{
+			"peer_id":         ev.PeerID,
+			"idempotency_key": ev.IdempotencyKey,
+			"ingress_source":  strings.TrimSpace(ev.OutboundMeta["ingress_source"]),
+			"via":             viaLabel,
+			"text_preview":    truncateForLog(ev.Text, 80),
+		}, "")
+		return nil
+	}
+	h.logInboundAccepted(ctx, chRow, ev, viaLabel)
 	allowed, reason, err := h.checkInboundAccess(ctx, chRow, ev)
 	if err != nil {
 		_ = h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "access", "error": err.Error()}, err.Error())

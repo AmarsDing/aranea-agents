@@ -1,5 +1,5 @@
 ﻿<template>
-  <q-card flat bordered class="col column chat-mid-card" style="min-height: 0; border-radius: 18px">
+  <q-card flat bordered class="col column no-wrap chat-mid-card" style="min-height: 0; border-radius: 18px">
     <q-banner v-if="wsReplaying" dense rounded class="q-mx-md q-mt-sm app-info-banner">
       <template #avatar>
         <q-spinner-dots color="primary" size="20px" />

@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"aranea-agents/pkg/strutil"
 )
 
 const (
@@ -60,7 +59,12 @@ type WebhookParseResult struct {
 	EventType         string
 	MessageID         string
 	ChatID            string
+	ChatType          string
 	SenderOpenID      string
+	SenderUserID      string
+	SenderType        string
+	MessageType       string
+	Mentioned         bool
 	Text              string
 }
 
@@ -78,12 +82,18 @@ type eventHeader struct {
 
 type imMessageEvent struct {
 	Message struct {
-		MessageID string `json:"message_id"`
-		ChatID    string `json:"chat_id"`
-		Content   string `json:"content"`
+		MessageID   string `json:"message_id"`
+		ChatID      string `json:"chat_id"`
+		ChatType    string `json:"chat_type"`
+		MessageType string `json:"message_type"`
+		Content     string `json:"content"`
+		Mentions    []struct {
+			Key string `json:"key"`
+		} `json:"mentions"`
 	} `json:"message"`
 	Sender struct {
-		SenderID struct {
+		SenderType string `json:"sender_type"`
+		SenderID   struct {
 			OpenID string `json:"open_id"`
 			UserID string `json:"user_id"`
 		} `json:"sender_id"`
@@ -119,10 +129,15 @@ func ParseWebhookPost(raw []byte, verificationToken string) (*WebhookParseResult
 		}
 		res.MessageID = strings.TrimSpace(wrap.Event.Message.MessageID)
 		res.ChatID = strings.TrimSpace(wrap.Event.Message.ChatID)
-		res.SenderOpenID = strutil.FirstNonEmpty(
-			strings.TrimSpace(wrap.Event.Sender.SenderID.OpenID),
-			strings.TrimSpace(wrap.Event.Sender.SenderID.UserID),
-		)
+		res.ChatType = strings.TrimSpace(wrap.Event.Message.ChatType)
+		if res.ChatType == "" && res.ChatID != "" {
+			res.ChatType = InferChatTypeFromChatID(res.ChatID)
+		}
+		res.MessageType = strings.TrimSpace(wrap.Event.Message.MessageType)
+		res.SenderType = strings.TrimSpace(wrap.Event.Sender.SenderType)
+		res.SenderOpenID = strings.TrimSpace(wrap.Event.Sender.SenderID.OpenID)
+		res.SenderUserID = strings.TrimSpace(wrap.Event.Sender.SenderID.UserID)
+		res.Mentioned = len(wrap.Event.Message.Mentions) > 0
 		res.Text = extractTextFromIMContent(strings.TrimSpace(wrap.Event.Message.Content))
 	default:
 		res.SkipResponse = true

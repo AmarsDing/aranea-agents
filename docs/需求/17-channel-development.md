@@ -160,6 +160,14 @@ ProcessInbound → processInboundStreaming → RunNativeTurnStreaming
 - 意外断线：`runSupervised` 指数退避重连（1s → 5m）
 - CRUD / 凭据变更：`ChannelService.reloadRuntime()` → fingerprint reconcile（含 `CredentialsRevision`）
 - 定期兜底：启动后每 **2 分钟** `Manager.Reload()`（可配置/关闭）
+- **fingerprint 不含 `UpdatedAt`**（2026-05-22）：避免健康检查 metadata 更新触发双 WebSocket；替换连接器前等待旧实例 `done`
+
+**入站门控（2026-05-22）**：
+
+- `lark.AcceptFeishuInbound`：WS / Webhook 统一；仅 `sender_type=user`、必须有 `message_id`
+- `channel_inbound_receipt`：同一 `feishu:{message_id}` 只 Turn 一次
+- 审计：`channel.inbound.receive` · `channel.runtime.connector_start`
+- 详见 [changelog/2026-05-22-Channel-Inbound-Root-Cause.md](../changelog/2026-05-22-Channel-Inbound-Root-Cause.md) · [review/2026-05-22-Channel-Inbound-Review.md](../review/2026-05-22-Channel-Inbound-Review.md)
 
 ---
 
