@@ -21,6 +21,7 @@ export type SessionView = {
   timeline_at?: string;
   agent_id?: string;
   status?: string;
+  metadata_json?: string;
 };
 
 export type ChatAttachment = {

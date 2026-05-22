@@ -2,6 +2,14 @@ import { onUnmounted, ref, shallowRef } from "vue";
 import { createWsTransport, type WsTransport } from "./ws-transport";
 import { EnvelopeDispatcher } from "./dispatcher";
 import type { Envelope, EnvelopeType } from "./envelope";
+import {
+  acquireGlobalWsConsumer,
+  globalWsConsumerEnableLog,
+  globalWsConsumerSubscribe,
+  globalWsConsumerUnsubscribe,
+  releaseGlobalWsConsumer,
+  shouldUseGlobalWsHub,
+} from "./globalWsHub";
 
 export type UseEnvelopeStreamOptions = {
   sessionId: string;
@@ -41,8 +49,31 @@ export function createEnvelopeStream(opts: UseEnvelopeStreamOptions): UseEnvelop
   const dispatcher = new EnvelopeDispatcher();
 
   const channels = opts.channels ?? ["chat", "system"];
+  let globalHubId: string | null = null;
 
   function connect(): void {
+    if (globalHubId) return;
+
+    if (shouldUseGlobalWsHub(opts.sessionId, lastEventId.value)) {
+      globalHubId = acquireGlobalWsConsumer({
+        channels,
+        logEnabled: opts.logEnabled ?? false,
+        onEnvelope: (env) => dispatcher.dispatch(env),
+        onConnected: () => {
+          connected.value = true;
+          opts.onConnected?.({ sessionId: opts.sessionId, lastEventId: lastEventId.value });
+        },
+        onDisconnected: () => {
+          connected.value = false;
+          opts.onDisconnected?.();
+        },
+        onServerShutdown: (reason) => {
+          opts.onServerShutdown?.(reason);
+        },
+      });
+      return;
+    }
+
     if (transport.value?.connected) return;
     if (transport.value) {
       transport.value.connect();
@@ -90,6 +121,13 @@ export function createEnvelopeStream(opts: UseEnvelopeStreamOptions): UseEnvelop
   }
 
   function disconnect(): void {
+    if (globalHubId) {
+      releaseGlobalWsConsumer(globalHubId);
+      globalHubId = null;
+      connected.value = false;
+      dispatcher.clear();
+      return;
+    }
     transport.value?.disconnect();
     transport.value = null;
     connected.value = false;
@@ -105,10 +143,18 @@ export function createEnvelopeStream(opts: UseEnvelopeStreamOptions): UseEnvelop
   }
 
   function subscribe(channel: string): void {
+    if (globalHubId) {
+      globalWsConsumerSubscribe(globalHubId, channel);
+      return;
+    }
     transport.value?.subscribe(channel);
   }
 
   function unsubscribe(channel: string): void {
+    if (globalHubId) {
+      globalWsConsumerUnsubscribe(globalHubId, channel);
+      return;
+    }
     transport.value?.unsubscribe(channel);
   }
 
@@ -117,6 +163,10 @@ export function createEnvelopeStream(opts: UseEnvelopeStreamOptions): UseEnvelop
   }
 
   function enableLog(enabled: boolean): void {
+    if (globalHubId) {
+      globalWsConsumerEnableLog(globalHubId, enabled);
+      return;
+    }
     transport.value?.enableLog(enabled);
   }
 

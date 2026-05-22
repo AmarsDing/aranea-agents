@@ -1,5 +1,6 @@
 import { defineStore } from "pinia";
 import { getCurrentAdmin, loginAdminByEmail, loginAdminByUsername, logoutAdmin, type AdminSession } from "../features/admin/api";
+import { clearServerDownNotify } from "../features/heartbeat/useServerHeartbeat";
 
 export type AuthIdentityMode = "username" | "email";
 
@@ -31,6 +32,7 @@ export const useAuthStore = defineStore("auth", {
         this.user = null;
       }
       this.sessionChecked = true;
+      if (this.user) clearServerDownNotify();
     },
 
     forceRecheckSession() {
@@ -47,6 +49,7 @@ export const useAuthStore = defineStore("auth", {
       try {
         this.user = mode === "email" ? await loginAdminByEmail(id, pw) : await loginAdminByUsername(id, pw);
         this.sessionChecked = true;
+        clearServerDownNotify();
       } finally {
         this.loginLoading = false;
       }

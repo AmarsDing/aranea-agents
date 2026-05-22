@@ -1,5 +1,6 @@
 import { ref } from "vue";
 import { buildHealthWsUrl } from "./api";
+import { getCurrentAdmin } from "../admin/api";
 import { useAuthStore } from "../../stores/auth";
 import { Notify } from "quasar";
 import { getBackendOrigin, isWsSameOriginAsPage, readAccessTokenCookie } from "../../config/runtime";
@@ -13,7 +14,7 @@ export type ServerHeartbeatOptions = {
 };
 
 const DEFAULT_PING_INTERVAL = 15_000;
-const DEFAULT_PONG_TIMEOUT = 30_000;
+const DEFAULT_PONG_TIMEOUT = 90_000;
 const DEFAULT_RECONNECT_BASE_DELAY = 1_000;
 const DEFAULT_RECONNECT_MAX_DELAY = 30_000;
 const DEFAULT_INITIAL_CONNECT_TIMEOUT = 8_000;
@@ -51,6 +52,20 @@ export async function checkBackendHealth(): Promise<boolean> {
   }
 }
 
+async function shouldForceLogout(shutdown: boolean): Promise<boolean> {
+  if (shutdown) return true;
+  if (import.meta.env.DEV) return false;
+  if (!(await checkBackendHealth())) return true;
+  const auth = useAuthStore();
+  if (!auth.user) return false;
+  try {
+    await getCurrentAdmin();
+    return false;
+  } catch {
+    return true;
+  }
+}
+
 function createHeartbeat(options?: ServerHeartbeatOptions) {
   const pingInterval = options?.pingInterval ?? DEFAULT_PING_INTERVAL;
   const pongTimeout = options?.pongTimeout ?? DEFAULT_PONG_TIMEOUT;
@@ -69,6 +84,34 @@ function createHeartbeat(options?: ServerHeartbeatOptions) {
   let shutdownReceived = false;
   let firstConnection = true;
   let notifiedDown = false;
+  let degradedNotified = false;
+  let dismissDownNotify: (() => void) | null = null;
+  let pageHidden = false;
+
+  if (typeof document !== "undefined") {
+    pageHidden = document.visibilityState === "hidden";
+    document.addEventListener("visibilitychange", () => {
+      pageHidden = document.visibilityState === "hidden";
+      if (!pageHidden) {
+        touchLastAlive();
+        sendPingNow();
+        if (!connected.value && !stopped) {
+          scheduleReconnect();
+        }
+      }
+    });
+  }
+
+  function touchLastAlive(): void {
+    lastPongAt.value = Date.now();
+    isAlive.value = true;
+  }
+
+  function sendPingNow(): void {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ direction: "client_to_server", channel: "system", type: "ping" }));
+    }
+  }
 
   function connect(): void {
     if (stopped) return;
@@ -76,7 +119,6 @@ function createHeartbeat(options?: ServerHeartbeatOptions) {
       return;
     }
 
-    // Same-origin WS sends HttpOnly session cookie; dev bypass does not require a readable token.
     const canOpenWs = import.meta.env.DEV || isWsSameOriginAsPage() || !!readAccessTokenCookie();
     if (!canOpenWs) {
       startTokenPoll();
@@ -96,7 +138,7 @@ function createHeartbeat(options?: ServerHeartbeatOptions) {
       clearInitialTimer();
       initialTimer = setTimeout(() => {
         if (!connected.value && firstConnection) {
-          handleServerDown();
+          void handleProbeFailure();
         }
       }, initialConnectTimeout);
     }
@@ -107,22 +149,23 @@ function createHeartbeat(options?: ServerHeartbeatOptions) {
       reconnectAttempts = 0;
       firstConnection = false;
       notifiedDown = false;
+      degradedNotified = false;
       clearInitialTimer();
-      lastPongAt.value = Date.now();
+      touchLastAlive();
       startPing();
       startTimeoutCheck();
+      sendPingNow();
     };
 
     ws.onmessage = (ev: MessageEvent) => {
       try {
         const msg = JSON.parse(ev.data as string);
-        if (msg.type === "pong" || msg.type === "connected") {
-          lastPongAt.value = Date.now();
-          isAlive.value = true;
+        if (msg.direction === "server_to_client") {
+          touchLastAlive();
         }
         if (msg.type === "server_shutdown") {
           shutdownReceived = true;
-          handleServerDown();
+          void handleProbeFailure();
         }
       } catch {
         // ignore
@@ -186,11 +229,7 @@ function createHeartbeat(options?: ServerHeartbeatOptions) {
 
   function startPing(): void {
     stopPing();
-    pingTimer = setInterval(() => {
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ direction: "client_to_server", channel: "system", type: "ping" }));
-      }
-    }, pingInterval);
+    pingTimer = setInterval(sendPingNow, pingInterval);
   }
 
   function stopPing(): void {
@@ -203,13 +242,14 @@ function createHeartbeat(options?: ServerHeartbeatOptions) {
   function startTimeoutCheck(): void {
     stopTimeoutCheck();
     timeoutTimer = setInterval(() => {
+      if (pageHidden) return;
       if (!lastPongAt.value) {
-        handleServerDown();
+        void handleProbeFailure();
         return;
       }
       const elapsed = Date.now() - lastPongAt.value;
       if (elapsed > pongTimeout) {
-        handleServerDown();
+        void handleProbeFailure();
       }
     }, 5_000);
   }
@@ -238,8 +278,46 @@ function createHeartbeat(options?: ServerHeartbeatOptions) {
     }
   }
 
-  async function handleServerDown(): Promise<void> {
+  function clearDownNotification(): void {
+    dismissDownNotify?.();
+    dismissDownNotify = null;
+    notifiedDown = false;
+    shutdownReceived = false;
+    degradedNotified = false;
+    isAlive.value = true;
+    if (!stopped) {
+      reconnectProbe();
+    }
+  }
+
+  function reconnectProbe(): void {
+    notifiedDown = false;
+    if (ws) {
+      ws.onclose = null;
+      ws.close(1000, "heartbeat reconnect");
+      ws = null;
+    }
+    connected.value = false;
+    scheduleReconnect();
+  }
+
+  async function handleProbeFailure(): Promise<void> {
     isAlive.value = false;
+    const forceLogout = await shouldForceLogout(shutdownReceived);
+
+    if (!forceLogout) {
+      if (!degradedNotified) {
+        degradedNotified = true;
+        Notify.create({
+          type: "info",
+          message: "实时连接中断，正在重连…",
+          timeout: 4000,
+        });
+      }
+      reconnectProbe();
+      return;
+    }
+
     if (notifiedDown) return;
     notifiedDown = true;
 
@@ -247,12 +325,13 @@ function createHeartbeat(options?: ServerHeartbeatOptions) {
     auth.user = null;
     auth.sessionChecked = true;
 
-    Notify.create({
+    dismissDownNotify?.();
+    dismissDownNotify = Notify.create({
       type: "warning",
       message: shutdownReceived ? "服务器已关闭，请重新登录" : "服务器连接超时，请重新登录",
       timeout: 0,
       actions: [{ label: "重新登录", color: "white", handler: () => {} }],
-    });
+    }) as () => void;
 
     const { default: router } = await import("../../router");
     const current = router.currentRoute.value;
@@ -269,5 +348,11 @@ function createHeartbeat(options?: ServerHeartbeatOptions) {
     connected,
     connect,
     disconnect,
+    clearDownNotification,
   };
+}
+
+/** Dismiss persistent "server down / re-login" banner and resume heartbeat after login. */
+export function clearServerDownNotify(): void {
+  heartbeatInstance?.clearDownNotification();
 }

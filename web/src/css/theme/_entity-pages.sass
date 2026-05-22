@@ -257,7 +257,6 @@ body.body--dark .app-entity-page--warm,
   max-height: min(88vh, 640px)
 
 .category-dialog__head
-  flex-shrink: 0
   padding: 16px 20px 12px
 
 .category-dialog__title
@@ -277,6 +276,7 @@ body.body--dark .app-entity-page--warm,
   min-height: 0
   overflow-y: auto
   padding: 14px 20px 16px
+  background: var(--app-dialog-body-bg) !important
 
 .category-dialog__form
   margin-bottom: 12px
@@ -331,7 +331,6 @@ body.body--dark .app-entity-page--warm,
 
 .category-dialog .q-card__actions
   padding: 12px 20px 16px
-  background: color-mix(in srgb, var(--color-page-tint-cool) 58%, transparent)
 
 body.body--dark .agent-categories-page .category-control .q-field__control
   background: color-mix(in srgb, var(--color-surface-soft) 76%, transparent)
@@ -375,9 +374,6 @@ body.body--dark .agent-categories-page .category-empty__visual
   border-color: color-mix(in srgb, var(--color-link) 20%, transparent)
   background: linear-gradient(180deg, color-mix(in srgb, var(--color-surface-soft) 86%, transparent), color-mix(in srgb, var(--color-surface-solid) 90%, transparent))
   box-shadow: var(--shadow-entity-panel-dark)
-
-body.body--dark .agent-categories-page .category-dialog .q-card__actions
-  background: color-mix(in srgb, var(--color-surface-solid) 72%, transparent)
 
 .min-width-0
   min-width: 0

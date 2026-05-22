@@ -18,4 +18,6 @@ type ChannelPeerSession struct {
 type ChannelPeerSessionRepo interface {
 	GetByChannelAndPeer(ctx context.Context, channelID, peerKey string) (ChannelPeerSession, error)
 	Create(ctx context.Context, row ChannelPeerSession) (ChannelPeerSession, error)
+	// DeleteByChannelID removes all peer bindings for a channel (e.g. after routing change).
+	DeleteByChannelID(ctx context.Context, channelID string) (int, error)
 }

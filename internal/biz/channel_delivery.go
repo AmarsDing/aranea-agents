@@ -4,18 +4,21 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"time"
 
 	"github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
 )
 
 const (
-	ChannelDeliveryStatusPending  = "pending"
-	ChannelDeliveryStatusRetry    = "retry"
+	ChannelDeliveryStatusPending   = "pending"
+	ChannelDeliveryStatusRetry       = "retry"
 	ChannelDeliveryStatusDelivered = "delivered"
-	ChannelDeliveryStatusError    = "error"
-	channelOutboundKind           = "outbound_text"
-	maxOutboundAttempts           = 3
+	ChannelDeliveryStatusError       = "error"
+	channelOutboundKind              = "outbound_text"
+	MaxOutboundAttempts              = 3
+	outboundRetryBaseDelay           = 5 * time.Second
+	outboundRetryMaxDelay            = 5 * time.Minute
 )
 
 // ChannelOutboundPayload is stored in channel_delivery.payload_json for async outbound sends.
@@ -26,6 +29,7 @@ type ChannelOutboundPayload struct {
 	Text           string            `json:"text"`
 	IdempotencyKey string            `json:"idempotency_key"`
 	Attempts       int               `json:"attempts,omitempty"`
+	NextRetryAt    string            `json:"next_retry_at,omitempty"`
 	Extra          map[string]string `json:"extra,omitempty"`
 }
 
@@ -93,25 +97,64 @@ func (u *ChannelUsecase) ListPendingOutboundDeliveries(ctx context.Context, limi
 }
 
 // MarkOutboundAttempt records send result and schedules retry when needed.
-func (u *ChannelUsecase) MarkOutboundAttempt(ctx context.Context, row ChannelDelivery, sendErr error) error {
+func (u *ChannelUsecase) MarkOutboundAttempt(ctx context.Context, row ChannelDelivery, sendErr error) (deadLetter bool, err error) {
 	var payload ChannelOutboundPayload
 	if err := json.Unmarshal([]byte(defaultJSON(row.PayloadJSON)), &payload); err != nil {
-		return err
+		return false, err
 	}
 	payload.Attempts++
 	row.PayloadJSON = mustMarshalJSON(payload)
 	row.ErrorMessage = ""
 	if sendErr == nil {
 		row.Status = ChannelDeliveryStatusDelivered
-		return u.repo.UpdateDelivery(ctx, row)
+		payload.NextRetryAt = ""
+		row.PayloadJSON = mustMarshalJSON(payload)
+		return false, u.repo.UpdateDelivery(ctx, row)
 	}
 	row.ErrorMessage = sendErr.Error()
-	if payload.Attempts >= maxOutboundAttempts {
+	if payload.Attempts >= MaxOutboundAttempts {
 		row.Status = ChannelDeliveryStatusError
-	} else {
-		row.Status = ChannelDeliveryStatusRetry
+		payload.NextRetryAt = ""
+		row.PayloadJSON = mustMarshalJSON(payload)
+		return true, u.repo.UpdateDelivery(ctx, row)
 	}
-	return u.repo.UpdateDelivery(ctx, row)
+	row.Status = ChannelDeliveryStatusRetry
+	payload.NextRetryAt = time.Now().UTC().Add(outboundRetryDelay(payload.Attempts)).Format(time.RFC3339)
+	row.PayloadJSON = mustMarshalJSON(payload)
+	return false, u.repo.UpdateDelivery(ctx, row)
+}
+
+// IsOutboundDeliveryReady reports whether a pending/retry row may be attempted now.
+func (u *ChannelUsecase) IsOutboundDeliveryReady(row ChannelDelivery) bool {
+	if row.Status == ChannelDeliveryStatusPending {
+		return true
+	}
+	var payload ChannelOutboundPayload
+	if json.Unmarshal([]byte(defaultJSON(row.PayloadJSON)), &payload) != nil {
+		return true
+	}
+	if strings.TrimSpace(payload.NextRetryAt) == "" {
+		return true
+	}
+	t, err := time.Parse(time.RFC3339, payload.NextRetryAt)
+	if err != nil {
+		return true
+	}
+	return !time.Now().UTC().Before(t)
+}
+
+func outboundRetryDelay(attempts int) time.Duration {
+	if attempts <= 0 {
+		return outboundRetryBaseDelay
+	}
+	delay := outboundRetryBaseDelay
+	for i := 1; i < attempts; i++ {
+		delay *= 2
+		if delay >= outboundRetryMaxDelay {
+			return outboundRetryMaxDelay
+		}
+	}
+	return delay
 }
 
 func mustMarshalJSON(v any) string {

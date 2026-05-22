@@ -8,6 +8,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/lark"
+	"aranea-agents/internal/channel/port"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	khttp "github.com/go-kratos/kratos/v2/transport/http"
@@ -87,6 +88,15 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 		case "telegram":
 			_ = h.handleTelegramWebhook(w, r, chRow)
 			return nil
+		case "wechat":
+			_ = h.handleWeChatWebhook(w, r, chRow)
+			return nil
+		case "personal_qq":
+			_ = h.handleOneBotWebhook(w, r, chRow)
+			return nil
+		case "qq":
+			_ = h.handleQQWebhook(w, r, chRow)
+			return nil
 		case "feishu":
 			// continue below
 		default:
@@ -124,27 +134,22 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 			return nil
 		}
 
-		routing, err := biz.ParseChannelRouting(chRow.ConfigJSON)
-		if err != nil {
-			_ = h.recordDelivery(r.Context(), chRow.ID, "error", map[string]any{"phase": "routing", "error": err.Error()}, err.Error())
-			http.Error(w, "routing", http.StatusInternalServerError)
-			return nil
-		}
 		peerID := ingressFirstNonEmpty(parsed.SenderOpenID, parsed.ChatID)
-		peerKey := biz.PeerKeyForSession(routing.DMScope, peerID)
-		reply, err := h.runChatTurn(r.Context(), chRow, "feishu", peerKey, peerID, parsed.Text)
-		if err != nil {
-			_ = h.recordDelivery(r.Context(), chRow.ID, "error", map[string]any{"phase": "chat", "error": err.Error()}, err.Error())
-			http.Error(w, "agent error", http.StatusInternalServerError)
-			return nil
-		}
-		if err := h.enqueueOutboundReply(r.Context(), chRow, "feishu", parsed.SenderOpenID, reply, nil, "feishu:"+parsed.MessageID); err != nil {
-			_ = h.recordDelivery(r.Context(), chRow.ID, "error", map[string]any{"phase": "enqueue", "error": err.Error()}, err.Error())
-			http.Error(w, "queue", http.StatusInternalServerError)
-			return nil
-		}
-		_ = h.recordDelivery(r.Context(), chRow.ID, "queued", map[string]any{"message_id": parsed.MessageID, "dm_scope": routing.DMScope}, "")
-		w.WriteHeader(http.StatusOK)
+		recipient, receiveType := lark.ResolveReceiveTarget(parsed.SenderOpenID, "", parsed.ChatID)
+		chatType := lark.InferChatTypeFromChatID(parsed.ChatID)
+		h.processInboundHTTP(w, r, chRow, port.InboundEvent{
+			PlatformType:   "feishu",
+			PeerID:         peerID,
+			Text:           parsed.Text,
+			IdempotencyKey: "feishu:" + parsed.MessageID,
+			OutboundMeta: map[string]string{
+				"recipient":        recipient,
+				"receive_id_type":  receiveType,
+				"chat_id":          parsed.ChatID,
+				"chat_type":        chatType,
+				"sender_open_id":   parsed.SenderOpenID,
+			},
+		})
 		return nil
 	}
 }

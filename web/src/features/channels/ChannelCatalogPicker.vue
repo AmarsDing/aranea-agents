@@ -1,29 +1,41 @@
 <template>
   <div class="channel-catalog-grid">
-    <q-card
+    <button
       v-for="item in catalog"
       :key="item.type"
-      flat
-      bordered
-      :class="['catalog-card', { 'cursor-pointer': isImplemented(item.type), 'catalog-card--coming-soon': !isImplemented(item.type), selected: item.type === modelValue }]"
-      @click="isImplemented(item.type) && $emit('update:modelValue', item.type)"
+      type="button"
+      :class="[
+        'catalog-card',
+        {
+          'catalog-card--selected': item.type === modelValue,
+          'catalog-card--disabled': !item.bundled
+        }
+      ]"
+      :disabled="!item.bundled"
+      :aria-pressed="item.type === modelValue"
+      @click="item.bundled && $emit('update:modelValue', item.type)"
     >
-      <q-card-section class="catalog-card__body">
-        <div class="catalog-card__head">
-          <q-avatar color="primary" text-color="white" size="30px">{{ item.label.slice(0, 1) }}</q-avatar>
-          <div class="catalog-main">
-            <div class="text-weight-bold catalog-title">{{ item.label }}</div>
-            <div class="text-caption text-grey-7 catalog-group">{{ item.group }}</div>
-          </div>
-        </div>
-        <div class="text-caption text-grey-7 catalog-desc">{{ item.receive_modes.join(", ") }}</div>
-        <q-badge v-if="!isImplemented(item.type)" class="catalog-badge" color="grey-6" label="即将支持" />
-      </q-card-section>
-    </q-card>
+      <channel-platform-avatar
+        :type="item.type"
+        :label="item.label"
+        size="32px"
+        fallback-color="grey-8"
+      />
+      <div class="catalog-card__main min-width-0">
+        <div class="catalog-card__title">{{ item.label }}</div>
+        <div class="catalog-card__group">{{ item.group }}</div>
+      </div>
+      <div class="catalog-card__modes">{{ item.receive_modes.join(" · ") }}</div>
+      <span v-if="!item.bundled" class="catalog-card__badge">{{ t("channelEditor.comingSoon") }}</span>
+    </button>
   </div>
 </template>
 
 <script setup lang="ts">
+import { useI18n } from "vue-i18n";
+import ChannelPlatformAvatar from "../../components/channels/ChannelPlatformAvatar.vue";
+
+const { t } = useI18n();
 import type { ChannelCatalogItem } from "./types";
 
 defineProps<{
@@ -34,75 +46,72 @@ defineProps<{
 defineEmits<{
   "update:modelValue": [value: string];
 }>();
-
-// EP-BIZ-05: Only feishu has a backend ingress implementation.
-const IMPLEMENTED_CHANNEL_TYPES = new Set(["feishu"]);
-
-function isImplemented(type: string): boolean {
-  return IMPLEMENTED_CHANNEL_TYPES.has(type);
-}
 </script>
 
-<style scoped>
-.channel-catalog-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(156px, 1fr));
-  gap: 12px;
-}
+<style scoped lang="sass">
+.channel-catalog-grid
+  display: grid
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr))
+  gap: 10px
 
-.catalog-card {
-  height: 100%;
-  min-height: 96px;
-  border-radius: 14px;
-  transition: border-color 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease;
-}
+.catalog-card
+  display: flex
+  flex-direction: column
+  align-items: flex-start
+  gap: 8px
+  min-height: 108px
+  padding: 12px
+  border: 1px solid var(--glass-border)
+  border-radius: 14px
+  background: var(--glass-surface)
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+  text-align: left
+  cursor: pointer
+  transition: border-color 0.16s ease, background 0.16s ease, transform 0.16s ease
 
-.catalog-card__body {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px;
-  height: 100%;
-}
+  &:hover:not(:disabled)
+    background: var(--glass-surface-hover)
+    border-color: color-mix(in srgb, var(--color-accent) 22%, var(--glass-border))
 
-.catalog-card__head {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  min-width: 0;
-}
+  &.catalog-card--selected
+    border-color: color-mix(in srgb, var(--color-accent) 38%, var(--glass-border))
+    background: color-mix(in srgb, var(--color-accent) 10%, var(--glass-surface))
 
-.catalog-card:hover:not(.catalog-card--coming-soon),
-.catalog-card.selected {
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 28%, transparent);
-  transform: translateY(-1px);
-}
+  &.catalog-card--disabled
+    opacity: 0.55
+    cursor: not-allowed
 
-.catalog-card--coming-soon {
-  opacity: 62%;
-  cursor: not-allowed;
-}
+.catalog-card__title
+  font-size: 13px
+  font-weight: 600
+  line-height: 1.3
+  color: var(--color-text-heading)
+  overflow: hidden
+  text-overflow: ellipsis
+  white-space: nowrap
 
-.catalog-desc,
-.catalog-group {
-  line-height: 1.35;
-}
+.catalog-card__group,
+.catalog-card__modes
+  font-size: 11px
+  line-height: 1.35
+  color: var(--color-text-secondary)
 
-.catalog-main {
-  min-width: 0;
-  flex: 1;
-}
+.catalog-card__modes
+  width: 100%
 
-.catalog-title {
-  font-size: 13px;
-  line-height: 1.3;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+.catalog-card__badge
+  align-self: flex-start
+  padding: 2px 8px
+  border-radius: 999px
+  border: 1px solid var(--glass-border)
+  font-size: 10px
+  font-weight: 600
+  letter-spacing: 0.04em
+  text-transform: uppercase
+  color: var(--color-text-tertiary)
 
-.catalog-badge {
-  align-self: flex-start;
-}
+.min-width-0
+  min-width: 0
+  width: 100%
 </style>

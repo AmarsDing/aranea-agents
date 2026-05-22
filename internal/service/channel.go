@@ -18,11 +18,19 @@ import (
 type ChannelService struct {
 	v1.UnimplementedChannelServiceServer
 
-	uc *biz.ChannelUsecase
+	uc      *biz.ChannelUsecase
+	peers   biz.ChannelPeerSessionRepo
+	runtime *ChannelRuntime
 }
 
-func NewChannelService(uc *biz.ChannelUsecase) *ChannelService {
-	return &ChannelService{uc: uc}
+func NewChannelService(uc *biz.ChannelUsecase, peers biz.ChannelPeerSessionRepo, runtime *ChannelRuntime) *ChannelService {
+	return &ChannelService{uc: uc, peers: peers, runtime: runtime}
+}
+
+func (s *ChannelService) reloadRuntime(ctx context.Context) {
+	if s != nil && s.runtime != nil {
+		s.runtime.Reload(ctx)
+	}
 }
 
 func bizChannelToProto(c biz.Channel) *v1.Channel {
@@ -189,10 +197,15 @@ func (s *ChannelService) CreateChannel(ctx context.Context, req *v1.CreateChanne
 	if err != nil {
 		return nil, err
 	}
+	s.reloadRuntime(ctx)
 	return bizChannelToProto(c), nil
 }
 
 func (s *ChannelService) UpdateChannel(ctx context.Context, req *v1.UpdateChannelRequest) (*v1.Channel, error) {
+	current, err := s.uc.Get(ctx, req.GetId())
+	if err != nil {
+		return nil, err
+	}
 	row := biz.Channel{
 		Key:          req.GetKey(),
 		Name:         req.GetName(),
@@ -207,6 +220,10 @@ func (s *ChannelService) UpdateChannel(ctx context.Context, req *v1.UpdateChanne
 	if err != nil {
 		return nil, err
 	}
+	if biz.RoutingTargetChanged(current.ConfigJSON, c.ConfigJSON) && s.peers != nil {
+		_, _ = s.peers.DeleteByChannelID(ctx, c.ID)
+	}
+	s.reloadRuntime(ctx)
 	return bizChannelToProto(c), nil
 }
 
@@ -214,6 +231,7 @@ func (s *ChannelService) DeleteChannel(ctx context.Context, req *v1.DeleteChanne
 	if err := s.uc.Delete(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
+	s.reloadRuntime(ctx)
 	return &emptypb.Empty{}, nil
 }
 
@@ -222,6 +240,7 @@ func (s *ChannelService) ToggleChannel(ctx context.Context, req *v1.ToggleChanne
 	if err != nil {
 		return nil, err
 	}
+	s.reloadRuntime(ctx)
 	return bizChannelToProto(c), nil
 }
 
@@ -257,7 +276,11 @@ func (s *ChannelService) TestChannel(ctx context.Context, req *v1.TestChannelReq
 				} else {
 					_, _, terr := lark.FetchTenantAccessToken(ctx, lark.DefaultHTTPClient(), region, appID, sec)
 					if terr != nil {
-						result = biz.ChannelTestResult{OK: false, Status: "error", Message: terr.Error()}
+						msg := terr.Error()
+						if strings.Contains(msg, "code=10003") {
+							msg += " — 请检查 App ID、App Secret 是否与飞书开放平台一致，并确认 region（国内飞书 / 国际 Lark）"
+						}
+						result = biz.ChannelTestResult{OK: false, Status: "error", Message: msg}
 					} else {
 						result = biz.ChannelTestResult{OK: true, Status: "ok", Message: "tenant_access_token acquired"}
 					}
@@ -313,6 +336,7 @@ func (s *ChannelService) UpsertChannelCredentials(ctx context.Context, req *v1.U
 	for _, c := range items {
 		out = append(out, bizCredToProto(c))
 	}
+	s.reloadRuntime(ctx)
 	return &v1.ListChannelCredentialsResponse{Items: out}, nil
 }
 

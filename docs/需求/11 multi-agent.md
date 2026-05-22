@@ -47,6 +47,7 @@
 **Chat 与实时观测**
 
 - Chat 选择 Team 创建 `owner_type=team` 会话
+- Channel 路由 `default_team_id` 时同样创建 `owner_type=team` 会话（飞书等 IM 入口）；出站为汇总文本，见 [17-channel-agent-team-integration.md](./17-channel-agent-team-integration.md)
 - WS Envelope：`team_run_*` / `team_step_started` / `team_step_finished` / `team_summary` / `member_message_*` / `member_delta` / `intent_pass` / `transfer`
 - Monitor EventTimeline 可订阅 Team 相关 Envelope
 

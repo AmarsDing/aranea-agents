@@ -17,7 +17,7 @@ server:
 data:
   sqlite:
     enable: true
-    source: file:.run-smoke.sqlite?cache=shared&_fk=1
+    source: file:./cmd/data/arenea.sqlite?cache=shared&_fk=1
   initial_admin:
     name: dev
     email: dev@local.invalid

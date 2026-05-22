@@ -12,11 +12,11 @@ import (
 //
 // Implements aranea-agents/internal/channel.OutboundText (compile-time assertion in ../contract_test.go).
 type FeishuTextSender struct {
-	Region string
-	AppID  string
-	// AppSecret is the application secret used for tenant_access_token exchange.
-	AppSecret string
-	HTTP      *http.Client
+	Region        string
+	AppID         string
+	AppSecret     string
+	ReceiveIDType string
+	HTTP          *http.Client
 }
 
 // ID implements channel.Identified.
@@ -46,5 +46,9 @@ func (s *FeishuTextSender) SendText(ctx context.Context, recipientOpenID, text s
 	if err != nil {
 		return err
 	}
-	return SendTextMessageOpenID(ctx, client, region, tok, recipientOpenID, text)
+	return SendTextMessage(ctx, client, region, tok, recipientOpenID, s.effectiveReceiveIDType(), text)
+}
+
+func (s *FeishuTextSender) effectiveReceiveIDType() string {
+	return ReceiveIDTypeFromMeta(map[string]string{"receive_id_type": s.ReceiveIDType})
 }

@@ -360,6 +360,9 @@ func seedInitialData(entClient *ent.Client, c *conf.Data) error {
 	if err := ensureDevBypassAdminIfEnabled(context.Background(), entClient); err != nil {
 		return err
 	}
+	if err := ensureChannelPlatformAvatars(context.Background(), entClient); err != nil {
+		return err
+	}
 	return nil
 }
 

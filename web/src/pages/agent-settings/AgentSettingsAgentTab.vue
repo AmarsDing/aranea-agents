@@ -234,11 +234,14 @@
         <q-input v-model="heartbeatFile.body" class="app-field-long" dense outlined autogrow type="textarea" label="检查清单 (HEARTBEAT.MD)" />
       </div>
     </section>
+
+    <agent-channel-refs-section :agent-id="agentId" :agent-key="form.agent_key" />
   </div>
 </template>
 
 <script setup lang="ts">
 import type { Agent } from "../../features/agents/types";
+import AgentChannelRefsSection from "./AgentChannelRefsSection.vue";
 import type { AgentFile } from "../../components/agents/agentUi";
 import AgentSettingsPromptSection from "./AgentSettingsPromptSection.vue";
 import AgentToolsSection from "../../components/agents/AgentToolsSection.vue";

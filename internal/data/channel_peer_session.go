@@ -76,3 +76,17 @@ func (r *channelPeerSessionRepo) Create(ctx context.Context, row biz.ChannelPeer
 	}
 	return entPeerToBiz(e), nil
 }
+
+func (r *channelPeerSessionRepo) DeleteByChannelID(ctx context.Context, channelID string) (int, error) {
+	channelID = strings.TrimSpace(channelID)
+	if channelID == "" {
+		return 0, nil
+	}
+	n, err := r.data.entClient.PlatformChannelPeerSession.Delete().
+		Where(platformchannelpeersession.ChannelIDEQ(channelID)).
+		Exec(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return n, nil
+}

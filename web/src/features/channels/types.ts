@@ -57,6 +57,8 @@ export type ChannelConfig = {
 
 export type ChannelMetadata = {
   icon_url?: string;
+  icon_asset_id?: string;
+  public_webhook_origin?: string;
   catalog_group?: string;
   catalog_source?: string;
   external_id?: string;

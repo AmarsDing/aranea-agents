@@ -62,6 +62,7 @@ func NewRunnerDepsFromRuntime(trpcSession trpcsession.Service, memory trpcmemory
 type StreamConsumeOptions struct {
 	MetaResolver      ActivityMetaResolver
 	ActivityPersister ActivityPersister
+	OnReplyDelta      func(accumulated string) error
 }
 
 func ConsumeEventStream(
@@ -163,6 +164,13 @@ func ConsumeEventStreamWithFirstByte(
 			if text := strings.TrimSpace(msg.Content); text != "" {
 				_ = provider.VisibleStreamingDelta(&result.Reply, text)
 				result.HasContent = true
+				if opts != nil && opts.OnReplyDelta != nil {
+					if err := opts.OnReplyDelta(result.Reply.String()); err != nil {
+						result.HasError = true
+						result.LastError = err.Error()
+						return result
+					}
+				}
 			}
 			if rc := strings.TrimSpace(msg.ReasoningContent); rc != "" {
 				_ = provider.VisibleStreamingDelta(&result.Reasoning, rc)

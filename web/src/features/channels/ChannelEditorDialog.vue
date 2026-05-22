@@ -1,146 +1,284 @@
 <template>
   <q-dialog :model-value="modelValue" persistent @update:model-value="$emit('update:modelValue', $event)">
-    <q-card class="channel-editor-card app-dialog-card app-dialog-card--xl">
-      <q-card-section class="channel-editor-header row items-start justify-between no-wrap">
+    <q-card class="app-dialog-card app-dialog-card--900 app-glass-dialog channel-editor-dialog">
+      <q-card-section class="app-glass-dialog__head row items-start justify-between no-wrap">
         <div class="col min-width-0">
-          <div class="text-h6">{{ row ? "编辑 Channel" : "新增 Channel" }}</div>
-          <div class="text-caption text-grey-7">配置非敏感参数，密钥字段留空表示不修改。</div>
+          <div class="app-glass-dialog__title">
+            {{ row ? t("channelEditor.editTitle") : t("channelEditor.createTitle") }}
+          </div>
         </div>
-        <q-btn flat dense round icon="close" aria-label="关闭" @click="$emit('update:modelValue', false)" />
+        <q-btn
+          flat
+          dense
+          round
+          icon="close"
+          :aria-label="t('channelEditor.close')"
+          @click="$emit('update:modelValue', false)"
+        />
       </q-card-section>
       <q-separator />
 
-      <div class="channel-editor-scroll">
-        <q-card-section class="app-dialog-body channel-editor-body">
-          <div v-if="!row" class="channel-editor-section">
-            <div class="section-label">选择平台</div>
-            <p class="section-hint">已接入平台可直接配置；其余平台可先预览规格，接入后自动可用。</p>
+      <div class="app-glass-dialog__scroll">
+        <q-card-section class="app-dialog-body app-glass-dialog__body">
+          <section v-if="!row" class="app-dialog-section channel-editor-platform-pick">
+            <h3 class="channel-editor-platform-pick__title">{{ t("channelEditor.pickPlatformTitle") }}</h3>
+            <p class="channel-editor-platform-pick__hint">{{ t("channelEditor.pickPlatformHint") }}</p>
             <div class="channel-catalog-shell">
               <ChannelCatalogPicker v-model="selectedType" :catalog="catalog" />
             </div>
-          </div>
+          </section>
 
-          <q-card v-if="selectedCatalog" flat bordered class="selected-channel-card channel-editor-section">
-            <q-card-section class="selected-channel-card__body">
-              <div class="selected-channel-summary">
-                <div class="selected-channel-summary__main">
-                  <div class="row items-center no-wrap q-gutter-sm">
-                    <q-avatar color="primary" text-color="white" size="36px">{{ selectedCatalog.label.slice(0, 1) }}</q-avatar>
-                    <div class="min-width-0">
-                      <div class="text-subtitle1 text-weight-bold ellipsis">{{ selectedCatalog.label }}</div>
-                      <div class="text-caption text-grey-7">{{ selectedCatalog.type }} · {{ selectedCatalog.group }}</div>
+          <div v-if="selectedCatalog" ref="configPanelRef" class="app-musebot-config-panel channel-editor-config-panel">
+            <header class="channel-editor-config-intro">
+              <div class="channel-editor-config-intro__head row items-center no-wrap q-gutter-sm">
+                <channel-platform-avatar
+                  :type="selectedType"
+                  :label="form.name || selectedCatalog.label"
+                  :metadata="iconPreviewMetadata"
+                  size="36px"
+                />
+                <div class="col min-width-0">
+                  <h2 class="channel-editor-config-intro__title">
+                    {{ form.name || selectedCatalog.label }}
+                  </h2>
+                  <p class="channel-editor-config-intro__meta">
+                    {{ selectedCatalog.label }} · {{ selectedCatalog.type }} · {{ selectedCatalog.group }}
+                  </p>
+                </div>
+              </div>
+              <p v-if="catalogDescription" class="channel-editor-config-intro__desc">
+                {{ catalogDescription }}
+              </p>
+              <p class="channel-editor-config-intro__note">{{ t("channelEditor.credentialsNote") }}</p>
+            </header>
+
+            <section
+              v-for="section in platformSections"
+              :id="sectionDomId(section.id)"
+              :key="section.id"
+              class="app-musebot-section"
+            >
+              <h3 class="app-musebot-section__title">{{ sectionTitle(section) }}</h3>
+              <p v-if="sectionHint(section)" class="app-musebot-section__hint">{{ sectionHint(section) }}</p>
+
+              <div class="app-musebot-section__rows">
+                <ChannelRoutingFields
+                  v-if="section.id === 'routing'"
+                  v-model:target-type="routingTargetType"
+                  v-model:agent-id="defaultAgentId"
+                  v-model:team-id="defaultTeamId"
+                  v-model:dm-scope="dmScope"
+                  :agents="routingAgents"
+                  :teams="routingTeams"
+                  :loading="routingOptionsLoading"
+                />
+
+                <template v-for="field in visibleSectionFields(section)">
+                  <div v-if="field.bind.source === 'icon'" :key="field.museKey" class="app-musebot-row">
+                    <label class="app-musebot-row__label">{{ field.museKey }}</label>
+                    <div class="app-musebot-row__control">
+                      <div class="channel-icon-pick" @click="iconPickerOpen = true">
+                        <channel-platform-avatar
+                          :type="selectedType"
+                          :label="form.name || selectedCatalog?.label || selectedType"
+                          :metadata="iconPreviewMetadata"
+                          size="48px"
+                        />
+                        <span class="channel-icon-pick__hint">{{ t("channelEditor.changeIcon") }}</span>
+                      </div>
+                      <q-btn
+                        v-if="iconAssetId"
+                        flat
+                        dense
+                        no-caps
+                        :label="t('channelEditor.resetPlatformIcon')"
+                        class="q-mt-sm"
+                        @click.stop="iconAssetId = ''"
+                      />
+                      <agent-avatar-picker v-model="iconAssetId" v-model:open="iconPickerOpen" scope="channel" />
                     </div>
+                    <span class="app-musebot-row__status">{{ fieldStatusLabel(fieldStatus(field)) }}</span>
                   </div>
-                  <div class="text-body2 text-grey-7 q-mt-sm">{{ selectedCatalog.description }}</div>
-                </div>
-                <div class="detail-grid">
-                  <div>
-                    <span class="detail-label">接入方式</span>
-                    <span>{{ selectedCatalog.receive_modes.join(", ") }}</span>
-                  </div>
-                  <div>
-                    <span class="detail-label">Webhook</span>
-                    <span>{{ selectedCatalog.supports_webhook ? "支持" : "不需要" }}</span>
-                  </div>
-                  <div>
-                    <span class="detail-label">测试连接</span>
-                    <span>{{ selectedCatalog.supports_test ? "支持轻量测试" : "暂不支持" }}</span>
-                  </div>
-                  <div>
-                    <span class="detail-label">必填凭据</span>
-                    <span>{{ credentialKeys.length ? credentialKeys.map(credentialLabel).join(", ") : "无" }}</span>
-                  </div>
-                </div>
-              </div>
-            </q-card-section>
-          </q-card>
 
-          <div class="channel-editor-section">
-            <div class="section-label">基础配置</div>
-            <div class="app-form-field-grid app-form-field-grid--2col items-start">
-              <q-input v-model="form.name" dense outlined label="名称 *" />
-              <q-input v-model="form.key" dense outlined label="Key *">
-                <template #append>
-                  <q-icon name="info_outline" class="cursor-pointer text-grey-6">
-                    <q-tooltip max-width="240px">同平台多实例可用 telegram_support 这类命名</q-tooltip>
-                  </q-icon>
+                  <channel-config-row
+                    v-else-if="field.bind.source === 'webhook' && field.bind.key === 'preview'"
+                    :key="field.museKey"
+                    :label="field.museKey"
+                    :field-key="field.museKey"
+                    :status="fieldStatusLabel(fieldStatus(field))"
+                  >
+                    <div class="app-musebot-row__control--readonly row items-center no-wrap q-gutter-xs">
+                      <q-input
+                        :model-value="webhookPreview"
+                        dense
+                        outlined
+                        readonly
+                        class="col"
+                        :placeholder="t('channelEditor.webhookPreviewPlaceholder')"
+                      />
+                      <q-btn
+                        flat
+                        dense
+                        round
+                        icon="content_copy"
+                        :aria-label="t('channelEditor.copyWebhook')"
+                        :disable="!webhookPreview"
+                        @click="copyWebhookPreview"
+                      />
+                    </div>
+                  </channel-config-row>
+
+                  <channel-config-row
+                    v-else
+                    :key="field.museKey"
+                    :label="field.museKey"
+                    :field-key="field.museKey"
+                    :status="fieldStatusLabel(fieldStatus(field))"
+                  >
+                    <q-toggle
+                      v-if="fieldKind(field) === 'toggle'"
+                      :model-value="readFieldBool(field)"
+                      @update:model-value="writeFieldBool(field, $event)"
+                    />
+                    <q-select
+                      v-else-if="fieldKind(field) === 'select'"
+                      :model-value="readField(field)"
+                      dense
+                      outlined
+                      emit-value
+                      map-options
+                      :options="selectOptions(field)"
+                      @update:model-value="writeField(field, String($event ?? ''))"
+                    />
+                    <q-input
+                      v-else-if="fieldKind(field) === 'textarea'"
+                      :model-value="readField(field)"
+                      dense
+                      outlined
+                      autogrow
+                      type="textarea"
+                      :placeholder="field.placeholder"
+                      @update:model-value="writeField(field, String($event ?? ''))"
+                    />
+                    <q-input
+                      v-else
+                      :model-value="readField(field)"
+                      dense
+                      outlined
+                      :type="fieldKind(field) === 'password' && !showSecrets ? 'password' : 'text'"
+                      :placeholder="field.placeholder"
+                      @update:model-value="writeField(field, String($event ?? ''))"
+                    />
+                  </channel-config-row>
                 </template>
-              </q-input>
-              <q-input v-model="form.description" class="app-grid-span-full" dense outlined autogrow type="textarea" label="描述" />
-              <q-select
-                v-model="receiveMode"
+
+                <channel-config-row
+                  v-if="section.id === 'base' && credentialKeys.length"
+                  label="show_secrets"
+                  field-key="show_secrets"
+                >
+                  <q-toggle v-model="showSecrets" :label="t('channelEditor.showSecrets')" />
+                </channel-config-row>
+              </div>
+
+              <q-banner
+                v-if="section.id === 'connection' && webhookIsLocalhost"
                 dense
-                outlined
-                emit-value
-                map-options
-                label="接入方式"
-                :options="receiveModeOptions"
-              />
-              <q-input v-model="webhookPath" dense outlined label="Webhook Path" :disable="receiveMode !== 'webhook' && receiveMode !== 'event'" />
-              <q-input
-                v-if="webhookPreview"
-                :model-value="webhookPreview"
-                class="app-grid-span-full"
-                dense
-                outlined
-                readonly
-                label="Webhook 回调 URL"
+                rounded
+                class="webhook-local-banner q-mt-md"
               >
-                <template #append>
-                  <q-btn flat dense round icon="content_copy" aria-label="复制 Webhook URL" @click="copyWebhookPreview" />
+                <template #avatar>
+                  <q-icon name="info" color="warning" />
                 </template>
-              </q-input>
-              <q-input v-model="defaultAgentId" dense outlined label="默认 Agent" placeholder="main" />
-              <q-input v-model="externalId" dense outlined label="外部 ID" />
-              <q-input v-model="iconUrl" dense outlined label="自定义图标 URL" />
-              <div class="channel-editor-toggle">
-                <q-toggle v-model="form.enabled" color="primary" label="启用 Channel" />
+                <div class="webhook-local-banner__body">
+                  <div>{{ t("channelEditor.webhookLocalTitle") }}</div>
+                  <ol class="webhook-local-steps">
+                    <li>{{ t("channelEditor.webhookLocalStep1") }}</li>
+                    <li>{{ t("channelEditor.webhookLocalStep2") }}</li>
+                    <li>{{ t("channelEditor.webhookLocalStep3") }}</li>
+                  </ol>
+                </div>
+              </q-banner>
+            </section>
+
+            <q-expansion-item
+              id="channel-section-advanced"
+              icon="data_object"
+              :label="t('channelEditor.advancedTitle')"
+              class="channel-editor-expansion"
+              header-class="text-weight-medium"
+            >
+              <p class="channel-editor-platform-pick__hint q-px-md q-pt-sm q-mb-none">
+                {{ t("channelEditor.advancedHint") }}
+              </p>
+              <div class="app-form-field-grid q-pt-sm q-px-md q-pb-md">
+                <q-input
+                  v-model="configExtraText"
+                  class="app-grid-span-full"
+                  dense
+                  outlined
+                  autogrow
+                  type="textarea"
+                  :label="t('channelEditor.configExtraLabel')"
+                  :error="Boolean(configError)"
+                  :error-message="configError"
+                />
+                <q-input
+                  v-model="metadataExtraText"
+                  class="app-grid-span-full"
+                  dense
+                  outlined
+                  autogrow
+                  type="textarea"
+                  :label="t('channelEditor.metadataExtraLabel')"
+                  :error="Boolean(metadataError)"
+                  :error-message="metadataError"
+                />
               </div>
-            </div>
+            </q-expansion-item>
           </div>
-
-          <q-expansion-item default-open icon="key" label="凭据" class="channel-editor-expansion">
-            <div class="app-form-field-grid app-form-field-grid--2col items-start q-pt-sm">
-              <q-input
-                v-for="key in credentialKeys"
-                :key="key"
-                v-model="credentialDraft[key]"
-                dense
-                outlined
-                :type="showSecrets ? 'text' : 'password'"
-                :label="credentialLabel(key)"
-                :hint="credentialHint(key)"
-              />
-              <q-toggle v-model="showSecrets" class="app-grid-span-full" color="primary" label="显示本次输入的密钥" />
-            </div>
-          </q-expansion-item>
-
-          <q-expansion-item icon="data_object" label="高级 JSON" class="channel-editor-expansion">
-            <div class="app-form-field-grid q-pt-sm">
-              <q-input v-model="configExtraText" class="app-grid-span-full" dense outlined autogrow type="textarea" label="config_json.config 额外字段" :error="Boolean(configError)" :error-message="configError" />
-              <q-input v-model="metadataExtraText" class="app-grid-span-full" dense outlined autogrow type="textarea" label="metadata_json 额外字段" :error="Boolean(metadataError)" :error-message="metadataError" />
-            </div>
-          </q-expansion-item>
         </q-card-section>
       </div>
 
       <q-separator />
-      <q-card-actions align="right" class="app-actions-bar channel-editor-actions">
-        <q-btn flat rounded no-caps label="取消" @click="$emit('update:modelValue', false)" />
-        <q-btn outline color="primary" rounded no-caps icon="science" label="保存并测试" :loading="testing" :disable="!canSave || saving" @click="saveAndTest" />
-        <q-btn color="primary" rounded unelevated no-caps label="保存" :loading="saving" :disable="!canSave" @click="save" />
+      <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
+        <q-btn flat no-caps :label="t('channelEditor.cancel')" @click="$emit('update:modelValue', false)" />
+        <q-space />
+        <q-btn
+          flat
+          no-caps
+          class="channel-dialog-test"
+          icon="science"
+          :label="t('channelEditor.saveAndTest')"
+          :loading="testing"
+          :disable="!canSave || saving"
+          @click="saveAndTest"
+        />
+        <q-btn
+          unelevated
+          no-caps
+          class="channel-dialog-save"
+          :label="t('channelEditor.save')"
+          :loading="saving"
+          :disable="!canSave"
+          @click="save"
+        />
       </q-card-actions>
     </q-card>
   </q-dialog>
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from "vue";
-import { useQuasar } from "quasar";
-import { createChannel, testChannel, updateChannel } from "./api";
+import { toRef } from "vue";
+import { useI18n } from "vue-i18n";
 import ChannelCatalogPicker from "./ChannelCatalogPicker.vue";
-import { channelWebhookURL } from "../../components/channels/channelUi";
-import type { ChannelCatalogItem, ChannelConfig, ChannelCredential, ChannelCredentialInput, ChannelMetadata, ChannelRow } from "./types";
+import ChannelConfigRow from "../../components/channels/ChannelConfigRow.vue";
+import ChannelRoutingFields from "../../components/channels/ChannelRoutingFields.vue";
+import ChannelPlatformAvatar from "../../components/channels/ChannelPlatformAvatar.vue";
+import AgentAvatarPicker from "../../components/avatar/AgentAvatarPicker.vue";
+import { useChannelEditorForm } from "./useChannelEditorForm";
+import { useChannelEditorLabels } from "./useChannelEditorLabels";
+import type { ChannelCatalogItem, ChannelCredential, ChannelRow } from "./types";
 
 const props = defineProps<{
   modelValue: boolean;
@@ -155,372 +293,56 @@ const emit = defineEmits<{
   tested: [];
 }>();
 
-const $q = useQuasar();
-const saving = ref(false);
-const testing = ref(false);
-const selectedType = ref("");
-const receiveMode = ref("webhook");
-const webhookPath = ref("");
-const defaultAgentId = ref("main");
-const externalId = ref("");
-const iconUrl = ref("");
-const showSecrets = ref(false);
-const configExtraText = ref("{}");
-const metadataExtraText = ref("{}");
-const credentialDraft = reactive<Record<string, string>>({});
-const form = reactive({
-  key: "",
-  name: "",
-  description: "",
-  enabled: true
-});
+const { t } = useI18n();
 
-const selectedCatalog = computed(() => props.catalog.find((item) => item.type === selectedType.value) ?? null);
-const receiveModeOptions = computed(() => (selectedCatalog.value?.receive_modes.length ? selectedCatalog.value.receive_modes : ["webhook"]).map((value) => ({ label: value, value })));
-const credentialKeys = computed(() => selectedCatalog.value?.credential_schema?.required ?? []);
+const {
+  saving,
+  testing,
+  selectedType,
+  showSecrets,
+  iconAssetId,
+  iconPickerOpen,
+  configExtraText,
+  metadataExtraText,
+  form,
+  selectedCatalog,
+  platformSections,
+  credentialKeys,
+  configError,
+  metadataError,
+  canSave,
+  webhookPreview,
+  webhookIsLocalhost,
+  iconPreviewMetadata,
+  routingTargetType,
+  defaultAgentId,
+  defaultTeamId,
+  dmScope,
+  routingAgents,
+  routingTeams,
+  routingOptionsLoading,
+  visibleSectionFields,
+  fieldKind,
+  readField,
+  writeField,
+  readFieldBool,
+  writeFieldBool,
+  fieldStatus,
+  save,
+  saveAndTest,
+  copyWebhookPreview
+} = useChannelEditorForm(props, toRef(props, "modelValue"), emit);
 
-const configError = computed(() => jsonError(configExtraText.value));
-const metadataError = computed(() => jsonError(metadataExtraText.value));
-const canSave = computed(() => Boolean(form.key.trim() && form.name.trim() && selectedType.value && !configError.value && !metadataError.value));
-const webhookPreview = computed(() => {
-  if (!selectedCatalog.value?.supports_webhook) return "";
-  const path = webhookPath.value.trim();
-  const normalized = path ? (path.startsWith("/") ? path : `/${path}`) : (form.key.trim() ? `/webhooks/${form.key.trim()}` : "");
-  if (!normalized) return "";
-  if (typeof window === "undefined") return normalized;
-  return `${window.location.origin}${normalized}`;
-});
+const { catalogDescription, sectionTitle, sectionHint, fieldStatusLabel, selectOptions } =
+  useChannelEditorLabels(selectedCatalog);
 
-watch(
-  () => props.modelValue,
-  (open) => {
-    if (open) resetForm();
-  }
-);
-
-watch(selectedType, (type, previousType) => {
-  const item = props.catalog.find((entry) => entry.type === type);
-  if (!item) return;
-  if (!receiveMode.value || !item.receive_modes.includes(receiveMode.value)) {
-    receiveMode.value = item.receive_modes[0] || "webhook";
-  }
-  if (!props.row) {
-    applyCatalogDefaults(item, previousType);
-  }
-});
-
-function resetForm() {
-  const row = props.row;
-  const cfg = parseJSON<ChannelConfig>(row?.config_json, {});
-  const metadata = parseJSON<ChannelMetadata>(row?.metadata_json, {});
-  selectedType.value = cfg.type || props.catalog[0]?.type || "";
-  const item = props.catalog.find((entry) => entry.type === selectedType.value);
-  receiveMode.value = cfg.receive_mode || item?.receive_modes[0] || "webhook";
-  webhookPath.value = String(cfg.webhook?.path ?? "");
-  defaultAgentId.value = String(cfg.routing?.default_agent_id ?? "main");
-  externalId.value = metadata.external_id || "";
-  iconUrl.value = metadata.icon_url || "";
-  form.key = row?.key || selectedType.value;
-  form.name = row?.name || item?.label || "";
-  form.description = row?.description || item?.description || "";
-  form.enabled = row?.enabled ?? true;
-  configExtraText.value = JSON.stringify(cfg.config || {}, null, 2);
-  metadataExtraText.value = JSON.stringify({ ...metadata, icon_url: undefined, external_id: undefined }, null, 2);
-  resetCredentialDraft();
-  if (!row && item) {
-    applyCatalogDefaults(item, "");
-  }
-}
-
-function applyCatalogDefaults(item: ChannelCatalogItem, previousType: string | undefined) {
-  form.key = item.type;
-  form.name = item.label;
-  form.description = item.description;
-  if (!item.receive_modes.includes(receiveMode.value)) {
-    receiveMode.value = item.receive_modes[0] || "webhook";
-  }
-  webhookPath.value = item.supports_webhook ? `/webhooks/${form.key.trim() || item.type}` : "";
-  externalId.value = "";
-  configExtraText.value = JSON.stringify(defaultConfigFor(item), null, 2);
-  metadataExtraText.value = JSON.stringify({
-    catalog_source: "catalog",
-    catalog_group: item.group
-  }, null, 2);
-  if (previousType !== item.type) {
-    resetCredentialDraft();
-  }
-}
-
-function resetCredentialDraft() {
-  Object.keys(credentialDraft).forEach((key) => delete credentialDraft[key]);
-  credentialKeys.value.forEach((key) => {
-    credentialDraft[key] = "";
-  });
-}
-
-async function save() {
-  saving.value = true;
-  try {
-    const saved = await persistChannel();
-    emit("saved", saved);
-    emit("update:modelValue", false);
-    $q.notify({ type: "positive", message: "Channel 已保存" });
-  } catch (err) {
-    $q.notify({ type: "negative", message: err instanceof Error ? err.message : "保存失败" });
-  } finally {
-    saving.value = false;
-  }
-}
-
-async function saveAndTest() {
-  testing.value = true;
-  try {
-    const saved = await persistChannel();
-    emit("saved", saved);
-    const result = await testChannel(saved.id);
-    emit("tested");
-    emit("update:modelValue", false);
-    $q.notify({ type: result.ok ? "positive" : "warning", message: result.message || result.status });
-  } catch (err) {
-    $q.notify({ type: "negative", message: err instanceof Error ? err.message : "保存或测试失败" });
-  } finally {
-    testing.value = false;
-  }
-}
-
-async function persistChannel() {
-  const payload = buildPayload();
-  return props.row ? updateChannel(props.row.id, payload) : createChannel(payload);
-}
-
-function buildPayload() {
-  const extraConfig = parseJSON<Record<string, unknown>>(configExtraText.value, {});
-  const extraMetadata = parseJSON<Record<string, unknown>>(metadataExtraText.value, {});
-  const config: ChannelConfig = {
-    type: selectedType.value,
-    receive_mode: receiveMode.value,
-    webhook: { path: webhookPath.value },
-    routing: { default_agent_id: defaultAgentId.value || "main" },
-    config: extraConfig,
-    accounts: []
-  };
-  const metadata: ChannelMetadata = {
-    ...extraMetadata,
-    icon_url: iconUrl.value,
-    external_id: externalId.value,
-    catalog_group: selectedCatalog.value?.group,
-    schema_version: 1
-  };
-  const credentials: ChannelCredentialInput[] = Object.entries(credentialDraft)
-    .filter(([, secret]) => secret.trim())
-    .map(([credential_key, secret]) => ({ credential_key, secret: secret.trim(), metadata_json: "{}" }));
-  return {
-    key: form.key.trim(),
-    name: form.name.trim(),
-    description: form.description.trim(),
-    enabled: form.enabled,
-    config_json: JSON.stringify(config),
-    metadata_json: JSON.stringify(metadata),
-    credentials
-  };
-}
-
-function credentialLabel(key: string) {
-  return key.replaceAll("_", " ");
-}
-
-function credentialHint(key: string) {
-  const existing = props.credentials.find((item) => item.credential_key === key);
-  return existing?.configured ? `已配置：${existing.masked_preview || "********"}；留空不修改` : "新建时建议填写";
-}
-
-async function copyWebhookPreview() {
-  const previewRow: ChannelRow = {
-    id: props.row?.id || "",
-    key: form.key.trim(),
-    name: form.name.trim(),
-    config_json: JSON.stringify({ type: selectedType.value, receive_mode: receiveMode.value, webhook: { path: webhookPath.value } }),
-    metadata_json: "{}",
-    enabled: form.enabled,
-    status: props.row?.status || "active",
-    resource: "channels",
-    description: "",
-    sort_order: 0,
-    parent_id: "",
-    level: "",
-    agent_id: "",
-    provider: "",
-    model: "",
-    created_at: "",
-    updated_at: "",
-    deleted_at: ""
-  };
-  try {
-    const url = webhookPreview.value || channelWebhookURL(previewRow);
-    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(url);
-    }
-    $q.notify({ type: "positive", message: `已复制 Webhook URL：${url}` });
-  } catch (err) {
-    $q.notify({ type: "negative", message: err instanceof Error ? err.message : "复制失败" });
-  }
-}
-
-function defaultConfigFor(item: ChannelCatalogItem): Record<string, unknown> {
-  const base: Record<string, unknown> = {};
-  if (item.type === "feishu") {
-    base.region = "feishu";
-    base.default_account = "default";
-  } else if (item.type === "wechat") {
-    base.subtype = "official";
-  } else if (item.type === "telegram") {
-    base.allowed_updates = ["message", "callback_query"];
-  } else if (item.type === "whatsapp") {
-    base.provider = "meta_cloud";
-  } else if (item.type === "qq") {
-    base.protocol = "onebot11";
-  }
-  return base;
-}
-
-function jsonError(value: string) {
-  try {
-    JSON.parse(value || "{}");
-    return "";
-  } catch (err) {
-    return err instanceof Error ? err.message : "JSON 格式错误";
-  }
-}
-
-function parseJSON<T>(value: string | undefined, fallback: T): T {
-  if (!value) return fallback;
-  try {
-    return JSON.parse(value) as T;
-  } catch {
-    return fallback;
-  }
+function sectionDomId(id: string) {
+  return `channel-section-${id}`;
 }
 </script>
 
 <style scoped>
-.channel-editor-card {
-  display: flex;
-  flex-direction: column;
-  width: min(1080px, 96vw);
-  max-height: min(92vh, 920px);
-}
-
-.channel-editor-header {
-  flex-shrink: 0;
-  padding: var(--space-4) var(--space-5);
-}
-
-.channel-editor-scroll {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-}
-
-.channel-editor-body {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-  padding-top: var(--space-4);
-  padding-bottom: var(--space-5);
-}
-
-.channel-editor-section {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-
-.channel-editor-section + .channel-editor-section {
-  margin-top: 0;
-}
-
-.section-label {
-  margin: 0;
-  font-size: var(--text-sm);
-  font-weight: 700;
-  color: var(--color-text-primary);
-}
-
-.section-hint {
-  margin: 0;
-  font-size: var(--text-xs);
-  line-height: 1.5;
-  color: var(--color-text-secondary);
-}
-
-.channel-catalog-shell {
-  max-height: 240px;
-  overflow-y: auto;
-  padding: 2px 4px 2px 0;
-}
-
-.selected-channel-card {
-  border-radius: 16px;
-  border-color: color-mix(in srgb, var(--color-accent) 22%, var(--glass-border));
-  background: color-mix(in srgb, var(--color-accent) 6%, var(--glass-surface));
-}
-
-.selected-channel-card__body {
-  padding: var(--space-4);
-}
-
-.selected-channel-summary {
-  display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(220px, 0.9fr);
-  gap: var(--space-4);
-  align-items: start;
-}
-
-.detail-grid {
-  display: grid;
-  gap: 8px;
-  padding: var(--space-3);
-  border: 1px solid var(--glass-border);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--glass-surface) 88%, transparent);
-  font-size: 13px;
-}
-
-.detail-grid > div {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.detail-label {
-  color: var(--color-text-secondary);
-  flex: 0 0 auto;
-}
-
-.channel-editor-toggle {
-  display: flex;
-  align-items: center;
-  min-height: 40px;
-  padding-top: 4px;
-}
-
-.channel-editor-expansion {
-  border: 1px solid var(--glass-border);
-  border-radius: 14px;
-  overflow: hidden;
-}
-
-.channel-editor-actions {
-  flex-shrink: 0;
-}
-
 .min-width-0 {
   min-width: 0;
-}
-
-@media (width <= 767px) {
-  .selected-channel-summary {
-    grid-template-columns: 1fr;
-  }
 }
 </style>

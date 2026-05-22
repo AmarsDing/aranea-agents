@@ -1,13 +1,30 @@
 <template>
   <q-page class="app-page-cream channels-page">
     <ChannelHeroSection
-      kicker="Channel management"
-      title="Channel 管理"
-      subtitle="统一管理外部消息渠道、凭据引用、Webhook 与运行时启停。"
+      :kicker="t('channelsPage.kicker')"
+      :title="t('channelsPage.title')"
+      :subtitle="t('channelsPage.subtitle')"
     >
       <template #actions>
-        <q-btn rounded no-caps unelevated class="channel-primary-btn" icon="add" label="新增 Channel" @click="openCreate" />
-        <q-btn outline rounded no-caps class="channel-outline-btn" icon="refresh" label="刷新" :loading="loading" @click="loadAll" />
+        <q-btn
+          rounded
+          no-caps
+          unelevated
+          class="channel-primary-btn"
+          icon="add"
+          :label="t('channelsPage.add')"
+          @click="openCreate"
+        />
+        <q-btn
+          outline
+          rounded
+          no-caps
+          class="channel-outline-btn"
+          icon="refresh"
+          :label="t('channelsPage.refresh')"
+          :loading="loading"
+          @click="loadAll"
+        />
       </template>
     </ChannelHeroSection>
 
@@ -28,7 +45,7 @@
     <q-banner v-if="error" rounded class="channels-error-banner q-mb-md">
       {{ error }}
       <template #action>
-        <q-btn flat dense label="重试" class="text-white" @click="loadAll" />
+        <q-btn flat dense :label="t('channelsPage.retry')" class="text-white" @click="loadAll" />
       </template>
     </q-banner>
 
@@ -58,6 +75,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
 import { useQuasar } from "quasar";
 import ChannelCatalogFilters from "../components/channels/ChannelCatalogFilters.vue";
 import ChannelHeroSection from "../components/channels/ChannelHeroSection.vue";
@@ -67,6 +85,7 @@ import ChannelEditorDialog from "../features/channels/ChannelEditorDialog.vue";
 import { deleteChannel, listChannelCatalog, listChannelCredentials, listChannels, testChannel, toggleChannel } from "../features/channels/api";
 import type { ChannelCatalogItem, ChannelCredential, ChannelRow } from "../features/channels/types";
 
+const { t } = useI18n();
 const $q = useQuasar();
 const catalog = ref<ChannelCatalogItem[]>([]);
 const rows = ref<ChannelRow[]>([]);
@@ -82,13 +101,13 @@ const editingRow = ref<ChannelRow | null>(null);
 const editingCredentials = ref<ChannelCredential[]>([]);
 
 const typeOptions = computed(() => catalog.value.map((item) => ({ label: item.label, value: item.type })));
-const statusOptions = [
-  { label: "启用", value: "enabled" },
-  { label: "停用", value: "disabled" },
-  { label: "正常", value: "active" },
-  { label: "待授权", value: "pending_auth" },
-  { label: "异常", value: "error" }
-];
+const statusOptions = computed(() => [
+  { label: t("channelsPage.enabled"), value: "enabled" },
+  { label: t("channelsPage.disabled"), value: "disabled" },
+  { label: t("channelsPage.statusActive"), value: "active" },
+  { label: t("channelsPage.statusPendingAuth"), value: "pending_auth" },
+  { label: t("channelsPage.statusError"), value: "error" }
+]);
 
 const filteredRows = computed(() => {
   const keyword = search.value.trim().toLowerCase();
@@ -120,7 +139,7 @@ async function loadAll() {
     catalog.value = catalogRows;
     rows.value = channelRows;
   } catch (err) {
-    error.value = err instanceof Error ? err.message : "加载 Channel 失败";
+    error.value = err instanceof Error ? err.message : t("channelsPage.loadFailed");
   } finally {
     loading.value = false;
   }
@@ -149,9 +168,12 @@ async function toggleRow(row: ChannelRow, enabled: boolean) {
   try {
     const updated = await toggleChannel(row.id, enabled);
     onSaved(updated);
-    $q.notify({ type: "positive", message: enabled ? "Channel 已启用" : "Channel 已停用" });
+    $q.notify({
+      type: "positive",
+      message: enabled ? t("channelsPage.toggleOkEnabled") : t("channelsPage.toggleOkDisabled")
+    });
   } catch (err) {
-    $q.notify({ type: "negative", message: err instanceof Error ? err.message : "启停失败" });
+    $q.notify({ type: "negative", message: err instanceof Error ? err.message : t("channelsPage.toggleFailed") });
   } finally {
     togglingId.value = "";
   }
@@ -164,7 +186,7 @@ async function testRow(row: ChannelRow) {
     $q.notify({ type: result.ok ? "positive" : "warning", message: result.message || result.status });
     await loadAll();
   } catch (err) {
-    $q.notify({ type: "negative", message: err instanceof Error ? err.message : "测试失败" });
+    $q.notify({ type: "negative", message: err instanceof Error ? err.message : t("channelsPage.testFailed") });
   } finally {
     testingId.value = "";
   }
@@ -173,22 +195,22 @@ async function testRow(row: ChannelRow) {
 async function copyWebhook(row: ChannelRow) {
   try {
     const url = await copyChannelWebhookURL(row);
-    $q.notify({ type: "positive", message: `已复制 Webhook URL：${url}` });
+    $q.notify({ type: "positive", message: t("channelsPage.copyWebhookOk", { url }) });
   } catch (err) {
-    $q.notify({ type: "negative", message: err instanceof Error ? err.message : "复制失败" });
+    $q.notify({ type: "negative", message: err instanceof Error ? err.message : t("channelsPage.copyWebhookFailed") });
   }
 }
 
 function confirmDelete(row: ChannelRow) {
   $q.dialog({
-    title: "确认删除该 Channel？",
-    message: "删除后将停止运行时加载，第三方 Webhook 需要自行解绑。",
+    title: t("channelsPage.deleteTitle"),
+    message: t("channelsPage.deleteMessage"),
     cancel: true,
     persistent: true
   }).onOk(async () => {
     await deleteChannel(row.id);
     rows.value = rows.value.filter((item) => item.id !== row.id);
-    $q.notify({ type: "positive", message: "Channel 已删除" });
+    $q.notify({ type: "positive", message: t("channelsPage.deleteOk") });
   });
 }
 </script>

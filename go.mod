@@ -18,18 +18,25 @@ replace trpc.group/trpc-go/trpc-agent-go/codeexecutor/container => ./pkg/trpc-ag
 require (
 	entgo.io/ent v0.14.5
 	github.com/aws/aws-sdk-go-v2/config v1.32.17
+	github.com/bwmarrin/discordgo v0.29.0
 	github.com/fsnotify/fsnotify v1.6.0
 	github.com/glebarez/go-sqlite v1.22.0
 	github.com/go-kratos/aip-go/ents v0.0.0-20251213081434-74ffa1fc1588
 	github.com/go-kratos/kratos/v2 v2.9.2
 	github.com/go-sql-driver/mysql v1.9.3
+	github.com/go-telegram-bot-api/telegram-bot-api/v5 v5.5.1
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/google/uuid v1.6.0
 	github.com/google/wire v0.6.0
 	github.com/gorilla/mux v1.8.1
+	github.com/larksuite/oapi-sdk-go/v3 v3.9.2
 	github.com/lib/pq v1.12.3
+	github.com/open-dingtalk/dingtalk-stream-sdk-go v0.9.1
 	github.com/pgvector/pgvector-go v0.3.0
 	github.com/prometheus/client_golang v1.23.2
+	github.com/slack-go/slack v0.23.1
+	github.com/srwiley/oksvg v0.0.0-20221011165216-be6e8873101c
+	github.com/srwiley/rasterx v0.0.0-20220730225603-2ab79fcdd4ef
 	github.com/xeipuuv/gojsonschema v1.2.0
 	go.einride.tech/aip v0.76.0
 	go.opentelemetry.io/otel v1.40.0
@@ -37,6 +44,7 @@ require (
 	go.opentelemetry.io/otel/sdk v1.40.0
 	go.opentelemetry.io/otel/trace v1.40.0
 	go.uber.org/automaxprocs v1.5.1
+	golang.org/x/image v0.32.0
 	golang.org/x/net v0.52.0
 	google.golang.org/genai v1.40.0
 	google.golang.org/genproto/googleapis/api v0.0.0-20260316180232-0b37fe3546d5
@@ -132,7 +140,9 @@ require (
 	github.com/go-openapi/jsonpointer v0.21.0 // indirect
 	github.com/go-openapi/swag v0.23.0 // indirect
 	github.com/go-playground/form/v4 v4.3.0 // indirect
+	github.com/go-resty/resty/v2 v2.6.0 // indirect
 	github.com/goccy/go-json v0.10.3 // indirect
+	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/glog v1.2.5 // indirect
 	github.com/gonfva/docxlib v0.0.0-20210517191039-d8f39cecf1ad // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.7 // indirect
@@ -180,6 +190,7 @@ require (
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/segmentio/asm v1.2.0 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
+	github.com/tencent-connect/botgo v0.2.1 // indirect
 	github.com/tidwall/gjson v1.18.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
@@ -204,7 +215,6 @@ require (
 	go.uber.org/multierr v1.10.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
-	golang.org/x/image v0.32.0 // indirect
 	golang.org/x/mod v0.33.0 // indirect
 	golang.org/x/oauth2 v0.35.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect

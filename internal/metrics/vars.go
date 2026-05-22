@@ -133,4 +133,35 @@ var (
 		Name: "aranea_model_router_fallback_total",
 		Help: "Model router fallbacks to base model by reason.",
 	}, []string{"reason"})
+
+	// ChannelDeliveryTotal counts outbound channel delivery attempts by platform and status.
+	ChannelDeliveryTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "aranea_channel_delivery_total",
+		Help: "Channel outbound delivery attempts by platform and status (delivered, retry, dead_letter, invalid).",
+	}, []string{"platform", "status"})
+
+	// ChannelDeliveryDuration tracks outbound send latency per platform.
+	ChannelDeliveryDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "aranea_channel_delivery_duration_seconds",
+		Help:    "Latency of channel outbound send attempts.",
+		Buckets: []float64{0.05, 0.1, 0.25, 0.5, 1, 2, 5, 15, 30},
+	}, []string{"platform"})
+
+	// ChannelRuntimeReconnectTotal counts runtime connector disconnect/reconnect cycles.
+	ChannelRuntimeReconnectTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "aranea_channel_runtime_reconnect_total",
+		Help: "Channel runtime connector reconnect events by platform, receive_mode, and outcome.",
+	}, []string{"platform", "receive_mode", "outcome"})
+
+	// ChannelRuntimeConnected tracks active long-lived channel connectors.
+	ChannelRuntimeConnected = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "aranea_channel_runtime_connected",
+		Help: "Number of active channel runtime connectors by platform and receive_mode.",
+	}, []string{"platform", "receive_mode"})
+
+	// ChannelStreamUpdateTotal counts in-place stream preview updates during channel turns.
+	ChannelStreamUpdateTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "aranea_channel_stream_update_total",
+		Help: "Channel streaming preview updates by platform, phase (delta|flush), and result (ok|error).",
+	}, []string{"platform", "phase", "result"})
 )

@@ -65,6 +65,7 @@
 │
 ├─ 新增 CSS 变量 ───────────────→ css/theme/_css-vars-light.sass + _css-vars-dark.sass
 │
+├─ 新增 Dialog 毛玻璃 / 宽度 ───→ css/theme/_glass-dialog.sass（`.cursor/rules/glass-dialog.mdc`）
 └─ 新增全局样式类 ──────────────→ css/app-global.sass
 ```
 
@@ -287,7 +288,7 @@ backdrop-filter: blur(var(--glass-blur-default));
 |------|------|
 | 按钮 | 圆角 10px；内边距 10px 20px；主按钮 `--color-accent` |
 | 卡片 | 玻璃 `--glass-surface` + blur 18px；圆角 16-20px；无重投影 |
-| 对话框 | `--glass-elevated` + `--glass-blur-elevated`；圆角 20-24px |
+| 对话框 | `app-dialog-card` + 可选 `app-glass-dialog`（`theme/_glass-dialog.sass`）；见 `.cursor/rules/glass-dialog.mdc` |
 | 输入 | 圆角 12-16px；聚焦边 `--color-accent` |
 | 间距刻度 | 4, 8, 12, 16, 20, 24, 32, 48, 64 px（昼夜同一套） |
 | 圆角阶梯 | 控件 5-8px；卡片 16-20px；大模块 28-36px；胶囊 56-980px |

@@ -43,7 +43,7 @@
 | 17 | Token/Usage (29) | **81** | 定价 UX 横幅已补 |
 | 20 | Graph (36) | **77** | 节点类型待补 |
 | 21 | Knowledge (37) | **78** | OCR pipeline ✅ |
-| 21 | Channel (17) | **78** | 验签单测已有 |
+| 21 | Channel (17) | **92** | P2/P3 闭合；流式 fail-fast + Feishu unary ID |
 | 23 | Memory (12–16) | **78** | P0 边界 ✅；双轨已文档化 |
 | 24 | Telemetry (24) | **76** | otel_id 已关联 |
 | 25 | Artifact (27) | **72** | 附件引用缺失 |

@@ -9,6 +9,19 @@ import (
 	"aranea-agents/internal/event"
 )
 
+func TestCountGlobalMonitorConnsExcludesProbe(t *testing.T) {
+	srv := NewWSServer(&conf.Server{Ws: &conf.Server_WS{Enable: true}}, event.NewBus(), event.NewBuffer(), nil, nil)
+	srv.conns["*"] = []*wsConn{
+		{probeMode: true},
+		{probeMode: false},
+		{probeMode: false},
+		{probeMode: false},
+	}
+	if n := srv.countGlobalMonitorConns(); n != 3 {
+		t.Fatalf("expected 3 monitor conns, got %d", n)
+	}
+}
+
 func TestWSUpstreamPingProducesPong(t *testing.T) {
 	srv := NewWSServer(&conf.Server{Ws: &conf.Server_WS{Enable: true}}, event.NewBus(), event.NewBuffer(), nil, nil)
 	wc := &wsConn{

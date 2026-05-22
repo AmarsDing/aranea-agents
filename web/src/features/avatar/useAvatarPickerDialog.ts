@@ -1,11 +1,26 @@
 import { computed, ref, watch, type Ref } from "vue";
 import { storeToRefs } from "pinia";
 import { useQuasar } from "quasar";
-import { avatarUploadErrorMessage, validateAvatarFileForUpload } from "../../features/avatar/api";
+import { avatarUploadErrorMessage, validateAvatarFileForUpload, type AvatarAsset } from "../../features/avatar/api";
+import { prepareAvatarUploadFile } from "../../features/avatar/prepareAvatarUpload";
 import { useAvatarCatalogStore } from "../../stores/avatar";
 
-/** 头像选择弹层：组合 Store + 本地 UI 状态；供 AgentAvatarPicker 使用，组件内不直接调 api/store */
-export function useAvatarPickerDialog(options: { modelValue: Ref<string>; open: Ref<boolean> }) {
+export type AvatarPickerScope = "agent" | "channel";
+
+function filterByScope(assets: AvatarAsset[], scope: AvatarPickerScope): AvatarAsset[] {
+  if (scope === "channel") {
+    return assets.filter((a) => String(a.key || a.id || "").startsWith("channel_"));
+  }
+  return assets.filter((a) => !String(a.key || a.id || "").startsWith("channel_"));
+}
+
+/** 头像选择弹层：组合 Store + 本地 UI 状态；供 AgentAvatarPicker / ChannelIconPicker 使用 */
+export function useAvatarPickerDialog(options: {
+  modelValue: Ref<string>;
+  open: Ref<boolean>;
+  scope?: AvatarPickerScope;
+}) {
+  const scope = options.scope ?? "agent";
   const store = useAvatarCatalogStore();
   const { pickerSystem, pickerMine } = storeToRefs(store);
   const $q = useQuasar();
@@ -16,7 +31,10 @@ export function useAvatarPickerDialog(options: { modelValue: Ref<string>; open: 
   const selectedId = ref(options.modelValue.value);
   const fileInput = ref<HTMLInputElement | null>(null);
 
-  const visibleAssets = computed(() => (tab.value === "system" ? pickerSystem.value : pickerMine.value));
+  const visibleAssets = computed(() => {
+    const list = tab.value === "system" ? pickerSystem.value : pickerMine.value;
+    return tab.value === "system" ? filterByScope(list, scope) : list;
+  });
 
   watch(
     () => options.open.value,
@@ -40,7 +58,11 @@ export function useAvatarPickerDialog(options: { modelValue: Ref<string>; open: 
     loading.value = true;
     try {
       await store.ensurePickerAssets();
-      if (!selectedId.value && pickerSystem.value[0]) selectedId.value = pickerSystem.value[0].id;
+      if (!selectedId.value) {
+        const first = visibleAssets.value[0];
+        if (first) selectedId.value = first.id;
+      }
+      await Promise.all(visibleAssets.value.slice(0, 40).map((a) => store.ensureThumbnail(a.id)));
     } finally {
       loading.value = false;
     }
@@ -54,12 +76,13 @@ export function useAvatarPickerDialog(options: { modelValue: Ref<string>; open: 
     }
     uploading.value = true;
     try {
-      const uploaded = await store.uploadAvatarFromFile(file);
+      const prepared = await prepareAvatarUploadFile(file);
+      const uploaded = await store.uploadAvatarFromFile(prepared);
       selectedId.value = uploaded.id;
       tab.value = "mine";
-      $q.notify({ type: "positive", message: "头像已上传" });
+      $q.notify({ type: "positive", message: scope === "channel" ? "图标已上传" : "头像已上传" });
     } catch (err) {
-      $q.notify({ type: "negative", message: avatarUploadErrorMessage(err) });
+      $q.notify({ type: "negative", message: err instanceof Error ? err.message : avatarUploadErrorMessage(err) });
     } finally {
       uploading.value = false;
     }
@@ -73,6 +96,7 @@ export function useAvatarPickerDialog(options: { modelValue: Ref<string>; open: 
     fileInput,
     visibleAssets,
     loadPicker,
-    uploadFromFile
+    uploadFromFile,
+    scope
   };
 }

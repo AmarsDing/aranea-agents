@@ -8,8 +8,8 @@
         outlined
         clearable
         debounce="200"
-        label="搜索 Channel"
-        placeholder="名称、Key、描述、类型…"
+        :label="t('channelsPage.searchLabel')"
+        :placeholder="t('channelsPage.searchPlaceholder')"
         @update:model-value="$emit('update:search', $event ?? '')"
       >
         <template #prepend><q-icon name="search" /></template>
@@ -21,7 +21,7 @@
         clearable
         emit-value
         map-options
-        label="平台类型"
+        :label="t('channelsPage.typeFilter')"
         :options="typeOptions"
         @update:model-value="$emit('update:typeFilter', $event ?? '')"
       />
@@ -32,20 +32,23 @@
         clearable
         emit-value
         map-options
-        label="状态"
+        :label="t('channelsPage.statusFilter')"
         :options="statusOptions"
         @update:model-value="$emit('update:statusFilter', $event ?? '')"
       />
       <div class="app-actions-bar app-actions-bar--start">
-        <q-btn flat rounded no-caps icon="restart_alt" label="重置" class="channel-toolbar-btn" @click="$emit('reset')" />
-        <q-btn flat rounded no-caps icon="refresh" label="刷新" class="channel-toolbar-btn" :loading="loading" @click="$emit('refresh')" />
+        <q-btn flat rounded no-caps icon="restart_alt" :label="t('channelsPage.reset')" class="channel-toolbar-btn" @click="$emit('reset')" />
+        <q-btn flat rounded no-caps icon="refresh" :label="t('channelsPage.refresh')" class="channel-toolbar-btn" :loading="loading" @click="$emit('refresh')" />
       </div>
     </q-card-section>
   </channel-glass-panel>
 </template>
 
 <script setup lang="ts">
+import { useI18n } from "vue-i18n";
 import ChannelGlassPanel from "./ChannelGlassPanel.vue";
+
+const { t } = useI18n();
 
 type Opt<T = string> = { label: string; value: T };
 

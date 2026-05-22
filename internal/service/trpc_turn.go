@@ -269,6 +269,9 @@ func (s *ChatService) runSingleAgentViaTRPC(
 	}
 	events = event.WrapFrameworkEventsWithOtel(events, emitter, traceBridge, traceBridge)
 	streamOpts := NewChatStreamConsumeOptions(s.td.Catalog.ToolUC, s.td.Catalog.Agents, s.td.Sessions)
+	if fn := channelStreamCallbackFromContext(runCtx); fn != nil {
+		streamOpts.OnReplyDelta = fn
+	}
 	result := chatagent.ConsumeEventStreamWithFirstByte(firstByteCtx, runCtx, events, s.td.Pipeline.Bus, projectMeta, &firstByteReceived, streamOpts)
 	resultPromptTok = result.PromptTok
 	resultCompletionTok = result.CompletionTok
@@ -295,6 +298,15 @@ func (s *ChatService) runSingleAgentViaTRPC(
 		arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "timeout").Observe(time.Since(turnStart).Seconds())
 		s.setRunStatus(sessionID, runID, "failed", "turn timeout")
 		return userMsg, biz.ChatMessage{}, TurnError(TurnErrTurnTimeout, defaultTurnTimeout.String())
+	}
+
+	if err := streamPreviewTurnError(runCtx, result); err != nil {
+		detail := err.Error()
+		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
+		emitter.LogError("chat.stream.preview", "渠道流式预览更新失败", event.P("error", detail))
+		arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "stream_preview_error").Observe(time.Since(turnStart).Seconds())
+		s.setRunStatus(sessionID, runID, "failed", detail)
+		return userMsg, biz.ChatMessage{}, TurnError(TurnErrStreamPreviewFailed, detail)
 	}
 
 	replyText := strings.TrimSpace(result.Reply.String())

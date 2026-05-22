@@ -1,0 +1,83 @@
+package telegram
+
+import (
+	"context"
+	"fmt"
+	"strconv"
+	"strings"
+
+	"aranea-agents/internal/biz"
+	"aranea-agents/internal/channel/port"
+	"aranea-agents/internal/channel/runtime"
+
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+)
+
+func init() {
+	runtime.RegisterStarter("telegram", "polling", RunPolling)
+}
+
+// RunPolling listens via getUpdates (MuseBot StartTelegramRobot).
+func RunPolling(
+	ctx context.Context,
+	ch biz.Channel,
+	creds []biz.ChannelCredential,
+	lookup runtime.CredentialLookup,
+	handler runtime.InboundHandler,
+) error {
+	token, err := lookup(ctx, creds, "bot_token")
+	if err != nil {
+		return err
+	}
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return fmt.Errorf("telegram polling: bot_token required")
+	}
+	bot, err := tgbotapi.NewBotAPI(token)
+	if err != nil {
+		return fmt.Errorf("telegram polling: new bot: %w", err)
+	}
+
+	u := tgbotapi.NewUpdate(0)
+	u.Timeout = 60
+	updates := bot.GetUpdatesChan(u)
+	for {
+		select {
+		case <-ctx.Done():
+			bot.StopReceivingUpdates()
+			return ctx.Err()
+		case update, ok := <-updates:
+			if !ok {
+				return nil
+			}
+			ev, ok := parsePollingUpdate(update)
+			if !ok || strings.TrimSpace(ev.Text) == "" {
+				continue
+			}
+			ev.PlatformType = "telegram"
+			_ = handler.ProcessInbound(ctx, ch, ev)
+		}
+	}
+}
+
+func parsePollingUpdate(update tgbotapi.Update) (port.InboundEvent, bool) {
+	if update.Message == nil {
+		return port.InboundEvent{}, false
+	}
+	msg := update.Message
+	chatID := strconv.FormatInt(msg.Chat.ID, 10)
+	text := strings.TrimSpace(msg.Text)
+	peerID := chatID
+	if msg.From != nil && msg.From.ID != 0 {
+		peerID = strconv.FormatInt(msg.From.ID, 10)
+	}
+	return port.InboundEvent{
+		PeerID:         peerID,
+		Text:           text,
+		IdempotencyKey: fmt.Sprintf("telegram:%d", msg.MessageID),
+		OutboundMeta: map[string]string{
+			"recipient": chatID,
+			"chat_id":   chatID,
+		},
+	}, true
+}

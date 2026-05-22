@@ -69,6 +69,8 @@ export function buildWsUrl(params: {
   /** Only used for cross-origin WS when session cookie is not sent (legacy); omit for same-origin + HttpOnly cookie. */
   token?: string;
   logEnabled?: boolean;
+  /** Lightweight health probe: system channel only; does not count toward global monitor conn limit. */
+  probe?: boolean;
 }): string {
   const origin = getWsOrigin();
   const protocol = origin.startsWith("https") ? "wss" : "ws";
@@ -84,11 +86,14 @@ export function buildWsUrl(params: {
   if (params.logEnabled) {
     q.set("log_enabled", "1");
   }
+  if (params.probe) {
+    q.set("probe", "1");
+  }
   return `${wsOrigin}/v1/ws?${q.toString()}`;
 }
 
 export function buildHealthWsUrl(): string {
-  return buildWsUrl({ sessionId: GLOBAL_WS_SESSION_ID });
+  return buildWsUrl({ sessionId: GLOBAL_WS_SESSION_ID, probe: true });
 }
 
 /**

@@ -7,6 +7,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/dingtalk"
+	"aranea-agents/internal/channel/port"
 )
 
 func (h *ChannelIngress) handleDingTalkWebhook(w http.ResponseWriter, r *http.Request, chRow biz.Channel) error {
@@ -30,30 +31,17 @@ func (h *ChannelIngress) handleDingTalkWebhook(w http.ResponseWriter, r *http.Re
 		w.WriteHeader(http.StatusOK)
 		return nil
 	}
-
-	routing, err := biz.ParseChannelRouting(chRow.ConfigJSON)
-	if err != nil {
-		_ = h.recordDelivery(r.Context(), chRow.ID, "error", map[string]any{"phase": "routing", "error": err.Error()}, err.Error())
-		http.Error(w, "routing", http.StatusInternalServerError)
-		return nil
-	}
 	peerID := ingressFirstNonEmpty(parsed.SenderStaffID, parsed.ConversationID, parsed.SenderNick)
-	peerKey := biz.PeerKeyForSession(routing.DMScope, peerID)
-	reply, err := h.runChatTurn(r.Context(), chRow, "dingtalk", peerKey, peerID, parsed.Text)
-	if err != nil {
-		_ = h.recordDelivery(r.Context(), chRow.ID, "error", map[string]any{"phase": "chat", "error": err.Error()}, err.Error())
-		http.Error(w, "agent error", http.StatusInternalServerError)
-		return nil
-	}
 	idempotency := "dingtalk:" + parsed.ConversationID + ":" + strings.TrimSpace(r.URL.Query().Get("timestamp"))
-	if err := h.enqueueOutboundReply(r.Context(), chRow, "dingtalk", parsed.SessionWebhook, reply, map[string]string{
-		"session_webhook": parsed.SessionWebhook,
-	}, idempotency); err != nil {
-		_ = h.recordDelivery(r.Context(), chRow.ID, "error", map[string]any{"phase": "enqueue", "error": err.Error()}, err.Error())
-		http.Error(w, "queue", http.StatusInternalServerError)
-		return nil
-	}
-	_ = h.recordDelivery(r.Context(), chRow.ID, "queued", map[string]any{"conversation_id": parsed.ConversationID}, "")
-	w.WriteHeader(http.StatusOK)
+	h.processInboundHTTP(w, r, chRow, port.InboundEvent{
+		PlatformType:   "dingtalk",
+		PeerID:         peerID,
+		Text:           parsed.Text,
+		IdempotencyKey: idempotency,
+		OutboundMeta: map[string]string{
+			"recipient":       parsed.SessionWebhook,
+			"session_webhook": parsed.SessionWebhook,
+		},
+	})
 	return nil
 }

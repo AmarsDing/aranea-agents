@@ -1,0 +1,143 @@
+// ── 全局 Dialog 毛玻璃（UX §5.2a；Channel 编辑弹窗定稿参数）──
+// 用法：q-card 加 app-dialog-card（宽度修饰符可选）+ 分区布局加 app-glass-dialog
+// 详见 .cursor/rules/glass-dialog.mdc
+
+=app-dialog-fixed-width($px, $viewport: 94vw)
+  width: $px !important
+  min-width: min($px, $viewport) !important
+  max-width: min($px, $viewport) !important
+
+body:not(.body--dark)
+  --app-dialog-shell-bg: rgba(252, 251, 249, 0.22)
+  --app-dialog-chrome-bg: rgba(248, 247, 247, 0.26)
+  --app-dialog-body-bg: rgba(255, 255, 255, 0.3)
+
+body.body--dark
+  --app-dialog-shell-bg: rgba(10, 16, 26, 0.48)
+  --app-dialog-chrome-bg: rgba(18, 26, 40, 0.58)
+  --app-dialog-body-bg: rgba(14, 22, 34, 0.42)
+
+// 压过 app-global 页面内 .q-card 实色底（仅 Dialog 内）
+body:not(.body--dark) .q-dialog .q-card.app-dialog-card,
+body:not(.body--dark) .q-dialog .q-card.app-glass-dialog
+  background: var(--app-dialog-shell-bg) !important
+  backdrop-filter: blur(var(--glass-blur-elevated)) saturate(1.08) !important
+  -webkit-backdrop-filter: blur(var(--glass-blur-elevated)) saturate(1.08) !important
+
+body.body--dark .q-dialog .q-card.app-dialog-card,
+body.body--dark .q-dialog .q-card.app-glass-dialog
+  background: var(--app-dialog-shell-bg) !important
+  backdrop-filter: blur(var(--glass-blur-elevated)) saturate(1.08) !important
+  -webkit-backdrop-filter: blur(var(--glass-blur-elevated)) saturate(1.08) !important
+
+// 外壳：圆角、边框、单层 blur（所有 app-dialog-card）
+.q-dialog .q-card.app-dialog-card,
+.q-dialog .q-card.app-glass-dialog
+  display: flex
+  flex-direction: column
+  max-height: min(92vh, 920px)
+  border-radius: 24px
+  border: 1px solid var(--glass-border) !important
+  box-shadow: var(--glass-inner-highlight)
+
+// 遮罩模糊页面，弹窗才有透视感
+body:not(.body--dark) .q-dialog:has(.app-dialog-card) > .q-dialog__backdrop,
+body:not(.body--dark) .q-dialog:has(.app-glass-dialog) > .q-dialog__backdrop
+  backdrop-filter: blur(10px)
+  -webkit-backdrop-filter: blur(10px)
+
+// ── 宽度阶梯（与业务修饰符叠加）──
+.app-dialog-card
+  width: 860px
+  max-width: min(860px, 94vw)
+
+.app-dialog-card--sm
+  width: 640px
+  max-width: min(640px, 94vw)
+
+.app-dialog-card--md
+  width: 720px
+  max-width: min(720px, 94vw)
+
+.app-dialog-card--lg
+  width: 880px
+  max-width: min(880px, 94vw)
+
+.app-dialog-card--xl
+  width: 980px
+  max-width: min(980px, 94vw)
+
+// 900px：须在 .q-dialog 内声明，防止 q-card 随内容收缩
+.q-dialog .q-card.app-dialog-card--900
+  +app-dialog-fixed-width(900px, 96vw)
+
+// ── 分区布局（头 / 滚动区 / 底栏）──
+.app-glass-dialog .q-card__section,
+.app-glass-dialog .q-separator
+  background: transparent !important
+
+.app-glass-dialog__head
+  flex-shrink: 0
+  padding: 16px 18px 14px
+  background: var(--app-dialog-chrome-bg) !important
+  backdrop-filter: blur(var(--glass-blur-default)) saturate(1.05)
+  -webkit-backdrop-filter: blur(var(--glass-blur-default)) saturate(1.05)
+
+.app-glass-dialog__title
+  color: var(--color-text-heading)
+  font-size: 17px
+  font-weight: 600
+  line-height: 1.35
+
+.app-glass-dialog__subtitle
+  margin-top: 4px
+  color: var(--color-text-secondary)
+  font-size: 13px
+  line-height: 1.45
+
+.app-glass-dialog__scroll
+  flex: 1
+  min-height: 0
+  overflow-y: auto
+  scrollbar-width: none
+  background: var(--app-dialog-body-bg) !important
+  backdrop-filter: blur(var(--glass-blur-default)) saturate(1.04)
+  -webkit-backdrop-filter: blur(var(--glass-blur-default)) saturate(1.04)
+
+  &::-webkit-scrollbar
+    display: none
+
+.app-glass-dialog__body
+  background: transparent !important
+
+.q-dialog .q-card.app-dialog-card .q-card__actions,
+.q-dialog .q-card.app-glass-dialog .q-card__actions
+  flex-shrink: 0
+  padding: 12px 26px
+  border-top: 1px solid var(--glass-border) !important
+  background: var(--app-dialog-chrome-bg) !important
+  backdrop-filter: blur(var(--glass-blur-default)) saturate(1.05)
+  -webkit-backdrop-filter: blur(var(--glass-blur-default)) saturate(1.05)
+
+// 无独立底栏 class 时仍用 chrome 底（简单 Dialog）
+.q-dialog .q-card.app-dialog-card:not(.app-glass-dialog) .q-card__actions:not(.app-glass-dialog__actions)
+  padding: var(--space-3) var(--space-5) var(--space-5)
+
+.app-dialog-body
+  padding: var(--space-4) var(--space-5)
+
+.app-dialog-section
+  padding: var(--space-4)
+  margin-bottom: var(--space-4)
+  border: 1px solid var(--glass-border)
+  border-radius: 18px
+  background: color-mix(in srgb, var(--glass-surface) 42%, transparent)
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+
+  &:last-child
+    margin-bottom: 0
+
+// 业务挂钩：Provider 向导滚动区沿用 dialog body 底
+.app-glass-dialog .provider-wizard-scroll
+  background: var(--app-dialog-body-bg) !important

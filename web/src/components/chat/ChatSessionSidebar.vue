@@ -48,6 +48,14 @@
                 </div>
                 <div class="chat-session-meta-row row items-center no-wrap">
                   <q-badge
+                    v-if="sessionChannelLabel(session)"
+                    dense
+                    outline
+                    color="teal"
+                    class="q-mr-xs chat-session-channel-badge"
+                    :label="sessionChannelLabel(session)"
+                  />
+                  <q-badge
                     class="chat-session-time-badge"
                     rounded
                     :label="shortTime(session)"
@@ -152,6 +160,7 @@ import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useQuasar } from "quasar";
 import type { DeleteKind, SessionView } from "./types";
+import { isChannelSession, parseChannelSessionMeta } from "../../features/chat/channelSessionMeta";
 
 const props = defineProps<{
   open: boolean;
@@ -245,6 +254,16 @@ function sessionProgressColor(sessionId: string) {
   const active = props.selectedSessionId === sessionId;
   if (active) return props.isDark ? "cyan-4" : "amber-8";
   return props.isDark ? "blue-grey-5" : "brown-5";
+}
+
+function sessionChannelLabel(session: SessionView): string {
+  const meta = parseChannelSessionMeta(session.metadata_json);
+  if (meta?.platform) {
+    const key = meta.channel_key?.trim();
+    return key ? `${meta.platform} · ${key}` : meta.platform;
+  }
+  if (isChannelSession(session.metadata_json, session.title)) return "channel";
+  return "";
 }
 
 function shortTime(session: SessionView) {

@@ -126,16 +126,16 @@
     </section>
 
     <q-dialog v-model="dialogOpen" persistent>
-      <q-card class="category-dialog app-dialog-card app-dialog-card--md">
-        <q-card-section class="category-dialog__head row items-start justify-between no-wrap">
+      <q-card class="category-dialog app-dialog-card app-dialog-card--md app-glass-dialog">
+        <q-card-section class="app-glass-dialog__head category-dialog__head row items-start justify-between no-wrap">
           <div class="min-width-0">
-            <div class="category-dialog__title">{{ editingId ? "编辑分类" : `新增${levelLabel(form.level)}` }}</div>
-            <div class="category-dialog__subtitle">固定三层结构：行业 → 部门 → 职位</div>
+            <div class="app-glass-dialog__title category-dialog__title">{{ editingId ? "编辑分类" : `新增${levelLabel(form.level)}` }}</div>
+            <div class="app-glass-dialog__subtitle category-dialog__subtitle">固定三层结构：行业 → 部门 → 职位</div>
           </div>
           <q-btn flat round dense icon="close" v-close-popup />
         </q-card-section>
         <q-separator />
-        <q-card-section class="category-dialog__body">
+        <q-card-section class="app-glass-dialog__body category-dialog__body">
           <div class="app-form-field-grid app-form-field-grid--2col category-dialog__form">
             <q-input v-model.trim="form.name" class="category-control" dense outlined label="名称 *" />
             <q-input v-model.number="form.sort_order" class="category-control" dense outlined type="number" label="排序" />
@@ -165,7 +165,7 @@
             />
           </div>
         </q-card-section>
-        <q-card-actions align="right" class="app-actions-bar category-dialog__actions">
+        <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions category-dialog__actions">
           <q-btn flat rounded no-caps label="取消" v-close-popup />
           <q-btn color="primary" rounded unelevated no-caps label="保存" :loading="saving" @click="saveNode" />
         </q-card-actions>

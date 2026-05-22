@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -229,17 +230,28 @@ type sendMsgReq struct {
 
 // SendTextMessageOpenID posts a text message to a user (receive_id_type=open_id).
 func SendTextMessageOpenID(ctx context.Context, httpClient *http.Client, region, tenantToken, openID, text string) error {
-	openID = strings.TrimSpace(openID)
+	return SendTextMessage(ctx, httpClient, region, tenantToken, openID, ReceiveIDTypeOpenID, text)
+}
+
+// SendTextMessage posts a text IM message with the given receive_id_type.
+func SendTextMessage(ctx context.Context, httpClient *http.Client, region, tenantToken, receiveID, receiveIDType, text string) error {
+	receiveID = strings.TrimSpace(receiveID)
 	text = strings.TrimSpace(text)
-	if openID == "" || text == "" {
-		return fmt.Errorf("lark send: open_id and text required")
+	if receiveID == "" || text == "" {
+		return fmt.Errorf("lark send: receive_id and text required")
 	}
 	if httpClient == nil {
 		httpClient = http.DefaultClient
 	}
+	switch strings.ToLower(strings.TrimSpace(receiveIDType)) {
+	case ReceiveIDTypeUserID, ReceiveIDTypeChatID:
+		receiveIDType = strings.ToLower(strings.TrimSpace(receiveIDType))
+	default:
+		receiveIDType = ReceiveIDTypeOpenID
+	}
 	content, _ := json.Marshal(map[string]string{"text": text})
 	reqBody := sendMsgReq{
-		ReceiveID: openID,
+		ReceiveID: receiveID,
 		MsgType:   "text",
 		Content:   string(content),
 	}
@@ -247,7 +259,7 @@ func SendTextMessageOpenID(ctx context.Context, httpClient *http.Client, region,
 	if err != nil {
 		return err
 	}
-	u := APIBase(region) + "/open-apis/im/v1/messages?receive_id_type=open_id"
+	u := APIBase(region) + "/open-apis/im/v1/messages?receive_id_type=" + url.QueryEscape(receiveIDType)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(b))
 	if err != nil {
 		return err

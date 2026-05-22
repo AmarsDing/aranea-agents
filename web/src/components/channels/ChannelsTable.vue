@@ -11,20 +11,30 @@
     >
       <template #body-cell-name="props">
         <q-td :props="props">
-          <div class="row items-center no-wrap q-gutter-xs">
-            <q-icon v-if="isChannelConnected(props.row)" name="circle" color="positive" size="10px">
-              <q-tooltip>连接正常</q-tooltip>
-            </q-icon>
-            <div class="text-weight-bold">{{ props.row.name }}</div>
+          <div class="row items-center no-wrap q-gutter-sm">
+            <channel-platform-avatar
+              :type="channelType(props.row)"
+              :label="props.row.name"
+              :metadata="channelMetadata(props.row)"
+              size="32px"
+            />
+            <div class="min-width-0">
+              <div class="row items-center no-wrap q-gutter-xs">
+                <q-icon v-if="isChannelConnected(props.row)" name="circle" color="positive" size="10px">
+                  <q-tooltip>连接正常</q-tooltip>
+                </q-icon>
+                <div class="text-weight-bold">{{ props.row.name }}</div>
+              </div>
+              <div class="text-caption muted-caption">{{ props.row.key }}</div>
+            </div>
           </div>
-          <div class="text-caption muted-caption">{{ props.row.key }}</div>
         </q-td>
       </template>
 
       <template #body-cell-type="props">
         <q-td :props="props">
-          <q-chip dense square class="channel-type-chip">{{ catalogLabelForType(catalog, channelType(props.row)) }}</q-chip>
-          <q-chip dense outline class="channel-mode-chip">{{ receiveMode(props.row) }}</q-chip>
+          <span class="channel-tag channel-tag--type">{{ catalogLabelForType(catalog, channelType(props.row)) }}</span>
+          <span class="channel-tag channel-tag--mode">{{ receiveMode(props.row) }}</span>
         </q-td>
       </template>
 
@@ -46,7 +56,6 @@
         <q-td :props="props">
           <q-toggle
             :model-value="props.row.enabled"
-            color="primary"
             class="channel-enable-toggle"
             :disable="togglingId === props.row.id"
             @update:model-value="$emit('toggleEnabled', props.row, Boolean($event))"
@@ -73,7 +82,6 @@
             round
             class="channel-icon-btn"
             icon="link"
-            color="primary"
             @click="$emit('copyWebhook', props.row)"
           >
             <q-tooltip>复制 Webhook URL</q-tooltip>
@@ -84,16 +92,15 @@
             round
             class="channel-icon-btn"
             icon="science"
-            color="primary"
             :loading="testingId === props.row.id"
             @click="$emit('testConnection', props.row)"
           >
             <q-tooltip>测试连接</q-tooltip>
           </q-btn>
-          <q-btn flat dense round class="channel-icon-btn" icon="edit" color="primary" @click="$emit('edit', props.row)">
+          <q-btn flat dense round class="channel-icon-btn" icon="edit" @click="$emit('edit', props.row)">
             <q-tooltip>编辑</q-tooltip>
           </q-btn>
-          <q-btn flat dense round class="channel-icon-btn channel-icon-btn--danger" icon="delete" color="negative" @click="$emit('remove', props.row)">
+          <q-btn flat dense round class="channel-icon-btn channel-icon-btn--danger" icon="delete" @click="$emit('remove', props.row)">
             <q-tooltip>删除</q-tooltip>
           </q-btn>
         </q-td>
@@ -105,6 +112,7 @@
 <script setup lang="ts">
 import type { QTableColumn } from "quasar";
 import ChannelGlassPanel from "./ChannelGlassPanel.vue";
+import ChannelPlatformAvatar from "./ChannelPlatformAvatar.vue";
 import type { ChannelCatalogItem, ChannelRow } from "../../features/channels/types";
 import {
   catalogLabelForType,
@@ -155,17 +163,31 @@ const columns: QTableColumn<ChannelRow>[] = [
 .channels-data-table :deep(thead tr th)
   color: var(--color-text-secondary)
 
-.channel-type-chip
-  background: var(--color-accent)
-  color: var(--color-on-accent)
+.channel-tag
+  display: inline-block
+  margin-right: 6px
+  margin-bottom: 2px
+  padding: 2px 8px
+  border-radius: 6px
+  font-size: 11px
+  font-weight: 600
+  line-height: 1.35
+  vertical-align: middle
 
-body.body--dark .channel-type-chip
-  background: rgba(0, 229, 255, 0.15)
+.channel-tag--type
+  border: 1px solid color-mix(in srgb, var(--color-accent) 28%, var(--glass-border))
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--glass-surface))
+  color: var(--color-text-heading)
+
+body.body--dark .channel-tag--type
   color: var(--color-neon-cyan)
-  border: 1px solid rgba(0, 229, 255, 0.45)
+  border-color: color-mix(in srgb, var(--color-neon-cyan) 35%, var(--glass-border))
+  background: color-mix(in srgb, var(--color-neon-cyan) 12%, var(--glass-surface))
 
-.channel-mode-chip
-  border-color: var(--glass-border)
+.channel-tag--mode
+  border: 1px solid var(--glass-border)
+  color: var(--color-text-secondary)
+  background: transparent
 
 .channel-icon-btn
   color: var(--color-icon-muted)

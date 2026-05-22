@@ -286,8 +286,15 @@ func provideChannelHealthScanner(uc *biz.ChannelUsecase, logger log.Logger) *job
 	return jobs.NewChannelHealthScanner(0, uc, logger)
 }
 
-func provideChannelDeliveryWorker(channels *biz.ChannelUsecase, ingress *service.ChannelIngress) *service.ChannelDeliveryWorker {
-	return service.NewChannelDeliveryWorker(channels, ingress)
+func provideChannelDeliveryWorker(channels *biz.ChannelUsecase, ingress *service.ChannelIngress, logger log.Logger) *service.ChannelDeliveryWorker {
+	return service.NewChannelDeliveryWorker(channels, ingress, logger)
+}
+
+func provideChannelRuntime(channels *biz.ChannelUsecase, ingress *service.ChannelIngress) *service.ChannelRuntime {
+	if service.ChannelRuntimeDisabled() {
+		return nil
+	}
+	return service.NewChannelRuntime(channels, ingress)
 }
 
 func provideEventStoreCleanup(store *biz.EventStoreUsecase, logger log.Logger) *jobs.EventStoreCleanup {
@@ -399,6 +406,7 @@ type wireOut struct {
 	ProviderHealthScanner  *jobs.ProviderHealthScanner
 	ChannelHealthScanner   *jobs.ChannelHealthScanner
 	ChannelDeliveryScanner *jobs.ChannelDeliveryWorker
+	ChannelRuntime         *service.ChannelRuntime
 	EventStoreCleanup      *jobs.EventStoreCleanup
 	ToolAuditCleanup       *jobs.ToolAuditCleanup
 	FlowLogCleanup         *jobs.FlowLogCleanup
@@ -415,6 +423,7 @@ func provideWireOut(
 	providerHealth *jobs.ProviderHealthScanner,
 	channelHealth *jobs.ChannelHealthScanner,
 	channelDelivery *jobs.ChannelDeliveryWorker,
+	channelRuntime *service.ChannelRuntime,
 	eventStoreCleanup *jobs.EventStoreCleanup,
 	toolAuditCleanup *jobs.ToolAuditCleanup,
 	flowLogCleanup *jobs.FlowLogCleanup,
@@ -423,6 +432,7 @@ func provideWireOut(
 		App: app, CronRunner: runner, SkillWatch: skillWatch, AutoMemory: autoMem,
 		MCPHealthProbe: mcpHealth, A2AGatewayHealthProbe: a2aHealth, EvolutionScanner: evoScan, ProviderHealthScanner: providerHealth,
 		ChannelHealthScanner: channelHealth, ChannelDeliveryScanner: channelDelivery,
+		ChannelRuntime: channelRuntime,
 		EventStoreCleanup: eventStoreCleanup, ToolAuditCleanup: toolAuditCleanup,
 		FlowLogCleanup: flowLogCleanup,
 	}
@@ -520,6 +530,7 @@ func wireApp(*conf.Server, *conf.Data, log.Logger) (wireOut, func(), error) {
 		provideChannelHealthScanner,
 		provideChannelDeliveryWorker,
 		provideChannelDeliveryScanner,
+		provideChannelRuntime,
 		provideEventStoreCleanup,
 		provideToolAuditCleanup,
 		provideFlowLogCleanup,

@@ -1,58 +1,37 @@
 package biz
 
+// channelCatalog aligns with MuseBot-supported messaging platforms (robot/*.go).
+// bundled=true means adapter exists in this binary; false = spec only (see docs/需求/17 channel.md).
 var channelCatalog = []ChannelCatalogItem{
-	channelCatalogItem("qq", "QQ (NapCat)", "国内", "websocket", "QQ 个人号，NapCat OneBot11 协议", 10, true),
-	channelCatalogItem("qqbot", "QQ 官方机器人", "国内", "webhook", "QQ 开放平台机器人", 20, true),
 	feishuCatalogItem(),
-	channelCatalogItem("dingtalk", "钉钉", "办公协作", "webhook", "钉钉机器人与事件回调", 40, true),
-	channelCatalogItem("wecom", "企业微信智能机器人", "办公协作", "webhook", "群机器人或智能机器人", 50, true),
-	channelCatalogItem("wecom-app", "企业微信自建应用", "办公协作", "webhook", "企业微信自建应用通道", 60, true),
-	channelCatalogItem("openclaw-weixin", "微信（ClawBot）", "国内", "qrcode", "腾讯官方 WeChat ClawBot", 70, true),
-	channelCatalogItem("wechat", "微信开放平台", "国内", "webhook", "公众号、小程序、企业微信", 80, true),
-	channelCatalogItem("telegram", "Telegram", "海外", "webhook", "Bot API 接入", 90, true),
-	channelCatalogItem("whatsapp", "WhatsApp", "海外", "webhook", "Meta Cloud API 或 BSP", 100, true),
-	channelCatalogItem("facebook", "Facebook Messenger", "海外", "webhook", "Page Webhook 与 Messenger", 110, false),
-	channelCatalogItem("discord", "Discord", "海外", "gateway", "Bot Gateway / Interaction", 120, true),
-	channelCatalogItem("slack", "Slack", "办公协作", "event", "Slack App Events / Bot", 130, true),
-	channelCatalogItem("msteams", "Microsoft Teams", "办公协作", "webhook", "Teams Bot / Graph", 140, false),
-	channelCatalogItem("googlechat", "Google Chat", "办公协作", "webhook", "Google Chat App", 150, false),
-	channelCatalogItem("line", "LINE", "海外", "webhook", "LINE Messaging API", 160, false),
-	channelCatalogItem("matrix", "Matrix", "海外", "sync", "Matrix Bot", 170, false),
-	channelCatalogItem("mattermost", "Mattermost", "办公协作", "websocket", "Mattermost Bot", 180, false),
-	channelCatalogItem("signal", "Signal", "海外", "daemon", "Signal CLI/daemon", 190, false),
-	channelCatalogItem("zalo", "Zalo", "海外", "webhook", "Zalo Official Account", 200, false),
-	channelCatalogItem("zalouser", "Zalo User", "海外", "polling", "Zalo 用户侧通道", 210, false),
-	channelCatalogItem("imessage", "iMessage", "海外", "bridge", "BlueBubbles / macOS 桥接", 220, false),
-	channelCatalogItem("bluebubbles", "BlueBubbles", "海外", "bridge", "iMessage Android/Server 桥接", 230, false),
-	channelCatalogItem("nextcloud-talk", "Nextcloud Talk", "办公协作", "polling", "Nextcloud Talk Bot", 240, false),
-	channelCatalogItem("synology-chat", "Synology Chat", "办公协作", "webhook", "Synology Chat Bot", 250, false),
-	channelCatalogItem("irc", "IRC", "海外", "socket", "IRC Bot", 260, false),
-	channelCatalogItem("nostr", "Nostr", "海外", "relay", "Nostr relay 订阅", 270, false),
-	channelCatalogItem("twitch", "Twitch", "海外", "eventsub", "Twitch Chat / EventSub", 280, false),
-	channelCatalogItem("tlon", "Tlon", "海外", "plugin", "Tlon / Urbit 集成", 290, false),
-	channelCatalogItem("voice-call", "Voice Call", "语音", "webhook", "Twilio / Telnyx / Plivo / mock", 300, false),
-	channelCatalogItem("qa-channel", "QA Channel", "测试", "plugin", "QA 与回归测试通道", 310, true),
+	dingtalkCatalogItem(),
+	wecomCatalogItem("wecom", "企业微信智能机器人", "群机器人或智能机器人", 30),
+	wecomCatalogItem("wecom-app", "企业微信自建应用", "企业微信自建应用", 40),
+	wechatCatalogItem(),
+	slackCatalogItem(),
+	telegramCatalogItem(),
+	discordCatalogItem(),
+	qqCatalogItem(),
+	personalQQCatalogItem(),
 }
 
-func channelCatalogItem(channelType, label, group, receiveMode, description string, sortOrder int, supportsTest bool) ChannelCatalogItem {
+func channelCatalogItem(channelType, label, group, receiveMode, description string, sortOrder int, bundled, supportsTest, supportsWebhook bool) ChannelCatalogItem {
+	modes := []string{receiveMode}
 	return ChannelCatalogItem{
 		Type:            channelType,
 		Label:           label,
 		Group:           group,
 		Description:     description,
-		ReceiveModes:    []string{receiveMode},
+		ReceiveModes:    modes,
 		Icon:            channelType,
-		Bundled:         true,
+		Bundled:         bundled,
 		SupportsTest:    supportsTest,
-		SupportsWebhook: receiveMode == "webhook" || receiveMode == "event" || receiveMode == "eventsub",
+		SupportsWebhook: supportsWebhook,
 		ConfigSchema: map[string]any{
 			"type":        "object",
 			"description": "Non-sensitive channel configuration",
 		},
-		CredentialSchema: map[string]any{
-			"type":     "object",
-			"required": requiredCredentials(channelType),
-		},
+		CredentialSchema: credentialSchemaFor(channelType),
 		UIHints: map[string]any{
 			"group":        group,
 			"receive_mode": receiveMode,
@@ -62,76 +41,65 @@ func channelCatalogItem(channelType, label, group, receiveMode, description stri
 }
 
 func feishuCatalogItem() ChannelCatalogItem {
-	return ChannelCatalogItem{
-		Type:            "feishu",
-		Label:           "飞书 / Lark",
-		Group:           "办公协作",
-		Description:     "事件订阅、机器人消息、多账号",
-		ReceiveModes:    []string{"webhook"},
-		Icon:            "feishu",
-		Bundled:         true,
-		SupportsTest:    true,
-		SupportsWebhook: true,
-		ConfigSchema: map[string]any{
-			"type":        "object",
-			"description": "Non-sensitive Feishu / Lark configuration",
-			"properties": map[string]any{
-				"type": map[string]any{
-					"type":        "string",
-					"const":       "feishu",
-					"description": "platform type",
-				},
-				"receive_mode": map[string]any{"type": "string"},
-				"webhook": map[string]any{
-					"type": "object",
-					"properties": map[string]any{
-						"path": map[string]any{"type": "string"},
-					},
-				},
-				"routing": map[string]any{
-					"type": "object",
-					"properties": map[string]any{
-						"default_agent_id": map[string]any{"type": "string"},
-						"default_team_id":  map[string]any{"type": "string"},
-						"dm_scope": map[string]any{
-							"type": "string",
-							"enum": []string{"main", "per-peer", "per-channel-peer"},
-						},
-					},
-				},
-				"config": map[string]any{
-					"type":     "object",
-					"required": []string{"app_id"},
-					"properties": map[string]any{
-						"app_id": map[string]any{"type": "string", "description": "Feishu app id"},
-						"region": map[string]any{
-							"type":        "string",
-							"description": "feishu (China) or lark (international)",
-							"enum":        []string{"feishu", "lark"},
-						},
-					},
+	item := channelCatalogItem("feishu", "飞书 / Lark", "办公协作", "websocket", "larkws 长连接（MuseBot 默认）；Webhook 暂未开放", 10, true, true, false)
+	item.ReceiveModes = []string{"websocket"}
+	item.ConfigSchema = map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"config": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"app_id":          map[string]any{"type": "string"},
+					"region":          map[string]any{"type": "string", "enum": []string{"feishu", "lark"}},
+					"connection_mode": map[string]any{"type": "string", "enum": []string{"websocket"}},
+					"require_mention": map[string]any{"type": "boolean"},
 				},
 			},
 		},
-		CredentialSchema: map[string]any{
-			"type":     "object",
-			"required": requiredCredentials("feishu"),
-			"properties": map[string]any{
-				"app_secret": map[string]any{"type": "string", "description": "App secret"},
-				"encrypt_key": map[string]any{
-					"type":        "string",
-					"description": "Event subscription Encrypt Key (for signature verification)",
-				},
-				"verification_token": map[string]any{
-					"type":        "string",
-					"description": "URL verification token from Feishu console",
-				},
-			},
-		},
-		UIHints: map[string]any{
-			"group":        "办公协作",
-			"receive_mode": "webhook",
-		},
-		SortOrder: 30,
 	}
+	return item
+}
+
+func dingtalkCatalogItem() ChannelCatalogItem {
+	item := channelCatalogItem("dingtalk", "钉钉", "办公协作", "webhook", "机器人 Webhook 或 Stream 长连接（MuseBot ding.go）", 20, true, false, true)
+	item.ReceiveModes = []string{"webhook", "stream"}
+	return item
+}
+
+func wecomCatalogItem(channelType, label, description string, sortOrder int) ChannelCatalogItem {
+	return channelCatalogItem(channelType, label, "办公协作", "webhook", description+"；MuseBot comwechat.go", sortOrder, true, false, true)
+}
+
+func wechatCatalogItem() ChannelCatalogItem {
+	return channelCatalogItem("wechat", "微信公众号", "国内", "webhook", "被动回复或客服 API；MuseBot wechat.go", 50, true, false, true)
+}
+
+func slackCatalogItem() ChannelCatalogItem {
+	item := channelCatalogItem("slack", "Slack", "办公协作", "event", "Events API 或 Socket Mode；MuseBot slack.go", 60, true, true, true)
+	item.ReceiveModes = []string{"event", "socket_mode"}
+	return item
+}
+
+func telegramCatalogItem() ChannelCatalogItem {
+	item := channelCatalogItem("telegram", "Telegram", "海外", "webhook", "Webhook 或 Long Polling；MuseBot telegram.go", 70, true, true, true)
+	item.ReceiveModes = []string{"webhook", "polling"}
+	return item
+}
+
+func discordCatalogItem() ChannelCatalogItem {
+	item := channelCatalogItem("discord", "Discord", "海外", "gateway", "Gateway WebSocket；MuseBot discord.go", 80, true, false, false)
+	item.SupportsWebhook = false
+	return item
+}
+
+func qqCatalogItem() ChannelCatalogItem {
+	item := channelCatalogItem("qq", "QQ 官方机器人", "国内", "webhook", "Webhook + botgo 事件；MuseBot qq.go", 90, true, true, true)
+	item.CredentialSchema = credentialSchemaFor("qq")
+	return item
+}
+
+func personalQQCatalogItem() ChannelCatalogItem {
+	item := channelCatalogItem("personal_qq", "QQ（OneBot）", "国内", "onebot", "NapCat/LLOneBot HTTP 推送；MuseBot personalqq.go", 100, true, false, true)
+	item.ReceiveModes = []string{"onebot"}
+	return item
 }

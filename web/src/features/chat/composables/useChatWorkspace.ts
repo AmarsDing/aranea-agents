@@ -15,6 +15,7 @@ import { cancelRunningToolMessages } from "../envelopeToolCall";
 import { runStatusFromEnvelope, messageQueuedFromEnvelope } from "../envelopeRunStatus";
 import type { Envelope } from "../envelope";
 import { useChatStreamManager } from "./useChatStreamManager";
+import { useChatInboundSync } from "./useChatInboundSync";
 import { useChatSender } from "./useChatSender";
 import { useFollowUpQueue } from "./useFollowUpQueue";
 import { useAwaitReply } from "./useAwaitReply";
@@ -90,6 +91,7 @@ export function useChatWorkspace() {
         timeline_at: session.last_message_at || session.updated_at || session.created_at,
         agent_id: session.agent_id,
         status: session.status,
+        metadata_json: session.metadata_json,
       }));
     }
     if (selectedEntityKind.value === "agent" && store.selectedAgent) {
@@ -100,6 +102,7 @@ export function useChatWorkspace() {
         at: formatSessionTime(session.last_message_at || session.updated_at || session.created_at),
         timeline_at: session.last_message_at || session.updated_at || session.created_at,
         status: session.status,
+        metadata_json: session.metadata_json,
       }));
     }
     return [];
@@ -155,6 +158,9 @@ export function useChatWorkspace() {
     onRunStatus: (env) => applyRunStatusFromEnvelope(env),
   });
 
+  const selectedAgentId = computed(() => store.selectedAgent?.id);
+  const selectedSessionId = computed(() => selectedSessionForUi.value?.id);
+
   function makeSessionTitle(content: string) {
     const plain = content
       .replace(/[#>*_`~\[\]()]/g, "")
@@ -198,6 +204,18 @@ export function useChatWorkspace() {
     selectedProviderModel,
     makeSessionTitle,
     t,
+  });
+
+  useChatInboundSync({
+    selectedEntityKind,
+    selectedAgentId,
+    selectedTeamId,
+    selectedSessionId,
+    ensureChatStream: streamManager.ensureChatStream,
+    ensureTeamStream: streamManager.ensureTeamStream,
+    patchAgentMessages: streamManager.patchAgentMessages,
+    patchTeamMessages: streamManager.patchTeamMessages,
+    loadTeamSessions: (teamId: string) => entityNav.loadTeamSessions(teamId),
   });
 
   const sender = useChatSender({

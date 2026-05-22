@@ -325,6 +325,14 @@ func (s *ChatService) RunNativeTurnUnary(ctx context.Context, req *chatv1.SendCh
 	return s.runNativeAgentTurn(ctx, req)
 }
 
+// RunNativeTurnStreaming runs a native turn and invokes onDelta with accumulated assistant text as it streams.
+func (s *ChatService) RunNativeTurnStreaming(ctx context.Context, req *chatv1.SendChatMessageRequest, onDelta ChannelStreamCallback) (biz.ChatMessage, biz.ChatMessage, error) {
+	if onDelta != nil {
+		ctx = WithChannelStreamCallback(ctx, onDelta)
+	}
+	return s.runNativeAgentTurn(ctx, req)
+}
+
 // RunAgentTurn implements a2a.AgentTurnRunner for call_agent and HTTP Invoke dispatch (EP-A2A-01).
 func (s *ChatService) RunAgentTurn(ctx context.Context, agentID, input string, timeoutSec int) (string, error) {
 	if s == nil || s.td.Sessions == nil {

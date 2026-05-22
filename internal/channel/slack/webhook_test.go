@@ -38,4 +38,11 @@ func TestVerifyRequest(t *testing.T) {
 	if err := VerifyRequest(ts, sig, secret, body); err != nil {
 		t.Fatal(err)
 	}
+	if err := VerifyRequest(ts, "v0=bad", secret, body); err == nil {
+		t.Fatal("expected bad signature")
+	}
+	stale := strconv.FormatInt(time.Now().Unix()-600, 10)
+	if err := VerifyRequest(stale, sig, secret, body); err == nil {
+		t.Fatal("expected stale timestamp")
+	}
 }

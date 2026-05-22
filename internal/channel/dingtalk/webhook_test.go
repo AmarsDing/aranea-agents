@@ -24,4 +24,7 @@ func TestVerifySign(t *testing.T) {
 	if err := VerifySign(ts, sign, secret); err != nil {
 		t.Fatal(err)
 	}
+	if err := VerifySign(ts, "bad-sign", secret); err == nil {
+		t.Fatal("expected bad signature")
+	}
 }

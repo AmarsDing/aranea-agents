@@ -174,6 +174,25 @@ func TestChannelEvaluateTestPendingAuth(t *testing.T) {
 	}
 }
 
+func TestChannelEvaluateTestFeishuMissingAppID(t *testing.T) {
+	row := Channel{
+		Enabled: true,
+		ConfigJSON: `{"type":"feishu","receive_mode":"webhook","webhook":{"path":"/webhooks/x"},` +
+			`"config":{"region":"feishu"}}`,
+	}
+	creds := []ChannelCredential{{
+		CredentialKey: "app_secret",
+		SecretRef:     "enc:deadbeef",
+	}}
+	result, err := EvaluateChannelTest(row, creds)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.OK || result.Status != "pending_config" {
+		t.Fatalf("got %#v", result)
+	}
+}
+
 func TestChannelRunHealthChecksUpdatesStatus(t *testing.T) {
 	repo := &channelRepoStub{
 		channels: []Channel{{

@@ -40,8 +40,10 @@ type AvatarImage struct {
 // AvatarRepo abstracts avatar_assets persistence (legacy SQLite layout).
 type AvatarRepo interface {
 	ListAvatarAssets(ctx context.Context, scope, workspaceID, ownerUserID string) ([]AvatarAsset, error)
+	GetAvatarAssetByKey(ctx context.Context, assetKey string) (AvatarAsset, error)
 	GetAvatarImage(ctx context.Context, id string, thumbnail bool) (AvatarImage, error)
 	CreateAvatarAsset(ctx context.Context, asset AvatarAsset, imageData, thumbnailData []byte) (AvatarAsset, error)
+	UpdateAvatarAssetImages(ctx context.Context, id string, imageData, thumbnailData []byte, mime string, width, height, fileSize int) error
 	SoftDeleteAvatarAsset(ctx context.Context, id string) error
 }
 
@@ -86,8 +88,12 @@ func (uc *AvatarUsecase) UploadAvatar(ctx context.Context, data []byte, filename
 		return AvatarAsset{}, errors.BadRequest("AVATAR", "avatar file must be <= 2MB")
 	}
 	mt := http.DetectContentType(data)
-	if mt != "image/png" && mt != "image/jpeg" && mt != "image/webp" {
+	if mt != "image/png" && mt != "image/jpeg" && mt != "image/webp" && mt != "image/gif" {
 		return AvatarAsset{}, errors.BadRequest("AVATAR", "unsupported avatar type")
+	}
+	mainData, thumbData, width, height, outMime, procErr := processAvatarUpload(data, mt)
+	if procErr != nil {
+		return AvatarAsset{}, procErr
 	}
 	id := newAvatarID()
 	name := strings.TrimSpace(filename)
@@ -99,17 +105,17 @@ func (uc *AvatarUsecase) UploadAvatar(ctx context.Context, data []byte, filename
 		Key:           "upload-" + id,
 		Name:          name,
 		Description:   "用户上传头像",
-		MimeType:      mt,
+		MimeType:      outMime,
 		WorkspaceID:   workspaceID,
 		OwnerUserID:   ownerUserID,
 		Source:        "upload",
 		IsSystem:      false,
-		FileSizeBytes: len(data),
-		WidthPx:       0,
-		HeightPx:      0,
+		FileSizeBytes: len(mainData),
+		WidthPx:       width,
+		HeightPx:      height,
 		SortOrder:     1000,
 	}
-	return uc.repo.CreateAvatarAsset(ctx, asset, data, data)
+	return uc.repo.CreateAvatarAsset(ctx, asset, mainData, thumbData)
 }
 
 func (uc *AvatarUsecase) DeleteAvatarAsset(ctx context.Context, id string) error {

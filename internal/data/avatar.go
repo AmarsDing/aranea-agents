@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"aranea-agents/internal/biz"
@@ -94,6 +95,27 @@ func (r *avatarRepo) ListAvatarAssets(ctx context.Context, scope, workspaceID, o
 	return out, nil
 }
 
+func (r *avatarRepo) GetAvatarAssetByKey(ctx context.Context, assetKey string) (biz.AvatarAsset, error) {
+	assetKey = strings.TrimSpace(assetKey)
+	if assetKey == "" {
+		return biz.AvatarAsset{}, sql.ErrNoRows
+	}
+	po, err := r.data.Ent().AvatarAsset.Query().
+		Where(
+			avatarasset.AssetKeyEQ(assetKey),
+			avatarasset.DeletedAtEQ(""),
+			avatarasset.EnabledEQ(true),
+		).
+		Only(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return biz.AvatarAsset{}, sql.ErrNoRows
+		}
+		return biz.AvatarAsset{}, err
+	}
+	return entToBizAvatar(po), nil
+}
+
 func (r *avatarRepo) GetAvatarImage(ctx context.Context, id string, thumbnail bool) (biz.AvatarImage, error) {
 	if id == "" {
 		return biz.AvatarImage{}, errors.New("avatar id is required")
@@ -176,6 +198,46 @@ func (r *avatarRepo) CreateAvatarAsset(ctx context.Context, asset biz.AvatarAsse
 		return biz.AvatarAsset{}, err
 	}
 	return entToBizAvatar(saved), nil
+}
+
+func (r *avatarRepo) UpdateAvatarAssetImages(ctx context.Context, id string, imageData, thumbnailData []byte, mime string, width, height, fileSize int) error {
+	if id == "" {
+		return errors.New("avatar id is required")
+	}
+	if len(imageData) == 0 {
+		return errors.New("image data is required")
+	}
+	if mime == "" {
+		mime = "image/png"
+	}
+	if width == 0 {
+		width = avatarPersistSize
+	}
+	if height == 0 {
+		height = avatarPersistSize
+	}
+	if fileSize == 0 {
+		fileSize = len(imageData)
+	}
+	now := nowRFC3339()
+	up := r.data.Ent().AvatarAsset.UpdateOneID(id).
+		SetMimeType(mime).
+		SetFileSizeBytes(fileSize).
+		SetWidthPx(width).
+		SetHeightPx(height).
+		SetImageData(imageData).
+		SetUpdatedAt(now)
+	if len(thumbnailData) > 0 {
+		up.SetThumbnailData(thumbnailData)
+	}
+	_, err := up.Save(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return sql.ErrNoRows
+		}
+		return err
+	}
+	return nil
 }
 
 func (r *avatarRepo) SoftDeleteAvatarAsset(ctx context.Context, id string) error {

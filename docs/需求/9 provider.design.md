@@ -31,7 +31,7 @@ LLM Provider/Model 管理：多厂商注册、模型目录、Failover/Hedge 高�
 - ⏳ 前端 HA Chip 展示（ProviderModelRow 未展示 Failover/Hedge Chip）
 - ⏳ llminspect 缺少 Gemini / Ollama / Hunyuan 专属探测路径
 - ⏳ HuggingFace / Bedrock Provider 未注册到 trpc provider 工厂（前端预设已预留）
-- ⏳ 凭据未加密存储（api_key 明文存 SQLite config_json）
+- ⏳ 凭据未加密存储（api_key 明文存 SQLite config_json），前端对apikey 增加显示按钮，点击可以查看明文
 
 ---
 

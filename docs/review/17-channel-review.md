@@ -1,9 +1,9 @@
 # 17 Channel Review
 
-> **评分**：76 / 100 | **风险等级**：P1  
-> **文档**：[17-channel-development.md](../需求/17-channel-development.md)  
-> **代码锚点**：`internal/channel/` · `internal/service/channel.go` · `internal/service/channel_ingress*.go` · `internal/service/channel_delivery_worker.go`  
-> **审查时间**：2026-05-21
+> **评分**：92 / 100 | **风险等级**：P2（生产 soak / 全链路 E2E）  
+> **文档**：[17-channel-development.md](../需求/17-channel-development.md) · [17 channel.design.md](../需求/17%20channel.design.md)  
+> **代码锚点**：`internal/channel/` · `internal/channel/runtime/` · `internal/service/channel*.go` · `web/src/features/channels/`  
+> **审查时间**：2026-05-22（Review 优化项闭合后复审）
 
 ---
 
@@ -11,63 +11,91 @@
 
 | 维度 | 得分 | 满分 | 评述 |
 |------|------|------|------|
-| 需求符合度 | 15 | 20 | 飞书/钉钉/企微三平台 CRUD + 入站 + 出站 ✅；更多平台（Slack/Telegram/SMS）待规划 |
-| 架构一致性 | 21 | 25 | Channel Ingress → RunGateway → Agent Runner 路径清晰 ✅；投递 Worker 独立 ✅ |
-| 后端实现质量 | 17 | 20 | 三平台 Webhook 验签 + 消息路由 ✅；`channel_peer_session` 保持会话状态 ✅ |
-| 前端实现质量 | 12 | 15 | Channel CRUD + 编辑对话框 + 类型选择器 ✅；凭据引用 ✅；但更多类型支持受后端限制 |
-| 测试与验证 | 5 | 10 | 平台 Webhook 验签逻辑需手动测试；无自动化测试 |
-| 文档一致性 | 6 | 10 | `17-channel-development.md` 三平台对齐 |
+| 需求符合度 | 19 | 20 | 10 平台 catalog、9 平台入站/出站、QQ botgo、流式三平台、Prometheus、Runtime 重连 + 定期 Reload ✅ |
+| 架构一致性 | 23 | 25 | Webhook + Runtime 统一 `ProcessInbound`；`platformAdapters` 合并 outbound/stream；Runtime fingerprint 含凭据 revision ✅ |
+| 后端实现质量 | 19 | 20 | 流式 fail-fast、Feishu unary `receive_id_type`、`prepareChannelChatRequest` 去重 |
+| 前端实现质量 | 14 | 15 | MuseBot 分区 + `useChannelEditorForm` + catalog 凭据 ✅ |
+| 测试与验证 | 8 | 10 | stream preview / send_message / streaming fallback 单测；全链路 E2E 仍缺 |
+| 文档一致性 | 9 | 10 | development + review 已同步；`17 channel.design.md` 流式章节可续补 |
 
 ---
 
-## 已验收平台
+## 已验收平台（2026-05-22）
 
-| 平台 | 入站 | 出站 | 状态 |
-|------|------|------|------|
-| 飞书 / Lark | ✅ | ✅ FeishuTextSender | ✅ I2-CH-01 |
-| 钉钉 | ✅ | ✅ | ✅ I2-CH-02 |
-| 企微 | ✅ | ✅ | ✅ I2-CH-03 |
-| Slack | ❌ | ❌ | 未规划 |
-| Telegram | ❌ | ❌ | 未规划 |
-| 邮件 | ❌ | ❌ | 未规划 |
-
----
-
-## 主要风险
-
-### P1
-
-| ID | 问题 | 建议修复 |
-|----|------|---------|
-| CH-P1-01 | 三平台 Webhook 验签逻辑无自动化测试 | 补各平台验签单测（含超时/签名错误场景） |
-| CH-P1-02 | Channel 投递失败（出站 API 失败）无重试机制 | 在 `channel_delivery_worker.go` 中加重试 + 死信队列 |
-
-### P2
-
-| ID | 问题 | 建议修复 |
-|----|------|---------|
-| CH-P2-01 | 更多平台（Slack/Telegram/SMS）未规划时间线 | 在 `17-channel-development.md` 中明确平台扩展路线图 |
-| CH-P2-02 | `channel_peer_session` 对话状态在进程重启后是否能正确恢复需验证 | 补会话状态持久化测试 |
+| 平台 | Webhook 入站 | Runtime 长连接 | 出站 | 流式 edit | bundled |
+|------|-------------|----------------|------|-----------|---------|
+| 飞书 / feishu | ✅ | ✅ larkws | ✅ | ✅ patch | ✅ |
+| 钉钉 / dingtalk | ✅ | ✅ stream | ✅ | unary 回退 | ✅ |
+| 企微 / wecom | ✅ | — | ✅ | unary 回退 | ✅ |
+| Slack | ✅ | ✅ socketmode | ✅ | ✅ update | ✅ |
+| Telegram | ✅ | ✅ polling | ✅ | ✅ edit | ✅ |
+| Discord | — | ✅ gateway | ✅ | unary 回退 | ✅ |
+| 微信公众号 / wechat | ✅ | — | ✅ | unary 回退 | ✅ |
+| OneBot / personal_qq | ✅ | — | ✅ | unary 回退 | ✅ |
+| QQ 官方 / qq | ✅ | — | ✅ | unary 回退 | ✅ |
 
 ---
 
-## 入站消息路径
+## Review 优化闭合项（2026-05-22）
+
+| ID | 问题 | 状态 |
+|----|------|------|
+| CH-P1-UTF8 | `trpc_turn.go` 日志 UTF-8 损坏 | ✅ 自 3ab60a0 恢复 + 保留 `OnReplyDelta` |
+| CH-P1-FEISHU-ID | WS 流式 recipient 类型不一致 | ✅ `ResolveReceiveTarget` + `receive_id_type` meta |
+| CH-P1-CRED-FP | Runtime fingerprint 不含凭据 | ✅ `CredentialsRevision` 纳入 fingerprint |
+| CH-P2-STREAM-ERR | `OnReplyDelta` 静默失败 | ✅ 错误中断 stream consume |
+| CH-P2-STREAM-METRICS | 流式无 Prometheus | ✅ `aranea_channel_stream_update_total` |
+| CH-P2-DUAL-REG | outbound/stream 双 registry | ✅ `platformAdapters` 统一注册 |
+| CH-P2-SESSION-SRP | `ensureChannelSession` 位置 | ✅ `channel_ingress_session.go` + `prepareChannelChatRequest` |
+| CH-P2-TURN-ERR | 部分 Reply + HasError 仍成功 | ✅ `streamPreviewTurnError` + `TurnErrStreamPreviewFailed` |
+| CH-P2-FEISHU-UNARY | unary 出站未用 receive_id_type | ✅ `SendTextMessage` + `FeishuTextSender.ReceiveIDType` |
+| CH-P3-RELOAD-WARN | Reload 凭据失败静默 | ✅ `channel.runtime.credentials_fail`（FlowLog，禁 slog） |
+| CH-P3-FEISHU-WS | larkws 同步入站 + open_id 出站 | ✅ `safego` 异步 + `chat_id` + FlowLog |
+| CH-P3-REGISTRY-NAME | registry 文件命名 | ✅ `channel_platform_registry.go` |
+
+### 历史 P1–P2（已闭合）
+
+Webhook 统一入站 · delivery 指数退避 · OutboundRegistry · QQ botgo · catalog 凭据 · Runtime 断线重连 · 定期 Reload
+
+---
+
+## 入站消息路径（当前）
 
 ```
-平台 Webhook POST → channel_ingress_{platform}.go
-    → ChannelIngress.Route
-    → RunNativeTurnUnary / RunGateway
-    → ChatService native turn
-    → Agent/Team Runner
-    → 出站回复 → FeishuTextSender/DingTalkSender/WecomSender
+Webhook POST /webhooks/{key}  ─┐
+Runtime Manager (connectors) ──┼→ ProcessInbound
+                               │    ├─ streaming_enabled → processInboundStreaming
+                               │    │       → RunNativeTurnStreaming → OnReplyDelta → StreamSender
+                               │    └─ unary → processInboundCore → delivery queue → platformAdapters.outbound
 ```
-
-**状态**：完整路径已可用 ✅
 
 ---
 
-## 建议优化路径
+## 仍开放风险（P2）
 
-1. 补各平台 Webhook 验签单测（P1）。
-2. 添加投递失败重试机制（P1）。
-3. 规划平台扩展路线图（P2）。
+| ID | 问题 | 建议 |
+|----|------|------|
+| CH-P2-E2E | 无 streaming 全链路集成测 | mock ChatService + httptest 平台 API（部分：fallback 单测） |
+| CH-P2-SOAK | 多实例 Runtime 生产 soak | 断网 / 凭据轮换压测 |
+| CH-P2-STREAM-MORE | 钉钉/Discord 流式 | Phase D 后续 |
+| CH-P2-WEBHOOK-TEST | 全平台验签单测 | 补 discord、qq 负例 |
+
+---
+
+## 运维指标
+
+| 指标 | 标签 |
+|------|------|
+| `aranea_channel_delivery_total` | `platform`, `status` |
+| `aranea_channel_runtime_reconnect_total` | `platform`, `receive_mode`, `outcome` |
+| `aranea_channel_stream_update_total` | `platform`, `phase`, `result` |
+
+环境变量：`CHANNEL_RUNTIME_RELOAD_INTERVAL`（默认 `2m`）
+
+---
+
+## 建议后续
+
+1. 流式 E2E + Grafana 面板（delivery + stream + runtime）。
+2. 钉钉卡片流式 / Discord 流式（W5 扩展）。
+3. 群 @ 门控 + allowlist（D2）。

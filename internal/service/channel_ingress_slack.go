@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/channel/port"
 	"aranea-agents/internal/channel/slack"
 )
 
@@ -37,28 +38,16 @@ func (h *ChannelIngress) handleSlackWebhook(w http.ResponseWriter, r *http.Reque
 		w.WriteHeader(http.StatusOK)
 		return nil
 	}
-
-	routing, err := biz.ParseChannelRouting(chRow.ConfigJSON)
-	if err != nil {
-		_ = h.recordDelivery(r.Context(), chRow.ID, "error", map[string]any{"phase": "routing", "error": err.Error()}, err.Error())
-		http.Error(w, "routing", http.StatusInternalServerError)
-		return nil
-	}
 	peerID := ingressFirstNonEmpty(msg.UserID, msg.ChannelID)
-	peerKey := biz.PeerKeyForSession(routing.DMScope, peerID)
-	reply, err := h.runChatTurn(r.Context(), chRow, "slack", peerKey, peerID, msg.Text)
-	if err != nil {
-		_ = h.recordDelivery(r.Context(), chRow.ID, "error", map[string]any{"phase": "chat", "error": err.Error()}, err.Error())
-		http.Error(w, "agent error", http.StatusInternalServerError)
-		return nil
-	}
-	idempotency := "slack:" + msg.ChannelID + ":" + msg.EventTS
-	if err := h.enqueueOutboundReply(r.Context(), chRow, "slack", msg.ChannelID, reply, nil, idempotency); err != nil {
-		_ = h.recordDelivery(r.Context(), chRow.ID, "error", map[string]any{"phase": "enqueue", "error": err.Error()}, err.Error())
-		http.Error(w, "queue", http.StatusInternalServerError)
-		return nil
-	}
-	_ = h.recordDelivery(r.Context(), chRow.ID, "queued", map[string]any{"channel_id": msg.ChannelID, "event_ts": msg.EventTS}, "")
-	w.WriteHeader(http.StatusOK)
+	h.processInboundHTTP(w, r, chRow, port.InboundEvent{
+		PlatformType:   "slack",
+		PeerID:         peerID,
+		Text:           msg.Text,
+		IdempotencyKey: "slack:" + msg.ChannelID + ":" + msg.EventTS,
+		OutboundMeta: map[string]string{
+			"recipient": msg.ChannelID,
+			"channel":   msg.ChannelID,
+		},
+	})
 	return nil
 }

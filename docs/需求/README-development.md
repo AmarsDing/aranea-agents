@@ -34,7 +34,7 @@
 | 模块 | 开发计划 |
 |------|----------|
 | Memory | [12-16 memory-development.md](./12-16%20memory-development.md) |
-| Channel | [17-channel-development.md](./17-channel-development.md) |
+| Channel | [17-channel-development.md](./17-channel-development.md) · [× Agent/Team 集成](./17-channel-agent-team-integration.md) |
 | Monitor | [18-monitor-development.md](./18-monitor-development.md)（运维 `/monitor/logs`）· [Dashboard 概览](./18-monitor-dashboard-development.md)（`/overview`） |
 | FlowLogger | [52-flow-logger.md](./52-flow-logger.md) · [design](./52-flow-logger.design.md) · [开发计划](./52-flow-logger-development.md) · [Slog 移除](../changelog/2026-05-20-FlowLog-V2-SlogRemoval.md) |
 | MCP | [19-mcp-development.md](./19-mcp-development.md) | 🟢 CRUD+探活+ToolSet/Broker+OAuth+重连 ✅；🟡 统计闭环 |

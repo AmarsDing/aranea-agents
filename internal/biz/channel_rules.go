@@ -112,18 +112,20 @@ func requiredCredentials(channelType string) []string {
 		return []string{"bot_token"}
 	case "feishu":
 		return []string{"app_secret"}
-	case "whatsapp":
-		return []string{"access_token"}
 	case "slack":
 		return []string{"bot_token", "signing_secret"}
 	case "discord":
 		return []string{"bot_token"}
-	case "wechat", "openclaw-weixin":
+	case "wechat":
 		return []string{"app_secret"}
+	case "dingtalk":
+		return []string{"secret"}
 	case "wecom", "wecom-app":
-		return []string{"corp_secret"}
-	case "qq", "qqbot":
-		return []string{"access_token"}
+		return []string{"token"}
+	case "qq":
+		return []string{"app_secret"}
+	case "personal_qq":
+		return []string{"receive_token", "send_token"}
 	default:
 		return nil
 	}
@@ -147,7 +149,7 @@ func missingCredentials(credentials []ChannelCredential, required []string) []st
 
 func supportsLightweightTest(channelType string) bool {
 	switch channelType {
-	case "qq", "qqbot", "feishu", "wechat", "openclaw-weixin", "wecom", "wecom-app", "telegram", "whatsapp", "slack", "discord", "dingtalk":
+	case "qq", "personal_qq", "feishu", "wechat", "wecom", "wecom-app", "telegram", "slack", "discord", "dingtalk":
 		return true
 	default:
 		return false
@@ -176,6 +178,16 @@ func evaluateChannelTest(row Channel, cfg channelConfigEnvelope, credentials []C
 	if cfg.ReceiveMode == "webhook" {
 		if cfg.Webhook == nil || strings.TrimSpace(fmt.Sprint(cfg.Webhook["path"])) == "" {
 			return ChannelTestResult{OK: false, Status: "pending_config", Message: "webhook.path is required for webhook channels"}
+		}
+	}
+	if cfg.Type == "feishu" {
+		appID := strings.TrimSpace(fmt.Sprint(cfg.Config["app_id"]))
+		if appID == "" || appID == "<nil>" {
+			return ChannelTestResult{
+				OK:      false,
+				Status:  "pending_config",
+				Message: "config_json.config.app_id is required (Feishu App ID from open platform, e.g. cli_xxx)",
+			}
 		}
 	}
 	if cfg.Type == "telegram" {

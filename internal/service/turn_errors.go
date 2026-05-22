@@ -13,7 +13,8 @@ const (
 	TurnErrTurnTimeout       TurnErrorCode = "TURN_TIMEOUT"
 	TurnErrEmptyReply        TurnErrorCode = "EMPTY_REPLY"
 	TurnErrFirstByteTimeout  TurnErrorCode = "FIRST_BYTE_TIMEOUT"
-	TurnErrAgentForbidden    TurnErrorCode = "AGENT_FORBIDDEN"
+	TurnErrAgentForbidden       TurnErrorCode = "AGENT_FORBIDDEN"
+	TurnErrStreamPreviewFailed  TurnErrorCode = "STREAM_PREVIEW_FAILED"
 )
 
 var turnErrorMessages = map[TurnErrorCode]string{
@@ -23,7 +24,8 @@ var turnErrorMessages = map[TurnErrorCode]string{
 	TurnErrTurnTimeout:       "响应超时，请稍后重试",
 	TurnErrEmptyReply:        "智能体未产生响应，请调整提问后重试",
 	TurnErrFirstByteTimeout:  "模型响应过慢，请稍后重试或切换模型",
-	TurnErrAgentForbidden:    "无权访问该智能体",
+	TurnErrAgentForbidden:      "无权访问该智能体",
+	TurnErrStreamPreviewFailed: "流式回复预览更新失败",
 }
 
 func TurnError(code TurnErrorCode, detail string) error {

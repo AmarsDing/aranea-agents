@@ -2,21 +2,16 @@ package service
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
-	chatv1 "aranea-agents/api/kratos/chat/v1"
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/channel/dingtalk"
-	"aranea-agents/internal/channel/lark"
-	"aranea-agents/internal/channel/slack"
-	"aranea-agents/internal/channel/telegram"
-	"aranea-agents/internal/channel/wecom"
+	arametrics "aranea-agents/internal/metrics"
 
-	"github.com/google/uuid"
+	"github.com/go-kratos/kratos/v2/log"
 )
 
 func (h *ChannelIngress) runChatTurn(
@@ -27,48 +22,9 @@ func (h *ChannelIngress) runChatTurn(
 	peerID string,
 	content string,
 ) (reply string, err error) {
-	routing, err := biz.ParseChannelRouting(chRow.ConfigJSON)
+	req, err := h.prepareChannelChatRequest(ctx, chRow, titlePrefix, peerKey, peerID, content)
 	if err != nil {
 		return "", err
-	}
-	ownerType, agentID, teamID, err := biz.ResolveChannelTarget(ctx, h.agents, h.teams, routing, peerID)
-	if err != nil {
-		return "", err
-	}
-
-	bind, err := h.peers.GetByChannelAndPeer(ctx, chRow.ID, peerKey)
-	var sessionID string
-	switch {
-	case err == nil && strings.TrimSpace(bind.SessionID) != "":
-		sessionID = bind.SessionID
-	case err != nil && err != sql.ErrNoRows:
-		return "", err
-	default:
-		title := titlePrefix + ":" + strings.TrimSpace(chRow.Key) + ":" + peerKey
-		created, cerr := h.sessions.Create(ctx, biz.Session{
-			OwnerType: ownerType,
-			AgentID:   agentID,
-			TeamID:    teamID,
-			Title:     title,
-		})
-		if cerr != nil {
-			return "", cerr
-		}
-		sessionID = created.ID
-		if _, cerr = h.peers.Create(ctx, biz.ChannelPeerSession{
-			ID:        uuid.NewString(),
-			ChannelID: chRow.ID,
-			PeerKey:   peerKey,
-			SessionID: sessionID,
-		}); cerr != nil {
-			return "", cerr
-		}
-	}
-
-	req := &chatv1.SendChatMessageRequest{SessionId: sessionID, Content: content}
-	if ownerType == "team" && teamID != "" {
-		tid := teamID
-		req.TeamId = &tid
 	}
 	_, asst, err := h.chat.RunNativeTurnUnary(ctx, req)
 	if err != nil {
@@ -103,10 +59,15 @@ func (h *ChannelIngress) enqueueOutboundReply(
 type ChannelDeliveryWorker struct {
 	channels *biz.ChannelUsecase
 	ingress  *ChannelIngress
+	log      *log.Helper
 }
 
-func NewChannelDeliveryWorker(channels *biz.ChannelUsecase, ingress *ChannelIngress) *ChannelDeliveryWorker {
-	return &ChannelDeliveryWorker{channels: channels, ingress: ingress}
+func NewChannelDeliveryWorker(channels *biz.ChannelUsecase, ingress *ChannelIngress, logger log.Logger) *ChannelDeliveryWorker {
+	return &ChannelDeliveryWorker{
+		channels: channels,
+		ingress:  ingress,
+		log:      log.NewHelper(logger),
+	}
 }
 
 func (w *ChannelDeliveryWorker) ProcessPending(ctx context.Context, limit int) error {
@@ -118,69 +79,66 @@ func (w *ChannelDeliveryWorker) ProcessPending(ctx context.Context, limit int) e
 		return err
 	}
 	for _, row := range items {
+		if !w.channels.IsOutboundDeliveryReady(row) {
+			continue
+		}
 		var payload biz.ChannelOutboundPayload
 		if err := json.Unmarshal([]byte(row.PayloadJSON), &payload); err != nil {
-			_ = w.channels.MarkOutboundAttempt(ctx, row, err)
+			arametrics.ChannelDeliveryTotal.WithLabelValues("unknown", "invalid").Inc()
+			_, _ = w.channels.MarkOutboundAttempt(ctx, row, err)
 			continue
+		}
+		platform := strings.ToLower(strings.TrimSpace(payload.Platform))
+		if platform == "" {
+			platform = "unknown"
 		}
 		if payload.Kind != "" && payload.Kind != "outbound_text" {
-			_ = w.channels.MarkOutboundAttempt(ctx, row, fmt.Errorf("unsupported delivery kind %q", payload.Kind))
+			arametrics.ChannelDeliveryTotal.WithLabelValues(platform, "invalid").Inc()
+			_, _ = w.channels.MarkOutboundAttempt(ctx, row, fmt.Errorf("unsupported delivery kind %q", payload.Kind))
 			continue
 		}
+		start := time.Now()
 		sendErr := w.ingress.sendOutboundPayload(ctx, row.ChannelID, payload)
-		_ = w.channels.MarkOutboundAttempt(ctx, row, sendErr)
+		arametrics.ChannelDeliveryDuration.WithLabelValues(platform).Observe(time.Since(start).Seconds())
+		deadLetter, _ := w.channels.MarkOutboundAttempt(ctx, row, sendErr)
+		switch {
+		case sendErr == nil:
+			arametrics.ChannelDeliveryTotal.WithLabelValues(platform, "delivered").Inc()
+		case deadLetter:
+			arametrics.ChannelDeliveryTotal.WithLabelValues(platform, "dead_letter").Inc()
+			if w.log != nil {
+				w.log.Warnf("channel delivery dead-letter channel=%s delivery=%s platform=%s attempts=%d err=%v",
+					row.ChannelID, row.ID, payload.Platform, payload.Attempts+1, sendErr)
+			}
+		default:
+			arametrics.ChannelDeliveryTotal.WithLabelValues(platform, "retry").Inc()
+		}
 	}
 	return nil
 }
 
-func (h *ChannelIngress) sendOutboundPayload(ctx context.Context, channelID string, payload biz.ChannelOutboundPayload) error {
-	chRow, err := h.channels.Get(ctx, channelID)
-	if err != nil {
-		return err
-	}
-	creds, err := h.channels.ListCredentialsRaw(ctx, channelID)
-	if err != nil {
-		return err
-	}
-	switch strings.ToLower(strings.TrimSpace(payload.Platform)) {
-	case "feishu":
-		region, appID, err := feishuAppAndRegion(chRow.ConfigJSON)
-		if err != nil {
-			return err
-		}
-		sec, err := resolveCredentialPlain(ctx, creds, "app_secret")
-		if err != nil {
-			return err
-		}
-		return (&lark.FeishuTextSender{
-			Region: region, AppID: appID, AppSecret: sec, HTTP: h.http,
-		}).SendText(ctx, payload.Recipient, payload.Text)
-	case "dingtalk":
-		secret, _ := resolveCredentialPlain(ctx, creds, "secret")
-		webhookURL, _ := resolveCredentialPlain(ctx, creds, "webhook_url")
-		target := payload.Extra["session_webhook"]
-		return (&dingtalk.TextSender{WebhookURL: webhookURL, Secret: secret, HTTP: h.http}).SendText(ctx, target, payload.Text)
-	case "wecom", "wecom-app":
-		webhookURL, _ := resolveCredentialPlain(ctx, creds, "webhook_url")
-		target := payload.Extra["response_url"]
-		return (&wecom.TextSender{WebhookURL: webhookURL, HTTP: h.http}).SendText(ctx, target, payload.Text)
-	case "slack":
-		token, err := resolveCredentialPlain(ctx, creds, "bot_token")
-		if err != nil {
-			return err
-		}
-		return (&slack.TextSender{BotToken: token, HTTP: h.http}).SendText(ctx, payload.Recipient, payload.Text)
-	case "telegram":
-		token, err := resolveCredentialPlain(ctx, creds, "bot_token")
-		if err != nil {
-			return err
-		}
-		return (&telegram.TextSender{BotToken: token, HTTP: h.http}).SendText(ctx, payload.Recipient, payload.Text)
-	default:
-		return fmt.Errorf("unsupported outbound platform %q", payload.Platform)
-	}
-}
-
 func telegramChatRecipient(chatID int64) string {
 	return strconv.FormatInt(chatID, 10)
+}
+
+func oneBotHTTPServer(configJSON string) string {
+	var env struct {
+		Config struct {
+			HTTPServer string `json:"onebot_http_server"`
+		} `json:"config"`
+	}
+	_ = json.Unmarshal([]byte(configJSON), &env)
+	return strings.TrimSpace(env.Config.HTTPServer)
+}
+
+func wechatAppCreds(configJSON string, creds []biz.ChannelCredential, ctx context.Context) (appID, appSecret string) {
+	var env struct {
+		Config struct {
+			AppID string `json:"app_id"`
+		} `json:"config"`
+	}
+	_ = json.Unmarshal([]byte(configJSON), &env)
+	appID = strings.TrimSpace(env.Config.AppID)
+	appSecret, _ = resolveCredentialPlain(ctx, creds, "app_secret")
+	return appID, strings.TrimSpace(appSecret)
 }

@@ -2,18 +2,19 @@
 function isPlausibleMaterialIconName(v: string): boolean {
   if (!v || v.length > 96) return false;
   if (/^(https?:|data:|blob:)/i.test(v)) return false;
-  // 库内头像 key 常为 avatar_* / snake_case，勿当成 Material 图标名
+  // 库内头像 key 常为 avatar_* / channel_*，勿当成 Material 图标名
   if (/^avatar_/i.test(v)) return false;
+  if (/^channel_/i.test(v)) return false;
   return /^[a-z0-9]+(_[a-z0-9]+)*$/i.test(v);
 }
 
-/** Agent `icon` 库内资源引用判定：`avatar_*`、24 位 hex、标准 UUID 形（与 avatar_assets.id 对齐）。 */
-
+/** Agent `icon` 库内资源引用判定：`avatar_*`、`channel_*`、24 位 hex、UUID（与 avatar_assets.id 对齐）。 */
 export function isAvatarAssetRef(value: string) {
   const trimmed = String(value || "").trim();
   if (!trimmed) return false;
   if (/^(https?:|data:|blob:)/i.test(trimmed)) return true;
   if (/^avatar_/i.test(trimmed)) return true;
+  if (/^channel_/i.test(trimmed)) return true;
   if (/^[a-f0-9]{24}$/i.test(trimmed)) return true;
   if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed)) return true;
   return false;
@@ -40,6 +41,6 @@ export function shouldRenderAgentAvatarImage(icon: string | undefined | null): b
   if (!v) return false;
   if (/^(https?:|data:|blob:)/i.test(v)) return true;
   if (isStoredAvatarAssetId(v)) return true;
-  if (/^avatar_/i.test(v)) return true;
+  if (/^(avatar_|channel_)/i.test(v)) return true;
   return !isPlausibleMaterialIconName(v);
 }

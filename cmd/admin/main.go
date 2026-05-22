@@ -18,6 +18,8 @@ import (
 	"aranea-agents/internal/telemetry"
 	"aranea-agents/pkg/auth"
 
+	_ "aranea-agents/internal/channel/all"
+
 	"github.com/go-kratos/kratos/v2"
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-kratos/kratos/v2/config/env"
@@ -198,6 +200,11 @@ func main() {
 	if out.ChannelDeliveryScanner != nil {
 		go out.ChannelDeliveryScanner.Start(cronCtx)
 		logger.Log(log.LevelInfo, "msg", "channel delivery worker started", "interval", "5s")
+	}
+
+	if out.ChannelRuntime != nil {
+		out.ChannelRuntime.Start(cronCtx)
+		logger.Log(log.LevelInfo, "msg", "channel runtime manager started")
 	}
 
 	if out.EventStoreCleanup != nil {

@@ -91,3 +91,5 @@ profile.cov
 /manager_notes_*.md
 /output/
 /node_modules
+/.gocache
+

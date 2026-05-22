@@ -3,19 +3,19 @@
     <q-card class="avatar-picker-card app-dialog-card app-dialog-card--md">
       <q-card-section class="avatar-picker-card__header">
         <div>
-          <div class="text-h6">选择头像</div>
-          <div class="text-caption text-grey-7">从数据库内置头像中选择，或上传自己的图片。</div>
+          <div class="text-h6">{{ title }}</div>
+          <div class="text-caption text-grey-7">{{ subtitle }}</div>
         </div>
-        <q-btn flat round icon="close" @click="dialogModel = false" />
+        <q-btn flat round icon="close" aria-label="关闭" @click="dialogModel = false" />
       </q-card-section>
 
       <q-tabs v-model="tab" dense class="avatar-tabs">
-        <q-tab name="system" label="内置" />
-        <q-tab name="mine" label="我的上传" />
+        <q-tab name="system" :label="isChannel ? '平台内置' : '内置'" />
+        <q-tab name="mine" :label="isChannel ? '自定义' : '我的上传'" />
       </q-tabs>
       <q-separator />
 
-      <q-card-section>
+      <div class="avatar-picker-scroll">
         <div v-if="loading" class="avatar-grid">
           <q-skeleton v-for="i in 10" :key="i" type="QAvatar" size="72px" />
         </div>
@@ -37,15 +37,15 @@
         </div>
 
         <q-banner v-if="!loading && visibleAssets.length === 0" rounded class="avatar-picker-empty-banner">
-          暂无头像。可以先上传一张本地图片。
+          {{ emptyHint }}
         </q-banner>
-      </q-card-section>
+      </div>
 
       <q-separator />
       <q-card-section class="avatar-upload-row">
         <input ref="fileInput" class="hidden-input" type="file" accept="image/png,image/jpeg,image/webp" @change="onFileChange" />
-        <q-btn outline rounded color="primary" icon="upload" label="从本地上传" :loading="uploading" @click="fileInput?.click()" />
-        <div class="text-caption text-grey-7">支持 PNG / JPEG / WebP，最大 2MB。上传后图片写入数据库 BLOB。</div>
+        <q-btn outline rounded color="primary" icon="upload" :label="uploadLabel" :loading="uploading" @click="fileInput?.click()" />
+        <div class="text-caption text-grey-7">{{ uploadHint }}</div>
       </q-card-section>
 
       <q-card-actions align="right">
@@ -58,13 +58,17 @@
 
 <script setup lang="ts">
 import { computed, toRef } from "vue";
-import { useAvatarPickerDialog } from "../../features/avatar/useAvatarPickerDialog";
+import { useAvatarPickerDialog, type AvatarPickerScope } from "../../features/avatar/useAvatarPickerDialog";
 import ResolvedAvatarImg from "./ResolvedAvatarImg.vue";
 
-const props = defineProps<{
-  modelValue: string;
-  open: boolean;
-}>();
+const props = withDefaults(
+  defineProps<{
+    modelValue: string;
+    open: boolean;
+    scope?: AvatarPickerScope;
+  }>(),
+  { scope: "agent" }
+);
 
 const emit = defineEmits<{
   "update:modelValue": [value: string];
@@ -76,10 +80,23 @@ const dialogModel = computed({
   set: (value: boolean) => emit("update:open", value)
 });
 
+const isChannel = computed(() => props.scope === "channel");
+
 const { tab, loading, uploading, selectedId, fileInput, visibleAssets, uploadFromFile } = useAvatarPickerDialog({
   modelValue: toRef(props, "modelValue"),
-  open: toRef(props, "open")
+  open: toRef(props, "open"),
+  scope: props.scope
 });
+
+const title = computed(() => (isChannel.value ? "选择平台图标" : "选择头像"));
+const subtitle = computed(() =>
+  isChannel.value
+    ? "内置平台图标来自 avatar_assets；也可上传自定义图标。"
+    : "从数据库内置头像中选择，或上传自己的图片。"
+);
+const emptyHint = computed(() => (isChannel.value ? "暂无平台图标，请重启后端完成 seed 或上传自定义图标。" : "暂无头像。可以先上传一张本地图片。"));
+const uploadLabel = computed(() => (isChannel.value ? "上传自定义图标" : "从本地上传"));
+const uploadHint = computed(() => "支持 PNG / JPEG / WebP，最大 2MB。上传后图片写入数据库 BLOB。");
 
 async function onFileChange(event: Event) {
   const input = event.target as HTMLInputElement;
@@ -97,10 +114,15 @@ function confirm() {
 
 <style scoped>
 .avatar-picker-card {
+  display: flex;
+  flex-direction: column;
+  width: min(560px, 94vw);
+  max-height: min(88vh, 720px);
   overflow: hidden;
 }
 
 .avatar-picker-card__header {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -115,6 +137,7 @@ function confirm() {
 }
 
 .avatar-tabs {
+  flex-shrink: 0;
   padding: 0 16px;
   background: var(--glass-surface);
 }
@@ -133,6 +156,19 @@ function confirm() {
   height: 3px;
   border-radius: 2px;
   background: var(--color-accent);
+}
+
+.avatar-picker-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 16px 20px;
+  scrollbar-width: none;
+}
+
+.avatar-picker-scroll::-webkit-scrollbar {
+  display: none;
 }
 
 .avatar-grid {
@@ -200,6 +236,7 @@ function confirm() {
 }
 
 .avatar-upload-row {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -213,6 +250,7 @@ function confirm() {
 }
 
 .avatar-picker-card :deep(.q-card__actions) {
+  flex-shrink: 0;
   padding: 14px 22px 20px;
   background: var(--glass-elevated);
   border-top: 1px solid var(--glass-border);

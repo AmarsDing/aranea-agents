@@ -118,8 +118,13 @@ cd web
 npm install
 npm run dev    # http://localhost:9001（勿用 :9000，该端口为 gRPC）
 ```
+channel 图标获取
+go run ./cmd/fetch-channel-icons
 
 页面须使用 **http://localhost:9001**，API/WS 经 Vite 代理到 `:8000`，会话 **HttpOnly Cookie** 才会自动携带。
+
+照文档 @docs/README.md  ， 进行review,评级，注重代码质量，架构质量，业务逻辑，单一职责原则，影响域等。
+
 
 ## 文档导航
 
@@ -163,3 +168,25 @@ aranea-agents/
     ├── changelog/        # 变更记录
     └── frontend/         # 前端设计参考
 ```
+TODO:
+1 内置agent
+
+2 graph智能体编排
+
+3 channel 需求细化 测试
+
+4 mcp 需求细化 测试 
+
+5 plugin 需求细化 测试
+
+6 Hook 需求细化  测试
+
+7 制品 需求细化 测试
+
+8 评估管理  需求细化  测试
+
+9 A2A 测试
+
+10 tools 功能完善 测试
+
+11 监控面板需求 UI 完善

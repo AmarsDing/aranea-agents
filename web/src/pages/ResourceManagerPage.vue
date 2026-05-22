@@ -117,11 +117,11 @@
     </q-card>
 
     <q-dialog v-model="dialogOpen" persistent>
-      <q-card class="resource-dialog-card app-dialog-card app-dialog-card--xl provider-dialog">
-        <q-card-section class="provider-dialog__head row items-start justify-between no-wrap">
+      <q-card class="resource-dialog-card app-dialog-card app-dialog-card--xl app-glass-dialog provider-dialog">
+        <q-card-section class="app-glass-dialog__head provider-dialog__head row items-start justify-between no-wrap">
           <div class="col min-width-0">
-            <div class="provider-dialog__title">{{ dialogTitle }}</div>
-            <div class="provider-dialog__subtitle">{{ dialogSubtitle }}</div>
+            <div class="app-glass-dialog__title provider-dialog__title">{{ dialogTitle }}</div>
+            <div class="app-glass-dialog__subtitle provider-dialog__subtitle">{{ dialogSubtitle }}</div>
           </div>
           <q-btn flat dense round icon="close" aria-label="关闭" v-close-popup />
         </q-card-section>
@@ -434,7 +434,7 @@
           <q-input v-model="form.metadata_json" class="app-grid-span-full" dense outlined autogrow type="textarea" label="Metadata JSON" />
         </q-card-section>
         <q-separator v-if="isProviderResource" />
-        <q-card-actions class="app-actions-bar provider-dialog-actions">
+        <q-card-actions class="app-actions-bar app-glass-dialog__actions provider-dialog-actions">
           <q-btn flat no-caps label="取消" v-close-popup />
           <q-space />
           <template v-if="isProviderResource">

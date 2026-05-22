@@ -43,6 +43,7 @@ export type Session = {
   updated_at: string;
   archived_at: string;
   deleted_at: string;
+  metadata_json?: string;
   context_used_tokens?: number;
   last_context_window_tokens?: number;
 };
@@ -130,6 +131,7 @@ function kratosSessionToLegacy(s: KratosSession): Session {
     updated_at: s.updatedAt ?? "",
     archived_at: s.archivedAt ?? "",
     deleted_at: s.deletedAt ?? "",
+    metadata_json: s.metadataJson ?? "",
     context_used_tokens: s.contextUsedTokens,
     last_context_window_tokens: s.lastContextWindowTokens
   };

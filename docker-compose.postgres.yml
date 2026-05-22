@@ -1,0 +1,28 @@
+# Local Postgres 16 + pgvector for Aranea (L3 memory + Knowledge).
+# Usage:
+#   docker compose -f docker-compose.postgres.yml up -d
+#   go run ./cmd/pginit -conf ./configs/config1.yaml
+#
+# Then set data.postgres.source to:
+#   postgres://aranea:aranea@127.0.0.1:5433/aranea?sslmode=disable
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: aranea-pgvector
+    environment:
+      POSTGRES_USER: aranea
+      POSTGRES_PASSWORD: aranea
+      POSTGRES_DB: aranea
+    ports:
+      - "5433:5432"
+    volumes:
+      - aranea_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aranea -d aranea"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  aranea_pg_data:

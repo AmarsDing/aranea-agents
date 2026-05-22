@@ -39,7 +39,7 @@
 | **Session** | 10 | 79 | 16 | 21 | 17 | 13 | 6 | 6 | P1 | [10-session-review.md](./10-session-review.md) |
 | **Team / Multi-Agent** | 11 | 83 | 17 | 22 | 18 | 14 | 6 | 6 | P1 | [11-team-review.md](./11-team-review.md) |
 | **Memory L0–L4** | 12–16 | 74 | 15 | 18 | 16 | 12 | 7 | 6 | P1 | [12-16-memory-review.md](./12-16-memory-review.md) |
-| **Channel** | 17 | 76 | 15 | 21 | 17 | 12 | 5 | 6 | P1 | [17-channel-review.md](./17-channel-review.md) |
+| **Channel** | 17 | **92** | 19 | 23 | 19 | 14 | 8 | 9 | P2 | [17-channel-review.md](./17-channel-review.md) |
 | **Monitor / Dashboard** | 18 | 78 | 16 | 21 | 17 | 13 | 5 | 6 | P1 | [18-monitor-review.md](./18-monitor-review.md) |
 | **MCP** | 19 | 80 | 16 | 22 | 17 | 13 | 6 | 6 | P1 | [19-mcp-review.md](./19-mcp-review.md) |
 | **Skill** | 20 | 78 | 16 | 21 | 17 | 12 | 6 | 6 | P1 | [20-skill-review.md](./20-skill-review.md) |

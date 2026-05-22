@@ -385,11 +385,12 @@ body.body--dark .theme-preview-page
 .app-page-container:has(.chat-page)
   display: flex
   flex-direction: column
-  height: 100vh
+  // 勿用 100vh：page-container 已在 layout 内占位，全视口高度会把内容顶到 fixed q-header 下
   min-height: 0
+  height: 100%
   box-sizing: border-box
-  // 仅清零上/右/下；不可 padding:0 —— 会覆盖 Quasar 为 q-drawer 注入的 padding-left，导致聊天页被侧栏遮挡
-  padding-top: 0 !important
+  // 仅清零右/下装饰内边距；不可 padding:0 —— 会覆盖 Quasar 为 q-drawer 注入的 padding-left
+  // 亦不可清零 padding-top —— Quasar 用其为 fixed q-header 留白，否则聊天区顶部被顶栏遮挡
   padding-right: 0 !important
   padding-bottom: 0 !important
 

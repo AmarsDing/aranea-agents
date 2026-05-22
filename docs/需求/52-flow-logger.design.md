@@ -254,6 +254,9 @@ internal/service/
 | `system.plugin.*` / `system.hook.*` | warn | 插件种子与 Hook 重载 |
 | `system.auto_memory.*` | warn/info | 自动记忆提取 |
 | `system.monitor.alert_*` | warn | 告警 Webhook/通道 |
+| `channel.feishu.ws.panic` | error | 飞书 WebSocket 入站 panic |
+| `channel.feishu.ws.inbound_fail` | warn | 飞书 WebSocket ProcessInbound 失败 |
+| `channel.runtime.credentials_fail` | warn | Channel Runtime Reload 读凭据失败 |
 | `chat.intent.merge_fail` | warn | 意图结果合并失败 |
 | `chat.usage_record_fail` | warn | 用量/轮次记录失败 |
 | `team.usage_record_fail` | warn | Team 成员 step 用量落库失败（`internal/team/usage_record.go`） |

@@ -23,11 +23,13 @@ import (
 var _ transport.Server = (*WSServer)(nil)
 
 const (
-	defaultWSReadLimit  = 1 << 20
-	defaultWSPongWait   = 60 * time.Second
-	defaultWSPingPeriod = 30 * time.Second
-	defaultWSWriteWait  = 10 * time.Second
-	maxSessionConns     = 5
+	defaultWSReadLimit        = 1 << 20
+	defaultWSPongWait         = 60 * time.Second
+	defaultWSPingPeriod       = 30 * time.Second
+	defaultWSWriteWait        = 10 * time.Second
+	defaultWSSystemSendWait   = 3 * time.Second
+	maxSessionConns           = 5
+	maxGlobalMonitorConns     = 3
 )
 
 type RunCanceller interface {
@@ -66,6 +68,38 @@ type wsConn struct {
 	replayDone  chan struct{}
 	logEnabled  bool
 	globalMode  bool
+	probeMode   bool
+}
+
+func wsProbeMode(r *http.Request) bool {
+	q := r.URL.Query()
+	v := strings.TrimSpace(q.Get("probe"))
+	if v == "1" || strings.EqualFold(v, "true") {
+		return true
+	}
+	return strings.TrimSpace(q.Get("health")) == "1"
+}
+
+func (wc *wsConn) sendSystemDownstream(msg wsDownstream) {
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return
+	}
+	select {
+	case wc.send <- data:
+	case <-time.After(defaultWSSystemSendWait):
+	}
+}
+
+func (s *WSServer) countGlobalMonitorConns() int {
+	conns := s.conns["*"]
+	n := 0
+	for _, wc := range conns {
+		if wc != nil && !wc.probeMode {
+			n++
+		}
+	}
+	return n
 }
 
 type WSServer struct {
@@ -142,11 +176,15 @@ func (s *WSServer) broadcastShutdown() {
 	defer s.mu.RUnlock()
 	for _, conns := range s.conns {
 		for _, wc := range conns {
-			select {
-			case wc.send <- data:
-			default:
-			}
+			wc.sendSystemRaw(data)
 		}
+	}
+}
+
+func (wc *wsConn) sendSystemRaw(data []byte) {
+	select {
+	case wc.send <- data:
+	case <-time.After(defaultWSSystemSendWait):
 	}
 }
 
@@ -163,6 +201,7 @@ func (s *WSServer) handleWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	globalMode := sessionID == "*"
+	probeMode := globalMode && wsProbeMode(r)
 
 	var claims *auth.Auth
 	if auth.HTTPAuthBypassEnabled() {
@@ -186,15 +225,15 @@ func (s *WSServer) handleWS(w http.ResponseWriter, r *http.Request) {
 		userID = fmt.Sprintf("%d", claims.UserID)
 	}
 
-	if globalMode {
+	if globalMode && !probeMode {
 		s.mu.RLock()
-		globalConns := len(s.conns["*"])
+		globalConns := s.countGlobalMonitorConns()
 		s.mu.RUnlock()
-		if globalConns >= 3 {
+		if globalConns >= maxGlobalMonitorConns {
 			http.Error(w, "too many global monitor connections", http.StatusTooManyRequests)
 			return
 		}
-	} else {
+	} else if !globalMode {
 		s.mu.RLock()
 		existing := len(s.conns[sessionID])
 		s.mu.RUnlock()
@@ -212,7 +251,7 @@ func (s *WSServer) handleWS(w http.ResponseWriter, r *http.Request) {
 
 	lastEventID := strings.TrimSpace(r.URL.Query().Get("last_event_id"))
 	logEnabled := r.URL.Query().Get("log_enabled") == "1" || r.URL.Query().Get("log_enabled") == "true"
-	if globalMode && !logEnabled && s.serverConf != nil && s.serverConf.ProcessLogEnabled() {
+	if globalMode && !probeMode && !logEnabled && s.serverConf != nil && s.serverConf.ProcessLogEnabled() {
 		logEnabled = true
 	}
 	filterKey := strings.TrimSpace(r.URL.Query().Get("filter_key"))
@@ -221,7 +260,7 @@ func (s *WSServer) handleWS(w http.ResponseWriter, r *http.Request) {
 		"chat":   true,
 		"system": true,
 	}
-	if globalMode {
+	if globalMode && !probeMode {
 		channels["monitor"] = true
 		channels["team"] = true
 		channels["graph"] = true
@@ -237,20 +276,24 @@ func (s *WSServer) handleWS(w http.ResponseWriter, r *http.Request) {
 		send:       make(chan []byte, 128),
 		logEnabled: logEnabled,
 		globalMode: globalMode,
+		probeMode:  probeMode,
 	}
 
-	// EP-RT-06: differentiate reliable (critical) vs lossy (delta) subscriptions.
-	// WS sessions get a reliable subscription so tool_result / errors are never dropped.
-	// Global monitor connections are lossy — they can afford to miss delta events.
-	subOpts := event.SubscribeOptions{
-		BufferSize: 256,
-		Reliable:   !globalMode,
+	var eventCh <-chan event.Envelope
+	wc.unsubscribe = func() {}
+	if !probeMode {
+		// EP-RT-06: reliable for session chat; lossy for global monitor.
+		subOpts := event.SubscribeOptions{
+			BufferSize: 256,
+			Reliable:   !globalMode,
+		}
+		if !globalMode {
+			subOpts.SessionID = sessionID
+		}
+		ch, unsub := s.eventBus.Subscribe(subOpts)
+		eventCh = ch
+		wc.unsubscribe = unsub
 	}
-	if !globalMode {
-		subOpts.SessionID = sessionID
-	}
-	eventCh, unsub := s.eventBus.Subscribe(subOpts)
-	wc.unsubscribe = unsub
 
 	s.mu.Lock()
 	s.conns[sessionID] = append(s.conns[sessionID], wc)
@@ -262,7 +305,7 @@ func (s *WSServer) handleWS(w http.ResponseWriter, r *http.Request) {
 	safego.Go(connCtx, "ws-write-pump", func() { s.writePump(wc) })
 	safego.Go(connCtx, "ws-read-pump", func() { s.readPump(wc, eventCh) })
 
-	if !globalMode && lastEventID != "" && s.eventBuffer != nil {
+	if !probeMode && !globalMode && lastEventID != "" && s.eventBuffer != nil {
 		wc.replayDone = make(chan struct{})
 		safego.Go(connCtx, "ws-replay", func() {
 			defer close(wc.replayDone)
@@ -270,7 +313,9 @@ func (s *WSServer) handleWS(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	safego.Go(connCtx, "ws-event-pump", func() { s.eventPump(wc, eventCh) })
+	if !probeMode {
+		safego.Go(connCtx, "ws-event-pump", func() { s.eventPump(wc, eventCh) })
+	}
 }
 
 func (s *WSServer) sendConnected(wc *wsConn, sessionID, lastEventID string) {
@@ -289,11 +334,7 @@ func (s *WSServer) sendConnected(wc *wsConn, sessionID, lastEventID string) {
 			"last_event_id":       lastEventID,
 		},
 	}
-	data, _ := json.Marshal(msg)
-	select {
-	case wc.send <- data:
-	default:
-	}
+	wc.sendSystemDownstream(msg)
 }
 
 func (s *WSServer) replayEvents(wc *wsConn, sessionID, lastEventID string) {
@@ -457,19 +498,14 @@ func (s *WSServer) handleUpstream(wc *wsConn, raw []byte) {
 	}
 	switch up.Type {
 	case "ping":
-		msg := wsDownstream{
+		wc.sendSystemDownstream(wsDownstream{
 			Direction: "server_to_client",
 			Channel:   "system",
 			Type:      "pong",
 			Payload: map[string]any{
 				"server_time": time.Now().UTC().Format(time.RFC3339Nano),
 			},
-		}
-		data, _ := json.Marshal(msg)
-		select {
-		case wc.send <- data:
-		default:
-		}
+		})
 
 	case "subscribe":
 		payload, ok := up.Payload.(map[string]any)

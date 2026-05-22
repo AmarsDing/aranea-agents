@@ -1,4 +1,5 @@
 import type { ChannelCatalogItem, ChannelConfig, ChannelMetadata, ChannelRow } from "../../features/channels/types";
+import { buildChannelWebhookURL, isLocalhostOrigin, resolvePublicWebhookOrigin } from "../../features/channels/publicWebhookOrigin";
 
 export function parseJSON<T>(value: string | undefined, fallback: T): T {
   if (!value) return fallback;
@@ -69,8 +70,16 @@ export function channelWebhookPath(row: ChannelRow): string {
 export function channelWebhookURL(row: ChannelRow): string {
   const path = channelWebhookPath(row);
   if (!path) return "";
-  if (typeof window === "undefined") return path;
-  return `${window.location.origin}${path}`;
+  const meta = channelMetadata(row);
+  return buildChannelWebhookURL(path, meta);
+}
+
+export function channelWebhookOrigin(row: ChannelRow): string {
+  return resolvePublicWebhookOrigin(channelMetadata(row));
+}
+
+export function channelWebhookIsLocalhost(row: ChannelRow): boolean {
+  return isLocalhostOrigin(channelWebhookOrigin(row));
 }
 
 export function channelSupportsWebhook(row: ChannelRow, catalog: ChannelCatalogItem[]): boolean {
