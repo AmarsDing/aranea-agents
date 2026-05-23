@@ -82,6 +82,7 @@ internal/data           ← Repo 实现（Ent ORM + SQLite，单 sql.Open）
 | **判断代码该放 Kratos 哪层** | [guides/kratos-framework-guide.md](./guides/kratos-framework-guide.md) | Kratos 各层职责边界、依赖方向、Proto/Wire/中间件/错误处理/配置 |
 | **使用 trpc-agent-go 框架** | [guides/trpc-agent-go-framework.md](./guides/trpc-agent-go-framework.md) | 框架目录结构、核心接口、项目内桥接函数、常见实现场景、官方文档索引 |
 | **任何前端编码** | [guides/frontend-guide.md](./guides/frontend-guide.md) | ★ **唯一前端编码行为准则**：数据流、分层、红线、UX 主题、迁移剧本 |
+| **跨模块解耦 / 架构优化** | [guides/module-decoupling-architecture-guide.md](./guides/module-decoupling-architecture-guide.md) | Chat / Channel / Agent / Team / Graph 边界、目标依赖方向、端口化路线、AI 迁移清单 |
 | **当前迭代进度与任务** | [guides/execution-plan.md](./guides/execution-plan.md) | 模块接入度、Top-20、里程碑、扩展红线 |
 | **Chat × Channel 企业级蓝图** | [guides/m55-chat-channel-enterprise-blueprint.md](./guides/m55-chat-channel-enterprise-blueprint.md) | ★ Chat / Channel 主链路推到产品级的架构 / 业务 / UX 蓝图 + AI 落地任务卡 |
 | **Graph × Team × Multi-Agent 企业级蓝图** | [guides/m53-graph-team-multiagent-enterprise-blueprint.md](./guides/m53-graph-team-multiagent-enterprise-blueprint.md) | ★ M53 编排融合下一阶段（执行单链 / OrchestrationSpec v2 / Activity 时间线 / FailurePolicy 完整化）AI 落地任务卡 |
@@ -145,6 +146,7 @@ internal/data           ← Repo 实现（Ent ORM + SQLite，单 sql.Open）
 | **前端规范** | `guides/frontend-guide.md` | 前端红线、数据流、分层、UX 主题 | 后端内容 |
 | **Kratos 框架** | `guides/kratos-framework-guide.md` | Kratos 各层职责与约束 | 通用教程 / 示例代码 |
 | **trpc 框架** | `guides/trpc-agent-go-framework.md` | 框架接口与项目映射 | 通用教程 |
+| **解耦指导** | `guides/module-decoupling-architecture-guide.md` | 跨模块边界、依赖方向、端口化路线、AI 迁移模板 | 单次需求进度 / 具体修复记录 |
 | **进度真相** | `guides/execution-plan.md` | 模块接入度 / 里程碑 / 红线扩展 | 已冻结的 sprint 节奏 |
 | **需求文档** | `需求/*.md` | 用户故事、功能规格、验收标准 | 实现细节、代码片段 |
 | **设计文档** | `需求/*.design.md` | 架构方案、接口设计、数据模型 | 修复记录、待办 |

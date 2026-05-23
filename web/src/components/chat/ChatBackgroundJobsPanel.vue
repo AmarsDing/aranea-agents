@@ -126,8 +126,9 @@ import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import { useChatBackgroundJobs } from "../../features/chat/useChatBackgroundJobs";
 import { useTaskDeadLetters } from "../../features/chat/useTaskDeadLetters";
-import type { ChatBackgroundJobRow } from "../../features/chat/api";
-import type { TaskDeadLetterRow } from "../../features/teams/api";
+
+type ChatBackgroundJobRow = ReturnType<typeof useChatBackgroundJobs>["rows"]["value"][number];
+type TaskDeadLetterRow = ReturnType<typeof useTaskDeadLetters>["rows"]["value"][number];
 
 const props = defineProps<{
   sessionId?: string;

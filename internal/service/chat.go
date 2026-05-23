@@ -36,20 +36,20 @@ type awaitReplyCh struct {
 type ChatService struct {
 	chatv1.UnimplementedChatServiceServer
 
-	teams         biz.TeamRepository
-	teamsNative   *team.Runner
-	usage         *biz.UsageUsecase
-	monitor       *biz.MonitorUsecase
-	td            rt.TurnDeps
-	pluginRT      *plugintrpc.Runtime
-	pluginManager *plugintrpc.Manager
-	skillDBRepo   trpcskill.Repository
-	artifacts     *biz.ArtifactUsecase
-	runs           *rt.RunRegistry
-	chatUC         *biz.ChatUsecase
-	turnJobs       *biz.ChannelTurnJobUsecase
-	awaitMetaCache sync.Map // sessionID -> biz.ChatAwaitMeta
-	resumeInFlight sync.Map // sessionID -> struct{}; guards cross-restart await resume
+	teams              biz.TeamRepository
+	teamsNative        *team.Runner
+	usage              *biz.UsageUsecase
+	monitor            *biz.MonitorUsecase
+	td                 rt.TurnDeps
+	pluginRT           *plugintrpc.Runtime
+	pluginManager      *plugintrpc.Manager
+	skillDBRepo        trpcskill.Repository
+	artifacts          *biz.ArtifactUsecase
+	runs               *rt.RunRegistry
+	chatUC             *biz.ChatUsecase
+	turnJobs           *biz.ChannelTurnJobUsecase
+	awaitMetaCache     sync.Map // sessionID -> biz.ChatAwaitMeta
+	resumeInFlight     sync.Map // sessionID -> struct{}; guards cross-restart await resume
 	a2aUC              *biz.A2AUsecase
 	knowledgeRetriever *knowledge.Retriever
 	codeExecFactory    *localexec.Factory
@@ -57,16 +57,16 @@ type ChatService struct {
 
 type ChatServiceDeps struct {
 	rt.TurnDeps
-	Runs          *rt.RunRegistry
-	PendingQueue  *rt.PendingMessageQueue
-	Teams         biz.TeamRepository
-	TeamsNative   *team.Runner
-	Usage         *biz.UsageUsecase
-	Monitor       *biz.MonitorUsecase
-	PluginRT      *plugintrpc.Runtime
-	PluginManager *plugintrpc.Manager
-	SkillDBRepo   trpcskill.Repository
-	Artifacts     *biz.ArtifactUsecase
+	Runs               *rt.RunRegistry
+	PendingQueue       *rt.PendingMessageQueue
+	Teams              biz.TeamRepository
+	TeamsNative        *team.Runner
+	Usage              *biz.UsageUsecase
+	Monitor            *biz.MonitorUsecase
+	PluginRT           *plugintrpc.Runtime
+	PluginManager      *plugintrpc.Manager
+	SkillDBRepo        trpcskill.Repository
+	Artifacts          *biz.ArtifactUsecase
 	A2AUC              *biz.A2AUsecase
 	KnowledgeRetriever *knowledge.Retriever
 	CodeExecFactory    *localexec.Factory
@@ -194,6 +194,14 @@ func (s *ChatService) cancelActiveRun(ctx context.Context, sessionID string) boo
 // RunGateway exposes the shared session run registry (Chat, Team, Cron, Channel, WS).
 func (s *ChatService) RunGateway() rt.RunGateway {
 	return s.runs
+}
+
+// ChannelFlowBuffer exposes only the FlowLogger buffer Channel ingress needs.
+func (s *ChatService) ChannelFlowBuffer() *event.Buffer {
+	if s == nil {
+		return nil
+	}
+	return s.td.Pipeline.Buffer
 }
 
 // HasActiveRun reports whether a session has an in-flight run on the shared gateway.

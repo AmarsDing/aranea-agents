@@ -21,7 +21,7 @@ func (h *ChannelIngress) logTurnFlow(ctx context.Context, sessionID, step, messa
 		bus = h.eventBus
 	}
 	if h.chat != nil {
-		buf = h.chat.td.Pipeline.Buffer
+		buf = h.chat.ChannelFlowBuffer()
 	}
 	flow := event.NewFlowLogger(bus, buf, sessionID, "")
 	if err != nil {
