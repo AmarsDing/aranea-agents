@@ -1,7 +1,7 @@
 # Avatar 头像 — 开发计划
 
 > **版本**：2026-05-17 | **状态**：✅ 端到端可用
-> **需求**：[50 avatar.md](./50%20avatar.md) · **设计**：[50 avatar.design.md](./50%20avatar.design.md)
+> **需求**：无独立需求文档（需求内嵌于 Agent 模块 [2 agent.md](./2%20agent.md) §Avatar） · **设计**：无独立设计文档（设计内嵌于 [2 agent.design.md](./2%20agent.design.md) §Avatar）
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：—
 
 ---

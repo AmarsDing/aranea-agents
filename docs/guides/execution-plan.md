@@ -1,4 +1,4 @@
-﻿# Aranea-Agents 执行计划
+# Aranea-Agents 执行计划
 
 > **状态真相源**：本文记录当前架构健康度、模块接入度与下一阶段任务。AI 编码前须先读 [docs/README.md](../README.md)，再按场景读取规范与需求文档。
 >
@@ -39,7 +39,8 @@
 | **可用需闭环** | Team(11)、Channel(17) | Team `team_summary` WS ✅；**M53** Phase 0.5–4 ✅；Phase 5 Graph 框架 ⏳；**M55** Channel↔Web 同步 + TurnBlock 📋 |
 | **有页、Runtime 已通主项** | Knowledge(37)、Artifact(27)、Evaluation(33)、A2A(26) | A2A Phase 1–3.5 ✅（联邦 Gateway、远程 Invoke、Graph metadata）；网关 Cron/Admin 流式待 Phase 4 |
 | **Skill 子能力** | CodeExecutor(32) | Phase 1–2 + Review ✅：Factory / Agent 配置 / capabilities / lazy E2B — [开发计划](../需求/32-codeexecutor-development.md) · [设计架构图](../需求/32%20codeexecutor.design.md#21-当前架构已实现-phase-12--review-修复) |
-| **早期/占位** | Evolution(7)、CLI(25)、TTS | Ecosystem MVP ✅（`/v1/ecosystem/products`）；Telemetry Span 已通 turn，Trace UI 待补 |
+| **可用需闭环** | Evolution(7) | Scanner + API + 指标 + Cron ✅；趋势图/diff/护栏待补 |
+| **早期/占位** | Ecosystem(30)、CLI(25)、TTS | Ecosystem MVP ✅（proto + service/biz/data + 前端页面）；CLI/TTS 无后端闭环 |
 
 ---
 

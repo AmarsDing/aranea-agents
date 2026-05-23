@@ -107,6 +107,14 @@ internal/data           ← Repo 实现（Ent ORM + SQLite，单 sql.Open）
 | **Tools 片段编辑** | [需求](./需求/23%20tools-fragment-edit.md) · [设计](./需求/23%20tools-fragment-edit.design.md) · [开发计划 Phase 4](./需求/23-tools-development.md#phase-4片段级文件编辑p1) · [Tools 总览](./需求/23%20tools.md) · [Review Phase 4](./review/2026-05-22-Tools-Phase4-Fragment-Edit-Review.md) · [Review Phase 5](./review/2026-05-22-Tools-Phase5-Workspace-Unification-Review.md) · [23-tools-review](./review/23-tools-review.md) | Phase 4+5 ✅ |
 | **Team × Graph 编排融合** | [需求](./需求/53%20team-graph-orchestration.md) · [设计](./需求/53%20team-graph-orchestration.design.md) · [开发计划 §8 终态](./需求/53-team-graph-orchestration-development.md#8-终态路线图team-规格--graph-执行单链) · [**企业级蓝图与 AI 落地指南**](./guides/m53-graph-team-multiagent-enterprise-blueprint.md) · [Phase 4 changelog](./changelog/2026-05-23-Team-Graph-M53-Phase4.md) · [Phase 4 优化](./changelog/2026-05-23-Team-Graph-M53-Phase4-Optimization.md) | OrchestrationSpec · 编译/观测单链 · 执行收敛 Phase 5–7 |
 | **Hermes Kanban 适配（M54）** | [需求](./需求/54-hermes-kanban.md) · [设计](./需求/54-hermes-kanban.design.md) · [开发计划](./需求/54-hermes-kanban-development.md) | Graph Task 运行时闭环 · kanban_* tools · TaskDispatcher · 双 Kanban 观测 |
+| **Runner / Gateway** | [需求](./需求/40%20runner.md) · [设计](./需求/40%20runner.design.md) · [开发计划](./需求/40-runner-development.md) | RunRegistry / RunnerManager / RunGateway / ChatUsecase / Webhook |
+| **Planner 规划器** | [需求](./需求/39%20planner.md) · [设计](./需求/39%20planner.design.md) · [开发计划](./需求/39-planner-development.md) | planner_kind / ReAct / A2UI 组件树 / tool 去重 |
+| **CodeExecutor** | [需求](./需求/32%20codeexecutor.md) · [设计](./需求/32%20codeexecutor.design.md) · [开发计划](./需求/32-codeexecutor-development.md) | Factory / Agent 配置 / capabilities / lazy E2B |
+| **Callback / Hook** | [需求](./需求/28%20callback.md) · [设计](./需求/28%20callback.design.md) · [开发计划](./需求/28-callback-development.md) | Callback 规则 / Hook 投递 / Phase 1–3 |
+| **Avatar 头像** | [开发计划](./需求/50-avatar-development.md) | Agent 头像选择器 / Channel avatar seed |
+| **CLI 技术预览** | [需求](./需求/25%20cli.md) · [设计](./需求/25%20cli.design.md) · [开发计划](./需求/25-cli-development.md) | 非核心可用；早期占位 |
+| **TTS 技术预览** | [需求](./需求/tts.md) · [开发计划](./需求/tts-development.md) | 占位模块；无生产 SLA |
+| **Event 事件系统** | [开发计划](./需求/34-event-development.md) | EventBus 注册/分发；与 WS Envelope 协同；Monitor/Team/Chat 事件源 |
 
 ### 5.3 前端参考
 

@@ -21,7 +21,7 @@ Agent 记忆系统：**五层产品模型（L0–L4）** + **trpc-agent-go `memo
 | `internal/biz` | 领域：`MemoryUsecase`（pgvector）、`MemoryAdminUsecase`、`L4GraphUsecase`、`RuntimeSet` | `memory.go`、`memory_admin_*.go`、`memory_l4*.go` |
 | `internal/agent` | Runner 装配：`BuildTRPCLLMAgent`、`L4MemoryCue` | `trpc_build.go`、`l4_prompt.go` |
 | `internal/memory/trpc` | 框架 `memory.Service` → SQLite | `sqlite_adapter.go` |
-| `internal/data/sessionmemory` | L0–L4 表读写（`memory_chain.sql`） | `store*.go` |
+| `internal/data/sessionmemory` | L0–L4 表读写（`memory_chain.sql`）；**是 `MemoryAdminUsecase` 的 data 层实现，也是 `memory.Service` SQLite 适配器的底层存储**，非旁路或遗留代码 | `store*.go` |
 | `pkg/trpc-agent-go/memory` | 框架真相源（接口语义） | 仅 agent/memory 桥接引用 |
 
 **主从关系（已定稿）**：

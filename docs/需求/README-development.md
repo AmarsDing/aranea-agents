@@ -49,7 +49,7 @@
 | Artifact | [27-artifact-development.md](./27-artifact-development.md) |
 | Callback | [28-callback-development.md](./28-callback-development.md) |
 | Token | [29-token-development.md](./29-token-development.md) |
-| **Ecosystem（技术预览）** | [30-ecosystem-development.md](./30-ecosystem-development.md) | ⚠️ 接近 mock；不计入核心可用 |
+| **Ecosystem** | [30-ecosystem-development.md](./30-ecosystem-development.md) | proto + service/biz/data + 前端页面 ✅；安装流程/市场模型待产品化 |
 
 ## 高级能力
 
@@ -141,8 +141,8 @@
 | 半闭环 | **Knowledge**、**Artifact** | Knowledge 管理页+Rerank+Embedder ✅；OCR/多租户待补 |
 | 核心可用 | **Evaluation** | Phase 5 ✅：FrameworkBridge + AfterTurn + 趋势/A/B + 扩展指标 + Eval LLM 系统配置 |
 | 有管理页、Phase 4 待补 | **A2A** | Phase 1–3.5 ✅（Server/远程/联邦/Graph metadata/流式）；网关 Cron/限流待 Phase 4 |
-| 早期/占位 | ~~Channel 投递~~（retry 已有）、**Ecosystem / CLI / TTS 技术预览** | 不能作为可组合模块 |
-| 可用需闭环 | **Evolution**（Scanner 首版 ✅；趋势图/diff/护栏待补） | 见 [7-agent-evolution-development.md](./7-agent-evolution-development.md) |
+| 早期/占位 | **CLI / TTS 技术预览** | 不能作为可组合模块 |
+| 可用需闭环 | **Evolution**（Scanner + API + 指标 + Cron ✅；趋势图/diff/护栏待补） | 见 [7-agent-evolution-development.md](./7-agent-evolution-development.md) |
 
 ### 近期已完成（Evaluation Phase 5 — 2026-05-21）
 

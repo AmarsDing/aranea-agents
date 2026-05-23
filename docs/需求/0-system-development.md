@@ -1,4 +1,4 @@
-﻿# System 系统 — 架构健康度诊断与综合开发计划
+# System 系统 — 架构健康度诊断与综合开发计划
 
 > **版本**：2026-05-21（Agent 优化）| **状态**：M0–M3 ✅；M4 进行中（Monitor/Token/Quota/MCP 部分已通；Channel/Ecosystem/Telemetry UI 待补）  
 > **系统总览**：[0 系统框图.md](./0%20系统框图.md)  
@@ -54,7 +54,7 @@ OpenClaw 在 `pkg/trpc-agent-go/openclaw` 中完整存在，可直接对照。�
 | 中等 | `internal/memory*` | 产品 L0-L4 与框架 MemoryService 都合理 | 双轨未定主从，service/agent 直连 store | L0-L4 是产品模型，MemoryService 是 Runner 适配口 |
 | 清晰 | Gateway / RunRegistry | `RunRegistry` + `RunnerManager` + `RunGateway` 已通 | `StopGeneration` 未统一 `publishRunStatus(cancelled)` | 取消路径与 WS `run_status` 完全对齐 |
 | 不清晰 | Frontend store/features | 部分域有 store，部分 page 直连 API，mapper 三套 | AI 难判断新逻辑放哪里 | 统一 feature 模板和 store 策略 |
-| 不完整 | Ecosystem / TTS | 文档有目标，代码几乎无后端闭环 | 容易被误认为已可用 | 标注占位或补需求/设计/API |
+| 不完整 | TTS | 文档有目标，代码几乎无后端闭环 | 容易被误认为已可用 | 标注占位或补需求/设计/API |
 
 ### 3.2 模块间关联与耦合
 
@@ -84,7 +84,7 @@ OpenClaw 在 `pkg/trpc-agent-go/openclaw` 中完整存在，可直接对照。�
 | 半闭环 | A2A | Invoke 派发、call_agent、admin 鉴权、管理页 ✅ | 远程发现、A2A Server 暴露、流式、Graph 恢复 | 跨工作区与标准协议互通 |
 | 半闭环 | Knowledge | 管理页、Embedder UI、摄取 WS、EnsureKnowledgeSchema ✅ | Rerank/OCR、PG 多租户稳定性 | 检索质量与工程化 |
 | 闭环较好 | Artifact | Preview、签名下载、Chat 制品面板、CodeExecutor Docker 产出物→Artifact 🟡 | 对话内附件引用、跨会话制品检索；Local/OutputSpec 产出物 | 与 Chat 多模态联动 |
-| 占位 | Ecosystem、TTS | 文档或 mock | 后端模型、API、运行时集成 | 不能作为可组合模块 |
+| 半闭环 | Ecosystem | proto + service/biz/data + 前端页面 ✅ | 安装流程产品化、市场模型 | 不再是纯 mock |
 
 ## 4. 目标架构：乐高式模块模型
 
@@ -287,7 +287,7 @@ AI 接到任何模块任务时，必须按以下顺序拆解：
 | CH-02 | Channel 出站投递与适配器 | P1 | ✅ | 更多平台适配器 | [17-channel-development.md](./17-channel-development.md) |
 | MON-01 | Monitor Dashboard 与告警规则 | P2 | 告警 ✅；概览 `/overview` ECharts + Usage Tab 去重 ✅ | latency 聚合、Phase 4 自动刷新 | [18-monitor-dashboard-development.md](./18-monitor-dashboard-development.md) |
 | TEL-01 | Telemetry 业务 Span / OTel UI | P3 | 指标部分已有 | 链路 UI 与采样配置 | [24-telemetry-development.md](./24-telemetry-development.md) |
-| ECO-01 | Ecosystem 后端与市场模型 | P3 | 前端 mock | API + 安装流程 | [30-ecosystem-development.md](./30-ecosystem-development.md) |
+| ECO-01 | Ecosystem 后端与市场模型 | P3 | proto + service/biz/data + 前端页面 ✅ | 安装流程产品化、市场模型 | [30-ecosystem-development.md](./30-ecosystem-development.md) |
 | CLI-01 | CLI 产品化（非 OpenClaw 复制） | P3 | 文档占位 | 需求 + API + 分发 | [25-cli-development.md](./25-cli-development.md) |
 | TTS-01 | TTS 运行时闭环 | P3 | 几乎无后端 | 标注 API-only 或补实现 | [tts-development.md](./tts-development.md) |
 
@@ -345,10 +345,10 @@ AI 接到任何模块任务时，必须按以下顺序拆解：
 - [x] Chat / Team / Graph / Monitor 实时主链路统一为 `/v1/ws`（Monitor/Team 全局 `session_id=*`；旧 SSE 主链路已清理）。
 - [x] Runner 可统一处理 status、cancel、enqueue、artifact、session ingest（RunRegistry + RunnerManager 已通）。
 - [x] Memory L0-L4 与框架 MemoryService 主从关系清晰（`memory.RuntimeSet` 已统一端口）。
-- [ ] 每个核心模块都有明确五面定义（Graph/Channel/Ecosystem 仍缺 UI 或 Runtime 面定稿）。
+- [ ] 每个核心模块都有明确五面定义（Graph/Channel 仍缺 UI 或 Runtime 面定稿；Ecosystem 已有五面但市场模型待补）。
 - [ ] `internal/service` 不承载复杂运行状态机（await/pending 仍在 ChatService；可接受短期存在）。
 - [ ] 前端新增模块遵循统一 feature 模板，mapper 有真实单测。
-- [ ] API-only 模块文档标注（TTS/Ecosystem/CLI 需在 README 标占位）。
+- [ ] API-only 模块文档标注（TTS/CLI 需在 README 标占位）。
 
 ## 11. 代码质量评价（2026-05-19）
 

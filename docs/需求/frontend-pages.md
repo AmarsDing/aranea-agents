@@ -89,9 +89,15 @@
 | `/graphs/new` | `graph-editor-new` | `GraphEditorPage` | Graph 列表「新增」 |
 | `/graphs/:id` | `graph-editor` | `GraphEditorPage` | Graph 卡片 |
 | `/graphs/:id/run/:execId` | `graph-run` | `GraphRunPage` | 执行后跳转 |
+| `/teams/:teamId/runs/:runId/observatory` | `team-run-observatory` | `TeamRunObservatoryPage` | Team 运行记录 |
+| `/teams/:teamId/orchestrate` | `team-orchestrate` | `TeamOrchestratePage` | Team 编排画布 |
 | `/skills/runs` | `skill-runs` | `SkillRunsPage` | Skill 页链接（若有） |
 | `/tools/runs` | `tool-runs` | `ToolRunsPage` | Tools 页「调用记录」 |
+| `/tools/audits` | `tool-audits` | `ToolAuditsPage` | Tools 页「调用审计」 |
+| `/plugins/runs` | `plugin-runs` | `PluginRunsPage` | Plugins 页「运行记录」 |
+| `/hooks/deliveries` | `hook-deliveries` | `HookDeliveriesPage` | Hooks 页「投递队列」 |
 | `/mcp` | — | redirect → `/mcp-servers` | 兼容旧路径 |
+| `/dev/theme-preview` | `theme-preview` | `ThemePreviewPage` | 仅 DEV 模式 |
 
 ---
 
@@ -399,7 +405,7 @@ Store：`stores/cron`；API：`features/cron/api.ts`。
 #### 生态市场 `/shop`
 
 - 产品列表、搜索、发布（`publishEcosystemProduct`）、安装（`installEcosystemProduct`）。
-- 页面直连 `features/ecosystem/api`（**尚无** `stores/ecosystem`）。
+- 编排：`useEcosystemPage.ts`；Store：`stores/ecosystem`。
 
 ---
 
@@ -432,7 +438,10 @@ Store：`stores/cron`；API：`features/cron/api.ts`。
 | `avatar` | `avatar` | Agent 头像选择器 |
 | `system-settings` | `system-settings` | SystemSettings |
 | `heartbeat` | `heartbeat` | 后台心跳（布局级） |
-| — | `ecosystem` | Ecosystem（页内直连 API） |
+| `orchestration` | `orchestration` | TeamRunObservatory、TeamOrchestrate、Chat 后台任务 |
+| `admin` | `admin` | Login（鉴权 store） |
+| `ecosystem` | `ecosystem` | Ecosystem |
+| — | `event` | Monitor Events（页内直连 API，无独立 Store） |
 
 ---
 
