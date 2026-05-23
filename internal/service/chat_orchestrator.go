@@ -5,7 +5,7 @@ import (
 	"strings"
 	"sync"
 
-	chatv1 "aranea-agents/api/kratos/chat/v1"
+	chatagent "aranea-agents/internal/agent"
 	localexec "aranea-agents/internal/agent/codeexecutor"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/chatactivity"
@@ -17,26 +17,28 @@ import (
 	"aranea-agents/internal/team"
 	tooltrpc "aranea-agents/internal/tools/trpc"
 
+	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
+	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
 )
 
 // ChatOrchestrator owns the turn lifecycle: admission, execution, status tracking,
 // and post-turn side effects. ChatService delegates all orchestration work here.
 type ChatOrchestrator struct {
-	teams         biz.TeamRepository
-	teamsNative   *team.Runner
-	usage         *biz.UsageUsecase
-	monitor       *biz.MonitorUsecase
-	td            rt.TurnDeps
-	pluginRT      *plugintrpc.Runtime
-	pluginManager *plugintrpc.Manager
-	skillDBRepo   trpcskill.Repository
-	artifacts     *biz.ArtifactUsecase
-	runs          *rt.RunRegistry
-	chatUC        *biz.ChatUsecase
-	turnJobs      *biz.ChannelTurnJobUsecase
-	awaitMetaCache sync.Map
-	resumeInFlight sync.Map
+	teams              biz.TeamRepository
+	teamsNative        *team.Runner
+	usage              *biz.UsageUsecase
+	monitor            *biz.MonitorUsecase
+	td                 rt.TurnDeps
+	pluginRT           *plugintrpc.Runtime
+	pluginManager      *plugintrpc.Manager
+	skillDBRepo        trpcskill.Repository
+	artifacts          *biz.ArtifactUsecase
+	runs               *rt.RunRegistry
+	chatUC             *biz.ChatUsecase
+	turnJobs           *biz.ChannelTurnJobUsecase
+	awaitMetaCache     sync.Map
+	resumeInFlight     sync.Map
 	a2aUC              *biz.A2AUsecase
 	knowledgeRetriever *knowledge.Retriever
 	codeExecFactory    *localexec.Factory
@@ -45,16 +47,16 @@ type ChatOrchestrator struct {
 // ChatOrchestratorDeps groups all dependencies for ChatOrchestrator construction.
 type ChatOrchestratorDeps struct {
 	rt.TurnDeps
-	Runs          *rt.RunRegistry
-	PendingQueue  *rt.PendingMessageQueue
-	Teams         biz.TeamRepository
-	TeamsNative   *team.Runner
-	Usage         *biz.UsageUsecase
-	Monitor       *biz.MonitorUsecase
-	PluginRT      *plugintrpc.Runtime
-	PluginManager *plugintrpc.Manager
-	SkillDBRepo   trpcskill.Repository
-	Artifacts     *biz.ArtifactUsecase
+	Runs               *rt.RunRegistry
+	PendingQueue       *rt.PendingMessageQueue
+	Teams              biz.TeamRepository
+	TeamsNative        *team.Runner
+	Usage              *biz.UsageUsecase
+	Monitor            *biz.MonitorUsecase
+	PluginRT           *plugintrpc.Runtime
+	PluginManager      *plugintrpc.Manager
+	SkillDBRepo        trpcskill.Repository
+	Artifacts          *biz.ArtifactUsecase
 	A2AUC              *biz.A2AUsecase
 	KnowledgeRetriever *knowledge.Retriever
 	CodeExecFactory    *localexec.Factory
