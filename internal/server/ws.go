@@ -10,6 +10,7 @@ import (
 	"time"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
+	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/event"
 	"aranea-agents/pkg/auth"
@@ -534,12 +535,6 @@ func (s *WSServer) handleUpstream(wc *wsConn, raw []byte) {
 		if s.canceller != nil {
 			s.canceller.CancelRun(context.Background(), wc.sessionID)
 		}
-		env := event.NewEnvelope(event.EnvelopeTypeError, "user", wc.sessionID)
-		env.Error = &event.EnvelopeError{
-			Type:    "cancelled",
-			Message: "user cancelled",
-		}
-		s.eventBus.Publish(context.Background(), env)
 
 	case "enable_log":
 		payload, ok := up.Payload.(map[string]any)
@@ -592,13 +587,15 @@ func (s *WSServer) handleUserMessage(wc *wsConn, up wsUpstream) {
 	}
 
 	sessionID := wc.sessionID
+	requestID := strings.TrimSpace(up.RequestID)
 	safego.Go(context.Background(), "ws-user-message", func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 600*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), chatagent.DefaultTurnTimeout)
 		defer cancel()
 		_, err := s.sender.SendChatMessage(ctx, req)
 		if err != nil {
 			event.SessionSysLogWarn(context.Background(), sessionID, "system.ws.send_failed", "WebSocket 用户消息发送失败", event.P("error", err))
 			env := event.NewEnvelope(event.EnvelopeTypeError, "ws-handler", sessionID)
+			env.RequestID = requestID
 			env.Error = &event.EnvelopeError{
 				Type:    "send_failed",
 				Message: err.Error(),
@@ -619,18 +616,20 @@ func (s *WSServer) handleEnqueueMessage(wc *wsConn, up wsUpstream) {
 	}
 
 	sessionID := wc.sessionID
+	requestID := strings.TrimSpace(up.RequestID)
 	req := &chatv1.EnqueueUserMessageRequest{
 		SessionId: sessionID,
 		Content:   strings.TrimSpace(content),
 	}
 
 	safego.Go(context.Background(), "ws-enqueue-message", func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 600*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), chatagent.DefaultTurnTimeout)
 		defer cancel()
 		resp, err := s.sender.EnqueueUserMessage(ctx, req)
 		if err != nil {
 			event.SessionSysLogWarn(context.Background(), sessionID, "system.ws.send_failed", "WebSocket 入队消息发送失败", event.P("error", err))
 			env := event.NewEnvelope(event.EnvelopeTypeError, "ws-handler", sessionID)
+			env.RequestID = requestID
 			env.Error = &event.EnvelopeError{
 				Type:    "enqueue_failed",
 				Message: err.Error(),
@@ -640,6 +639,7 @@ func (s *WSServer) handleEnqueueMessage(wc *wsConn, up wsUpstream) {
 		}
 		if resp == nil || !resp.GetAccepted() {
 			env := event.NewEnvelope(event.EnvelopeTypeError, "ws-handler", sessionID)
+			env.RequestID = requestID
 			env.Error = &event.EnvelopeError{
 				Type:    "enqueue_rejected",
 				Message: "no active run for session",

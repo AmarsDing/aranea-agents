@@ -93,3 +93,11 @@ CREATE TABLE IF NOT EXISTS graph_task_events (
   description TEXT NOT NULL DEFAULT '',
   timestamp DATETIME NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS graph_task_links (
+  id VARCHAR(64) PRIMARY KEY,
+  parent_task_id VARCHAR(64) NOT NULL DEFAULT '',
+  child_task_id VARCHAR(64) NOT NULL DEFAULT '',
+  execution_id VARCHAR(64) NOT NULL DEFAULT '',
+  created_at DATETIME NOT NULL
+);

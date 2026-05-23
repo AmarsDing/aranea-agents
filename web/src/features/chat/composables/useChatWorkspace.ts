@@ -1,9 +1,8 @@
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useQuasar } from "quasar";
 import { useRoute } from "vue-router";
-import { enqueueUserMessage, getRunStatus } from "../api";
-import type { RunStatus, RunStatusValue } from "../types";
+import { enqueueUserMessage } from "../api";
 import type {
   Agent,
   ChatEntityKind,
@@ -13,8 +12,9 @@ import type {
 } from "../../../components/chat/types";
 import { useAppStore } from "../../../stores/app";
 import { cancelRunningToolMessages } from "../envelopeToolCall";
-import { runStatusFromEnvelope, messageQueuedFromEnvelope } from "../envelopeRunStatus";
+import { runStatusFromEnvelope } from "../envelopeRunStatus";
 import type { Envelope } from "../envelope";
+import { useChatRunStatus } from "./useChatRunStatus";
 import { useChatStreamManager } from "./useChatStreamManager";
 import { useChatInboundSync } from "./useChatInboundSync";
 import { useChatSender } from "./useChatSender";
@@ -25,6 +25,8 @@ import {
   type A2UIUserActionPayload,
 } from "../a2uiUserAction";
 import { buildReactToolLinkIndex } from "../reactToolLinkIndex";
+import { messageListStructureFingerprint } from "../messageListFingerprint";
+import { clearChatMarkdownCache } from "../chatMessageMarkdown";
 import { formatSessionTime, getProviderModelValue } from "./chatWorkspaceUtils";
 import { useChatSidebarOrder } from "./useChatSidebarOrder";
 import { useChatAttachments } from "./useChatAttachments";
@@ -34,6 +36,7 @@ import { useChatEntityNav } from "./useChatEntityNav";
 import { useChatTraceDialog, useChatSessionArtifacts } from "./useChatTraceAndArtifacts";
 import { useChatSettingsDialog } from "./useChatSettingsDialog";
 import { hydrateAgentSettings } from "../agentPlannerSettings";
+import { parseChannelSessionMeta } from "../channelSessionMeta";
 
 export function useChatWorkspace() {
   const { t } = useI18n();
@@ -57,8 +60,6 @@ export function useChatWorkspace() {
   const teamMessages = ref<Record<string, Message[]>>({});
 
   const inputText = ref("");
-  const runStatus = ref<RunStatusValue>("idle");
-  const runMeta = ref<RunStatus | null>(null);
 
   const awaitReply = useAwaitReply();
   const {
@@ -68,7 +69,11 @@ export function useChatWorkspace() {
     awaitToolKey,
     applyRunStatus: applyAwaitRunStatus,
     clearAwaitMeta,
+    createSubmitHandlers,
   } = awaitReply;
+
+  const runStatusCtrl = useChatRunStatus({ applyAwaitRunStatus });
+  const { runStatus, runMeta, applyFromEnvelope, onSessionSwitch, refreshRunStatus } = runStatusCtrl;
 
   const providerOpts = useChatProviderOptions(store);
   const { dialogMode, modelProvider, modeOpts, provOpts, providerModels, loadChatOptions, onModeChange, onProviderChange } =
@@ -139,7 +144,14 @@ export function useChatWorkspace() {
     return store.messages;
   });
 
-  const reactToolLinkIndex = computed(() => buildReactToolLinkIndex(displayMessages.value));
+  const reactToolLinkIndex = shallowRef(buildReactToolLinkIndex([]));
+  watch(
+    () => messageListStructureFingerprint(displayMessages.value),
+    () => {
+      reactToolLinkIndex.value = buildReactToolLinkIndex(displayMessages.value);
+    },
+    { immediate: true }
+  );
 
   const sessionIdForPending = computed(() => selectedSessionForUi.value?.id);
   const sessionIdForArtifacts = computed(() => selectedSessionForUi.value?.id);
@@ -162,6 +174,27 @@ export function useChatWorkspace() {
   const selectedAgentId = computed(() => store.selectedAgent?.id);
   const selectedSessionId = computed(() => selectedSessionForUi.value?.id);
 
+  async function refreshRunStatusForUi() {
+    const sid = selectedSessionForUi.value?.id;
+    if (!sid) {
+      isAwaitingUser.value = false;
+      awaitingRunId.value = "";
+      clearAwaitMeta();
+    }
+    await refreshRunStatus(sid);
+  }
+
+  const awaitSubmit = createSubmitHandlers({
+    resolveSessionId: () =>
+      selectedEntityKind.value === "team"
+        ? teamSelectedSessionId.value ?? undefined
+        : store.selectedSession?.id,
+    inputText,
+    awaitingRunId,
+    awaitKind,
+    refreshRunStatus: refreshRunStatusForUi,
+  });
+
   function makeSessionTitle(content: string) {
     const plain = content
       .replace(/[#>*_`~\[\]()]/g, "")
@@ -169,26 +202,6 @@ export function useChatWorkspace() {
       .trim();
     if (!plain) return t("chat.untitledSession");
     return plain.length > 22 ? `${plain.slice(0, 22)}…` : plain;
-  }
-
-  async function refreshRunStatus() {
-    const sid = selectedSessionForUi.value?.id;
-    if (!sid) {
-      runStatus.value = "idle";
-      runMeta.value = null;
-      isAwaitingUser.value = false;
-      awaitingRunId.value = "";
-      clearAwaitMeta();
-      return;
-    }
-    try {
-      const rs = await getRunStatus(sid);
-      runStatus.value = rs.status;
-      runMeta.value = rs;
-      applyAwaitRunStatus(rs);
-    } catch {
-      /* ignore */
-    }
   }
 
   const entityNav = useChatEntityNav({
@@ -237,9 +250,11 @@ export function useChatWorkspace() {
     sendChatViaWs: streamManager.sendChatViaWs,
     onNewSession: (title?: string) => entityNav.onNewSession(title),
     makeSessionTitle,
-    refreshRunStatus: () => refreshRunStatus(),
+    refreshRunStatus: refreshRunStatusForUi,
     loadTeamSessions: (teamId: string) => entityNav.loadTeamSessions(teamId),
     teamSessions,
+    submitAwaitingReply: awaitSubmit.submitAwaitingReply,
+    submitToolConfirm: awaitSubmit.submitToolConfirm,
   });
 
   const followUp = useFollowUpQueue(sessionIdForPending, sender.sending);
@@ -249,17 +264,9 @@ export function useChatWorkspace() {
 
   applyRunStatusFromEnvelope = (env: Envelope) => {
     followUp.onRunStatusEnvelope(env);
-    if (messageQueuedFromEnvelope(env)) return;
+    applyFromEnvelope(env);
     const rs = runStatusFromEnvelope(env);
-    if (!rs) return;
-    runStatus.value = rs.status;
-    applyAwaitRunStatus({
-      status: rs.status,
-      runId: rs.runId,
-      awaitKind: rs.awaitKind,
-      awaitToolKey: rs.awaitToolKey,
-    });
-    if (rs.status === "cancelled") {
+    if (rs?.status === "cancelled") {
       store.messages = cancelRunningToolMessages(store.messages);
       const sid = selectedSessionForUi.value?.id;
       if (sid && teamMessages.value[sid]) {
@@ -347,7 +354,6 @@ export function useChatWorkspace() {
           : t("chat.enqueueAccepted", "Message will be injected at the next tool boundary"),
       });
       await refreshPendingMessages();
-      await refreshRunStatus();
       return;
     }
     $q.notify({ type: "warning", message: t("chat.enqueueRejected", "Could not enqueue message") });
@@ -377,26 +383,64 @@ export function useChatWorkspace() {
     $q.notify({ type: "info", message: t("chat.voicePlaceholder") });
   }
 
+  let visibleRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+
+  async function bindSessionView(sessionId: string, replace = true) {
+    if (selectedEntityKind.value === "team") {
+      streamManager.ensureTeamStream(sessionId);
+      return;
+    }
+    streamManager.ensureChatStream(sessionId);
+    try {
+      if (replace) clearChatMarkdownCache();
+      await store.loadMessages(replace ? { replace: true } : undefined);
+    } catch (err) {
+      console.error("loadMessages failed", err);
+    }
+  }
+
   watch(
     () => selectedSessionForUi.value?.id,
-    (sid) => {
-      if (sid) {
-        void refreshRunStatus();
-      } else {
-        runStatus.value = "idle";
+    (sid, prevSid) => {
+      if (!sid) {
+        onSessionSwitch(undefined);
         isAwaitingUser.value = false;
         awaitingRunId.value = "";
+        clearAwaitMeta();
+        return;
+      }
+      onSessionSwitch(sid);
+      if (sid !== prevSid) {
+        void bindSessionView(sid, true);
       }
     },
     { immediate: true }
   );
 
+  function onPageVisible() {
+    if (document.visibilityState !== "visible") return;
+    const sid = selectedSessionForUi.value?.id;
+    if (!sid) return;
+    const meta = parseChannelSessionMeta(
+      selectedSessionForUi.value?.metadata_json ?? store.selectedSession?.metadata_json
+    );
+    if (!meta) return;
+    if (visibleRefreshTimer) clearTimeout(visibleRefreshTimer);
+    visibleRefreshTimer = setTimeout(() => {
+      visibleRefreshTimer = null;
+      void bindSessionView(sid, false);
+    }, 600);
+  }
+
   onUnmounted(() => {
+    if (visibleRefreshTimer) clearTimeout(visibleRefreshTimer);
+    document.removeEventListener("visibilitychange", onPageVisible);
     sender.clearSendingTimeout();
     streamManager.disconnectAll();
   });
 
   onMounted(async () => {
+    document.addEventListener("visibilitychange", onPageVisible);
     await Promise.all([loadChatOptions(), entityNav.loadCategoryTree(), entityNav.loadTeams()]);
     await store.loadAgents();
     defaultAgentId.value = store.agents[0]?.id ?? null;
@@ -414,7 +458,6 @@ export function useChatWorkspace() {
       await store.loadSessions();
       store.selectedSession = store.sessions[0] ?? null;
       store.messages = [];
-      if (store.selectedSession) await store.loadMessages();
     } else if (store.agents[0]) {
       await entityNav.selectAgent(store.agents[0]);
     } else if (displayTeams.value[0]) {

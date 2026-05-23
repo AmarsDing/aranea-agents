@@ -1,70 +1,163 @@
 <template>
   <div :class="['graph-node-palette', { 'is-dark': isDark }]">
-    <div class="graph-node-palette__title">节点类型</div>
-    <div class="graph-node-palette__list">
-      <div
-        v-for="item in nodeTypes"
-        :key="item.type"
-        class="graph-node-palette__item"
-        draggable="true"
-        @dragstart="onDragStart($event, item.type)"
-      >
-        <div class="graph-node-palette__icon" :style="{ background: item.style.fillColor, borderColor: item.style.borderColor }">
-          <q-icon :name="item.style.icon" size="18px" :style="{ color: item.style.borderColor }" />
-        </div>
-        <div class="graph-node-palette__info">
-          <div class="graph-node-palette__name">{{ item.style.label }}</div>
-          <div class="graph-node-palette__desc">{{ item.desc }}</div>
-        </div>
+    <div class="graph-node-palette__head">
+      <div class="graph-node-palette__title">组件库</div>
+      <div class="graph-node-palette__subtitle">拖拽到画布添加节点</div>
+    </div>
+
+    <q-input
+      v-model="search"
+      dense
+      outlined
+      clearable
+      class="graph-node-palette__search"
+      placeholder="搜索节点类型…"
+    >
+      <template #prepend><q-icon name="search" size="16px" /></template>
+    </q-input>
+
+    <div v-for="group in filteredGroups" :key="group.key" class="graph-node-palette__group">
+      <div class="graph-node-palette__group-title">{{ group.label }}</div>
+      <div class="graph-node-palette__list">
+        <button
+          v-for="item in group.items"
+          :key="item.type"
+          type="button"
+          class="graph-node-palette__item"
+          draggable="true"
+          @dragstart="onDragStart($event, item.type)"
+        >
+          <div class="graph-node-palette__icon" :style="{ '--node-accent': item.style.borderColor }">
+            <q-icon :name="item.style.icon" size="16px" />
+          </div>
+          <div class="graph-node-palette__info">
+            <div class="graph-node-palette__name">{{ item.style.label }}</div>
+            <div class="graph-node-palette__desc">{{ item.desc }}</div>
+          </div>
+        </button>
       </div>
     </div>
+
     <q-separator class="q-my-md" />
-    <div class="graph-node-palette__title">State Schema</div>
-    <div class="graph-node-palette__hint">在右侧属性面板中编辑工作流共享状态字段</div>
+
+    <GraphTemplatePicker
+      :templates="templates"
+      :loading="templatesLoading"
+      @request-templates="$emit('requestTemplates')"
+      @create-from-template="$emit('createFromTemplate', $event)"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { NODE_TYPE_STYLES, type NodeType } from "../../features/graph/types";
+import { computed, ref } from "vue";
+import GraphTemplatePicker from "./GraphTemplatePicker.vue";
+import { NODE_TYPE_STYLES, type NodeType, type GraphTemplateInfo } from "../../features/graph/types";
 
 defineProps<{
   isDark: boolean;
+  templates: GraphTemplateInfo[];
+  templatesLoading: boolean;
 }>();
 
-const nodeTypes: Array<{ type: NodeType; style: typeof NODE_TYPE_STYLES[NodeType]; desc: string }> = [
-  { type: "agent", style: NODE_TYPE_STYLES.agent, desc: "引用系统 Agent 目录中的 Agent" },
-  { type: "llm", style: NODE_TYPE_STYLES.llm, desc: "轻量级 LLM 调用" },
-  { type: "tool", style: NODE_TYPE_STYLES.tool, desc: "直接调用工具" },
-  { type: "function", style: NODE_TYPE_STYLES.function, desc: "纯逻辑处理/数据转换" },
-  { type: "router", style: NODE_TYPE_STYLES.router, desc: "条件路由，根据状态选择分支" },
-  { type: "join", style: NODE_TYPE_STYLES.join, desc: "汇聚并行分支" },
-  { type: "hitl", style: NODE_TYPE_STYLES.hitl, desc: "人工确认/输入，复用 Chat await_user 语义" },
+defineEmits<{
+  requestTemplates: [];
+  createFromTemplate: [templateId: string];
+}>();
+
+const search = ref("");
+
+const groups: Array<{
+  key: string;
+  label: string;
+  items: Array<{ type: NodeType; style: typeof NODE_TYPE_STYLES[NodeType]; desc: string }>;
+}> = [
+  {
+    key: "agent",
+    label: "智能体",
+    items: [
+      { type: "agent", style: NODE_TYPE_STYLES.agent, desc: "引用 Agent 目录中的 Agent" },
+      { type: "llm", style: NODE_TYPE_STYLES.llm, desc: "轻量级 LLM 调用" },
+      { type: "tool", style: NODE_TYPE_STYLES.tool, desc: "直接调用工具" },
+    ],
+  },
+  {
+    key: "control",
+    label: "控制流",
+    items: [
+      { type: "function", style: NODE_TYPE_STYLES.function, desc: "纯逻辑 / 数据转换" },
+      { type: "router", style: NODE_TYPE_STYLES.router, desc: "条件路由分支" },
+      { type: "join", style: NODE_TYPE_STYLES.join, desc: "汇聚并行分支" },
+      { type: "hitl", style: NODE_TYPE_STYLES.hitl, desc: "人工确认 / 审批" },
+    ],
+  },
 ];
+
+const filteredGroups = computed(() => {
+  const q = search.value.trim().toLowerCase();
+  if (!q) return groups;
+  return groups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter(
+        (item) =>
+          item.style.label.toLowerCase().includes(q) ||
+          item.desc.toLowerCase().includes(q) ||
+          item.type.includes(q),
+      ),
+    }))
+    .filter((group) => group.items.length > 0);
+});
 
 function onDragStart(event: DragEvent, type: NodeType) {
   event.dataTransfer?.setData("application/graph-node-type", type);
-  event.dataTransfer!.effectAllowed = "move";
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = "move";
+  }
 }
 </script>
 
 <style scoped>
 .graph-node-palette {
-  width: 220px;
-  padding: 16px 12px;
-  border-right: 1px solid var(--glass-border, rgb(235 220 200 / 70%));
-  background: var(--glass-surface, rgb(255 253 245 / 65%));
-  backdrop-filter: blur(var(--glass-blur-default, 18px));
-  -webkit-backdrop-filter: blur(var(--glass-blur-default, 18px));
+  width: 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 12px;
+  border-right: 1px solid var(--glass-border);
+  background: var(--glass-surface);
+  backdrop-filter: blur(var(--glass-blur-default));
+  -webkit-backdrop-filter: blur(var(--glass-blur-default));
   overflow-y: auto;
 }
 
+.graph-node-palette__head {
+  padding: 0 2px;
+}
+
 .graph-node-palette__title {
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 800;
-  text-transform: uppercase;
+  color: var(--color-text-heading);
+}
+
+.graph-node-palette__subtitle {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+
+.graph-node-palette__search :deep(.q-field__control) {
+  min-height: 36px;
+}
+
+.graph-node-palette__group-title {
+  margin: 0 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
   letter-spacing: 0.08em;
-  color: var(--color-text-secondary, var(--color-text-secondary));
-  margin-bottom: 10px;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
 }
 
 .graph-node-palette__list {
@@ -77,17 +170,20 @@ function onDragStart(event: DragEvent, type: NodeType) {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 10px;
-  border: 1px solid var(--glass-border, rgb(235 220 200 / 70%));
-  border-radius: 12px;
-  background: rgb(255 255 255 / 50%);
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--glass-elevated) 72%, transparent);
   cursor: grab;
-  transition: background 0.15s, box-shadow 0.15s;
+  text-align: left;
+  transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
 }
 
 .graph-node-palette__item:hover {
-  background: rgb(255 255 255 / 80%);
-  box-shadow: 0 2px 8px rgb(0 0 0 / 6%);
+  background: var(--glass-surface-hover);
+  border-color: color-mix(in srgb, var(--color-accent) 22%, var(--glass-border));
+  transform: translateY(-1px);
 }
 
 .graph-node-palette__item:active {
@@ -98,11 +194,12 @@ function onDragStart(event: DragEvent, type: NodeType) {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
-  border: 2px solid;
+  width: 34px;
+  height: 34px;
   border-radius: 10px;
   flex-shrink: 0;
+  background: color-mix(in srgb, var(--node-accent, var(--color-accent)) 14%, var(--glass-surface));
+  color: var(--node-accent, var(--color-accent));
 }
 
 .graph-node-palette__info {
@@ -113,31 +210,13 @@ function onDragStart(event: DragEvent, type: NodeType) {
 .graph-node-palette__name {
   font-size: 12px;
   font-weight: 700;
+  color: var(--color-text-heading);
 }
 
 .graph-node-palette__desc {
+  margin-top: 2px;
   font-size: 10px;
-  color: var(--color-text-secondary, var(--color-text-secondary));
-  line-height: 1.3;
-}
-
-.graph-node-palette__hint {
-  font-size: 11px;
-  color: var(--color-text-secondary, var(--color-text-secondary));
-  line-height: 1.4;
-}
-
-.graph-node-palette.is-dark {
-  border-color: rgb(255 255 255 / 8%);
-  background: rgb(18 24 34 / 65%);
-}
-
-.graph-node-palette.is-dark .graph-node-palette__item {
-  border-color: rgb(255 255 255 / 8%);
-  background: rgb(30 41 59 / 50%);
-}
-
-.graph-node-palette.is-dark .graph-node-palette__item:hover {
-  background: rgb(30 41 59 / 80%);
+  line-height: 1.35;
+  color: var(--color-text-secondary);
 }
 </style>

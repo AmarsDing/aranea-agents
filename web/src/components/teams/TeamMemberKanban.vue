@@ -1,0 +1,179 @@
+<template>
+  <WorkflowKanbanBoard :columns="columns" :is-dark="isDark" empty-label="暂无成员">
+    <template #header>
+      <div class="text-subtitle2 q-mb-md">成员看板</div>
+      <div class="text-caption app-text-secondary q-mb-md">按角色查看 Team 成员与编译节点。</div>
+    </template>
+    <template #card="{ items }">
+      <q-card
+        v-for="member in items as MemberCard[]"
+        :key="member.key"
+        flat
+        bordered
+        class="team-member-kanban-card q-mb-sm"
+      >
+        <q-card-section class="q-py-sm">
+          <div class="row items-center justify-between no-wrap q-mb-xs">
+            <div class="col min-width-0">
+              <div class="text-weight-medium ellipsis">{{ member.label }}</div>
+              <div class="text-caption text-grey-7">{{ member.roleLabel }} · {{ member.agentKey || "—" }}</div>
+            </div>
+            <q-badge dense rounded>{{ member.nodeType }}</q-badge>
+          </div>
+          <div class="team-member-kanban-card__section">
+            <div class="team-member-kanban-card__label">收到</div>
+            <div>{{ member.inputHint }}</div>
+          </div>
+          <div class="team-member-kanban-card__section">
+            <div class="team-member-kanban-card__label">做什么</div>
+            <div>{{ member.responsibility }}</div>
+          </div>
+          <div class="team-member-kanban-card__section">
+            <div class="team-member-kanban-card__label">交付</div>
+            <div>{{ member.outputHint }}</div>
+          </div>
+        </q-card-section>
+      </q-card>
+    </template>
+  </WorkflowKanbanBoard>
+</template>
+
+<script setup lang="ts">
+import { computed } from "vue";
+import WorkflowKanbanBoard from "../workflow/WorkflowKanbanBoard.vue";
+import type { CompileTeamGraphResult } from "../../features/orchestration/compileApi";
+import { resolveTeamNodeDisplay } from "../../features/orchestration/teamNodeDisplay";
+import type { NodeDef } from "../../features/graph/types";
+import type { TeamDefinition } from "../../features/teams/types";
+
+type MemberCard = {
+  key: string;
+  label: string;
+  role: string;
+  roleLabel: string;
+  agentKey: string;
+  nodeType: string;
+  responsibility: string;
+  inputHint: string;
+  outputHint: string;
+};
+
+const props = defineProps<{
+  compiled: CompileTeamGraphResult | null;
+  definition: TeamDefinition | null;
+  isDark: boolean;
+}>();
+
+const ROLE_COLUMNS = [
+  { key: "coordinator", label: "协调" },
+  { key: "worker", label: "执行" },
+  { key: "synthesizer", label: "汇总" },
+  { key: "critic", label: "评审" },
+  { key: "other", label: "其他" },
+];
+
+const memberCards = computed<MemberCard[]>(() => {
+  const nodes = props.compiled?.nodes ?? [];
+  if (nodes.length > 0) {
+    return nodes.map((node) => {
+      const nodeDef: NodeDef = {
+        id: node.id ?? "",
+        funcRef: "",
+        interruptBefore: false,
+        interruptAfter: false,
+        type: "agent",
+        description: node.description ?? "",
+        instruction: node.taskPrompt ?? node.description ?? "",
+        modelName: "",
+        toolNames: [],
+        agentName: node.agentName ?? "",
+        destinations: [],
+        requiredRole: node.role ?? "",
+        assignmentMode: "",
+        assignmentStrategy: "",
+        reviewerAgent: "",
+        reviewRules: "",
+        timeoutSeconds: 0,
+        heartbeatIntervalSeconds: 0,
+        enableLeaseExtension: false,
+        retryMaxAttempts: 0,
+        failureAction: "",
+        fallbackAgent: "",
+        inputMapperJson: "",
+        outputMapperJson: "",
+        isolatedMessages: false,
+        inputFromLastResponse: false,
+        cacheEnabled: false,
+        cacheTtlSeconds: 0,
+      };
+      const display = resolveTeamNodeDisplay(nodeDef, props.compiled, props.definition);
+      return {
+        key: node.id ?? node.agentName ?? "",
+        label: display.displayName,
+        role: display.role,
+        roleLabel: display.roleLabel,
+        agentKey: display.agentKey,
+        nodeType: node.type || "agent",
+        responsibility: display.responsibility,
+        inputHint: display.inputHint,
+        outputHint: display.outputHint,
+      };
+    });
+  }
+  return (props.definition?.members ?? []).map((member) => ({
+    key: `${member.agent_id}-${member.role}`,
+    label: member.name || member.agent_id,
+    role: member.role,
+    roleLabel: member.role,
+    agentKey: member.agent_id,
+    nodeType: member.enabled ? "enabled" : "disabled",
+    responsibility: member.name || "执行分配任务",
+    inputHint: "接收上游或协调者输入",
+    outputHint: "写入 state 并传递给下游",
+  }));
+});
+
+function roleBucket(role: string) {
+  const normalized = role.trim().toLowerCase();
+  if (ROLE_COLUMNS.some((column) => column.key === normalized)) {
+    return normalized;
+  }
+  return "other";
+}
+
+const columns = computed(() =>
+  ROLE_COLUMNS.map((column) => ({
+    key: column.key,
+    label: column.label,
+    items: memberCards.value.filter((member) => roleBucket(member.role) === column.key),
+  })),
+);
+</script>
+
+<style scoped>
+.team-member-kanban-card {
+  border-radius: 12px;
+  border-color: var(--glass-border);
+  background: color-mix(in srgb, var(--glass-elevated) 72%, transparent);
+}
+
+.team-member-kanban-card__section {
+  margin-top: 8px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--color-text-secondary);
+}
+
+.team-member-kanban-card__label {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+  margin-bottom: 2px;
+}
+
+.min-width-0 {
+  min-width: 0;
+}
+</style>

@@ -142,6 +142,9 @@ func (s *ChatService) nativeGetModelOptions(ctx context.Context) (*chatv1.GetCha
 func (s *ChatService) nativeSendChatMessage(ctx context.Context, req *chatv1.SendChatMessageRequest) (*chatv1.SendChatMessageResponse, error) {
 	userMsg, assistantMsg, err := s.runNativeAgentTurn(ctx, req)
 	if err != nil {
+		if IsTurnMessageQueued(err) {
+			return &chatv1.SendChatMessageResponse{}, nil
+		}
 		return nil, err
 	}
 	um := chatMessageToMap(userMsg)
@@ -187,19 +190,16 @@ func (s *ChatService) runNativeAgentTurn(ctx context.Context, req *chatv1.SendCh
 	flow.Log("chat.active_check", event.FlowPhaseDone, "检查活跃运行", event.P("has_active", hasActive))
 	// #endregion
 	if hasActive {
-		if _, _, ok := s.runs.ActiveRunner(sessionID); ok {
+		_, _, hasRunner := s.runs.ActiveRunner(sessionID)
+		switch DecideTurnAdmission(true, hasRunner) {
+		case TurnAdmitEnqueue:
 			unlock()
 			accepted, _, _, rejectReason, err := s.chatUC.EnqueueUserMessage(sessionID, content)
-			if err != nil {
-				return biz.ChatMessage{}, biz.ChatMessage{}, err
-			}
-			if !accepted {
-				return biz.ChatMessage{}, biz.ChatMessage{}, enqueueRejectError(rejectReason)
-			}
-			return biz.ChatMessage{}, biz.ChatMessage{}, nil
+			return biz.ChatMessage{}, biz.ChatMessage{}, classifyEnqueueOutcome(accepted, rejectReason, err)
+		case TurnRejectBusy:
+			unlock()
+			return biz.ChatMessage{}, biz.ChatMessage{}, turnBusyError()
 		}
-		// Stale placeholder from a crashed/partial run — clear and start a fresh turn.
-		s.runs.Finish(sessionID)
 	}
 
 	sess, err := s.td.Sessions.Get(ctx, sessionID)
@@ -301,9 +301,11 @@ func (s *ChatService) runNativeAgentTurn(ctx context.Context, req *chatv1.SendCh
 	flow.LogStart("chat.turn.enter", "进入Agent Turn执行", event.P("dialog_mode", dialogMode), event.P("provider", prov), event.P("model", mod), event.P("attachments", attN))
 	// #endregion
 
-	s.runs.StorePlaceholder(sessionID)
+	agentRunID := uuid.NewString()
+	turnCtx, turnCancel := context.WithCancel(ctx)
+	s.runs.StoreCancelable(sessionID, agentRunID, turnCancel)
 	unlock()
-	return s.runSingleAgentViaTRPC(ctx, sess, req, ag, dialogMode, prov, mod, attN)
+	return s.runSingleAgentViaTRPC(turnCtx, sess, req, ag, dialogMode, prov, mod, attN)
 }
 
 func (s *ChatService) hydratedAgent(ctx context.Context, agentID string) (biz.Agent, error) {
@@ -326,6 +328,8 @@ func (s *ChatService) RunNativeTurnUnary(ctx context.Context, req *chatv1.SendCh
 }
 
 // RunNativeTurnStreaming runs a native turn and invokes onDelta with accumulated assistant text as it streams.
+//
+// Deprecated: channel ingress uses RunNativeTurnUnary + TurnPreviewCoordinator; onDelta is no longer wired in trpc_turn.
 func (s *ChatService) RunNativeTurnStreaming(ctx context.Context, req *chatv1.SendChatMessageRequest, onDelta ChannelStreamCallback) (biz.ChatMessage, biz.ChatMessage, error) {
 	if onDelta != nil {
 		ctx = WithChannelStreamCallback(ctx, onDelta)

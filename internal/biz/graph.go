@@ -66,6 +66,12 @@ type NodeDef struct {
 	RetryMaxAttempts         int
 	FailureAction            string
 	FallbackAgent            string
+	InputMapperJSON          string
+	OutputMapperJSON         string
+	IsolatedMessages         bool
+	InputFromLastResponse    bool
+	CacheEnabled             bool
+	CacheTTLSeconds          int
 }
 
 // EdgeDef is a directed edge between two graph nodes.
@@ -107,6 +113,8 @@ type GraphBuildConfig struct {
 	InterruptBefore  []string
 	InterruptAfter   []string
 	FailurePolicy    *TeamFailurePolicy
+	// ParallelBranchIDs lists explicit parallel branch agent node ids (from embedded join compile).
+	ParallelBranchIDs []string
 }
 
 type GraphDefinition struct {
@@ -125,6 +133,7 @@ type GraphDefinition struct {
 	InterruptBefore  []string
 	InterruptAfter   []string
 	Metadata         map[string]any
+	Version          int
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 }
@@ -159,6 +168,7 @@ type GraphRepo interface {
 	SaveDefinition(ctx context.Context, def *GraphDefinition) (*GraphDefinition, error)
 	GetDefinition(ctx context.Context, id string) (*GraphDefinition, error)
 	ListDefinitions(ctx context.Context, pageSize int, pageToken string) ([]*GraphDefinition, string, error)
+	ListUserTemplateDefinitions(ctx context.Context, pageSize int) ([]*GraphDefinition, error)
 	UpdateDefinition(ctx context.Context, def *GraphDefinition) (*GraphDefinition, error)
 	DeleteDefinition(ctx context.Context, id string) error
 }
@@ -175,6 +185,7 @@ type GraphUsecase struct {
 	runRepo       GraphRunRepo
 	factory       GraphBuilderFactory
 	execObserver  GraphExecutionObserver
+	taskCoord     GraphTaskCoordinator
 	mu            sync.RWMutex
 	defs          map[string]*GraphDefinition
 	executions    map[string]*GraphExecution
@@ -191,6 +202,33 @@ func NewGraphUsecase(repo GraphRepo, runRepo GraphRunRepo, factory GraphBuilderF
 	}
 	safego.Go(context.Background(), "graph-gc-loop", func() { uc.gcLoop() })
 	return uc
+}
+
+func (uc *GraphUsecase) SetTaskCoordinator(c GraphTaskCoordinator) {
+	uc.taskCoord = c
+}
+
+func nodeDefFromConfig(cfg GraphBuildConfig, nodeID string) *NodeDef {
+	for i := range cfg.Nodes {
+		if cfg.Nodes[i].ID == nodeID {
+			n := cfg.Nodes[i]
+			return &n
+		}
+	}
+	return nil
+}
+
+// ShouldCreateTaskForNode reports whether a graph node should spawn a Kanban task row.
+func ShouldCreateTaskForNode(node *NodeDef) bool {
+	if node == nil {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(node.Type)) {
+	case "agent", "llm", "tool", "tools":
+		return true
+	default:
+		return node.RequiredRole != "" || node.AssignmentMode != "" || node.ReviewerAgent != ""
+	}
 }
 
 const gcInterval = 5 * time.Minute
@@ -230,6 +268,10 @@ func (uc *GraphUsecase) CreateGraph(ctx context.Context, def *GraphDefinition) (
 	now := time.Now()
 	def.CreatedAt = now
 	def.UpdatedAt = now
+	if def.Version <= 0 {
+		def.Version = 1
+	}
+	syncVersionMetadata(def)
 	saved, err := uc.repo.SaveDefinition(ctx, def)
 	if err != nil {
 		return nil, err
@@ -262,12 +304,19 @@ func (uc *GraphUsecase) ListGraphs(ctx context.Context, pageSize int, pageToken 
 }
 
 func (uc *GraphUsecase) UpdateGraph(ctx context.Context, def *GraphDefinition) (*GraphDefinition, error) {
+	previous, err := uc.repo.GetDefinition(ctx, def.ID)
+	if err != nil {
+		return nil, err
+	}
+	appendVersionHistory(def, previous)
 	now := time.Now()
 	def.UpdatedAt = now
+	syncVersionMetadata(def)
 	saved, err := uc.repo.UpdateDefinition(ctx, def)
 	if err != nil {
 		return nil, err
 	}
+	syncVersionMetadata(saved)
 	uc.mu.Lock()
 	uc.defs[saved.ID] = saved
 	uc.mu.Unlock()
@@ -285,272 +334,6 @@ func (uc *GraphUsecase) DeleteGraph(ctx context.Context, id string) error {
 	return nil
 }
 
-func (uc *GraphUsecase) notifyExecComplete(exec *GraphExecution) {
-	if uc == nil || uc.execObserver == nil || exec == nil {
-		return
-	}
-	uc.execObserver.OnGraphExecutionComplete(exec)
-}
-
-func (uc *GraphUsecase) ExecuteGraph(ctx context.Context, graphID, sessionID, execID string, initialState map[string]any) (*GraphExecution, error) {
-	if execID == "" {
-		execID = uuid.New().String()
-	}
-	def, err := uc.GetGraph(ctx, graphID)
-	if err != nil {
-		uc.notifyExecComplete(&GraphExecution{ID: execID, GraphID: graphID, SessionID: sessionID, Status: "failed", ErrorMessage: err.Error()})
-		return nil, err
-	}
-
-	cfg := defToBuildConfig(def)
-
-	runtime, eventCh, err := uc.factory.BuildAndRun(ctx, cfg, sessionID, graphID, execID, initialState)
-	if err != nil {
-		uc.notifyExecComplete(&GraphExecution{ID: execID, GraphID: graphID, SessionID: sessionID, Status: "failed", ErrorMessage: err.Error()})
-		return nil, err
-	}
-
-	exec := &GraphExecution{
-		ID:        execID,
-		GraphID:   graphID,
-		SessionID: sessionID,
-		Status:    "running",
-		runtime:   runtime,
-		LineageID: runtime.GetLineageID(),
-		StartedAt: time.Now(),
-	}
-
-	if err := uc.runRepo.SaveRun(ctx, exec); err != nil {
-		exec.Status = "failed"
-		exec.ErrorMessage = err.Error()
-		uc.notifyExecComplete(exec)
-		return nil, errors.FromError(ErrGraphSaveRun).WithCause(err)
-	}
-
-	safego.Go(context.Background(), "graph.consumeEvents", func() {
-		uc.consumeRuntimeEvents(eventCh, exec, execID, graphID, sessionID)
-		uc.notifyExecComplete(exec)
-	})
-
-	uc.mu.Lock()
-	uc.executions[execID] = exec
-	uc.mu.Unlock()
-	return exec, nil
-}
-
-// ExecuteGraphBuildConfig runs a graph from an explicit build config (compiled team path).
-func (uc *GraphUsecase) ExecuteGraphBuildConfig(ctx context.Context, graphID, sessionID, execID string, cfg GraphBuildConfig, initialState map[string]any) (*GraphExecution, error) {
-	if execID == "" {
-		execID = uuid.New().String()
-	}
-	cfg = FinalizeGraphFailurePolicy(cfg)
-	graphID = strings.TrimSpace(graphID)
-	if graphID == "" {
-		graphID = "compiled-graph"
-	}
-
-	runtime, eventCh, err := uc.factory.BuildAndRun(ctx, cfg, sessionID, graphID, execID, initialState)
-	if err != nil {
-		uc.notifyExecComplete(&GraphExecution{ID: execID, GraphID: graphID, SessionID: sessionID, Status: "failed", ErrorMessage: err.Error()})
-		return nil, err
-	}
-
-	exec := &GraphExecution{
-		ID:        execID,
-		GraphID:   graphID,
-		SessionID: sessionID,
-		Status:    "running",
-		runtime:   runtime,
-		LineageID: runtime.GetLineageID(),
-		StartedAt: time.Now(),
-	}
-
-	if err := uc.runRepo.SaveRun(ctx, exec); err != nil {
-		exec.Status = "failed"
-		exec.ErrorMessage = err.Error()
-		uc.notifyExecComplete(exec)
-		return nil, errors.FromError(ErrGraphSaveRun).WithCause(err)
-	}
-
-	safego.Go(context.Background(), "graph.consumeEvents", func() {
-		uc.consumeRuntimeEvents(eventCh, exec, execID, graphID, sessionID)
-		uc.notifyExecComplete(exec)
-	})
-
-	uc.mu.Lock()
-	uc.executions[execID] = exec
-	uc.mu.Unlock()
-	return exec, nil
-}
-
-func (uc *GraphUsecase) GetExecution(ctx context.Context, executionID string) (*GraphExecution, error) {
-	uc.mu.RLock()
-	exec, ok := uc.executions[executionID]
-	uc.mu.RUnlock()
-	if ok {
-		return exec, nil
-	}
-	persisted, err := uc.runRepo.GetRun(ctx, executionID)
-	if err != nil {
-		return nil, ErrNotFound
-	}
-	return persisted, nil
-}
-
-func (uc *GraphUsecase) ListExecutions(ctx context.Context, graphID string, pageSize int, pageToken string) ([]*GraphExecution, string, error) {
-	return uc.runRepo.ListRunsByGraph(ctx, graphID, pageSize, pageToken)
-}
-
-func (uc *GraphUsecase) CancelExecution(ctx context.Context, executionID string) error {
-	uc.mu.RLock()
-	exec, ok := uc.executions[executionID]
-	uc.mu.RUnlock()
-	if !ok {
-		return ErrNotFound
-	}
-	if exec.Status != "running" && exec.Status != "waiting_human" {
-		return ErrGraphInvalidStatus
-	}
-	exec.Status = "cancelled"
-	now := time.Now()
-	exec.FinishedAt = &now
-	return uc.runRepo.UpdateRun(ctx, exec)
-}
-
-func (uc *GraphUsecase) ResumeExecution(ctx context.Context, executionID string, resumeValue map[string]any) (*GraphExecution, error) {
-	uc.mu.RLock()
-	exec, ok := uc.executions[executionID]
-	uc.mu.RUnlock()
-	if !ok {
-		persisted, err := uc.runRepo.GetRun(ctx, executionID)
-		if err != nil {
-			return nil, ErrNotFound
-		}
-		exec = persisted
-		uc.mu.Lock()
-		uc.executions[executionID] = exec
-		uc.mu.Unlock()
-	}
-	if exec.runtime == nil {
-		return nil, ErrNotFound
-	}
-
-	lineageID := exec.LineageID
-	if lineageID == "" {
-		lineageID = uuid.New().String()
-		exec.LineageID = lineageID
-	}
-
-	cfg := defToBuildConfig(&GraphDefinition{ID: exec.GraphID})
-	runtime, eventCh, err := uc.factory.BuildAndResume(ctx, cfg, exec.SessionID, exec.GraphID, executionID, lineageID, resumeValue)
-	if err != nil {
-		return nil, errors.FromError(ErrGraphResume).WithCause(err)
-	}
-
-	exec.runtime = runtime
-	exec.Status = "running"
-
-	safego.Go(context.Background(), "graph.consumeEvents(resume)", func() {
-		uc.consumeRuntimeEvents(eventCh, exec, executionID, exec.GraphID, exec.SessionID)
-	})
-
-	return exec, nil
-}
-
-func (uc *GraphUsecase) consumeRuntimeEvents(eventCh <-chan GraphRuntimeEvent, exec *GraphExecution, execID, graphID, sessionID string) {
-	for e := range eventCh {
-		uc.updateExecutionFromRuntimeEvent(exec, e)
-	}
-
-	uc.mu.Lock()
-	if exec.Status == "running" {
-		exec.Status = "completed"
-		now := time.Now()
-		exec.FinishedAt = &now
-	}
-	uc.executions[execID] = exec
-	uc.mu.Unlock()
-	_ = uc.runRepo.UpdateRun(context.Background(), exec)
-}
-
-func (uc *GraphUsecase) updateExecutionFromRuntimeEvent(exec *GraphExecution, e GraphRuntimeEvent) {
-	switch e.Type {
-	case DomainEventGraphNodeStart:
-		uc.mu.Lock()
-		exec.CurrentNode = e.NodeID
-		uc.mu.Unlock()
-	case DomainEventGraphNodeError:
-		uc.mu.Lock()
-		exec.ErrorMessage = e.Error
-		exec.Status = "failed"
-		uc.mu.Unlock()
-	case DomainEventGraphInterrupt:
-		uc.mu.Lock()
-		exec.Status = "waiting_human"
-		uc.mu.Unlock()
-	}
-}
-
-func (uc *GraphUsecase) TimeTravelGetState(ctx context.Context, executionID string, checkpointID string, namespace string) (any, error) {
-	uc.mu.RLock()
-	exec, ok := uc.executions[executionID]
-	uc.mu.RUnlock()
-	if !ok || exec.runtime == nil {
-		return nil, ErrNotFound
-	}
-	return exec.runtime.TimeTravelGetState(ctx, exec.LineageID, checkpointID, namespace)
-}
-
-func (uc *GraphUsecase) TimeTravelHistory(ctx context.Context, executionID string, namespace string, limit int) (any, error) {
-	uc.mu.RLock()
-	exec, ok := uc.executions[executionID]
-	uc.mu.RUnlock()
-	if !ok || exec.runtime == nil {
-		return nil, ErrNotFound
-	}
-	return exec.runtime.TimeTravelHistory(ctx, exec.LineageID, namespace, limit)
-}
-
-func (uc *GraphUsecase) TimeTravelEditState(ctx context.Context, executionID string, checkpointID string, namespace string, patch map[string]any) (any, error) {
-	uc.mu.RLock()
-	exec, ok := uc.executions[executionID]
-	uc.mu.RUnlock()
-	if !ok || exec.runtime == nil {
-		return nil, ErrNotFound
-	}
-	return exec.runtime.TimeTravelEditState(ctx, exec.LineageID, checkpointID, namespace, patch)
-}
-
-func (uc *GraphUsecase) ListCheckpoints(ctx context.Context, executionID string, namespace string, limit int) (any, error) {
-	uc.mu.RLock()
-	exec, ok := uc.executions[executionID]
-	uc.mu.RUnlock()
-	if !ok || exec.runtime == nil {
-		return nil, ErrNotFound
-	}
-	return exec.runtime.ListCheckpoints(ctx, exec.LineageID, namespace, limit)
-}
-
-func (uc *GraphUsecase) GetStateSnapshot(ctx context.Context, executionID string, checkpointID string, namespace string) (any, error) {
-	uc.mu.RLock()
-	exec, ok := uc.executions[executionID]
-	uc.mu.RUnlock()
-	if !ok || exec.runtime == nil {
-		return nil, ErrNotFound
-	}
-	return exec.runtime.TimeTravelGetState(ctx, exec.LineageID, checkpointID, namespace)
-}
-
-func (uc *GraphUsecase) EditState(ctx context.Context, executionID string, checkpointID string, namespace string, patch map[string]any) (any, error) {
-	uc.mu.RLock()
-	exec, ok := uc.executions[executionID]
-	uc.mu.RUnlock()
-	if !ok || exec.runtime == nil {
-		return nil, ErrNotFound
-	}
-	return exec.runtime.TimeTravelEditState(ctx, exec.LineageID, checkpointID, namespace, patch)
-}
-
 func (uc *GraphUsecase) VisualizeGraph(ctx context.Context, graphID string, format string) (any, error) {
 	def, err := uc.GetGraph(ctx, graphID)
 	if err != nil {
@@ -560,7 +343,7 @@ func (uc *GraphUsecase) VisualizeGraph(ctx context.Context, graphID string, form
 	return uc.factory.Visualize(ctx, cfg)
 }
 
-func (uc *GraphUsecase) ValidateGraph(ctx context.Context, graphID string) (any, error) {
+func (uc *GraphUsecase) ValidateGraph(ctx context.Context, graphID string) (*GraphValidationResult, error) {
 	def, err := uc.GetGraph(ctx, graphID)
 	if err != nil {
 		return nil, err
@@ -574,12 +357,133 @@ func (uc *GraphUsecase) ListGraphTemplates(ctx context.Context) any {
 }
 
 func (uc *GraphUsecase) CreateGraphFromTemplate(ctx context.Context, templateID string, name string, description string) (*GraphDefinition, error) {
+	if strings.HasPrefix(templateID, UserTemplateIDPrefix) {
+		graphID := strings.TrimPrefix(templateID, UserTemplateIDPrefix)
+		src, err := uc.GetGraph(ctx, graphID)
+		if err != nil {
+			return nil, err
+		}
+		if ReadUserTemplateMeta(src) == nil {
+			return nil, ErrGraphTemplateNotFound
+		}
+		def := cloneGraphDefinition(src)
+		def.ID = ""
+		def.Name = name
+		def.Description = description
+		def.Version = 0
+		if def.Metadata != nil {
+			delete(def.Metadata, GraphMetadataUserTemplateKey)
+			delete(def.Metadata, GraphMetadataVersionHistoryKey)
+		}
+		return uc.CreateGraph(ctx, def)
+	}
 	tmpl, ok := uc.factory.GetTemplate(templateID)
 	if !ok {
 		return nil, ErrGraphTemplateNotFound
 	}
 	def := uc.factory.TemplateToDef(tmpl, name, description)
 	return uc.CreateGraph(ctx, def)
+}
+
+func (uc *GraphUsecase) ExportGraph(ctx context.Context, graphID string) ([]byte, *GraphDefinition, error) {
+	def, err := uc.GetGraph(ctx, graphID)
+	if err != nil {
+		return nil, nil, err
+	}
+	export := cloneGraphDefinition(def)
+	syncVersionMetadata(export)
+	raw, err := json.Marshal(export)
+	if err != nil {
+		return nil, nil, err
+	}
+	return raw, export, nil
+}
+
+func (uc *GraphUsecase) ImportGraph(ctx context.Context, raw []byte, name, description string) (*GraphDefinition, error) {
+	var def GraphDefinition
+	if err := json.Unmarshal(raw, &def); err != nil {
+		return nil, errors.BadRequest("GRAPH", "invalid graph json")
+	}
+	def.ID = ""
+	if strings.TrimSpace(name) != "" {
+		def.Name = name
+	}
+	if strings.TrimSpace(description) != "" {
+		def.Description = description
+	}
+	def.Version = 0
+	if def.Metadata != nil {
+		delete(def.Metadata, GraphMetadataVersionHistoryKey)
+	}
+	cfg := BuildConfigFromGraphDefinition(&def)
+	if err := uc.ensureValidBuildConfig(ctx, cfg); err != nil {
+		return nil, err
+	}
+	return uc.CreateGraph(ctx, &def)
+}
+
+func (uc *GraphUsecase) ensureValidBuildConfig(ctx context.Context, cfg GraphBuildConfig) error {
+	result, err := uc.factory.Validate(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	if result != nil && result.HasErrors() {
+		return errors.BadRequest("GRAPH", "graph failed validation")
+	}
+	return nil
+}
+
+func (uc *GraphUsecase) ListGraphVersions(ctx context.Context, graphID string) ([]GraphVersionEntry, error) {
+	def, err := uc.GetGraph(ctx, graphID)
+	if err != nil {
+		return nil, err
+	}
+	return ListGraphVersionEntries(def), nil
+}
+
+func (uc *GraphUsecase) RollbackGraphVersion(ctx context.Context, graphID string, version int) (*GraphDefinition, error) {
+	current, err := uc.GetGraph(ctx, graphID)
+	if err != nil {
+		return nil, err
+	}
+	snapshot := FindGraphVersionSnapshot(current, version)
+	if snapshot == nil {
+		return nil, errors.NotFound("GRAPH", "graph version not found")
+	}
+	restored := cloneGraphDefinition(snapshot)
+	restored.ID = graphID
+	restored.CreatedAt = current.CreatedAt
+	return uc.UpdateGraph(ctx, restored)
+}
+
+func (uc *GraphUsecase) SaveGraphAsTemplate(ctx context.Context, graphID, templateName, category, description string) (*UserTemplateMeta, error) {
+	def, err := uc.GetGraph(ctx, graphID)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(category) == "" {
+		category = "custom"
+	}
+	meta := UserTemplateMeta{
+		TemplateID:  UserTemplateIDPrefix + graphID,
+		Name:        templateName,
+		Category:    category,
+		Description: description,
+	}
+	WriteUserTemplateMeta(def, meta)
+	def.UpdatedAt = time.Now()
+	saved, err := uc.repo.UpdateDefinition(ctx, def)
+	if err != nil {
+		return nil, err
+	}
+	uc.mu.Lock()
+	uc.defs[saved.ID] = saved
+	uc.mu.Unlock()
+	return ReadUserTemplateMeta(saved), nil
+}
+
+func (uc *GraphUsecase) ListUserTemplateGraphs(ctx context.Context) ([]*GraphDefinition, error) {
+	return uc.repo.ListUserTemplateDefinitions(ctx, 200)
 }
 
 func (uc *GraphUsecase) FindNodeDef(ctx context.Context, graphID string, nodeID string) *NodeDefInfo {
@@ -589,6 +493,14 @@ func (uc *GraphUsecase) FindNodeDef(ctx context.Context, graphID string, nodeID 
 	}
 	cfg := defToBuildConfig(def)
 	return uc.factory.FindNodeDef(cfg, nodeID)
+}
+
+func (uc *GraphUsecase) FindGraphNode(ctx context.Context, graphID string, nodeID string) *NodeDef {
+	def, err := uc.GetGraph(ctx, graphID)
+	if err != nil {
+		return nil
+	}
+	return nodeDefFromConfig(defToBuildConfig(def), nodeID)
 }
 
 func defToBuildConfig(def *GraphDefinition) GraphBuildConfig {

@@ -16,6 +16,7 @@ import type {
   ValidationError,
   ValidationWarning,
   GraphTemplateInfo,
+  GraphVersionInfo,
   TemplateNodeInfo,
   TemplateEdgeInfo,
   Task,
@@ -46,6 +47,7 @@ export type {
   ValidationError,
   ValidationWarning,
   GraphTemplateInfo,
+  GraphVersionInfo,
   TemplateNodeInfo,
   TemplateEdgeInfo,
   Task,
@@ -62,7 +64,7 @@ function wireGraph(g: Record<string, unknown> | null | undefined): GraphDefiniti
     name: (g?.name as string) ?? "",
     description: (g?.description as string) ?? "",
     stateFields: (g?.stateFields as StateFieldDef[]) ?? [],
-    nodes: (g?.nodes as NodeDef[]) ?? [],
+    nodes: (g?.nodes as NodeDef[])?.map((n) => wireNode(n as Record<string, unknown>)) ?? [],
     edges: (g?.edges as EdgeDef[]) ?? [],
     conditionalEdges: (g?.conditionalEdges as ConditionalEdgeDef[]) ?? [],
     subgraphs: (g?.subgraphs as SubgraphDef[]) ?? [],
@@ -73,8 +75,42 @@ function wireGraph(g: Record<string, unknown> | null | undefined): GraphDefiniti
     interruptBefore: (g?.interruptBefore as string[]) ?? [],
     interruptAfter: (g?.interruptAfter as string[]) ?? [],
     metadata: (g?.metadata as Record<string, unknown>) ?? {},
+    version: (g?.version as number) ?? 0,
     createdAt: (g?.createdAt as string) ?? "",
     updatedAt: (g?.updatedAt as string) ?? "",
+  };
+}
+
+function wireNode(n: Record<string, unknown> | null | undefined): NodeDef {
+  return {
+    id: (n?.id as string) ?? "",
+    funcRef: (n?.funcRef as string) ?? "",
+    interruptBefore: (n?.interruptBefore as boolean) ?? false,
+    interruptAfter: (n?.interruptAfter as boolean) ?? false,
+    type: ((n?.type as NodeDef["type"]) ?? "function") as NodeDef["type"],
+    description: (n?.description as string) ?? "",
+    instruction: (n?.instruction as string) ?? "",
+    modelName: (n?.modelName as string) ?? "",
+    toolNames: (n?.toolNames as string[]) ?? [],
+    agentName: (n?.agentName as string) ?? "",
+    destinations: (n?.destinations as string[]) ?? [],
+    requiredRole: (n?.requiredRole as string) ?? "",
+    assignmentMode: (n?.assignmentMode as string) ?? "",
+    assignmentStrategy: (n?.assignmentStrategy as string) ?? "",
+    reviewerAgent: (n?.reviewerAgent as string) ?? "",
+    reviewRules: (n?.reviewRules as string) ?? "",
+    timeoutSeconds: (n?.timeoutSeconds as number) ?? 0,
+    heartbeatIntervalSeconds: (n?.heartbeatIntervalSeconds as number) ?? 0,
+    enableLeaseExtension: (n?.enableLeaseExtension as boolean) ?? false,
+    retryMaxAttempts: (n?.retryMaxAttempts as number) ?? 0,
+    failureAction: (n?.failureAction as string) ?? "",
+    fallbackAgent: (n?.fallbackAgent as string) ?? "",
+    inputMapperJson: (n?.inputMapperJson as string) ?? "",
+    outputMapperJson: (n?.outputMapperJson as string) ?? "",
+    isolatedMessages: (n?.isolatedMessages as boolean) ?? false,
+    inputFromLastResponse: (n?.inputFromLastResponse as boolean) ?? false,
+    cacheEnabled: (n?.cacheEnabled as boolean) ?? false,
+    cacheTtlSeconds: (n?.cacheTtlSeconds as number) ?? 0,
   };
 }
 
@@ -179,6 +215,7 @@ export async function getGraphExecution(executionId: string): Promise<GraphExecu
   return {
     executionId: res.executionId ?? "",
     graphId: res.graphId ?? "",
+    sessionId: res.sessionId ?? "",
     status: res.status ?? "",
     currentState: (res.currentState as Record<string, unknown>) ?? {},
     steps: (res.steps ?? []).map(wireStep),
@@ -359,6 +396,23 @@ export async function reportBlocked(taskId: string, reason: string, metadata = "
   return wireTask(res.task as Record<string, unknown>);
 }
 
+export async function unblockTask(taskId: string, comment = ""): Promise<Task> {
+  const svc = createGraphService();
+  const res = await svc.UnblockTask({ taskId, comment });
+  return wireTask(res.task as Record<string, unknown>);
+}
+
+export async function reviewTask(
+  taskId: string,
+  reviewerAgent: string,
+  approved: boolean,
+  comment = "",
+): Promise<Task> {
+  const svc = createGraphService();
+  const res = await svc.ReviewTask({ taskId, reviewerAgent, approved, comment });
+  return wireTask(res.task as Record<string, unknown>);
+}
+
 export async function listTaskComments(taskId: string): Promise<TaskComment[]> {
   const svc = createGraphService();
   const res = await svc.ListTaskComments({ taskId });
@@ -387,4 +441,70 @@ export async function listTaskEvents(executionId: string, taskId = "", eventType
   const svc = createGraphService();
   const res = await svc.ListTaskEvents({ executionId, taskId, eventType, pageSize });
   return (res.events ?? []) as TaskEvent[];
+}
+
+export async function exportGraph(graphId: string): Promise<{ json: string; graph: GraphDefinition }> {
+  const svc = createGraphService();
+  const res = await svc.ExportGraph({ graphId, format: "json" });
+  return {
+    json: res.json ?? "",
+    graph: wireGraph(res.graph as Record<string, unknown>),
+  };
+}
+
+export async function importGraph(json: string, name = "", description = ""): Promise<GraphDefinition> {
+  const svc = createGraphService();
+  const res = await svc.ImportGraph({ json, name, description });
+  return wireGraph(res.graph as Record<string, unknown>);
+}
+
+export async function listGraphVersions(graphId: string): Promise<GraphVersionInfo[]> {
+  const svc = createGraphService();
+  const res = await svc.ListGraphVersions({ graphId });
+  return (res.items ?? []).map((item) => ({
+    version: item.version ?? 0,
+    savedAt: (item.savedAt as string) ?? "",
+    name: item.name ?? "",
+  }));
+}
+
+export async function rollbackGraphVersion(graphId: string, version: number): Promise<GraphDefinition> {
+  const svc = createGraphService();
+  const res = await svc.RollbackGraphVersion({ graphId, version });
+  return wireGraph(res.graph as Record<string, unknown>);
+}
+
+export async function saveGraphAsTemplate(
+  graphId: string,
+  templateName: string,
+  category = "custom",
+  description = "",
+): Promise<{ templateId: string; template: GraphTemplateInfo }> {
+  const svc = createGraphService();
+  const res = await svc.SaveGraphAsTemplate({ graphId, templateName, category, description });
+  const t = res.template;
+  return {
+    templateId: res.templateId ?? "",
+    template: {
+      id: t?.id ?? "",
+      name: t?.name ?? "",
+      description: t?.description ?? "",
+      category: t?.category ?? "",
+      nodes: (t?.nodes ?? []).map((n) => ({
+        nodeId: n.nodeId ?? "",
+        type: n.type ?? "",
+        label: n.label ?? "",
+        description: n.description ?? "",
+      })),
+      edges: (t?.edges ?? []).map((e) => ({
+        fromNode: e.fromNode ?? "",
+        toNode: e.toNode ?? "",
+        type: e.type ?? "",
+        label: e.label ?? "",
+      })),
+      stateFields: (t?.stateFields ?? []) as StateFieldDef[],
+      entryPoint: t?.entryPoint ?? "",
+      finishPoint: t?.finishPoint ?? "",
+    },
+  };
 }

@@ -1,6 +1,8 @@
 # Chat 对话 — 开发计划
 
-> **版本**：2026-05-21 | **状态**：✅ 端到端可用；Follow-up Queue 后端 ✅，Cursor 式连续发送 UX 待 Phase 1.5
+> **版本**：2026-05-23 | **状态**：✅ 端到端可用；Follow-up / Await / Admission 两轮 P1–P2 已收口  
+> **Review**：[2026-05-23-Chat-Flow-Full-Review.md](../review/2026-05-23-Chat-Flow-Full-Review.md)  
+> **M55 Cursor 对标**：[55-chat-channel-cursor-solution.md](./55-chat-channel-cursor-solution.md) · [55-chat-channel-cursor-development.md](./55-chat-channel-cursor-development.md)  
 > **需求**：[1 chat.md](./1%20chat.md) · **设计**：[1 chat.design.md](./1%20chat.design.md)  
 > **执行卡片 v2**：[1 chat-execution-trace.md](./1%20chat-execution-trace.md) · [1 chat-execution-trace.design.md](./1%20chat-execution-trace.design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：—
@@ -14,17 +16,19 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 **代码锚点**：
 - `api/kratos/chat/v1/chat.proto` — Chat RPC（含 `EnqueueUserMessage` → `POST /v1/chat/enqueue`）
 - `internal/runtime/run_registry.go` — 会话级 active run / cancel / run status
+- `internal/runtime/pending_queue.go` — PendingMessageQueue FIFO
 - `internal/server/ws.go` — WebSocket（`user_message` / `cancel` / `enqueue_message`）
 - `internal/biz/chat_usecase.go` — Follow-up Queue 编排（EnqueueUserMessage / Pending CRUD）
-- `internal/service/chat_pending.go` — PendingMessageQueue FIFO（待下沉 runtime）
+- `internal/service/turn_outcome.go` — `ErrTurnMessageQueued` / `CHAT_TURN_BUSY`
 - `internal/service/chat_run_gateway.go` — Biz 适配器 + `publishMessageQueuedToBus`
-- `internal/service/chat_native.go` — 原生对话入口（HTTP unary + WS 上行复用）
+- `internal/service/chat_native.go` — 原生对话入口（admission + team/agent 路由）
 - `internal/service/trpc_turn.go` — trpc-agent-go 单 Agent turn + EventBus 投影
+- `internal/agent/choice_stream.go` · `stream_consumer.go` — 流式 delta 与 turn 消费
 - `internal/agent/event_projector.go` — trpc event → Envelope（含 Team `member_*`）
 - `internal/event/envelope.go` — WS Envelope 协议与 channel 路由
+- `web/src/features/chat/composables/useChatWorkspace.ts` — Chat 页编排
+- `web/src/features/chat/composables/useChatStreamManager.ts` · `useChatSender.ts` · `useFollowUpQueue.ts` · `useAwaitReply.ts`
 - `web/src/features/chat/ws-transport.ts` — WS 客户端（心跳、重连、控制消息）
-- `web/src/features/chat/composables/useChatWorkspace.ts` — Chat 页编排（WS 流、待执行、AwaitUserReply）
-- `web/src/features/chat/useEnvelopeStream.ts` — Envelope 订阅与 `useChatStream` / `useTeamStream`
 
 ---
 
@@ -36,8 +40,8 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 | HTTP unary 对话 | ✅ | `SendChatMessage` / `RunNativeTurnUnary` |
 | Channel / Cron 入口 | ✅ | `lockSession` + `RunRegistry` |
 | 停止 / 运行中追加 | ✅ | `StopGeneration` / WS `cancel`；`EnqueueUserMessage` |
-| 待执行 / Follow-up Queue | ✅ 后端 / 🟡 前端 | Steerable + Pending FIFO；UI 取消/编辑；连续发送 UX 待补 |
-| RunStatus + AwaitUserReply | ✅ | RPC + Chat 页横幅与提交（`useChatWorkspace` 轮询） |
+| 待执行 / Follow-up Queue | ✅ | Steerable + Pending FIFO；WS `enqueue_message` + `message_queued` 刷新 |
+| RunStatus + AwaitUserReply | ✅ | RPC + WS；`useAwaitReply` submit（Round2） |
 | Team member_* Envelope | ✅ | `EventProjector` + `useChatWorkspace` 成员流 |
 | WS 控制消息 | 🟡 | `ws-transport`：`connected`/`pong`/`replay_*`/`server_shutdown`；页面无回放提示 |
 | 工具事件 UI | ✅ | `ChatToolCallCard`：参数/结果/耗时/`is_long_running` 折叠卡片 |
@@ -55,11 +59,17 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 
 ### P1 — Follow-up Queue UX（Cursor 对齐）
 
-1. **运行中连续发送**：`useChatSender` 在 `runStatus === running` 时不应被 `sending` 阻塞；Enter 触发入队而非新 turn。
-2. **WS 驱动 Pending 刷新**：监听 `run_status.metadata.hint === message_queued"`，立即 `refreshPendingMessages`（替代纯 3s 轮询）。
+1. ~~**运行中连续发送**~~ ✅ `useChatSender` → `enqueue_message`（Round1）
+2. ~~**WS 驱动 Pending 刷新**~~ ✅ `messageQueuedFromEnvelope`（Round1）
 3. **（P3）** 可选 `pending_enqueued` Envelope 携带 `pending_id` + 内容预览。
 
-详见 [35-gateway-development.md Phase 1.5](./35-gateway-development.md#phase-15follow-up-queue-uxcursor-对齐p2) · [1 chat.md §1.9](./1%20chat.md#19-对话阶段连续发送follow-up-queue--待发送队列)
+### P1 — Admission / 并发（2026-05-23 收口）
+
+1. ~~Turn starting 并行 turn~~ ✅ `CHAT_TURN_BUSY` + `StoreCancelable`
+2. ~~Channel queued 启发式~~ ✅ `ErrTurnMessageQueued`
+3. ~~`processPendingQueue` 竞态~~ ✅ lock + 重新入队
+
+详见 [Chat Flow Full Review](../review/2026-05-23-Chat-Flow-Full-Review.md)
 
 ### P1 — 体验闭环（原）
 
@@ -78,6 +88,15 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 7. **RunStatus 可恢复**：`awaiting_user` 持久化或 EventBuffer 恢复策略。
 8. **模型选项单一真相源**：长期统一为 `GetChatOptions` 或 Platform 之一（当前为 Platform 优先 + 回退）。
 
+### P0 — Cursor 对标（M55，2026-05-23 规划）
+
+> 详案：[55-chat-channel-cursor-development.md](./55-chat-channel-cursor-development.md) Phase C/E
+
+1. **TurnBlock UI**：一轮 = User → ToolStrip（折叠）→ Assistant；与 Channel IM transcript 顺序对齐。
+2. **Channel 会话同步**：`session_revision` 增量 hydrate；选中 Session 强制 WS（Phase B）。
+3. **滚动锚点**：最后一轮正文，非 tool 堆底部。
+4. **（P2）@ 上下文引用**、**diff Apply 卡片**。
+
 ---
 
 ## 4. 开发阶段
@@ -93,6 +112,7 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 | 6b | 执行过程卡片 v2（Skill/MCP/默认折叠/持久化 schema） | ✅ P0 |
 | 7 | Reasoning 展示 | ⏳ |
 | 8 | 附件 / RunStatus 持久化 | 🟡 |
+| 9 | M55 TurnBlock + Channel 同步（见 [55 开发计划](./55-chat-channel-cursor-development.md)） | 📋 |
 
 ---
 

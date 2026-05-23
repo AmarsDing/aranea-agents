@@ -118,6 +118,7 @@ type AgentNodeState struct {
 	OutputPreview   string
 	ErrorMessage    string
 	CurrentActivity *ActivitySnapshot
+	ActivityHistory []ActivitySnapshot
 }
 
 // OrchestrationStatusStore holds per-run node states keyed by node_id.
@@ -256,6 +257,7 @@ func (s *OrchestrationStatusStore) applyToolCall(env event.Envelope, reg Orchest
 	if st.CurrentActivity.DisplayLabel == "" {
 		st.CurrentActivity.DisplayLabel = st.CurrentActivity.ToolName
 	}
+	appendActivityHistory(st, *st.CurrentActivity)
 	return cloneNodeState(st)
 }
 
@@ -274,6 +276,7 @@ func (s *OrchestrationStatusStore) applyToolResult(env event.Envelope, reg Orche
 		st.CurrentActivity.FinishedAt = strings.TrimSpace(tc.FinishedAt)
 		st.CurrentActivity.DurationMS = tc.DurationMS
 		st.CurrentActivity.ErrorCode = strings.TrimSpace(tc.ErrorCode)
+		appendActivityHistory(st, *st.CurrentActivity)
 	}
 	if st.Status == AgentNodeStatusToolRunning {
 		s.setStatus(st, AgentNodeStatusThinking)
@@ -629,5 +632,20 @@ func cloneNodeState(st *AgentNodeState) *AgentNodeState {
 		act := *st.CurrentActivity
 		out.CurrentActivity = &act
 	}
+	if len(st.ActivityHistory) > 0 {
+		out.ActivityHistory = append([]ActivitySnapshot(nil), st.ActivityHistory...)
+	}
 	return &out
+}
+
+const maxActivityHistory = 20
+
+func appendActivityHistory(st *AgentNodeState, snap ActivitySnapshot) {
+	if st == nil {
+		return
+	}
+	st.ActivityHistory = append(st.ActivityHistory, snap)
+	if len(st.ActivityHistory) > maxActivityHistory {
+		st.ActivityHistory = st.ActivityHistory[len(st.ActivityHistory)-maxActivityHistory:]
+	}
 }

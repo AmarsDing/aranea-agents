@@ -110,9 +110,13 @@ export const useAppStore = defineStore("app", {
       this.selectedSession = created;
       return created;
     },
-    async loadMessages() {
+    async loadMessages(opts?: { replace?: boolean }) {
       if (!this.selectedSession) return;
       const server = await listMessages(this.selectedSession.id);
+      if (opts?.replace || this.messages.length === 0) {
+        this.messages = mergeSessionMessages(server, []);
+        return;
+      }
       this.messages = mergeSessionMessages(server, this.messages);
     },
     async send(content: string, options?: SendMessageOptions) {

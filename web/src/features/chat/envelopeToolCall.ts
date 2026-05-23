@@ -127,22 +127,42 @@ export function upsertToolMessage(
 
 /** Mark in-flight tool activity rows as cancelled when run_status=cancelled. */
 export function cancelRunningToolMessages(messages: Message[], reason = "用户已停止生成"): Message[] {
+  return patchOrphanToolMessages(messages, reason, "cancelled", "tool_cancelled", ["tool_running", "tool_blocked"]);
+}
+
+/** Mark orphan in-flight tool rows when a turn ends without tool_result. */
+export function finalizeOrphanToolMessages(
+  messages: Message[],
+  reason = "Turn 已完成，未收到工具结果",
+  statuses: string[] = ["tool_running", "tool_blocked"]
+): Message[] {
+  return patchOrphanToolMessages(messages, reason, "failed", "tool_failed", statuses);
+}
+
+function patchOrphanToolMessages(
+  messages: Message[],
+  reason: string,
+  eventStatus: ToolUseEvent["status"],
+  messageStatus: string,
+  statuses: string[]
+): Message[] {
+  const allowed = new Set(statuses);
   let changed = false;
   const next = messages.map((msg) => {
-    if (msg.status !== "tool_running") return msg;
+    if (!allowed.has(msg.status || "")) return msg;
     const event = toolEventFromMessage(msg);
     if (!event) return msg;
     changed = true;
-    const cancelled: ToolUseEvent = {
+    const patched: ToolUseEvent = {
       ...event,
-      status: "cancelled",
+      status: eventStatus,
       phase: "after",
       error: event.error || reason,
       finished_at: new Date().toISOString(),
     };
-    const row = toolEventToMessage(msg.session_id, cancelled);
+    const row = toolEventToMessage(msg.session_id, patched);
     row.id = msg.id;
-    return { ...msg, ...row, id: msg.id };
+    return { ...msg, ...row, id: msg.id, status: messageStatus };
   });
   return changed ? next : messages;
 }

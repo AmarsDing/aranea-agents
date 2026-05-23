@@ -38,10 +38,31 @@ export const teamTemplateOptions: Array<{ label: string; value: TeamTemplateKey;
   }
 ];
 
+export const runtimeEngineOptions = [
+  { label: "Native（默认）", value: "native", description: "BuildTRPCTeam 按 mode 分发 Chain/Parallel/Swarm 等。" },
+  {
+    label: "Graph（GraphAgent）",
+    value: "graph",
+    description: "CompileToGraphRuntimeConfig → GraphAgent；须后端 ARANEA_TEAM_GRAPH_RUNTIME=1。"
+  }
+];
+
+export const failureDefaultOptions = [
+  { label: "重试后阻塞 retry_then_block", value: "retry_then_block" },
+  { label: "跳过 skip", value: "skip" },
+  { label: "快速失败 fail_fast", value: "fail_fast" }
+];
+
+export const parallelFailOptions = [
+  { label: "继续 continue（分支失败可跳过）", value: "continue" },
+  { label: "中止 abort", value: "abort" }
+];
+
 export function defaultDefinition(): TeamDefinition {
   const definition: TeamDefinition = {
     version: 1,
     description: "",
+    runtime_engine: "native",
     mode: "sequential",
     max_concurrency: 2,
     timeout_seconds: 600,
@@ -131,12 +152,24 @@ function pickAgent(agents: Agent[], index: number) {
   return agents[Math.min(index, agents.length - 1)];
 }
 
+function resolveRuntimeEngine(parsed: TeamDefinition): TeamDefinition["runtime_engine"] {
+  const raw = String(parsed.runtime_engine || "").trim().toLowerCase();
+  if (raw === "graph" || parsed.team_graph_runtime === true) return "graph";
+  if (raw === "native" || raw === "") return "native";
+  return parsed.runtime_engine;
+}
+
 export function parseDefinition(team: Team): TeamDefinition {
   try {
     const parsed = JSON.parse(team.definition_json || "{}") as TeamDefinition;
+    const linkedFromTeam = String(team.linked_graph_id || "").trim();
     return withGraph({
       version: parsed.version || 1,
       description: parsed.description || "",
+      runtime_engine: resolveRuntimeEngine(parsed),
+      team_graph_runtime: parsed.team_graph_runtime === true,
+      linked_graph_id: String(parsed.linked_graph_id || linkedFromTeam || "").trim() || undefined,
+      failure_policy: parsed.failure_policy,
       mode: parsed.mode || "sequential",
       max_concurrency: parsed.max_concurrency || 2,
       timeout_seconds: parsed.timeout_seconds || 600,
@@ -151,6 +184,18 @@ export function parseDefinition(team: Team): TeamDefinition {
   } catch {
     return defaultDefinition();
   }
+}
+
+/** 序列化 definition_json 时同步 runtime_engine / team_graph_runtime 双写，避免旧后端只读其一。 */
+export function definitionToJSON(definition: TeamDefinition): string {
+  const engine = String(definition.runtime_engine || "native").trim().toLowerCase();
+  const payload: TeamDefinition = {
+    ...definition,
+    runtime_engine: engine === "graph" ? "graph" : "native",
+    team_graph_runtime: engine === "graph",
+    graph: definition.graph?.nodes?.length ? definition.graph : buildGraphFromDefinition(definition)
+  };
+  return JSON.stringify(payload);
 }
 
 export function defaultA2AConfig() {
@@ -194,23 +239,25 @@ export function withGraph(definition: TeamDefinition): TeamDefinition {
 export function buildGraphFromDefinition(def: TeamDefinition): NonNullable<TeamDefinition["graph"]> {
   const members = [...(def.members || [])].sort((a, b) => a.sort_order - b.sort_order);
   const layout = graphLayoutForMode(def.mode || "sequential");
-  const nodes: TeamDefinitionGraphNode[] = [
-    { id: "start", type: "start", label: "开始", x: 0, y: 80 },
-    ...members.map((member, index) => ({
-      id: graphMemberID(member, index),
-      type: "agent",
-      label: member.name || member.role || `Agent ${index + 1}`,
-      agent_id: member.agent_id,
-      role: member.role,
-      x: graphX(def.mode || "sequential", index, members.length),
-      y: graphY(def.mode || "sequential", index, members.length)
-    })),
-    { id: "end", type: "end", label: "结束", x: graphEndX(def.mode || "sequential", members.length), y: 80 }
-  ];
-  return { version: 1, layout, nodes, edges: buildGraphEdges(def.mode || "sequential", members) };
+  const mode = def.mode || "sequential";
+  const memberNodes: TeamDefinitionGraphNode[] = members.map((member, index) => ({
+    id: graphMemberID(member, index),
+    type: "agent",
+    label: member.name || member.role || `Agent ${index + 1}`,
+    agent_id: member.agent_id,
+    role: member.role,
+    x: graphX(mode, index, members.length),
+    y: graphY(mode, index, members.length)
+  }));
+  const nodes: TeamDefinitionGraphNode[] = [{ id: "start", type: "start", label: "开始", x: 0, y: 80 }, ...memberNodes];
+  if (mode === "parallel" && memberNodes.length > 1) {
+    nodes.push({ id: "join", type: "join", label: "并行汇合", x: graphEndX(mode, members.length) - 90, y: 80 });
+  }
+  nodes.push({ id: "end", type: "end", label: "结束", x: graphEndX(mode, members.length), y: 80 });
+  return { version: 1, layout, nodes, edges: buildGraphEdges(mode, members, def.synthesizer_agent_id) };
 }
 
-function buildGraphEdges(mode: string, members: TeamDefinition["members"]) {
+function buildGraphEdges(mode: string, members: TeamDefinition["members"], synthesizerAgentId?: string) {
   const ids = members.map(graphMemberID);
   if (ids.length === 0) return [{ id: "start-end", source: "start", target: "end", label: "no members" }];
   if (mode === "adaptive") {
@@ -221,10 +268,14 @@ function buildGraphEdges(mode: string, members: TeamDefinition["members"]) {
     ];
   }
   if (mode === "parallel") {
-    return [
-      ...ids.map((id) => ({ id: `start-${id}`, source: "start", target: id, label: "fan out" })),
-      ...ids.map((id) => ({ id: `${id}-end`, source: id, target: "end", label: "join" }))
-    ];
+    const synthId = resolveSynthesizerMemberId(members, synthesizerAgentId);
+    const workerIds = synthId ? ids.filter((id) => id !== synthId) : ids;
+    const downstream = synthId || "end";
+    const edges = workerIds.map((id) => ({ id: `start-${id}`, source: "start", target: id, label: "fan out" }));
+    edges.push(...workerIds.map((id) => ({ id: `${id}-join`, source: id, target: "join", label: "join" })));
+    edges.push({ id: "join-downstream", source: "join", target: downstream, label: synthId ? "synthesize" : "finish" });
+    if (synthId) edges.push({ id: `${synthId}-end`, source: synthId, target: "end", label: "final" });
+    return edges;
   }
   if (mode === "critic_loop") {
     const edges = [{ id: `start-${ids[0]}`, source: "start", target: ids[0], label: "draft" }];
@@ -241,6 +292,17 @@ function buildGraphEdges(mode: string, members: TeamDefinition["members"]) {
 
 function graphMemberID(member: TeamDefinition["members"][number], index: number) {
   return `member-${member.sort_order || index + 1}`;
+}
+
+function resolveSynthesizerMemberId(members: TeamDefinition["members"], synthesizerAgentId?: string) {
+  const synthAgent = String(synthesizerAgentId || "").trim();
+  if (synthAgent) {
+    const idx = members.findIndex((m) => String(m.agent_id || "").trim() === synthAgent);
+    if (idx >= 0) return graphMemberID(members[idx], idx);
+  }
+  const synth = members.find((m) => String(m.role || "").toLowerCase() === "synthesizer");
+  if (synth) return graphMemberID(synth, members.indexOf(synth));
+  return "";
 }
 
 function graphLayoutForMode(mode: string) {

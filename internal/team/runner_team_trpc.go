@@ -16,6 +16,7 @@ import (
 	"aranea-agents/internal/agent/intent"
 	"aranea-agents/internal/biz"
 	rt "aranea-agents/internal/runtime"
+	"aranea-agents/internal/metrics"
 	"aranea-agents/internal/telemetry/turntrace"
 	knowledgetool "aranea-agents/internal/tools/knowledge"
 	"aranea-agents/internal/tools/serviceawaitreply"
@@ -156,7 +157,9 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 	graphExecID := ""
 	var root trpcagent.Agent
 	var memberLookup map[string]trpcagent.Agent
+	graphAttempted := false
 	if r.graphRoot != nil && TeamGraphRuntimeEnabled(def) && SupportsTeamGraphRuntimeMode(mode) {
+		graphAttempted = true
 		graphExecID = uuid.NewString()
 		cfg, cerr := CompileToGraphRuntimeConfigFromJSON(ctx, def, teamRow.DefinitionJSON, func(agentID string) string {
 			ag, gerr := r.catalogAgent(ctx, agentID)
@@ -167,10 +170,12 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 		}, r.graphLoader)
 		if cerr != nil {
 			event.CtxFlowLogWarn(ctx, "team.graph_runtime.compile", "Graph 编译失败，回退 native 运行时", event.P("error", cerr.Error()))
+			metrics.TeamGraphRuntimeTotal.WithLabelValues("native_fallback", "compile_error").Inc()
 		} else {
 			groot, gerr := r.graphRoot.BuildTeamGraphRoot(ctx, cfg)
 			if gerr != nil {
 				event.CtxFlowLogWarn(ctx, "team.graph_runtime.build", "GraphAgent 构建失败，回退 native 运行时", event.P("error", gerr.Error()))
+				metrics.TeamGraphRuntimeTotal.WithLabelValues("native_fallback", "build_error").Inc()
 			} else {
 				root = groot
 				_, memberLookup, err = BuildTeamMemberAgents(ctx, def, teamDeps, r.catalogAgent)
@@ -186,6 +191,7 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 				if teamEmitter != nil {
 					teamEmitter.LogDone("team.run.graph", "Team GraphAgent 已构建", event.P("graph_execution_id", graphExecID))
 				}
+				metrics.TeamGraphRuntimeTotal.WithLabelValues("graph", "success").Inc()
 			}
 		}
 	}
@@ -195,6 +201,9 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 			turnStatus = "error"
 			r.finishRunErr(ctx, &run, t0, err.Error())
 			return biz.ChatMessage{}, biz.ChatMessage{}, err
+		}
+		if !graphAttempted {
+			metrics.TeamGraphRuntimeTotal.WithLabelValues("native", "flag_or_mode").Inc()
 		}
 		if teamEmitter != nil {
 			teamEmitter.LogDone("team.run.build", "团队 Agent 已构建", event.P("mode", mode))
@@ -376,7 +385,15 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 		MemberAgentKeys: memberKeySet,
 	}
 	streamOpts := chatactivity.NewStreamConsumeOptions(r.td.Catalog.ToolUC, r.td.Catalog.Agents, r.td.Sessions)
-	result := agent.ConsumeEventStream(runCtx, events, r.td.Pipeline.Bus, projectMeta, streamOpts)
+	result, streamErr := agent.ConsumeWithFirstByteGuard(runCtx, agent.DefaultFirstByteTimeout, events, r.td.Pipeline.Bus, projectMeta, streamOpts)
+	if streamErr != nil {
+		turnStatus = "error"
+		if teamEmitter != nil {
+			teamEmitter.LogError("team.run.execute", streamErr.Error(), event.P("mode", mode))
+		}
+		r.finishRunErr(ctx, &run, t0, streamErr.Error())
+		return userMsg, biz.ChatMessage{}, streamErr
+	}
 	if runCtx.Err() != nil {
 		hint := ""
 		switch {
@@ -399,18 +416,9 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 		teamEmitter.LogDone("team.run.execute", "团队任务执行完成", event.P("mode", mode))
 	}
 
-	replyText := strings.TrimSpace(result.Reply.String())
 	reasoningText := strings.TrimSpace(result.Reasoning.String())
-	promptTok, completionTok := result.PromptTok, result.CompletionTok
-	if promptTok <= 0 && completionTok <= 0 && replyText != "" {
-		promptTok = agent.RoughTokenEstimate(content + replyText)
-		completionTok = agent.RoughTokenEstimate(replyText)
-	}
-
-	displayMarkdown := replyText
-	if displayMarkdown == "" && reasoningText != "" {
-		displayMarkdown = reasoningText
-	}
+	displayMarkdown := agent.DisplayMarkdownFromStream(result)
+	promptTok, completionTok := agent.EstimateTokensIfMissing(result.PromptTok, result.CompletionTok, content, displayMarkdown)
 
 	assistantOptsStr, err := agent.AssistantOptionsJSON(firstAg, anchor)
 	if err != nil {

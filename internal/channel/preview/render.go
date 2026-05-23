@@ -89,8 +89,8 @@ func renderToolSegment(seg Segment, policy biz.ChannelIMRenderPolicy) string {
 	if policy.ToolDetail == biz.ChannelIMToolDetailLabelSummary && seg.Meta.Summary != "" {
 		line += " · " + seg.Meta.Summary
 	}
-	switch strings.ToLower(strings.TrimSpace(seg.Status)) {
-	case ToolStatusCalling, "running", "pending":
+	switch NormalizeToolStatus(seg.Status) {
+	case ToolStatusCalling:
 		line += "\n  ⏳ 执行中…"
 	case ToolStatusError:
 		line += "\n  ✗ 失败"

@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"aranea-agents/internal/event"
-	"aranea-agents/internal/provider"
 	sessiontrpc "aranea-agents/internal/session/trpc"
 
 	trpcartifact "trpc.group/trpc-go/trpc-agent-go/artifact"
@@ -62,7 +61,8 @@ func NewRunnerDepsFromRuntime(trpcSession trpcsession.Service, memory trpcmemory
 type StreamConsumeOptions struct {
 	MetaResolver      ActivityMetaResolver
 	ActivityPersister ActivityPersister
-	OnReplyDelta      func(accumulated string) error
+	// OnReplyDelta is deprecated: IM channels use TurnPreviewCoordinator + EventBus instead.
+	OnReplyDelta func(accumulated string) error
 }
 
 func ConsumeEventStream(
@@ -84,102 +84,8 @@ func ConsumeEventStreamWithFirstByte(
 	firstByteReceived *bool,
 	opts *StreamConsumeOptions,
 ) EventStreamResult {
-	var result EventStreamResult
-
-	var projector *EventProjector
-	if eventBus != nil {
-		projector = NewEventProjector(eventBus)
-		if projectMeta.TeamID != "" && len(projectMeta.MemberAgentKeys) > 0 {
-			projector.memberStarted = make(map[string]bool)
-		}
-		if opts != nil {
-			projector.Configure(projectMeta, opts.MetaResolver)
-		}
-	}
-
-	received := false
-	for ev := range events {
-		if turnCtx.Err() != nil {
-			return result
-		}
-		if !received {
-			received = true
-			if firstByteReceived != nil {
-				*firstByteReceived = true
-			}
-		}
-		if firstByteCtx.Err() != nil && !received {
-			return result
-		}
-		if ev == nil {
-			continue
-		}
-
-		if ev.Response != nil && ev.Response.Error != nil {
-			result.HasError = true
-			result.LastError = ev.Response.Error.Message
-		}
-
-		if projector != nil {
-			envelopes := projector.Project(turnCtx, ev, projectMeta)
-			for _, env := range envelopes {
-				if projectMeta.TeamID != "" && env.Type == event.EnvelopeTypeToolCall {
-					author := strings.TrimSpace(env.Author)
-					if author != "" && isTeamMemberAuthor(author, projectMeta) {
-						if result.MemberToolCalls == nil {
-							result.MemberToolCalls = make(map[string]int)
-						}
-						result.MemberToolCalls[author]++
-					}
-				}
-				eventBus.Publish(turnCtx, env)
-			}
-			if opts != nil {
-				PublishActivityEnvelopes(turnCtx, projectMeta, opts.ActivityPersister, envelopes)
-			}
-		}
-
-		if ev.IsRunnerCompletion() {
-			if ev.Response != nil && ev.Response.Usage != nil {
-				result.PromptTok = ev.Response.Usage.PromptTokens
-				result.CompletionTok = ev.Response.Usage.CompletionTokens
-			}
-			continue
-		}
-
-		if ev.Response != nil && ev.Response.Error != nil {
-			result.HasError = true
-			result.LastError = ev.Response.Error.Message
-			continue
-		}
-
-		if ev.Response == nil {
-			continue
-		}
-		if usage := ev.Response.Usage; usage != nil {
-			accumulateStreamUsage(&result, ev, projectMeta, usage.PromptTokens, usage.CompletionTokens)
-		}
-		for _, choice := range ev.Response.Choices {
-			msg := choice.Message
-			if text := strings.TrimSpace(msg.Content); text != "" {
-				_ = provider.VisibleStreamingDelta(&result.Reply, text)
-				result.HasContent = true
-				if opts != nil && opts.OnReplyDelta != nil {
-					if err := opts.OnReplyDelta(result.Reply.String()); err != nil {
-						result.HasError = true
-						result.LastError = err.Error()
-						return result
-					}
-				}
-			}
-			if rc := strings.TrimSpace(msg.ReasoningContent); rc != "" {
-				_ = provider.VisibleStreamingDelta(&result.Reasoning, rc)
-				result.HasContent = true
-			}
-		}
-	}
-
-	return result
+	consumer := newTurnStreamConsumer(firstByteCtx, turnCtx, eventBus, projectMeta, firstByteReceived, opts)
+	return consumer.consume(events)
 }
 
 func accumulateStreamUsage(result *EventStreamResult, ev *trpcevent.Event, meta ProjectMeta, promptTok, completionTok int) {

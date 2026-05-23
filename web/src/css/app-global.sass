@@ -327,9 +327,16 @@ body.body--dark .theme-preview-page
 .chat-messages
   flex: 1 1 0
   min-height: 0
-  overflow-x: hidden
-  overflow-y: auto
+  height: 0
+  overflow: hidden
   position: relative
+
+.chat-messages__viewport
+  min-height: 0
+  flex: 1 1 0
+  overflow-y: auto
+  overflow-x: hidden
+  overscroll-behavior: contain
 
 .chat-empty-state
   min-height: 100%

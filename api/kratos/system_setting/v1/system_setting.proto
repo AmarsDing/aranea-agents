@@ -28,6 +28,19 @@ message SystemSettings {
   bool mcp_allow_adhoc_http = 8;
   // Evaluation UserSim / LLM-as-Judge defaults (env KRATOS_EVAL_* overrides at runtime).
   EvalLLMSettings eval_llm = 9;
+  // Web research (Tavily / SerpAPI) defaults for web_research tool. Env TAVILY_API_KEY / SERPAPI_API_KEY overrides api_key when DB empty.
+  WebResearchSettings web_research = 10;
+}
+
+message WebResearchSettings {
+  string provider = 1;       // tavily | serpapi
+  int32 max_results = 2;
+  int32 fetch_top = 3;
+  string search_depth = 4;   // Tavily: basic | advanced | fast | ultra-fast
+  int32 timeout_sec = 5;
+  string http_proxy = 6;     // optional outbound proxy for search/fetch
+  bool configured = 7;
+  bool has_api_key = 8;      // key value never returned
 }
 
 message EvalLLMSettings {
@@ -63,6 +76,34 @@ message UpdateSystemSettingsRequest {
   string eval_sim_model = 12;
   string eval_judge_provider = 13;
   string eval_judge_model = 14;
+  string web_research_provider = 15;
+  // Empty = do not change stored key; non-empty replaces.
+  string web_research_api_key = 16;
+  int32 web_research_max_results = 17;
+  int32 web_research_fetch_top = 18;
+  string web_research_search_depth = 19;
+  int32 web_research_timeout_sec = 20;
+  string web_research_http_proxy = 21;
+}
+
+message TestWebResearchRequest {
+  string provider = 1;
+  // Empty = use stored system_settings key or env fallback.
+  string api_key = 2;
+  int32 max_results = 3;
+  int32 fetch_top = 4;
+  string search_depth = 5;
+  int32 timeout_sec = 6;
+  string http_proxy = 7;
+}
+
+message TestWebResearchResponse {
+  bool ok = 1;
+  string message = 2;
+  string provider = 3;
+  int32 result_count = 4;
+  int32 latency_ms = 5;
+  double response_time_sec = 6;
 }
 
 service SystemSettingService {
@@ -74,6 +115,12 @@ service SystemSettingService {
   rpc UpdateSystemSettings(UpdateSystemSettingsRequest) returns (SystemSettings) {
     option (google.api.http) = {
       put: "/v1/system-settings"
+      body: "*"
+    };
+  }
+  rpc TestWebResearch(TestWebResearchRequest) returns (TestWebResearchResponse) {
+    option (google.api.http) = {
+      post: "/v1/system-settings/web-research/test"
       body: "*"
     };
   }

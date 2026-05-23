@@ -98,6 +98,26 @@ func TestApplyParallelFailContinue(t *testing.T) {
 	}
 }
 
+func TestApplyParallelFailContinue_explicitBranchIDs(t *testing.T) {
+	cfg := GraphBuildConfig{
+		FinishPoint:       "member-3",
+		ParallelBranchIDs: []string{"member-1", "member-2"},
+		Nodes: []NodeDef{
+			{ID: "member-1", Type: "agent", FailureAction: FailureDefaultRetryThenBlock},
+			{ID: "member-2", Type: "agent", FailureAction: FailureDefaultRetryThenBlock},
+			{ID: "member-3", Type: "agent", FailureAction: FailureDefaultRetryThenBlock},
+		},
+		FailurePolicy: &TeamFailurePolicy{ParallelFail: ParallelFailContinue},
+	}
+	out := ApplyParallelFailContinue(cfg)
+	if out.Nodes[0].FailureAction != FailureOnFailureSkip {
+		t.Fatalf("member-1 action=%q", out.Nodes[0].FailureAction)
+	}
+	if out.Nodes[1].FailureAction != FailureOnFailureSkip {
+		t.Fatalf("member-2 action=%q", out.Nodes[1].FailureAction)
+	}
+}
+
 func TestFilterVisualizationEdges(t *testing.T) {
 	cfg := GraphBuildConfig{
 		Edges: []EdgeDef{

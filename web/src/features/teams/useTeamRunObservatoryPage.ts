@@ -5,8 +5,10 @@ import type { TeamRunObservatory } from "../orchestration/types";
 import { useOrchestrationStream } from "../orchestration/useOrchestrationStream";
 import { compiledGraphToGraphDef } from "../orchestration/compileApi";
 import { buildExecNodeStates } from "../orchestration/teamGraphAdapter";
-import type { GraphDefinition } from "../graph/types";
+import type { GraphDefinition, Task } from "../graph/types";
 import { useOrchestrationStore } from "../../stores/orchestration";
+import { useGraphRunTasks } from "../graph/useGraphRunTasks";
+import { useGraphExecutionStream } from "../graph/runtime/useGraphExecutionStream";
 
 export function useTeamRunObservatoryPage() {
   const $q = useQuasar();
@@ -22,6 +24,8 @@ export function useTeamRunObservatoryPage() {
   const error = ref("");
   const observatory = ref<TeamRunObservatory | null>(null);
   const selectedNodeId = ref<string | null>(null);
+  const observatoryTab = ref("agents");
+  const graphExecStream = ref<ReturnType<typeof useGraphExecutionStream> | null>(null);
 
   const graphDef = reactive<GraphDefinition>({
     id: "",
@@ -40,11 +44,24 @@ export function useTeamRunObservatoryPage() {
     interruptAfter: [],
     metadata: {},
     createdAt: "",
-    updatedAt: ""
+    updatedAt: "",
   });
 
   const stream = ref<ReturnType<typeof useOrchestrationStream> | null>(null);
   const streamConnected = computed(() => stream.value?.connected.value ?? false);
+
+  const graphExecutionId = computed(() => observatory.value?.graph_execution_id?.trim() ?? "");
+  const taskList = computed(() => graphExecStream.value?.taskList.value ?? []);
+  const taskStreamConnected = computed(() => graphExecStream.value?.streamConnected.value ?? false);
+
+  const taskItemsSeed = (items: Task[]) => {
+    graphExecStream.value?.seedTasks(items);
+  };
+  const taskUpsert = (task: Task) => {
+    graphExecStream.value?.upsertTask(task);
+  };
+
+  const tasks = useGraphRunTasks(() => graphExecutionId.value, taskItemsSeed, taskUpsert);
 
   const nodeList = computed(() => {
     const map = stream.value?.nodes.value ?? new Map();
@@ -70,6 +87,21 @@ export function useTeamRunObservatoryPage() {
     graphDef.edges = [];
   }
 
+  function connectTaskStream(obs: TeamRunObservatory) {
+    graphExecStream.value?.disconnect();
+    graphExecStream.value = null;
+    const execId = obs.graph_execution_id?.trim();
+    if (!execId || !obs.session_id) return;
+    const graphId = graphDef.id || "team-run-orchestration";
+    const execStream = useGraphExecutionStream(obs.session_id, graphId, execId);
+    graphExecStream.value = execStream;
+  }
+
+  async function loadObservatoryTasks() {
+    if (!graphExecutionId.value) return;
+    await tasks.loadTasks(graphExecutionId.value);
+  }
+
   async function load() {
     loading.value = true;
     error.value = "";
@@ -77,11 +109,16 @@ export function useTeamRunObservatoryPage() {
       const obs = await orchestrationStore.fetchRunObservatory(runId.value);
       observatory.value = obs;
       applyCompiledTopology(obs);
+      connectTaskStream(obs);
 
       stream.value?.disconnect();
       const s = useOrchestrationStream(obs.session_id, obs.run_id);
       stream.value = s;
       s.seed(obs.nodes);
+
+      if (obs.graph_execution_id) {
+        await loadObservatoryTasks();
+      }
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e);
     } finally {
@@ -91,6 +128,14 @@ export function useTeamRunObservatoryPage() {
 
   function onSelectNode(nodeId: string | null) {
     selectedNodeId.value = nodeId;
+    tasks.focusTaskForNode(taskList.value, nodeId);
+  }
+
+  function onSelectTask(taskId: string) {
+    observatoryTab.value = "tasks";
+    void tasks.openTaskDetail(taskId, (nodeId) => {
+      selectedNodeId.value = nodeId;
+    });
   }
 
   function goBack() {
@@ -99,7 +144,10 @@ export function useTeamRunObservatoryPage() {
 
   onMounted(load);
   watch([teamId, runId], load);
-  onBeforeUnmount(() => stream.value?.disconnect());
+  onBeforeUnmount(() => {
+    stream.value?.disconnect();
+    graphExecStream.value?.disconnect();
+  });
 
   return {
     isDark,
@@ -108,13 +156,22 @@ export function useTeamRunObservatoryPage() {
     loading,
     error,
     observatory,
+    observatoryTab,
     selectedNodeId,
+    selectedTaskId: tasks.selectedTaskId,
     graphDef,
     streamConnected,
+    taskStreamConnected,
     nodeList,
+    taskList,
+    tasksLoading: tasks.tasksLoading,
+    graphExecutionId,
     execNodeStates,
     runStatusColor,
     onSelectNode,
-    goBack
+    onSelectTask,
+    onKanbanAdminAction: tasks.onKanbanAdminAction,
+    loadObservatoryTasks,
+    goBack,
   };
 }

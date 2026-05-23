@@ -44,6 +44,16 @@ message NodeDef {
   int32 timeout_seconds = 17;
   int32 heartbeat_interval_seconds = 18;
   bool enable_lease_extension = 19;
+  // Phase D — retry / cache / agent mappers
+  int32 retry_max_attempts = 20;
+  string failure_action = 21;
+  string fallback_agent = 22;
+  bool cache_enabled = 23;
+  int32 cache_ttl_seconds = 24;
+  string input_mapper_json = 25;
+  string output_mapper_json = 26;
+  bool isolated_messages = 27;
+  bool input_from_last_response = 28;
 }
 
 message EdgeDef {
@@ -84,6 +94,7 @@ message GraphDefinition {
   google.protobuf.Struct metadata = 15;
   google.protobuf.Timestamp created_at = 16;
   google.protobuf.Timestamp updated_at = 17;
+  int32 version = 18;
 }
 
 // --- CreateGraph ---
@@ -199,12 +210,13 @@ message GraphStepSnapshot {
 message GetGraphExecutionResponse {
   string execution_id = 1;
   string graph_id = 2;
-  string status = 3;
-  google.protobuf.Struct current_state = 4;
-  repeated GraphStepSnapshot steps = 5;
-  string interrupt_node = 6;
-  google.protobuf.Timestamp started_at = 7;
-  google.protobuf.Timestamp finished_at = 8;
+  string session_id = 3;
+  string status = 4;
+  google.protobuf.Struct current_state = 5;
+  repeated GraphStepSnapshot steps = 6;
+  string interrupt_node = 7;
+  google.protobuf.Timestamp started_at = 8;
+  google.protobuf.Timestamp finished_at = 9;
 }
 
 // --- ResumeGraph ---
@@ -422,6 +434,67 @@ message CreateGraphFromTemplateRequest {
   string description = 3;
 }
 
+// --- Export / Import ---
+
+message ExportGraphRequest {
+  string graph_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string format = 2;
+}
+
+message ExportGraphResponse {
+  string json = 1;
+  GraphDefinition graph = 2;
+}
+
+message ImportGraphRequest {
+  string json = 1 [(google.api.field_behavior) = REQUIRED];
+  string name = 2;
+  string description = 3;
+}
+
+message ImportGraphResponse {
+  GraphDefinition graph = 1;
+}
+
+// --- Version management ---
+
+message GraphVersionInfo {
+  int32 version = 1;
+  google.protobuf.Timestamp saved_at = 2;
+  string name = 3;
+}
+
+message ListGraphVersionsRequest {
+  string graph_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListGraphVersionsResponse {
+  repeated GraphVersionInfo items = 1;
+}
+
+message RollbackGraphVersionRequest {
+  string graph_id = 1 [(google.api.field_behavior) = REQUIRED];
+  int32 version = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message RollbackGraphVersionResponse {
+  GraphDefinition graph = 1;
+}
+
+// --- User template ---
+
+message SaveGraphAsTemplateRequest {
+  string graph_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string template_name = 2 [(google.api.field_behavior) = REQUIRED];
+  string category = 3;
+  string description = 4;
+}
+
+message SaveGraphAsTemplateResponse {
+  string template_id = 1;
+  GraphTemplateInfo template = 2;
+}
+
 // --- Task Model ---
 
 enum TaskStatus {
@@ -589,6 +662,52 @@ message ReviewTaskResponse {
   Task task = 1;
 }
 
+// --- UnblockTask ---
+
+message UnblockTaskRequest {
+  string task_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string comment = 2;
+}
+
+message UnblockTaskResponse {
+  Task task = 1;
+}
+
+// --- CreateTask ---
+
+message CreateTaskRequest {
+  string execution_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string node_id = 2;
+  string required_role = 3;
+  string assignment_mode = 4;
+  string assignment_strategy = 5;
+  string input = 6;
+  string context = 7;
+  repeated string parent_task_ids = 8;
+}
+
+message CreateTaskResponse {
+  Task task = 1;
+}
+
+// --- LinkTasks ---
+
+message LinkTasksRequest {
+  string parent_task_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string child_task_id = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message LinkTasksResponse {}
+
+// --- UnlinkTasks ---
+
+message UnlinkTasksRequest {
+  string parent_task_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string child_task_id = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message UnlinkTasksResponse {}
+
 // --- ListTaskComments ---
 
 message ListTaskCommentsRequest {
@@ -732,6 +851,30 @@ service GraphService {
       body: "*"
     };
   }
+  rpc ExportGraph(ExportGraphRequest) returns (ExportGraphResponse) {
+    option (google.api.http) = {get: "/v1/graphs/{graph_id}/export"};
+  }
+  rpc ImportGraph(ImportGraphRequest) returns (ImportGraphResponse) {
+    option (google.api.http) = {
+      post: "/v1/graph/import"
+      body: "*"
+    };
+  }
+  rpc ListGraphVersions(ListGraphVersionsRequest) returns (ListGraphVersionsResponse) {
+    option (google.api.http) = {get: "/v1/graphs/{graph_id}/versions"};
+  }
+  rpc RollbackGraphVersion(RollbackGraphVersionRequest) returns (RollbackGraphVersionResponse) {
+    option (google.api.http) = {
+      post: "/v1/graphs/{graph_id}/rollback"
+      body: "*"
+    };
+  }
+  rpc SaveGraphAsTemplate(SaveGraphAsTemplateRequest) returns (SaveGraphAsTemplateResponse) {
+    option (google.api.http) = {
+      post: "/v1/graphs/{graph_id}/save-template"
+      body: "*"
+    };
+  }
   rpc ListTasks(ListTasksRequest) returns (ListTasksResponse) {
     option (google.api.http) = {get: "/v1/graph/executions/{execution_id}/tasks"};
   }
@@ -759,6 +902,30 @@ service GraphService {
   rpc ReportBlocked(ReportBlockedRequest) returns (ReportBlockedResponse) {
     option (google.api.http) = {
       post: "/v1/graph/tasks/{task_id}/blocked"
+      body: "*"
+    };
+  }
+  rpc UnblockTask(UnblockTaskRequest) returns (UnblockTaskResponse) {
+    option (google.api.http) = {
+      post: "/v1/graph/tasks/{task_id}/unblock"
+      body: "*"
+    };
+  }
+  rpc CreateTask(CreateTaskRequest) returns (CreateTaskResponse) {
+    option (google.api.http) = {
+      post: "/v1/graph/executions/{execution_id}/tasks"
+      body: "*"
+    };
+  }
+  rpc LinkTasks(LinkTasksRequest) returns (LinkTasksResponse) {
+    option (google.api.http) = {
+      post: "/v1/graph/tasks/link"
+      body: "*"
+    };
+  }
+  rpc UnlinkTasks(UnlinkTasksRequest) returns (UnlinkTasksResponse) {
+    option (google.api.http) = {
+      post: "/v1/graph/tasks/unlink"
       body: "*"
     };
   }

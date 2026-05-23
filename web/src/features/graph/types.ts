@@ -31,11 +31,21 @@ export type NodeDef = {
   timeoutSeconds: number;
   heartbeatIntervalSeconds: number;
   enableLeaseExtension: boolean;
+  retryMaxAttempts: number;
+  failureAction: string;
+  fallbackAgent: string;
+  inputMapperJson: string;
+  outputMapperJson: string;
+  isolatedMessages: boolean;
+  inputFromLastResponse: boolean;
+  cacheEnabled: boolean;
+  cacheTtlSeconds: number;
 };
 
 export type EdgeDef = {
   from: string;
   to: string;
+  kind?: string;
 };
 
 export type ConditionalEdgeDef = {
@@ -67,6 +77,7 @@ export type GraphDefinition = {
   interruptBefore: string[];
   interruptAfter: string[];
   metadata: Record<string, unknown>;
+  version: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -83,6 +94,29 @@ export type GraphExecutionSummary = {
   finishedAt: string;
 };
 
+/** WS `graph_execution_done` metadata.execution_summary */
+export type GraphRunExecutionSummary = {
+  executionId: string;
+  graphId: string;
+  totalSteps: number;
+  durationMs: number;
+  finalStateKeys: number;
+  nodes: GraphRunNodeSummary[];
+};
+
+export type GraphRunNodeSummary = {
+  nodeId: string;
+  nodeType: string;
+  status: string;
+  durationMs: number;
+  error: string;
+  stepNumber: number;
+};
+
+export type GraphLayoutMetadata = Record<string, { x: number; y: number }>;
+
+export const GRAPH_LAYOUT_METADATA_KEY = "layout";
+
 export type GraphStepSnapshot = {
   nodeId: string;
   stepIndex: number;
@@ -96,6 +130,7 @@ export type GraphStepSnapshot = {
 export type GraphExecution = {
   executionId: string;
   graphId: string;
+  sessionId: string;
   status: string;
   currentState: Record<string, unknown>;
   steps: GraphStepSnapshot[];
@@ -139,13 +174,13 @@ export type NodeStyleConfig = {
 };
 
 export const NODE_TYPE_STYLES: Record<NodeType, NodeStyleConfig> = {
-  function: { shape: "box", fillColor: "#f3e5f5", borderColor: "#9c27b0", icon: "functions", label: "Function" },
-  llm: { shape: "box", fillColor: "#e3f2fd", borderColor: "#2196f3", icon: "psychology", label: "LLM" },
-  tool: { shape: "box", fillColor: "#fff3e0", borderColor: "#ff9800", icon: "handyman", label: "Tool" },
-  agent: { shape: "box", fillColor: "#e8f5e9", borderColor: "#4caf50", icon: "smart_toy", label: "Agent" },
-  router: { shape: "diamond", fillColor: "#eeeeee", borderColor: "#757575", icon: "alt_route", label: "Router" },
-  join: { shape: "diamond", fillColor: "#f3e5f5", borderColor: "#9c27b0", icon: "merge_type", label: "Join" },
-  hitl: { shape: "box", fillColor: "#fff8e1", borderColor: "#ffc107", icon: "front_hand", label: "HITL" },
+  function: { shape: "box", fillColor: "var(--graph-node-function-fill)", borderColor: "var(--graph-node-function-border)", icon: "functions", label: "Function" },
+  llm: { shape: "box", fillColor: "var(--graph-node-llm-fill)", borderColor: "var(--graph-node-llm-border)", icon: "psychology", label: "LLM" },
+  tool: { shape: "box", fillColor: "var(--graph-node-tool-fill)", borderColor: "var(--graph-node-tool-border)", icon: "handyman", label: "Tool" },
+  agent: { shape: "box", fillColor: "var(--graph-node-agent-fill)", borderColor: "var(--graph-node-agent-border)", icon: "smart_toy", label: "Agent" },
+  router: { shape: "diamond", fillColor: "var(--graph-node-router-fill)", borderColor: "var(--graph-node-router-border)", icon: "alt_route", label: "Router" },
+  join: { shape: "diamond", fillColor: "var(--graph-node-join-fill)", borderColor: "var(--graph-node-join-border)", icon: "merge_type", label: "Join" },
+  hitl: { shape: "box", fillColor: "var(--graph-node-hitl-fill)", borderColor: "var(--graph-node-hitl-border)", icon: "front_hand", label: "HITL" },
 };
 
 export const EXECUTION_STATUS_STYLES: Record<string, { color: string; icon: string; label: string }> = {
@@ -177,6 +212,20 @@ export const ENGINE_OPTIONS: Array<{ label: string; value: string }> = [
   { label: "BSP（默认）", value: "bsp" },
   { label: "DAG（并行）", value: "dag" },
 ];
+
+export const FAILURE_ACTION_OPTIONS: Array<{ label: string; value: string }> = [
+  { label: "默认（retry_then_block）", value: "" },
+  { label: "跳过后续（skip_on_failure）", value: "skip_on_failure" },
+  { label: "跳过节点（skip）", value: "skip" },
+  { label: "快速失败（fail_fast）", value: "fail_fast" },
+  { label: "重试后阻塞（retry_then_block）", value: "retry_then_block" },
+];
+
+export type GraphVersionInfo = {
+  version: number;
+  savedAt: string;
+  name: string;
+};
 
 export type ValidationError = {
   code: string;

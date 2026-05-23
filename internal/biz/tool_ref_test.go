@@ -29,7 +29,7 @@ func TestToolUsecase_ResolveToolKey(t *testing.T) {
 			}
 			return Tool{}, sql.ErrNoRows
 		},
-	})
+	}, nil)
 
 	key, err := uc.ResolveToolKey(context.Background(), "tool_duckduckgo_search")
 	if err != nil || key != "duckduckgo_search" {

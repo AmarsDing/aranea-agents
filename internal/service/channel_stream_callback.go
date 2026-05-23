@@ -16,9 +16,14 @@ type streamPreviewUpdater interface {
 }
 
 // ChannelStreamCallback is invoked with accumulated assistant text during a native turn.
+//
+// Deprecated: IM channels use TurnPreviewCoordinator + EventBus projection instead of
+// inline OnReplyDelta callbacks. Kept for RunNativeTurnStreaming API compatibility.
 type ChannelStreamCallback func(accumulated string) error
 
 // WithChannelStreamCallback attaches a streaming reply callback to ctx for RunNativeTurnUnary/Streaming.
+//
+// Deprecated: prefer TurnPreviewCoordinator for channel IM preview updates.
 func WithChannelStreamCallback(ctx context.Context, fn ChannelStreamCallback) context.Context {
 	if fn == nil {
 		return ctx

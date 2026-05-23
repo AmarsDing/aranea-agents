@@ -1,7 +1,9 @@
 package graph
 
 import (
+	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 type ValidationErrorCode string
@@ -19,6 +21,8 @@ const (
 	ValidationErrLoopNoExit        ValidationErrorCode = "loop_no_exit"
 	ValidationErrDuplicateNode     ValidationErrorCode = "duplicate_node"
 	ValidationErrEdgeTargetMissing ValidationErrorCode = "edge_target_missing"
+	ValidationErrInvalidMapperJSON ValidationErrorCode = "invalid_mapper_json"
+	ValidationErrInvalidRetryPolicy ValidationErrorCode = "invalid_retry_policy"
 )
 
 type ValidationError struct {
@@ -70,8 +74,37 @@ func ValidateGraph(def *GraphBuildConfig, agentChecker AgentExistenceChecker, re
 	validateAgentRefs(def, agentChecker, result)
 	validateStateSchema(def, result)
 	validateLoopExits(def, result)
+	validateNodePolicies(def, result)
 
 	return result
+}
+
+func validateNodePolicies(def *GraphBuildConfig, result *ValidationResult) {
+	for _, n := range def.Nodes {
+		validateMapperJSON(result, n.ID, "input_mapper_json", n.InputMapperJSON)
+		validateMapperJSON(result, n.ID, "output_mapper_json", n.OutputMapperJSON)
+		if n.RetryMaxAttempts < 0 {
+			result.AddError(ValidationErrInvalidRetryPolicy, n.ID, "retry_max_attempts", "retry_max_attempts must be >= 0")
+		}
+		if n.CacheEnabled && n.CacheTTLSeconds < 0 {
+			result.AddWarning(ValidationErrInvalidMapperJSON, n.ID, "cache_ttl_seconds", "cache_ttl_seconds must be >= 0")
+		}
+	}
+}
+
+func validateMapperJSON(result *ValidationResult, nodeID, field, raw string) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return
+	}
+	if !json.Valid([]byte(raw)) {
+		result.AddError(ValidationErrInvalidMapperJSON, nodeID, field, field+" must be valid JSON")
+		return
+	}
+	var mapping map[string]string
+	if err := json.Unmarshal([]byte(raw), &mapping); err != nil {
+		result.AddError(ValidationErrInvalidMapperJSON, nodeID, field, field+" must be a JSON object of string keys")
+	}
 }
 
 func validateTopology(def *GraphBuildConfig, result *ValidationResult) {
@@ -229,8 +262,32 @@ func validateStateSchema(def *GraphBuildConfig, result *ValidationResult) {
 }
 
 func validateAgentNodeStateRefs(n NodeDef, fieldSet map[string]StateFieldDef, result *ValidationResult) {
-	_ = n
-	_ = fieldSet
+	if strings.ToLower(strings.TrimSpace(n.Type)) != "agent" {
+		return
+	}
+	validateMapperStateRefs(result, n.ID, "input_mapper_json", n.InputMapperJSON, fieldSet)
+	validateMapperStateRefs(result, n.ID, "output_mapper_json", n.OutputMapperJSON, fieldSet)
+}
+
+func validateMapperStateRefs(result *ValidationResult, nodeID, field, raw string, fieldSet map[string]StateFieldDef) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return
+	}
+	var mapping map[string]string
+	if err := json.Unmarshal([]byte(raw), &mapping); err != nil {
+		return
+	}
+	for _, target := range mapping {
+		target = strings.TrimSpace(target)
+		if target == "" {
+			continue
+		}
+		if _, ok := fieldSet[target]; !ok {
+			result.AddWarning(ValidationErrUndefinedField, nodeID, field,
+				fmt.Sprintf("mapper references undefined state field %q", target))
+		}
+	}
 }
 
 func validateLoopExits(def *GraphBuildConfig, result *ValidationResult) {

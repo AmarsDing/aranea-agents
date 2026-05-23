@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Message } from "../types";
-import { isActivityMessage, mergeSessionMessages } from "../mergeSessionMessages";
+import { isActivityMessage, mergeSessionMessages, dropPendingUserPlaceholders } from "../mergeSessionMessages";
 
 function msg(id: string, status = "ok", created = "2026-05-20T10:00:00Z"): Message {
   return {
@@ -49,5 +49,15 @@ describe("mergeSessionMessages", () => {
     const row = msg("act-tc-2");
     row.options_json = JSON.stringify({ schema: "chat.activity/v1", tool_event: { id: "tc-2" } });
     expect(isActivityMessage(row)).toBe(true);
+  });
+
+  it("drops pending-user placeholders", () => {
+    const rows = [
+      { ...msg("pending-user-1"), role: "user", content_markdown: "hi" },
+      msg("u-1"),
+    ];
+    const out = dropPendingUserPlaceholders(rows);
+    expect(out.some((m) => m.id === "pending-user-1")).toBe(false);
+    expect(out.some((m) => m.id === "u-1")).toBe(true);
   });
 });

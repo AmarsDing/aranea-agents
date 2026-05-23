@@ -116,7 +116,10 @@ export function useChatEntityNav(deps: EntityNavDeps) {
       ? (deps.store.sessions.find((item) => item.id === preferredId) ?? deps.store.sessions[0] ?? null)
       : (deps.store.sessions[0] ?? null);
     deps.store.messages = [];
-    if (deps.store.selectedSession) await deps.store.loadMessages();
+    if (deps.store.selectedSession) {
+      await deps.store.loadMessages();
+      deps.streamManager.ensureChatStream(deps.store.selectedSession.id);
+    }
   }
 
   async function selectTeam(team: TeamRow, options?: { sessionId?: string }) {

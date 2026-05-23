@@ -1,7 +1,8 @@
 # Graph 工作流 — 开发计划
 
-> **版本**：2026-05-19 | **状态**：✅ 核心能力已实现；🟡 节点类型补全与前端增强进行中
+> **版本**：2026-05-23 | **状态**：✅ 后端核心 + Phase A/B/C/D 已落地
 > **需求**：[36 graph-workflow.md](./36%20graph-workflow.md) · **设计**：[36 graph-workflow.design.md](./36%20graph-workflow.design.md)
+> **近期变更**：[changelog/2026-05-23-Graph-Frontend-Phase-D.md](../changelog/2026-05-23-Graph-Frontend-Phase-D.md)
 
 ---
 
@@ -16,8 +17,10 @@ Graph 工作流：基于 trpc-agent-go `graph` 包的确定性工作流引擎。
 - `internal/data/graph.go` + `task.go` — 数据层（GraphRepo + TaskRepo）
 - `internal/service/graph.go` — 服务层（28 RPC 方法）
 - `api/kratos/graph/v1/graph.proto` — Proto 定义
-- `web/src/features/graph/` — 前端类型与 API
-- `web/src/components/graph/` — 前端组件（Vue Flow）
+- `web/src/features/graph/` — 前端类型、API、runtime/editor composable
+- `web/src/features/graph/runtime/` — WS 执行投影（`useGraphExecutionStream`）
+- `web/src/features/graph/editor/` — 布局持久化（`graphLayout.ts`）
+- `web/src/components/graph/` — 前端组件（Vue Flow + Run/HITL/Validation/Template）
 
 ---
 
@@ -42,39 +45,89 @@ Graph 工作流：基于 trpc-agent-go `graph` 包的确定性工作流引擎。
 | 设计模式模板 | ✅ | 6 种内置模板 + `CreateGraphFromTemplate` |
 | 任务系统 | ✅ | `TaskUsecase` + 状态机 + Claim/Submit/Heartbeat/Review/Timeout |
 | 可视化 | ✅ | DOT 解析 + 结构化 JSON + `VisualizeGraph` API |
-| 前端编辑器 | ✅ | Vue Flow 画布 + 节点面板 + 属性面板 |
-| 前端类型与 API | ✅ | `types.ts` + `api.ts`（含 Task API） |
+| 前端编辑器 | ✅ | Vue Flow + 模板/校验/布局持久化 |
+| 前端运行监控 | ✅ | WS 实时节点态 + ExecutionSummary + HITL 对话框 |
+| 前端类型与 API | ✅ | `types.ts` + `api.ts` + `stores/graph` |
 | Ent Schema | ✅ | 7 张表（definition/execution/task/comment/log/run/event） |
 | Proto + Service | ✅ | 28 个 RPC 端点 |
 
-### 2.2 未实现能力（差距清单）
+### 2.2 差距清单（2026-05-23 校正）
 
-| # | 差距 | 优先级 | 对应需求 | 说明 |
-|---|------|--------|----------|------|
-| G1 | LLM 节点接线 | P1 | §3.1 | `AddLLMNode` 未在 builder 中接线，NodeDef 有 instruction/model 字段但构建时未使用 |
-| G2 | Tool 节点接线 | P1 | §3.1 | `AddToolNode` 未在 builder 中接线 |
-| G3 | Agent InputMapper/OutputMapper 接线 | P1 | §3.2 | NodeDef 有字段但 builder 中 `AddAgentNode` 未传 WithSubgraphInputMapper/OutputMapper |
-| G4 | Command.GoTo / WithEndsMap 接线 | P1 | §4.2 | NodeDef.Destinations 字段存在但 builder 未接线 WithEndsMap |
-| G5 | ExecutionSummary Proto + 推送 | P1 | §5.4 | 无 ExecutionSummary 消息和 graph_execution_done 事件增强 |
-| G6 | 前端执行监控增强 | P1 | §5.4 | 节点运行状态实时高亮、执行摘要展示 |
-| G7 | 前端模板选择面板 | P1 | §6.2 | 后端 API 已有，前端面板待完善 |
-| G8 | 前端校验结果面板 | P1 | §6.1 | 后端 API 已有，前端面板待完善 |
-| G9 | RetryPolicy / CachePolicy | P2 | §6.4 | NodeDef 无对应字段，builder 未接线 |
-| G10 | 用户自定义模板 | P2 | §6.3 | 将已有 Graph 保存为模板 |
-| G11 | Graph 版本管理 | P2 | §6.3 | 定义版本化存储和回滚 |
-| G12 | 导入/导出 | P2 | §6.3 | Graph 定义 JSON 导入导出 |
-| G13 | Webhook 通知 | P2 | §7.7 | 节点级 Webhook 配置 |
-| G14 | 熔断策略 | P2 | §7.7 | CircuitBreakerPolicy 仅 Proto 定义 |
+| # | 差距 | 优先级 | 状态 | 说明 |
+|---|------|--------|------|------|
+| G1 | LLM 节点接线 | P1 | ✅ | `internal/graph/trpc/node_wiring.go` |
+| G2 | Tool 节点接线 | P1 | ✅ | `AddToolsNode` |
+| G3 | Agent InputMapper/OutputMapper | P1 | ✅ | Phase D：Proto + mapper 接线 |
+| G4 | Command.GoTo / WithEndsMap | P1 | ✅ | `nodeOptions()` Destinations |
+| G5 | ExecutionSummary WS | P1 | ✅ | `graph_execution_done` metadata |
+| G6 | 前端执行监控增强 | P1 | ✅ | Phase A：`useGraphExecutionStream` + `GraphRunSidebar` |
+| G7 | 前端模板选择面板 | P1 | ✅ | Phase B：`GraphTemplatePicker` |
+| G8 | 前端校验结果面板 | P1 | ✅ | Phase B：`GraphValidationPanel` + 保存后 validate |
+| G9 | RetryPolicy / CachePolicy | P2 | ✅ | Phase D：Proto + `WithRetryPolicy` / `WithNodeCachePolicy` |
+| G10 | 用户自定义模板 | P2 | ✅ | Phase D：`SaveGraphAsTemplate` + metadata |
+| G11 | Graph 版本管理 | P2 | ✅ | Phase D：metadata 快照 + 回滚 UI |
+| G12 | 导入/导出 | P2 | ✅ | Phase D：`ExportGraph` / `ImportGraph` + 编辑器菜单 |
+| G13 | Webhook 通知 | P2 | ✅ | `graph.task.status` via GraphTaskRuntime |
+| G14 | 熔断策略 | P2 | 📋 | |
+| G15 | 节点布局持久化 | P1 | ✅ | `metadata.layout` |
+| G16 | Checkpoint/TimeTravel UI | P1 | ✅ | Phase C：`GraphCheckpointPanel` + `useGraphTimeTravel` |
+| G17 | Task 看板 UI | P1 | ✅ | Phase C：`GraphTaskKanban` + `GraphTaskDetailDrawer` + WS 投影 |
+| G18 | Graph 运行时 CreateTask | P1 | 🚧 | M54 HK-RT-01 |
+| G19 | TaskDispatcher | P1 | 🚧 | M54 HK-RT-02 |
+| G20 | kanban_* Agent tools | P1 | 🚧 | M54 HK-TOOLS-01 |
+| G21 | Unblock + 超时 reclaim | P1 | 🚧 | M54 HK-RT-04/05 |
+| G22 | 任务依赖 graph_task_links | P2 | 🚧 | M54 HK-DEP-01 |
 
 ---
 
-## 3. 开发阶段
+## 3. 开发阶段（路线图）
 
-### 阶段一：P1 节点类型补全与前端增强
+> **Phase A/B/C/D** ✅ 2026-05-23 见 [Phase A/B](../changelog/2026-05-23-Graph-Frontend-Phase-A-B.md) · [Phase C](../changelog/2026-05-23-Graph-Frontend-Phase-C.md) · [Phase D](../changelog/2026-05-23-Graph-Frontend-Phase-D.md)
 
-> 目标：补全 LLM/Tool/Agent 节点接线，完善前端编辑器和执行监控体验。
+### 阶段一（已完成）：P1 前端运行态 + 设计态闭环
 
-#### 步骤 1：LLM 节点接线
+#### Phase A — 运行态（✅）
+
+- `features/graph/runtime/useGraphExecutionStream.ts`
+- `GraphRunSidebar` / `GraphHitlDialog`
+- `useGraphRunPage` WS 接线
+
+#### Phase B — 设计态（✅）
+
+- `GraphTemplatePicker` / `GraphValidationPanel`
+- `metadata.layout` 布局持久化
+- Tools catalog 加载
+
+### 阶段二（已完成）：Phase C — 人机协同与任务态
+
+#### 步骤 C-1：Checkpoint 时间线（✅）
+
+**任务**：`GraphCheckpointPanel` + `listCheckpoints` API
+
+#### 步骤 C-2：TimeTravel + EditState（✅）
+
+**任务**：`useGraphTimeTravel` composable + `GraphTimeTravelPanel`
+
+#### 步骤 C-3~5：Task 看板 + WS 投影（✅）
+
+**任务**：`GraphTaskKanban` / `GraphTaskDetailDrawer`；接 `graph_task_status`；`GraphRunInspector` 三 Tab
+
+### 阶段三（已完成）：Phase D — 契约与后端补全
+
+- Proto NodeDef 扩展（retry / cache / mapper）✅
+- 导入导出、版本管理、用户模板 ✅
+- 前端属性面板 + 编辑器 ⋮ 菜单 ✅
+
+### 后续 backlog
+
+- Webhook 通知（G13）
+- 熔断策略（G14，Proto 已定义 `CircuitBreakerPolicy`）
+
+---
+
+## 4. 历史开发阶段（归档）
+
+### 阶段一（后端）：P1 节点类型补全
 
 **任务**：
 1. 修改 `internal/graph/trpc/builder.go`：在 `BuildStateGraphWithAgents` 中增加 LLM 节点分支

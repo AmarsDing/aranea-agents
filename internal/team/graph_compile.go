@@ -44,10 +44,11 @@ func compileToGraphBuildConfig(def Definition, rawDefinitionJSON string, agentKe
 		memberIDs = append(memberIDs, id)
 		key := resolveCompileAgentKey(m, agentKey)
 		nodes = append(nodes, biz.NodeDef{
-			ID:          id,
-			Type:        "agent",
-			Description: strings.TrimSpace(m.Name),
-			AgentName:   key,
+			ID:           id,
+			Type:         "agent",
+			Description:  memberDescription(m),
+			Instruction:  strings.TrimSpace(m.TaskPrompt),
+			AgentName:    key,
 			RequiredRole: strings.TrimSpace(m.Role),
 		})
 	}
@@ -85,6 +86,26 @@ func memberNodeID(m MemberDef, index int) string {
 		sortOrder = index + 1
 	}
 	return fmt.Sprintf("member-%d", sortOrder)
+}
+
+func memberDescription(m MemberDef) string {
+	if name := strings.TrimSpace(m.Name); name != "" {
+		return name
+	}
+	if role := strings.TrimSpace(m.Role); role != "" {
+		return role
+	}
+	return strings.TrimSpace(m.AgentID)
+}
+
+// MemberByCompileNodeID maps compiled member-* node ids to member definitions.
+func MemberByCompileNodeID(def Definition) map[string]MemberDef {
+	members := EnabledMembers(def)
+	out := make(map[string]MemberDef, len(members))
+	for i, m := range members {
+		out[memberNodeID(m, i)] = m
+	}
+	return out
 }
 
 func resolveCompileAgentKey(m MemberDef, agentKey CompileAgentKey) string {

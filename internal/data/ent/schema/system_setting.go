@@ -34,6 +34,14 @@ func (SystemSetting) Fields() []ent.Field {
 		field.Text("eval_sim_model").Default(""),
 		field.Text("eval_judge_provider").Default(""),
 		field.Text("eval_judge_model").Default(""),
+		// Web research (Tavily / SerpAPI) for web_research tool.
+		field.Text("web_research_provider").Default("tavily"),
+		field.Text("web_research_api_key").Default("").Sensitive(),
+		field.Int("web_research_max_results").Default(8),
+		field.Int("web_research_fetch_top").Default(5),
+		field.Text("web_research_search_depth").Default("basic"),
+		field.Int("web_research_timeout_sec").Default(15),
+		field.Text("web_research_http_proxy").Default(""),
 		field.Time("update_time").Default(time.Now).UpdateDefault(time.Now),
 	}
 }

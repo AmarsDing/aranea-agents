@@ -152,9 +152,10 @@ func (p *EventProjector) projectChatCompletionChunk(ctx context.Context, ev *trp
 		msg := choice.Message
 		delta := choice.Delta
 
-		hasContent := strings.TrimSpace(msg.Content) != "" || strings.TrimSpace(delta.Content) != ""
-		hasReasoning := strings.TrimSpace(msg.ReasoningContent) != "" || strings.TrimSpace(delta.ReasoningContent) != ""
 		hasToolCalls := len(msg.ToolCalls) > 0 || len(delta.ToolCalls) > 0
+		text, reasoning := ChoiceStreamContent(choice, ev.Response.IsPartial)
+		hasContent := text != ""
+		hasReasoning := reasoning != ""
 
 		if hasToolCalls {
 			allCalls := append(msg.ToolCalls, delta.ToolCalls...)
@@ -180,8 +181,8 @@ func (p *EventProjector) projectChatCompletionChunk(ctx context.Context, ev *trp
 		}
 
 		if hasContent || hasReasoning {
-			rawText := coalesceStr(strings.TrimSpace(delta.Content), strings.TrimSpace(msg.Content))
-			rawReasoning := coalesceStr(strings.TrimSpace(delta.ReasoningContent), strings.TrimSpace(msg.ReasoningContent))
+			rawText := text
+			rawReasoning := reasoning
 
 			if isTeamMemberAuthor(ev.Author, meta) {
 				envelopes = append(envelopes, p.projectMemberText(ev, meta, rawText, rawReasoning, ev.Response.IsPartial)...)

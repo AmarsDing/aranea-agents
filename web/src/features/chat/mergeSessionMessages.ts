@@ -1,4 +1,5 @@
 import type { Message } from "./types";
+import { normalizeServerMessageOptions } from "./streamContentPatch";
 
 function isEphemeralMessage(message: Message): boolean {
   const id = message.id || "";
@@ -24,11 +25,20 @@ function isInFlightLocalRow(message: Message): boolean {
   return status === "tool_running" || status === "streaming" || status === "tool_blocked";
 }
 
+/** Drop optimistic user placeholders after the server turn completes. */
+export function dropPendingUserPlaceholders(messages: Message[]): Message[] {
+  return messages.filter((m) => !String(m.id).startsWith("pending-user-"));
+}
+
 /** Merge server history with in-flight WS rows (streaming text, running tool cards). */
 export function mergeSessionMessages(server: Message[], local: Message[]): Message[] {
-  if (local.length === 0) return server;
-  const serverById = new Map(server.map((m) => [m.id, m]));
-  const merged = [...server];
+  const normalizedServer = server.map((m) => ({
+    ...m,
+    options_json: normalizeServerMessageOptions(m.options_json ?? ""),
+  }));
+  if (local.length === 0) return normalizedServer;
+  const serverById = new Map(normalizedServer.map((m) => [m.id, m]));
+  const merged = [...normalizedServer];
   for (const row of local) {
     if (serverById.has(row.id)) continue;
     if (!isInFlightLocalRow(row)) continue;

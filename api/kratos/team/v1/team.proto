@@ -142,6 +142,7 @@ message AgentNodeStateView {
   string output_preview = 11;
   string error_message = 12;
   ActivitySnapshotView current_activity = 13;
+  repeated ActivitySnapshotView activity_history = 14;
 }
 
 message GetTeamRunObservatoryRequest {
@@ -159,6 +160,8 @@ message GetTeamRunObservatoryResponse {
   CompileTeamGraphResponse compiled_topology = 7;
   // Echo of frozen definition JSON used for bootstrap (empty for legacy runs).
   string definition_snapshot_json = 8;
+  // Graph execution id when run uses compiled graph runtime (M54 task board).
+  string graph_execution_id = 9;
 }
 
 message ListTeamsRequest {}
@@ -284,6 +287,10 @@ message CompiledGraphNodeView {
   string agent_name = 3;
   string role = 4;
   string description = 5;
+  // Catalog display name resolved from member.agent_id (falls back to description).
+  string agent_display_name = 6;
+  // Member task_prompt / responsibility text for UI "做什么".
+  string task_prompt = 7;
 }
 
 message CompiledGraphEdgeView {

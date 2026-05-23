@@ -472,7 +472,7 @@ type pendingEntry struct {
 7. 从 pendingCancels 删除
 ```
 
-当前 `RunRegistry` 由单 Agent `StoreRunner` / `StorePlaceholder` 和 Team `StoreCancelable` 共同登记；`lockSession` per-session 互斥锁保护并发检查。Team turn 完成后 defer `Finish` 并调用 `processPendingQueue`，与单 Agent 行为一致。运行中追加消息经 `EnqueueUserMessage`（HTTP/WS）或 `SendChatMessage` 在 active run 时优先 steerable enqueue。
+当前 `RunRegistry` 由单 Agent **`StoreCancelable` → `StoreRunner`** 与 Team **`StoreCancelable`** 共同登记（2026-05-23 起 Agent 不再使用 `StorePlaceholder`）；`lockSession` per-session 互斥锁保护 admission。Turn 启动中且无 `ActiveRunner` 时返回 **`CHAT_TURN_BUSY`**；运行中追加消息经 `EnqueueUserMessage` 成功返回 **`ErrTurnMessageQueued`**（steer 或 Pending FIFO）。Team / 单 Agent turn 完成后 defer `Finish` 并调用 `processPendingQueue`（加锁；仍 active 则重新入队）。
 
 #### GetPendingMessages
 

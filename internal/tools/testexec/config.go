@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/tools"
+	webresearchpkg "aranea-agents/internal/tools/webresearch"
 )
 
 const (
@@ -14,7 +15,7 @@ const (
 )
 
 // AssemblyForCatalogKey returns an AssemblyConfig for a single catalog tool_key.
-func AssemblyForCatalogKey(key string, merged map[string]any) (tools.AssemblyConfig, bool) {
+func AssemblyForCatalogKey(key string, merged map[string]any, platform *webresearchpkg.PlatformFields) (tools.AssemblyConfig, bool) {
 	key = strings.TrimSpace(key)
 	if key == "" {
 		return tools.AssemblyConfig{}, false
@@ -30,6 +31,16 @@ func AssemblyForCatalogKey(key string, merged map[string]any) (tools.AssemblyCon
 		cfg := tools.AssemblyConfig{EnabledTools: []string{"hostexec"}}
 		applyShellExecDir(&cfg, merged)
 		return cfg, true
+	case "web_research":
+		wcfg := webresearchpkg.ResolveConfig(merged, platform)
+		if !wcfg.Ready() {
+			return tools.AssemblyConfig{}, false
+		}
+		t, err := webresearchpkg.NewTool(wcfg)
+		if err != nil {
+			return tools.AssemblyConfig{}, false
+		}
+		return tools.AssemblyConfig{CustomTools: []tools.Tool{t}}, true
 	case "web_fetch":
 		return tools.AssemblyConfig{EnabledTools: []string{"httpfetch"}}, true
 	case "duckduckgo_search":

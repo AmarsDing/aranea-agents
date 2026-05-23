@@ -3,10 +3,11 @@ package biz
 import "context"
 
 type GraphRuntimeEvent struct {
-	Type     DomainEventType
-	NodeID   string
-	Error    string
-	RawEvent any
+	Type       DomainEventType
+	NodeID     string
+	Error      string
+	StepNumber int
+	RawEvent   any
 }
 
 type GraphRuntime interface {
@@ -36,8 +37,9 @@ type NodeDefInfo struct {
 type GraphBuilderFactory interface {
 	BuildAndRun(ctx context.Context, cfg GraphBuildConfig, sessionID, graphID, execID string, initialState map[string]any) (GraphRuntime, <-chan GraphRuntimeEvent, error)
 	BuildAndResume(ctx context.Context, cfg GraphBuildConfig, sessionID, graphID, execID, lineageID string, resumeValue map[string]any) (GraphRuntime, <-chan GraphRuntimeEvent, error)
+	BuildRuntime(ctx context.Context, cfg GraphBuildConfig, sessionID, graphID, execID, lineageID string) (GraphRuntime, error)
 	Visualize(ctx context.Context, cfg GraphBuildConfig) (any, error)
-	Validate(ctx context.Context, cfg GraphBuildConfig) (any, error)
+	Validate(ctx context.Context, cfg GraphBuildConfig) (*GraphValidationResult, error)
 	ListTemplates() any
 	GetTemplate(templateID string) (any, bool)
 	TemplateToDef(template any, name, description string) *GraphDefinition

@@ -53,6 +53,21 @@
       <footer class="team-card__foot">
         <span class="team-card__foot-meta">成员 {{ definition.members.length }} · {{ formatDate(team.updated_at) }}</span>
         <div class="team-card__action-group">
+          <q-btn flat dense round size="sm" color="primary" icon="account_tree" :to="`/teams/${team.id}/orchestrate`">
+            <q-tooltip>编排 Graph</q-tooltip>
+          </q-btn>
+          <q-btn
+            v-if="team.has_active_run"
+            flat
+            dense
+            round
+            size="sm"
+            color="primary"
+            icon="insights"
+            @click="$emit('openObservatory', team)"
+          >
+            <q-tooltip>运行观测台</q-tooltip>
+          </q-btn>
           <q-btn flat dense round size="sm" color="primary" icon="science" @click="$emit('runTest', team)">
             <q-tooltip>运行测试（API）</q-tooltip>
           </q-btn>
@@ -86,6 +101,7 @@ const props = defineProps<{
 defineEmits<{
   copyKey: [value: string];
   openRuns: [team: Team];
+  openObservatory: [team: Team];
   runTest: [team: Team];
   duplicate: [team: Team];
   edit: [team: Team];

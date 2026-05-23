@@ -1,0 +1,251 @@
+// Graph 列表 / 编辑器 / 运行页共享样式（对齐 entity-pages 玻璃体系）
+
+:root
+  --graph-node-function-fill: color-mix(in srgb, #9c27b0 10%, var(--glass-elevated))
+  --graph-node-function-border: color-mix(in srgb, #9c27b0 42%, var(--glass-border))
+  --graph-node-llm-fill: color-mix(in srgb, var(--color-accent) 10%, var(--glass-elevated))
+  --graph-node-llm-border: color-mix(in srgb, var(--color-accent) 38%, var(--glass-border))
+  --graph-node-tool-fill: color-mix(in srgb, #ff9800 10%, var(--glass-elevated))
+  --graph-node-tool-border: color-mix(in srgb, #ff9800 40%, var(--glass-border))
+  --graph-node-agent-fill: color-mix(in srgb, var(--color-success) 10%, var(--glass-elevated))
+  --graph-node-agent-border: color-mix(in srgb, var(--color-success) 38%, var(--glass-border))
+  --graph-node-router-fill: color-mix(in srgb, var(--color-text-secondary) 8%, var(--glass-elevated))
+  --graph-node-router-border: color-mix(in srgb, var(--color-text-secondary) 35%, var(--glass-border))
+  --graph-node-join-fill: color-mix(in srgb, #9c27b0 8%, var(--glass-elevated))
+  --graph-node-join-border: color-mix(in srgb, #9c27b0 35%, var(--glass-border))
+  --graph-node-hitl-fill: color-mix(in srgb, var(--color-warning) 12%, var(--glass-elevated))
+  --graph-node-hitl-border: color-mix(in srgb, var(--color-warning) 42%, var(--glass-border))
+
+body.body--dark
+  --graph-node-function-fill: color-mix(in srgb, #c084fc 14%, var(--glass-surface))
+  --graph-node-function-border: color-mix(in srgb, #c084fc 36%, var(--glass-border))
+  --graph-node-llm-fill: color-mix(in srgb, var(--color-accent) 12%, var(--glass-surface))
+  --graph-node-llm-border: color-mix(in srgb, var(--color-accent) 34%, var(--glass-border))
+  --graph-node-tool-fill: color-mix(in srgb, #fb923c 12%, var(--glass-surface))
+  --graph-node-tool-border: color-mix(in srgb, #fb923c 34%, var(--glass-border))
+  --graph-node-agent-fill: color-mix(in srgb, var(--color-success) 12%, var(--glass-surface))
+  --graph-node-agent-border: color-mix(in srgb, var(--color-success) 34%, var(--glass-border))
+  --graph-node-router-fill: color-mix(in srgb, var(--color-text-secondary) 10%, var(--glass-surface))
+  --graph-node-router-border: color-mix(in srgb, var(--color-text-secondary) 28%, var(--glass-border))
+  --graph-node-join-fill: color-mix(in srgb, #c084fc 10%, var(--glass-surface))
+  --graph-node-join-border: color-mix(in srgb, #c084fc 28%, var(--glass-border))
+  --graph-node-hitl-fill: color-mix(in srgb, var(--color-warning) 14%, var(--glass-surface))
+  --graph-node-hitl-border: color-mix(in srgb, var(--color-warning) 36%, var(--glass-border))
+
+.graphs-page
+  @extend .app-entity-page
+
+.graphs-grid
+  @extend .app-entity-grid
+
+.graphs-page .app-entity-grid
+  grid-template-columns: repeat(auto-fill, minmax(300px, 380px))
+  gap: 14px
+  align-items: start
+
+.graph-card
+  cursor: pointer
+  overflow: hidden
+  border: 1px solid var(--glass-border)
+  border-radius: 18px
+  background: var(--glass-surface)
+  box-shadow: var(--shadow-entity-panel)
+  backdrop-filter: blur(16px)
+  -webkit-backdrop-filter: blur(16px)
+  transition: transform 160ms ease, background 160ms ease, border-color 160ms ease
+
+.graph-card:hover
+  transform: translateY(-1px)
+  background: var(--glass-surface-hover)
+  border-color: color-mix(in srgb, var(--color-accent) 18%, var(--glass-border))
+
+.graph-card__inner
+  display: flex
+  flex-direction: column
+  gap: 10px
+  padding: 14px 16px 12px
+
+.graph-card__name
+  margin: 0
+  color: var(--color-text-heading)
+  font-size: 16px
+  font-weight: 800
+  line-height: 1.25
+
+.graph-card__desc
+  margin: 0
+  color: var(--color-text-secondary)
+  font-size: 13px
+  line-height: 1.5
+
+.graph-card__tags
+  display: flex
+  flex-wrap: wrap
+  gap: 6px
+
+.graph-card__tag
+  display: inline-flex
+  align-items: center
+  padding: 3px 8px
+  border: 1px solid color-mix(in srgb, var(--color-accent) 18%, var(--glass-border))
+  border-radius: 999px
+  background: color-mix(in srgb, var(--color-accent) 6%, var(--glass-elevated))
+  color: var(--color-text-secondary)
+  font-size: 11px
+  font-weight: 700
+  line-height: 1.2
+  white-space: nowrap
+
+.graph-card__foot
+  display: flex
+  align-items: center
+  justify-content: flex-end
+  gap: 2px
+  padding-top: 8px
+  border-top: 1px solid var(--glass-border)
+
+.graphs-empty
+  @extend .app-entity-empty
+
+.graph-editor-page__toolbar,
+.graph-run-page__toolbar
+  display: flex
+  align-items: center
+  gap: 8px
+  padding: 8px 16px
+  border-bottom: 1px solid var(--glass-border)
+  background: var(--glass-surface)
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+
+.graph-editor-page__title,
+.graph-run-page__title
+  font-size: 15px
+  font-weight: 700
+  color: var(--color-text-heading)
+
+.graph-flow-node
+  border-width: 1px
+
+.graph-flow-node--selected
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 45%, transparent)
+
+.graph-flow-node--running
+  animation: graph-node-pulse 1.5s ease-in-out infinite
+
+@keyframes graph-node-pulse
+  0%, 100%
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 24%, transparent)
+  50%
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 48%, transparent)
+
+.graph-workbench
+  display: flex
+  flex-direction: column
+  height: 100vh
+  background: var(--canvas-base)
+
+.graph-workbench__body
+  display: flex
+  flex: 1
+  min-height: 0
+  overflow: hidden
+
+.graph-workbench__toolbar-meta
+  display: flex
+  flex-direction: column
+  gap: 2px
+  min-width: 0
+
+.graph-workbench__subtitle
+  font-size: 11px
+  color: var(--color-text-secondary)
+
+.graph-editor-canvas
+  position: relative
+  flex: 1
+  min-width: 0
+  background-color: var(--canvas-base)
+  background-image: radial-gradient(circle at top, color-mix(in srgb, var(--color-accent) 5%, transparent), transparent 34%)
+
+.graph-editor-canvas :deep(.vue-flow__edge-path)
+  stroke: color-mix(in srgb, var(--color-accent) 28%, var(--color-icon-muted))
+  stroke-width: 2px
+
+.graph-editor-canvas :deep(.vue-flow__edge.selected .vue-flow__edge-path)
+  stroke: var(--color-accent)
+
+.graph-editor-canvas :deep(.vue-flow__controls)
+  border: 1px solid var(--glass-border)
+  border-radius: 14px
+  overflow: hidden
+  background: var(--glass-surface)
+  box-shadow: var(--shadow-entity-panel)
+
+.graph-editor-canvas :deep(.vue-flow__minimap)
+  border: 1px solid var(--glass-border)
+  border-radius: 14px
+  overflow: hidden
+  background: var(--glass-surface)
+  box-shadow: var(--shadow-entity-panel)
+
+.workflow-kanban-board__columns
+  display: grid
+  grid-auto-flow: column
+  grid-auto-columns: minmax(220px, 1fr)
+  gap: 12px
+  overflow-x: auto
+  padding-bottom: 8px
+
+.workflow-kanban-board__column
+  display: flex
+  flex-direction: column
+  min-height: 280px
+  border: 1px solid var(--glass-border)
+  border-radius: 16px
+  background: color-mix(in srgb, var(--glass-surface) 82%, transparent)
+
+.workflow-kanban-board__column-head
+  display: flex
+  align-items: center
+  justify-content: space-between
+  gap: 8px
+  padding: 10px 12px
+  border-bottom: 1px solid var(--glass-border)
+
+.workflow-kanban-board__column-title
+  font-size: 12px
+  font-weight: 800
+  color: var(--color-text-heading)
+
+.workflow-kanban-board__column-count
+  display: inline-flex
+  align-items: center
+  justify-content: center
+  min-width: 22px
+  height: 22px
+  padding: 0 6px
+  border-radius: 999px
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--glass-elevated))
+  color: var(--color-text-secondary)
+  font-size: 11px
+  font-weight: 700
+
+.workflow-kanban-board__column-body
+  flex: 1
+  padding: 10px
+  overflow-y: auto
+
+.workflow-kanban-board__empty
+  padding: 16px 8px
+  text-align: center
+  color: var(--color-text-tertiary)
+  font-size: 12px
+
+.team-orchestrate-page__tabs
+  border-bottom: 1px solid var(--glass-border)
+  background: var(--glass-surface)
+
+.team-orchestrate-page__kanban-pane
+  padding: 16px
+  overflow: auto

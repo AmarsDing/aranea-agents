@@ -121,6 +121,8 @@ sequenceDiagram
 
 完整规格见 [17 channel.md §8](./17%20channel.md#8-长任务场景飞书-channel)。
 
+**M55 延伸**（Sync Turn 与 24h Job 分流、Web 同步）：[55-chat-channel-cursor-solution.md](./55-chat-channel-cursor-solution.md) · [55-chat-channel-cursor-development.md](./55-chat-channel-cursor-development.md)
+
 ---
 
 ## 4. 路由决策（业务规则）

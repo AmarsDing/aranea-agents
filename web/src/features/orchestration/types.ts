@@ -60,6 +60,7 @@ export type AgentNodeState = {
   output_preview?: string;
   error_message?: string;
   current_activity?: ActivitySnapshot;
+  activity_history?: ActivitySnapshot[];
 };
 
 export type OrchestrationAgentStatusMetadata = {
@@ -78,6 +79,7 @@ export type OrchestrationAgentStatusMetadata = {
   output_preview?: string;
   error_message?: string;
   current_activity?: ActivitySnapshot;
+  activity_history?: ActivitySnapshot[];
 };
 
 export type TeamRunObservatory = {
@@ -86,6 +88,7 @@ export type TeamRunObservatory = {
   session_id: string;
   status: string;
   mode: string;
+  graph_execution_id?: string;
   definition_snapshot_json?: string;
   compiled_topology?: import("./compileApi").CompileTeamGraphResult;
   nodes: AgentNodeState[];
@@ -108,5 +111,6 @@ export function agentNodeStateFromMetadata(meta: OrchestrationAgentStatusMetadat
     output_preview: meta.output_preview,
     error_message: meta.error_message,
     current_activity: meta.current_activity,
+    activity_history: meta.activity_history,
   };
 }

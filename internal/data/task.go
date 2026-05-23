@@ -65,6 +65,54 @@ func (r *taskRepo) GetTask(ctx context.Context, taskID string) (*biz.GraphTask, 
 	return entTaskToBiz(row), nil
 }
 
+func (r *taskRepo) GetActiveTaskByExecutionNode(ctx context.Context, executionID, nodeID string) (*biz.GraphTask, error) {
+	client := r.data.Ent()
+	row, err := client.GraphTask.Query().
+		Where(
+			graphtask.ExecutionIDEQ(executionID),
+			graphtask.NodeIDEQ(nodeID),
+			graphtask.StatusNotIn(
+				string(biz.TaskStatusComplete),
+				string(biz.TaskStatusCancelled),
+			),
+		).
+		Order(ent.Desc(graphtask.FieldCreatedAt)).
+		First(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return nil, errors.NotFound("TASK", "task not found")
+		}
+		return nil, fmt.Errorf("task repo get active: %w", err)
+	}
+	return entTaskToBiz(row), nil
+}
+
+func (r *taskRepo) ListTasksByStatuses(ctx context.Context, statuses []biz.TaskStatus, limit int) ([]*biz.GraphTask, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	client := r.data.Ent()
+	strs := make([]string, 0, len(statuses))
+	for _, s := range statuses {
+		if s != "" {
+			strs = append(strs, string(s))
+		}
+	}
+	query := client.GraphTask.Query().Order(ent.Asc(graphtask.FieldCreatedAt)).Limit(limit)
+	if len(strs) > 0 {
+		query = query.Where(graphtask.StatusIn(strs...))
+	}
+	rows, err := query.All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("task repo list statuses: %w", err)
+	}
+	result := make([]*biz.GraphTask, len(rows))
+	for i, row := range rows {
+		result[i] = entTaskToBiz(row)
+	}
+	return result, nil
+}
+
 func (r *taskRepo) ListTasksByExecution(ctx context.Context, executionID string, status biz.TaskStatus, pageSize int, pageToken string) ([]*biz.GraphTask, string, error) {
 	client := r.data.Ent()
 	query := client.GraphTask.Query().

@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
+	chatv1 "aranea-agents/api/kratos/chat/v1"
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/event"
 )
@@ -71,9 +73,10 @@ func TestWSUpstreamSubscribeAddsChannel(t *testing.T) {
 	}
 }
 
-func TestWSUpstreamCancelPublishesEnvelope(t *testing.T) {
+func TestWSUpstreamCancelInvokesCanceller(t *testing.T) {
 	bus := event.NewBus()
-	srv := NewWSServer(&conf.Server{Ws: &conf.Server_WS{Enable: true}}, bus, event.NewBuffer(), &stubRunCanceller{}, nil)
+	canceller := &stubRunCanceller{}
+	srv := NewWSServer(&conf.Server{Ws: &conf.Server_WS{Enable: true}}, bus, event.NewBuffer(), canceller, nil)
 	wc := &wsConn{
 		sessionID: "sess-1",
 		channels:  map[string]bool{"system": true},
@@ -88,16 +91,13 @@ func TestWSUpstreamCancelPublishesEnvelope(t *testing.T) {
 	})
 	srv.handleUpstream(wc, raw)
 
+	if !canceller.called {
+		t.Fatal("expected CancelRun to be invoked")
+	}
 	select {
-	case env := <-ch:
-		if env.Type != event.EnvelopeTypeError {
-			t.Fatalf("expected error envelope, got %s", env.Type)
-		}
-		if env.Error == nil || env.Error.Type != "cancelled" {
-			t.Fatalf("unexpected error payload: %+v", env.Error)
-		}
+	case <-ch:
+		t.Fatal("unexpected envelope; cancel status comes from ChatService only")
 	default:
-		t.Fatal("expected cancel envelope on bus")
 	}
 }
 
@@ -159,8 +159,86 @@ func TestWSUpstreamEnqueueMessageAccepted(t *testing.T) {
 	// Should not panic; may or may not send ack depending on gateway wiring.
 }
 
-type stubRunCanceller struct{}
+type stubRunCanceller struct {
+	called bool
+}
 
-func (stubRunCanceller) CancelRun(_ context.Context, _ string) bool {
+func (s *stubRunCanceller) CancelRun(_ context.Context, _ string) bool {
+	s.called = true
 	return true
+}
+
+type stubChatSender struct {
+	sendErr error
+}
+
+func (s stubChatSender) SendChatMessage(_ context.Context, req *chatv1.SendChatMessageRequest) (*chatv1.SendChatMessageResponse, error) {
+	if s.sendErr != nil {
+		return nil, s.sendErr
+	}
+	return &chatv1.SendChatMessageResponse{}, nil
+}
+
+func (stubChatSender) EnqueueUserMessage(_ context.Context, req *chatv1.EnqueueUserMessageRequest) (*chatv1.EnqueueUserMessageResponse, error) {
+	return &chatv1.EnqueueUserMessageResponse{Accepted: true}, nil
+}
+
+func TestWSUpstreamUserMessagePublishesErrorWithRequestID(t *testing.T) {
+	bus := event.NewBus()
+	srv := NewWSServer(&conf.Server{Ws: &conf.Server_WS{Enable: true}}, bus, event.NewBuffer(), nil, stubChatSender{sendErr: context.Canceled})
+	wc := &wsConn{
+		sessionID: "sess-user",
+		channels:  map[string]bool{"chat": true, "system": true},
+		send:      make(chan []byte, 2),
+	}
+	ch, unsub := bus.Subscribe(event.SubscribeOptions{SessionID: "sess-user", BufferSize: 4})
+	defer unsub()
+
+	raw, _ := json.Marshal(wsUpstream{
+		Direction: "client_to_server",
+		Channel:   "chat",
+		Type:      "user_message",
+		RequestID: "pending-user-abc",
+		Payload: map[string]any{
+			"content": "hello",
+		},
+	})
+	srv.handleUpstream(wc, raw)
+
+	deadline := time.After(2 * time.Second)
+	for {
+		select {
+		case env := <-ch:
+			if env.Type != event.EnvelopeTypeError {
+				continue
+			}
+			if env.RequestID != "pending-user-abc" {
+				t.Fatalf("request_id = %q, want pending-user-abc", env.RequestID)
+			}
+			if env.Error == nil || env.Error.Type != "send_failed" {
+				t.Fatalf("unexpected error envelope: %+v", env.Error)
+			}
+			return
+		case <-deadline:
+			t.Fatal("timeout waiting for send_failed envelope")
+		}
+	}
+}
+
+func TestWSUpstreamUserMessageAccepted(t *testing.T) {
+	bus := event.NewBus()
+	srv := NewWSServer(&conf.Server{Ws: &conf.Server_WS{Enable: true}}, bus, event.NewBuffer(), nil, stubChatSender{})
+	wc := &wsConn{
+		sessionID: "sess-ok",
+		channels:  map[string]bool{"chat": true, "system": true},
+		send:      make(chan []byte, 2),
+	}
+	raw, _ := json.Marshal(wsUpstream{
+		Direction: "client_to_server",
+		Channel:   "chat",
+		Type:      "user_message",
+		Payload:   map[string]any{"content": "hi"},
+	})
+	srv.handleUpstream(wc, raw)
+	time.Sleep(50 * time.Millisecond)
 }

@@ -117,6 +117,7 @@ func compileFromEmbeddedGraph(def Definition, spec *embeddedGraphSpec, agentKey 
 			ID:           id,
 			Type:         "agent",
 			Description:  desc,
+			Instruction:  strings.TrimSpace(member.TaskPrompt),
 			AgentName:    key,
 			RequiredRole: role,
 		})
@@ -125,7 +126,7 @@ func compileFromEmbeddedGraph(def Definition, spec *embeddedGraphSpec, agentKey 
 		return biz.GraphBuildConfig{}, fmt.Errorf("team: embedded graph has no agent nodes")
 	}
 
-	edges, entry, finish := compileEmbeddedEdges(def, spec, nodeTypeByID)
+	edges, entry, finish, branchIDs := compileEmbeddedEdges(def, spec, nodeTypeByID)
 	if entry == "" {
 		entry = agentNodes[0].ID
 	}
@@ -134,11 +135,12 @@ func compileFromEmbeddedGraph(def Definition, spec *embeddedGraphSpec, agentKey 
 	}
 
 	cfg := biz.GraphBuildConfig{
-		Nodes:            agentNodes,
-		Edges:            edges,
-		EntryPoint:       entry,
-		FinishPoint:      finish,
-		ExecutionEngine:  biz.EngineBSP,
+		Nodes:             agentNodes,
+		Edges:             edges,
+		EntryPoint:        entry,
+		FinishPoint:       finish,
+		ParallelBranchIDs: branchIDs,
+		ExecutionEngine:   biz.EngineBSP,
 	}
 	return cfg, nil
 }
@@ -165,7 +167,7 @@ func resolveEmbeddedAgentKey(n embeddedGraphNode, member MemberDef, agentKey Com
 	return strings.TrimSpace(n.AgentID)
 }
 
-func compileEmbeddedEdges(def Definition, spec *embeddedGraphSpec, nodeTypeByID map[string]string) ([]biz.EdgeDef, string, string) {
+func compileEmbeddedEdges(def Definition, spec *embeddedGraphSpec, nodeTypeByID map[string]string) ([]biz.EdgeDef, string, string, []string) {
 	mode := normalizeCompileMode(def.Mode)
 	agentIDs := make(map[string]struct{}, len(nodeTypeByID))
 	for id := range nodeTypeByID {
@@ -173,6 +175,8 @@ func compileEmbeddedEdges(def Definition, spec *embeddedGraphSpec, nodeTypeByID 
 	}
 
 	var entry, finish string
+	joinFeeders := make([]string, 0, 4)
+	joinTarget := ""
 	out := make([]biz.EdgeDef, 0, len(spec.Edges))
 	for _, e := range spec.Edges {
 		from := strings.TrimSpace(e.Source)
@@ -189,6 +193,14 @@ func compileEmbeddedEdges(def Definition, spec *embeddedGraphSpec, nodeTypeByID 
 				entry = to
 			}
 		}
+		if fromAgent && strings.EqualFold(to, "join") {
+			joinFeeders = append(joinFeeders, from)
+			continue
+		}
+		if strings.EqualFold(from, "join") && toAgent {
+			joinTarget = to
+			continue
+		}
 		if fromAgent && (isEmbeddedDecorID(to) || isEmbeddedDecorNode(toType)) {
 			if strings.EqualFold(to, "end") && finish == "" {
 				finish = from
@@ -199,7 +211,20 @@ func compileEmbeddedEdges(def Definition, spec *embeddedGraphSpec, nodeTypeByID 
 			out = append(out, biz.EdgeDef{From: from, To: to, Kind: kind})
 		}
 	}
-	return out, entry, finish
+	var branchIDs []string
+	if len(joinFeeders) >= 2 && joinTarget != "" {
+		seen := map[string]struct{}{}
+		for _, feeder := range joinFeeders {
+			if _, ok := seen[feeder]; ok {
+				continue
+			}
+			seen[feeder] = struct{}{}
+			out = append(out, biz.EdgeDef{From: feeder, To: joinTarget, Kind: "flow"})
+			branchIDs = append(branchIDs, feeder)
+		}
+		finish = joinTarget
+	}
+	return out, entry, finish, branchIDs
 }
 
 func embeddedEdgeKind(mode string, e embeddedGraphEdge) string {

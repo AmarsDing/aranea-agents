@@ -15,6 +15,7 @@ func ToolsetConfigFromEffectiveKeys(eff map[string]bool) ToolsetConfig {
 		ShellExec:       has("shell_exec"),
 		WebFetch:        has("web_fetch"),
 		WebSearch:       has("duckduckgo_search"),
+		WebResearch:     has(biz.ToolKeyWebResearch),
 		GeminiFetch:     has("gemini_web_fetch"),
 		GoogleSearch:    has("google_search"),
 		ArxivSearch:     has("arxiv_search"),
@@ -26,15 +27,16 @@ func ToolsetConfigFromEffectiveKeys(eff map[string]bool) ToolsetConfig {
 		WorkspaceExec:   has("workspace_exec"),
 		KnowledgeSearch: has(biz.ToolKeyKnowledgeSearch),
 		CallAgent:       has(biz.ToolKeyCallAgent),
+		Kanban:          has(biz.ToolKeyKanban),
 	}
 	return cfg
 }
 
 // ToolsetConfigHasAny reports whether any tool switch or MCP attachment is enabled.
 func ToolsetConfigHasAny(cfg ToolsetConfig) bool {
-	return cfg.Filesystem || cfg.ShellExec || cfg.WebFetch || cfg.WebSearch ||
+	return cfg.Filesystem || cfg.ShellExec || cfg.WebFetch || cfg.WebSearch || cfg.WebResearch ||
 		cfg.GeminiFetch || cfg.GoogleSearch || cfg.ArxivSearch || cfg.Wikipedia ||
 		cfg.Email || cfg.Todo || cfg.AwaitReply || cfg.ClaudeCode || cfg.WorkspaceExec ||
-		cfg.KnowledgeSearch || cfg.CallAgent ||
+		cfg.KnowledgeSearch || cfg.CallAgent || cfg.Kanban ||
 		len(cfg.MCPServers) > 0 || cfg.MCPBroker != nil
 }

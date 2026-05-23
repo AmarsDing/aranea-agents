@@ -59,8 +59,20 @@ func (s *ChatService) resumeAwaitAfterRestart(ctx context.Context, sessionID, re
 	}
 	safego.Go(ctx, "chat.resume_await_turn", func() {
 		defer s.endResume(sessionID)
-		bg := context.Background()
-		_, _, _ = s.runNativeAgentTurn(bg, req)
+		bgCtx, cancel := context.WithTimeout(context.Background(), defaultTurnTimeout)
+		defer cancel()
+		_, _, turnErr := s.runNativeAgentTurn(bgCtx, req)
+		if turnErr != nil && !IsTurnMessageQueued(turnErr) {
+			s.setRunStatus(sessionID, runID, "failed", turnErr.Error())
+			if s.td.Pipeline.Bus != nil {
+				env := event.NewEnvelope(event.EnvelopeTypeError, "chat-service", sessionID)
+				env.Error = &event.EnvelopeError{
+					Type:    "await_resume_failed",
+					Message: turnErr.Error(),
+				}
+				s.td.Pipeline.Bus.Publish(context.Background(), env)
+			}
+		}
 	})
 	return nil
 }

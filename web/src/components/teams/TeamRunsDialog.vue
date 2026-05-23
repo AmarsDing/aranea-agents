@@ -27,7 +27,7 @@
           <q-expansion-item v-for="run in runs" :key="run.id" group="team-runs" @show="$emit('showSteps', run.id)">
             <template #header>
               <q-item-section avatar>
-                <q-avatar :color="run.status === 'success' ? 'positive' : 'negative'" text-color="white" :icon="run.status === 'success' ? 'check' : 'error'" />
+                <q-avatar :color="runStatusColor(run.status)" text-color="white" :icon="runStatusIcon(run.status)" />
               </q-item-section>
               <q-item-section>
                 <q-item-label>{{ run.mode }} · {{ run.duration_ms }}ms</q-item-label>
@@ -42,6 +42,7 @@
               <q-separator class="q-my-md" />
               <div class="row items-center q-gutter-sm q-mb-sm">
                 <q-btn flat dense size="sm" color="primary" icon="summarize" label="加载汇总" :loading="Boolean(summariesLoading[run.id])" @click="$emit('loadSummary', run.id)" />
+                <q-btn flat dense size="sm" color="primary" icon="insights" label="观测台" @click="$emit('openObservatory', run.id)" />
               </div>
               <div v-if="summariesByRun[run.id]" class="run-summary q-mb-md">
                 <div class="text-caption text-grey-7">结构化汇总</div>
@@ -99,6 +100,7 @@ defineEmits<{
   refresh: [];
   showSteps: [runID: string];
   loadSummary: [runID: string];
+  openObservatory: [runID: string];
 }>();
 
 function formatCost(value?: number) {
@@ -106,9 +108,23 @@ function formatCost(value?: number) {
 }
 
 function stepStatusColor(status: string) {
-  if (status === "running") return "info";
-  if (status === "success" || status === "ok") return "positive";
-  return "negative";
+  const normalized = status.trim().toLowerCase();
+  if (normalized === "running" || normalized === "pending") return "info";
+  if (normalized === "success" || normalized === "ok" || normalized === "completed") return "positive";
+  if (normalized === "failed" || normalized === "error") return "negative";
+  return "grey";
+}
+
+function runStatusColor(status: string) {
+  return stepStatusColor(status);
+}
+
+function runStatusIcon(status: string) {
+  const normalized = status.trim().toLowerCase();
+  if (normalized === "running" || normalized === "pending") return "sync";
+  if (normalized === "success" || normalized === "ok" || normalized === "completed") return "check";
+  if (normalized === "failed" || normalized === "error") return "error";
+  return "schedule";
 }
 </script>
 

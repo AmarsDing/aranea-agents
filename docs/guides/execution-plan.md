@@ -4,7 +4,7 @@
 >
 > **关联文档**：[0 系统框图.md](../需求/0%20系统框图.md) · [0-system-development.md](../需求/0-system-development.md) · [README-development.md](../需求/README-development.md)
 >
-> **更新时间**：2026-05-23（M53 Phase 4 优化：快照 + 编译真相源）
+> **更新时间**：2026-05-23（M55 Chat×Channel×Cursor 对标方案 + 迭代 CC 任务板）
 
 ---
 
@@ -12,7 +12,7 @@
 
 - **主链路可用**：Chat / Agent / Team / Graph 经 `trpc-agent-go` Runner 与 EventBus + `/v1/ws` 串联；RunRegistry + RunnerManager + RunGateway 已落地。
 - **架构红线保持**：`internal/biz` 不 import `trpc-agent-go`；`internal/server` 不直接调 Agent runtime；实时主通道为 `/v1/ws`（SSE 仅限 A2A/MCP 等外部协议）。
-- **当前优先级（backlog）**：Provider biz↔provider 收敛 · Evolution 趋势图 · Artifact Chat 引用 · Graph HITL UI · LIST-04 列表 UI · pgvector 多租户测 · Telemetry gRPC 采样。
+- **当前优先级（backlog）**：**M55 迭代 CC**（长任务路由 + Channel↔Web 同步 + TurnBlock UI）· Graph Webhook/熔断（G13/G14）· Provider biz↔provider 收敛 · Evolution 趋势图 · Artifact Chat 引用 · LIST-04 列表 UI · pgvector 多租户测 · Telemetry gRPC 采样。
 
 ---
 
@@ -35,8 +35,8 @@
 | 等级 | 模块 | 说明 |
 |------|------|------|
 | **核心可用** | Chat(1)、Agent 全家桶(2–8/50)、Provider(9)、Session(10)、Skill(20)、Tools(23)、Cron(21)、Message/WS(51/34)、Plugin/Callback(22/28)、Gateway/Runner(35/40) | 可创建、运行、配置、观测 |
-| **可用需闭环** | Graph(36)、MCP(19)、Memory(12–16)、Monitor/Token(18/29) | Graph 节点类型待补；MCP 重连可观测；Memory 冲突/级联 |
-| **可用需闭环** | Team(11)、Channel(17) | Team `team_summary` WS ✅；**M53** Phase 0.5–4 ✅；Phase 5 Graph 框架 ⏳ |
+| **可用需闭环** | Graph(36)、MCP(19)、Memory(12–16)、Monitor/Token(18/29) | Graph Phase A–D ✅；Webhook/熔断待补；MCP 重连可观测；Memory 冲突/级联 |
+| **可用需闭环** | Team(11)、Channel(17) | Team `team_summary` WS ✅；**M53** Phase 0.5–4 ✅；Phase 5 Graph 框架 ⏳；**M55** Channel↔Web 同步 + TurnBlock 📋 |
 | **有页、Runtime 已通主项** | Knowledge(37)、Artifact(27)、Evaluation(33)、A2A(26) | A2A Phase 1–3.5 ✅（联邦 Gateway、远程 Invoke、Graph metadata）；网关 Cron/Admin 流式待 Phase 4 |
 | **Skill 子能力** | CodeExecutor(32) | Phase 1–2 + Review ✅：Factory / Agent 配置 / capabilities / lazy E2B — [开发计划](../需求/32-codeexecutor-development.md) · [设计架构图](../需求/32%20codeexecutor.design.md#21-当前架构已实现-phase-12--review-修复) |
 | **早期/占位** | Evolution(7)、CLI(25)、TTS | Ecosystem MVP ✅（`/v1/ecosystem/products`）；Telemetry Span 已通 turn，Trace UI 待补 |
@@ -66,6 +66,7 @@
 | 15 | Memory L4 注入 + MemoryWorker + AutoMemory 图写入 | Memory | ✅ P2（冲突/级联/衰减待补） |
 | 16 | Monitor 落库 + Provider 指标 + Quota MVP + Usage 事件 | Monitor/Token | ✅ M4 部分 |
 | 17 | Chat 工具卡片 / Reasoning / `run_status` WS / Team 分栏 | Chat/Frontend | ✅ 2026-05-19 |
+| 18 | Chat Flow P1–P2（delta 一致、admission、queued sentinel、Await UX） | Chat | ✅ 2026-05-23 · [review](../review/2026-05-23-Chat-Flow-Full-Review.md) |
 | 18 | **Channel** 飞书 + 钉钉 Webhook 入站/出站 | Channel | ✅ P1 |
 | 19 | **Graph** LLM/Tool 节点 + ExecutionSummary | Graph | ✅ P1/P2 |
 | 20 | **Team** 结构化汇总 `team_summary` Envelope | Team | ✅ P1（`EnvelopeTypeTeamSummary` + `BuildTeamRunSummary`） |
@@ -157,6 +158,35 @@
 
 **迭代 E-b 焦点**：IM 与 Web Chat Envelope 顺序对齐；长任务推荐 `im_render_mode=transcript`；Card 终态单发 + Session 深链。
 
+### 迭代 CC（Chat × Channel × Cursor 对标 M55）— 2026-05-23
+
+> 详案：[55-chat-channel-cursor-solution.md](../需求/55-chat-channel-cursor-solution.md) · [55-chat-channel-cursor-development.md](../需求/55-chat-channel-cursor-development.md)
+
+**背景**：飞书长任务 5m 超时（Sync Turn vs 24h Job 错配）；Web 无法可靠展示 Channel 会话（Session 同步 + Turn 平铺 + 性能）。
+
+| ID | 任务 | 优先级 | 状态 | 验收 |
+|----|------|--------|------|------|
+| CC-A-01 | 长任务 Channel preset + 前端一键应用 | P0 | 📋 | `turn_timeout_sec=900` 等 |
+| CC-A-02 | `execution_mode=auto` 关键词 → async 路由 | P0 | 📋 | 分析/批处理不走纯 sync |
+| CC-A-03 | 超时错误区分 sync 上限 vs 应 async | P1 | 📋 | IM 出站文案 |
+| CC-B-01 | `session_revision` 单调递增 | P0 | 📋 | Turn 完成 +1 |
+| CC-B-02 | Envelope 携带 `session_revision` | P0 | 📋 | WS 契约 |
+| CC-B-03 | `ListSessionMessages?after_revision=` | P0 | 📋 | 增量 API |
+| CC-B-04 | 选中 Session 强制 Session WS | P0 | 📋 | M55-SYNC-01 |
+| CC-B-05 | revision 触发 debounced hydrate | P0 | 📋 | M55-SYNC-02 |
+| CC-B-06 | Channel 入站 `source=channel` 自动 focus | P1 | 📋 | 同 Agent Web 聚焦 |
+| CC-C-01 | `TurnBlock` 组件（User/ToolStrip/Assistant） | P0 | 📋 | 与 IM transcript 对齐 |
+| CC-C-02 | ToolStrip 默认折叠 | P0 | 📋 | M55-UI-02 |
+| CC-C-03 | `groupMessagesByTurn` + 单测 | P0 | 📋 | feishu 115 条 fixture |
+| CC-C-04 | 滚动锚定最后一轮正文 | P0 | 📋 | 非 tool spam 底部 |
+| CC-C-05 | 长 Session 虚拟列表策略 | P1 | 📋 | M55-UI-01 |
+| CC-D-01 | Background Job 列表/侧栏 | P1 | 📋 | async 任务可观测 |
+| CC-E-01 | `@` 上下文引用 UX | P2 | 📋 | Cursor 对齐 |
+| CC-E-03 | diff Apply 卡片 | P2 | 📋 | fragment edit 对接 |
+| CC-F-01 | 24h Durable Job Worker deadline | P2 | 📋 | 超越 async 2h 看门 |
+
+**迭代 CC 焦点（P0）**：Phase A 配置路由 → Phase B `session_revision` → Phase C TurnBlock；与 M53 Graph 执行收敛可并行。
+
 ### 迭代 TG（Team × Graph 融合 M53）— 2026-05-23
 
 > 详案：[53-team-graph-orchestration-development.md](../需求/53-team-graph-orchestration-development.md)
@@ -204,6 +234,25 @@
 | TG-RT-RETIRE | 移除 BuildTRPCTeam 主路径 | P3 | 📋 | Phase 7 单链终态 |
 
 **当前焦点**：Phase 5 执行收敛（parity → UI → metrics → Canary）。终态路线图：[53-team-graph-orchestration-development.md §8](../需求/53-team-graph-orchestration-development.md#8-终态路线图team-规格--graph-执行单链)。
+
+### EP-HK-01 Hermes Kanban 适配（M54）— 2026-05-23
+
+> 详案：[54-hermes-kanban-development.md](../需求/54-hermes-kanban-development.md)
+
+| ID | 任务 | 优先级 | 状态 | 验收 |
+|----|------|--------|------|------|
+| HK-RT-01 | Graph 节点 CreateTask + WS | P1 | ✅ | node_start → graph_task_status |
+| HK-RT-02 | TaskDispatcher | P1 | ✅ | pending → claim |
+| HK-RT-03 | complete → ResumeGraph | P1 | ✅ | task complete 恢复执行 |
+| HK-RT-04 | UnblockTask RPC | P1 | ✅ | blocked → pending |
+| HK-RT-05 | CheckTimeouts runner | P1 | ✅ | 心跳超时 |
+| HK-TOOLS-01 | kanban_* toolset | P1 | ✅ | Agent 可调 |
+| HK-DEP-01 | graph_task_links | P2 | ✅ | parent complete promote |
+| HK-OBS-01 | Activity 时间线 | P2 | ✅ | OrchestrationKanban |
+| HK-FE-03 | 列拖拽 + Observatory 任务 Tab | P3 | ✅ | vuedraggable |
+| HK-INT-01 | Task status Webhook（G13） | P2 | ✅ | `graph.task.status` 出站 |
+| HK-INT-02 | spawn_fn worker lane | P2 | 📋 | G14 RunGateway |
+| HK-ORCH-01 | triage/decompose | P3 | 📋 | 可选 |
 
 ### Tools Phase 5（工作区统一）— 2026-05-22
 
@@ -321,6 +370,7 @@
 ### M1：Runner 与 Gateway ✅
 
 - [x] `RunRegistry`（`internal/runtime/run_registry.go`）+ `RunnerManager`
+- [x] Chat Flow P1–P2 Round1/2：ChoiceStreamContent、admission、ErrTurnMessageQueued、Await submit、WS cancel 语义（[changelog](../changelog/2026-05-23-Chat-Flow-P1-P2-Round2.md)）
 - [x] `EnqueueUserMessage`（`POST /v1/chat/enqueue`、WS `enqueue_message`）
 - [x] 取消路径（HTTP `StopGeneration` + WS `cancel`）
 - [x] ArtifactService / SessionIngestor / AgentFactory / AwaitUserReplyRouting 注入

@@ -83,10 +83,10 @@ func cardHeaderTemplate(activityKind, status string) string {
 	if ToolStatusInFlight(status) {
 		return "orange"
 	}
-	if strings.EqualFold(strings.TrimSpace(status), ToolStatusError) {
+	if IsToolStatusError(status) {
 		return "red"
 	}
-	if strings.EqualFold(strings.TrimSpace(status), ToolStatusOK) || isTerminalSuccess(status) {
+	if NormalizeToolStatus(status) == ToolStatusOK || isTerminalSuccess(status) {
 		return "green"
 	}
 	vis := resolveToolVisual(activityKind, status)
@@ -94,12 +94,7 @@ func cardHeaderTemplate(activityKind, status string) string {
 }
 
 func isTerminalSuccess(status string) bool {
-	switch strings.ToLower(strings.TrimSpace(status)) {
-	case ToolStatusOK, "done", "success", "":
-		return true
-	default:
-		return false
-	}
+	return NormalizeToolStatus(status) == ToolStatusOK
 }
 
 func cardHeaderTitle(seg Segment, vis toolVisualStyle) string {
@@ -188,7 +183,7 @@ func compactToolSummary(seg Segment) string {
 			summary = strings.TrimSpace(seg.Meta.Name)
 		}
 	}
-	if strings.EqualFold(strings.TrimSpace(seg.Status), ToolStatusError) {
+	if IsToolStatusError(seg.Status) {
 		if excerpt := strings.TrimSpace(seg.Meta.ResultExcerpt); excerpt != "" {
 			summary = excerpt
 		}
@@ -200,7 +195,7 @@ func toolStatusMarkdown(status string) string {
 	if ToolStatusInFlight(status) {
 		return "<font color='orange'>🔄 进行中</font>"
 	}
-	if strings.EqualFold(strings.TrimSpace(status), ToolStatusError) {
+	if IsToolStatusError(status) {
 		return "<font color='red'>✕ 失败</font>"
 	}
 	return "<font color='green'>✓ 完成</font>"
@@ -210,7 +205,7 @@ func toolStatusPlain(status string) (icon, label string) {
 	if ToolStatusInFlight(status) {
 		return "🔄", "进行中"
 	}
-	if strings.EqualFold(strings.TrimSpace(status), ToolStatusError) {
+	if IsToolStatusError(status) {
 		return "✕", "失败"
 	}
 	return "✓", "完成"

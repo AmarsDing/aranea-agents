@@ -27,6 +27,7 @@ export type EnvelopeType =
   | "graph_execution_done"
   | "graph_node_error"
   | "graph_node_custom"
+  | "graph_task_status"
   | "knowledge_ingest"
   | "mcp.session.reconnect"
   | "alert.notify";

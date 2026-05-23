@@ -189,4 +189,10 @@ var (
 		Name: "aranea_channel_tool_card_total",
 		Help: "Channel IM tool card operations by platform, phase (build|send), and result.",
 	}, []string{"platform", "phase", "result"})
+
+	// TeamGraphRuntimeTotal counts Team Run runtime path selection (M53 Phase 5).
+	TeamGraphRuntimeTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "aranea_team_graph_runtime_total",
+		Help: "Team run runtime path: graph success, native fallback, or native primary.",
+	}, []string{"outcome", "reason"})
 )

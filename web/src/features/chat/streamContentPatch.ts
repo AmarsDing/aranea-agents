@@ -2,7 +2,12 @@ import type { Message } from "./types";
 
 type StreamExtras = {
   reasoning_markdown?: string;
+  reasoning_content?: string;
 };
+
+function reasoningFromExtras(extras: StreamExtras): string {
+  return (extras.reasoning_markdown ?? extras.reasoning_content ?? "").trim();
+}
 
 export function parseMessageExtras(optionsJson: string): StreamExtras {
   try {
@@ -31,7 +36,7 @@ export function patchStreamingMessage(
       content = `${content}${patch.text}`;
     }
     const extras = parseMessageExtras(m.options_json);
-    let reasoning = extras.reasoning_markdown ?? "";
+    let reasoning = reasoningFromExtras(extras);
     if (patch.replaceReasoning !== undefined) {
       reasoning = patch.replaceReasoning;
     } else if (patch.reasoning) {
@@ -49,5 +54,17 @@ export function patchStreamingMessage(
 }
 
 export function reasoningMarkdown(message: Message): string {
-  return parseMessageExtras(message.options_json).reasoning_markdown?.trim() ?? "";
+  return reasoningFromExtras(parseMessageExtras(message.options_json));
+}
+
+/** Map legacy reasoning_content from server rows to reasoning_markdown for UI replay. */
+export function normalizeServerMessageOptions(optionsJson: string): string {
+  const extras = parseMessageExtras(optionsJson);
+  if (!reasoningFromExtras(extras) && extras.reasoning_content?.trim()) {
+    return mergeMessageExtras(optionsJson, { reasoning_markdown: extras.reasoning_content.trim() });
+  }
+  if (extras.reasoning_markdown?.trim() && !extras.reasoning_content?.trim()) {
+    return mergeMessageExtras(optionsJson, { reasoning_content: extras.reasoning_markdown.trim() });
+  }
+  return optionsJson;
 }

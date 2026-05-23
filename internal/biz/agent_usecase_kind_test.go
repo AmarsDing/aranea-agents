@@ -62,7 +62,7 @@ func TestAgentUsecase_UpdateRejectsKindChange(t *testing.T) {
 			ConfigJSON: EmbedAgentKindInConfigJSON("{}", AgentKindLLM, nil),
 		},
 	}
-	uc := NewAgentUsecase(repo, nil)
+	uc := NewAgentUsecase(repo, nil, nil)
 	_, err := uc.Update(context.Background(), "agent-1", Agent{Kind: AgentKindA2AProxy})
 	if err == nil {
 		t.Fatal("expected error")

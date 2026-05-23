@@ -13,6 +13,7 @@ import (
 	"aranea-agents/internal/skill/storage"
 	"aranea-agents/internal/tools"
 	tooltrpc "aranea-agents/internal/tools/trpc"
+	kanbanpkg "aranea-agents/internal/tools/kanban"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 )
@@ -50,7 +51,11 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 	}
 	event.CtxFlowLogDone(ctx, "system.agent.tool_build", "工具构建中", event.P("agent_id", ag.ID), event.P("filesystem", cfg.Filesystem), event.P("mcp_servers", len(cfg.MCPServers)))
 	applyRuntimeToolConfigs(ctx, ag.ID, eff, deps, &cfg)
+	applyWebResearchPlatformDefaults(ctx, deps, &cfg)
 	tooltrpc.ResolveGeminiFetchModel(&cfg, ag.Provider, ag.Model)
+	if kanbanpkg.Enabled() {
+		cfg.Kanban = true
+	}
 	if skipped := tooltrpc.PruneUnconfiguredToolFlags(&cfg); len(skipped) > 0 {
 		event.CtxFlowLogWarn(ctx, "system.agent.tool_build", "已跳过未配置凭证的工具，避免构建失败",
 			event.P("agent_id", ag.ID), event.P("skipped_tools", skipped))
@@ -101,6 +106,27 @@ func applyRuntimeToolConfigs(ctx context.Context, agentID string, eff map[string
 		merged[key] = biz.MergeToolConfigJSON(base, ov.ConfigOverrideJSON)
 	}
 	tooltrpc.ApplyRuntimeConfigMaps(cfg, merged)
+}
+
+func applyWebResearchPlatformDefaults(ctx context.Context, deps TRPCBuilderDeps, cfg *tooltrpc.ToolsetConfig) {
+	if cfg == nil || !cfg.WebResearch {
+		return
+	}
+	if cfg.WebResearchCfg.Ready() {
+		return
+	}
+	if deps.Sys != nil {
+		if full, err := deps.Sys.GetWebResearch(ctx); err == nil {
+			cfg.WebResearchCfg = tooltrpc.MergeWebResearchConfig(cfg.WebResearchCfg, full)
+			if cfg.WebResearchCfg.Ready() {
+				return
+			}
+		}
+	}
+	patched := tooltrpc.WebResearchConfigFromEnv(cfg.WebResearchCfg)
+	if patched.Ready() {
+		cfg.WebResearchCfg = patched
+	}
 }
 
 func loadEffectiveToolKeys(ctx context.Context, deps TRPCBuilderDeps, agentID string) map[string]bool {

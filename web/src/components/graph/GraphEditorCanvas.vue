@@ -14,11 +14,18 @@
       :snap-grid="[16, 16]"
       :min-zoom="0.2"
       :max-zoom="2"
+      :nodes-draggable="!readOnly"
+      :nodes-connectable="!readOnly"
+      :edges-updatable="!readOnly"
+      :edges-deletable="!readOnly"
+      :elements-selectable="true"
+      :delete-key-code="readOnly ? null : 'Delete'"
       @node-click="onNodeClick"
       @pane-click="onPaneClick"
       @connect="onConnect"
       @nodes-change="onNodesChange"
       @edges-change="onEdgesChange"
+      @node-drag-stop="onNodeDragStop"
     >
       <Background :gap="16" />
       <Controls />
@@ -28,7 +35,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick } from "vue";
+import { ref, watch, nextTick, computed } from "vue";
 import { VueFlow, useVueFlow, type Connection, type Edge, type Node, type NodeChange, type EdgeChange, Position } from "@vue-flow/core";
 import { Background } from "@vue-flow/background";
 import { Controls } from "@vue-flow/controls";
@@ -41,15 +48,34 @@ import GraphFlowNode from "./GraphFlowNode.vue";
 import GraphFlowDiamond from "./GraphFlowDiamond.vue";
 import type { NodeDef, EdgeDef, ConditionalEdgeDef, NodeType, GraphDefinition } from "../../features/graph/types";
 import { NODE_TYPE_STYLES } from "../../features/graph/types";
+import { defaultNodePosition, readGraphLayout, writeGraphNodePosition } from "../../features/graph/editor/graphLayout";
+import { graphNodeDisplayLabel } from "../../features/orchestration/teamNodeDisplay";
 
 const props = defineProps<{
   graphDef: GraphDefinition;
   isDark: boolean;
-  execNodeStates: Map<string, { status: string; fineStatus?: string }>;
+  execNodeStates?: Map<string, {
+    status: string;
+    fineStatus?: string;
+    inputPreview?: string;
+    outputPreview?: string;
+    currentActivity?: string;
+  }>;
   selectedNodeId?: string | null;
   /** When true, pans/zooms to selected node (Observatory focus sync). */
   focusSelectedNode?: boolean;
+  /** Run/monitor mode: disable editing gestures. */
+  readOnly?: boolean;
 }>();
+
+const emptyExecNodeStates = new Map<string, {
+  status: string;
+  fineStatus?: string;
+  inputPreview?: string;
+  outputPreview?: string;
+  currentActivity?: string;
+}>();
+const resolvedExecNodeStates = computed(() => props.execNodeStates ?? emptyExecNodeStates);
 
 const emit = defineEmits<{
   selectNode: [nodeId: string | null];
@@ -63,15 +89,42 @@ const nodeTypes: Record<string, any> = {
   llm: GraphFlowNode,
   tool: GraphFlowNode,
   agent: GraphFlowNode,
+  hitl: GraphFlowNode,
   router: GraphFlowDiamond,
   join: GraphFlowDiamond,
 };
+
+const readOnly = computed(() => props.readOnly ?? false);
 
 const defaultEdgeOptions = {
   type: "smoothstep",
   animated: false,
   style: { stroke: "var(--color-icon-muted)", strokeWidth: 2 },
 };
+
+const edgeLabelStyle = {
+  fill: "var(--color-text-secondary)",
+  fontSize: 10,
+  fontWeight: 600,
+};
+
+const edgeLabelBgStyle = {
+  fill: "var(--glass-elevated)",
+  fillOpacity: 0.92,
+};
+
+function edgeKindLabel(kind?: string): string | undefined {
+  switch ((kind ?? "").toLowerCase()) {
+    case "transfer":
+      return "移交";
+    case "dispatch":
+      return "分派";
+    case "flow":
+      return undefined;
+    default:
+      return kind?.trim() || undefined;
+  }
+}
 
 const internalNodes = ref<Node[]>([]);
 const internalEdges = ref<Edge[]>([]);
@@ -83,12 +136,16 @@ function buildNodes(): Node[] {
   for (const n of internalNodes.value) {
     existingPositions.set(n.id, n.position);
   }
+  const savedLayout = readGraphLayout(props.graphDef);
 
-  return props.graphDef.nodes.map((n) => {
+  return props.graphDef.nodes.map((n, index) => {
     const style = NODE_TYPE_STYLES[n.type as NodeType] ?? NODE_TYPE_STYLES.function;
     const isDiamond = n.type === "router" || n.type === "join";
-    const execState = props.execNodeStates.get(n.id);
-    const pos = existingPositions.get(n.id) ?? { x: 100 + Math.random() * 300, y: 100 + Math.random() * 300 };
+    const execState = resolvedExecNodeStates.value.get(n.id);
+    const pos =
+      existingPositions.get(n.id) ??
+      savedLayout[n.id] ??
+      defaultNodePosition(index);
     return {
       id: n.id,
       type: n.type,
@@ -97,17 +154,23 @@ function buildNodes(): Node[] {
       data: {
         nodeId: n.id,
         nodeType: n.type as NodeType,
-        label: n.id,
-        instruction: n.instruction,
+        label: graphNodeDisplayLabel(n),
+        agentName: n.agentName,
+        role: n.requiredRole,
+        description: n.description,
+        instruction: n.instruction || n.description,
         execStatus: execState?.status,
         fineStatus: execState?.fineStatus,
+        inputPreview: execState?.inputPreview,
+        outputPreview: execState?.outputPreview,
+        currentActivity: execState?.currentActivity,
       },
       style: isDiamond
-        ? {}
-        : {
+        ? {
             background: style.fillColor,
             borderColor: style.borderColor,
-          },
+          }
+        : {},
     };
   });
 }
@@ -126,7 +189,11 @@ function buildEdges(): Edge[] {
       style: isTransfer
         ? { stroke: "var(--color-icon-muted)", strokeWidth: 1.5, strokeDasharray: "6 4" }
         : { stroke: "var(--color-icon-muted)", strokeWidth: 2 },
-      label: isTransfer ? "transfer" : isDispatch ? "dispatch" : undefined,
+      label: edgeKindLabel(e.kind) ?? (isTransfer ? "移交" : isDispatch ? "分派" : undefined),
+      labelStyle: edgeLabelStyle,
+      labelBgStyle: edgeLabelBgStyle,
+      labelBgPadding: [6, 4],
+      labelBgBorderRadius: 6,
     });
   }
   for (const ce of props.graphDef.conditionalEdges) {
@@ -138,6 +205,10 @@ function buildEdges(): Edge[] {
         target,
         type: "smoothstep",
         label,
+        labelStyle: edgeLabelStyle,
+        labelBgStyle: edgeLabelBgStyle,
+        labelBgPadding: [6, 4],
+        labelBgBorderRadius: 6,
         style: { strokeDasharray: "5 5" },
       });
     }
@@ -146,7 +217,7 @@ function buildEdges(): Edge[] {
 }
 
 watch(
-  () => [props.graphDef.nodes, props.graphDef.edges, props.graphDef.conditionalEdges, props.execNodeStates, props.selectedNodeId],
+  () => [props.graphDef.nodes, props.graphDef.edges, props.graphDef.conditionalEdges, resolvedExecNodeStates.value, props.selectedNodeId],
   () => {
     syncingFromProp = true;
     internalNodes.value = buildNodes();
@@ -179,6 +250,7 @@ function onPaneClick() {
 }
 
 function onConnect(connection: Connection) {
+  if (readOnly.value) return;
   if (connection.source && connection.target) {
     const existing = props.graphDef.edges.find((e) => e.from === connection.source && e.to === connection.target);
     if (!existing) {
@@ -188,32 +260,35 @@ function onConnect(connection: Connection) {
   }
 }
 
+function resolveConditionalEdgeRemoval(edgeId: string): { ceIdx: number; label: string } | null {
+  if (!edgeId.startsWith("ce-")) return null;
+  for (let ceIdx = 0; ceIdx < props.graphDef.conditionalEdges.length; ceIdx++) {
+    const ce = props.graphDef.conditionalEdges[ceIdx];
+    for (const [label, target] of Object.entries(ce.pathMap ?? {})) {
+      if (`ce-${ce.from}-${target}-${label}` === edgeId) {
+        return { ceIdx, label };
+      }
+    }
+  }
+  return null;
+}
+
 function onEdgesChange(changes: EdgeChange[]) {
-  if (syncingFromProp) return;
+  if (syncingFromProp || readOnly.value) return;
   for (const change of changes) {
     if (change.type === "remove") {
       const edgeId = change.id;
-      if (edgeId.startsWith("ce-")) {
-        const parts = edgeId.replace("ce-", "").split("-");
-        if (parts.length >= 3) {
-          const from = parts[0];
-          const target = parts[1];
-          const label = parts.slice(2).join("-");
-          const ceIdx = props.graphDef.conditionalEdges.findIndex((ce) => {
-            return ce.from === from && ce.pathMap?.[label] === target;
-          });
-          if (ceIdx >= 0) {
-            const ce = props.graphDef.conditionalEdges[ceIdx];
-            const newPathMap = { ...ce.pathMap };
-            delete newPathMap[label];
-            if (Object.keys(newPathMap).length === 0) {
-              props.graphDef.conditionalEdges.splice(ceIdx, 1);
-            } else {
-              ce.pathMap = newPathMap;
-            }
-            emit("updateGraph");
-          }
+      const resolved = resolveConditionalEdgeRemoval(edgeId);
+      if (resolved) {
+        const ce = props.graphDef.conditionalEdges[resolved.ceIdx];
+        const newPathMap = { ...ce.pathMap };
+        delete newPathMap[resolved.label];
+        if (Object.keys(newPathMap).length === 0) {
+          props.graphDef.conditionalEdges.splice(resolved.ceIdx, 1);
+        } else {
+          ce.pathMap = newPathMap;
         }
+        emit("updateGraph");
       } else {
         const edgeIdx = props.graphDef.edges.findIndex((_, i) => `e-${props.graphDef.edges[i].from}-${props.graphDef.edges[i].to}` === edgeId);
         if (edgeIdx >= 0) {
@@ -226,7 +301,7 @@ function onEdgesChange(changes: EdgeChange[]) {
 }
 
 function onNodesChange(changes: NodeChange[]) {
-  if (syncingFromProp) return;
+  if (syncingFromProp || readOnly.value) return;
   for (const change of changes) {
     if (change.type === "remove" && change.id) {
       const nodeId = change.id;
@@ -249,6 +324,7 @@ function onDragOver(event: DragEvent) {
 }
 
 function onDrop(event: DragEvent) {
+  if (readOnly.value) return;
   const type = event.dataTransfer?.getData("application/graph-node-type") as NodeType | undefined;
   if (!type) return;
 
@@ -273,6 +349,15 @@ function onDrop(event: DragEvent) {
     timeoutSeconds: 0,
     heartbeatIntervalSeconds: 0,
     enableLeaseExtension: false,
+    retryMaxAttempts: 0,
+    failureAction: "",
+    fallbackAgent: "",
+    inputMapperJson: "",
+    outputMapperJson: "",
+    isolatedMessages: false,
+    inputFromLastResponse: false,
+    cacheEnabled: false,
+    cacheTtlSeconds: 0,
   };
 
   const dropPosition = project({ x: event.clientX, y: event.clientY });
@@ -301,41 +386,18 @@ function onDrop(event: DragEvent) {
   emit("updateGraph");
   emit("selectNode", id);
 }
+
+function onNodeDragStop({ node }: { node: Node }) {
+  if (readOnly.value || !node.id) return;
+  writeGraphNodePosition(props.graphDef, node.id, node.position);
+  emit("updateGraph");
+}
 </script>
 
 <style scoped>
 .graph-editor-canvas {
   flex: 1;
   height: 100%;
-  background: var(--canvas-base, var(--canvas-base));
-}
-
-.graph-editor-canvas.is-dark {
-  background: var(--canvas-base, var(--canvas-base));
-}
-
-.graph-editor-canvas :deep(.vue-flow) {
-  width: 100%;
-  height: 100%;
-}
-
-.graph-editor-canvas.is-dark :deep(.vue-flow__background) {
-  background: var(--canvas-base);
-}
-
-.graph-editor-canvas.is-dark :deep(.vue-flow__minimap) {
-  background: rgb(18 24 34 / 80%);
-  border-color: rgb(255 255 255 / 8%);
-}
-
-.graph-editor-canvas.is-dark :deep(.vue-flow__controls) {
-  background: rgb(18 24 34 / 80%);
-  border-color: rgb(255 255 255 / 8%);
-}
-
-.graph-editor-canvas.is-dark :deep(.vue-flow__controls-button) {
-  background: rgb(30 41 59 / 80%);
-  border-color: rgb(255 255 255 / 8%);
-  fill: var(--color-text-tertiary);
+  min-width: 0;
 }
 </style>

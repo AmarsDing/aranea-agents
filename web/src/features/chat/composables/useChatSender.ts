@@ -5,7 +5,6 @@ import { stopGeneration } from "../api";
 import { useAuthStore } from "../../../stores/auth";
 import { useAppStore } from "../../../stores/app";
 import { checkBackendHealth, getServerHeartbeatState } from "../../heartbeat/useServerHeartbeat";
-import { useAwaitReply } from "./useAwaitReply";
 import type { Message, ChatAttachment, ChatEntityKind } from "../../../components/chat/types";
 import type { UseEnvelopeStreamReturn } from "../useEnvelopeStream";
 import type { WsUpstream } from "../envelope";
@@ -51,6 +50,8 @@ export type SenderDeps = {
   refreshRunStatus: () => Promise<void>;
   loadTeamSessions: (teamId: string) => Promise<void>;
   teamSessions: Ref<Record<string, Array<{ id: string; provider?: string; model?: string }>>>;
+  submitAwaitingReply: () => Promise<void>;
+  submitToolConfirm: (approved: boolean) => Promise<void>;
 };
 
 export function useChatSender(deps: SenderDeps) {
@@ -58,17 +59,6 @@ export function useChatSender(deps: SenderDeps) {
   const router = useRouter();
 
   const selectedSessionId = computed(() => deps.store.selectedSession?.id);
-
-  const awaitReply = useAwaitReply({
-    selectedTeamId: deps.selectedTeamId,
-    teamSelectedSessionId: deps.teamSelectedSessionId,
-    selectedSessionId,
-    inputText: deps.inputText,
-    isAwaitingUser: deps.isAwaitingUser,
-    awaitingRunId: deps.awaitingRunId,
-    runStatus: deps.runStatus,
-    refreshRunStatus: deps.refreshRunStatus,
-  });
 
   const sending = ref(false);
   let sendingTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -108,7 +98,7 @@ export function useChatSender(deps: SenderDeps) {
   }
 
   async function submitAwaitingReply() {
-    await awaitReply.submitAwaitingReply();
+    await deps.submitAwaitingReply();
   }
 
   async function checkBackendAvailability(): Promise<boolean> {
@@ -194,10 +184,24 @@ export function useChatSender(deps: SenderDeps) {
       }
 
       const stream = deps.ensureChatStream(sessionId);
+      if (followUp) {
+        deps.sendChatViaWs(stream, {
+          direction: "client_to_server",
+          channel: "chat",
+          type: "enqueue_message",
+          request_id: pendingUserId,
+          payload: {
+            session_id: sessionId,
+            content: text,
+          },
+        });
+        return;
+      }
       deps.sendChatViaWs(stream, {
         direction: "client_to_server",
         channel: "chat",
         type: "user_message",
+        request_id: pendingUserId,
         payload: {
           session_id: sessionId,
           agent_key: deps.store.selectedAgent?.agent_key,
@@ -271,10 +275,24 @@ export function useChatSender(deps: SenderDeps) {
       }
 
       const stream = deps.ensureTeamStream(sessionId);
+      if (followUp) {
+        deps.sendChatViaWs(stream, {
+          direction: "client_to_server",
+          channel: "chat",
+          type: "enqueue_message",
+          request_id: pendingUserId,
+          payload: {
+            session_id: sessionId,
+            content,
+          },
+        });
+        return;
+      }
       deps.sendChatViaWs(stream, {
         direction: "client_to_server",
         channel: "chat",
         type: "user_message",
+        request_id: pendingUserId,
         payload: {
           session_id: sessionId,
           team_id: deps.selectedTeamId.value,
@@ -296,9 +314,6 @@ export function useChatSender(deps: SenderDeps) {
         deps.teamMessages.value[sessionIdForCatch] = cur.filter((item) => !String(item.id).startsWith("pending-user-"));
       }
     } finally {
-      if (!followUp) {
-        markSendingDone();
-      }
       deps.attachments.value = [];
     }
   }
@@ -311,7 +326,7 @@ export function useChatSender(deps: SenderDeps) {
     clearSendingTimeout,
     stopStreaming,
     submitAwaitingReply,
-    submitToolConfirm: awaitReply.submitToolConfirm,
+    submitToolConfirm: deps.submitToolConfirm,
     onSend,
     sendAgentUserContent,
   };

@@ -13,9 +13,10 @@ import (
 )
 
 const (
-	WebhookEventRunCompleted = "run.completed"
-	WebhookEventRunFailed    = "run.failed"
-	WebhookEventRunCancelled = "run.cancelled"
+	WebhookEventRunCompleted    = "run.completed"
+	WebhookEventRunFailed       = "run.failed"
+	WebhookEventRunCancelled    = "run.cancelled"
+	WebhookEventGraphTaskStatus = "graph.task.status"
 )
 
 // WebhookConfig is one outbound callback target for run lifecycle events.

@@ -2,6 +2,7 @@
 
 > **版本**：2026-05-22 | **状态**：🟢 9 平台连接；Runtime 生产级重连 + 流式出站 MVP  
 > **需求**：[17 channel.md](./17%20channel.md) · **设计**：[17 channel.design.md](./17%20channel.design.md) · **业务集成**：[17-channel-agent-team-integration.md](./17-channel-agent-team-integration.md)  
+> **M55 长任务路由 + Web 同步**：[55-chat-channel-cursor-solution.md](./55-chat-channel-cursor-solution.md) · [55-chat-channel-cursor-development.md](./55-chat-channel-cursor-development.md)  
 > **平台参考**：[MuseBot](https://github.com/yincongcyincong/MuseBot) `robot/`（MIT）  
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：EP-BIZ-08
 
@@ -226,6 +227,7 @@ Webhook 默认：`/webhooks/{channel_key}`。
 
 > **需求**：[17 channel.md §8](./17%20channel.md#8-长任务场景飞书-channel)  
 > **设计**：[17 channel.design.md §十二](./17%20channel.design.md#十二长任务异步执行设计)  
+> **M55 延伸**（24h Job、auto 路由、Web Job 面板）：[55-chat-channel-cursor-development.md §Phase A/F](./55-chat-channel-cursor-development.md#phase-a--配置与路由p0约-3-天)  
 > **验收 ID**：LT-01 – LT-07
 
 ### 10.1 目标与原则

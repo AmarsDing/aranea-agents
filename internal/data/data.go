@@ -58,6 +58,7 @@ var ProviderSet = wire.NewSet(
 	NewGraphRepo,
 	NewGraphRunRepo,
 	NewTaskRepo,
+	ProvideTaskLinkRepo,
 	NewArtifactRepo,
 	NewKnowledgeRepoFromData,
 	NewEvalRepoFromData,

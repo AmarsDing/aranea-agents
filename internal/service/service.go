@@ -45,6 +45,8 @@ var ProviderSet = wire.NewSet(
 	NewGraphOrchestrationProjector,
 	ProvideGraphUsecase,
 	NewGraphService,
+	WireGraphTaskRuntime,
+	NewKanbanToolBridge,
 	NewSessionCompressor,
 	NewArtifactService,
 	NewKnowledgeService,

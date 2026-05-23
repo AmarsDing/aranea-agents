@@ -13,6 +13,9 @@ const ToolKeyMCPBroker = "mcp_broker"
 
 const ToolKeyKnowledgeSearch = "knowledge_search"
 
+const ToolKeyWebResearch = "web_research"
+const ToolKeyKanban = "kanban"
+
 const ToolKeyCallAgent = "call_agent"
 
 // EffectiveMCPServer is a biz DTO for one enabled MCP server row — no ADK imports.

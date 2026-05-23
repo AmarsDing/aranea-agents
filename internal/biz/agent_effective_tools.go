@@ -43,7 +43,7 @@ func jsonStringList(raw string) []string {
 }
 
 var toolGroupsFilesystem = []string{"read_file", "read_multiple_files", "save_file", "list_file", "search_file", "search_content", "replace_content", "diff_edit", "patch_file"}
-var toolGroupsWeb = []string{"duckduckgo_search", "web_fetch", "gemini_web_fetch", "google_search", "arxiv_search", "wikipedia_search"}
+var toolGroupsWeb = []string{ToolKeyWebResearch, "web_fetch", "duckduckgo_search", "gemini_web_fetch", "google_search", "arxiv_search", "wikipedia_search"}
 var toolGroupsMemory = []string{"memory_search", "memory_get"}
 var toolGroupsSkill = []string{"skill_search", "use_skill"}
 var toolGroupsMedia = []string{"read_image", "read_document", "create_image", "tts"}
@@ -175,7 +175,7 @@ var toolProfiles = map[string][]string{
 	"chat_only": {},
 	"read_only": {"datetime", "read_file", "read_multiple_files", "list_file", "search_file", "search_content", "todo_write"},
 	"coding":    {"group:filesystem", "group:web", "group:skill", "group:session", "datetime"},
-	"research":  {"duckduckgo_search", "web_fetch", "gemini_web_fetch", "google_search", "arxiv_search", "wikipedia_search", "read_file", "read_multiple_files", "list_file", "search_file", "search_content", "skill_search", "memory_search", "todo_write", "datetime"},
+	"research":  {ToolKeyWebResearch, "web_fetch", "arxiv_search", "wikipedia_search", "read_file", "read_multiple_files", "list_file", "search_file", "search_content", "skill_search", "memory_search", "todo_write", "datetime"},
 	"full":      {"group:filesystem", "group:web", "group:skill", "group:memory", "group:media", "group:runtime", "group:messaging", "group:session", "group:integration", "group:cli_admin", "datetime"},
 
 	"minimal":      {},
@@ -372,10 +372,17 @@ func (u *AgentUsecase) GetEffectiveTools(ctx context.Context, agentID string) (A
 	if err != nil {
 		return AgentEffectiveTools{}, err
 	}
+	platform := loadWebResearchPlatform(ctx, u.sys)
+	for i := range all.Items {
+		EnrichToolCatalogRuntimeWithPlatform(&all.Items[i], platform)
+	}
 	eff := buildAgentEffectiveTools(settings, all.Items)
-	if overrides, oerr := u.tools.ListToolAgentOverridesByAgent(ctx, agentID); oerr == nil {
+	var overrides []ToolAgentOverride
+	if o, oerr := u.tools.ListToolAgentOverridesByAgent(ctx, agentID); oerr == nil {
+		overrides = o
 		ApplyAgentToolOverrides(&eff, all.Items, overrides)
 	}
+	applyWebResearchEffectiveGate(&eff, all.Items, platform, overrides)
 	return eff, nil
 }
 
@@ -426,9 +433,16 @@ func (u *AgentUsecase) UpdateAgentToolPolicy(ctx context.Context, agentID string
 	}
 	settings = withSettingDefaults(settings)
 
+	platform := loadWebResearchPlatform(ctx, u.sys)
+	for i := range all.Items {
+		EnrichToolCatalogRuntimeWithPlatform(&all.Items[i], platform)
+	}
 	eff := buildAgentEffectiveTools(settings, all.Items)
-	if overrides, oerr := u.tools.ListToolAgentOverridesByAgent(ctx, agentID); oerr == nil {
+	var overrides []ToolAgentOverride
+	if o, oerr := u.tools.ListToolAgentOverridesByAgent(ctx, agentID); oerr == nil {
+		overrides = o
 		ApplyAgentToolOverrides(&eff, all.Items, overrides)
 	}
+	applyWebResearchEffectiveGate(&eff, all.Items, platform, overrides)
 	return eff, nil
 }

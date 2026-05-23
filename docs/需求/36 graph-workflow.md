@@ -336,6 +336,8 @@
 
 ## 7. 任务派工与执行规则
 
+> **Hermes Kanban 闭环（运行时 + Dispatcher + Tools）**：见 [54-hermes-kanban.md](./54-hermes-kanban.md)。本节 RPC/Ent 已实现；Graph 节点自动建任务与 Dispatcher 见 M54 Phase 1。
+
 ### 7.1 任务模型与状态机（✅ 已实现）
 
 **用户故事**：作为工作流运维者，我希望每个节点执行都作为独立任务管理，以便跟踪状态、指派 Agent、记录结果。

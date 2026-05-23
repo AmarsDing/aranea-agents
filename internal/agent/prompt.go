@@ -63,7 +63,7 @@ func RuntimeCapabilityCue(ctx context.Context, d Deps, ag biz.Agent) string {
 	}
 	uc := d.AgentUC
 	if uc == nil && d.Agents != nil && d.ToolsCatalog != nil {
-		uc = biz.NewAgentUsecase(d.Agents, d.ToolsCatalog)
+		uc = biz.NewAgentUsecase(d.Agents, d.ToolsCatalog, nil)
 	}
 	if uc != nil {
 		eff, err := uc.GetEffectiveTools(ctx, ag.ID)

@@ -2,10 +2,13 @@ package trpc
 
 import (
 	"context"
+	"fmt"
 
 	"aranea-agents/internal/a2a"
 	"aranea-agents/internal/tools"
+	kanbanpkg "aranea-agents/internal/tools/kanban"
 	knowledgepkg "aranea-agents/internal/tools/knowledge"
+	webresearchpkg "aranea-agents/internal/tools/webresearch"
 	serviceawaitreply "aranea-agents/internal/tools/serviceawaitreply"
 
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
@@ -21,6 +24,8 @@ type ToolsetConfig struct {
 	ShellExecDir  string
 	WebFetch      bool
 	WebSearch     bool
+	WebResearch   bool
+	WebResearchCfg webresearchpkg.Config
 	GeminiFetch   bool
 	GeminiModel   string
 	GoogleSearch  bool
@@ -49,6 +54,7 @@ type ToolsetConfig struct {
 	CustomTools     []trpctool.Tool
 	KnowledgeSearch bool
 	CallAgent       bool
+	Kanban          bool
 }
 
 type AgentToolConfig = tools.AgentToolConfig
@@ -146,6 +152,13 @@ func BuildToolsets(ctx context.Context, cfg ToolsetConfig) (*AssembledToolsets, 
 	if cfg.KnowledgeSearch {
 		customTools = append(customTools, knowledgepkg.NewSearchTool())
 	}
+	if cfg.WebResearch {
+		t, err := webresearchpkg.NewTool(cfg.WebResearchCfg)
+		if err != nil {
+			return nil, fmt.Errorf("web_research: %w", err)
+		}
+		customTools = append(customTools, t)
+	}
 	if cfg.CallAgent {
 		customTools = append(customTools, a2a.NewCallAgentTool())
 	}
@@ -153,6 +166,11 @@ func BuildToolsets(ctx context.Context, cfg ToolsetConfig) (*AssembledToolsets, 
 		// EP-RT-02: use the service-integrated tool that blocks mid-turn so the
 		// user reply is delivered back to the agent via the awaitChans channel.
 		customTools = append(customTools, serviceawaitreply.New())
+	}
+	if cfg.Kanban {
+		for _, t := range kanbanpkg.NewToolset() {
+			customTools = append(customTools, t)
+		}
 	}
 
 	assembled, err := tools.Assemble(ctx, tools.AssemblyConfig{

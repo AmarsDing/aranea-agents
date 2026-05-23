@@ -3,6 +3,7 @@ package biz
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -83,7 +84,9 @@ type TaskEvent struct {
 type TaskRepo interface {
 	SaveTask(ctx context.Context, task *GraphTask) error
 	GetTask(ctx context.Context, taskID string) (*GraphTask, error)
+	GetActiveTaskByExecutionNode(ctx context.Context, executionID, nodeID string) (*GraphTask, error)
 	ListTasksByExecution(ctx context.Context, executionID string, status TaskStatus, pageSize int, pageToken string) ([]*GraphTask, string, error)
+	ListTasksByStatuses(ctx context.Context, statuses []TaskStatus, limit int) ([]*GraphTask, error)
 	UpdateTask(ctx context.Context, task *GraphTask) error
 
 	SaveTaskComment(ctx context.Context, comment *TaskComment) error
@@ -103,13 +106,16 @@ type AgentRoleChecker func(agentKey string, role string) bool
 type AgentListerByRole func(role string) ([]string, error)
 
 type TaskUsecase struct {
-	repo          TaskRepo
-	graphUC       *GraphUsecase
-	roleChecker   AgentRoleChecker
-	agentLister   AgentListerByRole
-	mu            sync.RWMutex
-	heartbeats    map[string]time.Time
-	leaseDeadline map[string]time.Time
+	repo              TaskRepo
+	linkRepo          TaskLinkRepo
+	graphUC           *GraphUsecase
+	roleChecker       AgentRoleChecker
+	agentLister       AgentListerByRole
+	statusPublisher   TaskStatusPublisher
+	completionHandler TaskCompletionHandler
+	mu                sync.RWMutex
+	heartbeats        map[string]time.Time
+	leaseDeadline     map[string]time.Time
 }
 
 func NewTaskUsecase(repo TaskRepo, graphUC *GraphUsecase, agents AgentRepository) *TaskUsecase {
@@ -123,7 +129,36 @@ func NewTaskUsecase(repo TaskRepo, graphUC *GraphUsecase, agents AgentRepository
 	}
 }
 
+func (uc *TaskUsecase) SetLinkRepo(repo TaskLinkRepo) {
+	uc.linkRepo = repo
+}
+
+func (uc *TaskUsecase) SetStatusPublisher(p TaskStatusPublisher) {
+	uc.statusPublisher = p
+}
+
+func (uc *TaskUsecase) SetCompletionHandler(h TaskCompletionHandler) {
+	uc.completionHandler = h
+}
+
+func (uc *TaskUsecase) afterTaskMutation(ctx context.Context, task *GraphTask, extra map[string]any) {
+	if task == nil {
+		return
+	}
+	uc.publishTaskStatus(ctx, task, extra)
+	if task.Status != TaskStatusComplete {
+		return
+	}
+	uc.promoteReadyChildren(ctx, task)
+	if uc.completionHandler != nil {
+		_ = uc.completionHandler.OnTaskCompleted(ctx, task)
+	}
+}
+
 func (uc *TaskUsecase) CreateTask(ctx context.Context, nodeID string, executionID string, requiredRole string, assignmentMode string, assignmentStrategy string, input string, contextStr string) (*GraphTask, error) {
+	if existing, err := uc.repo.GetActiveTaskByExecutionNode(ctx, executionID, nodeID); err == nil && existing != nil {
+		return existing, nil
+	}
 	task := &GraphTask{
 		TaskID:             uuid.New().String(),
 		NodeID:             nodeID,
@@ -149,6 +184,7 @@ func (uc *TaskUsecase) CreateTask(ctx context.Context, nodeID string, executionI
 	}
 
 	uc.recordTaskEvent(ctx, task.TaskID, "task_created", nodeID, "task created")
+	uc.afterTaskMutation(ctx, task, nil)
 	return task, nil
 }
 
@@ -158,6 +194,20 @@ func (uc *TaskUsecase) GetTask(ctx context.Context, taskID string) (*GraphTask, 
 
 func (uc *TaskUsecase) ListTasks(ctx context.Context, executionID string, status TaskStatus, pageSize int, pageToken string) ([]*GraphTask, string, error) {
 	return uc.repo.ListTasksByExecution(ctx, executionID, status, pageSize, pageToken)
+}
+
+func (uc *TaskUsecase) ListPendingTasks(ctx context.Context, limit int) ([]*GraphTask, error) {
+	return uc.repo.ListTasksByStatuses(ctx, []TaskStatus{TaskStatusPending, TaskStatusPendingAssignment}, limit)
+}
+
+func (uc *TaskUsecase) SaveTaskRun(ctx context.Context, run *TaskRun) error {
+	if run == nil {
+		return nil
+	}
+	if run.RunID == "" {
+		run.RunID = uuid.New().String()
+	}
+	return uc.repo.SaveTaskRun(ctx, run)
 }
 
 func (uc *TaskUsecase) ClaimTask(ctx context.Context, taskID string, agentKey string) (*GraphTask, error) {
@@ -185,6 +235,7 @@ func (uc *TaskUsecase) ClaimTask(ctx context.Context, taskID string, agentKey st
 	uc.leaseDeadline[taskID] = now.Add(5 * time.Minute)
 	uc.mu.Unlock()
 	uc.recordTaskEvent(ctx, taskID, "task_claimed", task.NodeID, "claimed by "+agentKey)
+	uc.afterTaskMutation(ctx, task, nil)
 	return task, nil
 }
 
@@ -212,6 +263,7 @@ func (uc *TaskUsecase) SubmitTaskResult(ctx context.Context, taskID string, outp
 		return nil, err
 	}
 	uc.recordTaskEvent(ctx, taskID, "task_completed", task.NodeID, "task result submitted")
+	uc.afterTaskMutation(ctx, task, nil)
 	return task, nil
 }
 
@@ -255,6 +307,51 @@ func (uc *TaskUsecase) ReportBlocked(ctx context.Context, taskID string, reason 
 		return nil, err
 	}
 	uc.recordTaskEvent(ctx, taskID, "task_blocked", task.NodeID, reason)
+	uc.afterTaskMutation(ctx, task, nil)
+	return task, nil
+}
+
+func (uc *TaskUsecase) UnblockTask(ctx context.Context, taskID string, comment string) (*GraphTask, error) {
+	task, err := uc.repo.GetTask(ctx, taskID)
+	if err != nil {
+		return nil, err
+	}
+	if task.Status != TaskStatusBlocked {
+		return nil, kerrors.BadRequest("TASK", fmt.Sprintf("task %s is not blocked", taskID))
+	}
+	task.Status = TaskStatusPending
+	task.Assignee = ""
+	task.ClaimedAt = nil
+	if err := uc.repo.UpdateTask(ctx, task); err != nil {
+		return nil, err
+	}
+	if comment != "" {
+		_, _ = uc.AddTaskComment(ctx, taskID, "system", comment, "unblock")
+	}
+	uc.recordTaskEvent(ctx, taskID, "task_unblocked", task.NodeID, comment)
+	uc.afterTaskMutation(ctx, task, nil)
+	return task, nil
+}
+
+func (uc *TaskUsecase) CreateTaskWithParents(ctx context.Context, executionID, nodeID, requiredRole, assignmentMode, assignmentStrategy, input, contextStr string, parentIDs []string) (*GraphTask, error) {
+	task, err := uc.CreateTask(ctx, nodeID, executionID, requiredRole, assignmentMode, assignmentStrategy, input, contextStr)
+	if err != nil {
+		return nil, err
+	}
+	linked := false
+	for _, pid := range parentIDs {
+		pid = strings.TrimSpace(pid)
+		if pid == "" {
+			continue
+		}
+		if err := uc.LinkTasks(ctx, pid, task.TaskID); err != nil {
+			return nil, err
+		}
+		linked = true
+	}
+	if linked {
+		uc.publishTaskStatus(ctx, task, map[string]any{"parents_linked": true})
+	}
 	return task, nil
 }
 
@@ -315,6 +412,7 @@ func (uc *TaskUsecase) ReviewTask(ctx context.Context, taskID string, reviewerAg
 		eventType = "task_review_rejected"
 	}
 	uc.recordTaskEvent(ctx, taskID, eventType, task.NodeID, comment)
+	uc.afterTaskMutation(ctx, task, map[string]any{"review_rejected": !approved, "review_comment": comment})
 	return task, nil
 }
 
@@ -335,8 +433,11 @@ func (uc *TaskUsecase) CheckTimeouts(ctx context.Context) error {
 			}
 			if task.Status == TaskStatusClaimed {
 				task.Status = TaskStatusTimedOut
-				_ = uc.repo.UpdateTask(ctx, task)
+				if err := uc.repo.UpdateTask(ctx, task); err != nil {
+					continue
+				}
 				uc.recordTaskEvent(ctx, taskID, "task_timed_out", task.NodeID, "task timed out")
+				uc.publishTaskStatus(ctx, task, nil)
 			}
 		}
 	}

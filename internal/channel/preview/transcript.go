@@ -92,7 +92,7 @@ func (t *Transcript) Apply(env event.Envelope) {
 			return
 		}
 		tc := env.ToolCall
-		status := strings.TrimSpace(tc.Status)
+		status := NormalizeToolStatus(tc.Status)
 		if status == "" {
 			status = ToolStatusCalling
 		}
@@ -121,7 +121,7 @@ func (t *Transcript) Apply(env event.Envelope) {
 		if id == "" {
 			id = strings.TrimSpace(env.ToolCall.Name)
 		}
-		status := strings.TrimSpace(env.ToolCall.Status)
+		status := NormalizeToolStatus(env.ToolCall.Status)
 		if status == "" {
 			status = ToolStatusOK
 		}
@@ -211,8 +211,7 @@ func (t *Transcript) HasInFlightTool() bool {
 		if seg.Kind != SegmentTool {
 			continue
 		}
-		switch strings.ToLower(strings.TrimSpace(seg.Status)) {
-		case ToolStatusCalling, "running", "pending":
+		if ToolStatusInFlight(seg.Status) {
 			return true
 		}
 	}

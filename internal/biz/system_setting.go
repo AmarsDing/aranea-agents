@@ -17,6 +17,7 @@ type SystemSetting struct {
 	CredentialEncryptionKeyConfigured bool
 	KnowledgeEmbed                    KnowledgeEmbedSetting
 	EvalLLM                           EvalLLMSetting
+	WebResearch                       WebResearchSetting
 	MCPAllowAdHocHTTP                 bool
 	UpdateTime                        time.Time
 }
@@ -27,6 +28,8 @@ type SystemSettingRepo interface {
 	UpdateKnowledgeEmbed(ctx context.Context, patch KnowledgeEmbedSetting, updateAPIKey bool) (KnowledgeEmbedSetting, error)
 	GetKnowledgeEmbed(ctx context.Context) (KnowledgeEmbedSetting, error)
 	UpdateEvalLLM(ctx context.Context, patch EvalLLMSetting) (EvalLLMSetting, error)
+	GetWebResearch(ctx context.Context) (WebResearchSetting, error)
+	UpdateWebResearch(ctx context.Context, patch WebResearchSetting, updateAPIKey bool) (WebResearchSetting, error)
 	EnsureCredentialEncryptionKey(ctx context.Context) (string, error)
 }
 
@@ -107,4 +110,14 @@ func (u *SystemSettingUsecase) UpdateEvalLLM(ctx context.Context, patch EvalLLMS
 		JudgeProvider: strings.TrimSpace(patch.JudgeProvider),
 		JudgeModel:    strings.TrimSpace(patch.JudgeModel),
 	})
+}
+
+// UpdateWebResearch persists Tavily/SerpAPI defaults for web_research.
+func (u *SystemSettingUsecase) UpdateWebResearch(ctx context.Context, patch WebResearchSetting, updateAPIKey bool) (WebResearchSetting, error) {
+	cur, err := u.repo.GetWebResearch(ctx)
+	if err != nil {
+		return WebResearchSetting{}, err
+	}
+	merged := ApplyWebResearchPatch(cur, patch, updateAPIKey)
+	return u.repo.UpdateWebResearch(ctx, merged, updateAPIKey)
 }

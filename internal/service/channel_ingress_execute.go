@@ -199,11 +199,18 @@ func (h *ChannelIngress) runChatTurnWithOutcome(ctx context.Context, chRow biz.C
 
 	_, asst, err := h.chat.RunNativeTurnUnary(ctx, req)
 	if err != nil {
+		if IsTurnMessageQueued(err) {
+			pendingID := h.chat.LastPendingMessageID(sessionID)
+			return biz.ChannelTurnResult{Outcome: biz.ChannelTurnOutcomeQueued, PendingID: pendingID}, nil
+		}
 		_ = h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "chat", "error": err.Error()}, err.Error())
 		return biz.ChannelTurnResult{Outcome: biz.ChannelTurnOutcomeFailed}, err
 	}
 	reply := strings.TrimSpace(asst.ContentMarkdown)
-	if wasActive && reply == "" {
+	if reply != "" {
+		return biz.ChannelTurnResult{Outcome: biz.ChannelTurnOutcomeCompleted, Reply: reply}, nil
+	}
+	if wasActive {
 		pendingID := h.chat.LastPendingMessageID(sessionID)
 		return biz.ChannelTurnResult{Outcome: biz.ChannelTurnOutcomeQueued, PendingID: pendingID}, nil
 	}

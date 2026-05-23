@@ -7,6 +7,7 @@ import type {
   CompileTeamGraphValidationIssue,
 } from "../../services/kratos/team/v1/index";
 import type { GraphDefinition, NodeDef, EdgeDef, ConditionalEdgeDef } from "../graph/types";
+import { applyAutoLayout, hasSavedLayout } from "../graph/editor/graphLayout";
 
 export type CompileTeamGraphResult = {
   template_id: string;
@@ -62,8 +63,8 @@ export function compiledGraphToGraphDef(
     interruptBefore: false,
     interruptAfter: false,
     type: (n.type ?? "agent") as NodeDef["type"],
-    description: n.description ?? "",
-    instruction: "",
+    description: n.agentDisplayName || n.description || "",
+    instruction: n.taskPrompt || n.description || "",
     modelName: "",
     toolNames: [],
     agentName: n.agentName ?? "",
@@ -87,7 +88,7 @@ export function compiledGraphToGraphDef(
     condFuncRef: "",
     pathMap: { ...(ce.pathMap ?? {}) },
   }));
-  return {
+  const result: GraphDefinition = {
     id: "",
     name,
     description: `template: ${compiled.template_id}`,
@@ -106,4 +107,8 @@ export function compiledGraphToGraphDef(
     createdAt: "",
     updatedAt: "",
   };
+  if (!hasSavedLayout(result)) {
+    applyAutoLayout(result);
+  }
+  return result;
 }

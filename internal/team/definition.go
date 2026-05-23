@@ -51,11 +51,12 @@ type CriticLoopConfig struct {
 
 // MemberDef is one team member entry in DefinitionJSON.
 type MemberDef struct {
-	AgentID   string `json:"agent_id"`
-	Role      string `json:"role"`
-	Enabled   *bool  `json:"enabled"`
-	SortOrder int    `json:"sort_order"`
-	Name      string `json:"name"`
+	AgentID    string `json:"agent_id"`
+	Role       string `json:"role"`
+	Enabled    *bool  `json:"enabled"`
+	SortOrder  int    `json:"sort_order"`
+	Name       string `json:"name"`
+	TaskPrompt string `json:"task_prompt,omitempty"`
 }
 
 // ParseDefinition unmarshals team JSON; empty string yields default sequential with no members.

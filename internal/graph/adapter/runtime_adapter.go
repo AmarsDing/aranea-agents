@@ -3,6 +3,7 @@ package adapter
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
@@ -24,9 +25,24 @@ type trpcGraphRuntime struct {
 	sessionID string
 	graphID   string
 	execID    string
+
+	cancelMu  sync.Mutex
+	runCancel context.CancelFunc
 }
 
 var _ biz.GraphRuntime = (*trpcGraphRuntime)(nil)
+
+func (r *trpcGraphRuntime) setRunCancel(cancel context.CancelFunc) {
+	r.cancelMu.Lock()
+	r.runCancel = cancel
+	r.cancelMu.Unlock()
+}
+
+func (r *trpcGraphRuntime) clearRunCancel() {
+	r.cancelMu.Lock()
+	r.runCancel = nil
+	r.cancelMu.Unlock()
+}
 
 func (r *trpcGraphRuntime) Run(ctx context.Context, initialState map[string]any) (<-chan biz.GraphRuntimeEvent, error) {
 	lineageID := r.lineageID
@@ -50,14 +66,21 @@ func (r *trpcGraphRuntime) Run(ctx context.Context, initialState map[string]any)
 		},
 	}
 
-	eventCh, err := r.agent.Run(ctx, inv)
+	runCtx, cancel := context.WithCancel(ctx)
+	r.setRunCancel(cancel)
+
+	eventCh, err := r.agent.Run(runCtx, inv)
 	if err != nil {
+		r.clearRunCancel()
 		return nil, fmt.Errorf("graph runtime run: %w", err)
 	}
 
 	out := make(chan biz.GraphRuntimeEvent, 64)
 	safego.Go(ctx, "graph-event-bridge", func() {
-		defer close(out)
+		defer func() {
+			r.clearRunCancel()
+			close(out)
+		}()
 		for e := range eventCh {
 			runtimeEvt := convertTrpcEvent(e, r.eventBus, r.sessionID, r.graphID, r.execID)
 			out <- runtimeEvt
@@ -85,14 +108,21 @@ func (r *trpcGraphRuntime) Resume(ctx context.Context, lineageID string, resumeV
 		},
 	}
 
-	eventCh, err := r.agent.Run(ctx, inv)
+	runCtx, cancel := context.WithCancel(ctx)
+	r.setRunCancel(cancel)
+
+	eventCh, err := r.agent.Run(runCtx, inv)
 	if err != nil {
+		r.clearRunCancel()
 		return nil, fmt.Errorf("graph runtime resume: %w", err)
 	}
 
 	out := make(chan biz.GraphRuntimeEvent, 64)
 	safego.Go(ctx, "graph-resume-bridge", func() {
-		defer close(out)
+		defer func() {
+			r.clearRunCancel()
+			close(out)
+		}()
 		for e := range eventCh {
 			runtimeEvt := convertTrpcEvent(e, r.eventBus, r.sessionID, r.graphID, r.execID)
 			out <- runtimeEvt
@@ -103,6 +133,12 @@ func (r *trpcGraphRuntime) Resume(ctx context.Context, lineageID string, resumeV
 }
 
 func (r *trpcGraphRuntime) Cancel() error {
+	r.cancelMu.Lock()
+	cancel := r.runCancel
+	r.cancelMu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
 	return nil
 }
 
@@ -174,17 +210,23 @@ func convertTrpcEvent(e *trpcevent.Event, bus event.Bus, sessionID, graphID, exe
 		meta := graphtrpc.ExtractNodeMeta(e)
 		runtimeEvt.Type = biz.DomainEventGraphNodeStart
 		runtimeEvt.NodeID = meta.NodeID
+		runtimeEvt.StepNumber = meta.StepNumber
 	case trpcgraph.ObjectTypeGraphNodeComplete:
 		meta := graphtrpc.ExtractNodeMeta(e)
 		runtimeEvt.Type = biz.DomainEventGraphNodeEnd
 		runtimeEvt.NodeID = meta.NodeID
+		runtimeEvt.StepNumber = meta.StepNumber
 	case trpcgraph.ObjectTypeGraphNodeError:
 		meta := graphtrpc.ExtractNodeMeta(e)
 		runtimeEvt.Type = biz.DomainEventGraphNodeError
 		runtimeEvt.NodeID = meta.NodeID
 		runtimeEvt.Error = meta.Error
+		runtimeEvt.StepNumber = meta.StepNumber
 	case trpcgraph.ObjectTypeGraphCheckpointInterrupt:
+		meta := graphtrpc.ExtractNodeMeta(e)
 		runtimeEvt.Type = biz.DomainEventGraphInterrupt
+		runtimeEvt.NodeID = meta.NodeID
+		runtimeEvt.StepNumber = meta.StepNumber
 	}
 
 	return runtimeEvt
@@ -228,6 +270,9 @@ func bizCfgToTrpc(cfg biz.GraphBuildConfig) graphtrpc.GraphBuildConfig {
 			TimeoutSeconds: n.TimeoutSeconds, HeartbeatIntervalSeconds: n.HeartbeatIntervalSeconds,
 			EnableLeaseExtension: n.EnableLeaseExtension,
 			RetryMaxAttempts: n.RetryMaxAttempts, FailureAction: n.FailureAction, FallbackAgent: n.FallbackAgent,
+			InputMapperJSON: n.InputMapperJSON, OutputMapperJSON: n.OutputMapperJSON,
+			IsolatedMessages: n.IsolatedMessages, InputFromLastResponse: n.InputFromLastResponse,
+			CacheEnabled: n.CacheEnabled, CacheTTLSeconds: n.CacheTTLSeconds,
 		}
 	}
 	edges := make([]graphtrpc.EdgeDef, len(cfg.Edges))
@@ -272,6 +317,9 @@ func trpcCfgToBiz(cfg graphtrpc.GraphBuildConfig) biz.GraphBuildConfig {
 			TimeoutSeconds: n.TimeoutSeconds, HeartbeatIntervalSeconds: n.HeartbeatIntervalSeconds,
 			EnableLeaseExtension: n.EnableLeaseExtension,
 			RetryMaxAttempts: n.RetryMaxAttempts, FailureAction: n.FailureAction, FallbackAgent: n.FallbackAgent,
+			InputMapperJSON: n.InputMapperJSON, OutputMapperJSON: n.OutputMapperJSON,
+			IsolatedMessages: n.IsolatedMessages, InputFromLastResponse: n.InputFromLastResponse,
+			CacheEnabled: n.CacheEnabled, CacheTTLSeconds: n.CacheTTLSeconds,
 		}
 	}
 	edges := make([]biz.EdgeDef, len(cfg.Edges))
@@ -304,20 +352,31 @@ func trpcCfgToBiz(cfg graphtrpc.GraphBuildConfig) biz.GraphBuildConfig {
 	}
 }
 
-func (f *trpcGraphBuilderFactory) BuildAndRun(ctx context.Context, cfg biz.GraphBuildConfig, sessionID, graphID, execID string, initialState map[string]any) (biz.GraphRuntime, <-chan biz.GraphRuntimeEvent, error) {
+func (f *trpcGraphBuilderFactory) buildRuntime(ctx context.Context, cfg biz.GraphBuildConfig, sessionID, graphID, execID, lineageID string) (*trpcGraphRuntime, error) {
 	trpcCfg := bizCfgToTrpc(cfg)
 	g, subAgents, err := graphtrpc.BuildStateGraphWithRegistry(ctx, trpcCfg, f.registry, f.buildDeps)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	name := cfg.EntryPoint
 	graphAgent, err := f.createAgent(name, g, cfg.EnableCheckpoint, graphtrpc.ExecutionEngineType(cfg.ExecutionEngine), subAgents)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	runtime := &trpcGraphRuntime{
-		agent: graphAgent, graph: g, eventBus: f.eventBus,
+	return &trpcGraphRuntime{
+		agent: graphAgent, graph: g, lineageID: lineageID, eventBus: f.eventBus,
 		sessionID: sessionID, graphID: graphID, execID: execID,
+	}, nil
+}
+
+func (f *trpcGraphBuilderFactory) BuildRuntime(ctx context.Context, cfg biz.GraphBuildConfig, sessionID, graphID, execID, lineageID string) (biz.GraphRuntime, error) {
+	return f.buildRuntime(ctx, cfg, sessionID, graphID, execID, lineageID)
+}
+
+func (f *trpcGraphBuilderFactory) BuildAndRun(ctx context.Context, cfg biz.GraphBuildConfig, sessionID, graphID, execID string, initialState map[string]any) (biz.GraphRuntime, <-chan biz.GraphRuntimeEvent, error) {
+	runtime, err := f.buildRuntime(ctx, cfg, sessionID, graphID, execID, "")
+	if err != nil {
+		return nil, nil, err
 	}
 	eventCh, err := runtime.Run(ctx, initialState)
 	if err != nil {
@@ -327,19 +386,9 @@ func (f *trpcGraphBuilderFactory) BuildAndRun(ctx context.Context, cfg biz.Graph
 }
 
 func (f *trpcGraphBuilderFactory) BuildAndResume(ctx context.Context, cfg biz.GraphBuildConfig, sessionID, graphID, execID, lineageID string, resumeValue map[string]any) (biz.GraphRuntime, <-chan biz.GraphRuntimeEvent, error) {
-	trpcCfg := bizCfgToTrpc(cfg)
-	g, subAgents, err := graphtrpc.BuildStateGraphWithRegistry(ctx, trpcCfg, f.registry, f.buildDeps)
+	runtime, err := f.buildRuntime(ctx, cfg, sessionID, graphID, execID, lineageID)
 	if err != nil {
 		return nil, nil, err
-	}
-	name := cfg.EntryPoint
-	graphAgent, err := f.createAgent(name, g, cfg.EnableCheckpoint, graphtrpc.ExecutionEngineType(cfg.ExecutionEngine), subAgents)
-	if err != nil {
-		return nil, nil, err
-	}
-	runtime := &trpcGraphRuntime{
-		agent: graphAgent, graph: g, lineageID: lineageID, eventBus: f.eventBus,
-		sessionID: sessionID, graphID: graphID, execID: execID,
 	}
 	eventCh, err := runtime.Resume(ctx, lineageID, resumeValue)
 	if err != nil {
@@ -364,10 +413,31 @@ func (f *trpcGraphBuilderFactory) Visualize(ctx context.Context, cfg biz.GraphBu
 	return vg, nil
 }
 
-func (f *trpcGraphBuilderFactory) Validate(ctx context.Context, cfg biz.GraphBuildConfig) (any, error) {
+func validationResultToBiz(vr *graphtrpc.ValidationResult) *biz.GraphValidationResult {
+	if vr == nil {
+		return &biz.GraphValidationResult{}
+	}
+	out := &biz.GraphValidationResult{
+		Errors:   make([]biz.GraphValidationIssue, 0, len(vr.Errors)),
+		Warnings: make([]biz.GraphValidationIssue, 0, len(vr.Warnings)),
+	}
+	for _, e := range vr.Errors {
+		out.Errors = append(out.Errors, biz.GraphValidationIssue{
+			Code: string(e.Code), NodeID: e.NodeID, Field: e.Field, Message: e.Message,
+		})
+	}
+	for _, w := range vr.Warnings {
+		out.Warnings = append(out.Warnings, biz.GraphValidationIssue{
+			Code: string(w.Code), NodeID: w.NodeID, Field: w.Field, Message: w.Message,
+		})
+	}
+	return out
+}
+
+func (f *trpcGraphBuilderFactory) Validate(ctx context.Context, cfg biz.GraphBuildConfig) (*biz.GraphValidationResult, error) {
 	trpcCfg := bizCfgToTrpc(cfg)
 	checker := graphtrpc.AgentExistenceChecker(f.agentChecker)
-	return graphtrpc.ValidateGraph(&trpcCfg, checker, f.registry), nil
+	return validationResultToBiz(graphtrpc.ValidateGraph(&trpcCfg, checker, f.registry)), nil
 }
 
 func (f *trpcGraphBuilderFactory) ListTemplates() any {

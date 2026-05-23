@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	defaultTurnTimeout = 5 * time.Minute
+	defaultTurnTimeout = chatagent.DefaultTurnTimeout
 )
 
 func (s *ChatService) runSingleAgentViaTRPC(
@@ -210,14 +210,9 @@ func (s *ChatService) runSingleAgentViaTRPC(
 	// Apply a turn-level timeout so a hanging LLM call does not block the
 	// HTTP caller indefinitely. If the parent context already has a shorter
 	// deadline we keep it as-is.
-	firstByteTimeout := 30 * time.Second
+	firstByteTimeout := chatagent.DefaultFirstByteTimeout
 	if custom, ok := firstByteTimeoutFromContext(ctx); ok {
 		firstByteTimeout = custom
-	}
-	if deadline, hasDeadline := ctx.Deadline(); !hasDeadline || time.Until(deadline) > defaultTurnTimeout {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, defaultTurnTimeout)
-		defer cancel()
 	}
 	runCtx := serviceawaitreply.WithReplyFunc(ctx, deps.AwaitHook)
 	runCtx = s.injectA2AContext(runCtx, ag.ID)
@@ -258,9 +253,6 @@ func (s *ChatService) runSingleAgentViaTRPC(
 	}
 	emitter.LogDone("chat.llm.invoke", "模型已返回，开始处理输出流")
 
-	firstByteCtx, firstByteCancel := context.WithTimeout(runCtx, firstByteTimeout)
-	firstByteReceived := false
-
 	projectMeta := chatagent.ProjectMeta{
 		SessionID:        sessionID,
 		RequestID:        sessionID,
@@ -272,19 +264,20 @@ func (s *ChatService) runSingleAgentViaTRPC(
 	}
 	events = event.WrapFrameworkEventsWithOtel(events, emitter, traceBridge, traceBridge)
 	streamOpts := NewChatStreamConsumeOptions(s.td.Catalog.ToolUC, s.td.Catalog.Agents, s.td.Sessions)
-	if fn := channelStreamCallbackFromContext(runCtx); fn != nil {
-		streamOpts.OnReplyDelta = fn
-	}
-	result := chatagent.ConsumeEventStreamWithFirstByte(firstByteCtx, runCtx, events, s.td.Pipeline.Bus, projectMeta, &firstByteReceived, streamOpts)
+	result, streamErr := chatagent.ConsumeWithFirstByteGuard(runCtx, firstByteTimeout, events, s.td.Pipeline.Bus, projectMeta, streamOpts)
 	resultPromptTok = result.PromptTok
 	resultCompletionTok = result.CompletionTok
-	firstByteCancel()
-	if !firstByteReceived && runCtx.Err() == nil {
-		markTurnError(&turnStatus, &turnErr, &turnErrMsg, errors.New("first byte timeout"))
-		emitter.LogCritical("chat.first_byte_timeout", "首字节超时，模型响应过慢", event.P("timeout", firstByteTimeout.String()))
-		arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "first_byte_timeout").Observe(time.Since(turnStart).Seconds())
-		s.setRunStatus(sessionID, runID, "failed", "first byte timeout")
-		return userMsg, biz.ChatMessage{}, TurnError(TurnErrFirstByteTimeout, firstByteTimeout.String())
+	if streamErr != nil {
+		if errors.Is(streamErr, chatagent.ErrFirstByteTimeout) {
+			markTurnError(&turnStatus, &turnErr, &turnErrMsg, streamErr)
+			emitter.LogCritical("chat.first_byte_timeout", "首字节超时，模型响应过慢", event.P("timeout", firstByteTimeout.String()))
+			arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "first_byte_timeout").Observe(time.Since(turnStart).Seconds())
+			s.setRunStatus(sessionID, runID, "failed", "first byte timeout")
+			return userMsg, biz.ChatMessage{}, TurnError(TurnErrFirstByteTimeout, firstByteTimeout.String())
+		}
+		markTurnError(&turnStatus, &turnErr, &turnErrMsg, streamErr)
+		s.setRunStatus(sessionID, runID, "failed", streamErr.Error())
+		return userMsg, biz.ChatMessage{}, streamErr
 	}
 	emitter.LogDone("chat.stream.consume", "模型输出流处理完成",
 		event.P("reply_len", result.Reply.Len()),
@@ -303,17 +296,8 @@ func (s *ChatService) runSingleAgentViaTRPC(
 		return userMsg, biz.ChatMessage{}, TurnError(TurnErrTurnTimeout, defaultTurnTimeout.String())
 	}
 
-	if err := streamPreviewTurnError(runCtx, result); err != nil {
-		detail := err.Error()
-		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
-		emitter.LogError("chat.stream.preview", "渠道流式预览更新失败", event.P("error", detail))
-		arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "stream_preview_error").Observe(time.Since(turnStart).Seconds())
-		s.setRunStatus(sessionID, runID, "failed", detail)
-		return userMsg, biz.ChatMessage{}, TurnError(TurnErrStreamPreviewFailed, detail)
-	}
-
-	replyText := strings.TrimSpace(result.Reply.String())
-	if replyText == "" {
+	displayMarkdown := chatagent.DisplayMarkdownFromStream(result)
+	if displayMarkdown == "" {
 		emitter.LogCritical("chat.turn.empty_reply", "未收到助手回复", event.P("has_error", result.HasError), event.P("last_error", result.LastError), event.P("has_content", result.HasContent))
 		detail := ""
 		if result.HasError {
@@ -330,11 +314,7 @@ func (s *ChatService) runSingleAgentViaTRPC(
 		return userMsg, biz.ChatMessage{}, TurnError(TurnErrEmptyReply, detail)
 	}
 
-	promptTok, completionTok := resultPromptTok, resultCompletionTok
-	if promptTok <= 0 && completionTok <= 0 && replyText != "" {
-		promptTok = roughTokenEstimateFromText(content + replyText)
-		completionTok = roughTokenEstimateFromText(replyText)
-	}
+	promptTok, completionTok := chatagent.EstimateTokensIfMissing(resultPromptTok, resultCompletionTok, content, displayMarkdown)
 
 	assistantOptsStr, err := chatagent.AssistantOptionsJSON(ag, nil)
 	if err != nil {
@@ -352,7 +332,7 @@ func (s *ChatService) runSingleAgentViaTRPC(
 		ID:              uuid.NewString(),
 		SessionID:       sessionID,
 		Role:            "assistant",
-		ContentMarkdown: replyText,
+		ContentMarkdown: displayMarkdown,
 		ModelName:       mod,
 		Status:          "ok",
 		OptionsJSON:     assistantOptsStr,
@@ -364,7 +344,7 @@ func (s *ChatService) runSingleAgentViaTRPC(
 		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
 		return userMsg, biz.ChatMessage{}, err
 	}
-	emitter.LogDone("chat.assistant_msg_persist", "助手消息已持久化", event.P("reply_len", len(replyText)))
+	emitter.LogDone("chat.assistant_msg_persist", "助手消息已持久化", event.P("reply_len", len(displayMarkdown)))
 	patchSessionContextUsage(ctx, s, sessionID, ag, promptTok, completionTok)
 
 	arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "ok").Observe(time.Since(turnStart).Seconds())
@@ -373,7 +353,7 @@ func (s *ChatService) runSingleAgentViaTRPC(
 	notifyNativeTurnHooks(ctx, s, sessionID, ag, content, assistantMsg.ContentMarkdown)
 	emitter.LogDone("chat.turn.execute", "对话轮次执行完成",
 		event.P("run_id", runID),
-		event.P("reply_len", len(replyText)),
+		event.P("reply_len", len(displayMarkdown)),
 		event.P("prompt_tok", promptTok),
 		event.P("completion_tok", completionTok),
 	)
@@ -386,10 +366,19 @@ func (s *ChatService) processPendingQueue(sessionID string, sess biz.Session, ag
 	if !ok {
 		return
 	}
+	pendingContent := entry.Content
+	pendingEntryID := entry.ID
 	pendingEmitter := event.NewFlowLogger(s.td.Pipeline.Bus, s.td.Pipeline.Buffer, sessionID, ag.AgentKey)
-	pendingEmitter.LogStart("chat.pending_dequeue", "排队消息开始处理", event.P("entry_id", entry.ID), event.P("content_len", len(entry.Content)))
+	pendingEmitter.LogStart("chat.pending_dequeue", "排队消息开始处理", event.P("entry_id", pendingEntryID), event.P("content_len", len(pendingContent)))
 	safego.Go(context.Background(), "pending-queue", func() {
-		bgCtx, cancel := context.WithTimeout(context.Background(), 600*time.Second)
+		unlock := s.lockSession(sessionID)
+		defer unlock()
+		if s.runs.HasActive(sessionID) {
+			s.chatUC.EnqueuePendingMessage(sessionID, pendingContent)
+			pendingEmitter.Log("chat.pending_dequeue", event.FlowPhaseDone, "会话仍活跃，消息已重新入队", event.P("entry_id", pendingEntryID))
+			return
+		}
+		bgCtx, cancel := context.WithTimeout(context.Background(), defaultTurnTimeout)
 		s.runs.SetPendingCancel(sessionID, cancel)
 		defer func() {
 			cancel()
@@ -397,7 +386,7 @@ func (s *ChatService) processPendingQueue(sessionID string, sess biz.Session, ag
 		}()
 		req := &chatv1.SendChatMessageRequest{
 			SessionId: sessionID,
-			Content:   entry.Content,
+			Content:   pendingContent,
 		}
 		var err error
 		if strings.EqualFold(strings.TrimSpace(sess.OwnerType), "team") {
@@ -406,20 +395,20 @@ func (s *ChatService) processPendingQueue(sessionID string, sess biz.Session, ag
 			_, _, err = s.runSingleAgentViaTRPC(bgCtx, sess, req, ag, dialogMode, prov, mod, 0)
 		}
 		if err != nil {
-			pendingEmitter.LogError("chat.pending_dequeue", "排队消息处理失败", event.P("entry_id", entry.ID), event.P("error", err.Error()))
+			pendingEmitter.LogError("chat.pending_dequeue", "排队消息处理失败", event.P("entry_id", pendingEntryID), event.P("error", err.Error()))
 			if s.td.Pipeline.Bus != nil {
 				env := event.NewEnvelope(event.EnvelopeTypeError, "pending-queue", sessionID)
 				env.Error = &event.EnvelopeError{
 					Type:      "pending_failed",
 					Message:   fmt.Sprintf("pending message failed: %s", err.Error()),
-					PendingID: entry.ID,
+					PendingID: pendingEntryID,
 				}
 				publishCtx, publishCancel := context.WithTimeout(context.Background(), 3*time.Second)
 				defer publishCancel()
 				s.td.Pipeline.Bus.Publish(publishCtx, env)
 			}
 		} else {
-			pendingEmitter.LogDone("chat.pending_dequeue", "排队消息处理完成", event.P("entry_id", entry.ID))
+			pendingEmitter.LogDone("chat.pending_dequeue", "排队消息处理完成", event.P("entry_id", pendingEntryID))
 		}
 	})
 }

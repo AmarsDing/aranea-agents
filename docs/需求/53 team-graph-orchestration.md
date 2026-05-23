@@ -74,6 +74,7 @@
 - 「进行中」展示 Activity 时间线（tool / skill / mcp / subagent）
 - 「已交付」展示 output_preview / artifact 引用
 - 工作阶段与生命周期状态正交（状态用 chip，阶段用列）
+- Graph Run **任务看板**（M54 `GraphTaskKanban`）与 Agent 工作看板共用 `graph_task_status` 投影
 
 ### US-05 Agent 失败时的任务保障
 

@@ -117,6 +117,9 @@ func publishOrchestrationStatus(ctx context.Context, bus event.Bus, cfg Orchestr
 	if st.CurrentActivity != nil {
 		meta["current_activity"] = st.CurrentActivity
 	}
+	if len(st.ActivityHistory) > 0 {
+		meta["activity_history"] = st.ActivityHistory
+	}
 	env.Metadata = meta
 	bus.Publish(ctx, env)
 }

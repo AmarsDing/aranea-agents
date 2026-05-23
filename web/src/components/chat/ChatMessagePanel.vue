@@ -30,31 +30,39 @@
     </q-card-section>
     <ChatTeamMemberStrip v-if="isTeamSession" :members="teamMemberLanes" />
     <q-separator class="cream-sep" />
-    <div
-      ref="messagesScrollEl"
-      class="chat-messages col scroll relative-position"
-      @scroll.passive="onMessagesScroll"
-      @click="onMessagesClick"
-    >
-      <div v-if="!props.messages.length" class="chat-empty-state column items-center justify-center">
-        <div class="chat-empty-state__halo">
-          <q-icon name="forum" size="38px" color="primary" />
+    <div :key="sessionTitle" class="chat-messages col column no-wrap" style="min-height: 0">
+      <div
+        v-if="!props.messages.length"
+        ref="messagesScrollEl"
+        class="col relative-position chat-messages__viewport"
+        @click="onMessagesClick"
+      >
+        <div class="chat-empty-state column items-center justify-center">
+          <div class="chat-empty-state__halo">
+            <q-icon name="forum" size="38px" color="primary" />
+          </div>
+          <div class="chat-empty-state__title q-mt-md">{{ t("chat.emptyMessages") }}</div>
+          <div class="chat-empty-state__hint text-caption q-mt-xs">{{ t("chat.inputLabel") }}</div>
         </div>
-        <div class="chat-empty-state__title q-mt-md">{{ t("chat.emptyMessages") }}</div>
-        <div class="chat-empty-state__hint text-caption q-mt-xs">{{ t("chat.inputLabel") }}</div>
       </div>
       <q-virtual-scroll
         v-else-if="useVirtualMessageList"
         ref="virtualScrollRef"
-        scroll-target=".chat-messages"
+        class="col chat-messages__viewport"
+        style="min-height: 0"
         :items="props.messages"
         :virtual-scroll-item-size="virtualRowSize"
         :virtual-scroll-slice-size="24"
+        :virtual-scroll-slice-ratio-before="1.5"
+        :virtual-scroll-slice-ratio-after="1.5"
         v-slot="{ item, index }"
+        @scroll="onMessagesScroll"
+        @click="onMessagesClick"
       >
         <ChatMessageRow
           :message="item"
           :index="index"
+          v-memo="[item.id, item.content_markdown, item.status, item.options_json, props.isDark, props.plannerKind]"
           :messages="props.messages"
           :is-dark="props.isDark"
           :is-team-session="props.isTeamSession"
@@ -63,19 +71,27 @@
           @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
         />
       </q-virtual-scroll>
-      <ChatMessageRow
-        v-for="(message, idx) in props.messages"
+      <div
         v-else
-        :key="message.id"
-        :message="message"
-        :index="idx"
-        :messages="props.messages"
-        :is-dark="props.isDark"
-        :is-team-session="props.isTeamSession"
-        :planner-kind="props.plannerKind"
-        :react-tool-link-index="props.reactToolLinkIndex"
-        @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
-      />
+        ref="messagesScrollEl"
+        class="col relative-position chat-messages__viewport"
+        @scroll.passive="onMessagesScroll"
+        @click="onMessagesClick"
+      >
+        <ChatMessageRow
+          v-for="(message, idx) in props.messages"
+          :key="message.id"
+          v-memo="[message.id, message.content_markdown, message.status, message.options_json, props.isDark, props.plannerKind]"
+          :message="message"
+          :index="idx"
+          :messages="props.messages"
+          :is-dark="props.isDark"
+          :is-team-session="props.isTeamSession"
+          :planner-kind="props.plannerKind"
+          :react-tool-link-index="props.reactToolLinkIndex"
+          @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
+        />
+      </div>
       <div v-if="props.pendingMessages?.length" class="chat-pending-list">
         <div class="chat-pending-label">{{ t("chat.pendingQueue") }}</div>
         <div v-for="pm in props.pendingMessages" :key="pm.id" class="chat-pending-item">
@@ -373,7 +389,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import type { QVirtualScroll } from "quasar";
 import ChatMessageRow from "./ChatMessageRow.vue";
@@ -387,6 +403,7 @@ import {
   CHAT_VIRTUAL_ROW_ESTIMATE,
   CHAT_VIRTUAL_SCROLL_THRESHOLD,
 } from "../../features/chat/chatListVirtual";
+import { isActivityMessage } from "../../features/chat/mergeSessionMessages";
 import type { A2UIUserActionPayload } from "../../features/chat/a2uiUserAction";
 import type { Message, ReactToolLinkIndex } from "../../features/chat/types";
 import type { ChatAttachment } from "./types";
@@ -499,45 +516,176 @@ const showScrollBtn = ref(false);
 const stickToBottom = ref(true);
 const SCROLL_BOTTOM_THRESHOLD = 80;
 
-function distanceFromBottom(el: HTMLElement): number {
-  return el.scrollHeight - el.scrollTop - el.clientHeight;
+function maxScrollTop(el: HTMLElement): number {
+  return Math.max(0, el.scrollHeight - el.clientHeight);
 }
 
-function onMessagesScroll() {
-  const el = messagesScrollEl.value;
+function distanceFromBottom(el: HTMLElement): number {
+  return maxScrollTop(el) - el.scrollTop;
+}
+
+function activeScrollEl(): HTMLElement | null {
+  if (useVirtualMessageList.value && virtualScrollRef.value) {
+    return virtualScrollRef.value.$el as HTMLElement;
+  }
+  return messagesScrollEl.value;
+}
+
+/** Clamp scrollTop when layout reports an impossible position (blank message pane). */
+function clampScrollTop(el: HTMLElement, preferBottom: boolean): void {
+  const max = maxScrollTop(el);
+  const top = el.scrollTop;
+  if (!Number.isFinite(top) || top < 0 || top > max + 2) {
+    el.scrollTop = preferBottom ? max : 0;
+  }
+}
+
+function onMessagesScroll(event?: Event) {
+  const el = (event?.target as HTMLElement | undefined) ?? activeScrollEl();
   if (!el) return;
+  clampScrollTop(el, stickToBottom.value);
   const dist = distanceFromBottom(el);
   showScrollBtn.value = dist > 200;
   stickToBottom.value = dist <= SCROLL_BOTTOM_THRESHOLD;
 }
 
-function scrollToBottom(smooth = false) {
-  if (useVirtualMessageList.value && virtualScrollRef.value && props.messages.length > 0) {
-    virtualScrollRef.value.scrollTo(props.messages.length - 1, smooth ? "start" : "start-force");
-    stickToBottom.value = true;
-    showScrollBtn.value = false;
+function lastDialogueIndex(): number {
+  for (let i = props.messages.length - 1; i >= 0; i--) {
+    const m = props.messages[i]!;
+    if (m.role === "user" && (m.content_markdown ?? "").trim()) return i;
+    if (
+      m.role === "assistant" &&
+      !isActivityMessage(m) &&
+      (m.content_markdown ?? "").trim()
+    ) {
+      return i;
+    }
+  }
+  return Math.max(0, props.messages.length - 1);
+}
+
+async function scrollToLatestDialogue(smooth = false) {
+  const idx = lastDialogueIndex();
+  if (useVirtualMessageList.value && virtualScrollRef.value) {
+    for (let attempt = 0; attempt < 4; attempt++) {
+      await nextTick();
+      if (virtualScrollRef.value) {
+        virtualScrollRef.value.scrollTo(idx, smooth ? "start" : "start-force");
+        stickToBottom.value = true;
+        showScrollBtn.value = false;
+        return;
+      }
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
+    return;
+  }
+  const el = messagesScrollEl.value;
+  if (el) {
+    const rows = el.querySelectorAll<HTMLElement>(".chat-q-message");
+    const target = rows[idx];
+    if (target) {
+      target.scrollIntoView({ block: "end", behavior: smooth ? "smooth" : "auto" });
+      stickToBottom.value = true;
+      showScrollBtn.value = false;
+      return;
+    }
+  }
+  await scrollToBottom(smooth);
+}
+
+async function scrollToBottom(smooth = false) {
+  if (useVirtualMessageList.value && props.messages.length > 0) {
+    for (let attempt = 0; attempt < 6; attempt++) {
+      await nextTick();
+      if (virtualScrollRef.value) {
+        virtualScrollRef.value.scrollTo(
+          props.messages.length - 1,
+          smooth ? "start" : "start-force"
+        );
+        stickToBottom.value = true;
+        showScrollBtn.value = false;
+        return;
+      }
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
     return;
   }
   const el = messagesScrollEl.value;
   if (!el) return;
-  el.scrollTo({ top: el.scrollHeight, behavior: smooth ? "smooth" : "auto" });
+  clampScrollTop(el, true);
+  const top = maxScrollTop(el);
+  el.scrollTo({ top, behavior: smooth ? "smooth" : "auto" });
   stickToBottom.value = true;
   showScrollBtn.value = false;
 }
 
+/** Re-align scroll after session switch or first message hydrate (layout may settle late). */
+async function alignMessageScroll(preferBottom: boolean) {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    await nextTick();
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    const el = activeScrollEl();
+    if (!el) continue;
+    clampScrollTop(el, preferBottom);
+    const top = preferBottom ? maxScrollTop(el) : 0;
+    el.scrollTop = top;
+    if (preferBottom && el.clientHeight > 0 && distanceFromBottom(el) <= SCROLL_BOTTOM_THRESHOLD) {
+      stickToBottom.value = true;
+      showScrollBtn.value = false;
+      return;
+    }
+    if (!preferBottom && el.scrollTop <= 1) {
+      return;
+    }
+  }
+}
+
 watch(
-  () => props.messages.length,
+  () => props.sessionTitle,
   () => {
-    if (!stickToBottom.value) return;
-    void nextTick(() => scrollToBottom(false));
+    stickToBottom.value = true;
+    showScrollBtn.value = false;
+    void alignMessageScroll(true);
   }
 );
 
 watch(
+  () => props.messages.length,
+  (len, prev) => {
+    if (len === 0) return;
+    if (prev === 0) {
+      stickToBottom.value = true;
+      void alignMessageScroll(true);
+      return;
+    }
+    if (!stickToBottom.value) return;
+    void scrollToLatestDialogue(false);
+  }
+);
+
+onMounted(() => {
+  if (props.messages.length > 0) {
+    stickToBottom.value = true;
+    void alignMessageScroll(true);
+  }
+});
+
+watch(useVirtualMessageList, (enabled) => {
+  if (enabled && props.messages.length > 0 && stickToBottom.value) {
+    void scrollToLatestDialogue(false);
+  }
+});
+
+let scrollStickRaf = 0;
+watch(
   () => props.messages[props.messages.length - 1]?.content_markdown ?? "",
   () => {
     if (!stickToBottom.value) return;
-    void nextTick(() => scrollToBottom(false));
+    if (scrollStickRaf) return;
+    scrollStickRaf = requestAnimationFrame(() => {
+      scrollStickRaf = 0;
+      void scrollToLatestDialogue(false);
+    });
   }
 );
 
@@ -589,6 +737,7 @@ function fallbackCopy(text: string, onSuccess: () => void) {
 
 onBeforeUnmount(() => {
   if (copyResetTimer) clearTimeout(copyResetTimer);
+  if (scrollStickRaf) cancelAnimationFrame(scrollStickRaf);
 });
 </script>
 

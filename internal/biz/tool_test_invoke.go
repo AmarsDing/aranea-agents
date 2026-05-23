@@ -29,7 +29,7 @@ func (u *ToolUsecase) TestTool(ctx context.Context, toolID, argumentsJSON string
 		ConfigJSON:        tool.ConfigJSON,
 		DefaultConfigJSON: tool.DefaultConfigJSON,
 		MetadataJSON:      tool.MetadataJSON,
-	}, argumentsJSON, timeoutSec)
+	}, argumentsJSON, timeoutSec, webResearchPlatformFieldsPtr(loadWebResearchPlatform(ctx, u.sys)))
 	if err != nil {
 		return ToolTestResult{}, err
 	}

@@ -1,8 +1,11 @@
 package biz
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
+
+	webresearchpkg "aranea-agents/internal/tools/webresearch"
 )
 
 // Catalog runtime_status values (see 23 tools.design.md).
@@ -23,7 +26,7 @@ const (
 var registryBackedToolKeys = map[string]struct{}{
 	"read_file": {}, "read_multiple_files": {}, "save_file": {}, "list_file": {},
 	"search_file": {}, "search_content": {}, "replace_content": {}, "diff_edit": {}, "patch_file": {},
-	"shell_exec": {}, "web_fetch": {}, "duckduckgo_search": {}, "gemini_web_fetch": {},
+	"shell_exec": {}, "web_fetch": {}, ToolKeyWebResearch: {}, "duckduckgo_search": {}, "gemini_web_fetch": {},
 	"google_search": {}, "arxiv_search": {}, "wikipedia_search": {},
 	"send_email": {}, "todo_write": {}, "await_user_reply": {},
 	"claude_code": {}, "workspace_exec": {},
@@ -39,11 +42,16 @@ var sessionBoundToolKeys = map[string]struct{}{
 
 // EnrichToolCatalogRuntime fills RuntimeStatus and RuntimeKind for API responses.
 func EnrichToolCatalogRuntime(t *Tool) {
+	EnrichToolCatalogRuntimeWithPlatform(t, nil)
+}
+
+// EnrichToolCatalogRuntimeWithPlatform applies catalog runtime fields using optional platform web research settings.
+func EnrichToolCatalogRuntimeWithPlatform(t *Tool, platform *WebResearchSetting) {
 	if t == nil {
 		return
 	}
 	t.RuntimeKind = catalogRuntimeKind(*t)
-	t.RuntimeStatus = catalogRuntimeStatus(*t)
+	t.RuntimeStatus = catalogRuntimeStatus(*t, platform)
 }
 
 func catalogRuntimeKind(t Tool) string {
@@ -56,7 +64,7 @@ func catalogRuntimeKind(t Tool) string {
 	return RuntimeKindFunction
 }
 
-func catalogRuntimeStatus(t Tool) string {
+func catalogRuntimeStatus(t Tool, platform *WebResearchSetting) string {
 	if !t.Enabled {
 		return RuntimeStatusDisabled
 	}
@@ -73,7 +81,7 @@ func catalogRuntimeStatus(t Tool) string {
 		}
 		return RuntimeStatusAvailable
 	}
-	if !catalogConfigReady(t) {
+	if !catalogConfigReady(t, platform) {
 		return RuntimeStatusCatalogOnly
 	}
 	if _, ok := registryBackedToolKeys[t.Key]; ok {
@@ -85,7 +93,7 @@ func catalogRuntimeStatus(t Tool) string {
 	return RuntimeStatusCatalogOnly
 }
 
-func catalogConfigReady(t Tool) bool {
+func catalogConfigReady(t Tool, platform *WebResearchSetting) bool {
 	cfg := mergeToolConfigMaps(t.ConfigJSON, t.DefaultConfigJSON)
 	switch t.Key {
 	case "google_search":
@@ -93,6 +101,12 @@ func catalogConfigReady(t Tool) bool {
 			configString(cfg, "cx", "engine_id", "google_cx", "search_engine_id") != ""
 	case "gemini_web_fetch":
 		return configString(cfg, "model", "gemini_model") != ""
+	case ToolKeyWebResearch:
+		var pf *webresearchpkg.PlatformFields
+		if platform != nil {
+			pf = webResearchPlatformFields(*platform)
+		}
+		return webresearchpkg.CatalogReady(cfg, pf)
 	default:
 		return true
 	}
@@ -147,9 +161,20 @@ func configString(m map[string]any, keys ...string) string {
 	return ""
 }
 
-func enrichToolList(items []Tool) []Tool {
+func enrichToolList(items []Tool, platform *WebResearchSetting) []Tool {
 	for i := range items {
-		EnrichToolCatalogRuntime(&items[i])
+		EnrichToolCatalogRuntimeWithPlatform(&items[i], platform)
 	}
 	return items
+}
+
+func loadWebResearchPlatform(ctx context.Context, sys SystemSettingRepo) *WebResearchSetting {
+	if sys == nil {
+		return nil
+	}
+	s, err := sys.GetWebResearch(ctx)
+	if err != nil {
+		return nil
+	}
+	return &s
 }

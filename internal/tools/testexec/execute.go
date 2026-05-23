@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/tools"
+	webresearchpkg "aranea-agents/internal/tools/webresearch"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 
@@ -37,7 +38,8 @@ type CatalogTool struct {
 }
 
 // Execute runs one tool call for catalog / OpenAPI-backed tools (admin test harness).
-func Execute(ctx context.Context, tool CatalogTool, argumentsJSON string, timeoutSec int) (Result, error) {
+// platform supplies system_settings for web_research when agent config has no API key.
+func Execute(ctx context.Context, tool CatalogTool, argumentsJSON string, timeoutSec int, platform *webresearchpkg.PlatformFields) (Result, error) {
 	key := strings.TrimSpace(tool.Key)
 	if key == "" {
 		return Result{}, kerrors.BadRequest("TOOL", "tool key is required")
@@ -57,7 +59,7 @@ func Execute(ctx context.Context, tool CatalogTool, argumentsJSON string, timeou
 
 	started := time.Now().UTC()
 	merged := mergeConfigJSON(tool.ConfigJSON, tool.DefaultConfigJSON)
-	asmCfg, ok := AssemblyForCatalogKey(key, merged)
+	asmCfg, ok := AssemblyForCatalogKey(key, merged, platform)
 	if !ok {
 		if spec, ok := openAPISpecFromCatalogTool(tool); ok {
 			asmCfg = tools.AssemblyConfig{
@@ -73,7 +75,11 @@ func Execute(ctx context.Context, tool CatalogTool, argumentsJSON string, timeou
 	if err != nil {
 		return failResult(started, err), nil
 	}
-	callable, err := findCallable(runCtx, ts, catalogToolNames(key)...)
+	names := catalogToolNames(key)
+	if key == "web_research" {
+		names = append([]string{"web_research"}, names...)
+	}
+	callable, err := findCallable(runCtx, ts, names...)
 	if err != nil {
 		return failResult(started, err), nil
 	}

@@ -10,7 +10,9 @@ import {
   type UseEnvelopeStreamReturn,
 } from "../useEnvelopeStream";
 import type { Envelope, EnvelopeType, WsUpstream } from "../envelope";
-import { upsertToolMessage, cancelRunningToolMessages } from "../envelopeToolCall";
+import { upsertToolMessage, cancelRunningToolMessages, finalizeOrphanToolMessages } from "../envelopeToolCall";
+import { dropPendingUserPlaceholders } from "../mergeSessionMessages";
+import { createMessageBatchWriter } from "../messageStoreBatch";
 import { runStatusFromEnvelope } from "../envelopeRunStatus";
 import { patchStreamingMessage } from "../streamContentPatch";
 import type { RunStatusValue } from "../types";
@@ -59,6 +61,32 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
   let teamStreamSessionId: string | null = null;
 
   const wsReplaying = ref(false);
+  const agentMessageWriter = createMessageBatchWriter(
+    () => deps.store.messages,
+    (rows) => {
+      deps.store.messages = rows;
+    }
+  );
+
+  function patchAgentMessagesBatched(sessionId: string, streamId: string, env: Envelope, isDone: boolean) {
+    agentMessageWriter.update((cur) => {
+      const exists = cur.some((m) => m.id === streamId);
+      let next = cur;
+      if (!exists) {
+        next = [
+          ...cur,
+          { ...createPlaceholderMessage(streamId, sessionId, "assistant", ""), status: "streaming" },
+        ];
+      }
+      return patchStreamingMessage(next, streamId, {
+        text: isDone ? undefined : env.content?.text,
+        reasoning: isDone ? undefined : env.content?.reasoning,
+        replaceText: isDone ? env.content?.text : undefined,
+        replaceReasoning: isDone ? env.content?.reasoning : undefined,
+        status: isDone ? "ok" : "streaming",
+      });
+    });
+  }
 
   function ensureChatStream(sessionId: string) {
     if (chatStream && chatStream.transport.value && chatStreamSessionId === sessionId) {
@@ -94,22 +122,22 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
     chatStream.onType("text_delta", (env: Envelope) => {
       const sid = env.session_id || sessionId;
       if (sid !== sessionId || (!env.content?.text && !env.content?.reasoning)) return;
-      patchAgentMessages(sid, `ws-stream-${sid}`, env, false);
+      patchAgentMessagesBatched(sid, `ws-stream-${sid}`, env, false);
     });
     chatStream.onType("text_done", (env: Envelope) => {
       const sid = env.session_id || sessionId;
       if (sid !== sessionId) return;
-      patchAgentMessages(sid, `ws-stream-${sid}`, env, true);
+      patchAgentMessagesBatched(sid, `ws-stream-${sid}`, env, true);
     });
     chatStream.onType("tool_call", (env: Envelope) => {
       const sid = env.session_id || sessionId;
       if (sid !== sessionId || !env.tool_call) return;
-      deps.store.messages = upsertToolMessage(deps.store.messages, sid, env, "before");
+      agentMessageWriter.update((cur) => upsertToolMessage(cur, sid, env, "before"));
     });
     chatStream.onType("tool_result", (env: Envelope) => {
       const sid = env.session_id || sessionId;
       if (sid !== sessionId || !env.tool_call) return;
-      deps.store.messages = upsertToolMessage(deps.store.messages, sid, env, "after");
+      agentMessageWriter.update((cur) => upsertToolMessage(cur, sid, env, "after"));
     });
     chatStream.onType("run_status", (env: Envelope) => {
       if (env.session_id && env.session_id !== sessionId) return;
@@ -117,8 +145,10 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
     });
     chatStream.onType("runner_completion", async () => {
       deps.markSendingDone();
+      agentMessageWriter.flushSync();
       const sid = deps.store.selectedSession?.id;
       if (sid) {
+        deps.store.messages = dropPendingUserPlaceholders(finalizeOrphanToolMessages(deps.store.messages));
         try {
           await deps.store.loadMessages();
           await deps.store.loadSessions();
@@ -130,6 +160,9 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
       if (errType.startsWith("flow_")) return;
       const msg = env.error?.message ?? "stream failed";
       $q.notify({ type: "negative", message: msg });
+      if (env.request_id?.startsWith("pending-user-")) {
+        deps.store.messages = deps.store.messages.filter((m) => m.id !== env.request_id);
+      }
       deps.markSendingDone();
     });
     chatStream.onType("intent_pass", (env: Envelope) => {
@@ -227,9 +260,13 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
     teamStream.onType("runner_completion", async () => {
       deps.markSendingDone();
       if (deps.teamSelectedSessionId.value) {
+        const sid = deps.teamSelectedSessionId.value;
+        deps.teamMessages.value[sid] = dropPendingUserPlaceholders(
+          finalizeOrphanToolMessages(deps.teamMessages.value[sid] ?? [])
+        );
         try {
           const { listSessionChatMessages: listMessages } = await import("../../session/api");
-          deps.teamMessages.value[deps.teamSelectedSessionId.value!] = await listMessages(deps.teamSelectedSessionId.value!);
+          deps.teamMessages.value[sid] = await listMessages(sid);
         } catch { /* keep assembled rows */ }
       }
     });
@@ -238,6 +275,10 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
       if (errType.startsWith("flow_")) return;
       const msg = env.error?.message ?? "stream failed";
       $q.notify({ type: "negative", message: msg });
+      const sid = deps.teamSelectedSessionId.value;
+      if (sid && env.request_id?.startsWith("pending-user-")) {
+        deps.teamMessages.value[sid] = (deps.teamMessages.value[sid] ?? []).filter((m) => m.id !== env.request_id);
+      }
       deps.markSendingDone();
     });
     teamStream.onType("intent_pass", (env: Envelope) => {

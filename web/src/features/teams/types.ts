@@ -8,6 +8,8 @@ export type Team = {
   is_default: boolean;
   definition_json: string;
   app_name: string;
+  linked_graph_id: string;
+  has_active_run: boolean;
   created_at: string;
   updated_at: string;
   deleted_at: string;
@@ -17,6 +19,7 @@ export type TeamDefinitionMember = {
   agent_id: string;
   role: "coordinator" | "worker" | "synthesizer" | "critic" | "generator" | string;
   name: string;
+  task_prompt?: string;
   enabled: boolean;
   sort_order: number;
 };
@@ -39,9 +42,35 @@ export type TeamDefinitionGraphEdge = {
   condition?: string;
 };
 
+export type TeamFailurePolicy = {
+  default?: "retry_then_block" | "skip" | "fail_fast" | string;
+  parallel_fail?: "continue" | "abort" | string;
+  retry?: {
+    max_attempts?: number;
+    initial_interval_ms?: number;
+    backoff_factor?: number;
+    max_interval_ms?: number;
+  };
+  node_overrides?: Record<
+    string,
+    {
+      policy?: string;
+      retry?: TeamFailurePolicy["retry"];
+      fallback_agent?: string;
+    }
+  >;
+};
+
 export type TeamDefinition = {
   version: number;
   description?: string;
+  /** Graph 执行引擎：`graph` 启用 GraphAgent（须 ARANEA_TEAM_GRAPH_RUNTIME=1）；留空为 native */
+  runtime_engine?: "native" | "graph" | string;
+  /** 兼容旧字段，等效 runtime_engine=graph */
+  team_graph_runtime?: boolean;
+  /** 关联 persisted graph 资产 id（M53 linked_graph） */
+  linked_graph_id?: string;
+  failure_policy?: TeamFailurePolicy;
   mode: "sequential" | "parallel" | "coordinator" | "critic_loop" | "adaptive" | string;
   max_concurrency?: number;
   timeout_seconds?: number;
@@ -85,6 +114,7 @@ export type TeamRun = {
   duration_ms: number;
   error_message: string;
   topology_json: string;
+  graph_execution_id: string;
   started_at: string;
   finished_at: string;
   created_at: string;

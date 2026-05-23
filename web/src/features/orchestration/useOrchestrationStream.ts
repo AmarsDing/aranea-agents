@@ -29,7 +29,15 @@ export function useOrchestrationStream(sessionId: string, runId: string) {
     const state = agentNodeStateFromMetadata(meta);
     if (!state.node_id) return;
     const next = new Map(nodes.value);
-    next.set(state.node_id, { ...next.get(state.node_id), ...state, run_id: runId });
+    const prev = next.get(state.node_id);
+    next.set(state.node_id, {
+      ...prev,
+      ...state,
+      run_id: runId,
+      activity_history: state.activity_history?.length
+        ? state.activity_history
+        : prev?.activity_history,
+    });
     nodes.value = next;
   }
 

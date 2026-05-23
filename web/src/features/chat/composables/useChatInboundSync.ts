@@ -9,6 +9,9 @@ import type { Envelope } from "../envelope";
 import type { UseEnvelopeStreamReturn } from "../useEnvelopeStream";
 import { useAppStore } from "../../../stores/app";
 import { parseChannelSessionMeta } from "../channelSessionMeta";
+import { runStatusFromEnvelope } from "../envelopeRunStatus";
+import { upsertToolMessage } from "../envelopeToolCall";
+import { createMessageBatchWriter } from "../messageStoreBatch";
 import type { Session } from "../../session/types";
 
 export type ChatInboundSyncDeps = {
@@ -23,6 +26,15 @@ export type ChatInboundSyncDeps = {
   loadTeamSessions?: (teamId: string) => Promise<void>;
 };
 
+const HYDRATE_DEBOUNCE_MS = 450;
+
+function isTurnCompleteEnvelope(env: Envelope): boolean {
+  if (env.type === "runner_completion") return true;
+  if (env.type !== "run_status") return false;
+  const status = runStatusFromEnvelope(env)?.status;
+  return status === "completed" || status === "failed" || status === "cancelled";
+}
+
 /**
  * Subscribes to global WS (`session_id=*`) so Channel/Cron inbound turns update the Chat UI
  * when the matching agent session is open or newly created.
@@ -32,6 +44,15 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
   const $q = useQuasar();
   const { t } = useI18n();
   let hubId: string | null = null;
+  let hydrateTimer: ReturnType<typeof setTimeout> | null = null;
+  let pendingHydrateSessionId = "";
+
+  const inboundMessageWriter = createMessageBatchWriter(
+    () => store.messages,
+    (rows) => {
+      store.messages = rows;
+    }
+  );
 
   function agentIdFromEnvelope(env: Envelope): string {
     const md = env.metadata as Record<string, unknown> | undefined;
@@ -96,7 +117,7 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
                   const hit = store.sessions.find((s) => s.id === sessionId);
                   if (hit) {
                     store.selectedSession = hit;
-                    void store.loadMessages();
+                    void store.loadMessages({ replace: true });
                     deps.ensureChatStream(sessionId);
                   }
                 });
@@ -108,50 +129,68 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
     }
   }
 
+  function scheduleHydrate(sessionId: string) {
+    pendingHydrateSessionId = sessionId;
+    if (hydrateTimer) clearTimeout(hydrateTimer);
+    hydrateTimer = setTimeout(() => {
+      hydrateTimer = null;
+      void hydrateCurrentSession(pendingHydrateSessionId);
+    }, HYDRATE_DEBOUNCE_MS);
+  }
+
+  async function hydrateCurrentSession(sessionId: string) {
+    if (deps.selectedEntityKind.value === "team") {
+      deps.ensureTeamStream(sessionId);
+      return;
+    }
+    deps.ensureChatStream(sessionId);
+    inboundMessageWriter.flushSync();
+    try {
+      await store.loadMessages();
+    } catch {
+      /* ignore */
+    }
+  }
+
   async function handleInboundEnvelope(env: Envelope) {
     const sessionId = (env.session_id ?? "").trim();
-    if (!sessionId || !matchesSelectedEntity(env)) return;
+    if (!sessionId) return;
 
     const isCurrent = deps.selectedSessionId.value === sessionId;
-    const streamId =
-      deps.selectedEntityKind.value === "team"
-        ? `ws-team-stream-${sessionId}`
-        : `ws-stream-${sessionId}`;
+    const entityMatch = matchesSelectedEntity(env);
 
-    if (env.type === "text_delta" && isCurrent) {
-      if (deps.selectedEntityKind.value === "team") {
-        deps.ensureTeamStream(sessionId);
-        deps.patchTeamMessages(sessionId, streamId, env, false);
-      } else {
-        deps.ensureChatStream(sessionId);
-        deps.patchAgentMessages(sessionId, streamId, env, false);
-      }
-      return;
-    }
-
-    if (env.type === "text_done" && isCurrent) {
-      if (deps.selectedEntityKind.value === "team") {
-        deps.patchTeamMessages(sessionId, streamId, env, true);
-      } else {
-        deps.patchAgentMessages(sessionId, streamId, env, true);
-      }
-      return;
-    }
-
-    if (env.type === "runner_completion") {
-      await refreshSessionsAndMaybeNotify(sessionId);
-      if (isCurrent) {
+    if (isCurrent && env.type === "run_status") {
+      const rs = runStatusFromEnvelope(env);
+      if (rs?.status === "running") {
         if (deps.selectedEntityKind.value === "team") {
           deps.ensureTeamStream(sessionId);
         } else {
           deps.ensureChatStream(sessionId);
         }
-        try {
-          await store.loadMessages();
-        } catch {
-          /* ignore */
-        }
       }
+    }
+
+    if (!isCurrent && !entityMatch) return;
+
+    if (isCurrent && deps.selectedEntityKind.value === "agent") {
+      if (env.type === "tool_call" && env.tool_call) {
+        inboundMessageWriter.update((cur) => upsertToolMessage(cur, sessionId, env, "before"));
+        return;
+      }
+      if (env.type === "tool_result" && env.tool_call) {
+        inboundMessageWriter.update((cur) => upsertToolMessage(cur, sessionId, env, "after"));
+        return;
+      }
+    }
+
+    if (!isTurnCompleteEnvelope(env)) return;
+
+    if (entityMatch || isCurrent) {
+      await refreshSessionsAndMaybeNotify(sessionId);
+    }
+
+    if (isCurrent) {
+      scheduleHydrate(sessionId);
     }
   }
 
@@ -167,6 +206,7 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
   });
 
   onUnmounted(() => {
+    if (hydrateTimer) clearTimeout(hydrateTimer);
     if (hubId) {
       releaseGlobalWsConsumer(hubId);
       hubId = null;

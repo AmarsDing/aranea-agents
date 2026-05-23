@@ -33,6 +33,13 @@ func TestMergeWebhookPatch_UpdatesEnabledWhenSet(t *testing.T) {
 	}
 }
 
+func TestWebhookSubscribes_GraphTaskStatus(t *testing.T) {
+	types := `["graph.task.status"]`
+	if !WebhookSubscribes(types, WebhookEventGraphTaskStatus) {
+		t.Fatal("expected subscription to graph.task.status")
+	}
+}
+
 func TestWebhookUsecase_Create_PreservesDisabled(t *testing.T) {
 	repo := &stubWebhookRepo{}
 	uc := NewWebhookUsecase(repo)

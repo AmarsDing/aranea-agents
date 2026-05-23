@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"aranea-agents/internal/biz"
 
@@ -52,7 +53,18 @@ func (r *graphRepo) SaveDefinition(ctx context.Context, def *biz.GraphDefinition
 	if def.ID != "" {
 		builder.SetID(def.ID)
 	}
-	saved, err := builder.Save(ctx)
+	createdAt := def.CreatedAt
+	if createdAt.IsZero() {
+		createdAt = time.Now().UTC()
+	}
+	updatedAt := def.UpdatedAt
+	if updatedAt.IsZero() {
+		updatedAt = createdAt
+	}
+	saved, err := builder.
+		SetCreatedAt(createdAt).
+		SetUpdatedAt(updatedAt).
+		Save(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("graph repo save: %w", err)
 	}
@@ -95,6 +107,20 @@ func (r *graphRepo) ListDefinitions(ctx context.Context, pageSize int, pageToken
 		result[i] = entGraphToBiz(row)
 	}
 	return result, nextToken, nil
+}
+
+func (r *graphRepo) ListUserTemplateDefinitions(ctx context.Context, pageSize int) ([]*biz.GraphDefinition, error) {
+	defs, _, err := r.ListDefinitions(ctx, pageSize, "")
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*biz.GraphDefinition, 0)
+	for _, def := range defs {
+		if biz.ReadUserTemplateMeta(def) != nil {
+			out = append(out, def)
+		}
+	}
+	return out, nil
 }
 
 func (r *graphRepo) DeleteDefinition(ctx context.Context, id string) error {
@@ -163,6 +189,7 @@ func entGraphToBiz(row *ent.GraphDefinition) *biz.GraphDefinition {
 	_ = json.Unmarshal([]byte(row.InterruptBefore), &def.InterruptBefore)
 	_ = json.Unmarshal([]byte(row.InterruptAfter), &def.InterruptAfter)
 	_ = json.Unmarshal([]byte(row.Metadata), &def.Metadata)
+	def.Version = biz.GraphVersion(def)
 	return def
 }
 

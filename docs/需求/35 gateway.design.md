@@ -68,7 +68,7 @@
               ├─ Yes → chatUC.EnqueueUserMessage
               │           ├─ RunRegistry.EnqueueUserMessage (SteerableRunner)
               │           └─ 降级 PendingMessageQueue.Enqueue
-              └─ No  → RunRegistry.StorePlaceholder/StoreRunner → Agent Turn
+              └─ No  → RunRegistry.StoreCancelable → StoreRunner → Agent Turn
                          ↓
                       RunnerManager.NewTurnRunner (AwaitUserReplyRouting)
                          ↓

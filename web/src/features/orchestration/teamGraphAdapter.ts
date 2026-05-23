@@ -69,14 +69,30 @@ export function displayStatusToExecStatus(display: DisplayStatus | string): stri
   }
 }
 
+export type ExecNodeStateView = {
+  status: string;
+  fineStatus?: string;
+  inputPreview?: string;
+  outputPreview?: string;
+  currentActivity?: string;
+};
+
 export function buildExecNodeStates(
   nodeStates: Map<string, AgentNodeState>,
-): Map<string, { status: string; fineStatus?: string }> {
-  const out = new Map<string, { status: string; fineStatus?: string }>();
+): Map<string, ExecNodeStateView> {
+  const out = new Map<string, ExecNodeStateView>();
   for (const [id, st] of nodeStates.entries()) {
+    const activity = st.current_activity;
     out.set(id, {
       status: displayStatusToExecStatus(st.display_status),
       fineStatus: st.status,
+      inputPreview: st.input_preview,
+      outputPreview: st.output_preview,
+      currentActivity:
+        activity?.display_label?.trim() ||
+        activity?.tool_name?.trim() ||
+        activity?.kind?.trim() ||
+        undefined,
     });
   }
   return out;

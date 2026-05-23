@@ -2,6 +2,9 @@ package trpc
 
 import (
 	"strings"
+
+	"aranea-agents/internal/biz"
+	webresearchpkg "aranea-agents/internal/tools/webresearch"
 )
 
 // ApplyRuntimeConfigMaps patches ToolsetConfig from merged per-tool_key config objects.
@@ -30,6 +33,8 @@ func applyConfigMap(cfg *ToolsetConfig, toolKey string, m map[string]any) {
 		if v := configString(m, "cx", "engine_id", "google_cx", "search_engine_id"); v != "" {
 			cfg.GoogleCX = v
 		}
+	case toolKey == biz.ToolKeyWebResearch:
+		cfg.WebResearchCfg = webresearchpkg.ConfigFromMap(m)
 	case toolKey == "gemini_web_fetch":
 		if v := configString(m, "model", "gemini_model"); v != "" {
 			cfg.GeminiModel = v

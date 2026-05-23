@@ -1,6 +1,7 @@
 # Message 消息 — 开发计划
 
-> **版本**：2026-05-21 | **状态**：✅ 核心 + P2 搜索 + P3 独立消费者已落地
+> **版本**：2026-05-21 | **状态**：✅ 核心 + P2 搜索 + P3 独立消费者已落地  
+> **M55 增量同步**：[55-chat-channel-cursor-development.md §Phase B](./55-chat-channel-cursor-development.md#phase-b--session-sync-协议p0约-1-周)  
 > **需求**：[51 消息机制](./51%20消息机制.md) · **后端设计**：[51a 后端消息机制](./51a%20后端消息机制.md) · **前端设计**：[51b 前端消息机制](./51b%20前端消息机制.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：—
 
@@ -61,6 +62,7 @@ Message 消息：统一的事件模型和传输机制，以 EventBus + Envelope 
 | MessageStoreConsumer | P3 | ✅ `member_message_done` → `role=member` + `team_member` 元数据（与 51b WS 一致） |
 | Webhook 投射 | P3 | 同一 Envelope 投射到 Webhook 通道 |
 | 事件持久化升级 | P3 | EventBuffer → 外部存储（Redis/SQLite），支持跨重启重放 |
+| **session_revision 增量同步（M55）** | **P0** | Turn 完成 revision++；`ListSessionMessages?after_revision=`；Web debounced hydrate — [55-chat-channel-cursor-development.md §Phase B](./55-chat-channel-cursor-development.md#phase-b--session-sync-协议p0约-1-周) |
 
 ---
 

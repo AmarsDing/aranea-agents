@@ -51,15 +51,7 @@ func (s *TeamService) buildCompileTeamGraphResponse(ctx context.Context, def tea
 	}
 	resp.EntryPoint = cfg.EntryPoint
 	resp.FinishPoint = cfg.FinishPoint
-	for _, n := range cfg.Nodes {
-		resp.Nodes = append(resp.Nodes, &v1.CompiledGraphNodeView{
-			Id:          n.ID,
-			Type:        n.Type,
-			AgentName:   n.AgentName,
-			Role:        n.RequiredRole,
-			Description: n.Description,
-		})
-	}
+	resp.Nodes = s.buildCompiledGraphNodeViews(ctx, def, cfg.Nodes)
 	for _, e := range cfg.Edges {
 		resp.Edges = append(resp.Edges, &v1.CompiledGraphEdgeView{From: e.From, To: e.To, EdgeKind: e.Kind})
 	}

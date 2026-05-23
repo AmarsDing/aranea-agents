@@ -53,10 +53,11 @@ type AgentRepository interface {
 type AgentUsecase struct {
 	repo  AgentRepository
 	tools ToolRepo
+	sys   SystemSettingRepo
 }
 
-func NewAgentUsecase(repo AgentRepository, tools ToolRepo) *AgentUsecase {
-	return &AgentUsecase{repo: repo, tools: tools}
+func NewAgentUsecase(repo AgentRepository, tools ToolRepo, sys SystemSettingRepo) *AgentUsecase {
+	return &AgentUsecase{repo: repo, tools: tools, sys: sys}
 }
 
 // ListAgentCreators returns distinct creators for list filter options.

@@ -269,10 +269,11 @@ type ToolRepo interface {
 
 type ToolUsecase struct {
 	repo ToolRepo
+	sys  SystemSettingRepo
 }
 
-func NewToolUsecase(repo ToolRepo) *ToolUsecase {
-	return &ToolUsecase{repo: repo}
+func NewToolUsecase(repo ToolRepo, sys SystemSettingRepo) *ToolUsecase {
+	return &ToolUsecase{repo: repo, sys: sys}
 }
 
 func (u *ToolUsecase) ListTools(ctx context.Context, q ToolListQuery) (ToolListResult, error) {
@@ -289,7 +290,7 @@ func (u *ToolUsecase) ListTools(ctx context.Context, q ToolListQuery) (ToolListR
 	if err != nil {
 		return ToolListResult{}, err
 	}
-	result.Items = enrichToolList(result.Items)
+	result.Items = enrichToolList(result.Items, loadWebResearchPlatform(ctx, u.sys))
 	return result, nil
 }
 
@@ -301,7 +302,7 @@ func (u *ToolUsecase) GetTool(ctx context.Context, id string) (Tool, error) {
 	if err != nil {
 		return Tool{}, err
 	}
-	EnrichToolCatalogRuntime(&t)
+	EnrichToolCatalogRuntimeWithPlatform(&t, loadWebResearchPlatform(ctx, u.sys))
 	return t, nil
 }
 
@@ -313,7 +314,7 @@ func (u *ToolUsecase) Create(ctx context.Context, in ToolUpsertInput) (Tool, err
 	if err != nil {
 		return Tool{}, err
 	}
-	EnrichToolCatalogRuntime(&t)
+	EnrichToolCatalogRuntimeWithPlatform(&t, loadWebResearchPlatform(ctx, u.sys))
 	return t, nil
 }
 
@@ -335,7 +336,7 @@ func (u *ToolUsecase) Update(ctx context.Context, id string, in ToolUpsertInput)
 	if err != nil {
 		return Tool{}, err
 	}
-	EnrichToolCatalogRuntime(&t)
+	EnrichToolCatalogRuntimeWithPlatform(&t, loadWebResearchPlatform(ctx, u.sys))
 	return t, nil
 }
 

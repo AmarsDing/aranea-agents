@@ -145,7 +145,8 @@ func ReasoningFromMessageOptionsJSON(raw string) string {
 	}
 }
 
-// MergeReasoningIntoAssistantOptionsJSON merges or clears reasoning_content on assistant options_json for API replay on later turns.
+// MergeReasoningIntoAssistantOptionsJSON merges reasoning into assistant options_json for UI replay and LLM history.
+// Writes both reasoning_markdown (Chat UI) and reasoning_content (provider replay).
 func MergeReasoningIntoAssistantOptionsJSON(base string, reasoning string) (string, error) {
 	reasoning = strings.TrimSpace(reasoning)
 	b := strings.TrimSpace(base)
@@ -157,8 +158,10 @@ func MergeReasoningIntoAssistantOptionsJSON(base string, reasoning string) (stri
 	}
 	if reasoning == "" {
 		delete(opts, "reasoning_content")
+		delete(opts, "reasoning_markdown")
 	} else {
 		opts["reasoning_content"] = reasoning
+		opts["reasoning_markdown"] = reasoning
 	}
 	out, err := json.Marshal(opts)
 	if err != nil {

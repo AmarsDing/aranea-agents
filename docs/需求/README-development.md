@@ -15,7 +15,7 @@
 
 | 模块 | 开发计划 | 接入度（2026-05-21） |
 |------|----------|----------------------|
-| Chat | [1-chat-development.md](./1-chat-development.md) | WS ✅；多模态 + RunStatus ✅ |
+| Chat | [1-chat-development.md](./1-chat-development.md) · [**M55 Cursor 对标**](./55-chat-channel-cursor-development.md) | WS ✅；多模态 + RunStatus ✅；TurnBlock / 增量 sync 📋 |
 | Agent Create | [2-agents-create-development.md](./2-agents-create-development.md) | ✅ 创建/A2A/查重/模型检查/模板全字段/结构化错误 |
 | **Agent 2–8 横切** | [2-8-agent-modules-development.md](./2-8-agent-modules-development.md) | ✅ 迭代 8–10 主项；🟡 AGT-15/16、批量/迁移 |
 | Agent List | [3-agent-list-development.md](./3-agent-list-development.md) | ✅ 列表 UX + 运行态 + 复制 + `created_by` 筛选；🟡 `BatchUpdateAgents` biz ✅；❌ 批量 UI/迁移 |
@@ -35,7 +35,7 @@
 | 模块 | 开发计划 |
 |------|----------|
 | Memory | [12-16 memory-development.md](./12-16%20memory-development.md) |
-| Channel | [17-channel-development.md](./17-channel-development.md) · [× Agent/Team 集成](./17-channel-agent-team-integration.md) · [**长任务 Phase E**](./17-channel-development.md#10-长任务异步执行phase-e) |
+| Channel | [17-channel-development.md](./17-channel-development.md) · [× Agent/Team 集成](./17-channel-agent-team-integration.md) · [**长任务 Phase E**](./17-channel-development.md#10-长任务异步执行phase-e) · [**M55 长任务路由**](./55-chat-channel-cursor-development.md#phase-a--配置与路由p0约-3-天) |
 | Monitor | [18-monitor-development.md](./18-monitor-development.md)（运维 `/monitor/logs`）· [Dashboard 概览](./18-monitor-dashboard-development.md)（`/overview`） |
 | FlowLogger | [52-flow-logger.md](./52-flow-logger.md) · [design](./52-flow-logger.design.md) · [开发计划](./52-flow-logger-development.md) · [Slog 移除](../changelog/2026-05-20-FlowLog-V2-SlogRemoval.md) |
 | MCP | [19-mcp-development.md](./19-mcp-development.md) | 🟢 CRUD+探活+ToolSet/Broker+OAuth+重连 ✅；🟡 统计闭环 |
@@ -76,6 +76,20 @@
 4. Team、Tools/MCP、Plugin/Callback、Knowledge、Artifact、Evaluation、A2A 闭环。
 5. 前端 feature/store/mapper 治理。
 6. Monitor、Telemetry、Token、Channel、Ecosystem 平台能力。
+
+---
+
+## 进度快照（2026-05-23，M55 Chat×Channel×Cursor）
+
+> **M55 方案**：[55-chat-channel-cursor-solution.md](./55-chat-channel-cursor-solution.md) · [开发计划](./55-chat-channel-cursor-development.md) · [execution-plan §迭代 CC](../guides/execution-plan.md) · [changelog](../changelog/2026-05-23-Chat-Channel-Cursor-Solution.md)
+
+| 阶段 | 主题 | 状态 |
+|------|------|------|
+| CC-A | Channel 长任务 preset + auto→async 路由 | 📋 |
+| CC-B | `session_revision` + Web 增量 sync | 📋 |
+| CC-C | TurnBlock UI + 虚拟列表 | 📋 |
+| CC-D | Background Job 面板 | 📋 |
+| CC-E/F | @ Context · Apply diff · 24h Durable Job | 📋 |
 
 ---
 

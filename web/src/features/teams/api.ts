@@ -40,6 +40,8 @@ function wireTeam(t: WireTeam | null | undefined): Team {
     is_default: t?.isDefault ?? false,
     definition_json: t?.definitionJson ?? "",
     app_name: t?.adkAppName ?? "",
+    linked_graph_id: t?.linkedGraphId ?? "",
+    has_active_run: t?.hasActiveRun ?? false,
     created_at: t?.createdAt ?? "",
     updated_at: t?.updatedAt ?? "",
     deleted_at: t?.deletedAt ?? ""
@@ -62,6 +64,7 @@ function wireRun(r: WireTeamRun | null | undefined): TeamRun {
     duration_ms: r?.durationMs ?? 0,
     error_message: r?.errorMessage ?? "",
     topology_json: r?.topologyJson ?? "",
+    graph_execution_id: r?.graphExecutionId ?? "",
     started_at: r?.startedAt ?? "",
     finished_at: r?.finishedAt ?? "",
     created_at: r?.createdAt ?? "",
@@ -138,6 +141,7 @@ function patchToWire(payload: Partial<Team>): WireTeam {
   if (payload.is_default !== undefined) t.isDefault = payload.is_default;
   if (payload.definition_json !== undefined) t.definitionJson = payload.definition_json;
   if (payload.app_name !== undefined) t.adkAppName = payload.app_name;
+  if (payload.linked_graph_id !== undefined) t.linkedGraphId = payload.linked_graph_id;
   if (payload.created_at !== undefined) t.createdAt = payload.created_at;
   if (payload.updated_at !== undefined) t.updatedAt = payload.updated_at;
   if (payload.deleted_at !== undefined) t.deletedAt = payload.deleted_at;
@@ -185,6 +189,13 @@ export async function listTeamRuns(teamID?: string, limit = 50): Promise<TeamRun
   const res = await svc.ListTeamRuns({ teamId: teamID, limit });
   const items = res.items ?? [];
   return items.map(wireRun);
+}
+
+const ACTIVE_RUN_STATUSES = new Set(["running", "pending"]);
+
+export async function findActiveTeamRun(teamID: string): Promise<TeamRun | null> {
+  const runs = await listTeamRuns(teamID, 20);
+  return runs.find((run) => ACTIVE_RUN_STATUSES.has(run.status)) ?? null;
 }
 
 export async function listTeamRunSteps(runID: string): Promise<TeamRunStep[]> {

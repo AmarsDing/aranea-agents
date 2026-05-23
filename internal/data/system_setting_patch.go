@@ -28,6 +28,13 @@ func ensureSystemSettingPatches(ctx context.Context, c *ent.Client) error {
 		{"eval_sim_model", `ALTER TABLE system_settings ADD COLUMN eval_sim_model TEXT NOT NULL DEFAULT ''`},
 		{"eval_judge_provider", `ALTER TABLE system_settings ADD COLUMN eval_judge_provider TEXT NOT NULL DEFAULT ''`},
 		{"eval_judge_model", `ALTER TABLE system_settings ADD COLUMN eval_judge_model TEXT NOT NULL DEFAULT ''`},
+		{"web_research_provider", `ALTER TABLE system_settings ADD COLUMN web_research_provider TEXT NOT NULL DEFAULT 'tavily'`},
+		{"web_research_api_key", `ALTER TABLE system_settings ADD COLUMN web_research_api_key TEXT NOT NULL DEFAULT ''`},
+		{"web_research_max_results", `ALTER TABLE system_settings ADD COLUMN web_research_max_results INTEGER NOT NULL DEFAULT 8`},
+		{"web_research_fetch_top", `ALTER TABLE system_settings ADD COLUMN web_research_fetch_top INTEGER NOT NULL DEFAULT 5`},
+		{"web_research_search_depth", `ALTER TABLE system_settings ADD COLUMN web_research_search_depth TEXT NOT NULL DEFAULT 'basic'`},
+		{"web_research_timeout_sec", `ALTER TABLE system_settings ADD COLUMN web_research_timeout_sec INTEGER NOT NULL DEFAULT 15`},
+		{"web_research_http_proxy", `ALTER TABLE system_settings ADD COLUMN web_research_http_proxy TEXT NOT NULL DEFAULT ''`},
 	}
 	for _, p := range patches {
 		has, err := sqliteTableHasColumn(ctx, c, "system_settings", p.col)

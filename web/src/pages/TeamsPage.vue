@@ -33,6 +33,7 @@
         :is-dark="isDark"
         @copy-key="copyKey"
         @open-runs="openRuns"
+        @open-observatory="openTeamObservatory"
         @run-test="openRunTest"
         @duplicate="duplicate"
         @edit="openEdit"
@@ -158,6 +159,7 @@ const {
   executeRunTest,
   loadRunSummary,
   openRunObservatory,
+  openTeamObservatory,
   loadRuns,
   loadRunSteps
 } = useTeamsPage();

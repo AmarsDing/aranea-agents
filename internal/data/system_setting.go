@@ -34,6 +34,7 @@ func entToBizSystemSetting(e *ent.SystemSetting) biz.SystemSetting {
 		CredentialEncryptionKeyConfigured: strings.TrimSpace(e.CredentialEncryptionKey) != "",
 		KnowledgeEmbed:                    entToKnowledgeEmbed(e),
 		EvalLLM:                           entToEvalLLM(e),
+		WebResearch:                       entToWebResearch(e),
 		MCPAllowAdHocHTTP:                 e.McpAllowAdhocHTTP,
 		UpdateTime:                        e.UpdateTime,
 	}
@@ -49,6 +50,21 @@ func entToKnowledgeEmbed(e *ent.SystemSetting) biz.KnowledgeEmbedSetting {
 		Model:     e.KnowledgeEmbedModel,
 		Dim:       e.KnowledgeEmbedDim,
 		HasAPIKey: strings.TrimSpace(e.KnowledgeEmbedAPIKey) != "",
+	}
+}
+
+func entToWebResearch(e *ent.SystemSetting) biz.WebResearchSetting {
+	if e == nil {
+		return biz.WebResearchSetting{}
+	}
+	return biz.WebResearchSetting{
+		Provider:    e.WebResearchProvider,
+		MaxResults:  e.WebResearchMaxResults,
+		FetchTop:    e.WebResearchFetchTop,
+		SearchDepth: e.WebResearchSearchDepth,
+		TimeoutSec:  e.WebResearchTimeoutSec,
+		HTTPProxy:   e.WebResearchHTTPProxy,
+		HasAPIKey:   strings.TrimSpace(e.WebResearchAPIKey) != "",
 	}
 }
 
@@ -126,6 +142,77 @@ func (r *systemSettingRepo) UpdateKnowledgeEmbed(ctx context.Context, patch biz.
 		return biz.KnowledgeEmbedSetting{}, err
 	}
 	return entToKnowledgeEmbed(row), nil
+}
+
+func (r *systemSettingRepo) GetWebResearch(ctx context.Context) (biz.WebResearchSetting, error) {
+	row, err := r.data.entClient.SystemSetting.Get(ctx, systemSettingSingletonID)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return biz.WebResearchSetting{}, sql.ErrNoRows
+		}
+		return biz.WebResearchSetting{}, err
+	}
+	out := entToWebResearch(row)
+	out.APIKey = row.WebResearchAPIKey
+	return out, nil
+}
+
+func (r *systemSettingRepo) UpdateWebResearch(ctx context.Context, patch biz.WebResearchSetting, updateAPIKey bool) (biz.WebResearchSetting, error) {
+	up := r.data.entClient.SystemSetting.UpdateOneID(systemSettingSingletonID).
+		SetWebResearchProvider(defaultWebResearchProvider(patch.Provider)).
+		SetWebResearchMaxResults(defaultWebResearchMaxResults(patch.MaxResults)).
+		SetWebResearchFetchTop(defaultWebResearchFetchTop(patch.FetchTop)).
+		SetWebResearchSearchDepth(defaultWebResearchSearchDepth(patch.SearchDepth)).
+		SetWebResearchTimeoutSec(defaultWebResearchTimeoutSec(patch.TimeoutSec)).
+		SetWebResearchHTTPProxy(strings.TrimSpace(patch.HTTPProxy))
+	if updateAPIKey && strings.TrimSpace(patch.APIKey) != "" {
+		up = up.SetWebResearchAPIKey(strings.TrimSpace(patch.APIKey))
+	}
+	row, err := up.Save(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return biz.WebResearchSetting{}, sql.ErrNoRows
+		}
+		return biz.WebResearchSetting{}, err
+	}
+	return entToWebResearch(row), nil
+}
+
+func defaultWebResearchProvider(p string) string {
+	p = strings.TrimSpace(p)
+	if p == "" {
+		return "tavily"
+	}
+	return p
+}
+
+func defaultWebResearchMaxResults(n int) int {
+	if n <= 0 {
+		return 8
+	}
+	return n
+}
+
+func defaultWebResearchFetchTop(n int) int {
+	if n <= 0 {
+		return 5
+	}
+	return n
+}
+
+func defaultWebResearchSearchDepth(d string) string {
+	d = strings.TrimSpace(d)
+	if d == "" {
+		return "basic"
+	}
+	return d
+}
+
+func defaultWebResearchTimeoutSec(n int) int {
+	if n <= 0 {
+		return 15
+	}
+	return n
 }
 
 func (r *systemSettingRepo) UpdateEvalLLM(ctx context.Context, patch biz.EvalLLMSetting) (biz.EvalLLMSetting, error) {

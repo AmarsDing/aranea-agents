@@ -43,6 +43,7 @@ function wireNode(n: AgentNodeStateView): AgentNodeState {
     output_preview: n.outputPreview,
     error_message: n.errorMessage,
     current_activity: wireActivity(n.currentActivity),
+    activity_history: (n.activityHistory ?? []).map((a) => wireActivity(a)).filter(Boolean) as ActivitySnapshot[],
   };
 }
 
@@ -53,6 +54,7 @@ function wireObservatory(res: GetTeamRunObservatoryResponse): TeamRunObservatory
     session_id: res.sessionId ?? "",
     status: res.status ?? "",
     mode: res.mode ?? "",
+    graph_execution_id: res.graphExecutionId ?? "",
     definition_snapshot_json: res.definitionSnapshotJson ?? "",
     compiled_topology: res.compiledTopology ? wireCompileResponse(res.compiledTopology) : undefined,
     nodes: (res.nodes ?? []).map(wireNode),

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"aranea-agents/internal/biz"
 
@@ -40,7 +41,35 @@ func nodeOptions(n NodeDef) []trpcgraph.Option {
 	if n.RetryMaxAttempts > 0 {
 		opts = append(opts, trpcgraph.WithRetryPolicy(trpcgraph.WithSimpleRetry(n.RetryMaxAttempts)))
 	}
+	if n.CacheEnabled {
+		pol := trpcgraph.DefaultCachePolicy()
+		if n.CacheTTLSeconds > 0 {
+			pol = &trpcgraph.CachePolicy{
+				KeyFunc: trpcgraph.DefaultCachePolicy().KeyFunc,
+				TTL:     time.Duration(n.CacheTTLSeconds) * time.Second,
+			}
+		}
+		opts = append(opts, trpcgraph.WithNodeCachePolicy(pol))
+	}
+	opts = append(opts, agentMapperOptions(n)...)
 	opts = append(opts, failureRecoveryOptions(n)...)
+	return opts
+}
+
+func agentMapperOptions(n NodeDef) []trpcgraph.Option {
+	opts := []trpcgraph.Option{}
+	if m := parseInputMapper(n.InputMapperJSON); m != nil {
+		opts = append(opts, trpcgraph.WithSubgraphInputMapper(m))
+	}
+	if m := parseOutputMapper(n.OutputMapperJSON); m != nil {
+		opts = append(opts, trpcgraph.WithSubgraphOutputMapper(m))
+	}
+	if n.IsolatedMessages {
+		opts = append(opts, trpcgraph.WithSubgraphIsolatedMessages(true))
+	}
+	if n.InputFromLastResponse {
+		opts = append(opts, trpcgraph.WithSubgraphInputFromLastResponse())
+	}
 	return opts
 }
 

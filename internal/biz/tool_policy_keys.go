@@ -8,7 +8,7 @@ import "strings"
 // Keep naming aligned with internal/tools/registry (see ApplyEffectiveAliases).
 var toolPolicyKeyAliases = map[string]string{
 	"shell":            "shell_exec",
-	"web_search":       "duckduckgo_search",
+	"web_search":       ToolKeyWebResearch,
 	"write_file":       "save_file",
 	"edit_file":        "diff_edit",
 	"list_files":       "list_file",

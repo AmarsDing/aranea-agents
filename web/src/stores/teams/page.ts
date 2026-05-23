@@ -61,8 +61,14 @@ export const useTeamsPageStore = defineStore("teamsPage", () => {
     return runTeamTest(teamId, content);
   }
 
-  function subscribeRunEvents(onEvent: (event: TeamRunEvent) => void) {
-    return subscribeTeamRunEventsWs(onEvent);
+  function subscribeRunEvents(
+    sessionId: string,
+    teamID: string,
+    onEvent: (event: TeamRunEvent) => void,
+    onError?: (error: string) => void,
+    onReplayState?: (replaying: boolean) => void,
+  ) {
+    return subscribeTeamRunEventsWs(sessionId, teamID, onEvent, onError, onReplayState);
   }
 
   return {

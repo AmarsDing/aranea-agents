@@ -4,8 +4,9 @@ import { useRoute, useRouter } from "vue-router";
 import { GLOBAL_WS_SESSION_ID } from "../../config/runtime";
 import type { Agent } from "../agents/types";
 import type { Team, TeamDefinition, TeamRun, TeamRunEvent, TeamRunStep, TeamRunSummary } from "./types";
+import { findActiveTeamRun } from "./api";
 import { useTeamsPageStore } from "../../stores/teams/page";
-import { buildGraphFromDefinition, defaultDefinition, definitionFromTemplate, parseDefinition, type TeamTemplateKey } from "../../components/teams/teamUtils";
+import { buildGraphFromDefinition, defaultDefinition, definitionFromTemplate, definitionToJSON, parseDefinition, type TeamTemplateKey } from "../../components/teams/teamUtils";
 
 export function useTeamsPage() {
   const $q = useQuasar();
@@ -61,7 +62,7 @@ const definition = reactive<TeamDefinition>({
 });
 
 const agentOptions = computed(() => agents.value.map((agent) => ({ label: agent.display_name, value: agent.id })));
-const definitionJSON = computed(() => JSON.stringify({ ...definition, graph: buildGraphFromDefinition(definition) }, null, 2));
+const definitionJSON = computed(() => definitionToJSON(definition));
 const canSave = computed(() => Boolean(form.team_key && form.display_name && definition.members.some((member) => member.enabled)));
 const filteredTeams = computed(() => {
   const q = search.value.trim().toLowerCase();
@@ -197,15 +198,23 @@ async function save() {
 }
 
 async function duplicate(team: Team) {
-  const created = await teamsPageStore.copyTeam(team.id);
-  rows.value = [created, ...rows.value];
-  $q.notify({ type: "positive", message: "Team 已复制" });
+  try {
+    const created = await teamsPageStore.copyTeam(team.id);
+    rows.value = [created, ...rows.value];
+    $q.notify({ type: "positive", message: "Team 已复制" });
+  } catch (err) {
+    $q.notify({ type: "negative", message: err instanceof Error ? err.message : "复制失败" });
+  }
 }
 
 async function remove(team: Team) {
-  await teamsPageStore.removeTeam(team.id);
-  rows.value = rows.value.filter((row) => row.id !== team.id);
-  $q.notify({ type: "info", message: "Team 已删除" });
+  try {
+    await teamsPageStore.removeTeam(team.id);
+    rows.value = rows.value.filter((row) => row.id !== team.id);
+    $q.notify({ type: "info", message: "Team 已删除" });
+  } catch (err) {
+    $q.notify({ type: "negative", message: err instanceof Error ? err.message : "删除失败" });
+  }
 }
 
 async function copyKey(value: string) {
@@ -264,6 +273,25 @@ function openRunObservatory(runID: string) {
     name: "team-run-observatory",
     params: { teamId: selectedTeam.value.id, runId: runID },
   });
+}
+
+async function openTeamObservatory(team: Team) {
+  try {
+    const run = await findActiveTeamRun(team.id);
+    if (run) {
+      router.push({
+        name: "team-run-observatory",
+        params: { teamId: team.id, runId: run.id },
+      });
+      return;
+    }
+    router.push({ name: "team-orchestrate", params: { teamId: team.id } });
+  } catch (err) {
+    $q.notify({
+      type: "negative",
+      message: err instanceof Error ? err.message : "打开观测台失败",
+    });
+  }
 }
 
 async function loadRuns() {
@@ -349,6 +377,6 @@ function upsertRunStep(step: TeamRunStep) {
     summariesByRun, summariesLoading, testOpen, testTeam, testLoading, testError, testReply, testRun,
     form, definition, agentOptions, definitionJSON, canSave, filteredTeams,
     loadRows, openCreate, openEdit, addMember, removeMember, applyTemplate, save, duplicate, remove,
-    copyKey, openRuns, openRunTest, executeRunTest, loadRunSummary, openRunObservatory, loadRuns, loadRunSteps
+    copyKey, openRuns, openRunTest, executeRunTest, loadRunSummary, openRunObservatory, openTeamObservatory, loadRuns, loadRunSteps
   };
 }

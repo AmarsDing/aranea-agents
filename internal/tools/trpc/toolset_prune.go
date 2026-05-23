@@ -18,5 +18,9 @@ func PruneUnconfiguredToolFlags(cfg *ToolsetConfig) []string {
 		cfg.GoogleSearch = false
 		skipped = append(skipped, "google_search")
 	}
+	if cfg.WebResearch && !cfg.WebResearchCfg.Ready() {
+		cfg.WebResearch = false
+		skipped = append(skipped, "web_research")
+	}
 	return skipped
 }

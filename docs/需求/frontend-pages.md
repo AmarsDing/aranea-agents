@@ -259,14 +259,25 @@
 #### Graph 编辑器 `/graphs/new`、`/graphs/:id`
 
 - Vue Flow 画布：`GraphEditorCanvas`、`GraphNodePalette`、`GraphPropertyPanel`。
-- 节点类型：Function、Agent、Router、LLM、Tool 等（与后端 Graph builder 对齐）。
+- **模板**：`GraphTemplatePicker` → `createGraphFromTemplate`（含用户模板 `user:{graphId}`）。
+- **校验**：保存后 `validateGraph` → `GraphValidationPanel`（点击跳转节点）。
+- **布局**：节点坐标持久化于 `metadata.layout`。
+- **高级**：节点属性「高级策略」（重试/缓存/Mapper）；Graph 属性显示版本号。
+- **资产**：工具栏 ⋮ 菜单 — 导出/导入 JSON、版本历史（`GraphVersionPanel`）、保存为用户模板。
+- 节点类型：Function、Agent、Router、LLM、Tool、HITL 等（与后端 Graph builder 对齐）。
 - 保存定义、发起执行（Run 对话框）。
 
 #### Graph 运行 `/graphs/:id/run/:execId`
 
-- 执行态可视化、节点状态、ExecutionSummary 展示。
+- **实时观测**：`useGraphExecutionStream` → 画布节点 running/completed/failed 高亮。
+- **Inspector**：`GraphRunInspector` 三 Tab — 监控 | 检查点 | 任务。
+  - **监控**：`GraphRunSidebar`（ExecutionSummary + 步骤时间线 + 连接状态）。
+  - **检查点**：`GraphCheckpointPanel` + `GraphTimeTravelPanel`（快照 / EditState / Resume）。
+  - **任务**：`GraphTaskKanban`（WS `graph_task_status` 实时更新，列：待处理/执行中/待审核/已完成/异常）→ `GraphTaskDetailDrawer`（claim/submit/review/unblock + 评论/日志/事件）；详见 [M54 Hermes Kanban](./54-hermes-kanban.md)。
+- **HITL**：`GraphHitlDialog`（approve/dismiss + lineage/checkpoint/resume_map）。
+- 只读画布（`readOnly`）。
 
-Store：`stores/graph`；API：`features/graph/api.ts`。
+Store：`stores/graph`（含 validate/template/checkpoint/task actions）；API：`features/graph/api.ts`；Runtime：`features/graph/runtime/` · Tasks：`features/graph/tasks/`。
 
 ---
 

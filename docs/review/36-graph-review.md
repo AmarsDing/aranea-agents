@@ -3,7 +3,7 @@
 > **评分**：77 / 100 | **风险等级**：P1  
 > **文档**：[36-graph-development.md](../需求/36-graph-development.md)  
 > **代码锚点**：`internal/graph/` · `internal/service/graph.go` · `internal/biz/graph.go` · `internal/graph/trpc/` · `web/src/pages/GraphEditorPage.vue` · `web/src/pages/GraphRunPage.vue`  
-> **审查时间**：2026-05-21
+> **审查时间**：2026-05-21 · **Phase A–D 优化闭合**：[2026-05-23-Graph-Phase-A-D-Review.md](./2026-05-23-Graph-Phase-A-D-Review.md)（92/100，P2）
 
 ---
 

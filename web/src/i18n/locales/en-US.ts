@@ -235,7 +235,28 @@ export default {
     mcpAdhocTitle: "MCP Broker AdHoc HTTP",
     mcpAdhocHint:
       "Allow MCP Broker mcp_call against unregistered HTTP endpoints. Off by default in production; MCP Server must also set allow_adhoc_http. Stored in system_settings.mcp_allow_adhoc_http.",
-    mcpAdhocToggle: "Allow MCP Broker AdHoc HTTP"
+    mcpAdhocToggle: "Allow MCP Broker AdHoc HTTP",
+    webResearchTitle: "Web research (Tavily / SerpAPI)",
+    webResearchHint:
+      "Platform defaults for the web_research tool (system_settings). Used when agents have no per-tool API key. Env TAVILY_API_KEY / SERPAPI_API_KEY applies when the DB key is empty.",
+    webResearch: {
+      provider: "Search provider",
+      tavilyApiKey: "Tavily API key",
+      serpApiKey: "SerpAPI key",
+      apiKeySet: "Key saved (leave blank to keep)",
+      apiKeyEmpty: "Paste API key and save",
+      maxResults: "Max search results",
+      fetchTop: "Pages to fetch for body text",
+      searchDepth: "Tavily search depth",
+      timeoutSec: "Timeout (seconds)",
+      httpProxy: "HTTP proxy (optional)",
+      httpProxyHint: "Only if outbound traffic needs a proxy; or set ARANEA_WEB_HTTP_PROXY",
+      configured: "Web research ready",
+      notConfigured: "API key not configured",
+      testConnection: "Test connection",
+      testOk: "Connection succeeded",
+      testFailed: "Connection failed"
+    }
   },
   channelsPage: {
     kicker: "Channel management",

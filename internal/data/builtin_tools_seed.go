@@ -25,8 +25,11 @@ type platformToolSeed struct {
 	suppStream   bool
 	suppConc     bool
 	paramsSchema string
+	configSchema string
 	registryName string
 }
+
+const webResearchConfigSchema = `{"type":"object","properties":{"provider":{"type":"string","enum":["tavily","serpapi"],"description":"Search API provider"},"api_key":{"type":"string","description":"Provider API key (optional if set in system settings)"},"search_depth":{"type":"string","enum":["basic","advanced"],"description":"Tavily search depth"},"max_results":{"type":"integer","minimum":1,"maximum":20},"fetch_top":{"type":"integer","minimum":0,"maximum":20,"description":"URLs to fetch for full page excerpts"},"timeout_sec":{"type":"integer","minimum":5,"maximum":120},"http_proxy":{"type":"string","description":"HTTP proxy URL for search and fetch"}}}`
 
 func b2i(b bool) int {
 	if b {
@@ -49,8 +52,9 @@ func applyPlatformToolDefaults(s *platformToolSeed) {
 
 var builtinPlatformToolSeeds = []platformToolSeed{
 	{key: "datetime", displayName: "当前时间", description: "返回当前时间、日期和时区信息。", category: "system", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{}}`},
-	{key: "duckduckgo_search", displayName: "DuckDuckGo 搜索", description: "使用 DuckDuckGo 搜索实时网络信息，返回标题、链接和摘要。", category: "web", riskLevel: "medium", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{"query":{"type":"string","description":"搜索关键词"}},"required":["query"]}`, registryName: "duckduckgo"},
-	{key: "web_fetch", displayName: "Web 抓取", description: "抓取 URL 并提取页面文本或 Markdown。", category: "web", riskLevel: "medium", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{"url":{"type":"string","description":"要抓取的 URL"}},"required":["url"]}`, registryName: "httpfetch"},
+	{key: "web_research", displayName: "Web 研究", description: "使用 Tavily 或 SerpAPI 搜索网络并返回多源摘要与正文片段。API Key 优先 Agent 工具配置，否则使用系统设置（设置 → Web 研究）或环境变量 TAVILY_API_KEY。", category: "web", riskLevel: "medium", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{"query":{"type":"string","description":"自然语言搜索问题"}},"required":["query"]}`, configSchema: webResearchConfigSchema, registryName: ""},
+	{key: "duckduckgo_search", displayName: "DuckDuckGo 搜索", description: "DuckDuckGo Instant Answer（百科/定义类查询；非通用网页搜索）。", category: "web", riskLevel: "medium", enabled: false, readonly: true, paramsSchema: `{"type":"object","properties":{"query":{"type":"string","description":"搜索关键词"}},"required":["query"]}`, registryName: "duckduckgo"},
+	{key: "web_fetch", displayName: "Web 抓取", description: "并行抓取多个 URL 并提取 Markdown/文本。", category: "web", riskLevel: "medium", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{"urls":{"type":"array","items":{"type":"string"},"description":"要抓取的 URL 列表"}},"required":["urls"]}`, registryName: "httpfetch"},
 	{key: "gemini_web_fetch", displayName: "Gemini 抓取", description: "使用 Gemini 模型抓取并理解 URL 内容。", category: "web", riskLevel: "medium", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{"url":{"type":"string","description":"要抓取的 URL"}},"required":["url"]}`, registryName: "geminifetch"},
 	{key: "google_search", displayName: "Google 搜索", description: "使用 Google Custom Search API 搜索网络信息。", category: "web", riskLevel: "medium", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{"query":{"type":"string","description":"搜索关键词"}},"required":["query"]}`, registryName: "google_search"},
 	{key: "arxiv_search", displayName: "ArXiv 搜索", description: "搜索 ArXiv 学术论文。", category: "web", riskLevel: "low", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{"query":{"type":"string","description":"搜索关键词"},"max_results":{"type":"number","description":"最大返回结果数"}},"required":["query"]}`, registryName: "arxiv_search"},
@@ -76,6 +80,7 @@ var builtinPlatformToolSeeds = []platformToolSeed{
 	{key: "send_email", displayName: "邮件发送", description: "发送电子邮件。", category: "messaging", riskLevel: "high", enabled: false, reqConfirm: true, paramsSchema: `{"type":"object","properties":{"to":{"type":"string"},"subject":{"type":"string"},"body":{"type":"string"}},"required":["to","subject","body"]}`, registryName: "email"},
 	{key: "todo_write", displayName: "待办管理", description: "管理待办事项列表，支持创建、更新和追踪任务进度。", category: "system", riskLevel: "low", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{"todos":{"type":"array","items":{"type":"object","properties":{"content":{"type":"string"},"activeForm":{"type":"string"},"status":{"type":"string","enum":["pending","in_progress","completed"]}},"required":["content","activeForm","status"]}}},"required":["todos"]}`, registryName: "todo"},
 	{key: "await_user_reply", displayName: "等待回复", description: "暂停执行并等待用户回复，用于多轮对话场景。", category: "session", riskLevel: "low", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{}}`, registryName: "await_user_reply"},
+	{key: "kanban", displayName: "Kanban 任务板", description: "Graph 任务看板工具集（kanban_show/complete/block/heartbeat/comment/create/link）。Worker 需设置 ARANEA_TASK_ID。", category: "integration", riskLevel: "medium", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{}}`},
 	{key: "claude_code", displayName: "Claude Code", description: "使用 Claude Code 进行代码编辑和执行，包含 Bash、Read、Write、Edit、Glob、Grep 等子工具。", category: "runtime", riskLevel: "high", enabled: false, reqConfirm: true, paramsSchema: `{"type":"object","properties":{}}`, registryName: "claudecode"},
 	{key: "workspace_exec", displayName: "工作区执行", description: "在工作区中执行命令并管理会话。", category: "runtime", riskLevel: "high", enabled: false, reqConfirm: true, paramsSchema: `{"type":"object","properties":{"command":{"type":"string"}},"required":["command"]}`, registryName: "workspace_exec"},
 	{key: "call_agent", displayName: "调用 Agent", description: "调用同工作区内已启用 A2A 的另一 Agent 能力。", category: "integration", riskLevel: "medium", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{"agent_id":{"type":"string","description":"目标 Agent ID"},"capability":{"type":"string","description":"能力名称，如 chat"},"payload":{"description":"传递给目标 Agent 的 JSON 载荷"},"timeout_seconds":{"type":"integer","description":"超时秒数"}},"required":["agent_id","capability"]}`},
@@ -103,11 +108,15 @@ func ensureBuiltinPlatformTools(ctx context.Context, client *ent.Client) error {
 	for _, row := range builtinPlatformToolSeeds {
 		applyPlatformToolDefaults(&row)
 		id := "tool_" + strings.ReplaceAll(row.key, ".", "_")
+		configSchema := strings.TrimSpace(row.configSchema)
+		if configSchema == "" {
+			configSchema = "{}"
+		}
 		_, err := client.ExecContext(ctx, q,
 			id, row.key, row.displayName, row.description, row.category, row.source, row.riskLevel,
 			b2i(row.enabled), b2i(row.readonly), b2i(row.reqConfirm),
 			b2i(row.suppStream), b2i(row.suppConc),
-			row.paramsSchema, "{}", "{}", "{}", "{}", "{}",
+			row.paramsSchema, "{}", configSchema, "{}", "{}", "{}",
 			now, now,
 		)
 		if err != nil {
@@ -116,6 +125,52 @@ func ensureBuiltinPlatformTools(ctx context.Context, client *ent.Client) error {
 	}
 	if err := syncBuiltinToolsFromRegistry(ctx, client); err != nil {
 		event.SysLogWarn("system.data.builtin_tool_sync", "内置工具批量同步失败", event.P("error", err))
+	}
+	if err := syncBuiltinWebToolCatalogPatches(ctx, client); err != nil {
+		event.SysLogWarn("system.data.builtin_tool_sync", "内置 Web 工具元数据同步失败", event.P("error", err))
+	}
+	return nil
+}
+
+// syncBuiltinWebToolCatalogPatches updates catalog metadata for existing DBs (seed uses ON CONFLICT DO NOTHING).
+func syncBuiltinWebToolCatalogPatches(ctx context.Context, client *ent.Client) error {
+	if client == nil {
+		return nil
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	const upd = `UPDATE tools SET
+		enabled = ?, description = ?, parameters_schema_json = ?, config_schema_json = ?, updated_at = ?
+		WHERE tool_key = ? AND source = 'builtin' AND deleted_at = ''`
+	patches := []struct {
+		key, desc, params, config string
+		enabled                   int
+	}{
+		{
+			key:     "duckduckgo_search",
+			enabled: 0,
+			desc:    "DuckDuckGo Instant Answer（百科/定义类查询；非通用网页搜索）。",
+			params:  `{"type":"object","properties":{"query":{"type":"string","description":"搜索关键词"}},"required":["query"]}`,
+			config:  "{}",
+		},
+		{
+			key:     "web_research",
+			enabled: 1,
+			desc:    "使用 Tavily 或 SerpAPI 搜索网络并返回多源摘要与正文片段。API Key 优先 Agent 工具配置，否则使用系统设置（设置 → Web 研究）或环境变量 TAVILY_API_KEY。",
+			params:  `{"type":"object","properties":{"query":{"type":"string","description":"自然语言搜索问题"}},"required":["query"]}`,
+			config:  webResearchConfigSchema,
+		},
+		{
+			key:     "web_fetch",
+			enabled: 1,
+			desc:    "并行抓取多个 URL 并提取 Markdown/文本。",
+			params:  `{"type":"object","properties":{"urls":{"type":"array","items":{"type":"string"},"description":"要抓取的 URL 列表"}},"required":["urls"]}`,
+			config:  "{}",
+		},
+	}
+	for _, p := range patches {
+		if _, err := client.ExecContext(ctx, upd, p.enabled, p.desc, p.params, p.config, now, p.key); err != nil {
+			return fmt.Errorf("sync web tool %q: %w", p.key, err)
+		}
 	}
 	return nil
 }

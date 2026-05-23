@@ -140,3 +140,6 @@ CREATE INDEX IF NOT EXISTS idx_graph_task_logs_task_level ON graph_task_logs(tas
 CREATE INDEX IF NOT EXISTS idx_graph_task_runs_task ON graph_task_runs(task_id);
 CREATE INDEX IF NOT EXISTS idx_graph_task_events_task ON graph_task_events(task_id);
 CREATE INDEX IF NOT EXISTS idx_graph_task_events_type ON graph_task_events(event_type);
+CREATE INDEX IF NOT EXISTS idx_graph_task_links_parent ON graph_task_links(parent_task_id);
+CREATE INDEX IF NOT EXISTS idx_graph_task_links_child ON graph_task_links(child_task_id);
+CREATE INDEX IF NOT EXISTS idx_graph_task_links_execution ON graph_task_links(execution_id);

@@ -4,20 +4,18 @@ import { useRouter } from "vue-router";
 import { storeToRefs } from "pinia";
 import { useGraphStore } from "../../stores/graph";
 import type { GraphDefinition } from "./types";
+import { useGraphExecute } from "./useGraphExecute";
 
 export function useGraphsPage() {
   const $q = useQuasar();
   const router = useRouter();
   const graphStore = useGraphStore();
+  const graphExecute = useGraphExecute(router);
   const { graphs: rows, loading } = storeToRefs(graphStore);
 
   const isDark = computed(() => $q.dark.isActive);
   const error = ref("");
-  const runDialogOpen = ref(false);
   const runDialogGraph = ref<GraphDefinition | null>(null);
-  const runSessionId = ref("");
-  const runInitialState = ref("");
-  const runLoading = ref(false);
 
   onMounted(() => void loadRows());
 
@@ -26,7 +24,7 @@ export function useGraphsPage() {
     try {
       await graphStore.loadGraphs();
     } catch (err) {
-      error.value = err instanceof Error ? err.message : "?? Graph ????";
+      error.value = err instanceof Error ? err.message : "加载 Graph 列表失败";
     }
   }
 
@@ -40,37 +38,18 @@ export function useGraphsPage() {
 
   function openRunDialog(graph: GraphDefinition) {
     runDialogGraph.value = graph;
-    runSessionId.value = `graph-${Date.now()}`;
-    runInitialState.value = "";
-    runDialogOpen.value = true;
+    graphExecute.openRunDialog(graph.id);
   }
 
   async function executeRun() {
     if (!runDialogGraph.value) return;
-    runLoading.value = true;
-    try {
-      let initialState: Record<string, unknown> | undefined;
-      if (runInitialState.value.trim()) {
-        initialState = JSON.parse(runInitialState.value);
-      }
-      const result = await graphStore.runGraph(runDialogGraph.value.id, runSessionId.value, initialState);
-      runDialogOpen.value = false;
-      $q.notify({ type: "positive", message: `Graph ??????${result.executionId}` });
-      router.push({
-        name: "graph-run",
-        params: { id: runDialogGraph.value.id, execId: result.executionId }
-      });
-    } catch (err) {
-      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "????" });
-    } finally {
-      runLoading.value = false;
-    }
+    await graphExecute.executeRun(runDialogGraph.value.id);
   }
 
   async function duplicateGraph(graph: GraphDefinition) {
     try {
-      const created = await graphStore.addGraph({
-        name: `${graph.name} (??)`,
+      await graphStore.addGraph({
+        name: `${graph.name} (副本)`,
         description: graph.description,
         stateFields: graph.stateFields,
         nodes: graph.nodes,
@@ -80,21 +59,23 @@ export function useGraphsPage() {
         entryPoint: graph.entryPoint,
         finishPoint: graph.finishPoint,
         enableCheckpoint: graph.enableCheckpoint,
-        executionEngine: graph.executionEngine
+        executionEngine: graph.executionEngine,
+        interruptBefore: graph.interruptBefore,
+        interruptAfter: graph.interruptAfter,
+        metadata: graph.metadata,
       });
-      $q.notify({ type: "positive", message: "Graph ???" });
-      return created;
+      $q.notify({ type: "positive", message: "Graph 已复制" });
     } catch (err) {
-      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "????" });
+      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "复制失败" });
     }
   }
 
   async function removeGraph(graph: GraphDefinition) {
     try {
       await graphStore.removeGraph(graph.id);
-      $q.notify({ type: "info", message: "Graph ???" });
+      $q.notify({ type: "info", message: "Graph 已删除" });
     } catch (err) {
-      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "????" });
+      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "删除失败" });
     }
   }
 
@@ -103,17 +84,17 @@ export function useGraphsPage() {
     rows,
     loading,
     error,
-    runDialogOpen,
+    runDialogOpen: graphExecute.runDialogOpen,
     runDialogGraph,
-    runSessionId,
-    runInitialState,
-    runLoading,
+    runSessionId: graphExecute.runSessionId,
+    runInitialState: graphExecute.runInitialState,
+    runLoading: graphExecute.runLoading,
     loadRows,
     openCreate,
     openEditor,
     openRunDialog,
     executeRun,
     duplicateGraph,
-    removeGraph
+    removeGraph,
   };
 }

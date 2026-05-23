@@ -234,7 +234,28 @@ export default {
     mcpAdhocTitle: "MCP Broker AdHoc HTTP",
     mcpAdhocHint:
       "允许 MCP Broker 通过 mcp_call 连接未预注册的 HTTP 端点。生产环境默认关闭；需同时满足 MCP Server 配置 allow_adhoc_http。写入 system_settings.mcp_allow_adhoc_http。",
-    mcpAdhocToggle: "允许 MCP Broker AdHoc HTTP"
+    mcpAdhocToggle: "允许 MCP Broker AdHoc HTTP",
+    webResearchTitle: "Web 研究（Tavily / SerpAPI）",
+    webResearchHint:
+      "为 web_research 工具提供平台级默认配置，写入 system_settings。Agent 未单独配置 API Key 时使用此处；环境变量 TAVILY_API_KEY / SERPAPI_API_KEY 在数据库为空时作为回退。",
+    webResearch: {
+      provider: "搜索提供商",
+      tavilyApiKey: "Tavily API Key",
+      serpApiKey: "SerpAPI Key",
+      apiKeySet: "已保存密钥（留空则不修改）",
+      apiKeyEmpty: "粘贴 API Key 后保存",
+      maxResults: "搜索条数",
+      fetchTop: "补抓正文条数",
+      searchDepth: "Tavily 搜索深度",
+      timeoutSec: "超时（秒）",
+      httpProxy: "HTTP 代理（可选）",
+      httpProxyHint: "仅当服务器出网需代理时填写；也可设置 ARANEA_WEB_HTTP_PROXY",
+      configured: "Web 研究已就绪",
+      notConfigured: "未配置 API Key",
+      testConnection: "测试连接",
+      testOk: "连接成功",
+      testFailed: "连接失败"
+    }
   },
   channelsPage: {
     kicker: "Channel management",

@@ -414,6 +414,66 @@ export type GraphExecutionState = {
   nodes: Map<string, GraphNodeState>;
 };
 
+export type GraphStreamInterrupt = {
+  nodeId: string;
+  interruptKey: string;
+  prompt: string;
+  checkpointId: string;
+  lineageId: string;
+  interruptValue?: unknown;
+};
+
+export type GraphStreamExecutionSummary = {
+  executionId: string;
+  graphId: string;
+  totalSteps: number;
+  durationMs: number;
+  finalStateKeys: number;
+  nodes: Array<{
+    nodeId: string;
+    nodeType: string;
+    status: string;
+    durationMs: number;
+    error: string;
+    stepNumber: number;
+  }>;
+};
+
+function parseGraphStreamSummary(raw: unknown): GraphStreamExecutionSummary | null {
+  if (!raw || typeof raw !== "object") return null;
+  const summary = raw as Record<string, unknown>;
+  const nodes = Array.isArray(summary.nodes)
+    ? summary.nodes.map((node) => {
+        const n = node as Record<string, unknown>;
+        return {
+          nodeId: String(n.node_id ?? n.nodeId ?? ""),
+          nodeType: String(n.node_type ?? n.nodeType ?? ""),
+          status: String(n.status ?? ""),
+          durationMs: Number(n.duration_ms ?? n.durationMs ?? 0),
+          error: String(n.error ?? ""),
+          stepNumber: Number(n.step_number ?? n.stepNumber ?? 0),
+        };
+      })
+    : [];
+  return {
+    executionId: String(summary.execution_id ?? summary.executionId ?? ""),
+    graphId: String(summary.graph_id ?? summary.graphId ?? ""),
+    totalSteps: Number(summary.total_steps ?? summary.totalSteps ?? 0),
+    durationMs: Number(summary.duration_ms ?? summary.durationMs ?? 0),
+    finalStateKeys: Number(summary.final_state_keys ?? summary.finalStateKeys ?? 0),
+    nodes,
+  };
+}
+
+function parseInterruptPrompt(value: unknown): string {
+  if (value == null) return "";
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "object" && value !== null && "prompt" in value) {
+    return String((value as { prompt?: unknown }).prompt ?? "").trim();
+  }
+  return "";
+}
+
 export function useGraphStream(sessionId: string, graphId: string, execId: string) {
   const stream = useEnvelopeStream({
     sessionId,
@@ -426,6 +486,9 @@ export function useGraphStream(sessionId: string, graphId: string, execId: strin
     status: "pending",
     nodes: new Map(),
   });
+
+  const executionSummary = ref<GraphStreamExecutionSummary | null>(null);
+  const interrupt = ref<GraphStreamInterrupt | null>(null);
 
   const filterKey = `graph/${graphId}/${execId}`;
 
@@ -500,6 +563,7 @@ export function useGraphStream(sessionId: string, graphId: string, execId: strin
         if (env.metadata?.duration_ns) {
           execution.value.durationNs = env.metadata.duration_ns as number;
         }
+        executionSummary.value = parseGraphStreamSummary(env.metadata?.execution_summary);
         break;
       }
       case "checkpoint": {
@@ -515,14 +579,29 @@ export function useGraphStream(sessionId: string, graphId: string, execId: strin
               stepNumber: env.metadata?.step_number as number,
             });
           }
+          interrupt.value = {
+            nodeId: String(env.metadata?.node_id ?? ""),
+            interruptKey: String(env.metadata?.interrupt_key ?? ""),
+            prompt: parseInterruptPrompt(env.metadata?.interrupt_value),
+            checkpointId: String(env.metadata?.checkpoint_id ?? ""),
+            lineageId: String(env.metadata?.lineage_id ?? ""),
+            interruptValue: env.metadata?.interrupt_value,
+          };
         }
         break;
       }
     }
   });
 
+  function clearInterrupt() {
+    interrupt.value = null;
+  }
+
   return {
     ...stream,
     execution,
+    executionSummary,
+    interrupt,
+    clearInterrupt,
   };
 }

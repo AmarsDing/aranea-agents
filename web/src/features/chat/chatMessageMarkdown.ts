@@ -62,6 +62,43 @@ export function renderChatMarkdown(content: string): string {
   });
 }
 
+const MD_CACHE_MAX = 400;
+const mdCache = new Map<string, string>();
+
+function markdownCacheKey(messageId: string, content: string, streaming: boolean): string {
+  const id = messageId || "anon";
+  const len = content.length;
+  const tail = len > 96 ? content.slice(-96) : content;
+  return `${id}:${streaming ? "s" : "f"}:${len}:${tail}`;
+}
+
+function trimMarkdownCache() {
+  while (mdCache.size > MD_CACHE_MAX) {
+    const first = mdCache.keys().next().value;
+    if (first === undefined) break;
+    mdCache.delete(first);
+  }
+}
+
+/** Cached markdown render for chat rows (avoids re-parsing 100+ messages on each WS tick). */
+export function renderChatMarkdownForMessage(
+  messageId: string,
+  content: string,
+  streaming = false
+): string {
+  const key = markdownCacheKey(messageId, content, streaming);
+  const hit = mdCache.get(key);
+  if (hit !== undefined) return hit;
+  const html = streaming ? renderStreamingChatMarkdown(content) : renderChatMarkdown(content);
+  mdCache.set(key, html);
+  trimMarkdownCache();
+  return html;
+}
+
+export function clearChatMarkdownCache() {
+  mdCache.clear();
+}
+
 function closeOpenFences(src: string): string {
   let count = 0;
   for (const line of src.split("\n")) {

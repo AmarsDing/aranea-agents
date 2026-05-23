@@ -114,7 +114,7 @@ Agent 运行时对「需要目录」的工具共用 **单一工作区根** `work
 |------|------|------|
 | `system` | `datetime`、`todo_write` | 低风险 |
 | `filesystem` | `read_file`、`save_file`、`list_file`、`replace_content`、`search_content` | 读低风险，写中高风险 |
-| `web` | `duckduckgo_search`、`web_fetch`、`gemini_web_fetch`、`google_search`、`arxiv_search`、`wikipedia_search` | 中风险 |
+| `web` | `web_research`、`web_fetch`、`duckduckgo_search`、`gemini_web_fetch`、`google_search`、`arxiv_search`、`wikipedia_search` | 中风险 |
 | `search` | 同 web 分类搜索工具 | 低中风险 |
 | `memory` | `memory_search`、`memory_get`、`working_memory.*` | 低中风险 |
 | `skill` | `skill_search`、`use_skill` | 低中风险 |
@@ -133,7 +133,8 @@ Agent 运行时对「需要目录」的工具共用 **单一工作区根** `work
 | Tool Key | 名称 | 分类 | 风险 | 默认 | 说明 |
 |----------|------|------|------|------|------|
 | `datetime` | 当前时间 | system | low | 启用 | 返回当前时间、日期和时区信息 |
-| `duckduckgo_search` | DuckDuckGo 搜索 | web | medium | 启用 | 搜索实时网络信息 |
+| `web_research` | Web 研究 | web | medium | 启用 | Tavily / SerpAPI 统一搜索；密钥见系统设置 → Web 研究 |
+| `duckduckgo_search` | DuckDuckGo 搜索 | web | medium | 停用 | Instant Answer（非通用网页搜索） |
 | `web_fetch` | Web 抓取 | web | medium | 启用 | 抓取 URL 并提取页面文本 |
 | `gemini_web_fetch` | Gemini 抓取 | web | medium | 启用 | 使用 Gemini 模型抓取并理解 URL 内容 |
 | `google_search` | Google 搜索 | web | medium | 启用 | 使用 Google Custom Search API |

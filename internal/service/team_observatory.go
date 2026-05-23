@@ -25,11 +25,13 @@ func compileSnapshotToProto(snap team.CompileSnapshot) *v1.CompileTeamGraphRespo
 	}
 	for _, n := range snap.Nodes {
 		resp.Nodes = append(resp.Nodes, &v1.CompiledGraphNodeView{
-			Id:          n.ID,
-			Type:        n.Type,
-			AgentName:   n.AgentName,
-			Role:        n.RequiredRole,
-			Description: n.Description,
+			Id:               n.ID,
+			Type:             n.Type,
+			AgentName:        n.AgentName,
+			Role:             n.RequiredRole,
+			Description:      n.Description,
+			AgentDisplayName: n.Description,
+			TaskPrompt:       n.Instruction,
 		})
 	}
 	for _, e := range snap.Edges {
@@ -55,8 +57,8 @@ func (s *TeamService) buildObservatoryCompiledTopology(ctx context.Context, defi
 			}},
 		}
 	}
-	snap := team.BuildCompileSnapshot(def, definitionJSON, s.compileAgentKeyResolver(ctx))
-	return compileSnapshotToProto(snap)
+	resp, _ := s.buildCompileTeamGraphResponse(ctx, def, definitionJSON)
+	return resp
 }
 
 func toProtoActivitySnapshot(a *biz.ActivitySnapshot) *v1.ActivitySnapshotView {
@@ -79,7 +81,7 @@ func toProtoActivitySnapshot(a *biz.ActivitySnapshot) *v1.ActivitySnapshotView {
 }
 
 func toProtoAgentNodeState(n biz.AgentNodeState) *v1.AgentNodeStateView {
-	return &v1.AgentNodeStateView{
+	out := &v1.AgentNodeStateView{
 		NodeId:          n.NodeID,
 		AgentId:         n.AgentID,
 		AgentKey:        n.AgentKey,
@@ -94,6 +96,11 @@ func toProtoAgentNodeState(n biz.AgentNodeState) *v1.AgentNodeStateView {
 		ErrorMessage:    n.ErrorMessage,
 		CurrentActivity: toProtoActivitySnapshot(n.CurrentActivity),
 	}
+	for _, snap := range n.ActivityHistory {
+		cp := snap
+		out.ActivityHistory = append(out.ActivityHistory, toProtoActivitySnapshot(&cp))
+	}
+	return out
 }
 
 func (s *TeamService) GetTeamRunObservatory(ctx context.Context, req *v1.GetTeamRunObservatoryRequest) (*v1.GetTeamRunObservatoryResponse, error) {
@@ -107,6 +114,7 @@ func (s *TeamService) GetTeamRunObservatory(ctx context.Context, req *v1.GetTeam
 		SessionId:              obs.SessionID,
 		Status:                 obs.Status,
 		Mode:                   obs.Mode,
+		GraphExecutionId:       obs.GraphExecutionID,
 		DefinitionSnapshotJson: obs.DefinitionSnapshotJSON,
 		CompiledTopology:       s.buildObservatoryCompiledTopology(ctx, obs.DefinitionSnapshotJSON),
 		Nodes:                  make([]*v1.AgentNodeStateView, 0, len(obs.Nodes)),

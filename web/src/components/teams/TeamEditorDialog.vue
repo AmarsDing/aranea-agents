@@ -80,6 +80,45 @@
           <q-input v-model="definition.description" class="team-control app-field-long" dense outlined autogrow type="textarea" label="Team 说明" />
         </div>
 
+        <q-expansion-item icon="settings" label="运行时 / 失败策略" default-opened>
+          <div class="app-form-field-grid app-form-field-grid--wide q-mt-sm">
+            <q-select
+              v-model="runtimeEngine"
+              class="team-control"
+              dense
+              outlined
+              emit-value
+              map-options
+              label="执行引擎 runtime_engine"
+              hint="Graph 路径须后端 ARANEA_TEAM_GRAPH_RUNTIME=1；失败时 silent fallback Native"
+              :options="runtimeEngineOptions"
+            />
+            <q-select
+              v-model="failureDefault"
+              class="team-control"
+              dense
+              outlined
+              emit-value
+              map-options
+              clearable
+              label="默认失败策略"
+              :options="failureDefaultOptions"
+            />
+            <q-select
+              v-if="definition.mode === 'parallel'"
+              v-model="parallelFail"
+              class="team-control"
+              dense
+              outlined
+              emit-value
+              map-options
+              clearable
+              label="并行失败策略 parallel_fail"
+              :options="parallelFailOptions"
+            />
+          </div>
+        </q-expansion-item>
+
         <div class="app-form-field-grid app-form-field-grid--wide">
           <q-input
             v-model.number="definition.timeout_seconds"
@@ -127,6 +166,7 @@
               <q-select v-model="member.agent_id" class="team-control" dense outlined emit-value map-options label="Agent" :options="agentOptions" />
               <q-select v-model="member.role" class="team-control" dense outlined emit-value map-options label="角色" :options="roleOptions" />
               <q-input v-model="member.name" class="team-control" dense outlined label="成员名称" />
+              <q-input v-model="member.task_prompt" class="team-control team-control--wide" dense outlined autogrow type="textarea" label="职责 / 任务说明" />
               <q-input v-model.number="member.sort_order" class="team-control" dense outlined type="number" label="顺序" />
               <q-toggle v-model="member.enabled" color="primary" />
               <div class="app-actions-bar app-actions-bar--start">
@@ -177,7 +217,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { TeamDefinition } from "../../features/teams/types";
-import { buildGraphFromDefinition, modeOptions, roleOptions, statusOptions, teamTemplateOptions, topologyNodesFromDefinition, type TeamTemplateKey } from "./teamUtils";
+import { buildGraphFromDefinition, failureDefaultOptions, modeOptions, parallelFailOptions, roleOptions, runtimeEngineOptions, statusOptions, teamTemplateOptions, topologyNodesFromDefinition, type TeamTemplateKey } from "./teamUtils";
 
 const props = withDefaults(
   defineProps<{
@@ -265,6 +305,37 @@ const criticLoopMaxIterations = computed({
     const n = Number.isFinite(value) ? Math.min(32, Math.max(1, Math.floor(value))) : 2;
     const prev = props.definition.critic_loop ?? { max_iterations: 2, score_threshold: 0.8 };
     props.definition.critic_loop = { ...prev, max_iterations: n };
+  }
+});
+
+const runtimeEngine = computed({
+  get: () => (String(props.definition.runtime_engine || "native").toLowerCase() === "graph" ? "graph" : "native"),
+  set: (value: "native" | "graph") => {
+    props.definition.runtime_engine = value;
+    props.definition.team_graph_runtime = value === "graph";
+  }
+});
+
+function ensureFailurePolicy() {
+  if (!props.definition.failure_policy) {
+    props.definition.failure_policy = { default: "retry_then_block", parallel_fail: "continue" };
+  }
+  return props.definition.failure_policy;
+}
+
+const failureDefault = computed({
+  get: () => props.definition.failure_policy?.default ?? "retry_then_block",
+  set: (value: string | null) => {
+    const policy = ensureFailurePolicy();
+    policy.default = value || "retry_then_block";
+  }
+});
+
+const parallelFail = computed({
+  get: () => props.definition.failure_policy?.parallel_fail ?? "continue",
+  set: (value: string | null) => {
+    const policy = ensureFailurePolicy();
+    policy.parallel_fail = value || "continue";
   }
 });
 

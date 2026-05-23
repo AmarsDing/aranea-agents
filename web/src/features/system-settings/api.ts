@@ -2,6 +2,7 @@ import { createSystemSettingService } from "../../services/index";
 import type { SystemSettings } from "../../services/kratos/system_setting/v1/index";
 import type { KnowledgeEmbedPatch } from "./knowledge-embed";
 import type { EvalLLMForm } from "./eval-llm";
+import type { WebResearchPatch } from "./web-research";
 
 const api = createSystemSettingService();
 
@@ -17,11 +18,57 @@ export type UpdateSystemSettingsInput = {
   mcpAllowAdhocHttp?: boolean;
   knowledgeEmbed?: KnowledgeEmbedPatch;
   evalLLM?: EvalLLMForm;
+  webResearch?: WebResearchPatch;
 };
 
+export type TestWebResearchInput = {
+  provider?: string;
+  apiKey?: string;
+  maxResults?: number;
+  fetchTop?: number;
+  searchDepth?: string;
+  timeoutSec?: number;
+  httpProxy?: string;
+};
+
+export type TestWebResearchResult = {
+  ok?: boolean;
+  message?: string;
+  provider?: string;
+  resultCount?: number;
+  latencyMs?: number;
+};
+
+export async function testWebResearch(input: TestWebResearchInput): Promise<TestWebResearchResult> {
+  const res = await api.TestWebResearch({
+    provider: input.provider ?? "tavily",
+    apiKey: input.apiKey,
+    maxResults: input.maxResults ?? 8,
+    fetchTop: input.fetchTop ?? 5,
+    searchDepth: input.searchDepth ?? "basic",
+    timeoutSec: input.timeoutSec ?? 15,
+    httpProxy: input.httpProxy ?? ""
+  });
+  return {
+    ok: res.ok,
+    message: res.message,
+    provider: res.provider,
+    resultCount: res.resultCount,
+    latencyMs: res.latencyMs
+  };
+}
+
 export async function updateSystemSettings(input: UpdateSystemSettingsInput): Promise<SystemSettings> {
-  const { rootDirectory, workDirectory, globalMonthlyMicroUsd = 0, a2aPublicBaseUrl = "", mcpAllowAdhocHttp = false, knowledgeEmbed, evalLLM } =
-    input;
+  const {
+    rootDirectory,
+    workDirectory,
+    globalMonthlyMicroUsd = 0,
+    a2aPublicBaseUrl = "",
+    mcpAllowAdhocHttp = false,
+    knowledgeEmbed,
+    evalLLM,
+    webResearch
+  } = input;
   return api.UpdateSystemSettings({
     rootDirectory,
     workDirectory,
@@ -36,6 +83,13 @@ export async function updateSystemSettings(input: UpdateSystemSettingsInput): Pr
     evalSimProvider: evalLLM?.simProvider ?? "",
     evalSimModel: evalLLM?.simModel ?? "",
     evalJudgeProvider: evalLLM?.judgeProvider ?? "",
-    evalJudgeModel: evalLLM?.judgeModel ?? ""
+    evalJudgeModel: evalLLM?.judgeModel ?? "",
+    webResearchProvider: webResearch?.provider ?? "tavily",
+    webResearchApiKey: webResearch?.apiKey,
+    webResearchMaxResults: webResearch?.maxResults ?? 8,
+    webResearchFetchTop: webResearch?.fetchTop ?? 5,
+    webResearchSearchDepth: webResearch?.searchDepth ?? "basic",
+    webResearchTimeoutSec: webResearch?.timeoutSec ?? 15,
+    webResearchHttpProxy: webResearch?.httpProxy ?? ""
   });
 }

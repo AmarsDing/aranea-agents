@@ -1,13 +1,17 @@
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useQuasar } from "quasar";
 import { useRoute, useRouter } from "vue-router";
 import { compiledGraphToGraphDef } from "../orchestration/compileApi";
 import type { CompileTeamGraphResult } from "../orchestration/compileApi";
 import type { GraphDefinition } from "../graph/types";
-import type { Team, TeamDefinition } from "./types";
-import { parseDefinition, withGraph } from "../../components/teams/teamUtils";
+import type { Team, TeamDefinition, TeamRun } from "./types";
+import { findActiveTeamRun } from "./api";
+import { parseDefinition, definitionToJSON, withGraph } from "../../components/teams/teamUtils";
 import { useTeamsStore } from "../../stores/teams";
 import { useOrchestrationStore } from "../../stores/orchestration";
+import { useOrchestrationStream } from "../orchestration/useOrchestrationStream";
+import { buildExecNodeStates } from "../orchestration/teamGraphAdapter";
+import type { AgentNodeState, TeamRunObservatory } from "../orchestration/types";
 
 export function useTeamOrchestratePage() {
   const $q = useQuasar();
@@ -29,7 +33,36 @@ export function useTeamOrchestratePage() {
   const definition = ref<TeamDefinition | null>(null);
   const readOnly = ref(false);
 
-  const execNodeStates = computed(() => new Map<string, { status: string }>());
+  const selectedNodeId = ref<string | null>(null);
+  const activeRun = ref<TeamRun | null>(null);
+  const observatory = ref<TeamRunObservatory | null>(null);
+  const stream = ref<ReturnType<typeof useOrchestrationStream> | null>(null);
+
+  const liveConnected = computed(() => stream.value?.connected.value ?? false);
+  const liveMode = computed(() => Boolean(activeRun.value && observatory.value));
+
+  const nodeList = computed<AgentNodeState[]>(() => {
+    if (!stream.value) return [];
+    return [...stream.value.nodes.value.values()];
+  });
+
+  const selectedLiveState = computed(() => {
+    if (!selectedNodeId.value || !stream.value) return null;
+    return stream.value.nodes.value.get(selectedNodeId.value) ?? null;
+  });
+
+  const execNodeStates = computed(() => {
+    if (stream.value && stream.value.nodes.value.size > 0) {
+      return buildExecNodeStates(stream.value.nodes.value);
+    }
+    const map = new Map<string, { status: string; fineStatus?: string }>();
+    for (const node of graphDef.nodes) {
+      if (node.type === "agent") {
+        map.set(node.id, { status: "waiting", fineStatus: "idle" });
+      }
+    }
+    return map;
+  });
 
   const graphDef = reactive<GraphDefinition>({
     id: "",
@@ -63,6 +96,34 @@ export function useTeamOrchestratePage() {
     Object.assign(graphDef, compiledGraphToGraphDef(result, teamRow.value?.display_name || "team-orchestration"));
   }
 
+  function disconnectLiveRun() {
+    stream.value?.disconnect();
+    stream.value = null;
+    activeRun.value = null;
+    observatory.value = null;
+  }
+
+  async function connectLiveRun() {
+    disconnectLiveRun();
+    if (!teamRow.value?.has_active_run) return;
+
+    try {
+      const run = await findActiveTeamRun(teamId.value);
+      if (!run) return;
+
+      activeRun.value = run;
+      const obs = await orchestrationStore.fetchRunObservatory(run.id);
+      observatory.value = obs;
+
+      const s = useOrchestrationStream(obs.session_id, obs.run_id);
+      stream.value = s;
+      s.seed(obs.nodes);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "连接运行观测流失败";
+      $q.notify({ type: "warning", message });
+    }
+  }
+
   async function reload() {
     loading.value = true;
     error.value = "";
@@ -75,6 +136,11 @@ export function useTeamOrchestratePage() {
       const result = await orchestrationStore.compileTeam(teamId.value);
       applyCompiled(result);
       dirty.value = false;
+      if (team.has_active_run) {
+        await connectLiveRun();
+      } else {
+        disconnectLiveRun();
+      }
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e);
     } finally {
@@ -89,23 +155,27 @@ export function useTeamOrchestratePage() {
   function graphToDefinitionGraph() {
     const def = definition.value;
     if (!def) return undefined;
+    const priorById = new Map((def.graph?.nodes ?? []).map((node) => [node.id, node]));
     return {
       version: 1,
       layout: def.mode,
-      nodes: graphDef.nodes.map((n, index) => ({
-        id: n.id,
-        type: n.type,
-        label: n.agentName || n.id,
-        agent_id: def.members[index]?.agent_id,
-        role: n.requiredRole,
-        x: 160 + index * 150,
-        y: 80
-      })),
+      nodes: graphDef.nodes.map((n) => {
+        const prior = priorById.get(n.id);
+        return {
+          id: n.id,
+          type: n.type,
+          label: n.agentName || n.id,
+          agent_id: prior?.agent_id || n.agentName || "",
+          role: n.requiredRole || prior?.role,
+          x: prior?.x,
+          y: prior?.y,
+        };
+      }),
       edges: graphDef.edges.map((e, index) => ({
-        id: `e-${index}`,
+        id: priorById.has(e.from) ? `e-${e.from}-${e.to}` : `e-${index}`,
         source: e.from,
-        target: e.to
-      }))
+        target: e.to,
+      })),
     };
   }
 
@@ -119,7 +189,7 @@ export function useTeamOrchestratePage() {
         linked_graph_id: linkedGraphId.value.trim() || undefined
       } as TeamDefinition & { linked_graph_id?: string });
       const updated = await teamsStore.editTeam(teamId.value, {
-        definition_json: JSON.stringify(nextDef),
+        definition_json: definitionToJSON(nextDef),
         linked_graph_id: linkedGraphId.value.trim()
       });
       teamRow.value = updated;
@@ -133,7 +203,17 @@ export function useTeamOrchestratePage() {
     }
   }
 
-  function onSelectNode(_nodeId: string | null) {}
+  function onSelectNode(nodeId: string | null) {
+    selectedNodeId.value = nodeId;
+  }
+
+  function openObservatory() {
+    if (!activeRun.value) return;
+    router.push({
+      name: "team-run-observatory",
+      params: { teamId: teamId.value, runId: activeRun.value.id },
+    });
+  }
 
   function goBack() {
     router.push({ name: "team" });
@@ -141,6 +221,7 @@ export function useTeamOrchestratePage() {
 
   onMounted(reload);
   watch(teamId, reload);
+  onBeforeUnmount(disconnectLiveRun);
 
   return {
     isDark,
@@ -154,6 +235,13 @@ export function useTeamOrchestratePage() {
     linkedGraphId,
     definition,
     readOnly,
+    selectedNodeId,
+    activeRun,
+    observatory,
+    liveConnected,
+    liveMode,
+    nodeList,
+    selectedLiveState,
     execNodeStates,
     graphDef,
     issues,
@@ -161,6 +249,7 @@ export function useTeamOrchestratePage() {
     reload,
     saveGraph,
     onSelectNode,
+    openObservatory,
     goBack
   };
 }

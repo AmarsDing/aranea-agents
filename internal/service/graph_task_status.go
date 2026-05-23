@@ -20,7 +20,7 @@ func (p *GraphOrchestrationProjector) PublishGraphTaskStatus(ctx context.Context
 	}
 	env := event.NewEnvelope(event.EnvelopeTypeGraphTaskStatus, "graph-task", sessionID)
 	env.Channel = "graph"
-	env.FilterKey = "orchestration/" + execID + "/" + strings.TrimSpace(task.NodeID)
+	env.FilterKey = "graph/" + strings.TrimSpace(graphID) + "/" + execID
 	env.Metadata = map[string]any{
 		"execution_id": execID,
 		"graph_id":     graphID,
@@ -29,6 +29,7 @@ func (p *GraphOrchestrationProjector) PublishGraphTaskStatus(ctx context.Context
 		"task_status":  string(task.Status),
 		"assignee":     task.Assignee,
 		"summary":      task.Summary,
+		"webhook_topic": "graph.task.status",
 	}
 	for k, v := range extra {
 		env.Metadata[k] = v

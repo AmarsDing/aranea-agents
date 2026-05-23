@@ -157,8 +157,7 @@ import type { Message, ReactToolLinkIndex } from "../../features/chat/types";
 import { shouldRenderAgentAvatarImage } from "../../features/avatar/iconModel";
 import {
   formatMessageStamp,
-  renderChatMarkdown,
-  renderStreamingChatMarkdown,
+  renderChatMarkdownForMessage,
 } from "../../features/chat/chatMessageMarkdown";
 import {
   CHAT_MESSAGE_AVATAR_ICON_SIZE,
@@ -201,10 +200,10 @@ function formatStamp(iso: string) {
 }
 
 function renderMarkdown(content: string) {
-  return renderChatMarkdown(content);
+  return renderChatMarkdownForMessage(props.message.id, content, false);
 }
 
 function renderStreamingMarkdown(content: string) {
-  return renderStreamingChatMarkdown(content);
+  return renderChatMarkdownForMessage(props.message.id, content, true);
 }
 </script>

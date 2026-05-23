@@ -6,7 +6,7 @@
         <h1 class="app-page-title">Graph 管理</h1>
         <p class="app-page-subtitle">可视化构建可观测、可干预、可回溯的确定性工作流，支持条件路由、人工审批和状态回溯。</p>
       </div>
-      <q-btn color="primary" rounded unelevated icon="add" label="新增 Graph" @click="openCreate" />
+      <q-btn class="graphs-page__create-btn" rounded unelevated icon="add" label="新增 Graph" @click="openCreate" />
     </section>
 
     <q-banner v-if="error" rounded class="bg-negative text-white q-mt-md">
@@ -19,44 +19,42 @@
         v-for="graph in rows"
         :key="graph.id"
         flat
-        bordered
         :class="['graph-card', { 'is-dark': isDark }]"
         @click="openEditor(graph.id)"
       >
-        <q-card-section>
-          <div class="row items-center justify-between">
-            <div class="text-h6 graph-card__name">{{ graph.name }}</div>
-            <q-icon name="account_tree" size="20px" color="primary" />
+        <div class="graph-card__inner">
+          <div class="row items-start justify-between no-wrap">
+            <h3 class="graph-card__name col min-width-0 ellipsis">{{ graph.name }}</h3>
+            <q-icon name="account_tree" size="18px" class="text-grey-6" />
           </div>
-          <div v-if="graph.description" class="text-caption app-text-secondary q-mt-xs">{{ graph.description }}</div>
-          <div class="row q-gutter-sm q-mt-sm">
-            <q-badge rounded color="blue-grey">{{ graph.nodes?.length ?? 0 }} 节点</q-badge>
-            <q-badge rounded color="blue-grey">{{ graph.edges?.length ?? 0 }} 连线</q-badge>
-            <q-badge v-if="graph.executionEngine === 'dag'" rounded color="purple">DAG</q-badge>
-            <q-badge v-if="graph.enableCheckpoint" rounded color="teal">检查点</q-badge>
+          <p v-if="graph.description" class="graph-card__desc ellipsis-2-lines">{{ graph.description }}</p>
+          <div class="graph-card__tags">
+            <span class="graph-card__tag">{{ graph.nodes?.length ?? 0 }} 节点</span>
+            <span class="graph-card__tag">{{ graph.edges?.length ?? 0 }} 连线</span>
+            <span v-if="graph.executionEngine === 'dag'" class="graph-card__tag">DAG</span>
+            <span v-if="graph.enableCheckpoint" class="graph-card__tag">检查点</span>
           </div>
-        </q-card-section>
-        <q-separator />
-        <q-card-actions align="right">
-          <q-btn flat dense round icon="play_arrow" color="primary" @click.stop="openRunDialog(graph)">
-            <q-tooltip>执行</q-tooltip>
-          </q-btn>
-          <q-btn flat dense round icon="content_copy" @click.stop="duplicateGraph(graph)">
-            <q-tooltip>复制</q-tooltip>
-          </q-btn>
-          <q-btn flat dense round icon="delete" color="negative" @click.stop="removeGraph(graph)">
-            <q-tooltip>删除</q-tooltip>
-          </q-btn>
-        </q-card-actions>
+          <footer class="graph-card__foot">
+            <q-btn flat dense round icon="play_arrow" @click.stop="openRunDialog(graph)">
+              <q-tooltip>执行</q-tooltip>
+            </q-btn>
+            <q-btn flat dense round icon="content_copy" @click.stop="duplicateGraph(graph)">
+              <q-tooltip>复制</q-tooltip>
+            </q-btn>
+            <q-btn flat dense round icon="delete" color="negative" @click.stop="removeGraph(graph)">
+              <q-tooltip>删除</q-tooltip>
+            </q-btn>
+          </footer>
+        </div>
       </q-card>
     </section>
 
-    <q-card v-if="!loading && rows.length === 0" flat bordered :class="['graphs-empty', { 'is-dark': isDark }, 'q-mt-lg']">
+    <q-card v-if="!loading && rows.length === 0" flat :class="['graphs-empty', { 'is-dark': isDark }, 'q-mt-lg']">
       <q-card-section class="column items-center text-center q-pa-xl">
         <q-avatar size="72px" color="primary" text-color="white" icon="account_tree" />
         <div class="text-h6 q-mt-md">暂无 Graph</div>
         <div class="text-body2 app-text-secondary q-mt-sm">创建一个 Graph 工作流，可视化编排 Agent、条件路由和并行分支。</div>
-        <q-btn class="q-mt-md" color="primary" rounded unelevated icon="add" label="新增 Graph" @click="openCreate" />
+        <q-btn class="q-mt-md graphs-page__create-btn" rounded unelevated icon="add" label="新增 Graph" @click="openCreate" />
       </q-card-section>
     </q-card>
 
@@ -74,7 +72,7 @@
         <q-separator />
         <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
           <q-btn flat rounded label="取消" @click="runDialogOpen = false" />
-          <q-btn color="primary" rounded unelevated label="执行" :loading="runLoading" @click="executeRun" />
+          <q-btn class="graphs-page__create-btn" rounded unelevated label="执行" :loading="runLoading" @click="executeRun" />
         </q-card-actions>
       </q-card>
     </q-dialog>
@@ -105,69 +103,23 @@ const {
 </script>
 
 <style scoped>
-.graphs-page {
-  min-height: 100%;
-  padding: 28px;
-  background:
-    radial-gradient(circle at 86% 0%, rgb(25 118 210 / 12%), transparent 28%),
-    linear-gradient(180deg, var(--color-page-tint) 0%, var(--color-page-tint-alt) 46%, var(--color-on-accent) 100%);
+.graphs-page__create-btn {
+  background: var(--color-accent);
+  color: #fff;
 }
 
-.graphs-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 18px;
+.graphs-page__create-btn:hover {
+  background: var(--color-accent-hover);
 }
 
-.graph-card {
-  cursor: pointer;
-  border: 1px solid rgb(15 23 42 / 8%);
-  border-radius: 20px;
-  background: var(--glass-surface, rgb(255 253 245 / 65%));
-  backdrop-filter: blur(var(--glass-blur-default, 18px));
-  -webkit-backdrop-filter: blur(var(--glass-blur-default, 18px));
-  transition: transform 0.15s;
+.min-width-0 {
+  min-width: 0;
 }
 
-.graph-card:hover {
-  transform: translateY(-2px);
-}
-
-.graph-card__name {
-  font-weight: 700;
-}
-
-.graphs-empty {
-  border: 1px solid rgb(15 23 42 / 8%);
-  border-radius: 24px;
-  background: rgb(255 255 255 / 86%);
-  backdrop-filter: blur(16px);
-}
-
-.graphs-page.is-dark {
-  background:
-    radial-gradient(circle at 86% 0%, rgb(59 130 246 / 16%), transparent 30%),
-    linear-gradient(160deg, var(--canvas-base) 0%, var(--color-surface-elevated) 48%, var(--color-surface-solid) 100%);
-  color: var(--color-border-soft);
-}
-
-.graph-card.is-dark {
-  border-color: rgb(148 163 184 / 16%);
-  background: rgb(17 24 39 / 90%);
-}
-
-.graphs-empty.is-dark {
-  border-color: rgb(148 163 184 / 16%);
-  background: rgb(17 24 39 / 90%);
-}
-
-@media (width <= 599px) {
-  .graphs-page {
-    padding: 18px;
-  }
-
-  .graphs-grid {
-    grid-template-columns: 1fr;
-  }
+.ellipsis-2-lines {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 </style>

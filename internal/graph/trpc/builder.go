@@ -70,6 +70,12 @@ type NodeDef struct {
 	RetryMaxAttempts         int
 	FailureAction            string
 	FallbackAgent            string
+	InputMapperJSON          string
+	OutputMapperJSON         string
+	IsolatedMessages         bool
+	InputFromLastResponse    bool
+	CacheEnabled             bool
+	CacheTTLSeconds          int
 }
 
 type EdgeDef struct {

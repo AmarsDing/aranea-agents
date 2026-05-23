@@ -35,12 +35,12 @@ func resolveToolVisual(activityKind, status string) toolVisualStyle {
 	case "session":
 		vis.Emoji, vis.KindLabel, vis.Template = "💬", "会话", "blue"
 	}
-	switch strings.ToLower(strings.TrimSpace(status)) {
-	case ToolStatusCalling, "running", "pending":
+	switch NormalizeToolStatus(status) {
+	case ToolStatusCalling:
 		vis.Template = "orange"
 	case ToolStatusError:
 		vis.Template = "red"
-	case ToolStatusOK, "done", "success", "":
+	case ToolStatusOK, "":
 		if vis.Template == "blue" {
 			vis.Template = "green"
 		}
@@ -52,7 +52,7 @@ func toolStatusBadge(status string) (icon, label string) {
 	if ToolStatusInFlight(status) {
 		return "⏳", "执行中"
 	}
-	if strings.EqualFold(strings.TrimSpace(status), ToolStatusError) {
+	if IsToolStatusError(status) {
 		return "✗", "失败"
 	}
 	return "✓", "完成"
@@ -80,7 +80,7 @@ func excerptToolResult(resultJSON, status string, maxRunes int) string {
 	if maxRunes <= 0 {
 		maxRunes = cardResultExcerptRunes
 	}
-	if strings.EqualFold(strings.TrimSpace(status), ToolStatusError) {
+	if IsToolStatusError(status) {
 		if msg := extractJSONErrorMessage(raw); msg != "" {
 			return truncateRunes(msg, maxRunes)
 		}

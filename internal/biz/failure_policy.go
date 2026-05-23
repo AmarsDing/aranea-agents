@@ -194,6 +194,19 @@ func ApplyParallelFailContinue(cfg GraphBuildConfig) GraphBuildConfig {
 }
 
 func parallelBranchNodeIDs(cfg GraphBuildConfig) map[string]struct{} {
+	if len(cfg.ParallelBranchIDs) >= 2 {
+		branches := make(map[string]struct{}, len(cfg.ParallelBranchIDs))
+		for _, id := range cfg.ParallelBranchIDs {
+			id = strings.TrimSpace(id)
+			if id == "" {
+				continue
+			}
+			branches[id] = struct{}{}
+		}
+		if len(branches) >= 2 {
+			return branches
+		}
+	}
 	finish := strings.TrimSpace(cfg.FinishPoint)
 	if finish == "" {
 		return nil

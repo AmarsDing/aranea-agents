@@ -78,6 +78,19 @@
             </section>
 
             <section class="app-settings-section">
+              <h2 class="app-settings-section__title">{{ t("settingsPage.webResearchTitle") }}</h2>
+              <p class="app-settings-section__hint">{{ t("settingsPage.webResearchHint") }}</p>
+              <web-research-fields
+                :form="webResearchForm"
+                :configured="webResearchConfigured"
+                :has-api-key="webResearchHasApiKey"
+                :testing="webResearchTesting"
+                show-status
+                @test="testWebResearchConnection"
+              />
+            </section>
+
+            <section class="app-settings-section">
               <h2 class="app-settings-section__title">{{ t("settingsPage.mcpAdhocTitle") }}</h2>
               <p class="app-settings-section__hint">{{ t("settingsPage.mcpAdhocHint") }}</p>
               <q-toggle v-model="mcpAllowAdhocHttp" :label="t('settingsPage.mcpAdhocToggle')" />
@@ -133,8 +146,15 @@ import {
   knowledgeEmbedToPatch
 } from "../features/system-settings/knowledge-embed";
 import { DEFAULT_EVAL_LLM_FORM, evalLLMFromSettings } from "../features/system-settings/eval-llm";
+import {
+  DEFAULT_WEB_RESEARCH_FORM,
+  webResearchFromSettings,
+  webResearchToPatch
+} from "../features/system-settings/web-research";
+import { testWebResearch } from "../features/system-settings/api";
 import { DEFAULT_KNOWLEDGE_EMBED_FORM } from "../features/knowledge/embedder-constants";
 import KnowledgeEmbedderFields from "../components/knowledge/KnowledgeEmbedderFields.vue";
+import WebResearchFields from "../components/settings/WebResearchFields.vue";
 const { t } = useI18n();
 const $q = useQuasar();
 const settingsStore = useSystemSettingsStore();
@@ -148,7 +168,11 @@ const mcpAllowAdhocHttp = ref(false);
 const credentialKeyConfigured = ref(false);
 const knowledgeEmbedForm = reactive({ ...DEFAULT_KNOWLEDGE_EMBED_FORM });
 const evalLLMForm = reactive({ ...DEFAULT_EVAL_LLM_FORM });
+const webResearchForm = reactive({ ...DEFAULT_WEB_RESEARCH_FORM });
 const knowledgeEmbedConfigured = ref(false);
+const webResearchConfigured = ref(false);
+const webResearchHasApiKey = ref(false);
+const webResearchTesting = ref(false);
 const knowledgeEmbedHasApiKey = ref(false);
 const evalLLMConfigured = ref(false);
 const updateTime = ref<string | undefined>(undefined);
@@ -198,14 +222,50 @@ async function load() {
     );
     Object.assign(knowledgeEmbedForm, knowledgeEmbedFromSettings(res.knowledgeEmbed));
     Object.assign(evalLLMForm, evalLLMFromSettings(res.evalLlm ?? res.eval_llm));
+    Object.assign(webResearchForm, webResearchFromSettings(res.webResearch ?? res.web_research));
     knowledgeEmbedConfigured.value = Boolean(res.knowledgeEmbed?.configured);
     knowledgeEmbedHasApiKey.value = Boolean(res.knowledgeEmbed?.hasApiKey);
+    webResearchConfigured.value = Boolean(res.webResearch?.configured ?? res.web_research?.configured);
+    webResearchHasApiKey.value = Boolean(res.webResearch?.hasApiKey ?? res.web_research?.has_api_key);
     evalLLMConfigured.value = Boolean(res.evalLlm?.configured ?? res.eval_llm?.configured);
     updateTime.value = res.updateTime;
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : String(e);
   } finally {
     loading.value = false;
+  }
+}
+
+async function testWebResearchConnection() {
+  webResearchTesting.value = true;
+  error.value = "";
+  try {
+    const patch = webResearchToPatch(webResearchForm);
+    const res = await testWebResearch({
+      provider: patch.provider,
+      apiKey: patch.apiKey,
+      maxResults: patch.maxResults,
+      fetchTop: patch.fetchTop,
+      searchDepth: patch.searchDepth,
+      timeoutSec: patch.timeoutSec,
+      httpProxy: patch.httpProxy
+    });
+    if (res.ok) {
+      $q.notify({
+        type: "positive",
+        message: res.message || t("settingsPage.webResearch.testOk")
+      });
+    } else {
+      $q.notify({
+        type: "negative",
+        message: res.message || t("settingsPage.webResearch.testFailed")
+      });
+    }
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    $q.notify({ type: "negative", message: msg || t("settingsPage.webResearch.testFailed") });
+  } finally {
+    webResearchTesting.value = false;
   }
 }
 
@@ -220,7 +280,8 @@ async function save() {
       a2aPublicBaseUrl: a2aPublicBaseUrl.value,
       mcpAllowAdhocHttp: mcpAllowAdhocHttp.value,
       knowledgeEmbed: knowledgeEmbedToPatch(knowledgeEmbedForm),
-      evalLLM: evalLLMForm
+      evalLLM: evalLLMForm,
+      webResearch: webResearchToPatch(webResearchForm)
     });
     rootDir.value = res.rootDirectory ?? "";
     workDir.value = res.workDirectory ?? "";
@@ -234,8 +295,11 @@ async function save() {
     );
     Object.assign(knowledgeEmbedForm, knowledgeEmbedFromSettings(res.knowledgeEmbed));
     Object.assign(evalLLMForm, evalLLMFromSettings(res.evalLlm ?? res.eval_llm));
+    Object.assign(webResearchForm, webResearchFromSettings(res.webResearch ?? res.web_research));
     knowledgeEmbedConfigured.value = Boolean(res.knowledgeEmbed?.configured);
     knowledgeEmbedHasApiKey.value = Boolean(res.knowledgeEmbed?.hasApiKey);
+    webResearchConfigured.value = Boolean(res.webResearch?.configured ?? res.web_research?.configured);
+    webResearchHasApiKey.value = Boolean(res.webResearch?.hasApiKey ?? res.web_research?.has_api_key);
     evalLLMConfigured.value = Boolean(res.evalLlm?.configured ?? res.eval_llm?.configured);
     updateTime.value = res.updateTime;
     $q.notify({ type: "positive", message: t("settingsPage.saveOk") });

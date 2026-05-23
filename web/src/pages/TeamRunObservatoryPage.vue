@@ -29,13 +29,38 @@
         />
       </section>
       <section class="team-run-observatory__kanban">
-        <OrchestrationKanban
-          :nodes="nodeList"
-          :is-dark="isDark"
-          :live-connected="streamConnected"
-          :selected-node-id="selectedNodeId"
-          @select-node="onSelectNode"
-        />
+        <q-tabs v-model="observatoryTab" dense align="left" class="q-mb-md">
+          <q-tab name="agents" label="Agent 工作看板" />
+          <q-tab name="tasks" label="任务看板" :disable="!graphExecutionId" />
+        </q-tabs>
+        <q-tab-panels v-model="observatoryTab" animated>
+          <q-tab-panel name="agents" class="q-pa-none">
+            <OrchestrationKanban
+              :nodes="nodeList"
+              :is-dark="isDark"
+              :live-connected="streamConnected"
+              :selected-node-id="selectedNodeId"
+              @select-node="onKanbanSelectNode"
+            />
+          </q-tab-panel>
+          <q-tab-panel name="tasks" class="q-pa-none">
+            <GraphTaskKanban
+              v-if="graphExecutionId"
+              :tasks="taskList"
+              :loading="tasksLoading"
+              :live-connected="taskStreamConnected"
+              :selected-task-id="selectedTaskId"
+              :is-dark="isDark"
+              admin-drag
+              @refresh="loadObservatoryTasks"
+              @select-task="onSelectTask"
+              @admin-action="onKanbanAdminAction"
+            />
+            <div v-else class="text-caption text-grey-7 q-pa-sm">
+              当前 Team Run 未绑定 Graph 执行，任务看板不可用。
+            </div>
+          </q-tab-panel>
+        </q-tab-panels>
       </section>
     </div>
   </q-page>
@@ -43,6 +68,7 @@
 
 <script setup lang="ts">
 import GraphEditorCanvas from "../components/graph/GraphEditorCanvas.vue";
+import GraphTaskKanban from "../components/graph/GraphTaskKanban.vue";
 import OrchestrationKanban from "../components/orchestration/OrchestrationKanban.vue";
 import { useTeamRunObservatoryPage } from "../features/teams/useTeamRunObservatoryPage";
 
@@ -52,15 +78,28 @@ const {
   loading,
   error,
   observatory,
+  observatoryTab,
   selectedNodeId,
+  selectedTaskId,
   graphDef,
   streamConnected,
+  taskStreamConnected,
   nodeList,
+  taskList,
+  tasksLoading,
+  graphExecutionId,
   execNodeStates,
   runStatusColor,
   onSelectNode,
-  goBack
+  onSelectTask,
+  onKanbanAdminAction,
+  loadObservatoryTasks,
+  goBack,
 } = useTeamRunObservatoryPage();
+
+function onKanbanSelectNode(nodeId: string) {
+  onSelectNode(nodeId);
+}
 </script>
 
 <style scoped>
