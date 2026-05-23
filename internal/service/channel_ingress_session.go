@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"strings"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
@@ -14,6 +15,34 @@ import (
 
 func platformFromTitlePrefix(titlePrefix string) string {
 	return strings.TrimSpace(strings.Split(strings.TrimSpace(titlePrefix), ":")[0])
+}
+
+func (h *ChannelIngress) createChannelSession(
+	ctx context.Context,
+	chRow biz.Channel,
+	titlePrefix string,
+	platform string,
+	peerKey string,
+	peerID string,
+	ownerType string,
+	agentID string,
+	teamID string,
+) (string, error) {
+	title := titlePrefix + ":" + strings.TrimSpace(chRow.Key)
+	if pk := strings.TrimSpace(peerKey); pk != "" {
+		title += ":" + pk
+	}
+	created, err := h.sessions.Create(ctx, biz.Session{
+		OwnerType:    ownerType,
+		AgentID:      agentID,
+		TeamID:       teamID,
+		Title:        title,
+		MetadataJSON: biz.BuildChannelSessionMetadataJSON(chRow, platform, peerID, peerKey),
+	})
+	if err != nil {
+		return "", err
+	}
+	return created.ID, nil
 }
 
 func (h *ChannelIngress) ensureChannelSession(
@@ -29,41 +58,41 @@ func (h *ChannelIngress) ensureChannelSession(
 	if err != nil {
 		return "", err
 	}
-	_ = ownerType
-	_ = agentID
-	_ = teamID
+	platform = strings.TrimSpace(platform)
 
 	bind, err := h.peers.GetByChannelAndPeer(ctx, chRow.ID, peerKey)
-	var sessionID string
-	switch {
-	case err == nil && strings.TrimSpace(bind.SessionID) != "":
-		sessionID = bind.SessionID
-	case err != nil && err != sql.ErrNoRows:
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return "", err
-	default:
-		title := titlePrefix + ":" + strings.TrimSpace(chRow.Key)
-		if pk := strings.TrimSpace(peerKey); pk != "" {
-			title += ":" + pk
+	}
+	if err == nil {
+		if sessionID := strings.TrimSpace(bind.SessionID); sessionID != "" {
+			if _, verr := h.sessions.Get(ctx, sessionID); verr == nil {
+				return sessionID, nil
+			} else if !errors.Is(verr, sql.ErrNoRows) {
+				return "", verr
+			}
+			sessionID, cerr := h.createChannelSession(ctx, chRow, titlePrefix, platform, peerKey, peerID, ownerType, agentID, teamID)
+			if cerr != nil {
+				return "", cerr
+			}
+			if _, uerr := h.peers.UpdateSessionID(ctx, chRow.ID, peerKey, sessionID); uerr != nil {
+				return "", uerr
+			}
+			return sessionID, nil
 		}
-		created, cerr := h.sessions.Create(ctx, biz.Session{
-			OwnerType:    ownerType,
-			AgentID:      agentID,
-			TeamID:       teamID,
-			Title:        title,
-			MetadataJSON: biz.BuildChannelSessionMetadataJSON(chRow, platform, peerID, peerKey),
-		})
-		if cerr != nil {
-			return "", cerr
-		}
-		sessionID = created.ID
-		if _, cerr = h.peers.Create(ctx, biz.ChannelPeerSession{
-			ID:        uuid.NewString(),
-			ChannelID: chRow.ID,
-			PeerKey:   peerKey,
-			SessionID: sessionID,
-		}); cerr != nil {
-			return "", cerr
-		}
+	}
+
+	sessionID, cerr := h.createChannelSession(ctx, chRow, titlePrefix, platform, peerKey, peerID, ownerType, agentID, teamID)
+	if cerr != nil {
+		return "", cerr
+	}
+	if _, cerr = h.peers.Create(ctx, biz.ChannelPeerSession{
+		ID:        uuid.NewString(),
+		ChannelID: chRow.ID,
+		PeerKey:   peerKey,
+		SessionID: sessionID,
+	}); cerr != nil {
+		return "", cerr
 	}
 	return sessionID, nil
 }

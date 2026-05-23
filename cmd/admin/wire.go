@@ -161,6 +161,9 @@ func provideChatServiceDeps(
 	pendingQueue *rt.PendingMessageQueue,
 	graphFactory biz.GraphBuilderFactory,
 	graphs *biz.GraphUsecase,
+	tasks *biz.TaskUsecase,
+	teamGraphCoord *team.TeamGraphRunCoordinator,
+	turnJobs *biz.ChannelTurnJobUsecase,
 ) service.ChatServiceDeps {
 	return service.ChatServiceDeps{
 		TurnDeps: rt.TurnDeps{
@@ -197,6 +200,9 @@ func provideChatServiceDeps(
 		PendingQueue:       pendingQueue,
 		GraphFactory:       graphFactory,
 		Graphs:             graphs,
+		Tasks:              tasks,
+		TeamGraphCoord:     teamGraphCoord,
+		TurnJobs:           turnJobs,
 	}
 }
 

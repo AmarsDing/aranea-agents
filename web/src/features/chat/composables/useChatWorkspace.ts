@@ -155,6 +155,7 @@ export function useChatWorkspace() {
 
   const sessionIdForPending = computed(() => selectedSessionForUi.value?.id);
   const sessionIdForArtifacts = computed(() => selectedSessionForUi.value?.id);
+  const jobsRefreshNonce = ref(0);
 
   const { fileRef, attachments, pickFile, onFileChange, removeAttachment } =
     useChatAttachments(sessionIdForArtifacts);
@@ -225,6 +226,10 @@ export function useChatWorkspace() {
     selectedAgentId,
     selectedTeamId,
     selectedSessionId,
+    wsReplaying: streamManager.wsReplaying,
+    onTurnComplete: () => {
+      jobsRefreshNonce.value += 1;
+    },
     ensureChatStream: streamManager.ensureChatStream,
     ensureTeamStream: streamManager.ensureTeamStream,
     patchAgentMessages: streamManager.patchAgentMessages,
@@ -326,6 +331,17 @@ export function useChatWorkspace() {
   const isRunnerActive = computed(
     () => runStatus.value === "running" || runStatus.value === "pending" || sender.sending.value
   );
+
+  const sessionRevision = computed(() => {
+    const sid = selectedSessionForUi.value?.id;
+    if (!sid || selectedEntityKind.value === "team") return null;
+    return store.sessionRevisionBySession[sid] ?? 0;
+  });
+
+  const wsConnected = computed(() => {
+    if (selectedEntityKind.value === "team") return false;
+    return streamManager.chatWsConnected.value;
+  });
 
   async function submitA2UIUserAction(payload: A2UIUserActionPayload) {
     if (selectedEntityKind.value !== "agent") {
@@ -498,6 +514,9 @@ export function useChatWorkspace() {
     isRunnerActive,
     onEnqueueWhileRunning,
     wsReplaying: streamManager.wsReplaying,
+    sessionRevision,
+    wsConnected,
+    jobsRefreshNonce,
     awaitKind,
     awaitToolKey,
     submitAwaitingReply: sender.submitAwaitingReply,

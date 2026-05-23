@@ -1,5 +1,8 @@
 /** Teams UI / WS Envelope snake_case 形状（与 Kratos wire 对齐）。 */
 
+export type { OrchestrationSpec } from "./orchestrationSpec";
+export { toOrchestrationSpec, fromOrchestrationSpec } from "./orchestrationSpec";
+
 export type Team = {
   id: string;
   team_key: string;
@@ -59,12 +62,18 @@ export type TeamFailurePolicy = {
       fallback_agent?: string;
     }
   >;
+  circuit_breaker?: {
+    failure_threshold?: number;
+    reset_timeout_seconds?: number;
+    fallback_node?: string;
+  };
+  on_error?: "await_review" | "halt" | string;
 };
 
 export type TeamDefinition = {
   version: number;
   description?: string;
-  /** Graph 执行引擎：`graph` 启用 GraphAgent（须 ARANEA_TEAM_GRAPH_RUNTIME=1）；留空为 native */
+  /** Graph 执行引擎（默认 graph）；Native 仅在后端 ARANEA_TEAM_NATIVE=1 应急时可用 */
   runtime_engine?: "native" | "graph" | string;
   /** 兼容旧字段，等效 runtime_engine=graph */
   team_graph_runtime?: boolean;
@@ -79,6 +88,7 @@ export type TeamDefinition = {
   /** 可选：intent 与 user options 锚定的启用成员 agent_id；默认首位启用成员 */
   intent_anchor_agent_id?: string;
   members: TeamDefinitionMember[];
+  enable_checkpoint?: boolean;
   a2a?: {
     enabled?: boolean;
     envelope_version?: string;

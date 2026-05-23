@@ -169,3 +169,23 @@ func MergeReasoningIntoAssistantOptionsJSON(base string, reasoning string) (stri
 	}
 	return string(out), nil
 }
+
+// MergeSourceIntoUserOptionsJSON stamps envelope source (web|channel|cron|a2a) for UserBubble badges (M55 CC-B-07).
+func MergeSourceIntoUserOptionsJSON(optionsJSON, source string) (string, error) {
+	source = strings.TrimSpace(source)
+	if source == "" {
+		return optionsJSON, nil
+	}
+	opts := map[string]any{}
+	if raw := strings.TrimSpace(optionsJSON); raw != "" {
+		if err := json.Unmarshal([]byte(raw), &opts); err != nil {
+			return optionsJSON, err
+		}
+	}
+	opts["source"] = source
+	out, err := json.Marshal(opts)
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
+}

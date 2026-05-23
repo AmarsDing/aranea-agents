@@ -6,6 +6,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
+	"aranea-agents/internal/event"
 )
 
 func (h *ChannelIngress) processInboundStreaming(ctx context.Context, chRow biz.Channel, ev port.InboundEvent, platform string, ltCfg biz.ChannelLongTaskConfig, sessionID string, contentPreview *string, previewMessageID *string, turnQueued *bool) error {
@@ -52,7 +53,7 @@ func (h *ChannelIngress) processInboundStreaming(ctx context.Context, chRow biz.
 	previewCoord, stopPreview := h.startTurnPreview(ctx, sessionID, platform, recipient, updater, chRow, ev, ltCfg)
 	defer stopPreview()
 
-	_, _, err = h.chat.RunNativeTurnUnary(ctx, req)
+	_, _, err = h.chat.RunNativeTurnUnary(event.WithEnvelopeSource(ctx, "channel"), req)
 	if err != nil {
 		_ = h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "stream", "error": err.Error()}, err.Error())
 		return err

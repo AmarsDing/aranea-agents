@@ -88,14 +88,15 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 7. **RunStatus 可恢复**：`awaiting_user` 持久化或 EventBuffer 恢复策略。
 8. **模型选项单一真相源**：长期统一为 `GetChatOptions` 或 Platform 之一（当前为 Platform 优先 + 回退）。
 
-### P0 — Cursor 对标（M55，2026-05-23 规划）
+### P0 — Cursor 对标（M55，2026-05-23）
 
-> 详案：[55-chat-channel-cursor-development.md](./55-chat-channel-cursor-development.md) Phase C/E
+> 详案：[55-chat-channel-cursor-development.md](./55-chat-channel-cursor-development.md) Phase C/E · [UX Backlog changelog](../changelog/2026-05-23-M55-Feishu-Rebind-UX-Backlog.md)
 
-1. **TurnBlock UI**：一轮 = User → ToolStrip（折叠）→ Assistant；与 Channel IM transcript 顺序对齐。
-2. **Channel 会话同步**：`session_revision` 增量 hydrate；选中 Session 强制 WS（Phase B）。
-3. **滚动锚点**：最后一轮正文，非 tool 堆底部。
-4. **（P2）@ 上下文引用**、**diff Apply 卡片**。
+1. **TurnBlock UI**：一轮 = User → ToolStrip（折叠）→ Assistant — **骨架 ✅**（`TurnBlock.vue`）
+2. **Channel 会话同步**：`session_revision` 增量 hydrate — **✅**
+3. **滚动锚点**：最后一轮正文 — **✅**
+4. **思考/ReAct UX**：互斥呈现、空 reasoning 不展示 — **📋 CC-C-UX-***
+5. **（P2）@ 上下文引用**、**diff Apply 卡片** — **📋**
 
 ---
 
@@ -110,9 +111,9 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 | 5 | Team `member_*` + 成员流消费 | ✅ 协议通；UX 待增强 |
 | 6 | 工具可观测 UI（基础卡片） | ✅ |
 | 6b | 执行过程卡片 v2（Skill/MCP/默认折叠/持久化 schema） | ✅ P0 |
-| 7 | Reasoning 展示 | ⏳ |
+| 7 | Reasoning 展示 | ⏳ | 折叠 UI 有；空壳/双轨（ReAct vs reasoning）待 CC-C-UX-01 |
 | 8 | 附件 / RunStatus 持久化 | 🟡 |
-| 9 | M55 TurnBlock + Channel 同步（见 [55 开发计划](./55-chat-channel-cursor-development.md)） | 📋 |
+| 9 | M55 TurnBlock + Channel 同步 | 🚧 | Phase A–D ✅；UX 收口 CC-C-UX-* 📋 |
 
 ---
 

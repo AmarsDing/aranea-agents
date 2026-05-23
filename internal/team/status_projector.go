@@ -12,11 +12,14 @@ import (
 
 // OrchestrationProjectorConfig configures a run-scoped status projector.
 type OrchestrationProjectorConfig struct {
-	RunID     string
-	TeamID    string
-	SessionID string
-	Registry  biz.OrchestrationRegistry
-	Channel   string // "team" or "graph"; defaults to team
+	RunID            string
+	TeamID           string
+	SessionID        string
+	Registry         biz.OrchestrationRegistry
+	Channel          string // "team" or "graph"; defaults to team
+	GraphExecutionID string
+	ActivityFlusher  *ActivityStepFlusher
+	FailureOnError   string // await_review | halt (FP-03)
 }
 
 // BuildOrchestrationRegistry maps team members to graph node IDs (member-{sort_order}).
@@ -98,6 +101,12 @@ func publishOrchestrationStatus(ctx context.Context, bus event.Bus, cfg Orchestr
 	env.TeamID = cfg.TeamID
 	env.Channel = channel
 	env.FilterKey = fmt.Sprintf("orchestration/%s/%s", cfg.RunID, st.NodeID)
+	status := st.Status
+	displayStatus := st.DisplayStatus
+	if strings.EqualFold(strings.TrimSpace(cfg.FailureOnError), "await_review") && status == biz.AgentNodeStatusFailed {
+		status = biz.AgentNodeStatusWaitingReview
+		displayStatus = biz.DisplayStatusSuspended
+	}
 	meta := map[string]any{
 		"run_id":         cfg.RunID,
 		"team_id":        cfg.TeamID,
@@ -106,8 +115,8 @@ func publishOrchestrationStatus(ctx context.Context, bus event.Bus, cfg Orchestr
 		"agent_key":      st.AgentKey,
 		"agent_name":     st.AgentName,
 		"role":           st.Role,
-		"status":         string(st.Status),
-		"display_status": string(st.DisplayStatus),
+		"status":         string(status),
+		"display_status": string(displayStatus),
 		"phase":          string(st.Phase),
 		"retry_count":    st.RetryCount,
 		"input_preview":  st.InputPreview,
@@ -119,6 +128,10 @@ func publishOrchestrationStatus(ctx context.Context, bus event.Bus, cfg Orchestr
 	}
 	if len(st.ActivityHistory) > 0 {
 		meta["activity_history"] = st.ActivityHistory
+	}
+	if cfg.ActivityFlusher != nil && len(st.ActivityHistory) > 0 {
+		last := st.ActivityHistory[len(st.ActivityHistory)-1]
+		cfg.ActivityFlusher.Enqueue(st.NodeID, last)
 	}
 	env.Metadata = meta
 	bus.Publish(ctx, env)

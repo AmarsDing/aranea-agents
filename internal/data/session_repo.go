@@ -77,6 +77,7 @@ func entSessionToBiz(e *ent.Session) biz.Session {
 		RunnerSnapshotJSON:         e.RunnerSnapshotJSON,
 		StateJSON:                  e.StateJSON,
 		MetadataJSON:               e.MetadataJSON,
+		SessionRevision:            e.SessionRevision,
 	}
 }
 
@@ -311,7 +312,11 @@ func (r *sessionRepo) DeleteSession(ctx context.Context, id string) error {
 		SetStatus("deleted").
 		SetUpdatedAt(now).
 		Save(ctx)
-	return err
+	if err != nil {
+		return err
+	}
+	_, _ = NewChannelPeerSessionRepo(r.data).DeleteBySessionID(ctx, id)
+	return nil
 }
 
 func (r *sessionRepo) DeleteSessionsByAgentID(ctx context.Context, agentID string) error {
@@ -942,4 +947,43 @@ func (r *sessionRepo) IncrementInvocationCounts(ctx context.Context, sessionID s
 	}
 	_, err := upd.Save(ctx)
 	return err
+}
+
+func (r *sessionRepo) BumpSessionRevision(ctx context.Context, sessionID string) (int64, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return 0, kerrors.BadRequest("SESSION", "session id is required")
+	}
+	var rev int64
+	err := entQueryRowScan(r.data.entClient, ctx,
+		`UPDATE sessions SET session_revision = session_revision + 1, updated_at = ? WHERE id = ? AND deleted_at = '' RETURNING session_revision`,
+		[]any{nowRFC3339(), sessionID},
+		&rev,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return rev, nil
+}
+
+func (r *sessionRepo) GetSessionRevision(ctx context.Context, sessionID string) (int64, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return 0, kerrors.BadRequest("SESSION", "session id is required")
+	}
+	row, err := r.data.entClient.Session.Query().
+		Where(entsession.IDEQ(sessionID), entsession.DeletedAtEQ("")).
+		Only(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return row.SessionRevision, nil
+}
+
+func (r *sessionRepo) ListMessagesAfterRevision(ctx context.Context, sessionID string, afterRevision int64) ([]biz.ChatMessage, error) {
+	if afterRevision <= 0 {
+		return r.ListMessagesBySession(ctx, sessionID, biz.MessageListMaxLimit, 0)
+	}
+	afterTurn := int(afterRevision * 2)
+	return r.ListMessagesAfterTurn(ctx, sessionID, afterTurn)
 }

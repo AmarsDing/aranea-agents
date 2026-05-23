@@ -23,6 +23,7 @@ const (
 	ValidationErrEdgeTargetMissing ValidationErrorCode = "edge_target_missing"
 	ValidationErrInvalidMapperJSON ValidationErrorCode = "invalid_mapper_json"
 	ValidationErrInvalidRetryPolicy ValidationErrorCode = "invalid_retry_policy"
+	ValidationErrSubgraphCycle      ValidationErrorCode = "subgraph_cycle"
 )
 
 type ValidationError struct {
@@ -75,8 +76,35 @@ func ValidateGraph(def *GraphBuildConfig, agentChecker AgentExistenceChecker, re
 	validateStateSchema(def, result)
 	validateLoopExits(def, result)
 	validateNodePolicies(def, result)
+	validateSubgraphCycles(def, result)
 
 	return result
+}
+
+func validateSubgraphCycles(def *GraphBuildConfig, result *ValidationResult) {
+	if def == nil {
+		return
+	}
+	loading := map[string]struct{}{}
+	for _, sub := range def.Subgraphs {
+		validateSubgraphChain(sub.ID, sub.GraphID, sub.BuildConfig, loading, result)
+	}
+}
+
+func validateSubgraphChain(nodeID, graphID string, cfg GraphBuildConfig, loading map[string]struct{}, result *ValidationResult) {
+	graphID = strings.TrimSpace(graphID)
+	if graphID != "" {
+		if _, ok := loading[graphID]; ok {
+			result.AddError(ValidationErrSubgraphCycle, nodeID, "subgraph_id",
+				fmt.Sprintf("子图引用循环 detected at %q", graphID))
+			return
+		}
+		loading[graphID] = struct{}{}
+		defer delete(loading, graphID)
+	}
+	for _, sub := range cfg.Subgraphs {
+		validateSubgraphChain(sub.ID, sub.GraphID, sub.BuildConfig, loading, result)
+	}
 }
 
 func validateNodePolicies(def *GraphBuildConfig, result *ValidationResult) {
@@ -199,7 +227,7 @@ func validateNodeRefs(def *GraphBuildConfig, reg *Registry, result *ValidationRe
 	}
 	for _, n := range def.Nodes {
 		switch normalizeNodeType(n.Type) {
-		case "llm", "tool", "tools":
+		case "llm", "tool", "tools", "task", "review", "agent", "router":
 			continue
 		}
 		if n.Func == nil && n.FuncRef != "" {

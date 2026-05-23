@@ -218,6 +218,34 @@ function routingFields(type: string): ChannelPlatformField[] {
   return fields;
 }
 
+const EXECUTION_MODE_OPTIONS = [
+  { label: "sync", value: "sync" },
+  { label: "auto", value: "auto" },
+  { label: "async", value: "async" }
+];
+
+const PROGRESS_MODE_OPTIONS = [
+  { label: "off", value: "off" },
+  { label: "text", value: "text" },
+  { label: "steps", value: "steps" }
+];
+
+function longTaskFields(): ChannelPlatformField[] {
+  return [
+    { museKey: "turn_timeout_sec", bind: { source: "config", key: "turn_timeout_sec" }, kind: "text", placeholder: "900" },
+    { museKey: "first_byte_timeout_sec", bind: { source: "config", key: "first_byte_timeout_sec" }, kind: "text", placeholder: "45" },
+    { museKey: "execution_mode", bind: { source: "config", key: "execution_mode" }, kind: "select", options: EXECUTION_MODE_OPTIONS },
+    { museKey: "progress_mode", bind: { source: "config", key: "progress_mode" }, kind: "select", options: PROGRESS_MODE_OPTIONS },
+    { museKey: "progress_quiet_sec", bind: { source: "config", key: "progress_quiet_sec" }, kind: "text" },
+    { museKey: "ack_message", bind: { source: "config", key: "ack_message" }, kind: "text" },
+    { museKey: "heartbeat_message", bind: { source: "config", key: "heartbeat_message" }, kind: "text" },
+    { museKey: "async_graph_id", bind: { source: "config", key: "async_graph_id" }, kind: "text" },
+    { museKey: "async_team_id", bind: { source: "config", key: "async_team_id" }, kind: "text" },
+    { museKey: "async_cron_task_id", bind: { source: "config", key: "async_cron_task_id" }, kind: "text" },
+    { museKey: "streaming_enabled", bind: { source: "config", key: "streaming_enabled" }, kind: "toggle" }
+  ];
+}
+
 /** 按 MuseBot ConfigForm 分区返回当前平台的表单结构 */
 export function buildPlatformSections(type: string, catalog: ChannelCatalogItem | null): ChannelPlatformSection[] {
   const sections: ChannelPlatformSection[] = [
@@ -244,6 +272,13 @@ export function buildPlatformSections(type: string, catalog: ChannelCatalogItem 
     title: "ROUTING",
     hint: "消息路由与访问控制",
     fields: routingFields(type)
+  });
+
+  sections.push({
+    id: "long_task",
+    title: "LONG TASK",
+    hint: "长任务 ACK、超时、进度与 async 路由",
+    fields: longTaskFields()
   });
 
   sections.push({

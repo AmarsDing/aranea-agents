@@ -13,7 +13,13 @@
       <div class="col ellipsis">
         <div class="chat-message-header__title ellipsis">{{ sessionTitle }}</div>
         <div class="chat-message-header__subtitle text-caption ellipsis">
-          {{ props.messages.length }} {{ t("chat.assistant") }} · {{ Math.round(props.contextRatio * 100) }}% ctx
+          {{ t("chat.syncDiagnostic", {
+            count: props.messages.length,
+            rev: props.sessionRevision ?? 0,
+            ws: props.wsConnected ? "on" : "off",
+            ctx: Math.round(props.contextRatio * 100),
+          }) }}
+          <template v-if="props.wsReplaying"> · {{ t("chat.wsReplayingShort", "sync…") }}</template>
         </div>
         <ChatRunnerStatus
           v-if="runStatus && runStatus !== 'idle' && runStatus !== 'completed' && runStatus !== 'cancelled' && runStatus !== 'failed'"
@@ -50,19 +56,30 @@
         ref="virtualScrollRef"
         class="col chat-messages__viewport"
         style="min-height: 0"
-        :items="props.messages"
+        :items="timelineItems"
         :virtual-scroll-item-size="virtualRowSize"
-        :virtual-scroll-slice-size="24"
-        :virtual-scroll-slice-ratio-before="1.5"
-        :virtual-scroll-slice-ratio-after="1.5"
+        :virtual-scroll-slice-size="48"
+        :virtual-scroll-slice-ratio-before="2"
+        :virtual-scroll-slice-ratio-after="2"
         v-slot="{ item, index }"
         @scroll="onMessagesScroll"
         @click="onMessagesClick"
       >
+        <TurnBlock
+          v-if="useTurnBlockMode && item.kind === 'block'"
+          :block="item.block"
+          :all-messages="props.messages"
+          :is-dark="props.isDark"
+          :is-team-session="props.isTeamSession"
+          :planner-kind="props.plannerKind"
+          :react-tool-link-index="props.reactToolLinkIndex"
+          @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
+        />
         <ChatMessageRow
-          :message="item"
+          v-else
+          :message="item.message"
           :index="index"
-          v-memo="[item.id, item.content_markdown, item.status, item.options_json, props.isDark, props.plannerKind]"
+          v-memo="[item.message.id, item.message.content_markdown, item.message.status, item.message.options_json, props.isDark, props.plannerKind]"
           :messages="props.messages"
           :is-dark="props.isDark"
           :is-team-session="props.isTeamSession"
@@ -78,7 +95,21 @@
         @scroll.passive="onMessagesScroll"
         @click="onMessagesClick"
       >
+        <template v-if="useTurnBlockMode">
+          <TurnBlock
+            v-for="block in turnBlocks"
+            :key="block.turnId"
+            :block="block"
+            :all-messages="props.messages"
+            :is-dark="props.isDark"
+            :is-team-session="props.isTeamSession"
+            :planner-kind="props.plannerKind"
+            :react-tool-link-index="props.reactToolLinkIndex"
+            @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
+          />
+        </template>
         <ChatMessageRow
+          v-else
           v-for="(message, idx) in props.messages"
           :key="message.id"
           v-memo="[message.id, message.content_markdown, message.status, message.options_json, props.isDark, props.plannerKind]"
@@ -393,6 +424,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { useI18n } from "vue-i18n";
 import type { QVirtualScroll } from "quasar";
 import ChatMessageRow from "./ChatMessageRow.vue";
+import TurnBlock from "./TurnBlock.vue";
 import ChatRunnerStatus from "../../features/chat/components/ChatRunnerStatus.vue";
 import ChatEnqueueMessage from "../../features/chat/components/ChatEnqueueMessage.vue";
 import ChatTeamMemberStrip, { type TeamMemberLane } from "./ChatTeamMemberStrip.vue";
@@ -404,6 +436,12 @@ import {
   CHAT_VIRTUAL_SCROLL_THRESHOLD,
 } from "../../features/chat/chatListVirtual";
 import { isActivityMessage } from "../../features/chat/mergeSessionMessages";
+import {
+  groupMessagesByTurn,
+  lastAssistantTurnBlockIndex,
+  type TurnBlockGroup,
+} from "../../features/chat/groupMessagesByTurn";
+import { useTurnBlockEnabled } from "../../features/chat/useTurnBlock";
 import type { A2UIUserActionPayload } from "../../features/chat/a2uiUserAction";
 import type { Message, ReactToolLinkIndex } from "../../features/chat/types";
 import type { ChatAttachment } from "./types";
@@ -438,6 +476,8 @@ const props = defineProps<{
   runStartedAt?: string;
   runEventCount?: number;
   showEnqueue?: boolean;
+  sessionRevision?: number | null;
+  wsConnected?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -479,7 +519,23 @@ const teamMemberLanes = computed((): TeamMemberLane[] => {
   }
   return [...lanes.values()];
 });
-const useVirtualMessageList = computed(() => props.messages.length >= CHAT_VIRTUAL_SCROLL_THRESHOLD);
+const useTurnBlockMode = computed(() => useTurnBlockEnabled() && !props.isTeamSession);
+const turnBlocks = computed((): TurnBlockGroup[] =>
+  useTurnBlockMode.value ? groupMessagesByTurn(props.messages) : []
+);
+
+type TimelineItem =
+  | { kind: "block"; block: TurnBlockGroup }
+  | { kind: "message"; message: Message };
+
+const timelineItems = computed((): TimelineItem[] => {
+  if (useTurnBlockMode.value) {
+    return turnBlocks.value.map((block) => ({ kind: "block" as const, block }));
+  }
+  return props.messages.map((message) => ({ kind: "message" as const, message }));
+});
+
+const useVirtualMessageList = computed(() => timelineItems.value.length >= CHAT_VIRTUAL_SCROLL_THRESHOLD);
 const virtualRowSize = CHAT_VIRTUAL_ROW_ESTIMATE;
 const virtualScrollRef = ref<QVirtualScroll | null>(null);
 
@@ -550,6 +606,9 @@ function onMessagesScroll(event?: Event) {
 }
 
 function lastDialogueIndex(): number {
+  if (useTurnBlockMode.value) {
+    return lastAssistantTurnBlockIndex(turnBlocks.value);
+  }
   for (let i = props.messages.length - 1; i >= 0; i--) {
     const m = props.messages[i]!;
     if (m.role === "user" && (m.content_markdown ?? "").trim()) return i;
@@ -581,10 +640,10 @@ async function scrollToLatestDialogue(smooth = false) {
   }
   const el = messagesScrollEl.value;
   if (el) {
-    const rows = el.querySelectorAll<HTMLElement>(".chat-q-message");
+    const rows = el.querySelectorAll<HTMLElement>(useTurnBlockMode.value ? ".turn-block" : ".chat-q-message");
     const target = rows[idx];
     if (target) {
-      target.scrollIntoView({ block: "end", behavior: smooth ? "smooth" : "auto" });
+      target.scrollIntoView({ block: "start", behavior: smooth ? "smooth" : "auto" });
       stickToBottom.value = true;
       showScrollBtn.value = false;
       return;
@@ -594,12 +653,12 @@ async function scrollToLatestDialogue(smooth = false) {
 }
 
 async function scrollToBottom(smooth = false) {
-  if (useVirtualMessageList.value && props.messages.length > 0) {
+  if (useVirtualMessageList.value && timelineItems.value.length > 0) {
     for (let attempt = 0; attempt < 6; attempt++) {
       await nextTick();
       if (virtualScrollRef.value) {
         virtualScrollRef.value.scrollTo(
-          props.messages.length - 1,
+          timelineItems.value.length - 1,
           smooth ? "start" : "start-force"
         );
         stickToBottom.value = true;

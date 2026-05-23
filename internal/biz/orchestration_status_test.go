@@ -216,3 +216,51 @@ func TestOrchestrationStatusStore_GraphTaskReviewRejected(t *testing.T) {
 		t.Fatalf("error=%q", st.ErrorMessage)
 	}
 }
+
+func TestActivityHistoryProjection(t *testing.T) {
+	reg := testRegistry()
+	store := NewOrchestrationStatusStore(reg)
+
+	start := event.NewEnvelope(event.EnvelopeTypeMemberMessageStart, "worker-a", "sess-1")
+	start.ToolCall = &event.EnvelopeToolCall{AgentKey: "worker-a", AgentID: "a1"}
+	store.ApplyEnvelope(start, reg)
+
+	for i := 0; i < 10; i++ {
+		tool := event.NewEnvelope(event.EnvelopeTypeToolCall, "worker-a", "sess-1")
+		tool.ToolCall = &event.EnvelopeToolCall{
+			AgentKey:     "worker-a",
+			Name:         "read_file",
+			DisplayLabel: "read_file",
+			Status:       "running",
+			StartedAt:    "2026-05-23T00:00:00Z",
+		}
+		store.ApplyEnvelope(tool, reg)
+
+		result := event.NewEnvelope(event.EnvelopeTypeToolResult, "worker-a", "sess-1")
+		result.ToolCall = &event.EnvelopeToolCall{
+			AgentKey:   "worker-a",
+			Name:       "read_file",
+			Status:     "success",
+			FinishedAt: "2026-05-23T00:00:01Z",
+		}
+		store.ApplyEnvelope(result, reg)
+	}
+
+	st := store.Nodes["member-1"]
+	if st == nil {
+		t.Fatal("missing member-1 state")
+	}
+	if st.CurrentActivity == nil {
+		t.Fatal("expected current activity")
+	}
+	if st.CurrentActivity.Status != "success" {
+		t.Fatalf("current status=%q want success", st.CurrentActivity.Status)
+	}
+	if len(st.ActivityHistory) < 10 {
+		t.Fatalf("activity history len=%d want >= 10", len(st.ActivityHistory))
+	}
+	last := st.ActivityHistory[len(st.ActivityHistory)-1]
+	if last.FinishedAt == "" {
+		t.Fatal("last history entry should have finished_at")
+	}
+}

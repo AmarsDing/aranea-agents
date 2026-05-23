@@ -83,6 +83,11 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 		})
 		teamEmitter.SetOtelRefs(teamBridge.TraceID(), teamBridge.RootSpanID())
 		ctx = event.WithTraceEmitter(ctx, teamEmitter)
+		if tid := strings.TrimSpace(teamBridge.TraceID()); tid != "" {
+			if uerr := r.teams.UpdateTeamRunTraceID(ctx, run.ID, tid); uerr != nil {
+				event.CtxFlowLogWarn(ctx, "team.run.trace_id", "trace_id 持久化失败", event.P("error", uerr.Error()))
+			}
+		}
 		teamEmitter.LogStart("team.run.start", "开始团队协作",
 			event.P("team_id", teamRow.ID), event.P("mode", mode), event.P("members", len(members)))
 		defer func() {
@@ -157,8 +162,12 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 	graphExecID := ""
 	var root trpcagent.Agent
 	var memberLookup map[string]trpcagent.Agent
+	var compiledGraphCfg biz.GraphBuildConfig
 	graphAttempted := false
-	if r.graphRoot != nil && TeamGraphRuntimeEnabled(def) && SupportsTeamGraphRuntimeMode(mode) {
+	graphCompileErr := ""
+	graphBuildErr := ""
+	useGraph := r.graphRoot != nil && TeamGraphRuntimeEnabledForTeam(def, teamRow.ID) && SupportsTeamGraphRuntimeMode(mode)
+	if useGraph {
 		graphAttempted = true
 		graphExecID = uuid.NewString()
 		cfg, cerr := CompileToGraphRuntimeConfigFromJSON(ctx, def, teamRow.DefinitionJSON, func(agentID string) string {
@@ -169,13 +178,16 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 			return strings.TrimSpace(ag.AgentKey)
 		}, r.graphLoader)
 		if cerr != nil {
-			event.CtxFlowLogWarn(ctx, "team.graph_runtime.compile", "Graph 编译失败，回退 native 运行时", event.P("error", cerr.Error()))
-			metrics.TeamGraphRuntimeTotal.WithLabelValues("native_fallback", "compile_error").Inc()
+			graphCompileErr = cerr.Error()
+			event.CtxFlowLogWarn(ctx, "team.graph_runtime.compile", "Graph 编译失败", event.P("error", cerr.Error()))
+			metrics.TeamGraphRuntimeTotal.WithLabelValues("graph", "compile_error").Inc()
 		} else {
+			compiledGraphCfg = cfg
 			groot, gerr := r.graphRoot.BuildTeamGraphRoot(ctx, cfg)
 			if gerr != nil {
-				event.CtxFlowLogWarn(ctx, "team.graph_runtime.build", "GraphAgent 构建失败，回退 native 运行时", event.P("error", gerr.Error()))
-				metrics.TeamGraphRuntimeTotal.WithLabelValues("native_fallback", "build_error").Inc()
+				graphBuildErr = gerr.Error()
+				event.CtxFlowLogWarn(ctx, "team.graph_runtime.build", "GraphAgent 构建失败", event.P("error", gerr.Error()))
+				metrics.TeamGraphRuntimeTotal.WithLabelValues("graph", "build_error").Inc()
 			} else {
 				root = groot
 				_, memberLookup, err = BuildTeamMemberAgents(ctx, def, teamDeps, r.catalogAgent)
@@ -188,6 +200,11 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 				if uerr := r.teams.UpdateTeamRunGraphExecutionID(ctx, run.ID, graphExecID); uerr != nil {
 					event.CtxFlowLogWarn(ctx, "team.graph_runtime.persist", "graph_execution_id 持久化失败", event.P("error", uerr.Error()))
 				}
+				if r.teamGraphCoord != nil {
+					if regErr := r.teamGraphCoord.RegisterTeamGraphExecution(ctx, graphExecID, sess.ID, teamRow.ID, run.ID, compiledGraphCfg); regErr != nil {
+						event.CtxFlowLogWarn(ctx, "team.graph_runtime.register", "graph execution 注册失败", event.P("error", regErr.Error()))
+					}
+				}
 				if teamEmitter != nil {
 					teamEmitter.LogDone("team.run.graph", "Team GraphAgent 已构建", event.P("graph_execution_id", graphExecID))
 				}
@@ -196,17 +213,38 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 		}
 	}
 	if root == nil {
-		root, memberLookup, err = BuildTRPCTeam(ctx, def, teamDeps, r.catalogAgent)
-		if err != nil {
+		canaryHoldout := teamNativeAllowedForCanaryHoldout(def, teamRow.ID)
+		if envTeamNativeForced() || canaryHoldout {
+			root, memberLookup, err = BuildTRPCTeam(ctx, def, teamDeps, r.catalogAgent)
+			if err != nil {
+				turnStatus = "error"
+				r.finishRunErr(ctx, &run, t0, err.Error())
+				return biz.ChatMessage{}, biz.ChatMessage{}, err
+			}
+			label := nativeRuntimeMetricReason(graphAttempted, canaryHoldout && !envTeamNativeForced())
+			metrics.TeamGraphRuntimeTotal.WithLabelValues("native", label).Inc()
+			if teamEmitter != nil {
+				teamEmitter.LogDone("team.run.build", "团队 Native 应急路径已构建", event.P("mode", mode), event.P("graph_attempted", graphAttempted))
+			}
+		} else {
 			turnStatus = "error"
-			r.finishRunErr(ctx, &run, t0, err.Error())
-			return biz.ChatMessage{}, biz.ChatMessage{}, err
-		}
-		if !graphAttempted {
-			metrics.TeamGraphRuntimeTotal.WithLabelValues("native", "flag_or_mode").Inc()
-		}
-		if teamEmitter != nil {
-			teamEmitter.LogDone("team.run.build", "团队 Agent 已构建", event.P("mode", mode))
+			msg := "team graph runtime unavailable"
+			switch {
+			case !useGraph && strings.EqualFold(strings.TrimSpace(def.RuntimeEngine), "native"):
+				msg = "team runtime_engine=native requires ARANEA_TEAM_NATIVE=1 or canary holdout (Graph is the default execution path)"
+			case !useGraph && teamGraphCanaryPercent() < 100 && !teamInGraphCanaryBucket(teamRow.ID, teamGraphCanaryPercent()):
+				msg = "team outside graph canary bucket; set runtime_engine=graph or ARANEA_TEAM_NATIVE=1"
+			case graphCompileErr != "":
+				msg = "team graph compile failed: " + graphCompileErr
+			case graphBuildErr != "":
+				msg = "team graph build failed: " + graphBuildErr
+			case !SupportsTeamGraphRuntimeMode(mode):
+				msg = "team mode " + mode + " is not supported by graph runtime"
+			case r.graphRoot == nil:
+				msg = "team graph runtime builder is not configured"
+			}
+			r.finishRunErr(ctx, &run, t0, msg)
+			return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.InternalServer("TEAM", msg)
 		}
 	}
 
@@ -225,6 +263,10 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 	}
 
 	var stopObsProjector context.CancelFunc
+	var stopTaskBridge context.CancelFunc
+	var stopExecTracker context.CancelFunc
+	var stopGraphStepWatch context.CancelFunc
+	var activityFlusher *ActivityStepFlusher
 	if r.td.Pipeline.Bus != nil {
 		obsReg := BuildOrchestrationRegistry(def,
 			func(agentID string) string {
@@ -242,15 +284,54 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 				return strings.TrimSpace(ag.DisplayName)
 			},
 		)
+		activityFlusher = NewActivityStepFlusher(r.teams, run.ID, graphExecID)
+		failureOnError := ""
+		if def.FailurePolicy != nil {
+			failureOnError = def.FailurePolicy.OnError
+		}
 		stopObsProjector = StartOrchestrationStatusProjector(ctx, r.td.Pipeline.Bus, OrchestrationProjectorConfig{
-			RunID:     run.ID,
-			TeamID:    teamRow.ID,
-			SessionID: sess.ID,
-			Registry:  obsReg,
+			RunID:            run.ID,
+			TeamID:           teamRow.ID,
+			SessionID:        sess.ID,
+			Registry:         obsReg,
+			GraphExecutionID: graphExecID,
+			ActivityFlusher:  activityFlusher,
+			FailureOnError:   failureOnError,
 		})
+		if r.teamGraphTasks != nil && graphExecID != "" {
+			taskNodes := TaskNodesFromBuildConfig(compiledGraphCfg)
+			if len(taskNodes) > 0 {
+				stopTaskBridge = StartTeamGraphTaskBridge(ctx, r.td.Pipeline.Bus, TeamGraphTaskBridgeConfig{
+					SessionID:        sess.ID,
+					GraphExecutionID: graphExecID,
+					Nodes:            taskNodes,
+					Creator:          r.teamGraphTasks,
+				})
+			}
+		}
+		if r.teamGraphCoord != nil && graphExecID != "" {
+			stopExecTracker = StartTeamGraphExecutionTracker(ctx, r.td.Pipeline.Bus, TeamGraphExecutionTrackerConfig{
+				SessionID:        sess.ID,
+				GraphExecutionID: graphExecID,
+				Registry:         r.teamGraphCoord,
+			})
+			stopGraphStepWatch = r.teamGraphCoord.StartGraphStepWatch(ctx, graphExecID)
+		}
+	}
+	if activityFlusher != nil {
+		defer activityFlusher.Stop()
 	}
 	if stopObsProjector != nil {
 		defer stopObsProjector()
+	}
+	if stopTaskBridge != nil {
+		defer stopTaskBridge()
+	}
+	if stopExecTracker != nil {
+		defer stopExecTracker()
+	}
+	if stopGraphStepWatch != nil {
+		defer stopGraphStepWatch()
 	}
 
 	// Team Ralph Loop uses the first member agent's runtime settings (orchestrator / lead).
@@ -383,6 +464,7 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 		AgentID:         firstAg.ID,
 		AgentDisplayName: firstAg.DisplayName,
 		MemberAgentKeys: memberKeySet,
+		Source:          event.EnvelopeSourceFromContext(ctx),
 	}
 	streamOpts := chatactivity.NewStreamConsumeOptions(r.td.Catalog.ToolUC, r.td.Catalog.Agents, r.td.Sessions)
 	result, streamErr := agent.ConsumeWithFirstByteGuard(runCtx, agent.DefaultFirstByteTimeout, events, r.td.Pipeline.Bus, projectMeta, streamOpts)
@@ -465,19 +547,49 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 		r.finishRunErr(ctx, &run, t0, err.Error())
 		return userMsg, biz.ChatMessage{}, err
 	}
+	event.BumpAndPublishSessionRevision(
+		ctx,
+		r.td.Sessions,
+		r.td.Pipeline.Bus,
+		sess.ID,
+		run.ID,
+		userMsg.ID,
+		event.EnvelopeSourceFromContext(ctx),
+	)
 
-	for i, m := range members {
-		ag, e := r.catalogAgent(ctx, m.AgentID)
-		if e != nil {
-			continue
+	// Graph HITL: defer before team_run_steps bulk persist (steps come from graph events + resume finisher).
+	if graphExecID != "" && r.teamGraphCoord != nil {
+		if deferred, derr := r.teamGraphCoord.DeferTeamRunSuccessIfHITL(ctx, graphExecID, &run); derr != nil {
+			event.CtxFlowLogWarn(ctx, "team.graph_runtime.hitl", "HITL defer 失败", event.P("error", derr.Error()))
+		} else if deferred {
+			r.recordTeamRunUsage(ctx, run, teamRow.ID, firstAg, promptTok, completionTok, prov0, mod0, dialogMode)
+			if teamEmitter != nil {
+				teamEmitter.LogDone("team.run.finish", "团队任务等待人工", event.P("status", run.Status))
+			}
+			return userMsg, assistantMsg, nil
 		}
-		stepMsg := assistantMsg
-		stepMsg.TokenIn, stepMsg.TokenOut = stepTokensForMember(ag.AgentKey, i, result, promptTok, completionTok)
-		toolCalls := 0
-		if result.MemberToolCalls != nil {
-			toolCalls = result.MemberToolCalls[ag.AgentKey]
-		}
-		r.persistStep(ctx, run, teamRow.ID, i, m, ag, content, stepMsg, prov0, mod0, dialogMode, toolCalls)
+	}
+
+	finishIn := TeamRunFinishInput{
+		Run:            run,
+		TeamID:         teamRow.ID,
+		DefinitionJSON: teamRow.DefinitionJSON,
+		Content:        content,
+		AssistantMsg:   assistantMsg,
+		Result:         result,
+		PromptTok:      promptTok,
+		CompletionTok:  completionTok,
+		Prov:           prov0,
+		Mod:            mod0,
+		DialogMode:     dialogMode,
+		GraphExecID:    graphExecID,
+		AnchorMem:      anchorMem,
+		AnchorAg:       firstAg,
+	}
+	if graphExecID == "" {
+		r.persistNativeBulkMemberSteps(ctx, finishIn, members)
+	} else {
+		r.finalizeGraphRunStepsFallback(ctx, finishIn)
 	}
 	r.recordTeamRunUsage(ctx, run, teamRow.ID, firstAg, promptTok, completionTok, prov0, mod0, dialogMode)
 

@@ -4,17 +4,20 @@
 -->
 <template>
   <q-dialog :model-value="modelValue" persistent @update:model-value="$emit('update:modelValue', $event)">
-    <q-card :class="['team-editor app-dialog-card app-dialog-card--xl', { 'is-dark': isDark }]">
-      <q-card-section class="row items-center justify-between">
-        <div>
-          <div class="text-h6">{{ editingId ? "编辑 Team" : "新增 Team" }}</div>
-          <div class="text-caption text-grey-7">并行模式按「并行批大小」分批同时执行 Worker；coordinator/adaptive 的外圈迭代可在表单中配置。</div>
+    <q-card :class="['team-editor app-dialog-card app-dialog-card--xl app-glass-dialog', { 'is-dark': isDark }]">
+      <q-card-section class="app-glass-dialog__head row items-start justify-between no-wrap">
+        <div class="col min-width-0">
+          <div class="app-glass-dialog__title">{{ editingId ? "编辑 Team" : "新增 Team" }}</div>
+          <div class="app-glass-dialog__subtitle">
+            并行模式按「并行批大小」分批同时执行 Worker；coordinator/adaptive 的外圈迭代可在表单中配置。
+          </div>
         </div>
-        <q-btn flat round icon="close" @click="$emit('update:modelValue', false)" />
+        <q-btn flat round dense icon="close" v-close-popup />
       </q-card-section>
-      <q-separator />
-      <q-scroll-area class="team-editor-scroll">
-      <q-card-section class="app-dialog-body q-gutter-md">
+      <div class="app-glass-dialog__scroll">
+        <div class="team-editor-workspace">
+          <div class="team-editor-workspace__left q-gutter-md">
+      <q-card-section class="app-dialog-body app-glass-dialog__body q-gutter-md q-pa-none">
         <div class="app-dialog-section">
           <div class="app-form-field-grid app-form-field-grid--2col items-center">
             <div class="app-grid-span-full">
@@ -80,7 +83,10 @@
           <q-input v-model="definition.description" class="team-control app-field-long" dense outlined autogrow type="textarea" label="Team 说明" />
         </div>
 
-        <q-expansion-item icon="settings" label="运行时 / 失败策略" default-opened>
+        <q-expansion-item icon="settings" label="运行时 / 失败策略（OrchestrationSpec v2）" default-opened caption="runtime_engine · failure_policy · 熔断">
+          <q-banner v-if="nativeLocked" dense rounded class="bg-orange-1 text-dark q-mb-sm">
+            Native 执行引擎仅平台管理员可选；当前将使用 Graph。
+          </q-banner>
           <div class="app-form-field-grid app-form-field-grid--wide q-mt-sm">
             <q-select
               v-model="runtimeEngine"
@@ -90,8 +96,8 @@
               emit-value
               map-options
               label="执行引擎 runtime_engine"
-              hint="Graph 路径须后端 ARANEA_TEAM_GRAPH_RUNTIME=1；失败时 silent fallback Native"
-              :options="runtimeEngineOptions"
+              hint="默认 Graph；Native 需 admin 权限 + 后端 ARANEA_TEAM_NATIVE=1"
+              :options="filteredRuntimeEngineOptions"
             />
             <q-select
               v-model="failureDefault"
@@ -115,6 +121,38 @@
               clearable
               label="并行失败策略 parallel_fail"
               :options="parallelFailOptions"
+            />
+            <q-input
+              v-model.number="failureRetryMax"
+              class="team-control"
+              dense
+              outlined
+              type="number"
+              min="0"
+              max="10"
+              label="默认重试次数"
+            />
+            <q-input
+              v-model.number="circuitFailureThreshold"
+              class="team-control"
+              dense
+              outlined
+              type="number"
+              min="0"
+              max="100"
+              label="熔断阈值"
+              hint="0=禁用"
+            />
+            <q-select
+              v-model="failureOnError"
+              class="team-control"
+              dense
+              outlined
+              emit-value
+              map-options
+              clearable
+              label="错误接管 on_error"
+              :options="failureOnErrorOptions"
             />
           </div>
         </q-expansion-item>
@@ -176,38 +214,23 @@
           </q-card>
         </div>
 
-        <q-expansion-item icon="account_tree" label="图工作流 / JSON">
-          <div class="topology-preview q-mb-md">
-            <div v-for="node in topologyNodesFromDefinition(definition)" :key="node.label" class="topology-node">
-              <q-icon :name="node.icon" />
-              <span>{{ node.label }}</span>
-            </div>
-          </div>
-          <div class="graph-preview q-mb-md">
-            <div class="graph-canvas">
-              <div v-for="edge in graph.edges" :key="edge.id" class="graph-edge">
-                <span>{{ nodeLabel(edge.source) }}</span>
-                <q-icon name="arrow_forward" />
-                <span>{{ nodeLabel(edge.target) }}</span>
-                <q-badge v-if="edge.label" rounded color="primary">{{ edge.label }}</q-badge>
-              </div>
-              <div class="graph-nodes">
-                <div v-for="node in graph.nodes" :key="node.id" class="graph-node">
-                  <q-icon :name="graphNodeIcon(node.type)" />
-                  <div>
-                    <div class="text-weight-medium">{{ node.label }}</div>
-                    <div v-if="node.role" class="text-caption text-grey-7">{{ node.role }}</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+        <q-expansion-item icon="code" label="definition_json 预览" dense>
           <pre class="definition-json">{{ definitionJSON }}</pre>
         </q-expansion-item>
       </q-card-section>
-      </q-scroll-area>
-      <q-card-actions align="right" class="app-actions-bar">
-        <q-btn flat rounded no-caps label="取消" @click="$emit('update:modelValue', false)" />
+          </div>
+
+          <aside class="team-editor-workspace__right">
+            <TeamCompilePreview
+              :team-id="editingId"
+              :definition-json="definitionJSON"
+              :is-dark="isDark"
+            />
+          </aside>
+        </div>
+      </div>
+      <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
+        <q-btn flat rounded no-caps label="取消" v-close-popup />
         <q-btn color="primary" rounded unelevated no-caps label="保存" :loading="saving" :disable="!canSave" @click="$emit('save')" />
       </q-card-actions>
     </q-card>
@@ -215,9 +238,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, watch } from "vue";
+import { storeToRefs } from "pinia";
 import type { TeamDefinition } from "../../features/teams/types";
-import { buildGraphFromDefinition, failureDefaultOptions, modeOptions, parallelFailOptions, roleOptions, runtimeEngineOptions, statusOptions, teamTemplateOptions, topologyNodesFromDefinition, type TeamTemplateKey } from "./teamUtils";
+import { useAuthStore } from "../../stores/auth";
+import TeamCompilePreview from "./TeamCompilePreview.vue";
+import { failureDefaultOptions, failureOnErrorOptions, modeOptions, parallelFailOptions, roleOptions, runtimeEngineOptions, statusOptions, teamTemplateOptions, type TeamTemplateKey } from "./teamUtils";
+
+const authStore = useAuthStore();
+const { isPlatformAdmin } = storeToRefs(authStore);
 
 const props = withDefaults(
   defineProps<{
@@ -263,7 +292,21 @@ function onTemplatePick(key: TeamTemplateKey | null) {
   if (key) emit("applyTemplate", key);
 }
 
-const graph = computed(() => buildGraphFromDefinition(props.definition));
+const filteredRuntimeEngineOptions = computed(() =>
+  isPlatformAdmin.value ? runtimeEngineOptions : runtimeEngineOptions.filter((o) => o.value !== "native"),
+);
+
+const nativeLocked = computed(
+  () => !isPlatformAdmin.value && String(props.definition.runtime_engine || "graph").toLowerCase() === "native",
+);
+
+watch(nativeLocked, (locked) => {
+  if (locked) {
+    props.definition.runtime_engine = "graph";
+    props.definition.team_graph_runtime = true;
+  }
+}, { immediate: true });
+
 const a2aFormatOptions = [
   { label: "Markdown + JSON", value: "markdown_json" },
   { label: "Plain", value: "plain" }
@@ -309,7 +352,7 @@ const criticLoopMaxIterations = computed({
 });
 
 const runtimeEngine = computed({
-  get: () => (String(props.definition.runtime_engine || "native").toLowerCase() === "graph" ? "graph" : "native"),
+  get: () => (String(props.definition.runtime_engine || "graph").toLowerCase() === "native" ? "native" : "graph"),
   set: (value: "native" | "graph") => {
     props.definition.runtime_engine = value;
     props.definition.team_graph_runtime = value === "graph";
@@ -339,18 +382,62 @@ const parallelFail = computed({
   }
 });
 
-function nodeLabel(id: string) {
-  return graph.value.nodes.find((node) => node.id === id)?.label || id;
-}
+const failureRetryMax = computed({
+  get: () => props.definition.failure_policy?.retry?.max_attempts ?? 3,
+  set: (value: number) => {
+    const policy = ensureFailurePolicy();
+    policy.retry = { ...(policy.retry ?? {}), max_attempts: Math.max(0, Math.floor(Number(value) || 0)) };
+  }
+});
 
-function graphNodeIcon(type: string) {
-  return ({ start: "play_circle", agent: "smart_toy", join: "merge_type", end: "flag" } as Record<string, string>)[type] || "radio_button_unchecked";
-}
+const circuitFailureThreshold = computed({
+  get: () => props.definition.failure_policy?.circuit_breaker?.failure_threshold ?? 0,
+  set: (value: number) => {
+    const policy = ensureFailurePolicy();
+    const n = Math.max(0, Math.floor(Number(value) || 0));
+    if (n <= 0) {
+      delete policy.circuit_breaker;
+      return;
+    }
+    policy.circuit_breaker = { ...(policy.circuit_breaker ?? {}), failure_threshold: n, reset_timeout_seconds: policy.circuit_breaker?.reset_timeout_seconds ?? 60 };
+  }
+});
+
+const failureOnError = computed({
+  get: () => props.definition.failure_policy?.on_error ?? "",
+  set: (value: string | null) => {
+    const policy = ensureFailurePolicy();
+    policy.on_error = value || undefined;
+  }
+});
+
 </script>
 
 <style scoped>
-.team-editor-scroll {
-  max-height: min(72vh, 820px);
+.team-editor-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+  gap: 16px;
+  padding: 0 16px 16px;
+  align-items: start;
+}
+
+.team-editor-workspace__right {
+  position: sticky;
+  top: 8px;
+}
+
+@media (max-width: 960px) {
+  .team-editor-workspace {
+    grid-template-columns: 1fr;
+  }
+  .team-editor-workspace__right {
+    position: static;
+  }
+}
+
+.min-width-0 {
+  min-width: 0;
 }
 
 .team-control :deep(.q-field__control) {
@@ -389,44 +476,6 @@ function graphNodeIcon(type: string) {
   color: var(--color-accent);
   font-size: 12px;
   font-weight: 700;
-}
-
-.graph-preview {
-  padding: 12px;
-  border: 1px solid var(--glass-border);
-  border-radius: 18px;
-  background: var(--glass-surface);
-}
-
-.graph-canvas,
-.graph-nodes {
-  display: grid;
-  gap: 10px;
-}
-
-.graph-nodes {
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-}
-
-.graph-node,
-.graph-edge {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  border: 1px solid var(--glass-border);
-  border-radius: 14px;
-  background: var(--glass-elevated);
-}
-
-.graph-edge {
-  flex-wrap: wrap;
-  color: var(--color-text-secondary);
-  font-size: 12px;
-}
-
-.graph-node {
-  color: var(--color-text-primary);
 }
 
 .definition-json {

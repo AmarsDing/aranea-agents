@@ -57,6 +57,8 @@ func BuildTeamMemberAgents(
 	return memberAgents, lookup, nil
 }
 
+// Deprecated: Team runs use the GraphAgent compile path by default (M53 Phase 7).
+// BuildTRPCTeam is retained only for emergency fallback when ARANEA_TEAM_NATIVE=1.
 func BuildTRPCTeam(ctx context.Context, def Definition, deps TRPCTeamBuilderDeps, catalogAgent func(ctx context.Context, id string) (biz.Agent, error)) (trpcagent.Agent, map[string]trpcagent.Agent, error) {
 	members := EnabledMembers(def)
 	if len(members) == 0 {

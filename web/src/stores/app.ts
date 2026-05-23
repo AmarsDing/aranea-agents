@@ -25,7 +25,9 @@ export const useAppStore = defineStore("app", {
     messages: [] as Message[],
     selectedAgent: null as Agent | null,
     selectedSession: null as Session | null,
-    lastIntentPass: null as IntentPassResult | null
+    lastIntentPass: null as IntentPassResult | null,
+    /** Per-session revision cursor for M55 incremental sync */
+    sessionRevisionBySession: {} as Record<string, number>,
   }),
   actions: {
     async removeAgentFromList(id: string) {
@@ -110,9 +112,20 @@ export const useAppStore = defineStore("app", {
       this.selectedSession = created;
       return created;
     },
-    async loadMessages(opts?: { replace?: boolean }) {
+    async loadMessages(opts?: { replace?: boolean; afterRevision?: number }) {
       if (!this.selectedSession) return;
-      const server = await listMessages(this.selectedSession.id);
+      const sid = this.selectedSession.id;
+      if (opts?.afterRevision != null && opts.afterRevision > 0) {
+        const { listSessionChatMessagesAfterRevision } = await import("../features/session/api");
+        const { items, currentRevision } = await listSessionChatMessagesAfterRevision(sid, opts.afterRevision);
+        this.sessionRevisionBySession[sid] = currentRevision;
+        if (items.length > 0) {
+          this.messages = mergeSessionMessages(items, this.messages);
+        }
+        return;
+      }
+      const { items: server, currentRevision } = await listMessages(sid);
+      this.sessionRevisionBySession[sid] = currentRevision;
       if (opts?.replace || this.messages.length === 0) {
         this.messages = mergeSessionMessages(server, []);
         return;

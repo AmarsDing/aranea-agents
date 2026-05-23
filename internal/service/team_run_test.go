@@ -29,6 +29,20 @@ func (r *summaryTeamRepo) ListTeamRunSteps(_ context.Context, runID string) ([]b
 
 func (r *summaryTeamRepo) UpdateTeamRunSummaryJSON(_ context.Context, _, _ string) error { return nil }
 func (r *summaryTeamRepo) UpdateTeamRunGraphExecutionID(_ context.Context, _, _ string) error { return nil }
+func (r *summaryTeamRepo) UpdateTeamRunTraceID(_ context.Context, _, _ string) error             { return nil }
+func (r *summaryTeamRepo) BatchCreateOrchestrationSteps(_ context.Context, _ []biz.OrchestrationStep) error {
+	return nil
+}
+func (r *summaryTeamRepo) ListOrchestrationSteps(_ context.Context, _, _ string, _ int) ([]biz.OrchestrationStep, error) {
+	return nil, nil
+}
+func (r *summaryTeamRepo) CreateTaskDeadLetter(_ context.Context, _ biz.TaskDeadLetter) error { return nil }
+func (r *summaryTeamRepo) ListTaskDeadLetters(_ context.Context, _ biz.TaskDeadLetterListFilter) ([]biz.TaskDeadLetter, error) {
+	return nil, nil
+}
+func (r *summaryTeamRepo) ResolveTaskDeadLetter(_ context.Context, _ string) (biz.TaskDeadLetter, error) {
+	return biz.TaskDeadLetter{}, nil
+}
 
 func (r *summaryTeamRepo) GetTeamByID(_ context.Context, id string) (biz.Team, error) {
 	if id == "t1" {
@@ -48,7 +62,7 @@ func TestGetTeamRunSummary_AggregatesSteps(t *testing.T) {
 			},
 		},
 	}
-	svc := NewTeamService(biz.NewTeamUsecase(repo), nil, nil, nil, nil, nil)
+	svc := NewTeamService(biz.NewTeamUsecase(repo), nil, nil, nil, nil, nil, nil)
 
 	resp, err := svc.GetTeamRunSummary(context.Background(), &v1.GetTeamRunSummaryRequest{Id: "run-1"})
 	if err != nil {
@@ -65,7 +79,7 @@ func TestGetTeamRunSummary_AggregatesSteps(t *testing.T) {
 
 func TestRunTeamTest_RequiresRuntime(t *testing.T) {
 	repo := &summaryTeamRepo{runs: map[string]biz.TeamRun{}}
-	svc := NewTeamService(biz.NewTeamUsecase(repo), nil, nil, nil, nil, nil)
+	svc := NewTeamService(biz.NewTeamUsecase(repo), nil, nil, nil, nil, nil, nil)
 	_, err := svc.RunTeamTest(context.Background(), &v1.RunTeamTestRequest{Id: "t1"})
 	if err == nil {
 		t.Fatal("expected error when team runner is nil")

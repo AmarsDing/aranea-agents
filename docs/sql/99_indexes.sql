@@ -16,6 +16,8 @@ CREATE INDEX IF NOT EXISTS idx_session_summaries_session_range ON session_summar
 -- Team 索引
 CREATE INDEX IF NOT EXISTS idx_team_runs_team_created ON team_runs(team_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_team_runs_session ON team_runs(session_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_team_runs_trace ON team_runs(trace_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_orchestration_steps_run_created ON orchestration_steps(team_run_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_team_run_steps_run ON team_run_steps(run_id, sort_order);
 
 -- Agent 索引

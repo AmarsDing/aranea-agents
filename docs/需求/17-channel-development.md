@@ -121,6 +121,7 @@ Channel：在 Kratos 层实现外部 IM 平台连接，参考 MuseBot 的 SDK �
 | D3 | 路由 UI：Team / dm_scope / rules | 🟡 | Agent/Team 下拉 ✅；`dm_scope` 下拉 ✅；rules 表 ⏳ |
 | D5 | Web Chat 同步 Channel 入站 | ✅ | `useChatInboundSync` + session `metadata_json.source=channel` |
 | D6 | 路由变更重置 peer 绑定 | ✅ | `UpdateChannel` + `DeleteByChannelID` |
+| D7 | Stale peer bind 自动 rebind | ✅ | CC-HOT-01 · Session 软删后飞书入站自动建新 Session |
 | D4 | delivery Prometheus + dead-letter | ✅ | `aranea_channel_delivery_*` |
 
 ---

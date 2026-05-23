@@ -293,7 +293,7 @@ func bizCfgToTrpc(cfg biz.GraphBuildConfig) graphtrpc.GraphBuildConfig {
 	subgraphs := make([]graphtrpc.SubgraphDef, len(cfg.Subgraphs))
 	for i, s := range cfg.Subgraphs {
 		subgraphs[i] = graphtrpc.SubgraphDef{
-			ID: s.ID, BuildConfig: bizCfgToTrpc(s.BuildConfig),
+			ID: s.ID, GraphID: s.GraphID, BuildConfig: bizCfgToTrpc(s.BuildConfig),
 			InterruptBefore: s.InterruptBefore, InterruptAfter: s.InterruptAfter,
 		}
 	}
@@ -302,6 +302,7 @@ func bizCfgToTrpc(cfg biz.GraphBuildConfig) graphtrpc.GraphBuildConfig {
 		StateFields: stateFields, EntryPoint: cfg.EntryPoint, FinishPoint: cfg.FinishPoint,
 		EnableCheckpoint: cfg.EnableCheckpoint, ExecutionEngine: graphtrpc.ExecutionEngineType(cfg.ExecutionEngine),
 		InterruptBefore: cfg.InterruptBefore, InterruptAfter: cfg.InterruptAfter,
+		FailurePolicy: cfg.FailurePolicy,
 	}
 }
 
@@ -340,7 +341,7 @@ func trpcCfgToBiz(cfg graphtrpc.GraphBuildConfig) biz.GraphBuildConfig {
 	subgraphs := make([]biz.SubgraphDef, len(cfg.Subgraphs))
 	for i, s := range cfg.Subgraphs {
 		subgraphs[i] = biz.SubgraphDef{
-			ID: s.ID, BuildConfig: trpcCfgToBiz(s.BuildConfig),
+			ID: s.ID, GraphID: s.GraphID, BuildConfig: trpcCfgToBiz(s.BuildConfig),
 			InterruptBefore: s.InterruptBefore, InterruptAfter: s.InterruptAfter,
 		}
 	}

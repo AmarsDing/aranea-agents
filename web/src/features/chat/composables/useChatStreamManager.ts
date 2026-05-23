@@ -61,6 +61,7 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
   let teamStreamSessionId: string | null = null;
 
   const wsReplaying = ref(false);
+  const chatWsConnected = ref(false);
   const agentMessageWriter = createMessageBatchWriter(
     () => deps.store.messages,
     (rows) => {
@@ -90,10 +91,18 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
 
   function ensureChatStream(sessionId: string) {
     if (chatStream && chatStream.transport.value && chatStreamSessionId === sessionId) {
+      chatWsConnected.value = chatStream.connected.value;
       return chatStream;
     }
     chatStream?.disconnect();
+    chatWsConnected.value = false;
     chatStream = createChatStream(sessionId, {
+      onConnected: () => {
+        chatWsConnected.value = true;
+      },
+      onDisconnected: () => {
+        chatWsConnected.value = false;
+      },
       onServerShutdown: () => {
         $q.notify({
           type: "warning",
@@ -150,7 +159,13 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
       if (sid) {
         deps.store.messages = dropPendingUserPlaceholders(finalizeOrphanToolMessages(deps.store.messages));
         try {
-          await deps.store.loadMessages();
+          const rev = deps.store.sessionRevisionBySession[sid] ?? 0;
+          if (rev > 0) {
+            await deps.store.loadMessages({ afterRevision: rev });
+          } else {
+            // revision 未 bump（进行中 Turn）或 DB 仍为 0：全量 merge 拉齐 assistant 正文
+            await deps.store.loadMessages({ replace: true });
+          }
           await deps.store.loadSessions();
         } catch { /* ignore */ }
       }
@@ -265,8 +280,18 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
           finalizeOrphanToolMessages(deps.teamMessages.value[sid] ?? [])
         );
         try {
-          const { listSessionChatMessages: listMessages } = await import("../../session/api");
-          deps.teamMessages.value[sid] = await listMessages(sid);
+          const rev = deps.store.sessionRevisionBySession[sid] ?? 0;
+          if (rev > 0) {
+            const { listSessionChatMessagesAfterRevision } = await import("../../session/api");
+            const { items } = await listSessionChatMessagesAfterRevision(sid, rev);
+            if (items.length > 0) {
+              const { mergeSessionMessages } = await import("../mergeSessionMessages");
+              deps.teamMessages.value[sid] = mergeSessionMessages(
+                items,
+                deps.teamMessages.value[sid] ?? []
+              );
+            }
+          }
         } catch { /* keep assembled rows */ }
       }
     });
@@ -303,6 +328,7 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
     chatStream?.disconnect();
     chatStream = null;
     chatStreamSessionId = null;
+    chatWsConnected.value = false;
   }
 
   function disconnectTeamStream() {
@@ -384,6 +410,7 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
 
   return {
     wsReplaying,
+    chatWsConnected,
     ensureChatStream,
     ensureTeamStream,
     subscribeSessionStream,

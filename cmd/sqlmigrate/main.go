@@ -55,17 +55,28 @@ func defaultDBPath() string {
 }
 
 func splitSQL(raw string) []string {
-	var out []string
+	var b strings.Builder
 	for _, line := range strings.Split(raw, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "--") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "--") {
 			continue
 		}
-		out = append(out, line)
+		if b.Len() > 0 {
+			b.WriteByte('\n')
+		}
+		b.WriteString(trimmed)
 	}
-	if len(out) == 0 {
+	body := strings.TrimSpace(b.String())
+	if body == "" {
 		return nil
 	}
-	// single-statement files: join lines
-	return []string{strings.Join(out, " ")}
+	parts := strings.Split(body, ";")
+	var out []string
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
 }

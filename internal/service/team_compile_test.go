@@ -45,6 +45,20 @@ func (r *compileTeamRepo) UpdateTeamRunSummaryJSON(context.Context, string, stri
 func (r *compileTeamRepo) UpdateTeamRunGraphExecutionID(context.Context, string, string) error {
 	return nil
 }
+func (r *compileTeamRepo) UpdateTeamRunTraceID(context.Context, string, string) error { return nil }
+func (r *compileTeamRepo) BatchCreateOrchestrationSteps(context.Context, []biz.OrchestrationStep) error {
+	return nil
+}
+func (r *compileTeamRepo) ListOrchestrationSteps(context.Context, string, string, int) ([]biz.OrchestrationStep, error) {
+	return nil, nil
+}
+func (r *compileTeamRepo) CreateTaskDeadLetter(_ context.Context, _ biz.TaskDeadLetter) error { return nil }
+func (r *compileTeamRepo) ListTaskDeadLetters(_ context.Context, _ biz.TaskDeadLetterListFilter) ([]biz.TaskDeadLetter, error) {
+	return nil, nil
+}
+func (r *compileTeamRepo) ResolveTaskDeadLetter(_ context.Context, _ string) (biz.TaskDeadLetter, error) {
+	return biz.TaskDeadLetter{}, nil
+}
 func (r *compileTeamRepo) CreateTeamRunStep(context.Context, biz.TeamRunStep) (biz.TeamRunStep, error) {
 	return biz.TeamRunStep{}, nil
 }
@@ -54,7 +68,7 @@ func TestCompileTeamGraph_sequential(t *testing.T) {
 		ID: "t1",
 		DefinitionJSON: `{"version":1,"mode":"sequential","members":[{"agent_id":"a1","role":"worker","sort_order":1,"enabled":true},{"agent_id":"a2","role":"worker","sort_order":2,"enabled":true}]}`,
 	}}
-	svc := NewTeamService(biz.NewTeamUsecase(repo), nil, nil, nil, nil, nil)
+	svc := NewTeamService(biz.NewTeamUsecase(repo), nil, nil, nil, nil, nil, nil)
 	resp, err := svc.CompileTeamGraph(context.Background(), &v1.CompileTeamGraphRequest{TeamId: "t1"})
 	if err != nil {
 		t.Fatal(err)

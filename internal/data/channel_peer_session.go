@@ -54,6 +54,29 @@ func (r *channelPeerSessionRepo) GetByChannelAndPeer(ctx context.Context, channe
 	return entPeerToBiz(e), nil
 }
 
+func (r *channelPeerSessionRepo) UpdateSessionID(ctx context.Context, channelID, peerKey, sessionID string) (biz.ChannelPeerSession, error) {
+	channelID = strings.TrimSpace(channelID)
+	sessionID = strings.TrimSpace(sessionID)
+	if channelID == "" || sessionID == "" {
+		return biz.ChannelPeerSession{}, fmt.Errorf("channel peer session: missing channel_id or session_id")
+	}
+	n, err := r.data.entClient.PlatformChannelPeerSession.Update().
+		Where(
+			platformchannelpeersession.ChannelIDEQ(channelID),
+			platformchannelpeersession.PeerKeyEQ(peerKey),
+		).
+		SetSessionID(sessionID).
+		SetUpdatedAt(nowRFC3339()).
+		Save(ctx)
+	if err != nil {
+		return biz.ChannelPeerSession{}, err
+	}
+	if n == 0 {
+		return biz.ChannelPeerSession{}, sql.ErrNoRows
+	}
+	return r.GetByChannelAndPeer(ctx, channelID, peerKey)
+}
+
 func (r *channelPeerSessionRepo) Create(ctx context.Context, row biz.ChannelPeerSession) (biz.ChannelPeerSession, error) {
 	if strings.TrimSpace(row.ID) == "" || strings.TrimSpace(row.ChannelID) == "" || strings.TrimSpace(row.SessionID) == "" {
 		return biz.ChannelPeerSession{}, fmt.Errorf("channel peer session: missing id, channel_id, or session_id")
@@ -84,6 +107,20 @@ func (r *channelPeerSessionRepo) DeleteByChannelID(ctx context.Context, channelI
 	}
 	n, err := r.data.entClient.PlatformChannelPeerSession.Delete().
 		Where(platformchannelpeersession.ChannelIDEQ(channelID)).
+		Exec(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
+func (r *channelPeerSessionRepo) DeleteBySessionID(ctx context.Context, sessionID string) (int, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return 0, nil
+	}
+	n, err := r.data.entClient.PlatformChannelPeerSession.Delete().
+		Where(platformchannelpeersession.SessionIDEQ(sessionID)).
 		Exec(ctx)
 	if err != nil {
 		return 0, err

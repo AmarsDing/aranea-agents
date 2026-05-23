@@ -65,6 +65,24 @@ func (s *turnJobRepoStub) ListByChannel(_ context.Context, channelID string, lim
 	return out, nil
 }
 
+func (s *turnJobRepoStub) ListFiltered(_ context.Context, q ChannelTurnJobListQuery) ([]ChannelTurnJob, error) {
+	limit := NormalizeChannelTurnJobListLimit(q.Limit)
+	var out []ChannelTurnJob
+	for _, job := range s.jobs {
+		if q.SessionID != "" && job.SessionID != q.SessionID {
+			continue
+		}
+		if q.Status != "" && NormalizeChannelTurnJobStatus(job.Status) != NormalizeChannelTurnJobStatus(q.Status) {
+			continue
+		}
+		out = append(out, job)
+	}
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
 func TestChannelTurnJobUsecaseCreateAcceptedReturnsStableID(t *testing.T) {
 	repo := &turnJobRepoStub{jobs: map[string]ChannelTurnJob{}}
 	uc := NewChannelTurnJobUsecase(nil, repo)

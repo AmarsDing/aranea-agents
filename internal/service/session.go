@@ -287,7 +287,26 @@ func toProtoChatMessageRow(m biz.ChatMessage) *v1.ChatMessageRow {
 
 // ListSessionMessages implements GET /v1/sessions/{id}/messages.
 func (s *SessionService) ListSessionMessages(ctx context.Context, req *v1.ListSessionMessagesRequest) (*v1.ListSessionMessagesResponse, error) {
-	res, err := s.uc.ListMessagesPaged(ctx, req.GetId(), int(req.GetLimit()), int(req.GetOffset()))
+	sessionID := strings.TrimSpace(req.GetId())
+	if sessionID == "" {
+		return nil, kerrors.BadRequest("SESSION", "session id is required")
+	}
+	currentRev, err := s.uc.GetSessionRevision(ctx, sessionID)
+	if err != nil {
+		return nil, mapSessionErr(err)
+	}
+	if req.AfterRevision != nil && *req.AfterRevision > 0 {
+		items, err := s.uc.ListMessagesAfterRevision(ctx, sessionID, *req.AfterRevision)
+		if err != nil {
+			return nil, mapSessionErr(err)
+		}
+		out := make([]*v1.ChatMessageRow, 0, len(items))
+		for i := range items {
+			out = append(out, toProtoChatMessageRow(items[i]))
+		}
+		return &v1.ListSessionMessagesResponse{Items: out, Total: int32(len(out)), CurrentRevision: currentRev}, nil
+	}
+	res, err := s.uc.ListMessagesPaged(ctx, sessionID, int(req.GetLimit()), int(req.GetOffset()))
 	if err != nil {
 		return nil, mapSessionErr(err)
 	}
@@ -295,7 +314,7 @@ func (s *SessionService) ListSessionMessages(ctx context.Context, req *v1.ListSe
 	for i := range res.Items {
 		out = append(out, toProtoChatMessageRow(res.Items[i]))
 	}
-	return &v1.ListSessionMessagesResponse{Items: out, Total: int32(res.Total)}, nil
+	return &v1.ListSessionMessagesResponse{Items: out, Total: int32(res.Total), CurrentRevision: currentRev}, nil
 }
 
 // SearchSessionMessages implements GET /v1/sessions/messages/search.

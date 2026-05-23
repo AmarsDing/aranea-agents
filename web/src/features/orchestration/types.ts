@@ -89,9 +89,21 @@ export type TeamRunObservatory = {
   status: string;
   mode: string;
   graph_execution_id?: string;
+  trace_id?: string;
   definition_snapshot_json?: string;
   compiled_topology?: import("./compileApi").CompileTeamGraphResult;
   nodes: AgentNodeState[];
+};
+
+export type ActivityTimelineRow = {
+  node_id: string;
+  kind?: string;
+  display_label?: string;
+  status?: string;
+  started_at?: string;
+  finished_at?: string;
+  duration_ms?: number;
+  trace_id?: string;
 };
 
 export function agentNodeStateFromMetadata(meta: OrchestrationAgentStatusMetadata): AgentNodeState {

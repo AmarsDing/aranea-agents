@@ -85,6 +85,25 @@
 
 ---
 
+## M55 Chat×Channel 验收（CC-E2E-01）
+
+| ID | 步骤 | 预期 |
+|----|------|------|
+| M55-SYNC-01 | 飞书 Turn 进行中，Web 打开同 Session | ≤5s 内 user / running 可见；顶栏 `rev` 递增 |
+| M55-SYNC-02 | 飞书 Turn 完成，Web 已打开 | assistant 自动出现；UserBubble 显示「飞书」来源徽标 |
+| M55-UI-01 | 100+ 消息 Session，TurnBlock 开启 | 滚动流畅（虚拟列表）；工具默认折叠 |
+| M55-UI-02 | 单轮 20+ 工具 | ToolStrip 折叠/展开正常 |
+| M55-JOB-01 | 飞书 `/async` 或长任务关键词 | Web「后台任务」面板 ≤3s 出现 Job |
+
+```bash
+# 后端
+go test ./internal/service/ -run 'EnsureChannelSession|ListSessionMessages_afterRevision|ListChatBackgroundJobs' -count=1
+# 前端
+cd web && pnpm test -- messageSourceMeta groupMessagesByTurn
+```
+
+---
+
 ## 回归命令
 
 ```bash

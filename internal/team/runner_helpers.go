@@ -85,6 +85,20 @@ func (r *Runner) finishRunErr(ctx context.Context, run *biz.TeamRun, t0 time.Tim
 	run.FinishedAt = agent.RFC3339Now()
 	run.DurationMS = int(time.Since(t0).Milliseconds())
 	_ = r.teams.UpdateTeamRun(ctx, *run)
+	if biz.ShouldRecordTaskDeadLetter(run.DefinitionSnapshotJSON) {
+		_ = r.teams.CreateTaskDeadLetter(ctx, biz.TaskDeadLetter{
+			ID:               uuid.NewString(),
+			SourceType:       biz.TaskDeadLetterSourceTeamRun,
+			SourceID:         run.ID,
+			TeamID:           run.TeamID,
+			TeamRunID:        run.ID,
+			SessionID:        strings.TrimSpace(run.SessionID),
+			GraphExecutionID: strings.TrimSpace(run.GraphExecutionID),
+			ErrorMessage:     msg,
+			Status:           biz.TaskDeadLetterStatusPending,
+			CreatedAt:        agent.RFC3339Now(),
+		})
+	}
 	if r.td.Pipeline.Bus != nil {
 		cp := *run
 		env := event.NewEnvelope(event.EnvelopeTypeTeamRunFinished, "team-runner", strings.TrimSpace(run.SessionID))

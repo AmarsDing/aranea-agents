@@ -37,7 +37,7 @@
 | **Agent 2–8** | 2–8 | 80 | 16 | 21 | 17 | 14 | 6 | 6 | P1 | [02-08-agent-modules-review.md](./02-08-agent-modules-review.md) |
 | **Provider** | 9 | 81 | 17 | 22 | 18 | 12 | 6 | 6 | P1 | [09-provider-review.md](./09-provider-review.md) |
 | **Session** | 10 | 79 | 16 | 21 | 17 | 13 | 6 | 6 | P1 | [10-session-review.md](./10-session-review.md) |
-| **Team / Multi-Agent** | 11 | 83 | 17 | 22 | 18 | 14 | 6 | 6 | P1 | [11-team-review.md](./11-team-review.md) |
+| **Team / Multi-Agent** | 11 | 83 | 17 | 22 | 18 | 14 | 6 | 6 | P1 | [11-team-review.md](./11-team-review.md) · [M53 Phase7](./2026-05-23-Team-Graph-M53-Phase7-Review.md) |
 | **Memory L0–L4** | 12–16 | 74 | 15 | 18 | 16 | 12 | 7 | 6 | P1 | [12-16-memory-review.md](./12-16-memory-review.md) |
 | **Channel** | 17 | **92** | 19 | 23 | 19 | 14 | 8 | 9 | P2 | [17-channel-review.md](./17-channel-review.md) · [IM Preview](./2026-05-23-Channel-IM-Preview-Review.md) |
 | **Monitor / Dashboard** | 18 | 78 | 16 | 21 | 17 | 13 | 5 | 6 | P1 | [18-monitor-review.md](./18-monitor-review.md) |

@@ -27,6 +27,7 @@ type ProjectMeta struct {
 	AgentID            string
 	AgentDisplayName   string
 	MemberAgentKeys    map[string]struct{} // agent_key set for team member_* envelopes
+	Source             string
 }
 
 type EventProjector struct {
@@ -142,6 +143,9 @@ func (p *EventProjector) baseEnvelope(ev *trpcevent.Event, meta ProjectMeta, typ
 		env.Actions = &event.EnvelopeActions{
 			SkipSummarization: ev.Actions.SkipSummarization,
 		}
+	}
+	if src := strings.TrimSpace(meta.Source); src != "" {
+		env.Source = src
 	}
 	return env
 }

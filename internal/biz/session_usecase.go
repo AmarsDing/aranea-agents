@@ -59,6 +59,7 @@ type Session struct {
 	RunnerSnapshotJSON         string
 	StateJSON                  string
 	MetadataJSON               string
+	SessionRevision            int64
 }
 
 // SessionSearchQuery filters sessions（对齐遗留 REST query）.
@@ -352,6 +353,9 @@ type SessionRepository interface {
 	ListSessionsByIDs(ctx context.Context, ids []string) ([]Session, error)
 	ArchiveSessionsByIDs(ctx context.Context, ids []string) (processed int, failed []string, err error)
 	DeleteSessionsByIDs(ctx context.Context, ids []string) (processed int, failed []string, err error)
+	BumpSessionRevision(ctx context.Context, sessionID string) (int64, error)
+	GetSessionRevision(ctx context.Context, sessionID string) (int64, error)
+	ListMessagesAfterRevision(ctx context.Context, sessionID string, afterRevision int64) ([]ChatMessage, error)
 }
 
 // SessionUsecase handles session CRUD + timeline. Chat 写消息经 AppendChat* 等仓储方法，不经 SessionService RPC.
@@ -572,6 +576,36 @@ func (uc *SessionUsecase) AppendChatMessage(ctx context.Context, sessionID strin
 		_ = uc.maybeAutoTitleFromUserMessage(ctx, sessionID, msg.ContentMarkdown)
 	}
 	return nil
+}
+
+// ListMessagesAfterRevision returns messages with turn_index > afterRevision*2 (M55 session sync).
+func (uc *SessionUsecase) ListMessagesAfterRevision(ctx context.Context, sessionID string, afterRevision int64) ([]ChatMessage, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return nil, validationErr("session id is required")
+	}
+	if _, err := uc.sessions.GetSessionByID(ctx, sessionID); err != nil {
+		return nil, err
+	}
+	return uc.sessions.ListMessagesAfterRevision(ctx, sessionID, afterRevision)
+}
+
+// BumpSessionRevision atomically increments session_revision after a completed turn.
+func (uc *SessionUsecase) BumpSessionRevision(ctx context.Context, sessionID string) (int64, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return 0, validationErr("session id is required")
+	}
+	return uc.sessions.BumpSessionRevision(ctx, sessionID)
+}
+
+// GetSessionRevision returns the current session_revision counter.
+func (uc *SessionUsecase) GetSessionRevision(ctx context.Context, sessionID string) (int64, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return 0, validationErr("session id is required")
+	}
+	return uc.sessions.GetSessionRevision(ctx, sessionID)
 }
 
 // UpsertChatActivityMessage persists a tool/MCP/Skill execution card for chat history restore.

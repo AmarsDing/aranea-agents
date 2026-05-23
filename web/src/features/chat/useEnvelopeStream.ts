@@ -203,6 +203,8 @@ export function useEnvelopeStream(opts: UseEnvelopeStreamOptions): UseEnvelopeSt
 }
 
 export type ChatStreamFactoryOpts = {
+  onConnected?: () => void;
+  onDisconnected?: () => void;
   onServerShutdown?: (reason: string) => void;
   onReplayState?: (replaying: boolean, count?: number) => void;
   onReconnectFailed?: () => void;
@@ -214,6 +216,8 @@ export function createChatStream(sessionId: string, streamOpts?: ChatStreamFacto
     sessionId,
     channels: ["chat", "system"],
     autoConnect: false,
+    onConnected: () => streamOpts?.onConnected?.(),
+    onDisconnected: () => streamOpts?.onDisconnected?.(),
     onServerShutdown: streamOpts?.onServerShutdown,
     onReplayState: streamOpts?.onReplayState,
     onReconnectFailed: streamOpts?.onReconnectFailed,

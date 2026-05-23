@@ -10,8 +10,9 @@ import (
 )
 
 const (
-	channelTurnErrorTimeoutMsg = "任务超时，请稍后重试或联系管理员。"
-	channelTurnErrorGenericMsg = "任务执行失败，请稍后重试。"
+	channelTurnErrorTimeoutMsg   = "任务超时，请稍后重试或联系管理员。"
+	channelTurnErrorSyncCapMsg   = "任务执行较慢，建议使用 /async 后台任务模式。"
+	channelTurnErrorGenericMsg   = "任务执行失败，请稍后重试。"
 )
 
 // deliverTurnErrorReply enqueues a user-visible IM error for failed Channel turns (LT-06).
@@ -38,6 +39,10 @@ func (h *ChannelIngress) deliverTurnErrorReply(ctx context.Context, chRow biz.Ch
 func formatChannelTurnErrorMessage(err error) string {
 	if err == nil {
 		return ""
+	}
+	switch TurnErrorCodeFromErr(err) {
+	case TurnErrTurnTimeout, TurnErrFirstByteTimeout:
+		return channelTurnErrorSyncCapMsg
 	}
 	if turnErrorIsTimeout(err) {
 		return channelTurnErrorTimeoutMsg

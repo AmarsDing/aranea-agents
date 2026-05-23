@@ -91,6 +91,18 @@ export function useTeamOrchestratePage() {
     dirty.value = true;
   }
 
+  function patchDefinition(patch: Partial<TeamDefinition>) {
+    if (!definition.value || readOnly.value) return;
+    definition.value = { ...definition.value, ...patch };
+    if (patch.failure_policy) {
+      definition.value.failure_policy = {
+        ...(definition.value.failure_policy ?? {}),
+        ...patch.failure_policy,
+      };
+    }
+    markDirty();
+  }
+
   function applyCompiled(result: CompileTeamGraphResult) {
     compiled.value = result;
     Object.assign(graphDef, compiledGraphToGraphDef(result, teamRow.value?.display_name || "team-orchestration"));
@@ -246,6 +258,7 @@ export function useTeamOrchestratePage() {
     graphDef,
     issues,
     markDirty,
+    patchDefinition,
     reload,
     saveGraph,
     onSelectNode,

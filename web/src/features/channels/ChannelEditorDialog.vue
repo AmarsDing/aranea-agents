@@ -62,6 +62,24 @@
               <h3 class="app-musebot-section__title">{{ sectionTitle(section) }}</h3>
               <p v-if="sectionHint(section)" class="app-musebot-section__hint">{{ sectionHint(section) }}</p>
 
+              <channel-config-row
+                v-if="section.id === 'long_task'"
+                :label="t('channelEditor.longTaskPresetLabel')"
+                field-key="long_task_preset"
+              >
+                <q-select
+                  :model-value="selectedLongTaskPreset"
+                  dense
+                  outlined
+                  emit-value
+                  map-options
+                  clearable
+                  :options="longTaskPresetOptions"
+                  :placeholder="t('channelEditor.longTaskPresetPlaceholder')"
+                  @update:model-value="applyLongTaskPreset(String($event ?? ''))"
+                />
+              </channel-config-row>
+
               <div class="app-musebot-section__rows">
                 <ChannelRoutingFields
                   v-if="section.id === 'routing'"
@@ -322,6 +340,9 @@ const {
   routingAgents,
   routingTeams,
   routingOptionsLoading,
+  selectedLongTaskPreset,
+  longTaskPresetOptions,
+  applyLongTaskPreset,
   visibleSectionFields,
   fieldKind,
   readField,

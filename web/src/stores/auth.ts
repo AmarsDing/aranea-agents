@@ -11,6 +11,10 @@ export const useAuthStore = defineStore("auth", {
     loginLoading: false
   }),
   getters: {
+    /** Platform admin (access=admin) — required to opt into Native runtime_engine. */
+    isPlatformAdmin(state): boolean {
+      return String(state.user?.access ?? "").trim().toLowerCase() === "admin";
+    },
     displayLabel(state): string {
       if (!state.user) return "";
       const n = state.user.name?.trim();

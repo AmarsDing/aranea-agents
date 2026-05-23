@@ -18,8 +18,9 @@ import (
 const (
 	defaultAsyncAckTemplate      = "后台任务已创建（{{target_type}}: {{target_id}}）。完成后将通知你。"
 	defaultAsyncCronDoneTemplate = "Cron 任务已完成（{{target_id}}）。"
-	asyncWatchTimeout            = 2 * time.Hour
-	asyncCronPollInterval        = 5 * time.Second
+	// asyncWatchTimeout is the in-process watch ceiling until CC-F-01 durable worker ships.
+	asyncWatchTimeout     = biz.ChannelAsyncJobWatchMax
+	asyncCronPollInterval = 5 * time.Second
 )
 
 func asyncWatchPersistCtx() context.Context {

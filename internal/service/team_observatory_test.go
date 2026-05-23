@@ -58,6 +58,23 @@ func (r *observatoryTeamRepo) UpdateTeamRunSummaryJSON(context.Context, string, 
 func (r *observatoryTeamRepo) UpdateTeamRunGraphExecutionID(context.Context, string, string) error {
 	return nil
 }
+func (r *observatoryTeamRepo) UpdateTeamRunTraceID(context.Context, string, string) error { return nil }
+func (r *observatoryTeamRepo) BatchCreateOrchestrationSteps(context.Context, []biz.OrchestrationStep) error {
+	return nil
+}
+func (r *observatoryTeamRepo) ListOrchestrationSteps(_ context.Context, runID, _ string, _ int) ([]biz.OrchestrationStep, error) {
+	if runID == r.run.ID {
+		return nil, nil
+	}
+	return nil, nil
+}
+func (r *observatoryTeamRepo) CreateTaskDeadLetter(_ context.Context, _ biz.TaskDeadLetter) error { return nil }
+func (r *observatoryTeamRepo) ListTaskDeadLetters(_ context.Context, _ biz.TaskDeadLetterListFilter) ([]biz.TaskDeadLetter, error) {
+	return nil, nil
+}
+func (r *observatoryTeamRepo) ResolveTaskDeadLetter(_ context.Context, _ string) (biz.TaskDeadLetter, error) {
+	return biz.TaskDeadLetter{}, nil
+}
 func (r *observatoryTeamRepo) CreateTeamRunStep(context.Context, biz.TeamRunStep) (biz.TeamRunStep, error) {
 	return biz.TeamRunStep{}, nil
 }

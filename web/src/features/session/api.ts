@@ -301,9 +301,31 @@ function kratosChatRowToMessage(row: ChatMessageRow): Message {
 }
 
 /** Kratos `GET /v1/sessions/{id}/messages`（替代遗留 `/api/v1/chat/messages` 列表）。 */
-export async function listSessionChatMessages(sessionID: string): Promise<Message[]> {
+export async function listSessionChatMessages(
+  sessionID: string
+): Promise<{ items: Message[]; currentRevision: number }> {
   const data = await sessionApi.ListSessionMessages({ id: sessionID, limit: undefined, offset: undefined });
-  return (data.items ?? []).map(kratosChatRowToMessage);
+  return {
+    items: (data.items ?? []).map(kratosChatRowToMessage),
+    currentRevision: Number(data.currentRevision ?? 0),
+  };
+}
+
+/** Incremental sync: messages after session_revision (M55 CC-B-05). */
+export async function listSessionChatMessagesAfterRevision(
+  sessionID: string,
+  afterRevision: number
+): Promise<{ items: Message[]; currentRevision: number }> {
+  const data = await sessionApi.ListSessionMessages({
+    id: sessionID,
+    afterRevision,
+    limit: undefined,
+    offset: undefined,
+  });
+  return {
+    items: (data.items ?? []).map(kratosChatRowToMessage),
+    currentRevision: Number(data.currentRevision ?? afterRevision),
+  };
 }
 
 export type MessageSearchResult = {

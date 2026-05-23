@@ -220,6 +220,19 @@ export async function getTeamRunSummary(runID: string): Promise<TeamRunSummary> 
   return wireRunSummary(res.summary);
 }
 
+export async function resumeTeamRunExecution(
+  runID: string,
+  resumeValue?: Record<string, unknown>
+): Promise<{ runId: string; graphExecutionId: string; status: string }> {
+  const svc = createTeamService();
+  const res = await svc.ResumeTeamRunExecution({ runId: runID, resumeValue });
+  return {
+    runId: res.runId ?? runID,
+    graphExecutionId: res.graphExecutionId ?? "",
+    status: res.status ?? ""
+  };
+}
+
 /**
  * Team run events over `WS /v1/ws`.
  * Pass a real chat `sessionId` for session-scoped runs, or `GLOBAL_WS_SESSION_ID` (`*`) for admin-wide monitoring.
@@ -264,4 +277,71 @@ export function subscribeTeamRunEventsWs(
     close: () => stream.disconnect(),
     connected: stream.connected,
   };
+}
+
+export type TaskDeadLetterRow = {
+  id: string;
+  source_type: string;
+  source_id: string;
+  team_id: string;
+  team_run_id: string;
+  session_id: string;
+  graph_execution_id: string;
+  error_message: string;
+  payload_json: string;
+  status: string;
+  created_at: string;
+  resolved_at: string;
+};
+
+function wireTaskDeadLetter(row: {
+  id?: string;
+  sourceType?: string;
+  sourceId?: string;
+  teamId?: string;
+  teamRunId?: string;
+  sessionId?: string;
+  graphExecutionId?: string;
+  errorMessage?: string;
+  payloadJson?: string;
+  status?: string;
+  createdAt?: string;
+  resolvedAt?: string;
+} | null | undefined): TaskDeadLetterRow {
+  return {
+    id: row?.id ?? "",
+    source_type: row?.sourceType ?? "",
+    source_id: row?.sourceId ?? "",
+    team_id: row?.teamId ?? "",
+    team_run_id: row?.teamRunId ?? "",
+    session_id: row?.sessionId ?? "",
+    graph_execution_id: row?.graphExecutionId ?? "",
+    error_message: row?.errorMessage ?? "",
+    payload_json: row?.payloadJson ?? "",
+    status: row?.status ?? "",
+    created_at: row?.createdAt ?? "",
+    resolved_at: row?.resolvedAt ?? "",
+  };
+}
+
+export async function listTaskDeadLetters(opts: {
+  sessionId?: string;
+  teamId?: string;
+  status?: string;
+  limit?: number;
+}): Promise<TaskDeadLetterRow[]> {
+  const svc = createTeamService();
+  const res = await svc.ListTaskDeadLetters({
+    sessionId: opts.sessionId?.trim() || undefined,
+    teamId: opts.teamId?.trim() || undefined,
+    status: opts.status?.trim() || undefined,
+    limit: opts.limit ?? 50,
+  });
+  return (res.items ?? []).map(wireTaskDeadLetter);
+}
+
+export async function resolveTaskDeadLetter(id: string): Promise<TaskDeadLetterRow> {
+  const svc = createTeamService();
+  const res = await svc.ResolveTaskDeadLetter({ id: id.trim() });
+  return wireTaskDeadLetter(res.item);
 }

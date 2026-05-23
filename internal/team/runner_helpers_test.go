@@ -21,6 +21,20 @@ func (r *stepBusRepo) CreateTeamRunStep(_ context.Context, step biz.TeamRunStep)
 
 func (r *stepBusRepo) UpdateTeamRunSummaryJSON(_ context.Context, _, _ string) error { return nil }
 func (r *stepBusRepo) UpdateTeamRunGraphExecutionID(_ context.Context, _, _ string) error { return nil }
+func (r *stepBusRepo) UpdateTeamRunTraceID(_ context.Context, _, _ string) error             { return nil }
+func (r *stepBusRepo) BatchCreateOrchestrationSteps(_ context.Context, _ []biz.OrchestrationStep) error {
+	return nil
+}
+func (r *stepBusRepo) ListOrchestrationSteps(_ context.Context, _, _ string, _ int) ([]biz.OrchestrationStep, error) {
+	return nil, nil
+}
+func (r *stepBusRepo) CreateTaskDeadLetter(_ context.Context, _ biz.TaskDeadLetter) error { return nil }
+func (r *stepBusRepo) ListTaskDeadLetters(_ context.Context, _ biz.TaskDeadLetterListFilter) ([]biz.TaskDeadLetter, error) {
+	return nil, nil
+}
+func (r *stepBusRepo) ResolveTaskDeadLetter(_ context.Context, _ string) (biz.TaskDeadLetter, error) {
+	return biz.TaskDeadLetter{}, nil
+}
 
 func TestPersistStep_EmitsStartedAndFinished(t *testing.T) {
 	bus := event.NewBus()

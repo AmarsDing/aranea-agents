@@ -154,6 +154,33 @@ message EnqueueUserMessageResponse {
   string pending_id = 3;
 }
 
+message ListChatBackgroundJobsRequest {
+  optional string session_id = 1;
+  optional string agent_id = 2;
+  optional string status = 3;
+  optional int32 limit = 4;
+}
+
+message ChatBackgroundJob {
+  string id = 1;
+  string source = 2;
+  string session_id = 3;
+  string agent_id = 4;
+  string status = 5;
+  string target_type = 6;
+  string target_id = 7;
+  string created_at = 8;
+  string updated_at = 9;
+  optional string summary = 10;
+  optional string error_message = 11;
+  string channel_id = 12;
+  optional string graph_id = 13;
+}
+
+message ListChatBackgroundJobsResponse {
+  repeated ChatBackgroundJob items = 1;
+}
+
 service ChatService {
   rpc SendChatMessage(SendChatMessageRequest) returns (SendChatMessageResponse) {
     option (google.api.http) = {
@@ -199,5 +226,9 @@ service ChatService {
       post: "/v1/chat/enqueue"
       body: "*"
     };
+  }
+
+  rpc ListChatBackgroundJobs(ListChatBackgroundJobsRequest) returns (ListChatBackgroundJobsResponse) {
+    option (google.api.http) = {get: "/v1/chat/jobs"};
   }
 }

@@ -43,6 +43,8 @@
         :await-kind="awaitKind"
         :await-tool-key="awaitToolKey"
         :ws-replaying="wsReplaying"
+        :session-revision="sessionRevision"
+        :ws-connected="wsConnected"
         :is-team-session="selectedEntityKind === 'team'"
         :planner-kind="activePlannerKind"
         :react-tool-link-index="reactToolLinkIndex"
@@ -72,6 +74,12 @@
         :items="sessionArtifacts"
         :loading="sessionArtifactsLoading"
         @open="openSessionArtifact"
+      />
+      <ChatBackgroundJobsPanel
+        v-if="selectedEntityKind === 'agent'"
+        :session-id="selectedSessionForUi?.id"
+        :agent-id="store.selectedAgent?.id"
+        :refresh-nonce="jobsRefreshNonce"
       />
       <input ref="fileRef" type="file" hidden multiple @change="onFileChange" />
     </div>
@@ -144,6 +152,7 @@ import ChatSideToggle from "../components/chat/ChatSideToggle.vue";
 import ChatSettingsDialog from "../components/chat/ChatSettingsDialog.vue";
 import ChatWorkspaceShell from "../components/chat/ChatWorkspaceShell.vue";
 import ChatSessionArtifactsPanel from "../components/chat/ChatSessionArtifactsPanel.vue";
+import ChatBackgroundJobsPanel from "../components/chat/ChatBackgroundJobsPanel.vue";
 import SessionTimelineDialog from "../components/chat/SessionTimelineDialog.vue";
 import { useChatWorkspace } from "../features/chat/composables/useChatWorkspace";
 
@@ -228,6 +237,9 @@ const {
   awaitKind,
   awaitToolKey,
   wsReplaying,
+  sessionRevision,
+  wsConnected,
+  jobsRefreshNonce,
   submitAwaitingReply,
   submitToolConfirm,
   sessionArtifacts,

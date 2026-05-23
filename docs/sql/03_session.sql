@@ -46,7 +46,8 @@ CREATE TABLE IF NOT EXISTS sessions (
   archived_at TEXT NOT NULL DEFAULT '',
   deleted_at TEXT NOT NULL DEFAULT '',
   runner_snapshot_json TEXT NOT NULL DEFAULT '',
-  metadata_json TEXT NOT NULL DEFAULT '{}'
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  session_revision INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS messages (
@@ -121,6 +122,7 @@ CREATE TABLE IF NOT EXISTS team_runs (
   topology_json TEXT NOT NULL DEFAULT '{}',
   graph_execution_id TEXT NOT NULL DEFAULT '',
   definition_snapshot_json TEXT NOT NULL DEFAULT '',
+  trace_id TEXT NOT NULL DEFAULT '',
   started_at TEXT NOT NULL DEFAULT '',
   finished_at TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL DEFAULT '',

@@ -1,6 +1,7 @@
 package team
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -16,11 +17,21 @@ type embeddedGraphSpec struct {
 }
 
 type embeddedGraphNode struct {
-	ID      string `json:"id"`
-	Type    string `json:"type"`
-	Label   string `json:"label"`
-	AgentID string `json:"agent_id"`
-	Role    string `json:"role"`
+	ID                 string   `json:"id"`
+	Type               string   `json:"type"`
+	Label              string   `json:"label"`
+	AgentID            string   `json:"agent_id"`
+	Role               string   `json:"role"`
+	SubgraphID         string   `json:"subgraph_id"`
+	AssignmentMode     string   `json:"assignment_mode"`
+	AssignmentStrategy string   `json:"assignment_strategy"`
+	ReviewerAgent      string   `json:"reviewer_agent"`
+	ReviewRules        string   `json:"review_rules"`
+	InterruptBefore    bool     `json:"interrupt_before"`
+	InterruptAfter     bool     `json:"interrupt_after"`
+	Destinations       []string `json:"destinations"`
+	RetryMaxAttempts   int      `json:"retry_max_attempts"`
+	FallbackAgent      string   `json:"fallback_agent"`
 }
 
 type embeddedGraphEdge struct {
@@ -44,7 +55,7 @@ func parseEmbeddedGraph(rawDefinitionJSON string) (*embeddedGraphSpec, bool) {
 	}
 	agentCount := 0
 	for _, n := range body.Graph.Nodes {
-		if isEmbeddedAgentNode(n.Type) {
+		if isEmbeddedExecutableNode(n.Type) {
 			agentCount++
 		}
 	}
@@ -52,6 +63,15 @@ func parseEmbeddedGraph(rawDefinitionJSON string) (*embeddedGraphSpec, bool) {
 		return nil, false
 	}
 	return body.Graph, true
+}
+
+func isEmbeddedExecutableNode(nodeType string) bool {
+	switch strings.ToLower(strings.TrimSpace(nodeType)) {
+	case "agent", "task", "review", "subgraph":
+		return true
+	default:
+		return false
+	}
 }
 
 func isEmbeddedAgentNode(nodeType string) bool {
@@ -76,7 +96,7 @@ func isEmbeddedDecorID(id string) bool {
 	}
 }
 
-func compileFromEmbeddedGraph(def Definition, spec *embeddedGraphSpec, agentKey CompileAgentKey) (biz.GraphBuildConfig, error) {
+func compileFromEmbeddedGraph(ctx context.Context, def Definition, spec *embeddedGraphSpec, agentKey CompileAgentKey, loader GraphBuildConfigLoader) (biz.GraphBuildConfig, error) {
 	if spec == nil {
 		return biz.GraphBuildConfig{}, fmt.Errorf("team: embedded graph is nil")
 	}
@@ -95,52 +115,141 @@ func compileFromEmbeddedGraph(def Definition, spec *embeddedGraphSpec, agentKey 
 	}
 
 	nodeTypeByID := map[string]string{}
-	agentNodes := make([]biz.NodeDef, 0, len(spec.Nodes))
+	executableIDs := make(map[string]struct{})
+	nodes := make([]biz.NodeDef, 0, len(spec.Nodes))
+	subgraphs := make([]biz.SubgraphDef, 0)
+	loading := map[string]struct{}{}
+
 	for _, n := range spec.Nodes {
 		id := strings.TrimSpace(n.ID)
-		if id == "" || !isEmbeddedAgentNode(n.Type) {
+		if id == "" {
 			continue
 		}
+		nodeType := strings.ToLower(strings.TrimSpace(n.Type))
 		nodeTypeByID[id] = n.Type
-		agentID := strings.TrimSpace(n.AgentID)
-		member, ok := memberByAgentID[agentID]
-		key := resolveEmbeddedAgentKey(n, member, agentKey)
-		role := strings.TrimSpace(n.Role)
-		if role == "" && ok {
-			role = strings.TrimSpace(member.Role)
+		switch nodeType {
+		case "agent":
+			if !isEmbeddedAgentNode(n.Type) {
+				continue
+			}
+			agentID := strings.TrimSpace(n.AgentID)
+			member, ok := memberByAgentID[agentID]
+			key := resolveEmbeddedAgentKey(n, member, agentKey)
+			role := strings.TrimSpace(n.Role)
+			if role == "" && ok {
+				role = strings.TrimSpace(member.Role)
+			}
+			desc := strings.TrimSpace(n.Label)
+			if desc == "" && ok {
+				desc = strings.TrimSpace(member.Name)
+			}
+			instruction := ""
+			if ok {
+				instruction = strings.TrimSpace(member.TaskPrompt)
+			}
+			executableIDs[id] = struct{}{}
+			nodes = append(nodes, compileEmbeddedBizNode(n, biz.NodeDef{
+				ID: id, Type: "agent", Description: desc, Instruction: instruction,
+				AgentName: key, RequiredRole: role,
+			}))
+		case "task":
+			executableIDs[id] = struct{}{}
+			nodes = append(nodes, compileEmbeddedBizNode(n, biz.NodeDef{
+				ID: id, Type: "task", Description: strings.TrimSpace(n.Label),
+				RequiredRole: strings.TrimSpace(n.Role), AssignmentMode: strings.TrimSpace(n.AssignmentMode),
+				AssignmentStrategy: strings.TrimSpace(n.AssignmentStrategy),
+				InterruptAfter: true,
+			}))
+		case "review":
+			executableIDs[id] = struct{}{}
+			nodes = append(nodes, compileEmbeddedBizNode(n, biz.NodeDef{
+				ID: id, Type: "review", Description: strings.TrimSpace(n.Label),
+				ReviewerAgent: strings.TrimSpace(n.ReviewerAgent), ReviewRules: strings.TrimSpace(n.ReviewRules),
+				InterruptAfter: true,
+			}))
+		case "subgraph":
+			ref := strings.TrimSpace(n.SubgraphID)
+			if ref == "" {
+				return biz.GraphBuildConfig{}, fmt.Errorf("team: subgraph node %q requires subgraph_id", id)
+			}
+			if loader == nil {
+				return biz.GraphBuildConfig{}, fmt.Errorf("team: subgraph node %q requires graph loader", id)
+			}
+			subCfg, err := loadEmbeddedSubgraphConfig(ctx, loader, ref, loading)
+			if err != nil {
+				return biz.GraphBuildConfig{}, fmt.Errorf("team: subgraph node %q: %w", id, err)
+			}
+			executableIDs[id] = struct{}{}
+			subgraphs = append(subgraphs, biz.SubgraphDef{ID: id, GraphID: ref, BuildConfig: subCfg})
 		}
-		desc := strings.TrimSpace(n.Label)
-		if desc == "" && ok {
-			desc = strings.TrimSpace(member.Name)
-		}
-		agentNodes = append(agentNodes, biz.NodeDef{
-			ID:           id,
-			Type:         "agent",
-			Description:  desc,
-			Instruction:  strings.TrimSpace(member.TaskPrompt),
-			AgentName:    key,
-			RequiredRole: role,
-		})
 	}
-	if len(agentNodes) == 0 {
-		return biz.GraphBuildConfig{}, fmt.Errorf("team: embedded graph has no agent nodes")
+	if len(executableIDs) == 0 {
+		return biz.GraphBuildConfig{}, fmt.Errorf("team: embedded graph has no executable nodes")
 	}
 
-	edges, entry, finish, branchIDs := compileEmbeddedEdges(def, spec, nodeTypeByID)
+	edges, entry, finish, branchIDs := compileEmbeddedEdges(def, spec, nodeTypeByID, executableIDs)
 	if entry == "" {
-		entry = agentNodes[0].ID
+		for id := range executableIDs {
+			entry = id
+			break
+		}
 	}
 	if finish == "" {
-		finish = agentNodes[len(agentNodes)-1].ID
+		finish = entry
 	}
 
 	cfg := biz.GraphBuildConfig{
-		Nodes:             agentNodes,
+		Nodes:             nodes,
+		Subgraphs:         subgraphs,
 		Edges:             edges,
 		EntryPoint:        entry,
 		FinishPoint:       finish,
 		ParallelBranchIDs: branchIDs,
 		ExecutionEngine:   biz.EngineBSP,
+	}
+	return cfg, nil
+}
+
+func compileEmbeddedBizNode(n embeddedGraphNode, base biz.NodeDef) biz.NodeDef {
+	if n.InterruptBefore {
+		base.InterruptBefore = true
+	}
+	if n.InterruptAfter {
+		base.InterruptAfter = true
+	}
+	if len(n.Destinations) > 0 {
+		base.Destinations = append([]string(nil), n.Destinations...)
+	}
+	if n.RetryMaxAttempts > 0 {
+		base.RetryMaxAttempts = n.RetryMaxAttempts
+	}
+	if fb := strings.TrimSpace(n.FallbackAgent); fb != "" {
+		base.FallbackAgent = fb
+	}
+	return base
+}
+
+func loadEmbeddedSubgraphConfig(ctx context.Context, loader GraphBuildConfigLoader, graphID string, loading map[string]struct{}) (biz.GraphBuildConfig, error) {
+	graphID = strings.TrimSpace(graphID)
+	if graphID == "" {
+		return biz.GraphBuildConfig{}, fmt.Errorf("subgraph_id is required")
+	}
+	if _, ok := loading[graphID]; ok {
+		return biz.GraphBuildConfig{}, fmt.Errorf("subgraph cycle detected at %q", graphID)
+	}
+	loading[graphID] = struct{}{}
+	defer delete(loading, graphID)
+	cfg, err := loader.LoadGraphBuildConfig(ctx, graphID)
+	if err != nil {
+		return biz.GraphBuildConfig{}, err
+	}
+	for _, sub := range cfg.Subgraphs {
+		if sub.GraphID == "" {
+			continue
+		}
+		if _, err := loadEmbeddedSubgraphConfig(ctx, loader, sub.GraphID, loading); err != nil {
+			return biz.GraphBuildConfig{}, err
+		}
 	}
 	return cfg, nil
 }
@@ -167,13 +276,8 @@ func resolveEmbeddedAgentKey(n embeddedGraphNode, member MemberDef, agentKey Com
 	return strings.TrimSpace(n.AgentID)
 }
 
-func compileEmbeddedEdges(def Definition, spec *embeddedGraphSpec, nodeTypeByID map[string]string) ([]biz.EdgeDef, string, string, []string) {
+func compileEmbeddedEdges(def Definition, spec *embeddedGraphSpec, nodeTypeByID map[string]string, executableIDs map[string]struct{}) ([]biz.EdgeDef, string, string, []string) {
 	mode := normalizeCompileMode(def.Mode)
-	agentIDs := make(map[string]struct{}, len(nodeTypeByID))
-	for id := range nodeTypeByID {
-		agentIDs[id] = struct{}{}
-	}
-
 	var entry, finish string
 	joinFeeders := make([]string, 0, 4)
 	joinTarget := ""
@@ -184,29 +288,29 @@ func compileEmbeddedEdges(def Definition, spec *embeddedGraphSpec, nodeTypeByID 
 		if from == "" || to == "" {
 			continue
 		}
-		_, fromAgent := agentIDs[from]
-		_, toAgent := agentIDs[to]
+		_, fromExec := executableIDs[from]
+		_, toExec := executableIDs[to]
 		fromType := nodeTypeByID[from]
 		toType := nodeTypeByID[to]
-		if (isEmbeddedDecorID(from) || isEmbeddedDecorNode(fromType)) && toAgent {
+		if (isEmbeddedDecorID(from) || isEmbeddedDecorNode(fromType)) && toExec {
 			if strings.EqualFold(from, "start") && entry == "" {
 				entry = to
 			}
 		}
-		if fromAgent && strings.EqualFold(to, "join") {
+		if fromExec && strings.EqualFold(to, "join") {
 			joinFeeders = append(joinFeeders, from)
 			continue
 		}
-		if strings.EqualFold(from, "join") && toAgent {
+		if strings.EqualFold(from, "join") && toExec {
 			joinTarget = to
 			continue
 		}
-		if fromAgent && (isEmbeddedDecorID(to) || isEmbeddedDecorNode(toType)) {
+		if fromExec && (isEmbeddedDecorID(to) || isEmbeddedDecorNode(toType)) {
 			if strings.EqualFold(to, "end") && finish == "" {
 				finish = from
 			}
 		}
-		if fromAgent && toAgent {
+		if fromExec && toExec {
 			kind := embeddedEdgeKind(mode, e)
 			out = append(out, biz.EdgeDef{From: from, To: to, Kind: kind})
 		}

@@ -214,3 +214,58 @@ export async function awaitUserReply(sessionId: string, reply: string, runId?: s
     return false;
   }
 }
+
+export type ChatBackgroundJobRow = {
+  id: string;
+  source: string;
+  session_id: string;
+  agent_id: string;
+  status: string;
+  target_type: string;
+  target_id: string;
+  graph_id?: string;
+  created_at: string;
+  updated_at: string;
+  summary?: string;
+  error_message?: string;
+  channel_id: string;
+};
+
+function wireChatBackgroundJob(raw: unknown): ChatBackgroundJobRow {
+  const r = asRecord(raw);
+  return {
+    id: pickStr(r, "id", "id"),
+    source: pickStr(r, "source", "source"),
+    session_id: pickStr(r, "session_id", "sessionId"),
+    agent_id: pickStr(r, "agent_id", "agentId"),
+    status: pickStr(r, "status", "status"),
+    target_type: pickStr(r, "target_type", "targetType"),
+    target_id: pickStr(r, "target_id", "targetId"),
+    graph_id: pickStr(r, "graph_id", "graphId") || undefined,
+    created_at: pickStr(r, "created_at", "createdAt"),
+    updated_at: pickStr(r, "updated_at", "updatedAt"),
+    summary: pickStr(r, "summary", "summary") || undefined,
+    error_message: pickStr(r, "error_message", "errorMessage") || undefined,
+    channel_id: pickStr(r, "channel_id", "channelId"),
+  };
+}
+
+export async function listChatBackgroundJobs(opts: {
+  sessionId?: string;
+  agentId?: string;
+  status?: string;
+  limit?: number;
+}): Promise<ChatBackgroundJobRow[]> {
+  try {
+    const data = await chatService.ListChatBackgroundJobs({
+      sessionId: opts.sessionId,
+      agentId: opts.agentId,
+      status: opts.status,
+      limit: opts.limit,
+    });
+    const items = (data as { items?: unknown[] })?.items ?? [];
+    return items.map(wireChatBackgroundJob);
+  } catch (err) {
+    throw err instanceof Error ? err : new Error("listChatBackgroundJobs failed");
+  }
+}

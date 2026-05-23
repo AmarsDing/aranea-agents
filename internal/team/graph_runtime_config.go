@@ -25,11 +25,11 @@ func CompileToGraphRuntimeConfigFromJSON(
 	if raw != "" && linked != nil {
 		if linkedID := LinkedGraphIDFromDefinition(raw); linkedID != "" {
 			if cfg, err := linked.LoadGraphBuildConfig(ctx, linkedID); err == nil {
-				return finalizeRuntimeGraphConfig(cfg, def), nil
+				return finalizeRuntimeGraphConfig(cfg, def, raw), nil
 			}
 		}
 	}
-	cfg, err := compileToGraphBuildConfig(def, raw, agentKey)
+	cfg, err := compileToGraphBuildConfigWithLoader(ctx, def, raw, agentKey, linked)
 	if err != nil {
 		return cfg, err
 	}
@@ -37,7 +37,7 @@ func CompileToGraphRuntimeConfigFromJSON(
 	if mode == "adaptive" {
 		cfg = applyAdaptiveAgentDestinations(cfg)
 	}
-	return finalizeRuntimeGraphConfig(cfg, def), nil
+	return finalizeRuntimeGraphConfig(cfg, def, raw), nil
 }
 
 // applyAdaptiveAgentDestinations moves transfer overlay edges into node Destinations
@@ -88,9 +88,10 @@ func appendAdaptiveDests(existing []string, extra ...string) []string {
 	return existing
 }
 
-func finalizeRuntimeGraphConfig(cfg biz.GraphBuildConfig, def Definition) biz.GraphBuildConfig {
+func finalizeRuntimeGraphConfig(cfg biz.GraphBuildConfig, def Definition, rawDefinitionJSON string) biz.GraphBuildConfig {
 	cfg = biz.FilterVisualizationEdges(cfg)
 	cfg = biz.ApplyFailurePolicy(cfg, def.FailurePolicy)
 	cfg = biz.FinalizeGraphFailurePolicy(cfg)
+	cfg = applyTeamRuntimeExecutionOptions(cfg, def, rawDefinitionJSON)
 	return cfg
 }

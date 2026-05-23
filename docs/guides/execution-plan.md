@@ -166,26 +166,38 @@
 
 | ID | 任务 | 优先级 | 状态 | 验收 |
 |----|------|--------|------|------|
-| CC-A-01 | 长任务 Channel preset + 前端一键应用 | P0 | 📋 | `turn_timeout_sec=900` 等 |
-| CC-A-02 | `execution_mode=auto` 关键词 → async 路由 | P0 | 📋 | 分析/批处理不走纯 sync |
-| CC-A-03 | 超时错误区分 sync 上限 vs 应 async | P1 | 📋 | IM 出站文案 |
-| CC-B-01 | `session_revision` 单调递增 | P0 | 📋 | Turn 完成 +1 |
-| CC-B-02 | Envelope 携带 `session_revision` | P0 | 📋 | WS 契约 |
-| CC-B-03 | `ListSessionMessages?after_revision=` | P0 | 📋 | 增量 API |
-| CC-B-04 | 选中 Session 强制 Session WS | P0 | 📋 | M55-SYNC-01 |
-| CC-B-05 | revision 触发 debounced hydrate | P0 | 📋 | M55-SYNC-02 |
-| CC-B-06 | Channel 入站 `source=channel` 自动 focus | P1 | 📋 | 同 Agent Web 聚焦 |
-| CC-C-01 | `TurnBlock` 组件（User/ToolStrip/Assistant） | P0 | 📋 | 与 IM transcript 对齐 |
-| CC-C-02 | ToolStrip 默认折叠 | P0 | 📋 | M55-UI-02 |
-| CC-C-03 | `groupMessagesByTurn` + 单测 | P0 | 📋 | feishu 115 条 fixture |
-| CC-C-04 | 滚动锚定最后一轮正文 | P0 | 📋 | 非 tool spam 底部 |
-| CC-C-05 | 长 Session 虚拟列表策略 | P1 | 📋 | M55-UI-01 |
-| CC-D-01 | Background Job 列表/侧栏 | P1 | 📋 | async 任务可观测 |
+| CC-A-01 | 长任务 Channel preset + 前端一键应用 | P0 | ✅ | `turn_timeout_sec=900` 等 |
+| CC-A-02 | `execution_mode=auto` 关键词 → async 路由 | P0 | ✅ | 分析/批处理不走纯 sync |
+| CC-A-03 | 超时错误区分 sync 上限 vs 应 async | P1 | ✅ | IM 出站文案 |
+| CC-B-01 | `session_revision` 单调递增 | P0 | ✅ | Turn 完成 +1 |
+| CC-B-02 | Envelope 携带 `session_revision` | P0 | ✅ | WS 契约 |
+| CC-B-03 | `ListSessionMessages?after_revision=` | P0 | ✅ | 增量 API + service 测试 |
+| CC-B-04 | 选中 Session 强制 Session WS | P0 | ✅ | M55-SYNC-01 |
+| CC-B-05 | revision 触发 debounced hydrate | P0 | ✅ | replay 门控已加 |
+| CC-B-06 | Channel 入站 `source=channel` 自动 focus | P1 | ✅ | envelope source |
+| CC-C-01 | `TurnBlock` 组件（User/ToolStrip/Assistant） | P0 | ✅ | 与 IM transcript 对齐 |
+| CC-C-02 | ToolStrip 默认折叠 | P0 | ✅ | M55-UI-02 |
+| CC-C-03 | `groupMessagesByTurn` + 单测 | P0 | ✅ | unit spec |
+| CC-C-04 | 滚动锚定最后一轮正文 | P0 | ✅ | 非 tool spam 底部 |
+| CC-C-05 | 长 Session 虚拟列表策略 | P1 | 🟡 | slice 48 · row 200px；benchmark 待做 |
+| CC-C-06 | WS patch rAF + completion 增量 merge | P1 | ✅ | runner_completion 仅 after_revision hydrate |
+| CC-B-07 | UserBubble 来源徽标 | P1 | ✅ | options_json source + chip |
+| CC-C-07 | Session 顶栏 sync 诊断 | P1 | ✅ | msgs · rev · WS · ctx% |
+| CC-HOT-02 | 删 Session 清 peer bind | P2 | ✅ | DeleteSession → channel_peer_session |
+| CC-F-01 | 24h Durable Job Worker deadline | P2 | 🟡 | watch 24h；持久化 Worker 待排 |
+| CC-C-UX-01 | 思考/ReAct 互斥；空 reasoning 不展示 | P0 | 📋 | 无空「思考过程」壳 |
+| CC-C-UX-02 | 流式「正在思考…」单行态 | P0 | 📋 | 首字节前 UX |
+| CC-C-UX-03 | 双 ToolStrip 去重 | P0 | 📋 | 单轮一条摘要 |
+| CC-C-UX-04 | `TurnAssistantBubble` 拆分 | P1 | 📋 | CC-C-01 补完 |
+| CC-HOT-01 | 飞书 stale peer bind 自动 rebind | P0 | ✅ | `ensureChannelSession` + `UpdateSessionID` |
+| CC-HOT-02 | 删 Session 清 peer bind | P2 | 📋 | 读路径已自愈 |
+| CC-E2E-01 | M55-SYNC/UI/JOB 手工验收 | P1 | ⏳ | channel e2e 脚本 |
+| CC-D-01 | Background Job 列表/侧栏 | P1 | ✅ | WS refresh + Graph 深链 |
 | CC-E-01 | `@` 上下文引用 UX | P2 | 📋 | Cursor 对齐 |
 | CC-E-03 | diff Apply 卡片 | P2 | 📋 | fragment edit 对接 |
 | CC-F-01 | 24h Durable Job Worker deadline | P2 | 📋 | 超越 async 2h 看门 |
 
-**迭代 CC 焦点（P0）**：Phase A 配置路由 → Phase B `session_revision` → Phase C TurnBlock；与 M53 Graph 执行收敛可并行。
+**迭代 CC 焦点（2026-05-23）**：Phase A–D 已交付；**P0** CC-C-UX-* 思考/工具 UX + CC-E2E-01；**P1** CC-C-05/06 收口。Changelog：[M55 Review Fixes](../changelog/2026-05-23-M55-Phase-ABCD-Review-Fixes.md) · [飞书 Rebind + UX Backlog](../changelog/2026-05-23-M55-Feishu-Rebind-UX-Backlog.md)。
 
 ### 迭代 TG（Team × Graph 融合 M53）— 2026-05-23
 
@@ -226,14 +238,20 @@
 | TG-FP-05 | ParallelFail continue 并行分支恢复 | P2 | ✅ | `ApplyParallelFailContinue` + join 拓扑检测 |
 | TG-RT-E2E | Graph 运行时 compile→build E2E | P2 | ✅ | graph_runtime_e2e_test |
 | TG-RT-05 | adaptive/swarm Graph 运行时 | P2 | ✅ | Destinations + 过滤 transfer 边 |
-| TG-RT-PARITY | 六 mode Native vs Graph 对比 E2E | P2+ | ⏳ | 终态前置 |
-| TG-RT-UI | runtime_engine 前端 + 字段保留 | P2+ | ⏳ | 见 development §8 |
-| TG-RT-METRICS | graph_execution_id / fallback 监控 | P2+ | ⏳ | Canary 仪表盘 |
-| TG-RT-FLAG | 生产 Graph runtime rollout | P2+ | ⏳ | env 默认仍 off |
-| TG-RT-DEFAULT | 新 Team 默认 runtime_engine=graph | P3 | 📋 | Phase 6 |
-| TG-RT-RETIRE | 移除 BuildTRPCTeam 主路径 | P3 | 📋 | Phase 7 单链终态 |
+| TG-RT-PARITY | 六 mode Native vs Graph 对比 E2E | P2+ | ✅ | build + summary + stub E2E |
+| TG-RT-UI | runtime_engine 前端 + 字段保留 | P2+ | ✅ | teamUtils + TeamEditorDialog |
+| TG-RT-UI-RO | GraphEditorCanvas readonly | P2+ | ✅ | readOnly prop + OrchestratePage |
+| TG-RT-METRICS | graph_execution_id / fallback 监控 | P2+ | ✅ | TeamGraphRuntimeTotal + Grafana |
+| TG-RT-FLAG | 生产 Graph runtime rollout | P2+ | ✅ | ARANEA_TEAM_GRAPH_CANARY_PERCENT + Runbook |
+| TG-RT-DEFAULT | 新 Team 默认 runtime_engine=graph | P3 | ✅ | Phase 6 |
+| TG-RT-RETIRE | 移除 BuildTRPCTeam 主路径 | P3 | ✅ | Phase 7；`ARANEA_TEAM_NATIVE=1` 应急 |
+| TG-RT-TASK | Team Graph task/review + Task bridge | P3 | ✅ | embedded_graph + ChatService wire |
+| TG-RT-SUBGRAPH | Team 嵌套子图编译 | P3 | ✅ | GraphBuildConfigLoader + 循环检测 |
+| TG-0-ARCH | 0 系统框图 Team 路径 | P3 | ✅ | §5.2 Graph 单链 |
+| TG-11-SYNC | 11 文档 Native 退役标注 | P3 | ✅ | design + development 已更新 |
+| TG-RT-RESUME | Resume persistStep + team_summary + FP-04 UI | P1 | ✅ | [Phase7-Optimization](../changelog/2026-05-23-Team-Graph-M53-Phase7-Optimization.md) · [Review](../review/2026-05-23-Team-Graph-M53-Phase7-Review.md) |
 
-**当前焦点**：Phase 5 执行收敛（parity → UI → metrics → Canary）。终态路线图：[53-team-graph-orchestration-development.md §8](../需求/53-team-graph-orchestration-development.md#8-终态路线图team-规格--graph-执行单链)。
+**当前焦点**：Canary 分阶段 rollout（`ARANEA_TEAM_GRAPH_CANARY_PERCENT`）+ 观察 `native_fallback` / `native_canary_holdout`。
 
 ### EP-HK-01 Hermes Kanban 适配（M54）— 2026-05-23
 

@@ -61,3 +61,32 @@ func TestChannelSupportsLongTaskIngress(t *testing.T) {
 		t.Fatal("wechat active should support long task ingress")
 	}
 }
+
+func TestShouldRunAsync_autoKeywords(t *testing.T) {
+	cfg := ParseChannelLongTaskConfig(`{"config":{"execution_mode":"auto","async_graph_id":"g1"}}`)
+	cases := []struct {
+		text string
+		want bool
+	}{
+		{"/async help", true},
+		{"请做全量分析", true},
+		{"写一份研报", true},
+		{"今天天气怎么样", false},
+	}
+	for _, tc := range cases {
+		if got := cfg.ShouldRunAsync(tc.text); got != tc.want {
+			t.Fatalf("ShouldRunAsync(%q)=%v want %v", tc.text, got, tc.want)
+		}
+	}
+}
+
+func TestShouldRunAsync_asyncModeRequiresTarget(t *testing.T) {
+	cfg := ParseChannelLongTaskConfig(`{"config":{"execution_mode":"async"}}`)
+	if cfg.ShouldRunAsync("anything") {
+		t.Fatal("async without target should be false")
+	}
+	cfg.AsyncGraphID = "g1"
+	if !cfg.ShouldRunAsync("anything") {
+		t.Fatal("async with graph target should be true")
+	}
+}

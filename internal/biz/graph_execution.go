@@ -37,6 +37,11 @@ func (uc *GraphUsecase) loadExecution(ctx context.Context, executionID string) (
 }
 
 func (uc *GraphUsecase) buildConfigForExecution(ctx context.Context, exec *GraphExecution) (GraphBuildConfig, error) {
+	if exec != nil {
+		if cfg, ok := uc.teamBuildConfig(exec.ID); ok {
+			return cfg, nil
+		}
+	}
 	def, err := uc.GetGraph(ctx, exec.GraphID)
 	if err != nil {
 		return GraphBuildConfig{}, err

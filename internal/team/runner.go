@@ -34,6 +34,8 @@ type Runner struct {
 	codeExecFactory      *localexec.Factory
 	graphRoot            graphadapter.TeamGraphRootBuilder
 	graphLoader          GraphBuildConfigLoader
+	teamGraphTasks       TeamGraphTaskCreator
+	teamGraphCoord       *TeamGraphRunCoordinator
 }
 
 // SetGraphBuildConfigLoader wires linked_graph_id resolution for GraphAgent runtime (M53 P2).
@@ -42,6 +44,22 @@ func (r *Runner) SetGraphBuildConfigLoader(l GraphBuildConfigLoader) {
 		return
 	}
 	r.graphLoader = l
+}
+
+// SetTeamGraphTaskCreator wires Kanban task creation for team Graph task/review nodes (M53 TG-RT-TASK).
+func (r *Runner) SetTeamGraphTaskCreator(c TeamGraphTaskCreator) {
+	if r == nil {
+		return
+	}
+	r.teamGraphTasks = c
+}
+
+// SetTeamGraphRunCoordinator wires team graph execution lifecycle (register / HITL / task resume).
+func (r *Runner) SetTeamGraphRunCoordinator(c *TeamGraphRunCoordinator) {
+	if r == nil {
+		return
+	}
+	r.teamGraphCoord = c
 }
 
 func NewRunner(

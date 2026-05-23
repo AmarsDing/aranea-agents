@@ -14,6 +14,7 @@ type TeamRunObservatory struct {
 	Status                 string
 	Mode                   string
 	GraphExecutionID       string
+	TraceID                string
 	DefinitionSnapshotJSON string
 	CompiledTopology       TeamRunCompiledTopology
 	Nodes                  []AgentNodeState
@@ -131,6 +132,7 @@ func BuildTeamRunObservatory(run TeamRun, steps []TeamRunStep, definitionJSON st
 		Status:                 run.Status,
 		Mode:                   run.Mode,
 		GraphExecutionID:       strings.TrimSpace(run.GraphExecutionID),
+		TraceID:                strings.TrimSpace(run.TraceID),
 		DefinitionSnapshotJSON: strings.TrimSpace(definitionJSON),
 		Nodes:                  nodes,
 	}

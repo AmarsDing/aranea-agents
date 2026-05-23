@@ -90,7 +90,13 @@
       </div>
 
       <aside v-show="activeTab === 'info'" class="team-orchestrate-page__sidebar">
-        <div class="text-subtitle2 q-mb-sm">编排信息</div>
+        <TeamOrchestrateRuntimePanel
+          :definition="definition"
+          :read-only="readOnly"
+          @patch="onRuntimePatch"
+        />
+        <q-separator class="q-my-md" />
+        <div class="text-subtitle2 q-mb-sm">编译拓扑</div>
         <div class="text-caption text-grey-7">入口</div>
         <div class="text-body2 q-mb-sm">{{ compiled?.entry_point || "—" }}</div>
         <div class="text-caption text-grey-7">出口</div>
@@ -123,6 +129,7 @@ import { ref } from "vue";
 import GraphEditorCanvas from "../components/graph/GraphEditorCanvas.vue";
 import OrchestrationKanban from "../components/orchestration/OrchestrationKanban.vue";
 import TeamMemberKanban from "../components/teams/TeamMemberKanban.vue";
+import TeamOrchestrateRuntimePanel from "../components/teams/TeamOrchestrateRuntimePanel.vue";
 import TeamOrchestrateNodePanel from "../components/teams/TeamOrchestrateNodePanel.vue";
 import { useTeamOrchestratePage } from "../features/teams/useTeamOrchestratePage";
 
@@ -148,13 +155,18 @@ const {
   execNodeStates,
   graphDef,
   issues,
-  markDirty,
   reload,
+  patchDefinition,
+  markDirty,
   saveGraph,
   onSelectNode,
   openObservatory,
   goBack,
 } = useTeamOrchestratePage();
+
+function onRuntimePatch(patch: Partial<import("../features/teams/types").TeamDefinition>) {
+  patchDefinition(patch);
+}
 
 function onKanbanSelectNode(nodeId: string) {
   onSelectNode(nodeId);

@@ -154,6 +154,13 @@ func (s *ChatService) runSingleAgentViaTRPC(
 		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
+	if src := event.EnvelopeSourceFromContext(ctx); src != "" {
+		userOpts, err = chatagent.MergeSourceIntoUserOptionsJSON(userOpts, src)
+		if err != nil {
+			markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
+			return biz.ChatMessage{}, biz.ChatMessage{}, err
+		}
+	}
 	sendText := content
 	if !biz.IsA2AProxyAgent(ag) {
 		emitter.LogStart("chat.intent.pass", "意图识别开始", event.P("provider", prov), event.P("model", mod), event.P("content_len", len(content)))
@@ -261,6 +268,7 @@ func (s *ChatService) runSingleAgentViaTRPC(
 		TraceID:          emitter.TraceID(),
 		AgentID:          ag.ID,
 		AgentDisplayName: ag.DisplayName,
+		Source:           event.EnvelopeSourceFromContext(ctx),
 	}
 	events = event.WrapFrameworkEventsWithOtel(events, emitter, traceBridge, traceBridge)
 	streamOpts := NewChatStreamConsumeOptions(s.td.Catalog.ToolUC, s.td.Catalog.Agents, s.td.Sessions)
@@ -290,7 +298,7 @@ func (s *ChatService) runSingleAgentViaTRPC(
 		turnStatus = "timeout"
 		turnErr = ctx.Err()
 		turnErrMsg = "turn timeout"
-		emitter.LogCritical("chat.turn.timeout", "对话请求超时", event.P("timeout", defaultTurnTimeout.String()))
+		emitter.LogCritical("chat.turn.timeout", "对话请求超时", event.P("timeout", defaultTurnTimeout.String()), event.P("reason", "sync_cap"))
 		arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "timeout").Observe(time.Since(turnStart).Seconds())
 		s.setRunStatus(sessionID, runID, "failed", "turn timeout")
 		return userMsg, biz.ChatMessage{}, TurnError(TurnErrTurnTimeout, defaultTurnTimeout.String())
@@ -350,6 +358,7 @@ func (s *ChatService) runSingleAgentViaTRPC(
 	arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "ok").Observe(time.Since(turnStart).Seconds())
 	s.recordSessionTurn(ctx, sessionID, ag, userMsg.ID, assistantMsg.ID, prov, mod, promptTok, completionTok, assistantMsg.ContentMarkdown)
 	s.setRunStatus(sessionID, runID, "completed", "")
+	s.bumpSessionRevisionAndPublish(ctx, sessionID, runID, userMsg.ID)
 	notifyNativeTurnHooks(ctx, s, sessionID, ag, content, assistantMsg.ContentMarkdown)
 	emitter.LogDone("chat.turn.execute", "对话轮次执行完成",
 		event.P("run_id", runID),

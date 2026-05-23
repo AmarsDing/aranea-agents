@@ -563,6 +563,11 @@ func isTerminalStatus(status AgentNodeStatus) bool {
 	}
 }
 
+// IsTerminalAgentNodeStatus reports whether orchestration node status is terminal.
+func IsTerminalAgentNodeStatus(status AgentNodeStatus) bool {
+	return isTerminalStatus(status)
+}
+
 func statusPriority(status AgentNodeStatus) int {
 	switch status {
 	case AgentNodeStatusBlocked, AgentNodeStatusWaitingReview, AgentNodeStatusWaitingAssign, AgentNodeStatusWaitingInput:

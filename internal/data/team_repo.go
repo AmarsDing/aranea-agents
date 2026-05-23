@@ -8,9 +8,11 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
+	"aranea-agents/internal/data/ent/orchestrationstep"
 	"aranea-agents/internal/data/ent/team"
 	"aranea-agents/internal/data/ent/teamrun"
 	"aranea-agents/internal/data/ent/teamrunstep"
+	"aranea-agents/internal/data/ent/taskdeadletter"
 
 	entsql "entgo.io/ent/dialect/sql"
 )
@@ -63,6 +65,7 @@ func entTeamRunToBiz(e *ent.TeamRun) biz.TeamRun {
 		TopologyJSON:  e.TopologyJSON,
 		GraphExecutionID:         e.GraphExecutionID,
 		DefinitionSnapshotJSON:   e.DefinitionSnapshotJSON,
+		TraceID:                  e.TraceID,
 		StartedAt:                e.StartedAt,
 		FinishedAt:    e.FinishedAt,
 		CreatedAt:     e.CreatedAt,
@@ -277,6 +280,7 @@ func (r *teamRepo) CreateTeamRun(ctx context.Context, run biz.TeamRun) (biz.Team
 		SetTopologyJSON(run.TopologyJSON).
 		SetGraphExecutionID(run.GraphExecutionID).
 		SetDefinitionSnapshotJSON(run.DefinitionSnapshotJSON).
+		SetTraceID(run.TraceID).
 		SetStartedAt(run.StartedAt).
 		SetFinishedAt(run.FinishedAt).
 		SetCreatedAt(run.CreatedAt).
@@ -375,4 +379,189 @@ func (r *teamRepo) UpdateTeamRunGraphExecutionID(ctx context.Context, runID, gra
 		`UPDATE team_runs SET graph_execution_id=?, updated_at=? WHERE id=?`,
 		graphExecutionID, now, runID)
 	return err
+}
+
+func (r *teamRepo) UpdateTeamRunTraceID(ctx context.Context, runID, traceID string) error {
+	if strings.TrimSpace(runID) == "" {
+		return fmt.Errorf("team run id is required")
+	}
+	now := nowRFC3339()
+	_, err := r.data.entClient.ExecContext(ctx,
+		`UPDATE team_runs SET trace_id=?, updated_at=? WHERE id=?`,
+		traceID, now, runID)
+	return err
+}
+
+func (r *teamRepo) BatchCreateOrchestrationSteps(ctx context.Context, steps []biz.OrchestrationStep) error {
+	if len(steps) == 0 {
+		return nil
+	}
+	builders := make([]*ent.OrchestrationStepCreate, 0, len(steps))
+	for _, step := range steps {
+		if strings.TrimSpace(step.ID) == "" || strings.TrimSpace(step.TeamRunID) == "" {
+			continue
+		}
+		createdAt := step.CreatedAt
+		if createdAt == "" {
+			createdAt = nowRFC3339()
+		}
+		builders = append(builders, r.data.entClient.OrchestrationStep.Create().
+			SetID(step.ID).
+			SetTeamRunID(step.TeamRunID).
+			SetGraphExecutionID(step.GraphExecutionID).
+			SetNodeID(step.NodeID).
+			SetActivitySnapshotJSON(step.ActivitySnapshotJSON).
+			SetStatus(step.Status).
+			SetStartedAt(step.StartedAt).
+			SetFinishedAt(step.FinishedAt).
+			SetCreatedAt(createdAt))
+	}
+	if len(builders) == 0 {
+		return nil
+	}
+	_, err := r.data.entClient.OrchestrationStep.CreateBulk(builders...).Save(ctx)
+	return err
+}
+
+func (r *teamRepo) ListOrchestrationSteps(ctx context.Context, teamRunID, nodeID string, limit int) ([]biz.OrchestrationStep, error) {
+	teamRunID = strings.TrimSpace(teamRunID)
+	if teamRunID == "" {
+		return nil, fmt.Errorf("team_run_id is required")
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+	q := r.data.entClient.OrchestrationStep.Query().
+		Where(orchestrationstep.TeamRunIDEQ(teamRunID)).
+		Order(orchestrationstep.ByCreatedAt(entsql.OrderAsc())).
+		Limit(limit)
+	if nodeID = strings.TrimSpace(nodeID); nodeID != "" {
+		q = q.Where(orchestrationstep.NodeIDEQ(nodeID))
+	}
+	rows, err := q.All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]biz.OrchestrationStep, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, entOrchestrationStepToBiz(row))
+	}
+	return out, nil
+}
+
+func (r *teamRepo) CreateTaskDeadLetter(ctx context.Context, dl biz.TaskDeadLetter) error {
+	if strings.TrimSpace(dl.ID) == "" {
+		return fmt.Errorf("task dead letter id is required")
+	}
+	payload := strings.TrimSpace(dl.PayloadJSON)
+	if payload == "" {
+		payload = "{}"
+	}
+	_, err := r.data.entClient.TaskDeadLetter.Create().
+		SetID(dl.ID).
+		SetSourceType(strings.TrimSpace(dl.SourceType)).
+		SetSourceID(strings.TrimSpace(dl.SourceID)).
+		SetTeamID(strings.TrimSpace(dl.TeamID)).
+		SetTeamRunID(strings.TrimSpace(dl.TeamRunID)).
+		SetSessionID(strings.TrimSpace(dl.SessionID)).
+		SetGraphExecutionID(strings.TrimSpace(dl.GraphExecutionID)).
+		SetErrorMessage(strings.TrimSpace(dl.ErrorMessage)).
+		SetPayloadJSON(payload).
+		SetStatus(strings.TrimSpace(dl.Status)).
+		SetCreatedAt(strings.TrimSpace(dl.CreatedAt)).
+		SetResolvedAt(strings.TrimSpace(dl.ResolvedAt)).
+		Save(ctx)
+	return err
+}
+
+func (r *teamRepo) ListTaskDeadLetters(ctx context.Context, filter biz.TaskDeadLetterListFilter) ([]biz.TaskDeadLetter, error) {
+	q := r.data.entClient.TaskDeadLetter.Query()
+	if sid := strings.TrimSpace(filter.SessionID); sid != "" {
+		q = q.Where(taskdeadletter.SessionIDEQ(sid))
+	}
+	if tid := strings.TrimSpace(filter.TeamID); tid != "" {
+		q = q.Where(taskdeadletter.TeamIDEQ(tid))
+	}
+	if st := strings.TrimSpace(filter.Status); st != "" {
+		q = q.Where(taskdeadletter.StatusEQ(st))
+	}
+	limit := filter.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	rows, err := q.Order(taskdeadletter.ByCreatedAt(entsql.OrderDesc())).Limit(limit).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]biz.TaskDeadLetter, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, entTaskDeadLetterToBiz(row))
+	}
+	return out, nil
+}
+
+func (r *teamRepo) ResolveTaskDeadLetter(ctx context.Context, id string) (biz.TaskDeadLetter, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return biz.TaskDeadLetter{}, fmt.Errorf("task dead letter id is required")
+	}
+	existing, err := r.data.entClient.TaskDeadLetter.Get(ctx, id)
+	if err != nil {
+		return biz.TaskDeadLetter{}, err
+	}
+	if strings.EqualFold(strings.TrimSpace(existing.Status), biz.TaskDeadLetterStatusResolved) {
+		return entTaskDeadLetterToBiz(existing), nil
+	}
+	if !strings.EqualFold(strings.TrimSpace(existing.Status), biz.TaskDeadLetterStatusPending) {
+		return biz.TaskDeadLetter{}, fmt.Errorf("task dead letter %s is not pending", id)
+	}
+	now := nowRFC3339()
+	row, err := r.data.entClient.TaskDeadLetter.UpdateOneID(id).
+		SetStatus(biz.TaskDeadLetterStatusResolved).
+		SetResolvedAt(now).
+		Save(ctx)
+	if err != nil {
+		return biz.TaskDeadLetter{}, err
+	}
+	return entTaskDeadLetterToBiz(row), nil
+}
+
+func entTaskDeadLetterToBiz(e *ent.TaskDeadLetter) biz.TaskDeadLetter {
+	if e == nil {
+		return biz.TaskDeadLetter{}
+	}
+	return biz.TaskDeadLetter{
+		ID:               e.ID,
+		SourceType:       e.SourceType,
+		SourceID:         e.SourceID,
+		TeamID:           e.TeamID,
+		TeamRunID:        e.TeamRunID,
+		SessionID:        e.SessionID,
+		GraphExecutionID: e.GraphExecutionID,
+		ErrorMessage:     e.ErrorMessage,
+		PayloadJSON:      e.PayloadJSON,
+		Status:           e.Status,
+		CreatedAt:        e.CreatedAt,
+		ResolvedAt:       e.ResolvedAt,
+	}
+}
+
+func entOrchestrationStepToBiz(e *ent.OrchestrationStep) biz.OrchestrationStep {
+	if e == nil {
+		return biz.OrchestrationStep{}
+	}
+	return biz.OrchestrationStep{
+		ID:                   e.ID,
+		TeamRunID:            e.TeamRunID,
+		GraphExecutionID:     e.GraphExecutionID,
+		NodeID:               e.NodeID,
+		ActivitySnapshotJSON: e.ActivitySnapshotJSON,
+		Status:               e.Status,
+		StartedAt:            e.StartedAt,
+		FinishedAt:           e.FinishedAt,
+		CreatedAt:            e.CreatedAt,
+	}
 }

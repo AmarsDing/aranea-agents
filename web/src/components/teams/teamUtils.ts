@@ -39,11 +39,11 @@ export const teamTemplateOptions: Array<{ label: string; value: TeamTemplateKey;
 ];
 
 export const runtimeEngineOptions = [
-  { label: "Native（默认）", value: "native", description: "BuildTRPCTeam 按 mode 分发 Chain/Parallel/Swarm 等。" },
+  { label: "Graph（默认，GraphAgent）", value: "graph", description: "CompileToGraphRuntimeConfig → GraphAgent；生产推荐。" },
   {
-    label: "Graph（GraphAgent）",
-    value: "graph",
-    description: "CompileToGraphRuntimeConfig → GraphAgent；须后端 ARANEA_TEAM_GRAPH_RUNTIME=1。"
+    label: "Native（BuildTRPCTeam）",
+    value: "native",
+    description: "按 mode 分发 Chain/Parallel/Swarm；仅 fallback 或调试。"
   }
 ];
 
@@ -58,11 +58,34 @@ export const parallelFailOptions = [
   { label: "中止 abort", value: "abort" }
 ];
 
+export const failureOnErrorOptions = [
+  { label: "暂停等审核 await_review", value: "await_review" },
+  { label: "终止 halt", value: "halt" }
+];
+
+export function runtimeEngineLabel(value?: string) {
+  const v = String(value || "graph").toLowerCase() === "native" ? "native" : "graph";
+  return runtimeEngineOptions.find((o) => o.value === v)?.label ?? v;
+}
+
+export function failurePolicySummary(def: TeamDefinition): string {
+  const fp = def.failure_policy;
+  if (!fp) return "retry_then_block（默认）";
+  const parts: string[] = [];
+  if (fp.default) parts.push(`default: ${fp.default}`);
+  if (def.mode === "parallel" && fp.parallel_fail) parts.push(`parallel: ${fp.parallel_fail}`);
+  if (fp.retry?.max_attempts != null) parts.push(`retry: ${fp.retry.max_attempts}`);
+  if (fp.circuit_breaker?.failure_threshold) parts.push(`circuit: ${fp.circuit_breaker.failure_threshold}`);
+  if (fp.on_error) parts.push(`on_error: ${fp.on_error}`);
+  return parts.length ? parts.join(" · ") : "—";
+}
+
 export function defaultDefinition(): TeamDefinition {
   const definition: TeamDefinition = {
     version: 1,
     description: "",
-    runtime_engine: "native",
+    runtime_engine: "graph",
+    team_graph_runtime: true,
     mode: "sequential",
     max_concurrency: 2,
     timeout_seconds: 600,
@@ -164,6 +187,7 @@ export function parseDefinition(team: Team): TeamDefinition {
     const parsed = JSON.parse(team.definition_json || "{}") as TeamDefinition;
     const linkedFromTeam = String(team.linked_graph_id || "").trim();
     return withGraph({
+      ...parsed,
       version: parsed.version || 1,
       description: parsed.description || "",
       runtime_engine: resolveRuntimeEngine(parsed),
@@ -188,7 +212,7 @@ export function parseDefinition(team: Team): TeamDefinition {
 
 /** 序列化 definition_json 时同步 runtime_engine / team_graph_runtime 双写，避免旧后端只读其一。 */
 export function definitionToJSON(definition: TeamDefinition): string {
-  const engine = String(definition.runtime_engine || "native").trim().toLowerCase();
+  const engine = String(definition.runtime_engine || "graph").trim().toLowerCase();
   const payload: TeamDefinition = {
     ...definition,
     runtime_engine: engine === "graph" ? "graph" : "native",

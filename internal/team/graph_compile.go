@@ -1,6 +1,7 @@
 package team
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -23,8 +24,12 @@ func CompileToGraphBuildConfigFromJSON(def Definition, rawDefinitionJSON string,
 }
 
 func compileToGraphBuildConfig(def Definition, rawDefinitionJSON string, agentKey CompileAgentKey) (biz.GraphBuildConfig, error) {
+	return compileToGraphBuildConfigWithLoader(context.Background(), def, rawDefinitionJSON, agentKey, nil)
+}
+
+func compileToGraphBuildConfigWithLoader(ctx context.Context, def Definition, rawDefinitionJSON string, agentKey CompileAgentKey, loader GraphBuildConfigLoader) (biz.GraphBuildConfig, error) {
 	if spec, ok := parseEmbeddedGraph(rawDefinitionJSON); ok {
-		cfg, err := compileFromEmbeddedGraph(def, spec, agentKey)
+		cfg, err := compileFromEmbeddedGraph(ctx, def, spec, agentKey, loader)
 		if err != nil {
 			return biz.GraphBuildConfig{}, err
 		}

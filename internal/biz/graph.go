@@ -94,6 +94,7 @@ type ConditionalEdgeDef struct {
 // InputMapper/OutputMapper are trpc-specific and resolved in the adapter layer.
 type SubgraphDef struct {
 	ID              string
+	GraphID         string
 	BuildConfig     GraphBuildConfig
 	InterruptBefore bool
 	InterruptAfter  bool
@@ -189,6 +190,7 @@ type GraphUsecase struct {
 	mu            sync.RWMutex
 	defs          map[string]*GraphDefinition
 	executions    map[string]*GraphExecution
+	teamBuildConfigs map[string]GraphBuildConfig
 }
 
 func NewGraphUsecase(repo GraphRepo, runRepo GraphRunRepo, factory GraphBuilderFactory, observer GraphExecutionObserver) *GraphUsecase {
@@ -218,16 +220,30 @@ func nodeDefFromConfig(cfg GraphBuildConfig, nodeID string) *NodeDef {
 	return nil
 }
 
-// ShouldCreateTaskForNode reports whether a graph node should spawn a Kanban task row.
+// ShouldCreateTaskForNode reports whether a standalone Graph run should spawn a Kanban task row (M54).
 func ShouldCreateTaskForNode(node *NodeDef) bool {
 	if node == nil {
 		return false
 	}
 	switch strings.ToLower(strings.TrimSpace(node.Type)) {
-	case "agent", "llm", "tool", "tools":
+	case "agent", "llm", "tool", "tools", "task", "review":
 		return true
 	default:
 		return node.RequiredRole != "" || node.AssignmentMode != "" || node.ReviewerAgent != ""
+	}
+}
+
+// ShouldCreateTeamGraphTaskNode reports whether a Team Graph run should spawn a human task row (M53 TG-RT-TASK).
+// Agent/LLM/tool nodes are executed inline and must not create Kanban tasks.
+func ShouldCreateTeamGraphTaskNode(node *NodeDef) bool {
+	if node == nil {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(node.Type)) {
+	case "task", "review":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -252,11 +268,13 @@ func (uc *GraphUsecase) gc() {
 		}
 		if exec.FinishedAt != nil && now.Sub(*exec.FinishedAt) > executionMaxAge {
 			delete(uc.executions, id)
+			delete(uc.teamBuildConfigs, id)
 		} else if exec.FinishedAt == nil && now.Sub(exec.StartedAt) > executionMaxAge {
 			exec.Status = "expired"
 			nowCopy := now
 			exec.FinishedAt = &nowCopy
 			delete(uc.executions, id)
+			delete(uc.teamBuildConfigs, id)
 		}
 	}
 }

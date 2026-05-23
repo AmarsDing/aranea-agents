@@ -153,6 +153,65 @@ FROM channel_turn_job WHERE channel_id=? ORDER BY created_at DESC LIMIT ?`,
 	return out, rows.Err()
 }
 
+func (r *channelTurnJobRepo) ListFiltered(ctx context.Context, q biz.ChannelTurnJobListQuery) ([]biz.ChannelTurnJob, error) {
+	db := r.data.RawDB()
+	if db == nil {
+		return nil, nil
+	}
+	limit := biz.NormalizeChannelTurnJobListLimit(q.Limit)
+	query := `
+SELECT j.id, j.channel_id, j.session_id, j.peer_id, j.peer_key, j.idempotency_key, j.status,
+  j.preview_message_id, j.content_preview, j.async_target_type, j.async_target_id,
+  j.error_message, j.started_at, j.finished_at, j.created_at, j.updated_at,
+  COALESCE(s.agent_id, ''), COALESCE(g.graph_id, '')
+FROM channel_turn_job j
+LEFT JOIN sessions s ON s.id = j.session_id
+LEFT JOIN graph_executions g ON g.id = j.async_target_id
+  AND j.async_target_type IN ('graph', 'team_graph')
+WHERE (? = '' OR j.session_id = ?)
+  AND (? = '' OR s.agent_id = ?)
+  AND (? = '' OR j.status = ?)
+ORDER BY j.created_at DESC
+LIMIT ?`
+	sessionID := strings.TrimSpace(q.SessionID)
+	agentID := strings.TrimSpace(q.AgentID)
+	statusFilter := strings.TrimSpace(q.Status)
+	statusParam := ""
+	if statusFilter != "" {
+		statusParam = biz.NormalizeChannelTurnJobStatus(statusFilter)
+	}
+	rows, err := db.QueryContext(ctx, query,
+		sessionID, sessionID,
+		agentID, agentID,
+		statusParam, statusParam,
+		limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []biz.ChannelTurnJob
+	for rows.Next() {
+		job, err := scanChannelTurnJobListRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, job)
+	}
+	return out, rows.Err()
+}
+
+func scanChannelTurnJobListRow(rows *sql.Rows) (biz.ChannelTurnJob, error) {
+	var j biz.ChannelTurnJob
+	err := rows.Scan(
+		&j.ID, &j.ChannelID, &j.SessionID, &j.PeerID, &j.PeerKey, &j.IdempotencyKey, &j.Status,
+		&j.PreviewMessageID, &j.ContentPreview, &j.AsyncTargetType, &j.AsyncTargetID,
+		&j.ErrorMessage, &j.StartedAt, &j.FinishedAt, &j.CreatedAt, &j.UpdatedAt,
+		&j.AgentID, &j.GraphID,
+	)
+	return j, err
+}
+
 func scanChannelTurnJob(row *sql.Row) (biz.ChannelTurnJob, error) {
 	var j biz.ChannelTurnJob
 	err := row.Scan(

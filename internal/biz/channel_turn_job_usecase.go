@@ -33,6 +33,17 @@ func (u *ChannelTurnJobUsecase) ListByChannel(ctx context.Context, channelID str
 	return u.jobs.ListByChannel(ctx, channelID, NormalizeChannelTurnJobListLimit(limit))
 }
 
+// ListFiltered returns jobs for chat background panel (session / agent / status filters).
+func (u *ChannelTurnJobUsecase) ListFiltered(ctx context.Context, q ChannelTurnJobListQuery) ([]ChannelTurnJob, error) {
+	if u == nil || u.jobs == nil {
+		return nil, nil
+	}
+	q.SessionID = strings.TrimSpace(q.SessionID)
+	q.AgentID = strings.TrimSpace(q.AgentID)
+	q.Status = strings.TrimSpace(q.Status)
+	return u.jobs.ListFiltered(ctx, q)
+}
+
 // CreateAccepted inserts or resolves an accepted job and returns the persisted row id.
 func (u *ChannelTurnJobUsecase) CreateAccepted(ctx context.Context, job ChannelTurnJob) (string, error) {
 	if u == nil || u.jobs == nil {

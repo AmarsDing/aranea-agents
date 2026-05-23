@@ -27,26 +27,73 @@
         <q-toggle v-model="selectedNode.interruptBefore" dense label="执行前中断 (HITL)" @update:model-value="notifyChange" />
         <q-toggle v-model="selectedNode.interruptAfter" dense label="执行后中断 (HITL)" @update:model-value="notifyChange" />
 
-        <q-expansion-item dense expand-separator label="高级策略" header-class="text-caption text-weight-bold">
+        <div v-if="selectedNode.type === 'agent' || selectedNode.type === 'router'" class="graph-property-panel__section">
+          <div class="graph-property-panel__section-title">RetryPolicy</div>
+          <q-input
+            v-model.number="selectedNode.retryMaxAttempts"
+            dense
+            outlined
+            type="number"
+            label="重试次数 max_attempts"
+            min="0"
+            @update:model-value="notifyChange"
+          />
+          <q-select
+            v-model="selectedNode.failureAction"
+            dense
+            outlined
+            emit-value
+            map-options
+            label="失败策略 failure_action"
+            :options="failureActionOptions"
+            @update:model-value="notifyChange"
+          />
+          <q-input v-model="selectedNode.fallbackAgent" dense outlined label="Fallback Agent" @update:model-value="notifyChange" />
+        </div>
+
+        <div v-if="selectedNode.type === 'agent' || selectedNode.type === 'router'" class="graph-property-panel__section">
+          <div class="graph-property-panel__section-title">Destinations</div>
+          <q-select
+            v-model="selectedNode.destinations"
+            dense
+            outlined
+            multiple
+            use-chips
+            emit-value
+            map-options
+            label="GoTo 目标节点"
+            :options="destinationOptions"
+            @update:model-value="notifyChange"
+          />
+        </div>
+
+        <div v-if="selectedNode.type === 'agent'" class="graph-property-panel__section">
+          <div class="graph-property-panel__section-title">Mapper</div>
+          <q-input
+            v-model="selectedNode.inputMapperJson"
+            dense
+            outlined
+            autogrow
+            type="textarea"
+            label="Input Mapper JSON"
+            hint='例：{"messages":"messages"}'
+            @update:model-value="notifyChange"
+          />
+          <q-input
+            v-model="selectedNode.outputMapperJson"
+            dense
+            outlined
+            autogrow
+            type="textarea"
+            label="Output Mapper JSON"
+            @update:model-value="notifyChange"
+          />
+          <q-toggle v-model="selectedNode.isolatedMessages" dense label="隔离子 Agent 消息" @update:model-value="notifyChange" />
+          <q-toggle v-model="selectedNode.inputFromLastResponse" dense label="从 last_response 注入输入" @update:model-value="notifyChange" />
+        </div>
+
+        <q-expansion-item dense expand-separator label="缓存" header-class="text-caption text-weight-bold">
           <div class="q-gutter-sm q-pt-xs">
-            <q-input
-              v-model.number="selectedNode.retryMaxAttempts"
-              dense
-              outlined
-              type="number"
-              label="重试次数"
-              min="0"
-            />
-            <q-select
-              v-model="selectedNode.failureAction"
-              dense
-              outlined
-              emit-value
-              map-options
-              label="失败策略"
-              :options="failureActionOptions"
-            />
-            <q-input v-model="selectedNode.fallbackAgent" dense outlined label="Fallback Agent" />
             <q-toggle v-model="selectedNode.cacheEnabled" dense label="启用节点缓存" />
             <q-input
               v-if="selectedNode.cacheEnabled"
@@ -57,27 +104,6 @@
               label="缓存 TTL（秒）"
               min="0"
             />
-            <template v-if="selectedNode.type === 'agent'">
-              <q-input
-                v-model="selectedNode.inputMapperJson"
-                dense
-                outlined
-                autogrow
-                type="textarea"
-                label="Input Mapper JSON"
-                hint='例：{"messages":"messages"}'
-              />
-              <q-input
-                v-model="selectedNode.outputMapperJson"
-                dense
-                outlined
-                autogrow
-                type="textarea"
-                label="Output Mapper JSON"
-              />
-              <q-toggle v-model="selectedNode.isolatedMessages" dense label="隔离子 Agent 消息" />
-              <q-toggle v-model="selectedNode.inputFromLastResponse" dense label="从 last_response 注入输入" />
-            </template>
           </div>
         </q-expansion-item>
       </div>
@@ -168,6 +194,12 @@ const nodeIdOptions = computed(() =>
   (props.graphDef?.nodes ?? []).map((n) => ({ label: n.id, value: n.id }))
 );
 
+const destinationOptions = computed(() =>
+  (props.graphDef?.nodes ?? [])
+    .filter((n) => n.id !== props.selectedNode?.id)
+    .map((n) => ({ label: `${n.id} (${n.type})`, value: n.id }))
+);
+
 const fieldTypeOptions = STATE_FIELD_TYPE_OPTIONS;
 const reducerOptions = REDUCER_OPTIONS;
 const engineOptions = ENGINE_OPTIONS;
@@ -227,6 +259,21 @@ function removeStateField(index: number) {
 
 .graph-property-panel__body {
   padding-top: 4px;
+}
+
+.graph-property-panel__section {
+  display: grid;
+  gap: 8px;
+  padding: 10px 0;
+  border-top: 1px solid var(--glass-border, rgb(235 220 200 / 70%));
+}
+
+.graph-property-panel__section-title {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
 }
 
 .graph-property-panel__empty {

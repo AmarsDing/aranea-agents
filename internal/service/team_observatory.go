@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"encoding/json"
+	"strings"
 
 	v1 "aranea-agents/api/kratos/team/v1"
 	"aranea-agents/internal/biz"
@@ -115,6 +117,7 @@ func (s *TeamService) GetTeamRunObservatory(ctx context.Context, req *v1.GetTeam
 		Status:                 obs.Status,
 		Mode:                   obs.Mode,
 		GraphExecutionId:       obs.GraphExecutionID,
+		TraceId:                obs.TraceID,
 		DefinitionSnapshotJson: obs.DefinitionSnapshotJSON,
 		CompiledTopology:       s.buildObservatoryCompiledTopology(ctx, obs.DefinitionSnapshotJSON),
 		Nodes:                  make([]*v1.AgentNodeStateView, 0, len(obs.Nodes)),
@@ -124,4 +127,45 @@ func (s *TeamService) GetTeamRunObservatory(ctx context.Context, req *v1.GetTeam
 		resp.Nodes = append(resp.Nodes, toProtoAgentNodeState(cp))
 	}
 	return resp, nil
+}
+
+func (s *TeamService) GetTeamRunObservatoryTimeline(ctx context.Context, req *v1.GetTeamRunObservatoryTimelineRequest) (*v1.GetTeamRunObservatoryTimelineResponse, error) {
+	run, err := s.uc.GetRun(ctx, req.GetRunId())
+	if err != nil {
+		return nil, mapTeamErr(err)
+	}
+	limit := int(req.GetLimit())
+	steps, err := s.uc.ListRunObservatoryTimeline(ctx, req.GetRunId(), req.GetNodeId(), limit)
+	if err != nil {
+		return nil, mapTeamErr(err)
+	}
+	resp := &v1.GetTeamRunObservatoryTimelineResponse{
+		TraceId: strings.TrimSpace(run.TraceID),
+	}
+	for _, step := range steps {
+		var snap biz.ActivitySnapshot
+		if raw := strings.TrimSpace(step.ActivitySnapshotJSON); raw != "" {
+			_ = json.Unmarshal([]byte(raw), &snap)
+		}
+		resp.Rows = append(resp.Rows, &v1.ActivityTimelineRow{
+			NodeId:       step.NodeID,
+			Kind:         snap.Kind,
+			DisplayLabel: firstNonEmptyTimeline(snap.DisplayLabel, snap.ToolName, snap.Kind),
+			Status:       firstNonEmptyTimeline(step.Status, snap.Status),
+			StartedAt:    firstNonEmptyTimeline(step.StartedAt, snap.StartedAt),
+			FinishedAt:   firstNonEmptyTimeline(step.FinishedAt, snap.FinishedAt),
+			DurationMs:   snap.DurationMS,
+			TraceId:      resp.TraceId,
+		})
+	}
+	return resp, nil
+}
+
+func firstNonEmptyTimeline(values ...string) string {
+	for _, v := range values {
+		if strings.TrimSpace(v) != "" {
+			return strings.TrimSpace(v)
+		}
+	}
+	return ""
 }

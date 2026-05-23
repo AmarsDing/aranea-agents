@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"reflect"
 
+	"aranea-agents/internal/biz"
+
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
 	trpcgraph "trpc.group/trpc-go/trpc-agent-go/graph"
@@ -39,6 +41,7 @@ const (
 
 type SubgraphDef struct {
 	ID              string
+	GraphID         string
 	BuildConfig     GraphBuildConfig
 	InputMapper     trpcgraph.SubgraphInputMapper
 	OutputMapper    trpcgraph.SubgraphOutputMapper
@@ -102,6 +105,7 @@ type GraphBuildConfig struct {
 	ExecutionEngine  ExecutionEngineType
 	InterruptBefore  []string
 	InterruptAfter   []string
+	FailurePolicy    *biz.TeamFailurePolicy
 }
 
 func resolveReducer(rt ReducerType) trpcgraph.StateReducer {
@@ -158,6 +162,7 @@ func BuildStateGraphWithRegistry(ctx context.Context, cfg GraphBuildConfig, reg 
 		ExecutionEngine:  cfg.ExecutionEngine,
 		InterruptBefore:  append([]string(nil), cfg.InterruptBefore...),
 		InterruptAfter:   append([]string(nil), cfg.InterruptAfter...),
+		FailurePolicy:    cfg.FailurePolicy,
 	}
 	if reg != nil {
 		resolved, err := reg.ResolveBuildConfig(local)
@@ -199,7 +204,7 @@ func BuildStateGraphWithAgents(ctx context.Context, cfg GraphBuildConfig, deps *
 	sg := trpcgraph.NewStateGraph(schema)
 
 	for _, n := range cfg.Nodes {
-		extras, err := wireNode(ctx, sg, n, deps)
+		extras, err := wireNode(ctx, sg, n, deps, cfg.FailurePolicy)
 		if err != nil {
 			return nil, nil, err
 		}

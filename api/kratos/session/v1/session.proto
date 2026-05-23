@@ -186,11 +186,13 @@ message ListSessionMessagesRequest {
   string id = 1 [(google.api.field_behavior) = REQUIRED];
   int32 limit = 2;
   int32 offset = 3;
+  optional int64 after_revision = 4;
 }
 
 message ListSessionMessagesResponse {
   repeated ChatMessageRow items = 1;
   int32 total = 2;
+  int64 current_revision = 3;
 }
 
 message SearchSessionMessagesRequest {

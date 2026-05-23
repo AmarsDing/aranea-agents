@@ -19,6 +19,8 @@ const (
 	ChannelTurnJobStatusAsyncQueued = "async_queued"
 	// MaxChannelTurnJobListLimit caps admin ListChannelTurnJobs page size.
 	MaxChannelTurnJobListLimit = 200
+	// ChannelAsyncJobWatchMax is the in-process async completion watch ceiling (CC-F-01 interim; durable worker pending).
+	ChannelAsyncJobWatchMax = 24 * time.Hour
 )
 
 // ChannelTurnJob tracks a single Channel inbound turn lifecycle (LT-07).
@@ -39,6 +41,9 @@ type ChannelTurnJob struct {
 	FinishedAt       string
 	CreatedAt        string
 	UpdatedAt        string
+	// AgentID / GraphID are populated by ListFiltered joins only (not persisted on the row).
+	AgentID string
+	GraphID string
 }
 
 // ChannelTurnJobRepo persists channel turn jobs.
@@ -47,7 +52,16 @@ type ChannelTurnJobRepo interface {
 	UpdateStatus(ctx context.Context, id, status, errMsg, previewMsgID, contentPreview string) error
 	UpdateAsyncTarget(ctx context.Context, id, targetType, targetID string) error
 	GetByIdempotency(ctx context.Context, channelID, idempotencyKey string) (ChannelTurnJob, error)
-	ListByChannel(ctx context.Context, channelID string, limit int) ([]ChannelTurnJob, error)
+  ListByChannel(ctx context.Context, channelID string, limit int) ([]ChannelTurnJob, error)
+	ListFiltered(ctx context.Context, q ChannelTurnJobListQuery) ([]ChannelTurnJob, error)
+}
+
+// ChannelTurnJobListQuery filters jobs for chat background panel (M55 CC-D-01).
+type ChannelTurnJobListQuery struct {
+	SessionID string
+	AgentID   string
+	Status    string
+	Limit     int
 }
 
 func NewChannelTurnJobID() string {

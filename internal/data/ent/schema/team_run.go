@@ -40,5 +40,6 @@ func (TeamRun) Fields() []ent.Field {
 		field.String("updated_at").Default(""),
 		field.String("graph_execution_id").Default(""),
 		field.Text("definition_snapshot_json").Default(""),
+		field.String("trace_id").Default("").MaxLen(128),
 	}
 }

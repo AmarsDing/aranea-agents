@@ -20,8 +20,14 @@ type TeamRepository interface {
 	CreateTeamRun(ctx context.Context, r TeamRun) (TeamRun, error)
 	UpdateTeamRun(ctx context.Context, r TeamRun) error
 	UpdateTeamRunGraphExecutionID(ctx context.Context, runID, graphExecutionID string) error
+	UpdateTeamRunTraceID(ctx context.Context, runID, traceID string) error
 	UpdateTeamRunSummaryJSON(ctx context.Context, runID, summaryJSON string) error
 	CreateTeamRunStep(ctx context.Context, s TeamRunStep) (TeamRunStep, error)
+	BatchCreateOrchestrationSteps(ctx context.Context, steps []OrchestrationStep) error
+	ListOrchestrationSteps(ctx context.Context, teamRunID, nodeID string, limit int) ([]OrchestrationStep, error)
+	CreateTaskDeadLetter(ctx context.Context, dl TaskDeadLetter) error
+	ListTaskDeadLetters(ctx context.Context, filter TaskDeadLetterListFilter) ([]TaskDeadLetter, error)
+	ResolveTaskDeadLetter(ctx context.Context, id string) (TaskDeadLetter, error)
 }
 
 type TeamUsecase struct {
@@ -40,7 +46,11 @@ func firstNonEmptyTeam(a, b string) string {
 }
 
 func defaultTeamDefinitionJSON() string {
-	return `{"version":1,"mode":"sequential","members":[],"max_concurrency":2,"timeout_seconds":600}`
+	out, _ := OrchestrationSpecToDefinitionJSON(DefaultOrchestrationSpec())
+	if out == "" {
+		return `{"version":2,"mode":"sequential","runtime_engine":"graph","team_graph_runtime":true,"members":[],"max_concurrency":2,"timeout_seconds":600}`
+	}
+	return out
 }
 
 func validateTeamDefinition(raw string) error {
@@ -126,6 +136,8 @@ func (u *TeamUsecase) Create(ctx context.Context, in Team) (Team, error) {
 	}
 	if in.DefinitionJSON == "" {
 		in.DefinitionJSON = defaultTeamDefinitionJSON()
+	} else {
+		in.DefinitionJSON = EnsureGraphRuntimeDefault(in.DefinitionJSON)
 	}
 	if err := validateTeamDefinition(in.DefinitionJSON); err != nil {
 		return Team{}, err
@@ -256,12 +268,35 @@ func (u *TeamUsecase) UpdateRunSummaryJSON(ctx context.Context, runID, summaryJS
 	return u.repo.UpdateTeamRunSummaryJSON(ctx, runID, summaryJSON)
 }
 
+func (u *TeamUsecase) UpdateRunTraceID(ctx context.Context, runID, traceID string) error {
+	runID = strings.TrimSpace(runID)
+	traceID = strings.TrimSpace(traceID)
+	if runID == "" || traceID == "" {
+		return nil
+	}
+	return u.repo.UpdateTeamRunTraceID(ctx, runID, traceID)
+}
+
 func (u *TeamUsecase) ListRunSteps(ctx context.Context, runID string) ([]TeamRunStep, error) {
 	runID = strings.TrimSpace(runID)
 	if runID == "" {
 		return nil, kerrors.BadRequest("TEAM", "run_id is required")
 	}
 	return u.repo.ListTeamRunSteps(ctx, runID)
+}
+
+func (u *TeamUsecase) ListRunObservatoryTimeline(ctx context.Context, runID, nodeID string, limit int) ([]OrchestrationStep, error) {
+	runID = strings.TrimSpace(runID)
+	if runID == "" {
+		return nil, kerrors.BadRequest("TEAM", "run_id is required")
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > 500 {
+		limit = 500
+	}
+	return u.repo.ListOrchestrationSteps(ctx, runID, strings.TrimSpace(nodeID), limit)
 }
 
 func (u *TeamUsecase) GetRunSummary(ctx context.Context, runID string) (TeamRunSummaryData, error) {
@@ -406,6 +441,20 @@ func parseDefinitionForUpdate(raw string) (*definitionForUpdate, error) {
 		return nil, err
 	}
 	return &d, nil
+}
+
+func (uc *TeamUsecase) ListTaskDeadLetters(ctx context.Context, filter TaskDeadLetterListFilter) ([]TaskDeadLetter, error) {
+	if uc == nil || uc.repo == nil {
+		return nil, nil
+	}
+	return uc.repo.ListTaskDeadLetters(ctx, filter)
+}
+
+func (uc *TeamUsecase) ResolveTaskDeadLetter(ctx context.Context, id string) (TaskDeadLetter, error) {
+	if uc == nil || uc.repo == nil {
+		return TaskDeadLetter{}, ErrNotFound
+	}
+	return uc.repo.ResolveTaskDeadLetter(ctx, id)
 }
 
 func boolPtr(v bool) *bool { return &v }

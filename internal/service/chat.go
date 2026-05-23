@@ -47,6 +47,7 @@ type ChatService struct {
 	artifacts     *biz.ArtifactUsecase
 	runs           *rt.RunRegistry
 	chatUC         *biz.ChatUsecase
+	turnJobs       *biz.ChannelTurnJobUsecase
 	awaitMetaCache sync.Map // sessionID -> biz.ChatAwaitMeta
 	resumeInFlight sync.Map // sessionID -> struct{}; guards cross-restart await resume
 	a2aUC              *biz.A2AUsecase
@@ -72,6 +73,9 @@ type ChatServiceDeps struct {
 	MCPServers         *biz.MCPServerUsecase
 	GraphFactory       biz.GraphBuilderFactory
 	Graphs             *biz.GraphUsecase
+	Tasks              *biz.TaskUsecase
+	TeamGraphCoord     *team.TeamGraphRunCoordinator
+	TurnJobs           *biz.ChannelTurnJobUsecase
 }
 
 func coalesceRunRegistry(r *rt.RunRegistry) *rt.RunRegistry {
@@ -103,6 +107,7 @@ func NewChatService(deps ChatServiceDeps) *ChatService {
 		artifacts:          deps.Artifacts,
 		runs:               runs,
 		chatUC:             NewChatUsecaseFromDeps(runs, pending, sessionLocks, deps.Sessions, deps.Pipeline.Bus),
+		turnJobs:           deps.TurnJobs,
 		a2aUC:              deps.A2AUC,
 		knowledgeRetriever: deps.KnowledgeRetriever,
 		codeExecFactory:    deps.CodeExecFactory,
@@ -121,6 +126,13 @@ func NewChatService(deps ChatServiceDeps) *ChatService {
 			if builder, ok := deps.GraphFactory.(graphadapter.TeamGraphRootBuilder); ok {
 				deps.TeamsNative.SetGraphRootBuilder(builder)
 			}
+		}
+		if deps.Tasks != nil {
+			deps.TeamsNative.SetTeamGraphTaskCreator(team.NewTaskUsecaseGraphTaskCreator(deps.Tasks))
+		}
+		if deps.TeamGraphCoord != nil {
+			deps.TeamsNative.SetTeamGraphRunCoordinator(deps.TeamGraphCoord)
+			deps.TeamGraphCoord.SetFinisher(deps.TeamsNative)
 		}
 	}
 	configureMCPObserve(deps.TurnDeps.Pipeline.Bus, deps.MCPServers)

@@ -120,6 +120,11 @@ export type Envelope = {
   actions?: EnvelopeActions;
   trace?: EnvelopeTrace;
   metadata?: Record<string, unknown>;
+
+  session_revision?: number;
+  source?: string;
+  job_id?: string;
+  turn_id?: string;
 };
 
 export type WsDownstream = {

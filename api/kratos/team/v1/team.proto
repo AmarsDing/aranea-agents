@@ -5,6 +5,7 @@ package kratos.team.v1;
 import "google/api/annotations.proto";
 import "google/api/field_behavior.proto";
 import "google/protobuf/empty.proto";
+import "google/protobuf/struct.proto";
 
 option go_package = "aranea-agents/api/kratos/team/v1;v1";
 option java_multiple_files = true;
@@ -25,6 +26,8 @@ message Team {
   string linked_graph_id = 11;
   // True when the team has a running or pending TeamRun (orchestration read-only).
   bool has_active_run = 12;
+  // Strong-typed OrchestrationSpec v2 (parallel to definition_json; M53 TG-CMP-V2).
+  OrchestrationSpec orchestration_spec = 13;
 }
 
 message TeamRun {
@@ -49,6 +52,8 @@ message TeamRun {
   string graph_execution_id = 19;
   // Frozen OrchestrationSpec JSON captured at run start (M53 TG-API-03).
   string definition_snapshot_json = 20;
+  // Cross-domain trace id (M53 OPS-TRACE-01).
+  string trace_id = 21;
 }
 
 message TeamRunStep {
@@ -162,6 +167,124 @@ message GetTeamRunObservatoryResponse {
   string definition_snapshot_json = 8;
   // Graph execution id when run uses compiled graph runtime (M54 task board).
   string graph_execution_id = 9;
+  // Cross-domain trace id for Monitor deep link (M53 OPS-TRACE-01).
+  string trace_id = 10;
+}
+
+message GetTeamRunObservatoryTimelineRequest {
+  string run_id = 1 [(google.api.field_behavior) = REQUIRED];
+  optional string node_id = 2;
+  optional int32 limit = 3;
+}
+
+message ActivityTimelineRow {
+  string node_id = 1;
+  string kind = 2;
+  string display_label = 3;
+  string status = 4;
+  string started_at = 5;
+  string finished_at = 6;
+  int64 duration_ms = 7;
+  string trace_id = 8;
+}
+
+message GetTeamRunObservatoryTimelineResponse {
+  repeated ActivityTimelineRow rows = 1;
+  string trace_id = 2;
+}
+
+// --- OrchestrationSpec v2 (M53 TG-CMP-V2) ---
+
+message OrchestrationMember {
+  string agent_id = 1;
+  string role = 2;
+  string name = 3;
+  string task_prompt = 4;
+  bool enabled = 5;
+  int32 sort_order = 6;
+}
+
+message EmbeddedGraphNode {
+  string id = 1;
+  string type = 2;
+  string label = 3;
+  string agent_id = 4;
+  string role = 5;
+  bool interrupt_before = 6;
+  bool interrupt_after = 7;
+  repeated string destinations = 8;
+}
+
+message EmbeddedGraphEdge {
+  string id = 1;
+  string source = 2;
+  string target = 3;
+  string label = 4;
+  string condition = 5;
+}
+
+message EmbeddedGraph {
+  int32 version = 1;
+  string layout = 2;
+  repeated EmbeddedGraphNode nodes = 3;
+  repeated EmbeddedGraphEdge edges = 4;
+}
+
+message TeamRetryPolicySpec {
+  int32 max_attempts = 1;
+  int32 initial_interval_ms = 2;
+  double backoff_factor = 3;
+  int32 max_interval_ms = 4;
+}
+
+message TeamNodeFailureOverrideSpec {
+  string policy = 1;
+  TeamRetryPolicySpec retry = 2;
+  string fallback_agent = 3;
+}
+
+message CircuitBreakerSpec {
+  int32 failure_threshold = 1;
+  int32 reset_timeout_seconds = 2;
+  string fallback_node = 3;
+}
+
+message FailurePolicySpec {
+  string default_policy = 1;
+  string parallel_fail = 2;
+  TeamRetryPolicySpec retry = 3;
+  map<string, TeamNodeFailureOverrideSpec> node_overrides = 4;
+  CircuitBreakerSpec circuit_breaker = 5;
+  string on_error = 6; // await_review | halt | ...
+}
+
+message OrchestrationSpec {
+  int32 version = 1;
+  string mode = 2;
+  repeated OrchestrationMember members = 3;
+  EmbeddedGraph graph = 4;
+  string linked_graph_id = 5;
+  FailurePolicySpec failure_policy = 6;
+  string runtime_engine = 7;
+  int32 turn_timeout_sec = 8;
+  int32 first_byte_timeout_sec = 9;
+  string intent_anchor_agent_id = 10;
+  string description = 11;
+  int32 max_concurrency = 12;
+  int32 timeout_seconds = 13;
+  int32 loop_max_iterations = 14;
+  bool enable_checkpoint = 15;
+}
+
+message ResumeTeamRunExecutionRequest {
+  string run_id = 1 [(google.api.field_behavior) = REQUIRED];
+  google.protobuf.Struct resume_value = 2;
+}
+
+message ResumeTeamRunExecutionResponse {
+  string run_id = 1;
+  string graph_execution_id = 2;
+  string status = 3;
 }
 
 message ListTeamsRequest {}
@@ -317,6 +440,40 @@ message CompileTeamGraphResponse {
   bool valid = 10;
 }
 
+message TaskDeadLetter {
+  string id = 1;
+  string source_type = 2;
+  string source_id = 3;
+  string team_id = 4;
+  string team_run_id = 5;
+  string session_id = 6;
+  string graph_execution_id = 7;
+  string error_message = 8;
+  string payload_json = 9;
+  string status = 10;
+  string created_at = 11;
+  string resolved_at = 12;
+}
+
+message ListTaskDeadLettersRequest {
+  string session_id = 1;
+  string team_id = 2;
+  string status = 3;
+  int32 limit = 4;
+}
+
+message ListTaskDeadLettersResponse {
+  repeated TaskDeadLetter items = 1;
+}
+
+message ResolveTaskDeadLetterRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ResolveTaskDeadLetterResponse {
+  TaskDeadLetter item = 1;
+}
+
 service TeamService {
   rpc ListTeams(ListTeamsRequest) returns (ListTeamsResponse) {
     option (google.api.http) = {get: "/v1/teams"};
@@ -381,9 +538,27 @@ service TeamService {
   rpc GetTeamRunObservatory(GetTeamRunObservatoryRequest) returns (GetTeamRunObservatoryResponse) {
     option (google.api.http) = {get: "/v1/team-runs/{run_id}/observatory"};
   }
+  rpc GetTeamRunObservatoryTimeline(GetTeamRunObservatoryTimelineRequest) returns (GetTeamRunObservatoryTimelineResponse) {
+    option (google.api.http) = {get: "/v1/team-runs/{run_id}/observatory/timeline"};
+  }
+  rpc ResumeTeamRunExecution(ResumeTeamRunExecutionRequest) returns (ResumeTeamRunExecutionResponse) {
+    option (google.api.http) = {
+      post: "/v1/team-runs/{run_id}/resume"
+      body: "*"
+    };
+  }
   rpc CompileTeamGraph(CompileTeamGraphRequest) returns (CompileTeamGraphResponse) {
     option (google.api.http) = {
       post: "/v1/teams/{team_id}/compile-graph"
+      body: "*"
+    };
+  }
+  rpc ListTaskDeadLetters(ListTaskDeadLettersRequest) returns (ListTaskDeadLettersResponse) {
+    option (google.api.http) = {get: "/v1/task-dead-letters"};
+  }
+  rpc ResolveTaskDeadLetter(ResolveTaskDeadLetterRequest) returns (ResolveTaskDeadLetterResponse) {
+    option (google.api.http) = {
+      post: "/v1/task-dead-letters/{id}/resolve"
       body: "*"
     };
   }

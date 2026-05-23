@@ -72,6 +72,11 @@ type Envelope struct {
 	Actions    *EnvelopeActions    `json:"actions,omitempty"`
 	Trace      *EnvelopeTrace      `json:"trace,omitempty"`
 	Metadata   map[string]any      `json:"metadata,omitempty"`
+
+	SessionRevision int64  `json:"session_revision,omitempty"`
+	Source          string `json:"source,omitempty"`
+	JobID           string `json:"job_id,omitempty"`
+	TurnID          string `json:"turn_id,omitempty"`
 }
 
 type EnvelopeContent struct {

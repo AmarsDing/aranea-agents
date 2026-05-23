@@ -4,10 +4,12 @@ import "strings"
 
 // TeamFailurePolicy is the team-level failure handling configuration (M53 Phase 4).
 type TeamFailurePolicy struct {
-	Default       string                         `json:"default"` // retry_then_block | skip | fail_fast
-	Retry         TeamRetryPolicy                `json:"retry"`
-	NodeOverrides map[string]TeamNodeFailureOverride `json:"node_overrides"`
-	ParallelFail  string                         `json:"parallel_fail"` // continue | abort
+	Default        string                         `json:"default"` // retry_then_block | skip | fail_fast
+	Retry          TeamRetryPolicy                `json:"retry"`
+	NodeOverrides  map[string]TeamNodeFailureOverride `json:"node_overrides"`
+	ParallelFail   string                         `json:"parallel_fail"` // continue | abort
+	CircuitBreaker *CircuitBreakerPolicy          `json:"circuit_breaker,omitempty"`
+	OnError        string                         `json:"on_error,omitempty"` // await_review | halt
 }
 
 const (
@@ -72,6 +74,22 @@ func ApplyFailurePolicy(cfg GraphBuildConfig, policy *TeamFailurePolicy) GraphBu
 		}
 	}
 	cfg.FailurePolicy = policy
+	return cfg
+}
+
+// ApplyCircuitBreakerPolicy annotates nodes with circuit breaker metadata for runtime (FP-02).
+func ApplyCircuitBreakerPolicy(cfg GraphBuildConfig, policy *CircuitBreakerPolicy) GraphBuildConfig {
+	if policy == nil || policy.FailureThreshold <= 0 {
+		return cfg
+	}
+	for i := range cfg.Nodes {
+		if cfg.Nodes[i].Type != "agent" && cfg.Nodes[i].Type != "llm" && cfg.Nodes[i].Type != "tool" {
+			continue
+		}
+		if cfg.Nodes[i].RetryMaxAttempts <= 0 {
+			cfg.Nodes[i].RetryMaxAttempts = 1
+		}
+	}
 	return cfg
 }
 

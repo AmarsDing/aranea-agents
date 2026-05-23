@@ -38,6 +38,20 @@ func (s stubTeamRepo) UpdateTeamRun(context.Context, biz.TeamRun) error { return
 func (s stubTeamRepo) UpdateTeamRunGraphExecutionID(context.Context, string, string) error {
 	return nil
 }
+func (s stubTeamRepo) UpdateTeamRunTraceID(context.Context, string, string) error { return nil }
+func (s stubTeamRepo) BatchCreateOrchestrationSteps(context.Context, []biz.OrchestrationStep) error {
+	return nil
+}
+func (s stubTeamRepo) ListOrchestrationSteps(context.Context, string, string, int) ([]biz.OrchestrationStep, error) {
+	return nil, nil
+}
+func (s stubTeamRepo) CreateTaskDeadLetter(_ context.Context, _ biz.TaskDeadLetter) error { return nil }
+func (s stubTeamRepo) ListTaskDeadLetters(_ context.Context, _ biz.TaskDeadLetterListFilter) ([]biz.TaskDeadLetter, error) {
+	return nil, nil
+}
+func (s stubTeamRepo) ResolveTaskDeadLetter(_ context.Context, _ string) (biz.TaskDeadLetter, error) {
+	return biz.TaskDeadLetter{}, nil
+}
 func (s stubTeamRepo) UpdateTeamRunSummaryJSON(context.Context, string, string) error { return nil }
 func (s stubTeamRepo) CreateTeamRunStep(context.Context, biz.TeamRunStep) (biz.TeamRunStep, error) {
 	return biz.TeamRunStep{}, nil

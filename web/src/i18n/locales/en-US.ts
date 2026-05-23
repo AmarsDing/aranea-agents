@@ -100,6 +100,18 @@ export default {
     channelInboundNotify: "New reply from channel (e.g. Feishu)",
     channelInboundOpen: "Open",
     wsReplaying: "Syncing historical events…",
+    wsReplayingShort: "replay",
+    syncDiagnostic: "{count} msgs · rev {rev} · WS {ws} · {ctx}% ctx",
+    source: {
+      web: "Web",
+      channel: "Channel",
+      feishu: "Feishu",
+      dingtalk: "DingTalk",
+      wecom: "WeCom",
+      cron: "Cron",
+      a2a: "A2A",
+      api: "API"
+    },
     reasoningTitle: "Reasoning",
     pendingQueue: "Pending Queue",
     cancelPending: "Cancel Pending",
@@ -139,6 +151,22 @@ export default {
     toolConfirmDeny: "Deny",
     toolConfirmApprove: "Allow",
     toolLongRunning: "Long-running",
+    job: {
+      title: "Background jobs",
+      loading: "Loading background jobs…",
+      empty: "No background jobs",
+      refresh: "Refresh",
+      openGraph: "Open graph run"
+    },
+    turn: {
+      block: {
+        channelActive: "From channel",
+        fromChannel: "From Feishu · in progress",
+        toolsSummary: "{count} tools · {sec}{failPart}",
+        toolsAria: "Tools: {count}",
+        failed: "failed"
+      }
+    },
     toolArgs: "Arguments",
     toolResult: "Result",
     activity: {

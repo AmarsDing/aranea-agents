@@ -63,6 +63,20 @@ func (m *memTeamRepoB) CreateTeamRun(_ context.Context, r biz.TeamRun) (biz.Team
 func (m *memTeamRepoB) UpdateTeamRun(_ context.Context, _ biz.TeamRun) error { return nil }
 func (m *memTeamRepoB) UpdateTeamRunSummaryJSON(_ context.Context, _, _ string) error { return nil }
 func (m *memTeamRepoB) UpdateTeamRunGraphExecutionID(_ context.Context, _, _ string) error { return nil }
+func (m *memTeamRepoB) UpdateTeamRunTraceID(_ context.Context, _, _ string) error             { return nil }
+func (m *memTeamRepoB) BatchCreateOrchestrationSteps(_ context.Context, _ []biz.OrchestrationStep) error {
+	return nil
+}
+func (m *memTeamRepoB) ListOrchestrationSteps(_ context.Context, _, _ string, _ int) ([]biz.OrchestrationStep, error) {
+	return nil, nil
+}
+func (m *memTeamRepoB) CreateTaskDeadLetter(_ context.Context, _ biz.TaskDeadLetter) error { return nil }
+func (m *memTeamRepoB) ListTaskDeadLetters(_ context.Context, _ biz.TaskDeadLetterListFilter) ([]biz.TaskDeadLetter, error) {
+	return nil, nil
+}
+func (m *memTeamRepoB) ResolveTaskDeadLetter(_ context.Context, _ string) (biz.TaskDeadLetter, error) {
+	return biz.TaskDeadLetter{}, nil
+}
 func (m *memTeamRepoB) CreateTeamRunStep(_ context.Context, s biz.TeamRunStep) (biz.TeamRunStep, error) {
 	return s, nil
 }

@@ -5,19 +5,60 @@ import (
 	"testing"
 )
 
-func TestTeamGraphRuntimeEnabled(t *testing.T) {
-	t.Setenv("ARANEA_TEAM_GRAPH_RUNTIME", "1")
+func TestTeamGraphRuntimeEnabled_defaultGraph(t *testing.T) {
+	t.Setenv("ARANEA_TEAM_GRAPH_RUNTIME", "")
+	t.Setenv("ARANEA_TEAM_NATIVE", "")
 	def := Definition{RuntimeEngine: "graph"}
 	if !TeamGraphRuntimeEnabled(def) {
-		t.Fatal("expected enabled")
+		t.Fatal("graph engine should enable graph runtime by default")
 	}
-	def2 := Definition{RuntimeEngine: "native"}
-	if TeamGraphRuntimeEnabled(def2) {
-		t.Fatal("expected disabled without flag in definition")
+	defEmpty := Definition{}
+	if !TeamGraphRuntimeEnabled(defEmpty) {
+		t.Fatal("empty runtime_engine should default to graph path")
 	}
-	def3 := Definition{TeamGraphRuntime: true}
-	if !TeamGraphRuntimeEnabled(def3) {
-		t.Fatal("expected enabled via team_graph_runtime")
+}
+
+func TestTeamGraphRuntimeEnabled_nativeOptOut(t *testing.T) {
+	t.Setenv("ARANEA_TEAM_GRAPH_RUNTIME", "")
+	t.Setenv("ARANEA_TEAM_NATIVE", "")
+	def := Definition{RuntimeEngine: "native"}
+	if TeamGraphRuntimeEnabled(def) {
+		t.Fatal("runtime_engine=native should disable graph path")
+	}
+}
+
+func TestTeamGraphRuntimeEnabled_nativeEnvForcesNativePath(t *testing.T) {
+	t.Setenv("ARANEA_TEAM_NATIVE", "1")
+	def := Definition{RuntimeEngine: "graph"}
+	if TeamGraphRuntimeEnabled(def) {
+		t.Fatal("ARANEA_TEAM_NATIVE=1 should skip graph path")
+	}
+}
+
+func TestEnvTeamGraphRuntimeGate(t *testing.T) {
+	t.Setenv("ARANEA_TEAM_GRAPH_RUNTIME", "")
+	if !envTeamGraphRuntimeGate() {
+		t.Fatal("expected graph gate on by default")
+	}
+	t.Setenv("ARANEA_TEAM_GRAPH_RUNTIME", "0")
+	if envTeamGraphRuntimeGate() {
+		t.Fatal("expected off when explicitly 0")
+	}
+	t.Setenv("ARANEA_TEAM_GRAPH_RUNTIME", "true")
+	if !envTeamGraphRuntimeGate() {
+		t.Fatal("expected on for true")
+	}
+	_ = os.Getenv("ARANEA_TEAM_GRAPH_RUNTIME")
+}
+
+func TestEnvTeamNativeForced(t *testing.T) {
+	t.Setenv("ARANEA_TEAM_NATIVE", "")
+	if envTeamNativeForced() {
+		t.Fatal("expected off by default")
+	}
+	t.Setenv("ARANEA_TEAM_NATIVE", "1")
+	if !envTeamNativeForced() {
+		t.Fatal("expected on for 1")
 	}
 }
 
@@ -25,22 +66,7 @@ func TestSupportsTeamGraphRuntimeMode(t *testing.T) {
 	if !SupportsTeamGraphRuntimeMode("sequential") {
 		t.Fatal("sequential should be supported")
 	}
-	if !SupportsTeamGraphRuntimeMode("adaptive") {
-		t.Fatal("adaptive should be supported")
+	if SupportsTeamGraphRuntimeMode("unknown") {
+		t.Fatal("unknown mode should not be supported")
 	}
-	if !SupportsTeamGraphRuntimeMode("swarm") {
-		t.Fatal("swarm should be supported")
-	}
-}
-
-func TestEnvTeamGraphRuntimeGate(t *testing.T) {
-	t.Setenv("ARANEA_TEAM_GRAPH_RUNTIME", "")
-	if envTeamGraphRuntimeGate() {
-		t.Fatal("expected off")
-	}
-	t.Setenv("ARANEA_TEAM_GRAPH_RUNTIME", "true")
-	if !envTeamGraphRuntimeGate() {
-		t.Fatal("expected on")
-	}
-	_ = os.Getenv("ARANEA_TEAM_GRAPH_RUNTIME")
 }

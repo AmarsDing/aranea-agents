@@ -2,6 +2,7 @@ package team
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"aranea-agents/internal/biz"
@@ -53,6 +54,100 @@ func TestBuildCompileSnapshot_embeddedGraph(t *testing.T) {
 	if !snap.Valid || snap.EntryPoint != "member-1" {
 		t.Fatalf("snap=%+v", snap)
 	}
+}
+
+func TestCompileToGraphBuildConfig_embeddedTaskNode(t *testing.T) {
+	raw := `{
+		"mode":"sequential",
+		"members":[],
+		"graph":{
+			"nodes":[
+				{"id":"start","type":"start"},
+				{"id":"review-1","type":"review","label":"人工审核","reviewer_agent":"critic","review_rules":"approve"},
+				{"id":"end","type":"end"}
+			],
+			"edges":[
+				{"source":"start","target":"review-1"},
+				{"source":"review-1","target":"end"}
+			]
+		}
+	}`
+	def, err := ParseDefinition(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := CompileToGraphBuildConfigFromJSON(def, raw, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Nodes) != 1 || cfg.Nodes[0].Type != "review" {
+		t.Fatalf("nodes=%+v", cfg.Nodes)
+	}
+	if !cfg.Nodes[0].InterruptAfter || cfg.Nodes[0].ReviewerAgent != "critic" {
+		t.Fatalf("review node=%+v", cfg.Nodes[0])
+	}
+}
+
+func TestCompileToGraphBuildConfig_embeddedSubgraph(t *testing.T) {
+	loader := stubGraphLoader{configs: map[string]biz.GraphBuildConfig{
+		"g-nested": {
+			Nodes: []biz.NodeDef{{ID: "inner", Type: "agent", AgentName: "inner-agent"}},
+			Edges: []biz.EdgeDef{},
+			EntryPoint: "inner", FinishPoint: "inner",
+		},
+	}}
+	raw := `{
+		"mode":"sequential",
+		"members":[],
+		"graph":{
+			"nodes":[
+				{"id":"start","type":"start"},
+				{"id":"sub-1","type":"subgraph","subgraph_id":"g-nested"},
+				{"id":"end","type":"end"}
+			],
+			"edges":[
+				{"source":"start","target":"sub-1"},
+				{"source":"sub-1","target":"end"}
+			]
+		}
+	}`
+	def, err := ParseDefinition(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := compileToGraphBuildConfigWithLoader(context.Background(), def, raw, nil, loader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Subgraphs) != 1 || cfg.Subgraphs[0].GraphID != "g-nested" {
+		t.Fatalf("subgraphs=%+v", cfg.Subgraphs)
+	}
+	if cfg.EntryPoint != "sub-1" || cfg.FinishPoint != "sub-1" {
+		t.Fatalf("entry/finish=%q/%q", cfg.EntryPoint, cfg.FinishPoint)
+	}
+}
+
+func TestLoadEmbeddedSubgraphConfig_cycle(t *testing.T) {
+	loader := stubGraphLoader{configs: map[string]biz.GraphBuildConfig{
+		"a": {Subgraphs: []biz.SubgraphDef{{ID: "s", GraphID: "b"}}},
+		"b": {Subgraphs: []biz.SubgraphDef{{ID: "s", GraphID: "a"}}},
+	}}
+	_, err := loadEmbeddedSubgraphConfig(context.Background(), loader, "a", map[string]struct{}{})
+	if err == nil {
+		t.Fatal("expected cycle error")
+	}
+}
+
+type stubGraphLoader struct {
+	configs map[string]biz.GraphBuildConfig
+}
+
+func (s stubGraphLoader) LoadGraphBuildConfig(_ context.Context, graphID string) (biz.GraphBuildConfig, error) {
+	cfg, ok := s.configs[graphID]
+	if !ok {
+		return biz.GraphBuildConfig{}, fmt.Errorf("not found")
+	}
+	return cfg, nil
 }
 
 func TestCompileToGraphBuildConfig_embeddedParallelJoin(t *testing.T) {

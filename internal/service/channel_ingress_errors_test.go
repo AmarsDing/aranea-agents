@@ -10,13 +10,20 @@ import (
 func TestFormatChannelTurnErrorMessageTimeout(t *testing.T) {
 	msg := formatChannelTurnErrorMessage(context.DeadlineExceeded)
 	if msg != channelTurnErrorTimeoutMsg {
-		t.Fatalf("timeout message = %q, want %q", msg, channelTurnErrorTimeoutMsg)
+		t.Fatalf("deadline message = %q, want %q", msg, channelTurnErrorTimeoutMsg)
 	}
 	if !turnErrorIsTimeout(context.DeadlineExceeded) {
 		t.Fatal("DeadlineExceeded should be timeout")
 	}
 	if !turnErrorIsTimeout(errors.New("context deadline exceeded")) {
 		t.Fatal("deadline string should be timeout")
+	}
+}
+
+func TestFormatChannelTurnErrorMessageTurnTimeout(t *testing.T) {
+	msg := formatChannelTurnErrorMessage(TurnError(TurnErrTurnTimeout, "5m"))
+	if msg != channelTurnErrorSyncCapMsg {
+		t.Fatalf("turn timeout message = %q, want sync cap hint", msg)
 	}
 }
 

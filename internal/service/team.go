@@ -25,6 +25,7 @@ type TeamService struct {
 	v1.UnimplementedTeamServiceServer
 
 	uc         *biz.TeamUsecase
+	graphUC    *biz.GraphUsecase
 	agents     *biz.AgentUsecase
 	sessions   *biz.SessionUsecase
 	teamRunner *team.Runner
@@ -34,24 +35,29 @@ type TeamService struct {
 
 func NewTeamService(
 	uc *biz.TeamUsecase,
+	graphUC *biz.GraphUsecase,
 	agents *biz.AgentUsecase,
 	sessions *biz.SessionUsecase,
 	teamRunner *team.Runner,
 	runs *rt.RunRegistry,
 	eventBus event.Bus,
 ) *TeamService {
-	return &TeamService{uc: uc, agents: agents, sessions: sessions, teamRunner: teamRunner, runs: runs, eventBus: eventBus}
+	return &TeamService{
+		uc: uc, graphUC: graphUC, agents: agents, sessions: sessions,
+		teamRunner: teamRunner, runs: runs, eventBus: eventBus,
+	}
 }
 
 func toProtoTeam(t biz.Team) *v1.Team {
 	return &v1.Team{
-		Id:             t.ID,
-		TeamKey:        t.TeamKey,
-		DisplayName:    t.DisplayName,
-		Status:         t.Status,
-		IsDefault:      t.IsDefault,
-		DefinitionJson: t.DefinitionJSON,
-		AdkAppName:     t.ADKAppName,
+		Id:                 t.ID,
+		TeamKey:            t.TeamKey,
+		DisplayName:        t.DisplayName,
+		Status:             t.Status,
+		IsDefault:          t.IsDefault,
+		DefinitionJson:     t.DefinitionJSON,
+		OrchestrationSpec:  toProtoOrchestrationSpec(t.DefinitionJSON),
+		AdkAppName:         t.ADKAppName,
 		CreatedAt:      t.CreatedAt,
 		UpdatedAt:      t.UpdatedAt,
 		DeletedAt:      t.DeletedAt,
@@ -77,6 +83,7 @@ func toProtoTeamRun(r biz.TeamRun) *v1.TeamRun {
 		TopologyJson:             r.TopologyJSON,
 		GraphExecutionId:         r.GraphExecutionID,
 		DefinitionSnapshotJson:     r.DefinitionSnapshotJSON,
+		TraceId:                    r.TraceID,
 		StartedAt:                  r.StartedAt,
 		FinishedAt:    r.FinishedAt,
 		CreatedAt:     r.CreatedAt,
@@ -185,11 +192,17 @@ func (s *TeamService) ListTeams(ctx context.Context, _ *v1.ListTeamsRequest) (*v
 }
 
 func (s *TeamService) CreateTeam(ctx context.Context, req *v1.CreateTeamRequest) (*v1.Team, error) {
+	defJSON := req.GetDefinitionJson()
+	if strings.TrimSpace(defJSON) == "" {
+		defJSON = biz.EnsureGraphRuntimeDefault("")
+	} else {
+		defJSON = biz.EnsureGraphRuntimeDefault(defJSON)
+	}
 	in := biz.Team{
 		TeamKey:        req.GetTeamKey(),
 		DisplayName:    req.GetDisplayName(),
 		Status:         req.GetStatus(),
-		DefinitionJSON: req.GetDefinitionJson(),
+		DefinitionJSON: defJSON,
 		ADKAppName:     req.GetAdkAppName(),
 	}
 	created, err := s.uc.Create(ctx, in)
@@ -225,7 +238,9 @@ func (s *TeamService) UpdateTeam(ctx context.Context, req *v1.UpdateTeamRequest)
 			}
 			base = current.DefinitionJSON
 		}
-		if merged, err := team.MergeLinkedGraphID(base, pb.GetLinkedGraphId()); err == nil {
+		if merged, err := mergeTeamDefinitionFromRequest(base, pb); err != nil {
+			return nil, kerrors.BadRequest("TEAM", "invalid orchestration_spec: "+err.Error())
+		} else {
 			patch.DefinitionJSON = merged
 		}
 	}

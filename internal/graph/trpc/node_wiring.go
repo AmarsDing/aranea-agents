@@ -17,7 +17,7 @@ func normalizeNodeType(t string) string {
 	return strings.ToLower(strings.TrimSpace(t))
 }
 
-func nodeOptions(n NodeDef) []trpcgraph.Option {
+func nodeOptions(n NodeDef, policy *biz.TeamFailurePolicy) []trpcgraph.Option {
 	opts := []trpcgraph.Option{}
 	if n.InterruptBefore {
 		opts = append(opts, trpcgraph.WithInterruptBefore())
@@ -53,6 +53,9 @@ func nodeOptions(n NodeDef) []trpcgraph.Option {
 	}
 	opts = append(opts, agentMapperOptions(n)...)
 	opts = append(opts, failureRecoveryOptions(n)...)
+	if policy != nil && policy.CircuitBreaker != nil {
+		opts = append(opts, circuitBreakerOptions(n, policy.CircuitBreaker)...)
+	}
 	return opts
 }
 
@@ -73,8 +76,8 @@ func agentMapperOptions(n NodeDef) []trpcgraph.Option {
 	return opts
 }
 
-func wireNode(ctx context.Context, sg *trpcgraph.StateGraph, n NodeDef, deps *BuildDeps) ([]trpcagent.Agent, error) {
-	opts := nodeOptions(n)
+func wireNode(ctx context.Context, sg *trpcgraph.StateGraph, n NodeDef, deps *BuildDeps, policy *biz.TeamFailurePolicy) ([]trpcagent.Agent, error) {
+	opts := nodeOptions(n, policy)
 	switch normalizeNodeType(n.Type) {
 	case "llm":
 		if deps == nil || deps.Models == nil {
@@ -136,6 +139,14 @@ func wireNode(ctx context.Context, sg *trpcgraph.StateGraph, n NodeDef, deps *Bu
 		}
 		return nil, fmt.Errorf("graph: node %q type function requires Func or %q FuncRef", n.ID, biz.SkipNodeFuncRef)
 	case "router":
+		sg.AddNode(n.ID, func(ctx context.Context, state trpcgraph.State) (any, error) {
+			return state, nil
+		}, opts...)
+		return nil, nil
+	case "task", "review":
+		if !n.InterruptAfter {
+			opts = append(opts, trpcgraph.WithInterruptAfter())
+		}
 		sg.AddNode(n.ID, func(ctx context.Context, state trpcgraph.State) (any, error) {
 			return state, nil
 		}, opts...)

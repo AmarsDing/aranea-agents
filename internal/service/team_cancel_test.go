@@ -45,6 +45,20 @@ func (r *cancelTeamRunRepo) UpdateTeamRun(_ context.Context, run biz.TeamRun) er
 }
 func (r *cancelTeamRunRepo) UpdateTeamRunSummaryJSON(_ context.Context, _, _ string) error { return nil }
 func (r *cancelTeamRunRepo) UpdateTeamRunGraphExecutionID(_ context.Context, _, _ string) error { return nil }
+func (r *cancelTeamRunRepo) UpdateTeamRunTraceID(_ context.Context, _, _ string) error             { return nil }
+func (r *cancelTeamRunRepo) BatchCreateOrchestrationSteps(_ context.Context, _ []biz.OrchestrationStep) error {
+	return nil
+}
+func (r *cancelTeamRunRepo) ListOrchestrationSteps(_ context.Context, _, _ string, _ int) ([]biz.OrchestrationStep, error) {
+	return nil, nil
+}
+func (r *cancelTeamRunRepo) CreateTaskDeadLetter(_ context.Context, _ biz.TaskDeadLetter) error { return nil }
+func (r *cancelTeamRunRepo) ListTaskDeadLetters(_ context.Context, _ biz.TaskDeadLetterListFilter) ([]biz.TaskDeadLetter, error) {
+	return nil, nil
+}
+func (r *cancelTeamRunRepo) ResolveTaskDeadLetter(_ context.Context, _ string) (biz.TaskDeadLetter, error) {
+	return biz.TaskDeadLetter{}, nil
+}
 func (r *cancelTeamRunRepo) CreateTeamRunStep(_ context.Context, step biz.TeamRunStep) (biz.TeamRunStep, error) {
 	return step, nil
 }
@@ -61,7 +75,7 @@ func TestCancelTeamRun_PublishesCancelledRunStatus(t *testing.T) {
 	repo := &cancelTeamRunRepo{runs: map[string]biz.TeamRun{
 		"tr-1": {ID: "tr-1", SessionID: "sess-team-1", Status: "running"},
 	}}
-	svc := NewTeamService(biz.NewTeamUsecase(repo), nil, nil, nil, reg, bus)
+	svc := NewTeamService(biz.NewTeamUsecase(repo), nil, nil, nil, nil, reg, bus)
 
 	resp, err := svc.CancelTeamRun(context.Background(), &v1.CancelTeamRunRequest{Id: "tr-1"})
 	if err != nil {

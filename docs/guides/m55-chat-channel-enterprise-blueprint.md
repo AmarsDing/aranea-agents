@@ -585,28 +585,49 @@ M55-JOB-01: /async 触发 → Web Background Jobs 面板 3s 内显示
 
 ---
 
-## 11. 速查卡（执行顺序）
+## 11. 速查卡（执行顺序，2026-05-23 更新）
 
 ```
-本周（P0 必交付）
-  CC-A-01  长任务 preset
-  CC-A-02  关键词路由
-  CC-B-01  session_revision schema + bump
-  CC-B-02  Envelope 注入
-  CC-B-03  增量 API
+已交付
+  CC-A-*     长任务 preset + 关键词路由
+  CC-B-*     session_revision + 增量 API + Web hydrate
+  CC-C-01~04 TurnBlock + ToolStrip + 分组 + 锚定
+  CC-D-*     Background Jobs 面板
+  CC-HOT-01  飞书 stale peer bind rebind
 
-下周（P0 收口）
-  CC-B-04/05  Web 增量同步
-  CC-B-06     source 注入
-  CC-C-01/02/03  TurnBlock + 分组
-  CC-C-04        滚动锚定
+当前（P0）
+  CC-C-UX-01~03  思考/ReAct 互斥 · 空 reasoning · 双 ToolStrip
+  CC-E2E-01      M55-SYNC/UI/JOB 手工验收
 
 之后（P1 → P2）
-  CC-D-*     Background Jobs 面板
+  CC-B-07 · CC-C-05/06/07  来源徽标 · 虚拟列表 · completion 增量
   CHAT-R2-03 TurnExecutor 抽象
   CC-E-*     @ Context + Apply diff
   CC-F-*     24h Durable Job
 ```
+
+---
+
+## 12. 后期优化与已解决问题（2026-05-23 同步）
+
+> 详表：[55-chat-channel-cursor-development.md §4–6](../需求/55-chat-channel-cursor-development.md) · [changelog](../changelog/2026-05-23-M55-Feishu-Rebind-UX-Backlog.md)
+
+### 12.1 已解决（本轮对话）
+
+- **飞书 `session not found`**：`channel_peer_session` 指向已删 Session → `ensureChannelSession` 校验 + `UpdateSessionID` rebind（CC-HOT-01）
+- **飞书三重错误 IM**：WS raw error + ACK + 友好失败 → Turn 失败不再向上抛错（LT-06 已投递）
+- **M55 Review P0–P2**：Jobs N+1、UTF-8 summary、revision bump 统一、Jobs WS 刷新、i18n、SQL 迁移
+
+### 12.2 后期优化（Cursor 对标缺口）
+
+| 优先级 | ID 范围 | 主题 |
+|--------|---------|------|
+| **P0** | CC-C-UX-01~03 | 空思考壳、双 ToolStrip、ReAct/reasoning 互斥 |
+| **P1** | CC-B-07 · CC-C-05/06/07 · CC-E2E-01 | 来源徽标、虚拟列表 benchmark、completion 增量、E2E |
+| **P2** | CC-E-* · CC-F-* · CHAT-R2-03 | @ 上下文、Apply diff、24h Job、TurnExecutor |
+| **P3** | CC-C-08 · CC-D-05 | Team TurnBlock、Job↔Turn 联动 |
+
+**与 Cursor 差距（UX 视角 ~40–45%）**：思考链单块流式、@ 引用、Apply diff、Job 与对话流融合尚未达到 Cursor 层次。
 
 ---
 

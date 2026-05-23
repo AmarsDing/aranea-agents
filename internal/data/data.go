@@ -300,6 +300,9 @@ func ensureAllSchemas(rawDB *sql.DB, entClient *ent.Client) error {
 	if err := ensureTeamRunSummaryPatches(ctxSchema, entClient); err != nil {
 		return fmt.Errorf("team run summary patches: %w", err)
 	}
+	if err := ensureSessionRevisionPatches(ctxSchema, entClient); err != nil {
+		return fmt.Errorf("session revision patches: %w", err)
+	}
 	if err := EnsurePluginRunSchema(ctxSchema, entClient); err != nil {
 		return fmt.Errorf("plugin run schema: %w", err)
 	}

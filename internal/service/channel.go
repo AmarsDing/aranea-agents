@@ -10,6 +10,7 @@ import (
 	"aranea-agents/internal/channel/lark"
 	"aranea-agents/internal/channel/slack"
 	"aranea-agents/internal/channel/telegram"
+	"aranea-agents/pkg/strutil"
 
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
@@ -363,22 +364,22 @@ func (s *ChannelService) ListChannelDeliveries(ctx context.Context, req *v1.List
 
 func bizTurnJobToProto(j biz.ChannelTurnJob) *v1.ChannelTurnJob {
 	return &v1.ChannelTurnJob{
-		Id:               j.ID,
-		ChannelId:        j.ChannelID,
-		SessionId:        j.SessionID,
-		PeerId:           j.PeerID,
-		PeerKey:          j.PeerKey,
-		IdempotencyKey:   j.IdempotencyKey,
-		Status:           j.Status,
-		PreviewMessageId: j.PreviewMessageID,
-		ContentPreview:   j.ContentPreview,
-		AsyncTargetType:  j.AsyncTargetType,
-		AsyncTargetId:    j.AsyncTargetID,
-		ErrorMessage:     j.ErrorMessage,
-		StartedAt:        j.StartedAt,
-		FinishedAt:       j.FinishedAt,
-		CreatedAt:        j.CreatedAt,
-		UpdatedAt:        j.UpdatedAt,
+		Id:               strutil.ValidUTF8(j.ID),
+		ChannelId:        strutil.ValidUTF8(j.ChannelID),
+		SessionId:        strutil.ValidUTF8(j.SessionID),
+		PeerId:           strutil.ValidUTF8(j.PeerID),
+		PeerKey:          strutil.ValidUTF8(j.PeerKey),
+		IdempotencyKey:   strutil.ValidUTF8(j.IdempotencyKey),
+		Status:           strutil.ValidUTF8(j.Status),
+		PreviewMessageId: strutil.ValidUTF8(j.PreviewMessageID),
+		ContentPreview:   strutil.ValidUTF8(j.ContentPreview),
+		AsyncTargetType:  strutil.ValidUTF8(j.AsyncTargetType),
+		AsyncTargetId:    strutil.ValidUTF8(j.AsyncTargetID),
+		ErrorMessage:     strutil.ValidUTF8(j.ErrorMessage),
+		StartedAt:        strutil.ValidUTF8(j.StartedAt),
+		FinishedAt:       strutil.ValidUTF8(j.FinishedAt),
+		CreatedAt:        strutil.ValidUTF8(j.CreatedAt),
+		UpdatedAt:        strutil.ValidUTF8(j.UpdatedAt),
 	}
 }
 

@@ -53,6 +53,16 @@
       >
         <span class="message-name">{{ row.displayMessageName(message) }}</span>
         <q-chip
+          v-if="message.role === 'user' && userSourceMeta"
+          dense
+          size="sm"
+          outline
+          color="info"
+          class="q-ml-xs message-source-chip"
+        >
+          {{ userSourceLabel }}
+        </q-chip>
+        <q-chip
           v-if="row.teamMemberMeta(message)?.role"
           dense
           size="sm"
@@ -148,7 +158,13 @@
 
 <script setup lang="ts">
 import { computed, toRef } from "vue";
+import { useI18n } from "vue-i18n";
 import ResolvedAvatarImg from "../avatar/ResolvedAvatarImg.vue";
+import {
+  messageSourceChipFallback,
+  messageSourceChipKey,
+  parseMessageSourceMeta,
+} from "../../features/chat/messageSourceMeta";
 import ChatExecutionCard from "./ChatExecutionCard.vue";
 import ChatReactSteps from "./ChatReactSteps.vue";
 import ChatA2UIPreview from "./ChatA2UIPreview.vue";
@@ -169,6 +185,8 @@ import type { A2UIUserActionPayload } from "../../features/chat/a2uiUserAction";
 const emit = defineEmits<{
   "a2ui-user-action": [payload: A2UIUserActionPayload];
 }>();
+
+const { t } = useI18n();
 
 const props = defineProps<{
   message: Message;
@@ -194,6 +212,16 @@ const bundle = computed(() =>
 );
 const avatarSize = CHAT_MESSAGE_AVATAR_SIZE;
 const avatarIconSize = CHAT_MESSAGE_AVATAR_ICON_SIZE;
+
+const userSourceMeta = computed(() =>
+  props.message.role === "user" ? parseMessageSourceMeta(props.message.options_json) : null
+);
+const userSourceLabel = computed(() => {
+  const meta = userSourceMeta.value;
+  if (!meta) return "";
+  const key = messageSourceChipKey(meta);
+  return key ? t(key, messageSourceChipFallback(meta)) : messageSourceChipFallback(meta);
+});
 
 function formatStamp(iso: string) {
   return formatMessageStamp(iso);

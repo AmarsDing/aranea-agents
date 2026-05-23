@@ -55,6 +55,7 @@ function wireObservatory(res: GetTeamRunObservatoryResponse): TeamRunObservatory
     status: res.status ?? "",
     mode: res.mode ?? "",
     graph_execution_id: res.graphExecutionId ?? "",
+    trace_id: res.traceId ?? "",
     definition_snapshot_json: res.definitionSnapshotJson ?? "",
     compiled_topology: res.compiledTopology ? wireCompileResponse(res.compiledTopology) : undefined,
     nodes: (res.nodes ?? []).map(wireNode),
@@ -65,4 +66,29 @@ export async function getTeamRunObservatory(runId: string): Promise<TeamRunObser
   const svc = createTeamService();
   const res = await svc.GetTeamRunObservatory({ runId });
   return wireObservatory(res);
+}
+
+export async function getTeamRunObservatoryTimeline(
+  runId: string,
+  opts?: { nodeId?: string; limit?: number }
+): Promise<{ rows: import("./types").ActivityTimelineRow[]; trace_id: string }> {
+  const svc = createTeamService();
+  const res = await svc.GetTeamRunObservatoryTimeline({
+    runId,
+    nodeId: opts?.nodeId,
+    limit: opts?.limit,
+  });
+  return {
+    trace_id: res.traceId ?? "",
+    rows: (res.rows ?? []).map((row) => ({
+      node_id: row.nodeId ?? "",
+      kind: row.kind,
+      display_label: row.displayLabel,
+      status: row.status,
+      started_at: row.startedAt,
+      finished_at: row.finishedAt,
+      duration_ms: row.durationMs,
+      trace_id: row.traceId,
+    })),
+  };
 }

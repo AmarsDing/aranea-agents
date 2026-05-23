@@ -140,6 +140,18 @@ func (m *batchSessionRepo) ArchiveSessionsByIDs(_ context.Context, ids []string)
 func (m *batchSessionRepo) DeleteSessionsByIDs(_ context.Context, ids []string) (int, []string, error) {
 	return len(ids), nil, nil
 }
+func (m *batchSessionRepo) BumpSessionRevision(context.Context, string) (int64, error) {
+	return 1, nil
+}
+func (m *batchSessionRepo) GetSessionRevision(_ context.Context, sessionID string) (int64, error) {
+	if s, ok := m.sessions[sessionID]; ok {
+		return s.SessionRevision, nil
+	}
+	return 0, sql.ErrNoRows
+}
+func (m *batchSessionRepo) ListMessagesAfterRevision(context.Context, string, int64) ([]biz.ChatMessage, error) {
+	return nil, nil
+}
 
 func TestSessionService_BatchPreviewSessions_validation(t *testing.T) {
 	uc := biz.NewSessionUsecase(&batchSessionRepo{sessions: map[string]biz.Session{}}, nil, nil, nil)

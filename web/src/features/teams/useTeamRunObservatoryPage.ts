@@ -1,14 +1,17 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useQuasar } from "quasar";
 import { useRoute, useRouter } from "vue-router";
-import type { TeamRunObservatory } from "../orchestration/types";
+import type { TeamRunObservatory, ActivityTimelineRow } from "../orchestration/types";
 import { useOrchestrationStream } from "../orchestration/useOrchestrationStream";
+import { getTeamRunObservatoryTimeline } from "../orchestration/api";
 import { compiledGraphToGraphDef } from "../orchestration/compileApi";
 import { buildExecNodeStates } from "../orchestration/teamGraphAdapter";
 import type { GraphDefinition, Task } from "../graph/types";
+import type { TeamRunSummary } from "./types";
 import { useOrchestrationStore } from "../../stores/orchestration";
 import { useGraphRunTasks } from "../graph/useGraphRunTasks";
 import { useGraphExecutionStream } from "../graph/runtime/useGraphExecutionStream";
+import { getTeamRunSummary, resumeTeamRunExecution } from "./api";
 
 export function useTeamRunObservatoryPage() {
   const $q = useQuasar();
@@ -25,6 +28,15 @@ export function useTeamRunObservatoryPage() {
   const observatory = ref<TeamRunObservatory | null>(null);
   const selectedNodeId = ref<string | null>(null);
   const observatoryTab = ref("agents");
+  const timelineRows = ref<ActivityTimelineRow[]>([]);
+  const timelineLoading = ref(false);
+  const timelineNodeFilter = ref<string | null>(null);
+  const runSummary = ref<TeamRunSummary | null>(null);
+  const summaryLoading = ref(false);
+  const hitlDialogOpen = ref(false);
+  const hitlReviewNodeId = ref<string | null>(null);
+  const hitlAdvancedJson = ref("");
+  const resumeLoading = ref(false);
   const graphExecStream = ref<ReturnType<typeof useGraphExecutionStream> | null>(null);
 
   const graphDef = reactive<GraphDefinition>({
@@ -70,6 +82,31 @@ export function useTeamRunObservatoryPage() {
 
   const execNodeStates = computed(() => buildExecNodeStates(stream.value?.nodes.value ?? new Map()));
 
+  const hitlReviewNode = computed(() => {
+    const id = hitlReviewNodeId.value;
+    if (!id) return null;
+    return nodeList.value.find((n) => n.node_id === id) ?? null;
+  });
+
+  const waitingReviewNodes = computed(() => nodeList.value.filter((n) => n.status === "waiting_review"));
+
+  const timelineNodeFilterOptions = computed(() => {
+    const ids = new Set<string>();
+    for (const row of timelineRows.value) {
+      if (row.node_id) ids.add(row.node_id);
+    }
+    for (const n of nodeList.value) {
+      if (n.node_id) ids.add(n.node_id);
+    }
+    return [...ids].sort().map((id) => ({ label: id, value: id }));
+  });
+
+  const filteredTimelineRows = computed(() => {
+    const filter = timelineNodeFilter.value?.trim();
+    if (!filter) return timelineRows.value;
+    return timelineRows.value.filter((row) => row.node_id === filter);
+  });
+
   const runStatusColor = computed(() => {
     const s = observatory.value?.status ?? "";
     if (s === "running" || s === "pending") return "primary";
@@ -102,6 +139,31 @@ export function useTeamRunObservatoryPage() {
     await tasks.loadTasks(graphExecutionId.value);
   }
 
+  async function loadSummary() {
+    if (!runId.value) return;
+    summaryLoading.value = true;
+    try {
+      runSummary.value = await getTeamRunSummary(runId.value);
+    } catch {
+      runSummary.value = null;
+    } finally {
+      summaryLoading.value = false;
+    }
+  }
+
+  async function loadTimeline() {
+    if (!runId.value) return;
+    timelineLoading.value = true;
+    try {
+      const res = await getTeamRunObservatoryTimeline(runId.value, { limit: 100 });
+      timelineRows.value = res.rows;
+    } catch {
+      timelineRows.value = [];
+    } finally {
+      timelineLoading.value = false;
+    }
+  }
+
   async function load() {
     loading.value = true;
     error.value = "";
@@ -119,6 +181,7 @@ export function useTeamRunObservatoryPage() {
       if (obs.graph_execution_id) {
         await loadObservatoryTasks();
       }
+      await Promise.all([loadTimeline(), loadSummary()]);
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e);
     } finally {
@@ -142,8 +205,72 @@ export function useTeamRunObservatoryPage() {
     router.push({ name: "team" });
   }
 
+  async function resumeRun(resumeValue: Record<string, unknown>) {
+    if (!runId.value) return;
+    resumeLoading.value = true;
+    try {
+      await resumeTeamRunExecution(runId.value, resumeValue);
+      hitlDialogOpen.value = false;
+      hitlReviewNodeId.value = null;
+      hitlAdvancedJson.value = "";
+      await load();
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : String(e);
+    } finally {
+      resumeLoading.value = false;
+    }
+  }
+
+  function parseAdvancedResume(): Record<string, unknown> {
+    const raw = hitlAdvancedJson.value.trim();
+    if (!raw) return { action: "review_continue" };
+    try {
+      return JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      return { action: "review_continue", note: raw };
+    }
+  }
+
+  async function onFailureReview(nodeId?: string) {
+    observatoryTab.value = "hitl";
+    hitlReviewNodeId.value = nodeId ?? waitingReviewNodes.value[0]?.node_id ?? null;
+    hitlDialogOpen.value = true;
+  }
+
+  async function onFailureRetry(nodeId?: string) {
+    await resumeRun({ action: "retry", node_id: nodeId ?? hitlReviewNodeId.value ?? undefined });
+  }
+
+  async function onFailureFallback(nodeId?: string) {
+    await resumeRun({ action: "fallback", node_id: nodeId ?? hitlReviewNodeId.value ?? undefined });
+  }
+
+  async function onHitlApprove() {
+    await resumeRun(parseAdvancedResume());
+  }
+
+  async function onHitlReject() {
+    await resumeRun({ action: "halt" });
+  }
+
+  async function onHitlFallback() {
+    await onFailureFallback(hitlReviewNodeId.value ?? undefined);
+  }
+
+  function onFailureHalt() {
+    void resumeRun({ action: "halt" });
+  }
+
   onMounted(load);
   watch([teamId, runId], load);
+  watch(
+    () => stream.value?.nodes.value.size,
+    () => {
+      if (observatoryTab.value === "timeline") {
+        void loadTimeline();
+      }
+    },
+  );
   onBeforeUnmount(() => {
     stream.value?.disconnect();
     graphExecStream.value?.disconnect();
@@ -168,10 +295,31 @@ export function useTeamRunObservatoryPage() {
     graphExecutionId,
     execNodeStates,
     runStatusColor,
+    timelineRows,
+    timelineLoading,
+    timelineNodeFilter,
+    timelineNodeFilterOptions,
+    filteredTimelineRows,
+    runSummary,
+    summaryLoading,
+    waitingReviewNodes,
+    hitlDialogOpen,
+    hitlReviewNode,
+    hitlReviewNodeId,
+    hitlAdvancedJson,
+    resumeLoading,
+    loadTimeline,
     onSelectNode,
     onSelectTask,
     onKanbanAdminAction: tasks.onKanbanAdminAction,
     loadObservatoryTasks,
     goBack,
+    onFailureReview,
+    onFailureRetry,
+    onFailureFallback,
+    onFailureHalt,
+    onHitlApprove,
+    onHitlReject,
+    onHitlFallback,
   };
 }

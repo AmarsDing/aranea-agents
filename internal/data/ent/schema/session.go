@@ -73,5 +73,6 @@ func (Session) Fields() []ent.Field {
 		field.Text("runner_snapshot_json").Default(""),
 		field.Text("state_json").Default("{}"),
 		field.Text("metadata_json").Default("{}"),
+		field.Int64("session_revision").Default(0),
 	}
 }

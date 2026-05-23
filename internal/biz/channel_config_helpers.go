@@ -13,6 +13,9 @@ const (
 	defaultChannelFirstByteSec    = 0 // 0 = use service default (30s)
 )
 
+// DefaultChannelAsyncKeywords routes execution_mode=auto inbound to Job plane (CC-A-02).
+var DefaultChannelAsyncKeywords = []string{"/async", "分析", "全量", "研报", "24h", "24小时"}
+
 // ChannelLongTaskConfig holds IM long-running task settings from config_json.config.
 type ChannelLongTaskConfig struct {
 	AckMessage          string
@@ -26,6 +29,7 @@ type ChannelLongTaskConfig struct {
 	AsyncGraphID        string
 	AsyncTeamID         string
 	AsyncCronTaskID     string
+	AsyncKeywords       []string
 }
 
 // ParseChannelLongTaskConfig reads long-task settings from channel config_json.
@@ -47,9 +51,10 @@ func ParseChannelLongTaskConfig(configJSON string) ChannelLongTaskConfig {
 			ProgressQuietSec    *int    `json:"progress_quiet_sec"`
 			HeartbeatMessage    *string `json:"heartbeat_message"`
 			ExecutionMode       *string `json:"execution_mode"`
-			AsyncGraphID        *string `json:"async_graph_id"`
-			AsyncTeamID         *string `json:"async_team_id"`
-			AsyncCronTaskID     *string `json:"async_cron_task_id"`
+			AsyncGraphID        *string   `json:"async_graph_id"`
+			AsyncTeamID         *string   `json:"async_team_id"`
+			AsyncCronTaskID     *string   `json:"async_cron_task_id"`
+			AsyncKeywords       *[]string `json:"async_keywords"`
 		} `json:"config"`
 	}
 	if json.Unmarshal([]byte(defaultJSON(configJSON)), &env) != nil {
@@ -87,6 +92,9 @@ func ParseChannelLongTaskConfig(configJSON string) ChannelLongTaskConfig {
 	}
 	if env.Config.AsyncCronTaskID != nil {
 		cfg.AsyncCronTaskID = strings.TrimSpace(*env.Config.AsyncCronTaskID)
+	}
+	if env.Config.AsyncKeywords != nil {
+		cfg.AsyncKeywords = normalizeAsyncKeywords(*env.Config.AsyncKeywords)
 	}
 	return cfg
 }
@@ -146,14 +154,59 @@ func (c ChannelLongTaskConfig) ProgressEnabled() bool {
 	}
 }
 
+func normalizeAsyncKeywords(words []string) []string {
+	out := make([]string, 0, len(words))
+	for _, w := range words {
+		w = strings.TrimSpace(w)
+		if w != "" {
+			out = append(out, w)
+		}
+	}
+	return out
+}
+
+func (c ChannelLongTaskConfig) asyncKeywords() []string {
+	if len(c.AsyncKeywords) > 0 {
+		return c.AsyncKeywords
+	}
+	return DefaultChannelAsyncKeywords
+}
+
+func (c ChannelLongTaskConfig) hasAsyncTarget() bool {
+	return c.AsyncGraphID != "" || c.AsyncTeamID != "" || c.AsyncCronTaskID != ""
+}
+
+func matchesChannelAsyncKeyword(text string, keywords []string) bool {
+	lower := strings.ToLower(strings.TrimSpace(text))
+	for _, kw := range keywords {
+		kw = strings.TrimSpace(kw)
+		if kw == "" {
+			continue
+		}
+		if strings.HasPrefix(kw, "/") {
+			if strings.HasPrefix(lower, strings.ToLower(kw)) {
+				return true
+			}
+			continue
+		}
+		if strings.Contains(text, kw) {
+			return true
+		}
+	}
+	return false
+}
+
 // ShouldRunAsync decides if inbound should dispatch Graph/Cron instead of sync Turn.
 func (c ChannelLongTaskConfig) ShouldRunAsync(text string) bool {
+	if !c.hasAsyncTarget() {
+		return false
+	}
 	text = strings.TrimSpace(text)
 	switch strings.ToLower(strings.TrimSpace(c.ExecutionMode)) {
 	case "async":
-		return c.AsyncGraphID != "" || c.AsyncTeamID != "" || c.AsyncCronTaskID != ""
+		return true
 	case "auto":
-		return strings.HasPrefix(strings.ToLower(text), "/async") && (c.AsyncGraphID != "" || c.AsyncTeamID != "" || c.AsyncCronTaskID != "")
+		return matchesChannelAsyncKeyword(text, c.asyncKeywords())
 	default:
 		return false
 	}

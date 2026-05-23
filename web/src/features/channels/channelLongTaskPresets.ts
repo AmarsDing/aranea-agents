@@ -6,6 +6,7 @@ import { FEISHU_IM_PREVIEW_DEFAULTS } from "./channelImPreviewDefaults";
 export type ChannelLongTaskPresetId =
   | ""
   | "feishu_im_preview"
+  | "feishu_long_analysis"
   | "feishu_ops_reasoning"
   | "agent_heavy_tools"
   | "team_pipeline"
@@ -28,6 +29,21 @@ export const CHANNEL_LONG_TASK_PRESETS: ChannelLongTaskPreset[] = [
     description: "流式 transcript + 工具/MCP 有序展示；ACK 合并单条 preview（§12.9）",
     receiveMode: "websocket",
     config: { ...FEISHU_IM_PREVIEW_DEFAULTS }
+  },
+  {
+    id: "feishu_long_analysis",
+    label: "飞书 · 长任务分析",
+    description: "15 分钟 sync Turn + auto 关键词路由 async；transcript + 步骤进度",
+    receiveMode: "websocket",
+    config: {
+      ...FEISHU_IM_PREVIEW_DEFAULTS,
+      turn_timeout_sec: 900,
+      first_byte_timeout_sec: 45,
+      progress_mode: "steps",
+      execution_mode: "auto",
+      im_render_mode: "transcript",
+      streaming_enabled: true
+    }
   },
   {
     id: "feishu_ops_reasoning",

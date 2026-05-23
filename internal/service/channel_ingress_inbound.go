@@ -74,5 +74,9 @@ func (h *ChannelIngress) ProcessInbound(ctx context.Context, chRow biz.Channel, 
 	if !outcome.ExecuteSync {
 		return nil
 	}
-	return h.executeInboundTurn(ctx, chRow, ev)
+	if err := h.executeInboundTurn(ctx, chRow, ev); err != nil {
+		// executeInboundTurn already enqueues a user-visible IM error (LT-06).
+		return nil
+	}
+	return nil
 }

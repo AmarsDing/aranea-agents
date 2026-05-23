@@ -44,18 +44,26 @@ pkg/trpc-agent-go/team            ← 框架 Team / Swarm 真相源
 
 ### 核心执行流
 
+> **M53 Phase 7**：默认 Graph 路径；Native 见 §6.1 应急说明。
+
 ```
 用户消息 → ChatService (owner_type=team)
              ↓
          team.Runner.runTeamTRPC()
              ↓
-         BuildTRPCTeam(def) → trpc-agent-go Agent
+         CompileToGraphRuntimeConfig(def) → GraphAgent
              ↓
-         agent.RunTRPCUserTurn → ConsumeEventStream
+         graph_node_start → TeamGraphTaskBridge（task/review 节点建 Task）
              ↓
-         EventProjector → member_* / team_* Envelope → EventBus → /v1/ws
+         StatusProjector → member_* / team_* / graph_* Envelope → EventBus → /v1/ws
              ↓
          persistStep + UpdateTeamRun + team_summary
+```
+
+应急 Native（`ARANEA_TEAM_NATIVE=1` 或 Graph 构建失败且显式启用）：
+
+```
+BuildTRPCTeam(def) → trpc-agent-go Agent → ConsumeEventStream → EventProjector
 ```
 
 ---
@@ -261,7 +269,18 @@ type TeamService struct {
 
 ### 6.1 构建
 
-文件：`internal/team/trpc_build.go`
+| 路径 | 文件 | 说明 |
+|------|------|------|
+| **Graph（默认）** | `graph_compile.go` · `graph_runtime_config.go` · `embedded_graph.go` | `CompileToGraphRuntimeConfig` → `GraphAgent`；embedded `task`/`review`/`subgraph` 节点 |
+| **Native（应急）** | `trpc_build.go` | `BuildTRPCTeam` **Deprecated**；仅 `ARANEA_TEAM_NATIVE=1` |
+
+Graph 路径要点：
+
+- `runner_team_trpc.go`：Graph 优先；编译/构建失败 **不 silent fallback**
+- `team_graph_task_bridge.go` + `task_creator.go`：`graph_node_start` 时为 task/review 节点创建 Task（经 `ChatService` 注入 `TaskUsecase`）
+- `ResumeTeamRunExecution`：Graph checkpoint / HITL resume（见 M53 Phase 6）
+
+Native 应急（`trpc_build.go`）：
 
 - `BuildTRPCTeam(ctx, def, deps, catalogAgent)`：按 mode 分发
 - `buildSwarmOptions`：SwarmConfig + CrossRequestTransfer + SwarmHandoffInputBuilder

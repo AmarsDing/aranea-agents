@@ -4,7 +4,11 @@ import { listAgents } from "../agents/api";
 import type { Agent } from "../agents/types";
 import { listTeams } from "../teams/api";
 import type { Team } from "../teams/types";
-import { createChannel, testChannel, updateChannel } from "./api";
+import {
+  CHANNEL_LONG_TASK_PRESETS,
+  findLongTaskPreset,
+  type ChannelLongTaskPresetId,
+} from "./channelLongTaskPresets";
 import {
   buildPlatformSections,
   visibleFields,
@@ -57,6 +61,7 @@ export function useChannelEditorForm(props: EditorProps, modelOpen: Ref<boolean>
   const metadataExtraText = ref("{}");
   const configDraft = reactive<Record<string, string>>({});
   const configBoolDraft = reactive<Record<string, boolean>>({});
+  const selectedLongTaskPreset = ref<ChannelLongTaskPresetId>("");
   const credentialDraft = reactive<Record<string, string>>({});
   const form = reactive({ key: "", name: "", description: "", enabled: true });
 
@@ -185,6 +190,25 @@ export function useChannelEditorForm(props: EditorProps, modelOpen: Ref<boolean>
     return "";
   }
 
+  function applyLongTaskPreset(presetId: string) {
+    selectedLongTaskPreset.value = presetId as ChannelLongTaskPresetId;
+    if (!presetId) return;
+    const preset = findLongTaskPreset(presetId);
+    if (!preset) return;
+    Object.keys(configDraft).forEach((k) => delete configDraft[k]);
+    Object.keys(configBoolDraft).forEach((k) => delete configBoolDraft[k]);
+    for (const [key, value] of Object.entries(preset.config)) {
+      if (typeof value === "boolean") configBoolDraft[key] = value;
+      else configDraft[key] = String(value);
+    }
+    configExtraText.value = JSON.stringify(preset.config, null, 2);
+    if (preset.receiveMode) receiveMode.value = preset.receiveMode;
+  }
+
+  const longTaskPresetOptions = computed(() =>
+    CHANNEL_LONG_TASK_PRESETS.map((p) => ({ label: p.label, value: p.id, description: p.description }))
+  );
+
   function resetForm() {
     const row = props.row;
     const cfg = parseJSON<ChannelConfig>(row?.config_json, {});
@@ -206,6 +230,7 @@ export function useChannelEditorForm(props: EditorProps, modelOpen: Ref<boolean>
     form.enabled = row?.enabled ?? true;
     loadPlatformConfigFields(cfg, metadata);
     resetCredentialDraft();
+    selectedLongTaskPreset.value = "";
     if (!row && item) applyCatalogDefaults(item, "");
   }
 
@@ -259,6 +284,7 @@ export function useChannelEditorForm(props: EditorProps, modelOpen: Ref<boolean>
     feishuRegion.value = "feishu";
     Object.keys(configDraft).forEach((k) => delete configDraft[k]);
     Object.keys(configBoolDraft).forEach((k) => delete configBoolDraft[k]);
+    selectedLongTaskPreset.value = "";
     configExtraText.value = JSON.stringify(defaultConfigFor(item), null, 2);
     metadataExtraText.value = JSON.stringify({ catalog_source: "catalog", catalog_group: item.group }, null, 2);
     if (previousType !== item.type) resetCredentialDraft();
@@ -427,6 +453,7 @@ export function useChannelEditorForm(props: EditorProps, modelOpen: Ref<boolean>
     selectedCatalog, platformSections, credentialKeys,
     configError, metadataError, canSave, webhookPreview, webhookIsLocalhost, iconPreviewMetadata,
     routingTargetType, defaultAgentId, defaultTeamId, dmScope, routingAgents, routingTeams, routingOptionsLoading,
+    selectedLongTaskPreset, longTaskPresetOptions, applyLongTaskPreset,
     visibleSectionFields, fieldKind, readField, writeField, readFieldBool, writeFieldBool, fieldStatus,
     save, saveAndTest, copyWebhookPreview
   };

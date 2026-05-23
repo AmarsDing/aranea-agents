@@ -1,6 +1,6 @@
 # M53: Team × Graph 编排融合 — 开发计划
 
-> **版本**：2026-05-23 | **状态**：✅ Phase 0.5–4 已落地；**执行层仍双轨**（Native 默认 + Graph feature flag）；Phase 5–7 收敛至单链  
+> **版本**：2026-05-23 | **状态**：✅ Phase 0.5–6 已落地；**Phase 7 进行中**（Graph 默认 + Native 应急退役；Task/Subgraph 编译与 Task bridge 已接线）  
 > **需求**：[53 team-graph-orchestration.md](./53%20team-graph-orchestration.md) · **设计**：[53 team-graph-orchestration.design.md](./53%20team-graph-orchestration.design.md)  
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：EP-TG-01
 
@@ -152,11 +152,11 @@ Team 与 Graph 编排融合：统一 OrchestrationSpec、Agent 状态观测、Ka
 
 | ID | 任务 | 影响域 | 验收 |
 |----|------|--------|------|
-| TG-RT-RETIRE | 移除 `BuildTRPCTeam` 主路径 | `internal/team/trpc_build.go` | Team Run 仅 GraphAgent；保留 emergency `ARANEA_TEAM_NATIVE=1` 可选 |
-| TG-RT-TASK | Team 编译支持 **Task / review** 节点 | `graph_compile` · StatusProjector | US-06 验收 |
-| TG-RT-SUBGRAPH | Team **嵌套子图** / Router 节点 | `graph_compile` · linked_graph | 复杂协作不离开 Team 资产 |
-| TG-0-ARCH | 更新 [0 系统框图](../需求/0%20系统框图.md) Team 执行路径 | 文档 | `Compile → GraphAgent` 单箭头 |
-| TG-11-SYNC | [11-multi-agent-development.md](./11-multi-agent-development.md) 标注 Native 已退役 | 文档 | 交叉引用 M53 §8 |
+| TG-RT-RETIRE | 移除 `BuildTRPCTeam` 主路径 | `internal/team/trpc_build.go` | ✅ Team Run 默认 GraphAgent；`ARANEA_TEAM_NATIVE=1` 应急 |
+| TG-RT-TASK | Team 编译支持 **Task / review** 节点 | `embedded_graph` · `team_graph_task_bridge` | ✅ 编译 + Task 创建；resume 待 US-06 |
+| TG-RT-SUBGRAPH | Team **嵌套子图** / Router 节点 | `embedded_graph` · linked_graph | ✅ subgraph 编译 + 循环检测 |
+| TG-0-ARCH | 更新 [0 系统框图](../需求/0%20系统框图.md) Team 执行路径 | 文档 | ✅ |
+| TG-11-SYNC | [11-multi-agent-development.md](./11-multi-agent-development.md) 标注 Native 已退役 | 文档 | ✅ |
 
 **跨模块（M36，不阻塞 Phase 5 但阻塞 US-06 全量）**：G1 LLM 节点 · G2 Tool 节点 · G5–G8 执行监控与校验面板 · G9–G14 见 [36-graph-development.md](./36-graph-development.md)。
 
@@ -194,11 +194,11 @@ Team 与 Graph 编排融合：统一 OrchestrationSpec、Agent 状态观测、Ka
 
 | 排序 | ID | 任务 | 状态 |
 |------|-----|------|------|
-| 20 | TG-RT-PARITY | Native vs Graph 对比 E2E | ⏳ |
-| 21 | TG-RT-UI | runtime_engine 前端 + 字段保留 | ⏳ |
-| 22 | TG-RT-UI-RO | GraphEditorCanvas readonly | ⏳ |
-| 23 | TG-RT-METRICS | graph_execution_id / fallback 监控 | ⏳ |
-| 24 | TG-RT-FLAG | 生产 Canary rollout | ⏳ |
+| 20 | TG-RT-PARITY | Native vs Graph 对比 E2E | ✅ |
+| 24 | TG-RT-FLAG | Canary percent + holdout Native | ✅ |
+| 21 | TG-RT-UI | runtime_engine 前端 + 字段保留 | ✅ |
+| 22 | TG-RT-UI-RO | GraphEditorCanvas readonly | ✅ |
+| 23 | TG-RT-METRICS | graph_execution_id / fallback 监控 | ✅ |
 | 25 | TG-OBS-HIST | Activity 时间线 | ⏳ |
 | 26 | TG-CMP-JOIN | embedded join + ParallelFail | ⏳ |
 

@@ -100,6 +100,18 @@ export default {
     channelInboundNotify: "飞书/渠道有新回复",
     channelInboundOpen: "查看",
     wsReplaying: "正在同步历史事件…",
+    wsReplayingShort: "回放中",
+    syncDiagnostic: "{count} 条 · rev {rev} · WS {ws} · {ctx}% ctx",
+    source: {
+      web: "Web",
+      channel: "渠道",
+      feishu: "飞书",
+      dingtalk: "钉钉",
+      wecom: "企微",
+      cron: "Cron",
+      a2a: "A2A",
+      api: "API"
+    },
     reasoningTitle: "思考过程",
     pendingQueue: "待执行队列",
     cancelPending: "取消待执行",
@@ -139,6 +151,22 @@ export default {
     toolConfirmDeny: "拒绝",
     toolConfirmApprove: "允许",
     toolLongRunning: "长任务",
+    job: {
+      title: "后台任务",
+      loading: "加载后台任务…",
+      empty: "暂无后台任务",
+      refresh: "刷新",
+      openGraph: "打开 Graph 执行"
+    },
+    turn: {
+      block: {
+        channelActive: "来自 Channel",
+        fromChannel: "来自飞书 · 进行中",
+        toolsSummary: "{count} 个工具 · {sec}{failPart}",
+        toolsAria: "工具调用：{count} 个",
+        failed: "失败"
+      }
+    },
     toolArgs: "参数",
     toolResult: "结果",
     activity: {

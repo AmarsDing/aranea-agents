@@ -213,6 +213,35 @@
         }
       ],
       "fieldConfig": { "defaults": { "unit": "Bps" } }
+    },
+    {
+      "title": "Team Runtime Path Distribution",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 44 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        {
+          "expr": "sum(rate(aranea_team_graph_runtime_total{outcome=\"graph\",reason=\"success\"}[5m]))",
+          "legendFormat": "graph success"
+        },
+        {
+          "expr": "sum(rate(aranea_team_graph_runtime_total{outcome=\"graph\",reason=~\"compile_error|build_error\"}[5m]))",
+          "legendFormat": "graph build/compile error"
+        },
+        {
+          "expr": "sum(rate(aranea_team_graph_runtime_total{outcome=\"native\",reason=\"native_fallback\"}[5m]))",
+          "legendFormat": "native fallback"
+        },
+        {
+          "expr": "sum(rate(aranea_team_graph_runtime_total{outcome=\"native\",reason=\"native_emergency\"}[5m]))",
+          "legendFormat": "native emergency"
+        },
+        {
+          "expr": "sum(rate(aranea_team_graph_runtime_total{outcome=\"native\",reason=\"native_canary_holdout\"}[5m]))",
+          "legendFormat": "native canary holdout"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" } }
     }
   ],
   "refresh": "30s",

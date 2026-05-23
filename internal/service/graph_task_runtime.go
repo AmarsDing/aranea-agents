@@ -2,11 +2,11 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/team"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/google/uuid"
@@ -14,12 +14,21 @@ import (
 
 // GraphTaskRuntime wires graph execution events to the task board (M54).
 type GraphTaskRuntime struct {
-	graphUC  *biz.GraphUsecase
-	taskUC   *biz.TaskUsecase
-	orch     *GraphOrchestrationProjector
-	webhooks *biz.WebhookDispatcher
-	dispatch *biz.TaskDispatcher
-	log      *log.Helper
+	graphUC         *biz.GraphUsecase
+	taskUC          *biz.TaskUsecase
+	orch            *GraphOrchestrationProjector
+	webhooks        *biz.WebhookDispatcher
+	dispatch        *biz.TaskDispatcher
+	teamGraphResume team.TeamGraphTaskResumeHandler
+	log             *log.Helper
+}
+
+// SetTeamGraphTaskResumeHandler wires team graph task completion resume (M53 P1).
+func (r *GraphTaskRuntime) SetTeamGraphTaskResumeHandler(h team.TeamGraphTaskResumeHandler) {
+	if r == nil {
+		return
+	}
+	r.teamGraphResume = h
 }
 
 func NewGraphTaskRuntime(
@@ -117,16 +126,11 @@ func (r *GraphTaskRuntime) OnGraphNodeStart(ctx context.Context, exec *biz.Graph
 	if !biz.ShouldCreateTaskForNode(node) {
 		return nil
 	}
-	mode := strings.TrimSpace(node.AssignmentMode)
-	if mode == "" {
-		mode = "static"
+	role, mode, strategy, input := biz.GraphTaskInputFromNode(*node)
+	if strings.TrimSpace(inputPreview) != "" {
+		input = inputPreview
 	}
-	strategy := strings.TrimSpace(node.AssignmentStrategy)
-	input := inputPreview
-	if input == "" {
-		input = node.Description
-	}
-	_, err := r.taskUC.CreateTask(ctx, node.ID, exec.ID, node.RequiredRole, mode, strategy, input, "{}")
+	_, err := r.taskUC.CreateTask(ctx, node.ID, exec.ID, role, mode, strategy, input, "{}")
 	return err
 }
 
@@ -134,18 +138,16 @@ func (r *GraphTaskRuntime) OnTaskCompleted(ctx context.Context, task *biz.GraphT
 	if r == nil || r.graphUC == nil || task == nil || task.Status != biz.TaskStatusComplete {
 		return nil
 	}
+	resumeValue := team.BuildTaskResumeValue(task)
+	if r.teamGraphResume != nil {
+		handled, err := r.teamGraphResume.HandleTeamGraphTaskCompleted(ctx, task, resumeValue)
+		if handled {
+			return err
+		}
+	}
 	exec, err := r.graphUC.GetExecution(ctx, task.ExecutionID)
 	if err != nil {
 		return err
-	}
-	resumeValue := map[string]any{
-		"task_id": task.TaskID,
-		"node_id": task.NodeID,
-		"output":  task.Output,
-		"summary": task.Summary,
-	}
-	if b, err := json.Marshal(resumeValue); err == nil {
-		resumeValue["task_result_json"] = string(b)
 	}
 	if exec.Status == "waiting_human" && (exec.InterruptNode == task.NodeID || exec.CurrentNode == task.NodeID) {
 		_, err = r.graphUC.ResumeExecution(ctx, task.ExecutionID, resumeValue)
@@ -179,11 +181,15 @@ func WireGraphTaskRuntime(
 	orch *GraphOrchestrationProjector,
 	linkRepo biz.TaskLinkRepo,
 	webhooks *biz.WebhookDispatcher,
+	teamGraphCoord *team.TeamGraphRunCoordinator,
 ) *GraphTaskRuntime {
 	if taskUC != nil && linkRepo != nil {
 		taskUC.SetLinkRepo(linkRepo)
 	}
 	rt := NewGraphTaskRuntime(graphUC, taskUC, orch, webhooks)
+	if teamGraphCoord != nil {
+		rt.SetTeamGraphTaskResumeHandler(teamGraphCoord)
+	}
 	rt.Start()
 	return rt
 }

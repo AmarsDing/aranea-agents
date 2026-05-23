@@ -77,6 +77,7 @@ func (h *ChannelIngress) executeInboundTurn(ctx context.Context, chRow biz.Chann
 		h.logTurnFlow(ctx, sessionID, step, "Channel Turn 执行失败", execErr,
 			event.P("channel_id", chRow.ID), event.P("job_id", jobID))
 		_ = h.deliverTurnErrorReply(ctx, chRow, ev, platform, execErr)
+		h.publishChannelTurnRunStatus(sessionID, jobID, "failed", formatChannelTurnErrorMessage(execErr))
 	}()
 
 	var turnQueued bool
@@ -197,7 +198,7 @@ func (h *ChannelIngress) runChatTurnWithOutcome(ctx context.Context, chRow biz.C
 	sessionID := strings.TrimSpace(req.GetSessionId())
 	wasActive := h.chat.HasActiveRun(sessionID)
 
-	_, asst, err := h.chat.RunNativeTurnUnary(ctx, req)
+	_, asst, err := h.chat.RunNativeTurnUnary(event.WithEnvelopeSource(ctx, "channel"), req)
 	if err != nil {
 		if IsTurnMessageQueued(err) {
 			pendingID := h.chat.LastPendingMessageID(sessionID)
