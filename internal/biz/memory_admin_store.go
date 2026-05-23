@@ -2,13 +2,54 @@ package biz
 
 import (
 	"context"
-
-	"aranea-agents/internal/data/sessionmemory"
 )
 
-type FactUpsert = sessionmemory.MemoryFactUpsert
+// FactUpsert is the domain-level DTO for upserting memory facts.
+type FactUpsert struct {
+	ID                    string
+	ScopeType             string
+	ScopeID               string
+	WorkspaceID           string
+	UserID                string
+	TeamID                string
+	AgentID               string
+	Statement             string
+	Fingerprint           string
+	DetailsMarkdown       string
+	FactKind              string
+	TagsJSON              string
+	Confidence            float64
+	Importance            float64
+	UseCount              int32
+	HitCount              int32
+	PositiveFeedbackCount int32
+	NegativeFeedbackCount int32
+	ConflictCount         int32
+	SourceKind            string
+	SourceEpisodeID       string
+	SourceSessionID       string
+	SourceMessageID       string
+	SourceExternal        string
+	Version               int32
+	Status                string
+	PIIFlag               bool
+	MetadataJSON          string
+	CreatedAt             string
+	UpdatedAt             string
+}
 
-type EvolutionEventInsert = sessionmemory.EvolutionEventInsert
+// EvolutionEventInsert is the domain-level DTO for inserting evolution events.
+type EvolutionEventInsert struct {
+	AgentID       string
+	WorkspaceID   string
+	EventKind     string
+	Kind          string
+	TargetField   string
+	Reason        string
+	TriggerKind   string
+	TriggerSource string
+	MetadataJSON  string
+}
 
 type SessionAdminStore interface {
 	ListL0SnapshotRows(ctx context.Context, sessionID string, limit int32) ([][]byte, error)
@@ -25,11 +66,4 @@ type SessionAdminStore interface {
 	UpsertFactRow(ctx context.Context, in FactUpsert) ([]byte, error)
 	InsertEvolutionEventRow(ctx context.Context, in EvolutionEventInsert) ([]byte, error)
 	DeleteSessionEventEntities(ctx context.Context, sessionID string) error
-}
-
-func WrapSessionAdminStore(store *sessionmemory.Store) SessionAdminStore {
-	if store == nil {
-		return nil
-	}
-	return store
 }

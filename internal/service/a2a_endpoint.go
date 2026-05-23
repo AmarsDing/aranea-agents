@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"strings"
 
-	chatagent "aranea-agents/internal/agent"
 	a2atrpc "aranea-agents/internal/a2a/trpc"
+	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	rt "aranea-agents/internal/runtime"
@@ -48,29 +48,29 @@ func (b *A2AEndpointBuilder) BuildHandler(ctx context.Context, agentID, publicUR
 	prov := strings.TrimSpace(ag.Provider)
 	mod := strings.TrimSpace(ag.Model)
 	deps := chatagent.TRPCBuilderDeps{
-		Catalog:            b.chat.td.Catalog.LLM,
-		AgentUC:            b.chat.td.Catalog.AgentsUC,
-		Agents:             b.chat.td.Catalog.Agents,
-		RT:                 b.chat.td.RoundTrip(),
-		SkillUC:            b.chat.td.Catalog.SkillUC,
-		MCPTooling:         b.chat.td.Persist.AgentMCP,
-		ToolUC:             b.chat.td.Catalog.ToolUC,
-		Sessions:           b.chat.td.Sessions,
-		Sys:                b.chat.td.Catalog.Settings,
+		Catalog:            b.chat.orch.td.Catalog.LLM,
+		AgentUC:            b.chat.orch.td.Catalog.AgentsUC,
+		Agents:             b.chat.orch.td.Catalog.Agents,
+		RT:                 b.chat.orch.td.RoundTrip(),
+		SkillUC:            b.chat.orch.td.Catalog.SkillUC,
+		MCPTooling:         b.chat.orch.td.Persist.AgentMCP,
+		ToolUC:             b.chat.orch.td.Catalog.ToolUC,
+		Sessions:           b.chat.orch.td.Sessions,
+		Sys:                b.chat.orch.td.Catalog.Settings,
 		Provider:           prov,
 		Model:              mod,
-		SkillDBRepo:        b.chat.skillDBRepo,
-		HasMemory:          b.chat.td.Persist.Memory.Available(),
-		PluginManager:      b.chat.pluginManager,
-		MemoryAdmin:        b.chat.td.Persist.Memory.Admin,
-		KnowledgeRetriever: b.chat.knowledgeRetriever,
-		CodeExecFactory:    b.chat.codeExecFactory,
+		SkillDBRepo:        b.chat.orch.rt.SkillDBRepo,
+		HasMemory:          b.chat.orch.td.Persist.Memory.Available(),
+		PluginManager:      b.chat.orch.rt.PluginManager,
+		MemoryAdmin:        b.chat.orch.td.Persist.Memory.Admin,
+		KnowledgeRetriever: b.chat.orch.rt.KnowledgeRetriever,
+		CodeExecFactory:    b.chat.orch.rt.CodeExecFactory,
 	}
 	var plugins []trpcplugin.Plugin
-	if b.chat.pluginManager != nil {
-		plugins = b.chat.pluginManager.RunnerPluginsForAgent(ag.ID)
-	} else if b.chat.pluginRT != nil {
-		plugins = b.chat.pluginRT.PluginsForAgent(ag.ID)
+	if b.chat.orch.rt.PluginManager != nil {
+		plugins = b.chat.orch.rt.PluginManager.RunnerPluginsForAgent(ag.ID)
+	} else if b.chat.orch.rt.PluginRT != nil {
+		plugins = b.chat.orch.rt.PluginRT.PluginsForAgent(ag.ID)
 	}
 	deps.Plugins = plugins
 
@@ -87,7 +87,7 @@ func (b *A2AEndpointBuilder) BuildHandler(ctx context.Context, agentID, publicUR
 		event.CtxFlowLogWarn(ctx, "a2a.runner.ralph_loop", "Ralph Loop 配置无效，已跳过",
 			event.P("agent_id", ag.ID), event.P("error", rl.SkipErr.Error()))
 	}
-	runner, err := b.chat.td.CoalesceRunnerManager().NewTurnRunner(root, rt.TurnRunnerSpec{
+	runner, err := b.chat.orch.td.CoalesceRunnerManager().NewTurnRunner(root, rt.TurnRunnerSpec{
 		Plugins:          plugins,
 		BuilderDeps:      deps,
 		AgentFactoryKeys: []string{ag.AgentKey},

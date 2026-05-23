@@ -1,0 +1,283 @@
+// Package cron implements scheduled task management workflows.
+package cron
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+	stderrors "errors"
+	"strings"
+	"sync/atomic"
+
+	"github.com/go-kratos/kratos/v2/errors"
+)
+
+var cronIDRand uint64
+
+func newCronTaskID() string {
+	buf := make([]byte, 12)
+	if _, err := rand.Read(buf); err != nil {
+		n := atomic.AddUint64(&cronIDRand, 1)
+		return hex.EncodeToString([]byte{byte(n >> 56), byte(n >> 48), byte(n >> 40), byte(n >> 32), byte(n >> 24), byte(n >> 16), byte(n >> 8), byte(n)})
+	}
+	return hex.EncodeToString(buf)
+}
+
+// Task is one row of cron_task.
+type Task struct {
+	ID           string
+	TaskKey      string
+	Name         string
+	Description  string
+	Status       string
+	Enabled      bool
+	SortOrder    int
+	AgentID      string
+	ConfigJSON   string
+	MetadataJSON string
+	CreatedAt    string
+	UpdatedAt    string
+	DeletedAt    string
+}
+
+// TaskRun is one row of cron_task_run plus joined task display name and parsed output fields.
+type TaskRun struct {
+	ID           string
+	TaskID       string
+	TaskName     string
+	Status       string
+	StartedAt    string
+	FinishedAt   string
+	OutputJSON   string
+	ErrorMessage string
+	CreatedAt    string
+	Trigger      string
+	RunID        string
+}
+
+// TaskRunQuery filters ListCronTaskRuns.
+type TaskRunQuery struct {
+	TaskID string
+	Status string
+	Limit  int
+}
+
+// TaskRunInput is the insert payload for a cron task run.
+type TaskRunInput struct {
+	ID         string
+	TaskID     string
+	Status     string
+	StartedAt  string
+	OutputJSON string
+	CreatedAt  string
+}
+
+// TaskPatch is a partial update for a cron task.
+type TaskPatch struct {
+	TaskKey      *string
+	Name         *string
+	Description  *string
+	Status       *string
+	Enabled      *bool
+	SortOrder    *int
+	AgentID      *string
+	ConfigJSON   *string
+	MetadataJSON *string
+}
+
+// StrPtr returns a pointer to the given string.
+func StrPtr(s string) *string { return &s }
+
+// BoolPtr returns a pointer to the given bool.
+func BoolPtr(b bool) *bool { return &b }
+
+// IntPtr returns a pointer to the given int.
+func IntPtr(i int) *int { return &i }
+
+// Repo abstracts cron task persistence.
+type Repo interface {
+	ListCronTasks(ctx context.Context) ([]Task, error)
+	GetCronTask(ctx context.Context, id string) (Task, error)
+	CreateCronTask(ctx context.Context, t Task) (Task, error)
+	UpdateCronTask(ctx context.Context, t Task) (Task, error)
+	DeleteCronTask(ctx context.Context, id string) error
+	GetCronTaskRun(ctx context.Context, id string) (TaskRun, error)
+	ListCronTaskRuns(ctx context.Context, q TaskRunQuery) ([]TaskRun, error)
+	InsertCronTaskRun(ctx context.Context, in TaskRunInput) error
+	UpdateCronTaskRun(ctx context.Context, id, status, finishedAt, outputJSON, errorMessage string) error
+}
+
+// TaskTrigger enqueues immediate cron execution.
+type TaskTrigger interface {
+	TriggerTask(ctx context.Context, taskID string) (TaskRun, error)
+}
+
+// Usecase implements cron task CRUD and trigger workflows.
+type Usecase struct {
+	repo    Repo
+	trigger TaskTrigger
+}
+
+// NewUsecase constructs a CronUsecase.
+func NewUsecase(repo Repo, trigger TaskTrigger) *Usecase {
+	return &Usecase{repo: repo, trigger: trigger}
+}
+
+// ListTasks returns all cron tasks.
+func (u *Usecase) ListTasks(ctx context.Context) ([]Task, error) {
+	return u.repo.ListCronTasks(ctx)
+}
+
+// GetTask returns one cron task by ID.
+func (u *Usecase) GetTask(ctx context.Context, id string) (Task, error) {
+	if strings.TrimSpace(id) == "" {
+		return Task{}, errors.BadRequest("CRON", "id is required")
+	}
+	return u.repo.GetCronTask(ctx, id)
+}
+
+// CreateTask validates and stores a new cron task.
+func (u *Usecase) CreateTask(ctx context.Context, in Task) (Task, error) {
+	in.TaskKey = strings.TrimSpace(in.TaskKey)
+	in.Name = strings.TrimSpace(in.Name)
+	if in.TaskKey == "" || in.Name == "" {
+		return Task{}, errors.BadRequest("CRON", "task_key and name are required")
+	}
+	if in.ID == "" {
+		in.ID = newCronTaskID()
+	}
+	if in.Status == "" {
+		in.Status = "active"
+	}
+	return u.repo.CreateCronTask(ctx, in)
+}
+
+// UpdateTask patches an existing cron task.
+func (u *Usecase) UpdateTask(ctx context.Context, id string, patch TaskPatch) (Task, error) {
+	if strings.TrimSpace(id) == "" {
+		return Task{}, errors.BadRequest("CRON", "id is required")
+	}
+	cur, err := u.repo.GetCronTask(ctx, id)
+	if err != nil {
+		return Task{}, err
+	}
+	merged := cur
+	if patch.TaskKey != nil && *patch.TaskKey != "" {
+		merged.TaskKey = *patch.TaskKey
+	}
+	if patch.Name != nil && *patch.Name != "" {
+		merged.Name = *patch.Name
+	}
+	if patch.Status != nil && *patch.Status != "" {
+		merged.Status = *patch.Status
+	}
+	if patch.Description != nil {
+		merged.Description = *patch.Description
+	}
+	if patch.Enabled != nil {
+		merged.Enabled = *patch.Enabled
+	}
+	if patch.SortOrder != nil {
+		merged.SortOrder = *patch.SortOrder
+	}
+	if patch.AgentID != nil {
+		merged.AgentID = *patch.AgentID
+	}
+	if patch.ConfigJSON != nil {
+		merged.ConfigJSON = *patch.ConfigJSON
+	}
+	if patch.MetadataJSON != nil {
+		merged.MetadataJSON = *patch.MetadataJSON
+	}
+	if merged.TaskKey == "" {
+		merged.TaskKey = cur.TaskKey
+	}
+	if merged.Name == "" {
+		merged.Name = cur.Name
+	}
+	if merged.Status == "" {
+		merged.Status = cur.Status
+	}
+	return u.repo.UpdateCronTask(ctx, merged)
+}
+
+// DeleteTask removes a cron task.
+func (u *Usecase) DeleteTask(ctx context.Context, id string) error {
+	if strings.TrimSpace(id) == "" {
+		return errors.BadRequest("CRON", "id is required")
+	}
+	return u.repo.DeleteCronTask(ctx, id)
+}
+
+// ListTaskRuns returns task run records.
+func (u *Usecase) ListTaskRuns(ctx context.Context, q TaskRunQuery) ([]TaskRun, error) {
+	return u.repo.ListCronTaskRuns(ctx, q)
+}
+
+// GetTaskRun returns one task run by ID.
+func (u *Usecase) GetTaskRun(ctx context.Context, id string) (TaskRun, error) {
+	if strings.TrimSpace(id) == "" {
+		return TaskRun{}, errors.BadRequest("CRON", "run id is required")
+	}
+	return u.repo.GetCronTaskRun(ctx, id)
+}
+
+// TriggerTask enqueues an immediate execution.
+func (u *Usecase) TriggerTask(ctx context.Context, id string) (TaskRun, error) {
+	if u.trigger == nil {
+		return TaskRun{}, ErrRunnerDisabled
+	}
+	if strings.TrimSpace(id) == "" {
+		return TaskRun{}, errors.BadRequest("CRON", "id is required")
+	}
+	return u.trigger.TriggerTask(ctx, id)
+}
+
+// ResetTaskFailures clears failure metadata and re-enables a task.
+func (u *Usecase) ResetTaskFailures(ctx context.Context, id string) (Task, error) {
+	if strings.TrimSpace(id) == "" {
+		return Task{}, errors.BadRequest("CRON", "id is required")
+	}
+	cur, err := u.repo.GetCronTask(ctx, id)
+	if err != nil {
+		return Task{}, err
+	}
+	metaJSON, err := ResetFailureMetadata(cur.MetadataJSON)
+	if err != nil {
+		return Task{}, errors.BadRequest("CRON", "invalid metadata_json")
+	}
+	enabled := true
+	status := "active"
+	return u.UpdateTask(ctx, id, TaskPatch{
+		Enabled:      &enabled,
+		Status:       &status,
+		MetadataJSON: &metaJSON,
+	})
+}
+
+// ResetFailureMetadata clears failure-related fields in a cron task metadata JSON.
+func ResetFailureMetadata(raw string) (string, error) {
+	meta := map[string]any{}
+	if strings.TrimSpace(raw) != "" {
+		if err := json.Unmarshal([]byte(raw), &meta); err != nil {
+			return "", err
+		}
+	}
+	meta["failure_count"] = 0
+	meta["last_error"] = ""
+	meta["recent_failures"] = []any{}
+	out, err := json.Marshal(meta)
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
+}
+
+// ── Errors ────────────────────────────────────────────────────────────────────
+
+var (
+	ErrRunnerDisabled = stderrors.New("cron runner disabled")
+	ErrTaskDeleted    = stderrors.New("cron task deleted")
+	ErrSessionBusy    = stderrors.New("cron session has active run")
+)

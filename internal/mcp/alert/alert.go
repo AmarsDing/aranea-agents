@@ -10,7 +10,6 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/mcp/metadata"
-	"aranea-agents/internal/mcp/probe"
 	"aranea-agents/internal/metrics"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -48,7 +47,7 @@ func SustainedErrorAfter() time.Duration {
 }
 
 // MaybeEmitAfterHealth persists sustained-error alerts after probe + PersistHealth.
-func (p *Publisher) MaybeEmitAfterHealth(ctx context.Context, srv biz.MCPServer, result probe.TestResult) {
+func (p *Publisher) MaybeEmitAfterHealth(ctx context.Context, srv biz.MCPServer, result biz.MCPTestResult) {
 	if p == nil || p.bus == nil || result.OK {
 		return
 	}

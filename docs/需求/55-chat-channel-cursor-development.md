@@ -1,10 +1,10 @@
 # M55 — Chat × Channel × Cursor 对标 — 开发计划
 
-> **版本**：2026-05-23 | **状态**：🚧 Phase A–D 已交付；UX 收口与 Phase E/F 待排  
+> **版本**：2026-05-23 | **状态**：🚧 Phase A–D 已交付；**Phase R**（Run 升格）已排期；UX 收口进行中  
 > **方案**：[55-chat-channel-cursor-solution.md](./55-chat-channel-cursor-solution.md)  
-> **蓝图**：[m55-chat-channel-enterprise-blueprint.md](../guides/m55-chat-channel-enterprise-blueprint.md)  
+> **蓝图**：[55-chat-channel-cursor-solution.md §9 附录](../需求/55-chat-channel-cursor-solution.md#9-附录企业级蓝图与-ai-落地指南)  
 > **进度真相**：[execution-plan.md §迭代 CC](../guides/execution-plan.md) · **EP**：EP-CC-M55  
-> **近期 changelog**：[M55 Phase A–D Review](../changelog/2026-05-23-M55-Phase-ABCD-Review-Fixes.md) · [飞书 Rebind + UX Backlog](../changelog/2026-05-23-M55-Feishu-Rebind-UX-Backlog.md)
+> **近期 changelog**：[M55 Phase A–D Review](../changelog/2026-05-23-M55-Phase-ABCD-Review-Fixes.md) · [飞书 Rebind + UX Backlog](../changelog/2026-05-23-M55-Feishu-Rebind-UX-Backlog.md) · [卡 Turn / 入站排查](../changelog/2026-05-23-M55-Stuck-Turn-Inbound-Sync-Analysis.md) · [**R-UX 格式化 / 思考 UX**](../changelog/2026-05-23-M55-Phase-R-UX-Channel-Format-Reasoning.md)
 
 ---
 
@@ -12,7 +12,7 @@
 
 在 **不破坏现有架构红线** 前提下，完成三件事：
 
-1. **长任务**：Sync Turn 与 Durable Job 分流，消除「24h 任务 × 5m 超时」类别错误。
+1. **长任务**：**目标态 §2.6** Interactive Run → 运行时升格 Durable；CC-A-02 关键词→Job 为**过渡**（§13.1）。
 2. **Channel↔Web 同步**：`session_revision` + Channel 入站聚焦，Web 可靠镜像飞书会话。
 3. **Cursor 式 Chat UX**：TurnBlock 分组、工具折叠、Background Job 面板。
 
@@ -32,15 +32,21 @@
 | 项 | 状态 | 说明 |
 |----|------|------|
 | Channel Phase E（ACK/Job/IM Preview） | ✅ | [17-channel-development.md §10](./17-channel-development.md#10-长任务异步执行phase-e) |
-| 长任务 preset + auto 关键词路由 | ✅ | `channelLongTaskPresets.ts` · `ShouldRunAsync` |
+| 长任务 preset + auto 关键词路由 | 🟡 过渡 | `ShouldRunAsync` 仅 `/async` · CC-R-05 |
+| Run 两阶段升格（Interactive→Durable） | ✅ P0–P1 | Phase R · CC-R-01~05；稳定性见 §Phase R-OPT |
 | `session_revision` 增量 sync | ✅ | API + WS + `useChatInboundSync` |
 | Web TurnBlock + ToolStrip | ✅ | 默认开启；Team Session 仍走平铺 |
 | Background Job 面板 | ✅ | `ChatBackgroundJobsPanel` + `GET /v1/chat/jobs` |
 | 飞书 peer bind stale rebind | ✅ | CC-HOT-01 · [changelog](../changelog/2026-05-23-M55-Feishu-Rebind-UX-Backlog.md) |
-| UserBubble 来源徽标 | ⏳ | 仅有 TurnBlock 顶栏「来自飞书」 |
-| 思考/ReAct 互斥 UX | 📋 | 空「思考过程」、双 ToolStrip · CC-C-UX-* |
-| M55 E2E 手工验收 | ⏳ | SYNC-01/02 · UI-01/02 · JOB-01 |
-| 24h Durable Job | 📋 | async 看门 ~2h |
+| UserBubble 来源徽标（Tier 0 platform） | 🚧 | CC-B-07 · `options_json.platform` |
+| 思考/ReAct 互斥 UX | ✅ | CC-C-UX-01~03 · CC-WEB-REASONING-02~04 |
+| 思考流式缓存（Store vs DB） | ✅ | CC-WEB-REASONING-01~04 · `ChatReasoningPeek` live tail |
+| 飞书出站格式化（思考/正文） | ✅ | CC-CHANNEL-FMT-01~06 · [changelog](../changelog/2026-05-23-M55-Phase-R-UX-Channel-Format-Reasoning.md) |
+| Channel 入站 Session 列表同步 | ✅ | CC-WEB-SESSION-01 |
+| M55 E2E 手工验收 | ⏳ | SYNC/UI/JOB ✅；Run 生命周期 M55-RUN 📋 |
+| 卡 Turn / 飞书无回复 / 工具假死 | 🟡 | CC-FIX-TOOL/CHANNEL ✅；运维 CC-FEISHU-OPS-01 📋 |
+| 24h Durable Job | 🚧 | CC-R-03 Worker 基础版；CC-F-01 deadline 待完善 |
+| Run Review 优化项 | ✅ | CC-R-OPT-01~11（E2E 手工 ⏳）· [Review](../review/2026-05-23-M55-Run-Lifecycle-Review.md) |
 | TurnExecutor 抽象 | 📋 | P-4 可维护性债 |
 
 ---
@@ -60,9 +66,12 @@ gantt
   section 进行中
   Phase C UX 收口          :active, cux, 2026-05-23, 10d
   E2E 验收                 :e2e, after cux, 3d
+  Phase R Run 升格 P0-P1   :done, r1, 2026-05-23, 7d
+  Phase R-OPT 稳定性       :done, ropt, 2026-05-23, 5d
   section 待排
-  Phase E @ Context        :e1, after e2e, 5d
-  Phase F 24h Job          :f1, after e2e, 10d
+  CC-E2E-RUN 手工验收      :e2erun, after ropt, 2d
+  Phase E @ Context        :e1, after ropt, 5d
+  Phase F 24h Job          :f1, after ropt, 10d
 ```
 
 ---
@@ -74,7 +83,7 @@ gantt
 | ID | 任务 | 状态 | 验收 |
 |----|------|------|------|
 | CC-A-01 | 飞书长任务 preset + 前端一键应用 | ✅ | `feishu_long_analysis` 等 |
-| CC-A-02 | `execution_mode=auto` 关键词 → async | ✅ | 单测覆盖 |
+| CC-A-02 | `execution_mode=auto` 关键词 → async | 🟡 过渡 | 单测覆盖；**非 P-1 根本解**（§13.1） |
 | CC-A-03 | 超时错误文案区分 sync vs async | ✅ | `channel_ingress_errors.go` |
 | CC-A-04 | 运维 Runbook | ⏳ | E2E 文档扩展 |
 
@@ -89,8 +98,8 @@ gantt
 | CC-B-03 | `ListSessionMessages?after_revision=` | ✅ | service 测试 |
 | CC-B-04 | 选中 Session 强制 Session WS | ✅ | |
 | CC-B-05 | revision debounced hydrate + replay 门控 | ✅ | `wsReplaying` |
-| CC-B-06 | Envelope `source=channel` + 入站 focus | ✅ | |
-| CC-B-07 | UserBubble 来源徽标 | 📋 | §5.1 蓝图 |
+| CC-B-06 | Envelope `source=channel` + 入站 focus | 🟡 | toast「查看」已有；**auto-focus / 铃铛通知未交付** → CC-B-06b · [分析](../changelog/2026-05-23-M55-Stuck-Turn-Inbound-Sync-Analysis.md) |
+| CC-B-07 | UserBubble 来源徽标 + `platform` | 🚧 | Tier 0 · §1.5 |
 
 ---
 
@@ -105,9 +114,9 @@ gantt
 | CC-C-05 | 虚拟列表 benchmark | ⏳ | M55-UI-01 |
 | CC-C-06 | rAF 批处理 + completion 增量 | ⏳ | `messageStoreBatch` 有 rAF；completion 仍全量 hydrate |
 | CC-C-07 | Session 顶栏 sync 诊断 | 📋 | |
-| **CC-C-UX-01** | 思考/ReAct 互斥；空 reasoning 不展示 | 📋 | 截图：空「思考过程」 |
-| **CC-C-UX-02** | 流式「正在思考…」单行态 | 📋 | |
-| **CC-C-UX-03** | 双 ToolStrip 去重/合并 | 📋 | 截图：两条工具摘要 |
+| **CC-C-UX-01** | 思考/ReAct 互斥；空 reasoning 不展示 | 🚧 | 无空「思考过程」 |
+| **CC-C-UX-02** | 流式「正在思考…」单行态 | 🚧 | 首字节前 UX |
+| **CC-C-UX-03** | 双 ToolStrip 去重/合并 | 🚧 | 单轮一条摘要 |
 | **CC-C-UX-04** | `TurnAssistantBubble` 拆分 | 📋 | |
 
 ---
@@ -137,13 +146,78 @@ gantt
 
 ### Phase F — 24h Durable Job（P2）— 📋 未启动
 
+> **评审（§13.5）**：CC-F-01 须与 **CC-R-03** 合并——Worker 续跑 Agent checkpoint，非仅 Graph watch。
+
 | ID | 任务 | 状态 |
 |----|------|------|
-| CC-F-01 | Worker deadline 24h | 📋 |
-| CC-F-02 | Graph checkpoint resume | 📋 |
+| CC-F-01 | Worker deadline 24h | 📋 合并 CC-R-03 |
+| CC-F-02 | Graph / trpc checkpoint resume **Phase 1** | 🟡 | 会话快照 + 合成 prompt；真 invocation → **CC-F-02b** |
+| CC-F-02b | trpc invocation 级 restore | 📋 | Phase F · 对接 trpc RunOption |
 | CC-F-03 | IM 进度百分比 | 📋 |
 | CC-F-04 | 取消 / 重试 Job API | 📋 |
 | CC-F-05 | async 白名单 | 📋 |
+
+---
+
+### Phase R — Run 两阶段升格（P-1 根本解）— ✅ P0–P1 已落地
+
+> 详设：[55-chat-channel-cursor-solution.md §2.6](../需求/55-chat-channel-cursor-solution.md#26-run-生命周期interactive--durable-升格p-1-根本解)
+
+| ID | 任务 | 状态 | 验收 |
+|----|------|------|------|
+| **CC-R-01** | `session_runs` 实体 + budget watcher | ✅ | FlowLog `run.phase`；软预算→`escalating` |
+| **CC-R-02** | 软预算 IM 确认 + auto_escalate | ✅ | Feishu 交互卡片 + `/background` 入站 |
+| **CC-R-03** | Checkpoint + Durable Worker 续跑 Agent Turn | ✅ Phase 1 | `WithDurableResume` 会话快照续跑；Worker 幂等 → CC-R-OPT-01 |
+| **CC-R-04** | Jobs 面板 + Envelope 统一 `run_id` | ✅ | Jobs 面板「跳转 TurnBlock」按钮 |
+| **CC-R-05** | workflow_binding · keyword 降级为建议 | ✅ | `ShouldRunAsync` 仅 `/async`；`SuggestDurableRun` 仅日志/UX 提示 |
+
+**代码锚点**：`internal/biz/session_run*.go` · `internal/data/session_run_*.go` · `chat_orchestrator_session_run.go` · `session_run_durable_worker.go`
+
+---
+
+### Phase R-OPT — Run Review 优化（P1–P2）— 📋 已排期
+
+> **Review**：[2026-05-23-M55-Run-Lifecycle-Review.md](../review/2026-05-23-M55-Run-Lifecycle-Review.md)（76/100 · P1）  
+> **Changelog**：[2026-05-23-M55-Run-Lifecycle-Optimization-Plan.md](../changelog/2026-05-23-M55-Run-Lifecycle-Optimization-Plan.md)
+
+| ID | 任务 | 优先级 | 状态 | 验收 |
+|----|------|--------|------|------|
+| **CC-R-OPT-01** | Durable Worker claim 幂等 | P1 | ✅ | `resume_started_at`；并发 poll 不叠 resume |
+| **CC-R-OPT-02** | 飞书卡片 callback ownership | P1 | ✅ | run.session_id 与 channel 解析 session 一致 |
+| **CC-R-OPT-03** | 硬预算 checkpoint 先于 durable | P1 | ✅ | Worker 首次 scan 必能 GetCheckpoint |
+| **CC-R-OPT-04** | CC-F-02 文档诚实化 | P1 | ✅ | Phase 1 vs CC-F-02b |
+| CC-R-OPT-05 | 抽出 `runDurableResumeTurn` | P2 | ✅ | `chat_orchestrator_durable.go` |
+| CC-R-OPT-06 | escalate FlowLog warn | P2 | ✅ | checkpoint/MarkPhase 失败可观测 |
+| CC-R-OPT-07 | binding 丢失降级 | P2 | ✅ | 重启后 escalate payload 完整 |
+| CC-R-OPT-08 | Jobs scan agent_id | P2 | ✅ | ListForJobs 过滤与字段一致 |
+| **CC-E2E-RUN-01~04** | Run E2E 手工清单 | P2 | ⏳ | 单测 + [17-channel §M55-RUN](./17-channel-development.md) |
+| **CC-R-OPT-10** | TurnBlock scroll 高亮 | P3 | ✅ | `turn-block--focused` |
+| **CC-R-OPT-11** | IM 平台矩阵 | P3 | ✅ | 17-channel §M55-RUN |
+
+**运维**：飞书应用须订阅 **`card.action.trigger`**（CC-R-02 卡片回调）。
+
+---
+
+### Phase R-UX — 卡 Turn / 入站同步 / 飞书格式化（P0–P1）— ✅ 已交付
+
+> **分析**：[2026-05-23-M55-Stuck-Turn-Inbound-Sync-Analysis.md](../changelog/2026-05-23-M55-Stuck-Turn-Inbound-Sync-Analysis.md) · **续篇**：[格式化 / 思考 UX](../changelog/2026-05-23-M55-Phase-R-UX-Channel-Format-Reasoning.md)
+
+| ID | 任务 | 优先级 | 状态 |
+|----|------|--------|------|
+| CC-FIX-TOOL-01 | 后端 finalize 补发 failed `tool_result` WS | P0 | ✅ |
+| CC-FIX-TOOL-02 | inbound sync Turn 完成 `finalizeOrphanToolMessages` | P0 | ✅ |
+| CC-FIX-TOOL-03 | merge 时丢弃 terminal run 的 stale `tool_running` | P0 | ✅ |
+| CC-FIX-CHANNEL-01 | Durable Run completed → 飞书 outbound | P0 | ✅ |
+| CC-FEISHU-OPS-01 | 飞书 `card.action.trigger` 运维清单 | P0 | 📋 运维 |
+| CC-B-06b | Channel 入站 auto-focus session | P1 | ✅ |
+| CC-WEB-NOTIFY-01~03 | Header 铃铛 + MainLayout 全局 WS 通知 | P1 | ✅ |
+| CC-WEB-SESSION-01 | Channel 入站刷新 Agent Session 列表 | P1 | ✅ |
+| CC-WEB-REASONING-01 | `streamingSnapshots` Store 缓存 | P1 | ✅ |
+| CC-WEB-REASONING-02~04 | `ChatReasoningPeek` 思考/正文 · live tail 最后两行 | P1 | ✅ |
+| CC-CHANNEL-FMT-01~06 | IM 格式化 · `【思考过程】`/`【正文】` · 飞书回复 Card | P1 | ✅ |
+| CC-FEISHU-02 | 升格卡片 Card 2.0 +「取消执行」callback | P1 | ✅ |
+| CC-UX-01~02 | 排队与 `/async` 文案去重 | P2 | ✅ |
+| CC-FIX-CHANNEL-02 | Preview 仅 reasoning 时 heartbeat 文案 | P2 | ✅ |
 
 ---
 
@@ -164,14 +238,19 @@ gantt
 
 ---
 
-## 5. 优先级与排期（更新）
+## 5. 优先级与排期（2026-05-23 · 对齐蓝图 §13.10）
 
 | 优先级 | 阶段 | 理由 |
 |--------|------|------|
-| **P0 当前** | CC-C-UX-* + CC-E2E-01 | 截图 UX 问题；M55 手工验收 |
-| **P1** | CC-B-07 · CC-C-05/06/07 · CC-HOT-02 | M55 收口 |
-| **P2** | E + F + CHAT-R2-03 | Cursor 完整对标 + 24h |
-| **P3** | CC-C-08 · CC-D-05 · CC-E-04 | polish |
+| **P0** | **CC-R-01~03** | ✅ Run Interactive→Durable 已落地 |
+| **P0** | CC-C-UX-01~03 | ✅ TurnBlock 思考/工具 UX 收口 |
+| **P0** | **CC-FIX-TOOL-01~03 · CC-FIX-CHANNEL-01** | 卡 Turn / 工具假死 / 飞书无回复（见 Phase R-UX） |
+| **P1** | CC-B-06b · CC-WEB-NOTIFY · CC-WEB-REASONING-01 | 入站 focus · 铃铛通知 · 思考 Store 缓存 |
+| **P1** | CC-R-04 · CC-D-05 | ✅ Jobs↔Run 字段 + TurnBlock 跳转 |
+| **P1** | **CC-R-OPT-01~03** | Run Review 稳定性（Worker claim · 卡片鉴权 · 预算时序） |
+| **P2** | CC-E2E-RUN-01~04 | Run 生命周期手工 E2E（单测已覆盖 claim/escalate/durable） |
+| **P2** | CC-F-02b · CC-F-01 · CHAT-R2-03 | invocation restore · 24h deadline · TurnExecutor |
+| **P3** | E + CC-C-08 · CC-E-04 | Cursor polish |
 
 ---
 
@@ -188,7 +267,10 @@ gantt
 | TurnBlock 与 ReAct/reasoning 双轨 UI | CC-C-UX-01 互斥规则 |
 | 失败重试产生多 TurnBlock | CC-C-UX-03 merge 或产品层合并展示 |
 | `session_revision` 漂移 | bump 仅在 Turn 成功收口；单测 |
-| 24h Worker | Phase F 独立 sprint |
+| 24h Worker | Phase F · 与 CC-R-OPT-01 claim 列合并预埋 |
+| Worker 重复 resume | CC-R-OPT-01 · Review P1 |
+| 卡片 callback 越权 | CC-R-OPT-02 · 对齐 Channel 访问控制 |
+| CC-F-02 过度承诺 | CC-R-OPT-04 · CC-F-02b Phase F |
 
 ---
 
@@ -196,7 +278,7 @@ gantt
 
 | 文档 | 更新时机 |
 |------|----------|
-| [m55-chat-channel-enterprise-blueprint.md](../guides/m55-chat-channel-enterprise-blueprint.md) | §12 后期优化 |
+| [55-chat-channel-cursor-solution.md §9 附录](../需求/55-chat-channel-cursor-solution.md#9-附录企业级蓝图与-ai-落地指南) | §12 后期优化 |
 | [1-chat-development.md](./1-chat-development.md) | Phase 9 M55 状态 |
 | [17-channel-development.md](./17-channel-development.md) | D7 peer rebind |
 | [execution-plan.md](../guides/execution-plan.md) | 迭代 CC 任务板 |

@@ -17,6 +17,7 @@ export type SessionView = {
   id: string;
   title: string;
   context_used_ratio: number;
+  total_tokens?: number;
   at: string;
   timeline_at?: string;
   agent_id?: string;

@@ -30,7 +30,7 @@
         </div>
         <div class="row q-gutter-sm">
           <q-btn v-if="session.status === 'archived'" outline rounded icon="restore" label="恢复" class="sessions-btn-accent-outline" @click="handleRestore" />
-          <q-btn outline rounded icon="chat" label="继续会话" class="sessions-btn-accent-outline" :to="{ name: 'chat' }" />
+          <q-btn outline rounded icon="chat" label="继续会话" class="sessions-btn-accent-outline" :to="{ name: 'chat', query: { session: session.id } }" />
           <q-btn flat rounded icon="archive" label="归档" class="sessions-btn-ghost" :disable="session.status === 'archived'" @click="handleArchive" />
         </div>
       </div>

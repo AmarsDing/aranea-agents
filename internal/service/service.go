@@ -1,9 +1,9 @@
 package service
 
 import (
+	a2apkg "aranea-agents/internal/a2a"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/compress"
-	a2apkg "aranea-agents/internal/a2a"
 	"aranea-agents/internal/knowledge"
 	"aranea-agents/internal/skill/importer"
 	"aranea-agents/internal/team"
@@ -59,4 +59,9 @@ var ProviderSet = wire.NewSet(
 	wire.Bind(new(biz.EmbeddingService), new(*knowledge.Embedder)),
 	NewKnowledgeRetriever,
 	NewSkillDBRepository,
+	// Phase 3 decoupling adapters: biz interfaces → event/webresearch implementations
+	ProvideEnvelopeBuffer,
+	ProvideSessionLogWriter,
+	ProvideSystemLogWriter,
+	ProvideWebResearchTester,
 )

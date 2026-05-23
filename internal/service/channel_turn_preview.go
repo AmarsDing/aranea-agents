@@ -154,7 +154,7 @@ func (c *TurnPreviewCoordinator) maybeHeartbeat(ctx context.Context) {
 	rendered := preview.RenderPlainText(c.transcript, c.policy)
 	text := heartbeat
 	if strings.TrimSpace(rendered) != "" {
-		text = rendered + "\n\n" + heartbeat
+		text = preview.FormatRenderedTranscriptForIM(c.platform, rendered) + "\n\n" + heartbeat
 	}
 	_ = c.patchLocked(ctx, text, false)
 }
@@ -199,8 +199,14 @@ func (c *TurnPreviewCoordinator) consume(ctx context.Context, env event.Envelope
 				c.maybeSendToolCard(ctx, tid, snap)
 			})
 		}
-		if c.updater != nil && rendered != "" {
-			_ = c.patch(ctx, rendered, false)
+		if c.updater != nil {
+			patchText := preview.FormatRenderedTranscriptForIM(c.platform, rendered)
+			if strings.TrimSpace(patchText) == "" && len(c.transcript.Segments()) > 0 {
+				patchText = channelPreviewThinkingHint
+			}
+			if strings.TrimSpace(patchText) != "" {
+				_ = c.patch(ctx, patchText, false)
+			}
 		}
 	}
 }
@@ -250,7 +256,7 @@ func (c *TurnPreviewCoordinator) Flush(ctx context.Context, force bool) error {
 }
 
 func (c *TurnPreviewCoordinator) patchDeliverable(ctx context.Context, text string, force bool) error {
-	text = strings.TrimSpace(text)
+	text = strings.TrimSpace(preview.FormatRenderedTranscriptForIM(c.platform, text))
 	if text == "" {
 		return nil
 	}

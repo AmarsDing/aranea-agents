@@ -20,11 +20,13 @@ message SendChatMessageRequest {
   SendMessageOptions options = 5;
 }
 
-message SendMessageOptions {
+	message SendMessageOptions {
   optional string dialog_mode = 1;
   optional string provider = 2;
   optional string model = 3;
   repeated AttachmentRef attachments = 4;
+  // knowledge_bases limits knowledge_search to these collection IDs for this turn.
+  repeated string knowledge_bases = 5;
 }
 
 message AttachmentRef {
@@ -175,6 +177,9 @@ message ChatBackgroundJob {
   optional string error_message = 11;
   string channel_id = 12;
   optional string graph_id = 13;
+  optional string turn_id = 14;
+  optional string session_run_id = 15;
+  optional string phase = 16;
 }
 
 message ListChatBackgroundJobsResponse {
@@ -231,4 +236,23 @@ service ChatService {
   rpc ListChatBackgroundJobs(ListChatBackgroundJobsRequest) returns (ListChatBackgroundJobsResponse) {
     option (google.api.http) = {get: "/v1/chat/jobs"};
   }
+
+  rpc SubmitMessageFeedback(SubmitMessageFeedbackRequest) returns (SubmitMessageFeedbackResponse) {
+    option (google.api.http) = {
+      post: "/v1/chat/messages/{message_id}/feedback"
+      body: "*"
+    };
+  }
+}
+
+message SubmitMessageFeedbackRequest {
+  string message_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string session_id = 2 [(google.api.field_behavior) = REQUIRED];
+  // rating: "positive" | "negative"
+  string rating = 3 [(google.api.field_behavior) = REQUIRED];
+  optional string comment = 4;
+}
+
+message SubmitMessageFeedbackResponse {
+  bool accepted = 1;
 }

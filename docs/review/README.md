@@ -4,7 +4,7 @@
 > **方法**：按 `docs/需求/README-development.md` 模块索引，结合需求/设计/开发计划文档链与前后端代码实际落点，对每个模块进行六维评分与风险标注。  
 > **真相源优先级**：`0 系统框图.md` + `0-system-development.md` + `execution-plan.md` > `*-development.md` > `*.design.md` > 需求正文
 >
-> **跨模块解耦治理**：涉及 Chat / Channel / Agent / Team / Graph 边界调整、端口化、前端 Store / Composable 拆分时，先读 [`../guides/module-decoupling-architecture-guide.md`](../guides/module-decoupling-architecture-guide.md)，再回到对应模块 review。
+> **跨模块解耦治理**：涉及 Chat / Channel / Agent / Team / Graph 边界调整、端口化、前端 Store / Composable 拆分时，先读 [`../需求/0-module-decoupling-architecture.md`](../需求/0-module-decoupling-architecture.md)，再回到对应模块 review。
 
 ---
 
@@ -41,7 +41,7 @@
 | **Session** | 10 | 79 | 16 | 21 | 17 | 13 | 6 | 6 | P1 | [10-session-review.md](./10-session-review.md) |
 | **Team / Multi-Agent** | 11 | 83 | 17 | 22 | 18 | 14 | 6 | 6 | P1 | [11-team-review.md](./11-team-review.md) · [M53 Phase7](./2026-05-23-Team-Graph-M53-Phase7-Review.md) |
 | **Memory L0–L4** | 12–16 | 74 | 15 | 18 | 16 | 12 | 7 | 6 | P1 | [12-16-memory-review.md](./12-16-memory-review.md) |
-| **Channel** | 17 | **92** | 19 | 23 | 19 | 14 | 8 | 9 | P2 | [17-channel-review.md](./17-channel-review.md) · [IM Preview](./2026-05-23-Channel-IM-Preview-Review.md) |
+| **Channel** | 17 | **92** | 19 | 23 | 19 | 14 | 8 | 9 | P2 | [17-channel-review.md](./17-channel-review.md) · [IM Preview](./2026-05-23-Channel-IM-Preview-Review.md) · [M55 Run Lifecycle](./2026-05-23-M55-Run-Lifecycle-Review.md) |
 | **Monitor / Dashboard** | 18 | 78 | 16 | 21 | 17 | 13 | 5 | 6 | P1 | [18-monitor-review.md](./18-monitor-review.md) |
 | **MCP** | 19 | 80 | 16 | 22 | 17 | 13 | 6 | 6 | P1 | [19-mcp-review.md](./19-mcp-review.md) |
 | **Skill** | 20 | 78 | 16 | 21 | 17 | 12 | 6 | 6 | P1 | [20-skill-review.md](./20-skill-review.md) |

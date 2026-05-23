@@ -280,22 +280,21 @@ func CompletionCorrelationKey(de DomainEvent) (sessionID, invocationID string) {
 	return sessionID, invocationID
 }
 
-// MergeRunnerCompletionUsagePatch builds metadata patch after usage is recorded.
-func MergeRunnerCompletionUsagePatch(usageEventID, traceID string) string {
-	patch := map[string]any{"schema_version": runnerCompletionSchemaV1}
-	if v := strings.TrimSpace(usageEventID); v != "" {
-		patch["usage_event_id"] = v
+// CompletionDurationMS computes wall-clock duration when Timestamp is set on the domain event.
+func CompletionDurationMS(de DomainEvent, startedAt time.Time) int64 {
+	if de.Timestamp.IsZero() || startedAt.IsZero() {
+		return 0
 	}
-	if v := strings.TrimSpace(traceID); v != "" {
-		patch["trace_id"] = v
+	d := de.Timestamp.Sub(startedAt)
+	if d < 0 {
+		return 0
 	}
-	raw, _ := json.Marshal(patch)
-	return string(raw)
+	return d.Milliseconds()
 }
 
 // RecordRunnerCompletion persists a runner.completion row with idempotency and usage correlation.
-func (u *MonitorUsecase) RecordRunnerCompletion(ctx context.Context, de DomainEvent) error {
-	if u == nil || u.repo == nil {
+func RecordRunnerCompletion(ctx context.Context, u *MonitorUsecase, de DomainEvent) error {
+	if u == nil {
 		return nil
 	}
 	enrichRunnerCompletionFromBridge(&de)
@@ -309,22 +308,6 @@ func (u *MonitorUsecase) RecordRunnerCompletion(ctx context.Context, de DomainEv
 		runID = invocationID
 	}
 
-	if sessionID != "" && invocationID != "" {
-		exists, err := u.repo.ExistsRunnerCompletion(ctx, sessionID, invocationID)
-		if err != nil {
-			return err
-		}
-		if exists {
-			patched, err := u.patchRunnerCompletionLink(ctx, sessionID, runID, invocationID, de.UsageEventID, de.TraceID)
-			if err != nil {
-				return err
-			}
-			if patched || strings.TrimSpace(de.UsageEventID) != "" {
-				DefaultTurnCompletionBridge().ClearTurn(sessionID, runID)
-			}
-			return nil
-		}
-	}
 	labels := RunnerCompletionLabelsFor(de, status)
 	write := MonitorEventWrite{
 		EventKey:     "runner.completion",
@@ -333,67 +316,13 @@ func (u *MonitorUsecase) RecordRunnerCompletion(ctx context.Context, de DomainEv
 		Status:       status,
 		MetadataJSON: BuildRunnerCompletionMetadataJSON(de, status),
 	}
-	if err := u.repo.InsertMonitorEvent(ctx, write); err != nil {
-		return err
-	}
-	patched, err := u.patchRunnerCompletionLink(ctx, sessionID, runID, invocationID, de.UsageEventID, de.TraceID)
-	if err != nil {
-		return err
-	}
-	if patched || strings.TrimSpace(de.UsageEventID) != "" {
-		DefaultTurnCompletionBridge().ClearTurn(sessionID, runID)
-	}
-	return nil
+	return u.RecordRunnerCompletion(ctx, write, sessionID, runID, invocationID, de.UsageEventID, de.TraceID, DefaultTurnCompletionBridge())
 }
 
 // LinkRunnerCompletionUsage patches the latest completion row for session+run with usage_event_id.
-func (u *MonitorUsecase) LinkRunnerCompletionUsage(ctx context.Context, sessionID, runID, usageEventID, traceID string) error {
-	if u == nil || u.repo == nil {
+func LinkRunnerCompletionUsage(ctx context.Context, u *MonitorUsecase, sessionID, runID, usageEventID, traceID string) error {
+	if u == nil {
 		return nil
 	}
-	sessionID = strings.TrimSpace(sessionID)
-	runID = strings.TrimSpace(runID)
-	usageEventID = strings.TrimSpace(usageEventID)
-	if sessionID == "" || runID == "" || usageEventID == "" {
-		return nil
-	}
-	DefaultTurnCompletionBridge().RegisterTurnUsage(sessionID, runID, usageEventID, traceID, "", "")
-	patched, err := u.patchRunnerCompletionLink(ctx, sessionID, runID, runID, usageEventID, traceID)
-	if err != nil {
-		return err
-	}
-	if patched {
-		DefaultTurnCompletionBridge().ClearTurn(sessionID, runID)
-	}
-	return nil
-}
-
-func (u *MonitorUsecase) patchRunnerCompletionLink(ctx context.Context, sessionID, runID, invocationID, usageEventID, traceID string) (bool, error) {
-	usageEventID = strings.TrimSpace(usageEventID)
-	traceID = strings.TrimSpace(traceID)
-	if usageEventID == "" {
-		if u2, t2, ok := DefaultTurnCompletionBridge().PendingUsage(sessionID, runID); ok {
-			usageEventID = u2
-			if traceID == "" {
-				traceID = t2
-			}
-		}
-	}
-	if usageEventID == "" {
-		return false, nil
-	}
-	patch := MergeRunnerCompletionUsagePatch(usageEventID, traceID)
-	return u.repo.PatchRunnerCompletionMetadata(ctx, sessionID, runID, invocationID, patch)
-}
-
-// CompletionDurationMS computes wall-clock duration when Timestamp is set on the domain event.
-func CompletionDurationMS(de DomainEvent, startedAt time.Time) int64 {
-	if de.Timestamp.IsZero() || startedAt.IsZero() {
-		return 0
-	}
-	d := de.Timestamp.Sub(startedAt)
-	if d < 0 {
-		return 0
-	}
-	return d.Milliseconds()
+	return u.LinkRunnerCompletionUsage(ctx, sessionID, runID, usageEventID, traceID, DefaultTurnCompletionBridge())
 }

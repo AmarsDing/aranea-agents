@@ -3,7 +3,7 @@ package biz
 import (
 	"testing"
 
-	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 )
 
 func testRegistry() OrchestrationRegistry {
@@ -17,15 +17,15 @@ func TestOrchestrationStatusStore_MemberFlow(t *testing.T) {
 	reg := testRegistry()
 	store := NewOrchestrationStatusStore(reg)
 
-	start := event.NewEnvelope(event.EnvelopeTypeMemberMessageStart, "worker-a", "sess-1")
-	start.ToolCall = &event.EnvelopeToolCall{AgentKey: "worker-a", AgentID: "a1"}
+	start := contract.NewEnvelope(contract.EnvelopeTypeMemberMessageStart, "worker-a", "sess-1")
+	start.ToolCall = &contract.EnvelopeToolCall{AgentKey: "worker-a", AgentID: "a1"}
 	changed := store.ApplyEnvelope(start, reg)
 	if len(changed) != 1 || changed[0].Status != AgentNodeStatusThinking {
 		t.Fatalf("start: got %+v", changed)
 	}
 
-	tool := event.NewEnvelope(event.EnvelopeTypeToolCall, "worker-a", "sess-1")
-	tool.ToolCall = &event.EnvelopeToolCall{
+	tool := contract.NewEnvelope(contract.EnvelopeTypeToolCall, "worker-a", "sess-1")
+	tool.ToolCall = &contract.EnvelopeToolCall{
 		AgentKey: "worker-a",
 		Name:     "read_file",
 		Status:   "running",
@@ -35,9 +35,9 @@ func TestOrchestrationStatusStore_MemberFlow(t *testing.T) {
 		t.Fatalf("tool: got %+v", changed)
 	}
 
-	done := event.NewEnvelope(event.EnvelopeTypeMemberMessageDone, "worker-a", "sess-1")
-	done.ToolCall = &event.EnvelopeToolCall{AgentKey: "worker-a"}
-	done.Content = &event.EnvelopeContent{Text: "finished output"}
+	done := contract.NewEnvelope(contract.EnvelopeTypeMemberMessageDone, "worker-a", "sess-1")
+	done.ToolCall = &contract.EnvelopeToolCall{AgentKey: "worker-a"}
+	done.Content = &contract.EnvelopeContent{Text: "finished output"}
 	changed = store.ApplyEnvelope(done, reg)
 	if len(changed) != 1 {
 		t.Fatalf("done: expected change")
@@ -55,12 +55,12 @@ func TestOrchestrationStatusStore_TerminalNotOverwritten(t *testing.T) {
 	reg := testRegistry()
 	store := NewOrchestrationStatusStore(reg)
 
-	done := event.NewEnvelope(event.EnvelopeTypeMemberMessageDone, "worker-a", "sess-1")
-	done.ToolCall = &event.EnvelopeToolCall{AgentKey: "worker-a"}
+	done := contract.NewEnvelope(contract.EnvelopeTypeMemberMessageDone, "worker-a", "sess-1")
+	done.ToolCall = &contract.EnvelopeToolCall{AgentKey: "worker-a"}
 	store.ApplyEnvelope(done, reg)
 
-	start := event.NewEnvelope(event.EnvelopeTypeMemberMessageStart, "worker-a", "sess-1")
-	start.ToolCall = &event.EnvelopeToolCall{AgentKey: "worker-a"}
+	start := contract.NewEnvelope(contract.EnvelopeTypeMemberMessageStart, "worker-a", "sess-1")
+	start.ToolCall = &contract.EnvelopeToolCall{AgentKey: "worker-a"}
 	changed := store.ApplyEnvelope(start, reg)
 	if len(changed) != 0 {
 		t.Fatalf("terminal should not be overwritten by start")
@@ -72,7 +72,7 @@ func TestOrchestrationStatusStore_GraphTaskReviewRequired(t *testing.T) {
 		{NodeID: "member-1", AgentID: "a1", AgentKey: "worker-a"},
 	})
 	store := NewOrchestrationStatusStore(reg)
-	env := event.NewEnvelope(event.EnvelopeTypeGraphTaskStatus, "graph-task", "sess-1")
+	env := contract.NewEnvelope(contract.EnvelopeTypeGraphTaskStatus, "graph-task", "sess-1")
 	env.Metadata = map[string]any{
 		"node_id":     "member-1",
 		"task_status": "review_required",
@@ -95,7 +95,7 @@ func TestOrchestrationStatusStore_GraphNodeSkipped(t *testing.T) {
 		{NodeID: "member-2", AgentID: "a2", AgentKey: "worker-b"},
 	})
 	store := NewOrchestrationStatusStore(reg)
-	env := event.NewEnvelope(event.EnvelopeTypeGraphNodeEnd, "graph", "sess-1")
+	env := contract.NewEnvelope(contract.EnvelopeTypeGraphNodeEnd, "graph", "sess-1")
 	env.Metadata = map[string]any{"node_id": "member-2", "skipped": true}
 	changed := store.ApplyEnvelope(env, reg)
 	if len(changed) != 1 || changed[0].Status != AgentNodeStatusSkipped {
@@ -120,8 +120,8 @@ func TestOrchestrationStatusStore_Transfer(t *testing.T) {
 	reg := testRegistry()
 	store := NewOrchestrationStatusStore(reg)
 
-	tr := event.NewEnvelope(event.EnvelopeTypeTransfer, "team", "sess-1")
-	tr.Transfer = &event.EnvelopeTransfer{FromAgent: "worker-a", ToAgent: "worker-b"}
+	tr := contract.NewEnvelope(contract.EnvelopeTypeTransfer, "team", "sess-1")
+	tr.Transfer = &contract.EnvelopeTransfer{FromAgent: "worker-a", ToAgent: "worker-b"}
 	changed := store.ApplyEnvelope(tr, reg)
 	if len(changed) < 1 {
 		t.Fatalf("transfer: expected changes, got %d", len(changed))
@@ -146,15 +146,15 @@ func TestOrchestrationStatusStore_FailedThenSkipped(t *testing.T) {
 	})
 	store := NewOrchestrationStatusStore(reg)
 
-	errEnv := event.NewEnvelope(event.EnvelopeTypeGraphNodeError, "graph", "sess-1")
+	errEnv := contract.NewEnvelope(contract.EnvelopeTypeGraphNodeError, "graph", "sess-1")
 	errEnv.Metadata = map[string]any{"node_id": "member-1"}
-	errEnv.Error = &event.EnvelopeError{Message: "boom"}
+	errEnv.Error = &contract.EnvelopeError{Message: "boom"}
 	store.ApplyEnvelope(errEnv, reg)
 	if store.Nodes["member-1"].Status != AgentNodeStatusFailed {
 		t.Fatalf("expected failed, got %s", store.Nodes["member-1"].Status)
 	}
 
-	skipEnv := event.NewEnvelope(event.EnvelopeTypeGraphNodeEnd, "graph", "sess-1")
+	skipEnv := contract.NewEnvelope(contract.EnvelopeTypeGraphNodeEnd, "graph", "sess-1")
 	skipEnv.Metadata = map[string]any{"node_id": "member-1", "skipped": true}
 	changed := store.ApplyEnvelope(skipEnv, reg)
 	if len(changed) != 1 || changed[0].Status != AgentNodeStatusSkipped {
@@ -180,7 +180,7 @@ func TestOrchestrationStatusStore_GraphTaskStatusMappings(t *testing.T) {
 	}
 	for _, tc := range cases {
 		store := NewOrchestrationStatusStore(reg)
-		env := event.NewEnvelope(event.EnvelopeTypeGraphTaskStatus, "graph-task", "sess-1")
+		env := contract.NewEnvelope(contract.EnvelopeTypeGraphTaskStatus, "graph-task", "sess-1")
 		env.Metadata = map[string]any{"node_id": "member-1", "task_status": tc.taskStatus}
 		changed := store.ApplyEnvelope(env, reg)
 		if len(changed) != 1 || changed[0].Status != tc.want {
@@ -194,7 +194,7 @@ func TestOrchestrationStatusStore_GraphTaskReviewRejected(t *testing.T) {
 		{NodeID: "member-1", AgentID: "a1", AgentKey: "worker-a"},
 	})
 	store := NewOrchestrationStatusStore(reg)
-	env := event.NewEnvelope(event.EnvelopeTypeGraphTaskStatus, "graph-task", "sess-1")
+	env := contract.NewEnvelope(contract.EnvelopeTypeGraphTaskStatus, "graph-task", "sess-1")
 	env.Metadata = map[string]any{
 		"node_id":         "member-1",
 		"task_status":     "claimed",
@@ -221,13 +221,13 @@ func TestActivityHistoryProjection(t *testing.T) {
 	reg := testRegistry()
 	store := NewOrchestrationStatusStore(reg)
 
-	start := event.NewEnvelope(event.EnvelopeTypeMemberMessageStart, "worker-a", "sess-1")
-	start.ToolCall = &event.EnvelopeToolCall{AgentKey: "worker-a", AgentID: "a1"}
+	start := contract.NewEnvelope(contract.EnvelopeTypeMemberMessageStart, "worker-a", "sess-1")
+	start.ToolCall = &contract.EnvelopeToolCall{AgentKey: "worker-a", AgentID: "a1"}
 	store.ApplyEnvelope(start, reg)
 
 	for i := 0; i < 10; i++ {
-		tool := event.NewEnvelope(event.EnvelopeTypeToolCall, "worker-a", "sess-1")
-		tool.ToolCall = &event.EnvelopeToolCall{
+		tool := contract.NewEnvelope(contract.EnvelopeTypeToolCall, "worker-a", "sess-1")
+		tool.ToolCall = &contract.EnvelopeToolCall{
 			AgentKey:     "worker-a",
 			Name:         "read_file",
 			DisplayLabel: "read_file",
@@ -236,8 +236,8 @@ func TestActivityHistoryProjection(t *testing.T) {
 		}
 		store.ApplyEnvelope(tool, reg)
 
-		result := event.NewEnvelope(event.EnvelopeTypeToolResult, "worker-a", "sess-1")
-		result.ToolCall = &event.EnvelopeToolCall{
+		result := contract.NewEnvelope(contract.EnvelopeTypeToolResult, "worker-a", "sess-1")
+		result.ToolCall = &contract.EnvelopeToolCall{
 			AgentKey:   "worker-a",
 			Name:       "read_file",
 			Status:     "success",

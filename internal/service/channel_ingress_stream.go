@@ -53,7 +53,7 @@ func (h *ChannelIngress) processInboundStreaming(ctx context.Context, chRow biz.
 	previewCoord, stopPreview := h.startTurnPreview(ctx, sessionID, platform, recipient, updater, chRow, ev, ltCfg)
 	defer stopPreview()
 
-	_, _, err = h.chat.RunNativeTurnUnary(event.WithEnvelopeSource(ctx, "channel"), req)
+	_, _, err = h.chat.RunNativeTurnUnary(event.WithChannelEnvelopeContext(ctx, platform, chRow.Key), req)
 	if err != nil {
 		_ = h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "stream", "error": err.Error()}, err.Error())
 		return err

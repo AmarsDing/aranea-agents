@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/safego"
 )
 
@@ -16,8 +16,9 @@ const defaultEventPersistQueueSize = 512
 
 // eventPersistHandler asynchronously writes Envelope snapshots to EventStore via a bounded queue.
 type eventPersistHandler struct {
-	store *EventStoreUsecase
-	jobs  chan EventStoreRecord
+	store  *EventStoreUsecase
+	jobs   chan EventStoreRecord
+	logger SessionLogWriter
 }
 
 func newEventPersistHandler(store *EventStoreUsecase) *eventPersistHandler {
@@ -28,6 +29,10 @@ func newEventPersistHandler(store *EventStoreUsecase) *eventPersistHandler {
 		store: store,
 		jobs:  make(chan EventStoreRecord, eventPersistQueueSize()),
 	}
+}
+
+func (h *eventPersistHandler) SetLogger(logger SessionLogWriter) {
+	h.logger = logger
 }
 
 func (h *eventPersistHandler) Start(ctx context.Context) {
@@ -41,43 +46,49 @@ func (h *eventPersistHandler) Start(ctx context.Context) {
 				return
 			case rec := <-h.jobs:
 				if err := h.store.SaveRecord(context.Background(), rec); err != nil {
-					event.SessionSysLogWarn(context.Background(), rec.SessionID, "event_store.persist", "事件持久化失败",
-						event.P("type", rec.Type), event.P("error", err))
+					if h.logger != nil {
+						h.logger.SessionSysLogWarn(context.Background(), rec.SessionID, "event_store.persist", "事件持久化失败",
+							LogPair{Key: "type", Value: rec.Type}, LogPair{Key: "error", Value: err})
+					}
 				}
 			}
 		}
 	})
 }
 
-func (h *eventPersistHandler) Handle(ctx context.Context, env event.Envelope) {
+func (h *eventPersistHandler) Handle(ctx context.Context, env contract.Envelope) {
 	if h == nil || h.store == nil || !shouldPersistEnvelope(env) {
 		return
 	}
 	rec, ok := envelopeToStoreRecord(env)
 	if !ok {
-		event.SessionSysLogWarn(ctx, env.SessionID, "event_store.persist", "事件序列化失败",
-			event.P("type", string(env.Type)), event.P("id", env.ID))
+		if h.logger != nil {
+			h.logger.SessionSysLogWarn(ctx, env.SessionID, "event_store.persist", "事件序列化失败",
+				LogPair{Key: "type", Value: string(env.Type)}, LogPair{Key: "id", Value: env.ID})
+		}
 		return
 	}
 	select {
 	case h.jobs <- rec:
 	default:
-		event.SessionSysLogWarn(ctx, env.SessionID, "event_store.persist", "持久化队列已满，丢弃事件",
-			event.P("type", string(env.Type)), event.P("id", env.ID))
+		if h.logger != nil {
+			h.logger.SessionSysLogWarn(ctx, env.SessionID, "event_store.persist", "持久化队列已满，丢弃事件",
+				LogPair{Key: "type", Value: string(env.Type)}, LogPair{Key: "id", Value: env.ID})
+		}
 	}
 }
 
-func shouldPersistEnvelope(env event.Envelope) bool {
+func shouldPersistEnvelope(env contract.Envelope) bool {
 	switch env.Type {
-	case event.EnvelopeTypeLog, event.EnvelopeTypeFlowLog,
-		event.EnvelopeTypeTextDelta, event.EnvelopeTypeMemberDelta:
+	case contract.EnvelopeTypeLog, contract.EnvelopeTypeFlowLog,
+		contract.EnvelopeTypeTextDelta, contract.EnvelopeTypeMemberDelta:
 		return false
 	default:
 		return strings.TrimSpace(env.ID) != ""
 	}
 }
 
-func envelopeToStoreRecord(env event.Envelope) (EventStoreRecord, bool) {
+func envelopeToStoreRecord(env contract.Envelope) (EventStoreRecord, bool) {
 	raw, err := json.Marshal(env)
 	if err != nil {
 		return EventStoreRecord{}, false

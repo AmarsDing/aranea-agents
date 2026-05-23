@@ -3,7 +3,7 @@
 > **评分**：80 / 100 | **风险等级**：P1  
 > **审查时间**：2026-05-23  
 > **代码锚点**：`internal/team/` · `internal/service/team_dead_letter.go` · `web/src/components/chat/ChatBackgroundJobsPanel.vue`  
-> **对照**：[`m53-graph-team-multiagent-enterprise-blueprint.md`](../guides/m53-graph-team-multiagent-enterprise-blueprint.md)
+> **对照**：[`m53-graph-team-multiagent-enterprise-blueprint.md`](../需求/53%20team-graph-orchestration.design.md#附录企业级蓝图与-ai-落地指南)
 
 ---
 
@@ -39,7 +39,7 @@
 | ID | 问题 | 状态 |
 |----|------|------|
 | **BL-03** | Graph 非 HITL bulk persist | ✅ `StartGraphStepWatch` + Native-only bulk |
-| **TG-RT-PARITY** | run 级 token/steps/WS 对比 | ⏳ build 级 ✅ · [diff 文档](../guides/tg-rt-parity-diff.md) |
+| **TG-RT-PARITY** | run 级 token/steps/WS 对比 | ⏳ build 级 ✅ · [diff 文档](../需求/53-team-graph-orchestration-development.md#9-native-vs-graph-paritytg-rt-parity) |
 | **ARCH-01** | Finisher 暴露 session | ✅ `GraphRunStepContext` DTO |
 | **FP-04-UI** | 死信无跳转 / payload | ✅ Observatory 深链 + payload 展开 |
 | **FP-02** | Circuit breaker half-open | ✅ 状态机补全 |

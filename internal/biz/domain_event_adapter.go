@@ -7,22 +7,27 @@ import (
 	"strings"
 	"time"
 
-	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/safego"
 )
 
 type eventBusAdapter struct {
-	bus event.Bus
+	bus    contract.Bus
+	sysLog SystemLogWriter
 }
 
 var _ DomainEventPublisher = (*eventBusAdapter)(nil)
 var _ DomainEventSubscriber = (*eventBusAdapter)(nil)
 
-func NewDomainEventBus(bus event.Bus) DomainEventPublisher {
+func NewDomainEventBus(bus contract.Bus) DomainEventPublisher {
 	if bus == nil {
 		return nil
 	}
 	return &eventBusAdapter{bus: bus}
+}
+
+func (a *eventBusAdapter) SetSystemLog(sysLog SystemLogWriter) {
+	a.sysLog = sysLog
 }
 
 func (a *eventBusAdapter) PublishDomainEvent(de DomainEvent) {
@@ -31,7 +36,7 @@ func (a *eventBusAdapter) PublishDomainEvent(de DomainEvent) {
 }
 
 func (a *eventBusAdapter) SubscribeDomainEvents() (<-chan DomainEvent, func()) {
-	ch, unsub := a.bus.Subscribe(event.SubscribeOptions{BufferSize: 256})
+	ch, unsub := a.bus.Subscribe(contract.SubscribeOptions{BufferSize: 256})
 	out := make(chan DomainEvent, 256)
 	done := make(chan struct{})
 	safego.Go(context.Background(), "domain-event-adapter", func() {
@@ -49,8 +54,10 @@ func (a *eventBusAdapter) SubscribeDomainEvents() (<-chan DomainEvent, func()) {
 					select {
 					case out <- *de:
 					default:
-						event.SysLogWarn("domain_event.adapter.drop", "DomainEvent 输出缓冲满，丢弃事件",
-							event.P("type", string(de.Type)), event.P("session_id", de.SessionID))
+						if a.sysLog != nil {
+							a.sysLog.SysLogWarn("domain_event.adapter.drop", "DomainEvent 输出缓冲满，丢弃事件",
+								LogPair{Key: "type", Value: string(de.Type)}, LogPair{Key: "session_id", Value: de.SessionID})
+						}
 					}
 				}
 			}
@@ -65,53 +72,53 @@ func (a *eventBusAdapter) SubscribeDomainEvents() (<-chan DomainEvent, func()) {
 
 // --- field-level conversion helpers (eliminate duplicated mapping between directions) ---
 
-func copyContentToEnvelope(src *DomainContent, dst *event.EnvelopeContent) {
+func copyContentToEnvelope(src *DomainContent, dst *contract.EnvelopeContent) {
 	dst.Text = src.Text
 	dst.Reasoning = src.Reasoning
 	dst.IsPartial = src.IsPartial
 }
 
-func copyContentFromEnvelope(src *event.EnvelopeContent, dst *DomainContent) {
+func copyContentFromEnvelope(src *contract.EnvelopeContent, dst *DomainContent) {
 	dst.Text = src.Text
 	dst.Reasoning = src.Reasoning
 	dst.IsPartial = src.IsPartial
 }
 
-func copyStateDeltaToEnvelope(src *DomainStateDelta, dst *event.EnvelopeStateDelta) {
+func copyStateDeltaToEnvelope(src *DomainStateDelta, dst *contract.EnvelopeStateDelta) {
 	dst.Operation = src.Operation
 	dst.Path = src.Path
 	dst.ValueJSON = src.ValueJSON
 }
 
-func copyStateDeltaFromEnvelope(src *event.EnvelopeStateDelta, dst *DomainStateDelta) {
+func copyStateDeltaFromEnvelope(src *contract.EnvelopeStateDelta, dst *DomainStateDelta) {
 	dst.Operation = src.Operation
 	dst.Path = src.Path
 	dst.ValueJSON = src.ValueJSON
 }
 
-func copyErrorToEnvelope(src *DomainError, dst *event.EnvelopeError) {
+func copyErrorToEnvelope(src *DomainError, dst *contract.EnvelopeError) {
 	dst.Type = src.Type
 	dst.Message = src.Message
 }
 
-func copyErrorFromEnvelope(src *event.EnvelopeError, dst *DomainError) {
+func copyErrorFromEnvelope(src *contract.EnvelopeError, dst *DomainError) {
 	dst.Type = src.Type
 	dst.Message = src.Message
 }
 
-func copyUsageToEnvelope(src *DomainUsage, dst *event.EnvelopeUsage) {
+func copyUsageToEnvelope(src *DomainUsage, dst *contract.EnvelopeUsage) {
 	dst.PromptTokens = src.PromptTokens
 	dst.CompletionTokens = src.CompletionTokens
 	dst.TotalTokens = src.TotalTokens
 }
 
-func copyUsageFromEnvelope(src *event.EnvelopeUsage, dst *DomainUsage) {
+func copyUsageFromEnvelope(src *contract.EnvelopeUsage, dst *DomainUsage) {
 	dst.PromptTokens = src.PromptTokens
 	dst.CompletionTokens = src.CompletionTokens
 	dst.TotalTokens = src.TotalTokens
 }
 
-func copyToolCallToEnvelope(src *DomainToolCall, dst *event.EnvelopeToolCall) {
+func copyToolCallToEnvelope(src *DomainToolCall, dst *contract.EnvelopeToolCall) {
 	dst.ID = src.ID
 	dst.Name = src.Name
 	dst.ArgumentsJSON = src.ArgumentsJSON
@@ -120,7 +127,7 @@ func copyToolCallToEnvelope(src *DomainToolCall, dst *event.EnvelopeToolCall) {
 	dst.DurationMS = src.DurationMS
 }
 
-func copyToolCallFromEnvelope(src *event.EnvelopeToolCall, dst *DomainToolCall) {
+func copyToolCallFromEnvelope(src *contract.EnvelopeToolCall, dst *DomainToolCall) {
 	dst.ID = src.ID
 	dst.Name = src.Name
 	dst.ArgumentsJSON = src.ArgumentsJSON
@@ -131,33 +138,33 @@ func copyToolCallFromEnvelope(src *event.EnvelopeToolCall, dst *DomainToolCall) 
 
 // --- top-level conversion ---
 
-func domainEventToEnvelope(de DomainEvent) event.Envelope {
-	env := event.NewEnvelope(event.EnvelopeType(de.Type), de.Author, de.SessionID)
+func domainEventToEnvelope(de DomainEvent) contract.Envelope {
+	env := contract.NewEnvelope(contract.EnvelopeType(de.Type), de.Author, de.SessionID)
 	env.TeamID = de.TeamID
 	if de.Content != nil {
-		env.Content = &event.EnvelopeContent{}
+		env.Content = &contract.EnvelopeContent{}
 		copyContentToEnvelope(de.Content, env.Content)
 	}
 	if de.StateDelta != nil {
-		env.StateDelta = &event.EnvelopeStateDelta{}
+		env.StateDelta = &contract.EnvelopeStateDelta{}
 		copyStateDeltaToEnvelope(de.StateDelta, env.StateDelta)
 	}
 	if de.Error != nil {
-		env.Error = &event.EnvelopeError{}
+		env.Error = &contract.EnvelopeError{}
 		copyErrorToEnvelope(de.Error, env.Error)
 	}
 	if de.Usage != nil {
-		env.Usage = &event.EnvelopeUsage{}
+		env.Usage = &contract.EnvelopeUsage{}
 		copyUsageToEnvelope(de.Usage, env.Usage)
 	}
 	if de.ToolCall != nil {
-		env.ToolCall = &event.EnvelopeToolCall{}
+		env.ToolCall = &contract.EnvelopeToolCall{}
 		copyToolCallToEnvelope(de.ToolCall, env.ToolCall)
 	}
 	return env
 }
 
-func envelopeToDomainEvent(env event.Envelope) *DomainEvent {
+func envelopeToDomainEvent(env contract.Envelope) *DomainEvent {
 	de := &DomainEvent{
 		ID:        env.ID,
 		Type:      DomainEventType(env.Type),
@@ -198,7 +205,7 @@ func envelopeToDomainEvent(env event.Envelope) *DomainEvent {
 	return de
 }
 
-func applyEnvelopeCorrelation(de *DomainEvent, env event.Envelope) {
+func applyEnvelopeCorrelation(de *DomainEvent, env contract.Envelope) {
 	de.RequestID = strings.TrimSpace(env.RequestID)
 	de.InvocationID = strings.TrimSpace(env.InvocationID)
 	if env.Metadata != nil {

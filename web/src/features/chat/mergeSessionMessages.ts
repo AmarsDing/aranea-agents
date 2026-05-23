@@ -30,8 +30,24 @@ export function dropPendingUserPlaceholders(messages: Message[]): Message[] {
   return messages.filter((m) => !String(m.id).startsWith("pending-user-"));
 }
 
+function shouldDropStaleInFlight(message: Message): boolean {
+  const id = message.id || "";
+  if (id.startsWith("pending-user-")) return true;
+  if (id.startsWith("ws-stream-") || id.startsWith("ws-team-stream-")) {
+    // Terminal ephemeral row is superseded by persisted server assistant message.
+    return (message.status || "") !== "streaming";
+  }
+  if (id.startsWith("member-")) return false;
+  const status = message.status || "";
+  return status === "tool_running" || status === "tool_blocked";
+}
+
 /** Merge server history with in-flight WS rows (streaming text, running tool cards). */
-export function mergeSessionMessages(server: Message[], local: Message[]): Message[] {
+export function mergeSessionMessages(
+  server: Message[],
+  local: Message[],
+  opts?: { dropStaleInFlight?: boolean }
+): Message[] {
   const normalizedServer = server.map((m) => ({
     ...m,
     options_json: normalizeServerMessageOptions(m.options_json ?? ""),
@@ -42,6 +58,7 @@ export function mergeSessionMessages(server: Message[], local: Message[]): Messa
   for (const row of local) {
     if (serverById.has(row.id)) continue;
     if (!isInFlightLocalRow(row)) continue;
+    if (opts?.dropStaleInFlight && shouldDropStaleInFlight(row)) continue;
     merged.push(row);
   }
   merged.sort((a, b) => {

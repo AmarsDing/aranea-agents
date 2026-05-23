@@ -4,7 +4,7 @@
 
 ## 摘要
 
-落实 [m55-chat-channel-enterprise-blueprint.md](../guides/m55-chat-channel-enterprise-blueprint.md) §12.2 中 **P1** 与可快速落地的 **P2** 项。
+落实 [m55-chat-channel-enterprise-blueprint.md](../需求/55-chat-channel-cursor-solution.md#9-附录企业级蓝图与-ai-落地指南) §12.2 中 **P1** 与可快速落地的 **P2** 项。
 
 ## P1 已交付
 
@@ -15,7 +15,7 @@
 | CC-C-07 | Session 顶栏 `N 条 · rev · WS · ctx%` 诊断行 |
 | CC-C-05 | 虚拟列表 slice 48、行高估算 200px |
 | CC-HOT-02 | `DeleteSession` 时清理 `channel_peer_session` |
-| CC-E2E-01 | [channel-im-preview-e2e.md](../guides/channel-im-preview-e2e.md) 追加 M55 手工验收表 |
+| CC-E2E-01 | [channel-im-preview-e2e.md](../需求/17-channel-development.md#12-im-preview--e2e-验收清单lt-0107) 追加 M55 手工验收表 |
 
 ## P2 已交付（interim）
 

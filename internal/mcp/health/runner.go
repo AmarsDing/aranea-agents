@@ -2,16 +2,14 @@ package health
 
 import (
 	"context"
-
-	"aranea-agents/internal/event"
 	"os"
 	"strings"
 	"sync"
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 	"aranea-agents/internal/mcp/alert"
-	"aranea-agents/internal/mcp/probe"
 	"aranea-agents/pkg/safego"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -101,7 +99,11 @@ func (r *Runner) probeAll(ctx context.Context) {
 
 func (r *Runner) probeOne(ctx context.Context, srv biz.MCPServer) {
 	start := time.Now()
-	result := probe.Evaluate(srv.Enabled, srv.ConfigJSON)
+	result, err := r.deps.UC.TestMCPServer(ctx, srv.ID)
+	if err != nil {
+		event.SysLogError("system.mcp.health_probe_fail", "MCP 健康探测失败", event.P("server_key", srv.Key), event.P("error", err))
+		return
+	}
 	elapsed := time.Since(start)
 
 	status := "ok"
@@ -111,10 +113,6 @@ func (r *Runner) probeOne(ctx context.Context, srv biz.MCPServer) {
 	probeTotal.WithLabelValues(srv.Key, status).Inc()
 	probeDuration.WithLabelValues(srv.Key).Observe(elapsed.Seconds())
 
-	if err := r.deps.UC.PersistHealth(ctx, srv.ID, result); err != nil {
-		event.SysLogError("system.mcp.health_persist_fail", "MCP 健康状态保存失败", event.P("server_key", srv.Key), event.P("error", err))
-		return
-	}
 	if !result.OK {
 		updated, err := r.deps.MCP.GetMCPServer(ctx, srv.ID)
 		if err == nil {

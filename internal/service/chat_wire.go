@@ -32,5 +32,5 @@ func (s *ChatService) AttachNativeTurnAfterHook(hook biz.NativeTurnAfterHook) {
 	if s == nil || hook == nil {
 		return
 	}
-	s.td.AfterTurn = hook
+	s.orch.AttachNativeTurnAfterHook(hook)
 }

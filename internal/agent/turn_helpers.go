@@ -92,8 +92,12 @@ func accumulateStreamUsage(result *EventStreamResult, ev *trpcevent.Event, meta 
 	if result == nil {
 		return
 	}
-	result.PromptTok = promptTok
-	result.CompletionTok = completionTok
+	if promptTok > result.PromptTok {
+		result.CompletionTok += completionTok
+		result.PromptTok = promptTok
+	} else if promptTok == result.PromptTok && completionTok > result.CompletionTok {
+		result.CompletionTok = completionTok
+	}
 	if !isTeamMemberAuthor(ev.Author, meta) {
 		return
 	}
@@ -105,7 +109,12 @@ func accumulateStreamUsage(result *EventStreamResult, ev *trpcevent.Event, meta 
 		result.MemberUsage = make(map[string]MemberTokenUsage)
 	}
 	prev := result.MemberUsage[key]
-	if promptTok >= prev.PromptTokens || completionTok >= prev.CompletionTokens {
+	if promptTok > prev.PromptTokens {
+		result.MemberUsage[key] = MemberTokenUsage{
+			PromptTokens:     promptTok,
+			CompletionTokens: prev.CompletionTokens + completionTok,
+		}
+	} else if promptTok == prev.PromptTokens && completionTok > prev.CompletionTokens {
 		result.MemberUsage[key] = MemberTokenUsage{
 			PromptTokens:     promptTok,
 			CompletionTokens: completionTok,

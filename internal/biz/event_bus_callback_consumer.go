@@ -4,16 +4,16 @@ import (
 	"context"
 	"strings"
 
-	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 )
 
 // callbackConsumer dispatches outbound webhooks on terminal run_status envelopes.
 type callbackConsumer struct {
-	bus      event.Bus
+	bus      contract.Bus
 	webhooks *WebhookDispatcher
 }
 
-func newCallbackConsumer(bus event.Bus, webhooks *WebhookDispatcher) *callbackConsumer {
+func newCallbackConsumer(bus contract.Bus, webhooks *WebhookDispatcher) *callbackConsumer {
 	if webhooks == nil {
 		return nil
 	}
@@ -33,14 +33,14 @@ func (c *callbackConsumer) Start(ctx context.Context) {
 	if c == nil {
 		return
 	}
-	runTypedConsumer(ctx, "event-bus-callback", c.bus, event.SubscribeOptions{
-		EventTypes: []event.EnvelopeType{event.EnvelopeTypeRunStatus},
+	runTypedConsumer(ctx, "event-bus-callback", c.bus, contract.SubscribeOptions{
+		EventTypes: []contract.EnvelopeType{contract.EnvelopeTypeRunStatus},
 		BufferSize: 128,
 		Reliable:   true,
 	}, c.handle)
 }
 
-func (c *callbackConsumer) handle(ctx context.Context, env event.Envelope) {
+func (c *callbackConsumer) handle(ctx context.Context, env contract.Envelope) {
 	if c == nil || c.webhooks == nil || env.Metadata == nil {
 		return
 	}

@@ -41,7 +41,7 @@
         v-if="!props.messages.length"
         ref="messagesScrollEl"
         class="col relative-position chat-messages__viewport"
-        @click="onMessagesClick"
+        @click="handleMessagesClick"
       >
         <div class="chat-empty-state column items-center justify-center">
           <div class="chat-empty-state__halo">
@@ -63,17 +63,19 @@
         :virtual-scroll-slice-ratio-after="2"
         v-slot="{ item, index }"
         @scroll="onMessagesScroll"
-        @click="onMessagesClick"
+        @click="handleMessagesClick"
       >
         <TurnBlock
           v-if="useTurnBlockMode && item.kind === 'block'"
           :block="item.block"
+          :focused="turnIsFocused(item.block.turnId, item.block.user?.id)"
           :all-messages="props.messages"
           :is-dark="props.isDark"
           :is-team-session="props.isTeamSession"
           :planner-kind="props.plannerKind"
           :react-tool-link-index="props.reactToolLinkIndex"
           @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
+          @feedback="(p) => emit('feedback', p)"
         />
         <ChatMessageRow
           v-else
@@ -86,6 +88,7 @@
           :planner-kind="props.plannerKind"
           :react-tool-link-index="props.reactToolLinkIndex"
           @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
+          @feedback="(p) => emit('feedback', p)"
         />
       </q-virtual-scroll>
       <div
@@ -93,19 +96,21 @@
         ref="messagesScrollEl"
         class="col relative-position chat-messages__viewport"
         @scroll.passive="onMessagesScroll"
-        @click="onMessagesClick"
+        @click="handleMessagesClick"
       >
         <template v-if="useTurnBlockMode">
           <TurnBlock
             v-for="block in turnBlocks"
             :key="block.turnId"
             :block="block"
+            :focused="turnIsFocused(block.turnId, block.user?.id)"
             :all-messages="props.messages"
             :is-dark="props.isDark"
             :is-team-session="props.isTeamSession"
             :planner-kind="props.plannerKind"
             :react-tool-link-index="props.reactToolLinkIndex"
             @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
+            @feedback="(p) => emit('feedback', p)"
           />
         </template>
         <ChatMessageRow
@@ -123,74 +128,12 @@
           @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
         />
       </div>
-      <div v-if="props.pendingMessages?.length" class="chat-pending-list">
-        <div class="chat-pending-label">{{ t("chat.pendingQueue") }}</div>
-        <div v-for="pm in props.pendingMessages" :key="pm.id" class="chat-pending-item">
-          <div v-if="editingPendingId === pm.id" class="chat-pending-item__edit">
-            <q-input
-              v-model="editingPendingContent"
-              dense
-              outlined
-              autogrow
-              class="chat-pending-item__edit-input"
-              :dark="props.isDark"
-              @keydown.enter.prevent="confirmEditPending(pm.id)"
-              @keydown.escape.prevent="cancelEditPending"
-            />
-            <q-btn
-              dense
-              flat
-              round
-              size="sm"
-              icon="check"
-              color="positive"
-              class="chat-pending-item__edit-confirm"
-              :aria-label="t('chat.confirmEdit')"
-              @click="confirmEditPending(pm.id)"
-            />
-            <q-btn
-              dense
-              flat
-              round
-              size="sm"
-              icon="close"
-              color="negative"
-              class="chat-pending-item__edit-cancel"
-              :aria-label="t('chat.cancelEdit')"
-              @click="cancelEditPending"
-            />
-          </div>
-          <template v-else>
-            <div class="chat-pending-item__content ellipsis">{{ pm.content }}</div>
-            <div class="chat-pending-item__meta">
-              <span class="chat-pending-item__status">{{ pm.status }}</span>
-              <span class="chat-pending-item__time">{{ formatStamp(pm.created_at) }}</span>
-              <q-btn
-                dense
-                flat
-                round
-                size="sm"
-                icon="edit"
-                color="primary"
-                class="chat-pending-item__edit-btn"
-                :aria-label="t('chat.editPending')"
-                @click="startEditPending(pm)"
-              />
-              <q-btn
-                dense
-                flat
-                round
-                size="sm"
-                icon="cancel"
-                color="negative"
-                class="chat-pending-item__cancel"
-                :aria-label="t('chat.cancelPending')"
-                @click="$emit('cancel-pending', pm.id)"
-              />
-            </div>
-          </template>
-        </div>
-      </div>
+      <ChatPendingQueue
+        :messages="props.pendingMessages ?? []"
+        :is-dark="props.isDark"
+        @cancel-pending="(id) => emit('cancel-pending', id)"
+        @update-pending="(id, content) => emit('update-pending', id, content)"
+      />
       <transition name="chat-scroll-fade">
         <q-btn
           v-if="showScrollBtn"
@@ -206,242 +149,62 @@
     </div>
 
     <q-separator class="cream-sep" />
-    <q-card-section class="chat-composer q-pa-sm q-pa-md-sm">
-      <q-banner
-        v-if="props.isAwaitingUser && props.awaitKind === AWAIT_KIND_TOOL_CONFIRM"
-        rounded
-        class="q-mb-sm app-banner-warning"
-        dense
-      >
-        <template #avatar>
-          <q-icon name="gpp_maybe" color="warning" />
-        </template>
-        <div class="text-body2">
-          {{ t("chat.toolConfirmHint") }}
-        </div>
-        <div v-if="props.awaitToolKey" class="text-caption q-mt-xs">
-          {{ t("chat.toolConfirmTool") }}: <code>{{ props.awaitToolKey }}</code>
-        </div>
-        <template #action>
-          <q-btn
-            flat
-            dense
-            no-caps
-            color="negative"
-            :label="t('chat.toolConfirmDeny')"
-            class="q-mr-xs"
-            @click="$emit('submit-tool-confirm', false)"
-          />
-          <q-btn
-            flat
-            dense
-            no-caps
-            color="primary"
-            :label="t('chat.toolConfirmApprove')"
-            @click="$emit('submit-tool-confirm', true)"
-          />
-        </template>
-      </q-banner>
-      <q-banner
-        v-else-if="props.isAwaitingUser"
-        rounded
-        class="q-mb-sm app-banner-warning"
-        dense
-      >
-        <template #avatar>
-          <q-icon name="hourglass_top" color="amber-9" />
-        </template>
-        {{ t("chat.awaitingUserHint") }}
-        <template #action>
-          <q-btn
-            flat
-            dense
-            no-caps
-            color="primary"
-            :label="t('chat.submitAwaitReply')"
-            @click="$emit('submit-await-reply')"
-          />
-        </template>
-      </q-banner>
-      <div class="chat-composer-inner">
-      <div v-if="attachments.length" class="chat-attachments row q-gutter-xs q-mb-sm">
-        <div
-          v-for="file in attachments"
-          :key="file.id"
-          class="chat-file-tile row items-center"
-        >
-          <q-circular-progress
-            v-if="file.progress < 1"
-            :value="file.progress * 100"
-            size="28px"
-            :thickness="0.2"
-            color="primary"
-            class="q-mr-xs"
-          />
-          <q-icon v-else name="insert_drive_file" size="20px" class="q-mr-xs" color="primary" />
-          <span class="ellipsis text-caption" style="max-width: 56px">{{ file.name }}</span>
-          <q-btn
-            icon="close"
-            class="chat-file-tile__close"
-            size="sm"
-            round
-            dense
-            flat
-            @click="$emit('remove-attachment', file.id)"
-          />
-        </div>
-      </div>
-
-      <ChatEnqueueMessage
-        v-if="showEnqueue"
-        :is-dark="isDark"
-        :disabled="inputDisabled ?? sending"
-        @enqueue="(text) => emit('enqueue-message', text)"
-      />
-
-      <q-input
-        :model-value="modelValue"
-        filled
-        class="chat-input"
-        :label="t('chat.inputLabel')"
-        type="textarea"
-        autogrow
-        :input-style="{ minHeight: '72px' }"
-        :dark="isDark"
-        :disable="inputDisabled ?? sending"
-        @keydown="onInputKeydown"
-        @update:model-value="$emit('update:modelValue', String($event ?? ''))"
-      />
-
-      <div class="chat-toolbar chat-toolbar-grid q-mt-sm">
-        <q-select
-          :model-value="dialogMode"
-          dense
-          options-dense
-          outlined
-          :options="modeOptions"
-          emit-value
-          map-options
-          :label="t('chat.dialogMode')"
-          class="chat-toolbar-field"
-          :dark="isDark"
-          @update:model-value="$emit('update:dialogMode', String($event ?? ''))"
-        />
-        <q-select
-          :model-value="modelProvider"
-          dense
-          options-dense
-          outlined
-          :options="providerOptions"
-          emit-value
-          map-options
-          :label="t('chat.modelProvider')"
-          class="chat-toolbar-field"
-          :dark="isDark"
-          @update:model-value="$emit('update:modelProvider', String($event ?? ''))"
-        >
-          <template #option="scope">
-            <q-item v-bind="scope.itemProps">
-              <q-item-section>
-                <q-item-label>{{ scope.opt.label }}</q-item-label>
-                <q-item-label v-if="scope.opt.caption" caption>{{ scope.opt.caption }}</q-item-label>
-              </q-item-section>
-            </q-item>
-          </template>
-        </q-select>
-        <div class="chat-toolbar-actions row items-center no-wrap q-gutter-sm">
-          <div class="chat-context-pill row items-center no-wrap">
-            <span class="text-caption text-no-wrap q-mr-sm">
-              {{ t("chat.contextUse") }}
-            </span>
-            <q-circular-progress
-              :value="contextRatio * 100"
-              show-value
-              size="34px"
-              :thickness="0.2"
-              color="primary"
-            >
-              <span class="text-caption">{{ Math.round(contextRatio * 100) }}%</span>
-            </q-circular-progress>
-          </div>
-          <q-space class="gt-sm" />
-          <q-btn
-            round
-            dense
-            unelevated
-            color="primary"
-            :aria-label="t('chat.fileImport')"
-            class="chat-icon-btn q-ml-sm"
-            @click="$emit('pick-file')"
-          >
-            <q-icon name="attach_file" />
-          </q-btn>
-          <q-btn
-            round
-            dense
-            unelevated
-            outline
-            color="primary"
-            :aria-label="t('chat.voiceInput')"
-            class="chat-icon-btn"
-            @click="$emit('voice')"
-          >
-            <q-icon name="mic" />
-          </q-btn>
-          <q-btn
-            v-if="sending"
-            round
-            dense
-            unelevated
-            color="negative"
-            :aria-label="t('chat.stop')"
-            class="chat-icon-btn chat-send-btn"
-            @click="$emit('stop')"
-          >
-            <q-icon name="stop" />
-          </q-btn>
-          <q-btn
-            v-else
-            round
-            dense
-            unelevated
-            color="primary"
-            :aria-label="t('chat.send')"
-            class="chat-icon-btn chat-send-btn"
-            @click="$emit('send')"
-          >
-            <q-icon name="send" />
-          </q-btn>
-        </div>
-      </div>
-      </div>
-    </q-card-section>
+    <ChatComposer
+      :model-value="modelValue"
+      :attachments="attachments"
+      :dialog-mode="dialogMode"
+      :model-provider="modelProvider"
+      :mode-options="modeOptions"
+      :provider-options="providerOptions"
+      :context-ratio="contextRatio"
+      :session-total-tokens="sessionTotalTokens"
+      :knowledge-base-options="knowledgeBaseOptions"
+      :selected-knowledge-bases="selectedKnowledgeBases"
+      :is-dark="isDark"
+      :sending="sending"
+      :input-disabled="inputDisabled"
+      :is-awaiting-user="isAwaitingUser"
+      :await-kind="awaitKind"
+      :await-tool-key="awaitToolKey"
+      :show-enqueue="showEnqueue"
+      @update:model-value="emit('update:modelValue', $event)"
+      @update:dialog-mode="emit('update:dialogMode', $event)"
+      @update:model-provider="emit('update:modelProvider', $event)"
+      @update:selected-knowledge-bases="emit('update:selectedKnowledgeBases', $event)"
+      @remove-attachment="emit('remove-attachment', $event)"
+      @pick-file="emit('pick-file')"
+      @voice="emit('voice')"
+      @send="emit('send')"
+      @stop="emit('stop')"
+      @enqueue-message="emit('enqueue-message', $event)"
+      @submit-await-reply="emit('submit-await-reply')"
+      @submit-tool-confirm="emit('submit-tool-confirm', $event)"
+    />
   </q-card>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, ref, toRef, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import type { QVirtualScroll } from "quasar";
 import ChatMessageRow from "./ChatMessageRow.vue";
 import TurnBlock from "./TurnBlock.vue";
 import ChatRunnerStatus from "../../features/chat/components/ChatRunnerStatus.vue";
-import ChatEnqueueMessage from "../../features/chat/components/ChatEnqueueMessage.vue";
 import ChatTeamMemberStrip, { type TeamMemberLane } from "./ChatTeamMemberStrip.vue";
+import ChatPendingQueue from "./ChatPendingQueue.vue";
+import ChatComposer from "./ChatComposer.vue";
 import type { RunStatusValue } from "../../features/chat/types";
 import { useChatMessageRow } from "../../features/chat/useChatMessageRow";
-import { AWAIT_KIND_TOOL_CONFIRM } from "../../features/chat/awaitConstants";
 import {
   CHAT_VIRTUAL_ROW_ESTIMATE,
   CHAT_VIRTUAL_SCROLL_THRESHOLD,
 } from "../../features/chat/chatListVirtual";
-import { isActivityMessage } from "../../features/chat/mergeSessionMessages";
 import {
   groupMessagesByTurn,
-  lastAssistantTurnBlockIndex,
   type TurnBlockGroup,
 } from "../../features/chat/groupMessagesByTurn";
 import { useTurnBlockEnabled } from "../../features/chat/useTurnBlock";
+import { useChatMessageScroll, useChatCodeCopy } from "../../features/chat/composables/useChatMessageScroll";
 import type { A2UIUserActionPayload } from "../../features/chat/a2uiUserAction";
 import type { Message, ReactToolLinkIndex } from "../../features/chat/types";
 import type { ChatAttachment } from "./types";
@@ -458,6 +221,9 @@ const props = defineProps<{
   providerOptions: Option[];
   sessionTitle: string;
   contextRatio: number;
+  sessionTotalTokens?: number | null;
+  knowledgeBaseOptions?: Option[];
+  selectedKnowledgeBases?: string[];
   isDark: boolean;
   sending?: boolean;
   inputDisabled?: boolean;
@@ -466,9 +232,7 @@ const props = defineProps<{
   awaitToolKey?: string;
   wsReplaying?: boolean;
   isTeamSession?: boolean;
-  /** Active agent planner_kind (react / a2ui presentation). */
   plannerKind?: string;
-  /** Session-level ReAct tool link index (O(n) once per message list). */
   reactToolLinkIndex: ReactToolLinkIndex;
   pendingMessages?: { id: string; content: string; status: string; created_at: string }[];
   runStatus?: RunStatusValue;
@@ -478,12 +242,14 @@ const props = defineProps<{
   showEnqueue?: boolean;
   sessionRevision?: number | null;
   wsConnected?: boolean;
+  focusTurnId?: string;
 }>();
 
 const emit = defineEmits<{
   "update:modelValue": [value: string];
   "update:dialogMode": [value: string];
   "update:modelProvider": [value: string];
+  "update:selectedKnowledgeBases": [value: string[]];
   "remove-attachment": [id: string];
   "pick-file": [];
   voice: [];
@@ -495,12 +261,15 @@ const emit = defineEmits<{
   "submit-await-reply": [];
   "submit-tool-confirm": [approved: boolean];
   "open-events": [];
+  "focus-turn-cleared": [];
   "a2ui-user-action": [payload: A2UIUserActionPayload];
+  feedback: [payload: { messageId: string; rating: "positive" | "negative" }];
 }>();
 
 const { t } = useI18n();
 const messagesRef = computed(() => props.messages);
 const messageRow = useChatMessageRow(messagesRef);
+
 const teamMemberLanes = computed((): TeamMemberLane[] => {
   if (!props.isTeamSession) return [];
   const lanes = new Map<string, TeamMemberLane>();
@@ -514,11 +283,12 @@ const teamMemberLanes = computed((): TeamMemberLane[] => {
     lanes.set(key, {
       key,
       label,
-      streaming: (prev?.streaming ?? false) || streaming
+      streaming: (prev?.streaming ?? false) || streaming,
     });
   }
   return [...lanes.values()];
 });
+
 const useTurnBlockMode = computed(() => useTurnBlockEnabled() && !props.isTeamSession);
 const turnBlocks = computed((): TurnBlockGroup[] =>
   useTurnBlockMode.value ? groupMessagesByTurn(props.messages) : []
@@ -538,265 +308,33 @@ const timelineItems = computed((): TimelineItem[] => {
 const useVirtualMessageList = computed(() => timelineItems.value.length >= CHAT_VIRTUAL_SCROLL_THRESHOLD);
 const virtualRowSize = CHAT_VIRTUAL_ROW_ESTIMATE;
 const virtualScrollRef = ref<QVirtualScroll | null>(null);
-
-const editingPendingId = ref("");
-const editingPendingContent = ref("");
-
-function startEditPending(pm: { id: string; content: string }) {
-  editingPendingId.value = pm.id;
-  editingPendingContent.value = pm.content;
-}
-
-function confirmEditPending(pendingId: string) {
-  const content = editingPendingContent.value.trim();
-  if (!content) return;
-  emit("update-pending", pendingId, content);
-  editingPendingId.value = "";
-  editingPendingContent.value = "";
-}
-
-function cancelEditPending() {
-  editingPendingId.value = "";
-  editingPendingContent.value = "";
-}
-
-function onInputKeydown(event: KeyboardEvent) {
-  if (event.key !== "Enter" || event.shiftKey || event.isComposing) return;
-  event.preventDefault();
-  emit("send");
-}
-
-// ===== Scroll-to-bottom & auto-scroll =====
 const messagesScrollEl = ref<HTMLElement | null>(null);
-const showScrollBtn = ref(false);
-const stickToBottom = ref(true);
-const SCROLL_BOTTOM_THRESHOLD = 80;
 
-function maxScrollTop(el: HTMLElement): number {
-  return Math.max(0, el.scrollHeight - el.clientHeight);
-}
+const { showScrollBtn, highlightedTurnId, onMessagesScroll, scrollToBottom, scrollToTurnId } = useChatMessageScroll({
+  sessionTitle: toRef(props, "sessionTitle"),
+  messages: messagesRef,
+  useTurnBlockMode,
+  turnBlocks,
+  useVirtualMessageList,
+  timelineItemsLength: computed(() => timelineItems.value.length),
+  virtualScrollRef,
+  messagesScrollEl,
+});
 
-function distanceFromBottom(el: HTMLElement): number {
-  return maxScrollTop(el) - el.scrollTop;
-}
+const { handleMessagesClick } = useChatCodeCopy();
 
-function activeScrollEl(): HTMLElement | null {
-  if (useVirtualMessageList.value && virtualScrollRef.value) {
-    return virtualScrollRef.value.$el as HTMLElement;
-  }
-  return messagesScrollEl.value;
-}
-
-/** Clamp scrollTop when layout reports an impossible position (blank message pane). */
-function clampScrollTop(el: HTMLElement, preferBottom: boolean): void {
-  const max = maxScrollTop(el);
-  const top = el.scrollTop;
-  if (!Number.isFinite(top) || top < 0 || top > max + 2) {
-    el.scrollTop = preferBottom ? max : 0;
-  }
-}
-
-function onMessagesScroll(event?: Event) {
-  const el = (event?.target as HTMLElement | undefined) ?? activeScrollEl();
-  if (!el) return;
-  clampScrollTop(el, stickToBottom.value);
-  const dist = distanceFromBottom(el);
-  showScrollBtn.value = dist > 200;
-  stickToBottom.value = dist <= SCROLL_BOTTOM_THRESHOLD;
-}
-
-function lastDialogueIndex(): number {
-  if (useTurnBlockMode.value) {
-    return lastAssistantTurnBlockIndex(turnBlocks.value);
-  }
-  for (let i = props.messages.length - 1; i >= 0; i--) {
-    const m = props.messages[i]!;
-    if (m.role === "user" && (m.content_markdown ?? "").trim()) return i;
-    if (
-      m.role === "assistant" &&
-      !isActivityMessage(m) &&
-      (m.content_markdown ?? "").trim()
-    ) {
-      return i;
-    }
-  }
-  return Math.max(0, props.messages.length - 1);
-}
-
-async function scrollToLatestDialogue(smooth = false) {
-  const idx = lastDialogueIndex();
-  if (useVirtualMessageList.value && virtualScrollRef.value) {
-    for (let attempt = 0; attempt < 4; attempt++) {
-      await nextTick();
-      if (virtualScrollRef.value) {
-        virtualScrollRef.value.scrollTo(idx, smooth ? "start" : "start-force");
-        stickToBottom.value = true;
-        showScrollBtn.value = false;
-        return;
-      }
-      await new Promise((resolve) => requestAnimationFrame(resolve));
-    }
-    return;
-  }
-  const el = messagesScrollEl.value;
-  if (el) {
-    const rows = el.querySelectorAll<HTMLElement>(useTurnBlockMode.value ? ".turn-block" : ".chat-q-message");
-    const target = rows[idx];
-    if (target) {
-      target.scrollIntoView({ block: "start", behavior: smooth ? "smooth" : "auto" });
-      stickToBottom.value = true;
-      showScrollBtn.value = false;
-      return;
-    }
-  }
-  await scrollToBottom(smooth);
-}
-
-async function scrollToBottom(smooth = false) {
-  if (useVirtualMessageList.value && timelineItems.value.length > 0) {
-    for (let attempt = 0; attempt < 6; attempt++) {
-      await nextTick();
-      if (virtualScrollRef.value) {
-        virtualScrollRef.value.scrollTo(
-          timelineItems.value.length - 1,
-          smooth ? "start" : "start-force"
-        );
-        stickToBottom.value = true;
-        showScrollBtn.value = false;
-        return;
-      }
-      await new Promise((resolve) => requestAnimationFrame(resolve));
-    }
-    return;
-  }
-  const el = messagesScrollEl.value;
-  if (!el) return;
-  clampScrollTop(el, true);
-  const top = maxScrollTop(el);
-  el.scrollTo({ top, behavior: smooth ? "smooth" : "auto" });
-  stickToBottom.value = true;
-  showScrollBtn.value = false;
-}
-
-/** Re-align scroll after session switch or first message hydrate (layout may settle late). */
-async function alignMessageScroll(preferBottom: boolean) {
-  for (let attempt = 0; attempt < 4; attempt++) {
-    await nextTick();
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    const el = activeScrollEl();
-    if (!el) continue;
-    clampScrollTop(el, preferBottom);
-    const top = preferBottom ? maxScrollTop(el) : 0;
-    el.scrollTop = top;
-    if (preferBottom && el.clientHeight > 0 && distanceFromBottom(el) <= SCROLL_BOTTOM_THRESHOLD) {
-      stickToBottom.value = true;
-      showScrollBtn.value = false;
-      return;
-    }
-    if (!preferBottom && el.scrollTop <= 1) {
-      return;
-    }
-  }
+function turnIsFocused(turnId: string, userMsgId?: string) {
+  const h = highlightedTurnId.value;
+  if (!h) return false;
+  return h === turnId || (!!userMsgId && h === userMsgId);
 }
 
 watch(
-  () => props.sessionTitle,
-  () => {
-    stickToBottom.value = true;
-    showScrollBtn.value = false;
-    void alignMessageScroll(true);
+  () => props.focusTurnId,
+  async (turnId) => {
+    if (!turnId?.trim()) return;
+    await scrollToTurnId(turnId);
+    emit("focus-turn-cleared");
   }
 );
-
-watch(
-  () => props.messages.length,
-  (len, prev) => {
-    if (len === 0) return;
-    if (prev === 0) {
-      stickToBottom.value = true;
-      void alignMessageScroll(true);
-      return;
-    }
-    if (!stickToBottom.value) return;
-    void scrollToLatestDialogue(false);
-  }
-);
-
-onMounted(() => {
-  if (props.messages.length > 0) {
-    stickToBottom.value = true;
-    void alignMessageScroll(true);
-  }
-});
-
-watch(useVirtualMessageList, (enabled) => {
-  if (enabled && props.messages.length > 0 && stickToBottom.value) {
-    void scrollToLatestDialogue(false);
-  }
-});
-
-let scrollStickRaf = 0;
-watch(
-  () => props.messages[props.messages.length - 1]?.content_markdown ?? "",
-  () => {
-    if (!stickToBottom.value) return;
-    if (scrollStickRaf) return;
-    scrollStickRaf = requestAnimationFrame(() => {
-      scrollStickRaf = 0;
-      void scrollToLatestDialogue(false);
-    });
-  }
-);
-
-// ===== Code copy: event delegation on messages container =====
-let copyResetTimer: ReturnType<typeof setTimeout> | null = null;
-
-function onMessagesClick(event: MouseEvent) {
-  const target = event.target as HTMLElement | null;
-  if (!target) return;
-  const btn = target.closest<HTMLButtonElement>(".code-block__copy");
-  if (!btn) return;
-  event.preventDefault();
-  const block = btn.closest<HTMLElement>(".code-block");
-  const code = block?.querySelector<HTMLElement>("pre code")?.innerText ?? "";
-  if (!code) return;
-  const apply = () => {
-    btn.classList.add("is-copied");
-    const textEl = btn.querySelector<HTMLElement>(".code-block__copy-text");
-    const original = textEl?.textContent ?? "复制";
-    if (textEl) textEl.textContent = "已复制";
-    if (copyResetTimer) clearTimeout(copyResetTimer);
-    copyResetTimer = setTimeout(() => {
-      btn.classList.remove("is-copied");
-      if (textEl) textEl.textContent = original;
-    }, 1400);
-  };
-  if (navigator.clipboard?.writeText) {
-    void navigator.clipboard.writeText(code).then(apply).catch(() => fallbackCopy(code, apply));
-  } else {
-    fallbackCopy(code, apply);
-  }
-}
-
-function fallbackCopy(text: string, onSuccess: () => void) {
-  try {
-    const ta = document.createElement("textarea");
-    ta.value = text;
-    ta.style.position = "fixed";
-    ta.style.opacity = "0";
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand("copy");
-    document.body.removeChild(ta);
-    onSuccess();
-  } catch {
-    /* swallow */
-  }
-}
-
-onBeforeUnmount(() => {
-  if (copyResetTimer) clearTimeout(copyResetTimer);
-  if (scrollStickRaf) cancelAnimationFrame(scrollStickRaf);
-});
 </script>
-

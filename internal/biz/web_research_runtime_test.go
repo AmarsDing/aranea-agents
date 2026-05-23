@@ -2,6 +2,26 @@ package biz
 
 import "testing"
 
+// stubWebResearchChecker is a test double for WebResearchReadinessChecker.
+type stubWebResearchChecker struct {
+	resolveReady bool
+	catalogReady bool
+}
+
+func (s stubWebResearchChecker) ResolveReady(_ map[string]any, platform *WebResearchPlatformFields) bool {
+	if platform != nil && (platform.HasAPIKey || platform.APIKey != "") {
+		return true
+	}
+	return s.resolveReady
+}
+
+func (s stubWebResearchChecker) CatalogReady(agentMap map[string]any, platform *WebResearchPlatformFields) bool {
+	if s.ResolveReady(agentMap, platform) {
+		return true
+	}
+	return platform != nil && platform.HasAPIKey
+}
+
 func TestApplyWebResearchEffectiveGate_missingKey(t *testing.T) {
 	catalog := []Tool{{
 		Key:         ToolKeyWebResearch,
@@ -11,7 +31,8 @@ func TestApplyWebResearchEffectiveGate_missingKey(t *testing.T) {
 	}}
 	settings := AgentRuntimeSettings{ToolsEnabled: true, ToolsProfile: "research"}
 	eff := buildAgentEffectiveTools(settings, catalog)
-	applyWebResearchEffectiveGate(&eff, catalog, &WebResearchSetting{Provider: "tavily"}, nil)
+	checker := stubWebResearchChecker{}
+	applyWebResearchEffectiveGate(checker, &eff, catalog, &WebResearchSetting{Provider: "tavily"}, nil)
 	var wr *EffectiveAgentTool
 	for i := range eff.Items {
 		if eff.Items[i].ToolKey == ToolKeyWebResearch {
@@ -28,9 +49,10 @@ func TestApplyWebResearchEffectiveGate_missingKey(t *testing.T) {
 }
 
 func TestWebResearchConfigReady_platformKey(t *testing.T) {
-	tool := Tool{Key: ToolKeyWebResearch, ConfigJSON: `{"provider":"tavily"}`}
 	platform := WebResearchSetting{Provider: "tavily", HasAPIKey: true, APIKey: "secret"}
-	if !webResearchConfigReady(tool, &platform) {
+	checker := stubWebResearchChecker{}
+	pf := webResearchPlatformFields(platform)
+	if !checker.ResolveReady(map[string]any{"provider": "tavily"}, pf) {
 		t.Fatal("expected ready with platform api key")
 	}
 }

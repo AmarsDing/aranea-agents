@@ -7,52 +7,25 @@ import (
 	"sync/atomic"
 	"time"
 
+	"aranea-agents/internal/event/contract"
 	arametrics "aranea-agents/internal/metrics"
 )
 
-// DropPolicy controls what happens when a subscriber's buffer is full.
-type DropPolicy int
-
-const (
-	// DropOldest evicts the oldest event in the buffer to make room for the new one.
-	DropOldest DropPolicy = iota
-	// DropNewest silently discards the new event when the buffer is full.
-	DropNewest
-	// BlockUpTo blocks for a configurable duration before falling back to DropOldest.
-	BlockUpTo DropPolicy = 2
+// Re-export contract types for backward compatibility.
+type (
+	DropPolicy      = contract.DropPolicy
+	ChannelPriority = contract.ChannelPriority
+	SubscribeOptions = contract.SubscribeOptions
+	Bus             = contract.Bus
 )
 
-// SubscribeOptions configures a single Bus subscription.
-type ChannelPriority int
-
 const (
-	ChannelPriorityCritical ChannelPriority = iota
-	ChannelPriorityNormal
+	DropOldest          = contract.DropOldest
+	DropNewest          = contract.DropNewest
+	BlockUpTo           = contract.BlockUpTo
+	ChannelPriorityCritical = contract.ChannelPriorityCritical
+	ChannelPriorityNormal   = contract.ChannelPriorityNormal
 )
-
-type SubscribeOptions struct {
-	SessionID   string
-	TeamID      string
-	Channel     string
-	FilterKey   string
-	EventTypes  []EnvelopeType
-	LevelFilter string
-
-	Priority ChannelPriority
-
-	BufferSize int
-	Reliable   bool
-	DropPolicy DropPolicy
-	BlockFor   time.Duration
-	Selector   func(EnvelopeType) bool
-}
-
-// Bus is the in-process event fanout hub.
-type Bus interface {
-	Publish(ctx context.Context, envelope Envelope)
-	Subscribe(opts SubscribeOptions) (<-chan Envelope, func())
-	DropCount() uint64
-}
 
 type bus struct {
 	mu          sync.RWMutex

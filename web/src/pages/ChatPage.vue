@@ -1,143 +1,151 @@
 <template>
   <ChatWorkspaceShell>
     <ChatEntitySidebar
-      v-model:search="search"
-      v-model:agents="displayAgents"
-      v-model:teams="displayTeams"
-      :open="leftOpen"
-      :selected-kind="selectedEntityKind"
-      :selected-agent-id="store.selectedAgent?.id"
-      :selected-team-id="selectedTeamId"
-      :category-tree="categoryTree"
-      :is-dark="isDark"
-      @agent-reorder-end="onEndAgent"
-      @team-reorder-end="onEndTeam"
-      @select-agent="selectAgent"
-      @select-team="selectTeam"
-      @settings="openSettings"
-      @delete="openDelete"
+      v-model:search="layout.search"
+      v-model:agents="entity.displayAgents"
+      v-model:teams="entity.displayTeams"
+      :open="layout.leftOpen"
+      :selected-kind="entity.selectedEntityKind"
+      :selected-agent-id="entity.store.selectedAgent?.id"
+      :selected-team-id="entity.selectedTeamId"
+      :category-tree="entity.categoryTree"
+      :is-dark="layout.isDark"
+      @agent-reorder-end="entity.onEndAgent"
+      @team-reorder-end="entity.onEndTeam"
+      @select-agent="entity.selectAgent"
+      @select-team="entity.selectTeam"
+      @settings="entity.openSettings"
+      @delete="entity.openDelete"
     />
 
     <ChatSideToggle
-      :open="leftOpen"
-      :icon="leftOpen ? 'chevron_left' : 'chevron_right'"
-      :ariaLabel="t('chat.collapseList')"
-      @toggle="leftOpen = !leftOpen"
+      :open="layout.leftOpen"
+      :icon="layout.leftOpen ? 'chevron_left' : 'chevron_right'"
+      :ariaLabel="layout.t('chat.collapseList')"
+      @toggle="layout.leftOpen = !layout.leftOpen"
     />
 
     <div class="chat-workspace-main col column no-wrap">
       <ChatMessagePanel
-        v-model="inputText"
-        v-model:dialog-mode="dialogMode"
-        v-model:model-provider="modelProvider"
-        :messages="displayMessages"
-        :attachments="attachments"
-        :mode-options="modeOpts"
-        :provider-options="provOpts"
-        :session-title="selectedSessionForUi?.title || t('chat.untitledSession')"
-        :context-ratio="selectedSessionForUi?.context_used_ratio ?? 0"
-        :is-dark="isDark"
-        :sending="sending"
-        :input-disabled="inputDisabled"
-        :is-awaiting-user="isAwaitingUser"
-        :await-kind="awaitKind"
-        :await-tool-key="awaitToolKey"
-        :ws-replaying="wsReplaying"
-        :session-revision="sessionRevision"
-        :ws-connected="wsConnected"
-        :is-team-session="selectedEntityKind === 'team'"
-        :planner-kind="activePlannerKind"
-        :react-tool-link-index="reactToolLinkIndex"
-        :pending-messages="pendingMessages"
-        :run-status="runStatus"
-        :run-agent-name="runMeta?.agentName"
-        :run-started-at="runMeta?.startedAt"
-        :run-event-count="runMeta?.eventCount"
-        :show-enqueue="isRunnerActive"
-        @enqueue-message="onEnqueueWhileRunning"
-        @update:dialog-mode="onModeChange"
-        @update:model-provider="onProviderChange"
-        @remove-attachment="removeAttachment"
-        @pick-file="pickFile"
-        @voice="onVoiceClick"
-        @send="onSend"
-        @stop="stopStreaming"
-        @cancel-pending="onCancelPending"
-        @update-pending="onUpdatePending"
-        @submit-await-reply="submitAwaitingReply"
-        @submit-tool-confirm="submitToolConfirm"
-        @open-events="openSessionEvents"
-        @a2ui-user-action="submitA2UIUserAction"
+        v-model="composer.inputText"
+        v-model:dialog-mode="composer.dialogMode"
+        v-model:model-provider="composer.modelProvider"
+        :messages="session.displayMessages"
+        :attachments="composer.attachments"
+        :mode-options="composer.modeOpts"
+        :provider-options="composer.provOpts"
+        :session-title="session.selectedSessionForUi?.title || layout.t('chat.untitledSession')"
+        :context-ratio="session.selectedSessionForUi?.context_used_ratio ?? 0"
+        :session-total-tokens="session.selectedSessionForUi?.total_tokens ?? null"
+        :knowledge-base-options="composer.knowledgeBaseOptions"
+        :selected-knowledge-bases="composer.selectedKnowledgeBases"
+        :is-dark="layout.isDark"
+        :sending="composer.sending"
+        :input-disabled="composer.inputDisabled"
+        :is-awaiting-user="composer.isAwaitingUser"
+        :await-kind="composer.awaitKind"
+        :await-tool-key="composer.awaitToolKey"
+        :ws-replaying="session.wsReplaying"
+        :session-revision="session.sessionRevision"
+        :ws-connected="session.wsConnected"
+        :is-team-session="entity.selectedEntityKind === 'team'"
+        :planner-kind="entity.activePlannerKind"
+        :react-tool-link-index="session.reactToolLinkIndex"
+        :focus-turn-id="session.focusTurnId"
+        :pending-messages="composer.pendingMessages"
+        :run-status="composer.runStatus"
+        :run-agent-name="composer.runMeta?.agentName"
+        :run-started-at="composer.runMeta?.startedAt"
+        :run-event-count="composer.runMeta?.eventCount"
+        :show-enqueue="composer.isRunnerActive"
+        @enqueue-message="composer.onEnqueueWhileRunning"
+        @update:dialog-mode="composer.onModeChange"
+        @update:model-provider="composer.onProviderChange"
+        @update:selected-knowledge-bases="(v) => (composer.selectedKnowledgeBases = v)"
+        @remove-attachment="composer.removeAttachment"
+        @pick-file="composer.pickFile"
+        @voice="composer.onVoiceClick"
+        @send="composer.onSend"
+        @stop="composer.stopStreaming"
+        @cancel-pending="composer.onCancelPending"
+        @update-pending="composer.onUpdatePending"
+        @submit-await-reply="composer.submitAwaitingReply"
+        @submit-tool-confirm="composer.submitToolConfirm"
+        @open-events="session.openSessionEvents"
+        @focus-turn-cleared="session.clearFocusTurn"
+        @a2ui-user-action="composer.submitA2UIUserAction"
+        @feedback="composer.onMessageFeedback"
       />
       <chat-session-artifacts-panel
-        :session-id="selectedSessionForUi?.id ?? ''"
-        :items="sessionArtifacts"
-        :loading="sessionArtifactsLoading"
-        @open="openSessionArtifact"
+        :session-id="session.selectedSessionForUi?.id ?? ''"
+        :items="session.sessionArtifacts"
+        :loading="session.sessionArtifactsLoading"
+        @open="session.openSessionArtifact"
       />
       <ChatBackgroundJobsPanel
-        v-if="selectedEntityKind === 'agent'"
-        :session-id="selectedSessionForUi?.id"
-        :agent-id="store.selectedAgent?.id"
-        :refresh-nonce="jobsRefreshNonce"
+        v-if="entity.selectedEntityKind === 'agent'"
+        :session-id="session.selectedSessionForUi?.id"
+        :agent-id="entity.store.selectedAgent?.id"
+        :refresh-nonce="session.jobsRefreshNonce"
+        @focus-turn="session.focusSessionTurn"
       />
-      <input ref="fileRef" type="file" hidden multiple @change="onFileChange" />
+      <input ref="fileRef" type="file" hidden multiple @change="composer.onFileChange" />
     </div>
 
     <ChatSideToggle
-      :open="rightOpen"
-      :icon="rightOpen ? 'chevron_right' : 'chevron_left'"
-      :ariaLabel="t('chat.collapseSession')"
-      @toggle="rightOpen = !rightOpen"
+      :open="layout.rightOpen"
+      :icon="layout.rightOpen ? 'chevron_right' : 'chevron_left'"
+      :ariaLabel="layout.t('chat.collapseSession')"
+      @toggle="layout.rightOpen = !layout.rightOpen"
     />
 
     <ChatSessionSidebar
-      :open="rightOpen"
-      :sessions="displaySessions"
-      :selected-session-id="selectedSessionForUi?.id"
-      :is-dark="isDark"
-      @select="onSelectSession"
-      @new-session="onNewSession"
-      @rename="onRenameSession"
-      @trace="openSessionTrace"
-      @delete="openDelete"
-      @restore="onRestoreSession"
-      @archive="onArchiveSession"
-      @detail="onSessionDetail"
+      :open="layout.rightOpen"
+      :sessions="session.displaySessions"
+      :selected-session-id="session.selectedSessionForUi?.id"
+      :is-dark="layout.isDark"
+      @select="session.onSelectSession"
+      @new-session="session.onNewSession"
+      @rename="session.onRenameSession"
+      @trace="session.openSessionTrace"
+      @delete="entity.openDelete"
+      @restore="session.onRestoreSession"
+      @archive="session.onArchiveSession"
+      @detail="session.onSessionDetail"
     />
 
     <template #dialogs>
       <ChatSettingsDialog
-        v-model="settingsOpen"
-        v-model:name="editName"
-        v-model:provider="editProvider"
-        v-model:model="editModel"
-        :title="settingsTitle"
-        :mode="settingsMode"
-        :agent-key="editKey"
-        :saving="settingsSaving"
-        @save="onSaveSettings"
+        v-model="dialogs.settingsOpen"
+        v-model:name="dialogs.editName"
+        v-model:provider="dialogs.editProvider"
+        v-model:model="dialogs.editModel"
+        :title="dialogs.settingsTitle"
+        :mode="dialogs.settingsMode"
+        :agent-key="dialogs.editKey"
+        :saving="dialogs.settingsSaving"
+        @save="dialogs.onSaveSettings"
       />
 
       <ChatDeleteDialog
-        v-model="deleteOpen"
-        v-model:name-input="deleteNameInput"
-        :title="deleteTitleText"
-        :kind="deleteKind"
-        :expected-name="expectedDeleteName"
-        :blocked-busy="deleteBlockBusy"
-        :can-confirm="canConfirmDelete"
-        :has-name-error="Boolean(deleteNameError && deleteNameInput)"
-        :deleting="deleting"
-        @confirm="onConfirmDelete"
+        v-model="dialogs.deleteOpen"
+        v-model:name-input="dialogs.deleteNameInput"
+        :title="dialogs.deleteTitleText"
+        :kind="dialogs.deleteKind"
+        :expected-name="dialogs.expectedDeleteName"
+        :blocked-busy="dialogs.deleteBlockBusy"
+        :can-confirm="dialogs.canConfirmDelete"
+        :has-name-error="Boolean(dialogs.deleteNameError && dialogs.deleteNameInput)"
+        :deleting="dialogs.deleting"
+        @confirm="dialogs.onConfirmDelete"
       />
 
       <SessionTimelineDialog
-        v-model="traceOpen"
-        :session-id="traceSessionId"
-        :session-title="traceSessionTitle"
-        :initial-tab="traceInitialTab"
-        :stream-deps="traceStreamDeps"
+        v-model="dialogs.traceOpen"
+        :session-id="dialogs.traceSessionId"
+        :session-title="dialogs.traceSessionTitle"
+        :initial-tab="dialogs.traceInitialTab"
+        :stream-deps="dialogs.traceStreamDeps"
       />
     </template>
   </ChatWorkspaceShell>
@@ -156,97 +164,5 @@ import ChatBackgroundJobsPanel from "../components/chat/ChatBackgroundJobsPanel.
 import SessionTimelineDialog from "../components/chat/SessionTimelineDialog.vue";
 import { useChatWorkspace } from "../features/chat/composables/useChatWorkspace";
 
-const {
-  t,
-  isDark,
-  leftOpen,
-  rightOpen,
-  search,
-  selectedEntityKind,
-  selectedTeamId,
-  fileRef,
-  displayAgents,
-  categoryTree,
-  displayTeams,
-  inputText,
-  dialogMode,
-  modelProvider,
-  activePlannerKind,
-  reactToolLinkIndex,
-  sending,
-  inputDisabled,
-  modeOpts,
-  provOpts,
-  attachments,
-  settingsOpen,
-  settingsMode,
-  editName,
-  editKey,
-  editProvider,
-  editModel,
-  settingsSaving,
-  deleteOpen,
-  deleteKind,
-  deleteNameInput,
-  deleteBlockBusy,
-  deleting,
-  traceOpen,
-  traceSessionId,
-  traceSessionTitle,
-  traceInitialTab,
-  traceStreamDeps,
-  settingsTitle,
-  displaySessions,
-  selectedSessionForUi,
-  displayMessages,
-  expectedDeleteName,
-  deleteNameError,
-  canConfirmDelete,
-  deleteTitleText,
-  store,
-  onEndAgent,
-  onEndTeam,
-  selectAgent,
-  selectTeam,
-  onSelectSession,
-  onRenameSession,
-  openSessionTrace,
-  openSessionEvents,
-  onRestoreSession,
-  onArchiveSession,
-  onSessionDetail,
-  onNewSession,
-  onSend,
-  submitA2UIUserAction,
-  onModeChange,
-  onProviderChange,
-  stopStreaming,
-  openSettings,
-  onSaveSettings,
-  openDelete,
-  onConfirmDelete,
-  pickFile,
-  onFileChange,
-  removeAttachment,
-  pendingMessages,
-  runMeta,
-  isRunnerActive,
-  onEnqueueWhileRunning,
-  runStatus,
-  isAwaitingUser,
-  awaitKind,
-  awaitToolKey,
-  wsReplaying,
-  sessionRevision,
-  wsConnected,
-  jobsRefreshNonce,
-  submitAwaitingReply,
-  submitToolConfirm,
-  sessionArtifacts,
-  sessionArtifactsLoading,
-  openSessionArtifact,
-  onCancelPending,
-  onUpdatePending,
-  onVoiceClick
-} = useChatWorkspace();
+const { fileRef, layout, entity, session, composer, dialogs } = useChatWorkspace();
 </script>

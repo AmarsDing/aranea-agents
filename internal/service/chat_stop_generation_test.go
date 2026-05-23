@@ -20,9 +20,11 @@ func TestStopGeneration_PublishesCancelledRunStatus(t *testing.T) {
 	reg.StoreCancelable("sess-1", runID, func() {})
 
 	svc := &ChatService{
-		runs: reg,
-		td: rt.TurnDeps{
-			Pipeline: rt.EventPipeline{Bus: bus},
+		orch: &ChatOrchestrator{
+			runs: reg,
+			td: rt.TurnDeps{
+				Pipeline: rt.EventPipeline{Bus: bus},
+			},
 		},
 	}
 

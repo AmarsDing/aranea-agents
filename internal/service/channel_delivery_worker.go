@@ -10,6 +10,8 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
+	"aranea-agents/internal/channel/preview"
+	"aranea-agents/internal/event"
 	arametrics "aranea-agents/internal/metrics"
 
 	"github.com/go-kratos/kratos/v2/log"
@@ -44,8 +46,55 @@ func (h *ChannelIngress) enqueueOutboundReply(
 	extra map[string]string,
 	idempotencyKey string,
 ) error {
+	return h.enqueueOutboundText(ctx, chRow, platform, recipient, reply, extra, idempotencyKey, outboundFormatAssistant, false)
+}
+
+func (h *ChannelIngress) enqueueOutboundTranscript(
+	ctx context.Context,
+	chRow biz.Channel,
+	platform string,
+	recipient string,
+	reply string,
+	extra map[string]string,
+	idempotencyKey string,
+	alreadyFormatted bool,
+) error {
+	return h.enqueueOutboundText(ctx, chRow, platform, recipient, reply, extra, idempotencyKey, outboundFormatTranscript, alreadyFormatted)
+}
+
+type outboundFormatMode int
+
+const (
+	outboundFormatAssistant outboundFormatMode = iota
+	outboundFormatTranscript
+)
+
+func (h *ChannelIngress) enqueueOutboundText(
+	ctx context.Context,
+	chRow biz.Channel,
+	platform string,
+	recipient string,
+	reply string,
+	extra map[string]string,
+	idempotencyKey string,
+	mode outboundFormatMode,
+	alreadyFormatted bool,
+) error {
+	if !alreadyFormatted {
+		switch mode {
+		case outboundFormatTranscript:
+			reply = preview.FormatRenderedTranscriptForIM(platform, reply)
+		default:
+			reply = preview.FormatAssistantReplyForIM(platform, reply)
+		}
+	}
 	if strings.TrimSpace(reply) == "" {
-		return nil
+		event.SysLogWarn(flowStepChannelOutbound, "Channel outbound empty after format",
+			event.P("channel_id", chRow.ID),
+			event.P("platform", platform),
+			event.P("idempotency_key", idempotencyKey),
+		)
+		reply = channelOutboundEmptyFallback
 	}
 	_, err := h.channels.EnqueueOutboundDelivery(ctx, chRow.ID, biz.ChannelOutboundPayload{
 		Platform:       platform,
@@ -94,10 +143,22 @@ func (w *ChannelDeliveryWorker) ProcessPending(ctx context.Context, limit int) e
 		if platform == "" {
 			platform = "unknown"
 		}
-		if payload.Kind != "" && payload.Kind != "outbound_text" {
+		if payload.Kind != "" && payload.Kind != biz.ChannelOutboundTextKind && payload.Kind != biz.ChannelOutboundCardKind {
 			arametrics.ChannelDeliveryTotal.WithLabelValues(platform, "invalid").Inc()
 			_, _ = w.channels.MarkOutboundAttempt(ctx, row, fmt.Errorf("unsupported delivery kind %q", payload.Kind))
 			continue
+		}
+		if payload.Kind == biz.ChannelOutboundCardKind && strings.TrimSpace(payload.CardJSON) == "" && strings.TrimSpace(payload.Text) == "" {
+			arametrics.ChannelDeliveryTotal.WithLabelValues(platform, "invalid").Inc()
+			_, _ = w.channels.MarkOutboundAttempt(ctx, row, fmt.Errorf("outbound_card missing card_json"))
+			continue
+		}
+		if payload.Kind == "" || payload.Kind == biz.ChannelOutboundTextKind {
+			if strings.TrimSpace(payload.Text) == "" {
+				arametrics.ChannelDeliveryTotal.WithLabelValues(platform, "invalid").Inc()
+				_, _ = w.channels.MarkOutboundAttempt(ctx, row, fmt.Errorf("outbound_text missing text"))
+				continue
+			}
 		}
 		start := time.Now()
 		sendErr := w.ingress.sendOutboundPayload(ctx, row.ChannelID, payload)

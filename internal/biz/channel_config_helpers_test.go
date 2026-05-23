@@ -62,21 +62,24 @@ func TestChannelSupportsLongTaskIngress(t *testing.T) {
 	}
 }
 
-func TestShouldRunAsync_autoKeywords(t *testing.T) {
+func TestShouldRunAsync_autoModeOnlyExplicitAsync(t *testing.T) {
 	cfg := ParseChannelLongTaskConfig(`{"config":{"execution_mode":"auto","async_graph_id":"g1"}}`)
 	cases := []struct {
 		text string
 		want bool
 	}{
 		{"/async help", true},
-		{"请做全量分析", true},
-		{"写一份研报", true},
+		{"请做全量分析", false},
+		{"写一份研报", false},
 		{"今天天气怎么样", false},
 	}
 	for _, tc := range cases {
 		if got := cfg.ShouldRunAsync(tc.text); got != tc.want {
 			t.Fatalf("ShouldRunAsync(%q)=%v want %v", tc.text, got, tc.want)
 		}
+	}
+	if !cfg.SuggestDurableRun("请做全量分析") {
+		t.Fatal("SuggestDurableRun should hint for keywords")
 	}
 }
 

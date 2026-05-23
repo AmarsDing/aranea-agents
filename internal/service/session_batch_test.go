@@ -74,6 +74,9 @@ func (m *batchSessionRepo) SearchMessages(context.Context, biz.MessageSearchQuer
 func (m *batchSessionRepo) AppendChatMessage(context.Context, string, biz.ChatMessage, bool) error {
 	return nil
 }
+func (m *batchSessionRepo) UpdateMessageFeedbackJSON(context.Context, string, string, string, string) error {
+	return nil
+}
 func (m *batchSessionRepo) UpsertChatActivityMessage(context.Context, string, biz.ChatMessage) error {
 	return nil
 }

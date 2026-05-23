@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
@@ -11,14 +12,9 @@ import (
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
-// ListChatBackgroundJobs aggregates channel_turn_job rows for the chat jobs panel (M55 CC-D-01).
+// ListChatBackgroundJobs aggregates session_runs + channel_turn_job rows (M55 CC-D-01 · CC-R-04).
 func (s *ChatService) ListChatBackgroundJobs(ctx context.Context, req *chatv1.ListChatBackgroundJobsRequest) (*chatv1.ListChatBackgroundJobsResponse, error) {
-	if s == nil || s.turnJobs == nil {
-		return &chatv1.ListChatBackgroundJobsResponse{}, nil
-	}
-	q := biz.ChannelTurnJobListQuery{
-		Limit: int(req.GetLimit()),
-	}
+	q := biz.SessionRunListQuery{Limit: int(req.GetLimit())}
 	if req.SessionId != nil {
 		q.SessionID = strings.TrimSpace(*req.SessionId)
 	}
@@ -31,15 +27,59 @@ func (s *ChatService) ListChatBackgroundJobs(ctx context.Context, req *chatv1.Li
 	if q.SessionID == "" && q.AgentID == "" {
 		return nil, kerrors.BadRequest("CHAT_JOBS", "session_id or agent_id is required")
 	}
-	jobs, err := s.turnJobs.ListFiltered(ctx, q)
-	if err != nil {
-		return nil, err
+
+	out := make([]*chatv1.ChatBackgroundJob, 0)
+	if s != nil && s.orch.chTurn.SessionRuns != nil {
+		runs, err := s.orch.chTurn.SessionRuns.ListForJobs(ctx, q)
+		if err != nil {
+			return nil, err
+		}
+		for _, r := range runs {
+			out = append(out, sessionRunToChatBackgroundJob(r))
+		}
 	}
-	out := make([]*chatv1.ChatBackgroundJob, 0, len(jobs))
-	for _, j := range jobs {
-		out = append(out, bizTurnJobToChatBackgroundJob(j))
+	if s != nil && s.orch.chTurn.TurnJobs != nil {
+		cq := biz.ChannelTurnJobListQuery{
+			SessionID: q.SessionID,
+			AgentID:   q.AgentID,
+			Status:    q.Status,
+			Limit:     q.Limit,
+		}
+		jobs, err := s.orch.chTurn.TurnJobs.ListFiltered(ctx, cq)
+		if err != nil {
+			return nil, err
+		}
+		for _, j := range jobs {
+			out = append(out, bizTurnJobToChatBackgroundJob(j))
+		}
 	}
 	return &chatv1.ListChatBackgroundJobsResponse{Items: out}, nil
+}
+
+func sessionRunToChatBackgroundJob(r biz.SessionRun) *chatv1.ChatBackgroundJob {
+	summary := fmt.Sprintf("Run · %s", biz.NormalizeSessionRunPhase(r.Phase))
+	item := &chatv1.ChatBackgroundJob{
+		Id:         strutil.ValidUTF8(r.ID),
+		Source:     "session_run",
+		SessionId:  strutil.ValidUTF8(r.SessionID),
+		AgentId:    strutil.ValidUTF8(r.AgentID),
+		Status:     biz.NormalizeSessionRunPhase(r.Phase),
+		TargetType: "agent_turn",
+		TargetId:   strutil.ValidUTF8(r.TurnID),
+		CreatedAt:  strutil.ValidUTF8(r.CreatedAt),
+		UpdatedAt:  strutil.ValidUTF8(r.UpdatedAt),
+		Summary:    &summary,
+	}
+	phase := biz.NormalizeSessionRunPhase(r.Phase)
+	item.Phase = &phase
+	turnID := strutil.ValidUTF8(r.TurnID)
+	item.TurnId = &turnID
+	srid := strutil.ValidUTF8(r.ID)
+	item.SessionRunId = &srid
+	if msg := strings.TrimSpace(r.ErrorMessage); msg != "" {
+		item.ErrorMessage = &msg
+	}
+	return item
 }
 
 func bizTurnJobToChatBackgroundJob(j biz.ChannelTurnJob) *chatv1.ChatBackgroundJob {

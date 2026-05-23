@@ -3,7 +3,7 @@ package biz
 import (
 	"strings"
 
-	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 )
 
 // AgentNodeStatus is the fine-grained lifecycle status of an agent node in an orchestration run.
@@ -143,41 +143,41 @@ func NewOrchestrationStatusStore(reg OrchestrationRegistry) *OrchestrationStatus
 	return &OrchestrationStatusStore{Nodes: nodes}
 }
 
-func (s *OrchestrationStatusStore) ApplyEnvelope(env event.Envelope, reg OrchestrationRegistry) []*AgentNodeState {
+func (s *OrchestrationStatusStore) ApplyEnvelope(env contract.Envelope, reg OrchestrationRegistry) []*AgentNodeState {
 	if s == nil {
 		return nil
 	}
 	var changed []*AgentNodeState
 	switch env.Type {
-	case event.EnvelopeTypeTeamStepStarted:
+	case contract.EnvelopeTypeTeamStepStarted:
 		if st := s.applyToResolved(env, reg, AgentNodeStatusRunning, WorkPhaseDoing); st != nil {
 			changed = append(changed, st)
 		}
-	case event.EnvelopeTypeMemberMessageStart:
+	case contract.EnvelopeTypeMemberMessageStart:
 		if st := s.applyToResolved(env, reg, AgentNodeStatusThinking, WorkPhaseDoing); st != nil {
 			changed = append(changed, st)
 		}
-	case event.EnvelopeTypeToolCall:
+	case contract.EnvelopeTypeToolCall:
 		if st := s.applyToolCall(env, reg); st != nil {
 			changed = append(changed, st)
 		}
-	case event.EnvelopeTypeToolResult:
+	case contract.EnvelopeTypeToolResult:
 		if st := s.applyToolResult(env, reg); st != nil {
 			changed = append(changed, st)
 		}
-	case event.EnvelopeTypeMemberMessageDone:
+	case contract.EnvelopeTypeMemberMessageDone:
 		if st := s.applyMemberDone(env, reg); st != nil {
 			changed = append(changed, st)
 		}
-	case event.EnvelopeTypeTeamStepFinished:
+	case contract.EnvelopeTypeTeamStepFinished:
 		if st := s.applyStepFinished(env, reg); st != nil {
 			changed = append(changed, st)
 		}
-	case event.EnvelopeTypeGraphNodeStart:
+	case contract.EnvelopeTypeGraphNodeStart:
 		if st := s.applyGraphNode(env, reg, AgentNodeStatusRunning, WorkPhaseDoing); st != nil {
 			changed = append(changed, st)
 		}
-	case event.EnvelopeTypeGraphNodeEnd:
+	case contract.EnvelopeTypeGraphNodeEnd:
 		skipped := metaBool(env.Metadata, "skipped")
 		status := AgentNodeStatusSuccess
 		if skipped {
@@ -186,21 +186,21 @@ func (s *OrchestrationStatusStore) ApplyEnvelope(env event.Envelope, reg Orchest
 		if st := s.applyGraphNode(env, reg, status, WorkPhaseDelivered); st != nil {
 			changed = append(changed, st)
 		}
-	case event.EnvelopeTypeGraphNodeError:
+	case contract.EnvelopeTypeGraphNodeError:
 		if st := s.applyGraphNodeError(env, reg); st != nil {
 			changed = append(changed, st)
 		}
-	case event.EnvelopeTypeTransfer:
+	case contract.EnvelopeTypeTransfer:
 		changed = append(changed, s.applyTransfer(env, reg)...)
-	case event.EnvelopeTypeCheckpoint:
+	case contract.EnvelopeTypeCheckpoint:
 		if st := s.applyToResolved(env, reg, AgentNodeStatusWaitingInput, WorkPhaseDoing); st != nil {
 			changed = append(changed, st)
 		}
-	case event.EnvelopeTypeGraphTaskStatus:
+	case contract.EnvelopeTypeGraphTaskStatus:
 		if st := s.applyGraphTaskStatus(env, reg); st != nil {
 			changed = append(changed, st)
 		}
-	case event.EnvelopeTypeRunStatus:
+	case contract.EnvelopeTypeRunStatus:
 		if isRunCancelled(env) {
 			for _, st := range s.Nodes {
 				if isTerminalStatus(st.Status) {
@@ -216,7 +216,7 @@ func (s *OrchestrationStatusStore) ApplyEnvelope(env event.Envelope, reg Orchest
 }
 
 func (s *OrchestrationStatusStore) applyToResolved(
-	env event.Envelope,
+	env contract.Envelope,
 	reg OrchestrationRegistry,
 	status AgentNodeStatus,
 	phase WorkPhase,
@@ -232,7 +232,7 @@ func (s *OrchestrationStatusStore) applyToResolved(
 	return cloneNodeState(st)
 }
 
-func (s *OrchestrationStatusStore) applyToolCall(env event.Envelope, reg OrchestrationRegistry) *AgentNodeState {
+func (s *OrchestrationStatusStore) applyToolCall(env contract.Envelope, reg OrchestrationRegistry) *AgentNodeState {
 	st := s.resolveState(env, reg)
 	if st == nil || env.ToolCall == nil {
 		return nil
@@ -261,7 +261,7 @@ func (s *OrchestrationStatusStore) applyToolCall(env event.Envelope, reg Orchest
 	return cloneNodeState(st)
 }
 
-func (s *OrchestrationStatusStore) applyToolResult(env event.Envelope, reg OrchestrationRegistry) *AgentNodeState {
+func (s *OrchestrationStatusStore) applyToolResult(env contract.Envelope, reg OrchestrationRegistry) *AgentNodeState {
 	st := s.resolveState(env, reg)
 	if st == nil || env.ToolCall == nil {
 		return nil
@@ -284,7 +284,7 @@ func (s *OrchestrationStatusStore) applyToolResult(env event.Envelope, reg Orche
 	return cloneNodeState(st)
 }
 
-func (s *OrchestrationStatusStore) applyMemberDone(env event.Envelope, reg OrchestrationRegistry) *AgentNodeState {
+func (s *OrchestrationStatusStore) applyMemberDone(env contract.Envelope, reg OrchestrationRegistry) *AgentNodeState {
 	st := s.resolveState(env, reg)
 	if st == nil {
 		return nil
@@ -300,7 +300,7 @@ func (s *OrchestrationStatusStore) applyMemberDone(env event.Envelope, reg Orche
 	return cloneNodeState(st)
 }
 
-func (s *OrchestrationStatusStore) applyStepFinished(env event.Envelope, reg OrchestrationRegistry) *AgentNodeState {
+func (s *OrchestrationStatusStore) applyStepFinished(env contract.Envelope, reg OrchestrationRegistry) *AgentNodeState {
 	st := s.resolveState(env, reg)
 	if st == nil {
 		return nil
@@ -335,7 +335,7 @@ func (s *OrchestrationStatusStore) applyStepFinished(env event.Envelope, reg Orc
 }
 
 func (s *OrchestrationStatusStore) applyGraphNode(
-	env event.Envelope,
+	env contract.Envelope,
 	reg OrchestrationRegistry,
 	status AgentNodeStatus,
 	phase WorkPhase,
@@ -366,7 +366,7 @@ func (s *OrchestrationStatusStore) applyGraphNode(
 	return cloneNodeState(st)
 }
 
-func (s *OrchestrationStatusStore) applyGraphNodeError(env event.Envelope, reg OrchestrationRegistry) *AgentNodeState {
+func (s *OrchestrationStatusStore) applyGraphNodeError(env contract.Envelope, reg OrchestrationRegistry) *AgentNodeState {
 	status := AgentNodeStatusFailed
 	if metaBool(env.Metadata, "retrying") {
 		status = AgentNodeStatusRetrying
@@ -385,7 +385,7 @@ func (s *OrchestrationStatusStore) applyGraphNodeError(env event.Envelope, reg O
 	return cloneNodeState(stored)
 }
 
-func (s *OrchestrationStatusStore) applyGraphTaskStatus(env event.Envelope, reg OrchestrationRegistry) *AgentNodeState {
+func (s *OrchestrationStatusStore) applyGraphTaskStatus(env contract.Envelope, reg OrchestrationRegistry) *AgentNodeState {
 	taskStatus := strings.ToLower(strings.TrimSpace(metaString(env.Metadata, "task_status")))
 	nodeID := metaString(env.Metadata, "node_id")
 	if nodeID == "" {
@@ -443,7 +443,7 @@ func (s *OrchestrationStatusStore) applyGraphTaskStatus(env event.Envelope, reg 
 	return cloneNodeState(stored)
 }
 
-func (s *OrchestrationStatusStore) applyTransfer(env event.Envelope, reg OrchestrationRegistry) []*AgentNodeState {
+func (s *OrchestrationStatusStore) applyTransfer(env contract.Envelope, reg OrchestrationRegistry) []*AgentNodeState {
 	if env.Transfer == nil {
 		return nil
 	}
@@ -463,7 +463,7 @@ func (s *OrchestrationStatusStore) applyTransfer(env event.Envelope, reg Orchest
 	return changed
 }
 
-func (s *OrchestrationStatusStore) resolveState(env event.Envelope, reg OrchestrationRegistry) *AgentNodeState {
+func (s *OrchestrationStatusStore) resolveState(env contract.Envelope, reg OrchestrationRegistry) *AgentNodeState {
 	if nodeID := metaString(env.Metadata, "node_id"); nodeID != "" {
 		return s.nodeByID(nodeID)
 	}
@@ -620,7 +620,7 @@ func AggregateDisplayStatus(status AgentNodeStatus) DisplayStatus {
 	}
 }
 
-func isRunCancelled(env event.Envelope) bool {
+func isRunCancelled(env contract.Envelope) bool {
 	if env.Metadata == nil {
 		return false
 	}

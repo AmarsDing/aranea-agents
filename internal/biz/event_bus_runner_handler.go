@@ -2,8 +2,6 @@ package biz
 
 import (
 	"context"
-
-	"aranea-agents/internal/event"
 	"os"
 	"strings"
 	"time"
@@ -17,6 +15,7 @@ type runnerCompletionHandler struct {
 	usage     *UsageUsecase
 	monitor   *MonitorUsecase
 	memWorker *TurnMemoryWorker
+	logger    SessionLogWriter
 }
 
 func newRunnerCompletionHandler(
@@ -31,6 +30,10 @@ func newRunnerCompletionHandler(
 		monitor:   monitor,
 		memWorker: memWorker,
 	}
+}
+
+func (h *runnerCompletionHandler) SetLogger(logger SessionLogWriter) {
+	h.logger = logger
 }
 
 func runnerUsageRecordingEnabled() bool {
@@ -49,8 +52,8 @@ func (h *runnerCompletionHandler) Handle(ctx context.Context, de DomainEvent) {
 		if started, ok := DefaultTurnCompletionBridge().TurnStart(de.SessionID, de.RunID); ok && de.DurationMS == 0 {
 			de.DurationMS = CompletionDurationMS(de, started)
 		}
-		if err := h.monitor.RecordRunnerCompletion(ctx, de); err != nil {
-			event.SessionSysLogError(context.Background(), de.SessionID, "event_bus.monitor.persist", "监控事件写入失败", event.P("error", err))
+		if err := RecordRunnerCompletion(ctx, h.monitor, de); err != nil {
+			h.logError(context.Background(), de.SessionID, "event_bus.monitor.persist", "监控事件写入失败", LogPair{Key: "error", Value: err})
 		}
 		h.monitor.EvaluateAlerts(ctx)
 	}
@@ -81,6 +84,12 @@ func (h *runnerCompletionHandler) Handle(ctx context.Context, de DomainEvent) {
 		MetadataJSON:  `{"source":"event_bus.runner_completion"}`,
 	})
 	if err != nil {
-		event.SessionSysLogError(context.Background(), de.SessionID, "event_bus.usage.record", "用量事件写入失败", event.P("error", err))
+		h.logError(context.Background(), de.SessionID, "event_bus.usage.record", "用量事件写入失败", LogPair{Key: "error", Value: err})
+	}
+}
+
+func (h *runnerCompletionHandler) logError(ctx context.Context, sessionID, stepID, message string, pairs ...LogPair) {
+	if h.logger != nil {
+		h.logger.SessionSysLogError(ctx, sessionID, stepID, message, pairs...)
 	}
 }

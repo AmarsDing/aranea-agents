@@ -7,7 +7,7 @@ import (
 )
 
 func TestResetCronFailureMetadata(t *testing.T) {
-	raw, err := resetCronFailureMetadata(`{"failure_count":3,"last_error":"boom","recent_failures":[{"started_at":"t","error_message":"e"}]}`)
+	raw, err := ResetCronFailureMetadata(`{"failure_count":3,"last_error":"boom","recent_failures":[{"started_at":"t","error_message":"e"}]}`)
 	if err != nil {
 		t.Fatal(err)
 	}

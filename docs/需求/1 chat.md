@@ -369,7 +369,7 @@ Cron Scheduler
 | 优先级 | 项 | 状态 | 说明 |
 |--------|-----|------|------|
 | P1 | 结构化工具事件卡片 | ✅ | `ChatToolCallCard`：参数 JSON、结果、耗时、`is_long_running` 徽章 |
-| P1 | Reasoning 展示 | ✅ | 助手气泡上方默认折叠「思考过程」 |
+| P1 | Reasoning 展示 | ✅ | `ChatReasoningPeek`：思考/正文分离；默认 **live tail 最后两行**；单击/滚轮/双击展开（见 [R-UX changelog](../changelog/2026-05-23-M55-Phase-R-UX-Channel-Format-Reasoning.md)） |
 | P2 | Follow-up Queue UX（Cursor 对齐） | 待做 | 运行中解除 `sending` 阻塞；监听 `message_queued` 刷新队列；可选 `pending_enqueued` Envelope |
 | P2 | RunStatus WS 驱动 | ✅ | 后端 `run_status` Envelope；前端监听 WS（切换会话 HTTP 校准） |
 | P2 | Team 成员流 UX | ✅ | `team_member` 元数据 + 成员色条分栏 |

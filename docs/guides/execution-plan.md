@@ -155,7 +155,7 @@
 | I-Eb-9 | E2E 场景测试 LT-01–07 | P1 | ✅ | `channel_turn_preview_scenario_test.go` |
 | I-Eb-10 | 运维 preset `feishu_ops_reasoning` | P3 | ✅ | `channelLongTaskPresets.ts` |
 | I-Eb-11 | Review P1–P3 优化闭合 | P1 | ✅ | [IM Preview Review](../review/2026-05-23-Channel-IM-Preview-Review.md) |
-| I-Eb-12 | P0 心跳 + Card upsert + E2E 清单 | P0 | ✅ | `channel_turn_preview_integration_test.go` · [E2E](../guides/channel-im-preview-e2e.md) |
+| I-Eb-12 | P0 心跳 + Card upsert + E2E 清单 | P0 | ✅ | `channel_turn_preview_integration_test.go` · [E2E](../需求/17-channel-development.md#12-im-preview--e2e-验收清单lt-0107) |
 
 **迭代 E-b 焦点**：IM 与 Web Chat Envelope 顺序对齐；长任务推荐 `im_render_mode=transcript`；Card 终态单发 + Session 深链。
 
@@ -168,7 +168,7 @@
 | ID | 任务 | 优先级 | 状态 | 验收 |
 |----|------|--------|------|------|
 | CC-A-01 | 长任务 Channel preset + 前端一键应用 | P0 | ✅ | `turn_timeout_sec=900` 等 |
-| CC-A-02 | `execution_mode=auto` 关键词 → async 路由 | P0 | ✅ | 分析/批处理不走纯 sync |
+| CC-A-02 | `execution_mode=auto` 关键词 → async 路由 | P0 | 🟡 过渡 | §13.1；目标 Phase R |
 | CC-A-03 | 超时错误区分 sync 上限 vs 应 async | P1 | ✅ | IM 出站文案 |
 | CC-B-01 | `session_revision` 单调递增 | P0 | ✅ | Turn 完成 +1 |
 | CC-B-02 | Envelope 携带 `session_revision` | P0 | ✅ | WS 契约 |
@@ -182,13 +182,34 @@
 | CC-C-04 | 滚动锚定最后一轮正文 | P0 | ✅ | 非 tool spam 底部 |
 | CC-C-05 | 长 Session 虚拟列表策略 | P1 | 🟡 | slice 48 · row 200px；benchmark 待做 |
 | CC-C-06 | WS patch rAF + completion 增量 merge | P1 | ✅ | runner_completion 仅 after_revision hydrate |
-| CC-B-07 | UserBubble 来源徽标 | P1 | ✅ | options_json source + chip |
+| CC-B-07 | UserBubble 来源徽标 + platform | P1 | 🚧 | Tier 0 已写 platform |
 | CC-C-07 | Session 顶栏 sync 诊断 | P1 | ✅ | msgs · rev · WS · ctx% |
 | CC-HOT-02 | 删 Session 清 peer bind | P2 | ✅ | DeleteSession → channel_peer_session |
-| CC-F-01 | 24h Durable Job Worker deadline | P2 | 🟡 | watch 24h；持久化 Worker 待排 |
-| CC-C-UX-01 | 思考/ReAct 互斥；空 reasoning 不展示 | P0 | 📋 | 无空「思考过程」壳 |
-| CC-C-UX-02 | 流式「正在思考…」单行态 | P0 | 📋 | 首字节前 UX |
-| CC-C-UX-03 | 双 ToolStrip 去重 | P0 | 📋 | 单轮一条摘要 |
+| CC-F-01 | 24h Durable Job Worker deadline | P2 | 🚧 | 基础 Worker 已随 CC-R-03；24h deadline 待完善 |
+| CC-F-02 | trpc checkpoint resume **Phase 1** | P2 | 🟡 | 会话快照 + 合成 prompt 续跑；真 invocation restore → CC-F-02b |
+| CC-F-02b | trpc invocation 级 restore | P2 | 📋 | Phase F · `WithInvocationID` 或框架等价 API |
+| CC-R-01 | `session_runs` + budget watcher | P0 | ✅ | 软预算→escalating · FlowLog run.phase |
+| CC-R-02 | 软预算 IM 确认 + auto_escalate | P0 | ✅ | Feishu 交互卡片 callback + `/background` |
+| CC-R-03 | Checkpoint + Durable Worker 续跑 Agent | P0 | ✅ | session_run_checkpoints + Worker |
+| CC-R-04 | Jobs 面板 + Envelope `run_id` | P1 | ✅ | session_run_id/turn_id/phase |
+| CC-R-05 | keyword 降级 · workflow_binding | P1 | ✅ | `/async` only · SuggestDurableRun |
+| CC-R-OPT-01 | Durable Worker claim 幂等 | P1 | ✅ | `resume_started_at` / TryClaim · [Review](../review/2026-05-23-M55-Run-Lifecycle-Review.md) |
+| CC-R-OPT-02 | 飞书卡片 callback ownership | P1 | ✅ | run.session_id ↔ channel session |
+| CC-R-OPT-03 | 硬预算 checkpoint 先于 durable phase | P1 | ✅ | budget watcher / escalate 时序 |
+| CC-R-OPT-04 | CC-F-02 文档诚实化 | P1 | ✅ | Phase 1 vs CC-F-02b 分期 |
+| CC-R-OPT-05 | 抽出 `runDurableResumeTurn` | P2 | ✅ | `chat_orchestrator_durable.go` |
+| CC-R-OPT-06 | escalate 路径 FlowLog warn | P2 | ✅ | 替代 silent `_ =` |
+| CC-R-OPT-07 | binding 丢失降级 | P2 | ✅ | checkpoint / run 字段 fallback |
+| CC-R-OPT-08 | Jobs ListForJobs scan agent_id | P2 | ✅ | session_run_repo |
+| CC-E2E-RUN-01~04 | Run 生命周期 E2E | P2 | ⏳ | 单测覆盖 + [17-channel §M55-RUN](../需求/17-channel-development.md) 手工 |
+| CC-R-OPT-10 | Jobs→TurnBlock scroll 高亮 | P3 | ✅ | `turn-block--focused` 2s |
+| CC-R-OPT-11 | IM 平台矩阵文档 | P3 | ✅ | 17-channel §M55-RUN 平台矩阵 |
+| CC-C-UX-01 | 思考/ReAct 互斥；空 reasoning 不展示 | P0 | ✅ | 无空「思考过程」壳 |
+| CC-C-UX-02 | 流式「正在思考…」单行态 | P0 | ✅ | 首字节前 UX |
+| CC-C-UX-03 | 双 ToolStrip 去重 | P0 | ✅ | 单轮一条摘要 |
+| CC-WEB-REASONING-02~04 | `ChatReasoningPeek` live tail · 思考/正文标签 | P1 | ✅ | [R-UX 续篇](../changelog/2026-05-23-M55-Phase-R-UX-Channel-Format-Reasoning.md) |
+| CC-WEB-SESSION-01 | Channel 入站刷新 Session 列表 | P1 | ✅ | `channelInboundSessionRefresh` |
+| CC-CHANNEL-FMT-01~06 | 飞书出站格式化 · 思考/正文 Card | P1 | ✅ | `format_im.go` · `feishu_reply_card.go` |
 | CC-C-UX-04 | `TurnAssistantBubble` 拆分 | P1 | 📋 | CC-C-01 补完 |
 | CC-HOT-01 | 飞书 stale peer bind 自动 rebind | P0 | ✅ | `ensureChannelSession` + `UpdateSessionID` |
 | CC-HOT-02 | 删 Session 清 peer bind | P2 | 📋 | 读路径已自愈 |
@@ -196,9 +217,8 @@
 | CC-D-01 | Background Job 列表/侧栏 | P1 | ✅ | WS refresh + Graph 深链 |
 | CC-E-01 | `@` 上下文引用 UX | P2 | 📋 | Cursor 对齐 |
 | CC-E-03 | diff Apply 卡片 | P2 | 📋 | fragment edit 对接 |
-| CC-F-01 | 24h Durable Job Worker deadline | P2 | 📋 | 超越 async 2h 看门 |
 
-**迭代 CC 焦点（2026-05-23）**：Phase A–D 已交付；**P0** CC-C-UX-* 思考/工具 UX + CC-E2E-01；**P1** CC-C-05/06 收口。Changelog：[M55 Review Fixes](../changelog/2026-05-23-M55-Phase-ABCD-Review-Fixes.md) · [飞书 Rebind + UX Backlog](../changelog/2026-05-23-M55-Feishu-Rebind-UX-Backlog.md)。
+**迭代 CC 焦点（2026-05-23）**：**P0–P1** CC-R-01~05 Run 升格 ✅ · CC-C-UX-* ✅ · CC-R-UX（格式化/思考/Session 同步）✅；**运维** CC-FEISHU-OPS-01 📋 · **P2** CC-F-02b / CC-E2E-RUN。Changelog：[R-UX 格式化/思考](../changelog/2026-05-23-M55-Phase-R-UX-Channel-Format-Reasoning.md) · [Run Lifecycle Optimization](../changelog/2026-05-23-M55-Run-Lifecycle-Optimization-Plan.md) · Review：[M55 Run Lifecycle](../review/2026-05-23-M55-Run-Lifecycle-Review.md)。
 
 ### 迭代 TG（Team × Graph 融合 M53）— 2026-05-23
 
@@ -270,8 +290,10 @@
 | HK-OBS-01 | Activity 时间线 | P2 | ✅ | OrchestrationKanban |
 | HK-FE-03 | 列拖拽 + Observatory 任务 Tab | P3 | ✅ | vuedraggable |
 | HK-INT-01 | Task status Webhook（G13） | P2 | ✅ | `graph.task.status` 出站 |
-| HK-INT-02 | spawn_fn worker lane | P2 | 📋 | G14 RunGateway |
-| HK-ORCH-01 | triage/decompose | P3 | 📋 | 可选 |
+| HK-INT-02 | spawn_fn worker lane | P1 | 📋 | G14 RunGateway · [Phase 4](../需求/54-hermes-kanban-development.md#6-phase-4--worker-真派工p1) |
+| HK-FE-05 | Drawer 依赖 Tab | P1 | 📋 | LinkTasks UI |
+| HK-FE-06 | Kanban Toolbar 搜索/筛选 | P2 | 📋 | Hermes BoardToolbar |
+| HK-ORCH-01 | triage/decompose | P3 | 📋 | 可选 LLM |
 
 ### Tools Phase 5（工作区统一）— 2026-05-22
 

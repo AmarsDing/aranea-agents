@@ -35,11 +35,11 @@ export function resolveAssistantPresentation(
   message: Message
 ): AssistantPresentation {
   const raw = message.content_markdown ?? "";
-  const reasoning = reasoningMarkdown(message);
+  const reasoningRaw = reasoningMarkdown(message).trim();
 
   if (shouldUseA2UIView(plannerKind, raw)) {
     return {
-      reasoning,
+      reasoning: reasoningRaw,
       reactSteps: null,
       a2uiLines: parseA2UIJsonl(raw),
       bodyMarkdown: "",
@@ -50,7 +50,7 @@ export function resolveAssistantPresentation(
   if (shouldUseReactPlannerView(plannerKind, raw)) {
     const reactSteps = parseReactPlannerContent(raw);
     return {
-      reasoning,
+      reasoning: "",
       reactSteps,
       a2uiLines: null,
       bodyMarkdown: reactDisplayMarkdown(reactSteps, raw),
@@ -59,7 +59,7 @@ export function resolveAssistantPresentation(
   }
 
   return {
-    reasoning,
+    reasoning: reasoningRaw,
     reactSteps: null,
     a2uiLines: null,
     bodyMarkdown: raw,

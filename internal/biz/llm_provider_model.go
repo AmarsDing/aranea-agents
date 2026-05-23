@@ -10,8 +10,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"aranea-agents/internal/llminspect"
-
 	"github.com/go-kratos/kratos/v2/errors"
 )
 
@@ -96,13 +94,47 @@ type LlmProviderModelRepo interface {
 	UpsertModelPricingRule(ctx context.Context, rule ModelPricingRule) error
 }
 
+// LLMInspectResult is the domain-level result of an LLM provider inspect.
+type LLMInspectResult struct {
+	OK                            bool
+	Message                       string
+	ProviderCode                  string
+	ProviderType                  string
+	ModelAPIID                    string
+	ModelDisplayName              string
+	ModelSizeLabel                string
+	ContextWindowK                int
+	MaxOutputTokens               int
+	InputPriceMicroUSDPer1K       int64
+	OutputPriceMicroUSDPer1K      int64
+	CachedInputPriceMicroUSDPer1K int64
+	ReasoningPriceMicroUSDPer1K   int64
+	EmbeddingPriceMicroUSDPer1K   int64
+	Source                        string
+	RawMetadataJSON               string
+	Variant                       string
+	EnableTokenTailoring          bool
+	SupportsCache                 bool
+	SupportsThinking              bool
+}
+
+// LLMInspector abstracts the LLM provider metadata inspection.
+type LLMInspector interface {
+	Run(in InspectMerge) (LLMInspectResult, error)
+}
+
 // LlmProviderModelUsecase is llm-provider-models + validate + inspect.
 type LlmProviderModelUsecase struct {
-	repo LlmProviderModelRepo
+	repo      LlmProviderModelRepo
+	inspector LLMInspector
 }
 
 func NewLlmProviderModelUsecase(repo LlmProviderModelRepo) *LlmProviderModelUsecase {
 	return &LlmProviderModelUsecase{repo: repo}
+}
+
+func (u *LlmProviderModelUsecase) SetInspector(inspector LLMInspector) {
+	u.inspector = inspector
 }
 
 func (u *LlmProviderModelUsecase) List(ctx context.Context) ([]ProviderModel, error) {
@@ -244,7 +276,7 @@ func (u *LlmProviderModelUsecase) ValidatePair(ctx context.Context, provider, mo
 	return false, "provider/model is not enabled", nil
 }
 
-func (u *LlmProviderModelUsecase) Inspect(ctx context.Context, in InspectMerge) (llminspect.Result, error) {
+func (u *LlmProviderModelUsecase) Inspect(ctx context.Context, in InspectMerge) (LLMInspectResult, error) {
 	in.ProviderCode = strings.TrimSpace(in.ProviderCode)
 	in.ModelAPIID = strings.TrimSpace(in.ModelAPIID)
 	in.ResourceID = strings.TrimSpace(in.ResourceID)
@@ -263,18 +295,10 @@ func (u *LlmProviderModelUsecase) Inspect(ctx context.Context, in InspectMerge) 
 		}
 	}
 
-	return llminspect.Run(llminspect.Input{
-		ResourceID:   in.ResourceID,
-		ProviderCode: in.ProviderCode,
-		ProviderType: in.ProviderType,
-		ModelAPIID:   in.ModelAPIID,
-		APIBaseURL:   in.APIBaseURL,
-		APIKey:       in.APIKey,
-		Variant:      in.Variant,
-		SecretID:     in.SecretID,
-		SecretKey:    in.SecretKey,
-		AWSRegion:    in.AWSRegion,
-	})
+	if u.inspector == nil {
+		return LLMInspectResult{}, errors.New(500, "LLM_INSPECT", "llm inspector not configured")
+	}
+	return u.inspector.Run(in)
 }
 
 func (u *LlmProviderModelUsecase) needInspectMerge(in InspectMerge) bool {

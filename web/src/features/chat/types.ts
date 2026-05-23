@@ -34,6 +34,7 @@ export type SendMessageOptions = {
   provider?: string;
   model?: string;
   attachments?: Array<{ id: string }>;
+  knowledge_bases?: string[];
 };
 
 export type SendMessageResult = {

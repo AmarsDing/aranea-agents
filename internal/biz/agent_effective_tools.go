@@ -151,12 +151,12 @@ func profileAllowSet(profile string, catalog []Tool) map[string]bool {
 // profile/allow JSON to opt in (e.g. shell_exec on "full"). Default-enabled tools (gemini_web_fetch)
 // administratively disabled in Tools UI are forced into denySet so profiles cannot re-enable them.
 var catalogOptInOnlyKeys = map[string]bool{
-	"shell_exec":      true,
-	"send_email":      true,
-	"claude_code":     true,
-	"workspace_exec":  true,
-	"create_image":    true,
-	"tts":             true,
+	"shell_exec":     true,
+	"send_email":     true,
+	"claude_code":    true,
+	"workspace_exec": true,
+	"create_image":   true,
+	"tts":            true,
 }
 
 func applyCatalogAdminDenials(catalog []Tool, deny map[string]bool) {
@@ -203,7 +203,7 @@ func canonicalToolProfile(profile string) string {
 }
 
 // computePolicyAllowedSet merges built-in profile + ToolsAllowJSON into one set of catalog tool_key values.
-// Keys are normalized ([normalizeToolPolicyKey]) so UI aliases match platform rows uniformly.
+// Keys are normalized ([NormalizeToolPolicyKey]) so UI aliases match platform rows uniformly.
 func computePolicyAllowedSet(profile string, allowExtra []string, catalog []Tool) map[string]bool {
 	prof := strings.TrimSpace(profile)
 	out := profileAllowSet(prof, catalog)
@@ -218,9 +218,9 @@ func computePolicyAllowedSet(profile string, allowExtra []string, catalog []Tool
 			}
 			continue
 		}
-		out[normalizeToolPolicyKey(key)] = true
+		out[NormalizeToolPolicyKey(key)] = true
 	}
-	propagateAllowAliases(out)
+	PropagateAllowAliases(out)
 	return out
 }
 
@@ -238,9 +238,9 @@ func computePolicyDenySet(denyList []string, catalog []Tool) map[string]bool {
 			}
 			continue
 		}
-		out[normalizeToolPolicyKey(key)] = true
+		out[NormalizeToolPolicyKey(key)] = true
 	}
-	propagateDenyAliases(out)
+	PropagateDenyAliases(out)
 	return out
 }
 
@@ -372,7 +372,7 @@ func (u *AgentUsecase) GetEffectiveTools(ctx context.Context, agentID string) (A
 	if err != nil {
 		return AgentEffectiveTools{}, err
 	}
-	platform := loadWebResearchPlatform(ctx, u.sys)
+	platform := loadWebResearchPlatformFromSys(ctx, u.sys)
 	for i := range all.Items {
 		EnrichToolCatalogRuntimeWithPlatform(&all.Items[i], platform)
 	}
@@ -382,7 +382,7 @@ func (u *AgentUsecase) GetEffectiveTools(ctx context.Context, agentID string) (A
 		overrides = o
 		ApplyAgentToolOverrides(&eff, all.Items, overrides)
 	}
-	applyWebResearchEffectiveGate(&eff, all.Items, platform, overrides)
+	applyWebResearchEffectiveGate(u.webResearchChecker, &eff, all.Items, platform, overrides)
 	return eff, nil
 }
 
@@ -433,7 +433,7 @@ func (u *AgentUsecase) UpdateAgentToolPolicy(ctx context.Context, agentID string
 	}
 	settings = withSettingDefaults(settings)
 
-	platform := loadWebResearchPlatform(ctx, u.sys)
+	platform := loadWebResearchPlatformFromSys(ctx, u.sys)
 	for i := range all.Items {
 		EnrichToolCatalogRuntimeWithPlatform(&all.Items[i], platform)
 	}
@@ -443,6 +443,6 @@ func (u *AgentUsecase) UpdateAgentToolPolicy(ctx context.Context, agentID string
 		overrides = o
 		ApplyAgentToolOverrides(&eff, all.Items, overrides)
 	}
-	applyWebResearchEffectiveGate(&eff, all.Items, platform, overrides)
+	applyWebResearchEffectiveGate(u.webResearchChecker, &eff, all.Items, platform, overrides)
 	return eff, nil
 }

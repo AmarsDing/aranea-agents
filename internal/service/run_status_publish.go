@@ -19,6 +19,11 @@ type AwaitStatusMeta = biz.ChatAwaitMeta
 
 // PublishRunStatusMeta emits run_status with optional await metadata.
 func PublishRunStatusMeta(bus event.Bus, sessionID, runID, status, errMsg string, await *AwaitStatusMeta) {
+	PublishRunStatusFull(bus, sessionID, runID, status, errMsg, await, "", "")
+}
+
+// PublishRunStatusFull emits run_status with optional session_run_id and turn_id (CC-R-04).
+func PublishRunStatusFull(bus event.Bus, sessionID, runID, status, errMsg string, await *AwaitStatusMeta, sessionRunID, turnID string) {
 	if bus == nil || strings.TrimSpace(sessionID) == "" {
 		return
 	}
@@ -28,6 +33,12 @@ func PublishRunStatusMeta(bus event.Bus, sessionID, runID, status, errMsg string
 		"run_id":        runID,
 		"status":        status,
 		"error_message": errMsg,
+	}
+	if sr := strings.TrimSpace(sessionRunID); sr != "" {
+		meta["session_run_id"] = sr
+	}
+	if tid := strings.TrimSpace(turnID); tid != "" {
+		meta["turn_id"] = tid
 	}
 	if await != nil {
 		if k := strings.TrimSpace(await.Kind); k != "" {

@@ -89,7 +89,7 @@ func TestRecordRunnerCompletion_idempotent(t *testing.T) {
 	repo := &completionMonitorRepo{exists: true}
 	uc := NewMonitorUsecase(repo, nil)
 	de := DomainEvent{SessionID: "s1", InvocationID: "r1", RunID: "r1", Timestamp: time.Now()}
-	if err := uc.RecordRunnerCompletion(context.Background(), de); err != nil {
+	if err := RecordRunnerCompletion(context.Background(), uc, de); err != nil {
 		t.Fatal(err)
 	}
 	if repo.inserted != 0 {
@@ -107,7 +107,7 @@ func TestRecordRunnerCompletion_appliesPendingUsageWhenExists(t *testing.T) {
 	defaultTurnCompletionBridge = bridge
 	defer func() { defaultTurnCompletionBridge = old }()
 
-	if err := uc.RecordRunnerCompletion(context.Background(), de); err != nil {
+	if err := RecordRunnerCompletion(context.Background(), uc, de); err != nil {
 		t.Fatal(err)
 	}
 	if len(repo.patches) != 1 {
@@ -130,7 +130,7 @@ func TestLinkRunnerCompletionUsage_stagesBeforeCompletionRow(t *testing.T) {
 	defaultTurnCompletionBridge = bridge
 	defer func() { defaultTurnCompletionBridge = old }()
 
-	if err := uc.LinkRunnerCompletionUsage(context.Background(), "s1", "r1", "usage-9", "tr-9"); err != nil {
+	if err := LinkRunnerCompletionUsage(context.Background(), uc, "s1", "r1", "usage-9", "tr-9"); err != nil {
 		t.Fatal(err)
 	}
 	if len(repo.patches) != 0 {

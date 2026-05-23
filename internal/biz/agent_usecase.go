@@ -51,13 +51,18 @@ type AgentRepository interface {
 
 // AgentUsecase is catalog agent CRUD + prompt preview.
 type AgentUsecase struct {
-	repo  AgentRepository
-	tools ToolRepo
-	sys   SystemSettingRepo
+	repo              AgentRepository
+	tools             ToolRepo
+	sys               SystemSettingRepo
+	webResearchChecker WebResearchReadinessChecker
 }
 
 func NewAgentUsecase(repo AgentRepository, tools ToolRepo, sys SystemSettingRepo) *AgentUsecase {
 	return &AgentUsecase{repo: repo, tools: tools, sys: sys}
+}
+
+func (u *AgentUsecase) SetWebResearchChecker(checker WebResearchReadinessChecker) {
+	u.webResearchChecker = checker
 }
 
 // ListAgentCreators returns distinct creators for list filter options.

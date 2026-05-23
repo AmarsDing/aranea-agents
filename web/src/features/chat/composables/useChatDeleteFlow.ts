@@ -1,23 +1,22 @@
-import { computed, ref, type ComputedRef, type Ref } from "vue";
+import { computed, ref, type ComputedRef } from "vue";
 import { useI18n } from "vue-i18n";
 import { useQuasar } from "quasar";
 import { deleteTeam } from "../../teams/api";
 import type { Agent, DeleteKind, SessionView, TeamRow } from "../../../components/chat/types";
 import { isAgentWorking, LS_AG_ORDER, LS_TM_ORDER } from "./chatWorkspaceUtils";
+import type { useAppStore } from "../../../stores/app";
+import type { useChatStore } from "../../../stores/chat";
 
-type Store = ReturnType<typeof useAppStore>;
+type AppStore = ReturnType<typeof useAppStore>;
+type ChatStore = ReturnType<typeof useChatStore>;
 
 export type DeleteFlowDeps = {
-  store: Store;
-  displayAgents: Ref<Agent[]>;
-  displayTeams: Ref<TeamRow[]>;
+  appStore: AppStore;
+  chatStore: ChatStore;
+  displayAgents: ReturnType<typeof ref<Agent[]>>;
+  displayTeams: ReturnType<typeof ref<TeamRow[]>>;
   displaySessions: ComputedRef<SessionView[]>;
-  selectedEntityKind: Ref<"agent" | "team">;
-  selectedTeamId: Ref<string | null>;
-  teamSessions: Ref<Record<string, Array<{ id: string }>>>;
-  teamSelectedSessionId: Ref<string | null>;
-  teamMessages: Ref<Record<string, unknown[]>>;
-  defaultAgentId: Ref<string | null>;
+  defaultAgentId: ReturnType<typeof ref<string | null>>;
   selectTeam: (team: TeamRow) => Promise<void>;
 };
 
@@ -36,7 +35,7 @@ export function useChatDeleteFlow(deps: DeleteFlowDeps) {
   const expectedDeleteName = computed(() => {
     if (deleteKind.value === "agent" && deleteTargetId.value) {
       return (
-        deps.store.agents.find((agent) => agent.id === deleteTargetId.value)?.display_name ??
+        deps.appStore.agents.find((agent) => agent.id === deleteTargetId.value)?.display_name ??
         deps.displayAgents.value.find((agent) => agent.id === deleteTargetId.value)?.display_name ??
         ""
       );
@@ -76,7 +75,7 @@ export function useChatDeleteFlow(deps: DeleteFlowDeps) {
 
     if (kind === "agent" && id) {
       const agent =
-        deps.store.agents.find((item) => item.id === id) ??
+        deps.appStore.agents.find((item) => item.id === id) ??
         deps.displayAgents.value.find((item) => item.id === id);
       deleteBlockBusy.value = agent ? isAgentWorking(agent) : false;
     }
@@ -95,30 +94,24 @@ export function useChatDeleteFlow(deps: DeleteFlowDeps) {
   }
 
   async function deleteSession(id: string) {
-    if (deps.selectedEntityKind.value === "team" && deps.selectedTeamId.value) {
-      deps.teamSessions.value[deps.selectedTeamId.value] = (
-        deps.teamSessions.value[deps.selectedTeamId.value] ?? []
-      ).filter((session) => session.id !== id);
-      delete deps.teamMessages.value[id];
-      if (deps.teamSelectedSessionId.value === id) {
-        deps.teamSelectedSessionId.value =
-          deps.teamSessions.value[deps.selectedTeamId.value]?.[0]?.id ?? null;
-      }
+    if (deps.chatStore.entityKind === "team" && deps.chatStore.selectedTeamId) {
+      await deps.chatStore.removeTeamSessionLocal(deps.chatStore.selectedTeamId, id);
       return;
     }
-    await deps.store.removeSessionLocal(id);
-    if (deps.store.selectedSession) await deps.store.loadMessages();
+    await deps.chatStore.removeSessionLocal(id);
+    if (deps.chatStore.selectedSession) {
+      await deps.chatStore.loadMessages({ sessionId: deps.chatStore.selectedSession.id });
+    }
   }
 
   async function clearSessions() {
-    if (deps.selectedEntityKind.value === "agent") {
-      await deps.store.clearAllSessions();
+    if (deps.chatStore.entityKind === "agent") {
+      const agentId = deps.appStore.selectedAgent?.id;
+      if (agentId) await deps.chatStore.clearAllAgentSessions(agentId);
       return;
     }
-    if (deps.selectedEntityKind.value === "team" && deps.selectedTeamId.value) {
-      deps.teamSessions.value[deps.selectedTeamId.value] = [];
-      deps.teamSelectedSessionId.value = null;
-      for (const sid of Object.keys(deps.teamMessages.value)) delete deps.teamMessages.value[sid];
+    if (deps.chatStore.entityKind === "team" && deps.chatStore.selectedTeamId) {
+      deps.chatStore.clearTeamSessions(deps.chatStore.selectedTeamId);
     }
   }
 
@@ -130,15 +123,17 @@ export function useChatDeleteFlow(deps: DeleteFlowDeps) {
       deleting.value = true;
       try {
         localStorage.removeItem(LS_AG_ORDER);
-        await deps.store.removeAgentFromList(id);
+        await deps.appStore.removeAgentFromList(id);
         deps.displayAgents.value = deps.displayAgents.value.filter((agent) => agent.id !== id);
-        deps.defaultAgentId.value = deps.store.agents[0]?.id ?? null;
-        if (deps.selectedEntityKind.value === "agent") {
-          if (deps.store.selectedAgent) {
-            await deps.store.loadSessions();
-            deps.store.selectedSession = deps.store.sessions[0] ?? null;
-            deps.store.messages = [];
-            if (deps.store.selectedSession) await deps.store.loadMessages();
+        deps.defaultAgentId.value = deps.appStore.agents[0]?.id ?? null;
+        if (deps.chatStore.entityKind === "agent") {
+          if (deps.appStore.selectedAgent) {
+            await deps.chatStore.loadAgentSessions(deps.appStore.selectedAgent.id);
+            deps.chatStore.selectedSession = deps.chatStore.sessions[0] ?? null;
+            if (deps.chatStore.selectedSession) {
+              deps.chatStore.clearSessionMessages(deps.chatStore.selectedSession.id);
+              await deps.chatStore.loadMessages({ sessionId: deps.chatStore.selectedSession.id });
+            }
           } else if (deps.displayTeams.value[0]) {
             await deps.selectTeam(deps.displayTeams.value[0]);
           }
@@ -150,7 +145,7 @@ export function useChatDeleteFlow(deps: DeleteFlowDeps) {
       await deleteTeam(id);
       localStorage.removeItem(LS_TM_ORDER);
       deps.displayTeams.value = deps.displayTeams.value.filter((team) => team.id !== id);
-      if (deps.selectedTeamId.value === id) deps.selectedTeamId.value = null;
+      if (deps.chatStore.selectedTeamId === id) deps.chatStore.selectedTeamId = null;
     } else if (deleteKind.value === "session" && id) {
       await deleteSession(id);
     } else if (deleteKind.value === "all") {

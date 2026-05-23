@@ -30,11 +30,24 @@ func RenderPlainText(t *Transcript, policy biz.ChannelIMRenderPolicy) string {
 	}
 }
 
+func transcriptHasReasoning(segs []Segment, showReasoning bool) bool {
+	if !showReasoning {
+		return false
+	}
+	for _, seg := range segs {
+		if seg.Kind == SegmentReasoning && strings.TrimSpace(seg.Content) != "" {
+			return true
+		}
+	}
+	return false
+}
+
 func renderTranscript(segs []Segment, policy biz.ChannelIMRenderPolicy) string {
 	var b strings.Builder
 	showReasoning := policy.ShowReasoning || policy.Mode == biz.ChannelIMRenderModeTranscriptWithReasoning
+	hasReasoning := transcriptHasReasoning(segs, showReasoning)
 	for _, seg := range segs {
-		line := renderSegment(seg, policy, showReasoning)
+		line := renderSegment(seg, policy, showReasoning, hasReasoning)
 		if line == "" {
 			continue
 		}
@@ -46,7 +59,7 @@ func renderTranscript(segs []Segment, policy biz.ChannelIMRenderPolicy) string {
 	return strings.TrimSpace(b.String())
 }
 
-func renderSegment(seg Segment, policy biz.ChannelIMRenderPolicy, showReasoning bool) string {
+func renderSegment(seg Segment, policy biz.ChannelIMRenderPolicy, showReasoning, hasReasoningInTranscript bool) string {
 	switch seg.Kind {
 	case SegmentSystem:
 		return strings.TrimSpace(seg.Content)
@@ -58,9 +71,16 @@ func renderSegment(seg Segment, policy biz.ChannelIMRenderPolicy, showReasoning 
 		if text == "" {
 			return ""
 		}
-		return "💭 " + text
+		return imSectionReasoningLabel + "\n" + text
 	case SegmentText:
-		return strings.TrimSpace(seg.Content)
+		text := strings.TrimSpace(seg.Content)
+		if text == "" {
+			return ""
+		}
+		if hasReasoningInTranscript {
+			return imSectionBodyLabel + "\n" + text
+		}
+		return text
 	case SegmentTool:
 		return renderToolSegment(seg, policy)
 	case SegmentMember:

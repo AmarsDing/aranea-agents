@@ -3,7 +3,7 @@ package biz
 import (
 	"context"
 
-	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/safego"
 )
 
@@ -13,14 +13,19 @@ type EventBusSideConsumers struct {
 	callback     *callbackConsumer
 	messageStore *messageStoreConsumer
 	flowLog      *flowLogPersistConsumer
+	userFeedback *userFeedbackConsumer
+	webhooks     *WebhookDispatcher
+	logger       SessionLogWriter
 }
 
 func NewEventBusSideConsumers(
-	bus event.Bus,
+	bus contract.Bus,
 	tools *ToolUsecase,
 	webhooks *WebhookDispatcher,
 	sessions *SessionUsecase,
 	flowLogs *FlowLogUsecase,
+	monitor *MonitorUsecase,
+	memWorker *TurnMemoryWorker,
 ) *EventBusSideConsumers {
 	if bus == nil {
 		return nil
@@ -30,6 +35,27 @@ func NewEventBusSideConsumers(
 		callback:     newCallbackConsumer(bus, webhooks),
 		messageStore: newMessageStoreConsumer(bus, sessions),
 		flowLog:      newFlowLogPersistConsumer(bus, flowLogs),
+		userFeedback: newUserFeedbackConsumer(bus, monitor, memWorker),
+		webhooks:     webhooks,
+	}
+}
+
+func (c *EventBusSideConsumers) SetLogger(logger SessionLogWriter) {
+	c.logger = logger
+	if c.toolCall != nil {
+		c.toolCall.logger = logger
+	}
+	if c.flowLog != nil {
+		c.flowLog.logger = logger
+	}
+	if c.messageStore != nil {
+		c.messageStore.logger = logger
+	}
+	if c.userFeedback != nil {
+		c.userFeedback.logger = logger
+	}
+	if c.webhooks != nil {
+		c.webhooks.SetLogger(logger)
 	}
 }
 
@@ -49,9 +75,12 @@ func (c *EventBusSideConsumers) Start(ctx context.Context) {
 	if c.flowLog != nil {
 		c.flowLog.Start(ctx)
 	}
+	if c.userFeedback != nil {
+		c.userFeedback.Start(ctx)
+	}
 }
 
-func runTypedConsumer(ctx context.Context, name string, bus event.Bus, opts event.SubscribeOptions, fn func(context.Context, event.Envelope)) {
+func runTypedConsumer(ctx context.Context, name string, bus contract.Bus, opts contract.SubscribeOptions, fn func(context.Context, contract.Envelope)) {
 	if bus == nil || fn == nil {
 		return
 	}

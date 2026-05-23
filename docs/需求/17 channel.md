@@ -2,7 +2,12 @@
 
 本文档定义 Channel **对外平台连接** 的产品需求：多 IM/协作平台接入、凭据与连接模式配置、消息路由与投递验收。
 
-**平台连接参考**：[MuseBot](https://github.com/yincongcyincong/MuseBot)（`robot/*.go` + `http/communicate.go`）— MIT 许可，覆盖国内（飞书/钉钉/企微/微信/QQ）与海外（Telegram/Discord/Slack）主流接入方式。Aranea **只借鉴其平台 SDK 选型与连接模式**，Agent 运行时仍走 `internal/service.ChatService`，不在 Channel 层耦合 LLM。
+**平台连接参考**：
+
+- [MuseBot](https://github.com/yincongcyincong/MuseBot)（`robot/*.go` + `http/communicate.go`）— MIT；SDK 选型与连接模式  
+- [Hermes Agent](https://github.com/NousResearch/hermes-agent)（`gateway/platforms/feishu.py` + `gateway/run.py`）— MIT；**飞书入站/outbound/流式/心跳/会话隔离** 等产品与连接层行为对照，见 [17 channel.design.md §十四](./17%20channel.design.md#十四hermes-agent-对照消息流转与飞书特殊处理)
+
+Aranea **只借鉴连接层与 IM 体验模式**，Agent 运行时仍走 `internal/service.ChatService`，不在 Channel 层耦合 LLM。
 
 与 **`2 agents-create.md`**（Agent 能力配置）、**`11 multi-agent.md`**（Team 编排）、**`10-session-development.md`**（会话）、**`51 消息机制.md`**（实时事件）、**`17-channel-agent-team-integration.md`**（跨模块业务主链）、**`frontend-pages.md`**（`/channels`）、**`docs/README.md`**（Kratos + trpc 分层）对齐。
 
@@ -119,6 +124,10 @@ Catalog 由 `ListChannelCatalog` 返回。
 | `region` | config | — |
 | `app_secret` | credential | `lark_app_secret` |
 | `connection_mode` | config | webhook / websocket |
+| `ws_ping_interval_sec` | config | （规划 F-01）larkws ping 间隔 |
+| `ws_reconnect_interval_sec` | config | （规划 F-01）重连间隔，Hermes 默认 120s |
+| `thread_sessions_per_user` | config | （规划 F-06）话题线程独立 session |
+| `inbound_text_debounce_ms` | config | （规划 F-04）连续 text 合并，默认 600 |
 
 ### 5.2 钉钉（`dingtalk`）
 
@@ -281,6 +290,8 @@ Webhook 与 WS 统一 **Accept（ACK + 200）→ 异步 Execute Turn**；详见 
 **入站统一门禁（2026-05-22）**  
 飞书 WS / Webhook 先经 **`lark.AcceptFeishuInbound`**（同一规则：仅 `sender_type=user`、必须有 `message_id`、群聊需 @）→ `ChannelIngress.ProcessInbound` → **`channel_inbound_receipt`**（同一 `feishu:{message_id}` 只 Turn 一次）→ `checkInboundAccess` → Agent Turn。
 
+**Hermes 对照（2026-05-24）**：Hermes 额外有 text debounce 合并、Reaction 处理中反馈、thread 会话隔离、Webhook IP 限流；Aranea 额外有 IM Preview 单条演进、Turn Job、Tool Card、preview 心跳。详见 [17 channel.design.md §十四](./17%20channel.design.md#十四hermes-agent-对照消息流转与飞书特殊处理)。
+
 详见 [changelog/2026-05-22-Channel-Inbound-Root-Cause.md](../changelog/2026-05-22-Channel-Inbound-Root-Cause.md)。
 
 ### 7.2 出站与流式
@@ -398,6 +409,20 @@ Team 流水线（群 @）：
 | LT-06 | Turn 超时或失败 | 飞书明确错误 + Job/投递可审计 |
 | LT-07 | 运维 | Monitor / Session 可按 `session_id` 查看 Channel Turn 与 FlowLog |
 
+### 8.8 卡 Turn / 飞书无回复（排查）
+
+> 完整分析：[2026-05-23-M55-Stuck-Turn-Inbound-Sync-Analysis.md](../changelog/2026-05-23-M55-Stuck-Turn-Inbound-Sync-Analysis.md)
+
+| 症状 | 常见根因 | 优先检查 |
+|------|----------|----------|
+| Web 工具永久「正在执行」 | WS 未收 `tool_result`；`mergeSessionMessages` 保留本地 running 行 | Session WS 连接；FlowLog `chat.activity.finalize_stuck` |
+| Web 思考 `…` 无正文 | Turn 未结束或缺 `text_done` / `runner_completion` | `run-status`；FlowLog `channel.turn.execute` |
+| 飞书无最终回复 | 同步 Turn 未返回；`rendered==""` 未 Flush；**durable 升格无 completion outbound** | `channel_delivery` 投递记录；`session_runs.phase` |
+| 仅有「已排队」「建议 /async」 | 排队 ACK 与超时提示叠加 | 前序 Run 是否卡死；CC-UX-01 |
+| 卡片 200340 | 未订阅 `card.action.trigger` 或未发布应用版本 | 飞书开发者后台 |
+
+**修复任务**：CC-FIX-TOOL-01~03 · CC-FIX-CHANNEL-01 · CC-FEISHU-OPS-01（见 M55 Phase R-UX）。
+
 ---
 
 ## 9. 验收标准（基础能力）
@@ -422,3 +447,4 @@ Team 流水线（群 @）：
 | 3.0 | 2026-05-22 | 以 MuseBot 平台连接能力为参考重写；移除 GoClaw/trpc channel 主导；扩展 Catalog 至 MuseBot 10 平台 |
 | 3.1 | 2026-05-22 | §6 访问控制：`allowed_user_ids` / `allowed_group_ids` / `require_mention` 入站强制执行与用法说明 |
 | 3.2 | 2026-05-22 | §8 长任务场景：用户故事、配置项、验收 LT-01–07；与 Phase E 开发计划对齐 |
+| 3.3 | 2026-05-23 | §8.8 卡 Turn / 飞书无回复排查；链至 M55 Stuck-Turn 分析 |

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -221,12 +222,49 @@ func (c *SessionCompressor) runCompress(ctx context.Context, sessionID string, a
 	est := estimateCompactedPromptTokens(merged, tail)
 	_ = c.Sessions.UpdateSessionContextAfterCompression(ctx, sessionID, est, win)
 
-	if preview := firstSummaryLine(merged); preview != "" {
+	preview := firstSummaryLine(merged)
+	if preview != "" {
 		_ = c.Sessions.UpdateSessionListSummary(ctx, sessionID, preview)
 	}
+	c.publishCompressionNotice(ctx, sessionID, fromTurn, toTurn, preview)
 
 	c.resyncSessionMemory(ctx, sessionID)
 	return nil
+}
+
+func (c *SessionCompressor) publishCompressionNotice(ctx context.Context, sessionID string, fromTurn, toTurn int, preview string) {
+	if c == nil || strings.TrimSpace(sessionID) == "" {
+		return
+	}
+	preview = strings.TrimSpace(preview)
+	text := "会话上下文已自动压缩"
+	if fromTurn > 0 && toTurn >= fromTurn {
+		text += "（turn " + strconv.Itoa(fromTurn) + "–" + strconv.Itoa(toTurn) + "）"
+	}
+	if preview != "" {
+		text += "。摘要：" + preview
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	sysMsg := biz.ChatMessage{
+		ID:              uuid.NewString(),
+		SessionID:       sessionID,
+		Role:            "system",
+		ContentMarkdown: text,
+		Status:          "ok",
+		CreatedAt:       now,
+	}
+	_ = c.Sessions.AppendChatMessage(ctx, sessionID, sysMsg, false)
+	if c.EventBus == nil {
+		return
+	}
+	env := event.NewEnvelope(event.EnvelopeTypeTextDone, "system", sessionID)
+	env.Content = &event.EnvelopeContent{Text: text, IsPartial: false}
+	env.Metadata = map[string]any{
+		"kind":      "system.session.compress",
+		"from_turn": fromTurn,
+		"to_turn":   toTurn,
+	}
+	c.EventBus.Publish(ctx, env)
 }
 
 func compressProviderModel(sess biz.Session, ag biz.Agent) (prov, mod string) {

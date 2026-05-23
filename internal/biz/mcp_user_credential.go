@@ -4,11 +4,23 @@ import (
 	"context"
 	"strings"
 
-	mcpconfig "aranea-agents/internal/mcp/config"
-
 	"github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
 )
+
+// MCPAuthConfig is the domain-level representation of MCP server auth configuration.
+type MCPAuthConfig struct {
+	Type       string `json:"type"`
+	HeaderName string `json:"header_name"`
+}
+
+// MCPServerConfig is the domain-level representation of MCP server config_json,
+// containing only the fields needed for user credential resolution.
+type MCPServerConfig struct {
+	Headers                map[string]string `json:"headers"`
+	Auth                   MCPAuthConfig     `json:"auth"`
+	RequireUserCredentials bool              `json:"require_user_credentials"`
+}
 
 // MCPServerUserCredential is a per-user secret for an MCP server row.
 type MCPServerUserCredential struct {
@@ -93,7 +105,7 @@ func (u *MCPServerUsecase) DeleteUserCredential(ctx context.Context, mcpServerID
 }
 
 // ResolveUserAuthHeaders merges per-user credential into headers when require_user_credentials is set.
-func (u *MCPServerUsecase) ResolveUserAuthHeaders(ctx context.Context, serverKey, userID string, sc mcpconfig.ServerConfig) (map[string]string, error) {
+func (u *MCPServerUsecase) ResolveUserAuthHeaders(ctx context.Context, serverKey, userID string, sc MCPServerConfig) (map[string]string, error) {
 	headers := make(map[string]string, len(sc.Headers)+1)
 	for k, v := range sc.Headers {
 		headers[k] = v

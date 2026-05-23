@@ -30,12 +30,22 @@
               <q-item-section>
                 <q-item-label class="ellipsis">{{ job.summary || job.id }}</q-item-label>
                 <q-item-label caption>
-                  {{ job.target_type || "sync" }}
-                  <span v-if="job.target_id"> · {{ job.target_id }}</span>
+                  {{ job.source === "session_run" ? (job.phase || job.status) : (job.target_type || "sync") }}
+                  <span v-if="job.target_id && job.source !== 'session_run'"> · {{ job.target_id }}</span>
+                  <span v-if="job.turn_id"> · turn {{ job.turn_id.slice(0, 8) }}</span>
                 </q-item-label>
               </q-item-section>
               <q-item-section side>
                 <div class="row items-center q-gutter-xs">
+                  <q-btn
+                    v-if="turnBlockLink(job)"
+                    flat
+                    dense
+                    round
+                    icon="forum"
+                    :aria-label="t('chat.job.openTurn', '跳转到对话轮次')"
+                    @click.stop="openTurnBlock(job)"
+                  />
                   <q-btn
                     v-if="graphRunLink(job)"
                     flat
@@ -129,6 +139,10 @@ import { useTaskDeadLetters } from "../../features/chat/useTaskDeadLetters";
 
 type ChatBackgroundJobRow = ReturnType<typeof useChatBackgroundJobs>["rows"]["value"][number];
 type TaskDeadLetterRow = ReturnType<typeof useTaskDeadLetters>["rows"]["value"][number];
+
+const emit = defineEmits<{
+  "focus-turn": [turnId: string];
+}>();
 
 const props = defineProps<{
   sessionId?: string;
@@ -224,6 +238,21 @@ function formatTime(iso: string) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleString();
+}
+
+function turnBlockLink(job: ChatBackgroundJobRow) {
+  const turnId = job.turn_id?.trim();
+  if (!turnId) return null;
+  if (job.source !== "session_run") return null;
+  return turnId;
+}
+
+function openTurnBlock(job: ChatBackgroundJobRow) {
+  const turnId = turnBlockLink(job);
+  if (turnId) {
+    expanded.value = false;
+    emit("focus-turn", turnId);
+  }
 }
 
 function graphRunLink(job: ChatBackgroundJobRow) {

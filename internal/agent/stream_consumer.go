@@ -16,6 +16,7 @@ type turnStreamConsumer struct {
 	firstByteCtx      context.Context
 	turnCtx           context.Context
 	eventBus          event.Bus
+	observer          *event.TurnObserver
 	projectMeta       ProjectMeta
 	opts              *StreamConsumeOptions
 	projector         *EventProjector
@@ -43,6 +44,7 @@ func newTurnStreamConsumer(
 	}
 	if eventBus != nil {
 		c.projector = NewEventProjector(eventBus)
+		c.observer = event.NewTurnObserver(eventBus)
 		if projectMeta.TeamID != "" && len(projectMeta.MemberAgentKeys) > 0 {
 			c.projector.memberStarted = make(map[string]bool)
 		}
@@ -158,7 +160,12 @@ func (c *turnStreamConsumer) projectAndTrackTools(ev *trpcevent.Event) {
 	if c.projector == nil {
 		return
 	}
-	envelopes := c.projector.Project(c.turnCtx, ev, c.projectMeta)
+	meta := c.projectMeta
+	if ev.IsRunnerCompletion() {
+		meta.TurnPromptTokens = c.result.PromptTok
+		meta.TurnCompletionTok = c.result.CompletionTok
+	}
+	envelopes := c.projector.Project(c.turnCtx, ev, meta)
 	for _, env := range envelopes {
 		c.trackToolEnvelope(env)
 		if c.projectMeta.TeamID != "" && env.Type == event.EnvelopeTypeToolCall {
@@ -170,7 +177,11 @@ func (c *turnStreamConsumer) projectAndTrackTools(ev *trpcevent.Event) {
 				c.result.MemberToolCalls[author]++
 			}
 		}
-		c.eventBus.Publish(c.turnCtx, env)
+		if c.observer != nil {
+			c.observer.PublishChat(c.turnCtx, env)
+		} else if c.eventBus != nil {
+			c.eventBus.Publish(c.turnCtx, env)
+		}
 	}
 	if c.opts != nil {
 		PublishActivityEnvelopes(c.turnCtx, c.projectMeta, c.opts.ActivityPersister, envelopes)
@@ -196,10 +207,16 @@ func (c *turnStreamConsumer) trackToolEnvelope(env event.Envelope) {
 }
 
 func (c *turnStreamConsumer) finalize() {
-	if c.opts == nil || c.opts.ActivityPersister == nil || len(c.pendingToolCalls) == 0 {
+	if len(c.pendingToolCalls) == 0 {
 		return
 	}
-	FinalizeStuckToolActivities(c.turnCtx, c.projectMeta, c.opts.ActivityPersister, c.pendingToolCalls)
+	pending := c.pendingToolCalls
+	if c.eventBus != nil {
+		PublishStuckToolResultEnvelopes(c.turnCtx, c.projectMeta, c.eventBus, pending)
+	}
+	if c.opts != nil && c.opts.ActivityPersister != nil {
+		FinalizeStuckToolActivities(c.turnCtx, c.projectMeta, c.opts.ActivityPersister, pending)
+	}
 }
 
 func accumulateChoiceStream(result *EventStreamResult, choice trpcmodel.Choice, partial bool, onReplyDelta func(string) error) error {

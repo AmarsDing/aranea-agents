@@ -141,6 +141,9 @@ func (m *ingressSessionRepo) SearchMessages(context.Context, biz.MessageSearchQu
 func (m *ingressSessionRepo) AppendChatMessage(context.Context, string, biz.ChatMessage, bool) error {
 	return nil
 }
+func (m *ingressSessionRepo) UpdateMessageFeedbackJSON(context.Context, string, string, string, string) error {
+	return nil
+}
 func (m *ingressSessionRepo) UpsertChatActivityMessage(context.Context, string, biz.ChatMessage) error {
 	return nil
 }
@@ -278,7 +281,7 @@ func TestEnsureChannelSessionRebindsStalePeerBind(t *testing.T) {
 	}
 	sessRepo := &ingressSessionRepo{sessions: map[string]biz.Session{}}
 	agents := ingressAgentRepo{id: agentID}
-	sessions := biz.NewSessionUsecase(sessRepo, agents, nil, nil)
+	sessions := biz.NewSessionUsecase(sessRepo, biz.NewSessionAgentLookup(agents), nil, nil)
 	h := &ChannelIngress{
 		peers:    peerRepo,
 		sessions: sessions,
@@ -332,7 +335,7 @@ func TestEnsureChannelSessionReusesLivePeerBind(t *testing.T) {
 		},
 	}
 	agents := ingressAgentRepo{id: agentID}
-	sessions := biz.NewSessionUsecase(sessRepo, agents, nil, nil)
+	sessions := biz.NewSessionUsecase(sessRepo, biz.NewSessionAgentLookup(agents), nil, nil)
 	h := &ChannelIngress{
 		peers:    peerRepo,
 		sessions: sessions,

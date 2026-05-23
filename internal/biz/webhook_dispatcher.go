@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"aranea-agents/internal/event"
 	"aranea-agents/pkg/safego"
 	"aranea-agents/pkg/webhookurl"
 )
@@ -33,6 +32,7 @@ type WebhookPayload struct {
 type WebhookDispatcher struct {
 	repo   WebhookRepository
 	client *http.Client
+	logger SessionLogWriter
 }
 
 func NewWebhookDispatcher(repo WebhookRepository) *WebhookDispatcher {
@@ -40,6 +40,10 @@ func NewWebhookDispatcher(repo WebhookRepository) *WebhookDispatcher {
 		repo:   repo,
 		client: webhookurl.NewOutboundHTTPClient(webhookHTTPTimeout),
 	}
+}
+
+func (d *WebhookDispatcher) SetLogger(logger SessionLogWriter) {
+	d.logger = logger
 }
 
 // Dispatch fans out one event to enabled webhooks that subscribe to eventType.
@@ -52,10 +56,12 @@ func (d *WebhookDispatcher) Dispatch(ctx context.Context, eventType, runID, sess
 		defer cancel()
 		configs, err := d.repo.ListEnabled(bg)
 		if err != nil {
-			event.SessionSysLogWarn(bg, sessionID, "gateway.webhook.list_fail", "出站 Webhook 配置加载失败",
-				event.P("event_type", eventType),
-				event.P("error", err.Error()),
-			)
+			if d.logger != nil {
+				d.logger.SessionSysLogWarn(bg, sessionID, "gateway.webhook.list_fail", "出站 Webhook 配置加载失败",
+					LogPair{Key: "event_type", Value: eventType},
+					LogPair{Key: "error", Value: err.Error()},
+				)
+			}
 			return
 		}
 		payload := WebhookPayload{
@@ -68,10 +74,12 @@ func (d *WebhookDispatcher) Dispatch(ctx context.Context, eventType, runID, sess
 		}
 		body, err := json.Marshal(payload)
 		if err != nil {
-			event.SessionSysLogWarn(bg, sessionID, "gateway.webhook.marshal_fail", "出站 Webhook 载荷序列化失败",
-				event.P("event_type", eventType),
-				event.P("error", err.Error()),
-			)
+			if d.logger != nil {
+				d.logger.SessionSysLogWarn(bg, sessionID, "gateway.webhook.marshal_fail", "出站 Webhook 载荷序列化失败",
+					LogPair{Key: "event_type", Value: eventType},
+					LogPair{Key: "error", Value: err.Error()},
+				)
+			}
 			return
 		}
 		for _, cfg := range configs {
@@ -86,20 +94,24 @@ func (d *WebhookDispatcher) Dispatch(ctx context.Context, eventType, runID, sess
 func (d *WebhookDispatcher) postOne(ctx context.Context, sessionID string, cfg WebhookConfig, body []byte) {
 	target := strings.TrimSpace(cfg.URL)
 	if err := webhookurl.ValidateNotifyURL(target); err != nil {
-		event.SessionSysLogWarn(ctx, sessionID, "gateway.webhook.url_rejected", "出站 Webhook URL 被拒绝",
-			event.P("webhook_id", cfg.ID),
-			event.P("url", target),
-			event.P("error", err.Error()),
-		)
+		if d.logger != nil {
+			d.logger.SessionSysLogWarn(ctx, sessionID, "gateway.webhook.url_rejected", "出站 Webhook URL 被拒绝",
+				LogPair{Key: "webhook_id", Value: cfg.ID},
+				LogPair{Key: "url", Value: target},
+				LogPair{Key: "error", Value: err.Error()},
+			)
+		}
 		return
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(body))
 	if err != nil {
-		event.SessionSysLogWarn(ctx, sessionID, "gateway.webhook.request_fail", "出站 Webhook 请求构建失败",
-			event.P("webhook_id", cfg.ID),
-			event.P("url", cfg.URL),
-			event.P("error", err.Error()),
-		)
+		if d.logger != nil {
+			d.logger.SessionSysLogWarn(ctx, sessionID, "gateway.webhook.request_fail", "出站 Webhook 请求构建失败",
+				LogPair{Key: "webhook_id", Value: cfg.ID},
+				LogPair{Key: "url", Value: cfg.URL},
+				LogPair{Key: "error", Value: err.Error()},
+			)
+		}
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
@@ -116,20 +128,24 @@ func (d *WebhookDispatcher) postOne(ctx context.Context, sessionID string, cfg W
 	}
 	resp, err := d.client.Do(req)
 	if err != nil {
-		event.SessionSysLogWarn(ctx, sessionID, "gateway.webhook.delivery_fail", "出站 Webhook 投递失败",
-			event.P("webhook_id", cfg.ID),
-			event.P("url", cfg.URL),
-			event.P("error", err.Error()),
-		)
+		if d.logger != nil {
+			d.logger.SessionSysLogWarn(ctx, sessionID, "gateway.webhook.delivery_fail", "出站 Webhook 投递失败",
+				LogPair{Key: "webhook_id", Value: cfg.ID},
+				LogPair{Key: "url", Value: cfg.URL},
+				LogPair{Key: "error", Value: err.Error()},
+			)
+		}
 		return
 	}
 	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, resp.Body)
 	if resp.StatusCode >= 300 {
-		event.SessionSysLogWarn(ctx, sessionID, "gateway.webhook.delivery_fail", "出站 Webhook 非 2xx 响应",
-			event.P("webhook_id", cfg.ID),
-			event.P("url", cfg.URL),
-			event.P("status_code", resp.StatusCode),
-		)
+		if d.logger != nil {
+			d.logger.SessionSysLogWarn(ctx, sessionID, "gateway.webhook.delivery_fail", "出站 Webhook 非 2xx 响应",
+				LogPair{Key: "webhook_id", Value: cfg.ID},
+				LogPair{Key: "url", Value: cfg.URL},
+				LogPair{Key: "status_code", Value: resp.StatusCode},
+			)
+		}
 	}
 }

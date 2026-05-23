@@ -2,7 +2,7 @@
 
 > **版本**：2026-05-22 | **状态**：🟢 9 平台连接；Runtime 生产级重连 + 流式出站 MVP  
 > **需求**：[17 channel.md](./17%20channel.md) · **设计**：[17 channel.design.md](./17%20channel.design.md) · **业务集成**：[17-channel-agent-team-integration.md](./17-channel-agent-team-integration.md)  
-> **M55 长任务路由 + Web 同步**：[55-chat-channel-cursor-solution.md](./55-chat-channel-cursor-solution.md) · [55-chat-channel-cursor-development.md](./55-chat-channel-cursor-development.md)  
+> **Hermes 对照**：[17 channel.design.md §十四](./17%20channel.design.md#十四hermes-agent-对照消息流转与飞书特殊处理) · Phase F backlog 见 **§11**  
 > **平台参考**：[MuseBot](https://github.com/yincongcyincong/MuseBot) `robot/`（MIT）  
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：EP-BIZ-08
 
@@ -348,10 +348,232 @@ make runtime-boundary
 | 集成差距 | `17-channel-agent-team-integration.md` §6 |
 | 实现完成后 | `changelog/YYYY-MM-DD-Channel-Long-Task-Phase-E.md` |
 
+
 ---
 
-## 11. 文档修订记录
+**Hermes 对照文件**（飞书 IM 行为，连接层非 LLM）：
+
+| 主题 | Hermes |
+|------|--------|
+| 飞书适配器 | `gateway/platforms/feishu.py` |
+| Gateway 调度 | `gateway/run.py` |
+| 会话键 | `gateway/session.py` `build_session_key` |
+| 流式出站 | `gateway/stream_consumer.py` |
+| 用户文档 | `website/docs/user-guide/messaging/feishu.md` |
+
+---
+
+## 11. Phase F — Hermes 飞书借鉴（P1–P2）
+
+> **设计对照**：[17 channel.design.md §十四](./17%20channel.design.md#十四hermes-agent-对照消息流转与飞书特殊处理)  
+> **背景**：Hermes 个人 Gateway 在飞书 text 分批、Reaction 反馈、thread 回复、Webhook 限流等方面有成熟实现；Aranea 在 IM Preview / Turn Job / Tool Card 已领先，本 Phase 补齐连接层缺口。
+
+### 11.1 任务板
+
+| ID | 优先级 | 任务 | 包 / 文件 | 状态 | 验收 |
+|----|--------|------|-----------|------|------|
+| F-01 | P1 | WS ping/reconnect 可配置项写入 `config_json.config` | `lark/ws.go` · `lark/config.go` | ⏳ | 文档化默认值；Admin 可选展示 |
+| F-01b | P1 | Runtime 连接状态 chip（connected_since / last_disconnect） | `runtime/supervisor.go` · `ChannelsTable.vue` | ⏳ | 列表可见 WS 健康 |
+| F-03 | P1 | Webhook 入站 per `channel_key` + IP 限流（如 120/min） | `channel_ingress_http.go` | ⏳ | 超限 429 + FlowLog |
+| F-04 | P1 | 飞书 text 入站 debounce 合并（500–800ms；大段 +2s） | `lark/inbound_batch.go`（新）· ingress | ⏳ | 连续 3 条短 text 合并为 1 Turn |
+| F-06 | P1 | `thread_id` 入 OutboundMeta + `thread_sessions_per_user` 路由 | `inbound_build.go` · `channel_routing.go` | ⏳ | 话题群独立 session |
+| F-06b | P1 | 出站 `reply_in_thread` / receive_id_type=thread_id | `stream_outbound.go` · `feishu_outbound.go` | ⏳ | 回复落在正确话题 |
+| F-07 | P1 | 流式 PATCH 达 `PlatformTextLimit` 主动 split 新消息 | `stream_outbound.go` · `TurnPreviewCoordinator` | ⏳ | 超长 Turn 多条 IM 有序 |
+| F-11 | P1 | Webhook `encrypt_key` 加密事件体 AES 解密 | `lark/webhook.go` `ParseWebhookPost` | ⏳ | 开放平台开启加密可验签+解密 |
+| F-02 | P2 | 同 `app_id` 多 enabled channel 启动冲突检测 | `runtime/manager.go` | ⏳ | 第二实例 fail-fast + SysLog |
+| F-05 | P2 | 入站 post 转 plain text；image 附件（可选） | `parse_message.go` · Chat 附件 | ⏳ | 富文本帖可读 |
+| F-08 | P2 | 出站 `msg_type=post`（markdown 子集） | `feishu_outbound.go` | ⏳ | 粗体/链接保留 |
+| F-09 | P2 | 首字节前 Reaction「处理中」；结束移除 | `lark/reaction.go`（新） | ⏳ | `first_byte_timeout` 内用户可见反馈 |
+| F-10 | P2 | `busy_input_mode: queue \| interrupt` | `channel_config_helpers.go` · ingress | ⏳ | interrupt 调 StopGeneration |
+
+### 11.2 不建议照搬（Aranea 已更优或架构不同）
+
+| Hermes 能力 | 原因 |
+|-------------|------|
+| PTY 嵌入 TUI Chat | Aranea 原生 Web Chat + WS Envelope |
+| 单文件 SessionStore JSON | DB `channel_peer_session` + Ent |
+| DM pairing 8 位码 | 企业场景用 `allowed_user_ids` / Admin |
+| 8000 字多段 **独立 send**（非 PATCH） | 优先 F-07 split + 现有 `im_split_overflow` |
+| Curator / Skill 自治 | 属 Agent 域，非 Channel |
+
+### 11.3 推荐迭代顺序
+
+```
+迭代 F-a（P1，约 1 周）
+  F-04 → F-07 → F-11 → F-03 → 飞书 E2E 回归 LT-01/03
+
+迭代 F-b（P1，约 1 周）
+  F-06 + F-06b → F-01/F-01b → 话题群验收
+
+迭代 F-c（P2，按需）
+  F-09 → F-10 → F-05 → F-08
+```
+
+### 11.4 验证命令
+
+```bash
+go test ./internal/channel/lark/... ./internal/service/... -run 'Feishu|Inbound|Stream|Webhook' -count=1
+go test ./internal/channel/preview/... -count=1
+```
+
+---
+
+## 12. IM Preview — E2E 验收清单（LT-01–07）
+
+> 原 `需求/17-channel-development.md#12-im-preview--e2e-验收清单lt-0107` 已并入本文。
+
+## 前置条件
+
+| 项 | 要求 |
+|----|------|
+| Channel | 飞书平台、`streaming_enabled=true`、`im_render_mode=transcript` |
+| 推荐 preset | 「飞书 · IM Preview（推荐）」或 `channelImPreviewDefaults.ts` |
+| Card（可选） | `im_tool_card_mode=feishu_append` |
+| Web 深链 | `metadata.web_app_origin` 指向 Web Admin（如 `https://admin.example.com`） |
+| 分页（可选） | `im_split_overflow=true` |
+
+---
+
+## LT-01 — 长任务 ACK + 流式 PATCH
+
+| 步骤 | 预期 |
+|------|------|
+| 1. 发送需 ~2min 的生成请求 | ≤2s 内飞书出现**单条** preview（含 ACK 文案） |
+| 2. Turn 执行中 | preview **PATCH** 演进：正文 → 工具 → 正文（非覆盖 ACK） |
+| 3. 静默 ≥ `progress_quiet_sec` 且无进行中工具 | preview 追加心跳行（不覆盖 transcript） |
+| 4. Turn 完成 | 最终 preview 含完整回复 |
+
+**指标**：`aranea_channel_stream_update_total{phase=flush,result=ok}` · FlowLog `channel.preview.patch`
+
+---
+
+## LT-02 — 思考链（可选）
+
+| 步骤 | 预期 |
+|------|------|
+| 配置 `im_render_mode=transcript_with_reasoning`（或 `im_show_reasoning: true`） | preview PATCH 含 **`【思考过程】`** 段（截断至 `im_reasoning_max_chars`）与 **`【正文】`** 段 |
+| Turn 完成（Durable / 长任务）且存在 `reasoning_markdown` | 飞书收到 **Card 2.0「Agent 回复」**（思考 + 正文分区）或带标签纯文本 |
+| `reply_only` 模式 | 仅 outbound **正文**（不含思考段） |
+
+**代码**：`internal/channel/preview/render.go` · `format_im.go` · `feishu_reply_card.go`
+
+---
+
+## LT-02b — 出站文本格式化
+
+| 步骤 | 预期 |
+|------|------|
+| Unary / 完成通知正文 | Markdown/ReAct 标签清理为 IM 可读纯文本（`FormatAssistantReplyForIM`） |
+| 流式 preview transcript | 保留工具行，仅 MD 清理（`FormatRenderedTranscriptForIM`） |
+| 格式化后空串 | FlowLog `channel.outbound.text` warn + fallback 文案 |
+
+---
+
+## LT-03 — 排队 / 并发 Turn
+
+| 步骤 | 预期 |
+|------|------|
+| 同 session 已有 active run 时再发消息 | 排队 ACK（`ack_on_queued`）或 queued Job 文案 |
+
+---
+
+## LT-04 — 工具 Card（`feishu_append`）
+
+| 步骤 | 预期 |
+|------|------|
+| 1. 工具 `tool_call` | 追加 1 条 Interactive Card（橙色 🔄 进行中） |
+| 2. 同工具 `tool_result` | **PATCH 同一条 Card**（绿色 ✓ / 红色 ✕），非第二条消息 |
+| 3. 多工具 Turn | 每工具 1 条 Card（create + update） |
+| 4. Web 详情按钮 | 打开 `{web_app_origin}/sessions/{id}?focus=tool&tool_id={id}` |
+
+**指标**：`aranea_channel_tool_card_total{phase=send|update,result=ok}`
+
+---
+
+## LT-05 — 超长分页（`im_split_overflow`）
+
+| 步骤 | 预期 |
+|------|------|
+| Turn 结束 preview 超出飞书单条上限 | 首条 PATCH 截断页 + delivery worker 分页 enqueue 后续消息 |
+
+---
+
+## LT-06 — 取消 / 超时
+
+| 步骤 | 预期 |
+|------|------|
+| 用户取消或 Turn 超时 | preview 保留已投影进度；Job 终态 failed/timeout；IM 固定错误文案 |
+
+---
+
+## LT-07 — 运维可观测
+
+| 步骤 | 预期 |
+|------|------|
+| Monitor / Session 按 `session_id` | 可见 Channel Turn Job、FlowLog（`channel.turn.*` / `channel.preview.patch` / `channel.tool.card`） |
+| Session Timeline 深链 | `focus=tool&tool_id` 高亮对应工具事件 |
+
+---
+
+## M55 Chat×Channel 验收（CC-E2E-01）
+
+| ID | 步骤 | 预期 |
+|----|------|------|
+| M55-SYNC-01 | 飞书 Turn 进行中，Web 打开同 Session | ≤5s 内 user / running 可见；顶栏 `rev` 递增 |
+| M55-SYNC-02 | 飞书 Turn 完成，Web 已打开 | assistant 自动出现；UserBubble 显示「飞书」来源徽标 |
+| M55-UI-01 | 100+ 消息 Session，TurnBlock 开启 | 滚动流畅（虚拟列表）；工具默认折叠 |
+| M55-UI-02 | 单轮 20+ 工具 | ToolStrip 折叠/展开正常 |
+| M55-JOB-01 | 飞书 `/async` 或长任务关键词 | Web「后台任务」面板 ≤3s 出现 Job |
+
+### M55-RUN — Run 生命周期 E2E（CC-R / CC-R-OPT）
+
+> **Review**：[2026-05-23-M55-Run-Lifecycle-Review.md](../review/2026-05-23-M55-Run-Lifecycle-Review.md) · **前置**：飞书应用订阅 **`card.action.trigger`**
+
+| ID | 步骤 | 预期 |
+|----|------|------|
+| M55-RUN-01 | Channel 长任务 preset · 软预算到达 | 收到 Feishu 交互卡片「后台继续」或文本提示；FlowLog `run.budget.soft` |
+| M55-RUN-02 | 点击卡片「后台继续」或回复 `/background` | IM 回复「已转入后台」；`session_runs.phase=durable`；checkpoint 行存在 |
+| M55-RUN-03 | admin 重启或等待 Worker poll | Durable Worker **仅一次** 续跑；Turn 完成 → `phase=completed` |
+| M55-RUN-04 | Web 打开同 Session · 后台任务面板 | 点击 forum 图标 → TurnBlock 滚动到对应 `turn_id` |
+
+**平台矩阵（CC-R-OPT-11）**
+
+| 平台 | 软预算通知 | 后台确认 |
+|------|-----------|----------|
+| feishu | 交互卡片 + callback | 卡片按钮 / `/background` |
+| 其他 | 文本 outbound | `/background` |
+
+```bash
+# Sprint 1 优化落地后
+go test ./internal/service/... -run 'DurableWorker|EscalateSessionRun|BudgetWatcher' -count=1
+go test ./internal/biz/... -run SessionRun -count=1
+# 后端（通用）
+go test ./internal/service/ -run 'EnsureChannelSession|ListSessionMessages_afterRevision|ListChatBackgroundJobs' -count=1
+# 前端
+cd web && pnpm test -- messageSourceMeta groupMessagesByTurn
+```
+
+---
+
+## 回归命令
+
+```bash
+go test ./internal/biz/... ./internal/channel/preview/... ./internal/channel/lark/... -count=1
+go test ./internal/service/ -run "TurnPreview|Interactive" -count=1
+```
+
+---
+
+## 已知限制
+
+- 飞书 Card 为静态 JSON；进行中状态为 emoji 文案，非动画。
+- Card HTTP 在独立 goroutine 发送，不阻塞 EventBus 消费。
+- 无 tenant 时 LT-04/05 仅能通过 httptest 契约测（`interactive_card_test.go`）验证。
+---
+
+## 13. 文档修订记录
 
 | 版本 | 日期 | 说明 |
 |------|------|------|
 | 1.1 | 2026-05-22 | §10 Phase E 长任务：任务板 E0–E6、迭代顺序、验收映射 |
+| 1.2 | 2026-05-24 | §11 Phase F Hermes 飞书借鉴：F-01–F-11 任务板 |

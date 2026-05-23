@@ -65,12 +65,22 @@ func (h *ChannelIngress) acceptInbound(ctx context.Context, chRow biz.Channel, e
 		h.inboundInflight.release(dedupKey)
 		return noop, cerr
 	}
+	if handled, berr := h.tryBackgroundInboundTurn(ctx, chRow, ev, platform); handled || berr != nil {
+		h.inboundInflight.release(dedupKey)
+		return noop, berr
+	}
 	ltCfg := biz.ParseChannelLongTaskConfig(chRow.ConfigJSON)
 	if !biz.ChannelSupportsLongTaskIngress(platform, chRow.ConfigJSON) {
 		ltCfg.AckMessage = ""
 		ltCfg.ExecutionMode = "sync"
 		ltCfg.AsyncGraphID = ""
 		ltCfg.AsyncCronTaskID = ""
+	}
+	if ltCfg.SuggestDurableRun(ev.Text) && !ltCfg.ShouldRunAsync(ev.Text) {
+		event.SysLogInfo(flowStepChannelInboundAccept, "长任务关键词建议（Interactive Run，不路由 Graph）",
+			event.P("channel_id", chRow.ID),
+			event.P("peer_id", ev.PeerID),
+		)
 	}
 	if ltCfg.ShouldRunAsync(ev.Text) {
 		if !isPureAsyncExecutionMode(ltCfg) {

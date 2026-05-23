@@ -30,6 +30,10 @@ type channelChatTurnGateway interface {
 	HasActiveRun(sessionID string) bool
 	LastPendingMessageID(sessionID string) string
 	CancelRun(ctx context.Context, sessionID string) bool
+	CancelSessionRunForCard(ctx context.Context, sessionRunID, expectedSessionID string) (cancelled bool, reply string)
+	ActiveSessionRunPhase(ctx context.Context, sessionID string) string
+	EscalateActiveSessionRun(ctx context.Context, sessionID string) (escalated bool, reply string, err error)
+	EscalateSessionRun(ctx context.Context, sessionRunID, expectedSessionID string) (reply string, err error)
 	setRunStatus(sessionID, runID, status, errMsg string)
 	ChannelFlowBuffer() *event.Buffer
 }
@@ -162,6 +166,15 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 		}
 		if parsed.IsURLVerification {
 			h.writeJSON(w, http.StatusOK, map[string]string{"challenge": parsed.Challenge})
+			return nil
+		}
+		if parsed.EventType == "card.action.trigger" || parsed.EventType == "card.action.trigger_v1" {
+			if action, ok := lark.CardActionPayloadFromWebhook(parsed); ok {
+				resp := h.HandleFeishuCardAction(r.Context(), chRow, action)
+				h.writeJSON(w, http.StatusOK, resp)
+				return nil
+			}
+			w.WriteHeader(http.StatusOK)
 			return nil
 		}
 		if parsed.EventType != "im.message.receive_v1" {

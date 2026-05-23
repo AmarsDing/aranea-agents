@@ -26,9 +26,9 @@
           {{ t("common.appTitle") }}
         </q-toolbar-title>
         <q-space />
-        <div v-if="isDesktop" class="row items-center q-gutter-sm q-mr-sm app-header-actions">
-          <q-btn round flat class="app-header-icon-btn" icon="notifications_none" size="md" />
-          <q-btn round flat dense class="cursor-pointer">
+        <div class="row items-center q-gutter-sm q-mr-sm app-header-actions">
+          <InboundNotificationBell :on-open-session="onOpenInboundSession" />
+          <q-btn v-if="isDesktop" round flat dense class="cursor-pointer">
             <q-avatar size="36px" class="app-header-avatar" font-size="14px">
               {{ auth.avatarLetter }}
             </q-avatar>
@@ -132,6 +132,8 @@ import { useQuasar } from "quasar";
 import { setQuasarLangFor } from "../i18n/quasar-lang";
 import { sideNavGroups } from "../config/sideNav";
 import { useAuthStore } from "../stores/auth";
+import InboundNotificationBell from "../components/layout/InboundNotificationBell.vue";
+import { useGlobalInboundNotifications } from "../composables/useGlobalInboundNotifications";
 
 const { t, locale } = useI18n();
 const $q = useQuasar();
@@ -140,6 +142,8 @@ const router = useRouter();
 const auth = useAuthStore();
 const drawerOpen = ref(true);
 const drawerMini = ref(true);
+
+useGlobalInboundNotifications();
 
 const isDesktop = computed(() => $q.screen.gt.xs);
 const isDark = computed(() => $q.dark.isActive);
@@ -175,6 +179,10 @@ function isNavItemActive(item: { to: string; exact?: boolean }) {
 async function navigateTo(path: string) {
   if (route.path === path) return;
   await router.push(path);
+}
+
+function onOpenInboundSession(sessionId: string, agentId: string) {
+  void router.push({ name: "chat", query: { session: sessionId, agent: agentId } });
 }
 
 async function onLogout() {

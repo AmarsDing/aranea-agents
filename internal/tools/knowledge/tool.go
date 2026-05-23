@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/knowledge"
@@ -19,6 +20,28 @@ type contextKey struct{}
 // WithRetriever attaches a Retriever to the context for use by SearchTool.
 func WithRetriever(ctx context.Context, r *knowledge.Retriever) context.Context {
 	return context.WithValue(ctx, contextKey{}, r)
+}
+
+type collectionsKey struct{}
+
+// WithKnowledgeCollections restricts knowledge_search to the given collection IDs for this turn.
+func WithKnowledgeCollections(ctx context.Context, collectionIDs []string) context.Context {
+	filtered := make([]string, 0, len(collectionIDs))
+	for _, id := range collectionIDs {
+		id = strings.TrimSpace(id)
+		if id != "" {
+			filtered = append(filtered, id)
+		}
+	}
+	if len(filtered) == 0 {
+		return ctx
+	}
+	return context.WithValue(ctx, collectionsKey{}, filtered)
+}
+
+func knowledgeCollectionsFromContext(ctx context.Context) []string {
+	raw, _ := ctx.Value(collectionsKey{}).([]string)
+	return raw
 }
 
 // RetrieverFromContext extracts the Retriever from ctx.
@@ -67,7 +90,25 @@ func (t *searchTool) Call(ctx context.Context, args []byte) (any, error) {
 		return nil, fmt.Errorf("knowledge_search: invalid args: %w", err)
 	}
 	if in.CollectionID == "" {
-		return nil, fmt.Errorf("knowledge_search: collection_id is required")
+		if scoped := knowledgeCollectionsFromContext(ctx); len(scoped) == 1 {
+			in.CollectionID = scoped[0]
+		} else if len(scoped) > 1 {
+			return nil, fmt.Errorf("knowledge_search: collection_id is required when multiple knowledge_bases are scoped")
+		} else {
+			return nil, fmt.Errorf("knowledge_search: collection_id is required")
+		}
+	}
+	if scoped := knowledgeCollectionsFromContext(ctx); len(scoped) > 0 {
+		allowed := false
+		for _, id := range scoped {
+			if id == in.CollectionID {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			return nil, fmt.Errorf("knowledge_search: collection_id %q is not in scoped knowledge_bases", in.CollectionID)
+		}
 	}
 	if in.Query == "" {
 		return nil, fmt.Errorf("knowledge_search: query is required")

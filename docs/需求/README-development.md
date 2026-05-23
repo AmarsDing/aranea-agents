@@ -60,6 +60,7 @@
 | Event System | [34-event-development.md](./34-event-development.md) | 🟢 Bus/Envelope/WS/event_store ✅；Monitor RealtimeEvents ✅；Chat Inspector Dialog 双 Tab ✅ |
 | Gateway | [35-gateway-development.md](./35-gateway-development.md) | ✅ RunRegistry/ChatUsecase/Webhook；🟡 Follow-up Queue 前端 UX |
 | Graph | [36-graph-development.md](./36-graph-development.md) |
+| **Hermes Kanban (M54)** | [54-hermes-kanban-development.md](./54-hermes-kanban-development.md) | ✅ Phase 0–3；📋 Phase 4 spawn + Phase 5 UI |
 | **Team × Graph (M53)** | [53-team-graph-orchestration-development.md](./53-team-graph-orchestration-development.md) |
 | Knowledge | [37-knowledge-development.md](./37-knowledge-development.md) |
 | Planner | [39-planner-development.md](./39-planner-development.md) | 🟢 持久化 + 设置 UI + Chat ReAct/A2UI 组件树 + tool 去重 + Review 打磨 ✅；🟡 表单可编辑 / 长尾组件 |

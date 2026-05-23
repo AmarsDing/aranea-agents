@@ -1,5 +1,9 @@
 <template>
-  <article class="turn-block" :data-turn-id="block.turnId">
+  <article
+    class="turn-block"
+    :class="{ 'turn-block--focused': focused }"
+    :data-turn-id="block.turnId"
+  >
     <div
       v-if="turnSourceLabel"
       class="turn-block__channel-bar text-caption"
@@ -19,8 +23,8 @@
       @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
     />
     <ToolStrip
-      v-if="block.tools.length"
-      :tools="block.tools"
+      v-if="visibleTools.length"
+      :tools="visibleTools"
       :is-dark="isDark"
       :is-team-session="isTeamSession"
       :planner-kind="plannerKind"
@@ -37,6 +41,7 @@
       :planner-kind="plannerKind"
       :react-tool-link-index="reactToolLinkIndex"
       @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
+      @feedback="(p) => emit('feedback', p)"
     />
     <ChatMessageRow
       v-for="(member, mIdx) in block.members"
@@ -59,6 +64,7 @@ import { useI18n } from "vue-i18n";
 import ChatMessageRow from "./ChatMessageRow.vue";
 import ToolStrip from "./ToolStrip.vue";
 import type { TurnBlockGroup } from "../../features/chat/groupMessagesByTurn";
+import { filterToolsForToolStrip } from "../../features/chat/groupMessagesByTurn";
 import {
   messageSourceChipFallback,
   messageSourceChipKey,
@@ -74,10 +80,12 @@ const props = defineProps<{
   isTeamSession?: boolean;
   plannerKind?: string;
   reactToolLinkIndex: ReactToolLinkIndex;
+  focused?: boolean;
 }>();
 
 const emit = defineEmits<{
   "a2ui-user-action": [payload: A2UIUserActionPayload];
+  feedback: [payload: { messageId: string; rating: "positive" | "negative" }];
 }>();
 
 const { t } = useI18n();
@@ -88,6 +96,10 @@ const turnSourceLabel = computed(() => {
   const key = messageSourceChipKey(meta);
   return key ? t(key, messageSourceChipFallback(meta)) : messageSourceChipFallback(meta);
 });
+
+const visibleTools = computed(() =>
+  filterToolsForToolStrip(props.block.tools, props.reactToolLinkIndex)
+);
 </script>
 
 <style scoped>
@@ -97,6 +109,12 @@ const turnSourceLabel = computed(() => {
   border-radius: 14px;
   background: var(--app-glass-soft, rgba(255, 255, 255, 0.55));
   border: 1px solid var(--app-border-subtle, rgba(0, 0, 0, 0.06));
+  transition: box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+.turn-block--focused {
+  border-color: var(--q-primary, #1976d2);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--q-primary, #1976d2) 35%, transparent);
 }
 
 .turn-block__channel-bar {

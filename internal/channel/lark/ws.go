@@ -8,6 +8,7 @@ import (
 	"aranea-agents/pkg/safego"
 
 	"github.com/larksuite/oapi-sdk-go/v3/event/dispatcher"
+	larkcallback "github.com/larksuite/oapi-sdk-go/v3/event/dispatcher/callback"
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 	larkws "github.com/larksuite/oapi-sdk-go/v3/ws"
 )
@@ -41,8 +42,33 @@ func RunWebSocket(
 		})
 		return nil
 	}
+	onCardAction := func(_ context.Context, event *larkcallback.CardActionTriggerEvent) (*larkcallback.CardActionTriggerResponse, error) {
+		action, ok := CardActionPayloadFromSDK(event)
+		if !ok {
+			return &larkcallback.CardActionTriggerResponse{}, nil
+		}
+		ingress, ok := handler.(CardActionHandler)
+		if !ok {
+			return cardActionSDKResponse(NewCardActionToast("服务未就绪")), nil
+		}
+		resp := ingress.HandleFeishuCardAction(context.WithoutCancel(ctx), chRow, action)
+		return cardActionSDKResponse(resp), nil
+	}
 	eventHandler := dispatcher.NewEventDispatcher("", "").
-		OnP2MessageReceiveV1(onMessage)
+		OnP2MessageReceiveV1(onMessage).
+		OnP2CardActionTrigger(onCardAction)
 	cli := larkws.NewClient(appID, appSecret, larkws.WithEventHandler(eventHandler))
 	return cli.Start(ctx)
+}
+
+func cardActionSDKResponse(httpResp *CardActionHTTPResponse) *larkcallback.CardActionTriggerResponse {
+	if httpResp == nil || httpResp.Toast == nil {
+		return &larkcallback.CardActionTriggerResponse{}
+	}
+	return &larkcallback.CardActionTriggerResponse{
+		Toast: &larkcallback.Toast{
+			Type:    httpResp.Toast.Type,
+			Content: httpResp.Toast.Content,
+		},
+	}
 }

@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/safego"
 )
 
@@ -14,8 +14,9 @@ const defaultSideConsumerQueueSize = 256
 
 // asyncEnvelopeWorker drains a bounded queue so Bus subscribers return quickly.
 type asyncEnvelopeWorker struct {
-	name string
-	jobs chan event.Envelope
+	name   string
+	jobs   chan contract.Envelope
+	logger SessionLogWriter
 }
 
 func newAsyncEnvelopeWorker(name string, queueSize int) *asyncEnvelopeWorker {
@@ -24,11 +25,15 @@ func newAsyncEnvelopeWorker(name string, queueSize int) *asyncEnvelopeWorker {
 	}
 	return &asyncEnvelopeWorker{
 		name: name,
-		jobs: make(chan event.Envelope, queueSize),
+		jobs: make(chan contract.Envelope, queueSize),
 	}
 }
 
-func (w *asyncEnvelopeWorker) Start(ctx context.Context, handle func(context.Context, event.Envelope)) {
+func (w *asyncEnvelopeWorker) SetLogger(logger SessionLogWriter) {
+	w.logger = logger
+}
+
+func (w *asyncEnvelopeWorker) Start(ctx context.Context, handle func(context.Context, contract.Envelope)) {
 	if w == nil || handle == nil {
 		return
 	}
@@ -47,15 +52,17 @@ func (w *asyncEnvelopeWorker) Start(ctx context.Context, handle func(context.Con
 	})
 }
 
-func (w *asyncEnvelopeWorker) Offer(ctx context.Context, env event.Envelope) {
+func (w *asyncEnvelopeWorker) Offer(ctx context.Context, env contract.Envelope) {
 	if w == nil {
 		return
 	}
 	select {
 	case w.jobs <- env:
 	default:
-		event.SessionSysLogWarn(ctx, env.SessionID, "event_bus.queue_full", "侧效消费者队列已满，丢弃事件",
-			event.P("consumer", w.name), event.P("type", string(env.Type)), event.P("id", env.ID))
+		if w.logger != nil {
+			w.logger.SessionSysLogWarn(ctx, env.SessionID, "event_bus.queue_full", "侧效消费者队列已满，丢弃事件",
+				LogPair{Key: "consumer", Value: w.name}, LogPair{Key: "type", Value: string(env.Type)}, LogPair{Key: "id", Value: env.ID})
+		}
 	}
 }
 

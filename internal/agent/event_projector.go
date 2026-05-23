@@ -26,6 +26,9 @@ type ProjectMeta struct {
 	TraceID            string
 	AgentID            string
 	AgentDisplayName   string
+	ContextWindow      int
+	TurnPromptTokens   int
+	TurnCompletionTok  int
 	MemberAgentKeys    map[string]struct{} // agent_key set for team member_* envelopes
 	Source             string
 }
@@ -273,11 +276,21 @@ func (p *EventProjector) buildRunnerCompletionEnvelope(ev *trpcevent.Event, meta
 	env := p.baseEnvelope(ev, meta, event.EnvelopeTypeRunnerCompletion)
 	if ev.Response != nil {
 		if ev.Response.Usage != nil {
-			env.Usage = &event.EnvelopeUsage{
+			u := &event.EnvelopeUsage{
 				PromptTokens:     ev.Response.Usage.PromptTokens,
 				CompletionTokens: ev.Response.Usage.CompletionTokens,
 				TotalTokens:      ev.Response.Usage.TotalTokens,
 			}
+			if meta.ContextWindow > 0 {
+				u.MaxTokens = meta.ContextWindow
+			}
+			if meta.TurnPromptTokens > 0 || meta.TurnCompletionTok > 0 {
+				u.PromptTokens = meta.TurnPromptTokens
+				u.CompletionTokens = meta.TurnCompletionTok
+				u.TotalTokens = meta.TurnPromptTokens + meta.TurnCompletionTok
+				u.TurnTotalTokens = u.TotalTokens
+			}
+			env.Usage = u
 		}
 		if ev.Response.Error != nil {
 			errType := ev.Response.Error.Type
@@ -286,6 +299,7 @@ func (p *EventProjector) buildRunnerCompletionEnvelope(ev *trpcevent.Event, meta
 			}
 			env.Error = &event.EnvelopeError{
 				Type:    errType,
+				Code:    errType,
 				Message: ev.Response.Error.Message,
 			}
 		}
@@ -322,6 +336,7 @@ func (p *EventProjector) buildErrorEnvelope(ev *trpcevent.Event, meta ProjectMet
 		}
 		env.Error = &event.EnvelopeError{
 			Type:    errType,
+			Code:    errType,
 			Message: ev.Response.Error.Message,
 		}
 	}

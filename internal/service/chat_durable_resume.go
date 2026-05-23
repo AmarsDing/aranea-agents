@@ -1,0 +1,97 @@
+package service
+
+import (
+	"context"
+	"strings"
+	"time"
+
+	chatv1 "aranea-agents/api/kratos/chat/v1"
+	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
+	"aranea-agents/pkg/safego"
+)
+
+// ResumeDurableSessionRun continues an agent turn from a durable checkpoint (CC-R-03).
+func (s *ChatService) ResumeDurableSessionRun(ctx context.Context, sessionRunID string) error {
+	if s == nil || s.orch == nil || s.orch.chTurn.SessionRuns == nil {
+		return nil
+	}
+	sessionRunID = strings.TrimSpace(sessionRunID)
+	if sessionRunID == "" {
+		return nil
+	}
+	run, err := s.orch.chTurn.SessionRuns.Get(ctx, sessionRunID)
+	if err != nil || run.ID == "" {
+		return err
+	}
+	if run.Phase != biz.SessionRunPhaseDurable {
+		return nil
+	}
+	if strings.TrimSpace(run.CheckpointID) == "" {
+		return nil
+	}
+	if s.orch.HasActiveRun(run.SessionID) {
+		return nil
+	}
+	claimed, err := s.orch.chTurn.SessionRuns.TryClaimDurableResume(ctx, sessionRunID)
+	if err != nil || !claimed {
+		return err
+	}
+	cp, err := s.orch.chTurn.SessionRuns.GetCheckpoint(ctx, sessionRunID)
+	if err != nil || cp.ID == "" {
+		_ = s.orch.chTurn.SessionRuns.ClearResumeClaim(ctx, sessionRunID)
+		return err
+	}
+	payload, err := biz.ParseDurableCheckpointPayload(cp.PayloadJSON)
+	if err != nil {
+		_ = s.orch.chTurn.SessionRuns.ClearResumeClaim(ctx, sessionRunID)
+		return err
+	}
+	deadline := time.Duration(biz.DefaultDurableDeadlineSec()) * time.Second
+	runCtx, cancel := context.WithTimeout(context.Background(), deadline)
+	safego.Go(runCtx, "session-run-durable-resume", func() {
+		defer cancel()
+		req := &chatv1.SendChatMessageRequest{
+			SessionId: run.SessionID,
+			Content:   biz.DurableResumePrompt(),
+		}
+		bgCtx := event.WithSessionRunID(event.WithEnvelopeSource(runCtx, run.Source), sessionRunID)
+		bgCtx = event.WithDurableResume(bgCtx, event.DurableResumeSpec{
+			SessionRunID:     sessionRunID,
+			TurnID:           payload.TurnID,
+			UserContent:      payload.UserContent,
+			AgentID:          payload.AgentID,
+			RuntimeRunID:     payload.RuntimeRunID,
+			TrpcInvocationID: payload.TrpcInvocationID,
+			SessionRevision:  payload.SessionRevision,
+			DialogMode:       payload.DialogMode,
+			Provider:         payload.Provider,
+			Model:            payload.Model,
+		})
+		_, asst, turnErr := s.RunNativeTurnUnary(bgCtx, req)
+		persistCtx := context.WithoutCancel(runCtx)
+		if turnErr != nil {
+			_ = s.orch.chTurn.SessionRuns.Fail(persistCtx, sessionRunID, turnErr.Error())
+			if s.orch.chTurn.RunEscalation != nil {
+				if failed, gerr := s.orch.chTurn.SessionRuns.Get(persistCtx, sessionRunID); gerr == nil && failed.ID != "" {
+					_ = s.orch.chTurn.RunEscalation.NotifyRunFailed(persistCtx, failed, turnErr.Error())
+				}
+			}
+			return
+		}
+		_ = s.orch.chTurn.SessionRuns.Complete(persistCtx, sessionRunID)
+		if s.orch.chTurn.RunEscalation != nil {
+			if completed, gerr := s.orch.chTurn.SessionRuns.Get(persistCtx, sessionRunID); gerr == nil && completed.ID != "" {
+				_ = s.orch.chTurn.RunEscalation.NotifyRunCompleted(persistCtx, completed, asst.ContentMarkdown)
+			}
+		}
+	})
+	return nil
+}
+
+func (s *ChatService) GetSessionRunUsecase() *biz.SessionRunUsecase {
+	if s == nil || s.orch == nil {
+		return nil
+	}
+	return s.orch.chTurn.SessionRuns
+}

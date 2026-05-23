@@ -5,16 +5,17 @@ import (
 	"strings"
 	"time"
 
-	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 )
 
 // toolCallConsumer persists tool_result envelopes to tool_invocations (source=event_bus).
 type toolCallConsumer struct {
-	bus   event.Bus
-	tools *ToolUsecase
+	bus    contract.Bus
+	tools  *ToolUsecase
+	logger SessionLogWriter
 }
 
-func newToolCallConsumer(bus event.Bus, tools *ToolUsecase) *toolCallConsumer {
+func newToolCallConsumer(bus contract.Bus, tools *ToolUsecase) *toolCallConsumer {
 	if tools == nil {
 		return nil
 	}
@@ -25,14 +26,14 @@ func (c *toolCallConsumer) Start(ctx context.Context) {
 	if c == nil {
 		return
 	}
-	runTypedConsumer(ctx, "event-bus-tool-call", c.bus, event.SubscribeOptions{
-		EventTypes: []event.EnvelopeType{event.EnvelopeTypeToolResult},
+	runTypedConsumer(ctx, "event-bus-tool-call", c.bus, contract.SubscribeOptions{
+		EventTypes: []contract.EnvelopeType{contract.EnvelopeTypeToolResult},
 		BufferSize: 256,
 		Reliable:   true,
 	}, c.handle)
 }
 
-func (c *toolCallConsumer) handle(ctx context.Context, env event.Envelope) {
+func (c *toolCallConsumer) handle(ctx context.Context, env contract.Envelope) {
 	if c == nil || c.tools == nil || env.ToolCall == nil {
 		return
 	}
@@ -100,8 +101,10 @@ func (c *toolCallConsumer) handle(ctx context.Context, env event.Envelope) {
 		ToolCallID:    toolCallID,
 	}
 	if err := c.tools.RecordToolInvocation(ctx, write); err != nil {
-		event.SessionSysLogWarn(ctx, env.SessionID, "system.tool.record_fail", "工具调用记录失败（EventBus）",
-			event.P("tool", toolKey), event.P("error", err))
+		if c.logger != nil {
+			c.logger.SessionSysLogWarn(ctx, env.SessionID, "system.tool.record_fail", "工具调用记录失败（EventBus）",
+				LogPair{Key: "tool", Value: toolKey}, LogPair{Key: "error", Value: err})
+		}
 	}
 }
 

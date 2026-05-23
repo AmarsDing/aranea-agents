@@ -254,6 +254,14 @@
 - 与 Chat Team 会话、WS `member_*` / `team_summary` 事件配合。
 - Store：`stores/teams`。
 
+#### Team Run Observatory `/teams/:teamId/runs/:runId/observatory`
+
+- 实时步骤时间线、成员事件（M53）
+- **双 Kanban Tab**（M54，详见 [54-hermes-kanban.md §4](./54-hermes-kanban.md#4-aranea-ui-规格当前--目标)）：
+  - **任务看板**：`GraphTaskKanban` — 5 列；WS `graph_task_status`；admin 拖拽 unblock/approve
+  - **Agent 工作看板**：`OrchestrationKanban` — 卡片内收/做/交；与 Graph focus 联动
+- `GraphTaskDetailDrawer`：详情/评论/事件/日志/运行（依赖 Tab → HK-FE-05）
+
 ---
 
 ### 4.5 Graph 工作流

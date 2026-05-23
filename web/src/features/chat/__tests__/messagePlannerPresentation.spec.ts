@@ -86,4 +86,12 @@ describe("buildMessagePresentation", () => {
     const bundle = buildMessagePresentation("react", messages[0], 0, index);
     expect(bundle.reactStepsWithTools).toEqual([]);
   });
+
+  it("hides reasoning details block in react planner mode", () => {
+    const messages = reactActionAndToolMessages();
+    messages[0].options_json = JSON.stringify({ reasoning_markdown: "think step" });
+    const bundle = buildMessagePresentation("react", messages[0], 0, emptyReactToolLinkIndex());
+    expect(bundle.presentation.mode).toBe("react");
+    expect(bundle.presentation.reasoning).toBe("");
+  });
 });

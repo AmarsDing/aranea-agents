@@ -61,13 +61,22 @@ go test ./internal/service/ -run "TurnPreview|Feishu|Interactive" -count=1
 | ID | 修复 |
 |----|------|
 | IM-P0-01 | 心跳 ticker 并入 EventBus `select`，不再阻塞 consume |
-| IM-P1-E2E | [channel-im-preview-e2e.md](../guides/channel-im-preview-e2e.md) LT-01–07 |
+| IM-P1-E2E | [channel-im-preview-e2e.md](../需求/17-channel-development.md#12-im-preview--e2e-验收清单lt-0107) LT-01–07 |
 | IM-P2-HTTP-BLOCK | Card 异步 `safego` + segment 快照 + `cardSerial` |
 | IM-P2-CRED-SILENT | 凭据/配置失败 FlowLog warn |
 | IM-P2-CARD-UPDATE | `UpsertToolCard`：create + PATCH 同 `message_id` |
 | IM-P3-DEDUP | `preview/tool_status.go` |
 | IM-P3-FLOW-CONST | `service/channel_flow_steps.go` |
 | IM-P3-URL-ENCODE | `url.QueryEscape(tool_id)` |
+
+## 出站格式化与思考/正文标签（2026-05-23 · R-UX）
+
+| 项 | 内容 |
+|----|------|
+| API | `FormatAssistantReplyForIM`（raw 回复）· `FormatRenderedTranscriptForIM`（transcript PATCH）· `FormatIMSectionedReply` |
+| Transcript | `render.go` 段前缀 `【思考过程】` / `【正文】`（`transcript_with_reasoning`） |
+| 完成通知 | `NotifyRunCompleted` + `reasoning_markdown` → 飞书 **Agent 回复** Card 2.0（`feishu_reply_card.go`） |
+| 详述 | [M55 Phase R-UX — 格式化 / 思考 UX](./2026-05-23-M55-Phase-R-UX-Channel-Format-Reasoning.md) |
 
 ## Card 样式（单行模板）
 

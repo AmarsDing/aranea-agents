@@ -5,11 +5,9 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/team"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
-
 
 // enforceQuota blocks when the scope monthly cap is exceeded (no-op if quota unset).
 func enforceQuota(ctx context.Context, usage *biz.UsageUsecase, scopeType, scopeID string) error {
@@ -44,25 +42,5 @@ func enforceChatTurnQuotas(ctx context.Context, usage *biz.UsageUsecase, agentID
 
 // checkTeamMemberQuotas rejects the turn when any enabled team member exceeds agent scope quota.
 func (s *ChatService) checkTeamMemberQuotas(ctx context.Context, teamID string) error {
-	if s == nil || s.teams == nil {
-		return nil
-	}
-	teamID = strings.TrimSpace(teamID)
-	if teamID == "" {
-		return nil
-	}
-	t, err := s.teams.GetTeamByID(ctx, teamID)
-	if err != nil {
-		return err
-	}
-	def, err := team.ParseDefinition(t.DefinitionJSON)
-	if err != nil {
-		return nil
-	}
-	for _, m := range team.EnabledMembers(def) {
-		if err := enforceQuota(ctx, s.usage, "agent", m.AgentID); err != nil {
-			return err
-		}
-	}
-	return nil
+	return s.orch.checkTeamMemberQuotas(ctx, teamID)
 }

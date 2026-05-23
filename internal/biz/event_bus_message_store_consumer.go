@@ -8,18 +8,19 @@ import (
 	"strings"
 	"time"
 
-	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 )
 
 const teamMemberOptionsSchema = "chat.team_member/v1"
 
 // messageStoreConsumer persists selected envelopes to messages (team member replies).
 type messageStoreConsumer struct {
-	bus      event.Bus
+	bus      contract.Bus
 	sessions *SessionUsecase
+	logger   SessionLogWriter
 }
 
-func newMessageStoreConsumer(bus event.Bus, sessions *SessionUsecase) *messageStoreConsumer {
+func newMessageStoreConsumer(bus contract.Bus, sessions *SessionUsecase) *messageStoreConsumer {
 	if sessions == nil {
 		return nil
 	}
@@ -30,14 +31,14 @@ func (c *messageStoreConsumer) Start(ctx context.Context) {
 	if c == nil {
 		return
 	}
-	runTypedConsumer(ctx, "event-bus-message-store", c.bus, event.SubscribeOptions{
-		EventTypes: []event.EnvelopeType{event.EnvelopeTypeMemberMessageDone},
+	runTypedConsumer(ctx, "event-bus-message-store", c.bus, contract.SubscribeOptions{
+		EventTypes: []contract.EnvelopeType{contract.EnvelopeTypeMemberMessageDone},
 		BufferSize: 256,
 		Reliable:   true,
 	}, c.handle)
 }
 
-func (c *messageStoreConsumer) handle(ctx context.Context, env event.Envelope) {
+func (c *messageStoreConsumer) handle(ctx context.Context, env contract.Envelope) {
 	if c == nil || c.sessions == nil {
 		return
 	}
@@ -79,8 +80,10 @@ func (c *messageStoreConsumer) handle(ctx context.Context, env event.Envelope) {
 		CreatedAt:       now,
 	}
 	if err := c.sessions.AppendChatMessage(ctx, env.SessionID, msg, false); err != nil {
-		event.SessionSysLogWarn(ctx, env.SessionID, "event_bus.message.store", "团队成员消息落库失败",
-			event.P("author", author), event.P("error", err))
+		if c.logger != nil {
+			c.logger.SessionSysLogWarn(ctx, env.SessionID, "event_bus.message.store", "团队成员消息落库失败",
+				LogPair{Key: "author", Value: author}, LogPair{Key: "error", Value: err})
+		}
 	}
 }
 

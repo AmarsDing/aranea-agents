@@ -1,40 +1,20 @@
 import { ref, computed, type Ref, type ComputedRef } from "vue";
 import { useQuasar } from "quasar";
 import { useRouter } from "vue-router";
-import { stopGeneration } from "../api";
+import { useI18n } from "vue-i18n";
+import { stopGeneration, enqueueMessage } from "../api";
 import { useAuthStore } from "../../../stores/auth";
 import { useAppStore } from "../../../stores/app";
+import { useChatStore } from "../../../stores/chat";
 import { checkBackendHealth, getServerHeartbeatState } from "../../heartbeat/useServerHeartbeat";
-import type { Message, ChatAttachment, ChatEntityKind } from "../../../components/chat/types";
+import type { ChatAttachment, ChatEntityKind } from "../../../components/chat/types";
 import type { UseEnvelopeStreamReturn } from "../useEnvelopeStream";
 import type { WsUpstream } from "../envelope";
-
-function createPlaceholderMessage(id: string, sessionID: string, role: string, content: string): Message {
-  return {
-    id,
-    session_id: sessionID,
-    parent_message_id: "",
-    turn_index: 1,
-    role,
-    content_markdown: content,
-    model_name: "mock",
-    token_in: 0,
-    token_out: 0,
-    latency_ms: 0,
-    status: "ok",
-    attachments_count: 0,
-    options_json: "",
-    error_message: "",
-    created_at: new Date().toISOString(),
-  };
-}
+import { createPlaceholderMessage } from "../streamHandlers";
 
 export type SenderDeps = {
-  store: ReturnType<typeof useAppStore>;
-  selectedEntityKind: Ref<ChatEntityKind>;
-  selectedTeamId: Ref<string | null>;
-  teamSelectedSessionId: Ref<string | null>;
-  teamMessages: Ref<Record<string, Message[]>>;
+  appStore: ReturnType<typeof useAppStore>;
+  chatStore: ReturnType<typeof useChatStore>;
   inputText: Ref<string>;
   dialogMode: Ref<string>;
   attachments: Ref<ChatAttachment[]>;
@@ -42,23 +22,22 @@ export type SenderDeps = {
   awaitingRunId: Ref<string>;
   runStatus: Ref<string>;
   selectedProviderModel: ComputedRef<{ provider: string; model: string } | undefined>;
+  selectedKnowledgeBases: Ref<string[]>;
   ensureChatStream: (sessionId: string) => UseEnvelopeStreamReturn;
   ensureTeamStream: (sessionId: string) => UseEnvelopeStreamReturn;
   sendChatViaWs: (stream: UseEnvelopeStreamReturn, upstream: WsUpstream) => void;
   onNewSession: (title?: string) => Promise<void>;
   makeSessionTitle: (content: string) => string;
   refreshRunStatus: () => Promise<void>;
-  loadTeamSessions: (teamId: string) => Promise<void>;
-  teamSessions: Ref<Record<string, Array<{ id: string; provider?: string; model?: string }>>>;
   submitAwaitingReply: () => Promise<void>;
   submitToolConfirm: (approved: boolean) => Promise<void>;
+  refreshPendingMessages?: () => Promise<void>;
 };
 
 export function useChatSender(deps: SenderDeps) {
   const $q = useQuasar();
   const router = useRouter();
-
-  const selectedSessionId = computed(() => deps.store.selectedSession?.id);
+  const { t } = useI18n();
 
   const sending = ref(false);
   let sendingTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -143,10 +122,42 @@ export function useChatSender(deps: SenderDeps) {
       return;
     }
 
-    if (deps.selectedEntityKind.value === "agent") {
+    if (deps.chatStore.entityKind === "agent") {
       await sendAgentMessage(content);
-    } else if (deps.selectedEntityKind.value === "team" && deps.selectedTeamId.value) {
+    } else if (deps.chatStore.entityKind === "team" && deps.chatStore.selectedTeamId) {
       await sendTeamMessage(content);
+    }
+  }
+
+  function dropPendingUserRow(sessionId: string, pendingUserId: string) {
+    deps.chatStore.setMessages(
+      sessionId,
+      deps.chatStore.getMessages(sessionId).filter((m) => m.id !== pendingUserId)
+    );
+  }
+
+  async function enqueueDuringRun(sessionId: string, content: string, pendingUserId: string) {
+    try {
+      const res = await enqueueMessage(sessionId, content);
+      if (res.accepted) {
+        dropPendingUserRow(sessionId, pendingUserId);
+        $q.notify({
+          type: "positive",
+          message: res.queued
+            ? t("chat.enqueueQueued", "Message queued for after the current run")
+            : t("chat.enqueueAccepted", "Message will be injected at the next tool boundary"),
+        });
+        await deps.refreshPendingMessages?.();
+        return;
+      }
+      dropPendingUserRow(sessionId, pendingUserId);
+      $q.notify({ type: "warning", message: t("chat.enqueueRejected", "Could not enqueue message") });
+    } catch (err) {
+      dropPendingUserRow(sessionId, pendingUserId);
+      $q.notify({
+        type: "negative",
+        message: err instanceof Error ? err.message : t("chat.enqueueRejected", "Could not enqueue message"),
+      });
     }
   }
 
@@ -159,44 +170,39 @@ export function useChatSender(deps: SenderDeps) {
       markSending();
     }
     try {
-      if (!deps.store.selectedSession) await deps.onNewSession(deps.makeSessionTitle(text));
-      if (!deps.store.selectedSession) {
+      if (!deps.chatStore.selectedSession) await deps.onNewSession(deps.makeSessionTitle(text));
+      if (!deps.chatStore.selectedSession) {
         $q.notify({ type: "negative", message: "未创建会话或会话无效，请重试" });
         if (!followUp) markSendingDone();
         return;
       }
-      const sessionId = deps.store.selectedSession.id;
+      const sessionId = deps.chatStore.selectedSession.id;
       if (!followUp) {
         markSending(sessionId);
       }
       const selectedModel = deps.selectedProviderModel.value;
 
       const pendingUserId = `pending-user-${crypto.randomUUID()}`;
-      deps.store.messages = [
-        ...deps.store.messages,
+      deps.chatStore.setMessages(sessionId, [
+        ...deps.chatStore.getMessages(sessionId),
         createPlaceholderMessage(pendingUserId, sessionId, "user", text),
-      ];
+      ]);
 
       if (!(await checkBackendAvailability())) {
-        deps.store.messages = deps.store.messages.filter((m) => !String(m.id).startsWith("pending-user-"));
+        deps.chatStore.setMessages(
+          sessionId,
+          deps.chatStore.getMessages(sessionId).filter((m) => !String(m.id).startsWith("pending-user-"))
+        );
         if (!followUp) markSendingDone();
         return;
       }
 
-      const stream = deps.ensureChatStream(sessionId);
       if (followUp) {
-        deps.sendChatViaWs(stream, {
-          direction: "client_to_server",
-          channel: "chat",
-          type: "enqueue_message",
-          request_id: pendingUserId,
-          payload: {
-            session_id: sessionId,
-            content: text,
-          },
-        });
+        await enqueueDuringRun(sessionId, text, pendingUserId);
         return;
       }
+
+      const stream = deps.ensureChatStream(sessionId);
       deps.sendChatViaWs(stream, {
         direction: "client_to_server",
         channel: "chat",
@@ -204,13 +210,22 @@ export function useChatSender(deps: SenderDeps) {
         request_id: pendingUserId,
         payload: {
           session_id: sessionId,
-          agent_key: deps.store.selectedAgent?.agent_key,
+          agent_key: deps.appStore.selectedAgent?.agent_key,
           content: text,
           options: {
             dialog_mode: deps.dialogMode.value,
-            provider: selectedModel?.provider || deps.store.selectedSession.provider || deps.store.selectedAgent?.provider || "",
-            model: selectedModel?.model || deps.store.selectedSession.model || deps.store.selectedAgent?.model || "",
+            provider:
+              selectedModel?.provider ||
+              deps.chatStore.selectedSession.provider ||
+              deps.appStore.selectedAgent?.provider ||
+              "",
+            model:
+              selectedModel?.model ||
+              deps.chatStore.selectedSession.model ||
+              deps.appStore.selectedAgent?.model ||
+              "",
             attachments: deps.attachments.value.map((item) => ({ id: item.id })),
+            knowledge_bases: deps.selectedKnowledgeBases.value,
           },
         },
       });
@@ -220,12 +235,19 @@ export function useChatSender(deps: SenderDeps) {
           type: "negative",
           message: error instanceof Error ? error.message : "发送失败，请稍后重试",
         });
-        deps.store.messages = deps.store.messages.filter((m) => !String(m.id).startsWith("pending-user-"));
-        if (deps.store.selectedSession) {
+        const sid = deps.chatStore.selectedSession?.id;
+        if (sid) {
+          deps.chatStore.setMessages(
+            sid,
+            deps.chatStore.getMessages(sid).filter((m) => !String(m.id).startsWith("pending-user-"))
+          );
           try {
-            await deps.store.loadMessages();
-            await deps.store.loadSessions();
-          } catch { /* ignore */ }
+            await deps.chatStore.loadMessages({ sessionId: sid });
+            const agentId = deps.appStore.selectedAgent?.id;
+            if (agentId) await deps.chatStore.loadAgentSessions(agentId, { refreshOnly: true });
+          } catch {
+            /* ignore reload failure */
+          }
         }
         if (!followUp) markSendingDone();
       }
@@ -246,8 +268,8 @@ export function useChatSender(deps: SenderDeps) {
     }
     let sessionIdForCatch = "";
     try {
-      if (!deps.teamSelectedSessionId.value) await deps.onNewSession(deps.makeSessionTitle(content));
-      const sessionId = deps.teamSelectedSessionId.value;
+      if (!deps.chatStore.teamSelectedSessionId) await deps.onNewSession(deps.makeSessionTitle(content));
+      const sessionId = deps.chatStore.teamSelectedSessionId;
       if (!sessionId) {
         $q.notify({ type: "negative", message: "未创建会话或会话无效，请重试" });
         if (!followUp) markSendingDone();
@@ -257,37 +279,32 @@ export function useChatSender(deps: SenderDeps) {
       if (!followUp) {
         markSending(sessionId);
       }
-      const session = deps.teamSessions.value[deps.selectedTeamId.value!]?.find((item) => item.id === sessionId);
+      const teamId = deps.chatStore.selectedTeamId!;
+      const session = deps.chatStore.teamSessions[teamId]?.find((item) => item.id === sessionId);
       const selectedModel = deps.selectedProviderModel.value;
       deps.inputText.value = "";
 
       const pendingUserId = `pending-user-${crypto.randomUUID()}`;
-      deps.teamMessages.value[sessionId] = [
-        ...(deps.teamMessages.value[sessionId] ?? []),
+      deps.chatStore.setMessages(sessionId, [
+        ...deps.chatStore.getMessages(sessionId),
         createPlaceholderMessage(pendingUserId, sessionId, "user", content),
-      ];
+      ]);
 
       if (!(await checkBackendAvailability())) {
-        const cur = deps.teamMessages.value[sessionId] ?? [];
-        deps.teamMessages.value[sessionId] = cur.filter((item) => !String(item.id).startsWith("pending-user-"));
+        deps.chatStore.setMessages(
+          sessionId,
+          deps.chatStore.getMessages(sessionId).filter((item) => !String(item.id).startsWith("pending-user-"))
+        );
         if (!followUp) markSendingDone();
         return;
       }
 
-      const stream = deps.ensureTeamStream(sessionId);
       if (followUp) {
-        deps.sendChatViaWs(stream, {
-          direction: "client_to_server",
-          channel: "chat",
-          type: "enqueue_message",
-          request_id: pendingUserId,
-          payload: {
-            session_id: sessionId,
-            content,
-          },
-        });
+        await enqueueDuringRun(sessionId, content, pendingUserId);
         return;
       }
+
+      const stream = deps.ensureTeamStream(sessionId);
       deps.sendChatViaWs(stream, {
         direction: "client_to_server",
         channel: "chat",
@@ -295,13 +312,14 @@ export function useChatSender(deps: SenderDeps) {
         request_id: pendingUserId,
         payload: {
           session_id: sessionId,
-          team_id: deps.selectedTeamId.value,
+          team_id: deps.chatStore.selectedTeamId,
           content,
           options: {
             dialog_mode: deps.dialogMode.value,
             provider: selectedModel?.provider || session?.provider || "",
             model: selectedModel?.model || session?.model || "",
             attachments: deps.attachments.value.map((item) => ({ id: item.id })),
+            knowledge_bases: deps.selectedKnowledgeBases.value,
           },
         },
       });
@@ -310,8 +328,15 @@ export function useChatSender(deps: SenderDeps) {
         $q.notify({ type: "negative", message: error instanceof Error ? error.message : "Team 发送失败" });
       }
       if (sessionIdForCatch) {
-        const cur = deps.teamMessages.value[sessionIdForCatch] ?? [];
-        deps.teamMessages.value[sessionIdForCatch] = cur.filter((item) => !String(item.id).startsWith("pending-user-"));
+        deps.chatStore.setMessages(
+          sessionIdForCatch,
+          deps.chatStore.getMessages(sessionIdForCatch).filter((item) => !String(item.id).startsWith("pending-user-"))
+        );
+        try {
+          await deps.chatStore.loadMessages({ sessionId: sessionIdForCatch });
+        } catch {
+          /* ignore */
+        }
       }
     } finally {
       deps.attachments.value = [];

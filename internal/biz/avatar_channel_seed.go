@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 
+	"aranea-agents/internal/biz/avatar"
 	"aranea-agents/internal/biz/channelicons"
 )
 
@@ -30,7 +31,7 @@ func ensureOneChannelPlatformAvatar(ctx context.Context, repo AvatarRepo, spec C
 			return err
 		}
 	}
-	main, thumb, w, h, mime, err := processAvatarUpload(pngData, "image/png")
+	main, thumb, w, h, mime, err := avatar.ProcessAvatarUpload(pngData, "image/png")
 	if err != nil {
 		return err
 	}

@@ -13,6 +13,7 @@ export type AwaitReplySubmitDeps = {
   awaitingRunId: Ref<string>;
   awaitKind: Ref<string>;
   refreshRunStatus: () => Promise<void>;
+  notifyError: (message: string) => void;
 };
 
 export function useAwaitReply() {
@@ -46,10 +47,16 @@ export function useAwaitReply() {
       const sid = deps.resolveSessionId();
       const text = deps.inputText.value.trim();
       if (!sid || !text) return;
-      const ok = await awaitUserReply(sid, text, deps.awaitingRunId.value || undefined);
-      if (ok) {
-        deps.inputText.value = "";
-        await deps.refreshRunStatus();
+      try {
+        const ok = await awaitUserReply(sid, text, deps.awaitingRunId.value || undefined);
+        if (ok) {
+          deps.inputText.value = "";
+          await deps.refreshRunStatus();
+        } else {
+          deps.notifyError("提交回复未被接受，请重试");
+        }
+      } catch (err) {
+        deps.notifyError(err instanceof Error ? err.message : "提交回复失败");
       }
     }
 
@@ -57,9 +64,15 @@ export function useAwaitReply() {
       const sid = deps.resolveSessionId();
       if (!sid || deps.awaitKind.value !== AWAIT_KIND_TOOL_CONFIRM) return;
       const reply = approved ? TOOL_CONFIRM_REPLY_APPROVE : TOOL_CONFIRM_REPLY_DENY;
-      const ok = await awaitUserReply(sid, reply, deps.awaitingRunId.value || undefined);
-      if (ok) {
-        await deps.refreshRunStatus();
+      try {
+        const ok = await awaitUserReply(sid, reply, deps.awaitingRunId.value || undefined);
+        if (ok) {
+          await deps.refreshRunStatus();
+        } else {
+          deps.notifyError("工具确认提交未被接受，请重试");
+        }
+      } catch (err) {
+        deps.notifyError(err instanceof Error ? err.message : "工具确认提交失败");
       }
     }
 

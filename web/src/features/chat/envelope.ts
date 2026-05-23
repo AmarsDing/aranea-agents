@@ -29,6 +29,7 @@ export type EnvelopeType =
   | "graph_node_custom"
   | "graph_task_status"
   | "knowledge_ingest"
+  | "user_feedback"
   | "mcp.session.reconnect"
   | "alert.notify";
 
@@ -73,7 +74,9 @@ export type EnvelopeTransfer = {
 
 export type EnvelopeError = {
   type: string;
+  code?: string;
   message: string;
+  hint?: string;
   pending_id?: string;
 };
 
@@ -81,6 +84,8 @@ export type EnvelopeUsage = {
   prompt_tokens: number;
   completion_tokens: number;
   total_tokens: number;
+  max_tokens?: number;
+  turn_total_tokens?: number;
 };
 
 export type EnvelopeActions = {

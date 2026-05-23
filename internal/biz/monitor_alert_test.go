@@ -107,14 +107,14 @@ func TestShouldFireAlert_respectsCooldown(t *testing.T) {
 	uc := NewMonitorUsecase(nil, nil)
 	rule := MonitorAlertRule{ID: "x", CooldownMinutes: 30}
 	now := time.Now()
-	if !uc.shouldFireAlert(rule, now) {
+	if !uc.ShouldFireAlert(rule, now) {
 		t.Fatal("first fire should be allowed")
 	}
-	uc.markAlertFired(rule.ID, now)
-	if uc.shouldFireAlert(rule, now.Add(5*time.Minute)) {
+	uc.MarkAlertFired(rule.ID, now)
+	if uc.ShouldFireAlert(rule, now.Add(5*time.Minute)) {
 		t.Fatal("should be in cooldown")
 	}
-	if !uc.shouldFireAlert(rule, now.Add(31*time.Minute)) {
+	if !uc.ShouldFireAlert(rule, now.Add(31*time.Minute)) {
 		t.Fatal("cooldown should expire")
 	}
 }

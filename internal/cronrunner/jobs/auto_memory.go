@@ -4,6 +4,7 @@ package jobs
 
 import (
 	"context"
+	"fmt"
 	"regexp"
 	"strings"
 	"time"
@@ -114,6 +115,9 @@ func (w *AutoMemoryWorker) processWithRetry(ctx context.Context, req memtrpc.Aut
 // to detect user facts, and writes them to the memory store via trpcmemory.Service.
 // When sessions or memory is nil, the function logs and returns without error.
 func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJobRequest) error {
+	if strings.TrimSpace(req.FeedbackMessageID) != "" {
+		return w.extractFeedback(ctx, req)
+	}
 	sid := strings.TrimSpace(req.SessionID)
 	if sid == "" {
 		return nil
@@ -180,4 +184,73 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 		event.P("l4_entities", l4Written),
 	)
 	return nil
+}
+
+func (w *AutoMemoryWorker) extractFeedback(ctx context.Context, req memtrpc.AutoMemoryJobRequest) error {
+	sid := strings.TrimSpace(req.SessionID)
+	msgID := strings.TrimSpace(req.FeedbackMessageID)
+	rating := strings.TrimSpace(req.FeedbackRating)
+	comment := strings.TrimSpace(req.FeedbackComment)
+	if sid == "" || msgID == "" || rating == "" {
+		return nil
+	}
+	if w.sessions == nil || w.memory == nil {
+		event.SysLogDebug("system.auto_memory.feedback_skip", "反馈记忆跳过：未注入 sessions/memory", event.P("session_id", sid))
+		return nil
+	}
+	sess, err := w.sessions.Get(ctx, sid)
+	if err != nil {
+		return err
+	}
+	msgs, err := w.sessions.ListMessagesRecent(ctx, sid, autoMemoryMaxMessages)
+	if err != nil {
+		return err
+	}
+	var assistantPreview string
+	for _, m := range msgs {
+		if m.ID == msgID {
+			assistantPreview = previewText(m.ContentMarkdown, 200)
+			break
+		}
+	}
+	fact := buildFeedbackMemoryFact(rating, comment, assistantPreview)
+	if fact == "" {
+		return nil
+	}
+	uk := trpcmemory.UserKey{AppName: req.AppName, UserID: req.UserID}
+	if uk.UserID == "" {
+		uk.UserID = strings.TrimSpace(sess.UserID)
+	}
+	if err := w.memory.AddMemory(ctx, uk, fact, []string{"feedback", "preference"}); err != nil {
+		return err
+	}
+	event.SessionSysLogInfo(ctx, sid, "system.auto_memory.feedback_done", "反馈偏好记忆已写入",
+		event.P("message_id", msgID), event.P("rating", rating))
+	return nil
+}
+
+func buildFeedbackMemoryFact(rating, comment, assistantPreview string) string {
+	switch rating {
+	case "negative":
+		if comment != "" {
+			return fmt.Sprintf("User disliked an assistant response and noted: %s", comment)
+		}
+		if assistantPreview != "" {
+			return fmt.Sprintf("User disliked an assistant response about: %s", assistantPreview)
+		}
+		return "User marked an assistant response as unsatisfactory"
+	case "positive":
+		if comment != "" {
+			return fmt.Sprintf("User approved an assistant response and noted: %s", comment)
+		}
+	}
+	return ""
+}
+
+func previewText(s string, max int) string {
+	s = strings.TrimSpace(s)
+	if max <= 0 || len(s) <= max {
+		return s
+	}
+	return s[:max] + "…"
 }

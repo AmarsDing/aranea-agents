@@ -6,4 +6,5 @@ const (
 	flowStepChannelTurnTimeout = "channel.turn.timeout"
 	flowStepChannelPreview     = "channel.preview.patch"
 	flowStepChannelToolCard    = "channel.tool.card"
+	flowStepChannelOutbound    = "channel.outbound.text"
 )

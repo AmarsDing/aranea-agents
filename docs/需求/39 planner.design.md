@@ -387,4 +387,4 @@ PlannerKind: b.PlannerKind,
 
 ### 7.5 Builtin 在 Chat 的展示
 
-不新增步骤卡；继续使用 `envelope.content.reasoning` → `options_json.reasoning_markdown` →「思考过程」折叠（与 ReAct 正交）。
+不新增步骤卡；继续使用 `envelope.content.reasoning` → `options_json.reasoning_markdown` → **`ChatReasoningPeek`**（与 ReAct 正交）：默认 live tail 最后两行，正文区单独展示并标「正文」。详见 [R-UX changelog](../changelog/2026-05-23-M55-Phase-R-UX-Channel-Format-Reasoning.md)。

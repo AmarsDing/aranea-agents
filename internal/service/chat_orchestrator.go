@@ -22,50 +22,88 @@ import (
 	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
 )
 
-// ChatOrchestrator owns the turn lifecycle: admission, execution, status tracking,
-// and post-turn side effects. ChatService delegates all orchestration work here.
-type ChatOrchestrator struct {
-	teams              biz.TeamRepository
-	teamsNative        *team.Runner
-	usage              *biz.UsageUsecase
-	monitor            *biz.MonitorUsecase
-	td                 rt.TurnDeps
-	pluginRT           *plugintrpc.Runtime
-	pluginManager      *plugintrpc.Manager
-	skillDBRepo        trpcskill.Repository
-	artifacts          *biz.ArtifactUsecase
-	runs               *rt.RunRegistry
-	chatUC             *biz.ChatUsecase
-	turnJobs           *biz.ChannelTurnJobUsecase
-	awaitMetaCache     sync.Map
-	resumeInFlight     sync.Map
-	a2aUC              *biz.A2AUsecase
-	knowledgeRetriever *knowledge.Retriever
-	codeExecFactory    *localexec.Factory
-}
-
-// ChatOrchestratorDeps groups all dependencies for ChatOrchestrator construction.
-type ChatOrchestratorDeps struct {
-	rt.TurnDeps
-	Runs               *rt.RunRegistry
-	PendingQueue       *rt.PendingMessageQueue
-	Teams              biz.TeamRepository
-	TeamsNative        *team.Runner
-	Usage              *biz.UsageUsecase
-	Monitor            *biz.MonitorUsecase
+// RuntimeTooling groups plugin, skill, knowledge, and code-execution dependencies
+// that are injected into every agent turn build. Moving these out of the flat
+// ChatOrchestratorDeps reduces the Wire parameter count and makes the
+// responsibility boundary explicit.
+type RuntimeTooling struct {
 	PluginRT           *plugintrpc.Runtime
 	PluginManager      *plugintrpc.Manager
 	SkillDBRepo        trpcskill.Repository
-	Artifacts          *biz.ArtifactUsecase
-	A2AUC              *biz.A2AUsecase
 	KnowledgeRetriever *knowledge.Retriever
 	CodeExecFactory    *localexec.Factory
-	MCPServers         *biz.MCPServerUsecase
-	GraphFactory       biz.GraphBuilderFactory
-	Graphs             *biz.GraphUsecase
-	Tasks              *biz.TaskUsecase
-	TeamGraphCoord     *team.TeamGraphRunCoordinator
-	TurnJobs           *biz.ChannelTurnJobUsecase
+}
+
+// TeamOrchestrationDeps groups team execution and graph compilation dependencies.
+// These are only used when a session is owned by a team or when graph execution
+// is triggered from the chat orchestrator.
+type TeamOrchestrationDeps struct {
+	Teams          biz.TeamRepository
+	TeamsNative    *team.Runner
+	GraphFactory   biz.GraphBuilderFactory
+	Graphs         *biz.GraphUsecase
+	Tasks          *biz.TaskUsecase
+	TeamGraphCoord *team.TeamGraphRunCoordinator
+}
+
+// ChannelTurnDeps groups channel turn job tracking and session run management.
+// These are used for channel async job lifecycle and durable session run escalation.
+type ChannelTurnDeps struct {
+	TurnJobs      *biz.ChannelTurnJobUsecase
+	SessionRuns   *biz.SessionRunUsecase
+	Channels      *biz.ChannelUsecase
+	RunEscalation SessionRunEscalationNotifier
+}
+
+// ChatOrchestrator owns the turn lifecycle: admission, execution, status tracking,
+// and post-turn side effects. ChatService delegates all orchestration work here.
+type ChatOrchestrator struct {
+	td         rt.TurnDeps
+	rt         RuntimeTooling
+	team       TeamOrchestrationDeps
+	chTurn     ChannelTurnDeps
+	usage      *biz.UsageUsecase
+	monitor    *biz.MonitorUsecase
+	artifacts  *biz.ArtifactUsecase
+	a2aUC      *biz.A2AUsecase
+	mcpServers *biz.MCPServerUsecase
+	runs       *rt.RunRegistry
+	chatUC     *biz.ChatUsecase
+
+	sessionRunBindings sync.Map
+	awaitMetaCache     sync.Map
+	resumeInFlight     sync.Map
+}
+
+// ChatOrchestratorDeps groups all dependencies for ChatOrchestrator construction.
+// Sub-aggregates (RuntimeTooling, TeamOrchestrationDeps, ChannelTurnDeps) reduce
+// the flat parameter count and make responsibility boundaries explicit.
+type ChatOrchestratorDeps struct {
+	rt.TurnDeps
+	Runs         *rt.RunRegistry
+	PendingQueue *rt.PendingMessageQueue
+	RT           RuntimeTooling
+	Team         TeamOrchestrationDeps
+	ChTurn       ChannelTurnDeps
+	Usage        *biz.UsageUsecase
+	Monitor      *biz.MonitorUsecase
+	Artifacts    *biz.ArtifactUsecase
+	A2AUC        *biz.A2AUsecase
+	MCPServers   *biz.MCPServerUsecase
+}
+
+func coalesceRunRegistry(r *rt.RunRegistry) *rt.RunRegistry {
+	if r != nil {
+		return r
+	}
+	return rt.NewRunRegistry()
+}
+
+func coalescePendingQueue(q *rt.PendingMessageQueue) *rt.PendingMessageQueue {
+	if q != nil {
+		return q
+	}
+	return rt.NewPendingMessageQueue()
 }
 
 func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
@@ -74,43 +112,39 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 	sessionLocks := NewSessionLockManager()
 
 	o := &ChatOrchestrator{
-		teams:              deps.Teams,
-		teamsNative:        deps.TeamsNative,
-		usage:              deps.Usage,
-		monitor:            deps.Monitor,
-		pluginRT:           deps.PluginRT,
-		pluginManager:      deps.PluginManager,
-		skillDBRepo:        deps.SkillDBRepo,
-		artifacts:          deps.Artifacts,
-		runs:               runs,
-		chatUC:             NewChatUsecaseFromDeps(runs, pending, sessionLocks, deps.Sessions, deps.Pipeline.Bus),
-		turnJobs:           deps.TurnJobs,
-		a2aUC:              deps.A2AUC,
-		knowledgeRetriever: deps.KnowledgeRetriever,
-		codeExecFactory:    deps.CodeExecFactory,
-		td:                 deps.TurnDeps,
+		td:         deps.TurnDeps,
+		rt:         deps.RT,
+		team:       deps.Team,
+		chTurn:     deps.ChTurn,
+		usage:      deps.Usage,
+		monitor:    deps.Monitor,
+		artifacts:  deps.Artifacts,
+		a2aUC:      deps.A2AUC,
+		mcpServers: deps.MCPServers,
+		runs:       runs,
+		chatUC:     NewChatUsecaseFromDeps(runs, pending, sessionLocks, deps.Sessions, deps.Pipeline.Bus),
 	}
 
-	if deps.TeamsNative != nil {
-		deps.TeamsNative.SetKnowledgeRetriever(deps.KnowledgeRetriever)
-		deps.TeamsNative.SetAwaitHookProvider(func(runCtx context.Context, sessionID, runID string) tooltrpc.ReplyFunc {
+	if deps.Team.TeamsNative != nil {
+		deps.Team.TeamsNative.SetKnowledgeRetriever(deps.RT.KnowledgeRetriever)
+		deps.Team.TeamsNative.SetAwaitHookProvider(func(runCtx context.Context, sessionID, runID string) tooltrpc.ReplyFunc {
 			return o.makeAwaitReplyFunc(runCtx, sessionID, runID)
 		})
-		deps.TeamsNative.SetRunRegistry(o.runs)
-		if deps.Graphs != nil {
-			deps.TeamsNative.SetGraphBuildConfigLoader(graphadapter.NewLinkedGraphBuildConfigLoader(deps.Graphs))
+		deps.Team.TeamsNative.SetRunRegistry(o.runs)
+		if deps.Team.Graphs != nil {
+			deps.Team.TeamsNative.SetGraphBuildConfigLoader(graphadapter.NewLinkedGraphBuildConfigLoader(deps.Team.Graphs))
 		}
-		if deps.GraphFactory != nil {
-			if builder, ok := deps.GraphFactory.(graphadapter.TeamGraphRootBuilder); ok {
-				deps.TeamsNative.SetGraphRootBuilder(builder)
+		if deps.Team.GraphFactory != nil {
+			if builder, ok := deps.Team.GraphFactory.(graphadapter.TeamGraphRootBuilder); ok {
+				deps.Team.TeamsNative.SetGraphRootBuilder(builder)
 			}
 		}
-		if deps.Tasks != nil {
-			deps.TeamsNative.SetTeamGraphTaskCreator(team.NewTaskUsecaseGraphTaskCreator(deps.Tasks))
+		if deps.Team.Tasks != nil {
+			deps.Team.TeamsNative.SetTeamGraphTaskCreator(team.NewTaskUsecaseGraphTaskCreator(deps.Team.Tasks))
 		}
-		if deps.TeamGraphCoord != nil {
-			deps.TeamsNative.SetTeamGraphRunCoordinator(deps.TeamGraphCoord)
-			deps.TeamGraphCoord.SetFinisher(deps.TeamsNative)
+		if deps.Team.TeamGraphCoord != nil {
+			deps.Team.TeamsNative.SetTeamGraphRunCoordinator(deps.Team.TeamGraphCoord)
+			deps.Team.TeamGraphCoord.SetFinisher(deps.Team.TeamsNative)
 		}
 	}
 
@@ -213,10 +247,11 @@ func (o *ChatOrchestrator) setRunStatus(sessionID, runID, status, errMsg string)
 
 func (o *ChatOrchestrator) setRunStatusWithAwait(sessionID, runID, status, errMsg string, await *AwaitStatusMeta) {
 	o.runs.SetStatus(sessionID, runID, status, errMsg)
+	bind, _ := o.sessionRunBinding(sessionID)
 	if await != nil {
-		PublishRunStatusMeta(o.td.Pipeline.Bus, sessionID, runID, status, errMsg, await)
+		PublishRunStatusFull(o.td.Pipeline.Bus, sessionID, runID, status, errMsg, await, bind.sessionRunID, bind.turnID)
 	} else {
-		PublishRunStatus(o.td.Pipeline.Bus, sessionID, runID, status, errMsg)
+		PublishRunStatusFull(o.td.Pipeline.Bus, sessionID, runID, status, errMsg, nil, bind.sessionRunID, bind.turnID)
 	}
 	o.persistRunStatus(context.Background(), sessionID, runID, status, errMsg)
 }

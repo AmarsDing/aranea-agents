@@ -3,12 +3,12 @@ package biz
 import (
 	"context"
 
-	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/safego"
 )
 
 type EventBusConsumer struct {
-	eventBus event.Bus
+	eventBus contract.Bus
 	buffer   *eventBufferHandler
 	runner   *runnerCompletionHandler
 	state    *stateDeltaHandler
@@ -16,8 +16,8 @@ type EventBusConsumer struct {
 }
 
 func NewEventBusConsumer(
-	eventBus event.Bus,
-	eventBuffer *event.Buffer,
+	eventBus contract.Bus,
+	eventBuffer EnvelopeBuffer,
 	sessions *SessionUsecase,
 	usage *UsageUsecase,
 	monitor *MonitorUsecase,
@@ -33,11 +33,27 @@ func NewEventBusConsumer(
 	}
 }
 
+// SetLogger propagates SessionLogWriter to all sub-handlers that need it.
+func (c *EventBusConsumer) SetLogger(logger SessionLogWriter) {
+	if c == nil {
+		return
+	}
+	if c.runner != nil {
+		c.runner.SetLogger(logger)
+	}
+	if c.state != nil {
+		c.state.SetLogger(logger)
+	}
+	if c.persist != nil {
+		c.persist.SetLogger(logger)
+	}
+}
+
 func (c *EventBusConsumer) Start(ctx context.Context) {
 	if c.persist != nil {
 		c.persist.Start(ctx)
 	}
-	ch, unsubscribe := c.eventBus.Subscribe(event.SubscribeOptions{BufferSize: 256, Reliable: true})
+	ch, unsubscribe := c.eventBus.Subscribe(contract.SubscribeOptions{BufferSize: 256, Reliable: true})
 	safego.Go(ctx, "event-bus-consumer", func() {
 		defer unsubscribe()
 		for {
@@ -54,7 +70,7 @@ func (c *EventBusConsumer) Start(ctx context.Context) {
 	})
 }
 
-func (c *EventBusConsumer) handleEnvelope(ctx context.Context, env event.Envelope) {
+func (c *EventBusConsumer) handleEnvelope(ctx context.Context, env contract.Envelope) {
 	c.buffer.Handle(env)
 	if c.persist != nil {
 		c.persist.Handle(ctx, env)

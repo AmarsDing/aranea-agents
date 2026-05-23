@@ -1,6 +1,7 @@
 # Channel × Agent × Team × 会话消息 — 集成设计
 
 > 对应业务说明：[17-channel-agent-team-integration.md](./17-channel-agent-team-integration.md)  
+> **目标态架构（1 Turn + 2 Projections + 3 Anchors）**：[55-chat-channel-cursor-solution.md §1.5](../需求/55-chat-channel-cursor-solution.md#15-架构收敛模型1-turn--2-projections--3-anchors)  
 > 遵循：[AI-DEVELOPMENT-SPECIFICATION.md](../guides/AI-DEVELOPMENT-SPECIFICATION.md) · [AGENT_RUNTIME_BOUNDARY.md](../AGENT_RUNTIME_BOUNDARY.md)  
 > **运行时边界**：Channel 与 Chat 均在 `internal/service` 组装 `trpc-agent-go`；`internal/biz` 不 import 框架。
 

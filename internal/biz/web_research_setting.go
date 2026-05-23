@@ -1,18 +1,13 @@
 package biz
 
-import "strings"
+import (
+	"strings"
 
-// WebResearchSetting is the platform default for web_research (Tavily / SerpAPI).
-type WebResearchSetting struct {
-	Provider    string
-	APIKey      string // write-only; populated only via GetWebResearch
-	HasAPIKey   bool
-	MaxResults  int
-	FetchTop    int
-	SearchDepth string
-	TimeoutSec  int
-	HTTPProxy   string
-}
+	"aranea-agents/internal/biz/tool"
+)
+
+// WebResearchSetting is now an alias for tool.WebResearchSetting.
+type WebResearchSetting = tool.WebResearchSetting
 
 // WebResearchConfigured reports whether platform settings can run web_research.
 func WebResearchConfigured(s WebResearchSetting) bool {

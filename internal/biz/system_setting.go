@@ -34,12 +34,17 @@ type SystemSettingRepo interface {
 }
 
 type SystemSettingUsecase struct {
-	repo  SystemSettingRepo
-	quota UsageQuotaRepo
+	repo              SystemSettingRepo
+	quota             UsageQuotaRepo
+	webResearchTester WebResearchTester
 }
 
 func NewSystemSettingUsecase(repo SystemSettingRepo, quota UsageQuotaRepo) *SystemSettingUsecase {
 	return &SystemSettingUsecase{repo: repo, quota: quota}
+}
+
+func (u *SystemSettingUsecase) SetWebResearchTester(tester WebResearchTester) {
+	u.webResearchTester = tester
 }
 
 func (u *SystemSettingUsecase) Get(ctx context.Context) (SystemSetting, error) {
@@ -84,7 +89,7 @@ func (u *SystemSettingUsecase) syncGlobalQuota(ctx context.Context, monthlyMicro
 		ScopeID:         GlobalQuotaScopeID,
 		MonthlyMicroUSD: monthlyMicroUSD,
 	})
-	return mapUsageRepoErr(err)
+	return MapUsageRepoErr(err)
 }
 
 // UpdateKnowledgeEmbed persists knowledge embedder defaults on the singleton row.

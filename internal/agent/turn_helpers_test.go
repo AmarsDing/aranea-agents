@@ -20,6 +20,16 @@ func (r *recordingPersister) UpsertActivity(_ context.Context, _ ProjectMeta, tc
 	return nil
 }
 
+func TestAccumulateStreamUsage_multiLLMRounds(t *testing.T) {
+	var result EventStreamResult
+	meta := ProjectMeta{SessionID: "s1"}
+	accumulateStreamUsage(&result, &trpcevent.Event{}, meta, 100, 50)
+	accumulateStreamUsage(&result, &trpcevent.Event{}, meta, 200, 30)
+	if result.PromptTok != 200 || result.CompletionTok != 80 {
+		t.Fatalf("multi-round tokens: prompt=%d completion=%d", result.PromptTok, result.CompletionTok)
+	}
+}
+
 func TestAccumulateStreamUsage_memberByAgentKey(t *testing.T) {
 	var result EventStreamResult
 	meta := ProjectMeta{

@@ -172,8 +172,15 @@ func MergeReasoningIntoAssistantOptionsJSON(base string, reasoning string) (stri
 
 // MergeSourceIntoUserOptionsJSON stamps envelope source (web|channel|cron|a2a) for UserBubble badges (M55 CC-B-07).
 func MergeSourceIntoUserOptionsJSON(optionsJSON, source string) (string, error) {
+	return MergeInboundSourceIntoUserOptionsJSON(optionsJSON, source, "", "")
+}
+
+// MergeInboundSourceIntoUserOptionsJSON stamps source, platform, and channel_key (M55 Tier 0).
+func MergeInboundSourceIntoUserOptionsJSON(optionsJSON, source, platform, channelKey string) (string, error) {
 	source = strings.TrimSpace(source)
-	if source == "" {
+	platform = strings.TrimSpace(platform)
+	channelKey = strings.TrimSpace(channelKey)
+	if source == "" && platform == "" && channelKey == "" {
 		return optionsJSON, nil
 	}
 	opts := map[string]any{}
@@ -182,7 +189,15 @@ func MergeSourceIntoUserOptionsJSON(optionsJSON, source string) (string, error) 
 			return optionsJSON, err
 		}
 	}
-	opts["source"] = source
+	if source != "" {
+		opts["source"] = source
+	}
+	if platform != "" {
+		opts["platform"] = platform
+	}
+	if channelKey != "" {
+		opts["channel_key"] = channelKey
+	}
 	out, err := json.Marshal(opts)
 	if err != nil {
 		return "", err

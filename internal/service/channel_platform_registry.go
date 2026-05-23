@@ -57,6 +57,17 @@ func outboundFeishu(ctx context.Context, h *ChannelIngress, chRow biz.Channel, c
 	if err != nil {
 		return err
 	}
+	if strings.TrimSpace(payload.CardJSON) != "" {
+		sender := &lark.CardSender{
+			Region:        region,
+			AppID:         appID,
+			AppSecret:     sec,
+			ReceiveIDType: lark.ReceiveIDTypeFromMeta(payload.Extra),
+			HTTP:          h.http,
+		}
+		_, err := sender.UpsertToolCard(ctx, payload.Recipient, "", payload.CardJSON)
+		return err
+	}
 	return (&lark.FeishuTextSender{
 		Region:        region,
 		AppID:         appID,

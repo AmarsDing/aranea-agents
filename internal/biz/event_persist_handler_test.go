@@ -3,36 +3,36 @@ package biz
 import (
 	"testing"
 
-	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 )
 
 func TestShouldPersistEnvelope(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		typ  event.EnvelopeType
+		typ  contract.EnvelopeType
 		want bool
 	}{
-		{event.EnvelopeTypeTextDelta, false},
-		{event.EnvelopeTypeMemberDelta, false},
-		{event.EnvelopeTypeTextDone, true},
-		{event.EnvelopeTypeToolResult, true},
-		{event.EnvelopeTypeLog, false},
-		{event.EnvelopeTypeFlowLog, false},
+		{contract.EnvelopeTypeTextDelta, false},
+		{contract.EnvelopeTypeMemberDelta, false},
+		{contract.EnvelopeTypeTextDone, true},
+		{contract.EnvelopeTypeToolResult, true},
+		{contract.EnvelopeTypeLog, false},
+		{contract.EnvelopeTypeFlowLog, false},
 	}
 	for _, tc := range cases {
-		env := event.NewEnvelope(tc.typ, "agent", "sess-1")
+		env := contract.NewEnvelope(tc.typ, "agent", "sess-1")
 		if got := shouldPersistEnvelope(env); got != tc.want {
 			t.Fatalf("type %s: got %v want %v", tc.typ, got, tc.want)
 		}
 	}
-	if shouldPersistEnvelope(event.Envelope{Type: event.EnvelopeTypeError}) {
+	if shouldPersistEnvelope(contract.Envelope{Type: contract.EnvelopeTypeError}) {
 		t.Fatal("empty id should not persist")
 	}
 }
 
 func TestEnvelopeToStoreRecord(t *testing.T) {
 	t.Parallel()
-	env := event.NewEnvelope(event.EnvelopeTypeToolCall, "agent", "sess-1")
+	env := contract.NewEnvelope(contract.EnvelopeTypeToolCall, "agent", "sess-1")
 	rec, ok := envelopeToStoreRecord(env)
 	if !ok {
 		t.Fatal("expected ok")

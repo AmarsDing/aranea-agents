@@ -12,7 +12,7 @@ func TestTerminalRunStatus_AwaitingUserPersists(t *testing.T) {
 }
 
 func TestSessionAwaitingUser(t *testing.T) {
-	s := &ChatService{}
+	s := &ChatService{orch: &ChatOrchestrator{}}
 	_, ok := s.sessionAwaitingUser(context.Background(), "")
 	if ok {
 		t.Fatal("expected false for empty session")
@@ -20,7 +20,7 @@ func TestSessionAwaitingUser(t *testing.T) {
 }
 
 func TestTryBeginResume_dedup(t *testing.T) {
-	s := &ChatService{}
+	s := &ChatService{orch: &ChatOrchestrator{}}
 	if !s.tryBeginResume("sess-1") {
 		t.Fatal("first resume should begin")
 	}

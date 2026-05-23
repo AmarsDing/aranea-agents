@@ -60,4 +60,29 @@ describe("mergeSessionMessages", () => {
     expect(out.some((m) => m.id === "pending-user-1")).toBe(false);
     expect(out.some((m) => m.id === "u-1")).toBe(true);
   });
+
+  it("drops stale in-flight rows when dropStaleInFlight is set", () => {
+    const server = [msg("u-1", "ok", "2026-05-20T10:00:00Z")];
+    const local = [...server, msg("act-tc-1", "tool_running", "2026-05-20T10:00:02Z")];
+    const merged = mergeSessionMessages(server, local, { dropStaleInFlight: true });
+    expect(merged.some((m) => m.id === "act-tc-1")).toBe(false);
+  });
+
+  it("keeps streaming ws-stream row when dropStaleInFlight is set", () => {
+    const server = [msg("u-1", "ok", "2026-05-20T10:00:00Z")];
+    const local = [...server, msg("ws-stream-sess-1", "streaming", "2026-05-20T10:00:01Z")];
+    const merged = mergeSessionMessages(server, local, { dropStaleInFlight: true });
+    expect(merged.some((m) => m.id === "ws-stream-sess-1")).toBe(true);
+  });
+
+  it("drops terminal ws-stream row when dropStaleInFlight is set", () => {
+    const server = [msg("u-1", "ok", "2026-05-20T10:00:00Z"), msg("asst-1", "ok", "2026-05-20T10:00:02Z")];
+    const local = [
+      ...server,
+      { ...msg("ws-stream-sess-1", "ok", "2026-05-20T10:00:02Z"), content_markdown: "duplicate answer" },
+    ];
+    const merged = mergeSessionMessages(server, local, { dropStaleInFlight: true });
+    expect(merged.some((m) => m.id === "ws-stream-sess-1")).toBe(false);
+    expect(merged.some((m) => m.id === "asst-1")).toBe(true);
+  });
 });

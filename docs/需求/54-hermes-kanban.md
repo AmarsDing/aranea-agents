@@ -1,8 +1,8 @@
 # M54: Hermes Kanban 适配 — 产品需求
 
-> **版本**：2026-05-23  
+> **版本**：2026-05-24  
 > **读者**：产品、全栈开发、运维  
-> **外部参考**：[Hermes Agent Kanban](https://hermes-agent.nousresearch.com/docs/user-guide/features/kanban)  
+> **外部参考**：[Hermes Agent Kanban](https://hermes-agent.nousresearch.com/docs/user-guide/features/kanban) · `gateway` + `hermes_cli/kanban_db.py` + `plugins/kanban/dashboard/`  
 > **关联**：[36 graph-workflow.md](./36%20graph-workflow.md) · [53 team-graph-orchestration.md](./53%20team-graph-orchestration.md) · [frontend-pages.md](./frontend-pages.md)  
 > **技术设计**：[54-hermes-kanban.design.md](./54-hermes-kanban.design.md)  
 > **开发计划**：[54-hermes-kanban-development.md](./54-hermes-kanban-development.md)  
@@ -12,115 +12,199 @@
 
 ## 1. 背景
 
-Hermes Kanban 是 **持久化多 Agent 工作队列**，与 `delegate_task`（fork-join RPC）相对：任务跨进程、跨重启、可人工介入、可审计。
+### 1.1 Hermes Kanban 是什么
 
-Aranea 已在 **M36 Graph Task** 实现任务模型、RPC、Ent 持久化与 **GraphTaskKanban** UI；在 **M53** 实现 **OrchestrationKanban**（Agent 收/做/交）。缺口在于 **运行时自动建任务、Dispatcher 派工、kanban_* Agent 工具、依赖图与交互式看板**。
+Hermes Kanban 是 **持久化多 Agent 工作队列**，与 `delegate_task`（临时 fork-join）相对：
 
-**本模块目标**：在 Aranea 架构内（GraphExecution 作用域、Kratos + tRPC Agent）实现 Hermes 同等 **运维与协作效果**，不克隆 Hermes 独立 `kanban.db` 产品。
+- 任务跨进程、跨重启、可人工介入、可审计
+- 独立 SQLite `kanban.db`（可多 Board）
+- **三套入口**：`kanban_*` Agent 工具 · `hermes kanban` CLI · Dashboard `/kanban` 插件页
+- **Dispatcher** 嵌入 Gateway（默认 60s tick）：reclaim → promote → claim → **spawn worker**（`hermes -p <profile> chat -q "work kanban task <id>"`）
+
+### 1.2 Aranea 为何适配而非克隆
+
+Aranea 已在 **M36 Graph Task** 实现任务模型、RPC、Ent 持久化与 **GraphTaskKanban** UI；在 **M53** 实现 **OrchestrationKanban**（Agent 收/做/交）。**Phase 0–3（2026-05-23）已落地**运行时闭环与基础 UI。
+
+**本模块目标**：在 Aranea 架构内（**GraphExecution 作用域**、Kratos + tRPC Agent）实现 Hermes 同等 **运维与协作效果**，不克隆独立 `kanban.db` 产品与 Hermes CLI。
 
 ---
 
 ## 2. 核心映射
 
-| Hermes | Aranea |
-|--------|--------|
-| Board（kanban.db） | **GraphExecution**（一次 Run 一块板） |
-| `ready → running` | `pending → claimed` |
-| Dispatcher spawn worker | **TaskDispatcher** + RunGateway / Agent Run |
-| `kanban_*` tools | **`internal/tools/kanban`** → Task RPC |
-| 收/做/交 Agent 行 | **OrchestrationKanban**（M53） |
-| 任务状态列 | **GraphTaskKanban**（M36） |
+| Hermes 概念 | Aranea 落地 | 说明 |
+|-------------|-------------|------|
+| Board（kanban.db） | **GraphExecution** | 一次 Graph Run = 一块板；无全局 Board 切换 |
+| 9 列状态 | **5 列 Task 看板** | 合并 triage/todo/ready → 待处理 |
+| `ready → running` | `pending → claimed` | Dispatcher + ClaimTask |
+| Dispatcher spawn worker | **TaskDispatcher** + RunGateway（G14 待补） | 当前仅记录 TaskRun，未真 spawn |
+| `kanban_*` tools | `internal/tools/kanban` | 9 工具已注册 |
+| Worker Skill | Agent toolset `kanban` + Graph 节点 Agent | 非独立 profile spawn |
+| 收/做/交 Agent 行 | **OrchestrationKanban**（M53） | 卡片内三 zone，非独立列 |
+| Dashboard `/kanban` | Graph Run Inspector / Observatory **任务 Tab** | 无侧栏一级菜单 |
+| 多 Board | 多个 Graph 定义 + 多次 Execute | Router `execution_id` 作用域 |
+| task_links 依赖 | `graph_task_links` | 后端 ✅；Drawer 依赖 Tab ⏳ |
 
 ---
 
-## 3. 用户故事
+## 3. Hermes Dashboard UI 规格（对照源）
 
-### US-HK-01 运行 Graph 时自动出现任务卡片
+> 源码：`hermes-agent/plugins/kanban/dashboard/dist/index.js` + `plugin_api.py`
 
-**作为** 运维者  
-**我希望** Graph Run 中 Agent 节点激活时自动创建任务并出现在任务看板  
-**以便** 无需手工登记即可跟踪节点级工作项  
+### 3.1 页面结构
 
-**验收**：`graph_node_start` 后 WS `graph_task_status` 推送；Inspector「任务」Tab 可见卡片。
+| 区域 | Hermes 组件 | 能力 |
+|------|-------------|------|
+| 顶栏 | `BoardSwitcher` | 多 Board 下拉；localStorage 记忆；`+ New board` |
+| 工具栏 | `BoardToolbar` | 搜索；tenant/assignee 筛选；显示 archived；Running 列 **Lanes by profile**；Nudge dispatcher；Auto/Manual orchestration |
+| 批量 | `BulkActionBar` | 多选 → 批量 status / archive / reassign / priority |
+| 看板 | `BoardColumns` × 9 列 | triage · todo · scheduled · ready · running · blocked · review · done（+ archived） |
+| 卡片 | `TaskCard` | id · priority · tenant · 子任务进度 · assignee · 评论/链接数 · 诊断徽章 · staleness |
+| 列内创建 | `InlineCreate` | 列头 `+` → POST 创建 |
+| 拖拽 | HTML5 DnD + touch | 跨列 PATCH status；**不可拖入 running**（须 Dispatcher claim） |
+| 详情 | `TaskDrawer` | 标题/assignee/priority/body 内联编辑；依赖编辑器；评论；事件；runs；Specify/Decompose |
+| 诊断 | `AttentionStrip` / `DiagnosticsSection` | 僵尸 worker · stale claim · 循环依赖 |
+| 实时 | WebSocket `/events?board=` | task_events → 250ms debounce reload |
 
-### US-HK-02 Worker 通过 Tool 完成/阻塞任务
+### 3.2 Hermes 列与状态（完整）
 
-**作为** 执行 Agent  
-**我希望** 使用 `kanban_show` / `kanban_complete` / `kanban_block` 等工具驱动任务生命周期  
-**以便** 与 Hermes worker 协议一致，无需直接调 HTTP  
+`triage | todo | scheduled | ready | running | blocked | review | done | archived`
 
-**验收**：Tool 调用后任务状态与看板列同步迁移。
+典型流转：`create → triage|todo → (parents done) → ready → (dispatcher claim) → running → complete → done`；可选 `review` 列走 SDLC review agent。
 
-### US-HK-03 任务完成驱动 Graph 继续
+### 3.3 Hermes 卡片操作
 
-**作为** 工作流设计者  
-**我希望** 任务 `complete`（含审核通过）后 Graph 从等待态恢复  
-**以便** 人机协同节点与 Task 门禁串联  
-
-**验收**：Submit/Review 通过后 `ResumeGraph` 或节点继续执行。
-
-### US-HK-04 阻塞与解除阻塞
-
-**作为** 管理员  
-**我希望** Agent 可 `kanban_block`，我可在 Drawer 或 Tool 中 `unblock`  
-**以便** 人工介入后任务重新进入待领取队列  
-
-**验收**：`UnblockTask` RPC + Drawer 按钮 + `kanban_unblock` tool。
-
-### US-HK-05 编排者分解任务图（P2）
-
-**作为** Orchestrator Agent  
-**我希望** `kanban_create` + `kanban_link` 建立依赖，父任务完成后子任务自动 ready  
-**以便** 实现 Hermes 式 fan-out / join  
-
-**验收**：`graph_task_links` + promote 逻辑 + E2E 两并行 + 一汇总。
-
-### US-HK-06 双 Kanban 一致观测
-
-**作为** 观察者  
-**我希望** Task 看板与 Agent 工作看板状态一致  
-**以便** 同时回答「有哪些任务」与「每个 Agent 在做什么」  
-
-**验收**：`graph_task_status` 投影到 OrchestrationKanban；Activity 时间线（P2）。
+| 操作 | 入口 | 约束 |
+|------|------|------|
+| 认领 running | 仅 Dispatcher | 人工不可拖入 running |
+| 完成 | Worker `kanban_complete` / Drawer | running/ready/blocked → done |
+| 阻塞 | `kanban_block` | → blocked |
+| 解阻塞 | Orchestrator `kanban_unblock` / Drawer | → ready/todo |
+| 依赖 | `kanban_link` / DependencyEditor | parent complete → child promote |
+| 评论 | `kanban_comment` | 持久化协作协议 |
+| 心跳 | `kanban_heartbeat` | 延长 claim TTL |
+| 删除 | TrashDropZone | DELETE task |
 
 ---
 
-## 4. UI 规格（Hermes Dashboard 对齐要点）
+## 4. Aranea UI 规格（当前 + 目标）
 
-| 区域 | Hermes | Aranea 落地 |
-|------|--------|-------------|
-| 列布局 | triage/todo/ready/running/blocked/done | GraphTaskKanban 五列（待处理/执行中/待审核/已完成/异常） |
-| 实时 | task_events WebSocket | `graph_task_status` WS |
-| 卡片 | 标题、assignee、priority | nodeId、assignee、status chip |
-| 侧栏 | 详情/评论/事件/依赖 | GraphTaskDetailDrawer 多 Tab |
-| 拖拽 | 列间 PATCH status | Phase 3 `vuedraggable` + Unblock/Reassign |
-| Agent 行 | Lanes by profile | OrchestrationKanban 三列收/做/交 |
+### 4.1 入口与路由
 
-技术栈：Vue 3 + Quasar + Pinia；样式见 [UX.md](../frontend/UX.md) 与 `WorkflowKanbanBoard`。
+| 入口 | 路由 / 位置 | 组件 | 状态 |
+|------|-------------|------|------|
+| Graph Run 观测 | `/graphs/:id/run/:execId` → Inspector「任务」 | `GraphTaskKanban` + `GraphTaskDetailDrawer` | ✅ |
+| Team Observatory | `/teams/:teamId/runs/:runId/observatory` →「任务看板」 | 同上（需 `graph_execution_id`） | ✅ |
+| Agent 工作看板 | 同页「Agent 工作看板」Tab | `OrchestrationKanban` | ✅ M53 |
+| **独立 Kanban 页** | 无（Hermes `/kanban`） | — | ❌ Phase 5 可选 |
+
+### 4.2 任务看板布局（GraphTaskKanban）
+
+| 区域 | Aranea 实现 | Hermes 对照 |
+|------|-------------|-------------|
+| 列 | **5 列**：待处理 / 执行中 / 待审核 / 已完成 / 异常 | 9 列；scheduled/review 独立 |
+| 实时 | `graph_task_status` WS + 「实时」badge | task_events WS |
+| 卡片字段 | nodeId · role · status chip · assignee · summary/input 预览 | id · priority · tenant · 诊断 · 子任务进度 |
+| 空状态 | 引导「Agent 节点激活自动建任务」 | Inline create + 教程 |
+| 拖拽 | `vuedraggable`（`adminDrag`） | 全列 DnD |
+| 拖拽语义 | blocked→待处理 **unblock**；待审核→已完成 **approve** | 任意列 PATCH（除 running） |
+| 刷新 | 手动 refresh 按钮 | WS 自动 + debounce reload |
+
+**列定义**：`web/src/features/graph/tasks/kanbanColumns.ts`
+
+### 4.3 任务详情抽屉（GraphTaskDetailDrawer）
+
+| Tab | Aranea | Hermes TaskDrawer |
+|-----|--------|-------------------|
+| 详情 | claim / submit / block / unblock / review；Agent Key；输入只读 | 全字段 inline edit + StatusActions |
+| 评论 | ListTaskComments + Add | ✅ 同等 |
+| 事件 | ListTaskEvents | task_events 时间线 |
+| 日志 | ListTaskLogs | WorkerLogSection tail |
+| 运行 | ListTaskRuns | RunHistorySection |
+| **依赖** | ❌ 未实现 | DependencyEditor parent/child chips |
+| Specify/Decompose | ❌ | triage → LLM 规格化 / 分解 |
+
+### 4.4 Agent 工作看板（OrchestrationKanban）
+
+| 维度 | Aranea | Hermes |
+|------|--------|--------|
+| 布局 | 纵向列表 + 状态筛选 | Running 列 **Lanes by profile** |
+| 卡片 | 收到 / 进行中 / 已交付 三 zone | 按 profile 泳道 |
+| 联动 | 选 Agent 行 → Graph 节点 focus | 无 Graph 画布 |
+| 数据源 | Orchestration WS | task board 独立 |
+
+### 4.5 视觉规范
+
+- 玻璃材质 Dialog：`app-glass-dialog`（见 [UX.md](../frontend/UX.md)）
+- 列壳复用：`WorkflowKanbanBoard.vue`
+- 与 Graph Run 画布同页；Observatory 双 Tab 切换
 
 ---
 
-## 5. 模块边界
+## 5. 用户故事
+
+### 已实现（Phase 0–3 ✅）
+
+| ID | 故事 | 验收 |
+|----|------|------|
+| US-HK-01 | Graph Run 中 Agent 节点激活自动建任务 | `graph_task_status` WS；Inspector 任务 Tab |
+| US-HK-02 | Worker 通过 `kanban_*` 驱动生命周期 | Tool → 看板列同步 |
+| US-HK-03 | 任务 complete 驱动 Graph 继续 | Submit/Review → ResumeGraph |
+| US-HK-04 | block / unblock | RPC + Drawer + `kanban_unblock` |
+| US-HK-05 | `kanban_create` + `kanban_link` 依赖 | promote on parent complete |
+| US-HK-06 | 双 Kanban 观测 | Observatory 任务 + Agent 两 Tab |
+
+### 待实现（Phase 4–5）
+
+| ID | 故事 | 优先级 | Hermes 参照 |
+|----|------|--------|-------------|
+| US-HK-07 | Dispatcher **真 spawn** Worker Agent Run | P1 | `_default_spawn` + Gateway watcher |
+| US-HK-08 | Drawer **依赖 Tab**（link/unlink 可视化） | P1 | DependencyEditor |
+| US-HK-09 | 看板 **Toolbar**：搜索 / assignee 筛选 / 批量选择 | P2 | BoardToolbar |
+| US-HK-10 | 列内 **Inline Create** 任务 | P2 | InlineCreate |
+| US-HK-11 | 拖拽 **Reassign**（改 assignee） | P2 | Bulk reassign |
+| US-HK-12 | **Diagnostics** 条（超时/僵尸/无 assignee） | P2 | AttentionStrip |
+| US-HK-13 | Orchestrator **triage/decompose**（可选 LLM） | P3 | specify/decompose API |
+| US-HK-14 | 独立 **/kanban** 或 Graph 列表快捷入口 | P3 | Dashboard 一级 Tab |
+| US-HK-15 | Running 列 **Agent 泳道** 分组 | P3 | Lanes by profile |
+
+---
+
+## 6. 模块边界
 
 | 在范围 | 不在范围（v1） |
 |--------|----------------|
-| Graph Execution 任务板 | 全局独立 `~/.aranea/kanban.db` |
-| kanban_* 工具 + Task RPC | Hermes CLI `/kanban` 命令 |
-| TaskDispatcher + 心跳超时 | 完整 triage/decompose LLM（P3 可选） |
+| Graph Execution 任务板 + 双 Kanban 观测 | 全局独立 `~/.aranea/kanban.db` |
+| kanban_* 工具 + Task RPC + Dispatcher | Hermes CLI `hermes kanban` |
+| TaskDispatcher + 心跳超时 + G14 spawn | 完整 Hermes 9 列产品（合并为 5 列） |
 | M53 Orchestration 联动 | 跨 Execution 任务 link |
+| Webhook `graph.task.status` | Hermes multi-board localStorage |
 
 ---
 
-## 6. 验收索引
+## 7. 验收索引
 
-| ID | 摘要 | 阶段 |
-|----|------|------|
-| HK-RT-01 | 节点进入 CreateTask + WS | P1 |
-| HK-RT-02 | TaskDispatcher | P1 |
-| HK-RT-03 | complete → ResumeGraph | P1 |
-| HK-TOOLS-01 | kanban_* 工具集 | P1 |
-| HK-DEP-01 | 任务依赖 link | P2 |
-| HK-OBS-01 | Activity 时间线 | P2 |
-| HK-FE-03 | 列拖拽 | P3 |
+| ID | 摘要 | 阶段 | 状态 |
+|----|------|------|------|
+| HK-RT-01 | 节点 CreateTask + WS | P1 | ✅ |
+| HK-RT-02 | TaskDispatcher tick | P1 | ✅ |
+| HK-RT-03 | complete → ResumeGraph | P1 | ✅ |
+| HK-TOOLS-01 | kanban_* 工具集 | P1 | ✅ |
+| HK-DEP-01 | graph_task_links + promote | P2 | ✅ |
+| HK-OBS-01 | Activity 时间线 | P2 | ✅ |
+| HK-FE-03 | 列拖拽 unblock/approve | P3 | ✅ |
+| HK-INT-01 | Task status Webhook | P2 | ✅ |
+| HK-INT-02 | spawn_fn worker lane | P2 | 📋 |
+| HK-FE-05 | Drawer 依赖 Tab | P1 | 📋 |
+| HK-FE-06 | Toolbar 搜索/筛选 | P2 | 📋 |
+| HK-ORCH-01 | triage/decompose | P3 | 📋 |
 
 完整任务板见 [开发计划](./54-hermes-kanban-development.md)。
+
+---
+
+## 8. 文档修订记录
+
+| 版本 | 日期 | 说明 |
+|------|------|------|
+| 1.0 | 2026-05-23 | 初版：映射、6 用户故事、UI 要点 |
+| 1.1 | 2026-05-24 | Hermes Dashboard UI 全量对照；Aranea 入口/组件规格；Phase 4–5 用户故事 |

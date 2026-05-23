@@ -3,20 +3,19 @@ package biz
 import (
 	"context"
 	"strings"
+
+	"aranea-agents/internal/biz/tool"
 )
 
-// ToolKeyMCPToolSet is the platform tool_key for mounting external MCP servers at runtime.
-// It appears in effective-tools when the agent profile allows it (see tools table seeds).
-const ToolKeyMCPToolSet = "mcp_tool_set"
-
-const ToolKeyMCPBroker = "mcp_broker"
-
-const ToolKeyKnowledgeSearch = "knowledge_search"
-
-const ToolKeyWebResearch = "web_research"
-const ToolKeyKanban = "kanban"
-
-const ToolKeyCallAgent = "call_agent"
+// Tool key constants are now defined in the tool subpackage; re-exported here for backward compatibility.
+const (
+	ToolKeyMCPToolSet      = tool.ToolKeyMCPToolSet
+	ToolKeyMCPBroker       = tool.ToolKeyMCPBroker
+	ToolKeyKnowledgeSearch = tool.ToolKeyKnowledgeSearch
+	ToolKeyWebResearch     = tool.ToolKeyWebResearch
+	ToolKeyKanban          = tool.ToolKeyKanban
+	ToolKeyCallAgent       = tool.ToolKeyCallAgent
+)
 
 // EffectiveMCPServer is a biz DTO for one enabled MCP server row — no ADK imports.
 type EffectiveMCPServer struct {

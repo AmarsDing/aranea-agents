@@ -7,16 +7,17 @@ import (
 	"strings"
 	"time"
 
-	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 )
 
 // flowLogPersistConsumer writes flow_log envelopes to flow_log_events.
 type flowLogPersistConsumer struct {
-	bus      event.Bus
+	bus      contract.Bus
 	flowLogs *FlowLogUsecase
+	logger   SessionLogWriter
 }
 
-func newFlowLogPersistConsumer(bus event.Bus, flowLogs *FlowLogUsecase) *flowLogPersistConsumer {
+func newFlowLogPersistConsumer(bus contract.Bus, flowLogs *FlowLogUsecase) *flowLogPersistConsumer {
 	if flowLogs == nil {
 		return nil
 	}
@@ -27,14 +28,14 @@ func (c *flowLogPersistConsumer) Start(ctx context.Context) {
 	if c == nil {
 		return
 	}
-	runTypedConsumer(ctx, "event-bus-flow-log", c.bus, event.SubscribeOptions{
-		EventTypes: []event.EnvelopeType{event.EnvelopeTypeFlowLog},
+	runTypedConsumer(ctx, "event-bus-flow-log", c.bus, contract.SubscribeOptions{
+		EventTypes: []contract.EnvelopeType{contract.EnvelopeTypeFlowLog},
 		BufferSize: 512,
 		Reliable:   true,
 	}, c.handle)
 }
 
-func (c *flowLogPersistConsumer) handle(ctx context.Context, env event.Envelope) {
+func (c *flowLogPersistConsumer) handle(ctx context.Context, env contract.Envelope) {
 	if c == nil || c.flowLogs == nil || env.Metadata == nil {
 		return
 	}
@@ -72,8 +73,10 @@ func (c *flowLogPersistConsumer) handle(ctx context.Context, env event.Envelope)
 		rec.Message = strings.TrimSpace(env.Content.Text)
 	}
 	if err := c.flowLogs.Save(ctx, rec); err != nil {
-		event.SessionSysLogWarn(ctx, rec.SessionID, "flow_log.persist", "流程日志落库失败",
-			event.P("step_id", rec.StepID), event.P("error", err))
+		if c.logger != nil {
+			c.logger.SessionSysLogWarn(ctx, rec.SessionID, "flow_log.persist", "流程日志落库失败",
+				LogPair{Key: "step_id", Value: rec.StepID}, LogPair{Key: "error", Value: err})
+		}
 	}
 }
 

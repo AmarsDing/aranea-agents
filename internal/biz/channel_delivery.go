@@ -15,7 +15,8 @@ const (
 	ChannelDeliveryStatusRetry       = "retry"
 	ChannelDeliveryStatusDelivered = "delivered"
 	ChannelDeliveryStatusError       = "error"
-	channelOutboundKind              = "outbound_text"
+	ChannelOutboundTextKind          = "outbound_text"
+	ChannelOutboundCardKind          = "outbound_card"
 	MaxOutboundAttempts              = 3
 	outboundRetryBaseDelay           = 5 * time.Second
 	outboundRetryMaxDelay            = 5 * time.Minute
@@ -27,6 +28,7 @@ type ChannelOutboundPayload struct {
 	Platform       string            `json:"platform"`
 	Recipient      string            `json:"recipient"`
 	Text           string            `json:"text"`
+	CardJSON       string            `json:"card_json,omitempty"`
 	IdempotencyKey string            `json:"idempotency_key"`
 	Attempts       int               `json:"attempts,omitempty"`
 	NextRetryAt    string            `json:"next_retry_at,omitempty"`
@@ -39,13 +41,31 @@ func (u *ChannelUsecase) EnqueueOutboundDelivery(ctx context.Context, channelID 
 	if channelID == "" {
 		return ChannelDelivery{}, errors.BadRequest("CHANNEL", "channel id is required")
 	}
-	payload.Kind = channelOutboundKind
 	payload.Platform = strings.TrimSpace(payload.Platform)
 	payload.Recipient = strings.TrimSpace(payload.Recipient)
 	payload.Text = strings.TrimSpace(payload.Text)
+	payload.CardJSON = strings.TrimSpace(payload.CardJSON)
 	payload.IdempotencyKey = strings.TrimSpace(payload.IdempotencyKey)
-	if payload.Platform == "" || payload.Recipient == "" || payload.Text == "" {
-		return ChannelDelivery{}, errors.BadRequest("CHANNEL", "platform, recipient and text are required")
+	if payload.Kind == "" {
+		if payload.CardJSON != "" {
+			payload.Kind = ChannelOutboundCardKind
+		} else {
+			payload.Kind = ChannelOutboundTextKind
+		}
+	}
+	if payload.Platform == "" || payload.Recipient == "" {
+		return ChannelDelivery{}, errors.BadRequest("CHANNEL", "platform and recipient are required")
+	}
+	switch payload.Kind {
+	case ChannelOutboundCardKind:
+		if payload.CardJSON == "" && payload.Text == "" {
+			return ChannelDelivery{}, errors.BadRequest("CHANNEL", "card_json or text is required")
+		}
+	default:
+		if payload.Text == "" {
+			return ChannelDelivery{}, errors.BadRequest("CHANNEL", "text is required")
+		}
+		payload.Kind = ChannelOutboundTextKind
 	}
 	if payload.IdempotencyKey != "" {
 		if exists, err := u.hasOutboundIdempotency(ctx, channelID, payload.IdempotencyKey); err != nil {

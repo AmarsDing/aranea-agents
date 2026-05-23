@@ -11,6 +11,10 @@ type AutoMemoryJobRequest struct {
 	SessionID  string
 	UserID     string
 	EnqueuedAt time.Time
+	// Feedback-triggered preference extraction (optional).
+	FeedbackMessageID string
+	FeedbackRating    string
+	FeedbackComment   string
 }
 
 type MemoryJobQueue struct {
@@ -59,6 +63,26 @@ func EnqueueAutoMemory(r AutoMemoryJobRequest) {
 }
 
 func GlobalAutoMemoryQueue() *MemoryJobQueue { return globalAutoMemoryQueue }
+
+// EnqueueAutoMemoryAdapter adapts the global queue to the biz.AutoMemoryEnqueuer signature.
+func EnqueueAutoMemoryAdapter(appName, sessionID string, enqueuedAt time.Time) {
+	EnqueueAutoMemory(AutoMemoryJobRequest{
+		AppName:    appName,
+		SessionID:  sessionID,
+		EnqueuedAt: enqueuedAt,
+	})
+}
+
+// EnqueueFeedbackMemoryAdapter adapts the global queue to biz.FeedbackMemoryEnqueuer.
+func EnqueueFeedbackMemoryAdapter(sessionID, messageID, rating, comment string, enqueuedAt time.Time) {
+	EnqueueAutoMemory(AutoMemoryJobRequest{
+		SessionID:         sessionID,
+		EnqueuedAt:        enqueuedAt,
+		FeedbackMessageID: messageID,
+		FeedbackRating:    rating,
+		FeedbackComment:   comment,
+	})
+}
 
 // SetGlobalAutoMemoryQueueForTest swaps the process-wide queue (tests only).
 func SetGlobalAutoMemoryQueueForTest(q *MemoryJobQueue) *MemoryJobQueue {

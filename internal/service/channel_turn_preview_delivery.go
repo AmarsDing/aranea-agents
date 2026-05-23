@@ -34,8 +34,8 @@ func (h *ChannelIngress) buildTurnPreviewDelivery(
 	if policy.SplitOverflow {
 		idemBase := ackIdempotencyKey(platform, ev, "preview")
 		d.EnqueueOverflow = func(ctx context.Context, text string, pageIndex int) error {
-			return h.enqueueOutboundReply(ctx, chRow, platform, recipient, text, meta,
-				fmt.Sprintf("%s:overflow:%d", idemBase, pageIndex))
+			return h.enqueueOutboundTranscript(ctx, chRow, platform, recipient, text, meta,
+				fmt.Sprintf("%s:overflow:%d", idemBase, pageIndex), true)
 		}
 	}
 

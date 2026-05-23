@@ -2,8 +2,6 @@ package runtime
 
 import (
 	"testing"
-
-	"aranea-agents/internal/biz"
 )
 
 func TestNewPersistenceSetEmptyMemory(t *testing.T) {
@@ -21,7 +19,7 @@ func TestRunnerManagerNil(t *testing.T) {
 }
 
 func TestMemorySetWithAdminOnly(t *testing.T) {
-	ms := MemorySet{Admin: biz.WrapSessionAdminStore(nil)}
+	ms := MemorySet{Admin: newSessionAdminStoreAdapter(nil)}
 	if ms.Available() {
 		t.Fatal("TRPC nil should not be available")
 	}

@@ -72,6 +72,11 @@ type WebhookParseResult struct {
 	MessageType       string
 	Mentioned         bool
 	Text              string
+	// Card action (card.action.trigger)
+	CardActionValue          map[string]any
+	CardActionOperatorOpenID string
+	CardOpenChatID           string
+	CardOpenMessageID        string
 }
 
 type genericEvent struct {
@@ -145,10 +150,72 @@ func ParseWebhookPost(raw []byte, verificationToken string) (*WebhookParseResult
 		res.SenderUserID = strings.TrimSpace(wrap.Event.Sender.SenderID.UserID)
 		res.Mentioned = len(wrap.Event.Message.Mentions) > 0
 		res.Text = extractTextFromIMContent(strings.TrimSpace(wrap.Event.Message.Content))
+	case "card.action.trigger", "card.action.trigger_v1":
+		if err := fillCardActionFromWebhook(raw, res); err != nil {
+			return nil, fmt.Errorf("lark webhook: %s: %w", res.EventType, err)
+		}
 	default:
+		if fillCardActionFromWebhook(raw, res) == nil {
+			break
+		}
 		res.SkipResponse = true
 	}
 	return res, nil
+}
+
+type cardActionWebhookBody struct {
+	OpenID        string `json:"open_id"`
+	OpenMessageID string `json:"open_message_id"`
+	Operator      struct {
+		OpenID string `json:"open_id"`
+	} `json:"operator"`
+	Action struct {
+		Value map[string]any `json:"value"`
+	} `json:"action"`
+	Context struct {
+		OpenChatID    string `json:"open_chat_id"`
+		OpenMessageID string `json:"open_message_id"`
+	} `json:"context"`
+}
+
+func fillCardActionFromWebhook(raw []byte, res *WebhookParseResult) error {
+	if res == nil {
+		return fmt.Errorf("missing result")
+	}
+	var wrap struct {
+		Event cardActionWebhookBody `json:"event"`
+	}
+	if err := json.Unmarshal(raw, &wrap); err != nil {
+		return err
+	}
+	body := wrap.Event
+	if len(body.Action.Value) == 0 && strings.TrimSpace(body.OpenID) == "" {
+		var flat cardActionWebhookBody
+		if err := json.Unmarshal(raw, &flat); err != nil {
+			return err
+		}
+		body = flat
+	}
+	if len(body.Action.Value) == 0 {
+		return fmt.Errorf("empty card action value")
+	}
+	if res.EventType == "" {
+		res.EventType = "card.action.trigger_v1"
+	}
+	res.CardActionValue = body.Action.Value
+	res.CardActionOperatorOpenID = strings.TrimSpace(firstNonEmpty(body.Operator.OpenID, body.OpenID))
+	res.CardOpenChatID = strings.TrimSpace(body.Context.OpenChatID)
+	res.CardOpenMessageID = strings.TrimSpace(firstNonEmpty(body.Context.OpenMessageID, body.OpenMessageID))
+	return nil
+}
+
+func firstNonEmpty(parts ...string) string {
+	for _, p := range parts {
+		if v := strings.TrimSpace(p); v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 type imTextContent struct {

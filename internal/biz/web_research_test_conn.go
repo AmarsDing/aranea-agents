@@ -4,13 +4,22 @@ import (
 	"context"
 	"strings"
 
-	"aranea-agents/internal/tools/webresearch"
-
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
-// WebResearchTestResult is returned by TestWebResearch.
-type WebResearchTestResult struct {
+// WebResearchTestConfig holds the configuration for a web research test probe.
+type WebResearchTestConfig struct {
+	Provider    string
+	APIKey      string
+	MaxResults  int
+	FetchTop    int
+	SearchDepth string
+	TimeoutSec  int
+	HTTPProxy   string
+}
+
+// WebResearchTestProbeResult is the raw result from a web research test probe.
+type WebResearchTestProbeResult struct {
 	OK           bool
 	Message      string
 	Provider     string
@@ -19,8 +28,22 @@ type WebResearchTestResult struct {
 	ResponseTime float64
 }
 
+// WebResearchTestResult is returned by SystemSettingUsecase.TestWebResearch.
+type WebResearchTestResult = WebResearchTestProbeResult
+
+// WebResearchTester abstracts web research connectivity testing so biz does not
+// depend on internal/tools/webresearch directly.
+type WebResearchTester interface {
+	ConfigFromSetting(provider, apiKey string, maxResults, fetchTop int, searchDepth string, timeoutSec int, httpProxy string) WebResearchTestConfig
+	IsReady(cfg WebResearchTestConfig) bool
+	TestConnection(ctx context.Context, cfg WebResearchTestConfig) (WebResearchTestProbeResult, error)
+}
+
 // TestWebResearch probes Tavily/SerpAPI using form values, falling back to stored settings and env.
 func (u *SystemSettingUsecase) TestWebResearch(ctx context.Context, patch WebResearchSetting, formAPIKey string) (WebResearchTestResult, error) {
+	if u.webResearchTester == nil {
+		return WebResearchTestResult{}, kerrors.BadRequest("WEB_RESEARCH", "web research tester not configured")
+	}
 	stored, err := u.repo.GetWebResearch(ctx)
 	if err != nil {
 		stored = WebResearchSetting{Provider: "tavily", MaxResults: 8, FetchTop: 5, SearchDepth: "basic", TimeoutSec: 15}
@@ -30,7 +53,7 @@ func (u *SystemSettingUsecase) TestWebResearch(ctx context.Context, patch WebRes
 	if apiKey == "" {
 		apiKey = strings.TrimSpace(stored.APIKey)
 	}
-	cfg := webresearch.ConfigFromSetting(
+	cfg := u.webResearchTester.ConfigFromSetting(
 		merged.Provider,
 		apiKey,
 		merged.MaxResults,
@@ -39,10 +62,10 @@ func (u *SystemSettingUsecase) TestWebResearch(ctx context.Context, patch WebRes
 		merged.TimeoutSec,
 		merged.HTTPProxy,
 	)
-	if !cfg.Ready() {
+	if !u.webResearchTester.IsReady(cfg) {
 		return WebResearchTestResult{}, kerrors.BadRequest("WEB_RESEARCH", "API key is required; save one in system settings or enter it in the test form")
 	}
-	raw, err := webresearch.TestConnection(ctx, cfg)
+	raw, err := u.webResearchTester.TestConnection(ctx, cfg)
 	out := WebResearchTestResult{
 		OK:           raw.OK,
 		Message:      raw.Message,

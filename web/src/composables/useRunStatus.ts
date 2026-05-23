@@ -5,8 +5,8 @@ import { useChatStore } from "../stores/chat";
 const POLL_INTERVAL_MS = 2000;
 
 /**
- * useRunStatus polls GetRunStatus for a given session and exposes reactive
- * status, helpers for submitting a user reply, and stopping/starting generation.
+ * Polls GetRunStatus for a given session (legacy helper for non-workspace views).
+ * Prefer useChatRunStatus inside Chat workspace.
  */
 export function useRunStatus(sessionId: string) {
   const chatStore = useChatStore();
@@ -20,12 +20,16 @@ export function useRunStatus(sessionId: string) {
 
   async function poll() {
     if (!sessionId) return;
-    const rs: RunStatus = await chatStore.fetchRunStatus(sessionId);
-    status.value = rs.status;
-    runId.value = rs.runId;
-    errorMessage.value = rs.errorMessage;
-    updatedAt.value = rs.updatedAt;
-    isAwaiting.value = rs.status === "awaiting_user";
+    try {
+      const rs: RunStatus = await chatStore.fetchRunStatus(sessionId);
+      status.value = rs.status;
+      runId.value = rs.runId;
+      errorMessage.value = rs.errorMessage;
+      updatedAt.value = rs.updatedAt;
+      isAwaiting.value = rs.status === "awaiting_user";
+    } catch (err) {
+      errorMessage.value = err instanceof Error ? err.message : "fetchRunStatus failed";
+    }
   }
 
   function startPolling() {

@@ -327,7 +327,12 @@ func applyMCPAuthHeaders(ctx context.Context, serverKey string, sc mcpconfig.Ser
 		headers[k] = v
 	}
 	if sc.RequireUserCredentials && deps.MCPTooling != nil && deps.MCPTooling.MCP() != nil {
-		if merged, err := deps.MCPTooling.MCP().ResolveUserAuthHeaders(ctx, serverKey, sessionUserID(ctx), sc); err == nil {
+		bizSC := biz.MCPServerConfig{
+			Headers:                sc.Headers,
+			Auth:                   biz.MCPAuthConfig{Type: sc.Auth.Type, HeaderName: sc.Auth.HeaderName},
+			RequireUserCredentials: sc.RequireUserCredentials,
+		}
+		if merged, err := deps.MCPTooling.MCP().ResolveUserAuthHeaders(ctx, serverKey, sessionUserID(ctx), bizSC); err == nil {
 			for k, v := range merged {
 				headers[k] = v
 			}

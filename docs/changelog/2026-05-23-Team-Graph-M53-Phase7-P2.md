@@ -12,7 +12,7 @@
 | ARCH-01 | `GraphRunStepContext` + `PersistGraphRunStep` / `FinalizeGraphTeamRun` DTO |
 | FP-04-UI | 死信 Observatory 跳转 + payload JSON 展开 |
 | FP-02 | `breakerHalfOpen` 状态转换 |
-| TG-RT-PARITY | [`docs/guides/tg-rt-parity-diff.md`](../guides/tg-rt-parity-diff.md) |
+| TG-RT-PARITY | [`docs/需求/53-team-graph-orchestration-development.md#9-native-vs-graph-paritytg-rt-parity`](../需求/53-team-graph-orchestration-development.md#9-native-vs-graph-paritytg-rt-parity) |
 
 ## 验证
 

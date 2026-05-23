@@ -1,0 +1,21 @@
+import type { ChatEntityKind } from "../../components/chat/types";
+import type { useChatStore } from "../../stores/chat";
+
+export type ChannelSessionRefreshContext = {
+  entityKind?: ChatEntityKind;
+  activeAgentId?: string | null;
+};
+
+/** Reload agent session list when a channel turn starts or completes (sidebar sync). */
+export async function refreshAgentSessionsForChannel(
+  chatStore: ReturnType<typeof useChatStore>,
+  agentId: string,
+  context?: ChannelSessionRefreshContext
+): Promise<void> {
+  const aid = agentId.trim();
+  if (!aid) return;
+  if (context?.entityKind === "team") return;
+  const active = context?.activeAgentId?.trim();
+  if (active && active !== aid) return;
+  await chatStore.loadAgentSessions(aid, { refreshOnly: true });
+}

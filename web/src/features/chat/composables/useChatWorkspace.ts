@@ -1,16 +1,11 @@
-import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from "vue";
+import { computed, onMounted, onUnmounted, reactive, ref, shallowRef, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useQuasar } from "quasar";
 import { useRoute } from "vue-router";
-import { enqueueUserMessage } from "../api";
-import type {
-  Agent,
-  ChatEntityKind,
-  Message,
-  SessionView,
-  TeamRow,
-} from "../../../components/chat/types";
+import { enqueueMessage, submitMessageFeedback } from "../api";
+import type { Agent, SessionView, TeamRow } from "../../../components/chat/types";
 import { useAppStore } from "../../../stores/app";
+import { useChatStore } from "../../../stores/chat";
 import { cancelRunningToolMessages } from "../envelopeToolCall";
 import { runStatusFromEnvelope } from "../envelopeRunStatus";
 import type { Envelope } from "../envelope";
@@ -37,29 +32,27 @@ import { useChatTraceDialog, useChatSessionArtifacts } from "./useChatTraceAndAr
 import { useChatSettingsDialog } from "./useChatSettingsDialog";
 import { hydrateAgentSettings } from "../agentPlannerSettings";
 import { parseChannelSessionMeta } from "../channelSessionMeta";
+import { listCollections } from "../../knowledge/api";
 
 export function useChatWorkspace() {
   const { t } = useI18n();
   const $q = useQuasar();
   const route = useRoute();
-  const store = useAppStore();
+  const appStore = useAppStore();
+  const chatStore = useChatStore();
 
   const isDark = computed(() => $q.dark.isActive);
   const leftOpen = ref(true);
   const rightOpen = ref(true);
   const search = ref("");
-  const selectedEntityKind = ref<ChatEntityKind>("agent");
-  const selectedTeamId = ref<string | null>(null);
-  const teamSelectedSessionId = ref<string | null>(null);
   const defaultAgentId = ref<string | null>(null);
   const defaultTeamId = ref("team-default-1");
 
   const displayAgents = ref<Agent[]>([]);
   const displayTeams = ref<TeamRow[]>([]);
-  const teamSessions = ref<Record<string, Array<import("../../../components/chat/types").Session & { at: string }>>>({});
-  const teamMessages = ref<Record<string, Message[]>>({});
-
   const inputText = ref("");
+  const selectedKnowledgeBases = ref<string[]>([]);
+  const knowledgeBaseOptions = ref<Array<{ label: string; value: string }>>([]);
 
   const awaitReply = useAwaitReply();
   const {
@@ -75,7 +68,7 @@ export function useChatWorkspace() {
   const runStatusCtrl = useChatRunStatus({ applyAwaitRunStatus });
   const { runStatus, runMeta, applyFromEnvelope, onSessionSwitch, refreshRunStatus } = runStatusCtrl;
 
-  const providerOpts = useChatProviderOptions(store);
+  const providerOpts = useChatProviderOptions(appStore);
   const { dialogMode, modelProvider, modeOpts, provOpts, providerModels, loadChatOptions, onModeChange, onProviderChange } =
     providerOpts;
 
@@ -84,15 +77,16 @@ export function useChatWorkspace() {
   );
 
   const activePlannerKind = computed(() =>
-    (store.selectedAgent?.settings?.planner_kind ?? "").trim().toLowerCase()
+    (appStore.selectedAgent?.settings?.planner_kind ?? "").trim().toLowerCase()
   );
 
   const displaySessions = computed((): SessionView[] => {
-    if (selectedEntityKind.value === "team" && selectedTeamId.value) {
-      return (teamSessions.value[selectedTeamId.value] ?? []).map((session) => ({
+    if (chatStore.entityKind === "team" && chatStore.selectedTeamId) {
+      return (chatStore.teamSessions[chatStore.selectedTeamId] ?? []).map((session) => ({
         id: session.id,
         title: session.title || t("chat.untitledSession"),
         context_used_ratio: session.context_used_ratio,
+        total_tokens: session.total_tokens,
         at: session.at,
         timeline_at: session.last_message_at || session.updated_at || session.created_at,
         agent_id: session.agent_id,
@@ -100,11 +94,12 @@ export function useChatWorkspace() {
         metadata_json: session.metadata_json,
       }));
     }
-    if (selectedEntityKind.value === "agent" && store.selectedAgent) {
-      return store.sessions.map((session) => ({
+    if (chatStore.entityKind === "agent" && appStore.selectedAgent) {
+      return chatStore.sessions.map((session) => ({
         id: session.id,
         title: session.title || t("chat.untitledSession"),
         context_used_ratio: session.context_used_ratio,
+        total_tokens: session.total_tokens,
         at: formatSessionTime(session.last_message_at || session.updated_at || session.created_at),
         timeline_at: session.last_message_at || session.updated_at || session.created_at,
         status: session.status,
@@ -115,34 +110,30 @@ export function useChatWorkspace() {
   });
 
   const selectedSessionForUi = computed((): SessionView | null => {
-    if (selectedEntityKind.value === "team" && teamSelectedSessionId.value) {
-      return displaySessions.value.find((session) => session.id === teamSelectedSessionId.value) ?? null;
+    if (chatStore.entityKind === "team" && chatStore.teamSelectedSessionId) {
+      return displaySessions.value.find((session) => session.id === chatStore.teamSelectedSessionId) ?? null;
     }
-    if (!store.selectedSession) return null;
+    if (!chatStore.selectedSession) return null;
     return (
-      displaySessions.value.find((session) => session.id === store.selectedSession!.id) ?? {
-        id: store.selectedSession.id,
-        title: store.selectedSession.title || t("chat.untitledSession"),
-        context_used_ratio: store.selectedSession.context_used_ratio,
+      displaySessions.value.find((session) => session.id === chatStore.selectedSession!.id) ?? {
+        id: chatStore.selectedSession.id,
+        title: chatStore.selectedSession.title || t("chat.untitledSession"),
+        context_used_ratio: chatStore.selectedSession.context_used_ratio,
+        total_tokens: chatStore.selectedSession.total_tokens,
         at: formatSessionTime(
-          store.selectedSession.last_message_at ||
-            store.selectedSession.updated_at ||
-            store.selectedSession.created_at
+          chatStore.selectedSession.last_message_at ||
+            chatStore.selectedSession.updated_at ||
+            chatStore.selectedSession.created_at
         ),
         timeline_at:
-          store.selectedSession.last_message_at ||
-          store.selectedSession.updated_at ||
-          store.selectedSession.created_at,
+          chatStore.selectedSession.last_message_at ||
+          chatStore.selectedSession.updated_at ||
+          chatStore.selectedSession.created_at,
       }
     );
   });
 
-  const displayMessages = computed((): Message[] => {
-    if (selectedEntityKind.value === "team" && teamSelectedSessionId.value) {
-      return teamMessages.value[teamSelectedSessionId.value] ?? [];
-    }
-    return store.messages;
-  });
+  const displayMessages = computed(() => chatStore.messages);
 
   const reactToolLinkIndex = shallowRef(buildReactToolLinkIndex([]));
   watch(
@@ -156,6 +147,17 @@ export function useChatWorkspace() {
   const sessionIdForPending = computed(() => selectedSessionForUi.value?.id);
   const sessionIdForArtifacts = computed(() => selectedSessionForUi.value?.id);
   const jobsRefreshNonce = ref(0);
+  const focusTurnId = ref<string | undefined>(undefined);
+
+  function focusSessionTurn(turnId: string) {
+    const id = turnId.trim();
+    if (!id) return;
+    focusTurnId.value = id;
+  }
+
+  function clearFocusTurn() {
+    focusTurnId.value = undefined;
+  }
 
   const { fileRef, attachments, pickFile, onFileChange, removeAttachment } =
     useChatAttachments(sessionIdForArtifacts);
@@ -163,16 +165,14 @@ export function useChatWorkspace() {
   let applyRunStatusFromEnvelope!: (env: Envelope) => void;
 
   const streamManager = useChatStreamManager({
-    store,
-    teamMessages,
-    teamSelectedSessionId,
-    selectedTeamId,
+    chatStore,
     displayTeams,
+    resolveAgentId: () => appStore.selectedAgent?.id,
     markSendingDone: () => sender.markSendingDone(),
     onRunStatus: (env) => applyRunStatusFromEnvelope(env),
   });
 
-  const selectedAgentId = computed(() => store.selectedAgent?.id);
+  const selectedAgentId = computed(() => appStore.selectedAgent?.id);
   const selectedSessionId = computed(() => selectedSessionForUi.value?.id);
 
   async function refreshRunStatusForUi() {
@@ -186,15 +186,31 @@ export function useChatWorkspace() {
   }
 
   const awaitSubmit = createSubmitHandlers({
-    resolveSessionId: () =>
-      selectedEntityKind.value === "team"
-        ? teamSelectedSessionId.value ?? undefined
-        : store.selectedSession?.id,
+    resolveSessionId: () => chatStore.currentSessionId() ?? undefined,
     inputText,
     awaitingRunId,
     awaitKind,
     refreshRunStatus: refreshRunStatusForUi,
+    notifyError: (message) => $q.notify({ type: "negative", message }),
   });
+
+  async function onMessageFeedback(payload: { messageId: string; rating: "positive" | "negative" }) {
+    const sid = chatStore.currentSessionId();
+    if (!sid) return;
+    try {
+      await submitMessageFeedback({
+        session_id: sid,
+        message_id: payload.messageId,
+        rating: payload.rating,
+      });
+      $q.notify({ type: "positive", message: t("chat.feedbackThanks", "感谢反馈") });
+    } catch (err) {
+      $q.notify({
+        type: "negative",
+        message: err instanceof Error ? err.message : t("chat.feedbackFailed", "反馈提交失败"),
+      });
+    }
+  }
 
   function makeSessionTitle(content: string) {
     const plain = content
@@ -206,15 +222,11 @@ export function useChatWorkspace() {
   }
 
   const entityNav = useChatEntityNav({
-    store,
+    appStore,
+    chatStore,
     streamManager,
-    selectedEntityKind,
-    selectedTeamId,
-    teamSelectedSessionId,
     displayAgents,
     displayTeams,
-    teamSessions,
-    teamMessages,
     dialogMode,
     selectedProviderModel,
     makeSessionTitle,
@@ -222,11 +234,19 @@ export function useChatWorkspace() {
   });
 
   useChatInboundSync({
-    selectedEntityKind,
+    appStore,
+    chatStore,
     selectedAgentId,
-    selectedTeamId,
     selectedSessionId,
     wsReplaying: streamManager.wsReplaying,
+    isChatRoute: () => route.name === "chat",
+    shouldAutoFocusChannel: () => {
+      if (typeof localStorage !== "undefined" && localStorage.getItem("channel_auto_focus") === "false") {
+        return false;
+      }
+      return !inputText.value.trim();
+    },
+    focusChannelSession: (sessionId, agentId) => entityNav.focusSessionById(sessionId, agentId),
     onTurnComplete: () => {
       jobsRefreshNonce.value += 1;
     },
@@ -237,12 +257,11 @@ export function useChatWorkspace() {
     loadTeamSessions: (teamId: string) => entityNav.loadTeamSessions(teamId),
   });
 
+  let refreshPendingMessagesFn: (() => Promise<void>) | undefined;
+
   const sender = useChatSender({
-    store,
-    selectedEntityKind,
-    selectedTeamId,
-    teamSelectedSessionId,
-    teamMessages,
+    appStore,
+    chatStore,
     inputText,
     dialogMode,
     attachments,
@@ -250,20 +269,23 @@ export function useChatWorkspace() {
     awaitingRunId,
     runStatus,
     selectedProviderModel,
+    selectedKnowledgeBases,
     ensureChatStream: streamManager.ensureChatStream,
     ensureTeamStream: streamManager.ensureTeamStream,
     sendChatViaWs: streamManager.sendChatViaWs,
     onNewSession: (title?: string) => entityNav.onNewSession(title),
     makeSessionTitle,
     refreshRunStatus: refreshRunStatusForUi,
-    loadTeamSessions: (teamId: string) => entityNav.loadTeamSessions(teamId),
-    teamSessions,
     submitAwaitingReply: awaitSubmit.submitAwaitingReply,
     submitToolConfirm: awaitSubmit.submitToolConfirm,
+    refreshPendingMessages: () => refreshPendingMessagesFn?.() ?? Promise.resolve(),
   });
 
-  const followUp = useFollowUpQueue(sessionIdForPending, sender.sending);
+  const followUp = useFollowUpQueue(sessionIdForPending, sender.sending, (message) =>
+    $q.notify({ type: "negative", message })
+  );
   const { pendingMessages, refreshPendingMessages, onCancelPending, onUpdatePending } = followUp;
+  refreshPendingMessagesFn = refreshPendingMessages;
 
   watch(sender.sending, (val) => followUp.watchSending(val));
 
@@ -272,10 +294,9 @@ export function useChatWorkspace() {
     applyFromEnvelope(env);
     const rs = runStatusFromEnvelope(env);
     if (rs?.status === "cancelled") {
-      store.messages = cancelRunningToolMessages(store.messages);
       const sid = selectedSessionForUi.value?.id;
-      if (sid && teamMessages.value[sid]) {
-        teamMessages.value[sid] = cancelRunningToolMessages(teamMessages.value[sid]);
+      if (sid) {
+        chatStore.setMessages(sid, cancelRunningToolMessages(chatStore.getMessages(sid)));
       }
     }
   };
@@ -288,20 +309,16 @@ export function useChatWorkspace() {
   );
 
   const deleteFlow = useChatDeleteFlow({
-    store,
+    appStore,
+    chatStore,
     displayAgents,
     displayTeams,
     displaySessions,
-    selectedEntityKind,
-    selectedTeamId,
-    teamSessions,
-    teamSelectedSessionId,
-    teamMessages,
     defaultAgentId,
     selectTeam: entityNav.selectTeam,
   });
 
-  const settingsDialog = useChatSettingsDialog(store, displayAgents, displayTeams);
+  const settingsDialog = useChatSettingsDialog(appStore, displayAgents, displayTeams);
   const {
     settingsOpen,
     settingsMode,
@@ -315,7 +332,7 @@ export function useChatWorkspace() {
     onSaveSettings: saveSettingsDialog,
   } = settingsDialog;
 
-  const traceAndArtifacts = useChatTraceDialog(selectedEntityKind, displaySessions, streamManager);
+  const traceAndArtifacts = useChatTraceDialog(chatStore.entityKind, displaySessions, streamManager);
   const {
     traceOpen,
     traceSessionId,
@@ -334,21 +351,16 @@ export function useChatWorkspace() {
 
   const sessionRevision = computed(() => {
     const sid = selectedSessionForUi.value?.id;
-    if (!sid || selectedEntityKind.value === "team") return null;
-    return store.sessionRevisionBySession[sid] ?? 0;
-  });
-
-  const wsConnected = computed(() => {
-    if (selectedEntityKind.value === "team") return false;
-    return streamManager.chatWsConnected.value;
+    if (!sid) return null;
+    return chatStore.sessionRevisionBySession[sid] ?? 0;
   });
 
   async function submitA2UIUserAction(payload: A2UIUserActionPayload) {
-    if (selectedEntityKind.value !== "agent") {
+    if (chatStore.entityKind !== "agent") {
       $q.notify({ type: "warning", message: "A2UI 交互仅支持 Agent 会话" });
       return;
     }
-    if (!store.selectedAgent?.id) return;
+    if (!appStore.selectedAgent?.id) return;
     await sender.sendAgentUserContent(formatUserActionMessage(payload));
   }
 
@@ -361,21 +373,28 @@ export function useChatWorkspace() {
   async function onEnqueueWhileRunning(content: string) {
     const sid = selectedSessionForUi.value?.id;
     if (!sid || !content.trim()) return;
-    const res = await enqueueUserMessage(sid, content.trim());
-    if (res.accepted) {
+    try {
+      const res = await enqueueMessage(sid, content.trim());
+      if (res.accepted) {
+        $q.notify({
+          type: "positive",
+          message: res.queued
+            ? t("chat.enqueueQueued", "Message queued for after the current run")
+            : t("chat.enqueueAccepted", "Message will be injected at the next tool boundary"),
+        });
+        await refreshPendingMessages();
+        return;
+      }
+      $q.notify({ type: "warning", message: t("chat.enqueueRejected", "Could not enqueue message") });
+    } catch (err) {
       $q.notify({
-        type: "positive",
-        message: res.queued
-          ? t("chat.enqueueQueued", "Message queued for after the current run")
-          : t("chat.enqueueAccepted", "Message will be injected at the next tool boundary"),
+        type: "negative",
+        message: err instanceof Error ? err.message : t("chat.enqueueRejected", "Could not enqueue message"),
       });
-      await refreshPendingMessages();
-      return;
     }
-    $q.notify({ type: "warning", message: t("chat.enqueueRejected", "Could not enqueue message") });
   }
 
-  async function openSettings(kind: ChatEntityKind, id: string) {
+  async function openSettings(kind: Parameters<typeof entityNav.openSettings>[0], id: string) {
     if (kind === "agent" || kind === "team") {
       await entityNav.openSettings(kind, id);
       return;
@@ -402,16 +421,19 @@ export function useChatWorkspace() {
   let visibleRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 
   async function bindSessionView(sessionId: string, replace = true) {
-    if (selectedEntityKind.value === "team") {
+    if (chatStore.entityKind === "team") {
       streamManager.ensureTeamStream(sessionId);
-      return;
+    } else {
+      streamManager.ensureChatStream(sessionId);
     }
-    streamManager.ensureChatStream(sessionId);
     try {
       if (replace) clearChatMarkdownCache();
-      await store.loadMessages(replace ? { replace: true } : undefined);
+      await chatStore.loadMessages(replace ? { sessionId, replace: true } : { sessionId });
     } catch (err) {
-      console.error("loadMessages failed", err);
+      $q.notify({
+        type: "negative",
+        message: err instanceof Error ? err.message : "加载消息失败",
+      });
     }
   }
 
@@ -438,7 +460,7 @@ export function useChatWorkspace() {
     const sid = selectedSessionForUi.value?.id;
     if (!sid) return;
     const meta = parseChannelSessionMeta(
-      selectedSessionForUi.value?.metadata_json ?? store.selectedSession?.metadata_json
+      selectedSessionForUi.value?.metadata_json ?? chatStore.selectedSession?.metadata_json
     );
     if (!meta) return;
     if (visibleRefreshTimer) clearTimeout(visibleRefreshTimer);
@@ -458,129 +480,165 @@ export function useChatWorkspace() {
   onMounted(async () => {
     document.addEventListener("visibilitychange", onPageVisible);
     await Promise.all([loadChatOptions(), entityNav.loadCategoryTree(), entityNav.loadTeams()]);
-    await store.loadAgents();
-    defaultAgentId.value = store.agents[0]?.id ?? null;
-    displayAgents.value = loadAgentOrder(store.agents, defaultAgentId.value);
+    try {
+      const cols = await listCollections({ limit: 50 });
+      knowledgeBaseOptions.value = cols.items.map((c) => ({
+        label: c.name || c.id,
+        value: c.id,
+      }));
+    } catch {
+      knowledgeBaseOptions.value = [];
+    }
+    await appStore.loadAgents();
+    defaultAgentId.value = appStore.agents[0]?.id ?? null;
+    displayAgents.value = loadAgentOrder(appStore.agents, defaultAgentId.value);
     displayTeams.value = loadTeamOrder([...displayTeams.value], defaultTeamId.value);
 
     const routeTeamID = typeof route.query.team === "string" ? route.query.team : "";
     const routeTeam = routeTeamID ? displayTeams.value.find((team) => team.id === routeTeamID) : undefined;
     if (routeTeam) {
       await entityNav.selectTeam(routeTeam);
-    } else if (store.selectedAgent) {
-      const hydrated = await hydrateAgentSettings(store.selectedAgent);
-      store.selectedAgent = hydrated;
-      store.upsertAgent(hydrated);
-      await store.loadSessions();
-      store.selectedSession = store.sessions[0] ?? null;
-      store.messages = [];
-    } else if (store.agents[0]) {
-      await entityNav.selectAgent(store.agents[0]);
+    } else if (appStore.selectedAgent) {
+      const hydrated = await hydrateAgentSettings(appStore.selectedAgent);
+      appStore.selectedAgent = hydrated;
+      appStore.upsertAgent(hydrated);
+      await chatStore.loadAgentSessions(hydrated.id);
+      chatStore.selectedSession = chatStore.sessions[0] ?? null;
+      if (chatStore.selectedSession) {
+        chatStore.clearSessionMessages(chatStore.selectedSession.id);
+      }
+    } else if (appStore.agents[0]) {
+      await entityNav.selectAgent(appStore.agents[0]);
     } else if (displayTeams.value[0]) {
       await entityNav.selectTeam(displayTeams.value[0]!);
     }
+    const routeSession = typeof route.query.session === "string" ? route.query.session.trim() : "";
+    if (routeSession) {
+      const routeAgent = typeof route.query.agent === "string" ? route.query.agent.trim() : "";
+      await entityNav.focusSessionById(routeSession, routeAgent || undefined);
+    }
   });
 
+  watch(
+    () => route.query.session,
+    (sid) => {
+      if (typeof sid !== "string" || !sid.trim()) return;
+      const routeAgent = typeof route.query.agent === "string" ? route.query.agent.trim() : "";
+      void entityNav.focusSessionById(sid.trim(), routeAgent || undefined);
+    }
+  );
+
   return {
-    t,
-    isDark,
-    leftOpen,
-    rightOpen,
-    search,
-    selectedEntityKind,
-    selectedTeamId,
-    teamSelectedSessionId,
-    defaultAgentId,
-    defaultTeamId,
     fileRef,
-    displayAgents,
-    categoryTree: entityNav.categoryTree,
-    displayTeams,
-    teamSessions,
-    teamMessages,
-    inputText,
-    dialogMode,
-    modelProvider,
-    activePlannerKind,
-    sending: sender.sending,
-    inputDisabled: sender.inputDisabled,
-    modeOpts,
-    provOpts,
-    attachments,
-    pendingMessages,
-    isAwaitingUser,
-    runStatus,
-    runMeta,
-    isRunnerActive,
-    onEnqueueWhileRunning,
-    wsReplaying: streamManager.wsReplaying,
-    sessionRevision,
-    wsConnected,
-    jobsRefreshNonce,
-    awaitKind,
-    awaitToolKey,
-    submitAwaitingReply: sender.submitAwaitingReply,
-    submitToolConfirm: sender.submitToolConfirm,
-    sessionArtifacts,
-    sessionArtifactsLoading,
-    openSessionArtifact,
-    settingsOpen,
-    settingsMode,
-    settingsId,
-    editName,
-    editKey,
-    editProvider,
-    editModel,
-    settingsSaving,
-    deleteOpen: deleteFlow.deleteOpen,
-    deleteKind: deleteFlow.deleteKind,
-    deleteTargetId: deleteFlow.deleteTargetId,
-    deleteNameInput: deleteFlow.deleteNameInput,
-    deleteBlockBusy: deleteFlow.deleteBlockBusy,
-    deleteBlockDefault: deleteFlow.deleteBlockDefault,
-    deleting: deleteFlow.deleting,
-    traceOpen,
-    traceSessionId,
-    traceSessionTitle,
-    traceInitialTab,
-    traceStreamDeps,
-    settingsTitle,
-    selectedProviderModel,
-    displaySessions,
-    selectedSessionForUi,
-    displayMessages,
-    reactToolLinkIndex,
-    expectedDeleteName: deleteFlow.expectedDeleteName,
-    deleteNameError: deleteFlow.deleteNameError,
-    canConfirmDelete: deleteFlow.canConfirmDelete,
-    deleteTitleText: deleteFlow.deleteTitleText,
-    store,
-    onEndAgent,
-    onEndTeam,
-    selectAgent: entityNav.selectAgent,
-    selectTeam: entityNav.selectTeam,
-    onSelectSession: entityNav.onSelectSession,
-    onRenameSession: entityNav.onRenameSession,
-    openSessionTrace,
-    openSessionEvents,
-    onRestoreSession: entityNav.onRestoreSession,
-    onArchiveSession: entityNav.onArchiveSession,
-    onSessionDetail: entityNav.onSessionDetail,
-    onNewSession: entityNav.onNewSession,
-    onSend: sender.onSend,
-    submitA2UIUserAction,
-    onModeChange,
-    onProviderChange,
-    stopStreaming,
-    openSettings,
-    onSaveSettings,
-    openDelete: deleteFlow.openDelete,
-    onConfirmDelete: deleteFlow.onConfirmDelete,
-    pickFile,
-    onFileChange,
-    removeAttachment,
-    onCancelPending,
-    onUpdatePending,
-    onVoiceClick,
+    layout: reactive({
+      t,
+      isDark,
+      leftOpen,
+      rightOpen,
+      search,
+    }),
+    entity: reactive({
+      store: appStore,
+      selectedEntityKind: computed(() => chatStore.entityKind),
+      selectedTeamId: computed(() => chatStore.selectedTeamId),
+      displayAgents,
+      displayTeams,
+      categoryTree: entityNav.categoryTree,
+      activePlannerKind,
+      onEndAgent,
+      onEndTeam,
+      selectAgent: entityNav.selectAgent,
+      selectTeam: entityNav.selectTeam,
+      openSettings,
+      openDelete: deleteFlow.openDelete,
+    }),
+    session: reactive({
+      displaySessions,
+      selectedSessionForUi,
+      displayMessages,
+      reactToolLinkIndex,
+      sessionRevision,
+      wsConnected: computed(() => chatStore.wsConnected),
+      wsReplaying: streamManager.wsReplaying,
+      jobsRefreshNonce,
+      focusTurnId,
+      focusSessionTurn,
+      clearFocusTurn,
+      sessionArtifacts,
+      sessionArtifactsLoading,
+      openSessionArtifact,
+      onSelectSession: entityNav.onSelectSession,
+      onRenameSession: entityNav.onRenameSession,
+      onRestoreSession: entityNav.onRestoreSession,
+      onArchiveSession: entityNav.onArchiveSession,
+      onSessionDetail: entityNav.onSessionDetail,
+      onNewSession: entityNav.onNewSession,
+      openSessionTrace,
+      openSessionEvents,
+    }),
+    composer: reactive({
+      inputText,
+      dialogMode,
+      modelProvider,
+      modeOpts,
+      provOpts,
+      attachments,
+      selectedKnowledgeBases,
+      knowledgeBaseOptions,
+      sending: sender.sending,
+      inputDisabled: sender.inputDisabled,
+      pendingMessages,
+      isAwaitingUser,
+      runStatus,
+      runMeta,
+      isRunnerActive,
+      onEnqueueWhileRunning,
+      awaitKind,
+      awaitToolKey,
+      submitAwaitingReply: sender.submitAwaitingReply,
+      submitToolConfirm: sender.submitToolConfirm,
+      onSend: sender.onSend,
+      submitA2UIUserAction,
+      onModeChange,
+      onProviderChange,
+      stopStreaming,
+      pickFile,
+      onFileChange,
+      removeAttachment,
+      onCancelPending,
+      onUpdatePending,
+      onVoiceClick,
+      onMessageFeedback,
+    }),
+    dialogs: reactive({
+      settingsOpen,
+      settingsMode,
+      settingsId,
+      editName,
+      editKey,
+      editProvider,
+      editModel,
+      settingsSaving,
+      settingsTitle,
+      onSaveSettings,
+      deleteOpen: deleteFlow.deleteOpen,
+      deleteKind: deleteFlow.deleteKind,
+      deleteTargetId: deleteFlow.deleteTargetId,
+      deleteNameInput: deleteFlow.deleteNameInput,
+      deleteBlockBusy: deleteFlow.deleteBlockBusy,
+      deleteBlockDefault: deleteFlow.deleteBlockDefault,
+      deleting: deleteFlow.deleting,
+      expectedDeleteName: deleteFlow.expectedDeleteName,
+      deleteNameError: deleteFlow.deleteNameError,
+      canConfirmDelete: deleteFlow.canConfirmDelete,
+      deleteTitleText: deleteFlow.deleteTitleText,
+      onConfirmDelete: deleteFlow.onConfirmDelete,
+      traceOpen,
+      traceSessionId,
+      traceSessionTitle,
+      traceInitialTab,
+      traceStreamDeps,
+      selectedProviderModel,
+    }),
   };
 }

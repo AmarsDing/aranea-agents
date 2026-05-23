@@ -1,6 +1,6 @@
 # Aranea-Agents 项目文档
 
-> **AI 入口文档**：AI 在对本项目做任何代码改动前，**必须先阅读本文**。本文提供项目全貌与文档导航，AI 按需精确读取相关指导内容。
+> **AI 入口文档**：AI 在对本项目做任何代码改动前，**必须先阅读本文**。仓库根目录 [AGENTS.md](../AGENTS.md) 为 Cursor / Claude Code 快捷入口。本文提供项目全貌与文档导航，AI 按需精确读取相关指导内容。
 
 ---
 
@@ -47,9 +47,8 @@ internal/data           ← Repo 实现（Ent ORM + SQLite，单 sql.Open）
 3. 阅读对应需求文档与 *.design.md → 理解功能规格
 4. 探索 / 查询代码 → 优先 CodeGraph（见 §4.1）；禁止未查文档就先 grep 扫符号
 5. 按规范编码 → 遵循分层、依赖方向、红线、命名约定
-6. 后端验证：make wire && make wire-clean && make api && make build && make test && make lint && make runtime-boundary
-7. 前端验证：cd web && pnpm i && pnpm lint && pnpm test && pnpm build
-8. 更新文档：changelog/ + execution-plan.md（如涉及进度变更）
+6. 验证 → 迭代中用 [§4.2 分级验证](#42-分级验证按改动选跑)；提交 / PR 前跑全量链（见 §4.2 末行）
+7. 更新文档：changelog/ + execution-plan.md（如涉及进度变更）
 ```
 
 ### 4.1 代码探索约束（CodeGraph）
@@ -69,6 +68,22 @@ internal/data           ← Repo 实现（Ent ORM + SQLite，单 sql.Open）
 
 索引未初始化时：先询问是否执行 `codegraph init -i`。细则见 [guides/AI-DEVELOPMENT-SPECIFICATION.md §速查卡](./guides/AI-DEVELOPMENT-SPECIFICATION.md#代码探索约束codegraph) 与 `.cursor/rules/codegraph.mdc`。
 
+### 4.2 分级验证（按改动选跑）
+
+> 开发迭代中用 **最小验证集** 缩短反馈循环；**提交 / PR 前** 仍须全量 CI（见下表末行）。
+
+| 改动类型 | 最小验证 | 何时加码 |
+|----------|----------|----------|
+| 仅 `internal/service` + 单测 | `go test ./internal/service/... -run TestXxx -count=1` | 涉及 Runner / Turn / WS → `make runtime-boundary` |
+| 仅 `internal/biz` / `internal/data` | `go test ./internal/biz/... ./internal/data/... -count=1` | 改 Ent schema → `go generate ./internal/data/ent && go build ./...` |
+| `api/**/*.proto` | `make api && go build ./...` | 改 HTTP 注解 → `cd web && pnpm lint` |
+| Wire 注入（`cmd/*/wire.go`、ProviderSet） | `make wire && go build ./cmd/admin` | — |
+| 跨层 / Chat·Channel·Runner 边界 | 上表对应项 + `make runtime-boundary` | 对照 AI-DEVELOPMENT-SPECIFICATION 红线 |
+| 前端 `web/src/**` | `cd web && pnpm lint && pnpm test && pnpm build` | 改 API 类型 → 先 `make api` |
+| **提交前（全量）** | 后端：`make api && make wire && make build && make test && make lint && make runtime-boundary`；前端：`cd web && pnpm lint && pnpm test && pnpm build` | proto / wire 有改动时必须前置 `make api` / `make wire` |
+
+单任务闭环示例：`CC-A-01` 改 service → `go test ./internal/service/... -run TestChannelIngress -count=1` → 通过后再跑 `make runtime-boundary`。
+
 ---
 
 ## 5. 文档索引（按场景精确读取）
@@ -82,10 +97,10 @@ internal/data           ← Repo 实现（Ent ORM + SQLite，单 sql.Open）
 | **判断代码该放 Kratos 哪层** | [guides/kratos-framework-guide.md](./guides/kratos-framework-guide.md) | Kratos 各层职责边界、依赖方向、Proto/Wire/中间件/错误处理/配置 |
 | **使用 trpc-agent-go 框架** | [guides/trpc-agent-go-framework.md](./guides/trpc-agent-go-framework.md) | 框架目录结构、核心接口、项目内桥接函数、常见实现场景、官方文档索引 |
 | **任何前端编码** | [guides/frontend-guide.md](./guides/frontend-guide.md) | ★ **唯一前端编码行为准则**：数据流、分层、红线、UX 主题、迁移剧本 |
-| **跨模块解耦 / 架构优化** | [guides/module-decoupling-architecture-guide.md](./guides/module-decoupling-architecture-guide.md) | Chat / Channel / Agent / Team / Graph 边界、目标依赖方向、端口化路线、AI 迁移清单 |
+| **跨模块解耦 / 架构优化** | [需求/0-module-decoupling-architecture.md](./需求/0-module-decoupling-architecture.md) | Chat / Channel / Agent / Team / Graph 边界、目标依赖方向、端口化路线、AI 迁移清单 |
 | **当前迭代进度与任务** | [guides/execution-plan.md](./guides/execution-plan.md) | 模块接入度、Top-20、里程碑、扩展红线 |
-| **Chat × Channel 企业级蓝图** | [guides/m55-chat-channel-enterprise-blueprint.md](./guides/m55-chat-channel-enterprise-blueprint.md) | ★ Chat / Channel 主链路推到产品级的架构 / 业务 / UX 蓝图 + AI 落地任务卡 |
-| **Graph × Team × Multi-Agent 企业级蓝图** | [guides/m53-graph-team-multiagent-enterprise-blueprint.md](./guides/m53-graph-team-multiagent-enterprise-blueprint.md) | ★ M53 编排融合下一阶段（执行单链 / OrchestrationSpec v2 / Activity 时间线 / FailurePolicy 完整化）AI 落地任务卡 |
+| **Chat × Channel 企业级蓝图** | [需求/55-chat-channel-cursor-solution.md#9-附录企业级蓝图与-ai-落地指南](./需求/55-chat-channel-cursor-solution.md#9-附录企业级蓝图与-ai-落地指南) | ★ 主链路架构 / UX 蓝图；**§1.5** 双投影 + Tier 评估；**§2.6** Run 升格（P-1 根本解）；**§13** 设计评审；AI 任务卡 |
+| **Graph × Team × Multi-Agent 企业级蓝图** | [需求/53%20team-graph-orchestration.design.md#附录企业级蓝图与-ai-落地指南](./需求/53%20team-graph-orchestration.design.md#附录企业级蓝图与-ai-落地指南) | ★ M53 编排融合下一阶段（执行单链 / OrchestrationSpec v2 / Activity 时间线 / FailurePolicy 完整化）AI 落地任务卡 |
 | **系统开发计划总览** | [需求/0-system-development.md](./需求/0-system-development.md) | 架构健康度、OpenClaw 对照、路线图、代码质量评价；AI 开发前必读 |
 | **模块开发计划索引** | [需求/README-development.md](./需求/README-development.md) | 全部模块接入度、近期完成、建议下一步 |
 
@@ -101,13 +116,13 @@ internal/data           ← Repo 实现（Ent ORM + SQLite，单 sql.Open）
 | **MCP 服务器 / Broker** | [需求](./需求/19%20mcp.md) · [设计](./需求/19%20mcp.design.md) · [开发计划](./需求/19-mcp-development.md) | CRUD、`internal/mcp/*`、统计/告警/用户凭据/validate；changelog [P3–P4](./changelog/2026-05-21-MCP-P3-P4.md)；AdHoc §8.2 |
 | **Telemetry / OTLP / Prometheus** | [需求](./需求/24%20telemetry.md) · [设计](./需求/24%20telemetry.design.md) · [开发计划](./需求/24-telemetry-development.md) | 双轨观测；`telemetry.Init`；Runs Waterfall；EP-OBS / I6-TEL |
 | **消息机制 / WebSocket** | [需求](./需求/51%20消息机制.md) · [后端设计](./需求/51a%20后端消息机制.md) · [前端设计](./需求/51b%20前端消息机制.md) · [开发计划](./需求/message-development.md) · [**Chat 全链路 Review**](./review/2026-05-23-Chat-Flow-Full-Review.md) · [trpc Review P1–P3](./changelog/2026-05-21-Message-Trpc-Review-P1-P3.md) · [Event 系统](./需求/34-event-development.md) | Envelope + EventBus；工具记录 `source=trpc`/`event_bus`；Team 成员历史与 WS 契约对齐 |
-| **Channel × Agent × Team 业务集成** | [业务说明](./需求/17-channel-agent-team-integration.md) · [集成设计](./需求/17-channel-agent-team-integration.design.md) · [IM Preview](./changelog/2026-05-23-Channel-IM-Preview.md) · [IM Preview Review](./review/2026-05-23-Channel-IM-Preview-Review.md) · [IM Preview E2E](./guides/channel-im-preview-e2e.md) · [Chat 同步](./changelog/2026-05-22-Channel-Chat-Sync.md) · [入站根因](./changelog/2026-05-22-Channel-Inbound-Root-Cause.md) · [审查](./review/2026-05-22-Channel-Inbound-Review.md) · [Channel](./需求/17%20channel.md) · [**长任务 Phase E**](./需求/17-channel-development.md#10-长任务异步执行phase-e) | 飞书 IM Preview transcript + Card upsert + Session 深链；长任务 ACK/Job |
-| **M55 Chat×Channel×Cursor 对标** | [**整体方案**](./需求/55-chat-channel-cursor-solution.md) · [**开发计划**](./需求/55-chat-channel-cursor-development.md) · [**企业级蓝图与 AI 落地指南**](./guides/m55-chat-channel-enterprise-blueprint.md) · [execution-plan §迭代 CC](./guides/execution-plan.md) · [changelog Phase A–D](./changelog/2026-05-23-M55-Phase-ABCD-Review-Fixes.md) · [飞书 Rebind + UX Backlog](./changelog/2026-05-23-M55-Feishu-Rebind-UX-Backlog.md) | Phase A–D ✅；P0 UX 收口 CC-C-UX-* |
+| **Channel × Agent × Team 业务集成** | [业务说明](./需求/17-channel-agent-team-integration.md) · [集成设计](./需求/17-channel-agent-team-integration.design.md) · [M55 方案 §1.5](./需求/55-chat-channel-cursor-solution.md#15-架构收敛模型1-turn--2-projections--3-anchors) · [IM Preview](./changelog/2026-05-23-Channel-IM-Preview.md) · [IM Preview Review](./review/2026-05-23-Channel-IM-Preview-Review.md) · [IM Preview E2E](./需求/17-channel-development.md#12-im-preview--e2e-验收清单lt-0107) · [Chat 同步](./changelog/2026-05-22-Channel-Chat-Sync.md) · [入站根因](./changelog/2026-05-22-Channel-Inbound-Root-Cause.md) · [审查](./review/2026-05-22-Channel-Inbound-Review.md) · [Channel](./需求/17%20channel.md) · [**长任务 Phase E**](./需求/17-channel-development.md#10-长任务异步执行phase-e) | 飞书 IM Preview transcript + Card upsert + Session 深链；长任务 ACK/Job |
+| **M55 Chat×Channel×Cursor 对标** | [**整体方案**](./需求/55-chat-channel-cursor-solution.md) · [**开发计划**](./需求/55-chat-channel-cursor-development.md) · [**企业级蓝图与 AI 落地指南**](./需求/55-chat-channel-cursor-solution.md#9-附录企业级蓝图与-ai-落地指南) · [execution-plan §迭代 CC](./guides/execution-plan.md) · [Run Lifecycle Review](./review/2026-05-23-M55-Run-Lifecycle-Review.md) · [Run OPT 计划](./changelog/2026-05-23-M55-Run-Lifecycle-Optimization-Plan.md) · [**R-UX 格式化/思考 UX**](./changelog/2026-05-23-M55-Phase-R-UX-Channel-Format-Reasoning.md) · [changelog Phase A–D](./changelog/2026-05-23-M55-Phase-ABCD-Review-Fixes.md) | Phase A–D + R P0–P1 ✅；R-UX 格式化/思考/Session 同步 ✅ |
 | **流程日志 / 链路排障** | [需求](./需求/52-flow-logger.md) · [设计](./需求/52-flow-logger.design.md)（含 §5.1 步骤注册表）· [开发计划](./需求/52-flow-logger-development.md) · [Phase 2 changelog](./changelog/2026-05-21-Message-FlowLogger-Phase2-P3.md) · [Slog 移除](./changelog/2026-05-20-FlowLog-V2-SlogRemoval.md) | TraceEmitter、trace_id、severity；**禁止 slog / SlogBridge**；`ListFlowLogs` + 落库 ✅ |
 | **Memory L0–L4** | [知识体系](./需求/38%20memory.md) · [L0](./需求/12%20memory-L0-sensory.md)–[L4](./需求/16%20memory-L4-persistent.md) · [设计](./需求/12-16%20memory.design.md) · [开发计划](./需求/12-16%20memory-development.md) · [UX](./需求/12-16%20memory.md) · [DocSync](./changelog/2026-05-21-Memory-DocSync-Trpc.md) | 五层模型 + `RuntimeSet`（trpc `memory.Service` + Admin Store）；L4/Worker MVP；pgvector 与 SQLite 双轨 |
 | **Tools 片段编辑** | [需求](./需求/23%20tools-fragment-edit.md) · [设计](./需求/23%20tools-fragment-edit.design.md) · [开发计划 Phase 4](./需求/23-tools-development.md#phase-4片段级文件编辑p1) · [Tools 总览](./需求/23%20tools.md) · [Review Phase 4](./review/2026-05-22-Tools-Phase4-Fragment-Edit-Review.md) · [Review Phase 5](./review/2026-05-22-Tools-Phase5-Workspace-Unification-Review.md) · [23-tools-review](./review/23-tools-review.md) | Phase 4+5 ✅ |
-| **Team × Graph 编排融合** | [需求](./需求/53%20team-graph-orchestration.md) · [设计](./需求/53%20team-graph-orchestration.design.md) · [开发计划 §8 终态](./需求/53-team-graph-orchestration-development.md#8-终态路线图team-规格--graph-执行单链) · [**企业级蓝图与 AI 落地指南**](./guides/m53-graph-team-multiagent-enterprise-blueprint.md) · [Phase 4 changelog](./changelog/2026-05-23-Team-Graph-M53-Phase4.md) · [Phase 4 优化](./changelog/2026-05-23-Team-Graph-M53-Phase4-Optimization.md) | OrchestrationSpec · 编译/观测单链 · 执行收敛 Phase 5–7 |
-| **Hermes Kanban 适配（M54）** | [需求](./需求/54-hermes-kanban.md) · [设计](./需求/54-hermes-kanban.design.md) · [开发计划](./需求/54-hermes-kanban-development.md) | Graph Task 运行时闭环 · kanban_* tools · TaskDispatcher · 双 Kanban 观测 |
+| **Team × Graph 编排融合** | [需求](./需求/53%20team-graph-orchestration.md) · [设计](./需求/53%20team-graph-orchestration.design.md) · [开发计划 §8 终态](./需求/53-team-graph-orchestration-development.md#8-终态路线图team-规格--graph-执行单链) · [**企业级蓝图与 AI 落地指南**](./需求/53%20team-graph-orchestration.design.md#附录企业级蓝图与-ai-落地指南) · [Phase 4 changelog](./changelog/2026-05-23-Team-Graph-M53-Phase4.md) · [Phase 4 优化](./changelog/2026-05-23-Team-Graph-M53-Phase4-Optimization.md) | OrchestrationSpec · 编译/观测单链 · 执行收敛 Phase 5–7 |
+| **Hermes Kanban 适配（M54）** | [需求](./需求/54-hermes-kanban.md) · [设计](./需求/54-hermes-kanban.design.md) · [开发计划](./需求/54-hermes-kanban-development.md) | Graph Task 运行时 ✅ · kanban_* tools ✅ · TaskDispatcher ✅ · 双 Kanban UI ✅ · **G14 spawn + Hermes UI 对标 📋** |
 | **Runner / Gateway** | [需求](./需求/40%20runner.md) · [设计](./需求/40%20runner.design.md) · [开发计划](./需求/40-runner-development.md) | RunRegistry / RunnerManager / RunGateway / ChatUsecase / Webhook |
 | **Planner 规划器** | [需求](./需求/39%20planner.md) · [设计](./需求/39%20planner.design.md) · [开发计划](./需求/39-planner-development.md) | planner_kind / ReAct / A2UI 组件树 / tool 去重 |
 | **CodeExecutor** | [需求](./需求/32%20codeexecutor.md) · [设计](./需求/32%20codeexecutor.design.md) · [开发计划](./需求/32-codeexecutor-development.md) | Factory / Agent 配置 / capabilities / lazy E2B |
@@ -146,7 +161,7 @@ internal/data           ← Repo 实现（Ent ORM + SQLite，单 sql.Open）
 | **前端规范** | `guides/frontend-guide.md` | 前端红线、数据流、分层、UX 主题 | 后端内容 |
 | **Kratos 框架** | `guides/kratos-framework-guide.md` | Kratos 各层职责与约束 | 通用教程 / 示例代码 |
 | **trpc 框架** | `guides/trpc-agent-go-framework.md` | 框架接口与项目映射 | 通用教程 |
-| **解耦指导** | `guides/module-decoupling-architecture-guide.md` | 跨模块边界、依赖方向、端口化路线、AI 迁移模板 | 单次需求进度 / 具体修复记录 |
+| **解耦指导** | `需求/0-module-decoupling-architecture.md` | 跨模块边界、依赖方向、端口化路线、AI 迁移模板 | 单次需求进度 / 具体修复记录 |
 | **进度真相** | `guides/execution-plan.md` | 模块接入度 / 里程碑 / 红线扩展 | 已冻结的 sprint 节奏 |
 | **需求文档** | `需求/*.md` | 用户故事、功能规格、验收标准 | 实现细节、代码片段 |
 | **设计文档** | `需求/*.design.md` | 架构方案、接口设计、数据模型 | 修复记录、待办 |
@@ -174,6 +189,7 @@ docs/
 │       └── vue-design-agent-rules.md       ← AI 系统提示精简版
 ├── 需求/                                  ← 产品需求 + 设计文档 + 开发计划
 │   ├── 0 系统框图.md                       ← ★ 系统架构总览
+│   ├── 0-module-decoupling-architecture.md ← 跨模块解耦 + 后端优化路线
 │   ├── README-development.md               ← 模块开发计划索引
 │   ├── *-development.md                    ← 各模块开发计划
 │   ├── *.md                                ← 纯需求内容

@@ -1,12 +1,41 @@
 package biz
 
 import (
+	"context"
 	"strings"
-
-	webresearchpkg "aranea-agents/internal/tools/webresearch"
 )
 
-func webResearchPlatformFieldsPtr(s *WebResearchSetting) *webresearchpkg.PlatformFields {
+// WebResearchPlatformFields holds platform-level defaults for web_research.
+type WebResearchPlatformFields struct {
+	HasAPIKey   bool
+	APIKey      string
+	Provider    string
+	MaxResults  int
+	FetchTop    int
+	SearchDepth string
+	TimeoutSec  int
+	HTTPProxy   string
+}
+
+// WebResearchReadinessChecker abstracts web_research readiness resolution.
+type WebResearchReadinessChecker interface {
+	ResolveReady(agentMap map[string]any, platform *WebResearchPlatformFields) bool
+	CatalogReady(agentMap map[string]any, platform *WebResearchPlatformFields) bool
+}
+
+// loadWebResearchPlatformFromSys loads WebResearchSetting via SystemSettingRepo.
+func loadWebResearchPlatformFromSys(ctx context.Context, sys SystemSettingRepo) *WebResearchSetting {
+	if sys == nil {
+		return nil
+	}
+	s, err := sys.GetWebResearch(ctx)
+	if err != nil {
+		return nil
+	}
+	return &s
+}
+
+func webResearchPlatformFieldsPtr(s *WebResearchSetting) *WebResearchPlatformFields {
 	if s == nil {
 		return nil
 	}
@@ -14,11 +43,11 @@ func webResearchPlatformFieldsPtr(s *WebResearchSetting) *webresearchpkg.Platfor
 	return p
 }
 
-func webResearchPlatformFields(s WebResearchSetting) *webresearchpkg.PlatformFields {
+func webResearchPlatformFields(s WebResearchSetting) *WebResearchPlatformFields {
 	if !s.HasAPIKey && strings.TrimSpace(s.APIKey) == "" && strings.TrimSpace(s.Provider) == "" {
 		return nil
 	}
-	return &webresearchpkg.PlatformFields{
+	return &WebResearchPlatformFields{
 		HasAPIKey:   s.HasAPIKey,
 		APIKey:      s.APIKey,
 		Provider:    s.Provider,
@@ -30,16 +59,10 @@ func webResearchPlatformFields(s WebResearchSetting) *webresearchpkg.PlatformFie
 	}
 }
 
-func webResearchConfigReady(tool Tool, platform *WebResearchSetting) bool {
-	m := mergeToolConfigMaps(tool.ConfigJSON, tool.DefaultConfigJSON)
-	var pf *webresearchpkg.PlatformFields
-	if platform != nil {
-		pf = webResearchPlatformFields(*platform)
+func applyWebResearchEffectiveGate(checker WebResearchReadinessChecker, eff *AgentEffectiveTools, catalog []Tool, platform *WebResearchSetting, overrides []ToolAgentOverride) {
+	if checker == nil {
+		return
 	}
-	return webresearchpkg.ResolveReady(m, pf)
-}
-
-func applyWebResearchEffectiveGate(eff *AgentEffectiveTools, catalog []Tool, platform *WebResearchSetting, overrides []ToolAgentOverride) {
 	if eff == nil || platform == nil {
 		return
 	}
@@ -62,11 +85,11 @@ func applyWebResearchEffectiveGate(eff *AgentEffectiveTools, catalog []Tool, pla
 		if !ok {
 			continue
 		}
-		cfgMap := mergeToolConfigMaps(tool.ConfigJSON, tool.DefaultConfigJSON)
+		cfgMap := MergeToolConfigMaps(tool.ConfigJSON, tool.DefaultConfigJSON)
 		if ov, ok := overrideByKey[ToolKeyWebResearch]; ok && ov != "" {
-			mergeJSONMapInto(cfgMap, ov)
+			MergeJSONMapInto(cfgMap, ov)
 		}
-		if webresearchpkg.ResolveReady(cfgMap, webResearchPlatformFieldsPtr(platform)) {
+		if checker.ResolveReady(cfgMap, webResearchPlatformFieldsPtr(platform)) {
 			continue
 		}
 		eff.Items[i].Enabled = false

@@ -222,7 +222,8 @@ GET /v1/ws?session_id=...  →  WSServer.handleWS()
 | | `provider` | string | ❌ | 模型提供商覆盖 |
 | | `model` | string | ❌ | 模型名覆盖 |
 | | `attachments` | AttachmentRef[] | ❌ | 附件引用列表 |
-| `ChatOption` | `type` | string | — | 选项类型（如 dialog_mode） |
+| | `knowledge_bases` | string[] | ❌ | 本轮限定的知识库 collection ID（`knowledge_search` 白名单） |
+| `SubmitMessageFeedbackRequest` | `message_id` / `session_id` / `rating` | — | 👍/👎 反馈（positive \| negative） |
 | | `key` | string | — | 选项键（如 default/plan/code） |
 | | `label` | string | — | 显示标签 |
 | | `enabled` | bool | — | 是否启用 |
@@ -592,13 +593,18 @@ type EnvelopeTransfer struct {
 
 type EnvelopeError struct {
     Type      string // 错误类型
+    Code      string // 稳定错误码（与 TurnErrorCode / provider type 对齐）
     Message   string // 错误消息
+    Hint      string // 用户可操作建议
     PendingID string // 关联的待执行消息 ID（待执行失败时填充）
 }
 
 type EnvelopeUsage struct {
-    PromptTokens     int64 // 输入 token 数
-    CompletionTokens int64 // 输出 token 数
+    PromptTokens     int64 // 本轮 prompt（ReAct 多轮取 max）
+    CompletionTokens int64 // 本轮 completion（ReAct 多轮累加）
+    TotalTokens      int64 // 本轮合计
+    MaxTokens        int64 // 上下文窗口上限（Agent context_window）
+    TurnTotalTokens  int64 // 同 TotalTokens，显式语义字段
 }
 
 type EnvelopeExtensions struct {
@@ -627,7 +633,8 @@ type EnvelopeTrace struct {
 | `tool_result` | chat/team | `tool_call.result_json/status/duration_ms` | 工具结果 |
 | `state_delta` | chat/team | `state_delta.operation/path/value_json` | Runner State 增量 |
 | `runner_completion` | chat/team | `usage` | 一轮运行完成 |
-| `error` | chat/system | `error.type/message/pending_id` | 错误信息；`pending_id` 在待执行消息失败时填充 |
+| `error` | chat/system | `error.type/code/message/hint/pending_id` | 错误信息；`pending_id` 在待执行消息失败时填充 |
+| `user_feedback` | chat | `metadata.message_id/rating/comment` | 用户对助手消息的 👍/👎 反馈 |
 | `intent_pass` | chat/team | `metadata` | 意图识别结果 |
 | `transfer` | team | `transfer.from_agent/to_agent` | Team/Swarm 转交 |
 | `member_message_start` | team | `author`, `content` | 成员消息开始；类型已定义，仍需 Team Runner 稳定发射 |

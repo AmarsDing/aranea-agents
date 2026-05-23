@@ -49,6 +49,8 @@ var ProviderSet = wire.NewSet(
 	NewChannelPeerSessionRepo,
 	NewChannelInboundReceiptRepo,
 	NewChannelTurnJobRepo,
+	NewSessionRunRepo,
+	NewSessionRunCheckpointRepo,
 	NewUsageRepo,
 	NewMonitorRepo,
 	NewSystemSettingRepo,
@@ -320,6 +322,15 @@ func ensureAllSchemas(rawDB *sql.DB, entClient *ent.Client) error {
 	}
 	if err := EnsureChannelTurnJobSchema(ctxSchema, rawDB); err != nil {
 		return fmt.Errorf("channel turn job schema: %w", err)
+	}
+	if err := EnsureSessionRunSchema(ctxSchema, rawDB); err != nil {
+		return fmt.Errorf("session run schema: %w", err)
+	}
+	if err := ensureSessionRunCheckpointSchema(ctxSchema, rawDB); err != nil {
+		return fmt.Errorf("session run checkpoint schema: %w", err)
+	}
+	if err := ensureSessionRunColumnPatches(ctxSchema, rawDB); err != nil {
+		return fmt.Errorf("session run column patches: %w", err)
 	}
 	if err := EnsureMonitorAlertSchema(ctxSchema, entClient); err != nil {
 		return fmt.Errorf("monitor alert schema: %w", err)

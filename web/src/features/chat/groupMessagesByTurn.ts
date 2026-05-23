@@ -1,5 +1,7 @@
-import type { Message } from "./types";
+import type { Message, ReactToolLinkIndex } from "./types";
+import { toolEventFromMessage } from "./envelopeToolCall";
 import { isActivityMessage } from "./mergeSessionMessages";
+import { isToolLinkedInReactIndex } from "./reactToolLinkIndex";
 
 export type TurnBlockGroup = {
   /** User message turn_index (odd); grouping key */
@@ -107,4 +109,18 @@ export function toolStripSummary(tools: Message[]): {
     totalMs += t.latency_ms ?? 0;
   }
   return { count: tools.length, failed, totalMs };
+}
+
+/** CC-C-UX-03: omit tools already rendered under ReAct ACTION in the assistant row. */
+export function filterToolsForToolStrip(
+  tools: Message[],
+  reactLinkIndex: ReactToolLinkIndex
+): Message[] {
+  if (!tools.length) return tools;
+  return tools.filter((tool) => {
+    if (!isActivityMessage(tool)) return true;
+    const ev = toolEventFromMessage(tool);
+    if (!ev?.id) return true;
+    return !isToolLinkedInReactIndex(reactLinkIndex, ev.id);
+  });
 }

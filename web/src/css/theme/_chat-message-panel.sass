@@ -295,6 +295,76 @@ body.body--dark .chat-empty-state__hint
   font-size: 13px
   opacity: 0.92
 
+.chat-reasoning-peek
+  margin-bottom: 8px
+  padding: 8px 10px
+  border-radius: 8px
+  border: 1px solid var(--glass-border, rgba(128, 128, 128, 0.25))
+  background: var(--color-surface-soft, rgba(128, 128, 128, 0.06))
+  cursor: pointer
+  outline: none
+  overflow: hidden
+  transition: border-color 0.15s ease, box-shadow 0.15s ease
+
+.chat-reasoning-peek--streaming
+  border-color: color-mix(in srgb, var(--color-accent, #e9a23b) 25%, var(--glass-border, rgba(128, 128, 128, 0.25)))
+
+.chat-reasoning-peek--selected
+  border-color: var(--color-accent, #e9a23b)
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent, #e9a23b) 35%, transparent)
+
+.chat-reasoning-peek__label
+  color: var(--color-text-secondary)
+  margin-bottom: 4px
+  user-select: none
+  display: flex
+  align-items: center
+  gap: 4px
+
+.chat-reasoning-peek__live
+  opacity: 0.7
+  animation: chat-reasoning-live 1.2s ease-in-out infinite
+
+@keyframes chat-reasoning-live
+  0%, 100%
+    opacity: 0.35
+  50%
+    opacity: 1
+
+.chat-reasoning-peek__viewport
+  overflow: hidden
+  position: relative
+  height: calc(1.45em * 2)
+  font-size: 12px
+
+.chat-reasoning-peek--expanded .chat-reasoning-peek__viewport
+  height: calc(1.45em * 8)
+
+.chat-reasoning-peek__content
+  font-size: 12px
+  line-height: 1.45
+  opacity: 0.88
+  color: var(--color-text-secondary)
+  pointer-events: none
+  will-change: transform
+  transition: transform 0.08s linear
+  :deep(p)
+    margin: 0 0 0.35em
+    &:last-child
+      margin-bottom: 0
+
+.chat-reasoning-peek__hint
+  margin-top: 4px
+  color: var(--color-text-tertiary)
+  opacity: 0.85
+
+.chat-formal-body__label
+  color: var(--color-text-secondary)
+  margin-bottom: 6px
+
+.chat-formal-body
+  margin-top: 2px
+
 // 鍥㈤槦鎴愬憳姘旀场锛氬乏渚?4px 褰╄壊 accent 鏉★紙棰滆壊涓庡ご鍍忎竴鑷达級
 .chat-message-bubble--member
   padding-left: 18px

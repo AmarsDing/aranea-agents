@@ -8,9 +8,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"aranea-agents/internal/mcp/metadata"
-	"aranea-agents/internal/mcp/probe"
-
 	"github.com/go-kratos/kratos/v2/errors"
 )
 
@@ -23,6 +20,30 @@ func newMCPServerID() string {
 		return hex.EncodeToString([]byte{byte(n >> 56), byte(n >> 48), byte(n >> 40), byte(n >> 32), byte(n >> 24), byte(n >> 16), byte(n >> 8), byte(n)})
 	}
 	return hex.EncodeToString(buf)
+}
+
+// MCPTestResult is the domain-level result of an MCP server connectivity test.
+type MCPTestResult struct {
+	OK      bool           `json:"ok"`
+	Status  string         `json:"status"`
+	Message string         `json:"message"`
+	Details map[string]any `json:"details,omitempty"`
+}
+
+// MCPProber abstracts MCP server connectivity testing so biz does not
+// depend on internal/mcp/probe directly.
+type MCPProber interface {
+	Evaluate(enabled bool, configJSON string) MCPTestResult
+}
+
+// MCPMetadataEditor abstracts metadata_json manipulation so biz does not
+// depend on internal/mcp/metadata directly.
+type MCPMetadataEditor interface {
+	Parse(raw string) map[string]any
+	Marshal(m map[string]any) (string, error)
+	ApplyHealth(m map[string]any, healthStatus string, ok bool, errMsg string, at time.Time) string
+	ApplyReconnect(m map[string]any, at time.Time)
+	MarkHealthAlert(m map[string]any, at time.Time)
 }
 
 // MCPServer matches legacy PlatformResource for mcp-servers.
@@ -50,11 +71,27 @@ type MCPServerRepo interface {
 }
 
 type MCPServerUsecase struct {
-	repo MCPServerRepo
+	repo     MCPServerRepo
+	prober   MCPProber
+	metaEdit MCPMetadataEditor
 }
 
 func NewMCPServerUsecase(repo MCPServerRepo) *MCPServerUsecase {
 	return &MCPServerUsecase{repo: repo}
+}
+
+// SetProber injects the MCP probe implementation after construction.
+func (u *MCPServerUsecase) SetProber(prober MCPProber) {
+	if u != nil {
+		u.prober = prober
+	}
+}
+
+// SetMetadataEditor injects the MCP metadata editor after construction.
+func (u *MCPServerUsecase) SetMetadataEditor(editor MCPMetadataEditor) {
+	if u != nil {
+		u.metaEdit = editor
+	}
 }
 
 func (u *MCPServerUsecase) List(ctx context.Context) ([]MCPServer, error) {
@@ -125,25 +162,20 @@ func (u *MCPServerUsecase) Delete(ctx context.Context, id string) error {
 	return u.repo.DeleteMCPServer(ctx, id)
 }
 
-// TestMCPServer runs probe and persists health_* metadata + row status (legacy TestMCPServer).
-func (u *MCPServerUsecase) TestMCPServer(ctx context.Context, id string) (probe.TestResult, error) {
+// TestMCPServer runs probe and persists health_* metadata + row status.
+func (u *MCPServerUsecase) TestMCPServer(ctx context.Context, id string) (MCPTestResult, error) {
 	row, err := u.repo.GetMCPServer(ctx, id)
 	if err != nil {
-		return probe.TestResult{}, err
+		return MCPTestResult{}, err
 	}
-	result := probe.Evaluate(row.Enabled, row.ConfigJSON)
+	if u.prober == nil {
+		return MCPTestResult{}, errors.InternalServer("MCP_SERVER", "mcp prober not configured")
+	}
+	result := u.prober.Evaluate(row.Enabled, row.ConfigJSON)
 	if err := u.persistHealth(ctx, &row, result); err != nil {
 		return result, err
 	}
 	return result, nil
-}
-
-func (u *MCPServerUsecase) PersistHealth(ctx context.Context, id string, result probe.TestResult) error {
-	row, err := u.repo.GetMCPServer(ctx, id)
-	if err != nil {
-		return err
-	}
-	return u.persistHealth(ctx, &row, result)
 }
 
 // RecordReconnectMetadata updates last_reconnect_at and reconnect_count for the server key.
@@ -169,9 +201,12 @@ func (u *MCPServerUsecase) RecordReconnectMetadata(ctx context.Context, serverKe
 	if row == nil {
 		return nil
 	}
-	meta := metadata.Parse(row.MetadataJSON)
-	metadata.ApplyReconnect(meta, at)
-	raw, err := metadata.Marshal(meta)
+	if u.metaEdit == nil {
+		return errors.InternalServer("MCP_SERVER", "mcp metadata editor not configured")
+	}
+	meta := u.metaEdit.Parse(row.MetadataJSON)
+	u.metaEdit.ApplyReconnect(meta, at)
+	raw, err := u.metaEdit.Marshal(meta)
 	if err != nil {
 		return err
 	}
@@ -186,9 +221,12 @@ func (u *MCPServerUsecase) MarkHealthAlertEmitted(ctx context.Context, id string
 	if err != nil {
 		return err
 	}
-	meta := metadata.Parse(row.MetadataJSON)
-	metadata.MarkHealthAlert(meta, at)
-	raw, err := metadata.Marshal(meta)
+	if u.metaEdit == nil {
+		return errors.InternalServer("MCP_SERVER", "mcp metadata editor not configured")
+	}
+	meta := u.metaEdit.Parse(row.MetadataJSON)
+	u.metaEdit.MarkHealthAlert(meta, at)
+	raw, err := u.metaEdit.Marshal(meta)
 	if err != nil {
 		return err
 	}
@@ -198,15 +236,21 @@ func (u *MCPServerUsecase) MarkHealthAlertEmitted(ctx context.Context, id string
 }
 
 // ValidateConfig runs probe without persisting (pre-create URL check).
-func (u *MCPServerUsecase) ValidateConfig(enabled bool, configJSON string) probe.TestResult {
-	return probe.Evaluate(enabled, configJSON)
+func (u *MCPServerUsecase) ValidateConfig(enabled bool, configJSON string) MCPTestResult {
+	if u.prober == nil {
+		return MCPTestResult{OK: false, Status: "unknown", Message: "mcp prober not configured"}
+	}
+	return u.prober.Evaluate(enabled, configJSON)
 }
 
-func (u *MCPServerUsecase) persistHealth(ctx context.Context, row *MCPServer, result probe.TestResult) error {
-	meta := metadata.Parse(row.MetadataJSON)
+func (u *MCPServerUsecase) persistHealth(ctx context.Context, row *MCPServer, result MCPTestResult) error {
+	if u.metaEdit == nil {
+		return errors.InternalServer("MCP_SERVER", "mcp metadata editor not configured")
+	}
+	meta := u.metaEdit.Parse(row.MetadataJSON)
 	at := time.Now().UTC()
-	row.Status = metadata.ApplyHealth(meta, result.Status, result.OK, result.Message, at)
-	raw, err := metadata.Marshal(meta)
+	row.Status = u.metaEdit.ApplyHealth(meta, result.Status, result.OK, result.Message, at)
+	raw, err := u.metaEdit.Marshal(meta)
 	if err != nil {
 		return err
 	}

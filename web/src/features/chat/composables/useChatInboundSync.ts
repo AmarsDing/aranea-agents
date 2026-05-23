@@ -1,26 +1,32 @@
 import { onMounted, onUnmounted, type Ref } from "vue";
-import { useQuasar } from "quasar";
-import { useI18n } from "vue-i18n";
 import {
   acquireGlobalWsConsumer,
   releaseGlobalWsConsumer,
 } from "../globalWsHub";
 import type { Envelope } from "../envelope";
 import type { UseEnvelopeStreamReturn } from "../useEnvelopeStream";
-import { useAppStore } from "../../../stores/app";
-import { parseChannelSessionMeta } from "../channelSessionMeta";
+import type { useAppStore } from "../../../stores/app";
+import type { useChatStore } from "../../../stores/chat";
+import { useChatStreamingSnapshots } from "../../../stores/chatStreamingSnapshots";
 import { runStatusFromEnvelope } from "../envelopeRunStatus";
-import { upsertToolMessage } from "../envelopeToolCall";
+import {
+  upsertToolMessage,
+  finalizeOrphanToolMessages,
+} from "../envelopeToolCall";
+import { dropPendingUserPlaceholders } from "../mergeSessionMessages";
 import { createMessageBatchWriter } from "../messageStoreBatch";
-import type { Session } from "../../session/types";
+import { refreshAgentSessionsForChannel } from "../channelInboundSessionRefresh";
 
 export type ChatInboundSyncDeps = {
-  selectedEntityKind: Ref<"agent" | "team">;
+  appStore: ReturnType<typeof useAppStore>;
+  chatStore: ReturnType<typeof useChatStore>;
   selectedAgentId: Ref<string | undefined>;
-  selectedTeamId: Ref<string | undefined>;
   selectedSessionId: Ref<string | undefined>;
   wsReplaying?: Ref<boolean>;
+  isChatRoute?: () => boolean;
+  shouldAutoFocusChannel?: () => boolean;
   onTurnComplete?: (sessionId: string) => void;
+  focusChannelSession?: (sessionId: string, agentId: string) => void | Promise<void>;
   ensureChatStream: (sessionId: string) => UseEnvelopeStreamReturn;
   ensureTeamStream: (sessionId: string) => UseEnvelopeStreamReturn;
   patchAgentMessages: (sessionId: string, streamId: string, env: Envelope, isDone: boolean) => void;
@@ -40,6 +46,13 @@ function envelopeSessionRevision(env: Envelope): number {
   return 0;
 }
 
+function envelopeSource(env: Envelope): string {
+  const direct = (env.source ?? "").trim();
+  if (direct) return direct;
+  const md = env.metadata as Record<string, unknown> | undefined;
+  return typeof md?.source === "string" ? md.source.trim() : "";
+}
+
 function isTurnCompleteEnvelope(env: Envelope): boolean {
   if (env.type === "runner_completion") return true;
   if (env.type !== "run_status") return false;
@@ -50,19 +63,22 @@ function isTurnCompleteEnvelope(env: Envelope): boolean {
 /**
  * Subscribes to global WS (`session_id=*`) so Channel/Cron inbound turns update the Chat UI
  * when the matching agent session is open or newly created.
+ * Header bell notifications are handled by useGlobalInboundNotifications (MainLayout).
  */
 export function useChatInboundSync(deps: ChatInboundSyncDeps) {
-  const store = useAppStore();
-  const $q = useQuasar();
-  const { t } = useI18n();
+  const streamingSnapshots = useChatStreamingSnapshots();
   let hubId: string | null = null;
   let hydrateTimer: ReturnType<typeof setTimeout> | null = null;
   let pendingHydrateSessionId = "";
 
   const inboundMessageWriter = createMessageBatchWriter(
-    () => store.messages,
+    () => {
+      const sid = deps.selectedSessionId.value;
+      return sid ? deps.chatStore.getMessages(sid) : [];
+    },
     (rows) => {
-      store.messages = rows;
+      const sid = deps.selectedSessionId.value;
+      if (sid) deps.chatStore.setMessages(sid, rows);
     }
   );
 
@@ -73,8 +89,8 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
     const sid = (env.session_id ?? "").trim();
     if (!sid) return "";
     const sess =
-      store.sessions.find((s) => s.id === sid) ??
-      (store.selectedSession?.id === sid ? store.selectedSession : null);
+      deps.chatStore.sessions.find((s) => s.id === sid) ??
+      (deps.chatStore.selectedSession?.id === sid ? deps.chatStore.selectedSession : null);
     return sess?.agent_id?.trim() ?? "";
   }
 
@@ -82,66 +98,36 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
     if (env.team_id?.trim()) return env.team_id.trim();
     const sid = (env.session_id ?? "").trim();
     if (!sid) return "";
-    const sess = store.sessions.find((s) => s.id === sid);
+    const sess = deps.chatStore.sessions.find((s) => s.id === sid);
     return sess?.team_id?.trim() ?? "";
   }
 
   function matchesSelectedEntity(env: Envelope): boolean {
-    if (deps.selectedEntityKind.value === "team") {
-      const tid = deps.selectedTeamId.value?.trim();
+    if (deps.chatStore.entityKind === "team") {
+      const tid = deps.chatStore.selectedTeamId?.trim();
       return !!tid && teamIdFromEnvelope(env) === tid;
     }
     const aid = deps.selectedAgentId.value?.trim();
     return !!aid && agentIdFromEnvelope(env) === aid;
   }
 
-  function findSessionById(sessionId: string): Session | undefined {
-    return store.sessions.find((s) => s.id === sessionId);
-  }
-
-  async function refreshSessionsAndMaybeNotify(sessionId: string, source = "") {
-    const prevIds = new Set(store.sessions.map((s) => s.id));
-    if (deps.selectedEntityKind.value === "agent") {
-      await store.loadSessions();
-    } else if (deps.selectedEntityKind.value === "team") {
-      const tid = deps.selectedTeamId.value?.trim();
+  async function refreshSessionsAfterTurn(sessionId: string) {
+    if (deps.chatStore.entityKind === "agent") {
+      const aid = deps.selectedAgentId.value?.trim();
+      if (aid) await deps.chatStore.loadAgentSessions(aid, { refreshOnly: true });
+      const sessAgent = agentIdFromEnvelope({ session_id: sessionId } as Envelope);
+      if (sessAgent && sessAgent !== aid) {
+        await deps.chatStore.loadAgentSessions(sessAgent, { refreshOnly: true });
+      }
+    } else if (deps.chatStore.entityKind === "team") {
+      const tid = deps.chatStore.selectedTeamId?.trim();
       if (tid && deps.loadTeamSessions) {
         await deps.loadTeamSessions(tid);
       }
     }
-    const isNew = !prevIds.has(sessionId);
-    const isCurrent = deps.selectedSessionId.value === sessionId;
-    if (!isCurrent) {
-      const sess = findSessionById(sessionId);
-      const chMeta = sess ? parseChannelSessionMeta(sess.metadata_json) : null;
-      if (chMeta && (isNew || source === "channel")) {
-        $q.notify({
-          type: "info",
-          message: t("chat.channelInboundNotify", "飞书有新回复"),
-          caption: sess?.title ?? chMeta.channel_key,
-          timeout: 8000,
-          actions: [
-            {
-              label: t("chat.channelInboundOpen", "查看"),
-              color: "white",
-              handler: () => {
-                void store.loadSessions().then(() => {
-                  const hit = store.sessions.find((s) => s.id === sessionId);
-                  if (hit) {
-                    store.selectedSession = hit;
-                    void store.loadMessages({ replace: true });
-                    deps.ensureChatStream(sessionId);
-                  }
-                });
-              },
-            },
-          ],
-        });
-      }
-    }
   }
 
-  function scheduleHydrate(sessionId: string) {
+  function scheduleHydrate(sessionId: string, dropStaleInFlight = false) {
     if (deps.wsReplaying?.value) {
       return;
     }
@@ -149,26 +135,33 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
     if (hydrateTimer) clearTimeout(hydrateTimer);
     hydrateTimer = setTimeout(() => {
       hydrateTimer = null;
-      void hydrateCurrentSession(pendingHydrateSessionId);
+      void hydrateCurrentSession(pendingHydrateSessionId, dropStaleInFlight);
     }, HYDRATE_DEBOUNCE_MS);
   }
 
-  async function hydrateCurrentSession(sessionId: string) {
-    if (deps.selectedEntityKind.value === "team") {
+  async function hydrateCurrentSession(sessionId: string, dropStaleInFlight = false) {
+    if (deps.chatStore.entityKind === "team") {
       deps.ensureTeamStream(sessionId);
-      return;
+    } else {
+      deps.ensureChatStream(sessionId);
     }
-    deps.ensureChatStream(sessionId);
     inboundMessageWriter.flushSync();
-    const localRev = store.sessionRevisionBySession[sessionId] ?? 0;
+    if (dropStaleInFlight) {
+      const finalized = dropPendingUserPlaceholders(
+        finalizeOrphanToolMessages(deps.chatStore.getMessages(sessionId))
+      );
+      deps.chatStore.setMessages(sessionId, finalized);
+    }
+    const localRev = deps.chatStore.sessionRevisionBySession[sessionId] ?? 0;
     try {
       if (localRev > 0) {
-        await store.loadMessages({ afterRevision: localRev });
+        await deps.chatStore.loadMessages({ sessionId, afterRevision: localRev, dropStaleInFlight });
       } else {
-        await store.loadMessages();
+        await deps.chatStore.loadMessages({ sessionId, dropStaleInFlight });
       }
+      streamingSnapshots.clear(sessionId);
     } catch {
-      /* ignore */
+      /* ignore background hydrate */
     }
   }
 
@@ -177,26 +170,54 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
     if (!sessionId) return;
 
     const envRev = envelopeSessionRevision(env);
-    const localRev = store.sessionRevisionBySession[sessionId] ?? 0;
+    const localRev = deps.chatStore.sessionRevisionBySession[sessionId] ?? 0;
 
     const isCurrent = deps.selectedSessionId.value === sessionId;
     const entityMatch = matchesSelectedEntity(env);
+    const inboundSource = envelopeSource(env);
 
-    const inboundSource =
-      (env.source ?? "").trim() ||
-      (typeof (env.metadata as Record<string, unknown> | undefined)?.source === "string"
-        ? String((env.metadata as Record<string, unknown>).source).trim()
-        : "");
+    if (inboundSource === "channel") {
+      const agentId = agentIdFromEnvelope(env);
+      if (agentId) {
+        void refreshAgentSessionsForChannel(deps.chatStore, agentId, {
+          entityKind: deps.chatStore.entityKind,
+          activeAgentId: deps.selectedAgentId.value,
+        });
+      }
+    }
+
+    if (
+      entityMatch &&
+      inboundSource === "channel" &&
+      env.type === "run_status" &&
+      runStatusFromEnvelope(env)?.status === "running"
+    ) {
+      const agentId = agentIdFromEnvelope(env);
+      if (
+        agentId &&
+        (deps.isChatRoute?.() ?? false) &&
+        !isCurrent &&
+        deps.focusChannelSession &&
+        (deps.shouldAutoFocusChannel?.() ?? false)
+      ) {
+        await deps.focusChannelSession(sessionId, agentId);
+      }
+    }
 
     if (isCurrent && env.type === "run_status") {
       const rs = runStatusFromEnvelope(env);
       if (rs?.status === "running") {
-        if (deps.selectedEntityKind.value === "team") {
+        if (deps.chatStore.entityKind === "team") {
           deps.ensureTeamStream(sessionId);
         } else {
           deps.ensureChatStream(sessionId);
           if (inboundSource === "channel") {
-            void store.loadMessages();
+            const localRevNow = deps.chatStore.sessionRevisionBySession[sessionId] ?? 0;
+            if (localRevNow > 0) {
+              void deps.chatStore.loadMessages({ sessionId, afterRevision: localRevNow });
+            } else {
+              void deps.chatStore.loadMessages({ sessionId });
+            }
           }
         }
       }
@@ -204,13 +225,22 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
 
     if (!isCurrent && !entityMatch) return;
 
-    if (isCurrent && deps.selectedEntityKind.value === "agent") {
+    if (isCurrent && deps.chatStore.entityKind === "agent") {
       deps.ensureChatStream(sessionId);
       if (env.type === "text_delta" && (env.content?.text || env.content?.reasoning)) {
+        streamingSnapshots.put(sessionId, {
+          reasoning: env.content?.reasoning,
+          partialText: env.content?.text,
+        });
         deps.patchAgentMessages(sessionId, `ws-stream-${sessionId}`, env, false);
         return;
       }
       if (env.type === "text_done") {
+        streamingSnapshots.put(sessionId, {
+          reasoning: env.content?.reasoning,
+          partialText: env.content?.text,
+          replace: true,
+        });
         deps.patchAgentMessages(sessionId, `ws-stream-${sessionId}`, env, true);
         return;
       }
@@ -227,15 +257,18 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
     if (!isTurnCompleteEnvelope(env)) return;
 
     if (entityMatch || isCurrent) {
-      await refreshSessionsAndMaybeNotify(sessionId, inboundSource);
+      await refreshSessionsAfterTurn(sessionId);
     }
 
     if (isCurrent) {
-      // sessionRevisionBySession is the last hydrated cursor. Do not advance it
-      // from the envelope before loadMessages(afterRevision), or the fetch can
-      // skip the just-persisted Channel turn.
       if (envRev === 0 || envRev > localRev) {
-        scheduleHydrate(sessionId);
+        scheduleHydrate(sessionId, true);
+      } else {
+        const finalized = dropPendingUserPlaceholders(
+          finalizeOrphanToolMessages(deps.chatStore.getMessages(sessionId))
+        );
+        deps.chatStore.setMessages(sessionId, finalized);
+        streamingSnapshots.clear(sessionId);
       }
     }
     deps.onTurnComplete?.(sessionId);

@@ -19,7 +19,7 @@
 | ID | 状态 | 落点 |
 |----|------|------|
 | IM-P0-01 心跳阻塞 consume | ✅ | `Start` select 合并 heartbeat ticker |
-| IM-P1-E2E | ✅ | [channel-im-preview-e2e.md](../guides/channel-im-preview-e2e.md) LT-01–07 |
+| IM-P1-E2E | ✅ | [channel-im-preview-e2e.md](../需求/17-channel-development.md#12-im-preview--e2e-验收清单lt-0107) LT-01–07 |
 | IM-P2-HTTP-BLOCK | ✅ | Card `safego` + `cardSerial` + segment 快照 |
 | IM-P2-CRED-SILENT | ✅ | `buildTurnPreviewDelivery` FlowLog warn |
 | IM-P2-CARD-UPDATE | ✅ | `lark.UpsertToolCard` + `toolCardMessageIDs` |
@@ -36,4 +36,4 @@ go test ./internal/channel/preview/... ./internal/channel/lark/... -count=1
 go test ./internal/service/ -run "TurnPreview|Interactive" -count=1
 ```
 
-手工：见 [channel-im-preview-e2e.md](../guides/channel-im-preview-e2e.md)
+手工：见 [channel-im-preview-e2e.md](../需求/17-channel-development.md#12-im-preview--e2e-验收清单lt-0107)

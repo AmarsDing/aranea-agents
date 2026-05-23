@@ -3,7 +3,7 @@
 > 对应需求：[17 channel.md](./17%20channel.md)  
 > **跨模块集成**：[17-channel-agent-team-integration.md](./17-channel-agent-team-integration.md) · [integration.design.md](./17-channel-agent-team-integration.design.md)  
 > 遵循：[AI-DEVELOPMENT-SPECIFICATION.md](../guides/AI-DEVELOPMENT-SPECIFICATION.md)、[AGENT_RUNTIME_BOUNDARY.md](../guides/AGENT_RUNTIME_BOUNDARY.md)  
-> 平台连接参考：[MuseBot](https://github.com/yincongcyincong/MuseBot) `robot/` + `http/`（MIT）
+> 平台连接参考：[MuseBot](https://github.com/yincongcyincong/MuseBot) `robot/` + `http/`（MIT）；飞书 IM 行为对照 [Hermes Agent](https://github.com/NousResearch/hermes-agent) `gateway/platforms/feishu.py` — 见 **§十四**
 
 ---
 
@@ -623,8 +623,230 @@ FlowLog 步骤（注册表追加）：
 
 ---
 
+## 十四、Hermes Agent 对照：消息流转与飞书特殊处理
+
+> **外部参考**：[Hermes Agent v0.14](https://github.com/NousResearch/hermes-agent) — `gateway/run.py`、`gateway/platforms/feishu.py`、`gateway/session.py`  
+> **Aranea 锚点**：`internal/service/channel_ingress*.go`、`internal/channel/lark/`、`TurnPreviewCoordinator`  
+> **开发 backlog**：[17-channel-development.md §11 Phase F](./17-channel-development.md#11-phase-f--hermes-飞书借鉴p1p2)
+
+### 14.1 产品形态差异（为何对照 Hermes）
+
+| 维度 | Hermes | Aranea |
+|------|--------|--------|
+| 定位 | 单用户 Gateway + 多 Profile | 企业 Admin + DB 多 Channel 实例 |
+| Agent 调用 | `AIAgent.run_conversation()` 单体 | `ChatService.RunNativeTurnUnary` + Kratos 分层 |
+| 会话 | `SessionStore` + SQLite FTS5 | `channel_peer_session` + Session 实体 |
+| 出站 | Adapter 直发 + 可选 `GatewayStreamConsumer` | `channel_delivery` worker + `StreamSender` PATCH |
+| 配置 | 单文件 `config.yaml` + Env | `channel.config_json` + `channel_credential` |
+
+Hermes 飞书适配器是 **生产级个人 Gateway 实现**，在文本分批、线程回复、Reaction 代替 typing、WS 重连参数等方面有可借鉴细节；Aranea 在 **IM Preview、Turn Job、Tool Card、长任务 async** 上已超越 Hermes 企业场景需求。
+
+### 14.2 Hermes 端到端消息流转（Channel → Agent → 回复）
+
+```mermaid
+sequenceDiagram
+  participant FS as 飞书 IM
+  participant FA as FeishuAdapter
+  participant Base as BasePlatformAdapter
+  participant GW as GatewayRunner
+  participant SS as SessionStore
+  participant AG as AIAgent
+  participant SC as GatewayStreamConsumer
+
+  FS->>FA: im.message.receive_v1 (WS/Webhook)
+  FA->>FA: dedup · admit · extract · batch
+  FA->>Base: handle_message (per-chat Lock)
+  alt session active
+    Base->>GW: interrupt / queue pending
+  else new session
+    Base->>GW: _process_message_background
+  end
+  GW->>GW: auth · pairing · slash · clarify
+  GW->>SS: get_or_create_session
+  GW->>AG: _run_agent(transcript)
+  opt streaming
+    AG->>SC: on_delta
+    SC->>FA: edit_message (PATCH)
+  end
+  AG-->>GW: response text
+  GW->>FA: send / _send_with_retry
+  FA->>FS: im.v1.message.create / reply
+```
+
+**Hermes 关键阶段（文件锚点）**
+
+| 阶段 | 路径 | 要点 |
+|------|------|------|
+| 传输 | `gateway/platforms/feishu.py` | WS 默认（`lark-oapi`）；Webhook 可选 |
+| 入站解析 | 同上 `_process_inbound_message` | text/image/audio/post/card；媒体下载 |
+| 分批 | `_enqueue_text_batch` / `_flush_text_batch` | 0.6s debounce；≥4000 字等 2s 合并客户端拆条 |
+| 串行 | `_handle_message_with_guards` | **每 chat_id 一把 asyncio.Lock** |
+| 活跃会话 | `gateway/platforms/base.py` `handle_message` | interrupt / queue / bypass slash |
+| Gateway | `gateway/run.py` `_handle_message` → `_handle_message_with_agent` | pairing、slash ACL、approval |
+| 会话键 | `gateway/session.py` `build_session_key` | union_id 优先；thread 可选隔离 |
+| 流式 | `gateway/stream_consumer.py` + `FeishuAdapter.edit_message` | 首条 create → 后续 update |
+| 出站 | `FeishuAdapter.send` | 8000 字分片；markdown→post |
+
+### 14.3 Aranea 端到端消息流转（对照）
+
+```mermaid
+sequenceDiagram
+  participant FS as 飞书 IM
+  participant WS as lark.RunWebSocket
+  participant IG as ChannelIngress
+  participant Peer as channel_peer_session
+  participant CS as ChatService
+  participant TPC as TurnPreviewCoordinator
+  participant SS as StreamSender
+  participant DW as DeliveryWorker
+
+  FS->>WS: P2MessageReceiveV1
+  WS->>WS: AcceptFeishuInbound · safego
+  WS->>IG: ProcessInbound
+  IG->>IG: shouldProcessInbound · acceptInbound
+  IG->>Peer: ensureChannelSession
+  alt streaming_enabled
+    IG->>TPC: Start · EventBus subscribe
+    IG->>CS: RunNativeTurnUnary
+    CS->>TPC: text_delta / tool_*
+    TPC->>SS: Update PATCH (2s throttle)
+    TPC->>TPC: maybeHeartbeat (progress_quiet_sec)
+    TPC->>SS: Flush final
+  else unary
+    IG->>CS: RunNativeTurnUnary
+    CS-->>IG: reply
+    IG->>DW: enqueueOutboundReply
+    DW->>FS: SendTextMessage
+  end
+```
+
+**Aranea 关键阶段（文件锚点）**
+
+| 阶段 | 路径 | 要点 |
+|------|------|------|
+| WS 连接 | `internal/channel/lark/ws.go` `RunWebSocket` | `larkws.NewClient`；card action 同连接 |
+| 入站门控 | `lark/inbound_gate.go` `AcceptFeishuInbound` | **仅 text**；user；群 @ |
+| 幂等 | `biz/channel_inbound_receipt.go` | `feishu:{message_id}` DB receipt |
+| 受理 | `service/channel_ingress_accept.go` | ACK 策略；async/sync；长任务路由 |
+| 执行 | `service/channel_ingress_execute.go` | Turn Job；timeout ctx |
+| IM Preview | `service/channel_turn_preview.go` | Transcript + 心跳 + Tool Card |
+| 流式 | `lark/stream_outbound.go` `StreamSender` | POST 首条 → PATCH；tenant token 缓存 |
+| 重连 | `channel/runtime/supervisor.go` | 指数退避 1s→5m（**应用层**） |
+
+### 14.4 飞书特殊处理对照
+
+#### 14.4.1 连接层：WS 心跳 / 重连 / 单 App 锁
+
+| 机制 | Hermes | Aranea | 建议 |
+|------|--------|--------|------|
+| WS Ping/Pong | `lark-oapi` SDK 内建；可配 `ws_ping_interval` / `ws_ping_timeout` | 依赖 `larkws.Client.Start`；**未暴露 ping 参数** | **F-01**：`RunWebSocket` 增加可选 config：`ws_ping_interval_sec`、`ws_reconnect_interval_sec`（对齐 Hermes 默认 120s） |
+| 启动重连 | `_connect_with_retry` 3 次指数退避 | `runSupervised` 断线后无限重连 | Aranea 已覆盖；补充 **connected 时长** 指标 |
+| 同 App 双连 | `acquire_scoped_lock("feishu-app-id")` 防两 Gateway 抢 WS | fingerprint reconcile 防双实例；**无跨进程 app_id 锁** | **F-02**：文档强调「一 app_id 仅一 enabled channel」；可选启动时检测冲突 |
+| Webhook 限流 | 120 req/min/IP + 1MB body | 验签 + 200 快返；**无 IP 限流** | **F-03**：Kratos middleware 或 ingress 层 per-channel_key 限流 |
+| WS/Webhook 双收 | 模式互斥（config） | WS 模式忽略 webhook IM 事件 | 一致；UI 需明确互斥说明 ✅ |
+
+#### 14.4.2 入站：去重、分批、富媒体
+
+| 机制 | Hermes | Aranea | 建议 |
+|------|--------|--------|------|
+| message_id 去重 | 持久化 JSON LRU 24h + 内存 | DB `channel_inbound_receipt` | Aranea 更可靠 ✅ |
+| 客户端拆条合并 | 0.6s debounce；大段 +2s | **无** | **F-04**：`AcceptFeishuInbound` 后增加 per-peer 文本 debounce（500–800ms），合并连续 text 再 Turn |
+| 富媒体 | image/audio/post/merge-forward 下载+STT | **仅 text**，其余丢弃 | **F-05** P2：post 转 plain；image 走 multimodal（对齐 Chat 附件） |
+| 群 @ | adapter `_admit` + require_mention | `AcceptFeishuInbound` + `checkInboundAccess` | 双层合理 ✅ |
+| Card 入站 | 按钮 → synthetic `/card` COMMAND | `card.action.trigger` → background/cancel | Aranea 卡片动作更贴近 M55 ✅ |
+
+#### 14.4.3 会话隔离（Peer / Thread）
+
+| 场景 | Hermes `build_session_key` | Aranea `PeerKeyForSession` |
+|------|---------------------------|----------------------------|
+| DM | `feishu:dm:{chat_id}` | `peer_key` = open_id / user_id |
+| 群 per-user | `feishu:group:{chat_id}:{union_id}` | `dm_scope=per-channel-peer` |
+| 群共享 | `feishu:group:{chat_id}` | `dm_scope=main`（单 session） |
+| Topic 线程 | `{chat_id}:{thread_id}` 可选 | **未建模 thread_id** | **F-06**：`OutboundMeta.thread_id` + routing 配置 `thread_sessions_per_user` |
+
+Hermes 优先 **union_id** 作用户隔离；Aranea 当前 PeerID 顺序为 open_id → user_id → chat_id，群聊场景建议文档化 **union_id** 字段采集（若 SDK 事件含 union_id）。
+
+#### 14.4.4 出站：流式、分片、线程回复
+
+| 机制 | Hermes | Aranea | 建议 |
+|------|--------|--------|------|
+| 流式 | `edit_message` 逐 token | `StreamSender` PATCH + 2s 节流 | 相当；Aranea 有 Transcript ✅ |
+| 首条 ACK | 独立消息或 stream 首条 | Coordinator 首条 preview 含 ACK（`ChannelACKDeferredToPreview`） | Aranea 更优（单条演进）✅ |
+| 静默心跳 | **无** preview 级心跳 | `TurnPreviewCoordinator.maybeHeartbeat` | Aranea 更优 ✅ |
+| 长度分片 | 8000 字多段 **send** | `im_split_overflow` Turn 结束分页 enqueue | **F-07**：流式 PATCH 达 12000 rune 上限时 Hermes 式主动 split 新消息 |
+| 线程回复 | `reply_in_thread` + `thread_id` receive | `ResolveReceiveTarget` chat_id 为主 | **F-06** 同上 |
+| Markdown | post 类型；table→plain | `RenderPlainText` 纯文本 | **F-08** P2：Hermes 式 post 出站（保留粗体/链接） |
+
+#### 14.4.5 「Processing」反馈（typing / reaction）
+
+| 机制 | Hermes | Aranea |
+|------|--------|--------|
+| Typing API | **不支持**（no-op） | 无 |
+| 处理中反馈 | message **Reaction** `Typing`；失败 `CrossMark` | preview ACK + 心跳文案 + Tool Card 🔄 |
+| 配置 | `FEISHU_REACTIONS` env | 无 reaction |
+
+**建议 F-09（P2）**：长 Turn 首字节前（`first_byte_timeout_sec` 内无 delta）对入站 `message_id` 添加飞书 emoji reaction（如 THUMBSUP/Typing 等价物），Turn 结束移除 — 补充「用户尚未看到 preview 前」的即时反馈。需评估 API 权限与频率。
+
+#### 14.4.6 并发与中断
+
+| 机制 | Hermes | Aranea |
+|------|--------|--------|
+| 同 session 新消息 | **interrupt** 默认：cancel + pending queue | `RunNativeTurnUnary` → queued + `ack_on_queued` |
+| 模式 | interrupt / queue / steer 可配 | queued 为主；cancel via `/cancel` |
+| per-chat 锁 | asyncio.Lock | Session `HasActiveRun` |
+
+**建议 F-10（P2）**：Channel 配置 `busy_input_mode: queue | interrupt`（Hermes 对齐）；interrupt 时调用 `ChatService.StopGeneration` + 合并 pending 文本。
+
+#### 14.4.7 Token 与凭据
+
+| 机制 | Hermes | Aranea |
+|------|--------|--------|
+| tenant_access_token | `lark.Client` 内建刷新 | `StreamSender.tenantTokenLocked` 30s skew 缓存 |
+| Webhook 验签 | verification_token + encrypt_key HMAC | `VerifyHTTPRequest` encrypt_key |
+| 加密事件体 | Webhook 模式拒绝 encrypted payload | **未实现 AES 解密** |
+
+**建议 F-11（P1）**：飞书开放平台「加密配置」开启时，Webhook 路径增加 `decrypt_event`（与 MuseBot/Hermes 一致），避免生产只能关加密。
+
+### 14.5 能力矩阵：Hermes vs Aranea（飞书 Channel）
+
+| 能力 | Hermes | Aranea | 优势方 |
+|------|--------|--------|--------|
+| IM Preview 单条演进 | 流式 edit 无 transcript | Transcript + Tool Card + 心跳 | Aranea |
+| Turn Job 审计 | 无 | `channel_turn_job` + Admin API | Aranea |
+| 长任务 async Graph | 无 | `execution_mode=async` | Aranea |
+| 文本入站分批 | ✅ debounce | ❌ | Hermes |
+| Reaction 处理中 | ✅ | ❌ | Hermes |
+| 富媒体入站 | ✅ | ❌ text only | Hermes |
+| Thread/话题隔离 | ✅ | ❌ | Hermes |
+| 8000 字主动分片 | ✅ | 溢出配置可选 | Hermes |
+| DM pairing | ✅ 8 位码 | allowlist | 各适用场景 |
+| Exec approval 卡片 | ✅ 四键 | Tool confirm + escalate card | 各有侧重 |
+| Webhook IP 限流 | ✅ | ❌ | Hermes |
+| 同 app 跨进程锁 | ✅ | 部分 | Hermes |
+
+### 14.6 建议优先级（摘要）
+
+| ID | 优先级 | 建议 | 落点 |
+|----|--------|------|------|
+| F-01 | P1 | WS ping/reconnect 可配置 + 连接状态暴露 Admin | `lark/ws.go` · `ChannelsTable` chip |
+| F-03 | P1 | Webhook 入站 rate limit | `channel_ingress_http.go` |
+| F-04 | P1 | 飞书连续 text debounce 合并 | `lark/inbound_batch.go`（新） |
+| F-06 | P1 | thread_id 会话隔离 + 线程回复 | `inbound_build.go` · routing config |
+| F-07 | P1 | 流式 PATCH 达平台上限主动 split | `stream_outbound.go` · preview |
+| F-11 | P1 | Webhook 加密事件体解密 | `lark/webhook.go` |
+| F-02 | P2 | 同 app_id 多 channel 冲突检测 | `runtime/manager.go` |
+| F-05 | P2 | post/图片入站 | `parse_message.go` · Chat 附件 |
+| F-08 | P2 | post 类型出站 | `feishu_outbound.go` |
+| F-09 | P2 | Reaction 处理中反馈 | `lark/reaction.go`（新） |
+| F-10 | P2 | `busy_input_mode` interrupt | `channel_config_helpers.go` · ingress |
+
+详细任务板见 [17-channel-development.md §11](./17-channel-development.md#11-phase-f--hermes-飞书借鉴p1p2)。
+
+---
+
 ## 十三、文档修订记录
 
 | 版本 | 日期 | 说明 |
 |------|------|------|
 | 1.0 | 2026-05-22 | §十二 长任务异步执行：Accept/Execute 分离、Job 模型、ProgressProjector、影响域 |
+| 1.1 | 2026-05-24 | §十四 Hermes Agent 对照：消息流转、飞书 WS/心跳/分批/Reaction、借鉴项 F-01–F-11 |

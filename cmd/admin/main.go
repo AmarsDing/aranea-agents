@@ -52,12 +52,19 @@ func newApp(
 	consumer *biz.EventBusConsumer,
 	sideConsumers *biz.EventBusSideConsumers,
 	eventBus event.Bus,
+	sessionLogWriter biz.SessionLogWriter,
 ) *kratos.App {
 	// EP-OBS-03: WSServer implements transport.Server (Start/Stop); register it so
 	// kratos.App orchestrates its lifecycle and Stop triggers broadcastShutdown.
 	srv := []transport.Server{gs, hs}
 	if wsSrv != nil {
 		srv = append(srv, wsSrv)
+	}
+
+	// Phase 3: inject SessionLogWriter into event bus consumers
+	consumer.SetLogger(sessionLogWriter)
+	if sideConsumers != nil {
+		sideConsumers.SetLogger(sessionLogWriter)
 	}
 
 	consumerCtx, consumerCancel := context.WithCancel(context.Background())
@@ -200,6 +207,11 @@ func main() {
 	if out.ChannelDeliveryScanner != nil {
 		go out.ChannelDeliveryScanner.Start(cronCtx)
 		logger.Log(log.LevelInfo, "msg", "channel delivery worker started", "interval", "5s")
+	}
+
+	if out.SessionRunDurableWorker != nil {
+		out.SessionRunDurableWorker.Start(cronCtx)
+		logger.Log(log.LevelInfo, "msg", "session run durable worker started", "interval", "5s")
 	}
 
 	if out.ChannelRuntime != nil {

@@ -107,14 +107,19 @@
         />
       </details>
       <template v-else>
-        <details v-if="bundle.presentation.reasoning" class="chat-reasoning-details q-mb-sm">
-          <summary class="text-caption text-weight-medium">{{ row.t("chat.reasoningTitle", "思考过程") }}</summary>
-          <div
-            class="chat-message-content chat-message-prose chat-reasoning-details__body"
-            :class="{ 'chat-message-content--dark': isDark }"
-            v-html="renderMarkdown(bundle.presentation.reasoning)"
-          />
-        </details>
+        <div
+          v-if="showThinkingIndicator"
+          class="chat-thinking-line text-caption text-grey-7 q-mb-xs"
+        >
+          {{ row.t("chat.thinking", "正在思考…") }}
+        </div>
+        <ChatReasoningPeek
+          v-if="bundle.presentation.reasoning"
+          :message-id="message.id"
+          :reasoning="bundle.presentation.reasoning"
+          :is-dark="isDark"
+          :streaming="row.isStreaming(message)"
+        />
         <ChatReactSteps
           v-if="bundle.reactStepsWithTools.length"
           :steps="bundle.reactStepsWithTools"
@@ -127,23 +132,56 @@
         />
         <div
           v-if="bundle.presentation.bodyMarkdown"
-          class="chat-message-content chat-message-prose"
-          :class="{
-            'chat-message-content--sent': message.role === 'user',
-            'chat-message-content--dark': message.role !== 'user' && isDark,
-          }"
-          v-html="
-            row.isStreaming(message)
-              ? renderStreamingMarkdown(bundle.presentation.bodyMarkdown)
-              : renderMarkdown(bundle.presentation.bodyMarkdown)
-          "
-        />
+          class="chat-formal-body"
+        >
+          <div
+            v-if="bundle.presentation.reasoning?.trim()"
+            class="chat-formal-body__label text-caption text-weight-medium"
+          >
+            {{ row.t("chat.formalBodyTitle", "正文") }}
+          </div>
+          <div
+            class="chat-message-content chat-message-prose"
+            :class="{
+              'chat-message-content--sent': message.role === 'user',
+              'chat-message-content--dark': message.role !== 'user' && isDark,
+            }"
+            v-html="
+              row.isStreaming(message)
+                ? renderStreamingMarkdown(bundle.presentation.bodyMarkdown)
+                : renderMarkdown(bundle.presentation.bodyMarkdown)
+            "
+          />
+        </div>
       </template>
       <div
         v-if="message.role !== 'user' && message.status === 'error' && row.assistantErrorDetail(message)"
         class="text-caption text-negative q-mt-xs chat-assistant-error"
       >
         {{ row.assistantErrorDetail(message) }}
+      </div>
+      <div
+        v-if="message.role === 'assistant' && message.status === 'ok' && message.id"
+        class="row items-center q-gutter-xs q-mt-xs message-feedback"
+      >
+        <q-btn
+          flat
+          dense
+          round
+          size="sm"
+          icon="thumb_up_off_alt"
+          :aria-label="row.t('chat.feedbackPositive')"
+          @click="emit('feedback', { messageId: message.id, rating: 'positive' })"
+        />
+        <q-btn
+          flat
+          dense
+          round
+          size="sm"
+          icon="thumb_down_off_alt"
+          :aria-label="row.t('chat.feedbackNegative')"
+          @click="emit('feedback', { messageId: message.id, rating: 'negative' })"
+        />
       </div>
       <div v-if="message.role === 'user'" class="message-send-tags message-send-tags--sent text-caption">
         {{ row.userSendTagLine(message) }}
@@ -166,6 +204,7 @@ import {
   parseMessageSourceMeta,
 } from "../../features/chat/messageSourceMeta";
 import ChatExecutionCard from "./ChatExecutionCard.vue";
+import ChatReasoningPeek from "./ChatReasoningPeek.vue";
 import ChatReactSteps from "./ChatReactSteps.vue";
 import ChatA2UIPreview from "./ChatA2UIPreview.vue";
 import { buildMessagePresentation } from "../../features/chat/messagePlannerPresentation";
@@ -184,6 +223,7 @@ import type { A2UIUserActionPayload } from "../../features/chat/a2uiUserAction";
 
 const emit = defineEmits<{
   "a2ui-user-action": [payload: A2UIUserActionPayload];
+  feedback: [payload: { messageId: string; rating: "positive" | "negative" }];
 }>();
 
 const { t } = useI18n();
@@ -221,6 +261,16 @@ const userSourceLabel = computed(() => {
   if (!meta) return "";
   const key = messageSourceChipKey(meta);
   return key ? t(key, messageSourceChipFallback(meta)) : messageSourceChipFallback(meta);
+});
+
+const showThinkingIndicator = computed(() => {
+  if (props.message.role === "user") return false;
+  if (!row.isStreaming(props.message)) return false;
+  const body = (bundle.value.presentation.bodyMarkdown ?? "").trim();
+  if (body) return false;
+  if (bundle.value.reactStepsWithTools.length > 0) return false;
+  if ((bundle.value.presentation.reasoning ?? "").trim()) return false;
+  return true;
 });
 
 function formatStamp(iso: string) {

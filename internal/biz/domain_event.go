@@ -1,6 +1,9 @@
 package biz
 
-import "time"
+import (
+	"aranea-agents/internal/biz/session"
+	"time"
+)
 
 type DomainEventType string
 
@@ -25,16 +28,16 @@ type DomainEvent struct {
 	TeamID    string
 	Timestamp time.Time
 
-	RequestID          string
-	InvocationID       string
-	RunID              string
-	TraceID            string
-	AgentID            string
-	AgentDisplayName   string
-	RunKind            string
-	DurationMS         int64
-	UsageEventID       string
-	TurnStartedAt      time.Time
+	RequestID        string
+	InvocationID     string
+	RunID            string
+	TraceID          string
+	AgentID          string
+	AgentDisplayName string
+	RunKind          string
+	DurationMS       int64
+	UsageEventID     string
+	TurnStartedAt    time.Time
 
 	Content    *DomainContent    `json:",omitempty"`
 	StateDelta *DomainStateDelta `json:",omitempty"`
@@ -50,11 +53,7 @@ type DomainContent struct {
 	IsPartial bool
 }
 
-type DomainStateDelta struct {
-	Operation string
-	Path      string
-	ValueJSON string
-}
+type DomainStateDelta = session.StateDelta
 
 type DomainError struct {
 	Type    string

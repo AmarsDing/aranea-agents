@@ -30,6 +30,10 @@ type ChannelLongTaskConfig struct {
 	AsyncTeamID         string
 	AsyncCronTaskID     string
 	AsyncKeywords       []string
+	// RunPolicy (M55 §2.6 · CC-R-02)
+	AutoEscalateAfterSoftBudget bool
+	SoftEscalateConfirmSec      int
+	DurableDeadlineSec          int
 }
 
 // ParseChannelLongTaskConfig reads long-task settings from channel config_json.
@@ -55,6 +59,9 @@ func ParseChannelLongTaskConfig(configJSON string) ChannelLongTaskConfig {
 			AsyncTeamID         *string   `json:"async_team_id"`
 			AsyncCronTaskID     *string   `json:"async_cron_task_id"`
 			AsyncKeywords       *[]string `json:"async_keywords"`
+			AutoEscalateAfterSoftBudget *bool `json:"auto_escalate_after_soft_budget"`
+			SoftEscalateConfirmSec      *int  `json:"soft_escalate_confirm_sec"`
+			DurableDeadlineSec          *int  `json:"durable_deadline_sec"`
 		} `json:"config"`
 	}
 	if json.Unmarshal([]byte(defaultJSON(configJSON)), &env) != nil {
@@ -96,7 +103,37 @@ func ParseChannelLongTaskConfig(configJSON string) ChannelLongTaskConfig {
 	if env.Config.AsyncKeywords != nil {
 		cfg.AsyncKeywords = normalizeAsyncKeywords(*env.Config.AsyncKeywords)
 	}
+	if env.Config.AutoEscalateAfterSoftBudget != nil {
+		cfg.AutoEscalateAfterSoftBudget = *env.Config.AutoEscalateAfterSoftBudget
+	}
+	if env.Config.SoftEscalateConfirmSec != nil && *env.Config.SoftEscalateConfirmSec > 0 {
+		cfg.SoftEscalateConfirmSec = *env.Config.SoftEscalateConfirmSec
+	}
+	if env.Config.DurableDeadlineSec != nil && *env.Config.DurableDeadlineSec > 0 {
+		cfg.DurableDeadlineSec = *env.Config.DurableDeadlineSec
+	}
 	return cfg
+}
+
+// DefaultSoftEscalateConfirmSec is the wait before auto-escalating after soft budget IM notice.
+func DefaultSoftEscalateConfirmSec() int { return 60 }
+
+// DefaultDurableDeadlineSec matches blueprint run_policy durable_deadline_sec.
+func DefaultDurableDeadlineSec() int { return 86400 }
+
+func (c ChannelLongTaskConfig) RunPolicy() SessionRunBudget {
+	budget := DefaultSessionRunBudget()
+	if c.TurnTimeoutSec > 0 && c.TurnTimeoutSec > budget.SoftBudgetSec {
+		budget.HardBudgetSec = c.TurnTimeoutSec
+	}
+	return budget
+}
+
+func (c ChannelLongTaskConfig) SoftEscalateConfirmSecOrDefault() int {
+	if c.SoftEscalateConfirmSec > 0 {
+		return c.SoftEscalateConfirmSec
+	}
+	return DefaultSoftEscalateConfirmSec()
 }
 
 // ParseWeChatActiveMode reads config_json.config.active_mode for official account channels.
@@ -197,6 +234,7 @@ func matchesChannelAsyncKeyword(text string, keywords []string) bool {
 }
 
 // ShouldRunAsync decides if inbound should dispatch Graph/Cron instead of sync Turn.
+// CC-R-05: only explicit execution_mode=async (or /async prefix) routes; keywords no longer route in auto mode.
 func (c ChannelLongTaskConfig) ShouldRunAsync(text string) bool {
 	if !c.hasAsyncTarget() {
 		return false
@@ -206,8 +244,20 @@ func (c ChannelLongTaskConfig) ShouldRunAsync(text string) bool {
 	case "async":
 		return true
 	case "auto":
-		return matchesChannelAsyncKeyword(text, c.asyncKeywords())
+		return strings.HasPrefix(strings.ToLower(text), "/async")
 	default:
 		return false
 	}
+}
+
+// SuggestDurableRun reports whether inbound text looks like a long task (UX hint only, CC-R-05).
+func (c ChannelLongTaskConfig) SuggestDurableRun(text string) bool {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return false
+	}
+	if strings.HasPrefix(strings.ToLower(text), "/async") || strings.HasPrefix(strings.ToLower(text), "/background") {
+		return true
+	}
+	return matchesChannelAsyncKeyword(text, c.asyncKeywords())
 }

@@ -20,6 +20,7 @@ import (
 	localexec "aranea-agents/internal/agent/codeexecutor"
 	artifacttrpc "aranea-agents/internal/artifact/trpc"
 	"aranea-agents/internal/biz"
+	biztool "aranea-agents/internal/biz/tool"
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/cronrunner"
 	"aranea-agents/internal/cronrunner/jobs"
@@ -29,8 +30,11 @@ import (
 	graphadapter "aranea-agents/internal/graph/adapter"
 	graphtrpc "aranea-agents/internal/graph/trpc"
 	"aranea-agents/internal/knowledge"
+	"aranea-agents/internal/llminspect"
 	"aranea-agents/internal/mcp/alert"
 	"aranea-agents/internal/mcp/health"
+	mcpmetadata "aranea-agents/internal/mcp/metadata"
+	mcpprobe "aranea-agents/internal/mcp/probe"
 	memtrpc "aranea-agents/internal/memory/trpc"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	"aranea-agents/internal/provider"
@@ -39,6 +43,8 @@ import (
 	"aranea-agents/internal/service"
 	"aranea-agents/internal/skill/watch"
 	"aranea-agents/internal/team"
+	"aranea-agents/internal/tools/testexec"
+	webresearchpkg "aranea-agents/internal/tools/webresearch"
 
 	"github.com/go-kratos/kratos/v2"
 	"github.com/go-kratos/kratos/v2/log"
@@ -98,6 +104,223 @@ func provideSessionTitleGenerator(catalog *biz.LlmProviderModelUsecase, _ rt.Per
 	return service.NewLLMSessionTitleGenerator(catalog, &provider.RoundTrip{HTTP: httpClient})
 }
 
+func provideAutoMemoryEnqueuer() biz.AutoMemoryEnqueuer {
+	return biz.AutoMemoryEnqueuerFunc(memtrpc.EnqueueAutoMemoryAdapter)
+}
+
+func provideFeedbackMemoryEnqueuer() biz.FeedbackMemoryEnqueuer {
+	return biz.FeedbackMemoryEnqueuerFunc(memtrpc.EnqueueFeedbackMemoryAdapter)
+}
+
+// provideSessionLogWriter moved to service.ProvideSessionLogWriter (Phase 3 decoupling).
+
+func toEventPairs(pairs []biz.LogPair) []event.Pair {
+	ep := make([]event.Pair, len(pairs))
+	for i, p := range pairs {
+		ep[i] = event.P(p.Key, p.Value)
+	}
+	return ep
+}
+
+// mcpProberAdapter wraps internal/mcp/probe to implement biz.MCPProber.
+type mcpProberAdapter struct{}
+
+func (mcpProberAdapter) Evaluate(enabled bool, configJSON string) biz.MCPTestResult {
+	r := mcpprobe.Evaluate(enabled, configJSON)
+	return biz.MCPTestResult{OK: r.OK, Status: r.Status, Message: r.Message, Details: r.Details}
+}
+
+func provideMCPProber() biz.MCPProber { return mcpProberAdapter{} }
+
+// mcpMetadataAdapter wraps internal/mcp/metadata to implement biz.MCPMetadataEditor.
+type mcpMetadataAdapter struct{}
+
+func (mcpMetadataAdapter) Parse(raw string) map[string]any          { return mcpmetadata.Parse(raw) }
+func (mcpMetadataAdapter) Marshal(m map[string]any) (string, error) { return mcpmetadata.Marshal(m) }
+func (mcpMetadataAdapter) ApplyHealth(m map[string]any, healthStatus string, ok bool, errMsg string, at time.Time) string {
+	return mcpmetadata.ApplyHealth(m, healthStatus, ok, errMsg, at)
+}
+func (mcpMetadataAdapter) ApplyReconnect(m map[string]any, at time.Time) {
+	mcpmetadata.ApplyReconnect(m, at)
+}
+func (mcpMetadataAdapter) MarkHealthAlert(m map[string]any, at time.Time) {
+	mcpmetadata.MarkHealthAlert(m, at)
+}
+
+func provideMCPMetadataEditor() biz.MCPMetadataEditor { return mcpMetadataAdapter{} }
+
+// llmInspectorAdapter wraps internal/llminspect to implement biz.LLMInspector.
+type llmInspectorAdapter struct{}
+
+func (llmInspectorAdapter) Run(in biz.InspectMerge) (biz.LLMInspectResult, error) {
+	r, err := llminspect.Run(llminspect.Input{
+		ResourceID:   in.ResourceID,
+		ProviderCode: in.ProviderCode,
+		ProviderType: in.ProviderType,
+		ModelAPIID:   in.ModelAPIID,
+		APIBaseURL:   in.APIBaseURL,
+		APIKey:       in.APIKey,
+		Variant:      in.Variant,
+		SecretID:     in.SecretID,
+		SecretKey:    in.SecretKey,
+		AWSRegion:    in.AWSRegion,
+	})
+	if err != nil {
+		return biz.LLMInspectResult{}, err
+	}
+	return biz.LLMInspectResult{
+		OK:                            r.OK,
+		Message:                       r.Message,
+		ProviderCode:                  r.ProviderCode,
+		ProviderType:                  r.ProviderType,
+		ModelAPIID:                    r.ModelAPIID,
+		ModelDisplayName:              r.ModelDisplayName,
+		ModelSizeLabel:                r.ModelSizeLabel,
+		ContextWindowK:                r.ContextWindowK,
+		MaxOutputTokens:               r.MaxOutputTokens,
+		InputPriceMicroUSDPer1K:       r.InputPriceMicroUSDPer1K,
+		OutputPriceMicroUSDPer1K:      r.OutputPriceMicroUSDPer1K,
+		CachedInputPriceMicroUSDPer1K: r.CachedInputPriceMicroUSDPer1K,
+		ReasoningPriceMicroUSDPer1K:   r.ReasoningPriceMicroUSDPer1K,
+		EmbeddingPriceMicroUSDPer1K:   r.EmbeddingPriceMicroUSDPer1K,
+		Source:                        r.Source,
+		RawMetadataJSON:               r.RawMetadataJSON,
+		Variant:                       r.Variant,
+		EnableTokenTailoring:          r.EnableTokenTailoring,
+		SupportsCache:                 r.SupportsCache,
+		SupportsThinking:              r.SupportsThinking,
+	}, nil
+}
+
+func provideLLMInspector() biz.LLMInspector { return llmInspectorAdapter{} }
+
+func provideLlmProviderModelUsecaseWithDeps(repo biz.LlmProviderModelRepo, inspector biz.LLMInspector) *biz.LlmProviderModelUsecase {
+	uc := biz.NewLlmProviderModelUsecase(repo)
+	uc.SetInspector(inspector)
+	return uc
+}
+
+// webResearchReadinessAdapter wraps internal/tools/webresearch to implement biztool.WebResearchReadinessChecker.
+type webResearchReadinessAdapter struct{}
+
+func (webResearchReadinessAdapter) ResolveReady(agentMap map[string]any, platform *biztool.WebResearchPlatformFields) bool {
+	return webresearchpkg.ResolveReady(agentMap, bizToolToWebResearchPlatform(platform))
+}
+
+func (webResearchReadinessAdapter) CatalogReady(agentMap map[string]any, platform *biztool.WebResearchPlatformFields) bool {
+	return webresearchpkg.CatalogReady(agentMap, bizToolToWebResearchPlatform(platform))
+}
+
+func bizToolToWebResearchPlatform(p *biztool.WebResearchPlatformFields) *webresearchpkg.PlatformFields {
+	if p == nil {
+		return nil
+	}
+	return &webresearchpkg.PlatformFields{
+		HasAPIKey:   p.HasAPIKey,
+		APIKey:      p.APIKey,
+		Provider:    p.Provider,
+		MaxResults:  p.MaxResults,
+		FetchTop:    p.FetchTop,
+		SearchDepth: p.SearchDepth,
+		TimeoutSec:  p.TimeoutSec,
+		HTTPProxy:   p.HTTPProxy,
+	}
+}
+
+func provideWebResearchReadinessChecker() biztool.WebResearchReadinessChecker {
+	return webResearchReadinessAdapter{}
+}
+
+// bizWebResearchReadinessAdapter wraps internal/tools/webresearch to implement biz.WebResearchReadinessChecker.
+type bizWebResearchReadinessAdapter struct{}
+
+func (bizWebResearchReadinessAdapter) ResolveReady(agentMap map[string]any, platform *biz.WebResearchPlatformFields) bool {
+	return webresearchpkg.ResolveReady(agentMap, bizToWebResearchPlatform(platform))
+}
+
+func (bizWebResearchReadinessAdapter) CatalogReady(agentMap map[string]any, platform *biz.WebResearchPlatformFields) bool {
+	return webresearchpkg.CatalogReady(agentMap, bizToWebResearchPlatform(platform))
+}
+
+func bizToWebResearchPlatform(p *biz.WebResearchPlatformFields) *webresearchpkg.PlatformFields {
+	if p == nil {
+		return nil
+	}
+	return &webresearchpkg.PlatformFields{
+		HasAPIKey:   p.HasAPIKey,
+		APIKey:      p.APIKey,
+		Provider:    p.Provider,
+		MaxResults:  p.MaxResults,
+		FetchTop:    p.FetchTop,
+		SearchDepth: p.SearchDepth,
+		TimeoutSec:  p.TimeoutSec,
+		HTTPProxy:   p.HTTPProxy,
+	}
+}
+
+func provideBizWebResearchReadinessChecker() biz.WebResearchReadinessChecker {
+	return bizWebResearchReadinessAdapter{}
+}
+
+func provideAgentUsecaseWithDeps(repo biz.AgentRepository, tools biz.ToolRepo, sys biz.SystemSettingRepo, checker biz.WebResearchReadinessChecker) *biz.AgentUsecase {
+	uc := biz.NewAgentUsecase(repo, tools, sys)
+	uc.SetWebResearchChecker(checker)
+	return uc
+}
+
+// toolTesterAdapter wraps internal/tools/testexec to implement biztool.ToolTester.
+type toolTesterAdapter struct{}
+
+func (toolTesterAdapter) Execute(ctx context.Context, tool biztool.ToolTestInput, argumentsJSON string, timeoutSec int, platform *biztool.WebResearchPlatformFields) (biztool.ToolTestResult, error) {
+	var pf *webresearchpkg.PlatformFields
+	if platform != nil {
+		pf = &webresearchpkg.PlatformFields{
+			HasAPIKey:   platform.HasAPIKey,
+			APIKey:      platform.APIKey,
+			Provider:    platform.Provider,
+			MaxResults:  platform.MaxResults,
+			FetchTop:    platform.FetchTop,
+			SearchDepth: platform.SearchDepth,
+			TimeoutSec:  platform.TimeoutSec,
+			HTTPProxy:   platform.HTTPProxy,
+		}
+	}
+	res, err := testexec.Execute(ctx, testexec.CatalogTool{
+		Key:               tool.Key,
+		Source:            tool.Source,
+		ConfigJSON:        tool.ConfigJSON,
+		DefaultConfigJSON: tool.DefaultConfigJSON,
+		MetadataJSON:      tool.MetadataJSON,
+	}, argumentsJSON, timeoutSec, pf)
+	if err != nil {
+		return biztool.ToolTestResult{}, err
+	}
+	return biztool.ToolTestResult{
+		Status:        res.Status,
+		ResultPreview: res.ResultPreview,
+		ErrorMessage:  res.ErrorMessage,
+		DurationMS:    res.DurationMS,
+	}, nil
+}
+
+func provideToolTester() biztool.ToolTester { return toolTesterAdapter{} }
+
+func provideToolUsecaseWithDeps(repo biztool.ToolRepo, sys biztool.SettingRepo, tester biztool.ToolTester, checker biztool.WebResearchReadinessChecker) *biztool.ToolUsecase {
+	uc := biztool.NewToolUsecase(repo, sys)
+	uc.SetToolTester(tester)
+	uc.SetWebResearchChecker(checker)
+	biztool.SetGlobalWebResearchChecker(checker)
+	return uc
+}
+
+// provideMCPServerUsecaseWithDeps injects prober and metadata editor after Wire construction.
+func provideMCPServerUsecaseWithDeps(repo biz.MCPServerRepo, prober biz.MCPProber, metaEdit biz.MCPMetadataEditor) *biz.MCPServerUsecase {
+	uc := biz.NewMCPServerUsecase(repo)
+	uc.SetProber(prober)
+	uc.SetMetadataEditor(metaEdit)
+	return uc
+}
+
 func provideRunRegistry() *rt.RunRegistry {
 	return rt.NewRunRegistry()
 }
@@ -108,6 +331,14 @@ func providePendingMessageQueue() *rt.PendingMessageQueue {
 
 func provideCodeExecutorFactory() *localexec.Factory {
 	return localexec.NewFactory()
+}
+
+func provideChannelRunEscalationNotifier(channels *biz.ChannelUsecase, sessions *biz.SessionUsecase) service.SessionRunEscalationNotifier {
+	return service.NewChannelRunEscalationNotifier(channels, sessions)
+}
+
+func provideSessionRunDurableWorker(sessionRuns *biz.SessionRunUsecase, chat *service.ChatService) *service.SessionRunDurableWorker {
+	return service.NewSessionRunDurableWorker(sessionRuns, chat)
 }
 
 func provideMonitorAlertNotifier(channels *biz.ChannelUsecase, eventBus event.Bus) biz.AlertNotifier {
@@ -124,18 +355,67 @@ func provideUsageUsecase(repo biz.UsageRepo, mon *biz.MonitorUsecase) *biz.Usage
 	return uc
 }
 
-func provideSystemSettingUsecase(repo biz.SystemSettingRepo, quota biz.UsageQuotaRepo) *biz.SystemSettingUsecase {
-	return biz.NewSystemSettingUsecase(repo, quota)
+func provideSystemSettingUsecase(repo biz.SystemSettingRepo, quota biz.UsageQuotaRepo, tester biz.WebResearchTester) *biz.SystemSettingUsecase {
+	uc := biz.NewSystemSettingUsecase(repo, quota)
+	uc.SetWebResearchTester(tester)
+	return uc
 }
 
 func provideEventService(store *biz.EventStoreUsecase, sessions *biz.SessionUsecase) *service.EventService {
 	return service.NewEventService(store, sessions)
 }
 
-func provideChatServiceDeps(
-	runs *rt.RunRegistry,
+func provideRuntimeTooling(
+	pluginRT *plugintrpc.Runtime,
+	pluginMgr *plugintrpc.Manager,
+	skillDBRepo trpcskill.Repository,
+	knowledgeRetriever *knowledge.Retriever,
+	codeExecFactory *localexec.Factory,
+) service.RuntimeTooling {
+	return service.RuntimeTooling{
+		PluginRT:           pluginRT,
+		PluginManager:      pluginMgr,
+		SkillDBRepo:        skillDBRepo,
+		KnowledgeRetriever: knowledgeRetriever,
+		CodeExecFactory:    codeExecFactory,
+	}
+}
+
+func provideTeamOrchestrationDeps(
 	teams biz.TeamRepository,
 	teamsNative *team.Runner,
+	graphFactory biz.GraphBuilderFactory,
+	graphs *biz.GraphUsecase,
+	tasks *biz.TaskUsecase,
+	teamGraphCoord *team.TeamGraphRunCoordinator,
+) service.TeamOrchestrationDeps {
+	return service.TeamOrchestrationDeps{
+		Teams:          teams,
+		TeamsNative:    teamsNative,
+		GraphFactory:   graphFactory,
+		Graphs:         graphs,
+		Tasks:          tasks,
+		TeamGraphCoord: teamGraphCoord,
+	}
+}
+
+func provideChannelTurnDeps(
+	turnJobs *biz.ChannelTurnJobUsecase,
+	sessionRuns *biz.SessionRunUsecase,
+	channels *biz.ChannelUsecase,
+	runEscalation service.SessionRunEscalationNotifier,
+) service.ChannelTurnDeps {
+	return service.ChannelTurnDeps{
+		TurnJobs:      turnJobs,
+		SessionRuns:   sessionRuns,
+		Channels:      channels,
+		RunEscalation: runEscalation,
+	}
+}
+
+func provideChatServiceDeps(
+	runs *rt.RunRegistry,
+	pendingQueue *rt.PendingMessageQueue,
 	usage *biz.UsageUsecase,
 	sessions *biz.SessionUsecase,
 	agents biz.AgentRepository,
@@ -149,21 +429,13 @@ func provideChatServiceDeps(
 	compress biz.NativeTurnCompressor,
 	eventBus event.Bus,
 	eventBuffer *event.Buffer,
-	pluginRT *plugintrpc.Runtime,
-	pluginMgr *plugintrpc.Manager,
-	skillDBRepo trpcskill.Repository,
+	rtDeps service.RuntimeTooling,
+	teamDeps service.TeamOrchestrationDeps,
+	chTurn service.ChannelTurnDeps,
 	a2aUC *biz.A2AUsecase,
 	artifacts *biz.ArtifactUsecase,
 	mcpUC *biz.MCPServerUsecase,
-	knowledgeRetriever *knowledge.Retriever,
 	mon *biz.MonitorUsecase,
-	codeExecFactory *localexec.Factory,
-	pendingQueue *rt.PendingMessageQueue,
-	graphFactory biz.GraphBuilderFactory,
-	graphs *biz.GraphUsecase,
-	tasks *biz.TaskUsecase,
-	teamGraphCoord *team.TeamGraphRunCoordinator,
-	turnJobs *biz.ChannelTurnJobUsecase,
 ) service.ChatServiceDeps {
 	return service.ChatServiceDeps{
 		TurnDeps: rt.TurnDeps{
@@ -184,25 +456,16 @@ func provideChatServiceDeps(
 			AfterTurn: biz.NoopNativeTurnAfter{},
 			RunnerMgr: rt.NewRunnerManagerFromPersist(persist),
 		},
-		Runs:               runs,
-		Teams:              teams,
-		TeamsNative:        teamsNative,
-		Usage:              usage,
-		Monitor:            mon,
-		PluginRT:           pluginRT,
-		PluginManager:      pluginMgr,
-		SkillDBRepo:        skillDBRepo,
-		A2AUC:              a2aUC,
-		Artifacts:          artifacts,
-		KnowledgeRetriever: knowledgeRetriever,
-		CodeExecFactory:    codeExecFactory,
-		MCPServers:         mcpUC,
-		PendingQueue:       pendingQueue,
-		GraphFactory:       graphFactory,
-		Graphs:             graphs,
-		Tasks:              tasks,
-		TeamGraphCoord:     teamGraphCoord,
-		TurnJobs:           turnJobs,
+		Runs:         runs,
+		PendingQueue: pendingQueue,
+		RT:           rtDeps,
+		Team:         teamDeps,
+		ChTurn:       chTurn,
+		Usage:        usage,
+		Monitor:      mon,
+		Artifacts:    artifacts,
+		A2AUC:        a2aUC,
+		MCPServers:   mcpUC,
 	}
 }
 
@@ -267,12 +530,16 @@ func provideArtifactRuntimeService(uc *biz.ArtifactUsecase) trpcartifact.Service
 
 // provideAutoMemoryWorker wires the cron auto-memory extraction worker.
 // EP-RT-03: injects SessionUsecase + SQLite memory service so extraction writes to session_memory.
-func provideAutoMemoryWorker(sessions *biz.SessionUsecase, agents *biz.AgentUsecase, memStore *sessionmemory.Store) *jobs.AutoMemoryWorker {
+func provideAutoMemoryWorker(sessions *biz.SessionUsecase, agents *biz.AgentUsecase, memStore *sessionmemory.Store, l4 biz.L4GraphWriter) *jobs.AutoMemoryWorker {
 	var mem trpcmemory.Service
 	if memStore != nil {
 		mem = memtrpc.NewSQLiteMemoryService(memStore)
 	}
-	return jobs.NewAutoMemoryWorker(0, sessions, agents, mem, data.NewL4GraphWriterAdapter(data.NewL4GraphUsecaseFromStore(memStore)))
+	return jobs.NewAutoMemoryWorker(0, sessions, agents, mem, l4)
+}
+
+func provideL4GraphWriter(memStore *sessionmemory.Store) biz.L4GraphWriter {
+	return data.NewL4GraphWriterAdapter(data.NewL4GraphUsecaseFromStore(memStore))
 }
 
 func provideEvolutionScanner(evo *biz.EvolutionUsecase, logger log.Logger) *jobs.EvolutionScanner {
@@ -406,20 +673,21 @@ func agentKeyToID(agents biz.AgentRepository) plugintrpc.AgentKeyResolver {
 
 // wireOut is non-cleanup inject outputs (cleanup must be a top-level injector return for Wire).
 type wireOut struct {
-	App                    *kratos.App
-	CronRunner             *cronrunner.Runner
-	SkillWatch             *watch.Runner
-	AutoMemory             *jobs.AutoMemoryWorker
-	MCPHealthProbe         *health.Runner
-	A2AGatewayHealthProbe  *a2ahealth.Runner
-	EvolutionScanner       *jobs.EvolutionScanner
-	ProviderHealthScanner  *jobs.ProviderHealthScanner
-	ChannelHealthScanner   *jobs.ChannelHealthScanner
-	ChannelDeliveryScanner *jobs.ChannelDeliveryWorker
-	ChannelRuntime         *service.ChannelRuntime
-	EventStoreCleanup      *jobs.EventStoreCleanup
-	ToolAuditCleanup       *jobs.ToolAuditCleanup
-	FlowLogCleanup         *jobs.FlowLogCleanup
+	App                     *kratos.App
+	CronRunner              *cronrunner.Runner
+	SkillWatch              *watch.Runner
+	AutoMemory              *jobs.AutoMemoryWorker
+	MCPHealthProbe          *health.Runner
+	A2AGatewayHealthProbe   *a2ahealth.Runner
+	EvolutionScanner        *jobs.EvolutionScanner
+	ProviderHealthScanner   *jobs.ProviderHealthScanner
+	ChannelHealthScanner    *jobs.ChannelHealthScanner
+	ChannelDeliveryScanner  *jobs.ChannelDeliveryWorker
+	SessionRunDurableWorker *service.SessionRunDurableWorker
+	ChannelRuntime          *service.ChannelRuntime
+	EventStoreCleanup       *jobs.EventStoreCleanup
+	ToolAuditCleanup        *jobs.ToolAuditCleanup
+	FlowLogCleanup          *jobs.FlowLogCleanup
 }
 
 func provideWireOut(
@@ -433,6 +701,7 @@ func provideWireOut(
 	providerHealth *jobs.ProviderHealthScanner,
 	channelHealth *jobs.ChannelHealthScanner,
 	channelDelivery *jobs.ChannelDeliveryWorker,
+	sessionRunDurable *service.SessionRunDurableWorker,
 	channelRuntime *service.ChannelRuntime,
 	eventStoreCleanup *jobs.EventStoreCleanup,
 	toolAuditCleanup *jobs.ToolAuditCleanup,
@@ -442,8 +711,9 @@ func provideWireOut(
 		App: app, CronRunner: runner, SkillWatch: skillWatch, AutoMemory: autoMem,
 		MCPHealthProbe: mcpHealth, A2AGatewayHealthProbe: a2aHealth, EvolutionScanner: evoScan, ProviderHealthScanner: providerHealth,
 		ChannelHealthScanner: channelHealth, ChannelDeliveryScanner: channelDelivery,
-		ChannelRuntime: channelRuntime,
-		EventStoreCleanup: eventStoreCleanup, ToolAuditCleanup: toolAuditCleanup,
+		SessionRunDurableWorker: sessionRunDurable,
+		ChannelRuntime:          channelRuntime,
+		EventStoreCleanup:       eventStoreCleanup, ToolAuditCleanup: toolAuditCleanup,
 		FlowLogCleanup: flowLogCleanup,
 	}
 }
@@ -519,7 +789,22 @@ func wireApp(*conf.Server, *conf.Data, log.Logger) (wireOut, func(), error) {
 		provideRunRegistry,
 		providePendingMessageQueue,
 		provideCodeExecutorFactory,
+		provideAutoMemoryEnqueuer,
+		provideFeedbackMemoryEnqueuer,
+		provideMCPProber,
+		provideMCPMetadataEditor,
+		provideMCPServerUsecaseWithDeps,
+		provideLLMInspector,
+		provideLlmProviderModelUsecaseWithDeps,
+		provideWebResearchReadinessChecker,
+		provideBizWebResearchReadinessChecker,
+		provideAgentUsecaseWithDeps,
+		provideToolTester,
+		provideToolUsecaseWithDeps,
 		provideChatServiceDeps,
+		provideRuntimeTooling,
+		provideTeamOrchestrationDeps,
+		provideChannelTurnDeps,
 		provideRunCanceller,
 		provideChatSender,
 		provideArtifactRuntimeService,
@@ -535,6 +820,7 @@ func wireApp(*conf.Server, *conf.Data, log.Logger) (wireOut, func(), error) {
 		provideGraphBuildDeps,
 		graphadapter.NewGraphBuilderFactory,
 		provideAutoMemoryWorker,
+		provideL4GraphWriter,
 		provideEvolutionScanner,
 		provideProviderHealthScanner,
 		provideChannelHealthScanner,
@@ -549,6 +835,8 @@ func wireApp(*conf.Server, *conf.Data, log.Logger) (wireOut, func(), error) {
 		provideA2AGatewayHealthRunnerDeps,
 		provideA2AGatewayHealthRunner,
 		provideMonitorAlertNotifier,
+		provideChannelRunEscalationNotifier,
+		provideSessionRunDurableWorker,
 		provideMonitorUsecase,
 		provideUsageUsecase,
 		provideSystemSettingUsecase,

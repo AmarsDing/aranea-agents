@@ -1,33 +1,12 @@
 import { defineStore } from "pinia";
-import {
-  clearAgentSessions,
-  createSession,
-  deleteSession,
-  listSessionChatMessages as listMessages,
-  listSessions,
-  updateSessionTitle,
-  type Session
-} from "../features/session/api";
-import {
-  sendMessage,
-  type Message,
-  type SendMessageOptions,
-  type IntentPassResult
-} from "../features/chat/api";
-import { mergeSessionMessages } from "../features/chat/mergeSessionMessages";
 import { createAgent, deleteAgent, listAgents, updateAgent, type Agent } from "../features/agents/api";
+import { useChatStore } from "./chat";
 
 export const useAppStore = defineStore("app", {
   state: () => ({
     loading: false,
     agents: [] as Agent[],
-    sessions: [] as Session[],
-    messages: [] as Message[],
     selectedAgent: null as Agent | null,
-    selectedSession: null as Session | null,
-    lastIntentPass: null as IntentPassResult | null,
-    /** Per-session revision cursor for M55 incremental sync */
-    sessionRevisionBySession: {} as Record<string, number>,
   }),
   actions: {
     async removeAgentFromList(id: string) {
@@ -35,9 +14,10 @@ export const useAppStore = defineStore("app", {
       this.agents = this.agents.filter((a) => a.id !== id);
       if (this.selectedAgent?.id === id) {
         this.selectedAgent = this.agents[0] ?? null;
-        this.sessions = [];
-        this.selectedSession = null;
-        this.messages = [];
+        const chat = useChatStore();
+        chat.sessions = [];
+        chat.selectedSession = null;
+        chat.clearTeamMessageCache();
       }
     },
     async updateSelectedAgent(payload: Partial<Agent>) {
@@ -55,33 +35,12 @@ export const useAppStore = defineStore("app", {
     },
     upsertAgent(agent: Agent) {
       const exists = this.agents.some((item) => item.id === agent.id);
-      this.agents = exists ? this.agents.map((item) => (item.id === agent.id ? { ...item, ...agent } : item)) : [agent, ...this.agents];
+      this.agents = exists
+        ? this.agents.map((item) => (item.id === agent.id ? { ...item, ...agent } : item))
+        : [agent, ...this.agents];
       if (this.selectedAgent?.id === agent.id) {
         this.selectedAgent = { ...this.selectedAgent, ...agent };
       }
-    },
-    async clearAllSessions() {
-      if (!this.selectedAgent) return;
-      await clearAgentSessions(this.selectedAgent.id);
-      this.sessions = [];
-      this.selectedSession = null;
-      this.messages = [];
-    },
-    async removeSessionLocal(id: string) {
-      await deleteSession(id);
-      this.sessions = this.sessions.filter((s) => s.id !== id);
-      if (this.selectedSession?.id === id) {
-        this.selectedSession = this.sessions[0] ?? null;
-      }
-      this.messages = [];
-    },
-    async renameSessionLocal(id: string, title: string) {
-      const updated = await updateSessionTitle(id, title);
-      this.sessions = this.sessions.map((session) => (session.id === id ? updated : session));
-      if (this.selectedSession?.id === id) {
-        this.selectedSession = updated;
-      }
-      return updated;
     },
     async loadAgents() {
       this.agents = await listAgents();
@@ -95,57 +54,5 @@ export const useAppStore = defineStore("app", {
       this.selectedAgent = created;
       return created;
     },
-    async loadSessions() {
-      if (!this.selectedAgent) return;
-      const selectedID = this.selectedSession?.id;
-      this.sessions = await listSessions(this.selectedAgent.id);
-      if (selectedID) {
-        this.selectedSession = this.sessions.find((session) => session.id === selectedID) ?? this.sessions[0] ?? null;
-      } else if (!this.selectedSession && this.sessions.length > 0) {
-        this.selectedSession = this.sessions[0];
-      }
-    },
-    async addSession(title: string, options?: { dialog_mode?: string; default_provider?: string; default_model?: string }) {
-      if (!this.selectedAgent) return null;
-      const created = await createSession({ agent_id: this.selectedAgent.id, title, ...options });
-      this.sessions.unshift(created);
-      this.selectedSession = created;
-      return created;
-    },
-    async loadMessages(opts?: { replace?: boolean; afterRevision?: number }) {
-      if (!this.selectedSession) return;
-      const sid = this.selectedSession.id;
-      if (opts?.afterRevision != null && opts.afterRevision > 0) {
-        const { listSessionChatMessagesAfterRevision } = await import("../features/session/api");
-        const { items, currentRevision } = await listSessionChatMessagesAfterRevision(sid, opts.afterRevision);
-        this.sessionRevisionBySession[sid] = currentRevision;
-        if (items.length > 0) {
-          this.messages = mergeSessionMessages(items, this.messages);
-        }
-        return;
-      }
-      const { items: server, currentRevision } = await listMessages(sid);
-      this.sessionRevisionBySession[sid] = currentRevision;
-      if (opts?.replace || this.messages.length === 0) {
-        this.messages = mergeSessionMessages(server, []);
-        return;
-      }
-      this.messages = mergeSessionMessages(server, this.messages);
-    },
-    async send(content: string, options?: SendMessageOptions) {
-      if (!this.selectedSession || !this.selectedAgent) return;
-      const result = await sendMessage({
-        session_id: this.selectedSession.id,
-        agent_key: this.selectedAgent.agent_key,
-        content,
-        options
-      });
-      const returnedMessages = [result.user_message, result.agent_message].filter(Boolean);
-      const existing = new Set(this.messages.map((message) => message.id));
-      this.messages = [...this.messages, ...returnedMessages.filter((message) => !existing.has(message.id))];
-      await this.loadMessages();
-      await this.loadSessions();
-      return result;
-    }
   }
 });

@@ -45,7 +45,9 @@ func (s *chatJobsRepoStub) ListFiltered(_ context.Context, q biz.ChannelTurnJobL
 
 func TestChatService_ListChatBackgroundJobs_validation(t *testing.T) {
 	svc := service.NewChatService(service.ChatServiceDeps{
-		TurnJobs: biz.NewChannelTurnJobUsecase(nil, &chatJobsRepoStub{}),
+		ChTurn: service.ChannelTurnDeps{
+			TurnJobs: biz.NewChannelTurnJobUsecase(nil, &chatJobsRepoStub{}),
+		},
 	})
 	_, err := svc.ListChatBackgroundJobs(context.Background(), &chatv1.ListChatBackgroundJobsRequest{})
 	if err == nil || !kerrors.IsBadRequest(err) {
@@ -67,7 +69,9 @@ func TestChatService_ListChatBackgroundJobs_bySession(t *testing.T) {
 		},
 	}}
 	svc := service.NewChatService(service.ChatServiceDeps{
-		TurnJobs: biz.NewChannelTurnJobUsecase(nil, repo),
+		ChTurn: service.ChannelTurnDeps{
+			TurnJobs: biz.NewChannelTurnJobUsecase(nil, repo),
+		},
 	})
 	sessionID := "sess-1"
 	resp, err := svc.ListChatBackgroundJobs(context.Background(), &chatv1.ListChatBackgroundJobsRequest{
@@ -101,7 +105,9 @@ func TestChatService_ListChatBackgroundJobs_sanitizesInvalidUTF8Summary(t *testi
 		},
 	}}
 	svc := service.NewChatService(service.ChatServiceDeps{
-		TurnJobs: biz.NewChannelTurnJobUsecase(nil, repo),
+		ChTurn: service.ChannelTurnDeps{
+			TurnJobs: biz.NewChannelTurnJobUsecase(nil, repo),
+		},
 	})
 	sessionID := "sess-1"
 	resp, err := svc.ListChatBackgroundJobs(context.Background(), &chatv1.ListChatBackgroundJobsRequest{

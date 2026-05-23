@@ -1,19 +1,19 @@
 package biz
 
 import (
-	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 )
 
 // eventBufferHandler appends envelopes to the in-process replay buffer.
 type eventBufferHandler struct {
-	buffer *event.Buffer
+	buffer EnvelopeBuffer
 }
 
-func newEventBufferHandler(buffer *event.Buffer) *eventBufferHandler {
+func newEventBufferHandler(buffer EnvelopeBuffer) *eventBufferHandler {
 	return &eventBufferHandler{buffer: buffer}
 }
 
-func (h *eventBufferHandler) Handle(env event.Envelope) {
+func (h *eventBufferHandler) Handle(env contract.Envelope) {
 	if h == nil || h.buffer == nil {
 		return
 	}
