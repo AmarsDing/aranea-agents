@@ -84,6 +84,7 @@ internal/data           ← Repo 实现（Ent ORM + SQLite，单 sql.Open）
 | **任何前端编码** | [guides/frontend-guide.md](./guides/frontend-guide.md) | ★ **唯一前端编码行为准则**：数据流、分层、红线、UX 主题、迁移剧本 |
 | **当前迭代进度与任务** | [guides/execution-plan.md](./guides/execution-plan.md) | 模块接入度、Top-20、里程碑、扩展红线 |
 | **Chat × Channel 企业级蓝图** | [guides/m55-chat-channel-enterprise-blueprint.md](./guides/m55-chat-channel-enterprise-blueprint.md) | ★ Chat / Channel 主链路推到产品级的架构 / 业务 / UX 蓝图 + AI 落地任务卡 |
+| **Graph × Team × Multi-Agent 企业级蓝图** | [guides/m53-graph-team-multiagent-enterprise-blueprint.md](./guides/m53-graph-team-multiagent-enterprise-blueprint.md) | ★ M53 编排融合下一阶段（执行单链 / OrchestrationSpec v2 / Activity 时间线 / FailurePolicy 完整化）AI 落地任务卡 |
 | **系统开发计划总览** | [需求/0-system-development.md](./需求/0-system-development.md) | 架构健康度、OpenClaw 对照、路线图、代码质量评价；AI 开发前必读 |
 | **模块开发计划索引** | [需求/README-development.md](./需求/README-development.md) | 全部模块接入度、近期完成、建议下一步 |
 
@@ -104,7 +105,7 @@ internal/data           ← Repo 实现（Ent ORM + SQLite，单 sql.Open）
 | **流程日志 / 链路排障** | [需求](./需求/52-flow-logger.md) · [设计](./需求/52-flow-logger.design.md)（含 §5.1 步骤注册表）· [开发计划](./需求/52-flow-logger-development.md) · [Phase 2 changelog](./changelog/2026-05-21-Message-FlowLogger-Phase2-P3.md) · [Slog 移除](./changelog/2026-05-20-FlowLog-V2-SlogRemoval.md) | TraceEmitter、trace_id、severity；**禁止 slog / SlogBridge**；`ListFlowLogs` + 落库 ✅ |
 | **Memory L0–L4** | [知识体系](./需求/38%20memory.md) · [L0](./需求/12%20memory-L0-sensory.md)–[L4](./需求/16%20memory-L4-persistent.md) · [设计](./需求/12-16%20memory.design.md) · [开发计划](./需求/12-16%20memory-development.md) · [UX](./需求/12-16%20memory.md) · [DocSync](./changelog/2026-05-21-Memory-DocSync-Trpc.md) | 五层模型 + `RuntimeSet`（trpc `memory.Service` + Admin Store）；L4/Worker MVP；pgvector 与 SQLite 双轨 |
 | **Tools 片段编辑** | [需求](./需求/23%20tools-fragment-edit.md) · [设计](./需求/23%20tools-fragment-edit.design.md) · [开发计划 Phase 4](./需求/23-tools-development.md#phase-4片段级文件编辑p1) · [Tools 总览](./需求/23%20tools.md) · [Review Phase 4](./review/2026-05-22-Tools-Phase4-Fragment-Edit-Review.md) · [Review Phase 5](./review/2026-05-22-Tools-Phase5-Workspace-Unification-Review.md) · [23-tools-review](./review/23-tools-review.md) | Phase 4+5 ✅ |
-| **Team × Graph 编排融合** | [需求](./需求/53%20team-graph-orchestration.md) · [设计](./需求/53%20team-graph-orchestration.design.md) · [开发计划 §8 终态](./需求/53-team-graph-orchestration-development.md#8-终态路线图team-规格--graph-执行单链) · [Phase 4 changelog](./changelog/2026-05-23-Team-Graph-M53-Phase4.md) · [Phase 4 优化](./changelog/2026-05-23-Team-Graph-M53-Phase4-Optimization.md) | OrchestrationSpec · 编译/观测单链 · 执行收敛 Phase 5–7 |
+| **Team × Graph 编排融合** | [需求](./需求/53%20team-graph-orchestration.md) · [设计](./需求/53%20team-graph-orchestration.design.md) · [开发计划 §8 终态](./需求/53-team-graph-orchestration-development.md#8-终态路线图team-规格--graph-执行单链) · [**企业级蓝图与 AI 落地指南**](./guides/m53-graph-team-multiagent-enterprise-blueprint.md) · [Phase 4 changelog](./changelog/2026-05-23-Team-Graph-M53-Phase4.md) · [Phase 4 优化](./changelog/2026-05-23-Team-Graph-M53-Phase4-Optimization.md) | OrchestrationSpec · 编译/观测单链 · 执行收敛 Phase 5–7 |
 | **Hermes Kanban 适配（M54）** | [需求](./需求/54-hermes-kanban.md) · [设计](./需求/54-hermes-kanban.design.md) · [开发计划](./需求/54-hermes-kanban-development.md) | Graph Task 运行时闭环 · kanban_* tools · TaskDispatcher · 双 Kanban 观测 |
 
 ### 5.3 前端参考
