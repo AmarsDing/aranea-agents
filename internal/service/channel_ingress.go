@@ -6,11 +6,11 @@ import (
 	"net/http"
 	"strings"
 
+	chatv1 "aranea-agents/api/kratos/chat/v1"
+	graphv1 "aranea-agents/api/kratos/graph/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/lark"
 	"aranea-agents/internal/event"
-
-	graphv1 "aranea-agents/api/kratos/graph/v1"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	khttp "github.com/go-kratos/kratos/v2/transport/http"
@@ -23,7 +23,18 @@ type channelAsyncGraphExecutor interface {
 	ExecuteGraphBuildConfig(ctx context.Context, graphID, sessionID string, cfg biz.GraphBuildConfig, initialState map[string]any) (*graphv1.ExecuteGraphResponse, error)
 }
 
-// ChannelIngress bridges external channel webhooks to in-process chat (native runner via ChatService).
+// channelChatTurnGateway is the narrow Chat surface Channel ingress needs.
+// Keep ChannelIngress from depending on the full ChatService implementation.
+type channelChatTurnGateway interface {
+	RunNativeTurnUnary(context.Context, *chatv1.SendChatMessageRequest) (biz.ChatMessage, biz.ChatMessage, error)
+	HasActiveRun(sessionID string) bool
+	LastPendingMessageID(sessionID string) string
+	CancelRun(ctx context.Context, sessionID string) bool
+	setRunStatus(sessionID, runID, status, errMsg string)
+	ChannelFlowBuffer() *event.Buffer
+}
+
+// ChannelIngress bridges external channel webhooks to in-process chat turns.
 type ChannelIngress struct {
 	channels        *biz.ChannelUsecase
 	peers           biz.ChannelPeerSessionRepo
@@ -32,7 +43,7 @@ type ChannelIngress struct {
 	sessions        *biz.SessionUsecase
 	agents          biz.AgentRepository
 	teams           biz.TeamRepository
-	chat            *ChatService
+	chat            channelChatTurnGateway
 	graphs          channelAsyncGraphExecutor
 	cron            *CronService
 	eventBus        event.Bus

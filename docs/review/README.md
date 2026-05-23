@@ -3,6 +3,8 @@
 > **产出时间**：2026-05-21  
 > **方法**：按 `docs/需求/README-development.md` 模块索引，结合需求/设计/开发计划文档链与前后端代码实际落点，对每个模块进行六维评分与风险标注。  
 > **真相源优先级**：`0 系统框图.md` + `0-system-development.md` + `execution-plan.md` > `*-development.md` > `*.design.md` > 需求正文
+>
+> **跨模块解耦治理**：涉及 Chat / Channel / Agent / Team / Graph 边界调整、端口化、前端 Store / Composable 拆分时，先读 [`../guides/module-decoupling-architecture-guide.md`](../guides/module-decoupling-architecture-guide.md)，再回到对应模块 review。
 
 ---
 

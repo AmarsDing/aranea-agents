@@ -177,12 +177,7 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
     if (!sessionId) return;
 
     const envRev = envelopeSessionRevision(env);
-    if (envRev > 0) {
-      const prev = store.sessionRevisionBySession[sessionId] ?? 0;
-      if (envRev > prev) {
-        store.sessionRevisionBySession[sessionId] = envRev;
-      }
-    }
+    const localRev = store.sessionRevisionBySession[sessionId] ?? 0;
 
     const isCurrent = deps.selectedSessionId.value === sessionId;
     const entityMatch = matchesSelectedEntity(env);
@@ -236,7 +231,12 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
     }
 
     if (isCurrent) {
-      scheduleHydrate(sessionId);
+      // sessionRevisionBySession is the last hydrated cursor. Do not advance it
+      // from the envelope before loadMessages(afterRevision), or the fetch can
+      // skip the just-persisted Channel turn.
+      if (envRev === 0 || envRev > localRev) {
+        scheduleHydrate(sessionId);
+      }
     }
     deps.onTurnComplete?.(sessionId);
   }
