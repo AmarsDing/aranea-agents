@@ -2,20 +2,20 @@ package team
 
 import (
 	"context"
+	"strings"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
 )
 
 // observerSetup configures and starts all runtime observers for a team turn:
 // orchestration status projector, graph task bridge, execution tracker,
 // and graph step watcher. Returns stop functions for each observer.
 type observerSetup struct {
-	stopObsProjector  context.CancelFunc
-	stopTaskBridge    context.CancelFunc
-	stopExecTracker   context.CancelFunc
+	stopObsProjector   context.CancelFunc
+	stopTaskBridge     context.CancelFunc
+	stopExecTracker    context.CancelFunc
 	stopGraphStepWatch context.CancelFunc
-	activityFlusher   *ActivityStepFlusher
+	activityFlusher    *ActivityStepFlusher
 }
 
 // startObservers initializes all team run observers and returns a setup
