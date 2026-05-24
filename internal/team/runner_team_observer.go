@@ -40,6 +40,13 @@ func (r *Runner) startObservers(
 			if cerr != nil {
 				return ""
 			}
+			return strings.TrimSpace(ag.AgentKey)
+		},
+		func(agentID string) string {
+			ag, cerr := r.catalogAgent(ctx, agentID)
+			if cerr != nil {
+				return ""
+			}
 			return strings.TrimSpace(ag.DisplayName)
 		},
 	)
