@@ -139,3 +139,17 @@ func NewStreamConsumeOptions(tools *biz.ToolUsecase, agents biz.AgentRepository,
 		ActivityPersister: persister,
 	}
 }
+
+// StreamOptsFactoryAdapter implements team.StreamOptsFactory by closing over
+// the catalog dependencies needed to construct StreamConsumeOptions.
+// Inject this into the team Runner via SetStreamOptsFactory to eliminate
+// the team→chatactivity direct import.
+type StreamOptsFactoryAdapter struct {
+	Tools    *biz.ToolUsecase
+	Agents   biz.AgentRepository
+	Sessions *biz.SessionUsecase
+}
+
+func (a *StreamOptsFactoryAdapter) NewStreamConsumeOptions() *chatagent.StreamConsumeOptions {
+	return NewStreamConsumeOptions(a.Tools, a.Agents, a.Sessions)
+}

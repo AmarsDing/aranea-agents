@@ -123,6 +123,12 @@ func (r *Runner) SetKnowledgeRetriever(ret *knowledge.Retriever) {
 	r.knowledgeRetriever = ret
 }
 
+// SetStreamOptsFactory wires the StreamConsumeOptions factory, eliminating
+// direct chatactivity import from the team package.
+func (r *Runner) SetStreamOptsFactory(f StreamOptsFactory) {
+	r.streamOptsFactory = f
+}
+
 // SetRunRegistry shares the chat gateway run registry for cancel/status/enqueue.
 func (r *Runner) SetRunRegistry(reg *rt.RunRegistry) {
 	r.runs = reg

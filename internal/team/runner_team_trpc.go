@@ -13,7 +13,6 @@ import (
 	"aranea-agents/internal/agent"
 	"aranea-agents/internal/agent/intent"
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/chatactivity"
 	"aranea-agents/internal/metrics"
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/internal/telemetry/turntrace"
@@ -467,7 +466,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		MemberAgentKeys:  memberKeySet,
 		Source:           event.EnvelopeSourceFromContext(ctx),
 	}
-	streamOpts := chatactivity.NewStreamConsumeOptions(r.td.Catalog.ToolUC, r.td.Catalog.Agents, r.td.Sessions)
+	streamOpts := r.newStreamConsumeOptions()
 	result, streamErr := agent.ConsumeWithFirstByteGuard(runCtx, agent.DefaultFirstByteTimeout, events, r.td.Pipeline.Bus, projectMeta, streamOpts)
 	if streamErr != nil {
 		turnStatus = "error"
