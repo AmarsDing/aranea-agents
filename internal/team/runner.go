@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"aranea-agents/internal/agent"
 	localexec "aranea-agents/internal/agent/codeexecutor"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
@@ -20,6 +21,12 @@ import (
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
+// StreamOptsFactory creates StreamConsumeOptions for a team turn.
+// Implemented by internal/chatactivity; injected via SetStreamOptsFactory.
+type StreamOptsFactory interface {
+	NewStreamConsumeOptions() *agent.StreamConsumeOptions
+}
+
 type Runner struct {
 	teams              biz.TeamRepository
 	usage              *biz.UsageUsecase
@@ -30,6 +37,7 @@ type Runner struct {
 	runs               *rt.RunRegistry
 	awaitHookProvider  func(runCtx context.Context, sessionID, runID string) tooltrpc.ReplyFunc
 	knowledgeRetriever *knowledge.Retriever
+	streamOptsFactory  StreamOptsFactory
 	codeExecFactory    *localexec.Factory
 	graphRoot          graphadapter.TeamGraphRootBuilder
 	graphLoader        GraphBuildConfigLoader
