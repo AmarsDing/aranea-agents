@@ -131,6 +131,12 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 			return o.makeAwaitReplyFunc(runCtx, sessionID, runID)
 		})
 		deps.Team.TeamsNative.SetRunRegistry(o.runs)
+		deps.Team.TeamsNative.SetStreamOptsFactory(&chatactivity.StreamOptsFactoryAdapter{
+			Tools:    deps.Catalog.ToolUC,
+			Agents:   deps.Catalog.Agents,
+			Sessions: deps.Sessions,
+		})
+		deps.Team.TeamsNative.SetAgentHelper(&chatagent.TeamAgentHelperAdapter{})
 		if deps.Team.Graphs != nil {
 			deps.Team.TeamsNative.SetGraphBuildConfigLoader(graphadapter.NewLinkedGraphBuildConfigLoader(deps.Team.Graphs))
 		}

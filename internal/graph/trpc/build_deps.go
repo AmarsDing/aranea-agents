@@ -63,3 +63,9 @@ func (s GraphNodeResolverSet) ToBuildDeps() BuildDeps {
 		Agents: s.Agents,
 	}
 }
+
+// ToBuildDepsPtr returns a pointer to the legacy BuildDeps format.
+func (s GraphNodeResolverSet) ToBuildDepsPtr() *BuildDeps {
+	d := s.ToBuildDeps()
+	return &d
+}

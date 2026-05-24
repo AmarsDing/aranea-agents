@@ -521,9 +521,9 @@ func provideGraphBuildDeps(
 	agentUC *biz.AgentUsecase,
 	agents biz.AgentRepository,
 	sys biz.SystemSettingRepo,
-) *graphtrpc.BuildDeps {
+) graphtrpc.GraphNodeResolverSet {
 	if catalog == nil || toolUC == nil {
-		return nil
+		return graphtrpc.GraphNodeResolverSet{}
 	}
 	rtTrip := &provider.RoundTrip{HTTP: &http.Client{Timeout: 120 * time.Second}}
 	builderDeps := chatagent.TRPCBuilderDeps{
@@ -534,10 +534,11 @@ func provideGraphBuildDeps(
 		ToolUC:  toolUC,
 		Sys:     sys,
 	}
-	return &graphtrpc.BuildDeps{
-		Models: graphadapter.NewCatalogModelResolver(catalog, rtTrip),
-		Tools:  graphadapter.NewCatalogToolResolver(toolUC),
-		Agents: graphadapter.NewCatalogAgentResolver(builderDeps),
+	return graphtrpc.GraphNodeResolverSet{
+		Models:    graphadapter.NewCatalogModelResolver(catalog, rtTrip),
+		Tools:     graphadapter.NewCatalogToolResolver(toolUC),
+		Agents:    graphadapter.NewCatalogAgentResolver(builderDeps),
+		Functions: graphadapter.NewCatalogFunctionResolver(toolUC),
 	}
 }
 

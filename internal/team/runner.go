@@ -38,6 +38,7 @@ type Runner struct {
 	awaitHookProvider  func(runCtx context.Context, sessionID, runID string) tooltrpc.ReplyFunc
 	knowledgeRetriever *knowledge.Retriever
 	streamOptsFactory  StreamOptsFactory
+	agentHelper        biz.TeamAgentHelper
 	codeExecFactory    *localexec.Factory
 	graphRoot          graphadapter.TeamGraphRootBuilder
 	graphLoader        GraphBuildConfigLoader
@@ -127,6 +128,12 @@ func (r *Runner) SetKnowledgeRetriever(ret *knowledge.Retriever) {
 // direct chatactivity import from the team package.
 func (r *Runner) SetStreamOptsFactory(f StreamOptsFactory) {
 	r.streamOptsFactory = f
+}
+
+// SetAgentHelper wires the agent helper, eliminating direct agent import
+// for utility functions from the team package.
+func (r *Runner) SetAgentHelper(h biz.TeamAgentHelper) {
+	r.agentHelper = h
 }
 
 // SetRunRegistry shares the chat gateway run registry for cancel/status/enqueue.

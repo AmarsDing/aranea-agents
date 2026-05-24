@@ -237,7 +237,7 @@ type trpcGraphBuilderFactory struct {
 	saver        trpcgraph.CheckpointSaver
 	eventBus     event.Bus
 	agentChecker biz.AgentExistenceCheckerFunc
-	buildDeps    *graphtrpc.BuildDeps
+	resolvers    graphtrpc.GraphNodeResolverSet
 }
 
 var _ biz.GraphBuilderFactory = (*trpcGraphBuilderFactory)(nil)
@@ -247,14 +247,14 @@ func NewGraphBuilderFactory(
 	saver trpcgraph.CheckpointSaver,
 	eventBus event.Bus,
 	agentChecker biz.AgentExistenceCheckerFunc,
-	buildDeps *graphtrpc.BuildDeps,
+	resolvers graphtrpc.GraphNodeResolverSet,
 ) biz.GraphBuilderFactory {
 	return &trpcGraphBuilderFactory{
 		registry:     registry,
 		saver:        saver,
 		eventBus:     eventBus,
 		agentChecker: agentChecker,
-		buildDeps:    buildDeps,
+		resolvers:    resolvers,
 	}
 }
 
@@ -269,7 +269,7 @@ func bizCfgToTrpc(cfg biz.GraphBuildConfig) graphtrpc.GraphBuildConfig {
 			AssignmentStrategy: n.AssignmentStrategy, ReviewerAgent: n.ReviewerAgent, ReviewRules: n.ReviewRules,
 			TimeoutSeconds: n.TimeoutSeconds, HeartbeatIntervalSeconds: n.HeartbeatIntervalSeconds,
 			EnableLeaseExtension: n.EnableLeaseExtension,
-			RetryMaxAttempts: n.RetryMaxAttempts, FailureAction: n.FailureAction, FallbackAgent: n.FallbackAgent,
+			RetryMaxAttempts:     n.RetryMaxAttempts, FailureAction: n.FailureAction, FallbackAgent: n.FallbackAgent,
 			InputMapperJSON: n.InputMapperJSON, OutputMapperJSON: n.OutputMapperJSON,
 			IsolatedMessages: n.IsolatedMessages, InputFromLastResponse: n.InputFromLastResponse,
 			CacheEnabled: n.CacheEnabled, CacheTTLSeconds: n.CacheTTLSeconds,
@@ -317,7 +317,7 @@ func trpcCfgToBiz(cfg graphtrpc.GraphBuildConfig) biz.GraphBuildConfig {
 			AssignmentStrategy: n.AssignmentStrategy, ReviewerAgent: n.ReviewerAgent, ReviewRules: n.ReviewRules,
 			TimeoutSeconds: n.TimeoutSeconds, HeartbeatIntervalSeconds: n.HeartbeatIntervalSeconds,
 			EnableLeaseExtension: n.EnableLeaseExtension,
-			RetryMaxAttempts: n.RetryMaxAttempts, FailureAction: n.FailureAction, FallbackAgent: n.FallbackAgent,
+			RetryMaxAttempts:     n.RetryMaxAttempts, FailureAction: n.FailureAction, FallbackAgent: n.FallbackAgent,
 			InputMapperJSON: n.InputMapperJSON, OutputMapperJSON: n.OutputMapperJSON,
 			IsolatedMessages: n.IsolatedMessages, InputFromLastResponse: n.InputFromLastResponse,
 			CacheEnabled: n.CacheEnabled, CacheTTLSeconds: n.CacheTTLSeconds,
@@ -355,7 +355,7 @@ func trpcCfgToBiz(cfg graphtrpc.GraphBuildConfig) biz.GraphBuildConfig {
 
 func (f *trpcGraphBuilderFactory) buildRuntime(ctx context.Context, cfg biz.GraphBuildConfig, sessionID, graphID, execID, lineageID string) (*trpcGraphRuntime, error) {
 	trpcCfg := bizCfgToTrpc(cfg)
-	g, subAgents, err := graphtrpc.BuildStateGraphWithRegistry(ctx, trpcCfg, f.registry, f.buildDeps)
+	g, subAgents, err := graphtrpc.BuildStateGraphWithRegistry(ctx, trpcCfg, f.registry, f.resolvers.ToBuildDepsPtr())
 	if err != nil {
 		return nil, err
 	}
@@ -400,7 +400,7 @@ func (f *trpcGraphBuilderFactory) BuildAndResume(ctx context.Context, cfg biz.Gr
 
 func (f *trpcGraphBuilderFactory) Visualize(ctx context.Context, cfg biz.GraphBuildConfig) (any, error) {
 	trpcCfg := bizCfgToTrpc(cfg)
-	g, _, err := graphtrpc.BuildStateGraphWithRegistry(ctx, trpcCfg, f.registry, f.buildDeps)
+	g, _, err := graphtrpc.BuildStateGraphWithRegistry(ctx, trpcCfg, f.registry, f.resolvers.ToBuildDepsPtr())
 	if err != nil {
 		return nil, fmt.Errorf("build state graph for visualization: %w", err)
 	}
