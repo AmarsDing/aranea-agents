@@ -2,19 +2,42 @@
 
 > 企业级 AI Agent 编排平台 — 基于 Kratos v2 + trpc-agent-go
 
-## 项目定位
+**Aranea-Agents** 是基于 [trpc-agent-go](./pkg/trpc-agent-go) 的多智能体编排平台。以 Kratos v2 为传输壳层、trpc-agent-go 为运行时内核，提供 Agent / Team / Graph 可视化编排、会话管理、五层记忆、Channel 接入（飞书 / 钉钉等）、Skill / Plugin 治理与多模型接入能力。
 
-**Aranea-Agents** 是基于 trpc-agent-go 的多智能体编排平台。以 Kratos v2 为传输壳层、trpc-agent-go 为运行时内核，提供 Agent/Team/Graph 三级编排、五层记忆系统、RAG 知识库、可视化评估平台和多模型接入能力。
+- **AI / 贡献者入口**：[AGENTS.md](./AGENTS.md) → [docs/README.md](./docs/README.md)
+- **进度与任务板**：[docs/guides/execution-plan.md](./docs/guides/execution-plan.md)
+- **模块开发索引**：[docs/需求/README-development.md](./docs/需求/README-development.md)
+
+---
 
 ## 技术栈
 
 | 层级 | 选型 |
 |------|------|
-| 后端 | Go + **Kratos v2**（HTTP/gRPC/SSE 传输、Wire DI） |
-| Agent 运行时 | **trpc-agent-go**（Runner/Agent/Session/Memory/Tool/Event/Skill/Graph/Team/Planner/Knowledge/CodeExecutor/Evaluation/A2A/Artifact/Callback） |
+| 后端 | Go + **Kratos v2**（HTTP / gRPC / WebSocket 传输、Wire DI） |
+| Agent 运行时 | **trpc-agent-go**（Runner / Agent / Session / Memory / Tool / Event / Skill / Graph / Team / Planner / Plugin / Artifact / CodeExecutor / Knowledge / Evaluation） |
 | 前端 | Vue 3 + Quasar + Pinia + TypeScript |
-| 数据库 | SQLite（Ent ORM）+ PostgreSQL（pgvector 向量存储） |
-| 依赖注入 | Wire（编译期）；proto 代码生成 `make api` |
+| 数据库 | SQLite（Ent ORM，单连接池）；向量 / 图可外挂 pgvector |
+| 依赖注入 | Wire（编译期），`make wire` 生成；Proto 生成 `make api` |
+| 观测 | Prometheus（`/metrics`）+ OTLP Trace/Metrics + FlowLog / Runs 投影 |
+
+---
+
+## 双框架分工
+
+Kratos v2 负责传输层，trpc-agent-go 负责 Agent 编排，二者互不越界。
+
+```
+api/**/*.proto          ← 唯一对外契约
+        ↓
+internal/service        ← 传输桥点：proto ↔ biz 映射 + 框架 Runner 装配
+        ↓
+internal/biz            ← 领域模型 + Usecase + Repo 接口（禁止 import trpc-agent-go）
+        ↓
+internal/data           ← Repo 实现（Ent ORM + SQLite）
+```
+
+---
 
 ## 核心架构
 
@@ -22,13 +45,13 @@
 ┌──────────────────────────────────────────────────────────────┐
 │  用户接入层: Web UI / CLI / Channel(飞书等) / A2A / Cron     │
 ├──────────────────────────────────────────────────────────────┤
-│  传输层 (Kratos v2): HTTP :8000 / gRPC :9000 / SSE :8001    │
+│  传输层 (Kratos v2): HTTP :8000 / gRPC :9000 / WS /v1/ws    │
 ├──────────────────────────────────────────────────────────────┤
 │  Service 层: Chat / Agent / Team / Session / Memory / Tool   │
 ├──────────────────────────────────────────────────────────────┤
 │  Biz 层: AgentUsecase / TeamUsecase / MemoryUsecase / ...    │
 ├──────────────────────────────────────────────────────────────┤
-│  Data 层: SQLite (Ent ORM) + PostgreSQL (pgvector)           │
+│  Data 层: SQLite (Ent ORM) + PostgreSQL (pgvector，可选)    │
 ├──────────────────────────────────────────────────────────────┤
 │  Agent 运行时 (trpc-agent-go):                                │
 │  Runner → Agent/Team/Graph → Memory/Tool/Event/Planner       │
@@ -39,40 +62,30 @@
 └──────────────────────────────────────────────────────────────┘
 ```
 
-## 核心模块
+---
 
-| 模块 | 功能 | 状态 |
+## 模块概览
+
+> 详细接入度与任务板见 [execution-plan.md](./docs/guides/execution-plan.md)。
+
+| 等级 | 模块 | 说明 |
 |------|------|------|
-| **Agent** | 单 Agent 构建、运行时设置、提示词管理 | ✅ 已实现 |
-| **Team** | 5种编排模式（Coordinator/Swarm/Sequential/Parallel/CriticLoop） | ✅ 已实现 |
-| **Graph** | 图工作流引擎、条件路由、HITL、检查点、时间旅行 | ⚠️ 部分实现 |
-| **Memory** | L0-L4 五层记忆、自动提取、检索增强 | ⚠️ 部分实现 |
-| **Session** | 会话管理、时间轴、摘要压缩 | ⚠️ 部分实现 |
-| **Runner** | ManagedRunner/SteerableRunner、AgentFactory | ⚠️ 部分实现 |
-| **Tool** | FunctionTool/StreamableTool/MCP/Skill 统一挂载 | ⚠️ 部分实现 |
-| **Provider** | 多厂商模型接入、Failover/Hedge、TokenTailor | ✅ 已实现 |
-| **Planner** | Builtin/ReAct/A2UI 三种规划模式 | ⚠️ 部分实现 |
-| **Knowledge** | RAG 知识库、文档处理、向量化检索 | ❌ 未实现 |
-| **CodeExecutor** | Local/E2B/Jupyter/Container 代码执行 | ⚠️ 部分实现 |
-| **Evaluation** | LLM-as-Judge、用户模拟、pass@k 指标 | ❌ 未实现 |
-| **A2A** | Agent-to-Agent 通信协议 | ❌ 未实现 |
-| **Artifact** | 制品存储与版本管理 | ❌ 未实现 |
-| **Callback** | 全链路回调钩子 | ❌ 未实现 |
-| **Gateway** | 并发控制、运行状态、AwaitUserReply | ⚠️ 部分实现 |
-| **Event** | StateDelta/Extensions/FilterKey/Branch/Actions | ⚠️ 部分实现 |
-| **Plugin** | 运行时回调扩展机制 | ⚠️ 部分实现 |
-| **Skill** | 技能注册、Agent 绑定、运行时挂载 | ✅ 已实现 |
-| **MCP** | MCP 服务器管理、工具发现 | ⚠️ 部分实现 |
+| **核心可用** | Chat、Agent 全家桶、Provider、Session、Skill、Tools、Cron、Message/WS、Plugin/Callback、Gateway/Runner | 可创建、运行、配置、观测 |
+| **可用需闭环** | Team、Graph、MCP、Memory、Channel、Monitor/Token | 主路径可用，生产级治理持续补齐 |
+| **有页、Runtime 已通主项** | Knowledge、Artifact、Evaluation、A2A | 管理页与运行时主项已落地 |
+| **早期 / 占位** | CLI、TTS、Ecosystem（部分） | 非核心 SLA |
 
-## 五层记忆系统
+### 五层记忆（L0–L4）
 
 | 层级 | 名称 | 存储 | 功能 |
 |------|------|------|------|
 | L0 | 感官记忆 | SQLite | 最近对话窗口、上下文压缩快照 |
-| L1 | 工作记忆 | SQLite | 当前任务/目标追踪 |
+| L1 | 工作记忆 | SQLite | 当前任务 / 目标追踪 |
 | L2 | 情景记忆 | SQLite | 事件片段、重要性评分 |
 | L3 | 语义记忆 | pgvector | 向量化知识检索 |
 | L4 | 持久记忆 | SQLite | 知识图谱、身份信息 |
+
+---
 
 ## 快速开始
 
@@ -82,34 +95,49 @@
 - Node.js 20+
 - SQLite 3+
 - PostgreSQL 14+（可选，用于向量存储）
+- [protoc](https://grpc.io/docs/protoc-installation/)（生成 API 代码时）
+
+### 初始化与构建
+
+```bash
+make init      # 安装 protoc 插件、wire、kratos 等工具
+make api       # 生成 Proto / OpenAPI / 前端 TS 类型
+make wire      # 生成 Wire 依赖注入
+make build     # 构建后端
+```
 
 ### 后端
 
 ```bash
-make init      # 初始化工具
-make api       # 生成 Proto 代码
-make build     # 构建后端
-
 # 开发模式 A：免登录（最快）
+# Windows PowerShell:
 $env:DEPLOY_ENV="dev"
 $env:KRATOS_HTTP_AUTH_DISABLED="1"
 go run ./cmd/admin -conf ./configs/config.yaml
 
+# Linux / macOS:
+# DEPLOY_ENV=dev KRATOS_HTTP_AUTH_DISABLED=1 go run ./cmd/admin -conf ./configs/config.yaml
+```
+
+```bash
 # 开发模式 B：真实 Cookie 登录（与生产一致）
 # $env:DEPLOY_ENV="dev"
 # $env:KRATOS_AUTH_SECRET="local-dev-only-change-me-32chars-minimum"
 # go run ./cmd/admin -conf ./configs
-
-# 自检：curl http://localhost:8000/healthz  → auth_mode: bypass | jwt
 ```
 
 本地账号（模式 A 或 B）：**`dev` / `dev`**（bypass 时自动种子）。
 
-**Ctrl+C 无法退出**（多见于 Windows + Cursor 终端）：再按一次 Ctrl+C 强制退出；或 `netstat -ano | findstr :8000` 查 PID 后 `taskkill /PID <pid> /F`。
+健康检查：
 
-**WebSocket**（聊天流式、监控）：走 **HTTP 同端口** `ws://<host>:8000/v1/ws`（开发时经 Quasar 代理为 `ws://localhost:9001/v1/ws`）。`config.yaml` 里的 `server.ws.addr:8002` 为历史字段，当前实现挂在 Kratos HTTP 上，**不要**单独连 8002。
+```bash
+curl http://localhost:8000/healthz
+# 期望 auth_mode: bypass | jwt
+```
 
-认证设计详见 [docs/需求/admin-auth.design.md](docs/需求/admin-auth.design.md)。
+**WebSocket**（聊天流式、监控）：走 **HTTP 同端口** `ws://<host>:8000/v1/ws`。开发时经 Quasar 代理为 `ws://localhost:9001/v1/ws`。`config.yaml` 中的 `server.ws.addr:8002` 为历史字段，当前实现挂在 Kratos HTTP 上，**不要**单独连 8002。
+
+认证设计详见 [docs/需求/admin-auth.design.md](./docs/需求/admin-auth.design.md)。
 
 ### 前端
 
@@ -118,24 +146,63 @@ cd web
 npm install
 npm run dev    # http://localhost:9001（勿用 :9000，该端口为 gRPC）
 ```
-channel 图标获取
+
+页面须使用 **http://localhost:9001**，API / WS 经 Vite 代理到 `:8000`，会话 **HttpOnly Cookie** 才会自动携带。
+
+### Channel 图标（可选）
+
+```bash
 go run ./cmd/fetch-channel-icons
+```
 
-页面须使用 **http://localhost:9001**，API/WS 经 Vite 代理到 `:8000`，会话 **HttpOnly Cookie** 才会自动携带。
+### Windows 提示
 
-照文档 @docs/README.md  ， 进行review,评级，注重代码质量，架构质量，业务逻辑，单一职责原则，影响域等。
+**Ctrl+C 无法退出**（多见于 Windows + Cursor 终端）：再按一次 Ctrl+C 强制退出；或 `netstat -ano | findstr :8000` 查 PID 后 `taskkill /PID <pid> /F`。
 
+---
+
+## 开发与验证
+
+| 命令 | 说明 |
+|------|------|
+| `make help` | 查看全部 Make 目标 |
+| `make test` | 运行 Go 测试 |
+| `make lint` | 跨平台 lint + go vet + gofmt |
+| `make runtime-boundary` | 检查 Agent 运行时 import 边界 |
+| `make ci` | 完整 CI：lint + test + smoke |
+
+**提交 / PR 前**建议全量验证：
+
+```bash
+make api && make wire && make build && make test && make lint && make runtime-boundary
+cd web && npm run lint && npm test && npm run build
+```
+
+编码规范：
+
+| 场景 | 文档 |
+|------|------|
+| 后端 Go | [docs/guides/AI-DEVELOPMENT-SPECIFICATION.md](./docs/guides/AI-DEVELOPMENT-SPECIFICATION.md) |
+| 前端 | [docs/guides/frontend-guide.md](./docs/guides/frontend-guide.md) |
+| Kratos 分层 | [docs/guides/kratos-framework-guide.md](./docs/guides/kratos-framework-guide.md) |
+| trpc-agent-go | [docs/guides/trpc-agent-go-framework.md](./docs/guides/trpc-agent-go-framework.md) |
+
+---
 
 ## 文档导航
 
 | 文档 | 路径 | 说明 |
 |------|------|------|
-| **AI 编码规范** | [docs/guides/AI-DEVELOPMENT-SPECIFICATION.md](docs/guides/AI-DEVELOPMENT-SPECIFICATION.md) | AI 编码唯一行为准则（十章整合版） |
-| **框架工程化解读** | [docs/guides/trpc-agent-go-framework.md](docs/guides/trpc-agent-go-framework.md) | trpc-agent-go 核心接口与项目映射 |
-| **功能对齐计划** | [docs/guides/plan.md](docs/guides/plan.md) | 18 模块对齐清单与实施阶段 |
-| **系统架构总览** | [docs/需求/0 系统框图.md](docs/需求/0%20系统框图.md) | 系统框图、数据流图、模块依赖矩阵 |
-| **需求与设计文档** | [docs/需求/](docs/需求/) | 40+ 模块需求规格与实现设计 |
-| **文档入口** | [docs/README.md](docs/README.md) | AI 编码工作流与完整文档索引 |
+| **文档总入口** | [docs/README.md](./docs/README.md) | AI 工作流、文档索引、分级验证 |
+| **系统架构总览** | [docs/需求/0 系统框图.md](./docs/需求/0%20系统框图.md) | 分层架构、数据流、模块依赖 |
+| **架构健康度 / 路线图** | [docs/需求/0-system-development.md](./docs/需求/0-system-development.md) | 模块诊断、OpenClaw 对照、开发顺序 |
+| **模块解耦架构** | [docs/需求/0-module-decoupling-architecture.md](./docs/需求/0-module-decoupling-architecture.md) | Chat / Channel / Agent 边界 |
+| **执行计划** | [docs/guides/execution-plan.md](./docs/guides/execution-plan.md) | 当前迭代、Top 任务、里程碑 |
+| **需求与设计** | [docs/需求/](./docs/需求/) | 40+ 模块需求规格与 `*.design.md` |
+| **前端 UX** | [docs/frontend/UX.md](./docs/frontend/UX.md) | 日夜双模、玻璃材质、组件规范 |
+| **变更记录** | [docs/changelog/](./docs/changelog/) | 按日期归档的实现摘要 |
+
+---
 
 ## 目录结构
 
@@ -148,7 +215,7 @@ aranea-agents/
 │   ├── agent/            # Agent 运行时构建
 │   ├── biz/              # 领域模型 + Usecase
 │   ├── data/             # 数据访问 (Ent ORM)
-│   ├── server/           # 传输层 (HTTP/gRPC/SSE)
+│   ├── server/           # 传输层 (HTTP/gRPC/WS)
 │   ├── service/          # Service 实现
 │   ├── team/             # Team 编排运行器
 │   ├── tools/            # 工具装配 (TurnMount)
@@ -163,30 +230,25 @@ aranea-agents/
 ├── pkg/trpc-agent-go/    # trpc-agent-go 框架 (本地 replace)
 ├── web/                  # Vue 3 + Quasar 前端
 └── docs/                 # 项目文档
-    ├── guides/           # 编码规范
+    ├── guides/           # 编码规范与执行计划
     ├── 需求/             # 需求规格 + 设计文档
     ├── changelog/        # 变更记录
     └── frontend/         # 前端设计参考
 ```
-TODO:
-1 内置agent
 
-2 graph智能体编排
+---
 
-3 channel 需求细化 测试
+## 路线图（摘要）
 
-4 mcp 需求细化 测试 
+当前优先级（详见 [execution-plan.md](./docs/guides/execution-plan.md)）：
 
-5 plugin 需求细化 测试
+1. **M55** — Channel ↔ Web 同步、长任务路由、TurnBlock UI
+2. **M53** — Team × Graph 编排融合（执行单链收敛）
+3. Memory 冲突 / 级联、Graph Webhook / 熔断、Telemetry gRPC 采样
+4. Artifact Chat 引用、Evolution 趋势图、Monitor Dashboard 完善
 
-6 Hook 需求细化  测试
+---
 
-7 制品 需求细化 测试
+## License
 
-8 评估管理  需求细化  测试
-
-9 A2A 测试
-
-10 tools 功能完善 测试
-
-11 监控面板需求 UI 完善
+See [LICENSE](./LICENSE).
