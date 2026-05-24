@@ -2,7 +2,6 @@ import { ref, computed, type Ref, type ComputedRef } from "vue";
 import { useQuasar } from "quasar";
 import { useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
-import { stopGeneration } from "../api";
 import { useChatRuntimeStore } from "../../../stores/chat/runtimeStore";
 import { useAuthStore } from "../../../stores/auth";
 import { useAppStore } from "../../../stores/app";
@@ -39,6 +38,7 @@ export function useChatSender(deps: SenderDeps) {
   const $q = useQuasar();
   const router = useRouter();
   const { t } = useI18n();
+  const runtime = useChatRuntimeStore();
 
   const sending = ref(false);
   let sendingTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -51,7 +51,7 @@ export function useChatSender(deps: SenderDeps) {
       if (sending.value) {
         sending.value = false;
         if (sessionId) {
-          stopGeneration(sessionId);
+          runtime.stop(sessionId);
         }
         $q.notify({ type: "warning", message: "响应超时，已自动取消生成" });
       }
@@ -72,7 +72,7 @@ export function useChatSender(deps: SenderDeps) {
 
   function stopStreaming(sessionId?: string) {
     if (sessionId) {
-      stopGeneration(sessionId);
+      runtime.stop(sessionId);
     }
     markSendingDone();
   }

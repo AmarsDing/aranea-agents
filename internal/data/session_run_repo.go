@@ -253,6 +253,41 @@ ORDER BY created_at DESC LIMIT 1`, sessionID)
 	return scanSessionRunRow(row)
 }
 
+func (r *sessionRunRepo) ListBySession(ctx context.Context, sessionID string, limit, offset int) ([]biz.SessionRun, int, error) {
+	db := r.db()
+	if db == nil {
+		return nil, 0, nil
+	}
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return nil, 0, sql.ErrNoRows
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	var total int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM session_runs WHERE session_id=?`, sessionID).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	rows, err := db.QueryContext(ctx, sessionRunSelectSQL+`
+WHERE session_id=? ORDER BY created_at DESC LIMIT ? OFFSET ?`, sessionID, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	items, err := scanSessionRunRows(rows)
+	if err != nil {
+		return nil, 0, err
+	}
+	return items, total, nil
+}
+
 func (r *sessionRunRepo) Get(ctx context.Context, id string) (biz.SessionRun, error) {
 	db := r.db()
 	if db == nil {

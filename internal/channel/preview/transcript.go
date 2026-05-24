@@ -71,20 +71,20 @@ func (t *Transcript) Apply(env event.Envelope) {
 		if env.Content == nil {
 			return
 		}
-		if s := env.Content.Reasoning; strings.TrimSpace(s) != "" {
+		if s := SanitizeStreamText(env.Content.Reasoning); s != "" {
 			t.appendText(segmentReasoningID, s, env.Content.IsPartial)
 		}
-		if env.Content.Text != "" {
-			t.appendText(segmentTextID, env.Content.Text, env.Content.IsPartial)
+		if s := SanitizeStreamText(env.Content.Text); s != "" {
+			t.appendText(segmentTextID, s, env.Content.IsPartial)
 		}
 	case event.EnvelopeTypeTextDone:
 		if env.Content == nil {
 			return
 		}
-		if s := strings.TrimSpace(env.Content.Reasoning); s != "" {
+		if s := SanitizeStreamText(env.Content.Reasoning); s != "" {
 			t.setText(segmentReasoningID, s)
 		}
-		if s := strings.TrimSpace(env.Content.Text); s != "" {
+		if s := SanitizeStreamText(env.Content.Text); s != "" {
 			t.setText(segmentTextID, s)
 		}
 	case event.EnvelopeTypeToolCall:

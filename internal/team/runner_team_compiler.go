@@ -8,7 +8,6 @@ import (
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/metrics"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 )
@@ -81,14 +80,13 @@ func (r *Runner) compileTeamRuntime(
 
 	// Fallback to native runtime
 	if root == nil {
-		canaryHoldout := teamNativeAllowedForCanaryHoldout(def, teamRow.ID)
-		if envTeamNativeForced() || canaryHoldout {
+		decision := DecideNativeFallback(def, teamRow.ID, graphAttempted, graphCompileErr, graphBuildErr, mode, r.graphRoot != nil)
+		if decision.UseNative {
 			root, memberLookup, err = BuildTRPCTeam(ctx, def, teamDeps, r.catalogAgent)
 			if err != nil {
 				return
 			}
-			label := nativeRuntimeMetricReason(graphAttempted, canaryHoldout && !envTeamNativeForced())
-			metrics.TeamGraphRuntimeTotal.WithLabelValues("native", label).Inc()
+			metrics.TeamGraphRuntimeTotal.WithLabelValues("native", decision.MetricLabel).Inc()
 			if teamEmitter != nil {
 				teamEmitter.LogDone("team.run.build", "团队 Native 应急路径已构建", event.P("mode", mode), event.P("graph_attempted", graphAttempted))
 			}
@@ -96,22 +94,7 @@ func (r *Runner) compileTeamRuntime(
 		}
 
 		// No fallback available — produce a clear error
-		msg := "team graph runtime unavailable"
-		switch {
-		case !useGraph && strings.EqualFold(strings.TrimSpace(def.RuntimeEngine), "native"):
-			msg = "team runtime_engine=native requires ARANEA_TEAM_NATIVE=1 or canary holdout (Graph is the default execution path)"
-		case !useGraph && teamGraphCanaryPercent() < 100 && !teamInGraphCanaryBucket(teamRow.ID, teamGraphCanaryPercent()):
-			msg = "team outside graph canary bucket; set runtime_engine=graph or ARANEA_TEAM_NATIVE=1"
-		case graphCompileErr != "":
-			msg = "team graph compile failed: " + graphCompileErr
-		case graphBuildErr != "":
-			msg = "team graph build failed: " + graphBuildErr
-		case !SupportsTeamGraphRuntimeMode(mode):
-			msg = "team mode " + mode + " is not supported by graph runtime"
-		case r.graphRoot == nil:
-			msg = "team graph runtime builder is not configured"
-		}
-		err = kerrors.InternalServer("TEAM", msg)
+		err = decision.Error()
 		return
 	}
 	return

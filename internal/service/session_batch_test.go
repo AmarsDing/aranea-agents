@@ -64,6 +64,18 @@ func (m *batchSessionRepo) ListToolInvocationsBySession(context.Context, string,
 func (m *batchSessionRepo) ListSkillInvocationsBySession(context.Context, string, int) ([]biz.SkillInvocationView, error) {
 	return nil, nil
 }
+func (m *batchSessionRepo) ListTimelineEventRefsPaged(context.Context, string, biz.TimelineQuery) ([]biz.TimelineEventRef, int, error) {
+	return nil, 0, nil
+}
+func (m *batchSessionRepo) ListMessagesByIDs(context.Context, string, []string) ([]biz.ChatMessage, error) {
+	return nil, nil
+}
+func (m *batchSessionRepo) ListToolInvocationsByIDs(context.Context, string, []string) ([]biz.ToolInvocationView, error) {
+	return nil, nil
+}
+func (m *batchSessionRepo) ListSkillInvocationsByIDs(context.Context, string, []string) ([]biz.SkillInvocationView, error) {
+	return nil, nil
+}
 func (m *batchSessionRepo) AppendChatTurn(context.Context, string, biz.ChatMessage, biz.ChatMessage) error {
 	return nil
 }
@@ -143,6 +155,12 @@ func (m *batchSessionRepo) ArchiveSessionsByIDs(_ context.Context, ids []string)
 func (m *batchSessionRepo) DeleteSessionsByIDs(_ context.Context, ids []string) (int, []string, error) {
 	return len(ids), nil, nil
 }
+func (m *batchSessionRepo) PinSession(_ context.Context, id string) (biz.Session, error) {
+	return m.GetSessionByID(context.Background(), id)
+}
+func (m *batchSessionRepo) UnpinSession(_ context.Context, id string) (biz.Session, error) {
+	return m.GetSessionByID(context.Background(), id)
+}
 func (m *batchSessionRepo) BumpSessionRevision(context.Context, string) (int64, error) {
 	return 1, nil
 }
@@ -158,7 +176,7 @@ func (m *batchSessionRepo) ListMessagesAfterRevision(context.Context, string, in
 
 func TestSessionService_BatchPreviewSessions_validation(t *testing.T) {
 	uc := biz.NewSessionUsecase(&batchSessionRepo{sessions: map[string]biz.Session{}}, nil, nil, nil)
-	svc := service.NewSessionService(uc, nil)
+	svc := service.NewSessionService(uc, nil, nil, nil)
 
 	_, err := svc.BatchPreviewSessions(context.Background(), &v1.BatchPreviewSessionsRequest{})
 	if err == nil {
@@ -179,7 +197,7 @@ func TestSessionService_BatchPreviewSessions_skippedNotFound(t *testing.T) {
 		"s1": {ID: "s1", Status: "completed", CreatedAt: "2020-01-01T00:00:00Z"},
 	}}
 	uc := biz.NewSessionUsecase(repo, nil, nil, nil)
-	svc := service.NewSessionService(uc, nil)
+	svc := service.NewSessionService(uc, nil, nil, nil)
 
 	resp, err := svc.BatchPreviewSessions(context.Background(), &v1.BatchPreviewSessionsRequest{
 		Mode: "delete",

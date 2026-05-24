@@ -69,6 +69,7 @@ func (Session) Fields() []ent.Field {
 		field.String("updated_at").Default(""),
 		field.String("archived_at").Default(""),
 		field.String("deleted_at").Default(""),
+		field.String("pinned_at").Default(""),
 
 		field.Text("runner_snapshot_json").Default(""),
 		field.Text("state_json").Default("{}"),

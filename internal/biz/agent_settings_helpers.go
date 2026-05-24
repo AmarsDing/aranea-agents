@@ -28,6 +28,7 @@ func withSettingDefaults(v AgentRuntimeSettings) AgentRuntimeSettings {
 	defaultInt(&v.L0RecentWindowTurns, d.L0RecentWindowTurns)
 	defaultFloat(&v.L0SummaryThreshold, d.L0SummaryThreshold)
 	defaultInt(&v.L0SummaryKeepTurns, d.L0SummaryKeepTurns)
+	defaultInt(&v.L0CompressMinGapSec, d.L0CompressMinGapSec)
 	defaultString(&v.L0TruncateStrategy, d.L0TruncateStrategy)
 	defaultInt(&v.L0L3MaxChunks, d.L0L3MaxChunks)
 	defaultInt(&v.L0L4MaxPaths, d.L0L4MaxPaths)
@@ -305,6 +306,7 @@ func configJSONFromSettings(settings AgentRuntimeSettings, files []AgentPromptFi
 			"recent_window_tokens": settings.L0RecentWindowTokens,
 			"summary_threshold":    settings.L0SummaryThreshold,
 			"summary_keep_turns":   settings.L0SummaryKeepTurns,
+			"compress_min_gap_sec": settings.L0CompressMinGapSec,
 			"compress_provider":    settings.L0CompressProvider,
 			"compress_model":       settings.L0CompressModel,
 			"worker_provider":      settings.MemoryWorkerProvider,

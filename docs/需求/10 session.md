@@ -1516,7 +1516,8 @@ export const useSessionStore = defineStore("sessions", {
 | Repository | `ListSessions` 支持 owner_type、team_id、状态、分页 | ✅ |
 | API | `GET /sessions` 从简单数组升级为分页查询 | ✅ |
 | 前端 | 新增 Session 历史页和详情 Header，复用现有聊天列表数据 | ✅ |
-| Session 置顶 | sessions 增加 `pinned_at` 字段 + PinSession/UnpinSession RPC | 待实现 |
+| Session 置顶 | sessions 增加 `pinned_at` 字段 + PinSession/UnpinSession RPC | ✅ |
+| Session 导出 | ExportSession Markdown/JSON | ✅ |
 
 ### Phase 2：Context 快照与聚合
 
@@ -1531,18 +1532,20 @@ export const useSessionStore = defineStore("sessions", {
 
 | 工作 | 说明 | 状态 |
 |------|------|------|
-| 新表 | `session_runs`、`session_run_steps`、`session_trace_spans` | 待实现 |
-| 单 Agent | 每次发送消息创建 chat run、turn 和 trace spans | 待实现（turns 已实现） |
-| Team | 编排器每个 agent/tool/skill/mcp 动作写 step 和 span | 待实现 |
-| 前端 | 详情页增加 Timeline Tab 和 Trace 链路 Tab | 待实现 |
+| session_runs（M55） | Run 生命周期 phase/budget/checkpoint + ListSessionRuns | ✅ |
+| session_run_steps | model/tool/skill/mcp step 表 + 写入 | 待实现 |
+| session_trace_spans | 完整 trace 链路 | 待实现 |
+| 单 Agent | Turn 已实现；编排 step/span 待接 | 🟡 |
+| Team | 编排器 step/span 写入 | 待实现 |
+| 前端 | Timeline Tab ✅ · Runs Tab ✅ · Trace Tab 待办 | 🟡 |
 
 ### Phase 4：Team Participants 与复盘
 
 | 工作 | 说明 | 状态 |
 |------|------|------|
-| 新表 | `session_participants` | 待实现 |
-| Team 编排 | 自动维护参与 Agent、角色、贡献指标 | 待实现 |
-| 前端 | Team session 展示参与者、handoff、内部消息开关 | 待实现 |
+| 新表 | `session_participants` | ✅ |
+| Team 编排 | 读时从 messages 聚合 Sync；turn 增量写待办 | 🟡 |
+| 前端 | Team Participants Tab ✅ · handoff / 内部消息开关待办 | 🟡 |
 
 ### Phase 5：trpc session.Service 对齐
 

@@ -1,6 +1,6 @@
 import { ref, type Ref } from "vue";
 import { listChatOptions } from "../api";
-import { listPlatformResources } from "../../platform/api";
+import { usePlatformStore } from "../../../stores/platform";
 import type { PlatformResource } from "../../platform/types";
 import type { ChatOption } from "../types";
 import {
@@ -83,7 +83,8 @@ export function useChatProviderOptions(store: Store) {
     }
     let modelRows: PlatformResource[] = [];
     try {
-      modelRows = await listPlatformResources("llm-provider-models");
+      const platformStore = usePlatformStore();
+      modelRows = (await platformStore.loadResource("llm-provider-models")) as PlatformResource[];
     } catch {
       /* keep empty */
     }

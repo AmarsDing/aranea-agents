@@ -3,7 +3,8 @@ import { useI18n } from "vue-i18n";
 import { useQuasar } from "quasar";
 import { useRoute } from "vue-router";
 import { enqueueMessage, submitMessageFeedback } from "../api";
-import type { Agent, SessionView, TeamRow } from "../../../components/chat/types";
+import type { SessionView, TeamRow } from "../../../components/chat/types";
+import type { Agent } from "../../agents/types";
 import { useAppStore } from "../../../stores/app";
 import { useChatStore } from "../../../stores/chat";
 import { cancelRunningToolMessages } from "../envelopeToolCall";
@@ -32,7 +33,7 @@ import { useChatTraceDialog, useChatSessionArtifacts } from "./useChatTraceAndAr
 import { useChatSettingsDialog } from "./useChatSettingsDialog";
 import { hydrateAgentSettings } from "../agentPlannerSettings";
 import { parseChannelSessionMeta } from "../channelSessionMeta";
-import { listCollections } from "../../knowledge/api";
+import { useKnowledgeStore } from "../../../stores/knowledge";
 
 export function useChatWorkspace() {
   const { t } = useI18n();
@@ -91,6 +92,7 @@ export function useChatWorkspace() {
         timeline_at: session.last_message_at || session.updated_at || session.created_at,
         agent_id: session.agent_id,
         status: session.status,
+        pinned_at: session.pinned_at,
         metadata_json: session.metadata_json,
       }));
     }
@@ -103,6 +105,7 @@ export function useChatWorkspace() {
         at: formatSessionTime(session.last_message_at || session.updated_at || session.created_at),
         timeline_at: session.last_message_at || session.updated_at || session.created_at,
         status: session.status,
+        pinned_at: session.pinned_at,
         metadata_json: session.metadata_json,
       }));
     }
@@ -129,6 +132,7 @@ export function useChatWorkspace() {
           chatStore.selectedSession.last_message_at ||
           chatStore.selectedSession.updated_at ||
           chatStore.selectedSession.created_at,
+        pinned_at: chatStore.selectedSession.pinned_at,
       }
     );
   });
@@ -147,6 +151,7 @@ export function useChatWorkspace() {
   const sessionIdForPending = computed(() => selectedSessionForUi.value?.id);
   const sessionIdForArtifacts = computed(() => selectedSessionForUi.value?.id);
   const jobsRefreshNonce = ref(0);
+  const inboundHydrateError = ref("");
   const focusTurnId = ref<string | undefined>(undefined);
 
   function focusSessionTurn(turnId: string) {
@@ -246,9 +251,15 @@ export function useChatWorkspace() {
       }
       return !inputText.value.trim();
     },
-    focusChannelSession: (sessionId, agentId) => entityNav.focusSessionById(sessionId, agentId),
+    focusChannelSession: (sessionId, agentId) =>
+      entityNav.focusAgentSessionView(sessionId, agentId),
     onTurnComplete: () => {
       jobsRefreshNonce.value += 1;
+    },
+    onHydrateError: (sessionId, message) => {
+      if (selectedSessionId.value === sessionId) {
+        inboundHydrateError.value = message;
+      }
     },
     ensureChatStream: streamManager.ensureChatStream,
     ensureTeamStream: streamManager.ensureTeamStream,
@@ -481,7 +492,8 @@ export function useChatWorkspace() {
     document.addEventListener("visibilitychange", onPageVisible);
     await Promise.all([loadChatOptions(), entityNav.loadCategoryTree(), entityNav.loadTeams()]);
     try {
-      const cols = await listCollections({ limit: 50 });
+      const knowledgeStore = useKnowledgeStore();
+      const cols = await knowledgeStore.loadCollections({ limit: 50 });
       knowledgeBaseOptions.value = cols.items.map((c) => ({
         label: c.name || c.id,
         value: c.id,
@@ -561,6 +573,7 @@ export function useChatWorkspace() {
       wsConnected: computed(() => chatStore.wsConnected),
       wsReplaying: streamManager.wsReplaying,
       jobsRefreshNonce,
+      inboundHydrateError,
       focusTurnId,
       focusSessionTurn,
       clearFocusTurn,
@@ -569,6 +582,7 @@ export function useChatWorkspace() {
       openSessionArtifact,
       onSelectSession: entityNav.onSelectSession,
       onRenameSession: entityNav.onRenameSession,
+      onTogglePinSession: entityNav.onTogglePinSession,
       onRestoreSession: entityNav.onRestoreSession,
       onArchiveSession: entityNav.onArchiveSession,
       onSessionDetail: entityNav.onSessionDetail,

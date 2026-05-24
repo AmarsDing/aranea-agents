@@ -1,220 +1,37 @@
-import { onUnmounted, ref, shallowRef } from "vue";
-import { createWsTransport, type WsTransport } from "./ws-transport";
-import { EnvelopeDispatcher } from "./dispatcher";
-import type { Envelope, EnvelopeType } from "./envelope";
-import {
-  acquireGlobalWsConsumer,
-  globalWsConsumerEnableLog,
-  globalWsConsumerSubscribe,
-  globalWsConsumerUnsubscribe,
-  releaseGlobalWsConsumer,
-  shouldUseGlobalWsHub,
-} from "./globalWsHub";
+/**
+ * Re-export barrel — the generic envelope stream composable has been lifted
+ * to the shared realtime/ directory. This file re-exports for backward
+ * compatibility and keeps Chat-specific stream helpers here.
+ *
+ * New code should import from "realtime/useEnvelopeStream" directly.
+ */
+
+export {
+  createEnvelopeStream,
+  useEnvelopeStream,
+} from "../../realtime/useEnvelopeStream";
+
+export type {
+  UseEnvelopeStreamOptions,
+  UseEnvelopeStreamReturn,
+} from "../../realtime/useEnvelopeStream";
+
 export type {
   GraphNodeState,
   GraphExecutionState,
   GraphStreamInterrupt,
   GraphStreamExecutionSummary,
 } from "../../realtime/graphState";
-import type {
-  GraphNodeState,
-  GraphExecutionState,
-  GraphStreamInterrupt,
-  GraphStreamExecutionSummary,
-} from "../../realtime/graphState";
 
-export type UseEnvelopeStreamOptions = {
-  sessionId: string;
-  channels?: string[];
-  lastEventId?: string;
-  autoConnect?: boolean;
-  logEnabled?: boolean;
-  onConnected?: (info: { sessionId: string; lastEventId?: string }) => void;
-  onDisconnected?: () => void;
-  onServerShutdown?: (reason: string) => void;
-  onReplayState?: (replaying: boolean, count?: number) => void;
-  onReconnectFailed?: () => void;
-};
-
-export type UseEnvelopeStreamReturn = {
-  connected: ReturnType<typeof ref<boolean>>;
-  wsReplaying: ReturnType<typeof ref<boolean>>;
-  lastEventId: ReturnType<typeof ref<string | undefined>>;
-  transport: ReturnType<typeof shallowRef<WsTransport | null>>;
-  dispatcher: EnvelopeDispatcher;
-  connect: () => void;
-  disconnect: () => void;
-  onType: (type: EnvelopeType | EnvelopeType[], handler: (env: Envelope) => void) => () => void;
-  onChannel: (channel: string | string[], handler: (env: Envelope) => void) => () => void;
-  subscribe: (channel: string) => void;
-  unsubscribe: (channel: string) => void;
-  enableLog: (enabled: boolean) => void;
-  cancel: () => void;
-};
-
-/** Factory for session streams; safe to call outside component `setup()` (e.g. on session select). */
-export function createEnvelopeStream(opts: UseEnvelopeStreamOptions): UseEnvelopeStreamReturn {
-  const connected = ref(false);
-  const wsReplaying = ref(false);
-  const lastEventId = ref<string | undefined>(opts.lastEventId);
-  const transport = shallowRef<WsTransport | null>(null);
-  const dispatcher = new EnvelopeDispatcher();
-
-  const channels = opts.channels ?? ["chat", "system"];
-  let globalHubId: string | null = null;
-
-  function connect(): void {
-    if (globalHubId) return;
-
-    if (shouldUseGlobalWsHub(opts.sessionId, lastEventId.value)) {
-      globalHubId = acquireGlobalWsConsumer({
-        channels,
-        logEnabled: opts.logEnabled ?? false,
-        onEnvelope: (env) => dispatcher.dispatch(env),
-        onConnected: () => {
-          connected.value = true;
-          opts.onConnected?.({ sessionId: opts.sessionId, lastEventId: lastEventId.value });
-        },
-        onDisconnected: () => {
-          connected.value = false;
-          opts.onDisconnected?.();
-        },
-        onServerShutdown: (reason) => {
-          opts.onServerShutdown?.(reason);
-        },
-      });
-      return;
-    }
-
-    if (transport.value?.connected) return;
-    if (transport.value) {
-      transport.value.connect();
-      return;
-    }
-
-    const t = createWsTransport({
-      sessionId: opts.sessionId,
-      lastEventId: lastEventId.value,
-      logEnabled: opts.logEnabled,
-      onEnvelope: (env) => {
-        dispatcher.dispatch(env);
-      },
-      onConnected: (info) => {
-        connected.value = true;
-        lastEventId.value = info.lastEventId;
-        for (const ch of channels) {
-          if (ch !== "chat" && ch !== "system") {
-            t.subscribe(ch);
-          }
-        }
-        opts.onConnected?.(info);
-      },
-      onDisconnected: () => {
-        connected.value = false;
-        opts.onDisconnected?.();
-      },
-      onError: () => {
-        connected.value = false;
-      },
-      onServerShutdown: (reason) => {
-        opts.onServerShutdown?.(reason);
-      },
-      onReplayState: (replaying, count) => {
-        wsReplaying.value = replaying;
-        opts.onReplayState?.(replaying, count);
-      },
-      onReconnectFailed: () => {
-        opts.onReconnectFailed?.();
-      },
-    });
-
-    transport.value = t;
-    t.connect();
-  }
-
-  function disconnect(): void {
-    if (globalHubId) {
-      releaseGlobalWsConsumer(globalHubId);
-      globalHubId = null;
-      connected.value = false;
-      dispatcher.clear();
-      return;
-    }
-    transport.value?.disconnect();
-    transport.value = null;
-    connected.value = false;
-    dispatcher.clear();
-  }
-
-  function onType(type: EnvelopeType | EnvelopeType[], handler: (env: Envelope) => void): () => void {
-    return dispatcher.onType(type, handler);
-  }
-
-  function onChannel(channel: string | string[], handler: (env: Envelope) => void): () => void {
-    return dispatcher.onChannel(channel, handler);
-  }
-
-  function subscribe(channel: string): void {
-    if (globalHubId) {
-      globalWsConsumerSubscribe(globalHubId, channel);
-      return;
-    }
-    transport.value?.subscribe(channel);
-  }
-
-  function unsubscribe(channel: string): void {
-    if (globalHubId) {
-      globalWsConsumerUnsubscribe(globalHubId, channel);
-      return;
-    }
-    transport.value?.unsubscribe(channel);
-  }
-
-  function cancel(): void {
-    transport.value?.cancel();
-  }
-
-  function enableLog(enabled: boolean): void {
-    if (globalHubId) {
-      globalWsConsumerEnableLog(globalHubId, enabled);
-      return;
-    }
-    transport.value?.enableLog(enabled);
-  }
-
-  if (opts.autoConnect !== false) {
-    connect();
-  }
-
-  return {
-    connected,
-    wsReplaying,
-    lastEventId,
-    transport,
-    dispatcher,
-    connect,
-    disconnect,
-    onType,
-    onChannel,
-    subscribe,
-    unsubscribe,
-    enableLog,
-    cancel,
-  };
-}
-
-export function useEnvelopeStream(opts: UseEnvelopeStreamOptions): UseEnvelopeStreamReturn {
-  const stream = createEnvelopeStream({ ...opts, autoConnect: false });
-  if (opts.autoConnect !== false) {
-    stream.connect();
-  }
-  onUnmounted(() => {
-    stream.disconnect();
-  });
-  return stream;
-}
+import { ref } from "vue";
+import {
+  createEnvelopeStream,
+  useEnvelopeStream,
+} from "../../realtime/useEnvelopeStream";
+import type { UseEnvelopeStreamReturn } from "../../realtime/useEnvelopeStream";
 
 export type ChatStreamFactoryOpts = {
+  lastEventId?: string;
   onConnected?: () => void;
   onDisconnected?: () => void;
   onServerShutdown?: (reason: string) => void;
@@ -228,6 +45,7 @@ export function createChatStream(sessionId: string, streamOpts?: ChatStreamFacto
     sessionId,
     channels: ["chat", "system"],
     autoConnect: false,
+    lastEventId: streamOpts?.lastEventId,
     onConnected: () => streamOpts?.onConnected?.(),
     onDisconnected: () => streamOpts?.onDisconnected?.(),
     onServerShutdown: streamOpts?.onServerShutdown,
@@ -409,169 +227,6 @@ export function useMonitorStream(sessionId: string, opts?: { global?: boolean })
   };
 }
 
-function parseGraphStreamSummary(raw: unknown): GraphStreamExecutionSummary | null {
-  if (!raw || typeof raw !== "object") return null;
-  const summary = raw as Record<string, unknown>;
-  const nodes = Array.isArray(summary.nodes)
-    ? summary.nodes.map((node) => {
-        const n = node as Record<string, unknown>;
-        return {
-          nodeId: String(n.node_id ?? n.nodeId ?? ""),
-          nodeType: String(n.node_type ?? n.nodeType ?? ""),
-          status: String(n.status ?? ""),
-          durationMs: Number(n.duration_ms ?? n.durationMs ?? 0),
-          error: String(n.error ?? ""),
-          stepNumber: Number(n.step_number ?? n.stepNumber ?? 0),
-        };
-      })
-    : [];
-  return {
-    executionId: String(summary.execution_id ?? summary.executionId ?? ""),
-    graphId: String(summary.graph_id ?? summary.graphId ?? ""),
-    totalSteps: Number(summary.total_steps ?? summary.totalSteps ?? 0),
-    durationMs: Number(summary.duration_ms ?? summary.durationMs ?? 0),
-    finalStateKeys: Number(summary.final_state_keys ?? summary.finalStateKeys ?? 0),
-    nodes,
-  };
-}
-
-function parseInterruptPrompt(value: unknown): string {
-  if (value == null) return "";
-  if (typeof value === "string") return value.trim();
-  if (typeof value === "object" && value !== null && "prompt" in value) {
-    return String((value as { prompt?: unknown }).prompt ?? "").trim();
-  }
-  return "";
-}
-
-export function useGraphStream(sessionId: string, graphId: string, execId: string) {
-  const stream = useEnvelopeStream({
-    sessionId,
-    channels: ["chat", "graph", "system"],
-  });
-
-  const execution = ref<GraphExecutionState>({
-    executionId: execId,
-    graphId,
-    status: "pending",
-    nodes: new Map(),
-  });
-
-  const executionSummary = ref<GraphStreamExecutionSummary | null>(null);
-  const interrupt = ref<GraphStreamInterrupt | null>(null);
-
-  const filterKey = `graph/${graphId}/${execId}`;
-
-  stream.onChannel("graph", (env) => {
-    if (env.filter_key && !env.filter_key.startsWith(filterKey)) {
-      return;
-    }
-
-    switch (env.type) {
-      case "graph_node_start": {
-        const nodeId = env.metadata?.node_id as string;
-        const nodeType = env.metadata?.node_type as string;
-        const stepNumber = env.metadata?.step_number as number;
-        if (nodeId) {
-          const existing = execution.value.nodes.get(nodeId);
-          execution.value.nodes.set(nodeId, {
-            nodeId,
-            nodeType: nodeType ?? existing?.nodeType ?? "function",
-            status: "running",
-            startTime: env.metadata?.start_time as string,
-            stepNumber,
-          });
-          execution.value.currentNode = nodeId;
-          execution.value.status = "running";
-        }
-        break;
-      }
-      case "graph_node_end": {
-        const nodeId = env.metadata?.node_id as string;
-        if (nodeId) {
-          const existing = execution.value.nodes.get(nodeId);
-          execution.value.nodes.set(nodeId, {
-            nodeId,
-            nodeType: (env.metadata?.node_type as string) ?? existing?.nodeType ?? "function",
-            status: "completed",
-            startTime: existing?.startTime,
-            endTime: env.metadata?.end_time as string,
-            durationNs: env.metadata?.duration_ns as number,
-            stepNumber: env.metadata?.step_number as number,
-          });
-        }
-        break;
-      }
-      case "graph_node_error": {
-        const nodeId = env.metadata?.node_id as string;
-        if (nodeId) {
-          const existing = execution.value.nodes.get(nodeId);
-          execution.value.nodes.set(nodeId, {
-            nodeId,
-            nodeType: (env.metadata?.node_type as string) ?? existing?.nodeType ?? "function",
-            status: "error",
-            error: env.metadata?.error as string,
-            stepNumber: env.metadata?.step_number as number,
-          });
-          execution.value.status = "failed";
-        }
-        break;
-      }
-      case "graph_step": {
-        const stepNumber = env.metadata?.step_number as number;
-        if (stepNumber !== undefined) {
-          execution.value.totalSteps = stepNumber;
-        }
-        if (env.metadata?.duration_ns) {
-          execution.value.durationNs = env.metadata.duration_ns as number;
-        }
-        break;
-      }
-      case "graph_execution_done": {
-        execution.value.status = "completed";
-        execution.value.totalSteps = env.metadata?.total_steps as number;
-        if (env.metadata?.duration_ns) {
-          execution.value.durationNs = env.metadata.duration_ns as number;
-        }
-        executionSummary.value = parseGraphStreamSummary(env.metadata?.execution_summary);
-        break;
-      }
-      case "checkpoint": {
-        if (env.metadata?.interrupt_key) {
-          execution.value.status = "waiting_human";
-          const nodeId = env.metadata?.node_id as string;
-          if (nodeId) {
-            const existing = execution.value.nodes.get(nodeId);
-            execution.value.nodes.set(nodeId, {
-              nodeId,
-              nodeType: (env.metadata?.node_type as string) ?? existing?.nodeType ?? "function",
-              status: "interrupted",
-              stepNumber: env.metadata?.step_number as number,
-            });
-          }
-          interrupt.value = {
-            nodeId: String(env.metadata?.node_id ?? ""),
-            interruptKey: String(env.metadata?.interrupt_key ?? ""),
-            prompt: parseInterruptPrompt(env.metadata?.interrupt_value),
-            checkpointId: String(env.metadata?.checkpoint_id ?? ""),
-            lineageId: String(env.metadata?.lineage_id ?? ""),
-            interruptValue: env.metadata?.interrupt_value,
-          };
-        }
-        break;
-      }
-    }
-  });
-
-  function clearInterrupt() {
-    interrupt.value = null;
-  }
-
-  return {
-    ...stream,
-    execution,
-    executionSummary,
-    interrupt,
-    clearInterrupt,
-  };
-}
+export {
+  useGraphStream,
+} from "../graph/runtime/useGraphStream";

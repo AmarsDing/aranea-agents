@@ -13,7 +13,9 @@ import {
   previewSessionBatch,
   batchArchiveSessions,
   batchDeleteSessions,
-  restoreSession
+  pinSession,
+  restoreSession,
+  unpinSession
 } from "../../features/session/api";
 import type { Session, SessionListResult } from "../../features/session/types";
 import type { BatchOperationResult, BatchPreviewResult, SessionBatchScope } from "../../features/session/types";
@@ -78,6 +80,13 @@ export const useSessionStore = defineStore("session", () => {
     if (activeSession.value?.id === id) activeSession.value = updated;
   }
 
+  async function setPinned(id: string, pinned: boolean) {
+    const updated = pinned ? await pinSession(id) : await unpinSession(id);
+    sessions.value = sessions.value.map((s) => (s.id === id ? updated : s));
+    if (activeSession.value?.id === id) activeSession.value = updated;
+    return updated;
+  }
+
   function setActiveSession(s: Session | null) {
     activeSession.value = s;
   }
@@ -135,6 +144,7 @@ export const useSessionStore = defineStore("session", () => {
     removeSession,
     archive,
     rename,
+    setPinned,
     setActiveSession,
     previewBatch,
     batchArchive,

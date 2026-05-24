@@ -1,8 +1,9 @@
 import { computed, ref, type ComputedRef } from "vue";
 import { useI18n } from "vue-i18n";
 import { useQuasar } from "quasar";
-import { deleteTeam } from "../../teams/api";
-import type { Agent, DeleteKind, SessionView, TeamRow } from "../../../components/chat/types";
+import { useTeamsStore } from "../../../stores/teams";
+import type { DeleteKind, SessionView, TeamRow } from "../../../components/chat/types";
+import type { Agent } from "../../agents/types";
 import { isAgentWorking, LS_AG_ORDER, LS_TM_ORDER } from "./chatWorkspaceUtils";
 import type { useAppStore } from "../../../stores/app";
 import type { useChatStore } from "../../../stores/chat";
@@ -142,7 +143,8 @@ export function useChatDeleteFlow(deps: DeleteFlowDeps) {
         deleting.value = false;
       }
     } else if (deleteKind.value === "team" && id) {
-      await deleteTeam(id);
+      const teamsStore = useTeamsStore();
+      await teamsStore.remove(id);
       localStorage.removeItem(LS_TM_ORDER);
       deps.displayTeams.value = deps.displayTeams.value.filter((team) => team.id !== id);
       if (deps.chatStore.selectedTeamId === id) deps.chatStore.selectedTeamId = null;

@@ -133,7 +133,6 @@
 <script setup lang="ts">
 import { computed, ref, toRef, type Ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { useRouter } from "vue-router";
 import { useChatBackgroundJobs } from "../../features/chat/useChatBackgroundJobs";
 import { useTaskDeadLetters } from "../../features/chat/useTaskDeadLetters";
 
@@ -142,6 +141,7 @@ type TaskDeadLetterRow = ReturnType<typeof useTaskDeadLetters>["rows"]["value"][
 
 const emit = defineEmits<{
   "focus-turn": [turnId: string];
+  "navigate": [route: { name: string; params: Record<string, string> }];
 }>();
 
 const props = defineProps<{
@@ -153,7 +153,6 @@ const props = defineProps<{
 const refreshRef = toRef(props, "refreshNonce") as Ref<number | undefined>;
 
 const { t } = useI18n();
-const router = useRouter();
 const expanded = ref(false);
 const tab = ref<"jobs" | "deadLetters">("jobs");
 
@@ -266,7 +265,7 @@ function graphRunLink(job: ChatBackgroundJobRow) {
 
 function openGraphRun(job: ChatBackgroundJobRow) {
   const link = graphRunLink(job);
-  if (link) router.push(link);
+  if (link) emit("navigate", link);
 }
 
 function teamRunObservatoryLink(row: TaskDeadLetterRow) {
@@ -278,7 +277,7 @@ function teamRunObservatoryLink(row: TaskDeadLetterRow) {
 
 function openTeamRunObservatory(row: TaskDeadLetterRow) {
   const link = teamRunObservatoryLink(row);
-  if (link) router.push(link);
+  if (link) emit("navigate", link);
 }
 
 function payloadPreview(row: TaskDeadLetterRow) {

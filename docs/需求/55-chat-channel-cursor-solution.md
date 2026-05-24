@@ -118,6 +118,9 @@ Cursor 不是「聊天 App」，而是 **IDE 内嵌 Agent 工作区**。以下�
 
 ## 4. 整体架构方案
 
+> **解耦四层模型（Ingress / Policy / Turn / Projector）**：[0-module-decoupling-architecture.md §3.1](./0-module-decoupling-architecture.md#31-推荐目标架构channel--chat--agent)  
+> 本节 §4.1–4.2 侧重 **执行平面**（Sync / Job）与 **Web 同步协议**；与四层模型正交组合使用。
+
 ### 4.1 双平面执行模型（解决长任务超时）
 
 ```mermaid
@@ -281,7 +284,10 @@ TurnBlock #N
 
 | 文档 | 用途 |
 |------|------|
-| [55-chat-channel-cursor-development.md](./55-chat-channel-cursor-development.md) | 分阶段任务与排期 |`n| [§9 附录：企业级蓝图](./55-chat-channel-cursor-solution.md#9-附录企业级蓝图与-ai-落地指南) | 架构收敛、Run 升格、AI 任务卡、设计评审 |
+| [55-chat-channel-cursor-development.md](./55-chat-channel-cursor-development.md) | 分阶段任务与排期 |
+| [§9 附录：企业级蓝图](./55-chat-channel-cursor-solution.md#9-附录企业级蓝图与-ai-落地指南) | 架构收敛、Run 升格、AI 任务卡、设计评审 |
+| [17-channel-development.md §14 DECO](./17-channel-development.md#14-phase-deco--四层架构解耦deco) | 四层解耦落地任务 DECO-01–15 |
+| [17-channel-external-reference-playbook.md](./17-channel-external-reference-playbook.md) | GoClaw + OpenClaw 借鉴；CH-BOR 任务卡 |
 | [execution-plan.md §迭代 CC](../guides/execution-plan.md) | 执行计划任务板 |
 | [17 channel.md §8](./17%20channel.md#8-长任务场景飞书-channel) | Channel 长任务配置规格 |
 | [17-channel-agent-team-integration.md](./17-channel-agent-team-integration.md) | Channel × Web 业务集成 |

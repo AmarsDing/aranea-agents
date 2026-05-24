@@ -10,6 +10,7 @@ import (
 	"time"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
+	"aranea-agents/internal/biz"
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/event"
 	"aranea-agents/pkg/auth"
@@ -111,6 +112,7 @@ type WSServer struct {
 	eventBuffer *event.Buffer
 	canceller   RunCanceller
 	sender      ChatSender
+	turnGateway biz.TurnGateway // preferred over ChatSender for turn execution
 	serverConf  *conf.Server
 	upgrader    websocket.Upgrader
 	closed      bool
@@ -122,11 +124,11 @@ func NewWSServer(c *conf.Server, eventBus event.Bus, eventBuffer *event.Buffer, 
 		SessionBus: eventBus,
 		MonitorBus: eventBus,
 		Buffer:     eventBuffer,
-	}, canceller, sender)
+	}, canceller, sender, nil)
 }
 
 // NewWSServerFromInfra uses session bus for chat envelopes and monitor bus for flow_log (P0).
-func NewWSServerFromInfra(c *conf.Server, infra *event.Infra, canceller RunCanceller, sender ChatSender) *WSServer {
+func NewWSServerFromInfra(c *conf.Server, infra *event.Infra, canceller RunCanceller, sender ChatSender, turnGateway biz.TurnGateway) *WSServer {
 	if c == nil || c.GetWs() == nil || !c.GetWs().GetEnable() {
 		return nil
 	}
@@ -144,6 +146,7 @@ func NewWSServerFromInfra(c *conf.Server, infra *event.Infra, canceller RunCance
 		eventBuffer: infra.Buffer,
 		canceller:   canceller,
 		sender:      sender,
+		turnGateway: turnGateway,
 		serverConf:  c,
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool {
@@ -609,8 +612,51 @@ func (s *WSServer) handleUserMessage(wc *wsConn, up wsUpstream) {
 	if strings.TrimSpace(content) == "" {
 		return
 	}
+
+	sessionID := wc.sessionID
+	requestID := strings.TrimSpace(up.RequestID)
+
+	// Prefer biz.TurnGateway when available (Phase B2: unified turn entry point).
+	if s.turnGateway != nil {
+		input := biz.TurnInput{
+			SessionID: sessionID,
+			Content:   strings.TrimSpace(content),
+			EntryConfig: biz.TurnEntryPointConfig{
+				EntryPoint:  biz.EntryPointWS,
+				AllowQueue:  true,
+				AllowStream: true,
+			},
+		}
+		if agentKey, _ := payload["agent_key"].(string); agentKey != "" {
+			input.AgentKey = agentKey
+		}
+		if teamID, _ := payload["team_id"].(string); teamID != "" {
+			input.TeamID = teamID
+		}
+		if opts, ok := payload["options"].(map[string]any); ok {
+			input.Options = buildBizTurnOptions(opts)
+		}
+		safego.Go(context.Background(), "ws-user-message", func() {
+			ctx, cancel := context.WithTimeout(context.Background(), defaultWSTurnTimeout)
+			defer cancel()
+			_, err := s.turnGateway.ExecuteTurn(ctx, input)
+			if err != nil {
+				event.SessionSysLogWarn(context.Background(), sessionID, "system.ws.send_failed", "WebSocket 用户消息发送失败", event.P("error", err))
+				env := event.NewEnvelope(event.EnvelopeTypeError, "ws-handler", sessionID)
+				env.RequestID = requestID
+				env.Error = &event.EnvelopeError{
+					Type:    "send_failed",
+					Message: err.Error(),
+				}
+				s.eventBus.Publish(context.Background(), env)
+			}
+		})
+		return
+	}
+
+	// Fallback: proto-based ChatSender (legacy path).
 	req := &chatv1.SendChatMessageRequest{
-		SessionId: wc.sessionID,
+		SessionId: sessionID,
 		Content:   strings.TrimSpace(content),
 	}
 	if agentKey, _ := payload["agent_key"].(string); agentKey != "" {
@@ -623,8 +669,6 @@ func (s *WSServer) handleUserMessage(wc *wsConn, up wsUpstream) {
 		req.Options = buildChatOptions(opts)
 	}
 
-	sessionID := wc.sessionID
-	requestID := strings.TrimSpace(up.RequestID)
 	safego.Go(context.Background(), "ws-user-message", func() {
 		ctx, cancel := context.WithTimeout(context.Background(), defaultWSTurnTimeout)
 		defer cancel()
@@ -702,6 +746,31 @@ func buildChatOptions(opts map[string]any) *chatv1.SendMessageOptions {
 			if m, ok := att.(map[string]any); ok {
 				if id, _ := m["id"].(string); id != "" {
 					result.Attachments = append(result.Attachments, &chatv1.AttachmentRef{Id: id})
+				}
+			}
+		}
+	}
+	return result
+}
+
+// buildBizTurnOptions builds a biz.TurnOptions from WS payload options.
+// Used by the TurnGateway path (Phase B2).
+func buildBizTurnOptions(opts map[string]any) biz.TurnOptions {
+	result := biz.TurnOptions{}
+	if dm, _ := opts["dialog_mode"].(string); dm != "" {
+		result.DialogMode = dm
+	}
+	if p, _ := opts["provider"].(string); p != "" {
+		result.Provider = p
+	}
+	if m, _ := opts["model"].(string); m != "" {
+		result.Model = m
+	}
+	if atts, ok := opts["attachments"].([]any); ok {
+		for _, att := range atts {
+			if m, ok := att.(map[string]any); ok {
+				if id, _ := m["id"].(string); id != "" {
+					result.AttachmentIDs = append(result.AttachmentIDs, id)
 				}
 			}
 		}

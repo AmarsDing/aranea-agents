@@ -3,6 +3,7 @@
 > **版本**：2026-05-23 | **状态**：✅ 端到端可用；Follow-up / Await / Admission 两轮 P1–P2 已收口  
 > **Review**：[2026-05-23-Chat-Flow-Full-Review.md](../review/2026-05-23-Chat-Flow-Full-Review.md)  
 > **M55 Cursor 对标**：[55-chat-channel-cursor-solution.md](./55-chat-channel-cursor-solution.md) · [55-chat-channel-cursor-development.md](./55-chat-channel-cursor-development.md)  
+> **四层解耦（DECO）**：[0-module-decoupling-architecture.md §3.1](./0-module-decoupling-architecture.md#31-推荐目标架构channel--chat--agent) · 任务板 [17-channel-development.md §14](./17-channel-development.md#14-phase-deco--四层架构解耦deco)（DECO-06/13/14）
 > **需求**：[1 chat.md](./1%20chat.md) · **设计**：[1 chat.design.md](./1%20chat.design.md)  
 > **执行卡片 v2**：[1 chat-execution-trace.md](./1%20chat-execution-trace.md) · [1 chat-execution-trace.design.md](./1%20chat-execution-trace.design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：—
@@ -95,7 +96,7 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 1. **TurnBlock UI**：一轮 = User → ToolStrip（折叠）→ Assistant — **骨架 ✅**（`TurnBlock.vue`）
 2. **Channel 会话同步**：`session_revision` 增量 hydrate — **✅**
 3. **滚动锚点**：最后一轮正文 — **✅**
-4. **思考/ReAct UX**：互斥呈现、空 reasoning 不展示 — **📋 CC-C-UX-***
+4. **思考/ReAct UX**：互斥呈现、空 reasoning 不展示 — **🟡** IM preview sanitize ✅（CH-BOR-12）；Web CC-C-UX-* 📋
 5. **（P2）@ 上下文引用**、**diff Apply 卡片** — **📋**
 
 ---

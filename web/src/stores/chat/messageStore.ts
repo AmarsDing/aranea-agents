@@ -9,7 +9,10 @@ import {
   listSessionChatMessagesAfterRevision,
 } from "../../features/session/api";
 import type { IntentPassResult, Message } from "../../features/chat/types";
-import { mergeSessionMessages } from "../../features/chat/mergeSessionMessages";
+import {
+  mergeIncrementalSessionMessages,
+  mergeSessionMessages,
+} from "../../features/chat/mergeSessionMessages";
 import { useChatSessionStore } from "./sessionStore";
 
 export const useChatMessageStore = defineStore("chatMessage", () => {
@@ -71,7 +74,11 @@ export const useChatMessageStore = defineStore("chatMessage", () => {
       );
       sessionRevisionBySession.value[sid] = currentRevision;
       if (items.length > 0) {
-        setMessages(sid, mergeSessionMessages(items, local, mergeOpts));
+        setMessages(sid, mergeIncrementalSessionMessages(items, local, mergeOpts));
+      } else if (currentRevision > opts.afterRevision || opts?.dropStaleInFlight) {
+        const { items: server, currentRevision: fullRev } = await listMessages(sid);
+        sessionRevisionBySession.value[sid] = fullRev;
+        setMessages(sid, mergeSessionMessages(server, local, mergeOpts));
       }
       return;
     }

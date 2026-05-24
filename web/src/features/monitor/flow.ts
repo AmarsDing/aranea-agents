@@ -1,4 +1,4 @@
-import type { Envelope } from "../chat/envelope";
+import type { Envelope } from "../../realtime/envelope";
 import type { MonitorLogLine, MonitorTraceEvent } from "./types";
 import { parseJSON } from "./utils";
 

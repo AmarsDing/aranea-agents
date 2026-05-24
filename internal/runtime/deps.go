@@ -7,6 +7,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+	araneasession "aranea-agents/internal/session"
 	"aranea-agents/internal/provider"
 
 	trpcartifact "trpc.group/trpc-go/trpc-agent-go/artifact"
@@ -49,6 +50,7 @@ type TurnDeps struct {
 	Pipeline EventPipeline
 
 	Sessions  *biz.SessionUsecase
+	SessionRT *araneasession.Runtime
 	LLMHTTP   *http.Client
 	Compress  biz.NativeTurnCompressor
 	AfterTurn biz.NativeTurnAfterHook

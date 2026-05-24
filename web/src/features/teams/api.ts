@@ -15,9 +15,9 @@ import type {
   TeamRunMemberSummary as WireTeamRunMemberSummary
 } from "../../services/kratos/team/v1/index";
 import { GLOBAL_WS_SESSION_ID } from "../../config/runtime";
-import { createEnvelopeStream } from "../chat/useEnvelopeStream";
+import { createEnvelopeStream } from "../../realtime/useEnvelopeStream";
 import { TEAM_RUNTIME_ENVELOPE_TYPES, teamRunEventFromEnvelope } from "./teamRunEventFromEnvelope";
-import type { Envelope } from "../chat/envelope";
+import type { Envelope } from "../../realtime/envelope";
 
 export type {
   Team,

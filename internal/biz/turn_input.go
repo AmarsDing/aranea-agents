@@ -122,3 +122,12 @@ func (t TurnInput) WithEntryPoint(cfg TurnEntryPointConfig) TurnInput {
 	t.EntryConfig = cfg
 	return t
 }
+
+// AllowPendingQueue reports whether this turn may enqueue while another run is active.
+// Legacy paths without EntryPoint default to true (Web/WS behavior).
+func (t TurnInput) AllowPendingQueue() bool {
+	if t.EntryConfig.EntryPoint == "" {
+		return true
+	}
+	return t.EntryConfig.AllowQueue
+}

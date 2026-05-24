@@ -8,6 +8,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/session/v1"
 	"aranea-agents/internal/biz"
+	sessionsess "aranea-agents/internal/biz/session"
 	"aranea-agents/pkg/strutil"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -19,13 +20,20 @@ import (
 type SessionService struct {
 	v1.UnimplementedSessionServiceServer
 
-	uc  *biz.SessionUsecase
-	mon *biz.MonitorUsecase
+	uc           *biz.SessionUsecase
+	mon          *biz.MonitorUsecase
+	runs         biz.SessionRunRepo
+	participants sessionsess.SessionParticipantRepository
 }
 
 // NewSessionService constructs the service.
-func NewSessionService(uc *biz.SessionUsecase, mon *biz.MonitorUsecase) *SessionService {
-	return &SessionService{uc: uc, mon: mon}
+func NewSessionService(
+	uc *biz.SessionUsecase,
+	mon *biz.MonitorUsecase,
+	runs biz.SessionRunRepo,
+	participants sessionsess.SessionParticipantRepository,
+) *SessionService {
+	return &SessionService{uc: uc, mon: mon, runs: runs, participants: participants}
 }
 
 func toProtoSession(s biz.Session) *v1.Session {
@@ -71,6 +79,7 @@ func toProtoSession(s biz.Session) *v1.Session {
 		UpdatedAt:                  s.UpdatedAt,
 		ArchivedAt:                 s.ArchivedAt,
 		DeletedAt:                  s.DeletedAt,
+		PinnedAt:                   s.PinnedAt,
 		RunnerSnapshotJson:         s.RunnerSnapshotJSON,
 		MetadataJson:               s.MetadataJSON,
 		StateJson:                  s.StateJSON,
@@ -262,6 +271,26 @@ func (s *SessionService) RestoreSession(ctx context.Context, req *v1.RestoreSess
 	if err != nil {
 		return nil, mapSessionErr(err)
 	}
+	return toProtoSession(out), nil
+}
+
+// PinSession implements POST /v1/sessions/{id}/pin.
+func (s *SessionService) PinSession(ctx context.Context, req *v1.PinSessionRequest) (*v1.Session, error) {
+	out, err := s.uc.Pin(ctx, req.GetId())
+	if err != nil {
+		return nil, mapSessionErr(err)
+	}
+	biz.RecordAdminAudit(ctx, s.mon, "pin.session", "session", req.GetId(), "pin")
+	return toProtoSession(out), nil
+}
+
+// UnpinSession implements POST /v1/sessions/{id}/unpin.
+func (s *SessionService) UnpinSession(ctx context.Context, req *v1.UnpinSessionRequest) (*v1.Session, error) {
+	out, err := s.uc.Unpin(ctx, req.GetId())
+	if err != nil {
+		return nil, mapSessionErr(err)
+	}
+	biz.RecordAdminAudit(ctx, s.mon, "unpin.session", "session", req.GetId(), "unpin")
 	return toProtoSession(out), nil
 }
 

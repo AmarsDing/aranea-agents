@@ -13,8 +13,9 @@ const flowStepChannelInboundAccept = "channel.inbound.accept"
 
 // inboundAcceptOutcome tells the caller what background work to schedule after accept.
 type inboundAcceptOutcome struct {
-	ExecuteSync   bool
-	DispatchAsync bool
+	ExecuteSync       bool
+	DispatchAsync     bool
+	releaseConcurrent func()
 }
 
 func (o inboundAcceptOutcome) needsBackgroundWork() bool {
@@ -65,11 +66,15 @@ func (h *ChannelIngress) acceptInbound(ctx context.Context, chRow biz.Channel, e
 		h.inboundInflight.release(dedupKey)
 		return noop, cerr
 	}
-	if handled, berr := h.tryBackgroundInboundTurn(ctx, chRow, ev, platform); handled || berr != nil {
+	ltCfg := biz.ParseChannelLongTaskConfig(chRow.ConfigJSON)
+	allowQueue := channelAllowQueueFromConfig(chRow.ConfigJSON)
+	prePolicy := EvaluateIngressPolicy(channelIngressPolicyInput(ev.Text, ltCfg, allowQueue, false, false, false))
+	if prePolicy.Decision == IngressRouteBackground {
+		recordIngressIntentMetric(prePolicy.Intent)
+		_, berr := h.tryBackgroundInboundTurn(ctx, chRow, ev, platform)
 		h.inboundInflight.release(dedupKey)
 		return noop, berr
 	}
-	ltCfg := biz.ParseChannelLongTaskConfig(chRow.ConfigJSON)
 	if !biz.ChannelSupportsLongTaskIngress(platform, chRow.ConfigJSON) {
 		ltCfg.AckMessage = ""
 		ltCfg.ExecutionMode = "sync"
@@ -82,9 +87,25 @@ func (h *ChannelIngress) acceptInbound(ctx context.Context, chRow biz.Channel, e
 			event.P("peer_id", ev.PeerID),
 		)
 	}
-	if ltCfg.ShouldRunAsync(ev.Text) {
+	routePolicy := ResolveChannelAcceptRoute(ev.Text, ltCfg, allowQueue)
+	recordIngressIntentMetric(routePolicy.Intent)
+	if routePolicy.SuggestDurable {
+		recordIngressIntentMetric("suggest_durable")
+	}
+	var releaseConcurrent func()
+	if routePolicy.Decision == IngressRouteAsync {
+		release, ok := h.tryAcquireChannelConcurrent(chRow, ev, ltCfg)
+		if !ok {
+			recordIngressIntentMetric("concurrent_limit")
+			h.inboundInflight.release(dedupKey)
+			idempotency := ackIdempotencyKey(platform, ev, "concurrent_busy")
+			_ = h.enqueueOutboundReply(ctx, chRow, platform, outboundRecipient(ev), channelTurnErrorBusyMsg, ev.OutboundMeta, idempotency)
+			return noop, nil
+		}
+		releaseConcurrent = release
 		if !isPureAsyncExecutionMode(ltCfg) {
 			if err := h.sendInboundAckIfNeeded(ctx, chRow, ev, platform, ltCfg); err != nil {
+				releaseConcurrent()
 				h.inboundInflight.release(dedupKey)
 				_ = h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "ack", "error": err.Error()}, err.Error())
 				return noop, err
@@ -95,9 +116,19 @@ func (h *ChannelIngress) acceptInbound(ctx context.Context, chRow biz.Channel, e
 			event.P("peer_id", ev.PeerID),
 			event.P("async", true),
 		)
-		return inboundAcceptOutcome{DispatchAsync: true}, nil
+		return inboundAcceptOutcome{DispatchAsync: true, releaseConcurrent: releaseConcurrent}, nil
 	}
+	release, ok := h.tryAcquireChannelConcurrent(chRow, ev, ltCfg)
+	if !ok {
+		recordIngressIntentMetric("concurrent_limit")
+		h.inboundInflight.release(dedupKey)
+		idempotency := ackIdempotencyKey(platform, ev, "concurrent_busy")
+		_ = h.enqueueOutboundReply(ctx, chRow, platform, outboundRecipient(ev), channelTurnErrorBusyMsg, ev.OutboundMeta, idempotency)
+		return noop, nil
+	}
+	releaseConcurrent = release
 	if err := h.sendInboundAckIfNeeded(ctx, chRow, ev, platform, ltCfg); err != nil {
+		releaseConcurrent()
 		h.inboundInflight.release(dedupKey)
 		_ = h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "ack", "error": err.Error()}, err.Error())
 		return noop, err
@@ -106,7 +137,9 @@ func (h *ChannelIngress) acceptInbound(ctx context.Context, chRow biz.Channel, e
 		event.P("channel_id", chRow.ID),
 		event.P("peer_id", ev.PeerID),
 	)
-	return inboundAcceptOutcome{ExecuteSync: true}, nil
+	out := channelAcceptOutcomeFromRoute(routePolicy)
+	out.releaseConcurrent = releaseConcurrent
+	return out, nil
 }
 
 func isPureAsyncExecutionMode(ltCfg biz.ChannelLongTaskConfig) bool {

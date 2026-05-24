@@ -55,6 +55,23 @@ func PublishRunStatusFull(bus event.Bus, sessionID, runID, status, errMsg string
 	bus.Publish(context.Background(), env)
 }
 
+// PublishBackgroundJobRefresh notifies Web clients to reload background job panels (DECO-12 · M55-JOB-01).
+func PublishBackgroundJobRefresh(bus event.Bus, sessionID, jobID, status string) {
+	if bus == nil || strings.TrimSpace(sessionID) == "" {
+		return
+	}
+	env := event.NewEnvelope(event.EnvelopeTypeRunStatus, "background-job", sessionID)
+	env.Channel = event.RouteChannel(env)
+	env.Source = "channel"
+	env.Metadata = map[string]any{
+		"background_job_refresh": true,
+		"job_id":                 strings.TrimSpace(jobID),
+		"job_status":             strings.TrimSpace(status),
+		"status":                 "background_job",
+	}
+	bus.Publish(context.Background(), env)
+}
+
 // CancelSessionRunSideEffects publishes cancelled run_status and marks running activity cards cancelled.
 func CancelSessionRunSideEffects(ctx context.Context, bus event.Bus, sessions *biz.SessionUsecase, sessionID, runID string) {
 	sessionID = strings.TrimSpace(sessionID)

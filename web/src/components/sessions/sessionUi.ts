@@ -49,6 +49,7 @@ export const sessionsTableColumns = [
 
 export function buildSessionsSummaryCards(rows: Session[], total: number): SessionsSummaryCard[] {
   const active = rows.filter((item) => item.status === "active" || item.status === "running").length;
+  const pinned = rows.filter((item) => isSessionPinned(item)).length;
   const avgContext = rows.length
     ? rows.reduce((sum, item) => sum + (item.context_used_ratio || 0), 0) / rows.length
     : 0;
@@ -56,9 +57,14 @@ export function buildSessionsSummaryCards(rows: Session[], total: number): Sessi
   return [
     { label: "当前页会话", value: rows.length, hint: `总计 ${total}` },
     { label: "活跃 / 运行", value: active, hint: "当前页统计" },
+    { label: "置顶", value: pinned, hint: "当前页已置顶" },
     { label: "平均上下文", value: formatPercent(avgContext), hint: "当前页平均值" },
     { label: "Token", value: formatNumber(tokens), hint: "当前页累计" }
   ];
+}
+
+export function isSessionPinned(session: Session) {
+  return Boolean(session.pinned_at?.trim());
 }
 
 export function ownerLabel(value: string) {

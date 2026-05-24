@@ -1,7 +1,7 @@
 import { onBeforeUnmount, ref } from "vue";
 import { GLOBAL_WS_SESSION_ID } from "../../config/runtime";
-import { createEnvelopeStream } from "../chat/useEnvelopeStream";
-import type { Envelope } from "../chat/envelope";
+import { createEnvelopeStream } from "../../realtime/useEnvelopeStream";
+import type { Envelope } from "../../realtime/envelope";
 import { monitorLogLineFromFlowEnvelope } from "./flow";
 import type { MonitorLogLine, StreamState } from "./types";
 

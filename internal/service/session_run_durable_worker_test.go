@@ -56,6 +56,9 @@ func (s *durableWorkerRepoStub) ListByPhase(_ context.Context, phase string, _ i
 func (s *durableWorkerRepoStub) ListForJobs(_ context.Context, _ biz.SessionRunListQuery) ([]biz.SessionRun, error) {
 	return nil, nil
 }
+func (s *durableWorkerRepoStub) ListBySession(_ context.Context, _ string, _, _ int) ([]biz.SessionRun, int, error) {
+	return nil, 0, nil
+}
 func (s *durableWorkerRepoStub) TryClaimDurableResume(_ context.Context, id, _ string) (bool, error) {
 	run, ok := s.runs[id]
 	if !ok || run.Phase != biz.SessionRunPhaseDurable || run.CheckpointID == "" {

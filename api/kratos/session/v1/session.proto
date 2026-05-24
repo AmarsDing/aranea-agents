@@ -55,6 +55,7 @@ message Session {
   string runner_snapshot_json = 44;
   string metadata_json = 45;
   string state_json = 46;
+  string pinned_at = 47;
 }
 
 message SessionTimelineSummary {
@@ -154,6 +155,85 @@ message ArchiveSessionRequest {
 
 message RestoreSessionRequest {
   string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message PinSessionRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message UnpinSessionRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ExportSessionRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  // markdown | json
+  string format = 2;
+}
+
+message ExportSessionResponse {
+  string content = 1;
+  string filename = 2;
+  string content_type = 3;
+}
+
+message SessionRunRecord {
+  string id = 1;
+  string session_id = 2;
+  string turn_id = 3;
+  string runtime_run_id = 4;
+  string source = 5;
+  string phase = 6;
+  int32 soft_budget_sec = 7;
+  int32 hard_budget_sec = 8;
+  string checkpoint_id = 9;
+  string workflow_job_id = 10;
+  string agent_id = 11;
+  string error_message = 12;
+  string started_at = 13;
+  string phase_changed_at = 14;
+  string finished_at = 15;
+  string created_at = 16;
+  string updated_at = 17;
+}
+
+message ListSessionRunsRequest {
+  string session_id = 1 [(google.api.field_behavior) = REQUIRED];
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message ListSessionRunsResponse {
+  repeated SessionRunRecord items = 1;
+  int32 total = 2;
+}
+
+message SessionParticipant {
+  string id = 1;
+  string session_id = 2;
+  string participant_type = 3;
+  string participant_id = 4;
+  string display_name = 5;
+  string role_in_session = 6;
+  string status = 7;
+  string first_active_at = 8;
+  string last_active_at = 9;
+  int32 message_count = 10;
+  int32 run_step_count = 11;
+  int32 input_tokens = 12;
+  int32 output_tokens = 13;
+  double context_used_ratio = 14;
+  string metadata_json = 15;
+  string created_at = 16;
+  string updated_at = 17;
+}
+
+message ListSessionParticipantsRequest {
+  string session_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListSessionParticipantsResponse {
+  repeated SessionParticipant items = 1;
 }
 
 message GetSessionTimelineRequest {
@@ -350,6 +430,27 @@ service SessionService {
       post: "/v1/sessions/{id}/restore"
       body: "*"
     };
+  }
+  rpc PinSession(PinSessionRequest) returns (Session) {
+    option (google.api.http) = {
+      post: "/v1/sessions/{id}/pin"
+      body: "*"
+    };
+  }
+  rpc UnpinSession(UnpinSessionRequest) returns (Session) {
+    option (google.api.http) = {
+      post: "/v1/sessions/{id}/unpin"
+      body: "*"
+    };
+  }
+  rpc ExportSession(ExportSessionRequest) returns (ExportSessionResponse) {
+    option (google.api.http) = {get: "/v1/sessions/{id}/export"};
+  }
+  rpc ListSessionRuns(ListSessionRunsRequest) returns (ListSessionRunsResponse) {
+    option (google.api.http) = {get: "/v1/sessions/{session_id}/runs"};
+  }
+  rpc ListSessionParticipants(ListSessionParticipantsRequest) returns (ListSessionParticipantsResponse) {
+    option (google.api.http) = {get: "/v1/sessions/{session_id}/participants"};
   }
   rpc GetSessionTimeline(GetSessionTimelineRequest) returns (SessionTimeline) {
     option (google.api.http) = {get: "/v1/sessions/{id}/timeline"};

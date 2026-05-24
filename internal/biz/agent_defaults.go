@@ -31,6 +31,7 @@ func DefaultAgentRuntimeSettings() AgentRuntimeSettings {
 		L0RecentWindowTokens:              0,
 		L0SummaryThreshold:                0.6,
 		L0SummaryKeepTurns:                4,
+		L0CompressMinGapSec:               600,
 		L0TruncateStrategy:                "summary",
 		L0InjectL1:                        true,
 		L0InjectL3:                        true,

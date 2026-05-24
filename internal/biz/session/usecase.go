@@ -5,9 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"strings"
-	"time"
-
-	"aranea-agents/pkg/safego"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
@@ -56,6 +53,7 @@ type Session struct {
 	UpdatedAt                  string
 	ArchivedAt                 string
 	DeletedAt                  string
+	PinnedAt                   string
 	RunnerSnapshotJSON         string
 	StateJSON                  string
 	MetadataJSON               string
@@ -229,6 +227,13 @@ type TimelineQuery struct {
 	SortOrder  string
 }
 
+// TimelineEventRef is one row key from the merged timeline UNION query.
+type TimelineEventRef struct {
+	Kind       string
+	ID         string
+	OccurredAt string
+}
+
 const (
 	timelineDefaultInvLimit = 100
 	timelineMaxInvLimit     = 500
@@ -319,6 +324,10 @@ type SessionRepository interface {
 	SearchMessages(ctx context.Context, q MessageSearchQuery) (MessageSearchResult, error)
 	ListToolInvocationsBySession(ctx context.Context, sessionID string, limit int) ([]ToolInvocationView, error)
 	ListSkillInvocationsBySession(ctx context.Context, sessionID string, limit int) ([]SkillInvocationView, error)
+	ListTimelineEventRefsPaged(ctx context.Context, sessionID string, q TimelineQuery) ([]TimelineEventRef, int, error)
+	ListMessagesByIDs(ctx context.Context, sessionID string, ids []string) ([]ChatMessage, error)
+	ListToolInvocationsByIDs(ctx context.Context, sessionID string, ids []string) ([]ToolInvocationView, error)
+	ListSkillInvocationsByIDs(ctx context.Context, sessionID string, ids []string) ([]SkillInvocationView, error)
 	// AppendChatTurn inserts user + assistant rows and updates session aggregates (native chat).
 	AppendChatTurn(ctx context.Context, sessionID string, user, assistant ChatMessage) error
 	// AppendChatMessage inserts a single message row and updates session aggregates.
@@ -355,6 +364,8 @@ type SessionRepository interface {
 	ListSessionsByIDs(ctx context.Context, ids []string) ([]Session, error)
 	ArchiveSessionsByIDs(ctx context.Context, ids []string) (processed int, failed []string, err error)
 	DeleteSessionsByIDs(ctx context.Context, ids []string) (processed int, failed []string, err error)
+	PinSession(ctx context.Context, id string) (Session, error)
+	UnpinSession(ctx context.Context, id string) (Session, error)
 	BumpSessionRevision(ctx context.Context, sessionID string) (int64, error)
 	GetSessionRevision(ctx context.Context, sessionID string) (int64, error)
 	ListMessagesAfterRevision(ctx context.Context, sessionID string, afterRevision int64) ([]ChatMessage, error)
@@ -493,340 +504,6 @@ func (uc *SessionUsecase) DeleteByAgent(ctx context.Context, agentID string) err
 		return validationErr("agent_id is required")
 	}
 	return uc.sessions.DeleteSessionsByAgentID(ctx, agentID)
-}
-
-// ListMessages returns raw chat rows for a session (same store as timeline messages).
-func (uc *SessionUsecase) SearchMessages(ctx context.Context, q MessageSearchQuery) (MessageSearchResult, error) {
-	if uc == nil || uc.sessions == nil {
-		return MessageSearchResult{}, nil
-	}
-	if strings.TrimSpace(q.SessionID) == "" {
-		return MessageSearchResult{}, validationErr("session_id is required")
-	}
-	if strings.TrimSpace(q.Keyword) == "" {
-		return MessageSearchResult{}, validationErr("keyword is required")
-	}
-	return uc.sessions.SearchMessages(ctx, q)
-}
-
-func (uc *SessionUsecase) ListMessages(ctx context.Context, sessionID string) ([]ChatMessage, error) {
-	res, err := uc.ListMessagesPaged(ctx, sessionID, 0, 0)
-	if err != nil {
-		return nil, err
-	}
-	return res.Items, nil
-}
-
-// ListMessagesPaged returns messages with DB pagination (default limit when limit<=0).
-func (uc *SessionUsecase) ListMessagesPaged(ctx context.Context, sessionID string, limit, offset int) (MessageListResult, error) {
-	sessionID = strings.TrimSpace(sessionID)
-	if sessionID == "" {
-		return MessageListResult{}, validationErr("session id is required")
-	}
-	if _, err := uc.sessions.GetSessionByID(ctx, sessionID); err != nil {
-		return MessageListResult{}, err
-	}
-	total, err := uc.sessions.CountMessagesBySession(ctx, sessionID)
-	if err != nil {
-		return MessageListResult{}, err
-	}
-	limit = clampMessageListLimit(limit)
-	if offset < 0 {
-		offset = 0
-	}
-	items, err := uc.sessions.ListMessagesBySession(ctx, sessionID, limit, offset)
-	if err != nil {
-		return MessageListResult{}, err
-	}
-	return MessageListResult{Items: items, Total: total}, nil
-}
-
-// ListMessagesAfterTurn loads rows with turn_index > afterTurn (compression path).
-func (uc *SessionUsecase) ListMessagesAfterTurn(ctx context.Context, sessionID string, afterTurn int) ([]ChatMessage, error) {
-	sessionID = strings.TrimSpace(sessionID)
-	if sessionID == "" {
-		return nil, validationErr("session id is required")
-	}
-	return uc.sessions.ListMessagesAfterTurn(ctx, sessionID, afterTurn)
-}
-
-// ListMessagesByStatus loads recent rows matching status (e.g. tool_running cancel path).
-func (uc *SessionUsecase) ListMessagesByStatus(ctx context.Context, sessionID, status string, limit int) ([]ChatMessage, error) {
-	sessionID = strings.TrimSpace(sessionID)
-	if sessionID == "" {
-		return nil, validationErr("session id is required")
-	}
-	return uc.sessions.ListMessagesByStatus(ctx, sessionID, status, limit)
-}
-
-// ListMessagesRecent loads the latest N messages in chronological order (timeline / cron).
-func (uc *SessionUsecase) ListMessagesRecent(ctx context.Context, sessionID string, limit int) ([]ChatMessage, error) {
-	sessionID = strings.TrimSpace(sessionID)
-	if sessionID == "" {
-		return nil, validationErr("session id is required")
-	}
-	return uc.sessions.ListMessagesRecent(ctx, sessionID, limit)
-}
-
-// AppendChatTurn persists a user + assistant pair (native chat).
-func (uc *SessionUsecase) AppendChatTurn(ctx context.Context, sessionID string, user, assistant ChatMessage) error {
-	if err := uc.sessions.AppendChatTurn(ctx, sessionID, user, assistant); err != nil {
-		return err
-	}
-	if strings.EqualFold(strings.TrimSpace(user.Role), "user") {
-		_ = uc.maybeAutoTitleFromUserMessage(ctx, sessionID, user.ContentMarkdown)
-	}
-	return nil
-}
-
-// AppendChatMessage persists one chat row (streamed native turns).
-func (uc *SessionUsecase) AppendChatMessage(ctx context.Context, sessionID string, msg ChatMessage, bumpModelCall bool) error {
-	if err := uc.sessions.AppendChatMessage(ctx, sessionID, msg, bumpModelCall); err != nil {
-		return err
-	}
-	if strings.EqualFold(strings.TrimSpace(msg.Role), "user") {
-		_ = uc.maybeAutoTitleFromUserMessage(ctx, sessionID, msg.ContentMarkdown)
-	}
-	return nil
-}
-
-// UpdateMessageFeedback records thumbs up/down on an assistant message (options_json.feedback).
-func (uc *SessionUsecase) UpdateMessageFeedback(ctx context.Context, sessionID, messageID, rating, comment string) error {
-	sessionID = strings.TrimSpace(sessionID)
-	messageID = strings.TrimSpace(messageID)
-	rating = strings.TrimSpace(strings.ToLower(rating))
-	if sessionID == "" || messageID == "" {
-		return validationErr("session_id and message_id are required")
-	}
-	if rating != "positive" && rating != "negative" {
-		return validationErr("rating must be positive or negative")
-	}
-	if _, err := uc.sessions.GetSessionByID(ctx, sessionID); err != nil {
-		return err
-	}
-	return uc.sessions.UpdateMessageFeedbackJSON(ctx, sessionID, messageID, rating, strings.TrimSpace(comment))
-}
-
-// ListMessagesAfterRevision returns messages with turn_index > afterRevision*2 (M55 session sync).
-func (uc *SessionUsecase) ListMessagesAfterRevision(ctx context.Context, sessionID string, afterRevision int64) ([]ChatMessage, error) {
-	sessionID = strings.TrimSpace(sessionID)
-	if sessionID == "" {
-		return nil, validationErr("session id is required")
-	}
-	if _, err := uc.sessions.GetSessionByID(ctx, sessionID); err != nil {
-		return nil, err
-	}
-	return uc.sessions.ListMessagesAfterRevision(ctx, sessionID, afterRevision)
-}
-
-// BumpSessionRevision atomically increments session_revision after a completed turn.
-func (uc *SessionUsecase) BumpSessionRevision(ctx context.Context, sessionID string) (int64, error) {
-	sessionID = strings.TrimSpace(sessionID)
-	if sessionID == "" {
-		return 0, validationErr("session id is required")
-	}
-	return uc.sessions.BumpSessionRevision(ctx, sessionID)
-}
-
-// GetSessionRevision returns the current session_revision counter.
-func (uc *SessionUsecase) GetSessionRevision(ctx context.Context, sessionID string) (int64, error) {
-	sessionID = strings.TrimSpace(sessionID)
-	if sessionID == "" {
-		return 0, validationErr("session id is required")
-	}
-	return uc.sessions.GetSessionRevision(ctx, sessionID)
-}
-
-// UpsertChatActivityMessage persists a tool/MCP/Skill execution card for chat history restore.
-func (uc *SessionUsecase) UpsertChatActivityMessage(ctx context.Context, sessionID string, msg ChatMessage) error {
-	sessionID = strings.TrimSpace(sessionID)
-	if sessionID == "" {
-		return validationErr("session id is required")
-	}
-	if strings.TrimSpace(msg.ID) == "" {
-		return validationErr("message id is required")
-	}
-	if _, err := uc.sessions.GetSessionByID(ctx, sessionID); err != nil {
-		return err
-	}
-	return uc.sessions.UpsertChatActivityMessage(ctx, sessionID, msg)
-}
-
-// UpdateRunnerSnapshotJSON persists the Runner session snapshot.
-func (uc *SessionUsecase) UpdateRunnerSnapshotJSON(ctx context.Context, sessionID string, snapshotJSON string) error {
-	return uc.sessions.UpdateRunnerSnapshotJSON(ctx, sessionID, snapshotJSON)
-}
-
-func (uc *SessionUsecase) GetSessionState(ctx context.Context, sessionID string) (map[string]string, error) {
-	return uc.sessions.GetSessionState(ctx, sessionID)
-}
-
-func (uc *SessionUsecase) SaveSessionState(ctx context.Context, sessionID string, state map[string]string) error {
-	return uc.sessions.SaveSessionState(ctx, sessionID, state)
-}
-
-func (uc *SessionUsecase) ApplyStateDelta(ctx context.Context, sessionID string, delta StateDelta) error {
-	if delta.Path == "" {
-		return nil
-	}
-	state, err := uc.sessions.GetSessionState(ctx, sessionID)
-	if err != nil {
-		return err
-	}
-	switch delta.Operation {
-	case "set":
-		state[delta.Path] = delta.ValueJSON
-	case "append":
-		existing, _ := state[delta.Path]
-		state[delta.Path] = existing + delta.ValueJSON
-	case "delete":
-		delete(state, delta.Path)
-	default:
-		state[delta.Path] = delta.ValueJSON
-	}
-	return uc.sessions.SaveSessionState(ctx, sessionID, state)
-}
-
-// UpdateSessionContextFromLLMUsage refreshes sessions.context_used_ratio after a native LLM turn.
-func (uc *SessionUsecase) UpdateSessionContextFromLLMUsage(ctx context.Context, sessionID string, promptTokens, completionTokens, contextWindow int) error {
-	return uc.sessions.UpdateSessionContextFromLLMUsage(ctx, sessionID, promptTokens, completionTokens, contextWindow)
-}
-
-// UpdateSessionContextAfterCompression refreshes context_used_* from an estimate of the compacted prompt.
-func (uc *SessionUsecase) UpdateSessionContextAfterCompression(ctx context.Context, sessionID string, estimatedPromptTokens int, contextWindow int) error {
-	return uc.sessions.UpdateSessionContextAfterCompression(ctx, sessionID, estimatedPromptTokens, contextWindow)
-}
-
-// InsertSessionSummary appends a rolling summary row.
-func (uc *SessionUsecase) InsertSessionSummary(ctx context.Context, row SessionSummary) error {
-	return uc.sessions.InsertSessionSummary(ctx, row)
-}
-
-// MaxSessionSummaryToTurn returns the largest to_turn stored for the session (0 if none).
-func (uc *SessionUsecase) MaxSessionSummaryToTurn(ctx context.Context, sessionID string) (int, error) {
-	return uc.sessions.MaxSessionSummaryToTurn(ctx, sessionID)
-}
-
-// ListSessionSummaries returns summary rows in chronological order.
-func (uc *SessionUsecase) ListSessionSummaries(ctx context.Context, sessionID string) ([]SessionSummary, error) {
-	return uc.sessions.ListSessionSummaries(ctx, sessionID)
-}
-
-// LatestSessionSummaryTime returns created_at of the newest summary row or empty string.
-func (uc *SessionUsecase) LatestSessionSummaryTime(ctx context.Context, sessionID string) (string, error) {
-	return uc.sessions.LatestSessionSummaryTime(ctx, sessionID)
-}
-
-// UpdateSessionListSummary updates sessions.summary (short UI line).
-func (uc *SessionUsecase) UpdateSessionListSummary(ctx context.Context, sessionID, summary string) error {
-	return uc.sessions.UpdateSessionListSummary(ctx, sessionID, summary)
-}
-
-func sessionTitleFromUserSnippet(snippet string) string {
-	s := strings.TrimSpace(snippet)
-	if s == "" {
-		return ""
-	}
-	s = strings.ReplaceAll(s, "\n", " ")
-	s = strings.ReplaceAll(s, "\r", "")
-	s = strings.Join(strings.Fields(s), " ")
-	r := []rune(s)
-	if len(r) > 56 {
-		return string(r[:56]) + "…"
-	}
-	return s
-}
-
-func shouldAutoNameSession(title string) bool {
-	t := strings.TrimSpace(title)
-	if t == "" {
-		return true
-	}
-	lower := strings.ToLower(t)
-	switch lower {
-	case "untitled", "new chat":
-		return true
-	}
-	// Matches i18n `chat.untitledSession` (zh/en) and common placeholders.
-	if strings.Contains(t, "未命名") || strings.Contains(t, "新会话") || strings.Contains(t, "新对话") {
-		return true
-	}
-	return false
-}
-
-func (uc *SessionUsecase) maybeAutoTitleFromUserMessage(ctx context.Context, sessionID, content string) error {
-	sess, err := uc.Get(ctx, sessionID)
-	if err != nil {
-		return err
-	}
-	if !shouldAutoNameSession(sess.Title) {
-		return nil
-	}
-	snippet := sessionTitleFromUserSnippet(content)
-	if snippet != "" {
-		_, _ = uc.Rename(ctx, sessionID, snippet)
-	}
-	safego.Go(context.Background(), "generate-title-async", func() {
-		uc.generateTitleAsync(sessionID, content)
-	})
-	return nil
-}
-
-func (uc *SessionUsecase) generateTitleAsync(sessionID, content string) {
-	bgCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-
-	title, err := uc.titleGenerator.Generate(bgCtx, content)
-	if err != nil || title == "" {
-		return
-	}
-	_, _ = uc.Rename(bgCtx, sessionID, title)
-}
-
-func (uc *SessionUsecase) CreateTurn(ctx context.Context, turn SessionTurn) (SessionTurn, error) {
-	if strings.TrimSpace(turn.SessionID) == "" {
-		return SessionTurn{}, validationErr("session_id is required")
-	}
-	if strings.TrimSpace(turn.ID) == "" {
-		turn.ID = uuid.NewString()
-	}
-	if turn.CreatedAt == "" {
-		turn.CreatedAt = time.Now().UTC().Format(time.RFC3339)
-	}
-	if turn.UpdatedAt == "" {
-		turn.UpdatedAt = turn.CreatedAt
-	}
-	return uc.sessions.CreateSessionTurn(ctx, turn)
-}
-
-func (uc *SessionUsecase) UpdateTurn(ctx context.Context, id string, fields SessionTurnUpdateFields) (SessionTurn, error) {
-	if strings.TrimSpace(id) == "" {
-		return SessionTurn{}, validationErr("turn id is required")
-	}
-	return uc.sessions.UpdateSessionTurn(ctx, id, fields)
-}
-
-// IncrementInvocationCounts bumps session.tool_call_count / mcp_call_count / skill_call_count.
-func (uc *SessionUsecase) IncrementInvocationCounts(ctx context.Context, sessionID string, toolDelta, mcpDelta, skillDelta int) error {
-	sessionID = strings.TrimSpace(sessionID)
-	if sessionID == "" || (toolDelta == 0 && mcpDelta == 0 && skillDelta == 0) {
-		return nil
-	}
-	return uc.sessions.IncrementInvocationCounts(ctx, sessionID, toolDelta, mcpDelta, skillDelta)
-}
-
-func (uc *SessionUsecase) ListTurns(ctx context.Context, sessionID string, limit, offset int) (SessionTurnListResult, error) {
-	sessionID = strings.TrimSpace(sessionID)
-	if sessionID == "" {
-		return SessionTurnListResult{}, validationErr("session_id is required")
-	}
-	if limit <= 0 || limit > 100 {
-		limit = 20
-	}
-	if offset < 0 {
-		offset = 0
-	}
-	return uc.sessions.ListSessionTurns(ctx, sessionID, limit, offset)
 }
 
 func normalizeSessionSearch(q *SessionSearchQuery) {

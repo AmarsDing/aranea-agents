@@ -213,7 +213,9 @@
 | CC-C-UX-04 | `TurnAssistantBubble` 拆分 | P1 | 📋 | CC-C-01 补完 |
 | CC-HOT-01 | 飞书 stale peer bind 自动 rebind | P0 | ✅ | `ensureChannelSession` + `UpdateSessionID` |
 | CC-HOT-02 | 删 Session 清 peer bind | P2 | 📋 | 读路径已自愈 |
-| CC-E2E-01 | M55-SYNC/UI/JOB 手工验收 | P1 | ⏳ | channel e2e 脚本 |
+| CC-E2E-01 | M55-SYNC/UI/JOB 手工验收 | P1 | 🟡 | [DECO-01 归档](../changelog/2026-05-24-DECO-01-Feishu-Web-E2E-Archive.md)；Holistic fix [Review](../review/2026-05-24-DECO-01-Channel-Sync-Holistic-Fix-Review.md) P1 待收敛 |
+| DECO-R-P1-01 | Global hub / session WS stream 分流 | P1 | 🚧 | [Review §3](../review/2026-05-24-DECO-01-Channel-Sync-Holistic-Fix-Review.md#p1--当前迭代应修) |
+| DECO-R-P1-02 | turn complete 双 hydrate dedupe | P1 | 🚧 | 同上 |
 | CC-D-01 | Background Job 列表/侧栏 | P1 | ✅ | WS refresh + Graph 深链 |
 | CC-E-01 | `@` 上下文引用 UX | P2 | 📋 | Cursor 对齐 |
 | CC-E-03 | diff Apply 卡片 | P2 | 📋 | fragment edit 对接 |

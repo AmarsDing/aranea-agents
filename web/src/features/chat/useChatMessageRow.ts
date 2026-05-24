@@ -3,7 +3,7 @@ import { useI18n } from "vue-i18n";
 import { isAvatarAssetRef } from "../avatar/iconModel";
 import { reasoningMarkdown } from "./streamContentPatch";
 import type { ToolUseEvent } from "./types";
-import type { Message } from "../../components/chat/types";
+import type { Message } from "./types";
 
 const AVATAR_PALETTE = [
   { name: "indigo", hex: "#5c6bc0" },

@@ -49,6 +49,41 @@ func TestTranscriptApplyTextAndToolOrder(t *testing.T) {
 	}
 }
 
+func TestTranscriptApply_sanitizesEmptyThinking(t *testing.T) {
+	tr := NewTranscript()
+	tr.Apply(event.Envelope{
+		Type: event.EnvelopeTypeTextDelta,
+		Content: &event.EnvelopeContent{
+			Reasoning: "<thinking></thinking>",
+			IsPartial: true,
+		},
+	})
+	tr.Apply(event.Envelope{
+		Type: event.EnvelopeTypeTextDelta,
+		Content: &event.EnvelopeContent{
+			Text:      "answer",
+			IsPartial: true,
+		},
+	})
+	out := RenderPlainText(tr, biz.ChannelIMRenderPolicy{Mode: biz.ChannelIMRenderModeTranscript})
+	if strings.Contains(out, "thinking") || strings.Contains(out, "【思考过程】") {
+		t.Fatalf("thinking leaked: %q", out)
+	}
+	if !strings.Contains(out, "answer") {
+		t.Fatalf("missing answer: %q", out)
+	}
+}
+
+func TestFormatRenderedTranscriptForIM_stripsInlineThinkingTags(t *testing.T) {
+	raw := "【思考过程】\n<thinking></thinking>\n【正文】\nok"
+	out := FormatRenderedTranscriptForIM("feishu", raw)
+	if strings.Contains(out, "<thinking>") {
+		t.Fatalf("tag leaked: %q", out)
+	}
+	if !strings.Contains(out, "ok") {
+		t.Fatalf("missing body: %q", out)
+	}
+}
 func TestRenderReplyOnly(t *testing.T) {
 	tr := NewTranscript()
 	tr.SetSystem("收到")

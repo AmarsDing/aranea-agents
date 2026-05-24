@@ -2,6 +2,7 @@
 
 > **版本**：2026-05-23 | **状态**：🚧 Phase A–D 已交付；**Phase R**（Run 升格）已排期；UX 收口进行中  
 > **方案**：[55-chat-channel-cursor-solution.md](./55-chat-channel-cursor-solution.md)  
+> **四层解耦（DECO）**：[17-channel-development.md §14](./17-channel-development.md#14-phase-deco--四层架构解耦deco)（DECO-11/12/13/14 · 衔接 CC-A/C）
 > **蓝图**：[55-chat-channel-cursor-solution.md §9 附录](../需求/55-chat-channel-cursor-solution.md#9-附录企业级蓝图与-ai-落地指南)  
 > **进度真相**：[execution-plan.md §迭代 CC](../guides/execution-plan.md) · **EP**：EP-CC-M55  
 > **近期 changelog**：[M55 Phase A–D Review](../changelog/2026-05-23-M55-Phase-ABCD-Review-Fixes.md) · [飞书 Rebind + UX Backlog](../changelog/2026-05-23-M55-Feishu-Rebind-UX-Backlog.md) · [卡 Turn / 入站排查](../changelog/2026-05-23-M55-Stuck-Turn-Inbound-Sync-Analysis.md) · [**R-UX 格式化 / 思考 UX**](../changelog/2026-05-23-M55-Phase-R-UX-Channel-Format-Reasoning.md)
@@ -218,6 +219,19 @@ gantt
 | CC-FEISHU-02 | 升格卡片 Card 2.0 +「取消执行」callback | P1 | ✅ |
 | CC-UX-01~02 | 排队与 `/async` 文案去重 | P2 | ✅ |
 | CC-FIX-CHANNEL-02 | Preview 仅 reasoning 时 heartbeat 文案 | P2 | ✅ |
+
+### 续 — DECO-01 Holistic Fix（2026-05-24）
+
+> Review：[2026-05-24-DECO-01-Channel-Sync-Holistic-Fix-Review.md](../review/2026-05-24-DECO-01-Channel-Sync-Holistic-Fix-Review.md) · Changelog：[Holistic Fix](../changelog/2026-05-24-DECO-01-Channel-Sync-Holistic-Fix.md)
+
+| ID | 任务 | 优先级 | 状态 |
+|----|------|--------|------|
+| FIX-H-01~05 | 删 `channelLiveTurn` · cursor · 强制 hydrate · merge fallback | P0 | ✅ |
+| DECO-R-P1-01 | Global hub 仅 channel stream；Web turn 不双 patch | P1 | 🚧 |
+| DECO-R-P1-02 | turn complete hydrate dedupe（inbound vs runner_completion） | P1 | 🚧 |
+| DECO-R-P2-01 | focus 不阻塞 envelope 链 | P2 | 🚧 |
+| DECO-R-P2-02 | Team reload 与 Agent 对齐 | P2 | 🚧 |
+| DECO-R-P2-03 | `useChatInboundSync` 集成测 | P2 | 📋 |
 
 ---
 

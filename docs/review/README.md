@@ -38,10 +38,10 @@
 | **Chat** | 1 | 84 | 17 | 22 | 18 | 14 | 7 | 6 | P1 | [01-chat-review.md](./01-chat-review.md) |
 | **Agent 2–8** | 2–8 | 80 | 16 | 21 | 17 | 14 | 6 | 6 | P1 | [02-08-agent-modules-review.md](./02-08-agent-modules-review.md) |
 | **Provider** | 9 | 81 | 17 | 22 | 18 | 12 | 6 | 6 | P1 | [09-provider-review.md](./09-provider-review.md) |
-| **Session** | 10 | 79 | 16 | 21 | 17 | 13 | 6 | 6 | P1 | [10-session-review.md](./10-session-review.md) |
+| **Session** | 10 | **83** | 17 | 22 | 16 | 13 | 5 | 9 | P1 | [10-session-review.md](./10-session-review.md) · [Phase2](./2026-05-24-Session-Phase2-Review.md) |
 | **Team / Multi-Agent** | 11 | 83 | 17 | 22 | 18 | 14 | 6 | 6 | P1 | [11-team-review.md](./11-team-review.md) · [M53 Phase7](./2026-05-23-Team-Graph-M53-Phase7-Review.md) |
 | **Memory L0–L4** | 12–16 | 74 | 15 | 18 | 16 | 12 | 7 | 8 | P1 | [memory-review.md](./memory-review.md) |
-| **Channel** | 17 | **92** | 19 | 23 | 19 | 14 | 8 | 9 | P2 | [17-channel-review.md](./17-channel-review.md) · [IM Preview](./2026-05-23-Channel-IM-Preview-Review.md) · [M55 Run Lifecycle](./2026-05-23-M55-Run-Lifecycle-Review.md) |
+| **Channel** | 17 | **92** | 19 | 23 | 19 | 14 | 8 | 9 | P2 | [17-channel-review.md](./17-channel-review.md) · [IM Preview](./2026-05-23-Channel-IM-Preview-Review.md) · [M55 Run Lifecycle](./2026-05-23-M55-Run-Lifecycle-Review.md) · [外部参考 Playbook](./2026-05-24-Channel-External-Reference-Playbook-Review.md) · [**DECO-01 Holistic Fix**](./2026-05-24-DECO-01-Channel-Sync-Holistic-Fix-Review.md) |
 | **Monitor / Dashboard** | 18 | 78 | 16 | 21 | 17 | 13 | 5 | 6 | P1 | [18-monitor-review.md](./18-monitor-review.md) |
 | **MCP** | 19 | 80 | 16 | 22 | 17 | 13 | 6 | 6 | P1 | [19-mcp-review.md](./19-mcp-review.md) |
 | **Skill** | 20 | 78 | 16 | 21 | 17 | 12 | 6 | 6 | P1 | [20-skill-review.md](./20-skill-review.md) |
@@ -97,6 +97,9 @@
 | P1-009 | Session | 批量治理 UI | ✅ `SessionsBulkToolbar.vue` |
 | P1-010 | Telemetry | per-span otel_id | ✅ `TraceEmitter.SyncOtelSpanIDs` |
 | P1-011 | 前端测试 | E2E 薄弱 | 🚧 WS/Team/MemoryWorker 单测续补中 |
+| P1-012 | Session | Participants List 全量 Sync（读时 DELETE+INSERT） | 🚧 [SESS-R-P1-01](./2026-05-24-Session-Phase2-Review.md#p1--当前迭代应修) → F6-a |
+| P1-013 | Session | Export / Chat Timeline 无界内存 | 🚧 [SESS-R-P1-02~03](./2026-05-24-Session-Phase2-Review.md#p1--当前迭代应修) → ARCH-03 · FE-TL-01 |
+| P1-014 | Channel / M55 | Global hub 与 session WS 双 patch / 双 hydrate | 🚧 [DECO-R-P1-01~02](./2026-05-24-DECO-01-Channel-Sync-Holistic-Fix-Review.md#p1--当前迭代应修) |
 
 ### P2 — 下迭代修复
 
@@ -148,7 +151,8 @@
 - [51-message-review.md](./51-message-review.md) — Message / WebSocket / Envelope
 - [34-event-review.md](./34-event-review.md) — Event System / EventBus
 - [52-flowlogger-review.md](./52-flowlogger-review.md) — FlowLogger
-- [10-session-review.md](./10-session-review.md) — Session
+- [10-session-review.md](./10-session-review.md) — Session（基线 2026-05-21）
+- [2026-05-24-Session-Phase2-Review.md](./2026-05-24-Session-Phase2-Review.md) — Session Phase 2（Pin/Export/Timeline/Runs/Participants）
 - [35-gateway-review.md](./35-gateway-review.md) — Gateway / Runner / RunRegistry
 - [40-runner-review.md](./40-runner-review.md) — Runner
 
@@ -176,6 +180,7 @@
 - [24-telemetry-review.md](./24-telemetry-review.md) — Telemetry
 - [29-token-review.md](./29-token-review.md) — Token / Usage / Quota
 - [17-channel-review.md](./17-channel-review.md) — Channel
+- [2026-05-24-DECO-01-Channel-Sync-Holistic-Fix-Review.md](./2026-05-24-DECO-01-Channel-Sync-Holistic-Fix-Review.md) — DECO-01 飞书/Web 同步 holistic fix（78/100 · P1 开放）
 - [21-cron-review.md](./21-cron-review.md) — Cron
 - [09-provider-review.md](./09-provider-review.md) — Provider
 - [33-evaluation-review.md](./33-evaluation-review.md) — Evaluation
@@ -188,4 +193,4 @@
 
 ---
 
-*本文档由 AI 代码 Review 自动生成，所有分数和风险条目均基于截至 2026-05-21 的代码与文档状态。*
+*本文档由 AI 代码 Review 自动生成。Session Phase 2 分数更新于 2026-05-24；其余模块默认截至 2026-05-21。*

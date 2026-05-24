@@ -46,7 +46,7 @@ func (h *ChannelIngress) runChatTurnWithOutcomeOnce(ctx context.Context, chRow b
 	if err != nil {
 		return biz.ChannelTurnResult{}, err
 	}
-	input := channelChatRequestToTurnInput(req)
+	input := channelChatRequestToTurnInput(req, channelAllowQueueFromConfig(chRow.ConfigJSON))
 	sessionID := strings.TrimSpace(input.SessionID)
 	h.maybeInterruptActiveTurn(ctx, chRow, sessionID)
 

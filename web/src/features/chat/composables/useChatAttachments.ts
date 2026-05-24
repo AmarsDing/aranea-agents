@@ -1,6 +1,6 @@
 import { ref, type Ref } from "vue";
 import { useQuasar } from "quasar";
-import { uploadArtifact } from "../../artifact/api";
+import { useArtifactStore } from "../../../stores/artifact";
 import type { ChatAttachment } from "../../../components/chat/types";
 
 async function readFileAsBase64(file: File): Promise<string> {
@@ -46,7 +46,8 @@ export function useChatAttachments(sessionId: Ref<string | undefined>) {
       const record: ChatAttachment = { id: tempId, name: file.name, progress: 0.1 };
       attachments.value.push(record);
       try {
-        const meta = await uploadArtifact({
+        const artifactStore = useArtifactStore();
+        const meta = await artifactStore.upload({
           session_id: sid,
           name: file.name,
           mime_type: file.type || "application/octet-stream",

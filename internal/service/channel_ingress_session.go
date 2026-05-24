@@ -126,13 +126,17 @@ func (h *ChannelIngress) prepareChannelChatRequest(
 	return req, nil
 }
 
-func channelChatRequestToTurnInput(req *chatv1.SendChatMessageRequest) biz.TurnInput {
+func channelChatRequestToTurnInput(req *chatv1.SendChatMessageRequest, allowQueue bool) biz.TurnInput {
 	if req == nil {
 		return biz.TurnInput{}
 	}
 	input := biz.TurnInput{
 		SessionID: strings.TrimSpace(req.GetSessionId()),
 		Content:   strings.TrimSpace(req.GetContent()),
+		EntryConfig: biz.TurnEntryPointConfig{
+			EntryPoint: biz.EntryPointChannel,
+			AllowQueue: allowQueue,
+		},
 	}
 	if tid := strings.TrimSpace(req.GetTeamId()); tid != "" {
 		input.TeamID = tid

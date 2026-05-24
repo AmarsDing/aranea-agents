@@ -74,6 +74,7 @@ func entSessionToBiz(e *ent.Session) biz.Session {
 		UpdatedAt:                  e.UpdatedAt,
 		ArchivedAt:                 e.ArchivedAt,
 		DeletedAt:                  e.DeletedAt,
+		PinnedAt:                   e.PinnedAt,
 		RunnerSnapshotJSON:         e.RunnerSnapshotJSON,
 		StateJSON:                  e.StateJSON,
 		MetadataJSON:               e.MetadataJSON,
@@ -289,6 +290,40 @@ func (r *sessionRepo) RestoreSession(ctx context.Context, id string) (biz.Sessio
 		return biz.Session{}, err
 	}
 	return entSessionToBiz(row), nil
+}
+
+func (r *sessionRepo) PinSession(ctx context.Context, id string) (biz.Session, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return biz.Session{}, kerrors.BadRequest("SESSION", "session id is required")
+	}
+	now := nowRFC3339()
+	_, err := r.data.entClient.Session.Update().
+		Where(entsession.IDEQ(id), entsession.DeletedAtEQ("")).
+		SetPinnedAt(now).
+		SetUpdatedAt(now).
+		Save(ctx)
+	if err != nil {
+		return biz.Session{}, err
+	}
+	return r.GetSessionByID(ctx, id)
+}
+
+func (r *sessionRepo) UnpinSession(ctx context.Context, id string) (biz.Session, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return biz.Session{}, kerrors.BadRequest("SESSION", "session id is required")
+	}
+	now := nowRFC3339()
+	_, err := r.data.entClient.Session.Update().
+		Where(entsession.IDEQ(id), entsession.DeletedAtEQ("")).
+		SetPinnedAt("").
+		SetUpdatedAt(now).
+		Save(ctx)
+	if err != nil {
+		return biz.Session{}, err
+	}
+	return r.GetSessionByID(ctx, id)
 }
 
 func (r *sessionRepo) ArchiveSession(ctx context.Context, id string) error {
@@ -805,8 +840,11 @@ func sessionSearchOrder(sortBy, sortOrder string) []entsession.OrderOption {
 		return []entsession.OrderOption{entsession.ByLastMessageAt(dir)}
 	case "title":
 		return []entsession.OrderOption{entsession.ByTitle(dir)}
+	case "pinned_at":
+		return []entsession.OrderOption{entsession.ByPinnedAt(dir)}
 	default:
 		return []entsession.OrderOption{
+			entsession.ByPinnedAt(entsql.OrderDesc()),
 			entsession.ByLastMessageAt(entsql.OrderDesc()),
 			entsession.ByUpdatedAt(entsql.OrderDesc()),
 		}

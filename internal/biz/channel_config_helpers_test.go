@@ -16,6 +16,27 @@ func TestParseChannelLongTaskConfig_defaults(t *testing.T) {
 	if cfg.ProgressMode != "off" || cfg.ExecutionMode != "sync" {
 		t.Fatalf("ProgressMode=%q ExecutionMode=%q", cfg.ProgressMode, cfg.ExecutionMode)
 	}
+	if cfg.ContextAdmissionThreshold != DefaultContextAdmissionThreshold {
+		t.Fatalf("ContextAdmissionThreshold=%v want %v", cfg.ContextAdmissionThreshold, DefaultContextAdmissionThreshold)
+	}
+}
+func TestContextPressureActive(t *testing.T) {
+	if !ContextPressureActive(0.65, 0.6) {
+		t.Fatal("expected pressure at 65%")
+	}
+	if ContextPressureActive(0.5, 0.6) {
+		t.Fatal("expected no pressure at 50%")
+	}
+	if ContextPressureActive(0.9, 0) {
+		t.Fatal("threshold 0 disables pressure")
+	}
+}
+
+func TestParseChannelLongTaskConfig_contextAdmissionDisable(t *testing.T) {
+	cfg := ParseChannelLongTaskConfig(`{"config":{"context_admission_threshold":0}}`)
+	if cfg.ContextAdmissionThreshold != 0 {
+		t.Fatalf("threshold=%v want 0 (disabled)", cfg.ContextAdmissionThreshold)
+	}
 }
 
 func TestParseChannelLongTaskConfig_overrides(t *testing.T) {

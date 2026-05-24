@@ -39,7 +39,7 @@ func (h *ChannelIngress) processInboundStreaming(ctx context.Context, chRow biz.
 	if err != nil {
 		return err
 	}
-	turnInput := channelChatRequestToTurnInput(req)
+	turnInput := channelChatRequestToTurnInput(req, channelAllowQueueFromConfig(chRow.ConfigJSON))
 	if sessionID == "" {
 		sessionID = strings.TrimSpace(turnInput.SessionID)
 	}

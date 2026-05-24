@@ -10,6 +10,8 @@ import {
   deleteSession,
   listSessions,
   listTeamSessions,
+  pinSession,
+  unpinSession,
   updateSessionTitle,
   type Session,
 } from "../../features/session/api";
@@ -17,6 +19,33 @@ import { formatSessionTime } from "../../features/chat/composables/chatWorkspace
 import type { ChatEntityKind } from "../../components/chat/types";
 
 export type TeamSessionRow = Session & { at: string };
+
+function sessionListSortKey(session: Session): number {
+  const pinned = session.pinned_at?.trim();
+  if (pinned) {
+    const t = new Date(pinned).getTime();
+    if (Number.isFinite(t)) return t;
+  }
+  return 0;
+}
+
+function sortSessionsForDisplay(rows: Session[]): Session[] {
+  return [...rows].sort((a, b) => {
+    const pinDiff = sessionListSortKey(b) - sessionListSortKey(a);
+    if (pinDiff !== 0) return pinDiff;
+    const aMsg = new Date(a.last_message_at || a.updated_at || a.created_at).getTime();
+    const bMsg = new Date(b.last_message_at || b.updated_at || b.created_at).getTime();
+    if (aMsg !== bMsg) return bMsg - aMsg;
+    return new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime();
+  });
+}
+
+function withTeamAt(session: Session): TeamSessionRow {
+  return {
+    ...session,
+    at: formatSessionTime(session.last_message_at || session.updated_at || session.created_at),
+  };
+}
 
 export const useChatSessionStore = defineStore("chatSession", () => {
   const entityKind = ref<ChatEntityKind>("agent");
@@ -48,7 +77,7 @@ export const useChatSessionStore = defineStore("chatSession", () => {
   async function loadAgentSessions(agentId: string, opts?: { refreshOnly?: boolean }) {
     if (!agentId) return;
     const rows = await listSessions(agentId);
-    sessions.value = rows;
+    sessions.value = sortSessionsForDisplay(rows);
 
     if (opts?.refreshOnly) {
       const currentId = selectedSession.value?.id;
@@ -70,10 +99,7 @@ export const useChatSessionStore = defineStore("chatSession", () => {
 
   async function loadTeamSessions(teamId: string) {
     const rows = await listTeamSessions(teamId);
-    teamSessions.value[teamId] = rows.map((session) => ({
-      ...session,
-      at: formatSessionTime(session.last_message_at || session.updated_at || session.created_at),
-    }));
+    teamSessions.value[teamId] = sortSessionsForDisplay(rows).map(withTeamAt);
   }
 
   async function addAgentSession(
@@ -100,10 +126,7 @@ export const useChatSessionStore = defineStore("chatSession", () => {
       ...options,
     });
     teamSessions.value[teamId] = [
-      {
-        ...created,
-        at: formatSessionTime(created.last_message_at || created.updated_at || created.created_at),
-      },
+      withTeamAt(created),
       ...(teamSessions.value[teamId] ?? []),
     ];
     teamSelectedSessionId.value = created.id;
@@ -126,6 +149,25 @@ export const useChatSessionStore = defineStore("chatSession", () => {
     if (teamSelectedSessionId.value === sessionId) {
       teamSelectedSessionId.value = teamSessions.value[teamId]?.[0]?.id ?? null;
     }
+  }
+
+  async function setSessionPinnedLocal(id: string, pinned: boolean) {
+    const updated = pinned ? await pinSession(id) : await unpinSession(id);
+    sessions.value = sortSessionsForDisplay(
+      sessions.value.map((session) => (session.id === id ? updated : session))
+    );
+    if (selectedSession.value?.id === id) {
+      selectedSession.value = updated;
+    }
+    return updated;
+  }
+
+  async function setTeamSessionPinnedLocal(teamId: string, id: string, pinned: boolean) {
+    const updated = pinned ? await pinSession(id) : await unpinSession(id);
+    teamSessions.value[teamId] = sortSessionsForDisplay(
+      (teamSessions.value[teamId] ?? []).map((session) => (session.id === id ? updated : session))
+    ).map(withTeamAt);
+    return updated;
   }
 
   async function renameSessionLocal(id: string, title: string) {
@@ -194,6 +236,8 @@ export const useChatSessionStore = defineStore("chatSession", () => {
     removeTeamSessionLocal,
     renameSessionLocal,
     renameTeamSessionLocal,
+    setSessionPinnedLocal,
+    setTeamSessionPinnedLocal,
     clearAllAgentSessions,
     clearTeamSessions,
     findSessionById,

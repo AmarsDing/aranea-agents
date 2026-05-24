@@ -12,6 +12,7 @@ import {
 } from "../useEnvelopeStream";
 import type { Envelope, EnvelopeType, WsUpstream } from "../envelope";
 import { bindStreamHandlers, patchStreamingEnvelope } from "../streamHandlers";
+import { getChannelWsCursor } from "../channelWsCursor";
 import type { TeamRow } from "../../../components/chat/types";
 import type { TeamDefinition } from "../../teams/types";
 
@@ -46,12 +47,7 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
 
   async function reloadAgentAfterCompletion(sessionId: string) {
     try {
-      const rev = deps.chatStore.sessionRevisionBySession[sessionId] ?? 0;
-      if (rev > 0) {
-        await deps.chatStore.loadMessages({ sessionId, afterRevision: rev, dropStaleInFlight: true });
-      } else {
-        await deps.chatStore.loadMessages({ sessionId, replace: true, dropStaleInFlight: true });
-      }
+      await deps.chatStore.loadMessages({ sessionId, dropStaleInFlight: true });
       streamingSnapshots.clear(sessionId);
       if (deps.chatStore.entityKind === "agent") {
         const agentId = deps.resolveAgentId();
@@ -92,14 +88,18 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
   }
 
   function ensureChatStream(sessionId: string) {
-    if (chatStream && chatStream.transport.value && chatStreamSessionId === sessionId) {
+    if (chatStream && chatStreamSessionId === sessionId) {
       deps.chatStore.setWsConnected(sessionId, chatStream.connected.value);
+      if (!chatStream.connected.value) {
+        chatStream.connect();
+      }
       return chatStream;
     }
     chatStream?.disconnect();
     deps.chatStore.setWsConnected(sessionId, false);
 
     chatStream = createChatStream(sessionId, {
+      lastEventId: getChannelWsCursor(sessionId),
       onConnected: () => {
         deps.chatStore.setWsConnected(sessionId, true);
       },
@@ -197,22 +197,25 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
       },
     });
 
-    bindStreamHandlers(teamStream, {
-      sessionId,
-      streamIdPrefix: "ws-team-stream",
-      resolveActiveSessionId: () => deps.chatStore.teamSelectedSessionId,
-      getMessages: (sid) => deps.chatStore.getMessages(sid),
-      setMessages: (sid, rows) => deps.chatStore.setMessages(sid, rows),
-      markSendingDone: deps.markSendingDone,
-      onRunStatus: deps.onRunStatus,
-      onErrorNotify: notifyError,
-      onOrchestrationNotice: notifyOrchestration,
-      onReloadAfterCompletion: reloadTeamAfterCompletion,
-      setLastIntentPass: (value) => {
-        deps.chatStore.lastIntentPass = value;
-      },
-      resolveMemberMeta: resolveTeamMemberMeta,
-    });
+    bindStreamHandlers(
+      teamStream,
+      {
+        sessionId,
+        streamIdPrefix: "ws-team-stream",
+        resolveActiveSessionId: () => deps.chatStore.teamSelectedSessionId,
+        getMessages: (sid) => deps.chatStore.getMessages(sid),
+        setMessages: (sid, rows) => deps.chatStore.setMessages(sid, rows),
+        markSendingDone: deps.markSendingDone,
+        onRunStatus: deps.onRunStatus,
+        onErrorNotify: notifyError,
+        onOrchestrationNotice: notifyOrchestration,
+        onReloadAfterCompletion: reloadTeamAfterCompletion,
+        setLastIntentPass: (value) => {
+          deps.chatStore.lastIntentPass = value;
+        },
+        resolveMemberMeta: resolveTeamMemberMeta,
+      }
+    );
 
     teamStream.connect();
     teamStreamSessionId = sessionId;

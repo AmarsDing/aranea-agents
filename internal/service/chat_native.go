@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
@@ -22,12 +23,17 @@ func nativeDialogModeChatOptions() []*chatv1.ChatOption {
 // that avoids proto dependency. All internal callers (Channel, Cron, A2A) should
 // use this instead of proto-based methods.
 func (s *ChatService) RunNativeTurn(ctx context.Context, input biz.TurnInput) (biz.ChatMessage, biz.ChatMessage, error) {
-	return s.orch.RunNativeAgentTurnFromInput(ctx, input)
+	result, err := turnResultToNative(s.ExecuteTurn(ctx, input))
+	if err != nil {
+		return biz.ChatMessage{}, biz.ChatMessage{}, err
+	}
+	return result.UserMsg, result.AssistantMsg, nil
 }
 
 // RunNativeTurnWithOutcome implements biz.NativeTurnGateway with explicit turn classification.
 func (s *ChatService) RunNativeTurnWithOutcome(ctx context.Context, input biz.TurnInput) (biz.NativeTurnResult, error) {
-	return s.orch.RunNativeAgentTurnWithOutcome(ctx, input)
+	tr, err := s.ExecuteTurn(ctx, input)
+	return turnResultToNative(tr, err)
 }
 
 // RunAgentTurn implements a2a.AgentTurnRunner for call_agent and HTTP Invoke dispatch (EP-A2A-01).
@@ -78,4 +84,57 @@ func chatMessageToMap(m biz.ChatMessage) map[string]any {
 
 func chatNowRFC3339() string {
 	return strings.TrimSpace(chatagent.RFC3339Now())
+}
+
+// ExecuteTurn implements biz.TurnGateway — delegates to ChatOrchestrator.Execute.
+func (s *ChatService) ExecuteTurn(ctx context.Context, input biz.TurnInput) (biz.TurnResult, error) {
+	return s.orch.Execute(ctx, input)
+}
+
+// chatServiceGatewayAdapter adapts ChatService to implement biz-level narrow
+// interfaces without method name collisions with proto-based methods.
+type chatServiceGatewayAdapter struct {
+	svc *ChatService
+}
+
+// EnqueueUserMessage implements biz.PendingMessageGateway.
+func (a chatServiceGatewayAdapter) EnqueueUserMessage(ctx context.Context, sessionID, content string) (accepted bool, pendingID string, rejectReason string, err error) {
+	acc, _, pid, reason, err := a.svc.orch.EnqueueUserMessage(sessionID, content)
+	return acc, pid, reason, err
+}
+
+// CancelPendingMessage implements biz.PendingMessageGateway.
+func (a chatServiceGatewayAdapter) CancelPendingMessage(ctx context.Context, sessionID, pendingID string) error {
+	if a.svc.orch.CancelPendingMessage(sessionID, pendingID) {
+		return nil
+	}
+	return fmt.Errorf("pending message %s not found for session %s", pendingID, sessionID)
+}
+
+// UpdatePendingMessage implements biz.PendingMessageGateway.
+func (a chatServiceGatewayAdapter) UpdatePendingMessage(ctx context.Context, sessionID, pendingID, content string) error {
+	if a.svc.orch.UpdatePendingMessage(sessionID, pendingID, content) {
+		return nil
+	}
+	return fmt.Errorf("pending message %s not found for session %s", pendingID, sessionID)
+}
+
+// GetPendingMessages implements biz.PendingMessageGateway.
+func (a chatServiceGatewayAdapter) GetPendingMessages(ctx context.Context, sessionID string) ([]biz.PendingMessage, error) {
+	entries := a.svc.orch.GetPendingMessages(sessionID)
+	result := make([]biz.PendingMessage, len(entries))
+	for i, e := range entries {
+		result[i] = biz.PendingMessage{
+			ID:        e.ID,
+			SessionID: sessionID,
+			Content:   e.Content,
+			CreatedAt: e.CreatedAt,
+		}
+	}
+	return result, nil
+}
+
+// NewPendingMessageGatewayAdapter creates a biz.PendingMessageGateway from ChatService.
+func NewPendingMessageGatewayAdapter(svc *ChatService) biz.PendingMessageGateway {
+	return chatServiceGatewayAdapter{svc: svc}
 }

@@ -13,12 +13,13 @@ import (
 	graphadapter "aranea-agents/internal/graph/adapter"
 	"aranea-agents/internal/knowledge"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
+	araneasession "aranea-agents/internal/session"
 	rt "aranea-agents/internal/runtime"
+	"aranea-agents/internal/runtime/turn"
 	"aranea-agents/internal/team"
 	tooltrpc "aranea-agents/internal/tools/trpc"
+	"aranea-agents/pkg/ctxuser"
 
-	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
-	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
 )
 
@@ -62,6 +63,7 @@ type ChatOrchestrator struct {
 	rt         RuntimeTooling
 	team       TeamOrchestrationDeps
 	chTurn     ChannelTurnDeps
+	admitGate  *turn.AdmissionGate
 	usage      *biz.UsageUsecase
 	monitor    *biz.MonitorUsecase
 	artifacts  *biz.ArtifactUsecase
@@ -70,9 +72,10 @@ type ChatOrchestrator struct {
 	runs       *rt.RunRegistry
 	chatUC     *biz.ChatUsecase
 
-	sessionRunBindings sync.Map
-	awaitMetaCache     sync.Map
-	resumeInFlight     sync.Map
+	sessionRunBindings     sync.Map
+	awaitMetaCache         sync.Map
+	resumeInFlight         sync.Map
+	pendingMergeFollowup   sync.Map
 }
 
 // ChatOrchestratorDeps groups all dependencies for ChatOrchestrator construction.
@@ -124,6 +127,7 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 		runs:       runs,
 		chatUC:     NewChatUsecaseFromDeps(runs, pending, sessionLocks, deps.Sessions, deps.Pipeline.Bus),
 	}
+	o.admitGate = newTurnAdmissionGate(turn.RunRegistryAdapter{Registry: runs}, o.chatUC, o.sessionPendingMergeFollowup)
 
 	if deps.Team.TeamsNative != nil {
 		deps.Team.TeamsNative.SetKnowledgeRetriever(deps.RT.KnowledgeRetriever)
@@ -158,6 +162,32 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 	return o
 }
 
+// Compile-time interface assertions.
+var (
+	_ biz.TurnExecutor       = (*ChatOrchestrator)(nil)
+	_ biz.NativeTurnGateway  = (*ChatService)(nil)
+	_ biz.TurnGateway        = (*ChatService)(nil)
+	_ biz.TurnControlGateway = (*ChatService)(nil)
+)
+
+// Execute implements biz.TurnExecutor — the shared entry point for all turn
+// execution paths (Web, WS, Channel, Cron, A2A).
+func (o *ChatOrchestrator) Execute(ctx context.Context, input biz.TurnInput) (biz.TurnResult, error) {
+	nativeResult, err := o.RunNativeAgentTurnWithOutcome(ctx, input)
+	result, classifyErr := turn.ClassifyNativeOutcome(nativeResult, mapTurnExecutorError(err))
+	if classifyErr != nil && IsTurnMessageQueued(classifyErr) {
+		return result, ErrTurnMessageQueued
+	}
+	return result, classifyErr
+}
+
+func mapTurnExecutorError(err error) error {
+	if err == nil || !IsTurnMessageQueued(err) {
+		return err
+	}
+	return turn.QueuedSentinel
+}
+
 // RunGateway exposes the shared session run registry.
 func (o *ChatOrchestrator) RunGateway() rt.RunGateway {
 	return o.runs
@@ -166,6 +196,15 @@ func (o *ChatOrchestrator) RunGateway() rt.RunGateway {
 // HasActiveRun reports whether a session has an in-flight run.
 func (o *ChatOrchestrator) HasActiveRun(sessionID string) bool {
 	return o.runs.HasActive(sessionID)
+}
+
+// HasActiveRunner reports whether the active run has a live trpc runner (steer-ready).
+func (o *ChatOrchestrator) HasActiveRunner(sessionID string) bool {
+	if o == nil || o.runs == nil {
+		return false
+	}
+	_, _, ok := o.runs.ActiveRunner(sessionID)
+	return ok
 }
 
 // CancelRun stops the active run for a session.
@@ -202,7 +241,32 @@ func (o *ChatOrchestrator) UpdatePendingMessage(sessionID, pendingID, content st
 
 // EnqueueUserMessage enqueues a user message when a turn is active.
 func (o *ChatOrchestrator) EnqueueUserMessage(sessionID, content string) (accepted, queued bool, pendingID, rejectReason string, err error) {
-	return o.chatUC.EnqueueUserMessage(sessionID, content)
+	return o.chatUC.EnqueueUserMessage(sessionID, content, o.sessionPendingMergeFollowup(sessionID))
+}
+
+// SetSessionPendingMergeFollowup toggles followup merge for pending queue enqueues (CH-BOR-01).
+func (o *ChatOrchestrator) SetSessionPendingMergeFollowup(sessionID string, merge bool) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" || o == nil {
+		return
+	}
+	if merge {
+		o.pendingMergeFollowup.Store(sessionID, true)
+	} else {
+		o.pendingMergeFollowup.Delete(sessionID)
+	}
+}
+
+func (o *ChatOrchestrator) sessionPendingMergeFollowup(sessionID string) bool {
+	if o == nil {
+		return false
+	}
+	v, ok := o.pendingMergeFollowup.Load(strings.TrimSpace(sessionID))
+	if !ok {
+		return false
+	}
+	b, _ := v.(bool)
+	return b
 }
 
 // DequeuePendingMessage dequeues the next pending message.
@@ -459,35 +523,30 @@ func (o *ChatOrchestrator) canResumeAwait(ctx context.Context, sessionID string)
 }
 
 func (o *ChatOrchestrator) hasPendingAwaitUserReplyRoute(ctx context.Context, sessionID string) bool {
-	if o == nil || o.td.Persist.Session == nil {
+	rtPort := o.sessionRuntime()
+	if rtPort == nil {
 		return false
 	}
 	userID := o.resolveUserID(ctx, sessionID)
 	if userID == "" {
 		return false
 	}
-	sess, err := o.td.Persist.Session.GetSession(ctx, trpcsession.Key{
-		AppName:   chatagent.TRPCDefaultAppName,
-		UserID:    userID,
-		SessionID: sessionID,
-	})
-	if err != nil || sess == nil {
-		return false
+	return rtPort.HasPendingAwaitUserReply(ctx, userID, sessionID)
+}
+
+func (o *ChatOrchestrator) sessionRuntime() *araneasession.Runtime {
+	if o == nil {
+		return nil
 	}
-	_, pending, err := trpcagent.PendingAwaitUserReplyRoute(sess)
-	return err == nil && pending
+	if o.td.SessionRT != nil {
+		return o.td.SessionRT
+	}
+	if o.td.Persist.Session == nil {
+		return nil
+	}
+	return araneasession.NewRuntime(o.td.Persist.Session)
 }
 
 func (o *ChatOrchestrator) resolveUserID(ctx context.Context, sessionID string) string {
-	if uid := strings.TrimSpace(chatagent.UserIDFromCtx(ctx)); uid != "" {
-		return uid
-	}
-	if o == nil || o.td.Sessions == nil {
-		return ""
-	}
-	sess, err := o.td.Sessions.Get(ctx, sessionID)
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(sess.UserID)
+	return ctxuser.TRPCUserKey(ctx)
 }

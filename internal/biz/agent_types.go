@@ -80,6 +80,8 @@ type AgentRuntimeSettings struct {
 	L0RecentWindowTokens              int
 	L0SummaryThreshold                float64
 	L0SummaryKeepTurns                int
+	// L0CompressMinGapSec is the minimum seconds between automatic session compressions (0 → default 600).
+	L0CompressMinGapSec int
 	// L0CompressProvider / L0CompressModel select a cheaper catalog model for session summarization; empty → use agent/session chat model.
 	L0CompressProvider        string
 	L0CompressModel           string
@@ -219,6 +221,7 @@ func (s *AgentRuntimeSettings) GetMemory() MemoryCfg {
 		L0RecentWindowTokens:     s.L0RecentWindowTokens,
 		L0SummaryThreshold:       s.L0SummaryThreshold,
 		L0SummaryKeepTurns:       s.L0SummaryKeepTurns,
+		L0CompressMinGapSec:      s.L0CompressMinGapSec,
 		L0CompressProvider:       s.L0CompressProvider,
 		L0CompressModel:          s.L0CompressModel,
 		MemoryWorkerProvider:     s.MemoryWorkerProvider,

@@ -6,6 +6,7 @@
           <div class="app-registry-cell-primary text-h6">{{ session.title || "未命名会话" }}</div>
           <q-chip dense :color="ownerChipColor(session.owner_type)" text-color="white">{{ ownerLabel(session.owner_type) }}</q-chip>
           <q-badge :color="statusBadgeColor(session.status)">{{ session.status }}</q-badge>
+          <q-chip v-if="isSessionPinned(session)" dense icon="push_pin" color="primary" text-color="white">置顶</q-chip>
         </div>
         <div class="app-registry-cell-sub q-mt-xs">
           {{ session.id }} · 创建 {{ formatSessionDate(session.created_at) }} · 最后活跃
@@ -15,6 +16,26 @@
       </div>
       <div class="row q-gutter-sm shrink-0">
         <q-btn outline rounded no-caps color="primary" icon="chat" label="继续会话" :to="chatRoute" />
+        <q-btn-dropdown flat rounded no-caps icon="download" label="导出">
+          <q-list dense>
+            <q-item v-close-popup clickable @click="$emit('export', 'markdown')">
+              <q-item-section avatar><q-icon name="description" /></q-item-section>
+              <q-item-section>Markdown</q-item-section>
+            </q-item>
+            <q-item v-close-popup clickable @click="$emit('export', 'json')">
+              <q-item-section avatar><q-icon name="data_object" /></q-item-section>
+              <q-item-section>JSON</q-item-section>
+            </q-item>
+          </q-list>
+        </q-btn-dropdown>
+        <q-btn
+          flat
+          rounded
+          no-caps
+          icon="push_pin"
+          :label="isSessionPinned(session) ? '取消置顶' : '置顶'"
+          @click="$emit('toggle-pin')"
+        />
         <q-btn flat rounded no-caps icon="archive" label="归档" :disable="session.status === 'archived'" @click="$emit('archive')" />
       </div>
     </q-card-section>
@@ -62,6 +83,7 @@ import {
   formatNumber,
   formatPercent,
   formatSessionDate,
+  isSessionPinned,
   ownerChipColor,
   ownerLabel,
   ratioValue,
@@ -78,5 +100,5 @@ withDefaults(
   }
 );
 
-defineEmits<{ archive: [] }>();
+defineEmits<{ archive: []; "toggle-pin": []; export: [format: "markdown" | "json"] }>();
 </script>

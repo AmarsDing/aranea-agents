@@ -1,27 +1,27 @@
 <template>
   <q-btn round flat class="app-header-icon-btn" icon="notifications_none" size="md" aria-label="Notifications">
-    <q-badge v-if="store.unreadCount > 0" color="negative" floating rounded>{{ store.unreadCount }}</q-badge>
+    <q-badge v-if="unreadCount > 0" color="negative" floating rounded>{{ unreadCount }}</q-badge>
     <q-menu anchor="bottom right" self="top right" :offset="[0, 8]" style="min-width: 320px; max-width: 400px">
       <q-list dense>
         <q-item>
           <q-item-section class="text-weight-medium">{{ t("chat.inboundNotify.title", "渠道通知") }}</q-item-section>
           <q-item-section side>
             <q-btn
-              v-if="store.items.length"
+              v-if="items.length"
               flat
               dense
               size="sm"
               :label="t('chat.inboundNotify.markAllRead', '全部已读')"
-              @click="store.markAllRead()"
+              @click="emit('markAllRead')"
             />
           </q-item-section>
         </q-item>
         <q-separator />
-        <q-item v-if="!store.items.length">
+        <q-item v-if="!items.length">
           <q-item-section class="text-caption text-grey">{{ t("chat.inboundNotify.empty", "暂无通知") }}</q-item-section>
         </q-item>
         <q-item
-          v-for="item in store.items"
+          v-for="item in items"
           :key="item.id"
           clickable
           v-close-popup
@@ -44,15 +44,21 @@
 <script setup lang="ts">
 import { useI18n } from "vue-i18n";
 import { useQuasar } from "quasar";
-import { useInboundNotificationStore, type InboundNotification } from "../../stores/inboundNotifications";
+import type { InboundNotification } from "../../stores/inboundNotifications";
 
 const props = defineProps<{
-  onOpenSession: (sessionId: string, agentId: string) => void;
+  items: InboundNotification[];
+  unreadCount: number;
+}>();
+
+const emit = defineEmits<{
+  openSession: [sessionId: string, agentId: string];
+  markRead: [id: string];
+  markAllRead: [];
 }>();
 
 const { t } = useI18n();
 const $q = useQuasar();
-const store = useInboundNotificationStore();
 
 function formatTs(ts: number): string {
   const d = new Date(ts);
@@ -60,7 +66,7 @@ function formatTs(ts: number): string {
 }
 
 function onOpen(item: InboundNotification) {
-  store.markRead(item.id);
-  props.onOpenSession(item.sessionId, item.agentId);
+  emit("markRead", item.id);
+  emit("openSession", item.sessionId, item.agentId);
 }
 </script>

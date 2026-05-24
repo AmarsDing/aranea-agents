@@ -1,5 +1,18 @@
-import { onMounted, ref, watch, type Ref } from "vue";
+import { onMounted, onUnmounted, ref, watch, type Ref } from "vue";
 import { listChatBackgroundJobs, type ChatBackgroundJobRow } from "./api";
+import {
+  acquireGlobalWsConsumer,
+  releaseGlobalWsConsumer,
+} from "./globalWsHub";
+import type { Envelope } from "./envelope";
+
+function isBackgroundJobRefreshEnvelope(env: Envelope, sessionId?: string): boolean {
+  const md = env.metadata as Record<string, unknown> | undefined;
+  if (!md?.background_job_refresh) return false;
+  const sid = (env.session_id ?? "").trim();
+  if (sessionId && sid && sid !== sessionId.trim()) return false;
+  return true;
+}
 
 export function useChatBackgroundJobs(
   sessionId: Ref<string | undefined>,
@@ -9,6 +22,7 @@ export function useChatBackgroundJobs(
   const loading = ref(false);
   const error = ref("");
   const rows = ref<ChatBackgroundJobRow[]>([]);
+  let hubId: string | null = null;
 
   async function load() {
     const sid = sessionId.value?.trim();
@@ -36,7 +50,25 @@ export function useChatBackgroundJobs(
   if (refreshNonce) {
     watch(refreshNonce, () => void load());
   }
-  onMounted(() => void load());
+  onMounted(() => {
+    void load();
+    hubId = acquireGlobalWsConsumer({
+      channels: ["chat"],
+      logEnabled: false,
+      onEnvelope: (env) => {
+        if (env.channel !== "chat") return;
+        if (isBackgroundJobRefreshEnvelope(env, sessionId.value)) {
+          void load();
+        }
+      },
+    });
+  });
+  onUnmounted(() => {
+    if (hubId) {
+      releaseGlobalWsConsumer(hubId);
+      hubId = null;
+    }
+  });
 
   const runningCount = () =>
     rows.value.filter((r) => ["running", "accepted", "async_queued", "queued"].includes(r.status)).length;

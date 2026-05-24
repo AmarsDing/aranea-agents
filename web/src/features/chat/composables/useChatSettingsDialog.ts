@@ -1,7 +1,8 @@
 import { computed, ref, type Ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useQuasar } from "quasar";
-import type { Agent, ChatEntityKind, TeamRow } from "../../../components/chat/types";
+import type { ChatEntityKind, TeamRow } from "../../../components/chat/types";
+import type { Agent } from "../../agents/types";
 import type { useAppStore } from "../../../stores/app";
 
 type Store = ReturnType<typeof useAppStore>;

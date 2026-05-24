@@ -2,7 +2,6 @@ import { computed, ref, watch, type ComputedRef, type Ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import { useArtifactStore } from "../../../stores/artifact";
-import { artifactDownloadHref, signDownloadUrl } from "../../artifact/api";
 import type { ArtifactMeta } from "../../artifact/types";
 import type { ChatEntityKind } from "../../../components/chat/types";
 import type { useChatStreamManager } from "./useChatStreamManager";
@@ -80,9 +79,10 @@ export function useChatSessionArtifacts(sessionId: ComputedRef<string | undefine
   function openSessionArtifact(id: string) {
     void (async () => {
       try {
-        const signed = await signDownloadUrl(id);
+        const artifactStore = useArtifactStore();
+        const signed = await artifactStore.signDownload(id);
         if (signed.url) {
-          window.open(artifactDownloadHref(signed.url), "_blank", "noopener,noreferrer");
+          window.open(artifactStore.artifactDownloadHref(signed.url), "_blank", "noopener,noreferrer");
           return;
         }
       } catch {

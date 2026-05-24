@@ -53,6 +53,7 @@ var ProviderSet = wire.NewSet(
 	NewChannelTurnJobRepo,
 	NewSessionRunRepo,
 	NewSessionRunCheckpointRepo,
+	NewSessionParticipantRepo,
 	NewUsageRepo,
 	NewMonitorRepo,
 	NewSystemSettingRepo,
@@ -256,6 +257,9 @@ func initSQLite(c *conf.Data) (*ent.Client, *sql.DB, error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("sqlite (ent): %w", err)
 	}
+	if err := ensureSQLiteParentDir(dsn); err != nil {
+		return nil, nil, err
+	}
 
 	rawDB, err := sql.Open(driverName, dsn)
 	if err != nil {
@@ -358,6 +362,9 @@ func ensureSchemaDDL(rawDB *sql.DB, entClient *ent.Client) error {
 	}
 	if err := EnsureSessionRunSchema(ctxSchema, rawDB); err != nil {
 		return fmt.Errorf("session run schema: %w", err)
+	}
+	if err := EnsureSessionParticipantSchema(ctxSchema, rawDB); err != nil {
+		return fmt.Errorf("session participant schema: %w", err)
 	}
 	if err := ensureSessionRunCheckpointSchema(ctxSchema, rawDB); err != nil {
 		return fmt.Errorf("session run checkpoint schema: %w", err)

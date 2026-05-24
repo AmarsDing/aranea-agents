@@ -1,18 +1,23 @@
 import { computed, onMounted, ref } from "vue";
+import { useQuasar } from "quasar";
 import { useRoute, useRouter } from "vue-router";
 import type { Session } from "./types";
+import { exportSession } from "./api";
+import { downloadTextFile } from "./downloadExport";
 import { useSessionStore } from "../../stores/session/index";
 import { useSessionTimelinePanel } from "./useSessionTimelinePanel";
 
 export function useSessionDetailPage() {
   const route = useRoute();
   const router = useRouter();
+  const $q = useQuasar();
   const sessionStore = useSessionStore();
 
   const session = ref<Session | null>(null);
   const loadingSession = ref(true);
   const sessionError = ref("");
   const activeTab = ref("turns");
+  const exporting = ref(false);
 
   const focusToolId = computed(() => {
     if (String(route.query.focus ?? "").trim() !== "tool") return "";
@@ -20,6 +25,7 @@ export function useSessionDetailPage() {
   });
 
   const sessionId = computed(() => String(route.params.sessionId ?? "").trim());
+  const showParticipants = computed(() => session.value?.owner_type === "team");
 
   const timelinePanel = useSessionTimelinePanel(sessionId);
 
@@ -62,6 +68,21 @@ export function useSessionDetailPage() {
     }
   }
 
+  async function handleExport(format: "markdown" | "json") {
+    const id = session.value?.id;
+    if (!id || exporting.value) return;
+    exporting.value = true;
+    try {
+      const payload = await exportSession(id, format);
+      downloadTextFile(payload.content, payload.filename, payload.content_type);
+      $q.notify({ type: "positive", message: format === "json" ? "JSON 已导出" : "Markdown 已导出" });
+    } catch (err) {
+      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "导出失败" });
+    } finally {
+      exporting.value = false;
+    }
+  }
+
   onMounted(() => {
     applyDeepLinkTab();
     void loadSession();
@@ -74,8 +95,11 @@ export function useSessionDetailPage() {
     sessionError,
     activeTab,
     focusToolId,
+    showParticipants,
+    exporting,
     handleArchive,
     handleRestore,
-    timelinePanel
+    handleExport,
+    timelinePanel,
   };
 }

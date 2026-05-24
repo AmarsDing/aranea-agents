@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	"aranea-agents/pkg/trpcscope"
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcartifact "trpc.group/trpc-go/trpc-agent-go/artifact"
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
@@ -15,7 +16,7 @@ import (
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 )
 
-const TRPCDefaultAppName = "aranea"
+const TRPCDefaultAppName = trpcscope.DefaultAppName
 
 type TRPCRunnerDeps struct {
 	AppName               string

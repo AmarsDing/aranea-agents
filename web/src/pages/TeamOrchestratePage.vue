@@ -93,6 +93,7 @@
         <TeamOrchestrateRuntimePanel
           :definition="definition"
           :read-only="readOnly"
+          :is-platform-admin="isPlatformAdmin"
           @patch="onRuntimePatch"
         />
         <q-separator class="q-my-md" />
@@ -132,6 +133,11 @@ import TeamMemberKanban from "../components/teams/TeamMemberKanban.vue";
 import TeamOrchestrateRuntimePanel from "../components/teams/TeamOrchestrateRuntimePanel.vue";
 import TeamOrchestrateNodePanel from "../components/teams/TeamOrchestrateNodePanel.vue";
 import { useTeamOrchestratePage } from "../features/teams/useTeamOrchestratePage";
+import { storeToRefs } from "pinia";
+import { useAuthStore } from "../stores/auth";
+
+const authStore = useAuthStore();
+const { isPlatformAdmin } = storeToRefs(authStore);
 
 const activeTab = ref("canvas");
 

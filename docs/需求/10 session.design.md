@@ -1881,11 +1881,11 @@ export function buildSessionsSummaryCards(rows: Session[], total: number): Sessi
 | M5-3b | Session State KV + ApplyStateDelta | ✅ 已实现 |
 | M5-3c | RestoreSession / UpdateSession 部分更新 | ✅ 已实现 |
 | M5-3d | 自动标题生成（LLM + 截取双策略） | ✅ 已实现 |
-| M5-4 | Session 置顶功能（pinned_at + PinSession RPC） | 待实现 |
-| M5-5 | Session 导出功能（Markdown/JSON） | 待实现 |
-| M5-6 | 消息搜索功能（全文检索） | 待实现 |
-| M5-7 | session_runs / session_run_steps 编排记录 | 待实现 |
-| M5-8 | session_participants Team 参与者 | 待实现 |
+| M5-4 | Session 置顶功能（pinned_at + PinSession RPC） | ✅ 2026-05-24 |
+| M5-5 | Session 导出功能（Markdown/JSON） | ✅ 2026-05-24 |
+| M5-6 | 消息搜索功能（全文检索） | ✅ |
+| M5-7 | session_runs / session_run_steps 编排记录 | 🟡 M55 runs ✅ · steps ❌ |
+| M5-8 | session_participants Team 参与者 | 🟡 读时聚合 + List RPC + Team Tab |
 | M5-9 | session_trace_spans 完整追踪链路 | 待实现 |
 | M5-10 | session_context_snapshots Context 趋势 | 待实现 |
 | M5-11 | session_model_summaries 多模型分布 | 待实现 |
@@ -1904,22 +1904,22 @@ export function buildSessionsSummaryCards(rows: Session[], total: number): Sessi
 | O1 | `session_repo_summaries.go` 错误处理 | 将 `errors.New` 替换为 `kerrors.BadRequest`/`kerrors.InternalServer`，对齐 §10 原则 10 | ✅ 2026-05-21 |
 | P1 | 消息加载 | `ListMessagesBySession(limit,offset)` + `CountMessagesBySession`；Timeline `ListMessagesRecent`（cap `TimelineMessageMaxFetch`）；压缩 `ListMessagesAfterTurn`；取消 `ListMessagesByStatus` | ✅ 2026-05-21 |
 | P3 | 批量 ids | `ListSessionsByIDs` + biz `loadBatchCandidates` 一次查询 | ✅ 2026-05-21 |
-| O2 | Timeline 超长会话 | 已 cap 2000 消息；完整 DB UNION/游标分页仍待办 | 部分 |
+| O2 | Timeline 超长会话 | SQL UNION 分页；全量按 COUNT 无 2000 cap | ✅ 2026-05-24 |
 | O3 | Timeline 工具/Skill 拉取上限 | `timelineInvocationLimit(q)`：默认 100、最大 500 | ✅ 2026-05-21 |
 | O4 | AppendChatTurn 事务内两次查询 | `maxMessageTurnTx` + session 查询可合并为一次 | P3 |
-| O5 | 压缩防抖策略可配置化 | 当前 `sessionCompressMinGap = 10min` 硬编码，应从 Agent Settings 读取 | P2 |
+| O5 | 压缩防抖策略可配置化 | Agent `L0CompressMinGapSec` · `compress_policy.go` | ✅ 2026-05-24 |
 | O6 | SessionCompressor 压缩模型选择 | 当前 fallback 逻辑分散，应统一为策略模式 | P3 |
 
 ### 10.2 功能开发（按优先级排序）
 
 | # | 功能 | 需求文档 | 设计要点 | 优先级 |
 |---|------|----------|----------|--------|
-| F1 | Session 置顶 | §9 Phase 1 | sessions 表增加 `pinned_at` 字段 + PinSession/UnpinSession RPC + 前端置顶分组 | P2 |
-| F2 | Session 导出 | §9 Phase 2 | ExportSession RPC（Markdown/JSON），消息 + 工具调用 + 时间线 | P3 |
-| F3 | 消息搜索 | §9 Phase 3 | SearchMessages RPC，评估 SQLite FTS5 或 LIKE 方案 | P3 |
-| F4 | session_runs 编排记录 | §4.3 | 新表 + ChatService/TeamRunner 写入 + Run Timeline API | P2 |
-| F5 | session_run_steps 步骤记录 | §4.4 | 新表 + 每次 model/tool/skill/mcp 调用写 step | P2 |
-| F6 | session_participants | §4.2 | Team session 参与者 + 角色 + 贡献指标 | P2 |
+| F1 | Session 置顶 | §9 Phase 1 | `pinned_at` + Pin/Unpin + 前端 | ✅ |
+| F2 | Session 导出 | §9 Phase 2 | ExportSession RPC Markdown/JSON | ✅ |
+| F3 | 消息搜索 | §9 Phase 3 | SearchSessionMessages FTS/LIKE | ✅ |
+| F4 | session_runs 编排记录 | §4.3 | M55 生命周期 + ListSessionRuns；编排 schema 待对齐 | 🟡 |
+| F5 | session_run_steps 步骤记录 | §4.4 | 新表 + step 写入 + List RPC | 待办 |
+| F6 | session_participants | §4.2 | 读时 Sync + Team Tab；增量写待办 | 🟡 |
 | F7 | session_trace_spans | §4.6 | 完整追踪链路 + parent_span_id 树 + Trace API | P3 |
 | F8 | session_context_snapshots | §5.4 | Context ratio 趋势数据 + 快照 API | P3 |
 | F9 | session_model_summaries | §4.7 | 多模型分布汇总 + 模型切换历史 | P3 |
@@ -1930,20 +1930,18 @@ export function buildSessionsSummaryCards(rows: Session[], total: number): Sessi
 | F14 | 多后端支持 | §12.5 | Redis/PG/MySQL/ClickHouse | P4 |
 | F15 | 前端 Trace 链路页 | §7.4 | 树形/瀑布视图 | P3 |
 | F16 | 前端 Context 趋势线 | §7.6 | context ratio 趋势可视化 | P3 |
-| F17 | 前端 Team Session 专属展示 | §7.5 | Participants Panel / Handoff Badge | P2 |
+| F17 | 前端 Team Session 专属展示 | §7.5 | Participants Panel ✅ · Handoff Badge 待办 | 🟡 |
 
 ### 10.3 开发阶段建议
 
-**Phase 1（近期优化）**：
-- O1: 错误处理统一
-- O5: 压缩防抖可配置化
-- F1: Session 置顶
+**Phase 1（近期优化）** — ✅ 已完成：
+- O1 · O5 · F1 · F2 · O2 Timeline UNION
 
-**Phase 2（编排增强）**：
-- F4: session_runs
-- F5: session_run_steps
-- F6: session_participants
-- F17: 前端 Team Session 专属展示
+**Phase 2（编排增强）** — 🟡 进行中：
+- F4: session_runs 列表 ✅（M55）
+- F5: session_run_steps 待办
+- F6: session_participants 部分 ✅
+- F17: Team UI 部分 ✅
 
 **Phase 3（可观测性）**：
 - F7: session_trace_spans

@@ -5,6 +5,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/compress"
 	"aranea-agents/internal/knowledge"
+	araneasession "aranea-agents/internal/session"
 	"aranea-agents/internal/skill/importer"
 	"aranea-agents/internal/team"
 
@@ -13,13 +14,17 @@ import (
 
 // ProviderSet is service providers.
 var ProviderSet = wire.NewSet(
-	wire.Bind(new(biz.NativeTurnCompressor), new(*SessionCompressor)),
 	wire.Bind(new(compress.Compressor), new(*compress.LLMService)),
 	wire.Bind(new(biz.NativeTurnGateway), new(*ChatService)),
+	wire.Bind(new(biz.TurnGateway), new(*ChatService)),
+	wire.Bind(new(biz.TurnControlGateway), new(*ChatService)),
+	wire.Bind(new(biz.TurnExecutor), new(*ChatOrchestrator)),
+	ProvideChatOrchestrator,
 	wire.Bind(new(biz.GraphExecutor), new(*GraphService)),
 	wire.Bind(new(a2apkg.AgentTurnRunner), new(*ChatService)),
 	wire.Bind(new(EvalTurnGateway), new(*ChatService)),
-	NewCompressHTTPClient,
+	NewPendingMessageGatewayAdapter,
+	araneasession.NewCompressHTTPClient,
 	compress.NewLLMService,
 	team.ProviderSet,
 	NewAdminService,
@@ -35,6 +40,8 @@ var ProviderSet = wire.NewSet(
 	importer.NewEngine,
 	NewSkillService,
 	NewSessionService,
+	NewSessionProjectionAdapter,
+	wire.Bind(new(biz.SessionProjection), new(*SessionProjectionAdapter)),
 	NewToolService,
 	NewChannelService,
 	NewUsageService,
@@ -49,7 +56,6 @@ var ProviderSet = wire.NewSet(
 	NewGraphService,
 	WireGraphTaskRuntime,
 	NewKanbanToolBridge,
-	NewSessionCompressor,
 	NewArtifactService,
 	NewKnowledgeService,
 	NewEvaluationService,

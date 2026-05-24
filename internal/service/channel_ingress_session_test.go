@@ -132,6 +132,18 @@ func (m *ingressSessionRepo) ListToolInvocationsBySession(context.Context, strin
 func (m *ingressSessionRepo) ListSkillInvocationsBySession(context.Context, string, int) ([]biz.SkillInvocationView, error) {
 	return nil, nil
 }
+func (m *ingressSessionRepo) ListTimelineEventRefsPaged(context.Context, string, biz.TimelineQuery) ([]biz.TimelineEventRef, int, error) {
+	return nil, 0, nil
+}
+func (m *ingressSessionRepo) ListMessagesByIDs(context.Context, string, []string) ([]biz.ChatMessage, error) {
+	return nil, nil
+}
+func (m *ingressSessionRepo) ListToolInvocationsByIDs(context.Context, string, []string) ([]biz.ToolInvocationView, error) {
+	return nil, nil
+}
+func (m *ingressSessionRepo) ListSkillInvocationsByIDs(context.Context, string, []string) ([]biz.SkillInvocationView, error) {
+	return nil, nil
+}
 func (m *ingressSessionRepo) AppendChatTurn(context.Context, string, biz.ChatMessage, biz.ChatMessage) error {
 	return nil
 }
@@ -209,6 +221,18 @@ func (m *ingressSessionRepo) ArchiveSessionsByIDs(context.Context, []string) (in
 }
 func (m *ingressSessionRepo) DeleteSessionsByIDs(context.Context, []string) (int, []string, error) {
 	return 0, nil, nil
+}
+func (m *ingressSessionRepo) PinSession(_ context.Context, id string) (biz.Session, error) {
+	if s, ok := m.sessions[id]; ok {
+		return s, nil
+	}
+	return biz.Session{}, sql.ErrNoRows
+}
+func (m *ingressSessionRepo) UnpinSession(_ context.Context, id string) (biz.Session, error) {
+	if s, ok := m.sessions[id]; ok {
+		return s, nil
+	}
+	return biz.Session{}, sql.ErrNoRows
 }
 func (m *ingressSessionRepo) BumpSessionRevision(context.Context, string) (int64, error) {
 	return 1, nil

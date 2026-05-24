@@ -18,7 +18,7 @@
 
 ## 2. 标杆架构对照
 
-`pkg/trpc-agent-go` 是运行时框架真相源；OpenClaw 是产品化装配参考。
+`pkg/trpc-agent-go` 是运行时框架真相源；OpenClaw 是产品化装配参考；GoClaw 是独立 Gateway 调度/IM 工程参考（非 vendored，见 [17-channel-external-reference-playbook.md](./17-channel-external-reference-playbook.md)）。
 
 | 标杆能力 | Aranea 对齐位置 | 当前差距 | 康复方向 |
 |----------|-----------------|----------|----------|
@@ -37,7 +37,9 @@ OpenClaw 在 `pkg/trpc-agent-go/openclaw` 中完整存在，可直接对照。�
 2. Gateway 按 session 管控运行（cancel / status / enqueue）—— Aranea 已通过 `RunGateway` 接口落地；
 3. Admin/Registry 用接口隔离扩展（channel/plugin/model/session/memory 注册表）—— Aranea 以 Wire DI + `internal/plugin/trpc/registry.go` 实现类似隔离。
 
-**不要复制**：OpenClaw 的单体 `app.go`、HTML Admin UI、Telegram/stdin channel 栈、文件记忆实现、`runtimeprofile`（含多租户隔离策略）。
+**不要复制**：OpenClaw 的单体 `app.go`、HTML Admin UI、Telegram/stdin channel 栈、文件记忆实现、`runtimeprofile`（含多租户隔离策略）。GoClaw 单 MessageBus、无 revision cursor、string session key 作主键同理 — 只借调度/intent/preview 模式，见 playbook §3。
+
+**可借鉴（按优先级）**：Session 队列三模式、忙线 intent、Ingress debounce/dedupe、Run 级 preview registry — 任务卡 `CH-BOR-*` 见 [17-channel-development.md §13](./17-channel-development.md#13-phase-g--外部参考借鉴ch-bor)。
 
 ## 3. 三维架构健康度诊断
 

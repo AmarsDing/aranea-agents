@@ -29,8 +29,13 @@
 
     <template #body-cell-session="props">
       <q-td :props="props">
-        <div class="app-registry-cell-primary">{{ props.row.title }}</div>
-        <div class="app-registry-cell-sub ellipsis">{{ props.row.summary || props.row.id }}</div>
+        <div class="row items-center no-wrap q-gutter-xs">
+          <q-icon v-if="isSessionPinned(props.row)" name="push_pin" color="primary" size="16px" />
+          <div class="col min-width-0">
+            <div class="app-registry-cell-primary">{{ props.row.title }}</div>
+            <div class="app-registry-cell-sub ellipsis">{{ props.row.summary || props.row.id }}</div>
+          </div>
+        </div>
       </q-td>
     </template>
 
@@ -80,6 +85,16 @@
         <div class="app-registry-cell-actions">
         <q-btn flat dense round icon="visibility" color="primary" :to="{ name: 'session-detail', params: { sessionId: props.row.id } }">
           <q-tooltip>查看详情</q-tooltip>
+        </q-btn>
+        <q-btn
+          flat
+          dense
+          round
+          icon="push_pin"
+          :color="isSessionPinned(props.row) ? 'primary' : 'grey-6'"
+          @click="$emit('toggle-pin', props.row.id, !isSessionPinned(props.row))"
+        >
+          <q-tooltip>{{ isSessionPinned(props.row) ? "取消置顶" : "置顶" }}</q-tooltip>
         </q-btn>
         <q-btn flat dense round icon="archive" color="primary" :disable="props.row.status === 'archived' || props.row.status === 'running'" @click="$emit('archive-row', props.row.id)">
           <q-tooltip>{{ props.row.status === 'running' ? '运行中不可归档' : props.row.status === 'archived' ? '已归档' : '归档' }}</q-tooltip>
@@ -135,6 +150,7 @@ import {
   formatNumber,
   formatPercent,
   formatSessionDate,
+  isSessionPinned,
   ownerChipColor,
   ownerLabel,
   ratioValue,
@@ -161,6 +177,7 @@ defineEmits<{
   "update:pageSize": [v: number];
   "archive-row": [id: string];
   "delete-row": [id: string];
+  "toggle-pin": [id: string, pinned: boolean];
   "toggle-row": [id: string, checked: boolean];
   "toggle-page": [checked: boolean];
 }>();

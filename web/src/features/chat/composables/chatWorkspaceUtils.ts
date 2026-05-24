@@ -1,4 +1,5 @@
-import type { Agent, TeamRow } from "../../../components/chat/types";
+import type { TeamRow } from "../../../components/chat/types";
+import type { Agent } from "../../agents/types";
 
 export const LS_AG_ORDER = "chat:order:agents";
 export const LS_TM_ORDER = "chat:order:teams";

@@ -184,6 +184,12 @@ var (
 		Help: "Channel turn job lifecycle events by channel_id and status.",
 	}, []string{"channel_id", "status"})
 
+	// ChannelBusyIntentTotal counts ingress busy-line intent classifications (CH-BOR-04).
+	ChannelBusyIntentTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "aranea_channel_busy_intent_total",
+		Help: "Channel ingress policy intent by label (cancel|status|queue|reject_busy|route_async|admit).",
+	}, []string{"intent"})
+
 	// ChannelProgressPatchTotal counts IM progress PATCH updates during long turns.
 	ChannelProgressPatchTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "aranea_channel_progress_patch_total",

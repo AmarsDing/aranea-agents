@@ -61,6 +61,12 @@ export const useChatStore = defineStore("chat", () => {
   function renameTeamSessionLocal(teamId: string, id: string, title: string) {
     return session.renameTeamSessionLocal(teamId, id, title);
   }
+  function setSessionPinnedLocal(id: string, pinned: boolean) {
+    return session.setSessionPinnedLocal(id, pinned);
+  }
+  function setTeamSessionPinnedLocal(teamId: string, id: string, pinned: boolean) {
+    return session.setTeamSessionPinnedLocal(teamId, id, pinned);
+  }
   async function clearAllAgentSessions(agentId: string) {
     const sessionIds = session.sessions.map((s) => s.id);
     await session.clearAllAgentSessions(agentId);
@@ -130,6 +136,8 @@ export const useChatStore = defineStore("chat", () => {
     removeTeamSessionLocal,
     renameSessionLocal,
     renameTeamSessionLocal,
+    setSessionPinnedLocal,
+    setTeamSessionPinnedLocal,
     clearAllAgentSessions,
     clearTeamSessions,
     findSessionById,

@@ -31,6 +31,8 @@ export type {
   SessionTimelineSummary,
   SessionTimeline,
   SessionTurn,
+  SessionRunRecord,
+  SessionParticipant,
   SessionBatchScope,
   BatchPreviewResult,
   BatchOperationResult
@@ -70,6 +72,7 @@ function kratosSessionToLegacy(s: KratosSession): Session {
     updated_at: s.updatedAt ?? "",
     archived_at: s.archivedAt ?? "",
     deleted_at: s.deletedAt ?? "",
+    pinned_at: s.pinnedAt ?? "",
     metadata_json: s.metadataJson ?? "",
     context_used_tokens: s.contextUsedTokens,
     last_context_window_tokens: s.lastContextWindowTokens
@@ -154,9 +157,78 @@ export async function getSession(id: string): Promise<Session> {
   return kratosSessionToLegacy(data);
 }
 
-export async function getSessionTimeline(id: string): Promise<SessionTimeline> {
-  const data = await sessionApi.GetSessionTimeline({ id, limit: undefined, offset: undefined, kindFilter: undefined, sortOrder: undefined });
+export async function getSessionTimeline(
+  id: string,
+  params?: { limit?: number; offset?: number; kind_filter?: string; sort_order?: string }
+): Promise<SessionTimeline> {
+  const data = await sessionApi.GetSessionTimeline({
+    id,
+    limit: params?.limit,
+    offset: params?.offset,
+    kindFilter: params?.kind_filter,
+    sortOrder: params?.sort_order,
+  });
   return kratosSessionTimelineToLegacy(data);
+}
+
+export async function exportSession(id: string, format: "markdown" | "json"): Promise<{ content: string; filename: string; content_type: string }> {
+  const data = await sessionApi.ExportSession({ id, format });
+  return {
+    content: data.content ?? "",
+    filename: data.filename ?? `session.${format === "json" ? "json" : "md"}`,
+    content_type: data.contentType ?? (format === "json" ? "application/json" : "text/markdown"),
+  };
+}
+
+export async function listSessionRuns(
+  sessionId: string,
+  limit = 20,
+  offset = 0
+): Promise<{ items: SessionRunRecord[]; total: number }> {
+  const data = await sessionApi.ListSessionRuns({ sessionId, limit, offset });
+  const items = (data.items ?? []).map((row) => ({
+    id: row.id ?? "",
+    session_id: row.sessionId ?? "",
+    turn_id: row.turnId ?? "",
+    runtime_run_id: row.runtimeRunId ?? "",
+    source: row.source ?? "",
+    phase: row.phase ?? "",
+    soft_budget_sec: row.softBudgetSec ?? 0,
+    hard_budget_sec: row.hardBudgetSec ?? 0,
+    checkpoint_id: row.checkpointId ?? "",
+    workflow_job_id: row.workflowJobId ?? "",
+    agent_id: row.agentId ?? "",
+    error_message: row.errorMessage ?? "",
+    started_at: row.startedAt ?? "",
+    phase_changed_at: row.phaseChangedAt ?? "",
+    finished_at: row.finishedAt ?? "",
+    created_at: row.createdAt ?? "",
+    updated_at: row.updatedAt ?? "",
+  }));
+  return { items, total: data.total ?? items.length };
+}
+
+export async function listSessionParticipants(sessionId: string): Promise<SessionParticipant[]> {
+  const data = await sessionApi.ListSessionParticipants({ sessionId });
+  return (data.items ?? []).map((row) => ({
+    id: row.id ?? "",
+    session_id: row.sessionId ?? "",
+    participant_type: row.participantType ?? "",
+    participant_id: row.participantId ?? "",
+    display_name: row.displayName ?? "",
+    role_in_session: row.roleInSession ?? "",
+    status: row.status ?? "",
+    first_active_at: row.firstActiveAt ?? "",
+    last_active_at: row.lastActiveAt ?? "",
+    message_count: row.messageCount ?? 0,
+    run_step_count: row.runStepCount ?? 0,
+    input_tokens: row.inputTokens ?? 0,
+    output_tokens: row.outputTokens ?? 0,
+    context_used_ratio: row.contextUsedRatio ?? 0,
+    metadata_json: row.metadataJson ?? "",
+    created_at: row.createdAt ?? "",
+    updated_at: row.updatedAt ?? "",
+  }));
 }
 
 export async function createSession(payload: {
@@ -363,6 +435,16 @@ export async function searchSessionMessages(params: {
 
 export async function restoreSession(id: string): Promise<Session> {
   const data = await sessionApi.RestoreSession({ id });
+  return kratosSessionToLegacy(data);
+}
+
+export async function pinSession(id: string): Promise<Session> {
+  const data = await sessionApi.PinSession({ id });
+  return kratosSessionToLegacy(data);
+}
+
+export async function unpinSession(id: string): Promise<Session> {
+  const data = await sessionApi.UnpinSession({ id });
   return kratosSessionToLegacy(data);
 }
 

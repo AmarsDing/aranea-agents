@@ -1,4 +1,4 @@
-import type { Envelope, EnvelopeType } from "../chat/envelope";
+import type { Envelope, EnvelopeType } from "../../realtime/envelope";
 import type { TeamRun, TeamRunEvent, TeamRunStep } from "./types";
 
 /** Envelope types emitted on the team / monitor channels for Team run observability. */

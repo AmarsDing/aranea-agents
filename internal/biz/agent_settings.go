@@ -30,6 +30,7 @@ type MemoryCfg struct {
 	L0RecentWindowTokens int     `json:"l0_recent_window_tokens,omitempty"`
 	L0SummaryThreshold   float64 `json:"l0_summary_threshold,omitempty"`
 	L0SummaryKeepTurns   int     `json:"l0_summary_keep_turns,omitempty"`
+	L0CompressMinGapSec  int     `json:"l0_compress_min_gap_sec,omitempty"`
 	L0CompressProvider   string  `json:"l0_compress_provider,omitempty"`
 	L0CompressModel      string  `json:"l0_compress_model,omitempty"`
 	MemoryWorkerProvider string  `json:"memory_worker_provider,omitempty"`

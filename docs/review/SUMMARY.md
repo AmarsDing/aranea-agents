@@ -1,7 +1,7 @@
 # Aranea-Agents 模块 Review 综合汇总
 
 > **生成时间**：2026-05-21  
-> **最后同步**：2026-05-23（Channel IM Preview Review P1–P3 闭合）  
+> **最后同步**：2026-05-24（DECO-01 Holistic Fix Review 78/100 · P1-014 双 patch/hydrate；Session Phase 2 Review 83/100）  
 > **覆盖模块**：33 个（含占位模块 CLI/Ecosystem/TTS）  
 > **基准文档**：`docs/需求/README-development.md` · `docs/guides/execution-plan.md`
 
@@ -39,7 +39,7 @@
 | 14 | Tools (23) | **86** | Phase 4 片段编辑 + Phase 5 工作区 ✅ |
 | 14 | MCP (19) | **80** | OAuth/重连 ✅ |
 | 17 | FlowLogger (52) | **82** | Phase 2 落库 ✅ |
-| 17 | Session (10) | **79** | 批量 UI ✅ |
+| 17 | Session (10) | **83** | Phase 2：Pin/Export/Timeline/Runs；P1 Participants Sync · [Review](./2026-05-24-Session-Phase2-Review.md) |
 | 17 | Token/Usage (29) | **81** | 定价 UX 横幅已补 |
 | 20 | Graph (36) | **77** | 节点类型待补 |
 | 21 | Knowledge (37) | **78** | OCR pipeline ✅ |

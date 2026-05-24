@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <q-page :class="['agent-settings', { 'agent-settings--files-fill': tab === 'files' }]">
     <q-card flat bordered :class="['settings-shell', { 'settings-shell--fill': tab === 'files' }]">
       <agent-settings-header
@@ -120,7 +120,16 @@
             :a2a-proxy="form.a2a_proxy_config"
             @saved="reloadAgent"
           />
-          <agent-settings-a2-a-endpoint-tab v-else :agent-id="agentId" />
+          <agent-settings-a2-a-endpoint-tab
+            v-else
+            :loading="a2aEndpoint.loading.value"
+            :saving="a2aEndpoint.saving.value"
+            :card="a2aEndpoint.card.value"
+            :capability-lines="a2aEndpoint.capabilityLines.value"
+            @save="a2aEndpoint.saveEndpoint()"
+            @update:card-enabled="a2aEndpoint.card.value && (a2aEndpoint.card.value.enabled = $event)"
+            @update:capability-lines="a2aEndpoint.capabilityLines.value = $event"
+          />
         </q-tab-panel>
 
         <q-tab-panel name="instances">
@@ -203,6 +212,7 @@ import AgentSettingsA2ATab from "../components/agents/AgentSettingsA2ATab.vue";
 import AgentSettingsA2AEndpointTab from "../components/agents/AgentSettingsA2AEndpointTab.vue";
 import AgentUsageQuotaPanel from "../components/agents/AgentUsageQuotaPanel.vue";
 import { useAgentEvolutionPanel } from "../features/agents/useAgentEvolutionPanel";
+import { useAgentA2AEndpointTab } from "../features/agents/useAgentA2AEndpointTab";
 import { useAgentSettingsPage } from "../features/agents/useAgentSettingsPage";
 
 const {
@@ -273,6 +283,8 @@ const {
   onApply: applyEvolutionSuggestion,
   onReject: rejectEvolutionSuggestion
 } = useAgentEvolutionPanel(() => agentId, () => evolutionRange);
+
+const a2aEndpoint = useAgentA2AEndpointTab(() => agentId);
 </script>
 
 <style scoped lang="scss">

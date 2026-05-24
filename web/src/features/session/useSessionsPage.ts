@@ -128,7 +128,7 @@ export function useSessionsPage() {
         limit: pageSize.value,
         offset: (page.value - 1) * pageSize.value
       });
-      rows.value = result.items;
+      rows.value = sortSessionsPageRows(result.items);
       total.value = result.total;
       await loadSelected();
     } catch (err) {
@@ -282,6 +282,30 @@ export function useSessionsPage() {
     }
   }
 
+  async function togglePinRow(id: string, pinned: boolean) {
+    try {
+      const updated = await sessionStore.setPinned(id, pinned);
+      rows.value = sortSessionsPageRows(rows.value.map((row) => (row.id === id ? updated : row)));
+      if (selected.value?.id === id) {
+        selected.value = updated;
+      }
+      $q.notify({ type: "positive", message: pinned ? "已置顶" : "已取消置顶" });
+    } catch (err) {
+      $q.notify({ type: "negative", message: err instanceof Error ? err.message : pinned ? "置顶失败" : "取消置顶失败" });
+    }
+  }
+
+  function sortSessionsPageRows(items: Session[]): Session[] {
+    return [...items].sort((a, b) => {
+      const aPin = a.pinned_at?.trim() ? new Date(a.pinned_at).getTime() : 0;
+      const bPin = b.pinned_at?.trim() ? new Date(b.pinned_at).getTime() : 0;
+      if (aPin !== bPin) return bPin - aPin;
+      const aMsg = new Date(a.last_message_at || a.updated_at || a.created_at).getTime();
+      const bMsg = new Date(b.last_message_at || b.updated_at || b.created_at).getTime();
+      return bMsg - aMsg;
+    });
+  }
+
   return {
     rows,
     selected,
@@ -323,6 +347,7 @@ export function useSessionsPage() {
     previewRetention,
     confirmRetention,
     archiveRow,
+    togglePinRow,
     promptDeleteSelected: () => promptDelete([...selectedIds.value]),
     archiveSelected: () => runBatchArchive([...selectedIds.value])
   };

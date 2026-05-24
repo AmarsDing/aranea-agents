@@ -58,6 +58,14 @@ func (a *pendingQueueAdapter) List(sessionID string) []biz.PendingQueueEntry {
 	return out
 }
 
+func (a *pendingQueueAdapter) Enqueue(sessionID, content string) string {
+	return a.PendingMessageQueue.Enqueue(sessionID, content)
+}
+
+func (a *pendingQueueAdapter) EnqueueFollowup(sessionID, content string) string {
+	return a.PendingMessageQueue.EnqueueFollowup(sessionID, content, "\n")
+}
+
 func (a *pendingQueueAdapter) Dequeue(sessionID string) (biz.PendingQueueEntry, bool) {
 	e, ok := a.PendingMessageQueue.Dequeue(sessionID)
 	if !ok {

@@ -25,7 +25,7 @@
 | Agent Evolution | [7-agent-evolution-development.md](./7-agent-evolution-development.md) | ✅ API+指标+Scanner；❌ 趋势图 |
 | Agent Title | [8-agent-title-development.md](./8-agent-title-development.md) | ✅ 顶栏+预览；❌ 标题自动生成 |
 | Provider | [9-provider-development.md](./9-provider-development.md) |
-| Session | [10-session-development.md](./10-session-development.md) |
+| Session | [10-session-development.md](./10-session-development.md) · [Phase2 Review](../review/2026-05-24-Session-Phase2-Review.md) | 🟢 Pin/Export/Timeline/Runs ✅；🟡 Participants 读时 Sync · P1 F6-a |
 | Multi-Agent / Team | [11-multi-agent-development.md](./11-multi-agent-development.md) | ✅ 编排+RunTest+Summary+WS；**M53** 编译/观测 ✅，执行双轨 ⏳ |
 | **Team × Graph 融合 (M53)** | [53-team-graph-orchestration-development.md](./53-team-graph-orchestration-development.md) | ✅ 编译/观测单链；⏳ 执行收敛 Phase 5–7 |
 | Runner | [40-runner-development.md](./40-runner-development.md) |
@@ -35,7 +35,7 @@
 | 模块 | 开发计划 |
 |------|----------|
 | Memory | [memory/README.md](./memory/README.md) · [memory-development.md](./memory/memory-development.md) |
-| Channel | [17-channel-development.md](./17-channel-development.md) · [× Agent/Team 集成](./17-channel-agent-team-integration.md) · [**长任务 Phase E**](./17-channel-development.md#10-长任务异步执行phase-e) · [**M55 长任务路由**](./55-chat-channel-cursor-development.md#phase-a--配置与路由p0约-3-天) |
+| Channel | [17-channel-development.md](./17-channel-development.md) · [**Phase DECO 四层解耦**](./17-channel-development.md#14-phase-deco--四层架构解耦deco) · [**外部参考借鉴手册**](./17-channel-external-reference-playbook.md) · [× Agent/Team 集成](./17-channel-agent-team-integration.md) · [**长任务 Phase E**](./17-channel-development.md#10-长任务异步执行phase-e) · [**Phase G CH-BOR**](./17-channel-development.md#13-phase-g--外部参考借鉴ch-bor) · [**M55 长任务路由**](./55-chat-channel-cursor-development.md#phase-a--配置与路由p0约-3-天) |
 | Monitor | [18-monitor-development.md](./18-monitor-development.md)（运维 `/monitor/logs`）· [Dashboard 概览](./18-monitor-dashboard-development.md)（`/overview`） |
 | FlowLogger | [52-flow-logger.md](./52-flow-logger.md) · [design](./52-flow-logger.design.md) · [开发计划](./52-flow-logger-development.md) · [Slog 移除](../changelog/2026-05-20-FlowLog-V2-SlogRemoval.md) |
 | MCP | [19-mcp-development.md](./19-mcp-development.md) | 🟢 CRUD+探活+ToolSet/Broker+OAuth+重连 ✅；🟡 统计闭环 |
@@ -87,7 +87,7 @@
 | 阶段 | 主题 | 状态 |
 |------|------|------|
 | CC-A | Channel 长任务 preset + auto→async 路由 | 📋 |
-| CC-B | `session_revision` + Web 增量 sync | 📋 |
+| CC-B | `session_revision` + Web 增量 sync | 🟡 | 后端+前端 ✅；[DECO-01 E2E](../changelog/2026-05-24-DECO-01-Feishu-Web-E2E-Archive.md) · Holistic fix [Review](../review/2026-05-24-DECO-01-Channel-Sync-Holistic-Fix-Review.md) P1 开放 |
 | CC-C | TurnBlock UI + 虚拟列表 | 📋 |
 | CC-D | Background Job 面板 | 📋 |
 | CC-E/F | @ Context · Apply diff · 24h Durable Job | 📋 |

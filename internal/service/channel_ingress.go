@@ -31,6 +31,10 @@ type ChannelIngress struct {
 	eventBus        event.Bus
 	http            *http.Client
 	inboundInflight inboundInflightSet
+	messageDedupe   *ingressMessageDedupe
+	peerDebouncer   *ingressPeerDebouncer
+	previewRegistry  *turnPreviewRegistry
+	concurrentGate   *channelConcurrentGate
 }
 
 // NewChannelIngress wires channel runtime ingress.
@@ -65,6 +69,10 @@ func NewChannelIngress(
 		cron:            cron,
 		eventBus:        eventBus,
 		http:            lark.DefaultHTTPClient(),
+		messageDedupe:   newIngressMessageDedupe(defaultMessageDedupeTTL),
+		peerDebouncer:   newIngressPeerDebouncer(defaultIngressDebounce),
+		previewRegistry: newTurnPreviewRegistry(),
+		concurrentGate:  newChannelConcurrentGate(),
 	}
 }
 

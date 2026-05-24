@@ -52,6 +52,7 @@ func (AgentRuntimeSetting) Fields() []ent.Field {
 		field.Int("l0_recent_window_tokens").Default(0),
 		field.Float("l0_summary_threshold").Default(0.6),
 		field.Int("l0_summary_keep_turns").Default(4),
+		field.Int("l0_compress_min_gap_sec").Default(600),
 		field.String("l0_compress_provider").Default(""),
 		field.String("l0_compress_model").Default(""),
 		field.String("memory_worker_provider").Default(""),

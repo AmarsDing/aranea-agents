@@ -75,9 +75,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { storeToRefs } from "pinia";
 import type { TeamDefinition } from "../../features/teams/types";
-import { useAuthStore } from "../../stores/auth";
 import {
   failureDefaultOptions,
   failurePolicySummary,
@@ -85,13 +83,14 @@ import {
   runtimeEngineOptions,
 } from "./teamUtils";
 
-const authStore = useAuthStore();
-const { isPlatformAdmin } = storeToRefs(authStore);
-
-const props = defineProps<{
-  definition: TeamDefinition | null;
-  readOnly: boolean;
-}>();
+const props = withDefaults(
+  defineProps<{
+    definition: TeamDefinition | null;
+    readOnly: boolean;
+    isPlatformAdmin?: boolean;
+  }>(),
+  { isPlatformAdmin: false },
+);
 
 const emit = defineEmits<{
   patch: [patch: Partial<TeamDefinition>];
@@ -106,11 +105,11 @@ const failureSummary = computed(() => (props.definition ? failurePolicySummary(p
 const timeoutSec = computed(() => props.definition?.timeout_seconds ?? 0);
 
 const filteredRuntimeOptions = computed(() =>
-  isPlatformAdmin.value ? runtimeEngineOptions : runtimeEngineOptions.filter((o) => o.value !== "native"),
+  props.isPlatformAdmin ? runtimeEngineOptions : runtimeEngineOptions.filter((o) => o.value !== "native"),
 );
 
 const nativeLocked = computed(
-  () => !isPlatformAdmin.value && runtimeEngineValue.value === "native",
+  () => !props.isPlatformAdmin && runtimeEngineValue.value === "native",
 );
 
 const localRuntime = ref(runtimeEngineValue.value);

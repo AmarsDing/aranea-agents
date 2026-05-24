@@ -1,6 +1,6 @@
 import { computed, ref } from "vue";
-import type { Envelope } from "../../chat/envelope";
-import { useGraphStream } from "../../chat/useEnvelopeStream";
+import type { Envelope } from "../../../realtime/envelope";
+import { useGraphStream } from "./useGraphStream";
 import type { GraphStepSnapshot, Task } from "../types";
 import {
   buildExecNodeStatesFromGraphNodes,

@@ -19,6 +19,7 @@ func NewEventBusConsumer(
 	eventBus contract.Bus,
 	eventBuffer EnvelopeBuffer,
 	sessions *SessionUsecase,
+	runnerSync RunnerSnapshotSync,
 	usage *UsageUsecase,
 	monitor *MonitorUsecase,
 	memWorker *TurnMemoryWorker,
@@ -28,7 +29,7 @@ func NewEventBusConsumer(
 		eventBus: eventBus,
 		buffer:   newEventBufferHandler(eventBuffer),
 		runner:   newRunnerCompletionHandler(sessions, usage, monitor, memWorker),
-		state:    newStateDeltaHandler(sessions),
+		state:    newStateDeltaHandler(sessions, runnerSync),
 		persist:  newEventPersistHandler(eventStore),
 	}
 }

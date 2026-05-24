@@ -197,6 +197,28 @@ Wire：admin 进程启动时 `Reload()`；Toggle/Update 后触发单实例重启
 
 `channel_delivery_worker.go` — 按 type 分发；钉钉 Webhook 模式用 `session_webhook`（MuseBot 同）；Stream 模式用 OpenAPI（MuseBot `ding.go`）。
 
+#### 5.3.1 OutboundMeta 契约（CH-BOR-10）
+
+入站 adapter 将平台回复目标写入 `port.InboundEvent.OutboundMeta`；**禁止**在 ingress/service 层散落硬编码路由字段。
+
+| Key | 用途 |
+|-----|------|
+| `recipient` | 出站 receive_id（飞书必填） |
+| `receive_id_type` | open_id / chat_id / … |
+| `chat_id` · `chat_type` | 群/DM 路由与白名单 |
+| `thread_id` · `reply_in_thread` | 话题线程（F-06） |
+| `inbound_message_id` | 幂等 / reaction 锚点 |
+| `session_webhook` · `response_url` | 钉钉 / Slack 等 webhook 回复 |
+| `x_*` | 平台扩展（校验放行） |
+
+**代码**：`internal/channel/port/meta.go`
+
+- `LocalKeyFromMeta(platform, meta)` — preview/run 路由键（`chat_id:thread_id` 或 `recipient` 回退）
+- `ValidateOutboundMeta` — 入站契约告警（`channel_ingress_guard` SysLog）
+- `NormalizeOutboundMeta` — 出站透传前 trim
+
+**新平台 checklist**：adapter build 阶段填满必填 meta → 单测 `ValidateOutboundMeta` → 禁止在 `channel_ingress_*` 新增 platform 特判路由字段。
+
 ---
 
 ## 六、MuseBot 平台实现对照
@@ -762,7 +784,7 @@ sequenceDiagram
 | DM | `feishu:dm:{chat_id}` | `peer_key` = open_id / user_id |
 | 群 per-user | `feishu:group:{chat_id}:{union_id}` | `dm_scope=per-channel-peer` |
 | 群共享 | `feishu:group:{chat_id}` | `dm_scope=main`（单 session） |
-| Topic 线程 | `{chat_id}:{thread_id}` 可选 | **未建模 thread_id** | **F-06**：`OutboundMeta.thread_id` + routing 配置 `thread_sessions_per_user` |
+| Topic 线程 | `{chat_id}:{thread_id}` 可选 | `OutboundMeta.thread_id` + `thread_sessions_per_user` | ✅ F-06 |
 
 Hermes 优先 **union_id** 作用户隔离；Aranea 当前 PeerID 顺序为 open_id → user_id → chat_id，群聊场景建议文档化 **union_id** 字段采集（若 SDK 事件含 union_id）。
 

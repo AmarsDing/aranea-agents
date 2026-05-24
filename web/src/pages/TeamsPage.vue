@@ -61,6 +61,7 @@
       :saving="saving"
       :can-save="canSave"
       :is-dark="isDark"
+      :is-platform-admin="isPlatformAdmin"
       @add-member="addMember"
       @remove-member="removeMember"
       @apply-template="applyTemplate"
@@ -107,6 +108,11 @@ import TeamRunsDialog from "../components/teams/TeamRunsDialog.vue";
 import TeamTestDialog from "../components/teams/TeamTestDialog.vue";
 import TeamToolbar from "../components/teams/TeamToolbar.vue";
 import { useTeamsPage } from "../features/teams/useTeamsPage";
+import { storeToRefs } from "pinia";
+import { useAuthStore } from "../stores/auth";
+
+const authStore = useAuthStore();
+const { isPlatformAdmin } = storeToRefs(authStore);
 
 const {
   isDark,

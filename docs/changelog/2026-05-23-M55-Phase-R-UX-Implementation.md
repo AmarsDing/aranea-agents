@@ -12,6 +12,9 @@
 | CC-FIX-CHANNEL-01 | `NotifyRunCompleted` — Durable resume 完成后飞书 outbound |
 | CC-FIX-CHANNEL-02 | `TurnPreviewCoordinator` 无正文时 PATCH「正在思考与执行工具…」 |
 | CC-B-06b | Channel `run_status=running` → `focusSessionById`（`channel_auto_focus` 可关） |
+
+**2026-05-24 续**：DECO-01 手工 E2E 归档；FIX-D-01~03 — 跨 Agent auto-focus · `isViewingSession` 对齐 store · 增量 merge 保留历史（见 [归档](./2026-05-24-DECO-01-Feishu-Web-E2E-Archive.md)）  
+**2026-05-24 Holistic Fix**：助手回复消失 — 删 `channelLiveTurn` · `channelWsCursor` · 强制 hydrate（见 [changelog](./2026-05-24-DECO-01-Channel-Sync-Holistic-Fix.md) · [Review](../review/2026-05-24-DECO-01-Channel-Sync-Holistic-Fix-Review.md)）
 | CC-WEB-NOTIFY | `InboundNotificationBell` + `useGlobalInboundNotifications`（MainLayout 全局 WS） |
 | CC-WEB-REASONING-01 | `chatStreamingSnapshots` + `applyStreamingSnapshotToSession` |
 | CC-WEB-REASONING-02~04 | `ChatReasoningPeek` — 思考/正文分离 · live tail 最后两行 · 单击/滚轮/双击 |

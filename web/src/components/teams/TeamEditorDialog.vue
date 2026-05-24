@@ -239,14 +239,9 @@
 
 <script setup lang="ts">
 import { computed, watch } from "vue";
-import { storeToRefs } from "pinia";
 import type { TeamDefinition } from "../../features/teams/types";
-import { useAuthStore } from "../../stores/auth";
 import TeamCompilePreview from "./TeamCompilePreview.vue";
 import { failureDefaultOptions, failureOnErrorOptions, modeOptions, parallelFailOptions, roleOptions, runtimeEngineOptions, statusOptions, teamTemplateOptions, type TeamTemplateKey } from "./teamUtils";
-
-const authStore = useAuthStore();
-const { isPlatformAdmin } = storeToRefs(authStore);
 
 const props = withDefaults(
   defineProps<{
@@ -265,8 +260,9 @@ const props = withDefaults(
     saving: boolean;
     canSave: boolean;
     isDark: boolean;
+    isPlatformAdmin?: boolean;
   }>(),
-  { definitionJSON: "{}", selectedTemplateKey: null },
+  { definitionJSON: "{}", selectedTemplateKey: null, isPlatformAdmin: false },
 );
 
 const emit = defineEmits<{
@@ -293,11 +289,11 @@ function onTemplatePick(key: TeamTemplateKey | null) {
 }
 
 const filteredRuntimeEngineOptions = computed(() =>
-  isPlatformAdmin.value ? runtimeEngineOptions : runtimeEngineOptions.filter((o) => o.value !== "native"),
+  props.isPlatformAdmin ? runtimeEngineOptions : runtimeEngineOptions.filter((o) => o.value !== "native"),
 );
 
 const nativeLocked = computed(
-  () => !isPlatformAdmin.value && String(props.definition.runtime_engine || "graph").toLowerCase() === "native",
+  () => !props.isPlatformAdmin && String(props.definition.runtime_engine || "graph").toLowerCase() === "native",
 );
 
 watch(nativeLocked, (locked) => {

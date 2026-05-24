@@ -53,6 +53,10 @@ func (s *ChatService) ResumeDurableSessionRun(ctx context.Context, sessionRunID 
 		req := biz.TurnInput{
 			SessionID: run.SessionID,
 			Content:   biz.DurableResumePrompt(),
+			EntryConfig: biz.TurnEntryPointConfig{
+				EntryPoint: biz.EntryPointDurable,
+				AllowQueue: false,
+			},
 		}
 		bgCtx := event.WithSessionRunID(event.WithEnvelopeSource(runCtx, run.Source), sessionRunID)
 		bgCtx = event.WithDurableResume(bgCtx, event.DurableResumeSpec{

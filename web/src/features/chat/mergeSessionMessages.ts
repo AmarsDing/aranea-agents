@@ -42,6 +42,28 @@ function shouldDropStaleInFlight(message: Message): boolean {
   return status === "tool_running" || status === "tool_blocked";
 }
 
+/**
+ * Merge incremental server rows into existing session state without dropping persisted history.
+ * Used by `loadMessages({ afterRevision })` where the API returns only new messages.
+ */
+export function mergeIncrementalSessionMessages(
+  incremental: Message[],
+  local: Message[],
+  opts?: { dropStaleInFlight?: boolean }
+): Message[] {
+  if (incremental.length === 0) return local;
+  const normalizedIncremental = incremental.map((m) => ({
+    ...m,
+    options_json: normalizeServerMessageOptions(m.options_json ?? ""),
+  }));
+  const persisted = local.filter((m) => !isInFlightLocalRow(m));
+  const byId = new Map(persisted.map((m) => [m.id, m]));
+  for (const row of normalizedIncremental) {
+    byId.set(row.id, row);
+  }
+  return mergeSessionMessages([...byId.values()], local, opts);
+}
+
 /** Merge server history with in-flight WS rows (streaming text, running tool cards). */
 export function mergeSessionMessages(
   server: Message[],

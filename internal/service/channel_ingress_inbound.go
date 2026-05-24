@@ -55,6 +55,15 @@ func (h *ChannelIngress) processWeChatPassiveInbound(ctx context.Context, chRow 
 
 // ProcessInbound runs accept + synchronous execute (runtime WS path).
 func (h *ChannelIngress) ProcessInbound(ctx context.Context, chRow biz.Channel, ev port.InboundEvent) error {
+	platform := inboundPlatform(chRow, ev)
+	if ingressDebounceEnabled(platform) && h.peerDebouncer != nil {
+		h.peerDebouncer.submit(ctx, chRow, ev, h.processInboundNow)
+		return nil
+	}
+	return h.processInboundNow(ctx, chRow, ev)
+}
+
+func (h *ChannelIngress) processInboundNow(ctx context.Context, chRow biz.Channel, ev port.InboundEvent) error {
 	outcome, err := h.acceptInbound(ctx, chRow, ev, false)
 	if err != nil {
 		return err
@@ -62,9 +71,13 @@ func (h *ChannelIngress) ProcessInbound(ctx context.Context, chRow biz.Channel, 
 	platform := inboundPlatform(chRow, ev)
 	if outcome.DispatchAsync {
 		ltCfg := biz.ParseChannelLongTaskConfig(chRow.ConfigJSON)
+		release := outcome.releaseConcurrent
 		safego.Go(context.Background(), "channel.inbound.async", func() {
 			procCtx := context.WithoutCancel(ctx)
 			defer h.releaseInboundInflight(ev, platform)
+			if release != nil {
+				defer release()
+			}
 			if err := h.dispatchAsyncInbound(procCtx, chRow, ev, platform, ltCfg); err != nil {
 				_ = h.deliverTurnErrorReply(procCtx, chRow, ev, platform, err)
 			}
@@ -73,6 +86,10 @@ func (h *ChannelIngress) ProcessInbound(ctx context.Context, chRow biz.Channel, 
 	}
 	if !outcome.ExecuteSync {
 		return nil
+	}
+	release := outcome.releaseConcurrent
+	if release != nil {
+		defer release()
 	}
 	if err := h.executeInboundTurn(ctx, chRow, ev); err != nil {
 		// executeInboundTurn already enqueues a user-visible IM error (LT-06).

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -78,6 +79,47 @@ func (q *PendingMessageQueue) Enqueue(sessionID, content string) string {
 		return ""
 	}
 	q.queues[sessionID] = append(queue, entry)
+	return id
+}
+
+// EnqueueFollowup merges content into the last pending entry when one exists (CH-BOR-01).
+func (q *PendingMessageQueue) EnqueueFollowup(sessionID, content, separator string) string {
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return ""
+	}
+	if separator == "" {
+		separator = "\n"
+	}
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	queue := q.queues[sessionID]
+	if len(queue) > 0 {
+		last := len(queue) - 1
+		merged := strings.TrimSpace(queue[last].Content)
+		if merged != "" {
+			merged += separator
+		}
+		merged += content
+		queue[last] = PendingMessage{
+			ID:        queue[last].ID,
+			Content:   merged,
+			Status:    queue[last].Status,
+			CreatedAt: queue[last].CreatedAt,
+		}
+		q.queues[sessionID] = append([]PendingMessage(nil), queue...)
+		return queue[last].ID
+	}
+	if len(queue) >= MaxPendingPerSession {
+		return ""
+	}
+	id := uuid.NewString()
+	q.queues[sessionID] = append(queue, PendingMessage{
+		ID:        id,
+		Content:   content,
+		Status:    "pending",
+		CreatedAt: time.Now().Format(time.RFC3339),
+	})
 	return id
 }
 

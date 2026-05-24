@@ -39,6 +39,7 @@ import (
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	"aranea-agents/internal/provider"
 	rt "aranea-agents/internal/runtime"
+	araneasession "aranea-agents/internal/session"
 	"aranea-agents/internal/server"
 	"aranea-agents/internal/service"
 	"aranea-agents/internal/skill/watch"
@@ -434,6 +435,7 @@ func provideChatServiceDeps(
 	skillUC *biz.SkillUsecase,
 	sys biz.SystemSettingRepo,
 	persist rt.PersistenceSet,
+	sessionRT *araneasession.Runtime,
 	compress biz.NativeTurnCompressor,
 	eventBus event.Bus,
 	eventBuffer *event.Buffer,
@@ -444,8 +446,8 @@ func provideChatServiceDeps(
 	artifacts *biz.ArtifactUsecase,
 	mcpUC *biz.MCPServerUsecase,
 	mon *biz.MonitorUsecase,
-) service.ChatServiceDeps {
-	return service.ChatServiceDeps{
+) service.ChatOrchestratorDeps {
+	return service.ChatOrchestratorDeps{
 		TurnDeps: rt.TurnDeps{
 			Catalog: rt.Catalog{
 				Agents:   agents,
@@ -460,6 +462,7 @@ func provideChatServiceDeps(
 			Pipeline:  rt.EventPipeline{Bus: eventBus, Buffer: eventBuffer},
 			LLMHTTP:   &http.Client{Timeout: 300 * time.Second},
 			Sessions:  sessions,
+			SessionRT: sessionRT,
 			Compress:  compress,
 			AfterTurn: biz.NoopNativeTurnAfter{},
 			RunnerMgr: rt.NewRunnerManagerFromPersist(persist),
@@ -506,6 +509,10 @@ func provideTRPCSessionService(d *data.Data) trpcsession.Service {
 		return rt.NewTRPCSessionService(nil)
 	}
 	return rt.NewTRPCSessionService(d.RawDB())
+}
+
+func provideSessionMemoryResync(persist rt.PersistenceSet) araneasession.MemoryResync {
+	return persist.Memory.Admin
 }
 
 func provideGraphCheckpointSaver(d *data.Data) (*graphtrpc.SQLiteCheckpointSaver, error) {
@@ -845,6 +852,7 @@ func wireApp(*conf.Server, *conf.Data, log.Logger) (wireOut, func(), error) {
 		data.ProviderSet,
 		biz.ProviderSet,
 		event.ProviderSet,
+		araneasession.ProviderSet,
 		service.ProviderSet,
 		provideEventBusSideConsumers,
 		provideCronRunnerDeps,
@@ -886,6 +894,7 @@ func wireApp(*conf.Server, *conf.Data, log.Logger) (wireOut, func(), error) {
 		provideGraphCheckpointSaver,
 		wire.Bind(new(trpcgraph.CheckpointSaver), new(*graphtrpc.SQLiteCheckpointSaver)),
 		providePersistenceSet,
+		provideSessionMemoryResync,
 		provideEpisodeIndexSync,
 		providePluginStatsRecorder,
 		providePluginManager,

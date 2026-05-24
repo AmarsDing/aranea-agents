@@ -27,6 +27,7 @@ export type Session = {
   updated_at: string;
   archived_at: string;
   deleted_at: string;
+  pinned_at?: string;
   metadata_json?: string;
   context_used_tokens?: number;
   last_context_window_tokens?: number;
@@ -149,3 +150,43 @@ export type BulkProgress = {
 };
 
 export type RetentionDialogMode = "archive" | "delete";
+
+export type SessionRunRecord = {
+  id: string;
+  session_id: string;
+  turn_id: string;
+  runtime_run_id: string;
+  source: string;
+  phase: string;
+  soft_budget_sec: number;
+  hard_budget_sec: number;
+  checkpoint_id: string;
+  workflow_job_id: string;
+  agent_id: string;
+  error_message: string;
+  started_at: string;
+  phase_changed_at: string;
+  finished_at: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SessionParticipant = {
+  id: string;
+  session_id: string;
+  participant_type: string;
+  participant_id: string;
+  display_name: string;
+  role_in_session: string;
+  status: string;
+  first_active_at: string;
+  last_active_at: string;
+  message_count: number;
+  run_step_count: number;
+  input_tokens: number;
+  output_tokens: number;
+  context_used_ratio: number;
+  metadata_json: string;
+  created_at: string;
+  updated_at: string;
+};

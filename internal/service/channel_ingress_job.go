@@ -10,20 +10,39 @@ import (
 
 type channelTurnJobContextKey struct{}
 
-func withChannelTurnJobID(ctx context.Context, jobID string) context.Context {
+type channelTurnJobCtx struct {
+	jobID     string
+	sessionID string
+}
+
+func withChannelTurnJob(ctx context.Context, jobID, sessionID string) context.Context {
 	jobID = strings.TrimSpace(jobID)
-	if jobID == "" {
+	sessionID = strings.TrimSpace(sessionID)
+	if jobID == "" && sessionID == "" {
 		return ctx
 	}
-	return context.WithValue(ctx, channelTurnJobContextKey{}, jobID)
+	return context.WithValue(ctx, channelTurnJobContextKey{}, channelTurnJobCtx{
+		jobID:     jobID,
+		sessionID: sessionID,
+	})
+}
+
+func withChannelTurnJobID(ctx context.Context, jobID string) context.Context {
+	_, sessionID := channelTurnJobFromContext(ctx)
+	return withChannelTurnJob(ctx, jobID, sessionID)
+}
+
+func channelTurnJobFromContext(ctx context.Context) (jobID, sessionID string) {
+	if ctx == nil {
+		return "", ""
+	}
+	v, _ := ctx.Value(channelTurnJobContextKey{}).(channelTurnJobCtx)
+	return strings.TrimSpace(v.jobID), strings.TrimSpace(v.sessionID)
 }
 
 func channelTurnJobIDFromContext(ctx context.Context) string {
-	if ctx == nil {
-		return ""
-	}
-	id, _ := ctx.Value(channelTurnJobContextKey{}).(string)
-	return strings.TrimSpace(id)
+	jobID, _ := channelTurnJobFromContext(ctx)
+	return jobID
 }
 
 func (h *ChannelIngress) createTurnJob(ctx context.Context, chRow biz.Channel, ev port.InboundEvent, platform string) (string, context.Context, error) {
@@ -58,18 +77,21 @@ func (h *ChannelIngress) createTurnJob(ctx context.Context, chRow biz.Channel, e
 	if err != nil {
 		return "", ctx, err
 	}
-	return jobID, withChannelTurnJobID(ctx, jobID), nil
+	ctx = withChannelTurnJob(ctx, jobID, sessionID)
+	h.publishBackgroundJobRefresh(ctx, jobID, sessionID, biz.ChannelTurnJobStatusAccepted)
+	return jobID, ctx, nil
 }
 
 func (h *ChannelIngress) markTurnJob(ctx context.Context, status, errMsg, previewID, preview string) {
 	if h == nil || h.turnJobs == nil {
 		return
 	}
-	jobID := channelTurnJobIDFromContext(ctx)
+	jobID, sessionID := channelTurnJobFromContext(ctx)
 	if jobID == "" {
 		return
 	}
 	_ = h.turnJobs.UpdateStatus(ctx, jobID, status, errMsg, previewID, preview)
+	h.publishBackgroundJobRefresh(ctx, jobID, sessionID, status)
 }
 
 func (h *ChannelIngress) markTurnJobAsyncTarget(ctx context.Context, targetType, targetID string) {
@@ -81,4 +103,14 @@ func (h *ChannelIngress) markTurnJobAsyncTarget(ctx context.Context, targetType,
 		return
 	}
 	_ = h.turnJobs.UpdateAsyncTarget(ctx, jobID, targetType, targetID)
+}
+
+func (h *ChannelIngress) publishBackgroundJobRefresh(ctx context.Context, jobID, sessionID, status string) {
+	if h == nil || h.eventBus == nil {
+		return
+	}
+	if strings.TrimSpace(sessionID) == "" {
+		_, sessionID = channelTurnJobFromContext(ctx)
+	}
+	PublishBackgroundJobRefresh(h.eventBus, sessionID, jobID, status)
 }

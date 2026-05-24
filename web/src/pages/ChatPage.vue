@@ -26,6 +26,14 @@
     />
 
     <div class="chat-workspace-main col column no-wrap">
+      <q-banner
+        v-if="session.inboundHydrateError"
+        dense
+        rounded
+        class="app-banner-warning q-mx-sm q-mt-sm"
+      >
+        {{ session.inboundHydrateError }}
+      </q-banner>
       <ChatMessagePanel
         v-model="composer.inputText"
         v-model:dialog-mode="composer.dialogMode"
@@ -88,6 +96,7 @@
         :agent-id="entity.store.selectedAgent?.id"
         :refresh-nonce="session.jobsRefreshNonce"
         @focus-turn="session.focusSessionTurn"
+        @navigate="onNavigate"
       />
       <input ref="fileRef" type="file" hidden multiple @change="composer.onFileChange" />
     </div>
@@ -107,6 +116,7 @@
       @select="session.onSelectSession"
       @new-session="session.onNewSession"
       @rename="session.onRenameSession"
+      @toggle-pin="session.onTogglePinSession"
       @trace="session.openSessionTrace"
       @delete="entity.openDelete"
       @restore="session.onRestoreSession"
@@ -162,7 +172,13 @@ import ChatWorkspaceShell from "../components/chat/ChatWorkspaceShell.vue";
 import ChatSessionArtifactsPanel from "../components/chat/ChatSessionArtifactsPanel.vue";
 import ChatBackgroundJobsPanel from "../components/chat/ChatBackgroundJobsPanel.vue";
 import SessionTimelineDialog from "../components/chat/SessionTimelineDialog.vue";
+import { useRouter } from "vue-router";
 import { useChatWorkspace } from "../features/chat/composables/useChatWorkspace";
 
 const { fileRef, layout, entity, session, composer, dialogs } = useChatWorkspace();
+const router = useRouter();
+
+function onNavigate(route: { name: string; params: Record<string, string> }) {
+  router.push(route);
+}
 </script>

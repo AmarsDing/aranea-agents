@@ -45,7 +45,7 @@ func FormatAssistantReplyForIM(platform, raw string) string {
 
 // FormatRenderedTranscriptForIM formats IM preview transcript text without stripping tool/reasoning segments.
 func FormatRenderedTranscriptForIM(platform, raw string) string {
-	raw = strings.TrimSpace(raw)
+	raw = SanitizeIMVisibleText(raw)
 	if raw == "" {
 		return ""
 	}

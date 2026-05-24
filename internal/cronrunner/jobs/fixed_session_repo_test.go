@@ -70,6 +70,18 @@ func (fixedSessionRepo) ListToolInvocationsBySession(context.Context, string, in
 func (fixedSessionRepo) ListSkillInvocationsBySession(context.Context, string, int) ([]sessionsess.SkillInvocationView, error) {
 	return nil, nil
 }
+func (fixedSessionRepo) ListTimelineEventRefsPaged(context.Context, string, sessionsess.TimelineQuery) ([]sessionsess.TimelineEventRef, int, error) {
+	return nil, 0, nil
+}
+func (fixedSessionRepo) ListMessagesByIDs(context.Context, string, []string) ([]sessionsess.ChatMessage, error) {
+	return nil, nil
+}
+func (fixedSessionRepo) ListToolInvocationsByIDs(context.Context, string, []string) ([]sessionsess.ToolInvocationView, error) {
+	return nil, nil
+}
+func (fixedSessionRepo) ListSkillInvocationsByIDs(context.Context, string, []string) ([]sessionsess.SkillInvocationView, error) {
+	return nil, nil
+}
 func (fixedSessionRepo) AppendChatTurn(context.Context, string, sessionsess.ChatMessage, sessionsess.ChatMessage) error {
 	return nil
 }
@@ -126,6 +138,12 @@ func (fixedSessionRepo) ArchiveSessionsByIDs(context.Context, []string) (int, []
 }
 func (fixedSessionRepo) DeleteSessionsByIDs(context.Context, []string) (int, []string, error) {
 	return 0, nil, nil
+}
+func (fixedSessionRepo) PinSession(context.Context, string) (sessionsess.Session, error) {
+	return sessionsess.Session{}, errors.New("not implemented")
+}
+func (fixedSessionRepo) UnpinSession(context.Context, string) (sessionsess.Session, error) {
+	return sessionsess.Session{}, errors.New("not implemented")
 }
 func (fixedSessionRepo) BumpSessionRevision(context.Context, string) (int64, error) { return 0, nil }
 func (fixedSessionRepo) GetSessionRevision(context.Context, string) (int64, error)  { return 0, nil }

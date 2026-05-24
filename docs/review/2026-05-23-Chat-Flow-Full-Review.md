@@ -92,7 +92,7 @@ WS Envelope → useChatStreamManager（session 级）
   → mergeSessionMessages + dropPendingUserPlaceholders
 
 Global hub → useChatInboundSync
-  → 当前 session 的 text 事件跳过（避免双 patch）
+  → 当前 session 的 text 事件跳过（避免双 patch）<!-- 2026-05-24：Holistic fix 临时移除 skip 以修 Channel stream；待 DECO-R-P1-01 恢复，见 [Review](../review/2026-05-24-DECO-01-Channel-Sync-Holistic-Fix-Review.md) -->
   → runner_completion 刷新 sessions / 通知
 ```
 

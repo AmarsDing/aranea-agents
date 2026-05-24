@@ -1,6 +1,6 @@
 import { ref } from "vue";
-import { createEnvelopeStream } from "../chat/useEnvelopeStream";
-import type { Envelope } from "../chat/envelope";
+import { createEnvelopeStream } from "../../realtime/useEnvelopeStream";
+import type { Envelope } from "../../realtime/envelope";
 import { ORCHESTRATION_STATUS_ENVELOPE } from "./agentNodeStatusStyles";
 import { agentNodeStateFromMetadata, type AgentNodeState, type OrchestrationAgentStatusMetadata } from "./types";
 

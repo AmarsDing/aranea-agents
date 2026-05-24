@@ -11,6 +11,8 @@ const (
 	defaultChannelHeartbeatMsg    = "仍在处理中…"
 	defaultChannelTurnTimeoutSec  = 0 // 0 = use service default (300s)
 	defaultChannelFirstByteSec    = 0 // 0 = use service default (30s)
+	// DefaultContextAdmissionThreshold blocks new channel turns when session context exceeds this ratio (CH-BOR-11).
+	DefaultContextAdmissionThreshold = 0.6
 )
 
 // DefaultChannelAsyncKeywords routes execution_mode=auto inbound to Job plane (CC-A-02).
@@ -35,16 +37,21 @@ type ChannelLongTaskConfig struct {
 	SoftEscalateConfirmSec      int
 	DurableDeadlineSec          int
 	BusyInputMode               string
+	SessionMaxConcurrentDM      int
+	SessionMaxConcurrentGroup   int
+	// ContextAdmissionThreshold: 0 = disabled; unset defaults to DefaultContextAdmissionThreshold.
+	ContextAdmissionThreshold float64
 }
 
 // ParseChannelLongTaskConfig reads long-task settings from channel config_json.
 func ParseChannelLongTaskConfig(configJSON string) ChannelLongTaskConfig {
 	cfg := ChannelLongTaskConfig{
-		AckMessage:       defaultChannelAckMessage,
-		AckOnQueued:      defaultChannelAckOnQueued,
-		HeartbeatMessage: defaultChannelHeartbeatMsg,
-		ProgressMode:     "off",
-		ExecutionMode:    "sync",
+		AckMessage:                defaultChannelAckMessage,
+		AckOnQueued:               defaultChannelAckOnQueued,
+		HeartbeatMessage:          defaultChannelHeartbeatMsg,
+		ProgressMode:              "off",
+		ExecutionMode:             "sync",
+		ContextAdmissionThreshold: DefaultContextAdmissionThreshold,
 	}
 	var env struct {
 		Config struct {
@@ -61,6 +68,9 @@ func ParseChannelLongTaskConfig(configJSON string) ChannelLongTaskConfig {
 			AsyncCronTaskID     *string   `json:"async_cron_task_id"`
 			AsyncKeywords       *[]string `json:"async_keywords"`
 			BusyInputMode               *string `json:"busy_input_mode"`
+			SessionMaxConcurrentDM      *int     `json:"session_max_concurrent_dm"`
+			SessionMaxConcurrentGroup   *int     `json:"session_max_concurrent_group"`
+			ContextAdmissionThreshold   *float64 `json:"context_admission_threshold"`
 			AutoEscalateAfterSoftBudget *bool `json:"auto_escalate_after_soft_budget"`
 			SoftEscalateConfirmSec      *int  `json:"soft_escalate_confirm_sec"`
 			DurableDeadlineSec          *int  `json:"durable_deadline_sec"`
@@ -117,12 +127,60 @@ func ParseChannelLongTaskConfig(configJSON string) ChannelLongTaskConfig {
 	if env.Config.BusyInputMode != nil {
 		cfg.BusyInputMode = strings.TrimSpace(strings.ToLower(*env.Config.BusyInputMode))
 	}
+	if env.Config.SessionMaxConcurrentDM != nil && *env.Config.SessionMaxConcurrentDM > 0 {
+		cfg.SessionMaxConcurrentDM = *env.Config.SessionMaxConcurrentDM
+	}
+	if env.Config.SessionMaxConcurrentGroup != nil && *env.Config.SessionMaxConcurrentGroup > 0 {
+		cfg.SessionMaxConcurrentGroup = *env.Config.SessionMaxConcurrentGroup
+	}
+	if env.Config.ContextAdmissionThreshold != nil {
+		if *env.Config.ContextAdmissionThreshold <= 0 {
+			cfg.ContextAdmissionThreshold = 0
+		} else {
+			cfg.ContextAdmissionThreshold = *env.Config.ContextAdmissionThreshold
+		}
+	}
 	return cfg
 }
+
+// ContextPressureActive reports whether session context usage should tighten admission (CH-BOR-11).
+func ContextPressureActive(ratio, threshold float64) bool {
+	return threshold > 0 && ratio >= threshold
+}
+
+const (
+	defaultChannelMaxConcurrentDM    = 1
+	defaultChannelMaxConcurrentGroup = 3
+)
 
 // ChannelBusyInputInterrupt reports config_json.config.busy_input_mode=interrupt (F-10).
 func ChannelBusyInputInterrupt(configJSON string) bool {
 	return ParseChannelLongTaskConfig(configJSON).BusyInputMode == "interrupt"
+}
+
+// ChannelBusyInputFollowup reports busy_input_mode=followup (CH-BOR-01).
+func ChannelBusyInputFollowup(configJSON string) bool {
+	return ParseChannelLongTaskConfig(configJSON).BusyInputMode == "followup"
+}
+
+// ChannelBusyInputQueue reports whether busy inbound should steer/enqueue (queue or followup).
+func ChannelBusyInputQueue(configJSON string) bool {
+	mode := ParseChannelLongTaskConfig(configJSON).BusyInputMode
+	return mode == "" || mode == "queue" || mode == "followup"
+}
+
+// MaxConcurrentInbound returns DM/group concurrent turn cap for channel ingress (CH-BOR-02).
+func (c ChannelLongTaskConfig) MaxConcurrentInbound(isGroup bool) int {
+	if isGroup {
+		if c.SessionMaxConcurrentGroup > 0 {
+			return c.SessionMaxConcurrentGroup
+		}
+		return defaultChannelMaxConcurrentGroup
+	}
+	if c.SessionMaxConcurrentDM > 0 {
+		return c.SessionMaxConcurrentDM
+	}
+	return defaultChannelMaxConcurrentDM
 }
 
 // DefaultSoftEscalateConfirmSec is the wait before auto-escalating after soft budget IM notice.

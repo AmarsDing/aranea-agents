@@ -1,6 +1,6 @@
 import { onUnmounted, ref, watch } from "vue";
-import { createWsTransport } from "../chat/ws-transport";
-import type { Envelope } from "../chat/envelope";
+import { createWsTransport } from "../../realtime/ws-transport";
+import type { Envelope } from "../../realtime/envelope";
 
 /** Subscribe to knowledge ingest progress over /v1/ws (EP-KN-02). */
 export function useKnowledgeIngestWs(collectionId: () => string, onProgress: () => void) {

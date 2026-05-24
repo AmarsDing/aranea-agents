@@ -45,24 +45,25 @@
     <template v-else>
       <SessionTimelineStats :stats="stats" class="q-mb-lg" />
 
-      <div v-if="!filteredItems.length" class="session-timeline__state">
-        <q-icon name="filter_alt_off" size="32px" class="sessions-muted" />
-        <div class="q-mt-sm sessions-muted">当前筛选条件下无事件</div>
-      </div>
-
-      <div v-else class="session-timeline__rail">
+      <div class="session-timeline__rail">
         <SessionTimelineEntry
-          v-for="item in filteredItems"
+          v-for="item in timeline.items"
           :key="`${item.kind}:${item.id}`"
           :item="item"
         />
+      </div>
+
+      <div v-if="total > pageSize" class="row justify-center q-mt-md q-gutter-sm">
+        <q-btn flat dense :disable="offset <= 0" icon="chevron_left" @click="emit('prev-page')" />
+        <span class="self-center text-caption text-grey-7">{{ pageLabel }}</span>
+        <q-btn flat dense :disable="offset + pageSize >= total" icon="chevron_right" @click="emit('next-page')" />
       </div>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import type { SessionTimeline, SessionTimelineItem } from "../../features/session/types";
+import type { SessionTimeline } from "../../features/session/types";
 import type { TimelineStat } from "./sessionTimelineUi";
 import SessionTimelineEntry from "./SessionTimelineEntry.vue";
 import SessionTimelineStats from "./SessionTimelineStats.vue";
@@ -78,12 +79,17 @@ defineProps<{
   kindFilter: string | null;
   sortOrder: string;
   stats: TimelineStat[];
-  filteredItems: SessionTimelineItem[];
+  offset: number;
+  total: number;
+  pageSize: number;
+  pageLabel: string;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   refresh: [];
   "update:kindFilter": [value: string | null];
   "update:sortOrder": [value: string];
+  "prev-page": [];
+  "next-page": [];
 }>();
 </script>

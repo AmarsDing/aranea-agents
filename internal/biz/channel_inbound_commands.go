@@ -29,3 +29,13 @@ func IsChannelBackgroundCommand(text string) bool {
 	_, ok := channelBackgroundCommands[key]
 	return ok
 }
+
+// IsChannelStatusQuery reports busy-line status intent (CH-BOR-03).
+func IsChannelStatusQuery(text string) bool {
+	switch strings.TrimSpace(text) {
+	case "?", "？":
+		return true
+	default:
+		return false
+	}
+}

@@ -1,7 +1,8 @@
-import type { Agent } from "../../features/agents/types";
-import type { Message } from "../../features/chat/types";
-import type { Session } from "../../features/session/types";
-import type { Team } from "../../features/teams/types";
+/**
+ * Chat-specific UI types. Cross-domain types (Agent, Message, Session, Team)
+ * should be imported directly from their respective feature modules — this file
+ * no longer re-exports them to avoid a cross-domain type barrel.
+ */
 
 export type TeamRow = {
   id: string;
@@ -22,6 +23,7 @@ export type SessionView = {
   timeline_at?: string;
   agent_id?: string;
   status?: string;
+  pinned_at?: string;
   metadata_json?: string;
 };
 
@@ -34,5 +36,3 @@ export type ChatAttachment = {
 
 export type ChatEntityKind = "agent" | "team";
 export type DeleteKind = ChatEntityKind | "session" | "all";
-
-export type { Agent, Message, Session, Team };

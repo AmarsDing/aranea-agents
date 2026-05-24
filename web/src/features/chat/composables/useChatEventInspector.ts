@@ -1,5 +1,5 @@
 import { onBeforeUnmount, ref, shallowRef, watch, type Ref } from "vue";
-import { listSessionEvents } from "../../event/api";
+import { useEventStore } from "../../../stores/event";
 import type { Envelope, EnvelopeType } from "../envelope";
 import { createEnvelopeStream, type UseEnvelopeStreamReturn } from "../useEnvelopeStream";
 import { useEventFilter } from "./useEventFilter";
@@ -78,7 +78,8 @@ export function useChatEventInspector(
     loading.value = true;
     error.value = "";
     try {
-      const { items } = await listSessionEvents({ sessionId: id, limit: 500 });
+      const eventStore = useEventStore();
+      const { items } = await eventStore.fetchSessionEvents({ sessionId: id, limit: 500 });
       const byId = new Map<string, Envelope>();
       for (const item of items) byId.set(item.id, item);
       for (const live of events.value) byId.set(live.id, live);

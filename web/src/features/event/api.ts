@@ -3,7 +3,7 @@
  */
 import { createEventService } from "../../services";
 import { asRecord, pickI32, pickStr } from "../../shared/wireJson";
-import type { Envelope } from "../chat/envelope";
+import type { Envelope } from "../../realtime/envelope";
 
 const eventApi = createEventService();
 

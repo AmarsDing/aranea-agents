@@ -3,6 +3,7 @@ import { ref } from "vue";
 import {
   getSystemSettings,
   updateSystemSettings,
+  testWebResearch,
   type UpdateSystemSettingsInput
 } from "../../features/system-settings/api";
 import type { SystemSettings } from "../../services/kratos/system_setting/v1/index";
@@ -35,5 +36,9 @@ export const useSystemSettingsStore = defineStore("systemSettings", () => {
     return settings.value;
   }
 
-  return { settings, loading, loadSettings, saveSettings, saveAll };
+  async function testWebResearchConnection(input: Parameters<typeof testWebResearch>[0]) {
+    return testWebResearch(input);
+  }
+
+  return { settings, loading, loadSettings, saveSettings, saveAll, testWebResearchConnection };
 });

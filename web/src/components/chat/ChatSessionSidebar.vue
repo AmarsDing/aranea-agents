@@ -39,6 +39,13 @@
                     </q-tooltip>
                   </div>
                   <q-icon
+                    v-if="isPinned(session)"
+                    class="chat-session-pin col-auto"
+                    name="push_pin"
+                    color="primary"
+                    size="16px"
+                  />
+                  <q-icon
                     v-if="isFavorite(session.id)"
                     class="chat-session-fav col-auto"
                     name="star"
@@ -89,11 +96,11 @@
                             <q-item-section avatar><q-icon name="edit" size="18px" /></q-item-section>
                             <q-item-section>{{ t("chat.rename") }}</q-item-section>
                           </q-item>
-                          <q-item clickable v-close-popup @click="togglePin(session.id)">
+                          <q-item clickable v-close-popup @click="togglePin(session)">
                             <q-item-section avatar>
-                              <q-icon :name="isPinned(session.id) ? 'push_pin' : 'push_pin'" size="18px" />
+                              <q-icon :name="isPinned(session) ? 'push_pin' : 'push_pin'" size="18px" />
                             </q-item-section>
-                            <q-item-section>{{ isPinned(session.id) ? t("chat.unpin") : t("chat.pin") }}</q-item-section>
+                            <q-item-section>{{ isPinned(session) ? t("chat.unpin") : t("chat.pin") }}</q-item-section>
                           </q-item>
                           <q-item clickable v-close-popup @click="toggleFavorite(session.id)">
                             <q-item-section avatar>
@@ -178,21 +185,23 @@ const emit = defineEmits<{
   restore: [id: string];
   archive: [id: string];
   detail: [id: string];
+  "toggle-pin": [payload: { id: string; pinned: boolean }];
 }>();
 
 const { t } = useI18n();
 const $q = useQuasar();
 
-const PINNED_KEY = "chat:pinned-sessions";
 const FAVORITE_KEY = "chat:favorite-sessions";
 
-const pinnedIDs = ref(new Set(loadIDs(PINNED_KEY)));
 const favoriteIDs = ref(new Set(loadIDs(FAVORITE_KEY)));
 
 const timelineGroups = computed(() => {
-  const sorted = [...props.sessions].sort((a, b) => sessionTime(b) - sessionTime(a));
-  const pinned = sorted.filter((session) => pinnedIDs.value.has(session.id));
-  const regular = sorted.filter((session) => !pinnedIDs.value.has(session.id));
+  const pinned = [...props.sessions]
+    .filter((session) => isPinned(session))
+    .sort((a, b) => pinnedTime(b) - pinnedTime(a));
+  const regular = [...props.sessions]
+    .filter((session) => !isPinned(session))
+    .sort((a, b) => sessionTime(b) - sessionTime(a));
   const groups: Array<{ key: string; label: string; sessions: SessionView[] }> = [];
 
   if (pinned.length) groups.push({ key: "pinned", label: t("chat.pinnedSessions"), sessions: pinned });
@@ -232,17 +241,16 @@ function openDetail(sessionID: string) {
   emit("detail", sessionID);
 }
 
-function isPinned(id: string) {
-  return pinnedIDs.value.has(id);
+function isPinned(session: SessionView) {
+  return Boolean(session.pinned_at?.trim());
 }
 
 function isFavorite(id: string) {
   return favoriteIDs.value.has(id);
 }
 
-function togglePin(id: string) {
-  pinnedIDs.value = toggleID(pinnedIDs.value, id);
-  saveIDs(PINNED_KEY, pinnedIDs.value);
+function togglePin(session: SessionView) {
+  emit("toggle-pin", { id: session.id, pinned: !isPinned(session) });
 }
 
 function toggleFavorite(id: string) {
@@ -291,6 +299,13 @@ function timelineBucket(session: SessionView) {
 function sessionTime(session: SessionView) {
   const raw = session.timeline_at || session.at;
   const value = raw ? new Date(raw).getTime() : 0;
+  return Number.isFinite(value) ? value : 0;
+}
+
+function pinnedTime(session: SessionView) {
+  const raw = session.pinned_at?.trim();
+  if (!raw) return 0;
+  const value = new Date(raw).getTime();
   return Number.isFinite(value) ? value : 0;
 }
 
@@ -452,6 +467,10 @@ function saveIDs(key: string, ids: Set<string>) {
 }
 
 .chat-session-fav {
+  flex-shrink: 0;
+}
+
+.chat-session-pin {
   flex-shrink: 0;
 }
 

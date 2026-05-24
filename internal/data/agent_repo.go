@@ -139,6 +139,7 @@ func entRuntimeToBiz(e *ent.AgentRuntimeSetting) biz.AgentRuntimeSettings {
 		L0RecentWindowTokens:              e.L0RecentWindowTokens,
 		L0SummaryThreshold:                e.L0SummaryThreshold,
 		L0SummaryKeepTurns:                e.L0SummaryKeepTurns,
+		L0CompressMinGapSec:               e.L0CompressMinGapSec,
 		L0CompressProvider:                e.L0CompressProvider,
 		L0CompressModel:                   e.L0CompressModel,
 		MemoryWorkerProvider:              e.MemoryWorkerProvider,
@@ -270,6 +271,7 @@ func applyBizRuntimeToCreate(b *ent.AgentRuntimeSettingCreate, v biz.AgentRuntim
 		SetL0RecentWindowTokens(v.L0RecentWindowTokens).
 		SetL0SummaryThreshold(v.L0SummaryThreshold).
 		SetL0SummaryKeepTurns(v.L0SummaryKeepTurns).
+		SetL0CompressMinGapSec(v.L0CompressMinGapSec).
 		SetL0CompressProvider(strings.TrimSpace(v.L0CompressProvider)).
 		SetL0CompressModel(strings.TrimSpace(v.L0CompressModel)).
 		SetMemoryWorkerProvider(strings.TrimSpace(v.MemoryWorkerProvider)).

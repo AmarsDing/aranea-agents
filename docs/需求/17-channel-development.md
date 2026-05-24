@@ -1,7 +1,7 @@
 # Channel 渠道 — 开发计划
 
-> **版本**：2026-05-22 | **状态**：🟢 9 平台连接；Runtime 生产级重连 + 流式出站 MVP  
-> **需求**：[17 channel.md](./17%20channel.md) · **设计**：[17 channel.design.md](./17%20channel.design.md) · **业务集成**：[17-channel-agent-team-integration.md](./17-channel-agent-team-integration.md)  
+> **版本**：2026-05-24 | **状态**：🟢 9 平台连接；Runtime 生产级重连 + 流式出站 MVP  
+> **需求**：[17 channel.md](./17%20channel.md) · **设计**：[17 channel.design.md](./17%20channel.design.md) · **业务集成**：[17-channel-agent-team-integration.md](./17-channel-agent-team-integration.md) · [**外部参考借鉴手册**](./17-channel-external-reference-playbook.md) · [**四层目标架构**](./0-module-decoupling-architecture.md#31-推荐目标架构channel--chat--agent) · [**Phase DECO**](./17-channel-development.md#14-phase-deco--四层架构解耦deco)  
 > **Hermes 对照**：[17 channel.design.md §十四](./17%20channel.design.md#十四hermes-agent-对照消息流转与飞书特殊处理) · Phase F backlog 见 **§11**  
 > **平台参考**：[MuseBot](https://github.com/yincongcyincong/MuseBot) `robot/`（MIT）  
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：EP-BIZ-08
@@ -384,7 +384,7 @@ make runtime-boundary
 | F-05 | P2 | 入站 post 转 plain text；image 附件（可选） | `parse_message.go` | 🟡 | post ✅；image 附件 ⏳ |
 | F-08 | P2 | 出站 `msg_type=post`（markdown 子集） | `feishu_outbound.go` | ⏳ | 粗体/链接保留 |
 | F-09 | P2 | 首字节前 Reaction「处理中」；结束移除 | `lark/reaction.go` | ✅ | `config.processing_reaction` 开启时生效 |
-| F-10 | P2 | `busy_input_mode: queue \| interrupt` | `channel_config_helpers.go` · ingress | ✅ | interrupt 时 CancelRun 后再 Turn |
+| F-10 | P2 | `busy_input_mode: queue \| followup \| interrupt` | `channel_config_helpers.go` · ingress | ✅ | queue/followup steer+合并；interrupt CancelRun |
 
 ### 11.2 不建议照搬（Aranea 已更优或架构不同）
 
@@ -571,9 +571,133 @@ go test ./internal/service/ -run "TurnPreview|Interactive" -count=1
 - 无 tenant 时 LT-04/05 仅能通过 httptest 契约测（`interactive_card_test.go`）验证。
 ---
 
-## 13. 文档修订记录
+## 13. Phase G — 外部参考借鉴（CH-BOR）
+
+> **权威正文**：[17-channel-external-reference-playbook.md](./17-channel-external-reference-playbook.md) · **Review**：[2026-05-24-Channel-External-Reference-Playbook-Review.md](../review/2026-05-24-Channel-External-Reference-Playbook-Review.md)  
+> **与 §11 分工**：Phase F = Hermes **飞书平台特化**；Phase G = GoClaw + trpc OpenClaw **跨平台调度/网关**模式。
+
+| ID | 优先级 | 内容 | 状态 |
+|----|--------|------|------|
+| CH-BOR-01 | P0 | followup 队列合并 | ✅ |
+| CH-BOR-02 | P0 | 群聊/DM 并发上限 | ✅ |
+| CH-BOR-03 | P0 | 忙线 intent（cancel/status/steer） | ✅ |
+| CH-BOR-04 | P0 | intent metrics + FlowLog | ✅ |
+| CH-BOR-05 | P1 | Ingress debounce | ✅ |
+| CH-BOR-06 | P1 | Ingress dedupe | ✅ |
+| CH-BOR-07 | P1 | Run 级 preview registry | ✅ |
+| CH-BOR-08 | P1 | Block/final outbound 去重规则 | ✅ |
+| CH-BOR-09 | P1 | Provider 错误 taxonomy | ✅ |
+| CH-BOR-10 | P2 | local_key / OutboundMeta 契约（`port/meta.go`） | ✅ |
+| CH-BOR-11 | P2 | context 阈值降并发（`context_admission_threshold`） | ✅ |
+| CH-BOR-12 | P2 | stream sanitize（`preview/sanitize.go`） | ✅ |
+| CH-BOR-13 | P3 | Lane scheduler（`runtime/lane.go`） | ✅ |
+| CH-BOR-14 | P3 | durable turn compaction hook（`BeforeDurableTurn`） | ✅ |
+
+---
+
+## 14. Phase DECO — 四层架构解耦（DECO-*）
+
+> **权威架构**：[0-module-decoupling-architecture.md §3.1](./0-module-decoupling-architecture.md#31-推荐目标架构channel--chat--agent) · **后端路线**：[同文档 §6 Phase B1–B2](./0-module-decoupling-architecture.md#6-后端解耦路线)  
+> **与 §11/§13 分工**：Phase F = 飞书平台特化；Phase G = 外部调度借鉴（CH-BOR）；**Phase DECO = 四层落地（Ingress / Policy / Turn / Projector）**  
+> **跨模块**：DECO-06/12/13 亦见 [1-chat-development.md](./1-chat-development.md) · [55-chat-channel-cursor-development.md](./55-chat-channel-cursor-development.md)
+
+### 14.1 任务板
+
+#### DECO-a — 巩固 L3 + L4（P0）
+
+| ID | 层 | 内容 | 落点 | 验收 | 状态 |
+|----|-----|------|------|------|------|
+| DECO-01 | L4 | revision E2E：飞书 Turn 中/完成 → Web 增量可见 | M55-SYNC-01/02 · `useChatInboundSync` | 同 session ≤5s 见 user/running；completed 后 assistant 出现 | 🟡 [E2E 归档](../changelog/2026-05-24-DECO-01-Feishu-Web-E2E-Archive.md) + [Holistic Fix](../changelog/2026-05-24-DECO-01-Channel-Sync-Holistic-Fix.md)；**Review P1** [DECO-R-P1-01~02](../review/2026-05-24-DECO-01-Channel-Sync-Holistic-Fix-Review.md#p1--当前迭代应修) 待收敛 |
+| DECO-02 | L3 | Channel 全路径 `RunNativeTurnWithOutcome`，去掉 empty-reply 启发式 | `channel_ingress_turn.go` · `NativeTurnResult` | `TestFormatChannelTurn*` + 飞书 unary/stream 回归 | ✅ |
+
+#### DECO-b — 抽 L3 TurnExecutor（P0–P2）
+
+| ID | 层 | 内容 | 落点 | 验收 | 状态 |
+|----|-----|------|------|------|------|
+| DECO-03 | L3 | `TurnExecutor` 包骨架：`ExecuteTurn(ctx, TurnInput) (TurnResult, error)` | `internal/runtime/turn/` 或 `internal/biz` 端口 + service 实现 | 单测覆盖 admit/reject/outcome；`make runtime-boundary` | ✅ |
+| DECO-04 | L3 | admission · RunRegistry · PendingQueue · trace/usage 迁入 TurnExecutor | `chat_orchestrator_turn.go` 瘦身 | Orchestrator 不再内联 `DecideTurnAdmission` 大块逻辑 | ✅ |
+| DECO-05 | L1→L3 | Channel 经 TurnExecutor；`NativeTurnGateway` 保持窄门面 | `chat_native.go` · Wire | Channel 仍不 import proto；ingress 无新增 ChatService 方法依赖 | ✅ |
+| DECO-06 | L1→L3 | Web Chat / WS turn 经同一 TurnExecutor | `chat.go` · `ws` 投影 | Web 与 Channel cancel/enqueue 行为一致 | ✅ |
+| DECO-07 | L1→L3 | Cron / A2A turn 路径对齐 TurnExecutor | `cronrunner` · `a2a` | 三入口共享单测：`TestTurnExecutor_*` | ✅ |
+| DECO-15 | L3 | Team turn 以 hook 接入 TurnExecutor（`BuildRunner` / `ProjectRuntimeEvent`） | `internal/team` · orchestrator | Agent/Team cancel/status 一致；见 §6 Phase B2 | ✅ |
+
+#### DECO-c — 抽 L2 IngressPolicy（P0–P1，衔接 CH-BOR）
+
+| ID | 层 | 内容 | 落点 | 验收 | 状态 |
+|----|-----|------|------|------|------|
+| DECO-08 | L2 | `IngressDecision`：`admit \| queue \| steer \| reject_busy \| route_async` + 单测 | `internal/service/ingress_policy.go` | 纯函数可测；不 import trpc | ✅ |
+| DECO-09 | L2 | Channel：`executeInboundTurn` 前 Policy 链（debounce/dedupe/intent 入口） | `channel_ingress_execute.go` | 实现后关闭对应 CH-BOR-03/05/06；busy 不误 interrupt | ✅ |
+| DECO-10 | L1 | Web `enqueue_message` / busy 与 Channel 共用 Policy 结果类型 | `chat_orchestrator` admission | 同一 session Web+IM 并发时策略一致 | ✅ |
+
+#### DECO-d — M55 双平面（P0–P1）
+
+| ID | 层 | 内容 | 落点 | 验收 | 状态 |
+|----|-----|------|------|------|------|
+| DECO-11 | L2 | sync / async / durable 路由入 IngressPolicy（非 Turn 内硬编码） | `channel_config_helpers` · ingress route | 长任务关键词 → async Job；Sync 封顶 15min；见 M55 §4.1 | ✅ |
+| DECO-12 | L4 | Web「后台任务」面板绑定 `ChannelTurnJob` + EventBus | `55-chat-channel-cursor-development` · `web/features/channels` | M55-JOB-01：飞书 `/async` 后 Web ≤3s 见 Job | ✅ |
+
+#### DECO-e — L4 SessionProjection（P1–P2，衔接 CH-BOR）
+
+| ID | 层 | 内容 | 落点 | 验收 | 状态 |
+|----|-----|------|------|------|------|
+| DECO-13 | L4 | biz `SessionProjection` 端口：`ListMessagesAfterRevision` | `internal/biz` + service | Web/Monitor 不读 runner 内部字段 | ✅ |
+| DECO-14 | L4 | 前端 hydrate 仅经 revision + SessionProjection | `useChatInboundSync.ts` | `sync` 不误触发 turn complete；失败可观测 | ✅ |
+| — | L4 | preview registry / block-final / error taxonomy | 见 **CH-BOR-07–09** | 不重复 DECO ID | ✅ |
+
+### 14.2 推荐迭代顺序
+
+```
+DECO-a（巩固，约 3 天）
+  DECO-01 E2E 验收固化 → DECO-02 确认 ✅
+
+DECO-b（TurnExecutor，约 1–2 周）
+  DECO-03 → DECO-04 → DECO-05 → DECO-06 → DECO-07
+
+DECO-c + CH-BOR P0（约 1 周，可并行 DECO-b 后半）
+  DECO-08 → DECO-09 → CH-BOR-03/01/04 → DECO-10
+
+DECO-d（M55，约 1 周）
+  DECO-11 → DECO-12
+
+DECO-e（投影 + Team，约 1 周）
+  DECO-13 → DECO-14 → DECO-15 · CH-BOR-07–09
+
+Phase G-c（P2/P3，2026-05-24 完成）
+  CH-BOR-10 → CH-BOR-11 → CH-BOR-12 → CH-BOR-13/14 ✅
+```
+
+### 14.3 验证命令
+
+```bash
+make runtime-boundary
+go test ./internal/service/ -run 'TurnAdmission|ChannelIngress|TurnPreview|DECO01|NativeTurn' -count=1
+go test ./internal/channel/port/... ./internal/channel/preview/... -count=1
+go test ./internal/runtime/... -count=1
+go test ./internal/event/... -count=1
+# 前端（DECO-01/14）
+cd web && pnpm test -- useChatInboundSync inboundSyncEnvelope decoP2Sync
+```
+
+### 14.4 与 CH-BOR / M55 映射
+
+| DECO | 衔接 |
+|------|------|
+| DECO-09 | CH-BOR-01、03、05、06 |
+| DECO-11 | M55 Phase A（CC-A 长任务路由） |
+| DECO-12 | M55 Phase C/D（Job 面板） |
+| DECO-13/14 | M55 session_revision · TurnBlock |
+| CH-BOR-07–09 | 在 DECO-e 阶段执行，不单独开 DECO ID |
+| CH-BOR-10–14 | Phase G-c：`port/meta` · context admission · sanitize · lane · durable compact |
+
+---
+
+## 15. 文档修订记录
 
 | 版本 | 日期 | 说明 |
 |------|------|------|
 | 1.1 | 2026-05-22 | §10 Phase E 长任务：任务板 E0–E6、迭代顺序、验收映射 |
 | 1.2 | 2026-05-24 | §11 Phase F Hermes 飞书借鉴：F-01–F-11 任务板 |
+| 1.3 | 2026-05-24 | §13 Phase G：CH-BOR 任务板；链入外部参考借鉴手册 |
+| 1.4 | 2026-05-24 | 头部链入解耦文档 §3.1 四层目标架构 |
+| 1.5 | 2026-05-24 | §14 Phase DECO：四层解耦任务板 DECO-01–15 |
+| 1.6 | 2026-05-24 | §13 Phase G-c：CH-BOR-10–14 ✅；DECO-01 单测；§14.3 验证命令更新 |

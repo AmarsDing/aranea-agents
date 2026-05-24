@@ -1,11 +1,13 @@
 import { nextTick, ref } from "vue";
 import { useQuasar } from "quasar";
 import { useRouter } from "vue-router";
-import { archiveSession, getSession, restoreSession } from "../../session/api";
-import { listTeams, updateTeam } from "../../teams/api";
-import { listPlatformResourceTree } from "../../platform/api";
+import { useSessionStore } from "../../../stores/session";
+import { useTeamsStore } from "../../../stores/teams";
+import { usePlatformStore } from "../../../stores/platform";
 import type { PlatformResourceTreeNode } from "../../platform/types";
-import type { Agent, ChatEntityKind, Session, TeamRow } from "../../../components/chat/types";
+import type { ChatEntityKind, TeamRow } from "../../../components/chat/types";
+import type { Agent } from "../../agents/types";
+import type { Session } from "../../session/types";
 import { hydrateAgentSettings } from "../agentPlannerSettings";
 import { applyStreamingSnapshotToSession } from "../../../stores/chatStreamingSnapshots";
 import type { useAppStore } from "../../../stores/app";
@@ -41,7 +43,8 @@ export function useChatEntityNav(deps: EntityNavDeps) {
     const hit = deps.chatStore.findSessionById(sessionId);
     if (hit) return hit;
     try {
-      return await getSession(sessionId);
+      const sessionStore = useSessionStore();
+      return await sessionStore.fetchSession(sessionId);
     } catch {
       return null;
     }
@@ -53,7 +56,9 @@ export function useChatEntityNav(deps: EntityNavDeps) {
 
   async function loadTeams() {
     try {
-      const rows = await listTeams();
+      const teamsStore = useTeamsStore();
+      await teamsStore.loadTeams();
+      const rows = teamsStore.teams;
       deps.displayTeams.value = rows.map((team) => ({
         id: team.id,
         team_key: team.team_key,
@@ -69,7 +74,9 @@ export function useChatEntityNav(deps: EntityNavDeps) {
   }
 
   async function loadCategoryTree() {
-    categoryTree.value = await listPlatformResourceTree("agent-categories");
+    const platformStore = usePlatformStore();
+    await platformStore.loadCategoryTree();
+    categoryTree.value = platformStore.categoryTree;
   }
 
   async function selectAgent(agent: Agent, options?: { sessionId?: string }) {
@@ -99,13 +106,14 @@ export function useChatEntityNav(deps: EntityNavDeps) {
     }
     deps.chatStore.selectedSession = picked ?? (deps.chatStore.sessions[0] ?? null);
     if (deps.chatStore.selectedSession) {
-      await deps.chatStore.loadMessages({ sessionId: deps.chatStore.selectedSession.id });
+      const sid = deps.chatStore.selectedSession.id;
+      await deps.chatStore.loadMessages({ sessionId: sid });
       applyStreamingSnapshotToSession(
-        (sid) => deps.chatStore.getMessages(sid),
-        (sid, rows) => deps.chatStore.setMessages(sid, rows),
-        deps.chatStore.selectedSession.id
+        (s) => deps.chatStore.getMessages(s),
+        (s, rows) => deps.chatStore.setMessages(s, rows),
+        sid
       );
-      deps.streamManager.ensureChatStream(deps.chatStore.selectedSession.id);
+      deps.streamManager.ensureChatStream(sid);
     }
   }
 
@@ -142,7 +150,6 @@ export function useChatEntityNav(deps: EntityNavDeps) {
     if (alreadyFocused) {
       const session = deps.chatStore.sessions.find((item) => item.id === sessionId);
       if (session) deps.chatStore.selectedSession = session;
-      deps.chatStore.clearSessionMessages(sessionId);
       await deps.chatStore.loadMessages({ sessionId });
       applyStreamingSnapshotToSession(
         (sid) => deps.chatStore.getMessages(sid),
@@ -221,9 +228,26 @@ export function useChatEntityNav(deps: EntityNavDeps) {
     }
   }
 
+  async function onTogglePinSession(payload: { id: string; pinned: boolean }) {
+    try {
+      if (deps.chatStore.entityKind === "team" && deps.chatStore.selectedTeamId) {
+        await deps.chatStore.setTeamSessionPinnedLocal(
+          deps.chatStore.selectedTeamId,
+          payload.id,
+          payload.pinned
+        );
+        return;
+      }
+      await deps.chatStore.setSessionPinnedLocal(payload.id, payload.pinned);
+    } catch {
+      $q.notify({ type: "negative", message: payload.pinned ? "置顶失败，请重试" : "取消置顶失败，请重试" });
+    }
+  }
+
   async function onRestoreSession(sessionId: string) {
     try {
-      await restoreSession(sessionId);
+      const sessionStore = useSessionStore();
+      await sessionStore.restore(sessionId);
       if (deps.chatStore.entityKind === "team" && deps.chatStore.selectedTeamId) {
         const teamId = deps.chatStore.selectedTeamId;
         const sessions = deps.chatStore.teamSessions[teamId] ?? [];
@@ -238,7 +262,8 @@ export function useChatEntityNav(deps: EntityNavDeps) {
 
   async function onArchiveSession(sessionId: string) {
     try {
-      await archiveSession(sessionId);
+      const sessionStore = useSessionStore();
+      await sessionStore.archive(sessionId);
       if (deps.chatStore.entityKind === "team" && deps.chatStore.selectedTeamId) {
         const teamId = deps.chatStore.selectedTeamId;
         const sessions = deps.chatStore.teamSessions[teamId] ?? [];
@@ -322,14 +347,19 @@ export function useChatEntityNav(deps: EntityNavDeps) {
     loadTeamSessions,
     selectAgent,
     selectTeam,
+    focusAgentSessionView,
     focusSessionById,
     onSelectSession,
     onRenameSession,
+    onTogglePinSession,
     onRestoreSession,
     onArchiveSession,
     onSessionDetail,
     onNewSession,
     openSettings,
-    updateTeam,
+    updateTeam: async (id: string, payload: object) => {
+      const teamsStore = useTeamsStore();
+      return teamsStore.editTeam(id, payload) as Promise<import("../../../components/chat/types").TeamRow>;
+    },
   };
 }

@@ -1,5 +1,6 @@
 import type { Ref } from "vue";
-import type { Agent, TeamRow } from "../../../components/chat/types";
+import type { TeamRow } from "../../../components/chat/types";
+import type { Agent } from "../../agents/types";
 import { LS_AG_ORDER, LS_TM_ORDER, loadAgentOrder, loadTeamOrder } from "./chatWorkspaceUtils";
 
 export function useChatSidebarOrder(

@@ -3,6 +3,8 @@ package service
 import (
 	"errors"
 
+	"aranea-agents/internal/biz"
+
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
@@ -27,4 +29,31 @@ func IsTurnBusyError(err error) bool {
 		return ke.Reason == "CHAT_TURN_BUSY"
 	}
 	return false
+}
+
+func turnResultToNative(tr biz.TurnResult, err error) (biz.NativeTurnResult, error) {
+	if err != nil {
+		if IsTurnMessageQueued(err) {
+			return biz.NativeTurnResult{
+				Outcome:   biz.NativeTurnOutcomeQueued,
+				PendingID: tr.PendingID,
+			}, err
+		}
+		return biz.NativeTurnResult{Outcome: biz.NativeTurnOutcomeFailed, UserMsg: tr.UserMsg}, err
+	}
+	switch tr.Outcome {
+	case biz.TurnOutcomeCompleted:
+		return biz.NativeTurnResult{
+			Outcome:      biz.NativeTurnOutcomeCompleted,
+			UserMsg:      tr.UserMsg,
+			AssistantMsg: tr.AssistantMsg,
+		}, nil
+	case biz.TurnOutcomeQueued:
+		return biz.NativeTurnResult{
+			Outcome:   biz.NativeTurnOutcomeQueued,
+			PendingID: tr.PendingID,
+		}, ErrTurnMessageQueued
+	default:
+		return biz.NativeTurnResult{Outcome: biz.NativeTurnOutcomeFailed}, nil
+	}
 }

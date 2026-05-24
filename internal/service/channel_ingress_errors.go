@@ -37,17 +37,18 @@ func formatChannelTurnErrorMessage(err error) string {
 	if err == nil || turnErrorIsCanceled(err) {
 		return ""
 	}
-	if IsTurnBusyError(err) {
+	switch classifyChannelTurnError(err) {
+	case channelTurnErrBusy:
 		return channelTurnErrorBusyMsg
-	}
-	switch TurnErrorCodeFromErr(err) {
-	case TurnErrTurnTimeout, TurnErrFirstByteTimeout:
+	case channelTurnErrTimeout:
 		return channelTurnErrorSyncCapMsg
+	case channelTurnErrRateLimit:
+		return channelTurnErrorRateLimitMsg
+	case channelTurnErrContextOverflow:
+		return channelTurnErrorContextOverflow
+	default:
+		return channelTurnErrorGenericMsg
 	}
-	if turnErrorIsTimeout(err) {
-		return channelTurnErrorSyncCapMsg
-	}
-	return channelTurnErrorGenericMsg
 }
 
 func turnErrorIsCanceled(err error) bool {

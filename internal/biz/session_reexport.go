@@ -22,6 +22,7 @@ type (
 	SessionTimeline         = session.SessionTimeline
 	SessionUpdateFields     = session.SessionUpdateFields
 	TimelineQuery           = session.TimelineQuery
+	TimelineEventRef        = session.TimelineEventRef
 	SessionTurn             = session.SessionTurn
 	SessionTurnListResult   = session.SessionTurnListResult
 	SessionTurnUpdateFields = session.SessionTurnUpdateFields

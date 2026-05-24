@@ -17,8 +17,8 @@ import type {
 
 export type { CodeExecutorCapability } from "./types";
 import { listModelUsageEvents } from "../usage/api";
-import { useEnvelopeStream } from "../chat/useEnvelopeStream";
-import type { Envelope } from "../chat/envelope";
+import { useEnvelopeStream } from "../../realtime/useEnvelopeStream";
+import type { Envelope } from "../../realtime/envelope";
 import { flowSeverityToLevel, monitorLogLineFromFlowEnvelope } from "./flow";
 import { TEAM_RUNTIME_ENVELOPE_TYPES, teamRunEventFromEnvelope } from "../teams/teamRunEventFromEnvelope";
 

@@ -27,7 +27,13 @@
         </q-toolbar-title>
         <q-space />
         <div class="row items-center q-gutter-sm q-mr-sm app-header-actions">
-          <InboundNotificationBell :on-open-session="onOpenInboundSession" />
+          <InboundNotificationBell
+            :items="inboundStore.items"
+            :unread-count="inboundStore.unreadCount"
+            @open-session="onOpenInboundSession"
+            @mark-read="inboundStore.markRead($event)"
+            @mark-all-read="inboundStore.markAllRead()"
+          />
           <q-btn v-if="isDesktop" round flat dense class="cursor-pointer">
             <q-avatar size="36px" class="app-header-avatar" font-size="14px">
               {{ auth.avatarLetter }}
@@ -132,6 +138,7 @@ import { useQuasar } from "quasar";
 import { setQuasarLangFor } from "../i18n/quasar-lang";
 import { sideNavGroups } from "../config/sideNav";
 import { useAuthStore } from "../stores/auth";
+import { useInboundNotificationStore } from "../stores/inboundNotifications";
 import InboundNotificationBell from "../components/layout/InboundNotificationBell.vue";
 import { useGlobalInboundNotifications } from "../composables/useGlobalInboundNotifications";
 
@@ -140,6 +147,7 @@ const $q = useQuasar();
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
+const inboundStore = useInboundNotificationStore();
 const drawerOpen = ref(true);
 const drawerMini = ref(true);
 

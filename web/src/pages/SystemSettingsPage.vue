@@ -151,7 +151,6 @@ import {
   webResearchFromSettings,
   webResearchToPatch
 } from "../features/system-settings/web-research";
-import { testWebResearch } from "../features/system-settings/api";
 import { DEFAULT_KNOWLEDGE_EMBED_FORM } from "../features/knowledge/embedder-constants";
 import KnowledgeEmbedderFields from "../components/knowledge/KnowledgeEmbedderFields.vue";
 import WebResearchFields from "../components/settings/WebResearchFields.vue";
@@ -241,7 +240,7 @@ async function testWebResearchConnection() {
   error.value = "";
   try {
     const patch = webResearchToPatch(webResearchForm);
-    const res = await testWebResearch({
+    const res = await settingsStore.testWebResearchConnection({
       provider: patch.provider,
       apiKey: patch.apiKey,
       maxResults: patch.maxResults,

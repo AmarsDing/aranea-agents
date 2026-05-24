@@ -45,6 +45,7 @@ type TurnPreviewCoordinator struct {
 	toolCardMessageIDs map[string]string
 	cardSerial         sync.Mutex
 	sessionID  string
+	activeRunID string
 	cardOpts   preview.ToolCardBuildOpts
 }
 
@@ -160,7 +161,51 @@ func (c *TurnPreviewCoordinator) maybeHeartbeat(ctx context.Context) {
 	_ = c.patchLocked(ctx, text, false)
 }
 
+func (c *TurnPreviewCoordinator) SetActiveRunID(runID string) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	c.activeRunID = strings.TrimSpace(runID)
+	c.mu.Unlock()
+}
+
+func (c *TurnPreviewCoordinator) envelopeMatchesRun(env event.Envelope) bool {
+	c.mu.Lock()
+	want := c.activeRunID
+	c.mu.Unlock()
+	if want == "" {
+		return true
+	}
+	if md := env.Metadata; md != nil {
+		if rid, ok := md["run_id"].(string); ok && strings.TrimSpace(rid) != "" {
+			return strings.TrimSpace(rid) == want
+		}
+	}
+	return true
+}
+
+func (c *TurnPreviewCoordinator) maybeBindRunID(env event.Envelope) {
+	if c == nil || env.Metadata == nil {
+		return
+	}
+	rid, _ := env.Metadata["run_id"].(string)
+	rid = strings.TrimSpace(rid)
+	if rid == "" {
+		return
+	}
+	c.mu.Lock()
+	if c.activeRunID == "" {
+		c.activeRunID = rid
+	}
+	c.mu.Unlock()
+}
+
 func (c *TurnPreviewCoordinator) consume(ctx context.Context, env event.Envelope) {
+	c.maybeBindRunID(env)
+	if !c.envelopeMatchesRun(env) {
+		return
+	}
 	switch env.Type {
 	case event.EnvelopeTypeTextDelta, event.EnvelopeTypeTextDone,
 		event.EnvelopeTypeToolCall, event.EnvelopeTypeToolResult,
@@ -456,6 +501,9 @@ func (h *ChannelIngress) startTurnPreview(
 		},
 	})
 	cancel := coord.Start(ctx, sessionID)
+	if h != nil && h.previewRegistry != nil {
+		cancel = h.previewRegistry.Register(sessionID, coord, cancel)
+	}
 	return coord, cancel
 }
 
@@ -473,5 +521,8 @@ func (h *ChannelIngress) startTurnPreviewAccumulate(
 		LtCfg:    ltCfg,
 	})
 	cancel := coord.Start(ctx, sessionID)
+	if h != nil && h.previewRegistry != nil {
+		cancel = h.previewRegistry.Register(sessionID, coord, cancel)
+	}
 	return coord, cancel
 }

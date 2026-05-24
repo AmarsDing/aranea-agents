@@ -49,6 +49,9 @@ func (s *escalateSessionRunRepoStub) ListByPhase(_ context.Context, _ string, _ 
 func (s *escalateSessionRunRepoStub) ListForJobs(_ context.Context, _ biz.SessionRunListQuery) ([]biz.SessionRun, error) {
 	return nil, nil
 }
+func (s *escalateSessionRunRepoStub) ListBySession(_ context.Context, _ string, _, _ int) ([]biz.SessionRun, int, error) {
+	return nil, 0, nil
+}
 func (s *escalateSessionRunRepoStub) TryClaimDurableResume(_ context.Context, _ string, _ string) (bool, error) {
 	return false, nil
 }

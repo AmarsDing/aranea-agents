@@ -31,6 +31,7 @@ type ChatSessionLocker interface {
 type ChatPendingQueue interface {
 	List(sessionID string) []PendingQueueEntry
 	Enqueue(sessionID, content string) string
+	EnqueueFollowup(sessionID, content string) string
 	Dequeue(sessionID string) (PendingQueueEntry, bool)
 	Remove(sessionID, entryID string) bool
 	Update(sessionID, entryID, newContent string) bool
@@ -139,7 +140,7 @@ func (uc *ChatUsecase) DequeuePendingMessage(sessionID string) (PendingQueueEntr
 	return uc.pending.Dequeue(sessionID)
 }
 
-func (uc *ChatUsecase) EnqueueUserMessage(sessionID, content string) (accepted, queued bool, pendingID, rejectReason string, err error) {
+func (uc *ChatUsecase) EnqueueUserMessage(sessionID, content string, mergeFollowup bool) (accepted, queued bool, pendingID, rejectReason string, err error) {
 	unlock := uc.locker.Lock(sessionID)
 	defer unlock()
 
@@ -156,7 +157,12 @@ func (uc *ChatUsecase) EnqueueUserMessage(sessionID, content string) (accepted, 
 		return true, false, "", "", nil
 	}
 
-	pid := uc.pending.Enqueue(sessionID, content)
+	var pid string
+	if mergeFollowup {
+		pid = uc.pending.EnqueueFollowup(sessionID, content)
+	} else {
+		pid = uc.pending.Enqueue(sessionID, content)
+	}
 	if pid == "" {
 		return false, false, "", ChatEnqueueRejectQueueFull, nil
 	}

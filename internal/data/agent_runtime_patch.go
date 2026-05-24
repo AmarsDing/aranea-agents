@@ -18,6 +18,7 @@ func ensureAgentRuntimePatches(ctx context.Context, c *ent.Client) error {
 		ddl string
 	}{
 		{"skill_runtime_json", `ALTER TABLE agent_runtime_settings ADD COLUMN skill_runtime_json TEXT NOT NULL DEFAULT '{}'`},
+		{"l0_compress_min_gap_sec", `ALTER TABLE agent_runtime_settings ADD COLUMN l0_compress_min_gap_sec INTEGER NOT NULL DEFAULT 600`},
 		{"l0_compress_provider", `ALTER TABLE agent_runtime_settings ADD COLUMN l0_compress_provider TEXT NOT NULL DEFAULT ''`},
 		{"l0_compress_model", `ALTER TABLE agent_runtime_settings ADD COLUMN l0_compress_model TEXT NOT NULL DEFAULT ''`},
 		{"memory_worker_provider", `ALTER TABLE agent_runtime_settings ADD COLUMN memory_worker_provider TEXT NOT NULL DEFAULT ''`},

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Message } from "../types";
-import { isActivityMessage, mergeSessionMessages, dropPendingUserPlaceholders } from "../mergeSessionMessages";
+import { isActivityMessage, mergeIncrementalSessionMessages, mergeSessionMessages, dropPendingUserPlaceholders } from "../mergeSessionMessages";
 
 function msg(id: string, status = "ok", created = "2026-05-20T10:00:00Z"): Message {
   return {
@@ -84,5 +84,25 @@ describe("mergeSessionMessages", () => {
     const merged = mergeSessionMessages(server, local, { dropStaleInFlight: true });
     expect(merged.some((m) => m.id === "ws-stream-sess-1")).toBe(false);
     expect(merged.some((m) => m.id === "asst-1")).toBe(true);
+  });
+
+  it("mergeIncrementalSessionMessages retains persisted history (M55-SYNC / DECO-01)", () => {
+    const existing = [
+      { ...msg("u-1", "ok", "2026-05-20T10:00:00Z"), role: "user", content_markdown: "hello" },
+      { ...msg("a-1", "ok", "2026-05-20T10:00:01Z"), role: "assistant", content_markdown: "hi" },
+    ];
+    const local = [
+      ...existing,
+      msg("ws-stream-sess-1", "streaming", "2026-05-20T10:00:02Z"),
+    ];
+    const incremental = [
+      { ...msg("u-2", "ok", "2026-05-20T10:00:03Z"), role: "user", content_markdown: "from feishu" },
+    ];
+    const merged = mergeIncrementalSessionMessages(incremental, local);
+    expect(merged.map((m) => m.id)).toContain("u-1");
+    expect(merged.map((m) => m.id)).toContain("a-1");
+    expect(merged.map((m) => m.id)).toContain("u-2");
+    expect(merged.map((m) => m.id)).toContain("ws-stream-sess-1");
+    expect(merged).toHaveLength(4);
   });
 });

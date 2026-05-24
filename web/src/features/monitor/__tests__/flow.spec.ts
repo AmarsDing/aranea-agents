@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { Envelope } from "../../chat/envelope";
+import type { Envelope } from "../../../realtime/envelope";
 import {
   buildFlowDiagnosticJsonl,
   flowLogExportEntryFromLine,

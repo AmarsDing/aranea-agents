@@ -62,6 +62,7 @@ type SessionRunRepo interface {
 	GetActiveForSession(ctx context.Context, sessionID string) (SessionRun, error)
 	ListByPhase(ctx context.Context, phase string, limit int) ([]SessionRun, error)
 	ListForJobs(ctx context.Context, q SessionRunListQuery) ([]SessionRun, error)
+	ListBySession(ctx context.Context, sessionID string, limit, offset int) ([]SessionRun, int, error)
 	TryClaimDurableResume(ctx context.Context, id, staleBefore string) (bool, error)
 	ClearResumeClaim(ctx context.Context, id string) error
 }

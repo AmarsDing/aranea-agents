@@ -32,14 +32,15 @@ type ChatService struct {
 	orch *ChatOrchestrator
 }
 
-// ChatServiceDeps groups all dependencies for ChatService construction.
-// It is kept for backward compatibility with Wire; NewChatService delegates
-// all fields to ChatOrchestrator.
-type ChatServiceDeps = ChatOrchestratorDeps
-
-func NewChatService(deps ChatServiceDeps) *ChatService {
+func NewChatService(deps ChatOrchestratorDeps) *ChatService {
 	orch := NewChatOrchestrator(deps)
 	return &ChatService{orch: orch}
+}
+
+// ProvideChatOrchestrator extracts the ChatOrchestrator from ChatService for
+// Wire binding to biz.TurnExecutor.
+func ProvideChatOrchestrator(svc *ChatService) *ChatOrchestrator {
+	return svc.orch
 }
 
 func configureMCPObserve(bus event.Bus, mcp *biz.MCPServerUsecase) {
@@ -173,6 +174,20 @@ func (s *ChatService) EnqueueUserMessage(ctx context.Context, req *chatv1.Enqueu
 	content := strings.TrimSpace(req.GetContent())
 	if content == "" {
 		return nil, kerrors.BadRequest("CHAT", "content is required")
+	}
+
+	if s.orch.HasActiveRun(sessionID) {
+		policy := EvaluateIngressPolicy(IngressPolicyInput{
+			Text:            content,
+			EntryPoint:      biz.EntryPointWeb,
+			AllowQueue:      true,
+			HasActiveRun:    true,
+			HasActiveRunner: s.orch.HasActiveRunner(sessionID),
+		})
+		recordIngressIntentMetric(policy.Intent)
+		if policy.Decision == IngressRejectBusy {
+			return nil, turnBusyError()
+		}
 	}
 
 	accepted, queued, pendingID, rejectReason, err := s.orch.EnqueueUserMessage(sessionID, content)

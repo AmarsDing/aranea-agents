@@ -36,6 +36,8 @@ func (h *ChannelIngress) executeInboundTurn(ctx context.Context, chRow biz.Chann
 	}
 
 	sessionID := h.resolveTurnSessionID(ctx, chRow, platform, ev)
+	h.bindChannelPendingMode(sessionID, chRow.ConfigJSON)
+	defer h.clearChannelPendingMode(sessionID)
 	start := time.Now()
 	h.logTurnFlow(ctx, sessionID, flowStepChannelTurnExecute, "Channel Turn 开始执行", nil,
 		event.P("channel_id", chRow.ID),
@@ -47,7 +49,7 @@ func (h *ChannelIngress) executeInboundTurn(ctx context.Context, chRow biz.Chann
 	var execErr error
 	var contentPreview string
 	var previewMsgID string
-	var terminalStatus = biz.ChannelTurnJobStatusCompleted
+	terminalStatus := biz.ChannelTurnJobStatusCompleted
 	defer func() {
 		arametrics.ChannelTurnDuration.WithLabelValues(platform).Observe(time.Since(start).Seconds())
 		if execErr == nil {
@@ -79,6 +81,24 @@ func (h *ChannelIngress) executeInboundTurn(ctx context.Context, chRow biz.Chann
 		_ = h.deliverTurnErrorReply(ctx, chRow, ev, platform, execErr)
 		h.publishChannelTurnRunStatus(sessionID, jobID, "failed", formatChannelTurnErrorMessage(execErr))
 	}()
+
+	if handled, perr := h.rejectIfContextPressure(ctx, chRow, ev, platform, sessionID, ltCfg); handled {
+		if perr == nil {
+			terminalStatus = biz.ChannelTurnJobStatusCompleted
+		} else {
+			execErr = perr
+		}
+		return perr
+	}
+
+	if handled, perr := h.applyPreTurnIngressPolicy(ctx, chRow, ev, platform, sessionID, ltCfg); handled {
+		if perr == nil {
+			terminalStatus = biz.ChannelTurnJobStatusQueued
+		} else {
+			execErr = perr
+		}
+		return perr
+	}
 
 	var turnQueued bool
 	stopReaction := h.startFeishuProcessingReaction(ctx, chRow, ev)
@@ -153,6 +173,17 @@ func (h *ChannelIngress) processInboundUnaryWithOutcome(ctx context.Context, chR
 		if previewCoord != nil {
 			if rendered := strings.TrimSpace(previewCoord.RenderedText()); rendered != "" {
 				reply = rendered
+			}
+			if previewID := strings.TrimSpace(previewCoord.PreviewMessageID()); previewID != "" {
+				_ = previewCoord.FlushFinalText(ctx, reply)
+				preview := truncateForLog(reply, 200)
+				_ = h.recordDelivery(ctx, chRow.ID, "streamed", map[string]any{
+					"peer_id":    ev.PeerID,
+					"platform":   platform,
+					"preview_id": previewID,
+					"deduped":    true,
+				}, "")
+				return preview, previewID, false, nil
 			}
 		}
 		preview := truncateForLog(reply, 200)

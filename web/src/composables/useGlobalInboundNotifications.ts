@@ -5,26 +5,19 @@ import { useRouter } from "vue-router";
 import { acquireGlobalWsConsumer, releaseGlobalWsConsumer } from "../features/chat/globalWsHub";
 import type { Envelope } from "../features/chat/envelope";
 import { runStatusFromEnvelope } from "../features/chat/envelopeRunStatus";
-import { parseChannelSessionMeta, isChannelSession } from "../features/chat/channelSessionMeta";
-import { getSession } from "../features/session/api";
+import { parseChannelSessionMeta } from "../features/chat/channelSessionMeta";
 import type { Session } from "../features/session/types";
+import {
+  isChannelInboundSession,
+  resolveInboundSession,
+  shouldChannelInboundCompleteToast,
+} from "../features/chat/channelInboundSession";
 import { useInboundNotificationStore } from "../stores/inboundNotifications";
 import { useAppStore } from "../stores/app";
 import { useChatStore } from "../stores/chat";
 import { refreshAgentSessionsForChannel } from "../features/chat/channelInboundSessionRefresh";
 
-const SESSION_CACHE_MAX = 64;
-const sessionCache = new Map<string, Session>();
-
-function cacheSession(sessionId: string, row: Session) {
-  sessionCache.delete(sessionId);
-  sessionCache.set(sessionId, row);
-  while (sessionCache.size > SESSION_CACHE_MAX) {
-    const oldest = sessionCache.keys().next().value;
-    if (!oldest) break;
-    sessionCache.delete(oldest);
-  }
-}
+const TOAST_DEDUPE_MS = 4000;
 
 function envelopeSource(env: Envelope): string {
   const direct = (env.source ?? "").trim();
@@ -40,16 +33,6 @@ function isTurnCompleteEnvelope(env: Envelope): boolean {
   return status === "completed" || status === "failed" || status === "cancelled";
 }
 
-/** Toast only on runner_completion or terminal run_status (failed/cancelled) to avoid duplicate toasts. */
-function shouldToastOnTurnComplete(env: Envelope): boolean {
-  if (env.type === "runner_completion") return true;
-  if (env.type === "run_status") {
-    const status = runStatusFromEnvelope(env)?.status;
-    return status === "failed" || status === "cancelled";
-  }
-  return false;
-}
-
 /**
  * App-wide channel inbound bell + toast. Mounted from MainLayout so notifications
  * work on every route (not only /chat).
@@ -62,35 +45,23 @@ export function useGlobalInboundNotifications() {
   const $q = useQuasar();
   const { t } = useI18n();
   let hubId: string | null = null;
+  const toastDedupeBySession = new Map<string, number>();
 
   async function resolveSession(sessionId: string): Promise<Session | null> {
-    const hit = chatStore.findSessionById(sessionId);
-    if (hit) return hit as Session;
-    const cached = sessionCache.get(sessionId);
-    if (cached) return cached;
-    try {
-      const row = await getSession(sessionId);
-      cacheSession(sessionId, row);
-      return row;
-    } catch {
-      return null;
-    }
+    return resolveInboundSession(sessionId, chatStore);
   }
 
   async function isChannelInbound(sessionId: string, source: string): Promise<boolean> {
-    if (source === "channel") return true;
-    const sess = await resolveSession(sessionId);
-    if (!sess) return false;
-    return parseChannelSessionMeta(sess.metadata_json) !== null || isChannelSession(sess.metadata_json, sess.title);
+    return isChannelInboundSession(sessionId, source, chatStore);
   }
 
-  function isViewingSession(sessionId: string): boolean {
+  function isViewingSession(sessionId: string, agentId: string): boolean {
     const route = router.currentRoute.value;
     if (route.name !== "chat") return false;
-    const q = route.query.session;
-    const querySid = typeof q === "string" ? q.trim() : Array.isArray(q) ? String(q[0] ?? "").trim() : "";
-    if (querySid === sessionId) return true;
-    return chatStore.currentSessionId() === sessionId;
+    const sid = chatStore.currentSessionId();
+    if (sid !== sessionId) return false;
+    const selectedAgent = appStore.selectedAgent?.id?.trim() ?? "";
+    return selectedAgent === agentId.trim();
   }
 
   function pushNotification(
@@ -144,7 +115,13 @@ export function useGlobalInboundNotifications() {
 
     pushNotification(sessionId, agentId, "completed", title);
 
-    if (!isViewingSession(sessionId) && shouldToastOnTurnComplete(env)) {
+    const wantsToast = shouldChannelInboundCompleteToast(env);
+    const now = Date.now();
+    const lastToast = toastDedupeBySession.get(sessionId) ?? 0;
+    const dedupeOk = now - lastToast >= TOAST_DEDUPE_MS;
+
+    if (!isViewingSession(sessionId, agentId) && wantsToast && dedupeOk) {
+      toastDedupeBySession.set(sessionId, now);
       $q.notify({
         type: "info",
         message: t("chat.channelInboundNotify", "飞书/渠道有新回复"),

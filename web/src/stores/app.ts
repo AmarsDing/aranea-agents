@@ -15,8 +15,7 @@ export const useAppStore = defineStore("app", {
       if (this.selectedAgent?.id === id) {
         this.selectedAgent = this.agents[0] ?? null;
         const chat = useChatStore();
-        chat.sessions = [];
-        chat.selectedSession = null;
+        chat.resetForAgentSwitch();
         chat.clearTeamMessageCache();
       }
     },
