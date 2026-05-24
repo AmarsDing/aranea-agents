@@ -218,12 +218,15 @@ message MemoryRelation {
   double weight = 5;
   double confidence = 6;
   string status = 7;
+  string valid_from = 8;
+  string valid_to = 9;
 }
 
 message GetMemoryNeighborhoodRequest {
   string center_id = 1 [(google.api.field_behavior) = REQUIRED];
   int32 hops = 2;
   int32 max_nodes = 3;
+  string query_at = 4;
 }
 
 message GraphNeighborhood {
@@ -231,6 +234,7 @@ message GraphNeighborhood {
   int32 hops = 2;
   repeated MemoryEntity entities = 3;
   repeated MemoryRelation relations = 4;
+  string query_at = 5;
 }
 
 message GetAgentIdentityRequest {
@@ -359,6 +363,140 @@ message AppendEvolutionEventResponse {
   EvolutionEvent event = 1;
 }
 
+message CascadeAffectedEntity {
+  string entity_id = 1;
+  string entity_name = 2;
+  string entity_type = 3;
+  string relation_type = 4;
+  int32 hops = 5;
+}
+
+message CascadeProposal {
+  string id = 1;
+  string agent_id = 2;
+  string workspace_id = 3;
+  string trigger_entity_id = 4;
+  string trigger_entity_name = 5;
+  string trigger_attribute = 6;
+  string old_value = 7;
+  string new_value = 8;
+  repeated CascadeAffectedEntity affected_entities = 9;
+  string status = 10;
+  string risk_level = 11;
+  string rationale = 12;
+  string reviewed_by = 13;
+  string reviewed_at = 14;
+  string expires_at = 15;
+  string created_at = 16;
+  string updated_at = 17;
+}
+
+message ListCascadeProposalsRequest {
+  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string status = 2;
+  int32 limit = 3;
+}
+
+message ListCascadeProposalsResponse {
+  repeated CascadeProposal items = 1;
+}
+
+message ApproveCascadeProposalRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string reviewer = 2;
+}
+
+message ApproveCascadeProposalResponse {
+  CascadeProposal proposal = 1;
+}
+
+message RejectCascadeProposalRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string reviewer = 2;
+  string reason = 3;
+}
+
+	message RejectCascadeProposalResponse {
+  CascadeProposal proposal = 1;
+}
+
+message MemoryRecallScoreBreakdown {
+  double keyword = 1;
+  double vector = 2;
+  double importance = 3;
+  double recency = 4;
+  double cross_encoder = 5;
+  double total = 6;
+}
+
+message MemoryRecallHit {
+  string layer = 1;
+  string id = 2;
+  string title = 3;
+  string summary = 4;
+  string statement = 5;
+  MemoryRecallScoreBreakdown scores = 6;
+}
+
+message DebugMemoryRecallRequest {
+  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string session_id = 2;
+  string user_id = 3;
+  string query = 4;
+  int32 l2_limit = 5;
+  int32 l3_limit = 6;
+}
+
+message DebugMemoryRecallResponse {
+  repeated MemoryRecallHit l2_hits = 1;
+  repeated MemoryRecallHit l3_hits = 2;
+}
+
+message CompositeSearchHit {
+  string layer = 1;
+  string id = 2;
+  string text = 3;
+  double score = 4;
+}
+
+message CompositeSearchMemoriesRequest {
+  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string session_id = 2;
+  string user_id = 3;
+  string query = 4 [(google.api.field_behavior) = REQUIRED];
+  int32 limit = 5;
+}
+
+message CompositeSearchMemoriesResponse {
+  repeated CompositeSearchHit items = 1;
+}
+
+message GetMemoryWorkerStatusRequest {}
+
+message MemoryWorkerStatus {
+  int64 jobs_done = 1;
+  int64 jobs_dead = 2;
+  int64 llm_fallback_total = 3;
+  double avg_extraction_seconds = 4;
+  int64 episode_backfill_total = 5;
+}
+
+message MemoryPlatformSettings {
+  bool policy_strict = 1;
+  bool episode_backfill_disabled = 2;
+  // Read-only: env MEMORY_POLICY_STRICT overrides DB when true.
+  bool env_policy_strict_override = 3;
+  // Read-only: env MEMORY_EPISODE_BACKFILL_DISABLED overrides DB when true.
+  bool env_episode_backfill_disabled_override = 4;
+}
+
+message GetMemoryPlatformSettingsRequest {}
+
+message UpdateMemoryPlatformSettingsRequest {
+  bool policy_strict = 1;
+  bool episode_backfill_disabled = 2;
+}
+
 service MemoryService {
   rpc ListL0Snapshots(ListL0SnapshotsRequest) returns (ListL0SnapshotsResponse) {
     option (google.api.http) = {get: "/v1/sessions/{session_id}/l0/snapshots"};
@@ -404,6 +542,53 @@ service MemoryService {
   rpc AppendEvolutionEvent(AppendEvolutionEventRequest) returns (AppendEvolutionEventResponse) {
     option (google.api.http) = {
       post: "/v1/agents/{agent_id}/evolution/events"
+      body: "*"
+    };
+  }
+
+  rpc ListCascadeProposals(ListCascadeProposalsRequest) returns (ListCascadeProposalsResponse) {
+    option (google.api.http) = {get: "/v1/memory/cascade/proposals"};
+  }
+
+  rpc ApproveCascadeProposal(ApproveCascadeProposalRequest) returns (ApproveCascadeProposalResponse) {
+    option (google.api.http) = {
+      post: "/v1/memory/cascade/proposals/{id}/approve"
+      body: "*"
+    };
+  }
+
+  rpc RejectCascadeProposal(RejectCascadeProposalRequest) returns (RejectCascadeProposalResponse) {
+    option (google.api.http) = {
+      post: "/v1/memory/cascade/proposals/{id}/reject"
+      body: "*"
+    };
+  }
+
+  rpc DebugMemoryRecall(DebugMemoryRecallRequest) returns (DebugMemoryRecallResponse) {
+    option (google.api.http) = {
+      post: "/v1/memory/recall/debug"
+      body: "*"
+    };
+  }
+
+  rpc CompositeSearchMemories(CompositeSearchMemoriesRequest) returns (CompositeSearchMemoriesResponse) {
+    option (google.api.http) = {
+      post: "/v1/memory/search/composite"
+      body: "*"
+    };
+  }
+
+  rpc GetMemoryWorkerStatus(GetMemoryWorkerStatusRequest) returns (MemoryWorkerStatus) {
+    option (google.api.http) = {get: "/v1/memory/worker/status"};
+  }
+
+  rpc GetMemoryPlatformSettings(GetMemoryPlatformSettingsRequest) returns (MemoryPlatformSettings) {
+    option (google.api.http) = {get: "/v1/memory/platform/settings"};
+  }
+
+  rpc UpdateMemoryPlatformSettings(UpdateMemoryPlatformSettingsRequest) returns (MemoryPlatformSettings) {
+    option (google.api.http) = {
+      put: "/v1/memory/platform/settings"
       body: "*"
     };
   }

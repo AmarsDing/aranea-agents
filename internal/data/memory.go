@@ -41,6 +41,10 @@ func (unavailableMemoryRepo) FindSimilarWithUser(context.Context, string, string
 	return nil, biz.ErrMemoryUnavailable
 }
 
+func (unavailableMemoryRepo) UpsertFactVector(context.Context, string, string, string, string, []float32) error {
+	return biz.ErrMemoryUnavailable
+}
+
 func (r *memoryRepo) dimForEmbedding(ctx context.Context, memoryPartitionUserID string) (int, error) {
 	if memoryPartitionUserID == "" {
 		return r.data.VectorDim(), nil
@@ -116,4 +120,16 @@ func (r *memoryRepo) FindSimilarWithUser(ctx context.Context, agentID, userID st
 		}
 	}
 	return out, nil
+}
+
+func (r *memoryRepo) UpsertFactVector(ctx context.Context, agentID, userID, factID, statement string, embedding []float32) error {
+	dim, err := r.dimForEmbedding(ctx, userID)
+	if err != nil {
+		return err
+	}
+	st, err := r.storeFor(ctx, dim)
+	if err != nil {
+		return err
+	}
+	return st.UpsertFactVector(ctx, agentID, userID, factID, statement, embedding)
 }

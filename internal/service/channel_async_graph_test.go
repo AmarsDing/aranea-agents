@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	graphv1 "aranea-agents/api/kratos/graph/v1"
 	"aranea-agents/internal/biz"
 )
 
@@ -103,26 +102,27 @@ func (s channelTestAgentRepo) ListAgentCreators(context.Context) ([]biz.AgentCre
 	return nil, nil
 }
 
-type stubAsyncGraphExecutor struct {
+type stubGraphExecutor struct {
 	lastGraphID string
 	lastSession string
 	lastCfg     biz.GraphBuildConfig
 }
 
-func (s *stubAsyncGraphExecutor) ExecuteGraph(context.Context, *graphv1.ExecuteGraphRequest) (*graphv1.ExecuteGraphResponse, error) {
-	return nil, nil
+func (s *stubGraphExecutor) ExecuteGraphByID(_ context.Context, graphID, _ string, _ map[string]any) (string, error) {
+	s.lastGraphID = graphID
+	return "exec-graph-1", nil
 }
 
-func (s *stubAsyncGraphExecutor) ExecuteGraphBuildConfig(_ context.Context, graphID, sessionID string, cfg biz.GraphBuildConfig, _ map[string]any) (*graphv1.ExecuteGraphResponse, error) {
+func (s *stubGraphExecutor) ExecuteGraphBuildConfig(_ context.Context, graphID, sessionID string, cfg biz.GraphBuildConfig, _ map[string]any) (string, error) {
 	s.lastGraphID = graphID
 	s.lastSession = sessionID
 	s.lastCfg = cfg
-	return &graphv1.ExecuteGraphResponse{ExecutionId: "exec-team-1", Status: "running"}, nil
+	return "exec-team-1", nil
 }
 
 func TestExecuteAsyncGraphTarget_teamGraph(t *testing.T) {
 	defJSON := `{"version":1,"mode":"sequential","linked_graph_id":"linked-g-1","members":[{"agent_id":"agent-1","sort_order":1}]}`
-	exec := &stubAsyncGraphExecutor{}
+	exec := &stubGraphExecutor{}
 	h := &ChannelIngress{
 		teams: stubTeamRepo{team: biz.Team{
 			ID:             "team-42",
@@ -152,7 +152,7 @@ func TestExecuteAsyncGraphTarget_teamGraph(t *testing.T) {
 
 func TestExecuteAsyncGraphTarget_teamGraphFallbackGraphID(t *testing.T) {
 	defJSON := `{"version":1,"mode":"sequential","members":[{"agent_id":"agent-1","sort_order":1}]}`
-	exec := &stubAsyncGraphExecutor{}
+	exec := &stubGraphExecutor{}
 	h := &ChannelIngress{
 		teams: stubTeamRepo{team: biz.Team{
 			ID:             "team-7",

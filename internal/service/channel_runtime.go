@@ -87,6 +87,14 @@ func (r *ChannelRuntime) Reload(ctx context.Context) {
 	_ = r.mgr.Reload(ctx)
 }
 
+// ConnectionInfo returns live connector state for a channel (F-01b).
+func (r *ChannelRuntime) ConnectionInfo(channelID string) runtime.ConnectionInfo {
+	if r == nil || r.mgr == nil {
+		return runtime.ConnectionInfo{}
+	}
+	return runtime.GetConnectionInfo(channelID)
+}
+
 // Stop cancels all running connectors.
 func (r *ChannelRuntime) Stop() {
 	if r == nil {

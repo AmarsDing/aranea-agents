@@ -1,5 +1,5 @@
 import { ref, watch, type Ref } from "vue";
-import type { Message } from "../chat/types";
+import type { Message } from "../../domain/types";
 import { useSessionStore } from "../../stores/session/index";
 
 export function useSessionMessagesPanel(sessionId: Ref<string>) {

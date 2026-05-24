@@ -307,6 +307,8 @@ func configJSONFromSettings(settings AgentRuntimeSettings, files []AgentPromptFi
 			"summary_keep_turns":   settings.L0SummaryKeepTurns,
 			"compress_provider":    settings.L0CompressProvider,
 			"compress_model":       settings.L0CompressModel,
+			"worker_provider":      settings.MemoryWorkerProvider,
+			"worker_model":         settings.MemoryWorkerModel,
 			"truncate_strategy":    settings.L0TruncateStrategy,
 			"inject_l1":            settings.L0InjectL1,
 			"inject_l3":            settings.L0InjectL3,

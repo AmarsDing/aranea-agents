@@ -2,6 +2,11 @@ import axios, { type AxiosError } from "axios";
 import { Notify } from "quasar";
 import { getBackendOrigin } from "../config/runtime";
 
+/** Default HTTP timeout for admin CRUD APIs (ms). */
+export const KRATOS_API_DEFAULT_TIMEOUT_MS = 30_000;
+/** Chat / session sync can wait for long agent turns (align with channel first_byte_timeout_sec). */
+export const KRATOS_API_LONG_TIMEOUT_MS = 120_000;
+
 /**
  * **`kratosApi`**：`requestHandler` + `create*Service()` → **`/v1/...`**（含 **`memory/v1`**）；**`chat`**：`ChatServiceHTTPServer`（**`/v1/chat/*`**）；**`skills/import*`**：`SkillService`（proto HTTP + multipart ZIP on **`RegisterSkillImportMultipart`**）。
  *
@@ -9,10 +14,28 @@ import { getBackendOrigin } from "../config/runtime";
  */
 export const kratosApi = axios.create({
   baseURL: getBackendOrigin(),
-  timeout: 15000,
+  timeout: KRATOS_API_DEFAULT_TIMEOUT_MS,
   // Session cookie is host-scoped; call API with credentials so login works when CORS allows Origin (see CorsDevFilter).
   withCredentials: true
 });
+
+function resolveRequestTimeoutMs(path: string, override?: number): number {
+  if (override != null && override > 0) return override;
+  const p = path.replace(/^\//, "");
+  if (p.startsWith("v1/chat/") || p.startsWith("v1/sessions")) {
+    return KRATOS_API_LONG_TIMEOUT_MS;
+  }
+  return KRATOS_API_DEFAULT_TIMEOUT_MS;
+}
+
+function humanizeAxiosError(err: AxiosError): AxiosError {
+  if (err.code === "ECONNABORTED" && !err.response) {
+    err.message = "请求超时，请确认后端 admin 是否在 :8000 运行并重试";
+  } else if (!err.response && (err.code === "ERR_NETWORK" || err.message === "Network Error")) {
+    err.message = "无法连接后端，请确认 admin 是否在 :8000 运行";
+  }
+  return err;
+}
 
 // --- Response interceptor: map Kratos error envelopes to user-visible notifications ---
 
@@ -60,7 +83,7 @@ kratosApi.interceptors.response.use(
       }
     }
 
-    return Promise.reject(err);
+    return Promise.reject(humanizeAxiosError(err));
   }
 );
 
@@ -87,6 +110,8 @@ export type RequestMeta = {
   method: string;
   /** Suppress global 4xx toast; used for CreateAgent inline field errors. */
   skipErrorNotify?: boolean;
+  /** Per-request timeout override (ms). */
+  timeoutMs?: number;
 };
 
 /** 与 proto 生成的 HTTP 客户端（`v1/...`）双参 handler 签名一致；`meta` 可供拦截器或日志使用 */
@@ -99,13 +124,15 @@ export function requestHandler(
     headers["Content-Type"] = "application/json";
   }
   const skipErrorNotify = meta?.skipErrorNotify ?? meta?.method === "CreateAgent";
+  const urlPath = "/" + path.replace(/^\//, "");
   return kratosApi
     .request({
-      url: "/" + path.replace(/^\//, ""),
+      url: urlPath,
       method,
       data: body ?? undefined,
       headers,
-      skipErrorNotify
+      skipErrorNotify,
+      timeout: resolveRequestTimeoutMs(path, meta?.timeoutMs)
     })
     .then((res) => res.data);
 }

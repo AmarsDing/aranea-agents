@@ -36,6 +36,10 @@ func entToBizSystemSetting(e *ent.SystemSetting) biz.SystemSetting {
 		EvalLLM:                           entToEvalLLM(e),
 		WebResearch:                       entToWebResearch(e),
 		MCPAllowAdHocHTTP:                 e.McpAllowAdhocHTTP,
+		MemoryPlatform: biz.MemoryPlatformSetting{
+			PolicyStrict:            e.MemoryPolicyStrict,
+			EpisodeBackfillDisabled: e.MemoryEpisodeBackfillDisabled,
+		},
 		UpdateTime:                        e.UpdateTime,
 	}
 }
@@ -229,4 +233,21 @@ func (r *systemSettingRepo) UpdateEvalLLM(ctx context.Context, patch biz.EvalLLM
 		return biz.EvalLLMSetting{}, err
 	}
 	return entToEvalLLM(row), nil
+}
+
+func (r *systemSettingRepo) UpdateMemoryPlatform(ctx context.Context, patch biz.MemoryPlatformSetting) (biz.MemoryPlatformSetting, error) {
+	row, err := r.data.entClient.SystemSetting.UpdateOneID(systemSettingSingletonID).
+		SetMemoryPolicyStrict(patch.PolicyStrict).
+		SetMemoryEpisodeBackfillDisabled(patch.EpisodeBackfillDisabled).
+		Save(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return biz.MemoryPlatformSetting{}, sql.ErrNoRows
+		}
+		return biz.MemoryPlatformSetting{}, err
+	}
+	return biz.MemoryPlatformSetting{
+		PolicyStrict:            row.MemoryPolicyStrict,
+		EpisodeBackfillDisabled: row.MemoryEpisodeBackfillDisabled,
+	}, nil
 }

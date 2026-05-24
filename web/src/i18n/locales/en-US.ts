@@ -360,6 +360,12 @@ export default {
     routingTeamPlaceholder: "Select a team",
     routingAgentDisabledHint: "Routing to a team",
     routingTeamDisabledHint: "Routing to an agent",
+    routingRulesLabel: "Peer routing rules",
+    routingRulesAdd: "Add rule",
+    routingRulesPeerPattern: "peer_pattern",
+    routingRulesPeerPatternHint: "Glob match on peer_id / open_id / chat_id",
+    routingRulesTargetType: "Target type",
+    rulesEmptyHint: "No peer routing rules yet. First match by peer_pattern wins.",
     dmScopeLabel: "Session scope (dm_scope)",
     dmScopeHint: "Saving clears existing peer bindings; new messages use the new scope.",
     dmScope: {
@@ -375,6 +381,122 @@ export default {
     },
     longTaskPresetLabel: "Recommended preset",
     longTaskPresetPlaceholder: "Pick a template to fill fields below",
+    longTaskPresetHelp: "One-click fill for long-task settings (timeouts, ACK, streaming, IM render). Takes effect after save via runtime reload.",
+    longTaskPresetExample: "For Feishu IM, choose “Feishu · IM Preview (recommended)”",
+    fieldHelpAria: "Field help",
+    fieldHelpExamplePrefix: "Example: ",
+    fields: {
+      turn_timeout_sec: {
+        label: "Turn timeout",
+        help: "Max seconds for one inbound message’s agent turn. On timeout the job is marked failed and the user is notified.",
+        example: "900 for team pipelines; 600 for heavy single-agent tools"
+      },
+      first_byte_timeout_sec: {
+        label: "First-byte timeout",
+        help: "Max wait (seconds) from turn start until the first token/delta. Increase for cold MCP/tool startup.",
+        example: "30 default; 120 recommended for Feishu long tasks"
+      },
+      execution_mode: {
+        label: "Execution mode",
+        help: "sync waits for the result; auto routes to async by keywords; async submits all turns to Graph/Cron.",
+        example: "auto for long analysis; async with async_*_id for background jobs"
+      },
+      progress_mode: {
+        label: "Progress mode",
+        help: "How IM updates during quiet periods: off, text heartbeat, or steps (team member summaries).",
+        example: "text for single agent; steps for team @mentions"
+      },
+      progress_quiet_sec: {
+        label: "Progress quiet interval",
+        help: "Seconds between heartbeat/progress PATCHes when there is no new output. 0 disables heartbeat.",
+        example: "20 (default) or 30"
+      },
+      ack_message: {
+        label: "ACK message",
+        help: "Immediate confirmation after webhook verify. Empty skips ACK.",
+        example: "Got it, working on it…"
+      },
+      heartbeat_message: {
+        label: "Heartbeat message",
+        help: "Text PATCHed to IM during long silence. Supports {{elapsed}} for elapsed time.",
+        example: "Still working… {{elapsed}}"
+      },
+      async_graph_id: {
+        label: "Async graph",
+        help: "When execution_mode is async/auto, matched inbound messages run on this graph.",
+        example: "Copy graph UUID from Graphs page"
+      },
+      async_team_id: {
+        label: "Async team",
+        help: "When execution_mode is async, optional team pipeline for background work.",
+        example: "Copy team UUID from Teams page"
+      },
+      async_cron_task_id: {
+        label: "Async cron task",
+        help: "When execution_mode is async, bind a cron task to handle inbound messages.",
+        example: "Copy task UUID from Cron list"
+      },
+      streaming_enabled: {
+        label: "Streaming",
+        help: "Patch IM messages as the agent streams (Feishu/Telegram/Slack). Strongly recommended for long generation.",
+        example: "true for Feishu long tasks"
+      },
+      channel_name: {
+        label: "Channel name",
+        help: "Friendly name shown in admin UI and logs.",
+        example: "Feishu support bot"
+      },
+      channel_key: {
+        label: "Channel key",
+        help: "Unique instance id for webhook paths and internal refs. Avoid changing after create.",
+        example: "feishu_main"
+      },
+      description: {
+        label: "Description",
+        help: "Optional note so the team knows what this channel is for."
+      },
+      enabled: {
+        label: "Enabled",
+        help: "When off, ingress and delivery stop; saved config is kept."
+      },
+      receive_mode: {
+        label: "Receive mode",
+        help: "Ingress: webhook needs a public URL; websocket/stream uses a persistent connection.",
+        example: "websocket (larkws) for Feishu"
+      },
+      webhook_path: {
+        label: "Webhook path",
+        help: "Relative HTTP callback path; combined with public_webhook_origin for the full URL.",
+        example: "/webhooks/feishu_main"
+      },
+      public_webhook_origin: {
+        label: "Public origin",
+        help: "HTTPS root reachable by the platform. Use ngrok for local dev.",
+        example: "https://abc123.ngrok-free.app"
+      },
+      webhook_url_preview: {
+        label: "Webhook preview",
+        help: "Full callback URL from path + origin; copy into the platform console."
+      },
+      allowed_user_ids: {
+        label: "Allowed users",
+        help: "Only respond to listed users. Empty = no limit. Feishu: open_id (ou_xxx) or user_id.",
+        example: '["ou_abc123"] or ou_abc,ou_def'
+      },
+      allowed_group_ids: {
+        label: "Allowed groups",
+        help: "Only respond in listed group chats. Empty = no limit. DMs are not restricted.",
+        example: '["oc_group123"]'
+      },
+      require_mention: {
+        label: "Require @mention",
+        help: "In groups, only respond when the bot is @mentioned."
+      },
+      icon_asset_id: {
+        label: "Icon",
+        help: "Leave empty for platform default; upload or pick a built-in avatar."
+      }
+    },
     turnJobsTitle: "Recent turn jobs (ops)",
     turnJobsHint: "Newest first; for LT-07 troubleshooting.",
     turnJobsRefresh: "Refresh",

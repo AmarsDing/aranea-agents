@@ -81,6 +81,8 @@ func (h *ChannelIngress) executeInboundTurn(ctx context.Context, chRow biz.Chann
 	}()
 
 	var turnQueued bool
+	stopReaction := h.startFeishuProcessingReaction(ctx, chRow, ev)
+	defer stopReaction()
 	if biz.ChannelStreamingEnabled(chRow.ConfigJSON) {
 		execErr = h.processInboundStreaming(ctx, chRow, ev, platform, ltCfg, sessionID, &contentPreview, &previewMsgID, &turnQueued)
 	} else {
@@ -93,13 +95,9 @@ func (h *ChannelIngress) executeInboundTurn(ctx context.Context, chRow biz.Chann
 }
 
 func (h *ChannelIngress) resolveTurnSessionID(ctx context.Context, chRow biz.Channel, platform string, ev port.InboundEvent) string {
-	routing, err := biz.ParseChannelRouting(chRow.ConfigJSON)
+	peerKey, err := h.inboundPeerKey(chRow, ev)
 	if err != nil {
 		return ""
-	}
-	peerKey := ev.PeerKey
-	if peerKey == "" {
-		peerKey = biz.PeerKeyForSession(routing.DMScope, ev.PeerID)
 	}
 	req, err := h.prepareChannelChatRequest(ctx, chRow, platform, peerKey, ev.PeerID, ev.Text)
 	if err != nil {
@@ -178,42 +176,8 @@ func (h *ChannelIngress) deliverUnaryReply(ctx context.Context, chRow biz.Channe
 	return nil
 }
 
-func (h *ChannelIngress) runChatTurnWithOutcome(ctx context.Context, chRow biz.Channel, platform string, ev port.InboundEvent) (biz.ChannelTurnResult, error) {
-	if h == nil || h.chat == nil {
-		return biz.ChannelTurnResult{}, nil
-	}
-	routing, err := biz.ParseChannelRouting(chRow.ConfigJSON)
-	if err != nil {
-		_ = h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "routing", "error": err.Error()}, err.Error())
-		return biz.ChannelTurnResult{}, err
-	}
-	peerKey := ev.PeerKey
-	if peerKey == "" {
-		peerKey = biz.PeerKeyForSession(routing.DMScope, ev.PeerID)
-	}
-	req, err := h.prepareChannelChatRequest(ctx, chRow, platform, peerKey, ev.PeerID, ev.Text)
-	if err != nil {
-		return biz.ChannelTurnResult{}, err
-	}
-	sessionID := strings.TrimSpace(req.GetSessionId())
-	wasActive := h.chat.HasActiveRun(sessionID)
-
-	_, asst, err := h.chat.RunNativeTurnUnary(event.WithChannelEnvelopeContext(ctx, platform, chRow.Key), req)
-	if err != nil {
-		if IsTurnMessageQueued(err) {
-			pendingID := h.chat.LastPendingMessageID(sessionID)
-			return biz.ChannelTurnResult{Outcome: biz.ChannelTurnOutcomeQueued, PendingID: pendingID}, nil
-		}
-		_ = h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "chat", "error": err.Error()}, err.Error())
-		return biz.ChannelTurnResult{Outcome: biz.ChannelTurnOutcomeFailed}, err
-	}
-	reply := strings.TrimSpace(asst.ContentMarkdown)
-	if reply != "" {
-		return biz.ChannelTurnResult{Outcome: biz.ChannelTurnOutcomeCompleted, Reply: reply}, nil
-	}
-	if wasActive {
-		pendingID := h.chat.LastPendingMessageID(sessionID)
-		return biz.ChannelTurnResult{Outcome: biz.ChannelTurnOutcomeQueued, PendingID: pendingID}, nil
-	}
-	return biz.ChannelTurnResult{Outcome: biz.ChannelTurnOutcomeCompleted, Reply: reply}, nil
+// deliverStreamFlushFallback enqueues the final reply when in-place preview edit fails (turn already succeeded).
+func (h *ChannelIngress) deliverStreamFlushFallback(ctx context.Context, chRow biz.Channel, ev port.InboundEvent, platform, reply string) error {
+	idempotency := ackIdempotencyKey(platform, ev, "stream_final")
+	return h.enqueueOutboundReply(ctx, chRow, platform, outboundRecipient(ev), reply, ev.OutboundMeta, idempotency)
 }

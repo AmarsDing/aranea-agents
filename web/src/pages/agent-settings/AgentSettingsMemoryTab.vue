@@ -34,6 +34,21 @@
         <q-toggle v-model="config.memoryL0.inject_l1" color="primary" label="注入 L1" />
         <q-toggle v-model="config.memoryL0.inject_l3" color="primary" label="注入 L3" />
         <q-toggle v-model="config.memoryL0.inject_l4" color="primary" label="注入 L4" />
+        <q-input v-model="config.memoryL0.compress_provider" dense outlined label="L0 摘要 Provider" hint="留空 → 使用会话/Agent 聊天模型" />
+        <q-input v-model="config.memoryL0.compress_model" dense outlined label="L0 摘要 Model" />
+      </div>
+    </section>
+
+    <section class="settings-section">
+      <div class="section-heading">
+        <div class="section-title">
+          <span class="section-title__text">巩固 Worker 模型</span>
+        </div>
+        <div class="text-caption text-grey-7">Turn 完成后 AutoMemory LLM 提取所用模型；留空时依次回退 L0 摘要模型、聊天模型。</div>
+      </div>
+      <div class="app-form-field-grid">
+        <q-input v-model="config.memoryWorker.provider" dense outlined label="Worker Provider" placeholder="openai" />
+        <q-input v-model="config.memoryWorker.model" dense outlined label="Worker Model" placeholder="gpt-4o-mini" />
       </div>
     </section>
 

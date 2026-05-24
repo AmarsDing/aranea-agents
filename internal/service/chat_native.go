@@ -18,19 +18,16 @@ func nativeDialogModeChatOptions() []*chatv1.ChatOption {
 	}
 }
 
-// RunNativeTurnUnary runs the native in-process agent/team turn (for Channel webhooks).
-func (s *ChatService) RunNativeTurnUnary(ctx context.Context, req *chatv1.SendChatMessageRequest) (biz.ChatMessage, biz.ChatMessage, error) {
-	return s.orch.RunNativeAgentTurn(ctx, req)
+// RunNativeTurn implements biz.NativeTurnGateway — the biz-level turn entry point
+// that avoids proto dependency. All internal callers (Channel, Cron, A2A) should
+// use this instead of proto-based methods.
+func (s *ChatService) RunNativeTurn(ctx context.Context, input biz.TurnInput) (biz.ChatMessage, biz.ChatMessage, error) {
+	return s.orch.RunNativeAgentTurnFromInput(ctx, input)
 }
 
-// RunNativeTurnStreaming runs a native turn and invokes onDelta with accumulated assistant text as it streams.
-//
-// Deprecated: channel ingress uses RunNativeTurnUnary + TurnPreviewCoordinator; onDelta is no longer wired in trpc_turn.
-func (s *ChatService) RunNativeTurnStreaming(ctx context.Context, req *chatv1.SendChatMessageRequest, onDelta ChannelStreamCallback) (biz.ChatMessage, biz.ChatMessage, error) {
-	if onDelta != nil {
-		ctx = WithChannelStreamCallback(ctx, onDelta)
-	}
-	return s.orch.RunNativeAgentTurn(ctx, req)
+// RunNativeTurnWithOutcome implements biz.NativeTurnGateway with explicit turn classification.
+func (s *ChatService) RunNativeTurnWithOutcome(ctx context.Context, input biz.TurnInput) (biz.NativeTurnResult, error) {
+	return s.orch.RunNativeAgentTurnWithOutcome(ctx, input)
 }
 
 // RunAgentTurn implements a2a.AgentTurnRunner for call_agent and HTTP Invoke dispatch (EP-A2A-01).

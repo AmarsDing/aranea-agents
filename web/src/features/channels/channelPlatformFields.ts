@@ -1,4 +1,9 @@
 import type { ChannelCatalogItem } from "./types";
+import {
+  FIRST_BYTE_TIMEOUT_OPTIONS,
+  PROGRESS_QUIET_OPTIONS,
+  TURN_TIMEOUT_OPTIONS
+} from "./channelLongTaskDefaults";
 
 /** MuseBot ConfigForm 风格：snake_case 字段名 + 分区标题 */
 export type ChannelPlatformFieldKind =
@@ -37,6 +42,11 @@ export type ChannelPlatformSection = {
   title: string;
   hint?: string;
   fields: ChannelPlatformField[];
+};
+
+export type ChannelFieldHelp = {
+  description: string;
+  example?: string;
 };
 
 const FEISHU_REGION_OPTIONS = [
@@ -219,29 +229,29 @@ function routingFields(type: string): ChannelPlatformField[] {
 }
 
 const EXECUTION_MODE_OPTIONS = [
-  { label: "sync", value: "sync" },
-  { label: "auto", value: "auto" },
-  { label: "async", value: "async" }
+  { label: "sync — 同步等待结果", value: "sync" },
+  { label: "auto — 按关键词自动路由", value: "auto" },
+  { label: "async — 提交后台任务", value: "async" }
 ];
 
 const PROGRESS_MODE_OPTIONS = [
-  { label: "off", value: "off" },
-  { label: "text", value: "text" },
-  { label: "steps", value: "steps" }
+  { label: "off — 不展示进度", value: "off" },
+  { label: "text — 文本进度/心跳", value: "text" },
+  { label: "steps — Team 成员步骤摘要", value: "steps" }
 ];
 
 function longTaskFields(): ChannelPlatformField[] {
   return [
-    { museKey: "turn_timeout_sec", bind: { source: "config", key: "turn_timeout_sec" }, kind: "text", placeholder: "900" },
-    { museKey: "first_byte_timeout_sec", bind: { source: "config", key: "first_byte_timeout_sec" }, kind: "text", placeholder: "45" },
+    { museKey: "turn_timeout_sec", bind: { source: "config", key: "turn_timeout_sec" }, kind: "select", options: TURN_TIMEOUT_OPTIONS },
+    { museKey: "first_byte_timeout_sec", bind: { source: "config", key: "first_byte_timeout_sec" }, kind: "select", options: FIRST_BYTE_TIMEOUT_OPTIONS },
     { museKey: "execution_mode", bind: { source: "config", key: "execution_mode" }, kind: "select", options: EXECUTION_MODE_OPTIONS },
     { museKey: "progress_mode", bind: { source: "config", key: "progress_mode" }, kind: "select", options: PROGRESS_MODE_OPTIONS },
-    { museKey: "progress_quiet_sec", bind: { source: "config", key: "progress_quiet_sec" }, kind: "text" },
-    { museKey: "ack_message", bind: { source: "config", key: "ack_message" }, kind: "text" },
-    { museKey: "heartbeat_message", bind: { source: "config", key: "heartbeat_message" }, kind: "text" },
-    { museKey: "async_graph_id", bind: { source: "config", key: "async_graph_id" }, kind: "text" },
-    { museKey: "async_team_id", bind: { source: "config", key: "async_team_id" }, kind: "text" },
-    { museKey: "async_cron_task_id", bind: { source: "config", key: "async_cron_task_id" }, kind: "text" },
+    { museKey: "progress_quiet_sec", bind: { source: "config", key: "progress_quiet_sec" }, kind: "select", options: PROGRESS_QUIET_OPTIONS },
+    { museKey: "ack_message", bind: { source: "config", key: "ack_message" }, kind: "text", placeholder: "收到，正在处理…" },
+    { museKey: "heartbeat_message", bind: { source: "config", key: "heartbeat_message" }, kind: "text", placeholder: "仍在处理中… {{elapsed}}" },
+    { museKey: "async_graph_id", bind: { source: "config", key: "async_graph_id" }, kind: "text", placeholder: "graph-uuid" },
+    { museKey: "async_team_id", bind: { source: "config", key: "async_team_id" }, kind: "text", placeholder: "team-uuid" },
+    { museKey: "async_cron_task_id", bind: { source: "config", key: "async_cron_task_id" }, kind: "text", placeholder: "cron-task-uuid" },
     { museKey: "streaming_enabled", bind: { source: "config", key: "streaming_enabled" }, kind: "toggle" }
   ];
 }

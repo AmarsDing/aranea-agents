@@ -34,7 +34,7 @@
 
 | 模块 | 开发计划 |
 |------|----------|
-| Memory | [12-16 memory-development.md](./12-16%20memory-development.md) |
+| Memory | [memory/README.md](./memory/README.md) · [memory-development.md](./memory/memory-development.md) |
 | Channel | [17-channel-development.md](./17-channel-development.md) · [× Agent/Team 集成](./17-channel-agent-team-integration.md) · [**长任务 Phase E**](./17-channel-development.md#10-长任务异步执行phase-e) · [**M55 长任务路由**](./55-chat-channel-cursor-development.md#phase-a--配置与路由p0约-3-天) |
 | Monitor | [18-monitor-development.md](./18-monitor-development.md)（运维 `/monitor/logs`）· [Dashboard 概览](./18-monitor-dashboard-development.md)（`/overview`） |
 | FlowLogger | [52-flow-logger.md](./52-flow-logger.md) · [design](./52-flow-logger.design.md) · [开发计划](./52-flow-logger-development.md) · [Slog 移除](../changelog/2026-05-20-FlowLog-V2-SlogRemoval.md) |

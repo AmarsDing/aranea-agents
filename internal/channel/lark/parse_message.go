@@ -55,6 +55,72 @@ func parseFeishuTextBody(content string, mentions []*larkim.MentionEvent) string
 	return stripFeishuMentions(body.Text, mentions)
 }
 
+// ParseFeishuPostBody converts Feishu post message JSON to plain text (F-05).
+func ParseFeishuPostBody(content string) string {
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return ""
+	}
+	var wrap struct {
+		Post map[string]struct {
+			Title   string `json:"title"`
+			Content [][]struct {
+				Tag      string `json:"tag"`
+				Text     string `json:"text"`
+				Href     string `json:"href"`
+				UserID   string `json:"user_id"`
+				UserName string `json:"user_name"`
+			} `json:"content"`
+		} `json:"post"`
+	}
+	if err := json.Unmarshal([]byte(content), &wrap); err != nil || len(wrap.Post) == 0 {
+		return ""
+	}
+	var parts []string
+	for _, body := range wrap.Post {
+		if t := strings.TrimSpace(body.Title); t != "" {
+			parts = append(parts, t)
+		}
+		for _, row := range body.Content {
+			var line []string
+			for _, inline := range row {
+				switch strings.ToLower(strings.TrimSpace(inline.Tag)) {
+				case "text", "a":
+					if s := strings.TrimSpace(inline.Text); s != "" {
+						line = append(line, s)
+					} else if s := strings.TrimSpace(inline.Href); s != "" {
+						line = append(line, s)
+					}
+				case "at":
+					if s := strings.TrimSpace(inline.UserName); s != "" {
+						line = append(line, "@"+s)
+					} else if s := strings.TrimSpace(inline.UserID); s != "" {
+						line = append(line, "@"+s)
+					}
+				default:
+					if s := strings.TrimSpace(inline.Text); s != "" {
+						line = append(line, s)
+					}
+				}
+			}
+			if len(line) > 0 {
+				parts = append(parts, strings.Join(line, ""))
+			}
+		}
+	}
+	return strings.TrimSpace(strings.Join(parts, "\n"))
+}
+
+func parseFeishuMessageBody(content, msgType string, mentions []*larkim.MentionEvent) string {
+	switch strings.TrimSpace(strings.ToLower(msgType)) {
+	case "post":
+		if text := ParseFeishuPostBody(content); text != "" {
+			return text
+		}
+	}
+	return parseFeishuTextBody(content, mentions)
+}
+
 // InboundEventFromWSMessage normalizes larkws P2MessageReceiveV1 into a channel inbound event.
 func InboundEventFromWSMessage(message *larkim.P2MessageReceiveV1) (port.InboundEvent, bool) {
 	if message == nil || message.Event == nil || message.Event.Message == nil {
@@ -93,10 +159,11 @@ func InboundEventFromWSMessage(message *larkim.P2MessageReceiveV1) (port.Inbound
 		ChatType:      feishuChatType(message),
 		SenderType:    feishuSenderType(message),
 		MessageType:   msgType,
-		Text:          parseFeishuTextBody(content, msg.Mentions),
+		Text:          parseFeishuMessageBody(content, msgType, msg.Mentions),
 		Mentioned:     len(msg.Mentions) > 0,
 		OpenID:        openID,
 		UserID:        userID,
+		ThreadID:      feishuMessageThreadID(msg),
 		IngressSource: "websocket",
 	})
 	return ev, ok
@@ -128,4 +195,11 @@ func firstNonEmptyPeerID(parts ...string) string {
 		}
 	}
 	return ""
+}
+
+func feishuMessageThreadID(msg *larkim.EventMessage) string {
+	if msg == nil || msg.ThreadId == nil {
+		return ""
+	}
+	return strings.TrimSpace(*msg.ThreadId)
 }

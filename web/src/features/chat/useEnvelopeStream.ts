@@ -10,6 +10,18 @@ import {
   releaseGlobalWsConsumer,
   shouldUseGlobalWsHub,
 } from "./globalWsHub";
+export type {
+  GraphNodeState,
+  GraphExecutionState,
+  GraphStreamInterrupt,
+  GraphStreamExecutionSummary,
+} from "../../realtime/graphState";
+import type {
+  GraphNodeState,
+  GraphExecutionState,
+  GraphStreamInterrupt,
+  GraphStreamExecutionSummary,
+} from "../../realtime/graphState";
 
 export type UseEnvelopeStreamOptions = {
   sessionId: string;
@@ -396,52 +408,6 @@ export function useMonitorStream(sessionId: string, opts?: { global?: boolean })
     toggleLog,
   };
 }
-
-export type GraphNodeState = {
-  nodeId: string;
-  nodeType: string;
-  status: "pending" | "running" | "completed" | "error" | "interrupted";
-  startTime?: string;
-  endTime?: string;
-  durationNs?: number;
-  error?: string;
-  stepNumber?: number;
-};
-
-export type GraphExecutionState = {
-  executionId: string;
-  graphId: string;
-  status: "pending" | "running" | "completed" | "failed" | "cancelled" | "waiting_human";
-  currentNode?: string;
-  totalSteps?: number;
-  durationNs?: number;
-  nodes: Map<string, GraphNodeState>;
-};
-
-export type GraphStreamInterrupt = {
-  nodeId: string;
-  interruptKey: string;
-  prompt: string;
-  checkpointId: string;
-  lineageId: string;
-  interruptValue?: unknown;
-};
-
-export type GraphStreamExecutionSummary = {
-  executionId: string;
-  graphId: string;
-  totalSteps: number;
-  durationMs: number;
-  finalStateKeys: number;
-  nodes: Array<{
-    nodeId: string;
-    nodeType: string;
-    status: string;
-    durationMs: number;
-    error: string;
-    stepNumber: number;
-  }>;
-};
 
 function parseGraphStreamSummary(raw: unknown): GraphStreamExecutionSummary | null {
   if (!raw || typeof raw !== "object") return null;

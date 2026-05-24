@@ -47,6 +47,10 @@
 | 12 | 不得在 Server 层写业务路由或手写 `HandleFunc` | 只做 `Register*HTTPServer`/`Register*ServiceServer` |
 | 13 | 所有 `go func()` 必须走 `pkg/safego.Go` / `pkg/safego.GoRecover` | 禁止裸 `go func()` 不处理 panic |
 | 14 | 不得在 biz 层使用 `fmt.Errorf` 返回业务错误 | 统一使用 `kerrors.BadRequest/NotFound/InternalServer` |
+| 15 | 非 Service 层不得 import `api/*/v1` proto 包 | proto 映射只在 Service 层；biz 定义端口接口，其他模块依赖端口 |
+| 16 | 跨模块调用不得持有对方 Service 具体类型 | 通过 biz 级窄接口（端口）交互，Wire 绑定在 Service 层 |
+| 17 | Graph 运行时类型不得泄漏到 biz | biz 暴露 `GraphBuildConfig`/`GraphRuntime`/`GraphExecutor` 端口，trpc graph 留在 adapter |
+| 18 | 不得新增已无调用者的 deprecated 方法 | 死代码即删，不保留 Deprecated 标记 |
 
 ### 代码探索约束（CodeGraph）
 
@@ -175,13 +179,23 @@ internal/data           ← Repo 实现（Ent ORM + pgvector）
 
 ### 1.3 逐包 import 规则
 
+**Kratos 标准 4 层**：
+
 | 包路径 | ✅ 允许 import | ❌ 禁止 import |
 |--------|----------------|----------------|
 | `internal/server/*` | `internal/service`、`internal/conf`、kratos、`pkg/auth`、`pkg/validate` | `pkg/trpc-agent-go` / 框架运行时私有 import、`runner.Runner`、`llmagent.New` |
 | `internal/biz/*` | stdlib、kratos errors、本仓 biz/data API | `pkg/trpc-agent-go` 任何包、`api/*/v1`、框架运行时 toolset/skill 类型 |
-| `internal/service/*` | `internal/biz`、`internal/team`、`internal/agent`、`internal/session/trpc`、`internal/provider`、`internal/tools`，框架 Runner/Agent 装配 API | 绕过 `internal/tools` 大量直连拼装底层 `tool` |
+| `internal/service/*` | `internal/biz`、项目扩展模块、框架 Runner/Agent 装配 API | 绕过 `internal/tools` 大量直连拼装底层 `tool` |
+| `internal/data/*` | `internal/biz`（实现 Repo 接口）、`internal/conf`、Ent、pgvector | `api/*/v1`、`pkg/trpc-agent-go` |
+
+**项目扩展模块**（在 service 与 biz 之间，遵循相同依赖方向）：
+
+| 包路径 | ✅ 允许 import | ❌ 禁止 import |
+|--------|----------------|----------------|
 | `internal/agent/*` | `internal/biz`、`internal/provider`、`internal/data/...`（如需）、`internal/session/trpc`、`pkg/trpc-agent-go` / 框架运行时 | — |
-| `internal/team/*` | `internal/biz`、`internal/agent`、`internal/provider`、`internal/tools`、`pkg/trpc-agent-go` / 框架运行时 | — |
+| `internal/team/*` | `internal/biz`、`internal/agent`、`internal/provider`、`internal/tools`、`pkg/trpc-agent-go` / 框架运行时 | `api/*/v1` |
+| `internal/channel/*` | `internal/biz`、`internal/channel/port`、`internal/event` | 对方 Service 具体类型、`api/*/v1` |
+| `internal/graph/adapter` | `internal/biz`、`internal/agent`、`internal/event` | 无关业务 Usecase |
 | `internal/provider/*` | `internal/biz`、`pkg/trpc-agent-go` / 框架 `model` 适配 | — |
 | `internal/tools/*` | `internal/biz`、框架 `tool` API（由 `pkg/trpc-agent-go` 暴露或兼容层 re-export） | — |
 
@@ -585,8 +599,29 @@ cmd/admin/wire.go                         ← Wire 注入
 | 同步调用 | Usecase 之间通过接口调用 | 直接 import 另一模块的 data |
 | 异步事件 | 通过 `Broker` 发布/订阅 | 通过全局变量共享状态 |
 | 状态共享 | 数据库 | 包级变量 |
+| 跨模块调用 | 通过 biz 级窄接口（端口） | 持有对方 Service 完整具体类型 |
 
-### 6.3 接口隔离
+### 6.3 模块解耦端口
+
+> 模块间交互必须通过 biz 级窄接口（端口），禁止跨模块持有具体类型。详细架构见 [需求/0-module-decoupling-architecture.md](../需求/0-module-decoupling-architecture.md)。
+
+| 模块 | 端口 | 用途 | 位置 |
+|------|------|------|------|
+| Channel → Chat | `biz.NativeTurnGateway` | 同步 Turn 执行 + 运行控制 | `internal/biz/turn_input.go` |
+| Channel → Graph | `biz.GraphExecutor` | Graph 执行（返回 executionID） | `internal/biz/graph.go` |
+| Channel → Job | `*biz.ChannelTurnJobUsecase` | Job 创建/更新/取消（待收敛为 `ChannelJobGateway`） | — |
+| Team → Chat | `biz.TurnInput` | Team turn 输入（proto 映射在 service） | `internal/biz/turn_input.go` |
+| Graph → Biz | `biz.GraphBuildConfig` / `biz.GraphRuntime` | Graph 配置与运行时端口 | `internal/biz/` |
+| Graph → Resolver | `build_deps.go` 接口 | Agent/Tool/Model resolver 分离注入 | `internal/graph/trpc/build_deps.go` |
+
+**端口设计原则**：
+
+1. **接口定义在 biz 层**：消费方 import biz 接口，不 import 具体实现
+2. **Wire 绑定在 service 层**：`wire.Bind(new(biz.XxxPort), new(*XxxService))`
+3. **返回值用 biz 类型**：端口方法返回 `string`/`biz.Xxx`，不返回 proto 类型
+4. **构造函数收窄**：只接收需要的端口，不接收"上帝对象"
+
+### 6.4 接口隔离
 
 ```go
 type AgentReader interface {
@@ -606,7 +641,7 @@ type AgentRepository interface {
 }
 ```
 
-### 6.4 配置管理
+### 6.5 配置管理
 
 1. **配置来源优先级**：环境变量 > 系统设置 > 配置文件 > 代码默认值
 2. **配置结构**：在 `internal/conf/conf.proto` 中定义
@@ -627,6 +662,10 @@ type AgentRepository interface {
 - [ ] **Biz 层**：无 `pkg/trpc-agent-go` import，无 proto import
 - [ ] **Data 层**：仅 `Ent()`/`Postgres()` 访问，无并联 SQLite 连接
 - [ ] **Agent/Tools/Team 层**：框架 API 调用合规，不复制框架内部逻辑
+- [ ] **模块解耦**：跨模块调用走 biz 级窄接口，不持有对方 Service 具体类型
+- [ ] **Channel**：不 import `graphv1` 等 proto 包，不持有 `*ChatService`
+- [ ] **Team**：不 import chat proto，输入用 `biz.TurnInput`
+- [ ] **Graph**：biz 层不见 trpc graph 类型，resolver 通过接口注入
 - [ ] **新增工具**：先在 `Registry()` 注册 `ToolRegistration`，再在 `builtin_tools_seed.go` 添加种子
 - [ ] **流式工具**：实现 `StreamableTool` 接口，必须发送 `FinalResultChunk`
 - [ ] **记忆工具**：通过 `memory.Service.Tools()` 注入，不手动构造

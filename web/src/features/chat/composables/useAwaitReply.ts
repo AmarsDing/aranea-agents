@@ -1,5 +1,5 @@
 import { ref, type Ref } from "vue";
-import { awaitUserReply } from "../api";
+import { useChatRuntimeStore } from "../../../stores/chat/runtimeStore";
 import {
   AWAIT_KIND_TOOL_CONFIRM,
   TOOL_CONFIRM_REPLY_APPROVE,
@@ -47,8 +47,9 @@ export function useAwaitReply() {
       const sid = deps.resolveSessionId();
       const text = deps.inputText.value.trim();
       if (!sid || !text) return;
+      const runtime = useChatRuntimeStore();
       try {
-        const ok = await awaitUserReply(sid, text, deps.awaitingRunId.value || undefined);
+        const ok = await runtime.submitAwaitReply(sid, text, deps.awaitingRunId.value || undefined);
         if (ok) {
           deps.inputText.value = "";
           await deps.refreshRunStatus();
@@ -64,8 +65,9 @@ export function useAwaitReply() {
       const sid = deps.resolveSessionId();
       if (!sid || deps.awaitKind.value !== AWAIT_KIND_TOOL_CONFIRM) return;
       const reply = approved ? TOOL_CONFIRM_REPLY_APPROVE : TOOL_CONFIRM_REPLY_DENY;
+      const runtime = useChatRuntimeStore();
       try {
-        const ok = await awaitUserReply(sid, reply, deps.awaitingRunId.value || undefined);
+        const ok = await runtime.submitAwaitReply(sid, reply, deps.awaitingRunId.value || undefined);
         if (ok) {
           await deps.refreshRunStatus();
         } else {

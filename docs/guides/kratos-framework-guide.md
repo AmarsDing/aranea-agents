@@ -107,13 +107,23 @@ internal/data           ← Repo 实现
 
 **逐包 import 规则**（详见 [AI-DEVELOPMENT-SPECIFICATION.md §1.3](./AI-DEVELOPMENT-SPECIFICATION.md#13-逐包-import-规则)）：
 
+**Kratos 标准 4 层**：
+
 | 包 | 可 import | 不可 import |
 |----|-----------|-------------|
 | `server/*` | service, conf, kratos, pkg/auth | trpc-agent-go, runner, llmagent |
 | `biz/*` | stdlib, kratos errors, 本仓 biz/data API | trpc-agent-go, api/*/v1 |
-| `service/*` | biz, team, agent, session/trpc, provider, tools, 框架装配 API | 绕过 tools 直连拼装底层 tool |
+| `service/*` | biz, 项目扩展模块, 框架装配 API | 绕过 tools 直连拼装底层 tool |
+| `data/*` | biz（实现 Repo 接口）, conf, Ent, pgvector | api/*/v1, trpc-agent-go |
+
+**项目扩展模块**：
+
+| 包 | 可 import | 不可 import |
+|----|-----------|-------------|
 | `agent/*` | biz, provider, data(如需), session/trpc, trpc-agent-go | — |
-| `team/*` | biz, agent, provider, tools, trpc-agent-go | — |
+| `team/*` | biz, agent, provider, tools, trpc-agent-go | api/*/v1 |
+| `channel/*` | biz, channel/port, event | 对方 Service 具体类型, api/*/v1 |
+| `graph/adapter` | biz, agent, event | 无关业务 Usecase |
 | `provider/*` | biz, trpc-agent-go model 适配 | — |
 | `tools/*` | biz, trpc-agent-go tool API | — |
 

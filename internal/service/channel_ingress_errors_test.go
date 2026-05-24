@@ -9,8 +9,8 @@ import (
 
 func TestFormatChannelTurnErrorMessageTimeout(t *testing.T) {
 	msg := formatChannelTurnErrorMessage(context.DeadlineExceeded)
-	if msg != channelTurnErrorTimeoutMsg {
-		t.Fatalf("deadline message = %q, want %q", msg, channelTurnErrorTimeoutMsg)
+	if msg != channelTurnErrorSyncCapMsg {
+		t.Fatalf("deadline message = %q, want %q", msg, channelTurnErrorSyncCapMsg)
 	}
 	if !turnErrorIsTimeout(context.DeadlineExceeded) {
 		t.Fatal("DeadlineExceeded should be timeout")
@@ -27,6 +27,13 @@ func TestFormatChannelTurnErrorMessageTurnTimeout(t *testing.T) {
 	}
 }
 
+func TestFormatChannelTurnErrorMessageBusy(t *testing.T) {
+	msg := formatChannelTurnErrorMessage(turnBusyError())
+	if msg != channelTurnErrorBusyMsg {
+		t.Fatalf("busy message = %q, want %q", msg, channelTurnErrorBusyMsg)
+	}
+}
+
 func TestFormatChannelTurnErrorMessageGeneric(t *testing.T) {
 	msg := formatChannelTurnErrorMessage(errors.New("internal sql: connection refused"))
 	if msg != channelTurnErrorGenericMsg {
@@ -34,6 +41,18 @@ func TestFormatChannelTurnErrorMessageGeneric(t *testing.T) {
 	}
 	if strings.Contains(msg, "sql") {
 		t.Fatal("must not leak internal error text to IM")
+	}
+}
+
+func TestTurnErrorIsCanceled(t *testing.T) {
+	if formatChannelTurnErrorMessage(context.Canceled) != "" {
+		t.Fatal("canceled should not produce IM error text")
+	}
+	if turnErrorIsTimeout(context.Canceled) {
+		t.Fatal("canceled must not be classified as timeout")
+	}
+	if !turnErrorIsCanceled(context.Canceled) {
+		t.Fatal("expected canceled")
 	}
 }
 

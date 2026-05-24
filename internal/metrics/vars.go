@@ -85,6 +85,12 @@ var (
 		Help: "Number of auto-memory extraction jobs by final status.",
 	}, []string{"status"})
 
+	// AutoMemoryLLMFallbackTotal counts consolidator fallbacks from LLM to heuristic extraction.
+	AutoMemoryLLMFallbackTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "aranea_auto_memory_llm_fallback_total",
+		Help: "Number of auto-memory jobs where LLM extraction failed and heuristic fallback was used.",
+	})
+
 	// AutoMemoryExtractionDuration tracks auto-memory extraction latency.
 	AutoMemoryExtractionDuration = promauto.NewHistogram(prometheus.HistogramOpts{
 		Name:    "aranea_auto_memory_extraction_duration_seconds",

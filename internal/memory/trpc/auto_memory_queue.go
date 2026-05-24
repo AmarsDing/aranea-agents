@@ -17,11 +17,19 @@ type AutoMemoryJobRequest struct {
 	FeedbackComment   string
 }
 
+// AutoMemoryQueue abstracts the job queue consumed by AutoMemoryWorker and sqlite memory service.
+type AutoMemoryQueue interface {
+	Enqueue(r AutoMemoryJobRequest)
+	Chan() <-chan AutoMemoryJobRequest
+}
+
 type MemoryJobQueue struct {
-	ch      chan AutoMemoryJobRequest
-	recent  sync.Map
+	ch       chan AutoMemoryJobRequest
+	recent   sync.Map
 	debounce time.Duration
 }
+
+var _ AutoMemoryQueue = (*MemoryJobQueue)(nil)
 
 func NewMemoryJobQueue(size int, debounce time.Duration) *MemoryJobQueue {
 	if size <= 0 {
@@ -37,6 +45,9 @@ func NewMemoryJobQueue(size int, debounce time.Duration) *MemoryJobQueue {
 }
 
 func (q *MemoryJobQueue) Enqueue(r AutoMemoryJobRequest) {
+	if q == nil {
+		return
+	}
 	if r.EnqueuedAt.IsZero() {
 		r.EnqueuedAt = time.Now()
 	}
@@ -54,39 +65,39 @@ func (q *MemoryJobQueue) Enqueue(r AutoMemoryJobRequest) {
 	}
 }
 
-func (q *MemoryJobQueue) Chan() <-chan AutoMemoryJobRequest { return q.ch }
-
-var globalAutoMemoryQueue = NewMemoryJobQueue(256, 30*time.Second)
-
-func EnqueueAutoMemory(r AutoMemoryJobRequest) {
-	globalAutoMemoryQueue.Enqueue(r)
+func (q *MemoryJobQueue) Chan() <-chan AutoMemoryJobRequest {
+	if q == nil {
+		return nil
+	}
+	return q.ch
 }
 
-func GlobalAutoMemoryQueue() *MemoryJobQueue { return globalAutoMemoryQueue }
-
-// EnqueueAutoMemoryAdapter adapts the global queue to the biz.AutoMemoryEnqueuer signature.
-func EnqueueAutoMemoryAdapter(appName, sessionID string, enqueuedAt time.Time) {
-	EnqueueAutoMemory(AutoMemoryJobRequest{
-		AppName:    appName,
-		SessionID:  sessionID,
-		EnqueuedAt: enqueuedAt,
-	})
+// NewAutoMemoryEnqueuer adapts a wired queue to biz.AutoMemoryEnqueuer.
+func NewAutoMemoryEnqueuer(q AutoMemoryQueue) func(appName, sessionID string, enqueuedAt time.Time) {
+	return func(appName, sessionID string, enqueuedAt time.Time) {
+		if q == nil {
+			return
+		}
+		q.Enqueue(AutoMemoryJobRequest{
+			AppName:    appName,
+			SessionID:  sessionID,
+			EnqueuedAt: enqueuedAt,
+		})
+	}
 }
 
-// EnqueueFeedbackMemoryAdapter adapts the global queue to biz.FeedbackMemoryEnqueuer.
-func EnqueueFeedbackMemoryAdapter(sessionID, messageID, rating, comment string, enqueuedAt time.Time) {
-	EnqueueAutoMemory(AutoMemoryJobRequest{
-		SessionID:         sessionID,
-		EnqueuedAt:        enqueuedAt,
-		FeedbackMessageID: messageID,
-		FeedbackRating:    rating,
-		FeedbackComment:   comment,
-	})
-}
-
-// SetGlobalAutoMemoryQueueForTest swaps the process-wide queue (tests only).
-func SetGlobalAutoMemoryQueueForTest(q *MemoryJobQueue) *MemoryJobQueue {
-	prev := globalAutoMemoryQueue
-	globalAutoMemoryQueue = q
-	return prev
+// NewFeedbackMemoryEnqueuer adapts a wired queue to biz.FeedbackMemoryEnqueuer.
+func NewFeedbackMemoryEnqueuer(q AutoMemoryQueue) func(sessionID, messageID, rating, comment string, enqueuedAt time.Time) {
+	return func(sessionID, messageID, rating, comment string, enqueuedAt time.Time) {
+		if q == nil {
+			return
+		}
+		q.Enqueue(AutoMemoryJobRequest{
+			SessionID:         sessionID,
+			EnqueuedAt:        enqueuedAt,
+			FeedbackMessageID: messageID,
+			FeedbackRating:    rating,
+			FeedbackComment:   comment,
+		})
+	}
 }

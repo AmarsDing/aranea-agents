@@ -152,6 +152,8 @@ const {
 
 onMounted(() => {
   void loadCollections();
-  void knowledgeStore.loadEmbedderConfig();
+  void knowledgeStore.loadEmbedderConfig().catch((e) => {
+    console.warn("[knowledge] embedder config load failed", e);
+  });
 });
 </script>

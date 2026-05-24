@@ -34,6 +34,7 @@ type ChannelLongTaskConfig struct {
 	AutoEscalateAfterSoftBudget bool
 	SoftEscalateConfirmSec      int
 	DurableDeadlineSec          int
+	BusyInputMode               string
 }
 
 // ParseChannelLongTaskConfig reads long-task settings from channel config_json.
@@ -59,6 +60,7 @@ func ParseChannelLongTaskConfig(configJSON string) ChannelLongTaskConfig {
 			AsyncTeamID         *string   `json:"async_team_id"`
 			AsyncCronTaskID     *string   `json:"async_cron_task_id"`
 			AsyncKeywords       *[]string `json:"async_keywords"`
+			BusyInputMode               *string `json:"busy_input_mode"`
 			AutoEscalateAfterSoftBudget *bool `json:"auto_escalate_after_soft_budget"`
 			SoftEscalateConfirmSec      *int  `json:"soft_escalate_confirm_sec"`
 			DurableDeadlineSec          *int  `json:"durable_deadline_sec"`
@@ -112,7 +114,15 @@ func ParseChannelLongTaskConfig(configJSON string) ChannelLongTaskConfig {
 	if env.Config.DurableDeadlineSec != nil && *env.Config.DurableDeadlineSec > 0 {
 		cfg.DurableDeadlineSec = *env.Config.DurableDeadlineSec
 	}
+	if env.Config.BusyInputMode != nil {
+		cfg.BusyInputMode = strings.TrimSpace(strings.ToLower(*env.Config.BusyInputMode))
+	}
 	return cfg
+}
+
+// ChannelBusyInputInterrupt reports config_json.config.busy_input_mode=interrupt (F-10).
+func ChannelBusyInputInterrupt(configJSON string) bool {
+	return ParseChannelLongTaskConfig(configJSON).BusyInputMode == "interrupt"
 }
 
 // DefaultSoftEscalateConfirmSec is the wait before auto-escalating after soft budget IM notice.

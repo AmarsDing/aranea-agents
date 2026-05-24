@@ -38,8 +38,10 @@ type TRPCToolAssemblyDeps struct {
 
 // TRPCMemoryKnowledgeDeps documents memory/knowledge ports on TRPCBuilderDeps.
 type TRPCMemoryKnowledgeDeps struct {
-	HasMemory          bool
-	MemoryAdmin        biz.SessionAdminStore
+	HasMemory      bool
+	MemoryAdmin    biz.SessionAdminStore
+	MemoryL2Recall biz.MemoryL2Recaller
+	MemoryL3Recall biz.MemoryL3Recaller
 	KnowledgeRetriever *knowledge.Retriever
 }
 
@@ -77,6 +79,8 @@ type TRPCBuilderDeps struct {
 	// TRPCMemoryKnowledgeDeps
 	HasMemory          bool
 	MemoryAdmin        biz.SessionAdminStore
+	MemoryL2Recall     biz.MemoryL2Recaller
+	MemoryL3Recall     biz.MemoryL3Recaller
 	KnowledgeRetriever *knowledge.Retriever
 	// TRPCPluginDeps
 	Plugins       []trpcplugin.Plugin

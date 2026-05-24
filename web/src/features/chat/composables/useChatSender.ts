@@ -2,7 +2,8 @@ import { ref, computed, type Ref, type ComputedRef } from "vue";
 import { useQuasar } from "quasar";
 import { useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
-import { stopGeneration, enqueueMessage } from "../api";
+import { stopGeneration } from "../api";
+import { useChatRuntimeStore } from "../../../stores/chat/runtimeStore";
 import { useAuthStore } from "../../../stores/auth";
 import { useAppStore } from "../../../stores/app";
 import { useChatStore } from "../../../stores/chat";
@@ -137,8 +138,9 @@ export function useChatSender(deps: SenderDeps) {
   }
 
   async function enqueueDuringRun(sessionId: string, content: string, pendingUserId: string) {
+    const runtime = useChatRuntimeStore();
     try {
-      const res = await enqueueMessage(sessionId, content);
+      const res = await runtime.enqueue(sessionId, content);
       if (res.accepted) {
         dropPendingUserRow(sessionId, pendingUserId);
         $q.notify({

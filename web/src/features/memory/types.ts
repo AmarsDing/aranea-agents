@@ -225,6 +225,30 @@ export type EvolutionEvent = {
   created_at: string;
 };
 
+export type CascadeAffectedEntity = {
+  entity_id: string;
+  entity_name: string;
+  entity_type: string;
+  relation_type: string;
+  hops: number;
+};
+
+export type CascadeProposal = {
+  id: string;
+  agent_id: string;
+  trigger_entity_id: string;
+  trigger_entity_name: string;
+  trigger_attribute: string;
+  old_value: string;
+  new_value: string;
+  affected_entities?: CascadeAffectedEntity[];
+  status: string;
+  risk_level: string;
+  rationale: string;
+  created_at: string;
+  updated_at?: string;
+};
+
 export type EvolutionMetricsReport = {
   events_total: number;
   events_reverted: number;
@@ -241,4 +265,44 @@ export type AgentSkillStat = {
   failures: number;
   preference_score: number;
   last_used_at: string;
+};
+
+export type MemoryRecallScoreBreakdown = {
+  keyword: number;
+  vector: number;
+  importance: number;
+  recency: number;
+  cross_encoder: number;
+  total: number;
+};
+
+export type MemoryRecallHit = {
+  layer: string;
+  id: string;
+  title?: string;
+  summary?: string;
+  statement?: string;
+  scores: MemoryRecallScoreBreakdown;
+};
+
+export type CompositeSearchHit = {
+  layer: string;
+  id: string;
+  text: string;
+  score: number;
+};
+
+export type MemoryWorkerStatus = {
+  jobs_done: number;
+  jobs_dead: number;
+  llm_fallback_total: number;
+  avg_extraction_seconds: number;
+  episode_backfill_total: number;
+};
+
+export type MemoryPlatformSettings = {
+  policy_strict: boolean;
+  episode_backfill_disabled: boolean;
+  env_policy_strict_override: boolean;
+  env_episode_backfill_disabled_override: boolean;
 };

@@ -23,6 +23,7 @@ type FeishuInboundParams struct {
 	Mentioned     bool
 	OpenID        string
 	UserID        string
+	ThreadID      string
 	IngressSource string // "websocket" | "webhook" — for audit only
 }
 
@@ -37,7 +38,7 @@ func AcceptFeishuInbound(p FeishuInboundParams) (bool, string) {
 		}
 		return false, RejectNonUserSender
 	}
-	if mt := strings.TrimSpace(p.MessageType); mt != "" && mt != "text" {
+	if mt := strings.TrimSpace(p.MessageType); mt != "" && mt != "text" && mt != "post" {
 		return false, RejectNonTextMessage
 	}
 	if strings.TrimSpace(p.Text) == "" {

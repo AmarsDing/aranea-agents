@@ -51,19 +51,49 @@ type EvolutionEventInsert struct {
 	MetadataJSON  string
 }
 
-type SessionAdminStore interface {
+// L0AdminReader lists L0 assembly snapshots for observability.
+type L0AdminReader interface {
 	ListL0SnapshotRows(ctx context.Context, sessionID string, limit int32) ([][]byte, error)
+}
+
+// L1AdminReader lists L1 working-memory tasks and fields.
+type L1AdminReader interface {
 	ListL1TaskRows(ctx context.Context, sessionID, agentID, status, includeEnded string) ([][]byte, error)
 	ListL1FieldRows(ctx context.Context, taskID string, includeInternal bool) ([][]byte, error)
+}
+
+// L2RecallStore retrieves episodic (L2) memories for prompt injection and admin.
+type L2RecallStore interface {
+	ListEpisodeRowsForRecall(ctx context.Context, agentID, sessionID string, limit int32) ([][]byte, error)
+	RecallL2Episodes(ctx context.Context, agentID, sessionID, query string, queryEmbedding []float32, limit int32) ([][]byte, error)
+}
+
+// L3FactAdminStore manages semantic facts and L3 recall.
+type L3FactAdminStore interface {
 	ListFactRows(ctx context.Context, scopeType, scopeID, kind, status, keyword string, limit, offset int32) ([][]byte, int32, int32, int32, error)
+	ListFactRowsForUser(ctx context.Context, scopeType, scopeID, userID, keyword string, limit, offset int32) ([][]byte, error)
+	RecallL3Facts(ctx context.Context, scopeType, scopeID, userID, query string, queryEmbedding []float32, limit int32) ([][]byte, error)
+	UpsertFactRow(ctx context.Context, in FactUpsert) ([]byte, error)
+}
+
+// L4GraphAdminStore exposes L4 graph entities, neighborhood, and agent evolution rows.
+type L4GraphAdminStore interface {
 	ListEntityRows(ctx context.Context, scopeType, scopeID, workspaceID, userID, entityType, status, keyword string, limit, offset int32) ([][]byte, int32, error)
-	NeighborhoodJSON(ctx context.Context, centerID string, hops, maxNodes int32) ([]byte, error)
+	NeighborhoodJSON(ctx context.Context, centerID string, hops, maxNodes int32, queryAtRFC3339 string) ([]byte, error)
 	AgentIdentityJSON(ctx context.Context, agentID string) ([]byte, error)
 	AgentStrategyJSON(ctx context.Context, agentID string) ([]byte, error)
 	EvolutionProposalRows(ctx context.Context, agentID, status string, limit int32) ([][]byte, error)
 	EvolutionEventRows(ctx context.Context, agentID string, limit int32) ([][]byte, error)
 	EvolutionMetricsJSON(ctx context.Context, agentID string) ([]byte, error)
-	UpsertFactRow(ctx context.Context, in FactUpsert) ([]byte, error)
 	InsertEvolutionEventRow(ctx context.Context, in EvolutionEventInsert) ([]byte, error)
 	DeleteSessionEventEntities(ctx context.Context, sessionID string) error
+}
+
+// SessionAdminStore is the composed admin port for L0–L4 session memory (typed sub-interfaces are preferred for new code).
+type SessionAdminStore interface {
+	L0AdminReader
+	L1AdminReader
+	L2RecallStore
+	L3FactAdminStore
+	L4GraphAdminStore
 }

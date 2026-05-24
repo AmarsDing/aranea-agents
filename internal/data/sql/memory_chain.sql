@@ -852,6 +852,46 @@ CREATE INDEX IF NOT EXISTS idx_memory_l2_index_meta_session_kind ON memory_l2_in
 CREATE INDEX IF NOT EXISTS idx_memory_event_marks_session ON memory_event_marks(session_id, mark_type, created_at);
 CREATE INDEX IF NOT EXISTS idx_memory_event_marks_episode ON memory_event_marks(episode_id);
 
+-- Policy audit trail (memory.design.md §2.4)
+
+CREATE TABLE IF NOT EXISTS memory_action_log (
+  id TEXT PRIMARY KEY,
+  action TEXT NOT NULL,
+  target_kind TEXT NOT NULL,
+  target_id TEXT NOT NULL,
+  reason TEXT NOT NULL DEFAULT '',
+  policy_version TEXT NOT NULL DEFAULT 'consolidate_v1',
+  source_event_ids_json TEXT NOT NULL DEFAULT '[]',
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_memory_action_log_target ON memory_action_log(target_kind, target_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_memory_action_log_created ON memory_action_log(created_at DESC);
+
+CREATE TABLE IF NOT EXISTS memory_cascade_proposals (
+  id TEXT PRIMARY KEY,
+  agent_id TEXT NOT NULL,
+  workspace_id TEXT NOT NULL DEFAULT '',
+  trigger_entity_id TEXT NOT NULL,
+  trigger_entity_name TEXT NOT NULL DEFAULT '',
+  trigger_attribute TEXT NOT NULL DEFAULT 'name',
+  old_value TEXT NOT NULL DEFAULT '',
+  new_value TEXT NOT NULL DEFAULT '',
+  affected_json TEXT NOT NULL DEFAULT '[]',
+  status TEXT NOT NULL DEFAULT 'pending',
+  risk_level TEXT NOT NULL DEFAULT 'medium',
+  rationale TEXT NOT NULL DEFAULT '',
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  reviewed_by TEXT NOT NULL DEFAULT '',
+  reviewed_at TEXT NOT NULL DEFAULT '',
+  expires_at TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_memory_cascade_proposals_agent_status ON memory_cascade_proposals(agent_id, status, created_at DESC);
+
 -- L3 semantic memory (aranea/docs/15 memory-L3-semantic.md 搂3)
 
 CREATE TABLE IF NOT EXISTS memory_facts (
@@ -1027,6 +1067,8 @@ CREATE TABLE IF NOT EXISTS memory_relations (
   status TEXT NOT NULL DEFAULT 'active',
   source_kind TEXT NOT NULL DEFAULT 'extracted',
   metadata_json TEXT NOT NULL DEFAULT '{}',
+  valid_from TEXT NOT NULL DEFAULT '',
+  valid_to TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   archived_at TEXT NOT NULL DEFAULT '',

@@ -1,10 +1,6 @@
 import { onUnmounted, ref, type Ref } from "vue";
-import {
-  cancelPendingMessage,
-  getPendingMessages,
-  updatePendingMessage,
-  type PendingMessage
-} from "../api";
+import { useChatRuntimeStore } from "../../../stores/chat/runtimeStore";
+import type { PendingMessage } from "../api";
 import { messageQueuedFromEnvelope, type RunStatusFromWs } from "../envelopeRunStatus";
 import type { Envelope } from "../envelope";
 
@@ -22,8 +18,9 @@ export function useFollowUpQueue(
       pendingMessages.value = [];
       return;
     }
+    const runtime = useChatRuntimeStore();
     try {
-      pendingMessages.value = await getPendingMessages(sid);
+      pendingMessages.value = await runtime.fetchPendingMessages(sid);
     } catch (err) {
       notifyError?.(err instanceof Error ? err.message : "加载排队消息失败");
       pendingMessages.value = [];
@@ -56,8 +53,9 @@ export function useFollowUpQueue(
   async function onCancelPending(pendingId: string) {
     const sid = sessionId.value;
     if (!sid || !pendingId) return;
+    const runtime = useChatRuntimeStore();
     try {
-      const ok = await cancelPendingMessage(sid, pendingId);
+      const ok = await runtime.cancelPending(sid, pendingId);
       if (ok) {
         pendingMessages.value = pendingMessages.value.filter((pm) => pm.id !== pendingId);
       } else {
@@ -71,8 +69,9 @@ export function useFollowUpQueue(
   async function onUpdatePending(pendingId: string, content: string) {
     const sid = sessionId.value;
     if (!sid || !pendingId || !content.trim()) return;
+    const runtime = useChatRuntimeStore();
     try {
-      const ok = await updatePendingMessage(sid, pendingId, content.trim());
+      const ok = await runtime.updatePending(sid, pendingId, content.trim());
       if (ok) {
         pendingMessages.value = pendingMessages.value.map((pm) =>
           pm.id === pendingId ? { ...pm, content: content.trim() } : pm

@@ -489,7 +489,9 @@ type Envelope struct {
 携带规则（投影器 / 服务层注入）：
 
 - `text_delta / text_done / tool_call / tool_result / runner_completion`：必带 `TurnID`，`Source` 来自 ctx。
-- `run_status` 进入 terminal 态（completed/failed/cancelled）：必带 `SessionRevision`。
+- `run_status` 进入 terminal 态（completed/failed/cancelled）：必带 `SessionRevision`（turn 收口 bump +1）。
+- `run_status` **sync** 态：用户消息已入库、turn 未结束；必带当前 `SessionRevision`（bump +1）。Web **不得**当作 turn 完成；仅 debounced `after_revision` hydrate，保留 streaming 占位。
+- 同一 turn 可能先后收到 `sync` 与 `completed` 两次 revision 事件（+2 累计），客户端以 `after_revision` 增量拉取即可。
 - Channel 入站：在 `executeInboundTurn` 注入 ctx → `Source = "channel"`；async 路径注入 `JobID`。
 
 ### 3.4 API 增量

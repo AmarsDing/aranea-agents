@@ -147,14 +147,18 @@ func (m *ingressSessionRepo) UpdateMessageFeedbackJSON(context.Context, string, 
 func (m *ingressSessionRepo) UpsertChatActivityMessage(context.Context, string, biz.ChatMessage) error {
 	return nil
 }
-func (m *ingressSessionRepo) UpdateRunnerSnapshotJSON(context.Context, string, string) error { return nil }
+func (m *ingressSessionRepo) UpdateRunnerSnapshotJSON(context.Context, string, string) error {
+	return nil
+}
 func (m *ingressSessionRepo) UpdateSessionContextFromLLMUsage(context.Context, string, int, int, int) error {
 	return nil
 }
 func (m *ingressSessionRepo) UpdateSessionContextAfterCompression(context.Context, string, int, int) error {
 	return nil
 }
-func (m *ingressSessionRepo) InsertSessionSummary(context.Context, biz.SessionSummary) error { return nil }
+func (m *ingressSessionRepo) InsertSessionSummary(context.Context, biz.SessionSummary) error {
+	return nil
+}
 func (m *ingressSessionRepo) MaxSessionSummaryToTurn(context.Context, string) (int, error) {
 	return 0, nil
 }

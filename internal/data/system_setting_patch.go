@@ -35,6 +35,8 @@ func ensureSystemSettingPatches(ctx context.Context, c *ent.Client) error {
 		{"web_research_search_depth", `ALTER TABLE system_settings ADD COLUMN web_research_search_depth TEXT NOT NULL DEFAULT 'basic'`},
 		{"web_research_timeout_sec", `ALTER TABLE system_settings ADD COLUMN web_research_timeout_sec INTEGER NOT NULL DEFAULT 15`},
 		{"web_research_http_proxy", `ALTER TABLE system_settings ADD COLUMN web_research_http_proxy TEXT NOT NULL DEFAULT ''`},
+		{"memory_policy_strict", `ALTER TABLE system_settings ADD COLUMN memory_policy_strict INTEGER NOT NULL DEFAULT 0`},
+		{"memory_episode_backfill_disabled", `ALTER TABLE system_settings ADD COLUMN memory_episode_backfill_disabled INTEGER NOT NULL DEFAULT 0`},
 	}
 	for _, p := range patches {
 		has, err := sqliteTableHasColumn(ctx, c, "system_settings", p.col)

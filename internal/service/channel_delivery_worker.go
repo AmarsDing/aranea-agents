@@ -96,14 +96,29 @@ func (h *ChannelIngress) enqueueOutboundText(
 		)
 		reply = channelOutboundEmptyFallback
 	}
-	_, err := h.channels.EnqueueOutboundDelivery(ctx, chRow.ID, biz.ChannelOutboundPayload{
-		Platform:       platform,
-		Recipient:      recipient,
-		Text:           reply,
-		IdempotencyKey: idempotencyKey,
-		Extra:          extra,
-	})
-	return err
+	limit := preview.PlatformTextLimit(platform)
+	pages := preview.SplitPages(reply, limit)
+	extra = h.applyFeishuOutboundMeta(chRow, extra)
+	if len(pages) == 0 {
+		pages = []string{reply}
+	}
+	var firstErr error
+	for i, page := range pages {
+		key := idempotencyKey
+		if len(pages) > 1 {
+			key = fmt.Sprintf("%s:page:%d", idempotencyKey, i+1)
+		}
+		if _, err := h.channels.EnqueueOutboundDelivery(ctx, chRow.ID, biz.ChannelOutboundPayload{
+			Platform:       platform,
+			Recipient:      recipient,
+			Text:           page,
+			IdempotencyKey: key,
+			Extra:          extra,
+		}); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
 }
 
 // ChannelDeliveryWorker drains pending outbound channel deliveries.

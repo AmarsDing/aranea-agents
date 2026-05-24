@@ -1,5 +1,4 @@
 package event
 
-import "github.com/google/wire"
-
-var ProviderSet = wire.NewSet(NewBus, NewBuffer)
+// Deprecated: use InfraProviderSet for dual-bus wiring.
+var ProviderSet = InfraProviderSet

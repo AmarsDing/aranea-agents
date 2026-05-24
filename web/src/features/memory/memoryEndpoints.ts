@@ -17,5 +17,13 @@ export const memoryEndpoints = {
   listEvolutionEvents: (agentId: string) => `v1/agents/${encodeURIComponent(agentId)}/evolution/events`,
   appendEvolutionEvent: (agentId: string) => `v1/agents/${encodeURIComponent(agentId)}/evolution/events`,
   getEvolutionMetrics: (agentId: string) => `v1/agents/${encodeURIComponent(agentId)}/evolution/metrics`,
-  upsertMemoryFact: () => "v1/memory/l3/facts"
+  upsertMemoryFact: () => "v1/memory/l3/facts",
+  listCascadeProposals: (agentId: string) => `v1/memory/cascade/proposals?agent_id=${encodeURIComponent(agentId)}`,
+  approveCascadeProposal: (id: string) => `v1/memory/cascade/proposals/${encodeURIComponent(id)}/approve`,
+  rejectCascadeProposal: (id: string) => `v1/memory/cascade/proposals/${encodeURIComponent(id)}/reject`,
+  debugMemoryRecall: () => "v1/memory/recall/debug",
+  compositeSearchMemories: () => "v1/memory/search/composite",
+  getMemoryWorkerStatus: () => "v1/memory/worker/status",
+  getMemoryPlatformSettings: () => "v1/memory/platform/settings",
+  updateMemoryPlatformSettings: () => "v1/memory/platform/settings"
 } as const;

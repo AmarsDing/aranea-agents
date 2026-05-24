@@ -42,6 +42,8 @@ func (SystemSetting) Fields() []ent.Field {
 		field.Text("web_research_search_depth").Default("basic"),
 		field.Int("web_research_timeout_sec").Default(15),
 		field.Text("web_research_http_proxy").Default(""),
+		field.Bool("memory_policy_strict").Default(false),
+		field.Bool("memory_episode_backfill_disabled").Default(false),
 		field.Time("update_time").Default(time.Now).UpdateDefault(time.Now),
 	}
 }

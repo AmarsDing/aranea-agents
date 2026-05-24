@@ -71,6 +71,10 @@ export type AgentRuntimeSettings = {
   l0_recent_window_tokens?: number;
   l0_summary_threshold?: number;
   l0_summary_keep_turns?: number;
+  l0_compress_provider?: string;
+  l0_compress_model?: string;
+  memory_worker_provider?: string;
+  memory_worker_model?: string;
   l0_truncate_strategy?: string;
   l0_inject_l1?: boolean;
   l0_inject_l3?: boolean;

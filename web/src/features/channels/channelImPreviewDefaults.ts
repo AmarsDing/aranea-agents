@@ -16,7 +16,8 @@ export const FEISHU_IM_PREVIEW_DEFAULTS: Record<string, string | number | boolea
   first_byte_timeout_sec: 120,
   progress_quiet_sec: 30,
   heartbeat_message: "仍在处理中… {{elapsed}}",
-  execution_mode: "sync"
+  execution_mode: "sync",
+  progress_mode: "text"
 };
 
 export function applyFeishuImPreviewDefaults(

@@ -13,6 +13,8 @@ import (
 	larkws "github.com/larksuite/oapi-sdk-go/v3/ws"
 )
 
+var feishuTextBatcher = NewTextInboundBatcher()
+
 func init() {
 	runtime.RegisterStarter("feishu", "websocket", RunWebSocket)
 }
@@ -30,6 +32,7 @@ func RunWebSocket(
 		return err
 	}
 	chRow := ch
+	batcher := feishuTextBatcher
 	onMessage := func(_ context.Context, message *larkim.P2MessageReceiveV1) error {
 		ev, ok := InboundEventFromWSMessage(message)
 		if !ok {
@@ -38,7 +41,7 @@ func RunWebSocket(
 		ev.PlatformType = "feishu"
 		// Feishu event ctx may cancel when the handler returns; process async like MuseBot.
 		safego.Go(ctx, "channel.feishu.ws.inbound", func() {
-			HandleWSInbound(ctx, chRow, creds, lookup, handler, ev)
+			batcher.Submit(ctx, wsInboundBridge{ctx: ctx, ch: chRow, creds: creds, lookup: lookup, handler: handler}, chRow, ev)
 		})
 		return nil
 	}

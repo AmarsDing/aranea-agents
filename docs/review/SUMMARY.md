@@ -44,7 +44,7 @@
 | 20 | Graph (36) | **77** | 节点类型待补 |
 | 21 | Knowledge (37) | **78** | OCR pipeline ✅ |
 | 21 | Channel (17) | **92** | P2/P3 闭合；流式 fail-fast + Feishu unary ID |
-| 23 | Memory (12–16) | **78** | P0 边界 ✅；双轨已文档化 |
+| 23 | Memory (12–16) | **82** | Wave 1–3：facts 收敛 + LLM 链 + Cascade 门控/RPC |
 | 24 | Telemetry (24) | **76** | otel_id 已关联 |
 | 25 | Artifact (27) | **72** | 附件引用缺失 |
 | 26 | Avatar (50) | **70** | 功能简单但规范 |
@@ -78,7 +78,7 @@
 | ~~P1-002~~ | 系统/Graph | ✅ data 层无 trpc runtime 绑定 |
 | P1-003 | Provider | `biz <-> provider` 轻度类型引用（`llminspect` 已拆主环）|
 | ~~P1-004~~ | Skill | ✅ multipart 经 Service 鉴权，设计例外 |
-| ~~P1-005~~ | Memory | ✅ 双轨见 `12-16 memory.design.md` §1.1 |
+| ~~P1-005~~ | Memory | ✅ 双轨见 `memory/memory.design.md` §二 |
 
 ### 功能缺口
 

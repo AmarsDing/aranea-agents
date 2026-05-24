@@ -83,6 +83,9 @@ type AgentRuntimeSettings struct {
 	// L0CompressProvider / L0CompressModel select a cheaper catalog model for session summarization; empty → use agent/session chat model.
 	L0CompressProvider        string
 	L0CompressModel           string
+	// MemoryWorkerProvider / MemoryWorkerModel select the LLM for async memory extraction; empty → L0 compress, then chat model.
+	MemoryWorkerProvider      string
+	MemoryWorkerModel         string
 	L0TruncateStrategy        string
 	L0InjectL1                bool
 	L0InjectL3                bool
@@ -218,6 +221,8 @@ func (s *AgentRuntimeSettings) GetMemory() MemoryCfg {
 		L0SummaryKeepTurns:       s.L0SummaryKeepTurns,
 		L0CompressProvider:       s.L0CompressProvider,
 		L0CompressModel:          s.L0CompressModel,
+		MemoryWorkerProvider:     s.MemoryWorkerProvider,
+		MemoryWorkerModel:        s.MemoryWorkerModel,
 		L0TruncateStrategy:       s.L0TruncateStrategy,
 		L0InjectL1:               s.L0InjectL1,
 		L0InjectL3:               s.L0InjectL3,

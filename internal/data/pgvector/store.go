@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/pgvector/pgvector-go"
@@ -167,4 +168,46 @@ LIMIT $4`, s.Table())
 		out = append(out, r)
 	}
 	return out, rows.Err()
+}
+
+// FactVectorContentPrefix returns the stable pgvector content prefix for one fact id.
+func FactVectorContentPrefix(factID string) string {
+	return "fact_id:" + strings.TrimSpace(factID) + "\n"
+}
+
+// ParseFactVectorContent splits pgvector content into fact id and statement text.
+func ParseFactVectorContent(content string) (factID, statement string) {
+	content = strings.TrimSpace(content)
+	if !strings.HasPrefix(content, "fact_id:") {
+		return "", content
+	}
+	rest := content[len("fact_id:"):]
+	if i := strings.IndexByte(rest, '\n'); i >= 0 {
+		return strings.TrimSpace(rest[:i]), strings.TrimSpace(rest[i+1:])
+	}
+	return strings.TrimSpace(rest), ""
+}
+
+func factVectorContent(factID, statement string) string {
+	return FactVectorContentPrefix(factID) + strings.TrimSpace(statement)
+}
+
+// UpsertFactVector replaces the pgvector read-index row for a memory_facts id.
+func (s *Store) UpsertFactVector(ctx context.Context, agentID, userID, factID, statement string, embedding []float32) error {
+	db, err := s.dbOrErr()
+	if err != nil {
+		return err
+	}
+	if err := s.expectDim(embedding); err != nil {
+		return err
+	}
+	prefix := FactVectorContentPrefix(factID)
+	delQ := fmt.Sprintf(`DELETE FROM %s WHERE agent_id = $1 AND user_id = $2 AND content LIKE $3`, s.Table())
+	if _, err := db.ExecContext(ctx, delQ, agentID, userID, prefix+"%"); err != nil {
+		return err
+	}
+	vec := pgvector.NewVector(embedding)
+	insQ := fmt.Sprintf(`INSERT INTO %s (agent_id, user_id, content, embedding) VALUES ($1, $2, $3, $4)`, s.Table())
+	_, err = db.ExecContext(ctx, insQ, agentID, userID, factVectorContent(factID, statement), vec)
+	return err
 }

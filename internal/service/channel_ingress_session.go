@@ -8,6 +8,7 @@ import (
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/channel/port"
 	arametrics "aranea-agents/internal/metrics"
 
 	"github.com/google/uuid"
@@ -125,10 +126,65 @@ func (h *ChannelIngress) prepareChannelChatRequest(
 	return req, nil
 }
 
+func channelChatRequestToTurnInput(req *chatv1.SendChatMessageRequest) biz.TurnInput {
+	if req == nil {
+		return biz.TurnInput{}
+	}
+	input := biz.TurnInput{
+		SessionID: strings.TrimSpace(req.GetSessionId()),
+		Content:   strings.TrimSpace(req.GetContent()),
+	}
+	if tid := strings.TrimSpace(req.GetTeamId()); tid != "" {
+		input.TeamID = tid
+	}
+	return input
+}
+
 func recordStreamUpdate(platform, phase string, err error) {
 	result := "ok"
 	if err != nil {
 		result = "error"
 	}
 	arametrics.ChannelStreamUpdateTotal.WithLabelValues(strings.ToLower(strings.TrimSpace(platform)), phase, result).Inc()
+}
+
+func (h *ChannelIngress) resolveInboundSessionID(ctx context.Context, chRow biz.Channel, ev port.InboundEvent, platform string) string {
+	if sid := strings.TrimSpace(ev.OutboundMeta["session_id"]); sid != "" {
+		return sid
+	}
+	peerKey, err := h.inboundPeerKey(chRow, ev)
+	if err != nil {
+		return ""
+	}
+	req, err := h.prepareChannelChatRequest(ctx, chRow, platform, peerKey, ev.PeerID, ev.Text)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(req.GetSessionId())
+}
+
+func (h *ChannelIngress) shouldSkipTurnErrorReply(ctx context.Context, chRow biz.Channel, ev port.InboundEvent, platform string, execErr error) bool {
+	if h == nil || h.chat == nil || execErr == nil {
+		return false
+	}
+	if turnErrorIsCanceled(execErr) {
+		return true
+	}
+	if TurnErrorCodeFromErr(execErr) != TurnErrTurnTimeout && TurnErrorCodeFromErr(execErr) != TurnErrFirstByteTimeout && !turnErrorIsTimeout(execErr) {
+		return false
+	}
+	sessionID := h.resolveInboundSessionID(ctx, chRow, ev, platform)
+	if sessionID == "" {
+		return false
+	}
+	phase := h.chat.ActiveSessionRunPhase(ctx, sessionID)
+	switch phase {
+	case biz.SessionRunPhaseDurable, biz.SessionRunPhaseEscalating:
+		return true
+	default:
+	}
+	if h.chat.HasActiveRun(sessionID) {
+		return true
+	}
+	return false
 }

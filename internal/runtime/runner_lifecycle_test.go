@@ -4,8 +4,8 @@ import (
 	"testing"
 )
 
-func TestNewPersistenceSetEmptyMemory(t *testing.T) {
-	p := NewPersistenceSet(nil, nil, nil, nil)
+func TestNewEmptyPersistenceSet(t *testing.T) {
+	p := NewEmptyPersistenceSet(nil, nil, nil)
 	if p.Memory.Available() {
 		t.Fatal("expected empty memory set")
 	}
@@ -19,7 +19,7 @@ func TestRunnerManagerNil(t *testing.T) {
 }
 
 func TestMemorySetWithAdminOnly(t *testing.T) {
-	ms := MemorySet{Admin: newSessionAdminStoreAdapter(nil)}
+	ms := MemorySet{Admin: nil}
 	if ms.Available() {
 		t.Fatal("TRPC nil should not be available")
 	}

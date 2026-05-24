@@ -24,7 +24,8 @@ const (
 )
 
 type L4GraphUsecase struct {
-	repo L4GraphRepo
+	repo    L4GraphRepo
+	cascade *L4CascadeUsecase
 }
 
 func NewL4GraphUsecase(repo L4GraphRepo) *L4GraphUsecase {
@@ -32,6 +33,12 @@ func NewL4GraphUsecase(repo L4GraphRepo) *L4GraphUsecase {
 		return nil
 	}
 	return &L4GraphUsecase{repo: repo}
+}
+
+func (uc *L4GraphUsecase) SetCascade(c *L4CascadeUsecase) {
+	if uc != nil {
+		uc.cascade = c
+	}
 }
 
 func (uc *L4GraphUsecase) WriteFromUserText(ctx context.Context, agentID, userID, text string) (int, error) {
@@ -77,7 +84,17 @@ func (uc *L4GraphUsecase) WriteFromUserText(ctx context.Context, agentID, userID
 		if existing.ID != "" {
 			entID = existing.ID
 		}
-		meta := mergeConflictMetadata(prepared.MetadataJSON, conflict, existing.Name)
+		profileName := name
+		if conflict {
+			if uc.cascade != nil {
+				_ = uc.cascade.ProposeNameConflict(ctx, agentID, entID, existing.Name, name)
+			}
+			// Gate: keep authoritative name until cascade proposal is approved.
+			prepared.Name = existing.Name
+			prepared.NameNormalized = strings.ToLower(strings.TrimSpace(existing.Name))
+			profileName = existing.Name
+		}
+		meta := mergeConflictMetadata(prepared.MetadataJSON, conflict, existing.Name, name)
 		if err := uc.repo.UpsertEntity(ctx, L4EntityWrite{
 			ID:             entID,
 			ScopeType:      "agent",
@@ -100,7 +117,7 @@ func (uc *L4GraphUsecase) WriteFromUserText(ctx context.Context, agentID, userID
 				Weight:       1.0,
 				Confidence:   prepared.Confidence,
 			})
-			cascade := uc.cascadeProfileTouch(anchorID, userID, agentID, name, now)
+			cascade := uc.cascadeProfileTouch(anchorID, userID, agentID, profileName, name, conflict, now)
 			_ = uc.repo.UpsertEntity(ctx, cascade)
 			written++
 		}
@@ -164,11 +181,17 @@ func (uc *L4GraphUsecase) preparePersonUpsert(existing L4EntitySnapshot, newName
 	}, conflict
 }
 
-func (uc *L4GraphUsecase) cascadeProfileTouch(anchorID, userID, agentID, personName string, now string) L4EntityWrite {
+func (uc *L4GraphUsecase) cascadeProfileTouch(anchorID, userID, agentID, personName, pendingName string, conflict bool, now string) L4EntityWrite {
 	desc := "Consolidated user knowledge for this agent"
 	if strings.TrimSpace(personName) != "" {
 		desc = "Profile includes: " + personName
 	}
+	meta := l4CascadeMeta
+	if conflict && strings.TrimSpace(pendingName) != "" {
+		desc = fmt.Sprintf("Profile includes: %s (pending name change to %s)", personName, pendingName)
+		meta = `{"source":"auto_memory","cascade":true,"pending_name_review":true}`
+	}
+	_ = now
 	return L4EntityWrite{
 		ID:             anchorID,
 		ScopeType:      "agent",
@@ -180,7 +203,7 @@ func (uc *L4GraphUsecase) cascadeProfileTouch(anchorID, userID, agentID, personN
 		Description:    desc,
 		Importance:     0.8,
 		Confidence:     0.9,
-		MetadataJSON:   l4CascadeMeta,
+		MetadataJSON:   meta,
 	}
 }
 
@@ -205,7 +228,7 @@ func slugEntityName(s string) string {
 	return s
 }
 
-func mergeConflictMetadata(base string, conflict bool, priorName string) string {
+func mergeConflictMetadata(base string, conflict bool, priorName, pendingName string) string {
 	if !conflict {
 		return base
 	}
@@ -215,6 +238,8 @@ func mergeConflictMetadata(base string, conflict bool, priorName string) string 
 	}
 	m["conflict"] = true
 	m["prior_name"] = priorName
+	m["pending_name"] = pendingName
+	m["gate"] = "cascade_proposal"
 	b, _ := json.Marshal(m)
 	return string(b)
 }

@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	chatv1 "aranea-agents/api/kratos/chat/v1"
 	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
@@ -39,15 +38,12 @@ func topologyJSON(def Definition) string {
 	return string(b)
 }
 
-func extractOpts(req *chatv1.SendChatMessageRequest) (dialogMode, prov, mod string, attN int) {
-	if req == nil {
-		return "", "", "", 0
-	}
-	o := req.GetOptions()
-	if o == nil {
-		return "", "", "", 0
-	}
-	return strings.TrimSpace(o.GetDialogMode()), strings.TrimSpace(o.GetProvider()), strings.TrimSpace(o.GetModel()), len(o.Attachments)
+// extractOptsFromInput extracts turn options from a biz.TurnInput.
+func extractOptsFromInput(input biz.TurnInput) (dialogMode, prov, mod string, attN int) {
+	return strings.TrimSpace(input.Options.DialogMode),
+		strings.TrimSpace(input.Options.Provider),
+		strings.TrimSpace(input.Options.Model),
+		len(input.Options.AttachmentIDs)
 }
 
 func mergeTeamUserTurnMetaJSON(userOpts string, displayContent, sendText string) (string, error) {

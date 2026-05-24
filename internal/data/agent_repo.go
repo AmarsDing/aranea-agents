@@ -141,6 +141,8 @@ func entRuntimeToBiz(e *ent.AgentRuntimeSetting) biz.AgentRuntimeSettings {
 		L0SummaryKeepTurns:                e.L0SummaryKeepTurns,
 		L0CompressProvider:                e.L0CompressProvider,
 		L0CompressModel:                   e.L0CompressModel,
+		MemoryWorkerProvider:              e.MemoryWorkerProvider,
+		MemoryWorkerModel:                 e.MemoryWorkerModel,
 		L0TruncateStrategy:                e.L0TruncateStrategy,
 		L0InjectL1:                        e.L0InjectL1,
 		L0InjectL3:                        e.L0InjectL3,
@@ -270,6 +272,8 @@ func applyBizRuntimeToCreate(b *ent.AgentRuntimeSettingCreate, v biz.AgentRuntim
 		SetL0SummaryKeepTurns(v.L0SummaryKeepTurns).
 		SetL0CompressProvider(strings.TrimSpace(v.L0CompressProvider)).
 		SetL0CompressModel(strings.TrimSpace(v.L0CompressModel)).
+		SetMemoryWorkerProvider(strings.TrimSpace(v.MemoryWorkerProvider)).
+		SetMemoryWorkerModel(strings.TrimSpace(v.MemoryWorkerModel)).
 		SetL0TruncateStrategy(v.L0TruncateStrategy).
 		SetL0InjectL1(v.L0InjectL1).
 		SetL0InjectL3(v.L0InjectL3).

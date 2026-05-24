@@ -3,6 +3,7 @@ package biz
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 )
 
@@ -22,6 +23,8 @@ type MemoryRepo interface {
 	FindSimilar(ctx context.Context, agentID string, query []float32, topK int) ([]*AgentMemory, error)
 	// Optional scoping alongside agent (default "").
 	FindSimilarWithUser(ctx context.Context, agentID, userID string, query []float32, topK int) ([]*AgentMemory, error)
+	// UpsertFactVector replaces the pgvector row keyed by fact_id (read index for memory_facts).
+	UpsertFactVector(ctx context.Context, agentID, userID, factID, statement string, embedding []float32) error
 }
 
 // EmbeddingService turns text into a dense vector aligned with data.postgres.vector_dim.
@@ -44,6 +47,7 @@ func NewMemoryUsecase(repo MemoryRepo, embedder EmbeddingService) *MemoryUsecase
 }
 
 // Remember embeds text and persists it for agent (single default partition; no UserID scope).
+// Prefer UpsertFactRow on SessionAdminStore + SyncFactIndex; Remember remains for legacy callers.
 func (uc *MemoryUsecase) Remember(ctx context.Context, agentID, text string) error {
 	return uc.RememberWithUser(ctx, agentID, "", text)
 }
@@ -63,6 +67,23 @@ func (uc *MemoryUsecase) RememberWithUser(ctx context.Context, agentID, userID, 
 		Content:   text,
 		Embedding: vec,
 	})
+}
+
+// Embed implements biz.EmbeddingService for L2 recall query embedding at the store layer.
+func (uc *MemoryUsecase) Embed(ctx context.Context, text string) ([]float32, error) {
+	return uc.EmbedText(ctx, text)
+}
+
+// EmbedText returns an embedding vector for arbitrary recall/index text.
+func (uc *MemoryUsecase) EmbedText(ctx context.Context, text string) ([]float32, error) {
+	if uc == nil || uc.embedder == nil {
+		return nil, ErrMemoryUnavailable
+	}
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil, nil
+	}
+	return uc.embedder.Embed(ctx, text)
 }
 
 // Recall embeds query text and returns topK hits for agent (default user scope "").

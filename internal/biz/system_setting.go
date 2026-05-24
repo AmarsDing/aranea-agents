@@ -19,6 +19,7 @@ type SystemSetting struct {
 	EvalLLM                           EvalLLMSetting
 	WebResearch                       WebResearchSetting
 	MCPAllowAdHocHTTP                 bool
+	MemoryPlatform                    MemoryPlatformSetting
 	UpdateTime                        time.Time
 }
 
@@ -30,6 +31,7 @@ type SystemSettingRepo interface {
 	UpdateEvalLLM(ctx context.Context, patch EvalLLMSetting) (EvalLLMSetting, error)
 	GetWebResearch(ctx context.Context) (WebResearchSetting, error)
 	UpdateWebResearch(ctx context.Context, patch WebResearchSetting, updateAPIKey bool) (WebResearchSetting, error)
+	UpdateMemoryPlatform(ctx context.Context, patch MemoryPlatformSetting) (MemoryPlatformSetting, error)
 	EnsureCredentialEncryptionKey(ctx context.Context) (string, error)
 }
 
@@ -125,4 +127,9 @@ func (u *SystemSettingUsecase) UpdateWebResearch(ctx context.Context, patch WebR
 	}
 	merged := ApplyWebResearchPatch(cur, patch, updateAPIKey)
 	return u.repo.UpdateWebResearch(ctx, merged, updateAPIKey)
+}
+
+// UpdateMemoryPlatform persists memory worker / policy platform toggles.
+func (u *SystemSettingUsecase) UpdateMemoryPlatform(ctx context.Context, patch MemoryPlatformSetting) (MemoryPlatformSetting, error) {
+	return u.repo.UpdateMemoryPlatform(ctx, patch)
 }

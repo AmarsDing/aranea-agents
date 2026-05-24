@@ -34,7 +34,11 @@ export function getBackendOrigin(): string {
   if (import.meta.env.DEV) {
     return "";
   }
-  return "http://localhost:8080";
+  // Production build: same-origin (nginx / admin 反代) — admin HTTP 默认 :8000，勿写死 :8080。
+  if (typeof window !== "undefined" && window.location?.origin) {
+    return window.location.origin;
+  }
+  return "";
 }
 
 /** @deprecated 使用 {@link getBackendOrigin} */

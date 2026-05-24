@@ -13,7 +13,7 @@ func (h *ChannelIngress) publishChannelTurnRunStatus(sessionID, runID, status, e
 		runID = sessionID
 	}
 	if h.chat != nil {
-		h.chat.setRunStatus(sessionID, runID, status, errMsg)
+		h.chat.SetRunStatus(sessionID, runID, status, errMsg)
 		return
 	}
 	if h.eventBus != nil {

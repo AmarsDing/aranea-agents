@@ -46,7 +46,7 @@ func TestTurnPreviewCoordinator_textToolTextOrder(t *testing.T) {
 	ctx := context.Background()
 
 	coord.consume(ctx, event.Envelope{
-		Type: event.EnvelopeTypeTextDelta,
+		Type:    event.EnvelopeTypeTextDelta,
 		Content: &event.EnvelopeContent{Text: "开始", IsPartial: true},
 	})
 	coord.consume(ctx, event.Envelope{
@@ -56,11 +56,11 @@ func TestTurnPreviewCoordinator_textToolTextOrder(t *testing.T) {
 		},
 	})
 	coord.consume(ctx, event.Envelope{
-		Type: event.EnvelopeTypeToolResult,
+		Type:     event.EnvelopeTypeToolResult,
 		ToolCall: &event.EnvelopeToolCall{ID: "t1", Name: "grep", Status: "ok"},
 	})
 	coord.consume(ctx, event.Envelope{
-		Type: event.EnvelopeTypeTextDelta,
+		Type:    event.EnvelopeTypeTextDelta,
 		Content: &event.EnvelopeContent{Text: "完成", IsPartial: true},
 	})
 	_ = coord.Flush(ctx, true)
@@ -152,6 +152,15 @@ func TestTurnPreviewCoordinator_toolCardHook(t *testing.T) {
 			ID: "t1", Name: "read", DisplayLabel: "读取", ActivityKind: "mcp", Status: "calling",
 		},
 	})
+	// Wait for the tool-call card to be sent before sending the tool-result,
+	// because consume dispatches card delivery asynchronously via safego.Go.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if len(ops) >= 1 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 	coord.consume(ctx, event.Envelope{
 		Type: event.EnvelopeTypeToolResult,
 		ToolCall: &event.EnvelopeToolCall{
@@ -159,7 +168,7 @@ func TestTurnPreviewCoordinator_toolCardHook(t *testing.T) {
 		},
 	})
 
-	deadline := time.Now().Add(2 * time.Second)
+	deadline = time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		if len(ops) >= 2 {
 			break

@@ -35,12 +35,21 @@ import (
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
-// RunNativeAgentTurn executes a full agent/team turn.
-func (o *ChatOrchestrator) RunNativeAgentTurn(ctx context.Context, req *chatv1.SendChatMessageRequest) (userMsg biz.ChatMessage, assistantMsg biz.ChatMessage, err error) {
-	sessionID := strings.TrimSpace(req.GetSessionId())
-	content := strings.TrimSpace(req.GetContent())
+// RunNativeAgentTurnFromInput executes a full agent/team turn from a biz-level TurnInput.
+func (o *ChatOrchestrator) RunNativeAgentTurnFromInput(ctx context.Context, input biz.TurnInput) (userMsg biz.ChatMessage, assistantMsg biz.ChatMessage, err error) {
+	result, err := o.RunNativeAgentTurnWithOutcome(ctx, input)
+	if err != nil {
+		return biz.ChatMessage{}, biz.ChatMessage{}, err
+	}
+	return result.UserMsg, result.AssistantMsg, nil
+}
+
+// RunNativeAgentTurnWithOutcome classifies completed vs queued turns explicitly (P1).
+func (o *ChatOrchestrator) RunNativeAgentTurnWithOutcome(ctx context.Context, input biz.TurnInput) (biz.NativeTurnResult, error) {
+	sessionID := strings.TrimSpace(input.SessionID)
+	content := strings.TrimSpace(input.Content)
 	if sessionID == "" || content == "" {
-		return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.BadRequest("CHAT_NATIVE", "session_id and content are required")
+		return biz.NativeTurnResult{}, kerrors.BadRequest("CHAT_NATIVE", "session_id and content are required")
 	}
 
 	flow := event.NewFlowLogger(o.td.Pipeline.Bus, o.td.Pipeline.Buffer, sessionID, "")
@@ -54,14 +63,47 @@ func (o *ChatOrchestrator) RunNativeAgentTurn(ctx context.Context, req *chatv1.S
 		switch DecideTurnAdmission(true, hasRunner) {
 		case TurnAdmitEnqueue:
 			unlock()
-			accepted, _, _, rejectReason, err := o.chatUC.EnqueueUserMessage(sessionID, content)
-			return biz.ChatMessage{}, biz.ChatMessage{}, classifyEnqueueOutcome(accepted, rejectReason, err)
+			accepted, _, pendingID, rejectReason, err := o.chatUC.EnqueueUserMessage(sessionID, content)
+			if err != nil {
+				return biz.NativeTurnResult{Outcome: biz.NativeTurnOutcomeFailed}, err
+			}
+			if !accepted {
+				return biz.NativeTurnResult{Outcome: biz.NativeTurnOutcomeFailed}, classifyEnqueueOutcome(accepted, rejectReason, err)
+			}
+			return biz.NativeTurnResult{
+				Outcome:   biz.NativeTurnOutcomeQueued,
+				PendingID: pendingID,
+			}, ErrTurnMessageQueued
 		case TurnRejectBusy:
 			unlock()
-			return biz.ChatMessage{}, biz.ChatMessage{}, turnBusyError()
+			return biz.NativeTurnResult{Outcome: biz.NativeTurnOutcomeFailed}, turnBusyError()
 		}
 	}
+	unlock()
 
+	userMsg, assistantMsg, err := o.runNativeAgentTurnBody(ctx, input, flow)
+	if err != nil {
+		if IsTurnMessageQueued(err) {
+			return biz.NativeTurnResult{
+				Outcome:   biz.NativeTurnOutcomeQueued,
+				PendingID: o.LastPendingMessageID(sessionID),
+			}, err
+		}
+		return biz.NativeTurnResult{Outcome: biz.NativeTurnOutcomeFailed, UserMsg: userMsg}, err
+	}
+	return biz.NativeTurnResult{
+		Outcome:      biz.NativeTurnOutcomeCompleted,
+		UserMsg:      userMsg,
+		AssistantMsg: assistantMsg,
+	}, nil
+}
+
+// runNativeAgentTurnBody executes agent/team turn after admission checks.
+func (o *ChatOrchestrator) runNativeAgentTurnBody(ctx context.Context, input biz.TurnInput, flow *event.TraceEmitter) (userMsg biz.ChatMessage, assistantMsg biz.ChatMessage, err error) {
+	sessionID := strings.TrimSpace(input.SessionID)
+	content := strings.TrimSpace(input.Content)
+
+	unlock := o.lockSession(sessionID)
 	sess, err := o.td.Sessions.Get(ctx, sessionID)
 	if err != nil {
 		unlock()
@@ -97,7 +139,7 @@ func (o *ChatOrchestrator) RunNativeAgentTurn(ctx context.Context, req *chatv1.S
 			o.runs.Finish(sessionID)
 			o.processPendingQueue(sessionID, sess, biz.Agent{}, "", "", "")
 		}()
-		userMsg, assistantMsg, err := o.team.TeamsNative.RunTurn(teamCtx, sess, req)
+		userMsg, assistantMsg, err := o.team.TeamsNative.RunTurnFromInput(teamCtx, sess, input)
 		if err != nil {
 			o.setRunStatus(sessionID, runID, "failed", err.Error())
 			o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
@@ -110,7 +152,7 @@ func (o *ChatOrchestrator) RunNativeAgentTurn(ctx context.Context, req *chatv1.S
 		return userMsg, assistantMsg, err
 	}
 
-	if rtid := strings.TrimSpace(req.GetTeamId()); rtid != "" {
+	if rtid := strings.TrimSpace(input.TeamID); rtid != "" {
 		unlock()
 		return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.Forbidden("CHAT_TEAM_NATIVE", "team_id is only valid for team sessions")
 	}
@@ -135,24 +177,15 @@ func (o *ChatOrchestrator) RunNativeAgentTurn(ctx context.Context, req *chatv1.S
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
 
-	opts := req.GetOptions()
-	dialogMode := ""
-	prov := ""
-	mod := ""
-	if opts != nil {
-		dialogMode = strings.TrimSpace(opts.GetDialogMode())
-		prov = strings.TrimSpace(opts.GetProvider())
-		mod = strings.TrimSpace(opts.GetModel())
-	}
+	dialogMode := strings.TrimSpace(input.Options.DialogMode)
+	prov := strings.TrimSpace(input.Options.Provider)
+	mod := strings.TrimSpace(input.Options.Model)
 	dialogMode = strutil.FirstNonEmpty(dialogMode, sess.DialogMode, "default")
 	prov = strutil.FirstNonEmpty(prov, sess.DefaultProvider, ag.Provider)
 	mod = strutil.FirstNonEmpty(mod, sess.DefaultModel, ag.Model)
 	flow.LogDone("chat.provider_resolve", "Provider/Model已解析", event.P("provider", prov), event.P("model", mod), event.P("dialog_mode", dialogMode))
 
-	attN := 0
-	if opts != nil {
-		attN = len(opts.Attachments)
-	}
+	attN := len(input.Options.AttachmentIDs)
 
 	flow.LogStart("chat.turn.enter", "进入Agent Turn执行", event.P("dialog_mode", dialogMode), event.P("provider", prov), event.P("model", mod), event.P("attachments", attN))
 
@@ -160,7 +193,7 @@ func (o *ChatOrchestrator) RunNativeAgentTurn(ctx context.Context, req *chatv1.S
 	turnCtx, turnCancel := context.WithCancel(ctx)
 	o.runs.StoreCancelable(sessionID, agentRunID, turnCancel)
 	unlock()
-	return o.runSingleAgentViaTRPC(turnCtx, sess, req, ag, dialogMode, prov, mod, attN)
+	return o.runSingleAgentViaTRPC(turnCtx, sess, input, ag, dialogMode, prov, mod, attN)
 }
 
 // hydratedAgent loads and returns an Agent by ID.
@@ -203,8 +236,8 @@ func (o *ChatOrchestrator) RunAgentTurn(ctx context.Context, agentID, input stri
 	if err != nil {
 		return "", kerrors.InternalServer("A2A", "create session: "+err.Error())
 	}
-	_, asst, err := o.RunNativeAgentTurn(runCtx, &chatv1.SendChatMessageRequest{
-		SessionId: sess.ID,
+	_, asst, err := o.RunNativeAgentTurnFromInput(runCtx, biz.TurnInput{
+		SessionID: sess.ID,
 		Content:   strings.TrimSpace(input),
 	})
 	if err != nil {
@@ -233,8 +266,8 @@ func (o *ChatOrchestrator) RunEvalAgentTurn(ctx context.Context, agentID, input 
 	if err != nil {
 		return "", fmt.Errorf("eval: create session: %w", err)
 	}
-	_, asst, err := o.RunNativeAgentTurn(ctx, &chatv1.SendChatMessageRequest{
-		SessionId: sess.ID,
+	_, asst, err := o.RunNativeAgentTurnFromInput(ctx, biz.TurnInput{
+		SessionID: sess.ID,
 		Content:   input,
 	})
 	if err != nil {
@@ -245,15 +278,14 @@ func (o *ChatOrchestrator) RunEvalAgentTurn(ctx context.Context, agentID, input 
 
 // RunCronTurn dispatches a cron-triggered turn.
 func (o *ChatOrchestrator) RunCronTurn(ctx context.Context, sessionID, content, teamID string) (userMsgID, agentMsgID string, err error) {
-	req := &chatv1.SendChatMessageRequest{
-		SessionId: sessionID,
+	input := biz.TurnInput{
+		SessionID: sessionID,
 		Content:   content,
 	}
 	if strings.TrimSpace(teamID) != "" {
-		tid := teamID
-		req.TeamId = &tid
+		input.TeamID = teamID
 	}
-	user, asst, err := o.RunNativeAgentTurn(ctx, req)
+	user, asst, err := o.RunNativeAgentTurnFromInput(ctx, input)
 	if err != nil {
 		return "", "", err
 	}
@@ -310,15 +342,14 @@ func (o *ChatOrchestrator) resumeAwaitAfterRestart(ctx context.Context, sessionI
 		return err
 	}
 	o.publishAwaitResumed(sessionID, runID)
-	req := &chatv1.SendChatMessageRequest{
-		SessionId: sessionID,
-		Content:   reply,
-	}
 	safego.Go(ctx, "chat.resume_await_turn", func() {
 		defer o.endResume(sessionID)
 		bgCtx, cancel := context.WithTimeout(context.Background(), defaultTurnTimeout)
 		defer cancel()
-		_, _, turnErr := o.RunNativeAgentTurn(bgCtx, req)
+		_, _, turnErr := o.RunNativeAgentTurnFromInput(bgCtx, biz.TurnInput{
+			SessionID: sessionID,
+			Content:   reply,
+		})
 		if turnErr != nil && !IsTurnMessageQueued(turnErr) {
 			o.setRunStatus(sessionID, runID, "failed", turnErr.Error())
 			o.publishTurnFailure(sessionID, runID, "chat-service", turnErr, "")
@@ -352,7 +383,7 @@ func (o *ChatOrchestrator) checkTeamMemberQuotas(ctx context.Context, teamID str
 	return nil
 }
 
-// bumpSessionRevisionAndPublish bumps revision and publishes event.
+// bumpSessionRevisionAndPublish bumps revision after turn completion (status=completed).
 func (o *ChatOrchestrator) bumpSessionRevisionAndPublish(ctx context.Context, sessionID, runID, turnID string) {
 	if o == nil || o.td.Sessions == nil || o.td.Pipeline.Bus == nil {
 		return
@@ -368,10 +399,42 @@ func (o *ChatOrchestrator) bumpSessionRevisionAndPublish(ctx context.Context, se
 	)
 }
 
-// buildUserMessage constructs a trpcmodel.Message from content and attachment refs.
-func (o *ChatOrchestrator) buildUserMessage(ctx context.Context, sessionID, content string, refs []*chatv1.AttachmentRef) (trpcmodel.Message, error) {
+// bumpSessionRevisionSyncAndPublish bumps revision after user message persist (status=sync).
+func (o *ChatOrchestrator) bumpSessionRevisionSyncAndPublish(ctx context.Context, sessionID, runID, turnID string) {
+	if o == nil || o.td.Sessions == nil || o.td.Pipeline.Bus == nil {
+		return
+	}
+	event.BumpAndPublishSessionRevisionSync(
+		ctx,
+		o.td.Sessions,
+		o.td.Pipeline.Bus,
+		sessionID,
+		runID,
+		turnID,
+		event.EnvelopeSourceFromContext(ctx),
+	)
+}
+
+// notifySessionRevisionSync notifies Web of the current revision without incrementing (durable resume).
+func (o *ChatOrchestrator) notifySessionRevisionSync(ctx context.Context, sessionID, runID, turnID string) {
+	if o == nil || o.td.Sessions == nil || o.td.Pipeline.Bus == nil {
+		return
+	}
+	event.NotifySessionRevisionSync(
+		ctx,
+		o.td.Sessions,
+		o.td.Pipeline.Bus,
+		sessionID,
+		runID,
+		turnID,
+		event.EnvelopeSourceFromContext(ctx),
+	)
+}
+
+// buildUserMessage constructs a trpcmodel.Message from content and attachment IDs.
+func (o *ChatOrchestrator) buildUserMessage(ctx context.Context, sessionID, content string, attachmentIDs []string) (trpcmodel.Message, error) {
 	content = strings.TrimSpace(content)
-	if len(refs) == 0 {
+	if len(attachmentIDs) == 0 {
 		return trpcmodel.NewUserMessage(content), nil
 	}
 	if o == nil || o.artifacts == nil {
@@ -380,16 +443,13 @@ func (o *ChatOrchestrator) buildUserMessage(ctx context.Context, sessionID, cont
 		}
 		return trpcmodel.NewUserMessage(content), nil
 	}
-	parts := make([]trpcmodel.ContentPart, 0, len(refs)+1)
+	parts := make([]trpcmodel.ContentPart, 0, len(attachmentIDs)+1)
 	if content != "" {
 		text := content
 		parts = append(parts, trpcmodel.ContentPart{Type: trpcmodel.ContentTypeText, Text: &text})
 	}
-	for _, ref := range refs {
-		if ref == nil {
-			continue
-		}
-		id := strings.TrimSpace(ref.GetId())
+	for _, id := range attachmentIDs {
+		id = strings.TrimSpace(id)
 		if id == "" {
 			continue
 		}
@@ -432,14 +492,14 @@ func (o *ChatOrchestrator) buildUserMessage(ctx context.Context, sessionID, cont
 func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	ctx context.Context,
 	sess biz.Session,
-	req *chatv1.SendChatMessageRequest,
+	input biz.TurnInput,
 	ag biz.Agent,
 	dialogMode, prov, mod string,
 	attN int,
 ) (biz.ChatMessage, biz.ChatMessage, error) {
-	sessionID := strings.TrimSpace(req.GetSessionId())
-	content := strings.TrimSpace(req.GetContent())
-	if ak := strings.TrimSpace(req.GetAgentKey()); ak != "" && !strings.EqualFold(ak, ag.AgentKey) {
+	sessionID := strings.TrimSpace(input.SessionID)
+	content := strings.TrimSpace(input.Content)
+	if ak := strings.TrimSpace(input.AgentKey); ak != "" && !strings.EqualFold(ak, ag.AgentKey) {
 		te := TurnError(TurnErrAgentForbidden, "")
 		o.publishTurnFailure(sessionID, "", "chat-service", te, "")
 		return biz.ChatMessage{}, biz.ChatMessage{}, te
@@ -496,6 +556,8 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		HasMemory:          o.td.Persist.Memory.Available(),
 		PluginManager:      o.rt.PluginManager,
 		MemoryAdmin:        o.td.Persist.Memory.Admin,
+		MemoryL2Recall:     o.td.Persist.Memory.L2Recall,
+		MemoryL3Recall:     o.td.Persist.Memory.L3Recall,
 		KnowledgeRetriever: o.rt.KnowledgeRetriever,
 		CodeExecFactory:    o.rt.CodeExecFactory,
 	}
@@ -604,6 +666,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	var userMsg biz.ChatMessage
 	if durableCtx.active {
 		userMsg = durableCtx.buildUserMessage(sessionID, userOpts, attN, emitter)
+		o.notifySessionRevisionSync(ctx, sessionID, runID, userMsg.ID)
 	} else {
 		userMsg = biz.ChatMessage{
 			ID:               uuid.NewString(),
@@ -621,6 +684,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 			return biz.ChatMessage{}, biz.ChatMessage{}, err
 		}
 		emitter.LogDone("chat.user_msg_persist", "用户消息已持久化")
+		o.bumpSessionRevisionSyncAndPublish(ctx, sessionID, runID, userMsg.ID)
 	}
 
 	var sessionRunID string
@@ -647,10 +711,8 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	if o.rt.KnowledgeRetriever != nil {
 		runCtx = knowledgetool.WithRetriever(runCtx, o.rt.KnowledgeRetriever)
 	}
-	if req.GetOptions() != nil {
-		if cols := req.GetOptions().GetKnowledgeBases(); len(cols) > 0 {
-			runCtx = knowledgetool.WithKnowledgeCollections(runCtx, cols)
-		}
+	if len(input.Options.KnowledgeBases) > 0 {
+		runCtx = knowledgetool.WithKnowledgeCollections(runCtx, input.Options.KnowledgeBases)
 	}
 
 	safego.Go(runCtx, "llm-call-timeout-log", func() {
@@ -661,11 +723,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		}
 	})
 	emitter.LogStart("chat.llm.invoke", "正在调用语言模型")
-	var attachmentRefs []*chatv1.AttachmentRef
-	if req.GetOptions() != nil {
-		attachmentRefs = req.GetOptions().GetAttachments()
-	}
-	userTurnMsg, err := o.buildUserMessage(runCtx, sessionID, sendText, attachmentRefs)
+	userTurnMsg, err := o.buildUserMessage(runCtx, sessionID, sendText, input.Options.AttachmentIDs)
 	if err != nil {
 		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
 		emitter.LogError("chat.llm.invoke", "附件装配失败", event.P("error", err.Error()))
@@ -838,15 +896,15 @@ func (o *ChatOrchestrator) processPendingQueue(sessionID string, sess biz.Sessio
 			cancel()
 			o.runs.ClearPendingCancel(sessionID)
 		}()
-		req := &chatv1.SendChatMessageRequest{
-			SessionId: sessionID,
+		pendingInput := biz.TurnInput{
+			SessionID: sessionID,
 			Content:   pendingContent,
 		}
 		var err error
 		if strings.EqualFold(strings.TrimSpace(sess.OwnerType), "team") {
-			_, _, err = o.team.TeamsNative.RunTurn(bgCtx, sess, req)
+			_, _, err = o.team.TeamsNative.RunTurnFromInput(bgCtx, sess, pendingInput)
 		} else {
-			_, _, err = o.runSingleAgentViaTRPC(bgCtx, sess, req, ag, dialogMode, prov, mod, 0)
+			_, _, err = o.runSingleAgentViaTRPC(bgCtx, sess, pendingInput, ag, dialogMode, prov, mod, 0)
 		}
 		if err != nil {
 			pendingEmitter.LogError("chat.pending_dequeue", "排队消息处理失败", event.P("entry_id", pendingEntryID), event.P("error", err.Error()))
@@ -1014,7 +1072,7 @@ func (o *ChatOrchestrator) notifyNativeTurnHooks(ctx context.Context, sessionID 
 
 // nativeSendChatMessage is the native implementation of SendChatMessage.
 func (o *ChatOrchestrator) nativeSendChatMessage(ctx context.Context, req *chatv1.SendChatMessageRequest) (*chatv1.SendChatMessageResponse, error) {
-	userMsg, assistantMsg, err := o.RunNativeAgentTurn(ctx, req)
+	userMsg, assistantMsg, err := o.RunNativeAgentTurnFromInput(ctx, turnInputFromProto(req))
 	if err != nil {
 		if IsTurnMessageQueued(err) {
 			return &chatv1.SendChatMessageResponse{}, nil
@@ -1130,4 +1188,35 @@ func (o *ChatOrchestrator) nativeGetModelOptions(ctx context.Context) (*chatv1.G
 		})
 	}
 	return &chatv1.GetChatOptionsResponse{Items: items}, nil
+}
+
+// turnInputFromProto converts a proto SendChatMessageRequest to a biz-level TurnInput.
+// This adapter lives in the service layer (the proto boundary) so that internal
+// packages never need to import api/*/v1.
+func turnInputFromProto(req *chatv1.SendChatMessageRequest) biz.TurnInput {
+	if req == nil {
+		return biz.TurnInput{}
+	}
+	input := biz.TurnInput{
+		SessionID: req.GetSessionId(),
+		Content:   req.GetContent(),
+		AgentKey:  req.GetAgentKey(),
+	}
+	if req.TeamId != nil {
+		input.TeamID = *req.TeamId
+	}
+	if opts := req.GetOptions(); opts != nil {
+		input.Options = biz.TurnOptions{
+			DialogMode:     opts.GetDialogMode(),
+			Provider:       opts.GetProvider(),
+			Model:          opts.GetModel(),
+			KnowledgeBases: opts.GetKnowledgeBases(),
+		}
+		for _, att := range opts.GetAttachments() {
+			if att != nil {
+				input.Options.AttachmentIDs = append(input.Options.AttachmentIDs, att.GetId())
+			}
+		}
+	}
+	return input
 }

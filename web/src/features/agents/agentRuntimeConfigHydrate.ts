@@ -28,6 +28,7 @@ export function hydrateRuntimeFromConfigJson(
       },
       memory: { ...config.memory, ...(parsed.memory || {}) },
       memoryL0: { ...config.memoryL0, ...(parsed.memoryL0 || {}) },
+      memoryWorker: { ...config.memoryWorker, ...(parsed.memoryWorker || {}) },
       memoryL1: { ...config.memoryL1, ...(parsed.memoryL1 || {}) },
       memoryL2: { ...config.memoryL2, ...(parsed.memoryL2 || {}) },
       memoryL3: { ...config.memoryL3, ...(parsed.memoryL3 || {}) },
@@ -115,6 +116,8 @@ export function hydrateRuntimeFromSettings(
       recent_window_tokens: settings.l0_recent_window_tokens ?? config.memoryL0.recent_window_tokens,
       summary_threshold: settings.l0_summary_threshold ?? config.memoryL0.summary_threshold,
       summary_keep_turns: settings.l0_summary_keep_turns ?? config.memoryL0.summary_keep_turns,
+      compress_provider: settings.l0_compress_provider || config.memoryL0.compress_provider,
+      compress_model: settings.l0_compress_model || config.memoryL0.compress_model,
       truncate_strategy: settings.l0_truncate_strategy || config.memoryL0.truncate_strategy,
       inject_l1: settings.l0_inject_l1 ?? config.memoryL0.inject_l1,
       inject_l3: settings.l0_inject_l3 ?? config.memoryL0.inject_l3,
@@ -122,6 +125,10 @@ export function hydrateRuntimeFromSettings(
       l3_max_chunks: settings.l0_l3_max_chunks ?? config.memoryL0.l3_max_chunks,
       l4_max_paths: settings.l0_l4_max_paths ?? config.memoryL0.l4_max_paths,
       snapshot_mode: settings.l0_snapshot_mode || config.memoryL0.snapshot_mode,
+    },
+    memoryWorker: {
+      provider: settings.memory_worker_provider || config.memoryWorker.provider,
+      model: settings.memory_worker_model || config.memoryWorker.model,
     },
     memoryL1: {
       enabled: settings.l1_enabled ?? config.memoryL1.enabled,

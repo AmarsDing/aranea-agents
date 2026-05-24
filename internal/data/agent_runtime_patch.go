@@ -20,6 +20,8 @@ func ensureAgentRuntimePatches(ctx context.Context, c *ent.Client) error {
 		{"skill_runtime_json", `ALTER TABLE agent_runtime_settings ADD COLUMN skill_runtime_json TEXT NOT NULL DEFAULT '{}'`},
 		{"l0_compress_provider", `ALTER TABLE agent_runtime_settings ADD COLUMN l0_compress_provider TEXT NOT NULL DEFAULT ''`},
 		{"l0_compress_model", `ALTER TABLE agent_runtime_settings ADD COLUMN l0_compress_model TEXT NOT NULL DEFAULT ''`},
+		{"memory_worker_provider", `ALTER TABLE agent_runtime_settings ADD COLUMN memory_worker_provider TEXT NOT NULL DEFAULT ''`},
+		{"memory_worker_model", `ALTER TABLE agent_runtime_settings ADD COLUMN memory_worker_model TEXT NOT NULL DEFAULT ''`},
 		{"intent_pass_enabled", `ALTER TABLE agent_runtime_settings ADD COLUMN intent_pass_enabled INTEGER NOT NULL DEFAULT 1`},
 		{"tools_retry_enabled", `ALTER TABLE agent_runtime_settings ADD COLUMN tools_retry_enabled INTEGER NOT NULL DEFAULT 0`},
 		{"tools_retry_max_attempts", `ALTER TABLE agent_runtime_settings ADD COLUMN tools_retry_max_attempts INTEGER NOT NULL DEFAULT 2`},

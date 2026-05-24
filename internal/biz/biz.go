@@ -10,7 +10,6 @@ type AgentExistenceCheckerFunc func(agentName string) bool
 
 var ProviderSet = wire.NewSet(
 	NewEventBusConsumer,
-	NewEventBusSideConsumers,
 	NewFlowLogUsecase,
 	NewTurnMemoryWorker,
 	NewAdminUsecase,

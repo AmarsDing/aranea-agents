@@ -12,27 +12,53 @@ import (
 
 // flowLogPersistConsumer writes flow_log envelopes to flow_log_events.
 type flowLogPersistConsumer struct {
-	bus      contract.Bus
+	buses    []contract.Bus
 	flowLogs *FlowLogUsecase
 	logger   SessionLogWriter
 }
 
-func newFlowLogPersistConsumer(bus contract.Bus, flowLogs *FlowLogUsecase) *flowLogPersistConsumer {
+func newFlowLogPersistConsumer(flowLogs *FlowLogUsecase, buses ...contract.Bus) *flowLogPersistConsumer {
 	if flowLogs == nil {
 		return nil
 	}
-	return &flowLogPersistConsumer{bus: bus, flowLogs: flowLogs}
+	seen := make([]contract.Bus, 0, len(buses))
+	for _, bus := range buses {
+		if bus == nil {
+			continue
+		}
+		dup := false
+		for _, existing := range seen {
+			if existing == bus {
+				dup = true
+				break
+			}
+		}
+		if !dup {
+			seen = append(seen, bus)
+		}
+	}
+	if len(seen) == 0 {
+		return nil
+	}
+	return &flowLogPersistConsumer{buses: seen, flowLogs: flowLogs}
 }
 
 func (c *flowLogPersistConsumer) Start(ctx context.Context) {
 	if c == nil {
 		return
 	}
-	runTypedConsumer(ctx, "event-bus-flow-log", c.bus, contract.SubscribeOptions{
+	opts := contract.SubscribeOptions{
 		EventTypes: []contract.EnvelopeType{contract.EnvelopeTypeFlowLog},
 		BufferSize: 512,
 		Reliable:   true,
-	}, c.handle)
+	}
+	for i, bus := range c.buses {
+		name := "event-bus-flow-log"
+		if len(c.buses) > 1 {
+			name = fmt.Sprintf("event-bus-flow-log-%d", i)
+		}
+		runTypedConsumer(ctx, name, bus, opts, c.handle)
+	}
 }
 
 func (c *flowLogPersistConsumer) handle(ctx context.Context, env contract.Envelope) {

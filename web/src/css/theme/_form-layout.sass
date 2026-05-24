@@ -320,6 +320,33 @@ body:not(.body--dark) .q-dialog .q-card.channel-editor-dialog
   font-weight: 600
   color: var(--color-text-secondary)
 
+.channel-editor-dialog .app-musebot-row__label-wrap
+  display: flex
+  align-items: center
+  justify-content: flex-end
+  gap: 4px
+  min-width: 0
+
+.channel-editor-dialog .app-musebot-row__help
+  flex-shrink: 0
+  color: var(--color-text-tertiary)
+  cursor: help
+  opacity: 0.72
+
+  &:hover
+    opacity: 1
+    color: var(--color-accent)
+
+.app-field-help-tooltip
+  font-size: var(--text-xs)
+  line-height: 1.45
+
+  &__example
+    margin-top: 6px
+    color: var(--color-text-secondary)
+    font-family: var(--font-mono, ui-monospace, monospace)
+    word-break: break-word
+
 .channel-editor-dialog .app-musebot-row__control
   flex: none
   width: 100%

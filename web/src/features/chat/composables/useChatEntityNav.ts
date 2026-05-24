@@ -84,9 +84,20 @@ export function useChatEntityNav(deps: EntityNavDeps) {
     await deps.chatStore.loadAgentSessions(resolved.id);
     await nextTick();
     const preferredId = options?.sessionId?.trim();
-    deps.chatStore.selectedSession = preferredId
-      ? (deps.chatStore.sessions.find((item) => item.id === preferredId) ?? deps.chatStore.sessions[0] ?? null)
-      : (deps.chatStore.sessions[0] ?? null);
+    let picked =
+      preferredId != null && preferredId !== ""
+        ? (deps.chatStore.sessions.find((item) => item.id === preferredId) ?? null)
+        : (deps.chatStore.sessions[0] ?? null);
+    if (preferredId && !picked) {
+      const fetched = await resolveSessionById(preferredId);
+      if (fetched && fetched.agent_id?.trim() === resolved.id) {
+        if (!deps.chatStore.sessions.some((item) => item.id === preferredId)) {
+          deps.chatStore.sessions = [fetched, ...deps.chatStore.sessions];
+        }
+        picked = fetched;
+      }
+    }
+    deps.chatStore.selectedSession = picked ?? (deps.chatStore.sessions[0] ?? null);
     if (deps.chatStore.selectedSession) {
       await deps.chatStore.loadMessages({ sessionId: deps.chatStore.selectedSession.id });
       applyStreamingSnapshotToSession(
@@ -143,11 +154,17 @@ export function useChatEntityNav(deps: EntityNavDeps) {
     }
 
     const query = { session: sessionId, agent: agentId };
-    if (route.name === "chat") {
-      await router.replace({ name: "chat", query });
-    } else {
-      await router.push({ name: "chat", query });
+    const needsRouteSync =
+      route.name !== "chat" || routeSession !== sessionId || routeAgent !== agentId;
+    if (needsRouteSync) {
+      if (route.name === "chat") {
+        await router.replace({ name: "chat", query });
+      } else {
+        await router.push({ name: "chat", query });
+      }
     }
+    // Route watch may not fire when query is unchanged; always focus in store.
+    await focusSessionById(sessionId, agentId);
   }
 
   async function onSelectSession(sessionId: string) {
@@ -173,7 +190,12 @@ export function useChatEntityNav(deps: EntityNavDeps) {
       return;
     }
 
-    const agentId = resolved.agent_id?.trim();
+    const agentId =
+      resolved.agent_id?.trim() ||
+      (deps.chatStore.sessions.some((item) => item.id === sessionId)
+        ? deps.appStore.selectedAgent?.id?.trim()
+        : "") ||
+      "";
     if (!agentId) return;
     const agent =
       deps.appStore.agents.find((item) => item.id === agentId) ??
@@ -277,13 +299,19 @@ export function useChatEntityNav(deps: EntityNavDeps) {
 
   async function focusSessionById(sessionId: string, agentId?: string) {
     const session = await resolveSessionById(sessionId);
-    if (!session) return;
-    const aid = agentId?.trim() || session.agent_id?.trim();
+    if (!session) {
+      $q.notify({ type: "warning", message: "找不到该会话" });
+      return;
+    }
+    const aid = agentId?.trim() || session.agent_id?.trim() || deps.appStore.selectedAgent?.id?.trim();
     if (!aid) return;
     const agent =
       deps.appStore.agents.find((a) => a.id === aid) ??
-      deps.displayAgents.value.find((a) => a.id === aid);
-    if (!agent) return;
+      deps.displayAgents.value?.find((a) => a.id === aid);
+    if (!agent) {
+      $q.notify({ type: "warning", message: "找不到该会话所属的 Agent" });
+      return;
+    }
     await selectAgent(agent, { sessionId });
   }
 

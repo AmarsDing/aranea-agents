@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"aranea-agents/internal/biz"
 )
 
 func factFingerprint(statement, scopeType, scopeID string) string {
@@ -25,10 +27,46 @@ func (st *Store) UpsertFactRow(ctx context.Context, in MemoryFactUpsert) ([]byte
 	if st == nil || st.client == nil {
 		return nil, errors.New("session memory store not wired")
 	}
+	raw, err := st.upsertFactRowOn(ctx, st.client, in)
+	if err != nil {
+		return nil, err
+	}
+	meta := strings.TrimSpace(in.MetadataJSON)
+	if meta == "" {
+		meta = "{}"
+	}
+	if err := st.recordPolicyBestEffort(ctx, MemoryActionLogInsert{
+		Action:        "UPSERT",
+		TargetKind:    "fact",
+		TargetID:      factIDFromRow(raw, in.ID),
+		Reason:        strings.TrimSpace(in.SourceKind),
+		PolicyVersion: "consolidate_v1",
+		SourceEventIDs: []string{
+			strings.TrimSpace(in.SourceSessionID),
+			strings.TrimSpace(in.SourceMessageID),
+		},
+		TurnID:       composeTurnRef(in.SourceSessionID, in.SourceMessageID),
+		MetadataJSON: meta,
+	}); err != nil {
+		return nil, err
+	}
+	return raw, nil
+}
+
+func (st *Store) upsertFactRowOn(ctx context.Context, db sqlRunner, in MemoryFactUpsert) ([]byte, error) {
+	if db == nil {
+		return nil, errors.New("db runner is required")
+	}
 	stype := strings.TrimSpace(in.ScopeType)
 	stmt := strings.TrimSpace(in.Statement)
 	if stype == "" || stmt == "" {
 		return nil, errors.New("scope_type and statement are required")
+	}
+	if pii := biz.ScanPII(stmt); pii.PIIFlag {
+		in.PIIFlag = true
+		if rs := strings.TrimSpace(pii.RedactedStatement); rs != "" {
+			in.RedactedStatement = rs
+		}
 	}
 	fp := strings.TrimSpace(in.Fingerprint)
 	if fp == "" {
@@ -154,16 +192,16 @@ ON CONFLICT(scope_type, scope_id, fingerprint) DO UPDATE SET
 		sk, epID, sessID, msgID, ext,
 		v, stTxt, "",
 		"pending", "", 0, ([]byte)(nil), 0.0,
-		pii, "",
+		pii, strings.TrimSpace(in.RedactedStatement),
 		0, 0.98, "", "", "",
 		meta, createdAt, updatedAt, "", "",
 	}
 
-	if _, err := st.client.ExecContext(ctx, insertSQL, args...); err != nil {
+	if _, err := db.ExecContext(ctx, insertSQL, args...); err != nil {
 		return nil, err
 	}
 
-	rows, err := st.client.QueryContext(ctx, sqlFactSelect+` WHERE scope_type = ? AND scope_id = ? AND fingerprint = ? AND deleted_at = '' LIMIT 1`, stype, in.ScopeID, fp)
+	rows, err := db.QueryContext(ctx, sqlFactSelect+` WHERE scope_type = ? AND scope_id = ? AND fingerprint = ? AND deleted_at = '' LIMIT 1`, stype, in.ScopeID, fp)
 	if err != nil {
 		return nil, err
 	}
@@ -203,6 +241,7 @@ type MemoryFactUpsert struct {
 	Version               int32
 	Status                string
 	PIIFlag               bool
+	RedactedStatement     string
 	MetadataJSON          string
 	CreatedAt             string
 	UpdatedAt             string

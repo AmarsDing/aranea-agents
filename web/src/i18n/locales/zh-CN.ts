@@ -359,6 +359,12 @@ export default {
     routingTeamPlaceholder: "选择 Team",
     routingAgentDisabledHint: "当前路由到 Team",
     routingTeamDisabledHint: "当前路由到 Agent",
+    routingRulesLabel: "peer 路由规则",
+    routingRulesAdd: "添加规则",
+    routingRulesPeerPattern: "peer_pattern",
+    routingRulesPeerPatternHint: "glob 匹配 peer_id / open_id / chat_id",
+    routingRulesTargetType: "目标类型",
+    rulesEmptyHint: "暂无路由规则；按 peer_pattern 匹配后路由到 Agent 或 Team。",
     dmScopeLabel: "会话隔离 (dm_scope)",
     dmScopeHint: "修改后保存将清除已有 peer 绑定，新消息按新策略建会话。",
     dmScope: {
@@ -374,6 +380,122 @@ export default {
     },
     longTaskPresetLabel: "推荐预设",
     longTaskPresetPlaceholder: "选择模板快速填充下方字段",
+    longTaskPresetHelp: "一键填充长任务相关配置（超时、ACK、流式、IM 展示等）。保存后 Runtime 热加载生效。",
+    longTaskPresetExample: "飞书 IM 场景选「飞书 · IM Preview（推荐）」",
+    fieldHelpAria: "查看字段说明",
+    fieldHelpExamplePrefix: "示例：",
+    fields: {
+      turn_timeout_sec: {
+        label: "Turn 超时",
+        help: "单次入站消息对应 Agent Turn 的最长执行时间（秒）。超时后标记 failed 并通知用户。",
+        example: "Team 流水线设 900；单 Agent 重工具设 600"
+      },
+      first_byte_timeout_sec: {
+        label: "首字节超时",
+        help: "从 Turn 开始到收到首个 token/delta 的最长等待（秒）。重工具/MCP 冷启动可适当放宽。",
+        example: "默认 30；飞书长任务推荐 120"
+      },
+      execution_mode: {
+        label: "执行模式",
+        help: "sync 同步等待结果；auto 按关键词路由 async；async 全部提交 Graph/Cron 后台任务。",
+        example: "超长分析选 auto；纯后台任务选 async 并填写 async_*_id"
+      },
+      progress_mode: {
+        label: "进度模式",
+        help: "长静默期间如何更新 IM 消息：off 不展示；text 心跳文案；steps 展示 Team 成员步骤摘要。",
+        example: "单 Agent 长生成选 text；Team 群 @ 选 steps"
+      },
+      progress_quiet_sec: {
+        label: "进度静默间隔",
+        help: "无新输出时，每隔多少秒 PATCH 一次心跳/进度。设为 0 关闭心跳。",
+        example: "20（默认）或 30"
+      },
+      ack_message: {
+        label: "ACK 文案",
+        help: "Webhook 验签后立即发送的确认消息，让用户知道已受理。留空则不发送 ACK。",
+        example: "收到，正在处理…"
+      },
+      heartbeat_message: {
+        label: "心跳文案",
+        help: "长静默期间 PATCH 到 IM 的提示文案。支持 {{elapsed}} 占位符显示已耗时。",
+        example: "仍在处理中… {{elapsed}}"
+      },
+      async_graph_id: {
+        label: "异步 Graph",
+        help: "execution_mode 为 async/auto 时，匹配到的入站消息提交到该 Graph 执行。",
+        example: "graphs 页面复制 Graph UUID"
+      },
+      async_team_id: {
+        label: "异步 Team",
+        help: "execution_mode 为 async 时，可指定后台 Team 流水线处理超长任务。",
+        example: "teams 页面复制 Team UUID"
+      },
+      async_cron_task_id: {
+        label: "异步 Cron 任务",
+        help: "execution_mode 为 async 时，可绑定 Cron 定时/触发任务处理入站。",
+        example: "cron 任务列表复制 task UUID"
+      },
+      streaming_enabled: {
+        label: "流式输出",
+        help: "开启后 IM 消息随 Agent 输出实时 PATCH（飞书/Telegram/Slack）。长生成场景强烈建议开启。",
+        example: "飞书长任务推荐 true"
+      },
+      channel_name: {
+        label: "Channel 名称",
+        help: "管理界面与日志中显示的友好名称。",
+        example: "飞书客服机器人"
+      },
+      channel_key: {
+        label: "Channel Key",
+        help: "实例唯一标识，用于 Webhook 路径与内部引用。创建后不建议修改。",
+        example: "feishu_main"
+      },
+      description: {
+        label: "描述",
+        help: "可选备注，便于团队识别该 Channel 用途。"
+      },
+      enabled: {
+        label: "启用",
+        help: "关闭后停止接收与投递，已保存配置保留。"
+      },
+      receive_mode: {
+        label: "接收模式",
+        help: "消息入站方式：webhook 需公网 URL；websocket/stream 为长连接。",
+        example: "飞书推荐 websocket（larkws）"
+      },
+      webhook_path: {
+        label: "Webhook 路径",
+        help: "HTTP 回调相对路径，与 public_webhook_origin 拼接为完整 URL。",
+        example: "/webhooks/feishu_main"
+      },
+      public_webhook_origin: {
+        label: "公网 Origin",
+        help: "平台能访问的 HTTPS 根地址。本地调试填 ngrok 地址。",
+        example: "https://abc123.ngrok-free.app"
+      },
+      webhook_url_preview: {
+        label: "Webhook 预览",
+        help: "根据 path 与 origin 生成的完整回调 URL，可复制到平台后台。"
+      },
+      allowed_user_ids: {
+        label: "允许的用户",
+        help: "仅响应列表内用户的消息。留空不限制。飞书填 open_id（ou_xxx）或 user_id。",
+        example: '["ou_abc123"] 或 ou_abc,ou_def'
+      },
+      allowed_group_ids: {
+        label: "允许的群组",
+        help: "仅响应列表内群聊。留空不限制。单聊不受此约束。",
+        example: '["oc_group123"]'
+      },
+      require_mention: {
+        label: "需要 @",
+        help: "群聊中需 @ 机器人才响应，避免误触发。"
+      },
+      icon_asset_id: {
+        label: "图标",
+        help: "留空使用平台默认图标；可上传或选择内置头像。"
+      }
+    },
     turnJobsTitle: "近期 Turn Job（运维）",
     turnJobsHint: "按 created_at 倒序；用于 LT-07 排障。",
     turnJobsRefresh: "刷新",

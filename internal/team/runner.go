@@ -6,9 +6,8 @@ import (
 	"net/http"
 	"strings"
 
-	chatv1 "aranea-agents/api/kratos/chat/v1"
-	"aranea-agents/internal/biz"
 	localexec "aranea-agents/internal/agent/codeexecutor"
+	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	graphadapter "aranea-agents/internal/graph/adapter"
 	"aranea-agents/internal/knowledge"
@@ -22,20 +21,20 @@ import (
 )
 
 type Runner struct {
-	teams             biz.TeamRepository
-	usage             *biz.UsageUsecase
-	td                rt.TurnDeps
-	pluginRT          *plugintrpc.Runtime
-	pluginManager     *plugintrpc.Manager
-	skillDBRepo       trpcskill.Repository
-	runs              *rt.RunRegistry
-	awaitHookProvider    func(runCtx context.Context, sessionID, runID string) tooltrpc.ReplyFunc
-	knowledgeRetriever   *knowledge.Retriever
-	codeExecFactory      *localexec.Factory
-	graphRoot            graphadapter.TeamGraphRootBuilder
-	graphLoader          GraphBuildConfigLoader
-	teamGraphTasks       TeamGraphTaskCreator
-	teamGraphCoord       *TeamGraphRunCoordinator
+	teams              biz.TeamRepository
+	usage              *biz.UsageUsecase
+	td                 rt.TurnDeps
+	pluginRT           *plugintrpc.Runtime
+	pluginManager      *plugintrpc.Manager
+	skillDBRepo        trpcskill.Repository
+	runs               *rt.RunRegistry
+	awaitHookProvider  func(runCtx context.Context, sessionID, runID string) tooltrpc.ReplyFunc
+	knowledgeRetriever *knowledge.Retriever
+	codeExecFactory    *localexec.Factory
+	graphRoot          graphadapter.TeamGraphRootBuilder
+	graphLoader        GraphBuildConfigLoader
+	teamGraphTasks     TeamGraphTaskCreator
+	teamGraphCoord     *TeamGraphRunCoordinator
 }
 
 // SetGraphBuildConfigLoader wires linked_graph_id resolution for GraphAgent runtime (M53 P2).
@@ -82,11 +81,11 @@ func NewRunner(
 	codeExecFactory *localexec.Factory,
 ) *Runner {
 	return &Runner{
-		teams:         teams,
-		usage:         usage,
-		pluginRT:      pluginRT,
-		pluginManager: pluginManager,
-		skillDBRepo:   skillDBRepo,
+		teams:           teams,
+		usage:           usage,
+		pluginRT:        pluginRT,
+		pluginManager:   pluginManager,
+		skillDBRepo:     skillDBRepo,
 		codeExecFactory: codeExecFactory,
 		td: rt.TurnDeps{
 			Catalog: rt.Catalog{
@@ -139,8 +138,8 @@ func (r *Runner) catalogAgent(ctx context.Context, id string) (biz.Agent, error)
 	return r.td.Catalog.Agents.GetAgentByID(ctx, id)
 }
 
-// RunTurn executes one user turn for a team session.
-func (r *Runner) RunTurn(ctx context.Context, sess biz.Session, req *chatv1.SendChatMessageRequest) (userMsg biz.ChatMessage, assistantMsg biz.ChatMessage, err error) {
+// RunTurnFromInput executes one user turn for a team session using biz-level TurnInput.
+func (r *Runner) RunTurnFromInput(ctx context.Context, sess biz.Session, input biz.TurnInput) (userMsg biz.ChatMessage, assistantMsg biz.ChatMessage, err error) {
 	if r == nil || r.td.Sessions == nil || r.teams == nil || r.td.Catalog.Agents == nil || r.td.Catalog.LLM == nil {
 		return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.InternalServer("CHAT_TEAM_NATIVE", "team runner not configured")
 	}
@@ -151,7 +150,7 @@ func (r *Runner) RunTurn(ctx context.Context, sess biz.Session, req *chatv1.Send
 	if tid == "" {
 		return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.BadRequest("CHAT_TEAM_NATIVE", "session has no team_id")
 	}
-	if rtid := strings.TrimSpace(req.GetTeamId()); rtid != "" && !strings.EqualFold(rtid, tid) {
+	if rtid := strings.TrimSpace(input.TeamID); rtid != "" && !strings.EqualFold(rtid, tid) {
 		return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.Forbidden("CHAT_TEAM_NATIVE", "team_id does not match session")
 	}
 
@@ -169,5 +168,5 @@ func (r *Runner) RunTurn(ctx context.Context, sess biz.Session, req *chatv1.Send
 	}
 
 	mode := strings.ToLower(strings.TrimSpace(def.Mode))
-	return r.runTeamTRPC(ctx, sess, req, teamRow, def, mode)
+	return r.runTeamTRPCFromInput(ctx, sess, input, teamRow, def, mode)
 }

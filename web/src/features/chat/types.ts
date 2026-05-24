@@ -1,24 +1,13 @@
-/** Chat：消息列表走 `session/v1` `GET /v1/sessions/{id}/messages`；发送 / 流式 / options 见 **`features/chat/api.ts`** → **`/v1/chat/*`**，由 admin 进程内 trpc-agent-go 运行时处理。 */
+/**
+ * Chat domain types. Shared types (Message, RunStatus, RunStatusValue) have
+ * been lifted to domain/types.ts. This file re-exports them for backward
+ * compatibility and defines chat-specific types.
+ */
 
 import type { ReactStep } from "./reactPlannerTypes";
 
-export type Message = {
-  id: string;
-  session_id: string;
-  parent_message_id: string;
-  turn_index: number;
-  role: string;
-  content_markdown: string;
-  model_name: string;
-  token_in: number;
-  token_out: number;
-  latency_ms: number;
-  status: string;
-  attachments_count: number;
-  options_json: string;
-  error_message: string;
-  created_at: string;
-};
+// Re-export shared domain types
+export type { Message, RunStatus, RunStatusValue } from "../../domain/types";
 
 export type ChatOption = {
   type: string;
@@ -36,6 +25,8 @@ export type SendMessageOptions = {
   attachments?: Array<{ id: string }>;
   knowledge_bases?: string[];
 };
+
+import type { Message } from "../../domain/types";
 
 export type SendMessageResult = {
   user_message: Message;
@@ -93,20 +84,3 @@ export type ReactToolLinkIndex = {
   linkedToolIds: ReadonlySet<string>;
   stepsByAssistantIndex: ReadonlyMap<number, ReactStepWithTools[]>;
 };
-
-export type RunStatusValue = "idle" | "pending" | "running" | "awaiting_user" | "completed" | "failed" | "cancelled";
-
-export interface RunStatus {
-  runId: string;
-  status: RunStatusValue;
-  errorMessage: string;
-  updatedAt: string;
-  invocationId?: string;
-  agentName?: string;
-  startedAt?: string;
-  lastEventAt?: string;
-  eventCount?: number;
-  awaitKind?: string;
-  awaitToolKey?: string;
-  awaitToolCallId?: string;
-}

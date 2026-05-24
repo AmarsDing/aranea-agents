@@ -4,29 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"sync"
-
-	"aranea-agents/pkg/safego"
 )
-
-var (
-	globalBus   Bus
-	globalBusMu sync.RWMutex
-)
-
-// SetGlobalBus wires the process-wide event bus for system-domain flow logs.
-// Call once from app startup (replaces InstallSlogBridge).
-func SetGlobalBus(b Bus) {
-	globalBusMu.Lock()
-	globalBus = b
-	globalBusMu.Unlock()
-}
-
-func globalBusRef() Bus {
-	globalBusMu.RLock()
-	defer globalBusMu.RUnlock()
-	return globalBus
-}
 
 func systemTraceContext(ctx context.Context, sessionID, agentKey string) TraceContext {
 	domain := TraceDomainSystem
@@ -44,22 +22,30 @@ func systemTraceContext(ctx context.Context, sessionID, agentKey string) TraceCo
 func emitSystem(ctx context.Context, sessionID, agentKey, stepID string, phase FlowPhase, sev FlowSeverity, message string, extra []Pair) {
 	entry := newFlowLogEntry(systemTraceContext(ctx, sessionID, agentKey), stepID, phase, sev, "", message, "", nil, nil, pairsToMap(extra))
 
-	if os.Getenv("FLOW_LOG_STDERR") == "1" || globalBusRef() == nil {
+	bus := monitorBusRef()
+	if os.Getenv("FLOW_LOG_STDERR") == "1" || bus == nil {
 		fmt.Fprintf(os.Stderr, "[flow][system] %s\n", entry.displayText())
 		_ = os.Stderr.Sync()
 	}
 
-	bus := globalBusRef()
 	if bus == nil {
 		return
+	}
+	// Info-level high-frequency steps are stderr-only unless explicitly enabled.
+	if sev == FlowSeverityInfo && shouldThrottleSystemFlow(stepID) {
+		if os.Getenv("FLOW_LOG_BUS") != "1" {
+			return
+		}
+		if !allowSystemFlowEmit(stepID) {
+			return
+		}
 	}
 	env := NewEnvelope(EnvelopeTypeFlowLog, "system", sessionID)
 	env.Channel = "monitor"
 	env.Content = &EnvelopeContent{Text: entry.displayText(), IsPartial: false}
 	env.Metadata = entry.toMetadata()
-	safego.Go(context.Background(), "system-flow-publish", func() {
-		bus.Publish(context.Background(), env)
-	})
+	// Synchronous publish avoids goroutine storms during streaming turns.
+	bus.Publish(context.Background(), env)
 }
 
 func pairsToMap(extra []Pair) map[string]any {

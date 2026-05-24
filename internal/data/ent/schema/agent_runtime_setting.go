@@ -54,6 +54,8 @@ func (AgentRuntimeSetting) Fields() []ent.Field {
 		field.Int("l0_summary_keep_turns").Default(4),
 		field.String("l0_compress_provider").Default(""),
 		field.String("l0_compress_model").Default(""),
+		field.String("memory_worker_provider").Default(""),
+		field.String("memory_worker_model").Default(""),
 		field.String("l0_truncate_strategy").Default("summary"),
 		field.Bool("l0_inject_l1").Default(true),
 		field.Bool("l0_inject_l3").Default(true),

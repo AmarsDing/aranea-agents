@@ -94,7 +94,7 @@ gantt
 | ID | 任务 | 状态 | 验收 |
 |----|------|------|------|
 | CC-B-01 | `sessions.session_revision` + bump | ✅ | Turn 完成 +1 |
-| CC-B-02 | Envelope 携带 `session_revision` | ✅ | terminal envelope |
+| CC-B-02 | Envelope 携带 `session_revision` | ✅ | terminal=`completed`；mid-turn=`sync` |
 | CC-B-03 | `ListSessionMessages?after_revision=` | ✅ | service 测试 |
 | CC-B-04 | 选中 Session 强制 Session WS | ✅ | |
 | CC-B-05 | revision debounced hydrate + replay 门控 | ✅ | `wsReplaying` |

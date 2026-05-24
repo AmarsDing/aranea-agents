@@ -40,6 +40,7 @@ type TurnPreviewCoordinator struct {
 	messageID  string
 	initialAck string
 	delivery   *turnPreviewDelivery
+	overflowEnqueued int
 	sentToolCardStatus map[string]string
 	toolCardMessageIDs map[string]string
 	cardSerial         sync.Mutex
@@ -222,6 +223,11 @@ func (c *TurnPreviewCoordinator) patchLocked(ctx context.Context, text string, f
 	if text == "" || c.updater == nil {
 		return nil
 	}
+	limit := preview.PlatformTextLimit(c.platform)
+	if c.policy.SplitOverflow && c.delivery != nil && c.delivery.EnqueueOverflow != nil && len([]rune(text)) > limit {
+		return c.patchSplitLocked(ctx, text, force)
+	}
+	text = preview.TruncateRunes(text, limit)
 	if !force && time.Since(c.lastPatch) < channelPreviewPatchInterval && text == c.lastRender {
 		return nil
 	}
@@ -247,6 +253,40 @@ func (c *TurnPreviewCoordinator) patchLocked(ctx context.Context, text string, f
 	return nil
 }
 
+func (c *TurnPreviewCoordinator) patchSplitLocked(ctx context.Context, text string, force bool) error {
+	limit := preview.PlatformTextLimit(c.platform)
+	pages := preview.SplitPages(text, limit)
+	if len(pages) == 0 {
+		return nil
+	}
+	first := pages[0]
+	if !force && time.Since(c.lastPatch) < channelPreviewPatchInterval && first == c.lastRender {
+		// still enqueue new overflow pages below
+	} else if err := c.updater.Update(ctx, c.recipient, first, force); err != nil {
+		recordPreviewPatch(c.platform, err)
+		return err
+	} else {
+		c.lastPatch = time.Now()
+		c.lastRender = first
+		if id, ok := c.updater.(streamPreviewMessageID); ok {
+			if v := strings.TrimSpace(id.PreviewMessageID()); v != "" {
+				c.messageID = v
+			}
+		}
+		recordPreviewPatch(c.platform, nil)
+	}
+	if c.delivery == nil || c.delivery.EnqueueOverflow == nil {
+		return nil
+	}
+	for i := c.overflowEnqueued; i < len(pages)-1; i++ {
+		if err := c.delivery.EnqueueOverflow(ctx, pages[i+1], i+1); err != nil {
+			return err
+		}
+		c.overflowEnqueued = i + 1
+	}
+	return nil
+}
+
 // Flush forces the latest transcript to the preview message.
 func (c *TurnPreviewCoordinator) Flush(ctx context.Context, force bool) error {
 	c.mu.Lock()
@@ -267,19 +307,9 @@ func (c *TurnPreviewCoordinator) patchDeliverable(ctx context.Context, text stri
 	if len([]rune(text)) <= limit {
 		return c.patch(ctx, text, force)
 	}
-	pages := preview.SplitPages(text, limit)
-	if len(pages) == 0 {
-		return nil
-	}
-	if err := c.patch(ctx, pages[0], true); err != nil {
-		return err
-	}
-	for i, page := range pages[1:] {
-		if err := c.delivery.EnqueueOverflow(ctx, page, i+1); err != nil {
-			return err
-		}
-	}
-	return nil
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.patchSplitLocked(ctx, text, true)
 }
 
 func (c *TurnPreviewCoordinator) maybeSendToolCard(ctx context.Context, toolID string, seg preview.Segment) {
@@ -363,6 +393,18 @@ func (c *TurnPreviewCoordinator) ContentPreview(max int) string {
 		max = 200
 	}
 	return truncateForLog(text, max)
+}
+
+// FlushFinalText patches the preview message with final text (avoids a second outbound when preview exists).
+func (c *TurnPreviewCoordinator) FlushFinalText(ctx context.Context, text string) error {
+	if c == nil || c.updater == nil {
+		return nil
+	}
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil
+	}
+	return c.patch(ctx, text, true)
 }
 
 func recordPreviewPatch(platform string, err error) {

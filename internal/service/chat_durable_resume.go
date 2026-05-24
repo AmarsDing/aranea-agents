@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	chatv1 "aranea-agents/api/kratos/chat/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	"aranea-agents/pkg/safego"
@@ -51,8 +50,8 @@ func (s *ChatService) ResumeDurableSessionRun(ctx context.Context, sessionRunID 
 	runCtx, cancel := context.WithTimeout(context.Background(), deadline)
 	safego.Go(runCtx, "session-run-durable-resume", func() {
 		defer cancel()
-		req := &chatv1.SendChatMessageRequest{
-			SessionId: run.SessionID,
+		req := biz.TurnInput{
+			SessionID: run.SessionID,
 			Content:   biz.DurableResumePrompt(),
 		}
 		bgCtx := event.WithSessionRunID(event.WithEnvelopeSource(runCtx, run.Source), sessionRunID)
@@ -68,7 +67,7 @@ func (s *ChatService) ResumeDurableSessionRun(ctx context.Context, sessionRunID 
 			Provider:         payload.Provider,
 			Model:            payload.Model,
 		})
-		_, asst, turnErr := s.RunNativeTurnUnary(bgCtx, req)
+		_, asst, turnErr := s.RunNativeTurn(bgCtx, req)
 		persistCtx := context.WithoutCancel(runCtx)
 		if turnErr != nil {
 			_ = s.orch.chTurn.SessionRuns.Fail(persistCtx, sessionRunID, turnErr.Error())

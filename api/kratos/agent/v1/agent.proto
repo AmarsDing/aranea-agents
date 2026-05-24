@@ -125,6 +125,12 @@ message AgentRuntimeSettings {
   string ralph_loop_promise_tag_open = 107;
   string ralph_loop_promise_tag_close = 108;
   string ralph_loop_verify_work_dir = 109;
+  // L0CompressProvider / L0CompressModel: cheaper catalog model for session summarization; empty → chat model.
+  string l0_compress_provider = 110;
+  string l0_compress_model = 111;
+  // MemoryWorkerProvider / MemoryWorkerModel: LLM for async memory extraction; empty → L0 compress, then chat model.
+  string memory_worker_provider = 112;
+  string memory_worker_model = 113;
 }
 
 message AgentPromptFile {

@@ -258,7 +258,7 @@ func r11WireNoGlobalBootstrap(rel string, lines []string) []violation {
 			"SetCredentialKeyResolver(",
 			"mcpobserve.SetBus(",
 			"mcpobserve.SetMetadataRecorder(",
-			"event.SetGlobalBus(",
+			"event.BindInfra(",
 		} {
 			if strings.Contains(trimmed, marker) {
 				vs = append(vs, violation{
@@ -301,9 +301,9 @@ func r7NoMuxHandleFunc(rel string, lines []string) []violation {
 	return nil
 }
 
-// R8: sql.Open is only allowed in internal/data/data.go.
+// R8: sql.Open is only allowed under internal/data/ (single SQLite pool owner).
 func r8SqlOpenOnlyInDataGo(rel string, lines []string) []violation {
-	if rel == "internal/data/data.go" {
+	if strings.HasPrefix(rel, "internal/data/") {
 		return nil
 	}
 	if strings.HasSuffix(rel, "_test.go") {

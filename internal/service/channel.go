@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"time"
 
 	v1 "aranea-agents/api/kratos/channel/v1"
 	"aranea-agents/internal/biz"
@@ -36,6 +37,14 @@ func (s *ChannelService) reloadRuntime(ctx context.Context) {
 }
 
 func bizChannelToProto(c biz.Channel) *v1.Channel {
+	return channelRowToProto(c, "")
+}
+
+func channelRowToProto(c biz.Channel, runtimeMetaJSON string) *v1.Channel {
+	meta := c.MetadataJSON
+	if strings.TrimSpace(runtimeMetaJSON) != "" {
+		meta = mergeChannelMetadataJSON(c.MetadataJSON, runtimeMetaJSON)
+	}
 	return &v1.Channel{
 		Id:           c.ID,
 		Resource:     c.Resource,
@@ -51,11 +60,50 @@ func bizChannelToProto(c biz.Channel) *v1.Channel {
 		Provider:     c.Provider,
 		Model:        c.Model,
 		ConfigJson:   c.ConfigJSON,
-		MetadataJson: c.MetadataJSON,
+		MetadataJson: meta,
 		CreatedAt:    c.CreatedAt,
 		UpdatedAt:    c.UpdatedAt,
 		DeletedAt:    c.DeletedAt,
 	}
+}
+
+func mergeChannelMetadataJSON(base, patch string) string {
+	var a, b map[string]any
+	if json.Unmarshal([]byte(strings.TrimSpace(base)), &a) != nil || a == nil {
+		a = map[string]any{}
+	}
+	if json.Unmarshal([]byte(strings.TrimSpace(patch)), &b) == nil {
+		for k, v := range b {
+			a[k] = v
+		}
+	}
+	out, err := json.Marshal(a)
+	if err != nil {
+		return base
+	}
+	return string(out)
+}
+
+func (s *ChannelService) runtimeMetadataPatch(channelID string) string {
+	if s == nil || s.runtime == nil {
+		return ""
+	}
+	info := s.runtime.ConnectionInfo(channelID)
+	if !info.Connected {
+		return ""
+	}
+	patch := map[string]any{"runtime_connected": true}
+	if !info.ConnectedSince.IsZero() {
+		patch["runtime_connected_since"] = info.ConnectedSince.UTC().Format(time.RFC3339)
+	}
+	if !info.LastDisconnect.IsZero() {
+		patch["runtime_last_disconnect"] = info.LastDisconnect.UTC().Format(time.RFC3339)
+	}
+	b, err := json.Marshal(patch)
+	if err != nil {
+		return ""
+	}
+	return string(b)
 }
 
 func bizCatalogItemToProto(it biz.ChannelCatalogItem) (*v1.ChannelCatalogItem, error) {
@@ -171,7 +219,7 @@ func (s *ChannelService) ListChannels(ctx context.Context, _ *emptypb.Empty) (*v
 	}
 	out := make([]*v1.Channel, 0, len(items))
 	for _, c := range items {
-		out = append(out, bizChannelToProto(c))
+		out = append(out, channelRowToProto(c, s.runtimeMetadataPatch(c.ID)))
 	}
 	return &v1.ListChannelsResponse{Items: out}, nil
 }
@@ -181,7 +229,7 @@ func (s *ChannelService) GetChannel(ctx context.Context, req *v1.GetChannelReque
 	if err != nil {
 		return nil, err
 	}
-	return bizChannelToProto(c), nil
+	return channelRowToProto(c, s.runtimeMetadataPatch(c.ID)), nil
 }
 
 func (s *ChannelService) CreateChannel(ctx context.Context, req *v1.CreateChannelRequest) (*v1.Channel, error) {

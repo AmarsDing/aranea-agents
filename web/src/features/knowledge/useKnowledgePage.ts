@@ -1,5 +1,6 @@
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useQuasar } from "quasar";
+import axios from "axios";
 import { hasIndexingDocuments } from "./knowledgeUi";
 import type { KnowledgeChunk, KnowledgeDocument, EmbedderConfig, UpdateEmbedderConfigInput } from "./types";
 import { useKnowledgeStore } from "../../stores/knowledge";
@@ -38,6 +39,19 @@ export function useKnowledgePage() {
   );
 
   function friendlyError(err: unknown): string {
+    if (axios.isAxiosError(err)) {
+      const status = err.response?.status;
+      if (status === 404) {
+        return "知识库 API 未找到 (404)。请确认：① 页面使用 http://localhost:9001/knowledge（勿直接打开 :8000）；② 已重启 admin（go run ./cmd/admin）；③ 请求路径为 /v1/knowledge/... 而非 /api/v1/...。";
+      }
+      if (!err.response && (err.code === "ERR_NETWORK" || err.message === "Network Error")) {
+        return "无法连接后端。请确认 admin 在 :8000 运行，并通过 http://localhost:9001 打开页面。";
+      }
+      const data = err.response?.data as { message?: string } | undefined;
+      if (typeof data?.message === "string" && data.message.trim()) {
+        return data.message;
+      }
+    }
     const msg = err instanceof Error ? err.message : String(err);
     if (/unavailable|pgvector|postgres|not configured/i.test(msg)) {
       unavailable.value = msg;

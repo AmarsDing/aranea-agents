@@ -21,6 +21,8 @@ type RelationParams struct {
 	Weight           float64
 	Confidence       float64
 	MetadataJSON     string
+	ValidFromRFC3339 string
+	ValidToRFC3339   string
 	CreatedAtRFC3339 string
 	UpdatedAtRFC3339 string
 }
@@ -63,21 +65,28 @@ func (st *Store) UpsertRelation(ctx context.Context, params RelationParams) erro
 	if p.Confidence <= 0 {
 		p.Confidence = 0.7
 	}
+	validFrom := strings.TrimSpace(p.ValidFromRFC3339)
+	if validFrom == "" {
+		validFrom = created
+	}
+	validTo := strings.TrimSpace(p.ValidToRFC3339)
 	const q = `
 INSERT INTO memory_relations (
   id, scope_type, scope_id, workspace_id, source_id, target_id, relation_type,
   bidirectional, weight, confidence, importance, use_count, attributes_json, evidence_json,
-  status, source_kind, metadata_json, created_at, updated_at, archived_at, deleted_at
-) VALUES (?,?,?,?,?,?,?,0,?,?,0.5,0,'{}','[]','active','extracted',?,?,?,'')
+  status, source_kind, metadata_json, valid_from, valid_to, created_at, updated_at, archived_at, deleted_at
+) VALUES (?,?,?,?,?,?,?,0,?,?,0.5,0,'{}','[]','active','extracted',?,?,?,?,?,'')
 ON CONFLICT(scope_type, scope_id, source_id, target_id, relation_type) DO UPDATE SET
   weight=excluded.weight,
   confidence=excluded.confidence,
   metadata_json=excluded.metadata_json,
+  valid_from=excluded.valid_from,
+  valid_to=excluded.valid_to,
   updated_at=excluded.updated_at`
 	_, err := st.client.ExecContext(ctx, q,
 		p.ID, p.ScopeType, p.ScopeID, strings.TrimSpace(p.WorkspaceID),
 		p.SourceID, p.TargetID, p.RelationType,
-		p.Weight, p.Confidence, meta, created, now,
+		p.Weight, p.Confidence, meta, validFrom, validTo, created, now,
 	)
 	return err
 }

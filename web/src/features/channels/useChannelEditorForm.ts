@@ -22,8 +22,16 @@ import {
   resolveChannelAgentSelectValue,
   type ChannelRoutingTargetType
 } from "./channelRoutingUtils";
+import {
+  applyLongTaskFormDefaults,
+  CHANNEL_LONG_TASK_DEFAULTS,
+  isLongTaskFormKey,
+  LONG_TASK_NUMERIC_KEYS,
+  type LongTaskFormKey
+} from "./channelLongTaskDefaults";
 import { channelWebhookURL } from "../../components/channels/channelUi";
 import { buildChannelWebhookURL, isLocalhostOrigin } from "./publicWebhookOrigin";
+import { createChannel, testChannel, updateChannel } from "./api";
 import type { ChannelCatalogItem, ChannelConfig, ChannelCredential, ChannelCredentialInput, ChannelMetadata, ChannelRow } from "./types";
 
 type EditorProps = {
@@ -46,6 +54,7 @@ export function useChannelEditorForm(props: EditorProps, modelOpen: Ref<boolean>
   const defaultAgentId = ref("");
   const defaultTeamId = ref("");
   const dmScope = ref("per-channel-peer");
+  const routingRules = ref<Array<{ peer_pattern: string; agent_id?: string; team_id?: string }>>([]);
   const routingTargetType = ref<ChannelRoutingTargetType>("agent");
   const routingOptionsLoading = ref(false);
   const routingAgents = ref<Agent[]>([]);
@@ -195,13 +204,13 @@ export function useChannelEditorForm(props: EditorProps, modelOpen: Ref<boolean>
     if (!presetId) return;
     const preset = findLongTaskPreset(presetId);
     if (!preset) return;
-    Object.keys(configDraft).forEach((k) => delete configDraft[k]);
-    Object.keys(configBoolDraft).forEach((k) => delete configBoolDraft[k]);
+    const extra = parseJSON<Record<string, unknown>>(configExtraText.value, {});
     for (const [key, value] of Object.entries(preset.config)) {
       if (typeof value === "boolean") configBoolDraft[key] = value;
-      else configDraft[key] = String(value);
+      else if (isLongTaskFormKey(key)) configDraft[key] = String(value);
+      extra[key] = value;
     }
-    configExtraText.value = JSON.stringify(preset.config, null, 2);
+    configExtraText.value = JSON.stringify(extra, null, 2);
     if (preset.receiveMode) receiveMode.value = preset.receiveMode;
   }
 
@@ -221,6 +230,14 @@ export function useChannelEditorForm(props: EditorProps, modelOpen: Ref<boolean>
     defaultTeamId.value = String(cfg.routing?.default_team_id ?? "").trim();
     defaultAgentId.value = String(cfg.routing?.default_agent_id ?? "").trim();
     dmScope.value = String(cfg.routing?.dm_scope ?? "per-channel-peer").trim() || "per-channel-peer";
+    const rawRules = cfg.routing?.rules;
+    routingRules.value = Array.isArray(rawRules)
+      ? rawRules.map((r) => ({
+          peer_pattern: String((r as Record<string, unknown>).peer_pattern ?? ""),
+          agent_id: String((r as Record<string, unknown>).agent_id ?? "").trim() || undefined,
+          team_id: String((r as Record<string, unknown>).team_id ?? "").trim() || undefined
+        }))
+      : [];
     externalId.value = metadata.external_id || "";
     publicWebhookOrigin.value = metadata.public_webhook_origin || "";
     iconAssetId.value = metadata.icon_asset_id || "";
@@ -257,7 +274,16 @@ export function useChannelEditorForm(props: EditorProps, modelOpen: Ref<boolean>
       else configDraft[key] = String(platformConfig[key]);
       delete platformConfig[key];
     }
+    for (const key of Object.keys({ ...platformConfig })) {
+      if (!isLongTaskFormKey(key)) continue;
+      const value = platformConfig[key];
+      if (value === undefined || value === null) continue;
+      if (key === "streaming_enabled") configBoolDraft[key] = Boolean(value);
+      else configDraft[key] = String(value);
+      delete platformConfig[key];
+    }
     configExtraText.value = JSON.stringify(platformConfig, null, 2);
+    fillMissingLongTaskDefaults();
     metadataExtraText.value = JSON.stringify({
       ...metadata,
       icon_url: undefined,
@@ -278,16 +304,29 @@ export function useChannelEditorForm(props: EditorProps, modelOpen: Ref<boolean>
     iconAssetId.value = "";
     routingTargetType.value = "agent";
     dmScope.value = "per-channel-peer";
+    routingRules.value = [];
     defaultAgentId.value = "";
     defaultTeamId.value = "";
     feishuAppId.value = "";
     feishuRegion.value = "feishu";
     Object.keys(configDraft).forEach((k) => delete configDraft[k]);
     Object.keys(configBoolDraft).forEach((k) => delete configBoolDraft[k]);
+    applyLongTaskFormDefaults(configBoolDraft, configDraft);
     selectedLongTaskPreset.value = "";
     configExtraText.value = JSON.stringify(defaultConfigFor(item), null, 2);
     metadataExtraText.value = JSON.stringify({ catalog_source: "catalog", catalog_group: item.group }, null, 2);
     if (previousType !== item.type) resetCredentialDraft();
+  }
+
+  function fillMissingLongTaskDefaults() {
+    for (const [key, value] of Object.entries(CHANNEL_LONG_TASK_DEFAULTS)) {
+      if (typeof value === "boolean") {
+        if (key in configBoolDraft) continue;
+        configBoolDraft[key] = value;
+      } else if (!configDraft[key]?.trim()) {
+        configDraft[key] = String(value);
+      }
+    }
   }
 
   function resetCredentialDraft() {
@@ -306,10 +345,16 @@ export function useChannelEditorForm(props: EditorProps, modelOpen: Ref<boolean>
         try { extra[key] = JSON.parse(trimmed); } catch { extra[key] = trimmed.split(",").map((s) => s.trim()).filter(Boolean); }
         return;
       }
+      if (LONG_TASK_NUMERIC_KEYS.has(key as LongTaskFormKey)) {
+        const num = Number(trimmed);
+        extra[key] = Number.isFinite(num) ? num : trimmed;
+        return;
+      }
       extra[key] = trimmed;
     });
-    if ("active_mode" in configBoolDraft) extra.active_mode = configBoolDraft.active_mode;
-    if ("require_mention" in configBoolDraft) extra.require_mention = configBoolDraft.require_mention;
+    Object.entries(configBoolDraft).forEach(([key, value]) => {
+      extra[key] = value;
+    });
   }
 
   function buildPayload() {
@@ -325,6 +370,7 @@ export function useChannelEditorForm(props: EditorProps, modelOpen: Ref<boolean>
       webhook: { path: webhookPath.value },
       routing: {
         dm_scope: dmScope.value.trim() || "per-channel-peer",
+        ...(routingRules.value.length ? { rules: routingRules.value } : {}),
         ...(routingTargetType.value === "team"
           ? { default_team_id: defaultTeamId.value.trim() }
           : { default_agent_id: defaultAgentId.value.trim() }),
@@ -452,7 +498,7 @@ export function useChannelEditorForm(props: EditorProps, modelOpen: Ref<boolean>
     configExtraText, metadataExtraText, form,
     selectedCatalog, platformSections, credentialKeys,
     configError, metadataError, canSave, webhookPreview, webhookIsLocalhost, iconPreviewMetadata,
-    routingTargetType, defaultAgentId, defaultTeamId, dmScope, routingAgents, routingTeams, routingOptionsLoading,
+    routingTargetType, defaultAgentId, defaultTeamId, dmScope, routingRules, routingAgents, routingTeams, routingOptionsLoading,
     selectedLongTaskPreset, longTaskPresetOptions, applyLongTaskPreset,
     visibleSectionFields, fieldKind, readField, writeField, readFieldBool, writeFieldBool, fieldStatus,
     save, saveAndTest, copyWebhookPreview

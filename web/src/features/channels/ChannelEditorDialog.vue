@@ -66,6 +66,7 @@
                 v-if="section.id === 'long_task'"
                 :label="t('channelEditor.longTaskPresetLabel')"
                 field-key="long_task_preset"
+                :help="longTaskPresetHelp"
               >
                 <q-select
                   :model-value="selectedLongTaskPreset"
@@ -87,6 +88,7 @@
                   v-model:agent-id="defaultAgentId"
                   v-model:team-id="defaultTeamId"
                   v-model:dm-scope="dmScope"
+                  v-model:routing-rules="routingRules"
                   :agents="routingAgents"
                   :teams="routingTeams"
                   :loading="routingOptionsLoading"
@@ -122,8 +124,9 @@
                   <channel-config-row
                     v-else-if="field.bind.source === 'webhook' && field.bind.key === 'preview'"
                     :key="field.museKey"
-                    :label="field.museKey"
+                    :label="fieldLabel(field)"
                     :field-key="field.museKey"
+                    :help="fieldHelp(field)"
                     :status="fieldStatusLabel(fieldStatus(field))"
                   >
                     <div class="app-musebot-row__control--readonly row items-center no-wrap q-gutter-xs">
@@ -150,8 +153,9 @@
                   <channel-config-row
                     v-else
                     :key="field.museKey"
-                    :label="field.museKey"
+                    :label="fieldLabel(field)"
                     :field-key="field.museKey"
+                    :help="fieldHelp(field)"
                     :status="fieldStatusLabel(fieldStatus(field))"
                   >
                     <q-toggle
@@ -255,6 +259,10 @@
                 />
               </div>
             </q-expansion-item>
+
+            <section v-if="row?.id" class="app-musebot-section q-mt-md">
+              <ChannelTurnJobsPanel :channel-id="row.id" />
+            </section>
           </div>
         </q-card-section>
       </div>
@@ -288,13 +296,14 @@
 </template>
 
 <script setup lang="ts">
-import { toRef } from "vue";
+import { toRef, computed } from "vue";
 import { useI18n } from "vue-i18n";
 import ChannelCatalogPicker from "./ChannelCatalogPicker.vue";
 import ChannelConfigRow from "../../components/channels/ChannelConfigRow.vue";
 import ChannelRoutingFields from "../../components/channels/ChannelRoutingFields.vue";
 import ChannelPlatformAvatar from "../../components/channels/ChannelPlatformAvatar.vue";
 import AgentAvatarPicker from "../../components/avatar/AgentAvatarPicker.vue";
+import ChannelTurnJobsPanel from "./ChannelTurnJobsPanel.vue";
 import { useChannelEditorForm } from "./useChannelEditorForm";
 import { useChannelEditorLabels } from "./useChannelEditorLabels";
 import type { ChannelCatalogItem, ChannelCredential, ChannelRow } from "./types";
@@ -337,6 +346,7 @@ const {
   defaultAgentId,
   defaultTeamId,
   dmScope,
+  routingRules,
   routingAgents,
   routingTeams,
   routingOptionsLoading,
@@ -355,8 +365,13 @@ const {
   copyWebhookPreview
 } = useChannelEditorForm(props, toRef(props, "modelValue"), emit);
 
-const { catalogDescription, sectionTitle, sectionHint, fieldStatusLabel, selectOptions } =
+const { catalogDescription, sectionTitle, sectionHint, fieldLabel, fieldHelp, fieldStatusLabel, selectOptions } =
   useChannelEditorLabels(selectedCatalog);
+
+const longTaskPresetHelp = computed(() => ({
+  description: t("channelEditor.longTaskPresetHelp"),
+  example: t("channelEditor.longTaskPresetExample")
+}));
 
 function sectionDomId(id: string) {
   return `channel-section-${id}`;

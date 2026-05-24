@@ -9,12 +9,14 @@ import type { useAppStore } from "../../../stores/app";
 import type { useChatStore } from "../../../stores/chat";
 import { useChatStreamingSnapshots } from "../../../stores/chatStreamingSnapshots";
 import { runStatusFromEnvelope } from "../envelopeRunStatus";
+import { SESSION_RUN_STATUS } from "../sessionRunStatus";
 import {
   upsertToolMessage,
   finalizeOrphanToolMessages,
 } from "../envelopeToolCall";
 import { dropPendingUserPlaceholders } from "../mergeSessionMessages";
 import { createMessageBatchWriter } from "../messageStoreBatch";
+import { patchStreamingEnvelope } from "../streamHandlers";
 import { refreshAgentSessionsForChannel } from "../channelInboundSessionRefresh";
 
 export type ChatInboundSyncDeps = {
@@ -36,6 +38,13 @@ export type ChatInboundSyncDeps = {
 
 const HYDRATE_DEBOUNCE_MS = 200;
 
+/** Per-session seal: after turn complete, ignore stale text_delta replay until next RUNNING. */
+type TurnStreamSeal = { revision: number };
+
+function inboundStreamRowId(sessionId: string): string {
+  return `ws-stream-${sessionId}`;
+}
+
 function envelopeSessionRevision(env: Envelope): number {
   if (typeof env.session_revision === "number" && env.session_revision > 0) {
     return env.session_revision;
@@ -53,11 +62,21 @@ function envelopeSource(env: Envelope): string {
   return typeof md?.source === "string" ? md.source.trim() : "";
 }
 
+function isSessionRevisionSyncEnvelope(env: Envelope): boolean {
+  if (env.type !== "run_status") return false;
+  return runStatusFromEnvelope(env)?.status === SESSION_RUN_STATUS.SYNC;
+}
+
 function isTurnCompleteEnvelope(env: Envelope): boolean {
   if (env.type === "runner_completion") return true;
   if (env.type !== "run_status") return false;
   const status = runStatusFromEnvelope(env)?.status;
-  return status === "completed" || status === "failed" || status === "cancelled";
+  if (status === SESSION_RUN_STATUS.SYNC) return false;
+  return (
+    status === SESSION_RUN_STATUS.COMPLETED ||
+    status === SESSION_RUN_STATUS.FAILED ||
+    status === SESSION_RUN_STATUS.CANCELLED
+  );
 }
 
 /**
@@ -70,6 +89,24 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
   let hubId: string | null = null;
   let hydrateTimer: ReturnType<typeof setTimeout> | null = null;
   let pendingHydrateSessionId = "";
+  const sealedTurnBySession = new Map<string, TurnStreamSeal>();
+
+  function sealTurnStream(sessionId: string, env: Envelope, envRev: number) {
+    const localRev = deps.chatStore.sessionRevisionBySession[sessionId] ?? 0;
+    inboundMessageWriter.flushSync();
+    sealedTurnBySession.set(sessionId, {
+      revision: Math.max(envRev, localRev),
+    });
+  }
+
+  function unsealTurnStream(sessionId: string) {
+    sealedTurnBySession.delete(sessionId);
+  }
+
+  function isStaleStreamEnvelope(sessionId: string, env: Envelope): boolean {
+    if (!sealedTurnBySession.has(sessionId)) return false;
+    return env.type === "text_delta" || env.type === "text_done";
+  }
 
   const inboundMessageWriter = createMessageBatchWriter(
     () => {
@@ -127,7 +164,7 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
     }
   }
 
-  function scheduleHydrate(sessionId: string, dropStaleInFlight = false) {
+  function scheduleHydrate(sessionId: string, dropStaleInFlight = false, clearStreaming = true) {
     if (deps.wsReplaying?.value) {
       return;
     }
@@ -135,11 +172,11 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
     if (hydrateTimer) clearTimeout(hydrateTimer);
     hydrateTimer = setTimeout(() => {
       hydrateTimer = null;
-      void hydrateCurrentSession(pendingHydrateSessionId, dropStaleInFlight);
+      void hydrateCurrentSession(pendingHydrateSessionId, dropStaleInFlight, clearStreaming);
     }, HYDRATE_DEBOUNCE_MS);
   }
 
-  async function hydrateCurrentSession(sessionId: string, dropStaleInFlight = false) {
+  async function hydrateCurrentSession(sessionId: string, dropStaleInFlight = false, clearStreaming = true) {
     if (deps.chatStore.entityKind === "team") {
       deps.ensureTeamStream(sessionId);
     } else {
@@ -159,7 +196,9 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
       } else {
         await deps.chatStore.loadMessages({ sessionId, dropStaleInFlight });
       }
-      streamingSnapshots.clear(sessionId);
+      if (clearStreaming) {
+        streamingSnapshots.clear(sessionId);
+      }
     } catch {
       /* ignore background hydrate */
     }
@@ -190,7 +229,7 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
       entityMatch &&
       inboundSource === "channel" &&
       env.type === "run_status" &&
-      runStatusFromEnvelope(env)?.status === "running"
+      runStatusFromEnvelope(env)?.status === SESSION_RUN_STATUS.RUNNING
     ) {
       const agentId = agentIdFromEnvelope(env);
       if (
@@ -206,7 +245,8 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
 
     if (isCurrent && env.type === "run_status") {
       const rs = runStatusFromEnvelope(env);
-      if (rs?.status === "running") {
+      if (rs?.status === SESSION_RUN_STATUS.RUNNING) {
+        unsealTurnStream(sessionId);
         if (deps.chatStore.entityKind === "team") {
           deps.ensureTeamStream(sessionId);
         } else {
@@ -225,23 +265,37 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
 
     if (!isCurrent && !entityMatch) return;
 
+    if (isCurrent && isSessionRevisionSyncEnvelope(env)) {
+      if (envRev > localRev) {
+        scheduleHydrate(sessionId, false, false);
+      }
+      return;
+    }
+
     if (isCurrent && deps.chatStore.entityKind === "agent") {
       deps.ensureChatStream(sessionId);
+      const streamId = inboundStreamRowId(sessionId);
       if (env.type === "text_delta" && (env.content?.text || env.content?.reasoning)) {
+        if (isStaleStreamEnvelope(sessionId, env)) return;
         streamingSnapshots.put(sessionId, {
           reasoning: env.content?.reasoning,
           partialText: env.content?.text,
         });
-        deps.patchAgentMessages(sessionId, `ws-stream-${sessionId}`, env, false);
+        inboundMessageWriter.update((cur) =>
+          patchStreamingEnvelope(cur, sessionId, streamId, env, false)
+        );
         return;
       }
       if (env.type === "text_done") {
+        if (isStaleStreamEnvelope(sessionId, env)) return;
         streamingSnapshots.put(sessionId, {
           reasoning: env.content?.reasoning,
           partialText: env.content?.text,
           replace: true,
         });
-        deps.patchAgentMessages(sessionId, `ws-stream-${sessionId}`, env, true);
+        inboundMessageWriter.update((cur) =>
+          patchStreamingEnvelope(cur, sessionId, streamId, env, true)
+        );
         return;
       }
       if (env.type === "tool_call" && env.tool_call) {
@@ -261,6 +315,7 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
     }
 
     if (isCurrent) {
+      sealTurnStream(sessionId, env, envRev);
       if (envRev === 0 || envRev > localRev) {
         scheduleHydrate(sessionId, true);
       } else {

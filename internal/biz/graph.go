@@ -118,6 +118,14 @@ type GraphBuildConfig struct {
 	ParallelBranchIDs []string
 }
 
+// GraphExecutor is the biz-level port for executing graphs from other modules.
+// Consumers (Channel, Cron) depend on this interface instead of *GraphService,
+// following the dependency inversion principle. Wire binds it in service layer.
+type GraphExecutor interface {
+	ExecuteGraphByID(ctx context.Context, graphID, sessionID string, initialState map[string]any) (executionID string, err error)
+	ExecuteGraphBuildConfig(ctx context.Context, graphID, sessionID string, cfg GraphBuildConfig, initialState map[string]any) (executionID string, err error)
+}
+
 type GraphDefinition struct {
 	ID               string
 	Name             string

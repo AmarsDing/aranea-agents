@@ -21,6 +21,7 @@ func InboundEventFromWebhook(parsed *WebhookParseResult) (port.InboundEvent, boo
 		Mentioned:     parsed.Mentioned,
 		OpenID:        parsed.SenderOpenID,
 		UserID:        parsed.SenderUserID,
+		ThreadID:      parsed.ThreadID,
 		IngressSource: "webhook",
 	})
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -85,6 +86,7 @@ func (m *Manager) Reload(ctx context.Context) error {
 		return err
 	}
 	want := map[string]string{}
+	appIDOwners := map[string]string{}
 	for _, ch := range items {
 		if !NeedsRuntimeConnector(ch) {
 			continue
@@ -93,6 +95,19 @@ func (m *Manager) Reload(ctx context.Context) error {
 		mode := EffectiveReceiveMode(ch)
 		if _, ok := lookupStarter(cfg.Type, mode); !ok {
 			continue
+		}
+		if strings.EqualFold(cfg.Type, "feishu") {
+			if appID := feishuAppIDFromConfig(ch.ConfigJSON); appID != "" {
+				if owner, dup := appIDOwners[appID]; dup {
+					event.SysLogWarn("channel.runtime.app_id_conflict", "同 app_id 已有 enabled channel 占用 WS，跳过启动",
+						event.P("app_id", appID),
+						event.P("channel_id", ch.ID),
+						event.P("existing_channel_id", owner),
+					)
+					continue
+				}
+				appIDOwners[appID] = ch.ID
+			}
 		}
 		creds, err := m.channels.ListCredentialsRaw(ctx, ch.ID)
 		if err != nil {
@@ -200,3 +215,15 @@ func (m *Manager) StopAll() {
 
 // ErrNoStarter indicates no runtime connector registered for type/mode.
 var ErrNoStarter = fmt.Errorf("channel runtime: no starter registered")
+
+func feishuAppIDFromConfig(configJSON string) string {
+	var cfg struct {
+		Config struct {
+			AppID string `json:"app_id"`
+		} `json:"config"`
+	}
+	if json.Unmarshal([]byte(strings.TrimSpace(configJSON)), &cfg) != nil {
+		return ""
+	}
+	return strings.TrimSpace(cfg.Config.AppID)
+}

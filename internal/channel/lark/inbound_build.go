@@ -21,21 +21,26 @@ func BuildFeishuInboundEvent(p FeishuInboundParams) (port.InboundEvent, bool, st
 		chatType = InferChatTypeFromChatID(chatID)
 	}
 	recipient, receiveType := ResolveReceiveTarget(openID, userID, chatID)
+	meta := map[string]string{
+		"recipient":          recipient,
+		"receive_id_type":    receiveType,
+		"chat_id":            chatID,
+		"chat_type":          chatType,
+		"sender_open_id":     openID,
+		"sender_user_id":     userID,
+		"sender_type":        strings.TrimSpace(p.SenderType),
+		"mentioned":          boolMeta(p.Mentioned),
+		"ingress_source":     strings.TrimSpace(p.IngressSource),
+		"inbound_message_id": msgID,
+	}
+	if tid := strings.TrimSpace(p.ThreadID); tid != "" {
+		meta["thread_id"] = tid
+	}
 	return port.InboundEvent{
 		PlatformType:   "feishu",
 		PeerID:         firstNonEmptyPeerID(openID, userID, chatID),
 		Text:           strings.TrimSpace(p.Text),
 		IdempotencyKey: "feishu:" + msgID,
-		OutboundMeta: map[string]string{
-			"recipient":       recipient,
-			"receive_id_type": receiveType,
-			"chat_id":         chatID,
-			"chat_type":       chatType,
-			"sender_open_id":  openID,
-			"sender_user_id":  userID,
-			"sender_type":     strings.TrimSpace(p.SenderType),
-			"mentioned":       boolMeta(p.Mentioned),
-			"ingress_source":  strings.TrimSpace(p.IngressSource),
-		},
+		OutboundMeta:   meta,
 	}, true, ""
 }

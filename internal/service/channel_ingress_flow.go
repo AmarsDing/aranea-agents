@@ -20,13 +20,12 @@ func (h *ChannelIngress) logTurnFlow(ctx context.Context, sessionID, step, messa
 	if h.eventBus != nil {
 		bus = h.eventBus
 	}
-	if h.chat != nil {
-		buf = h.chat.ChannelFlowBuffer()
+	if h.flowBuffer != nil {
+		buf = h.flowBuffer
 	}
 	flow := event.NewFlowLogger(bus, buf, sessionID, "")
 	if err != nil {
-		flow.LogError(step, message, pairs...)
-		event.SysLogWarn(step, message, append(pairs, event.P("error", err.Error()))...)
+		flow.LogError(step, message, append(pairs, event.P("error", err.Error()))...)
 		return
 	}
 	flow.LogDone(step, message, pairs...)

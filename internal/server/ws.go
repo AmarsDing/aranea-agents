@@ -10,7 +10,6 @@ import (
 	"time"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
-	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/event"
 	"aranea-agents/pkg/auth"
@@ -24,13 +23,14 @@ import (
 var _ transport.Server = (*WSServer)(nil)
 
 const (
-	defaultWSReadLimit        = 1 << 20
-	defaultWSPongWait         = 60 * time.Second
-	defaultWSPingPeriod       = 30 * time.Second
-	defaultWSWriteWait        = 10 * time.Second
-	defaultWSSystemSendWait   = 3 * time.Second
-	maxSessionConns           = 5
-	maxGlobalMonitorConns     = 3
+	defaultWSReadLimit      = 1 << 20
+	defaultWSPongWait       = 60 * time.Second
+	defaultWSPingPeriod     = 30 * time.Second
+	defaultWSWriteWait      = 10 * time.Second
+	defaultWSTurnTimeout    = 5 * time.Minute
+	defaultWSSystemSendWait = 3 * time.Second
+	maxSessionConns         = 5
+	maxGlobalMonitorConns   = 3
 )
 
 type RunCanceller interface {
@@ -107,6 +107,7 @@ type WSServer struct {
 	mu          sync.RWMutex
 	conns       map[string][]*wsConn
 	eventBus    event.Bus
+	monitorBus  event.Bus
 	eventBuffer *event.Buffer
 	canceller   RunCanceller
 	sender      ChatSender
@@ -115,14 +116,32 @@ type WSServer struct {
 	closed      bool
 }
 
+// NewWSServer wires a single bus (tests / legacy).
 func NewWSServer(c *conf.Server, eventBus event.Bus, eventBuffer *event.Buffer, canceller RunCanceller, sender ChatSender) *WSServer {
+	return NewWSServerFromInfra(c, &event.Infra{
+		SessionBus: eventBus,
+		MonitorBus: eventBus,
+		Buffer:     eventBuffer,
+	}, canceller, sender)
+}
+
+// NewWSServerFromInfra uses session bus for chat envelopes and monitor bus for flow_log (P0).
+func NewWSServerFromInfra(c *conf.Server, infra *event.Infra, canceller RunCanceller, sender ChatSender) *WSServer {
 	if c == nil || c.GetWs() == nil || !c.GetWs().GetEnable() {
 		return nil
 	}
+	if infra == nil {
+		infra = event.NewInfra()
+	}
+	monitor := infra.MonitorBus
+	if monitor == nil {
+		monitor = infra.SessionBus
+	}
 	return &WSServer{
 		conns:       make(map[string][]*wsConn),
-		eventBus:    eventBus,
-		eventBuffer: eventBuffer,
+		eventBus:    infra.SessionBus,
+		monitorBus:  monitor,
+		eventBuffer: infra.Buffer,
 		canceller:   canceller,
 		sender:      sender,
 		serverConf:  c,
@@ -281,6 +300,7 @@ func (s *WSServer) handleWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var eventCh <-chan event.Envelope
+	var monitorCh <-chan event.Envelope
 	wc.unsubscribe = func() {}
 	if !probeMode {
 		// EP-RT-06: reliable for session chat; lossy for global monitor.
@@ -293,7 +313,21 @@ func (s *WSServer) handleWS(w http.ResponseWriter, r *http.Request) {
 		}
 		ch, unsub := s.eventBus.Subscribe(subOpts)
 		eventCh = ch
-		wc.unsubscribe = unsub
+		unsubSession := unsub
+		unsubAll := func() { unsubSession() }
+		if globalMode && s.monitorBus != nil && s.monitorBus != s.eventBus {
+			mCh, mUnsub := s.monitorBus.Subscribe(event.SubscribeOptions{
+				BufferSize: 128,
+				DropPolicy: event.DropNewest,
+			})
+			monitorCh = mCh
+			prev := unsubAll
+			unsubAll = func() {
+				prev()
+				mUnsub()
+			}
+		}
+		wc.unsubscribe = unsubAll
 	}
 
 	s.mu.Lock()
@@ -316,6 +350,9 @@ func (s *WSServer) handleWS(w http.ResponseWriter, r *http.Request) {
 
 	if !probeMode {
 		safego.Go(connCtx, "ws-event-pump", func() { s.eventPump(wc, eventCh) })
+		if monitorCh != nil {
+			safego.Go(connCtx, "ws-monitor-pump", func() { s.eventPump(wc, monitorCh) })
+		}
 	}
 }
 
@@ -589,7 +626,7 @@ func (s *WSServer) handleUserMessage(wc *wsConn, up wsUpstream) {
 	sessionID := wc.sessionID
 	requestID := strings.TrimSpace(up.RequestID)
 	safego.Go(context.Background(), "ws-user-message", func() {
-		ctx, cancel := context.WithTimeout(context.Background(), chatagent.DefaultTurnTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), defaultWSTurnTimeout)
 		defer cancel()
 		_, err := s.sender.SendChatMessage(ctx, req)
 		if err != nil {
@@ -623,7 +660,7 @@ func (s *WSServer) handleEnqueueMessage(wc *wsConn, up wsUpstream) {
 	}
 
 	safego.Go(context.Background(), "ws-enqueue-message", func() {
-		ctx, cancel := context.WithTimeout(context.Background(), chatagent.DefaultTurnTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), defaultWSTurnTimeout)
 		defer cancel()
 		resp, err := s.sender.EnqueueUserMessage(ctx, req)
 		if err != nil {

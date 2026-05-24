@@ -24,6 +24,11 @@ func (s *FeishuTextSender) ID() string { return "feishu" }
 
 // SendText posts a text DM to recipient (OpenID). If recipient or text is empty after trim, SendText returns nil (no-op).
 func (s *FeishuTextSender) SendText(ctx context.Context, recipientOpenID, text string) error {
+	return s.SendTextWithMeta(ctx, recipientOpenID, text, nil)
+}
+
+// SendTextWithMeta posts text with optional thread reply metadata (F-06b).
+func (s *FeishuTextSender) SendTextWithMeta(ctx context.Context, recipientOpenID, text string, meta map[string]string) error {
 	recipientOpenID = strings.TrimSpace(recipientOpenID)
 	text = strings.TrimSpace(text)
 	if recipientOpenID == "" || text == "" {
@@ -46,7 +51,15 @@ func (s *FeishuTextSender) SendText(ctx context.Context, recipientOpenID, text s
 	if err != nil {
 		return err
 	}
-	return SendTextMessage(ctx, client, region, tok, recipientOpenID, s.effectiveReceiveIDType(), text)
+	receiveType := s.effectiveReceiveIDType()
+	receiveID := recipientOpenID
+	if meta != nil && strings.EqualFold(strings.TrimSpace(meta["reply_in_thread"]), "true") {
+		if tid := strings.TrimSpace(meta["thread_id"]); tid != "" {
+			receiveID = tid
+			receiveType = "thread_id"
+		}
+	}
+	return SendTextMessage(ctx, client, region, tok, receiveID, receiveType, text)
 }
 
 func (s *FeishuTextSender) effectiveReceiveIDType() string {

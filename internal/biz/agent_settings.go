@@ -32,6 +32,8 @@ type MemoryCfg struct {
 	L0SummaryKeepTurns   int     `json:"l0_summary_keep_turns,omitempty"`
 	L0CompressProvider   string  `json:"l0_compress_provider,omitempty"`
 	L0CompressModel      string  `json:"l0_compress_model,omitempty"`
+	MemoryWorkerProvider string  `json:"memory_worker_provider,omitempty"`
+	MemoryWorkerModel    string  `json:"memory_worker_model,omitempty"`
 	L0TruncateStrategy   string  `json:"l0_truncate_strategy,omitempty"`
 	L0InjectL1           bool    `json:"l0_inject_l1,omitempty"`
 	L0InjectL3           bool    `json:"l0_inject_l3,omitempty"`

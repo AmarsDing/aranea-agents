@@ -1,0 +1,201 @@
+/**
+ * Chat session list store — manages session CRUD, selection, and team sessions.
+ * Split from the monolithic useChatStore for single-responsibility.
+ */
+import { ref } from "vue";
+import { defineStore } from "pinia";
+import {
+  clearAgentSessions,
+  createSession,
+  deleteSession,
+  listSessions,
+  listTeamSessions,
+  updateSessionTitle,
+  type Session,
+} from "../../features/session/api";
+import { formatSessionTime } from "../../features/chat/composables/chatWorkspaceUtils";
+import type { ChatEntityKind } from "../../components/chat/types";
+
+export type TeamSessionRow = Session & { at: string };
+
+export const useChatSessionStore = defineStore("chatSession", () => {
+  const entityKind = ref<ChatEntityKind>("agent");
+  const selectedTeamId = ref<string | null>(null);
+  const teamSelectedSessionId = ref<string | null>(null);
+
+  const sessions = ref<Session[]>([]);
+  const selectedSession = ref<Session | null>(null);
+  const teamSessions = ref<Record<string, TeamSessionRow[]>>({});
+
+  function currentSessionId(): string | null {
+    if (entityKind.value === "team") return teamSelectedSessionId.value;
+    return selectedSession.value?.id ?? null;
+  }
+
+  function resetForAgentSwitch() {
+    entityKind.value = "agent";
+    selectedTeamId.value = null;
+    teamSelectedSessionId.value = null;
+  }
+
+  function resetForTeamSwitch(teamId: string) {
+    entityKind.value = "team";
+    selectedTeamId.value = teamId;
+    selectedSession.value = null;
+    teamSelectedSessionId.value = null;
+  }
+
+  async function loadAgentSessions(agentId: string, opts?: { refreshOnly?: boolean }) {
+    if (!agentId) return;
+    const rows = await listSessions(agentId);
+    sessions.value = rows;
+
+    if (opts?.refreshOnly) {
+      const currentId = selectedSession.value?.id;
+      if (currentId) {
+        const updated = rows.find((session) => session.id === currentId);
+        if (updated) selectedSession.value = updated;
+      }
+      return;
+    }
+
+    const selectedID = selectedSession.value?.id;
+    if (selectedID) {
+      selectedSession.value =
+        rows.find((session) => session.id === selectedID) ?? rows[0] ?? null;
+    } else if (!selectedSession.value && rows.length > 0) {
+      selectedSession.value = rows[0];
+    }
+  }
+
+  async function loadTeamSessions(teamId: string) {
+    const rows = await listTeamSessions(teamId);
+    teamSessions.value[teamId] = rows.map((session) => ({
+      ...session,
+      at: formatSessionTime(session.last_message_at || session.updated_at || session.created_at),
+    }));
+  }
+
+  async function addAgentSession(
+    agentId: string,
+    title: string,
+    options?: { dialog_mode?: string; default_provider?: string; default_model?: string }
+  ) {
+    if (!agentId) return null;
+    const created = await createSession({ agent_id: agentId, title, ...options });
+    sessions.value.unshift(created);
+    selectedSession.value = created;
+    return created;
+  }
+
+  async function addTeamSession(
+    teamId: string,
+    title: string,
+    options?: { dialog_mode?: string; default_provider?: string; default_model?: string }
+  ) {
+    const created = await createSession({
+      owner_type: "team",
+      team_id: teamId,
+      title,
+      ...options,
+    });
+    teamSessions.value[teamId] = [
+      {
+        ...created,
+        at: formatSessionTime(created.last_message_at || created.updated_at || created.created_at),
+      },
+      ...(teamSessions.value[teamId] ?? []),
+    ];
+    teamSelectedSessionId.value = created.id;
+    return created;
+  }
+
+  async function removeSessionLocal(id: string) {
+    await deleteSession(id);
+    sessions.value = sessions.value.filter((s) => s.id !== id);
+    if (selectedSession.value?.id === id) {
+      selectedSession.value = sessions.value[0] ?? null;
+    }
+  }
+
+  async function removeTeamSessionLocal(teamId: string, sessionId: string) {
+    await deleteSession(sessionId);
+    teamSessions.value[teamId] = (teamSessions.value[teamId] ?? []).filter(
+      (session) => session.id !== sessionId
+    );
+    if (teamSelectedSessionId.value === sessionId) {
+      teamSelectedSessionId.value = teamSessions.value[teamId]?.[0]?.id ?? null;
+    }
+  }
+
+  async function renameSessionLocal(id: string, title: string) {
+    const updated = await updateSessionTitle(id, title);
+    sessions.value = sessions.value.map((session) => (session.id === id ? updated : session));
+    if (selectedSession.value?.id === id) {
+      selectedSession.value = updated;
+    }
+    return updated;
+  }
+
+  async function renameTeamSessionLocal(teamId: string, id: string, title: string) {
+    const updated = await updateSessionTitle(id, title);
+    teamSessions.value[teamId] = (teamSessions.value[teamId] ?? []).map((session) =>
+      session.id === id
+        ? {
+            ...updated,
+            at: formatSessionTime(updated.last_message_at || updated.updated_at || updated.created_at),
+          }
+        : session
+    );
+    return updated;
+  }
+
+  async function clearAllAgentSessions(agentId: string) {
+    if (!agentId) return;
+    await clearAgentSessions(agentId);
+    sessions.value = [];
+    selectedSession.value = null;
+  }
+
+  function clearTeamSessions(teamId: string) {
+    teamSessions.value[teamId] = [];
+    teamSelectedSessionId.value = null;
+  }
+
+  function findSessionById(sessionId: string): Session | TeamSessionRow | undefined {
+    const fromAgent = sessions.value.find((s) => s.id === sessionId);
+    if (fromAgent) return fromAgent;
+    if (selectedTeamId.value) {
+      const fromTeam = teamSessions.value[selectedTeamId.value]?.find((s) => s.id === sessionId);
+      if (fromTeam) return fromTeam;
+    }
+    for (const rows of Object.values(teamSessions.value)) {
+      const hit = rows.find((s) => s.id === sessionId);
+      if (hit) return hit;
+    }
+    return undefined;
+  }
+
+  return {
+    entityKind,
+    selectedTeamId,
+    teamSelectedSessionId,
+    sessions,
+    selectedSession,
+    teamSessions,
+    currentSessionId,
+    resetForAgentSwitch,
+    resetForTeamSwitch,
+    loadAgentSessions,
+    loadTeamSessions,
+    addAgentSession,
+    addTeamSession,
+    removeSessionLocal,
+    removeTeamSessionLocal,
+    renameSessionLocal,
+    renameTeamSessionLocal,
+    clearAllAgentSessions,
+    clearTeamSessions,
+    findSessionById,
+  };
+});

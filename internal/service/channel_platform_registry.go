@@ -74,7 +74,7 @@ func outboundFeishu(ctx context.Context, h *ChannelIngress, chRow biz.Channel, c
 		AppSecret:     sec,
 		ReceiveIDType: lark.ReceiveIDTypeFromMeta(payload.Extra),
 		HTTP:          h.http,
-	}).SendText(ctx, payload.Recipient, payload.Text)
+	}).SendTextWithMeta(ctx, payload.Recipient, payload.Text, payload.Extra)
 }
 
 func outboundDingtalk(ctx context.Context, h *ChannelIngress, _ biz.Channel, creds []biz.ChannelCredential, payload biz.ChannelOutboundPayload) error {

@@ -63,6 +63,8 @@ func (b *A2AEndpointBuilder) BuildHandler(ctx context.Context, agentID, publicUR
 		HasMemory:          b.chat.orch.td.Persist.Memory.Available(),
 		PluginManager:      b.chat.orch.rt.PluginManager,
 		MemoryAdmin:        b.chat.orch.td.Persist.Memory.Admin,
+		MemoryL2Recall:     b.chat.orch.td.Persist.Memory.L2Recall,
+		MemoryL3Recall:     b.chat.orch.td.Persist.Memory.L3Recall,
 		KnowledgeRetriever: b.chat.orch.rt.KnowledgeRetriever,
 		CodeExecFactory:    b.chat.orch.rt.CodeExecFactory,
 	}

@@ -35,8 +35,10 @@ type bus struct {
 }
 
 type subscriber struct {
-	ch   chan Envelope
-	opts SubscribeOptions
+	mu     sync.RWMutex
+	ch     chan Envelope
+	opts   SubscribeOptions
+	closed bool
 }
 
 // NewBus returns a new in-process event bus.
@@ -115,6 +117,11 @@ func (b *bus) deliverToSubscriber(sub *subscriber, env Envelope, isCritical bool
 }
 
 func (b *bus) deliverBlockUpTo(sub *subscriber, env Envelope, blockFor time.Duration) {
+	sub.mu.RLock()
+	defer sub.mu.RUnlock()
+	if sub.closed {
+		return
+	}
 	select {
 	case sub.ch <- env:
 		return
@@ -131,11 +138,20 @@ func (b *bus) deliverBlockUpTo(sub *subscriber, env Envelope, blockFor time.Dura
 		case <-time.After(10 * time.Millisecond):
 		}
 	}
-	// Deadline exceeded — fall back to evicting oldest.
-	b.deliverDropOldest(sub, env)
+	// Deadline exceeded — fall back to evicting oldest (still under RLock).
+	b.deliverDropOldestLocked(sub, env)
 }
 
 func (b *bus) deliverDropOldest(sub *subscriber, env Envelope) {
+	sub.mu.RLock()
+	defer sub.mu.RUnlock()
+	if sub.closed {
+		return
+	}
+	b.deliverDropOldestLocked(sub, env)
+}
+
+func (b *bus) deliverDropOldestLocked(sub *subscriber, env Envelope) {
 	select {
 	case sub.ch <- env:
 	default:
@@ -159,6 +175,11 @@ func (b *bus) deliverDropOldest(sub *subscriber, env Envelope) {
 }
 
 func (b *bus) deliverDropNewest(sub *subscriber, env Envelope) {
+	sub.mu.RLock()
+	defer sub.mu.RUnlock()
+	if sub.closed {
+		return
+	}
 	select {
 	case sub.ch <- env:
 	default:
@@ -188,11 +209,20 @@ func (b *bus) Subscribe(opts SubscribeOptions) (<-chan Envelope, func()) {
 	b.mu.Unlock()
 	unsubscribe := func() {
 		b.mu.Lock()
-		if _, ok := b.subscribers[id]; ok {
-			delete(b.subscribers, id)
-			close(ch)
+		sub, ok := b.subscribers[id]
+		if !ok {
+			b.mu.Unlock()
+			return
 		}
+		delete(b.subscribers, id)
 		b.mu.Unlock()
+
+		sub.mu.Lock()
+		if !sub.closed {
+			sub.closed = true
+			close(sub.ch)
+		}
+		sub.mu.Unlock()
 	}
 	return ch, unsubscribe
 }

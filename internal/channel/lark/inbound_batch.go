@@ -1,0 +1,130 @@
+package lark
+
+import (
+	"context"
+	"strings"
+	"sync"
+	"time"
+
+	"aranea-agents/internal/biz"
+	"aranea-agents/internal/channel/port"
+	"aranea-agents/internal/channel/runtime"
+)
+
+const (
+	defaultInboundDebounce   = 600 * time.Millisecond
+	defaultInboundLongDebounce = 2 * time.Second
+	inboundLongTextRunes     = 4000
+)
+
+type inboundBatchKey struct {
+	channelID string
+	peerKey   string
+}
+
+type inboundBatchEntry struct {
+	ch              biz.Channel
+	ev              port.InboundEvent
+	timer           *time.Timer
+	longText        bool
+	idempotencyKeys []string
+}
+
+// TextInboundBatcher merges consecutive Feishu text messages per peer (F-04).
+type TextInboundBatcher struct {
+	debounce     time.Duration
+	longDebounce time.Duration
+	mu           sync.Mutex
+	pending      map[inboundBatchKey]*inboundBatchEntry
+}
+
+func NewTextInboundBatcher() *TextInboundBatcher {
+	return &TextInboundBatcher{
+		debounce:     defaultInboundDebounce,
+		longDebounce: defaultInboundLongDebounce,
+		pending:      map[inboundBatchKey]*inboundBatchEntry{},
+	}
+}
+
+func (b *TextInboundBatcher) flush(ctx context.Context, handler runtime.InboundHandler, key inboundBatchKey) {
+	b.mu.Lock()
+	entry, ok := b.pending[key]
+	if !ok {
+		b.mu.Unlock()
+		return
+	}
+	delete(b.pending, key)
+	if entry.timer != nil {
+		entry.timer.Stop()
+	}
+	ch, ev := entry.ch, entry.ev
+	ev.IdempotencyKey = batchIdempotencyKey(entry.idempotencyKeys)
+	b.mu.Unlock()
+	if handler != nil {
+		_ = handler.ProcessInbound(ctx, ch, ev)
+	}
+}
+
+func (b *TextInboundBatcher) Submit(
+	ctx context.Context,
+	handler runtime.InboundHandler,
+	ch biz.Channel,
+	ev port.InboundEvent,
+) {
+	if b == nil {
+		if handler != nil {
+			_ = handler.ProcessInbound(ctx, ch, ev)
+		}
+		return
+	}
+	if handler == nil {
+		return
+	}
+	text := strings.TrimSpace(ev.Text)
+	if text == "" {
+		_ = handler.ProcessInbound(ctx, ch, ev)
+		return
+	}
+	peerKey := strings.TrimSpace(ev.PeerKey)
+	if peerKey == "" {
+		peerKey = strings.TrimSpace(ev.PeerID)
+	}
+	key := inboundBatchKey{channelID: ch.ID, peerKey: peerKey}
+	longText := len([]rune(text)) >= inboundLongTextRunes
+	wait := b.debounce
+	if longText {
+		wait = b.longDebounce
+	}
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if cur, ok := b.pending[key]; ok {
+		parts := []string{strings.TrimSpace(cur.ev.Text), text}
+		cur.ev.Text = strings.TrimSpace(strings.Join(parts, "\n"))
+		cur.idempotencyKeys = appendBatchIdempotencyKey(cur.idempotencyKeys, ev.IdempotencyKey)
+		cur.ev.IdempotencyKey = batchIdempotencyKey(cur.idempotencyKeys)
+		if longText {
+			cur.longText = true
+		}
+		if cur.timer != nil {
+			cur.timer.Stop()
+		}
+		delay := b.debounce
+		if cur.longText {
+			delay = b.longDebounce
+		}
+		cur.timer = time.AfterFunc(delay, func() {
+			b.flush(context.WithoutCancel(ctx), handler, key)
+		})
+		return
+	}
+	evCopy := ev
+	evCopy.Text = text
+	keys := appendBatchIdempotencyKey(nil, ev.IdempotencyKey)
+	evCopy.IdempotencyKey = batchIdempotencyKey(keys)
+	entry := &inboundBatchEntry{ch: ch, ev: evCopy, longText: longText, idempotencyKeys: keys}
+	entry.timer = time.AfterFunc(wait, func() {
+		b.flush(context.WithoutCancel(ctx), handler, key)
+	})
+	b.pending[key] = entry
+}

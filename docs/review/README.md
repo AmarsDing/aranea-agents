@@ -40,7 +40,7 @@
 | **Provider** | 9 | 81 | 17 | 22 | 18 | 12 | 6 | 6 | P1 | [09-provider-review.md](./09-provider-review.md) |
 | **Session** | 10 | 79 | 16 | 21 | 17 | 13 | 6 | 6 | P1 | [10-session-review.md](./10-session-review.md) |
 | **Team / Multi-Agent** | 11 | 83 | 17 | 22 | 18 | 14 | 6 | 6 | P1 | [11-team-review.md](./11-team-review.md) · [M53 Phase7](./2026-05-23-Team-Graph-M53-Phase7-Review.md) |
-| **Memory L0–L4** | 12–16 | 74 | 15 | 18 | 16 | 12 | 7 | 6 | P1 | [12-16-memory-review.md](./12-16-memory-review.md) |
+| **Memory L0–L4** | 12–16 | 74 | 15 | 18 | 16 | 12 | 7 | 8 | P1 | [memory-review.md](./memory-review.md) |
 | **Channel** | 17 | **92** | 19 | 23 | 19 | 14 | 8 | 9 | P2 | [17-channel-review.md](./17-channel-review.md) · [IM Preview](./2026-05-23-Channel-IM-Preview-Review.md) · [M55 Run Lifecycle](./2026-05-23-M55-Run-Lifecycle-Review.md) |
 | **Monitor / Dashboard** | 18 | 78 | 16 | 21 | 17 | 13 | 5 | 6 | P1 | [18-monitor-review.md](./18-monitor-review.md) |
 | **MCP** | 19 | 80 | 16 | 22 | 17 | 13 | 6 | 6 | P1 | [19-mcp-review.md](./19-mcp-review.md) |
@@ -90,7 +90,7 @@
 | P1-002 | Agent Settings | AgentSettingsPage 过重 | 🚧 Tab 已拆；页壳续瘦身 P2 |
 | P1-003 | Frontend 分层 | 大 Page 直连 API | 🟡 Monitor/Plugins/Settings/Ecosystem 已迁 composable；ResourceManager 仍重 |
 | P1-004 | Provider | biz↔provider 双向依赖 | 🚧 待收敛 |
-| P1-005 | Memory | L0-L4 双轨未定义 | ✅ `12-16 memory.design.md` §1.1 |
+| P1-005 | Memory | L0-L4 双轨未定义 | ✅ `memory/memory.design.md` §二 |
 | P1-006 | Data | data 绑定 graph checkpoint | ✅ 已上移 runtime（M2） |
 | P1-007 | Skill | skill_import HTTP 旁路 | 🚧 设计例外，文档化 |
 | P1-008 | Monitor | FlowLogger Phase 2 落库 | ✅ `ListFlowLogs` + Logs Tab |
@@ -162,7 +162,7 @@
 
 ### 第三批：能力运行时
 
-- [12-16-memory-review.md](./12-16-memory-review.md) — Memory L0–L4
+- [memory-review.md](./memory-review.md) — Memory L0–L4
 - [37-knowledge-review.md](./37-knowledge-review.md) — Knowledge / RAG
 - [23-tools-review.md](./23-tools-review.md) — Tools
 - [19-mcp-review.md](./19-mcp-review.md) — MCP

@@ -43,6 +43,10 @@ func productCallbackChain(ctx context.Context, ag biz.Agent, deps TRPCBuilderDep
 	var entries []callbacks.Callback
 	entries = append(entries, productChainLifecycleMetrics()...)
 
+	if hook := newMemoryInjectBeforeHook(ag, deps); hook != nil {
+		entries = append(entries, hook)
+	}
+
 	if ag.Settings != nil && ag.Settings.ToolsEnabled {
 		entries = append(entries, newToolArgsGuardBeforeHook())
 		entries = append(entries, newToolResultCacheBeforeHook(deps))

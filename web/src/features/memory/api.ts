@@ -18,7 +18,12 @@ export type {
   MemoryFact,
   MemoryFactListQuery,
   MemoryFactListResult,
-  MemoryRelation
+  MemoryRelation,
+  CascadeProposal,
+  MemoryRecallHit,
+  CompositeSearchHit,
+  MemoryWorkerStatus,
+  MemoryPlatformSettings
 } from "./types";
 
 export { memoryEndpoints } from "./memoryEndpoints";
@@ -40,9 +45,16 @@ import type {
   MemoryFact,
   MemoryFactListQuery,
   MemoryFactListResult,
-  MemoryRelation
+  MemoryRelation,
+  CascadeProposal,
+  MemoryRecallHit,
+  CompositeSearchHit,
+  MemoryWorkerStatus,
+  MemoryPlatformSettings
 } from "./types";
 import { asRecord, mapStringFloat, pickBool, pickI32, pickNum, pickOptionalI32, pickStr, pickStrArray } from "../../shared/wireJson";
+import { kratosApi } from "../../services/axiosHandler";
+import { memoryEndpoints } from "./memoryEndpoints";
 
 const memory = createMemoryService();
 
@@ -449,4 +461,177 @@ export async function appendEvolutionEvent(req: AppendEvolutionEventRequest): Pr
   const res = asRecord(await memory.AppendEvolutionEvent(req));
   const raw = res.event ?? res.Event;
   return mapEvolutionEvent(raw);
+}
+
+function mapCascadeAffected(raw: unknown) {
+  const a = asRecord(raw);
+  return {
+    entity_id: pickStr(a, "entity_id", "entityId"),
+    entity_name: pickStr(a, "entity_name", "entityName"),
+    entity_type: pickStr(a, "entity_type", "entityType"),
+    relation_type: pickStr(a, "relation_type", "relationType"),
+    hops: pickI32(a, "hops", "hops")
+  };
+}
+
+function mapCascadeProposal(raw: unknown): CascadeProposal {
+  const p = asRecord(raw);
+  const affectedRaw = p.affected_entities ?? p.affectedEntities;
+  const affected = Array.isArray(affectedRaw) ? affectedRaw.map(mapCascadeAffected) : [];
+  return {
+    id: pickStr(p, "id", "id"),
+    agent_id: pickStr(p, "agent_id", "agentId"),
+    trigger_entity_id: pickStr(p, "trigger_entity_id", "triggerEntityId"),
+    trigger_entity_name: pickStr(p, "trigger_entity_name", "triggerEntityName"),
+    trigger_attribute: pickStr(p, "trigger_attribute", "triggerAttribute"),
+    old_value: pickStr(p, "old_value", "oldValue"),
+    new_value: pickStr(p, "new_value", "newValue"),
+    affected_entities: affected,
+    status: pickStr(p, "status", "status"),
+    risk_level: pickStr(p, "risk_level", "riskLevel"),
+    rationale: pickStr(p, "rationale", "rationale"),
+    created_at: pickStr(p, "created_at", "createdAt"),
+    updated_at: pickStr(p, "updated_at", "updatedAt")
+  };
+}
+
+export async function listCascadeProposals(
+  agentID: string,
+  params: { status?: string; limit?: number } = {}
+): Promise<CascadeProposal[]> {
+  const res = await kratosApi.get(memoryEndpoints.listCascadeProposals(agentID), {
+    params: { status: params.status ?? "pending", limit: params.limit ?? 20 }
+  });
+  const body = asRecord(res.data);
+  const items = body.items ?? body.Items;
+  return Array.isArray(items) ? items.map(mapCascadeProposal) : [];
+}
+
+export async function approveCascadeProposal(id: string, reviewer = "admin"): Promise<CascadeProposal> {
+  const res = await kratosApi.post(memoryEndpoints.approveCascadeProposal(id), { reviewer });
+  const body = asRecord(res.data);
+  return mapCascadeProposal(body.proposal ?? body.Proposal);
+}
+
+export async function rejectCascadeProposal(id: string, reviewer = "admin", reason = ""): Promise<CascadeProposal> {
+  const res = await kratosApi.post(memoryEndpoints.rejectCascadeProposal(id), { reviewer, reason });
+  const body = asRecord(res.data);
+  return mapCascadeProposal(body.proposal ?? body.Proposal);
+}
+
+function mapRecallScores(raw: unknown) {
+  const s = asRecord(raw);
+  return {
+    keyword: pickNum(s, "keyword", "keyword"),
+    vector: pickNum(s, "vector", "vector"),
+    importance: pickNum(s, "importance", "importance"),
+    recency: pickNum(s, "recency", "recency"),
+    cross_encoder: pickNum(s, "cross_encoder", "crossEncoder"),
+    total: pickNum(s, "total", "total")
+  };
+}
+
+function mapRecallHit(raw: unknown): MemoryRecallHit {
+  const h = asRecord(raw);
+  return {
+    layer: pickStr(h, "layer", "layer"),
+    id: pickStr(h, "id", "id"),
+    title: pickStr(h, "title", "title") || undefined,
+    summary: pickStr(h, "summary", "summary") || undefined,
+    statement: pickStr(h, "statement", "statement") || undefined,
+    scores: mapRecallScores(h.scores ?? h.Scores)
+  };
+}
+
+export async function debugMemoryRecall(params: {
+  agent_id: string;
+  session_id?: string;
+  user_id?: string;
+  query: string;
+  l2_limit?: number;
+  l3_limit?: number;
+}): Promise<{ l2_hits: MemoryRecallHit[]; l3_hits: MemoryRecallHit[] }> {
+  const res = asRecord(
+    await memory.DebugMemoryRecall({
+      agentId: params.agent_id,
+      sessionId: params.session_id,
+      userId: params.user_id,
+      query: params.query,
+      l2Limit: params.l2_limit,
+      l3Limit: params.l3_limit
+    })
+  );
+  const l2Raw = res.l2_hits ?? res.l2Hits;
+  const l3Raw = res.l3_hits ?? res.l3Hits;
+  return {
+    l2_hits: Array.isArray(l2Raw) ? l2Raw.map(mapRecallHit) : [],
+    l3_hits: Array.isArray(l3Raw) ? l3Raw.map(mapRecallHit) : []
+  };
+}
+
+function mapCompositeHit(raw: unknown): CompositeSearchHit {
+  const h = asRecord(raw);
+  return {
+    layer: pickStr(h, "layer", "layer"),
+    id: pickStr(h, "id", "id"),
+    text: pickStr(h, "text", "text"),
+    score: pickNum(h, "score", "score")
+  };
+}
+
+export async function compositeSearchMemories(params: {
+  agent_id: string;
+  session_id?: string;
+  user_id?: string;
+  query: string;
+  limit?: number;
+}): Promise<CompositeSearchHit[]> {
+  const res = asRecord(
+    await memory.CompositeSearchMemories({
+      agentId: params.agent_id,
+      sessionId: params.session_id,
+      userId: params.user_id,
+      query: params.query,
+      limit: params.limit
+    })
+  );
+  const items = res.items ?? res.Items;
+  return Array.isArray(items) ? items.map(mapCompositeHit) : [];
+}
+
+export async function getMemoryWorkerStatus(): Promise<MemoryWorkerStatus> {
+  const raw = asRecord(await memory.GetMemoryWorkerStatus({}));
+  return {
+    jobs_done: pickI32(raw, "jobs_done", "jobsDone"),
+    jobs_dead: pickI32(raw, "jobs_dead", "jobsDead"),
+    llm_fallback_total: pickI32(raw, "llm_fallback_total", "llmFallbackTotal"),
+    avg_extraction_seconds: pickNum(raw, "avg_extraction_seconds", "avgExtractionSeconds"),
+    episode_backfill_total: pickI32(raw, "episode_backfill_total", "episodeBackfillTotal")
+  };
+}
+
+function mapMemoryPlatformSettings(raw: unknown): MemoryPlatformSettings {
+  const s = asRecord(raw);
+  return {
+    policy_strict: pickBool(s, "policy_strict", "policyStrict"),
+    episode_backfill_disabled: pickBool(s, "episode_backfill_disabled", "episodeBackfillDisabled"),
+    env_policy_strict_override: pickBool(s, "env_policy_strict_override", "envPolicyStrictOverride"),
+    env_episode_backfill_disabled_override: pickBool(s, "env_episode_backfill_disabled_override", "envEpisodeBackfillDisabledOverride")
+  };
+}
+
+export async function getMemoryPlatformSettings(): Promise<MemoryPlatformSettings> {
+  const raw = await memory.GetMemoryPlatformSettings({});
+  return mapMemoryPlatformSettings(raw);
+}
+
+export async function updateMemoryPlatformSettings(input: {
+  policy_strict: boolean;
+  episode_backfill_disabled: boolean;
+}): Promise<MemoryPlatformSettings> {
+  const raw = await memory.UpdateMemoryPlatformSettings({
+    policyStrict: input.policy_strict,
+    episodeBackfillDisabled: input.episode_backfill_disabled
+  });
+  return mapMemoryPlatformSettings(raw);
 }

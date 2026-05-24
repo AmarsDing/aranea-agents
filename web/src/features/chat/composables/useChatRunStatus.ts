@@ -1,5 +1,5 @@
 import { ref, type Ref } from "vue";
-import { getRunStatus } from "../api";
+import { useChatRuntimeStore } from "../../../stores/chat/runtimeStore";
 import type { RunStatus, RunStatusValue } from "../types";
 import type { Envelope } from "../envelope";
 import { runStatusFromEnvelope, messageQueuedFromEnvelope } from "../envelopeRunStatus";
@@ -69,7 +69,8 @@ export function useChatRunStatus(deps: UseChatRunStatusDeps) {
   async function hydrateFromHttpIfNeeded(sessionId: string) {
     if (!sessionId || sessionId !== hydrateSessionId || wsAuthoritative) return;
     try {
-      const rs = await getRunStatus(sessionId);
+      const runtime = useChatRuntimeStore();
+      const rs = await runtime.fetchRunStatus(sessionId);
       if (sessionId !== hydrateSessionId || wsAuthoritative) return;
       runStatus.value = rs.status;
       runMeta.value = rs;

@@ -75,6 +75,18 @@ func (rt *Runtime) SetCatalogConfirmChecker(fn CatalogConfirmChecker) {
 	rt.mu.Unlock()
 }
 
+// SetToolUsecase wires the tool usecase for catalog confirmation checks.
+// This encapsulates the biz.ToolUsecase → CatalogConfirmChecker adapter
+// inside the plugin/trpc package instead of requiring a closure in wire.go.
+func (rt *Runtime) SetToolUsecase(tools *biz.ToolUsecase) {
+	if rt == nil || tools == nil {
+		return
+	}
+	rt.SetCatalogConfirmChecker(func(ctx context.Context, agentID, toolName string) bool {
+		return tools.RequiresConfirmationForAgent(ctx, agentID, toolName)
+	})
+}
+
 // CostGuardBudgetTracker returns the global budget tracker (legacy; prefer CostGuardBudgetTrackerForAgent).
 func (rt *Runtime) CostGuardBudgetTracker() *CostGuardBudgetTracker {
 	if rt == nil || rt.budgets == nil {

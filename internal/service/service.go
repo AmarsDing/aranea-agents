@@ -15,6 +15,8 @@ import (
 var ProviderSet = wire.NewSet(
 	wire.Bind(new(biz.NativeTurnCompressor), new(*SessionCompressor)),
 	wire.Bind(new(compress.Compressor), new(*compress.LLMService)),
+	wire.Bind(new(biz.NativeTurnGateway), new(*ChatService)),
+	wire.Bind(new(biz.GraphExecutor), new(*GraphService)),
 	wire.Bind(new(a2apkg.AgentTurnRunner), new(*ChatService)),
 	wire.Bind(new(EvalTurnGateway), new(*ChatService)),
 	NewCompressHTTPClient,
@@ -59,6 +61,8 @@ var ProviderSet = wire.NewSet(
 	wire.Bind(new(biz.EmbeddingService), new(*knowledge.Embedder)),
 	NewKnowledgeRetriever,
 	NewSkillDBRepository,
+	NewMemoryLLMExtractor,
+	wire.Bind(new(biz.MemoryTextExtractor), new(*MemoryLLMExtractor)),
 	// Phase 3 decoupling adapters: biz interfaces → event/webresearch implementations
 	ProvideEnvelopeBuffer,
 	ProvideSessionLogWriter,

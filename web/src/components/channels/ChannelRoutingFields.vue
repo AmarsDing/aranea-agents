@@ -40,7 +40,7 @@
     <channel-config-row
       :label="t('channelEditor.dmScopeLabel')"
       field-key="dm_scope"
-      :hint="t('channelEditor.dmScopeHint')"
+      :help="{ description: t('channelEditor.dmScopeHint') }"
     >
       <q-select
         v-model="dmScope"
@@ -73,6 +73,14 @@
       />
       <span v-else class="text-grey-7">{{ t("channelEditor.routingTeamDisabledHint") }}</span>
     </channel-config-row>
+
+    <div class="app-grid-span-full q-mt-md">
+      <channel-routing-rules-editor
+        v-model="routingRules"
+        :agents="agents"
+        :teams="teams"
+      />
+    </div>
   </div>
 </template>
 
@@ -80,6 +88,7 @@
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import ChannelConfigRow from "./ChannelConfigRow.vue";
+import ChannelRoutingRulesEditor, { type ChannelRoutingRulePayload } from "./ChannelRoutingRulesEditor.vue";
 import type { Agent } from "../../features/agents/types";
 import {
   channelAgentSelectOptions,
@@ -95,6 +104,7 @@ const targetType = defineModel<ChannelRoutingTargetType>("targetType", { require
 const agentId = defineModel<string>("agentId", { required: true });
 const teamId = defineModel<string>("teamId", { required: true });
 const dmScope = defineModel<string>("dmScope", { required: true });
+const routingRules = defineModel<ChannelRoutingRulePayload[]>("routingRules", { required: true });
 
 const dmScopeOptions = [
   { label: t("channelEditor.dmScope.perChannelPeer"), value: "per-channel-peer" },

@@ -1,4 +1,4 @@
-import type { GraphNodeState } from "../../chat/useEnvelopeStream";
+import type { GraphNodeState } from "../../../realtime/graphState";
 import type { GraphStepSnapshot } from "../types";
 
 export type ExecNodeState = {

@@ -51,10 +51,26 @@ import (
 	"github.com/google/wire"
 	trpcartifact "trpc.group/trpc-go/trpc-agent-go/artifact"
 	trpcgraph "trpc.group/trpc-go/trpc-agent-go/graph"
-	trpcmemory "trpc.group/trpc-go/trpc-agent-go/memory"
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
 )
+
+func provideEventBusSideConsumers(
+	infra *event.Infra,
+	tools *biz.ToolUsecase,
+	webhooks *biz.WebhookDispatcher,
+	sessions *biz.SessionUsecase,
+	flowLogs *biz.FlowLogUsecase,
+	monitor *biz.MonitorUsecase,
+	memWorker *biz.TurnMemoryWorker,
+) *biz.EventBusSideConsumers {
+	var sessionBus, monitorBus event.Bus
+	if infra != nil {
+		sessionBus = infra.SessionBus
+		monitorBus = infra.MonitorBus
+	}
+	return biz.NewEventBusSideConsumers(sessionBus, monitorBus, tools, webhooks, sessions, flowLogs, monitor, memWorker)
+}
 
 func provideCronRunnerDeps(
 	cron biz.CronRepo,
@@ -102,14 +118,6 @@ func provideSessionTitleGenerator(catalog *biz.LlmProviderModelUsecase, _ rt.Per
 	}
 	httpClient := &http.Client{Timeout: 15 * time.Second}
 	return service.NewLLMSessionTitleGenerator(catalog, &provider.RoundTrip{HTTP: httpClient})
-}
-
-func provideAutoMemoryEnqueuer() biz.AutoMemoryEnqueuer {
-	return biz.AutoMemoryEnqueuerFunc(memtrpc.EnqueueAutoMemoryAdapter)
-}
-
-func provideFeedbackMemoryEnqueuer() biz.FeedbackMemoryEnqueuer {
-	return biz.FeedbackMemoryEnqueuerFunc(memtrpc.EnqueueFeedbackMemoryAdapter)
 }
 
 // provideSessionLogWriter moved to service.ProvideSessionLogWriter (Phase 3 decoupling).
@@ -477,8 +485,20 @@ func provideChatSender(svc *service.ChatService) server.ChatSender {
 	return svc
 }
 
-func provideMemoryService(persist rt.PersistenceSet, vec *biz.MemoryUsecase) *service.MemoryService {
-	return service.NewMemoryService(biz.NewMemoryAdminUsecase(persist.Memory.Admin, vec))
+func provideMemoryService(persist rt.PersistenceSet, vec *biz.MemoryUsecase, factSync biz.MemoryFactIndexSyncer, cascade *biz.L4CascadeUsecase, memStore *sessionmemory.Store, sysUC *biz.SystemSettingUsecase) *service.MemoryService {
+	return service.NewMemoryService(biz.NewMemoryAdminUsecase(persist.Memory.Admin, vec, factSync), cascade, memStore, sysUC)
+}
+
+func provideL4CascadeUsecase(memStore *sessionmemory.Store, factSync biz.MemoryFactIndexSyncer) *biz.L4CascadeUsecase {
+	if memStore == nil {
+		return nil
+	}
+	repo := data.NewL4GraphRepo(memStore)
+	uc := biz.NewL4CascadeUsecase(data.NewCascadeGraphStore(memStore), repo)
+	if uc != nil {
+		uc.SetIndexSync(factSync)
+	}
+	return uc
 }
 
 func provideTRPCSessionService(d *data.Data) trpcsession.Service {
@@ -529,17 +549,24 @@ func provideArtifactRuntimeService(uc *biz.ArtifactUsecase) trpcartifact.Service
 }
 
 // provideAutoMemoryWorker wires the cron auto-memory extraction worker.
-// EP-RT-03: injects SessionUsecase + SQLite memory service so extraction writes to session_memory.
-func provideAutoMemoryWorker(sessions *biz.SessionUsecase, agents *biz.AgentUsecase, memStore *sessionmemory.Store, l4 biz.L4GraphWriter) *jobs.AutoMemoryWorker {
-	var mem trpcmemory.Service
-	if memStore != nil {
-		mem = memtrpc.NewSQLiteMemoryService(memStore)
-	}
-	return jobs.NewAutoMemoryWorker(0, sessions, agents, mem, l4)
+func provideAutoMemoryWorker(
+	sessions *biz.SessionUsecase,
+	agents *biz.AgentUsecase,
+	memStore *sessionmemory.Store,
+	l4 biz.L4GraphWriter,
+	factSync biz.MemoryFactIndexSyncer,
+	episodeSync biz.EpisodeIndexSyncer,
+	extractor biz.MemoryTextExtractor,
+	queue memtrpc.AutoMemoryQueue,
+) *jobs.AutoMemoryWorker {
+	return jobs.NewAutoMemoryWorker(0, sessions, agents, memStore, factSync, episodeSync, l4, biz.DefaultMemoryConsolidator(extractor), queue)
 }
 
-func provideL4GraphWriter(memStore *sessionmemory.Store) biz.L4GraphWriter {
-	return data.NewL4GraphWriterAdapter(data.NewL4GraphUsecaseFromStore(memStore))
+func provideL4GraphWriter(memStore *sessionmemory.Store, cascade *biz.L4CascadeUsecase) biz.L4GraphWriter {
+	if memStore == nil {
+		return nil
+	}
+	return data.NewL4GraphWriterAdapter(data.NewL4GraphUsecaseFromStore(memStore, cascade))
 }
 
 func provideEvolutionScanner(evo *biz.EvolutionUsecase, logger log.Logger) *jobs.EvolutionScanner {
@@ -572,6 +599,34 @@ func provideChannelRuntime(channels *biz.ChannelUsecase, ingress *service.Channe
 		return nil
 	}
 	return service.NewChannelRuntime(channels, ingress)
+}
+
+func provideMemoryL2DecayWorker(store *sessionmemory.Store, logger log.Logger) *jobs.MemoryL2DecayWorker {
+	if jobs.MemoryL2DecayDisabled() {
+		return nil
+	}
+	return jobs.NewMemoryL2DecayWorker(0, store, logger)
+}
+
+func provideMemoryEpisodeBackfillWorker(store *sessionmemory.Store, episodeSync biz.EpisodeIndexSyncer, sys biz.SystemSettingRepo, logger log.Logger) *jobs.MemoryEpisodeBackfillWorker {
+	if biz.ResolveEpisodeBackfillDisabled(context.Background(), sys) {
+		return nil
+	}
+	return jobs.NewMemoryEpisodeBackfillWorker(0, store, episodeSync, sys, logger)
+}
+
+func provideMemoryDataMigrationWorker(store *sessionmemory.Store, logger log.Logger) *jobs.MemoryDataMigrationWorker {
+	if jobs.MemoryDataMigrationDisabled() {
+		return nil
+	}
+	return jobs.NewMemoryDataMigrationWorker(store, logger)
+}
+
+func provideMemoryL3DecayWorker(store *sessionmemory.Store, logger log.Logger) *jobs.MemoryL3DecayWorker {
+	if jobs.MemoryL3DecayDisabled() {
+		return nil
+	}
+	return jobs.NewMemoryL3DecayWorker(0, store, logger)
 }
 
 func provideEventStoreCleanup(store *biz.EventStoreUsecase, logger log.Logger) *jobs.EventStoreCleanup {
@@ -688,6 +743,10 @@ type wireOut struct {
 	EventStoreCleanup       *jobs.EventStoreCleanup
 	ToolAuditCleanup        *jobs.ToolAuditCleanup
 	FlowLogCleanup          *jobs.FlowLogCleanup
+	MemoryL2Decay           *jobs.MemoryL2DecayWorker
+	MemoryL3Decay           *jobs.MemoryL3DecayWorker
+	MemoryEpisodeBackfill   *jobs.MemoryEpisodeBackfillWorker
+	MemoryDataMigration     *jobs.MemoryDataMigrationWorker
 }
 
 func provideWireOut(
@@ -706,6 +765,10 @@ func provideWireOut(
 	eventStoreCleanup *jobs.EventStoreCleanup,
 	toolAuditCleanup *jobs.ToolAuditCleanup,
 	flowLogCleanup *jobs.FlowLogCleanup,
+	memoryL2Decay *jobs.MemoryL2DecayWorker,
+	memoryL3Decay *jobs.MemoryL3DecayWorker,
+	memoryEpisodeBackfill *jobs.MemoryEpisodeBackfillWorker,
+	memoryDataMigration *jobs.MemoryDataMigrationWorker,
 ) wireOut {
 	return wireOut{
 		App: app, CronRunner: runner, SkillWatch: skillWatch, AutoMemory: autoMem,
@@ -714,7 +777,9 @@ func provideWireOut(
 		SessionRunDurableWorker: sessionRunDurable,
 		ChannelRuntime:          channelRuntime,
 		EventStoreCleanup:       eventStoreCleanup, ToolAuditCleanup: toolAuditCleanup,
-		FlowLogCleanup: flowLogCleanup,
+		FlowLogCleanup: flowLogCleanup, MemoryL2Decay: memoryL2Decay, MemoryL3Decay: memoryL3Decay,
+		MemoryEpisodeBackfill: memoryEpisodeBackfill,
+		MemoryDataMigration:   memoryDataMigration,
 	}
 }
 
@@ -780,6 +845,7 @@ func wireApp(*conf.Server, *conf.Data, log.Logger) (wireOut, func(), error) {
 		biz.ProviderSet,
 		event.ProviderSet,
 		service.ProviderSet,
+		provideEventBusSideConsumers,
 		provideCronRunnerDeps,
 		provideCronRunner,
 		wire.Bind(new(biz.CronTaskTrigger), new(*cronrunner.Runner)),
@@ -789,6 +855,12 @@ func wireApp(*conf.Server, *conf.Data, log.Logger) (wireOut, func(), error) {
 		provideRunRegistry,
 		providePendingMessageQueue,
 		provideCodeExecutorFactory,
+		provideAutoMemoryQueue,
+		wire.Bind(new(memtrpc.AutoMemoryQueue), new(*memtrpc.MemoryJobQueue)),
+		provideMemoryPolicyEngine,
+		provideFactIndexSync,
+		provideMemoryL2Recall,
+		provideMemoryL3Recall,
 		provideAutoMemoryEnqueuer,
 		provideFeedbackMemoryEnqueuer,
 		provideMCPProber,
@@ -812,13 +884,15 @@ func wireApp(*conf.Server, *conf.Data, log.Logger) (wireOut, func(), error) {
 		provideTRPCSessionService,
 		provideGraphCheckpointSaver,
 		wire.Bind(new(trpcgraph.CheckpointSaver), new(*graphtrpc.SQLiteCheckpointSaver)),
-		rt.NewPersistenceSet,
+		providePersistenceSet,
+		provideEpisodeIndexSync,
 		providePluginStatsRecorder,
 		providePluginManager,
 		providePluginRuntime,
 		graphtrpc.NewRegistry,
 		provideGraphBuildDeps,
 		graphadapter.NewGraphBuilderFactory,
+		provideL4CascadeUsecase,
 		provideAutoMemoryWorker,
 		provideL4GraphWriter,
 		provideEvolutionScanner,
@@ -828,6 +902,10 @@ func wireApp(*conf.Server, *conf.Data, log.Logger) (wireOut, func(), error) {
 		provideChannelDeliveryScanner,
 		provideChannelRuntime,
 		provideEventStoreCleanup,
+		provideMemoryL2DecayWorker,
+		provideMemoryL3DecayWorker,
+		provideMemoryEpisodeBackfillWorker,
+		provideMemoryDataMigrationWorker,
 		provideToolAuditCleanup,
 		provideFlowLogCleanup,
 		provideMCPHealthRunnerDeps,

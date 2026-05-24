@@ -23,9 +23,43 @@ type AgentResolver interface {
 	ResolveAgent(ctx context.Context, agentRef string) (trpcagent.Agent, error)
 }
 
+// FunctionResolver resolves a named function for graph function nodes.
+// Function nodes are lightweight, stateless callables (HTTP, script, etc.)
+// that don't require the full Agent or Tool lifecycle.
+type FunctionResolver interface {
+	ResolveFunction(ctx context.Context, funcRef string) (trpctool.CallableTool, error)
+}
+
+// SubgraphResolver resolves a nested graph definition for graph subgraph nodes.
+// Returns the SubgraphDef defined in builder.go.
+type SubgraphResolver interface {
+	ResolveSubgraph(ctx context.Context, graphID string) (*SubgraphDef, error)
+}
+
+// GraphNodeResolverSet groups all resolver interfaces for graph node types.
+// Wire assembles this set in internal/service; graph/trpc consumes it.
+type GraphNodeResolverSet struct {
+	Models    ModelResolver
+	Tools     ToolResolver
+	Agents    AgentResolver
+	Functions FunctionResolver
+	Subgraphs SubgraphResolver
+}
+
 // BuildDeps supplies runtime dependencies for typed graph nodes (LLM / Tool / Agent).
+// Deprecated: Use GraphNodeResolverSet instead. BuildDeps is kept for backward
+// compatibility and will be removed once all consumers migrate.
 type BuildDeps struct {
 	Models ModelResolver
 	Tools  ToolResolver
 	Agents AgentResolver
+}
+
+// ToBuildDeps converts a GraphNodeResolverSet to the legacy BuildDeps format.
+func (s GraphNodeResolverSet) ToBuildDeps() BuildDeps {
+	return BuildDeps{
+		Models: s.Models,
+		Tools:  s.Tools,
+		Agents: s.Agents,
+	}
 }

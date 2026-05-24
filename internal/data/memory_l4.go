@@ -22,7 +22,7 @@ func (r *l4GraphRepo) UpsertEntity(ctx context.Context, params biz.L4EntityWrite
 	if r == nil || r.store == nil {
 		return nil
 	}
-	return r.store.UpsertEventEntity(ctx, sessionmemory.EventEntityParams{
+	if err := r.store.UpsertEventEntity(ctx, sessionmemory.EventEntityParams{
 		ID:               params.ID,
 		ScopeType:        params.ScopeType,
 		ScopeID:          params.ScopeID,
@@ -34,7 +34,18 @@ func (r *l4GraphRepo) UpsertEntity(ctx context.Context, params biz.L4EntityWrite
 		Importance:       params.Importance,
 		Confidence:       params.Confidence,
 		MetadataJSON:     params.MetadataJSON,
+	}); err != nil {
+		return err
+	}
+	_ = r.store.InsertMemoryActionLog(ctx, sessionmemory.MemoryActionLogInsert{
+		Action:        "UPSERT",
+		TargetKind:    "entity",
+		TargetID:      params.ID,
+		Reason:        params.EntityType,
+		PolicyVersion: "consolidate_v1",
+		MetadataJSON:  params.MetadataJSON,
 	})
+	return nil
 }
 
 func (r *l4GraphRepo) UpsertRelation(ctx context.Context, params biz.L4RelationWrite) error {
@@ -108,7 +119,11 @@ func (a *l4GraphWriterAdapter) WriteFromUserText(ctx context.Context, agentID, u
 	return a.uc.WriteFromUserText(ctx, agentID, userID, text)
 }
 
-func NewL4GraphUsecaseFromStore(store *sessionmemory.Store) *biz.L4GraphUsecase {
+func NewL4GraphUsecaseFromStore(store *sessionmemory.Store, cascade *biz.L4CascadeUsecase) *biz.L4GraphUsecase {
 	repo := NewL4GraphRepo(store)
-	return biz.NewL4GraphUsecase(repo)
+	uc := biz.NewL4GraphUsecase(repo)
+	if cascade != nil {
+		uc.SetCascade(cascade)
+	}
+	return uc
 }

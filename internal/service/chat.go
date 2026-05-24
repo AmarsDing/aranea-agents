@@ -77,22 +77,18 @@ func (s *ChatService) CancelRun(ctx context.Context, sessionID string) bool {
 }
 
 // setRunStatus atomically updates the run status for a session and publishes a WS envelope.
-// Kept on ChatService to satisfy the channelChatTurnGateway interface.
 func (s *ChatService) setRunStatus(sessionID, runID, status, errMsg string) {
+	s.orch.setRunStatus(sessionID, runID, status, errMsg)
+}
+
+// SetRunStatus implements biz.NativeTurnGateway.
+func (s *ChatService) SetRunStatus(sessionID, runID, status, errMsg string) {
 	s.orch.setRunStatus(sessionID, runID, status, errMsg)
 }
 
 // RunGateway exposes the shared session run registry (Chat, Team, Cron, Channel, WS).
 func (s *ChatService) RunGateway() *rt.RunRegistry {
 	return s.orch.runs
-}
-
-// ChannelFlowBuffer exposes only the FlowLogger buffer Channel ingress needs.
-func (s *ChatService) ChannelFlowBuffer() *event.Buffer {
-	if s == nil {
-		return nil
-	}
-	return s.orch.td.Pipeline.Buffer
 }
 
 // HasActiveRun reports whether a session has an in-flight run on the shared gateway.

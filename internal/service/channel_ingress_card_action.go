@@ -6,6 +6,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/lark"
+	"aranea-agents/internal/channel/port"
 	"aranea-agents/internal/event"
 )
 
@@ -101,23 +102,35 @@ func (h *ChannelIngress) resolveCardActionSessionID(ctx context.Context, chRow b
 }
 
 func (h *ChannelIngress) resolvePeerSessionID(ctx context.Context, chRow biz.Channel, action lark.CardActionPayload) (string, bool) {
-	peerID := ingressFirstNonEmpty(action.OpenChatID, action.OperatorOpenID)
-	if peerID == "" {
+	if h == nil || h.peers == nil {
 		return "", false
 	}
-	routing, err := biz.ParseChannelRouting(chRow.ConfigJSON)
-	if err != nil {
-		return "", false
+	// Align with message inbound: operator open_id before chat_id (DM peer bind uses ou_*, not oc_*).
+	seen := map[string]struct{}{}
+	for _, peerID := range []string{
+		strings.TrimSpace(action.OperatorOpenID),
+		strings.TrimSpace(action.OpenChatID),
+	} {
+		if peerID == "" {
+			continue
+		}
+		if _, dup := seen[peerID]; dup {
+			continue
+		}
+		seen[peerID] = struct{}{}
+		peerKey, perr := h.inboundPeerKey(chRow, port.InboundEvent{PeerID: peerID})
+		if perr != nil {
+			continue
+		}
+		bind, err := h.peers.GetByChannelAndPeer(ctx, chRow.ID, peerKey)
+		if err != nil || strings.TrimSpace(bind.SessionID) == "" {
+			continue
+		}
+		sessionID := strings.TrimSpace(bind.SessionID)
+		if _, verr := h.sessions.Get(ctx, sessionID); verr != nil {
+			continue
+		}
+		return sessionID, true
 	}
-	peerKey := biz.PeerKeyForSession(routing.DMScope, peerID)
-	platform := channelTypeFromConfig(chRow.ConfigJSON)
-	if platform == "" {
-		platform = "feishu"
-	}
-	req, err := h.prepareChannelChatRequest(ctx, chRow, platform, peerKey, peerID, "")
-	if err != nil {
-		return "", false
-	}
-	sessionID := strings.TrimSpace(req.GetSessionId())
-	return sessionID, sessionID != ""
+	return "", false
 }

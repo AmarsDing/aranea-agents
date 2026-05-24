@@ -53,7 +53,7 @@ func L4MemoryCue(ctx context.Context, admin biz.SessionAdminStore, ag biz.Agent)
 				if maxN <= 0 {
 					maxN = 5
 				}
-				if nb, err := admin.NeighborhoodJSON(ctx, id, hops, maxN); err == nil && len(nb) > 2 {
+				if nb, err := admin.NeighborhoodJSON(ctx, id, hops, maxN, ""); err == nil && len(nb) > 2 {
 					b.WriteString("\nNeighborhood (JSON):\n")
 					b.Write(nb)
 					b.WriteByte('\n')

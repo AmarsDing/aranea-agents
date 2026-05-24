@@ -6,8 +6,6 @@ import (
 	"net/http"
 	"strings"
 
-	chatv1 "aranea-agents/api/kratos/chat/v1"
-	graphv1 "aranea-agents/api/kratos/graph/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/lark"
 	"aranea-agents/internal/event"
@@ -16,27 +14,6 @@ import (
 	khttp "github.com/go-kratos/kratos/v2/transport/http"
 	"github.com/gorilla/mux"
 )
-
-// channelAsyncGraphExecutor runs async graph/team_graph targets from channel ingress.
-type channelAsyncGraphExecutor interface {
-	ExecuteGraph(ctx context.Context, req *graphv1.ExecuteGraphRequest) (*graphv1.ExecuteGraphResponse, error)
-	ExecuteGraphBuildConfig(ctx context.Context, graphID, sessionID string, cfg biz.GraphBuildConfig, initialState map[string]any) (*graphv1.ExecuteGraphResponse, error)
-}
-
-// channelChatTurnGateway is the narrow Chat surface Channel ingress needs.
-// Keep ChannelIngress from depending on the full ChatService implementation.
-type channelChatTurnGateway interface {
-	RunNativeTurnUnary(context.Context, *chatv1.SendChatMessageRequest) (biz.ChatMessage, biz.ChatMessage, error)
-	HasActiveRun(sessionID string) bool
-	LastPendingMessageID(sessionID string) string
-	CancelRun(ctx context.Context, sessionID string) bool
-	CancelSessionRunForCard(ctx context.Context, sessionRunID, expectedSessionID string) (cancelled bool, reply string)
-	ActiveSessionRunPhase(ctx context.Context, sessionID string) string
-	EscalateActiveSessionRun(ctx context.Context, sessionID string) (escalated bool, reply string, err error)
-	EscalateSessionRun(ctx context.Context, sessionRunID, expectedSessionID string) (reply string, err error)
-	setRunStatus(sessionID, runID, status, errMsg string)
-	ChannelFlowBuffer() *event.Buffer
-}
 
 // ChannelIngress bridges external channel webhooks to in-process chat turns.
 type ChannelIngress struct {
@@ -47,8 +24,9 @@ type ChannelIngress struct {
 	sessions        *biz.SessionUsecase
 	agents          biz.AgentRepository
 	teams           biz.TeamRepository
-	chat            channelChatTurnGateway
-	graphs          channelAsyncGraphExecutor
+	chat            biz.NativeTurnGateway
+	flowBuffer      *event.Buffer
+	graphs          biz.GraphExecutor
 	cron            *CronService
 	eventBus        event.Bus
 	http            *http.Client
@@ -56,6 +34,9 @@ type ChannelIngress struct {
 }
 
 // NewChannelIngress wires channel runtime ingress.
+// chat is the narrow turn gateway; flowBuffer is the event buffer for flow logging.
+// Accepts biz.NativeTurnGateway instead of *ChatService so Channel never depends on
+// Chat concrete internals (Phase B1: port-first).
 func NewChannelIngress(
 	channels *biz.ChannelUsecase,
 	peers biz.ChannelPeerSessionRepo,
@@ -64,8 +45,9 @@ func NewChannelIngress(
 	sessions *biz.SessionUsecase,
 	agents biz.AgentRepository,
 	teams biz.TeamRepository,
-	chat *ChatService,
-	graphs *GraphService,
+	chat biz.NativeTurnGateway,
+	flowBuffer *event.Buffer,
+	graphs biz.GraphExecutor,
 	cron *CronService,
 	eventBus event.Bus,
 ) *ChannelIngress {
@@ -78,6 +60,7 @@ func NewChannelIngress(
 		agents:          agents,
 		teams:           teams,
 		chat:            chat,
+		flowBuffer:      flowBuffer,
 		graphs:          graphs,
 		cron:            cron,
 		eventBus:        eventBus,
@@ -102,6 +85,10 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 		channelKey := strings.TrimSpace(mux.Vars(r)["channel_key"])
 		if channelKey == "" {
 			http.Error(w, "missing channel_key", http.StatusBadRequest)
+			return nil
+		}
+		if !allowWebhookRequest(channelKey) {
+			webhookRateLimitResponse(w)
 			return nil
 		}
 		chRow, err := h.channels.GetByKey(r.Context(), channelKey)
@@ -154,6 +141,11 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 			return nil
 		}
 		encryptKey, _ := resolveCredentialPlain(r.Context(), creds, "encrypt_key")
+		raw, err = lark.UnwrapEncryptedWebhookBody(encryptKey, raw)
+		if err != nil {
+			http.Error(w, "decrypt failed", http.StatusBadRequest)
+			return nil
+		}
 		if err := lark.VerifyHTTPRequest(r, encryptKey, raw); err != nil {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return nil

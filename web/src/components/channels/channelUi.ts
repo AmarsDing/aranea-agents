@@ -49,6 +49,9 @@ function statusText(row: ChannelRow): string {
 
 export function isChannelConnected(row: ChannelRow): boolean {
   const meta = channelMetadata(row);
+  if (meta.runtime_connected === true) {
+    return row.enabled;
+  }
   return row.enabled && row.status === "active" && !meta.last_error_message;
 }
 

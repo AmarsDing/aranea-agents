@@ -21,7 +21,7 @@ import type {
   SessionTimelineSummary,
   SessionTurn
 } from "./types";
-import type { Message } from "../chat/types";
+import type { Message } from "../../domain/types";
 
 export type {
   Session,

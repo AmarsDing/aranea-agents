@@ -7,6 +7,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/memory/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/data/sessionmemory"
 	"aranea-agents/pkg/jsonutil"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -15,11 +16,14 @@ import (
 type MemoryService struct {
 	v1.UnimplementedMemoryServiceServer
 
-	admin *biz.MemoryAdminUsecase
+	admin    *biz.MemoryAdminUsecase
+	cascade  *biz.L4CascadeUsecase
+	memStore *sessionmemory.Store
+	sysUC    *biz.SystemSettingUsecase
 }
 
-func NewMemoryService(admin *biz.MemoryAdminUsecase) *MemoryService {
-	return &MemoryService{admin: admin}
+func NewMemoryService(admin *biz.MemoryAdminUsecase, cascade *biz.L4CascadeUsecase, memStore *sessionmemory.Store, sysUC *biz.SystemSettingUsecase) *MemoryService {
+	return &MemoryService{admin: admin, cascade: cascade, memStore: memStore, sysUC: sysUC}
 }
 
 func (s *MemoryService) errStore() error {
@@ -185,20 +189,21 @@ func (s *MemoryService) GetMemoryNeighborhood(ctx context.Context, req *v1.GetMe
 	if cid == "" {
 		return nil, kerrors.BadRequest("MEMORY", "center_id is required")
 	}
-	body, err := s.admin.NeighborhoodJSON(ctx, cid, req.GetHops(), req.GetMaxNodes())
+	body, err := s.admin.NeighborhoodJSON(ctx, cid, req.GetHops(), req.GetMaxNodes(), strings.TrimSpace(req.GetQueryAt()))
 	if err != nil {
 		return nil, err
 	}
 	var top struct {
 		Center    map[string]any   `json:"center"`
 		Hops      int32            `json:"hops"`
+		QueryAt   string           `json:"query_at"`
 		Entities  []map[string]any `json:"entities"`
 		Relations []map[string]any `json:"relations"`
 	}
 	if err := json.Unmarshal(body, &top); err != nil {
 		return nil, err
 	}
-	out := &v1.GraphNeighborhood{Hops: top.Hops}
+	out := &v1.GraphNeighborhood{Hops: top.Hops, QueryAt: top.QueryAt}
 	if top.Center != nil {
 		raw, _ := json.Marshal(top.Center)
 		c, _ := pbMemoryEntity(raw)
@@ -216,6 +221,107 @@ func (s *MemoryService) GetMemoryNeighborhood(ctx context.Context, req *v1.GetMe
 		r, _ := pbMemoryRelation(raw)
 		if r != nil {
 			out.Relations = append(out.Relations, r)
+		}
+	}
+	return out, nil
+}
+
+func (s *MemoryService) ListCascadeProposals(ctx context.Context, req *v1.ListCascadeProposalsRequest) (*v1.ListCascadeProposalsResponse, error) {
+	if s.cascade == nil {
+		return nil, kerrors.InternalServer("MEMORY", "cascade store not wired")
+	}
+	aid := strings.TrimSpace(req.GetAgentId())
+	if aid == "" {
+		return nil, kerrors.BadRequest("MEMORY", "agent_id is required")
+	}
+	rows, err := s.cascade.ListRows(ctx, aid, strings.TrimSpace(req.GetStatus()), req.GetLimit())
+	if err != nil {
+		return nil, err
+	}
+	out := &v1.ListCascadeProposalsResponse{}
+	for _, raw := range rows {
+		p, e := pbCascadeProposal(raw)
+		if e == nil && p != nil {
+			out.Items = append(out.Items, p)
+		}
+	}
+	return out, nil
+}
+
+func (s *MemoryService) ApproveCascadeProposal(ctx context.Context, req *v1.ApproveCascadeProposalRequest) (*v1.ApproveCascadeProposalResponse, error) {
+	if s.cascade == nil {
+		return nil, kerrors.InternalServer("MEMORY", "cascade store not wired")
+	}
+	id := strings.TrimSpace(req.GetId())
+	if id == "" {
+		return nil, kerrors.BadRequest("MEMORY", "id is required")
+	}
+	raw, err := s.cascade.Approve(ctx, id, strings.TrimSpace(req.GetReviewer()))
+	if err != nil {
+		return nil, err
+	}
+	p, err := pbCascadeProposal(raw)
+	if err != nil || p == nil {
+		return nil, kerrors.InternalServer("MEMORY", "failed to hydrate cascade proposal")
+	}
+	return &v1.ApproveCascadeProposalResponse{Proposal: p}, nil
+}
+
+func (s *MemoryService) RejectCascadeProposal(ctx context.Context, req *v1.RejectCascadeProposalRequest) (*v1.RejectCascadeProposalResponse, error) {
+	if s.cascade == nil {
+		return nil, kerrors.InternalServer("MEMORY", "cascade store not wired")
+	}
+	id := strings.TrimSpace(req.GetId())
+	if id == "" {
+		return nil, kerrors.BadRequest("MEMORY", "id is required")
+	}
+	raw, err := s.cascade.Reject(ctx, id, strings.TrimSpace(req.GetReviewer()), strings.TrimSpace(req.GetReason()))
+	if err != nil {
+		return nil, err
+	}
+	p, err := pbCascadeProposal(raw)
+	if err != nil || p == nil {
+		return nil, kerrors.InternalServer("MEMORY", "failed to hydrate cascade proposal")
+	}
+	return &v1.RejectCascadeProposalResponse{Proposal: p}, nil
+}
+
+func pbCascadeProposal(raw []byte) (*v1.CascadeProposal, error) {
+	m, err := jsonutil.ParseMap(raw)
+	if err != nil {
+		return nil, err
+	}
+	out := &v1.CascadeProposal{
+		Id:                jsonutil.IfaceStr(m, "id"),
+		AgentId:           jsonutil.IfaceStr(m, "agent_id"),
+		WorkspaceId:       jsonutil.IfaceStr(m, "workspace_id"),
+		TriggerEntityId:   jsonutil.IfaceStr(m, "trigger_entity_id"),
+		TriggerEntityName: jsonutil.IfaceStr(m, "trigger_entity_name"),
+		TriggerAttribute:  jsonutil.IfaceStr(m, "trigger_attribute"),
+		OldValue:          jsonutil.IfaceStr(m, "old_value"),
+		NewValue:          jsonutil.IfaceStr(m, "new_value"),
+		Status:            jsonutil.IfaceStr(m, "status"),
+		RiskLevel:         jsonutil.IfaceStr(m, "risk_level"),
+		Rationale:         jsonutil.IfaceStr(m, "rationale"),
+		ReviewedBy:        jsonutil.IfaceStr(m, "reviewed_by"),
+		ReviewedAt:        jsonutil.IfaceStr(m, "reviewed_at"),
+		ExpiresAt:         jsonutil.IfaceStr(m, "expires_at"),
+		CreatedAt:         jsonutil.IfaceStr(m, "created_at"),
+		UpdatedAt:         jsonutil.IfaceStr(m, "updated_at"),
+	}
+	affectedRaw := jsonutil.IfaceStr(m, "affected_json")
+	if affectedRaw != "" {
+		var rows []map[string]any
+		if err := json.Unmarshal([]byte(affectedRaw), &rows); err == nil {
+			for _, row := range rows {
+				out.AffectedEntities = append(out.AffectedEntities, &v1.CascadeAffectedEntity{
+					EntityId:     jsonutil.IfaceStr(row, "entity_id"),
+					EntityName:   jsonutil.IfaceStr(row, "entity_name"),
+					EntityType:   jsonutil.IfaceStr(row, "entity_type"),
+					RelationType: jsonutil.IfaceStr(row, "relation_type"),
+					Hops:         jsonutil.IfaceI32(row, "hops"),
+				})
+			}
 		}
 	}
 	return out, nil

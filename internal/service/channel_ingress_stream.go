@@ -6,7 +6,6 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
-	"aranea-agents/internal/event"
 )
 
 func (h *ChannelIngress) processInboundStreaming(ctx context.Context, chRow biz.Channel, ev port.InboundEvent, platform string, ltCfg biz.ChannelLongTaskConfig, sessionID string, contentPreview *string, previewMessageID *string, turnQueued *bool) error {
@@ -32,37 +31,47 @@ func (h *ChannelIngress) processInboundStreaming(ctx context.Context, chRow biz.
 		return err
 	}
 
-	routing, err := biz.ParseChannelRouting(chRow.ConfigJSON)
+	peerKey, err := h.inboundPeerKey(chRow, ev)
 	if err != nil {
 		return err
-	}
-	peerKey := ev.PeerKey
-	if peerKey == "" {
-		peerKey = biz.PeerKeyForSession(routing.DMScope, ev.PeerID)
 	}
 	req, err := h.prepareChannelChatRequest(ctx, chRow, platform, peerKey, ev.PeerID, ev.Text)
 	if err != nil {
 		return err
 	}
+	turnInput := channelChatRequestToTurnInput(req)
 	if sessionID == "" {
-		sessionID = strings.TrimSpace(req.GetSessionId())
+		sessionID = strings.TrimSpace(turnInput.SessionID)
 	}
-	wasActive := h.chat != nil && h.chat.HasActiveRun(sessionID)
+	interrupted := h.maybeInterruptActiveTurn(ctx, chRow, sessionID)
 
 	recipient := outboundRecipient(ev)
 	previewCoord, stopPreview := h.startTurnPreview(ctx, sessionID, platform, recipient, updater, chRow, ev, ltCfg)
 	defer stopPreview()
 
-	_, _, err = h.chat.RunNativeTurnUnary(event.WithChannelEnvelopeContext(ctx, platform, chRow.Key), req)
+	result, err := h.runNativeTurnWithBusyRetry(ctx, chRow, platform, turnInput)
 	if err != nil {
+		if IsTurnMessageQueued(err) || result.Outcome == biz.NativeTurnOutcomeQueued {
+			pendingID := strings.TrimSpace(result.PendingID)
+			if pendingID == "" && h.chat != nil {
+				pendingID = h.chat.LastPendingMessageID(sessionID)
+			}
+			if err := h.sendInboundQueuedAck(ctx, chRow, ev, platform, ltCfg, pendingID); err != nil {
+				_ = h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "queued_ack", "error": err.Error()}, err.Error())
+				return err
+			}
+			_ = h.recordDelivery(ctx, chRow.ID, "queued", map[string]any{"peer_id": ev.PeerID, "pending_id": pendingID}, "")
+			if turnQueued != nil {
+				*turnQueued = true
+			}
+			return nil
+		}
 		_ = h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "stream", "error": err.Error()}, err.Error())
 		return err
 	}
-
-	rendered := previewCoord.RenderedText()
-	if wasActive && strings.TrimSpace(rendered) == "" {
-		pendingID := ""
-		if h.chat != nil {
+	if result.Outcome == biz.NativeTurnOutcomeQueued {
+		pendingID := strings.TrimSpace(result.PendingID)
+		if pendingID == "" && h.chat != nil {
 			pendingID = h.chat.LastPendingMessageID(sessionID)
 		}
 		if err := h.sendInboundQueuedAck(ctx, chRow, ev, platform, ltCfg, pendingID); err != nil {
@@ -75,21 +84,49 @@ func (h *ChannelIngress) processInboundStreaming(ctx context.Context, chRow biz.
 		}
 		return nil
 	}
+	_ = interrupted // admission may have cancelled prior run; preview still valid
 
-	if strings.TrimSpace(rendered) != "" {
-		if contentPreview != nil {
-			*contentPreview = previewCoord.ContentPreview(200)
-		}
-		if previewMessageID != nil {
-			*previewMessageID = previewCoord.PreviewMessageID()
-		}
-		if err := previewCoord.Flush(ctx, true); err != nil {
-			recordStreamUpdate(platform, "flush", err)
-			_ = h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "stream_flush", "error": err.Error()}, err.Error())
+	rendered := strings.TrimSpace(previewCoord.RenderedText())
+	if rendered == "" {
+		rendered = strings.TrimSpace(result.AssistantMsg.ContentMarkdown)
+	}
+	if rendered == "" {
+		if previewCoord.PreviewMessageID() != "" {
+			if err := previewCoord.FlushFinalText(ctx, channelStreamEmptyPreviewMsg); err != nil {
+				_ = h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "stream_empty_fallback", "error": err.Error()}, err.Error())
+				return err
+			}
+		} else if err := h.deliverUnaryReply(ctx, chRow, ev, platform, channelStreamEmptyPreviewMsg); err != nil {
+			_ = h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "stream_empty_fallback", "error": err.Error()}, err.Error())
 			return err
 		}
-		recordStreamUpdate(platform, "flush", nil)
+		_ = h.recordDelivery(ctx, chRow.ID, "streamed", map[string]any{"peer_id": ev.PeerID, "platform": platform, "fallback": true}, "")
+		return nil
 	}
+	if contentPreview != nil {
+		*contentPreview = previewCoord.ContentPreview(200)
+	}
+	if previewMessageID != nil {
+		*previewMessageID = previewCoord.PreviewMessageID()
+	}
+	if err := previewCoord.Flush(ctx, true); err != nil {
+		recordStreamUpdate(platform, "flush", err)
+		_ = h.recordDelivery(ctx, chRow.ID, "error", map[string]any{
+			"phase":    "stream_flush",
+			"error":    err.Error(),
+			"fallback": "outbox",
+		}, err.Error())
+		if fallbackErr := h.deliverStreamFlushFallback(ctx, chRow, ev, platform, rendered); fallbackErr != nil {
+			return fallbackErr
+		}
+		_ = h.recordDelivery(ctx, chRow.ID, "streamed", map[string]any{
+			"peer_id":  ev.PeerID,
+			"platform": platform,
+			"fallback": "outbox",
+		}, "")
+		return nil
+	}
+	recordStreamUpdate(platform, "flush", nil)
 	_ = h.recordDelivery(ctx, chRow.ID, "streamed", map[string]any{"peer_id": ev.PeerID, "platform": platform}, "")
 	return nil
 }

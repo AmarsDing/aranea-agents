@@ -63,6 +63,8 @@ export function defaultAgentRuntimeConfig() {
       recent_window_tokens: 0,
       summary_threshold: 0.6,
       summary_keep_turns: 4,
+      compress_provider: "",
+      compress_model: "",
       truncate_strategy: "summary",
       inject_l1: true,
       inject_l3: true,
@@ -98,6 +100,10 @@ export function defaultAgentRuntimeConfig() {
       decay_interval_hours: 24,
       archive_threshold: 0.2,
       max_per_recall_chars: 1500,
+    },
+    memoryWorker: {
+      provider: "",
+      model: "",
     },
     memoryL4: {
       enabled: true,

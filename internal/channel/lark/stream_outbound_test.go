@@ -16,7 +16,7 @@ func TestStreamSenderUpdateThrottlesEdits(t *testing.T) {
 		case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/messages"):
 			sends++
 			_, _ = w.Write([]byte(`{"code":0,"data":{"message_id":"om_test"}}`))
-		case r.Method == http.MethodPatch && strings.Contains(r.URL.Path, "/messages/"):
+		case r.Method == http.MethodPut && strings.Contains(r.URL.Path, "/messages/"):
 			patches++
 			_, _ = w.Write([]byte(`{"code":0}`))
 		default:

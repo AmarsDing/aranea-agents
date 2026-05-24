@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"aranea-agents/internal/event"
 	"aranea-agents/internal/event/contract"
 )
 
@@ -34,8 +33,12 @@ func (r *feedbackMonitorRepo) ListMonitorTraces(context.Context, MonitorTracesQu
 func (r *feedbackMonitorRepo) GetMonitorTrace(context.Context, string) (MonitorPlatformRow, error) {
 	return MonitorPlatformRow{}, nil
 }
-func (r *feedbackMonitorRepo) ListAlertRules(context.Context) ([]MonitorAlertRule, error) { return nil, nil }
-func (r *feedbackMonitorRepo) ReplaceAlertRules(context.Context, []MonitorAlertRule) error { return nil }
+func (r *feedbackMonitorRepo) ListAlertRules(context.Context) ([]MonitorAlertRule, error) {
+	return nil, nil
+}
+func (r *feedbackMonitorRepo) ReplaceAlertRules(context.Context, []MonitorAlertRule) error {
+	return nil
+}
 func (r *feedbackMonitorRepo) CountMonitorEventsSince(context.Context, string, string, string) (int32, error) {
 	return 0, nil
 }
@@ -82,8 +85,8 @@ func TestUserFeedbackConsumer_handle(t *testing.T) {
 	feedback := &testFeedbackEnqueuer{}
 	worker := NewTurnMemoryWorker(nil, feedback, noopSessionLogWriter{})
 
-	bus := event.NewBus()
-	c := newUserFeedbackConsumer(bus, uc, worker)
+	bus := contract.Bus(nil) // consumer only stores the bus; handle is called directly
+	c := &userFeedbackConsumer{bus: bus, monitor: uc, memWorker: worker}
 	c.handle(context.Background(), contract.Envelope{
 		Type:      contract.EnvelopeTypeUserFeedback,
 		SessionID: "sess-1",

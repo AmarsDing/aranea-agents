@@ -34,10 +34,9 @@ func (h *ChannelIngress) createTurnJob(ctx context.Context, chRow biz.Channel, e
 	if idempotency == "" {
 		idempotency = biz.InboundIdempotencyKey(platform, ev.IdempotencyKey, ev.PeerID, ev.Text)
 	}
-	peerKey := ev.PeerKey
-	routing, err := biz.ParseChannelRouting(chRow.ConfigJSON)
-	if err == nil && peerKey == "" {
-		peerKey = biz.PeerKeyForSession(routing.DMScope, ev.PeerID)
+	peerKey, err := h.inboundPeerKey(chRow, ev)
+	if err != nil {
+		peerKey = strings.TrimSpace(ev.PeerKey)
 	}
 	sessionID := ""
 	if h.peers != nil && h.sessions != nil {

@@ -11,11 +11,14 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"aranea-agents/internal/channel/preview"
 )
 
 const defaultStreamEditInterval = 2 * time.Second
 
-const feishuStreamTextLimit = 12000
+// FeishuStreamTextLimit is the safe rune cap for a single stream PATCH (F-07 guard).
+const FeishuStreamTextLimit = 11800
 
 // StreamSender posts the first reply then patches in place (Feishu im.v1 message update).
 type StreamSender struct {
@@ -50,9 +53,7 @@ func (s *StreamSender) Update(ctx context.Context, receiveOpenID, text string, f
 	if text == "" {
 		return nil
 	}
-	if len(text) > feishuStreamTextLimit {
-		text = text[:feishuStreamTextLimit]
-	}
+	text = preview.TruncateRunes(text, FeishuStreamTextLimit)
 	receiveOpenID = strings.TrimSpace(receiveOpenID)
 	if receiveOpenID == "" {
 		return fmt.Errorf("feishu stream: receive_id required")
@@ -203,7 +204,8 @@ func (s *StreamSender) patchTextLocked(ctx context.Context, messageID, text stri
 		"content":  string(content),
 	})
 	u := APIBase(region) + "/open-apis/im/v1/messages/" + strings.TrimSpace(messageID)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, u, bytes.NewReader(body))
+	// Text/post edits use PUT; PATCH on the same path is card-only (Feishu 230001 "NOT a card").
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, u, bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
@@ -225,7 +227,7 @@ func (s *StreamSender) patchTextLocked(ctx context.Context, messageID, text stri
 		if strings.Contains(desc, "not modified") || strings.Contains(desc, "same content") {
 			return nil
 		}
-		return fmt.Errorf("feishu stream patch: code=%d msg=%s", out.Code, out.Msg)
+		return fmt.Errorf("feishu stream edit: code=%d msg=%s", out.Code, out.Msg)
 	}
 	return nil
 }

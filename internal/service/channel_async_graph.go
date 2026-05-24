@@ -5,37 +5,47 @@ import (
 	"fmt"
 	"strings"
 
-	graphv1 "aranea-agents/api/kratos/graph/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/team"
 
 	"github.com/google/uuid"
-	"google.golang.org/protobuf/types/known/structpb"
 )
 
+// ExecuteGraphBuildConfig executes a graph from a build config and returns the execution ID.
+// This is the biz-level entry point; proto mapping happens only in the gRPC handler.
 func (s *GraphService) ExecuteGraphBuildConfig(
 	ctx context.Context,
 	graphID, sessionID string,
 	cfg biz.GraphBuildConfig,
 	initialState map[string]any,
-) (*graphv1.ExecuteGraphResponse, error) {
+) (string, error) {
 	execID := uuid.NewString()
 	exec, err := s.uc.ExecuteGraphBuildConfig(ctx, graphID, sessionID, execID, cfg, initialState)
 	if err != nil {
 		if s.graphTel != nil {
 			s.graphTel.EnsureFinished(execID, err)
 		}
-		return nil, err
+		return "", err
 	}
 	if s.orchProjector != nil {
 		def := biz.GraphDefinitionFromBuildConfig(cfg, graphID, graphID)
 		s.orchProjector.Start(context.Background(), sessionID, execID, graphID, def)
 	}
-	resp := &graphv1.ExecuteGraphResponse{
-		ExecutionId: exec.ID,
-		Status:      exec.Status,
+	return exec.ID, nil
+}
+
+// ExecuteGraphByID executes a stored graph by ID and returns the execution ID.
+// Implements channelGraphExecutor without exposing proto types.
+func (s *GraphService) ExecuteGraphByID(ctx context.Context, graphID, sessionID string, initialState map[string]any) (string, error) {
+	execID := uuid.NewString()
+	exec, err := s.uc.ExecuteGraph(ctx, graphID, sessionID, execID, initialState)
+	if err != nil {
+		if s.graphTel != nil {
+			s.graphTel.EnsureFinished(execID, err)
+		}
+		return "", err
 	}
-	return resp, nil
+	return exec.ID, nil
 }
 
 func (h *ChannelIngress) executeAsyncGraphTarget(
@@ -49,19 +59,11 @@ func (h *ChannelIngress) executeAsyncGraphTarget(
 	}
 	switch target.TargetType {
 	case "graph":
-		st, serr := structpb.NewStruct(initialState)
-		if serr != nil {
-			return "", "", "", serr
-		}
-		resp, gerr := h.graphs.ExecuteGraph(ctx, &graphv1.ExecuteGraphRequest{
-			GraphId:      target.GraphID,
-			SessionId:    sessionID,
-			InitialState: st,
-		})
+		execID, gerr := h.graphs.ExecuteGraphByID(ctx, target.GraphID, sessionID, initialState)
 		if gerr != nil {
 			return "", "", "", gerr
 		}
-		return "graph", target.GraphID, strings.TrimSpace(resp.GetExecutionId()), nil
+		return "graph", target.GraphID, strings.TrimSpace(execID), nil
 	case "team_graph":
 		if h.teams == nil {
 			return "", "", "", fmt.Errorf("channel async: team repository not configured")
@@ -83,11 +85,11 @@ func (h *ChannelIngress) executeAsyncGraphTarget(
 		if graphID == "" {
 			graphID = "team-" + strings.TrimSpace(teamRow.ID)
 		}
-		resp, gerr := h.graphs.ExecuteGraphBuildConfig(ctx, graphID, sessionID, cfg, initialState)
+		execID, gerr := h.graphs.ExecuteGraphBuildConfig(ctx, graphID, sessionID, cfg, initialState)
 		if gerr != nil {
 			return "", "", "", gerr
 		}
-		return "team_graph", graphID, strings.TrimSpace(resp.GetExecutionId()), nil
+		return "team_graph", graphID, strings.TrimSpace(execID), nil
 	default:
 		return "", "", "", fmt.Errorf("channel async: unsupported target type %q", target.TargetType)
 	}

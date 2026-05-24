@@ -10,12 +10,12 @@ npm run dev
 
 ## 参考 adk-web-main 的运行方式
 ```bash
-npm run serve --backend=http://127.0.0.1:8080
+npm run serve --backend=http://127.0.0.1:8000
 ```
 
 说明：
 - 会先清空并注入 `public/assets/config/runtime-config.json` 中的 `backendUrl`。
-- 前端启动时读取该配置并拼接 `/api/v1` 作为 API 基地址。
+- 前端 API 统一走 **`/v1/...`**（`kratosApi`）；`backendUrl` 应指向 admin HTTP（默认 **`http://127.0.0.1:8000`**，不是 :8080）。
 
 ## MVP 页面
 - `/chat`：三栏对话布局（Agent / Session / Chat）。

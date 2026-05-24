@@ -5,6 +5,7 @@ import type { Session } from "../session/types";
 import type {
   AgentIdentity,
   AgentStrategyProfile,
+  CascadeProposal,
   EvolutionEvent,
   EvolutionMetricsReport,
   EvolutionProposal,
@@ -13,6 +14,7 @@ import type {
   MemoryEntity,
   MemoryFact
 } from "./types";
+import { approveCascadeProposal, listCascadeProposals, rejectCascadeProposal } from "./api";
 import { useAgentsCatalogStore } from "../../stores/agents/catalog";
 import { useSessionStore } from "../../stores/session";
 import { useMemoryStore } from "../../stores/memory";
@@ -24,12 +26,13 @@ export function useMemoryCenterPage() {
   const { facts: storeFacts, snapshots: storeSnapshots, entities: storeEntities } = storeToRefs(memoryStore);
 
   const tab = ref("overview");
-  const showGraphTab = import.meta.env.VITE_MEMORY_GRAPH_TAB === "1";
+  const showGraphTab = true;
   const agents = ref<Agent[]>([]);
   const sessions = ref<Session[]>([]);
   const facts = storeFacts;
   const entities = storeEntities;
   const evolutionProposals = ref<EvolutionProposal[]>([]);
+  const cascadeProposals = ref<CascadeProposal[]>([]);
   const evolutionEvents = ref<EvolutionEvent[]>([]);
   const agentIdentity = ref<AgentIdentity | null>(null);
   const agentStrategy = ref<AgentStrategyProfile | null>(null);
@@ -49,6 +52,8 @@ export function useMemoryCenterPage() {
   const loadingSnapshots = ref(false);
   const loadingTasks = ref(false);
   const loadingEvolution = ref(false);
+  const loadingCascade = ref(false);
+  const cascadeActingId = ref<string | null>(null);
   const factsEndpointReady = ref(true);
   const snapshotDrawer = ref(false);
   const factDrawer = ref(false);
@@ -61,7 +66,8 @@ export function useMemoryCenterPage() {
       loadingFacts.value ||
       loadingSnapshots.value ||
       loadingTasks.value ||
-      loadingEvolution.value
+      loadingEvolution.value ||
+      loadingCascade.value
   );
   const agentOptions = computed(() => agents.value.map((agent) => ({ label: agent.display_name || agent.agent_key, value: agent.id })));
   const sessionRows = computed(() => sessions.value);
@@ -87,7 +93,8 @@ export function useMemoryCenterPage() {
   const actionItems = computed(() => [
     { title: "上下文接近上限", caption: "建议检查摘要阈值和注入片段数量。", count: sessions.value.filter((s) => ["warning", "critical", "exceeded"].includes(s.context_status)).length, icon: "report", color: "warning" },
     { title: "知识冲突待办", caption: "L3 conflict API 接入后展示需要仲裁的 facts。", count: facts.value.reduce((sum, fact) => sum + (fact.conflict_count || 0), 0), icon: "rule", color: "negative" },
-    { title: "待审核进化提议", caption: "来自 Agent Evolution proposal queue。", count: evolutionProposals.value.length, icon: "auto_awesome", color: "info" }
+    { title: "待审核进化提议", caption: "来自 Agent Evolution proposal queue。", count: evolutionProposals.value.length, icon: "auto_awesome", color: "info" },
+    { title: "Cascade 更名待审", caption: "L4 冲突门控产生的图谱/L3 级联审核。", count: cascadeProposals.value.length, icon: "sync_alt", color: "deep-orange" }
   ]);
 
   const memoryLayers = computed(() => [
@@ -146,6 +153,8 @@ export function useMemoryCenterPage() {
     { label: "L0 上下文策略", caption: "Prompt snapshot / preview API 已接入。", done: true },
     { label: "L1 工作记忆预算", caption: "L1 task/field API 已接入。", done: true },
     { label: "L3 语义记忆设置", caption: "Facts / recall：`memory/v1` 由 cmd/admin SQLite（sessionmemory）提供。", done: factsEndpointReady.value },
+    { label: "巩固 Worker 模型", caption: "Agent 设置 → 记忆 Tab：`memory_worker_*` / `l0_compress_*`。", done: true },
+    { label: "平台 Policy Strict / Backfill", caption: "记忆中心 → 设置 Tab：MEMORY_POLICY_STRICT / MEMORY_EPISODE_BACKFILL_DISABLED（DB + env）。", done: true },
     { label: "L4 图谱与进化设置", caption: "Entities / neighborhood / evolution API 已注册并在本页读取。", done: true }
   ]);
 
@@ -174,7 +183,7 @@ export function useMemoryCenterPage() {
 
   watch(selectedAgentId, async () => {
     selectedSessionId.value = null;
-    await Promise.all([loadSessions(), loadEvolution()]);
+    await Promise.all([loadSessions(), loadEvolution(), loadCascade()]);
   });
 
   watch(selectedSessionId, () => {
@@ -189,7 +198,7 @@ export function useMemoryCenterPage() {
     error.value = "";
     try {
       await loadAgents();
-      await Promise.all([loadSessions(), loadFacts(), loadEvolution()]);
+      await Promise.all([loadSessions(), loadFacts(), loadEvolution(), loadCascade()]);
     } catch (err) {
       error.value = err instanceof Error ? err.message : "记忆中心加载失败";
     }
@@ -217,6 +226,42 @@ export function useMemoryCenterPage() {
       }
     } finally {
       loadingSessions.value = false;
+    }
+  }
+
+  async function loadCascade() {
+    const agentID = selectedAgentId.value || agents.value[0]?.id || "";
+    if (!agentID) {
+      cascadeProposals.value = [];
+      return;
+    }
+    loadingCascade.value = true;
+    try {
+      cascadeProposals.value = await listCascadeProposals(agentID, { status: "pending", limit: 30 });
+    } catch {
+      cascadeProposals.value = [];
+    } finally {
+      loadingCascade.value = false;
+    }
+  }
+
+  async function approveCascade(row: CascadeProposal) {
+    cascadeActingId.value = row.id;
+    try {
+      await approveCascadeProposal(row.id);
+      await Promise.all([loadCascade(), loadFacts(), loadEvolution()]);
+    } finally {
+      cascadeActingId.value = null;
+    }
+  }
+
+  async function rejectCascade(row: CascadeProposal) {
+    cascadeActingId.value = row.id;
+    try {
+      await rejectCascadeProposal(row.id, "admin", "rejected from memory center");
+      await loadCascade();
+    } finally {
+      cascadeActingId.value = null;
     }
   }
 
@@ -335,7 +380,6 @@ export function useMemoryCenterPage() {
 
   return {
     tab,
-    showGraphTab,
     selectedAgentId,
     selectedSessionId,
     selectedSnapshot,
@@ -360,6 +404,11 @@ export function useMemoryCenterPage() {
     actionItems,
     memoryLayers,
     evolutionPanels,
+    entities,
+    loadingEvolution,
+    cascadeProposals,
+    loadingCascade,
+    cascadeActingId,
     settingChecklist,
     scopeOptions,
     factStatusOptions,
@@ -370,6 +419,9 @@ export function useMemoryCenterPage() {
     loadSessions,
     loadFacts,
     loadSessionMemory,
+    loadCascade,
+    approveCascade,
+    rejectCascade,
     resetFactFilters,
     openSnapshot,
     openFact

@@ -45,9 +45,11 @@ func (h *ChannelIngress) dispatchAsyncInbound(
 		h.markTurnJob(ctx, biz.ChannelTurnJobStatusFailed, err.Error(), "", "")
 		return err
 	}
-	peerKey := ev.PeerKey
-	if peerKey == "" {
-		peerKey = biz.PeerKeyForSession(routing.DMScope, ev.PeerID)
+	_ = routing
+	peerKey, err := h.inboundPeerKey(chRow, ev)
+	if err != nil {
+		h.markTurnJob(ctx, biz.ChannelTurnJobStatusFailed, err.Error(), "", "")
+		return err
 	}
 	req, err := h.prepareChannelChatRequest(ctx, chRow, platform, peerKey, ev.PeerID, ev.Text)
 	if err != nil {

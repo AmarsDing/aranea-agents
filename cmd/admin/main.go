@@ -30,6 +30,8 @@ import (
 	"github.com/go-kratos/kratos/v2/transport/grpc"
 	"github.com/go-kratos/kratos/v2/transport/http"
 
+	"aranea-agents/internal/cronrunner/jobs"
+
 	_ "go.uber.org/automaxprocs"
 )
 
@@ -51,8 +53,9 @@ func newApp(
 	wsSrv *server.WSServer,
 	consumer *biz.EventBusConsumer,
 	sideConsumers *biz.EventBusSideConsumers,
-	eventBus event.Bus,
+	eventInfra *event.Infra,
 	sessionLogWriter biz.SessionLogWriter,
+	memoryDataMigration *jobs.MemoryDataMigrationWorker,
 ) *kratos.App {
 	// EP-OBS-03: WSServer implements transport.Server (Start/Stop); register it so
 	// kratos.App orchestrates its lifecycle and Stop triggers broadcastShutdown.
@@ -81,8 +84,17 @@ func newApp(
 			if sideConsumers != nil {
 				sideConsumers.Start(consumerCtx)
 			}
-			event.SetGlobalBus(eventBus)
-			logger.Log(log.LevelInfo, "msg", "flow log v2 global bus wired")
+			if eventInfra != nil {
+				event.BindInfra(eventInfra)
+			}
+			logger.Log(log.LevelInfo, "msg", "event infra bound for monitor flow logs")
+			return nil
+		}),
+		kratos.AfterStart(func(startCtx context.Context) error {
+			if memoryDataMigration != nil {
+				memoryDataMigration.Start(startCtx)
+				logger.Log(log.LevelInfo, "msg", "memory data migration worker started")
+			}
 			return nil
 		}),
 		kratos.AfterStop(func(context.Context) error {
@@ -140,22 +152,39 @@ func main() {
 	stopBackgroundWorkers := func() {
 		cancelCron()
 		cancelWatch()
+		if out.ChannelRuntime != nil {
+			out.ChannelRuntime.Stop()
+		}
 	}
 	defer stopBackgroundWorkers()
 
-	// Windows / IDE terminals sometimes fail to deliver Ctrl+C to go run; cancel workers on
-	// first interrupt so kratos Stop can finish. Second interrupt forces exit.
+	// Windows / IDE terminals sometimes fail to deliver Ctrl+C to kratos App.Run. On first
+	// interrupt we stop background workers and call App.Stop explicitly; keep listening so
+	// a second interrupt or timeout always terminates the process.
+	const shutdownForceExit = 10 * time.Second
 	go func() {
 		ch := make(chan os.Signal, 2)
 		signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
+		defer signal.Stop(ch)
+
 		sig := <-ch
 		stopBackgroundWorkers()
 		logger.Log(log.LevelInfo, "msg", "shutdown signal received", "signal", sig.String())
-		select {
-		case <-ch:
-			logger.Log(log.LevelWarn, "msg", "second interrupt — forcing exit")
-			os.Exit(130)
-		case <-time.After(15 * time.Second):
+		if err := out.App.Stop(); err != nil {
+			logger.Log(log.LevelWarn, "msg", "app stop error", "error", err.Error())
+		}
+
+		forceTimer := time.NewTimer(shutdownForceExit)
+		defer forceTimer.Stop()
+		for {
+			select {
+			case sig := <-ch:
+				logger.Log(log.LevelWarn, "msg", "interrupt — forcing exit", "signal", sig.String())
+				os.Exit(130)
+			case <-forceTimer.C:
+				logger.Log(log.LevelWarn, "msg", "graceful shutdown timeout — forcing exit", "timeout", shutdownForceExit.String())
+				os.Exit(130)
+			}
 		}
 	}()
 
@@ -232,6 +261,21 @@ func main() {
 	if out.FlowLogCleanup != nil {
 		go out.FlowLogCleanup.Start(cronCtx)
 		logger.Log(log.LevelInfo, "msg", "flow log cleanup started", "interval", "1h")
+	}
+
+	if out.MemoryL2Decay != nil {
+		go out.MemoryL2Decay.Start(cronCtx)
+		logger.Log(log.LevelInfo, "msg", "memory l2 decay worker started", "interval", "24h")
+	}
+
+	if out.MemoryL3Decay != nil {
+		go out.MemoryL3Decay.Start(cronCtx)
+		logger.Log(log.LevelInfo, "msg", "memory l3 decay worker started", "interval", "24h")
+	}
+
+	if out.MemoryEpisodeBackfill != nil {
+		go out.MemoryEpisodeBackfill.Start(cronCtx)
+		logger.Log(log.LevelInfo, "msg", "memory episode backfill worker started", "interval", "6h")
 	}
 
 	if err := out.App.Run(); err != nil {

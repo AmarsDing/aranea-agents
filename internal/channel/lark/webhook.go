@@ -72,6 +72,7 @@ type WebhookParseResult struct {
 	MessageType       string
 	Mentioned         bool
 	Text              string
+	ThreadID          string
 	// Card action (card.action.trigger)
 	CardActionValue          map[string]any
 	CardActionOperatorOpenID string
@@ -98,6 +99,7 @@ type imMessageEvent struct {
 		ChatType    string `json:"chat_type"`
 		MessageType string `json:"message_type"`
 		Content     string `json:"content"`
+		ThreadID    string `json:"thread_id"`
 		Mentions    []struct {
 			Key string `json:"key"`
 		} `json:"mentions"`
@@ -149,7 +151,8 @@ func ParseWebhookPost(raw []byte, verificationToken string) (*WebhookParseResult
 		res.SenderOpenID = strings.TrimSpace(wrap.Event.Sender.SenderID.OpenID)
 		res.SenderUserID = strings.TrimSpace(wrap.Event.Sender.SenderID.UserID)
 		res.Mentioned = len(wrap.Event.Message.Mentions) > 0
-		res.Text = extractTextFromIMContent(strings.TrimSpace(wrap.Event.Message.Content))
+		res.ThreadID = strings.TrimSpace(wrap.Event.Message.ThreadID)
+		res.Text = extractTextFromIMContent(strings.TrimSpace(wrap.Event.Message.Content), res.MessageType)
 	case "card.action.trigger", "card.action.trigger_v1":
 		if err := fillCardActionFromWebhook(raw, res); err != nil {
 			return nil, fmt.Errorf("lark webhook: %s: %w", res.EventType, err)
@@ -222,10 +225,13 @@ type imTextContent struct {
 	Text string `json:"text"`
 }
 
-func extractTextFromIMContent(raw string) string {
+func extractTextFromIMContent(raw, msgType string) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return ""
+	}
+	if text := parseFeishuMessageBody(raw, msgType, nil); text != "" {
+		return text
 	}
 	var t imTextContent
 	if err := json.Unmarshal([]byte(raw), &t); err != nil {

@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	chatv1 "aranea-agents/api/kratos/chat/v1"
 	v1 "aranea-agents/api/kratos/team/v1"
 	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
@@ -50,44 +49,44 @@ func NewTeamService(
 
 func toProtoTeam(t biz.Team) *v1.Team {
 	return &v1.Team{
-		Id:                 t.ID,
-		TeamKey:            t.TeamKey,
-		DisplayName:        t.DisplayName,
-		Status:             t.Status,
-		IsDefault:          t.IsDefault,
-		DefinitionJson:     t.DefinitionJSON,
-		OrchestrationSpec:  toProtoOrchestrationSpec(t.DefinitionJSON),
-		AdkAppName:         t.ADKAppName,
-		CreatedAt:      t.CreatedAt,
-		UpdatedAt:      t.UpdatedAt,
-		DeletedAt:      t.DeletedAt,
-		LinkedGraphId:  team.LinkedGraphIDFromDefinition(t.DefinitionJSON),
+		Id:                t.ID,
+		TeamKey:           t.TeamKey,
+		DisplayName:       t.DisplayName,
+		Status:            t.Status,
+		IsDefault:         t.IsDefault,
+		DefinitionJson:    t.DefinitionJSON,
+		OrchestrationSpec: toProtoOrchestrationSpec(t.DefinitionJSON),
+		AdkAppName:        t.ADKAppName,
+		CreatedAt:         t.CreatedAt,
+		UpdatedAt:         t.UpdatedAt,
+		DeletedAt:         t.DeletedAt,
+		LinkedGraphId:     team.LinkedGraphIDFromDefinition(t.DefinitionJSON),
 	}
 }
 
 func toProtoTeamRun(r biz.TeamRun) *v1.TeamRun {
 	return &v1.TeamRun{
-		Id:            r.ID,
-		TeamId:        r.TeamID,
-		SessionId:     r.SessionID,
-		MessageId:     r.MessageID,
-		Mode:          r.Mode,
-		Status:        r.Status,
-		InputPreview:  r.InputPreview,
-		OutputPreview: r.OutputPreview,
-		TokenIn:       int32(r.TokenIn),
-		TokenOut:      int32(r.TokenOut),
-		CostMicroUsd:  r.CostMicroUSD,
-		DurationMs:    int32(r.DurationMS),
-		ErrorMessage:  r.ErrorMessage,
-		TopologyJson:             r.TopologyJSON,
-		GraphExecutionId:         r.GraphExecutionID,
-		DefinitionSnapshotJson:     r.DefinitionSnapshotJSON,
-		TraceId:                    r.TraceID,
-		StartedAt:                  r.StartedAt,
-		FinishedAt:    r.FinishedAt,
-		CreatedAt:     r.CreatedAt,
-		UpdatedAt:     r.UpdatedAt,
+		Id:                     r.ID,
+		TeamId:                 r.TeamID,
+		SessionId:              r.SessionID,
+		MessageId:              r.MessageID,
+		Mode:                   r.Mode,
+		Status:                 r.Status,
+		InputPreview:           r.InputPreview,
+		OutputPreview:          r.OutputPreview,
+		TokenIn:                int32(r.TokenIn),
+		TokenOut:               int32(r.TokenOut),
+		CostMicroUsd:           r.CostMicroUSD,
+		DurationMs:             int32(r.DurationMS),
+		ErrorMessage:           r.ErrorMessage,
+		TopologyJson:           r.TopologyJSON,
+		GraphExecutionId:       r.GraphExecutionID,
+		DefinitionSnapshotJson: r.DefinitionSnapshotJSON,
+		TraceId:                r.TraceID,
+		StartedAt:              r.StartedAt,
+		FinishedAt:             r.FinishedAt,
+		CreatedAt:              r.CreatedAt,
+		UpdatedAt:              r.UpdatedAt,
 	}
 }
 
@@ -340,12 +339,12 @@ func (s *TeamService) RunTeamTest(ctx context.Context, req *v1.RunTeamTestReques
 	}
 	defer func() { _ = s.sessions.Delete(ctx, sess.ID) }()
 
-	testReq := &chatv1.SendChatMessageRequest{
-		SessionId: sess.ID,
+	testInput := biz.TurnInput{
+		SessionID: sess.ID,
 		Content:   content,
-		TeamId:    &teamID,
+		TeamID:    teamID,
 	}
-	_, assistant, err := s.teamRunner.RunTurn(ctx, sess, testReq)
+	_, assistant, err := s.teamRunner.RunTurnFromInput(ctx, sess, testInput)
 	if err != nil {
 		return nil, err
 	}

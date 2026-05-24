@@ -118,7 +118,7 @@ Channel：在 Kratos 层实现外部 IM 平台连接，参考 MuseBot 的 SDK �
 |---|------|------|--------------|
 | D1 | 流式回复 StreamOutbound | ✅ MVP | Telegram/Feishu/Slack |
 | D2 | 群 @ 门控 + allowlist | ✅ | `internal/biz/channel_access.go` + `channel_ingress_access.go` |
-| D3 | 路由 UI：Team / dm_scope / rules | 🟡 | Agent/Team 下拉 ✅；`dm_scope` 下拉 ✅；rules 表 ⏳ |
+| D3 | 路由 UI：Team / dm_scope / rules | ✅ | Agent/Team 下拉 ✅；`dm_scope` 下拉 ✅；rules 表 ✅ |
 | D5 | Web Chat 同步 Channel 入站 | ✅ | `useChatInboundSync` + session `metadata_json.source=channel` |
 | D6 | 路由变更重置 peer 绑定 | ✅ | `UpdateChannel` + `DeleteByChannelID` |
 | D7 | Stale peer bind 自动 rebind | ✅ | CC-HOT-01 · Session 软删后飞书入站自动建新 Session |
@@ -372,19 +372,19 @@ make runtime-boundary
 
 | ID | 优先级 | 任务 | 包 / 文件 | 状态 | 验收 |
 |----|--------|------|-----------|------|------|
-| F-01 | P1 | WS ping/reconnect 可配置项写入 `config_json.config` | `lark/ws.go` · `lark/config.go` | ⏳ | 文档化默认值；Admin 可选展示 |
-| F-01b | P1 | Runtime 连接状态 chip（connected_since / last_disconnect） | `runtime/supervisor.go` · `ChannelsTable.vue` | ⏳ | 列表可见 WS 健康 |
-| F-03 | P1 | Webhook 入站 per `channel_key` + IP 限流（如 120/min） | `channel_ingress_http.go` | ⏳ | 超限 429 + FlowLog |
-| F-04 | P1 | 飞书 text 入站 debounce 合并（500–800ms；大段 +2s） | `lark/inbound_batch.go`（新）· ingress | ⏳ | 连续 3 条短 text 合并为 1 Turn |
-| F-06 | P1 | `thread_id` 入 OutboundMeta + `thread_sessions_per_user` 路由 | `inbound_build.go` · `channel_routing.go` | ⏳ | 话题群独立 session |
-| F-06b | P1 | 出站 `reply_in_thread` / receive_id_type=thread_id | `stream_outbound.go` · `feishu_outbound.go` | ⏳ | 回复落在正确话题 |
-| F-07 | P1 | 流式 PATCH 达 `PlatformTextLimit` 主动 split 新消息 | `stream_outbound.go` · `TurnPreviewCoordinator` | ⏳ | 超长 Turn 多条 IM 有序 |
-| F-11 | P1 | Webhook `encrypt_key` 加密事件体 AES 解密 | `lark/webhook.go` `ParseWebhookPost` | ⏳ | 开放平台开启加密可验签+解密 |
-| F-02 | P2 | 同 `app_id` 多 enabled channel 启动冲突检测 | `runtime/manager.go` | ⏳ | 第二实例 fail-fast + SysLog |
-| F-05 | P2 | 入站 post 转 plain text；image 附件（可选） | `parse_message.go` · Chat 附件 | ⏳ | 富文本帖可读 |
+| F-01 | P1 | WS ping/reconnect 可配置项写入 `config_json.config` | `runtime/supervisor.go` | 🟡 | `ws_reconnect_interval_sec` ✅；larkws ping 参数仍依赖 SDK |
+| F-01b | P1 | Runtime 连接状态 chip（connected_since / last_disconnect） | `runtime/connection.go` · `ChannelsTable.vue` | ✅ | ListChannels 合并 `runtime_connected*` metadata |
+| F-03 | P1 | Webhook 入站 per `channel_key` + IP 限流（如 120/min） | `channel_ingress_ratelimit.go` | 🟡 | per `channel_key` 120/min ✅；IP 维度 ⏳ |
+| F-04 | P1 | 飞书 text 入站 debounce 合并（500–800ms；大段 +2s） | `lark/inbound_batch.go` · `ws.go` | ✅ | WS 路径 per-peer 合并 |
+| F-06 | P1 | `thread_id` 入 OutboundMeta + `thread_sessions_per_user` 路由 | `inbound_build.go` · `channel_ingress_peer.go` | ✅ | 话题群独立 peer_key |
+| F-06b | P1 | 出站 `reply_in_thread` / receive_id_type=thread_id | `feishu_outbound.go` | ✅ | delivery Extra 透传 |
+| F-07 | P1 | 流式 PATCH 达 `PlatformTextLimit` 主动 split 新消息 | `TurnPreviewCoordinator` · `channel_delivery_worker.go` | ✅ | `im_split_overflow` 流式 + 出站 SplitPages |
+| F-11 | P1 | Webhook `encrypt_key` 加密事件体 AES 解密 | `lark/event_decrypt.go` | ✅ | `{"encrypt":"..."}` 解密后验签解析 |
+| F-02 | P2 | 同 `app_id` 多 enabled channel 启动冲突检测 | `runtime/manager.go` | ✅ | 第二 channel SysLog + 跳过 WS 启动 |
+| F-05 | P2 | 入站 post 转 plain text；image 附件（可选） | `parse_message.go` | 🟡 | post ✅；image 附件 ⏳ |
 | F-08 | P2 | 出站 `msg_type=post`（markdown 子集） | `feishu_outbound.go` | ⏳ | 粗体/链接保留 |
-| F-09 | P2 | 首字节前 Reaction「处理中」；结束移除 | `lark/reaction.go`（新） | ⏳ | `first_byte_timeout` 内用户可见反馈 |
-| F-10 | P2 | `busy_input_mode: queue \| interrupt` | `channel_config_helpers.go` · ingress | ⏳ | interrupt 调 StopGeneration |
+| F-09 | P2 | 首字节前 Reaction「处理中」；结束移除 | `lark/reaction.go` | ✅ | `config.processing_reaction` 开启时生效 |
+| F-10 | P2 | `busy_input_mode: queue \| interrupt` | `channel_config_helpers.go` · ingress | ✅ | interrupt 时 CancelRun 后再 Turn |
 
 ### 11.2 不建议照搬（Aranea 已更优或架构不同）
 

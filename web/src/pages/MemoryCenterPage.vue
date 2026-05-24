@@ -16,8 +16,9 @@
       <q-tabs v-model="tab" align="left" active-color="primary" indicator-color="primary" no-caps outside-arrows mobile-arrows>
         <q-tab name="overview" icon="hub" label="总览" />
         <q-tab name="knowledge" icon="psychology" label="知识库" />
+        <q-tab name="cascade" icon="sync_alt" label="Cascade" />
         <q-tab name="sessions" icon="account_tree" label="会话记忆" />
-        <q-tab v-if="showGraphTab" name="evolution" icon="auto_awesome" label="图谱与进化" />
+        <q-tab name="evolution" icon="auto_awesome" label="图谱与进化" />
         <q-tab name="settings" icon="tune" label="设置" />
       </q-tabs>
     </q-card>
@@ -44,6 +45,18 @@
         />
       </q-tab-panel>
 
+      <q-tab-panel name="cascade">
+        <memory-cascade-panel
+          :agent-id="selectedAgentId"
+          :rows="cascadeProposals"
+          :loading="loadingCascade"
+          :acting-id="cascadeActingId"
+          @refresh="loadCascade"
+          @approve="approveCascade"
+          @reject="rejectCascade"
+        />
+      </q-tab-panel>
+
       <q-tab-panel name="sessions">
         <memory-sessions-panel
           v-model:selected-session-id="selectedSessionId"
@@ -59,12 +72,18 @@
         />
       </q-tab-panel>
 
-      <q-tab-panel v-if="showGraphTab" name="evolution">
-        <memory-evolution-panel :panels="evolutionPanels" />
+      <q-tab-panel name="evolution">
+        <memory-graph-explorer :entities="entities" :loading-entities="loadingEvolution" @refresh="loadEvolution" />
+        <memory-evolution-panel class="q-mt-md" :panels="evolutionPanels" />
       </q-tab-panel>
 
       <q-tab-panel name="settings">
-        <memory-settings-status-panel :items="settingChecklist" />
+        <div class="column q-gutter-md">
+          <memory-platform-settings-panel />
+          <memory-worker-status-panel />
+          <memory-recall-tester-panel :agent-id="selectedAgentId" :session-id="selectedSessionId" />
+          <memory-settings-status-panel :items="settingChecklist" />
+        </div>
       </q-tab-panel>
     </q-tab-panels>
 
@@ -75,6 +94,11 @@
 </template>
 
 <script setup lang="ts">
+import MemoryPlatformSettingsPanel from "../features/memory/MemoryPlatformSettingsPanel.vue";
+import MemoryGraphExplorer from "../features/memory/MemoryGraphExplorer.vue";
+import MemoryRecallTesterPanel from "../features/memory/MemoryRecallTesterPanel.vue";
+import MemoryWorkerStatusPanel from "../features/memory/MemoryWorkerStatusPanel.vue";
+import MemoryCascadePanel from "../features/memory/MemoryCascadePanel.vue";
 import MemoryEvolutionPanel from "../features/memory/MemoryEvolutionPanel.vue";
 import MemoryFactDrawer from "../features/memory/MemoryFactDrawer.vue";
 import MemoryHero from "../features/memory/MemoryHero.vue";
@@ -88,7 +112,6 @@ import { useMemoryCenterPage } from "../features/memory/useMemoryCenterPage";
 
 const {
   tab,
-  showGraphTab,
   selectedAgentId,
   selectedSessionId,
   selectedSnapshot,
@@ -112,6 +135,11 @@ const {
   actionItems,
   memoryLayers,
   evolutionPanels,
+  entities,
+  loadingEvolution,
+  cascadeProposals,
+  loadingCascade,
+  cascadeActingId,
   settingChecklist,
   scopeOptions,
   factStatusOptions,
@@ -122,6 +150,10 @@ const {
   loadSessions,
   loadFacts,
   loadSessionMemory,
+  loadCascade,
+  loadEvolution,
+  approveCascade,
+  rejectCascade,
   resetFactFilters,
   openSnapshot,
   openFact

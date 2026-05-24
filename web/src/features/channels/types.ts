@@ -84,6 +84,9 @@ export type ChannelMetadata = {
   last_error_code?: string;
   last_error_message?: string;
   connected_at?: string;
+  runtime_connected?: boolean;
+  runtime_connected_since?: string;
+  runtime_last_disconnect?: string;
   schema_version?: number;
 };
 

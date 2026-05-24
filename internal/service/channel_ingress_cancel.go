@@ -35,13 +35,9 @@ func (h *ChannelIngress) resolveCancelInboundTurn(ctx context.Context, chRow biz
 	if h == nil || !biz.IsChannelCancelCommand(ev.Text) {
 		return false, "", nil
 	}
-	routing, err := biz.ParseChannelRouting(chRow.ConfigJSON)
+	peerKey, err := h.inboundPeerKey(chRow, ev)
 	if err != nil {
 		return true, "", err
-	}
-	peerKey := ev.PeerKey
-	if peerKey == "" {
-		peerKey = biz.PeerKeyForSession(routing.DMScope, ev.PeerID)
 	}
 	req, err := h.prepareChannelChatRequest(ctx, chRow, platform, peerKey, ev.PeerID, ev.Text)
 	if err != nil {

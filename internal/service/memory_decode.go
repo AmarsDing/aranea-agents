@@ -157,5 +157,7 @@ func pbMemoryRelation(raw []byte) (*v1.MemoryRelation, error) {
 		Weight:       jsonutil.IfaceF64(m, "weight"),
 		Confidence:   jsonutil.IfaceF64(m, "confidence"),
 		Status:       jsonutil.IfaceStr(m, "status"),
+		ValidFrom:    jsonutil.IfaceStr(m, "valid_from"),
+		ValidTo:      jsonutil.IfaceStr(m, "valid_to"),
 	}, nil
 }

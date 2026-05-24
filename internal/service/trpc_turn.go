@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 
-	chatv1 "aranea-agents/api/kratos/chat/v1"
 	"aranea-agents/internal/biz"
 )
 
@@ -11,12 +10,12 @@ import (
 func (s *ChatService) runSingleAgentViaTRPC(
 	ctx context.Context,
 	sess biz.Session,
-	req *chatv1.SendChatMessageRequest,
+	input biz.TurnInput,
 	ag biz.Agent,
 	dialogMode, prov, mod string,
 	attN int,
 ) (biz.ChatMessage, biz.ChatMessage, error) {
-	return s.orch.runSingleAgentViaTRPC(ctx, sess, req, ag, dialogMode, prov, mod, attN)
+	return s.orch.runSingleAgentViaTRPC(ctx, sess, input, ag, dialogMode, prov, mod, attN)
 }
 
 // processPendingQueue delegates to ChatOrchestrator.

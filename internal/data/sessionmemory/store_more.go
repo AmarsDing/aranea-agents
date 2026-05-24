@@ -21,7 +21,7 @@ const sqlRelationCols = `
 	source_id, target_id, relation_type, bidirectional,
 	weight, confidence, importance, use_count,
 	attributes_json, evidence_json, status, source_kind,
-	metadata_json, created_at, updated_at, archived_at, deleted_at`
+	metadata_json, valid_from, valid_to, created_at, updated_at, archived_at, deleted_at`
 
 // ListEntityRows lists entities (**snake_case** JSON per row).
 func (st *Store) ListEntityRows(ctx context.Context, scopeType, scopeID, workspaceID, userID, entityType, status, keyword string, limit, offset int32) ([][]byte, int32, error) {
@@ -145,16 +145,17 @@ func (st *Store) getEntityJSON(ctx context.Context, id string) ([]byte, error) {
 	return scanEntityRowJSON(rows)
 }
 
-func (st *Store) listRelationsForNode(ctx context.Context, nodeID string, limit int) ([][]byte, error) {
+func (st *Store) listRelationsForNode(ctx context.Context, nodeID, queryAt string, limit int) ([][]byte, error) {
 	if nodeID == "" {
 		return nil, errors.New("node id is required")
 	}
 	if limit <= 0 || limit > 500 {
 		limit = 100
 	}
+	queryAt = defaultQueryTimeRFC3339(queryAt)
 	rows, err := st.client.QueryContext(ctx,
 		`SELECT `+strings.TrimSpace(sqlRelationCols)+` FROM memory_relations
-		 WHERE (source_id = ? OR target_id = ?) AND status = 'active'
+		 WHERE (source_id = ? OR target_id = ?) AND status = 'active' AND deleted_at = ''
 		 ORDER BY weight DESC, updated_at DESC LIMIT ?`,
 		nodeID, nodeID, limit,
 	)
@@ -168,6 +169,16 @@ func (st *Store) listRelationsForNode(ctx context.Context, nodeID string, limit 
 		if err != nil {
 			return nil, err
 		}
+		var rel map[string]any
+		if err := json.Unmarshal(b, &rel); err != nil {
+			continue
+		}
+		vf, _ := rel["valid_from"].(string)
+		vt, _ := rel["valid_to"].(string)
+		ca, _ := rel["created_at"].(string)
+		if !relationValidAt(vf, vt, ca, queryAt) {
+			continue
+		}
 		out = append(out, b)
 	}
 	return out, rows.Err()
@@ -180,13 +191,14 @@ func scanRelationRowJSON(rows *sql.Rows) ([]byte, error) {
 		w, conf, imp                               float64
 		uc                                         int
 		attrJ, evidJ, status, srcKind, metaJ       string
+		validFrom, validTo                         string
 		ca, ua, arch, del                          string
 	)
 	if err := rows.Scan(
 		&id, &stype, &sid, &wid, &srcID, &tgtID, &relType, &bidir,
 		&w, &conf, &imp, &uc,
 		&attrJ, &evidJ, &status, &srcKind,
-		&metaJ, &ca, &ua, &arch, &del,
+		&metaJ, &validFrom, &validTo, &ca, &ua, &arch, &del,
 	); err != nil {
 		return nil, err
 	}
@@ -197,14 +209,17 @@ func scanRelationRowJSON(rows *sql.Rows) ([]byte, error) {
 		"weight":        w, "confidence": conf, "importance": imp, "use_count": uc,
 		"attributes_json": attrJ, "evidence_json": evidJ,
 		"status": status, "source_kind": srcKind,
-		"metadata_json": metaJ, "created_at": ca, "updated_at": ua,
+		"metadata_json": metaJ,
+		"valid_from":    validFrom,
+		"valid_to":      validTo,
+		"created_at": ca, "updated_at": ua,
 		"archived_at": arch, "deleted_at": del,
 	}
 	return json.Marshal(m)
 }
 
 // NeighborhoodJSON returns the legacy **GraphNeighborhood** JSON shape.
-func (st *Store) NeighborhoodJSON(ctx context.Context, centerID string, hops, maxNodes int32) ([]byte, error) {
+func (st *Store) NeighborhoodJSON(ctx context.Context, centerID string, hops, maxNodes int32, queryAtRFC3339 string) ([]byte, error) {
 	if strings.TrimSpace(centerID) == "" {
 		return nil, errors.New("center id is required")
 	}
@@ -219,6 +234,7 @@ func (st *Store) NeighborhoodJSON(ctx context.Context, centerID string, hops, ma
 	if mx <= 0 || mx > 200 {
 		mx = 25
 	}
+	queryAt := defaultQueryTimeRFC3339(queryAtRFC3339)
 	centerRaw, err := st.getEntityJSON(ctx, centerID)
 	if err != nil {
 		return nil, err
@@ -234,10 +250,10 @@ func (st *Store) NeighborhoodJSON(ctx context.Context, centerID string, hops, ma
 	var entities []any
 	var relations []any
 
-	for hop := 0; hop < h && len(visited) < mx+1 && len(frontier) > 0; hop++ {
+	for hop := 1; hop <= h && len(visited) < mx+1 && len(frontier) > 0; hop++ {
 		next := []string{}
 		for _, node := range frontier {
-			rels, err := st.listRelationsForNode(ctx, node, 100)
+			rels, err := st.listRelationsForNode(ctx, node, queryAt, 100)
 			if err != nil {
 				return nil, err
 			}
@@ -276,6 +292,7 @@ func (st *Store) NeighborhoodJSON(ctx context.Context, centerID string, hops, ma
 				if err := json.Unmarshal(entRaw, &entObj); err != nil {
 					continue
 				}
+				entObj["hop"] = hop
 				entities = append(entities, entObj)
 				next = append(next, other)
 			}
@@ -286,6 +303,7 @@ func (st *Store) NeighborhoodJSON(ctx context.Context, centerID string, hops, ma
 	out := map[string]any{
 		"center":    centerObj,
 		"hops":      h,
+		"query_at":  queryAt,
 		"entities":  entities,
 		"relations": relations,
 	}

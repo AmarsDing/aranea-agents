@@ -744,35 +744,26 @@ internal/biz/
 
 **原则**：biz 层只定义接口，具体实现在 data/service/agent 等上层包注入。
 
-#### 3.1 event 包解耦（影响最大，12+ 文件）
+#### 3.1 event 包解耦 ✅ 已完成
 
-`event.Bus` 已是接口，但 biz 还使用了 `event.Envelope`、`event.EventType`、`event.Buffer` 等具体类型。
+`event.Bus` 已是接口，biz 生产代码已全部迁移至 `event/contract`。
 
-**方案**：提取 `internal/event/contract` 子包
+**已完成**：提取 `internal/event/contract` 子包，biz 只 import `event/contract`，不 import `event`（含实现）。
 
-```
-internal/event/
-├── contract/       ← 纯接口 + 值对象：Bus, Envelope, EventType, Subscription
-│   ├── bus.go      ← Bus 接口定义
-│   ├── envelope.go ← Envelope 值对象
-│   └── types.go    ← EventType 常量
-├── bus.go          ← Bus 实现
-├── buffer.go       ← Buffer 实现
-└── ...
-```
+#### 3.2 runtime 包解耦 ✅ 已完成
 
-biz 只 import `event/contract`，不 import `event`（含实现）。
+`runtime.NewPersistenceSet` 及 `sessionAdminStoreAdapter` 迁移至 `cmd/admin/wire.go`。`internal/runtime/deps.go` 不再 import `data/sessionmemory` 和 `memory/trpc`。
 
-#### 3.2 其他反向依赖
+#### 3.3 其他反向依赖（通过 Wire adapter 层已解耦）
 
-| 当前依赖 | 改为 |
+| 当前依赖 | 状态 |
 |---|---|
-| `biz → internal/memory/trpc` | biz 定义 `MemoryRuntimeProvider` 接口，`runtime` 包实现并注入 |
-| `biz → internal/data/sessionmemory` | biz 定义 `SessionMemoryStore` 接口，`data` 包实现并注入 |
-| `biz → internal/tools/webresearch` | biz 定义 `WebResearchToolFactory` 接口，`tools/webresearch` 实现并注入 |
-| `biz → internal/tools/testexec` | biz 定义 `TestToolInvoker` 接口，`tools/testexec` 实现并注入 |
-| `biz → internal/mcp/*` | biz 定义 `MCPProber` / `MCPConfigProvider` 接口，`mcp` 包实现并注入 |
-| `biz → internal/llminspect` | biz 定义 `LLMInspector` 接口，`llminspect` 实现并注入 |
+| `biz → internal/memory/trpc` | ✅ 已通过 `biz.AutoMemoryEnqueuer` 接口 + wire adapter 解耦 |
+| `biz → internal/data/sessionmemory` | ✅ 已通过 `biz.SessionAdminStore` 接口 + wire adapter 解耦 |
+| `biz → internal/tools/webresearch` | ✅ 已通过 `biz.WebResearchReadinessChecker` 接口 + wire adapter 解耦 |
+| `biz → internal/tools/testexec` | ✅ 已通过 `biztool.ToolTester` 接口 + wire adapter 解耦 |
+| `biz → internal/mcp/*` | ✅ 已通过 `biz.MCPProber` / `biz.MCPMetadataEditor` 接口 + wire adapter 解耦 |
+| `biz → internal/llminspect` | ✅ 已通过 `biz.LLMInspector` 接口 + wire adapter 解耦 |
 
 ### Phase 4：team 包对 agent + runtime 的依赖收敛
 
@@ -812,9 +803,9 @@ func init() {
 
 **目标**：wire.go 只做纯组装，不包含业务逻辑。
 
-1. **`providePluginRuntime` 中的 `SetCatalogConfirmChecker` 闭包**：移入 `plugin/trpc` 包内部
-2. **`provideAutoMemoryWorker` 中的 `data.NewL4GraphWriterAdapter`**：移入 `data` 包的 ProviderSet
-3. **`provideChatServiceDeps` 30 个参数**：Phase 1 完成后自然缩减
+1. ~~**`providePluginRuntime` 中的 `SetCatalogConfirmChecker` 闭包**：移入 `plugin/trpc` 包内部~~ ✅ 已修复（`SetToolUsecase`）
+2. ~~**`provideAutoMemoryWorker` 中的 `data.NewL4GraphWriterAdapter`**：移入 `data` 包的 ProviderSet~~ ✅ 已修复（`provideL4GraphWriter`）
+3. ~~**`provideChatServiceDeps` 30 个参数**：Phase 1 完成后自然缩减~~ ✅ 已降至 11 个
 
 ---
 
@@ -860,16 +851,17 @@ func init() {
 
 ## 5. 量化指标与验收标准
 
-| 指标 | 当前值 | Phase 1 目标 | Phase 3 目标 |
+| 指标 | 初始值 | 当前值 | Phase 3 目标 |
 |---|---|---|---|
-| `provideChatServiceDeps` 参数数 | 30 | ≤ 10 | ≤ 6 |
-| ChatService 结构体字段数 | 16 | ≤ 8 | ≤ 5 |
-| biz 包文件数 | 100+ | 100+（先拆 ChatService） | 每子包 ≤ 15 |
-| biz 直接依赖 internal 子包数（非 event） | 8 | 8 | 0 |
-| biz 依赖 event 包文件数 | 12+ | 12+ | 0（改用 event/contract） |
+| `provideChatServiceDeps` 参数数 | 30 | 11 | ≤ 6 |
+| ChatService 结构体字段数 | 16 | 1 (orch) | ≤ 5 |
+| biz 直接依赖 internal 子包数（非 event） | 8 | 0 | 0 |
+| biz 依赖 event 实现包文件数（生产代码） | 12+ | 0 | 0 |
+| runtime 依赖 data/sessionmemory | 是 | 否 | 否 |
+| runtime 依赖 memory/trpc | 是 | 否 | 否 |
 | team 依赖 agent 文件数 | 6 | 6 | ≤ 3（通过接口） |
 | 新增平台需修改文件数 | 1 (registry) | 1 | 0 |
-| wire.go provider 函数含业务逻辑 | 3 处 | 3 | 0 |
+| wire.go provider 函数含业务闭包 | 3 处 | 0 | 0 |
 
 ---
 
@@ -896,12 +888,149 @@ func init() {
 2. **Biz 直接引用实现包**：`biz → internal/data/*`、`biz → internal/tools/*` → 应定义接口注入
 3. **Usecase 间同步调用具体结构体**：`*ChannelUsecase` 在 `ChannelTurnJobUsecase` 中 → 应通过接口
 4. **平台硬编码注册**：`switch provider { case "lark": ... case "slack": ... }` → 应自注册
-5. **Wire provider 含业务闭包**：`providePluginRuntime` 中的 `SetCatalogConfirmChecker(func()...)` → 应移入实现包
+5. **Wire provider 含业务闭包**：`providePluginRuntime` 中的 `SetCatalogConfirmChecker(func()...)` → 应移入实现包 ✅ 已修复（`SetToolUsecase`）
 6. **30+ 参数的 provider 函数**：→ 应拆分为多个小 provider + 结构体内聚组装
 
 ---
 
 ## 8. 变更记录
+
+### 2026-05-24 (2)：Phase 1 继续拆分 + Phase 3 解耦 + Phase 6 闭包消除
+
+**Phase 1 — provideTurnDeps 提取**
+
+将 `provideChatServiceDeps` 中 TurnDeps 的 12 个构造参数提取为独立 `provideTurnDeps` provider。`provideChatServiceDeps` 参数从 21 个降至 11 个（1 TurnDeps + 3 子聚合 + 7 独立依赖）。
+
+**Phase 3 — runtime 包消除 data/sessionmemory + memory/trpc 依赖**
+
+将 `runtime.NewPersistenceSet` 及其 `sessionAdminStoreAdapter` 迁移至 `cmd/admin/wire.go`（`providePersistenceSet` + `wireSessionAdminStoreAdapter`）。`internal/runtime/deps.go` 不再 import `internal/data/sessionmemory` 和 `internal/memory/trpc`，仅保留类型定义和 `NewEmptyPersistenceSet`（测试用）。
+
+`biz` 包生产代码已全部使用 `event/contract`，不再直接 import `internal/event`。测试文件 `event_bus_user_feedback_consumer_test.go` 改用 `contract.Bus` 直接构造 consumer。
+
+**Phase 6 — providePluginRuntime 闭包消除**
+
+将 `providePluginRuntime` 中的 `SetCatalogConfirmChecker(func()...)` 闭包替换为 `plugintrpc.Runtime.SetToolUsecase(tools)` 方法，闭包逻辑封装在 `internal/plugin/trpc` 包内，wire.go 不再包含业务闭包。
+
+**涉及文件**：
+- `cmd/admin/wire.go` — 新增 `provideTurnDeps`、`providePersistenceSet`、`wireSessionAdminStoreAdapter`；简化 `providePluginRuntime`
+- `internal/runtime/deps.go` — 移除 `NewPersistenceSet`、`sessionAdminStoreAdapter`、`data/sessionmemory` 和 `memory/trpc` import；新增 `NewEmptyPersistenceSet`
+- `internal/runtime/runner_lifecycle_test.go` — 适配 `NewEmptyPersistenceSet`
+- `internal/plugin/trpc/runtime.go` — 新增 `SetToolUsecase` 方法
+- `internal/biz/event_bus_user_feedback_consumer_test.go` — 移除 `internal/event` import
+
+### 2026-05-24 (3)：Channel 解耦 + 死代码清理
+
+**优化1 — ChannelIngress 构造函数收窄**
+
+`ChannelIngress` 构造函数中 `*ChatService` 参数替换为 `biz.NativeTurnGateway` + `*event.Buffer`。Channel 不再持有 Chat 的完整具体类型，仅依赖窄接口。
+
+Wire 绑定：`wire.Bind(new(biz.NativeTurnGateway), new(*ChatService))`。
+
+**优化2 — Channel graph 执行接口 proto 解耦**
+
+将 `channelAsyncGraphExecutor`（返回 `*graphv1.ExecuteGraphResponse`）替换为 `channelGraphExecutor`（返回 `string` 即 executionID）。Channel 不再 import `graphv1` proto 包。
+
+新增 `GraphService.ExecuteGraphByID` 方法，支持 biz 级 graph 执行入口。
+
+**优化3 — deprecated 死代码移除**
+
+- 移除 `ChatService.RunNativeTurnUnary`（proto 入口，无调用者）
+- 移除 `ChatService.RunNativeTurnStreaming`（deprecated，无调用者）
+- 移除 `ChatOrchestrator.RunNativeAgentTurn`（deprecated 桥接方法，`nativeSendChatMessage` 已直接走 `RunNativeAgentTurnFromInput`）
+- 移除 `ChannelStreamCallback`、`WithChannelStreamCallback`、`channelStreamCallbackFromContext`、`streamPreviewTurnError`（deprecated 死代码）
+- 删除 `channel_stream_callback_test.go`
+
+**优化4 — 红线合规验证**
+
+- `internal/biz` 无 `api/*/v1` import ✅
+- `internal/biz` 无 `trpc-agent-go` import ✅
+- `internal/team`、`internal/channel`、`internal/agent` 无 proto import ✅
+
+**涉及文件**：
+- `internal/service/channel_ingress.go` — 构造函数收窄 + `channelGraphExecutor` → `biz.GraphExecutor`
+- `internal/service/channel_async_graph.go` — `ExecuteGraphBuildConfig` 返回 string + 新增 `ExecuteGraphByID`
+- `internal/service/channel_async_graph_test.go` — stub 适配新接口
+- `internal/service/chat_native.go` — 移除 `RunNativeTurnUnary`/`RunNativeTurnStreaming`
+- `internal/service/chat_orchestrator_turn.go` — 移除 `RunNativeAgentTurn`
+- `internal/service/channel_stream_callback.go` — 仅保留 `streamPreviewUpdater` 接口
+- `internal/service/service.go` — Wire 绑定 `biz.NativeTurnGateway` + `biz.GraphExecutor`
+- `internal/biz/graph.go` — 新增 `biz.GraphExecutor` 端口接口
+- `cmd/admin/wire_gen.go` — 自动重新生成
+
+### 2026-05-24 (4)：端口接口迁移至 biz 层（Kratos 依赖倒置合规）
+
+**问题**：`channelGraphExecutor` 接口定义在 `internal/service` 包内，不符合 Kratos 依赖倒置原则（接口应在消费方的 biz 层定义，实现在提供方的 service 层）。
+
+**修复**：
+- 新增 `biz.GraphExecutor` 接口（`internal/biz/graph.go`）
+- `ChannelIngress.graphs` 字段从 `channelGraphExecutor` 改为 `biz.GraphExecutor`
+- `NewChannelIngress` 参数从 `*GraphService` 改为 `biz.GraphExecutor`
+- Wire 绑定：`wire.Bind(new(biz.GraphExecutor), new(*GraphService))`
+- 删除 service 包内的 `channelGraphExecutor` 接口定义
+
+**涉及文件**：
+- `internal/biz/graph.go` — 新增 `GraphExecutor` 接口
+- `internal/service/channel_ingress.go` — 使用 `biz.GraphExecutor`
+- `internal/service/service.go` — Wire 绑定 `biz.GraphExecutor`
+
+---
+
+## 9. 未完成优化项
+
+> 以下为文档 §5 耦合点和 §6 解耦路线中尚未完成的项目，按优先级排列。
+
+### 9.1 后端 — Phase B1（端口先行）
+
+| 编号 | 未完成项 | 当前状态 | 说明 |
+|------|----------|----------|------|
+| B1-1 | `ChannelJobGateway` 端口定义 | 未开始 | Channel async 只依赖 Job 创建、查询、取消、完成通知；当前仍直接使用 `*biz.ChannelTurnJobUsecase` |
+| B1-2 | `OutboundDeliveryPort` 端口定义 | 未开始 | 平台无关的投递队列和状态记录；当前 Channel 出站逻辑散落在 platform adapter |
+| B1-3 | `TurnExecutor` 统一入口 | 未开始 | Web / WS / Channel / Cron 共用的同步 turn 执行入口；当前各入口各自调用 `RunNativeAgentTurnFromInput` |
+| B1-4 | 跨层 timeout / first-byte timeout 策略集中 | 未开始 | 当前策略分散在 `chat_orchestrator_turn.go` 和 `channel_ingress_execute.go` |
+
+### 9.2 后端 — Phase B2（Turn 生命周期收敛）
+
+| 编号 | 未完成项 | 当前状态 | 说明 |
+|------|----------|----------|------|
+| B2-1 | `TurnExecutor` 抽取 admission / session lock / pending queue / run registry / trace / usage | 未开始 | Agent turn 与 Team turn 生命周期重复；timeout、trace、usage、pending 行为漂移 |
+| B2-2 | Agent runtime 实现 `BuildRunner` / `PersistTurnRecord` / `ProjectRuntimeEvent` hook | 未开始 | Agent runtime 当前直接内嵌在 ChatOrchestrator |
+| B2-3 | Team runtime 实现 hook 接口 | 未开始 | Team runtime 当前在 `internal/team/runner_team_trpc.go` 同时编译、执行、观测 |
+| B2-4 | Channel / Web / WS / Cron 统一进入 `TurnExecutor` | 未开始 | 依赖 B2-1 完成 |
+
+### 9.3 后端 — Phase B3（Team → Graph 单链）
+
+| 编号 | 未完成项 | 当前状态 | 说明 |
+|------|----------|----------|------|
+| B3-1 | `OrchestrationSpec` v2 成为 Team Definition 稳定格式 | 未开始 | 当前 Team 定义格式仍在演进 |
+| B3-2 | `TeamCompiler` 只产出 `GraphBuildConfig` | 未开始 | 当前 Native Team runtime 仍是默认路径 |
+| B3-3 | Native Team runtime 降级为应急开关 | 未开始 | 需 `ARANEA_TEAM_NATIVE=1` 环境变量 |
+| B3-4 | TeamRun observer 统一消费 GraphAgent 和 Team runtime 事件 | 未开始 | 依赖 B3-2 |
+
+### 9.4 后端 — Phase B4（Graph resolver 拆分）
+
+| 编号 | 未完成项 | 当前状态 | 说明 |
+|------|----------|----------|------|
+| B4-1 | AgentResolver / ToolResolver / ModelResolver / FunctionResolver / SubgraphResolver 分离 | 部分完成 | `internal/graph/trpc/build_deps.go` 已定义 resolver 接口，但 adapter 仍有汇聚 |
+| B4-2 | Wire 按 resolver 组装 `GraphNodeResolverSet` | 未开始 | 依赖 B4-1 完成 |
+| B4-3 | `graph/trpc` 只依赖 resolver 接口，不直接知道业务 Usecase 细节 | 未开始 | 依赖 B4-2 完成 |
+
+### 9.5 后端 — 其他耦合点
+
+| 编号 | 未完成项 | 当前状态 | 说明 |
+|------|----------|----------|------|
+| O-1 | `ChatService` 按 `TurnGateway` / `SessionProjection` / `JobGateway` 拆窄接口 | 未开始 | §5 耦合点：`chat.go` 依赖聚合过宽 |
+| O-2 | `internal/team/runner_team_trpc.go` 拆 compiler / runtime / observer / fallback_policy | 未开始 | §5 耦合点：文件持续膨胀 |
+| O-3 | `internal/team` 消除 chat proto 依赖 | 部分完成 | service 层已做 proto→biz 映射，但 team 包仍有间接路径需验证 |
+| O-4 | `graph/adapter` resolver 汇聚问题 | 部分完成 | 见 B4-1 |
+
+### 9.6 前端 — Phase F1~F4
+
+| 编号 | 未完成项 | 当前状态 | 说明 |
+|------|----------|----------|------|
+| F1-1 | Chat 状态从 `useAppStore` 拆分到 `session` store + `chatRuntime` store | 未开始 | §5 耦合点：`useAppStore` 是 Chat 真相源 |
+| F2-1 | Envelope / WS 从 Chat feature 抽离为共享 realtime runtime | 未开始 | §5 耦合点：Envelope/WS 位于 Chat feature |
+| F3-1 | Composable API 调用迁入 Store action | 未开始 | §5 耦合点：Chat composable 直调 API |
+| F4-1 | `components/chat/types.ts` 跨域类型桶消除 | 未开始 | §5 耦合点：展示组件作为类型 barrel |
 
 ### 2026-05-24：Phase 1 子聚合 + Phase 6 瘦身
 

@@ -63,6 +63,27 @@ func TestL4GraphUsecase_WriteFromUserText_NameExtraction(t *testing.T) {
 	}
 }
 
+func TestL4GraphUsecase_WriteFromUserText_NameConflictGate(t *testing.T) {
+	repo := &mockL4GraphRepo{
+		entitySnap: L4EntitySnapshot{ID: "e1", Name: "Alice", Confidence: 0.8},
+		entityOk:   true,
+	}
+	uc := NewL4GraphUsecase(repo)
+	uc.SetCascade(NewL4CascadeUsecase(&cascadeGraphStoreMock{}, nil))
+	n, err := uc.WriteFromUserText(context.Background(), "ag1", "u1", "My name is Bob")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if n < 1 {
+		t.Fatalf("expected writes, got %d", n)
+	}
+	for _, e := range repo.entities {
+		if e.EntityType == "person" && e.Name != "Alice" {
+			t.Fatalf("conflict gate failed: person name=%q want Alice", e.Name)
+		}
+	}
+}
+
 func TestL4GraphUsecase_WriteFromUserText_PreferenceExtraction(t *testing.T) {
 	repo := &mockL4GraphRepo{}
 	uc := NewL4GraphUsecase(repo)

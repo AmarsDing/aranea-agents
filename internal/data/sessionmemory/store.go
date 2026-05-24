@@ -7,12 +7,14 @@ import (
 	"errors"
 	"strings"
 
+	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
 )
 
 // Store reads SQLite session-memory rows via Ent's shared connection (**no second sql.Open**).
 type Store struct {
 	client *ent.Client
+	policy *biz.MemoryPolicyEngine
 }
 
 // NewStore wires session-memory queries to the same SQLite handle as Ent CRUD.
@@ -21,6 +23,14 @@ func NewStore(client *ent.Client) *Store {
 		return nil
 	}
 	return &Store{client: client}
+}
+
+// Client returns the shared Ent client (SQLite).
+func (st *Store) Client() *ent.Client {
+	if st == nil {
+		return nil
+	}
+	return st.client
 }
 
 func queryOne(ctx context.Context, client *ent.Client, query string, args []any, dest ...any) error {

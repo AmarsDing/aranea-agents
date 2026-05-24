@@ -10,13 +10,12 @@ import (
 	"strings"
 	"time"
 
-	chatv1 "aranea-agents/api/kratos/chat/v1"
 	"aranea-agents/internal/agent"
-	"aranea-agents/internal/chatactivity"
 	"aranea-agents/internal/agent/intent"
 	"aranea-agents/internal/biz"
-	rt "aranea-agents/internal/runtime"
+	"aranea-agents/internal/chatactivity"
 	"aranea-agents/internal/metrics"
+	rt "aranea-agents/internal/runtime"
 	"aranea-agents/internal/telemetry/turntrace"
 	knowledgetool "aranea-agents/internal/tools/knowledge"
 	"aranea-agents/internal/tools/serviceawaitreply"
@@ -31,12 +30,12 @@ import (
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 )
 
-func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.SendChatMessageRequest, teamRow biz.Team, def Definition, mode string) (userMsg biz.ChatMessage, assistantMsg biz.ChatMessage, err error) {
-	content := strings.TrimSpace(req.GetContent())
+func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, input biz.TurnInput, teamRow biz.Team, def Definition, mode string) (userMsg biz.ChatMessage, assistantMsg biz.ChatMessage, err error) {
+	content := strings.TrimSpace(input.Content)
 	if content == "" {
 		return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.BadRequest("CHAT_NATIVE", "content is required")
 	}
-	dialogMode, provOpt, modOpt, attN := extractOpts(req)
+	dialogMode, provOpt, modOpt, attN := extractOptsFromInput(input)
 	dialogMode = strutil.FirstNonEmpty(dialogMode, sess.DialogMode, "default")
 
 	members := EnabledMembers(def)
@@ -135,22 +134,24 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 	prov0 := strutil.FirstNonEmpty(provOpt, sess.DefaultProvider, firstAg.Provider)
 	mod0 := strutil.FirstNonEmpty(modOpt, sess.DefaultModel, firstAg.Model)
 	builderDeps := agent.TRPCBuilderDeps{
-		Catalog:     r.td.Catalog.LLM,
-		AgentUC:     r.td.Catalog.AgentsUC,
-		Agents:      r.td.Catalog.Agents,
-		RT:          r.td.RoundTrip(),
-		SkillUC:     r.td.Catalog.SkillUC,
-		MCPTooling:  r.td.Persist.AgentMCP,
-		ToolUC:      r.td.Catalog.ToolUC,
-		Sessions:    r.td.Sessions,
-		Sys:         r.td.Catalog.Settings,
-		Provider:    prov0,
-		Model:       mod0,
-		DialogMode:  dialogMode,
-		SkillDBRepo: r.skillDBRepo,
-		HasMemory:     r.td.Persist.Memory.Available(),
-		PluginManager: r.pluginManager,
+		Catalog:            r.td.Catalog.LLM,
+		AgentUC:            r.td.Catalog.AgentsUC,
+		Agents:             r.td.Catalog.Agents,
+		RT:                 r.td.RoundTrip(),
+		SkillUC:            r.td.Catalog.SkillUC,
+		MCPTooling:         r.td.Persist.AgentMCP,
+		ToolUC:             r.td.Catalog.ToolUC,
+		Sessions:           r.td.Sessions,
+		Sys:                r.td.Catalog.Settings,
+		Provider:           prov0,
+		Model:              mod0,
+		DialogMode:         dialogMode,
+		SkillDBRepo:        r.skillDBRepo,
+		HasMemory:          r.td.Persist.Memory.Available(),
+		PluginManager:      r.pluginManager,
 		MemoryAdmin:        r.td.Persist.Memory.Admin,
+		MemoryL2Recall:     r.td.Persist.Memory.L2Recall,
+		MemoryL3Recall:     r.td.Persist.Memory.L3Recall,
 		KnowledgeRetriever: r.knowledgeRetriever,
 		CodeExecFactory:    r.codeExecFactory,
 	}
@@ -455,16 +456,16 @@ func (r *Runner) runTeamTRPC(ctx context.Context, sess biz.Session, req *chatv1.
 		traceID = teamEmitter.TraceID()
 	}
 	projectMeta := agent.ProjectMeta{
-		SessionID:       sess.ID,
-		RequestID:       run.ID,
-		InvocationID:    run.ID,
-		RunID:           run.ID,
-		TraceID:         traceID,
-		TeamID:          teamRow.ID,
-		AgentID:         firstAg.ID,
+		SessionID:        sess.ID,
+		RequestID:        run.ID,
+		InvocationID:     run.ID,
+		RunID:            run.ID,
+		TraceID:          traceID,
+		TeamID:           teamRow.ID,
+		AgentID:          firstAg.ID,
 		AgentDisplayName: firstAg.DisplayName,
-		MemberAgentKeys: memberKeySet,
-		Source:          event.EnvelopeSourceFromContext(ctx),
+		MemberAgentKeys:  memberKeySet,
+		Source:           event.EnvelopeSourceFromContext(ctx),
 	}
 	streamOpts := chatactivity.NewStreamConsumeOptions(r.td.Catalog.ToolUC, r.td.Catalog.Agents, r.td.Sessions)
 	result, streamErr := agent.ConsumeWithFirstByteGuard(runCtx, agent.DefaultFirstByteTimeout, events, r.td.Pipeline.Bus, projectMeta, streamOpts)

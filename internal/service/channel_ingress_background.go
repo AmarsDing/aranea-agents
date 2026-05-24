@@ -36,13 +36,9 @@ func (h *ChannelIngress) resolveBackgroundInboundTurn(ctx context.Context, chRow
 	if h == nil || !biz.IsChannelBackgroundCommand(ev.Text) {
 		return false, "", nil
 	}
-	routing, err := biz.ParseChannelRouting(chRow.ConfigJSON)
+	peerKey, err := h.inboundPeerKey(chRow, ev)
 	if err != nil {
 		return true, "", err
-	}
-	peerKey := ev.PeerKey
-	if peerKey == "" {
-		peerKey = biz.PeerKeyForSession(routing.DMScope, ev.PeerID)
 	}
 	req, err := h.prepareChannelChatRequest(ctx, chRow, platform, peerKey, ev.PeerID, ev.Text)
 	if err != nil {
