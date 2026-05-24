@@ -94,4 +94,6 @@ profile.cov
 /.gocache
 /workspace
 /cmd/data/arena.db
+/cmd/data/arenea.sqlite
+/cmd/data/*.sqlite
 
