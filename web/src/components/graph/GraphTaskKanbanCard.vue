@@ -41,19 +41,3 @@ function truncate(text: string, max = 120) {
   return text.length > max ? `${text.slice(0, max)}…` : text;
 }
 </script>
-
-<style scoped>
-.graph-task-card {
-  border-radius: 14px;
-  cursor: pointer;
-  transition: box-shadow 0.2s;
-}
-
-.graph-task-card--selected {
-  box-shadow: 0 0 0 2px var(--color-accent, var(--q-primary));
-}
-
-.graph-task-card.is-dark {
-  border-color: rgb(255 255 255 / 8%);
-}
-</style>

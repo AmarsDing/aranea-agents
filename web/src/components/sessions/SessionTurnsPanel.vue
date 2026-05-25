@@ -6,7 +6,7 @@
     <div v-else-if="error" class="text-negative q-pa-md">{{ error }}</div>
     <div v-else-if="!turns.length" class="text-grey-7 q-pa-md">暂无 Turn 记录</div>
     <q-list v-else separator>
-      <q-item v-for="turn in turns" :key="turn.id" class="turn-item">
+      <q-item v-for="turn in turns" :key="turn.id" class="app-interactive-list-item turn-item">
         <q-item-section side>
           <q-badge :color="turnStatusColor(turn.status)" outline>{{ turn.turn_index }}</q-badge>
         </q-item-section>
@@ -17,7 +17,7 @@
               {{ turn.final_provider }}/{{ turn.final_model }}
             </span>
           </q-item-label>
-          <q-item-label v-if="turn.final_content_preview" class="turn-preview">
+          <q-item-label v-if="turn.final_content_preview" class="app-interactive-list-item__preview turn-preview">
             {{ turn.final_content_preview }}
           </q-item-label>
           <q-item-label caption class="text-grey-6">
@@ -77,18 +77,3 @@ function turnStatusColor(status: string) {
   return "grey";
 }
 </script>
-
-<style scoped>
-.turn-item {
-  border-radius: 12px;
-  margin-bottom: 4px;
-}
-
-.turn-preview {
-  max-width: 480px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--color-text-primary);
-}
-</style>

@@ -89,7 +89,7 @@ function presetShell(
     authType: authType as AuthType,
     apiBaseUrl: rt.apiBaseUrl ?? "",
     metadataApi: rt.apiBaseUrl ? "partial" : "limited",
-    metadataNote: "自定义模式：连接信息来自 runtime overlay；模型与定价请手动填写或改用「目录选择」。",
+    metadataNote: "选择后将自动从 models.dev 加载模型列表与定价；运行时类型由 overlay 决定。",
     models: [],
   };
 }

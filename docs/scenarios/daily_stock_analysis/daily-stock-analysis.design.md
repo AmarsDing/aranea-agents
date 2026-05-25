@@ -3,7 +3,7 @@
 > **对应需求**：[daily-stock-analysis.md](./daily-stock-analysis.md)
 > **遵循规范**：[`AI-DEVELOPMENT-SPECIFICATION.md`](../../guides/AI-DEVELOPMENT-SPECIFICATION.md)
 > **平台架构**：[`0 系统框图.md`](../../需求/0%20系统框图.md)
-> **文档版本**：v1.0（2026-05-18）
+> **文档版本**：v1.1（2026-05-25；PostgreSQL `stockx` schema、实时性、多 Agent 数据通路）
 
 ---
 
@@ -13,7 +13,7 @@
 |---|------|------|
 | 1 | **不修改平台核心** | 场景代码尽量通过「Agent 配置 + Skill 文件 + Tool 注册 + Cron 配置 + Knowledge 数据」组合而成；必须新增的能力以「内置工具贡献到 `internal/tools/...`」「Skill 包贡献到 `docs/skills/...` 或运行时 skill 目录」的方式入仓 |
 | 2 | **分层不越界**（R1） | 数据源工具实现位于 `internal/tools/stockdata/`，仅暴露 `tool.Tool` 接口；biz 层不直接 import 第三方数据 SDK |
-| 3 | **唯一 sql.Open**（R2） | 缓存表复用现有 `*sql.DB`；新增表通过 Ent Schema + 迁移落地 |
+| 3 | **Postgres 场景库**（R2 变体） | 场景业务表走 `data.Postgres()` + `stockx` schema SQL 迁移；**不**为 stockx 新增 Ent Schema，避免牵动平台 SQLite Ent 主路径 |
 | 4 | **不手写 HTTP 路由**（R3/R4） | 新页面通过 `api/kratos/stockx/v1/*.proto` 定义；server 注册函数复用 `api/**` 生成代码 |
 | 5 | **goroutine 安全**（R10） | 任何后台采集/缓存刷新使用 `pkg/safego.Go` |
 | 6 | **配置即代码** | Team / Agent / Cron / Skill 通过 YAML / JSON 「场景安装包」一键导入，避免手工配置 |
@@ -54,14 +54,13 @@
 ├─────────────────────────────────────────────────────────────────────────┤
 │  Data 层                                                                │
 │  ┌────────────────────────────┐  ┌────────────────────────────────┐    │
-│  │ SQLite（沿用）              │  │ Postgres pgvector（已有）       │    │
-│  │ ├ stock_watchlist           │  │ ├ knowledge_embeddings          │    │
-│  │ ├ stock_holdings (可选)     │  │   （含 kb_listed_companies 等） │    │
-│  │ ├ stock_meta                │  │                                 │    │
-│  │ ├ stock_quote_cache         │  └────────────────────────────────┘    │
-│  │ ├ stock_news_cache          │                                        │
-│  │ └ stock_report              │                                        │
-│  └────────────────────────────┘                                        │
+│  │ SQLite（平台沿用）          │  │ PostgreSQL（场景 + 向量）       │    │
+│  │ Agent/Team/Session/Cron…   │  │ schema stockx:                  │    │
+│  │ seed-stockx-org 写此库      │  │ ├ watchlist / holdings          │    │
+│  └────────────────────────────┘  │ ├ stock_meta / quote_cache      │    │
+│                                   │ ├ news_cache / report           │    │
+│                                   │ └ kb_*（pgvector，平台 Knowledge）│    │
+│                                   └────────────────────────────────┘    │
 ├─────────────────────────────────────────────────────────────────────────┤
 │  Agent 运行时（沿用 trpc-agent-go）                                       │
 │  ┌─────────────────────────────────────────────────────────────────┐   │
@@ -132,6 +131,42 @@
                           流式投影 ──► WS Envelope ──► 前端 Chat 面板
 ```
 
+### 1.3 实时性设计
+
+| 组件 | 行为 |
+|------|------|
+| `stock_quote_realtime` | 运行时 HTTP 调 Sidecar/Provider；**不写入长期缓存**；返回带 `ts` 字段 |
+| `stock_quote_history` / `intraday` | 读 `stockx.quote_cache`；miss 时拉源并 upsert |
+| Web Watchlist | StockxService 批量报价；服务端可选 60s TTL 写入 `quote_cache`；前端 30–60s 轮询 |
+| Team Run | 不维持行情推送订阅；每次 Run 按需 Tool 拉取 |
+
+延迟预算见需求文档 §1.5。v1.x 可选：Redis pub/sub 或 Sidecar 订阅写 `quote_tick`（**非 v1.0**）。
+
+### 1.4 多 Agent 市场数据通路
+
+**Coordinator 路径**（`team_premarket_brief`）：
+
+```
+agent_coordinator
+  └─ AgentTool(agent_data_collector)
+        └─ stock_quote_realtime / stock_news_individual  → JSON
+        └─ 返回摘要文本 → coordinator 上下文
+  └─ AgentTool(agent_technical_analyst)
+        └─ 可再次 stock_quote_history / indicator_compute
+  └─ AgentTool(agent_report_writer)  ← 汇总多成员输出
+```
+
+**Graph 路径**（`team_stock_deep_dive`，**推荐**）：
+
+```
+resolve (function) → fetch_quote (tool) → fan_out (parallel agents)
+  state.quote_history 经 input_mapper 注入各分析师
+  output_mapper 写回 state.fundamentals / state.news / …
+  → risk (agent) → chart (tool) → report (agent) → persist (function → stockx.report)
+```
+
+成员 `history_scope=isolated`（`internal/team/trpc_build.go`）；跨成员数据**仅**经 AgentTool 返回值或 Graph `state_schema`，禁止假设成员互读 Session 历史。
+
 ---
 
 ## 2. 目录结构与代码归属
@@ -166,18 +201,13 @@ internal/
 │   └── trading_calendar_usecase.go       ★ 新增
 │
 ├── data/
-│   ├── ent/schema/
-│   │   ├── stockwatchlist.go             ★ 新增
-│   │   ├── stockholdings.go              ★ 新增（可选）
-│   │   ├── stockmeta.go                  ★ 新增
-│   │   ├── stockquotecache.go            ★ 新增
-│   │   ├── stocknewscache.go             ★ 新增
-│   │   └── stockreport.go                ★ 新增
-│   ├── stock_watchlist_repo.go           ★ 新增
-│   ├── stock_holdings_repo.go            ★ 新增（可选）
-│   ├── stock_report_repo.go              ★ 新增
-│   ├── stock_meta_repo.go                ★ 新增
-│   └── stock_cache_repo.go               ★ 新增（quote + news 共用）
+│   ├── stockx/                           ★ 新增
+│   │   ├── migrations/                   ─ 001_init.sql（stockx schema + 表）
+│   │   ├── watchlist_repo.go             ─ 复用 data.Postgres()
+│   │   ├── report_repo.go
+│   │   ├── meta_repo.go
+│   │   └── cache_repo.go                 ─ quote + news
+│   └── stockx_install.go                 ★ 新增 ─ 启动时 EnsureSchema（STOCK_SCENARIO_ENABLED）
 │
 ├── service/
 │   └── stockx.go                         ★ 新增 ─ StockxService(Watchlist/Holdings/Report)
@@ -333,96 +363,79 @@ web/src/
 
 ## 3. 数据模型
 
-### 3.1 新增 Ent Schema（核心字段）
+### 3.1 PostgreSQL `stockx` schema（DDL 摘要）
 
-```go
-// internal/data/ent/schema/stockwatchlist.go
-type StockWatchlist struct{ ent.Schema }
-func (StockWatchlist) Fields() []ent.Field {
-    return []ent.Field{
-        field.String("id").Unique(),
-        field.String("user_id").Default(""),                  // 单用户场景默认空
-        field.String("symbol"),                                // 600519
-        field.Enum("market").Values("a", "hk", "us"),
-        field.String("name").Optional(),                       // 缓存的中文名
-        field.String("group_name").Default("default"),         // 自定义分组
-        field.Text("note").Optional(),
-        field.Int("sort_order").Default(0),
-        field.Time("created_at").Default(time.Now),
-        field.Time("updated_at").Default(time.Now),
-    }
-}
-func (StockWatchlist) Indexes() []ent.Index {
-    return []ent.Index{
-        index.Fields("user_id", "symbol", "market").Unique(),
-        index.Fields("user_id", "group_name"),
-    }
-}
+迁移文件：`internal/data/stockx/migrations/001_init.sql`。安装时 `stockx.EnsureSchema(ctx, data.Postgres())`（`STOCK_SCENARIO_ENABLED=1` 且 `data.postgres.source` 已配置）。
+
+```sql
+CREATE SCHEMA IF NOT EXISTS stockx;
+
+CREATE TABLE stockx.watchlist (
+    id          TEXT PRIMARY KEY,
+    user_id     TEXT NOT NULL DEFAULT '',
+    symbol      TEXT NOT NULL,
+    market      TEXT NOT NULL CHECK (market IN ('a','hk','us')),
+    name        TEXT,
+    group_name  TEXT NOT NULL DEFAULT 'default',
+    note        TEXT,
+    sort_order  INT NOT NULL DEFAULT 0,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (user_id, symbol, market)
+);
+
+CREATE TABLE stockx.report (
+    id              TEXT PRIMARY KEY,
+    user_id         TEXT NOT NULL DEFAULT '',
+    session_id      TEXT NOT NULL,
+    team_id         TEXT,
+    team_key        TEXT,
+    symbol          TEXT,
+    market          TEXT,
+    report_type     TEXT NOT NULL,
+    title           TEXT NOT NULL,
+    summary_md      TEXT,
+    artifact_id     TEXT NOT NULL,
+    symbols_json    JSONB,
+    data_cutoff_at  TIMESTAMPTZ,
+    tool_refs_json  JSONB,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_report_user_type_created ON stockx.report (user_id, report_type, created_at DESC);
+
+CREATE TABLE stockx.quote_cache (
+    cache_key   TEXT PRIMARY KEY,
+    symbol      TEXT NOT NULL,
+    market      TEXT NOT NULL,
+    period      TEXT NOT NULL,
+    adjust      TEXT NOT NULL DEFAULT 'none',
+    data_json   JSONB NOT NULL,
+    provider    TEXT NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at  TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX idx_quote_cache_expires ON stockx.quote_cache (expires_at);
+
+-- 同理：stockx.holdings、stockx.stock_meta、stockx.news_cache
 ```
 
-```go
-// internal/data/ent/schema/stockreport.go
-type StockReport struct{ ent.Schema }
-func (StockReport) Fields() []ent.Field {
-    return []ent.Field{
-        field.String("id").Unique(),
-        field.String("user_id").Default(""),
-        field.String("session_id"),                             // 关联 sessions.id
-        field.String("team_id").Optional(),
-        field.String("team_key").Optional(),
-        field.String("symbol").Optional(),                      // 个股报告时填
-        field.String("market").Optional(),
-        field.Enum("report_type").Values(
-            "premarket_brief", "deep_dive",
-            "sector_scan", "market_recap",
-            "portfolio_doctor", "custom",
-        ),
-        field.String("title"),
-        field.Text("summary_md"),                               // TL;DR
-        field.String("artifact_id"),                            // 完整 Markdown 落在 Artifact
-        field.JSON("symbols_json", []string{}).Optional(),      // 覆盖的所有股票
-        field.Time("data_cutoff_at").Optional(),                // 数据截止时间
-        field.JSON("tool_refs_json", []string{}).Optional(),    // 引用的 tool_invocation IDs
-        field.Time("created_at").Default(time.Now),
-    }
-}
-func (StockReport) Indexes() []ent.Index {
-    return []ent.Index{
-        index.Fields("user_id", "report_type", "created_at"),
-        index.Fields("user_id", "symbol", "created_at"),
-    }
-}
-```
+**Repo 约定**（对齐 `internal/data/knowledge.go`）：
 
-```go
-// internal/data/ent/schema/stockquotecache.go
-type StockQuoteCache struct{ ent.Schema }
-func (StockQuoteCache) Fields() []ent.Field {
-    return []ent.Field{
-        field.String("cache_key").Unique(),                     // {symbol}|{market}|{period}|{adjust}|{date_range}
-        field.String("symbol"),
-        field.String("market"),
-        field.String("period"),                                 // daily / 1min / 5min
-        field.String("adjust").Default("none"),                 // qfq / hfq / none
-        field.Time("date_from"),
-        field.Time("date_to"),
-        field.JSON("data_json", json.RawMessage{}),
-        field.String("provider"),                               // akshare / yfinance / ...
-        field.Time("created_at").Default(time.Now),
-        field.Time("expires_at"),
-    }
-}
-func (StockQuoteCache) Indexes() []ent.Index {
-    return []ent.Index{
-        index.Fields("symbol", "market", "period"),
-        index.Fields("expires_at"),
-    }
-}
-```
+- 仅通过 `*sql.DB`（`Data.Postgres()`）访问；biz 层依赖 `biz.StockWatchlistRepo` 等接口。
+- `internal/tools/stockdata/*/cache.go` 注入 `StockQuoteCacheRepo`，**禁止**在 Tool 内 `sql.Open`。
+- 清理任务：每日 03:00 `DELETE FROM stockx.quote_cache WHERE expires_at < now()`（`safego.Go`）。
 
-> 同理新增 `StockHoldings` / `StockMeta` / `StockNewsCache`。Schema 命名与现有风格一致。
+### 3.2 平台 SQLite 与场景 Postgres 分工
 
-### 3.2 Knowledge 数据装载
+| 写入方 | 目标库 | 内容 |
+|--------|--------|------|
+| `cmd/seed-stockx-org` | SQLite | 组织树、Agent、Team 定义 |
+| `scenario/stockanalysis/install.go` | SQLite | Upsert Agent/Team/Cron（幂等） |
+| `StockxService` / stockdata cache | Postgres `stockx` | 自选、报告索引、行情/新闻缓存 |
+| `KnowledgeService` | Postgres + pgvector | 公司库、行业链 |
+| `ArtifactService` | SQLite + 文件存储 | 报告 Markdown 正文 |
+
+### 3.3 Knowledge 数据装载
 
 | 知识库 | 数据来源 | 摄取频率 | 落地 |
 |--------|----------|----------|------|
@@ -800,7 +813,7 @@ Graph 定义（`graphs/stock_deep_dive.graph.json`）节选：
   - 表格：股票代码 / 名称 / 当前价 / 涨跌幅 / 所属分组 / 备注 / 操作
   - 顶部工具栏：搜索、分组筛选、批量导入（粘贴 CSV / 文本）、新增、刷新
   - 行内操作：编辑、删除、查看详情、立即分析（跳转 Chat 并预填）
-  - 实时价格通过 `stock_quote_realtime`（轮询 / SSE）
+  - 当前价：StockxService 批量调 `stock_quote_realtime` 或读 `quote_cache`（≤60s TTL）；前端 **30–60s 轮询**（非交易所 SSE）；页脚标注延迟
 - 暗色模式：复用平台 `app-page-cream` + `body--dark`
 
 ### 9.2 Stock Detail 页
@@ -1072,7 +1085,9 @@ services:
 | Tool vs Skill | 「能力」用 Tool，「方法论/规范」用 Skill | 工具是确定性 API，方法论是上下文文本，前者注入工具集，后者注入 prompt |
 | Coordinator vs Graph | 简单场景用 coordinator，多步骤可分支用 Graph | coordinator 黑盒、易上手；Graph 显式、可观测、可暂停 |
 | Python vs Go 计算指标 | 默认 Go，复杂回测 Python | 减少 CodeExecutor 依赖，常见指标在 Go 中实现性能好 |
-| 缓存层 SQLite vs Redis | SQLite | 单机部署友好，符合开源自托管定位；规模化可后置 Redis |
+| 场景业务表 SQLite vs Postgres | **Postgres `stockx` schema** | 与 Knowledge/pgvector 同实例；便于缓存、报告检索与后续多实例；平台 Ent 仍 SQLite |
+| 行情缓存 Postgres vs Redis | Postgres（v1.0） | 与业务表同库；高并发展示层 v1.x 可后置 Redis |
+| 深度分析 Coordinator vs Graph | **Graph 优先**（MVP 末 / M-S4） | Graph 共享 `state.quote_history`，减少重复拉行情与限频；盘前简报仍用 Coordinator |
 | 数据源 SDK 直连 vs Sidecar | Sidecar Python 服务 + Go HTTP 调用 | 避免 cgo / 维护 SDK 多版本；同时 AKShare 等是 Python 生态 |
 | 报告输出 Markdown vs JSON | Markdown 主，JSON 辅 | Markdown 直接给人看；同时 metadata 用 JSON 落 stock_report 表便于检索 |
 | Watchlist 在 SQL 还是 Knowledge | SQL 主，Knowledge 辅（仅做 RAG 检索） | 结构化数据用 SQL；模糊匹配/语义检索时由 Cron 同步到 KB |
@@ -1088,7 +1103,16 @@ services:
 
 ---
 
-## 19. 参考文档
+## 19. 文档变更记录
+
+| 版本 | 日期 | 变更 |
+|------|------|------|
+| v1.0 | 2026-05-18 | 初版 |
+| v1.1 | 2026-05-25 | 场景业务表改 Postgres `stockx`；§1.3 实时性；§1.4 多 Agent 通路；Ent→SQL 迁移 |
+
+---
+
+## 20. 参考文档
 
 - [需求文档](./daily-stock-analysis.md)
 - [开发计划](./daily-stock-analysis-development.md)

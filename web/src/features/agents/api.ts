@@ -121,7 +121,7 @@ export async function listAgentTemplates(): Promise<AgentTemplatePreset[]> {
     label: row.label ?? "",
     icon: row.icon ?? "",
     description: row.description ?? "",
-    display_name: row.displayName ?? row.display_name ?? "",
+    display_name: row.displayName ?? "",
     provider: row.provider ?? "",
     model: row.model ?? ""
   }));
@@ -131,8 +131,8 @@ export async function listAgentCreators(): Promise<AgentCreatorOption[]> {
   const svc = createAgentService();
   const res = await svc.ListAgentCreators({});
   return (res.items ?? []).map((row) => ({
-    user_id: row.userId ?? row.user_id ?? "",
-    label: row.label ?? row.userId ?? row.user_id ?? ""
+    user_id: row.userId ?? "",
+    label: row.label ?? row.userId ?? ""
   }));
 }
 

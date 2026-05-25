@@ -55,16 +55,17 @@ export function useTeamRunObservatoryPage() {
     interruptBefore: [],
     interruptAfter: [],
     metadata: {},
+    version: 0,
     createdAt: "",
     updatedAt: "",
   });
 
   const stream = ref<ReturnType<typeof useOrchestrationStream> | null>(null);
-  const streamConnected = computed(() => stream.value?.connected.value ?? false);
+  const streamConnected = computed(() => stream.value?.connected ?? false);
 
   const graphExecutionId = computed(() => observatory.value?.graph_execution_id?.trim() ?? "");
-  const taskList = computed(() => graphExecStream.value?.taskList.value ?? []);
-  const taskStreamConnected = computed(() => graphExecStream.value?.streamConnected.value ?? false);
+  const taskList = computed(() => graphExecStream.value?.taskList ?? []);
+  const taskStreamConnected = computed(() => graphExecStream.value?.streamConnected ?? false);
 
   const taskItemsSeed = (items: Task[]) => {
     graphExecStream.value?.seedTasks(items);
@@ -76,11 +77,11 @@ export function useTeamRunObservatoryPage() {
   const tasks = useGraphRunTasks(() => graphExecutionId.value, taskItemsSeed, taskUpsert);
 
   const nodeList = computed(() => {
-    const map = stream.value?.nodes.value ?? new Map();
+    const map = stream.value?.nodes ?? new Map();
     return [...map.values()];
   });
 
-  const execNodeStates = computed(() => buildExecNodeStates(stream.value?.nodes.value ?? new Map()));
+  const execNodeStates = computed(() => buildExecNodeStates(stream.value?.nodes ?? new Map()));
 
   const hitlReviewNode = computed(() => {
     const id = hitlReviewNodeId.value;
@@ -264,7 +265,7 @@ export function useTeamRunObservatoryPage() {
   onMounted(load);
   watch([teamId, runId], load);
   watch(
-    () => stream.value?.nodes.value.size,
+    () => stream.value?.nodes.size,
     () => {
       if (observatoryTab.value === "timeline") {
         void loadTimeline();

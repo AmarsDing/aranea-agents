@@ -18,6 +18,7 @@ describe("monitorLogLineFromFlowEnvelope", () => {
       session_id: "sess-1",
       author: "flow",
       channel: "monitor",
+      version: 1,
       metadata: {
         schema_version: "flow_log/v1",
         flow_id: "fl_abc",

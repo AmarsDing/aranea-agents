@@ -27,6 +27,15 @@ export function teamDefinitionToGraphDef(definition: TeamDefinition): GraphDefin
       timeoutSeconds: 0,
       heartbeatIntervalSeconds: 0,
       enableLeaseExtension: false,
+      retryMaxAttempts: 0,
+      failureAction: "",
+      fallbackAgent: "",
+      inputMapperJson: "",
+      outputMapperJson: "",
+      isolatedMessages: false,
+      inputFromLastResponse: false,
+      cacheEnabled: false,
+      cacheTtlSeconds: 0,
     }));
   const edges: EdgeDef[] = graph.edges.map((e) => ({ from: e.source, to: e.target }));
   return {
@@ -45,6 +54,7 @@ export function teamDefinitionToGraphDef(definition: TeamDefinition): GraphDefin
     interruptBefore: [],
     interruptAfter: [],
     metadata: {},
+    version: 0,
     createdAt: "",
     updatedAt: "",
   };

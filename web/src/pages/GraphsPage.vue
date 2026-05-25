@@ -101,25 +101,3 @@ const {
   removeGraph
 } = useGraphsPage();
 </script>
-
-<style scoped>
-.graphs-page__create-btn {
-  background: var(--color-accent);
-  color: #fff;
-}
-
-.graphs-page__create-btn:hover {
-  background: var(--color-accent-hover);
-}
-
-.min-width-0 {
-  min-width: 0;
-}
-
-.ellipsis-2-lines {
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-</style>

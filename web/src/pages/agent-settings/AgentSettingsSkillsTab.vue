@@ -1,141 +1,242 @@
 <template>
-  <div class="settings-grid">
+  <div class="settings-grid settings-grid--wide">
+    <!-- Skill 挂载 -->
     <section class="settings-section">
       <div class="section-heading">
-        <div class="section-title">
-          <span class="section-title__text">平台 Skill 挂载策略</span>
-        </div>
-        <div class="text-caption text-grey-7">
-          控制本会话中 ADK 可见的已发布 Skill：Agent 白名单/黑名单、必选标签，以及是否根据用户话术做意图收窄（详见仓库文档「20 skill struct design」十三′）。
-        </div>
-        <div class="row q-gutter-sm">
-          <q-btn outline rounded dense color="primary" label="刷新 Skill 列表" :loading="loadingSkillSlugs" @click="$emit('load-skill-slugs')" />
-          <q-btn outline rounded dense color="primary" label="恢复默认" @click="$emit('reset-skill-defaults')" />
-        </div>
-      </div>
-      <q-banner rounded class="q-mb-md settings-info-banner">
-        留空「允许的 slug」表示不按 slug 白名单过滤；「意图收窄」开启后，仅对与话术匹配的 taxonomy / 关键词相关的 Skill 并集挂载（可减少无关工具）。运行时只会挂载<strong>已发布且已启用</strong>的平台 Skill；草稿仅便于在此勾选 slug，需先到 Skill 管理发布并启用。
-      </q-banner>
-      <div class="row q-col-gutter-md">
-        <div class="col-12 col-lg-6">
-          <q-card flat bordered class="capability-card">
-            <q-card-section class="row items-center justify-between">
-              <div>
-                <div class="text-subtitle2">意图收窄（层 B）</div>
-                <div class="text-caption text-grey-7">根据用户消息关键词匹配内置意图路径，缩小 Skill 候选集。</div>
-              </div>
-              <q-toggle v-model="config.skillRuntime.intent_routing_enabled" color="primary" />
-            </q-card-section>
-            <q-separator />
-            <q-card-section class="app-form-field-grid app-form-field-grid--2col">
-              <q-input
-                v-model.number="config.skillRuntime.intent_max_paths"
-                dense
-                outlined
-                type="number"
-                label="最多意图路径数"
-                :min="1"
-                :max="32"
-              />
-              <q-input
-                v-model.number="config.skillRuntime.max_skills_in_toolset"
-                dense
-                outlined
-                type="number"
-                label="工具集内 Skill 上限"
-                :min="1"
-                :max="256"
-              />
-            </q-card-section>
-          </q-card>
-        </div>
-        <div class="col-12 col-lg-6">
-          <q-card flat bordered class="capability-card">
-            <q-card-section>
-              <div class="text-subtitle2 q-mb-xs">slug 与标签（层 A）</div>
-              <div class="text-caption text-grey-7 q-mb-sm">
-                标签 token 写入 Skill 元数据的标签名（如 file_type:xlsx），多项为「同时满足」。允许与拒绝同一 slug 互斥：在一侧添加会从另一侧去掉同名项；若历史配置两侧重叠，载入/保存时会按运行时规则以<strong>拒绝优先</strong>规整。
-              </div>
-              <q-select
-                v-model="config.skillRuntime.allowed_slugs"
-                class="q-mb-sm"
-                dense
-                outlined
-                multiple
-                use-chips
-                use-input
-                new-value-mode="add-unique"
-                input-debounce="0"
-                :options="skillSlugOptions"
-                option-label="label"
-                option-value="value"
-                emit-value
-                map-options
-                label="允许的 Skill slug（skill_key）"
-                hint="从平台 Skill 勾选或手动输入；留空 = 不启用 slug 白名单。与「拒绝」互斥：此处勾选会从拒绝列表移除同名 slug。"
-              />
-              <q-select
-                v-model="config.skillRuntime.denied_slugs"
-                class="q-mb-sm"
-                dense
-                outlined
-                multiple
-                use-chips
-                use-input
-                new-value-mode="add-unique"
-                input-debounce="0"
-                :options="skillSlugOptions"
-                option-label="label"
-                option-value="value"
-                emit-value
-                map-options
-                label="拒绝的 Skill slug"
-                hint="与「允许」互斥：此处勾选会从允许列表移除同名 slug。"
-              />
-              <q-select
-                v-model="config.skillRuntime.allowed_tags"
-                dense
-                outlined
-                multiple
-                use-chips
-                use-input
-                new-value-mode="add-unique"
-                input-debounce="0"
-                label="要求的标签（AND）"
-                hint="可与用户话术中的 domain:/file_type: 提示合并"
-              />
-            </q-card-section>
-          </q-card>
-        </div>
-      </div>
-      <q-card flat bordered class="capability-card q-mt-md">
-        <q-card-section>
-          <div class="text-subtitle2 q-mb-xs">代码执行后端</div>
-          <div class="text-caption text-grey-7 q-mb-sm">
-            Skill 运行时 <code>skill_run</code> 使用的沙箱类型。生产环境建议使用 <strong>docker</strong>；local 无隔离，仅适合开发。
+        <div class="section-heading__main">
+          <div class="section-title">
+            <span class="section-title__text">Skill 挂载策略</span>
           </div>
+          <p class="settings-section__hint">
+            控制 ADK 可见的已发布 Skill：白名单/黑名单、必选标签与意图收窄。运行时仅挂载<strong>已发布且已启用</strong>的平台 Skill。
+          </p>
+        </div>
+        <div class="settings-section__actions">
+          <q-btn flat rounded dense no-caps label="刷新列表" :loading="loadingSkillSlugs" @click="$emit('load-skill-slugs')" />
+          <q-btn flat rounded dense no-caps label="恢复默认" @click="$emit('reset-skill-defaults')" />
+        </div>
+      </div>
+
+      <div class="settings-subsection-grid">
+        <div class="settings-subsection">
+          <div class="settings-subsection__head row items-center justify-between">
+            <div>
+              <div class="settings-subsection__title">意图收窄</div>
+              <p class="settings-subsection__hint">根据用户消息关键词匹配意图路径，缩小 Skill 候选集。</p>
+            </div>
+            <q-toggle v-model="config.skillRuntime.intent_routing_enabled" />
+          </div>
+          <div class="app-form-field-grid app-form-field-grid--2col">
+            <q-input
+              v-model.number="config.skillRuntime.intent_max_paths"
+              dense
+              outlined
+              type="number"
+              label="最多意图路径数"
+              :min="1"
+              :max="32"
+            />
+            <q-input
+              v-model.number="config.skillRuntime.max_skills_in_toolset"
+              dense
+              outlined
+              type="number"
+              label="工具集内 Skill 上限"
+              :min="1"
+              :max="256"
+            />
+          </div>
+        </div>
+
+        <div class="settings-subsection">
+          <div class="settings-subsection__head">
+            <div class="settings-subsection__title">Slug 与标签</div>
+            <p class="settings-subsection__hint">
+              允许与拒绝同一 slug 互斥；历史重叠配置保存时按<strong>拒绝优先</strong>规整。
+            </p>
+          </div>
+          <div class="settings-field-stack">
+            <q-select
+              v-model="config.skillRuntime.allowed_slugs"
+              dense
+              outlined
+              multiple
+              use-chips
+              use-input
+              new-value-mode="add-unique"
+              input-debounce="0"
+              :options="skillSlugOptions"
+              option-label="label"
+              option-value="value"
+              emit-value
+              map-options
+              label="允许的 Skill slug"
+              hint="留空 = 不启用 slug 白名单"
+            />
+            <q-select
+              v-model="config.skillRuntime.denied_slugs"
+              dense
+              outlined
+              multiple
+              use-chips
+              use-input
+              new-value-mode="add-unique"
+              input-debounce="0"
+              :options="skillSlugOptions"
+              option-label="label"
+              option-value="value"
+              emit-value
+              map-options
+              label="拒绝的 Skill slug"
+            />
+            <q-select
+              v-model="config.skillRuntime.allowed_tags"
+              dense
+              outlined
+              multiple
+              use-chips
+              use-input
+              new-value-mode="add-unique"
+              input-debounce="0"
+              label="要求的标签（AND）"
+              hint="如 file_type:xlsx；可与用户话术中的 domain:/file_type: 合并"
+            />
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 平台工具 -->
+    <section class="settings-section">
+      <div class="section-heading">
+        <div class="section-heading__main">
+          <div class="section-title">
+            <span class="section-title__text">平台工具策略</span>
+          </div>
+          <p class="settings-section__hint">全局 allow/deny 与 profile；下方可逐工具覆盖启用、模式与确认策略。</p>
+        </div>
+        <q-toggle v-model="config.tools.enabled" label="启用工具" />
+      </div>
+
+      <template v-if="config.tools.enabled">
+        <div class="app-form-field-grid app-form-field-grid--2col q-mb-md">
           <q-select
-            v-model="config.code_executor_type"
-            class="app-field-md"
+            v-model="config.tools.profile"
             dense
             outlined
             emit-value
             map-options
-            :options="codeExecutorOptions"
-            label="执行器类型"
+            label="工具配置文件"
+            hint="chat_only / read_only / coding / research / full"
+            :options="toolProfileOptions"
           />
-          <q-banner v-if="fallbackHint" rounded dense class="q-mt-sm settings-info-banner">
-            {{ fallbackHint }}
-          </q-banner>
-        </q-card-section>
-      </q-card>
+          <q-input v-model="config.tools.tool_call_prefix" dense outlined label="工具调用前缀" hint="如 proxy_，解析前会从工具名剥离" />
+          <q-select
+            v-model="config.tools.allow"
+            class="app-grid-span-full"
+            dense
+            outlined
+            multiple
+            use-chips
+            emit-value
+            map-options
+            label="允许"
+            :options="toolSelectOptions"
+            :loading="loadingCatalogTools"
+          />
+          <q-select
+            v-model="config.tools.deny"
+            dense
+            outlined
+            multiple
+            use-chips
+            emit-value
+            map-options
+            label="拒绝"
+            :options="toolSelectOptions"
+            :loading="loadingCatalogTools"
+          />
+          <q-select
+            v-model="config.tools.concurrent_allow"
+            dense
+            outlined
+            multiple
+            use-chips
+            emit-value
+            map-options
+            label="并行白名单"
+            :options="toolSelectOptions"
+            :loading="loadingCatalogTools"
+          />
+        </div>
+        <q-banner v-if="toolConflicts.length" rounded class="settings-warning-banner q-mb-md">
+          以下工具同时出现在允许与拒绝中，运行时按拒绝优先：{{ toolConflicts.join(", ") }}
+        </q-banner>
+
+        <div class="settings-subsection settings-subsection--flat q-mb-md">
+          <div class="settings-subsection__head row items-center justify-between">
+            <div>
+              <div class="settings-subsection__title">工具重试</div>
+              <p class="settings-subsection__hint">失败时指数退避 + 随机抖动。</p>
+            </div>
+            <q-toggle v-model="config.tools.retry.enabled" />
+          </div>
+          <div v-if="config.tools.retry.enabled" class="app-form-field-grid app-form-field-grid--2col">
+            <q-input v-model.number="config.tools.retry.max_attempts" dense outlined type="number" label="最大重试次数" hint="含首次调用" />
+            <q-input v-model.number="config.tools.retry.initial_interval_ms" dense outlined type="number" label="初始间隔 (ms)" />
+            <q-input v-model.number="config.tools.retry.backoff_factor" dense outlined type="number" step="0.1" label="退避因子" />
+            <q-input v-model.number="config.tools.retry.max_interval_ms" dense outlined type="number" label="最大间隔 (ms)" />
+            <q-toggle v-model="config.tools.retry.jitter" label="随机抖动" />
+          </div>
+        </div>
+
+        <div class="settings-subsection settings-subsection--flat q-mb-md">
+          <div class="settings-subsection__title q-mb-sm">并行与流式</div>
+          <div class="app-form-field-grid app-form-field-grid--2col">
+            <q-toggle v-model="config.tools.parallel_enabled" label="并行工具调用" />
+            <q-toggle v-model="config.tools.streaming_enabled" label="流式工具（StreamableCall）" />
+          </div>
+        </div>
+
+        <agent-tools-section :agent-id="agentId" />
+      </template>
+      <div v-else class="settings-muted-empty">工具总开关关闭时，下方逐工具覆盖不会生效。</div>
+    </section>
+
+    <!-- 代码执行 -->
+    <section class="settings-section">
+      <div class="section-heading">
+        <div class="section-heading__main">
+          <div class="section-title">
+            <span class="section-title__text">Skill 代码执行</span>
+          </div>
+          <p class="settings-section__hint">
+            <code>skill_run</code> 沙箱类型。生产环境建议使用 <strong>docker</strong>；local 无隔离，仅适合开发。
+          </p>
+        </div>
+      </div>
+      <q-select
+        v-model="config.code_executor_type"
+        class="app-field-md"
+        dense
+        outlined
+        emit-value
+        map-options
+        :options="codeExecutorOptions"
+        label="执行器类型"
+      />
+      <q-banner v-if="fallbackHint" rounded dense class="q-mt-sm settings-info-banner">
+        {{ fallbackHint }}
+      </q-banner>
     </section>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from "vue";
+import AgentToolsSection from "../../components/agents/AgentToolsSection.vue";
 import type { CodeExecutorCapability } from "../../features/monitor/types";
+import type { AgentRuntimeConfigForm } from "../../features/agents/agentRuntimeConfig";
 
 const baseExecutorOptions = [
   { label: "Local（子进程，开发用）", value: "local" },
@@ -144,12 +245,27 @@ const baseExecutorOptions = [
   { label: "Container（框架引擎，需 build tag）", value: "container" }
 ];
 
-const props = defineProps<{
-  config: Record<string, unknown> & { code_executor_type?: string };
-  skillSlugOptions: { label: string; value: string }[];
-  loadingSkillSlugs: boolean;
-  codeExecutorCapabilities?: CodeExecutorCapability[];
-}>();
+const props = withDefaults(
+  defineProps<{
+    config: AgentRuntimeConfigForm;
+    agentId?: string;
+    skillSlugOptions: { label: string; value: string }[];
+    loadingSkillSlugs: boolean;
+    codeExecutorCapabilities?: CodeExecutorCapability[];
+    toolProfileOptions?: { label: string; value: string }[];
+    toolSelectOptions?: { label: string; value: string }[];
+    loadingCatalogTools?: boolean;
+    toolConflicts?: string[];
+  }>(),
+  {
+    agentId: "",
+    codeExecutorCapabilities: () => [],
+    toolProfileOptions: () => [],
+    toolSelectOptions: () => [],
+    loadingCatalogTools: false,
+    toolConflicts: () => [],
+  },
+);
 
 defineEmits<{
   "load-skill-slugs": [];
@@ -186,11 +302,3 @@ const fallbackHint = computed(() => {
   return `当前选择「${selected}」在本环境不可用${reason}，运行时将自动回退到 local 执行器。`;
 });
 </script>
-
-<style scoped>
-/* 通用样式由 agent-settings-page.scss 控制；仅保留组件特有 */
-.settings-info-banner {
-  background: var(--glass-elevated);
-  color: var(--color-text-secondary);
-}
-</style>

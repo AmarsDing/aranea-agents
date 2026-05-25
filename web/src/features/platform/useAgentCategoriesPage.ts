@@ -2,8 +2,17 @@ import { computed, onMounted, reactive, ref } from "vue";
 import { useQuasar } from "quasar";
 import type { PlatformResourceInput, PlatformResourceTreeNode } from "./types";
 import { usePlatformStore } from "../../stores/platform";
-
-type CategoryLevel = "industry" | "department" | "position";
+import {
+  categoryTreeStats,
+  collectDefaultExpandedIds,
+  filterCategoryTree,
+  findCategoryNode,
+  levelLabel,
+  parseIsSystem,
+  patchCategoryTreeNode,
+  trimmedDesc,
+  type CategoryLevel
+} from "./categoryTreeUtils";
 
 const CATEGORY_RESOURCE = "agent-categories" as const;
 
@@ -20,6 +29,7 @@ export function useAgentCategoriesPage() {
   const editingId = ref("");
   const parentNode = ref<PlatformResourceTreeNode | null>(null);
   const tree = ref<PlatformResourceTreeNode[]>([]);
+  const togglingIds = ref<Set<string>>(new Set());
 
   const form = reactive<PlatformResourceInput & { level: CategoryLevel }>({
     key: "",
@@ -33,43 +43,29 @@ export function useAgentCategoriesPage() {
     metadata_json: "{}"
   });
 
-  const filteredTree = computed(() => filterNodes(tree.value.filter((node) => node.level === "industry")));
-  const stats = computed(() => {
-    const rows = flatten(tree.value);
-    return {
-      industries: rows.filter((row) => row.level === "industry").length,
-      departments: rows.filter((row) => row.level === "department").length,
-      positions: rows.filter((row) => row.level === "position").length
-    };
-  });
+  const filteredTree = computed(() =>
+    filterCategoryTree(
+      tree.value.filter((node) => node.level === "industry"),
+      keyword.value,
+      onlyCustom.value
+    )
+  );
+  const stats = computed(() => categoryTreeStats(tree.value));
   const parentName = computed(() => parentNode.value?.name || "无");
 
-  async function loadTree() {
-    loading.value = true;
+  async function loadTree(opts?: { silent?: boolean }) {
+    if (!opts?.silent) loading.value = true;
     try {
       await platformStore.loadCategoryTree(CATEGORY_RESOURCE);
       tree.value = platformStore.categoryTree;
     } finally {
-      loading.value = false;
+      if (!opts?.silent) loading.value = false;
     }
   }
 
-  function filterNodes(nodes: PlatformResourceTreeNode[]): PlatformResourceTreeNode[] {
-    const q = keyword.value.trim().toLowerCase();
-    return nodes
-      .map((node) => ({
-        ...node,
-        children: filterNodes(node.children ?? [])
-      }))
-      .filter((node) => {
-        const matchKeyword = !q || [node.name, node.description, node.key].some((value) => (value || "").toLowerCase().includes(q)) || (node.children?.length ?? 0) > 0;
-        const matchCustom = !onlyCustom.value || !isSystem(node) || (node.children?.length ?? 0) > 0;
-        return matchKeyword && matchCustom;
-      });
-  }
-
-  function flatten(nodes: PlatformResourceTreeNode[]): PlatformResourceTreeNode[] {
-    return nodes.flatMap((node) => [node, ...flatten(node.children ?? [])]);
+  function syncTreePatch(id: string, patch: Partial<PlatformResourceTreeNode>) {
+    tree.value = patchCategoryTreeNode(tree.value, id, patch);
+    platformStore.categoryTree = tree.value;
   }
 
   function openCreate(level: CategoryLevel, parent?: PlatformResourceTreeNode) {
@@ -136,7 +132,7 @@ export function useAgentCategoriesPage() {
   }
 
   async function removeNode(node: PlatformResourceTreeNode) {
-    if (isSystem(node)) {
+    if (parseIsSystem(node)) {
       $q.notify({ type: "warning", message: "系统预置分类不可删除" });
       return;
     }
@@ -153,6 +149,27 @@ export function useAgentCategoriesPage() {
     }
   }
 
+  async function toggleNodeEnabled(node: PlatformResourceTreeNode, enabled: boolean) {
+    if (node.enabled === enabled || togglingIds.value.has(node.id)) return;
+
+    const previous = node.enabled;
+    togglingIds.value = new Set([...togglingIds.value, node.id]);
+    syncTreePatch(node.id, { enabled });
+
+    try {
+      const updated = await platformStore.editResource(CATEGORY_RESOURCE, node.id, { enabled });
+      syncTreePatch(node.id, { enabled: updated.enabled });
+      $q.notify({ type: "positive", message: enabled ? "分类已启用" : "分类已停用" });
+    } catch (error) {
+      syncTreePatch(node.id, { enabled: previous });
+      $q.notify({ type: "negative", message: errorMessage(error) || "更新分类状态失败" });
+    } finally {
+      const next = new Set(togglingIds.value);
+      next.delete(node.id);
+      togglingIds.value = next;
+    }
+  }
+
   function nextSortOrder(parent?: PlatformResourceTreeNode) {
     const siblings = parent ? parent.children ?? [] : tree.value.filter((node) => node.level === "industry");
     return siblings.length > 0 ? Math.max(...siblings.map((node) => node.sort_order || 0)) + 10 : 10;
@@ -160,37 +177,7 @@ export function useAgentCategoriesPage() {
 
   function findNode(id: string) {
     if (!id) return null;
-    return flatten(tree.value).find((node) => node.id === id) ?? null;
-  }
-
-  function isSystem(node: PlatformResourceTreeNode) {
-    try {
-      return Boolean(JSON.parse(node.metadata_json || "{}").is_system);
-    } catch {
-      return false;
-    }
-  }
-
-  function levelLabel(level: string) {
-    const labels: Record<string, string> = { industry: "行业", department: "部门", position: "职位" };
-    return labels[level] ?? "分类";
-  }
-
-  function fullPath(industry: PlatformResourceTreeNode, department: PlatformResourceTreeNode, position: PlatformResourceTreeNode) {
-    return `${industry.name} / ${department.name} / ${position.name}`;
-  }
-
-  function positionDescChain(
-    industry: PlatformResourceTreeNode,
-    department: PlatformResourceTreeNode,
-    position: PlatformResourceTreeNode
-  ) {
-    const parts = [trimmedDesc(industry.description), trimmedDesc(department.description), trimmedDesc(position.description)].filter(Boolean);
-    return parts.join(" / ");
-  }
-
-  function trimmedDesc(raw?: string | null) {
-    return (raw ?? "").trim();
+    return findCategoryNode(tree.value, id);
   }
 
   function buildKey(level: string, name: string) {
@@ -217,6 +204,7 @@ export function useAgentCategoriesPage() {
     isDark,
     loading,
     saving,
+    togglingIds,
     keyword,
     onlyCustom,
     dialogOpen,
@@ -232,10 +220,8 @@ export function useAgentCategoriesPage() {
     openEdit,
     saveNode,
     removeNode,
-    isSystem,
+    toggleNodeEnabled,
     levelLabel,
-    fullPath,
-    positionDescChain,
     trimmedDesc
   };
 }

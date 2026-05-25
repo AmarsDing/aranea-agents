@@ -1,5 +1,4 @@
 import type { Session } from "../../features/session/types";
-import { registryCol } from "../../features/ui/registryTableColumns";
 
 /** 列表摘要卡片（纯展示文案来源） */
 export type SessionsSummaryCard = {
@@ -38,13 +37,22 @@ export const sessionsTableSelectionColumn = {
 };
 
 export const sessionsTableColumns = [
-  { name: "session", label: "会话", field: "title", align: "left" as const, sortable: false, ...registryCol.name },
-  { name: "owner", label: "类型 / 归属", field: "owner_type", align: "left" as const, sortable: false, ...registryCol.chips },
-  { name: "context", label: "上下文", field: "context_used_ratio", align: "left" as const, sortable: false, ...registryCol.stats },
-  { name: "usage", label: "消耗", field: "total_tokens", align: "left" as const, sortable: false, ...registryCol.stats },
-  { name: "time", label: "时间", field: "last_message_at", align: "left" as const, sortable: false, ...registryCol.time },
-  { name: "status", label: "状态", field: "status", align: "left" as const, sortable: false, ...registryCol.status },
-  { name: "actions", label: "操作", field: "id", align: "right" as const, sortable: false, ...registryCol.actions }
+  { name: "session", label: "会话", field: "title", align: "left" as const, sortable: false, style: "width: 16%; max-width: 168px" },
+  { name: "owner", label: "类型 / 归属", field: "owner_type", align: "left" as const, sortable: false, style: "width: 128px" },
+  { name: "context", label: "上下文", field: "context_used_ratio", align: "left" as const, sortable: false, style: "width: 108px" },
+  { name: "usage", label: "消耗", field: "total_tokens", align: "left" as const, sortable: false, style: "width: 108px" },
+  { name: "time", label: "时间", field: "last_message_at", align: "left" as const, sortable: false, style: "width: 128px" },
+  { name: "status", label: "状态", field: "status", align: "left" as const, sortable: false, style: "width: 80px" },
+  {
+    name: "actions",
+    label: "操作",
+    field: "id",
+    align: "right" as const,
+    sortable: false,
+    style: "width: 168px",
+    classes: "app-registry-col-actions",
+    headerClasses: "app-registry-col-actions"
+  }
 ];
 
 export function buildSessionsSummaryCards(rows: Session[], total: number): SessionsSummaryCard[] {

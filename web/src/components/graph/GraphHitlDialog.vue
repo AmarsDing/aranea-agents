@@ -62,10 +62,3 @@ function onDialogUpdate(value: boolean) {
   if (!value) emit("update:open", false);
 }
 </script>
-
-<style scoped>
-.graph-hitl-dialog__mono {
-  font-family: monospace;
-  word-break: break-all;
-}
-</style>

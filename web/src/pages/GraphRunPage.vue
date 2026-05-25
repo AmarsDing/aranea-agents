@@ -160,16 +160,3 @@ const {
   goBack,
 } = useGraphRunPage();
 </script>
-
-<style scoped>
-.graph-run-page__body {
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.graph-run-page__live-badge {
-  background: color-mix(in srgb, var(--color-success) 18%, var(--glass-surface));
-  color: var(--color-success);
-}
-</style>

@@ -8,7 +8,7 @@
       </div>
       <div class="app-actions-bar">
         <q-btn outline rounded no-caps color="primary" icon="history" label="运行记录" to="/plugins/runs" />
-        <q-btn color="primary" unelevated rounded no-caps icon="refresh" label="刷新" :loading="loading" @click="loadRows" />
+        <q-btn color="primary" unelevated rounded no-caps icon="refresh" label="刷新" :loading="loading" @click="() => loadRows()" />
       </div>
     </section>
 
@@ -26,7 +26,7 @@
     <q-banner v-if="error" rounded class="bg-negative text-white q-mb-md">
       {{ error }}
       <template #action>
-        <q-btn flat color="white" label="重试" @click="loadRows" />
+        <q-btn flat color="white" label="重试" @click="() => loadRows()" />
       </template>
     </q-banner>
 
@@ -45,14 +45,17 @@
       >
         <template #body-cell-name="props">
           <q-td :props="props">
-            <div class="app-registry-cell-primary">{{ props.row.name }}</div>
-            <div class="app-registry-cell-sub">{{ props.row.key }}</div>
-          </q-td>
-        </template>
-        <template #body-cell-description="props">
-          <q-td :props="props">
-            <div class="app-registry-cell-desc" :title="props.row.description || ''">
-              {{ props.row.description || "暂无说明" }}
+            <div class="plugins-table__name-hit">
+              <div class="app-registry-cell-primary">{{ props.row.name }}</div>
+              <div class="app-registry-cell-sub">{{ props.row.key }}</div>
+              <q-tooltip
+                anchor="top start"
+                self="bottom start"
+                :offset="[0, 8]"
+                content-class="plugins-table__desc-tooltip"
+              >
+                {{ props.row.description || "暂无说明" }}
+              </q-tooltip>
             </div>
           </q-td>
         </template>
@@ -66,7 +69,7 @@
         </template>
         <template #body-cell-callbacks="props">
           <q-td :props="props">
-            <div class="app-registry-chip-wrap">
+            <div class="app-registry-chip-wrap plugins-table__callback-chips">
               <q-chip v-for="point in props.row.callback_points" :key="point" dense outline color="primary">{{ point }}</q-chip>
             </div>
           </q-td>
@@ -198,7 +201,6 @@ import { storeToRefs } from "pinia";
 import { usePluginsStore } from "../stores/plugins";
 import type { Plugin } from "../features/plugins/types";
 import PluginSchemaForm from "../components/plugins/PluginSchemaForm.vue";
-import { registryCol } from "../features/ui/registryTableColumns";
 
 const $q = useQuasar();
 const pluginsStore = usePluginsStore();
@@ -230,14 +232,13 @@ const enabledOptions = [
   { label: "已停用", value: false }
 ];
 const columns: QTableColumn<Plugin>[] = [
-  { name: "name", label: "Plugin", field: "name", align: "left", ...registryCol.name },
-  { name: "description", label: "说明", field: "description", align: "left", ...registryCol.desc },
-  { name: "category", label: "类型 / 风险", field: "category", align: "left", ...registryCol.chips },
-  { name: "callbacks", label: "Callback", field: "callback_points", align: "left", ...registryCol.callbacks },
-  { name: "enabled", label: "启用", field: "enabled", align: "center", ...registryCol.toggle },
-  { name: "scope", label: "作用域", field: "scope", align: "left", ...registryCol.scope },
-  { name: "sort_order", label: "顺序", field: "sort_order", align: "left", ...registryCol.sort },
-  { name: "actions", label: "操作", field: "id", align: "right", ...registryCol.actions }
+  { name: "name", label: "Plugin", field: "name", align: "left" },
+  { name: "category", label: "类型 / 风险", field: "category", align: "left" },
+  { name: "callbacks", label: "Callback", field: "callback_points", align: "left" },
+  { name: "enabled", label: "启用", field: "enabled", align: "center" },
+  { name: "scope", label: "作用域", field: "scope", align: "left" },
+  { name: "sort_order", label: "顺序", field: "sort_order", align: "left" },
+  { name: "actions", label: "操作", field: "id", align: "right" }
 ];
 
 const configError = computed(() => {
@@ -376,8 +377,3 @@ watch([search, category, enabled, callbackPoint], () => {
 
 onMounted(() => loadRows());
 </script>
-
-<style scoped lang="sass">
-.plugins-table
-  background: transparent
-</style>

@@ -121,25 +121,3 @@ function parseJSON<T>(value: string | undefined, fallback: T): T {
   }
 }
 </script>
-
-<style scoped>
-.mcp-server-item {
-  background: rgb(255 253 245 / 84%);
-  border-radius: 18px;
-}
-
-.mcp-detail-label {
-  color: var(--color-text-tertiary);
-  font-weight: 700;
-  margin-right: 6px;
-}
-
-.mcp-endpoint {
-  max-width: min(520px, 100%);
-  vertical-align: bottom;
-}
-
-body.body--dark .mcp-server-item {
-  background: rgb(30 30 30 / 72%);
-}
-</style>

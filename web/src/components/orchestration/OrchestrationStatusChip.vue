@@ -29,15 +29,3 @@ const fineLabel = computed(() => {
   return AGENT_NODE_STATUS_STYLES[key as AgentNodeStatus]?.label ?? key;
 });
 </script>
-
-<style scoped>
-.orch-status-chip {
-  font-weight: 600;
-}
-.orch-status-chip__fine {
-  margin-left: 6px;
-  opacity: 0.85;
-  font-weight: 500;
-  font-size: 10px;
-}
-</style>

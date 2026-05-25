@@ -83,6 +83,180 @@ body.body--dark
 .app-form-field-grid > .app-grid-span-full
   grid-column: 1 / -1
 
+// ── 玻璃表单控件（class 加在 q-input / q-select 根 .q-field 上）──
+.app-glass-control,
+.agent-control,
+.team-control,
+.provider-control
+  .q-field__control
+    min-height: 44px
+    border-radius: 16px
+    background: var(--glass-elevated)
+
+  .q-field__control::before
+    border-color: var(--glass-border)
+
+  .q-field__control::after
+    border-width: 1px
+
+.app-glass-control--solid,
+.category-control,
+.agent-dialog-control
+  .q-field__control
+    background: var(--color-on-accent)
+
+  .q-field__control::before
+    border-color: color-mix(in srgb, var(--glass-border) 85%, transparent)
+
+.app-glass-control--compact,
+.team-editor-dialog .team-control
+  .q-field__control
+    min-height: auto
+    border-radius: 14px
+
+.app-glass-control--sm
+  .q-field__control
+    min-height: 36px
+
+.app-glass-control--canvas,
+.cron-field
+  .q-field__control
+    border-radius: 16px
+    background: color-mix(in srgb, var(--canvas-base) 55%, transparent)
+
+.app-cron-btn-toggle,
+.cron-btn-toggle
+  border-radius: 16px
+  overflow: hidden
+  border: 1px solid var(--glass-border)
+
+// 全高 Markdown / 代码编辑区（Agent 文件 Tab 等）
+.app-markdown-editor
+  flex: 1 1 auto
+  min-height: 0
+  display: flex
+  flex-direction: column
+
+  .q-field__inner
+    flex: 1 1 auto
+    min-height: 0
+    display: flex
+    flex-direction: column
+
+  .q-field__control
+    flex: 1 1 auto
+    min-height: 120px
+    border-radius: 18px
+    background: var(--glass-elevated)
+    box-shadow: var(--glass-inner-highlight)
+
+  textarea.q-field__native
+    flex: 1 1 auto
+    min-height: 160px
+    color: var(--color-text-primary)
+    line-height: 1.65
+    font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace
+    resize: vertical
+
+.agent-dialog-control textarea
+  min-height: 132px
+  color: var(--color-text-heading)
+  line-height: 1.65
+
+// 实体页工具栏（Agents / Team 筛选条）
+.app-entity-toolbar
+  border: 1px solid var(--glass-border)
+  border-radius: 24px
+  background: var(--glass-surface)
+  box-shadow: var(--shadow-entity-panel)
+  backdrop-filter: blur(16px)
+  -webkit-backdrop-filter: blur(16px)
+
+.app-entity-toolbar__body
+  padding: 14px 16px
+
+.app-entity-toolbar.is-dark,
+body.body--dark .app-entity-toolbar
+  border-color: var(--glass-border)
+  background: var(--glass-surface)
+  box-shadow: var(--shadow-entity-panel-dark)
+
+// Registry / Tool / Channel 筛选条内 flat 按钮
+.app-entity-toolbar-btn
+  color: var(--color-text-primary)
+
+body:not(.body--dark) .app-entity-toolbar-btn:hover
+  background: var(--interaction-surface-hover)
+
+body.body--dark .app-entity-toolbar-btn:hover
+  border-color: var(--glass-border-hover)
+
+// 视图切换 pill
+.app-view-toggle
+  padding: 3px
+  border: 1px solid var(--glass-border)
+  border-radius: 999px
+  background: var(--glass-surface)
+
+// 分类树 picker 节点
+.app-category-tree-node
+  min-height: 34px
+  padding: 4px 6px
+  border-radius: 10px
+
+.app-category-tree-node--selectable
+  cursor: pointer
+
+.app-category-tree-node--selectable:hover,
+.app-category-tree-node:hover
+  background: color-mix(in srgb, var(--color-page-tint-blue) 72%, transparent)
+
+.app-category-tree-node--selected
+  background: var(--color-info-soft)
+
+.app-category-tree-node__caption
+  font-size: 11px
+  color: var(--color-text-secondary)
+
+// 玻璃侧栏预览面板
+.app-glass-side-panel
+  border: 1px solid var(--glass-border)
+  border-radius: 16px
+  padding: 12px 14px
+  background: color-mix(in srgb, var(--glass-surface) 55%, transparent)
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+
+body.body--dark
+  .app-glass-control,
+  .agent-control,
+  .team-control,
+  .provider-control,
+  .team-editor-dialog .team-control
+    .q-field__control
+      background: color-mix(in srgb, var(--glass-surface) 88%, transparent)
+
+  .app-glass-control--solid,
+  .category-control,
+  .agent-dialog-control
+    .q-field__control
+      background: color-mix(in srgb, var(--glass-surface) 88%, transparent)
+
+  .is-dark
+    .app-glass-control,
+    .agent-control,
+    .team-control
+      .q-field__native,
+      .q-field__input,
+      .q-field__label
+        color: var(--color-text-primary)
+
+  .app-glass-control--canvas,
+  .cron-field
+    .q-field__control
+      background: rgb(22 28 40 / 45%)
+      border-color: var(--glass-border)
+
 // ── 操作条 / 按钮 ──
 .app-actions-bar
   display: flex
@@ -422,6 +596,75 @@ body:not(.body--dark) .q-dialog .q-card.channel-editor-dialog
   &::-webkit-scrollbar
     display: none
 
+.channel-catalog-grid
+  display: grid
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr))
+  gap: 10px
+
+.catalog-card
+  display: flex
+  flex-direction: column
+  align-items: flex-start
+  gap: 8px
+  min-height: 108px
+  padding: 12px
+  border: 1px solid var(--glass-border)
+  border-radius: 14px
+  background: var(--glass-surface)
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+  text-align: left
+  cursor: pointer
+  transition: border-color 0.16s ease, background 0.16s ease, transform 0.16s ease
+
+.catalog-card:hover:not(:disabled)
+  background: var(--glass-surface-hover)
+  border-color: color-mix(in srgb, var(--color-accent) 22%, var(--glass-border))
+
+.catalog-card.catalog-card--selected
+  border-color: color-mix(in srgb, var(--color-accent) 38%, var(--glass-border))
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--glass-surface))
+
+.catalog-card.catalog-card--disabled
+  opacity: 0.55
+  cursor: not-allowed
+
+.catalog-card__title
+  font-size: 13px
+  font-weight: 600
+  line-height: 1.3
+  color: var(--color-text-heading)
+  overflow: hidden
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.catalog-card__main
+  min-width: 0
+  width: 100%
+
+.catalog-card__group,
+.catalog-card__modes
+  font-size: 11px
+  line-height: 1.35
+  color: var(--color-text-secondary)
+
+.catalog-card__modes
+  width: 100%
+
+.catalog-card__badge
+  align-self: flex-start
+  padding: 2px 8px
+  border-radius: 999px
+  border: 1px solid var(--glass-border)
+  font-size: 10px
+  font-weight: 600
+  letter-spacing: 0.04em
+  text-transform: uppercase
+  color: var(--color-text-tertiary)
+
+.channel-turn-jobs-table .q-table__middle
+  max-height: 240px
+
 .channel-editor-dialog .app-musebot-config-panel.channel-editor-config-panel
   background: transparent !important
   border: none !important
@@ -680,6 +923,152 @@ body:not(.body--dark) .chat-composer .q-banner.bg-amber-1
   background: var(--glass-surface)
   backdrop-filter: blur(var(--glass-blur-default))
   -webkit-backdrop-filter: blur(var(--glass-blur-default))
+
+// ── Team 编辑 Dialog ──
+.q-dialog .q-card.team-editor-dialog.app-dialog-card
+  width: 1060px
+  max-width: min(1060px, 96vw)
+
+.team-editor-workspace
+  display: grid
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 300px)
+  gap: 16px
+  padding: 16px 18px 18px
+  align-items: start
+
+.team-editor-workspace__aside
+  position: sticky
+  top: 8px
+
+.team-editor-section
+  margin-bottom: var(--space-4)
+
+  &:last-child
+    margin-bottom: 0
+
+  &.app-dialog-section
+    margin-bottom: var(--space-4)
+
+.team-editor-section__head
+  margin-bottom: var(--space-3)
+
+.team-editor-section__title
+  margin: 0
+  font-size: 13px
+  font-weight: 600
+  line-height: 1.35
+  color: var(--color-text-heading)
+
+.team-editor-section__hint
+  margin: 4px 0 0
+  font-size: 12px
+  line-height: 1.45
+  color: var(--color-text-secondary)
+
+.team-editor-dialog .app-form-field-grid
+  gap: 12px
+
+.team-editor-dialog .q-toggle__inner--truthy
+  color: color-mix(in srgb, var(--color-accent) 68%, var(--glass-surface)) !important
+
+.team-editor-expansion
+  margin-bottom: var(--space-4)
+  border: 1px solid var(--glass-border)
+  border-radius: 14px
+  overflow: hidden
+  background: color-mix(in srgb, var(--glass-surface) 42%, transparent) !important
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+
+  &.team-editor-expansion--compact
+    margin-bottom: 0
+
+.team-editor-expansion__body
+  padding: 0 var(--space-3) var(--space-3)
+
+.team-editor-notice
+  border: 1px solid color-mix(in srgb, var(--q-warning) 35%, var(--glass-border))
+  background: color-mix(in srgb, var(--q-warning) 10%, transparent) !important
+  color: var(--color-text-primary)
+  font-size: var(--text-xs)
+  line-height: 1.5
+
+.team-editor-add-member
+  flex-shrink: 0
+  color: var(--color-text-secondary)
+  font-size: 13px
+
+  &:hover
+    color: var(--color-accent)
+
+.team-member-empty
+  padding: 20px 16px
+  border: 1px dashed color-mix(in srgb, var(--glass-border) 80%, transparent)
+  border-radius: 14px
+  text-align: center
+  font-size: 13px
+  line-height: 1.5
+  color: var(--color-text-secondary)
+
+.team-member-list
+  display: grid
+  gap: 8px
+
+.team-member-row
+  padding: 10px 12px
+  border: 1px solid var(--glass-border)
+  border-radius: 14px
+  background: color-mix(in srgb, var(--glass-surface) 38%, transparent)
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+
+.team-member-row__toolbar
+  display: flex
+  align-items: center
+  gap: 6px
+  margin-bottom: 8px
+
+.team-member-row__index
+  font-size: 11px
+  font-weight: 700
+  letter-spacing: 0.06em
+  text-transform: uppercase
+  color: var(--color-text-tertiary)
+
+.team-member-row__grid
+  display: grid
+  grid-template-columns: repeat(2, minmax(0, 1fr))
+  gap: 8px
+
+  @media (width <= 599px)
+    grid-template-columns: 1fr
+
+.team-member-row__task
+  grid-column: 1 / -1
+
+.team-definition-json
+  @extend .app-code-block
+  max-height: 220px
+  font-size: 11px
+  scrollbar-width: none
+
+  &::-webkit-scrollbar
+    display: none
+
+.team-test-reply
+  @extend .app-code-block
+  line-height: 1.55
+  white-space: pre-wrap
+
+.team-dialog-save
+  @extend .provider-dialog-save
+
+@media (width <= 960px)
+  .team-editor-workspace
+    grid-template-columns: 1fr
+
+  .team-editor-workspace__aside
+    position: static
 
 // ── 侧栏操作按钮（Chat）──
 .chat-session-actions

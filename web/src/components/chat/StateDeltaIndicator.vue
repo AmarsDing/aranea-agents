@@ -19,15 +19,3 @@ const previewValue = computed(() => {
   return raw.length > 120 ? `${raw.slice(0, 120)}…` : raw;
 });
 </script>
-
-<style scoped>
-.state-delta-indicator__path {
-  font-size: 12px;
-  color: var(--color-text-secondary);
-}
-
-.state-delta-indicator__value {
-  max-width: 240px;
-  color: var(--color-text-secondary);
-}
-</style>

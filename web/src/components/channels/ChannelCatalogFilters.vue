@@ -3,19 +3,20 @@
     <q-card-section class="app-form-field-grid items-end">
       <q-input
         :model-value="search"
-        class="app-field-md"
+        class="app-field-md app-glass-control"
         dense
         outlined
         clearable
         debounce="200"
         :label="t('channelsPage.searchLabel')"
         :placeholder="t('channelsPage.searchPlaceholder')"
-        @update:model-value="$emit('update:search', $event ?? '')"
+        @update:model-value="$emit('update:search', String($event ?? ''))"
       >
         <template #prepend><q-icon name="search" /></template>
       </q-input>
       <q-select
         :model-value="typeFilter"
+        class="app-glass-control"
         dense
         outlined
         clearable
@@ -23,10 +24,11 @@
         map-options
         :label="t('channelsPage.typeFilter')"
         :options="typeOptions"
-        @update:model-value="$emit('update:typeFilter', $event ?? '')"
+        @update:model-value="$emit('update:typeFilter', String($event ?? ''))"
       />
       <q-select
         :model-value="statusFilter"
+        class="app-glass-control"
         dense
         outlined
         clearable
@@ -34,11 +36,11 @@
         map-options
         :label="t('channelsPage.statusFilter')"
         :options="statusOptions"
-        @update:model-value="$emit('update:statusFilter', $event ?? '')"
+        @update:model-value="$emit('update:statusFilter', String($event ?? ''))"
       />
       <div class="app-actions-bar app-actions-bar--start">
-        <q-btn flat rounded no-caps icon="restart_alt" :label="t('channelsPage.reset')" class="channel-toolbar-btn" @click="$emit('reset')" />
-        <q-btn flat rounded no-caps icon="refresh" :label="t('channelsPage.refresh')" class="channel-toolbar-btn" :loading="loading" @click="$emit('refresh')" />
+        <q-btn flat rounded no-caps icon="restart_alt" :label="t('channelsPage.reset')" class="app-entity-toolbar-btn" @click="$emit('reset')" />
+        <q-btn flat rounded no-caps icon="refresh" :label="t('channelsPage.refresh')" class="app-entity-toolbar-btn" :loading="loading" @click="$emit('refresh')" />
       </div>
     </q-card-section>
   </channel-glass-panel>
@@ -69,14 +71,3 @@ defineEmits<{
   refresh: [];
 }>();
 </script>
-
-<style scoped lang="sass">
-.channel-toolbar-btn
-  color: var(--color-text-primary)
-
-body:not(.body--dark) .channel-toolbar-btn:hover
-  background: var(--interaction-surface-hover)
-
-body.body--dark .channel-toolbar-btn:hover
-  border-color: var(--glass-border-hover)
-</style>

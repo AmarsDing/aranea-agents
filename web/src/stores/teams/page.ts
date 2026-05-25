@@ -21,7 +21,7 @@ export const useTeamsPageStore = defineStore("teamsPage", () => {
   const agents = ref<Agent[]>([]);
 
   async function loadAgents() {
-    agents.value = await listAgents({ limit: 200 });
+    agents.value = await listAgents({ limit: 1000 });
     return agents.value;
   }
 

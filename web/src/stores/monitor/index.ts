@@ -10,9 +10,9 @@ import {
   getRunnerMetrics,
   putMonitorAlertRules,
   subscribeMonitorRuntimeEventsWs,
-  subscribeMonitorLogsWs,
-  type MonitorAlertRule
+  subscribeMonitorLogsWs
 } from "../../features/monitor/api";
+import type { MonitorAlertRule } from "../../features/monitor/types";
 import { listChannels } from "../../features/channels/api";
 import type {
   AuditLog,

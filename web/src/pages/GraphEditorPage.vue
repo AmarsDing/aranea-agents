@@ -166,10 +166,3 @@ const {
   goBack,
 } = useGraphEditorPage();
 </script>
-
-<style scoped>
-.graph-workbench__dirty-chip {
-  background: color-mix(in srgb, var(--color-warning) 16%, var(--glass-surface));
-  color: var(--color-text-secondary);
-}
-</style>

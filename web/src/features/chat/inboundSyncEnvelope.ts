@@ -1,4 +1,4 @@
-import type { Envelope } from "../envelope";
+import type { Envelope } from "./envelope";
 import { runStatusFromEnvelope } from "./envelopeRunStatus";
 import { SESSION_RUN_STATUS } from "./sessionRunStatus";
 

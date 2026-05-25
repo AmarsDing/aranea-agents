@@ -56,23 +56,3 @@ function formatTime(ts: string) {
   }
 }
 </script>
-
-<style scoped>
-.graph-checkpoint-panel__title {
-  font-size: 12px;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--color-text-secondary, var(--color-text-secondary));
-}
-
-.graph-checkpoint-panel__mono {
-  font-family: monospace;
-  font-size: 11px;
-  word-break: break-all;
-}
-
-.graph-checkpoint-panel__item--active {
-  background: rgb(233 162 59 / 12%);
-}
-</style>

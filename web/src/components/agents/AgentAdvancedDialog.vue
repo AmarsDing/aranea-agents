@@ -1,7 +1,7 @@
 <template>
   <q-dialog :model-value="open" persistent transition-show="slide-up" transition-hide="slide-down" @update:model-value="$emit('update:open', $event)">
-    <q-card class="advanced-dialog app-dialog-card app-dialog-card--md">
-      <q-card-section class="row items-center justify-between dialog-header">
+    <q-card class="advanced-dialog app-dialog-card app-dialog-card--md app-glass-dialog">
+      <q-card-section class="app-glass-dialog__head row items-center justify-between">
         <div class="row items-center q-gutter-sm">
           <q-icon name="settings" size="22px" color="primary" />
           <div class="text-h6">高级设置</div>
@@ -9,14 +9,14 @@
         <q-btn flat round icon="close" v-close-popup />
       </q-card-section>
 
-      <q-scroll-area class="dialog-body">
+      <q-scroll-area class="app-glass-dialog__body-scroll">
         <div class="q-pa-md q-gutter-md">
           <q-banner rounded dense class="settings-info-banner">
             Ralph Loop（迭代验证）在
             <strong>Agent</strong>
             标签页的「Ralph Loop」区块配置，与规划模式独立。
           </q-banner>
-          <section class="adv-section">
+          <section class="settings-section">
             <div class="section-heading">
               <q-icon name="hub" color="primary" size="20px" />
               <div>
@@ -49,7 +49,7 @@
             </div>
           </section>
 
-          <section class="adv-section">
+          <section class="settings-section">
             <div class="section-heading">
               <q-icon name="folder_open" color="primary" size="20px" />
               <div>
@@ -60,7 +60,7 @@
             <q-input v-model="workspace" class="app-field-long" dense outlined label="工作区路径" hint="如 ~/.aranea/workspace/{agent_key}" />
           </section>
 
-          <section class="adv-section">
+          <section class="settings-section">
             <div class="section-heading">
               <q-icon name="psychology" color="primary" size="20px" />
               <div>
@@ -91,7 +91,7 @@
             </div>
           </section>
 
-          <section class="adv-section">
+          <section class="settings-section">
             <div class="section-heading">
               <q-icon name="compress" color="primary" size="20px" />
               <div>
@@ -105,7 +105,7 @@
             </div>
           </section>
 
-          <section class="adv-section">
+          <section class="settings-section">
             <div class="section-heading">
               <q-icon name="content_cut" color="primary" size="20px" />
               <div>
@@ -129,7 +129,7 @@
             </div>
           </section>
 
-          <section class="adv-section">
+          <section class="settings-section">
             <div class="section-heading">
               <q-icon name="security" color="primary" size="20px" />
               <div>
@@ -144,7 +144,7 @@
         </div>
       </q-scroll-area>
 
-      <q-card-actions align="right" class="app-actions-bar dialog-footer">
+      <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
         <q-btn flat rounded no-caps label="取消" v-close-popup />
         <q-btn color="primary" rounded unelevated no-caps label="保存" :loading="saving" @click="onSave" />
       </q-card-actions>
@@ -261,53 +261,3 @@ watch(
   }
 );
 </script>
-
-<style scoped>
-.advanced-dialog {
-  max-height: 88vh;
-  display: flex;
-  flex-direction: column;
-}
-
-.dialog-header {
-  padding: 20px 24px 12px;
-  border-bottom: 1px solid var(--glass-border);
-}
-
-.dialog-body {
-  flex: 1;
-  min-height: 0;
-}
-
-.dialog-footer {
-  padding: 12px 24px 20px;
-  border-top: 1px solid var(--glass-border);
-}
-
-.adv-section {
-  padding: 18px;
-  border: 1px solid var(--glass-border);
-  border-radius: 18px;
-  background: var(--glass-elevated);
-  backdrop-filter: blur(var(--glass-blur-default));
-  -webkit-backdrop-filter: blur(var(--glass-blur-default));
-}
-
-.section-heading {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  margin-bottom: 14px;
-}
-
-.adv-info-banner {
-  border: 1px solid var(--glass-border);
-  background: var(--glass-elevated);
-  color: var(--color-text-secondary);
-}
-
-body.body--dark .adv-section {
-  background: var(--glass-elevated);
-  border-color: var(--glass-border);
-}
-</style>

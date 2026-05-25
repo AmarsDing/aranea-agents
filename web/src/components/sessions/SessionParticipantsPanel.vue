@@ -6,7 +6,7 @@
     <div v-else-if="error" class="text-negative q-pa-md">{{ error }}</div>
     <div v-else-if="!participants.length" class="text-grey-7 q-pa-md">暂无参与者记录</div>
     <q-list v-else separator>
-      <q-item v-for="row in participants" :key="row.id" class="participant-item">
+      <q-item v-for="row in participants" :key="row.id" class="app-interactive-list-item">
         <q-item-section avatar>
           <q-avatar color="primary" text-color="white" size="36px">
             {{ avatarLabel(row.display_name) }}
@@ -41,10 +41,3 @@ function avatarLabel(name: string) {
   return trimmed.slice(0, 1).toUpperCase();
 }
 </script>
-
-<style scoped>
-.participant-item {
-  border-radius: 12px;
-  margin-bottom: 4px;
-}
-</style>

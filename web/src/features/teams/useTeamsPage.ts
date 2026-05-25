@@ -6,7 +6,9 @@ import type { Agent } from "../agents/types";
 import type { Team, TeamDefinition, TeamRun, TeamRunEvent, TeamRunStep, TeamRunSummary } from "./types";
 import { findActiveTeamRun } from "./api";
 import { useTeamsPageStore } from "../../stores/teams/page";
-import { buildGraphFromDefinition, defaultDefinition, definitionFromTemplate, definitionToJSON, parseDefinition, type TeamTemplateKey } from "../../components/teams/teamUtils";
+import { buildGraphFromDefinition, defaultDefinition, definitionFromTemplate, definitionToJSON, groupTeamsByIndustry, industryOptionsFromTree, parseDefinition, type TeamTemplateKey } from "../../components/teams/teamUtils";
+import { usePlatformStore } from "../../stores/platform";
+import type { PlatformResourceTreeNode } from "../platform/types";
 
 export function useTeamsPage() {
   const $q = useQuasar();
@@ -22,6 +24,8 @@ const error = ref("");
 const search = ref("");
 const modeFilter = ref("");
 const statusFilter = ref("");
+const industryFilter = ref("");
+const categoryTree = ref<PlatformResourceTreeNode[]>([]);
 const editorOpen = ref(false);
 const selectedTeamTemplateKey = ref<TeamTemplateKey | null>(null);
 const editingId = ref("");
@@ -74,6 +78,10 @@ const filteredTeams = computed(() => {
     return matchesSearch && matchesMode && matchesStatus;
   });
 });
+const industryOptions = computed(() => industryOptionsFromTree(categoryTree.value));
+const teamIndustryGroups = computed(() =>
+  groupTeamsByIndustry(filteredTeams.value, agents.value, categoryTree.value, industryFilter.value)
+);
 
 onMounted(loadRows);
 onBeforeUnmount(closeRunEvents);
@@ -89,9 +97,15 @@ async function loadRows() {
   loading.value = true;
   error.value = "";
   try {
-    const [teamRows, agentRows] = await Promise.all([teamsPageStore.loadTeams(), teamsPageStore.loadAgents()]);
+    const platformStore = usePlatformStore();
+    const [teamRows, agentRows] = await Promise.all([
+      teamsPageStore.loadTeams(),
+      teamsPageStore.loadAgents(),
+      platformStore.loadCategoryTree()
+    ]);
     rows.value = teamRows;
     agents.value = agentRows;
+    categoryTree.value = platformStore.categoryTree;
     openRouteEdit();
   } catch (err) {
     error.value = err instanceof Error ? err.message : "加载 Team 失败";
@@ -371,7 +385,8 @@ function upsertRunStep(step: TeamRunStep) {
 }
 
   return {
-    isDark, rows, agents, loading, saving, error, search, modeFilter, statusFilter,
+    isDark, rows, agents, loading, saving, error, search, modeFilter, statusFilter, industryFilter,
+    categoryTree, industryOptions, teamIndustryGroups,
     editorOpen, selectedTeamTemplateKey, editingId, runsOpen, runsLoading, runsError,
     runEventsConnected, runEventsReplaying, selectedTeam, runs, stepsByRun, stepsLoading,
     summariesByRun, summariesLoading, testOpen, testTeam, testLoading, testError, testReply, testRun,

@@ -1,10 +1,10 @@
 <template>
-  <div class="agent-hooks-panel q-gutter-md">
-    <div class="row items-center justify-between">
-      <div class="text-body2 text-grey-7">
+  <div class="agent-hooks-panel">
+    <div class="row items-center justify-between q-mb-md">
+      <p class="agent-hooks-panel__hint q-ma-none">
         为此 Agent 配置回调规则（<code>condition.agent_id</code> 预填为 ID 或 Key）。
-      </div>
-      <q-btn flat color="primary" icon="open_in_new" label="全局 Hook 管理" :to="{ name: 'hooks' }" />
+      </p>
+      <q-btn flat rounded dense no-caps icon="open_in_new" label="全局 Hook" :to="{ name: 'hooks' }" />
     </div>
 
     <q-banner v-if="loadError" rounded class="bg-negative text-white">{{ loadError }}</q-banner>

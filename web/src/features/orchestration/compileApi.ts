@@ -77,12 +77,23 @@ export function compiledGraphToGraphDef(
     timeoutSeconds: 0,
     heartbeatIntervalSeconds: 0,
     enableLeaseExtension: false,
+    retryMaxAttempts: 0,
+    failureAction: "",
+    fallbackAgent: "",
+    inputMapperJson: "",
+    outputMapperJson: "",
+    isolatedMessages: false,
+    inputFromLastResponse: false,
+    cacheEnabled: false,
+    cacheTtlSeconds: 0,
   }));
-  const edges: EdgeDef[] = (compiled.edges ?? []).map((e) => ({
-    from: e.from ?? "",
-    to: e.to ?? "",
-    kind: e.edgeKind?.trim() || undefined,
-  }));
+  const edges: EdgeDef[] = (compiled.edges ?? [])
+    .map((e) => ({
+      from: e.from ?? "",
+      to: e.to ?? "",
+      kind: e.edgeKind?.trim() || undefined,
+    }))
+    .filter((e) => e.from && e.to && e.from !== e.to);
   const conditionalEdges: ConditionalEdgeDef[] = (compiled.conditional_edges ?? []).map((ce) => ({
     from: ce.from ?? "",
     condFuncRef: "",
@@ -104,6 +115,7 @@ export function compiledGraphToGraphDef(
     interruptBefore: [],
     interruptAfter: [],
     metadata: { template_id: compiled.template_id, mode: compiled.mode },
+    version: 0,
     createdAt: "",
     updatedAt: "",
   };

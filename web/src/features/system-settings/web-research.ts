@@ -39,10 +39,10 @@ export function webResearchFromSettings(
   return {
     provider: row.provider || DEFAULT_WEB_RESEARCH_FORM.provider,
     api_key: "",
-    max_results: row.maxResults > 0 ? row.maxResults : DEFAULT_WEB_RESEARCH_FORM.max_results,
-    fetch_top: row.fetchTop > 0 ? row.fetchTop : DEFAULT_WEB_RESEARCH_FORM.fetch_top,
+    max_results: (row.maxResults ?? 0) > 0 ? row.maxResults! : DEFAULT_WEB_RESEARCH_FORM.max_results,
+    fetch_top: (row.fetchTop ?? 0) > 0 ? row.fetchTop! : DEFAULT_WEB_RESEARCH_FORM.fetch_top,
     search_depth: row.searchDepth || DEFAULT_WEB_RESEARCH_FORM.search_depth,
-    timeout_sec: row.timeoutSec > 0 ? row.timeoutSec : DEFAULT_WEB_RESEARCH_FORM.timeout_sec,
+    timeout_sec: (row.timeoutSec ?? 0) > 0 ? row.timeoutSec! : DEFAULT_WEB_RESEARCH_FORM.timeout_sec,
     http_proxy: row.httpProxy || ""
   };
 }

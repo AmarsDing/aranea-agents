@@ -7,6 +7,7 @@ import type { Team } from "../teams/types";
 import {
   CHANNEL_LONG_TASK_PRESETS,
   findLongTaskPreset,
+  inferLongTaskPresetId,
   type ChannelLongTaskPresetId,
 } from "./channelLongTaskPresets";
 import {
@@ -29,6 +30,7 @@ import {
   LONG_TASK_NUMERIC_KEYS,
   type LongTaskFormKey
 } from "./channelLongTaskDefaults";
+import { isImPreviewFormKey } from "./channelImPreviewDefaults";
 import { channelWebhookURL } from "../../components/channels/channelUi";
 import { buildChannelWebhookURL, isLocalhostOrigin } from "./publicWebhookOrigin";
 import { createChannel, testChannel, updateChannel } from "./api";
@@ -199,15 +201,21 @@ export function useChannelEditorForm(props: EditorProps, modelOpen: Ref<boolean>
     return "";
   }
 
+  function applyPresetConfigToDrafts(config: Record<string, string | number | boolean>) {
+    for (const [key, value] of Object.entries(config)) {
+      if (typeof value === "boolean") configBoolDraft[key] = value;
+      else if (isLongTaskFormKey(key) || isImPreviewFormKey(key)) configDraft[key] = String(value);
+    }
+  }
+
   function applyLongTaskPreset(presetId: string) {
     selectedLongTaskPreset.value = presetId as ChannelLongTaskPresetId;
     if (!presetId) return;
     const preset = findLongTaskPreset(presetId);
     if (!preset) return;
+    applyPresetConfigToDrafts(preset.config);
     const extra = parseJSON<Record<string, unknown>>(configExtraText.value, {});
     for (const [key, value] of Object.entries(preset.config)) {
-      if (typeof value === "boolean") configBoolDraft[key] = value;
-      else if (isLongTaskFormKey(key)) configDraft[key] = String(value);
       extra[key] = value;
     }
     configExtraText.value = JSON.stringify(extra, null, 2);
@@ -217,6 +225,18 @@ export function useChannelEditorForm(props: EditorProps, modelOpen: Ref<boolean>
   const longTaskPresetOptions = computed(() =>
     CHANNEL_LONG_TASK_PRESETS.map((p) => ({ label: p.label, value: p.id, description: p.description }))
   );
+
+  function resolveLongTaskPreset(cfg: ChannelConfig, metadata: ChannelMetadata) {
+    const stored = metadata.long_task_preset?.trim();
+    if (stored && findLongTaskPreset(stored)) {
+      selectedLongTaskPreset.value = stored as ChannelLongTaskPresetId;
+      return;
+    }
+    selectedLongTaskPreset.value = inferLongTaskPresetId(
+      cfg.receive_mode || receiveMode.value,
+      cfg.config || {}
+    );
+  }
 
   function resetForm() {
     const row = props.row;
@@ -247,8 +267,11 @@ export function useChannelEditorForm(props: EditorProps, modelOpen: Ref<boolean>
     form.enabled = row?.enabled ?? true;
     loadPlatformConfigFields(cfg, metadata);
     resetCredentialDraft();
-    selectedLongTaskPreset.value = "";
-    if (!row && item) applyCatalogDefaults(item, "");
+    if (!row && item) {
+      applyCatalogDefaults(item, "");
+    } else {
+      resolveLongTaskPreset(cfg, metadata);
+    }
   }
 
   function loadPlatformConfigFields(cfg: ChannelConfig, metadata: ChannelMetadata) {
@@ -275,11 +298,14 @@ export function useChannelEditorForm(props: EditorProps, modelOpen: Ref<boolean>
       delete platformConfig[key];
     }
     for (const key of Object.keys({ ...platformConfig })) {
-      if (!isLongTaskFormKey(key)) continue;
+      if (!isLongTaskFormKey(key) && !isImPreviewFormKey(key)) continue;
       const value = platformConfig[key];
       if (value === undefined || value === null) continue;
-      if (key === "streaming_enabled") configBoolDraft[key] = Boolean(value);
-      else configDraft[key] = String(value);
+      if (key === "streaming_enabled" || (isImPreviewFormKey(key) && typeof value === "boolean")) {
+        configBoolDraft[key] = Boolean(value);
+      } else {
+        configDraft[key] = String(value);
+      }
       delete platformConfig[key];
     }
     configExtraText.value = JSON.stringify(platformConfig, null, 2);
@@ -312,10 +338,14 @@ export function useChannelEditorForm(props: EditorProps, modelOpen: Ref<boolean>
     Object.keys(configDraft).forEach((k) => delete configDraft[k]);
     Object.keys(configBoolDraft).forEach((k) => delete configBoolDraft[k]);
     applyLongTaskFormDefaults(configBoolDraft, configDraft);
-    selectedLongTaskPreset.value = "";
     configExtraText.value = JSON.stringify(defaultConfigFor(item), null, 2);
     metadataExtraText.value = JSON.stringify({ catalog_source: "catalog", catalog_group: item.group }, null, 2);
     if (previousType !== item.type) resetCredentialDraft();
+    if (item.type === "feishu") {
+      applyLongTaskPreset("feishu_im_preview");
+    } else {
+      selectedLongTaskPreset.value = "";
+    }
   }
 
   function fillMissingLongTaskDefaults() {
@@ -384,7 +414,8 @@ export function useChannelEditorForm(props: EditorProps, modelOpen: Ref<boolean>
       public_webhook_origin: publicWebhookOrigin.value.trim() || undefined,
       external_id: selectedType.value === "feishu" ? undefined : externalId.value.trim() || undefined,
       catalog_group: selectedCatalog.value?.group,
-      schema_version: 1
+      schema_version: 1,
+      long_task_preset: selectedLongTaskPreset.value || undefined
     };
     const credentials: ChannelCredentialInput[] = Object.entries(credentialDraft)
       .filter(([, secret]) => secret.trim())

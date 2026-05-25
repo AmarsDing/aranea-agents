@@ -61,9 +61,3 @@ function formatDuration(value: number) {
   return `${(value / 1000).toFixed(1)}s`;
 }
 </script>
-
-<style scoped lang="sass">
-.skill-runs-table
-  border-radius: 22px
-  overflow: hidden
-</style>

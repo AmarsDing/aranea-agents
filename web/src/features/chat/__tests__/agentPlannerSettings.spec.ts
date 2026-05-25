@@ -10,10 +10,10 @@ describe("agentNeedsSettingsHydration", () => {
   });
 
   it("requires hydration when planner_kind empty", () => {
-    expect(agentNeedsSettingsHydration({ ...base, settings: { planner_kind: "" } })).toBe(true);
+    expect(agentNeedsSettingsHydration({ ...base, settings: { planner_kind: "" } as any })).toBe(true);
   });
 
   it("skips hydration when planner_kind set", () => {
-    expect(agentNeedsSettingsHydration({ ...base, settings: { planner_kind: "react" } })).toBe(false);
+    expect(agentNeedsSettingsHydration({ ...base, settings: { planner_kind: "react" } as any })).toBe(false);
   });
 });

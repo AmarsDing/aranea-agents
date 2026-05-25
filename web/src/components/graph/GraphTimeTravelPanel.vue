@@ -73,19 +73,3 @@ defineEmits<{
   applyEdit: [];
 }>();
 </script>
-
-<style scoped>
-.graph-time-travel-panel__title {
-  font-size: 12px;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--color-text-secondary, var(--color-text-secondary));
-}
-
-.graph-time-travel-panel__mono {
-  font-family: monospace;
-  font-size: 11px;
-  word-break: break-all;
-}
-</style>

@@ -46,9 +46,3 @@ const props = defineProps<{ channelId: string }>();
 
 const { t, loading, error, rows, columns, statusColor, load } = useChannelTurnJobsPanel(() => props.channelId);
 </script>
-
-<style scoped>
-.channel-turn-jobs-table :deep(.q-table__middle) {
-  max-height: 240px;
-}
-</style>

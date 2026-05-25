@@ -15,7 +15,7 @@
           unelevated
           toggle-color="primary"
           :options="metricOptions"
-          class="overview-metric-toggle"
+          class="app-metric-toggle app-metric-toggle--sm"
         />
         <q-chip dense outline class="overview-chip">{{ points.length }} {{ hourly ? "小时" : "天" }}</q-chip>
       </div>
@@ -23,7 +23,7 @@
     <q-separator class="overview-separator" />
     <q-card-section>
       <div v-if="!points.length" class="overview-empty">暂无趋势数据</div>
-      <div v-else ref="chartEl" class="usage-trend-chart" />
+      <div v-else ref="chartEl" class="app-trend-chart app-trend-chart--lg" />
     </q-card-section>
   </q-card>
 </template>
@@ -61,7 +61,7 @@ function buildOption(): EChartsCoreOption {
   if (metric.value === "success_rate") {
     const stacks = props.points.map(successRateStackFromPoint);
     return baseChartOption({
-      tooltip: { trigger: "axis", valueFormatter: (v) => `${v}%` },
+      tooltip: { trigger: "axis", valueFormatter: (v: number) => `${v}%` },
       legend: { top: 4, textStyle: { color: palette.text } },
       yAxis: { type: "value", max: 100, name: "%", axisLabel: { formatter: "{value}%" } },
       xAxis: { type: "category", data: labels, axisLabel: { color: palette.text } },
@@ -90,7 +90,7 @@ function buildOption(): EChartsCoreOption {
   return baseChartOption({
     tooltip: {
       trigger: "axis",
-      valueFormatter: (v) => (isCost ? `$${Number(v).toFixed(4)}` : String(v))
+      valueFormatter: (v: number) => (isCost ? `$${Number(v).toFixed(4)}` : String(v))
     },
     yAxis: { type: "value", name: trendMetricYAxisName(metric.value) },
     xAxis: { type: "category", data: labels, axisLabel: { color: palette.text } },
@@ -109,13 +109,3 @@ function buildOption(): EChartsCoreOption {
 
 useUsageChart(chartEl, buildOption, () => [props.points, metric.value, props.hourly]);
 </script>
-
-<style scoped lang="sass">
-.usage-trend-chart
-  width: 100%
-  height: 280px
-  min-height: 220px
-
-.overview-metric-toggle :deep(.q-btn)
-  font-size: 12px
-</style>

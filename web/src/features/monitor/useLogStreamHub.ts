@@ -1,4 +1,4 @@
-import { onBeforeUnmount, ref } from "vue";
+import { onBeforeUnmount, ref, type Ref } from "vue";
 import { GLOBAL_WS_SESSION_ID } from "../../config/runtime";
 import { createEnvelopeStream } from "../../realtime/useEnvelopeStream";
 import type { Envelope } from "../../realtime/envelope";
@@ -8,13 +8,13 @@ import type { MonitorLogLine, StreamState } from "./types";
 const MAX_LINES = 5000;
 
 export type MonitorLogHub = {
-  flowState: ReturnType<typeof ref<StreamState>>;
-  processState: ReturnType<typeof ref<StreamState>>;
-  flowPaused: ReturnType<typeof ref<boolean>>;
-  processPaused: ReturnType<typeof ref<boolean>>;
-  processEnabled: ReturnType<typeof ref<boolean>>;
-  flowLines: ReturnType<typeof ref<MonitorLogLine[]>>;
-  processLines: ReturnType<typeof ref<MonitorLogLine[]>>;
+  flowState: Ref<StreamState>;
+  processState: Ref<StreamState>;
+  flowPaused: Ref<boolean>;
+  processPaused: Ref<boolean>;
+  processEnabled: Ref<boolean>;
+  flowLines: Ref<MonitorLogLine[]>;
+  processLines: Ref<MonitorLogLine[]>;
   connect: () => void;
   disconnect: () => void;
   setFlowPaused: (paused: boolean) => void;

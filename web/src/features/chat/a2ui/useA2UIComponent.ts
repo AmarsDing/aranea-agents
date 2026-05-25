@@ -1,10 +1,42 @@
 import { computed, ref, type ComputedRef, type Ref } from "vue";
 import { resolveA2UIChildIds } from "../a2uiChildren";
 import { resolveActionContext, resolveA2UIBind } from "../a2uiBind";
-import type { A2UISurfaceState } from "../a2uiSurfaceState";
+import type { A2UIComponentRecord, A2UISurfaceState } from "../a2uiSurfaceState";
 import { buildUserActionPayload, type A2UIUserActionPayload } from "../a2uiUserAction";
 
 export type A2UIComponentEmit = (payload: A2UIUserActionPayload) => void;
+
+/** Unwrapped (non-Ref) view of useA2UIComponent return — safe for child component props. */
+export type A2UIComponentCtx = {
+  modalOpen: boolean;
+  activeTab: number;
+  kind: string;
+  comp: A2UIComponentRecord | undefined;
+  isContainerKind: boolean;
+  wrapperClass: string;
+  wrapperStyle: Record<string, string> | undefined;
+  childIds: string[];
+  listClass: string;
+  cardChildId: string;
+  modalEntryId: string;
+  modalContentId: string;
+  tabItems: { label: string; childId: string }[];
+  dividerVertical: boolean;
+  textContent: string;
+  textTag: string;
+  textClass: string;
+  buttonPrimary: boolean;
+  actionName: string;
+  buttonLabel: string;
+  imageUrl: string;
+  iconName: string;
+  textFieldLabel: string;
+  textFieldValue: string;
+  textFieldInputType: string;
+  checkBoxLabel: string;
+  checkBoxChecked: boolean;
+  onButtonClick: () => void;
+};
 
 export function mapA2UIIcon(name: string): string {
   const map: Record<string, string> = {

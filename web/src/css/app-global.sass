@@ -982,7 +982,7 @@ body:not(.body--dark)
       backdrop-filter: blur(8px)
       -webkit-backdrop-filter: blur(8px)
 
-    .skill-pagination,
+    .app-registry-pagination--card,
     .sessions-pagination
       color: var(--color-text-secondary)
 
@@ -1145,7 +1145,7 @@ body.body--dark
       padding: 8px 10px
       border-radius: 12px
 
-    .skill-pagination,
+    .app-registry-pagination--card,
     .sessions-pagination
       color: var(--color-text-secondary)
 
@@ -1194,6 +1194,9 @@ body.body--dark
     box-shadow: 0 0 24px rgba(0, 229, 255, 0.12)
 
 // Session detail + timeline（UX.md §2 玻璃 token）
+.session-detail-page
+  min-height: 100%
+
 .session-detail-page,
 .session-timeline-dialog
   .sessions-muted
@@ -1534,9 +1537,6 @@ body.body--dark
   .session-timeline__filter .q-field--focused .q-field__control
     border-color: var(--color-accent) !important
 
-body.body--dark .skill-editor-card
-  box-shadow: 0 0 32px rgba(0, 229, 255, 0.1)
-
 // 概览：持仓表紧凑、褐色调底纹
 body:not(.body--dark) .dashboard-pos-table
   font-size: 0.8rem
@@ -1599,6 +1599,98 @@ body.body--dark .monitor-trace-dialog
   border-radius: 14px
   margin-bottom: 4px
 
+.monitor-log-stream-panel
+  display: flex
+  flex-direction: column
+  flex: 1
+  min-height: 0
+  height: 100%
+
+.monitor-log-stream-tabs
+  flex: 0 0 auto
+
+.monitor-log-stream-panels
+  flex: 1
+  min-height: 0
+  display: flex
+  flex-direction: column
+
+.monitor-log-stream-panels .q-tab-panel
+  flex: 1
+  min-height: 0
+  display: flex
+  flex-direction: column
+
+.app-error-banner,
+.monitor-error-banner
+  background: color-mix(in srgb, var(--color-danger) 88%, transparent)
+  color: var(--color-on-accent)
+  border: 1px solid color-mix(in srgb, var(--color-danger) 55%, transparent)
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+
+.app-error-banner__action,
+.monitor-error-banner__action
+  color: var(--color-on-accent) !important
+
+body.body--dark .app-error-banner,
+body.body--dark .monitor-error-banner
+  background: color-mix(in srgb, var(--color-danger) 28%, transparent)
+  color: var(--color-text-primary)
+  border-color: color-mix(in srgb, var(--color-danger) 45%, transparent)
+
+body.body--dark .app-error-banner__action,
+body.body--dark .monitor-error-banner__action
+  color: var(--color-text-primary) !important
+
+.app-trace-waterfall-track
+  position: relative
+  height: 12px
+  background: var(--color-border-soft)
+  border-radius: 6px
+  overflow: hidden
+
+.app-trace-waterfall-bar
+  height: 100%
+  min-width: 4px
+  background: linear-gradient(90deg, var(--color-info), var(--color-success))
+  border-radius: 6px
+
+.app-flow-trace-panel
+  display: flex
+  flex-direction: column
+  gap: 12px
+  max-height: 420px
+  overflow-y: auto
+  padding: 4px 0
+
+.app-flow-trace-row
+  display: flex
+  gap: 12px
+  align-items: flex-start
+
+.app-flow-trace-marker
+  width: 4px
+  min-height: 48px
+  border-radius: 2px
+  background: var(--color-border-soft)
+  flex-shrink: 0
+
+.app-flow-trace-row--ok .app-flow-trace-marker,
+.app-flow-trace-row--info .app-flow-trace-marker
+  background: var(--color-success)
+
+.app-flow-trace-row--warn .app-flow-trace-marker
+  background: var(--color-warning)
+
+.app-flow-trace-row--error .app-flow-trace-marker,
+.app-flow-trace-row--critical .app-flow-trace-marker
+  background: var(--color-danger)
+
+.app-flow-trace-body
+  flex: 1
+  min-width: 0
+
 body:not(.body--dark) .monitor-log-banner
   background: var(--glass-surface)
   border: 1px solid var(--glass-border)
@@ -1620,8 +1712,8 @@ body.body--dark .monitor-log-banner
   backdrop-filter: blur(var(--glass-blur-default))
   -webkit-backdrop-filter: blur(var(--glass-blur-default))
 
-  :deep(.q-banner__content)
-    color: inherit
+.monitor-info-banner .q-banner__content
+  color: inherit
 
 body:not(.body--dark) .monitor-alert-rule-row
   background: var(--interaction-surface-hover, var(--glass-elevated))
@@ -1639,21 +1731,21 @@ body.body--dark .monitor-alert-rule-row
 body.body--dark .monitor-alert-rules
   color: var(--color-text-primary)
 
-  .text-h6
-    color: var(--color-text-primary)
+body.body--dark .monitor-alert-rules .text-h6
+  color: var(--color-text-primary)
 
-  :deep(.q-field__control)
-    background: rgb(15 23 42 / 72%)
+body.body--dark .monitor-alert-rules .q-field__control
+  background: rgb(15 23 42 / 72%)
 
-  :deep(.q-field__native),
-  :deep(.q-field__input)
-    color: var(--color-text-primary)
+body.body--dark .monitor-alert-rules .q-field__native,
+body.body--dark .monitor-alert-rules .q-field__input
+  color: var(--color-text-primary)
 
-  :deep(.q-field__label)
-    color: var(--color-text-secondary)
+body.body--dark .monitor-alert-rules .q-field__label
+  color: var(--color-text-secondary)
 
-  :deep(.q-toggle__label)
-    color: var(--color-text-primary)
+body.body--dark .monitor-alert-rules .q-toggle__label
+  color: var(--color-text-primary)
 
 .monitor-log-console
   background: color-mix(in srgb, var(--canvas-base) 6%, #0f172a)
@@ -1700,34 +1792,34 @@ $monitor-log-control-h: 36px
 .monitor-log-toolbar-field
   height: $monitor-log-control-h
 
-  :deep(.q-field)
-    height: $monitor-log-control-h
-    font-size: 13px
+.monitor-log-toolbar-field .q-field
+  height: $monitor-log-control-h
+  font-size: 13px
 
-  :deep(.q-field__inner)
-    height: $monitor-log-control-h
-    min-height: $monitor-log-control-h
-    padding-bottom: 0
+.monitor-log-toolbar-field .q-field__inner
+  height: $monitor-log-control-h
+  min-height: $monitor-log-control-h
+  padding-bottom: 0
 
-  :deep(.q-field__control)
-    height: $monitor-log-control-h !important
-    min-height: $monitor-log-control-h !important
+.monitor-log-toolbar-field .q-field__control
+  height: $monitor-log-control-h !important
+  min-height: $monitor-log-control-h !important
 
-  :deep(.q-field__control-container)
-    padding-top: 0 !important
+.monitor-log-toolbar-field .q-field__control-container
+  padding-top: 0 !important
 
-  :deep(.q-field__marginal)
-    height: $monitor-log-control-h !important
+.monitor-log-toolbar-field .q-field__marginal
+  height: $monitor-log-control-h !important
 
-  :deep(.q-field__native),
-  :deep(.q-field__input)
-    min-height: $monitor-log-control-h !important
-    line-height: $monitor-log-control-h !important
-    padding-top: 0 !important
-    padding-bottom: 0 !important
+.monitor-log-toolbar-field .q-field__native,
+.monitor-log-toolbar-field .q-field__input
+  min-height: $monitor-log-control-h !important
+  line-height: $monitor-log-control-h !important
+  padding-top: 0 !important
+  padding-bottom: 0 !important
 
-  :deep(.q-field__append)
-    height: $monitor-log-control-h !important
+.monitor-log-toolbar-field .q-field__append
+  height: $monitor-log-control-h !important
 
 .monitor-log-toolbar-field--filter
   width: 176px
@@ -1741,12 +1833,12 @@ $monitor-log-control-h: 36px
   padding: 0 12px !important
   font-size: 13px
 
-  :deep(.q-btn__content)
-    min-height: $monitor-log-control-h
-    align-items: center
+.monitor-log-toolbar-btn .q-btn__content
+  min-height: $monitor-log-control-h
+  align-items: center
 
-  :deep(.q-icon)
-    font-size: 18px
+.monitor-log-toolbar-btn .q-icon
+  font-size: 18px
 
 .monitor-log-level-toggle
   display: inline-flex

@@ -1,7 +1,7 @@
 <template>
-  <footer class="agents-pagination q-mt-md">
-    <div class="text-caption text-grey-7">{{ total }} 条</div>
-    <div class="row items-center q-gutter-sm">
+  <footer class="app-registry-pagination app-registry-pagination--card q-mt-md">
+    <div class="app-registry-pagination__summary">{{ total }} 条</div>
+    <div class="app-registry-pagination__controls row items-center no-wrap">
       <q-select
         v-model="rowsPerPage"
         dense
@@ -10,9 +10,9 @@
         map-options
         label="行"
         :options="[10, 20, 50].map((v) => ({ label: String(v), value: v }))"
-        class="rows-select"
+        class="app-registry-pagination__page-size app-glass-control"
       />
-      <span class="text-caption">第 {{ page }} / {{ pageMax }} 页</span>
+      <span class="app-registry-pagination__page-label">第 {{ page }} / {{ pageMax }} 页</span>
       <q-btn round dense flat icon="chevron_left" :disable="page <= 1" @click="decrementPage" />
       <q-btn round dense flat icon="chevron_right" :disable="page >= pageMax" @click="incrementPage" />
     </div>
@@ -36,21 +36,3 @@ function incrementPage() {
   page.value = Math.min(props.pageMax, page.value + 1);
 }
 </script>
-
-<style scoped>
-.agents-pagination {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-  padding: 12px 16px;
-  border: 1px solid rgb(15 23 42 / 8%);
-  border-radius: 18px;
-  background: rgb(255 255 255 / 78%);
-}
-
-.rows-select {
-  width: 96px;
-}
-</style>

@@ -84,11 +84,16 @@ import type { MonitorLogHub } from "../../features/monitor/useLogStreamHub";
 import type { StreamState } from "../../features/monitor/types";
 import LogLevelToggle, { type LogLevel } from "./LogLevelToggle.vue";
 
-const hub = inject<MonitorLogHub>("monitorLogHub");
-const processLogConfigured = inject<Ref<boolean>>("processLogConfigured");
-if (!hub) {
+const _hub = inject<MonitorLogHub>("monitorLogHub");
+const _processLogConfigured = inject<Ref<boolean>>("processLogConfigured");
+if (!_hub) {
   throw new Error("ProcessLogStream requires monitorLogHub");
 }
+if (!_processLogConfigured) {
+  throw new Error("ProcessLogStream requires processLogConfigured");
+}
+const hub: MonitorLogHub = _hub;
+const processLogConfigured: Ref<boolean> = _processLogConfigured;
 
 const keyword = ref("");
 const sourceFilter = ref<string | null>(null);

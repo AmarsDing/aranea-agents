@@ -62,13 +62,3 @@ const {
   resetFilters
 } = useToolAuditsPage();
 </script>
-
-<style scoped lang="scss">
-.tool-runs-page {
-  padding: 1.25rem 1.5rem 2rem;
-}
-
-.tool-runs-outline-btn {
-  border-color: rgba(var(--q-primary-rgb), 0.35);
-}
-</style>

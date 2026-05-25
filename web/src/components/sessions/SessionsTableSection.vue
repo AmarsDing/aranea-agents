@@ -3,7 +3,7 @@
   <q-table
     flat
     dense
-    class="app-registry-table"
+    class="app-registry-table app-registry-table--sessions"
     row-key="id"
     :rows="rows"
     :columns="tableColumns"
@@ -42,12 +42,12 @@
     <template #body-cell-owner="props">
       <q-td :props="props">
         <q-chip dense :color="ownerChipColor(props.row.owner_type)" text-color="white">{{ ownerLabel(props.row.owner_type) }}</q-chip>
-        <div class="app-registry-cell-sub">{{ props.row.owner_type === "team" ? props.row.team_id : props.row.agent_id }}</div>
+        <div class="app-registry-cell-sub ellipsis">{{ props.row.owner_type === "team" ? props.row.team_id : props.row.agent_id }}</div>
       </q-td>
     </template>
 
     <template #body-cell-context="props">
-      <q-td :props="props" style="min-width: 160px">
+      <q-td :props="props">
         <q-linear-progress
           rounded
           size="10px"

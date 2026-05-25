@@ -1038,3 +1038,38 @@ body.body--dark .chat-pending-item__meta
 .chat-pending-item__edit-confirm,
 .chat-pending-item__edit-cancel
   margin-top: 4px
+
+// Turn 工具条 / 状态增量 / Team 成员条
+.turn-tool-strip
+  margin: 6px 0 8px
+  border-radius: 10px
+  background: var(--app-glass-soft, color-mix(in srgb, var(--glass-surface) 55%, transparent))
+  border: 1px solid var(--app-border-subtle, color-mix(in srgb, var(--glass-border) 72%, transparent))
+
+.turn-tool-strip__summary
+  cursor: pointer
+  list-style: none
+  display: flex
+  align-items: center
+  gap: 6px
+  padding: 8px 12px
+  font-size: 12px
+  color: var(--app-text-secondary, var(--color-text-secondary))
+
+.turn-tool-strip__summary::-webkit-details-marker
+  display: none
+
+.turn-tool-strip__details
+  padding: 0 8px 8px
+
+.state-delta-indicator__path
+  font-size: 12px
+  color: var(--color-text-secondary)
+
+.state-delta-indicator__value
+  max-width: 240px
+  color: var(--color-text-secondary)
+
+.team-member-strip
+  flex-wrap: wrap
+  align-items: center

@@ -2,7 +2,7 @@
 
 > **场景代号**：`daily_stock_analysis`
 > **场景定位**：基于 Aranea-Agents 多智能体编排平台构建的**开源每日股票分析助手**。
-> **文档版本**：v1.0（2026-05-18 初版）
+> **文档版本**：v1.1（2026-05-25；补充 Postgres 存储、实时性分级、多 Agent 数据协作）
 > **相关文档**：[设计文档](./daily-stock-analysis.design.md) · [开发计划](./daily-stock-analysis-development.md) · [场景索引](./README.md)
 > **依赖平台模块**：Agent / Team / Graph / Tools / Skill / Knowledge / Cron / Channel / Artifact / Memory / Session / Plugin / Evaluation
 
@@ -37,7 +37,7 @@
 
 | 维度 | 价值点 |
 |------|--------|
-| **开源与自托管** | 用户数据、API 密钥、分析结果全部留在本地 SQLite/PG，避免上传敏感持仓 |
+| **开源与自托管** | 用户数据、API 密钥、分析结果全部留在本地 **PostgreSQL**（场景业务表）+ 平台 SQLite（Agent/Session 等）+ 本地 Artifact，避免上传敏感持仓 |
 | **多智能体协作** | 不同于单一 LLM 「全知全能」，本场景将分析任务拆分到 8~12 个专业角色 Agent，每个 Agent 拥有独立 system_prompt、工具集与知识库白名单，可独立评估和迭代 |
 | **可观测可追溯** | 复用平台的 Team Run / Step / Tool Invocation / Memory L0~L3 / Telemetry，每一次分析都可回放、可审计、可评估 |
 | **国内数据源原生支持** | 通过新增 Tool 接入 AKShare / Tushare / efinance / baostock 等开源数据源，无需付费 API |
@@ -50,6 +50,50 @@
 - ❌ 不做**美股期权 / 加密货币 / 商品期货**（首版聚焦 A 股 + 港股 + 美股股票现货）
 - ❌ 不实现**自动调仓 / 券商接口**（开源版本不附带任何交易通道）
 - ❌ 不替代专业 Bloomberg / Wind / Choice 终端
+
+### 1.5 实时性分级（已确认）
+
+本场景**不提供**交易所 Tick / WebSocket 级高频推送；「实时」指**准实时轮询**，由 Tool 在运行时拉取，再经 Agent 编排传递。
+
+| 层级 | 能力 | 典型延迟 | 典型用途 |
+|------|------|----------|----------|
+| L0 Tick / 交易所推送 | **不在范围** | ms~s | 程序化交易、盘口 |
+| L1 准实时报价 | `stock_quote_realtime` | **1–3 min**（数据源 + 限频） | 盘前简报、自选列表展示 |
+| L2 分钟线 | `stock_quote_intraday` | 1–5 min 级 | 盘中形态、异动 |
+| L3 日线 / 历史 | `stock_quote_history` | 可缓存（当日 TTL） | 深度分析、复盘 |
+| L4 定时批处理 | Cron + Team Run | 单次全流程 **≤5 min**（盘前 20 只自选） | 盘前/盘后报告 |
+
+**用户可见说明**：Web 自选页展示价格时，须标注「数据延迟约 1–3 分钟，仅供参考」；报告中须标注 `data_cutoff_at`（数据截止时间）。
+
+**端到端延迟**：单次「个股深度分析」除行情 API 外，瓶颈通常在 **多 Agent LLM 推理 + 多轮 AgentTool**（常见 2–8 min），非行情接口本身。
+
+### 1.6 多 Agent 市场数据协作（已确认）
+
+用户期望：**Tools 获取市场信息 → 喂给当前 AI → 再传递给其他 AI**。平台支持该模式，但**不是** Agent 间直连行情广播，而是以下三层通路：
+
+```
+行情源 → stock_* Tool → JSON（tool_result）
+         ↓
+      当前 Agent 的 LLM 上下文
+         ↓
+      该 Agent 输出（文本/JSON，成员 Agent 默认 ≤800 token）
+         ↓
+   Coordinator（AgentTool 返回值）或 Graph state_schema
+         ↓
+      下一 Agent 的 prompt（任务描述 + 上游摘要/状态字段）
+```
+
+| 编排模式 | 数据如何跨 Agent 传递 | 适用场景 | 实时数据重复拉取风险 |
+|----------|----------------------|----------|----------------------|
+| **Coordinator + AgentTool** | 主控依次调用成员；成员自行调 Tool；结果以 AgentTool 返回值回传主控 | 盘前简报 `team_premarket_brief` | 较高（各成员可能重复调 `stock_quote_*`） |
+| **Graph（推荐深度分析）** | Tool 节点写入 `state`；并行 Agent 经 `input_mapper` 共读；`report_writer` 读聚合 state | 个股深度 `team_stock_deep_dive` | 较低（`fetch_quote` 一次，fan_out 共享） |
+| **Parallel + Synthesizer** | 各 Agent 并行、互不可见；仅 synthesizer 合并 | 持仓诊断 `team_portfolio_doctor` | 中等 |
+
+**需求约束**：
+
+- 成员 Agent 默认 `history_scope=isolated`，**不**共享彼此完整对话，由主控或 Graph 状态传递结构化结论。
+- 每条分析结论须能追溯到 **Tool Invocation**（`tool_refs_json` / `data_ref`）。
+- MVP 验收：`team_stock_deep_dive` 须覆盖技术、基本面、资金、消息、风险至少五维；数据经 Tool 或 Graph state 注入，禁止无工具结果的臆断。
 
 ---
 
@@ -194,9 +238,9 @@
 
 #### 4.1.2 缓存策略
 
-- 行情历史数据：默认缓存到 SQLite（key=`{symbol}_{period}_{adjust}_{date}`，TTL 当日）
-- 财报数据：缓存 24 小时（除非新公告触发）
-- 实时数据：不缓存
+- 行情历史数据：默认缓存到 **PostgreSQL `stockx.quote_cache`**（key=`{symbol}|{market}|{period}|{adjust}|{date_range}`，TTL 当日，可配置 `STOCK_SCENARIO_CACHE_TTL_QUOTE`）
+- 财报数据：缓存 24 小时（`stockx` 侧或 Tool 内存，除非新公告触发）
+- **准实时报价**（`stock_quote_realtime`）：**不缓存**；Web 自选页可由 StockxService 批量拉取后短 TTL（≤60s）写入 `quote_cache` 仅供展示，须标注延迟
 - 缓存命中应通过 Tool Invocation 的 `cache_hit` 字段可观测
 
 ### 4.2 Skill 包
@@ -309,18 +353,30 @@
 
 ## 5. 数据需求
 
-### 5.1 新增数据表（建议）
+### 5.0 存储架构（已确认：PostgreSQL）
+
+| 数据类别 | 存储 | 说明 |
+|----------|------|------|
+| 平台 CRUD（Agent / Team / Session / Cron 等） | **SQLite**（Ent，沿用平台） | 不修改平台 `data.go` 主路径；`seed-stockx-org` 仍写 SQLite |
+| 场景业务表（watchlist / report / cache / meta） | **PostgreSQL `stockx` schema** | 复用 `configs/config.yaml` 中 `data.postgres` 连接；raw SQL Repo（对齐 Knowledge 模块） |
+| 向量知识库（公司库 / 行业链） | **PostgreSQL + pgvector** | 与平台 Knowledge 共用实例 |
+| 报告正文 | **Artifact**（平台） | `stockx.report` 仅存索引与 `artifact_id` |
+| 全平台 Ent 迁 PG | **非本场景范围** | 若需 Session/Agent 也迁 PG，单独立项 |
+
+**配置要求**：部署须配置 `data.postgres.source`；场景安装前执行 `migrations/stockx/*.sql`（见设计文档 §3）。
+
+### 5.1 新增数据表（PostgreSQL `stockx` schema）
 
 | 表 | 字段（核心） | 说明 |
 |----|--------------|------|
-| `stock_watchlist` | `id, user_id, symbol, market, group_name, note, created_at` | 用户自选股 |
-| `stock_holdings` | `id, user_id, symbol, market, shares, cost_price, note, created_at`（可选） | 持仓 |
-| `stock_meta` | `symbol, market, name, industry, concepts_json, list_date, updated_at` | 上市公司元数据（缓存） |
-| `stock_quote_cache` | `symbol, market, period, date, data_json, created_at` | 行情缓存 |
-| `stock_news_cache` | `id, symbol, title, source, url, published_at, content_summary, created_at` | 新闻缓存 |
-| `stock_report` | `id, user_id, team_id, session_id, symbol, report_type, content_md, artifact_id, created_at` | 报告索引（便于按股票/日期检索） |
+| `stockx.watchlist` | `id, user_id, symbol, market, group_name, note, sort_order, created_at` | 用户自选股 |
+| `stockx.holdings` | `id, user_id, symbol, market, shares, cost_price, note, created_at`（可选） | 持仓 |
+| `stockx.stock_meta` | `symbol, market, name, industry, concepts_json, list_date, updated_at` | 上市公司元数据（缓存） |
+| `stockx.quote_cache` | `cache_key, symbol, market, period, data_json, provider, expires_at` | 行情历史缓存；展示层短 TTL 可选 |
+| `stockx.news_cache` | `id, symbol, title, source, url, published_at, content_summary, expires_at` | 新闻缓存 |
+| `stockx.report` | `id, user_id, team_id, session_id, symbol, report_type, title, summary_md, artifact_id, data_cutoff_at, tool_refs_json, created_at` | 报告索引 |
 
-> **沿用平台已有表**：`sessions` / `messages` / `team_runs` / `team_run_steps` / `tool_invocations` / `cron_tasks` / `cron_task_runs` / `artifacts` / `usages` / `platform_channels`。
+> **沿用平台已有表**（SQLite）：`sessions` / `messages` / `team_runs` / `team_run_steps` / `tool_invocations` / `cron_tasks` / `cron_task_runs` / `artifacts` / `usages` / `platform_channels`。
 
 ### 5.2 数据源接入清单（前置依赖）
 
@@ -341,13 +397,14 @@
 
 ### 6.1 性能
 
-| 场景 | 指标 |
-|------|------|
-| 盘前简报（20 只自选股） | 端到端 ≤ 5 min |
-| 单股深度分析 | 端到端 ≤ 90 s |
-| 行业扫描 | 端到端 ≤ 3 min |
-| 单次 Tool 调用 | P95 ≤ 5 s（含缓存命中） |
-| Web 加载 | 首屏 ≤ 2 s |
+| 场景 | 指标 | 备注 |
+|------|------|------|
+| 盘前简报（20 只自选股） | 端到端 ≤ 5 min | Coordinator 串行 AgentTool |
+| 单股深度分析 | 端到端 ≤ 90 s（目标）；**可接受 ≤ 8 min**（多 Agent + 五维并行） | Graph 模式优先；超 90s 须在 UI 标注「分析中」 |
+| 行业扫描 | 端到端 ≤ 3 min | |
+| 单次 Tool 调用 | P95 ≤ 5 s（含缓存命中） | `stock_quote_realtime` 除外（受三方限频） |
+| 自选页报价刷新 | 前端轮询 **30–60 s** | 非 SSE 交易所推送 |
+| Web 加载 | 首屏 ≤ 2 s | |
 
 ### 6.2 可靠性
 
@@ -441,6 +498,8 @@
 | 第三方数据 TOS | 商业部署违规 | 文档中明示用户需自行确认；默认仅免费数据源 |
 | Cron 节假日 | 盘前简报在节假日发出 | 节假日跳过 Skill；通过 Telemetry 监控未触发是否符合预期 |
 | 中文金融术语翻译 | 模型理解偏差 | 通过 Knowledge 注入术语表；评估集覆盖术语翻译 |
+| 准实时误解为 Tick | 用户按秒级行情决策 | UI/报告强制标注延迟与 `data_cutoff_at`；文档明确 L0 不在范围 |
+| Coordinator 重复拉行情 | 限频 / 超时 | 深度分析优先 Graph；盘前简报合并 data_collector 一次拉取 |
 
 ---
 
@@ -450,7 +509,7 @@
 |----------|--------------|------|------|
 | Agent (M2) | ★★★★★ | 注册 10+ 角色 Agent | 复用 LLMAgent.New 装配 |
 | Team (M3) | ★★★★★ | 5+ Team（coordinator / sequential / parallel / critic_loop / graph） | 必须 |
-| Graph (M4) | ★★★★☆ | 场景 2.6 与 2.2 进阶版 | 依赖 Graph 执行引擎 ✅ |
+| Graph (M4) | ★★★★★ | 场景 2.2 个股深度（**Graph 优先**）；2.6 自定义流水线 | Graph 执行引擎 ✅；MVP 可先用 coordinator 降级 |
 | Session (M5) | ★★★★★ | 每次分析一个 session | 复用 |
 | Memory (M6) | ★★★☆☆ | Watchlist / 用户偏好（L4） + 追问上下文（L0~L2） | L4 进化记忆有依赖 |
 | Tool (M7) | ★★★★★ | 新增 30+ 数据源工具 | 主要贡献 |
@@ -492,6 +551,7 @@
 
 ## 11. 文档治理
 
+- **v1.1（2026-05-25）**：确认 Postgres `stockx` 存储、实时性分级（§1.5）、多 Agent 数据协作（§1.6）；与设计和开发计划对齐
 - 本文档为「需求规格」，被代码反超时**只追加现状对齐注解**，不重写历史结论
 - 实现细节、表 DDL、Proto 定义、Wire 连线 → 见 [设计文档](./daily-stock-analysis.design.md)
 - 任务进度、里程碑、阶段目标 → 见 [开发计划](./daily-stock-analysis-development.md)

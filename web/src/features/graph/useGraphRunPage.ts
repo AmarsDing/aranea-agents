@@ -35,6 +35,7 @@ export function useGraphRunPage() {
     interruptBefore: [],
     interruptAfter: [],
     metadata: {},
+    version: 0,
     createdAt: "",
     updatedAt: "",
   });
@@ -45,7 +46,7 @@ export function useGraphRunPage() {
   const stream = useGraphRunStream(graphId, execId, execution);
   const timeTravel = useGraphTimeTravel(execId);
 
-  const tasks = useGraphRunTasks(execId, stream.seedTasks, stream.upsertTask);
+  const tasks = useGraphRunTasks(() => execId.value, stream.seedTasks, stream.upsertTask);
 
   const displayStatus = computed(() => stream.liveStatus.value);
 

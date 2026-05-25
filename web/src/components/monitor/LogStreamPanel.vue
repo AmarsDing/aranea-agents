@@ -22,27 +22,3 @@ import ProcessLogStream from "./ProcessLogStream.vue";
 
 const { subTab } = useMonitorLogStreamPanel();
 </script>
-
-<style scoped lang="sass">
-.monitor-log-stream-panel
-  display: flex
-  flex-direction: column
-  flex: 1
-  min-height: 0
-  height: 100%
-
-.monitor-log-stream-tabs
-  flex: 0 0 auto
-
-.monitor-log-stream-panels
-  flex: 1
-  min-height: 0
-  display: flex
-  flex-direction: column
-
-.monitor-log-stream-panels :deep(.q-tab-panel)
-  flex: 1
-  min-height: 0
-  display: flex
-  flex-direction: column
-</style>

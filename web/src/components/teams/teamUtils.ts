@@ -3,7 +3,18 @@
  * 类型来自 `features/teams/api`（仅 type import）。
  */
 import type { Agent } from "../../features/agents/types";
+import { findCategoryPath } from "../../features/platform/categoryTreeUtils";
+import type { PlatformResourceTreeNode } from "../../features/platform/types";
 import type { Team, TeamDefinition, TeamDefinitionGraphNode } from "../../features/teams/types";
+
+export type TeamIndustryGroup = {
+  id: string;
+  label: string;
+  sortOrder: number;
+  teams: Team[];
+};
+
+const UNCategorizedIndustryId = "__uncategorized__";
 
 export const modeOptions = [
   { label: "顺序 sequential", value: "sequential" },
@@ -356,4 +367,113 @@ function graphEndX(mode: string, total: number) {
 export function formatDate(value: string) {
   if (!value) return "-";
   return new Date(value).toLocaleString();
+}
+
+function teamDefinitionExtras(team: Team) {
+  try {
+    return JSON.parse(team.definition_json || "{}") as {
+      category?: string;
+      group?: string;
+      industry_id?: string;
+    };
+  } catch {
+    return {};
+  }
+}
+
+/** 根据成员 Agent 所属行业投票；无成员时回退 definition 中的 category / industry_id。 */
+export function inferTeamIndustryId(team: Team, agents: Agent[], categoryTree: PlatformResourceTreeNode[]): string {
+  const extras = teamDefinitionExtras(team);
+  if (extras.industry_id && findIndustryNode(categoryTree, extras.industry_id)) {
+    return extras.industry_id;
+  }
+
+  const industries = categoryTree.filter((node) => node.level === "industry");
+  const matchByName = (name?: string) => {
+    const q = String(name || "").trim();
+    if (!q) return "";
+    return industries.find((node) => node.name === q)?.id ?? "";
+  };
+  const named = matchByName(extras.category) || matchByName(extras.group);
+  if (named) return named;
+
+  const def = parseDefinition(team);
+  const counts = new Map<string, number>();
+  for (const member of def.members.filter((row) => row.enabled !== false)) {
+    const agent = agents.find((row) => row.id === member.agent_id);
+    if (!agent?.category_position_id) continue;
+    const industry = findCategoryPath(categoryTree, agent.category_position_id).find((node) => node.level === "industry");
+    if (!industry) continue;
+    counts.set(industry.id, (counts.get(industry.id) ?? 0) + 1);
+  }
+  if (counts.size === 0) return UNCategorizedIndustryId;
+
+  let bestId = UNCategorizedIndustryId;
+  let bestCount = 0;
+  for (const [id, count] of counts) {
+    if (count > bestCount) {
+      bestId = id;
+      bestCount = count;
+    }
+  }
+  return bestId;
+}
+
+function findIndustryNode(categoryTree: PlatformResourceTreeNode[], industryId: string) {
+  return categoryTree.find((node) => node.level === "industry" && node.id === industryId) ?? null;
+}
+
+export function industryOptionsFromTree(categoryTree: PlatformResourceTreeNode[]) {
+  return categoryTree
+    .filter((node) => node.level === "industry")
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name, "zh-CN"))
+    .map((node) => ({
+      label: node.enabled ? node.name : `${node.name}（已停用）`,
+      value: node.id
+    }));
+}
+
+export function groupTeamsByIndustry(
+  teams: Team[],
+  agents: Agent[],
+  categoryTree: PlatformResourceTreeNode[],
+  industryFilter = ""
+): TeamIndustryGroup[] {
+  const industries = categoryTree.filter((node) => node.level === "industry");
+  const buckets = new Map<string, Team[]>();
+  buckets.set(UNCategorizedIndustryId, []);
+  for (const industry of industries) buckets.set(industry.id, []);
+
+  for (const team of teams) {
+    const industryId = inferTeamIndustryId(team, agents, categoryTree);
+    if (!buckets.has(industryId)) buckets.set(industryId, []);
+    buckets.get(industryId)!.push(team);
+  }
+
+  const groups: TeamIndustryGroup[] = industries
+    .map((industry) => ({
+      id: industry.id,
+      label: industry.enabled ? industry.name : `${industry.name}（已停用）`,
+      sortOrder: industry.sort_order ?? 0,
+      teams: buckets.get(industry.id) ?? []
+    }))
+    .filter((group) => group.teams.length > 0);
+
+  let uncategorized = buckets.get(UNCategorizedIndustryId) ?? [];
+  const assigned = new Set(groups.flatMap((group) => group.teams.map((team) => team.id)));
+  for (const team of teams) {
+    if (!assigned.has(team.id)) uncategorized.push(team);
+  }
+  if (uncategorized.length > 0) {
+    groups.push({
+      id: UNCategorizedIndustryId,
+      label: "未分类",
+      sortOrder: 9999,
+      teams: uncategorized
+    });
+  }
+
+  groups.sort((a, b) => a.sortOrder - b.sortOrder || a.label.localeCompare(b.label, "zh-CN"));
+  if (!industryFilter) return groups;
+  return groups.filter((group) => group.id === industryFilter);
 }

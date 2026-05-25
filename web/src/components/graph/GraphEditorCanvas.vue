@@ -216,8 +216,27 @@ function buildEdges(): Edge[] {
   return edges;
 }
 
+function execNodeStatesFingerprint(
+  map: Map<string, { status: string; fineStatus?: string; inputPreview?: string; outputPreview?: string; currentActivity?: string }>,
+): string {
+  if (map.size === 0) return "";
+  return [...map.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([id, st]) => `${id}:${st.status}:${st.fineStatus ?? ""}:${st.currentActivity ?? ""}`)
+    .join("|");
+}
+
 watch(
-  () => [props.graphDef.nodes, props.graphDef.edges, props.graphDef.conditionalEdges, resolvedExecNodeStates.value, props.selectedNodeId],
+  () => ({
+    nodeIds: props.graphDef.nodes.map((n) => n.id).join("\0"),
+    edgeSig: props.graphDef.edges.map((e) => `${e.from}->${e.to}:${e.kind ?? ""}`).join("\0"),
+    condSig: props.graphDef.conditionalEdges
+      .map((ce) => `${ce.from}:${Object.keys(ce.pathMap ?? {}).sort().join(",")}`)
+      .join("\0"),
+    selectedNodeId: props.selectedNodeId,
+    execFp: execNodeStatesFingerprint(resolvedExecNodeStates.value),
+    layoutSig: JSON.stringify(readGraphLayout(props.graphDef)),
+  }),
   () => {
     syncingFromProp = true;
     internalNodes.value = buildNodes();
@@ -226,7 +245,7 @@ watch(
       syncingFromProp = false;
     });
   },
-  { immediate: true, deep: true }
+  { immediate: true },
 );
 
 watch(
@@ -393,11 +412,3 @@ function onNodeDragStop({ node }: { node: Node }) {
   emit("updateGraph");
 }
 </script>
-
-<style scoped>
-.graph-editor-canvas {
-  flex: 1;
-  height: 100%;
-  min-width: 0;
-}
-</style>

@@ -154,11 +154,3 @@ const {
   openDetail
 } = usePluginRunsPage();
 </script>
-
-<style scoped lang="sass">
-.plugin-run-detail
-  margin: 0
-  white-space: pre-wrap
-  overflow-wrap: anywhere
-  font-size: var(--text-xs)
-</style>

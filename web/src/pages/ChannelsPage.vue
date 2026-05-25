@@ -10,7 +10,7 @@
           rounded
           no-caps
           unelevated
-          class="channel-primary-btn"
+          class="app-accent-btn"
           icon="add"
           :label="t('channelsPage.add')"
           @click="openCreate"
@@ -19,7 +19,7 @@
           outline
           rounded
           no-caps
-          class="channel-outline-btn"
+          class="app-outline-btn"
           icon="refresh"
           :label="t('channelsPage.refresh')"
           :loading="loading"
@@ -42,7 +42,7 @@
       @refresh="loadAll"
     />
 
-    <q-banner v-if="error" rounded class="channels-error-banner q-mb-md">
+    <q-banner v-if="error" rounded class="app-page-error-banner q-mb-md">
       {{ error }}
       <template #action>
         <q-btn flat dense :label="t('channelsPage.retry')" class="text-white" @click="loadAll" />
@@ -107,32 +107,3 @@ const {
   confirmDelete
 } = useChannelsPage();
 </script>
-
-<style scoped lang="sass">
-.channels-page
-  padding: 24px
-
-.channels-error-banner
-  background: rgba(229, 92, 92, 0.92)
-  color: var(--color-on-accent)
-  border: 1px solid rgba(255, 255, 255, 0.25)
-
-body.body--dark .channels-error-banner
-  background: rgba(255, 94, 122, 0.22)
-  color: var(--color-text-primary)
-  border-color: rgba(255, 255, 255, 0.12)
-
-.channel-primary-btn
-  background: var(--color-accent)
-  color: var(--color-on-accent)
-
-body:not(.body--dark) .channel-primary-btn:hover
-  background: var(--color-accent-hover)
-
-.channel-outline-btn
-  border-color: rgba(208, 192, 168, 0.85)
-  color: var(--color-text-primary)
-
-body:not(.body--dark) .channel-outline-btn:hover
-  background: var(--interaction-surface-hover)
-</style>

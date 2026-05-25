@@ -104,3 +104,30 @@ export const CHANNEL_LONG_TASK_PRESETS: ChannelLongTaskPreset[] = [
 export function findLongTaskPreset(id: string): ChannelLongTaskPreset | undefined {
   return CHANNEL_LONG_TASK_PRESETS.find((p) => p.id === id);
 }
+
+function configValueMatches(
+  actual: unknown,
+  expected: string | number | boolean
+): boolean {
+  if (typeof expected === "boolean") return Boolean(actual) === expected;
+  if (typeof expected === "number") {
+    const num = Number(actual);
+    return Number.isFinite(num) && num === expected;
+  }
+  return String(actual ?? "").trim() === expected;
+}
+
+/** Match saved channel config to a preset (for restoring the dropdown after reload). */
+export function inferLongTaskPresetId(
+  receiveMode: string,
+  config: Record<string, unknown>
+): ChannelLongTaskPresetId {
+  for (const preset of CHANNEL_LONG_TASK_PRESETS) {
+    if (preset.receiveMode && preset.receiveMode !== receiveMode) continue;
+    const matches = Object.entries(preset.config).every(([key, value]) =>
+      configValueMatches(config[key], value)
+    );
+    if (matches) return preset.id;
+  }
+  return "";
+}

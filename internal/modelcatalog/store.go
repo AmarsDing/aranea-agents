@@ -211,46 +211,20 @@ func (s *Store) LoadRawPretty() (string, int64, error) {
 	return string(pretty), int64(len(pretty)), nil
 }
 
-// SearchRawLines returns matching lines from pretty-printed catalog JSON (server-side filter).
-func (s *Store) SearchRawLines(q string, limit, offset int) ([]string, int, error) {
-	pretty, _, err := s.LoadRawPretty()
+// SearchCatalogBlocks searches catalog and returns pretty-printed JSON blocks.
+func (s *Store) SearchCatalogBlocks(q string, limit, offset int) ([]string, int, bool, error) {
+	cat, _, err := s.LoadCatalog()
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, false, err
 	}
-	q = strings.ToLower(strings.TrimSpace(q))
-	lines := strings.Split(pretty, "\n")
-	if q == "" {
-		total := len(lines)
-		if offset >= total {
-			return []string{}, total, nil
-		}
-		end := offset + limit
-		if limit <= 0 {
-			limit = 200
-		}
-		if end > total {
-			end = total
-		}
-		return lines[offset:end], total, nil
-	}
-	matches := make([]string, 0, 64)
-	for _, line := range lines {
-		if strings.Contains(strings.ToLower(line), q) {
-			matches = append(matches, line)
-		}
-	}
-	total := len(matches)
-	if offset >= total {
-		return []string{}, total, nil
-	}
-	if limit <= 0 {
-		limit = 200
-	}
-	end := offset + limit
-	if end > total {
-		end = total
-	}
-	return matches[offset:end], total, nil
+	blocks, total, truncated := SearchCatalogBlocks(cat, q, limit, offset)
+	return blocks, total, truncated, nil
+}
+
+// SearchRawLines is deprecated naming; returns JSON blocks in lines slice for API compat.
+func (s *Store) SearchRawLines(q string, limit, offset int) ([]string, int, error) {
+	blocks, total, _, err := s.SearchCatalogBlocks(q, limit, offset)
+	return blocks, total, err
 }
 
 func CountCatalog(cat Catalog) (providers, models int) {

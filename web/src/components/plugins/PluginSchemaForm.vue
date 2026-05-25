@@ -36,7 +36,7 @@
         dense
         outlined
         hint="每行一项"
-        @update:model-value="setArrayLines(key, $event)"
+        @update:model-value="setArrayLines(key, String($event ?? ''))"
       />
       <ModelRouterRulesEditor
         v-else-if="def.type === 'array' && key === 'rules'"
@@ -53,7 +53,7 @@
         dense
         outlined
         hint="JSON 数组"
-        @update:model-value="setJSONField(key, $event)"
+        @update:model-value="setJSONField(key, String($event ?? ''))"
       />
       <q-input
         v-else
@@ -123,10 +123,11 @@ function getValue(key: string): string | number | boolean | null {
   return v == null ? null : String(v);
 }
 
-function getInputValue(key: string): string | number | null {
+function getInputValue(key: string): string {
   const v = getValue(key);
-  if (typeof v === "boolean") return v ? 1 : 0;
-  return v;
+  if (typeof v === "boolean") return v ? "1" : "0";
+  if (v == null) return "";
+  return String(v);
 }
 
 function setValue(key: string, val: unknown) {

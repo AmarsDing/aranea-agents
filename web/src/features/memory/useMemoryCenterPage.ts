@@ -424,6 +424,7 @@ export function useMemoryCenterPage() {
     rejectCascade,
     resetFactFilters,
     openSnapshot,
-    openFact
+    openFact,
+    loadEvolution
   };
 }

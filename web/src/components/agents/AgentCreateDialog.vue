@@ -63,9 +63,14 @@
                 :error="Boolean(agentKeyError)"
                 :error-message="agentKeyError"
               />
-              <q-select v-model="categoryIndustry" class="agent-dialog-control" dense outlined clearable emit-value map-options label="行业" :options="industryOptions" />
-              <q-select v-model="categoryDepartment" class="agent-dialog-control" dense outlined clearable emit-value map-options label="部门" :options="departmentOptions" :disable="!categoryIndustry" />
-              <q-select v-model="form.category_position_id" class="agent-dialog-control" dense outlined clearable emit-value map-options label="职位" :options="positionOptions" :disable="!categoryDepartment" />
+              <agent-category-picker
+                :model-value="form.category_position_id || null"
+                class="app-field-long"
+                :tree="categoryTree"
+                label="业务分类"
+                placeholder="选择行业 / 部门 / 职位"
+                @update:model-value="onCategoryPick"
+              />
               <template v-if="isA2AProxy">
                 <q-input
                   v-model.trim="a2aProxy.remote_url"
@@ -164,8 +169,10 @@ import { computed, ref } from "vue";
 import { useQuasar } from "quasar";
 import AgentAvatarPicker from "../avatar/AgentAvatarPicker.vue";
 import AgentAvatarQ from "../avatar/AgentAvatarQ.vue";
+import AgentCategoryPicker from "./AgentCategoryPicker.vue";
 import { descriptionTemplates } from "./agentUi";
-import type { AgentKind, A2AProxyConfig } from "../../features/agents/types";
+import type { AgentKind, AgentTemplatePreset, A2AProxyConfig } from "../../features/agents/types";
+import type { PlatformResourceTreeNode } from "../../features/platform/types";
 
 type CreateForm = {
   agent_key: string;
@@ -184,11 +191,7 @@ const props = defineProps<{
   isA2AProxy: boolean;
   selfEvolve: boolean;
   agentKind: AgentKind;
-  categoryIndustry: string | null;
-  categoryDepartment: string | null;
-  industryOptions: Array<{ label: string; value: string }>;
-  departmentOptions: Array<{ label: string; value: string }>;
-  positionOptions: Array<{ label: string; value: string }>;
+  categoryTree: PlatformResourceTreeNode[];
   providerOptions: Array<{ label: string; value: string }>;
   modelOptions: Array<{ label: string; value: string }>;
   selectedTemplateKey: string;
@@ -200,19 +203,17 @@ const props = defineProps<{
   canCreate: boolean;
   creating: boolean;
   checkingModel: boolean;
-  templates?: typeof descriptionTemplates;
+  templates?: AgentTemplatePreset[];
 }>();
 
-const templates = computed(() => props.templates ?? descriptionTemplates);
+const templates = computed<AgentTemplatePreset[]>(() => props.templates ?? descriptionTemplates.map((t) => ({ ...t, description: t.text ?? "" })));
 
 const emit = defineEmits<{
   "update:modelValue": [value: boolean];
   "update:selfEvolve": [value: boolean];
   "update:agentKind": [value: AgentKind];
   "update:a2aProxy": [value: A2AProxyConfig];
-  "update:categoryIndustry": [value: string | null];
-  "update:categoryDepartment": [value: string | null];
-  "apply-template": [template: (typeof descriptionTemplates)[number]];
+  "apply-template": [template: AgentTemplatePreset];
   "check-model": [];
   create: [];
 }>();
@@ -229,15 +230,9 @@ const selfEvolveModel = computed({
   set: (value: boolean) => emit("update:selfEvolve", value)
 });
 
-const categoryIndustry = computed({
-  get: () => props.categoryIndustry,
-  set: (value: string | null) => emit("update:categoryIndustry", value)
-});
-
-const categoryDepartment = computed({
-  get: () => props.categoryDepartment,
-  set: (value: string | null) => emit("update:categoryDepartment", value)
-});
+function onCategoryPick(value: string | null) {
+  props.form.category_position_id = value ?? "";
+}
 
 const avatarPickerOpen = ref(false);
 
@@ -251,162 +246,3 @@ const agentKindModel = computed({
   set: (value: AgentKind) => emit("update:agentKind", value)
 });
 </script>
-
-<style scoped>
-.create-agent-card {
-  overflow: hidden;
-}
-
-.create-agent-card__toolbar {
-  padding: 22px 26px;
-  background: var(--glass-elevated);
-  border-bottom: 1px solid var(--glass-border);
-}
-
-.create-agent-card__body {
-  padding: 22px 24px 18px;
-}
-
-.create-agent-layout {
-  padding-top: 4px;
-}
-
-.avatar-column {
-  width: 190px;
-  padding: 18px 16px;
-  border: 1px solid var(--glass-border);
-  border-radius: 24px;
-  background: var(--glass-surface);
-  backdrop-filter: blur(var(--glass-blur-default));
-  -webkit-backdrop-filter: blur(var(--glass-blur-default));
-}
-
-.avatar-picker-hit {
-  display: inline-block;
-  line-height: 0;
-}
-
-.avatar-picker {
-  border: 4px solid var(--color-on-accent);
-  box-shadow: 0 18px 40px rgb(25 118 210 / 24%);
-  transition:
-    transform 180ms ease,
-    box-shadow 180ms ease;
-}
-
-.avatar-picker:hover {
-  transform: translateY(-2px) scale(1.01);
-  box-shadow: 0 22px 50px rgb(25 118 210 / 30%);
-}
-
-.avatar-change-btn {
-  width: 100%;
-  min-height: 38px;
-  font-weight: 700;
-}
-
-.avatar-column__hint {
-  margin-top: 10px;
-  color: var(--color-text-tertiary);
-  font-size: 12px;
-  line-height: 1.55;
-  text-align: center;
-}
-
-.form-panel {
-  padding: 2px 0 0;
-}
-
-.agent-dialog-control :deep(.q-field__control) {
-  min-height: 44px;
-  border-radius: 16px;
-  background: var(--color-on-accent);
-}
-
-.agent-dialog-control :deep(.q-field__control::before) {
-  border-color: rgb(15 23 42 / 14%);
-}
-
-.agent-dialog-control :deep(.q-field__control::after) {
-  border-width: 1px;
-}
-
-.agent-dialog-control :deep(textarea) {
-  min-height: 132px;
-  color: var(--color-text-heading);
-  line-height: 1.65;
-}
-
-.model-check-btn {
-  min-height: 44px;
-  font-weight: 700;
-}
-
-.description-block {
-  margin-top: 20px;
-  padding: 18px 18px 14px;
-  border: 1px solid rgb(15 23 42 / 8%);
-  border-radius: 24px;
-  background:
-    linear-gradient(180deg, var(--color-on-accent), var(--color-page-tint)),
-    radial-gradient(circle at top left, rgb(25 118 210 / 5%), transparent 35%);
-  box-shadow: 0 12px 30px rgb(16 24 40 / 3.5%);
-}
-
-.description-block :deep(.q-chip) {
-  font-weight: 700;
-  background: var(--color-on-accent);
-  transition:
-    background 160ms ease,
-    border-color 160ms ease,
-    transform 160ms ease;
-}
-
-.description-block :deep(.q-chip:hover) {
-  transform: translateY(-1px);
-  background: var(--color-info-soft);
-}
-
-.template-chip--active {
-  border-color: rgb(245 158 11 / 36%);
-  background: var(--color-status-warning-bg-alt);
-  color: var(--color-status-warning-text);
-}
-
-.self-evolve-card {
-  margin-top: 18px;
-  border-color: rgb(245 158 11 / 18%);
-  border-radius: 22px;
-  background: linear-gradient(135deg, var(--color-status-warning-bg-warm), var(--color-page-tint-blue));
-  box-shadow: 0 12px 30px rgb(16 24 40 / 3.5%);
-}
-
-.create-agent-card__actions {
-  padding: 14px 22px 20px;
-}
-
-.create-agent-card__actions :deep(.q-btn) {
-  min-height: 40px;
-  padding: 0 18px;
-  font-weight: 700;
-}
-
-.create-agent-card.create-agent-card--dark .create-agent-card__toolbar {
-  background: var(--glass-elevated);
-}
-
-.create-agent-card.create-agent-card--dark .avatar-column {
-  background: var(--glass-surface);
-  border-color: var(--glass-border);
-}
-
-.create-agent-card.create-agent-card--dark .agent-dialog-control :deep(.q-field__control) {
-  background: color-mix(in srgb, var(--glass-surface) 88%, transparent);
-}
-
-@media (width <= 767px) {
-  .avatar-column {
-    width: 100%;
-  }
-}
-</style>

@@ -10,7 +10,7 @@
       v-model:selected-provider="selectedProvider"
       v-model:view-mode="viewMode"
       :status-options="statusOptions"
-      :category-position-options="categoryPositionOptions"
+      :category-tree="categoryTree"
       :provider-options="providerOptions"
       :creator-options="creatorOptions"
     />
@@ -37,14 +37,10 @@
       v-model="createOpen"
       v-model:self-evolve="selfEvolve"
       v-model:agent-kind="agentKind"
-      v-model:category-industry="categoryIndustry"
-      v-model:category-department="categoryDepartment"
       :form="form"
       :a2a-proxy="a2aProxy"
-      :is-a2a-proxy="isA2AProxyCreate"
-      :industry-options="industryOptions"
-      :department-options="departmentOptions"
-      :position-options="positionOptions"
+      :isA2AProxy="isA2AProxyCreate"
+      :category-tree="categoryTree"
       :provider-options="providerOptions"
       :model-options="modelOptions"
       :selected-template-key="selectedTemplateKey"
@@ -125,18 +121,13 @@ const {
   a2aProxy,
   isA2AProxyCreate,
   viewMode,
-  categoryIndustry,
-  categoryDepartment,
   form,
   selectedTemplateKey,
   createTemplates,
   duplicateListedAgent,
+  categoryTree,
   providerOptions,
   modelOptions,
-  industryOptions,
-  departmentOptions,
-  positionOptions,
-  categoryPositionOptions,
   pageMax,
   tableColumns,
   agentKeyError,
@@ -158,82 +149,3 @@ const {
   categoryLabel
 } = useAgentsPage();
 </script>
-
-<style scoped>
-.agents-page {
-  min-height: 100%;
-  color: var(--color-text-primary);
-}
-
-.agents-page.is-dark {
-  color: var(--color-text-primary);
-}
-
-/* 子组件为 scoped，页级暗色主题用 :deep 命中内部类名 */
-.agents-page.is-dark :deep(.agents-kicker) {
-  border-color: var(--glass-border-hover, var(--glass-border));
-  background: var(--glass-surface);
-  backdrop-filter: blur(var(--glass-blur-default));
-  -webkit-backdrop-filter: blur(var(--glass-blur-default));
-  color: var(--color-accent);
-  box-shadow: none;
-}
-
-.agents-page.is-dark :deep(.agents-title) {
-  color: var(--color-text-primary);
-}
-
-.agents-page.is-dark :deep(.agents-subtitle),
-.agents-page.is-dark :deep(.agent-handle) {
-  color: var(--color-text-secondary);
-}
-
-.agents-page.is-dark :deep(.agents-filter-card),
-.agents-page.is-dark :deep(.empty-agent-card),
-.agents-page.is-dark :deep(.agents-table),
-.agents-page.is-dark :deep(.agents-pagination) {
-  border-color: var(--glass-border);
-  background: var(--glass-surface);
-  backdrop-filter: blur(var(--glass-blur-default));
-  -webkit-backdrop-filter: blur(var(--glass-blur-default));
-  box-shadow: none;
-}
-
-.agents-page.is-dark :deep(.agent-control .q-field__control),
-.agents-page.is-dark :deep(.rows-select .q-field__control) {
-  background: var(--glass-surface-hover);
-}
-
-.agents-page.is-dark :deep(.agent-control .q-field__control::before),
-.agents-page.is-dark :deep(.rows-select .q-field__control::before) {
-  border-color: var(--glass-border);
-}
-
-.agents-page.is-dark :deep(.view-toggle) {
-  border-color: var(--glass-border);
-  background: var(--glass-surface);
-}
-
-.agents-page.is-dark :deep(.empty-agent-card) {
-  background: var(--glass-surface);
-}
-
-.agents-page.is-dark :deep(.empty-agent-visual) {
-  border-color: var(--glass-border);
-  background: var(--glass-surface-hover);
-  box-shadow: none;
-}
-
-.agents-page.is-dark :deep(.agents-table th) {
-  background: var(--glass-surface-hover);
-  color: var(--color-text-secondary);
-}
-
-.agents-page.is-dark :deep(.agents-table td) {
-  color: var(--color-text-primary);
-}
-
-.agents-page.is-dark :deep(.agents-table tbody tr:hover) {
-  background: var(--glass-surface-hover);
-}
-</style>

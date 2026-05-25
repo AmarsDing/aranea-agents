@@ -201,23 +201,3 @@ function truncate(s: string, n: number) {
   return s.length <= n ? s : `${s.slice(0, n)}…`;
 }
 </script>
-
-<style scoped>
-.memory-graph-canvas {
-  background: var(--color-surface-soft);
-  border: 1px solid rgb(15 23 42 / 8%);
-  border-radius: 14px;
-  overflow: hidden;
-}
-
-.memory-graph-svg {
-  display: block;
-  width: 100%;
-  height: auto;
-}
-
-.memory-graph-label {
-  fill: var(--color-text-secondary);
-  font-size: 10px;
-}
-</style>

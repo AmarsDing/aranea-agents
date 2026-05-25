@@ -103,8 +103,10 @@ const props = defineProps<{
   riskOptions: { label: string; value: string }[];
 }>();
 
-function patch(p: Partial<ToolUpsertInput>) {
-  Object.assign(props.form, p);
+function patch(p: Record<string, string | number | boolean | null | undefined>) {
+  for (const [k, v] of Object.entries(p)) {
+    (props.form as Record<string, unknown>)[k] = v == null ? "" : String(v);
+  }
 }
 
 const hasConfigSchema = computed(() => {

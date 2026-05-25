@@ -1,11 +1,11 @@
 <template>
-  <div :class="['team-compile-preview', { 'is-dark': isDark }]">
-    <div class="team-compile-preview__head row items-center justify-between">
-      <div>
-        <div class="text-subtitle2">编译预览</div>
-        <div class="text-caption app-text-secondary">CompileTeamGraph 实时拓扑（后端真相源）</div>
+  <div :class="['team-compile-preview app-glass-side-panel', { 'is-dark': isDark }]">
+    <div class="team-compile-preview__head row items-center justify-between no-wrap">
+      <div class="min-width-0">
+        <div class="team-compile-preview__title">编译预览</div>
+        <div class="team-compile-preview__subtitle">CompileTeamGraph 实时拓扑</div>
       </div>
-      <q-badge v-if="compiled" rounded :color="compiled.valid ? 'positive' : 'negative'">
+      <q-badge v-if="compiled" rounded class="team-compile-preview__badge" :class="compiled.valid ? 'is-valid' : 'is-invalid'">
         {{ compiled.valid ? "通过" : "失败" }}
       </q-badge>
     </div>
@@ -23,14 +23,14 @@
           <span>{{ edge.from }}</span>
           <q-icon name="arrow_forward" size="14px" />
           <span>{{ edge.to }}</span>
-          <q-badge v-if="edge.kind" dense outline>{{ edge.kind }}</q-badge>
+          <q-badge v-if="edge.edgeKind" dense outline>{{ edge.edgeKind }}</q-badge>
         </div>
         <div class="team-compile-preview__nodes">
           <div v-for="node in compiled.nodes" :key="node.id" class="team-compile-preview__node">
             <q-icon name="smart_toy" size="16px" />
             <div class="min-width-0">
               <div class="ellipsis text-weight-medium">{{ node.description || node.agentName || node.id }}</div>
-              <div class="text-caption text-grey-7">{{ node.role || node.type }} · {{ node.id }}</div>
+              <div class="team-compile-preview__node-meta">{{ node.role || node.type }} · {{ node.id }}</div>
             </div>
           </div>
         </div>
@@ -41,7 +41,7 @@
         </div>
       </div>
     </template>
-    <div v-else class="text-caption text-grey-7 q-pa-sm">添加成员后自动编译预览</div>
+    <div v-else class="team-compile-preview__empty">添加成员后自动编译预览</div>
   </div>
 </template>
 
@@ -93,48 +93,3 @@ function scheduleRefresh() {
 
 watch(() => [props.teamId, props.definitionJson], scheduleRefresh, { immediate: true });
 </script>
-
-<style scoped>
-.team-compile-preview {
-  border: 1px solid var(--glass-border);
-  border-radius: 16px;
-  padding: 12px;
-  background: color-mix(in srgb, var(--glass-surface) 88%, transparent);
-  min-height: 280px;
-}
-
-.team-compile-preview__graph {
-  display: grid;
-  gap: 8px;
-  max-height: 360px;
-  overflow: auto;
-}
-
-.team-compile-preview__edge {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-  font-size: 11px;
-  color: var(--color-text-secondary);
-}
-
-.team-compile-preview__nodes {
-  display: grid;
-  gap: 6px;
-}
-
-.team-compile-preview__node {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 8px 10px;
-  border-radius: 12px;
-  border: 1px solid var(--glass-border);
-  background: var(--glass-elevated);
-}
-
-.min-width-0 {
-  min-width: 0;
-}
-</style>

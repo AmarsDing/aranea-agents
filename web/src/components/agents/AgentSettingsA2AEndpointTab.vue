@@ -13,7 +13,7 @@
       <q-toggle :model-value="card.enabled" color="primary" label="启用 A2A" @update:model-value="emit('update:cardEnabled', $event)" />
       <div>
         <div class="text-caption text-grey-7 q-mb-sm">Capabilities（JSON 名称列表，每行一个能力名）</div>
-        <q-input :model-value="capabilityLines" class="app-field-long" outlined type="textarea" rows="4" hint="例如 chat、summarize" @update:model-value="emit('update:capabilityLines', $event)" />
+        <q-input :model-value="capabilityLines" class="app-field-long" outlined type="textarea" rows="4" hint="例如 chat、summarize" @update:model-value="emit('update:capabilityLines', String($event ?? ''))" />
       </div>
       <div class="app-actions-bar app-actions-bar--start">
         <q-btn color="primary" rounded unelevated no-caps label="保存 AgentCard" :loading="saving" @click="emit('save')" />

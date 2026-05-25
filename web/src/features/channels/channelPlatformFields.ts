@@ -223,7 +223,7 @@ function routingFields(type: string): ChannelPlatformField[] {
   fields.push(
     { museKey: "allowed_user_ids", bind: { source: "config", key: "allowed_user_ids" }, kind: "textarea", hint: "允许发消息的用户 ID，JSON 数组或逗号分隔；留空=不限制。飞书填 open_id（ou_xxx）或 user_id" },
     { museKey: "allowed_group_ids", bind: { source: "config", key: "allowed_group_ids" }, kind: "textarea", hint: "允许响应的群 chat_id（飞书 oc_xxx），JSON 或逗号分隔；留空=不限制。单聊不受此字段约束" },
-    { museKey: "require_mention", bind: { source: "config", key: "require_mention" }, kind: "checkbox", hint: "群聊需 @ 机器人才响应（飞书/钉钉等）" }
+    { museKey: "require_mention", bind: { source: "config", key: "require_mention" }, kind: "toggle", hint: "群聊需 @ 机器人才响应（飞书/钉钉等）" }
   );
   return fields;
 }

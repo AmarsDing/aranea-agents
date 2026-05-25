@@ -9,7 +9,11 @@
     "isolatedModules": true,
     "esModuleInterop": true,
     "lib": ["ES2022", "DOM"],
-    "types": ["node", "vite/client"]
+    "skipLibCheck": true,
+    "types": ["node", "vite/client"],
+    "paths": {
+      "#q-app/wrappers": ["./node_modules/@quasar/app-vite/types/app-wrappers"]
+    }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue"]
 }

@@ -25,7 +25,7 @@
                 </q-icon>
                 <div class="text-weight-bold">{{ props.row.name }}</div>
               </div>
-              <div class="text-caption muted-caption">{{ props.row.key }}</div>
+              <div class="text-caption app-registry-muted-caption">{{ props.row.key }}</div>
             </div>
           </div>
         </q-td>
@@ -155,52 +155,3 @@ const columns: QTableColumn<ChannelRow>[] = [
   { name: "actions", label: "操作", field: "id", align: "right" }
 ];
 </script>
-
-<style scoped lang="sass">
-.muted-caption
-  color: var(--color-text-secondary)
-
-.channels-data-table :deep(thead tr th)
-  color: var(--color-text-secondary)
-
-.channel-tag
-  display: inline-block
-  margin-right: 6px
-  margin-bottom: 2px
-  padding: 2px 8px
-  border-radius: 6px
-  font-size: 11px
-  font-weight: 600
-  line-height: 1.35
-  vertical-align: middle
-
-.channel-tag--type
-  border: 1px solid color-mix(in srgb, var(--color-accent) 28%, var(--glass-border))
-  background: color-mix(in srgb, var(--color-accent) 10%, var(--glass-surface))
-  color: var(--color-text-heading)
-
-body.body--dark .channel-tag--type
-  color: var(--color-neon-cyan)
-  border-color: color-mix(in srgb, var(--color-neon-cyan) 35%, var(--glass-border))
-  background: color-mix(in srgb, var(--color-neon-cyan) 12%, var(--glass-surface))
-
-.channel-tag--mode
-  border: 1px solid var(--glass-border)
-  color: var(--color-text-secondary)
-  background: transparent
-
-.channel-icon-btn
-  color: var(--color-icon-muted)
-
-body:not(.body--dark) .channel-icon-btn:hover
-  color: var(--color-accent)
-
-body.body--dark .channel-icon-btn:hover
-  color: var(--color-neon-cyan)
-
-.channel-icon-btn--danger:hover
-  color: var(--color-danger) !important
-
-.channels-data-table :deep(.q-toggle__track)
-  opacity: 1
-</style>

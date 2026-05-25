@@ -9,7 +9,7 @@
       map-options
       outlined
       dense
-      @update:model-value="updateField('haMode', String($event ?? ''))"
+      @update:model-value="updateField('haMode', ($event ?? '') as ProviderHAForm['haMode'])"
     />
     <template v-if="modelValue.haMode">
       <q-card

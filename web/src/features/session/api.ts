@@ -15,6 +15,8 @@ import type {
   Session,
   SessionBatchScope,
   SessionListResult,
+  SessionParticipant,
+  SessionRunRecord,
   SessionSearchQuery,
   SessionTimeline,
   SessionTimelineItem,

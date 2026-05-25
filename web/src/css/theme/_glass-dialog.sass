@@ -107,6 +107,10 @@ body:not(.body--dark) .q-dialog:has(.app-glass-dialog) > .q-dialog__backdrop
   &::-webkit-scrollbar
     display: none
 
+.app-glass-dialog .q-scrollarea.app-glass-dialog__body-scroll
+  flex: 1
+  min-height: 0
+
 .app-glass-dialog__body
   background: transparent !important
 
@@ -141,3 +145,237 @@ body:not(.body--dark) .q-dialog:has(.app-glass-dialog) > .q-dialog__backdrop
 // 业务挂钩：Provider 向导滚动区沿用 dialog body 底
 .app-glass-dialog .provider-wizard-scroll
   background: var(--app-dialog-body-bg) !important
+
+// ── 全屏双栏编辑器（SkillEditorDialog 等）──
+.q-dialog .q-card.app-maximized-dialog
+  min-height: 100vh
+  max-height: none
+  border-radius: 0 !important
+  background: var(--glass-elevated) !important
+  border: none !important
+  box-shadow: var(--glass-inner-highlight)
+  backdrop-filter: blur(var(--glass-blur-elevated))
+  -webkit-backdrop-filter: blur(var(--glass-blur-elevated))
+
+body.body--dark .q-dialog .q-card.app-maximized-dialog
+  box-shadow: 0 0 32px rgba(0, 229, 255, 0.1)
+
+.app-dual-column-editor
+  display: grid
+  grid-template-columns: minmax(260px, 360px) 1fr
+  gap: 16px
+  height: calc(100vh - 82px)
+
+.app-dual-column-editor__sidebar,
+.app-dual-column-editor__main
+  overflow: auto
+
+.app-dual-column-editor__toolbar
+  position: sticky
+  top: 0
+  z-index: 2
+  border-bottom: 1px solid var(--glass-border)
+  background: var(--glass-surface-hover)
+  box-shadow: var(--glass-inner-highlight)
+  backdrop-filter: blur(var(--glass-blur-hover))
+  -webkit-backdrop-filter: blur(var(--glass-blur-hover))
+
+.app-dual-column-editor__textarea
+  min-height: calc(100vh - 190px)
+  padding: 16px
+  font-family: Consolas, "Courier New", monospace
+  font-size: 13px
+  line-height: 1.6
+  color: var(--color-text-primary)
+
+.app-dual-column-editor__textarea textarea::placeholder
+  color: var(--color-text-secondary)
+
+.app-dual-column-editor__sidebar .q-item--active
+  background: var(--interaction-surface-hover)
+
+.app-dual-column-editor__sidebar .q-separator,
+.app-dual-column-editor__main .q-separator
+  background: var(--glass-border)
+
+@media (width <= 720px)
+  .app-dual-column-editor
+    grid-template-columns: 1fr
+    height: auto
+
+  .app-dual-column-editor__sidebar,
+  .app-dual-column-editor__main
+    backdrop-filter: blur(12px)
+    -webkit-backdrop-filter: blur(12px)
+
+// Dialog 内通用控件（Cron / Tool 覆盖等小表单弹窗）
+.app-dialog-subtitle
+  color: var(--color-text-secondary)
+
+.app-dialog-sep
+  opacity: 55%
+
+.app-dialog-icon-btn
+  color: var(--color-icon-muted)
+
+  &:hover
+    color: var(--color-accent)
+
+.app-dialog-muted-btn
+  color: var(--color-text-secondary)
+
+.app-dialog-accent-btn
+  background: var(--color-accent) !important
+  color: var(--color-on-accent) !important
+
+  &:hover
+    background: var(--color-accent-hover) !important
+
+// Agent 头像选择 Dialog
+.avatar-picker-card
+  display: flex
+  flex-direction: column
+  width: min(560px, 94vw)
+  max-height: min(88vh, 720px)
+  overflow: hidden
+
+.avatar-picker-card__header
+  flex-shrink: 0
+  display: flex
+  align-items: center
+  justify-content: space-between
+  gap: 16px
+  padding: 22px 24px
+  background: var(--glass-elevated)
+  box-shadow: var(--glass-inner-highlight)
+
+.avatar-picker-card__header .text-h6
+  color: var(--color-text-primary)
+
+.avatar-tabs
+  flex-shrink: 0
+  padding: 0 16px
+  background: var(--glass-surface)
+
+.avatar-tabs .q-tab
+  font-weight: 700
+  color: var(--color-text-secondary)
+
+.avatar-tabs .q-tab--active
+  color: var(--color-text-primary)
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent)
+
+.avatar-tabs .q-tab__indicator
+  height: 3px
+  border-radius: 2px
+  background: var(--color-accent)
+
+.avatar-picker-scroll
+  flex: 1
+  min-height: 0
+  overflow-x: hidden
+  overflow-y: auto
+  padding: 16px 20px
+  scrollbar-width: none
+
+.avatar-picker-scroll::-webkit-scrollbar
+  display: none
+
+.avatar-grid
+  display: grid
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr))
+  gap: 14px
+  min-height: 188px
+
+.avatar-option
+  position: relative
+  display: grid
+  justify-items: center
+  gap: 8px
+  padding: 12px 8px
+  border: 1px solid var(--glass-border)
+  border-radius: 18px
+  background: var(--glass-elevated)
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+  box-shadow: var(--glass-inner-highlight)
+  color: var(--color-text-primary)
+  cursor: pointer
+  font: inherit
+  transition: transform 180ms ease, border-color 180ms ease, background 180ms ease
+
+.avatar-option:hover,
+.avatar-option.is-selected
+  transform: translateY(-2px)
+  border-color: var(--glass-border-hover, var(--glass-border))
+  background: var(--glass-surface-hover)
+
+.avatar-option.is-selected
+  box-shadow: var(--glass-inner-highlight), 0 0 0 1px color-mix(in srgb, var(--color-accent) 35%, transparent)
+
+.avatar-option span
+  max-width: 100%
+  overflow: hidden
+  font-size: 12px
+  font-weight: 700
+  text-overflow: ellipsis
+  white-space: nowrap
+  color: var(--color-text-secondary)
+
+.avatar-option__check
+  position: absolute
+  top: 8px
+  right: 8px
+  color: var(--color-accent)
+  background: var(--glass-surface)
+  border-radius: 999px
+
+.avatar-picker-empty-banner
+  border: 1px solid var(--glass-border)
+  background: var(--glass-elevated)
+  color: var(--color-text-primary)
+
+.avatar-upload-row
+  flex-shrink: 0
+  display: flex
+  align-items: center
+  gap: 12px
+  flex-wrap: wrap
+  background: var(--glass-surface)
+
+.avatar-upload-row .q-btn
+  min-height: 40px
+  font-weight: 700
+
+.avatar-picker-card .q-card__actions
+  flex-shrink: 0
+  padding: 14px 22px 20px
+  background: var(--glass-elevated)
+  border-top: 1px solid var(--glass-border)
+
+.avatar-picker-card .q-card__actions .q-btn
+  min-height: 40px
+  padding: 0 18px
+  font-weight: 700
+
+.avatar-picker-card .text-grey-7
+  color: var(--color-text-secondary) !important
+
+.hidden-input
+  display: none
+
+body.body--dark .avatar-picker-card
+  border-color: var(--glass-border)
+  background: var(--glass-surface)
+
+body.body--dark .avatar-picker-card__header
+  background: var(--glass-elevated)
+
+body.body--dark .avatar-tabs .q-tab--active
+  background: color-mix(in srgb, var(--color-accent) 22%, transparent)
+
+body.body--dark .avatar-option.is-selected
+  box-shadow: var(--glass-inner-highlight), 0 0 0 1px color-mix(in srgb, var(--color-accent) 42%, transparent)
+
+body.body--dark .avatar-option__check
+  background: color-mix(in srgb, var(--glass-surface) 92%, transparent)

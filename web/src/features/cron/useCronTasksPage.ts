@@ -253,6 +253,7 @@ export function useCronTasksPage() {
     targetLabel,
     statusColor,
     recentFailures,
+    metadata,
     formatDate
   };
 }

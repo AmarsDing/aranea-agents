@@ -173,11 +173,3 @@ onMounted(() => {
   void loadRows();
 });
 </script>
-
-<style scoped lang="sass">
-.hook-delivery-detail
-  margin: 8px 0 0
-  white-space: pre-wrap
-  word-break: break-word
-  font-size: 12px
-</style>

@@ -130,7 +130,7 @@
         </template>
       </q-table>
 
-      <div v-else class="app-registry-empty cron-empty">
+      <div v-else class="app-registry-empty app-empty-state-center">
         <q-avatar size="80px" color="grey-9" text-color="grey-5">
           <q-icon name="schedule" size="46px" />
         </q-avatar>
@@ -186,18 +186,7 @@ const {
   targetLabel,
   statusColor,
   recentFailures,
+  metadata,
   formatDate
 } = useCronTasksPage();
 </script>
-
-<style scoped>
-.cron-empty {
-  place-items: center center;
-  color: var(--color-text-tertiary);
-  display: grid;
-  gap: 10px;
-  min-height: 280px;
-  padding: var(--space-8);
-  text-align: center;
-}
-</style>

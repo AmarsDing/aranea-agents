@@ -70,8 +70,9 @@ export function formatContext(value: number) {
 export function flattenCategoryPositions(nodes: PlatformResourceTreeNode[], prefix = ""): Array<{ label: string; value: string }> {
   return nodes.flatMap((node) => {
     const label = prefix ? `${prefix} / ${node.name}` : node.name;
-    if (!node.children?.length) {
-      return [{ label, value: node.id }];
+    if (node.level === "position" || !node.children?.length) {
+      if (node.level === "position") return [{ label, value: node.id }];
+      return [];
     }
     return flattenCategoryPositions(node.children, label);
   });

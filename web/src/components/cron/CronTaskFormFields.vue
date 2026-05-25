@@ -77,27 +77,3 @@ defineExpose({
 });
 
 </script>
-
-<style scoped>
-.section-label {
-  color: var(--color-text-primary);
-  font-weight: 800;
-}
-
-.cron-btn-toggle {
-  border-radius: 16px;
-  overflow: hidden;
-  border: 1px solid var(--glass-border);
-}
-
-/* 子块内 .cron-field 由 :deep 统一上材质（UX §5.3 玻璃输入近似） */
-.cron-form-fields-root :deep(.cron-field .q-field__control) {
-  border-radius: 16px;
-  background: color-mix(in srgb, var(--canvas-base) 55%, transparent);
-}
-
-body.body--dark .cron-form-fields-root :deep(.cron-field .q-field__control) {
-  background: rgb(22 28 40 / 45%);
-  border-color: var(--glass-border);
-}
-</style>

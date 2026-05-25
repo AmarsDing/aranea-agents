@@ -13,7 +13,9 @@
       v-model:search="search"
       v-model:mode-filter="modeFilter"
       v-model:status-filter="statusFilter"
+      v-model:industry-filter="industryFilter"
       class="q-mt-md"
+      :industry-options="industryOptions"
       :loading="loading"
       :is-dark="isDark"
       @refresh="loadRows"
@@ -24,24 +26,31 @@
       <template #action><q-btn flat color="white" label="重试" @click="loadRows" /></template>
     </q-banner>
 
-    <section class="app-entity-grid q-mt-lg">
-      <TeamCard
-        v-for="team in filteredTeams"
-        :key="team.id"
-        :team="team"
-        :agents="agents"
-        :is-dark="isDark"
-        @copy-key="copyKey"
-        @open-runs="openRuns"
-        @open-observatory="openTeamObservatory"
-        @run-test="openRunTest"
-        @duplicate="duplicate"
-        @edit="openEdit"
-        @remove="remove"
-      />
+    <section v-for="group in teamIndustryGroups" :key="group.id" class="teams-industry-section q-mt-lg">
+      <header class="teams-industry-section__head">
+        <q-icon name="domain" size="20px" color="primary" />
+        <h2 class="teams-industry-section__title">{{ group.label }}</h2>
+        <q-chip dense square size="sm" class="teams-industry-section__count">{{ group.teams.length }}</q-chip>
+      </header>
+      <div class="app-entity-grid teams-industry-section__grid">
+        <TeamCard
+          v-for="team in group.teams"
+          :key="team.id"
+          :team="team"
+          :agents="agents"
+          :is-dark="isDark"
+          @copy-key="copyKey"
+          @open-runs="openRuns"
+          @open-observatory="openTeamObservatory"
+          @run-test="openRunTest"
+          @duplicate="duplicate"
+          @edit="openEdit"
+          @remove="remove"
+        />
+      </div>
     </section>
 
-    <q-card v-if="!loading && filteredTeams.length === 0" flat bordered :class="['app-entity-empty', { 'is-dark': isDark }, 'q-mt-lg']">
+    <q-card v-if="!loading && teamIndustryGroups.length === 0" flat bordered :class="['app-entity-empty', { 'is-dark': isDark }, 'q-mt-lg']">
       <q-card-section class="column items-center text-center q-pa-xl">
         <q-avatar size="72px" color="primary" text-color="white" icon="hub" />
         <div class="text-h6 q-mt-md">暂无 Team</div>
@@ -124,6 +133,9 @@ const {
   search,
   modeFilter,
   statusFilter,
+  industryFilter,
+  industryOptions,
+  teamIndustryGroups,
   editorOpen,
   selectedTeamTemplateKey,
   editingId,
@@ -149,7 +161,6 @@ const {
   agentOptions,
   definitionJSON,
   canSave,
-  filteredTeams,
   loadRows,
   openCreate,
   openEdit,

@@ -20,7 +20,7 @@
           class="q-mt-sm"
           label="包含已归档会话"
         />
-        <div v-if="preview" class="q-mt-md q-pa-sm sessions-retention-preview">
+        <div v-if="preview" class="q-mt-md q-pa-sm app-glass-inset-preview">
           <div>将{{ actionVerb }} <strong>{{ preview.matched }}</strong> 个会话</div>
           <div class="text-caption q-mt-xs">
             保留最近 {{ days }} 天
@@ -98,11 +98,3 @@ watch(
   }
 );
 </script>
-
-<style scoped>
-.sessions-retention-preview {
-  border-radius: 10px;
-  border: 1px solid var(--glass-border);
-  background: color-mix(in srgb, var(--canvas-base) 6%, transparent);
-}
-</style>

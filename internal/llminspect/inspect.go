@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -106,40 +105,28 @@ func inspectOpenRouterModel(in Input) (Result, error) {
 	}
 	var out struct {
 		Data []struct {
-			ID            string `json:"id"`
-			Name          string `json:"name"`
-			ContextLength int    `json:"context_length"`
-			Pricing       struct {
-				Prompt     string `json:"prompt"`
-				Completion string `json:"completion"`
-			} `json:"pricing"`
-			TopProvider struct {
-				MaxCompletionTokens int `json:"max_completion_tokens"`
-			} `json:"top_provider"`
+			ID   string `json:"id"`
+			Name string `json:"name"`
 		} `json:"data"`
 	}
 	if err := getProviderJSON(endpoint, in.APIKey, nil, &out); err != nil {
 		return Result{OK: false, Message: "OpenRouter 模型参数请求失败：" + err.Error(), ProviderCode: in.ProviderCode, ProviderType: in.ProviderType, ModelAPIID: in.ModelAPIID}, nil
 	}
-	for _, item := range out.Data {
+		for _, item := range out.Data {
 		if item.ID != in.ModelAPIID {
 			continue
 		}
 		raw, _ := json.Marshal(item)
 		return Result{
-			OK:                       true,
-			Message:                  "已从 OpenRouter 获取模型参数",
-			ProviderCode:             in.ProviderCode,
-			ProviderType:             strutil.FirstNonEmpty(in.ProviderType, "openai"),
-			ModelAPIID:               item.ID,
-			ModelDisplayName:         strutil.FirstNonEmpty(item.Name, item.ID),
-			ModelSizeLabel:           inferModelSizeLabel(item.ID + " " + item.Name),
-			ContextWindowK:           tokensToK(item.ContextLength),
-			MaxOutputTokens:          item.TopProvider.MaxCompletionTokens,
-			InputPriceMicroUSDPer1K:  priceStringToMicroUSDPer1K(item.Pricing.Prompt),
-			OutputPriceMicroUSDPer1K: priceStringToMicroUSDPer1K(item.Pricing.Completion),
-			Source:                   "openrouter",
-			RawMetadataJSON:          string(raw),
+			OK:               true,
+			Message:          "已验证 OpenRouter 模型存在",
+			ProviderCode:     in.ProviderCode,
+			ProviderType:     strutil.FirstNonEmpty(in.ProviderType, "openai"),
+			ModelAPIID:       item.ID,
+			ModelDisplayName: strutil.FirstNonEmpty(item.Name, item.ID),
+			ModelSizeLabel:   inferModelSizeLabel(item.ID + " " + item.Name),
+			Source:           "openrouter",
+			RawMetadataJSON:  string(raw),
 		}, nil
 	}
 	return Result{OK: false, Message: "OpenRouter 未找到该模型", ProviderCode: in.ProviderCode, ProviderType: in.ProviderType, ModelAPIID: in.ModelAPIID}, nil
@@ -164,7 +151,7 @@ func inspectOpenAICompatibleModel(in Input) (Result, error) {
 			raw, _ := json.Marshal(item)
 			return Result{
 				OK:               true,
-				Message:          "已验证模型存在；该 Provider 未返回上下文和价格",
+				Message:          "已验证 Provider 连通性及模型存在",
 				ProviderCode:     in.ProviderCode,
 				ProviderType:     strutil.FirstNonEmpty(in.ProviderType, "openai"),
 				ModelAPIID:       item.ID,
@@ -190,61 +177,36 @@ func inspectAnthropicModel(in Input) (Result, error) {
 	if err := getProviderJSON(modelsURL(base), in.APIKey, headers, &out); err != nil {
 		return anthropicKnownModelFallback(in, "Anthropic 元数据接口不可用，已根据模型ID使用内置参数："+err.Error()), nil
 	}
-	for _, item := range out.Data {
+		for _, item := range out.Data {
 		if item.ID == in.ModelAPIID {
 			raw, _ := json.Marshal(item)
-			fallback := anthropicKnownModelDefaults(in)
 			return Result{
-				OK:                       true,
-				Message:                  "已从 Anthropic 获取模型名称；价格和上下文需手动维护",
-				ProviderCode:             in.ProviderCode,
-				ProviderType:             strutil.FirstNonEmpty(in.ProviderType, "anthropic"),
-				ModelAPIID:               item.ID,
-				ModelDisplayName:         strutil.FirstNonEmpty(item.DisplayName, item.ID),
-				ModelSizeLabel:           inferModelSizeLabel(item.ID + " " + item.DisplayName),
-				ContextWindowK:           fallback.ContextWindowK,
-				MaxOutputTokens:          fallback.MaxOutputTokens,
-				InputPriceMicroUSDPer1K:  fallback.InputPriceMicroUSDPer1K,
-				OutputPriceMicroUSDPer1K: fallback.OutputPriceMicroUSDPer1K,
-				Source:                   "anthropic",
-				RawMetadataJSON:          string(raw),
+				OK:               true,
+				Message:          "已验证 Anthropic 模型存在",
+				ProviderCode:     in.ProviderCode,
+				ProviderType:     strutil.FirstNonEmpty(in.ProviderType, "anthropic"),
+				ModelAPIID:       item.ID,
+				ModelDisplayName: strutil.FirstNonEmpty(item.DisplayName, item.ID),
+				ModelSizeLabel:   inferModelSizeLabel(item.ID + " " + item.DisplayName),
+				Source:           "anthropic",
+				RawMetadataJSON:  string(raw),
 			}, nil
 		}
 	}
-	return anthropicKnownModelFallback(in, "Anthropic 元数据接口未返回该模型，已根据模型ID使用内置参数"), nil
+	return anthropicKnownModelFallback(in, "Anthropic 元数据接口未返回该模型，已登记模型 ID"), nil
 }
 
 func anthropicKnownModelFallback(in Input, message string) Result {
-	result := anthropicKnownModelDefaults(in)
-	result.OK = true
-	result.Message = message
-	result.RawMetadataJSON = fmt.Sprintf(`{"source":"anthropic-known-defaults","model":"%s"}`, in.ModelAPIID)
-	return result
-}
-
-func anthropicKnownModelDefaults(in Input) Result {
-	model := strings.ToLower(in.ModelAPIID)
-	result := Result{
+	return Result{
+		OK:               true,
+		Message:          message,
 		ProviderCode:     in.ProviderCode,
 		ProviderType:     strutil.FirstNonEmpty(in.ProviderType, "anthropic"),
 		ModelAPIID:       in.ModelAPIID,
 		ModelDisplayName: in.ModelAPIID,
-		ContextWindowK:   200,
-		MaxOutputTokens:  8192,
 		Source:           "anthropic-known-defaults",
+		RawMetadataJSON:  fmt.Sprintf(`{"source":"anthropic-known-defaults","model":"%s"}`, in.ModelAPIID),
 	}
-	switch {
-	case strings.Contains(model, "opus"):
-		result.InputPriceMicroUSDPer1K = 15000
-		result.OutputPriceMicroUSDPer1K = 75000
-	case strings.Contains(model, "haiku"):
-		result.InputPriceMicroUSDPer1K = 800
-		result.OutputPriceMicroUSDPer1K = 4000
-	default:
-		result.InputPriceMicroUSDPer1K = 3000
-		result.OutputPriceMicroUSDPer1K = 15000
-	}
-	return result
 }
 
 func inspectGeminiModel(in Input) (Result, error) {
@@ -277,14 +239,12 @@ func inspectGeminiModel(in Input) (Result, error) {
 		display := strutil.FirstNonEmpty(item.DisplayName, in.ModelAPIID)
 		return Result{
 			OK:                   true,
-			Message:              "已从 Gemini 获取模型参数",
+			Message:              "已验证 Gemini 模型存在",
 			ProviderCode:         in.ProviderCode,
 			ProviderType:         "gemini",
 			ModelAPIID:           in.ModelAPIID,
 			ModelDisplayName:     display,
 			ModelSizeLabel:       inferModelSizeLabel(display),
-			ContextWindowK:       tokensToK(item.InputTokenLimit),
-			MaxOutputTokens:      item.OutputTokenLimit,
 			Source:               "gemini",
 			RawMetadataJSON:      string(raw),
 			EnableTokenTailoring: true,
@@ -435,21 +395,6 @@ func modelsURL(base string) string {
 		return trimmed + "/models"
 	}
 	return trimmed
-}
-
-func priceStringToMicroUSDPer1K(value string) int64 {
-	numberValue, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
-	if err != nil || numberValue <= 0 {
-		return 0
-	}
-	return int64(numberValue*1_000_000_000 + 0.5)
-}
-
-func tokensToK(tokens int) int {
-	if tokens <= 0 {
-		return 0
-	}
-	return int(float64(tokens)/1000 + 0.5)
 }
 
 func inferModelSizeLabel(value string) string {

@@ -89,27 +89,3 @@ const filteredNodes = computed(() => {
   return list.sort((a, b) => a.node_id.localeCompare(b.node_id));
 });
 </script>
-
-<style scoped>
-.orch-kanban__filter {
-  min-width: 140px;
-}
-
-.graph-kanban-live {
-  background: color-mix(in srgb, var(--color-success) 18%, var(--glass-surface));
-  color: var(--color-success);
-}
-
-.orch-kanban__list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.orch-kanban__empty {
-  padding: 24px 12px;
-  text-align: center;
-  color: var(--color-text-tertiary);
-  font-size: 13px;
-}
-</style>

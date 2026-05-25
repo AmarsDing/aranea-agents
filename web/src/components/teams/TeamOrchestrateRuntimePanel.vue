@@ -128,7 +128,7 @@ watch(
 );
 
 function emitRuntime(value: "native" | "graph") {
-  if (value === "native" && !isPlatformAdmin.value) {
+  if (value === "native" && !props.isPlatformAdmin) {
     emit("patch", { runtime_engine: "graph", team_graph_runtime: true });
     localRuntime.value = "graph";
     return;
@@ -150,9 +150,3 @@ function emitFailure() {
   });
 }
 </script>
-
-<style scoped>
-.team-orchestrate-runtime {
-  margin-bottom: 16px;
-}
-</style>

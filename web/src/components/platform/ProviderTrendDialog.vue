@@ -1,10 +1,10 @@
 <template>
   <q-dialog :model-value="modelValue" @update:model-value="$emit('update:modelValue', $event)">
     <q-card class="provider-trend-dialog app-dialog-card app-dialog-card--lg">
-      <q-card-section class="provider-trend-dialog__header row items-start justify-between">
+      <q-card-section class="app-glass-dialog__head row items-start justify-between">
         <div class="col min-width-0">
-          <div class="provider-trend-dialog__title">模型历史趋势</div>
-          <div v-if="row" class="provider-trend-dialog__subtitle">
+          <div class="app-glass-dialog__title">模型历史趋势</div>
+          <div v-if="row" class="app-glass-dialog__subtitle">
             {{ providerDisplayName }} / {{ modelDisplayName }}
           </div>
         </div>
@@ -13,38 +13,38 @@
 
       <q-separator />
 
-      <q-card-section v-if="row" class="provider-trend-dialog__body">
+      <q-card-section v-if="row" class="app-glass-dialog__body provider-trend-dialog__body">
         <q-inner-loading :showing="loading">
           <q-spinner color="primary" size="32px" />
         </q-inner-loading>
 
-        <div class="trend-kpi-grid">
-          <div class="trend-kpi-card">
-            <span class="trend-kpi-label">热度</span>
-            <span class="trend-kpi-value">{{ hotnessScore }}</span>
-            <div class="trend-kpi-bar" role="presentation">
-              <div class="trend-kpi-bar__fill" :style="{ width: `${hotnessScore}%` }" />
+        <div class="app-trend-kpi-grid">
+          <div class="app-trend-kpi-card">
+            <span class="app-trend-kpi-label">热度</span>
+            <span class="app-trend-kpi-value">{{ hotnessScore }}</span>
+            <div class="app-trend-kpi-bar" role="presentation">
+              <div class="app-trend-kpi-bar__fill" :style="{ width: `${hotnessScore}%` }" />
             </div>
           </div>
-          <div class="trend-kpi-card">
-            <span class="trend-kpi-label">30 天调用</span>
-            <span class="trend-kpi-value">{{ formatCount(overview?.range.call_count) }}</span>
+          <div class="app-trend-kpi-card">
+            <span class="app-trend-kpi-label">30 天调用</span>
+            <span class="app-trend-kpi-value">{{ formatCount(overview?.range.call_count) }}</span>
           </div>
-          <div class="trend-kpi-card">
-            <span class="trend-kpi-label">30 天 Token</span>
-            <span class="trend-kpi-value">{{ formatCount(overview?.range.total_tokens) }}</span>
+          <div class="app-trend-kpi-card">
+            <span class="app-trend-kpi-label">30 天 Token</span>
+            <span class="app-trend-kpi-value">{{ formatCount(overview?.range.total_tokens) }}</span>
           </div>
-          <div class="trend-kpi-card">
-            <span class="trend-kpi-label">30 天费用</span>
-            <span class="trend-kpi-value">{{ formatMicroUsd(overview?.range.total_cost_micro_usd) }}</span>
+          <div class="app-trend-kpi-card">
+            <span class="app-trend-kpi-label">30 天费用</span>
+            <span class="app-trend-kpi-value">{{ formatMicroUsd(overview?.range.total_cost_micro_usd) }}</span>
           </div>
         </div>
 
-        <div class="trend-chart-panel">
-          <div class="trend-chart-toolbar row items-center justify-between q-col-gutter-sm">
+        <div class="app-trend-chart-panel">
+          <div class="app-trend-chart-toolbar row items-center justify-between q-col-gutter-sm">
             <div>
-              <div class="trend-chart-title">用量趋势</div>
-              <div class="trend-chart-caption">近 30 天 · {{ metricCaption }}</div>
+              <div class="app-trend-chart-title">用量趋势</div>
+              <div class="app-trend-chart-caption">近 30 天 · {{ metricCaption }}</div>
             </div>
             <q-btn-toggle
               :model-value="metric"
@@ -54,17 +54,17 @@
               unelevated
               toggle-color="primary"
               :options="metricOptions"
-              class="trend-metric-toggle"
+              class="app-metric-toggle"
             />
           </div>
-          <div v-if="!trends.length && !loading" class="trend-chart-empty">暂无历史趋势数据</div>
-          <div v-show="trends.length || loading" ref="chartEl" class="provider-trend-chart" />
+          <div v-if="!trends.length && !loading" class="app-trend-chart-empty">暂无历史趋势数据</div>
+          <div v-show="trends.length || loading" ref="chartEl" class="app-trend-chart" />
         </div>
 
-        <div class="trend-detail-grid">
-          <div v-for="item in detailItems" :key="item.label" class="trend-detail-item">
-            <span class="trend-detail-label">{{ item.label }}</span>
-            <span class="trend-detail-value">{{ item.value }}</span>
+        <div class="app-trend-detail-grid">
+          <div v-for="item in detailItems" :key="item.label" class="app-trend-detail-item">
+            <span class="app-trend-detail-label">{{ item.label }}</span>
+            <span class="app-trend-detail-value">{{ item.value }}</span>
           </div>
         </div>
       </q-card-section>
@@ -154,7 +154,7 @@ function buildChartOption(): EChartsCoreOption {
       backgroundColor: "rgba(15, 23, 42, 0.92)",
       borderColor: "rgba(0, 229, 255, 0.25)",
       textStyle: { color: "#e2e8f0", fontSize: 12 },
-      valueFormatter: (v) => (isCost ? `$${Number(v).toFixed(4)}` : formatCount(v))
+      valueFormatter: (v: number) => (isCost ? `$${Number(v).toFixed(4)}` : formatCount(v))
     },
     xAxis: {
       type: "category",
@@ -260,151 +260,3 @@ function toNullableNumber(value: unknown) {
   return Number.isFinite(numberValue) ? numberValue : null;
 }
 </script>
-
-<style scoped lang="sass">
-.provider-trend-dialog
-  overflow: hidden
-
-.provider-trend-dialog__header
-  padding: 16px 18px 14px
-
-.provider-trend-dialog__title
-  color: var(--color-text-heading)
-  font-size: 17px
-  font-weight: 700
-  line-height: 1.3
-
-.provider-trend-dialog__subtitle
-  color: var(--color-text-secondary)
-  font-size: 12px
-  margin-top: 4px
-  overflow: hidden
-  text-overflow: ellipsis
-  white-space: nowrap
-
-.provider-trend-dialog__body
-  display: flex
-  flex-direction: column
-  gap: 14px
-  padding: 14px 18px 18px
-  position: relative
-
-.trend-kpi-grid
-  display: grid
-  grid-template-columns: repeat(4, minmax(0, 1fr))
-  gap: 10px
-
-.trend-kpi-card
-  background: color-mix(in srgb, var(--glass-elevated) 88%, transparent)
-  border: 1px solid var(--glass-border)
-  border-radius: 12px
-  display: flex
-  flex-direction: column
-  gap: 2px
-  min-width: 0
-  padding: 10px 12px
-
-.trend-kpi-label
-  color: var(--color-text-secondary)
-  font-size: 11px
-  font-weight: 600
-  letter-spacing: 0.02em
-
-.trend-kpi-value
-  color: var(--color-text-heading)
-  font-size: 18px
-  font-weight: 700
-  line-height: 1.25
-
-.trend-kpi-bar
-  background: color-mix(in srgb, var(--color-accent) 12%, transparent)
-  border-radius: 999px
-  height: 4px
-  margin-top: 6px
-  overflow: hidden
-  width: 100%
-
-.trend-kpi-bar__fill
-  background: linear-gradient(90deg, var(--color-accent), var(--color-link))
-  border-radius: inherit
-  height: 100%
-  min-width: 2px
-  transition: width 0.35s ease
-
-.trend-chart-panel
-  background: color-mix(in srgb, var(--glass-elevated) 72%, transparent)
-  border: 1px solid var(--glass-border)
-  border-radius: 14px
-  padding: 12px 14px 8px
-  position: relative
-
-.trend-chart-toolbar
-  margin-bottom: 4px
-
-.trend-chart-title
-  color: var(--color-text-heading)
-  font-size: 13px
-  font-weight: 650
-
-.trend-chart-caption
-  color: var(--color-text-tertiary)
-  font-size: 11px
-  margin-top: 2px
-
-.trend-metric-toggle :deep(.q-btn)
-  font-size: 11px
-  min-height: 28px
-  padding: 0 10px
-
-.provider-trend-chart
-  height: 240px
-  min-height: 200px
-  width: 100%
-
-.trend-chart-empty
-  align-items: center
-  color: var(--color-text-tertiary)
-  display: flex
-  font-size: 13px
-  height: 200px
-  justify-content: center
-
-.trend-detail-grid
-  display: grid
-  gap: 8px
-  grid-template-columns: repeat(3, minmax(0, 1fr))
-
-.trend-detail-item
-  background: color-mix(in srgb, var(--glass-elevated) 65%, transparent)
-  border: 1px solid var(--glass-border)
-  border-radius: 10px
-  display: flex
-  flex-direction: column
-  gap: 3px
-  min-width: 0
-  padding: 8px 10px
-
-.trend-detail-label
-  color: var(--color-text-secondary)
-  font-size: 11px
-  font-weight: 600
-
-.trend-detail-value
-  color: var(--color-text-heading)
-  font-size: 13px
-  font-weight: 650
-  overflow: hidden
-  text-overflow: ellipsis
-  white-space: nowrap
-
-@media (width <= 767px)
-  .trend-kpi-grid
-    grid-template-columns: repeat(2, minmax(0, 1fr))
-
-  .trend-detail-grid
-    grid-template-columns: repeat(2, minmax(0, 1fr))
-
-@media (width <= 479px)
-  .trend-detail-grid
-    grid-template-columns: 1fr
-</style>

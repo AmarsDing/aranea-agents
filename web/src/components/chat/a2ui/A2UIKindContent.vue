@@ -21,7 +21,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { resolveA2UIKindRoute } from "../../../features/chat/a2ui/a2uiKindRegistry";
-import type { useA2UIComponent } from "../../../features/chat/a2ui/useA2UIComponent";
+import type { A2UIComponentCtx } from "../../../features/chat/a2ui/useA2UIComponent";
 import type { A2UISurfaceState } from "../../../features/chat/a2uiSurfaceState";
 import type { A2UIUserActionPayload } from "../../../features/chat/a2uiUserAction";
 import A2UIKindContainer from "./kinds/A2UIKindContainer.vue";
@@ -33,7 +33,7 @@ const props = defineProps<{
   componentId: string;
   surface: A2UISurfaceState;
   kind: string;
-  ctx: ReturnType<typeof useA2UIComponent>;
+  ctx: A2UIComponentCtx;
 }>();
 
 const emit = defineEmits<{

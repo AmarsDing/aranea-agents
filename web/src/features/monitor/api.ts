@@ -143,7 +143,13 @@ export async function listMonitorAudit(query: AuditQuery = {}): Promise<Paginate
 }
 
 export async function listMonitorEvents(): Promise<PlatformResource[]> {
-  const res = await monitor.ListMonitorEvents({});
+  const res = await monitor.ListMonitorEvents({
+    limit: undefined,
+    offset: undefined,
+    eventType: undefined,
+    agentId: undefined,
+    status: undefined
+  });
   const items = res.items ?? [];
   return items.map((item: unknown) => platformResourceFromWire(item));
 }
@@ -299,14 +305,14 @@ export async function putMonitorAlertRules(rules: MonitorAlertRule[]): Promise<M
     items: rules.map((r) => ({
       id: r.id,
       name: r.name,
-      metric_key: r.metric_key,
+      metricKey: r.metric_key,
       threshold: r.threshold,
-      window_minutes: r.window_minutes,
+      windowMinutes: r.window_minutes,
       enabled: r.enabled,
       severity: r.severity,
-      notify_webhook_url: r.notify_webhook_url ?? "",
-      notify_channel_id: r.notify_channel_id ?? "",
-      cooldown_minutes: r.cooldown_minutes ?? 60
+      notifyWebhookUrl: r.notify_webhook_url ?? "",
+      notifyChannelId: r.notify_channel_id ?? "",
+      cooldownMinutes: r.cooldown_minutes ?? 60
     }))
   });
   const items = (res as { items?: unknown[] }).items ?? [];

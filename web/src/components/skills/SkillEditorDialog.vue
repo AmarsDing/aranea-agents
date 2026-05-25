@@ -1,6 +1,6 @@
 <template>
   <q-dialog :model-value="modelValue" maximized @update:model-value="emit('update:modelValue', $event)">
-    <q-card class="skill-editor-card app-dialog-card app-glass-dialog">
+    <q-card class="app-dialog-card app-glass-dialog app-maximized-dialog">
       <q-card-section class="row items-center justify-between q-pb-sm">
         <div>
           <div class="text-h6">编辑 Skill 文件</div>
@@ -9,8 +9,8 @@
         <q-btn flat round dense icon="close" v-close-popup />
       </q-card-section>
       <q-separator />
-      <q-card-section class="skill-editor-body">
-        <q-card flat bordered class="skill-editor-files">
+      <q-card-section class="app-dual-column-editor">
+        <q-card flat bordered class="app-dual-column-editor__sidebar app-glass-panel">
           <q-list separator>
             <q-item v-if="filesLoading">
               <q-item-section>正在加载文件...</q-item-section>
@@ -29,8 +29,8 @@
             </q-item>
           </q-list>
         </q-card>
-        <q-card flat bordered class="skill-editor-pane">
-          <q-card-section class="skill-editor-toolbar row items-center justify-between">
+        <q-card flat bordered class="app-dual-column-editor__main app-glass-panel">
+          <q-card-section class="app-dual-column-editor__toolbar row items-center justify-between">
             <div>
               <div class="text-subtitle1">{{ selectedFile?.path || "请选择文件" }}</div>
               <div class="text-caption text-grey-7">
@@ -50,7 +50,7 @@
               type="textarea"
               borderless
               autogrow
-              class="skill-editor-textarea"
+              class="app-dual-column-editor__textarea"
               :disable="!selectedFile || readingFile"
               :placeholder="readingFile ? '正在读取文件...' : '选择左侧文件后编辑内容'"
             />
@@ -169,69 +169,3 @@ function fileIcon(language: string) {
   return language === "markdown" ? "description" : language === "python" ? "data_object" : language === "javascript" || language === "typescript" ? "code" : "insert_drive_file";
 }
 </script>
-
-<style scoped lang="sass">
-// UX.md §5.2a 对话框 + §2.3 玻璃双前缀
-.skill-editor-card
-  min-height: 100vh
-  border-radius: 0 !important
-  background: var(--glass-elevated) !important
-  border: none !important
-  box-shadow: var(--glass-inner-highlight)
-  backdrop-filter: blur(var(--glass-blur-elevated))
-  -webkit-backdrop-filter: blur(var(--glass-blur-elevated))
-
-.skill-editor-body
-  display: grid
-  grid-template-columns: minmax(260px, 360px) 1fr
-  gap: 16px
-  height: calc(100vh - 82px)
-
-.skill-editor-files,
-.skill-editor-pane
-  border-radius: 18px
-  overflow: auto
-  background: var(--glass-surface) !important
-  border: 1px solid var(--glass-border) !important
-  box-shadow: var(--glass-inner-highlight)
-  backdrop-filter: blur(var(--glass-blur-default))
-  -webkit-backdrop-filter: blur(var(--glass-blur-default))
-
-.skill-editor-toolbar
-  position: sticky
-  top: 0
-  z-index: 2
-  border-bottom: 1px solid var(--glass-border)
-  background: var(--glass-surface-hover)
-  box-shadow: var(--glass-inner-highlight)
-  backdrop-filter: blur(var(--glass-blur-hover))
-  -webkit-backdrop-filter: blur(var(--glass-blur-hover))
-
-.skill-editor-textarea
-  min-height: calc(100vh - 190px)
-  padding: 16px
-  font-family: Consolas, 'Courier New', monospace
-  font-size: 13px
-  line-height: 1.6
-  color: var(--color-text-primary)
-
-.skill-editor-textarea :deep(textarea::placeholder)
-  color: var(--color-text-secondary)
-
-.skill-editor-files :deep(.q-item--active)
-  background: var(--interaction-surface-hover)
-
-.skill-editor-files :deep(.q-separator),
-.skill-editor-pane :deep(.q-separator)
-  background: var(--glass-border)
-
-@media (max-width: 720px)
-  .skill-editor-body
-    grid-template-columns: 1fr
-    height: auto
-
-  .skill-editor-files,
-  .skill-editor-pane
-    backdrop-filter: blur(12px)
-    -webkit-backdrop-filter: blur(12px)
-</style>

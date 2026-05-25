@@ -1,6 +1,6 @@
 <template>
-  <q-card flat bordered class="agents-filter-card">
-    <q-card-section class="agents-filter-card__body app-form-field-grid items-end">
+  <q-card flat bordered class="agents-filter-card app-entity-toolbar app-entity-toolbar--offset">
+    <q-card-section class="app-entity-toolbar__body app-form-field-grid items-end">
       <q-input v-model="keyword" class="app-field-md agent-control" dense outlined clearable debounce="350" placeholder="搜索 Agent...">
         <template #prepend><q-icon name="search" /></template>
       </q-input>
@@ -28,18 +28,7 @@
         option-label="label"
         class="agent-control"
       />
-      <q-select
-        v-model="selectedCategory"
-        dense
-        outlined
-        clearable
-        emit-value
-        map-options
-        use-input
-        label="业务分类"
-        :options="categoryPositionOptions"
-        class="agent-control"
-      />
+      <agent-category-filter v-model="selectedCategory" :tree="categoryTree" />
       <q-select
         v-model="selectedProvider"
         dense
@@ -57,7 +46,7 @@
           dense
           rounded
           unelevated
-          class="view-toggle"
+          class="app-view-toggle"
           toggle-color="primary"
           :options="[
             { value: 'grid', slot: 'grid' },
@@ -73,6 +62,9 @@
 </template>
 
 <script setup lang="ts">
+import AgentCategoryFilter from "./AgentCategoryFilter.vue";
+import type { PlatformResourceTreeNode } from "../../features/platform/types";
+
 type SelectOption = { label: string; value: string };
 
 type ViewMode = "grid" | "list";
@@ -86,45 +78,8 @@ const viewMode = defineModel<ViewMode>("viewMode", { default: "grid" });
 
 defineProps<{
   statusOptions: SelectOption[];
-  categoryPositionOptions: SelectOption[];
+  categoryTree: PlatformResourceTreeNode[];
   providerOptions: SelectOption[];
   creatorOptions: { user_id: string; label: string }[];
 }>();
 </script>
-
-<style scoped>
-.agents-filter-card {
-  margin-top: 22px;
-  border: 1px solid var(--glass-border);
-  border-radius: 24px;
-  background: var(--glass-surface);
-  box-shadow: none;
-  backdrop-filter: blur(var(--glass-blur-default));
-  -webkit-backdrop-filter: blur(var(--glass-blur-default));
-}
-
-.agents-filter-card__body {
-  padding: 14px 16px;
-}
-
-.agent-control :deep(.q-field__control) {
-  border-radius: 16px;
-  background: var(--glass-elevated);
-  min-height: 44px;
-}
-
-.agent-control :deep(.q-field__control::before) {
-  border-color: var(--glass-border);
-}
-
-.agent-control :deep(.q-field__control::after) {
-  border-width: 1px;
-}
-
-.view-toggle {
-  padding: 3px;
-  border: 1px solid var(--glass-border);
-  border-radius: 999px;
-  background: var(--glass-surface);
-}
-</style>

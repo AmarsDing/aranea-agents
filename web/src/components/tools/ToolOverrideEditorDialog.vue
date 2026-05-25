@@ -1,9 +1,9 @@
 <template>
   <q-dialog :model-value="open" persistent @update:model-value="$emit('update:open', $event)">
-    <q-card class="tool-dialog-card app-dialog-card app-dialog-card--sm">
+    <q-card class="app-dialog-card app-dialog-card--sm">
       <q-card-section class="row items-center justify-between">
         <div class="text-h6">{{ editing ? "编辑 Agent 覆盖" : "添加 Agent 覆盖" }}</div>
-        <q-btn flat dense round icon="close" class="tool-icon-btn" @click="$emit('update:open', false)" />
+        <q-btn flat dense round icon="close" class="app-dialog-icon-btn" @click="$emit('update:open', false)" />
       </q-card-section>
       <q-separator />
       <q-card-section class="q-gutter-sm">
@@ -47,7 +47,7 @@
       </q-card-section>
       <q-card-actions align="right" class="app-actions-bar">
         <q-btn flat no-caps label="取消" @click="$emit('update:open', false)" />
-        <q-btn no-caps unelevated class="tool-primary-btn" label="保存" :loading="saving" @click="$emit('save')" />
+        <q-btn no-caps unelevated class="app-dialog-accent-btn" label="保存" :loading="saving" @click="$emit('save')" />
       </q-card-actions>
     </q-card>
   </q-dialog>
@@ -85,19 +85,3 @@ function emitFormPatch(patch: Partial<ToolOverrideForm>) {
   emit("update:form", { ...props.form, ...patch });
 }
 </script>
-
-<style scoped lang="sass">
-.tool-dialog-card
-  border-radius: 22px
-  border: 1px solid var(--glass-border)
-  background: var(--glass-elevated)
-  backdrop-filter: blur(var(--glass-blur-elevated))
-  -webkit-backdrop-filter: blur(var(--glass-blur-elevated))
-
-.tool-primary-btn
-  background: var(--color-accent)
-  color: var(--color-on-accent)
-
-.tool-icon-btn
-  color: var(--color-icon-muted)
-</style>

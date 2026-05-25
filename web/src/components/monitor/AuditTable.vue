@@ -190,11 +190,11 @@ const filteredRows = computed(() => {
 
 const selectedJSON = computed(() => compactJSON(selected.value ?? {}));
 
-function onPageRequest(params: Parameters<NonNullable<QTableProps["onRequest"]>>[1]) {
+function onPageRequest(requestProp: { pagination: { sortBy: string; descending: boolean; page: number; rowsPerPage: number; rowsNumber?: number }; filter?: unknown; getCellValue: (col: unknown, row: unknown) => unknown }) {
   pagination.value = {
     ...pagination.value,
-    page: params.pagination.page,
-    rowsPerPage: params.pagination.rowsPerPage
+    page: requestProp.pagination.page,
+    rowsPerPage: requestProp.pagination.rowsPerPage
   };
 }
 

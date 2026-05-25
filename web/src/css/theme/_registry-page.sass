@@ -211,6 +211,25 @@
   .q-table__middle
     overflow-x: auto
 
+// 会话历史：收窄文本列、操作列 sticky，避免横向滚动淹没按钮
+.app-registry-table--sessions
+  .q-table tbody td
+    overflow: hidden
+
+  .app-registry-col-actions
+    position: sticky
+    right: 0
+    z-index: 2
+    background: color-mix(in srgb, var(--glass-surface) 96%, transparent)
+    box-shadow: -8px 0 12px color-mix(in srgb, var(--color-shadow, #000) 8%, transparent)
+
+  thead .app-registry-col-actions
+    z-index: 3
+    background: color-mix(in srgb, var(--glass-surface) 94%, transparent)
+
+  tbody tr:hover .app-registry-col-actions
+    background: var(--glass-surface-hover)
+
 // ── 单元格模式 ──
 .app-registry-cell-primary
   font-weight: 600
@@ -218,6 +237,7 @@
   line-height: 1.35
   overflow: hidden
   text-overflow: ellipsis
+  white-space: nowrap
 
 .app-registry-cell-sub
   margin-top: 2px
@@ -226,6 +246,7 @@
   color: var(--color-text-secondary)
   overflow: hidden
   text-overflow: ellipsis
+  white-space: nowrap
 
 .app-registry-cell-desc,
 .app-registry-description
@@ -279,10 +300,301 @@
   font-size: var(--text-sm)
   color: var(--color-text-secondary)
 
+// 独立卡片分页（Skill / Tool 列表页脚）
+.app-registry-pagination--card
+  border: 1px solid var(--glass-border)
+  border-radius: 16px
+  background: color-mix(in srgb, var(--glass-surface) 92%, transparent)
+
+.app-registry-pagination__summary
+  font-size: var(--text-sm)
+  color: var(--color-text-secondary)
+
+.app-registry-pagination__controls
+  gap: var(--space-2)
+
+.app-registry-pagination__page-size
+  min-width: 108px
+
+.app-registry-pagination__page-label
+  font-size: var(--text-xs)
+  color: var(--color-text-secondary)
+  white-space: nowrap
+  padding: 0 var(--space-1)
+
+// 表格行内紧凑指标条（Skill 使用统计等）
+.app-inline-stats-strip
+  display: flex
+  align-items: center
+  flex-wrap: nowrap
+  gap: 10px
+  min-width: 0
+  max-width: 100%
+
+.app-inline-stats-metric
+  display: grid
+  grid-template-columns: auto auto
+  grid-template-rows: auto auto
+  column-gap: 6px
+  row-gap: 1px
+  align-items: baseline
+  min-width: 0
+
+.app-inline-stats-metric__label
+  grid-column: 1
+  grid-row: 1 / span 2
+  align-self: center
+  font-size: 11px
+  font-weight: 600
+  color: var(--color-text-secondary)
+  white-space: nowrap
+
+.app-inline-stats-metric__value
+  grid-column: 2
+  grid-row: 1
+  font-size: 13px
+  font-weight: 700
+  line-height: 1.2
+  color: var(--color-text-primary)
+  white-space: nowrap
+
+.app-inline-stats-metric__meta
+  grid-column: 2
+  grid-row: 2
+  font-size: 11px
+  line-height: 1.2
+  color: var(--color-text-tertiary)
+  white-space: nowrap
+
+.app-inline-stats-sep
+  flex: 0 0 1px
+  align-self: stretch
+  min-height: 28px
+  background: var(--glass-border)
+
+// Tool / Skill 详情侧栏
+.app-registry-detail-banner
+  color: var(--color-text-primary)
+  border: 1px solid var(--glass-border)
+  background: var(--glass-surface)
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+
+body.body--dark .app-registry-detail-banner
+  background: color-mix(in srgb, var(--glass-elevated) 55%, transparent)
+
+.app-registry-detail-tabs
+  border-bottom: 1px solid var(--glass-border)
+
+.app-registry-detail-panels
+  background: transparent
+
+.app-registry-accent-btn
+  color: var(--color-accent)
+  align-self: flex-start
+
+body:not(.body--dark) .app-registry-accent-btn:hover
+  background: var(--interaction-surface-hover)
+
+.app-registry-icon-btn
+  color: var(--color-icon-muted)
+
+body:not(.body--dark) .app-registry-icon-btn:hover
+  color: var(--color-accent)
+
+.app-registry-primary-btn
+  background: var(--color-accent)
+  color: var(--color-on-accent)
+
+.app-registry-muted-caption
+  color: var(--color-text-secondary)
+
+.app-registry-list-item
+  border-radius: 8px
+
+.app-registry-source-chip
+  border-color: var(--glass-border)
+
+// Skill 表格密度（垂直居中）
+.skill-table
+  background: transparent
+
+  thead tr th,
+  tbody tr td
+    vertical-align: middle
+
+  thead tr th
+    padding-top: 10px
+    padding-bottom: 10px
+    font-size: 12px
+
+  tbody tr td
+    padding-top: 12px
+    padding-bottom: 12px
+
+.skill-table-desc
+  max-width: 100%
+
+.skill-status-cell
+  display: flex
+  flex-direction: column
+  align-items: flex-start
+  gap: 4px
+
+.skill-status-cell__version
+  font-size: 11px
+  line-height: 1.3
+  color: var(--color-text-secondary)
+
 @media (width <= 720px)
+  .app-registry-pagination--card
+    flex-direction: column
+    align-items: stretch
+
+  .app-registry-pagination__controls
+    justify-content: space-between
+
   .app-registry-page
     padding: var(--space-4)
 
   .app-registry-page .app-page-hero
     flex-direction: column
     align-items: stretch
+
+// Channels 表格
+.channels-data-table thead tr th
+  color: var(--color-text-secondary)
+
+.channel-tag
+  display: inline-block
+  margin-right: 6px
+  margin-bottom: 2px
+  padding: 2px 8px
+  border-radius: 6px
+  font-size: 11px
+  font-weight: 600
+  line-height: 1.35
+  vertical-align: middle
+
+.channel-tag--type
+  border: 1px solid color-mix(in srgb, var(--color-accent) 28%, var(--glass-border))
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--glass-surface))
+  color: var(--color-text-heading)
+
+body.body--dark .channel-tag--type
+  color: var(--color-neon-cyan)
+  border-color: color-mix(in srgb, var(--color-neon-cyan) 35%, var(--glass-border))
+  background: color-mix(in srgb, var(--color-neon-cyan) 12%, var(--glass-surface))
+
+.channel-tag--mode
+  border: 1px solid var(--glass-border)
+  color: var(--color-text-secondary)
+  background: transparent
+
+.channel-icon-btn
+  color: var(--color-icon-muted)
+
+body:not(.body--dark) .channel-icon-btn:hover
+  color: var(--color-accent)
+
+body.body--dark .channel-icon-btn:hover
+  color: var(--color-neon-cyan)
+
+.channel-icon-btn--danger:hover
+  color: var(--color-danger) !important
+
+.channels-data-table .q-toggle__track
+  opacity: 1
+
+.mcp-form-scroll
+  max-height: min(70vh, 720px)
+  overflow: auto
+
+.mcp-server-item
+  background: color-mix(in srgb, var(--glass-surface) 84%, transparent)
+  border-radius: 18px
+
+.mcp-detail-label
+  color: var(--color-text-tertiary)
+  font-weight: 700
+  margin-right: 6px
+
+.mcp-endpoint
+  max-width: min(520px, 100%)
+  vertical-align: bottom
+
+body.body--dark .mcp-server-item
+  background: color-mix(in srgb, var(--glass-surface) 72%, transparent)
+
+.plugins-table,
+.app-registry-table
+  background: transparent
+
+.plugins-table
+  .q-table
+    table-layout: fixed
+
+  thead tr th,
+  tbody tr td
+    &:nth-child(1)
+      width: 13%
+      min-width: 128px
+
+    &:nth-child(2)
+      width: 11%
+      min-width: 118px
+
+    &:nth-child(3)
+      width: 44%
+      min-width: 280px
+
+    &:nth-child(4)
+      width: 68px
+      padding-left: 8px
+      padding-right: 8px
+      text-align: center
+
+    &:nth-child(5)
+      width: 84px
+
+    &:nth-child(6)
+      width: 96px
+
+    &:nth-child(7)
+      width: 88px
+      padding-right: 12px
+
+  tbody td:nth-child(4)
+    text-align: center
+
+  tbody td:nth-child(7) .app-registry-cell-actions
+    justify-content: flex-end
+
+  .q-table tbody td
+    padding-top: 12px
+    padding-bottom: 12px
+
+.plugins-table__name-hit
+  cursor: help
+  max-width: 100%
+
+.plugins-table__callback-chips
+  max-width: none
+
+.plugins-table .plugins-table__callback-chips
+  gap: 6px 8px
+
+.plugins-table .app-registry-chip-wrap:not(.plugins-table__callback-chips)
+  max-width: none
+
+.plugins-table .plugins-table__callback-chips .q-chip
+  font-size: 12px
+
+.plugins-table__desc-tooltip
+  font-size: 30px !important
+  line-height: 1.55 !important
+  max-width: min(640px, 86vw) !important
+  padding: 20px 24px !important
+  white-space: normal !important
+  text-align: left !important
+  font-weight: 500 !important

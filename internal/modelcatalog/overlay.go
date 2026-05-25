@@ -3,6 +3,7 @@ package modelcatalog
 import (
 	_ "embed"
 	"encoding/json"
+	"sort"
 	"strings"
 )
 
@@ -61,8 +62,7 @@ func ListProviders(cat Catalog, q string, limit, offset int) []Provider {
 		offset = 0
 	}
 	q = strings.ToLower(strings.TrimSpace(q))
-	out := make([]Provider, 0, len(cat))
-	skipped := 0
+	matched := make([]Provider, 0, len(cat))
 	for _, p := range cat {
 		if q != "" {
 			hay := strings.ToLower(p.ID + " " + p.Name)
@@ -70,16 +70,23 @@ func ListProviders(cat Catalog, q string, limit, offset int) []Provider {
 				continue
 			}
 		}
-		if skipped < offset {
-			skipped++
-			continue
-		}
-		out = append(out, p)
-		if len(out) >= limit {
-			break
-		}
+		matched = append(matched, p)
 	}
-	return out
+	sort.Slice(matched, func(i, j int) bool {
+		ni, nj := strings.ToLower(matched[i].Name), strings.ToLower(matched[j].Name)
+		if ni != nj {
+			return ni < nj
+		}
+		return matched[i].ID < matched[j].ID
+	})
+	if offset >= len(matched) {
+		return nil
+	}
+	end := offset + limit
+	if end > len(matched) {
+		end = len(matched)
+	}
+	return matched[offset:end]
 }
 
 func CountModels(p Provider, q string, includeDeprecated bool) int {
@@ -108,8 +115,7 @@ func ListModels(p Provider, q string, includeDeprecated bool, limit, offset int)
 		offset = 0
 	}
 	q = strings.ToLower(strings.TrimSpace(q))
-	out := make([]Model, 0, len(p.Models))
-	skipped := 0
+	matched := make([]Model, 0, len(p.Models))
 	for _, m := range p.Models {
 		if !includeDeprecated && strings.EqualFold(m.Status, "deprecated") {
 			continue
@@ -120,14 +126,28 @@ func ListModels(p Provider, q string, includeDeprecated bool, limit, offset int)
 				continue
 			}
 		}
-		if skipped < offset {
-			skipped++
-			continue
-		}
-		out = append(out, m)
-		if len(out) >= limit {
-			break
-		}
+		matched = append(matched, m)
 	}
-	return out
+	sort.Slice(matched, func(i, j int) bool {
+		si, sj := strings.ToLower(matched[i].Status), strings.ToLower(matched[j].Status)
+		if si == "deprecated" && sj != "deprecated" {
+			return false
+		}
+		if si != "deprecated" && sj == "deprecated" {
+			return true
+		}
+		ni, nj := strings.ToLower(matched[i].Name), strings.ToLower(matched[j].Name)
+		if ni != nj {
+			return ni < nj
+		}
+		return matched[i].ID < matched[j].ID
+	})
+	if offset >= len(matched) {
+		return nil
+	}
+	end := offset + limit
+	if end > len(matched) {
+		end = len(matched)
+	}
+	return matched[offset:end]
 }

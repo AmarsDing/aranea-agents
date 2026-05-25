@@ -60,7 +60,7 @@ function pieOption(slices: UsageBreakdownSlice[]): EChartsCoreOption {
   const palette = usageChartPalette();
   return {
     textStyle: { color: palette.text, fontFamily: "inherit" },
-    tooltip: { trigger: "item", valueFormatter: (v) => `$${Number(v).toFixed(4)}` },
+    tooltip: { trigger: "item", valueFormatter: (v: number) => `$${Number(v).toFixed(4)}` },
     legend: { orient: "vertical", right: 0, top: "middle", textStyle: { color: palette.text } },
     series: [
       {
@@ -83,9 +83,3 @@ function pieOption(slices: UsageBreakdownSlice[]): EChartsCoreOption {
 useUsageChart(modelChartEl, () => pieOption(modelSlices.value), () => [modelSlices.value]);
 useUsageChart(providerChartEl, () => pieOption(providerSlices.value), () => [providerSlices.value]);
 </script>
-
-<style scoped lang="sass">
-.usage-breakdown-chart
-  width: 100%
-  height: 260px
-</style>

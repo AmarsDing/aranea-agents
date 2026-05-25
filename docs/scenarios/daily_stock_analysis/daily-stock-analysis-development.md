@@ -1,6 +1,6 @@
 # Daily Stock Analysis — 开发计划
 
-> **版本**：v1.0（2026-05-18）
+> **版本**：v1.1（2026-05-25；Postgres `stockx`、实时性、多 Agent 通路、MVP 策略 B）
 > **需求**：[daily-stock-analysis.md](./daily-stock-analysis.md)
 > **设计**：[daily-stock-analysis.design.md](./daily-stock-analysis.design.md)
 > **执行基线**：[`guides/execution-plan.md`](../../guides/execution-plan.md)
@@ -19,7 +19,34 @@
 
 ---
 
-## 1. 全局优先级
+## 1. 推荐实施策略（已确认）
+
+| 策略 | 周期 | 说明 |
+|------|------|------|
+| **A 全量 v1.0** | ~9 周 | 按 Phase 1–8 完整交付（本文档默认任务板） |
+| **B MVP 先行（推荐）** | ~3–4 周可演示 | Phase 1 精简 + Phase 2/3 主线 + Phase 4 最小 Cron/飞书 |
+| **C PoC** | ~1 周 | 仅 `seed-stockx-org` + 少量 Tool + 手工 Team 联调 |
+
+**策略 B 范围**：
+
+| 周次 | 交付 |
+|------|------|
+| W1 | `stockdata` 行情 + `stock_resolve` + 指标 + **Postgres `stockx.quote_cache`** + Tool 注册 |
+| W2 | 3 个核心 Skill + 5 Agent + `team_stock_deep_dive`（**coordinator 降级**）+ `team_premarket_brief` |
+| W3 | `stockx` 全表迁移 + StockxService + Watchlist / Reports 页 |
+| W4 | 1 个 Cron（盘前）+ 飞书推送 |
+
+**暂缓至 M-S4 / v0.5+**：Graph 深度编排全量、持仓诊断、4 Cron 全量、评估集。
+
+**技术基线（v1.1）**：
+
+- 场景业务数据：**PostgreSQL `stockx` schema**（非 Ent/SQLite）。
+- 实时性：**准实时 ≥1min**；`stock_quote_realtime` 不缓存；深度分析优先 **Graph**（Phase 6 或 MVP 末迭代）。
+- 跨 Agent 数据：Tool → 当前 Agent → AgentTool 返回值 / Graph `state`（见需求 §1.6、设计 §1.4）。
+
+---
+
+## 2. 全局优先级
 
 | 优先级 | 含义 |
 |--------|------|
@@ -30,7 +57,7 @@
 
 ---
 
-## 2. 模块状态速览
+## 3. 模块状态速览
 
 | # | 模块 | 目标状态 | 当前状态 | 依赖 |
 |---|------|----------|----------|------|
@@ -45,7 +72,7 @@
 | 9 | 2 个 Graph 工作流 | ✅ | ❌ 未启动 | EP-BIZ-10 |
 | 10 | 4 个 Cron 任务 | ✅ | ❌ 未启动 | EP-BIZ-09 |
 | 11 | Channel 推送（飞书 + 邮件） | ✅ | ❌ 未启动 | EP-BIZ-08 |
-| 12 | Stockx Service + 新增 5 张表 | ✅ | ❌ 未启动 | — |
+| 12 | Stockx Service + Postgres `stockx` 5 张表 | ✅ | ❌ 未启动 | `data.postgres` 已配置 |
 | 13 | 前端 Watchlist / Detail / Reports 页 | ✅ | ❌ 未启动 | 12 |
 | 14 | 安装包 install.go + 配置即代码 | ✅ | ❌ 未启动 | — |
 | 15 | 部署（Docker Compose + Python Sidecar） | ✅ | ❌ 未启动 | — |
@@ -55,14 +82,15 @@
 
 ---
 
-## 3. 平台前置依赖
+## 4. 平台前置依赖
 
 | 平台 EP | 状态 | 本场景受影响项 | 兜底方案 |
 |---------|------|----------------|----------|
-| `EP-BIZ-04` CodeExecutor skill 路径走 Sandbox | 🟡 | 图表渲染、因子计算 | 本地图表 fallback（生成 SVG 字符串） |
-| `EP-BIZ-08` Channel Webhook + 投递 | 🟡 | 飞书推送 | HTTP 直连 webhook 简易实现 |
-| `EP-BIZ-09` Cron 调度引擎 | 🟡 | 4 个内置 Cron | 进程内 ticker 简易调度 |
-| `EP-BIZ-10` Graph 执行引擎 | 🟡 | `team_stock_deep_dive` Graph 编排 | 退化为 coordinator 模式 |
+| `data.postgres` | ✅ 已有连接 | `stockx` schema、Knowledge、Memory 向量 | 场景安装失败 fast-fail 并提示配置 DSN |
+| `EP-BIZ-04` CodeExecutor | ✅ Phase 1–2 | 图表渲染、因子计算 | 本地 SVG fallback |
+| `EP-BIZ-08` Channel | ✅ 飞书/钉钉 | 飞书推送 | HTTP 直连 webhook |
+| `EP-BIZ-09` Cron | ✅ | 4 个内置 Cron | 进程内 ticker（仅 dev） |
+| `EP-BIZ-10` Graph | ✅ Phase A–D | `team_stock_deep_dive` Graph | MVP 周次 2 用 coordinator；Week 6+ 升 Graph |
 | `EP-KN-01/02` Knowledge Embedder / 摄取 | 🟡 | 公司库 / 行业链 RAG | 本地内存索引 + 精确匹配 |
 | `EP-CB-01` Callback 链（LLMAgent/Model） | 🟡 | 持仓脱敏 Plugin | Skill 内提示词软约束 |
 
@@ -70,7 +98,7 @@
 
 ---
 
-## 4. 阶段计划
+## 5. 阶段计划
 
 ### Phase 1 — 数据底座（P0，目标 2 周）
 
@@ -82,7 +110,7 @@
 | 1.2 | AKShare Provider（行情、财务、资金、消息） | EP-STOCKX-02 | P0 | 5d | 离线 fixture 测试 + 在线冒烟 |
 | 1.3 | yfinance Provider（港股 / 美股 行情） | EP-STOCKX-03 | P1 | 2d | 同上 |
 | 1.4 | 指标计算（MA/MACD/KDJ/RSI/BOLL/ATR/OBV 纯 Go） | EP-STOCKX-04 | P0 | 3d | 与 talib 黄金对照 |
-| 1.5 | 缓存层（quote / news；TTL；清理 Cron） | EP-STOCKX-05 | P0 | 2d | 命中率指标可观测 |
+| 1.5 | Postgres `stockx` 迁移 + 缓存 Repo（quote/news；TTL；清理） | EP-STOCKX-05 | P0 | 2d | `EnsureSchema` + 命中率可观测 |
 | 1.6 | 交易日历（A/H/U + 节假日加载） | EP-STOCKX-06 | P0 | 2d | 2024-2026 节假日正确 |
 | 1.7 | 工具注册 + Tools 管理页可见 | EP-STOCKX-07 | P0 | 1d | 所有工具在 `/tools` 列出 |
 | 1.8 | `stock_resolve` Tool（中文/拼音/简称匹配） | EP-STOCKX-08 | P0 | 2d | 100 样本召回 ≥ 95% |
@@ -103,7 +131,8 @@
 | 2.1 | 13 个 Skill 包编写 + 入仓 | EP-STOCKX-10 | P0 | 5d | `/skills` 全部可见，启用后 Agent 可引用 |
 | 2.2 | 10+ Agent 定义 + system_prompt + 工具绑定 | EP-STOCKX-11 | P0 | 4d | `agents.yaml` 加载成功；Chat 中可单独对话 |
 | 2.3 | `team_premarket_brief`（coordinator） | EP-STOCKX-12 | P0 | 2d | 输入 watchlist → 输出简报 Markdown |
-| 2.4 | `team_stock_deep_dive`（coordinator 降级版） | EP-STOCKX-13 | P0 | 2d | 输入「600519」→ 输出深度报告 |
+| 2.4 | `team_stock_deep_dive`（**coordinator MVP**；Graph 见 Phase 6） | EP-STOCKX-13 | P0 | 2d | 输入「600519」→ 五维报告；Tool 可追溯 |
+| 2.4b | `graph_stock_deep_dive` 最小子图（fetch_quote + fan_out） | EP-STOCKX-13b | P1 | 2d | 策略 B 可选 W2 末；减少重复拉行情 |
 | 2.5 | `team_sector_rotation`（sequential） | EP-STOCKX-14 | P1 | 2d | 输出板块扫描报告 |
 | 2.6 | `team_market_recap`（sequential） | EP-STOCKX-15 | P1 | 2d | 输出盘后复盘 |
 | 2.7 | `team_portfolio_doctor`（parallel + synthesizer） | EP-STOCKX-16 | P2 | 3d | 输入持仓 JSON → 输出诊断 |
@@ -122,11 +151,11 @@
 
 | # | 任务 | EP | 优先级 | 估时 | 验收 |
 |---|------|-----|--------|------|------|
-| 3.1 | 5 张表 Ent Schema + 迁移 | EP-STOCKX-19 | P0 | 2d | `make wire && make build` 通过 |
+| 3.1 | Postgres `stockx` 001_init.sql + `EnsureSchema` + Wire | EP-STOCKX-19 | P0 | 2d | 无 Postgres 时安装明确报错 |
 | 3.2 | `WatchlistUsecase` / `StockReportUsecase` / `TradingCalendarUsecase` | EP-STOCKX-20 | P0 | 2d | 单元测试 |
 | 3.3 | `api/kratos/stockx/v1/*.proto` + RPC 实现 | EP-STOCKX-21 | P0 | 2d | `make api` 通过；HTTP 路由可访问 |
 | 3.4 | 前端 Watchlist 页（CRUD + 批量导入） | EP-STOCKX-22 | P0 | 3d | 增删改查 + CSV 导入 |
-| 3.5 | 前端 Stock Detail 页（基础信息 + K 线 + 报告列表） | EP-STOCKX-23 | P1 | 3d | 价格刷新 + K 线渲染 |
+| 3.5 | 前端 Stock Detail 页（基础信息 + K 线 + 报告列表） | EP-STOCKX-23 | P1 | 3d | 价格 30–60s 轮询 + 延迟提示 + K 线 |
 | 3.6 | 前端 Reports 页（列表 + 筛选 + 详情抽屉） | EP-STOCKX-24 | P0 | 2d | 报告可查看可下载 |
 | 3.7 | 路由 + 侧栏入口 + 暗色模式适配 | EP-STOCKX-25 | P0 | 1d | UX 一致 |
 | 3.8 | 前端 i18n（zh-CN 基线） | EP-STOCKX-26 | P1 | 1d | 文案抽离 |
@@ -224,12 +253,12 @@
 
 ---
 
-## 5. 里程碑
+## 6. 里程碑
 
 | 里程碑 | 内容 | 累计周期 | 出口标准 |
 |--------|------|----------|----------|
-| **M-S1：数据底座** | Phase 1 完成 | 2 周 | 工具单测 + 集成测试通过 |
-| **M-S2：MVP 可用** | Phase 1-3 完成 + Phase 4 部分 | 5 周 | 个股深度分析 + 自选股管理 + 飞书推送可用 |
+| **M-S1：数据底座** | Phase 1 完成 | 2 周 | Tool 单测 + **Postgres `stockx.quote_cache`** 可读写 |
+| **M-S2：MVP 可用** | 策略 B：Phase 1–3 + Phase 4 最小 | **3–4 周**（策略 A 为 5 周） | 自选 PG 存储 + 深度分析 + 盘前 Cron/飞书 |
 | **M-S3：场景闭环** | Phase 1-5 完成 | 7 周 | 4 个 Cron 上线 + KB 检索 + 监控仪表盘 |
 | **M-S4：高级编排** | Phase 6 完成 | 8 周 | Graph 工作流可用 |
 | **M-S5：开源发布** | Phase 7 完成 | 9 周 | 开源仓库 release v1.0 |
@@ -237,7 +266,7 @@
 
 ---
 
-## 6. 关键路径与依赖图
+## 7. 关键路径与依赖图
 
 ```
 Phase 1 (数据底座)
@@ -257,12 +286,14 @@ Phase 1 (数据底座)
 
 ---
 
-## 7. 风险与缓解
+## 8. 风险与缓解
 
 | # | 风险 | 概率 | 影响 | 缓解 |
 |---|------|------|------|------|
 | R1 | AKShare 接口频繁变更，工具失效 | 高 | 高 | 多 Provider fallback；CI 中加 Provider 契约测试；维护 fixture |
-| R2 | 平台 Cron / Channel / Graph 模块未完成 | 中 | 高 | 本场景兜底实现（ticker / 直连 webhook / coordinator 降级） |
+| R2 | Postgres 未配置导致场景无法安装 | 中 | 高 | `install.go` 启动检查 DSN；文档与 compose 默认带 PG |
+| R2b | Coordinator 重复拉实时行情触发限频 | 中 | 中 | 优先 Graph；data_collector 集中拉取；盘前合并一次 `stock_quote_realtime` |
+| R2c | 用户误解为 Tick 实时 | 中 | 中 | UI/报告标注延迟；需求 §1.5 |
 | R3 | CodeExecutor Sandbox 未稳定 | 中 | 中 | 图表降级为内置 SVG；因子降级为纯 Go |
 | R4 | 数据源被封禁 IP | 中 | 中 | 限流 + 重试 + 多源 + 用户自配代理 |
 | R5 | Token 用量失控 | 中 | 中 | 默认 mini/flash 模型；Token 模块限额；上下文 isolated |
@@ -274,7 +305,7 @@ Phase 1 (数据底座)
 
 ---
 
-## 8. 任务清单（汇总）
+## 9. 任务清单（汇总）
 
 | EP | 任务 | Phase | 优先级 | 状态 |
 |----|------|-------|--------|------|
@@ -282,7 +313,7 @@ Phase 1 (数据底座)
 | EP-STOCKX-02 | AKShare Provider | 1 | P0 | ⏳ |
 | EP-STOCKX-03 | yfinance Provider | 1 | P1 | ⏳ |
 | EP-STOCKX-04 | 指标计算（纯 Go） | 1 | P0 | ⏳ |
-| EP-STOCKX-05 | 缓存层 | 1 | P0 | ⏳ |
+| EP-STOCKX-05 | Postgres stockx 缓存层 | 1 | P0 | ⏳ |
 | EP-STOCKX-06 | 交易日历 | 1 | P0 | ⏳ |
 | EP-STOCKX-07 | Tool 注册 | 1 | P0 | ⏳ |
 | EP-STOCKX-08 | stock_resolve | 1 | P0 | ⏳ |
@@ -290,13 +321,14 @@ Phase 1 (数据底座)
 | EP-STOCKX-10 | 13 个 Skill 包 | 2 | P0 | ⏳ |
 | EP-STOCKX-11 | 10+ Agent 配置 | 2 | P0 | ⏳ |
 | EP-STOCKX-12 | team_premarket_brief | 2 | P0 | ⏳ |
-| EP-STOCKX-13 | team_stock_deep_dive (coordinator) | 2 | P0 | ⏳ |
+| EP-STOCKX-13 | team_stock_deep_dive (coordinator MVP) | 2 | P0 | ⏳ |
+| EP-STOCKX-13b | graph_stock_deep_dive 最小子图 | 2 | P1 | ⏳ |
 | EP-STOCKX-14 | team_sector_rotation | 2 | P1 | ⏳ |
 | EP-STOCKX-15 | team_market_recap | 2 | P1 | ⏳ |
 | EP-STOCKX-16 | team_portfolio_doctor | 2 | P2 | ⏳ |
 | EP-STOCKX-17 | 报告模板 + 飞书卡片 | 2 | P0 | ⏳ |
 | EP-STOCKX-18 | Critic Loop | 2 | P2 | ⏳ |
-| EP-STOCKX-19 | 5 张表 Schema | 3 | P0 | ⏳ |
+| EP-STOCKX-19 | Postgres stockx 迁移 + EnsureSchema | 3 | P0 | ⏳ |
 | EP-STOCKX-20 | Stockx Usecases | 3 | P0 | ⏳ |
 | EP-STOCKX-21 | stockx.proto + RPC | 3 | P0 | ⏳ |
 | EP-STOCKX-22 | 前端 Watchlist 页 | 3 | P0 | ⏳ |
@@ -340,7 +372,7 @@ Phase 1 (数据底座)
 
 ---
 
-## 9. 验证与发布
+## 10. 验证与发布
 
 ### 9.1 验证矩阵
 
@@ -379,7 +411,7 @@ Phase 1 (数据底座)
 
 ---
 
-## 10. 沟通与协作
+## 11. 沟通与协作
 
 | 角色 | 职责 |
 |------|------|
@@ -396,11 +428,11 @@ Phase 1 (数据底座)
 1. 每个 EP-STOCKX-XX 开 Issue + branch
 2. PR 必跑：`make wire && make api && make build && make test && cd web && pnpm lint && pnpm test && pnpm build`
 3. 涉及平台依赖时在 PR description 关联 `EP-*` 平台编号
-4. 每周一同步状态到本文档 §2 与 §8
+4. 每周一同步状态到本文档 §3（模块状态）与 §9（任务清单）
 
 ---
 
-## 11. 与平台执行基线协同
+## 12. 与平台执行基线协同
 
 | 平台 EP 状态变化 | 本场景响应 |
 |------------------|------------|
@@ -415,16 +447,17 @@ Phase 1 (数据底座)
 
 ---
 
-## 12. 验收 Demo 脚本（M-S2 / v0.1.0-alpha）
+## 13. 验收 Demo 脚本（M-S2 / v0.1.0-alpha）
 
 > 用于评估 MVP 是否达成。
 
 ```
+0. 确认 data.postgres.source 已配置；场景安装已执行 stockx.EnsureSchema
 1. docker compose -f docker-compose.stockx.yml up -d
 2. 打开 http://localhost:5173
-3. 进入 Watchlist 页，批量导入：600519,000858,300750,002594,600036
+3. 进入 Watchlist 页，批量导入：600519,000858,300750,002594,600036（数据写入 Postgres stockx.watchlist）
 4. 进入 Chat，选择团队「个股深度分析」，输入「分析下贵州茅台最近的走势」
-5. 等待 ≤ 90s，观察：
+5. 等待完成（目标 ≤90s，多 Agent 可至 8min），观察：
    - 左侧成员级流式事件可见（technical / fundamental / news / sentiment）
    - 报告输出包含：TL;DR、技术面、基本面、资金面、消息面、风险评估
    - 报告底部含数据引用 + 风险提示
@@ -438,7 +471,7 @@ Phase 1 (数据底座)
 
 ---
 
-## 13. 参考
+## 14. 参考
 
 - [需求文档](./daily-stock-analysis.md)
 - [设计文档](./daily-stock-analysis.design.md)

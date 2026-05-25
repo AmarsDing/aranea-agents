@@ -62,16 +62,3 @@ function onDialogUpdate(value: boolean) {
   if (!value) emit("update:open", false);
 }
 </script>
-
-<style scoped>
-.orch-hitl-dialog__preview {
-  white-space: pre-wrap;
-  max-height: 160px;
-  overflow: auto;
-  padding: 8px;
-  border-radius: 8px;
-  background: var(--glass-elevated);
-  font-size: 11px;
-  margin: 0;
-}
-</style>

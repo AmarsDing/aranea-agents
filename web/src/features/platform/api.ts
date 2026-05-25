@@ -403,7 +403,9 @@ export async function listPlatformResources(resource: PlatformResourceName): Pro
     }
     case "monitor-events": {
       const svc = createMonitorService();
-      const res = await svc.ListMonitorEvents({});
+      const res = await svc.ListMonitorEvents({
+        limit: undefined, offset: undefined, eventType: undefined, agentId: undefined, status: undefined
+      });
       return (res.items ?? []).map((row: unknown) => monitorEventWireToPlatform(row));
     }
     case "monitor-traces": {

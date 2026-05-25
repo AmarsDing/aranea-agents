@@ -145,35 +145,3 @@ function formatDate(value?: string) {
   return new Date(value).toLocaleString();
 }
 </script>
-
-<style scoped lang="sass">
-.skill-table
-  background: transparent
-
-  :deep(thead tr th),
-  :deep(tbody tr td)
-    vertical-align: middle
-
-  :deep(thead tr th)
-    padding-top: 10px
-    padding-bottom: 10px
-    font-size: 12px
-
-  :deep(tbody tr td)
-    padding-top: 12px
-    padding-bottom: 12px
-
-.skill-table-desc
-  max-width: 100%
-
-.skill-status-cell
-  display: flex
-  flex-direction: column
-  align-items: flex-start
-  gap: 4px
-
-.skill-status-cell__version
-  font-size: 11px
-  line-height: 1.3
-  color: var(--color-text-secondary)
-</style>

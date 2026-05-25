@@ -1,0 +1,624 @@
+// 配置面板 / Agent 设置 Tab 内区块 — 全站复用（Agent 设置、SystemSettings 子面板等）
+
+.settings-grid
+  display: grid
+  gap: 16px
+  max-width: 960px
+
+.settings-grid--wide
+  max-width: 100%
+
+.settings-grid:has(.capability-card)
+  max-width: 100%
+
+.settings-section
+  padding: 20px 22px
+  border: 1px solid var(--glass-border)
+  border-radius: 18px
+  background: var(--glass-elevated)
+  box-shadow: none
+  backdrop-filter: blur(12px)
+  -webkit-backdrop-filter: blur(12px)
+  transition: background 180ms ease, border-color 180ms ease
+
+.settings-section--muted
+  background: color-mix(in srgb, var(--glass-surface) 55%, transparent)
+
+.settings-section:hover
+  background: var(--glass-surface-hover)
+  border-color: color-mix(in srgb, var(--color-accent) 14%, var(--glass-border))
+
+.settings-section__hint
+  margin: 4px 0 0
+  font-size: 13px
+  line-height: 1.5
+  color: var(--color-text-secondary)
+
+.settings-section__actions
+  display: flex
+  flex-wrap: wrap
+  align-items: center
+  gap: 6px
+  flex-shrink: 0
+
+.settings-muted-empty
+  padding: 16px
+  border: 1px dashed color-mix(in srgb, var(--glass-border) 85%, transparent)
+  border-radius: 12px
+  text-align: center
+  font-size: 13px
+  color: var(--color-text-secondary)
+
+.section-heading
+  display: flex
+  justify-content: space-between
+  align-items: flex-start
+  gap: 12px
+  margin-bottom: 14px
+
+.section-heading__main
+  flex: 1
+  min-width: 0
+
+.section-title
+  display: flex
+  align-items: center
+  gap: 8px
+
+.section-title__text
+  font-size: 15px
+  font-weight: 600
+  color: var(--color-text-heading)
+  letter-spacing: -0.01em
+
+.settings-subsection-grid
+  display: grid
+  gap: 12px
+
+  @media (width >= 900px)
+    grid-template-columns: repeat(2, minmax(0, 1fr))
+
+.settings-subsection
+  padding: 14px 16px
+  border: 1px solid var(--glass-border)
+  border-radius: 14px
+  background: color-mix(in srgb, var(--glass-surface) 48%, transparent)
+
+.settings-subsection--flat
+  background: transparent
+  border-style: dashed
+
+.settings-subsection__head
+  margin-bottom: 10px
+
+.settings-subsection__title
+  font-size: 13px
+  font-weight: 600
+  color: var(--color-text-heading)
+
+.settings-subsection__hint
+  margin: 4px 0 0
+  font-size: 12px
+  line-height: 1.45
+  color: var(--color-text-secondary)
+
+.settings-field-stack
+  display: grid
+  gap: 10px
+
+.capability-card
+  border-color: var(--glass-border)
+  border-radius: 16px
+  overflow: hidden
+  background: var(--glass-surface)
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+  transition: border-color 180ms ease
+
+.capability-card:hover
+  border-color: color-mix(in srgb, var(--color-accent) 14%, var(--glass-border))
+
+.capability-card .q-card__section:first-child
+  background: var(--glass-elevated)
+
+.settings-section .q-field__control
+  border-radius: 14px
+  background: var(--glass-elevated)
+
+.settings-section .app-form-field-grid
+  gap: 12px
+
+.settings-section .app-form-field-grid .q-field,
+.settings-section .app-form-field-grid .q-toggle
+  min-width: 0
+
+.settings-section .app-field-long
+  width: 100%
+
+.settings-section .q-toggle__label
+  font-weight: 500
+  font-size: 13px
+  color: var(--color-text-primary)
+
+.settings-section .q-toggle__inner--truthy
+  color: color-mix(in srgb, var(--color-accent) 68%, var(--glass-surface)) !important
+
+.settings-warning-banner
+  background: var(--color-status-warning-bg)
+  color: var(--color-status-warning-text-dark)
+
+.settings-info-banner
+  background: var(--color-status-info-bg-alt)
+  color: var(--color-status-info-text)
+
+.settings-info-banner--bordered
+  border: 1px solid var(--glass-border)
+  box-shadow: var(--glass-inner-highlight)
+
+.settings-placeholder-banner
+  background: var(--interaction-surface-hover, var(--color-interaction-surface-alt))
+  color: var(--color-text-primary)
+
+.agent-tools-section
+  padding-top: 4px
+  border-top: 1px solid color-mix(in srgb, var(--glass-border) 80%, transparent)
+
+.agent-tools-section > .row:first-child
+  margin-bottom: 8px
+
+.app-panel-hint,
+.agent-tools-section__hint,
+.agent-hooks-panel__hint
+  flex: 1
+  min-width: 0
+  margin: 0
+  font-size: 12px
+  line-height: 1.45
+  color: var(--color-text-secondary)
+
+.agent-hooks-panel__hint
+  font-size: 13px
+
+  code
+    font-size: 11px
+
+.settings-link
+  color: var(--color-accent)
+  text-decoration: none
+  font-weight: 600
+
+  &:hover
+    text-decoration: underline
+
+// Agent 设置页顶栏
+.agent-settings-header,
+.settings-header
+  display: flex
+  justify-content: space-between
+  align-items: center
+  gap: 16px
+  flex-wrap: wrap
+  padding: 22px 24px
+  background: var(--glass-elevated)
+  border-bottom: 1px solid var(--glass-border)
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+
+.agent-settings-header__avatar-wrap,
+.settings-header__avatar-wrap
+  flex-shrink: 0
+  line-height: 0
+
+.agent-settings-header .settings-avatar,
+.settings-header .settings-avatar
+  box-shadow: 0 14px 34px color-mix(in srgb, var(--color-accent) 20%, transparent)
+
+.agent-settings-header .header-icon-btn,
+.settings-header .header-icon-btn
+  background: color-mix(in srgb, var(--glass-elevated) 92%, transparent)
+
+.agent-settings-header .settings-status,
+.settings-header .settings-status
+  padding: 4px 8px
+  background: var(--color-status-info-bg)
+  color: var(--color-text-tertiary)
+  font-weight: 700
+  text-transform: capitalize
+
+.agent-settings-header .settings-status.is-active,
+.settings-header .settings-status.is-active
+  background: var(--color-status-success-bg)
+  color: var(--color-accent-green)
+
+.agent-settings-header .settings-chip,
+.settings-header .settings-chip
+  border: 1px solid color-mix(in srgb, var(--color-warning) 18%, var(--glass-border))
+  background: var(--color-status-warning-bg)
+  color: var(--color-status-warning-text)
+  font-weight: 700
+
+.agent-settings-header .settings-chip.is-evolving,
+.settings-header .settings-chip.is-evolving
+  background: var(--color-status-warning-bg-alt)
+
+.agent-settings-header .settings-action,
+.agent-settings-header .settings-save,
+.settings-header .settings-action,
+.settings-header .settings-save
+  min-height: 40px
+  padding: 0 16px
+  font-weight: 700
+
+.agent-settings-header .settings-save,
+.settings-header .settings-save
+  box-shadow: 0 12px 26px color-mix(in srgb, var(--color-accent) 20%, transparent)
+
+body.body--dark .agent-settings-header,
+body.body--dark .settings-header
+  background: var(--glass-elevated)
+  border-bottom-color: var(--glass-border)
+
+body.body--dark .agent-settings-header .header-icon-btn,
+body.body--dark .settings-header .header-icon-btn
+  background: color-mix(in srgb, var(--glass-elevated) 74%, transparent)
+
+body.body--dark .agent-settings-header .settings-status,
+body.body--dark .settings-header .settings-status
+  background: color-mix(in srgb, var(--glass-border) 16%, transparent)
+  color: var(--color-text-secondary)
+
+body.body--dark .agent-settings-header .settings-status.is-active,
+body.body--dark .settings-header .settings-status.is-active
+  background: color-mix(in srgb, var(--color-success) 18%, transparent)
+  color: var(--color-accent-green)
+
+body.body--dark .agent-settings-header .settings-chip,
+body.body--dark .settings-header .settings-chip
+  border-color: color-mix(in srgb, var(--color-warning) 24%, var(--glass-border))
+  background: color-mix(in srgb, var(--color-warning) 32%, transparent)
+  color: var(--color-accent-amber-light)
+
+body.body--dark .agent-settings-header .settings-chip.is-evolving,
+body.body--dark .settings-header .settings-chip.is-evolving
+  background: color-mix(in srgb, var(--color-warning) 32%, transparent)
+
+body.body--dark .agent-settings-header .text-grey-7,
+body.body--dark .settings-header .text-grey-7
+  color: var(--color-text-tertiary) !important
+
+.planner-schema-expansion
+  border: 1px solid var(--glass-border)
+  border-radius: 12px
+
+// 玻璃分隔列表（进化开关、建议列表等）
+.app-glass-list
+  border: 1px solid var(--glass-border)
+  border-radius: 16px
+  overflow: hidden
+  background: var(--glass-elevated)
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+
+.app-glass-list__item--md
+  min-height: 68px
+
+.app-glass-list__item--lg
+  min-height: 80px
+
+.settings-section--success
+  border-color: color-mix(in srgb, var(--color-success) 28%, var(--glass-border))
+  background: color-mix(in srgb, var(--color-success) 9%, var(--glass-surface))
+
+// 迷你柱状趋势（进化 Tab 等）
+.app-mini-bar-chart
+  display: flex
+  align-items: flex-end
+  gap: 4px
+  height: 72px
+  padding: 8px 4px
+  border: 1px solid var(--glass-border)
+  border-radius: 12px
+  background: var(--glass-surface)
+
+.app-mini-bar-chart__bar
+  flex: 1
+  min-width: 6px
+  background: color-mix(in srgb, var(--color-primary) 75%, transparent)
+  border-radius: 3px 3px 0 0
+
+.evolution-panel
+  display: grid
+  gap: 16px
+
+body.body--dark
+  .settings-section
+    border-color: var(--glass-border)
+    background: var(--glass-elevated)
+    box-shadow: none
+
+  .settings-section:hover
+    background: var(--glass-surface-hover)
+    border-color: var(--glass-border-hover)
+
+  .capability-card
+    border-color: var(--glass-border)
+    background: var(--glass-surface)
+
+  .capability-card .q-card__section:first-child
+    background: rgb(30 41 59 / 86%)
+
+  .capability-card:hover
+    border-color: color-mix(in srgb, var(--color-accent) 22%, var(--glass-border))
+
+  .settings-section .q-field__control
+    background: rgb(15 23 42 / 72%)
+
+  .settings-section .q-toggle__label
+    color: var(--color-text-dark)
+
+  .settings-section .text-grey-7
+    color: var(--color-text-tertiary) !important
+
+  .settings-warning-banner
+    background: rgb(154 52 18 / 22%)
+    color: var(--color-accent-orange-bg)
+
+  .settings-info-banner
+    background: rgb(30 58 138 / 35%)
+    color: var(--color-accent-blue-light)
+
+  .settings-section--success
+    border-color: color-mix(in srgb, var(--color-success) 35%, var(--glass-border))
+    background: color-mix(in srgb, var(--color-success) 12%, var(--glass-surface))
+
+  .settings-placeholder-banner
+    background: rgb(30 41 59 / 82%)
+    color: var(--color-text-slate-300)
+
+// Agent 设置页壳 / Tab / Prompt 模式卡
+.agent-settings
+  display: flex
+  flex-direction: column
+  align-items: center
+  min-height: 100%
+  padding: 28px
+  background: var(--canvas-base)
+  color: var(--color-text-primary)
+
+.agent-settings--files-fill
+  flex: 1 1 auto
+  min-height: calc(100vh - 52px)
+  min-height: calc(100dvh - 52px)
+
+.settings-shell
+  width: 100%
+  max-width: var(--layout-max-width)
+  margin: 0 auto
+  border-radius: 24px
+  border: 1px solid var(--glass-border)
+  background: var(--glass-surface)
+  box-shadow: none
+  overflow: hidden
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+
+.settings-shell--fill
+  flex: 1 1 auto
+  display: flex
+  flex-direction: column
+  min-height: 0
+  height: calc(100vh - 192px)
+  height: calc(100dvh - 192px)
+  max-height: calc(100vh - 192px)
+  max-height: calc(100dvh - 192px)
+  overflow: hidden
+
+.settings-shell--fill .settings-panels
+  flex: 1 1 auto
+  min-height: 0
+  display: flex
+  flex-direction: column
+
+.settings-shell--fill .settings-panels .q-tab-panel.settings-tab-panel-fill
+  flex: 1 1 auto
+  min-height: 0
+  display: flex
+  flex-direction: column
+
+.agent-settings-tabs
+  padding: 8px 16px 0
+  background: var(--nav-bg-light, var(--glass-surface))
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+
+.agent-settings-tabs .q-tab
+  min-height: 46px
+  border-radius: 14px 14px 0 0
+  font-weight: 700
+  color: var(--color-text-secondary)
+  transition: color 180ms ease, background 180ms ease
+
+.agent-settings-tabs .q-tab--active
+  color: var(--color-accent)
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent)
+
+.agent-settings-tabs .q-tab__indicator
+  height: 3px
+  border-radius: 2px
+  background: var(--color-accent)
+
+.settings-panels
+  background: transparent
+
+.settings-panels .q-tab-panel
+  padding: 20px
+
+.prompt-mode-grid
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr))
+
+.prompt-mode-card
+  height: 100%
+  border-color: var(--glass-border)
+  border-radius: 18px
+  background: var(--glass-elevated, rgb(255 255 255 / 72%))
+  backdrop-filter: blur(12px)
+  -webkit-backdrop-filter: blur(12px)
+  transition: transform 180ms ease, border-color 180ms ease, background 180ms ease
+
+.prompt-mode-card:hover
+  transform: translateY(-2px)
+  background: var(--glass-surface-hover)
+  border-color: var(--glass-border)
+
+.prompt-mode-card.is-active
+  border-color: var(--color-accent)
+  background: var(--interaction-surface-hover, rgb(255 243 228 / 92%))
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 45%)
+
+.prompt-mode-card__token
+  background: var(--glass-elevated, var(--color-on-accent))
+  color: var(--color-text-secondary)
+  font-weight: 700
+
+.prompt-mode-card__caption
+  margin: 0
+  font-size: 12px
+  line-height: 1.45
+  color: var(--color-text-secondary)
+
+.prompt-dialog
+  width: 860px
+  max-width: 94vw
+  border-radius: 24px
+  border: 1px solid var(--glass-border)
+  background: var(--glass-surface)
+  backdrop-filter: blur(var(--glass-blur-elevated))
+  -webkit-backdrop-filter: blur(var(--glass-blur-elevated))
+  box-shadow: none
+
+.agent-prompt-preview
+  max-height: 64vh
+  overflow: auto
+  margin: 0
+  white-space: pre-wrap
+  padding: 16px
+  border: 1px solid var(--glass-border)
+  border-radius: 16px
+  background: var(--glass-elevated)
+  color: var(--color-text-primary)
+  line-height: 1.6
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace
+
+body.body--dark
+  .agent-settings
+    background: var(--canvas-base)
+    color: var(--color-text-primary)
+
+  .settings-shell
+    border-color: var(--glass-border)
+    background: var(--glass-surface)
+    box-shadow: none
+
+  .agent-settings-tabs
+    background: var(--nav-bg-dark, var(--glass-surface))
+    backdrop-filter: blur(20px)
+    -webkit-backdrop-filter: blur(20px)
+
+  .agent-settings-tabs .q-tab--active
+    color: var(--color-accent)
+    background: color-mix(in srgb, var(--color-accent) 16%, transparent)
+
+  .prompt-mode-card
+    border-color: var(--glass-border)
+    background: var(--glass-surface)
+
+  .prompt-mode-card:hover
+    background: var(--glass-surface-hover)
+    border-color: var(--glass-border-hover, var(--glass-border))
+
+  .prompt-mode-card.is-active
+    border-color: var(--color-neon-cyan)
+    background: color-mix(in srgb, var(--color-neon-cyan) 8%, transparent)
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-neon-cyan) 35%, transparent)
+
+  .prompt-mode-card__token
+    background: rgb(30 41 59 / 94%)
+    color: var(--color-text-slate-300)
+
+  .prompt-dialog
+    background: var(--glass-surface)
+    border-color: var(--glass-border)
+    box-shadow: none
+
+  .agent-prompt-preview
+    border-color: var(--glass-border)
+    background: var(--glass-surface-hover)
+    color: var(--color-text-primary)
+
+@media (width <= 599px)
+  .agent-settings
+    padding: 18px
+
+  .settings-panels .q-tab-panel
+    padding: 14px
+
+  .settings-grid
+    max-width: 100%
+
+// Agent 文件编辑器（设置页 Files Tab）
+.agent-files-splitter
+  flex: 1 1 auto
+  min-height: 0
+  height: 100%
+  border: 1px solid var(--glass-border)
+  border-radius: 22px
+  overflow: hidden
+  background: var(--glass-surface)
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+  box-shadow: none
+
+.agent-files-splitter .q-splitter__separator
+  background: var(--glass-border)
+
+.agent-files-splitter .q-splitter__before,
+.agent-files-splitter .q-splitter__after
+  min-height: 0
+
+.agent-file-list
+  height: 100%
+  border-radius: 0
+  background: var(--glass-elevated)
+  color: var(--color-text-primary)
+  border-color: var(--glass-border)
+
+.agent-file-item
+  margin: 8px
+  border-radius: 14px
+  color: var(--color-text-secondary)
+
+.agent-file-item:hover
+  background: var(--glass-surface-hover)
+
+.agent-file-item--active
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent)
+  color: var(--color-text-primary)
+  font-weight: 700
+  box-shadow: var(--glass-inner-highlight)
+
+.agent-file-editor
+  flex: 1 1 auto
+  min-height: 0
+  color: var(--color-text-primary)
+  background: radial-gradient(circle at top right, color-mix(in srgb, var(--color-accent) 12%, transparent), transparent 42%), var(--glass-surface)
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+
+.agent-file-editor__footer
+  margin-top: 10px
+  color: var(--color-text-secondary)
+  font-size: 12px
+  font-weight: 600
+
+body.body--dark .agent-file-item--active
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 32%, transparent), var(--glass-inner-highlight)

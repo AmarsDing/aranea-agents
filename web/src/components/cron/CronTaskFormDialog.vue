@@ -8,12 +8,12 @@
     <q-card class="cron-form-dialog app-dialog-card app-dialog-card--md" :class="{ 'is-dark': $q.dark.isActive }">
       <q-card-section class="row items-start justify-between q-gutter-md">
         <div>
-          <div class="text-h6 text-primary-contrast">{{ row ? "编辑定时任务" : "创建定时任务" }}</div>
-          <div class="text-caption cron-form-subtitle">安排定期 Agent 任务，计划字段会保存到 config_json。</div>
+          <div class="text-h6">{{ row ? "编辑定时任务" : "创建定时任务" }}</div>
+          <div class="text-caption app-dialog-subtitle">安排定期 Agent 任务，计划字段会保存到 config_json。</div>
         </div>
-        <q-btn flat dense round icon="close" class="cron-form-icon-btn" aria-label="关闭" @click="$emit('update:modelValue', false)" />
+        <q-btn flat dense round icon="close" class="app-dialog-icon-btn" aria-label="关闭" @click="$emit('update:modelValue', false)" />
       </q-card-section>
-      <q-separator class="cron-form-sep" />
+      <q-separator class="app-dialog-sep" />
 
       <q-card-section>
         <CronTaskFormFields
@@ -26,13 +26,13 @@
         />
       </q-card-section>
 
-      <q-separator class="cron-form-sep" />
+      <q-separator class="app-dialog-sep" />
       <q-card-actions align="right">
-        <q-btn flat rounded class="cron-form-cancel" label="取消" :disable="submitting" @click="$emit('update:modelValue', false)" />
+        <q-btn flat rounded class="app-dialog-muted-btn" label="取消" :disable="submitting" @click="$emit('update:modelValue', false)" />
         <q-btn
           rounded
           unelevated
-          class="cron-form-submit"
+          class="app-dialog-accent-btn"
           :label="row ? '保存' : '创建'"
           :loading="submitting"
           :disable="!canSave || submitting"
@@ -92,42 +92,3 @@ async function onFormSubmit() {
   emit("submit", buildCronTaskPayload(form, props.row));
 }
 </script>
-
-<style scoped>
-.cron-form-dialog {
-  /* glass + width from app-dialog-card */
-}
-
-.cron-form-subtitle {
-  color: var(--color-text-secondary);
-}
-
-.cron-form-sep {
-  opacity: 55%;
-}
-
-.cron-form-icon-btn {
-  color: var(--color-icon-muted);
-}
-
-.cron-form-icon-btn:hover {
-  color: var(--color-accent);
-}
-
-.text-primary-contrast {
-  color: var(--color-text-primary);
-}
-
-.cron-form-cancel {
-  color: var(--color-text-secondary);
-}
-
-.cron-form-submit {
-  background: var(--color-accent) !important;
-  color: var(--color-on-accent) !important;
-}
-
-.cron-form-submit:hover {
-  background: var(--color-accent-hover) !important;
-}
-</style>

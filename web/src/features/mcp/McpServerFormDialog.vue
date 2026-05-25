@@ -442,19 +442,3 @@ function isSensitiveKey(key: string) {
   return /authorization|token|secret|password|key/i.test(key);
 }
 </script>
-
-<style scoped>
-.mcp-form-scroll {
-  max-height: min(70vh, 720px);
-  overflow: auto;
-}
-
-.section-label {
-  color: var(--color-text-primary);
-  font-weight: 800;
-}
-
-body.body--dark .section-label {
-  color: inherit;
-}
-</style>

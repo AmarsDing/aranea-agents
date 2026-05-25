@@ -186,6 +186,7 @@ export type AgentTemplatePreset = {
   label: string;
   icon: string;
   description: string;
+  text?: string;
   display_name?: string;
   provider?: string;
   model?: string;

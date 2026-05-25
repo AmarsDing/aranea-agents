@@ -17,11 +17,11 @@
 </template>
 
 <script setup lang="ts">
-import { mapA2UIIcon, type useA2UIComponent } from "../../../../features/chat/a2ui/useA2UIComponent";
+import { mapA2UIIcon, type A2UIComponentCtx } from "../../../../features/chat/a2ui/useA2UIComponent";
 
 defineProps<{
   kind: string;
-  ctx: ReturnType<typeof useA2UIComponent>;
+  ctx: A2UIComponentCtx;
 }>();
 </script>
 

@@ -108,6 +108,13 @@ func (s *ModelCatalogService) ListCatalogModels(ctx context.Context, req *v1.Lis
 		}
 		sum.ModalityInput = append(sum.ModalityInput, m.Modalities.Input...)
 		sum.ModalityOutput = append(sum.ModalityOutput, m.Modalities.Output...)
+		sum.Family = m.Family
+		sum.Knowledge = m.Knowledge
+		sum.ReleaseDate = m.ReleaseDate
+		sum.LastUpdated = m.LastUpdated
+		if len(m.Interleaved) > 0 && string(m.Interleaved) != "null" {
+			sum.InterleavedJson = string(m.Interleaved)
+		}
 		out = append(out, sum)
 	}
 	return &v1.ListCatalogModelsResponse{Items: out, Total: int32(total)}, nil
@@ -124,16 +131,17 @@ func (s *ModelCatalogService) GetModelCatalogRaw(ctx context.Context, _ *emptypb
 func (s *ModelCatalogService) SearchCatalogRaw(ctx context.Context, req *v1.SearchCatalogRawRequest) (*v1.SearchCatalogRawResponse, error) {
 	limit := int(req.GetLimit())
 	if limit <= 0 {
-		limit = 200
+		limit = 10
 	}
-	lines, total, err := s.uc.SearchRaw(ctx, req.GetQ(), limit, int(req.GetOffset()))
+	lines, total, truncated, err := s.uc.SearchRaw(ctx, req.GetQ(), limit, int(req.GetOffset()))
 	if err != nil {
 		return nil, err
 	}
 	return &v1.SearchCatalogRawResponse{
-		Lines:  lines,
-		Total:  int32(total),
-		Offset: req.GetOffset(),
+		Lines:      lines,
+		Total:      int32(total),
+		Offset:     req.GetOffset(),
+		Truncated:  truncated,
 	}, nil
 }
 

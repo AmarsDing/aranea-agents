@@ -135,7 +135,7 @@
             type="textarea"
             rows="8"
             label="modify_patch (JSON)"
-            :error="modifyPatchError"
+            :error="!!modifyPatchError"
             :error-message="modifyPatchError"
             @update:model-value="onModifyPatchInput"
           />

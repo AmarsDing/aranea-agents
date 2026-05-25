@@ -10,6 +10,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/agent"
+	"aranea-agents/internal/data/ent/agentcategory"
 	"aranea-agents/internal/data/ent/agentpromptfile"
 	"aranea-agents/internal/data/ent/agentruntimesetting"
 	"aranea-agents/internal/data/ent/predicate"
@@ -383,6 +384,60 @@ func applyBizRuntimeToCreate(b *ent.AgentRuntimeSettingCreate, v biz.AgentRuntim
 		SetUpdatedAt(v.UpdatedAt)
 }
 
+func (r *agentRepo) categoryPositionIDsForFilter(ctx context.Context, categoryID string) ([]string, error) {
+	categoryID = strings.TrimSpace(categoryID)
+	if categoryID == "" {
+		return nil, nil
+	}
+	node, err := r.data.entClient.AgentCategory.Query().
+		Where(
+			agentcategory.IDEQ(categoryID),
+			agentcategory.DeletedAtEQ(""),
+		).
+		Only(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return []string{}, nil
+		}
+		return nil, err
+	}
+	switch node.Level {
+	case "position":
+		return []string{node.ID}, nil
+	case "department":
+		return r.data.entClient.AgentCategory.Query().
+			Where(
+				agentcategory.ParentIDEQ(categoryID),
+				agentcategory.LevelEQ("position"),
+				agentcategory.DeletedAtEQ(""),
+			).
+			IDs(ctx)
+	case "industry":
+		deptIDs, err := r.data.entClient.AgentCategory.Query().
+			Where(
+				agentcategory.ParentIDEQ(categoryID),
+				agentcategory.LevelEQ("department"),
+				agentcategory.DeletedAtEQ(""),
+			).
+			IDs(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if len(deptIDs) == 0 {
+			return []string{}, nil
+		}
+		return r.data.entClient.AgentCategory.Query().
+			Where(
+				agentcategory.ParentIDIn(deptIDs...),
+				agentcategory.LevelEQ("position"),
+				agentcategory.DeletedAtEQ(""),
+			).
+			IDs(ctx)
+	default:
+		return []string{}, nil
+	}
+}
+
 func (r *agentRepo) SearchAgents(ctx context.Context, q biz.AgentListQuery) (biz.AgentListResult, error) {
 	if q.Limit <= 0 {
 		q.Limit = 24
@@ -410,7 +465,17 @@ func (r *agentRepo) SearchAgents(ctx context.Context, q biz.AgentListQuery) (biz
 		preds = append(preds, agent.ProviderEQ(q.Provider))
 	}
 	if q.CategoryID != "" {
-		preds = append(preds, agent.CategoryPositionIDEQ(q.CategoryID))
+		positionIDs, err := r.categoryPositionIDsForFilter(ctx, q.CategoryID)
+		if err != nil {
+			return biz.AgentListResult{}, err
+		}
+		if len(positionIDs) == 0 {
+			preds = append(preds, agent.CategoryPositionIDEQ("__no_such_category__"))
+		} else if len(positionIDs) == 1 {
+			preds = append(preds, agent.CategoryPositionIDEQ(positionIDs[0]))
+		} else {
+			preds = append(preds, agent.CategoryPositionIDIn(positionIDs...))
+		}
 	}
 	if cb := strings.TrimSpace(q.CreatedBy); cb != "" {
 		preds = append(preds, agent.CreatedByEQ(cb))

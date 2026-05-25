@@ -9,7 +9,7 @@
         clearable
         debounce="350"
         placeholder="搜索标题、摘要或 Session ID"
-        @update:model-value="$emit('update:keyword', $event)"
+        @update:model-value="$emit('update:keyword', String($event ?? ''))"
       >
         <template #prepend><q-icon name="search" /></template>
       </q-input>
@@ -23,7 +23,7 @@
         map-options
         label="类型"
         :options="ownerOptions"
-        @update:model-value="$emit('update:ownerType', $event)"
+        @update:model-value="$emit('update:ownerType', $event ?? null)"
       />
       <q-select
         :model-value="status"
@@ -35,7 +35,7 @@
         map-options
         label="状态"
         :options="statusOptions"
-        @update:model-value="$emit('update:status', $event)"
+        @update:model-value="$emit('update:status', $event ?? null)"
       />
       <q-select
         :model-value="contextStatus"
@@ -47,7 +47,7 @@
         map-options
         label="上下文"
         :options="contextOptions"
-        @update:model-value="$emit('update:contextStatus', $event)"
+        @update:model-value="$emit('update:contextStatus', $event ?? null)"
       />
       <div class="app-registry-toolbar__actions">
         <q-btn flat rounded no-caps label="重置" icon="restart_alt" @click="$emit('reset')" />

@@ -239,6 +239,17 @@
             </template>
           </q-select>
           <q-select
+            v-if="providerRuntimeLocked"
+            dense
+            outlined
+            readonly
+            disable
+            label="运行时类型"
+            :model-value="providerRuntimeSummary"
+            hint="由 models.dev 目录 / runtime overlay 自动决定，无需手动选择"
+          />
+          <q-select
+            v-else
             v-model="providerForm.provider_type"
             dense
             outlined
@@ -269,22 +280,28 @@
               />
             </template>
           </q-input>
+          <div
+            v-if="catalogModelsHint"
+            class="app-grid-span-full text-caption text-grey-7 q-mb-xs"
+          >
+            {{ catalogModelsHint }}
+          </div>
           <q-select
             v-model="providerForm.model_api_id"
             dense
             outlined
-            use-input
-            fill-input
-            hide-selected
-            input-debounce="300"
+            :use-input="useCatalogModelPicker"
+            :fill-input="false"
+            :hide-selected="false"
+            input-debounce="0"
             emit-value
             map-options
-            label="模型ID"
+            label="模型"
             :loading="catalogModelsLoading"
             :options="providerModelOptions"
-            @filter="(val, update) => providerAddMode === 'catalog' ? onCatalogModelFilter(val, update) : update(() => {})"
+            @filter="(val, update) => useCatalogModelPicker ? filterCatalogModelsLocal(val, update) : update(() => {})"
             @new-value="setCustomModelValue"
-            @update:model-value="providerAddMode === 'catalog' ? applyCatalogModel(String($event ?? '')) : applyModelPreset(String($event ?? ''))"
+            @update:model-value="useCatalogModelPicker ? applyCatalogModel(String($event ?? '')) : applyModelPreset(String($event ?? ''))"
           >
             <template #append>
               <q-btn
@@ -311,16 +328,24 @@
             v-model="providerForm.provider_code"
             dense
             outlined
-            label="名称 *"
-            hint="小写字母、数字、连字符，例如 openrouter"
+            label="Provider ID *"
+            hint="目录模式下为 models.dev 供应商 id"
+            :readonly="providerAddMode === 'catalog'"
             :rules="[providerCodeRule]"
           />
-          <q-input v-model="providerForm.provider_display_name" dense outlined label="显示名称" />
+          <q-input
+            v-model="providerForm.provider_display_name"
+            dense
+            outlined
+            label="供应商名称"
+            :readonly="providerAddMode === 'catalog'"
+            hint="来自 catalog 的 name 字段"
+          />
           <q-input v-model="providerForm.model_display_name" dense outlined label="模型展示名" />
           <q-input v-model="providerForm.api_base_url" dense outlined label="API 基础 URL" placeholder="https://..." />
           <q-toggle v-model="providerForm.enabled" label="已启用" />
           <q-select
-            v-if="providerForm.provider_type === 'openai'"
+            v-if="!providerRuntimeLocked && providerForm.provider_type === 'openai'"
             v-model="providerForm.variant"
             dense
             outlined
@@ -589,16 +614,18 @@ const {
   providerStep,
   providerAddMode,
   catalogProviderId,
-  catalogProviderHint,
-  catalogProviderDocUrl,
+    catalogProviderHint,
+    catalogProviderDocUrl,
+  catalogModelsHint,
   catalogProviderSearch,
-  catalogModelSearch,
   reloadCatalogProviders,
-  reloadCatalogModels,
-  onCatalogModelFilter,
+  useCatalogModelPicker,
+  providerRuntimeLocked,
+  providerRuntimeSummary,
   catalogProviderOptions,
-  catalogLoading,
-  catalogModelsLoading,
+    catalogLoading,
+    catalogModelsLoading,
+    filterCatalogModelsLocal,
   providerTypeFilter,
   categoryOptions,
   providerTypeOptions,

@@ -10,14 +10,14 @@
 </template>
 
 <script setup lang="ts">
-import type { useA2UIComponent } from "../../../../features/chat/a2ui/useA2UIComponent";
+import type { A2UIComponentCtx } from "../../../../features/chat/a2ui/useA2UIComponent";
 import type { A2UISurfaceState } from "../../../../features/chat/a2uiSurfaceState";
 import type { A2UIUserActionPayload } from "../../../../features/chat/a2uiUserAction";
 import A2UIChildList from "../A2UIChildList.vue";
 
 defineProps<{
   kind: string;
-  ctx: ReturnType<typeof useA2UIComponent>;
+  ctx: A2UIComponentCtx;
   surface: A2UISurfaceState;
 }>();
 

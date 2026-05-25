@@ -84,11 +84,3 @@ const columns: QTableColumn<ToolInvocation>[] = [
   { name: "time", label: "时间 / 耗时", field: "started_at", align: "left" }
 ];
 </script>
-
-<style scoped lang="sass">
-.muted-caption
-  color: var(--color-text-secondary)
-
-.tool-runs-data-table :deep(thead tr th)
-  color: var(--color-text-secondary)
-</style>

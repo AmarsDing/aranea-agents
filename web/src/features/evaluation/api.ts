@@ -97,7 +97,7 @@ export async function annotateCaseResult(input: AnnotateCaseResultInput): Promis
   const raw = await requestHandler({
     path: `v1/evaluation/runs/${encodeURIComponent(input.run_id)}/results/${encodeURIComponent(input.result_id)}/annotation`,
     method: "PATCH",
-    body
+    body: JSON.stringify(body)
   });
   return mapCaseResult(raw);
 }

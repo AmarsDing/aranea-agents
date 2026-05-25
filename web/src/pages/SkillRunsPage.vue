@@ -56,6 +56,7 @@ const {
   error,
   statusOptions,
   pageMax,
-  resetFilters
+  resetFilters,
+  loadRows
 } = useSkillRunsPage();
 </script>

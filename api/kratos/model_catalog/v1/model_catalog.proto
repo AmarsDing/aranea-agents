@@ -136,6 +136,11 @@ message CatalogModelSummary {
   bool temperature = 16;
   repeated string modality_input = 17;
   repeated string modality_output = 18;
+  string family = 19;
+  string knowledge = 20;
+  string release_date = 21;
+  string last_updated = 22;
+  string interleaved_json = 23;
 }
 
 message ListCatalogModelsRequest {
@@ -163,9 +168,11 @@ message SearchCatalogRawRequest {
 }
 
 message SearchCatalogRawResponse {
+  // Pretty-printed JSON blocks (each item is a complete provider or provider+model object).
   repeated string lines = 1;
   int32 total = 2;
   int32 offset = 3;
+  bool truncated = 4;
 }
 
 message ModelCatalogSyncLogEntry {

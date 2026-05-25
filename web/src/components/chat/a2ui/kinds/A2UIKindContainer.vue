@@ -55,14 +55,14 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
-import type { useA2UIComponent } from "../../../../features/chat/a2ui/useA2UIComponent";
+import type { A2UIComponentCtx } from "../../../../features/chat/a2ui/useA2UIComponent";
 import type { A2UISurfaceState } from "../../../../features/chat/a2uiSurfaceState";
 import type { A2UIUserActionPayload } from "../../../../features/chat/a2uiUserAction";
 import A2UIComponentNode from "../../A2UIComponentNode.vue";
 
 defineProps<{
   kind: string;
-  ctx: ReturnType<typeof useA2UIComponent>;
+  ctx: A2UIComponentCtx;
   surface: A2UISurfaceState;
 }>();
 

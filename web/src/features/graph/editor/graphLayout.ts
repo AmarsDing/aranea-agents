@@ -56,10 +56,12 @@ export function applyAutoLayout(graphDef: GraphDefinition): void {
 
   for (const edge of graphDef.edges) {
     if (!nodeIds.has(edge.from) || !nodeIds.has(edge.to)) continue;
+    if (edge.from === edge.to) continue;
     adjacency.get(edge.from)?.push(edge.to);
     inDegree.set(edge.to, (inDegree.get(edge.to) ?? 0) + 1);
   }
 
+  const maxLayer = nodeIds.size;
   const entry =
     graphDef.entryPoint && nodeIds.has(graphDef.entryPoint)
       ? graphDef.entryPoint
@@ -71,8 +73,11 @@ export function applyAutoLayout(graphDef: GraphDefinition): void {
     layer.set(entry, 0);
     while (queue.length > 0) {
       const current = queue.shift()!;
+      const currentLayer = layer.get(current) ?? 0;
+      if (currentLayer >= maxLayer) continue;
       for (const next of adjacency.get(current) ?? []) {
-        const nextLayer = (layer.get(current) ?? 0) + 1;
+        const nextLayer = currentLayer + 1;
+        if (nextLayer > maxLayer) continue;
         const prior = layer.get(next);
         if (prior === undefined || prior < nextLayer) {
           layer.set(next, nextLayer);

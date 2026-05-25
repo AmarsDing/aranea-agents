@@ -2,16 +2,19 @@ import type { Envelope, EnvelopeUsage } from "../../realtime/envelope";
 import type { Session } from "../session/types";
 import { contextRatioFromPrompt, contextStatusFromRatio } from "../session/contextMetrics";
 
-export type SessionContextPatch = Pick<
-  Session,
-  | "context_used_ratio"
-  | "context_used_tokens"
-  | "context_status"
-  | "total_tokens"
-  | "max_context_used_ratio"
-  | "input_tokens"
-  | "output_tokens"
-  | "total_cost_micro_usd"
+export type SessionContextPatch = Partial<
+  Pick<
+    Session,
+    | "context_used_ratio"
+    | "context_used_tokens"
+    | "context_status"
+    | "total_tokens"
+    | "max_context_used_ratio"
+    | "input_tokens"
+    | "output_tokens"
+    | "total_cost_micro_usd"
+    | "last_context_window_tokens"
+  >
 >;
 
 /** Prompt tokens used for context-window fill (max in turn), distinct from billing aggregates. */

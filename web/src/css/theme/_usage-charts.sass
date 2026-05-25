@@ -1,0 +1,142 @@
+// Usage / Provider 趋势 KPI、图表面板、明细网格（ProviderTrendDialog / UsageTrendChart）
+
+.provider-trend-dialog
+  overflow: hidden
+
+.provider-trend-dialog__body
+  display: flex
+  flex-direction: column
+  gap: 14px
+  padding: 14px 18px 18px
+  position: relative
+
+.app-trend-kpi-grid
+  display: grid
+  grid-template-columns: repeat(4, minmax(0, 1fr))
+  gap: 10px
+
+.app-trend-kpi-card
+  display: flex
+  flex-direction: column
+  gap: 2px
+  min-width: 0
+  padding: 10px 12px
+  border: 1px solid var(--glass-border)
+  border-radius: 12px
+  background: color-mix(in srgb, var(--glass-elevated) 88%, transparent)
+
+.app-trend-kpi-label
+  color: var(--color-text-secondary)
+  font-size: 11px
+  font-weight: 600
+  letter-spacing: 0.02em
+
+.app-trend-kpi-value
+  color: var(--color-text-heading)
+  font-size: 18px
+  font-weight: 700
+  line-height: 1.25
+
+.app-trend-kpi-bar
+  width: 100%
+  height: 4px
+  margin-top: 6px
+  border-radius: 999px
+  overflow: hidden
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent)
+
+.app-trend-kpi-bar__fill
+  height: 100%
+  min-width: 2px
+  border-radius: inherit
+  background: linear-gradient(90deg, var(--color-accent), var(--color-link))
+  transition: width 0.35s ease
+
+.app-trend-chart-panel
+  position: relative
+  padding: 12px 14px 8px
+  border: 1px solid var(--glass-border)
+  border-radius: 14px
+  background: color-mix(in srgb, var(--glass-elevated) 72%, transparent)
+
+.app-trend-chart-toolbar
+  margin-bottom: 4px
+
+.app-trend-chart-title
+  color: var(--color-text-heading)
+  font-size: 13px
+  font-weight: 650
+
+.app-trend-chart-caption
+  margin-top: 2px
+  color: var(--color-text-tertiary)
+  font-size: 11px
+
+.app-metric-toggle .q-btn
+  min-height: 28px
+  padding: 0 10px
+  font-size: 11px
+
+.app-metric-toggle--sm .q-btn
+  font-size: 12px
+
+.app-trend-chart
+  width: 100%
+  height: 240px
+  min-height: 200px
+
+.app-trend-chart--lg
+  height: 280px
+  min-height: 220px
+
+.app-trend-chart-empty,
+.app-trend-empty
+  display: flex
+  align-items: center
+  justify-content: center
+  height: 200px
+  color: var(--color-text-tertiary)
+  font-size: 13px
+
+.app-trend-detail-grid
+  display: grid
+  grid-template-columns: repeat(3, minmax(0, 1fr))
+  gap: 8px
+
+.app-trend-detail-item
+  display: flex
+  flex-direction: column
+  gap: 3px
+  min-width: 0
+  padding: 8px 10px
+  border: 1px solid var(--glass-border)
+  border-radius: 10px
+  background: color-mix(in srgb, var(--glass-elevated) 65%, transparent)
+
+.app-trend-detail-label
+  color: var(--color-text-secondary)
+  font-size: 11px
+  font-weight: 600
+
+.app-trend-detail-value
+  color: var(--color-text-heading)
+  font-size: 13px
+  font-weight: 650
+  overflow: hidden
+  text-overflow: ellipsis
+  white-space: nowrap
+
+@media (width <= 767px)
+  .app-trend-kpi-grid
+    grid-template-columns: repeat(2, minmax(0, 1fr))
+
+  .app-trend-detail-grid
+    grid-template-columns: repeat(2, minmax(0, 1fr))
+
+@media (width <= 479px)
+  .app-trend-detail-grid
+    grid-template-columns: 1fr
+
+.usage-breakdown-chart
+  width: 100%
+  height: 260px

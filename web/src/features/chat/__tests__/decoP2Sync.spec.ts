@@ -44,7 +44,7 @@ describe("inbound hydrate error callback (DECO-14)", () => {
     const onHydrateError = vi.fn();
     const sessionId = "sess-hydrate";
     const chatStore = {
-      sessionRevisionBySession: { [sessionId]: 2 },
+      sessionRevisionBySession: { [sessionId]: 2 } as Record<string, number>,
       getMessages: () => [],
       setMessages: vi.fn(),
       loadMessages: vi.fn().mockRejectedValue(new Error("network down")),

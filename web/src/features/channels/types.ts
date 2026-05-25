@@ -88,6 +88,8 @@ export type ChannelMetadata = {
   runtime_connected_since?: string;
   runtime_last_disconnect?: string;
   schema_version?: number;
+  /** Last applied long-task preset id (UI hint; config fields are authoritative). */
+  long_task_preset?: string;
 };
 
 export type ChannelTestResult = {

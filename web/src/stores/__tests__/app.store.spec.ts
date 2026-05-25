@@ -76,15 +76,15 @@ describe("useChatStore", () => {
     const chat = useChatStore();
     chat.setMessages("sess-1", [{ id: "m1" } as any]);
     expect(chat.getMessages("sess-1")).toHaveLength(1);
-    chat.selectedSession = { id: "sess-1" } as any;
+    (chat as any).selectedSession = { id: "sess-1" } as any;
     expect(chat.messages).toHaveLength(1);
   });
 
   it("tracks ws connected per session", () => {
     const chat = useChatStore();
     chat.setWsConnected("sess-1", true);
-    chat.selectedSession = { id: "sess-1" } as any;
-    chat.entityKind = "agent";
+    (chat as any).selectedSession = { id: "sess-1" } as any;
+    (chat as any).entityKind = "agent";
     expect(chat.wsConnected).toBe(true);
   });
 
@@ -96,7 +96,7 @@ describe("useChatStore", () => {
     chat.setMessages("t-s2", [{ id: "m2" } as any]);
     chat.setMessages("t-s3", [{ id: "m3" } as any]);
     chat.setMessages("agent-s1", [{ id: "m4" } as any]);
-    chat.teamSelectedSessionId = "t-s1";
+    (chat as any).teamSelectedSessionId = "t-s1";
 
     chat.clearTeamSessions("team-1");
 
@@ -111,7 +111,7 @@ describe("useChatStore", () => {
   it("clearAllAgentSessions only clears that agent session caches", async () => {
     const { clearAgentSessions } = await import("../../features/session/api");
     const chat = useChatStore();
-    chat.sessions = [
+    (chat as any).sessions = [
       { id: "agent-s1", title: "A" } as any,
       { id: "agent-s2", title: "B" } as any,
     ];
@@ -140,7 +140,7 @@ describe("useChatStore", () => {
       { id: "t-s1", at: "" } as any,
       { id: "t-s2", at: "" } as any,
     ];
-    chat.teamSelectedSessionId = "t-s1";
+    (chat as any).teamSelectedSessionId = "t-s1";
     chat.setMessages("t-s1", [{ id: "m1" } as any]);
     chat.sessionRevisionBySession["t-s1"] = 2;
     chat.wsConnectedBySession["t-s1"] = true;

@@ -155,12 +155,12 @@ func (u *ModelCatalogUsecase) ListModels(ctx context.Context, providerID, q stri
 	return items, modelcatalog.CountModels(p, q, includeDeprecated), nil
 }
 
-func (u *ModelCatalogUsecase) SearchRaw(ctx context.Context, q string, limit, offset int) ([]string, int, error) {
+func (u *ModelCatalogUsecase) SearchRaw(ctx context.Context, q string, limit, offset int) ([]string, int, bool, error) {
 	st, err := u.store(ctx)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, false, err
 	}
-	return st.SearchRawLines(q, limit, offset)
+	return st.SearchCatalogBlocks(q, limit, offset)
 }
 
 func (u *ModelCatalogUsecase) GetRawPretty(ctx context.Context) (string, int64, error) {

@@ -5,7 +5,7 @@
     :rounded="rounded"
     :size="size"
     :icon="resolvedIcon"
-    :class="avatarClass"
+    :class="['app-avatar-cover', avatarClass]"
     @click="$emit('click', $event)"
   >
     <img v-if="avatarSrc" :src="avatarSrc" :alt="alt" />
@@ -38,11 +38,3 @@ const { avatarSrc, avatarIcon } = useAgentAvatarPreview(iconRef);
 /** 有 `<img>` 时不传 `icon`；缩略图加载前显示占位图标 */
 const resolvedIcon = computed(() => (avatarSrc.value ? undefined : avatarIcon.value ?? "smart_toy"));
 </script>
-
-<style scoped>
-.q-avatar :deep(img) {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-</style>

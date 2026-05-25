@@ -377,9 +377,3 @@ function sectionDomId(id: string) {
   return `channel-section-${id}`;
 }
 </script>
-
-<style scoped>
-.min-width-0 {
-  min-width: 0;
-}
-</style>

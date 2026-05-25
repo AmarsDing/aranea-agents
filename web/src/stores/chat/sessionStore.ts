@@ -41,7 +41,7 @@ function sortSessionsForDisplay(rows: Session[]): Session[] {
   });
 }
 
-function mergeSessionMetrics(session: Session, patch: SessionContextPatch): Session {
+function mergeSessionMetrics<T extends Session>(session: T, patch: SessionContextPatch): T {
   return {
     ...session,
     ...patch,

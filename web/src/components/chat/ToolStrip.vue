@@ -60,31 +60,3 @@ const summaryAria = computed(() =>
   t("chat.turn.block.toolsAria", { count: summary.value.count }, `Tools: ${summary.value.count}`)
 );
 </script>
-
-<style scoped>
-.turn-tool-strip {
-  margin: 6px 0 8px;
-  border-radius: 10px;
-  background: var(--app-glass-soft, rgba(255, 255, 255, 0.55));
-  border: 1px solid var(--app-border-subtle, rgba(0, 0, 0, 0.06));
-}
-
-.turn-tool-strip__summary {
-  cursor: pointer;
-  list-style: none;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
-  font-size: 12px;
-  color: var(--app-text-secondary, rgba(0, 0, 0, 0.55));
-}
-
-.turn-tool-strip__summary::-webkit-details-marker {
-  display: none;
-}
-
-.turn-tool-strip__details {
-  padding: 0 8px 8px;
-}
-</style>

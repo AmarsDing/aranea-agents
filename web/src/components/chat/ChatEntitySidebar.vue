@@ -168,7 +168,8 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
-import type { Agent, ChatEntityKind, DeleteKind, TeamRow } from "./types";
+import type { ChatEntityKind, DeleteKind, TeamRow } from "./types";
+import type { Agent } from "../../features/agents/types";
 import type { PlatformResourceTreeNode } from "../../features/platform/types";
 
 type EntityGroup<T> = {

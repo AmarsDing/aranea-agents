@@ -191,7 +191,9 @@ function queryToKratos(q: ModelUsageQuery): KUsageQuery {
     agentId: q.agent_id,
     status: q.status,
     limit: q.limit,
-    granularity: q.granularity
+    granularity: q.granularity,
+    teamId: q.team_id?.trim() ?? "",
+    usageKind: q.usage_kind?.trim() ?? ""
   };
   if (q.team_id?.trim()) out.teamId = q.team_id.trim();
   if (q.usage_kind?.trim()) out.usageKind = q.usage_kind.trim();

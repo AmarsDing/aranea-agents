@@ -105,7 +105,7 @@ export async function triggerCronTask(id: string): Promise<CronTaskRun> {
 
 export async function resetCronTaskFailures(id: string): Promise<PlatformResource> {
   const row = await cron.ResetCronTaskFailures({ id });
-  return wireCronTask(t);
+  return wireCronTask(row);
 }
 
 export async function listCronTaskRuns(query: CronTaskRunQuery = {}): Promise<CronTaskRun[]> {

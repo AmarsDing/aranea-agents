@@ -49,7 +49,7 @@
             autogrow
             dense
             outlined
-            @update:model-value="setContains(rule, $event)"
+            @update:model-value="setContains(rule, String($event ?? ''))"
           />
         </div>
         <div class="col-12">

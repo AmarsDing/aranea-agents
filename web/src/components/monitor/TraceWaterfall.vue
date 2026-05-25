@@ -1,15 +1,15 @@
 <template>
   <div>
     <div v-if="!waterfallRows.length" class="text-caption text-grey-7 q-pa-sm">暂无 Span 数据</div>
-    <div v-else class="trace-waterfall">
+    <div v-else class="app-trace-waterfall trace-waterfall">
       <div v-for="row in waterfallRows" :key="row.id" class="trace-waterfall-row row items-center q-col-gutter-sm q-mb-xs">
         <div class="col-12 col-md-4">
           <div class="text-body2 text-weight-medium">{{ row.name }}</div>
           <div class="text-caption text-grey-7">{{ row.caption }}</div>
         </div>
         <div class="col-12 col-md-8">
-          <div class="trace-waterfall-track">
-            <div class="trace-waterfall-bar" :style="{ marginLeft: `${row.offsetPct}%`, width: `${row.widthPct}%` }" />
+          <div class="app-trace-waterfall-track trace-waterfall-track">
+            <div class="app-trace-waterfall-bar trace-waterfall-bar" :style="{ marginLeft: `${row.offsetPct}%`, width: `${row.widthPct}%` }" />
           </div>
         </div>
       </div>
@@ -66,21 +66,4 @@ const waterfallRows = computed((): SpanRow[] => {
   }));
 });
 </script>
-
-<style scoped>
-.trace-waterfall-track {
-  position: relative;
-  height: 12px;
-  background: var(--color-border-soft);
-  border-radius: 6px;
-  overflow: hidden;
-}
-
-.trace-waterfall-bar {
-  height: 100%;
-  min-width: 4px;
-  background: linear-gradient(90deg, var(--color-info), var(--color-success));
-  border-radius: 6px;
-}
-</style>
 

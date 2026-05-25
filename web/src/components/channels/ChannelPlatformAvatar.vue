@@ -1,5 +1,5 @@
 <template>
-  <q-avatar :size="size" :color="fallbackColor" :text-color="fallbackTextColor" :rounded="rounded">
+  <q-avatar class="app-avatar-cover" :size="size" :color="fallbackColor" :text-color="fallbackTextColor" :rounded="rounded">
     <resolved-avatar-img v-if="resolvedIcon" :icon="resolvedIcon" :alt="alt" />
     <span v-else>{{ fallbackLetter }}</span>
   </q-avatar>
@@ -42,11 +42,3 @@ const resolvedIcon = computed(() => {
 const fallbackLetter = computed(() => (props.label?.trim() || props.type || "?").slice(0, 1));
 const alt = computed(() => props.label || props.type);
 </script>
-
-<style scoped>
-.q-avatar :deep(img) {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-</style>

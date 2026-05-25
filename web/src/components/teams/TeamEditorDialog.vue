@@ -4,223 +4,268 @@
 -->
 <template>
   <q-dialog :model-value="modelValue" persistent @update:model-value="$emit('update:modelValue', $event)">
-    <q-card :class="['team-editor app-dialog-card app-dialog-card--xl app-glass-dialog', { 'is-dark': isDark }]">
+    <q-card :class="['team-editor-dialog app-dialog-card app-glass-dialog', { 'is-dark': isDark }]">
       <q-card-section class="app-glass-dialog__head row items-start justify-between no-wrap">
         <div class="col min-width-0">
           <div class="app-glass-dialog__title">{{ editingId ? "编辑 Team" : "新增 Team" }}</div>
           <div class="app-glass-dialog__subtitle">
-            并行模式按「并行批大小」分批同时执行 Worker；coordinator/adaptive 的外圈迭代可在表单中配置。
+            配置成员角色与编排模式；右侧实时编译预览拓扑结构。
           </div>
         </div>
         <q-btn flat round dense icon="close" v-close-popup />
       </q-card-section>
+
       <div class="app-glass-dialog__scroll">
         <div class="team-editor-workspace">
-          <div class="team-editor-workspace__left q-gutter-md">
-      <q-card-section class="app-dialog-body app-glass-dialog__body q-gutter-md q-pa-none">
-        <div class="app-dialog-section">
-          <div class="app-form-field-grid app-form-field-grid--2col items-center">
-            <div class="app-grid-span-full">
-              <div class="text-subtitle2">Team 模板</div>
-              <div class="text-caption text-grey-7">选择模板可快速生成成员角色和编排参数。</div>
-            </div>
-            <q-select
-              class="team-control app-field-md"
-              dense
-              outlined
-              clearable
-              emit-value
-              map-options
-              label="选择模板"
-              :model-value="selectedTemplateKey"
-              :options="teamTemplateOptions"
-              @update:model-value="onTemplatePick"
-            />
-          </div>
-        </div>
+          <div class="team-editor-workspace__main">
+            <section class="team-editor-section app-dialog-section">
+              <header class="team-editor-section__head">
+                <h3 class="team-editor-section__title">快速开始</h3>
+                <p class="team-editor-section__hint">选择模板可快速生成成员角色和编排参数。</p>
+              </header>
+              <q-select
+                class="team-control app-field-md"
+                dense
+                outlined
+                clearable
+                emit-value
+                map-options
+                label="Team 模板"
+                :model-value="selectedTemplateKey"
+                :options="teamTemplateOptions"
+                @update:model-value="onTemplatePick"
+              />
+            </section>
 
-        <div class="app-form-field-grid app-form-field-grid--wide">
-          <q-input v-model.trim="form.display_name" class="team-control" dense outlined label="Team 名称 *" />
-          <q-input v-model.trim="form.team_key" class="team-control" dense outlined label="Team Key *" hint="小写字母、数字、连字符" />
-          <q-input v-model.trim="form.app_name" class="team-control" dense outlined label="App Name" hint="应用标识，留空则使用 Team Key" />
-          <q-select v-model="definition.mode" class="team-control" dense outlined emit-value map-options label="编排模式" :options="modeOptions" />
-          <q-select v-model="form.status" class="team-control" dense outlined emit-value map-options label="状态" :options="statusOptions" />
-          <q-input
-            v-if="definition.mode === 'parallel'"
-            v-model.number="definition.max_concurrency"
-            class="team-control"
-            dense
-            outlined
-            type="number"
-            min="1"
-            label="并行批大小"
-            hint="每批同时执行的 Worker 数，批与批之间顺序执行"
-          />
-          <q-input
-            v-else-if="definition.mode === 'coordinator' || definition.mode === 'adaptive'"
-            v-model.number="definition.loop_max_iterations"
-            class="team-control"
-            dense
-            outlined
-            type="number"
-            min="0"
-            max="32"
-            label="外圈循环迭代"
-            hint="0 = 默认 1 轮外圈迭代（每轮整链成员各跑一遍；轮数×成员数会成倍拉长耗时与超时风险）"
-          />
-          <q-input
-            v-else-if="definition.mode === 'critic_loop'"
-            v-model.number="criticLoopMaxIterations"
-            class="team-control"
-            dense
-            outlined
-            type="number"
-            min="1"
-            max="32"
-            label="评审迭代次数"
-            hint="对应 critic_loop.max_iterations"
-          />
-          <q-input v-model="definition.description" class="team-control app-field-long" dense outlined autogrow type="textarea" label="Team 说明" />
-        </div>
-
-        <q-expansion-item icon="settings" label="运行时 / 失败策略（OrchestrationSpec v2）" default-opened caption="runtime_engine · failure_policy · 熔断">
-          <q-banner v-if="nativeLocked" dense rounded class="bg-orange-1 text-dark q-mb-sm">
-            Native 执行引擎仅平台管理员可选；当前将使用 Graph。
-          </q-banner>
-          <div class="app-form-field-grid app-form-field-grid--wide q-mt-sm">
-            <q-select
-              v-model="runtimeEngine"
-              class="team-control"
-              dense
-              outlined
-              emit-value
-              map-options
-              label="执行引擎 runtime_engine"
-              hint="默认 Graph；Native 需 admin 权限 + 后端 ARANEA_TEAM_NATIVE=1"
-              :options="filteredRuntimeEngineOptions"
-            />
-            <q-select
-              v-model="failureDefault"
-              class="team-control"
-              dense
-              outlined
-              emit-value
-              map-options
-              clearable
-              label="默认失败策略"
-              :options="failureDefaultOptions"
-            />
-            <q-select
-              v-if="definition.mode === 'parallel'"
-              v-model="parallelFail"
-              class="team-control"
-              dense
-              outlined
-              emit-value
-              map-options
-              clearable
-              label="并行失败策略 parallel_fail"
-              :options="parallelFailOptions"
-            />
-            <q-input
-              v-model.number="failureRetryMax"
-              class="team-control"
-              dense
-              outlined
-              type="number"
-              min="0"
-              max="10"
-              label="默认重试次数"
-            />
-            <q-input
-              v-model.number="circuitFailureThreshold"
-              class="team-control"
-              dense
-              outlined
-              type="number"
-              min="0"
-              max="100"
-              label="熔断阈值"
-              hint="0=禁用"
-            />
-            <q-select
-              v-model="failureOnError"
-              class="team-control"
-              dense
-              outlined
-              emit-value
-              map-options
-              clearable
-              label="错误接管 on_error"
-              :options="failureOnErrorOptions"
-            />
-          </div>
-        </q-expansion-item>
-
-        <div class="app-form-field-grid app-form-field-grid--wide">
-          <q-input
-            v-model.number="definition.timeout_seconds"
-            class="team-control"
-            dense
-            outlined
-            type="number"
-            min="0"
-            max="7200"
-            label="单次运行超时（秒）"
-            hint="0=仅遵循 HTTP/反代超时；否则后端 120～7200s。coordinator/长任务建议 ≥600，并与 Nginx proxy_read_timeout 等对齐"
-          />
-          <q-select
-            v-model="definition.intent_anchor_agent_id"
-            class="team-control app-field-md"
-            dense
-            outlined
-            clearable
-            emit-value
-            map-options
-            label="Intent / 选项锚定成员（可选）"
-            hint="intent 预处理与 user options 的锚点；留空则用排序后首位启用成员"
-            :options="intentAnchorOptions"
-          />
-        </div>
-
-        <q-expansion-item icon="sync_alt" label="A2A 协议">
-          <div class="app-form-field-grid q-mt-sm">
-            <q-toggle v-model="a2aEnabled" color="primary" label="启用 A2A 信封" />
-            <q-input v-model="a2aEnvelopeVersion" class="team-control" dense outlined label="Envelope Version" />
-            <q-select v-model="a2aMessageFormat" class="team-control" dense outlined emit-value map-options label="消息格式" :options="a2aFormatOptions" />
-            <q-input v-model.number="a2aMaxPayloadChars" class="team-control" dense outlined type="number" min="500" label="最大载荷字符" />
-            <q-toggle v-model="a2aIncludeTrace" class="app-grid-span-full" color="primary" label="包含 trace metadata" />
-          </div>
-        </q-expansion-item>
-
-        <q-separator />
-        <div class="row items-center justify-between">
-          <div class="text-subtitle2">成员 Agent</div>
-          <q-btn flat rounded color="primary" icon="add" label="添加成员" @click="$emit('addMember')" />
-        </div>
-        <div class="member-editor-list">
-          <q-card v-for="(member, index) in definition.members" :key="index" flat bordered class="member-editor">
-            <q-card-section class="app-form-field-grid app-form-field-grid--wide items-center">
-              <q-select v-model="member.agent_id" class="team-control" dense outlined emit-value map-options label="Agent" :options="agentOptions" />
-              <q-select v-model="member.role" class="team-control" dense outlined emit-value map-options label="角色" :options="roleOptions" />
-              <q-input v-model="member.name" class="team-control" dense outlined label="成员名称" />
-              <q-input v-model="member.task_prompt" class="team-control team-control--wide" dense outlined autogrow type="textarea" label="职责 / 任务说明" />
-              <q-input v-model.number="member.sort_order" class="team-control" dense outlined type="number" label="顺序" />
-              <q-toggle v-model="member.enabled" color="primary" />
-              <div class="app-actions-bar app-actions-bar--start">
-                <q-btn flat dense round color="negative" icon="delete" @click="$emit('removeMember', index)" />
+            <section class="team-editor-section">
+              <header class="team-editor-section__head">
+                <h3 class="team-editor-section__title">基础信息</h3>
+              </header>
+              <div class="app-form-field-grid app-form-field-grid--2col">
+                <q-input v-model.trim="form.display_name" class="team-control" dense outlined label="Team 名称 *" />
+                <q-input v-model.trim="form.team_key" class="team-control" dense outlined label="Team Key *" hint="小写字母、数字、连字符" />
+                <q-input v-model.trim="form.app_name" class="team-control" dense outlined label="App Name" hint="留空则使用 Team Key" />
+                <q-select v-model="form.status" class="team-control" dense outlined emit-value map-options label="状态" :options="statusOptions" />
               </div>
-            </q-card-section>
-          </q-card>
-        </div>
+            </section>
 
-        <q-expansion-item icon="code" label="definition_json 预览" dense>
-          <pre class="definition-json">{{ definitionJSON }}</pre>
-        </q-expansion-item>
-      </q-card-section>
+            <section class="team-editor-section">
+              <header class="team-editor-section__head">
+                <h3 class="team-editor-section__title">编排模式</h3>
+              </header>
+              <div class="app-form-field-grid app-form-field-grid--2col">
+                <q-select v-model="definition.mode" class="team-control" dense outlined emit-value map-options label="编排模式" :options="modeOptions" />
+                <q-input
+                  v-if="definition.mode === 'parallel'"
+                  v-model.number="definition.max_concurrency"
+                  class="team-control"
+                  dense
+                  outlined
+                  type="number"
+                  min="1"
+                  label="并行批大小"
+                  hint="每批同时执行的 Worker 数"
+                />
+                <q-input
+                  v-else-if="definition.mode === 'coordinator' || definition.mode === 'adaptive'"
+                  v-model.number="definition.loop_max_iterations"
+                  class="team-control"
+                  dense
+                  outlined
+                  type="number"
+                  min="0"
+                  max="32"
+                  label="外圈循环迭代"
+                  hint="0 = 默认 1 轮；轮数×成员数会拉长耗时"
+                />
+                <q-input
+                  v-else-if="definition.mode === 'critic_loop'"
+                  v-model.number="criticLoopMaxIterations"
+                  class="team-control"
+                  dense
+                  outlined
+                  type="number"
+                  min="1"
+                  max="32"
+                  label="评审迭代次数"
+                  hint="对应 critic_loop.max_iterations"
+                />
+                <q-input
+                  v-model="definition.description"
+                  class="team-control app-grid-span-full"
+                  dense
+                  outlined
+                  autogrow
+                  type="textarea"
+                  label="Team 说明"
+                />
+              </div>
+            </section>
+
+            <div class="team-editor-expansion">
+              <q-expansion-item icon="settings" label="运行时 / 失败策略" caption="OrchestrationSpec v2 · runtime_engine · failure_policy">
+                <div class="team-editor-expansion__body">
+                  <q-banner v-if="nativeLocked" dense rounded class="team-editor-notice q-mb-sm">
+                    Native 执行引擎仅平台管理员可选；当前将使用 Graph。
+                  </q-banner>
+                  <div class="app-form-field-grid app-form-field-grid--2col">
+                    <q-select
+                      v-model="runtimeEngine"
+                      class="team-control"
+                      dense
+                      outlined
+                      emit-value
+                      map-options
+                      label="执行引擎 runtime_engine"
+                      hint="Native 需 admin + ARANEA_TEAM_NATIVE=1"
+                      :options="filteredRuntimeEngineOptions"
+                    />
+                    <q-select
+                      v-model="failureDefault"
+                      class="team-control"
+                      dense
+                      outlined
+                      emit-value
+                      map-options
+                      clearable
+                      label="默认失败策略"
+                      :options="failureDefaultOptions"
+                    />
+                    <q-select
+                      v-if="definition.mode === 'parallel'"
+                      v-model="parallelFail"
+                      class="team-control"
+                      dense
+                      outlined
+                      emit-value
+                      map-options
+                      clearable
+                      label="并行失败策略"
+                      :options="parallelFailOptions"
+                    />
+                    <q-input
+                      v-model.number="failureRetryMax"
+                      class="team-control"
+                      dense
+                      outlined
+                      type="number"
+                      min="0"
+                      max="10"
+                      label="默认重试次数"
+                    />
+                    <q-input
+                      v-model.number="circuitFailureThreshold"
+                      class="team-control"
+                      dense
+                      outlined
+                      type="number"
+                      min="0"
+                      max="100"
+                      label="熔断阈值"
+                      hint="0 = 禁用"
+                    />
+                    <q-select
+                      v-model="failureOnError"
+                      class="team-control"
+                      dense
+                      outlined
+                      emit-value
+                      map-options
+                      clearable
+                      label="错误接管 on_error"
+                      :options="failureOnErrorOptions"
+                    />
+                  </div>
+                </div>
+              </q-expansion-item>
+            </div>
+
+            <section class="team-editor-section">
+              <header class="team-editor-section__head">
+                <h3 class="team-editor-section__title">运行参数</h3>
+              </header>
+              <div class="app-form-field-grid app-form-field-grid--2col">
+                <q-input
+                  v-model.number="definition.timeout_seconds"
+                  class="team-control"
+                  dense
+                  outlined
+                  type="number"
+                  min="0"
+                  max="7200"
+                  label="单次运行超时（秒）"
+                  hint="0 = 仅遵循 HTTP/反代超时；长任务建议 ≥600"
+                />
+                <q-select
+                  v-model="definition.intent_anchor_agent_id"
+                  class="team-control"
+                  dense
+                  outlined
+                  clearable
+                  emit-value
+                  map-options
+                  label="Intent 锚定成员（可选）"
+                  hint="留空则用排序后首位启用成员"
+                  :options="intentAnchorOptions"
+                />
+              </div>
+            </section>
+
+            <div class="team-editor-expansion">
+              <q-expansion-item icon="sync_alt" label="A2A 协议" caption="信封格式与载荷限制">
+                <div class="team-editor-expansion__body">
+                  <div class="app-form-field-grid app-form-field-grid--2col">
+                    <q-toggle v-model="a2aEnabled" class="app-grid-span-full" label="启用 A2A 信封" />
+                    <q-input v-model="a2aEnvelopeVersion" class="team-control" dense outlined label="Envelope Version" />
+                    <q-select v-model="a2aMessageFormat" class="team-control" dense outlined emit-value map-options label="消息格式" :options="a2aFormatOptions" />
+                    <q-input v-model.number="a2aMaxPayloadChars" class="team-control" dense outlined type="number" min="500" label="最大载荷字符" />
+                    <q-toggle v-model="a2aIncludeTrace" class="app-grid-span-full" label="包含 trace metadata" />
+                  </div>
+                </div>
+              </q-expansion-item>
+            </div>
+
+            <section class="team-editor-section">
+              <header class="team-editor-section__head row items-center justify-between no-wrap">
+                <div>
+                  <h3 class="team-editor-section__title">成员 Agent</h3>
+                  <p class="team-editor-section__hint">{{ definition.members.length }} 个成员 · 按顺序执行或并行编排</p>
+                </div>
+                <q-btn flat rounded no-caps icon="add" label="添加成员" class="team-editor-add-member" @click="$emit('addMember')" />
+              </header>
+
+              <div v-if="definition.members.length === 0" class="team-member-empty">
+                尚未添加成员，点击「添加成员」或选择模板快速填充。
+              </div>
+              <div v-else class="team-member-list">
+                <div v-for="(member, index) in definition.members" :key="index" class="team-member-row">
+                  <div class="team-member-row__toolbar">
+                    <span class="team-member-row__index">成员 {{ index + 1 }}</span>
+                    <q-space />
+                    <q-toggle v-model="member.enabled" dense label="启用" />
+                    <q-btn flat dense round color="negative" icon="delete" @click="$emit('removeMember', index)" />
+                  </div>
+                  <div class="team-member-row__grid">
+                    <q-select v-model="member.agent_id" class="team-control" dense outlined emit-value map-options label="Agent" :options="agentOptions" />
+                    <q-select v-model="member.role" class="team-control" dense outlined emit-value map-options label="角色" :options="roleOptions" />
+                    <q-input v-model="member.name" class="team-control" dense outlined label="成员名称" />
+                    <q-input v-model.number="member.sort_order" class="team-control" dense outlined type="number" label="顺序" />
+                    <q-input v-model="member.task_prompt" class="team-control team-member-row__task" dense outlined autogrow type="textarea" label="职责 / 任务说明" />
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <div class="team-editor-expansion team-editor-expansion--compact">
+              <q-expansion-item icon="code" label="definition_json 预览" dense>
+                <div class="team-editor-expansion__body">
+                  <pre class="team-definition-json">{{ definitionJSON }}</pre>
+                </div>
+              </q-expansion-item>
+            </div>
           </div>
 
-          <aside class="team-editor-workspace__right">
+          <aside class="team-editor-workspace__aside">
             <TeamCompilePreview
               :team-id="editingId"
               :definition-json="definitionJSON"
@@ -229,9 +274,10 @@
           </aside>
         </div>
       </div>
+
       <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
         <q-btn flat rounded no-caps label="取消" v-close-popup />
-        <q-btn color="primary" rounded unelevated no-caps label="保存" :loading="saving" :disable="!canSave" @click="$emit('save')" />
+        <q-btn class="team-dialog-save" rounded unelevated no-caps label="保存" :loading="saving" :disable="!canSave" @click="$emit('save')" />
       </q-card-actions>
     </q-card>
   </q-dialog>
@@ -408,84 +454,3 @@ const failureOnError = computed({
 });
 
 </script>
-
-<style scoped>
-.team-editor-workspace {
-  display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
-  gap: 16px;
-  padding: 0 16px 16px;
-  align-items: start;
-}
-
-.team-editor-workspace__right {
-  position: sticky;
-  top: 8px;
-}
-
-@media (max-width: 960px) {
-  .team-editor-workspace {
-    grid-template-columns: 1fr;
-  }
-  .team-editor-workspace__right {
-    position: static;
-  }
-}
-
-.min-width-0 {
-  min-width: 0;
-}
-
-.team-control :deep(.q-field__control) {
-  border-radius: 16px;
-  background: var(--glass-elevated);
-}
-
-.member-editor-list {
-  display: grid;
-  gap: 8px;
-}
-
-.member-editor {
-  border: 1px solid var(--glass-border);
-  border-radius: 16px;
-  background: var(--glass-surface);
-  backdrop-filter: blur(var(--glass-blur-default));
-  -webkit-backdrop-filter: blur(var(--glass-blur-default));
-}
-
-.topology-preview {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.topology-node {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 10px;
-  border: 1px solid color-mix(in srgb, var(--color-accent) 18%, transparent);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--color-accent) 8%, var(--glass-surface));
-  color: var(--color-accent);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.definition-json {
-  white-space: pre-wrap;
-  max-height: 240px;
-  overflow: auto;
-  padding: 12px;
-  border-radius: 14px;
-  border: 1px solid var(--glass-border);
-  background: var(--glass-elevated);
-  color: var(--color-text-primary);
-}
-
-.team-editor.is-dark .team-control :deep(.q-field__control) {
-  background: color-mix(in srgb, var(--glass-surface) 88%, transparent);
-}
-</style>

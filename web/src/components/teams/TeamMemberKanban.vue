@@ -149,31 +149,3 @@ const columns = computed(() =>
   })),
 );
 </script>
-
-<style scoped>
-.team-member-kanban-card {
-  border-radius: 12px;
-  border-color: var(--glass-border);
-  background: color-mix(in srgb, var(--glass-elevated) 72%, transparent);
-}
-
-.team-member-kanban-card__section {
-  margin-top: 8px;
-  font-size: 11px;
-  line-height: 1.45;
-  color: var(--color-text-secondary);
-}
-
-.team-member-kanban-card__label {
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--color-text-tertiary);
-  margin-bottom: 2px;
-}
-
-.min-width-0 {
-  min-width: 0;
-}
-</style>

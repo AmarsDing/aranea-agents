@@ -72,10 +72,11 @@ import type { MonitorLogHub } from "../../features/monitor/useLogStreamHub";
 import type { MonitorLogLine, StreamState } from "../../features/monitor/types";
 import LogLevelToggle, { type LogLevel } from "./LogLevelToggle.vue";
 
-const hub = inject<MonitorLogHub>("monitorLogHub");
-if (!hub) {
+const _hub = inject<MonitorLogHub>("monitorLogHub");
+if (!_hub) {
   throw new Error("FlowLogStream requires monitorLogHub");
 }
+const hub: MonitorLogHub = _hub;
 
 const keyword = ref("");
 const level = ref<LogLevel>("INFO");

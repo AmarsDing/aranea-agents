@@ -23,7 +23,7 @@ describe("sessionContextPatch", () => {
   it("builds patch with turn token increment", () => {
     const patch = sessionContextPatchFromUsage(
       { prompt_tokens: 64_000, completion_tokens: 512, total_tokens: 64_512, max_tokens: 128_000, turn_total_tokens: 64_512 },
-      { total_tokens: 1000, max_context_used_ratio: 0.3 }
+      { input_tokens: 500, output_tokens: 500, total_tokens: 1000, max_context_used_ratio: 0.3 }
     );
     expect(patch?.context_used_ratio).toBeCloseTo(0.5);
     expect(patch?.context_status).toBe("normal");
@@ -49,7 +49,7 @@ describe("sessionContextPatch", () => {
     const env = {
       type: "text_done",
       metadata: { kind: "system.session.compress" },
-    } as Envelope;
+    } as unknown as Envelope;
     expect(isSessionCompressNotice(env)).toBe(true);
   });
 

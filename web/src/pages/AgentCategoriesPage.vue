@@ -7,7 +7,7 @@
         <p class="app-page-subtitle">按行业、部门、职位三层组织 Agent 业务画像。创建 Agent 时仅绑定职位叶子，列表筛选同源读取数据库。</p>
       </div>
       <div class="category-actions">
-        <q-btn outline rounded color="primary" icon="refresh" label="刷新" :loading="loading" @click="loadTree" />
+        <q-btn outline rounded color="primary" icon="refresh" label="刷新" :loading="loading" @click="() => loadTree()" />
         <q-btn color="primary" rounded unelevated icon="add" label="新增行业" @click="openCreate('industry')" />
       </div>
     </section>
@@ -36,14 +36,12 @@
       </q-card-section>
     </q-card>
 
-    <div v-if="loading" class="app-entity-grid category-grid q-mt-lg">
-      <q-card v-for="i in 3" :key="i" flat bordered class="app-entity-glass-panel industry-card">
-        <q-card-section>
-          <q-skeleton type="text" width="42%" />
-          <q-skeleton class="q-mt-md" height="80px" />
-        </q-card-section>
-      </q-card>
-    </div>
+    <q-card v-if="loading" flat bordered class="app-entity-glass-panel category-tree-shell q-mt-lg">
+      <q-card-section>
+        <q-skeleton type="text" width="32%" />
+        <q-skeleton class="q-mt-md" height="240px" />
+      </q-card-section>
+    </q-card>
 
     <q-card v-else-if="filteredTree.length === 0" flat bordered class="app-entity-glass-panel category-empty q-mt-lg">
       <q-card-section class="column items-center text-center">
@@ -54,75 +52,16 @@
       </q-card-section>
     </q-card>
 
-    <section v-else class="app-entity-grid category-grid q-mt-lg">
-      <q-card v-for="industry in filteredTree" :key="industry.id" flat bordered class="app-entity-glass-panel industry-card">
-        <q-card-section class="industry-card__header">
-          <div class="row items-start q-gutter-md no-wrap">
-            <q-avatar rounded color="primary" text-color="white" icon="domain" class="industry-avatar" />
-            <div class="col min-width-0">
-              <div class="row items-center q-gutter-sm">
-                <div class="text-h6 ellipsis">{{ industry.name }}</div>
-                <q-chip dense square :class="isSystem(industry) ? 'system-chip' : 'custom-chip'">{{ isSystem(industry) ? "系统" : "自建" }}</q-chip>
-              </div>
-              <div v-if="trimmedDesc(industry.description)" class="text-body2 text-grey-8 q-mt-xs category-desc-line">{{ trimmedDesc(industry.description) }}</div>
-              <div v-else class="text-caption text-grey-7">暂无行业描述 · 可在编辑中补充</div>
-            </div>
-          </div>
-          <div class="row q-gutter-xs">
-            <q-btn flat dense round color="primary" icon="edit" @click="openEdit(industry)" />
-            <q-btn flat dense rounded color="primary" icon="add" label="部门" @click="openCreate('department', industry)" />
-            <q-btn flat dense round color="negative" icon="delete" @click="removeNode(industry)" />
-          </div>
-        </q-card-section>
-
-        <q-card-section class="department-list">
-          <q-expansion-item
-            v-for="department in industry.children"
-            :key="department.id"
-            default-opened
-            expand-icon="keyboard_arrow_down"
-            class="department-item"
-          >
-            <template #header>
-              <q-item-section avatar><q-icon name="lan" color="primary" /></q-item-section>
-              <q-item-section>
-                <q-item-label class="text-weight-bold">{{ department.name }}</q-item-label>
-                <q-item-label v-if="trimmedDesc(department.description)" caption class="category-dept-desc">{{ trimmedDesc(department.description) }}</q-item-label>
-                <q-item-label v-else caption class="text-grey-6">暂无部门描述</q-item-label>
-              </q-item-section>
-              <q-item-section side>
-                <div class="row q-gutter-xs">
-                  <q-btn flat dense round color="primary" icon="edit" @click.stop="openEdit(department)" />
-                  <q-btn flat dense rounded color="primary" icon="add" label="职位" @click.stop="openCreate('position', department)" />
-                  <q-btn flat dense round color="negative" icon="delete" @click.stop="removeNode(department)" />
-                </div>
-              </q-item-section>
-            </template>
-
-            <div class="position-list">
-              <div v-for="position in department.children" :key="position.id" class="position-item">
-                <div class="row items-center q-gutter-sm">
-                  <q-icon name="badge" color="primary" />
-                  <div class="col min-width-0">
-                    <div class="text-weight-medium">{{ position.name }}</div>
-                    <div class="text-caption text-grey-7 position-path">{{ fullPath(industry, department, position) }}</div>
-                    <div v-if="positionDescChain(industry, department, position)" class="text-caption position-desc-chain q-mt-xs">
-                      {{ positionDescChain(industry, department, position) }}
-                    </div>
-                  </div>
-                </div>
-                <div class="row q-gutter-xs position-item__actions">
-                  <q-btn flat dense round color="primary" icon="edit" @click="openEdit(position)" />
-                  <q-btn flat dense round color="negative" icon="delete" @click="removeNode(position)" />
-                </div>
-              </div>
-              <q-btn flat rounded color="primary" icon="add" label="新增职位" class="q-mt-sm" @click="openCreate('position', department)" />
-            </div>
-          </q-expansion-item>
-
-          <q-btn flat rounded color="primary" icon="add" label="新增部门" class="q-mt-sm" @click="openCreate('department', industry)" />
-        </q-card-section>
-      </q-card>
+    <section v-else class="category-tree-shell q-mt-lg">
+      <agent-category-tree
+        :tree="filteredTree"
+        :keyword="keyword"
+        :toggling-ids="togglingIds"
+        @edit="openEdit"
+        @create-child="openCreate"
+        @remove="removeNode"
+        @toggle-enabled="toggleNodeEnabled"
+      />
     </section>
 
     <q-dialog v-model="dialogOpen" persistent>
@@ -164,6 +103,13 @@
               placeholder="可选，补充该分类的业务说明…"
             />
           </div>
+
+          <div class="category-dialog__enabled row items-center q-mt-md">
+            <q-toggle v-model="form.enabled" color="primary" label="启用" />
+            <span class="category-dialog__enabled-hint text-caption text-grey-7 q-ml-sm">
+              停用后 Agent / Team 筛选与分组仍会保留数据，但默认不再出现在选择器中。
+            </span>
+          </div>
         </q-card-section>
         <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions category-dialog__actions">
           <q-btn flat rounded no-caps label="取消" v-close-popup />
@@ -175,12 +121,14 @@
 </template>
 
 <script setup lang="ts">
+import AgentCategoryTree from "../components/agents/AgentCategoryTree.vue";
 import { useAgentCategoriesPage } from "../features/platform/useAgentCategoriesPage";
 
 const {
   isDark,
   loading,
   saving,
+  togglingIds,
   keyword,
   onlyCustom,
   dialogOpen,
@@ -194,10 +142,7 @@ const {
   openEdit,
   saveNode,
   removeNode,
-  isSystem,
-  levelLabel,
-  fullPath,
-  positionDescChain,
-  trimmedDesc
+  toggleNodeEnabled,
+  levelLabel
 } = useAgentCategoriesPage();
 </script>

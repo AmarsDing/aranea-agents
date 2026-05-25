@@ -416,7 +416,8 @@ export async function getMemoryNeighborhood(
   const raw = await memory.GetMemoryNeighborhood({
     centerId: centerID,
     hops: params.hops,
-    maxNodes: params.max_nodes
+    maxNodes: params.max_nodes,
+    queryAt: undefined
   });
   return mapGraphNH(raw);
 }

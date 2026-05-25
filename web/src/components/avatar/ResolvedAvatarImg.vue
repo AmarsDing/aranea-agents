@@ -1,5 +1,5 @@
 <template>
-  <img v-if="displaySrc" :src="displaySrc" :alt="alt" />
+  <img v-if="displaySrc" class="resolved-avatar-img" :src="displaySrc" :alt="alt" />
 </template>
 
 <script setup lang="ts">
@@ -24,11 +24,3 @@ const displaySrc = computed(() => {
   return resolved.value;
 });
 </script>
-
-<style scoped>
-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-</style>

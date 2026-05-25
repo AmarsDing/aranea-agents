@@ -77,12 +77,3 @@ const capabilityOptions = computed(() => {
   return agent.capabilities.map((c) => ({ label: c.name, value: c.name }));
 });
 </script>
-
-<style scoped>
-.a2a-result {
-  margin: 0.5rem 0 0;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  font-size: 0.85rem;
-}
-</style>

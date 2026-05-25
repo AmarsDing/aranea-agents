@@ -157,22 +157,3 @@ const a2uiSchemaFields: { key: keyof PlannerFormState["a2ui"]; label: string }[]
   { key: "catalog_description_schema_json", label: "catalog_description_schema_json" },
 ];
 </script>
-
-<style scoped>
-.section-heading {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 14px;
-}
-
-.settings-info-banner {
-  background: var(--glass-elevated);
-  color: var(--color-text-secondary);
-}
-
-.planner-schema-expansion {
-  border: 1px solid var(--glass-border);
-  border-radius: 12px;
-}
-</style>

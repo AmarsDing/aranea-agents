@@ -63,6 +63,7 @@ export function useAgentProviderModelPicker(form: MaybeRefOrGetter<Agent>) {
   function selectProviderModel(value: string | null) {
     const f = toValue(form);
     const selected = providerModels.value.find((row) => row.id === value);
+    providerModelSearch.value = "";
     if (!selected) {
       f.provider = "";
       f.model = "";
@@ -70,6 +71,10 @@ export function useAgentProviderModelPicker(form: MaybeRefOrGetter<Agent>) {
     }
     f.provider = selected.provider;
     f.model = selected.model;
+  }
+
+  function resetProviderModelFilter() {
+    providerModelSearch.value = "";
   }
 
   function filterProviderModels(value: string, update: (callback: () => void) => void) {
@@ -88,5 +93,6 @@ export function useAgentProviderModelPicker(form: MaybeRefOrGetter<Agent>) {
     loadProviderModels,
     selectProviderModel,
     filterProviderModels,
+    resetProviderModelFilter,
   };
 }

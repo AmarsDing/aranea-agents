@@ -88,12 +88,12 @@
           unelevated
           no-caps
           :loading="applyingMigration"
-          :disable="!migrationItems.length"
+          :disable="!migrationItems?.length"
           label="立即对齐"
           @click="runApplyMigration"
         />
       </div>
-      <q-list v-if="migrationItems.length" bordered class="q-mb-md rounded-borders">
+      <q-list v-if="migrationItems?.length" bordered class="q-mb-md rounded-borders">
         <q-item v-for="item in migrationItems" :key="item.legacyProvider">
           <q-item-section>
             <q-item-label>{{ item.legacyProvider }} → {{ item.catalogProvider }}</q-item-label>
@@ -163,20 +163,30 @@
     </section>
 
     <section class="app-settings-section">
-      <h2 class="app-settings-section__title">Catalog JSON 搜索</h2>
+      <h2 class="app-settings-section__title">Catalog JSON 浏览</h2>
+      <p class="app-settings-section__hint">
+        按 Provider 或模型关键词搜索；留空则按 Provider 分页浏览（每页 1 条完整 JSON）。
+      </p>
       <q-input
-        v-model="jsonFilter"
+        :model-value="jsonFilter"
         dense
         outlined
         clearable
         debounce="300"
-        placeholder="搜索 JSON 内容..."
+        placeholder="搜索 Provider / 模型（如 openai、gpt-4o）..."
         class="q-mb-sm app-field-long"
-        @update:model-value="loadJsonSearch(true)"
+        @update:model-value="onJsonFilterChange"
       />
+      <q-banner v-if="jsonSearchLegacyMode" rounded class="bg-warning text-dark q-mb-sm">
+        当前返回的是旧版「行片段」格式（非完整 JSON）。请重启 admin 服务（<code>go run ./cmd/admin</code>）后刷新本页。
+      </q-banner>
+      <q-banner v-if="jsonSearchTruncated" rounded class="bg-info text-white q-mb-sm">
+        匹配结果过多，仅显示前 {{ jsonSearchCap }} 条，请缩小搜索关键词。
+      </q-banner>
       <div class="row q-col-gutter-sm q-mb-sm items-center">
         <span class="text-caption text-grey-7">
-          匹配 {{ jsonSearchTotal }} 行 · 显示 {{ jsonSearchOffset + 1 }}–{{ jsonSearchOffset + jsonSearchLines.length }}
+          匹配 {{ jsonSearchTotal }} 条
+          <template v-if="jsonSearchBlocks.length === 1"> · 当前第 {{ jsonSearchOffset + 1 }} 条</template>
         </span>
         <q-space />
         <q-btn flat dense no-caps :disable="jsonSearchOffset <= 0" label="上一页" @click="jsonSearchPrev" />
@@ -184,14 +194,22 @@
           flat
           dense
           no-caps
-          :disable="jsonSearchOffset + jsonSearchLines.length >= jsonSearchTotal"
+          :disable="jsonSearchOffset + jsonSearchLimit >= jsonSearchTotal"
           label="下一页"
           @click="jsonSearchNext"
         />
       </div>
-      <q-scroll-area style="height: 360px" class="catalog-json-viewer">
-        <pre class="catalog-json-pre">{{ jsonSearchLines.join("\n") || "（输入关键词搜索，或留空浏览 JSON 片段）" }}</pre>
-      </q-scroll-area>
+      <div v-if="jsonSearchLoading" class="row justify-center q-py-lg">
+        <q-spinner color="primary" size="32px" />
+      </div>
+      <JsonCodeViewer
+        v-else-if="jsonSearchDisplayText"
+        :text="jsonSearchDisplayText"
+        scroll-height="480px"
+      />
+      <div v-else class="text-caption text-grey-7 q-py-md">
+        {{ jsonSearchError || (jsonSearchQuery ? "无匹配结果" : "暂无 catalog 数据，请先同步") }}
+      </div>
     </section>
 
     <section class="app-settings-section">
@@ -225,11 +243,13 @@ import {
   getProviderMigrationRules,
   applyProviderMigration,
   listCatalogProviders,
-  searchCatalogRaw,
+  searchCatalogBlocks,
   type ModelCatalogPolicy,
   type ModelCatalogStatus
 } from "../features/model-catalog/api";
 import { clearProviderLogoCache } from "../features/model-catalog/providerLogo";
+import { resetProviderMigrationCache } from "../features/model-catalog/providerMigration";
+import JsonCodeViewer from "../components/common/JsonCodeViewer.vue";
 
 const $q = useQuasar();
 const loading = ref(false);
@@ -238,10 +258,18 @@ const syncing = ref(false);
 const error = ref("");
 const status = ref<ModelCatalogStatus | null>(null);
 const jsonFilter = ref("");
-const jsonSearchLines = ref<string[]>([]);
+const jsonSearchBlocks = ref<string[]>([]);
 const jsonSearchTotal = ref(0);
 const jsonSearchOffset = ref(0);
-const jsonSearchLimit = 200;
+const jsonSearchLimit = 1;
+const jsonSearchCap = 200;
+const jsonSearchLoading = ref(false);
+const jsonSearchError = ref("");
+const jsonSearchLegacyMode = ref(false);
+const jsonSearchTruncated = ref(false);
+
+const jsonSearchDisplayText = computed(() => jsonSearchBlocks.value[0] ?? "");
+const jsonSearchQuery = computed(() => (jsonFilter.value ?? "").trim());
 const providerBrowseQ = ref("");
 const providerBrowseItems = ref<Awaited<ReturnType<typeof listCatalogProviders>>["items"]>([]);
 const providerBrowseTotal = ref(0);
@@ -298,9 +326,12 @@ async function loadProviderBrowse(resetOffset = false) {
     const res = await listCatalogProviders(providerBrowseQ.value.trim(), providerBrowseLimit, providerBrowseOffset.value);
     providerBrowseItems.value = res.items;
     providerBrowseTotal.value = res.total;
-  } catch {
+  } catch (e) {
     providerBrowseItems.value = [];
     providerBrowseTotal.value = 0;
+    const msg = e instanceof Error ? e.message : "加载 Provider 列表失败";
+    error.value = msg;
+    $q.notify({ type: "warning", message: msg });
   }
 }
 
@@ -314,16 +345,37 @@ function providerBrowseNext() {
   void loadProviderBrowse(false);
 }
 
+function onJsonFilterChange(value: string | number | null) {
+  jsonFilter.value = value == null ? "" : String(value);
+  void loadJsonSearch(true);
+}
+
 async function loadJsonSearch(resetOffset = false) {
   if (resetOffset) jsonSearchOffset.value = 0;
+  jsonSearchLoading.value = true;
+  jsonSearchError.value = "";
+  jsonSearchLegacyMode.value = false;
+  jsonSearchTruncated.value = false;
   try {
-    const res = await searchCatalogRaw(jsonFilter.value.trim(), jsonSearchLimit, jsonSearchOffset.value);
-    jsonSearchLines.value = res.lines;
+    const q = jsonSearchQuery.value;
+    const res = await searchCatalogBlocks(q, jsonSearchLimit, jsonSearchOffset.value);
+    jsonSearchBlocks.value = res.blocks;
     jsonSearchTotal.value = res.total;
     jsonSearchOffset.value = res.offset;
-  } catch {
-    jsonSearchLines.value = [];
+    jsonSearchTruncated.value = res.truncated;
+    jsonSearchLegacyMode.value = res.legacyLineMode;
+    if (res.legacyLineMode) {
+      jsonSearchError.value = "后端返回行片段格式，请重启 admin 服务";
+    }
+  } catch (e) {
+    jsonSearchBlocks.value = [];
     jsonSearchTotal.value = 0;
+    const msg = e instanceof Error ? e.message : "搜索 catalog 失败";
+    jsonSearchError.value = msg;
+    error.value = msg;
+    $q.notify({ type: "warning", message: msg });
+  } finally {
+    jsonSearchLoading.value = false;
   }
 }
 
@@ -413,6 +465,7 @@ async function runApplyMigration() {
       message: res.message || (res.ok ? "命名对齐完成" : "对齐失败"),
     });
     await loadMigrationPreview();
+    resetProviderMigrationCache();
     await loadMigrationRules();
   } catch (e) {
     error.value = e instanceof Error ? e.message : "对齐失败";
@@ -449,48 +502,3 @@ onMounted(() => {
   void loadMigrationRules();
 });
 </script>
-
-<style scoped>
-.catalog-status-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 12px;
-}
-
-.catalog-stat {
-  padding: 10px 12px;
-  border: 1px solid var(--glass-border, rgba(0, 0, 0, 0.08));
-  border-radius: 10px;
-  background: var(--glass-elevated, rgba(255, 255, 255, 0.6));
-}
-
-.catalog-stat--wide {
-  grid-column: 1 / -1;
-}
-
-.catalog-stat__label {
-  display: block;
-  font-size: 11px;
-  color: var(--color-text-secondary, #666);
-}
-
-.catalog-stat__value {
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.catalog-json-viewer {
-  border: 1px solid var(--glass-border, rgba(0, 0, 0, 0.08));
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.03);
-}
-
-.catalog-json-pre {
-  margin: 0;
-  padding: 12px;
-  font-size: 11px;
-  line-height: 1.45;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-</style>

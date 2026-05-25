@@ -11,7 +11,7 @@
 
       <q-separator />
 
-      <q-card-section class="q-gutter-md skill-import-scroll">
+      <q-card-section class="q-gutter-md app-dialog-scroll--import">
         <q-file v-model="file" outlined dense accept=".zip" label="选择 Skill zip" :disable="busy">
           <template #prepend><q-icon name="upload_file" /></template>
         </q-file>
@@ -282,25 +282,3 @@ function firstRefinedGroup(groups: SkillConflictGroup[], candidateIds: string[])
   return groups.find((group) => group.candidate_ids.some((id) => candidateIds.includes(id)))?.group_id ?? groups[0]?.group_id ?? "";
 }
 </script>
-
-<style scoped lang="sass">
-.skill-import-scroll
-  max-height: min(68vh, 640px)
-  overflow: auto
-
-.conflict-card
-  border-radius: 18px !important
-
-.metrics-grid
-  display: grid
-  grid-template-columns: repeat(auto-fit, minmax(108px, 1fr))
-  gap: 8px
-
-.metric-pill span
-  display: block
-  color: var(--color-text-secondary)
-  font-size: 11px
-
-.metric-pill strong
-  font-size: 14px
-</style>

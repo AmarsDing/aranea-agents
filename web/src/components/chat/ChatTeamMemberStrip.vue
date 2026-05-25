@@ -29,10 +29,3 @@ defineProps<{
   members: TeamMemberLane[];
 }>();
 </script>
-
-<style scoped>
-.team-member-strip {
-  flex-wrap: wrap;
-  align-items: center;
-}
-</style>

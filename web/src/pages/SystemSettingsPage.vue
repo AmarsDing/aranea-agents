@@ -229,18 +229,16 @@ async function load() {
     a2aPublicBaseUrl.value = res.a2aPublicBaseUrl ?? "";
     effectiveA2AUrl.value = a2aCfg?.public_base_url ?? "";
     globalMonthlyUsd.value = microUsdToUsd(res.globalMonthlyMicroUsd);
-    mcpAllowAdhocHttp.value = Boolean(res.mcpAllowAdhocHttp ?? res.mcp_allow_adhoc_http);
-    credentialKeyConfigured.value = Boolean(
-      res.credentialEncryptionKeyConfigured ?? res.credential_encryption_key_configured
-    );
+    mcpAllowAdhocHttp.value = Boolean(res.mcpAllowAdhocHttp);
+    credentialKeyConfigured.value = Boolean(res.credentialEncryptionKeyConfigured);
     Object.assign(knowledgeEmbedForm, knowledgeEmbedFromSettings(res.knowledgeEmbed));
-    Object.assign(evalLLMForm, evalLLMFromSettings(res.evalLlm ?? res.eval_llm));
-    Object.assign(webResearchForm, webResearchFromSettings(res.webResearch ?? res.web_research));
+    Object.assign(evalLLMForm, evalLLMFromSettings(res.evalLlm));
+    Object.assign(webResearchForm, webResearchFromSettings(res.webResearch));
     knowledgeEmbedConfigured.value = Boolean(res.knowledgeEmbed?.configured);
     knowledgeEmbedHasApiKey.value = Boolean(res.knowledgeEmbed?.hasApiKey);
-    webResearchConfigured.value = Boolean(res.webResearch?.configured ?? res.web_research?.configured);
-    webResearchHasApiKey.value = Boolean(res.webResearch?.hasApiKey ?? res.web_research?.has_api_key);
-    evalLLMConfigured.value = Boolean(res.evalLlm?.configured ?? res.eval_llm?.configured);
+    webResearchConfigured.value = Boolean(res.webResearch?.configured);
+    webResearchHasApiKey.value = Boolean(res.webResearch?.hasApiKey);
+    evalLLMConfigured.value = Boolean(res.evalLlm?.configured);
     updateTime.value = res.updateTime;
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : String(e);
@@ -302,18 +300,16 @@ async function save() {
     const a2aCfg = await a2aStore.loadRuntimeConfig().catch(() => null);
     effectiveA2AUrl.value = a2aCfg?.public_base_url ?? "";
     globalMonthlyUsd.value = microUsdToUsd(res.globalMonthlyMicroUsd);
-    mcpAllowAdhocHttp.value = Boolean(res.mcpAllowAdhocHttp ?? res.mcp_allow_adhoc_http);
-    credentialKeyConfigured.value = Boolean(
-      res.credentialEncryptionKeyConfigured ?? res.credential_encryption_key_configured
-    );
+    mcpAllowAdhocHttp.value = Boolean(res.mcpAllowAdhocHttp);
+    credentialKeyConfigured.value = Boolean(res.credentialEncryptionKeyConfigured);
     Object.assign(knowledgeEmbedForm, knowledgeEmbedFromSettings(res.knowledgeEmbed));
-    Object.assign(evalLLMForm, evalLLMFromSettings(res.evalLlm ?? res.eval_llm));
-    Object.assign(webResearchForm, webResearchFromSettings(res.webResearch ?? res.web_research));
+    Object.assign(evalLLMForm, evalLLMFromSettings(res.evalLlm));
+    Object.assign(webResearchForm, webResearchFromSettings(res.webResearch));
     knowledgeEmbedConfigured.value = Boolean(res.knowledgeEmbed?.configured);
     knowledgeEmbedHasApiKey.value = Boolean(res.knowledgeEmbed?.hasApiKey);
-    webResearchConfigured.value = Boolean(res.webResearch?.configured ?? res.web_research?.configured);
-    webResearchHasApiKey.value = Boolean(res.webResearch?.hasApiKey ?? res.web_research?.has_api_key);
-    evalLLMConfigured.value = Boolean(res.evalLlm?.configured ?? res.eval_llm?.configured);
+    webResearchConfigured.value = Boolean(res.webResearch?.configured);
+    webResearchHasApiKey.value = Boolean(res.webResearch?.hasApiKey);
+    evalLLMConfigured.value = Boolean(res.evalLlm?.configured);
     updateTime.value = res.updateTime;
     $q.notify({ type: "positive", message: t("settingsPage.saveOk") });
   } catch (e: unknown) {
@@ -324,13 +320,3 @@ async function save() {
   }
 }
 </script>
-
-<style scoped lang="sass">
-.settings-info-banner
-  background: var(--color-status-info-bg-alt)
-  color: var(--color-status-info-text)
-
-body.body--dark .settings-info-banner
-  background: rgb(30 58 138 / 35%)
-  color: var(--color-accent-blue-light)
-</style>

@@ -3,18 +3,19 @@
     <q-card-section class="app-form-field-grid items-end">
       <q-input
         :model-value="search"
-        class="app-field-md"
+        class="app-field-md app-glass-control"
         dense
         outlined
         clearable
         debounce="350"
         placeholder="搜索 Tool 名称、Key、描述..."
-        @update:model-value="$emit('update:search', $event)"
+        @update:model-value="$emit('update:search', String($event ?? ''))"
       >
         <template #prepend><q-icon name="search" /></template>
       </q-input>
       <q-select
         :model-value="category"
+        class="app-glass-control"
         dense
         outlined
         clearable
@@ -22,10 +23,11 @@
         map-options
         label="分类"
         :options="categoryOptions"
-        @update:model-value="$emit('update:category', $event)"
+        @update:model-value="$emit('update:category', String($event ?? ''))"
       />
       <q-select
         :model-value="riskLevel"
+        class="app-glass-control"
         dense
         outlined
         clearable
@@ -33,10 +35,11 @@
         map-options
         label="风险"
         :options="riskOptions"
-        @update:model-value="$emit('update:riskLevel', $event)"
+        @update:model-value="$emit('update:riskLevel', String($event ?? ''))"
       />
       <q-select
         :model-value="enabled"
+        class="app-glass-control"
         dense
         outlined
         clearable
@@ -44,11 +47,11 @@
         map-options
         label="启用状态"
         :options="enabledOptions"
-        @update:model-value="$emit('update:enabled', $event)"
+        @update:model-value="$emit('update:enabled', $event ?? null)"
       />
       <div class="app-actions-bar app-actions-bar--start">
-        <q-btn flat rounded no-caps icon="restart_alt" label="重置" class="tool-toolbar-btn" @click="$emit('reset')" />
-        <q-btn flat rounded no-caps icon="refresh" label="刷新" class="tool-toolbar-btn" :loading="loading" @click="$emit('refresh')" />
+        <q-btn flat rounded no-caps icon="restart_alt" label="重置" class="app-entity-toolbar-btn" @click="$emit('reset')" />
+        <q-btn flat rounded no-caps icon="refresh" label="刷新" class="app-entity-toolbar-btn" :loading="loading" @click="$emit('refresh')" />
       </div>
     </q-card-section>
   </tool-glass-panel>
@@ -79,14 +82,3 @@ defineEmits<{
   refresh: [];
 }>();
 </script>
-
-<style scoped lang="sass">
-.tool-toolbar-btn
-  color: var(--color-text-primary)
-
-body:not(.body--dark) .tool-toolbar-btn:hover
-  background: var(--interaction-surface-hover)
-
-body.body--dark .tool-toolbar-btn:hover
-  border-color: var(--glass-border-hover)
-</style>

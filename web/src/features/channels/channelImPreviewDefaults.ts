@@ -20,6 +20,21 @@ export const FEISHU_IM_PREVIEW_DEFAULTS: Record<string, string | number | boolea
   progress_mode: "text"
 };
 
+export const IM_PREVIEW_TEXT_KEYS = [
+  "im_render_mode",
+  "im_tool_detail",
+  "im_reasoning_max_chars",
+  "im_max_preview_chars",
+  "im_tool_card_mode",
+  "im_team_mode"
+] as const;
+
+export const IM_PREVIEW_BOOL_KEYS = new Set<string>(["im_show_reasoning", "im_split_overflow"]);
+
+export function isImPreviewFormKey(key: string): boolean {
+  return IM_PREVIEW_BOOL_KEYS.has(key) || (IM_PREVIEW_TEXT_KEYS as readonly string[]).includes(key);
+}
+
 export function applyFeishuImPreviewDefaults(
   boolDraft: Record<string, boolean>,
   textDraft: Record<string, string>

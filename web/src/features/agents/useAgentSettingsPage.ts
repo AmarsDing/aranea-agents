@@ -112,7 +112,13 @@ export function useAgentSettingsPage() {
     loadProviderModels,
     selectProviderModel,
     filterProviderModels,
+    resetProviderModelFilter,
   } = useAgentProviderModelPicker(form);
+
+  const selectedProviderModelIDModel = computed({
+    get: () => selectedProviderModelID.value,
+    set: (value: string | null | undefined) => selectProviderModel(value ?? null),
+  });
 
   const promptFiles = useAgentPromptFiles(agentId, (opts) => $q.notify(opts));
   const {
@@ -311,9 +317,11 @@ export function useAgentSettingsPage() {
     statusOptions,
     copyKey,
     selectedProviderModelID,
+    selectedProviderModelIDModel,
     filteredProviderModelOptions,
     loadingProviderModels,
     filterProviderModels,
+    resetProviderModelFilter,
     selectProviderModel,
     budgetUSD,
     toolProfileOptions,

@@ -138,9 +138,10 @@ export async function searchKnowledge(query: SearchKnowledgeQuery): Promise<Know
     await svc.Search({
       collectionId: query.collection_id,
       query: query.query,
-      topK: query.top_k ?? 5,
-      minScore: query.min_score ?? 0,
-      filterJson: query.filter_json ?? ""
+      topK: query.top_k,
+      minScore: query.min_score,
+      filterJson: query.filter_json,
+      rerankCandidates: undefined
     })
   );
   const chunksRaw = res.chunks ?? res.Chunks;

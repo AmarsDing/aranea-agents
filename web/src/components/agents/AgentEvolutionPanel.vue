@@ -1,74 +1,78 @@
 <template>
-  <div class="evolution-panel">
+  <div class="evolution-panel settings-grid settings-grid--wide">
     <section class="settings-section">
-      <div class="section-title-row">
-        <div>
-          <div class="text-subtitle1 text-weight-bold">进化</div>
-          <div class="text-caption text-grey-7">控制风格进化、技能进化、指标采集与建议生成。</div>
+      <div class="section-heading">
+        <div class="section-heading__main">
+          <div class="section-title">
+            <span class="section-title__text">进化</span>
+          </div>
+          <p class="settings-section__hint">控制风格进化、技能进化、指标采集与建议生成。</p>
         </div>
       </div>
-      <q-list separator class="evolution-list">
-        <q-item v-for="item in evolutionToggles" :key="item.key" class="evolution-item">
+      <q-list separator class="app-glass-list">
+        <q-item v-for="item in evolutionToggles" :key="item.key" class="app-glass-list__item--md">
           <q-item-section>
             <q-item-label>{{ item.title }}</q-item-label>
             <q-item-label caption>{{ item.caption }}</q-item-label>
           </q-item-section>
-          <q-item-section side><q-toggle v-model="evolution[item.key]" color="primary" /></q-item-section>
+          <q-item-section side><q-toggle v-model="evolution[item.key]" /></q-item-section>
         </q-item>
       </q-list>
-      <q-banner rounded class="evolution-info-banner q-mt-md">
+      <q-banner rounded class="settings-info-banner settings-info-banner--bordered q-mt-md">
         仅允许进化 SOUL.md 中的沟通风格与语调；身份、核心目的、AGENTS* 操作规则保持锁定。
       </q-banner>
     </section>
 
-    <section class="settings-section q-mt-md">
-      <div class="row items-center justify-between">
-        <div>
-          <div class="text-subtitle1 text-weight-bold">指标与建议</div>
-          <div class="text-caption text-grey-7">时间范围只影响看板读取，不写入 Agent 配置。</div>
+    <section class="settings-section">
+      <div class="section-heading">
+        <div class="section-heading__main">
+          <div class="section-title">
+            <span class="section-title__text">指标与建议</span>
+          </div>
+          <p class="settings-section__hint">时间范围只影响看板读取，不写入 Agent 配置。</p>
         </div>
         <q-btn-toggle v-model="rangeModel" rounded unelevated toggle-color="primary" :options="rangeOptions" />
       </div>
       <q-inner-loading :showing="metricsLoading" label="加载指标..." />
       <div v-if="!metricsLoading" class="app-metrics-grid q-mt-sm">
-        <q-card flat bordered class="metric-card capability-card app-metrics-grid__item">
-          <q-card-section>
+        <q-card flat bordered class="overview-metric-card app-metrics-grid__item">
+          <q-card-section class="overview-metric-card__body">
             <div class="row items-center q-gutter-sm">
               <q-icon name="query_stats" color="primary" size="26px" />
-              <div class="text-subtitle2">工具成功率</div>
+              <div class="overview-metric-card__label">工具成功率</div>
             </div>
-            <div class="text-h5 q-mt-sm">{{ formatPercent(metrics?.tool_success_rate) }}</div>
-            <div class="text-caption text-grey-7">共 {{ metrics?.total_episodes ?? 0 }} 个会话</div>
+            <div class="overview-metric-card__value">{{ formatPercent(metrics?.tool_success_rate) }}</div>
+            <div class="overview-metric-card__caption">共 {{ metrics?.total_episodes ?? 0 }} 个会话</div>
           </q-card-section>
         </q-card>
-        <q-card flat bordered class="metric-card capability-card app-metrics-grid__item">
-          <q-card-section>
+        <q-card flat bordered class="overview-metric-card app-metrics-grid__item">
+          <q-card-section class="overview-metric-card__body">
             <div class="row items-center q-gutter-sm">
               <q-icon name="travel_explore" color="primary" size="26px" />
-              <div class="text-subtitle2">检索质量</div>
+              <div class="overview-metric-card__label">检索质量</div>
             </div>
-            <div class="text-h5 q-mt-sm">{{ formatPercent(metrics?.retrieval_quality) }}</div>
-            <div class="text-caption text-grey-7">记忆工具调用成功率</div>
+            <div class="overview-metric-card__value">{{ formatPercent(metrics?.retrieval_quality) }}</div>
+            <div class="overview-metric-card__caption">记忆工具调用成功率</div>
           </q-card-section>
         </q-card>
-        <q-card flat bordered class="metric-card capability-card app-metrics-grid__item">
-          <q-card-section>
+        <q-card flat bordered class="overview-metric-card app-metrics-grid__item">
+          <q-card-section class="overview-metric-card__body">
             <div class="row items-center q-gutter-sm">
               <q-icon name="tips_and_updates" color="primary" size="26px" />
-              <div class="text-subtitle2">建议</div>
+              <div class="overview-metric-card__label">建议</div>
             </div>
-            <div class="text-h5 q-mt-sm">{{ pendingSuggestionsCount }}</div>
-            <div class="text-caption text-grey-7">待处理改进建议</div>
+            <div class="overview-metric-card__value">{{ pendingSuggestionsCount }}</div>
+            <div class="overview-metric-card__caption">待处理改进建议</div>
           </q-card-section>
         </q-card>
       </div>
-      <div v-if="metrics?.tool_success_series?.length" class="evolution-trend q-mt-md">
-        <div class="text-subtitle2 text-weight-bold q-mb-sm">工具成功率趋势</div>
-        <div class="evolution-trend__bars">
+      <div v-if="metrics?.tool_success_series?.length" class="q-mt-md">
+        <div class="settings-subsection__title q-mb-sm">工具成功率趋势</div>
+        <div class="app-mini-bar-chart">
           <div
             v-for="(pt, idx) in metrics.tool_success_series"
             :key="idx"
-            class="evolution-trend__bar"
+            class="app-mini-bar-chart__bar"
             :style="{ height: `${Math.max(4, Math.round((pt.value ?? 0) * 100))}%` }"
             :title="`${pt.date}: ${formatPercent(pt.value)}`"
           />
@@ -76,15 +80,17 @@
       </div>
     </section>
 
-    <section v-if="suggestions.length > 0" class="settings-section q-mt-md">
-      <div class="section-title-row">
-        <div>
-          <div class="text-subtitle1 text-weight-bold">进化建议列表</div>
-          <div class="text-caption text-grey-7">基于指标自动生成的改进建议，可应用或拒绝。</div>
+    <section v-if="suggestions.length > 0" class="settings-section">
+      <div class="section-heading">
+        <div class="section-heading__main">
+          <div class="section-title">
+            <span class="section-title__text">进化建议列表</span>
+          </div>
+          <p class="settings-section__hint">基于指标自动生成的改进建议，可应用或拒绝。</p>
         </div>
       </div>
-      <q-list separator class="suggestion-list">
-        <q-item v-for="s in suggestions" :key="s.id" class="suggestion-item">
+      <q-list separator class="app-glass-list">
+        <q-item v-for="s in suggestions" :key="s.id" class="app-glass-list__item--lg">
           <q-item-section>
             <q-item-label class="text-weight-medium">
               <q-badge :color="suggestionTypeColor(s.type)" class="q-mr-sm" :label="s.type" />
@@ -108,15 +114,16 @@
       </q-list>
     </section>
 
-    <section class="settings-section guardrails-section q-mt-md">
-      <div class="row items-center q-gutter-sm">
-        <q-avatar rounded color="green-1" text-color="green-8" icon="hexagon" />
-        <div>
-          <div class="text-subtitle1 text-weight-bold">适应护栏</div>
-          <div class="text-caption text-grey-7">限制自动调整幅度，样本不足或表现下降时回滚。</div>
+    <section class="settings-section settings-section--success">
+      <div class="section-heading">
+        <div class="section-heading__main">
+          <div class="section-title">
+            <span class="section-title__text">适应护栏</span>
+          </div>
+          <p class="settings-section__hint">限制自动调整幅度，样本不足或表现下降时回滚。</p>
         </div>
       </div>
-      <div class="app-form-field-grid q-mt-xs">
+      <div class="app-form-field-grid app-form-field-grid--2col">
         <q-input v-model.number="guardrails.max_change_per_period" dense outlined type="number" step="0.01" label="每周期最大变化" />
         <q-input v-model.number="guardrails.min_data_points" dense outlined type="number" label="最少数据点" />
         <q-input v-model.number="guardrails.rollback_on_decline_percent" dense outlined type="number" suffix="%" label="下降时回滚" />
@@ -194,103 +201,3 @@ function suggestionTypeColor(type: string): string {
 }
 
 </script>
-
-<style scoped>
-.evolution-panel {
-  display: grid;
-  gap: 16px;
-}
-
-.section-title-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 14px;
-}
-
-.evolution-info-banner {
-  border: 1px solid var(--glass-border);
-  background: var(--glass-elevated);
-  color: var(--color-text-primary);
-  box-shadow: var(--glass-inner-highlight);
-}
-
-.evolution-list {
-  border: 1px solid var(--glass-border);
-  border-radius: 16px;
-  overflow: hidden;
-  background: var(--glass-elevated);
-  backdrop-filter: blur(var(--glass-blur-default));
-  -webkit-backdrop-filter: blur(var(--glass-blur-default));
-}
-
-.evolution-item {
-  min-height: 68px;
-}
-
-.metric-card {
-  min-height: 136px;
-  border-color: var(--glass-border);
-  border-radius: 18px;
-  background: var(--glass-elevated);
-  backdrop-filter: blur(var(--glass-blur-default));
-  -webkit-backdrop-filter: blur(var(--glass-blur-default));
-  box-shadow: none;
-  transition:
-    transform 180ms ease,
-    border-color 180ms ease,
-    background 180ms ease;
-}
-
-.metric-card:hover {
-  transform: translateY(-2px);
-  border-color: var(--glass-border-hover, var(--glass-border));
-  background: var(--glass-surface-hover);
-}
-
-.suggestion-list {
-  border: 1px solid var(--glass-border);
-  border-radius: 16px;
-  overflow: hidden;
-  background: var(--glass-elevated);
-  backdrop-filter: blur(var(--glass-blur-default));
-  -webkit-backdrop-filter: blur(var(--glass-blur-default));
-}
-
-.suggestion-item {
-  min-height: 80px;
-}
-
-.guardrails-section {
-  border-color: color-mix(in srgb, var(--color-success) 28%, var(--glass-border));
-  background: color-mix(in srgb, var(--color-success) 9%, var(--glass-surface));
-}
-
-body.body--dark .evolution-info-banner {
-  background: var(--glass-elevated);
-  border-color: var(--glass-border);
-}
-
-body.body--dark .guardrails-section {
-  border-color: color-mix(in srgb, var(--color-success) 35%, var(--glass-border));
-  background: color-mix(in srgb, var(--color-success) 12%, var(--glass-surface));
-}
-
-.evolution-trend__bars {
-  display: flex;
-  align-items: flex-end;
-  gap: 4px;
-  height: 72px;
-  padding: 8px 4px;
-  border: 1px solid var(--glass-border);
-  border-radius: 12px;
-  background: var(--glass-surface);
-}
-
-.evolution-trend__bar {
-  flex: 1;
-  min-width: 6px;
-  background: color-mix(in srgb, var(--color-primary) 75%, transparent);
-  border-radius: 3px 3px 0 0;
-}
-</style>

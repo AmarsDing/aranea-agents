@@ -6,7 +6,7 @@
     <div v-else-if="error" class="text-negative q-pa-md">{{ error }}</div>
     <div v-else-if="!runs.length" class="text-grey-7 q-pa-md">暂无 Run 记录</div>
     <q-list v-else separator>
-      <q-item v-for="run in runs" :key="run.id" class="run-item">
+      <q-item v-for="run in runs" :key="run.id" class="app-interactive-list-item">
         <q-item-section>
           <q-item-label overline class="text-grey-7">{{ run.phase }} · {{ run.source || "native" }}</q-item-label>
           <q-item-label>{{ run.id }}</q-item-label>
@@ -53,10 +53,3 @@ function phaseColor(phase: string) {
   return "primary";
 }
 </script>
-
-<style scoped>
-.run-item {
-  border-radius: 12px;
-  margin-bottom: 4px;
-}
-</style>

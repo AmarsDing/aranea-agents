@@ -44,7 +44,7 @@ describe("bindStreamHandlers", () => {
     dispatcher.dispatch(
       env({
         type: "text_delta",
-        content: { text: "Hello", reasoning: "" },
+        content: { text: "Hello", reasoning: "", is_partial: true },
       })
     );
     expect(rows["sess-1"]!.some((m) => m.id === "ws-stream-sess-1")).toBe(true);
@@ -53,7 +53,7 @@ describe("bindStreamHandlers", () => {
     dispatcher.dispatch(
       env({
         type: "text_done",
-        content: { text: "Hello world", reasoning: "" },
+        content: { text: "Hello world", reasoning: "", is_partial: false },
       })
     );
     expect(rows["sess-1"]!.find((m) => m.id === "ws-stream-sess-1")?.status).toBe("ok");
@@ -91,7 +91,7 @@ describe("bindStreamHandlers", () => {
       env({
         type: "text_delta",
         source: "channel",
-        content: { text: "skip", reasoning: "" },
+        content: { text: "skip", reasoning: "", is_partial: true },
       })
     );
     expect(rows["sess-1"]).toEqual([]);
@@ -126,7 +126,7 @@ describe("bindStreamHandlers", () => {
     dispatcher.dispatch(
       env({
         type: "text_delta",
-        content: { text: "skip", reasoning: "" },
+        content: { text: "skip", reasoning: "", is_partial: true },
       })
     );
     expect(rows["sess-1"]).toEqual([]);
@@ -140,7 +140,7 @@ describe("bindStreamHandlers", () => {
       session_id: "sess-1",
       timestamp: "",
       version: 1,
-      content: { text: "Hi", reasoning: "" },
+      content: { text: "Hi", reasoning: "", is_partial: true },
     }, false);
     expect(next).toHaveLength(1);
     expect(next[0]?.content_markdown).toBe("Hi");
@@ -210,7 +210,7 @@ describe("bindStreamHandlers", () => {
       onReloadAfterCompletion: vi.fn().mockResolvedValue(undefined),
       setLastIntentPass: vi.fn(),
       onSessionContextPatch,
-      getSessionMetrics: () => ({ total_tokens: 1000, max_context_used_ratio: 0.1 }),
+      getSessionMetrics: () => ({ input_tokens: 500, output_tokens: 500, total_tokens: 1000, max_context_used_ratio: 0.1 }),
     });
 
     dispatcher.dispatch(
@@ -261,7 +261,7 @@ describe("bindStreamHandlers", () => {
     dispatcher.dispatch(
       env({
         type: "text_done",
-        content: { text: "会话上下文已自动压缩", reasoning: "" },
+        content: { text: "会话上下文已自动压缩", reasoning: "", is_partial: false },
         metadata: {
           kind: "system.session.compress",
           context_used_ratio: 0.22,

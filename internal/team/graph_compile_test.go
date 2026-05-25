@@ -72,8 +72,8 @@ func TestCompileToGraphBuildConfig_coordinator(t *testing.T) {
 	if CompileTemplateID(def.Mode) != "dispatch" {
 		t.Fatalf("template=%q", CompileTemplateID(def.Mode))
 	}
-	if len(cfg.Edges) != 4 {
-		t.Fatalf("edges=%d want 4", len(cfg.Edges))
+	if len(cfg.Edges) != 3 {
+		t.Fatalf("edges=%d want 3", len(cfg.Edges))
 	}
 	var transfers, dispatches, flows int
 	for _, e := range cfg.Edges {
@@ -86,8 +86,29 @@ func TestCompileToGraphBuildConfig_coordinator(t *testing.T) {
 			flows++
 		}
 	}
-	if dispatches != 2 || flows != 2 {
-		t.Fatalf("dispatch=%d flow=%d want 2/2", dispatches, flows)
+	if dispatches != 2 || flows != 1 {
+		t.Fatalf("dispatch=%d flow=%d want 2/1", dispatches, flows)
+	}
+}
+
+func TestCompileToGraphBuildConfig_coordinator_noSelfLoopOnFinish(t *testing.T) {
+	def := Definition{
+		Mode: "coordinator",
+		Members: []MemberDef{
+			{AgentID: "lead", SortOrder: 10, Role: "coordinator"},
+			{AgentID: "w1", SortOrder: 20},
+			{AgentID: "w2", SortOrder: 30},
+			{AgentID: "report", SortOrder: 90, Role: "synthesizer"},
+		},
+	}
+	cfg, err := CompileToGraphBuildConfig(def, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range cfg.Edges {
+		if e.From == e.To {
+			t.Fatalf("self-loop edge %q -> %q", e.From, e.To)
+		}
 	}
 }
 

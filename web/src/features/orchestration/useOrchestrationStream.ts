@@ -47,7 +47,7 @@ export function useOrchestrationStream(sessionId: string, runId: string) {
       channels: ["team", "graph", "monitor"],
       autoConnect: false,
     });
-    stream.onType([ORCHESTRATION_STATUS_ENVELOPE], applyEnvelope);
+    stream.onType([ORCHESTRATION_STATUS_ENVELOPE] as any, applyEnvelope);
     stream.connect();
     connected.value = true;
   }

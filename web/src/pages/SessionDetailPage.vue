@@ -169,9 +169,3 @@ function formatDate(value: string) {
   return d.toLocaleString();
 }
 </script>
-
-<style scoped>
-.session-detail-page {
-  min-height: 100%;
-}
-</style>

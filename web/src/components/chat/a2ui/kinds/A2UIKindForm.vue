@@ -16,7 +16,7 @@
     <q-input
       :model-value="ctx.textFieldValue"
       :label="ctx.textFieldLabel"
-      :type="ctx.textFieldInputType"
+      :type="ctx.textFieldInputType as any"
       readonly
       outlined
       dense
@@ -28,10 +28,10 @@
 </template>
 
 <script setup lang="ts">
-import type { useA2UIComponent } from "../../../../features/chat/a2ui/useA2UIComponent";
+import type { A2UIComponentCtx } from "../../../../features/chat/a2ui/useA2UIComponent";
 
 defineProps<{
   kind: string;
-  ctx: ReturnType<typeof useA2UIComponent>;
+  ctx: A2UIComponentCtx;
 }>();
 </script>

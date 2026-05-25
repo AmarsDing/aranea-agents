@@ -38,32 +38,6 @@ export function useTeamOrchestratePage() {
   const observatory = ref<TeamRunObservatory | null>(null);
   const stream = ref<ReturnType<typeof useOrchestrationStream> | null>(null);
 
-  const liveConnected = computed(() => stream.value?.connected.value ?? false);
-  const liveMode = computed(() => Boolean(activeRun.value && observatory.value));
-
-  const nodeList = computed<AgentNodeState[]>(() => {
-    if (!stream.value) return [];
-    return [...stream.value.nodes.value.values()];
-  });
-
-  const selectedLiveState = computed(() => {
-    if (!selectedNodeId.value || !stream.value) return null;
-    return stream.value.nodes.value.get(selectedNodeId.value) ?? null;
-  });
-
-  const execNodeStates = computed(() => {
-    if (stream.value && stream.value.nodes.value.size > 0) {
-      return buildExecNodeStates(stream.value.nodes.value);
-    }
-    const map = new Map<string, { status: string; fineStatus?: string }>();
-    for (const node of graphDef.nodes) {
-      if (node.type === "agent") {
-        map.set(node.id, { status: "waiting", fineStatus: "idle" });
-      }
-    }
-    return map;
-  });
-
   const graphDef = reactive<GraphDefinition>({
     id: "",
     name: "",
@@ -80,8 +54,45 @@ export function useTeamOrchestratePage() {
     interruptBefore: [],
     interruptAfter: [],
     metadata: {},
+    version: 0,
     createdAt: "",
     updatedAt: ""
+  });
+
+  const liveConnected = computed(() => stream.value?.connected ?? false);
+  const liveMode = computed(() => Boolean(activeRun.value && observatory.value));
+
+  const nodeList = computed<AgentNodeState[]>(() => {
+    if (!stream.value) return [];
+    return [...stream.value.nodes.values()];
+  });
+
+  const selectedLiveState = computed(() => {
+    if (!selectedNodeId.value || !stream.value) return null;
+    return stream.value.nodes.get(selectedNodeId.value) ?? null;
+  });
+
+  const idleExecNodeStates = ref(new Map<string, { status: string; fineStatus?: string }>());
+
+  watch(
+    () => graphDef.nodes.map((n) => `${n.id}:${n.type}`).join("\0"),
+    () => {
+      const map = new Map<string, { status: string; fineStatus?: string }>();
+      for (const node of graphDef.nodes) {
+        if (node.type === "agent") {
+          map.set(node.id, { status: "waiting", fineStatus: "idle" });
+        }
+      }
+      idleExecNodeStates.value = map;
+    },
+    { immediate: true },
+  );
+
+  const execNodeStates = computed(() => {
+    if (stream.value && stream.value.nodes.size > 0) {
+      return buildExecNodeStates(stream.value.nodes);
+    }
+    return idleExecNodeStates.value;
   });
 
   const issues = computed(() => compiled.value?.issues ?? []);

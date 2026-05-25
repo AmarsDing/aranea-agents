@@ -3,7 +3,7 @@ import { computed, onMounted, reactive, ref, watch } from "vue";
 import { copyToClipboard, useQuasar } from "quasar";
 import { mapAgentCreateFieldErrors, parseKratosApiError } from "../../utils/kratosError";
 import type { Agent, AgentKind, A2AProxyConfig, AgentTemplatePreset } from "./types";
-import type { PlatformResource, PlatformResourceTreeNode } from "../platform/types";
+import type { PlatformResource } from "../platform/types";
 import { descriptionTemplates, statusOptions } from "../../components/agents/agentUi";
 import { useAgentsPageStore } from "../../stores/agents";
 import { useAppStore } from "../../stores/app";
@@ -45,9 +45,7 @@ export function useAgentsPage() {
     providerModels,
     checkingModel,
     modelCheckPassed,
-    industryNodes,
-    industryOptions,
-    categoryPositionOptions,
+    categoryTree,
     pageMax,
     providerOptions,
     tableColumns
@@ -71,8 +69,6 @@ export function useAgentsPage() {
     timeout_seconds: 30
   });
   const viewMode = ref<ViewMode>((localStorage.getItem(LS_VIEW) as ViewMode) || "grid");
-  const categoryIndustry = ref<string | null>(null);
-  const categoryDepartment = ref<string | null>(null);
 
   const form = reactive<CreateAgentForm>({
     agent_key: "",
@@ -90,7 +86,8 @@ export function useAgentsPage() {
       key: t.key,
       label: t.label,
       icon: t.icon,
-      description: t.text
+      description: t.text,
+      text: t.text
     }))
   );
   const agentKeyServerError = ref("");
@@ -104,25 +101,6 @@ export function useAgentsPage() {
 
   const modelOptions = computed(() =>
     providerModels.value.filter((row: PlatformResource) => row.provider === form.provider).map((row: PlatformResource) => ({ label: row.name, value: row.model }))
-  );
-
-  const selectedIndustryNode = computed(() =>
-    industryNodes.value.find((row: PlatformResourceTreeNode) => row.id === categoryIndustry.value)
-  );
-  const selectedDepartmentNode = computed(() =>
-    selectedIndustryNode.value?.children?.find(
-      (row: PlatformResourceTreeNode) => row.id === categoryDepartment.value && row.level === "department" && row.enabled
-    )
-  );
-  const departmentOptions = computed(() =>
-    (selectedIndustryNode.value?.children ?? [])
-      .filter((row: PlatformResourceTreeNode) => row.level === "department" && row.enabled)
-      .map((row: PlatformResourceTreeNode) => ({ label: row.name, value: row.id }))
-  );
-  const positionOptions = computed(() =>
-    (selectedDepartmentNode.value?.children ?? [])
-      .filter((row: PlatformResourceTreeNode) => row.level === "position" && row.enabled)
-      .map((row: PlatformResourceTreeNode) => ({ label: row.name, value: row.id }))
   );
 
   const agentKeyError = computed(() => {
@@ -172,13 +150,6 @@ export function useAgentsPage() {
       modelCheckPassed.value = false;
     }
   );
-  watch(categoryIndustry, () => {
-    categoryDepartment.value = null;
-    form.category_position_id = "";
-  });
-  watch(categoryDepartment, () => {
-    form.category_position_id = "";
-  });
 
   watch(
     () => form.agent_key,
@@ -188,7 +159,7 @@ export function useAgentsPage() {
       const trimmed = key.trim();
       if (!trimmed || !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(trimmed)) return;
       agentKeyCheckTimer = setTimeout(() => {
-        void agentsPageStore.verifyAgentKey(trimmed)
+        void pageStore.verifyAgentKey(trimmed)
           .then((res) => {
             if (!res.available) {
               agentKeyServerError.value = res.message === "agent_key already in use" ? "标识已被使用" : res.message;
@@ -203,7 +174,7 @@ export function useAgentsPage() {
 
   onMounted(async () => {
     try {
-      const remote = await agentsPageStore.fetchAgentTemplates();
+      const remote = await pageStore.fetchAgentTemplates();
       if (remote.length) {
         createTemplates.value = remote;
       }
@@ -264,8 +235,6 @@ export function useAgentsPage() {
       agent_description: "",
       category_position_id: ""
     });
-    categoryIndustry.value = null;
-    categoryDepartment.value = null;
     selectedTemplateKey.value = "";
     clearCreateFieldErrors();
     modelCheckPassed.value = false;
@@ -320,7 +289,7 @@ export function useAgentsPage() {
 
   async function duplicateListedAgent(agent: Agent) {
     try {
-      const created = await agentsPageStore.copyAgent(agent.id);
+      const created = await pageStore.copyAgent(agent.id);
       appStore.upsertAgent(created);
       await runLoadList();
       $q.notify({ type: "positive", message: "Agent 已复制" });
@@ -411,18 +380,13 @@ export function useAgentsPage() {
     a2aProxy,
     isA2AProxyCreate,
     viewMode,
-    categoryIndustry,
-    categoryDepartment,
     form,
     selectedTemplateKey,
     createTemplates,
     avatars,
     providerOptions,
     modelOptions,
-    industryOptions,
-    departmentOptions,
-    positionOptions,
-    categoryPositionOptions,
+    categoryTree,
     pageMax,
     tableColumns,
     agentKeyError,

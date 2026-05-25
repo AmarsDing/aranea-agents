@@ -20,7 +20,7 @@
         <q-tab name="memory" label="记忆" />
         <q-tab name="files" label="文件" />
         <q-tab name="permissions" label="权限" />
-        <q-tab name="skills" label="Skill" />
+        <q-tab name="skills" label="Skill / 工具" />
         <q-tab name="evolution" label="进化" />
         <q-tab name="hooks" label="钩子" />
         <q-tab name="a2a" label="A2A" />
@@ -34,22 +34,18 @@
             :form="form"
             v-model:planner-form="plannerForm"
             v-model:ralph-loop-form="ralphLoopForm"
+            v-model:selected-provider-model-id="selectedProviderModelIDModel"
             :config="config"
-            :agent-id="toValue(agentId)"
+            :agent-id="agentId"
             :prompt-modes="promptModes"
             :status-options="statusOptions"
-            :selected-provider-model-id="toValue(selectedProviderModelID)"
-            :filtered-provider-model-options="toValue(filteredProviderModelOptions)"
-            :loading-provider-models="toValue(loadingProviderModels)"
-            :tool-profile-options="toolProfileOptions"
-            :tool-select-options="toolSelectOptions"
-            :loading-catalog-tools="loadingCatalogTools"
-            :tool-conflicts="toolConflicts"
-            :heartbeat-file="heartbeatFile"
+            :filtered-provider-model-options="filteredProviderModelOptions"
+            :loading-provider-models="loadingProviderModels"
             @copy-key="copyKey"
             @open-permissions-tab="tab = 'permissions'"
+            @open-memory-tab="tab = 'memory'"
             @filter-provider-models="filterProviderModels"
-            @select-provider-model="selectProviderModel"
+            @reset-provider-model-filter="resetProviderModelFilter"
           />
         </q-tab-panel>
 
@@ -59,6 +55,7 @@
             :truncate-strategy-options="truncateStrategyOptions"
             :snapshot-mode-options="snapshotModeOptions"
             :memory-scope-options="memoryScopeOptions"
+            :heartbeat-file="heartbeatFile"
           />
         </q-tab-panel>
         <q-tab-panel name="files" class="settings-tab-panel-fill">
@@ -85,9 +82,14 @@
         <q-tab-panel name="skills">
           <agent-settings-skills-tab
             :config="config"
+            :agent-id="toValue(agentId)"
             :skill-slug-options="skillSlugOptions"
             :loading-skill-slugs="loadingSkillSlugs"
             :code-executor-capabilities="codeExecutorCapabilities"
+            :tool-profile-options="toolProfileOptions"
+            :tool-select-options="toolSelectOptions"
+            :loading-catalog-tools="loadingCatalogTools"
+            :tool-conflicts="toolConflicts"
             @load-skill-slugs="loadSkillSlugOptions"
             @reset-skill-defaults="resetSkillRuntimeDefaults"
           />
@@ -110,7 +112,11 @@
         </q-tab-panel>
 
         <q-tab-panel name="hooks">
-          <agent-hooks-panel :agent-id="agentId" :agent-key="form.agent_key" />
+          <div class="settings-grid">
+            <section class="settings-section">
+              <agent-hooks-panel :agent-id="agentId" :agent-key="form.agent_key" />
+            </section>
+          </div>
         </q-tab-panel>
 
         <q-tab-panel name="a2a">
@@ -122,13 +128,13 @@
           />
           <agent-settings-a2-a-endpoint-tab
             v-else
-            :loading="a2aEndpoint.loading.value"
-            :saving="a2aEndpoint.saving.value"
-            :card="a2aEndpoint.card.value"
-            :capability-lines="a2aEndpoint.capabilityLines.value"
+            :loading="a2aEndpoint.loading"
+            :saving="a2aEndpoint.saving"
+            :card="a2aEndpoint.card"
+            :capability-lines="a2aEndpoint.capabilityLines"
             @save="a2aEndpoint.saveEndpoint()"
-            @update:card-enabled="a2aEndpoint.card.value && (a2aEndpoint.card.value.enabled = $event)"
-            @update:capability-lines="a2aEndpoint.capabilityLines.value = $event"
+            @update:card-enabled="a2aEndpoint.card && (a2aEndpoint.card.enabled = $event)"
+            @update:capability-lines="a2aEndpoint.capabilityLines = $event"
           />
         </q-tab-panel>
 
@@ -198,7 +204,7 @@
 </template>
 
 <script setup lang="ts">
-import { toValue } from "vue";
+import { reactive, ref, toValue } from "vue";
 import AgentAvatarPicker from "../components/avatar/AgentAvatarPicker.vue";
 import AgentEvolutionPanel from "../components/agents/AgentEvolutionPanel.vue";
 import AgentFilesPanel from "../components/agents/AgentFilesPanel.vue";
@@ -226,19 +232,17 @@ const {
   avatarPickerOpen,
   promptDialog,
   advancedDialog,
-  advancedChannelOptions,
-  loadingAdvancedChannels,
   toggleFavorite,
   reloadAgent,
   saveAgent,
   promptModes,
   statusOptions,
   copyKey,
-  selectedProviderModelID,
+  selectedProviderModelIDModel,
   filteredProviderModelOptions,
   loadingProviderModels,
   filterProviderModels,
-  selectProviderModel,
+  resetProviderModelFilter,
   toolProfileOptions,
   toolSelectOptions,
   loadingCatalogTools,
@@ -282,11 +286,10 @@ const {
   pendingSuggestionsCount: evolutionPendingCount,
   onApply: applyEvolutionSuggestion,
   onReject: rejectEvolutionSuggestion
-} = useAgentEvolutionPanel(() => agentId, () => evolutionRange);
+} = useAgentEvolutionPanel(() => toValue(agentId), () => toValue(evolutionRange));
 
-const a2aEndpoint = useAgentA2AEndpointTab(() => agentId);
+const a2aEndpoint = reactive(useAgentA2AEndpointTab(() => toValue(agentId)));
+
+const advancedChannelOptions: { label: string; value: string }[] = [];
+const loadingAdvancedChannels = ref(false);
 </script>
-
-<style scoped lang="scss">
-@import "./agent-settings/agent-settings-page.scss";
-</style>

@@ -99,13 +99,3 @@ function formatPercent(v: number): string {
   return `${(v * 100).toFixed(1)}%`;
 }
 </script>
-
-<style scoped lang="sass">
-.runner-metrics__grid
-  margin-bottom: 0
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr))
-
-.runner-metrics__body--compact
-  padding-top: 12px
-  padding-bottom: 12px
-</style>

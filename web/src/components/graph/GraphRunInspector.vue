@@ -114,30 +114,3 @@ const tab = computed({
   set: (value: string) => emit("update:tab", value),
 });
 </script>
-
-<style scoped>
-.graph-run-inspector {
-  width: 400px;
-  display: flex;
-  flex-direction: column;
-  border-left: 1px solid var(--glass-border, rgb(235 220 200 / 70%));
-  background: var(--glass-surface, rgb(255 253 245 / 65%));
-  backdrop-filter: blur(var(--glass-blur-default, 18px));
-  -webkit-backdrop-filter: blur(var(--glass-blur-default, 18px));
-  overflow: hidden;
-}
-
-.graph-run-inspector__tabs {
-  padding: 0 8px;
-}
-
-.graph-run-inspector__panels {
-  flex: 1;
-  overflow: auto;
-}
-
-.graph-run-inspector.is-dark {
-  border-color: rgb(255 255 255 / 8%);
-  background: rgb(18 24 34 / 65%);
-}
-</style>

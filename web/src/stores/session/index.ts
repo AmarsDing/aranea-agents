@@ -127,7 +127,7 @@ export const useSessionStore = defineStore("session", () => {
     return getSessionTimeline(sessionId);
   }
 
-  async function fetchMessages(sessionId: string): Promise<Message[]> {
+  async function fetchMessages(sessionId: string): Promise<{ items: Message[]; currentRevision: number }> {
     return listSessionChatMessages(sessionId);
   }
 

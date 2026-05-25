@@ -43,20 +43,3 @@ watch(
   }
 );
 </script>
-
-<style scoped>
-.provider-logo__svg {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-  color: var(--color-text-primary);
-}
-
-.provider-logo__svg :deep(svg) {
-  width: 70%;
-  height: 70%;
-  display: block;
-}
-</style>

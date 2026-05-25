@@ -101,9 +101,4 @@ function formatPayload(payload: Record<string, unknown>): string {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-
-.settings-info-banner {
-  background: var(--glass-elevated);
-  color: var(--color-text-secondary);
-}
 </style>

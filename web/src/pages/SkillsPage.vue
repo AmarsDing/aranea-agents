@@ -39,7 +39,7 @@
       </template>
     </q-banner>
 
-    <q-card v-if="!loading && rows.length === 0" flat class="app-registry-empty skills-empty-card">
+    <q-card v-if="!loading && rows.length === 0" flat class="app-registry-empty app-empty-state-center">
       <q-card-section class="column items-center text-center q-pa-xl">
         <q-avatar size="72px" color="primary" text-color="white" icon="psychology" />
         <div class="text-h6 q-mt-md">{{ search ? "没有匹配的 Skill" : "暂无 Skill" }}</div>
@@ -119,13 +119,3 @@ const {
   updateSkillFile
 } = useSkillsPage();
 </script>
-
-<style scoped lang="sass">
-.skills-empty-card
-  place-items: center
-  display: grid
-  gap: var(--space-3)
-  min-height: 280px
-  padding: var(--space-8)
-  text-align: center
-</style>

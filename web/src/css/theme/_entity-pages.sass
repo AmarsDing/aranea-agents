@@ -16,9 +16,35 @@ body.body--dark .app-entity-page
   gap: 18px
 
 .teams-page .app-entity-grid
-  grid-template-columns: repeat(auto-fill, minmax(300px, 380px))
-  gap: 14px
-  align-items: start
+  grid-template-columns: repeat(3, minmax(0, 1fr))
+  gap: 18px
+  align-items: stretch
+
+.teams-industry-section__head
+  display: flex
+  align-items: center
+  gap: 10px
+  margin-bottom: 14px
+
+.teams-industry-section__title
+  margin: 0
+  color: var(--color-text-heading)
+  font-size: 15px
+  font-weight: 800
+  line-height: 1.3
+
+.teams-industry-section__count
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--glass-elevated))
+  color: var(--color-text-secondary)
+  font-weight: 700
+
+@media (width <= 1199px)
+  .teams-page .app-entity-grid
+    grid-template-columns: repeat(2, minmax(0, 1fr))
+
+@media (width <= 767px)
+  .teams-page .app-entity-grid
+    grid-template-columns: minmax(0, 1fr)
 
 .app-entity-empty
   border: 1px solid var(--glass-border)
@@ -69,6 +95,761 @@ body.body--dark .app-entity-stat
   color: var(--color-text-secondary)
   font-size: var(--text-xs)
   font-weight: 700
+
+// Agent 工作台 Hero（AgentsPage）
+.app-entity-workspace-hero
+  display: flex
+  align-items: center
+  justify-content: space-between
+  gap: 16px
+  flex-wrap: wrap
+  padding: 4px 2px 0
+
+.app-entity-workspace-hero__kicker
+  display: inline-flex
+  align-items: center
+  height: 28px
+  padding: 0 12px
+  border: 1px solid var(--glass-border)
+  border-radius: 999px
+  background: var(--glass-surface)
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+  color: var(--color-accent)
+  font-size: 11px
+  font-weight: 800
+  letter-spacing: 0.08em
+  text-transform: uppercase
+  box-shadow: none
+
+.app-entity-workspace-hero__title
+  margin: 12px 0 0
+  font-size: clamp(36px, 5vw, 56px)
+  line-height: 1
+  font-weight: 800
+  letter-spacing: -0.055em
+  color: var(--color-text-primary)
+
+.app-entity-workspace-hero__subtitle
+  margin: 10px 0 0
+  max-width: 620px
+  color: var(--color-text-secondary)
+  font-size: 15px
+  line-height: 1.65
+
+.app-entity-workspace-hero__actions
+  display: flex
+  gap: 10px
+  flex-wrap: wrap
+
+.app-entity-workspace-hero__btn
+  min-height: 42px
+  padding: 0 18px
+  font-weight: 700
+
+@media (width <= 599px)
+  .app-entity-workspace-hero__actions
+    width: 100%
+
+  .app-entity-workspace-hero__btn
+    flex: 1
+
+// Agent 创建 Dialog
+.create-agent-card
+  overflow: hidden
+
+.create-agent-card__toolbar
+  padding: 22px 26px
+  background: var(--glass-elevated)
+  border-bottom: 1px solid var(--glass-border)
+
+.create-agent-card__body
+  padding: 22px 24px 18px
+
+.create-agent-layout
+  padding-top: 4px
+
+.create-agent-card .avatar-column
+  width: 190px
+  padding: 18px 16px
+  border: 1px solid var(--glass-border)
+  border-radius: 24px
+  background: var(--glass-surface)
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+
+.create-agent-card .avatar-picker-hit
+  display: inline-block
+  line-height: 0
+
+.create-agent-card .avatar-picker
+  border: 4px solid var(--color-on-accent)
+  box-shadow: 0 18px 40px color-mix(in srgb, var(--color-accent) 24%, transparent)
+  transition: transform 180ms ease, box-shadow 180ms ease
+
+.create-agent-card .avatar-picker:hover
+  transform: translateY(-2px) scale(1.01)
+  box-shadow: 0 22px 50px color-mix(in srgb, var(--color-accent) 30%, transparent)
+
+.create-agent-card .avatar-change-btn
+  width: 100%
+  min-height: 38px
+  font-weight: 700
+
+.create-agent-card .avatar-column__hint
+  margin-top: 10px
+  color: var(--color-text-tertiary)
+  font-size: 12px
+  line-height: 1.55
+  text-align: center
+
+.create-agent-card .form-panel
+  padding: 2px 0 0
+
+.create-agent-card .model-check-btn
+  min-height: 44px
+  font-weight: 700
+
+.create-agent-card .description-block
+  margin-top: 20px
+  padding: 18px 18px 14px
+  border: 1px solid var(--glass-border)
+  border-radius: 24px
+  background: linear-gradient(180deg, var(--color-on-accent), var(--color-page-tint)), radial-gradient(circle at top left, color-mix(in srgb, var(--color-accent) 5%, transparent), transparent 35%)
+  box-shadow: var(--shadow-entity-panel)
+
+.create-agent-card .description-block .q-chip
+  font-weight: 700
+  background: var(--color-on-accent)
+  transition: background 160ms ease, border-color 160ms ease, transform 160ms ease
+
+.create-agent-card .description-block .q-chip:hover
+  transform: translateY(-1px)
+  background: var(--color-info-soft)
+
+.create-agent-card .template-chip--active
+  border-color: color-mix(in srgb, var(--color-warning) 36%, var(--glass-border))
+  background: var(--color-status-warning-bg-alt)
+  color: var(--color-status-warning-text)
+
+.create-agent-card .self-evolve-card
+  margin-top: 18px
+  border-color: color-mix(in srgb, var(--color-warning) 18%, var(--glass-border))
+  border-radius: 22px
+  background: linear-gradient(135deg, var(--color-status-warning-bg-warm), var(--color-page-tint-blue))
+  box-shadow: var(--shadow-entity-panel)
+
+.create-agent-card__actions
+  padding: 14px 22px 20px
+
+.create-agent-card__actions .q-btn
+  min-height: 40px
+  padding: 0 18px
+  font-weight: 700
+
+.create-agent-card.create-agent-card--dark .create-agent-card__toolbar,
+.create-agent-card.create-agent-card--dark .avatar-column
+  background: var(--glass-surface)
+  border-color: var(--glass-border)
+
+.app-dialog-scroll--import
+  max-height: min(68vh, 640px)
+  overflow: auto
+
+.skill-import-dialog .conflict-card
+  border-radius: 18px !important
+
+.skill-import-dialog .metrics-grid
+  display: grid
+  grid-template-columns: repeat(auto-fit, minmax(108px, 1fr))
+  gap: 8px
+
+.skill-import-dialog .metric-pill span
+  display: block
+  color: var(--color-text-secondary)
+  font-size: 11px
+
+.skill-import-dialog .metric-pill strong
+  font-size: 14px
+
+// Team 编译预览（extends app-glass-side-panel）
+.team-compile-preview
+  min-height: 240px
+
+.team-compile-preview__title
+  font-size: 13px
+  font-weight: 600
+  line-height: 1.35
+  color: var(--color-text-heading)
+
+.team-compile-preview__subtitle
+  margin-top: 2px
+  font-size: 11px
+  line-height: 1.4
+  color: var(--color-text-secondary)
+
+.team-compile-preview__badge
+  flex-shrink: 0
+  font-size: 11px
+  font-weight: 600
+  padding: 3px 8px
+
+.team-compile-preview__badge.is-valid
+  background: color-mix(in srgb, var(--color-success) 16%, var(--glass-surface))
+  color: var(--color-success)
+
+.team-compile-preview__badge.is-invalid
+  background: color-mix(in srgb, var(--color-error, #e53935) 14%, var(--glass-surface))
+  color: var(--color-error, #e53935)
+
+.team-compile-preview__empty
+  padding: 24px 8px
+  text-align: center
+  font-size: 12px
+  line-height: 1.5
+  color: var(--color-text-secondary)
+
+.team-compile-preview__graph
+  display: grid
+  gap: 8px
+  max-height: min(52vh, 420px)
+  overflow: auto
+  scrollbar-width: none
+
+  &::-webkit-scrollbar
+    display: none
+
+.team-compile-preview__edge
+  display: flex
+  align-items: center
+  gap: 6px
+  flex-wrap: wrap
+  font-size: 11px
+  color: var(--color-text-secondary)
+
+.team-compile-preview__nodes
+  display: grid
+  gap: 6px
+
+.team-compile-preview__node
+  display: flex
+  align-items: flex-start
+  gap: 8px
+  padding: 8px 10px
+  border-radius: 12px
+  border: 1px solid var(--glass-border)
+  background: var(--glass-elevated)
+
+.team-compile-preview__node-meta
+  font-size: 11px
+  line-height: 1.35
+  color: var(--color-text-secondary)
+
+@media (width <= 767px)
+  .create-agent-card .avatar-column
+    width: 100%
+
+.app-entity-toolbar--offset
+  margin-top: 22px
+
+// Agent 卡片（AgentsPage grid / list）
+.agent-card
+  display: flex
+  flex-direction: column
+  border: 1px solid var(--glass-border)
+  border-radius: 24px
+  background: var(--glass-surface)
+  overflow: hidden
+  box-shadow: var(--shadow-entity-panel)
+  backdrop-filter: blur(16px)
+  -webkit-backdrop-filter: blur(16px)
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease
+
+  &:hover
+    transform: translateY(-2px)
+    border-color: color-mix(in srgb, var(--color-accent) 32%, var(--glass-border))
+    box-shadow: 0 22px 56px color-mix(in srgb, var(--color-text-primary) 10%, transparent)
+
+.agent-card__header
+  display: flex
+  align-items: flex-start
+  gap: 16px
+  flex-wrap: nowrap
+
+.agent-card__avatar
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--color-accent) 20%, transparent)
+
+.agent-card__name
+  color: var(--color-text-heading)
+
+.agent-card__status
+  padding: 4px 8px
+  background: var(--color-status-info-bg)
+  color: var(--color-text-tertiary)
+  font-weight: 700
+  text-transform: capitalize
+
+.agent-card__status.is-active
+  background: var(--color-status-success-bg)
+  color: var(--color-accent-green)
+
+.agent-card__model
+  display: inline-flex
+  align-items: center
+  gap: 6px
+  color: var(--color-text-tertiary)
+  font-size: 12px
+  font-weight: 600
+
+.agent-description
+  min-height: 52px
+  margin: 12px 0
+  color: var(--color-text-tertiary)
+  font-size: 13px
+  line-height: 1.6
+  display: -webkit-box
+  overflow: hidden
+  -webkit-line-clamp: 2
+  -webkit-box-orient: vertical
+
+.agent-card__chip
+  border: 1px solid var(--glass-border)
+  background: var(--color-surface-soft)
+  color: var(--color-text-tertiary)
+  font-weight: 600
+
+.agent-card__chip.is-evolving
+  border-color: color-mix(in srgb, var(--color-warning) 22%, var(--glass-border))
+  background: var(--color-status-warning-bg)
+  color: var(--color-status-warning-text)
+
+.agent-card__chip.is-a2a-proxy,
+.agent-card__chip.is-a2a-endpoint
+  border-color: color-mix(in srgb, var(--color-link) 22%, var(--glass-border))
+  background: color-mix(in srgb, var(--color-link) 8%, var(--glass-elevated))
+  color: var(--color-link)
+
+.agent-handle
+  padding: 0
+  border: 0
+  background: transparent
+  color: var(--color-text-tertiary)
+  cursor: pointer
+  font-size: 12px
+  font-weight: 600
+
+.agent-card__actions
+  padding: 12px 16px
+  background: color-mix(in srgb, var(--glass-elevated) 72%, transparent)
+
+.agent-card__context
+  color: var(--color-text-tertiary)
+  font-size: 12px
+  font-weight: 700
+
+.agent-card.agent-card--dark
+  border-color: var(--glass-border)
+  background: var(--glass-surface)
+  box-shadow: var(--shadow-entity-panel-dark)
+
+.agent-card.agent-card--dark:hover
+  border-color: color-mix(in srgb, var(--color-accent) 38%, var(--glass-border))
+  box-shadow: 0 22px 56px color-mix(in srgb, #000 42%, transparent)
+
+.agent-card.agent-card--dark .agent-card__status
+  background: color-mix(in srgb, var(--glass-elevated) 78%, transparent)
+  color: var(--color-text-secondary)
+
+.agent-card.agent-card--dark .agent-card__status.is-active
+  background: color-mix(in srgb, var(--color-success) 28%, transparent)
+  color: var(--color-accent-green)
+
+.agent-card.agent-card--dark .agent-card__name
+  color: var(--color-text-heading)
+
+.agent-card.agent-card--dark .agent-card__model,
+.agent-card.agent-card--dark .agent-description,
+.agent-card.agent-card--dark .agent-handle,
+.agent-card.agent-card--dark .agent-card__context
+  color: var(--color-text-secondary)
+
+.agent-card.agent-card--dark .agent-card__chip
+  border-color: var(--glass-border)
+  background: color-mix(in srgb, var(--glass-elevated) 78%, transparent)
+  color: var(--color-text-secondary)
+
+.agent-card.agent-card--dark .agent-card__chip.is-evolving
+  border-color: color-mix(in srgb, var(--color-warning) 28%, var(--glass-border))
+  background: color-mix(in srgb, var(--color-warning) 26%, transparent)
+  color: var(--color-accent-amber)
+
+.agent-card.agent-card--dark .agent-card__chip.is-a2a-proxy,
+.agent-card.agent-card--dark .agent-card__chip.is-a2a-endpoint
+  border-color: color-mix(in srgb, var(--color-link) 28%, var(--glass-border))
+  background: color-mix(in srgb, var(--color-link) 26%, transparent)
+  color: color-mix(in srgb, var(--color-link) 72%, #fff)
+
+.agent-card.agent-card--dark .agent-card__actions
+  background: color-mix(in srgb, var(--glass-elevated) 74%, transparent)
+
+.empty-agent-card,
+.agents-table
+  border-radius: 24px
+  border-color: var(--glass-border)
+  box-shadow: var(--shadow-entity-panel)
+
+.empty-agent-card
+  overflow: hidden
+  background: radial-gradient(circle at center 26%, color-mix(in srgb, var(--color-accent) 8%, transparent), transparent 22%), linear-gradient(180deg, var(--color-on-accent), var(--color-page-tint))
+
+.empty-agent-state
+  min-height: 230px
+  padding: 36px 24px
+
+.empty-agent-visual
+  display: grid
+  place-items: center
+  width: 108px
+  height: 108px
+  border: 1px solid color-mix(in srgb, var(--color-accent) 12%, var(--glass-border))
+  border-radius: 32px
+  background: linear-gradient(180deg, color-mix(in srgb, var(--glass-surface) 90%, transparent), color-mix(in srgb, var(--color-page-tint-blue) 90%, transparent)), radial-gradient(circle at top, color-mix(in srgb, var(--color-accent) 16%, transparent), transparent 55%)
+  box-shadow: var(--shadow-entity-panel)
+
+.agents-table th
+  color: var(--color-text-tertiary)
+  font-size: 12px
+  font-weight: 700
+  background: var(--color-surface-soft)
+
+.agents-table td
+  color: var(--color-text-secondary)
+
+.agents-page
+  min-height: 100%
+  color: var(--color-text-primary)
+
+.agents-page.is-dark
+  color: var(--color-text-primary)
+
+.agents-page.is-dark .agents-kicker
+  border-color: var(--glass-border-hover, var(--glass-border))
+  background: var(--glass-surface)
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+  color: var(--color-accent)
+  box-shadow: none
+
+.agents-page.is-dark .agents-title
+  color: var(--color-text-primary)
+
+.agents-page.is-dark .agents-subtitle,
+.agents-page.is-dark .agent-handle
+  color: var(--color-text-secondary)
+
+.agents-page.is-dark .agents-filter-card.app-entity-toolbar,
+.agents-page.is-dark .empty-agent-card,
+.agents-page.is-dark .agents-table,
+.agents-page.is-dark .agents-pagination
+  border-color: var(--glass-border)
+  background: var(--glass-surface)
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+  box-shadow: none
+
+.agents-page.is-dark .app-view-toggle
+  border-color: var(--glass-border)
+  background: var(--glass-surface)
+
+.agents-page.is-dark .empty-agent-card
+  background: var(--glass-surface)
+
+.agents-page.is-dark .empty-agent-visual
+  border-color: var(--glass-border)
+  background: var(--glass-surface-hover)
+  box-shadow: none
+
+.agents-page.is-dark .agents-table th
+  background: var(--glass-surface-hover)
+  color: var(--color-text-secondary)
+
+.agents-page.is-dark .agents-table td
+  color: var(--color-text-primary)
+
+.agents-page.is-dark .agents-table tbody tr:hover
+  background: var(--glass-surface-hover)
+
+// Team 卡片（TeamsPage grid）
+.team-card
+  display: flex
+  flex-direction: column
+  height: 100%
+  overflow: hidden
+  border: 1px solid var(--glass-border)
+  border-radius: 18px
+  background: var(--glass-surface)
+  box-shadow: var(--shadow-entity-panel)
+  backdrop-filter: blur(16px)
+  -webkit-backdrop-filter: blur(16px)
+
+.team-card__inner
+  display: flex
+  flex: 1
+  flex-direction: column
+  gap: 10px
+  min-height: 0
+  height: 100%
+  padding: 14px 16px 12px
+
+.team-card__head
+  display: flex
+  align-items: flex-start
+  justify-content: space-between
+  gap: 10px
+
+.team-card__head-main
+  flex: 1
+  min-width: 0
+
+.team-card__title-row
+  display: flex
+  flex-wrap: wrap
+  align-items: center
+  gap: 6px 8px
+
+.team-card__name
+  margin: 0
+  color: var(--color-text-heading)
+  font-size: 16px
+  font-weight: 800
+  line-height: 1.25
+
+.team-card__mode-chip,
+.team-card__status
+  flex-shrink: 0
+
+.team-card__status
+  margin-top: 1px
+
+.team-key
+  display: inline-block
+  max-width: 100%
+  margin-top: 4px
+  padding: 0
+  border: 0
+  background: transparent
+  color: var(--color-text-secondary)
+  cursor: pointer
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace
+  font-size: 11px
+  font-weight: 600
+  letter-spacing: 0.02em
+  line-height: 1.3
+  text-align: left
+  transition: color 160ms ease
+
+  &:hover
+    color: var(--color-accent)
+
+.team-card__meta
+  display: flex
+  flex-wrap: wrap
+  align-items: center
+  gap: 8px 10px
+  flex-shrink: 0
+
+.team-card__members
+  flex: 1
+  min-height: 120px
+  max-height: 220px
+  overflow-y: auto
+  scrollbar-width: none
+  -ms-overflow-style: none
+
+  &::-webkit-scrollbar
+    display: none
+
+  &.team-empty
+    display: flex
+    align-items: center
+    justify-content: center
+
+.team-description
+  flex: 1 1 180px
+  margin: 0
+  color: var(--color-text-secondary)
+  font-size: 13px
+  line-height: 1.5
+
+.topology-strip
+  display: flex
+  flex-wrap: wrap
+  gap: 6px
+  flex-shrink: 0
+
+.topology-node
+  display: inline-flex
+  align-items: center
+  gap: 4px
+  padding: 3px 8px
+  border: 1px solid color-mix(in srgb, var(--color-accent) 18%, var(--glass-border))
+  border-radius: 999px
+  background: color-mix(in srgb, var(--color-accent) 6%, var(--glass-elevated))
+  color: var(--color-link)
+  font-size: 11px
+  font-weight: 700
+  line-height: 1.2
+  white-space: nowrap
+
+.member-list
+  display: grid
+  gap: 0
+  border: 1px solid var(--glass-border)
+  border-radius: 12px
+  overflow: hidden
+
+.member-row
+  display: flex
+  align-items: center
+  gap: 10px
+  min-height: 36px
+  padding: 6px 10px
+  border-bottom: 1px solid var(--glass-border)
+  background: color-mix(in srgb, var(--glass-elevated) 72%, transparent)
+
+  &:last-child
+    border-bottom: none
+
+.member-primary
+  flex: 1
+  min-width: 0
+  color: var(--color-text-primary)
+  font-size: 13px
+  font-weight: 600
+  line-height: 1.3
+
+.member-role
+  color: var(--color-text-secondary)
+  font-weight: 700
+  text-transform: lowercase
+
+.member-sep
+  margin: 0 3px
+  color: var(--color-text-tertiary)
+
+.member-label
+  color: var(--color-text-heading)
+
+.member-row__badge
+  flex-shrink: 0
+  font-size: 11px
+
+.team-empty
+  padding: 8px 10px
+  border: 1px dashed var(--glass-border)
+  border-radius: 10px
+  color: var(--color-text-tertiary)
+  font-size: 12px
+  line-height: 1.4
+  text-align: center
+
+.team-card__foot
+  display: flex
+  align-items: center
+  justify-content: space-between
+  gap: 10px
+  margin-top: auto
+  flex-shrink: 0
+  padding-top: 8px
+  border-top: 1px solid var(--glass-border)
+
+.team-card__foot-meta
+  color: var(--color-text-secondary)
+  font-size: 11px
+  font-weight: 600
+  line-height: 1.3
+  white-space: nowrap
+
+.team-card__action-group
+  display: flex
+  flex-wrap: wrap
+  align-items: center
+  justify-content: flex-end
+  gap: 2px
+
+.team-card.is-dark
+  border-color: var(--glass-border)
+  background: var(--glass-surface)
+  box-shadow: var(--shadow-entity-panel-dark)
+
+.team-card.is-dark .topology-node
+  border-color: color-mix(in srgb, var(--color-accent) 24%, transparent)
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--glass-elevated))
+  color: var(--color-accent)
+
+.team-card.is-dark .member-row
+  background: color-mix(in srgb, var(--glass-elevated) 55%, transparent)
+
+@media (width <= 599px)
+  .team-card__foot
+    flex-direction: column
+    align-items: stretch
+
+  .team-card__foot-meta
+    white-space: normal
+
+  .team-card__action-group
+    justify-content: flex-start
+
+.team-runs-panel
+  width: min(640px, 94vw)
+  min-height: 100vh
+  border-radius: 24px 0 0 24px
+  border: 1px solid var(--glass-border)
+  background: color-mix(in srgb, var(--glass-surface) 96%, transparent)
+  box-shadow: var(--shadow-entity-panel)
+
+.team-runs-panel .run-list
+  border: 1px solid var(--glass-border)
+  border-radius: 18px
+  overflow: hidden
+
+.team-runs-panel .run-detail
+  position: relative
+  background: color-mix(in srgb, var(--glass-elevated) 84%, transparent)
+
+.team-runs-panel .run-preview
+  white-space: pre-wrap
+  padding: 10px 12px
+  border: 1px solid var(--glass-border)
+  border-radius: 14px
+  background: var(--color-on-accent)
+  color: var(--color-text-tertiary)
+  line-height: 1.55
+
+.team-runs-panel .run-step
+  padding: 12px
+  border: 1px solid var(--glass-border)
+  border-radius: 16px
+  background: var(--color-on-accent)
+
+.team-runs-panel .run-step + .run-step
+  margin-top: 10px
+
+.team-runs-panel.is-dark
+  border-color: var(--glass-border)
+  background: color-mix(in srgb, var(--glass-surface) 90%, transparent)
+  box-shadow: var(--shadow-entity-panel-dark)
+
+.team-runs-panel.is-dark .run-detail,
+.team-runs-panel.is-dark .run-step,
+.team-runs-panel.is-dark .run-preview,
+.team-runs-panel.is-dark .run-list
+  border-color: var(--glass-border)
+  background: color-mix(in srgb, var(--glass-elevated) 76%, transparent)
+
+.team-runs-panel.is-dark .run-preview
+  color: var(--color-text-slate-300)
 
 .resource-manager-page
   min-height: 100%
@@ -157,13 +938,190 @@ body.body--dark .app-entity-page--warm,
   .category-toolbar__toggle
     justify-content: space-between
 
-.category-control .q-field__control
-  min-height: 44px
-  border-radius: 16px
-  background: var(--color-on-accent)
+.category-tree-shell
+  margin-top: 0
 
-.category-control .q-field__control::before
-  border-color: var(--glass-border)
+.category-tree-panel
+  overflow: hidden
+
+.category-tree-panel__body
+  padding: 10px 12px 16px
+
+.category-tree-list .q-item
+  padding-left: 8px
+  padding-right: 8px
+
+.category-tree-industry
+  margin-bottom: 10px
+  border: 1px solid var(--glass-border)
+  border-radius: 20px
+  background: color-mix(in srgb, var(--color-page-tint-blue) 38%, var(--glass-surface))
+  overflow: hidden
+
+.category-tree-industry__body
+  padding: 0 10px 14px 8px
+
+.category-tree-department
+  margin: 0 0 10px 12px
+  border: 1px solid var(--glass-border)
+  border-radius: 18px
+  background: var(--color-page-tint)
+  overflow: hidden
+
+.category-tree-department .q-expansion-item__content
+  padding: 0 12px 14px
+
+.category-tree-node
+  gap: 8px
+  min-height: 40px
+  padding: 2px 0
+
+.category-tree-node__label
+  font-weight: 600
+  color: var(--color-text-heading)
+
+.category-tree-node__caption
+  font-size: 12px
+  line-height: 1.45
+  color: var(--color-text-secondary)
+
+.category-tree-node__actions
+  flex-shrink: 0
+  opacity: 0.72
+  transition: opacity 160ms ease
+
+.category-tree-node:hover .category-tree-node__actions
+  opacity: 1
+
+.category-tree-node__status-off
+  background: color-mix(in srgb, var(--color-text-tertiary) 12%, var(--glass-elevated))
+  color: var(--color-text-secondary)
+  font-weight: 700
+
+.agent-category-filter__hit,
+.agent-category-picker__hit
+  min-height: 24px
+  gap: 8px
+  color: var(--color-text-heading)
+
+.agent-category-filter__hit.is-placeholder,
+.agent-category-picker__hit.is-placeholder
+  color: var(--color-text-tertiary)
+
+.agent-category-filter-menu__card,
+.agent-category-picker-menu__card
+  width: min(420px, 92vw)
+
+.agent-category-filter-menu__scroll,
+.agent-category-picker-menu__scroll
+  height: min(320px, 50vh)
+
+body.body--dark .agent-categories-page .category-tree-panel .q-tree__node-header:hover
+  background: var(--glass-surface-hover)
+
+.position-card-grid
+  display: grid
+  grid-template-columns: repeat(auto-fill, minmax(248px, 1fr))
+  gap: 12px
+  padding-top: 4px
+
+.position-card
+  position: relative
+  display: flex
+  min-height: 148px
+  overflow: hidden
+  border-radius: 18px
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease
+
+.position-card:hover
+  transform: translateY(-1px)
+  border-color: color-mix(in srgb, var(--color-link) 22%, var(--glass-border))
+
+.position-card--highlight
+  border-color: color-mix(in srgb, var(--color-link) 28%, var(--glass-border))
+  background: color-mix(in srgb, var(--color-info-soft) 42%, var(--glass-surface))
+
+.position-card__accent
+  flex: 0 0 3px
+  background: linear-gradient(180deg, var(--color-link), color-mix(in srgb, var(--color-link) 40%, transparent))
+
+.position-card__body
+  flex: 1
+  display: flex
+  flex-direction: column
+  gap: 10px
+  min-width: 0
+  padding: 14px 14px 12px
+
+.position-card__avatar
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--color-link) 18%, transparent)
+
+.position-card__title
+  font-size: 15px
+  font-weight: 700
+  line-height: 1.35
+  color: var(--color-text-heading)
+
+.position-card__path
+  margin-top: 2px
+  font-size: 11px
+  line-height: 1.4
+  color: var(--color-text-tertiary)
+
+.position-card__desc
+  flex: 1
+  margin: 0
+  font-size: 13px
+  line-height: 1.55
+  color: var(--color-text-secondary)
+  display: -webkit-box
+  -webkit-box-orient: vertical
+  -webkit-line-clamp: 3
+  overflow: hidden
+
+.position-card__desc--empty
+  color: var(--color-text-tertiary)
+  font-style: normal
+
+.position-card__foot
+  margin-top: auto
+  padding-top: 2px
+  opacity: 0.76
+  transition: opacity 160ms ease
+
+.position-card:hover .position-card__foot
+  opacity: 1
+
+.position-card-add
+  display: flex
+  flex-direction: column
+  align-items: center
+  justify-content: center
+  gap: 8px
+  min-height: 148px
+  padding: 16px
+  border: 1px dashed color-mix(in srgb, var(--color-link) 28%, var(--glass-border))
+  border-radius: 18px
+  background: color-mix(in srgb, var(--color-page-tint-blue) 36%, transparent)
+  color: var(--color-link)
+  font-size: 13px
+  font-weight: 700
+  cursor: pointer
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease
+
+.position-card-add:hover
+  transform: translateY(-1px)
+  border-color: color-mix(in srgb, var(--color-link) 42%, var(--glass-border))
+  background: color-mix(in srgb, var(--color-info-soft) 52%, transparent)
+
+body.body--dark .agent-categories-page .position-card-add
+  background: var(--glass-surface-hover)
+
+body.body--dark .agent-categories-page .category-tree-industry
+  background: var(--glass-surface)
+
+body.body--dark .agent-categories-page .category-tree-department
+  background: var(--glass-surface-hover)
 
 .industry-card
   overflow: hidden
@@ -332,9 +1290,6 @@ body.body--dark .app-entity-page--warm,
 .category-dialog .q-card__actions
   padding: 12px 20px 16px
 
-body.body--dark .agent-categories-page .category-control .q-field__control
-  background: color-mix(in srgb, var(--color-surface-soft) 76%, transparent)
-
 body.body--dark .agent-categories-page .category-meta-item
   background: color-mix(in srgb, var(--glass-elevated) 55%, transparent)
   border-color: var(--glass-border)
@@ -421,14 +1376,6 @@ body.body--dark .agent-categories-page .category-empty__visual
   min-width: min(100%, 200px)
   max-width: 360px
 
-.provider-control :deep(.q-field__control)
-  min-height: 44px
-  border-radius: 16px
-  background: var(--glass-elevated)
-
-.provider-control :deep(.q-field__control::before)
-  border-color: var(--glass-border)
-
 .provider-table
   --provider-col-template: minmax(220px, 1.45fr) 64px 76px 60px minmax(148px, 1fr) 88px 136px
   overflow-x: auto
@@ -482,6 +1429,281 @@ body.body--dark .agent-categories-page .category-empty__visual
 .provider-list
   background: transparent
   min-height: 80px
+
+// Provider 模型行（ProviderModelRow）
+.provider-row
+  padding: 8px 16px
+  border-bottom: 1px solid var(--glass-border)
+  transition: background-color 180ms ease
+
+  &:last-child
+    border-bottom: none
+
+  &:hover
+    background: var(--interaction-surface-hover)
+
+.provider-row__inner
+  display: flex
+  align-items: center
+  gap: 12px
+  min-width: 0
+
+.provider-table__cell--size,
+.provider-table__cell--ctx,
+.provider-table__cell--tps
+  text-align: center
+
+.provider-row__avatar
+  flex: 0 0 auto
+
+.provider-row-grid
+  flex: 1
+  min-width: 0
+
+.provider-identity
+  min-width: 0
+
+.provider-identity__title
+  display: flex
+  align-items: baseline
+  flex-wrap: wrap
+  gap: 6px 8px
+  min-width: 0
+
+.provider-title
+  color: var(--color-text-heading)
+  font-size: 14px
+  font-weight: 700
+  line-height: 1.3
+
+.model-name
+  color: var(--color-text-secondary)
+  font-size: 12px
+  font-weight: 500
+  line-height: 1.3
+
+.provider-tags
+  display: flex
+  flex-wrap: wrap
+  gap: 4px
+  margin-top: 4px
+  max-height: 22px
+  overflow: hidden
+
+.provider-tag
+  display: inline-flex
+  align-items: center
+  max-width: 100%
+  padding: 2px 8px
+  border: 1px solid var(--glass-border)
+  border-radius: 6px
+  font-size: 11px
+  font-weight: 700
+  line-height: 1.35
+  white-space: nowrap
+
+.provider-tag--provider
+  background: color-mix(in srgb, var(--glass-elevated) 90%, transparent)
+  color: var(--color-text-secondary)
+  border-color: color-mix(in srgb, var(--color-text-secondary) 22%, var(--glass-border))
+
+.provider-tag--type,
+.provider-tag--category
+  background: color-mix(in srgb, var(--color-accent) 12%, var(--glass-elevated))
+  color: var(--color-link)
+  border-color: color-mix(in srgb, var(--color-accent) 24%, var(--glass-border))
+
+.provider-tag--capability
+  background: color-mix(in srgb, var(--color-positive, #21ba45) 10%, var(--glass-elevated))
+  color: var(--color-positive, #21ba45)
+  border-color: color-mix(in srgb, var(--color-positive, #21ba45) 22%, var(--glass-border))
+
+.provider-tag--variant
+  background: color-mix(in srgb, var(--color-success) 12%, var(--glass-elevated))
+  color: var(--color-success)
+  border-color: color-mix(in srgb, var(--color-success) 24%, var(--glass-border))
+
+.provider-tag--ha-failover
+  background: color-mix(in srgb, var(--color-link) 12%, var(--glass-elevated))
+  color: var(--color-link)
+
+.provider-tag--ha-hedge
+  background: color-mix(in srgb, var(--color-accent-indigo) 14%, var(--glass-elevated))
+  color: var(--color-accent-indigo-light)
+  border-color: color-mix(in srgb, var(--color-accent-indigo) 28%, var(--glass-border))
+
+.status-dot
+  width: 7px
+  height: 7px
+  border-radius: 999px
+  background: var(--color-success)
+  box-shadow: 0 0 0 3px rgb(22 163 74 / 12%)
+  flex: 0 0 auto
+  align-self: center
+
+.status-dot--off
+  background: var(--color-text-gray-400)
+  box-shadow: 0 0 0 3px rgb(156 163 175 / 14%)
+
+.stat-value
+  color: var(--color-text-primary)
+  font-size: 13px
+  font-weight: 700
+  line-height: 1.2
+
+.provider-usage
+  display: flex
+  flex-direction: column
+  justify-content: center
+  gap: 3px
+  min-width: 0
+
+.usage-line
+  position: relative
+  display: flex
+  align-items: center
+  gap: 6px
+  min-width: 0
+
+.usage-badge
+  flex-shrink: 0
+  padding: 1px 6px
+  border-radius: 4px
+  font-size: 10px
+  font-weight: 700
+  line-height: 1.35
+  white-space: nowrap
+
+.usage-badge--idle
+  background: color-mix(in srgb, var(--color-text-tertiary) 24%, var(--glass-elevated))
+  color: var(--color-text-secondary)
+
+.usage-badge--cool
+  background: color-mix(in srgb, var(--color-link) 18%, var(--glass-elevated))
+  color: var(--color-link)
+
+.usage-badge--warm
+  background: color-mix(in srgb, var(--color-accent) 20%, var(--glass-elevated))
+  color: var(--color-accent)
+
+.usage-badge--hot
+  background: color-mix(in srgb, var(--color-warning) 24%, var(--glass-elevated))
+  color: var(--color-accent-amber)
+
+.usage-bar-wrap
+  flex: 1
+  height: 4px
+  min-width: 36px
+  border-radius: 999px
+  overflow: hidden
+  background: color-mix(in srgb, var(--color-text-tertiary) 18%, transparent)
+
+.usage-bar-fill
+  height: 100%
+  border-radius: inherit
+  transition: width 180ms ease
+
+.usage-bar-fill--idle
+  background: var(--color-text-tertiary)
+
+.usage-bar-fill--cool
+  background: var(--color-link)
+
+.usage-bar-fill--warm
+  background: var(--color-accent)
+
+.usage-bar-fill--hot
+  background: var(--color-accent-amber)
+
+.usage-meta
+  color: var(--color-text-secondary)
+  font-size: 11px
+  line-height: 1.2
+  white-space: nowrap
+  overflow: hidden
+  text-overflow: ellipsis
+
+.provider-secret
+  display: flex
+  align-items: center
+  gap: 4px
+  min-width: 0
+
+.provider-secret-value
+  flex: 1
+  min-width: 0
+  font-family: ui-monospace, monospace
+  font-size: 11px
+  line-height: 1.3
+  color: var(--color-text-secondary)
+  overflow: hidden
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.provider-secret-value--masked
+  letter-spacing: 0.06em
+
+.provider-secret-toggle
+  flex-shrink: 0
+
+.provider-actions
+  display: flex
+  align-items: center
+  justify-content: flex-end
+  gap: 4px
+  min-width: 0
+
+  .q-toggle
+    padding-right: 6px
+    margin-right: 2px
+    border-right: 1px solid var(--glass-border)
+
+.provider-action-btn
+  width: 28px
+  height: 28px
+  min-height: 28px
+  border: 1px solid color-mix(in srgb, var(--color-accent) 16%, var(--glass-border))
+  border-radius: 8px
+  background: color-mix(in srgb, var(--glass-elevated) 90%, transparent)
+
+.provider-action-btn--danger
+  border-color: color-mix(in srgb, var(--color-danger) 20%, var(--glass-border))
+
+.provider-row.provider-row--dark:hover
+  background: color-mix(in srgb, var(--color-accent) 8%, var(--glass-surface))
+
+.provider-row.provider-row--dark .provider-title
+  color: var(--color-text-heading)
+
+.provider-row.provider-row--dark .model-name,
+.provider-row.provider-row--dark .usage-meta
+  color: var(--color-text-secondary)
+
+.provider-row.provider-row--dark .stat-value
+  color: var(--color-text-primary)
+
+.provider-row.provider-row--dark .provider-secret-value
+  color: var(--color-text-tertiary)
+
+.provider-row.provider-row--dark .provider-tag--provider
+  background: color-mix(in srgb, var(--glass-elevated) 88%, transparent)
+  color: var(--color-text-secondary)
+  border-color: color-mix(in srgb, var(--color-text-secondary) 28%, var(--glass-border))
+
+.provider-row.provider-row--dark .provider-tag--type,
+.provider-row.provider-row--dark .provider-tag--category
+  background: color-mix(in srgb, var(--color-accent) 14%, var(--glass-elevated))
+  color: var(--color-accent)
+  border-color: color-mix(in srgb, var(--color-accent) 32%, var(--glass-border))
+
+.provider-row.provider-row--dark .q-chip--colored.bg-orange-1
+  background: rgb(120 53 15 / 28%) !important
+  color: var(--color-accent-orange-light) !important
+
+@media (width <= 1023px)
+  .provider-table__head,
+  .provider-table__body
+    min-width: 920px
 
 body.body--dark .resource-manager-page.is-dark .provider-card,
 body.body--dark .resource-manager-page.is-dark .resource-card,

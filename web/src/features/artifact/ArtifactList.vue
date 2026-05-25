@@ -9,7 +9,7 @@
         <div v-for="item in items" :key="item.id" class="artifact-list__item row items-center q-gutter-xs" clickable @click="onOpen(item)">
           <q-icon :name="mimeIcon(item.mime_type)" size="18px" color="grey-7" />
           <div class="col" style="min-width: 0">
-            <div class="artifact-list__name ellipsis">{{ item.name }}</div>
+            <div class="artifact-list__name app-ellipsis">{{ item.name }}</div>
             <div class="artifact-list__meta text-caption text-grey-7">
               {{ formatBytes(item.size) }}
               <span v-if="item.version > 0"> · v{{ item.version }}</span>
@@ -28,7 +28,7 @@
     <q-dialog v-model="previewOpen" transition-show="slide-up" transition-hide="slide-down">
       <q-card class="app-dialog-card app-dialog-card--sm">
         <q-card-section class="row items-center q-pb-none">
-          <div class="text-subtitle1 ellipsis col">{{ previewMeta?.name }}</div>
+          <div class="text-subtitle1 app-ellipsis col">{{ previewMeta?.name }}</div>
           <q-btn flat round dense icon="close" v-close-popup />
         </q-card-section>
         <q-card-section v-if="previewMeta" class="q-pt-sm text-caption text-grey-7">
@@ -101,38 +101,3 @@ async function onPreviewDownload(meta: ArtifactMeta) {
   await onDownload(meta);
 }
 </script>
-
-<style scoped>
-.artifact-list__items {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.artifact-list__item {
-  padding: 6px 8px;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-
-.artifact-list__item:hover {
-  background: rgb(0 0 0 / 4%);
-}
-
-.artifact-list__name {
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 1.3;
-}
-
-.artifact-list__meta {
-  line-height: 1.2;
-}
-
-.ellipsis {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-</style>

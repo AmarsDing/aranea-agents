@@ -55,7 +55,7 @@
         </q-item>
       </q-list>
 
-      <q-card-section v-else class="mcp-empty">
+      <q-card-section v-else class="app-empty-state-center app-empty-state-center--sm">
         <q-icon name="power" size="48px" color="grey-5" />
         <div class="text-subtitle1 text-weight-bold">暂无 MCP 服务器</div>
         <div class="text-caption text-grey-7">添加您的第一个 MCP 服务器以开始使用。</div>
@@ -103,48 +103,3 @@ const {
   healthTooltip
 } = useMcpServersPage();
 </script>
-
-<style scoped>
-.mcp-toolbar,
-.mcp-list-card {
-  border-radius: 18px;
-}
-
-.mcp-list-item {
-  align-items: flex-start;
-  padding-left: 10px;
-  padding-right: 10px;
-}
-
-.health-dot {
-  border-radius: 999px;
-  display: inline-block;
-  height: 10px;
-  margin-top: 22px;
-  width: 10px;
-}
-
-.health-dot--ok {
-  background: var(--color-quasar-positive);
-}
-
-.health-dot--error {
-  background: var(--color-quasar-negative);
-}
-
-.health-dot--degraded {
-  background: var(--color-quasar-warning);
-}
-
-.health-dot--unknown {
-  background: var(--color-quasar-grey);
-}
-
-.mcp-empty {
-  place-items: center center;
-  color: var(--color-text-tertiary);
-  display: grid;
-  gap: 8px;
-  min-height: 240px;
-}
-</style>

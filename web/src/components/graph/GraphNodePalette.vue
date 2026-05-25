@@ -10,7 +10,7 @@
       dense
       outlined
       clearable
-      class="graph-node-palette__search"
+      class="graph-node-palette__search app-glass-control app-glass-control--sm"
       placeholder="搜索节点类型…"
     >
       <template #prepend><q-icon name="search" size="16px" /></template>
@@ -116,107 +116,3 @@ function onDragStart(event: DragEvent, type: NodeType) {
   }
 }
 </script>
-
-<style scoped>
-.graph-node-palette {
-  width: 260px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 14px 12px;
-  border-right: 1px solid var(--glass-border);
-  background: var(--glass-surface);
-  backdrop-filter: blur(var(--glass-blur-default));
-  -webkit-backdrop-filter: blur(var(--glass-blur-default));
-  overflow-y: auto;
-}
-
-.graph-node-palette__head {
-  padding: 0 2px;
-}
-
-.graph-node-palette__title {
-  font-size: 14px;
-  font-weight: 800;
-  color: var(--color-text-heading);
-}
-
-.graph-node-palette__subtitle {
-  margin-top: 2px;
-  font-size: 11px;
-  color: var(--color-text-secondary);
-}
-
-.graph-node-palette__search :deep(.q-field__control) {
-  min-height: 36px;
-}
-
-.graph-node-palette__group-title {
-  margin: 0 2px 8px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--color-text-tertiary);
-}
-
-.graph-node-palette__list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.graph-node-palette__item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 10px;
-  border: 1px solid var(--glass-border);
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--glass-elevated) 72%, transparent);
-  cursor: grab;
-  text-align: left;
-  transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
-}
-
-.graph-node-palette__item:hover {
-  background: var(--glass-surface-hover);
-  border-color: color-mix(in srgb, var(--color-accent) 22%, var(--glass-border));
-  transform: translateY(-1px);
-}
-
-.graph-node-palette__item:active {
-  cursor: grabbing;
-}
-
-.graph-node-palette__icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  flex-shrink: 0;
-  background: color-mix(in srgb, var(--node-accent, var(--color-accent)) 14%, var(--glass-surface));
-  color: var(--node-accent, var(--color-accent));
-}
-
-.graph-node-palette__info {
-  flex: 1;
-  min-width: 0;
-}
-
-.graph-node-palette__name {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--color-text-heading);
-}
-
-.graph-node-palette__desc {
-  margin-top: 2px;
-  font-size: 10px;
-  line-height: 1.35;
-  color: var(--color-text-secondary);
-}
-</style>

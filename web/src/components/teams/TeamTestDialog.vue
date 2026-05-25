@@ -26,7 +26,7 @@
         <q-banner v-if="error" rounded class="bg-negative text-white q-mt-md">{{ error }}</q-banner>
         <div v-if="reply" class="q-mt-md">
           <div class="text-caption text-grey-7 q-mb-xs">Team 回复</div>
-          <div class="team-test-reply">{{ reply }}</div>
+          <div class="app-code-block team-test-reply">{{ reply }}</div>
         </div>
         <div v-if="run" class="q-mt-sm text-caption text-grey-7">
           Run {{ run.status }} · {{ run.duration_ms }}ms · in {{ run.token_in }} / out {{ run.token_out }}
@@ -70,18 +70,3 @@ watch(
   }
 );
 </script>
-
-<style scoped>
-.team-test-reply {
-  white-space: pre-wrap;
-  padding: 12px;
-  border-radius: 14px;
-  border: 1px solid var(--glass-border);
-  background: var(--glass-surface);
-  line-height: 1.55;
-}
-
-.team-test-dialog.is-dark .team-test-reply {
-  background: var(--glass-elevated);
-}
-</style>

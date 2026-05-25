@@ -229,7 +229,9 @@ func compileCoordinatorEdges(ids []string) []biz.EdgeDef {
 	out := make([]biz.EdgeDef, 0, len(ids)*2)
 	for _, id := range ids[1:] {
 		out = append(out, biz.EdgeDef{From: hub, To: id, Kind: "dispatch"})
-		out = append(out, biz.EdgeDef{From: id, To: finish, Kind: "flow"})
+		if id != finish {
+			out = append(out, biz.EdgeDef{From: id, To: finish, Kind: "flow"})
+		}
 	}
 	return out
 }

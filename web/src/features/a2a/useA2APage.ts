@@ -1,8 +1,9 @@
 import { onMounted, ref } from "vue";
 import { storeToRefs } from "pinia";
 import { useQuasar } from "quasar";
-import type { A2AAgentCard, A2AInvokeResult, RegisterRemoteAgentInput, DiscoverRemoteInput } from "./types";
+import type { A2AAgentCard, A2AInvokeResult, A2ARuntimeConfig, RegisterRemoteAgentInput, DiscoverRemoteInput } from "./types";
 import { useA2AStore } from "../../stores/a2a";
+import { getA2AConfig } from "./api";
 
 export function useA2APage() {
   const $q = useQuasar();
@@ -16,6 +17,7 @@ export function useA2APage() {
   const remoteDiscoverLoading = ref(false);
   const error = ref("");
   const invokeResult = ref<A2AInvokeResult | null>(null);
+  const runtimeConfig = ref<A2ARuntimeConfig | null>(null);
   const remotePreview = ref<A2AAgentCard | null>(null);
 
   const discoverWorkspace = ref("");
@@ -185,6 +187,7 @@ export function useA2APage() {
     void loadDiscover();
     void loadAudit();
     void loadRemote();
+    getA2AConfig().then((c) => { runtimeConfig.value = c; }).catch(() => {});
   });
 
   return {
@@ -215,6 +218,7 @@ export function useA2APage() {
     submitRemoteRegister,
     previewRemote,
     removeRemote,
-    reload
+    reload,
+    runtimeConfig
   };
 }

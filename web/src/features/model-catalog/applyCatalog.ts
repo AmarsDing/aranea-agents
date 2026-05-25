@@ -63,6 +63,7 @@ export type CatalogApplyTarget = {
   input_price_usd_per_1m: number;
   output_price_usd_per_1m: number;
   cache_read_usd_per_1m: number;
+  cache_write_usd_per_1m: number;
   reasoning_price_usd_per_1m: number;
   embedding_price_usd_per_1m: number;
   capability_chips: CapabilityChip[];
@@ -94,10 +95,24 @@ export function applyCatalogModelFields(
   providerId: string,
   model: CatalogModelSummary,
   overwrite = false
-): Partial<CatalogApplyTarget> {
+): Partial<CatalogApplyTarget> & { reasoning_backfill?: boolean } {
   const cost = catalogModelToCost(model);
   const ctxK = model.contextTokens ? Math.round(model.contextTokens / 1000) : null;
   const chips = buildCapabilityChips(model);
+  let interleaved: unknown;
+  if (model.interleavedJson?.trim()) {
+    try {
+      interleaved = JSON.parse(model.interleavedJson);
+    } catch {
+      interleaved = model.interleavedJson;
+    }
+  }
+  const reasoningBackfill =
+    model.reasoning && interleaved != null && typeof interleaved === "object" && interleaved !== null
+      ? Boolean((interleaved as { field?: string }).field?.trim())
+      : model.reasoning
+        ? true
+        : undefined;
   return {
     model_api_id: model.id ?? "",
     model_display_name: model.name || model.id || "",
@@ -106,11 +121,44 @@ export function applyCatalogModelFields(
     input_price_usd_per_1m: cost.input_usd_per_1m,
     output_price_usd_per_1m: cost.output_usd_per_1m,
     cache_read_usd_per_1m: cost.cache_read_usd_per_1m,
+    cache_write_usd_per_1m: cost.cache_write_usd_per_1m,
     reasoning_price_usd_per_1m: cost.reasoning_usd_per_1m,
     embedding_price_usd_per_1m: cost.embedding_usd_per_1m,
     capability_chips: chips,
     metadata_source: "models.dev",
-    raw_metadata_json: JSON.stringify({ source: "models.dev", provider: providerId, model: model.id, overwrite }),
+    raw_metadata_json: JSON.stringify({
+      source: "models.dev",
+      provider: providerId,
+      model: {
+        id: model.id,
+        name: model.name,
+        family: model.family,
+        knowledge: model.knowledge,
+        release_date: model.releaseDate,
+        last_updated: model.lastUpdated,
+        interleaved,
+        reasoning: model.reasoning,
+        tool_call: model.toolCall,
+        open_weights: model.openWeights,
+        cost: {
+          input_usd_per_1m: cost.input_usd_per_1m,
+          output_usd_per_1m: cost.output_usd_per_1m,
+          cache_read_usd_per_1m: cost.cache_read_usd_per_1m,
+          cache_write_usd_per_1m: cost.cache_write_usd_per_1m,
+          reasoning_usd_per_1m: cost.reasoning_usd_per_1m,
+        },
+        limit: {
+          context_tokens: model.contextTokens ?? 0,
+          output_tokens: model.outputTokens ?? 0,
+        },
+        modalities: {
+          input: model.modalityInput ?? [],
+          output: model.modalityOutput ?? [],
+        },
+      },
+      overwrite,
+    }),
     catalog_managed: true,
+    reasoning_backfill: reasoningBackfill,
   };
 }

@@ -17,7 +17,8 @@ export function useSessionMessagesPanel(sessionId: Ref<string>) {
     loading.value = true;
     error.value = "";
     try {
-      messages.value = await sessionStore.fetchMessages(id);
+      const result = await sessionStore.fetchMessages(id);
+      messages.value = result.items;
     } catch (err) {
       error.value = err instanceof Error ? err.message : "加载消息失败";
     } finally {

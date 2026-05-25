@@ -41,7 +41,7 @@ export const useEvaluationStore = defineStore("evaluation", () => {
   async function loadAgentOptions(): Promise<{ label: string; value: string }[]> {
     try {
       const agents = await listAgents({ limit: 200 });
-      agentOptions.value = agents.map((a) => ({ label: a.name || a.key || a.id, value: a.id }));
+      agentOptions.value = agents.map((a) => ({ label: a.display_name || a.agent_key || a.id, value: a.id }));
     } catch {
       agentOptions.value = [];
     }

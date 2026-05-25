@@ -60,7 +60,7 @@ export function useGraphEditorPage() {
   async function loadToolOptions() {
     try {
       const result = await toolsStore.loadTools({ page_size: 200 });
-      availableTools.value = (result.items ?? []).map((tool) => tool.name).filter(Boolean);
+      availableTools.value = (result.items ?? []).map((tool) => tool.key).filter(Boolean);
     } catch {
       availableTools.value = [];
     }

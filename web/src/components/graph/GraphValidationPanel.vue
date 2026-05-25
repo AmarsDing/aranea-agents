@@ -39,13 +39,3 @@ defineEmits<{
   selectNode: [nodeId: string | null];
 }>();
 </script>
-
-<style scoped>
-.graph-validation-panel__title {
-  font-size: 12px;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--color-text-secondary, var(--color-text-secondary));
-}
-</style>

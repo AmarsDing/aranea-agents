@@ -11,7 +11,7 @@
 </template>
 
 <script setup lang="ts">
-import { toRef } from "vue";
+import { reactive, toRef } from "vue";
 import { useA2UIComponent } from "../../features/chat/a2ui/useA2UIComponent";
 import type { A2UISurfaceState } from "../../features/chat/a2uiSurfaceState";
 import type { A2UIUserActionPayload } from "../../features/chat/a2uiUserAction";
@@ -26,10 +26,12 @@ const emit = defineEmits<{
   "user-action": [payload: A2UIUserActionPayload];
 }>();
 
-const ui = useA2UIComponent(
-  toRef(props, "componentId"),
-  toRef(props, "surface"),
-  (p) => emit("user-action", p)
+const ui = reactive(
+  useA2UIComponent(
+    toRef(props, "componentId"),
+    toRef(props, "surface"),
+    (p) => emit("user-action", p)
+  )
 );
 </script>
 

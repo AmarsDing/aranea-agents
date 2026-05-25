@@ -1,16 +1,16 @@
 <template>
-  <div class="flow-trace-panel">
+  <div class="app-flow-trace-panel flow-trace-panel">
     <div v-if="!sortedLines.length" class="text-caption text-grey-7 q-pa-md">
       No flow logs yet. Keep this detail open and run a chat turn, or use the Logs tab for the global stream.
     </div>
     <div
       v-for="line in sortedLines"
       :key="`${line.id}-${line.time}`"
-      class="flow-trace-row"
+      class="app-flow-trace-row flow-trace-row"
       :class="rowClass(line)"
     >
-      <div class="flow-trace-marker" />
-      <div class="flow-trace-body">
+      <div class="app-flow-trace-marker flow-trace-marker" />
+      <div class="app-flow-trace-body flow-trace-body">
         <div class="row items-center q-gutter-xs">
           <span class="text-weight-bold">{{ line.title || line.step_id || "step" }}</span>
           <q-badge dense :color="severityColor(line.severity)" :label="line.severity || 'info'" />
@@ -38,7 +38,7 @@ const props = defineProps<{
 const sortedLines = computed(() => sortFlowLogLines(props.lines.filter((l) => l.kind === "flow")));
 
 function rowClass(line: MonitorLogLine): string {
-  return `flow-trace-row--${(line.severity || "info").toLowerCase()}`;
+  return `app-flow-trace-row--${(line.severity || "info").toLowerCase()} flow-trace-row--${(line.severity || "info").toLowerCase()}`;
 }
 
 function severityColor(severity?: string): string {
@@ -61,47 +61,3 @@ function showMessage(line: MonitorLogLine): boolean {
   return Boolean(msg && msg !== title);
 }
 </script>
-
-<style scoped>
-.flow-trace-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  max-height: 420px;
-  overflow-y: auto;
-  padding: 4px 0;
-}
-
-.flow-trace-row {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-}
-
-.flow-trace-marker {
-  width: 4px;
-  min-height: 48px;
-  border-radius: 2px;
-  background: var(--color-border-soft);
-  flex-shrink: 0;
-}
-
-.flow-trace-row--ok .flow-trace-marker,
-.flow-trace-row--info .flow-trace-marker {
-  background: var(--color-success);
-}
-
-.flow-trace-row--warn .flow-trace-marker {
-  background: var(--color-warning);
-}
-
-.flow-trace-row--error .flow-trace-marker,
-.flow-trace-row--critical .flow-trace-marker {
-  background: var(--color-danger);
-}
-
-.flow-trace-body {
-  flex: 1;
-  min-width: 0;
-}
-</style>

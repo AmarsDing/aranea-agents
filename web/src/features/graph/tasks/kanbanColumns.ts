@@ -1,4 +1,4 @@
-import type { TaskStatus } from "./types";
+import type { TaskStatus } from "../types";
 
 export type GraphTaskKanbanColumnDef = {
   key: string;

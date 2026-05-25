@@ -14,14 +14,14 @@
       <template #body-cell-name="props">
         <q-td :props="props">
           <div class="app-registry-cell-primary">{{ props.row.display_name }}</div>
-          <div class="app-registry-cell-sub muted-caption">{{ props.row.key }}</div>
+          <div class="app-registry-cell-sub app-registry-muted-caption">{{ props.row.key }}</div>
         </q-td>
       </template>
 
       <template #body-cell-category="props">
         <q-td :props="props">
           <q-chip dense color="primary" text-color="white">{{ props.row.category || "custom" }}</q-chip>
-          <q-chip dense outline class="q-ml-xs source-chip">{{ props.row.source || "external" }}</q-chip>
+          <q-chip dense outline class="q-ml-xs app-registry-source-chip">{{ props.row.source || "external" }}</q-chip>
         </q-td>
       </template>
 
@@ -37,7 +37,7 @@
           <q-badge rounded :color="props.row.runtime_status === 'catalog_only' ? 'grey' : 'positive'">
             {{ runtimeStatusLabel(props.row.runtime_status) }}
           </q-badge>
-          <div class="text-caption muted-caption q-mt-xs">{{ runtimeKindHint(props.row) }}</div>
+          <div class="text-caption app-registry-muted-caption q-mt-xs">{{ runtimeKindHint(props.row) }}</div>
         </q-td>
       </template>
 
@@ -56,24 +56,24 @@
       <template #body-cell-stats="props">
         <q-td :props="props">
           <div class="text-weight-medium">{{ props.row.invoke_count }} 次</div>
-          <div class="text-caption muted-caption">24h {{ props.row.invoke_count_24h }} · 失败 {{ props.row.failure_count }}</div>
+          <div class="text-caption app-registry-muted-caption">24h {{ props.row.invoke_count_24h }} · 失败 {{ props.row.failure_count }}</div>
         </q-td>
       </template>
 
       <template #body-cell-actions="props">
         <q-td :props="props">
           <div class="app-registry-cell-actions">
-          <q-btn flat dense round class="tool-icon-btn" color="primary" icon="visibility" @click="$emit('viewDetail', props.row)">
+          <q-btn flat dense round class="app-registry-icon-btn" color="primary" icon="visibility" @click="$emit('viewDetail', props.row)">
             <q-tooltip>查看</q-tooltip>
           </q-btn>
-          <q-btn flat dense round class="tool-icon-btn" color="primary" icon="edit" @click="$emit('edit', props.row)">
+          <q-btn flat dense round class="app-registry-icon-btn" color="primary" icon="edit" @click="$emit('edit', props.row)">
             <q-tooltip>编辑</q-tooltip>
           </q-btn>
           <q-btn
             flat
             dense
             round
-            class="tool-icon-btn"
+            class="app-registry-icon-btn"
             color="negative"
             icon="delete"
             :loading="busyId === props.row.id"
@@ -124,20 +124,3 @@ const columns: QTableColumn<Tool>[] = [
   { name: "actions", label: "操作", field: "id", align: "right", ...registryCol.actions }
 ];
 </script>
-
-<style scoped lang="sass">
-.muted-caption
-  color: var(--color-text-secondary)
-
-.tools-data-table :deep(thead tr th)
-  color: var(--color-text-secondary)
-
-.source-chip
-  border-color: var(--glass-border)
-
-.tool-icon-btn
-  color: var(--color-icon-muted)
-
-body:not(.body--dark) .tool-icon-btn:hover
-  color: var(--color-accent)
-</style>

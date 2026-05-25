@@ -79,17 +79,3 @@ import type { RalphLoopFormState } from "../../features/agents/ralphLoopConfig";
 
 const form = defineModel<RalphLoopFormState>("form", { required: true });
 </script>
-
-<style scoped>
-.section-heading {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 14px;
-}
-
-.settings-info-banner {
-  background: var(--glass-elevated);
-  color: var(--color-text-secondary);
-}
-</style>

@@ -43,7 +43,7 @@
           </q-item-label>
         </q-item-section>
         <q-item-section side>
-          <div class="text-caption text-grey-7">{{ formatTime(row.started_at) }}</div>
+          <div class="text-caption text-grey-7">{{ formatTime(row.started_at ?? '') }}</div>
         </q-item-section>
       </q-item>
     </q-list>
@@ -72,14 +72,3 @@ function formatTime(value: string) {
   return Number.isNaN(d.getTime()) ? value : d.toLocaleTimeString();
 }
 </script>
-
-<style scoped>
-.orch-activity-timeline__list {
-  border-radius: 12px;
-  overflow: hidden;
-}
-
-.orch-activity-timeline__toolbar {
-  flex-wrap: wrap;
-}
-</style>

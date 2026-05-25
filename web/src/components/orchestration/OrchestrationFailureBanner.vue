@@ -78,17 +78,3 @@ const canReview = computed(() => primary.value?.status === "waiting_review");
 const canRetry = computed(() => primary.value?.status === "failed" || circuitOpen.value);
 const canFallback = computed(() => primary.value?.status === "failed" || circuitOpen.value || primary.value?.status === "waiting_review");
 </script>
-
-<style scoped>
-.orch-failure-banner {
-  border: 1px solid color-mix(in srgb, var(--state-danger, #c62828) 35%, transparent);
-  background: color-mix(in srgb, var(--state-danger, #c62828) 8%, transparent);
-  margin-bottom: 8px;
-}
-.orch-failure-banner__title {
-  font-weight: 600;
-}
-.orch-failure-banner__circuit {
-  color: var(--color-text-secondary);
-}
-</style>

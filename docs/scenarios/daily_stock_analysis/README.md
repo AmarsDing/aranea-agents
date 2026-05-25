@@ -3,7 +3,7 @@
 > **场景代号**：`daily_stock_analysis` ｜ **代码命名空间**：`stockx`
 > **平台**：基于 [Aranea-Agents](../../README.md) 多智能体编排平台
 > **定位**：开源、可自托管的 AI 股票分析助手；多 Agent 协作 + 多渠道接入 + 可观测可追溯
-> **状态**：📐 设计中（v1.0 设计文档已完成）
+> **状态**：📐 设计中（v1.1 需求/设计/开发计划已对齐：Postgres、准实时、多 Agent 数据通路）
 
 ---
 
@@ -17,6 +17,7 @@
 
 | # | 文档 | 用途 |
 |---|------|------|
+| 0 | [cmd/seed-stockx-org/README.md](../../cmd/seed-stockx-org/README.md) | **种子数据 CLI** — 组织 / Agent / Team 写入 SQLite 的使用说明 |
 | 1 | [daily-stock-analysis.md](./daily-stock-analysis.md) | **需求文档** — 用户故事、Agent 团队、功能规格、数据源清单、验收标准、非功能需求 |
 | 2 | [daily-stock-analysis.design.md](./daily-stock-analysis.design.md) | **设计文档** — 架构、目录结构、Tool/Skill/Agent/Team/Graph 详细设计、数据模型、Proto、安全 |
 | 3 | [daily-stock-analysis-development.md](./daily-stock-analysis-development.md) | **开发计划** — 8 个 Phase、6 个里程碑、56 个 EP-STOCKX-* 任务清单、风险与依赖 |
@@ -37,6 +38,20 @@
 | **可观测可追溯** | 复用平台 Telemetry / Monitor / Team Run / Tool Invocation；Grafana 面板 |
 | **可扩展** | 通过 Graph 工作流自定义研究流水线；通过 Tools 管理页新增数据源 |
 | **合规 & 安全** | 持仓数据本地化；API Key 加密；强制免责声明；不提供任何下单接口 |
+| **存储** | 场景业务表在 **PostgreSQL `stockx` schema**；平台 Agent/Session 仍 SQLite |
+| **准实时行情** | Tool 轮询 ≥1min（非 Tick）；Web 自选 30–60s 刷新并标注延迟 |
+| **跨 Agent 数据** | Tool → 当前 Agent → Coordinator/Graph state → 下一 Agent（见需求 §1.6） |
+
+---
+
+## 3.1 技术决策摘要（v1.1）
+
+| 主题 | 决策 | 文档 |
+|------|------|------|
+| 数据库 | 场景表 + 缓存 + 报告索引 → **Postgres `stockx`**；平台 CRUD → SQLite | [需求 §5.0](./daily-stock-analysis.md#50-存储架构已确认postgresql) · [设计 §3](./daily-stock-analysis.design.md#3-数据模型) |
+| 实时性 | L1 准实时 1–3min；不做 L0 Tick；深度分析端到端常 2–8min | [需求 §1.5](./daily-stock-analysis.md#15-实时性分级已确认) |
+| 多 Agent 喂数 | Graph 优先（共享 K 线 state）；盘前用 Coordinator | [设计 §1.4](./daily-stock-analysis.design.md#14-多-agent-市场数据通路) |
+| 实施节奏 | 推荐 **策略 B MVP**（3–4 周可演示） | [开发计划 §1](./daily-stock-analysis-development.md#1-推荐实施策略已确认) |
 
 ---
 
@@ -103,22 +118,41 @@
 
 本场景**不修改平台核心**，所有能力通过平台标准接口注入：
 
-- **新增**：27 个数据源 Tool、13 个 Skill、4 个 Knowledge Base、5 张业务表、1 个 Service、1 个 proto、3 个前端页面
+- **新增**：27 个数据源 Tool、13 个 Skill、4 个 Knowledge Base、Postgres `stockx` 5 张业务表、1 个 Service、1 个 proto、3 个前端页面
 - **复用**：Agent / Team / Graph / Runner / Session / Memory / Tool / Skill / Cron / Channel / Artifact / Knowledge / CodeExecutor / Monitor / Telemetry / Evaluation
 
 详见 [需求文档 §9](./daily-stock-analysis.md#9-与平台模块的依赖矩阵)。
 
 ---
 
-## 8. 快速开始（设计目标）
+## 8. 快速开始
 
-> 以下为 v1.0 发布后的目标体验，当前为设计文档；实施按 [开发计划](./daily-stock-analysis-development.md) 推进。
+### 8.1 开发环境：组织 / Agent / Team 种子（当前可用）
+
+在平台源码仓库根目录，将场景组织树、13 个 Agent 与 7 个 Team 写入本地 SQLite：
+
+```powershell
+$env:KRATOS_HTTP_AUTH_DISABLED = "1"
+$env:DEPLOY_ENV = "dev"
+$env:ARANEA_SQLITE_PATH = "data/arenea.sqlite"
+
+# 写入组织 + Agent + Team（写入前请停止 go run ./cmd/admin）
+go run ./cmd/seed-stockx-org
+```
+
+完整参数、幂等策略与写入清单见 **[cmd/seed-stockx-org/README.md](../../cmd/seed-stockx-org/README.md)**。
+
+验证：Web UI → 组织树出现「Stockx AI 投研」→ Agents / Teams 页可见对应条目 → Chat 选择 `team-stock-deep-dive` 联调。
+
+### 8.2 设计目标（v1.0 发布后）
+
+> 以下为 v1.0 发布后的目标体验；Tool / Skill / Cron 等按 [开发计划](./daily-stock-analysis-development.md) 推进。
 
 ```bash
 # 1. 一键启动
 docker compose -f docker-compose.stockx.yml up -d
 
-# 2. 配置场景
+# 2. 配置场景（须已配置 data.postgres.source）
 echo "STOCK_SCENARIO_ENABLED=1" >> .env
 echo "STOCK_SCENARIO_FEISHU_WEBHOOK=https://open.feishu.cn/open-apis/bot/v2/hook/xxxx" >> .env
 
@@ -143,7 +177,7 @@ Phase 7  评估/安全/文档  ──────► M-S5 开源发布  (9 周) 
 Phase 8  生态扩展        ──────► 持续迭代              ──► v1.x
 ```
 
-详见 [开发计划 §5](./daily-stock-analysis-development.md#5-里程碑)。
+详见 [开发计划 §6 里程碑](./daily-stock-analysis-development.md#6-里程碑)。
 
 ---
 
@@ -153,7 +187,7 @@ Phase 8  生态扩展        ──────► 持续迭代              ─
 |------|------|
 | **不修改平台核心** | 所有新增能力通过 Tool / Skill / Agent / Team / Cron / Knowledge 等标准接口 |
 | **不提供投资建议** | 报告 footer 强制免责；不内置任何下单 / 券商接口 |
-| **不上传用户数据** | 持仓、API Key、报告全部存本地 SQLite / 本地 Artifact |
+| **不上传用户数据** | 持仓、API Key、报告索引存本地 **PostgreSQL `stockx`** + Artifact；平台元数据在 SQLite |
 | **开源协议** | 建议 Apache-2.0；商业部署用户自行承担三方数据 TOS 合规 |
 | **可关闭** | `STOCK_SCENARIO_ENABLED=0` 时整个场景静默，不注册任何资源 |
 

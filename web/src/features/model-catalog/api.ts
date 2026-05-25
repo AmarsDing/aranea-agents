@@ -1,4 +1,6 @@
 import { createModelCatalogService } from "../../services/index";
+import { normalizeCatalogSearchBlocks } from "./catalogSearchUtils";
+import { normalizeCatalogModelSummary, normalizeCatalogProviderSummary } from "./catalogWire";
 import type {
   ModelCatalogPolicy,
   ModelCatalogStatus,
@@ -43,17 +45,85 @@ export async function listModelCatalogSyncLogs(limit = 30): Promise<ModelCatalog
 
 export async function listCatalogProviders(q = "", limit = 200, offset = 0) {
   const res = await api.ListCatalogProviders({ q, limit, offset });
-  return { items: res.items ?? [], total: res.total ?? 0 };
+  return {
+    items: (res.items ?? []).map(normalizeCatalogProviderSummary),
+    total: res.total ?? 0,
+  };
 }
 
 export async function listCatalogModels(providerId: string, q = "", includeDeprecated = false, limit = 500, offset = 0) {
   const res = await api.ListCatalogModels({ providerId, q, includeDeprecated, limit, offset });
-  return { items: res.items ?? [], total: res.total ?? 0 };
+  return {
+    items: (res.items ?? []).map(normalizeCatalogModelSummary),
+    total: res.total ?? 0,
+  };
 }
 
-export async function searchCatalogRaw(q = "", limit = 200, offset = 0) {
-  const res = await api.SearchCatalogRaw({ q, limit, offset });
-  return { lines: res.lines ?? [], total: res.total ?? 0, offset: res.offset ?? 0 };
+/** Paginated provider browse for empty search — builds full provider JSON client-side. */
+export async function browseCatalogProviderBlocks(offset = 0, limit = 1) {
+  const res = await api.ListCatalogProviders({ q: "", limit, offset });
+  const blocks: string[] = [];
+  for (const p of res.items ?? []) {
+    const pid = (p.id ?? "").trim();
+    if (!pid) continue;
+    const modelsRes = await api.ListCatalogModels({
+      providerId: pid,
+      q: "",
+      includeDeprecated: true,
+      limit: 500,
+      offset: 0,
+    });
+    const models: Record<string, unknown> = {};
+    for (const m of modelsRes.items ?? []) {
+      const mid = (m.id ?? "").trim();
+      if (mid) models[mid] = m;
+    }
+    blocks.push(
+      JSON.stringify(
+        {
+          id: p.id,
+          name: p.name,
+          env: p.env,
+          npm: p.npm,
+          api: p.api,
+          doc: p.doc,
+          models,
+        },
+        null,
+        2
+      )
+    );
+  }
+  return {
+    blocks,
+    total: res.total ?? 0,
+    offset,
+    truncated: false,
+    legacyLineMode: false,
+  };
+}
+
+export async function searchCatalogBlocks(q = "", limit = 10, offset = 0) {
+  const query = q.trim();
+  if (!query) {
+    return browseCatalogProviderBlocks(offset, limit);
+  }
+  const res = await api.SearchCatalogRaw({ q: query, limit, offset });
+  const raw = res.lines ?? [];
+  const { blocks, legacyLineMode } = normalizeCatalogSearchBlocks(raw);
+  return {
+    blocks,
+    total: res.total ?? 0,
+    offset: res.offset ?? 0,
+    truncated: Boolean(res.truncated),
+    legacyLineMode,
+  };
+}
+
+/** @deprecated use searchCatalogBlocks */
+export async function searchCatalogRaw(q = "", limit = 10, offset = 0) {
+  const res = await searchCatalogBlocks(q, limit, offset);
+  return { lines: res.blocks, total: res.total, offset: res.offset, truncated: res.truncated, legacyLineMode: res.legacyLineMode };
 }
 
 export async function previewModelCatalogMigration() {

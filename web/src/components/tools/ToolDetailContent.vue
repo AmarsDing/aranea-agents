@@ -1,14 +1,14 @@
 <template>
   <div v-if="tool" class="tool-detail-content column q-gutter-md">
-    <q-banner rounded class="tool-detail-banner">{{ tool.description || "暂无描述" }}</q-banner>
+    <q-banner rounded class="app-registry-detail-banner">{{ tool.description || "暂无描述" }}</q-banner>
 
-    <q-tabs v-model="activeTab" dense class="tool-detail-tabs" active-color="primary" indicator-color="primary" align="left" no-caps>
+    <q-tabs v-model="activeTab" dense class="app-registry-detail-tabs" active-color="primary" indicator-color="primary" align="left" no-caps>
       <q-tab name="overview" label="概览" />
       <q-tab name="agents" :label="'Agent (' + overrides.length + ')'" />
       <q-tab name="runs" label="调用记录" />
     </q-tabs>
 
-    <q-tab-panels v-model="activeTab" class="tool-detail-panels">
+    <q-tab-panels v-model="activeTab" class="app-registry-detail-panels">
       <q-tab-panel name="overview" class="q-pa-none">
         <div class="row q-col-gutter-sm text-body2 q-mb-md">
           <div class="col-6">
@@ -60,7 +60,7 @@
               <q-btn
                 no-caps
                 unelevated
-                class="tool-primary-btn"
+                class="app-registry-primary-btn"
                 label="运行测试"
                 icon="play_arrow"
                 :loading="testRunning"
@@ -103,7 +103,7 @@
         </div>
         <template v-else>
           <q-list v-if="overrides.length" separator dense class="rounded-borders">
-            <q-item v-for="o in overrides" :key="o.id" class="override-item">
+            <q-item v-for="o in overrides" :key="o.id" class="app-registry-list-item">
               <q-item-section avatar>
                 <q-icon :name="o.enabled ? 'check_circle' : 'cancel'" :color="o.enabled ? 'positive' : 'negative'" size="sm" />
               </q-item-section>
@@ -115,10 +115,10 @@
               </q-item-section>
               <q-item-section side>
                 <div class="row q-gutter-xs">
-                  <q-btn flat dense round icon="edit" size="sm" class="tool-icon-btn" @click="$emit('edit-override', o)">
+                  <q-btn flat dense round icon="edit" size="sm" class="app-registry-icon-btn" @click="$emit('edit-override', o)">
                     <q-tooltip>编辑覆盖</q-tooltip>
                   </q-btn>
-                  <q-btn flat dense round icon="delete" size="sm" class="tool-icon-btn" @click="$emit('delete-override', o)">
+                  <q-btn flat dense round icon="delete" size="sm" class="app-registry-icon-btn" @click="$emit('delete-override', o)">
                     <q-tooltip>删除覆盖</q-tooltip>
                   </q-btn>
                 </div>
@@ -126,7 +126,7 @@
             </q-item>
           </q-list>
           <div v-else class="text-caption q-pa-sm">暂无 Agent 覆盖配置</div>
-          <q-btn flat no-caps icon="add" label="添加覆盖" class="tool-accent-btn q-mt-sm" @click="$emit('edit-override', null)" />
+          <q-btn flat no-caps icon="add" label="添加覆盖" class="app-registry-accent-btn q-mt-sm" @click="$emit('edit-override', null)" />
         </template>
       </q-tab-panel>
 
@@ -136,7 +136,7 @@
         </div>
         <template v-else>
           <q-list v-if="recentRuns.length" separator dense class="rounded-borders">
-            <q-item v-for="r in recentRuns" :key="r.id" class="run-item">
+            <q-item v-for="r in recentRuns" :key="r.id" class="app-registry-list-item">
               <q-item-section avatar>
                 <q-icon :name="runStatusIcon(r.status)" :color="runStatusColor(r.status)" size="sm" />
               </q-item-section>
@@ -153,7 +153,7 @@
           <q-btn
             flat
             no-caps
-            class="tool-accent-btn q-mt-sm"
+            class="app-registry-accent-btn q-mt-sm"
             icon="history"
             label="查看全部调用记录"
             :to="{ name: 'tool-runs', query: { tool_key: tool.key } }"
@@ -238,41 +238,3 @@ function runStatusColor(status: string): string {
   return "grey";
 }
 </script>
-
-<style scoped lang="sass">
-.tool-detail-banner
-  color: var(--color-text-primary)
-  border: 1px solid var(--glass-border)
-  background: var(--glass-surface)
-  backdrop-filter: blur(var(--glass-blur-default))
-  -webkit-backdrop-filter: blur(var(--glass-blur-default))
-
-body.body--dark .tool-detail-banner
-  background: rgba(18, 24, 34, 0.55)
-
-.tool-detail-tabs
-  border-bottom: 1px solid var(--glass-border)
-
-.tool-detail-panels
-  background: transparent
-
-.tool-accent-btn
-  color: var(--color-accent)
-  align-self: flex-start
-
-body:not(.body--dark) .tool-accent-btn:hover
-  background: var(--interaction-surface-hover)
-
-.tool-icon-btn
-  color: var(--color-icon-muted)
-
-body:not(.body--dark) .tool-icon-btn:hover
-  color: var(--color-accent)
-
-.tool-primary-btn
-  background: var(--color-accent)
-  color: var(--color-on-accent)
-
-.override-item, .run-item
-  border-radius: 8px
-</style>

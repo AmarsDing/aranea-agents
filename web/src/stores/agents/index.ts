@@ -18,6 +18,7 @@ import {
 } from "../../features/platform/api";
 import type { PlatformResource, PlatformResourceTreeNode } from "../../features/platform/types";
 import { flattenCategoryPositions, formatContext } from "../../components/agents/agentUi";
+import { findCategoryPath, formatCategoryPath } from "../../features/platform/categoryTreeUtils";
 import { useAppStore } from "../app";
 import { useAvatarCatalogStore } from "../avatar";
 
@@ -42,7 +43,6 @@ export const useAgentsPageStore = defineStore("agentsPage", () => {
   const modelCheckPassed = ref(false);
 
   const industryNodes = computed(() => categoryTree.value.filter((row) => row.level === "industry" && row.enabled));
-  const industryOptions = computed(() => industryNodes.value.map((row) => ({ label: row.name, value: row.id })));
   const categoryPositionOptions = computed(() => flattenCategoryPositions(industryNodes.value));
   const pageMax = computed(() => Math.max(1, Math.ceil(total.value / rowsPerPage.value)));
 
@@ -55,6 +55,8 @@ export const useAgentsPageStore = defineStore("agentsPage", () => {
 
   function categoryLabel(id: string) {
     if (!id) return "未分类";
+    const path = findCategoryPath(categoryTree.value, id);
+    if (path.length) return formatCategoryPath(path);
     return categoryPositionOptions.value.find((item) => item.value === id)?.label ?? "未分类";
   }
 
@@ -169,7 +171,6 @@ export const useAgentsPageStore = defineStore("agentsPage", () => {
     checkingModel,
     modelCheckPassed,
     industryNodes,
-    industryOptions,
     categoryPositionOptions,
     pageMax,
     providerOptions,

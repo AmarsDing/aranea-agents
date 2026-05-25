@@ -179,29 +179,3 @@ function onKanbanSelectNode(nodeId: string) {
   activeTab.value = "canvas";
 }
 </script>
-
-<style scoped>
-.team-orchestrate-page__toolbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--glass-border);
-}
-.team-orchestrate-page__title {
-  font-weight: 700;
-  font-size: 16px;
-}
-.team-orchestrate-page__body {
-  display: flex;
-  min-height: calc(100vh - 180px);
-}
-.team-orchestrate-page__sidebar {
-  padding: 16px;
-  max-width: 420px;
-}
-.team-orchestrate-page__live-badge {
-  background: color-mix(in srgb, var(--color-success) 18%, var(--glass-surface));
-  color: var(--color-success);
-}
-</style>

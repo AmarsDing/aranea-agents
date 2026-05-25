@@ -2,9 +2,9 @@
   <q-page class="app-page-cream app-registry-page tools-page">
     <tool-hero-section kicker="Tool registry" title="Tools 管理" subtitle="统一管理 Tool 元数据、运行时绑定、风险策略、配置 Schema 与调用记录。">
       <template #actions>
-        <q-btn outline rounded no-caps class="tool-outline-btn" icon="policy" label="审计日志" :to="{ name: 'tool-audits' }" />
-        <q-btn outline rounded no-caps class="tool-outline-btn" icon="history" label="调用记录" :to="{ name: 'tool-runs' }" />
-        <q-btn rounded no-caps unelevated class="tool-primary-btn" icon="add" label="新建 Tool" @click="openCreateTool()" />
+        <q-btn outline rounded no-caps class="app-outline-btn" icon="policy" label="审计日志" :to="{ name: 'tool-audits' }" />
+        <q-btn outline rounded no-caps class="app-outline-btn" icon="history" label="调用记录" :to="{ name: 'tool-runs' }" />
+        <q-btn rounded no-caps unelevated class="app-accent-btn" icon="add" label="新建 Tool" @click="openCreateTool()" />
       </template>
     </tool-hero-section>
 
@@ -27,7 +27,7 @@
       @refresh="loadRows"
     />
 
-    <q-banner v-if="error" rounded class="tools-error-banner q-mb-md">
+    <q-banner v-if="error" rounded class="app-page-error-banner q-mb-md">
       {{ error }}
       <template #action>
         <q-btn flat dense label="重试" class="text-white" @click="loadRows" />
@@ -194,29 +194,3 @@ watch([search, category, riskLevel, enabled], () => {
 watch([page, pageSize], () => void loadRows());
 onMounted(loadRows);
 </script>
-
-<style scoped lang="sass">
-.tools-error-banner
-  background: rgba(229, 92, 92, 0.92)
-  color: var(--color-on-accent)
-  border: 1px solid rgba(255, 255, 255, 0.25)
-
-body.body--dark .tools-error-banner
-  background: rgba(255, 94, 122, 0.22)
-  color: var(--color-text-primary)
-  border-color: rgba(255, 255, 255, 0.12)
-
-.tool-primary-btn
-  background: var(--color-accent)
-  color: var(--color-on-accent)
-
-body:not(.body--dark) .tool-primary-btn:hover
-  background: var(--color-accent-hover)
-
-.tool-outline-btn
-  border-color: rgba(208, 192, 168, 0.85)
-  color: var(--color-text-primary)
-
-body:not(.body--dark) .tool-outline-btn:hover
-  background: var(--interaction-surface-hover)
-</style>

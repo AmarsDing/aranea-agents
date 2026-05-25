@@ -23,7 +23,7 @@
         :disabled="!adminDrag"
         class="graph-kanban-draggable"
         ghost-class="graph-kanban-ghost"
-        @change="(evt) => onDragChange(column.key, evt)"
+        @change="(evt: DragChangeEvent) => onDragChange(column.key, evt)"
       >
         <template #item="{ element }">
           <GraphTaskKanbanCard
@@ -137,22 +137,3 @@ function onDragChange(targetColumnKey: string, evt: DragChangeEvent) {
   }
 }
 </script>
-
-<style scoped>
-.graph-kanban-live {
-  background: color-mix(in srgb, var(--color-success) 18%, var(--glass-surface));
-  color: var(--color-success);
-}
-.graph-kanban-empty {
-  padding: 12px 14px;
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--glass-surface) 88%, transparent);
-  border: 1px dashed var(--color-border-subtle, rgba(0, 0, 0, 0.12));
-}
-.graph-kanban-draggable {
-  min-height: 48px;
-}
-.graph-kanban-ghost {
-  opacity: 0.45;
-}
-</style>
