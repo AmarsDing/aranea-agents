@@ -19,6 +19,7 @@ import { createSystemSettingServiceClient } from "./kratos/system_setting/v1/ind
 import { createTeamServiceClient } from "./kratos/team/v1/index";
 import { createToolServiceClient } from "./kratos/tool/v1/index";
 import { createUsageServiceClient } from "./kratos/usage/v1/index";
+import { createModelCatalogServiceClient } from "./kratos/model_catalog/v1/index";
 import { createMonitorServiceClient } from "./kratos/monitor/v1/index";
 import { createMemoryServiceClient } from "./kratos/memory/v1/index";
 import { createGraphServiceClient } from "./kratos/graph/v1/index";
@@ -76,6 +77,10 @@ export function createSkillService() {
 
 export function createSystemSettingService() {
   return createSystemSettingServiceClient(requestHandler);
+}
+
+export function createModelCatalogService() {
+  return createModelCatalogServiceClient(requestHandler);
 }
 
 export function createTeamService() {

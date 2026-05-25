@@ -2,6 +2,7 @@ import { ref } from "vue";
 import { storeToRefs } from "pinia";
 import { useUsageStore } from "../../stores/usage";
 import type { ModelUsageQuery } from "./types";
+import { formatUsdFromMicro } from "./moneyFormat";
 
 export function useUsageEventsPage() {
   const usageStore = useUsageStore();
@@ -43,7 +44,7 @@ export function useUsageEventsPage() {
   }
 
   function formatMoney(value?: number) {
-    return `$${((value ?? 0) / 1_000_000).toFixed(4)}`;
+    return formatUsdFromMicro(value);
   }
 
   function truncate(msg?: string, max = 80) {

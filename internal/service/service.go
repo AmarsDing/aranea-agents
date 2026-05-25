@@ -47,6 +47,7 @@ var ProviderSet = wire.NewSet(
 	NewUsageService,
 	NewMonitorService,
 	NewSystemSettingService,
+	NewModelCatalogService,
 	NewChannelIngress,
 	ProvideChatService,
 	ProvideEvaluationRunner,

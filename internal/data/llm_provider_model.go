@@ -199,8 +199,15 @@ func (r *llmProviderModelRepo) UpsertModelPricingRule(ctx context.Context, rule 
 			SetInputPriceMicroUsdPer1k(rule.InputPriceMicroUSDPer1K).
 			SetOutputPriceMicroUsdPer1k(rule.OutputPriceMicroUSDPer1K).
 			SetCachedInputPriceMicroUsdPer1k(rule.CachedInputPriceMicroUSDPer1K).
+			SetCacheWritePriceMicroUsdPer1k(rule.CacheWritePriceMicroUSDPer1K).
 			SetReasoningPriceMicroUsdPer1k(rule.ReasoningPriceMicroUSDPer1K).
 			SetEmbeddingPriceMicroUsdPer1k(rule.EmbeddingPriceMicroUSDPer1K).
+			SetInputPriceUsdPer1m(rule.InputPriceUSDPer1M).
+			SetOutputPriceUsdPer1m(rule.OutputPriceUSDPer1M).
+			SetCachedInputPriceUsdPer1m(rule.CachedInputPriceUSDPer1M).
+			SetCacheWritePriceUsdPer1m(rule.CacheWritePriceUSDPer1M).
+			SetReasoningPriceUsdPer1m(rule.ReasoningPriceUSDPer1M).
+			SetEmbeddingPriceUsdPer1m(rule.EmbeddingPriceUSDPer1M).
 			SetSource(rule.Source).
 			SetMetadataJSON(rule.MetadataJSON).
 			SetUpdatedAt(now).
@@ -222,8 +229,15 @@ func (r *llmProviderModelRepo) UpsertModelPricingRule(ctx context.Context, rule 
 		SetInputPriceMicroUsdPer1k(rule.InputPriceMicroUSDPer1K).
 		SetOutputPriceMicroUsdPer1k(rule.OutputPriceMicroUSDPer1K).
 		SetCachedInputPriceMicroUsdPer1k(rule.CachedInputPriceMicroUSDPer1K).
+		SetCacheWritePriceMicroUsdPer1k(rule.CacheWritePriceMicroUSDPer1K).
 		SetReasoningPriceMicroUsdPer1k(rule.ReasoningPriceMicroUSDPer1K).
 		SetEmbeddingPriceMicroUsdPer1k(rule.EmbeddingPriceMicroUSDPer1K).
+		SetInputPriceUsdPer1m(rule.InputPriceUSDPer1M).
+		SetOutputPriceUsdPer1m(rule.OutputPriceUSDPer1M).
+		SetCachedInputPriceUsdPer1m(rule.CachedInputPriceUSDPer1M).
+		SetCacheWritePriceUsdPer1m(rule.CacheWritePriceUSDPer1M).
+		SetReasoningPriceUsdPer1m(rule.ReasoningPriceUSDPer1M).
+		SetEmbeddingPriceUsdPer1m(rule.EmbeddingPriceUSDPer1M).
 		SetEffectiveFrom(rule.EffectiveFrom).
 		SetEffectiveTo("").
 		SetIsActive(rule.IsActive).

@@ -23,7 +23,7 @@ func BuildChannelSessionMetadataJSON(ch Channel, platform, peerID, peerKey strin
 		platform = channelTypeFromConfigJSON(ch.ConfigJSON)
 	}
 	receiveMode := ""
-	if cfg, err := parseChannelConfig(ch.ConfigJSON); err == nil {
+	if cfg, err := ch.ParseConfig(); err == nil {
 		receiveMode = strings.TrimSpace(cfg.ReceiveMode)
 	}
 	meta := ChannelSessionMeta{

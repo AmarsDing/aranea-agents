@@ -96,6 +96,35 @@ func (r *usageRepo) ListTopModelUsage(ctx context.Context, query biz.UsageQuery)
 		}
 		result = append(result, item)
 	}
+	return mergeUsageBreakdownByAlias(result), rows.Err()
+}
+
+func (r *usageRepo) ListModelUsageEvents(ctx context.Context, query biz.UsageQuery) ([]biz.TokenUsageEvent, error) {
+	where, args := usageWhere(query, false)
+	args = append(args, usageLimit(query.Limit))
+	rows, err := r.ent().QueryContext(ctx,
+		`SELECT id, occurred_at, date_key, hour_key, workspace_id, user_id, team_id, agent_id, agent_key, session_id, message_id, request_id,
+		 provider_code, COALESCE(canonical_provider_code, ''), provider_type, provider_display_name, model_api_id, model_display_name, model_category_json, usage_kind, call_count,
+		 input_tokens, output_tokens, cached_input_tokens, COALESCE(cache_write_tokens, 0), reasoning_tokens, embedding_tokens, total_tokens,
+		 input_price_micro_usd_per_1k, output_price_micro_usd_per_1k, cached_input_price_micro_usd_per_1k, COALESCE(cache_write_price_micro_usd_per_1k, 0), reasoning_price_micro_usd_per_1k, embedding_price_micro_usd_per_1k,
+		 input_cost_micro_usd, output_cost_micro_usd, cached_input_cost_micro_usd, COALESCE(cache_write_cost_micro_usd, 0), reasoning_cost_micro_usd, embedding_cost_micro_usd, total_cost_micro_usd,
+		 latency_ms, time_to_first_token_ms, tokens_per_second, status, error_code, error_message, retry_count,
+		 prompt_mode, max_output_tokens, context_window_k, stream_enabled, metadata_json, created_at
+		 FROM model_token_usage_events`+where+` ORDER BY occurred_at DESC LIMIT ?`,
+		args...,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var result []biz.TokenUsageEvent
+	for rows.Next() {
+		event, err := scanTokenUsageEvent(rows)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, aliasUsageEvent(event))
+	}
 	return result, rows.Err()
 }
 
@@ -125,35 +154,6 @@ func (r *usageRepo) ListTopAgentUsage(ctx context.Context, query biz.UsageQuery)
 	return result, rows.Err()
 }
 
-func (r *usageRepo) ListModelUsageEvents(ctx context.Context, query biz.UsageQuery) ([]biz.TokenUsageEvent, error) {
-	where, args := usageWhere(query, false)
-	args = append(args, usageLimit(query.Limit))
-	rows, err := r.ent().QueryContext(ctx,
-		`SELECT id, occurred_at, date_key, hour_key, workspace_id, user_id, team_id, agent_id, agent_key, session_id, message_id, request_id,
-		 provider_code, provider_type, provider_display_name, model_api_id, model_display_name, model_category_json, usage_kind, call_count,
-		 input_tokens, output_tokens, cached_input_tokens, reasoning_tokens, embedding_tokens, total_tokens,
-		 input_price_micro_usd_per_1k, output_price_micro_usd_per_1k, cached_input_price_micro_usd_per_1k, reasoning_price_micro_usd_per_1k, embedding_price_micro_usd_per_1k,
-		 input_cost_micro_usd, output_cost_micro_usd, cached_input_cost_micro_usd, reasoning_cost_micro_usd, embedding_cost_micro_usd, total_cost_micro_usd,
-		 latency_ms, time_to_first_token_ms, tokens_per_second, status, error_code, error_message, retry_count,
-		 prompt_mode, max_output_tokens, context_window_k, stream_enabled, metadata_json, created_at
-		 FROM model_token_usage_events`+where+` ORDER BY occurred_at DESC LIMIT ?`,
-		args...,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var result []biz.TokenUsageEvent
-	for rows.Next() {
-		event, err := scanTokenUsageEvent(rows)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, event)
-	}
-	return result, rows.Err()
-}
-
 type scanner interface {
 	Scan(dest ...any) error
 }
@@ -163,10 +163,10 @@ func scanTokenUsageEvent(row scanner) (biz.TokenUsageEvent, error) {
 	var streamEnabled int
 	err := row.Scan(
 		&v.ID, &v.OccurredAt, &v.DateKey, &v.HourKey, &v.WorkspaceID, &v.UserID, &v.TeamID, &v.AgentID, &v.AgentKey, &v.SessionID, &v.MessageID, &v.RequestID,
-		&v.ProviderCode, &v.ProviderType, &v.ProviderDisplayName, &v.ModelAPIID, &v.ModelDisplayName, &v.ModelCategoryJSON, &v.UsageKind, &v.CallCount,
-		&v.InputTokens, &v.OutputTokens, &v.CachedInputTokens, &v.ReasoningTokens, &v.EmbeddingTokens, &v.TotalTokens,
-		&v.InputPriceMicroUSDPer1K, &v.OutputPriceMicroUSDPer1K, &v.CachedInputPriceMicroUSDPer1K, &v.ReasoningPriceMicroUSDPer1K, &v.EmbeddingPriceMicroUSDPer1K,
-		&v.InputCostMicroUSD, &v.OutputCostMicroUSD, &v.CachedInputCostMicroUSD, &v.ReasoningCostMicroUSD, &v.EmbeddingCostMicroUSD, &v.TotalCostMicroUSD,
+		&v.ProviderCode, &v.CanonicalProviderCode, &v.ProviderType, &v.ProviderDisplayName, &v.ModelAPIID, &v.ModelDisplayName, &v.ModelCategoryJSON, &v.UsageKind, &v.CallCount,
+		&v.InputTokens, &v.OutputTokens, &v.CachedInputTokens, &v.CacheWriteTokens, &v.ReasoningTokens, &v.EmbeddingTokens, &v.TotalTokens,
+		&v.InputPriceMicroUSDPer1K, &v.OutputPriceMicroUSDPer1K, &v.CachedInputPriceMicroUSDPer1K, &v.CacheWritePriceMicroUSDPer1K, &v.ReasoningPriceMicroUSDPer1K, &v.EmbeddingPriceMicroUSDPer1K,
+		&v.InputCostMicroUSD, &v.OutputCostMicroUSD, &v.CachedInputCostMicroUSD, &v.CacheWriteCostMicroUSD, &v.ReasoningCostMicroUSD, &v.EmbeddingCostMicroUSD, &v.TotalCostMicroUSD,
 		&v.LatencyMS, &v.TimeToFirstTokenMS, &v.TokensPerSecond, &v.Status, &v.ErrorCode, &v.ErrorMessage, &v.RetryCount,
 		&v.PromptMode, &v.MaxOutputTokens, &v.ContextWindowK, &streamEnabled, &v.MetadataJSON, &v.CreatedAt,
 	)
@@ -189,8 +189,9 @@ func usageWhere(query biz.UsageQuery, billableOnly bool) (string, []any) {
 		args = append(args, query.EndDate)
 	}
 	if query.ProviderCode != "" {
-		parts = append(parts, "provider_code = ?")
-		args = append(args, query.ProviderCode)
+		clause, provArgs := usageProviderWhere(query.ProviderCode)
+		parts = append(parts, clause)
+		args = append(args, provArgs...)
 	}
 	if query.ModelAPIID != "" {
 		parts = append(parts, "model_api_id = ?")

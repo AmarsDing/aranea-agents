@@ -32,6 +32,7 @@
 
 <script setup lang="ts">
 import type { ModelUsageBreakdownRow } from "../../features/usage/types";
+import { formatUsdFromMicro } from "../../features/usage/moneyFormat";
 
 defineProps<{
   rows: ModelUsageBreakdownRow[];
@@ -42,7 +43,7 @@ function formatCount(value: number) {
 }
 
 function formatMoney(value: number) {
-  return `$${(value / 1_000_000).toFixed(4)}`;
+  return formatUsdFromMicro(value);
 }
 
 function formatPercent(value: number) {

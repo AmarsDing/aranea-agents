@@ -3,18 +3,23 @@ import { useQuasar } from "quasar";
 import { useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import { useChatRuntimeStore } from "../../../stores/chat/runtimeStore";
+import { useChatSessionStore } from "../../../stores/chat/sessionStore";
+import { useChatMessageStore } from "../../../stores/chat/messageStore";
 import { useAuthStore } from "../../../stores/auth";
 import { useAppStore } from "../../../stores/app";
-import { useChatStore } from "../../../stores/chat";
 import { checkBackendHealth, getServerHeartbeatState } from "../../heartbeat/useServerHeartbeat";
 import type { ChatAttachment, ChatEntityKind } from "../../../components/chat/types";
 import type { UseEnvelopeStreamReturn } from "../useEnvelopeStream";
 import type { WsUpstream } from "../envelope";
 import { createPlaceholderMessage } from "../streamHandlers";
 
+type SessionStore = ReturnType<typeof useChatSessionStore>;
+type MessageStore = ReturnType<typeof useChatMessageStore>;
+
 export type SenderDeps = {
   appStore: ReturnType<typeof useAppStore>;
-  chatStore: ReturnType<typeof useChatStore>;
+  sessionStore: SessionStore;
+  messageStore: MessageStore;
   inputText: Ref<string>;
   dialogMode: Ref<string>;
   attachments: Ref<ChatAttachment[]>;
@@ -123,17 +128,17 @@ export function useChatSender(deps: SenderDeps) {
       return;
     }
 
-    if (deps.chatStore.entityKind === "agent") {
+    if (deps.sessionStore.entityKind === "agent") {
       await sendAgentMessage(content);
-    } else if (deps.chatStore.entityKind === "team" && deps.chatStore.selectedTeamId) {
+    } else if (deps.sessionStore.entityKind === "team" && deps.sessionStore.selectedTeamId) {
       await sendTeamMessage(content);
     }
   }
 
   function dropPendingUserRow(sessionId: string, pendingUserId: string) {
-    deps.chatStore.setMessages(
+    deps.messageStore.setMessages(
       sessionId,
-      deps.chatStore.getMessages(sessionId).filter((m) => m.id !== pendingUserId)
+      deps.messageStore.getMessages(sessionId).filter((m) => m.id !== pendingUserId)
     );
   }
 
@@ -163,7 +168,6 @@ export function useChatSender(deps: SenderDeps) {
     }
   }
 
-  /** Send user text (or A2UI userAction JSONL) on the active agent session via WS. */
   async function sendAgentUserContent(content: string) {
     const text = content.trim();
     if (!text) return;
@@ -172,28 +176,28 @@ export function useChatSender(deps: SenderDeps) {
       markSending();
     }
     try {
-      if (!deps.chatStore.selectedSession) await deps.onNewSession(deps.makeSessionTitle(text));
-      if (!deps.chatStore.selectedSession) {
+      if (!deps.sessionStore.selectedSession) await deps.onNewSession(deps.makeSessionTitle(text));
+      if (!deps.sessionStore.selectedSession) {
         $q.notify({ type: "negative", message: "未创建会话或会话无效，请重试" });
         if (!followUp) markSendingDone();
         return;
       }
-      const sessionId = deps.chatStore.selectedSession.id;
+      const sessionId = deps.sessionStore.selectedSession.id;
       if (!followUp) {
         markSending(sessionId);
       }
       const selectedModel = deps.selectedProviderModel.value;
 
       const pendingUserId = `pending-user-${crypto.randomUUID()}`;
-      deps.chatStore.setMessages(sessionId, [
-        ...deps.chatStore.getMessages(sessionId),
+      deps.messageStore.setMessages(sessionId, [
+        ...deps.messageStore.getMessages(sessionId),
         createPlaceholderMessage(pendingUserId, sessionId, "user", text),
       ]);
 
       if (!(await checkBackendAvailability())) {
-        deps.chatStore.setMessages(
+        deps.messageStore.setMessages(
           sessionId,
-          deps.chatStore.getMessages(sessionId).filter((m) => !String(m.id).startsWith("pending-user-"))
+          deps.messageStore.getMessages(sessionId).filter((m) => !String(m.id).startsWith("pending-user-"))
         );
         if (!followUp) markSendingDone();
         return;
@@ -218,12 +222,12 @@ export function useChatSender(deps: SenderDeps) {
             dialog_mode: deps.dialogMode.value,
             provider:
               selectedModel?.provider ||
-              deps.chatStore.selectedSession.provider ||
+              deps.sessionStore.selectedSession.provider ||
               deps.appStore.selectedAgent?.provider ||
               "",
             model:
               selectedModel?.model ||
-              deps.chatStore.selectedSession.model ||
+              deps.sessionStore.selectedSession.model ||
               deps.appStore.selectedAgent?.model ||
               "",
             attachments: deps.attachments.value.map((item) => ({ id: item.id })),
@@ -237,16 +241,16 @@ export function useChatSender(deps: SenderDeps) {
           type: "negative",
           message: error instanceof Error ? error.message : "发送失败，请稍后重试",
         });
-        const sid = deps.chatStore.selectedSession?.id;
+        const sid = deps.sessionStore.selectedSession?.id;
         if (sid) {
-          deps.chatStore.setMessages(
+          deps.messageStore.setMessages(
             sid,
-            deps.chatStore.getMessages(sid).filter((m) => !String(m.id).startsWith("pending-user-"))
+            deps.messageStore.getMessages(sid).filter((m) => !String(m.id).startsWith("pending-user-"))
           );
           try {
-            await deps.chatStore.loadMessages({ sessionId: sid });
+            await deps.messageStore.loadMessages({ sessionId: sid });
             const agentId = deps.appStore.selectedAgent?.id;
-            if (agentId) await deps.chatStore.loadAgentSessions(agentId, { refreshOnly: true });
+            if (agentId) await deps.sessionStore.loadAgentSessions(agentId, { refreshOnly: true });
           } catch {
             /* ignore reload failure */
           }
@@ -270,8 +274,8 @@ export function useChatSender(deps: SenderDeps) {
     }
     let sessionIdForCatch = "";
     try {
-      if (!deps.chatStore.teamSelectedSessionId) await deps.onNewSession(deps.makeSessionTitle(content));
-      const sessionId = deps.chatStore.teamSelectedSessionId;
+      if (!deps.sessionStore.teamSelectedSessionId) await deps.onNewSession(deps.makeSessionTitle(content));
+      const sessionId = deps.sessionStore.teamSelectedSessionId;
       if (!sessionId) {
         $q.notify({ type: "negative", message: "未创建会话或会话无效，请重试" });
         if (!followUp) markSendingDone();
@@ -281,21 +285,21 @@ export function useChatSender(deps: SenderDeps) {
       if (!followUp) {
         markSending(sessionId);
       }
-      const teamId = deps.chatStore.selectedTeamId!;
-      const session = deps.chatStore.teamSessions[teamId]?.find((item) => item.id === sessionId);
+      const teamId = deps.sessionStore.selectedTeamId!;
+      const session = deps.sessionStore.teamSessions[teamId]?.find((item) => item.id === sessionId);
       const selectedModel = deps.selectedProviderModel.value;
       deps.inputText.value = "";
 
       const pendingUserId = `pending-user-${crypto.randomUUID()}`;
-      deps.chatStore.setMessages(sessionId, [
-        ...deps.chatStore.getMessages(sessionId),
+      deps.messageStore.setMessages(sessionId, [
+        ...deps.messageStore.getMessages(sessionId),
         createPlaceholderMessage(pendingUserId, sessionId, "user", content),
       ]);
 
       if (!(await checkBackendAvailability())) {
-        deps.chatStore.setMessages(
+        deps.messageStore.setMessages(
           sessionId,
-          deps.chatStore.getMessages(sessionId).filter((item) => !String(item.id).startsWith("pending-user-"))
+          deps.messageStore.getMessages(sessionId).filter((item) => !String(item.id).startsWith("pending-user-"))
         );
         if (!followUp) markSendingDone();
         return;
@@ -314,7 +318,7 @@ export function useChatSender(deps: SenderDeps) {
         request_id: pendingUserId,
         payload: {
           session_id: sessionId,
-          team_id: deps.chatStore.selectedTeamId,
+          team_id: deps.sessionStore.selectedTeamId,
           content,
           options: {
             dialog_mode: deps.dialogMode.value,
@@ -330,12 +334,12 @@ export function useChatSender(deps: SenderDeps) {
         $q.notify({ type: "negative", message: error instanceof Error ? error.message : "Team 发送失败" });
       }
       if (sessionIdForCatch) {
-        deps.chatStore.setMessages(
+        deps.messageStore.setMessages(
           sessionIdForCatch,
-          deps.chatStore.getMessages(sessionIdForCatch).filter((item) => !String(item.id).startsWith("pending-user-"))
+          deps.messageStore.getMessages(sessionIdForCatch).filter((item) => !String(item.id).startsWith("pending-user-"))
         );
         try {
-          await deps.chatStore.loadMessages({ sessionId: sessionIdForCatch });
+          await deps.messageStore.loadMessages({ sessionId: sessionIdForCatch });
         } catch {
           /* ignore */
         }

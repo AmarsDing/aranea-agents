@@ -20,7 +20,7 @@ type TurnGateway interface {
 	CancelRun(ctx context.Context, sessionID string) bool
 
 	// SetRunStatus atomically updates the run status and publishes a WS envelope.
-	SetRunStatus(sessionID, runID, status, errMsg string)
+	SetRunStatus(ctx context.Context, sessionID, runID, status, errMsg string)
 
 	// LastPendingMessageID returns the most recently enqueued pending message ID.
 	LastPendingMessageID(sessionID string) string

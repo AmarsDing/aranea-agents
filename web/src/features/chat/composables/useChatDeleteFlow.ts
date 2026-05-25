@@ -1,4 +1,4 @@
-import { computed, ref, type ComputedRef } from "vue";
+import { computed, ref, type ComputedRef, type Ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useQuasar } from "quasar";
 import { useTeamsStore } from "../../../stores/teams";
@@ -6,18 +6,21 @@ import type { DeleteKind, SessionView, TeamRow } from "../../../components/chat/
 import type { Agent } from "../../agents/types";
 import { isAgentWorking, LS_AG_ORDER, LS_TM_ORDER } from "./chatWorkspaceUtils";
 import type { useAppStore } from "../../../stores/app";
-import type { useChatStore } from "../../../stores/chat";
+import type { useChatSessionStore } from "../../../stores/chat/sessionStore";
+import type { useChatMessageStore } from "../../../stores/chat/messageStore";
 
 type AppStore = ReturnType<typeof useAppStore>;
-type ChatStore = ReturnType<typeof useChatStore>;
+type SessionStore = ReturnType<typeof useChatSessionStore>;
+type MessageStore = ReturnType<typeof useChatMessageStore>;
 
 export type DeleteFlowDeps = {
   appStore: AppStore;
-  chatStore: ChatStore;
-  displayAgents: ReturnType<typeof ref<Agent[]>>;
-  displayTeams: ReturnType<typeof ref<TeamRow[]>>;
+  sessionStore: SessionStore;
+  messageStore: MessageStore;
+  displayAgents: Ref<Agent[]>;
+  displayTeams: Ref<TeamRow[]>;
   displaySessions: ComputedRef<SessionView[]>;
-  defaultAgentId: ReturnType<typeof ref<string | null>>;
+  defaultAgentId: Ref<string | null>;
   selectTeam: (team: TeamRow) => Promise<void>;
 };
 
@@ -95,24 +98,24 @@ export function useChatDeleteFlow(deps: DeleteFlowDeps) {
   }
 
   async function deleteSession(id: string) {
-    if (deps.chatStore.entityKind === "team" && deps.chatStore.selectedTeamId) {
-      await deps.chatStore.removeTeamSessionLocal(deps.chatStore.selectedTeamId, id);
+    if (deps.sessionStore.entityKind === "team" && deps.sessionStore.selectedTeamId) {
+      await deps.sessionStore.removeTeamSessionLocal(deps.sessionStore.selectedTeamId, id);
       return;
     }
-    await deps.chatStore.removeSessionLocal(id);
-    if (deps.chatStore.selectedSession) {
-      await deps.chatStore.loadMessages({ sessionId: deps.chatStore.selectedSession.id });
+    await deps.sessionStore.removeSessionLocal(id);
+    if (deps.sessionStore.selectedSession) {
+      await deps.messageStore.loadMessages({ sessionId: deps.sessionStore.selectedSession.id });
     }
   }
 
   async function clearSessions() {
-    if (deps.chatStore.entityKind === "agent") {
+    if (deps.sessionStore.entityKind === "agent") {
       const agentId = deps.appStore.selectedAgent?.id;
-      if (agentId) await deps.chatStore.clearAllAgentSessions(agentId);
+      if (agentId) await deps.sessionStore.clearAllAgentSessions(agentId);
       return;
     }
-    if (deps.chatStore.entityKind === "team" && deps.chatStore.selectedTeamId) {
-      deps.chatStore.clearTeamSessions(deps.chatStore.selectedTeamId);
+    if (deps.sessionStore.entityKind === "team" && deps.sessionStore.selectedTeamId) {
+      deps.sessionStore.clearTeamSessions(deps.sessionStore.selectedTeamId);
     }
   }
 
@@ -127,13 +130,13 @@ export function useChatDeleteFlow(deps: DeleteFlowDeps) {
         await deps.appStore.removeAgentFromList(id);
         deps.displayAgents.value = deps.displayAgents.value.filter((agent) => agent.id !== id);
         deps.defaultAgentId.value = deps.appStore.agents[0]?.id ?? null;
-        if (deps.chatStore.entityKind === "agent") {
+        if (deps.sessionStore.entityKind === "agent") {
           if (deps.appStore.selectedAgent) {
-            await deps.chatStore.loadAgentSessions(deps.appStore.selectedAgent.id);
-            deps.chatStore.selectedSession = deps.chatStore.sessions[0] ?? null;
-            if (deps.chatStore.selectedSession) {
-              deps.chatStore.clearSessionMessages(deps.chatStore.selectedSession.id);
-              await deps.chatStore.loadMessages({ sessionId: deps.chatStore.selectedSession.id });
+            await deps.sessionStore.loadAgentSessions(deps.appStore.selectedAgent.id);
+            deps.sessionStore.selectedSession = deps.sessionStore.sessions[0] ?? null;
+            if (deps.sessionStore.selectedSession) {
+              deps.messageStore.clearSessionMessages(deps.sessionStore.selectedSession.id);
+              await deps.messageStore.loadMessages({ sessionId: deps.sessionStore.selectedSession.id });
             }
           } else if (deps.displayTeams.value[0]) {
             await deps.selectTeam(deps.displayTeams.value[0]);
@@ -147,7 +150,7 @@ export function useChatDeleteFlow(deps: DeleteFlowDeps) {
       await teamsStore.remove(id);
       localStorage.removeItem(LS_TM_ORDER);
       deps.displayTeams.value = deps.displayTeams.value.filter((team) => team.id !== id);
-      if (deps.chatStore.selectedTeamId === id) deps.chatStore.selectedTeamId = null;
+      if (deps.sessionStore.selectedTeamId === id) deps.sessionStore.selectedTeamId = null;
     } else if (deleteKind.value === "session" && id) {
       await deleteSession(id);
     } else if (deleteKind.value === "all") {

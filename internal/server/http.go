@@ -23,6 +23,7 @@ import (
 	hookv1 "aranea-agents/api/kratos/hook/v1"
 	knowledgev1 "aranea-agents/api/kratos/knowledge/v1"
 	llmprovidermodelv1 "aranea-agents/api/kratos/llm_provider_model/v1"
+	modelcatalogv1 "aranea-agents/api/kratos/model_catalog/v1"
 	mcpserverv1 "aranea-agents/api/kratos/mcp_server/v1"
 	memoryv1 "aranea-agents/api/kratos/memory/v1"
 	monitorv1 "aranea-agents/api/kratos/monitor/v1"
@@ -95,6 +96,7 @@ func registerProtoServices(srv *kratoshttp.Server, s *ServiceRegistry) {
 	monitorv1.RegisterMonitorServiceHTTPServer(srv, s.Monitor)
 	memoryv1.RegisterMemoryServiceHTTPServer(srv, s.Memory)
 	systemsettingv1.RegisterSystemSettingServiceHTTPServer(srv, s.SystemSetting)
+	modelcatalogv1.RegisterModelCatalogServiceHTTPServer(srv, s.ModelCatalog)
 	teamv1.RegisterTeamServiceHTTPServer(srv, s.Teams)
 	chatv1.RegisterChatServiceHTTPServer(srv, s.Chat)
 	graphv1.RegisterGraphServiceHTTPServer(srv, s.Graph)

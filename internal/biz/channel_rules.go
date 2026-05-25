@@ -10,7 +10,7 @@ import (
 	"github.com/go-kratos/kratos/v2/errors"
 )
 
-type channelConfigEnvelope struct {
+type ChannelConfig struct {
 	Type        string         `json:"type"`
 	Variant     string         `json:"variant"`
 	ReceiveMode string         `json:"receive_mode"`
@@ -67,11 +67,11 @@ func compactJSON(raw string, fallback string) string {
 	return string(out)
 }
 
-func parseChannelConfig(raw string) (channelConfigEnvelope, error) {
+func parseChannelConfig(raw string) (ChannelConfig, error) {
 	raw = defaultJSON(raw)
-	var cfg channelConfigEnvelope
+	var cfg ChannelConfig
 	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
-		return channelConfigEnvelope{}, channelValidationError("config_json must be valid JSON")
+		return ChannelConfig{}, channelValidationError("config_json must be valid JSON")
 	}
 	cfg.Type = strings.TrimSpace(cfg.Type)
 	cfg.ReceiveMode = strings.TrimSpace(cfg.ReceiveMode)
@@ -166,7 +166,7 @@ func credentialCount(credentials []ChannelCredential) int {
 	return count
 }
 
-func evaluateChannelTest(row Channel, cfg channelConfigEnvelope, credentials []ChannelCredential) ChannelTestResult {
+func evaluateChannelTest(row Channel, cfg ChannelConfig, credentials []ChannelCredential) ChannelTestResult {
 	if !row.Enabled {
 		return ChannelTestResult{OK: false, Status: "disabled", Message: "channel is saved but currently disabled"}
 	}

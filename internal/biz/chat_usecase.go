@@ -74,11 +74,11 @@ type ChatEventPublisher interface {
 }
 
 type ChatUsecase struct {
-	runs      ChatRunGateway
-	locker    ChatSessionLocker
-	pending   ChatPendingQueue
-	persist   ChatRunStatusPersister
-	publisher ChatEventPublisher
+	runs       ChatRunGateway
+	locker     ChatSessionLocker
+	pending    ChatPendingQueue
+	persist    ChatRunStatusPersister
+	publisher  ChatEventPublisher
 	awaitChans sync.Map
 }
 
@@ -110,10 +110,10 @@ func (uc *ChatUsecase) CancelRun(sessionID string) (bool, string) {
 	return uc.runs.Cancel(sessionID)
 }
 
-func (uc *ChatUsecase) SetRunStatus(sessionID, runID, status, errMsg string) {
+func (uc *ChatUsecase) SetRunStatus(ctx context.Context, sessionID, runID, status, errMsg string) {
 	uc.runs.SetStatus(sessionID, runID, status, errMsg)
 	uc.publisher.PublishRunStatus(sessionID, runID, status, errMsg)
-	uc.persist.PersistRunStatus(context.Background(), sessionID, runID, status, errMsg)
+	uc.persist.PersistRunStatus(ctx, sessionID, runID, status, errMsg)
 }
 
 func (uc *ChatUsecase) GetRunStatus(sessionID string) (ChatRunStatus, bool) {

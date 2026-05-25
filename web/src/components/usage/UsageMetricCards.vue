@@ -13,6 +13,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { ModelUsageOverview } from "../../features/usage/types";
+import { formatUsdFromMicro } from "../../features/usage/moneyFormat";
 
 const props = defineProps<{
   overview: ModelUsageOverview | null;
@@ -77,7 +78,7 @@ function formatCount(value?: number) {
 }
 
 function formatMoney(value?: number) {
-  return `$${((value ?? 0) / 1_000_000).toFixed(4)}`;
+  return formatUsdFromMicro(value);
 }
 
 function formatLatency(value?: number) {

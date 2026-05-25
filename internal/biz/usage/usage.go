@@ -5,6 +5,7 @@ import (
 	"context"
 	stderrors "errors"
 	"fmt"
+	"math"
 	"strings"
 	"sync"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/go-kratos/kratos/v2/errors"
 
 	"aranea-agents/internal/biz/shared"
+	"aranea-agents/internal/modelcatalog"
 	"aranea-agents/pkg/safego"
 )
 
@@ -109,6 +111,7 @@ type TokenUsageEvent struct {
 	MessageID                     string
 	RequestID                     string
 	ProviderCode                  string
+	CanonicalProviderCode         string
 	ProviderType                  string
 	ProviderDisplayName           string
 	ModelAPIID                    string
@@ -119,17 +122,26 @@ type TokenUsageEvent struct {
 	InputTokens                   int
 	OutputTokens                  int
 	CachedInputTokens             int
+	CacheWriteTokens              int
 	ReasoningTokens               int
 	EmbeddingTokens               int
 	TotalTokens                   int
 	InputPriceMicroUSDPer1K       int64
 	OutputPriceMicroUSDPer1K      int64
 	CachedInputPriceMicroUSDPer1K int64
+	CacheWritePriceMicroUSDPer1K  int64
 	ReasoningPriceMicroUSDPer1K   int64
 	EmbeddingPriceMicroUSDPer1K   int64
+	InputPriceUSDPer1M             float64
+	OutputPriceUSDPer1M            float64
+	CacheReadPriceUSDPer1M         float64
+	CacheWritePriceUSDPer1M        float64
+	ReasoningPriceUSDPer1M         float64
+	EmbeddingPriceUSDPer1M         float64
 	InputCostMicroUSD             int64
 	OutputCostMicroUSD            int64
 	CachedInputCostMicroUSD       int64
+	CacheWriteCostMicroUSD        int64
 	ReasoningCostMicroUSD         int64
 	EmbeddingCostMicroUSD         int64
 	TotalCostMicroUSD             int64
@@ -162,13 +174,20 @@ type Overview struct {
 	InefficientModels []ModelInsight
 }
 
-// ModelPricingSnapshot is the active per-1k price row for a provider/model pair.
+// ModelPricingSnapshot is the active price row for a provider/model pair.
 type ModelPricingSnapshot struct {
 	InputPriceMicroUSDPer1K       int64
 	OutputPriceMicroUSDPer1K      int64
 	CachedInputPriceMicroUSDPer1K int64
+	CacheWritePriceMicroUSDPer1K  int64
 	ReasoningPriceMicroUSDPer1K   int64
 	EmbeddingPriceMicroUSDPer1K   int64
+	InputPriceUSDPer1M            float64
+	OutputPriceUSDPer1M           float64
+	CacheReadPriceUSDPer1M        float64
+	CacheWritePriceUSDPer1M       float64
+	ReasoningPriceUSDPer1M        float64
+	EmbeddingPriceUSDPer1M        float64
 }
 
 // Quota is a monthly spend cap for a scope.
@@ -500,16 +519,56 @@ func (u *Usecase) enrichPricing(ctx context.Context, e *TokenUsageEvent) {
 		ApplyTokenUsageCosts(e)
 		return
 	}
-	if e.InputPriceMicroUSDPer1K == 0 && e.OutputPriceMicroUSDPer1K == 0 {
+	if e.InputPriceUSDPer1M == 0 && e.OutputPriceUSDPer1M == 0 &&
+		e.InputPriceMicroUSDPer1K == 0 && e.OutputPriceMicroUSDPer1K == 0 {
 		if snap, ok, err := u.repo.GetActiveModelPricing(ctx, prov, mod); err == nil && ok {
-			e.InputPriceMicroUSDPer1K = snap.InputPriceMicroUSDPer1K
-			e.OutputPriceMicroUSDPer1K = snap.OutputPriceMicroUSDPer1K
-			e.CachedInputPriceMicroUSDPer1K = snap.CachedInputPriceMicroUSDPer1K
-			e.ReasoningPriceMicroUSDPer1K = snap.ReasoningPriceMicroUSDPer1K
-			e.EmbeddingPriceMicroUSDPer1K = snap.EmbeddingPriceMicroUSDPer1K
+			applyPricingUSDToEvent(e, snap)
 		}
 	}
 	ApplyTokenUsageCosts(e)
+}
+
+func applyPricingUSDToEvent(e *TokenUsageEvent, snap ModelPricingSnapshot) {
+	if e == nil {
+		return
+	}
+	e.InputPriceUSDPer1M = snap.InputPriceUSDPer1M
+	e.OutputPriceUSDPer1M = snap.OutputPriceUSDPer1M
+	e.CacheReadPriceUSDPer1M = snap.CacheReadPriceUSDPer1M
+	e.CacheWritePriceUSDPer1M = snap.CacheWritePriceUSDPer1M
+	e.ReasoningPriceUSDPer1M = snap.ReasoningPriceUSDPer1M
+	e.EmbeddingPriceUSDPer1M = snap.EmbeddingPriceUSDPer1M
+	// Micro columns remain for DB persistence; derived from USD/1M when available.
+	if snap.InputPriceUSDPer1M > 0 {
+		e.InputPriceMicroUSDPer1K = modelcatalog.USDPer1MToMicroPer1K(snap.InputPriceUSDPer1M)
+	} else if snap.InputPriceMicroUSDPer1K > 0 {
+		e.InputPriceMicroUSDPer1K = snap.InputPriceMicroUSDPer1K
+	}
+	if snap.OutputPriceUSDPer1M > 0 {
+		e.OutputPriceMicroUSDPer1K = modelcatalog.USDPer1MToMicroPer1K(snap.OutputPriceUSDPer1M)
+	} else if snap.OutputPriceMicroUSDPer1K > 0 {
+		e.OutputPriceMicroUSDPer1K = snap.OutputPriceMicroUSDPer1K
+	}
+	if snap.CacheReadPriceUSDPer1M > 0 {
+		e.CachedInputPriceMicroUSDPer1K = modelcatalog.USDPer1MToMicroPer1K(snap.CacheReadPriceUSDPer1M)
+	} else if snap.CachedInputPriceMicroUSDPer1K > 0 {
+		e.CachedInputPriceMicroUSDPer1K = snap.CachedInputPriceMicroUSDPer1K
+	}
+	if snap.CacheWritePriceUSDPer1M > 0 {
+		e.CacheWritePriceMicroUSDPer1K = modelcatalog.USDPer1MToMicroPer1K(snap.CacheWritePriceUSDPer1M)
+	} else if snap.CacheWritePriceMicroUSDPer1K > 0 {
+		e.CacheWritePriceMicroUSDPer1K = snap.CacheWritePriceMicroUSDPer1K
+	}
+	if snap.ReasoningPriceUSDPer1M > 0 {
+		e.ReasoningPriceMicroUSDPer1K = modelcatalog.USDPer1MToMicroPer1K(snap.ReasoningPriceUSDPer1M)
+	} else if snap.ReasoningPriceMicroUSDPer1K > 0 {
+		e.ReasoningPriceMicroUSDPer1K = snap.ReasoningPriceMicroUSDPer1K
+	}
+	if snap.EmbeddingPriceUSDPer1M > 0 {
+		e.EmbeddingPriceMicroUSDPer1K = modelcatalog.USDPer1MToMicroPer1K(snap.EmbeddingPriceUSDPer1M)
+	} else if snap.EmbeddingPriceMicroUSDPer1K > 0 {
+		e.EmbeddingPriceMicroUSDPer1K = snap.EmbeddingPriceMicroUSDPer1K
+	}
 }
 
 // ── Status normalization ──────────────────────────────────────────────────────
@@ -530,30 +589,46 @@ func NormalizeStatus(status string) string {
 	}
 }
 
-// ApplyTokenUsageCosts fills per-kind costs and total from token counts and per-1k prices.
+// ApplyTokenUsageCosts fills per-kind costs and total from token counts and USD/1M prices (micro fallback for legacy rows).
 func ApplyTokenUsageCosts(e *TokenUsageEvent) {
 	if e == nil {
 		return
 	}
-	if e.InputCostMicroUSD == 0 && e.InputTokens > 0 && e.InputPriceMicroUSDPer1K > 0 {
-		e.InputCostMicroUSD = int64(e.InputTokens) * e.InputPriceMicroUSDPer1K / 1000
+	if e.InputCostMicroUSD == 0 && e.InputTokens > 0 {
+		e.InputCostMicroUSD = usageCostMicro(e.InputTokens, e.InputPriceMicroUSDPer1K, e.InputPriceUSDPer1M)
 	}
-	if e.OutputCostMicroUSD == 0 && e.OutputTokens > 0 && e.OutputPriceMicroUSDPer1K > 0 {
-		e.OutputCostMicroUSD = int64(e.OutputTokens) * e.OutputPriceMicroUSDPer1K / 1000
+	if e.OutputCostMicroUSD == 0 && e.OutputTokens > 0 {
+		e.OutputCostMicroUSD = usageCostMicro(e.OutputTokens, e.OutputPriceMicroUSDPer1K, e.OutputPriceUSDPer1M)
 	}
-	if e.CachedInputCostMicroUSD == 0 && e.CachedInputTokens > 0 && e.CachedInputPriceMicroUSDPer1K > 0 {
-		e.CachedInputCostMicroUSD = int64(e.CachedInputTokens) * e.CachedInputPriceMicroUSDPer1K / 1000
+	if e.CachedInputCostMicroUSD == 0 && e.CachedInputTokens > 0 {
+		e.CachedInputCostMicroUSD = usageCostMicro(e.CachedInputTokens, e.CachedInputPriceMicroUSDPer1K, e.CacheReadPriceUSDPer1M)
 	}
-	if e.ReasoningCostMicroUSD == 0 && e.ReasoningTokens > 0 && e.ReasoningPriceMicroUSDPer1K > 0 {
-		e.ReasoningCostMicroUSD = int64(e.ReasoningTokens) * e.ReasoningPriceMicroUSDPer1K / 1000
+	if e.CacheWriteCostMicroUSD == 0 && e.CacheWriteTokens > 0 {
+		e.CacheWriteCostMicroUSD = usageCostMicro(e.CacheWriteTokens, e.CacheWritePriceMicroUSDPer1K, e.CacheWritePriceUSDPer1M)
 	}
-	if e.EmbeddingCostMicroUSD == 0 && e.EmbeddingTokens > 0 && e.EmbeddingPriceMicroUSDPer1K > 0 {
-		e.EmbeddingCostMicroUSD = int64(e.EmbeddingTokens) * e.EmbeddingPriceMicroUSDPer1K / 1000
+	if e.ReasoningCostMicroUSD == 0 && e.ReasoningTokens > 0 {
+		e.ReasoningCostMicroUSD = usageCostMicro(e.ReasoningTokens, e.ReasoningPriceMicroUSDPer1K, e.ReasoningPriceUSDPer1M)
+	}
+	if e.EmbeddingCostMicroUSD == 0 && e.EmbeddingTokens > 0 {
+		e.EmbeddingCostMicroUSD = usageCostMicro(e.EmbeddingTokens, e.EmbeddingPriceMicroUSDPer1K, e.EmbeddingPriceUSDPer1M)
 	}
 	if e.TotalCostMicroUSD == 0 {
 		e.TotalCostMicroUSD = e.InputCostMicroUSD + e.OutputCostMicroUSD +
-			e.CachedInputCostMicroUSD + e.ReasoningCostMicroUSD + e.EmbeddingCostMicroUSD
+			e.CachedInputCostMicroUSD + e.CacheWriteCostMicroUSD + e.ReasoningCostMicroUSD + e.EmbeddingCostMicroUSD
 	}
+}
+
+func usageCostMicro(tokens int, microPer1K int64, usdPer1M float64) int64 {
+	if tokens <= 0 {
+		return 0
+	}
+	if usdPer1M > 0 && !math.IsNaN(usdPer1M) {
+		return modelcatalog.CostMicroUSDFromUSDPer1M(tokens, usdPer1M)
+	}
+	if microPer1K > 0 {
+		return int64(tokens) * microPer1K / 1000
+	}
+	return 0
 }
 
 // ── Quota management ──────────────────────────────────────────────────────────

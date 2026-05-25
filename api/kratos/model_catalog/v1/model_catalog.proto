@@ -1,0 +1,243 @@
+syntax = "proto3";
+
+package kratos.model_catalog.v1;
+
+import "google/api/annotations.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "aranea-agents/api/kratos/model_catalog/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.kratos.model_catalog.v1";
+
+// ModelCatalogService manages the local models.dev catalog cache and sync policy.
+service ModelCatalogService {
+  rpc GetModelCatalogStatus(google.protobuf.Empty) returns (ModelCatalogStatus) {
+    option (google.api.http) = { get: "/v1/model-catalog/status" };
+  }
+  rpc GetModelCatalogPolicy(google.protobuf.Empty) returns (ModelCatalogPolicy) {
+    option (google.api.http) = { get: "/v1/model-catalog/policy" };
+  }
+  rpc UpdateModelCatalogPolicy(UpdateModelCatalogPolicyRequest) returns (ModelCatalogPolicy) {
+    option (google.api.http) = {
+      put: "/v1/model-catalog/policy"
+      body: "*"
+    };
+  }
+  rpc ListCatalogProviders(ListCatalogProvidersRequest) returns (ListCatalogProvidersResponse) {
+    option (google.api.http) = { get: "/v1/model-catalog/providers" };
+  }
+  rpc ListCatalogModels(ListCatalogModelsRequest) returns (ListCatalogModelsResponse) {
+    option (google.api.http) = { get: "/v1/model-catalog/providers/{provider_id}/models" };
+  }
+  rpc GetModelCatalogRaw(google.protobuf.Empty) returns (ModelCatalogRawResponse) {
+    option (google.api.http) = { get: "/v1/model-catalog/raw" };
+  }
+  rpc SearchCatalogRaw(SearchCatalogRawRequest) returns (SearchCatalogRawResponse) {
+    option (google.api.http) = { get: "/v1/model-catalog/raw/search" };
+  }
+  rpc ListModelCatalogSyncLogs(ListModelCatalogSyncLogsRequest) returns (ListModelCatalogSyncLogsResponse) {
+    option (google.api.http) = { get: "/v1/model-catalog/sync-logs" };
+  }
+  rpc SyncModelCatalog(SyncModelCatalogRequest) returns (SyncModelCatalogResponse) {
+    option (google.api.http) = {
+      post: "/v1/model-catalog/sync"
+      body: "*"
+    };
+  }
+  rpc PreviewMigration(google.protobuf.Empty) returns (PreviewMigrationResponse) {
+    option (google.api.http) = {
+      post: "/v1/model-catalog/preview-migration"
+      body: "*"
+    };
+  }
+  rpc GetCatalogProviderLogo(GetCatalogProviderLogoRequest) returns (GetCatalogProviderLogoResponse) {
+    option (google.api.http) = { get: "/v1/model-catalog/logos/{provider_id}" };
+  }
+  rpc ApplyProviderMigration(google.protobuf.Empty) returns (ApplyProviderMigrationResponse) {
+    option (google.api.http) = {
+      post: "/v1/model-catalog/apply-migration"
+      body: "*"
+    };
+  }
+  rpc GetProviderMigrationRules(google.protobuf.Empty) returns (ProviderMigrationRulesResponse) {
+    option (google.api.http) = { get: "/v1/model-catalog/provider-migration" };
+  }
+}
+
+message ModelCatalogPolicy {
+  string source_url = 1;
+  // off | scheduled
+  string sync_policy = 2;
+  int32 sync_interval_hours = 3;
+  // none | metadata_and_pricing | full_spec | full_spec_and_runtime_overlay
+  string auto_apply = 4;
+}
+
+message UpdateModelCatalogPolicyRequest {
+  string source_url = 1;
+  string sync_policy = 2;
+  int32 sync_interval_hours = 3;
+  string auto_apply = 4;
+}
+
+message ModelCatalogStatus {
+  ModelCatalogPolicy policy = 1;
+  google.protobuf.Timestamp last_sync_at = 2;
+  string last_sync_status = 3;
+  string last_sync_summary = 4;
+  string etag = 5;
+  int32 provider_count = 6;
+  int32 model_count = 7;
+  int64 catalog_bytes = 8;
+  bool catalog_loaded = 9;
+  string local_path = 10;
+}
+
+message CatalogProviderSummary {
+  string id = 1;
+  string name = 2;
+  string doc = 3;
+  string npm = 4;
+  string api = 5;
+  int32 model_count = 6;
+  string logo_url = 7;
+  bool logo_cached = 8;
+  repeated string env = 9;
+}
+
+message ListCatalogProvidersRequest {
+  string q = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message ListCatalogProvidersResponse {
+  repeated CatalogProviderSummary items = 1;
+  int32 total = 2;
+}
+
+message CatalogModelSummary {
+  string id = 1;
+  string name = 2;
+  string status = 3;
+  bool reasoning = 4;
+  bool tool_call = 5;
+  bool attachment = 6;
+  double input_usd_per_1m = 7;
+  double output_usd_per_1m = 8;
+  int64 context_tokens = 9;
+  int64 output_tokens = 10;
+  double cache_read_usd_per_1m = 11;
+  double cache_write_usd_per_1m = 12;
+  double reasoning_usd_per_1m = 13;
+  bool structured_output = 14;
+  bool open_weights = 15;
+  bool temperature = 16;
+  repeated string modality_input = 17;
+  repeated string modality_output = 18;
+}
+
+message ListCatalogModelsRequest {
+  string provider_id = 1;
+  string q = 2;
+  bool include_deprecated = 3;
+  int32 limit = 4;
+  int32 offset = 5;
+}
+
+message ListCatalogModelsResponse {
+  repeated CatalogModelSummary items = 1;
+  int32 total = 2;
+}
+
+message ModelCatalogRawResponse {
+  string json_pretty = 1;
+  int64 bytes = 2;
+}
+
+message SearchCatalogRawRequest {
+  string q = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message SearchCatalogRawResponse {
+  repeated string lines = 1;
+  int32 total = 2;
+  int32 offset = 3;
+}
+
+message ModelCatalogSyncLogEntry {
+  string id = 1;
+  google.protobuf.Timestamp started_at = 2;
+  google.protobuf.Timestamp finished_at = 3;
+  string status = 4;
+  string message = 5;
+  string details_json = 6;
+}
+
+message ListModelCatalogSyncLogsRequest {
+  int32 limit = 1;
+}
+
+message ListModelCatalogSyncLogsResponse {
+  repeated ModelCatalogSyncLogEntry items = 1;
+}
+
+message SyncModelCatalogRequest {
+  bool dry_run = 1;
+}
+
+message SyncModelCatalogResponse {
+  bool ok = 1;
+  string message = 2;
+  string log_id = 3;
+  ModelCatalogStatus status = 4;
+  repeated string apply_errors = 5;
+  bool apply_failed = 6;
+}
+
+message MigrationPreviewItem {
+  string legacy_provider = 1;
+  string catalog_provider = 2;
+  int32 llm_rows = 3;
+  int32 agents = 4;
+  int32 sessions = 5;
+  int32 eval_fields = 6;
+  int32 runtime_settings = 7;
+  int32 skills = 8;
+  int32 knowledge_embed = 9;
+  int32 web_research = 10;
+}
+
+message PreviewMigrationResponse {
+  repeated MigrationPreviewItem items = 1;
+}
+
+message GetCatalogProviderLogoRequest {
+  string provider_id = 1;
+}
+
+message GetCatalogProviderLogoResponse {
+  string svg = 1;
+  bool cached = 2;
+}
+
+message ProviderMigrationRule {
+  string legacy = 1;
+  string catalog = 2;
+}
+
+message ProviderMigrationRulesResponse {
+  repeated ProviderMigrationRule rules = 1;
+  string version = 2;
+  string last_applied_at = 3;
+}
+
+message ApplyProviderMigrationResponse {
+  bool ok = 1;
+  string message = 2;
+  MigrationPreviewItem totals = 3;
+  repeated string errors = 4;
+}

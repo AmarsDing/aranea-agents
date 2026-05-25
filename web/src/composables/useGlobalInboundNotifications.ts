@@ -14,7 +14,7 @@ import {
 } from "../features/chat/channelInboundSession";
 import { useInboundNotificationStore } from "../stores/inboundNotifications";
 import { useAppStore } from "../stores/app";
-import { useChatStore } from "../stores/chat";
+import { useChatSessionStore } from "../stores/chat/sessionStore";
 import { refreshAgentSessionsForChannel } from "../features/chat/channelInboundSessionRefresh";
 
 const TOAST_DEDUPE_MS = 4000;
@@ -40,7 +40,7 @@ function isTurnCompleteEnvelope(env: Envelope): boolean {
 export function useGlobalInboundNotifications() {
   const notifyStore = useInboundNotificationStore();
   const appStore = useAppStore();
-  const chatStore = useChatStore();
+  const sessionStore = useChatSessionStore();
   const router = useRouter();
   const $q = useQuasar();
   const { t } = useI18n();
@@ -48,17 +48,17 @@ export function useGlobalInboundNotifications() {
   const toastDedupeBySession = new Map<string, number>();
 
   async function resolveSession(sessionId: string): Promise<Session | null> {
-    return resolveInboundSession(sessionId, chatStore);
+    return resolveInboundSession(sessionId, sessionStore);
   }
 
   async function isChannelInbound(sessionId: string, source: string): Promise<boolean> {
-    return isChannelInboundSession(sessionId, source, chatStore);
+    return isChannelInboundSession(sessionId, source, sessionStore);
   }
 
   function isViewingSession(sessionId: string, agentId: string): boolean {
     const route = router.currentRoute.value;
     if (route.name !== "chat") return false;
-    const sid = chatStore.currentSessionId();
+    const sid = sessionStore.currentSessionId();
     if (sid !== sessionId) return false;
     const selectedAgent = appStore.selectedAgent?.id?.trim() ?? "";
     return selectedAgent === agentId.trim();
@@ -97,8 +97,8 @@ export function useGlobalInboundNotifications() {
     const agentId = sess?.agent_id?.trim() ?? "";
     if (!agentId) return;
 
-    void refreshAgentSessionsForChannel(chatStore, agentId, {
-      entityKind: chatStore.entityKind,
+    void refreshAgentSessionsForChannel(sessionStore, agentId, {
+      entityKind: sessionStore.entityKind,
       activeAgentId: appStore.selectedAgent?.id,
     });
 

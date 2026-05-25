@@ -6,7 +6,7 @@ import (
 	"github.com/google/wire"
 )
 
-type AgentExistenceCheckerFunc func(agentName string) bool
+type AgentExistenceCheckerFunc func(ctx context.Context, agentName string) bool
 
 var ProviderSet = wire.NewSet(
 	NewEventBusConsumer,
@@ -46,8 +46,8 @@ var ProviderSet = wire.NewSet(
 )
 
 func ProvideAgentRoleChecker(repo AgentRepository) AgentRoleChecker {
-	return func(agentKey string, role string) bool {
-		agent, err := repo.GetAgentByAgentKey(context.Background(), agentKey)
+	return func(ctx context.Context, agentKey string, role string) bool {
+		agent, err := repo.GetAgentByAgentKey(ctx, agentKey)
 		if err != nil {
 			return false
 		}
@@ -61,27 +61,22 @@ func ProvideAgentRoleChecker(repo AgentRepository) AgentRoleChecker {
 }
 
 func ProvideAgentListerByRole(repo AgentRepository) AgentListerByRole {
-	return func(role string) ([]string, error) {
-		result, err := repo.SearchAgents(context.Background(), AgentListQuery{Limit: 1000})
+	return func(ctx context.Context, role string) ([]string, error) {
+		result, err := repo.SearchAgents(ctx, AgentListQuery{Role: role, Limit: 100})
 		if err != nil {
 			return nil, err
 		}
-		var matched []string
+		matched := make([]string, 0, len(result.Items))
 		for _, a := range result.Items {
-			for _, r := range a.Roles {
-				if r == role {
-					matched = append(matched, a.AgentKey)
-					break
-				}
-			}
+			matched = append(matched, a.AgentKey)
 		}
 		return matched, nil
 	}
 }
 
 func ProvideAgentExistenceChecker(repo AgentRepository) AgentExistenceCheckerFunc {
-	return func(agentName string) bool {
-		_, err := repo.GetAgentByAgentKey(context.Background(), agentName)
+	return func(ctx context.Context, agentName string) bool {
+		_, err := repo.GetAgentByAgentKey(ctx, agentName)
 		return err == nil
 	}
 }

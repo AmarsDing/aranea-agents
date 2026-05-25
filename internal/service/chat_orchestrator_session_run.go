@@ -64,16 +64,19 @@ func (o *ChatOrchestrator) beginSessionRunLifecycle(
 		return "", stopBudget
 	}
 	ctx = event.WithSessionRunID(ctx, run.ID)
-	o.sessionRunBindings.Store(sessionID, sessionRunTurnBinding{
-		sessionRunID: run.ID,
-		turnID:       turnID,
-		agentID:      strings.TrimSpace(ag.ID),
-		userContent:  strings.TrimSpace(userContent),
-		dialogMode:   strings.TrimSpace(dialogMode),
-		provider:     strings.TrimSpace(provider),
-		model:        strings.TrimSpace(model),
-		runtimeRunID: strings.TrimSpace(runtimeRunID),
-		ltCfg:        ltCfg,
+	o.sessionRunBindings.Store(sessionID, timestampedEntry{
+		value: sessionRunTurnBinding{
+			sessionRunID: run.ID,
+			turnID:       turnID,
+			agentID:      strings.TrimSpace(ag.ID),
+			userContent:  strings.TrimSpace(userContent),
+			dialogMode:   strings.TrimSpace(dialogMode),
+			provider:     strings.TrimSpace(provider),
+			model:        strings.TrimSpace(model),
+			runtimeRunID: strings.TrimSpace(runtimeRunID),
+			ltCfg:        ltCfg,
+		},
+		createdAt: time.Now(),
 	})
 	if emitter != nil {
 		emitter.LogDone("run.start", "Session Run 已创建",
@@ -122,14 +125,16 @@ func (o *ChatOrchestrator) onSessionRunSoftBudget(ctx context.Context, run biz.S
 		case <-ctx.Done():
 			return
 		case <-timer.C:
-			cur, err := o.chTurn.SessionRuns.Get(context.Background(), runID)
+			escalateCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			cur, err := o.chTurn.SessionRuns.Get(escalateCtx, runID)
 			if err != nil || cur.ID == "" {
 				return
 			}
 			if cur.Phase != biz.SessionRunPhaseEscalating {
 				return
 			}
-			o.escalateSessionRunToDurable(context.Background(), sessionID, runID)
+			o.escalateSessionRunToDurable(escalateCtx, sessionID, runID)
 		}
 	})
 }
@@ -232,7 +237,11 @@ func errString(err error) string {
 
 func (o *ChatOrchestrator) sessionRunBinding(sessionID string) (sessionRunTurnBinding, bool) {
 	if v, ok := o.sessionRunBindings.Load(strings.TrimSpace(sessionID)); ok {
-		b, ok := v.(sessionRunTurnBinding)
+		te, ok := v.(timestampedEntry)
+		if !ok {
+			return sessionRunTurnBinding{}, false
+		}
+		b, ok := te.value.(sessionRunTurnBinding)
 		return b, ok
 	}
 	return sessionRunTurnBinding{}, false

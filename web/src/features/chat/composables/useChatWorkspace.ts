@@ -1,4 +1,4 @@
-import { computed, onMounted, onUnmounted, reactive, ref, shallowRef, watch } from "vue";
+import { computed, onMounted, onUnmounted, reactive, ref, shallowRef, toRef, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useQuasar } from "quasar";
 import { useRoute } from "vue-router";
@@ -6,7 +6,9 @@ import { enqueueMessage, submitMessageFeedback } from "../api";
 import type { SessionView, TeamRow } from "../../../components/chat/types";
 import type { Agent } from "../../agents/types";
 import { useAppStore } from "../../../stores/app";
-import { useChatStore } from "../../../stores/chat";
+import { useChatSessionStore } from "../../../stores/chat/sessionStore";
+import { useChatMessageStore } from "../../../stores/chat/messageStore";
+import { useChatRuntimeStore } from "../../../stores/chat/runtimeStore";
 import { cancelRunningToolMessages } from "../envelopeToolCall";
 import { runStatusFromEnvelope } from "../envelopeRunStatus";
 import type { Envelope } from "../envelope";
@@ -23,7 +25,7 @@ import {
 import { buildReactToolLinkIndex } from "../reactToolLinkIndex";
 import { messageListStructureFingerprint } from "../messageListFingerprint";
 import { clearChatMarkdownCache } from "../chatMessageMarkdown";
-import { formatSessionTime, getProviderModelValue } from "./chatWorkspaceUtils";
+import { formatSessionTime, getProviderModelValue, sessionToView } from "./chatWorkspaceUtils";
 import { useChatSidebarOrder } from "./useChatSidebarOrder";
 import { useChatAttachments } from "./useChatAttachments";
 import { useChatProviderOptions } from "./useChatProviderOptions";
@@ -34,13 +36,16 @@ import { useChatSettingsDialog } from "./useChatSettingsDialog";
 import { hydrateAgentSettings } from "../agentPlannerSettings";
 import { parseChannelSessionMeta } from "../channelSessionMeta";
 import { useKnowledgeStore } from "../../../stores/knowledge";
+import type { ComposerUsageSnapshot } from "../composerUsageMetrics";
 
 export function useChatWorkspace() {
   const { t } = useI18n();
   const $q = useQuasar();
   const route = useRoute();
   const appStore = useAppStore();
-  const chatStore = useChatStore();
+  const sessionStore = useChatSessionStore();
+  const messageStore = useChatMessageStore();
+  const runtimeStore = useChatRuntimeStore();
 
   const isDark = computed(() => $q.dark.isActive);
   const leftOpen = ref(true);
@@ -82,62 +87,44 @@ export function useChatWorkspace() {
   );
 
   const displaySessions = computed((): SessionView[] => {
-    if (chatStore.entityKind === "team" && chatStore.selectedTeamId) {
-      return (chatStore.teamSessions[chatStore.selectedTeamId] ?? []).map((session) => ({
-        id: session.id,
-        title: session.title || t("chat.untitledSession"),
-        context_used_ratio: session.context_used_ratio,
-        total_tokens: session.total_tokens,
-        at: session.at,
-        timeline_at: session.last_message_at || session.updated_at || session.created_at,
-        agent_id: session.agent_id,
-        status: session.status,
-        pinned_at: session.pinned_at,
-        metadata_json: session.metadata_json,
-      }));
+    if (sessionStore.entityKind === "team" && sessionStore.selectedTeamId) {
+      return (sessionStore.teamSessions[sessionStore.selectedTeamId] ?? []).map((session) =>
+        sessionToView(session, t)
+      );
     }
-    if (chatStore.entityKind === "agent" && appStore.selectedAgent) {
-      return chatStore.sessions.map((session) => ({
-        id: session.id,
-        title: session.title || t("chat.untitledSession"),
-        context_used_ratio: session.context_used_ratio,
-        total_tokens: session.total_tokens,
-        at: formatSessionTime(session.last_message_at || session.updated_at || session.created_at),
-        timeline_at: session.last_message_at || session.updated_at || session.created_at,
-        status: session.status,
-        pinned_at: session.pinned_at,
-        metadata_json: session.metadata_json,
-      }));
+    if (sessionStore.entityKind === "agent" && appStore.selectedAgent) {
+      return sessionStore.sessions.map((session) => sessionToView(session, t));
     }
     return [];
   });
 
   const selectedSessionForUi = computed((): SessionView | null => {
-    if (chatStore.entityKind === "team" && chatStore.teamSelectedSessionId) {
-      return displaySessions.value.find((session) => session.id === chatStore.teamSelectedSessionId) ?? null;
+    if (sessionStore.entityKind === "team" && sessionStore.teamSelectedSessionId) {
+      return displaySessions.value.find((session) => session.id === sessionStore.teamSelectedSessionId) ?? null;
     }
-    if (!chatStore.selectedSession) return null;
+    if (!sessionStore.selectedSession) return null;
     return (
-      displaySessions.value.find((session) => session.id === chatStore.selectedSession!.id) ?? {
-        id: chatStore.selectedSession.id,
-        title: chatStore.selectedSession.title || t("chat.untitledSession"),
-        context_used_ratio: chatStore.selectedSession.context_used_ratio,
-        total_tokens: chatStore.selectedSession.total_tokens,
-        at: formatSessionTime(
-          chatStore.selectedSession.last_message_at ||
-            chatStore.selectedSession.updated_at ||
-            chatStore.selectedSession.created_at
-        ),
-        timeline_at:
-          chatStore.selectedSession.last_message_at ||
-          chatStore.selectedSession.updated_at ||
-          chatStore.selectedSession.created_at,
-        pinned_at: chatStore.selectedSession.pinned_at,
-      }
+      displaySessions.value.find((session) => session.id === sessionStore.selectedSession!.id) ??
+      sessionToView(sessionStore.selectedSession, t)
     );
   });
 
-  const displayMessages = computed(() => chatStore.messages);
+  const composerUsageSnapshot = computed((): ComposerUsageSnapshot | null => {
+    const s = selectedSessionForUi.value;
+    if (!s) return null;
+    return {
+      contextRatio: s.context_used_ratio ?? 0,
+      contextStatus: s.context_status,
+      contextUsedTokens: s.context_used_tokens,
+      contextWindow: s.last_context_window_tokens,
+      inputTokens: s.input_tokens ?? 0,
+      outputTokens: s.output_tokens ?? 0,
+      totalTokens: s.total_tokens ?? 0,
+      totalCostMicroUsd: s.total_cost_micro_usd ?? 0,
+    };
+  });
+
+  const displayMessages = computed(() => messageStore.messages);
 
   const reactToolLinkIndex = shallowRef(buildReactToolLinkIndex([]));
   watch(
@@ -170,7 +157,9 @@ export function useChatWorkspace() {
   let applyRunStatusFromEnvelope!: (env: Envelope) => void;
 
   const streamManager = useChatStreamManager({
-    chatStore,
+    sessionStore,
+    messageStore,
+    runtimeStore,
     displayTeams,
     resolveAgentId: () => appStore.selectedAgent?.id,
     markSendingDone: () => sender.markSendingDone(),
@@ -191,7 +180,7 @@ export function useChatWorkspace() {
   }
 
   const awaitSubmit = createSubmitHandlers({
-    resolveSessionId: () => chatStore.currentSessionId() ?? undefined,
+    resolveSessionId: () => sessionStore.currentSessionId() ?? undefined,
     inputText,
     awaitingRunId,
     awaitKind,
@@ -200,7 +189,7 @@ export function useChatWorkspace() {
   });
 
   async function onMessageFeedback(payload: { messageId: string; rating: "positive" | "negative" }) {
-    const sid = chatStore.currentSessionId();
+    const sid = sessionStore.currentSessionId();
     if (!sid) return;
     try {
       await submitMessageFeedback({
@@ -228,7 +217,8 @@ export function useChatWorkspace() {
 
   const entityNav = useChatEntityNav({
     appStore,
-    chatStore,
+    sessionStore,
+    messageStore,
     streamManager,
     displayAgents,
     displayTeams,
@@ -240,7 +230,8 @@ export function useChatWorkspace() {
 
   useChatInboundSync({
     appStore,
-    chatStore,
+    sessionStore,
+    messageStore,
     selectedAgentId,
     selectedSessionId,
     wsReplaying: streamManager.wsReplaying,
@@ -251,8 +242,8 @@ export function useChatWorkspace() {
       }
       return !inputText.value.trim();
     },
-    focusChannelSession: (sessionId, agentId) =>
-      entityNav.focusAgentSessionView(sessionId, agentId),
+    focusChannelSession: (sessionId, agentId, options) =>
+      entityNav.focusAgentSessionView(sessionId, agentId, options),
     onTurnComplete: () => {
       jobsRefreshNonce.value += 1;
     },
@@ -263,8 +254,6 @@ export function useChatWorkspace() {
     },
     ensureChatStream: streamManager.ensureChatStream,
     ensureTeamStream: streamManager.ensureTeamStream,
-    patchAgentMessages: streamManager.patchAgentMessages,
-    patchTeamMessages: streamManager.patchTeamMessages,
     loadTeamSessions: (teamId: string) => entityNav.loadTeamSessions(teamId),
   });
 
@@ -272,7 +261,8 @@ export function useChatWorkspace() {
 
   const sender = useChatSender({
     appStore,
-    chatStore,
+    sessionStore,
+    messageStore,
     inputText,
     dialogMode,
     attachments,
@@ -307,7 +297,7 @@ export function useChatWorkspace() {
     if (rs?.status === "cancelled") {
       const sid = selectedSessionForUi.value?.id;
       if (sid) {
-        chatStore.setMessages(sid, cancelRunningToolMessages(chatStore.getMessages(sid)));
+        messageStore.setMessages(sid, cancelRunningToolMessages(messageStore.getMessages(sid)));
       }
     }
   };
@@ -321,7 +311,8 @@ export function useChatWorkspace() {
 
   const deleteFlow = useChatDeleteFlow({
     appStore,
-    chatStore,
+    sessionStore,
+    messageStore,
     displayAgents,
     displayTeams,
     displaySessions,
@@ -343,7 +334,7 @@ export function useChatWorkspace() {
     onSaveSettings: saveSettingsDialog,
   } = settingsDialog;
 
-  const traceAndArtifacts = useChatTraceDialog(chatStore.entityKind, displaySessions, streamManager);
+  const traceAndArtifacts = useChatTraceDialog(toRef(sessionStore, "entityKind"), displaySessions, streamManager);
   const {
     traceOpen,
     traceSessionId,
@@ -363,11 +354,11 @@ export function useChatWorkspace() {
   const sessionRevision = computed(() => {
     const sid = selectedSessionForUi.value?.id;
     if (!sid) return null;
-    return chatStore.sessionRevisionBySession[sid] ?? 0;
+    return messageStore.sessionRevisionBySession[sid] ?? 0;
   });
 
   async function submitA2UIUserAction(payload: A2UIUserActionPayload) {
-    if (chatStore.entityKind !== "agent") {
+    if (sessionStore.entityKind !== "agent") {
       $q.notify({ type: "warning", message: "A2UI 交互仅支持 Agent 会话" });
       return;
     }
@@ -432,14 +423,14 @@ export function useChatWorkspace() {
   let visibleRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 
   async function bindSessionView(sessionId: string, replace = true) {
-    if (chatStore.entityKind === "team") {
+    if (sessionStore.entityKind === "team") {
       streamManager.ensureTeamStream(sessionId);
     } else {
       streamManager.ensureChatStream(sessionId);
     }
     try {
       if (replace) clearChatMarkdownCache();
-      await chatStore.loadMessages(replace ? { sessionId, replace: true } : { sessionId });
+      await messageStore.loadMessages(replace ? { sessionId, replace: true } : { sessionId });
     } catch (err) {
       $q.notify({
         type: "negative",
@@ -471,7 +462,7 @@ export function useChatWorkspace() {
     const sid = selectedSessionForUi.value?.id;
     if (!sid) return;
     const meta = parseChannelSessionMeta(
-      selectedSessionForUi.value?.metadata_json ?? chatStore.selectedSession?.metadata_json
+      selectedSessionForUi.value?.metadata_json ?? sessionStore.selectedSession?.metadata_json
     );
     if (!meta) return;
     if (visibleRefreshTimer) clearTimeout(visibleRefreshTimer);
@@ -514,10 +505,10 @@ export function useChatWorkspace() {
       const hydrated = await hydrateAgentSettings(appStore.selectedAgent);
       appStore.selectedAgent = hydrated;
       appStore.upsertAgent(hydrated);
-      await chatStore.loadAgentSessions(hydrated.id);
-      chatStore.selectedSession = chatStore.sessions[0] ?? null;
-      if (chatStore.selectedSession) {
-        chatStore.clearSessionMessages(chatStore.selectedSession.id);
+      await sessionStore.loadAgentSessions(hydrated.id);
+      sessionStore.selectedSession = sessionStore.sessions[0] ?? null;
+      if (sessionStore.selectedSession) {
+        messageStore.clearSessionMessages(sessionStore.selectedSession.id);
       }
     } else if (appStore.agents[0]) {
       await entityNav.selectAgent(appStore.agents[0]);
@@ -551,8 +542,8 @@ export function useChatWorkspace() {
     }),
     entity: reactive({
       store: appStore,
-      selectedEntityKind: computed(() => chatStore.entityKind),
-      selectedTeamId: computed(() => chatStore.selectedTeamId),
+      selectedEntityKind: computed(() => sessionStore.entityKind),
+      selectedTeamId: computed(() => sessionStore.selectedTeamId),
       displayAgents,
       displayTeams,
       categoryTree: entityNav.categoryTree,
@@ -567,10 +558,11 @@ export function useChatWorkspace() {
     session: reactive({
       displaySessions,
       selectedSessionForUi,
+      composerUsageSnapshot,
       displayMessages,
       reactToolLinkIndex,
       sessionRevision,
-      wsConnected: computed(() => chatStore.wsConnected),
+      wsConnected: computed(() => runtimeStore.wsConnected),
       wsReplaying: streamManager.wsReplaying,
       jobsRefreshNonce,
       inboundHydrateError,

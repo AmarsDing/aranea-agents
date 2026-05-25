@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import { createAgent, deleteAgent, listAgents, updateAgent, type Agent } from "../features/agents/api";
-import { useChatStore } from "./chat";
+import { useChatSessionStore } from "./chat/sessionStore";
+import { useChatMessageStore } from "./chat/messageStore";
 
 export const useAppStore = defineStore("app", {
   state: () => ({
@@ -14,9 +15,10 @@ export const useAppStore = defineStore("app", {
       this.agents = this.agents.filter((a) => a.id !== id);
       if (this.selectedAgent?.id === id) {
         this.selectedAgent = this.agents[0] ?? null;
-        const chat = useChatStore();
-        chat.resetForAgentSwitch();
-        chat.clearTeamMessageCache();
+        const session = useChatSessionStore();
+        const message = useChatMessageStore();
+        session.resetForAgentSwitch();
+        message.clearAllMessages();
       }
     },
     async updateSelectedAgent(payload: Partial<Agent>) {

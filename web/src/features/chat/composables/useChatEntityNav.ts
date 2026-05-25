@@ -1,4 +1,4 @@
-import { nextTick, ref } from "vue";
+import { nextTick, ref, type Ref, type ComputedRef } from "vue";
 import { useQuasar } from "quasar";
 import { useRouter } from "vue-router";
 import { useSessionStore } from "../../../stores/session";
@@ -11,21 +11,24 @@ import type { Session } from "../../session/types";
 import { hydrateAgentSettings } from "../agentPlannerSettings";
 import { applyStreamingSnapshotToSession } from "../../../stores/chatStreamingSnapshots";
 import type { useAppStore } from "../../../stores/app";
-import type { useChatStore } from "../../../stores/chat";
+import type { useChatSessionStore } from "../../../stores/chat/sessionStore";
+import type { useChatMessageStore } from "../../../stores/chat/messageStore";
 import type { useChatStreamManager } from "./useChatStreamManager";
 
 type AppStore = ReturnType<typeof useAppStore>;
-type ChatStore = ReturnType<typeof useChatStore>;
+type SessionStore = ReturnType<typeof useChatSessionStore>;
+type MessageStore = ReturnType<typeof useChatMessageStore>;
 type StreamManager = ReturnType<typeof useChatStreamManager>;
 
 export type EntityNavDeps = {
   appStore: AppStore;
-  chatStore: ChatStore;
+  sessionStore: SessionStore;
+  messageStore: MessageStore;
   streamManager: StreamManager;
-  displayAgents: ReturnType<typeof ref<Agent[]>>;
-  displayTeams: ReturnType<typeof ref<TeamRow[]>>;
-  dialogMode: ReturnType<typeof ref<string>>;
-  selectedProviderModel: ReturnType<typeof ref<{ provider?: string; model?: string } | undefined>>;
+  displayAgents: Ref<Agent[]>;
+  displayTeams: Ref<TeamRow[]>;
+  dialogMode: Ref<string>;
+  selectedProviderModel: Ref<{ provider?: string; model?: string } | undefined>;
   makeSessionTitle: (content: string) => string;
   t: (key: string, ...args: unknown[]) => string;
 };
@@ -40,7 +43,7 @@ export function useChatEntityNav(deps: EntityNavDeps) {
   }
 
   async function resolveSessionById(sessionId: string): Promise<Session | null> {
-    const hit = deps.chatStore.findSessionById(sessionId);
+    const hit = deps.sessionStore.findSessionById(sessionId);
     if (hit) return hit;
     try {
       const sessionStore = useSessionStore();
@@ -51,7 +54,7 @@ export function useChatEntityNav(deps: EntityNavDeps) {
   }
 
   async function loadTeamSessions(teamID: string) {
-    await deps.chatStore.loadTeamSessions(teamID);
+    await deps.sessionStore.loadTeamSessions(teamID);
   }
 
   async function loadTeams() {
@@ -80,37 +83,37 @@ export function useChatEntityNav(deps: EntityNavDeps) {
   }
 
   async function selectAgent(agent: Agent, options?: { sessionId?: string }) {
-    if (deps.chatStore.entityKind === "team") {
+    if (deps.sessionStore.entityKind === "team") {
       deps.streamManager.disconnectTeamStream();
-      deps.chatStore.clearTeamMessageCache();
+      deps.messageStore.clearAllMessages();
     }
-    deps.chatStore.resetForAgentSwitch();
+    deps.sessionStore.resetForAgentSwitch();
     const resolved = await hydrateAgentSettings(agent);
     deps.appStore.selectedAgent = resolved;
     deps.appStore.upsertAgent(resolved);
-    await deps.chatStore.loadAgentSessions(resolved.id);
+    await deps.sessionStore.loadAgentSessions(resolved.id);
     await nextTick();
     const preferredId = options?.sessionId?.trim();
     let picked =
       preferredId != null && preferredId !== ""
-        ? (deps.chatStore.sessions.find((item) => item.id === preferredId) ?? null)
-        : (deps.chatStore.sessions[0] ?? null);
+        ? (deps.sessionStore.sessions.find((item) => item.id === preferredId) ?? null)
+        : (deps.sessionStore.sessions[0] ?? null);
     if (preferredId && !picked) {
       const fetched = await resolveSessionById(preferredId);
       if (fetched && fetched.agent_id?.trim() === resolved.id) {
-        if (!deps.chatStore.sessions.some((item) => item.id === preferredId)) {
-          deps.chatStore.sessions = [fetched, ...deps.chatStore.sessions];
+        if (!deps.sessionStore.sessions.some((item) => item.id === preferredId)) {
+          deps.sessionStore.sessions = [fetched, ...deps.sessionStore.sessions];
         }
         picked = fetched;
       }
     }
-    deps.chatStore.selectedSession = picked ?? (deps.chatStore.sessions[0] ?? null);
-    if (deps.chatStore.selectedSession) {
-      const sid = deps.chatStore.selectedSession.id;
-      await deps.chatStore.loadMessages({ sessionId: sid });
+    deps.sessionStore.selectedSession = picked ?? (deps.sessionStore.sessions[0] ?? null);
+    if (deps.sessionStore.selectedSession) {
+      const sid = deps.sessionStore.selectedSession.id;
+      await deps.messageStore.loadMessages({ sessionId: sid });
       applyStreamingSnapshotToSession(
-        (s) => deps.chatStore.getMessages(s),
-        (s, rows) => deps.chatStore.setMessages(s, rows),
+        (s) => deps.messageStore.getMessages(s),
+        (s, rows) => deps.messageStore.setMessages(s, rows),
         sid
       );
       deps.streamManager.ensureChatStream(sid);
@@ -118,24 +121,28 @@ export function useChatEntityNav(deps: EntityNavDeps) {
   }
 
   async function selectTeam(team: TeamRow, options?: { sessionId?: string }) {
-    if (deps.chatStore.selectedTeamId && deps.chatStore.selectedTeamId !== team.id) {
+    if (deps.sessionStore.selectedTeamId && deps.sessionStore.selectedTeamId !== team.id) {
       deps.streamManager.disconnectTeamStream();
-      deps.chatStore.clearTeamMessageCache();
+      deps.messageStore.clearAllMessages();
     }
-    deps.chatStore.resetForTeamSwitch(team.id);
+    deps.sessionStore.resetForTeamSwitch(team.id);
     await loadTeamSessions(team.id);
     const preferredId = options?.sessionId?.trim();
-    const teamList = deps.chatStore.teamSessions[team.id] ?? [];
-    deps.chatStore.teamSelectedSessionId = preferredId
+    const teamList = deps.sessionStore.teamSessions[team.id] ?? [];
+    deps.sessionStore.teamSelectedSessionId = preferredId
       ? (teamList.find((item) => item.id === preferredId)?.id ?? preferredId)
       : (teamList[0]?.id ?? null);
-    if (deps.chatStore.teamSelectedSessionId) {
-      await deps.chatStore.loadMessages({ sessionId: deps.chatStore.teamSelectedSessionId, replace: true });
-      deps.streamManager.ensureTeamStream(deps.chatStore.teamSelectedSessionId);
+    if (deps.sessionStore.teamSelectedSessionId) {
+      await deps.messageStore.loadMessages({ sessionId: deps.sessionStore.teamSelectedSessionId, replace: true });
+      deps.streamManager.ensureTeamStream(deps.sessionStore.teamSelectedSessionId);
     }
   }
 
-  async function focusAgentSessionView(sessionId: string, agentId: string) {
+  async function focusAgentSessionView(
+    sessionId: string,
+    agentId: string,
+    options?: { skipMessageReload?: boolean }
+  ) {
     const route = router.currentRoute.value;
     const routeSession = typeof route.query.session === "string" ? route.query.session.trim() : "";
     const routeAgent = typeof route.query.agent === "string" ? route.query.agent.trim() : "";
@@ -143,19 +150,21 @@ export function useChatEntityNav(deps: EntityNavDeps) {
       route.name === "chat" &&
       routeSession === sessionId &&
       routeAgent === agentId &&
-      deps.chatStore.entityKind === "agent" &&
+      deps.sessionStore.entityKind === "agent" &&
       deps.appStore.selectedAgent?.id === agentId &&
-      deps.chatStore.selectedSession?.id === sessionId;
+      deps.sessionStore.selectedSession?.id === sessionId;
 
     if (alreadyFocused) {
-      const session = deps.chatStore.sessions.find((item) => item.id === sessionId);
-      if (session) deps.chatStore.selectedSession = session;
-      await deps.chatStore.loadMessages({ sessionId });
-      applyStreamingSnapshotToSession(
-        (sid) => deps.chatStore.getMessages(sid),
-        (sid, rows) => deps.chatStore.setMessages(sid, rows),
-        sessionId
-      );
+      const session = deps.sessionStore.sessions.find((item) => item.id === sessionId);
+      if (session) deps.sessionStore.selectedSession = session;
+      if (!options?.skipMessageReload) {
+        await deps.messageStore.loadMessages({ sessionId });
+        applyStreamingSnapshotToSession(
+          (sid) => deps.messageStore.getMessages(sid),
+          (sid, rows) => deps.messageStore.setMessages(sid, rows),
+          sessionId
+        );
+      }
       deps.streamManager.ensureChatStream(sessionId);
       return;
     }
@@ -186,20 +195,20 @@ export function useChatEntityNav(deps: EntityNavDeps) {
         $q.notify({ type: "warning", message: "找不到该会话所属的 Team" });
         return;
       }
-      if (deps.chatStore.entityKind !== "team" || deps.chatStore.selectedTeamId !== teamId) {
+      if (deps.sessionStore.entityKind !== "team" || deps.sessionStore.selectedTeamId !== teamId) {
         await selectTeam(team, { sessionId });
         deps.streamManager.ensureTeamStream(sessionId);
         return;
       }
-      deps.chatStore.teamSelectedSessionId = sessionId;
-      await deps.chatStore.loadMessages({ sessionId, replace: true });
+      deps.sessionStore.teamSelectedSessionId = sessionId;
+      await deps.messageStore.loadMessages({ sessionId, replace: true });
       deps.streamManager.ensureTeamStream(sessionId);
       return;
     }
 
     const agentId =
       resolved.agent_id?.trim() ||
-      (deps.chatStore.sessions.some((item) => item.id === sessionId)
+      (deps.sessionStore.sessions.some((item) => item.id === sessionId)
         ? deps.appStore.selectedAgent?.id?.trim()
         : "") ||
       "";
@@ -218,11 +227,11 @@ export function useChatEntityNav(deps: EntityNavDeps) {
     const title = payload.title.trim();
     if (!title) return;
     try {
-      if (deps.chatStore.entityKind === "team" && deps.chatStore.selectedTeamId) {
-        await deps.chatStore.renameTeamSessionLocal(deps.chatStore.selectedTeamId, payload.id, title);
+      if (deps.sessionStore.entityKind === "team" && deps.sessionStore.selectedTeamId) {
+        await deps.sessionStore.renameTeamSessionLocal(deps.sessionStore.selectedTeamId, payload.id, title);
         return;
       }
-      await deps.chatStore.renameSessionLocal(payload.id, title);
+      await deps.sessionStore.renameSessionLocal(payload.id, title);
     } catch {
       $q.notify({ type: "negative", message: "重命名失败，请重试" });
     }
@@ -230,15 +239,15 @@ export function useChatEntityNav(deps: EntityNavDeps) {
 
   async function onTogglePinSession(payload: { id: string; pinned: boolean }) {
     try {
-      if (deps.chatStore.entityKind === "team" && deps.chatStore.selectedTeamId) {
-        await deps.chatStore.setTeamSessionPinnedLocal(
-          deps.chatStore.selectedTeamId,
+      if (deps.sessionStore.entityKind === "team" && deps.sessionStore.selectedTeamId) {
+        await deps.sessionStore.setTeamSessionPinnedLocal(
+          deps.sessionStore.selectedTeamId,
           payload.id,
           payload.pinned
         );
         return;
       }
-      await deps.chatStore.setSessionPinnedLocal(payload.id, payload.pinned);
+      await deps.sessionStore.setSessionPinnedLocal(payload.id, payload.pinned);
     } catch {
       $q.notify({ type: "negative", message: payload.pinned ? "置顶失败，请重试" : "取消置顶失败，请重试" });
     }
@@ -248,10 +257,10 @@ export function useChatEntityNav(deps: EntityNavDeps) {
     try {
       const sessionStore = useSessionStore();
       await sessionStore.restore(sessionId);
-      if (deps.chatStore.entityKind === "team" && deps.chatStore.selectedTeamId) {
-        const teamId = deps.chatStore.selectedTeamId;
-        const sessions = deps.chatStore.teamSessions[teamId] ?? [];
-        deps.chatStore.teamSessions[teamId] = sessions.map((s) =>
+      if (deps.sessionStore.entityKind === "team" && deps.sessionStore.selectedTeamId) {
+        const teamId = deps.sessionStore.selectedTeamId;
+        const sessions = deps.sessionStore.teamSessions[teamId] ?? [];
+        deps.sessionStore.teamSessions[teamId] = sessions.map((s) =>
           s.id === sessionId ? { ...s, status: "active" } : s
         );
       }
@@ -264,10 +273,10 @@ export function useChatEntityNav(deps: EntityNavDeps) {
     try {
       const sessionStore = useSessionStore();
       await sessionStore.archive(sessionId);
-      if (deps.chatStore.entityKind === "team" && deps.chatStore.selectedTeamId) {
-        const teamId = deps.chatStore.selectedTeamId;
-        const sessions = deps.chatStore.teamSessions[teamId] ?? [];
-        deps.chatStore.teamSessions[teamId] = sessions.map((s) =>
+      if (deps.sessionStore.entityKind === "team" && deps.sessionStore.selectedTeamId) {
+        const teamId = deps.sessionStore.selectedTeamId;
+        const sessions = deps.sessionStore.teamSessions[teamId] ?? [];
+        deps.sessionStore.teamSessions[teamId] = sessions.map((s) =>
           s.id === sessionId ? { ...s, status: "archived" } : s
         );
       }
@@ -281,24 +290,24 @@ export function useChatEntityNav(deps: EntityNavDeps) {
   }
 
   async function onNewSession(title?: string) {
-    if (deps.chatStore.entityKind === "agent" && deps.appStore.selectedAgent) {
+    if (deps.sessionStore.entityKind === "agent" && deps.appStore.selectedAgent) {
       const selectedModel = deps.selectedProviderModel.value;
-      await deps.chatStore.addAgentSession(deps.appStore.selectedAgent.id, title || deps.t("chat.untitledSession"), {
+      await deps.sessionStore.addAgentSession(deps.appStore.selectedAgent.id, title || deps.t("chat.untitledSession"), {
         dialog_mode: deps.dialogMode.value,
         default_provider: selectedModel?.provider || deps.appStore.selectedAgent.provider,
         default_model: selectedModel?.model || deps.appStore.selectedAgent.model,
       });
-      if (deps.chatStore.selectedSession) {
-        await deps.chatStore.loadMessages({ sessionId: deps.chatStore.selectedSession.id });
-        deps.streamManager.ensureChatStream(deps.chatStore.selectedSession.id);
+      if (deps.sessionStore.selectedSession) {
+        await deps.messageStore.loadMessages({ sessionId: deps.sessionStore.selectedSession.id });
+        deps.streamManager.ensureChatStream(deps.sessionStore.selectedSession.id);
       }
       return;
     }
 
-    if (deps.chatStore.entityKind === "team" && deps.chatStore.selectedTeamId) {
+    if (deps.sessionStore.entityKind === "team" && deps.sessionStore.selectedTeamId) {
       const selectedModel = deps.selectedProviderModel.value;
-      const created = await deps.chatStore.addTeamSession(
-        deps.chatStore.selectedTeamId,
+      const created = await deps.sessionStore.addTeamSession(
+        deps.sessionStore.selectedTeamId,
         title || deps.t("chat.untitledSession"),
         {
           dialog_mode: deps.dialogMode.value,
@@ -359,7 +368,7 @@ export function useChatEntityNav(deps: EntityNavDeps) {
     openSettings,
     updateTeam: async (id: string, payload: object) => {
       const teamsStore = useTeamsStore();
-      return teamsStore.editTeam(id, payload) as Promise<import("../../../components/chat/types").TeamRow>;
+      return teamsStore.editTeam(id, payload) as unknown as Promise<import("../../../components/chat/types").TeamRow>;
     },
   };
 }

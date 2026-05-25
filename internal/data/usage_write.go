@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/modelcatalog"
 
 	stdsql "database/sql"
 )
@@ -21,22 +22,25 @@ func (r *usageRepo) RecordTokenUsageEvent(ctx context.Context, e biz.TokenUsageE
 	if e.StreamEnabled {
 		streamEnabled = 1
 	}
+	if strings.TrimSpace(e.CanonicalProviderCode) == "" {
+		e.CanonicalProviderCode = modelcatalog.MigrateProviderCode(e.ProviderCode)
+	}
 
 	_, err = c.ExecContext(ctx,
 		`INSERT INTO model_token_usage_events(
 		 id, occurred_at, date_key, hour_key, workspace_id, user_id, team_id, agent_id, agent_key, session_id, message_id, request_id,
-		 provider_code, provider_type, provider_display_name, model_api_id, model_display_name, model_category_json, usage_kind, call_count,
-		 input_tokens, output_tokens, cached_input_tokens, reasoning_tokens, embedding_tokens, total_tokens,
-		 input_price_micro_usd_per_1k, output_price_micro_usd_per_1k, cached_input_price_micro_usd_per_1k, reasoning_price_micro_usd_per_1k, embedding_price_micro_usd_per_1k,
-		 input_cost_micro_usd, output_cost_micro_usd, cached_input_cost_micro_usd, reasoning_cost_micro_usd, embedding_cost_micro_usd, total_cost_micro_usd,
+		 provider_code, canonical_provider_code, provider_type, provider_display_name, model_api_id, model_display_name, model_category_json, usage_kind, call_count,
+		 input_tokens, output_tokens, cached_input_tokens, cache_write_tokens, reasoning_tokens, embedding_tokens, total_tokens,
+		 input_price_micro_usd_per_1k, output_price_micro_usd_per_1k, cached_input_price_micro_usd_per_1k, cache_write_price_micro_usd_per_1k, reasoning_price_micro_usd_per_1k, embedding_price_micro_usd_per_1k,
+		 input_cost_micro_usd, output_cost_micro_usd, cached_input_cost_micro_usd, cache_write_cost_micro_usd, reasoning_cost_micro_usd, embedding_cost_micro_usd, total_cost_micro_usd,
 		 latency_ms, time_to_first_token_ms, tokens_per_second, status, error_code, error_message, retry_count,
 		 prompt_mode, max_output_tokens, context_window_k, stream_enabled, metadata_json, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		e.ID, e.OccurredAt, e.DateKey, e.HourKey, e.WorkspaceID, e.UserID, e.TeamID, e.AgentID, e.AgentKey, e.SessionID, e.MessageID, e.RequestID,
-		e.ProviderCode, e.ProviderType, e.ProviderDisplayName, e.ModelAPIID, e.ModelDisplayName, e.ModelCategoryJSON, e.UsageKind, e.CallCount,
-		e.InputTokens, e.OutputTokens, e.CachedInputTokens, e.ReasoningTokens, e.EmbeddingTokens, e.TotalTokens,
-		e.InputPriceMicroUSDPer1K, e.OutputPriceMicroUSDPer1K, e.CachedInputPriceMicroUSDPer1K, e.ReasoningPriceMicroUSDPer1K, e.EmbeddingPriceMicroUSDPer1K,
-		e.InputCostMicroUSD, e.OutputCostMicroUSD, e.CachedInputCostMicroUSD, e.ReasoningCostMicroUSD, e.EmbeddingCostMicroUSD, e.TotalCostMicroUSD,
+		e.ProviderCode, e.CanonicalProviderCode, e.ProviderType, e.ProviderDisplayName, e.ModelAPIID, e.ModelDisplayName, e.ModelCategoryJSON, e.UsageKind, e.CallCount,
+		e.InputTokens, e.OutputTokens, e.CachedInputTokens, e.CacheWriteTokens, e.ReasoningTokens, e.EmbeddingTokens, e.TotalTokens,
+		e.InputPriceMicroUSDPer1K, e.OutputPriceMicroUSDPer1K, e.CachedInputPriceMicroUSDPer1K, e.CacheWritePriceMicroUSDPer1K, e.ReasoningPriceMicroUSDPer1K, e.EmbeddingPriceMicroUSDPer1K,
+		e.InputCostMicroUSD, e.OutputCostMicroUSD, e.CachedInputCostMicroUSD, e.CacheWriteCostMicroUSD, e.ReasoningCostMicroUSD, e.EmbeddingCostMicroUSD, e.TotalCostMicroUSD,
 		e.LatencyMS, e.TimeToFirstTokenMS, e.TokensPerSecond, e.Status, e.ErrorCode, e.ErrorMessage, e.RetryCount,
 		e.PromptMode, e.MaxOutputTokens, e.ContextWindowK, streamEnabled, e.MetadataJSON, e.CreatedAt,
 	)

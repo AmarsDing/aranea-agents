@@ -25,6 +25,9 @@ function resolveRequestTimeoutMs(path: string, override?: number): number {
   if (p.startsWith("v1/chat/") || p.startsWith("v1/sessions")) {
     return KRATOS_API_LONG_TIMEOUT_MS;
   }
+  if (p.startsWith("v1/model-catalog/sync")) {
+    return KRATOS_API_LONG_TIMEOUT_MS;
+  }
   return KRATOS_API_DEFAULT_TIMEOUT_MS;
 }
 

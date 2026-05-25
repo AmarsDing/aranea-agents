@@ -102,8 +102,8 @@ type TaskRepo interface {
 	ListTaskEvents(ctx context.Context, executionID string, taskID string, eventType string, pageSize int) ([]*TaskEvent, error)
 }
 
-type AgentRoleChecker func(agentKey string, role string) bool
-type AgentListerByRole func(role string) ([]string, error)
+type AgentRoleChecker func(ctx context.Context, agentKey string, role string) bool
+type AgentListerByRole func(ctx context.Context, role string) ([]string, error)
 
 type TaskUsecase struct {
 	repo              TaskRepo
@@ -173,7 +173,7 @@ func (uc *TaskUsecase) CreateTask(ctx context.Context, nodeID string, executionI
 	}
 
 	if assignmentMode == "dynamic" && requiredRole != "" {
-		agents, err := uc.agentLister(requiredRole)
+		agents, err := uc.agentLister(ctx, requiredRole)
 		if err != nil || len(agents) == 0 {
 			task.Status = TaskStatusPendingAssignment
 		}
@@ -219,7 +219,7 @@ func (uc *TaskUsecase) ClaimTask(ctx context.Context, taskID string, agentKey st
 		return nil, kerrors.BadRequest("TASK", fmt.Sprintf("task %s cannot be claimed in status %s", taskID, task.Status))
 	}
 	if task.AssignmentMode == "dynamic" && task.RequiredRole != "" {
-		if uc.roleChecker != nil && !uc.roleChecker(agentKey, task.RequiredRole) {
+		if uc.roleChecker != nil && !uc.roleChecker(ctx, agentKey, task.RequiredRole) {
 			return nil, kerrors.Forbidden("TASK", fmt.Sprintf("agent %s does not have required role %s", agentKey, task.RequiredRole))
 		}
 	}

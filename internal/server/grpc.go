@@ -18,6 +18,7 @@ import (
 	hookv1 "aranea-agents/api/kratos/hook/v1"
 	knowledgev1 "aranea-agents/api/kratos/knowledge/v1"
 	llmprovidermodelv1 "aranea-agents/api/kratos/llm_provider_model/v1"
+	modelcatalogv1 "aranea-agents/api/kratos/model_catalog/v1"
 	mcpserverv1 "aranea-agents/api/kratos/mcp_server/v1"
 	memoryv1 "aranea-agents/api/kratos/memory/v1"
 	monitorv1 "aranea-agents/api/kratos/monitor/v1"
@@ -76,6 +77,7 @@ func NewGRPCServer(c *conf.Server, s *ServiceRegistry) *grpc.Server {
 	monitorv1.RegisterMonitorServiceServer(srv, s.Monitor)
 	memoryv1.RegisterMemoryServiceServer(srv, s.Memory)
 	systemsettingv1.RegisterSystemSettingServiceServer(srv, s.SystemSetting)
+	modelcatalogv1.RegisterModelCatalogServiceServer(srv, s.ModelCatalog)
 	teamv1.RegisterTeamServiceServer(srv, s.Teams)
 	chatv1.RegisterChatServiceServer(srv, s.Chat)
 	graphv1.RegisterGraphServiceServer(srv, s.Graph)

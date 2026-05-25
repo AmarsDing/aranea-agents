@@ -16,4 +16,11 @@ describe("channelWsCursor", () => {
     clearChannelWsCursor(sid);
     expect(getChannelWsCursor(sid)).toBeUndefined();
   });
+
+  it("hydrates cursor from sessionStorage when memory is cold (DECO-R-P3-02)", () => {
+    clearChannelWsCursor(sid);
+    sessionStorage.setItem("aranea:channel-ws-cursor:sess-1", "env-cold");
+    expect(getChannelWsCursor(sid)).toBe("env-cold");
+    clearChannelWsCursor(sid);
+  });
 });

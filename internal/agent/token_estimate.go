@@ -1,23 +1,10 @@
 package agent
 
 import (
-	"strings"
-	"unicode/utf8"
+	"aranea-agents/internal/llmcontext"
 )
 
 // RoughTokenEstimate approximates token count (~4 runes per token, display-only fallback).
 func RoughTokenEstimate(s string) int {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return 0
-	}
-	n := utf8.RuneCountInString(s)
-	if n < 1 {
-		return 0
-	}
-	est := n / 4
-	if est < 1 {
-		return 1
-	}
-	return est
+	return llmcontext.RoughTokenEstimate(s)
 }

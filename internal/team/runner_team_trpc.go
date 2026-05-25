@@ -15,6 +15,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/metrics"
 	rt "aranea-agents/internal/runtime"
+	sessctx "aranea-agents/internal/session"
 	"aranea-agents/internal/telemetry/turntrace"
 	knowledgetool "aranea-agents/internal/tools/knowledge"
 	"aranea-agents/internal/tools/serviceawaitreply"
@@ -393,6 +394,15 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	if teamEmitter != nil {
 		traceID = teamEmitter.TraceID()
 	}
+	contextWin := sessctx.ResolveContextWindowTokens(ctx, r.teamLLMCatalog(), sess, firstAg, prov0, mod0)
+	var streamPromptTok, streamCompletionTok int
+	var contextUsagePatched bool
+	defer func() {
+		if !contextUsagePatched && turnStatus != "ok" && streamPromptTok > 0 {
+			sessctx.PatchContextFromLLMUsage(ctx, r.td.Sessions, r.td.Compress, r.teamLLMCatalog(), sess.ID, sess, firstAg, prov0, mod0, streamPromptTok, streamCompletionTok)
+		}
+	}()
+
 	projectMeta := agent.ProjectMeta{
 		SessionID:        sess.ID,
 		RequestID:        run.ID,
@@ -403,10 +413,13 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		AgentID:          firstAg.ID,
 		AgentDisplayName: firstAg.DisplayName,
 		MemberAgentKeys:  memberKeySet,
+		ContextWindow:    contextWin,
 		Source:           event.EnvelopeSourceFromContext(ctx),
 	}
 	streamOpts := r.newStreamConsumeOptions()
 	result, streamErr := agent.ConsumeWithFirstByteGuard(runCtx, agent.DefaultFirstByteTimeout, events, r.td.Pipeline.Bus, projectMeta, streamOpts)
+	streamPromptTok = result.PromptTok
+	streamCompletionTok = result.CompletionTok
 	if streamErr != nil {
 		turnStatus = "error"
 		if teamEmitter != nil {
@@ -541,14 +554,8 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	_ = r.teams.UpdateTeamRun(ctx, run)
 
 	compressAg := firstAg
-	win := compressAg.ContextWindow
-	if win <= 0 {
-		win = 128000
-	}
-	_ = r.td.Sessions.UpdateSessionContextFromLLMUsage(ctx, sess.ID, promptTok, completionTok, win)
-	if r.td.Compress != nil {
-		r.td.Compress.AfterNativeTurn(ctx, sess.ID, compressAg)
-	}
+	sessctx.PatchContextFromLLMUsage(ctx, r.td.Sessions, r.td.Compress, r.teamLLMCatalog(), sess.ID, sess, compressAg, prov0, mod0, promptTok, completionTok)
+	contextUsagePatched = true
 
 	if teamEmitter != nil {
 		teamEmitter.LogDone("team.run.finish", "团队任务结束", event.P("status", run.Status))

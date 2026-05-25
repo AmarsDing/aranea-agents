@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -65,14 +66,14 @@ func (r *ValidationResult) AddWarning(code ValidationErrorCode, nodeID, field, m
 	})
 }
 
-type AgentExistenceChecker func(agentName string) bool
+type AgentExistenceChecker func(ctx context.Context, agentName string) bool
 
-func ValidateGraph(def *GraphBuildConfig, agentChecker AgentExistenceChecker, reg *Registry) *ValidationResult {
+func ValidateGraph(ctx context.Context, def *GraphBuildConfig, agentChecker AgentExistenceChecker, reg *Registry) *ValidationResult {
 	result := &ValidationResult{}
 
 	validateTopology(def, result)
 	validateNodeRefs(def, reg, result)
-	validateAgentRefs(def, agentChecker, result)
+	validateAgentRefs(ctx, def, agentChecker, result)
 	validateStateSchema(def, result)
 	validateLoopExits(def, result)
 	validateNodePolicies(def, result)
@@ -247,13 +248,13 @@ func validateNodeRefs(def *GraphBuildConfig, reg *Registry, result *ValidationRe
 	}
 }
 
-func validateAgentRefs(def *GraphBuildConfig, agentChecker AgentExistenceChecker, result *ValidationResult) {
+func validateAgentRefs(ctx context.Context, def *GraphBuildConfig, agentChecker AgentExistenceChecker, result *ValidationResult) {
 	if agentChecker == nil {
 		return
 	}
 	for _, n := range def.Nodes {
 		if n.Type == "agent" && n.AgentName != "" {
-			if !agentChecker(n.AgentName) {
+			if !agentChecker(ctx, n.AgentName) {
 				result.AddError(ValidationErrAgentNotFound, n.ID, "agent_name",
 					fmt.Sprintf("节点 %q 引用的 Agent %q 不存在", n.ID, n.AgentName))
 			}

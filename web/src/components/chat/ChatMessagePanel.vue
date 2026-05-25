@@ -157,6 +157,8 @@
       :mode-options="modeOptions"
       :provider-options="providerOptions"
       :context-ratio="contextRatio"
+      :context-status="contextStatus"
+      :usage-snapshot="usageSnapshot"
       :session-total-tokens="sessionTotalTokens"
       :knowledge-base-options="knowledgeBaseOptions"
       :selected-knowledge-bases="selectedKnowledgeBases"
@@ -207,6 +209,7 @@ import { useTurnBlockEnabled } from "../../features/chat/useTurnBlock";
 import { useChatMessageScroll, useChatCodeCopy } from "../../features/chat/composables/useChatMessageScroll";
 import type { A2UIUserActionPayload } from "../../features/chat/a2uiUserAction";
 import type { Message, ReactToolLinkIndex } from "../../features/chat/types";
+import type { ComposerUsageSnapshot } from "../../features/chat/composerUsageMetrics";
 import type { ChatAttachment } from "./types";
 
 type Option = { label: string; value: string; caption?: string };
@@ -221,6 +224,8 @@ const props = defineProps<{
   providerOptions: Option[];
   sessionTitle: string;
   contextRatio: number;
+  contextStatus?: string;
+  usageSnapshot?: ComposerUsageSnapshot | null;
   sessionTotalTokens?: number | null;
   knowledgeBaseOptions?: Option[];
   selectedKnowledgeBases?: string[];

@@ -79,7 +79,7 @@ func (h *ChannelIngress) executeInboundTurn(ctx context.Context, chRow biz.Chann
 		h.logTurnFlow(ctx, sessionID, step, "Channel Turn 执行失败", execErr,
 			event.P("channel_id", chRow.ID), event.P("job_id", jobID))
 		_ = h.deliverTurnErrorReply(ctx, chRow, ev, platform, execErr)
-		h.publishChannelTurnRunStatus(sessionID, jobID, "failed", formatChannelTurnErrorMessage(execErr))
+		h.publishChannelTurnRunStatus(ctx, sessionID, jobID, "failed", formatChannelTurnErrorMessage(execErr))
 	}()
 
 	if handled, perr := h.rejectIfContextPressure(ctx, chRow, ev, platform, sessionID, ltCfg); handled {

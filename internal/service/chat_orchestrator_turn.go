@@ -18,6 +18,7 @@ import (
 	arametrics "aranea-agents/internal/metrics"
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/internal/runtime/turn"
+	sessctx "aranea-agents/internal/session"
 	"aranea-agents/internal/team"
 	"aranea-agents/internal/telemetry/turntrace"
 	knowledgetool "aranea-agents/internal/tools/knowledge"
@@ -298,12 +299,12 @@ func (o *ChatOrchestrator) makeAwaitReplyFunc(runCtx context.Context, sessionID,
 				ToolCallID: req.ToolCallID,
 			}
 		}
-		o.setRunStatusWithAwait(sessionID, runID, "awaiting_user", "", &awaitMeta)
+		o.setRunStatusWithAwait(toolCtx, sessionID, runID, "awaiting_user", "", &awaitMeta)
 		o.persistAwaitMarkers(toolCtx, sessionID, runID, awaitMeta, true)
 		defer func() {
 			o.chatUC.DeleteAwaitChannel(sessionID)
 			o.clearAwaitMetaCache(sessionID)
-			o.setRunStatus(sessionID, runID, "running", "")
+			o.setRunStatus(toolCtx, sessionID, runID, "running", "")
 		}()
 		select {
 		case r := <-ch:
@@ -335,7 +336,7 @@ func (o *ChatOrchestrator) resumeAwaitAfterRestart(ctx context.Context, sessionI
 			Content:   reply,
 		})
 		if turnErr != nil && !IsTurnMessageQueued(turnErr) {
-			o.setRunStatus(sessionID, runID, "failed", turnErr.Error())
+			o.setRunStatus(bgCtx, sessionID, runID, "failed", turnErr.Error())
 			o.publishTurnFailure(sessionID, runID, "chat-service", turnErr, "")
 		}
 	})
@@ -519,6 +520,9 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		endTurnSpan(traceBridge, turnErr)
 		o.recordTurnUsage(ctx, emitter, sessionID, runID, ag.AgentKey, ag.ID, prov, mod, turnStatus,
 			resultPromptTok, resultCompletionTok, time.Since(turnStart), turnErrMsg)
+		if turnStatus != "ok" && resultPromptTok > 0 {
+			o.patchSessionContextUsage(ctx, sessionID, sess, ag, prov, mod, resultPromptTok, resultCompletionTok)
+		}
 	}()
 
 	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
@@ -596,7 +600,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	}
 	emitter.LogDone("chat.runner.create", "Runner 已创建")
 	o.runs.StoreRunner(sessionID, runID, runner)
-	o.setRunStatus(sessionID, runID, "running", "")
+	o.setRunStatus(ctx, sessionID, runID, "running", "")
 	emitter.LogStart("chat.turn.execute", "开始执行对话轮次", event.P("run_id", runID))
 	defer func() {
 		o.runs.Finish(sessionID)
@@ -716,7 +720,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	if err != nil {
 		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
 		emitter.LogError("chat.llm.invoke", "附件装配失败", event.P("error", err.Error()))
-		o.setRunStatus(sessionID, runID, "failed", err.Error())
+		o.setRunStatus(ctx, sessionID, runID, "failed", err.Error())
 		te := TurnError(TurnErrAttachmentFailed, err.Error())
 		o.publishTurnFailure(sessionID, runID, "chat-service", te, "")
 		return userMsg, biz.ChatMessage{}, te
@@ -730,13 +734,14 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		turnErrMsg = err.Error()
 		emitter.LogError("chat.llm.invoke", "语言模型调用失败", event.P("error", err.Error()))
 		arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "error").Observe(time.Since(turnStart).Seconds())
-		o.setRunStatus(sessionID, runID, "failed", err.Error())
+		o.setRunStatus(ctx, sessionID, runID, "failed", err.Error())
 		te := TurnError(TurnErrLLMCallFailed, err.Error())
 		o.publishTurnFailure(sessionID, runID, "chat-service", te, "")
 		return userMsg, biz.ChatMessage{}, te
 	}
 	emitter.LogDone("chat.llm.invoke", "模型已返回，开始处理输出流")
 
+	contextWin := o.resolveContextWindowTokens(ctx, sess, ag, prov, mod)
 	projectMeta := chatagent.ProjectMeta{
 		SessionID:        sessionID,
 		RequestID:        sessionID,
@@ -745,11 +750,8 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		TraceID:          emitter.TraceID(),
 		AgentID:          ag.ID,
 		AgentDisplayName: ag.DisplayName,
-		ContextWindow:    ag.ContextWindow,
+		ContextWindow:    contextWin,
 		Source:           event.EnvelopeSourceFromContext(ctx),
-	}
-	if projectMeta.ContextWindow <= 0 {
-		projectMeta.ContextWindow = 128000
 	}
 	events = event.WrapFrameworkEventsWithOtel(events, emitter, traceBridge, traceBridge)
 	streamOpts := NewChatStreamConsumeOptions(o.td.Catalog.ToolUC, o.td.Catalog.Agents, o.td.Sessions)
@@ -761,13 +763,13 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 			markTurnError(&turnStatus, &turnErr, &turnErrMsg, streamErr)
 			emitter.LogCritical("chat.first_byte_timeout", "首字节超时，模型响应过慢", event.P("timeout", firstByteTimeout.String()))
 			arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "first_byte_timeout").Observe(time.Since(turnStart).Seconds())
-			o.setRunStatus(sessionID, runID, "failed", "first byte timeout")
+			o.setRunStatus(ctx, sessionID, runID, "failed", "first byte timeout")
 			te := TurnError(TurnErrFirstByteTimeout, firstByteTimeout.String())
 			o.publishTurnFailure(sessionID, runID, "chat-service", te, "")
 			return userMsg, biz.ChatMessage{}, te
 		}
 		markTurnError(&turnStatus, &turnErr, &turnErrMsg, streamErr)
-		o.setRunStatus(sessionID, runID, "failed", streamErr.Error())
+		o.setRunStatus(ctx, sessionID, runID, "failed", streamErr.Error())
 		o.publishTurnFailure(sessionID, runID, "chat-service", streamErr, "")
 		return userMsg, biz.ChatMessage{}, streamErr
 	}
@@ -784,7 +786,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		turnErrMsg = "turn timeout"
 		emitter.LogCritical("chat.turn.timeout", "对话请求超时", event.P("timeout", defaultTurnTimeout.String()), event.P("reason", "sync_cap"))
 		arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "timeout").Observe(time.Since(turnStart).Seconds())
-		o.setRunStatus(sessionID, runID, "failed", "turn timeout")
+		o.setRunStatus(ctx, sessionID, runID, "failed", "turn timeout")
 		te := TurnError(TurnErrTurnTimeout, defaultTurnTimeout.String())
 		o.publishTurnFailure(sessionID, runID, "chat-service", te, "")
 		return userMsg, biz.ChatMessage{}, te
@@ -804,7 +806,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		}
 		markTurnError(&turnStatus, &turnErr, &turnErrMsg, errors.New(detail))
 		arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "empty_reply").Observe(time.Since(turnStart).Seconds())
-		o.setRunStatus(sessionID, runID, "failed", detail)
+		o.setRunStatus(ctx, sessionID, runID, "failed", detail)
 		te := TurnError(TurnErrEmptyReply, detail)
 		o.publishTurnFailure(sessionID, runID, "chat-service", te, "")
 		return userMsg, biz.ChatMessage{}, te
@@ -844,11 +846,11 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		return userMsg, biz.ChatMessage{}, err
 	}
 	emitter.LogDone("chat.assistant_msg_persist", "助手消息已持久化", event.P("reply_len", len(displayMarkdown)))
-	o.patchSessionContextUsage(ctx, sessionID, ag, promptTok, completionTok)
+	o.patchSessionContextUsage(ctx, sessionID, sess, ag, prov, mod, promptTok, completionTok)
 
 	arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "ok").Observe(time.Since(turnStart).Seconds())
 	o.recordSessionTurn(ctx, sessionID, ag, userMsg.ID, assistantMsg.ID, prov, mod, promptTok, completionTok, assistantMsg.ContentMarkdown)
-	o.setRunStatus(sessionID, runID, "completed", "")
+	o.setRunStatus(ctx, sessionID, runID, "completed", "")
 	o.bumpSessionRevisionAndPublish(ctx, sessionID, runID, userMsg.ID)
 	o.notifyNativeTurnHooks(ctx, sessionID, ag, content, assistantMsg.ContentMarkdown)
 	emitter.LogDone("chat.turn.execute", "对话轮次执行完成",
@@ -1031,18 +1033,8 @@ func (o *ChatOrchestrator) recordTurnUsage(
 }
 
 // patchSessionContextUsage updates session context usage after a turn.
-func (o *ChatOrchestrator) patchSessionContextUsage(ctx context.Context, sessionID string, ag biz.Agent, promptTok, completionTok int) {
-	if o == nil || o.td.Sessions == nil {
-		return
-	}
-	win := ag.ContextWindow
-	if win <= 0 {
-		win = 128000
-	}
-	_ = o.td.Sessions.UpdateSessionContextFromLLMUsage(ctx, sessionID, promptTok, completionTok, win)
-	if o.td.Compress != nil {
-		o.td.Compress.AfterNativeTurn(ctx, sessionID, ag)
-	}
+func (o *ChatOrchestrator) patchSessionContextUsage(ctx context.Context, sessionID string, sess biz.Session, ag biz.Agent, prov, mod string, promptTok, completionTok int) {
+	sessctx.PatchContextFromLLMUsage(ctx, o.td.Sessions, o.td.Compress, o.llmContextCatalog(), sessionID, sess, ag, prov, mod, promptTok, completionTok)
 }
 
 // notifyNativeTurnHooks runs post-turn side effects.

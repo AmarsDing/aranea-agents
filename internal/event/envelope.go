@@ -29,6 +29,7 @@ const (
 	EnvelopeTypeStateDelta         = contract.EnvelopeTypeStateDelta
 	EnvelopeTypeTransfer           = contract.EnvelopeTypeTransfer
 	EnvelopeTypeRunnerCompletion   = contract.EnvelopeTypeRunnerCompletion
+	EnvelopeTypeContextUsage       = contract.EnvelopeTypeContextUsage
 	EnvelopeTypeRunStatus          = contract.EnvelopeTypeRunStatus
 	EnvelopeTypeError              = contract.EnvelopeTypeError
 	EnvelopeTypeLog                = contract.EnvelopeTypeLog

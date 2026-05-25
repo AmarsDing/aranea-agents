@@ -73,7 +73,7 @@ type NativeTurnGateway interface {
 	// CancelRun stops the active run for a session.
 	CancelRun(ctx context.Context, sessionID string) bool
 	// SetRunStatus atomically updates the run status and publishes a WS envelope.
-	SetRunStatus(sessionID, runID, status, errMsg string)
+	SetRunStatus(ctx context.Context, sessionID, runID, status, errMsg string)
 	// CancelSessionRunForCard cancels a session run by ID for card action callbacks.
 	CancelSessionRunForCard(ctx context.Context, sessionRunID, expectedSessionID string) (cancelled bool, reply string)
 	// ActiveSessionRunPhase returns the phase of the active session run, if any.

@@ -43,6 +43,6 @@ type GraphBuilderFactory interface {
 	ListTemplates() any
 	GetTemplate(templateID string) (any, bool)
 	TemplateToDef(template any, name, description string) *GraphDefinition
-	AgentExists(agentID string) bool
+	AgentExists(ctx context.Context, agentID string) bool
 	FindNodeDef(cfg GraphBuildConfig, nodeID string) *NodeDefInfo
 }

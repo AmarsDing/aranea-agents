@@ -363,6 +363,7 @@ type AgentListQuery struct {
 	Provider   string
 	CategoryID string
 	CreatedBy  string
+	Role       string
 	Limit      int
 	Offset     int
 }

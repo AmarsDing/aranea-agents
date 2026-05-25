@@ -64,6 +64,10 @@ api:
 	       $(API_TS_PLUGIN_ARGS) \
 	       $(API_PROTO_FILES)
 
+.PHONY: check-overlay
+check-overlay:
+	go test ./internal/modelcatalog/ -run TestRuntimeOverlayMatchesWebCopy -count=1
+
 .PHONY: build
 # build
 build:

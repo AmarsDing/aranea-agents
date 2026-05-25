@@ -148,3 +148,127 @@ type ContextCfg struct {
 	PlannerKind           string `json:"planner_kind,omitempty"`
 	PlannerConfigJSON     string `json:"planner_config_json,omitempty"`
 }
+
+func (s *AgentRuntimeSettings) ApplyIdentity(cfg IdentityCfg) {
+	s.AgentID = cfg.AgentID
+	s.ChannelID = cfg.ChannelID
+	s.ChatID = cfg.ChatID
+	s.Workspace = cfg.Workspace
+	s.VariablesJSON = cfg.VariablesJSON
+	s.ModelInstructionsJSON = cfg.ModelInstructionsJSON
+}
+
+func (s *AgentRuntimeSettings) ApplyReasoning(cfg ReasoningCfg) {
+	s.ReasoningMode = cfg.Mode
+	s.ReasoningLevel = cfg.Level
+}
+
+func (s *AgentRuntimeSettings) ApplyMemory(cfg MemoryCfg) {
+	s.MemoryEnabled = cfg.Enabled
+	s.MemoryMaxChunkLength = cfg.MaxChunkLength
+	s.MemoryMaxResults = cfg.MaxResults
+	s.MemoryMinScore = cfg.MinScore
+	s.HeartbeatEnabled = cfg.HeartbeatEnabled
+	s.HeartbeatIntervalMinutes = cfg.HeartbeatIntervalMinutes
+	s.L0RecentWindowTurns = cfg.L0RecentWindowTurns
+	s.L0RecentWindowTokens = cfg.L0RecentWindowTokens
+	s.L0SummaryThreshold = cfg.L0SummaryThreshold
+	s.L0SummaryKeepTurns = cfg.L0SummaryKeepTurns
+	s.L0CompressMinGapSec = cfg.L0CompressMinGapSec
+	s.L0CompressProvider = cfg.L0CompressProvider
+	s.L0CompressModel = cfg.L0CompressModel
+	s.MemoryWorkerProvider = cfg.MemoryWorkerProvider
+	s.MemoryWorkerModel = cfg.MemoryWorkerModel
+	s.L0TruncateStrategy = cfg.L0TruncateStrategy
+	s.L0InjectL1 = cfg.L0InjectL1
+	s.L0InjectL3 = cfg.L0InjectL3
+	s.L0InjectL4 = cfg.L0InjectL4
+	s.L0L3MaxChunks = cfg.L0L3MaxChunks
+	s.L0L4MaxPaths = cfg.L0L4MaxPaths
+	s.L0SnapshotMode = cfg.L0SnapshotMode
+	s.L1Enabled = cfg.L1Enabled
+	s.L1BudgetTokens = cfg.L1BudgetTokens
+	s.L1FieldMaxTokens = cfg.L1FieldMaxTokens
+	s.L1HistoryKeepRevisions = cfg.L1HistoryKeepRevisions
+	s.L1DefaultSchemaID = cfg.L1DefaultSchemaID
+	s.L1ArchiveOnIdleMinutes = cfg.L1ArchiveOnIdleMinutes
+	s.L2EpisodeEnabled = cfg.L2EpisodeEnabled
+	s.L2EpisodeMinImportance = cfg.L2EpisodeMinImportance
+	s.L2IndexEnabled = cfg.L2IndexEnabled
+	s.L2IndexEmbeddingModel = cfg.L2IndexEmbeddingModel
+	s.L2RecallEnabled = cfg.L2RecallEnabled
+	s.L2RecallMax = cfg.L2RecallMax
+	s.L2RetentionDays = cfg.L2RetentionDays
+	s.L2ArchiveAfterDays = cfg.L2ArchiveAfterDays
+	s.L3Enabled = cfg.L3Enabled
+	s.L3RecallTopK = cfg.L3RecallTopK
+	s.L3RecallMinScore = cfg.L3RecallMinScore
+	s.L3RecallScopesJSON = cfg.L3RecallScopesJSON
+	s.L3EmbeddingModel = cfg.L3EmbeddingModel
+	s.L3DecayIntervalHours = cfg.L3DecayIntervalHours
+	s.L3ArchiveThreshold = cfg.L3ArchiveThreshold
+	s.L3MaxPerRecallChars = cfg.L3MaxPerRecallChars
+	s.L4Enabled = cfg.L4Enabled
+	s.L4GraphInjectNeighbors = cfg.L4GraphInjectNeighbors
+	s.L4GraphMaxNeighbors = cfg.L4GraphMaxNeighbors
+	s.L4GraphMaxHops = cfg.L4GraphMaxHops
+	s.L4IdentityInject = cfg.L4IdentityInject
+	s.L4StrategyInject = cfg.L4StrategyInject
+}
+
+func (s *AgentRuntimeSettings) ApplyTools(cfg ToolsCfg) {
+	s.ToolsEnabled = cfg.Enabled
+	s.ToolsProfile = cfg.Profile
+	s.ToolsToolCallPrefix = cfg.ToolCallPrefix
+	s.ToolsAllowJSON = cfg.AllowJSON
+	s.ToolsDenyJSON = cfg.DenyJSON
+	s.ToolsConcurrentAllowJSON = cfg.ConcurrentAllowJSON
+	s.ToolsRetryEnabled = cfg.RetryEnabled
+	s.ToolsRetryMaxAttempts = cfg.RetryMaxAttempts
+	s.ToolsRetryInitialIntervalMs = cfg.RetryInitialIntervalMs
+	s.ToolsRetryBackoffFactor = cfg.RetryBackoffFactor
+	s.ToolsRetryMaxIntervalMs = cfg.RetryMaxIntervalMs
+	s.ToolsRetryJitter = cfg.RetryJitter
+	s.ToolsParallelEnabled = cfg.ParallelEnabled
+	s.ToolsStreamingEnabled = cfg.StreamingEnabled
+}
+
+func (s *AgentRuntimeSettings) ApplySkills(cfg SkillsCfg) {
+	s.SkillRuntimeJSON = cfg.RuntimeJSON
+	s.SkillLoadMode = cfg.LoadMode
+	s.IntentPassEnabled = cfg.IntentPassEnabled
+}
+
+func (s *AgentRuntimeSettings) ApplyEvolution(cfg EvolutionCfg) {
+	s.SelfEvolve = cfg.SelfEvolve
+	s.SubagentsEnabled = cfg.SubagentsEnabled
+	s.SubagentsMaxConcurrency = cfg.SubagentsMaxConcurrency
+	s.SubagentsMaxGenerationDepth = cfg.SubagentsMaxGenerationDepth
+	s.SubagentsMaxChildrenPerAgent = cfg.SubagentsMaxChildrenPerAgent
+	s.SubagentsArchiveAfterMinutes = cfg.SubagentsArchiveAfterMinutes
+	s.SubagentsMaxRetries = cfg.SubagentsMaxRetries
+	s.SubagentsModelOverride = cfg.SubagentsModelOverride
+	s.EvolutionSkillEvolve = cfg.SkillEvolve
+	s.EvolutionMetricsEnabled = cfg.MetricsEnabled
+	s.EvolutionSuggestionsEnabled = cfg.SuggestionsEnabled
+	s.GuardrailMaxChangePerPeriod = cfg.GuardrailMaxChangePerPeriod
+	s.GuardrailMinDataPoints = cfg.GuardrailMinDataPoints
+	s.GuardrailRollbackOnDeclinePercent = cfg.GuardrailRollbackOnDeclinePercent
+	s.EvoEnabled = cfg.EvoEnabled
+	s.EvoAutoApply = cfg.EvoAutoApply
+	s.EvoMinEpisodes = cfg.EvoMinEpisodes
+	s.EvoMinNegativeFeedback = cfg.EvoMinNegativeFeedback
+	s.EvoThrottleHours = cfg.EvoThrottleHours
+	s.EvoProposalTTLDays = cfg.EvoProposalTTLDays
+	s.EvoPersonaMaxChars = cfg.EvoPersonaMaxChars
+	s.EvoSystemPromptMaxAppends = cfg.EvoSystemPromptMaxAppends
+}
+
+func (s *AgentRuntimeSettings) ApplyContext(cfg ContextCfg) {
+	s.ContextCompactionEnabled = cfg.CompactionEnabled
+	s.SessionSummaryEnabled = cfg.SessionSummaryEnabled
+	s.OutputSchemaJSON = cfg.OutputSchemaJSON
+	s.ModelSelector = cfg.ModelSelector
+	s.PlannerKind = cfg.PlannerKind
+	s.PlannerConfigJSON = cfg.PlannerConfigJSON
+}

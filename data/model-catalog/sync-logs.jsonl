@@ -1,0 +1,1 @@
+{"id":"sync-20260525T062639Z","started_at":"2026-05-25T06:26:39Z","finished_at":"2026-05-25T06:26:50Z","status":"ok","message":"synced 135 providers, 4850 models; logos synced=135 failed=0","source_url":"https://models.dev/api.json","etag":"W/\"55a1bea389ebb889012c762b31d77ceb\"","stats":{"providers":135,"models":4850,"logos_synced":135,"logos_removed":1}}

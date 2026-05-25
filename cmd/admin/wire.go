@@ -8,6 +8,7 @@ package main
 import (
 	"context"
 	"fmt"
+	stdlog "log"
 	"net/http"
 	"os"
 	"strings"
@@ -31,6 +32,7 @@ import (
 	graphtrpc "aranea-agents/internal/graph/trpc"
 	"aranea-agents/internal/knowledge"
 	"aranea-agents/internal/llminspect"
+	"aranea-agents/internal/modelcatalog"
 	"aranea-agents/internal/mcp/alert"
 	"aranea-agents/internal/mcp/health"
 	mcpmetadata "aranea-agents/internal/mcp/metadata"
@@ -367,6 +369,22 @@ func provideUsageUsecase(repo biz.UsageRepo, mon *biz.MonitorUsecase) *biz.Usage
 func provideSystemSettingUsecase(repo biz.SystemSettingRepo, quota biz.UsageQuotaRepo, tester biz.WebResearchTester) *biz.SystemSettingUsecase {
 	uc := biz.NewSystemSettingUsecase(repo, quota)
 	uc.SetWebResearchTester(tester)
+	return uc
+}
+
+func provideModelCatalogRunner(sys biz.SystemSettingRepo, llm biz.LlmProviderModelRepo, d *data.Data) *modelcatalog.Runner {
+	storeProv := biz.NewModelCatalogStoreProvider(biz.NewSystemSettingRootAdapter(sys))
+	runner := modelcatalog.NewRunner(storeProv, stdlog.Default())
+	backend := data.NewModelCatalogApplyBackend(d, llm)
+	runner.SetApplier(modelcatalog.NewApplier(backend))
+	return runner
+}
+
+func provideModelCatalogUsecase(sys biz.SystemSettingRepo, runner *modelcatalog.Runner, llm biz.LlmProviderModelRepo, d *data.Data) *biz.ModelCatalogUsecase {
+	uc := biz.NewModelCatalogUsecase(biz.NewSystemSettingRootAdapter(sys))
+	uc.SetRunner(runner)
+	backend := data.NewModelCatalogApplyBackend(d, llm)
+	uc.SetApplyBackend(backend)
 	return uc
 }
 
@@ -755,6 +773,7 @@ type wireOut struct {
 	MemoryL3Decay           *jobs.MemoryL3DecayWorker
 	MemoryEpisodeBackfill   *jobs.MemoryEpisodeBackfillWorker
 	MemoryDataMigration     *jobs.MemoryDataMigrationWorker
+	ModelCatalogRunner      *modelcatalog.Runner
 }
 
 func provideWireOut(
@@ -777,6 +796,7 @@ func provideWireOut(
 	memoryL3Decay *jobs.MemoryL3DecayWorker,
 	memoryEpisodeBackfill *jobs.MemoryEpisodeBackfillWorker,
 	memoryDataMigration *jobs.MemoryDataMigrationWorker,
+	modelCatalogRunner *modelcatalog.Runner,
 ) wireOut {
 	return wireOut{
 		App: app, CronRunner: runner, SkillWatch: skillWatch, AutoMemory: autoMem,
@@ -788,6 +808,7 @@ func provideWireOut(
 		FlowLogCleanup: flowLogCleanup, MemoryL2Decay: memoryL2Decay, MemoryL3Decay: memoryL3Decay,
 		MemoryEpisodeBackfill: memoryEpisodeBackfill,
 		MemoryDataMigration:   memoryDataMigration,
+		ModelCatalogRunner:    modelCatalogRunner,
 	}
 }
 
@@ -928,6 +949,8 @@ func wireApp(*conf.Server, *conf.Data, log.Logger) (wireOut, func(), error) {
 		provideMonitorUsecase,
 		provideUsageUsecase,
 		provideSystemSettingUsecase,
+		provideModelCatalogRunner,
+		provideModelCatalogUsecase,
 		provideA2APublicBaseInput,
 		providePublicBaseURLStore,
 		provideA2AEndpointRegistry,

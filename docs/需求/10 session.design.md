@@ -1429,9 +1429,10 @@ func NewSessionCompressor(
 4. 调用 `compress.Compressor.Compress()` 生成摘要
 5. 写入 `session_summaries` 表
 6. 合并所有摘要，重写 `runner_snapshot_json`（摘要事件 + 尾部消息事件）
-7. 更新 `context_used_ratio` 为压缩后估算值
-8. 更新 `sessions.summary` 为首行摘要
-9. 清理 SessionMemory 中的旧事件实体
+7. 更新 `context_used_ratio` 为压缩后估算值（`llmcontext.ResolveWindow` 解析分母；`llmcontext.ContextRatio` / `ContextStatusForRatio` 与前端 `contextMetrics.ts` 共用阈值 0.6/0.8/0.95）
+8. WS 推送 `text_done`（`metadata.kind=system.session.compress`，含 `context_used_ratio` / `context_used_tokens` / `context_status`），前端乐观 patch；DB 更新失败写 session 系统日志
+9. 更新 `sessions.summary` 为首行摘要
+10. 清理 SessionMemory 中的旧事件实体
 
 **压缩模型选择**：
 - 优先使用 `agent.settings.L0CompressProvider` + `L0CompressModel`

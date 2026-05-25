@@ -16,6 +16,7 @@ export type EnvelopeType =
   | "state_delta"
   | "transfer"
   | "runner_completion"
+  | "context_usage"
   | "run_status"
   | "error"
   | "log"
@@ -95,6 +96,8 @@ export type EnvelopeUsage = {
   completion_tokens: number;
   total_tokens: number;
   max_tokens?: number;
+  /** Max prompt tokens in the turn — context window fill (ReAct uses peak prompt). */
+  context_prompt_tokens?: number;
   turn_total_tokens?: number;
 };
 

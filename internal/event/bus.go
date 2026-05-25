@@ -55,6 +55,7 @@ func criticalTypes() map[EnvelopeType]struct{} {
 		EnvelopeTypeToolResult:       {},
 		EnvelopeTypeError:            {},
 		EnvelopeTypeRunnerCompletion: {},
+		EnvelopeTypeContextUsage:     {},
 		EnvelopeTypeGraphNodeEnd:     {},
 		EnvelopeTypeTeamRunFinished:  {},
 		EnvelopeTypeTeamRunFailed:    {},

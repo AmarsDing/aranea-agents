@@ -1,7 +1,7 @@
 <template>
   <div :class="['provider-row', { 'provider-row--dark': isDark }]">
     <div class="provider-row__inner">
-      <q-avatar class="provider-row__avatar" size="32px" color="primary" text-color="white" icon="memory" />
+      <ProviderLogo :provider-id="row.provider || ''" size="32px" />
 
       <div class="provider-table__grid provider-row-grid">
         <div class="provider-table__cell provider-table__cell--identity provider-identity">
@@ -22,6 +22,13 @@
             >
               {{ category.label }}
               <q-tooltip>{{ category.tooltip }}</q-tooltip>
+            </span>
+            <span
+              v-for="chip in capabilityChips"
+              :key="chip.key"
+              class="provider-tag provider-tag--capability"
+            >
+              {{ chip.label }}
             </span>
           </div>
         </div>
@@ -99,11 +106,18 @@
 import { computed } from "vue";
 import { useQuasar } from "quasar";
 import type { PlatformResource } from "../../features/platform/types";
+import ProviderLogo from "./ProviderLogo.vue";
 
 type ModelCategory = {
   value: string;
   label: string;
   tooltip: string;
+};
+
+type CapabilityChip = {
+  key: string;
+  label: string;
+  source?: string;
 };
 
 type ProviderConfig = {
@@ -116,6 +130,7 @@ type ProviderConfig = {
   api_key?: string;
   api_key_set?: boolean;
   model_category?: ModelCategory[];
+  capability_chips?: CapabilityChip[];
   model_size_label?: string;
   context_window_k?: number | string | null;
   max_output_tokens?: number | string | null;
@@ -149,6 +164,10 @@ const config = computed(() => getConfig(props.row));
 const categories = computed(() => {
   const values = config.value.model_category;
   return Array.isArray(values) ? values.filter((category) => category?.value && category?.label && category?.tooltip) : [];
+});
+const capabilityChips = computed(() => {
+  const values = config.value.capability_chips;
+  return Array.isArray(values) ? values.filter((chip) => chip?.key && chip?.label) : [];
 });
 const providerDisplayName = computed(() => config.value.provider_display_name || props.row.provider || props.row.key);
 const modelDisplayName = computed(() => props.row.name || props.row.model || "未设置模型");
@@ -331,6 +350,12 @@ function toNullableNumber(value: unknown) {
   background: color-mix(in srgb, var(--color-accent) 12%, var(--glass-elevated));
   color: var(--color-link);
   border-color: color-mix(in srgb, var(--color-accent) 24%, var(--glass-border));
+}
+
+.provider-tag--capability {
+  background: color-mix(in srgb, var(--color-positive, #21ba45) 10%, var(--glass-elevated));
+  color: var(--color-positive, #21ba45);
+  border-color: color-mix(in srgb, var(--color-positive, #21ba45) 22%, var(--glass-border));
 }
 
 .provider-tag--variant {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"sync"
+	"time"
 
 	chatagent "aranea-agents/internal/agent"
 	localexec "aranea-agents/internal/agent/codeexecutor"
@@ -19,9 +20,20 @@ import (
 	"aranea-agents/internal/team"
 	tooltrpc "aranea-agents/internal/tools/trpc"
 	"aranea-agents/pkg/ctxuser"
+	"aranea-agents/pkg/safego"
 
 	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
 )
+
+const (
+	orchMapMaxIdle     = 30 * time.Minute
+	orchMapSweepPeriod = 5 * time.Minute
+)
+
+type timestampedEntry struct {
+	value     interface{}
+	createdAt time.Time
+}
 
 // RuntimeTooling groups plugin, skill, knowledge, and code-execution dependencies
 // that are injected into every agent turn build. Moving these out of the flat
@@ -76,6 +88,7 @@ type ChatOrchestrator struct {
 	awaitMetaCache         sync.Map
 	resumeInFlight         sync.Map
 	pendingMergeFollowup   sync.Map
+	sweepStop              chan struct{}
 }
 
 // ChatOrchestratorDeps groups all dependencies for ChatOrchestrator construction.
@@ -159,6 +172,8 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 	}
 
 	configureMCPObserve(deps.TurnDeps.Pipeline.Bus, deps.MCPServers)
+	o.sweepStop = make(chan struct{})
+	safego.Go(nil, "orch-map-sweep", o.sweepLoop)
 	return o
 }
 
@@ -251,7 +266,7 @@ func (o *ChatOrchestrator) SetSessionPendingMergeFollowup(sessionID string, merg
 		return
 	}
 	if merge {
-		o.pendingMergeFollowup.Store(sessionID, true)
+		o.pendingMergeFollowup.Store(sessionID, timestampedEntry{value: true, createdAt: time.Now()})
 	} else {
 		o.pendingMergeFollowup.Delete(sessionID)
 	}
@@ -265,7 +280,11 @@ func (o *ChatOrchestrator) sessionPendingMergeFollowup(sessionID string) bool {
 	if !ok {
 		return false
 	}
-	b, _ := v.(bool)
+	te, ok := v.(timestampedEntry)
+	if !ok {
+		return false
+	}
+	b, _ := te.value.(bool)
 	return b
 }
 
@@ -300,7 +319,7 @@ func (o *ChatOrchestrator) cancelActiveRun(ctx context.Context, sessionID string
 	if !stopped {
 		return false
 	}
-	o.setRunStatus(sessionID, runID, "cancelled", "")
+	o.setRunStatus(ctx, sessionID, runID, "cancelled", "")
 	if _, err := chatactivity.CancelRunningActivityMessages(ctx, o.td.Sessions, sessionID); err != nil {
 		event.CtxFlowLogWarn(ctx, "chat.activity.cancel", "取消执行卡片查询失败",
 			event.P("session_id", sessionID),
@@ -311,11 +330,11 @@ func (o *ChatOrchestrator) cancelActiveRun(ctx context.Context, sessionID string
 }
 
 // setRunStatus atomically updates the run status and publishes a WS envelope.
-func (o *ChatOrchestrator) setRunStatus(sessionID, runID, status, errMsg string) {
-	o.setRunStatusWithAwait(sessionID, runID, status, errMsg, nil)
+func (o *ChatOrchestrator) setRunStatus(ctx context.Context, sessionID, runID, status, errMsg string) {
+	o.setRunStatusWithAwait(ctx, sessionID, runID, status, errMsg, nil)
 }
 
-func (o *ChatOrchestrator) setRunStatusWithAwait(sessionID, runID, status, errMsg string, await *AwaitStatusMeta) {
+func (o *ChatOrchestrator) setRunStatusWithAwait(ctx context.Context, sessionID, runID, status, errMsg string, await *AwaitStatusMeta) {
 	o.runs.SetStatus(sessionID, runID, status, errMsg)
 	bind, _ := o.sessionRunBinding(sessionID)
 	if await != nil {
@@ -323,7 +342,7 @@ func (o *ChatOrchestrator) setRunStatusWithAwait(sessionID, runID, status, errMs
 	} else {
 		PublishRunStatusFull(o.td.Pipeline.Bus, sessionID, runID, status, errMsg, nil, bind.sessionRunID, bind.turnID)
 	}
-	o.persistRunStatus(context.Background(), sessionID, runID, status, errMsg)
+	o.persistRunStatus(ctx, sessionID, runID, status, errMsg)
 }
 
 func (o *ChatOrchestrator) publishRunStatus(sessionID, runID, status, errMsg string) {
@@ -394,7 +413,7 @@ func (o *ChatOrchestrator) setAwaitMetaCache(sessionID string, meta biz.ChatAwai
 	if sessionID == "" {
 		return
 	}
-	o.awaitMetaCache.Store(sessionID, meta)
+	o.awaitMetaCache.Store(sessionID, timestampedEntry{value: meta, createdAt: time.Now()})
 }
 
 func (o *ChatOrchestrator) getAwaitMetaCache(sessionID string) (biz.ChatAwaitMeta, bool) {
@@ -402,7 +421,11 @@ func (o *ChatOrchestrator) getAwaitMetaCache(sessionID string) (biz.ChatAwaitMet
 	if !ok {
 		return biz.ChatAwaitMeta{}, false
 	}
-	meta, ok := v.(biz.ChatAwaitMeta)
+	te, ok := v.(timestampedEntry)
+	if !ok {
+		return biz.ChatAwaitMeta{}, false
+	}
+	meta, ok := te.value.(biz.ChatAwaitMeta)
 	return meta, ok
 }
 
@@ -466,7 +489,7 @@ func (o *ChatOrchestrator) tryBeginResume(sessionID string) bool {
 	if sessionID == "" {
 		return false
 	}
-	_, loaded := o.resumeInFlight.LoadOrStore(sessionID, struct{}{})
+	_, loaded := o.resumeInFlight.LoadOrStore(sessionID, timestampedEntry{value: struct{}{}, createdAt: time.Now()})
 	return !loaded
 }
 
@@ -476,6 +499,57 @@ func (o *ChatOrchestrator) endResume(sessionID string) {
 		return
 	}
 	o.resumeInFlight.Delete(sessionID)
+}
+
+func (o *ChatOrchestrator) Close() {
+	if o == nil || o.sweepStop == nil {
+		return
+	}
+	select {
+	case o.sweepStop <- struct{}{}:
+	default:
+	}
+}
+
+func (o *ChatOrchestrator) sweepLoop() {
+	ticker := time.NewTicker(orchMapSweepPeriod)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			o.sweepStaleMaps()
+		case <-o.sweepStop:
+			return
+		}
+	}
+}
+
+func (o *ChatOrchestrator) sweepStaleMaps() {
+	now := time.Now()
+	o.awaitMetaCache.Range(func(key, value interface{}) bool {
+		if te, ok := value.(timestampedEntry); ok && now.Sub(te.createdAt) > orchMapMaxIdle {
+			o.awaitMetaCache.Delete(key)
+		}
+		return true
+	})
+	o.pendingMergeFollowup.Range(func(key, value interface{}) bool {
+		if te, ok := value.(timestampedEntry); ok && now.Sub(te.createdAt) > orchMapMaxIdle {
+			o.pendingMergeFollowup.Delete(key)
+		}
+		return true
+	})
+	o.resumeInFlight.Range(func(key, value interface{}) bool {
+		if te, ok := value.(timestampedEntry); ok && now.Sub(te.createdAt) > orchMapMaxIdle {
+			o.resumeInFlight.Delete(key)
+		}
+		return true
+	})
+	o.sessionRunBindings.Range(func(key, value interface{}) bool {
+		if te, ok := value.(timestampedEntry); ok && now.Sub(te.createdAt) > orchMapMaxIdle {
+			o.sessionRunBindings.Delete(key)
+		}
+		return true
+	})
 }
 
 func (o *ChatOrchestrator) publishAwaitResumed(sessionID, runID string) {

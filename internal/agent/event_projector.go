@@ -289,6 +289,9 @@ func (p *EventProjector) buildRunnerCompletionEnvelope(ev *trpcevent.Event, meta
 				u.CompletionTokens = meta.TurnCompletionTok
 				u.TotalTokens = meta.TurnPromptTokens + meta.TurnCompletionTok
 				u.TurnTotalTokens = u.TotalTokens
+				u.ContextPromptTokens = meta.TurnPromptTokens
+			} else if ev.Response.Usage.PromptTokens > 0 {
+				u.ContextPromptTokens = ev.Response.Usage.PromptTokens
 			}
 			env.Usage = u
 		}

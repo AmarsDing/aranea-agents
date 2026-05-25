@@ -27,6 +27,7 @@ type ServiceRegistry struct {
 	Monitor        *service.MonitorService
 	Memory         *service.MemoryService
 	SystemSetting  *service.SystemSettingService
+	ModelCatalog   *service.ModelCatalogService
 	Teams          *service.TeamService
 	Chat           *service.ChatService
 	Graph          *service.GraphService
@@ -61,6 +62,7 @@ func NewServiceRegistry(
 	monitorSvc *service.MonitorService,
 	memorySvc *service.MemoryService,
 	systemSettingSvc *service.SystemSettingService,
+	modelCatalogSvc *service.ModelCatalogService,
 	teams *service.TeamService,
 	chatSvc *service.ChatService,
 	graphSvc *service.GraphService,
@@ -92,6 +94,7 @@ func NewServiceRegistry(
 		Monitor:        monitorSvc,
 		Memory:         memorySvc,
 		SystemSetting:  systemSettingSvc,
+		ModelCatalog:   modelCatalogSvc,
 		Teams:          teams,
 		Chat:           chatSvc,
 		Graph:          graphSvc,

@@ -438,7 +438,7 @@ func validationResultToBiz(vr *graphtrpc.ValidationResult) *biz.GraphValidationR
 func (f *trpcGraphBuilderFactory) Validate(ctx context.Context, cfg biz.GraphBuildConfig) (*biz.GraphValidationResult, error) {
 	trpcCfg := bizCfgToTrpc(cfg)
 	checker := graphtrpc.AgentExistenceChecker(f.agentChecker)
-	return validationResultToBiz(graphtrpc.ValidateGraph(&trpcCfg, checker, f.registry)), nil
+	return validationResultToBiz(graphtrpc.ValidateGraph(ctx, &trpcCfg, checker, f.registry)), nil
 }
 
 func (f *trpcGraphBuilderFactory) ListTemplates() any {
@@ -468,11 +468,11 @@ func (f *trpcGraphBuilderFactory) TemplateToDef(template any, name, description 
 	}
 }
 
-func (f *trpcGraphBuilderFactory) AgentExists(agentID string) bool {
+func (f *trpcGraphBuilderFactory) AgentExists(ctx context.Context, agentID string) bool {
 	if f.agentChecker == nil {
 		return false
 	}
-	return f.agentChecker(agentID)
+	return f.agentChecker(ctx, agentID)
 }
 
 func (f *trpcGraphBuilderFactory) FindNodeDef(cfg biz.GraphBuildConfig, nodeID string) *biz.NodeDefInfo {

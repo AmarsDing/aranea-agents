@@ -3,6 +3,7 @@ import { useRoute } from "vue-router";
 import { storeToRefs } from "pinia";
 import { useUsageStore } from "../../stores/usage";
 import type { ModelUsageQuery } from "./types";
+import { formatUsdFromMicro } from "./moneyFormat";
 
 const VALID_RANGES = new Set(["today", "7d", "30d", "month"]);
 
@@ -47,7 +48,7 @@ export function useOverviewPage() {
   }
 
   function formatMoney(value?: number) {
-    return `$${((value ?? 0) / 1_000_000).toFixed(4)}`;
+    return formatUsdFromMicro(value);
   }
 
   function formatPercent(value?: number) {

@@ -10,6 +10,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/compress"
 	"aranea-agents/internal/event"
+	"aranea-agents/internal/llmcontext"
 	"aranea-agents/pkg/safego"
 
 	"github.com/google/uuid"
@@ -226,26 +227,31 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 		}
 	}
 
-	win := sess.LastContextWindowTokens
-	if win <= 0 {
-		win = ag.ContextWindow
-	}
-	if win <= 0 {
-		win = 128000
-	}
+	win := llmcontext.ResolveWindow(llmcontext.ResolveInput{
+		SessionDefaultWindow: sess.LastContextWindowTokens,
+		AgentWindow:          ag.ContextWindow,
+	})
 	est := estimateCompactedPromptTokens(merged, tail)
-	_ = c.Sessions.UpdateSessionContextAfterCompression(ctx, sessionID, est, win)
+	if err := c.Sessions.UpdateSessionContextAfterCompression(ctx, sessionID, est, win); err != nil && c.EventBus != nil {
+		event.SessionSysLogWarn(ctx, sessionID, "system.session.compress", "压缩后上下文用量更新失败",
+			event.P("error", err.Error()),
+			event.P("estimated_prompt_tokens", est),
+			event.P("context_window", win),
+		)
+	}
+	ratio := llmcontext.ContextRatio(est, win)
+	status := llmcontext.ContextStatusForRatio(ratio)
 
 	preview := firstSummaryLine(merged)
 	if preview != "" {
 		_ = c.Sessions.UpdateSessionListSummary(ctx, sessionID, preview)
 	}
-	c.publishCompressionNotice(ctx, sessionID, fromTurn, toTurn, preview)
+	c.publishCompressionNotice(ctx, sessionID, fromTurn, toTurn, preview, est, win, ratio, status)
 	c.resyncSessionMemory(ctx, sessionID)
 	return nil
 }
 
-func (c *Compressor) publishCompressionNotice(ctx context.Context, sessionID string, fromTurn, toTurn int, preview string) {
+func (c *Compressor) publishCompressionNotice(ctx context.Context, sessionID string, fromTurn, toTurn int, preview string, contextUsedTokens, contextWindow int, ratio float64, status string) {
 	if c == nil || strings.TrimSpace(sessionID) == "" {
 		return
 	}
@@ -273,9 +279,13 @@ func (c *Compressor) publishCompressionNotice(ctx context.Context, sessionID str
 	env := event.NewEnvelope(event.EnvelopeTypeTextDone, "system", sessionID)
 	env.Content = &event.EnvelopeContent{Text: text, IsPartial: false}
 	env.Metadata = map[string]any{
-		"kind":      "system.session.compress",
-		"from_turn": fromTurn,
-		"to_turn":   toTurn,
+		"kind":                "system.session.compress",
+		"from_turn":           fromTurn,
+		"to_turn":             toTurn,
+		"context_used_tokens": contextUsedTokens,
+		"context_window":      contextWindow,
+		"context_used_ratio":  ratio,
+		"context_status":      status,
 	}
 	c.EventBus.Publish(ctx, env)
 }

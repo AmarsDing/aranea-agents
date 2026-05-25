@@ -138,7 +138,11 @@ func (c *turnStreamConsumer) handleEvent(ev *trpcevent.Event) bool {
 		return true
 	}
 	if usage := ev.Response.Usage; usage != nil {
+		prevPrompt := c.result.PromptTok
 		accumulateStreamUsage(&c.result, ev, c.projectMeta, usage.PromptTokens, usage.CompletionTokens)
+		if c.result.PromptTok > prevPrompt {
+			c.publishContextUsageStep()
+		}
 	}
 
 	var onDelta func(string) error
@@ -185,6 +189,36 @@ func (c *turnStreamConsumer) projectAndTrackTools(ev *trpcevent.Event) {
 	}
 	if c.opts != nil {
 		PublishActivityEnvelopes(c.turnCtx, c.projectMeta, c.opts.ActivityPersister, envelopes)
+	}
+}
+
+func (c *turnStreamConsumer) publishContextUsageStep() {
+	if c.projectMeta.ContextWindow <= 0 || c.result.PromptTok <= 0 {
+		return
+	}
+	if c.eventBus == nil && c.observer == nil {
+		return
+	}
+	turnTotal := c.result.PromptTok + c.result.CompletionTok
+	env := event.NewEnvelope(event.EnvelopeTypeContextUsage, strings.TrimSpace(c.projectMeta.AgentDisplayName), c.projectMeta.SessionID)
+	if env.Author == "" {
+		env.Author = "agent"
+	}
+	env.RequestID = c.projectMeta.RequestID
+	env.InvocationID = c.projectMeta.InvocationID
+	env.TeamID = c.projectMeta.TeamID
+	env.Usage = &event.EnvelopeUsage{
+		ContextPromptTokens: c.result.PromptTok,
+		PromptTokens:        c.result.PromptTok,
+		CompletionTokens:    c.result.CompletionTok,
+		TotalTokens:         turnTotal,
+		TurnTotalTokens:     turnTotal,
+		MaxTokens:           c.projectMeta.ContextWindow,
+	}
+	if c.observer != nil {
+		c.observer.PublishChat(c.turnCtx, env)
+	} else if c.eventBus != nil {
+		c.eventBus.Publish(c.turnCtx, env)
 	}
 }
 

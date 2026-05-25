@@ -345,7 +345,7 @@ func (u *ChannelUsecase) Test(ctx context.Context, id string) (ChannelTestResult
 
 // CommitChannelTest persists a test delivery row and updates channel metadata from result.
 func (u *ChannelUsecase) CommitChannelTest(ctx context.Context, row Channel, credentials []ChannelCredential, result ChannelTestResult) (ChannelTestResult, error) {
-	cfg, err := parseChannelConfig(row.ConfigJSON)
+	cfg, err := row.ParseConfig()
 	if err != nil {
 		return result, err
 	}
@@ -389,4 +389,17 @@ func (u *ChannelUsecase) updateTestMetadata(ctx context.Context, row Channel, re
 	row.MetadataJSON = string(raw)
 	_, err = u.repo.Update(ctx, row)
 	return result, err
+}
+
+func (ch Channel) ParseConfig() (ChannelConfig, error) {
+	return parseChannelConfig(ch.ConfigJSON)
+}
+
+func (ch Channel) ParseMetadata() (map[string]any, error) {
+	var m map[string]any
+	raw := defaultJSON(ch.MetadataJSON)
+	if err := json.Unmarshal([]byte(raw), &m); err != nil {
+		return map[string]any{}, err
+	}
+	return m, nil
 }

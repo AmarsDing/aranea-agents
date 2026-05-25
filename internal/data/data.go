@@ -178,6 +178,17 @@ func entSQLDebugEnabled() bool {
 func NewData(c *conf.Data) (*Data, func(), error) {
 	var entClient *ent.Client
 	var rawDB *sql.DB
+	var pg *sql.DB
+	var pgOpened bool
+
+	cleanup := func() {
+		if pgOpened && pg != nil {
+			pg.Close()
+		}
+		if rawDB != nil {
+			rawDB.Close()
+		}
+	}
 
 	if err := runStartupStep("initSQLite", func() error {
 		var stepErr error
@@ -190,17 +201,17 @@ func NewData(c *conf.Data) (*Data, func(), error) {
 	if err := runStartupStep("ensureSchemaDDL", func() error {
 		return ensureSchemaDDL(rawDB, entClient)
 	}); err != nil {
-		rawDB.Close()
+		cleanup()
 		return nil, nil, err
 	}
 
-	var pg *sql.DB
 	if err := runStartupStep("initPostgres", func() error {
 		var stepErr error
 		pg, stepErr = initPostgres(c)
+		pgOpened = true
 		return stepErr
 	}); err != nil {
-		rawDB.Close()
+		cleanup()
 		return nil, nil, err
 	}
 
@@ -210,31 +221,17 @@ func NewData(c *conf.Data) (*Data, func(), error) {
 	if err := runStartupStep("ensurePostgresSchemas", func() error {
 		return ensurePostgresSchemas(pg, vdim)
 	}); err != nil {
-		if pg != nil {
-			pg.Close()
-		}
-		rawDB.Close()
+		cleanup()
 		return nil, nil, err
 	}
 
 	if err := runStartupStep("seedInitialData", func() error {
 		return seedInitialData(entClient, c)
 	}); err != nil {
-		if pg != nil {
-			pg.Close()
-		}
-		rawDB.Close()
+		cleanup()
 		return nil, nil, err
 	}
 
-	cleanup := func() {
-		if st.pg != nil {
-			st.pg.Close()
-		}
-		if st.rawDB != nil {
-			st.rawDB.Close()
-		}
-	}
 	return st, cleanup, nil
 }
 
@@ -319,6 +316,9 @@ func ensureSchemaDDL(rawDB *sql.DB, entClient *ent.Client) error {
 	}
 	if err := ensureSystemSettingPatches(context.Background(), entClient); err != nil {
 		return fmt.Errorf("system setting patches: %w", err)
+	}
+	if err := ensurePricingRulePatches(context.Background(), entClient); err != nil {
+		return fmt.Errorf("pricing rule patches: %w", err)
 	}
 	if err := ensureDefaultSystemSetting(context.Background(), entClient); err != nil {
 		return err

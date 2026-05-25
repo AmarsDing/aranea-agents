@@ -51,11 +51,6 @@ func (s *ChatService) hydratedAgent(ctx context.Context, agentID string) (biz.Ag
 	return s.orch.hydratedAgent(ctx, agentID)
 }
 
-// patchSessionContextUsage updates session context usage after a turn.
-func patchSessionContextUsage(ctx context.Context, o *ChatOrchestrator, sessionID string, ag biz.Agent, promptTok, completionTok int) {
-	o.patchSessionContextUsage(ctx, sessionID, ag, promptTok, completionTok)
-}
-
 // notifyNativeTurnHooks runs post-turn side effects.
 func notifyNativeTurnHooks(ctx context.Context, o *ChatOrchestrator, sessionID string, ag biz.Agent, userInput, assistantOutput string) {
 	o.notifyNativeTurnHooks(ctx, sessionID, ag, userInput, assistantOutput)

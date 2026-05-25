@@ -8,6 +8,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
+	"aranea-agents/internal/llmcontext"
 	"aranea-agents/internal/data/ent/agent"
 	"aranea-agents/internal/data/ent/message"
 	"aranea-agents/internal/data/ent/platformskill"
@@ -82,19 +83,6 @@ func entSessionToBiz(e *ent.Session) biz.Session {
 	}
 }
 
-func contextStatusForRatio(ratio float64) string {
-	switch {
-	case ratio >= 0.95:
-		return "exceeded"
-	case ratio >= 0.8:
-		return "critical"
-	case ratio >= 0.6:
-		return "warning"
-	default:
-		return "normal"
-	}
-}
-
 func clampSessionLimit(limit int) int {
 	if limit <= 0 || limit > 100 {
 		return 20
@@ -159,7 +147,7 @@ func (r *sessionRepo) CreateSession(ctx context.Context, in biz.Session) (biz.Se
 		in.Status = "active"
 	}
 	if in.ContextStatus == "" {
-		in.ContextStatus = contextStatusForRatio(in.ContextUsedRatio)
+		in.ContextStatus = llmcontext.ContextStatusForRatio(in.ContextUsedRatio)
 	}
 
 	_, err := c.Session.Create().
@@ -730,10 +718,7 @@ func (r *sessionRepo) UpdateSessionContextFromLLMUsage(ctx context.Context, sess
 	}
 	ratio := cur.ContextUsedRatio
 	if contextWindow > 0 && promptTokens > 0 {
-		ratio = float64(promptTokens) / float64(contextWindow)
-		if ratio > 1 {
-			ratio = 1
-		}
+		ratio = llmcontext.ContextRatio(promptTokens, contextWindow)
 	}
 	maxR := cur.MaxContextUsedRatio
 	if ratio > maxR {
@@ -743,7 +728,7 @@ func (r *sessionRepo) UpdateSessionContextFromLLMUsage(ctx context.Context, sess
 		Where(entsession.IDEQ(sessionID), entsession.DeletedAtEQ("")).
 		SetContextUsedRatio(ratio).
 		SetMaxContextUsedRatio(maxR).
-		SetContextStatus(contextStatusForRatio(ratio)).
+		SetContextStatus(llmcontext.ContextStatusForRatio(ratio)).
 		SetUpdatedAt(nowRFC3339())
 	if contextWindow > 0 {
 		upd = upd.SetLastContextWindowTokens(contextWindow)
@@ -767,15 +752,12 @@ func (r *sessionRepo) UpdateSessionContextAfterCompression(ctx context.Context, 
 	if tok < 0 {
 		tok = 0
 	}
-	ratio := float64(tok) / float64(contextWindow)
-	if ratio > 1 {
-		ratio = 1
-	}
+	ratio := llmcontext.ContextRatio(tok, contextWindow)
 	_, err := r.data.entClient.Session.Update().
 		Where(entsession.IDEQ(sessionID), entsession.DeletedAtEQ("")).
 		SetContextUsedTokens(tok).
 		SetContextUsedRatio(ratio).
-		SetContextStatus(contextStatusForRatio(ratio)).
+		SetContextStatus(llmcontext.ContextStatusForRatio(ratio)).
 		SetUpdatedAt(nowRFC3339()).
 		Save(ctx)
 	return err
@@ -815,7 +797,7 @@ func (r *sessionRepo) AppendChatTurn(ctx context.Context, sessionID string, user
 		SetUpdatedAt(nowRFC3339()).
 		AddModelCallCount(1)
 	if tin, tout := assistant.TokenIn, assistant.TokenOut; tin > 0 || tout > 0 {
-		upd = upd.AddInputTokens(tin).AddOutputTokens(tout).AddTotalTokens(tin + tout).AddContextUsedTokens(tin + tout)
+		upd = upd.AddInputTokens(tin).AddOutputTokens(tout).AddTotalTokens(tin + tout)
 	}
 	if _, err = upd.Save(ctx); err != nil {
 		return rollback(err)
@@ -956,7 +938,7 @@ func (r *sessionRepo) AppendChatMessage(ctx context.Context, sessionID string, m
 	}
 	tin, tout := msg.TokenIn, msg.TokenOut
 	if bumpModelCall && (tin > 0 || tout > 0) {
-		upd = upd.AddInputTokens(tin).AddOutputTokens(tout).AddTotalTokens(tin + tout).AddContextUsedTokens(tin + tout)
+		upd = upd.AddInputTokens(tin).AddOutputTokens(tout).AddTotalTokens(tin + tout)
 	}
 	if _, err = upd.Save(ctx); err != nil {
 		return rollback(err)

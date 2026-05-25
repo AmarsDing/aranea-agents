@@ -896,7 +896,21 @@ context_used_ratio = prompt_tokens / context_window_tokens
 2. 本次消息 options 指定模型的 context window
 3. session 创建时保存的 `default_context_window_tokens`
 4. agent 配置中的 `context_window`
-5. provider preset 的默认值
+5. provider preset 的默认值（128000）
+
+**实现**：`llmcontext.ResolveWindow`（`internal/llmcontext/window.go`）在每次 native turn 与 `runner_completion` 投影时解析分母；`context_used_tokens` **仅**由 `UpdateSessionContextFromLLMUsage` 写入本次 LLM 的 `prompt_tokens`（ReAct 多步取 **turn 内最大 prompt**），消息落库时不再累加。
+
+**WS 契约**：`context_usage` 在 ReAct 多步 LLM 每次 prompt 峰值上升时推送（仅更新 context 条，不累加 session total）；`runner_completion.usage` 携带 `context_prompt_tokens`、`max_tokens`、`turn_total_tokens`。
+
+**状态阈值单一来源**：Go `internal/llmcontext/metrics.go` 与前端 `web/src/features/session/contextMetrics.ts` 保持同步（0.6 / 0.8 / 0.95）。
+
+**失败可观测**：`UpdateSessionContextFromLLMUsage` / 压缩后 `UpdateSessionContextAfterCompression` 失败时写入 session 系统日志（`context.usage` / `system.session.compress`），不再静默 `_ =` 丢弃。
+
+**100% 后重新计数（Cursor 式）**：
+
+1. **同 turn 内**：tRPC ContextCompaction（Agent 开启 `context_compaction_enabled`）在 LLM 调用前压缩历史，API 返回的 `prompt_tokens` 已是压缩后值。
+2. **turn 后异步**：L0 `SessionCompressor` 生成摘要并重写 snapshot，调用 `UpdateSessionContextAfterCompression` 将 ratio 重置为压缩后估算值。
+3. **实时 UI**：压缩完成 WS 推送 `text_done`（`metadata.kind=system.session.compress`，携带 `context_used_ratio` / `context_used_tokens` / `context_status`）；前端 `sessionContextPatch` 立即 patch store，无需等待 HTTP 刷新。
 
 状态阈值：
 
@@ -941,13 +955,14 @@ WHERE id = ? AND deleted_at = '';
 
 高频流式场景不要每个 delta 更新 session，只在以下时机更新：
 
-| 时机 | 是否更新 session 聚合 |
-|------|----------------------|
-| 用户消息落库 | 创建 turn 和 `user_message` span，更新 `message_count`、`last_message_at` |
-| assistant 最终消息落库 | 写入 `ai_response` span，更新消息、时间、最终内容预览 |
-| 工具/Skill/MCP 调用完成 | 更新 span 状态、耗时、输入输出和错误；必要时增量更新 turn 统计 |
-| 模型 usage 完成 | 更新 token、费用、context |
-| run 结束 | 更新 run_count、状态、耗时 |
+| 时机 | 是否更新 session 聚合 | 前端 context % |
+|------|----------------------|----------------|
+| 用户消息落库 | 创建 turn 和 `user_message` span，更新 `message_count`、`last_message_at` | 不变 |
+| assistant 最终消息落库 | 写入 `ai_response` span，更新消息、时间、最终内容预览 | 不变 |
+| 工具/Skill/MCP 调用完成 | 更新 span 状态、耗时、输入输出和错误；必要时增量更新 turn 统计 | 不变 |
+| 模型 usage 完成（turn 结束） | 更新 token、费用、context（DB） | **`runner_completion.usage` 乐观 patch**（`web/src/features/chat/sessionContextPatch.ts`） |
+| L0 压缩完成 | 更新 `context_used_*`（DB） | **`text_done` compress notice 乐观 patch** |
+| run 结束 | 更新 run_count、状态、耗时 | HTTP `loadAgentSessions` 与 WS patch 合并校正 |
 
 ---
 

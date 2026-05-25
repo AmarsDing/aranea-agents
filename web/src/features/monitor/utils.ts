@@ -1,3 +1,5 @@
+import { formatUsdFromMicro } from "../usage/moneyFormat";
+
 export function parseJSON(value: string): Record<string, unknown> {
   if (!value?.trim()) return {};
   try {
@@ -13,8 +15,10 @@ export function formatCount(value?: number) {
 }
 
 export function formatMoney(value?: number) {
-  return `$${((value ?? 0) / 1_000_000).toFixed(4)}`;
+  return formatUsdFromMicro(value);
 }
+
+export { formatUsdFromMicro, formatUsdPer1M, formatUsdCompact } from "../usage/moneyFormat";
 
 export function formatLatency(value?: number) {
   return `${Math.round(value ?? 0)}ms`;

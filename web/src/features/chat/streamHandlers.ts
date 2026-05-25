@@ -1,11 +1,15 @@
 import type { Envelope } from "./envelope";
 import type { UseEnvelopeStreamReturn } from "./useEnvelopeStream";
 import type { Message } from "./types";
+import type { Session } from "../session/types";
 import { dropPendingUserPlaceholders } from "./mergeSessionMessages";
 import { upsertToolMessage, finalizeOrphanToolMessages } from "./envelopeToolCall";
 import { patchStreamingMessage } from "./streamContentPatch";
 import { createMessageBatchWriter } from "./messageStoreBatch";
+import { shouldSessionWsSkipEnvelope } from "./inboundSyncRouting";
 import type { IntentPassResult } from "./types";
+import { sessionContextPatchFromEnvelope } from "./sessionContextPatch";
+import type { SessionContextPatch } from "./sessionContextPatch";
 
 export function createPlaceholderMessage(
   id: string,
@@ -42,6 +46,10 @@ export type StreamHandlerCtx = {
   onErrorNotify: (message: string) => void;
   onOrchestrationNotice?: (message: string) => void;
   onReloadAfterCompletion: (sessionId: string) => Promise<void>;
+  onSessionContextPatch?: (sessionId: string, patch: SessionContextPatch) => void;
+  getSessionMetrics?: (
+    sessionId: string
+  ) => Pick<Session, "total_tokens" | "max_context_used_ratio" | "input_tokens" | "output_tokens"> | undefined;
   setLastIntentPass: (value: IntentPassResult | null) => void;
   onStreamingPatch?: (sessionId: string, patch: { reasoning?: string; partialText?: string; done?: boolean }) => void;
   /** Team-only: resolve member meta for member_* envelopes */
@@ -114,7 +122,25 @@ export function bindStreamHandlers(
     patchMessages(ctx, sessionId, streamId, env, isDone);
   }
 
+  function applySessionContextPatch(sessionId: string, env: Envelope) {
+    if (!ctx.onSessionContextPatch) return;
+    const prev = ctx.getSessionMetrics?.(sessionId);
+    const patch = sessionContextPatchFromEnvelope(env, prev);
+    if (patch) {
+      ctx.onSessionContextPatch(sessionId, patch);
+    }
+  }
+
+  stream.onType("context_usage", (env: Envelope) => {
+    if (shouldSessionWsSkipEnvelope(env)) return;
+    const sid = env.session_id || ctx.sessionId;
+    const active = ctx.resolveActiveSessionId();
+    if (sid !== ctx.sessionId || (active && sid !== active)) return;
+    applySessionContextPatch(sid, env);
+  });
+
   stream.onType("text_delta", (env: Envelope) => {
+    if (shouldSessionWsSkipEnvelope(env)) return;
     const sid = env.session_id || ctx.sessionId;
     const active = ctx.resolveActiveSessionId();
     if (sid !== ctx.sessionId || (active && sid !== active)) return;
@@ -127,6 +153,7 @@ export function bindStreamHandlers(
   });
 
   stream.onType("text_done", (env: Envelope) => {
+    if (shouldSessionWsSkipEnvelope(env)) return;
     const sid = env.session_id || ctx.sessionId;
     const active = ctx.resolveActiveSessionId();
     if (sid !== ctx.sessionId || (active && sid !== active)) return;
@@ -136,9 +163,11 @@ export function bindStreamHandlers(
       done: true,
     });
     patch(sid, streamRowId(ctx, sid), env, true);
+    applySessionContextPatch(sid, env);
   });
 
   stream.onType("tool_call", (env: Envelope) => {
+    if (shouldSessionWsSkipEnvelope(env)) return;
     const sid = env.session_id || ctx.sessionId;
     const active = ctx.resolveActiveSessionId();
     if (sid !== ctx.sessionId || (active && sid !== active) || !env.tool_call) return;
@@ -150,6 +179,7 @@ export function bindStreamHandlers(
   });
 
   stream.onType("tool_result", (env: Envelope) => {
+    if (shouldSessionWsSkipEnvelope(env)) return;
     const sid = env.session_id || ctx.sessionId;
     const active = ctx.resolveActiveSessionId();
     if (sid !== ctx.sessionId || (active && sid !== active) || !env.tool_call) return;
@@ -212,7 +242,7 @@ export function bindStreamHandlers(
     });
   }
 
-  stream.onType("runner_completion", async () => {
+  stream.onType("runner_completion", async (env: Envelope) => {
     ctx.markSendingDone();
     writer?.flushSync();
     const sid = ctx.resolveActiveSessionId() ?? ctx.sessionId;
@@ -221,6 +251,10 @@ export function bindStreamHandlers(
       finalizeOrphanToolMessages(ctx.getMessages(sid))
     );
     ctx.setMessages(sid, finalized);
+    applySessionContextPatch(sid, env);
+    if (shouldSessionWsSkipEnvelope(env)) {
+      return;
+    }
     try {
       await ctx.onReloadAfterCompletion(sid);
     } catch {

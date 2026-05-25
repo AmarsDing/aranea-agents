@@ -20,6 +20,8 @@ const (
 	EnvelopeTypeStateDelta         EnvelopeType = "state_delta"
 	EnvelopeTypeTransfer           EnvelopeType = "transfer"
 	EnvelopeTypeRunnerCompletion   EnvelopeType = "runner_completion"
+	// EnvelopeTypeContextUsage carries mid-turn context window fill (ReAct sub-steps).
+	EnvelopeTypeContextUsage EnvelopeType = "context_usage"
 	EnvelopeTypeRunStatus          EnvelopeType = "run_status"
 	EnvelopeTypeError              EnvelopeType = "error"
 	EnvelopeTypeLog                EnvelopeType = "log"
@@ -138,6 +140,8 @@ type EnvelopeUsage struct {
 	TotalTokens      int `json:"total_tokens"`
 	// MaxTokens is the configured context window for the active model/session.
 	MaxTokens int `json:"max_tokens,omitempty"`
+	// ContextPromptTokens is the max prompt_tokens in the turn (context window fill).
+	ContextPromptTokens int `json:"context_prompt_tokens,omitempty"`
 	// TurnTotalTokens is prompt+completion accumulated for the current turn (ReAct multi-call safe).
 	TurnTotalTokens int `json:"turn_total_tokens,omitempty"`
 }

@@ -1,7 +1,7 @@
 # Graph 工作流 — 开发计划
 
 > **版本**：2026-05-23 | **状态**：✅ 后端核心 + Phase A/B/C/D 已落地
-> **需求**：[36 graph-workflow.md](./36%20graph-workflow.md) · **设计**：[36 graph-workflow.design.md](./36%20graph-workflow.design.md)
+> **需求**：[36 graph-workflow.md](./36%20graph-workflow.md) · **设计**：[36 graph-workflow.design.md](./36%20graph-workflow.design.md) · **外部参考**：[36-graph-external-reference-playbook.md](./36-graph-external-reference-playbook.md)（Flowise + AgentCoord，其他机器无外部源码时可读）
 > **近期变更**：[changelog/2026-05-23-Graph-Frontend-Phase-D.md](../changelog/2026-05-23-Graph-Frontend-Phase-D.md)
 
 ---

@@ -1,5 +1,6 @@
-import type { TeamRow } from "../../../components/chat/types";
+import type { TeamRow, SessionView } from "../../../components/chat/types";
 import type { Agent } from "../../agents/types";
+import type { Session } from "../../session/api";
 
 export const LS_AG_ORDER = "chat:order:agents";
 export const LS_TM_ORDER = "chat:order:teams";
@@ -11,6 +12,27 @@ export function formatSessionTime(iso: string) {
   } catch {
     return iso;
   }
+}
+
+export function sessionToView(session: Session, t: (key: string) => string): SessionView {
+  return {
+    id: session.id,
+    title: session.title || t("chat.untitledSession"),
+    context_used_ratio: session.context_used_ratio,
+    context_status: session.context_status,
+    context_used_tokens: session.context_used_tokens,
+    last_context_window_tokens: session.last_context_window_tokens,
+    input_tokens: session.input_tokens,
+    output_tokens: session.output_tokens,
+    total_tokens: session.total_tokens,
+    total_cost_micro_usd: session.total_cost_micro_usd,
+    at: formatSessionTime(session.last_message_at || session.updated_at || session.created_at),
+    timeline_at: session.last_message_at || session.updated_at || session.created_at,
+    agent_id: session.agent_id,
+    status: session.status,
+    pinned_at: session.pinned_at,
+    metadata_json: session.metadata_json,
+  };
 }
 
 export function getProviderModelValue(row: { key?: string; provider?: string; model?: string }) {

@@ -155,16 +155,78 @@
             <q-card-section class="provider-wizard-body">
               <div v-show="providerStep === 1" class="provider-wizard-panel">
                 <h3 class="provider-step-heading">连接与身份</h3>
-                <p class="provider-step-hint">选择供应商预设并填写 API 密钥、模型 ID 与显示名称。</p>
+                <p class="provider-step-hint">从 models.dev 目录选择或手动添加本地/自定义 Provider。</p>
+                <div v-if="!editingId" class="app-grid-span-full q-mb-md">
+                  <q-btn-toggle
+                    v-model="providerAddMode"
+                    spread
+                    no-caps
+                    toggle-color="primary"
+                    :options="[
+                      { label: '目录选择', value: 'catalog' },
+                      { label: '自定义', value: 'custom' }
+                    ]"
+                    @update:model-value="setProviderAddMode($event === 'custom' ? 'custom' : 'catalog')"
+                  />
+                </div>
                 <div class="app-form-field-grid app-form-field-grid--2col">
+          <q-input
+            v-if="providerAddMode === 'catalog'"
+            v-model="catalogProviderSearch"
+            dense
+            outlined
+            clearable
+            debounce="300"
+            label="搜索供应商"
+            class="app-grid-span-full"
+            @update:model-value="reloadCatalogProviders()"
+          />
           <q-select
+            v-if="providerAddMode === 'catalog'"
+            v-model="catalogProviderId"
+            dense
+            outlined
+            emit-value
+            map-options
+            label="供应商（models.dev）"
+            :loading="catalogLoading"
+            :options="catalogProviderOptions"
+            @update:model-value="applyCatalogProvider(String($event ?? ''))"
+          >
+            <template #option="scope">
+              <q-item v-bind="scope.itemProps">
+                <q-item-section>
+                  <q-item-label>{{ scope.opt.label }}</q-item-label>
+                  <q-item-label caption>{{ scope.opt.caption }}</q-item-label>
+                </q-item-section>
+              </q-item>
+            </template>
+          </q-select>
+          <div
+            v-if="providerAddMode === 'catalog' && (catalogProviderHint || catalogProviderDocUrl)"
+            class="app-grid-span-full row items-center q-gutter-sm q-mb-sm"
+          >
+            <span v-if="catalogProviderHint" class="text-caption text-grey-7">{{ catalogProviderHint }}</span>
+            <a
+              v-if="catalogProviderDocUrl"
+              :href="catalogProviderDocUrl"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="text-caption text-primary"
+            >
+              查看 Provider 文档 ↗
+            </a>
+          </div>
+          <q-select
+            v-else
             v-model="providerPresetKey"
             dense
             outlined
             emit-value
             map-options
-            label="供应商"
+            label="供应商预设（可选）"
             :options="providerPresetOptions"
+            clearable
             @update:model-value="applyProviderPreset(String($event ?? ''))"
           >
             <template #option="scope">
@@ -214,13 +276,15 @@
             use-input
             fill-input
             hide-selected
-            input-debounce="0"
+            input-debounce="300"
             emit-value
             map-options
             label="模型ID"
+            :loading="catalogModelsLoading"
             :options="providerModelOptions"
+            @filter="(val, update) => providerAddMode === 'catalog' ? onCatalogModelFilter(val, update) : update(() => {})"
             @new-value="setCustomModelValue"
-            @update:model-value="applyModelPreset(String($event ?? ''))"
+            @update:model-value="providerAddMode === 'catalog' ? applyCatalogModel(String($event ?? '')) : applyModelPreset(String($event ?? ''))"
           >
             <template #append>
               <q-btn
@@ -359,14 +423,30 @@
             hint="越高表示认为模型越强"
           />
           <q-slider v-model="providerForm.model_rating" class="app-grid-span-full q-px-sm provider-rating-slider" :min="1" :max="100" label />
-          <div class="section-label app-grid-span-full">价格快照（micro USD / 1K tokens）</div>
+          <div class="section-label app-grid-span-full">目录能力标签</div>
+          <div v-if="providerForm.capability_chips.length" class="app-grid-span-full q-gutter-xs">
+            <q-chip
+              v-for="chip in providerForm.capability_chips"
+              :key="chip.key"
+              dense
+              square
+              color="blue-grey-1"
+              text-color="blue-grey-9"
+            >
+              {{ chip.label }}
+            </q-chip>
+          </div>
+          <div v-else class="text-caption text-grey-7 app-grid-span-full q-mb-sm">从目录选择模型后自动填充；自定义模型可留空。</div>
+
+          <div class="section-label app-grid-span-full">价格快照（USD / 1M tokens）</div>
           <q-banner v-if="showPricingWarning" dense rounded class="app-banner-warning app-grid-span-full q-mb-sm">
             {{ pricingWarningMessage() }}
           </q-banner>
-          <q-input v-model.number="providerForm.input_price_micro_usd_per_1k" dense outlined type="number" min="0" label="输入价格" />
-          <q-input v-model.number="providerForm.output_price_micro_usd_per_1k" dense outlined type="number" min="0" label="输出价格" />
-          <q-input v-model.number="providerForm.cached_input_price_micro_usd_per_1k" dense outlined type="number" min="0" label="缓存输入价格" />
-          <q-input v-model.number="providerForm.reasoning_price_micro_usd_per_1k" dense outlined type="number" min="0" label="推理 Token 价格" />
+          <q-input v-model.number="providerForm.input_price_usd_per_1m" dense outlined type="number" min="0" step="0.0001" label="输入价格" />
+          <q-input v-model.number="providerForm.output_price_usd_per_1m" dense outlined type="number" min="0" step="0.0001" label="输出价格" />
+          <q-input v-model.number="providerForm.cache_read_usd_per_1m" dense outlined type="number" min="0" step="0.0001" label="缓存读取价格" />
+          <q-input v-model.number="providerForm.reasoning_price_usd_per_1m" dense outlined type="number" min="0" step="0.0001" label="推理 Token 价格" />
+          <q-input v-model.number="providerForm.embedding_price_usd_per_1m" dense outlined type="number" min="0" step="0.0001" label="Embedding 价格" />
           <q-input v-model.number="providerForm.sort_order" dense outlined type="number" label="排序" />
           <q-input v-model="providerForm.description" class="app-grid-span-full" dense outlined autogrow type="textarea" label="描述" />
                 </div>
@@ -455,7 +535,7 @@
             @click="saveRow"
           >
             <q-tooltip v-if="isProviderResource && !editingId && !canSubmitNewProviderModel">
-              请先点击「检查」并通过远程验证后再创建
+              远程模型需先点击「检查」并通过验证后再创建；本地自定义模型可直接创建
             </q-tooltip>
           </q-btn>
         </q-card-actions>
@@ -507,8 +587,21 @@ const {
   trendRow,
   providerPresetKey,
   providerStep,
+  providerAddMode,
+  catalogProviderId,
+  catalogProviderHint,
+  catalogProviderDocUrl,
+  catalogProviderSearch,
+  catalogModelSearch,
+  reloadCatalogProviders,
+  reloadCatalogModels,
+  onCatalogModelFilter,
+  catalogProviderOptions,
+  catalogLoading,
+  catalogModelsLoading,
   providerTypeFilter,
   categoryOptions,
+  providerTypeOptions,
   providerTypeFilterOptions,
   variantOptions,
   form,
@@ -538,6 +631,10 @@ const {
   openEdit,
   saveRow,
   applyProviderPreset,
+  applyModelPreset,
+  applyCatalogProvider,
+  applyCatalogModel,
+  setProviderAddMode,
   setCustomModelValue,
   inspectCurrentProviderModel,
   toggleApiKeyVisibility,

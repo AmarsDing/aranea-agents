@@ -12,6 +12,7 @@ const LIVE_TYPES: EnvelopeType[] = [
   "state_delta",
   "transfer",
   "runner_completion",
+  "context_usage",
   "run_status",
   "error",
   "graph_node_start",

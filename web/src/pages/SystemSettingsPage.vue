@@ -10,6 +10,13 @@
       </section>
 
       <q-card flat class="app-settings-shell">
+        <q-tabs v-model="settingsTab" dense align="left" class="text-primary q-px-md q-pt-sm" active-color="primary" indicator-color="primary">
+          <q-tab name="general" label="常规" />
+          <q-tab name="catalog" label="模型目录" />
+        </q-tabs>
+        <q-separator />
+        <q-tab-panels v-model="settingsTab" animated>
+          <q-tab-panel name="general" class="q-pa-none">
         <q-card-section class="app-settings-shell__body">
           <q-banner v-if="error" rounded class="bg-negative text-white q-mb-md">{{ error }}</q-banner>
 
@@ -130,6 +137,11 @@
             </div>
           </div>
         </q-card-section>
+          </q-tab-panel>
+          <q-tab-panel name="catalog" class="q-pa-md">
+            <SystemSettingsCatalogTab />
+          </q-tab-panel>
+        </q-tab-panels>
       </q-card>
     </div>
   </q-page>
@@ -154,7 +166,9 @@ import {
 import { DEFAULT_KNOWLEDGE_EMBED_FORM } from "../features/knowledge/embedder-constants";
 import KnowledgeEmbedderFields from "../components/knowledge/KnowledgeEmbedderFields.vue";
 import WebResearchFields from "../components/settings/WebResearchFields.vue";
+import SystemSettingsCatalogTab from "./SystemSettingsCatalogTab.vue";
 const { t } = useI18n();
+const settingsTab = ref("general");
 const $q = useQuasar();
 const settingsStore = useSystemSettingsStore();
 const a2aStore = useA2AStore();

@@ -90,6 +90,25 @@ func (s *sessionRunRepoStub) ListForJobs(_ context.Context, q SessionRunListQuer
 	return out, nil
 }
 
+func (s *sessionRunRepoStub) ListBySession(_ context.Context, sessionID string, limit, offset int) ([]SessionRun, int, error) {
+	var out []SessionRun
+	for _, run := range s.runs {
+		if run.SessionID == sessionID {
+			out = append(out, run)
+		}
+	}
+	total := len(out)
+	if offset > total {
+		return nil, total, nil
+	}
+	if limit > 0 && offset+limit < total {
+		out = out[offset : offset+limit]
+	} else {
+		out = out[offset:]
+	}
+	return out, total, nil
+}
+
 func (s *sessionRunRepoStub) TryClaimDurableResume(_ context.Context, id, _ string) (bool, error) {
 	run, ok := s.runs[id]
 	if !ok || run.Phase != SessionRunPhaseDurable || strings.TrimSpace(run.CheckpointID) == "" {

@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"log"
 	"strings"
 	"time"
 
@@ -74,10 +75,22 @@ func (uc *EvolutionUsecase) GetEvolutionMetrics(ctx context.Context, agentID str
 		return EvolutionMetrics{}, kerrors.BadRequest("EVOLUTION", "agent_id is required")
 	}
 	since := timeRangeToSince(timeRange)
-	toolRate, toolSeries, _ := uc.metricsRepo.GetToolSuccessRate(ctx, agentID, since)
-	retrievalRate, retrievalSeries, _ := uc.metricsRepo.GetRetrievalQuality(ctx, agentID, since)
-	episodes, _ := uc.metricsRepo.GetEpisodeCount(ctx, agentID, since)
-	negFeedback, _ := uc.metricsRepo.GetNegativeFeedbackCount(ctx, agentID, since)
+	toolRate, toolSeries, err := uc.metricsRepo.GetToolSuccessRate(ctx, agentID, since)
+	if err != nil {
+		log.Printf("[EVOLUTION] GetToolSuccessRate agent=%s err=%v", agentID, err)
+	}
+	retrievalRate, retrievalSeries, err := uc.metricsRepo.GetRetrievalQuality(ctx, agentID, since)
+	if err != nil {
+		log.Printf("[EVOLUTION] GetRetrievalQuality agent=%s err=%v", agentID, err)
+	}
+	episodes, err := uc.metricsRepo.GetEpisodeCount(ctx, agentID, since)
+	if err != nil {
+		log.Printf("[EVOLUTION] GetEpisodeCount agent=%s err=%v", agentID, err)
+	}
+	negFeedback, err := uc.metricsRepo.GetNegativeFeedbackCount(ctx, agentID, since)
+	if err != nil {
+		log.Printf("[EVOLUTION] GetNegativeFeedbackCount agent=%s err=%v", agentID, err)
+	}
 	return EvolutionMetrics{
 		AgentID:                agentID,
 		TimeRange:              timeRange,

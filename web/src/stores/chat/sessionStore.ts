@@ -15,6 +15,7 @@ import {
   updateSessionTitle,
   type Session,
 } from "../../features/session/api";
+import type { SessionContextPatch } from "../../features/chat/sessionContextPatch";
 import { formatSessionTime } from "../../features/chat/composables/chatWorkspaceUtils";
 import type { ChatEntityKind } from "../../components/chat/types";
 
@@ -38,6 +39,41 @@ function sortSessionsForDisplay(rows: Session[]): Session[] {
     if (aMsg !== bMsg) return bMsg - aMsg;
     return new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime();
   });
+}
+
+function mergeSessionMetrics(session: Session, patch: SessionContextPatch): Session {
+  return {
+    ...session,
+    ...patch,
+  };
+}
+
+function patchSessionInList(rows: Session[], sessionId: string, patch: SessionContextPatch): Session[] {
+  let changed = false;
+  const next = rows.map((session) => {
+    if (session.id !== sessionId) return session;
+    changed = true;
+    return mergeSessionMetrics(session, patch);
+  });
+  return changed ? next : rows;
+}
+
+function patchTeamSessionInMap(
+  map: Record<string, TeamSessionRow[]>,
+  sessionId: string,
+  patch: SessionContextPatch
+): Record<string, TeamSessionRow[]> {
+  let changed = false;
+  const out: Record<string, TeamSessionRow[]> = {};
+  for (const [teamId, rows] of Object.entries(map)) {
+    const nextRows = rows.map((session) => {
+      if (session.id !== sessionId) return session;
+      changed = true;
+      return mergeSessionMetrics(session, patch);
+    });
+    out[teamId] = nextRows;
+  }
+  return changed ? out : map;
 }
 
 function withTeamAt(session: Session): TeamSessionRow {
@@ -218,6 +254,18 @@ export const useChatSessionStore = defineStore("chatSession", () => {
     return undefined;
   }
 
+  function patchSessionMetricsLocal(sessionId: string, patch: SessionContextPatch) {
+    const id = sessionId.trim();
+    if (!id || !Object.keys(patch).length) return;
+
+    sessions.value = patchSessionInList(sessions.value, id, patch);
+    teamSessions.value = patchTeamSessionInMap(teamSessions.value, id, patch);
+
+    if (selectedSession.value?.id === id) {
+      selectedSession.value = mergeSessionMetrics(selectedSession.value, patch);
+    }
+  }
+
   return {
     entityKind,
     selectedTeamId,
@@ -241,5 +289,6 @@ export const useChatSessionStore = defineStore("chatSession", () => {
     clearAllAgentSessions,
     clearTeamSessions,
     findSessionById,
+    patchSessionMetricsLocal,
   };
 });

@@ -10,6 +10,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"aranea-agents/internal/modelcatalog"
+
 	"github.com/go-kratos/kratos/v2/errors"
 )
 
@@ -51,8 +53,15 @@ type ModelPricingRule struct {
 	InputPriceMicroUSDPer1K       int64
 	OutputPriceMicroUSDPer1K      int64
 	CachedInputPriceMicroUSDPer1K int64
+	CacheWritePriceMicroUSDPer1K  int64
 	ReasoningPriceMicroUSDPer1K   int64
 	EmbeddingPriceMicroUSDPer1K   int64
+	InputPriceUSDPer1M            float64
+	OutputPriceUSDPer1M           float64
+	CachedInputPriceUSDPer1M      float64
+	CacheWritePriceUSDPer1M       float64
+	ReasoningPriceUSDPer1M        float64
+	EmbeddingPriceUSDPer1M        float64
 	EffectiveFrom                 string
 	EffectiveTo                   string
 	IsActive                      bool
@@ -75,11 +84,21 @@ type InspectMerge struct {
 }
 
 type providerPricingConfig struct {
-	InputPriceMicroUSDPer1K       int64 `json:"input_price_micro_usd_per_1k"`
-	OutputPriceMicroUSDPer1K      int64 `json:"output_price_micro_usd_per_1k"`
-	CachedInputPriceMicroUSDPer1K int64 `json:"cached_input_price_micro_usd_per_1k"`
-	ReasoningPriceMicroUSDPer1K   int64 `json:"reasoning_price_micro_usd_per_1k"`
-	EmbeddingPriceMicroUSDPer1K   int64 `json:"embedding_price_micro_usd_per_1k"`
+	Cost                          providerCostBlock `json:"cost"`
+	InputPriceMicroUSDPer1K       int64             `json:"input_price_micro_usd_per_1k"`
+	OutputPriceMicroUSDPer1K      int64             `json:"output_price_micro_usd_per_1k"`
+	CachedInputPriceMicroUSDPer1K int64             `json:"cached_input_price_micro_usd_per_1k"`
+	ReasoningPriceMicroUSDPer1K   int64             `json:"reasoning_price_micro_usd_per_1k"`
+	EmbeddingPriceMicroUSDPer1K   int64             `json:"embedding_price_micro_usd_per_1k"`
+}
+
+type providerCostBlock struct {
+	InputUSDPer1M      float64 `json:"input_usd_per_1m"`
+	OutputUSDPer1M     float64 `json:"output_usd_per_1m"`
+	CacheReadUSDPer1M  float64 `json:"cache_read_usd_per_1m"`
+	CacheWriteUSDPer1M float64 `json:"cache_write_usd_per_1m"`
+	ReasoningUSDPer1M  float64 `json:"reasoning_usd_per_1m"`
+	EmbeddingUSDPer1M  float64 `json:"embedding_usd_per_1m"`
 }
 
 // LlmProviderModelRepo is persistence + pricing upsert backing provider models catalog.
@@ -366,19 +385,61 @@ func (u *LlmProviderModelUsecase) syncProviderModelPricing(ctx context.Context, 
 	if json.Unmarshal([]byte(row.ConfigJSON), &cfg) != nil {
 		return nil
 	}
-	if cfg.InputPriceMicroUSDPer1K == 0 && cfg.OutputPriceMicroUSDPer1K == 0 && cfg.CachedInputPriceMicroUSDPer1K == 0 &&
-		cfg.ReasoningPriceMicroUSDPer1K == 0 && cfg.EmbeddingPriceMicroUSDPer1K == 0 {
+	micro := modelcatalog.MicroPricing{
+		Input:     cfg.InputPriceMicroUSDPer1K,
+		Output:    cfg.OutputPriceMicroUSDPer1K,
+		CacheRead: cfg.CachedInputPriceMicroUSDPer1K,
+		Reasoning: cfg.ReasoningPriceMicroUSDPer1K,
+		Embedding: cfg.EmbeddingPriceMicroUSDPer1K,
+	}
+	if cfg.Cost.InputUSDPer1M > 0 || cfg.Cost.OutputUSDPer1M > 0 || cfg.Cost.CacheReadUSDPer1M > 0 ||
+		cfg.Cost.CacheWriteUSDPer1M > 0 || cfg.Cost.ReasoningUSDPer1M > 0 || cfg.Cost.EmbeddingUSDPer1M > 0 {
+		micro = modelcatalog.MicroPricingFromCostBlock(modelcatalog.CostUSDPer1M{
+			Input:      cfg.Cost.InputUSDPer1M,
+			Output:     cfg.Cost.OutputUSDPer1M,
+			CacheRead:  cfg.Cost.CacheReadUSDPer1M,
+			CacheWrite: cfg.Cost.CacheWriteUSDPer1M,
+			Reasoning:  cfg.Cost.ReasoningUSDPer1M,
+			Embedding:  cfg.Cost.EmbeddingUSDPer1M,
+		})
+	}
+	if micro.Input == 0 && micro.Output == 0 && micro.CacheRead == 0 && micro.CacheWrite == 0 &&
+		micro.Reasoning == 0 && micro.Embedding == 0 {
 		return nil
+	}
+	costUSD := modelcatalog.CostUSDPer1M{
+		Input:     modelcatalog.MicroPer1KToUSDPer1M(micro.Input),
+		Output:    modelcatalog.MicroPer1KToUSDPer1M(micro.Output),
+		CacheRead: modelcatalog.MicroPer1KToUSDPer1M(micro.CacheRead),
+		Reasoning: modelcatalog.MicroPer1KToUSDPer1M(micro.Reasoning),
+		Embedding: modelcatalog.MicroPer1KToUSDPer1M(micro.Embedding),
+	}
+	if cfg.Cost.InputUSDPer1M > 0 || cfg.Cost.OutputUSDPer1M > 0 {
+		costUSD = modelcatalog.CostUSDPer1M{
+			Input:      cfg.Cost.InputUSDPer1M,
+			Output:     cfg.Cost.OutputUSDPer1M,
+			CacheRead:  cfg.Cost.CacheReadUSDPer1M,
+			CacheWrite: cfg.Cost.CacheWriteUSDPer1M,
+			Reasoning:  cfg.Cost.ReasoningUSDPer1M,
+			Embedding:  cfg.Cost.EmbeddingUSDPer1M,
+		}
 	}
 	return u.repo.UpsertModelPricingRule(ctx, ModelPricingRule{
 		ProviderCode:                  row.Provider,
 		ModelAPIID:                    row.Model,
 		Currency:                      "USD",
-		InputPriceMicroUSDPer1K:       cfg.InputPriceMicroUSDPer1K,
-		OutputPriceMicroUSDPer1K:      cfg.OutputPriceMicroUSDPer1K,
-		CachedInputPriceMicroUSDPer1K: cfg.CachedInputPriceMicroUSDPer1K,
-		ReasoningPriceMicroUSDPer1K:   cfg.ReasoningPriceMicroUSDPer1K,
-		EmbeddingPriceMicroUSDPer1K:   cfg.EmbeddingPriceMicroUSDPer1K,
+		InputPriceMicroUSDPer1K:       micro.Input,
+		OutputPriceMicroUSDPer1K:      micro.Output,
+		CachedInputPriceMicroUSDPer1K: micro.CacheRead,
+		CacheWritePriceMicroUSDPer1K:  micro.CacheWrite,
+		ReasoningPriceMicroUSDPer1K:   micro.Reasoning,
+		EmbeddingPriceMicroUSDPer1K:   micro.Embedding,
+		InputPriceUSDPer1M:            costUSD.Input,
+		OutputPriceUSDPer1M:           costUSD.Output,
+		CachedInputPriceUSDPer1M:      costUSD.CacheRead,
+		CacheWritePriceUSDPer1M:       costUSD.CacheWrite,
+		ReasoningPriceUSDPer1M:        costUSD.Reasoning,
+		EmbeddingPriceUSDPer1M:        costUSD.Embedding,
 		Source:                        "model-inspect",
 		MetadataJSON:                  "{}",
 	})

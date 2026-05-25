@@ -78,13 +78,13 @@ func (s *ChatService) CancelRun(ctx context.Context, sessionID string) bool {
 }
 
 // setRunStatus atomically updates the run status for a session and publishes a WS envelope.
-func (s *ChatService) setRunStatus(sessionID, runID, status, errMsg string) {
-	s.orch.setRunStatus(sessionID, runID, status, errMsg)
+func (s *ChatService) setRunStatus(ctx context.Context, sessionID, runID, status, errMsg string) {
+	s.orch.setRunStatus(ctx, sessionID, runID, status, errMsg)
 }
 
 // SetRunStatus implements biz.NativeTurnGateway.
-func (s *ChatService) SetRunStatus(sessionID, runID, status, errMsg string) {
-	s.orch.setRunStatus(sessionID, runID, status, errMsg)
+func (s *ChatService) SetRunStatus(ctx context.Context, sessionID, runID, status, errMsg string) {
+	s.orch.setRunStatus(ctx, sessionID, runID, status, errMsg)
 }
 
 // RunGateway exposes the shared session run registry (Chat, Team, Cron, Channel, WS).

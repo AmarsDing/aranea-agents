@@ -27,10 +27,16 @@ func DisplayMarkdownFromStream(result EventStreamResult) string {
 
 // EstimateTokensIfMissing fills token counts from text when the model omitted usage.
 func EstimateTokensIfMissing(promptTok, completionTok int, inputPreview, displayMarkdown string) (int, int) {
+	if promptTok > 0 && completionTok > 0 {
+		return promptTok, completionTok
+	}
+	if promptTok <= 0 && completionTok > 0 && strings.TrimSpace(inputPreview) != "" {
+		promptTok = RoughTokenEstimate(inputPreview)
+	}
 	if promptTok > 0 || completionTok > 0 || displayMarkdown == "" {
 		return promptTok, completionTok
 	}
-	return RoughTokenEstimate(inputPreview + displayMarkdown), RoughTokenEstimate(displayMarkdown)
+	return RoughTokenEstimate(inputPreview+displayMarkdown), RoughTokenEstimate(displayMarkdown)
 }
 
 // ConsumeWithFirstByteGuard runs the turn stream consumer with a first-byte deadline.

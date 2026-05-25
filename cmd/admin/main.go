@@ -278,6 +278,11 @@ func main() {
 		logger.Log(log.LevelInfo, "msg", "memory episode backfill worker started", "interval", "6h")
 	}
 
+	if out.ModelCatalogRunner != nil {
+		out.ModelCatalogRunner.Start(cronCtx)
+		logger.Log(log.LevelInfo, "msg", "model catalog sync runner started", "interval", "1h")
+	}
+
 	if err := out.App.Run(); err != nil {
 		panic(err)
 	}

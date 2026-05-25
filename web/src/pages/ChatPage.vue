@@ -44,6 +44,8 @@
         :provider-options="composer.provOpts"
         :session-title="session.selectedSessionForUi?.title || layout.t('chat.untitledSession')"
         :context-ratio="session.selectedSessionForUi?.context_used_ratio ?? 0"
+        :context-status="session.selectedSessionForUi?.context_status"
+        :usage-snapshot="session.composerUsageSnapshot"
         :session-total-tokens="session.selectedSessionForUi?.total_tokens ?? null"
         :knowledge-base-options="composer.knowledgeBaseOptions"
         :selected-knowledge-bases="composer.selectedKnowledgeBases"

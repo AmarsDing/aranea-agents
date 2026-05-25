@@ -4,7 +4,9 @@ import { useQuasar } from "quasar";
 import { useRouter } from "vue-router";
 import { useChatStreamingSnapshots } from "../../../stores/chatStreamingSnapshots";
 import { useAuthStore } from "../../../stores/auth";
-import { useChatStore } from "../../../stores/chat";
+import { useChatSessionStore } from "../../../stores/chat/sessionStore";
+import { useChatMessageStore } from "../../../stores/chat/messageStore";
+import { useChatRuntimeStore } from "../../../stores/chat/runtimeStore";
 import {
   createChatStream,
   createTeamStream,
@@ -13,11 +15,14 @@ import {
 import type { Envelope, EnvelopeType, WsUpstream } from "../envelope";
 import { bindStreamHandlers, patchStreamingEnvelope } from "../streamHandlers";
 import { getChannelWsCursor } from "../channelWsCursor";
+import { reloadSessionAfterCompletion } from "../sessionCompletionReload";
 import type { TeamRow } from "../../../components/chat/types";
 import type { TeamDefinition } from "../../teams/types";
 
 export type StreamManagerDeps = {
-  chatStore: ReturnType<typeof useChatStore>;
+  sessionStore: ReturnType<typeof useChatSessionStore>;
+  messageStore: ReturnType<typeof useChatMessageStore>;
+  runtimeStore: ReturnType<typeof useChatRuntimeStore>;
   displayTeams: Ref<TeamRow[]>;
   resolveAgentId: () => string | undefined;
   markSendingDone: () => void;
@@ -45,34 +50,22 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
     $q.notify({ type: "info", message, timeout: 4000, group: false });
   }
 
-  async function reloadAgentAfterCompletion(sessionId: string) {
+  async function reloadSessionMessagesAfterCompletion(sessionId: string) {
     try {
-      await deps.chatStore.loadMessages({ sessionId, dropStaleInFlight: true });
-      streamingSnapshots.clear(sessionId);
-      if (deps.chatStore.entityKind === "agent") {
-        const agentId = deps.resolveAgentId();
-        if (agentId) await deps.chatStore.loadAgentSessions(agentId, { refreshOnly: true });
-      }
-    } catch (err) {
-      notifyError(err instanceof Error ? err.message : t("chat.loadMessagesFailed", "加载消息失败"));
-    }
-  }
-
-  async function reloadTeamAfterCompletion(sessionId: string) {
-    try {
-      const rev = deps.chatStore.sessionRevisionBySession[sessionId] ?? 0;
-      if (rev > 0) {
-        await deps.chatStore.loadMessages({ sessionId, afterRevision: rev });
-      } else {
-        await deps.chatStore.loadMessages({ sessionId, replace: true });
-      }
+      await reloadSessionAfterCompletion({
+        sessionStore: deps.sessionStore,
+        messageStore: deps.messageStore,
+        streamingSnapshots,
+        sessionId,
+        resolveAgentId: deps.resolveAgentId,
+      });
     } catch (err) {
       notifyError(err instanceof Error ? err.message : t("chat.loadMessagesFailed", "加载消息失败"));
     }
   }
 
   function resolveTeamMemberMeta(agentKey: string) {
-    const team = deps.displayTeams.value.find((row) => row.id === deps.chatStore.selectedTeamId);
+    const team = deps.displayTeams.value.find((row) => row.id === deps.sessionStore.selectedTeamId);
     let def: TeamDefinition | null = null;
     try {
       def = team?.definition_json ? (JSON.parse(team.definition_json) as TeamDefinition) : null;
@@ -87,24 +80,42 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
     };
   }
 
+  function sessionContextHandlers(sessionId: string) {
+    return {
+      onSessionContextPatch: (sid: string, patch: Parameters<typeof deps.sessionStore.patchSessionMetricsLocal>[1]) => {
+        deps.sessionStore.patchSessionMetricsLocal(sid, patch);
+      },
+      getSessionMetrics: (sid: string) => {
+        const row = deps.sessionStore.findSessionById(sid);
+        if (!row) return undefined;
+        return {
+          total_tokens: row.total_tokens,
+          max_context_used_ratio: row.max_context_used_ratio,
+          input_tokens: row.input_tokens,
+          output_tokens: row.output_tokens,
+        };
+      },
+    };
+  }
+
   function ensureChatStream(sessionId: string) {
     if (chatStream && chatStreamSessionId === sessionId) {
-      deps.chatStore.setWsConnected(sessionId, chatStream.connected.value);
+      deps.runtimeStore.setWsConnected(sessionId, chatStream.connected.value ?? false);
       if (!chatStream.connected.value) {
         chatStream.connect();
       }
       return chatStream;
     }
     chatStream?.disconnect();
-    deps.chatStore.setWsConnected(sessionId, false);
+    deps.runtimeStore.setWsConnected(sessionId, false);
 
     chatStream = createChatStream(sessionId, {
       lastEventId: getChannelWsCursor(sessionId),
       onConnected: () => {
-        deps.chatStore.setWsConnected(sessionId, true);
+        deps.runtimeStore.setWsConnected(sessionId, true);
       },
       onDisconnected: () => {
-        deps.chatStore.setWsConnected(sessionId, false);
+        deps.runtimeStore.setWsConnected(sessionId, false);
       },
       onServerShutdown: () => {
         $q.notify({
@@ -135,16 +146,17 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
       chatStream,
       {
         sessionId,
-        resolveActiveSessionId: () => deps.chatStore.selectedSession?.id ?? null,
-        getMessages: (sid) => deps.chatStore.getMessages(sid),
-        setMessages: (sid, rows) => deps.chatStore.setMessages(sid, rows),
+        resolveActiveSessionId: () => deps.sessionStore.selectedSession?.id ?? null,
+        getMessages: (sid) => deps.messageStore.getMessages(sid),
+        setMessages: (sid, rows) => deps.messageStore.setMessages(sid, rows),
         markSendingDone: deps.markSendingDone,
         onRunStatus: deps.onRunStatus,
         onErrorNotify: notifyError,
         onOrchestrationNotice: notifyOrchestration,
-        onReloadAfterCompletion: reloadAgentAfterCompletion,
+        onReloadAfterCompletion: reloadSessionMessagesAfterCompletion,
+        ...sessionContextHandlers(sessionId),
         setLastIntentPass: (value) => {
-          deps.chatStore.lastIntentPass = value;
+          deps.messageStore.lastIntentPass = value;
         },
         onStreamingPatch: (sid, patch) => {
           if (patch.done) {
@@ -171,19 +183,13 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
 
   function ensureTeamStream(sessionId: string) {
     if (teamStream && teamStream.transport.value && teamStreamSessionId === sessionId) {
-      deps.chatStore.setWsConnected(sessionId, teamStream.connected.value);
+      deps.runtimeStore.setWsConnected(sessionId, teamStream.connected.value ?? false);
       return teamStream;
     }
     teamStream?.disconnect();
-    deps.chatStore.setWsConnected(sessionId, false);
+    deps.runtimeStore.setWsConnected(sessionId, false);
 
     teamStream = createTeamStream(sessionId, {
-      onConnected: () => {
-        deps.chatStore.setWsConnected(sessionId, true);
-      },
-      onDisconnected: () => {
-        deps.chatStore.setWsConnected(sessionId, false);
-      },
       onReplayState: (replaying) => {
         wsReplaying.value = replaying;
       },
@@ -202,16 +208,17 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
       {
         sessionId,
         streamIdPrefix: "ws-team-stream",
-        resolveActiveSessionId: () => deps.chatStore.teamSelectedSessionId,
-        getMessages: (sid) => deps.chatStore.getMessages(sid),
-        setMessages: (sid, rows) => deps.chatStore.setMessages(sid, rows),
+        resolveActiveSessionId: () => deps.sessionStore.teamSelectedSessionId,
+        getMessages: (sid) => deps.messageStore.getMessages(sid),
+        setMessages: (sid, rows) => deps.messageStore.setMessages(sid, rows),
         markSendingDone: deps.markSendingDone,
         onRunStatus: deps.onRunStatus,
         onErrorNotify: notifyError,
         onOrchestrationNotice: notifyOrchestration,
-        onReloadAfterCompletion: reloadTeamAfterCompletion,
+        onReloadAfterCompletion: reloadSessionMessagesAfterCompletion,
+        ...sessionContextHandlers(sessionId),
         setLastIntentPass: (value) => {
-          deps.chatStore.lastIntentPass = value;
+          deps.messageStore.lastIntentPass = value;
         },
         resolveMemberMeta: resolveTeamMemberMeta,
       }
@@ -233,7 +240,7 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
 
   function disconnectChatStream() {
     if (chatStreamSessionId) {
-      deps.chatStore.setWsConnected(chatStreamSessionId, false);
+      deps.runtimeStore.setWsConnected(chatStreamSessionId, false);
     }
     chatStream?.disconnect();
     chatStream = null;
@@ -242,7 +249,7 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
 
   function disconnectTeamStream() {
     if (teamStreamSessionId) {
-      deps.chatStore.setWsConnected(teamStreamSessionId, false);
+      deps.runtimeStore.setWsConnected(teamStreamSessionId, false);
     }
     teamStream?.disconnect();
     teamStream = null;
@@ -260,9 +267,9 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
   }
 
   function patchAgentMessages(sessionId: string, streamId: string, env: Envelope, isDone: boolean) {
-    deps.chatStore.setMessages(
+    deps.messageStore.setMessages(
       sessionId,
-      patchStreamingEnvelope(deps.chatStore.getMessages(sessionId), sessionId, streamId, env, isDone)
+      patchStreamingEnvelope(deps.messageStore.getMessages(sessionId), sessionId, streamId, env, isDone)
     );
   }
 

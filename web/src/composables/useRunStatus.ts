@@ -1,6 +1,6 @@
 import { ref, readonly, onUnmounted } from "vue";
 import type { RunStatus, RunStatusValue } from "../features/chat/types";
-import { useChatStore } from "../stores/chat";
+import { useChatRuntimeStore } from "../stores/chat/runtimeStore";
 
 const POLL_INTERVAL_MS = 2000;
 
@@ -9,7 +9,7 @@ const POLL_INTERVAL_MS = 2000;
  * Prefer useChatRunStatus inside Chat workspace.
  */
 export function useRunStatus(sessionId: string) {
-  const chatStore = useChatStore();
+  const runtime = useChatRuntimeStore();
   const status = ref<RunStatusValue>("idle");
   const runId = ref("");
   const errorMessage = ref("");
@@ -21,7 +21,7 @@ export function useRunStatus(sessionId: string) {
   async function poll() {
     if (!sessionId) return;
     try {
-      const rs: RunStatus = await chatStore.fetchRunStatus(sessionId);
+      const rs: RunStatus = await runtime.fetchRunStatus(sessionId);
       status.value = rs.status;
       runId.value = rs.runId;
       errorMessage.value = rs.errorMessage;
@@ -46,7 +46,7 @@ export function useRunStatus(sessionId: string) {
   }
 
   async function submitReply(reply: string): Promise<boolean> {
-    return chatStore.submitAwaitReply(sessionId, reply, runId.value || undefined);
+    return runtime.submitAwaitReply(sessionId, reply, runId.value || undefined);
   }
 
   onUnmounted(() => stopPolling());

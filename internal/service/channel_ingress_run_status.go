@@ -1,9 +1,11 @@
 package service
 
-import "strings"
+import (
+	"context"
+	"strings"
+)
 
-// publishChannelTurnRunStatus syncs Channel turn terminal state to Web (run_status + Finish).
-func (h *ChannelIngress) publishChannelTurnRunStatus(sessionID, runID, status, errMsg string) {
+func (h *ChannelIngress) publishChannelTurnRunStatus(ctx context.Context, sessionID, runID, status, errMsg string) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" || h == nil {
 		return
@@ -13,7 +15,7 @@ func (h *ChannelIngress) publishChannelTurnRunStatus(sessionID, runID, status, e
 		runID = sessionID
 	}
 	if h.chat != nil {
-		h.chat.SetRunStatus(sessionID, runID, status, errMsg)
+		h.chat.SetRunStatus(ctx, sessionID, runID, status, errMsg)
 		return
 	}
 	if h.eventBus != nil {

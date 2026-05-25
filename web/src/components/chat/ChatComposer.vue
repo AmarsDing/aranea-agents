@@ -149,20 +149,22 @@
           @update:model-value="$emit('update:selectedKnowledgeBases', ($event as string[]) ?? [])"
         />
         <div class="chat-toolbar-actions row items-center no-wrap q-gutter-sm">
-          <div class="chat-context-pill row items-center no-wrap">
-            <span class="text-caption text-no-wrap q-mr-sm">{{ t("chat.contextPromptUse") }}</span>
-            <q-circular-progress
-              :value="contextRatio * 100"
-              show-value
-              size="34px"
-              :thickness="0.2"
-              color="primary"
-            >
-              <span class="text-caption">{{ Math.round(contextRatio * 100) }}%</span>
-            </q-circular-progress>
-            <span v-if="sessionTotalTokens != null" class="text-caption text-no-wrap q-ml-sm sessions-muted">
-              {{ t("chat.sessionTotalTokens", { n: sessionTotalTokens }) }}
-            </span>
+          <div class="chat-context-pill column items-start">
+            <div class="row items-center no-wrap">
+              <span class="text-caption text-no-wrap q-mr-sm">{{ t("chat.contextPromptUse") }}</span>
+              <q-circular-progress
+                :value="contextRatio * 100"
+                show-value
+                size="34px"
+                :thickness="0.2"
+                :color="contextColor"
+              >
+                <span class="text-caption">{{ Math.round(contextRatio * 100) }}%</span>
+              </q-circular-progress>
+            </div>
+            <div v-if="usageDetail" class="text-caption sessions-muted q-mt-xs chat-context-pill__detail">
+              {{ usageDetail }}
+            </div>
           </div>
           <q-space class="gt-sm" />
           <q-btn
@@ -219,14 +221,20 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import ChatEnqueueMessage from "../../features/chat/components/ChatEnqueueMessage.vue";
 import { AWAIT_KIND_TOOL_CONFIRM } from "../../features/chat/awaitConstants";
 import type { ChatAttachment } from "./types";
+import {
+  composerContextColor,
+  formatComposerUsageDetail,
+  type ComposerUsageSnapshot,
+} from "../../features/chat/composerUsageMetrics";
 
 type Option = { label: string; value: string; caption?: string };
 
-defineProps<{
+const props = defineProps<{
   modelValue: string;
   attachments: ChatAttachment[];
   dialogMode: string;
@@ -234,6 +242,9 @@ defineProps<{
   modeOptions: Option[];
   providerOptions: Option[];
   contextRatio: number;
+  contextStatus?: string;
+  usageSnapshot?: ComposerUsageSnapshot | null;
+  /** @deprecated use usageSnapshot */
   sessionTotalTokens?: number | null;
   knowledgeBaseOptions?: Option[];
   selectedKnowledgeBases?: string[];
@@ -245,6 +256,17 @@ defineProps<{
   awaitToolKey?: string;
   showEnqueue?: boolean;
 }>();
+
+const contextColor = computed(() => composerContextColor(props.contextStatus, props.contextRatio));
+const usageDetail = computed(() => {
+  if (props.usageSnapshot) {
+    return formatComposerUsageDetail(props.usageSnapshot);
+  }
+  if (props.sessionTotalTokens != null) {
+    return `Σ ${props.sessionTotalTokens}`;
+  }
+  return "";
+});
 
 const emit = defineEmits<{
   "update:modelValue": [value: string];

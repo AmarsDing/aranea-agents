@@ -7,12 +7,24 @@ import { useProviderTrendDialog } from "../usage/useProviderTrendDialog";
 import ProviderHAConfig, { type ProviderHAForm } from "../../components/platform/ProviderHAConfig.vue";
 import {
   PROVIDER_PRESETS,
-  PROVIDER_TYPE_OPTIONS,
-  VARIANT_OPTIONS,
   findModelPreset,
   findProviderPreset,
   type ProviderModelPreset
 } from "../../config/providerPresets";
+import {
+  PROVIDER_TYPE_OPTIONS,
+  VARIANT_OPTIONS,
+  runtimeProfileFor,
+  usdPer1MToMicroPer1K,
+  microPer1KToUsdPer1M
+} from "../../config/providerRuntimeOverlay";
+import {
+  applyCatalogModelFields,
+  applyCatalogProviderFields,
+  type CapabilityChip
+} from "../model-catalog/applyCatalog";
+import { listCatalogModels, listCatalogProviders } from "../model-catalog/api";
+import type { CatalogModelSummary, CatalogProviderSummary } from "../../services/kratos/model_catalog/v1/index";
 import {
   hasPricingConfigured,
   pricingWarningMessage,
@@ -98,6 +110,14 @@ function getRowConfig(row: PlatformResource): ProviderConfig {
 const providerPresetKey = ref("");
 const providerStep = ref(1);
 const providerTypeFilter = ref<string[]>([]);
+const providerAddMode = ref<"catalog" | "custom">("catalog");
+const catalogProviderId = ref("");
+const catalogProviderSearch = ref("");
+const catalogModelSearch = ref("");
+const catalogProviders = ref<CatalogProviderSummary[]>([]);
+const catalogModels = ref<CatalogModelSummary[]>([]);
+const catalogLoading = ref(false);
+const catalogModelsLoading = ref(false);
 /** 新建 Provider：最近一次「检查」成功时的连接指纹；改动 code/model/base/key/type 后需重新检查 */
 const providerCreateInspectFingerprint = ref("");
 
@@ -142,6 +162,17 @@ type ProviderConfig = {
   cached_input_price_micro_usd_per_1k?: number | string | null;
   reasoning_price_micro_usd_per_1k?: number | string | null;
   embedding_price_micro_usd_per_1k?: number | string | null;
+  cost?: {
+    input_usd_per_1m?: number;
+    output_usd_per_1m?: number;
+    cache_read_usd_per_1m?: number;
+    cache_write_usd_per_1m?: number;
+    reasoning_usd_per_1m?: number;
+    embedding_usd_per_1m?: number;
+  };
+  capability_chips?: CapabilityChip[];
+  catalog_source?: string;
+  catalog_managed?: boolean;
   raw_metadata_json?: string;
   metadata_source?: string;
   last_used_at?: string;
@@ -202,6 +233,15 @@ const providerForm = reactive({
   cached_input_price_micro_usd_per_1k: 0,
   reasoning_price_micro_usd_per_1k: 0,
   embedding_price_micro_usd_per_1k: 0,
+  input_price_usd_per_1m: 0,
+  output_price_usd_per_1m: 0,
+  cache_read_usd_per_1m: 0,
+  cache_write_usd_per_1m: 0,
+  reasoning_price_usd_per_1m: 0,
+  embedding_price_usd_per_1m: 0,
+  capability_chips: [] as CapabilityChip[],
+  catalog_managed: false,
+  catalog_source: "",
   raw_metadata_json: "",
   metadata_source: "",
   sort_order: 0,
@@ -233,7 +273,12 @@ const resource = computed(() => route.meta.resource as PlatformResourceName);
 const isProviderResource = computed(() => resource.value === "llm-provider-models");
 const pageTitle = computed(() => (route.meta.title as string) || "资源管理");
 const pageSubtitle = computed(() => (route.meta.subtitle as string) || "管理平台资源、启用状态与运行配置。");
-const currentAuthType = computed(() => currentProviderPreset.value?.authType || "api_key");
+const currentAuthType = computed(() => {
+  if (providerAddMode.value === "catalog" && catalogProviderId.value) {
+    return runtimeProfileFor(catalogProviderId.value).authType;
+  }
+  return currentProviderPreset.value?.authType || runtimeProfileFor(providerForm.provider_code).authType || "api_key";
+});
 
 const filteredRows = computed(() => {
   let list = rows.value;
@@ -407,32 +452,71 @@ function providerCreateInspectFingerprintValue(): string {
   ].join("\0");
 }
 
+function effectiveMicroPrice(usdPer1M: number): number {
+  return usdPer1MToMicroPer1K(usdPer1M);
+}
+
 const showPricingWarning = computed(
   () =>
     isProviderResource.value &&
     !hasPricingConfigured({
-      inputPrice: providerForm.input_price_micro_usd_per_1k,
-      outputPrice: providerForm.output_price_micro_usd_per_1k,
-      inputPriceCached: providerForm.cached_input_price_micro_usd_per_1k,
-      outputPriceReasoning: providerForm.reasoning_price_micro_usd_per_1k,
+      inputPrice: effectiveMicroPrice(providerForm.input_price_usd_per_1m),
+      outputPrice: effectiveMicroPrice(providerForm.output_price_usd_per_1m),
+      inputPriceCached: effectiveMicroPrice(providerForm.cache_read_usd_per_1m),
+      outputPriceReasoning: effectiveMicroPrice(providerForm.reasoning_price_usd_per_1m),
     })
 );
 
 const canSubmitNewProviderModel = computed(() => {
   if (!isProviderResource.value) return true;
   if (editingId.value) return true;
+  if (isLocalProviderModel.value) return true;
   const saved = providerCreateInspectFingerprint.value;
   if (!saved) return false;
   return saved === providerCreateInspectFingerprintValue();
 });
 
-const providerModelOptions = computed(() =>
-  (currentProviderPreset.value?.models ?? []).map((model) => ({
+const catalogProviderOptions = computed(() =>
+  catalogProviders.value.map((p) => ({
+    label: p.name || p.id || "",
+    value: p.id || "",
+    caption: `${p.modelCount ?? 0} 模型 · ${p.api || "—"}`
+  }))
+);
+
+const selectedCatalogProvider = computed(() =>
+  catalogProviders.value.find((p) => p.id === catalogProviderId.value) ?? null
+);
+
+const catalogProviderHint = computed(() => {
+  const p = selectedCatalogProvider.value;
+  if (!p) return "";
+  const env = (p.env ?? []).filter(Boolean);
+  if (!env.length) return "";
+  return `环境变量: ${env.join(", ")}`;
+});
+
+const catalogProviderDocUrl = computed(() => {
+  const doc = selectedCatalogProvider.value?.doc?.trim();
+  if (!doc) return "";
+  if (/^https?:\/\//i.test(doc)) return doc;
+  return `https://${doc}`;
+});
+
+const providerModelOptions = computed(() => {
+  if (providerAddMode.value === "catalog") {
+    return catalogModels.value.map((model) => ({
+      label: model.name || model.id || "",
+      value: model.id || "",
+      caption: `${model.id}${model.contextTokens ? ` · ${Math.round(model.contextTokens / 1000)}K ctx` : ""}${model.status && model.status !== "active" ? ` · ${model.status}` : ""}`
+    }));
+  }
+  return (currentProviderPreset.value?.models ?? []).map((model) => ({
     label: model.label,
     value: model.id,
     caption: `${model.id}${model.contextWindowK ? ` · ${model.contextWindowK}K ctx` : ""}`
-  }))
-);
+  }));
+});
 const dialogTitle = computed(() => {
   if (!isProviderResource.value) return editingId.value ? "编辑资源" : "新增资源";
   return editingId.value ? "编辑Provider" : "添加Provider";
@@ -454,6 +538,115 @@ watch(resource, () => {
 watch(filteredRows, () => {
   if (page.value > pageCount.value) page.value = pageCount.value;
 });
+
+watch(dialogOpen, (open) => {
+  if (open && isProviderResource.value) {
+    void ensureCatalogLoaded();
+  }
+});
+
+async function ensureCatalogLoaded(q = "") {
+  catalogLoading.value = true;
+  try {
+    const res = await listCatalogProviders(q, 200, 0);
+    catalogProviders.value = res.items;
+  } catch (error) {
+    $q.notify({ type: "warning", message: errorMessage(error) || "模型目录未加载，请先在系统设置同步 catalog" });
+  } finally {
+    catalogLoading.value = false;
+  }
+}
+
+async function reloadCatalogProviders() {
+  await ensureCatalogLoaded(catalogProviderSearch.value.trim());
+}
+
+async function loadCatalogModels(providerId: string, q = "") {
+  if (!providerId) {
+    catalogModels.value = [];
+    return;
+  }
+  catalogModelsLoading.value = true;
+  try {
+    const res = await listCatalogModels(providerId, q, false, 500, 0);
+    catalogModels.value = res.items;
+  } catch (error) {
+    catalogModels.value = [];
+    $q.notify({ type: "warning", message: errorMessage(error) || "加载目录模型失败" });
+  } finally {
+    catalogModelsLoading.value = false;
+  }
+}
+
+async function reloadCatalogModels() {
+  await loadCatalogModels(catalogProviderId.value, catalogModelSearch.value.trim());
+}
+
+function onCatalogModelFilter(val: string, update: (fn: () => void) => void) {
+  if (providerAddMode.value !== "catalog" || !catalogProviderId.value) {
+    update(() => {});
+    return;
+  }
+  void loadCatalogModels(catalogProviderId.value, val).then(() => update(() => {}));
+}
+
+function applyCatalogModel(modelId: string) {
+  const model = catalogModels.value.find((item) => item.id === modelId);
+  if (!model || !catalogProviderId.value) return;
+  const fields = applyCatalogModelFields(catalogProviderId.value, model, true);
+  Object.assign(providerForm, fields);
+  providerForm.catalog_source = "models.dev";
+}
+
+async function applyCatalogProvider(providerId: string) {
+  catalogProviderId.value = providerId;
+  const summary = catalogProviders.value.find((item) => item.id === providerId);
+  const fields = applyCatalogProviderFields(providerId, summary?.name || providerId, summary?.api);
+  Object.assign(providerForm, fields);
+  providerForm.catalog_managed = true;
+  providerForm.catalog_source = "models.dev";
+  providerForm.metadata_source = "models.dev";
+  providerCreateInspectFingerprint.value = "";
+  await loadCatalogModels(providerId);
+  if (catalogModels.value[0]?.id) {
+    providerForm.model_api_id = catalogModels.value[0].id;
+    applyCatalogModel(catalogModels.value[0].id);
+  }
+}
+
+function setProviderAddMode(mode: "catalog" | "custom") {
+  providerAddMode.value = mode;
+  providerCreateInspectFingerprint.value = "";
+  if (mode === "custom") {
+    catalogProviderId.value = "";
+    catalogModels.value = [];
+    providerForm.catalog_managed = false;
+    providerForm.catalog_source = "custom";
+    providerForm.metadata_source = "custom";
+    providerForm.capability_chips = [];
+    return;
+  }
+  providerForm.catalog_source = "models.dev";
+  void ensureCatalogLoaded();
+}
+
+function loadUsdPricingFromConfig(config: ProviderConfig) {
+  const cost = config.cost;
+  if (cost && typeof cost === "object") {
+    providerForm.input_price_usd_per_1m = toNumber(cost.input_usd_per_1m, 0);
+    providerForm.output_price_usd_per_1m = toNumber(cost.output_usd_per_1m, 0);
+    providerForm.cache_read_usd_per_1m = toNumber(cost.cache_read_usd_per_1m, 0);
+    providerForm.cache_write_usd_per_1m = toNumber(cost.cache_write_usd_per_1m, 0);
+    providerForm.reasoning_price_usd_per_1m = toNumber(cost.reasoning_usd_per_1m, 0);
+    providerForm.embedding_price_usd_per_1m = toNumber(cost.embedding_usd_per_1m, 0);
+    return;
+  }
+  providerForm.input_price_usd_per_1m = microPer1KToUsdPer1M(toNumber(config.input_price_micro_usd_per_1k, 0));
+  providerForm.output_price_usd_per_1m = microPer1KToUsdPer1M(toNumber(config.output_price_micro_usd_per_1k, 0));
+  providerForm.cache_read_usd_per_1m = microPer1KToUsdPer1M(toNumber(config.cached_input_price_micro_usd_per_1k, 0));
+  providerForm.reasoning_price_usd_per_1m = microPer1KToUsdPer1M(toNumber(config.reasoning_price_micro_usd_per_1k, 0));
+  providerForm.embedding_price_usd_per_1m = microPer1KToUsdPer1M(toNumber(config.embedding_price_micro_usd_per_1k, 0));
+}
 
 async function loadRows() {
   if (!resource.value) return;
@@ -504,6 +697,15 @@ function resetForm() {
     cached_input_price_micro_usd_per_1k: 0,
     reasoning_price_micro_usd_per_1k: 0,
     embedding_price_micro_usd_per_1k: 0,
+    input_price_usd_per_1m: 0,
+    output_price_usd_per_1m: 0,
+    cache_read_usd_per_1m: 0,
+    cache_write_usd_per_1m: 0,
+    reasoning_price_usd_per_1m: 0,
+    embedding_price_usd_per_1m: 0,
+    capability_chips: [],
+    catalog_managed: false,
+    catalog_source: "",
     raw_metadata_json: "",
     metadata_source: "",
     sort_order: 0,
@@ -523,12 +725,16 @@ function resetForm() {
   providerPresetKey.value = "";
   providerCreateInspectFingerprint.value = "";
   providerStep.value = 1;
+  providerAddMode.value = "catalog";
+  catalogProviderId.value = "";
+  catalogModels.value = [];
 }
 
 function openCreate() {
   editingId.value = "";
   resetForm();
   dialogOpen.value = true;
+  void ensureCatalogLoaded();
 }
 
 function openEdit(row: PlatformResource) {
@@ -549,7 +755,13 @@ function openEdit(row: PlatformResource) {
   });
   if (isProviderResource.value) {
     const config = getConfig(row);
+    const isCatalogManaged =
+      config.catalog_managed === true ||
+      config.catalog_source === "models.dev" ||
+      config.metadata_source === "models.dev";
+    providerAddMode.value = isCatalogManaged ? "catalog" : "custom";
     providerPresetKey.value = findProviderPreset(row.provider)?.key || "";
+    catalogProviderId.value = isCatalogManaged ? row.provider : "";
     Object.assign(providerForm, {
       provider_type: normalizeProviderType(config.provider_type),
       variant: config.variant || "openai",
@@ -574,6 +786,9 @@ function openEdit(row: PlatformResource) {
       cached_input_price_micro_usd_per_1k: toNumber(config.cached_input_price_micro_usd_per_1k, 0),
       reasoning_price_micro_usd_per_1k: toNumber(config.reasoning_price_micro_usd_per_1k, 0),
       embedding_price_micro_usd_per_1k: toNumber(config.embedding_price_micro_usd_per_1k, 0),
+      capability_chips: Array.isArray(config.capability_chips) ? config.capability_chips : [],
+      catalog_managed: Boolean(config.catalog_managed),
+      catalog_source: config.catalog_source || config.metadata_source || "",
       raw_metadata_json: config.raw_metadata_json || "",
       metadata_source: config.metadata_source || "",
       sort_order: row.sort_order,
@@ -585,6 +800,10 @@ function openEdit(row: PlatformResource) {
       keep_alive_minutes: toNumber(config.keep_alive_minutes, 5),
       rate_limit_rpm: toNumber(config.rate_limit_rpm, 0)
     });
+    loadUsdPricingFromConfig(config);
+    if (isCatalogManaged && row.provider) {
+      void loadCatalogModels(row.provider);
+    }
     Object.assign(providerHAForm, {
       haMode: (config.ha_mode || "") as ProviderHAForm["haMode"],
       haCandidates: (config.ha_candidates || []).map((c) => ({
@@ -683,11 +902,21 @@ function applyModelPresetValues(preset: ProviderModelPreset, overwrite = false) 
   providerForm.model_size_label = overwrite || !providerForm.model_size_label ? preset.sizeLabel || providerForm.model_size_label : providerForm.model_size_label;
   providerForm.context_window_k = overwrite || !providerForm.context_window_k ? preset.contextWindowK ?? providerForm.context_window_k : providerForm.context_window_k;
   providerForm.max_output_tokens = overwrite || !providerForm.max_output_tokens ? preset.maxOutputTokens ?? providerForm.max_output_tokens : providerForm.max_output_tokens;
-  providerForm.input_price_micro_usd_per_1k = overwrite || !providerForm.input_price_micro_usd_per_1k ? preset.inputPriceMicroUsdPer1K ?? providerForm.input_price_micro_usd_per_1k : providerForm.input_price_micro_usd_per_1k;
-  providerForm.output_price_micro_usd_per_1k = overwrite || !providerForm.output_price_micro_usd_per_1k ? preset.outputPriceMicroUsdPer1K ?? providerForm.output_price_micro_usd_per_1k : providerForm.output_price_micro_usd_per_1k;
-  providerForm.cached_input_price_micro_usd_per_1k = overwrite || !providerForm.cached_input_price_micro_usd_per_1k ? preset.cachedInputPriceMicroUsdPer1K ?? providerForm.cached_input_price_micro_usd_per_1k : providerForm.cached_input_price_micro_usd_per_1k;
-  providerForm.reasoning_price_micro_usd_per_1k = overwrite || !providerForm.reasoning_price_micro_usd_per_1k ? preset.reasoningPriceMicroUsdPer1K ?? providerForm.reasoning_price_micro_usd_per_1k : providerForm.reasoning_price_micro_usd_per_1k;
-  providerForm.embedding_price_micro_usd_per_1k = overwrite || !providerForm.embedding_price_micro_usd_per_1k ? preset.embeddingPriceMicroUsdPer1K ?? providerForm.embedding_price_micro_usd_per_1k : providerForm.embedding_price_micro_usd_per_1k;
+  if (overwrite || !providerForm.input_price_usd_per_1m) {
+    providerForm.input_price_usd_per_1m = microPer1KToUsdPer1M(preset.inputPriceMicroUsdPer1K ?? 0);
+  }
+  if (overwrite || !providerForm.output_price_usd_per_1m) {
+    providerForm.output_price_usd_per_1m = microPer1KToUsdPer1M(preset.outputPriceMicroUsdPer1K ?? 0);
+  }
+  if (overwrite || !providerForm.cache_read_usd_per_1m) {
+    providerForm.cache_read_usd_per_1m = microPer1KToUsdPer1M(preset.cachedInputPriceMicroUsdPer1K ?? 0);
+  }
+  if (overwrite || !providerForm.reasoning_price_usd_per_1m) {
+    providerForm.reasoning_price_usd_per_1m = microPer1KToUsdPer1M(preset.reasoningPriceMicroUsdPer1K ?? 0);
+  }
+  if (overwrite || !providerForm.embedding_price_usd_per_1m) {
+    providerForm.embedding_price_usd_per_1m = microPer1KToUsdPer1M(preset.embeddingPriceMicroUsdPer1K ?? 0);
+  }
 }
 
 function setCustomModelValue(value: string, done: (value: string, mode?: "add" | "add-unique" | "toggle") => void) {
@@ -725,6 +954,18 @@ async function inspectCurrentProviderModel() {
         providerCreateInspectFingerprint.value = "";
       }
       const preset = findModelPreset(providerPresetKey.value || code, model);
+      const catalogModel = catalogModels.value.find((item) => item.id === model);
+      if (catalogModel && catalogProviderId.value) {
+        Object.assign(providerForm, applyCatalogModelFields(catalogProviderId.value, catalogModel, true));
+        providerForm.metadata_source = "models.dev";
+        providerForm.catalog_source = "models.dev";
+        providerForm.catalog_managed = true;
+        if (!editingId.value) {
+          providerCreateInspectFingerprint.value = providerCreateInspectFingerprintValue();
+        }
+        $q.notify({ type: "warning", message: `${result.message || "未获取到模型参数"}；已使用 models.dev 目录参数回填` });
+        return;
+      }
       if (preset) {
         applyModelPresetValues(preset, true);
         providerForm.metadata_source = `${currentProviderPreset.value?.key || code}-preset`;
@@ -745,11 +986,31 @@ async function inspectCurrentProviderModel() {
     providerForm.model_size_label = result.model_size_label || providerForm.model_size_label;
     providerForm.context_window_k = result.context_window_k || providerForm.context_window_k;
     providerForm.max_output_tokens = result.max_output_tokens || providerForm.max_output_tokens;
-    providerForm.input_price_micro_usd_per_1k = result.input_price_micro_usd_per_1k || 0;
-    providerForm.output_price_micro_usd_per_1k = result.output_price_micro_usd_per_1k || 0;
-    providerForm.cached_input_price_micro_usd_per_1k = result.cached_input_price_micro_usd_per_1k || 0;
-    providerForm.reasoning_price_micro_usd_per_1k = result.reasoning_price_micro_usd_per_1k || 0;
-    providerForm.embedding_price_micro_usd_per_1k = result.embedding_price_micro_usd_per_1k || 0;
+    if (result.input_price_usd_per_1m) {
+      providerForm.input_price_usd_per_1m = result.input_price_usd_per_1m;
+    } else if (result.input_price_micro_usd_per_1k) {
+      providerForm.input_price_usd_per_1m = microPer1KToUsdPer1M(result.input_price_micro_usd_per_1k);
+    }
+    if (result.output_price_usd_per_1m) {
+      providerForm.output_price_usd_per_1m = result.output_price_usd_per_1m;
+    } else if (result.output_price_micro_usd_per_1k) {
+      providerForm.output_price_usd_per_1m = microPer1KToUsdPer1M(result.output_price_micro_usd_per_1k);
+    }
+    if (result.cache_read_usd_per_1m) {
+      providerForm.cache_read_usd_per_1m = result.cache_read_usd_per_1m;
+    } else if (result.cached_input_price_micro_usd_per_1k) {
+      providerForm.cache_read_usd_per_1m = microPer1KToUsdPer1M(result.cached_input_price_micro_usd_per_1k);
+    }
+    if (result.reasoning_price_usd_per_1m) {
+      providerForm.reasoning_price_usd_per_1m = result.reasoning_price_usd_per_1m;
+    } else if (result.reasoning_price_micro_usd_per_1k) {
+      providerForm.reasoning_price_usd_per_1m = microPer1KToUsdPer1M(result.reasoning_price_micro_usd_per_1k);
+    }
+    if (result.embedding_price_usd_per_1m) {
+      providerForm.embedding_price_usd_per_1m = result.embedding_price_usd_per_1m;
+    } else if (result.embedding_price_micro_usd_per_1k) {
+      providerForm.embedding_price_usd_per_1m = microPer1KToUsdPer1M(result.embedding_price_micro_usd_per_1k);
+    }
     providerForm.raw_metadata_json = result.raw_metadata_json || "";
     providerForm.metadata_source = result.source || "";
     $q.notify({ type: "positive", message: result.message || "已获取模型参数" });
@@ -816,11 +1077,17 @@ function buildProviderPayload(): PlatformResourceInput {
     usage_cost_micro_usd_30d: existingConfig.usage_cost_micro_usd_30d,
     success_rate_30d: existingConfig.success_rate_30d,
     avg_latency_ms_30d: existingConfig.avg_latency_ms_30d,
-    input_price_micro_usd_per_1k: providerForm.input_price_micro_usd_per_1k,
-    output_price_micro_usd_per_1k: providerForm.output_price_micro_usd_per_1k,
-    cached_input_price_micro_usd_per_1k: providerForm.cached_input_price_micro_usd_per_1k,
-    reasoning_price_micro_usd_per_1k: providerForm.reasoning_price_micro_usd_per_1k,
-    embedding_price_micro_usd_per_1k: providerForm.embedding_price_micro_usd_per_1k,
+    cost: {
+      input_usd_per_1m: providerForm.input_price_usd_per_1m,
+      output_usd_per_1m: providerForm.output_price_usd_per_1m,
+      cache_read_usd_per_1m: providerForm.cache_read_usd_per_1m,
+      cache_write_usd_per_1m: providerForm.cache_write_usd_per_1m,
+      reasoning_usd_per_1m: providerForm.reasoning_price_usd_per_1m,
+      embedding_usd_per_1m: providerForm.embedding_price_usd_per_1m,
+    },
+    capability_chips: providerForm.capability_chips,
+    catalog_source: providerForm.catalog_source || (providerAddMode.value === "custom" ? "custom" : ""),
+    catalog_managed: providerForm.catalog_managed,
     raw_metadata_json: providerForm.raw_metadata_json,
     metadata_source: providerForm.metadata_source,
     last_used_at: existingConfig.last_used_at,
@@ -951,8 +1218,21 @@ function errorMessage(error: unknown) {
     providerTrend,
     providerPresetKey,
     providerStep,
+    providerAddMode,
+    catalogProviderId,
+    catalogProviderOptions,
+    catalogProviderHint,
+    catalogProviderDocUrl,
+    catalogProviderSearch,
+    catalogModelSearch,
+    reloadCatalogProviders,
+    reloadCatalogModels,
+    onCatalogModelFilter,
+    catalogLoading,
+    catalogModelsLoading,
     providerTypeFilter,
     categoryOptions,
+    providerTypeOptions,
     providerTypeFilterOptions,
     variantOptions,
     form,
@@ -982,6 +1262,10 @@ function errorMessage(error: unknown) {
     openEdit,
     saveRow,
     applyProviderPreset,
+    applyModelPreset,
+    applyCatalogProvider,
+    applyCatalogModel,
+    setProviderAddMode,
     setCustomModelValue,
     inspectCurrentProviderModel,
     toggleApiKeyVisibility,

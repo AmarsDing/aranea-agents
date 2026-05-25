@@ -6,7 +6,11 @@
  *   - useChatRuntimeStore  (WS state, run status, stop)
  *
  * Existing consumers that import useChatStore continue to work.
- * New code should import the specific sub-store directly.
+ *
+ * @deprecated New code should import the specific sub-store directly:
+ *   - `import { useChatSessionStore } from "./sessionStore"`
+ *   - `import { useChatMessageStore } from "./messageStore"`
+ *   - `import { useChatRuntimeStore } from "./runtimeStore"`
  */
 import { computed } from "vue";
 import { defineStore } from "pinia";
@@ -14,6 +18,7 @@ import { useChatSessionStore, type TeamSessionRow } from "./sessionStore";
 import { useChatMessageStore } from "./messageStore";
 import { useChatRuntimeStore } from "./runtimeStore";
 import type { Session } from "../../features/session/api";
+import type { SessionContextPatch } from "../../features/chat/sessionContextPatch";
 import type { IntentPassResult, Message, RunStatus } from "../../features/chat/types";
 import type { ChatEntityKind } from "../../components/chat/types";
 
@@ -84,6 +89,9 @@ export const useChatStore = defineStore("chat", () => {
     }
   }
   function findSessionById(sessionId: string) { return session.findSessionById(sessionId); }
+  function patchSessionMetricsLocal(sessionId: string, patch: SessionContextPatch) {
+    session.patchSessionMetricsLocal(sessionId, patch);
+  }
 
   // --- Message delegates ---
   const messagesBySession = computed(() => message.messagesBySession);
@@ -141,6 +149,7 @@ export const useChatStore = defineStore("chat", () => {
     clearAllAgentSessions,
     clearTeamSessions,
     findSessionById,
+    patchSessionMetricsLocal,
     // Message
     messagesBySession,
     messages,

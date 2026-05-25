@@ -37,13 +37,14 @@
 
 <script setup lang="ts">
 import type { UsageModelInsight } from "../../features/usage/types";
+import { formatUsdFromMicro } from "../../features/usage/moneyFormat";
 
 defineProps<{
   rows: UsageModelInsight[];
 }>();
 
 function formatMoney(value: number) {
-  return `$${(value / 1_000_000).toFixed(4)}`;
+  return formatUsdFromMicro(value);
 }
 
 function flagLabel(f: string) {

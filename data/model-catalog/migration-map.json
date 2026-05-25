@@ -1,0 +1,16 @@
+{
+  "providers": {
+    "aliyun-qwen": "alibaba-cn",
+    "gemini": "google",
+    "moonshot-kimi": "moonshotai-cn",
+    "tencent-hunyuan": "hunyuan",
+    "zhipu-glm": "zhipuai"
+  },
+  "usage_alias": {
+    "aliyun-qwen": "alibaba-cn",
+    "gemini": "google",
+    "moonshot-kimi": "moonshotai-cn",
+    "tencent-hunyuan": "hunyuan",
+    "zhipu-glm": "zhipuai"
+  }
+}

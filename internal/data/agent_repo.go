@@ -40,17 +40,6 @@ func normalizeJSONList(value string) string {
 	return string(b)
 }
 
-func normalizeSkillRuntimeJSON(value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return "{}"
-	}
-	if json.Valid([]byte(value)) {
-		return value
-	}
-	return "{}"
-}
-
 func normalizeJSONObj(value string) string {
 	value = strings.TrimSpace(value)
 	if value == "" {
@@ -106,8 +95,127 @@ func entRuntimeToBiz(e *ent.AgentRuntimeSetting) biz.AgentRuntimeSettings {
 	if e == nil {
 		return biz.AgentRuntimeSettings{}
 	}
-	return biz.AgentRuntimeSettings{
-		AgentID:                           e.ID,
+	s := &biz.AgentRuntimeSettings{
+		AgentID:                       e.ID,
+		RalphLoopMaxIterations:        e.RalphLoopMaxIterations,
+		RalphLoopCompletionPromise:    e.RalphLoopCompletionPromise,
+		RalphLoopVerifyCommand:        e.RalphLoopVerifyCommand,
+		RalphLoopVerifyTimeoutSeconds: e.RalphLoopVerifyTimeoutSeconds,
+		RalphLoopPromiseTagOpen:       e.RalphLoopPromiseTagOpen,
+		RalphLoopPromiseTagClose:      e.RalphLoopPromiseTagClose,
+		RalphLoopVerifyWorkDir:        e.RalphLoopVerifyWorkDir,
+		CreatedAt:                     e.CreatedAt,
+		UpdatedAt:                     e.UpdatedAt,
+	}
+	s.ApplyIdentity(fromEntIdentity(e))
+	s.ApplyReasoning(fromEntReasoning(e))
+	s.ApplyMemory(fromEntMemory(e))
+	s.ApplyTools(fromEntTools(e))
+	s.ApplySkills(fromEntSkills(e))
+	s.ApplyEvolution(fromEntEvolution(e))
+	s.ApplyContext(fromEntContext(e))
+	return *s
+}
+
+func fromEntIdentity(e *ent.AgentRuntimeSetting) biz.IdentityCfg {
+	return biz.IdentityCfg{
+		AgentID:               e.ID,
+		ChannelID:             e.ChannelID,
+		ChatID:                e.ChatID,
+		Workspace:             e.Workspace,
+		VariablesJSON:         e.VariablesJSON,
+		ModelInstructionsJSON: e.ModelInstructionsJSON,
+	}
+}
+
+func fromEntReasoning(e *ent.AgentRuntimeSetting) biz.ReasoningCfg {
+	return biz.ReasoningCfg{Mode: e.ReasoningMode, Level: e.ReasoningLevel}
+}
+
+func fromEntMemory(e *ent.AgentRuntimeSetting) biz.MemoryCfg {
+	return biz.MemoryCfg{
+		Enabled:                  e.MemoryEnabled,
+		MaxChunkLength:           e.MemoryMaxChunkLength,
+		MaxResults:               e.MemoryMaxResults,
+		MinScore:                 e.MemoryMinScore,
+		HeartbeatEnabled:         e.HeartbeatEnabled,
+		HeartbeatIntervalMinutes: e.HeartbeatIntervalMinutes,
+		L0RecentWindowTurns:      e.L0RecentWindowTurns,
+		L0RecentWindowTokens:     e.L0RecentWindowTokens,
+		L0SummaryThreshold:       e.L0SummaryThreshold,
+		L0SummaryKeepTurns:       e.L0SummaryKeepTurns,
+		L0CompressMinGapSec:      e.L0CompressMinGapSec,
+		L0CompressProvider:       e.L0CompressProvider,
+		L0CompressModel:          e.L0CompressModel,
+		MemoryWorkerProvider:     e.MemoryWorkerProvider,
+		MemoryWorkerModel:        e.MemoryWorkerModel,
+		L0TruncateStrategy:       e.L0TruncateStrategy,
+		L0InjectL1:               e.L0InjectL1,
+		L0InjectL3:               e.L0InjectL3,
+		L0InjectL4:               e.L0InjectL4,
+		L0L3MaxChunks:            e.L0L3MaxChunks,
+		L0L4MaxPaths:             e.L0L4MaxPaths,
+		L0SnapshotMode:           e.L0SnapshotMode,
+		L1Enabled:                e.L1Enabled,
+		L1BudgetTokens:           e.L1BudgetTokens,
+		L1FieldMaxTokens:         e.L1FieldMaxTokens,
+		L1HistoryKeepRevisions:   e.L1HistoryKeepRevisions,
+		L1DefaultSchemaID:        e.L1DefaultSchemaID,
+		L1ArchiveOnIdleMinutes:   e.L1ArchiveOnIdleMinutes,
+		L2EpisodeEnabled:         e.L2EpisodeEnabled,
+		L2EpisodeMinImportance:   e.L2EpisodeMinImportance,
+		L2IndexEnabled:           e.L2IndexEnabled,
+		L2IndexEmbeddingModel:    e.L2IndexEmbeddingModel,
+		L2RecallEnabled:          e.L2RecallEnabled,
+		L2RecallMax:              e.L2RecallMax,
+		L2RetentionDays:          e.L2RetentionDays,
+		L2ArchiveAfterDays:       e.L2ArchiveAfterDays,
+		L3Enabled:                e.L3Enabled,
+		L3RecallTopK:             e.L3RecallTopK,
+		L3RecallMinScore:         e.L3RecallMinScore,
+		L3RecallScopesJSON:       e.L3RecallScopesJSON,
+		L3EmbeddingModel:         e.L3EmbeddingModel,
+		L3DecayIntervalHours:     e.L3DecayIntervalHours,
+		L3ArchiveThreshold:       e.L3ArchiveThreshold,
+		L3MaxPerRecallChars:      e.L3MaxPerRecallChars,
+		L4Enabled:                e.L4Enabled,
+		L4GraphInjectNeighbors:   e.L4GraphInjectNeighbors,
+		L4GraphMaxNeighbors:      e.L4GraphMaxNeighbors,
+		L4GraphMaxHops:           e.L4GraphMaxHops,
+		L4IdentityInject:         e.L4IdentityInject,
+		L4StrategyInject:         e.L4StrategyInject,
+	}
+}
+
+func fromEntTools(e *ent.AgentRuntimeSetting) biz.ToolsCfg {
+	return biz.ToolsCfg{
+		Enabled:                e.ToolsEnabled,
+		Profile:                e.ToolsProfile,
+		ToolCallPrefix:         e.ToolsToolCallPrefix,
+		AllowJSON:              e.ToolsAllowJSON,
+		DenyJSON:               e.ToolsDenyJSON,
+		ConcurrentAllowJSON:    e.ToolsConcurrentAllowJSON,
+		RetryEnabled:           e.ToolsRetryEnabled,
+		RetryMaxAttempts:       e.ToolsRetryMaxAttempts,
+		RetryInitialIntervalMs: e.ToolsRetryInitialIntervalMs,
+		RetryBackoffFactor:     e.ToolsRetryBackoffFactor,
+		RetryMaxIntervalMs:     e.ToolsRetryMaxIntervalMs,
+		RetryJitter:            e.ToolsRetryJitter,
+		ParallelEnabled:        e.ToolsParallelEnabled,
+		StreamingEnabled:       e.ToolsStreamingEnabled,
+	}
+}
+
+func fromEntSkills(e *ent.AgentRuntimeSetting) biz.SkillsCfg {
+	return biz.SkillsCfg{
+		RuntimeJSON:       e.SkillRuntimeJSON,
+		LoadMode:          e.SkillLoadMode,
+		IntentPassEnabled: e.IntentPassEnabled,
+	}
+}
+
+func fromEntEvolution(e *ent.AgentRuntimeSetting) biz.EvolutionCfg {
+	return biz.EvolutionCfg{
 		SelfEvolve:                        e.SelfEvolve,
 		SubagentsEnabled:                  e.SubagentsEnabled,
 		SubagentsMaxConcurrency:           e.SubagentsMaxConcurrency,
@@ -116,69 +224,12 @@ func entRuntimeToBiz(e *ent.AgentRuntimeSetting) biz.AgentRuntimeSettings {
 		SubagentsArchiveAfterMinutes:      e.SubagentsArchiveAfterMinutes,
 		SubagentsMaxRetries:               e.SubagentsMaxRetries,
 		SubagentsModelOverride:            e.SubagentsModelOverride,
-		ToolsEnabled:                      e.ToolsEnabled,
-		ToolsProfile:                      e.ToolsProfile,
-		ToolsToolCallPrefix:               e.ToolsToolCallPrefix,
-		ToolsAllowJSON:                    e.ToolsAllowJSON,
-		ToolsDenyJSON:                     e.ToolsDenyJSON,
-		ToolsConcurrentAllowJSON:          e.ToolsConcurrentAllowJSON,
-		MemoryEnabled:                     e.MemoryEnabled,
-		MemoryMaxChunkLength:              e.MemoryMaxChunkLength,
-		MemoryMaxResults:                  e.MemoryMaxResults,
-		MemoryMinScore:                    e.MemoryMinScore,
-		HeartbeatEnabled:                  e.HeartbeatEnabled,
-		HeartbeatIntervalMinutes:          e.HeartbeatIntervalMinutes,
-		EvolutionSelfEvolve:               e.EvolutionSelfEvolve,
-		EvolutionSkillEvolve:              e.EvolutionSkillEvolve,
-		EvolutionMetricsEnabled:           e.EvolutionMetricsEnabled,
-		EvolutionSuggestionsEnabled:       e.EvolutionSuggestionsEnabled,
+		SkillEvolve:                       e.EvolutionSkillEvolve,
+		MetricsEnabled:                    e.EvolutionMetricsEnabled,
+		SuggestionsEnabled:                e.EvolutionSuggestionsEnabled,
 		GuardrailMaxChangePerPeriod:       e.GuardrailMaxChangePerPeriod,
 		GuardrailMinDataPoints:            e.GuardrailMinDataPoints,
 		GuardrailRollbackOnDeclinePercent: e.GuardrailRollbackOnDeclinePercent,
-		L0RecentWindowTurns:               e.L0RecentWindowTurns,
-		L0RecentWindowTokens:              e.L0RecentWindowTokens,
-		L0SummaryThreshold:                e.L0SummaryThreshold,
-		L0SummaryKeepTurns:                e.L0SummaryKeepTurns,
-		L0CompressMinGapSec:               e.L0CompressMinGapSec,
-		L0CompressProvider:                e.L0CompressProvider,
-		L0CompressModel:                   e.L0CompressModel,
-		MemoryWorkerProvider:              e.MemoryWorkerProvider,
-		MemoryWorkerModel:                 e.MemoryWorkerModel,
-		L0TruncateStrategy:                e.L0TruncateStrategy,
-		L0InjectL1:                        e.L0InjectL1,
-		L0InjectL3:                        e.L0InjectL3,
-		L0InjectL4:                        e.L0InjectL4,
-		L0L3MaxChunks:                     e.L0L3MaxChunks,
-		L0L4MaxPaths:                      e.L0L4MaxPaths,
-		L0SnapshotMode:                    e.L0SnapshotMode,
-		L1Enabled:                         e.L1Enabled,
-		L1BudgetTokens:                    e.L1BudgetTokens,
-		L1FieldMaxTokens:                  e.L1FieldMaxTokens,
-		L1HistoryKeepRevisions:            e.L1HistoryKeepRevisions,
-		L1DefaultSchemaID:                 e.L1DefaultSchemaID,
-		L1ArchiveOnIdleMinutes:            e.L1ArchiveOnIdleMinutes,
-		L2EpisodeEnabled:                  e.L2EpisodeEnabled,
-		L2EpisodeMinImportance:            e.L2EpisodeMinImportance,
-		L2IndexEnabled:                    e.L2IndexEnabled,
-		L2IndexEmbeddingModel:             e.L2IndexEmbeddingModel,
-		L2RecallEnabled:                   e.L2RecallEnabled,
-		L2RecallMax:                       e.L2RecallMax,
-		L2RetentionDays:                   e.L2RetentionDays,
-		L2ArchiveAfterDays:                e.L2ArchiveAfterDays,
-		L3Enabled:                         e.L3Enabled,
-		L3RecallTopK:                      e.L3RecallTopK,
-		L3RecallMinScore:                  e.L3RecallMinScore,
-		L3RecallScopesJSON:                e.L3RecallScopesJSON,
-		L3EmbeddingModel:                  e.L3EmbeddingModel,
-		L3DecayIntervalHours:              e.L3DecayIntervalHours,
-		L3ArchiveThreshold:                e.L3ArchiveThreshold,
-		L3MaxPerRecallChars:               e.L3MaxPerRecallChars,
-		L4Enabled:                         e.L4Enabled,
-		L4GraphInjectNeighbors:            e.L4GraphInjectNeighbors,
-		L4GraphMaxNeighbors:               e.L4GraphMaxNeighbors,
-		L4GraphMaxHops:                    e.L4GraphMaxHops,
-		L4IdentityInject:                  e.L4IdentityInject,
-		L4StrategyInject:                  e.L4StrategyInject,
 		EvoEnabled:                        e.EvoEnabled,
 		EvoAutoApply:                      e.EvoAutoApply,
 		EvoMinEpisodes:                    e.EvoMinEpisodes,
@@ -187,40 +238,17 @@ func entRuntimeToBiz(e *ent.AgentRuntimeSetting) biz.AgentRuntimeSettings {
 		EvoProposalTTLDays:                e.EvoProposalTTLDays,
 		EvoPersonaMaxChars:                e.EvoPersonaMaxChars,
 		EvoSystemPromptMaxAppends:         e.EvoSystemPromptMaxAppends,
-		SkillRuntimeJSON:                  e.SkillRuntimeJSON,
-		IntentPassEnabled:                 e.IntentPassEnabled,
-		ChannelID:                         e.ChannelID,
-		ChatID:                            e.ChatID,
-		Workspace:                         e.Workspace,
-		ReasoningMode:                     e.ReasoningMode,
-		ReasoningLevel:                    e.ReasoningLevel,
-		VariablesJSON:                     e.VariablesJSON,
-		ModelInstructionsJSON:             e.ModelInstructionsJSON,
-		ContextCompactionEnabled:          e.ContextCompactionEnabled,
-		SessionSummaryEnabled:             e.SessionSummaryEnabled,
-		SkillLoadMode:                     e.SkillLoadMode,
-		CodeExecutorType:                  e.CodeExecutorType,
-		PlannerKind:                       e.PlannerKind,
-		PlannerConfigJSON:                 e.PlannerConfigJSON,
-		RalphLoopMaxIterations:            e.RalphLoopMaxIterations,
-		RalphLoopCompletionPromise:        e.RalphLoopCompletionPromise,
-		RalphLoopVerifyCommand:            e.RalphLoopVerifyCommand,
-		RalphLoopVerifyTimeoutSeconds:     e.RalphLoopVerifyTimeoutSeconds,
-		RalphLoopPromiseTagOpen:           e.RalphLoopPromiseTagOpen,
-		RalphLoopPromiseTagClose:          e.RalphLoopPromiseTagClose,
-		RalphLoopVerifyWorkDir:            e.RalphLoopVerifyWorkDir,
-		OutputSchemaJSON:                  e.OutputSchemaJSON,
-		ModelSelector:                     e.ModelSelector,
-		ToolsRetryEnabled:                 e.ToolsRetryEnabled,
-		ToolsRetryMaxAttempts:             e.ToolsRetryMaxAttempts,
-		ToolsRetryInitialIntervalMs:       e.ToolsRetryInitialIntervalMs,
-		ToolsRetryBackoffFactor:           e.ToolsRetryBackoffFactor,
-		ToolsRetryMaxIntervalMs:           e.ToolsRetryMaxIntervalMs,
-		ToolsRetryJitter:                  e.ToolsRetryJitter,
-		ToolsParallelEnabled:              e.ToolsParallelEnabled,
-		ToolsStreamingEnabled:             e.ToolsStreamingEnabled,
-		CreatedAt:                         e.CreatedAt,
-		UpdatedAt:                         e.UpdatedAt,
+	}
+}
+
+func fromEntContext(e *ent.AgentRuntimeSetting) biz.ContextCfg {
+	return biz.ContextCfg{
+		CompactionEnabled:     e.ContextCompactionEnabled,
+		SessionSummaryEnabled: e.SessionSummaryEnabled,
+		OutputSchemaJSON:      e.OutputSchemaJSON,
+		ModelSelector:         e.ModelSelector,
+		PlannerKind:           e.PlannerKind,
+		PlannerConfigJSON:     e.PlannerConfigJSON,
 	}
 }
 
@@ -319,7 +347,7 @@ func applyBizRuntimeToCreate(b *ent.AgentRuntimeSettingCreate, v biz.AgentRuntim
 		SetEvoProposalTTLDays(v.EvoProposalTTLDays).
 		SetEvoPersonaMaxChars(v.EvoPersonaMaxChars).
 		SetEvoSystemPromptMaxAppends(v.EvoSystemPromptMaxAppends).
-		SetSkillRuntimeJSON(normalizeSkillRuntimeJSON(v.SkillRuntimeJSON)).
+		SetSkillRuntimeJSON(normalizeJSONObj(v.SkillRuntimeJSON)).
 		SetIntentPassEnabled(v.IntentPassEnabled).
 		SetChannelID(v.ChannelID).
 		SetChatID(v.ChatID).
@@ -386,6 +414,9 @@ func (r *agentRepo) SearchAgents(ctx context.Context, q biz.AgentListQuery) (biz
 	}
 	if cb := strings.TrimSpace(q.CreatedBy); cb != "" {
 		preds = append(preds, agent.CreatedByEQ(cb))
+	}
+	if role := strings.TrimSpace(q.Role); role != "" {
+		preds = append(preds, agent.RolesJSONContains(role))
 	}
 	where := agent.And(preds...)
 	c := r.data.entClient

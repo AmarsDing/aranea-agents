@@ -64,7 +64,7 @@ func (s *TeamService) buildCompileTeamGraphResponse(ctx context.Context, def tea
 	if b, err := json.Marshal(cfg); err == nil {
 		resp.GraphJson = string(b)
 	}
-	validation := graphadapter.ValidateBizGraphBuildConfig(cfg, s.agentExistsByName(ctx))
+	validation := graphadapter.ValidateBizGraphBuildConfig(ctx, cfg, s.agentExistsByName(ctx))
 	for _, issue := range validation.Errors {
 		resp.Issues = append(resp.Issues, &v1.CompileTeamGraphValidationIssue{
 			Code:    string(issue.Code),
@@ -101,14 +101,14 @@ func (s *TeamService) compileAgentKeyResolver(ctx context.Context) team.CompileA
 
 func (s *TeamService) agentExistsByName(ctx context.Context) graphtrpc.AgentExistenceChecker {
 	if s.agents == nil {
-		return func(string) bool { return true }
+		return func(context.Context, string) bool { return true }
 	}
-	return func(agentName string) bool {
+	return func(checkCtx context.Context, agentName string) bool {
 		name := strings.TrimSpace(agentName)
 		if name == "" {
 			return false
 		}
-		_, err := s.agents.GetByAgentKey(ctx, name)
+		_, err := s.agents.GetByAgentKey(checkCtx, name)
 		return err == nil
 	}
 }
