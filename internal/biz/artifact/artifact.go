@@ -70,6 +70,18 @@ func (uc *Usecase) ListVersions(ctx context.Context, sessionID, name string) ([]
 	return uc.repo.ListBySessionAndName(ctx, sessionID, name)
 }
 
+// StorageBytes returns total stored bytes when the repo supports reporting.
+func (uc *Usecase) StorageBytes(ctx context.Context) (int64, error) {
+	type storageReporter interface {
+		StorageBytes(context.Context) (int64, error)
+	}
+	r, ok := uc.repo.(storageReporter)
+	if !ok {
+		return 0, nil
+	}
+	return r.StorageBytes(ctx)
+}
+
 // NewArtifactID generates a random hex ID for a new artifact.
 func NewArtifactID() string {
 	buf := make([]byte, 12)

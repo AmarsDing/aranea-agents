@@ -149,19 +149,33 @@ func (r *FSArtifactRepo) Load(_ context.Context, id string, version int) (biz.Ar
 }
 
 // List returns artifact metadata for a session (no payload).
+// When sessionID is empty, aggregates latest versions across all sessions (cross-session browse).
 func (r *FSArtifactRepo) List(_ context.Context, sessionID string, limit, offset int) ([]biz.Artifact, int, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	metas, err := r.listSessionMetas(sessionID)
+	var (
+		metas []artifactMeta
+		err   error
+	)
+	if strings.TrimSpace(sessionID) == "" {
+		metas, err = r.listAllMetas()
+	} else {
+		metas, err = r.listSessionMetas(sessionID)
+	}
 	if err != nil {
 		return nil, 0, err
 	}
-	// Deduplicate: keep only the latest version per name.
-	byName := map[string]artifactMeta{}
+	// Deduplicate: keep only the latest version per session+name.
+	type nameKey struct {
+		sessionID string
+		name      string
+	}
+	byName := map[nameKey]artifactMeta{}
 	for _, m := range metas {
-		if prev, ok := byName[m.Name]; !ok || m.Version > prev.Version {
-			byName[m.Name] = m
+		key := nameKey{sessionID: m.SessionID, name: m.Name}
+		if prev, ok := byName[key]; !ok || m.Version > prev.Version {
+			byName[key] = m
 		}
 	}
 	items := make([]biz.Artifact, 0, len(byName))
@@ -325,6 +339,67 @@ func (r *FSArtifactRepo) nextVersion(dir, name string) int {
 		}
 	}
 	return max + 1
+}
+
+// StorageBytes returns total bytes stored in .bin files under the artifact root.
+func (r *FSArtifactRepo) StorageBytes(_ context.Context) (int64, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.storageBytesLocked()
+}
+
+func (r *FSArtifactRepo) storageBytesLocked() (int64, error) {
+	entries, err := os.ReadDir(r.root)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("artifact storage scan: %w", err)
+	}
+	var total int64
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		dir := filepath.Join(r.root, e.Name())
+		files, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, f := range files {
+			if f.IsDir() || !strings.HasSuffix(f.Name(), ".bin") {
+				continue
+			}
+			info, err := f.Info()
+			if err != nil {
+				continue
+			}
+			total += info.Size()
+		}
+	}
+	return total, nil
+}
+
+func (r *FSArtifactRepo) listAllMetas() ([]artifactMeta, error) {
+	entries, err := os.ReadDir(r.root)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("artifact list all: %w", err)
+	}
+	var metas []artifactMeta
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		sessionMetas, err := r.listSessionMetas(e.Name())
+		if err != nil {
+			return nil, err
+		}
+		metas = append(metas, sessionMetas...)
+	}
+	return metas, nil
 }
 
 // NewArtifactID is re-exported as a convenience; the authoritative definition lives in biz.

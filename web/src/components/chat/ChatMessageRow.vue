@@ -130,6 +130,10 @@
           :lines="bundle.presentation.a2uiLines"
           @user-action="(p) => emit('a2ui-user-action', p)"
         />
+        <ChatMessageAttachments
+          v-if="messageAttachments.length"
+          :attachments="messageAttachments"
+        />
         <div
           v-if="bundle.presentation.bodyMarkdown"
           class="chat-formal-body"
@@ -207,7 +211,9 @@ import ChatExecutionCard from "./ChatExecutionCard.vue";
 import ChatReasoningPeek from "./ChatReasoningPeek.vue";
 import ChatReactSteps from "./ChatReactSteps.vue";
 import ChatA2UIPreview from "./ChatA2UIPreview.vue";
+import ChatMessageAttachments from "./ChatMessageAttachments.vue";
 import { buildMessagePresentation } from "../../features/chat/messagePlannerPresentation";
+import { parseMessageAttachments } from "../../features/chat/messageAttachments";
 import type { Message, ReactToolLinkIndex } from "../../features/chat/types";
 import { shouldRenderAgentAvatarImage } from "../../features/avatar/iconModel";
 import {
@@ -271,6 +277,11 @@ const showThinkingIndicator = computed(() => {
   if (bundle.value.reactStepsWithTools.length > 0) return false;
   if ((bundle.value.presentation.reasoning ?? "").trim()) return false;
   return true;
+});
+
+const messageAttachments = computed(() => {
+  if (props.message.role !== "user") return [];
+  return parseMessageAttachments(props.message.options_json);
 });
 
 function formatStamp(iso: string) {

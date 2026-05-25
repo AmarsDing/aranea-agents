@@ -1,4 +1,4 @@
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useQuasar } from "quasar";
 import { registryCol } from "../ui/registryTableColumns";
 import type { ArtifactMeta } from "./types";
@@ -160,6 +160,10 @@ export function useArtifactsPage() {
   }
 
   onMounted(() => {
+    void loadRows();
+  });
+
+  watch(sessionFilter, () => {
     void loadRows();
   });
 

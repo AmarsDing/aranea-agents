@@ -4,7 +4,7 @@
       <div>
         <div class="app-page-kicker">Session artifacts</div>
         <h1 class="app-page-title">制品管理</h1>
-        <p class="app-page-subtitle">上传、浏览与删除会话关联的文件制品。存储后端依部署配置（本地或对象存储）。</p>
+        <p class="app-page-subtitle">上传、浏览与删除会话关联的文件制品。当前为本地 FS 存储；S3/COS 后续支持。</p>
       </div>
       <div class="app-actions-bar">
         <q-btn color="primary" unelevated rounded no-caps icon="upload" label="上传" @click="uploadOpen = true" />

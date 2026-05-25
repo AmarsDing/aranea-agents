@@ -128,7 +128,7 @@
 | Session/MCP | `IncrementInvocationCounts`：工具/MCP/Skill 调用同步 `sessions.*_call_count` | 动态 MCP 挂载工具名未入 catalog 时仅计 `mcp_call` |
 | Team | RunTeamTest、CancelTeamRun、member_* WS Envelope；Team Runner 使用 `PluginsForAgent` | — |
 | Knowledge | Phase 1 ✅ + Phase 2 分块/解析/EmbedBatch ✅ | OCR / 多租户 / AgenticFilter 待补 |
-| Artifact | `ArtifactsPage.vue`；路由 `/artifacts`；Runner 注入（`WithArtifactService`） | PreviewArtifact RPC/Chat 附件/签名下载待补 |
+| Artifact | `ArtifactsPage.vue`；路由 `/artifacts`；Runner 注入；Preview/签名下载/Chat 气泡附件 ✅ | S3/COS 云存储 **后续支持**（Phase 4） |
 | Evaluation | Phase 5 ✅：扩展指标 + LLM UserSim + 趋势/A/B 前端 + Eval LLM 系统配置 | — |
 | A2A | Phase 1–3.5：call_agent、Proxy/Endpoint、公开 HTTP、联邦 Gateway（[DocSync](../changelog/2026-05-21-A2A-DocSync.md)） | Phase 4：网关健康 Cron、速率限制 |
 | Hooks | `HooksPage.vue`；`AgentHooksPanel.vue`；`CallbackEditor.vue` UTF-8 修复 | — |

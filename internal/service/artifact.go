@@ -12,6 +12,7 @@ import (
 	v1 "aranea-agents/api/kratos/artifact/v1"
 	"aranea-agents/internal/artifact"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/metrics"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
@@ -51,6 +52,8 @@ func (s *ArtifactService) UploadArtifact(ctx context.Context, req *v1.UploadArti
 	if err != nil {
 		return nil, err
 	}
+	metrics.ArtifactUploadBytesTotal.Add(float64(len(data)))
+	s.refreshStorageGauge(ctx)
 	return toProtoArtifactMeta(saved), nil
 }
 
@@ -68,6 +71,7 @@ func (s *ArtifactService) GetArtifact(ctx context.Context, req *v1.GetArtifactRe
 		}
 		return nil, err
 	}
+	metrics.ArtifactDownloadBytesTotal.Add(float64(len(data)))
 	return &v1.ArtifactData{
 		Meta:       toProtoArtifactMeta(meta),
 		DataBase64: base64.StdEncoding.EncodeToString(data),
@@ -104,6 +108,7 @@ func (s *ArtifactService) DeleteArtifact(ctx context.Context, req *v1.DeleteArti
 	if err := s.uc.Delete(ctx, id); err != nil {
 		return nil, err
 	}
+	s.refreshStorageGauge(ctx)
 	return &emptypb.Empty{}, nil
 }
 
@@ -209,6 +214,7 @@ func (s *ArtifactService) ServeSignedDownload(w http.ResponseWriter, r *http.Req
 	w.Header().Set("Content-Type", mime)
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, meta.Name))
 	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
+	metrics.ArtifactDownloadBytesTotal.Add(float64(len(data)))
 	_, _ = w.Write(data)
 }
 
@@ -225,4 +231,15 @@ func toProtoArtifactMeta(a biz.Artifact) *v1.ArtifactMeta {
 		Version:     int32(a.Version),
 		CreatedAt:   a.CreatedAt,
 	}
+}
+
+func (s *ArtifactService) refreshStorageGauge(ctx context.Context) {
+	if s == nil || s.uc == nil {
+		return
+	}
+	n, err := s.uc.StorageBytes(ctx)
+	if err != nil {
+		return
+	}
+	metrics.ArtifactStorageBytes.Set(float64(n))
 }

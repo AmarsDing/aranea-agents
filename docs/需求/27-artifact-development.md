@@ -1,6 +1,6 @@
 # Artifact 产出物 — 开发计划
 
-> **版本**：2026-05-21 | **状态**：🟢 P1–P3 全量完成；P4 S3/COS 云存储待做
+> **版本**：2026-05-25 | **状态**：🟢 P1–P3 + ART-01 完成；Phase 4 S3/COS **后续支持**
 > **需求**：[27 artifact.md](./27%20artifact.md) · **设计**：[27 artifact.design.md](./27%20artifact.design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：EP-RT-08
 
@@ -49,13 +49,19 @@ Artifact 产出物：管理 Agent 运行时产生的文件、图片、代码等�
 | ArtifactPreview.vue 独立组件 | ✅ | 图片 `<img>` / PDF `<iframe>` / 代码 `<pre>` 渲染 + 下载按钮 |
 | ArtifactList.vue 列表组件 | ✅ | MIME 图标 + 文件大小 + 版本号 + 预览弹窗 + 签名下载 |
 | Chat 会话制品嵌入 | ✅ | `ChatSessionArtifactsPanel` 使用 `ArtifactList` 组件 |
-| S3/COS 后端 | ❌ | 仅本地 FS |
+| Chat 消息气泡内嵌附件 | ✅ | `options_json.attachments` + `ChatMessageAttachments.vue`（ART-01） |
+| Prometheus 上传/下载/存储指标 | ✅ | `aranea_artifact_*` 于 Service + FS Repo |
+| 跨会话制品列表 | ✅ | `ListArtifacts` 省略 `session_id` 时扫描全部会话 |
+| S3/COS 后端 | 📋 后续支持 | 仅本地 FS；框架侧 `pkg/trpc-agent-go/artifact/s3|cos` 可复用，待 Phase 4 |
 
 ---
 
 ## 3. 差距与优化
 
-1. **P3**：仅本地 FS 存储，多实例部署需共享卷，无法弹性扩展。
+1. **Phase 4（后续支持）**：S3/COS 云存储与多租户路径隔离（依赖 M2 EP-WS-01）；当前仅本地 FS，多实例需共享卷。
+2. ~~**ART-01**：Chat 消息气泡内嵌制品预览~~ ✅
+3. ~~**跨会话列表**：管理页无 session 筛选时可浏览全部制品~~ ✅
+4. **大文件流式传输**（>10 MB）：计划中，当前 base64 + 50 MB 上限。
 
 ---
 
@@ -63,8 +69,8 @@ Artifact 产出物：管理 Agent 运行时产生的文件、图片、代码等�
 
 - **Phase 1**：~~Runner 注入 ArtifactService~~（✅）+ ~~CodeExecutor 产出物自动保存~~（✅）
 - **Phase 2**：~~管理页列表/基础预览~~（✅）+ ~~PreviewArtifact RPC~~（✅）+ ~~ArtifactPreview.vue~~（✅）+ ~~ArtifactList.vue + Chat 嵌入~~（✅）
-- **Phase 3**：~~签名下载 URL（HMAC-SHA256）~~（✅）
-- **Phase 4**：S3/COS 云存储后端
+- **Phase 3**：~~签名下载 URL（HMAC-SHA256）~~（✅）+ ~~Chat 气泡附件（ART-01）~~（✅）+ ~~Prometheus 指标~~（✅）
+- **Phase 4（后续支持）**：S3/COS 云存储后端 + 按租户隔离
 
 ---
 
@@ -81,9 +87,12 @@ Artifact 产出物：管理 Agent 运行时产生的文件、图片、代码等�
 | 7 | ArtifactPreview.vue 制品预览组件（图片/PDF/代码高亮） | P2 | 2 | `web/src/features/artifact/ArtifactPreview.vue` | ✅ |
 | 8 | ArtifactList.vue 制品列表组件（Chat 嵌入） | P2 | 2 | `web/src/features/artifact/ArtifactList.vue` | ✅ |
 | 9 | Chat 会话面板嵌入 ArtifactList | P2 | 2 | `ChatSessionArtifactsPanel.vue` | ✅ |
-| 10 | S3 存储后端 | P3 | 4 | `internal/artifact/s3/` | — |
-| 11 | COS 存储后端 | P3 | 4 | `internal/artifact/cos/` | — |
-| 12 | 存储后端配置选择 + 按租户隔离 | P3 | 4 | 配置 + Wire | — |
+| 10 | S3 存储后端 | P3 | 4 | `internal/artifact/s3/` | 📋 后续支持 |
+| 11 | COS 存储后端 | P3 | 4 | `internal/artifact/cos/` | 📋 后续支持 |
+| 12 | 存储后端配置选择 + 按租户隔离 | P3 | 4 | 配置 + Wire | 📋 后续支持 |
+| 13 | Chat 消息气泡内嵌附件预览（ART-01） | P3 | 3 | `ChatMessageAttachments.vue` + `options_json.attachments` | ✅ |
+| 14 | 跨会话制品列表（管理页） | P2 | 3 | `artifactfs.List` 空 session_id | ✅ |
+| 15 | Prometheus 制品指标 | P2 | 3 | `internal/service/artifact.go` + `artifactfs.StorageBytes` | ✅ |
 
 ---
 
@@ -96,7 +105,9 @@ Artifact 产出物：管理 Agent 运行时产生的文件、图片、代码等�
 - [x] 图片/PDF/代码可在浏览器中预览（ArtifactPreview.vue 独立组件）
 - [x] Chat 会话内可查看关联制品列表（ArtifactList.vue + ChatSessionArtifactsPanel）
 - [x] 下载链接有时效性签名（Phase 3）
-- [ ] 制品可存储到 S3/COS，按租户隔离（Phase 4）
+- [x] Chat 消息气泡可内嵌附件 chip 并预览（ART-01）
+- [x] 管理页可跨会话浏览制品（省略 session_id）
+- [ ] 制品可存储到 S3/COS，按租户隔离（Phase 4，**后续支持**）
 
 ---
 
@@ -104,4 +115,4 @@ Artifact 产出物：管理 Agent 运行时产生的文件、图片、代码等�
 
 - Phase 2 预览组件已做 XSS 防护：图片使用 data URI，PDF 使用 iframe，文本使用 `<pre>` 转义
 - Phase 2 大文件预览：后端已做 512KB 文本截断，图片/PDF 通过 base64 传输受 50MB 上限约束
-- Phase 4 S3/COS 后端需配置凭证管理，多租户路径隔离依赖 M2（EP-WS-01）
+- Phase 4 S3/COS：**后续支持**；需配置凭证管理，多租户路径隔离依赖 M2（EP-WS-01）；可复用 `pkg/trpc-agent-go/artifact/s3|cos`

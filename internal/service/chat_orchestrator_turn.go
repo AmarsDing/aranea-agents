@@ -655,6 +655,13 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		emitter.LogSkip("chat.intent.pass", "A2A Proxy Agent 跳过意图识别", event.P("agent_kind", ag.Kind))
 	}
 
+	userOpts, err = o.mergeUserAttachmentRefs(ctx, userOpts, input.Options.AttachmentIDs)
+	if err != nil {
+		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
+		o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
+		return biz.ChatMessage{}, biz.ChatMessage{}, err
+	}
+
 	now := chatagent.RFC3339Now()
 	var userMsg biz.ChatMessage
 	if durableCtx.active {

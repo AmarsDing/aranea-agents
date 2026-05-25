@@ -12,7 +12,7 @@
 > - ✅ PreviewArtifact RPC 已实现；前端 `ArtifactPreview.vue` 独立组件支持图片/PDF/代码预览。
 > - ✅ 签名下载 URL 已实现（`artifact/sign.go` HMAC-SHA256 + `ServeSignedDownload` HTTP handler）。
 > - ✅ 前端制品列表/预览组件已实现（`ArtifactList.vue` + `ArtifactPreview.vue` + `ChatSessionArtifactsPanel`）。
-> - ❌ S3 / COS 后端未启用，仅本地 FS；多租户路径隔离待 M2（EP-WS-01）。
+> - ❌ S3 / COS 后端**后续支持**（Phase 4），当前仅本地 FS；多租户路径隔离待 M2（EP-WS-01）。
 >
 > 进度以 `guides/execution-plan.md` 附录 A 为准。运维要点见设计文档 §6。
 
@@ -100,12 +100,12 @@ trpc-agent-go `artifact` 包定义了 Agent 运行时制品的核心抽象：
 | 5 | 通过 REST/gRPC API 可管理制品完整生命周期 | P1 | ✅ |
 | 6 | 图片/PDF/代码可在浏览器中预览 | P2 | ✅ |
 | 7 | 下载链接有时效性签名 | P3 | ✅ |
-| 8 | 制品可存储到 S3/COS，按租户隔离 | P3 | ❌ |
+| 8 | 制品可存储到 S3/COS，按租户隔离 | P3 | 📋 后续支持 |
 
 ---
 
 ## 5. 已知限制
 
-- 二进制存储仅使用本地文件系统。S3/COS 后端计划后续实现。
+- 二进制存储仅使用本地文件系统。**S3/COS 后端为 Phase 4 后续支持**（可复用 `pkg/trpc-agent-go/artifact/s3|cos`）。
 - 制品不在节点间复制。多实例部署需使用共享卷。
 - `data_base64` 编码增加约 33% 开销；大文件（> 10 MB）应优先使用分块流式传输（计划中）。

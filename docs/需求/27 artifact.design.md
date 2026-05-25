@@ -167,24 +167,9 @@ func (uc *ArtifactUsecase) ListVersions(ctx, sessionID, name string) ([]Artifact
 - **Delete**：按 ID 前缀删除所有版本文件（bin + json）。
 - **ListBySessionAndName**：返回指定 session+name 的全部版本，按版本号升序。
 
-#### 待实现：S3 / COS 后端
+#### 待实现：S3 / COS 后端（Phase 4 — **后续支持**）
 
-```go
-// internal/artifact/s3/service.go
-type S3ArtifactRepo struct {
-    client *s3.Client
-    bucket string
-}
-
-// internal/artifact/cos/service.go
-type COSArtifactRepo struct {
-    client *cos.Client
-    bucket string
-}
-```
-
-S3/COS 后端需实现 `biz.ArtifactRepo` 接口，通过配置选择后端。对象路径格式：
-- `artifact/{app_name}/{user_id}/{session_id}/{filename}/{version}`
+> 当前生产默认 `FSArtifactRepo`。S3/COS 实现可桥接 `pkg/trpc-agent-go/artifact/s3|cos`，通过配置选择后端；多租户路径隔离依赖 M2（EP-WS-01）。
 
 ---
 

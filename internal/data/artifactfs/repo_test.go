@@ -76,6 +76,38 @@ func TestFSArtifactRepo_List(t *testing.T) {
 	}
 }
 
+func TestFSArtifactRepo_ListAllSessions(t *testing.T) {
+	dir := t.TempDir()
+	repo := artifactfs.NewFSArtifactRepoAt(dir)
+	ctx := context.Background()
+
+	_, _ = repo.Save(ctx, "sess-a", "a.txt", "text/plain", []byte("a"))
+	_, _ = repo.Save(ctx, "sess-b", "b.txt", "text/plain", []byte("b"))
+
+	items, total, err := repo.List(ctx, "", 10, 0)
+	if err != nil {
+		t.Fatalf("List all: %v", err)
+	}
+	if total != 2 || len(items) != 2 {
+		t.Fatalf("expected 2 items across sessions, got total=%d len=%d", total, len(items))
+	}
+}
+
+func TestFSArtifactRepo_StorageBytes(t *testing.T) {
+	dir := t.TempDir()
+	repo := artifactfs.NewFSArtifactRepoAt(dir)
+	ctx := context.Background()
+
+	_, _ = repo.Save(ctx, "sess1", "a.bin", "application/octet-stream", []byte("12345"))
+	n, err := repo.StorageBytes(ctx)
+	if err != nil {
+		t.Fatalf("StorageBytes: %v", err)
+	}
+	if n != 5 {
+		t.Fatalf("expected 5 bytes, got %d", n)
+	}
+}
+
 func TestFSArtifactRepo_Delete(t *testing.T) {
 	dir := t.TempDir()
 	repo := artifactfs.NewFSArtifactRepoAt(dir)

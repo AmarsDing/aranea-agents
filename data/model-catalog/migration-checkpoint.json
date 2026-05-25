@@ -1,0 +1,13 @@
+{
+  "applied_at": "2026-05-25T09:37:05Z",
+  "version": "2026.05",
+  "stats": {
+    "Agents": 0,
+    "Sessions": 0,
+    "Eval": 0,
+    "RuntimeSettings": 0,
+    "Skills": 0,
+    "KnowledgeEmbed": 0,
+    "WebResearch": 0
+  }
+}
