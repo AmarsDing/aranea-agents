@@ -49,6 +49,10 @@ message ListArtifactsRequest {
   string session_id = 1;
   int32 limit = 2;
   int32 offset = 3;
+  // query filters by name, session_id, or mime_type (case-insensitive substring).
+  string query = 4;
+  // mime_type_prefix filters by MIME prefix, e.g. "image/" or "text/".
+  string mime_type_prefix = 5;
 }
 
 message ListArtifactsResponse {
@@ -87,6 +91,14 @@ message SignDownloadUrlResponse {
   string expires_at = 2;
 }
 
+message ListArtifactVersionsRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListArtifactVersionsResponse {
+  repeated ArtifactMeta items = 1;
+}
+
 service ArtifactService {
   rpc UploadArtifact(UploadArtifactRequest) returns (ArtifactMeta) {
     option (google.api.http) = {
@@ -118,6 +130,11 @@ service ArtifactService {
     option (google.api.http) = {
       post: "/v1/artifacts/{id}/sign-download"
       body: "*"
+    };
+  }
+  rpc ListArtifactVersions(ListArtifactVersionsRequest) returns (ListArtifactVersionsResponse) {
+    option (google.api.http) = {
+      get: "/v1/artifacts/{id}/versions"
     };
   }
 }

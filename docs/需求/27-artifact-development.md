@@ -33,7 +33,7 @@ Artifact 产出物：管理 Agent 运行时产生的文件、图片、代码等�
 | 项 | 状态 | 证据 |
 |----|------|------|
 | Proto 定义 | ✅ | UploadArtifact / GetArtifact / ListArtifacts / DeleteArtifact / PreviewArtifact / SignDownloadUrl |
-| Service 层 | ✅ | base64 编解码 + 50MB 限制 + 参数校验 + PreviewArtifact + SignDownloadUrl + ServeSignedDownload |
+| Service 层 | ✅ | base64 编解码 + **10 MB** 上限 + 参数校验 + PreviewArtifact + SignDownloadUrl + ServeSignedDownload |
 | Biz 层 | ✅ | Artifact 模型 + ArtifactRepo 接口 + ArtifactUsecase + ListVersions |
 | Data 层（FS） | ✅ | FSArtifactRepo + 版本管理 + JSON sidecar |
 | trpc 适配器 | ✅ | ServiceAdapter 实现 trpcartifact.Service 全部 5 个方法 |
@@ -61,7 +61,11 @@ Artifact 产出物：管理 Agent 运行时产生的文件、图片、代码等�
 1. **Phase 4（后续支持）**：S3/COS 云存储与多租户路径隔离（依赖 M2 EP-WS-01）；当前仅本地 FS，多实例需共享卷。
 2. ~~**ART-01**：Chat 消息气泡内嵌制品预览~~ ✅
 3. ~~**跨会话列表**：管理页无 session 筛选时可浏览全部制品~~ ✅
-4. **大文件流式传输**（>10 MB）：计划中，当前 base64 + 50 MB 上限。
+4. ~~**大文件限制**~~：单文件上限 **10 MB**（前后端统一校验）；>10 MB 提示不支持；流式传输后续支持。
+5. ~~**Team 路径附件/产出物气泡**~~：TurnCollector + `ArtifactUC` on TurnDeps ✅
+6. ~~**版本历史 API**~~：`ListArtifactVersions` + 管理页版本 chip ✅
+7. ~~**Team 多模态附件**~~：`RunTRPCUserTurnMsg` + 共享 `BuildUserMessageFromArtifacts` ✅
+8. ~~**管理页组件拆分**~~：上传/详情对话框独立组件 ✅
 
 ---
 
@@ -93,6 +97,13 @@ Artifact 产出物：管理 Agent 运行时产生的文件、图片、代码等�
 | 13 | Chat 消息气泡内嵌附件预览（ART-01） | P3 | 3 | `ChatMessageAttachments.vue` + `options_json.attachments` | ✅ |
 | 14 | 跨会话制品列表（管理页） | P2 | 3 | `artifactfs.List` 空 session_id | ✅ |
 | 15 | Prometheus 制品指标 | P2 | 3 | `internal/service/artifact.go` + `artifactfs.StorageBytes` | ✅ |
+| 16 | 单文件 10 MB 上限 + 超限提示 | P2 | 3 | `biz/artifact/limits.go` + 前端 `limits.ts` | ✅ |
+| 17 | Assistant 产出物写入消息气泡 | P2 | 3 | `TurnCollector` + `options_json.attachments` | ✅ |
+| 18 | Team 路径附件/产出物气泡 | P2 | 3 | `runner_team_trpc.go` + `Persist.ArtifactUC` | ✅ |
+| 19 | ListArtifactVersions RPC | P2 | 3 | Proto + Service + ArtifactsPage 版本 chip | ✅ |
+| 20 | ListArtifacts 服务端检索 | P2 | 3 | `query` + `mime_type_prefix` | ✅ |
+| 21 | Team 多模态附件进 LLM | P2 | 3 | `BuildUserMessageFromArtifacts` + `RunTRPCUserTurnMsg` | ✅ |
+| 22 | ArtifactsPage 对话框组件拆分 | P2 | 3 | `ArtifactsUploadDialog` + `ArtifactsDetailDialog` | ✅ |
 
 ---
 
@@ -114,5 +125,5 @@ Artifact 产出物：管理 Agent 运行时产生的文件、图片、代码等�
 ## 7. 依赖与风险
 
 - Phase 2 预览组件已做 XSS 防护：图片使用 data URI，PDF 使用 iframe，文本使用 `<pre>` 转义
-- Phase 2 大文件预览：后端已做 512KB 文本截断，图片/PDF 通过 base64 传输受 50MB 上限约束
+- Phase 2 大文件预览：后端已做 512KB 文本截断；上传/下载单文件上限 **10 MB**（base64 传输）
 - Phase 4 S3/COS：**后续支持**；需配置凭证管理，多租户路径隔离依赖 M2（EP-WS-01）；可复用 `pkg/trpc-agent-go/artifact/s3|cos`

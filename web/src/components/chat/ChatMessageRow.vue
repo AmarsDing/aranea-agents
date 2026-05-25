@@ -279,10 +279,7 @@ const showThinkingIndicator = computed(() => {
   return true;
 });
 
-const messageAttachments = computed(() => {
-  if (props.message.role !== "user") return [];
-  return parseMessageAttachments(props.message.options_json);
-});
+const messageAttachments = computed(() => parseMessageAttachments(props.message.options_json));
 
 function formatStamp(iso: string) {
   return formatMessageStamp(iso);

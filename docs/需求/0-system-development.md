@@ -279,7 +279,7 @@ AI 接到任何模块任务时，必须按以下顺序拆解：
 | EVAL-04 | Phase 5 扩展评估 | P3 | ✅ 扩展指标/UserSim/Eval LLM 系统配置 | — | [33-evaluation-development.md](./33-evaluation-development.md) |
 | A2A-01 | 远程 Agent 发现与注册中心 | P2 | 本地 Invoke 已有 | URL 发现、跨实例 Card | [26-a2a-development.md](./26-a2a-development.md) |
 | A2A-02 | A2A Server 暴露 + 流式 SSE | P3 | admin Invoke 已有 | 标准 `server/a2a` 或框架 a2aagent | [26-a2a-development.md](./26-a2a-development.md) |
-| ART-01 | Chat 多模态引用制品 | P3 | 会话制品面板 + 消息气泡内嵌附件 ✅ | Assistant 产出物关联消息 | [27-artifact-development.md](./27-artifact-development.md) |
+| ART-01 | Chat 多模态引用制品 | P3 | 用户/Assistant/Team 消息气泡 + Vision 附件 ✅ | 流式上传 >10 MB | [27-artifact-development.md](./27-artifact-development.md) |
 
 ### 8.8 平台运营与占位模块
 

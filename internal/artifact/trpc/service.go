@@ -77,7 +77,7 @@ func (s *ServiceAdapter) LoadArtifact(ctx context.Context, sessionInfo trpcartif
 
 // ListArtifactKeys lists all artifact filenames for a session.
 func (s *ServiceAdapter) ListArtifactKeys(ctx context.Context, sessionInfo trpcartifact.SessionInfo) ([]string, error) {
-	items, _, err := s.uc.List(ctx, sessionInfo.SessionID, 0, 0)
+	items, _, err := s.uc.List(ctx, sessionInfo.SessionID, 0, 0, "", "")
 	if err != nil {
 		return nil, err
 	}

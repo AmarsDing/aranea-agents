@@ -488,6 +488,11 @@ func NewA2ARepoFromData(d *Data) biz.A2ARepo {
 	return NewA2ARepo(d.RawDB())
 }
 
+// NewCLIData wraps SQLite handles opened by OpenSQLiteEntClient for offline maintenance CLIs.
+func NewCLIData(client *ent.Client, rawDB *sql.DB) *Data {
+	return &Data{entClient: client, rawDB: rawDB}
+}
+
 // OpenSQLiteEntClient opens SQLite for offline CLI maintenance tools (e.g. memory-migrate).
 // Do not use against a DSN while admin is running — use in-process NewData migrations instead.
 func OpenSQLiteEntClient(dsn string) (*ent.Client, *sql.DB, func(), error) {

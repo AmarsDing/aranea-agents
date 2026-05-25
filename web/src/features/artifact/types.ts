@@ -28,6 +28,8 @@ export type ListArtifactsParams = {
   session_id?: string;
   limit?: number;
   offset?: number;
+  query?: string;
+  mime_type_prefix?: string;
 };
 
 export type ListArtifactsResult = {

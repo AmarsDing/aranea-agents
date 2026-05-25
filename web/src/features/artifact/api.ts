@@ -47,7 +47,9 @@ export async function listArtifacts(params: ListArtifactsParams = {}): Promise<L
     await svc.ListArtifacts({
       sessionId: params.session_id ?? "",
       limit: params.limit ?? 0,
-      offset: params.offset ?? 0
+      offset: params.offset ?? 0,
+      query: params.query ?? "",
+      mimeTypePrefix: params.mime_type_prefix ?? ""
     })
   );
   const itemsRaw = res.items ?? res.Items;
@@ -102,4 +104,10 @@ export async function previewArtifact(id: string, version?: number): Promise<Art
     text_content: pickStr(raw, "text_content", "textContent"),
     data_base64: pickStr(raw, "data_base64", "dataBase64")
   };
+}
+
+export async function listArtifactVersions(id: string): Promise<ArtifactMeta[]> {
+  const raw = asRecord(await svc.ListArtifactVersions({ id }));
+  const itemsRaw = raw.items ?? raw.Items;
+  return Array.isArray(itemsRaw) ? itemsRaw.map(mapMeta) : [];
 }

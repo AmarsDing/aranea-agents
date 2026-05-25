@@ -179,7 +179,7 @@ func (uc *ArtifactUsecase) ListVersions(ctx, sessionID, name string) ([]Artifact
 
 | 方法 | 说明 |
 |------|------|
-| `UploadArtifact` | 校验 session_id/name 必填，base64 解码，50 MB 上限，MIME 缺省 `application/octet-stream` |
+| `UploadArtifact` | 校验 session_id/name 必填，base64 解码，**10 MB** 上限（超限返回明确错误），MIME 缺省 `application/octet-stream` |
 | `GetArtifact` | 按 ID + version 加载，not found 返回 Kratos NotFound 错误 |
 | `ListArtifacts` | limit 默认 50，返回去重后的最新版本列表 |
 | `DeleteArtifact` | 按 ID 删除所有版本 |
@@ -285,7 +285,7 @@ Wire provideArtifactRuntimeService 提供 trpcartifact.Service 实例
 }
 ```
 
-大小限制：每个制品 **50 MB**。
+大小限制：每个制品 **10 MB**；超过限制返回 `400` 并提示不支持。流式上传为后续支持。
 
 #### 响应 — ArtifactMeta
 

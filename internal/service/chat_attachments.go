@@ -2,10 +2,9 @@ package service
 
 import (
 	"context"
-	"strings"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
-	chatagent "aranea-agents/internal/agent"
+	artifactbiz "aranea-agents/internal/biz/artifact"
 
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
@@ -25,26 +24,18 @@ func (s *ChatService) buildUserMessageFromProto(ctx context.Context, sessionID, 
 	return s.orch.buildUserMessage(ctx, sessionID, content, ids)
 }
 
-func (o *ChatOrchestrator) mergeUserAttachmentRefs(ctx context.Context, userOpts string, attachmentIDs []string) (string, error) {
-	if len(attachmentIDs) == 0 || o == nil || o.artifacts == nil {
-		return userOpts, nil
+func (o *ChatOrchestrator) mergeUserAttachmentRefs(ctx context.Context, sessionID, userOpts string, attachmentIDs []string) (string, int, error) {
+	if len(artifactbiz.NormalizeAttachmentIDs(attachmentIDs)) == 0 || o == nil || o.artifacts == nil {
+		return userOpts, 0, nil
 	}
-	refs := make([]chatagent.MessageAttachmentRef, 0, len(attachmentIDs))
-	for _, id := range attachmentIDs {
-		id = strings.TrimSpace(id)
-		if id == "" {
-			continue
-		}
-		meta, _, err := o.artifacts.Load(ctx, id, 0)
-		if err != nil {
-			continue
-		}
-		refs = append(refs, chatagent.MessageAttachmentRef{
-			ID:       meta.ID,
-			Name:     meta.Name,
-			MimeType: meta.MimeType,
-			Size:     meta.Size,
-		})
+	refs, err := artifactbiz.ResolveAttachmentRefs(ctx, o.artifacts, sessionID, attachmentIDs)
+	if err != nil {
+		return userOpts, 0, err
 	}
-	return chatagent.MergeAttachmentsIntoUserOptionsJSON(userOpts, refs)
+	merged, err := artifactbiz.MergeRefsIntoOptionsJSON(userOpts, refs)
+	return merged, len(refs), err
+}
+
+func mergeTurnArtifactRefs(optionsJSON string, refs []artifactbiz.Ref) (string, error) {
+	return artifactbiz.MergeRefsIntoOptionsJSON(optionsJSON, refs)
 }

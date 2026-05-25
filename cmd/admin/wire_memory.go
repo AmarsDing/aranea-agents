@@ -56,6 +56,7 @@ func providePersistenceSet(
 	mcp *biz.AgentMCPTooling,
 	sess trpcsession.Service,
 	artifact trpcartifact.Service,
+	artifactUC *biz.ArtifactUsecase,
 	vec *biz.MemoryUsecase,
 	q memtrpc.AutoMemoryQueue,
 	policy *biz.MemoryPolicyEngine,
@@ -75,7 +76,7 @@ func providePersistenceSet(
 			L3Recall: l3Recall,
 		}
 	}
-	return rt.PersistenceSet{Session: sess, Memory: mem, AgentMCP: mcp, Artifact: artifact}
+	return rt.PersistenceSet{Session: sess, Memory: mem, AgentMCP: mcp, Artifact: artifact, ArtifactUC: artifactUC}
 }
 
 type wireSessionAdminStoreAdapter struct {

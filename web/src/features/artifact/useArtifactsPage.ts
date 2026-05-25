@@ -1,8 +1,11 @@
-import { computed, onMounted, ref, watch } from "vue";
+import { onMounted, ref, watch } from "vue";
 import { useQuasar } from "quasar";
 import { registryCol } from "../ui/registryTableColumns";
 import type { ArtifactMeta } from "./types";
+import { listArtifactVersions } from "./api";
 import { useArtifactStore } from "../../stores/artifact";
+import { validateArtifactFileSize, artifactMaxSizeHint } from "./limits";
+import { readFileAsBase64 } from "./fileBase64";
 
 export function useArtifactsPage() {
   const $q = useQuasar();
@@ -13,6 +16,7 @@ export function useArtifactsPage() {
   const error = ref("");
   const sessionFilter = ref("");
   const search = ref("");
+  const mimeFilter = ref("");
   const uploadOpen = ref(false);
   const uploadLoading = ref(false);
   const uploadFile = ref<File | null>(null);
@@ -20,6 +24,10 @@ export function useArtifactsPage() {
   const detailOpen = ref(false);
   const detailMeta = ref<ArtifactMeta | null>(null);
   const detailArtifactId = ref("");
+  const detailVersions = ref<ArtifactMeta[]>([]);
+  const detailVersion = ref<number | undefined>(undefined);
+  const tableTotal = ref(0);
+  const pagination = ref({ page: 1, rowsPerPage: 15 });
 
   const columns = [
     { name: "name", label: "名称", field: "name", align: "left" as const, sortable: true, ...registryCol.name },
@@ -31,16 +39,13 @@ export function useArtifactsPage() {
     { name: "actions", label: "", field: "id", align: "right" as const, ...registryCol.actions }
   ];
 
-  const filteredRows = computed(() => {
-    const kw = search.value.trim().toLowerCase();
-    if (!kw) return rows.value;
-    return rows.value.filter(
-      (r) =>
-        r.name.toLowerCase().includes(kw) ||
-        r.mime_type.toLowerCase().includes(kw) ||
-        r.session_id.toLowerCase().includes(kw)
-    );
-  });
+  const mimeFilterOptions = [
+    { label: "全部类型", value: "" },
+    { label: "图片", value: "image/" },
+    { label: "文本/代码", value: "text/" },
+    { label: "PDF", value: "application/pdf" },
+    { label: "JSON", value: "application/json" }
+  ];
 
   function formatBytes(n: number) {
     if (!n) return "0 B";
@@ -54,28 +59,21 @@ export function useArtifactsPage() {
     return `${v.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
   }
 
-  function fileToBase64(file: File): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = String(reader.result ?? "");
-        const idx = result.indexOf(",");
-        resolve(idx >= 0 ? result.slice(idx + 1) : result);
-      };
-      reader.onerror = () => reject(reader.error);
-      reader.readAsDataURL(file);
-    });
-  }
-
   async function loadRows() {
     loading.value = true;
     error.value = "";
     try {
+      const { page, rowsPerPage } = pagination.value;
+      const offset = (page - 1) * rowsPerPage;
       const res = await artifactStore.loadArtifacts({
         session_id: sessionFilter.value.trim() || undefined,
-        limit: 200
+        limit: rowsPerPage,
+        offset,
+        query: search.value.trim() || undefined,
+        mime_type_prefix: mimeFilter.value || undefined
       });
       rows.value = res.items;
+      tableTotal.value = res.total;
     } catch (e) {
       error.value = e instanceof Error ? e.message : "加载失败";
     } finally {
@@ -83,11 +81,26 @@ export function useArtifactsPage() {
     }
   }
 
+  function onTableRequest(props: { pagination: { page: number; rowsPerPage: number } }) {
+    pagination.value = { ...props.pagination };
+    void loadRows();
+  }
+
   function onUploadFile(file: File | null) {
     if (!file) return;
+    const sizeErr = validateArtifactFileSize(file.size);
+    if (sizeErr) {
+      $q.notify({ type: "warning", message: sizeErr });
+      uploadFile.value = null;
+      return;
+    }
     uploadForm.value.name = uploadForm.value.name || file.name;
     uploadForm.value.mime_type = uploadForm.value.mime_type || file.type || "application/octet-stream";
   }
+
+  watch(uploadFile, (file) => {
+    onUploadFile(file);
+  });
 
   async function submitUpload() {
     if (!uploadForm.value.session_id.trim()) {
@@ -98,9 +111,14 @@ export function useArtifactsPage() {
       $q.notify({ type: "warning", message: "请选择文件" });
       return;
     }
+    const sizeErr = validateArtifactFileSize(uploadFile.value.size);
+    if (sizeErr) {
+      $q.notify({ type: "warning", message: sizeErr });
+      return;
+    }
     uploadLoading.value = true;
     try {
-      const dataBase64 = await fileToBase64(uploadFile.value);
+      const dataBase64 = await readFileAsBase64(uploadFile.value);
       await artifactStore.upload({
         session_id: uploadForm.value.session_id.trim(),
         name: uploadForm.value.name || uploadFile.value.name,
@@ -122,7 +140,22 @@ export function useArtifactsPage() {
   function openDetail(row: ArtifactMeta) {
     detailMeta.value = row;
     detailArtifactId.value = row.id;
+    detailVersion.value = row.version;
+    detailVersions.value = [];
     detailOpen.value = true;
+    void listArtifactVersions(row.id)
+      .then((items) => {
+        detailVersions.value = items;
+      })
+      .catch(() => {
+        detailVersions.value = [];
+      });
+  }
+
+  function selectDetailVersion(v: ArtifactMeta) {
+    detailMeta.value = v;
+    detailArtifactId.value = v.id;
+    detailVersion.value = v.version;
   }
 
   async function onPreviewDownload(meta: ArtifactMeta) {
@@ -159,11 +192,22 @@ export function useArtifactsPage() {
     });
   }
 
+  function onSearchChange() {
+    pagination.value.page = 1;
+    void loadRows();
+  }
+
   onMounted(() => {
     void loadRows();
   });
 
   watch(sessionFilter, () => {
+    pagination.value.page = 1;
+    void loadRows();
+  });
+
+  watch([mimeFilter], () => {
+    pagination.value.page = 1;
     void loadRows();
   });
 
@@ -173,6 +217,8 @@ export function useArtifactsPage() {
     error,
     sessionFilter,
     search,
+    mimeFilter,
+    mimeFilterOptions,
     uploadOpen,
     uploadLoading,
     uploadFile,
@@ -180,15 +226,22 @@ export function useArtifactsPage() {
     detailOpen,
     detailMeta,
     detailArtifactId,
+    detailVersions,
+    detailVersion,
+    tableTotal,
+    pagination,
     columns,
-    filteredRows,
     formatBytes,
     loadRows,
+    onTableRequest,
+    onSearchChange,
     onUploadFile,
     submitUpload,
     openDetail,
+    selectDetailVersion,
     onPreviewDownload,
     downloadRow,
-    confirmDelete
+    confirmDelete,
+    artifactMaxSizeHint,
   };
 }

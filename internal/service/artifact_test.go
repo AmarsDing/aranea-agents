@@ -8,6 +8,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/artifact/v1"
 	"aranea-agents/internal/biz"
+	artifactbiz "aranea-agents/internal/biz/artifact"
 	"aranea-agents/internal/service"
 )
 
@@ -138,6 +139,17 @@ func TestArtifactService_Upload_Validation(t *testing.T) {
 	if err == nil {
 		t.Error("expected error for invalid base64")
 	}
+
+	// oversize payload
+	oversized := make([]byte, artifactbiz.MaxUploadBytes+1)
+	_, err = svc.UploadArtifact(ctx, &v1.UploadArtifactRequest{
+		SessionId:  "s",
+		Name:       "big.bin",
+		DataBase64: base64.StdEncoding.EncodeToString(oversized),
+	})
+	if err == nil {
+		t.Error("expected error for oversize upload")
+	}
 }
 
 func TestArtifactService_List(t *testing.T) {
@@ -161,6 +173,50 @@ func TestArtifactService_List(t *testing.T) {
 	}
 	if len(resp.GetItems()) != 3 {
 		t.Errorf("expected 3 items, got %d", len(resp.GetItems()))
+	}
+}
+
+func TestArtifactService_List_Filter(t *testing.T) {
+	svc := newArtifactService()
+	ctx := context.Background()
+
+	_, _ = svc.UploadArtifact(ctx, &v1.UploadArtifactRequest{
+		SessionId: "sess-f", Name: "photo.png", MimeType: "image/png",
+		DataBase64: base64.StdEncoding.EncodeToString([]byte("img")),
+	})
+	_, _ = svc.UploadArtifact(ctx, &v1.UploadArtifactRequest{
+		SessionId: "sess-f", Name: "readme.txt", MimeType: "text/plain",
+		DataBase64: base64.StdEncoding.EncodeToString([]byte("txt")),
+	})
+
+	resp, err := svc.ListArtifacts(ctx, &v1.ListArtifactsRequest{
+		SessionId: "sess-f", MimeTypePrefix: "image/",
+	})
+	if err != nil {
+		t.Fatalf("list filter: %v", err)
+	}
+	if len(resp.GetItems()) != 1 || resp.GetItems()[0].GetName() != "photo.png" {
+		t.Fatalf("expected image filter, got %+v", resp.GetItems())
+	}
+}
+
+func TestArtifactService_ListArtifactVersions(t *testing.T) {
+	svc := newArtifactService()
+	ctx := context.Background()
+
+	meta1, _ := svc.UploadArtifact(ctx, &v1.UploadArtifactRequest{
+		SessionId: "sess-v", Name: "file.bin", DataBase64: base64.StdEncoding.EncodeToString([]byte("v0")),
+	})
+	_, _ = svc.UploadArtifact(ctx, &v1.UploadArtifactRequest{
+		SessionId: "sess-v", Name: "file.bin", DataBase64: base64.StdEncoding.EncodeToString([]byte("v1")),
+	})
+
+	resp, err := svc.ListArtifactVersions(ctx, &v1.ListArtifactVersionsRequest{Id: meta1.GetId()})
+	if err != nil {
+		t.Fatalf("versions: %v", err)
+	}
+	if len(resp.GetItems()) != 2 {
+		t.Fatalf("expected 2 versions, got %d", len(resp.GetItems()))
 	}
 }
 

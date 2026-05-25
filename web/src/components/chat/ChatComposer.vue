@@ -177,6 +177,7 @@
             @click="$emit('pick-file')"
           >
             <q-icon name="attach_file" />
+            <q-tooltip>{{ artifactMaxSizeHint() }}</q-tooltip>
           </q-btn>
           <q-btn
             round
@@ -231,6 +232,7 @@ import {
   formatComposerUsageDetail,
   type ComposerUsageSnapshot,
 } from "../../features/chat/composerUsageMetrics";
+import { artifactMaxSizeHint } from "../../features/artifact/limits";
 
 type Option = { label: string; value: string; caption?: string };
 

@@ -28,10 +28,11 @@ type Catalog struct {
 
 // PersistenceSet groups the session and memory persistence services for a turn.
 type PersistenceSet struct {
-	Session  trpcsession.Service  // SQLite-backed or in-memory session service
-	Memory   MemorySet            // TRPC memory service + L0–L4 admin port
-	AgentMCP *biz.AgentMCPTooling // per-agent MCP tool configuration
-	Artifact trpcartifact.Service // optional; wired from biz.ArtifactUsecase adapter
+	Session    trpcsession.Service  // SQLite-backed or in-memory session service
+	Memory     MemorySet            // TRPC memory service + L0–L4 admin port
+	AgentMCP   *biz.AgentMCPTooling // per-agent MCP tool configuration
+	Artifact   trpcartifact.Service // optional; wired from biz.ArtifactUsecase adapter
+	ArtifactUC *biz.ArtifactUsecase // optional; attachment ref resolution for turns
 }
 
 // EventPipeline wraps the event bus used for projecting runtime events
@@ -85,4 +86,9 @@ func (d *TurnDeps) CoalesceRunnerManager() *RunnerManager {
 // NewEmptyPersistenceSet creates a PersistenceSet with nil memory for tests.
 func NewEmptyPersistenceSet(sess trpcsession.Service, mcp *biz.AgentMCPTooling, artifact trpcartifact.Service) PersistenceSet {
 	return PersistenceSet{Session: sess, Memory: MemorySet{}, AgentMCP: mcp, Artifact: artifact}
+}
+
+// NewEmptyPersistenceSetWithUC is like NewEmptyPersistenceSet but includes ArtifactUsecase for tests.
+func NewEmptyPersistenceSetWithUC(sess trpcsession.Service, mcp *biz.AgentMCPTooling, artifact trpcartifact.Service, uc *biz.ArtifactUsecase) PersistenceSet {
+	return PersistenceSet{Session: sess, Memory: MemorySet{}, AgentMCP: mcp, Artifact: artifact, ArtifactUC: uc}
 }

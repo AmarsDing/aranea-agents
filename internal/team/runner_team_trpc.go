@@ -13,6 +13,7 @@ import (
 	"aranea-agents/internal/agent"
 	"aranea-agents/internal/agent/intent"
 	"aranea-agents/internal/biz"
+	artifactbiz "aranea-agents/internal/biz/artifact"
 	"aranea-agents/internal/metrics"
 	rt "aranea-agents/internal/runtime"
 	sessctx "aranea-agents/internal/session"
@@ -327,6 +328,22 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		}
 		sendText = intent.WrapUserMessage(content, intRes.Artifact)
 	}
+	if r.td.Persist.ArtifactUC != nil && len(artifactbiz.NormalizeAttachmentIDs(input.Options.AttachmentIDs)) > 0 {
+		refs, rerr := artifactbiz.ResolveAttachmentRefs(ctx, r.td.Persist.ArtifactUC, sess.ID, input.Options.AttachmentIDs)
+		if rerr != nil {
+			turnStatus = "error"
+			r.finishRunErr(ctx, &run, t0, rerr.Error())
+			return biz.ChatMessage{}, biz.ChatMessage{}, rerr
+		}
+		attN = len(refs)
+		var merr error
+		userOpts, merr = artifactbiz.MergeRefsIntoOptionsJSON(userOpts, refs)
+		if merr != nil {
+			turnStatus = "error"
+			r.finishRunErr(ctx, &run, t0, merr.Error())
+			return biz.ChatMessage{}, biz.ChatMessage{}, merr
+		}
+	}
 	meta := intent.RunMeta{
 		AgentID:   firstAg.ID,
 		SessionID: sess.ID,
@@ -374,8 +391,20 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	if teamEmitter != nil {
 		teamEmitter.LogStart("team.run.execute", "执行团队任务", event.P("mode", mode))
 	}
+	var turnArtCollector *artifactbiz.TurnCollector
+	runCtx, turnArtCollector = artifactbiz.WithTurnCollector(runCtx)
 
-	events, err := agent.RunTRPCUserTurn(runCtx, runner, uid, sess.ID, sendText, skillruntime.RunOptionWithTurnQuery(sendText))
+	userTurnMsg, err := agent.BuildUserMessageFromArtifacts(runCtx, r.td.Persist.ArtifactUC, sess.ID, sendText, input.Options.AttachmentIDs)
+	if err != nil {
+		if teamEmitter != nil {
+			teamEmitter.LogError("team.run.attachments", err.Error(), event.P("mode", mode))
+		}
+		turnStatus = "error"
+		r.finishRunErr(ctx, &run, t0, err.Error())
+		return userMsg, biz.ChatMessage{}, err
+	}
+
+	events, err := agent.RunTRPCUserTurnMsg(runCtx, runner, uid, sess.ID, userTurnMsg, skillruntime.RunOptionWithTurnQuery(sendText))
 	if err != nil {
 		if teamEmitter != nil {
 			teamEmitter.LogError("team.run.execute", err.Error(), event.P("mode", mode))
@@ -467,6 +496,19 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 			return userMsg, biz.ChatMessage{}, err
 		}
 	}
+	if turnArtCollector != nil {
+		if merged, merr := artifactbiz.MergeRefsIntoOptionsJSON(assistantOptsStr, turnArtCollector.Refs()); merr != nil {
+			turnStatus = "error"
+			r.finishRunErr(ctx, &run, t0, merr.Error())
+			return userMsg, biz.ChatMessage{}, merr
+		} else {
+			assistantOptsStr = merged
+		}
+	}
+	assistantAttN := 0
+	if turnArtCollector != nil {
+		assistantAttN = len(turnArtCollector.Refs())
+	}
 
 	assistantMsg = biz.ChatMessage{
 		ID:              uuid.NewString(),
@@ -479,6 +521,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		CreatedAt:       agent.RFC3339Now(),
 		TokenIn:         promptTok,
 		TokenOut:        completionTok,
+		AttachmentsCount: assistantAttN,
 	}
 
 	if displayMarkdown == "" {

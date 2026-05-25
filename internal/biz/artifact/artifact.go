@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"strings"
 )
 
 // Artifact represents a stored binary artifact associated with a session.
@@ -47,7 +48,17 @@ func NewUsecase(repo Repo) *Usecase {
 
 // Save stores an artifact.
 func (uc *Usecase) Save(ctx context.Context, sessionID, name, mimeType string, data []byte) (Artifact, error) {
-	return uc.repo.Save(ctx, sessionID, name, mimeType, data)
+	if err := ValidateUploadSize(int64(len(data))); err != nil {
+		return Artifact{}, err
+	}
+	saved, err := uc.repo.Save(ctx, sessionID, name, mimeType, data)
+	if err != nil {
+		return Artifact{}, err
+	}
+	if c := CollectorFromContext(ctx); c != nil {
+		c.Add(saved)
+	}
+	return saved, nil
 }
 
 // Load retrieves artifact data.  version <= 0 returns the latest version.
@@ -55,9 +66,30 @@ func (uc *Usecase) Load(ctx context.Context, id string, version int) (Artifact, 
 	return uc.repo.Load(ctx, id, version)
 }
 
-// List returns artifact metadata for a session.
-func (uc *Usecase) List(ctx context.Context, sessionID string, limit, offset int) ([]Artifact, int, error) {
-	return uc.repo.List(ctx, sessionID, limit, offset)
+// List returns artifact metadata for a session. query and mimePrefix filter in-memory when set.
+func (uc *Usecase) List(ctx context.Context, sessionID string, limit, offset int, query, mimePrefix string) ([]Artifact, int, error) {
+	needsFilter := strings.TrimSpace(query) != "" || strings.TrimSpace(mimePrefix) != ""
+	fetchLimit, fetchOffset := limit, offset
+	if needsFilter {
+		fetchLimit, fetchOffset = 0, 0
+	}
+	items, total, err := uc.repo.List(ctx, sessionID, fetchLimit, fetchOffset)
+	if err != nil {
+		return nil, 0, err
+	}
+	if !needsFilter {
+		return items, total, nil
+	}
+	items = FilterArtifacts(items, query, mimePrefix)
+	total = len(items)
+	if offset >= total {
+		return nil, total, nil
+	}
+	items = items[offset:]
+	if limit > 0 && len(items) > limit {
+		items = items[:limit]
+	}
+	return items, total, nil
 }
 
 // Delete removes an artifact.

@@ -12,6 +12,7 @@ import (
 	v1 "aranea-agents/api/kratos/artifact/v1"
 	"aranea-agents/internal/artifact"
 	"aranea-agents/internal/biz"
+	artifactbiz "aranea-agents/internal/biz/artifact"
 	"aranea-agents/internal/metrics"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -26,7 +27,9 @@ type ArtifactService struct {
 
 // NewArtifactService constructs an ArtifactService.
 func NewArtifactService(uc *biz.ArtifactUsecase) *ArtifactService {
-	return &ArtifactService{uc: uc}
+	s := &ArtifactService{uc: uc}
+	s.refreshStorageGauge(context.Background())
+	return s
 }
 
 // UploadArtifact stores a base64-encoded artifact and returns its metadata.
@@ -41,8 +44,8 @@ func (s *ArtifactService) UploadArtifact(ctx context.Context, req *v1.UploadArti
 	if err != nil {
 		return nil, kerrors.BadRequest("ARTIFACT", "data_base64 is not valid base64: "+err.Error())
 	}
-	if len(data) > 50<<20 { // 50 MB cap
-		return nil, kerrors.BadRequest("ARTIFACT", "artifact exceeds 50 MB size limit")
+	if len(data) > artifactbiz.MaxUploadBytes {
+		return nil, kerrors.BadRequest("ARTIFACT", "单个制品最大支持 10 MB，当前文件过大暂不支持上传")
 	}
 	mime := strings.TrimSpace(req.GetMimeType())
 	if mime == "" {
@@ -85,7 +88,9 @@ func (s *ArtifactService) ListArtifacts(ctx context.Context, req *v1.ListArtifac
 	if limit <= 0 {
 		limit = 50
 	}
-	items, total, err := s.uc.List(ctx, req.GetSessionId(), limit, offset)
+	query := strings.TrimSpace(req.GetQuery())
+	mimePrefix := strings.TrimSpace(req.GetMimeTypePrefix())
+	items, total, err := s.uc.List(ctx, req.GetSessionId(), limit, offset, query, mimePrefix)
 	if err != nil {
 		return nil, err
 	}
@@ -97,6 +102,30 @@ func (s *ArtifactService) ListArtifacts(ctx context.Context, req *v1.ListArtifac
 		Items: pbItems,
 		Total: int32(total),
 	}, nil
+}
+
+// ListArtifactVersions returns all version metadata for an artifact logical file.
+func (s *ArtifactService) ListArtifactVersions(ctx context.Context, req *v1.ListArtifactVersionsRequest) (*v1.ListArtifactVersionsResponse, error) {
+	id := strings.TrimSpace(req.GetId())
+	if id == "" {
+		return nil, kerrors.BadRequest("ARTIFACT", "id is required")
+	}
+	meta, _, err := s.uc.Load(ctx, id, 0)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			return nil, kerrors.NotFound("ARTIFACT", err.Error())
+		}
+		return nil, err
+	}
+	versions, err := s.uc.ListVersions(ctx, meta.SessionID, meta.Name)
+	if err != nil {
+		return nil, err
+	}
+	pbItems := make([]*v1.ArtifactMeta, 0, len(versions))
+	for _, it := range versions {
+		pbItems = append(pbItems, toProtoArtifactMeta(it))
+	}
+	return &v1.ListArtifactVersionsResponse{Items: pbItems}, nil
 }
 
 // DeleteArtifact removes an artifact and all its versions.

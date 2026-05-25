@@ -15,7 +15,10 @@
     <q-card flat class="app-registry-panel">
       <q-card-section class="app-form-field-grid app-registry-toolbar app-form-field-grid--2col items-center">
         <q-input v-model="sessionFilter" class="app-field-md" dense outlined clearable label="按 Session ID 筛选" />
-        <q-input v-model="search" class="app-field-md" dense outlined clearable debounce="200" label="搜索名称 / MIME" />
+        <div class="row q-gutter-sm items-center">
+          <q-input v-model="search" class="app-field-md col" dense outlined clearable debounce="300" label="搜索名称 / MIME / Session" @update:model-value="onSearchChange" />
+          <q-select v-model="mimeFilter" class="app-field-sm" dense outlined emit-value map-options :options="mimeFilterOptions" label="MIME" style="min-width: 140px" />
+        </div>
       </q-card-section>
     </q-card>
 
@@ -27,7 +30,19 @@
     </q-banner>
 
     <div class="app-registry-table-shell">
-      <q-table flat dense class="app-registry-table" :rows="filteredRows" :columns="columns" row-key="id" :loading="loading" :pagination="{ rowsPerPage: 15 }">
+      <q-table
+        flat
+        dense
+        class="app-registry-table"
+        :rows="rows"
+        :columns="columns"
+        row-key="id"
+        :loading="loading"
+        v-model:pagination="pagination"
+        :rows-per-page-options="[15, 30, 50]"
+        :rows-number="tableTotal"
+        @request="onTableRequest"
+      >
         <template #body-cell-name="props">
           <q-td :props="props">
             <div class="app-registry-cell-primary">{{ props.row.name }}</div>
@@ -39,60 +54,48 @@
         <template #body-cell-actions="props">
           <q-td :props="props">
             <div class="app-registry-cell-actions">
-            <q-btn flat dense round color="primary" icon="visibility" @click="openDetail(props.row)">
-              <q-tooltip>查看</q-tooltip>
-            </q-btn>
-            <q-btn flat dense round color="primary" icon="download" @click="downloadRow(props.row)">
-              <q-tooltip>签名下载</q-tooltip>
-            </q-btn>
-            <q-btn flat dense round color="negative" icon="delete" @click="confirmDelete(props.row)">
-              <q-tooltip>删除</q-tooltip>
-            </q-btn>
+              <q-btn flat dense round color="primary" icon="visibility" @click="openDetail(props.row)">
+                <q-tooltip>查看</q-tooltip>
+              </q-btn>
+              <q-btn flat dense round color="primary" icon="download" @click="downloadRow(props.row)">
+                <q-tooltip>签名下载</q-tooltip>
+              </q-btn>
+              <q-btn flat dense round color="negative" icon="delete" @click="confirmDelete(props.row)">
+                <q-tooltip>删除</q-tooltip>
+              </q-btn>
             </div>
           </q-td>
         </template>
       </q-table>
     </div>
 
-    <q-dialog v-model="uploadOpen" persistent>
-      <q-card class="app-dialog-card app-dialog-card--sm">
-        <q-card-section class="text-h6">上传制品</q-card-section>
-        <q-card-section class="app-dialog-body q-gutter-md q-pt-none">
-          <q-input v-model="uploadForm.session_id" class="app-field-md" dense outlined label="Session ID" />
-          <q-input v-model="uploadForm.name" class="app-field-md" dense outlined label="文件名" />
-          <q-input v-model="uploadForm.mime_type" class="app-field-sm" dense outlined label="MIME" placeholder="application/octet-stream" />
-          <q-file v-model="uploadFile" label="选择文件" outlined dense @update:model-value="onUploadFile" />
-        </q-card-section>
-        <q-card-actions align="right" class="app-actions-bar">
-          <q-btn flat no-caps label="取消" v-close-popup />
-          <q-btn color="primary" unelevated no-caps label="上传" :loading="uploadLoading" @click="submitUpload" />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
+    <ArtifactsUploadDialog
+      v-model:open="uploadOpen"
+      v-model:file="uploadFile"
+      v-model:session-id="uploadForm.session_id"
+      v-model:name="uploadForm.name"
+      v-model:mime-type="uploadForm.mime_type"
+      :loading="uploadLoading"
+      :max-size-hint="artifactMaxSizeHint()"
+      @submit="submitUpload"
+    />
 
-    <q-dialog v-model="detailOpen">
-      <q-card class="app-dialog-card app-dialog-card--md">
-        <q-card-section class="text-h6">{{ detailMeta?.name }}</q-card-section>
-        <q-card-section v-if="detailMeta" class="app-dialog-body q-gutter-sm q-pt-none text-body2">
-          <div><b>ID：</b>{{ detailMeta.id }}</div>
-          <div><b>Session：</b>{{ detailMeta.session_id }}</div>
-          <div><b>SHA256：</b><span class="text-caption">{{ detailMeta.sha256 }}</span></div>
-          <div><b>存储：</b>{{ detailMeta.storage_kind }} — {{ detailMeta.storage_uri }}</div>
-          <div><b>大小：</b>{{ formatBytes(detailMeta.size) }} · v{{ detailMeta.version }}</div>
-        </q-card-section>
-        <q-card-section v-if="detailArtifactId">
-          <ArtifactPreview :artifact-id="detailArtifactId" :show-download="true" @download="onPreviewDownload" />
-        </q-card-section>
-        <q-card-actions align="right" class="app-actions-bar">
-          <q-btn flat no-caps label="关闭" v-close-popup />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
+    <ArtifactsDetailDialog
+      v-model:open="detailOpen"
+      :meta="detailMeta"
+      :artifact-id="detailArtifactId"
+      :selected-version="detailVersion"
+      :versions="detailVersions"
+      :format-bytes="formatBytes"
+      @select-version="selectDetailVersion"
+      @download="onPreviewDownload"
+    />
   </q-page>
 </template>
 
 <script setup lang="ts">
-import ArtifactPreview from "../features/artifact/ArtifactPreview.vue";
+import ArtifactsDetailDialog from "../features/artifact/components/ArtifactsDetailDialog.vue";
+import ArtifactsUploadDialog from "../features/artifact/components/ArtifactsUploadDialog.vue";
 import { useArtifactsPage } from "../features/artifact/useArtifactsPage";
 
 const {
@@ -107,15 +110,24 @@ const {
   detailOpen,
   detailMeta,
   detailArtifactId,
+  detailVersions,
+  detailVersion,
+  mimeFilter,
+  mimeFilterOptions,
   columns,
-  filteredRows,
+  rows,
+  tableTotal,
+  pagination,
   formatBytes,
   loadRows,
-  onUploadFile,
+  onTableRequest,
+  onSearchChange,
   submitUpload,
   openDetail,
+  selectDetailVersion,
   onPreviewDownload,
   downloadRow,
-  confirmDelete
+  confirmDelete,
+  artifactMaxSizeHint,
 } = useArtifactsPage();
 </script>

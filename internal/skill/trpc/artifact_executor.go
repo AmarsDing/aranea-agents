@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"aranea-agents/internal/biz/artifact"
 	"aranea-agents/internal/event"
 
 	"trpc.group/trpc-go/trpc-agent-go/codeexecutor"
@@ -47,6 +48,13 @@ func persistOutputFiles(ctx context.Context, files []codeexecutor.File) {
 		}
 		data := []byte(f.Content)
 		if len(data) == 0 {
+			continue
+		}
+		if len(data) > artifact.MaxUploadBytes {
+			event.CtxFlowLogWarn(ctx, "system.codeexec.artifact_save",
+				"代码执行产出物超过 10 MB，已跳过",
+				event.P("filename", f.Name),
+				event.P("size", len(data)))
 			continue
 		}
 		mimeType := strings.TrimSpace(f.MIMEType)

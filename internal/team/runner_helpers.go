@@ -8,6 +8,7 @@ import (
 
 	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
+	artifactbiz "aranea-agents/internal/biz/artifact"
 	"aranea-agents/internal/event"
 	"aranea-agents/pkg/strutil"
 
@@ -43,7 +44,7 @@ func extractOptsFromInput(input biz.TurnInput) (dialogMode, prov, mod string, at
 	return strings.TrimSpace(input.Options.DialogMode),
 		strings.TrimSpace(input.Options.Provider),
 		strings.TrimSpace(input.Options.Model),
-		len(input.Options.AttachmentIDs)
+		len(artifactbiz.NormalizeAttachmentIDs(input.Options.AttachmentIDs))
 }
 
 func mergeTeamUserTurnMetaJSON(userOpts string, displayContent, sendText string) (string, error) {

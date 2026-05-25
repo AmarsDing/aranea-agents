@@ -1,19 +1,9 @@
 import { ref, type Ref } from "vue";
 import { useQuasar } from "quasar";
 import { useArtifactStore } from "../../../stores/artifact";
+import { validateArtifactFileSize } from "../../artifact/limits";
+import { readFileAsBase64 } from "../../artifact/fileBase64";
 import type { ChatAttachment } from "../../../components/chat/types";
-
-async function readFileAsBase64(file: File): Promise<string> {
-  const buf = await file.arrayBuffer();
-  const bytes = new Uint8Array(buf);
-  const chunks: string[] = [];
-  const chunkSize = 8192;
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    const slice = bytes.subarray(i, i + chunkSize);
-    chunks.push(String.fromCharCode(...slice));
-  }
-  return btoa(chunks.join(""));
-}
 
 export function useChatAttachments(sessionId: Ref<string | undefined>) {
   const $q = useQuasar();
@@ -42,6 +32,11 @@ export function useChatAttachments(sessionId: Ref<string | undefined>) {
     }
 
     for (const file of Array.from(input.files)) {
+      const sizeErr = validateArtifactFileSize(file.size);
+      if (sizeErr) {
+        $q.notify({ type: "warning", message: sizeErr });
+        continue;
+      }
       const tempId = `pending-${Date.now()}-${file.name}`;
       const record: ChatAttachment = { id: tempId, name: file.name, progress: 0.1 };
       attachments.value.push(record);

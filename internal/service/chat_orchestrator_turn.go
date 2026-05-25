@@ -14,6 +14,7 @@ import (
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/agent/intent"
 	"aranea-agents/internal/biz"
+	artifactbiz "aranea-agents/internal/biz/artifact"
 	"aranea-agents/internal/event"
 	arametrics "aranea-agents/internal/metrics"
 	rt "aranea-agents/internal/runtime"
@@ -156,7 +157,7 @@ func (o *ChatOrchestrator) runNativeAgentTurnBody(ctx context.Context, input biz
 	mod = strutil.FirstNonEmpty(mod, sess.DefaultModel, ag.Model)
 	flow.LogDone("chat.provider_resolve", "Provider/Model已解析", event.P("provider", prov), event.P("model", mod), event.P("dialog_mode", dialogMode))
 
-	attN := len(input.Options.AttachmentIDs)
+	attN := len(artifactbiz.NormalizeAttachmentIDs(input.Options.AttachmentIDs))
 
 	flow.LogStart("chat.turn.enter", "进入Agent Turn执行", event.P("dialog_mode", dialogMode), event.P("provider", prov), event.P("model", mod), event.P("attachments", attN))
 
@@ -164,7 +165,7 @@ func (o *ChatOrchestrator) runNativeAgentTurnBody(ctx context.Context, input biz
 	turnCtx, turnCancel := context.WithCancel(ctx)
 	o.runs.StoreCancelable(sessionID, agentRunID, turnCancel)
 	unlock()
-	return o.runSingleAgentViaTRPC(turnCtx, sess, input, ag, dialogMode, prov, mod, attN)
+	return o.runSingleAgentViaTRPC(turnCtx, sess, input, ag, dialogMode, prov, mod)
 }
 
 // hydratedAgent loads and returns an Agent by ID.
@@ -418,59 +419,7 @@ func (o *ChatOrchestrator) notifySessionRevisionSync(ctx context.Context, sessio
 
 // buildUserMessage constructs a trpcmodel.Message from content and attachment IDs.
 func (o *ChatOrchestrator) buildUserMessage(ctx context.Context, sessionID, content string, attachmentIDs []string) (trpcmodel.Message, error) {
-	content = strings.TrimSpace(content)
-	if len(attachmentIDs) == 0 {
-		return trpcmodel.NewUserMessage(content), nil
-	}
-	if o == nil || o.artifacts == nil {
-		if content == "" {
-			return trpcmodel.Message{}, fmt.Errorf("attachments require artifact service")
-		}
-		return trpcmodel.NewUserMessage(content), nil
-	}
-	parts := make([]trpcmodel.ContentPart, 0, len(attachmentIDs)+1)
-	if content != "" {
-		text := content
-		parts = append(parts, trpcmodel.ContentPart{Type: trpcmodel.ContentTypeText, Text: &text})
-	}
-	for _, id := range attachmentIDs {
-		id = strings.TrimSpace(id)
-		if id == "" {
-			continue
-		}
-		meta, data, err := o.artifacts.Load(ctx, id, 0)
-		if err != nil {
-			return trpcmodel.Message{}, fmt.Errorf("load attachment %s: %w", id, err)
-		}
-		if strings.TrimSpace(meta.SessionID) != "" && strings.TrimSpace(sessionID) != "" && meta.SessionID != sessionID {
-			return trpcmodel.Message{}, fmt.Errorf("attachment %s belongs to another session", id)
-		}
-		mime := strings.ToLower(strings.TrimSpace(meta.MimeType))
-		if strings.HasPrefix(mime, "image/") {
-			format := strings.TrimPrefix(mime, "image/")
-			parts = append(parts, trpcmodel.ContentPart{
-				Type: trpcmodel.ContentTypeImage,
-				Image: &trpcmodel.Image{
-					Data:   data,
-					Format: format,
-					Detail: "auto",
-				},
-			})
-			continue
-		}
-		parts = append(parts, trpcmodel.ContentPart{
-			Type: trpcmodel.ContentTypeFile,
-			File: &trpcmodel.File{
-				Name:     meta.Name,
-				Data:     data,
-				MimeType: meta.MimeType,
-			},
-		})
-	}
-	if len(parts) == 0 {
-		return trpcmodel.NewUserMessage(content), nil
-	}
-	return trpcmodel.Message{Role: trpcmodel.RoleUser, ContentParts: parts}, nil
+	return chatagent.BuildUserMessageFromArtifacts(ctx, o.artifacts, sessionID, content, attachmentIDs)
 }
 
 // runSingleAgentViaTRPC runs a single agent turn via the trpc-agent-go framework.
@@ -480,7 +429,6 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	input biz.TurnInput,
 	ag biz.Agent,
 	dialogMode, prov, mod string,
-	attN int,
 ) (biz.ChatMessage, biz.ChatMessage, error) {
 	sessionID := strings.TrimSpace(input.SessionID)
 	content := strings.TrimSpace(input.Content)
@@ -655,7 +603,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		emitter.LogSkip("chat.intent.pass", "A2A Proxy Agent 跳过意图识别", event.P("agent_kind", ag.Kind))
 	}
 
-	userOpts, err = o.mergeUserAttachmentRefs(ctx, userOpts, input.Options.AttachmentIDs)
+	userOpts, attN, err := o.mergeUserAttachmentRefs(ctx, sessionID, userOpts, input.Options.AttachmentIDs)
 	if err != nil {
 		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
 		o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
@@ -714,6 +662,8 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	if len(input.Options.KnowledgeBases) > 0 {
 		runCtx = knowledgetool.WithKnowledgeCollections(runCtx, input.Options.KnowledgeBases)
 	}
+	var turnArtCollector *artifactbiz.TurnCollector
+	runCtx, turnArtCollector = artifactbiz.WithTurnCollector(runCtx)
 
 	safego.Go(runCtx, "llm-call-timeout-log", func() {
 		select {
@@ -834,7 +784,20 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 			return userMsg, biz.ChatMessage{}, err
 		}
 	}
+	if turnArtCollector != nil {
+		if merged, merr := mergeTurnArtifactRefs(assistantOptsStr, turnArtCollector.Refs()); merr != nil {
+			markTurnError(&turnStatus, &turnErr, &turnErrMsg, merr)
+			o.publishTurnFailure(sessionID, runID, "chat-service", merr, "")
+			return userMsg, biz.ChatMessage{}, merr
+		} else {
+			assistantOptsStr = merged
+		}
+	}
 
+	assistantAttN := 0
+	if turnArtCollector != nil {
+		assistantAttN = len(turnArtCollector.Refs())
+	}
 	assistantMsg := biz.ChatMessage{
 		ID:              uuid.NewString(),
 		SessionID:       sessionID,
@@ -846,6 +809,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		CreatedAt:       chatagent.RFC3339Now(),
 		TokenIn:         promptTok,
 		TokenOut:        completionTok,
+		AttachmentsCount: assistantAttN,
 	}
 	if err := o.td.Sessions.AppendChatMessage(ctx, sessionID, assistantMsg, true); err != nil {
 		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
@@ -902,7 +866,7 @@ func (o *ChatOrchestrator) processPendingQueue(sessionID string, sess biz.Sessio
 		if strings.EqualFold(strings.TrimSpace(sess.OwnerType), "team") {
 			_, _, err = o.team.TeamsNative.RunTurnFromInput(bgCtx, sess, pendingInput)
 		} else {
-			_, _, err = o.runSingleAgentViaTRPC(bgCtx, sess, pendingInput, ag, dialogMode, prov, mod, 0)
+			_, _, err = o.runSingleAgentViaTRPC(bgCtx, sess, pendingInput, ag, dialogMode, prov, mod)
 		}
 		if err != nil {
 			pendingEmitter.LogError("chat.pending_dequeue", "排队消息处理失败", event.P("entry_id", pendingEntryID), event.P("error", err.Error()))

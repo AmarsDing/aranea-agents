@@ -501,7 +501,7 @@ func TestArtifactUsecase_SaveLoadDeleteList(t *testing.T) {
 		t.Errorf("name mismatch: %s", meta.Name)
 	}
 
-	items, total, err := uc.List(ctx, "sess-1", 10, 0)
+	items, total, err := uc.List(ctx, "sess-1", 10, 0, "", "")
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
