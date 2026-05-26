@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"sync"
 
 	"github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
@@ -286,20 +287,29 @@ func (u *ChannelUsecase) RunHealthChecks(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	var mu sync.Mutex
+	var wg sync.WaitGroup
 	for _, row := range items {
 		if !row.Enabled {
 			continue
 		}
-		credentials, err := u.repo.ListCredentials(ctx, row.ID)
-		if err != nil {
-			continue
-		}
-		result, err := EvaluateChannelTest(row, credentials)
-		if err != nil {
-			continue
-		}
-		_, _ = u.updateTestMetadata(ctx, row, result)
+		wg.Add(1)
+		go func(ch Channel) {
+			defer wg.Done()
+			credentials, err := u.repo.ListCredentials(ctx, ch.ID)
+			if err != nil {
+				return
+			}
+			result, err := EvaluateChannelTest(ch, credentials)
+			if err != nil {
+				return
+			}
+			mu.Lock()
+			_, _ = u.updateTestMetadata(ctx, ch, result)
+			mu.Unlock()
+		}(row)
 	}
+	wg.Wait()
 	return nil
 }
 

@@ -2,12 +2,20 @@ package biz
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
 
 	"aranea-agents/pkg/safego"
 )
+
+const awaitChanMaxAge = 30 * time.Minute
+
+type awaitChanEntry struct {
+	ch        interface{}
+	createdAt time.Time
+}
 
 type ChatRunStatus struct {
 	RunID     string
@@ -172,7 +180,7 @@ func (uc *ChatUsecase) EnqueueUserMessage(sessionID, content string, mergeFollow
 }
 
 func (uc *ChatUsecase) RegisterAwaitChannel(sessionID string, ch interface{}) {
-	uc.awaitChans.Store(sessionID, ch)
+	uc.awaitChans.Store(sessionID, awaitChanEntry{ch: ch, createdAt: time.Now()})
 }
 
 func (uc *ChatUsecase) DeleteAwaitChannel(sessionID string) {
@@ -180,7 +188,15 @@ func (uc *ChatUsecase) DeleteAwaitChannel(sessionID string) {
 }
 
 func (uc *ChatUsecase) LoadAwaitChannel(sessionID string) (interface{}, bool) {
-	return uc.awaitChans.Load(sessionID)
+	val, ok := uc.awaitChans.Load(sessionID)
+	if !ok {
+		return nil, false
+	}
+	entry, ok := val.(awaitChanEntry)
+	if !ok {
+		return val, true
+	}
+	return entry.ch, true
 }
 
 func (uc *ChatUsecase) PersistAwaitMarkers(ctx context.Context, sessionID, runID string, meta ChatAwaitMeta) {
@@ -209,9 +225,16 @@ func (uc *ChatUsecase) StartBackgroundGoroutines() {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				uc.awaitChans.Range(func(key, _ interface{}) bool {
+				now := time.Now()
+				uc.awaitChans.Range(func(key, val interface{}) bool {
 					sid, ok := key.(string)
 					if !ok || strings.TrimSpace(sid) == "" {
+						uc.awaitChans.Delete(key)
+						return true
+					}
+					entry, ok := val.(awaitChanEntry)
+					if ok && now.Sub(entry.createdAt) > awaitChanMaxAge {
+						slog.Warn("await channel expired, cleaning up", "session_id", sid, "age", now.Sub(entry.createdAt).Round(time.Second))
 						uc.awaitChans.Delete(key)
 					}
 					return true

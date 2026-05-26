@@ -207,4 +207,10 @@ var (
 		Name: "aranea_team_graph_runtime_total",
 		Help: "Team run runtime path: graph success, native fallback, or native primary.",
 	}, []string{"outcome", "reason"})
+
+	// SafegoPanicRecovered counts panics recovered by safego.
+	SafegoPanicRecovered = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "aranea_safego_panic_recovered_total",
+		Help: "Number of panics recovered by safego, labelled by goroutine name.",
+	}, []string{"name"})
 )

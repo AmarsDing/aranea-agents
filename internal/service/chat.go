@@ -87,6 +87,23 @@ func (s *ChatService) SetRunStatus(ctx context.Context, sessionID, runID, status
 	s.orch.setRunStatus(ctx, sessionID, runID, status, errMsg)
 }
 
+// EnqueueUserMessage implements biz.NativeTurnGateway — delegates to ChatOrchestrator.
+func (s *ChatService) EnqueueUserMessage(sessionID, content string) (bool, error) {
+	if s == nil || s.orch == nil {
+		return false, nil
+	}
+	accepted, _, _, _, err := s.orch.EnqueueUserMessage(sessionID, content)
+	return accepted, err
+}
+
+// SetSessionPendingMergeFollowup implements biz.NativeTurnGateway — delegates to ChatOrchestrator.
+func (s *ChatService) SetSessionPendingMergeFollowup(sessionID string, merge bool) {
+	if s == nil || s.orch == nil {
+		return
+	}
+	s.orch.SetSessionPendingMergeFollowup(sessionID, merge)
+}
+
 // RunGateway exposes the shared session run registry (Chat, Team, Cron, Channel, WS).
 func (s *ChatService) RunGateway() *rt.RunRegistry {
 	return s.orch.runs

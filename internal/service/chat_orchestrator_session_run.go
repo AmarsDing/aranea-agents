@@ -136,6 +136,10 @@ func (o *ChatOrchestrator) onSessionRunSoftBudget(ctx context.Context, run biz.S
 				return
 			}
 			if cur.Phase != biz.SessionRunPhaseEscalating {
+				event.SysLogWarn("session-run-auto-escalate", "skipping auto-escalate, run no longer escalating",
+					event.P("session_run_id", runID),
+					event.P("current_phase", cur.Phase),
+				)
 				return
 			}
 			o.escalateSessionRunToDurable(escalateCtx, sessionID, runID)

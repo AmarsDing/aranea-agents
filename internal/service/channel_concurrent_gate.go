@@ -9,6 +9,7 @@ import (
 
 type channelConcurrentKey struct {
 	channelID string
+	peerID    string
 	group     bool
 }
 
@@ -21,11 +22,11 @@ func newChannelConcurrentGate() *channelConcurrentGate {
 	return &channelConcurrentGate{active: make(map[channelConcurrentKey]int)}
 }
 
-func (g *channelConcurrentGate) TryAcquire(channelID string, isGroup bool, limit int) bool {
+func (g *channelConcurrentGate) TryAcquire(channelID, peerID string, isGroup bool, limit int) bool {
 	if g == nil || limit <= 0 {
 		return true
 	}
-	key := channelConcurrentKey{channelID: channelID, group: isGroup}
+	key := channelConcurrentKey{channelID: channelID, peerID: peerID, group: isGroup}
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if g.active[key] >= limit {
@@ -35,11 +36,11 @@ func (g *channelConcurrentGate) TryAcquire(channelID string, isGroup bool, limit
 	return true
 }
 
-func (g *channelConcurrentGate) Release(channelID string, isGroup bool) {
+func (g *channelConcurrentGate) Release(channelID, peerID string, isGroup bool) {
 	if g == nil {
 		return
 	}
-	key := channelConcurrentKey{channelID: channelID, group: isGroup}
+	key := channelConcurrentKey{channelID: channelID, peerID: peerID, group: isGroup}
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if g.active[key] <= 1 {

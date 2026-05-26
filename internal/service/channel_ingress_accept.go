@@ -26,19 +26,39 @@ func (o inboundAcceptOutcome) needsBackgroundWork() bool {
 // When ExecuteSync or DispatchAsync is set, the caller must run background work and release inflight.
 func (h *ChannelIngress) acceptInbound(ctx context.Context, chRow biz.Channel, ev port.InboundEvent, viaWebhook bool) (inboundAcceptOutcome, error) {
 	var noop inboundAcceptOutcome
-	platform := strings.TrimSpace(ev.PlatformType)
-	if platform == "" {
-		platform = channelTypeFromConfig(chRow.ConfigJSON)
-	}
+	platform := inboundPlatform(chRow, ev)
 	dedupKey := biz.InboundIdempotencyKey(platform, ev.IdempotencyKey, ev.PeerID, ev.Text)
 	viaLabel := "runtime"
 	if viaWebhook {
 		viaLabel = "webhook"
 	}
-	ok, skipReason, err := h.shouldProcessInbound(ctx, chRow, ev, viaWebhook)
+
+	// Phase 1: Guard checks (idempotency, access, cancel)
+	if err := h.acceptInboundGuard(ctx, chRow, ev, platform, dedupKey, viaLabel); err != nil {
+		return noop, err
+	}
+
+	// Phase 2: Route to background if pre-policy dictates
+	ltCfg := biz.ParseChannelLongTaskConfig(chRow.ConfigJSON)
+	allowQueue := channelAllowQueueFromConfig(chRow.ConfigJSON)
+	prePolicy := EvaluateIngressPolicy(channelIngressPolicyInput(ev.Text, ltCfg, allowQueue, false, false, false))
+	if prePolicy.Decision == IngressRouteBackground {
+		recordIngressIntentMetric(prePolicy.Intent)
+		_, berr := h.tryBackgroundInboundTurn(ctx, chRow, ev, platform)
+		h.inboundInflight.release(dedupKey)
+		return noop, berr
+	}
+
+	// Phase 3: Route to sync or async execution
+	return h.routeInboundSyncOrAsync(ctx, chRow, ev, platform, dedupKey, ltCfg, allowQueue)
+}
+
+// acceptInboundGuard runs idempotency, access, and cancel checks. Returns nil if the inbound should proceed.
+func (h *ChannelIngress) acceptInboundGuard(ctx context.Context, chRow biz.Channel, ev port.InboundEvent, platform, dedupKey, viaLabel string) error {
+	ok, skipReason, err := h.shouldProcessInbound(ctx, chRow, ev, viaLabel == "webhook")
 	if err != nil {
 		h.inboundInflight.release(dedupKey)
-		return noop, err
+		return err
 	}
 	if !ok {
 		h.inboundInflight.release(dedupKey)
@@ -49,32 +69,29 @@ func (h *ChannelIngress) acceptInbound(ctx context.Context, chRow biz.Channel, e
 			"via":             viaLabel,
 			"text_preview":    truncateForLog(ev.Text, 80),
 		}, "")
-		return noop, nil
+		return nil
 	}
 	h.logInboundAccepted(ctx, chRow, ev, viaLabel)
 	allowed, reason, err := h.checkInboundAccess(ctx, chRow, ev)
 	if err != nil {
 		h.inboundInflight.release(dedupKey)
 		_ = h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "access", "error": err.Error()}, err.Error())
-		return noop, err
+		return err
 	}
 	if !allowed {
 		h.inboundInflight.release(dedupKey)
-		return noop, h.rejectInboundAccess(ctx, chRow, ev, reason)
+		return h.rejectInboundAccess(ctx, chRow, ev, reason)
 	}
 	if handled, cerr := h.tryCancelInboundTurn(ctx, chRow, ev, platform); handled || cerr != nil {
 		h.inboundInflight.release(dedupKey)
-		return noop, cerr
+		return cerr
 	}
-	ltCfg := biz.ParseChannelLongTaskConfig(chRow.ConfigJSON)
-	allowQueue := channelAllowQueueFromConfig(chRow.ConfigJSON)
-	prePolicy := EvaluateIngressPolicy(channelIngressPolicyInput(ev.Text, ltCfg, allowQueue, false, false, false))
-	if prePolicy.Decision == IngressRouteBackground {
-		recordIngressIntentMetric(prePolicy.Intent)
-		_, berr := h.tryBackgroundInboundTurn(ctx, chRow, ev, platform)
-		h.inboundInflight.release(dedupKey)
-		return noop, berr
-	}
+	return nil
+}
+
+// routeInboundSyncOrAsync resolves the route policy and dispatches to sync or async execution.
+func (h *ChannelIngress) routeInboundSyncOrAsync(ctx context.Context, chRow biz.Channel, ev port.InboundEvent, platform, dedupKey string, ltCfg biz.ChannelLongTaskConfig, allowQueue bool) (inboundAcceptOutcome, error) {
+	var noop inboundAcceptOutcome
 	if !biz.ChannelSupportsLongTaskIngress(platform, chRow.ConfigJSON) {
 		ltCfg.AckMessage = ""
 		ltCfg.ExecutionMode = "sync"
@@ -92,32 +109,15 @@ func (h *ChannelIngress) acceptInbound(ctx context.Context, chRow biz.Channel, e
 	if routePolicy.SuggestDurable {
 		recordIngressIntentMetric("suggest_durable")
 	}
-	var releaseConcurrent func()
+
 	if routePolicy.Decision == IngressRouteAsync {
-		release, ok := h.tryAcquireChannelConcurrent(chRow, ev, ltCfg)
-		if !ok {
-			recordIngressIntentMetric("concurrent_limit")
-			h.inboundInflight.release(dedupKey)
-			idempotency := ackIdempotencyKey(platform, ev, "concurrent_busy")
-			_ = h.enqueueOutboundReply(ctx, chRow, platform, outboundRecipient(ev), channelTurnErrorBusyMsg, ev.OutboundMeta, idempotency)
-			return noop, nil
-		}
-		releaseConcurrent = release
-		if !isPureAsyncExecutionMode(ltCfg) {
-			if err := h.sendInboundAckIfNeeded(ctx, chRow, ev, platform, ltCfg); err != nil {
-				releaseConcurrent()
-				h.inboundInflight.release(dedupKey)
-				_ = h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "ack", "error": err.Error()}, err.Error())
-				return noop, err
-			}
-		}
-		event.SysLogInfo(flowStepChannelInboundAccept, "Channel 入站 ACK 已发送",
-			event.P("channel_id", chRow.ID),
-			event.P("peer_id", ev.PeerID),
-			event.P("async", true),
-		)
-		return inboundAcceptOutcome{DispatchAsync: true, releaseConcurrent: releaseConcurrent}, nil
+		return h.routeInboundAsync(ctx, chRow, ev, platform, dedupKey, ltCfg)
 	}
+	return h.routeInboundSync(ctx, chRow, ev, platform, dedupKey, ltCfg, routePolicy)
+}
+
+func (h *ChannelIngress) routeInboundAsync(ctx context.Context, chRow biz.Channel, ev port.InboundEvent, platform, dedupKey string, ltCfg biz.ChannelLongTaskConfig) (inboundAcceptOutcome, error) {
+	var noop inboundAcceptOutcome
 	release, ok := h.tryAcquireChannelConcurrent(chRow, ev, ltCfg)
 	if !ok {
 		recordIngressIntentMetric("concurrent_limit")
@@ -126,9 +126,34 @@ func (h *ChannelIngress) acceptInbound(ctx context.Context, chRow biz.Channel, e
 		_ = h.enqueueOutboundReply(ctx, chRow, platform, outboundRecipient(ev), channelTurnErrorBusyMsg, ev.OutboundMeta, idempotency)
 		return noop, nil
 	}
-	releaseConcurrent = release
+	if !isPureAsyncExecutionMode(ltCfg) {
+		if err := h.sendInboundAckIfNeeded(ctx, chRow, ev, platform, ltCfg); err != nil {
+			release()
+			h.inboundInflight.release(dedupKey)
+			_ = h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "ack", "error": err.Error()}, err.Error())
+			return noop, err
+		}
+	}
+	event.SysLogInfo(flowStepChannelInboundAccept, "Channel 入站 ACK 已发送",
+		event.P("channel_id", chRow.ID),
+		event.P("peer_id", ev.PeerID),
+		event.P("async", true),
+	)
+	return inboundAcceptOutcome{DispatchAsync: true, releaseConcurrent: release}, nil
+}
+
+func (h *ChannelIngress) routeInboundSync(ctx context.Context, chRow biz.Channel, ev port.InboundEvent, platform, dedupKey string, ltCfg biz.ChannelLongTaskConfig, routePolicy IngressPolicy) (inboundAcceptOutcome, error) {
+	var noop inboundAcceptOutcome
+	release, ok := h.tryAcquireChannelConcurrent(chRow, ev, ltCfg)
+	if !ok {
+		recordIngressIntentMetric("concurrent_limit")
+		h.inboundInflight.release(dedupKey)
+		idempotency := ackIdempotencyKey(platform, ev, "concurrent_busy")
+		_ = h.enqueueOutboundReply(ctx, chRow, platform, outboundRecipient(ev), channelTurnErrorBusyMsg, ev.OutboundMeta, idempotency)
+		return noop, nil
+	}
 	if err := h.sendInboundAckIfNeeded(ctx, chRow, ev, platform, ltCfg); err != nil {
-		releaseConcurrent()
+		release()
 		h.inboundInflight.release(dedupKey)
 		_ = h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "ack", "error": err.Error()}, err.Error())
 		return noop, err
@@ -138,7 +163,7 @@ func (h *ChannelIngress) acceptInbound(ctx context.Context, chRow biz.Channel, e
 		event.P("peer_id", ev.PeerID),
 	)
 	out := channelAcceptOutcomeFromRoute(routePolicy)
-	out.releaseConcurrent = releaseConcurrent
+	out.releaseConcurrent = release
 	return out, nil
 }
 

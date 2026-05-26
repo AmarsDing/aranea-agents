@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -142,6 +143,11 @@ func (s *sqliteMemoryService) SearchMemories(ctx context.Context, uk trpcmemory.
 
 	if q != "" && s.vector != nil {
 		hits, err := s.vector.RecallWithUser(ctx, uk.AppName, uk.UserID, q, int(topK))
+		if err != nil {
+			if !errors.Is(err, biz.ErrMemoryUnavailable) {
+				slog.Warn("vector recall failed", "agent", uk.AppName, "error", err)
+			}
+		}
 		if err == nil && len(hits) > 0 {
 			out := make([]*trpcmemory.Entry, 0, len(hits))
 			for _, h := range hits {
@@ -292,13 +298,13 @@ func topicsJSON(topics []string) string {
 }
 
 type factRow struct {
-	ID          string  `json:"id"`
-	Statement   string  `json:"statement"`
-	TagsJSON    string  `json:"tags_json"`
-	Importance  float64 `json:"importance"`
-	MetadataJSON string `json:"metadata_json"`
-	CreatedAt   string  `json:"created_at"`
-	UpdatedAt   string  `json:"updated_at"`
+	ID           string  `json:"id"`
+	Statement    string  `json:"statement"`
+	TagsJSON     string  `json:"tags_json"`
+	Importance   float64 `json:"importance"`
+	MetadataJSON string  `json:"metadata_json"`
+	CreatedAt    string  `json:"created_at"`
+	UpdatedAt    string  `json:"updated_at"`
 }
 
 func factRowToEntry(raw []byte, uk trpcmemory.UserKey) (*trpcmemory.Entry, error) {

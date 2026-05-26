@@ -156,11 +156,16 @@ type FilesystemHealthReader interface {
 
 // Usecase implements monitor workflows.
 type Usecase struct {
-	repo      Repo
-	notifier  AlertNotifier
-	fsHealth  FilesystemHealthReader
-	lastFired sync.Map
+	repo        Repo
+	notifier    AlertNotifier
+	fsHealth    FilesystemHealthReader
+	lastFired   sync.Map
+	rulesCache  []AlertRule
+	rulesExpire time.Time
+	rulesMu     sync.RWMutex
 }
+
+const rulesCacheTTL = 5 * time.Minute
 
 // SetFilesystemHealthReader configures skill filesystem metrics for alert rules.
 func (u *Usecase) SetFilesystemHealthReader(r FilesystemHealthReader) {
@@ -242,6 +247,12 @@ func (u *Usecase) ReplaceAlertRules(ctx context.Context, rules []AlertRule) erro
 		return err
 	}
 
+	// Invalidate rules cache
+	u.rulesMu.Lock()
+	u.rulesCache = nil
+	u.rulesExpire = time.Time{}
+	u.rulesMu.Unlock()
+
 	newIDs := make(map[string]struct{}, len(rules))
 	for _, r := range rules {
 		newIDs[r.ID] = struct{}{}
@@ -259,10 +270,7 @@ func (u *Usecase) EvaluateAlerts(ctx context.Context) {
 	if u == nil || u.repo == nil {
 		return
 	}
-	rules, err := u.repo.ListAlertRules(ctx)
-	if err != nil {
-		return
-	}
+	rules := u.cachedAlertRules(ctx)
 	for _, rule := range rules {
 		if !rule.Enabled {
 			continue
@@ -274,6 +282,28 @@ func (u *Usecase) EvaluateAlerts(ctx context.Context) {
 			u.evaluateSkillFilesystemMissingCount(ctx, rule)
 		}
 	}
+}
+
+func (u *Usecase) cachedAlertRules(ctx context.Context) []AlertRule {
+	u.rulesMu.RLock()
+	if u.rulesCache != nil && time.Now().Before(u.rulesExpire) {
+		rules := u.rulesCache
+		u.rulesMu.RUnlock()
+		return rules
+	}
+	u.rulesMu.RUnlock()
+
+	rules, err := u.repo.ListAlertRules(ctx)
+	if err != nil {
+		return nil
+	}
+
+	u.rulesMu.Lock()
+	u.rulesCache = rules
+	u.rulesExpire = time.Now().Add(rulesCacheTTL)
+	u.rulesMu.Unlock()
+
+	return rules
 }
 
 func (u *Usecase) evaluateRunnerErrorRate(ctx context.Context, rule AlertRule) {

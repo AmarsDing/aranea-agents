@@ -51,6 +51,9 @@ func (r *monitorRepo) InsertMonitorEvent(ctx context.Context, ev biz.MonitorEven
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, '')`,
 		id, ev.EventKey, ev.Name, ev.Description, status, ev.MetadataJSON, now, now,
 	)
+	if err != nil && isSQLiteUniqueConstraintError(err) {
+		return nil
+	}
 	return err
 }
 
@@ -287,6 +290,12 @@ func (r *monitorRepo) PatchRunnerCompletionMetadata(ctx context.Context, session
 	if sessionID == "" || strings.TrimSpace(patchJSON) == "" {
 		return false, nil
 	}
+	// When both invocationID and runID are available, try combined match first for precision.
+	if invocationID != "" && runID != "" && runID != invocationID {
+		if patched, err := r.patchRunnerCompletionByDualKey(ctx, sessionID, invocationID, runID, patchJSON); err != nil || patched {
+			return patched, err
+		}
+	}
 	if invocationID != "" {
 		if patched, err := r.patchRunnerCompletionByKey(ctx, sessionID, "invocation_id", invocationID, patchJSON); err != nil || patched {
 			return patched, err
@@ -296,6 +305,37 @@ func (r *monitorRepo) PatchRunnerCompletionMetadata(ctx context.Context, session
 		return r.patchRunnerCompletionByKey(ctx, sessionID, "run_id", runID, patchJSON)
 	}
 	return false, nil
+}
+
+func (r *monitorRepo) patchRunnerCompletionByDualKey(ctx context.Context, sessionID, invocationID, runID, patchJSON string) (bool, error) {
+	var id, existing string
+	err := r.data.RawDB().QueryRowContext(ctx,
+		`SELECT id, metadata_json FROM monitor_events WHERE deleted_at = '' AND event_key = 'runner.completion'
+		 AND json_extract(metadata_json, '$.session_id') = ?
+		 AND json_extract(metadata_json, '$.invocation_id') = ?
+		 AND json_extract(metadata_json, '$.run_id') = ?
+		 ORDER BY created_at DESC LIMIT 1`, sessionID, invocationID, runID,
+	).Scan(&id, &existing)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	merged, err := mergeJSONMetadata(existing, patchJSON)
+	if err != nil {
+		return false, err
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	res, err := r.data.RawDB().ExecContext(ctx,
+		`UPDATE monitor_events SET metadata_json = ?, updated_at = ? WHERE id = ?`,
+		merged, now, id,
+	)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
 }
 
 func (r *monitorRepo) patchRunnerCompletionByKey(ctx context.Context, sessionID, jsonKey, jsonValue, patchJSON string) (bool, error) {
@@ -403,4 +443,12 @@ func scanMonitorPlatformRow(resource string, row scanner) (biz.MonitorPlatformRo
 	v.UpdatedAt = updatedAt
 	v.DeletedAt = deletedAt
 	return v, nil
+}
+
+func isSQLiteUniqueConstraintError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "UNIQUE constraint failed") || strings.Contains(msg, "unique constraint")
 }

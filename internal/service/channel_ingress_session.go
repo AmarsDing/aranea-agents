@@ -93,6 +93,12 @@ func (h *ChannelIngress) ensureChannelSession(
 		PeerKey:   peerKey,
 		SessionID: sessionID,
 	}); cerr != nil {
+		// Handle unique constraint race: another request may have created the binding.
+		if existing, gerr := h.peers.GetByChannelAndPeer(ctx, chRow.ID, peerKey); gerr == nil && existing.SessionID != "" {
+			if _, verr := h.sessions.Get(ctx, existing.SessionID); verr == nil {
+				return existing.SessionID, nil
+			}
+		}
 		return "", cerr
 	}
 	return sessionID, nil

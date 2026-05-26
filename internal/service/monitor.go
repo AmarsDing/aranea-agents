@@ -20,29 +20,32 @@ import (
 type MonitorService struct {
 	v1.UnimplementedMonitorServiceServer
 
-	uc              *biz.MonitorUsecase
-	flowLogs        *biz.FlowLogUsecase
-	server          *conf.Server
-	codeExecFactory *codeexecutor.Factory
+	uc     *biz.MonitorUsecase
+	server *conf.Server
+
+	// Delegated sub-services — separated for SRP; RPC methods still live on
+	// MonitorService because the proto defines them on MonitorServiceServer.
+	flowLogSvc  *FlowLogService
+	codeExecSvc *CodeExecutorService
 }
 
-func NewMonitorService(uc *biz.MonitorUsecase, flowLogs *biz.FlowLogUsecase, server *conf.Server, codeExecFactory *codeexecutor.Factory) *MonitorService {
-	return &MonitorService{uc: uc, flowLogs: flowLogs, server: server, codeExecFactory: codeExecFactory}
+func NewMonitorService(uc *biz.MonitorUsecase, server *conf.Server, flowLogSvc *FlowLogService, codeExecSvc *CodeExecutorService) *MonitorService {
+	return &MonitorService{uc: uc, server: server, flowLogSvc: flowLogSvc, codeExecSvc: codeExecSvc}
 }
 
 func bizAuditToProto(a biz.AuditLog) *v1.AuditLog {
 	return &v1.AuditLog{
-		Id:          a.ID,
-		Action:      a.Action,
-		Resource:    a.Resource,
-		ResourceId:  a.ResourceID,
-		RequestId:   a.RequestID,
-		Detail:      a.Detail,
-		CreatedAt:   a.CreatedAt,
-		Actor:       a.Actor,
-		Ip:          a.IP,
-		UserAgent:   a.UserAgent,
-		Severity:    a.Severity,
+		Id:           a.ID,
+		Action:       a.Action,
+		Resource:     a.Resource,
+		ResourceId:   a.ResourceID,
+		RequestId:    a.RequestID,
+		Detail:       a.Detail,
+		CreatedAt:    a.CreatedAt,
+		Actor:        a.Actor,
+		Ip:           a.IP,
+		UserAgent:    a.UserAgent,
+		Severity:     a.Severity,
 		MetadataJson: a.MetadataJSON,
 	}
 }
@@ -242,48 +245,10 @@ func (s *MonitorService) GetRunnerMetrics(ctx context.Context, req *v1.GetRunner
 }
 
 func (s *MonitorService) ListFlowLogs(ctx context.Context, in *v1.ListFlowLogsRequest) (*v1.ListFlowLogsResponse, error) {
-	if s == nil || s.flowLogs == nil {
+	if s == nil || s.flowLogSvc == nil {
 		return &v1.ListFlowLogsResponse{}, nil
 	}
-	since, until, err := parseFlowLogTimeBounds(in.GetSince(), in.GetUntil())
-	if err != nil {
-		return nil, kerrors.BadRequest("MONITOR", err.Error())
-	}
-	result, err := s.flowLogs.List(ctx, biz.FlowLogQuery{
-		TraceID:   in.GetTraceId(),
-		SessionID: in.GetSessionId(),
-		RunID:     in.GetRunId(),
-		Severity:  in.GetSeverity(),
-		Domain:    in.GetDomain(),
-		Since:     since,
-		Until:     until,
-		Limit:     int(in.GetLimit()),
-		Offset:    int(in.GetOffset()),
-	})
-	if err != nil {
-		return nil, err
-	}
-	out := make([]*v1.FlowLogEntry, 0, len(result.Items))
-	for i := range result.Items {
-		r := result.Items[i]
-		out = append(out, &v1.FlowLogEntry{
-			Id:          r.ID,
-			TraceId:     r.TraceID,
-			SessionId:   r.SessionID,
-			RunId:       r.RunID,
-			TeamId:      r.TeamID,
-			Domain:      r.Domain,
-			AgentKey:    r.AgentKey,
-			StepId:      r.StepID,
-			FlowPhase:   r.FlowPhase,
-			Severity:    r.Severity,
-			Title:       r.Title,
-			Message:     r.Message,
-			PayloadJson: r.PayloadJSON,
-			CreatedAt:   r.CreatedAt.UTC().Format(time.RFC3339Nano),
-		})
-	}
-	return &v1.ListFlowLogsResponse{Items: out, Total: int32(result.Total)}, nil
+	return s.flowLogSvc.ListFlowLogs(ctx, in)
 }
 
 func (s *MonitorService) GetMonitorLogs(context.Context, *v1.GetMonitorLogsRequest) (*v1.GetMonitorLogsResponse, error) {
@@ -405,20 +370,9 @@ func traceSpansRaw(config map[string]any) []any {
 	return []any{}
 }
 
-func (s *MonitorService) GetCodeExecutorCapabilities(ctx context.Context, _ *v1.GetMonitorLogsRequest) (*v1.GetCodeExecutorCapabilitiesResponse, error) {
-	_ = ctx
-	factory := s.codeExecFactory
-	if factory == nil {
-		factory = codeexecutor.NewFactory()
+func (s *MonitorService) GetCodeExecutorCapabilities(ctx context.Context, in *v1.GetMonitorLogsRequest) (*v1.GetCodeExecutorCapabilitiesResponse, error) {
+	if s == nil || s.codeExecSvc == nil {
+		return &v1.GetCodeExecutorCapabilitiesResponse{}, nil
 	}
-	caps := factory.Capabilities()
-	out := make([]*v1.CodeExecutorCapability, 0, len(caps))
-	for _, c := range caps {
-		out = append(out, &v1.CodeExecutorCapability{
-			Type:      c.Type,
-			Available: c.Available,
-			Reason:    c.Reason,
-		})
-	}
-	return &v1.GetCodeExecutorCapabilitiesResponse{Backends: out}, nil
+	return s.codeExecSvc.GetCodeExecutorCapabilities(ctx, in)
 }

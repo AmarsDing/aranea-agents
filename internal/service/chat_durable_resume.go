@@ -78,6 +78,8 @@ func (s *ChatService) ResumeDurableSessionRun(ctx context.Context, sessionRunID 
 			if s.orch.chTurn.RunEscalation != nil {
 				if failed, gerr := s.orch.chTurn.SessionRuns.Get(persistCtx, sessionRunID); gerr == nil && failed.ID != "" {
 					_ = s.orch.chTurn.RunEscalation.NotifyRunFailed(persistCtx, failed, turnErr.Error())
+				} else {
+					_ = s.orch.chTurn.RunEscalation.NotifyRunFailed(persistCtx, &biz.SessionRun{ID: sessionRunID, SessionID: run.SessionID}, turnErr.Error())
 				}
 			}
 			return

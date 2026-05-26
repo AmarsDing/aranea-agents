@@ -666,6 +666,7 @@ CREATE INDEX IF NOT EXISTS idx_cron_run_task ON cron_task_run(task_id, created_a
 CREATE INDEX IF NOT EXISTS idx_monitor_events_created ON monitor_events(created_at);
 CREATE INDEX IF NOT EXISTS idx_monitor_events_key_created ON monitor_events(event_key, created_at);
 CREATE INDEX IF NOT EXISTS idx_monitor_events_key_status_created ON monitor_events(event_key, status, created_at);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_monitor_events_runner_completion_unique ON monitor_events(event_key, json_extract(metadata_json, '$.session_id'), json_extract(metadata_json, '$.invocation_id')) WHERE event_key = 'runner.completion' AND deleted_at = '';
 CREATE INDEX IF NOT EXISTS idx_monitor_traces_created ON monitor_traces(created_at);
 
 -- L1 working memory (aranea/docs/13 memory-L1-working.md 搂3)

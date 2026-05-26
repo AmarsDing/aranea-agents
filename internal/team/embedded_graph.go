@@ -334,6 +334,17 @@ func compileEmbeddedEdges(def Definition, spec *embeddedGraphSpec, nodeTypeByID 
 func embeddedEdgeKind(mode string, e embeddedGraphEdge) string {
 	label := strings.ToLower(strings.TrimSpace(e.Label))
 	cond := strings.ToLower(strings.TrimSpace(e.Condition))
+	// Condition takes precedence over label for edge kind determination.
+	switch {
+	case cond == "transfer" || cond == "handoff":
+		return "transfer"
+	case cond == "dispatch" || cond == "delegate":
+		return "dispatch"
+	case cond == "approve" || cond == "reject" || cond == "retry" || cond == "fallback":
+		return cond
+	case strings.Contains(cond, "transfer") || strings.Contains(cond, "handoff"):
+		return "transfer"
+	}
 	if mode == "adaptive" && (strings.Contains(label, "transfer") || strings.Contains(cond, "transfer")) {
 		return "transfer"
 	}
