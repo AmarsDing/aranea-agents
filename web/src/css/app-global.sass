@@ -373,24 +373,57 @@ body.body--dark .theme-preview-page
   min-height: 40px
   align-items: stretch
 
-.chat-toolbar-grid
-  display: grid
-  gap: var(--space-3)
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto
-  align-items: end
+.chat-toolbar-bar
+  display: flex
+  align-items: flex-end
+  justify-content: space-between
+  gap: var(--space-4)
   width: 100%
+  min-width: 0
 
-  .chat-toolbar-field
+.chat-toolbar-fields
+  flex: 0 1 auto
+  gap: var(--space-2)
+  min-width: 0
+
+.chat-toolbar-field
+  flex: 0 0 auto
+  min-width: 0
+
+.chat-toolbar-field--mode
+  width: 152px
+
+.chat-toolbar-field--model
+  width: 196px
+
+.chat-toolbar-field--kb
+  width: 168px
+  max-width: 28vw
+
+@media (max-width: 899px)
+  .chat-toolbar-bar
+    flex-direction: column
+    align-items: stretch
+    gap: var(--space-2)
+
+  .chat-toolbar-fields
+    flex-wrap: wrap
+    width: 100%
+
+  .chat-toolbar-field--mode,
+  .chat-toolbar-field--model
+    flex: 1 1 calc(50% - var(--space-2))
+    width: auto
+    max-width: none
+
+  .chat-toolbar-field--kb
+    flex: 1 1 100%
     width: 100%
     max-width: none
-    min-width: 0
 
-  @media (max-width: 899px)
-    grid-template-columns: 1fr
-
-    .chat-toolbar-actions
-      grid-column: 1 / -1
-      justify-content: flex-start
+  .chat-toolbar-actions
+    width: 100%
+    margin-left: 0
 
 .chat-side--left,
 .chat-side--right
@@ -426,9 +459,31 @@ body.body--dark .theme-preview-page
     min-height: 0 !important
     overflow: hidden
 
+.chat-composer-toolbar-slot
+  display: contents
+
 .chat-toolbar-actions
+  flex: 0 0 auto
+  margin-left: auto
   justify-content: flex-end
-  min-height: 44px
+  align-items: center
+  gap: 8px
+  min-height: 40px
+
+.chat-toolbar-btn
+  width: 40px !important
+  height: 40px !important
+  min-width: 40px !important
+  min-height: 40px !important
+  padding: 0 !important
+  border-radius: 12px !important
+  flex-shrink: 0
+
+.chat-toolbar-btn--outline
+  background: color-mix(in srgb, var(--glass-surface) 88%, transparent) !important
+
+.chat-toolbar-btn--filled .q-icon
+  color: #fff
 
 .chat-context-pill
   min-height: 42px
@@ -436,14 +491,9 @@ body.body--dark .theme-preview-page
   border-radius: 999px
 
 .chat-icon-btn
-  width: 38px
-  height: 38px
-  border-radius: 14px !important
-
-.chat-send-btn
-  width: 42px
-  height: 42px
-  border-radius: 16px !important
+  width: 40px
+  height: 40px
+  border-radius: 12px !important
 
 .chat-action-btn
   width: 28px
@@ -495,9 +545,12 @@ body:not(.body--dark)
       &:hover
         background: var(--color-accent-hover) !important
     .chat-icon-btn,
-    .chat-action-btn
+    .chat-action-btn,
+    .chat-toolbar-btn--outline
       background: rgba(255, 255, 255, 0.56) !important
       color: $cream-text-light !important
+      border-color: rgba(141, 110, 99, 0.22) !important
+    .chat-toolbar-btn--filled,
     .chat-send-btn,
     .chat-primary-btn
       background: var(--color-accent) !important
@@ -569,6 +622,7 @@ body.body--dark
       background: rgba(30, 41, 59, 0.74)
       border: 1px solid rgba(148, 163, 184, 0.16)
     .chat-side__toggle-btn,
+    .chat-toolbar-btn--filled,
     .chat-send-btn,
     .chat-primary-btn
       background: rgba(0, 229, 255, 0.15) !important
@@ -579,7 +633,8 @@ body.body--dark
         background: rgba(0, 229, 255, 0.25) !important
         box-shadow: 0 0 20px rgba(0, 229, 255, 0.38)
     .chat-icon-btn,
-    .chat-action-btn
+    .chat-action-btn,
+    .chat-toolbar-btn--outline
       background: rgba(30, 41, 59, 0.72) !important
       color: var(--chat-text-secondary) !important
       border: 1px solid rgba(148, 163, 184, 0.12)
@@ -1980,15 +2035,9 @@ body.body--dark
   .monitor-json
     border-color: var(--glass-border)
 
-// --- 概览页（Usage Overview）— UX.md 玻璃 token，昼夜仅换变量 ---
+// --- 概览页（Usage Overview）— 背景由 .app-standard-page 统一 ---
 .overview-page
   color: var(--color-text-primary)
-
-body:not(.body--dark) .overview-page
-  background: linear-gradient(160deg, #FFF8E7 0%, var(--canvas-base) 42%, #F0E6D8 100%)
-
-body.body--dark .overview-page
-  background: linear-gradient(165deg, var(--canvas-base) 0%, #0c1220 48%, #151b28 100%)
 
 .overview-page__shell
   max-width: 1440px

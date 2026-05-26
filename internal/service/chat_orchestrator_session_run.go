@@ -43,10 +43,10 @@ func (o *ChatOrchestrator) beginSessionRunLifecycle(
 	sess biz.Session,
 	ag biz.Agent,
 	turnID, runtimeRunID, userContent, dialogMode, provider, model string,
-) (sessionRunID string, stopBudget context.CancelFunc) {
-	stopBudget = func() {}
+) (context.Context, string, context.CancelFunc) {
+	stopBudget := func() {}
 	if o == nil || o.chTurn.SessionRuns == nil {
-		return "", stopBudget
+		return ctx, "", stopBudget
 	}
 	sessionID := strings.TrimSpace(sess.ID)
 	ltCfg := o.resolveChannelLongTaskConfig(ctx, sess)
@@ -61,9 +61,13 @@ func (o *ChatOrchestrator) beginSessionRunLifecycle(
 		budget,
 	)
 	if err != nil || run.ID == "" {
-		return "", stopBudget
+		return ctx, "", stopBudget
 	}
 	ctx = event.WithSessionRunID(ctx, run.ID)
+	ctx = event.WithTurnID(ctx, turnID)
+	if sess.DefaultContextWindowTokens > 0 {
+		ctx = event.WithSessionDefaultContextWindow(ctx, sess.DefaultContextWindowTokens)
+	}
 	o.sessionRunBindings.Store(sessionID, timestampedEntry{
 		value: sessionRunTurnBinding{
 			sessionRunID: run.ID,
@@ -101,7 +105,7 @@ func (o *ChatOrchestrator) beginSessionRunLifecycle(
 			o.escalateSessionRunToDurable(ctx, sessionID, run.ID)
 		},
 	})
-	return run.ID, stopBudget
+	return ctx, run.ID, stopBudget
 }
 
 func (o *ChatOrchestrator) onSessionRunSoftBudget(ctx context.Context, run biz.SessionRun, ltCfg biz.ChannelLongTaskConfig) {

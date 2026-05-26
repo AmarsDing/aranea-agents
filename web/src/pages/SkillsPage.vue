@@ -1,17 +1,16 @@
 <template>
-  <q-page class="app-page-cream app-registry-page skills-page">
-    <section class="app-page-hero">
-      <div>
-        <div class="app-page-kicker">Skill registry</div>
-        <h1 class="app-page-title">Skill 管理</h1>
-        <p class="app-page-subtitle">查看 Skill 使用频率、成功失败统计、最近调用 Agent，并维护启用状态。</p>
-      </div>
-      <div class="app-actions-bar">
+  <q-page class="app-standard-page app-registry-page skills-page">
+    <AppPageHero
+      kicker="Skill registry"
+      title="Skill 管理"
+      subtitle="查看 Skill 使用频率、成功失败统计、最近调用 Agent，并维护启用状态。"
+    >
+      <template #actions>
         <q-btn outline rounded no-caps color="primary" icon="upload_file" label="上传 Skill" @click="openUpload" />
         <q-btn outline rounded no-caps color="primary" icon="history" label="运行记录" to="/skills/runs" />
         <q-btn color="primary" unelevated rounded no-caps icon="refresh" label="刷新" :loading="loading" @click="loadRows" />
-      </div>
-    </section>
+      </template>
+    </AppPageHero>
 
     <skill-upload-placeholder
       ref="uploadRef"
@@ -22,10 +21,18 @@
       @completed="loadRows"
     />
 
+    <skill-filesystem-alert-banner
+      :health="filesystemHealth"
+      @filter-pending="filterPendingFilesystem"
+      @filter-missing="filterMissingFilesystem"
+    />
+
     <skill-filter-bar
       v-model:search="search"
       v-model:enabled="enabled"
       v-model:status="status"
+      v-model:sync-origin="syncOrigin"
+      v-model:filesystem-missing="filesystemMissing"
       :loading="loading"
       class="q-mb-md"
       @reset="resetFilters"
@@ -48,18 +55,16 @@
     </q-card>
 
     <template v-else>
-      <div class="app-registry-table-shell">
-        <skill-table
-          :rows="rows"
-          :loading="loading"
-          :toggling-id="togglingId"
-          :publishing-id="publishingId"
-          @toggle-enabled="onToggleEnabled"
-          @publish="onPublishSkill"
-          @edit="openEditor"
-          @delete="confirmDelete"
-        />
-      </div>
+      <skill-table
+        :rows="rows"
+        :loading="loading"
+        :toggling-id="togglingId"
+        :publishing-id="publishingId"
+        @toggle-enabled="onToggleEnabled"
+        @publish="onPublishSkill"
+        @edit="openEditor"
+        @delete="confirmDelete"
+      />
 
       <skill-pagination v-model:page="page" v-model:page-size="pageSize" :page-max="pageMax" :total="total" :loading="loading" label="条 Skill" />
     </template>
@@ -75,8 +80,10 @@
 </template>
 
 <script setup lang="ts">
+import AppPageHero from "../components/layout/AppPageHero.vue";
 import SkillDeleteDialog from "../components/skills/SkillDeleteDialog.vue";
 import SkillEditorDialog from "../components/skills/SkillEditorDialog.vue";
+import SkillFilesystemAlertBanner from "../components/skills/SkillFilesystemAlertBanner.vue";
 import SkillFilterBar from "../components/skills/SkillFilterBar.vue";
 import SkillPagination from "../components/skills/SkillPagination.vue";
 import SkillTable from "../components/skills/SkillTable.vue";
@@ -89,6 +96,9 @@ const {
   search,
   enabled,
   status,
+  syncOrigin,
+  filesystemMissing,
+  filesystemHealth,
   page,
   pageSize,
   rows,
@@ -105,6 +115,8 @@ const {
   pageMax,
   loadRows,
   resetFilters,
+  filterPendingFilesystem,
+  filterMissingFilesystem,
   onPublishSkill,
   onToggleEnabled,
   openEditor,

@@ -17,6 +17,76 @@ import (
 	_ "github.com/glebarez/go-sqlite/compat"
 )
 
+// memoryTestAgentRepo returns agents with memory write gates enabled for integration tests.
+type memoryTestAgentRepo struct {
+	ids map[string]struct{}
+}
+
+func newMemoryEnabledAgentsUC(ids ...string) *biz.AgentUsecase {
+	repo := &memoryTestAgentRepo{ids: make(map[string]struct{}, len(ids))}
+	for _, id := range ids {
+		repo.ids[id] = struct{}{}
+	}
+	return biz.NewAgentUsecase(repo, nil, nil)
+}
+
+func (r *memoryTestAgentRepo) SearchAgents(context.Context, biz.AgentListQuery) (biz.AgentListResult, error) {
+	return biz.AgentListResult{}, nil
+}
+func (r *memoryTestAgentRepo) ListExtrasForAgents(context.Context, []string) (map[string]biz.AgentListExtras, error) {
+	return map[string]biz.AgentListExtras{}, nil
+}
+func (r *memoryTestAgentRepo) ListAgentCreators(context.Context) ([]biz.AgentCreator, error) {
+	return nil, nil
+}
+func (r *memoryTestAgentRepo) GetAgentByID(_ context.Context, id string) (biz.Agent, error) {
+	if _, ok := r.ids[id]; !ok {
+		return biz.Agent{}, sql.ErrNoRows
+	}
+	return biz.Agent{ID: id, AgentKey: id}, nil
+}
+func (r *memoryTestAgentRepo) GetAgentByAgentKey(context.Context, string) (biz.Agent, error) {
+	return biz.Agent{}, sql.ErrNoRows
+}
+func (r *memoryTestAgentRepo) CreateAgent(context.Context, biz.Agent) (biz.Agent, error) {
+	return biz.Agent{}, nil
+}
+func (r *memoryTestAgentRepo) UpdateAgent(context.Context, biz.Agent) (biz.Agent, error) {
+	return biz.Agent{}, nil
+}
+func (r *memoryTestAgentRepo) DeleteAgent(context.Context, string) error { return nil }
+func (r *memoryTestAgentRepo) GetAgentRuntimeSettings(_ context.Context, id string) (biz.AgentRuntimeSettings, error) {
+	if _, ok := r.ids[id]; !ok {
+		return biz.AgentRuntimeSettings{}, sql.ErrNoRows
+	}
+	return biz.AgentRuntimeSettings{
+		AgentID:          id,
+		MemoryEnabled:    true,
+		L3Enabled:        true,
+		L2EpisodeEnabled: true,
+		L2RecallEnabled:  true,
+	}, nil
+}
+func (r *memoryTestAgentRepo) UpsertAgentRuntimeSettings(context.Context, biz.AgentRuntimeSettings) (biz.AgentRuntimeSettings, error) {
+	return biz.AgentRuntimeSettings{}, nil
+}
+func (r *memoryTestAgentRepo) ListAgentPromptFiles(context.Context, string) ([]biz.AgentPromptFile, error) {
+	return nil, nil
+}
+func (r *memoryTestAgentRepo) ReplaceAgentPromptFiles(context.Context, string, []biz.AgentPromptFile) ([]biz.AgentPromptFile, error) {
+	return nil, nil
+}
+func (r *memoryTestAgentRepo) CreateAgentPromptFile(context.Context, biz.AgentPromptFile) (biz.AgentPromptFile, error) {
+	return biz.AgentPromptFile{}, nil
+}
+func (r *memoryTestAgentRepo) UpdateAgentPromptFile(context.Context, biz.AgentPromptFile) (biz.AgentPromptFile, error) {
+	return biz.AgentPromptFile{}, nil
+}
+func (r *memoryTestAgentRepo) DeleteAgentPromptFile(context.Context, string, string) error { return nil }
+func (r *memoryTestAgentRepo) ExecInTx(ctx context.Context, fn func(context.Context) error) error {
+	return fn(ctx)
+}
+
 func openAutoMemoryIntegrationStore(t *testing.T) *sessionmemory.Store {
 	t.Helper()
 	db, err := sql.Open("sqlite", "file:"+t.Name()+"?mode=memory&cache=shared")
@@ -91,8 +161,12 @@ func TestAutoMemoryWorker_IntegrationExtractChain(t *testing.T) {
 		}},
 	}
 	sessionsUC := biz.NewSessionUsecase(repo, nil, nil, nil)
+	agentsUC := newMemoryEnabledAgentsUC(agentID)
 	q := memtrpc.NewMemoryJobQueue(4, 0)
-	w := NewAutoMemoryWorker(0, sessionsUC, nil, store, nil, nil, nil, biz.NewHeuristicConsolidator(), q)
+	w, err := NewAutoMemoryWorker(0, sessionsUC, agentsUC, store, nil, nil, nil, biz.NewHeuristicConsolidator(), q)
+	if err != nil {
+		t.Fatalf("NewAutoMemoryWorker: %v", err)
+	}
 
 	req := memtrpc.AutoMemoryJobRequest{SessionID: sessID, UserID: userID, AppName: agentID}
 	if err := w.extract(ctx, req); err != nil {
@@ -144,8 +218,12 @@ func TestAutoMemoryWorker_DrainUsesInjectedQueue(t *testing.T) {
 		}},
 	}
 	sessionsUC := biz.NewSessionUsecase(repo, nil, nil, nil)
+	agentsUC := newMemoryEnabledAgentsUC("agent-q-1")
 	q := memtrpc.NewMemoryJobQueue(4, 0)
-	w := NewAutoMemoryWorker(0, sessionsUC, nil, store, nil, nil, nil, biz.NewHeuristicConsolidator(), q)
+	w, err := NewAutoMemoryWorker(0, sessionsUC, agentsUC, store, nil, nil, nil, biz.NewHeuristicConsolidator(), q)
+	if err != nil {
+		t.Fatalf("NewAutoMemoryWorker: %v", err)
+	}
 
 	q.Enqueue(memtrpc.AutoMemoryJobRequest{SessionID: "sess-q-1", UserID: "user-q-1", AppName: "agent-q-1"})
 	w.drain(ctx)

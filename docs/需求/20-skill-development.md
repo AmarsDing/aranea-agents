@@ -37,6 +37,7 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 | Layer A + B 路由 | ✅ | `ResolveSkillSlugs` + `NewAgentVisibilityFilter`；turn query 经 `RunOptionWithTurnQuery` 注入 RuntimeState |
 | trpc-agent-go 桥接 | ✅ | `DBRepositoryAdapter` / `FSRepositoryAdapter` + `WithSkills` / `WithSkillFilter` |
 | 文件监听与同步 | ✅ | `watch.Runner`：fsnotify + debounce + `filesystem_missing` |
+| 磁盘同步 UI + 通知 | ✅ | §2.4；health API / Banner / 筛选 / Monitor 事件 |
 | 存储根解析 | ✅ | `storage.ResolveRootWithPlatform` + `work_directory` |
 | Agent 设置 UI | ✅ | `AgentSettingsSkillsTab`：`skill_runtime_json` 白名单/标签/意图收窄 |
 | 前端管理 | ✅ | 列表/编辑 Dialog/导入/运行记录 |
@@ -57,7 +58,17 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 | **P2** | `skillruntime` Layer A/B + Agent `buildSkillDeps` 接通 + turn query 注入 | ✅ |
 | **P2′** | 文件系统监听 + debounce + `filesystem_missing` | ✅ |
 
-### 3.2 待实现（P3–P4）
+### 3.2 磁盘同步优化计划（P2.5）
+
+| 步骤 | 内容 | 状态 |
+|------|------|------|
+| **D1 文档** | `20 skill.md` §2.4、struct design §2.6 通知链路 | ✅ |
+| **D2 API** | proto：`filesystem_missing`、`sync_origin`、列表筛选、`GetSkillFilesystemHealth` | ✅ |
+| **D3 后端** | enrichSkill 映射；watch 目录 slug 约束；EventBus + Monitor 事件；wire `NewRunnerWithBus` | ✅ |
+| **D4 前端** | Banner、来源/磁盘列、筛选、`filesystem-health` 拉取 | ✅ |
+| **D5 后续** | reconcile ticker；磁盘更新回退 draft；异步相似度 warn；Alert Webhook | ✅ |
+
+### 3.3 待实现（P3–P4）
 
 | # | 差距 | 优先级 | 说明 |
 |---|------|--------|------|

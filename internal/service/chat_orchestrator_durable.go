@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"strings"
 
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
@@ -77,10 +78,18 @@ func (o *ChatOrchestrator) durableSessionRunLifecycle(
 	d durableResumeTurnCtx,
 	userMsg biz.ChatMessage,
 	userContent string,
-) (sessionRunID string, stopBudget context.CancelFunc) {
-	stopBudget = func() {}
+) (context.Context, string, context.CancelFunc) {
+	stopBudget := func() {}
+	ctx = event.WithTurnID(ctx, userMsg.ID)
+	if sess.DefaultContextWindowTokens > 0 {
+		ctx = event.WithSessionDefaultContextWindow(ctx, sess.DefaultContextWindowTokens)
+	}
 	if d.active && d.spec.SessionRunID != "" {
-		return d.spec.SessionRunID, stopBudget
+		ctx = event.WithSessionRunID(ctx, d.spec.SessionRunID)
+		if tid := strings.TrimSpace(d.spec.TurnID); tid != "" {
+			ctx = event.WithTurnID(ctx, tid)
+		}
+		return ctx, d.spec.SessionRunID, stopBudget
 	}
 	return o.beginSessionRunLifecycle(ctx, emitter, sess, ag, userMsg.ID, d.runID, userContent, d.dialogMode, d.provider, d.model)
 }

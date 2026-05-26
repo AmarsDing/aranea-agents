@@ -39,6 +39,15 @@ export type Skill = {
   created_at: string;
   updated_at: string;
   permissions: SkillPermissions;
+  filesystem_missing?: boolean;
+  sync_origin?: "filesystem" | "import" | "manual" | string;
+};
+
+export type SkillFilesystemHealth = {
+  root_accessible: boolean;
+  resolved_root: string;
+  missing_count: number;
+  pending_filesystem_count: number;
 };
 
 export type SkillListQuery = {
@@ -46,6 +55,8 @@ export type SkillListQuery = {
   tags?: string[];
   enabled?: boolean | null;
   status?: string;
+  filesystem_missing?: boolean | null;
+  sync_origin?: string;
   page?: number;
   page_size?: number;
 };

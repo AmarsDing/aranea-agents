@@ -43,6 +43,7 @@
         :mode-options="composer.modeOpts"
         :provider-options="composer.provOpts"
         :session-title="session.selectedSessionForUi?.title || layout.t('chat.untitledSession')"
+        :session-id="session.selectedSessionForUi?.id"
         :context-ratio="session.selectedSessionForUi?.context_used_ratio ?? 0"
         :context-status="session.selectedSessionForUi?.context_status"
         :usage-snapshot="session.composerUsageSnapshot"
@@ -62,6 +63,11 @@
         :planner-kind="entity.activePlannerKind"
         :react-tool-link-index="session.reactToolLinkIndex"
         :focus-turn-id="session.focusTurnId"
+        :session-artifacts="session.sessionArtifacts"
+        :session-artifacts-loading="session.sessionArtifactsLoading"
+        :show-background-jobs="entity.selectedEntityKind === 'agent'"
+        :agent-id="entity.store.selectedAgent?.id"
+        :jobs-refresh-nonce="session.jobsRefreshNonce"
         :pending-messages="composer.pendingMessages"
         :run-status="composer.runStatus"
         :run-agent-name="composer.runMeta?.agentName"
@@ -82,23 +88,12 @@
         @submit-await-reply="composer.submitAwaitingReply"
         @submit-tool-confirm="composer.submitToolConfirm"
         @open-events="session.openSessionEvents"
+        @open-artifact="session.openSessionArtifact"
+        @focus-turn="session.focusSessionTurn"
+        @navigate="onNavigate"
         @focus-turn-cleared="session.clearFocusTurn"
         @a2ui-user-action="composer.submitA2UIUserAction"
         @feedback="composer.onMessageFeedback"
-      />
-      <chat-session-artifacts-panel
-        :session-id="session.selectedSessionForUi?.id ?? ''"
-        :items="session.sessionArtifacts"
-        :loading="session.sessionArtifactsLoading"
-        @open="session.openSessionArtifact"
-      />
-      <ChatBackgroundJobsPanel
-        v-if="entity.selectedEntityKind === 'agent'"
-        :session-id="session.selectedSessionForUi?.id"
-        :agent-id="entity.store.selectedAgent?.id"
-        :refresh-nonce="session.jobsRefreshNonce"
-        @focus-turn="session.focusSessionTurn"
-        @navigate="onNavigate"
       />
       <input ref="fileRef" type="file" hidden multiple @change="composer.onFileChange" />
     </div>
@@ -171,8 +166,6 @@ import ChatSessionSidebar from "../components/chat/ChatSessionSidebar.vue";
 import ChatSideToggle from "../components/chat/ChatSideToggle.vue";
 import ChatSettingsDialog from "../components/chat/ChatSettingsDialog.vue";
 import ChatWorkspaceShell from "../components/chat/ChatWorkspaceShell.vue";
-import ChatSessionArtifactsPanel from "../components/chat/ChatSessionArtifactsPanel.vue";
-import ChatBackgroundJobsPanel from "../components/chat/ChatBackgroundJobsPanel.vue";
 import SessionTimelineDialog from "../components/chat/SessionTimelineDialog.vue";
 import { useRouter } from "vue-router";
 import { useChatWorkspace } from "../features/chat/composables/useChatWorkspace";

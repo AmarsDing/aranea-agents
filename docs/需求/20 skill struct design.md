@@ -169,7 +169,28 @@ SkillRoot watcher/ticker
 - **ZIP 导入**：最终写入的仍是同一 Skill 根；扫描器应对同一 **`skill_key`/目录名** **幂等**，避免重复创建行。
 - **权限与安全**：所有路径必须在 **解析后的 Skill 根** 之内，禁止 `..` 跳出；仅服务端进程执行扫描。
 
-**现状**：`cmd/admin` 已集成 **`internal/skill/watch`**（启动全量扫描 + `fsnotify` debounce 2s；环境变量 **`SKILL_WATCH_DISABLED=1`** 可关闭）。`watch.Runner` 支持 `event.Bus` 集成，同步成功后发布 `skill.reload` 事件。磁盘目录缺失时调用 `MarkFilesystemMissing(slug, true)` 标记 `filesystem_missing` 字段，恢复时清除。可选的补充：**定时 ticker** 作为兜底仍可再加。
+**现状**：`cmd/admin` 已集成 **`internal/skill/watch`**（启动全量扫描 + `fsnotify` debounce 2s；环境变量 **`SKILL_WATCH_DISABLED=1`** 可关闭）。`watch.Runner` 通过 **`NewRunnerWithBus`** 发布 `skill.filesystem.*` 与 `skill.reload`；磁盘目录缺失时 `MarkFilesystemMissing(slug, true)`；恢复时清除并 upsert。`metadata_json.sync_origin` 区分 `filesystem` / `import` / `manual`。目录名必须与 slug 一致（见 **`20 skill.md`** §2.4）。
+
+**通知链路（P2.5，已实现 / 进行中）**
+
+| 事件 | 触发 | 落点 |
+|------|------|------|
+| `skill.filesystem.imported` | 磁盘新建登记 | Monitor Events + EventBus |
+| `skill.filesystem.updated` | 磁盘正文/metadata 变更 | 同上 |
+| `skill.filesystem.missing` | 目录删除 | 同上 + Skill 页 Banner |
+| `skill.filesystem.recovered` | 目录恢复 | 同上 |
+| `skill.filesystem.rejected` | 校验失败（含 slug 目录名不一致） | 运行记录 + Monitor |
+
+可选补充：**定时 reconcile ticker**（默认 5min，环境变量 `SKILL_FS_RECONCILE_INTERVAL`，`0/off` 关闭）；**Alert Rule** 外发 Webhook（`metric_key=skill.filesystem_missing_count`）。
+
+**D5 行为（已实现）**
+
+| 能力 | 说明 |
+|------|------|
+| Reconcile | 定时 scan 磁盘 + 对 DB 已登记 slug 补打 `filesystem_missing` |
+| 回退 draft | 已发布 Skill 磁盘正文变更 → `draft` + `enabled=false` |
+| 相似度 warn | 新磁盘 Skill 与已有 **同名** → `skill.filesystem.similarity_warn`（异步，非 LLM） |
+| 告警 | Monitor 规则 `skill.filesystem_missing_count` ≥ threshold → Webhook/Channel |
 
 ---
 
@@ -518,6 +539,7 @@ type SkillRuntimePolicy struct {
 | **P1** | 补齐 proto：`CreateSkill`、`UpdateSkill`、`PublishSkill`、`GetSkill`、`DeleteSkillFile`、`PreviewSkillRuntime`；biz/data 贯通 | ✅ 已完成 |
 | **P2** | Layer A/B + `buildSkillDeps` + turn query 注入 | ✅ 已完成 |
 | **P2′** | Skill 根目录 `fsnotify` 监听 + debounce + eventBus + `filesystem_missing` 标记 | ✅ 已完成 |
+| **P2.5** | 磁盘同步产品化：proto 字段、health API、目录 slug 约束、Monitor 通知、Skill 页 Banner | ✅ 已完成 |
 | **P3** | manifest/依赖/冲突表或 JSON 扩展；权限粒度（RBAC）；OpenTelemetry 贯通 | ❌ 待实现 |
 | **P4** | Prompt 注入（方式 C）；embedding 语义精排；Budget 中间件；Context 目录迁移 | ❌ 待实现 |
 

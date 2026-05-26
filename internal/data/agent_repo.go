@@ -813,3 +813,18 @@ func (r *agentRepo) DeleteAgentPromptFile(ctx context.Context, agentID, id strin
 		Exec(ctx)
 	return err
 }
+
+func (r *agentRepo) ExecInTx(ctx context.Context, fn func(ctx context.Context) error) error {
+	if r.data == nil || r.data.rawDB == nil {
+		return fn(ctx)
+	}
+	tx, err := r.data.rawDB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	if err := fn(ctx); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	return tx.Commit()
+}

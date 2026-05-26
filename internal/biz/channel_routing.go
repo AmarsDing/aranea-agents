@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"path/filepath"
+	"path"
 	"strings"
 
 	"github.com/go-kratos/kratos/v2/errors"
@@ -63,7 +63,9 @@ func PeerKeyForSession(dmScope, peerID string) string {
 	}
 }
 
-// MatchRoute picks a routing rule by peer_id glob (filepath.Match).
+// MatchRoute picks a routing rule by peer_id pattern.
+// Pattern ending with "*" uses prefix match; patterns with glob chars (?, [) use path.Match;
+// plain strings use exact match.
 func MatchRoute(r ChannelRouting, peerID string) (agentID, teamID string) {
 	peerID = strings.TrimSpace(peerID)
 	for _, rule := range r.Rules {
@@ -71,11 +73,21 @@ func MatchRoute(r ChannelRouting, peerID string) (agentID, teamID string) {
 		if pat == "" {
 			continue
 		}
-		ok, err := filepath.Match(pat, peerID)
-		if err != nil {
+		if strings.HasSuffix(pat, "*") && !strings.ContainsAny(pat, "?[") {
+			prefix := pat[:len(pat)-1]
+			if strings.HasPrefix(peerID, prefix) {
+				return strings.TrimSpace(rule.AgentID), strings.TrimSpace(rule.TeamID)
+			}
 			continue
 		}
-		if ok {
+		if strings.ContainsAny(pat, "*?[") {
+			ok, err := path.Match(pat, peerID)
+			if err != nil || !ok {
+				continue
+			}
+			return strings.TrimSpace(rule.AgentID), strings.TrimSpace(rule.TeamID)
+		}
+		if peerID == pat {
 			return strings.TrimSpace(rule.AgentID), strings.TrimSpace(rule.TeamID)
 		}
 	}

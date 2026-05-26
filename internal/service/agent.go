@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	v1 "aranea-agents/api/kratos/agent/v1"
+	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 
@@ -589,6 +590,7 @@ func (s *AgentService) UpdateAgent(ctx context.Context, req *v1.UpdateAgentReque
 		return nil, err
 	}
 	biz.RecordAdminAudit(ctx, s.mon, "agent.update", "agent", a.ID, fmt.Sprintf("key=%s", a.AgentKey))
+	invalidateAgentBuildCache(a.ID)
 	return s.toProtoAgentEnriched(ctx, a), nil
 }
 
@@ -597,6 +599,7 @@ func (s *AgentService) DeleteAgent(ctx context.Context, req *v1.DeleteAgentReque
 	if err := s.uc.Delete(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
+	invalidateAgentBuildCache(req.GetId())
 	biz.RecordAdminAudit(ctx, s.mon, "agent.delete", "agent", req.GetId(), "")
 	return &emptypb.Empty{}, nil
 }
@@ -615,14 +618,32 @@ func (s *AgentService) ToggleFavorite(ctx context.Context, req *v1.ToggleFavorit
 
 // GetAgentPromptPreview implements GET /v1/agents/{id}/system-prompt/preview.
 func (s *AgentService) GetAgentPromptPreview(ctx context.Context, req *v1.GetAgentPromptPreviewRequest) (*v1.GetAgentPromptPreviewResponse, error) {
-	text, err := s.uc.PromptPreview(ctx, req.GetId(), req.GetMode())
+	a, err := s.uc.Get(ctx, req.GetId())
 	if err != nil {
 		if stderrors.Is(err, sql.ErrNoRows) {
 			return nil, kerrors.NotFound("AGENT", "agent not found")
 		}
 		return nil, err
 	}
-	return &v1.GetAgentPromptPreviewResponse{Preview: text}, nil
+	mode := strings.TrimSpace(req.GetMode())
+	report := chatagent.BuildPreviewReport(ctx, a, mode, chatagent.Deps{AgentUC: s.uc})
+	sections := make([]*v1.PromptSectionEstimate, 0, len(report.Sections))
+	for _, sec := range report.Sections {
+		sections = append(sections, &v1.PromptSectionEstimate{
+			Key:       sec.Key,
+			Label:     sec.Label,
+			EstTokens: int32(sec.EstTokens),
+			Source:    sec.Source,
+		})
+	}
+	return &v1.GetAgentPromptPreviewResponse{
+		Preview:                 report.Summary,
+		Instruction:             report.Instruction,
+		Sections:              sections,
+		StaticTotalTokens:     int32(report.StaticTotalTokens),
+		RuntimeOverlayEstTokens: int32(report.RuntimeOverlayEst),
+		RuntimeNote:           report.RuntimeNote,
+	}, nil
 }
 
 func bizEffectiveToolsToProto(in biz.AgentEffectiveTools) *v1.AgentEffectiveToolsView {
@@ -674,6 +695,7 @@ func (s *AgentService) UpdateAgentToolPolicy(ctx context.Context, req *v1.Update
 		}
 		return nil, err
 	}
+	invalidateAgentBuildCache(req.GetAgentId())
 	return bizEffectiveToolsToProto(out), nil
 }
 
@@ -692,6 +714,7 @@ func (s *AgentService) CreateAgentPromptFile(ctx context.Context, req *v1.Create
 		}
 		return nil, err
 	}
+	invalidateAgentBuildCache(req.GetAgentId())
 	return toProtoFile(created), nil
 }
 
@@ -711,6 +734,7 @@ func (s *AgentService) UpdateAgentPromptFile(ctx context.Context, req *v1.Update
 		}
 		return nil, err
 	}
+	invalidateAgentBuildCache(req.GetAgentId())
 	return toProtoFile(updated), nil
 }
 
@@ -722,6 +746,7 @@ func (s *AgentService) DeleteAgentPromptFile(ctx context.Context, req *v1.Delete
 		}
 		return nil, err
 	}
+	invalidateAgentBuildCache(req.GetAgentId())
 	return &emptypb.Empty{}, nil
 }
 
@@ -781,6 +806,7 @@ func (s *AgentService) EditPromptFileByAI(ctx context.Context, req *v1.EditPromp
 	if err != nil {
 		return nil, err
 	}
+	invalidateAgentBuildCache(agentID)
 	event.CtxFlowLogDone(ctx, "agent.prompt.ai_edit", "AI 修订提示文件完成", event.P("agent_id", agentID), event.P("file_id", fileID))
 	return &v1.EditPromptFileByAIResponse{File: toProtoFile(updated)}, nil
 }

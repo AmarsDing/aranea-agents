@@ -1,5 +1,12 @@
 <template>
-  <q-table flat dense class="app-registry-table skill-runs-table" row-key="id" :rows="rows" :columns="columns" :loading="loading" hide-pagination>
+  <AppRegistryTable
+    table-class="skill-runs-table"
+    row-key="id"
+    :rows="rows"
+    :columns="columns"
+    :loading="loading"
+    hide-pagination
+  >
     <template #body-cell-time="props">
       <q-td :props="props">
         <div>{{ formatDate(props.row.started_at) }}</div>
@@ -8,8 +15,12 @@
     </template>
     <template #body-cell-skill="props">
       <q-td :props="props">
-        <div class="app-registry-cell-primary">{{ props.row.skill_name || props.row.skill_id }}</div>
-        <q-chip dense size="sm" color="primary" text-color="white">{{ props.row.skill_version || "unknown" }}</q-chip>
+        <AppRegistryHoverTip :text="props.row.input_preview" empty-label="无输入摘要">
+          <div class="min-width-0">
+            <div class="app-registry-cell-primary">{{ props.row.skill_name || props.row.skill_id }}</div>
+            <q-chip dense size="sm" color="primary" text-color="white">{{ props.row.skill_version || "unknown" }}</q-chip>
+          </div>
+        </AppRegistryHoverTip>
       </q-td>
     </template>
     <template #body-cell-agent="props">
@@ -17,25 +28,25 @@
     </template>
     <template #body-cell-status="props">
       <q-td :props="props">
-        <q-badge rounded :color="props.row.status === 'success' ? 'positive' : 'negative'">
-          {{ props.row.status === "success" ? "成功" : "失败" }}
-        </q-badge>
+        <AppRegistryHoverTip
+          :text="props.row.status === 'success' ? props.row.output_preview : props.row.error_message"
+          empty-label="无输出摘要"
+        >
+          <q-badge rounded :color="props.row.status === 'success' ? 'positive' : 'negative'">
+            {{ props.row.status === "success" ? "成功" : "失败" }}
+          </q-badge>
+        </AppRegistryHoverTip>
       </q-td>
     </template>
-    <template #body-cell-output="props">
-      <q-td :props="props">
-        <div class="app-registry-cell-desc" :class="props.row.status === 'success' ? 'text-positive' : 'text-negative'">
-          {{ props.row.status === "success" ? props.row.output_preview || "-" : props.row.error_message || "-" }}
-        </div>
-      </q-td>
-    </template>
-  </q-table>
+  </AppRegistryTable>
 </template>
 
 <script setup lang="ts">
 import type { QTableColumn } from "quasar";
+import AppRegistryTable from "../layout/AppRegistryTable.vue";
+import AppRegistryHoverTip from "../layout/AppRegistryHoverTip.vue";
 import type { SkillInvocation } from "../../features/skills/types";
-import { registryCol } from "../../features/ui/registryTableColumns";
+import { registryColWidth } from "../../features/ui/registryTableColumns";
 
 defineProps<{
   rows: SkillInvocation[];
@@ -43,12 +54,10 @@ defineProps<{
 }>();
 
 const columns: QTableColumn<SkillInvocation>[] = [
-  { name: "time", label: "时间 / 耗时", field: "started_at", align: "left", ...registryCol.time },
-  { name: "skill", label: "Skill", field: "skill_name", align: "left", ...registryCol.name },
-  { name: "agent", label: "Agent", field: "agent_display_name", align: "left", ...registryCol.agent },
-  { name: "status", label: "结果", field: "status", align: "left", ...registryCol.status },
-  { name: "input", label: "输入", field: "input_preview", align: "left", ...registryCol.desc },
-  { name: "output", label: "输出 / 错误", field: "output_preview", align: "left", ...registryCol.error }
+  { name: "time", label: "时间 / 耗时", field: "started_at", align: "left", ...registryColWidth("11%") },
+  { name: "skill", label: "Skill", field: "skill_name", align: "left", ...registryColWidth("14%") },
+  { name: "agent", label: "Agent", field: "agent_display_name", align: "left", ...registryColWidth("10%") },
+  { name: "status", label: "结果", field: "status", align: "left", ...registryColWidth("9%") }
 ];
 
 function formatDate(value?: string) {

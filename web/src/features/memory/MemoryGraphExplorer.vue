@@ -73,24 +73,24 @@
             </svg>
           </div>
 
-          <q-markup-table flat dense wrap-cells>
-            <thead>
-              <tr>
-                <th>Source</th>
-                <th>Relation</th>
-                <th>Target</th>
-                <th class="text-right">Weight</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="rel in neighborhood.relations" :key="rel.id">
-                <td>{{ entityName(rel.source_id) }}</td>
-                <td><q-badge outline color="primary">{{ rel.relation_type }}</q-badge></td>
-                <td>{{ entityName(rel.target_id) }}</td>
-                <td class="text-right">{{ rel.weight.toFixed(2) }}</td>
-              </tr>
-            </tbody>
-          </q-markup-table>
+          <AppRegistryMarkupTable
+            :rows="neighborhood.relations"
+            :columns="relationColumns"
+            row-key="id"
+          >
+            <template #cell-source_id="{ row }">
+              {{ entityName(String(row.source_id)) }}
+            </template>
+            <template #cell-relation_type="{ row }">
+              <q-badge outline color="primary">{{ row.relation_type }}</q-badge>
+            </template>
+            <template #cell-target_id="{ row }">
+              {{ entityName(String(row.target_id)) }}
+            </template>
+            <template #cell-weight="{ row }">
+              {{ Number(row.weight).toFixed(2) }}
+            </template>
+          </AppRegistryMarkupTable>
         </q-card-section>
 
         <q-card-section v-else-if="!loadingGraph" class="text-grey-7">
@@ -103,8 +103,17 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import AppRegistryMarkupTable from "../../components/layout/AppRegistryMarkupTable.vue";
+import { REGISTRY_COL_W, registryColWidth } from "../ui/registryTableColumns";
 import type { GraphNeighborhood, MemoryEntity } from "./types";
 import { getMemoryNeighborhood } from "./api";
+
+const relationColumns = [
+  { name: "source_id", label: "Source", field: "source_id", align: "left" as const, ...registryColWidth(REGISTRY_COL_W.name) },
+  { name: "relation_type", label: "Relation", field: "relation_type", align: "left" as const, ...registryColWidth("11%") },
+  { name: "target_id", label: "Target", field: "target_id", align: "left" as const, ...registryColWidth(REGISTRY_COL_W.name) },
+  { name: "weight", label: "Weight", field: "weight", align: "right" as const, ...registryColWidth(REGISTRY_COL_W.metric) }
+];
 
 const props = defineProps<{
   entities: MemoryEntity[];

@@ -3,7 +3,6 @@
     <q-card flat bordered :class="['settings-shell', { 'settings-shell--fill': tab === 'files' }]">
       <agent-settings-header
         :agent="form"
-        :self-evolve="config.self_evolve"
         :show-evolving="showEvolving"
         :favorite="form.is_favorite"
         :saving="saving"
@@ -24,7 +23,6 @@
         <q-tab name="evolution" label="进化" />
         <q-tab name="hooks" label="钩子" />
         <q-tab name="a2a" label="A2A" />
-        <q-tab name="instances" label="用户实例" />
       </q-tabs>
       <q-separator />
 
@@ -41,9 +39,15 @@
             :status-options="statusOptions"
             :filtered-provider-model-options="filteredProviderModelOptions"
             :loading-provider-models="loadingProviderModels"
+            :orphan-provider-model="orphanProviderModel"
+            :disabled-catalog-match="disabledCatalogMatch"
+            :checking-agent-model="checkingAgentModel"
+            :agent-model-check-ok="agentModelCheckOk"
+            :agent-model-check-message="agentModelCheckMessage"
             @copy-key="copyKey"
             @open-permissions-tab="tab = 'permissions'"
             @open-memory-tab="tab = 'memory'"
+            @open-provider-manager="openProviderManager"
             @filter-provider-models="filterProviderModels"
             @reset-provider-model-filter="resetProviderModelFilter"
           />
@@ -56,6 +60,7 @@
             :snapshot-mode-options="snapshotModeOptions"
             :memory-scope-options="memoryScopeOptions"
             :heartbeat-file="heartbeatFile"
+            @open-evolution-tab="tab = 'evolution'"
           />
         </q-tab-panel>
         <q-tab-panel name="files" class="settings-tab-panel-fill">
@@ -99,6 +104,7 @@
             v-model:range="evolutionRange"
             :agent-id="agentId"
             :evolution="config.evolution"
+            :evolution-settings="config.evolutionSettings"
             :guardrails="config.evolution_guardrails"
             :metrics-loading="evolutionMetricsLoading"
             :metrics="evolutionMetrics"
@@ -138,27 +144,64 @@
           />
         </q-tab-panel>
 
-        <q-tab-panel name="instances">
-          <q-banner rounded class="settings-placeholder-banner">用户实例用于按用户覆盖 USER.md、权限与默认上下文；当前保留入口。</q-banner>
-        </q-tab-panel>
       </q-tab-panels>
     </q-card>
 
     <q-dialog v-model="promptDialog">
       <q-card class="prompt-dialog app-dialog-card">
-        <q-card-section class="row items-center justify-between">
+        <q-card-section class="row items-center justify-between prompt-dialog__header">
           <div>
             <div class="text-h6">系统提示词</div>
-            <div class="text-caption text-grey-7">{{ tokenEstimateFor(promptPreview) }} tokens</div>
+            <div class="text-caption prompt-dialog__stats">
+              构建期约 {{ promptStaticTokens }} tokens
+              · 运行时追加约 {{ promptRuntimeTokens }} tokens
+            </div>
           </div>
           <q-btn flat round icon="close" v-close-popup />
         </q-card-section>
-        <q-tabs v-model="previewMode" dense active-color="primary" indicator-color="primary">
+        <q-tabs v-model="previewMode" dense align="left" narrow-indicator class="prompt-dialog__mode-tabs">
           <q-tab v-for="mode in promptModes" :key="mode.value" :name="mode.value" :label="mode.label" />
         </q-tabs>
         <q-separator />
-        <q-card-section>
-          <pre class="agent-prompt-preview">{{ promptPreview }}</pre>
+        <q-card-section class="prompt-dialog__body">
+          <p class="prompt-dialog__hint">
+            下方为<strong>构建期</strong>写入模型的 System Prompt（Description、Prompt 文件、运行时策略）。
+            实际对话时还会按开关追加记忆、Skills、Intent 等，可在「Token 分解」中查看估算。
+          </p>
+          <pre class="agent-prompt-preview">{{ promptInstructionText }}</pre>
+          <q-expansion-item
+            v-if="promptPreview.sections.length"
+            dense
+            expand-separator
+            icon="analytics"
+            label="Token 分解（估算）"
+            caption="构建期已含于上文；运行时按每轮对话追加"
+            class="prompt-dialog__breakdown"
+          >
+            <AppRegistryTable
+              :shell="false"
+              :data-shell="true"
+              hide-bottom
+              row-key="key"
+              :rows="promptPreview.sections"
+              :columns="promptSectionColumns"
+              hide-pagination
+              :pagination="{ rowsPerPage: 0 }"
+            >
+              <template #body-cell-source="props">
+                <q-td :props="props">
+                  <q-chip dense size="sm" :color="props.row.source === 'build' ? 'primary' : 'secondary'" text-color="white">
+                    {{ props.row.source === 'build' ? '构建期' : '运行时' }}
+                  </q-chip>
+                </q-td>
+              </template>
+              <template #body-cell-est_tokens="props">
+                <q-td :props="props" class="text-right">
+                  {{ props.row.est_tokens > 0 ? props.row.est_tokens : '—' }}
+                </q-td>
+              </template>
+            </AppRegistryTable>
+          </q-expansion-item>
         </q-card-section>
       </q-card>
     </q-dialog>
@@ -193,10 +236,6 @@
       :reasoning-level-input="advancedState.reasoning_level"
       :compaction-enabled-input="advancedState.context_compaction_enabled"
       :session-summary-enabled-input="advancedState.session_summary_enabled"
-      :truncate-strategy-input="advancedState.truncate_strategy"
-      :recent-window-turns-input="advancedState.recent_window_turns"
-      :recent-window-tokens-input="advancedState.recent_window_tokens"
-      :summary-keep-turns-input="advancedState.summary_keep_turns"
       @save="onAdvancedSave"
     />
     <agent-avatar-picker v-model="form.icon" v-model:open="avatarPickerOpen" />
@@ -204,7 +243,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, toValue } from "vue";
+import { computed, reactive, ref, toValue } from "vue";
 import AgentAvatarPicker from "../components/avatar/AgentAvatarPicker.vue";
 import AgentEvolutionPanel from "../components/agents/AgentEvolutionPanel.vue";
 import AgentFilesPanel from "../components/agents/AgentFilesPanel.vue";
@@ -217,9 +256,19 @@ import AgentSettingsSkillsTab from "./agent-settings/AgentSettingsSkillsTab.vue"
 import AgentSettingsA2ATab from "../components/agents/AgentSettingsA2ATab.vue";
 import AgentSettingsA2AEndpointTab from "../components/agents/AgentSettingsA2AEndpointTab.vue";
 import AgentUsageQuotaPanel from "../components/agents/AgentUsageQuotaPanel.vue";
+import AppRegistryTable from "../components/layout/AppRegistryTable.vue";
 import { useAgentEvolutionPanel } from "../features/agents/useAgentEvolutionPanel";
 import { useAgentA2AEndpointTab } from "../features/agents/useAgentA2AEndpointTab";
 import { useAgentSettingsPage } from "../features/agents/useAgentSettingsPage";
+import { tokenEstimateFor } from "../components/agents/agentUi";
+
+import { registryColWidth } from "../features/ui/registryTableColumns";
+
+const promptSectionColumns = [
+  { name: "label", label: "区块", field: "label", align: "left" as const, ...registryColWidth("20%") },
+  { name: "source", label: "来源", field: "source", align: "left" as const, ...registryColWidth("11%") },
+  { name: "est_tokens", label: "估算 tokens", field: "est_tokens", align: "right" as const, ...registryColWidth("72px") },
+];
 
 const {
   tab,
@@ -241,6 +290,12 @@ const {
   selectedProviderModelIDModel,
   filteredProviderModelOptions,
   loadingProviderModels,
+  orphanProviderModel,
+  disabledCatalogMatch,
+  checkingAgentModel,
+  agentModelCheckOk,
+  agentModelCheckMessage,
+  openProviderManager,
   filterProviderModels,
   resetProviderModelFilter,
   toolProfileOptions,
@@ -289,6 +344,28 @@ const {
 } = useAgentEvolutionPanel(() => toValue(agentId), () => toValue(evolutionRange));
 
 const a2aEndpoint = reactive(useAgentA2AEndpointTab(() => toValue(agentId)));
+
+const promptInstructionText = computed(() => {
+  const p = toValue(promptPreview);
+  const instruction = String(p.instruction ?? "").trim();
+  if (instruction) return instruction;
+  const summary = String(p.summary ?? "").trim();
+  return summary || "（当前模式下无 System Prompt 内容）";
+});
+
+const promptStaticTokens = computed(() => {
+  const p = toValue(promptPreview);
+  if (p.static_total_tokens > 0) return p.static_total_tokens;
+  return tokenEstimateFor(promptInstructionText.value);
+});
+
+const promptRuntimeTokens = computed(() => {
+  const p = toValue(promptPreview);
+  if (p.runtime_overlay_est_tokens > 0) return p.runtime_overlay_est_tokens;
+  return p.sections
+    .filter((row) => row.source === "runtime" && row.est_tokens > 0)
+    .reduce((sum, row) => sum + row.est_tokens, 0);
+});
 
 const advancedChannelOptions: { label: string; value: string }[] = [];
 const loadingAdvancedChannels = ref(false);

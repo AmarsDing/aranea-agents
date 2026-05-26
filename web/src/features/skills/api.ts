@@ -2,6 +2,7 @@ import { createSkillService, kratosApi } from "../../services";
 import type {
   PaginatedResponse,
   Skill,
+  SkillFilesystemHealth,
   SkillFile,
   SkillFileContent,
   SkillImportApplyResult,
@@ -82,7 +83,9 @@ function mapSkill(row: unknown): Skill {
       can_delete: pb("can_delete", "canDelete"),
       can_toggle_enabled: pb("can_toggle_enabled", "canToggleEnabled"),
       can_duplicate: pb("can_duplicate", "canDuplicate")
-    }
+    },
+    filesystem_missing: b("filesystem_missing", "filesystemMissing"),
+    sync_origin: s("sync_origin", "syncOrigin") || undefined
   };
 }
 
@@ -145,6 +148,9 @@ export async function listSkills(query: SkillListQuery = {}): Promise<PaginatedR
   let enabled: string | undefined;
   if (query.enabled === true) enabled = "true";
   else if (query.enabled === false) enabled = "false";
+  let filesystemMissing: string | undefined;
+  if (query.filesystem_missing === true) filesystemMissing = "true";
+  else if (query.filesystem_missing === false) filesystemMissing = "false";
   const page = query.page ?? 1;
   const pageSize = query.page_size ?? 20;
   const res = await svc.ListSkills({
@@ -152,6 +158,8 @@ export async function listSkills(query: SkillListQuery = {}): Promise<PaginatedR
     tags: query.tags?.length ? query.tags.join(",") : undefined,
     enabled,
     status: query.status?.trim() || undefined,
+    filesystemMissing,
+    syncOrigin: query.sync_origin?.trim() || undefined,
     page,
     pageSize
   });
@@ -160,6 +168,17 @@ export async function listSkills(query: SkillListQuery = {}): Promise<PaginatedR
     total: Number(res.total ?? 0),
     page: Number(res.page ?? page),
     page_size: Number(res.pageSize ?? pageSize)
+  };
+}
+
+export async function getSkillFilesystemHealth(): Promise<SkillFilesystemHealth> {
+  const { data } = await kratosApi.get("/v1/skills/filesystem-health");
+  const d = data as Record<string, unknown>;
+  return {
+    root_accessible: Boolean(d.root_accessible ?? d.rootAccessible ?? true),
+    resolved_root: String(d.resolved_root ?? d.resolvedRoot ?? ""),
+    missing_count: Number(d.missing_count ?? d.missingCount ?? 0),
+    pending_filesystem_count: Number(d.pending_filesystem_count ?? d.pendingFilesystemCount ?? 0)
   };
 }
 

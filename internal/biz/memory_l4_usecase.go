@@ -152,8 +152,11 @@ func (uc *L4GraphUsecase) WriteFromUserText(ctx context.Context, agentID, userID
 		}
 	}
 
-	uc.runDecay(ctx, agentID)
 	return written, nil
+}
+
+func (uc *L4GraphUsecase) RunDecay(ctx context.Context, agentID string) {
+	uc.runDecay(ctx, agentID)
 }
 
 func (uc *L4GraphUsecase) preparePersonUpsert(existing L4EntitySnapshot, newName, description string) (L4EntityWrite, bool) {

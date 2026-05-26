@@ -12,6 +12,7 @@ import { useAgentRuntimeConfig } from "./useAgentRuntimeConfig";
 import { useAgentToolsCatalog } from "./useAgentToolsCatalog";
 import { useAgentSkillCatalog } from "./useAgentSkillCatalog";
 import { useAgentProviderModelPicker } from "./useAgentProviderModelPicker";
+import { useAgentModelValidation } from "./useAgentModelValidation";
 import { useAgentPromptFiles, useAgentPromptFilesTabWatcher } from "./useAgentPromptFiles";
 import { useAgentPromptPreview } from "./useAgentPromptPreview";
 import { useAgentEvolutionSettings } from "./useAgentEvolutionSettings";
@@ -109,11 +110,23 @@ export function useAgentSettingsPage() {
     loadingProviderModels,
     filteredProviderModelOptions,
     selectedProviderModelID,
+    orphanProviderModel,
+    disabledCatalogMatch,
     loadProviderModels,
     selectProviderModel,
     filterProviderModels,
     resetProviderModelFilter,
   } = useAgentProviderModelPicker(form);
+
+  const {
+    checking: checkingAgentModel,
+    ok: agentModelCheckOk,
+    message: agentModelCheckMessage,
+    runValidate: runAgentModelValidate,
+  } = useAgentModelValidation(
+    () => form.provider,
+    () => form.model,
+  );
 
   const selectedProviderModelIDModel = computed({
     get: () => selectedProviderModelID.value,
@@ -220,7 +233,20 @@ export function useAgentSettingsPage() {
 
   async function saveAgent() {
     if (!selectedProviderModelID.value) {
-      $q.notify({ type: "negative", message: "请选择已录入且启用的模型" });
+      $q.notify({
+        type: "negative",
+        message: orphanProviderModel.value
+          ? "当前模型不在 Provider 目录或已禁用，请在「模型管理」修正后重新选择"
+          : "请选择已录入且启用的模型",
+      });
+      return;
+    }
+    const modelResult = await runAgentModelValidate();
+    if (!modelResult.ok) {
+      $q.notify({
+        type: "negative",
+        message: modelResult.message || "模型不可用，请检查 Provider 管理中的目录配置",
+      });
       return;
     }
     const plannerErr = validatePlannerFormState();
@@ -320,9 +346,15 @@ export function useAgentSettingsPage() {
     selectedProviderModelIDModel,
     filteredProviderModelOptions,
     loadingProviderModels,
+    orphanProviderModel,
+    disabledCatalogMatch,
+    checkingAgentModel,
+    agentModelCheckOk,
+    agentModelCheckMessage,
     filterProviderModels,
     resetProviderModelFilter,
     selectProviderModel,
+    openProviderManager: () => router.push({ name: "models" }),
     budgetUSD,
     toolProfileOptions,
     toolSelectOptions,

@@ -47,6 +47,7 @@ type AgentRepository interface {
 	DeleteAgentPromptFile(ctx context.Context, agentID, id string) error
 	ListExtrasForAgents(ctx context.Context, agentIDs []string) (map[string]AgentListExtras, error)
 	ListAgentCreators(ctx context.Context) ([]AgentCreator, error)
+	ExecInTx(ctx context.Context, fn func(ctx context.Context) error) error
 }
 
 // AgentUsecase is catalog agent CRUD + prompt preview.
@@ -121,9 +122,9 @@ func (u *AgentUsecase) CheckAgentKeyAvailability(ctx context.Context, agentKey s
 
 // Get returns one agent with settings and prompt files hydrated.
 func (u *AgentUsecase) Get(ctx context.Context, id string) (Agent, error) {
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return Agent{}, kerrors.BadRequest("AGENT", "id is required")
+	id, err := requireNonEmpty(id, "AGENT", "id")
+	if err != nil {
+		return Agent{}, err
 	}
 	a, err := u.repo.GetAgentByID(ctx, id)
 	if err != nil {
@@ -133,9 +134,9 @@ func (u *AgentUsecase) Get(ctx context.Context, id string) (Agent, error) {
 }
 
 func (u *AgentUsecase) GetByAgentKey(ctx context.Context, agentKey string) (Agent, error) {
-	agentKey = strings.TrimSpace(agentKey)
-	if agentKey == "" {
-		return Agent{}, kerrors.BadRequest("AGENT", "agent_key is required")
+	agentKey, err := requireNonEmpty(agentKey, "AGENT", "agent_key")
+	if err != nil {
+		return Agent{}, err
 	}
 	a, err := u.repo.GetAgentByAgentKey(ctx, agentKey)
 	if err != nil {
@@ -150,28 +151,14 @@ func (u *AgentUsecase) hydrate(ctx context.Context, agent Agent) (Agent, error) 
 		if !stderrors.Is(err, sql.ErrNoRows) {
 			return Agent{}, err
 		}
-		settings = withSettingDefaults(settingsFromLegacyConfig(agent.ConfigJSON))
-		settings.AgentID = agent.ID
-		if settings, err = u.repo.UpsertAgentRuntimeSettings(ctx, settings); err != nil {
-			return Agent{}, err
-		}
+		settings = u.migrateLegacySettings(ctx, agent)
 	}
 	files, err := u.repo.ListAgentPromptFiles(ctx, agent.ID)
 	if err != nil {
 		return Agent{}, err
 	}
 	if len(files) == 0 {
-		files = filesFromLegacyConfig(agent.ConfigJSON)
-		if len(files) == 0 {
-			files = defaultPromptFiles()
-		}
-		for i := range files {
-			files[i].AgentID = agent.ID
-		}
-		files, err = u.repo.ReplaceAgentPromptFiles(ctx, agent.ID, withFileDefaults(files))
-		if err != nil {
-			return Agent{}, err
-		}
+		files = u.migrateLegacyFiles(ctx, agent)
 	}
 	agent.Settings = &settings
 	agent.Files = files
@@ -184,6 +171,31 @@ func (u *AgentUsecase) hydrate(ctx context.Context, agent Agent) (Agent, error) 
 		}
 	}
 	return agent, nil
+}
+
+func (u *AgentUsecase) migrateLegacySettings(ctx context.Context, agent Agent) AgentRuntimeSettings {
+	settings := withSettingDefaults(settingsFromLegacyConfig(agent.ConfigJSON))
+	settings.AgentID = agent.ID
+	migrated, err := u.repo.UpsertAgentRuntimeSettings(ctx, settings)
+	if err != nil {
+		return settings
+	}
+	return migrated
+}
+
+func (u *AgentUsecase) migrateLegacyFiles(ctx context.Context, agent Agent) []AgentPromptFile {
+	files := filesFromLegacyConfig(agent.ConfigJSON)
+	if len(files) == 0 {
+		files = defaultPromptFiles()
+	}
+	for i := range files {
+		files[i].AgentID = agent.ID
+	}
+	migrated, err := u.repo.ReplaceAgentPromptFiles(ctx, agent.ID, withFileDefaults(files))
+	if err != nil {
+		return withFileDefaults(files)
+	}
+	return migrated
 }
 
 // Create inserts an agent and persists settings + prompt files.
@@ -274,9 +286,9 @@ func (u *AgentUsecase) Create(ctx context.Context, in Agent) (Agent, error) {
 
 // Update merges patch into the stored agent, then rewrites settings, files, and config_json.
 func (u *AgentUsecase) Update(ctx context.Context, id string, patch Agent) (Agent, error) {
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return Agent{}, kerrors.BadRequest("AGENT", "id is required")
+	id, err := requireNonEmpty(id, "AGENT", "id")
+	if err != nil {
+		return Agent{}, err
 	}
 	current, err := u.Get(ctx, id)
 	if err != nil {
@@ -338,18 +350,18 @@ func (u *AgentUsecase) Update(ctx context.Context, id string, patch Agent) (Agen
 
 // Delete soft-deletes the agent.
 func (u *AgentUsecase) Delete(ctx context.Context, id string) error {
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return kerrors.BadRequest("AGENT", "id is required")
+	id, err := requireNonEmpty(id, "AGENT", "id")
+	if err != nil {
+		return err
 	}
 	return u.repo.DeleteAgent(ctx, id)
 }
 
 // ToggleFavorite flips the is_favorite flag on an agent.
 func (u *AgentUsecase) ToggleFavorite(ctx context.Context, id string) (Agent, error) {
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return Agent{}, kerrors.BadRequest("AGENT", "id is required")
+	id, err := requireNonEmpty(id, "AGENT", "id")
+	if err != nil {
+		return Agent{}, err
 	}
 	a, err := u.repo.GetAgentByID(ctx, id)
 	if err != nil {
@@ -519,35 +531,41 @@ type AgentBatchUpdateInput struct {
 	Delete  bool
 }
 
-// BatchUpdateAgents applies status changes or deletes for many agents.
+// BatchUpdateAgents applies status changes or deletes for many agents inside a transaction.
 func (u *AgentUsecase) BatchUpdateAgents(ctx context.Context, in AgentBatchUpdateInput) (int, error) {
 	if u == nil || u.repo == nil {
 		return 0, kerrors.InternalServer("AGENT", "agent repository not configured")
 	}
-	n := 0
-	for _, id := range in.IDs {
-		id = strings.TrimSpace(id)
-		if id == "" {
-			continue
-		}
-		if in.Delete {
-			if err := u.repo.DeleteAgent(ctx, id); err != nil {
-				return n, err
+	var n int
+	err := u.repo.ExecInTx(ctx, func(txCtx context.Context) error {
+		for _, id := range in.IDs {
+			id = strings.TrimSpace(id)
+			if id == "" {
+				continue
 			}
-			n++
-			continue
-		}
-		if st := strings.TrimSpace(in.Status); st != "" {
-			a, err := u.repo.GetAgentByID(ctx, id)
-			if err != nil {
-				return n, err
+			if in.Delete {
+				if err := u.repo.DeleteAgent(txCtx, id); err != nil {
+					return err
+				}
+				n++
+				continue
 			}
-			a.Status = st
-			if _, err := u.repo.UpdateAgent(ctx, a); err != nil {
-				return n, err
+			if st := strings.TrimSpace(in.Status); st != "" {
+				a, err := u.repo.GetAgentByID(txCtx, id)
+				if err != nil {
+					return err
+				}
+				a.Status = st
+				if _, err := u.repo.UpdateAgent(txCtx, a); err != nil {
+					return err
+				}
+				n++
 			}
-			n++
 		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
 	}
 	return n, nil
 }

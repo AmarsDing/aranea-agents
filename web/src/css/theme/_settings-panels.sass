@@ -24,6 +24,10 @@
 .settings-section--muted
   background: color-mix(in srgb, var(--glass-surface) 55%, transparent)
 
+.settings-section--disabled
+  opacity: 0.55
+  pointer-events: none
+
 .settings-section:hover
   background: var(--glass-surface-hover)
   border-color: color-mix(in srgb, var(--color-accent) 14%, var(--glass-border))
@@ -489,6 +493,11 @@ body.body--dark
 .prompt-dialog
   width: 860px
   max-width: 94vw
+  height: min(720px, 88vh)
+  min-height: 560px
+  max-height: 88vh
+  display: flex
+  flex-direction: column
   border-radius: 24px
   border: 1px solid var(--glass-border)
   background: var(--glass-surface)
@@ -496,8 +505,70 @@ body.body--dark
   -webkit-backdrop-filter: blur(var(--glass-blur-elevated))
   box-shadow: none
 
+.prompt-dialog__header
+  flex-shrink: 0
+
+.prompt-dialog__stats
+  color: var(--color-text-primary)
+  font-weight: 600
+  opacity: 0.92
+
+.prompt-dialog__mode-tabs
+  flex-shrink: 0
+  padding: 0 12px
+  background: color-mix(in srgb, var(--glass-elevated) 90%, transparent)
+  border-bottom: 1px solid var(--glass-border)
+
+.prompt-dialog__mode-tabs .q-tab
+  min-height: 42px
+  padding: 0 14px
+  font-size: 14px
+  font-weight: 500
+  color: var(--color-text-secondary) !important
+  opacity: 1 !important
+
+.prompt-dialog__mode-tabs .q-tab .q-tab__label
+  color: inherit !important
+
+.prompt-dialog__mode-tabs .q-tab--active,
+.prompt-dialog__mode-tabs .q-tab--active.text-primary,
+.prompt-dialog__mode-tabs .q-tab--active.text-accent
+  color: var(--color-text-primary) !important
+  font-weight: 700
+  background: var(--glass-surface)
+  border-radius: 10px 10px 0 0
+
+.prompt-dialog__mode-tabs .q-tab__indicator
+  height: 3px
+  border-radius: 2px
+  background: var(--color-text-primary) !important
+
+.prompt-dialog__body
+  flex: 1
+  min-height: 0
+  display: flex
+  flex-direction: column
+  overflow: hidden
+  padding-top: 12px
+
+.prompt-dialog__hint
+  flex-shrink: 0
+  margin: 0 0 12px
+  font-size: 13px
+  line-height: 1.55
+  color: var(--color-text-primary)
+  opacity: 0.82
+
+.prompt-dialog__breakdown
+  flex-shrink: 0
+  margin-top: 12px
+  border: 1px solid var(--glass-border)
+  border-radius: 12px
+  overflow: hidden
+
 .agent-prompt-preview
-  max-height: 64vh
+  flex: 1
+  min-height: 280px
   overflow: auto
   margin: 0
   white-space: pre-wrap
@@ -550,6 +621,23 @@ body.body--dark
     border-color: var(--glass-border)
     box-shadow: none
 
+  .prompt-dialog__mode-tabs .q-tab--active,
+  .prompt-dialog__mode-tabs .q-tab--active.text-primary,
+  .prompt-dialog__mode-tabs .q-tab--active.text-accent
+    color: #fff !important
+    background: color-mix(in srgb, var(--color-accent) 28%, var(--glass-surface))
+
+  .prompt-dialog__mode-tabs .q-tab__indicator
+    background: var(--color-accent) !important
+
+  .prompt-dialog__stats
+    color: var(--color-text-primary)
+    opacity: 1
+
+  .prompt-dialog__hint
+    color: var(--color-text-primary)
+    opacity: 0.88
+
   .agent-prompt-preview
     border-color: var(--glass-border)
     background: var(--glass-surface-hover)
@@ -558,6 +646,14 @@ body.body--dark
 @media (width <= 599px)
   .agent-settings
     padding: 18px
+
+  .prompt-dialog
+    width: 96vw
+    min-height: 480px
+    height: min(640px, 92vh)
+
+  .agent-prompt-preview
+    min-height: 220px
 
   .settings-panels .q-tab-panel
     padding: 14px

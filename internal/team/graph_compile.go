@@ -189,6 +189,9 @@ func compileParallelEdges(def Definition, ids []string) []biz.EdgeDef {
 		finish = synth
 	}
 	entry := workers[0]
+	if entry == finish {
+		return compileSequentialEdges(ids)
+	}
 	out := make([]biz.EdgeDef, 0, len(workers)*2)
 	for _, w := range workers {
 		if w == entry {
@@ -233,6 +236,9 @@ func compileCoordinatorEdges(ids []string) []biz.EdgeDef {
 			out = append(out, biz.EdgeDef{From: id, To: finish, Kind: "flow"})
 		}
 	}
+	if hub != finish {
+		out = append(out, biz.EdgeDef{From: hub, To: finish, Kind: "flow"})
+	}
 	return out
 }
 
@@ -259,17 +265,21 @@ func compileCriticLoopConditional(ids []string) []biz.ConditionalEdgeDef {
 	}}
 }
 
+const adaptiveMaxTransferEdges = 30
+
 func compileAdaptiveEdges(ids []string) []biz.EdgeDef {
 	if len(ids) == 0 {
 		return nil
 	}
 	out := compileSequentialEdges(ids)
-	for i := 0; i < len(ids); i++ {
-		for j := 0; j < len(ids); j++ {
+	transferCount := 0
+	for i := 0; i < len(ids) && transferCount < adaptiveMaxTransferEdges; i++ {
+		for j := 0; j < len(ids) && transferCount < adaptiveMaxTransferEdges; j++ {
 			if i == j || j == i+1 {
 				continue
 			}
 			out = append(out, biz.EdgeDef{From: ids[i], To: ids[j], Kind: "transfer"})
+			transferCount++
 		}
 	}
 	return out

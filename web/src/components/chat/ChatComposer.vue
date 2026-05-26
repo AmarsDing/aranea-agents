@@ -96,124 +96,122 @@
         @update:model-value="$emit('update:modelValue', String($event ?? ''))"
       />
 
-      <div class="chat-toolbar chat-toolbar-grid q-mt-sm">
-        <q-select
-          :model-value="dialogMode"
-          dense
-          options-dense
-          outlined
-          :options="modeOptions"
-          emit-value
-          map-options
-          :label="t('chat.dialogMode')"
-          class="chat-toolbar-field"
-          :dark="isDark"
-          @update:model-value="$emit('update:dialogMode', String($event ?? ''))"
-        />
-        <q-select
-          :model-value="modelProvider"
-          dense
-          options-dense
-          outlined
-          :options="providerOptions"
-          emit-value
-          map-options
-          :label="t('chat.modelProvider')"
-          class="chat-toolbar-field"
-          :dark="isDark"
-          @update:model-value="$emit('update:modelProvider', String($event ?? ''))"
-        >
-          <template #option="scope">
-            <q-item v-bind="scope.itemProps">
-              <q-item-section>
-                <q-item-label>{{ scope.opt.label }}</q-item-label>
-                <q-item-label v-if="scope.opt.caption" caption>{{ scope.opt.caption }}</q-item-label>
-              </q-item-section>
-            </q-item>
-          </template>
-        </q-select>
-        <q-select
-          v-if="knowledgeBaseOptions?.length"
-          :model-value="selectedKnowledgeBases ?? []"
-          dense
-          options-dense
-          outlined
-          multiple
-          use-chips
-          emit-value
-          map-options
-          :options="knowledgeBaseOptions"
-          :label="t('chat.knowledgeBases')"
-          class="chat-toolbar-field"
-          :dark="isDark"
-          @update:model-value="$emit('update:selectedKnowledgeBases', ($event as string[]) ?? [])"
-        />
-        <div class="chat-toolbar-actions row items-center no-wrap q-gutter-sm">
-          <div class="chat-context-pill column items-start">
-            <div class="row items-center no-wrap">
-              <span class="text-caption text-no-wrap q-mr-sm">{{ t("chat.contextPromptUse") }}</span>
-              <q-circular-progress
-                :value="contextRatio * 100"
-                show-value
-                size="34px"
-                :thickness="0.2"
-                :color="contextColor"
-              >
-                <span class="text-caption">{{ Math.round(contextRatio * 100) }}%</span>
-              </q-circular-progress>
-            </div>
-            <div v-if="usageDetail" class="text-caption sessions-muted q-mt-xs chat-context-pill__detail">
-              {{ usageDetail }}
-            </div>
-          </div>
-          <q-space class="gt-sm" />
+      <div class="chat-toolbar chat-toolbar-bar q-mt-sm">
+        <div class="chat-toolbar-fields row items-end no-wrap">
+          <q-select
+            :model-value="dialogMode"
+            dense
+            options-dense
+            outlined
+            :options="modeOptions"
+            emit-value
+            map-options
+            :label="t('chat.dialogMode')"
+            class="chat-toolbar-field chat-toolbar-field--mode"
+            :dark="isDark"
+            @update:model-value="$emit('update:dialogMode', String($event ?? ''))"
+          />
+          <q-select
+            :model-value="modelProvider"
+            dense
+            options-dense
+            outlined
+            :options="providerOptions"
+            emit-value
+            map-options
+            :label="t('chat.modelProvider')"
+            class="chat-toolbar-field chat-toolbar-field--model"
+            :dark="isDark"
+            @update:model-value="$emit('update:modelProvider', String($event ?? ''))"
+          >
+            <template #option="scope">
+              <q-item v-bind="scope.itemProps">
+                <q-item-section>
+                  <q-item-label>{{ scope.opt.label }}</q-item-label>
+                  <q-item-label v-if="scope.opt.caption" caption>{{ scope.opt.caption }}</q-item-label>
+                </q-item-section>
+              </q-item>
+            </template>
+          </q-select>
+          <q-select
+            v-if="knowledgeBaseOptions?.length"
+            :model-value="selectedKnowledgeBases ?? []"
+            dense
+            options-dense
+            outlined
+            multiple
+            use-chips
+            emit-value
+            map-options
+            :options="knowledgeBaseOptions"
+            :label="t('chat.knowledgeBases')"
+            class="chat-toolbar-field chat-toolbar-field--kb"
+            :dark="isDark"
+            @update:model-value="$emit('update:selectedKnowledgeBases', ($event as string[]) ?? [])"
+          />
+        </div>
+        <div class="chat-toolbar-actions row items-center no-wrap">
+          <ChatSessionArtifactsPanel
+            v-if="sessionId"
+            :session-id="sessionId"
+            :items="sessionArtifacts"
+            :loading="sessionArtifactsLoading"
+            :is-dark="isDark"
+            @open="$emit('open-artifact', $event)"
+          />
+          <ChatBackgroundJobsPanel
+            v-if="showBackgroundJobs"
+            :session-id="sessionId"
+            :agent-id="agentId"
+            :refresh-nonce="jobsRefreshNonce"
+            :is-dark="isDark"
+            @focus-turn="$emit('focus-turn', $event)"
+            @navigate="$emit('navigate', $event)"
+          />
           <q-btn
-            round
             dense
             unelevated
+            outline
             color="primary"
             :aria-label="t('chat.fileImport')"
-            class="chat-icon-btn q-ml-sm"
+            class="chat-toolbar-btn chat-toolbar-btn--outline"
             @click="$emit('pick-file')"
           >
-            <q-icon name="attach_file" />
+            <q-icon name="attach_file" size="20px" />
             <q-tooltip>{{ artifactMaxSizeHint() }}</q-tooltip>
           </q-btn>
           <q-btn
-            round
             dense
             unelevated
             outline
             color="primary"
             :aria-label="t('chat.voiceInput')"
-            class="chat-icon-btn"
+            class="chat-toolbar-btn chat-toolbar-btn--outline"
             @click="$emit('voice')"
           >
-            <q-icon name="mic" />
+            <q-icon name="mic" size="20px" />
           </q-btn>
           <q-btn
             v-if="sending"
-            round
             dense
             unelevated
             color="negative"
             :aria-label="t('chat.stop')"
-            class="chat-icon-btn chat-send-btn"
+            class="chat-toolbar-btn chat-toolbar-btn--filled"
             @click="$emit('stop')"
           >
-            <q-icon name="stop" />
+            <q-icon name="stop" size="20px" />
           </q-btn>
           <q-btn
             v-else
-            round
             dense
             unelevated
             color="primary"
             :aria-label="t('chat.send')"
-            class="chat-icon-btn chat-send-btn"
+            class="chat-toolbar-btn chat-toolbar-btn--filled"
             @click="$emit('send')"
           >
-            <q-icon name="send" />
+            <q-icon name="send" size="20px" />
           </q-btn>
         </div>
       </div>
@@ -222,16 +220,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import ChatEnqueueMessage from "../../features/chat/components/ChatEnqueueMessage.vue";
+import ChatSessionArtifactsPanel from "./ChatSessionArtifactsPanel.vue";
+import ChatBackgroundJobsPanel from "./ChatBackgroundJobsPanel.vue";
 import { AWAIT_KIND_TOOL_CONFIRM } from "../../features/chat/awaitConstants";
 import type { ChatAttachment } from "./types";
-import {
-  composerContextColor,
-  formatComposerUsageDetail,
-  type ComposerUsageSnapshot,
-} from "../../features/chat/composerUsageMetrics";
+import type { ComposerUsageSnapshot } from "../../features/chat/composerUsageMetrics";
+import type { ArtifactMeta } from "../../features/artifact/types";
 import { artifactMaxSizeHint } from "../../features/artifact/limits";
 
 type Option = { label: string; value: string; caption?: string };
@@ -257,18 +253,13 @@ const props = defineProps<{
   awaitKind?: string;
   awaitToolKey?: string;
   showEnqueue?: boolean;
+  sessionId?: string;
+  sessionArtifacts?: ArtifactMeta[];
+  sessionArtifactsLoading?: boolean;
+  showBackgroundJobs?: boolean;
+  agentId?: string;
+  jobsRefreshNonce?: number;
 }>();
-
-const contextColor = computed(() => composerContextColor(props.contextStatus, props.contextRatio));
-const usageDetail = computed(() => {
-  if (props.usageSnapshot) {
-    return formatComposerUsageDetail(props.usageSnapshot);
-  }
-  if (props.sessionTotalTokens != null) {
-    return `Σ ${props.sessionTotalTokens}`;
-  }
-  return "";
-});
 
 const emit = defineEmits<{
   "update:modelValue": [value: string];
@@ -283,6 +274,9 @@ const emit = defineEmits<{
   "enqueue-message": [content: string];
   "submit-await-reply": [];
   "submit-tool-confirm": [approved: boolean];
+  "open-artifact": [id: string];
+  "focus-turn": [turnId: string];
+  navigate: [route: { name: string; params: Record<string, string> }];
 }>();
 
 const { t } = useI18n();

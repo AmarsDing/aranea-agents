@@ -497,8 +497,9 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		HasMemory:          o.td.Persist.Memory.Available(),
 		PluginManager:      o.rt.PluginManager,
 		MemoryAdmin:        o.td.Persist.Memory.Admin,
-		MemoryL2Recall:     o.td.Persist.Memory.L2Recall,
-		MemoryL3Recall:     o.td.Persist.Memory.L3Recall,
+		MemoryL2Recall:        o.td.Persist.Memory.L2Recall,
+		MemoryL3Recall:        o.td.Persist.Memory.L3Recall,
+		MemoryCompositeRecall: o.td.Persist.Memory.CompositeRecall,
 		KnowledgeRetriever: o.rt.KnowledgeRetriever,
 		CodeExecFactory:    o.rt.CodeExecFactory,
 	}
@@ -574,30 +575,34 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 			return biz.ChatMessage{}, biz.ChatMessage{}, err
 		}
 	}
-	sendText := content
+	var intentRunOpts []trpcagent.RunOption
 	if !biz.IsA2AProxyAgent(ag) {
-		emitter.LogStart("chat.intent.pass", "意图识别开始", event.P("provider", prov), event.P("model", mod), event.P("content_len", len(content)))
-		intRes := intent.Run(ctx, intent.IntentPassFromAgent(ag), o.td.Catalog.LLM, o.td.LLMHTTP, prov, mod, content)
-		if intRes.Artifact != nil {
-			emitter.LogDone("chat.intent.pass", "意图识别完成", event.P("outcome", intRes.Outcome), event.P("intent_kind", intRes.Artifact.IntentKind), event.P("refined_goal_len", len(intRes.Artifact.RefinedGoal)), event.P("duration_ms", intRes.Duration.Milliseconds()))
-			if strings.TrimSpace(intRes.RawJSON) != "" {
-				merged, merr := intent.MergeIntoUserOptionsJSON(userOpts, intRes.RawJSON)
-				if merr != nil {
-					emitter.LogWarn("chat.intent.merge_fail", "意图合并失败", "将继续执行但不包含 intent_artifact", event.P("error", merr.Error()))
-				} else {
-					userOpts = merged
+		if intent.ShouldRun(ag, content) {
+			emitter.LogStart("chat.intent.pass", "意图识别开始", event.P("provider", prov), event.P("model", mod), event.P("content_len", len(content)))
+			intRes := intent.RunForAgent(ctx, ag, o.td.Catalog.LLM, o.td.LLMHTTP, prov, mod, content)
+			if intRes.Artifact != nil {
+				emitter.LogDone("chat.intent.pass", "意图识别完成", event.P("outcome", intRes.Outcome), event.P("intent_kind", intRes.Artifact.IntentKind), event.P("refined_goal_len", len(intRes.Artifact.RefinedGoal)), event.P("duration_ms", intRes.Duration.Milliseconds()))
+				if strings.TrimSpace(intRes.RawJSON) != "" {
+					merged, merr := intent.MergeIntoUserOptionsJSON(userOpts, intRes.RawJSON)
+					if merr != nil {
+						emitter.LogWarn("chat.intent.merge_fail", "意图合并失败", "将继续执行但不包含 intent_artifact", event.P("error", merr.Error()))
+					} else {
+						userOpts = merged
+					}
 				}
+				intentRunOpts = append(intentRunOpts, intent.RunOptionInject(intRes.Artifact))
+			} else {
+				emitter.LogSkip("chat.intent.pass", "意图识别跳过", event.P("outcome", intRes.Outcome), event.P("duration_ms", intRes.Duration.Milliseconds()))
 			}
-			sendText = intent.WrapUserMessage(content, intRes.Artifact)
+			meta := intent.RunMeta{AgentID: ag.ID, SessionID: sessionID}
+			intentPayload := intent.BuildIntentPassPayload(intRes, meta)
+			if o.td.Pipeline.Bus != nil {
+				env := event.NewEnvelope(event.EnvelopeTypeIntentPass, ag.ID, sessionID)
+				env.Metadata = intentPayload
+				o.td.Pipeline.Bus.Publish(ctx, env)
+			}
 		} else {
-			emitter.LogSkip("chat.intent.pass", "意图识别跳过", event.P("outcome", intRes.Outcome), event.P("duration_ms", intRes.Duration.Milliseconds()))
-		}
-		meta := intent.RunMeta{AgentID: ag.ID, SessionID: sessionID}
-		intentPayload := intent.BuildIntentPassPayload(intRes, meta)
-		if o.td.Pipeline.Bus != nil {
-			env := event.NewEnvelope(event.EnvelopeTypeIntentPass, ag.ID, sessionID)
-			env.Metadata = intentPayload
-			o.td.Pipeline.Bus.Publish(ctx, env)
+			emitter.LogSkip("chat.intent.pass", "Intent Pass 未启用或消息过短", event.P("intent_pass_enabled", intent.IntentPassFromAgent(ag)))
 		}
 	} else {
 		emitter.LogSkip("chat.intent.pass", "A2A Proxy Agent 跳过意图识别", event.P("agent_kind", ag.Kind))
@@ -637,14 +642,15 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 
 	var sessionRunID string
 	var stopBudget context.CancelFunc
-	sessionRunID, stopBudget = o.durableSessionRunLifecycle(ctx, emitter, sess, ag, durableCtx, userMsg, content)
+	ctx, sessionRunID, stopBudget = o.durableSessionRunLifecycle(ctx, emitter, sess, ag, durableCtx, userMsg, content)
 	defer stopBudget()
 	defer func() {
 		o.finishSessionRunLifecycle(ctx, sessionID, sessionRunID, turnErr)
 	}()
 
 	uid := chatagent.UserIDFromCtx(ctx)
-	runOpts := durableResumeRunOpts(durableCtx.active, []trpcagent.RunOption{trpcagent.WithRequestID(sessionID), skillruntime.RunOptionWithTurnQuery(sendText)})
+	runOpts := durableResumeRunOpts(durableCtx.active, []trpcagent.RunOption{trpcagent.WithRequestID(sessionID), skillruntime.RunOptionWithTurnQuery(content)})
+	runOpts = append(runOpts, intentRunOpts...)
 	if ag.Settings != nil {
 		if vars := chatagent.ParseVariablesJSON(ag.Settings.VariablesJSON); vars != nil {
 			runOpts = append(runOpts, trpcagent.MergeRuntimeState(vars))
@@ -673,7 +679,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		}
 	})
 	emitter.LogStart("chat.llm.invoke", "正在调用语言模型")
-	userTurnMsg, err := o.buildUserMessage(runCtx, sessionID, sendText, input.Options.AttachmentIDs)
+	userTurnMsg, err := o.buildUserMessage(runCtx, sessionID, content, input.Options.AttachmentIDs)
 	if err != nil {
 		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
 		emitter.LogError("chat.llm.invoke", "附件装配失败", event.P("error", err.Error()))

@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -241,7 +242,9 @@ func (uc *GraphUsecase) consumeRuntimeEvents(eventCh <-chan GraphRuntimeEvent, e
 	}
 	uc.executions[execID] = exec
 	uc.mu.Unlock()
-	_ = uc.runRepo.UpdateRun(context.Background(), exec)
+	if err := uc.runRepo.UpdateRun(context.Background(), exec); err != nil {
+		slog.Warn("consumeRuntimeEvents: UpdateRun failed", "exec_id", execID, "error", err)
+	}
 }
 
 func (uc *GraphUsecase) updateExecutionFromRuntimeEvent(exec *GraphExecution, e GraphRuntimeEvent) {
@@ -271,7 +274,9 @@ func (uc *GraphUsecase) updateExecutionFromRuntimeEvent(exec *GraphExecution, e 
 			Timestamp: time.Now(),
 		})
 		uc.mu.Unlock()
-		_ = uc.runRepo.UpdateRun(context.Background(), exec)
+		if err := uc.runRepo.UpdateRun(context.Background(), exec); err != nil {
+			slog.Warn("updateExecutionFromRuntimeEvent: UpdateRun failed for node_end", "execution_id", exec.ID, "error", err)
+		}
 	case DomainEventGraphNodeError:
 		uc.mu.Lock()
 		exec.ErrorMessage = e.Error
@@ -284,13 +289,17 @@ func (uc *GraphUsecase) updateExecutionFromRuntimeEvent(exec *GraphExecution, e 
 			Timestamp: time.Now(),
 		})
 		uc.mu.Unlock()
-		_ = uc.runRepo.UpdateRun(context.Background(), exec)
+		if err := uc.runRepo.UpdateRun(context.Background(), exec); err != nil {
+			slog.Warn("updateExecutionFromRuntimeEvent: UpdateRun failed for node_error", "execution_id", exec.ID, "error", err)
+		}
 	case DomainEventGraphInterrupt:
 		uc.mu.Lock()
 		exec.Status = "waiting_human"
 		exec.InterruptNode = e.NodeID
 		uc.mu.Unlock()
-		_ = uc.runRepo.UpdateRun(context.Background(), exec)
+		if err := uc.runRepo.UpdateRun(context.Background(), exec); err != nil {
+			slog.Warn("updateExecutionFromRuntimeEvent: UpdateRun failed for interrupt", "execution_id", exec.ID, "error", err)
+		}
 	}
 }
 

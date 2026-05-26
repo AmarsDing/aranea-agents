@@ -1,65 +1,100 @@
 <template>
   <q-card flat bordered class="monitor-card">
-    <q-card-section class="row items-center q-col-gutter-md">
-      <div class="col-12 col-md">
-        <div class="row items-center q-gutter-sm">
-          <div class="text-h6 text-weight-bold">实时事件</div>
-          <q-badge :color="streamColor">{{ streamText }}</q-badge>
-          <q-badge outline color="primary">{{ visibleEvents.length }} 个事件</q-badge>
-        </div>
-        <div class="text-caption text-grey-7">Team / Agent 运行时事件与持久化监控事件</div>
+    <q-card-section class="q-pb-sm">
+      <div class="row items-center q-gutter-sm">
+        <div class="text-h6 text-weight-bold">实时事件</div>
+        <q-badge :color="streamColor">{{ streamText }}</q-badge>
+        <q-badge outline color="primary">{{ visibleEvents.length }} 个事件</q-badge>
       </div>
-      <q-select v-model="category" class="app-field-sm" dense outlined emit-value map-options label="分类" :options="categoryOptions" />
-      <q-btn flat rounded no-caps :icon="paused ? 'play_arrow' : 'pause'" :label="paused ? '恢复' : '暂停'" @click="toggleStream" />
-      <q-btn flat rounded no-caps icon="delete_sweep" label="清除" @click="clearRuntimeEvents" />
+      <div class="text-caption text-grey-7">Team / Agent 运行时事件与持久化监控事件</div>
     </q-card-section>
-    <q-separator />
-    <q-card-section>
-      <q-list v-if="visibleEvents.length" separator>
-        <q-item v-for="event in visibleEvents" :key="event.id" clickable class="monitor-event-item" @click="openDetail(event)">
-          <q-item-section avatar>
-            <q-avatar :color="eventColor(event.type)" text-color="white" icon="bolt" size="34px" />
-          </q-item-section>
-          <q-item-section>
-            <q-item-label class="text-weight-medium">{{ event.title }}</q-item-label>
-            <q-item-label caption lines="2">{{ event.subtitle }}</q-item-label>
-            <div class="row q-gutter-xs q-mt-xs">
-              <q-chip dense outline>{{ event.source }}</q-chip>
-              <q-chip dense :color="eventColor(event.type)" text-color="white">{{ event.type }}</q-chip>
-              <q-chip v-if="event.canOpenInRuns" dense outline color="teal">已关联 Runs</q-chip>
+
+    <AppPageToolbar class="monitor-events-toolbar">
+      <q-select v-model="category" class="app-page-toolbar__field" dense outlined emit-value map-options label="分类" :options="categoryOptions" />
+      <template #actions>
+        <q-btn flat rounded no-caps :icon="paused ? 'play_arrow' : 'pause'" :label="paused ? '恢复' : '暂停'" @click="toggleStream" />
+        <q-btn flat rounded no-caps icon="delete_sweep" label="清除" @click="clearRuntimeEvents" />
+      </template>
+    </AppPageToolbar>
+
+    <template v-if="visibleEvents.length">
+      <div class="app-registry-table-shell">
+        <AppRegistryTable
+          :shell="false"
+          table-class="monitor-events-table"
+          :rows="pagedEvents"
+          :columns="columns"
+          row-key="id"
+          hide-pagination
+          :pagination="{ rowsPerPage: 0 }"
+        >
+        <template #body-cell-title="props">
+          <q-td :props="props" class="cursor-pointer" @click="openDetail(props.row)">
+            <AppRegistryHoverTip :text="props.row.subtitle">
+              <div class="app-registry-cell-primary ellipsis">{{ props.row.title }}</div>
+            </AppRegistryHoverTip>
+          </q-td>
+        </template>
+        <template #body-cell-tags="props">
+          <q-td :props="props">
+            <div class="app-registry-chip-wrap">
+              <q-chip dense outline>{{ props.row.source }}</q-chip>
+              <q-chip dense :color="eventColor(props.row.type)" text-color="white">{{ props.row.type }}</q-chip>
             </div>
-          </q-item-section>
-          <q-item-section side>
-            <div class="column items-end q-gutter-xs">
-              <span class="text-caption text-grey-7">{{ event.time }}</span>
+          </q-td>
+        </template>
+        <template #body-cell-time="props">
+          <q-td :props="props">
+            <span class="app-registry-cell-sub">{{ props.row.time }}</span>
+          </q-td>
+        </template>
+        <template #body-cell-actions="props">
+          <q-td :props="props">
+            <div class="app-registry-cell-actions">
               <q-btn
-                v-if="event.canOpenInRuns && event.completionMeta"
+                v-if="props.row.canOpenInRuns && props.row.completionMeta"
                 flat
                 dense
-                no-caps
-                size="sm"
+                round
+                icon="timeline"
                 color="primary"
-                label="在 Runs 中查看"
-                @click.stop="openLinkedRun(event)"
-              />
+                aria-label="在 Runs 中查看"
+                @click="openLinkedRun(props.row)"
+              >
+                <q-tooltip>在 Runs 中查看</q-tooltip>
+              </q-btn>
               <q-btn
-                v-else-if="event.completionSessionId"
+                v-else-if="props.row.completionSessionId"
                 flat
                 dense
-                no-caps
-                size="sm"
+                round
+                icon="chat"
                 color="primary"
-                label="打开会话"
-                @click.stop="openChatSession(event.completionSessionId!)"
-              />
+                aria-label="打开会话"
+                @click="openChatSession(props.row.completionSessionId!)"
+              >
+                <q-tooltip>打开会话</q-tooltip>
+              </q-btn>
+              <q-btn flat dense round icon="visibility" color="primary" aria-label="查看详情" @click="openDetail(props.row)" />
             </div>
-          </q-item-section>
-        </q-item>
-      </q-list>
-      <div v-else class="monitor-empty">
-        <q-icon name="sensors" size="36px" color="grey-5" />
-        <div>{{ emptyHint }}</div>
+          </q-td>
+        </template>
+      </AppRegistryTable>
+
+        <AppRegistryPagination
+          v-model:page="page"
+          v-model:page-size="pageSize"
+          :page-max="pageMax"
+          :total="visibleEvents.length"
+          label="条事件"
+          :page-size-options="[12, 24, 48]"
+        />
       </div>
+    </template>
+
+    <q-card-section v-else class="monitor-empty">
+      <q-icon name="sensors" size="36px" color="grey-5" />
+      <div>{{ emptyHint }}</div>
     </q-card-section>
   </q-card>
 
@@ -84,9 +119,15 @@
 </template>
 
 <script setup lang="ts">
-import { toRef } from "vue";
+import { computed, ref, toRef, watch } from "vue";
+import type { QTableColumn } from "quasar";
+import AppPageToolbar from "../layout/AppPageToolbar.vue";
+import AppRegistryTable from "../layout/AppRegistryTable.vue";
+import AppRegistryHoverTip from "../layout/AppRegistryHoverTip.vue";
+import AppRegistryPagination from "../layout/AppRegistryPagination.vue";
+import { registryColWidth } from "../../features/ui/registryTableColumns";
 import type { PlatformResource, MonitorTraceEvent } from "../../features/monitor/types";
-import { useMonitorRealtimeEvents } from "../../features/monitor/useMonitorRealtimeEvents";
+import { useMonitorRealtimeEvents, type MonitorViewEvent } from "../../features/monitor/useMonitorRealtimeEvents";
 
 const props = defineProps<{
   persistedEvents: PlatformResource[];
@@ -112,4 +153,30 @@ const {
   copyJSON,
   eventColor
 } = useMonitorRealtimeEvents(toRef(() => props.persistedEvents), toRef(() => props.traces));
+
+const page = ref(1);
+const pageSize = ref(12);
+const pageMax = computed(() => Math.max(1, Math.ceil(visibleEvents.value.length / pageSize.value)));
+const pagedEvents = computed(() => {
+  const start = (page.value - 1) * pageSize.value;
+  return visibleEvents.value.slice(start, start + pageSize.value);
+});
+
+watch([category, visibleEvents], () => {
+  page.value = 1;
+});
+
+const columns: QTableColumn<MonitorViewEvent>[] = [
+  { name: "title", label: "事件", field: "title", align: "left", ...registryColWidth("24%") },
+  { name: "tags", label: "类型", field: "type", align: "left", ...registryColWidth("11%") },
+  { name: "time", label: "时间", field: "time", align: "left", ...registryColWidth("11%") },
+  { name: "actions", label: "操作", field: "id", align: "right", ...registryColWidth("108px") }
+];
 </script>
+
+<style scoped>
+.monitor-events-toolbar {
+  padding: 0 16px 8px;
+  border-bottom: none;
+}
+</style>

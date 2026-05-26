@@ -41,7 +41,7 @@ func seedTeams(ctx context.Context, entClient *ent.Client, store *data.Data, ids
 	}
 
 	teamRepo := data.NewTeamRepo(store)
-	teamUC := biz.NewTeamUsecase(teamRepo)
+	teamUC := biz.NewTeamUsecase(teamRepo, nil)
 	now := time.Now().UTC().Format(time.RFC3339)
 
 	for _, ts := range specs {

@@ -16,8 +16,15 @@ func IsChannelCancelCommand(text string) bool {
 	if key == "" {
 		return false
 	}
-	_, ok := channelCancelCommands[key]
-	return ok
+	if _, ok := channelCancelCommands[key]; ok {
+		return true
+	}
+	for cmd := range channelCancelCommands {
+		if strings.HasPrefix(key, cmd+" ") || strings.HasPrefix(key, cmd+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 // IsChannelBackgroundCommand reports whether inbound IM text requests durable escalation (CC-R-02).

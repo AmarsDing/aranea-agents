@@ -1,5 +1,5 @@
 <template>
-  <q-page class="app-page-cream monitor-page">
+  <q-page class="app-standard-page monitor-page">
     <div class="monitor-page-shell">
     <MonitorHeroSection
       kicker="Observability"

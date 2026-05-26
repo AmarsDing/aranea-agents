@@ -51,9 +51,11 @@ type EvolutionEventInsert struct {
 	MetadataJSON  string
 }
 
-// L0AdminReader lists L0 assembly snapshots for observability.
-type L0AdminReader interface {
+// L0AdminStore lists and persists L0 assembly snapshots.
+type L0AdminStore interface {
 	ListL0SnapshotRows(ctx context.Context, sessionID string, limit int32) ([][]byte, error)
+	InsertL0AssemblySnapshot(ctx context.Context, in L0AssemblySnapshotInsert) error
+	UpdateL0SnapshotActual(ctx context.Context, id string, actualPromptTokens, contextWindowTokens int) error
 }
 
 // L1AdminReader lists L1 working-memory tasks and fields.
@@ -72,7 +74,7 @@ type L2RecallStore interface {
 type L3FactAdminStore interface {
 	ListFactRows(ctx context.Context, scopeType, scopeID, kind, status, keyword string, limit, offset int32) ([][]byte, int32, int32, int32, error)
 	ListFactRowsForUser(ctx context.Context, scopeType, scopeID, userID, keyword string, limit, offset int32) ([][]byte, error)
-	RecallL3Facts(ctx context.Context, scopeType, scopeID, userID, query string, queryEmbedding []float32, limit int32) ([][]byte, error)
+	RecallL3Facts(ctx context.Context, scopeType, scopeID, userID, query string, queryEmbedding []float32, limit int32, minScore float64) ([][]byte, error)
 	UpsertFactRow(ctx context.Context, in FactUpsert) ([]byte, error)
 }
 
@@ -91,7 +93,7 @@ type L4GraphAdminStore interface {
 
 // SessionAdminStore is the composed admin port for L0–L4 session memory (typed sub-interfaces are preferred for new code).
 type SessionAdminStore interface {
-	L0AdminReader
+	L0AdminStore
 	L1AdminReader
 	L2RecallStore
 	L3FactAdminStore

@@ -241,6 +241,7 @@ func (s *AgentRuntimeSettings) ApplySkills(cfg SkillsCfg) {
 
 func (s *AgentRuntimeSettings) ApplyEvolution(cfg EvolutionCfg) {
 	s.SelfEvolve = cfg.SelfEvolve
+	s.EvolutionSelfEvolve = cfg.SelfEvolve
 	s.SubagentsEnabled = cfg.SubagentsEnabled
 	s.SubagentsMaxConcurrency = cfg.SubagentsMaxConcurrency
 	s.SubagentsMaxGenerationDepth = cfg.SubagentsMaxGenerationDepth

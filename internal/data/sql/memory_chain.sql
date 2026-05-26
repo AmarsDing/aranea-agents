@@ -1,4 +1,4 @@
-﻿CREATE TABLE IF NOT EXISTS session_summaries (
+CREATE TABLE IF NOT EXISTS session_summaries (
   id TEXT PRIMARY KEY,
   session_id TEXT NOT NULL,
   summary_markdown TEXT NOT NULL,
@@ -664,6 +664,8 @@ CREATE INDEX IF NOT EXISTS idx_skill_invocation_skill ON skill_invocation(skill_
 CREATE INDEX IF NOT EXISTS idx_cron_task_agent ON cron_task(agent_id, deleted_at);
 CREATE INDEX IF NOT EXISTS idx_cron_run_task ON cron_task_run(task_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_monitor_events_created ON monitor_events(created_at);
+CREATE INDEX IF NOT EXISTS idx_monitor_events_key_created ON monitor_events(event_key, created_at);
+CREATE INDEX IF NOT EXISTS idx_monitor_events_key_status_created ON monitor_events(event_key, status, created_at);
 CREATE INDEX IF NOT EXISTS idx_monitor_traces_created ON monitor_traces(created_at);
 
 -- L1 working memory (aranea/docs/13 memory-L1-working.md 搂3)

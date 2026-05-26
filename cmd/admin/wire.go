@@ -100,11 +100,18 @@ func provideCronRunner(deps cronrunner.Deps) *cronrunner.Runner {
 	return cronrunner.NewRunner(deps)
 }
 
-func provideSkillWatchRunner(skillUC *biz.SkillUsecase, sys biz.SystemSettingRepo, logger log.Logger) *watch.Runner {
+func provideSkillWatchRunner(skillUC *biz.SkillUsecase, sys biz.SystemSettingRepo, logger log.Logger, eventBus event.Bus, mon *biz.MonitorUsecase) *watch.Runner {
 	if strings.TrimSpace(os.Getenv("SKILL_WATCH_DISABLED")) == "1" {
 		return nil
 	}
-	return watch.NewRunner(skillUC, sys, logger)
+	r := watch.NewRunnerWithBus(skillUC, sys, logger, eventBus)
+	if r != nil {
+		r.SetSyncReporter(watch.NewMonitorSyncReporter(mon, eventBus))
+		if mon != nil {
+			r.SetAlertEvaluator(mon)
+		}
+	}
+	return r
 }
 
 func providePromptFileAIEditor(catalog *biz.LlmProviderModelUsecase, _ rt.PersistenceSet) *service.PromptFileAIEditor {
@@ -356,8 +363,12 @@ func provideMonitorAlertNotifier(channels *biz.ChannelUsecase, eventBus event.Bu
 	return service.NewMonitorAlertNotifier(channels, eventBus)
 }
 
-func provideMonitorUsecase(repo biz.MonitorRepo, notifier biz.AlertNotifier) *biz.MonitorUsecase {
-	return biz.NewMonitorUsecase(repo, notifier)
+func provideMonitorUsecase(repo biz.MonitorRepo, notifier biz.AlertNotifier, skillUC *biz.SkillUsecase) *biz.MonitorUsecase {
+	uc := biz.NewMonitorUsecase(repo, notifier)
+	if skillUC != nil {
+		uc.SetFilesystemHealthReader(monitorSkillHealthAdapter{skills: skillUC})
+	}
+	return uc
 }
 
 func provideUsageUsecase(repo biz.UsageRepo, mon *biz.MonitorUsecase) *biz.UsageUsecase {
@@ -584,7 +595,7 @@ func provideAutoMemoryWorker(
 	episodeSync biz.EpisodeIndexSyncer,
 	extractor biz.MemoryTextExtractor,
 	queue memtrpc.AutoMemoryQueue,
-) *jobs.AutoMemoryWorker {
+) (*jobs.AutoMemoryWorker, error) {
 	return jobs.NewAutoMemoryWorker(0, sessions, agents, memStore, factSync, episodeSync, l4, biz.DefaultMemoryConsolidator(extractor), queue)
 }
 
@@ -627,11 +638,11 @@ func provideChannelRuntime(channels *biz.ChannelUsecase, ingress *service.Channe
 	return service.NewChannelRuntime(channels, ingress)
 }
 
-func provideMemoryL2DecayWorker(store *sessionmemory.Store, logger log.Logger) *jobs.MemoryL2DecayWorker {
+func provideMemoryL2DecayWorker(store *sessionmemory.Store, agents *biz.AgentUsecase, logger log.Logger) *jobs.MemoryL2DecayWorker {
 	if jobs.MemoryL2DecayDisabled() {
 		return nil
 	}
-	return jobs.NewMemoryL2DecayWorker(0, store, logger)
+	return jobs.NewMemoryL2DecayWorker(0, store, agents, logger)
 }
 
 func provideMemoryEpisodeBackfillWorker(store *sessionmemory.Store, episodeSync biz.EpisodeIndexSyncer, sys biz.SystemSettingRepo, logger log.Logger) *jobs.MemoryEpisodeBackfillWorker {
@@ -648,11 +659,11 @@ func provideMemoryDataMigrationWorker(store *sessionmemory.Store, logger log.Log
 	return jobs.NewMemoryDataMigrationWorker(store, logger)
 }
 
-func provideMemoryL3DecayWorker(store *sessionmemory.Store, logger log.Logger) *jobs.MemoryL3DecayWorker {
+func provideMemoryL3DecayWorker(store *sessionmemory.Store, agents *biz.AgentUsecase, logger log.Logger) *jobs.MemoryL3DecayWorker {
 	if jobs.MemoryL3DecayDisabled() {
 		return nil
 	}
-	return jobs.NewMemoryL3DecayWorker(0, store, logger)
+	return jobs.NewMemoryL3DecayWorker(0, store, agents, logger)
 }
 
 func provideEventStoreCleanup(store *biz.EventStoreUsecase, logger log.Logger) *jobs.EventStoreCleanup {
@@ -891,6 +902,7 @@ func wireApp(*conf.Server, *conf.Data, log.Logger) (wireOut, func(), error) {
 		provideFactIndexSync,
 		provideMemoryL2Recall,
 		provideMemoryL3Recall,
+		provideMemoryCompositeRecall,
 		provideAutoMemoryEnqueuer,
 		provideFeedbackMemoryEnqueuer,
 		provideMCPProber,

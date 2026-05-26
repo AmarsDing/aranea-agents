@@ -92,6 +92,11 @@
                   :agents="routingAgents"
                   :teams="routingTeams"
                   :loading="routingOptionsLoading"
+                  :routing-agent-provider="selectedRoutingAgent?.provider"
+                  :routing-agent-model="selectedRoutingAgent?.model"
+                  :routing-agent-model-checking="routingAgentModelChecking"
+                  :routing-agent-model-ok="routingAgentModelOk"
+                  :routing-agent-model-message="routingAgentModelMessage"
                 />
 
                 <template v-for="field in visibleSectionFields(section)">
@@ -350,6 +355,10 @@ const {
   routingAgents,
   routingTeams,
   routingOptionsLoading,
+  selectedRoutingAgent,
+  routingAgentModelChecking,
+  routingAgentModelOk,
+  routingAgentModelMessage,
   selectedLongTaskPreset,
   longTaskPresetOptions,
   applyLongTaskPreset,

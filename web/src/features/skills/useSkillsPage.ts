@@ -1,6 +1,7 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useQuasar } from "quasar";
-import type { Skill } from "./types";
+import type { Skill, SkillFilesystemHealth } from "./types";
+import { getSkillFilesystemHealth } from "./api";
 import { useSkillsStore } from "../../stores/skills";
 
 export function useSkillsPage() {
@@ -11,6 +12,9 @@ export function useSkillsPage() {
   const search = ref("");
   const enabled = ref<boolean | null>(null);
   const status = ref("");
+  const syncOrigin = ref("");
+  const filesystemMissing = ref<boolean | null>(null);
+  const filesystemHealth = ref<SkillFilesystemHealth | null>(null);
   const page = ref(1);
   const pageSize = ref(20);
   const rows = ref<Skill[]>([]);
@@ -31,6 +35,14 @@ export function useSkillsPage() {
     uploadRef.value?.openDialog();
   }
 
+  async function loadFilesystemHealth() {
+    try {
+      filesystemHealth.value = await getSkillFilesystemHealth();
+    } catch {
+      filesystemHealth.value = null;
+    }
+  }
+
   async function loadRows() {
     loading.value = true;
     error.value = "";
@@ -39,11 +51,14 @@ export function useSkillsPage() {
         search: search.value,
         enabled: enabled.value,
         status: status.value,
+        sync_origin: syncOrigin.value || undefined,
+        filesystem_missing: filesystemMissing.value,
         page: page.value,
         page_size: pageSize.value
       });
       rows.value = data.items;
       total.value = data.total;
+      await loadFilesystemHealth();
     } catch (err) {
       error.value = err instanceof Error ? err.message : "加载 Skill 失败";
     } finally {
@@ -55,6 +70,22 @@ export function useSkillsPage() {
     search.value = "";
     enabled.value = null;
     status.value = "";
+    syncOrigin.value = "";
+    filesystemMissing.value = null;
+    page.value = 1;
+    void loadRows();
+  }
+
+  function filterPendingFilesystem() {
+    syncOrigin.value = "filesystem";
+    status.value = "draft";
+    filesystemMissing.value = null;
+    page.value = 1;
+    void loadRows();
+  }
+
+  function filterMissingFilesystem() {
+    filesystemMissing.value = true;
     page.value = 1;
     void loadRows();
   }
@@ -114,7 +145,7 @@ export function useSkillsPage() {
     }
   }
 
-  watch([search, enabled, status], () => {
+  watch([search, enabled, status, syncOrigin, filesystemMissing], () => {
     page.value = 1;
     void loadRows();
   });
@@ -130,6 +161,9 @@ export function useSkillsPage() {
     search,
     enabled,
     status,
+    syncOrigin,
+    filesystemMissing,
+    filesystemHealth,
     page,
     pageSize,
     rows,
@@ -146,6 +180,8 @@ export function useSkillsPage() {
     pageMax,
     loadRows,
     resetFilters,
+    filterPendingFilesystem,
+    filterMissingFilesystem,
     onPublishSkill,
     onToggleEnabled,
     openEditor,

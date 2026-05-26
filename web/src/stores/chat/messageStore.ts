@@ -13,6 +13,7 @@ import {
   mergeIncrementalSessionMessages,
   mergeSessionMessages,
 } from "../../features/chat/mergeSessionMessages";
+import { realignEphemeralTurnIndexes } from "../../features/chat/streamTurnIndex";
 import { useChatSessionStore } from "./sessionStore";
 
 export const useChatMessageStore = defineStore("chatMessage", () => {
@@ -74,11 +75,11 @@ export const useChatMessageStore = defineStore("chatMessage", () => {
       );
       sessionRevisionBySession.value[sid] = currentRevision;
       if (items.length > 0) {
-        setMessages(sid, mergeIncrementalSessionMessages(items, local, mergeOpts));
+        setMessages(sid, realignEphemeralTurnIndexes(mergeIncrementalSessionMessages(items, local, mergeOpts)));
       } else if (currentRevision > opts.afterRevision || opts?.dropStaleInFlight) {
         const { items: server, currentRevision: fullRev } = await listMessages(sid);
         sessionRevisionBySession.value[sid] = fullRev;
-        setMessages(sid, mergeSessionMessages(server, local, mergeOpts));
+        setMessages(sid, realignEphemeralTurnIndexes(mergeSessionMessages(server, local, mergeOpts)));
       }
       return;
     }
@@ -86,10 +87,10 @@ export const useChatMessageStore = defineStore("chatMessage", () => {
     const { items: server, currentRevision } = await listMessages(sid);
     sessionRevisionBySession.value[sid] = currentRevision;
     if (opts?.replace || local.length === 0) {
-      setMessages(sid, mergeSessionMessages(server, [], mergeOpts));
+      setMessages(sid, realignEphemeralTurnIndexes(mergeSessionMessages(server, [], mergeOpts)));
       return;
     }
-    setMessages(sid, mergeSessionMessages(server, local, mergeOpts));
+    setMessages(sid, realignEphemeralTurnIndexes(mergeSessionMessages(server, local, mergeOpts)));
   }
 
   function deleteSessionMessages(sessionId: string) {

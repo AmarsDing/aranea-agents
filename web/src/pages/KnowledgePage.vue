@@ -1,16 +1,15 @@
 <template>
-  <q-page class="app-page-cream app-registry-page knowledge-page">
-    <section class="app-page-hero">
-      <div>
-        <div class="app-page-kicker">RAG / pgvector</div>
-        <h1 class="app-page-title">知识库</h1>
-        <p class="app-page-subtitle">管理向量集合、文档入库与语义检索。需后端配置 Postgres + pgvector。</p>
-      </div>
-      <div class="app-actions-bar">
+  <q-page class="app-standard-page app-registry-page knowledge-page">
+    <AppPageHero
+      kicker="RAG / pgvector"
+      title="知识库"
+      subtitle="管理向量集合、文档入库与语义检索。需后端配置 Postgres + pgvector。"
+    >
+      <template #actions>
         <q-btn color="primary" unelevated rounded no-caps icon="add" label="新建集合" @click="openCreateCollection" />
         <q-btn outline rounded no-caps color="primary" icon="refresh" label="刷新" :loading="loading" @click="loadCollections" />
-      </div>
-    </section>
+      </template>
+    </AppPageHero>
 
     <q-banner v-if="unavailable" rounded class="app-banner-warning q-mb-md">
       知识库服务不可用：{{ unavailable }}。请确认 Postgres / pgvector 已配置。
@@ -102,6 +101,7 @@
 </template>
 
 <script setup lang="ts">
+import AppPageHero from "../components/layout/AppPageHero.vue";
 import { onMounted } from "vue";
 import KnowledgeEmbedderPanel from "../components/knowledge/KnowledgeEmbedderPanel.vue";
 import KnowledgeCollectionList from "../components/knowledge/KnowledgeCollectionList.vue";

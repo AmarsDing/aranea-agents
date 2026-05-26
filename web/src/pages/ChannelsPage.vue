@@ -1,5 +1,5 @@
 <template>
-  <q-page class="app-page-cream channels-page">
+  <q-page class="app-standard-page app-registry-page channels-page">
     <ChannelHeroSection
       :kicker="t('channelsPage.kicker')"
       :title="t('channelsPage.title')"
@@ -50,7 +50,7 @@
     </q-banner>
 
     <ChannelsTable
-      :rows="filteredRows"
+      :rows="pagedRows"
       :catalog="catalog"
       :loading="loading"
       :toggling-id="togglingId"
@@ -60,6 +60,15 @@
       @copy-webhook="copyWebhook"
       @edit="openEdit"
       @remove="confirmDelete"
+    />
+
+    <AppRegistryPagination
+      v-model:page="page"
+      v-model:page-size="pageSize"
+      :page-max="pageMax"
+      :total="filteredRows.length"
+      :loading="loading"
+      label="个 Channel"
     />
 
     <ChannelEditorDialog
@@ -78,12 +87,17 @@ import ChannelCatalogFilters from "../components/channels/ChannelCatalogFilters.
 import ChannelHeroSection from "../components/channels/ChannelHeroSection.vue";
 import ChannelsTable from "../components/channels/ChannelsTable.vue";
 import ChannelEditorDialog from "../features/channels/ChannelEditorDialog.vue";
+import AppRegistryPagination from "../components/layout/AppRegistryPagination.vue";
 import { useChannelsPage } from "../features/channels/useChannelsPage";
 
 const {
   t,
   catalog,
   filteredRows,
+  pagedRows,
+  page,
+  pageSize,
+  pageMax,
   loading,
   error,
   search,

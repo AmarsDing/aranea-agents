@@ -1,5 +1,5 @@
 <template>
-  <q-page :class="['app-entity-page agents-page', { 'is-dark': isDark }]">
+  <q-page :class="['app-standard-page app-entity-page agents-page', { 'is-dark': isDark }]">
     <agents-workspace-hero @create="openCreate" @open-migration="migrationOpen = true" />
 
     <agents-filters-card

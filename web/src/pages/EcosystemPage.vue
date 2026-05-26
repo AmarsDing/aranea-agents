@@ -1,5 +1,5 @@
 <template>
-  <q-page class="app-page-cream q-pa-lg">
+  <q-page class="app-standard-page">
     <q-banner rounded class="bg-info text-white q-mb-md">
       生态市场为<strong>技术预览</strong>：安装与发布流程尚未纳入核心 SLA，数据可能重置。
     </q-banner>

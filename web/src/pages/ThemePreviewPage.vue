@@ -156,17 +156,22 @@
               <q-select v-model="sampleSelect" class="app-field-sm" outlined dense emit-value map-options :options="selectOptions" label="状态" />
             </q-card-section>
           </q-card>
-          <div class="app-registry-table-shell q-mt-md">
-            <q-table flat dense class="app-registry-table" :rows="registryPreviewRows" :columns="registryPreviewColumns" row-key="id" hide-pagination>
+          <AppRegistryTable
+            class="q-mt-md"
+            :rows="registryPreviewRows"
+            :columns="registryPreviewColumns"
+            row-key="id"
+            hide-pagination
+            :pagination="{ rowsPerPage: 0 }"
+          >
               <template #body-cell-name="props">
                 <q-td :props="props">
-                  <div class="app-registry-cell-primary">{{ props.row.name }}</div>
-                  <div class="app-registry-cell-sub">{{ props.row.key }}</div>
-                </q-td>
-              </template>
-              <template #body-cell-desc="props">
-                <q-td :props="props">
-                  <div class="app-registry-cell-desc">{{ props.row.desc }}</div>
+                  <AppRegistryHoverTip :text="props.row.desc" empty-label="暂无说明">
+                    <div class="min-width-0">
+                      <div class="app-registry-cell-primary">{{ props.row.name }}</div>
+                      <div class="app-registry-cell-sub">{{ props.row.key }}</div>
+                    </div>
+                  </AppRegistryHoverTip>
                 </q-td>
               </template>
               <template #body-cell-status="props">
@@ -182,16 +187,21 @@
                   </div>
                 </q-td>
               </template>
-            </q-table>
-          </div>
+            </AppRegistryTable>
         </div>
       </section>
 
       <section class="theme-preview-section q-mb-lg">
         <h2 class="theme-preview-section__title">Data Table Shell（legacy alias）</h2>
-        <div class="app-data-table-shell">
-          <q-table flat dense class="app-registry-table" :rows="tablePreviewRows" :columns="tablePreviewColumns" row-key="id" hide-pagination />
-        </div>
+        <AppRegistryTable
+          :shell="false"
+          :data-shell="true"
+          :rows="tablePreviewRows"
+          :columns="tablePreviewColumns"
+          row-key="id"
+          hide-pagination
+          :pagination="{ rowsPerPage: 0 }"
+        />
       </section>
 
       <section class="theme-preview-section">
@@ -208,7 +218,9 @@
 
 <script setup lang="ts">
 import { ref } from "vue";
-import { registryCol } from "../features/ui/registryTableColumns";
+import AppRegistryTable from "../components/layout/AppRegistryTable.vue";
+import AppRegistryHoverTip from "../components/layout/AppRegistryHoverTip.vue";
+import { registryColWidth } from "../features/ui/registryTableColumns";
 
 const sampleText = ref("Aranea Agent Orchestrator");
 const sampleToggle = ref(true);
@@ -251,10 +263,9 @@ const dashboardKpis = [
 ];
 
 const registryPreviewColumns = [
-  { name: "name", label: "名称", field: "name", align: "left" as const, ...registryCol.name },
-  { name: "desc", label: "说明", field: "desc", align: "left" as const, ...registryCol.desc },
-  { name: "status", label: "状态", field: "status", align: "left" as const, ...registryCol.status },
-  { name: "actions", label: "操作", field: "id", align: "right" as const, ...registryCol.actions }
+  { name: "name", label: "名称", field: "name", align: "left" as const, ...registryColWidth("20%") },
+  { name: "status", label: "状态", field: "status", align: "left" as const, ...registryColWidth("9%") },
+  { name: "actions", label: "操作", field: "id", align: "right" as const, ...registryColWidth("108px") }
 ];
 
 const registryPreviewRows = [
@@ -263,9 +274,9 @@ const registryPreviewRows = [
 ];
 
 const tablePreviewColumns = [
-  { name: "name", label: "名称", field: "name", align: "left" as const },
-  { name: "status", label: "状态", field: "status", align: "left" as const },
-  { name: "updated", label: "更新时间", field: "updated", align: "left" as const }
+  { name: "name", label: "名称", field: "name", align: "left" as const, ...registryColWidth("14%") },
+  { name: "status", label: "状态", field: "status", align: "left" as const, ...registryColWidth("9%") },
+  { name: "updated", label: "更新时间", field: "updated", align: "left" as const, ...registryColWidth("11%") }
 ];
 
 const tablePreviewRows = [

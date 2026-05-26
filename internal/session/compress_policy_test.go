@@ -9,6 +9,29 @@ import (
 	"aranea-agents/internal/biz"
 )
 
+func TestSessionCompressEnabled(t *testing.T) {
+	if !sessionCompressEnabled(biz.Agent{Settings: &biz.AgentRuntimeSettings{L0SnapshotMode: "on_warning"}}) {
+		t.Fatal("legacy on_warning should enable compress")
+	}
+	if sessionCompressEnabled(biz.Agent{Settings: &biz.AgentRuntimeSettings{L0SnapshotMode: "off"}}) {
+		t.Fatal("legacy off should disable compress")
+	}
+	if !sessionCompressEnabled(biz.Agent{Settings: &biz.AgentRuntimeSettings{ContextCompactionEnabled: true, L0SnapshotMode: "off"}}) {
+		t.Fatal("context_compaction_enabled should enable compress even when snapshot mode is off")
+	}
+}
+
+func TestFilterMessagesForTruncateStrategy_dropsTool(t *testing.T) {
+	msgs := []biz.ChatMessage{
+		{Role: "user", ContentMarkdown: "hi"},
+		{Role: "tool", ContentMarkdown: "result"},
+	}
+	out := filterMessagesForTruncateStrategy(msgs, "drop_tool_results")
+	if len(out) != 1 || out[0].Role != "user" {
+		t.Fatalf("got %#v", out)
+	}
+}
+
 func TestCompressMinGapFromAgent_default(t *testing.T) {
 	got := compressMinGapFromAgent(biz.Agent{})
 	if got != DefaultCompressMinGap {

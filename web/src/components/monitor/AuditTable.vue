@@ -1,61 +1,65 @@
 <template>
   <div>
     <q-card flat bordered class="monitor-card">
-      <q-card-section class="row items-center q-col-gutter-md">
-        <div class="col-12 col-md">
-          <div class="text-h6 text-weight-bold">活动日志</div>
-          <div class="text-caption text-grey-7">管理与配置变更审计记录</div>
-        </div>
-        <div class="app-form-field-grid items-center">
-          <q-select
-            v-model="actionFilter"
-            dense
-            outlined
-            emit-value
-            map-options
-            clearable
-            label="事件类型"
-            :options="actionOptions"
-          />
-          <q-select
-            v-model="resourceFilter"
-            dense
-            outlined
-            emit-value
-            map-options
-            clearable
-            label="实体类型"
-            :options="resourceOptions"
-          />
-          <q-input
-            v-model="keyword"
-            class="app-field-md"
-            dense
-            outlined
-            clearable
-            debounce="200"
-            label="搜索事件 / 资源 / 详情"
-          >
-            <template #prepend>
-              <q-icon name="search" />
-            </template>
-          </q-input>
-        </div>
-        <q-btn flat rounded no-caps icon="refresh" label="刷新" :loading="loading" @click="$emit('reload')" />
+      <q-card-section class="q-pb-none">
+        <div class="text-h6 text-weight-bold">活动日志</div>
+        <div class="text-caption text-grey-7">管理与配置变更审计记录</div>
       </q-card-section>
-      <q-separator />
-      <q-table
-        flat
-        :rows="filteredRows"
-        :columns="columns"
-        row-key="id"
-        :loading="loading"
-        :pagination="pagination"
-        :rows-per-page-options="[12, 25, 50, 100]"
-        @request="onPageRequest"
-      >
+
+      <AppPageToolbar class="monitor-audit-toolbar">
+        <q-select
+          v-model="actionFilter"
+          class="app-page-toolbar__field"
+          dense
+          outlined
+          emit-value
+          map-options
+          clearable
+          label="事件类型"
+          :options="actionOptions"
+        />
+        <q-select
+          v-model="resourceFilter"
+          class="app-page-toolbar__field"
+          dense
+          outlined
+          emit-value
+          map-options
+          clearable
+          label="实体类型"
+          :options="resourceOptions"
+        />
+        <q-input
+          v-model="keyword"
+          class="app-page-toolbar__search"
+          dense
+          outlined
+          clearable
+          debounce="200"
+          label="搜索事件 / 资源 / 详情"
+        >
+          <template #prepend>
+            <q-icon name="search" />
+          </template>
+        </q-input>
+        <template #actions>
+          <q-btn flat rounded no-caps icon="restart_alt" label="重置" @click="resetFilters" />
+          <q-btn flat rounded no-caps icon="refresh" label="刷新" :loading="loading" @click="$emit('reload')" />
+        </template>
+      </AppPageToolbar>
+
+      <div class="app-registry-table-shell">
+        <AppRegistryTable
+          :shell="false"
+          :rows="pagedRows"
+          :columns="columns"
+          row-key="id"
+          :loading="loading"
+          hide-pagination
+          :pagination="{ rowsPerPage: 0 }"
+        >
         <template #body-cell-event="props">
-          <q-td :props="props">
+          <q-td :props="props" class="cursor-pointer" @click="openDetail(props.row)">
             <q-chip dense square :color="eventColor(props.row.action)" text-color="white">
               {{ props.row.action }}.{{ props.row.resource }}
             </q-chip>
@@ -63,28 +67,42 @@
         </template>
         <template #body-cell-resource="props">
           <q-td :props="props">
-            <div class="text-weight-medium">{{ props.row.resource }}</div>
-            <div class="text-caption text-grey-7 ellipsis">{{ props.row.resource_id || "-" }}</div>
+            <AppRegistryHoverTip :text="props.row.detail">
+              <div class="min-width-0">
+                <div class="app-registry-cell-primary ellipsis">{{ props.row.resource }}</div>
+                <div class="app-registry-cell-sub ellipsis">{{ props.row.resource_id || "—" }}</div>
+              </div>
+            </AppRegistryHoverTip>
           </q-td>
         </template>
         <template #body-cell-actor="props">
           <q-td :props="props">
-            <div>{{ props.row.actor || "system" }}</div>
-            <div v-if="props.row.ip" class="text-caption text-grey-7">{{ props.row.ip }}</div>
+            <div class="app-registry-cell-primary ellipsis">{{ props.row.actor || "system" }}</div>
+            <div v-if="props.row.ip" class="app-registry-cell-sub">{{ props.row.ip }}</div>
           </q-td>
         </template>
         <template #body-cell-request="props">
           <q-td :props="props">
-            <code class="monitor-code">{{ props.row.request_id || "-" }}</code>
+            <code class="monitor-code ellipsis">{{ props.row.request_id || "—" }}</code>
           </q-td>
         </template>
         <template #body-cell-created="props">
-          <q-td :props="props">{{ formatDate(props.row.created_at) }}</q-td>
+          <q-td :props="props">
+            <span class="app-registry-cell-sub">{{ formatDate(props.row.created_at) }}</span>
+          </q-td>
         </template>
-      </q-table>
-      <q-card-section v-if="total > 0" class="text-caption text-grey-7 text-right">
-        共 {{ total }} 条记录
-      </q-card-section>
+      </AppRegistryTable>
+
+        <AppRegistryPagination
+          v-model:page="page"
+          v-model:page-size="pageSize"
+          :page-max="pageMax"
+          :total="filteredRows.length"
+          :loading="loading"
+          label="条审计"
+          :page-size-options="[12, 25, 50]"
+        />
+      </div>
     </q-card>
 
     <q-dialog v-model="detailOpen">
@@ -125,8 +143,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
-import { copyToClipboard, Notify, type QTableColumn, type QTableProps } from "quasar";
+import { computed, ref, watch } from "vue";
+import { copyToClipboard, Notify, type QTableColumn } from "quasar";
+import AppPageToolbar from "../layout/AppPageToolbar.vue";
+import AppRegistryTable from "../layout/AppRegistryTable.vue";
+import AppRegistryHoverTip from "../layout/AppRegistryHoverTip.vue";
+import AppRegistryPagination from "../layout/AppRegistryPagination.vue";
+import { registryColWidth } from "../../features/ui/registryTableColumns";
 import type { AuditLog } from "../../features/monitor/types";
 import { compactJSON, formatDate } from "../../features/monitor/utils";
 
@@ -145,8 +168,8 @@ const actionFilter = ref<string | null>(null);
 const resourceFilter = ref<string | null>(null);
 const selected = ref<AuditLog | null>(null);
 const detailOpen = ref(false);
-
-const pagination = ref({ page: 1, rowsPerPage: 12, rowsNumber: props.total });
+const page = ref(1);
+const pageSize = ref(12);
 
 const actionOptions = computed(() => {
   const actions = new Set(props.rows.map((r) => r.action).filter(Boolean));
@@ -159,12 +182,11 @@ const resourceOptions = computed(() => {
 });
 
 const columns: QTableColumn<AuditLog>[] = [
-  { name: "event", label: "事件", field: "action", align: "left" },
-  { name: "resource", label: "实体", field: "resource", align: "left" },
-  { name: "actor", label: "操作者", field: "actor", align: "left" },
-  { name: "request", label: "Request ID", field: "request_id", align: "left" },
-  { name: "detail", label: "详情", field: "detail", align: "left" },
-  { name: "created", label: "时间", field: "created_at", align: "left" }
+  { name: "event", label: "事件", field: "action", align: "left", ...registryColWidth("11%") },
+  { name: "resource", label: "实体", field: "resource", align: "left", ...registryColWidth("14%") },
+  { name: "actor", label: "操作者", field: "actor", align: "left", ...registryColWidth("10%") },
+  { name: "request", label: "Request ID", field: "request_id", align: "left", ...registryColWidth("10%") },
+  { name: "created", label: "时间", field: "created_at", align: "left", ...registryColWidth("18%") }
 ];
 
 const filteredRows = computed(() => {
@@ -188,14 +210,28 @@ const filteredRows = computed(() => {
   return result;
 });
 
+const pageMax = computed(() => Math.max(1, Math.ceil(filteredRows.value.length / pageSize.value)));
+const pagedRows = computed(() => {
+  const start = (page.value - 1) * pageSize.value;
+  return filteredRows.value.slice(start, start + pageSize.value);
+});
+
+watch([keyword, actionFilter, resourceFilter], () => {
+  page.value = 1;
+});
+
 const selectedJSON = computed(() => compactJSON(selected.value ?? {}));
 
-function onPageRequest(requestProp: { pagination: { sortBy: string; descending: boolean; page: number; rowsPerPage: number; rowsNumber?: number }; filter?: unknown; getCellValue: (col: unknown, row: unknown) => unknown }) {
-  pagination.value = {
-    ...pagination.value,
-    page: requestProp.pagination.page,
-    rowsPerPage: requestProp.pagination.rowsPerPage
-  };
+function resetFilters() {
+  keyword.value = "";
+  actionFilter.value = null;
+  resourceFilter.value = null;
+  page.value = 1;
+}
+
+function openDetail(row: AuditLog) {
+  selected.value = row;
+  detailOpen.value = true;
 }
 
 function eventColor(action: string) {
@@ -218,3 +254,10 @@ async function copyJSON() {
   Notify.create({ message: "已复制", color: "positive", position: "top" });
 }
 </script>
+
+<style scoped>
+.monitor-audit-toolbar {
+  padding: 8px 16px 0;
+  border-bottom: none;
+}
+</style>

@@ -80,6 +80,7 @@ type ChatUsecase struct {
 	persist    ChatRunStatusPersister
 	publisher  ChatEventPublisher
 	awaitChans sync.Map
+	bgCancel   context.CancelFunc
 }
 
 func NewChatUsecase(
@@ -191,21 +192,31 @@ func (uc *ChatUsecase) ClearAwaitingRunState(ctx context.Context, sessionID stri
 }
 
 func (uc *ChatUsecase) Close() {
+	if uc.bgCancel != nil {
+		uc.bgCancel()
+	}
 	uc.pending.Close()
 }
 
 func (uc *ChatUsecase) StartBackgroundGoroutines() {
-	safego.Go(nil, "chat-usecase-gc", func() {
+	ctx, cancel := context.WithCancel(context.Background())
+	uc.bgCancel = cancel
+	safego.Go(ctx, "chat-usecase-gc", func() {
 		ticker := time.NewTicker(5 * time.Minute)
 		defer ticker.Stop()
-		for range ticker.C {
-			uc.awaitChans.Range(func(key, _ interface{}) bool {
-				sid, ok := key.(string)
-				if !ok || strings.TrimSpace(sid) == "" {
-					uc.awaitChans.Delete(key)
-				}
-				return true
-			})
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				uc.awaitChans.Range(func(key, _ interface{}) bool {
+					sid, ok := key.(string)
+					if !ok || strings.TrimSpace(sid) == "" {
+						uc.awaitChans.Delete(key)
+					}
+					return true
+				})
+			}
 		}
 	})
 }

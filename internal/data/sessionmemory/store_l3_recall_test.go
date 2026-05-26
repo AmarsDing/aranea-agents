@@ -71,7 +71,7 @@ VALUES (?, 'agent', 'agent-1', 'user-1', 'agent-1', ?, ?, ?, ?, 'active', ?, ?)`
 func TestRecallL3Facts_KeywordRerank(t *testing.T) {
 	store := openL3RecallTestStore(t)
 	ctx := context.Background()
-	rows, err := store.RecallL3Facts(ctx, "agent", "agent-1", "user-1", "dark mode", nil, 1)
+	rows, err := store.RecallL3Facts(ctx, "agent", "agent-1", "user-1", "dark mode", nil, 1, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

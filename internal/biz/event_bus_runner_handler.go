@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"aranea-agents/pkg/safego"
+
 	"github.com/google/uuid"
 )
 
@@ -55,7 +57,10 @@ func (h *runnerCompletionHandler) Handle(ctx context.Context, de DomainEvent) {
 		if err := RecordRunnerCompletion(ctx, h.monitor, de); err != nil {
 			h.logError(context.Background(), de.SessionID, "event_bus.monitor.persist", "监控事件写入失败", LogPair{Key: "error", Value: err})
 		}
-		h.monitor.EvaluateAlerts(ctx)
+		evalCtx := context.WithoutCancel(ctx)
+		safego.Go(evalCtx, "monitor.evaluate-alerts", func() {
+			h.monitor.EvaluateAlerts(evalCtx)
+		})
 	}
 	if de.Usage == nil || h.usage == nil {
 		return

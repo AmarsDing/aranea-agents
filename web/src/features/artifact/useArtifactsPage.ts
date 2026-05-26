@@ -1,6 +1,6 @@
-import { onMounted, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useQuasar } from "quasar";
-import { registryCol } from "../ui/registryTableColumns";
+import { registryColWidth } from "../ui/registryTableColumns";
 import type { ArtifactMeta } from "./types";
 import { listArtifactVersions } from "./api";
 import { useArtifactStore } from "../../stores/artifact";
@@ -27,16 +27,18 @@ export function useArtifactsPage() {
   const detailVersions = ref<ArtifactMeta[]>([]);
   const detailVersion = ref<number | undefined>(undefined);
   const tableTotal = ref(0);
-  const pagination = ref({ page: 1, rowsPerPage: 15 });
+  const page = ref(1);
+  const pageSize = ref(15);
+  const pageMax = computed(() => Math.max(1, Math.ceil(tableTotal.value / pageSize.value)));
 
   const columns = [
-    { name: "name", label: "名称", field: "name", align: "left" as const, sortable: true, ...registryCol.name },
-    { name: "session_id", label: "Session", field: "session_id", align: "left" as const, ...registryCol.session },
-    { name: "mime_type", label: "MIME", field: "mime_type", align: "left" as const, ...registryCol.mime },
-    { name: "size", label: "大小", field: "size", align: "right" as const, ...registryCol.size },
-    { name: "version", label: "版本", field: "version", align: "right" as const, ...registryCol.version },
-    { name: "created_at", label: "创建时间", field: "created_at", align: "left" as const, ...registryCol.time },
-    { name: "actions", label: "", field: "id", align: "right" as const, ...registryCol.actions }
+    { name: "name", label: "名称", field: "name", align: "left" as const, sortable: true, ...registryColWidth("14%") },
+    { name: "session_id", label: "Session", field: "session_id", align: "left" as const, ...registryColWidth("10%") },
+    { name: "mime_type", label: "MIME", field: "mime_type", align: "left" as const, ...registryColWidth("10%") },
+    { name: "size", label: "大小", field: "size", align: "right" as const, ...registryColWidth("72px") },
+    { name: "version", label: "版本", field: "version", align: "right" as const, ...registryColWidth("64px") },
+    { name: "created_at", label: "创建时间", field: "created_at", align: "left" as const, ...registryColWidth("11%") },
+    { name: "actions", label: "", field: "id", align: "right" as const, ...registryColWidth("108px") }
   ];
 
   const mimeFilterOptions = [
@@ -63,8 +65,8 @@ export function useArtifactsPage() {
     loading.value = true;
     error.value = "";
     try {
-      const { page, rowsPerPage } = pagination.value;
-      const offset = (page - 1) * rowsPerPage;
+      const { page: currentPage, rowsPerPage } = { page: page.value, rowsPerPage: pageSize.value };
+      const offset = (currentPage - 1) * rowsPerPage;
       const res = await artifactStore.loadArtifacts({
         session_id: sessionFilter.value.trim() || undefined,
         limit: rowsPerPage,
@@ -79,11 +81,6 @@ export function useArtifactsPage() {
     } finally {
       loading.value = false;
     }
-  }
-
-  function onTableRequest(props: { pagination: { page: number; rowsPerPage: number } }) {
-    pagination.value = { ...props.pagination };
-    void loadRows();
   }
 
   function onUploadFile(file: File | null) {
@@ -193,7 +190,15 @@ export function useArtifactsPage() {
   }
 
   function onSearchChange() {
-    pagination.value.page = 1;
+    page.value = 1;
+    void loadRows();
+  }
+
+  function resetFilters() {
+    sessionFilter.value = "";
+    search.value = "";
+    mimeFilter.value = "";
+    page.value = 1;
     void loadRows();
   }
 
@@ -202,14 +207,16 @@ export function useArtifactsPage() {
   });
 
   watch(sessionFilter, () => {
-    pagination.value.page = 1;
+    page.value = 1;
     void loadRows();
   });
 
   watch([mimeFilter], () => {
-    pagination.value.page = 1;
+    page.value = 1;
     void loadRows();
   });
+
+  watch([page, pageSize], () => void loadRows());
 
   return {
     rows,
@@ -229,12 +236,14 @@ export function useArtifactsPage() {
     detailVersions,
     detailVersion,
     tableTotal,
-    pagination,
+    page,
+    pageSize,
+    pageMax,
     columns,
     formatBytes,
     loadRows,
-    onTableRequest,
     onSearchChange,
+    resetFilters,
     onUploadFile,
     submitUpload,
     openDetail,

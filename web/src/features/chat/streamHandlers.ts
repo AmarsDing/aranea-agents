@@ -7,6 +7,7 @@ import { upsertToolMessage, finalizeOrphanToolMessages } from "./envelopeToolCal
 import { patchStreamingMessage } from "./streamContentPatch";
 import { createMessageBatchWriter } from "./messageStoreBatch";
 import { shouldSessionWsSkipEnvelope } from "./inboundSyncRouting";
+import { inferAssistantStreamTurnIndex, realignEphemeralTurnIndexes } from "./streamTurnIndex";
 import type { IntentPassResult } from "./types";
 import { sessionContextPatchFromEnvelope } from "./sessionContextPatch";
 import type { SessionContextPatch } from "./sessionContextPatch";
@@ -87,18 +88,24 @@ export function patchStreamingEnvelope(
   const exists = cur.some((m) => m.id === streamId);
   let next = cur;
   if (!exists) {
+    const turnIndex = inferAssistantStreamTurnIndex(cur);
     next = [
       ...cur,
-      { ...createPlaceholderMessage(streamId, sessionId, "assistant", ""), status: "streaming" },
+      {
+        ...createPlaceholderMessage(streamId, sessionId, "assistant", ""),
+        turn_index: turnIndex,
+        status: "streaming",
+      },
     ];
   }
-  return patchStreamingMessage(next, streamId, {
+  const patched = patchStreamingMessage(next, streamId, {
     text: isDone ? undefined : env.content?.text,
     reasoning: isDone ? undefined : env.content?.reasoning,
     replaceText: isDone ? env.content?.text : undefined,
     replaceReasoning: isDone ? env.content?.reasoning : undefined,
     status: isDone ? "ok" : "streaming",
   });
+  return realignEphemeralTurnIndexes(patched);
 }
 
 export function bindStreamHandlers(

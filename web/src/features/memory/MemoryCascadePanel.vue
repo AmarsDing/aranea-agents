@@ -18,20 +18,23 @@
     </q-card-section>
 
     <q-card-section v-else class="q-pt-none">
-      <q-table
-        flat
-        bordered
+      <AppRegistryTable
+        :shell="false"
         :rows="rows"
         :columns="columns"
         row-key="id"
         :loading="loading"
         hide-pagination
-        :pagination="{ rowsPerPage: 10 }"
+        :pagination="{ rowsPerPage: 0 }"
       >
         <template #body-cell-change="props">
           <q-td :props="props">
-            <div class="text-weight-medium">{{ props.row.old_value }} → {{ props.row.new_value }}</div>
-            <div class="text-caption text-grey-7">{{ props.row.trigger_entity_name }}</div>
+            <AppRegistryHoverTip :text="props.row.rationale">
+              <div class="min-width-0">
+                <div class="app-registry-cell-primary">{{ props.row.old_value }} → {{ props.row.new_value }}</div>
+                <div class="app-registry-cell-sub ellipsis">{{ props.row.trigger_entity_name }}</div>
+              </div>
+            </AppRegistryHoverTip>
           </q-td>
         </template>
         <template #body-cell-risk="props">
@@ -39,23 +42,27 @@
             <q-badge :color="riskColor(props.row.risk_level)" :label="props.row.risk_level || 'unknown'" />
           </q-td>
         </template>
-        <template #body-cell-affected="props">
-          <q-td :props="props">
-            {{ props.row.affected_entities?.length ?? 0 }}
-          </q-td>
-        </template>
         <template #body-cell-actions="props">
-          <q-td :props="props" class="text-right">
-            <q-btn dense flat color="positive" label="批准" :loading="actingId === props.row.id" @click="$emit('approve', props.row)" />
-            <q-btn dense flat color="negative" label="拒绝" :loading="actingId === props.row.id" @click="$emit('reject', props.row)" />
+          <q-td :props="props">
+            <div class="app-registry-cell-actions">
+              <q-btn dense flat round color="positive" icon="check" :loading="actingId === props.row.id" @click="$emit('approve', props.row)">
+                <q-tooltip>批准</q-tooltip>
+              </q-btn>
+              <q-btn dense flat round color="negative" icon="close" :loading="actingId === props.row.id" @click="$emit('reject', props.row)">
+                <q-tooltip>拒绝</q-tooltip>
+              </q-btn>
+            </div>
           </q-td>
         </template>
-      </q-table>
+      </AppRegistryTable>
     </q-card-section>
   </q-card>
 </template>
 
 <script setup lang="ts">
+import AppRegistryTable from "../../components/layout/AppRegistryTable.vue";
+import AppRegistryHoverTip from "../../components/layout/AppRegistryHoverTip.vue";
+import { registryColWidth } from "../ui/registryTableColumns";
 import type { CascadeProposal } from "./types";
 
 defineProps<{
@@ -72,12 +79,11 @@ defineEmits<{
 }>();
 
 const columns = [
-  { name: "change", label: "更名", field: "old_value", align: "left" as const },
-  { name: "risk", label: "风险", field: "risk_level", align: "left" as const },
-  { name: "affected", label: "影响实体", field: "affected_entities", align: "left" as const },
-  { name: "rationale", label: "原因", field: "rationale", align: "left" as const },
-  { name: "created", label: "创建时间", field: "created_at", align: "left" as const },
-  { name: "actions", label: "操作", field: "id", align: "right" as const }
+  { name: "change", label: "更名", field: "old_value", align: "left" as const, ...registryColWidth("14%") },
+  { name: "risk", label: "风险", field: "risk_level", align: "left" as const, ...registryColWidth("9%") },
+  { name: "affected", label: "影响实体", field: "affected_entities", align: "center" as const, ...registryColWidth("72px") },
+  { name: "created", label: "创建时间", field: "created_at", align: "left" as const, ...registryColWidth("11%") },
+  { name: "actions", label: "操作", field: "id", align: "right" as const, ...registryColWidth("108px") }
 ];
 
 function riskColor(level?: string) {

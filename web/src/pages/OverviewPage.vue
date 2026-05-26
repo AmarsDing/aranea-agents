@@ -1,5 +1,5 @@
 <template>
-  <q-page class="overview-page">
+  <q-page class="app-standard-page overview-page">
     <div class="overview-page__shell">
       <OverviewPageHero>
         <template #actions>

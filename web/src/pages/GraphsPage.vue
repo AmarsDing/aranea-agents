@@ -1,13 +1,14 @@
 <template>
-  <q-page :class="['graphs-page', { 'is-dark': isDark }]">
-    <section class="app-page-hero">
-      <div>
-        <div class="app-page-kicker">Graph 工作流</div>
-        <h1 class="app-page-title">Graph 管理</h1>
-        <p class="app-page-subtitle">可视化构建可观测、可干预、可回溯的确定性工作流，支持条件路由、人工审批和状态回溯。</p>
-      </div>
-      <q-btn class="graphs-page__create-btn" rounded unelevated icon="add" label="新增 Graph" @click="openCreate" />
-    </section>
+  <q-page :class="['app-standard-page graphs-page', { 'is-dark': isDark }]">
+    <AppPageHero
+      kicker="Graph 工作流"
+      title="Graph 管理"
+      subtitle="可视化构建可观测、可干预、可回溯的确定性工作流，支持条件路由、人工审批和状态回溯。"
+    >
+      <template #actions>
+        <q-btn class="graphs-page__create-btn" rounded unelevated icon="add" label="新增 Graph" @click="openCreate" />
+      </template>
+    </AppPageHero>
 
     <q-banner v-if="error" rounded class="bg-negative text-white q-mt-md">
       {{ error }}
@@ -80,6 +81,7 @@
 </template>
 
 <script setup lang="ts">
+import AppPageHero from "../components/layout/AppPageHero.vue";
 import { useGraphsPage } from "../features/graph/useGraphsPage";
 
 const {

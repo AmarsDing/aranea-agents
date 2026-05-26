@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -24,14 +26,14 @@ import (
 var _ transport.Server = (*WSServer)(nil)
 
 const (
-	defaultWSReadLimit      = 1 << 20
-	defaultWSPongWait       = 60 * time.Second
-	defaultWSPingPeriod     = 30 * time.Second
-	defaultWSWriteWait      = 10 * time.Second
-	defaultWSTurnTimeout    = 5 * time.Minute
-	defaultWSSystemSendWait = 3 * time.Second
-	maxSessionConns         = 5
-	maxGlobalMonitorConns   = 3
+	defaultWSReadLimit           = 1 << 20
+	defaultWSPongWait            = 60 * time.Second
+	defaultWSPingPeriod          = 30 * time.Second
+	defaultWSWriteWait           = 10 * time.Second
+	defaultWSTurnTimeout         = 5 * time.Minute
+	defaultWSSystemSendWait      = 3 * time.Second
+	defaultMaxSessionConns       = 5
+	defaultMaxGlobalMonitorConns = 3
 )
 
 type RunCanceller interface {
@@ -105,17 +107,19 @@ func (s *WSServer) countGlobalMonitorConns() int {
 }
 
 type WSServer struct {
-	mu          sync.RWMutex
-	conns       map[string][]*wsConn
-	eventBus    event.Bus
-	monitorBus  event.Bus
-	eventBuffer *event.Buffer
-	canceller   RunCanceller
-	sender      ChatSender
-	turnGateway biz.TurnGateway // preferred over ChatSender for turn execution
-	serverConf  *conf.Server
-	upgrader    websocket.Upgrader
-	closed      bool
+	mu                    sync.RWMutex
+	conns                 map[string][]*wsConn
+	eventBus              event.Bus
+	monitorBus            event.Bus
+	eventBuffer           *event.Buffer
+	canceller             RunCanceller
+	sender                ChatSender
+	turnGateway           biz.TurnGateway
+	serverConf            *conf.Server
+	upgrader              websocket.Upgrader
+	closed                bool
+	maxSessionConns       int
+	maxGlobalMonitorConns int
 }
 
 // NewWSServer wires a single bus (tests / legacy).
@@ -140,18 +144,19 @@ func NewWSServerFromInfra(c *conf.Server, infra *event.Infra, canceller RunCance
 		monitor = infra.SessionBus
 	}
 	return &WSServer{
-		conns:       make(map[string][]*wsConn),
-		eventBus:    infra.SessionBus,
-		monitorBus:  monitor,
-		eventBuffer: infra.Buffer,
-		canceller:   canceller,
-		sender:      sender,
-		turnGateway: turnGateway,
-		serverConf:  c,
+		conns:                 make(map[string][]*wsConn),
+		eventBus:              infra.SessionBus,
+		monitorBus:            monitor,
+		eventBuffer:           infra.Buffer,
+		canceller:             canceller,
+		sender:                sender,
+		turnGateway:           turnGateway,
+		serverConf:            c,
+		maxSessionConns:       envInt("WS_MAX_SESSION_CONNS", defaultMaxSessionConns),
+		maxGlobalMonitorConns: envInt("WS_MAX_GLOBAL_MONITOR_CONNS", defaultMaxGlobalMonitorConns),
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool {
 				o := strings.TrimSpace(r.Header.Get("Origin"))
-				// Browsers may omit Origin for same-site WS; dev tools / proxies too.
 				if o == "" {
 					return true
 				}
@@ -159,6 +164,15 @@ func NewWSServerFromInfra(c *conf.Server, infra *event.Infra, canceller RunCance
 			},
 		},
 	}
+}
+
+func envInt(key string, fallback int) int {
+	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return n
+		}
+	}
+	return fallback
 }
 
 func (s *WSServer) Start(ctx context.Context) error {
@@ -252,7 +266,7 @@ func (s *WSServer) handleWS(w http.ResponseWriter, r *http.Request) {
 		s.mu.RLock()
 		globalConns := s.countGlobalMonitorConns()
 		s.mu.RUnlock()
-		if globalConns >= maxGlobalMonitorConns {
+		if globalConns >= s.maxGlobalMonitorConns {
 			http.Error(w, "too many global monitor connections", http.StatusTooManyRequests)
 			return
 		}
@@ -260,7 +274,7 @@ func (s *WSServer) handleWS(w http.ResponseWriter, r *http.Request) {
 		s.mu.RLock()
 		existing := len(s.conns[sessionID])
 		s.mu.RUnlock()
-		if existing >= maxSessionConns {
+		if existing >= s.maxSessionConns {
 			http.Error(w, "too many connections for this session", http.StatusTooManyRequests)
 			return
 		}

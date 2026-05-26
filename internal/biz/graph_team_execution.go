@@ -38,13 +38,19 @@ func (uc *GraphUsecase) RegisterTeamGraphExecution(ctx context.Context, execID, 
 	if uc.teamBuildConfigs == nil {
 		uc.teamBuildConfigs = make(map[string]GraphBuildConfig)
 	}
+	uc.mu.Unlock()
+
+	if uc.runRepo != nil {
+		if err := uc.runRepo.SaveRun(ctx, exec); err != nil {
+			return err
+		}
+	}
+
+	uc.mu.Lock()
 	uc.teamBuildConfigs[execID] = cfg
 	uc.executions[execID] = exec
 	uc.mu.Unlock()
-	if uc.runRepo == nil {
-		return nil
-	}
-	return uc.runRepo.SaveRun(ctx, exec)
+	return nil
 }
 
 // MarkTeamGraphInterrupt records HITL/checkpoint pause for a team graph execution.

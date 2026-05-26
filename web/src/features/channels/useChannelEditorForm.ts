@@ -34,6 +34,7 @@ import { isImPreviewFormKey } from "./channelImPreviewDefaults";
 import { channelWebhookURL } from "../../components/channels/channelUi";
 import { buildChannelWebhookURL, isLocalhostOrigin } from "./publicWebhookOrigin";
 import { createChannel, testChannel, updateChannel } from "./api";
+import { useAgentModelValidation } from "../agents/useAgentModelValidation";
 import type { ChannelCatalogItem, ChannelConfig, ChannelCredential, ChannelCredentialInput, ChannelMetadata, ChannelRow } from "./types";
 
 type EditorProps = {
@@ -77,6 +78,18 @@ export function useChannelEditorForm(props: EditorProps, modelOpen: Ref<boolean>
   const form = reactive({ key: "", name: "", description: "", enabled: true });
 
   const selectedCatalog = computed(() => props.catalog.find((item) => item.type === selectedType.value) ?? null);
+
+  const selectedRoutingAgent = computed(() =>
+    routingAgents.value.find((a) => a.id === defaultAgentId.value) ?? null,
+  );
+  const {
+    checking: routingAgentModelChecking,
+    ok: routingAgentModelOk,
+    message: routingAgentModelMessage,
+  } = useAgentModelValidation(
+    () => selectedRoutingAgent.value?.provider ?? "",
+    () => selectedRoutingAgent.value?.model ?? "",
+  );
   const platformSections = computed(() => buildPlatformSections(selectedType.value, selectedCatalog.value));
   const credentialKeys = computed(() => selectedCatalog.value?.credential_schema?.required ?? []);
   const configError = computed(() => jsonError(configExtraText.value));
@@ -530,6 +543,7 @@ export function useChannelEditorForm(props: EditorProps, modelOpen: Ref<boolean>
     selectedCatalog, platformSections, credentialKeys,
     configError, metadataError, canSave, webhookPreview, webhookIsLocalhost, iconPreviewMetadata,
     routingTargetType, defaultAgentId, defaultTeamId, dmScope, routingRules, routingAgents, routingTeams, routingOptionsLoading,
+    selectedRoutingAgent, routingAgentModelChecking, routingAgentModelOk, routingAgentModelMessage,
     selectedLongTaskPreset, longTaskPresetOptions, applyLongTaskPreset,
     visibleSectionFields, fieldKind, readField, writeField, readFieldBool, writeFieldBool, fieldStatus,
     save, saveAndTest, copyWebhookPreview

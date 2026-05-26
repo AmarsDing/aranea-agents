@@ -49,17 +49,7 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) 
 		}
 	}
 	sys := BuildSystemPrompt(ag, files, ag.SystemPromptMode)
-	promptDeps := Deps{
-		Agents:  deps.Agents,
-		AgentUC: deps.AgentUC,
-	}
-	if cue := RuntimeCapabilityCue(ctx, promptDeps, ag); cue != "" {
-		sys = sys + "\n\n" + cue
-	}
-	if l4 := L4MemoryCue(ctx, deps.MemoryAdmin, ag); l4 != "" {
-		sys = sys + "\n\n" + l4
-	}
-
+	// RuntimeCapabilityCue is injected per LLM call via BeforeModel (runtime_cue_inject.go).
 	opts := []trpcllmagent.Option{
 		trpcllmagent.WithModel(m),
 	}
@@ -85,7 +75,7 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) 
 	}
 	opts = append(opts,
 		trpcllmagent.WithInstruction(sys),
-		trpcllmagent.WithDescription(strings.TrimSpace(ag.DisplayName)),
+		trpcllmagent.WithDescription(IdentityDescriptionForAgent(ag, files)),
 		trpcllmagent.WithChannelBufferSize(256),
 		trpcllmagent.WithGenerationConfig(trpcmodel.GenerationConfig{Stream: true}),
 	)
@@ -108,9 +98,10 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) 
 		if exec != nil {
 			opts = append(opts, trpcllmagent.WithCodeExecutor(exec))
 		}
+		skillProfile, dirHints := skillOptionsForPromptMode(ag.SystemPromptMode)
 		opts = append(opts,
-			trpcllmagent.WithSkillToolProfile(trpcllmagent.SkillToolProfileFull),
-			trpcllmagent.WithSkillsDirectoryHints(true),
+			trpcllmagent.WithSkillToolProfile(skillProfile),
+			trpcllmagent.WithSkillsDirectoryHints(dirHints),
 		)
 	}
 
@@ -128,7 +119,7 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) 
 	// EP-RT-05: Memory tools are only injected when both the agent setting is on
 	// AND the runner will have a MemoryService to back them.  When HasMemory is
 	// false but MemoryEnabled is true, we log a warning so operators can act.
-	if ag.Settings != nil && ag.Settings.MemoryEnabled {
+	if biz.ResolveMemoryRuntimePolicy(ag.Settings).MasterEnabled {
 		if deps.HasMemory {
 			if memTools := memorytool.DefaultTools(); len(memTools) > 0 {
 				opts = append(opts, trpcllmagent.WithTools(memTools))
@@ -230,13 +221,21 @@ func buildTRPCRuntimeOptions(s *biz.AgentRuntimeSettings, skipRuntimeModelSelect
 		if s.L0SummaryThreshold > 0 {
 			opts = append(opts, trpcllmagent.WithContextCompactionThresholdRatio(s.L0SummaryThreshold))
 		}
-		if s.L0SummaryKeepTurns > 0 {
-			opts = append(opts, trpcllmagent.WithContextCompactionKeepRecentRequests(s.L0SummaryKeepTurns))
+		keepRecent := s.L0SummaryKeepTurns
+		if keepRecent <= 0 && s.L0RecentWindowTurns > 0 {
+			keepRecent = s.L0RecentWindowTurns
+		}
+		if keepRecent > 0 {
+			opts = append(opts, trpcllmagent.WithContextCompactionKeepRecentRequests(keepRecent))
 		}
 	}
 
 	if s.SessionSummaryEnabled {
 		opts = append(opts, trpcllmagent.WithAddSessionSummary(true))
+	}
+
+	if s.MemoryEnabled && s.MemoryMaxResults > 0 {
+		opts = append(opts, trpcllmagent.WithPreloadMemory(s.MemoryMaxResults))
 	}
 
 	if s.SkillLoadMode != "" && s.SkillLoadMode != "auto" {

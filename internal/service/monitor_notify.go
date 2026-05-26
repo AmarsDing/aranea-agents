@@ -97,7 +97,19 @@ func (n *MonitorAlertNotifier) publishNotifyEvent(ctx context.Context, rule biz.
 	n.bus.Publish(ctx, env)
 }
 
+var alertWebhookClient = &http.Client{
+	Timeout: 10 * time.Second,
+	Transport: &http.Transport{
+		MaxIdleConns:        10,
+		MaxIdleConnsPerHost: 5,
+		IdleConnTimeout:     30 * time.Second,
+	},
+}
+
 func postAlertWebhook(url string, payload map[string]any) error {
+	if !strings.HasPrefix(url, "https://") && !strings.HasPrefix(url, "http://") {
+		return fmt.Errorf("postAlertWebhook: invalid URL scheme, must be http:// or https://: %q", url)
+	}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return err
@@ -109,7 +121,7 @@ func postAlertWebhook(url string, payload map[string]any) error {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := alertWebhookClient.Do(req)
 	if err != nil {
 		return err
 	}

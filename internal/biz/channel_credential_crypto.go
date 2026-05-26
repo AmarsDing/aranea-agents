@@ -17,14 +17,14 @@ func EncryptChannelSecretRef(ctx context.Context, plain string) (string, error) 
 	}
 	key, _ := credentialAESKey(ctx)
 	if len(key) != 32 {
-		return "", errors.BadRequest("CHANNEL", credentialKeyRequiredMsg)
+		return "", errors.InternalServer("CHANNEL", credentialKeyRequiredMsg)
 	}
 	enc, err := encryptCredential(ctx, plain)
 	if err != nil {
 		return "", err
 	}
 	if enc == "" {
-		return "", errors.BadRequest("CHANNEL", credentialKeyRequiredMsg)
+		return "", errors.InternalServer("CHANNEL", credentialKeyRequiredMsg)
 	}
 	return channelSecretRefPrefix + enc, nil
 }

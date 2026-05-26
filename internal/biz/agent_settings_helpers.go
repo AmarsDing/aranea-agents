@@ -286,6 +286,71 @@ func configJSONFromSettings(settings AgentRuntimeSettings, files []AgentPromptFi
 			"max_results":      settings.MemoryMaxResults,
 			"min_score":        settings.MemoryMinScore,
 		},
+		"memoryL0": map[string]any{
+			"recent_window_turns":  settings.L0RecentWindowTurns,
+			"recent_window_tokens": settings.L0RecentWindowTokens,
+			"summary_threshold":    settings.L0SummaryThreshold,
+			"summary_keep_turns":   settings.L0SummaryKeepTurns,
+			"compress_provider":    settings.L0CompressProvider,
+			"compress_model":       settings.L0CompressModel,
+			"truncate_strategy":    settings.L0TruncateStrategy,
+			"inject_l1":            settings.L0InjectL1,
+			"inject_l3":            settings.L0InjectL3,
+			"inject_l4":            settings.L0InjectL4,
+			"l3_max_chunks":        settings.L0L3MaxChunks,
+			"l4_max_paths":         settings.L0L4MaxPaths,
+			"snapshot_mode":        settings.L0SnapshotMode,
+		},
+		"memoryWorker": map[string]any{
+			"provider": settings.MemoryWorkerProvider,
+			"model":    settings.MemoryWorkerModel,
+		},
+		"memoryL1": map[string]any{
+			"enabled":                 settings.L1Enabled,
+			"budget_tokens":           settings.L1BudgetTokens,
+			"field_max_tokens":        settings.L1FieldMaxTokens,
+			"history_keep_revisions":  settings.L1HistoryKeepRevisions,
+			"default_schema_id":       settings.L1DefaultSchemaID,
+			"archive_on_idle_minutes": settings.L1ArchiveOnIdleMinutes,
+		},
+		"memoryL2": map[string]any{
+			"episode_enabled":        settings.L2EpisodeEnabled,
+			"episode_min_importance": settings.L2EpisodeMinImportance,
+			"index_enabled":          settings.L2IndexEnabled,
+			"index_embedding_model":  settings.L2IndexEmbeddingModel,
+			"recall_enabled":         settings.L2RecallEnabled,
+			"recall_max":             settings.L2RecallMax,
+			"retention_days":         settings.L2RetentionDays,
+			"archive_after_days":     settings.L2ArchiveAfterDays,
+		},
+		"memoryL3": map[string]any{
+			"enabled":              settings.L3Enabled,
+			"recall_top_k":         settings.L3RecallTopK,
+			"recall_min_score":     settings.L3RecallMinScore,
+			"recall_scopes":        jsonList(settings.L3RecallScopesJSON),
+			"embedding_model":      settings.L3EmbeddingModel,
+			"decay_interval_hours": settings.L3DecayIntervalHours,
+			"archive_threshold":    settings.L3ArchiveThreshold,
+			"max_per_recall_chars": settings.L3MaxPerRecallChars,
+		},
+		"memoryL4": map[string]any{
+			"enabled":                settings.L4Enabled,
+			"graph_inject_neighbors": settings.L4GraphInjectNeighbors,
+			"graph_max_neighbors":    settings.L4GraphMaxNeighbors,
+			"graph_max_hops":         settings.L4GraphMaxHops,
+			"identity_inject":        settings.L4IdentityInject,
+			"strategy_inject":        settings.L4StrategyInject,
+		},
+		"evolutionSettings": map[string]any{
+			"enabled":                    settings.EvoEnabled,
+			"auto_apply":                 settings.EvoAutoApply,
+			"min_episodes":               settings.EvoMinEpisodes,
+			"min_negative_feedback":      settings.EvoMinNegativeFeedback,
+			"throttle_hours":             settings.EvoThrottleHours,
+			"proposal_ttl_days":          settings.EvoProposalTTLDays,
+			"persona_max_chars":          settings.EvoPersonaMaxChars,
+			"system_prompt_max_appends":  settings.EvoSystemPromptMaxAppends,
+		},
 		"heartbeat": map[string]any{
 			"enabled":          settings.HeartbeatEnabled,
 			"interval_minutes": settings.HeartbeatIntervalMinutes,
@@ -357,17 +422,29 @@ func composePromptPreview(agent Agent, mode string) string {
 }
 
 func FilesForMode(files []AgentPromptFile, mode string) []AgentPromptFile {
+	mode = strings.ToLower(strings.TrimSpace(mode))
 	if mode == "" || mode == "complete" {
 		return files
 	}
 	if mode == "none" {
 		return nil
 	}
-	allowed := map[string]bool{"AGENTS_CORE.md": true, "IDENTITY.md": true, "RULE.md": true}
-	if mode == "task" {
+	allowed := map[string]bool{}
+	switch mode {
+	case "minimized":
+		allowed["AGENTS_CORE.md"] = true
+		allowed["RULE.md"] = true
+	case "task":
+		allowed["AGENTS_CORE.md"] = true
+		allowed["IDENTITY.md"] = true
+		allowed["RULE.md"] = true
 		allowed["AGENTS_TASK.md"] = true
 		allowed["CAPABILITIES.md"] = true
 		allowed["HEARTBEAT.md"] = true
+	default:
+		// Unknown modes fall back to minimized core rules to avoid leaking full prompt files.
+		allowed["AGENTS_CORE.md"] = true
+		allowed["RULE.md"] = true
 	}
 	result := []AgentPromptFile{}
 	for _, file := range files {

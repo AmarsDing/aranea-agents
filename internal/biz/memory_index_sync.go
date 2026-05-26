@@ -3,8 +3,9 @@ package biz
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
+
+	"aranea-agents/pkg/jsonutil"
 )
 
 // MemoryFactIndexSyncer projects authoritative memory_facts rows into optional pgvector indexes.
@@ -55,30 +56,14 @@ func (uc *MemoryUsecase) SyncFactIndexFromRow(ctx context.Context, raw []byte) e
 	if err := json.Unmarshal(raw, &m); err != nil {
 		return err
 	}
-	agentID := strings.TrimSpace(jsonStr(m, "agent_id"))
+	agentID := jsonutil.IfaceStr(m, "agent_id")
 	if agentID == "" {
-		agentID = strings.TrimSpace(jsonStr(m, "scope_id"))
+		agentID = jsonutil.IfaceStr(m, "scope_id")
 	}
-	return uc.SyncFactIndex(ctx, agentID, jsonStr(m, "user_id"), jsonStr(m, "id"), jsonStr(m, "statement"))
+	return uc.SyncFactIndex(ctx, agentID, jsonutil.IfaceStr(m, "user_id"), jsonutil.IfaceStr(m, "id"), jsonutil.IfaceStr(m, "statement"))
 }
 
 // EpisodeIndexSyncer projects episode summaries into memory_episodes.embedding_blob.
 type EpisodeIndexSyncer interface {
 	SyncEpisodeIndex(ctx context.Context, agentID, episodeID, title, summary string) error
-}
-
-func jsonStr(m map[string]any, key string) string {
-	if m == nil {
-		return ""
-	}
-	v, ok := m[key]
-	if !ok || v == nil {
-		return ""
-	}
-	switch t := v.(type) {
-	case string:
-		return t
-	default:
-		return strings.TrimSpace(fmt.Sprint(t))
-	}
 }

@@ -318,7 +318,11 @@ func (c ChannelLongTaskConfig) ShouldRunAsync(text string) bool {
 	}
 }
 
+const suggestDurableMinRuneLen = 4
+
 // SuggestDurableRun reports whether inbound text looks like a long task (UX hint only, CC-R-05).
+// Keyword matches only trigger when the message exceeds suggestDurableMinRuneLen runes,
+// reducing false positives on very short messages like "分析".
 func (c ChannelLongTaskConfig) SuggestDurableRun(text string) bool {
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -326,6 +330,9 @@ func (c ChannelLongTaskConfig) SuggestDurableRun(text string) bool {
 	}
 	if strings.HasPrefix(strings.ToLower(text), "/async") || strings.HasPrefix(strings.ToLower(text), "/background") {
 		return true
+	}
+	if len([]rune(text)) <= suggestDurableMinRuneLen {
+		return false
 	}
 	return matchesChannelAsyncKeyword(text, c.asyncKeywords())
 }

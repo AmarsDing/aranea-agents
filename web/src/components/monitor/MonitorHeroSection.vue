@@ -1,17 +1,14 @@
 <template>
-  <section class="app-page-hero app-page-hero--feature">
-    <div>
-      <div class="app-page-kicker">{{ kicker }}</div>
-      <h1 class="app-page-title">{{ title }}</h1>
-      <p v-if="subtitle" class="app-page-subtitle">{{ subtitle }}</p>
-    </div>
-    <div v-if="$slots.actions" class="app-actions-bar row q-gutter-sm items-center">
+  <AppPageHero :kicker="kicker" :title="title" :subtitle="subtitle" feature>
+    <template v-if="$slots.actions" #actions>
       <slot name="actions" />
-    </div>
-  </section>
+    </template>
+  </AppPageHero>
 </template>
 
 <script setup lang="ts">
+import AppPageHero from "../layout/AppPageHero.vue";
+
 defineProps<{
   kicker: string;
   title: string;

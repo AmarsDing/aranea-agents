@@ -42,18 +42,29 @@
             <q-btn flat rounded icon="refresh" label="刷新" :disable="!selectedSessionId" :loading="loadingSnapshots" @click="$emit('refreshMemory')" />
           </div>
         </q-card-section>
-        <q-table
-          flat
+        <AppRegistryTable
+          :shell="false"
           row-key="id"
           :rows="snapshotRows"
           :columns="snapshotColumns"
           :loading="loadingSnapshots"
-          :pagination="{ rowsPerPage: 6 }"
+          hide-pagination
+          :pagination="{ rowsPerPage: 0 }"
         >
+          <template #body-cell-model="props">
+            <q-td :props="props">
+              <div class="app-registry-cell-primary ellipsis">{{ props.row.provider || "-" }} / {{ props.row.model || "-" }}</div>
+            </q-td>
+          </template>
           <template #body-cell-ratio="props">
-            <q-td :props="props" style="min-width: 130px">
+            <q-td :props="props">
               <q-linear-progress rounded size="9px" :value="bounded(props.row.used_ratio)" :color="contextRatioColor(props.row.used_ratio)" />
               <div class="text-caption q-mt-xs">{{ formatPercent(props.row.used_ratio) }}</div>
+            </q-td>
+          </template>
+          <template #body-cell-strategy="props">
+            <q-td :props="props">
+              <span class="app-registry-cell-sub ellipsis">{{ props.row.truncate_strategy || "—" }}</span>
             </q-td>
           </template>
           <template #body-cell-segments="props">
@@ -64,7 +75,9 @@
           </template>
           <template #body-cell-actions="props">
             <q-td :props="props">
-              <q-btn flat dense round icon="visibility" color="primary" aria-label="查看快照段落" @click="$emit('openSnapshot', props.row)" />
+              <div class="app-registry-cell-actions">
+                <q-btn flat dense round icon="visibility" color="primary" aria-label="查看快照段落" @click="$emit('openSnapshot', props.row)" />
+              </div>
             </q-td>
           </template>
           <template #no-data>
@@ -73,7 +86,7 @@
               <div class="q-mt-sm">暂无 L0 快照。开启快照或触发 warning 后会显示。</div>
             </div>
           </template>
-        </q-table>
+        </AppRegistryTable>
       </q-card>
 
       <q-card flat bordered class="memory-card">
@@ -104,6 +117,7 @@
 
 <script setup lang="ts">
 import type { QTableProps } from "quasar";
+import AppRegistryTable from "../../components/layout/AppRegistryTable.vue";
 import type { Session } from "../../features/session/types";
 import type { L0AssemblySegment, L0AssemblySnapshot, L1Task } from "../../features/memory/types";
 

@@ -3,6 +3,7 @@ import { storeToRefs } from "pinia";
 import { useQuasar } from "quasar";
 import type { A2AAgentCard, A2AInvokeResult, A2ARuntimeConfig, RegisterRemoteAgentInput, DiscoverRemoteInput } from "./types";
 import { useA2AStore } from "../../stores/a2a";
+import { registryColWidth } from "../ui/registryTableColumns";
 import { getA2AConfig } from "./api";
 
 export function useA2APage() {
@@ -32,29 +33,28 @@ export function useA2APage() {
   });
 
   const cardColumns = [
-    { name: "agent_id", label: "Agent ID", field: "agent_id", align: "left" as const },
-    { name: "display_name", label: "名称", field: "display_name", align: "left" as const },
-    { name: "workspace", label: "Workspace", field: "workspace", align: "left" as const },
-    { name: "enabled", label: "状态", field: "enabled", align: "left" as const },
-    { name: "capabilities", label: "能力", field: "capabilities", align: "left" as const }
+    { name: "agent_id", label: "Agent ID", field: "agent_id", align: "left" as const, ...registryColWidth("10%") },
+    { name: "display_name", label: "名称", field: "display_name", align: "left" as const, ...registryColWidth("14%") },
+    { name: "workspace", label: "Workspace", field: "workspace", align: "left" as const, ...registryColWidth("72px") },
+    { name: "enabled", label: "状态", field: "enabled", align: "left" as const, ...registryColWidth("9%") },
+    { name: "capabilities", label: "能力", field: "capabilities", align: "left" as const, ...registryColWidth("11%") }
   ];
 
   const remoteColumns = [
-    { name: "display_name", label: "名称", field: "display_name", align: "left" as const },
-    { name: "remote_url", label: "远程 URL", field: "remote_url", align: "left" as const },
-    { name: "workspace", label: "Workspace", field: "workspace", align: "left" as const },
-    { name: "auth_type", label: "鉴权", field: "auth_type", align: "left" as const },
-    { name: "enabled", label: "状态", field: "enabled", align: "left" as const },
-    { name: "actions", label: "", field: "actions", align: "right" as const }
+    { name: "display_name", label: "名称", field: "display_name", align: "left" as const, ...registryColWidth("18%") },
+    { name: "workspace", label: "Workspace", field: "workspace", align: "left" as const, ...registryColWidth("72px") },
+    { name: "auth_type", label: "鉴权", field: "auth_type", align: "left" as const, ...registryColWidth("72px") },
+    { name: "enabled", label: "状态", field: "enabled", align: "left" as const, ...registryColWidth("9%") },
+    { name: "actions", label: "", field: "actions", align: "right" as const, ...registryColWidth("108px") }
   ];
 
   const auditColumns = [
-    { name: "created_at", label: "时间", field: "created_at", align: "left" as const },
-    { name: "caller_agent_id", label: "调用方", field: "caller_agent_id", align: "left" as const },
-    { name: "callee_agent_id", label: "被调方", field: "callee_agent_id", align: "left" as const },
-    { name: "capability", label: "能力", field: "capability", align: "left" as const },
-    { name: "status", label: "状态", field: "status", align: "left" as const },
-    { name: "duration_ms", label: "耗时(ms)", field: "duration_ms", align: "right" as const }
+    { name: "created_at", label: "时间", field: "created_at", align: "left" as const, ...registryColWidth("11%") },
+    { name: "caller_agent_id", label: "调用方", field: "caller_agent_id", align: "left" as const, ...registryColWidth("10%") },
+    { name: "callee_agent_id", label: "被调方", field: "callee_agent_id", align: "left" as const, ...registryColWidth("10%") },
+    { name: "capability", label: "能力", field: "capability", align: "left" as const, ...registryColWidth("11%") },
+    { name: "status", label: "状态", field: "status", align: "left" as const, ...registryColWidth("9%") },
+    { name: "duration_ms", label: "耗时(ms)", field: "duration_ms", align: "right" as const, ...registryColWidth("72px") }
   ];
 
   function auditStatusColor(status: string) {

@@ -1,13 +1,12 @@
 <template>
-  <q-page class="app-page-cream system-settings-page">
+  <q-page class="app-standard-page system-settings-page">
     <div class="app-page-shell">
-      <section class="app-page-hero q-mb-md">
-        <div>
-          <div class="app-page-kicker">{{ t("settingsPage.kicker", "System") }}</div>
-          <h1 class="app-page-title">{{ t("settingsPage.title") }}</h1>
-          <p class="app-page-subtitle">{{ t("settingsPage.subtitle", "全局路径、A2A、配额与嵌入模型配置。") }}</p>
-        </div>
-      </section>
+      <AppPageHero
+        class="q-mb-md"
+        :kicker="t('settingsPage.kicker', 'System')"
+        :title="t('settingsPage.title')"
+        :subtitle="t('settingsPage.subtitle', '全局路径、A2A、配额与嵌入模型配置。')"
+      />
 
       <q-card flat class="app-settings-shell">
         <q-tabs v-model="settingsTab" dense align="left" class="text-primary q-px-md q-pt-sm" active-color="primary" indicator-color="primary">
@@ -165,6 +164,7 @@ import {
 } from "../features/system-settings/web-research";
 import { DEFAULT_KNOWLEDGE_EMBED_FORM } from "../features/knowledge/embedder-constants";
 import KnowledgeEmbedderFields from "../components/knowledge/KnowledgeEmbedderFields.vue";
+import AppPageHero from "../components/layout/AppPageHero.vue";
 import WebResearchFields from "../components/settings/WebResearchFields.vue";
 import SystemSettingsCatalogTab from "./SystemSettingsCatalogTab.vue";
 const { t } = useI18n();

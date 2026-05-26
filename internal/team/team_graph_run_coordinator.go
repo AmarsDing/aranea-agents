@@ -3,6 +3,8 @@ package team
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -14,6 +16,10 @@ import (
 )
 
 const teamRunStatusWaitingHuman = "waiting_human"
+
+const defaultGraphWatchTimeout = 30 * time.Minute
+
+const sessionMaxAge = 2 * time.Hour
 
 // TeamGraphExecutionBackend indexes and resumes team-linked graph executions.
 type TeamGraphExecutionBackend interface {
@@ -30,10 +36,11 @@ type TeamGraphTaskResumeHandler interface {
 
 // TeamGraphRunCoordinator unifies team graph execution register, HITL defer, and task resume (M53 P1).
 type TeamGraphRunCoordinator struct {
-	graphs   TeamGraphExecutionBackend
-	teams    biz.TeamRepository
-	bus      event.Bus
-	finisher TeamGraphRunFinisher
+	graphs        TeamGraphExecutionBackend
+	teams         biz.TeamRepository
+	bus           event.Bus
+	finisher      TeamGraphRunFinisher
+	watchTimeout  time.Duration
 
 	mu       sync.RWMutex
 	sessions map[string]*teamGraphRunSession
@@ -53,6 +60,7 @@ type teamGraphRunSession struct {
 	stepSortIndex  map[string]int
 	obsReg         biz.OrchestrationRegistry
 	obsStore       *biz.OrchestrationStatusStore
+	registeredAt   time.Time
 }
 
 type graphWatchMode int
@@ -64,10 +72,11 @@ const (
 
 func NewTeamGraphRunCoordinator(graphs TeamGraphExecutionBackend, teams biz.TeamRepository, bus event.Bus) *TeamGraphRunCoordinator {
 	return &TeamGraphRunCoordinator{
-		graphs:   graphs,
-		teams:    teams,
-		bus:      bus,
-		sessions: make(map[string]*teamGraphRunSession),
+		graphs:       graphs,
+		teams:        teams,
+		bus:          bus,
+		sessions:     make(map[string]*teamGraphRunSession),
+		watchTimeout: defaultGraphWatchTimeout,
 	}
 }
 
@@ -85,6 +94,7 @@ func (c *TeamGraphRunCoordinator) RegisterTeamGraphExecution(ctx context.Context
 		sessionID:      strings.TrimSpace(sessionID),
 		execID:         execID,
 		stepDedup:      newGraphStepDedup(),
+		registeredAt:   time.Now(),
 	}
 	if c.teams != nil {
 		if run, err := c.teams.GetTeamRunByID(ctx, sess.teamRunID); err == nil {
@@ -137,6 +147,9 @@ func (c *TeamGraphRunCoordinator) DeferTeamRunSuccessIfHITL(ctx context.Context,
 	if exec.Status != teamRunStatusWaitingHuman {
 		return false, nil
 	}
+	if strings.TrimSpace(exec.InterruptNode) == "" {
+		return false, nil
+	}
 	run.Status = teamRunStatusWaitingHuman
 	if err := c.teams.UpdateTeamRun(ctx, *run); err != nil {
 		return false, err
@@ -168,7 +181,9 @@ func (c *TeamGraphRunCoordinator) HandleTeamGraphTaskCompleted(ctx context.Conte
 	}
 	if run.Status == teamRunStatusWaitingHuman {
 		run.Status = "running"
-		_ = c.teams.UpdateTeamRun(ctx, run)
+		if err := c.teams.UpdateTeamRun(ctx, run); err != nil {
+			slog.Warn("HandleTeamGraphTaskCompleted: UpdateTeamRun failed", "team_run_id", run.ID, "error", err)
+		}
 	}
 	c.startGraphWatch(ctx, sess, graphWatchStepsAndFinalize)
 	return true, nil
@@ -202,14 +217,18 @@ func (c *TeamGraphRunCoordinator) startGraphWatch(ctx context.Context, sess *tea
 			DropPolicy: event.DropNewest,
 		})
 		defer unsub()
-		deadline := time.After(30 * time.Minute)
+		watchTimeout := c.watchTimeout
+		if watchTimeout <= 0 {
+			watchTimeout = defaultGraphWatchTimeout
+		}
+		deadline := time.After(watchTimeout)
 		for {
 			select {
 			case <-watchCtx.Done():
 				return
 			case <-deadline:
 				if mode == graphWatchStepsAndFinalize {
-					c.finalizeTeamRun(watchCtx, sess, true, "graph resume watch timed out after 30m")
+					c.finalizeTeamRun(watchCtx, sess, true, fmt.Sprintf("graph resume watch timed out after %s", watchTimeout))
 				}
 				return
 			case env, ok := <-ch:
@@ -369,6 +388,26 @@ func (c *TeamGraphRunCoordinator) evictSession(execID string) {
 	c.mu.Lock()
 	delete(c.sessions, strings.TrimSpace(execID))
 	c.mu.Unlock()
+}
+
+// CleanupStaleSessions removes sessions older than sessionMaxAge (e.g. after process restart).
+func (c *TeamGraphRunCoordinator) CleanupStaleSessions() {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	now := time.Now()
+	for id, sess := range c.sessions {
+		if !sess.registeredAt.IsZero() && now.Sub(sess.registeredAt) > sessionMaxAge {
+			if sess.watchStop != nil {
+				sess.watchStop()
+				sess.watchStop = nil
+			}
+			delete(c.sessions, id)
+			slog.Warn("CleanupStaleSessions: evicted stale session", "exec_id", id, "age", now.Sub(sess.registeredAt))
+		}
+	}
 }
 
 func (c *TeamGraphRunCoordinator) session(execID string) *teamGraphRunSession {

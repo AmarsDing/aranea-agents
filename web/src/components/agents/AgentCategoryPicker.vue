@@ -1,7 +1,7 @@
 <template>
   <q-field
     :model-value="displayLabel"
-    class="agent-category-picker agent-dialog-control"
+    :class="['agent-category-field', controlClass]"
     dense
     outlined
     stack-label
@@ -12,17 +12,24 @@
   >
     <template #control>
       <div
-        class="agent-category-picker__hit row items-center full-width cursor-pointer"
+        class="agent-category-field__hit row items-center full-width cursor-pointer"
         :class="{ 'is-placeholder': !displayLabel }"
         @click="menuOpen = true"
       >
         <span class="col ellipsis">{{ displayLabel || placeholder }}</span>
-        <q-icon name="account_tree" size="18px" color="primary" />
+        <q-icon :name="icon" size="18px" color="primary" />
       </div>
     </template>
 
-    <q-menu v-model="menuOpen" anchor="bottom left" self="top left" fit :offset="[0, 6]" class="agent-category-picker-menu">
-      <q-card flat class="agent-category-picker-menu__card">
+    <q-menu
+      v-model="menuOpen"
+      anchor="bottom left"
+      self="top left"
+      fit
+      :offset="[0, 6]"
+      class="agent-category-field-menu"
+    >
+      <q-card flat class="agent-category-field-menu__card">
         <q-card-section class="q-pb-sm">
           <q-input
             v-model="menuKeyword"
@@ -37,7 +44,7 @@
           </q-input>
         </q-card-section>
         <q-separator />
-        <q-scroll-area class="agent-category-picker-menu__scroll">
+        <q-scroll-area class="agent-category-field-menu__scroll">
           <div class="q-pa-sm">
             <q-tree
               :nodes="menuNodes"
@@ -51,15 +58,21 @@
                 <div
                   class="app-category-tree-node row items-center no-wrap full-width"
                   :class="{
-                    'app-category-tree-node--selectable': prop.node.selectable,
-                    'app-category-tree-node--selected': modelValue === prop.node.id
+                    'app-category-tree-node--selectable': prop.node.selectable || selectableLevel === 'any',
+                    'app-category-tree-node--selected': modelValue === prop.node.id,
+                    'cursor-pointer': prop.node.selectable || selectableLevel === 'any'
                   }"
                   @click.stop="onPick(prop.node)"
                 >
                   <q-icon :name="prop.node.icon" color="primary" size="16px" class="q-mr-sm" />
                   <div class="col min-width-0">
                     <div class="ellipsis">{{ prop.node.label }}</div>
-                    <div v-if="prop.node.caption" class="app-category-tree-node__caption ellipsis">{{ prop.node.caption }}</div>
+                    <div v-if="captionMode === 'level'" class="app-category-tree-node__caption">
+                      {{ levelLabel(prop.node.level) }}
+                    </div>
+                    <div v-else-if="prop.node.caption" class="app-category-tree-node__caption ellipsis">
+                      {{ prop.node.caption }}
+                    </div>
                   </div>
                   <q-icon v-if="modelValue === prop.node.id" name="check_circle" color="primary" size="18px" />
                 </div>
@@ -74,16 +87,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { toRef } from "vue";
 import type { PlatformResourceTreeNode } from "../../features/platform/types";
-import {
-  collectExpandedIdsForFilter,
-  filterCategoryTree,
-  findCategoryPath,
-  formatCategoryPath,
-  toQTreeNodes,
-  type CategoryQTreeNode
-} from "../../features/platform/categoryTreeUtils";
+import { useCategoryTreeField } from "../../features/platform/useCategoryTreeField";
+import type { CategoryLevel } from "../../features/platform/categoryTreeUtils";
 
 const props = withDefaults(
   defineProps<{
@@ -93,12 +100,21 @@ const props = withDefaults(
     placeholder?: string;
     disable?: boolean;
     clearable?: boolean;
+    /** position：创建 Agent 绑定职位；any：列表按行业/部门/职位筛选 */
+    selectableLevel?: CategoryLevel | "any";
+    captionMode?: "level" | "description";
+    icon?: string;
+    controlClass?: string;
   }>(),
   {
     label: "业务分类",
     placeholder: "选择行业 / 部门 / 职位",
     disable: false,
-    clearable: true
+    clearable: true,
+    selectableLevel: "position",
+    captionMode: "description",
+    icon: "account_tree",
+    controlClass: "agent-dialog-control"
   }
 );
 
@@ -106,44 +122,20 @@ const emit = defineEmits<{
   "update:modelValue": [value: string | null];
 }>();
 
-const menuOpen = ref(false);
-const menuKeyword = ref("");
-const expanded = ref<string[]>([]);
-
-const filteredTree = computed(() => filterCategoryTree(props.tree.filter((node) => node.level === "industry"), menuKeyword.value));
-
-const menuNodes = computed(() => toQTreeNodes(filteredTree.value, { selectableLevel: "position", enabledOnly: true }));
-
-const displayLabel = computed(() => {
-  if (!props.modelValue) return "";
-  const path = findCategoryPath(props.tree, props.modelValue);
-  return path.length ? formatCategoryPath(path) : "";
+const {
+  menuOpen,
+  menuKeyword,
+  expanded,
+  menuNodes,
+  displayLabel,
+  levelLabel,
+  onPick,
+  clearSelection,
+  onExpandedUpdate
+} = useCategoryTreeField({
+  modelValue: toRef(props, "modelValue"),
+  tree: toRef(props, "tree"),
+  selectableLevel: toRef(props, "selectableLevel"),
+  onUpdate: (value) => emit("update:modelValue", value)
 });
-
-watch([filteredTree, menuKeyword], () => {
-  const fromSearch = collectExpandedIdsForFilter(filteredTree.value, menuKeyword.value);
-  expanded.value = fromSearch.length ? fromSearch : filteredTree.value.map((node) => node.id);
-});
-
-watch(menuOpen, (open) => {
-  if (!open) {
-    menuKeyword.value = "";
-    return;
-  }
-  expanded.value = filteredTree.value.map((node) => node.id);
-});
-
-function onPick(node: CategoryQTreeNode) {
-  if (!node.selectable) return;
-  emit("update:modelValue", node.id);
-  menuOpen.value = false;
-}
-
-function clearSelection() {
-  emit("update:modelValue", null);
-}
-
-function onExpandedUpdate(value: readonly string[]) {
-  expanded.value = [...value];
-}
 </script>

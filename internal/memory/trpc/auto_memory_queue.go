@@ -1,8 +1,10 @@
 package trpcmem
 
 import (
+	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -24,9 +26,11 @@ type AutoMemoryQueue interface {
 }
 
 type MemoryJobQueue struct {
-	ch       chan AutoMemoryJobRequest
-	recent   sync.Map
-	debounce time.Duration
+	ch          chan AutoMemoryJobRequest
+	recent      sync.Map
+	debounce    time.Duration
+	dropped     atomic.Int64
+	debounced   atomic.Int64
 }
 
 var _ AutoMemoryQueue = (*MemoryJobQueue)(nil)
@@ -54,6 +58,7 @@ func (q *MemoryJobQueue) Enqueue(r AutoMemoryJobRequest) {
 	if sid := strings.TrimSpace(r.SessionID); sid != "" {
 		if t, ok := q.recent.Load(sid); ok {
 			if time.Since(t.(time.Time)) < q.debounce {
+				q.debounced.Add(1)
 				return
 			}
 		}
@@ -62,6 +67,10 @@ func (q *MemoryJobQueue) Enqueue(r AutoMemoryJobRequest) {
 	select {
 	case q.ch <- r:
 	default:
+		n := q.dropped.Add(1)
+		if n%100 == 1 {
+			slog.Warn("auto-memory queue full, job dropped", "dropped", n, "session_id", r.SessionID)
+		}
 	}
 }
 
@@ -70,6 +79,13 @@ func (q *MemoryJobQueue) Chan() <-chan AutoMemoryJobRequest {
 		return nil
 	}
 	return q.ch
+}
+
+func (q *MemoryJobQueue) Stats() (dropped, debounced int64) {
+	if q == nil {
+		return 0, 0
+	}
+	return q.dropped.Load(), q.debounced.Load()
 }
 
 // NewAutoMemoryEnqueuer adapts a wired queue to biz.AutoMemoryEnqueuer.

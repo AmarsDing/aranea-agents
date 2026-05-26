@@ -1,5 +1,5 @@
 <template>
-  <q-page class="app-page-cream app-registry-page">
+  <q-page class="app-standard-page app-registry-page">
     <SessionsPageHero :loading="loading" @refresh="loadRows" />
 
     <SessionsSummaryCards :cards="summaryCards" />

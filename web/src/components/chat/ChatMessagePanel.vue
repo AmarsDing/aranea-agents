@@ -6,37 +6,41 @@
       </template>
       {{ t("chat.wsReplaying", "正在同步历史事件…") }}
     </q-banner>
-    <q-card-section class="chat-message-header row items-center no-wrap q-px-md q-py-sm">
-      <div class="chat-message-header__pulse" aria-hidden="true">
-        <span class="chat-message-header__dot" />
-      </div>
-      <div class="col ellipsis">
-        <div class="chat-message-header__title ellipsis">{{ sessionTitle }}</div>
-        <div class="chat-message-header__subtitle text-caption ellipsis">
-          {{ t("chat.syncDiagnostic", {
-            count: props.messages.length,
-            rev: props.sessionRevision ?? 0,
-            ws: props.wsConnected ? "on" : "off",
-            ctx: Math.round(props.contextRatio * 100),
-          }) }}
-          <template v-if="props.wsReplaying"> · {{ t("chat.wsReplayingShort", "sync…") }}</template>
-        </div>
-        <ChatRunnerStatus
-          v-if="runStatus && runStatus !== 'idle' && runStatus !== 'completed' && runStatus !== 'cancelled' && runStatus !== 'failed'"
-          :status="runStatus"
-          :agent-name="runAgentName"
-          :started-at="runStartedAt"
-          :event-count="runEventCount"
-          @cancel="emit('stop')"
+    <q-card-section class="chat-message-header q-px-md q-py-sm">
+      <div class="chat-message-header__grid">
+        <ChatHeaderUsagePanel
+          class="chat-message-header__usage"
+          :context-ratio="contextRatio"
+          :context-status="contextStatus"
+          :usage-snapshot="usageSnapshot"
+          :is-dark="isDark"
         />
+        <ChatHeaderPromptBar
+          class="chat-message-header__prompt"
+          :full-text="headerUserPrompt"
+          :prompt-key="promptKey"
+          :session-title="sessionTitle"
+          :has-messages="props.messages.length > 0"
+        />
+        <div class="chat-message-header__actions row items-center justify-end no-wrap">
+          <ChatRunnerStatus
+            v-if="runStatus && runStatus !== 'idle' && runStatus !== 'completed' && runStatus !== 'cancelled' && runStatus !== 'failed'"
+            class="chat-message-header__runner q-mr-xs"
+            :status="runStatus"
+            :agent-name="runAgentName"
+            :started-at="runStartedAt"
+            :event-count="runEventCount"
+            @cancel="emit('stop')"
+          />
+          <q-btn flat round dense icon="bolt" aria-label="Session events" @click="emit('open-events')">
+            <q-tooltip>会话事件</q-tooltip>
+          </q-btn>
+        </div>
       </div>
-      <q-btn flat round dense icon="bolt" aria-label="Session events" @click="emit('open-events')">
-        <q-tooltip>会话事件</q-tooltip>
-      </q-btn>
     </q-card-section>
     <ChatTeamMemberStrip v-if="isTeamSession" :members="teamMemberLanes" />
     <q-separator class="cream-sep" />
-    <div :key="sessionTitle" class="chat-messages col column no-wrap" style="min-height: 0">
+    <div :key="sessionKey" class="chat-messages col column no-wrap" style="min-height: 0">
       <div
         v-if="!props.messages.length"
         ref="messagesScrollEl"
@@ -62,7 +66,7 @@
         :virtual-scroll-slice-ratio-before="2"
         :virtual-scroll-slice-ratio-after="2"
         v-slot="{ item, index }"
-        @scroll="onMessagesScroll"
+        @scroll="onMessagesScrollWrapped"
         @click="handleMessagesClick"
       >
         <TurnBlock
@@ -95,7 +99,7 @@
         v-else
         ref="messagesScrollEl"
         class="col relative-position chat-messages__viewport"
-        @scroll.passive="onMessagesScroll"
+        @scroll.passive="onMessagesScrollWrapped"
         @click="handleMessagesClick"
       >
         <template v-if="useTurnBlockMode">
@@ -169,6 +173,12 @@
       :await-kind="awaitKind"
       :await-tool-key="awaitToolKey"
       :show-enqueue="showEnqueue"
+      :session-id="sessionId"
+      :session-artifacts="sessionArtifacts"
+      :session-artifacts-loading="sessionArtifactsLoading"
+      :show-background-jobs="showBackgroundJobs"
+      :agent-id="agentId"
+      :jobs-refresh-nonce="jobsRefreshNonce"
       @update:model-value="emit('update:modelValue', $event)"
       @update:dialog-mode="emit('update:dialogMode', $event)"
       @update:model-provider="emit('update:modelProvider', $event)"
@@ -181,12 +191,15 @@
       @enqueue-message="emit('enqueue-message', $event)"
       @submit-await-reply="emit('submit-await-reply')"
       @submit-tool-confirm="emit('submit-tool-confirm', $event)"
+      @open-artifact="emit('open-artifact', $event)"
+      @focus-turn="emit('focus-turn', $event)"
+      @navigate="emit('navigate', $event)"
     />
   </q-card>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, toRef, watch } from "vue";
+import { computed, nextTick, onMounted, ref, toRef, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import type { QVirtualScroll } from "quasar";
 import ChatMessageRow from "./ChatMessageRow.vue";
@@ -195,6 +208,8 @@ import ChatRunnerStatus from "../../features/chat/components/ChatRunnerStatus.vu
 import ChatTeamMemberStrip, { type TeamMemberLane } from "./ChatTeamMemberStrip.vue";
 import ChatPendingQueue from "./ChatPendingQueue.vue";
 import ChatComposer from "./ChatComposer.vue";
+import ChatHeaderUsagePanel from "./ChatHeaderUsagePanel.vue";
+import ChatHeaderPromptBar from "./ChatHeaderPromptBar.vue";
 import type { RunStatusValue } from "../../features/chat/types";
 import { useChatMessageRow } from "../../features/chat/useChatMessageRow";
 import {
@@ -207,9 +222,11 @@ import {
 } from "../../features/chat/groupMessagesByTurn";
 import { useTurnBlockEnabled } from "../../features/chat/useTurnBlock";
 import { useChatMessageScroll, useChatCodeCopy } from "../../features/chat/composables/useChatMessageScroll";
+import { useChatScrollTitle } from "../../features/chat/useChatScrollTitle";
 import type { A2UIUserActionPayload } from "../../features/chat/a2uiUserAction";
 import type { Message, ReactToolLinkIndex } from "../../features/chat/types";
 import type { ComposerUsageSnapshot } from "../../features/chat/composerUsageMetrics";
+import type { ArtifactMeta } from "../../features/artifact/types";
 import type { ChatAttachment } from "./types";
 
 type Option = { label: string; value: string; caption?: string };
@@ -223,6 +240,7 @@ const props = defineProps<{
   modeOptions: Option[];
   providerOptions: Option[];
   sessionTitle: string;
+  sessionId?: string;
   contextRatio: number;
   contextStatus?: string;
   usageSnapshot?: ComposerUsageSnapshot | null;
@@ -248,6 +266,11 @@ const props = defineProps<{
   sessionRevision?: number | null;
   wsConnected?: boolean;
   focusTurnId?: string;
+  sessionArtifacts?: ArtifactMeta[];
+  sessionArtifactsLoading?: boolean;
+  showBackgroundJobs?: boolean;
+  agentId?: string;
+  jobsRefreshNonce?: number;
 }>();
 
 const emit = defineEmits<{
@@ -266,6 +289,9 @@ const emit = defineEmits<{
   "submit-await-reply": [];
   "submit-tool-confirm": [approved: boolean];
   "open-events": [];
+  "open-artifact": [id: string];
+  "focus-turn": [turnId: string];
+  navigate: [route: { name: string; params: Record<string, string> }];
   "focus-turn-cleared": [];
   "a2ui-user-action": [payload: A2UIUserActionPayload];
   feedback: [payload: { messageId: string; rating: "positive" | "negative" }];
@@ -315,8 +341,11 @@ const virtualRowSize = CHAT_VIRTUAL_ROW_ESTIMATE;
 const virtualScrollRef = ref<QVirtualScroll | null>(null);
 const messagesScrollEl = ref<HTMLElement | null>(null);
 
+const sessionKey = computed(() => props.sessionId?.trim() || props.sessionTitle);
+const sessionTitleRef = computed(() => props.sessionTitle);
+
 const { showScrollBtn, highlightedTurnId, onMessagesScroll, scrollToBottom, scrollToTurnId } = useChatMessageScroll({
-  sessionTitle: toRef(props, "sessionTitle"),
+  sessionKey,
   messages: messagesRef,
   useTurnBlockMode,
   turnBlocks,
@@ -325,6 +354,19 @@ const { showScrollBtn, highlightedTurnId, onMessagesScroll, scrollToBottom, scro
   virtualScrollRef,
   messagesScrollEl,
 });
+
+const { headerUserPrompt, promptKey, refreshActivePrompt, resetToLatestOrSession } = useChatScrollTitle({
+  sessionTitle: sessionTitleRef,
+  messages: messagesRef,
+  messagesScrollEl,
+  virtualScrollRef,
+  useVirtualMessageList,
+});
+
+function onMessagesScrollWrapped(event?: Event) {
+  onMessagesScroll(event);
+  refreshActivePrompt();
+}
 
 const { handleMessagesClick } = useChatCodeCopy();
 
@@ -342,4 +384,20 @@ watch(
     emit("focus-turn-cleared");
   }
 );
+
+watch(sessionKey, () => {
+  resetToLatestOrSession();
+  void nextTick(() => refreshActivePrompt());
+});
+
+watch(
+  () => props.messages.length,
+  () => {
+    void nextTick(() => refreshActivePrompt());
+  },
+);
+
+onMounted(() => {
+  void nextTick(() => refreshActivePrompt());
+});
 </script>

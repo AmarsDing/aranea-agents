@@ -9,10 +9,13 @@ import type { ChatEntityKind, TeamRow } from "../../../components/chat/types";
 import type { Agent } from "../../agents/types";
 import type { Session } from "../../session/types";
 import { hydrateAgentSettings } from "../agentPlannerSettings";
-import { applyStreamingSnapshotToSession } from "../../../stores/chatStreamingSnapshots";
+import { hydrateSessionForChannelFocus } from "../channelFocusLoad";
+import type { ChatFocusCoordinator, FocusSessionOptions } from "../chatFocusCoordinator";
+export type { FocusSessionOptions } from "../chatFocusCoordinator";
 import type { useAppStore } from "../../../stores/app";
 import type { useChatSessionStore } from "../../../stores/chat/sessionStore";
 import type { useChatMessageStore } from "../../../stores/chat/messageStore";
+import type { Message } from "../types";
 import type { useChatStreamManager } from "./useChatStreamManager";
 
 type AppStore = ReturnType<typeof useAppStore>;
@@ -25,6 +28,7 @@ export type EntityNavDeps = {
   sessionStore: SessionStore;
   messageStore: MessageStore;
   streamManager: StreamManager;
+  focusCoordinator: ChatFocusCoordinator;
   displayAgents: Ref<Agent[]>;
   displayTeams: Ref<TeamRow[]>;
   dialogMode: Ref<string>;
@@ -82,16 +86,42 @@ export function useChatEntityNav(deps: EntityNavDeps) {
     categoryTree.value = platformStore.categoryTree;
   }
 
-  async function selectAgent(agent: Agent, options?: { sessionId?: string }) {
+  function channelFocusLoadDeps() {
+    return {
+      getMessages: (sid: string) => deps.messageStore.getMessages(sid),
+      loadMessages: (opts: { sessionId: string }) => deps.messageStore.loadMessages(opts),
+      setMessages: (sid: string, rows: Message[]) => deps.messageStore.setMessages(sid, rows),
+      ensureChatStream: (sid: string) => deps.streamManager.ensureChatStream(sid),
+    };
+  }
+
+  async function selectAgent(
+    agent: Agent,
+    options?: {
+      sessionId?: string;
+      skipMessageReload?: boolean;
+      /** Deferred skip flag for merged concurrent channel focus (read immediately before hydrate). */
+      resolveSkipMessageReload?: () => boolean;
+    }
+  ) {
+    const sameAgent =
+      deps.sessionStore.entityKind === "agent" && deps.appStore.selectedAgent?.id === agent.id;
+
     if (deps.sessionStore.entityKind === "team") {
       deps.streamManager.disconnectTeamStream();
       deps.messageStore.clearAllMessages();
     }
-    deps.sessionStore.resetForAgentSwitch();
+    if (!sameAgent) {
+      deps.sessionStore.resetForAgentSwitch();
+    }
     const resolved = await hydrateAgentSettings(agent);
     deps.appStore.selectedAgent = resolved;
     deps.appStore.upsertAgent(resolved);
-    await deps.sessionStore.loadAgentSessions(resolved.id);
+    if (!sameAgent) {
+      await deps.sessionStore.loadAgentSessions(resolved.id);
+    } else {
+      await deps.sessionStore.loadAgentSessions(resolved.id, { refreshOnly: true });
+    }
     await nextTick();
     const preferredId = options?.sessionId?.trim();
     let picked =
@@ -110,13 +140,9 @@ export function useChatEntityNav(deps: EntityNavDeps) {
     deps.sessionStore.selectedSession = picked ?? (deps.sessionStore.sessions[0] ?? null);
     if (deps.sessionStore.selectedSession) {
       const sid = deps.sessionStore.selectedSession.id;
-      await deps.messageStore.loadMessages({ sessionId: sid });
-      applyStreamingSnapshotToSession(
-        (s) => deps.messageStore.getMessages(s),
-        (s, rows) => deps.messageStore.setMessages(s, rows),
-        sid
-      );
-      deps.streamManager.ensureChatStream(sid);
+      const skipReload =
+        options?.resolveSkipMessageReload?.() ?? options?.skipMessageReload ?? false;
+      await hydrateSessionForChannelFocus(channelFocusLoadDeps(), sid, skipReload);
     }
   }
 
@@ -141,7 +167,7 @@ export function useChatEntityNav(deps: EntityNavDeps) {
   async function focusAgentSessionView(
     sessionId: string,
     agentId: string,
-    options?: { skipMessageReload?: boolean }
+    options?: FocusSessionOptions
   ) {
     const route = router.currentRoute.value;
     const routeSession = typeof route.query.session === "string" ? route.query.session.trim() : "";
@@ -157,30 +183,28 @@ export function useChatEntityNav(deps: EntityNavDeps) {
     if (alreadyFocused) {
       const session = deps.sessionStore.sessions.find((item) => item.id === sessionId);
       if (session) deps.sessionStore.selectedSession = session;
-      if (!options?.skipMessageReload) {
-        await deps.messageStore.loadMessages({ sessionId });
-        applyStreamingSnapshotToSession(
-          (sid) => deps.messageStore.getMessages(sid),
-          (sid, rows) => deps.messageStore.setMessages(sid, rows),
-          sessionId
-        );
-      }
-      deps.streamManager.ensureChatStream(sessionId);
+      await hydrateSessionForChannelFocus(
+        channelFocusLoadDeps(),
+        sessionId,
+        options?.skipMessageReload
+      );
       return;
     }
 
     const query = { session: sessionId, agent: agentId };
     const needsRouteSync =
       route.name !== "chat" || routeSession !== sessionId || routeAgent !== agentId;
-    if (needsRouteSync) {
-      if (route.name === "chat") {
-        await router.replace({ name: "chat", query });
-      } else {
-        await router.push({ name: "chat", query });
+    await deps.focusCoordinator.withRouteWatchSuppressed(async () => {
+      if (needsRouteSync) {
+        if (route.name === "chat") {
+          await router.replace({ name: "chat", query });
+        } else {
+          await router.push({ name: "chat", query });
+        }
       }
-    }
-    // Route watch may not fire when query is unchanged; always focus in store.
-    await focusSessionById(sessionId, agentId);
+      // Route watch may not fire when query is unchanged; always focus in store.
+      await focusSessionById(sessionId, agentId, options);
+    });
   }
 
   async function onSelectSession(sessionId: string) {
@@ -331,22 +355,31 @@ export function useChatEntityNav(deps: EntityNavDeps) {
     }
   }
 
-  async function focusSessionById(sessionId: string, agentId?: string) {
-    const session = await resolveSessionById(sessionId);
-    if (!session) {
-      $q.notify({ type: "warning", message: "找不到该会话" });
-      return;
-    }
-    const aid = agentId?.trim() || session.agent_id?.trim() || deps.appStore.selectedAgent?.id?.trim();
-    if (!aid) return;
-    const agent =
-      deps.appStore.agents.find((a) => a.id === aid) ??
-      deps.displayAgents.value?.find((a) => a.id === aid);
-    if (!agent) {
-      $q.notify({ type: "warning", message: "找不到该会话所属的 Agent" });
-      return;
-    }
-    await selectAgent(agent, { sessionId });
+  async function focusSessionById(
+    sessionId: string,
+    agentId?: string,
+    options?: FocusSessionOptions
+  ) {
+    const sid = sessionId.trim();
+    if (!sid) return;
+    const key = deps.focusCoordinator.focusKey(sid, agentId);
+    await deps.focusCoordinator.runFocusOnce(key, options, async (resolveSkipReload) => {
+      const session = await resolveSessionById(sid);
+      if (!session) {
+        $q.notify({ type: "warning", message: "找不到该会话" });
+        return;
+      }
+      const aid = agentId?.trim() || session.agent_id?.trim() || deps.appStore.selectedAgent?.id?.trim();
+      if (!aid) return;
+      const agent =
+        deps.appStore.agents.find((a) => a.id === aid) ??
+        deps.displayAgents.value?.find((a) => a.id === aid);
+      if (!agent) {
+        $q.notify({ type: "warning", message: "找不到该会话所属的 Agent" });
+        return;
+      }
+      await selectAgent(agent, { sessionId: sid, resolveSkipMessageReload: resolveSkipReload });
+    });
   }
 
   return {

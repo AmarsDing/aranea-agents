@@ -99,11 +99,14 @@ func (c *Compressor) BeforeDurableTurn(ctx context.Context, sessionID string, ag
 }
 
 func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID string, ag biz.Agent, skipMinGap bool) error {
+	if !sessionCompressEnabled(ag) {
+		return nil
+	}
 	sess, err := c.Sessions.Get(ctx, sessionID)
 	if err != nil {
 		return err
 	}
-	threshold, keepTurns := compressThresholdAndKeep(ag)
+	threshold := sessionCompressThreshold(ag)
 	if sess.ContextUsedRatio < threshold {
 		return nil
 	}
@@ -130,6 +133,7 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 		return nil
 	}
 
+	_, keepTurns := compressThresholdAndKeep(ag)
 	keepRows := 2 * max(1, keepTurns)
 	if len(timeline) <= keepRows {
 		return nil
@@ -147,29 +151,48 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 		return nil
 	}
 
-	transcript := buildCompressTranscript(body)
-	cProv, cMod := compressProviderModel(sess, ag)
-	t0 := time.Now()
-	res, err := c.Compress.Compress(ctx, compress.Request{
-		Transcript: transcript,
-		Provider:   cProv,
-		Model:      cMod,
-	})
-	if err != nil {
-		return err
+	strategy := truncateStrategy(ag)
+	body = filterMessagesForTruncateStrategy(body, strategy)
+
+	var md string
+	var res compress.Result
+	switch strategy {
+	case "drop_oldest":
+		md = "[Earlier turns removed per drop_oldest policy]"
+	default:
+		transcript := buildCompressTranscript(body)
+		cProv, cMod := compressProviderModel(sess, ag)
+		t0 := time.Now()
+		var err error
+		res, err = c.Compress.Compress(ctx, compress.Request{
+			Transcript: transcript,
+			Provider:   cProv,
+			Model:      cMod,
+		})
+		if err != nil {
+			return err
+		}
+		md = strings.TrimSpace(res.Markdown)
+		if md == "" && strategy == "hybrid" {
+			md = "[Earlier turns trimmed per hybrid policy]"
+		}
+		if md == "" {
+			return nil
+		}
+		if c.EventBus != nil {
+			event.SessionSysLogInfo(ctx, sessionID, "system.session.compress", "会话压缩完成",
+				event.P("compress_provider", res.Provider),
+				event.P("compress_model", res.Model),
+				event.P("prompt_tokens", res.PromptTokens),
+				event.P("completion_tokens", res.CompletionTokens),
+				event.P("duration_ms", time.Since(t0).Milliseconds()),
+				event.P("prompt_ver", res.PromptVersion),
+				event.P("truncate_strategy", strategy))
+		}
 	}
-	md := strings.TrimSpace(res.Markdown)
-	if md == "" {
-		return nil
-	}
-	if c.EventBus != nil {
-		event.SessionSysLogInfo(ctx, sessionID, "system.session.compress", "会话压缩完成",
-			event.P("compress_provider", res.Provider),
-			event.P("compress_model", res.Model),
-			event.P("prompt_tokens", res.PromptTokens),
-			event.P("completion_tokens", res.CompletionTokens),
-			event.P("duration_ms", time.Since(t0).Milliseconds()),
-			event.P("prompt_ver", res.PromptVersion))
+	if strategy == "drop_oldest" && c.EventBus != nil {
+		event.SessionSysLogInfo(ctx, sessionID, "system.session.compress", "会话压缩完成（drop_oldest）",
+			event.P("truncate_strategy", strategy))
 	}
 
 	fromTurn := body[0].TurnIndex
@@ -180,7 +203,7 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 		SummaryMarkdown: md,
 		FromTurn:        fromTurn,
 		ToTurn:          toTurn,
-		TokenEstimate:   roughTokenEstimate(md + transcript),
+		TokenEstimate:   roughTokenEstimate(md),
 		CreatedAt:       time.Now().UTC().Format(time.RFC3339),
 	}
 	if err := c.Sessions.InsertSessionSummary(ctx, row); err != nil {

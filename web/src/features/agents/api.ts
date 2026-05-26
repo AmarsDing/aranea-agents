@@ -11,7 +11,9 @@ import type {
   AgentCreatorOption,
   AgentTemplatePreset,
   EvolutionMetrics,
-  EvolutionSuggestion
+  EvolutionSuggestion,
+  AgentPromptPreview,
+  AgentPromptSection
 } from "./types";
 import {
   normalizeAgentFromService,
@@ -22,6 +24,8 @@ import {
   a2aProxyToWire
 } from "./wireNormalize";
 import type { A2AProxyConfig, AgentKind } from "./types";
+import { asRecord, pickI32, pickStr } from "../../shared/wireJson";
+import { tokenEstimateFor } from "../../components/agents/agentUi";
 
 export type {
   Agent,
@@ -32,7 +36,9 @@ export type {
   AgentCreatorOption,
   AgentTemplatePreset,
   EvolutionMetrics,
-  EvolutionSuggestion
+  EvolutionSuggestion,
+  AgentPromptPreview,
+  AgentPromptSection
 } from "./types";
 
 export async function listAgentsPaged(query: AgentListQuery = {}): Promise<AgentListResult> {
@@ -168,10 +174,43 @@ export async function estimateAgentTokens(agentId: string): Promise<{
   };
 }
 
-export async function getAgentPromptPreview(id: string, mode?: string): Promise<string> {
+export async function getAgentPromptPreview(id: string, mode?: string): Promise<AgentPromptPreview> {
   const svc = createAgentService();
   const res = await svc.GetAgentPromptPreview({ id, mode });
-  return res.preview ?? "";
+  const r = asRecord(res);
+  const sectionsRaw = r.sections;
+  const sections = Array.isArray(sectionsRaw)
+    ? sectionsRaw.map((row) => {
+        const s = asRecord(row);
+        return {
+          key: pickStr(s, "key", "key"),
+          label: pickStr(s, "label", "label"),
+          est_tokens: pickI32(s, "est_tokens", "estTokens"),
+          source: pickStr(s, "source", "source"),
+        };
+      })
+    : [];
+  const instruction = pickStr(r, "instruction", "instruction");
+  const summary = pickStr(r, "preview", "preview");
+  const textForStatic = instruction || summary;
+  let staticTotal = pickI32(r, "static_total_tokens", "staticTotalTokens");
+  let runtimeOverlay = pickI32(r, "runtime_overlay_est_tokens", "runtimeOverlayEstTokens");
+  if (staticTotal <= 0 && textForStatic) {
+    staticTotal = tokenEstimateFor(textForStatic);
+  }
+  if (runtimeOverlay <= 0) {
+    runtimeOverlay = sections
+      .filter((row) => row.source === "runtime" && row.est_tokens > 0)
+      .reduce((sum, row) => sum + row.est_tokens, 0);
+  }
+  return {
+    summary,
+    instruction,
+    sections,
+    static_total_tokens: staticTotal,
+    runtime_overlay_est_tokens: runtimeOverlay,
+    runtime_note: pickStr(r, "runtime_note", "runtimeNote"),
+  };
 }
 
 export async function deleteAgent(id: string): Promise<void> {

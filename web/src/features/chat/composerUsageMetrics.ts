@@ -30,8 +30,11 @@ export function formatComposerUsageDetail(snapshot: ComposerUsageSnapshot): stri
       parts.push(`ctx ${formatTokenCount(snapshot.contextUsedTokens)}`);
     }
   }
-  if (snapshot.inputTokens > 0 || snapshot.outputTokens > 0) {
-    parts.push(`in ${formatTokenCount(snapshot.inputTokens)} · out ${formatTokenCount(snapshot.outputTokens)}`);
+  if (snapshot.inputTokens > 0) {
+    parts.push(`in ${formatTokenCount(snapshot.inputTokens)}`);
+  }
+  if (snapshot.outputTokens > 0) {
+    parts.push(`out ${formatTokenCount(snapshot.outputTokens)}`);
   }
   if (snapshot.totalTokens > 0) {
     parts.push(`Σ ${formatTokenCount(snapshot.totalTokens)}`);
@@ -40,6 +43,24 @@ export function formatComposerUsageDetail(snapshot: ComposerUsageSnapshot): stri
     parts.push(formatUsdCompact(snapshot.totalCostMicroUsd));
   }
   return parts.join(" · ");
+}
+
+/** Segments for header usage row (wider spacing via flex gap in UI). */
+export function composerUsageParts(snapshot: ComposerUsageSnapshot): string[] {
+  const parts: string[] = [];
+  if (snapshot.contextUsedTokens != null && snapshot.contextUsedTokens > 0) {
+    const window = snapshot.contextWindow;
+    if (window != null && window > 0) {
+      parts.push(`ctx ${formatTokenCount(snapshot.contextUsedTokens)}/${formatTokenCount(window)}`);
+    } else {
+      parts.push(`ctx ${formatTokenCount(snapshot.contextUsedTokens)}`);
+    }
+  }
+  if (snapshot.inputTokens > 0) parts.push(`in ${formatTokenCount(snapshot.inputTokens)}`);
+  if (snapshot.outputTokens > 0) parts.push(`out ${formatTokenCount(snapshot.outputTokens)}`);
+  if (snapshot.totalTokens > 0) parts.push(`Σ ${formatTokenCount(snapshot.totalTokens)}`);
+  if (snapshot.totalCostMicroUsd > 0) parts.push(formatUsdCompact(snapshot.totalCostMicroUsd));
+  return parts;
 }
 
 export function composerContextColor(contextStatus?: string, contextRatio = 0): string {

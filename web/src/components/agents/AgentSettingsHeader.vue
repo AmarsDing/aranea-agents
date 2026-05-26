@@ -40,7 +40,6 @@ import { promptModeLabel } from "./agentUi";
 
 const props = defineProps<{
   agent: Agent;
-  selfEvolve: boolean;
   showEvolving: boolean;
   favorite: boolean;
   saving: boolean;

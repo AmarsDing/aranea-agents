@@ -3,28 +3,44 @@
 -->
 <template>
   <q-card flat bordered class="monitor-card">
-    <q-card-section class="row items-center q-col-gutter-md">
-      <div class="col-12 col-md">
-        <div class="text-h6 text-weight-bold">Runs</div>
-        <div class="text-caption text-grey-7">单次对话运行真相源（Token 用量 + Flow / Waterfall / Span）</div>
-      </div>
-      <div class="app-form-field-grid items-center">
-        <q-input v-model="keyword" class="app-field-md" dense outlined clearable debounce="200" label="Search">
-          <template #prepend><q-icon name="search" /></template>
-        </q-input>
-      </div>
-      <q-btn flat rounded no-caps icon="refresh" label="Reload" :loading="loading" @click="$emit('reload')" />
+    <q-card-section class="q-pb-none">
+      <div class="text-h6 text-weight-bold">Runs</div>
+      <div class="text-caption text-grey-7">单次对话运行真相源（Token 用量 + Flow / Waterfall / Span）</div>
     </q-card-section>
-    <q-separator />
-    <q-table flat :rows="filteredRows" :columns="columns" row-key="id" :loading="loading" :pagination="{ rowsPerPage: 12 }">
+
+    <AppPageToolbar class="monitor-traces-toolbar">
+      <q-input v-model="keyword" class="app-page-toolbar__search" dense outlined clearable debounce="200" label="搜索 Agent / 模型 / 状态">
+        <template #prepend><q-icon name="search" /></template>
+      </q-input>
+      <template #actions>
+        <q-btn flat rounded no-caps icon="restart_alt" label="重置" @click="keyword = ''" />
+        <q-btn flat rounded no-caps icon="refresh" label="刷新" :loading="loading" @click="$emit('reload')" />
+      </template>
+    </AppPageToolbar>
+
+    <div class="app-registry-table-shell">
+      <AppRegistryTable
+        :shell="false"
+        table-class="monitor-traces-table"
+        :rows="pagedRows"
+        :columns="columns"
+        row-key="id"
+        :loading="loading"
+        hide-pagination
+        :pagination="{ rowsPerPage: 0 }"
+      >
       <template #body-cell-name="props">
         <q-td :props="props">
-          <div class="text-weight-bold">{{ props.row.agent_key || props.row.agent_id || "unknown agent" }}</div>
-          <div class="row q-gutter-xs q-mt-xs">
-            <q-chip dense outline>{{ props.row.provider_code || "provider" }}</q-chip>
-            <q-chip dense outline>{{ props.row.model_api_id || "model" }}</q-chip>
-            <q-chip dense :color="statusColor(props.row.status)" text-color="white">{{ props.row.status || "unknown" }}</q-chip>
-          </div>
+          <AppRegistryHoverTip :text="props.row.error_message">
+            <div class="min-width-0">
+              <div class="app-registry-cell-primary ellipsis">{{ props.row.agent_key || props.row.agent_id || "unknown agent" }}</div>
+              <div class="app-registry-cell-sub ellipsis">
+                {{ props.row.provider_code || "provider" }} / {{ props.row.model_api_id || "model" }}
+                ·
+                <q-badge dense :color="statusColor(props.row.status)" text-color="white">{{ props.row.status || "unknown" }}</q-badge>
+              </div>
+            </div>
+          </AppRegistryHoverTip>
         </q-td>
       </template>
       <template #body-cell-tokens="props">
@@ -38,23 +54,32 @@
       <template #body-cell-cost="props">
         <q-td :props="props">{{ formatMoney(props.row.total_cost_micro_usd) }}</q-td>
       </template>
-      <template #body-cell-error="props">
-        <q-td :props="props">
-          <div v-if="props.row.error_message" class="text-negative ellipsis">{{ props.row.error_message }}</div>
-          <span v-else class="text-grey-7">-</span>
-        </q-td>
-      </template>
       <template #body-cell-time="props">
-        <q-td :props="props">{{ formatDate(props.row.occurred_at) }}</q-td>
+        <q-td :props="props">
+          <span class="app-registry-cell-sub">{{ formatDate(props.row.occurred_at) }}</span>
+        </q-td>
       </template>
       <template #body-cell-actions="props">
         <q-td :props="props">
-          <q-btn flat dense round icon="account_tree" color="primary" @click="onOpenTrace(props.row)">
-            <q-tooltip>Details</q-tooltip>
-          </q-btn>
+          <div class="app-registry-cell-actions">
+            <q-btn flat dense round icon="account_tree" color="primary" aria-label="查看 Trace" @click="onOpenTrace(props.row)">
+              <q-tooltip>Details</q-tooltip>
+            </q-btn>
+          </div>
         </q-td>
       </template>
-    </q-table>
+    </AppRegistryTable>
+
+      <AppRegistryPagination
+        v-model:page="page"
+        v-model:page-size="pageSize"
+        :page-max="pageMax"
+        :total="filteredRows.length"
+        :loading="loading"
+        label="条 Run"
+        :page-size-options="[12, 24, 48]"
+      />
+    </div>
   </q-card>
 
   <q-dialog v-model="detailOpen" maximized @hide="stopFlowStream">
@@ -172,6 +197,11 @@ import { compactJSON, formatCount, formatDate, formatLatency, formatMoney, parse
 import TraceWaterfall from "./TraceWaterfall.vue";
 import FlowTracePanel from "./FlowTracePanel.vue";
 import FlowLogExportButton from "./FlowLogExportButton.vue";
+import AppRegistryTable from "../layout/AppRegistryTable.vue";
+import AppRegistryHoverTip from "../layout/AppRegistryHoverTip.vue";
+import AppPageToolbar from "../layout/AppPageToolbar.vue";
+import AppRegistryPagination from "../layout/AppRegistryPagination.vue";
+import { registryColWidth } from "../../features/ui/registryTableColumns";
 
 type TreeNode = {
   id: string;
@@ -193,6 +223,8 @@ defineEmits<{
 const { openChatSession } = useMonitorRunNavigation();
 
 const keyword = ref("");
+const page = ref(1);
+const pageSize = ref(12);
 const detail = ref<MonitorTraceEvent | null>(null);
 const detailOpen = ref(false);
 const detailTab = ref<"flow" | "waterfall" | "tree">("flow");
@@ -200,13 +232,12 @@ const detailTab = ref<"flow" | "waterfall" | "tree">("flow");
 const { flowLines, activeCorrelation, stopFlowStream, openTraceDetail } = useMonitorTraceFlow(detail, detailOpen);
 
 const columns: QTableColumn<MonitorTraceEvent>[] = [
-  { name: "name", label: "Agent", field: "agent_key", align: "left" },
-  { name: "tokens", label: "Token in / out", field: "total_tokens", align: "left" },
-  { name: "latency", label: "Latency", field: "latency_ms", align: "left" },
-  { name: "cost", label: "Cost", field: "total_cost_micro_usd", align: "left" },
-  { name: "error", label: "Error", field: "error_message", align: "left" },
-  { name: "time", label: "Time", field: "occurred_at", align: "left" },
-  { name: "actions", label: "Actions", field: "id", align: "right" }
+  { name: "name", label: "Agent", field: "agent_key", align: "left", ...registryColWidth("14%") },
+  { name: "tokens", label: "Token in / out", field: "total_tokens", align: "left", ...registryColWidth("9%") },
+  { name: "latency", label: "Latency", field: "latency_ms", align: "left", ...registryColWidth("72px") },
+  { name: "cost", label: "Cost", field: "total_cost_micro_usd", align: "left", ...registryColWidth("72px") },
+  { name: "time", label: "Time", field: "occurred_at", align: "left", ...registryColWidth("11%") },
+  { name: "actions", label: "操作", field: "id", align: "right", ...registryColWidth("108px") }
 ];
 
 const filteredRows = computed(() => {
@@ -216,6 +247,16 @@ const filteredRows = computed(() => {
     [row.agent_key, row.agent_id, row.provider_code, row.provider_display_name, row.model_api_id, row.model_display_name, row.status, row.error_code, row.error_message]
       .some((value) => String(value || "").toLowerCase().includes(q))
   );
+});
+
+const pageMax = computed(() => Math.max(1, Math.ceil(filteredRows.value.length / pageSize.value)));
+const pagedRows = computed(() => {
+  const start = (page.value - 1) * pageSize.value;
+  return filteredRows.value.slice(start, start + pageSize.value);
+});
+
+watch(keyword, () => {
+  page.value = 1;
 });
 
 const detailJSON = computed(() => compactJSON(detail.value ?? {}));
@@ -278,3 +319,10 @@ function statusColor(status?: string) {
   return "negative";
 }
 </script>
+
+<style scoped>
+.monitor-traces-toolbar {
+  padding: 0 16px 8px;
+  border-bottom: none;
+}
+</style>

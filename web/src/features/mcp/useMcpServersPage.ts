@@ -1,4 +1,4 @@
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useQuasar } from "quasar";
 import { storeToRefs } from "pinia";
 import type { McpServerConfig, McpServerMetadata, McpServerRow } from "./types";
@@ -13,6 +13,8 @@ export function useMcpServersPage() {
 
   const rows = ref<McpServerRow[]>([]);
   const search = ref("");
+  const page = ref(1);
+  const pageSize = ref(12);
   const loading = ref(false);
   const error = ref("");
   const testingId = ref("");
@@ -45,6 +47,20 @@ export function useMcpServersPage() {
         metadata.last_error_message
       ].some((value) => String(value || "").toLowerCase().includes(keyword));
     });
+  });
+
+  const pageMax = computed(() => Math.max(1, Math.ceil(filteredRows.value.length / pageSize.value)));
+  const pagedRows = computed(() => {
+    const start = (page.value - 1) * pageSize.value;
+    return filteredRows.value.slice(start, start + pageSize.value);
+  });
+
+  watch(search, () => {
+    page.value = 1;
+  });
+
+  watch(filteredRows, () => {
+    if (page.value > pageMax.value) page.value = pageMax.value;
   });
 
   onMounted(loadRows);
@@ -147,6 +163,10 @@ export function useMcpServersPage() {
   return {
     rows,
     search,
+    page,
+    pageSize,
+    pageMax,
+    pagedRows,
     loading,
     error,
     testingId,

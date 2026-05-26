@@ -1,7 +1,7 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useQuasar, type QTableColumn } from "quasar";
-import { registryCol } from "../ui/registryTableColumns";
+import { registryColWidth } from "../ui/registryTableColumns";
 import { parseCronConfig, parseCronMetadata } from "./api";
 import type { PlatformResourceInput } from "../platform/types";
 import type { CronFailureSummary, CronTaskConfig, CronTaskMetadata, CronTaskRow } from "./types";
@@ -27,22 +27,23 @@ export function useCronTasksPage() {
   const formServerError = ref("");
 
   const columns: QTableColumn<CronTaskRow>[] = [
-    { name: "name", label: "??", field: "name", align: "left", sortable: true, ...registryCol.name },
-    { name: "description", label: "??", field: "description", align: "left", ...registryCol.desc },
-    { name: "schedule", label: "??", field: "config_json", align: "left", ...registryCol.chips },
-    { name: "agent", label: "??", field: "agent_id", align: "left", ...registryCol.agent },
-    { name: "counts", label: "????", field: "metadata_json", align: "left", ...registryCol.stats },
-    { name: "status", label: "??", field: "status", align: "left", ...registryCol.status },
-    { name: "last", label: "????", field: "metadata_json", align: "left", ...registryCol.time },
-    { name: "next", label: "????", field: "metadata_json", align: "left", ...registryCol.time },
-    { name: "actions", label: "??", field: "id", align: "right", ...registryCol.actions }
+    { name: "name", label: "任务", field: "name", align: "left", sortable: true, ...registryColWidth("14%") },
+    { name: "schedule", label: "调度", field: "config_json", align: "left", ...registryColWidth("11%") },
+    { name: "agent", label: "目标", field: "agent_id", align: "left", ...registryColWidth("10%") },
+    { name: "counts", label: "统计", field: "metadata_json", align: "left", ...registryColWidth("9%") },
+    { name: "status", label: "状态", field: "status", align: "left", ...registryColWidth("9%") },
+    { name: "timing", label: "执行时间", field: "metadata_json", align: "left", ...registryColWidth("11%") },
+    { name: "enabled", label: "启用", field: "enabled", align: "center", ...registryColWidth("64px") },
+    { name: "actions", label: "操作", field: "id", align: "right", ...registryColWidth("108px") }
   ];
   const statusOptions = [
-    { label: "??", value: "active" },
-    { label: "??", value: "paused" },
-    { label: "??", value: "dead" }
+    { label: "运行中", value: "active" },
+    { label: "已暂停", value: "paused" },
+    { label: "已失败", value: "dead" }
   ];
   const activeCount = computed(() => rows.value.filter((row) => row.enabled).length);
+  const page = ref(1);
+  const pageSize = ref(12);
   const filteredRows = computed(() => {
     const keyword = search.value.trim().toLowerCase();
     return rows.value.filter((row) => {
@@ -54,6 +55,15 @@ export function useCronTasksPage() {
       return [row.key, row.name, row.description, cfg.schedule_type, cfg.cron_expression, cfg.message, targetLabel(row)]
         .some((value) => String(value || "").toLowerCase().includes(keyword));
     });
+  });
+  const pageMax = computed(() => Math.max(1, Math.ceil(filteredRows.value.length / pageSize.value)));
+  const pagedRows = computed(() => {
+    const start = (page.value - 1) * pageSize.value;
+    return filteredRows.value.slice(start, start + pageSize.value);
+  });
+
+  watch([search, statusFilter], () => {
+    page.value = 1;
   });
 
   onMounted(() => void loadAll());
@@ -71,9 +81,9 @@ export function useCronTasksPage() {
         : await cronStore.addTask(payload);
       onSaved(row);
       editorOpen.value = false;
-      $q.notify({ type: "positive", message: "???????" });
+      $q.notify({ type: "positive", message: "定时任务已保存" });
     } catch (err) {
-      formServerError.value = err instanceof Error ? err.message : "????";
+      formServerError.value = err instanceof Error ? err.message : "保存失败";
       $q.notify({ type: "negative", message: formServerError.value });
     } finally {
       formSubmitting.value = false;
@@ -87,7 +97,7 @@ export function useCronTasksPage() {
       const result = await cronStore.loadAll();
       rows.value = result.tasks;
     } catch (err) {
-      error.value = err instanceof Error ? err.message : "????????";
+      error.value = err instanceof Error ? err.message : "加载定时任务失败";
     } finally {
       loading.value = false;
     }
@@ -114,9 +124,9 @@ export function useCronTasksPage() {
     try {
       const updated = await cronStore.editTask(row.id, { ...row, enabled, status: enabled ? "active" : "paused" });
       onSaved(updated);
-      $q.notify({ type: "positive", message: enabled ? "???????" : "???????" });
+      $q.notify({ type: "positive", message: enabled ? "任务已启用" : "任务已暂停" });
     } catch (err) {
-      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "????" });
+      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "更新失败" });
     } finally {
       savingId.value = "";
     }
@@ -124,14 +134,14 @@ export function useCronTasksPage() {
 
   function confirmDelete(row: CronTaskRow) {
     $q.dialog({
-      title: "????????",
-      message: `???${row.name}???????????`,
+      title: "删除定时任务",
+      message: `确定删除「${row.name}」？此操作不可撤销。`,
       cancel: true,
       persistent: true
     }).onOk(async () => {
       await cronStore.removeTask(row.id);
       rows.value = rows.value.filter((item) => item.id !== row.id);
-      $q.notify({ type: "positive", message: "???????" });
+      $q.notify({ type: "positive", message: "任务已删除" });
     });
   }
 
@@ -144,9 +154,9 @@ export function useCronTasksPage() {
     try {
       const updated = await cronStore.resetFailures(row.id);
       onSaved(updated);
-      $q.notify({ type: "positive", message: "??????????????" });
+      $q.notify({ type: "positive", message: "失败计数已重置，任务恢复运行" });
     } catch (err) {
-      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "????" });
+      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "重置失败" });
     } finally {
       savingId.value = "";
     }
@@ -157,17 +167,17 @@ export function useCronTasksPage() {
     try {
       const run = await cronStore.triggerTask(row.id);
       if (run.status === "pending") {
-        $q.notify({ type: "info", message: "?????????????????" });
+        $q.notify({ type: "info", message: "任务已提交，请在执行历史中查看进度" });
         openRuns(row);
         return;
       }
       await loadAll();
       $q.notify({
         type: run.status === "success" ? "positive" : "negative",
-        message: run.status === "success" ? "???????" : run.error_message || "??????"
+        message: run.status === "success" ? "执行成功" : run.error_message || "执行失败"
       });
     } catch (err) {
-      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "????" });
+      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "触发失败" });
     } finally {
       triggeringId.value = "";
     }
@@ -177,18 +187,18 @@ export function useCronTasksPage() {
     const cfg = config(row);
     if (cfg.schedule_type === "cron") return `cron: ${cfg.cron_expression || "-"}`;
     if (cfg.schedule_type === "once") return `once @ ${formatDate(cfg.run_at)}`;
-    return `?? ${Math.max(1, Math.round((cfg.interval_seconds || 0) / 60))} ??`;
+    return `每 ${Math.max(1, Math.round((cfg.interval_seconds || 0) / 60))} 分钟`;
   }
 
   function agentLabel(agentId: string) {
-    if (!agentId) return "??";
+    if (!agentId) return "未指定";
     const agent = agents.value.find((item) => item.id === agentId);
     return agent?.display_name || agent?.agent_key || agentId;
   }
 
   function teamLabel(teamId: string) {
     const team = teams.value.find((item) => item.id === teamId);
-    return team?.display_name || team?.team_key || teamId || "??? Team";
+    return team?.display_name || team?.team_key || teamId || "未知 Team";
   }
 
   function targetLabel(row: CronTaskRow) {
@@ -240,6 +250,10 @@ export function useCronTasksPage() {
     statusOptions,
     activeCount,
     filteredRows,
+    pagedRows,
+    page,
+    pageSize,
+    pageMax,
     loadAll,
     onFormSubmit,
     openCreate,

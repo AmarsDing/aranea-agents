@@ -52,15 +52,19 @@ type Skill struct {
 	CreatedAt            string
 	UpdatedAt            string
 	Permissions          SkillPermissions
+	FilesystemMissing    bool
+	SyncOrigin           string
 }
 
 type ListQuery struct {
-	Search  string
-	Tags    string
-	Enabled string
-	Status  string
-	Limit   int
-	Offset  int
+	Search             string
+	Tags               string
+	Enabled            string
+	Status             string
+	FilesystemMissing  string
+	SyncOrigin         string
+	Limit              int
+	Offset             int
 }
 
 type ListResult struct {
@@ -126,7 +130,8 @@ type Repo interface {
 	ListSkillSimilaritySources(ctx context.Context) ([]SimilaritySource, error)
 	CreateSkillWithVersion(ctx context.Context, in CreateInput) (Skill, error)
 	GetSkillBySkillKey(ctx context.Context, skillKey string) (Skill, error)
-	UpsertSkillFromDisk(ctx context.Context, in DiskSyncInput) (Skill, error)
+	UpsertSkillFromDisk(ctx context.Context, in DiskSyncInput) (Skill, DiskSyncOutcome, error)
+	ListRegisteredSlugs(ctx context.Context) ([]string, error)
 	ListEnabledPublishedSkillKeys(ctx context.Context) ([]string, error)
 	ListEnabledPublishedSkillCandidates(ctx context.Context) ([]RuntimeCandidate, error)
 	RecordSkillInvocation(ctx context.Context, in InvocationWrite) error
@@ -134,6 +139,7 @@ type Repo interface {
 	PatchSkill(ctx context.Context, id string, patch UpdateDraft) (Skill, error)
 	PublishSkill(ctx context.Context, id string) (Skill, error)
 	MarkSkillFilesystemMissing(ctx context.Context, slug string, missing bool) error
+	FilesystemHealthStats(ctx context.Context) (FilesystemHealthStats, error)
 }
 
 // UpdateDraft is a partial update for admin edits (optional fields via booleans).
@@ -168,6 +174,12 @@ type InvocationWrite struct {
 	ActivationID  string
 }
 
+// DiskSyncOutcome describes side effects of a filesystem upsert.
+type DiskSyncOutcome struct {
+	ContentChanged  bool
+	RevertedToDraft bool
+}
+
 // CreateInput creates platform skill + initial skill_version (import / directory sync).
 type CreateInput struct {
 	Name        string
@@ -176,6 +188,7 @@ type CreateInput struct {
 	Body        string
 	Tags        []SkillTag
 	StorageDir  string
+	SyncOrigin  string
 }
 
 // DiskSyncInput upserts skill rows from on-disk packages (directory watcher).
@@ -295,8 +308,16 @@ func (u *Usecase) GetBySkillKey(ctx context.Context, skillKey string) (Skill, er
 	return u.repo.GetSkillBySkillKey(ctx, skillKey)
 }
 
-func (u *Usecase) UpsertSkillFromDisk(ctx context.Context, in DiskSyncInput) (Skill, error) {
+func (u *Usecase) UpsertSkillFromDisk(ctx context.Context, in DiskSyncInput) (Skill, DiskSyncOutcome, error) {
 	return u.repo.UpsertSkillFromDisk(ctx, in)
+}
+
+func (u *Usecase) ListRegisteredSlugs(ctx context.Context) ([]string, error) {
+	return u.repo.ListRegisteredSlugs(ctx)
+}
+
+func (u *Usecase) ListSimilaritySources(ctx context.Context) ([]SimilaritySource, error) {
+	return u.repo.ListSkillSimilaritySources(ctx)
 }
 
 func (u *Usecase) ListEnabledPublishedSkillKeys(ctx context.Context) ([]string, error) {
@@ -340,7 +361,10 @@ func (u *Usecase) MarkFilesystemMissing(ctx context.Context, slug string, missin
 	return u.repo.MarkSkillFilesystemMissing(ctx, slug, missing)
 }
 
-// GetBySlug returns a skill by its slug (alias for GetSkillBySkillKey).
+func (u *Usecase) FilesystemHealthStats(ctx context.Context) (FilesystemHealthStats, error) {
+	return u.repo.FilesystemHealthStats(ctx)
+}
+
 func (u *Usecase) GetBySlug(ctx context.Context, slug string) (Skill, error) {
 	slug = strings.TrimSpace(slug)
 	if slug == "" {
@@ -357,10 +381,21 @@ func (u *Usecase) ListEnabledPublishedCandidates(ctx context.Context) ([]Runtime
 // ── Skill invocation source constants ─────────────────────────────────────────
 
 const (
+	SyncOriginFilesystem = "filesystem"
+	SyncOriginImport     = "import"
+	SyncOriginManual     = "manual"
+
 	InvocationSourceRuntime         = "runtime"
 	InvocationSourceFilesystemScan  = "filesystem_scan"
 	InvocationSourceFilesystemWatch = "filesystem_watch"
+	InvocationSourceFilesystemReconcile = "filesystem_reconcile"
 )
+
+// FilesystemHealthStats summarizes on-disk skill registry health.
+type FilesystemHealthStats struct {
+	MissingCount           int
+	PendingFilesystemCount int
+}
 
 // ── Import / similarity DTOs ──────────────────────────────────────────────────
 

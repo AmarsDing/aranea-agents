@@ -1,5 +1,5 @@
 <template>
-  <q-page class="app-page-cream session-detail-page sessions-page q-pa-md">
+  <q-page class="app-standard-page session-detail-page sessions-page">
     <div v-if="loadingSession" class="column items-center justify-center" style="min-height: 300px">
       <q-spinner color="primary" size="40px" />
       <div class="q-mt-md text-grey-7">Loading session...</div>

@@ -47,12 +47,21 @@ export function useChannelsPage() {
     });
   });
 
+  const page = ref(1);
+  const pageSize = ref(12);
+  const pageMax = computed(() => Math.max(1, Math.ceil(filteredRows.value.length / pageSize.value)));
+  const pagedRows = computed(() => {
+    const start = (page.value - 1) * pageSize.value;
+    return filteredRows.value.slice(start, start + pageSize.value);
+  });
+
   onMounted(() => void loadAll());
 
   function resetFilters() {
     search.value = "";
     typeFilter.value = "";
     statusFilter.value = "";
+    page.value = 1;
   }
 
   async function loadAll() {
@@ -136,6 +145,10 @@ export function useChannelsPage() {
     t,
     catalog,
     filteredRows,
+    pagedRows,
+    page,
+    pageSize,
+    pageMax,
     loading,
     error,
     search,

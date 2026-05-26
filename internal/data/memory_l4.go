@@ -119,6 +119,10 @@ func (a *l4GraphWriterAdapter) WriteFromUserText(ctx context.Context, agentID, u
 	return a.uc.WriteFromUserText(ctx, agentID, userID, text)
 }
 
+func (a *l4GraphWriterAdapter) RunDecay(ctx context.Context, agentID string) {
+	a.uc.RunDecay(ctx, agentID)
+}
+
 func NewL4GraphUsecaseFromStore(store *sessionmemory.Store, cascade *biz.L4CascadeUsecase) *biz.L4GraphUsecase {
 	repo := NewL4GraphRepo(store)
 	uc := biz.NewL4GraphUsecase(repo)

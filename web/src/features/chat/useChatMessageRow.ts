@@ -225,27 +225,18 @@ export function useChatMessageRow(messages: ComputedRef<Message[]>) {
   }
 
   function userSendTagLine(message: Message): string {
-    let agentLabel = "—";
-    let ctx = "0%";
     let intentKind = "";
     try {
       const raw = JSON.parse(message.options_json || "{}") as {
-        agent?: { name?: string; display_name?: string };
-        send_meta?: { context_pct?: number };
         intent_artifact?: { intent_kind?: string };
       };
-      const n = raw.agent?.name || raw.agent?.display_name;
-      if (n) agentLabel = n;
-      if (typeof raw.send_meta?.context_pct === "number") {
-        ctx = `${Math.round(raw.send_meta.context_pct)}%`;
-      }
       if (raw.intent_artifact?.intent_kind) {
         intentKind = raw.intent_artifact.intent_kind;
       }
     } catch {
       /* ignore */
     }
-    const parts: string[] = [agentLabel, `${ctx} CTX`];
+    const parts: string[] = [];
     if (intentKind) parts.push(intentKind);
     const st = message.status?.trim();
     if (st && st !== "ok") parts.push(st);

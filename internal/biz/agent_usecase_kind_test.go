@@ -51,6 +51,9 @@ func (s *stubAgentRepo) UpdateAgentPromptFile(context.Context, AgentPromptFile) 
 	return AgentPromptFile{}, nil
 }
 func (s *stubAgentRepo) DeleteAgentPromptFile(context.Context, string, string) error { return nil }
+func (s *stubAgentRepo) ExecInTx(ctx context.Context, fn func(context.Context) error) error {
+	return fn(ctx)
+}
 
 func TestAgentUsecase_UpdateRejectsKindChange(t *testing.T) {
 	t.Parallel()

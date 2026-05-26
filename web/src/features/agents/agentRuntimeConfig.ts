@@ -15,10 +15,6 @@ export function defaultAgentAdvancedSettings() {
     reasoning_level: "off",
     context_compaction_enabled: false,
     session_summary_enabled: false,
-    truncate_strategy: "sliding",
-    recent_window_turns: 20,
-    recent_window_tokens: 0,
-    summary_keep_turns: 4,
   };
 }
 
@@ -36,7 +32,7 @@ export function defaultAgentRuntimeConfig() {
     },
     tools: {
       enabled: true,
-      profile: "chat_only",
+      profile: "coding",
       tool_call_prefix: "",
       allow: [] as string[],
       deny: [] as string[],
@@ -148,7 +144,7 @@ export function defaultAgentRuntimeConfig() {
     },
     code_executor_type: "local",
     intent_pass: {
-      enabled: true,
+      enabled: false,
     },
   };
 }
@@ -162,8 +158,15 @@ export function parseJSONList(raw: string) {
   }
 }
 
+const truncateStrategyLabels: Record<string, string> = {
+  summary: "摘要优先",
+  drop_oldest: "丢弃最旧",
+  drop_tool_results: "丢弃工具结果",
+  hybrid: "混合",
+};
+
 export const truncateStrategyOptions = ["summary", "drop_oldest", "drop_tool_results", "hybrid"].map((value) => ({
-  label: value,
+  label: truncateStrategyLabels[value] ?? value,
   value,
 }));
 

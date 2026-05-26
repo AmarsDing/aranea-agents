@@ -31,11 +31,12 @@ type TeamRepository interface {
 }
 
 type TeamUsecase struct {
-	repo TeamRepository
+	repo   TeamRepository
+	agents AgentRepository
 }
 
-func NewTeamUsecase(repo TeamRepository) *TeamUsecase {
-	return &TeamUsecase{repo: repo}
+func NewTeamUsecase(repo TeamRepository, agents AgentRepository) *TeamUsecase {
+	return &TeamUsecase{repo: repo, agents: agents}
 }
 
 func firstNonEmptyTeam(a, b string) string {
@@ -104,8 +105,37 @@ func validateTeamDefinition(raw string) error {
 	if mode == "parallel" && !hasSynthesizer && strings.TrimSpace(body.SynthesizerAgent) == "" && enabledCount > 1 {
 		return kerrors.BadRequest("TEAM", "parallel mode requires a synthesizer member or synthesizer_agent_id")
 	}
+	if mode == "coordinator" && !hasSynthesizer && strings.TrimSpace(body.SynthesizerAgent) == "" {
+		return kerrors.BadRequest("TEAM", "coordinator mode requires a synthesizer member or synthesizer_agent_id")
+	}
 	if mode == "critic_loop" && (!hasGenerator || !hasCritic) {
 		return kerrors.BadRequest("TEAM", "critic_loop mode requires generator and critic members")
+	}
+	return nil
+}
+
+func (u *TeamUsecase) validateTeamMembersExist(ctx context.Context, raw string) error {
+	if u.agents == nil || strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	var body struct {
+		Members []struct {
+			AgentID string `json:"agent_id"`
+			Role    string `json:"role"`
+			Enabled *bool  `json:"enabled"`
+		} `json:"members"`
+	}
+	if err := json.Unmarshal([]byte(raw), &body); err != nil {
+		return nil
+	}
+	for _, member := range body.Members {
+		aid := strings.TrimSpace(member.AgentID)
+		if aid == "" {
+			continue
+		}
+		if _, err := u.agents.GetAgentByID(ctx, aid); err != nil {
+			return kerrors.BadRequest("TEAM", "team member agent "+aid+" does not exist")
+		}
 	}
 	return nil
 }
@@ -115,9 +145,9 @@ func (u *TeamUsecase) List(ctx context.Context) ([]Team, error) {
 }
 
 func (u *TeamUsecase) Get(ctx context.Context, id string) (Team, error) {
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return Team{}, kerrors.BadRequest("TEAM", "id is required")
+	id, err := requireNonEmpty(id, "TEAM", "id")
+	if err != nil {
+		return Team{}, err
 	}
 	return u.repo.GetTeamByID(ctx, id)
 }
@@ -140,6 +170,9 @@ func (u *TeamUsecase) Create(ctx context.Context, in Team) (Team, error) {
 		in.DefinitionJSON = EnsureGraphRuntimeDefault(in.DefinitionJSON)
 	}
 	if err := validateTeamDefinition(in.DefinitionJSON); err != nil {
+		return Team{}, err
+	}
+	if err := u.validateTeamMembersExist(ctx, in.DefinitionJSON); err != nil {
 		return Team{}, err
 	}
 	return u.repo.CreateTeam(ctx, in)
@@ -166,9 +199,9 @@ func (u *TeamUsecase) GetRunObservatory(ctx context.Context, runID string) (Team
 }
 
 func (u *TeamUsecase) HasActiveRun(ctx context.Context, teamID string) (bool, error) {
-	teamID = strings.TrimSpace(teamID)
-	if teamID == "" {
-		return false, kerrors.BadRequest("TEAM", "team_id is required")
+	teamID, err := requireNonEmpty(teamID, "TEAM", "team_id")
+	if err != nil {
+		return false, err
 	}
 	runs, err := u.repo.ListTeamRuns(ctx, teamID, 50)
 	if err != nil {
@@ -178,9 +211,9 @@ func (u *TeamUsecase) HasActiveRun(ctx context.Context, teamID string) (bool, er
 }
 
 func (u *TeamUsecase) Update(ctx context.Context, id string, patch Team) (Team, error) {
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return Team{}, kerrors.BadRequest("TEAM", "id is required")
+	id, err := requireNonEmpty(id, "TEAM", "id")
+	if err != nil {
+		return Team{}, err
 	}
 	active, err := u.HasActiveRun(ctx, id)
 	if err != nil {
@@ -204,13 +237,16 @@ func (u *TeamUsecase) Update(ctx context.Context, id string, patch Team) (Team, 
 	if err := validateTeamDefinition(current.DefinitionJSON); err != nil {
 		return Team{}, err
 	}
+	if err := u.validateTeamMembersExist(ctx, current.DefinitionJSON); err != nil {
+		return Team{}, err
+	}
 	return u.repo.UpdateTeam(ctx, current)
 }
 
 func (u *TeamUsecase) Delete(ctx context.Context, id string) error {
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return kerrors.BadRequest("TEAM", "id is required")
+	id, err := requireNonEmpty(id, "TEAM", "id")
+	if err != nil {
+		return err
 	}
 	team, err := u.repo.GetTeamByID(ctx, id)
 	if err != nil {
@@ -223,9 +259,9 @@ func (u *TeamUsecase) Delete(ctx context.Context, id string) error {
 }
 
 func (u *TeamUsecase) Duplicate(ctx context.Context, id string) (Team, error) {
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return Team{}, kerrors.BadRequest("TEAM", "id is required")
+	id, err := requireNonEmpty(id, "TEAM", "id")
+	if err != nil {
+		return Team{}, err
 	}
 	current, err := u.repo.GetTeamByID(ctx, id)
 	if err != nil {
@@ -247,9 +283,9 @@ func (u *TeamUsecase) ListRuns(ctx context.Context, teamID string, limit int) ([
 }
 
 func (u *TeamUsecase) GetRun(ctx context.Context, id string) (TeamRun, error) {
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return TeamRun{}, kerrors.BadRequest("TEAM", "id is required")
+	id, err := requireNonEmpty(id, "TEAM", "id")
+	if err != nil {
+		return TeamRun{}, err
 	}
 	return u.repo.GetTeamRunByID(ctx, id)
 }
@@ -278,17 +314,17 @@ func (u *TeamUsecase) UpdateRunTraceID(ctx context.Context, runID, traceID strin
 }
 
 func (u *TeamUsecase) ListRunSteps(ctx context.Context, runID string) ([]TeamRunStep, error) {
-	runID = strings.TrimSpace(runID)
-	if runID == "" {
-		return nil, kerrors.BadRequest("TEAM", "run_id is required")
+	runID, err := requireNonEmpty(runID, "TEAM", "run_id")
+	if err != nil {
+		return nil, err
 	}
 	return u.repo.ListTeamRunSteps(ctx, runID)
 }
 
 func (u *TeamUsecase) ListRunObservatoryTimeline(ctx context.Context, runID, nodeID string, limit int) ([]OrchestrationStep, error) {
-	runID = strings.TrimSpace(runID)
-	if runID == "" {
-		return nil, kerrors.BadRequest("TEAM", "run_id is required")
+	runID, err := requireNonEmpty(runID, "TEAM", "run_id")
+	if err != nil {
+		return nil, err
 	}
 	if limit <= 0 {
 		limit = 100

@@ -166,7 +166,7 @@ export function categoryTreeStats(tree: PlatformResourceTreeNode[]) {
 
 export function toQTreeNodes(
   nodes: PlatformResourceTreeNode[],
-  opts?: { selectableLevel?: CategoryLevel; enabledOnly?: boolean }
+  opts?: { selectableLevel?: CategoryLevel | "any"; enabledOnly?: boolean }
 ): CategoryQTreeNode[] {
   const selectableLevel = opts?.selectableLevel ?? "position";
   const enabledOnly = opts?.enabledOnly ?? false;
@@ -176,7 +176,10 @@ export function toQTreeNodes(
     .map((node) => {
       const level = node.level as CategoryLevel;
       const children = toQTreeNodes(node.children ?? [], opts);
-      const selectable = level === selectableLevel && (!enabledOnly || node.enabled);
+      const selectable =
+        selectableLevel === "any"
+          ? !enabledOnly || node.enabled
+          : level === selectableLevel && (!enabledOnly || node.enabled);
       return {
         id: node.id,
         label: node.name,

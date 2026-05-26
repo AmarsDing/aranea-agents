@@ -30,6 +30,7 @@ import { useChatSidebarOrder } from "./useChatSidebarOrder";
 import { useChatAttachments } from "./useChatAttachments";
 import { useChatProviderOptions } from "./useChatProviderOptions";
 import { useChatDeleteFlow } from "./useChatDeleteFlow";
+import { createChatFocusCoordinator } from "../chatFocusCoordinator";
 import { useChatEntityNav } from "./useChatEntityNav";
 import { useChatTraceDialog, useChatSessionArtifacts } from "./useChatTraceAndArtifacts";
 import { useChatSettingsDialog } from "./useChatSettingsDialog";
@@ -215,11 +216,14 @@ export function useChatWorkspace() {
     return plain.length > 22 ? `${plain.slice(0, 22)}…` : plain;
   }
 
+  const focusCoordinator = createChatFocusCoordinator();
+
   const entityNav = useChatEntityNav({
     appStore,
     sessionStore,
     messageStore,
     streamManager,
+    focusCoordinator,
     displayAgents,
     displayTeams,
     dialogMode,
@@ -525,6 +529,7 @@ export function useChatWorkspace() {
   watch(
     () => route.query.session,
     (sid) => {
+      if (focusCoordinator.isRouteSessionWatchSuppressed()) return;
       if (typeof sid !== "string" || !sid.trim()) return;
       const routeAgent = typeof route.query.agent === "string" ? route.query.agent.trim() : "";
       void entityNav.focusSessionById(sid.trim(), routeAgent || undefined);

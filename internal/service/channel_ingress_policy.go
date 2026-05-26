@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"aranea-agents/internal/biz"
@@ -82,6 +83,9 @@ func (h *ChannelIngress) steerIntoActiveTurn(ctx context.Context, chRow biz.Chan
 	}
 	svc, ok := h.chat.(*ChatService)
 	if !ok || svc.orch == nil {
+		if !ok && h.chat != nil {
+			slog.Warn("steerIntoActiveTurn: chat is not *ChatService", "type", fmt.Sprintf("%T", h.chat))
+		}
 		return "", nil
 	}
 	content := strings.TrimSpace(ev.Text)
