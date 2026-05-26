@@ -203,7 +203,10 @@ func (u *Usecase) ListDocuments(ctx context.Context, collectionID string, limit,
 	return u.repo.ListDocuments(ctx, collectionID, limit, offset)
 }
 
-// DeleteDocument removes a document and its chunks.
+// DeleteDocument removes a document and its chunks. Repo implementations MUST
+// keep `knowledge_collections.document_count / chunk_count` in sync atomically.
+// DAT-02 / KB-04: prior repo implementations only deleted the document row
+// (relying on FK cascade for chunks) but never decremented the collection tally.
 func (u *Usecase) DeleteDocument(ctx context.Context, id string) error {
 	if err := u.requireRepo(); err != nil {
 		return err

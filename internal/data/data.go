@@ -67,6 +67,7 @@ var ProviderSet = wire.NewSet(
 	NewArtifactRepo,
 	NewKnowledgeRepoFromData,
 	NewEvalRepoFromData,
+	NewBackgroundJobRepo,
 	NewA2ARepoFromData,
 	NewEcosystemRepo,
 	NewEventStoreRepo,
@@ -304,6 +305,9 @@ func ensureSchemaDDL(rawDB *sql.DB, entClient *ent.Client) error {
 	}
 	if err := EnsureSessionMemorySchema(context.Background(), entClient); err != nil {
 		return fmt.Errorf("session memory schema: %w", err)
+	}
+	if err := ensureMemoryFactsIndexStatusPatches(context.Background(), entClient); err != nil {
+		return fmt.Errorf("memory facts index status patches: %w", err)
 	}
 	if err := sessionmemory.EnsureMemoryRelationPatches(context.Background(), entClient); err != nil {
 		return fmt.Errorf("memory relation patches: %w", err)

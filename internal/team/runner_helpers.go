@@ -77,7 +77,7 @@ func (r *Runner) finishRunErr(ctx context.Context, run *biz.TeamRun, t0 time.Tim
 	if run == nil {
 		return
 	}
-	run.Status = "failed"
+	run.Status = biz.TeamRunStatusFailed
 	run.ErrorMessage = msg
 	run.FinishedAt = agent.RFC3339Now()
 	run.DurationMS = int(time.Since(t0).Milliseconds())
@@ -154,7 +154,7 @@ func (r *Runner) persistStep(ctx context.Context, run biz.TeamRun, teamID string
 	}
 	if r.td.Pipeline.Bus != nil {
 		started := step
-		started.Status = "running"
+		started.Status = biz.TeamRunStatusRunning
 		envStart := event.NewEnvelope(event.EnvelopeTypeTeamStepStarted, ag.AgentKey, run.SessionID)
 		envStart.TeamID = teamID
 		envStart.Metadata = map[string]any{"run_id": run.ID, "step": started}

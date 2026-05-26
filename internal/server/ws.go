@@ -68,11 +68,19 @@ type wsConn struct {
 	channels    map[string]bool
 	filterKey   string
 	unsubscribe func()
-	send        chan []byte
-	replayDone  chan struct{}
-	logEnabled  bool
-	globalMode  bool
-	probeMode   bool
+	// send is the legacy/system channel (normal priority). eventPump now routes
+	// through queues; non-event callers (sendSystemDownstream, replay) still use send.
+	// MON-OPT-04: send is kept for backward compat; writePump drains queues first.
+	send       chan []byte
+	queues     *connQueues // MON-OPT-04 priority lanes
+	replayDone chan struct{}
+	logEnabled bool
+	globalMode bool
+	probeMode  bool
+	// connCtx is cancelled when this WebSocket connection closes so that
+	// in-flight turns started by this connection are also cancelled (COR-03).
+	connCtx    context.Context
+	connCancel context.CancelFunc
 }
 
 func wsProbeMode(r *http.Request) bool {
@@ -89,10 +97,8 @@ func (wc *wsConn) sendSystemDownstream(msg wsDownstream) {
 	if err != nil {
 		return
 	}
-	select {
-	case wc.send <- data:
-	case <-time.After(defaultWSSystemSendWait):
-	}
+	// H-02: route through queues (normal priority) so writePump has a single drain path.
+	wc.queues.enqueueSystem(data)
 }
 
 func (s *WSServer) countGlobalMonitorConns() int {
@@ -219,10 +225,8 @@ func (s *WSServer) broadcastShutdown() {
 }
 
 func (wc *wsConn) sendSystemRaw(data []byte) {
-	select {
-	case wc.send <- data:
-	case <-time.After(defaultWSSystemSendWait):
-	}
+	// H-02: route through queues (normal priority).
+	wc.queues.enqueueSystem(data)
 }
 
 func (s *WSServer) handleWS(w http.ResponseWriter, r *http.Request) {
@@ -304,16 +308,20 @@ func (s *WSServer) handleWS(w http.ResponseWriter, r *http.Request) {
 		channels["knowledge"] = true
 	}
 
+	wcCtx, wcCancel := context.WithCancel(context.Background())
 	wc := &wsConn{
 		conn:       conn,
 		sessionID:  sessionID,
 		userID:     userID,
 		channels:   channels,
 		filterKey:  filterKey,
-		send:       make(chan []byte, 128),
+		send:       make(chan []byte, wsNormalCap), // system/replay messages (normal priority)
+		queues:     newConnQueues(),               // MON-OPT-04 priority lanes for bus events
 		logEnabled: logEnabled,
 		globalMode: globalMode,
 		probeMode:  probeMode,
+		connCtx:    wcCtx,
+		connCancel: wcCancel,
 	}
 
 	var eventCh <-chan event.Envelope
@@ -405,12 +413,9 @@ func (s *WSServer) replayEvents(wc *wsConn, sessionID, lastEventID string) {
 			"count":         len(events),
 		},
 	}
+	// H-02: all replay messages route through queues (normal priority).
 	if data, err := json.Marshal(startMsg); err == nil {
-		select {
-		case wc.send <- data:
-		default:
-			return
-		}
+		wc.queues.enqueueSystem(data)
 	}
 
 	for _, env := range events {
@@ -427,11 +432,7 @@ func (s *WSServer) replayEvents(wc *wsConn, sessionID, lastEventID string) {
 		if err != nil {
 			continue
 		}
-		select {
-		case wc.send <- data:
-		default:
-			return
-		}
+		wc.queues.enqueueSystem(data)
 	}
 
 	endMsg := wsDownstream{
@@ -443,10 +444,7 @@ func (s *WSServer) replayEvents(wc *wsConn, sessionID, lastEventID string) {
 		},
 	}
 	if data, err := json.Marshal(endMsg); err == nil {
-		select {
-		case wc.send <- data:
-		default:
-		}
+		wc.queues.enqueueSystem(data)
 	}
 }
 
@@ -462,19 +460,57 @@ func (wc *wsConn) firstSubscribedChannel() string {
 
 func (s *WSServer) writePump(wc *wsConn) {
 	ticker := time.NewTicker(defaultWSPingPeriod)
+	bpTicker := time.NewTicker(wsBackpressureInterval) // MON-OPT-04 backpressure reporter
 	defer func() {
 		ticker.Stop()
+		bpTicker.Stop()
 		wc.conn.Close()
 	}()
 	for {
-		select {
-		case msg, ok := <-wc.send:
-			wc.conn.SetWriteDeadline(time.Now().Add(defaultWSWriteWait))
+		// H-02 + MON-OPT-04: drain priority queues (high → normal → low) before blocking.
+		// wc.queues is the sole write path; wc.send is only used for the close signal.
+		// M-02: drainSelect drains high/normal greedily and low at most wsLowDrainPerLoop
+		// times per outer iteration to prevent high/normal starvation.
+		for {
+			data, prio, ok := wc.queues.drainSelect()
 			if !ok {
-				wc.conn.WriteMessage(websocket.CloseMessage, []byte{})
+				break
+			}
+			wc.conn.SetWriteDeadline(time.Now().Add(defaultWSWriteWait))
+			if err := wc.conn.WriteMessage(websocket.TextMessage, data); err != nil {
 				return
 			}
-			if err := wc.conn.WriteMessage(websocket.TextMessage, msg); err != nil {
+			// After draining a low-priority message, cap further low drains this
+			// loop iteration to allow high/normal items to be checked again.
+			if prio == wsPriorityLow {
+				lowCount := 1
+				for lowCount < wsLowDrainPerLoop {
+					d, p, o := wc.queues.drainSelect()
+					if !o {
+						goto endDrain
+					}
+					wc.conn.SetWriteDeadline(time.Now().Add(defaultWSWriteWait))
+					if err := wc.conn.WriteMessage(websocket.TextMessage, d); err != nil {
+						return
+					}
+					if p == wsPriorityLow {
+						lowCount++
+					} else {
+						// Non-low message found — continue outer loop for high/normal priority.
+						break
+					}
+				}
+				break // yield to outer select (ping/bp tickers) after low batch
+			}
+		}
+	endDrain:
+
+		select {
+		case _, ok := <-wc.send:
+			// wc.send closed = eventPump signalled a high-queue timeout → close.
+			if !ok {
+				wc.conn.SetWriteDeadline(time.Now().Add(defaultWSWriteWait))
+				wc.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
 		case <-ticker.C:
@@ -482,12 +518,21 @@ func (s *WSServer) writePump(wc *wsConn) {
 			if err := wc.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return
 			}
+		case <-bpTicker.C:
+			// MON-OPT-04: inject backpressure notification if drops occurred.
+			if bp := wc.queues.backpressurePayload(int(wsBackpressureInterval.Seconds())); bp != nil {
+				wc.conn.SetWriteDeadline(time.Now().Add(defaultWSWriteWait))
+				_ = wc.conn.WriteMessage(websocket.TextMessage, bp)
+			}
 		}
 	}
 }
 
 func (s *WSServer) readPump(wc *wsConn, eventCh <-chan event.Envelope) {
 	defer func() {
+		// COR-03: cancel connection context so in-flight turns started by this
+		// connection are cancelled when the client disconnects.
+		wc.connCancel()
 		s.removeConn(wc)
 		wc.unsubscribe()
 		wc.conn.Close()
@@ -534,10 +579,14 @@ func (s *WSServer) eventPump(wc *wsConn, eventCh <-chan event.Envelope) {
 		if err != nil {
 			continue
 		}
-		select {
-		case wc.send <- data:
-		default:
-			event.SessionSysLogWarn(context.Background(), wc.sessionID, "system.ws.send_drop", "WebSocket 发送缓冲区满，丢弃事件", event.P("type", env.Type))
+		// MON-OPT-04: route to priority queue; close connection on high-queue timeout.
+		prio := wsEnvelopePriority(env.Type)
+		if ok := wc.queues.enqueue(prio, data); !ok {
+			// high queue timed out — gracefully close so client reconnects.
+			event.SessionSysLogWarn(context.Background(), wc.sessionID, "system.ws.high_queue_timeout",
+				"WebSocket 高优先级队列超时，关闭连接", event.P("type", env.Type))
+			close(wc.send) // signal writePump to exit
+			return
 		}
 	}
 }
@@ -650,43 +699,13 @@ func (s *WSServer) handleUserMessage(wc *wsConn, up wsUpstream) {
 		if opts, ok := payload["options"].(map[string]any); ok {
 			input.Options = buildBizTurnOptions(opts)
 		}
-		safego.Go(context.Background(), "ws-user-message", func() {
-			ctx, cancel := context.WithTimeout(context.Background(), defaultWSTurnTimeout)
-			defer cancel()
-			_, err := s.turnGateway.ExecuteTurn(ctx, input)
-			if err != nil {
-				event.SessionSysLogWarn(context.Background(), sessionID, "system.ws.send_failed", "WebSocket 用户消息发送失败", event.P("error", err))
-				env := event.NewEnvelope(event.EnvelopeTypeError, "ws-handler", sessionID)
-				env.RequestID = requestID
-				env.Error = &event.EnvelopeError{
-					Type:    "send_failed",
-					Message: err.Error(),
-				}
-				s.eventBus.Publish(context.Background(), env)
-			}
-		})
-		return
-	}
-
-	// Fallback: proto-based ChatSender (legacy path).
-	req := &chatv1.SendChatMessageRequest{
-		SessionId: sessionID,
-		Content:   strings.TrimSpace(content),
-	}
-	if agentKey, _ := payload["agent_key"].(string); agentKey != "" {
-		req.AgentKey = &agentKey
-	}
-	if teamID, _ := payload["team_id"].(string); teamID != "" {
-		req.TeamId = &teamID
-	}
-	if opts, ok := payload["options"].(map[string]any); ok {
-		req.Options = buildChatOptions(opts)
-	}
-
+	// COR-03: derive turn context from the connection context so disconnecting
+	// the WebSocket also cancels in-flight agent turns for this connection.
+	connCtx := wc.connCtx
 	safego.Go(context.Background(), "ws-user-message", func() {
-		ctx, cancel := context.WithTimeout(context.Background(), defaultWSTurnTimeout)
+		ctx, cancel := context.WithTimeout(connCtx, defaultWSTurnTimeout)
 		defer cancel()
-		_, err := s.sender.SendChatMessage(ctx, req)
+		_, err := s.turnGateway.ExecuteTurn(ctx, input)
 		if err != nil {
 			event.SessionSysLogWarn(context.Background(), sessionID, "system.ws.send_failed", "WebSocket 用户消息发送失败", event.P("error", err))
 			env := event.NewEnvelope(event.EnvelopeTypeError, "ws-handler", sessionID)
@@ -698,6 +717,42 @@ func (s *WSServer) handleUserMessage(wc *wsConn, up wsUpstream) {
 			s.eventBus.Publish(context.Background(), env)
 		}
 	})
+	return
+}
+
+// Fallback: proto-based ChatSender (legacy path).
+req := &chatv1.SendChatMessageRequest{
+	SessionId: sessionID,
+	Content:   strings.TrimSpace(content),
+}
+if agentKey, _ := payload["agent_key"].(string); agentKey != "" {
+	req.AgentKey = &agentKey
+}
+if teamID, _ := payload["team_id"].(string); teamID != "" {
+	req.TeamId = &teamID
+}
+if opts, ok := payload["options"].(map[string]any); ok {
+	req.Options = buildChatOptions(opts)
+}
+
+// COR-03: derive turn context from the connection context so disconnecting
+// the WebSocket also cancels in-flight agent turns for this connection.
+connCtx := wc.connCtx
+safego.Go(context.Background(), "ws-user-message", func() {
+	ctx, cancel := context.WithTimeout(connCtx, defaultWSTurnTimeout)
+	defer cancel()
+	_, err := s.sender.SendChatMessage(ctx, req)
+	if err != nil {
+		event.SessionSysLogWarn(context.Background(), sessionID, "system.ws.send_failed", "WebSocket 用户消息发送失败", event.P("error", err))
+		env := event.NewEnvelope(event.EnvelopeTypeError, "ws-handler", sessionID)
+		env.RequestID = requestID
+		env.Error = &event.EnvelopeError{
+			Type:    "send_failed",
+			Message: err.Error(),
+		}
+		s.eventBus.Publish(context.Background(), env)
+	}
+})
 }
 
 func (s *WSServer) handleEnqueueMessage(wc *wsConn, up wsUpstream) {
@@ -717,8 +772,9 @@ func (s *WSServer) handleEnqueueMessage(wc *wsConn, up wsUpstream) {
 		Content:   strings.TrimSpace(content),
 	}
 
+	connCtxEq := wc.connCtx
 	safego.Go(context.Background(), "ws-enqueue-message", func() {
-		ctx, cancel := context.WithTimeout(context.Background(), defaultWSTurnTimeout)
+		ctx, cancel := context.WithTimeout(connCtxEq, defaultWSTurnTimeout)
 		defer cancel()
 		resp, err := s.sender.EnqueueUserMessage(ctx, req)
 		if err != nil {

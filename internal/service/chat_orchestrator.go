@@ -84,11 +84,16 @@ type ChatOrchestrator struct {
 	runs       *rt.RunRegistry
 	chatUC     *biz.ChatUsecase
 
-	sessionRunBindings     sync.Map
-	awaitMetaCache         sync.Map
-	resumeInFlight         sync.Map
-	pendingMergeFollowup   sync.Map
-	sweepStop              chan struct{}
+	sessionRunBindings   sync.Map
+	awaitMetaCache       sync.Map
+	resumeInFlight       sync.Map
+	pendingMergeFollowup sync.Map
+	sweepStop            chan struct{}
+	// svcCtx is a service-lifecycle context cancelled in Close(). Background
+	// goroutines (pending queue turns) derive their timeout from it so they
+	// are cancelled cleanly on server shutdown.
+	svcCtx    context.Context
+	svcCancel context.CancelFunc
 }
 
 // ChatOrchestratorDeps groups all dependencies for ChatOrchestrator construction.
@@ -173,6 +178,7 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 
 	configureMCPObserve(deps.TurnDeps.Pipeline.Bus, deps.MCPServers)
 	o.sweepStop = make(chan struct{})
+	o.svcCtx, o.svcCancel = context.WithCancel(context.Background())
 	safego.Go(nil, "orch-map-sweep", o.sweepLoop)
 	return o
 }
@@ -502,12 +508,17 @@ func (o *ChatOrchestrator) endResume(sessionID string) {
 }
 
 func (o *ChatOrchestrator) Close() {
-	if o == nil || o.sweepStop == nil {
+	if o == nil {
 		return
 	}
-	select {
-	case o.sweepStop <- struct{}{}:
-	default:
+	if o.svcCancel != nil {
+		o.svcCancel()
+	}
+	if o.sweepStop != nil {
+		select {
+		case o.sweepStop <- struct{}{}:
+		default:
+		}
 	}
 }
 

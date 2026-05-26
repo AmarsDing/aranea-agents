@@ -26,7 +26,8 @@ export function useKnowledgePage() {
   const searchRan = ref(false);
   const embedderSaving = ref(false);
   const createForm = ref({ name: "", description: "", embedding_model: "text-embedding-3-small" });
-  const ingestForm = ref({ source: "", mime_type: "text/plain", text: "" });
+  const ingestForm = ref({ source: "", mime_type: "text/plain", text: "", fileContentBase64: "" });
+
   const embedderConfig = computed<EmbedderConfig | null>(() => knowledgeStore.embedderConfig);
   const collections = computed(() => knowledgeStore.collections);
   const loading = computed(() => knowledgeStore.loading);
@@ -144,27 +145,101 @@ export function useKnowledgePage() {
     }
   }
 
+  // DAT-04 / KB-01 helpers: byte-faithful base64 for both file uploads (any
+  // binary format) and pasted text (UTF-8). Prior code went through
+  // FileReader.readAsText, which mangled non-ASCII / binary payloads.
+  function bytesToBase64(bytes: Uint8Array): string {
+    const CHUNK = 0x8000;
+    let binary = "";
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+      const slice = bytes.subarray(i, Math.min(i + CHUNK, bytes.length));
+      binary += String.fromCharCode.apply(null, slice as unknown as number[]);
+    }
+    return btoa(binary);
+  }
+
+  function utf8ToBase64(str: string): string {
+    return bytesToBase64(new TextEncoder().encode(str));
+  }
+
+  // REV-D: mirrors backend extractSupportedMimes — keep in sync with
+  // internal/service/knowledge.go:extractSupportedMimes.
+  const EXTRACT_SUPPORTED_MIMES = new Set([
+    "text/plain", "text/markdown", "text/csv", "text/html", "text/xml",
+    "application/json", "application/xml", "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  ]);
+
+  function isExtractSupported(mimeType: string): boolean {
+    const m = mimeType.trim().toLowerCase();
+    return EXTRACT_SUPPORTED_MIMES.has(m) || m.startsWith("text/");
+  }
+
+  function inferMime(file: File): string {
+    if (file.type && file.type.trim()) return file.type;
+    const lower = file.name.toLowerCase();
+    if (lower.endsWith(".md")) return "text/markdown";
+    if (lower.endsWith(".txt") || lower.endsWith(".log")) return "text/plain";
+    if (lower.endsWith(".json")) return "application/json";
+    if (lower.endsWith(".csv")) return "text/csv";
+    if (lower.endsWith(".html") || lower.endsWith(".htm")) return "text/html";
+    if (lower.endsWith(".xml")) return "application/xml";
+    if (lower.endsWith(".pdf")) return "application/pdf";
+    if (lower.endsWith(".docx")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    if (lower.endsWith(".doc")) return "application/msword";
+    if (lower.endsWith(".pptx")) return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+    if (lower.endsWith(".xlsx")) return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    return "application/octet-stream";
+  }
+
   function onIngestFile(file: File | File[] | null) {
     const picked = Array.isArray(file) ? file[0] : file;
-    if (!picked) return;
+    ingestForm.value.fileContentBase64 = "";
+    if (!picked) {
+      ingestFile.value = null;
+      return;
+    }
+    ingestFile.value = picked;
     ingestForm.value.source = ingestForm.value.source || picked.name;
+    const inferred = inferMime(picked);
+    ingestForm.value.mime_type = inferred;
     const reader = new FileReader();
+    // ArrayBuffer keeps binary payloads (PDF/DOCX/…) intact; we still surface a
+    // textarea preview for text-like MIME so the user can review before submit.
     reader.onload = () => {
-      ingestForm.value.text = String(reader.result ?? "");
+      const buf = reader.result as ArrayBuffer | null;
+      if (!buf) return;
+      const bytes = new Uint8Array(buf);
+      ingestForm.value.fileContentBase64 = bytesToBase64(bytes);
+      const textLike = /^text\//i.test(inferred) || inferred === "application/json" || inferred === "application/xml";
+      if (textLike) {
+        try {
+          ingestForm.value.text = new TextDecoder("utf-8", { fatal: false }).decode(buf);
+        } catch {
+          ingestForm.value.text = "";
+        }
+      } else {
+        ingestForm.value.text = "";
+      }
     };
-    reader.readAsText(picked);
+    reader.readAsArrayBuffer(picked);
   }
 
   async function submitIngest() {
     if (!selectedId.value) return;
+    const fileBase64 = ingestForm.value.fileContentBase64;
     const text = ingestForm.value.text.trim();
-    if (!text) {
+    if (!fileBase64 && !text) {
       $q.notify({ type: "warning", message: "请提供文件或文本内容" });
       return;
     }
     ingestLoading.value = true;
     try {
-      const b64 = btoa(unescape(encodeURIComponent(text)));
+      // Prefer pre-encoded file base64 (binary-safe); fall back to UTF-8 text encoding.
+      const b64 = fileBase64 || utf8ToBase64(text);
       await knowledgeStore.ingest({
         collection_id: selectedId.value,
         source: ingestForm.value.source || "upload",
@@ -172,11 +247,22 @@ export function useKnowledgePage() {
         content_base64: b64
       });
       ingestOpen.value = false;
-      ingestForm.value = { source: "", mime_type: "text/plain", text: "" };
+      const submittedMime = ingestForm.value.mime_type || "text/plain";
+      ingestForm.value = { source: "", mime_type: "text/plain", text: "", fileContentBase64: "" };
       ingestFile.value = null;
       await loadDocuments();
       await loadCollections();
-      $q.notify({ type: "positive", message: "文档已提交入库" });
+      // REV-D: binary formats that require server-side extraction get a softer
+      // success message so users know search availability depends on parsing.
+      if (isExtractSupported(submittedMime)) {
+        $q.notify({ type: "positive", message: "文档已提交入库，正在后台解析..." });
+      } else {
+        $q.notify({
+          type: "warning",
+          message: `文档已上传（${submittedMime}），但当前后端可能不支持解析该格式，检索内容可能为空。`,
+          timeout: 8000,
+        });
+      }
     } catch (e) {
       $q.notify({ type: "negative", message: friendlyError(e) || "入库失败" });
     } finally {

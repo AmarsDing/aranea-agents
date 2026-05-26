@@ -14,6 +14,7 @@ import (
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 
+	"aranea-agents/pkg/outboundguard"
 	"aranea-agents/pkg/strutil"
 )
 
@@ -347,7 +348,10 @@ func inspectBedrockModel(in Input) (Result, error) {
 }
 
 func getProviderJSON(endpoint string, apiKey string, headers map[string]string, out any) error {
-	client := &http.Client{Timeout: 15 * time.Second}
+	if err := outboundguard.ValidateURL(endpoint); err != nil {
+		return fmt.Errorf("provider inspect blocked: %w", err)
+	}
+	client := outboundguard.NewClient(15 * time.Second)
 	request, err := http.NewRequest(http.MethodGet, endpoint, nil)
 	if err != nil {
 		return err

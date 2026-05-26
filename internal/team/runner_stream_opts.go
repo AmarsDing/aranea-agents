@@ -2,15 +2,14 @@ package team
 
 import (
 	"aranea-agents/internal/agent"
-	"aranea-agents/internal/chatactivity"
 )
 
-// newStreamConsumeOptions returns stream consume options via the injected factory
-// if available, otherwise falls back to direct chatactivity construction.
+// newStreamConsumeOptions returns stream consume options via the injected factory.
+// SetStreamOptsFactory must be called before use; the factory is always wired
+// in service/chat_orchestrator.go via chatactivity.StreamOptsFactoryAdapter.
 func (r *Runner) newStreamConsumeOptions() *agent.StreamConsumeOptions {
-	if r.streamOptsFactory != nil {
-		return r.streamOptsFactory.NewStreamConsumeOptions()
+	if r.streamOptsFactory == nil {
+		return nil
 	}
-	// Fallback: direct construction (to be removed once all callers inject the factory)
-	return chatactivity.NewStreamConsumeOptions(r.td.Catalog.ToolUC, r.td.Catalog.Agents, r.td.Sessions)
+	return r.streamOptsFactory.NewStreamConsumeOptions()
 }

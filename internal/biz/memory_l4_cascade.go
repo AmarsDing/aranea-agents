@@ -209,9 +209,15 @@ func (uc *L4CascadeUsecase) Approve(ctx context.Context, id, reviewer string) ([
 		if err != nil {
 			return nil, err
 		}
+		// MEM-OPT-01: log index sync failures instead of silently ignoring them.
+		// Each fact that fails to sync gets a warn-level log so operators can
+		// detect index drift without blocking the Approve write path.
 		if uc.indexSync != nil {
 			for _, raw := range updatedRows {
-				_ = uc.indexSync.SyncFactIndexFromRow(ctx, raw)
+				if err := uc.indexSync.SyncFactIndexFromRow(ctx, raw); err != nil {
+					slog.WarnContext(ctx, "memory.cascade_approve.index_sync_fail",
+						"error", err)
+				}
 			}
 		}
 	}

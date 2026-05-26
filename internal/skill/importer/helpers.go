@@ -83,6 +83,32 @@ func validationError(msg string) error {
 	return errors.New(msg)
 }
 
+// ensurePathWithin verifies that joining relName under absBase stays within absBase
+// (defends against zipslip, including Windows drive prefixes, absolute paths, and
+// path-traversal escapes after filepath.Clean). TPM-P1-07.
+func ensurePathWithin(absBase, relName string) error {
+	if filepath.IsAbs(relName) {
+		return fmt.Errorf("unsafe skill file path (absolute): %s", relName)
+	}
+	cleaned := filepath.Clean(relName)
+	if cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(filepath.Separator)) || strings.Contains(cleaned, "..") {
+		return fmt.Errorf("unsafe skill file path (traversal): %s", relName)
+	}
+	joined := filepath.Join(absBase, cleaned)
+	absJoined, err := filepath.Abs(joined)
+	if err != nil {
+		return fmt.Errorf("resolve skill file path: %w", err)
+	}
+	rel, err := filepath.Rel(absBase, absJoined)
+	if err != nil {
+		return fmt.Errorf("rel skill file path: %w", err)
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("unsafe skill file path (escapes base): %s", relName)
+	}
+	return nil
+}
+
 func skillZipGroupPath(name string) (string, string) {
 	name = filepath.ToSlash(name)
 	name = strings.Trim(name, "/")

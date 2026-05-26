@@ -335,10 +335,18 @@ func (e *TraceEmitter) emit(stepID string, phase FlowPhase, explicitSev FlowSeve
 	if e.buffer != nil {
 		e.buffer.Append(env)
 	}
-	bus := e.bus
-	safego.Go(context.Background(), "flow-log-publish", func() {
-		bus.Publish(context.Background(), env)
-	})
+	// MON-OPT-01 Phase 0/1: route flow_log via Infra.Publish if available (M-01: no per-call Getenv).
+	// Falls back to direct bus publish if Infra is not yet wired (pre-MON-OPT-01 behavior).
+	if infra := boundInfraRef(); infra != nil {
+		// Infra.Publish reads cached routing mode — no os.Getenv per invocation.
+		infra.Publish(context.Background(), env)
+	} else {
+		// No Infra wired yet — fall back to SessionBus.
+		bus := e.bus
+		safego.Go(context.Background(), "flow-log-publish", func() {
+			bus.Publish(context.Background(), env)
+		})
+	}
 }
 
 func (e *TraceEmitter) startSpan(name, parentID string, attrs map[string]any) string {

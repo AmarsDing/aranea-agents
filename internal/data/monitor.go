@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"aranea-agents/internal/biz"
@@ -14,7 +15,8 @@ import (
 )
 
 type monitorRepo struct {
-	data *Data
+	data           *Data
+	firingColsOnce sync.Once // H-04: run schema migration only once per process
 }
 
 func NewMonitorRepo(d *Data) biz.MonitorRepo {

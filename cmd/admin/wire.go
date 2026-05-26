@@ -666,6 +666,13 @@ func provideMemoryL3DecayWorker(store *sessionmemory.Store, agents *biz.AgentUse
 	return jobs.NewMemoryL3DecayWorker(0, store, agents, logger)
 }
 
+func provideMemoryL4DecayWorker(l4 biz.L4GraphWriter, agents *biz.AgentUsecase, logger log.Logger) *jobs.MemoryL4DecayWorker {
+	if jobs.MemoryL4DecayDisabled() {
+		return nil
+	}
+	return jobs.NewMemoryL4DecayWorker(0, l4, agents, logger)
+}
+
 func provideEventStoreCleanup(store *biz.EventStoreUsecase, logger log.Logger) *jobs.EventStoreCleanup {
 	if jobs.EventStoreCleanupDisabled() {
 		return nil
@@ -685,6 +692,10 @@ func provideFlowLogCleanup(flowLogs *biz.FlowLogUsecase, logger log.Logger) *job
 		return nil
 	}
 	return jobs.NewFlowLogCleanup(0, flowLogs, logger)
+}
+
+func provideMonitorAlertCooldownCleanup(uc *biz.MonitorUsecase, logger log.Logger) *jobs.MonitorAlertCooldownCleanup {
+	return jobs.NewMonitorAlertCooldownCleanup(0, 0, uc, logger)
 }
 
 func provideChannelDeliveryScanner(worker *service.ChannelDeliveryWorker, logger log.Logger) *jobs.ChannelDeliveryWorker {
@@ -777,14 +788,19 @@ type wireOut struct {
 	ChannelDeliveryScanner  *jobs.ChannelDeliveryWorker
 	SessionRunDurableWorker *service.SessionRunDurableWorker
 	ChannelRuntime          *service.ChannelRuntime
-	EventStoreCleanup       *jobs.EventStoreCleanup
-	ToolAuditCleanup        *jobs.ToolAuditCleanup
-	FlowLogCleanup          *jobs.FlowLogCleanup
-	MemoryL2Decay           *jobs.MemoryL2DecayWorker
-	MemoryL3Decay           *jobs.MemoryL3DecayWorker
-	MemoryEpisodeBackfill   *jobs.MemoryEpisodeBackfillWorker
-	MemoryDataMigration     *jobs.MemoryDataMigrationWorker
-	ModelCatalogRunner      *modelcatalog.Runner
+	// PluginRuntime is included so main.go can call Close() on graceful shutdown
+	// to stop the HookDeliveryRetryWorker goroutine (OUT-02 / P0-4).
+	PluginRuntime               *plugintrpc.Runtime
+	EventStoreCleanup           *jobs.EventStoreCleanup
+	ToolAuditCleanup            *jobs.ToolAuditCleanup
+	FlowLogCleanup              *jobs.FlowLogCleanup
+	MonitorAlertCooldownCleanup *jobs.MonitorAlertCooldownCleanup
+	MemoryL2Decay               *jobs.MemoryL2DecayWorker
+	MemoryL3Decay               *jobs.MemoryL3DecayWorker
+	MemoryL4Decay               *jobs.MemoryL4DecayWorker
+	MemoryEpisodeBackfill       *jobs.MemoryEpisodeBackfillWorker
+	MemoryDataMigration         *jobs.MemoryDataMigrationWorker
+	ModelCatalogRunner          *modelcatalog.Runner
 }
 
 func provideWireOut(
@@ -800,11 +816,14 @@ func provideWireOut(
 	channelDelivery *jobs.ChannelDeliveryWorker,
 	sessionRunDurable *service.SessionRunDurableWorker,
 	channelRuntime *service.ChannelRuntime,
+	pluginRuntime *plugintrpc.Runtime,
 	eventStoreCleanup *jobs.EventStoreCleanup,
 	toolAuditCleanup *jobs.ToolAuditCleanup,
 	flowLogCleanup *jobs.FlowLogCleanup,
+	monitorAlertCooldown *jobs.MonitorAlertCooldownCleanup,
 	memoryL2Decay *jobs.MemoryL2DecayWorker,
 	memoryL3Decay *jobs.MemoryL3DecayWorker,
+	memoryL4Decay *jobs.MemoryL4DecayWorker,
 	memoryEpisodeBackfill *jobs.MemoryEpisodeBackfillWorker,
 	memoryDataMigration *jobs.MemoryDataMigrationWorker,
 	modelCatalogRunner *modelcatalog.Runner,
@@ -815,8 +834,9 @@ func provideWireOut(
 		ChannelHealthScanner: channelHealth, ChannelDeliveryScanner: channelDelivery,
 		SessionRunDurableWorker: sessionRunDurable,
 		ChannelRuntime:          channelRuntime,
+		PluginRuntime:           pluginRuntime,
 		EventStoreCleanup:       eventStoreCleanup, ToolAuditCleanup: toolAuditCleanup,
-		FlowLogCleanup: flowLogCleanup, MemoryL2Decay: memoryL2Decay, MemoryL3Decay: memoryL3Decay,
+		FlowLogCleanup: flowLogCleanup, MonitorAlertCooldownCleanup: monitorAlertCooldown, MemoryL2Decay: memoryL2Decay, MemoryL3Decay: memoryL3Decay, MemoryL4Decay: memoryL4Decay,
 		MemoryEpisodeBackfill: memoryEpisodeBackfill,
 		MemoryDataMigration:   memoryDataMigration,
 		ModelCatalogRunner:    modelCatalogRunner,
@@ -947,10 +967,12 @@ func wireApp(*conf.Server, *conf.Data, log.Logger) (wireOut, func(), error) {
 		provideEventStoreCleanup,
 		provideMemoryL2DecayWorker,
 		provideMemoryL3DecayWorker,
+		provideMemoryL4DecayWorker,
 		provideMemoryEpisodeBackfillWorker,
 		provideMemoryDataMigrationWorker,
 		provideToolAuditCleanup,
 		provideFlowLogCleanup,
+		provideMonitorAlertCooldownCleanup,
 		provideMCPHealthRunnerDeps,
 		provideMCPHealthRunner,
 		provideA2AGatewayHealthRunnerDeps,

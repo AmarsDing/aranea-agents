@@ -200,7 +200,7 @@ func runGraphPathHarness(t *testing.T, def Definition, outcomes []parityMemberOu
 		CompletionTok:  result.CompletionTok,
 		GraphExecID:    run.GraphExecutionID,
 	}
-	runner.persistGraphMemberStepsFromResult(context.Background(), finishIn, def)
+	runner.persistGraphMemberStepsFromResultTestOnly(context.Background(), finishIn, def)
 
 	envs := drainEnvelopes(ch)
 	steps, _ := repo.ListTeamRunSteps(context.Background(), run.ID)

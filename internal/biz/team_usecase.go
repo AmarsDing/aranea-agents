@@ -148,7 +148,7 @@ func (u *TeamUsecase) validateTeamMembersExist(ctx context.Context, raw string) 
 		} `json:"members"`
 	}
 	if err := json.Unmarshal([]byte(raw), &body); err != nil {
-		return nil
+		return kerrors.BadRequest("TEAM", "invalid team definition JSON: "+err.Error())
 	}
 	for _, member := range body.Members {
 		aid := strings.TrimSpace(member.AgentID)

@@ -182,7 +182,7 @@
 | CC-C-04 | 滚动锚定最后一轮正文 | P0 | ✅ | 非 tool spam 底部 |
 | CC-C-05 | 长 Session 虚拟列表策略 | P1 | 🟡 | slice 48 · row 200px；benchmark 待做 |
 | CC-C-06 | WS patch rAF + completion 增量 merge | P1 | ✅ | runner_completion 仅 after_revision hydrate |
-| CC-B-07 | UserBubble 来源徽标 + platform | P1 | 🚧 | Tier 0 已写 platform |
+| CC-B-07 | UserBubble 来源徽标 + platform | P1 | ✅ | messageSourceMeta.ts + TurnBlock 已落；后端 MergeInboundSourceIntoUserOptionsJSON 已落 |
 | CC-C-07 | Session 顶栏 sync 诊断 | P1 | ✅ | msgs · rev · WS · ctx% |
 | CC-HOT-02 | 删 Session 清 peer bind | P2 | ✅ | DeleteSession → channel_peer_session |
 | CC-F-01 | 24h Durable Job Worker deadline | P2 | 🚧 | 基础 Worker 已随 CC-R-03；24h deadline 待完善 |
@@ -214,8 +214,8 @@
 | CC-HOT-01 | 飞书 stale peer bind 自动 rebind | P0 | ✅ | `ensureChannelSession` + `UpdateSessionID` |
 | CC-HOT-02 | 删 Session 清 peer bind | P2 | 📋 | 读路径已自愈 |
 | CC-E2E-01 | M55-SYNC/UI/JOB 手工验收 | P1 | 🟡 | [DECO-01 归档](../changelog/2026-05-24-DECO-01-Feishu-Web-E2E-Archive.md)；Holistic fix [Review](../review/2026-05-24-DECO-01-Channel-Sync-Holistic-Fix-Review.md) P1 待收敛 |
-| DECO-R-P1-01 | Global hub / session WS stream 分流 | P1 | 🚧 | [Review §3](../review/2026-05-24-DECO-01-Channel-Sync-Holistic-Fix-Review.md#p1--当前迭代应修) |
-| DECO-R-P1-02 | turn complete 双 hydrate dedupe | P1 | 🚧 | 同上 |
+| DECO-R-P1-01 | Global hub / session WS stream 分流 | P1 | ✅ | shouldGlobalHubHandleStream + shouldSessionWsSkipEnvelope 已落 |
+| DECO-R-P1-02 | turn complete 双 hydrate dedupe | P1 | ✅ | shouldGlobalHubFinalizeTurn + hydrateInFlight in-flight 去重 已落 |
 | CC-D-01 | Background Job 列表/侧栏 | P1 | ✅ | WS refresh + Graph 深链 |
 | CC-E-01 | `@` 上下文引用 UX | P2 | 📋 | Cursor 对齐 |
 | CC-E-03 | diff Apply 卡片 | P2 | 📋 | fragment edit 对接 |

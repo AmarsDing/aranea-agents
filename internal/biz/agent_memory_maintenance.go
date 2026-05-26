@@ -11,6 +11,7 @@ type AgentMemoryMaintenanceTarget struct {
 	AgentID              string
 	WriteL2Episode       bool
 	WriteL3Facts         bool
+	WriteL4Graph         bool
 	L2RetentionDays      int
 	L3DecayIntervalHours int
 }
@@ -44,6 +45,7 @@ func (u *AgentUsecase) ListMemoryMaintenanceTargets(ctx context.Context) ([]Agen
 				AgentID:              ag.ID,
 				WriteL2Episode:       policy.WriteL2Episode,
 				WriteL3Facts:         policy.WriteL3Facts,
+				WriteL4Graph:         policy.WriteL4Graph,
 				L2RetentionDays:      policy.L2RetentionDays,
 				L3DecayIntervalHours: policy.L3DecayIntervalHours,
 			})

@@ -73,6 +73,10 @@ func (r *alertMonitorRepo) ReplaceAlertRules(ctx context.Context, rules []Monito
 	return nil
 }
 
+func (r *alertMonitorRepo) UpdateAlertFiringState(_ context.Context, _ string, _ MonitorAlertFiringState, _ *time.Time, _ float64, _ *time.Time) error {
+	return nil
+}
+
 func (r *alertMonitorRepo) CountMonitorEventsSince(ctx context.Context, eventKey, status, sinceRFC3339 string) (int32, error) {
 	if status == "error" {
 		return r.errors, nil

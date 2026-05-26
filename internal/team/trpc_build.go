@@ -107,17 +107,7 @@ func BuildTRPCTeam(ctx context.Context, def Definition, deps TRPCTeamBuilderDeps
 		return root, lookup, err
 
 	default:
-		if len(memberAgents) < 2 {
-			return memberAgents[0], lookup, nil
-		}
-		coordinator := memberAgents[0]
-		rest := memberAgents[1:]
-		opts := buildCoordinatorOptions(def)
-		t, err := trpcteam.New(coordinator, rest, opts...)
-		if err != nil {
-			return nil, nil, kerrors.InternalServer("TEAM", fmt.Sprintf("new coordinator: %v", err))
-		}
-		return t, lookup, nil
+		return nil, nil, kerrors.BadRequest("TEAM", fmt.Sprintf("unsupported team mode %q for native fallback path", mode))
 	}
 }
 

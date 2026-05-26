@@ -24,6 +24,11 @@ type InboundMessage struct {
 	ConversationID string
 	SessionWebhook string
 	MsgType        string
+	// CreateAt is the platform-provided message creation timestamp (ms).
+	// Use this (not the URL query-param timestamp) for idempotency keys.
+	CreateAt int64
+	// MsgID is the platform-provided message ID when available.
+	MsgID string
 }
 
 // ParseInbound decodes a DingTalk robot callback body (text message).
@@ -37,6 +42,8 @@ func ParseInbound(raw []byte) (InboundMessage, error) {
 		SenderStaffID  string `json:"senderStaffId"`
 		ConversationID string `json:"conversationId"`
 		SessionWebhook string `json:"sessionWebhook"`
+		CreateAt       int64  `json:"createAt"`
+		MsgID          string `json:"msgId"`
 	}
 	if err := json.Unmarshal(raw, &body); err != nil {
 		return InboundMessage{}, err
@@ -52,6 +59,8 @@ func ParseInbound(raw []byte) (InboundMessage, error) {
 		ConversationID: body.ConversationID,
 		SessionWebhook: body.SessionWebhook,
 		MsgType:        body.MsgType,
+		CreateAt:       body.CreateAt,
+		MsgID:          strings.TrimSpace(body.MsgID),
 	}, nil
 }
 

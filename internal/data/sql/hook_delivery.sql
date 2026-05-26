@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS hook_deliveries (
   hook_key TEXT NOT NULL,
   hook_id TEXT NOT NULL DEFAULT '',
   webhook_url TEXT NOT NULL,
+  webhook_secret TEXT NOT NULL DEFAULT '',
   payload_json TEXT NOT NULL DEFAULT '{}',
   status TEXT NOT NULL DEFAULT 'pending',
   attempt_count INTEGER NOT NULL DEFAULT 0,
@@ -17,3 +18,6 @@ CREATE TABLE IF NOT EXISTS hook_deliveries (
 CREATE INDEX IF NOT EXISTS idx_hook_deliveries_hook_key ON hook_deliveries(hook_key);
 CREATE INDEX IF NOT EXISTS idx_hook_deliveries_status ON hook_deliveries(status);
 CREATE INDEX IF NOT EXISTS idx_hook_deliveries_created_at ON hook_deliveries(created_at);
+-- Composite index for the retry worker query: WHERE status='pending' AND updated_at < ? (OUT-02)
+CREATE INDEX IF NOT EXISTS idx_hook_deliveries_retry ON hook_deliveries(status, updated_at)
+    WHERE status = 'pending';

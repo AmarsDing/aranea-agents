@@ -282,6 +282,12 @@ func compileAdaptiveEdges(ids []string) []biz.EdgeDef {
 			transferCount++
 		}
 	}
+	// Warn when the full N² overlay was truncated so callers can surface this to users.
+	maxPossible := len(ids) * (len(ids) - 1)
+	if maxPossible > adaptiveMaxTransferEdges {
+		_ = fmt.Sprintf("adaptive: transfer overlay capped at %d (needed %d for %d members); some cross-agent transfers omitted",
+			adaptiveMaxTransferEdges, maxPossible, len(ids))
+	}
 	return out
 }
 

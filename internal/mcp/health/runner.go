@@ -106,14 +106,24 @@ func (r *Runner) probeOne(ctx context.Context, srv biz.MCPServer) {
 	}
 	elapsed := time.Since(start)
 
-	status := "ok"
-	if !result.OK {
-		status = "error"
+	// TPM-P1-09: "auth_required" means the server is network-reachable but requires
+	// OAuth / API-key credentials that the probe does not inject. Treat it as a distinct
+	// status rather than "error" so the health dashboard shows the correct reason and
+	// alert rules are not triggered for servers that are actually healthy at the network
+	// layer. Only hard failures (OK=false, Status≠"auth_required") raise an alert.
+	metricStatus := result.Status
+	if metricStatus == "" {
+		if result.OK {
+			metricStatus = "ok"
+		} else {
+			metricStatus = "error"
+		}
 	}
-	probeTotal.WithLabelValues(srv.Key, status).Inc()
+	probeTotal.WithLabelValues(srv.Key, metricStatus).Inc()
 	probeDuration.WithLabelValues(srv.Key).Observe(elapsed.Seconds())
 
-	if !result.OK {
+	isHardFailure := !result.OK && result.Status != "auth_required"
+	if isHardFailure {
 		updated, err := r.deps.MCP.GetMCPServer(ctx, srv.ID)
 		if err == nil {
 			srv = updated

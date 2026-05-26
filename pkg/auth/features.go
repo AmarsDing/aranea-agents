@@ -19,11 +19,12 @@ func HTTPAuthBypassEnabled() bool {
 	if deployEnv == "dev" || deployEnv == "development" || deployEnv == "test" || ci == "true" || ci == "1" {
 		return true
 	}
-	// DEPLOY_ENV not set → allow bypass but emit a warning so operators notice.
+	// DEPLOY_ENV not set → refuse bypass; unset env could mean production.
+	// SEC-03: never silently allow bypass when the deployment context is unknown.
 	if deployEnv == "" {
-		fmt.Fprintln(os.Stderr, "[flow][system] system.auth.bypass_warn: KRATOS_HTTP_AUTH_DISABLED set but DEPLOY_ENV unset; bypass active")
+		fmt.Fprintln(os.Stderr, "[flow][system] system.auth.bypass_refused: KRATOS_HTTP_AUTH_DISABLED set but DEPLOY_ENV unset; bypass REFUSED (set DEPLOY_ENV=dev to enable)")
 		_ = os.Stderr.Sync()
-		return true
+		return false
 	}
 	// Any other DEPLOY_ENV (e.g. "production", "staging") → refuse bypass.
 	fmt.Fprintf(os.Stderr, "[flow][system] system.auth.bypass_refused: KRATOS_HTTP_AUTH_DISABLED set but DEPLOY_ENV=%s\n", deployEnv)

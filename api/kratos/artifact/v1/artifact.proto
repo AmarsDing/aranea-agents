@@ -64,6 +64,14 @@ message DeleteArtifactRequest {
   string id = 1 [(google.api.field_behavior) = REQUIRED];
 }
 
+// DeleteArtifactVersionRequest removes exactly one version of a logical artifact.
+// Use the ID of any version as the lookup handle, and specify the version number
+// to delete. If it is the only remaining version the logical artifact is gone.
+message DeleteArtifactVersionRequest {
+  string id      = 1 [(google.api.field_behavior) = REQUIRED];
+  int32  version = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
 message PreviewArtifactRequest {
   string id = 1 [(google.api.field_behavior) = REQUIRED];
   int32 version = 2;
@@ -119,6 +127,13 @@ service ArtifactService {
   rpc DeleteArtifact(DeleteArtifactRequest) returns (google.protobuf.Empty) {
     option (google.api.http) = {
       delete: "/v1/artifacts/{id}"
+    };
+  }
+  // DeleteArtifactVersion removes a single version of a logical artifact.
+  // DELETE /v1/artifacts/{id}/versions/{version}
+  rpc DeleteArtifactVersion(DeleteArtifactVersionRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      delete: "/v1/artifacts/{id}/versions/{version}"
     };
   }
   rpc PreviewArtifact(PreviewArtifactRequest) returns (PreviewArtifactResponse) {

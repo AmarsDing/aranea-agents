@@ -141,6 +141,26 @@ func (s *ArtifactService) DeleteArtifact(ctx context.Context, req *v1.DeleteArti
 	return &emptypb.Empty{}, nil
 }
 
+// DeleteArtifactVersion removes exactly one version of a logical artifact.
+func (s *ArtifactService) DeleteArtifactVersion(ctx context.Context, req *v1.DeleteArtifactVersionRequest) (*emptypb.Empty, error) {
+	id := strings.TrimSpace(req.GetId())
+	if id == "" {
+		return nil, kerrors.BadRequest("ARTIFACT", "id is required")
+	}
+	version := int(req.GetVersion())
+	if version <= 0 {
+		return nil, kerrors.BadRequest("ARTIFACT", "version must be > 0")
+	}
+	if err := s.uc.DeleteVersion(ctx, id, version); err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			return nil, kerrors.NotFound("ARTIFACT", err.Error())
+		}
+		return nil, err
+	}
+	s.refreshStorageGauge(ctx)
+	return &emptypb.Empty{}, nil
+}
+
 // PreviewArtifact returns inline preview content for browser rendering.
 func (s *ArtifactService) PreviewArtifact(ctx context.Context, req *v1.PreviewArtifactRequest) (*v1.PreviewArtifactResponse, error) {
 	id := strings.TrimSpace(req.GetId())
@@ -198,7 +218,12 @@ func (s *ArtifactService) SignDownloadUrl(ctx context.Context, req *v1.SignDownl
 		ttl = 24 * time.Hour
 	}
 	expires := time.Now().UTC().Add(ttl)
-	token := artifact.DownloadToken(id, version, expires)
+	token, err := artifact.DownloadToken(id, version, expires)
+	if err != nil {
+		// OUT-05 / ART-02: prod environments without a configured key must
+		// fail closed; never hand out a forgeable URL signed with the dev key.
+		return nil, kerrors.ServiceUnavailable("ARTIFACT", err.Error())
+	}
 	q := fmt.Sprintf("/v1/artifacts/download?id=%s&version=%d&expires=%d&token=%s",
 		id, version, expires.Unix(), token)
 	return &v1.SignDownloadUrlResponse{
@@ -223,7 +248,14 @@ func (s *ArtifactService) ServeSignedDownload(w http.ResponseWriter, r *http.Req
 		http.Error(w, "invalid expires", http.StatusBadRequest)
 		return
 	}
-	if !artifact.VerifyDownloadToken(id, version, expiresUnix, token) {
+	ok, verr := artifact.VerifyDownloadToken(id, version, expiresUnix, token)
+	if verr != nil {
+		// OUT-05 / ART-02: surface a clear 503 instead of a 403 storm when prod
+		// is missing its key — operators see misconfig, not a generic auth error.
+		http.Error(w, verr.Error(), http.StatusServiceUnavailable)
+		return
+	}
+	if !ok {
 		http.Error(w, "invalid or expired token", http.StatusForbidden)
 		return
 	}
@@ -256,7 +288,6 @@ func toProtoArtifactMeta(a biz.Artifact) *v1.ArtifactMeta {
 		Size:        a.Size,
 		Sha256:      a.SHA256,
 		StorageKind: a.StorageKind,
-		StorageUri:  a.StorageURI,
 		Version:     int32(a.Version),
 		CreatedAt:   a.CreatedAt,
 	}

@@ -133,11 +133,24 @@ func (r *DBRepositoryAdapter) reload(ctx context.Context) {
 		if slug == "" {
 			continue
 		}
+		// TPM-P1-06: Summary.Name is the canonical handle (slug) used by trpcskill.Get
+		// and by Aranea skill visibility filters (allow/deny lists are slug-based).
+		// Previously this was c.Name (display name) which silently broke Layer A
+		// filtering for every DB-backed skill. Display name is preserved via the
+		// Description prefix so prompts retain human-readable context.
+		desc := strings.TrimSpace(c.Description)
+		if display := strings.TrimSpace(c.Name); display != "" && !strings.EqualFold(display, slug) {
+			if desc == "" {
+				desc = display
+			} else {
+				desc = display + " — " + desc
+			}
+		}
 		e := dbSkillEntry{
 			slug: slug,
 			summary: trpcskill.Summary{
-				Name:        c.Name,
-				Description: c.Description,
+				Name:        slug,
+				Description: desc,
 			},
 		}
 		index[slug] = len(entries)

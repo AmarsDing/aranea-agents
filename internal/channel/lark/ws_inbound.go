@@ -68,7 +68,9 @@ func notifyFeishuInboundError(
 	if serr != nil || strings.TrimSpace(appSecret) == "" {
 		return
 	}
-	msg := "处理消息失败：" + strings.TrimSpace(err.Error())
+	// SEC-02: do not expose internal error details to end users.
+	msg := "消息处理失败，请稍后重试"
+	_ = err // error already logged above via SysLogWarn
 	_ = (&FeishuTextSender{
 		Region:        region,
 		AppID:         appID,
