@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/outboundguard"
 
 	"google.golang.org/genai"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
@@ -53,11 +54,14 @@ func trpcModelFromCatalogConfig(ctx context.Context, cfg CatalogConfig, rt *Roun
 	// before constructing the full model, so the user gets a fast failure
 	// instead of a hanging request.
 	if baseURL := strings.TrimSpace(cfg.BaseURL); baseURL != "" {
+		if err := outboundguard.ValidateURL(baseURL); err != nil {
+			return nil, fmt.Errorf("LLM API URL blocked: %w", err)
+		}
 		probeCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 		probeReq, err := http.NewRequestWithContext(probeCtx, http.MethodHead, baseURL, nil)
 		if err == nil {
-			client := &http.Client{Timeout: 15 * time.Second}
+			client := outboundguard.NewClient(15 * time.Second)
 			resp, err := client.Do(probeReq)
 			if err != nil {
 				event.CtxFlowLogError(ctx, "system.provider.preflight_fail", "模型 API 预检失败", event.P("url", baseURL), event.P("error", err))

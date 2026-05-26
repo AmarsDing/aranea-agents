@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -271,7 +272,9 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 	added := writeResult.FactsWritten
 	for _, raw := range writeResult.FactRows {
 		if w.indexSync != nil {
-			_ = w.indexSync.SyncFactIndexFromRow(ctx, raw)
+			if serr := w.indexSync.SyncFactIndexFromRow(ctx, raw); serr != nil {
+				slog.Warn("[MEM-OPT-01] auto_memory index sync failed", "err", serr)
+			}
 		}
 	}
 	if w.episodeSync != nil && len(writeResult.EpisodeRow) > 0 {
@@ -399,7 +402,9 @@ func (w *AutoMemoryWorker) extractFeedback(ctx context.Context, req memtrpc.Auto
 	}
 	for _, raw := range writeResult.FactRows {
 		if w.indexSync != nil {
-			_ = w.indexSync.SyncFactIndexFromRow(ctx, raw)
+			if serr := w.indexSync.SyncFactIndexFromRow(ctx, raw); serr != nil {
+				slog.Warn("[MEM-OPT-01] feedback_memory index sync failed", "err", serr)
+			}
 		}
 	}
 	event.SessionSysLogInfo(ctx, sid, "system.auto_memory.feedback_done", "反馈偏好记忆已写入",

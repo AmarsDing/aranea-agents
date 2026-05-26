@@ -6,6 +6,21 @@ import (
 	"aranea-agents/internal/event/contract"
 )
 
+// activityJSONPreviewLimit is the maximum byte length of ArgumentsJSON / ResultJSON
+// surfaced through Observatory WS/RPC. Full content could expose PII from tool calls
+// (e.g., file contents, credentials) to observers who lack data-plane access (SEC-04).
+const activityJSONPreviewLimit = 512
+
+// redactActivityJSON truncates tool call arguments/results to a safe preview size.
+// If the value exceeds the limit it is truncated and appended with a redaction marker.
+func redactActivityJSON(s string) string {
+	s = strings.TrimSpace(s)
+	if len(s) <= activityJSONPreviewLimit {
+		return s
+	}
+	return s[:activityJSONPreviewLimit] + "…[truncated]"
+}
+
 // AgentNodeStatus is the fine-grained lifecycle status of an agent node in an orchestration run.
 type AgentNodeStatus string
 
@@ -248,7 +263,7 @@ func (s *OrchestrationStatusStore) applyToolCall(env contract.Envelope, reg Orch
 		ToolName:      strings.TrimSpace(tc.Name),
 		Status:        "running",
 		Summary:       strings.TrimSpace(tc.Summary),
-		ArgumentsJSON: strings.TrimSpace(tc.ArgumentsJSON),
+		ArgumentsJSON: redactActivityJSON(tc.ArgumentsJSON),
 		StartedAt:     strings.TrimSpace(tc.StartedAt),
 	}
 	if st.CurrentActivity.Kind == "" {
@@ -272,7 +287,7 @@ func (s *OrchestrationStatusStore) applyToolResult(env contract.Envelope, reg Or
 		if st.CurrentActivity.Status == "" {
 			st.CurrentActivity.Status = "success"
 		}
-		st.CurrentActivity.ResultJSON = strings.TrimSpace(tc.ResultJSON)
+		st.CurrentActivity.ResultJSON = redactActivityJSON(tc.ResultJSON)
 		st.CurrentActivity.FinishedAt = strings.TrimSpace(tc.FinishedAt)
 		st.CurrentActivity.DurationMS = tc.DurationMS
 		st.CurrentActivity.ErrorCode = strings.TrimSpace(tc.ErrorCode)

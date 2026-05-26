@@ -16,6 +16,10 @@ import (
 // runtime. If graph runtime is not available or not enabled, it falls back to
 // native team runtime based on the fallback policy.
 //
+// runID is the team_run.id to associate with the graph execution registration;
+// callers should call UpdateTeamRunGraphExecutionID after a successful return
+// when graphExecID is non-empty.
+//
 // Returns the root agent, member lookup map, graph execution ID, and any error.
 func (r *Runner) compileTeamRuntime(
 	ctx context.Context,
@@ -25,6 +29,7 @@ func (r *Runner) compileTeamRuntime(
 	mode string,
 	teamDeps TRPCTeamBuilderDeps,
 	teamEmitter *event.TraceEmitter,
+	runID string,
 ) (
 	root trpcagent.Agent,
 	memberLookup map[string]trpcagent.Agent,
@@ -64,8 +69,8 @@ func (r *Runner) compileTeamRuntime(
 				if err != nil {
 					return
 				}
-				if r.teamGraphCoord != nil {
-					if regErr := r.teamGraphCoord.RegisterTeamGraphExecution(ctx, graphExecID, sess.ID, teamRow.ID, "", compiledGraphCfg); regErr != nil {
+			if r.teamGraphCoord != nil {
+				if regErr := r.teamGraphCoord.RegisterTeamGraphExecution(ctx, graphExecID, sess.ID, teamRow.ID, runID, compiledGraphCfg); regErr != nil {
 						event.CtxFlowLogWarn(ctx, "team.graph_runtime.register", "graph execution 注册失败", event.P("error", regErr.Error()))
 					}
 				}

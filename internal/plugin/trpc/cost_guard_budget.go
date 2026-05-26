@@ -68,6 +68,23 @@ func (t *CostGuardBudgetTracker) TryConsume(budget, add int) bool {
 	return true
 }
 
+// AddOverBudget accounts for tokens that exceeded the daily budget but were allowed
+// through (e.g. the cost_guard fallback model bypass — TPM-P1-03). The local tracker
+// and persistence are kept honest so dashboards reflect actual spend; budget gates
+// will still reject subsequent base-model calls until day rollover.
+func (t *CostGuardBudgetTracker) AddOverBudget(add int) {
+	if t == nil || add <= 0 {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.ensureDayLocked()
+	t.tokens += add
+	if t.repo != nil {
+		_ = t.repo.AddTokens(context.Background(), t.day, t.scopeKey, add)
+	}
+}
+
 func (t *CostGuardBudgetTracker) ensureDayLocked() {
 	day := time.Now().UTC().Format("2006-01-02")
 	if t.day == day {

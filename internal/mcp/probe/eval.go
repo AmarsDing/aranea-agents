@@ -2,14 +2,13 @@ package probe
 
 import (
 	"fmt"
-	"net"
 	"net/http"
-	"net/url"
 	"os/exec"
 	"strings"
 	"time"
 
 	"aranea-agents/internal/mcp/config"
+	"aranea-agents/pkg/outboundguard"
 )
 
 type TestResult struct {
@@ -27,13 +26,20 @@ func Evaluate(enabled bool, configJSON string) TestResult {
 	if err != nil {
 		return TestResult{OK: false, Status: "error", Message: "config_json 格式错误: " + err.Error()}
 	}
-	switch cfg.Transport {
-	case "stdio":
+	// TPM-P1-10: normalize transport via the single source of truth so probe and
+	// runtime agree on aliases (streamable / streamable_http / http → streamable).
+	transport := config.NormalizeTransport(cfg.Transport)
+	switch transport {
+	case config.TransportStdio:
 		return evaluateStdio(cfg)
-	case "sse", "streamable_http":
+	case config.TransportSSE, config.TransportStreamable:
 		return evaluateHTTP(cfg)
 	default:
-		return TestResult{OK: false, Status: "error", Message: "transport 必须是 stdio、sse 或 streamable_http"}
+		return TestResult{
+			OK:      false,
+			Status:  "error",
+			Message: fmt.Sprintf("transport 必须是 %v（收到 %q）", config.KnownTransports(), cfg.Transport),
+		}
 	}
 }
 
@@ -58,14 +64,7 @@ func evaluateHTTP(cfg config.ServerConfig) TestResult {
 	if rawURL == "" {
 		return TestResult{OK: false, Status: "error", Message: "HTTP 传输需要填写 URL"}
 	}
-	parsed, err := url.Parse(rawURL)
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-		return TestResult{OK: false, Status: "error", Message: "URL 格式错误"}
-	}
-	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		return TestResult{OK: false, Status: "error", Message: "URL 仅支持 http 或 https"}
-	}
-	if err := validatePublicHost(parsed.Hostname()); err != nil {
+	if err := outboundguard.ValidateURL(rawURL); err != nil {
 		return TestResult{OK: false, Status: "error", Message: "URL 校验失败: " + err.Error()}
 	}
 
@@ -73,12 +72,18 @@ func evaluateHTTP(cfg config.ServerConfig) TestResult {
 	if timeout <= 0 || timeout > 10*time.Second {
 		timeout = 10 * time.Second
 	}
-	client := http.Client{Timeout: timeout}
-	req, err := http.NewRequest(http.MethodGet, parsed.String(), nil)
+	return doHTTPProbe(rawURL, cfg.Headers, outboundguard.NewClient(timeout))
+}
+
+// doHTTPProbe performs the actual GET probe and interprets the HTTP status code.
+// It is separated from evaluateHTTP so tests can call it with a plain http.Client
+// (bypassing the SSRF guard that blocks loopback addresses in unit test servers).
+func doHTTPProbe(rawURL string, headers map[string]string, client *http.Client) TestResult {
+	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
 	if err != nil {
 		return TestResult{OK: false, Status: "error", Message: "创建测试请求失败: " + err.Error()}
 	}
-	for key, value := range cfg.Headers {
+	for key, value := range headers {
 		if strings.TrimSpace(key) != "" {
 			req.Header.Set(key, value)
 		}
@@ -96,6 +101,19 @@ func evaluateHTTP(cfg config.ServerConfig) TestResult {
 			Details: map[string]any{"status_code": resp.StatusCode},
 		}
 	}
+	// TPM-P1-09: 401/403 indicates the server is reachable but requires authentication
+	// (OAuth, API key, etc.). The probe only verifies network connectivity — it does not
+	// inject runtime credentials — so treat this as "network OK, auth required" rather than
+	// a hard failure. This prevents false alarms in the admin health dashboard for
+	// OAuth-protected MCP servers that are actually healthy.
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		return TestResult{
+			OK:      true,
+			Status:  "auth_required",
+			Message: fmt.Sprintf("连接成功，服务器要求鉴权（HTTP %d）；探针仅校验网络连通性，运行时将使用配置的凭据", resp.StatusCode),
+			Details: map[string]any{"status_code": resp.StatusCode},
+		}
+	}
 	return TestResult{
 		OK:      false,
 		Status:  "error",
@@ -104,22 +122,4 @@ func evaluateHTTP(cfg config.ServerConfig) TestResult {
 	}
 }
 
-func validatePublicHost(host string) error {
-	host = strings.TrimSpace(strings.ToLower(host))
-	if host == "" {
-		return fmt.Errorf("host is required")
-	}
-	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
-		return fmt.Errorf("localhost is not allowed")
-	}
-	ips, err := net.LookupIP(host)
-	if err != nil {
-		return err
-	}
-	for _, ip := range ips {
-		if ip.IsLoopback() || ip.IsPrivate() || ip.IsUnspecified() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
-			return fmt.Errorf("private or local address is not allowed")
-		}
-	}
-	return nil
-}
+

@@ -25,6 +25,19 @@
       <template #body-cell-status="props">
         <q-td :props="props">
           <q-chip dense :color="statusColor(props.row.status)" text-color="white" size="sm">{{ props.row.status }}</q-chip>
+          <!-- REV-D: warn when backend cannot extract this MIME type for search -->
+          <q-chip
+            v-if="props.row.status === 'indexed' && props.row.extract_supported === false"
+            dense
+            color="warning"
+            text-color="dark"
+            size="sm"
+            icon="warning"
+            class="q-ml-xs"
+          >
+            <q-tooltip>该格式不在后端支持的解析类型中，检索内容可能为空</q-tooltip>
+            不可检索
+          </q-chip>
         </q-td>
       </template>
       <template #body-cell-size_bytes="props">

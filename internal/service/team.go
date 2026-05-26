@@ -302,7 +302,7 @@ func (s *TeamService) CancelTeamRun(ctx context.Context, req *v1.CancelTeamRunRe
 		CancelSessionRunSideEffects(ctx, s.eventBus, s.sessions, r.SessionID, runID)
 	}
 	now := agent.RFC3339Now()
-	r.Status = "cancelled"
+	r.Status = biz.TeamRunStatusCancelled
 	r.FinishedAt = now
 	r.UpdatedAt = now
 	if err := s.uc.UpdateRun(ctx, r); err != nil {

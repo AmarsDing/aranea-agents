@@ -82,8 +82,9 @@ type NativeTurnGateway interface {
 	EscalateActiveSessionRun(ctx context.Context, sessionID string) (escalated bool, reply string, err error)
 	// EscalateSessionRun escalates a specific session run to background.
 	EscalateSessionRun(ctx context.Context, sessionRunID, expectedSessionID string) (reply string, err error)
-	// EnqueueUserMessage enqueues a user message into the active turn's pending queue.
-	EnqueueUserMessage(sessionID, content string) (bool, error)
+	// TryEnqueueUserMessage enqueues a user message into the active turn's pending queue.
+	// Named TryEnqueue* to avoid collision with the proto-generated RPC method of the same base name.
+	TryEnqueueUserMessage(sessionID, content string) (bool, error)
 	// SetSessionPendingMergeFollowup configures whether followup messages merge into the active turn.
 	SetSessionPendingMergeFollowup(sessionID string, merge bool)
 }

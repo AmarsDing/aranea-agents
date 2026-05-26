@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"mime/multipart"
 	"os"
 	"path/filepath"
@@ -154,6 +155,18 @@ func (e *Engine) RefineConflictGroup(ctx context.Context, jobID string, groupID 
 	return refined, nil
 }
 
+// createdSkillRecord holds the identifiers needed to compensate (undo) a createImportedSkill call.
+type createdSkillRecord struct {
+	id         string
+	storageDir string
+}
+
+// ApplyImport executes the user-approved import decisions.
+//
+// TPM-P1-08: each createImportedSkill writes to disk AND inserts a DB row. If any step fails
+// after earlier writes succeeded, we compensate by deleting all already-created skills (DB row +
+// disk directory). This makes the operation effectively atomic from the caller's perspective —
+// either all succeed or all are cleaned up. (Full two-phase Saga is deferred to Wave 2 / TPM-D-S1.)
 func (e *Engine) ApplyImport(ctx context.Context, jobID string, in biz.SkillImportApplyRequest) (biz.SkillImportApplyResult, error) {
 	e.jobsMu.RLock()
 	job := e.jobs[strings.TrimSpace(jobID)]
@@ -164,60 +177,94 @@ func (e *Engine) ApplyImport(ctx context.Context, jobID string, in biz.SkillImpo
 	if job.public.Status != "completed" {
 		return biz.SkillImportApplyResult{}, validationError("import job is not completed")
 	}
+
+	var committed []createdSkillRecord
+	// compensate rolls back all skills written so far on error.
+	// It uses context.Background() so caller cancellation cannot abort cleanup.
+	// Failures are logged at Warn level so ops can detect orphan rows.
+	compensate := func() {
+		cCtx := context.Background()
+		for _, r := range committed {
+			if err := e.repo.DeleteSkill(cCtx, r.id); err != nil {
+				slog.WarnContext(cCtx, "skill.import.compensate_db_delete_fail",
+					"skill_id", r.id, "error", err)
+			}
+			if err := os.RemoveAll(r.storageDir); err != nil {
+				slog.WarnContext(cCtx, "skill.import.compensate_dir_remove_fail",
+					"storage_dir", r.storageDir, "error", err)
+			}
+		}
+	}
+
+	// partialErr returns a result that preserves any skip decisions already processed
+	// before the failure, so the caller knows what was skipped vs what failed.
 	result := biz.SkillImportApplyResult{CreatedSkillIDs: []string{}, SkippedCandidateIDs: []string{}}
+	partialErr := func(err error) (biz.SkillImportApplyResult, error) {
+		compensate()
+		// Return with zero created IDs (compensated away) but preserve skips for diagnostics.
+		return biz.SkillImportApplyResult{
+			CreatedSkillIDs:    []string{},
+			SkippedCandidateIDs: result.SkippedCandidateIDs,
+			Message:            fmt.Sprintf("导入失败并已回滚: %s", err.Error()),
+		}, err
+	}
+
 	for _, decision := range in.Decisions {
 		switch decision.Action {
 		case "import_passed":
 			candidate, ok := job.candidates[decision.CandidateID]
 			if !ok {
-				return result, fmt.Errorf("candidate %s not found", decision.CandidateID)
+				return partialErr(fmt.Errorf("candidate %s not found", decision.CandidateID))
 			}
 			if candidate.public.ValidationStatus != "pass" {
-				return result, fmt.Errorf("candidate %s is not pass", decision.CandidateID)
+				return partialErr(fmt.Errorf("candidate %s is not pass", decision.CandidateID))
 			}
-			created, err := e.createImportedSkill(ctx, candidate.public.Name, candidate.public.Slug, candidate.public.Description, candidate.body, candidate.tags, candidate.files)
+			created, dir, err := e.createImportedSkill(ctx, candidate.public.Name, candidate.public.Slug, candidate.public.Description, candidate.body, candidate.tags, candidate.files)
 			if err != nil {
-				return result, err
+				return partialErr(err)
 			}
+			committed = append(committed, createdSkillRecord{id: created.ID, storageDir: dir})
 			result.CreatedSkillIDs = append(result.CreatedSkillIDs, created.ID)
 		case "approve_risky_import":
 			candidate, ok := job.candidates[decision.CandidateID]
 			if !ok {
-				return result, fmt.Errorf("candidate %s not found", decision.CandidateID)
+				return partialErr(fmt.Errorf("candidate %s not found", decision.CandidateID))
 			}
 			if !candidateRequiresRiskApproval(candidate.public) {
-				return result, fmt.Errorf("candidate %s does not require high risk approval", decision.CandidateID)
+				return partialErr(fmt.Errorf("candidate %s does not require high risk approval", decision.CandidateID))
 			}
-			created, err := e.createImportedSkill(ctx, candidate.public.Name, candidate.public.Slug, candidate.public.Description, candidate.body, candidate.tags, candidate.files)
+			created, dir, err := e.createImportedSkill(ctx, candidate.public.Name, candidate.public.Slug, candidate.public.Description, candidate.body, candidate.tags, candidate.files)
 			if err != nil {
-				return result, err
+				return partialErr(err)
 			}
+			committed = append(committed, createdSkillRecord{id: created.ID, storageDir: dir})
 			result.CreatedSkillIDs = append(result.CreatedSkillIDs, created.ID)
 		case "reject_risky_upload":
 			if strings.TrimSpace(decision.CandidateID) == "" {
-				return result, validationError("candidate_id is required")
+				return partialErr(validationError("candidate_id is required"))
 			}
 			result.SkippedCandidateIDs = append(result.SkippedCandidateIDs, decision.CandidateID)
 		case "merge_group_with_ai":
 			if strings.TrimSpace(decision.MergedBody) == "" {
-				return result, validationError("merged_body is required")
+				return partialErr(validationError("merged_body is required"))
 			}
 			slug := slugify(decision.MergedName)
 			files := map[string][]byte{"SKILL.md": []byte(decision.MergedBody)}
-			created, err := e.createImportedSkill(ctx, decision.MergedName, slug, decision.MergedDescription, decision.MergedBody, decision.MergedTags, files)
+			created, dir, err := e.createImportedSkill(ctx, decision.MergedName, slug, decision.MergedDescription, decision.MergedBody, decision.MergedTags, files)
 			if err != nil {
-				return result, err
+				return partialErr(err)
 			}
+			committed = append(committed, createdSkillRecord{id: created.ID, storageDir: dir})
 			result.CreatedSkillIDs = append(result.CreatedSkillIDs, created.ID)
 		case "skip_group":
 			for _, id := range candidateIDsForGroup(job.public.ConflictGroups, decision.GroupID) {
 				result.SkippedCandidateIDs = append(result.SkippedCandidateIDs, id)
 			}
 		default:
-			return result, fmt.Errorf("unsupported import action: %s", decision.Action)
+			return partialErr(fmt.Errorf("unsupported import action: %s", decision.Action))
 		}
 	}
-	result.Message = "????"
+	result.Message = "导入完成"
 	return result, nil
 }
 
@@ -243,29 +290,41 @@ func (e *Engine) conflictGroupContext(jobID string, groupID string) (*jobState, 
 	return nil, biz.SkillConflictGroup{}, nil, ErrConflictGroupNotFound
 }
 
-func (e *Engine) createImportedSkill(ctx context.Context, name string, slug string, description string, body string, tags []biz.SkillTag, files map[string][]byte) (biz.Skill, error) {
+// createImportedSkill writes skill files to disk and inserts the DB row.
+// It returns the created Skill and the absolute storage directory so the caller
+// can compensate (delete) on failure without an extra DB round-trip.
+func (e *Engine) createImportedSkill(ctx context.Context, name string, slug string, description string, body string, tags []biz.SkillTag, files map[string][]byte) (biz.Skill, string, error) {
 	slug = slugify(slug)
 	if slug == "" {
 		slug = slugify(name)
 	}
 	targetDir := filepath.Join(e.resolveRoot(ctx), slug)
 	if err := os.MkdirAll(targetDir, 0o755); err != nil {
-		return biz.Skill{}, err
+		return biz.Skill{}, "", err
+	}
+	// TPM-P1-07: full zipslip protection — verify joined path stays inside targetDir.
+	absTarget, err := filepath.Abs(targetDir)
+	if err != nil {
+		return biz.Skill{}, "", fmt.Errorf("resolve target dir: %w", err)
 	}
 	for fname, data := range files {
-		clean := filepath.Clean(fname)
-		if strings.Contains(clean, "..") {
-			return biz.Skill{}, fmt.Errorf("unsafe skill file path: %s", fname)
+		if err := ensurePathWithin(absTarget, fname); err != nil {
+			return biz.Skill{}, "", err
 		}
-		path := filepath.Join(targetDir, clean)
+		clean := filepath.Clean(fname)
+		path := filepath.Join(absTarget, clean)
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			return biz.Skill{}, err
+			return biz.Skill{}, "", err
 		}
 		if err := os.WriteFile(path, data, 0o644); err != nil {
-			return biz.Skill{}, err
+			return biz.Skill{}, "", err
 		}
 	}
-	return e.repo.CreateSkillWithVersion(ctx, biz.SkillCreateInput{Name: name, Slug: slug, Description: description, Body: body, Tags: tags, StorageDir: targetDir, SyncOrigin: biz.SkillSyncOriginImport})
+	skill, err := e.repo.CreateSkillWithVersion(ctx, biz.SkillCreateInput{Name: name, Slug: slug, Description: description, Body: body, Tags: tags, StorageDir: targetDir, SyncOrigin: biz.SkillSyncOriginImport})
+	if err != nil {
+		return biz.Skill{}, "", err
+	}
+	return skill, absTarget, nil
 }
 
 func (e *Engine) updateCandidateWarning(job *jobState, candidateID string, metrics biz.SkillSimilarityMetrics) {
@@ -292,9 +351,21 @@ func (e *Engine) inspectSkillZip(ctx context.Context, data []byte, job *jobState
 	}
 	filesByDir := map[string]map[string][]byte{}
 	for _, file := range reader.File {
+		// TPM-P1-07: normalize separators and reject any path that would escape the
+		// skill root after Clean/Join. Reject absolute, traversal, and Windows-drive-prefixed paths.
 		name := filepath.ToSlash(file.Name)
-		if strings.Contains(name, "..") || strings.HasPrefix(name, "/") || strings.HasPrefix(name, "\\") {
-			return fmt.Errorf("unsafe zip path: %s", file.Name)
+		if name == "" {
+			continue
+		}
+		if filepath.IsAbs(file.Name) || strings.HasPrefix(name, "/") || strings.HasPrefix(name, "\\") {
+			return fmt.Errorf("unsafe zip path (absolute): %s", file.Name)
+		}
+		cleaned := filepath.ToSlash(filepath.Clean(name))
+		if cleaned == ".." || strings.HasPrefix(cleaned, "../") || strings.Contains(cleaned, "/..") {
+			return fmt.Errorf("unsafe zip path (traversal): %s", file.Name)
+		}
+		if strings.Contains(name, "..") {
+			return fmt.Errorf("unsafe zip path (dotdot): %s", file.Name)
 		}
 		if file.FileInfo().IsDir() {
 			continue

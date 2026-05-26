@@ -1,6 +1,7 @@
 package service
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -32,7 +33,16 @@ func (h *ChannelIngress) handleDingTalkWebhook(w http.ResponseWriter, r *http.Re
 		return nil
 	}
 	peerID := ingressFirstNonEmpty(parsed.SenderStaffID, parsed.ConversationID, parsed.SenderNick)
-	idempotency := "dingtalk:" + parsed.ConversationID + ":" + strings.TrimSpace(r.URL.Query().Get("timestamp"))
+	// COR-05: prefer platform-provided msg_id, then body createAt, then URL
+	// timestamp (weakest — shared across concurrent requests in the same second).
+	var idempotency string
+	if parsed.MsgID != "" {
+		idempotency = "dingtalk:msg:" + parsed.MsgID
+	} else if parsed.CreateAt > 0 {
+		idempotency = "dingtalk:" + parsed.ConversationID + ":" + fmt.Sprintf("%d", parsed.CreateAt)
+	} else {
+		idempotency = "dingtalk:" + parsed.ConversationID + ":" + strings.TrimSpace(r.URL.Query().Get("timestamp"))
+	}
 	writeInboundHTTPResponse(w, h.processInboundHTTP(r, chRow, port.InboundEvent{
 		PlatformType:   "dingtalk",
 		PeerID:         peerID,

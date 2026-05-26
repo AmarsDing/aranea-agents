@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/modelcatalog"
+	"aranea-agents/pkg/outboundguard"
 
 	"github.com/go-kratos/kratos/v2/errors"
 )
@@ -455,7 +456,7 @@ func (u *LlmProviderModelUsecase) RunHealthChecks(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := outboundguard.NewClient(10 * time.Second)
 	for _, row := range items {
 		if !row.Enabled || row.DeletedAt != "" {
 			continue
@@ -467,6 +468,11 @@ func (u *LlmProviderModelUsecase) RunHealthChecks(ctx context.Context) error {
 		_ = json.Unmarshal([]byte(cfg.ConfigJSON), &c)
 		base := strings.TrimSpace(c.APIBaseURL)
 		if base == "" {
+			continue
+		}
+		if err := outboundguard.ValidateURL(base); err != nil {
+			row.Status = "degraded"
+			_, _ = u.repo.UpdateProviderModel(ctx, row)
 			continue
 		}
 		req, err := http.NewRequestWithContext(ctx, http.MethodHead, base, nil)

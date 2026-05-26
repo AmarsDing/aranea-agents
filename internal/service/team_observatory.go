@@ -63,6 +63,19 @@ func (s *TeamService) buildObservatoryCompiledTopology(ctx context.Context, defi
 	return resp
 }
 
+// observatoryPayloadMaxBytes caps ArgumentsJson / ResultJson in Observatory
+// responses.  The agent layer already sanitises key names (api_key, token, …)
+// and trims to 256 KB; this second boundary keeps Observatory payloads compact
+// and prevents large IM-message bodies from leaking verbatim to monitoring UIs.
+const observatoryPayloadMaxBytes = 4 * 1024
+
+func truncateObservatoryPayload(s string) string {
+	if len(s) <= observatoryPayloadMaxBytes {
+		return s
+	}
+	return s[:observatoryPayloadMaxBytes] + "…[truncated]"
+}
+
 func toProtoActivitySnapshot(a *biz.ActivitySnapshot) *v1.ActivitySnapshotView {
 	if a == nil {
 		return nil
@@ -73,8 +86,8 @@ func toProtoActivitySnapshot(a *biz.ActivitySnapshot) *v1.ActivitySnapshotView {
 		ToolName:      a.ToolName,
 		Status:        a.Status,
 		Summary:       a.Summary,
-		ArgumentsJson: a.ArgumentsJSON,
-		ResultJson:    a.ResultJSON,
+		ArgumentsJson: truncateObservatoryPayload(a.ArgumentsJSON),
+		ResultJson:    truncateObservatoryPayload(a.ResultJSON),
 		StartedAt:     a.StartedAt,
 		FinishedAt:    a.FinishedAt,
 		DurationMs:    a.DurationMS,

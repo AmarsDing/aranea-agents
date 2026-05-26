@@ -1,5 +1,45 @@
 package biz
 
+// TeamRunStatus constants — single source of truth for team_run.status values.
+// All packages must reference these instead of bare string literals.
+const (
+	TeamRunStatusRunning      = "running"
+	TeamRunStatusSuccess      = "success"
+	TeamRunStatusFailed       = "failed"
+	TeamRunStatusCancelled    = "cancelled"
+	TeamRunStatusWaitingHuman = "waiting_human"
+)
+
+// TeamMemberStepStatus constants — per-member step status used in
+// ChatMessage.Status, TeamRunStep.Status and the in-memory `turnStatus` tracker
+// inside team Runner. Keep distinct from TeamRunStatus* (run-level) values.
+const (
+	TeamMemberStepStatusOK      = "ok"
+	TeamMemberStepStatusError   = "error"
+	TeamMemberStepStatusSkipped = "skipped"
+)
+
+// TokenUsageStatus constants — values written to model_token_usage_events.status.
+// Producers should map TeamMemberStepStatusOK to TokenUsageStatusSuccess before
+// recording, while TeamMemberStepStatusError maps directly to TokenUsageStatusError.
+const (
+	TokenUsageStatusSuccess = "success"
+	TokenUsageStatusError   = "error"
+)
+
+// NormalizeTokenUsageStatus maps an in-memory member step status string to the
+// canonical token usage status value. Empty / "ok" become "success"; everything
+// else is passed through unchanged so callers can pass through "error" / custom
+// terminal states.
+func NormalizeTokenUsageStatus(status string) string {
+	switch status {
+	case "", TeamMemberStepStatusOK:
+		return TokenUsageStatusSuccess
+	default:
+		return status
+	}
+}
+
 type Team struct {
 	ID             string
 	TeamKey        string

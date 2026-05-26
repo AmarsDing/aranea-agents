@@ -2,6 +2,7 @@ package plugintrpc
 
 import (
 	"context"
+	"strings"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
@@ -71,7 +72,22 @@ func (c *CostGuardPlugin) beforeModel(ctx context.Context, args *trpcmodel.Befor
 			CustomResponse: blockedModelResponse("cost_guard: " + reason),
 		}, nil
 	}
+	// TPM-P1-03: when ModelSelector already routed this call to the configured
+	// fallback model (because base model would exceed budget), do NOT hard-block
+	// on TryConsume — the fallback path is the agreed escape valve. We still
+	// account for the spend so downstream telemetry stays accurate.
 	if c.cfg.DailyTokenBudget > 0 && !budget.TryConsume(c.cfg.DailyTokenBudget, est) {
+		fallback := strings.TrimSpace(c.cfg.FallbackModel)
+		if fallback != "" && strings.EqualFold(model, fallback) {
+			budget.AddOverBudget(est)
+			c.logger.Warn("plugin.cost_guard.before_model",
+				"status", "over_budget_allowed",
+				"model", model,
+				"reason", "fallback_bypass_daily_budget",
+				"est_tokens", est)
+			c.record(ctx, "before_model", "over_budget_allowed")
+			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
+		}
 		c.logger.Info("plugin.cost_guard.before_model", "status", "blocked", "model", model, "reason", "daily_budget_exceeded")
 		c.record(ctx, "before_model", "blocked")
 		return &trpcmodel.BeforeModelResult{

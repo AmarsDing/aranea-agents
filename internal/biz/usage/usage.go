@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/go-kratos/kratos/v2/errors"
 
 	"aranea-agents/internal/biz/shared"
@@ -376,47 +378,48 @@ func (u *Usecase) Overview(ctx context.Context, query Query) (Overview, error) {
 	monthQuery.StartDate = dateKey(time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC))
 	monthQuery.EndDate = dateKey(now)
 
-	today, err := u.repo.GetModelUsageSummary(ctx, todayQuery)
-	if err != nil {
-		return Overview{}, err
-	}
-	yesterdaySummary, err := u.repo.GetModelUsageSummary(ctx, yesterdayQuery)
-	if err != nil {
-		return Overview{}, err
-	}
-	month, err := u.repo.GetModelUsageSummary(ctx, monthQuery)
-	if err != nil {
-		return Overview{}, err
-	}
-	rangeSummary, err := u.repo.GetModelUsageSummary(ctx, rangeQuery)
-	if err != nil {
-		return Overview{}, err
-	}
-	trends, err := u.Trends(ctx, rangeQuery)
-	if err != nil {
-		return Overview{}, err
-	}
-	topModels, err := u.repo.ListTopModelUsage(ctx, withLimit(rangeQuery, 8))
-	if err != nil {
-		return Overview{}, err
-	}
-	topAgents, err := u.repo.ListTopAgentUsage(ctx, withLimit(rangeQuery, 8))
-	if err != nil {
-		return Overview{}, err
-	}
+	// OV-01: run independent DB calls in parallel with errgroup to reduce
+	// wall-clock latency from 10+ sequential round-trips to 1 parallel fan-out.
+	var (
+		today            Summary
+		yesterdaySummary Summary
+		month            Summary
+		rangeSummary     Summary
+		trends           []TrendPoint
+		topModels        []BreakdownRow
+		topAgents        []BreakdownRow
+		anomalies        []TokenUsageEvent
+		quotaDash        QuotaDashboard
+		inefficient      []ModelInsight
+	)
 	anomalyQuery := withLimit(rangeQuery, 12)
 	anomalyQuery.Status = "abnormal"
-	anomalies, err := u.repo.ListModelUsageEvents(ctx, anomalyQuery)
-	if err != nil {
+
+	// OV-01: errgroup.WithContext cancels the shared context on the first fatal
+	// error, allowing all in-flight DB queries to abort early.
+	eg, egCtx := errgroup.WithContext(ctx)
+
+	eg.Go(func() error { var e error; today, e = u.repo.GetModelUsageSummary(egCtx, todayQuery); return e })
+	eg.Go(func() error { var e error; yesterdaySummary, e = u.repo.GetModelUsageSummary(egCtx, yesterdayQuery); return e })
+	eg.Go(func() error { var e error; month, e = u.repo.GetModelUsageSummary(egCtx, monthQuery); return e })
+	eg.Go(func() error { var e error; rangeSummary, e = u.repo.GetModelUsageSummary(egCtx, rangeQuery); return e })
+	eg.Go(func() error { var e error; trends, e = u.Trends(egCtx, rangeQuery); return e })
+	eg.Go(func() error { var e error; topModels, e = u.repo.ListTopModelUsage(egCtx, withLimit(rangeQuery, 8)); return e })
+	eg.Go(func() error { var e error; topAgents, e = u.repo.ListTopAgentUsage(egCtx, withLimit(rangeQuery, 8)); return e })
+	eg.Go(func() error { var e error; anomalies, e = u.repo.ListModelUsageEvents(egCtx, anomalyQuery); return e })
+
+	// Best-effort: quota and inefficiency dashboards — failures never cancel the group.
+	var quotaErr, ineffErr error
+	eg.Go(func() error { quotaDash, quotaErr = u.QuotaDashboard(egCtx); return nil })
+	eg.Go(func() error { inefficient, ineffErr = u.InefficientModels(egCtx, rangeQuery); return nil })
+
+	if err := eg.Wait(); err != nil {
 		return Overview{}, err
 	}
-
-	quotaDash, qErr := u.QuotaDashboard(ctx)
-	if qErr != nil {
+	if quotaErr != nil {
 		quotaDash = QuotaDashboard{}
 	}
-	inefficient, iErr := u.InefficientModels(ctx, rangeQuery)
-	if iErr != nil {
+	if ineffErr != nil {
 		inefficient = nil
 	}
 

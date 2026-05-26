@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/go-kratos/kratos/v2/errors"
 
@@ -162,6 +163,7 @@ type Condition struct {
 type Action struct {
 	Type             string         `json:"type"`
 	WebhookURL       string         `json:"webhook_url"`
+	WebhookSecret    string         `json:"webhook_secret"`
 	ModifyPatch      map[string]any `json:"modify_patch"`
 	LogLevel         string         `json:"log_level"`
 	Message          string         `json:"message"`
@@ -288,17 +290,18 @@ const (
 
 // Delivery is one queued Hook notify webhook attempt.
 type Delivery struct {
-	ID           string
-	HookKey      string
-	HookID       string
-	WebhookURL   string
-	PayloadJSON  string
-	Status       DeliveryStatus
-	AttemptCount int
-	MaxAttempts  int
-	LastError    string
-	CreatedAt    string
-	UpdatedAt    string
+	ID            string
+	HookKey       string
+	HookID        string
+	WebhookURL    string
+	WebhookSecret string
+	PayloadJSON   string
+	Status        DeliveryStatus
+	AttemptCount  int
+	MaxAttempts   int
+	LastError     string
+	CreatedAt     string
+	UpdatedAt     string
 }
 
 // DeliveryQuery filters hook_deliveries list API.
@@ -324,12 +327,22 @@ type DeliveryRepo interface {
 	Insert(ctx context.Context, d Delivery) error
 	UpdateResult(ctx context.Context, id string, status DeliveryStatus, attemptCount int, lastError string) error
 	List(ctx context.Context, q DeliveryQuery) (DeliveryListResult, error)
+	// ListStalePending returns pending deliveries whose updated_at is older than
+	// updatedBefore and that still have remaining attempts (OUT-02 / HK-01).
+	// Used by the retry worker to rediscover deliveries after process crash.
+	ListStalePending(ctx context.Context, updatedBefore time.Time, limit int) ([]Delivery, error)
+	// TryClaimForRetry atomically increments attempt_count for the given delivery
+	// only when its current count equals expectedAttemptCount. Returns true when
+	// the claim succeeds (this worker owns the retry), false when another instance
+	// already claimed it (optimistic lock, multi-pod safe). (OUT-02 / HK-01)
+	TryClaimForRetry(ctx context.Context, id string, expectedAttemptCount int) (bool, error)
 }
 
 // NotifyOptions from action.notify_* fields in hook config_json.
 type NotifyOptions struct {
-	MaxAttempts int
-	TimeoutSec  int
+	MaxAttempts   int
+	TimeoutSec    int
+	WebhookSecret string
 }
 
 // ParseNotifyOptions reads optional notify retry settings from Action.
@@ -341,6 +354,7 @@ func ParseNotifyOptions(action Action) NotifyOptions {
 	if action.NotifyTimeoutSec > 0 {
 		opts.TimeoutSec = action.NotifyTimeoutSec
 	}
+	opts.WebhookSecret = strings.TrimSpace(action.WebhookSecret)
 	return opts
 }
 
@@ -377,6 +391,15 @@ func (u *DeliveryUsecase) List(ctx context.Context, q DeliveryQuery, page, pageS
 	q.Limit = int32(limit)
 	q.Offset = int32(offset)
 	return u.repo.List(ctx, q)
+}
+
+// ListStalePending returns pending deliveries that have been idle longer than
+// staleAfter, up to limit rows. Used by the retry worker (OUT-02 / HK-01).
+func (u *DeliveryUsecase) ListStalePending(ctx context.Context, staleAfter time.Duration, limit int) ([]Delivery, error) {
+	if u == nil || u.repo == nil {
+		return nil, nil
+	}
+	return u.repo.ListStalePending(ctx, time.Now().UTC().Add(-staleAfter), limit)
 }
 
 // ── Hook resolver ─────────────────────────────────────────────────────────────

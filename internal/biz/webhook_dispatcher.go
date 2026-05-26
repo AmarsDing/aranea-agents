@@ -3,15 +3,13 @@ package biz
 import (
 	"bytes"
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
 	"time"
 
+	"aranea-agents/pkg/outboundwebhook"
 	"aranea-agents/pkg/safego"
 	"aranea-agents/pkg/webhookurl"
 )
@@ -52,7 +50,9 @@ func (d *WebhookDispatcher) Dispatch(ctx context.Context, eventType, runID, sess
 		return
 	}
 	safego.Go(ctx, "gateway.webhook.dispatch", func() {
-		bg, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		// Budget: 3 attempts × 10 s HTTP timeout + 1.5 s sleep = ~31.5 s worst case.
+		// Use 60 s so the third retry is never cancelled by the context itself.
+		bg, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 		configs, err := d.repo.ListEnabled(bg)
 		if err != nil {
@@ -103,49 +103,66 @@ func (d *WebhookDispatcher) postOne(ctx context.Context, sessionID string, cfg W
 		}
 		return
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(body))
-	if err != nil {
-		if d.logger != nil {
-			d.logger.SessionSysLogWarn(ctx, sessionID, "gateway.webhook.request_fail", "出站 Webhook 请求构建失败",
-				LogPair{Key: "webhook_id", Value: cfg.ID},
-				LogPair{Key: "url", Value: cfg.URL},
-				LogPair{Key: "error", Value: err.Error()},
-			)
+
+	const maxAttempts = 3
+	var lastErr string
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(body))
+		if err != nil {
+			if d.logger != nil {
+				d.logger.SessionSysLogWarn(ctx, sessionID, "gateway.webhook.request_fail", "出站 Webhook 请求构建失败",
+					LogPair{Key: "webhook_id", Value: cfg.ID},
+					LogPair{Key: "url", Value: cfg.URL},
+					LogPair{Key: "error", Value: err.Error()},
+				)
+			}
+			return
 		}
-		return
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "Aranea-Gateway-Webhook/1.0")
-	for k, v := range cfg.Headers {
-		if strings.TrimSpace(k) != "" {
-			req.Header.Set(k, v)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("User-Agent", "Aranea-Gateway-Webhook/1.0")
+		for k, v := range cfg.Headers {
+			if strings.TrimSpace(k) != "" {
+				req.Header.Set(k, v)
+			}
+		}
+		if secret := strings.TrimSpace(cfg.Secret); secret != "" {
+			outboundwebhook.AddSignatureHeaders(req, secret, body)
+		}
+		resp, err := d.client.Do(req)
+		if err != nil {
+			lastErr = err.Error()
+			if attempt < maxAttempts {
+				time.Sleep(time.Duration(attempt) * 500 * time.Millisecond)
+			}
+			continue
+		}
+		_, _ = io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode < 300 {
+			return
+		}
+		// Do not retry on 4xx client errors — same result expected on retry.
+		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
+			if d.logger != nil {
+				d.logger.SessionSysLogWarn(ctx, sessionID, "gateway.webhook.delivery_fail", "出站 Webhook 客户端错误（不重试）",
+					LogPair{Key: "webhook_id", Value: cfg.ID},
+					LogPair{Key: "url", Value: cfg.URL},
+					LogPair{Key: "status_code", Value: resp.StatusCode},
+				)
+			}
+			return
+		}
+		lastErr = http.StatusText(resp.StatusCode)
+		if attempt < maxAttempts {
+			time.Sleep(time.Duration(attempt) * 500 * time.Millisecond)
 		}
 	}
-	if secret := strings.TrimSpace(cfg.Secret); secret != "" {
-		mac := hmac.New(sha256.New, []byte(secret))
-		_, _ = mac.Write(body)
-		req.Header.Set("X-Webhook-Signature", hex.EncodeToString(mac.Sum(nil)))
-	}
-	resp, err := d.client.Do(req)
-	if err != nil {
-		if d.logger != nil {
-			d.logger.SessionSysLogWarn(ctx, sessionID, "gateway.webhook.delivery_fail", "出站 Webhook 投递失败",
-				LogPair{Key: "webhook_id", Value: cfg.ID},
-				LogPair{Key: "url", Value: cfg.URL},
-				LogPair{Key: "error", Value: err.Error()},
-			)
-		}
-		return
-	}
-	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, resp.Body)
-	if resp.StatusCode >= 300 {
-		if d.logger != nil {
-			d.logger.SessionSysLogWarn(ctx, sessionID, "gateway.webhook.delivery_fail", "出站 Webhook 非 2xx 响应",
-				LogPair{Key: "webhook_id", Value: cfg.ID},
-				LogPair{Key: "url", Value: cfg.URL},
-				LogPair{Key: "status_code", Value: resp.StatusCode},
-			)
-		}
+	if d.logger != nil {
+		d.logger.SessionSysLogWarn(ctx, sessionID, "gateway.webhook.delivery_fail", "出站 Webhook 投递失败（已重试）",
+			LogPair{Key: "webhook_id", Value: cfg.ID},
+			LogPair{Key: "url", Value: cfg.URL},
+			LogPair{Key: "attempts", Value: maxAttempts},
+			LogPair{Key: "error", Value: lastErr},
+		)
 	}
 }

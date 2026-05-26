@@ -84,7 +84,7 @@ func (h *ChannelIngress) steerIntoActiveTurn(ctx context.Context, chRow biz.Chan
 	if content == "" {
 		return "", nil
 	}
-	accepted, err := h.chat.EnqueueUserMessage(sessionID, content)
+	accepted, err := h.chat.TryEnqueueUserMessage(sessionID, content)
 	if err != nil {
 		return "", err
 	}

@@ -57,10 +57,20 @@ func ParseServerConfigJSON(raw string) (ServerConfig, error) {
 	return c, nil
 }
 
-// ToTRPCConnectionConfig maps platform config to trpc-agent-go MCP connection settings.
+// ToTRPCConnectionConfig is the SINGLE canonical mapping from platform ServerConfig
+// to trpc-agent-go MCP connection settings. All runtime code paths (toolset.go,
+// mcp_production.go) must call this instead of constructing trpcmcp.ConnectionConfig
+// manually so transport/timeout/env stay aligned. TPM-P1-12.
+//
+// Note: Headers map is shared by reference; callers that mutate (e.g. inject
+// Authorization) should clone first.
 func ToTRPCConnectionConfig(sc ServerConfig) trpcmcp.ConnectionConfig {
+	transport := NormalizeTransport(sc.Transport)
+	if transport == "" {
+		transport = TransportStdio
+	}
 	cfg := trpcmcp.ConnectionConfig{
-		Transport: NormalizeTransport(sc.Transport),
+		Transport: transport,
 		ServerURL: strings.TrimSpace(sc.URL),
 		Headers:   sc.Headers,
 		Command:   strings.TrimSpace(sc.Command),
@@ -80,16 +90,48 @@ func DurationSec(sec int) time.Duration {
 	return time.Duration(sec) * time.Second
 }
 
-// NormalizeTransport maps UI/API transport names to trpc-agent-go values.
+// Canonical transport string values used across probe / runtime / observer.
+// Keep in sync with trpc-agent-go/tool/mcp/config.go which accepts both
+// "streamable" and "streamable_http"; we always emit "streamable".
+const (
+	TransportStdio      = "stdio"
+	TransportSSE        = "sse"
+	TransportStreamable = "streamable"
+)
+
+// transportAliases is the single source of truth for transport name normalization.
+// Add new aliases here so all callers (probe, runtime, observer, ToTRPCConnectionConfig)
+// stay aligned. TPM-P1-10.
+var transportAliases = map[string]string{
+	"stdio":           TransportStdio,
+	"sse":             TransportSSE,
+	"streamable":      TransportStreamable,
+	"streamable_http": TransportStreamable,
+	"streamablehttp":  TransportStreamable,
+	"http":            TransportStreamable, // backward compat with early configs
+}
+
+// NormalizeTransport maps any accepted UI/API transport spelling to its canonical
+// value. Unknown values are returned as-is (lower-cased trimmed) so callers can
+// validate via IsKnownTransport and return precise errors.
 func NormalizeTransport(t string) string {
-	switch strings.ToLower(strings.TrimSpace(t)) {
-	case "stdio":
-		return "stdio"
-	case "sse":
-		return "sse"
-	case "streamable_http", "streamable":
-		return "streamable"
-	default:
-		return t
+	key := strings.ToLower(strings.TrimSpace(t))
+	if canon, ok := transportAliases[key]; ok {
+		return canon
 	}
+	return key
+}
+
+// IsKnownTransport reports whether t (after normalization) is a supported transport.
+func IsKnownTransport(t string) bool {
+	switch NormalizeTransport(t) {
+	case TransportStdio, TransportSSE, TransportStreamable:
+		return true
+	}
+	return false
+}
+
+// KnownTransports returns canonical transport names for error messages and UI hints.
+func KnownTransports() []string {
+	return []string{TransportStdio, TransportSSE, TransportStreamable}
 }

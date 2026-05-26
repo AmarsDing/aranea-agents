@@ -87,8 +87,8 @@ func (s *ChatService) SetRunStatus(ctx context.Context, sessionID, runID, status
 	s.orch.setRunStatus(ctx, sessionID, runID, status, errMsg)
 }
 
-// EnqueueUserMessage implements biz.NativeTurnGateway — delegates to ChatOrchestrator.
-func (s *ChatService) EnqueueUserMessage(sessionID, content string) (bool, error) {
+// TryEnqueueUserMessage implements biz.NativeTurnGateway — delegates to ChatOrchestrator.
+func (s *ChatService) TryEnqueueUserMessage(sessionID, content string) (bool, error) {
 	if s == nil || s.orch == nil {
 		return false, nil
 	}

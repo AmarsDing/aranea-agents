@@ -34,8 +34,13 @@ func (h *ChannelIngress) acceptInbound(ctx context.Context, chRow biz.Channel, e
 	}
 
 	// Phase 1: Guard checks (idempotency, access, cancel)
-	if err := h.acceptInboundGuard(ctx, chRow, ev, platform, dedupKey, viaLabel); err != nil {
+	// proceed=false means skip (dedup/access denied); err means hard failure.
+	proceed, err := h.acceptInboundGuard(ctx, chRow, ev, platform, dedupKey, viaLabel)
+	if err != nil {
 		return noop, err
+	}
+	if !proceed {
+		return noop, nil
 	}
 
 	// Phase 2: Route to background if pre-policy dictates
@@ -53,12 +58,15 @@ func (h *ChannelIngress) acceptInbound(ctx context.Context, chRow biz.Channel, e
 	return h.routeInboundSyncOrAsync(ctx, chRow, ev, platform, dedupKey, ltCfg, allowQueue)
 }
 
-// acceptInboundGuard runs idempotency, access, and cancel checks. Returns nil if the inbound should proceed.
-func (h *ChannelIngress) acceptInboundGuard(ctx context.Context, chRow biz.Channel, ev port.InboundEvent, platform, dedupKey, viaLabel string) error {
+// acceptInboundGuard runs idempotency, access, and cancel checks.
+// Returns (true, nil) when the inbound should proceed to ACK/execution.
+// Returns (false, nil) when the inbound is a duplicate or access-denied (silent skip).
+// Returns (false, err) on hard failure.
+func (h *ChannelIngress) acceptInboundGuard(ctx context.Context, chRow biz.Channel, ev port.InboundEvent, platform, dedupKey, viaLabel string) (proceed bool, err error) {
 	ok, skipReason, err := h.shouldProcessInbound(ctx, chRow, ev, viaLabel == "webhook")
 	if err != nil {
 		h.inboundInflight.release(dedupKey)
-		return err
+		return false, err
 	}
 	if !ok {
 		h.inboundInflight.release(dedupKey)
@@ -69,29 +77,28 @@ func (h *ChannelIngress) acceptInboundGuard(ctx context.Context, chRow biz.Chann
 			"via":             viaLabel,
 			"text_preview":    truncateForLog(ev.Text, 80),
 		}, "")
-		return nil
+		return false, nil
 	}
 	h.logInboundAccepted(ctx, chRow, ev, viaLabel)
 	allowed, reason, err := h.checkInboundAccess(ctx, chRow, ev)
 	if err != nil {
 		h.inboundInflight.release(dedupKey)
 		_ = h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "access", "error": err.Error()}, err.Error())
-		return err
+		return false, err
 	}
 	if !allowed {
 		h.inboundInflight.release(dedupKey)
-		return h.rejectInboundAccess(ctx, chRow, ev, reason)
+		return false, h.rejectInboundAccess(ctx, chRow, ev, reason)
 	}
 	if handled, cerr := h.tryCancelInboundTurn(ctx, chRow, ev, platform); handled || cerr != nil {
 		h.inboundInflight.release(dedupKey)
-		return cerr
+		return false, cerr
 	}
-	return nil
+	return true, nil
 }
 
 // routeInboundSyncOrAsync resolves the route policy and dispatches to sync or async execution.
 func (h *ChannelIngress) routeInboundSyncOrAsync(ctx context.Context, chRow biz.Channel, ev port.InboundEvent, platform, dedupKey string, ltCfg biz.ChannelLongTaskConfig, allowQueue bool) (inboundAcceptOutcome, error) {
-	var noop inboundAcceptOutcome
 	if !biz.ChannelSupportsLongTaskIngress(platform, chRow.ConfigJSON) {
 		ltCfg.AckMessage = ""
 		ltCfg.ExecutionMode = "sync"
@@ -142,7 +149,7 @@ func (h *ChannelIngress) routeInboundAsync(ctx context.Context, chRow biz.Channe
 	return inboundAcceptOutcome{DispatchAsync: true, releaseConcurrent: release}, nil
 }
 
-func (h *ChannelIngress) routeInboundSync(ctx context.Context, chRow biz.Channel, ev port.InboundEvent, platform, dedupKey string, ltCfg biz.ChannelLongTaskConfig, routePolicy IngressPolicy) (inboundAcceptOutcome, error) {
+func (h *ChannelIngress) routeInboundSync(ctx context.Context, chRow biz.Channel, ev port.InboundEvent, platform, dedupKey string, ltCfg biz.ChannelLongTaskConfig, routePolicy IngressPolicyResult) (inboundAcceptOutcome, error) {
 	var noop inboundAcceptOutcome
 	release, ok := h.tryAcquireChannelConcurrent(chRow, ev, ltCfg)
 	if !ok {

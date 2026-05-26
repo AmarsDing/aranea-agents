@@ -3,6 +3,7 @@ package evaluation
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"aranea-agents/internal/biz"
@@ -156,11 +157,26 @@ func (b *FrameworkBridge) Execute(
 		}
 		if cfg.Metrics[MetricLLMAsJudge] && b.llmJudge != nil && res.ActualOutput != "" {
 			score, judgeErr := b.llmJudge(ctx, bc.Input, bc.ExpectedOutput, res.ActualOutput)
-			if judgeErr == nil {
-				res.LLMJudgeScore = score
-				agg[MetricLLMAsJudge] += score
-				aggCount[MetricLLMAsJudge]++
+		if judgeErr != nil {
+			// EV-04: log failure and count as 0 in denominator so the average is
+			// not inflated by skipping failed judge calls. Append to any pre-existing
+			// inference error to preserve both error contexts.
+			slog.WarnContext(ctx, "eval.llm_judge.failed",
+				"case_id", bc.ID,
+				"error", judgeErr.Error(),
+			)
+			judgeErrMsg := "llm_judge failed: " + judgeErr.Error()
+			if res.ErrorMessage != "" {
+				res.ErrorMessage = res.ErrorMessage + "; " + judgeErrMsg
+			} else {
+				res.ErrorMessage = judgeErrMsg
 			}
+			aggCount[MetricLLMAsJudge]++
+		} else {
+			res.LLMJudgeScore = score
+			agg[MetricLLMAsJudge] += score
+			aggCount[MetricLLMAsJudge]++
+		}
 		}
 		out = append(out, res)
 	}

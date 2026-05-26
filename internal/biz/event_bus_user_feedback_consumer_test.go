@@ -39,6 +39,9 @@ func (r *feedbackMonitorRepo) ListAlertRules(context.Context) ([]MonitorAlertRul
 func (r *feedbackMonitorRepo) ReplaceAlertRules(context.Context, []MonitorAlertRule) error {
 	return nil
 }
+func (r *feedbackMonitorRepo) UpdateAlertFiringState(context.Context, string, MonitorAlertFiringState, *time.Time, float64, *time.Time) error {
+	return nil
+}
 func (r *feedbackMonitorRepo) CountMonitorEventsSince(context.Context, string, string, string) (int32, error) {
 	return 0, nil
 }

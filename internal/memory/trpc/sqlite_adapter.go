@@ -231,7 +231,10 @@ func (s *sqliteMemoryService) syncIndexBestEffort(ctx context.Context, raw []byt
 	if s == nil || s.indexSync == nil || len(raw) == 0 {
 		return
 	}
-	_ = s.indexSync.SyncFactIndexFromRow(ctx, raw)
+	// MEM-OPT-01 Phase 1: errors are captured by SyncFactIndexFromRow → MarkFactIndexStale.
+	if err := s.indexSync.SyncFactIndexFromRow(ctx, raw); err != nil {
+		slog.Warn("[MEM-OPT-01] sqlite_adapter index sync failed", "err", err)
+	}
 }
 
 func trpcFactUpsert(uk trpcmemory.UserKey, id, mem string, topics []string, factKind, createdAt, updatedAt string) sessionmemory.MemoryFactUpsert {

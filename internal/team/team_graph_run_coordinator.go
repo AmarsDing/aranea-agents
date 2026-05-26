@@ -15,7 +15,7 @@ import (
 	"aranea-agents/pkg/safego"
 )
 
-const teamRunStatusWaitingHuman = "waiting_human"
+const teamRunStatusWaitingHuman = biz.TeamRunStatusWaitingHuman
 
 const defaultGraphWatchTimeout = 30 * time.Minute
 
@@ -173,6 +173,17 @@ func (c *TeamGraphRunCoordinator) HandleTeamGraphTaskCompleted(ctx context.Conte
 		return true, nil
 	}
 	if _, err := c.graphs.ResumeExecution(ctx, task.ExecutionID, resume); err != nil {
+		if c.bus != nil {
+			run, rerr := c.teams.GetTeamRunByID(ctx, sess.teamRunID)
+			if rerr == nil {
+				failEnv := event.NewEnvelope(event.EnvelopeTypeTeamRunFailed, "team-coordinator", sess.sessionID)
+				failEnv.TeamID = sess.teamID
+				failEnv.Metadata = map[string]any{"run_id": run.ID, "error_message": err.Error()}
+				c.bus.Publish(ctx, failEnv)
+			}
+		}
+		slog.Error("HandleTeamGraphTaskCompleted: ResumeExecution failed",
+			"execution_id", task.ExecutionID, "error", err)
 		return true, err
 	}
 	run, err := c.teams.GetTeamRunByID(ctx, sess.teamRunID)
@@ -180,7 +191,7 @@ func (c *TeamGraphRunCoordinator) HandleTeamGraphTaskCompleted(ctx context.Conte
 		return true, err
 	}
 	if run.Status == teamRunStatusWaitingHuman {
-		run.Status = "running"
+		run.Status = biz.TeamRunStatusRunning
 		if err := c.teams.UpdateTeamRun(ctx, run); err != nil {
 			slog.Warn("HandleTeamGraphTaskCompleted: UpdateTeamRun failed", "team_run_id", run.ID, "error", err)
 		}
@@ -357,17 +368,17 @@ func (c *TeamGraphRunCoordinator) finalizeTeamRun(ctx context.Context, sess *tea
 	if err != nil {
 		return
 	}
-	if run.Status != teamRunStatusWaitingHuman && run.Status != "running" {
+	if run.Status != teamRunStatusWaitingHuman && run.Status != biz.TeamRunStatusRunning {
 		return
 	}
 	now := agent.RFC3339Now()
 	run.FinishedAt = now
 	run.UpdatedAt = now
 	if failed {
-		run.Status = "error"
+		run.Status = biz.TeamRunStatusFailed
 		run.ErrorMessage = errMsg
 	} else {
-		run.Status = "success"
+		run.Status = biz.TeamRunStatusSuccess
 	}
 	_ = c.teams.UpdateTeamRun(ctx, run)
 	if c.bus != nil {

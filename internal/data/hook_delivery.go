@@ -40,9 +40,9 @@ func (r *hookDeliveryRepo) Insert(ctx context.Context, d biz.HookDelivery) error
 		maxAttempts = 3
 	}
 	_, err := r.data.RawDB().ExecContext(ctx, `
-INSERT INTO hook_deliveries (id, hook_key, hook_id, webhook_url, payload_json, status, attempt_count, max_attempts, last_error, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		id, d.HookKey, d.HookID, d.WebhookURL, d.PayloadJSON, string(biz.NormalizeHookDeliveryStatus(string(d.Status))),
+INSERT INTO hook_deliveries (id, hook_key, hook_id, webhook_url, webhook_secret, payload_json, status, attempt_count, max_attempts, last_error, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		id, d.HookKey, d.HookID, d.WebhookURL, d.WebhookSecret, d.PayloadJSON, string(biz.NormalizeHookDeliveryStatus(string(d.Status))),
 		d.AttemptCount, maxAttempts, d.LastError, now, updated,
 	)
 	return err
@@ -103,7 +103,7 @@ func (r *hookDeliveryRepo) List(ctx context.Context, q biz.HookDeliveryQuery) (b
 	}
 	listArgs := append(append([]any{}, args...), limit, offset)
 	rows, err := r.data.RawDB().QueryContext(ctx, `
-SELECT id, hook_key, hook_id, webhook_url, payload_json, status, attempt_count, max_attempts, last_error, created_at, updated_at
+SELECT id, hook_key, hook_id, webhook_url, webhook_secret, payload_json, status, attempt_count, max_attempts, last_error, created_at, updated_at
 FROM hook_deliveries`+where+` ORDER BY created_at DESC LIMIT ? OFFSET ?`, listArgs...)
 	if err != nil {
 		return biz.HookDeliveryListResult{}, err
@@ -113,12 +113,75 @@ FROM hook_deliveries`+where+` ORDER BY created_at DESC LIMIT ? OFFSET ?`, listAr
 	for rows.Next() {
 		var d biz.HookDelivery
 		var status string
-		if err := rows.Scan(&d.ID, &d.HookKey, &d.HookID, &d.WebhookURL, &d.PayloadJSON, &status,
+		if err := rows.Scan(&d.ID, &d.HookKey, &d.HookID, &d.WebhookURL, &d.WebhookSecret, &d.PayloadJSON, &status,
 			&d.AttemptCount, &d.MaxAttempts, &d.LastError, &d.CreatedAt, &d.UpdatedAt); err != nil {
 			return biz.HookDeliveryListResult{}, err
 		}
 		d.Status = biz.NormalizeHookDeliveryStatus(status)
+		d.WebhookSecret = "" // sensitive: scrubbed from list API results; only delivery paths use it
 		items = append(items, d)
 	}
 	return biz.HookDeliveryListResult{Items: items, Total: total, Limit: int32(limit), Offset: int32(offset)}, rows.Err()
+}
+
+// ListStalePending returns pending deliveries with updated_at older than updatedBefore
+// and remaining attempts, ordered by created_at ASC (oldest first). (OUT-02 / HK-01)
+func (r *hookDeliveryRepo) ListStalePending(ctx context.Context, updatedBefore time.Time, limit int) ([]biz.HookDelivery, error) {
+	if r == nil || r.data == nil || r.data.RawDB() == nil {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	cutoff := updatedBefore.UTC().Format(time.RFC3339)
+	rows, err := r.data.RawDB().QueryContext(ctx, `
+SELECT id, hook_key, hook_id, webhook_url, webhook_secret, payload_json, status, attempt_count, max_attempts, last_error, created_at, updated_at
+FROM hook_deliveries
+WHERE status = 'pending'
+  AND attempt_count < max_attempts
+  AND updated_at < ?
+ORDER BY created_at ASC
+LIMIT ?`, cutoff, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]biz.HookDelivery, 0, limit)
+	for rows.Next() {
+		var d biz.HookDelivery
+		var status string
+		if err := rows.Scan(&d.ID, &d.HookKey, &d.HookID, &d.WebhookURL, &d.WebhookSecret, &d.PayloadJSON, &status,
+			&d.AttemptCount, &d.MaxAttempts, &d.LastError, &d.CreatedAt, &d.UpdatedAt); err != nil {
+			return nil, err
+		}
+		d.Status = biz.NormalizeHookDeliveryStatus(status)
+		items = append(items, d)
+	}
+	return items, rows.Err()
+}
+
+// TryClaimForRetry atomically increments attempt_count for the delivery only when
+// its current count matches expectedAttemptCount. Returns true when the claim wins
+// (this instance should proceed), false when another pod already claimed it.
+// (OUT-02 / HK-01 — multi-pod safe optimistic lock)
+func (r *hookDeliveryRepo) TryClaimForRetry(ctx context.Context, id string, expectedAttemptCount int) (bool, error) {
+	if r == nil || r.data == nil || r.data.RawDB() == nil {
+		return false, nil
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	result, err := r.data.RawDB().ExecContext(ctx, `
+UPDATE hook_deliveries
+   SET attempt_count = attempt_count + 1,
+       updated_at    = ?
+ WHERE id             = ?
+   AND status         = 'pending'
+   AND attempt_count  = ?`, now, id, expectedAttemptCount)
+	if err != nil {
+		return false, err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return n == 1, nil
 }

@@ -16,19 +16,22 @@ import (
 
 // InboundMessage is parsed from a WeCom (企业微信) bot / intelligent robot callback.
 type InboundMessage struct {
-	Text           string
-	SenderUserID   string
-	ChatID         string
-	ResponseURL    string
-	MsgType        string
+	Text         string
+	SenderUserID string
+	ChatID       string
+	ResponseURL  string
+	MsgType      string
+	// MsgID is the platform-provided message ID when available.
+	// Prefer this over URL timestamps for idempotency keys (COR-05).
+	MsgID string
 }
 
 // ParseInbound decodes JSON callback bodies (text message).
 func ParseInbound(raw []byte) (InboundMessage, error) {
 	var body struct {
-		MsgType     string `json:"msgtype"`
-		MsgTypeAlt  string `json:"MsgType"`
-		Text        struct {
+		MsgType    string `json:"msgtype"`
+		MsgTypeAlt string `json:"MsgType"`
+		Text       struct {
 			Content string `json:"content"`
 		} `json:"text"`
 		From struct {
@@ -36,6 +39,8 @@ func ParseInbound(raw []byte) (InboundMessage, error) {
 		} `json:"from"`
 		ChatID      string `json:"chatid"`
 		ResponseURL string `json:"response_url"`
+		MsgID       string `json:"msg_id"`
+		MsgIDAlt    string `json:"MsgId"`
 	}
 	if err := json.Unmarshal(raw, &body); err != nil {
 		return InboundMessage{}, err
@@ -51,12 +56,17 @@ func ParseInbound(raw []byte) (InboundMessage, error) {
 	if text == "" {
 		return InboundMessage{}, fmt.Errorf("wecom: empty text")
 	}
+	msgID := strings.TrimSpace(body.MsgID)
+	if msgID == "" {
+		msgID = strings.TrimSpace(body.MsgIDAlt)
+	}
 	return InboundMessage{
 		Text:         text,
 		SenderUserID: strings.TrimSpace(body.From.UserID),
 		ChatID:       strings.TrimSpace(body.ChatID),
 		ResponseURL:  strings.TrimSpace(body.ResponseURL),
 		MsgType:      msgType,
+		MsgID:        msgID,
 	}, nil
 }
 

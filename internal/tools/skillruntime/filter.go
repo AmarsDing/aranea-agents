@@ -34,8 +34,11 @@ func (f *AgentVisibilityFilter) allow(ctx context.Context, summary trpcskill.Sum
 	if len(allowed) == 0 {
 		return false
 	}
-	name := strings.TrimSpace(strings.ToLower(summary.Name))
-	return allowed[name]
+	// TPM-P1-06: Summary.Name is now the canonical slug (DB adapter aligned in
+	// internal/skill/trpc/db_repository.go). Canonicalize defensively so framework
+	// FS repositories that still emit display name keep working when display==slug.
+	key := strings.ToLower(strings.TrimSpace(summary.Name))
+	return allowed[key]
 }
 
 func (f *AgentVisibilityFilter) allowedSlugs(ctx context.Context) map[string]bool {
