@@ -217,6 +217,20 @@ func (r *teamRepo) ListTeamRuns(ctx context.Context, teamID string, limit int) (
 	return out, nil
 }
 
+func (r *teamRepo) HasActiveTeamRun(ctx context.Context, teamID string) (bool, error) {
+	count, err := r.data.entClient.TeamRun.Query().
+		Where(
+			teamrun.TeamIDEQ(teamID),
+			teamrun.StatusIn("running", "pending"),
+		).
+		Limit(1).
+		Count(ctx)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
 func (r *teamRepo) GetTeamRunByID(ctx context.Context, id string) (biz.TeamRun, error) {
 	row, err := r.data.entClient.TeamRun.Get(ctx, id)
 	if err != nil {

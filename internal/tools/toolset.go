@@ -3,10 +3,15 @@ package tools
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"strings"
 	"sync"
 	"time"
+
+	"aranea-agents/internal/event"
+
+	mcpconfig "aranea-agents/internal/mcp/config"
+	"aranea-agents/internal/tools/hostexecnorm"
+	"aranea-agents/internal/tools/mcpobserve"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcagenttool "trpc.group/trpc-go/trpc-agent-go/tool/agent"
@@ -17,9 +22,6 @@ import (
 	trpcemail "trpc.group/trpc-go/trpc-agent-go/tool/email"
 	trpcfile "trpc.group/trpc-go/trpc-agent-go/tool/file"
 	trpcgooglesearch "trpc.group/trpc-go/trpc-agent-go/tool/google/search"
-	mcpconfig "aranea-agents/internal/mcp/config"
-	"aranea-agents/internal/tools/hostexecnorm"
-	"aranea-agents/internal/tools/mcpobserve"
 
 	trpchostexec "trpc.group/trpc-go/trpc-agent-go/tool/hostexec"
 	trpcmcp "trpc.group/trpc-go/trpc-agent-go/tool/mcp"
@@ -391,10 +393,10 @@ func Assemble(ctx context.Context, cfg AssemblyConfig) (*AssembledToolsets, erro
 		// of silently disappearing. We continue rather than aborting all assembly
 		// so a bad spec doesn't block unrelated toolsets.
 		if err != nil {
-			slog.Warn("tools.assemble.openapi_loader_failed",
-				"spec_name", spec.Name,
-				"spec_url", spec.SpecURL,
-				"error", err.Error())
+			event.SysLogWarn("system.builtin_tools_sync_fail", "tools.assemble.openapi_loader_failed",
+				event.P("spec_name", spec.Name),
+				event.P("spec_url", spec.SpecURL),
+				event.P("error", err.Error()))
 			continue
 		}
 		if specLoader == nil {

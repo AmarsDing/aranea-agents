@@ -22,6 +22,9 @@ func (r *deadLetterTeamRepo) DeleteTeam(context.Context, string) error { return 
 func (r *deadLetterTeamRepo) ListTeamRuns(context.Context, string, int) ([]biz.TeamRun, error) {
 	return nil, nil
 }
+func (r *deadLetterTeamRepo) HasActiveTeamRun(context.Context, string) (bool, error) {
+	return false, nil
+}
 func (r *deadLetterTeamRepo) GetTeamRunByID(context.Context, string) (biz.TeamRun, error) {
 	return biz.TeamRun{}, biz.ErrNotFound
 }

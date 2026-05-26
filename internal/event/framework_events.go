@@ -1,6 +1,12 @@
 package event
 
-import trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
+import (
+	"context"
+
+	"aranea-agents/pkg/safego"
+
+	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
+)
 
 // FrameworkSpanObserver receives agent framework events for OTel projection.
 type FrameworkSpanObserver interface {
@@ -27,7 +33,7 @@ func WrapFrameworkEventsWithOtel(in <-chan *trpcevent.Event, emitter *TraceEmitt
 		return in
 	}
 	out := make(chan *trpcevent.Event, 64)
-	go func() {
+	safego.Go(context.Background(), "event.framework_events.tee", func() {
 		defer close(out)
 		for ev := range in {
 			if emitter != nil {
@@ -41,6 +47,6 @@ func WrapFrameworkEventsWithOtel(in <-chan *trpcevent.Event, emitter *TraceEmitt
 			}
 			out <- ev
 		}
-	}()
+	})
 	return out
 }

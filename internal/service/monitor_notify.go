@@ -5,13 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-
-	"aranea-agents/internal/event"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 	"aranea-agents/internal/metrics"
 	"aranea-agents/pkg/safego"
 )
@@ -87,11 +88,11 @@ func (n *MonitorAlertNotifier) publishNotifyEvent(ctx context.Context, rule biz.
 		overall = "error"
 	}
 	env.Metadata = map[string]any{
-		"rule_id":         rule.ID,
-		"name":            rule.Name,
-		"status":          overall,
-		"webhook_status":  webhookStatus,
-		"channel_status":  channelStatus,
+		"rule_id":        rule.ID,
+		"name":           rule.Name,
+		"status":         overall,
+		"webhook_status": webhookStatus,
+		"channel_status": channelStatus,
 	}
 	env.Content = &event.EnvelopeContent{Text: string(meta)}
 	n.bus.Publish(ctx, env)
@@ -106,9 +107,27 @@ var alertWebhookClient = &http.Client{
 	},
 }
 
-func postAlertWebhook(url string, payload map[string]any) error {
-	if !strings.HasPrefix(url, "https://") && !strings.HasPrefix(url, "http://") {
-		return fmt.Errorf("postAlertWebhook: invalid URL scheme, must be http:// or https://: %q", url)
+func postAlertWebhook(rawURL string, payload map[string]any) error {
+	if !strings.HasPrefix(rawURL, "https://") && !strings.HasPrefix(rawURL, "http://") {
+		return fmt.Errorf("postAlertWebhook: invalid URL scheme, must be http:// or https://: %q", rawURL)
+	}
+	// SSRF protection: reject URLs pointing to private/internal networks.
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("postAlertWebhook: invalid URL: %w", err)
+	}
+	host := parsed.Hostname()
+	if host == "" {
+		return fmt.Errorf("postAlertWebhook: URL has no host")
+	}
+	ips, err := net.LookupIP(host)
+	if err != nil {
+		return fmt.Errorf("postAlertWebhook: DNS lookup failed for %q: %w", host, err)
+	}
+	for _, ip := range ips {
+		if ip.IsLoopback() || ip.IsPrivate() || ip.IsUnspecified() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+			return fmt.Errorf("postAlertWebhook: host %q resolves to internal/reserved IP %s — SSRF blocked", host, ip)
+		}
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -116,7 +135,7 @@ func postAlertWebhook(url string, payload map[string]any) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, rawURL, bytes.NewReader(body))
 	if err != nil {
 		return err
 	}

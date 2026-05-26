@@ -6,12 +6,13 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log/slog"
 	"mime/multipart"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"aranea-agents/internal/event"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/skill/storage"
@@ -186,12 +187,12 @@ func (e *Engine) ApplyImport(ctx context.Context, jobID string, in biz.SkillImpo
 		cCtx := context.Background()
 		for _, r := range committed {
 			if err := e.repo.DeleteSkill(cCtx, r.id); err != nil {
-				slog.WarnContext(cCtx, "skill.import.compensate_db_delete_fail",
-					"skill_id", r.id, "error", err)
+				event.SysLogWarn("system.plugin.seed_fail", "skill.import.compensate_db_delete_fail",
+					event.P("skill_id", r.id), event.P("error", err.Error()))
 			}
 			if err := os.RemoveAll(r.storageDir); err != nil {
-				slog.WarnContext(cCtx, "skill.import.compensate_dir_remove_fail",
-					"storage_dir", r.storageDir, "error", err)
+				event.SysLogWarn("system.plugin.seed_fail", "skill.import.compensate_dir_remove_fail",
+					event.P("storage_dir", r.storageDir), event.P("error", err.Error()))
 			}
 		}
 	}
@@ -203,9 +204,9 @@ func (e *Engine) ApplyImport(ctx context.Context, jobID string, in biz.SkillImpo
 		compensate()
 		// Return with zero created IDs (compensated away) but preserve skips for diagnostics.
 		return biz.SkillImportApplyResult{
-			CreatedSkillIDs:    []string{},
+			CreatedSkillIDs:     []string{},
 			SkippedCandidateIDs: result.SkippedCandidateIDs,
-			Message:            fmt.Sprintf("导入失败并已回滚: %s", err.Error()),
+			Message:             fmt.Sprintf("导入失败并已回滚: %s", err.Error()),
 		}, err
 	}
 

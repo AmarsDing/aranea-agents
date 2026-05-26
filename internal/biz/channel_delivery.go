@@ -3,9 +3,10 @@ package biz
 import (
 	"context"
 	"encoding/json"
-	"log/slog"
 	"strings"
 	"time"
+
+	"aranea-agents/internal/event"
 
 	"github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
@@ -96,7 +97,7 @@ func (u *ChannelUsecase) hasOutboundIdempotency(ctx context.Context, channelID, 
 		return false, err
 	}
 	if len(items) >= 100 {
-		slog.Warn("hasOutboundIdempotency scanned max deliveries without finding match; consider DB unique index for idempotency_key", "channel_id", channelID, "key", key)
+		event.SysLogWarn("system.monitor.alert_channel_fail", "hasOutboundIdempotency scanned max deliveries without finding match; consider DB unique index for idempotency_key", event.P("channel_id", channelID), event.P("key", key))
 	}
 	for _, item := range items {
 		if item.Status != ChannelDeliveryStatusPending &&

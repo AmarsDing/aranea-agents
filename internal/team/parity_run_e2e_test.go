@@ -36,6 +36,9 @@ func (m *parityMemRepo) DeleteTeam(context.Context, string) error               
 func (m *parityMemRepo) ListTeamRuns(context.Context, string, int) ([]biz.TeamRun, error) {
 	return nil, nil
 }
+func (m *parityMemRepo) HasActiveTeamRun(context.Context, string) (bool, error) {
+	return false, nil
+}
 func (m *parityMemRepo) GetTeamRunByID(_ context.Context, id string) (biz.TeamRun, error) {
 	if r, ok := m.runs[id]; ok {
 		return r, nil

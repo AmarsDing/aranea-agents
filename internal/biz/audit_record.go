@@ -3,9 +3,9 @@ package biz
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"strings"
 
+	"aranea-agents/internal/event"
 	"aranea-agents/pkg/auth"
 )
 
@@ -26,6 +26,6 @@ func RecordAdminAudit(ctx context.Context, mon *MonitorUsecase, action, resource
 		Actor:      actor,
 		Severity:   "info",
 	}); err != nil {
-		slog.Warn("RecordAdminAudit failed", "action", action, "error", err)
+		event.SysLogWarn("system.monitor.audit_log_fail", "RecordAdminAudit failed", event.P("action", action), event.P("error", err.Error()))
 	}
 }

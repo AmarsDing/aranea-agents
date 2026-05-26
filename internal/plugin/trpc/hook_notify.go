@@ -5,12 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"strings"
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 	arametrics "aranea-agents/internal/metrics"
 	"aranea-agents/pkg/outboundwebhook"
 	"aranea-agents/pkg/safego"
@@ -61,9 +61,9 @@ func (n *HookNotifier) EnqueueNotify(ctx context.Context, rh biz.ResolvedHook, p
 		WebhookSecret: opts.WebhookSecret,
 		PayloadJSON:   string(body),
 		Status:        biz.HookDeliveryPending,
-		MaxAttempts:  opts.MaxAttempts,
-		CreatedAt:    time.Now().UTC().Format(time.RFC3339),
-		UpdatedAt:    time.Now().UTC().Format(time.RFC3339),
+		MaxAttempts:   opts.MaxAttempts,
+		CreatedAt:     time.Now().UTC().Format(time.RFC3339),
+		UpdatedAt:     time.Now().UTC().Format(time.RFC3339),
 	}
 	safego.Go(ctx, "hook.notify.enqueue."+rh.Hook.Key, func() {
 		bg := context.Background()
@@ -100,7 +100,7 @@ func (n *HookNotifier) processDeliveryFrom(ctx context.Context, d biz.HookDelive
 	if startAttempt > max {
 		// All attempts already consumed — mark failed and return.
 		if err := n.repo.UpdateResult(ctx, d.ID, biz.HookDeliveryFailed, max, "max attempts reached"); err != nil {
-			slog.Warn("hook.notify: UpdateResult failed", "id", d.ID, "error", err)
+			event.SysLogWarn("system.hook.reload_fail", "hook.notify: UpdateResult failed", event.P("id", d.ID), event.P("error", err.Error()))
 		}
 		return
 	}
@@ -110,20 +110,20 @@ func (n *HookNotifier) processDeliveryFrom(ctx context.Context, d biz.HookDelive
 		err := deliverHookWebhook(d.WebhookURL, []byte(d.PayloadJSON), d.WebhookSecret, timeoutSec)
 		if err == nil {
 			if uerr := n.repo.UpdateResult(ctx, d.ID, biz.HookDeliverySuccess, attempt, ""); uerr != nil {
-				slog.Warn("hook.notify: UpdateResult(success) failed", "id", d.ID, "error", uerr)
+				event.SysLogWarn("system.hook.reload_fail", "hook.notify: UpdateResult(success) failed", event.P("id", d.ID), event.P("error", uerr.Error()))
 			}
 			return
 		}
 		lastErr = err.Error()
 		if uerr := n.repo.UpdateResult(ctx, d.ID, biz.HookDeliveryPending, attempt, lastErr); uerr != nil {
-			slog.Warn("hook.notify: UpdateResult(pending) failed", "id", d.ID, "attempt", attempt, "error", uerr)
+			event.SysLogWarn("system.hook.reload_fail", "hook.notify: UpdateResult(pending) failed", event.P("id", d.ID), event.P("attempt", attempt), event.P("error", uerr.Error()))
 		}
 		if attempt < max {
 			time.Sleep(time.Duration(attempt) * 500 * time.Millisecond)
 		}
 	}
 	if uerr := n.repo.UpdateResult(ctx, d.ID, biz.HookDeliveryFailed, max, lastErr); uerr != nil {
-		slog.Warn("hook.notify: UpdateResult(failed) failed", "id", d.ID, "error", uerr)
+		event.SysLogWarn("system.hook.reload_fail", "hook.notify: UpdateResult(failed) failed", event.P("id", d.ID), event.P("error", uerr.Error()))
 	}
 	arametrics.PluginInvokeTotal.WithLabelValues("hook:"+d.HookKey, "notify", "delivery_failed").Inc()
 }

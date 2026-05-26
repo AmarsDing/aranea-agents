@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"log/slog"
 	"net/http"
 	"strings"
 
@@ -34,8 +33,8 @@ type ChannelIngress struct {
 	inboundInflight inboundInflightSet
 	messageDedupe   *ingressMessageDedupe
 	peerDebouncer   *ingressPeerDebouncer
-	previewRegistry  *turnPreviewRegistry
-	concurrentGate   *channelConcurrentGate
+	previewRegistry *turnPreviewRegistry
+	concurrentGate  *channelConcurrentGate
 }
 
 // NewChannelIngress wires channel runtime ingress.
@@ -193,7 +192,7 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 				"peer_id":    ingressFirstNonEmpty(parsed.SenderOpenID, parsed.ChatID),
 				"via":        "webhook",
 			}, ""); dErr != nil {
-				slog.Warn("recordDelivery failed", "channel_id", chRow.ID, "status", "skipped_"+rejectReason, "error", dErr)
+				event.SysLogWarn("system.monitor.alert_channel_fail", "recordDelivery failed", event.P("channel_id", chRow.ID), event.P("status", "skipped_"+rejectReason), event.P("error", dErr.Error()))
 			}
 			w.WriteHeader(http.StatusOK)
 			return nil
@@ -222,7 +221,7 @@ func channelReceiveModeFromConfig(configJSON string) string {
 func (h *ChannelIngress) recordDelivery(ctx context.Context, channelID, status string, payload map[string]any, errMsg string) error {
 	b, _ := json.Marshal(payload)
 	if err := h.channels.AddInboundDelivery(ctx, channelID, status, string(b), errMsg); err != nil {
-		slog.Warn("recordDelivery failed", "channel_id", channelID, "status", status, "error", err)
+		event.SysLogWarn("system.monitor.alert_channel_fail", "recordDelivery failed", event.P("channel_id", channelID), event.P("status", status), event.P("error", err.Error()))
 		return err
 	}
 	return nil

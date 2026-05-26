@@ -5,10 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"strings"
 	"sync"
 	"time"
+
+	"aranea-agents/internal/event"
 
 	"github.com/google/uuid"
 )
@@ -129,12 +130,12 @@ type AlertRule struct {
 	UpdatedAt        string
 
 	// MON-OPT-02: persistent firing state machine.
-	FiringState            AlertFiringState // idle | firing | recovered
-	LastFiredAt            *time.Time       // unix ms persisted in DB
-	LastFiredValue         float64          // metric value at last fire
-	LastFiredWindowStart   *time.Time
-	RecoveredAt            *time.Time
-	RecoveryFactor         float64 // 0.9 default: metric must drop below Threshold×RecoveryFactor to recover
+	FiringState          AlertFiringState // idle | firing | recovered
+	LastFiredAt          *time.Time       // unix ms persisted in DB
+	LastFiredValue       float64          // metric value at last fire
+	LastFiredWindowStart *time.Time
+	RecoveredAt          *time.Time
+	RecoveryFactor       float64 // 0.9 default: metric must drop below Threshold×RecoveryFactor to recover
 }
 
 // AlertNotifier delivers fired alerts to external channels.
@@ -212,7 +213,7 @@ func (u *Usecase) RecordAuditLog(ctx context.Context, entry AuditLog) error {
 		entry.ID = uuid.NewString()
 	}
 	if err := u.repo.InsertAuditLog(ctx, entry); err != nil {
-		slog.Warn("RecordAuditLog failed", "action", entry.Action, "resource_id", entry.ResourceID, "error", err)
+		event.SysLogWarn("system.monitor.audit_log_fail", "RecordAuditLog failed", event.P("action", entry.Action), event.P("resource_id", entry.ResourceID), event.P("error", err.Error()))
 		return err
 	}
 	return nil
@@ -224,7 +225,7 @@ func (u *Usecase) RecordMonitorEvent(ctx context.Context, ev EventWrite) error {
 		return nil
 	}
 	if err := u.repo.InsertMonitorEvent(ctx, ev); err != nil {
-		slog.Warn("RecordMonitorEvent failed", "event_key", ev.EventKey, "error", err)
+		event.SysLogWarn("system.monitor.event_persist_fail", "RecordMonitorEvent failed", event.P("event_key", ev.EventKey), event.P("error", err.Error()))
 		return err
 	}
 	return nil
@@ -340,7 +341,7 @@ func (u *Usecase) evaluateRunnerErrorRate(ctx context.Context, rule AlertRule) {
 	since := time.Now().UTC().Add(-time.Duration(window) * time.Minute).Format(time.RFC3339)
 	total, errTotal := u.repo.CountMonitorEventsSince(ctx, "runner.completion", "", since)
 	if errTotal != nil {
-		slog.Warn("EvaluateAlerts: CountMonitorEventsSince(total) failed", "rule_id", rule.ID, "error", errTotal)
+		event.SysLogWarn("system.monitor.alert_count_fail", "EvaluateAlerts: CountMonitorEventsSince(total) failed", event.P("rule_id", rule.ID), event.P("error", errTotal.Error()))
 		return
 	}
 	if total == 0 {
@@ -352,7 +353,7 @@ func (u *Usecase) evaluateRunnerErrorRate(ctx context.Context, rule AlertRule) {
 	}
 	errors, errErrors := u.repo.CountMonitorEventsSince(ctx, "runner.completion", "error", since)
 	if errErrors != nil {
-		slog.Warn("EvaluateAlerts: CountMonitorEventsSince(errors) failed", "rule_id", rule.ID, "error", errErrors)
+		event.SysLogWarn("system.monitor.alert_count_fail", "EvaluateAlerts: CountMonitorEventsSince(errors) failed", event.P("rule_id", rule.ID), event.P("error", errErrors.Error()))
 		return
 	}
 	rate := float64(errors) / float64(total)
@@ -399,7 +400,7 @@ func (u *Usecase) evaluateRunnerErrorRate(ctx context.Context, rule AlertRule) {
 		Status:       strings.TrimSpace(rule.Severity),
 		MetadataJSON: string(meta),
 	}); err != nil {
-		slog.Warn("RecordMonitorEvent for alert.fired failed", "rule_id", rule.ID, "error", err)
+		event.SysLogWarn("system.monitor.alert_fired_persist_fail", "RecordMonitorEvent for alert.fired failed", event.P("rule_id", rule.ID), event.P("error", err.Error()))
 	}
 	payload := map[string]any{
 		"rule_id":        rule.ID,
@@ -422,7 +423,7 @@ func (u *Usecase) evaluateSkillFilesystemMissingCount(ctx context.Context, rule 
 	}
 	missing, pending, err := u.fsHealth.FilesystemHealthStats(ctx)
 	if err != nil {
-		slog.Warn("EvaluateAlerts: FilesystemHealthStats failed", "rule_id", rule.ID, "error", err)
+		event.SysLogWarn("system.monitor.fs_health_fail", "EvaluateAlerts: FilesystemHealthStats failed", event.P("rule_id", rule.ID), event.P("error", err.Error()))
 		return
 	}
 	missingF := float64(missing)
@@ -468,7 +469,7 @@ func (u *Usecase) evaluateSkillFilesystemMissingCount(ctx context.Context, rule 
 		Status:       strings.TrimSpace(rule.Severity),
 		MetadataJSON: string(meta),
 	}); err != nil {
-		slog.Warn("RecordMonitorEvent for skill alert.fired failed", "rule_id", rule.ID, "error", err)
+		event.SysLogWarn("system.monitor.skill_alert_fired_persist_fail", "RecordMonitorEvent for skill alert.fired failed", event.P("rule_id", rule.ID), event.P("error", err.Error()))
 	}
 	payload := map[string]any{
 		"rule_id":                  rule.ID,
@@ -539,7 +540,7 @@ func (u *Usecase) MarkAlertFiredPersistent(ctx context.Context, rule AlertRule, 
 	}
 	u.lastFired.Store(rule.ID, now)
 	if err := u.repo.UpdateAlertFiringState(ctx, rule.ID, AlertFiringStateFiring, &now, metricValue, nil); err != nil {
-		slog.Warn("MarkAlertFiredPersistent: DB update failed", "rule_id", rule.ID, "error", err)
+		event.SysLogWarn("system.monitor.mark_fired_db_fail", "MarkAlertFiredPersistent: DB update failed", event.P("rule_id", rule.ID), event.P("error", err.Error()))
 	}
 	// Invalidate rules cache so next evaluation round reads fresh DB state.
 	u.rulesMu.Lock()
@@ -553,7 +554,7 @@ func (u *Usecase) MarkAlertRecovered(ctx context.Context, rule AlertRule, now ti
 		return
 	}
 	if err := u.repo.UpdateAlertFiringState(ctx, rule.ID, AlertFiringStateRecovered, rule.LastFiredAt, rule.LastFiredValue, &now); err != nil {
-		slog.Warn("MarkAlertRecovered: DB update failed", "rule_id", rule.ID, "error", err)
+		event.SysLogWarn("system.monitor.mark_recovered_db_fail", "MarkAlertRecovered: DB update failed", event.P("rule_id", rule.ID), event.P("error", err.Error()))
 	}
 	u.rulesMu.Lock()
 	u.rulesExpire = time.Time{}

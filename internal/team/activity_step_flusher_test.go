@@ -24,6 +24,9 @@ func (m *memStepRepo) DeleteTeam(context.Context, string) error { return nil }
 func (m *memStepRepo) ListTeamRuns(context.Context, string, int) ([]biz.TeamRun, error) {
 	return nil, nil
 }
+func (m *memStepRepo) HasActiveTeamRun(context.Context, string) (bool, error) {
+	return false, nil
+}
 func (m *memStepRepo) GetTeamRunByID(context.Context, string) (biz.TeamRun, error) {
 	return biz.TeamRun{}, nil
 }

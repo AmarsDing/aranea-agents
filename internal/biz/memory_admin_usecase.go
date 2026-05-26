@@ -3,7 +3,8 @@ package biz
 import (
 	"context"
 	"errors"
-	"log/slog"
+
+	"aranea-agents/internal/event"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
@@ -131,7 +132,7 @@ func (uc *MemoryAdminUsecase) syncFactIndexBestEffort(ctx context.Context, raw [
 		return
 	}
 	if err := syncer.SyncFactIndexFromRow(ctx, raw); err != nil && !errors.Is(err, ErrMemoryUnavailable) {
-		slog.Warn("syncFactIndexBestEffort failed", "error", err)
+		event.SysLogWarn("system.auto_memory.l4_fail", "syncFactIndexBestEffort failed", event.P("error", err.Error()))
 	}
 }
 

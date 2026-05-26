@@ -2,18 +2,27 @@ package biz
 
 import (
 	"context"
-	"log/slog"
 	"strings"
 	"sync"
 	"time"
 
+	"aranea-agents/internal/event"
 	"aranea-agents/pkg/safego"
 )
 
 const awaitChanMaxAge = 30 * time.Minute
 
+// AwaitReplyMsg is the message sent over an await channel when a user replies.
+type AwaitReplyMsg struct {
+	RunID string
+	Reply string
+}
+
+// AwaitChannel is the concrete channel type used for await-reply coordination.
+type AwaitChannel = chan AwaitReplyMsg
+
 type awaitChanEntry struct {
-	ch        interface{}
+	ch        AwaitChannel
 	createdAt time.Time
 }
 
@@ -179,7 +188,7 @@ func (uc *ChatUsecase) EnqueueUserMessage(sessionID, content string, mergeFollow
 	return true, true, pid, "", nil
 }
 
-func (uc *ChatUsecase) RegisterAwaitChannel(sessionID string, ch interface{}) {
+func (uc *ChatUsecase) RegisterAwaitChannel(sessionID string, ch AwaitChannel) {
 	uc.awaitChans.Store(sessionID, awaitChanEntry{ch: ch, createdAt: time.Now()})
 }
 
@@ -187,14 +196,14 @@ func (uc *ChatUsecase) DeleteAwaitChannel(sessionID string) {
 	uc.awaitChans.Delete(sessionID)
 }
 
-func (uc *ChatUsecase) LoadAwaitChannel(sessionID string) (interface{}, bool) {
+func (uc *ChatUsecase) LoadAwaitChannel(sessionID string) (AwaitChannel, bool) {
 	val, ok := uc.awaitChans.Load(sessionID)
 	if !ok {
 		return nil, false
 	}
 	entry, ok := val.(awaitChanEntry)
 	if !ok {
-		return val, true
+		return nil, false
 	}
 	return entry.ch, true
 }
@@ -234,7 +243,7 @@ func (uc *ChatUsecase) StartBackgroundGoroutines() {
 					}
 					entry, ok := val.(awaitChanEntry)
 					if ok && now.Sub(entry.createdAt) > awaitChanMaxAge {
-						slog.Warn("await channel expired, cleaning up", "session_id", sid, "age", now.Sub(entry.createdAt).Round(time.Second))
+						event.SysLogWarn("system.session.compress", "await channel expired, cleaning up", event.P("session_id", sid), event.P("age", now.Sub(entry.createdAt).Round(time.Second).String()))
 						uc.awaitChans.Delete(key)
 					}
 					return true

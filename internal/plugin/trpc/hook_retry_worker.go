@@ -2,18 +2,18 @@ package plugintrpc
 
 import (
 	"context"
-	"log/slog"
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 	"aranea-agents/pkg/safego"
 )
 
 const (
-	hookRetryPollInterval  = 60 * time.Second
-	hookRetryStaleAfter    = 5 * time.Minute
-	hookRetryBatchSize     = 20
-	hookRetryQueryTimeout  = 30 * time.Second
+	hookRetryPollInterval = 60 * time.Second
+	hookRetryStaleAfter   = 5 * time.Minute
+	hookRetryBatchSize    = 20
+	hookRetryQueryTimeout = 30 * time.Second
 )
 
 // HookDeliveryRetryWorker polls for stale pending hook deliveries and retries
@@ -74,7 +74,7 @@ func (w *HookDeliveryRetryWorker) retryStale() {
 
 	stale, err := w.repo.ListStalePending(ctx, time.Now().UTC().Add(-hookRetryStaleAfter), hookRetryBatchSize)
 	if err != nil {
-		slog.Warn("hook.delivery.retry_worker: ListStalePending failed", "error", err)
+		event.SysLogWarn("system.hook.reload_fail", "hook.delivery.retry_worker: ListStalePending failed", event.P("error", err.Error()))
 		return
 	}
 	for _, d := range stale {
@@ -94,19 +94,19 @@ func (w *HookDeliveryRetryWorker) retryOne(d biz.HookDelivery) {
 
 	claimed, err := w.repo.TryClaimForRetry(ctx, d.ID, d.AttemptCount)
 	if err != nil {
-		slog.Warn("hook.delivery.retry_worker: TryClaimForRetry failed",
-			"id", d.ID, "error", err)
+		event.SysLogWarn("system.hook.reload_fail", "hook.delivery.retry_worker: TryClaimForRetry failed",
+			event.P("id", d.ID), event.P("error", err.Error()))
 		return
 	}
 	if !claimed {
 		return // another instance already claimed this delivery
 	}
 
-	slog.Info("hook.delivery.retry_worker: retrying stale delivery",
-		"id", d.ID,
-		"hook_key", d.HookKey,
-		"attempt_count", d.AttemptCount+1, // already incremented by TryClaimForRetry
-		"max_attempts", d.MaxAttempts,
+	event.SysLogInfo("system.hook.reload_fail", "hook.delivery.retry_worker: retrying stale delivery",
+		event.P("id", d.ID),
+		event.P("hook_key", d.HookKey),
+		event.P("attempt_count", d.AttemptCount+1),
+		event.P("max_attempts", d.MaxAttempts),
 	)
 
 	// TryClaimForRetry already incremented attempt_count by 1, so the next

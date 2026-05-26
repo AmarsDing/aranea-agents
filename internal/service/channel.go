@@ -20,14 +20,26 @@ import (
 type ChannelService struct {
 	v1.UnimplementedChannelServiceServer
 
-	uc         *biz.ChannelUsecase
-	turnJobs   *biz.ChannelTurnJobUsecase
-	peers      biz.ChannelPeerSessionRepo
-	runtime    *ChannelRuntime
+	uc       *biz.ChannelUsecase
+	turnJobs *biz.ChannelTurnJobUsecase
+	peers    biz.ChannelPeerSessionRepo
+	runtime  *ChannelRuntime
+	testers  map[string]biz.ChannelLiveTester
 }
 
 func NewChannelService(uc *biz.ChannelUsecase, turnJobs *biz.ChannelTurnJobUsecase, peers biz.ChannelPeerSessionRepo, runtime *ChannelRuntime) *ChannelService {
-	return &ChannelService{uc: uc, turnJobs: turnJobs, peers: peers, runtime: runtime}
+	s := &ChannelService{uc: uc, turnJobs: turnJobs, peers: peers, runtime: runtime}
+	s.testers = s.buildLiveTesters()
+	return s
+}
+
+// buildLiveTesters registers platform-specific live testers.
+func (s *ChannelService) buildLiveTesters() map[string]biz.ChannelLiveTester {
+	return map[string]biz.ChannelLiveTester{
+		"feishu":   biz.ChannelLiveTesterFunc(s.testFeishuLive),
+		"slack":    biz.ChannelLiveTesterFunc(s.testSlackLive),
+		"telegram": biz.ChannelLiveTesterFunc(s.testTelegramLive),
+	}
 }
 
 func (s *ChannelService) reloadRuntime(ctx context.Context) {
@@ -311,51 +323,10 @@ func (s *ChannelService) TestChannel(ctx context.Context, req *v1.TestChannelReq
 		Type string `json:"type"`
 	}
 	_ = json.Unmarshal([]byte(row.ConfigJSON), &env)
-	if strings.EqualFold(strings.TrimSpace(env.Type), "feishu") && result.OK {
-		region, appID, ferr := feishuAppAndRegion(row.ConfigJSON)
-		if ferr != nil {
-			result = biz.ChannelTestResult{OK: false, Status: "error", Message: ferr.Error()}
-		} else {
-			appRef, cerr := ChannelCredentialSecretRef(creds, "app_secret")
-			if cerr != nil {
-				result = biz.ChannelTestResult{OK: false, Status: "pending_auth", Message: cerr.Error()}
-			} else {
-				sec, serr := ResolveSecretRef(ctx, appRef)
-				if serr != nil {
-					result = biz.ChannelTestResult{OK: false, Status: "pending_auth", Message: serr.Error()}
-				} else {
-					_, _, terr := lark.FetchTenantAccessToken(ctx, lark.DefaultHTTPClient(), region, appID, sec)
-					if terr != nil {
-						msg := terr.Error()
-						if strings.Contains(msg, "code=10003") {
-							msg += " — 请检查 App ID、App Secret 是否与飞书开放平台一致，并确认 region（国内飞书 / 国际 Lark）"
-						}
-						result = biz.ChannelTestResult{OK: false, Status: "error", Message: msg}
-					} else {
-						result = biz.ChannelTestResult{OK: true, Status: "ok", Message: "tenant_access_token acquired"}
-					}
-				}
-			}
-		}
-	}
-	if strings.EqualFold(strings.TrimSpace(env.Type), "slack") && result.OK {
-		token, terr := resolveCredentialPlain(ctx, creds, "bot_token")
-		if terr != nil || strings.TrimSpace(token) == "" {
-			result = biz.ChannelTestResult{OK: false, Status: "pending_auth", Message: "bot_token not configured"}
-		} else if err := slack.AuthTest(ctx, lark.DefaultHTTPClient(), token); err != nil {
-			result = biz.ChannelTestResult{OK: false, Status: "error", Message: err.Error()}
-		} else {
-			result = biz.ChannelTestResult{OK: true, Status: "ok", Message: "slack auth.test ok"}
-		}
-	}
-	if strings.EqualFold(strings.TrimSpace(env.Type), "telegram") && result.OK {
-		token, terr := resolveCredentialPlain(ctx, creds, "bot_token")
-		if terr != nil || strings.TrimSpace(token) == "" {
-			result = biz.ChannelTestResult{OK: false, Status: "pending_auth", Message: "bot_token not configured"}
-		} else if err := telegram.GetMe(ctx, lark.DefaultHTTPClient(), token); err != nil {
-			result = biz.ChannelTestResult{OK: false, Status: "error", Message: err.Error()}
-		} else {
-			result = biz.ChannelTestResult{OK: true, Status: "ok", Message: "telegram getMe ok"}
+	channelType := strings.TrimSpace(strings.ToLower(env.Type))
+	if result.OK && channelType != "" {
+		if tester, ok := s.testers[channelType]; ok {
+			result = tester.TestLive(ctx, row.ConfigJSON, creds)
 		}
 	}
 	final, err := s.uc.CommitChannelTest(ctx, row, creds, result)
@@ -445,4 +416,53 @@ func (s *ChannelService) ListChannelTurnJobs(ctx context.Context, req *v1.ListCh
 		out = append(out, bizTurnJobToProto(job))
 	}
 	return &v1.ListChannelTurnJobsResponse{Items: out}, nil
+}
+
+// testFeishuLive performs a live feishu/lark tenant_access_token test.
+func (s *ChannelService) testFeishuLive(ctx context.Context, configJSON string, creds []biz.ChannelCredential) biz.ChannelTestResult {
+	region, appID, ferr := feishuAppAndRegion(configJSON)
+	if ferr != nil {
+		return biz.ChannelTestResult{OK: false, Status: "error", Message: ferr.Error()}
+	}
+	appRef, cerr := ChannelCredentialSecretRef(creds, "app_secret")
+	if cerr != nil {
+		return biz.ChannelTestResult{OK: false, Status: "pending_auth", Message: cerr.Error()}
+	}
+	sec, serr := ResolveSecretRef(ctx, appRef)
+	if serr != nil {
+		return biz.ChannelTestResult{OK: false, Status: "pending_auth", Message: serr.Error()}
+	}
+	_, _, terr := lark.FetchTenantAccessToken(ctx, lark.DefaultHTTPClient(), region, appID, sec)
+	if terr != nil {
+		msg := terr.Error()
+		if strings.Contains(msg, "code=10003") {
+			msg += " — 请检查 App ID、App Secret 是否与飞书开放平台一致，并确认 region（国内飞书 / 国际 Lark）"
+		}
+		return biz.ChannelTestResult{OK: false, Status: "error", Message: msg}
+	}
+	return biz.ChannelTestResult{OK: true, Status: "ok", Message: "tenant_access_token acquired"}
+}
+
+// testSlackLive performs a live slack auth.test.
+func (s *ChannelService) testSlackLive(ctx context.Context, configJSON string, creds []biz.ChannelCredential) biz.ChannelTestResult {
+	token, terr := resolveCredentialPlain(ctx, creds, "bot_token")
+	if terr != nil || strings.TrimSpace(token) == "" {
+		return biz.ChannelTestResult{OK: false, Status: "pending_auth", Message: "bot_token not configured"}
+	}
+	if err := slack.AuthTest(ctx, lark.DefaultHTTPClient(), token); err != nil {
+		return biz.ChannelTestResult{OK: false, Status: "error", Message: err.Error()}
+	}
+	return biz.ChannelTestResult{OK: true, Status: "ok", Message: "slack auth.test ok"}
+}
+
+// testTelegramLive performs a live telegram getMe test.
+func (s *ChannelService) testTelegramLive(ctx context.Context, configJSON string, creds []biz.ChannelCredential) biz.ChannelTestResult {
+	token, terr := resolveCredentialPlain(ctx, creds, "bot_token")
+	if terr != nil || strings.TrimSpace(token) == "" {
+		return biz.ChannelTestResult{OK: false, Status: "pending_auth", Message: "bot_token not configured"}
+	}
+	if err := telegram.GetMe(ctx, lark.DefaultHTTPClient(), token); err != nil {
+		return biz.ChannelTestResult{OK: false, Status: "error", Message: err.Error()}
+	}
+	return biz.ChannelTestResult{OK: true, Status: "ok", Message: "telegram getMe ok"}
 }

@@ -368,7 +368,7 @@ func (o *ChatOrchestrator) AttachNativeTurnAfterHook(hook biz.NativeTurnAfterHoo
 }
 
 // AwaitChannel operations delegate to chatUC.
-func (o *ChatOrchestrator) RegisterAwaitChannel(sessionID string, ch interface{}) {
+func (o *ChatOrchestrator) RegisterAwaitChannel(sessionID string, ch biz.AwaitChannel) {
 	o.chatUC.RegisterAwaitChannel(sessionID, ch)
 }
 
@@ -376,7 +376,7 @@ func (o *ChatOrchestrator) DeleteAwaitChannel(sessionID string) {
 	o.chatUC.DeleteAwaitChannel(sessionID)
 }
 
-func (o *ChatOrchestrator) LoadAwaitChannel(sessionID string) (interface{}, bool) {
+func (o *ChatOrchestrator) LoadAwaitChannel(sessionID string) (biz.AwaitChannel, bool) {
 	return o.chatUC.LoadAwaitChannel(sessionID)
 }
 

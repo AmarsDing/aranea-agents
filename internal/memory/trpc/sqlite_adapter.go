@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"strings"
 	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/pgvector"
 	"aranea-agents/internal/data/sessionmemory"
+	"aranea-agents/internal/event"
 
 	trpcmemory "trpc.group/trpc-go/trpc-agent-go/memory"
 	trpcmemtool "trpc.group/trpc-go/trpc-agent-go/memory/tool"
@@ -145,7 +145,7 @@ func (s *sqliteMemoryService) SearchMemories(ctx context.Context, uk trpcmemory.
 		hits, err := s.vector.RecallWithUser(ctx, uk.AppName, uk.UserID, q, int(topK))
 		if err != nil {
 			if !errors.Is(err, biz.ErrMemoryUnavailable) {
-				slog.Warn("vector recall failed", "agent", uk.AppName, "error", err)
+				event.SysLogWarn("system.auto_memory.extract_fail", "vector recall failed", event.P("agent", uk.AppName), event.P("error", err.Error()))
 			}
 		}
 		if err == nil && len(hits) > 0 {
@@ -233,7 +233,7 @@ func (s *sqliteMemoryService) syncIndexBestEffort(ctx context.Context, raw []byt
 	}
 	// MEM-OPT-01 Phase 1: errors are captured by SyncFactIndexFromRow → MarkFactIndexStale.
 	if err := s.indexSync.SyncFactIndexFromRow(ctx, raw); err != nil {
-		slog.Warn("[MEM-OPT-01] sqlite_adapter index sync failed", "err", err)
+		event.SysLogWarn("system.auto_memory.l4_fail", "sqlite_adapter index sync failed", event.P("error", err.Error()))
 	}
 }
 

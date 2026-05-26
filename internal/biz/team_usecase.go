@@ -15,6 +15,7 @@ type TeamRepository interface {
 	UpdateTeam(ctx context.Context, t Team) (Team, error)
 	DeleteTeam(ctx context.Context, id string) error
 	ListTeamRuns(ctx context.Context, teamID string, limit int) ([]TeamRun, error)
+	HasActiveTeamRun(ctx context.Context, teamID string) (bool, error)
 	GetTeamRunByID(ctx context.Context, id string) (TeamRun, error)
 	ListTeamRunSteps(ctx context.Context, runID string) ([]TeamRunStep, error)
 	CreateTeamRun(ctx context.Context, r TeamRun) (TeamRun, error)
@@ -31,12 +32,12 @@ type TeamRepository interface {
 }
 
 type TeamUsecase struct {
-	repo   TeamRepository
-	agents AgentRepository
+	repo         TeamRepository
+	agentChecker AgentIDExistenceChecker
 }
 
-func NewTeamUsecase(repo TeamRepository, agents AgentRepository) *TeamUsecase {
-	return &TeamUsecase{repo: repo, agents: agents}
+func NewTeamUsecase(repo TeamRepository, agentChecker AgentIDExistenceChecker) *TeamUsecase {
+	return &TeamUsecase{repo: repo, agentChecker: agentChecker}
 }
 
 func defaultTeamDefinitionJSON() string {
@@ -137,7 +138,7 @@ func validRolesForMode(mode string) map[string]bool {
 }
 
 func (u *TeamUsecase) validateTeamMembersExist(ctx context.Context, raw string) error {
-	if u.agents == nil || strings.TrimSpace(raw) == "" {
+	if u.agentChecker == nil || strings.TrimSpace(raw) == "" {
 		return nil
 	}
 	var body struct {
@@ -155,7 +156,7 @@ func (u *TeamUsecase) validateTeamMembersExist(ctx context.Context, raw string) 
 		if aid == "" {
 			continue
 		}
-		if _, err := u.agents.GetAgentByID(ctx, aid); err != nil {
+		if !u.agentChecker.AgentExistsByID(ctx, aid) {
 			return kerrors.BadRequest("TEAM", "team member agent "+aid+" does not exist")
 		}
 	}
@@ -225,11 +226,7 @@ func (u *TeamUsecase) HasActiveRun(ctx context.Context, teamID string) (bool, er
 	if err != nil {
 		return false, err
 	}
-	runs, err := u.repo.ListTeamRuns(ctx, teamID, 50)
-	if err != nil {
-		return false, err
-	}
-	return HasActiveTeamRun(runs), nil
+	return u.repo.HasActiveTeamRun(ctx, teamID)
 }
 
 func (u *TeamUsecase) Update(ctx context.Context, id string, patch Team) (Team, error) {
@@ -290,11 +287,7 @@ func (u *TeamUsecase) Duplicate(ctx context.Context, id string) (Team, error) {
 		return Team{}, err
 	}
 	current.ID = newAgentCatalogID()
-	suffix := newAgentCatalogID()
-	if len(suffix) > 6 {
-		suffix = strings.ToLower(suffix[:6])
-	}
-	current.TeamKey = current.TeamKey + "-copy-" + suffix
+	current.TeamKey = current.TeamKey + "-copy-" + newAgentCatalogID()
 	current.DisplayName = current.DisplayName + " Copy"
 	current.IsDefault = false
 	return u.repo.CreateTeam(ctx, current)

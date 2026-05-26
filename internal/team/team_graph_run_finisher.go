@@ -2,7 +2,6 @@ package team
 
 import (
 	"context"
-	"log/slog"
 	"strings"
 	"time"
 
@@ -118,7 +117,7 @@ func buildResumeSessionContext(defJSON, inputPreview string) (
 ) {
 	def, err := ParseDefinition(defJSON)
 	if err != nil {
-		slog.Warn("buildResumeSessionContext: ParseDefinition failed", "error", err)
+		event.SysLogWarn("team.intent.merge_fail", "buildResumeSessionContext: ParseDefinition failed", event.P("error", err.Error()))
 		return biz.OrchestrationRegistry{}, nil, nil
 	}
 	reg = BuildOrchestrationRegistry(def,

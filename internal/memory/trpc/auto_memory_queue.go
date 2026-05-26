@@ -5,13 +5,13 @@ package trpcmem
 // type aliases so existing call sites in this package compile unchanged.
 
 import (
-	"log/slog"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 )
 
 // Re-export biz contracts as local aliases (no copy of logic).
@@ -138,11 +138,11 @@ func (q *MemoryJobQueue) tenantID(r AutoMemoryJobRequest) string {
 func (q *MemoryJobQueue) writeDeadLetter(r AutoMemoryJobRequest, reason MemoryDeadLetterReason) {
 	n := q.dropped.Add(1)
 	if n == 1 || n%10 == 0 {
-		slog.Warn("[MEM-OPT-03] auto-memory job dropped → dead-letter",
-			"reason", string(reason),
-			"total_dropped", n,
-			"session_id", r.SessionID,
-			"priority", r.Priority,
+		event.SysLogWarn("system.auto_memory.extract_fail", "auto-memory job dropped → dead-letter",
+			event.P("reason", string(reason)),
+			event.P("total_dropped", n),
+			event.P("session_id", r.SessionID),
+			event.P("priority", r.Priority),
 		)
 	}
 	if q.deadLetter != nil {

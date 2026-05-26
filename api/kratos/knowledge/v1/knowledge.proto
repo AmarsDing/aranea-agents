@@ -37,6 +37,7 @@ message KnowledgeDocument {
   string error_message = 8;
   string created_at = 9;
   string updated_at = 10;
+  bool   extract_supported = 11;  // true when backend can extract text from this MIME type (REV-D)
 }
 
 // KnowledgeChunk is one indexed text chunk with its embedding vector.

@@ -290,7 +290,7 @@ func (o *ChatOrchestrator) injectA2AContext(ctx context.Context, callerAgentID s
 // makeAwaitReplyFunc returns a ReplyFunc closure for await-reply.
 func (o *ChatOrchestrator) makeAwaitReplyFunc(runCtx context.Context, sessionID, runID string) func(context.Context) (string, error) {
 	return func(toolCtx context.Context) (string, error) {
-		ch := make(chan awaitReplyCh, 1)
+		ch := make(biz.AwaitChannel, 1)
 		o.chatUC.RegisterAwaitChannel(sessionID, ch)
 		awaitMeta := AwaitStatusMeta{Kind: biz.ChatAwaitKindReply}
 		if req, ok := serviceawaitreply.ToolConfirmRequestFromContext(toolCtx); ok {

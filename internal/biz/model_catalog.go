@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"aranea-agents/internal/modelcatalog"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 // ModelCatalogRootResolver supplies platform root directory for catalog files.
@@ -200,7 +202,7 @@ func (u *ModelCatalogUsecase) Sync(ctx context.Context, dryRun bool) (modelcatal
 	if loadErr != nil {
 		out.ApplyFailed = true
 		out.Log.Errors = append(out.Log.Errors, "load catalog after sync: "+loadErr.Error())
-		return u.finalizeSyncOutput(out, fmt.Errorf("load catalog after sync: %w", loadErr))
+		return u.finalizeSyncOutput(out, kerrors.InternalServer("MODEL_CATALOG", fmt.Sprintf("load catalog after sync: %s", loadErr.Error())))
 	}
 	applyRes := u.applier.Apply(ctx, cat, out.Policy.AutoApply)
 	out.Apply = applyRes
@@ -229,7 +231,7 @@ func (u *ModelCatalogUsecase) finalizeSyncOutput(out modelcatalog.SyncOutput, sy
 			applyRes.Migration.Agents, applyRes.Migration.Sessions, applyRes.Migration.Eval)
 	}
 	if out.ApplyFailed {
-		return out, fmt.Errorf("catalog apply failed: %s", strings.Join(out.Log.Errors, "; "))
+		return out, kerrors.InternalServer("MODEL_CATALOG", fmt.Sprintf("catalog apply failed: %s", strings.Join(out.Log.Errors, "; ")))
 	}
 	return out, nil
 }
@@ -259,7 +261,7 @@ func (u *ModelCatalogUsecase) ApplyProviderMigration(ctx context.Context) (model
 	}
 	stats, errs := modelcatalog.RunProviderMigrations(ctx, u.applyBackend)
 	if len(errs) > 0 {
-		return stats, errs, fmt.Errorf("provider migration failed: %s", strings.Join(errs, "; "))
+		return stats, errs, kerrors.InternalServer("MODEL_CATALOG", fmt.Sprintf("provider migration failed: %s", strings.Join(errs, "; ")))
 	}
 	st, err := u.store(ctx)
 	if err != nil {

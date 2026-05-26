@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -43,10 +44,10 @@ type SessionRun struct {
 	ErrorMessage    string
 	StartedAt       string
 	PhaseChangedAt  string
-	FinishedAt       string
-	ResumeStartedAt  string
-	CreatedAt        string
-	UpdatedAt        string
+	FinishedAt      string
+	ResumeStartedAt string
+	CreatedAt       string
+	UpdatedAt       string
 }
 
 // DefaultDurableResumeClaimStaleSec is how long before a stale resume claim may be retried (CC-R-OPT-01).
@@ -120,12 +121,12 @@ func sessionRunNow() string {
 // StartInteractive creates a run row in interactive phase before agent execution begins.
 func (u *SessionRunUsecase) StartInteractive(ctx context.Context, sessionID, turnID, runtimeRunID, source, agentID string, budget SessionRunBudget) (SessionRun, error) {
 	if u == nil || u.repo == nil {
-		return SessionRun{}, nil
+		return SessionRun{}, fmt.Errorf("SessionRunUsecase: not initialized")
 	}
 	sessionID = strings.TrimSpace(sessionID)
 	turnID = strings.TrimSpace(turnID)
 	if sessionID == "" || turnID == "" {
-		return SessionRun{}, nil
+		return SessionRun{}, fmt.Errorf("SessionRunUsecase.StartInteractive: sessionID and turnID are required")
 	}
 	if budget.SoftBudgetSec <= 0 {
 		budget = DefaultSessionRunBudget()
@@ -158,24 +159,33 @@ func (u *SessionRunUsecase) StartInteractive(ctx context.Context, sessionID, tur
 }
 
 func (u *SessionRunUsecase) MarkPhase(ctx context.Context, id, phase string) error {
-	if u == nil || u.repo == nil || strings.TrimSpace(id) == "" {
-		return nil
+	if u == nil || u.repo == nil {
+		return fmt.Errorf("SessionRunUsecase: not initialized")
+	}
+	if strings.TrimSpace(id) == "" {
+		return fmt.Errorf("SessionRunUsecase.MarkPhase: id is required")
 	}
 	return u.repo.UpdatePhase(ctx, id, NormalizeSessionRunPhase(phase))
 }
 
 func (u *SessionRunUsecase) Complete(ctx context.Context, id string) error {
-	if u == nil || u.repo == nil || strings.TrimSpace(id) == "" {
-		return nil
+	if u == nil || u.repo == nil {
+		return fmt.Errorf("SessionRunUsecase: not initialized")
+	}
+	if strings.TrimSpace(id) == "" {
+		return fmt.Errorf("SessionRunUsecase.Complete: id is required")
 	}
 	return u.repo.MarkTerminal(ctx, id, SessionRunPhaseCompleted, "")
 }
 
 func (u *SessionRunUsecase) Fail(ctx context.Context, id, errMsg string) error {
-	if u == nil || u.repo == nil || strings.TrimSpace(id) == "" {
-		return nil
+	if u == nil || u.repo == nil {
+		return fmt.Errorf("SessionRunUsecase: not initialized")
 	}
 	id = strings.TrimSpace(id)
+	if id == "" {
+		return fmt.Errorf("SessionRunUsecase.Fail: id is required")
+	}
 	if err := u.repo.MarkTerminal(ctx, id, SessionRunPhaseFailed, strings.TrimSpace(errMsg)); err != nil {
 		return err
 	}
@@ -186,11 +196,11 @@ func (u *SessionRunUsecase) Fail(ctx context.Context, id, errMsg string) error {
 // TryClaimDurableResume atomically marks a durable run as resume-in-flight (CC-R-OPT-01).
 func (u *SessionRunUsecase) TryClaimDurableResume(ctx context.Context, id string) (bool, error) {
 	if u == nil || u.repo == nil {
-		return false, nil
+		return false, fmt.Errorf("SessionRunUsecase: not initialized")
 	}
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return false, nil
+		return false, fmt.Errorf("SessionRunUsecase.TryClaimDurableResume: id is required")
 	}
 	staleBefore := time.Now().UTC().Add(-time.Duration(DefaultDurableResumeClaimStaleSec) * time.Second).Format(time.RFC3339)
 	return u.repo.TryClaimDurableResume(ctx, id, staleBefore)
@@ -199,21 +209,21 @@ func (u *SessionRunUsecase) TryClaimDurableResume(ctx context.Context, id string
 // ClearResumeClaim releases a durable resume claim so the worker may retry (CC-R-OPT-01).
 func (u *SessionRunUsecase) ClearResumeClaim(ctx context.Context, id string) error {
 	if u == nil || u.repo == nil {
-		return nil
+		return fmt.Errorf("SessionRunUsecase: not initialized")
 	}
 	return u.repo.ClearResumeClaim(ctx, strings.TrimSpace(id))
 }
 
 func (u *SessionRunUsecase) Get(ctx context.Context, id string) (SessionRun, error) {
 	if u == nil || u.repo == nil {
-		return SessionRun{}, nil
+		return SessionRun{}, fmt.Errorf("SessionRunUsecase: not initialized")
 	}
 	return u.repo.Get(ctx, id)
 }
 
 func (u *SessionRunUsecase) GetActiveForSession(ctx context.Context, sessionID string) (SessionRun, error) {
 	if u == nil || u.repo == nil {
-		return SessionRun{}, nil
+		return SessionRun{}, fmt.Errorf("SessionRunUsecase: not initialized")
 	}
 	return u.repo.GetActiveForSession(ctx, sessionID)
 }

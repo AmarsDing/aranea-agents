@@ -2,7 +2,8 @@ package artifact
 
 import (
 	"errors"
-	"fmt"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 // MaxUploadBytes is the maximum artifact payload size (10 MB).
@@ -15,7 +16,7 @@ var ErrSizeExceeded = errors.New("artifact exceeds 10 MB size limit")
 // ValidateUploadSize rejects payloads above MaxUploadBytes.
 func ValidateUploadSize(n int64) error {
 	if n > MaxUploadBytes {
-		return fmt.Errorf("%w; files larger than 10 MB are not supported", ErrSizeExceeded)
+		return kerrors.BadRequest("ARTIFACT", "artifact exceeds 10 MB size limit; files larger than 10 MB are not supported")
 	}
 	return nil
 }

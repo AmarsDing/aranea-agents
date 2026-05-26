@@ -88,6 +88,20 @@ type ChannelTestResult struct {
 	Details map[string]any
 }
 
+// ChannelLiveTester performs live connectivity tests for a specific channel type.
+// Implementations are registered per channel type and called by ChannelService after
+// the structural EvaluateChannelTest passes.
+type ChannelLiveTester interface {
+	TestLive(ctx context.Context, configJSON string, credentials []ChannelCredential) ChannelTestResult
+}
+
+// ChannelLiveTesterFunc is a convenience adapter for single-function testers.
+type ChannelLiveTesterFunc func(ctx context.Context, configJSON string, credentials []ChannelCredential) ChannelTestResult
+
+func (f ChannelLiveTesterFunc) TestLive(ctx context.Context, configJSON string, credentials []ChannelCredential) ChannelTestResult {
+	return f(ctx, configJSON, credentials)
+}
+
 type ChannelRepo interface {
 	List(ctx context.Context) ([]Channel, error)
 	Get(ctx context.Context, id string) (Channel, error)
@@ -287,15 +301,20 @@ func (u *ChannelUsecase) RunHealthChecks(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// Limit concurrency to avoid resource exhaustion with many channels.
+	const maxConcurrent = 8
+	sem := make(chan struct{}, maxConcurrent)
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	for _, row := range items {
 		if !row.Enabled {
 			continue
 		}
+		sem <- struct{}{}
 		wg.Add(1)
 		go func(ch Channel) {
 			defer wg.Done()
+			defer func() { <-sem }()
 			credentials, err := u.repo.ListCredentials(ctx, ch.ID)
 			if err != nil {
 				return

@@ -48,6 +48,7 @@ func (uc *GraphUsecase) RegisterTeamGraphExecution(ctx context.Context, execID, 
 
 	uc.mu.Lock()
 	uc.teamBuildConfigs[execID] = cfg
+	uc.evictIfNeeded()
 	uc.executions[execID] = exec
 	uc.mu.Unlock()
 	return nil

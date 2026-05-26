@@ -23,6 +23,9 @@ func (m *memTeamRepoCoord) DeleteTeam(context.Context, string) error { return ni
 func (m *memTeamRepoCoord) ListTeamRuns(context.Context, string, int) ([]biz.TeamRun, error) {
 	return nil, nil
 }
+func (m *memTeamRepoCoord) HasActiveTeamRun(context.Context, string) (bool, error) {
+	return false, nil
+}
 func (m *memTeamRepoCoord) GetTeamRunByID(_ context.Context, id string) (biz.TeamRun, error) {
 	if r, ok := m.runs[id]; ok {
 		return r, nil

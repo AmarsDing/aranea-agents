@@ -24,6 +24,9 @@ func (s stubTeamRepo) DeleteTeam(context.Context, string) error               { 
 func (s stubTeamRepo) ListTeamRuns(context.Context, string, int) ([]biz.TeamRun, error) {
 	return nil, nil
 }
+func (s stubTeamRepo) HasActiveTeamRun(context.Context, string) (bool, error) {
+	return false, nil
+}
 func (s stubTeamRepo) GetTeamRunByID(context.Context, string) (biz.TeamRun, error) {
 	return biz.TeamRun{}, nil
 }
@@ -94,7 +97,9 @@ func (s channelTestAgentRepo) CreateAgentPromptFile(context.Context, biz.AgentPr
 func (s channelTestAgentRepo) UpdateAgentPromptFile(context.Context, biz.AgentPromptFile) (biz.AgentPromptFile, error) {
 	return biz.AgentPromptFile{}, nil
 }
-func (s channelTestAgentRepo) DeleteAgentPromptFile(context.Context, string, string) error { return nil }
+func (s channelTestAgentRepo) DeleteAgentPromptFile(context.Context, string, string) error {
+	return nil
+}
 func (s channelTestAgentRepo) ListExtrasForAgents(context.Context, []string) (map[string]biz.AgentListExtras, error) {
 	return map[string]biz.AgentListExtras{}, nil
 }

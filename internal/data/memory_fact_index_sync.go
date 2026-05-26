@@ -3,10 +3,10 @@ package data
 import (
 	"context"
 	"encoding/json"
-	"log/slog"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/sessionmemory"
+	"aranea-agents/internal/event"
 	"aranea-agents/pkg/jsonutil"
 )
 
@@ -38,7 +38,7 @@ func (s *memoryFactIndexSync) SyncFactIndex(ctx context.Context, agentID, userID
 			return
 		}
 		if serr := s.store.MarkFactIndexStale(ctx, factID, reason.Error()); serr != nil {
-			slog.Warn("[MEM-OPT-01] failed to mark fact index stale", "fact_id", factID, "err", serr)
+			event.SysLogWarn("system.auto_memory.l4_fail", "failed to mark fact index stale", event.P("fact_id", factID), event.P("error", serr.Error()))
 		}
 	}
 	embedding, err := s.vec.EmbedText(ctx, statement)
@@ -57,7 +57,7 @@ func (s *memoryFactIndexSync) SyncFactIndex(ctx context.Context, agentID, userID
 	// Mark fresh on full success.
 	if s.store != nil {
 		if serr := s.store.MarkFactIndexSynced(ctx, factID); serr != nil {
-			slog.Warn("[MEM-OPT-01] failed to mark fact index synced", "fact_id", factID, "err", serr)
+			event.SysLogWarn("system.auto_memory.l4_fail", "failed to mark fact index synced", event.P("fact_id", factID), event.P("error", serr.Error()))
 		}
 	}
 	return nil

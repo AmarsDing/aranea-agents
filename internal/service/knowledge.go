@@ -32,11 +32,11 @@ var (
 // KnowledgeService implements kratos knowledge.v1.
 type KnowledgeService struct {
 	v1.UnimplementedKnowledgeServiceServer
-	uc          *biz.KnowledgeUsecase
-	chunker     *knowledge.Chunker
-	embedder    *knowledge.Embedder
-	retriever   *knowledge.Retriever
-	bus         event.Bus
+	uc            *biz.KnowledgeUsecase
+	chunker       *knowledge.Chunker
+	embedder      *knowledge.Embedder
+	retriever     *knowledge.Retriever
+	bus           event.Bus
 	systemSetting biz.SystemSettingRepo
 }
 
@@ -271,12 +271,12 @@ func (s *KnowledgeService) embedderConfigProto() *v1.EmbedderConfig {
 	}
 	provider, baseURL, model, dim, configured, hasAPIKey := s.embedder.Config()
 	return &v1.EmbedderConfig{
-		Provider:    provider,
-		BaseUrl:     baseURL,
-		Model:       model,
-		Dim:         int32(dim),
-		Configured:  configured,
-		HasApiKey:   hasAPIKey,
+		Provider:   provider,
+		BaseUrl:    baseURL,
+		Model:      model,
+		Dim:        int32(dim),
+		Configured: configured,
+		HasApiKey:  hasAPIKey,
 	}
 }
 
@@ -314,36 +314,6 @@ func toProtoCollection(c biz.KnowledgeCollection) *v1.KnowledgeCollection {
 	}
 }
 
-// extractSupportedMimes is the set of MIME types the backend can currently
-// extract and index as searchable text. Used to populate extract_supported in
-// API responses so the frontend can show appropriate guidance (REV-D).
-// Extend this set when new document readers are registered in trpc-agent-go.
-var extractSupportedMimes = map[string]bool{
-	"text/plain":              true,
-	"text/markdown":           true,
-	"text/csv":                true,
-	"text/html":               true,
-	"text/xml":                true,
-	"application/json":        true,
-	"application/xml":         true,
-	"application/pdf":         true,
-	"application/msword":      true, // .doc
-	"application/vnd.openxmlformats-officedocument.wordprocessingml.document":   true, // .docx
-	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":         true, // .xlsx
-	"application/vnd.openxmlformats-officedocument.presentationml.presentation": true, // .pptx
-}
-
-// isExtractSupported returns true when the backend is expected to be able to
-// extract searchable text from this MIME type. Falls back to true for text/*
-// types that are not in the explicit set (they are plain UTF-8 readable).
-func isExtractSupported(mimeType string) bool {
-	m := strings.ToLower(strings.TrimSpace(mimeType))
-	if extractSupportedMimes[m] {
-		return true
-	}
-	return strings.HasPrefix(m, "text/")
-}
-
 func toProtoDocument(d biz.KnowledgeDocument) *v1.KnowledgeDocument {
 	return &v1.KnowledgeDocument{
 		Id:               d.ID,
@@ -358,4 +328,34 @@ func toProtoDocument(d biz.KnowledgeDocument) *v1.KnowledgeDocument {
 		UpdatedAt:        d.UpdatedAt,
 		ExtractSupported: isExtractSupported(d.MimeType),
 	}
+}
+
+// extractSupportedMimes is the set of MIME types the backend can currently
+// extract and index as searchable text. Used to populate extract_supported in
+// API responses so the frontend can show appropriate guidance (REV-D).
+// Extend this set when new document readers are registered in trpc-agent-go.
+var extractSupportedMimes = map[string]bool{
+	"text/plain":         true,
+	"text/markdown":      true,
+	"text/csv":           true,
+	"text/html":          true,
+	"text/xml":           true,
+	"application/json":   true,
+	"application/xml":    true,
+	"application/pdf":    true,
+	"application/msword": true, // .doc
+	"application/vnd.openxmlformats-officedocument.wordprocessingml.document":   true, // .docx
+	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":         true, // .xlsx
+	"application/vnd.openxmlformats-officedocument.presentationml.presentation": true, // .pptx
+}
+
+// isExtractSupported returns true when the backend is expected to be able to
+// extract searchable text from this MIME type. Falls back to true for text/*
+// types that are not in the explicit set (they are plain UTF-8 readable).
+func isExtractSupported(mimeType string) bool {
+	m := strings.ToLower(strings.TrimSpace(mimeType))
+	if extractSupportedMimes[m] {
+		return true
+	}
+	return strings.HasPrefix(m, "text/")
 }

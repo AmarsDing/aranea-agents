@@ -3,10 +3,10 @@ package evaluation
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"strings"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 
 	trpceval "trpc.group/trpc-go/trpc-agent-go/evaluation"
 	evalresultinmemory "trpc.group/trpc-go/trpc-agent-go/evaluation/evalresult/inmemory"
@@ -36,10 +36,10 @@ func NewFrameworkBridge(
 
 // RunConfig holds per-run framework options.
 type RunConfig struct {
-	AgentID             string
-	NumRuns             int
-	Metrics             map[string]bool
-	UseUserSimulation   bool
+	AgentID           string
+	NumRuns           int
+	Metrics           map[string]bool
+	UseUserSimulation bool
 }
 
 // Execute runs AgentEvaluator and returns biz case results + aggregate scores.
@@ -157,26 +157,26 @@ func (b *FrameworkBridge) Execute(
 		}
 		if cfg.Metrics[MetricLLMAsJudge] && b.llmJudge != nil && res.ActualOutput != "" {
 			score, judgeErr := b.llmJudge(ctx, bc.Input, bc.ExpectedOutput, res.ActualOutput)
-		if judgeErr != nil {
-			// EV-04: log failure and count as 0 in denominator so the average is
-			// not inflated by skipping failed judge calls. Append to any pre-existing
-			// inference error to preserve both error contexts.
-			slog.WarnContext(ctx, "eval.llm_judge.failed",
-				"case_id", bc.ID,
-				"error", judgeErr.Error(),
-			)
-			judgeErrMsg := "llm_judge failed: " + judgeErr.Error()
-			if res.ErrorMessage != "" {
-				res.ErrorMessage = res.ErrorMessage + "; " + judgeErrMsg
+			if judgeErr != nil {
+				// EV-04: log failure and count as 0 in denominator so the average is
+				// not inflated by skipping failed judge calls. Append to any pre-existing
+				// inference error to preserve both error contexts.
+				event.SysLogWarn("system.auto_memory.extract_fail", "eval.llm_judge.failed",
+					event.P("case_id", bc.ID),
+					event.P("error", judgeErr.Error()),
+				)
+				judgeErrMsg := "llm_judge failed: " + judgeErr.Error()
+				if res.ErrorMessage != "" {
+					res.ErrorMessage = res.ErrorMessage + "; " + judgeErrMsg
+				} else {
+					res.ErrorMessage = judgeErrMsg
+				}
+				aggCount[MetricLLMAsJudge]++
 			} else {
-				res.ErrorMessage = judgeErrMsg
+				res.LLMJudgeScore = score
+				agg[MetricLLMAsJudge] += score
+				aggCount[MetricLLMAsJudge]++
 			}
-			aggCount[MetricLLMAsJudge]++
-		} else {
-			res.LLMJudgeScore = score
-			agg[MetricLLMAsJudge] += score
-			aggCount[MetricLLMAsJudge]++
-		}
 		}
 		out = append(out, res)
 	}

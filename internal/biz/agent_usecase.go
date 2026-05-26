@@ -6,10 +6,11 @@ import (
 	"database/sql"
 	"encoding/hex"
 	stderrors "errors"
-	"log/slog"
 	"regexp"
 	"strings"
 	"sync/atomic"
+
+	"aranea-agents/internal/event"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
@@ -152,7 +153,7 @@ func (u *AgentUsecase) hydrate(ctx context.Context, agent Agent) (Agent, error) 
 		if !stderrors.Is(err, sql.ErrNoRows) {
 			return Agent{}, err
 		}
-		slog.Warn("agent runtime settings not found, migrating from legacy config_json", "agent_id", agent.ID)
+		event.SysLogWarn("system.agent.db_resolve", "agent runtime settings not found, migrating from legacy config_json", event.P("agent_id", agent.ID))
 		settings = u.migrateLegacySettings(ctx, agent)
 	}
 	files, err := u.repo.ListAgentPromptFiles(ctx, agent.ID)
@@ -160,7 +161,7 @@ func (u *AgentUsecase) hydrate(ctx context.Context, agent Agent) (Agent, error) 
 		return Agent{}, err
 	}
 	if len(files) == 0 {
-		slog.Warn("agent prompt files not found, migrating from legacy config_json", "agent_id", agent.ID)
+		event.SysLogWarn("system.agent.skill_build", "agent prompt files not found, migrating from legacy config_json", event.P("agent_id", agent.ID))
 		files = u.migrateLegacyFiles(ctx, agent)
 	}
 	agent.Settings = &settings

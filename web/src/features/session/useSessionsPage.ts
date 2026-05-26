@@ -2,6 +2,7 @@ import { computed, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { useQuasar } from "quasar";
 import { formatBatchNotifyMessage } from "./batchNotify";
+import { exportSession } from "./api";
 import type { BatchPreviewResult, BulkProgress, RetentionDialogMode, SessionBatchScope } from "./types";
 import type { Session } from "./types";
 import { useSessionStore } from "../../stores/session/index";
@@ -349,6 +350,7 @@ export function useSessionsPage() {
     archiveRow,
     togglePinRow,
     promptDeleteSelected: () => promptDelete([...selectedIds.value]),
-    archiveSelected: () => runBatchArchive([...selectedIds.value])
+    archiveSelected: () => runBatchArchive([...selectedIds.value]),
+    exportSession
   };
 }

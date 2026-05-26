@@ -4,9 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"log/slog"
+	"fmt"
 	"strings"
 
+	"aranea-agents/internal/event"
 	"aranea-agents/pkg/jsonutil"
 )
 
@@ -215,8 +216,7 @@ func (uc *L4CascadeUsecase) Approve(ctx context.Context, id, reviewer string) ([
 		if uc.indexSync != nil {
 			for _, raw := range updatedRows {
 				if err := uc.indexSync.SyncFactIndexFromRow(ctx, raw); err != nil {
-					slog.WarnContext(ctx, "memory.cascade_approve.index_sync_fail",
-						"error", err)
+					event.SysLogWarn("system.auto_memory.l4_fail", "memory.cascade_approve.index_sync_fail", event.P("error", err.Error()))
 				}
 			}
 		}
@@ -269,7 +269,7 @@ func (uc *L4CascadeUsecase) touchAffectedEntities(ctx context.Context, row map[s
 		}
 	}
 	if len(failedIDs) > 0 {
-		slog.Warn("touchAffectedEntities: some entities failed", "trigger_id", triggerID, "failed_ids", failedIDs)
+		event.SysLogWarn("system.auto_memory.l4_fail", "touchAffectedEntities: some entities failed", event.P("trigger_id", triggerID), event.P("failed_ids", fmt.Sprint(failedIDs)))
 	}
 	return nil
 }

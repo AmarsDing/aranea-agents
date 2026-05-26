@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"log/slog"
 	"strings"
 	"time"
 
@@ -273,7 +272,7 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 	for _, raw := range writeResult.FactRows {
 		if w.indexSync != nil {
 			if serr := w.indexSync.SyncFactIndexFromRow(ctx, raw); serr != nil {
-				slog.Warn("[MEM-OPT-01] auto_memory index sync failed", "err", serr)
+				event.SysLogWarn("system.auto_memory.l4_fail", "auto_memory index sync failed", event.P("error", serr.Error()))
 			}
 		}
 	}
@@ -403,7 +402,7 @@ func (w *AutoMemoryWorker) extractFeedback(ctx context.Context, req memtrpc.Auto
 	for _, raw := range writeResult.FactRows {
 		if w.indexSync != nil {
 			if serr := w.indexSync.SyncFactIndexFromRow(ctx, raw); serr != nil {
-				slog.Warn("[MEM-OPT-01] feedback_memory index sync failed", "err", serr)
+				event.SysLogWarn("system.auto_memory.l4_fail", "feedback_memory index sync failed", event.P("error", serr.Error()))
 			}
 		}
 	}

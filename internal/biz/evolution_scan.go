@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 const (
-	evolutionScanToolSuccessThreshold  = 0.75
-	evolutionScanRetrievalThreshold    = 0.60
-	evolutionScanDefaultTimeRange      = "30d"
+	evolutionScanToolSuccessThreshold = 0.75
+	evolutionScanRetrievalThreshold   = 0.60
+	evolutionScanDefaultTimeRange     = "30d"
 )
 
 // ScanAll evaluates active agents with evolution suggestions enabled and may create pending suggestions.
@@ -26,7 +28,7 @@ func (uc *EvolutionUsecase) ScanAll(ctx context.Context) error {
 	var scanErrs []error
 	for i := range page.Items {
 		if err := uc.ScanAgent(ctx, page.Items[i].ID); err != nil {
-			scanErrs = append(scanErrs, fmt.Errorf("agent %s: %w", page.Items[i].ID, err))
+			scanErrs = append(scanErrs, kerrors.InternalServer("EVOLUTION", fmt.Sprintf("agent %s: %s", page.Items[i].ID, err.Error())))
 			continue
 		}
 	}

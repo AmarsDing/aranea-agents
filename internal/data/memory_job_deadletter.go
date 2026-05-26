@@ -9,10 +9,10 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"log/slog"
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 )
 
 // MemoryJobDeadLetterRepo persists dropped AutoMemory jobs for later replay.
@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS memory_job_deadletter (
                      CHECK(state IN ('pending','replayed','abandoned'))
 )`)
 	if err != nil {
-		slog.Warn("[MEM-OPT-03] ensureTable: CREATE TABLE memory_job_deadletter failed", "error", err)
+		event.SysLogWarn("system.auto_memory.extract_fail", "ensureTable: CREATE TABLE memory_job_deadletter failed", event.P("error", err.Error()))
 		return
 	}
 	db.Exec(`CREATE INDEX IF NOT EXISTS idx_memory_job_dl_state_enq ON memory_job_deadletter(state, enqueued_at)`)
@@ -90,22 +90,22 @@ VALUES (?,?,?,?,?,?,?,?,?,0,?,'pending')`,
 		string(payload), string(reason), int(req.Priority), lastErr,
 	)
 	if err != nil {
-		slog.Warn("[MEM-OPT-03] WriteMemoryDeadLetter: insert failed", "reason", string(reason), "error", err)
+		event.SysLogWarn("system.auto_memory.extract_fail", "WriteMemoryDeadLetter: insert failed", event.P("reason", string(reason)), event.P("error", err.Error()))
 	}
 }
 
 // MemoryDeadLetterListResult is returned by ListDeadLetters.
 type MemoryDeadLetterListResult struct {
-	ID             int64
-	EnqueuedAt     time.Time
-	FailedAt       time.Time
-	SessionID      string
-	AppName        string
-	DropReason     string
-	Priority       int
-	Attempts       int
-	State          string
-	LastError      string
+	ID         int64
+	EnqueuedAt time.Time
+	FailedAt   time.Time
+	SessionID  string
+	AppName    string
+	DropReason string
+	Priority   int
+	Attempts   int
+	State      string
+	LastError  string
 }
 
 // ListDeadLetters returns pending dead-letter jobs ordered by enqueued_at.
