@@ -23,7 +23,7 @@
           :data-shell="true"
           table-class="agent-tool-overrides-table"
           :rows="rows"
-          :columns="columns"
+          :columns="AGENT_TOOL_OVERRIDE_TABLE_COLUMNS"
           row-key="tool_key"
           hide-pagination
           :pagination="{ rowsPerPage: 0 }"
@@ -97,11 +97,12 @@
 <script setup lang="ts">
 import AppRegistryTable from "../layout/AppRegistryTable.vue";
 import AgentToolOverrideEditorDialog from "./AgentToolOverrideEditorDialog.vue";
-import { registryColWidth } from "../../features/ui/registryTableColumns";
+
 import type {
   AgentToolOverrideForm,
   AgentToolOverrideRow
 } from "../../features/agents/useAgentToolOverrides";
+import { AGENT_TOOL_OVERRIDE_TABLE_COLUMNS } from "./agentTableUi";
 
 defineProps<{
   loading: boolean;
@@ -123,13 +124,4 @@ defineEmits<{
   "update:editorOpen": [value: boolean];
   "update:form": [value: AgentToolOverrideForm];
 }>();
-
-const columns = [
-  { name: "tool_key", label: "工具 Key", field: "tool_key", align: "left" as const, ...registryColWidth("12%") },
-  { name: "display_name", label: "名称", field: "display_name", align: "left" as const, ...registryColWidth("14%") },
-  { name: "effective_state", label: "生效", field: "effective_state", align: "left" as const, ...registryColWidth("9%") },
-  { name: "requires_confirmation", label: "确认", field: "effective_requires_confirmation", align: "left" as const, ...registryColWidth("64px") },
-  { name: "override", label: "覆盖", field: "override", align: "left" as const, ...registryColWidth("11%") },
-  { name: "actions", label: "", field: "actions", align: "right" as const, ...registryColWidth("108px") }
-];
 </script>

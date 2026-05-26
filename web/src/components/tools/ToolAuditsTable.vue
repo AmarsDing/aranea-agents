@@ -13,7 +13,7 @@
       table-class="tool-runs-data-table"
       row-key="id"
       :rows="rows"
-      :columns="columns"
+      :columns="TOOL_AUDITS_TABLE_COLUMNS"
       :loading="loading"
       hide-pagination
       :pagination="{ rowsPerPage: 0 }"
@@ -53,13 +53,12 @@
 </template>
 
 <script setup lang="ts">
-import type { QTableColumn } from "quasar";
 import AppRegistryTable from "../layout/AppRegistryTable.vue";
 import AppRegistryHoverTip from "../layout/AppRegistryHoverTip.vue";
 import ToolGlassPanel from "./ToolGlassPanel.vue";
 import type { ToolInvocationAudit } from "../../features/tools/types";
-import { registryColWidth } from "../../features/ui/registryTableColumns";
 import {
+  TOOL_AUDITS_TABLE_COLUMNS,
   clipPreview,
   formatInvocationWhen,
   toolInvocationStatusColor,
@@ -70,11 +69,4 @@ defineProps<{
   rows: ToolInvocationAudit[];
   loading: boolean;
 }>();
-
-const columns: QTableColumn<ToolInvocationAudit>[] = [
-  { name: "tool", label: "Tool / Action", field: "tool_key", align: "left", ...registryColWidth("14%") },
-  { name: "actor", label: "Agent / User", field: "agent_id", align: "left", ...registryColWidth("10%") },
-  { name: "status", label: "状态", field: "status", align: "left", ...registryColWidth("9%") },
-  { name: "time", label: "时间", field: "created_at", align: "left", ...registryColWidth("18%") }
-];
 </script>

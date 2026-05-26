@@ -1,13 +1,20 @@
 import type { KnowledgeDocument } from "./types";
-import { registryColWidth } from "../ui/registryTableColumns";
+import {
+  REGISTRY_COL_W,
+  registryCol,
+  registryColActions
+} from "../ui/registryTableColumns";
 
-export const knowledgeDocColumns = [
-  { name: "source", label: "来源", field: "source", align: "left" as const, ...registryColWidth("28%") },
-  { name: "status", label: "状态", field: "status", align: "left" as const, ...registryColWidth("9%") },
-  { name: "chunk_count", label: "分块", field: "chunk_count", align: "right" as const, ...registryColWidth("72px") },
-  { name: "size_bytes", label: "大小", field: "size_bytes", align: "right" as const, ...registryColWidth("72px") },
-  { name: "actions", label: "", field: "id", align: "right" as const, ...registryColWidth("108px") }
+export const KNOWLEDGE_DOC_TABLE_COLUMNS = [
+  registryCol<KnowledgeDocument>("source", "来源", "source", "left", "28%"),
+  registryCol<KnowledgeDocument>("status", "状态", "status", "left", REGISTRY_COL_W.status),
+  registryCol<KnowledgeDocument>("chunk_count", "分块", "chunk_count", "right", REGISTRY_COL_W.metric),
+  registryCol<KnowledgeDocument>("size_bytes", "大小", "size_bytes", "right", REGISTRY_COL_W.metric),
+  registryColActions<KnowledgeDocument>(REGISTRY_COL_W.actions, "")
 ];
+
+/** @deprecated 使用 KNOWLEDGE_DOC_TABLE_COLUMNS */
+export const knowledgeDocColumns = KNOWLEDGE_DOC_TABLE_COLUMNS;
 
 export function knowledgeStatusColor(status: string): string {
   if (status === "active" || status === "indexed") return "positive";

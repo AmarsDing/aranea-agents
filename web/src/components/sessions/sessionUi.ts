@@ -1,5 +1,5 @@
 import type { Session } from "../../features/session/types";
-import { registryColWidth } from "../../features/ui/registryTableColumns";
+import { registryCol } from "../../features/ui/registryTableColumns";
 
 /** 列表摘要卡片（纯展示文案来源） */
 export type SessionsSummaryCard = {
@@ -28,32 +28,20 @@ export const pageSizeSelectOptions = [10, 20, 50].map((value) => ({
   value
 }));
 
-export const sessionsTableSelectionColumn = {
-  name: "select",
-  label: "",
-  field: "id",
-  align: "left" as const,
-  sortable: false,
-  ...registryColWidth("48px")
-};
+export const sessionsTableSelectionColumn = registryCol("select", "", "id", "left", "48px", { sortable: false });
 
 export const sessionsTableColumns = [
-  { name: "session", label: "会话", field: "title", align: "left" as const, sortable: false, ...registryColWidth("16%; max-width: 168px") },
-  { name: "owner", label: "类型 / 归属", field: "owner_type", align: "left" as const, sortable: false, ...registryColWidth("128px") },
-  { name: "context", label: "上下文", field: "context_used_ratio", align: "left" as const, sortable: false, ...registryColWidth("108px") },
-  { name: "usage", label: "消耗", field: "total_tokens", align: "left" as const, sortable: false, ...registryColWidth("108px") },
-  { name: "time", label: "时间", field: "last_message_at", align: "left" as const, sortable: false, ...registryColWidth("128px") },
-  { name: "status", label: "状态", field: "status", align: "left" as const, sortable: false, ...registryColWidth("80px") },
-  {
-    name: "actions",
-    label: "操作",
-    field: "id",
-    align: "right" as const,
+  registryCol("session", "会话", "title", "left", "16%; max-width: 168px", { sortable: false }),
+  registryCol("owner", "类型 / 归属", "owner_type", "left", "128px", { sortable: false }),
+  registryCol("context", "上下文", "context_used_ratio", "left", "108px", { sortable: false }),
+  registryCol("usage", "消耗", "total_tokens", "left", "108px", { sortable: false }),
+  registryCol("time", "时间", "last_message_at", "left", "128px", { sortable: false }),
+  registryCol("status", "状态", "status", "left", "80px", { sortable: false }),
+  registryCol("actions", "操作", "id", "right", "168px", {
     sortable: false,
-    ...registryColWidth("168px"),
     classes: "app-registry-col-actions",
     headerClasses: "app-registry-col-actions"
-  }
+  })
 ];
 
 export function buildSessionsSummaryCards(rows: Session[], total: number): SessionsSummaryCard[] {

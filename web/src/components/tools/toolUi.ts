@@ -1,4 +1,39 @@
-import type { Tool, ToolInvocation, ToolSummary } from "../../features/tools/types";
+import type { QTableColumn } from "quasar";
+import type { Tool, ToolInvocation, ToolInvocationAudit, ToolSummary } from "../../features/tools/types";
+import {
+  REGISTRY_COL_W,
+  registryCol,
+  registryColActions,
+  registryColEnabled
+} from "../../features/ui/registryTableColumns";
+
+/** ToolsTable 列定义 */
+export const TOOL_TABLE_COLUMNS: QTableColumn<Tool>[] = [
+  registryCol<Tool>("name", "Tool", "display_name", "left", REGISTRY_COL_W.name),
+  registryCol<Tool>("category", "分类 / 来源", "category", "left", REGISTRY_COL_W.category),
+  registryCol<Tool>("risk", "风险", "risk_level", "left", REGISTRY_COL_W.status),
+  registryCol<Tool>("runtime", "运行时", "runtime_status", "left", REGISTRY_COL_W.category),
+  registryColEnabled<Tool>(),
+  registryCol<Tool>("stats", "调用", "invoke_count", "left", REGISTRY_COL_W.status),
+  registryColActions<Tool>()
+];
+
+/** ToolRunsTable 列定义 */
+export const TOOL_RUNS_TABLE_COLUMNS: QTableColumn<ToolInvocation>[] = [
+  registryCol<ToolInvocation>("tool", "Tool", "tool_key", "left", REGISTRY_COL_W.nameWide),
+  registryCol<ToolInvocation>("agent", "Agent", "agent_id", "left", REGISTRY_COL_W.agent),
+  registryCol<ToolInvocation>("status", "状态", "status", "left", REGISTRY_COL_W.status),
+  registryCol<ToolInvocation>("session_id", "Session", "session_id", "left", REGISTRY_COL_W.session),
+  registryCol<ToolInvocation>("time", "时间 / 耗时", "started_at", "left", REGISTRY_COL_W.time)
+];
+
+/** ToolAuditsTable 列定义 */
+export const TOOL_AUDITS_TABLE_COLUMNS: QTableColumn<ToolInvocationAudit>[] = [
+  registryCol<ToolInvocationAudit>("tool", "Tool / Action", "tool_key", "left", REGISTRY_COL_W.name),
+  registryCol<ToolInvocationAudit>("actor", "Agent / User", "agent_id", "left", REGISTRY_COL_W.agent),
+  registryCol<ToolInvocationAudit>("status", "状态", "status", "left", REGISTRY_COL_W.status),
+  registryCol<ToolInvocationAudit>("time", "时间", "created_at", "left", REGISTRY_COL_W.timeWide)
+];
 
 /** 列表筛选：分类（与常见 builtin/schema 对齐） */
 export const categoryFilterOptions = [

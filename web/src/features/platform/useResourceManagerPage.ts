@@ -1,6 +1,6 @@
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute } from "vue-router";
-import { useQuasar, type QTableColumn } from "quasar";
+import { useQuasar } from "quasar";
 import type { PlatformResource, PlatformResourceInput, PlatformResourceName } from "./types";
 import { usePlatformStore } from "../../stores/platform";
 import { useProviderTrendDialog } from "../usage/useProviderTrendDialog";
@@ -11,7 +11,7 @@ import {
   findProviderPreset,
   type ProviderModelPreset
 } from "../../config/providerPresets";
-import { registryColWidth } from "../ui/registryTableColumns";
+
 import {
   PROVIDER_RUNTIME_OVERLAY,
   PROVIDER_TYPE_OPTIONS,
@@ -35,6 +35,9 @@ import {
   pricingWarningMessage,
 } from "../usage/pricingWarning";
 import { validateModel } from "./api";
+import { PLATFORM_RESOURCE_TABLE_COLUMNS } from "../../components/platform/providerModelUi";
+
+const columns = PLATFORM_RESOURCE_TABLE_COLUMNS;
 
 export function useResourceManagerPage() {
   const route = useRoute();
@@ -259,15 +262,6 @@ const providerHAForm = reactive<ProviderHAForm>({
   haCandidates: [],
   haHedgeDelayMs: 100
 });
-
-const columns: QTableColumn<PlatformResource>[] = [
-  { name: "name", label: "Name", field: "name", align: "left", sortable: true, ...registryColWidth("14%") },
-  { name: "key", label: "Key", field: "key", align: "left", sortable: true, ...registryColWidth("14%") },
-  { name: "provider", label: "Provider", field: "provider", align: "left", ...registryColWidth("11%") },
-  { name: "model", label: "Model", field: "model", align: "left", ...registryColWidth("14%") },
-  { name: "status", label: "Status", field: "status", align: "left", ...registryColWidth("9%") },
-  { name: "actions", label: "Actions", field: "id", align: "right", ...registryColWidth("108px") }
-];
 
 const resource = computed(() => route.meta.resource as PlatformResourceName);
 const isProviderResource = computed(() => resource.value === "llm-provider-models");

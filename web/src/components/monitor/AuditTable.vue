@@ -52,7 +52,7 @@
         <AppRegistryTable
           :shell="false"
           :rows="pagedRows"
-          :columns="columns"
+          :columns="AUDIT_TABLE_COLUMNS"
           row-key="id"
           :loading="loading"
           hide-pagination
@@ -144,14 +144,15 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { copyToClipboard, Notify, type QTableColumn } from "quasar";
+import { copyToClipboard, Notify } from "quasar";
 import AppPageToolbar from "../layout/AppPageToolbar.vue";
 import AppRegistryTable from "../layout/AppRegistryTable.vue";
 import AppRegistryHoverTip from "../layout/AppRegistryHoverTip.vue";
 import AppRegistryPagination from "../layout/AppRegistryPagination.vue";
-import { registryColWidth } from "../../features/ui/registryTableColumns";
+
 import type { AuditLog } from "../../features/monitor/types";
 import { compactJSON, formatDate } from "../../features/monitor/utils";
+import { AUDIT_TABLE_COLUMNS } from "./monitorTableUi";
 
 const props = defineProps<{
   rows: AuditLog[];
@@ -180,14 +181,6 @@ const resourceOptions = computed(() => {
   const resources = new Set(props.rows.map((r) => r.resource).filter(Boolean));
   return [...resources].map((r) => ({ label: r, value: r }));
 });
-
-const columns: QTableColumn<AuditLog>[] = [
-  { name: "event", label: "事件", field: "action", align: "left", ...registryColWidth("11%") },
-  { name: "resource", label: "实体", field: "resource", align: "left", ...registryColWidth("14%") },
-  { name: "actor", label: "操作者", field: "actor", align: "left", ...registryColWidth("10%") },
-  { name: "request", label: "Request ID", field: "request_id", align: "left", ...registryColWidth("10%") },
-  { name: "created", label: "时间", field: "created_at", align: "left", ...registryColWidth("18%") }
-];
 
 const filteredRows = computed(() => {
   let result = props.rows;

@@ -1,6 +1,6 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useQuasar } from "quasar";
-import { registryColWidth } from "../ui/registryTableColumns";
+import { ARTIFACT_TABLE_COLUMNS } from "./artifactTableUi";
 import type { ArtifactMeta } from "./types";
 import { listArtifactVersions } from "./api";
 import { useArtifactStore } from "../../stores/artifact";
@@ -31,15 +31,7 @@ export function useArtifactsPage() {
   const pageSize = ref(15);
   const pageMax = computed(() => Math.max(1, Math.ceil(tableTotal.value / pageSize.value)));
 
-  const columns = [
-    { name: "name", label: "名称", field: "name", align: "left" as const, sortable: true, ...registryColWidth("14%") },
-    { name: "session_id", label: "Session", field: "session_id", align: "left" as const, ...registryColWidth("10%") },
-    { name: "mime_type", label: "MIME", field: "mime_type", align: "left" as const, ...registryColWidth("10%") },
-    { name: "size", label: "大小", field: "size", align: "right" as const, ...registryColWidth("72px") },
-    { name: "version", label: "版本", field: "version", align: "right" as const, ...registryColWidth("64px") },
-    { name: "created_at", label: "创建时间", field: "created_at", align: "left" as const, ...registryColWidth("11%") },
-    { name: "actions", label: "", field: "id", align: "right" as const, ...registryColWidth("108px") }
-  ];
+  const columns = ARTIFACT_TABLE_COLUMNS;
 
   const mimeFilterOptions = [
     { label: "全部类型", value: "" },

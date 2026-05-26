@@ -33,60 +33,32 @@
       </template>
     </AppPageToolbar>
 
-    <q-banner v-if="error" rounded class="bg-negative text-white q-mb-md">
+    <q-banner v-if="error" rounded class="app-page-error-banner q-mb-md">
       {{ error }}
       <template #action>
-        <q-btn flat color="white" label="Retry" @click="loadRows" />
+        <q-btn flat dense label="重试" class="text-white" @click="loadRows" />
       </template>
     </q-banner>
 
-    <AppRegistryTable
-      :rows="pagedRows"
-      :columns="columns"
-      row-key="id"
-      :loading="loading"
-      hide-pagination
-      :pagination="{ rowsPerPage: 0 }"
-    >
-      <template #body-cell-enabled="props">
-        <q-td :props="props">
-          <q-toggle
-            :model-value="props.row.enabled"
-            color="primary"
-            :disable="busyId === props.row.id"
-            @update:model-value="toggleEnabled(props.row, Boolean($event))"
-          />
-        </q-td>
-      </template>
-      <template #body-cell-rule="props">
-        <q-td :props="props">
-          <div class="app-registry-chip-wrap">
-          <q-chip dense outline color="primary">{{ ruleOf(props.row).callback_point }}</q-chip>
-          <q-chip dense outline>{{ ruleOf(props.row).action.type }}</q-chip>
-          </div>
-        </q-td>
-      </template>
-      <template #body-cell-actions="props">
-        <q-td :props="props">
-          <div class="app-registry-cell-actions">
-          <q-btn flat dense round icon="history" color="secondary" @click="openRuns(props.row)">
-            <q-tooltip>查看阻断/错误记录</q-tooltip>
-          </q-btn>
-          <q-btn flat dense round icon="edit" color="primary" @click="openEdit(props.row)" />
-          <q-btn flat dense round icon="delete" color="negative" @click="confirmDelete(props.row)" />
-          </div>
-        </q-td>
-      </template>
-    </AppRegistryTable>
+    <div class="app-registry-table-shell">
+      <HooksTable
+        :rows="pagedRows"
+        :loading="loading"
+        :toggling-id="busyId"
+        @toggle-enabled="toggleEnabled"
+        @edit="openEdit"
+        @remove="confirmDelete"
+      />
 
-    <AppRegistryPagination
-      v-model:page="page"
-      v-model:page-size="pageSize"
-      :page-max="pageMax"
-      :total="filteredRows.length"
-      :loading="loading"
-      label="条 Hook"
-    />
+      <AppRegistryPagination
+        v-model:page="page"
+        v-model:page-size="pageSize"
+        :page-max="pageMax"
+        :total="filteredRows.length"
+        :loading="loading"
+        label="条 Hook"
+      />
+    </div>
 
     <q-dialog v-model="editorOpen" persistent maximized>
       <q-card>
@@ -115,21 +87,19 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
-import { useRouter } from "vue-router";
 import { storeToRefs } from "pinia";
 import { useQuasar } from "quasar";
 import AppPageHero from "../components/layout/AppPageHero.vue";
 import AppPageToolbar from "../components/layout/AppPageToolbar.vue";
-import AppRegistryTable from "../components/layout/AppRegistryTable.vue";
 import AppRegistryPagination from "../components/layout/AppRegistryPagination.vue";
 import CallbackEditor from "../components/hooks/CallbackEditor.vue";
+import HooksTable from "../components/hooks/HooksTable.vue";
+import { hookRuleOf } from "../components/hooks/hookTableUi";
 import { CALLBACK_POINT_OPTIONS } from "../features/callback/constants";
-import { defaultHookRuleConfig, parseHookConfig, type HookRow, type HookRuleConfig } from "../features/hooks/types";
+import { defaultHookRuleConfig, type HookRow, type HookRuleConfig } from "../features/hooks/types";
 import { useHooksStore } from "../stores/hooks";
-import { registryColWidth } from "../features/ui/registryTableColumns";
 
 const $q = useQuasar();
-const router = useRouter();
 const hooksStore = useHooksStore();
 const { hooks: storeRows, loading: storeLoading } = storeToRefs(hooksStore);
 const loading = storeLoading;
@@ -150,14 +120,6 @@ const form = reactive({
   sort_order: 0,
   rule: defaultHookRuleConfig() as HookRuleConfig
 });
-
-const columns = [
-  { name: "name", label: "Name", field: "name", align: "left" as const, ...registryColWidth("14%") },
-  { name: "key", label: "Key", field: "key", align: "left" as const, ...registryColWidth("14%") },
-  { name: "rule", label: "Rule", field: "id", align: "left" as const, ...registryColWidth("13%") },
-  { name: "enabled", label: "Enabled", field: "enabled", align: "center" as const, ...registryColWidth("64px") },
-  { name: "actions", label: "Actions", field: "id", align: "right" as const, ...registryColWidth("108px") }
-];
 
 const filteredRows = computed(() => {
   const q = search.value.trim().toLowerCase();
@@ -188,19 +150,8 @@ watch([search, filterPoint], () => {
   page.value = 1;
 });
 
-function openRuns(row: HookRow) {
-  const rule = ruleOf(row);
-  void router.push({
-    path: "/plugins/runs",
-    query: {
-      plugin_key: `hook:${row.key}`,
-      callback_point: rule.callback_point
-    }
-  });
-}
-
 function ruleOf(row: HookRow) {
-  return parseHookConfig(row.config_json);
+  return hookRuleOf(row);
 }
 
 async function loadRows() {

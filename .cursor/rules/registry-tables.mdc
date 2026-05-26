@@ -1,0 +1,42 @@
+---
+description: Registry 列表表格列定义、AppRegistryTable 用法、对齐与样式落点
+globs:
+  - web/src/components/**/*Table*.vue
+  - web/src/components/**/*Ui.ts
+  - web/src/features/**/*TableUi.ts
+  - web/src/features/ui/registryTableColumns.ts
+  - web/src/css/theme/_registry-page.sass
+---
+
+# Registry 表格
+
+权威文档：`docs/frontend/registry-tables.md`
+
+## 红线
+
+1. **列定义不得写在 `*Table.vue` 或 Page script 内** — 放在 `components/<域>/*Ui.ts` 或 `features/<域>/*TableUi.ts`，导出 `XXX_TABLE_COLUMNS`。
+2. **禁止**手写 `{ style: "width: …", headerStyle: "width: …" }` — 使用 `registryCol()` + `REGISTRY_COL_W`。
+3. **列表表必须用** `AppRegistryTable`（或只读小表用 `AppRegistryMarkupTable`），禁止裸 `q-table` 重复造壳。
+4. **单元格**优先 `.app-registry-cell-primary` / `__sub` / `__actions`；域样式用 `table-class` + `_registry-page.sass`，勿 scoped 重复 thead 规则。
+
+## 列 API
+
+```typescript
+import { REGISTRY_COL_W, registryCol, registryColActions, registryColEnabled } from "../../features/ui/registryTableColumns";
+
+registryCol<Row>("name", "名称", "name", "left", REGISTRY_COL_W.name);
+registryColEnabled<Row>();
+registryColActions<Row>();
+```
+
+对齐：`left` 文本 · `center` toggle/badge · `right` 操作/数字。
+
+## AppRegistryTable
+
+- `column-persist-key` 同页唯一
+- `hide-pagination` + `:pagination="{ rowsPerPage: 0 }"` 配合外部分页
+- 修改列 schema 后拖拽缓存会因 fingerprint 自动失效
+
+## 新表
+
+见 `docs/frontend/registry-tables.md` Checklist。

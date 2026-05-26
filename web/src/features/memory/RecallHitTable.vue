@@ -31,7 +31,7 @@
 import { computed } from "vue";
 import AppRegistryHoverTip from "../../components/layout/AppRegistryHoverTip.vue";
 import AppRegistryMarkupTable from "../../components/layout/AppRegistryMarkupTable.vue";
-import { REGISTRY_COL_W, registryColWidth, type RegistryTableColumn } from "../ui/registryTableColumns";
+import { REGISTRY_COL_W, registryCol, type RegistryTableColumn } from "../ui/registryTableColumns";
 import type { MemoryRecallHit } from "./types";
 
 const props = defineProps<{
@@ -43,9 +43,9 @@ const props = defineProps<{
 const rowRecords = computed(() => props.rows as unknown as Record<string, unknown>[]);
 
 const columns: RegistryTableColumn<MemoryRecallHit>[] = [
-  { name: "id", label: "ID", field: "id", align: "left", ...registryColWidth(REGISTRY_COL_W.nameWide) },
-  { name: "total", label: "Total", field: (row) => row.scores.total, align: "right", ...registryColWidth(REGISTRY_COL_W.metric) },
-  { name: "cross_encoder", label: "CE", field: (row) => row.scores.cross_encoder, align: "right", ...registryColWidth(REGISTRY_COL_W.metric) }
+  registryCol("id", "ID", "id", "left", REGISTRY_COL_W.nameWide),
+  registryCol("total", "Total", (row) => row.scores.total, "right", REGISTRY_COL_W.metric),
+  registryCol("cross_encoder", "CE", (row) => row.scores.cross_encoder, "right", REGISTRY_COL_W.metric)
 ];
 
 function hitRow(row: Record<string, unknown>) {

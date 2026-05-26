@@ -35,32 +35,25 @@
         </q-card-section>
         <q-separator />
 
-        <div v-if="loading" class="provider-list-shell">
-          <q-card-section class="q-gutter-md">
-            <q-skeleton v-for="item in 4" :key="item" type="rect" height="96px" />
-          </q-card-section>
+        <div v-if="!loading && !pagedProviderRows.length" class="app-registry-empty empty-state q-card-section">
+          <q-icon name="manage_search" size="40px" color="grey-5" />
+          <div class="text-subtitle1 q-mt-sm">暂无 Provider 模型</div>
+          <div class="text-caption text-grey-7">添加 Provider 后，可为每个模型配置能力分类、密钥和性能指标。</div>
+          <q-btn class="q-mt-md" color="primary" unelevated rounded icon="add" label="添加 Provider" @click="openCreate" />
         </div>
 
-        <div v-else-if="pagedProviderRows.length" class="app-registry-table-shell provider-table-shell">
-          <div class="provider-table">
-            <ProviderModelListHeader :is-dark="isDark" />
-            <div class="provider-table__body provider-list">
-              <ProviderModelRow
-                v-for="row in pagedProviderRows"
-                :key="row.id"
-                :row="row"
-                :saving="saving"
-                :list-key-visible="listKeyState(row.id).visible"
-                :list-key-revealing="listKeyState(row.id).revealing"
-                :list-revealed-api-key="listKeyState(row.id).value"
-                @toggle-enabled="toggleEnabled"
-                @toggle-reveal-key="toggleListKeyReveal"
-                @trend="openTrend"
-                @edit="openEdit"
-                @delete="confirmRemoveRow"
-              />
-            </div>
-          </div>
+        <div v-else class="app-registry-table-shell provider-table-shell">
+          <ProviderModelsTable
+            :rows="pagedProviderRows"
+            :loading="loading"
+            :saving="saving"
+            :list-key-state="listKeyState"
+            @toggle-enabled="toggleEnabled"
+            @toggle-reveal-key="toggleListKeyReveal"
+            @trend="openTrend"
+            @edit="openEdit"
+            @delete="confirmRemoveRow"
+          />
 
           <AppRegistryPagination
             v-model:page="page"
@@ -72,13 +65,6 @@
             :page-size-options="[10, 20, 50]"
           />
         </div>
-
-        <q-card-section v-else class="app-registry-empty empty-state">
-          <q-icon name="manage_search" size="40px" color="grey-5" />
-          <div class="text-subtitle1 q-mt-sm">暂无 Provider 模型</div>
-          <div class="text-caption text-grey-7">添加 Provider 后，可为每个模型配置能力分类、密钥和性能指标。</div>
-          <q-btn class="q-mt-md" color="primary" unelevated rounded icon="add" label="添加 Provider" @click="openCreate" />
-        </q-card-section>
       </q-card>
     </template>
 
@@ -614,8 +600,7 @@ import AppPageHero from "../components/layout/AppPageHero.vue";
 import AppRegistryTable from "../components/layout/AppRegistryTable.vue";
 import AppRegistryPagination from "../components/layout/AppRegistryPagination.vue";
 import ProviderHAConfig from "../components/platform/ProviderHAConfig.vue";
-import ProviderModelListHeader from "../components/platform/ProviderModelListHeader.vue";
-import ProviderModelRow from "../components/platform/ProviderModelRow.vue";
+import ProviderModelsTable from "../components/platform/ProviderModelsTable.vue";
 import ProviderTrendDialog from "../components/platform/ProviderTrendDialog.vue";
 import { useResourceManagerPage } from "../features/platform/useResourceManagerPage";
 

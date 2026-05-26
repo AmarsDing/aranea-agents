@@ -11,8 +11,9 @@ description: >-
 ## 权威来源（冲突时以此为准）
 
 1. **`docs/frontend/UX.md`** — 奶油昼 / 玻璃夜 token、玻璃材质、禁止项
-2. **`docs/guides/frontend-guide.md`** — 分层、样式落点（`theme/`、`app-global.sass`）
-3. **`docs/README.md` §5** — 文档索引
+2. **`docs/frontend/registry-tables.md`** — Registry 列表列定义、`AppRegistryTable`、对齐与样式
+3. **`docs/guides/frontend-guide.md`** — 分层、样式落点（`theme/`、`app-global.sass`）
+4. **`docs/README.md` §5** — 文档索引
 
 **禁止**：为「好看」引入 UX.md 未允许的霓虹铺满、重投影、硬编码 hex（变量文件除外）、第二套全局 CSS。
 
@@ -34,6 +35,7 @@ description: >-
 |------|------|
 | 新 token | `web/src/css/theme/_css-vars-*.sass` |
 | 表单布局 / Dialog | `web/src/css/theme/_form-layout.sass`（`.app-form-*`、`.app-dialog-card`） |
+| Registry 表格列 / chrome | `web/src/css/theme/_registry-page.sass`（见 `docs/frontend/registry-tables.md`） |
 | 页面/聊天全局类 | `web/src/css/app-global.sass`（`.chat-page` 等） |
 | 页面 Hero / 登录 / 代码块 | `web/src/css/theme/_page-patterns.sass`（`.app-page-hero`、`.app-code-block`） |
 | 布局/动画（仅本组件） | `web/src/components/**` scoped sass |
@@ -136,7 +138,8 @@ cd web && pnpm build
 
 | 场景 | 文件 |
 |------|------|
-| Provider 表 + 编辑向导 | `ResourceManagerPage.vue`、`ProviderModelRow.vue`、`ProviderModelListHeader.vue`、`_form-layout.sass` |
+| Provider 表 + 编辑向导 | `ResourceManagerPage.vue`、`ProviderModelsTable.vue`、`providerModelUi.ts`、`_form-layout.sass` |
+| Registry 表格规范 | `docs/frontend/registry-tables.md`、`PluginsTable.vue`、`registryTableColumns.ts` |
 | 趋势弹窗 ECharts | `ProviderTrendDialog.vue`、`UsageTrendChart.vue` |
 | Team 紧凑卡片 | `TeamCard.vue`、`_entity-pages.sass` |
 | 分类编辑弹窗 | `AgentCategoriesPage.vue`（`.category-dialog*`） |

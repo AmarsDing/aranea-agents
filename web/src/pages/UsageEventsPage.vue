@@ -83,7 +83,7 @@ import AppRegistryHoverTip from "../components/layout/AppRegistryHoverTip.vue";
 import AppRegistryPagination from "../components/layout/AppRegistryPagination.vue";
 import { useUsageEventsPage } from "../features/usage/useUsageEventsPage";
 import type { ModelTokenUsageEvent } from "../features/usage/types";
-import { registryColWidth, type RegistryTableColumn } from "../features/ui/registryTableColumns";
+import { type RegistryTableColumn } from "../features/ui/registryTableColumns";
 
 const {
   events,
@@ -109,18 +109,9 @@ const pagedEvents = computed(() => {
   return events.value.slice(start, start + pageSize.value);
 });
 
-const columns = [
-  { name: "occurred_at", label: "时间", field: "occurred_at", align: "left" as const, ...registryColWidth("11%") },
-  { name: "usage_kind", label: "来源", field: "usage_kind", align: "left" as const, ...registryColWidth("11%") },
-  { name: "provider_code", label: "Provider", field: "provider_code", align: "left" as const, ...registryColWidth("11%") },
-  { name: "model_api_id", label: "模型", field: "model_api_id", align: "left" as const, ...registryColWidth("14%") },
-  { name: "agent_id", label: "Agent", field: "agent_id", align: "left" as const, ...registryColWidth("10%") },
-  { name: "session_id", label: "Session", field: "session_id", align: "left" as const, ...registryColWidth("10%") },
-  { name: "total_tokens", label: "Tokens", field: "total_tokens", align: "right" as const, ...registryColWidth("9%") },
-  { name: "total_cost_micro_usd", label: "费用", field: "total_cost_micro_usd", align: "right" as const, ...registryColWidth("72px") },
-  { name: "latency_ms", label: "延迟(ms)", field: "latency_ms", align: "right" as const, ...registryColWidth("72px") },
-  { name: "status", label: "状态", field: "status", align: "left" as const, ...registryColWidth("9%") }
-] satisfies RegistryTableColumn<ModelTokenUsageEvent>[];
+import { USAGE_EVENT_TABLE_COLUMNS } from "../features/usage/usageTableUi";
+
+const columns = USAGE_EVENT_TABLE_COLUMNS satisfies RegistryTableColumn<ModelTokenUsageEvent>[];
 
 function onResetFilters() {
   page.value = 1;

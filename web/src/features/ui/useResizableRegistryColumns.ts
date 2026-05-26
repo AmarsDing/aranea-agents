@@ -4,8 +4,13 @@ import { normalizeRegistryColumns } from "./registryTableColumns";
 
 type RegistryColumn = NonNullable<QTableProps["columns"]>[number];
 
-const STORAGE_PREFIX = "aranea.registry-table.cols.v1.";
+const STORAGE_PREFIX = "aranea.registry-table.cols.v2.";
 const MIN_COL_WIDTH = 48;
+
+type StoredWidthsPayload = {
+  schema: string;
+  widths: Record<string, number>;
+};
 
 function buildWidthCss(px: number): string {
   const width = Math.max(MIN_COL_WIDTH, Math.round(px));
@@ -21,27 +26,54 @@ function derivePersistKey(columns: QTableProps["columns"], explicit?: string): s
     .join("|");
 }
 
-function loadStoredWidths(key: string): Record<string, number> {
+/** 列定义变更时使 localStorage 中的拖拽宽度失效，让 columns 里的默认宽度重新生效 */
+function buildColumnSchemaFingerprint(columns: QTableProps["columns"]): string {
+  if (!Array.isArray(columns)) return "";
+  return columns
+    .map((col) => {
+      if (!col || typeof col !== "object") return "";
+      const entry = col as RegistryColumn;
+      const style = typeof entry.style === "string" ? entry.style : "";
+      return `${String(entry.name ?? "")}:${style}`;
+    })
+    .filter(Boolean)
+    .join("|");
+}
+
+function normalizeWidthMap(value: unknown): Record<string, number> {
+  if (!value || typeof value !== "object") return {};
+  const out: Record<string, number> = {};
+  for (const [name, v] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof v === "number" && Number.isFinite(v)) {
+      out[name] = v;
+    }
+  }
+  return out;
+}
+
+function loadStoredWidths(key: string, schema: string): Record<string, number> {
   try {
     const raw = localStorage.getItem(STORAGE_PREFIX + key);
     if (!raw) return {};
     const parsed = JSON.parse(raw) as unknown;
     if (!parsed || typeof parsed !== "object") return {};
-    const out: Record<string, number> = {};
-    for (const [name, value] of Object.entries(parsed)) {
-      if (typeof value === "number" && Number.isFinite(value)) {
-        out[name] = value;
-      }
+
+    if ("widths" in parsed) {
+      const payload = parsed as StoredWidthsPayload;
+      return payload.schema === schema ? normalizeWidthMap(payload.widths) : {};
     }
-    return out;
+
+    // v1 legacy: plain map — ignore so code defaults apply
+    return {};
   } catch {
     return {};
   }
 }
 
-function saveStoredWidths(key: string, widths: Record<string, number>) {
+function saveStoredWidths(key: string, schema: string, widths: Record<string, number>) {
   try {
-    localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(widths));
+    const payload: StoredWidthsPayload = { schema, widths };
+    localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(payload));
   } catch {
     // quota / private mode — ignore
   }
@@ -58,12 +90,15 @@ export function useResizableRegistryColumns(
   const activeResize = ref<{ colName: string; startX: number; startWidth: number } | null>(null);
 
   let loadedPersistKey = "";
+  let loadedSchema = "";
 
   function ensureLoaded(columns: QTableProps["columns"]) {
     const key = derivePersistKey(columns, options.persistKey?.());
-    if (key === loadedPersistKey) return;
+    const schema = buildColumnSchemaFingerprint(columns);
+    if (key === loadedPersistKey && schema === loadedSchema) return;
     loadedPersistKey = key;
-    widthOverrides.value = loadStoredWidths(key);
+    loadedSchema = schema;
+    widthOverrides.value = loadStoredWidths(key, schema);
   }
 
   const displayColumns = computed(() => {
@@ -98,7 +133,7 @@ export function useResizableRegistryColumns(
 
   function onResizeEnd() {
     if (activeResize.value && loadedPersistKey) {
-      saveStoredWidths(loadedPersistKey, widthOverrides.value);
+      saveStoredWidths(loadedPersistKey, loadedSchema, widthOverrides.value);
     }
     activeResize.value = null;
     document.body.classList.remove("app-registry-col-resizing");

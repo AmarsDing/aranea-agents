@@ -1,6 +1,5 @@
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
-import type { QTableColumn } from "quasar";
 import {
   checkAgentKey,
   deleteAgent as deleteAgentApi,
@@ -18,10 +17,10 @@ import {
 } from "../../features/platform/api";
 import type { PlatformResource, PlatformResourceTreeNode } from "../../features/platform/types";
 import { flattenCategoryPositions, formatContext } from "../../components/agents/agentUi";
+import { buildAgentTableColumns } from "../../components/agents/agentTableUi";
 import { findCategoryPath, formatCategoryPath } from "../../features/platform/categoryTreeUtils";
 import { useAppStore } from "../app";
 import { useAvatarCatalogStore } from "../avatar";
-import { registryColWidth } from "../../features/ui/registryTableColumns";
 
 /** Agent 列表页：筛选、分页、依赖数据与列表 CRUD；Agent HTTP 经 features/agents/api（Kratos）。 */
 export const useAgentsPageStore = defineStore("agentsPage", () => {
@@ -61,14 +60,7 @@ export const useAgentsPageStore = defineStore("agentsPage", () => {
     return categoryPositionOptions.value.find((item) => item.value === id)?.label ?? "未分类";
   }
 
-  const tableColumns = computed<QTableColumn<Agent>[]>(() => [
-    { name: "name", label: "名称", field: "display_name", align: "left", ...registryColWidth("14%") },
-    { name: "status", label: "状态", field: "status", align: "left", ...registryColWidth("9%") },
-    { name: "model", label: "模型", field: (row) => `${row.provider} / ${row.model}`, align: "left", ...registryColWidth("20%") },
-    { name: "category", label: "业务分类", field: (row) => categoryLabel(row.category_position_id), align: "left", ...registryColWidth("11%") },
-    { name: "ctx", label: "上下文", field: (row) => formatContext(row.context_window), align: "left", ...registryColWidth("9%") },
-    { name: "actions", label: "操作", field: "id", align: "right", ...registryColWidth("108px") }
-  ]);
+  const tableColumns = computed(() => buildAgentTableColumns(categoryLabel, formatContext));
 
   async function loadAgentList() {
     listLoading.value = true;

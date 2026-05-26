@@ -1,8 +1,8 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import type { QTableColumn } from "quasar";
-import { registryColWidth } from "../ui/registryTableColumns";
+
 import type { CronTaskRow, CronTaskRun } from "./types";
+import { CRON_RUN_TABLE_COLUMNS } from "./cronTableUi";
 import { useCronStore } from "../../stores/cron";
 
 export function useCronRunsPage() {
@@ -17,13 +17,7 @@ export function useCronRunsPage() {
   const taskId = ref(String(route.query.cron_task_id || ""));
   const status = ref(String(route.query.status || ""));
 
-  const columns: QTableColumn<CronTaskRun>[] = [
-    { name: "task", label: "任务名称", field: "task_name", align: "left", ...registryColWidth("14%") },
-    { name: "time", label: "时间", field: "started_at", align: "left", ...registryColWidth("11%") },
-    { name: "status", label: "结果", field: "status", align: "left", ...registryColWidth("9%") },
-    { name: "trigger", label: "触发", field: "trigger", align: "left", ...registryColWidth("72px") },
-    { name: "run", label: "Agent 运行", field: "run_id", align: "right", ...registryColWidth("108px") }
-  ];
+  const columns = CRON_RUN_TABLE_COLUMNS;
   const taskOptions = computed(() => tasks.value.map((task) => ({ label: task.name, value: task.id })));
   const statusOptions = [
     { label: "成功", value: "success" },

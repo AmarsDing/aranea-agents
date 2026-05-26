@@ -225,7 +225,9 @@ Page.vue          ← import composable + storeToRefs；模板只做布局与事
 | 依赖 | `useXxxStore()`、`useQuasar()`、必要时 `useRoute` | 在 composable 中绕过 Store 直接 `features/*/api`（须标 TECH-DEBT 并尽快迁入 Store） |
 | 返回 | `ref` / `computed` / 方法；Page 解构后绑定模板 | 返回未解构的巨型对象并在模板深层 `.value` |
 | Dialog 状态 | `createOpen`、`editorOpen` 等由 composable 持有 | Dialog 组件内 `watch` + fetch |
-| 共享 UI 常量 | `features/<域>/knowledgeUi.ts`、`components/<域>/toolUi.ts` | 在 Page 与 Panel 各复制一份 `docColumns` |
+| 共享 UI 常量 | `features/<域>/knowledgeUi.ts`、`components/<域>/*TableUi.ts` | 在 Page 与 Panel 各复制一份 `docColumns` |
+
+**Registry 列表表格**（列宽 / 对齐 / 拖拽）：见 [frontend/registry-tables.md](../frontend/registry-tables.md)。列定义必须用 `registryCol` + `REGISTRY_COL_W`，放在 `*Ui.ts` / `*TableUi.ts`，Table 组件只写 slots。
 
 **命名建议**：
 

@@ -1,10 +1,11 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
-import { useQuasar, type QTableColumn } from "quasar";
-import { registryColWidth } from "../ui/registryTableColumns";
+import { useQuasar } from "quasar";
+
 import { parseCronConfig, parseCronMetadata } from "./api";
 import type { PlatformResourceInput } from "../platform/types";
 import type { CronFailureSummary, CronTaskConfig, CronTaskMetadata, CronTaskRow } from "./types";
+import { CRON_RUN_TABLE_COLUMNS, CRON_TASK_TABLE_COLUMNS } from "./cronTableUi";
 import { useCronStore } from "../../stores/cron";
 
 export function useCronTasksPage() {
@@ -26,16 +27,7 @@ export function useCronTasksPage() {
   const formSubmitting = ref(false);
   const formServerError = ref("");
 
-  const columns: QTableColumn<CronTaskRow>[] = [
-    { name: "name", label: "任务", field: "name", align: "left", sortable: true, ...registryColWidth("14%") },
-    { name: "schedule", label: "调度", field: "config_json", align: "left", ...registryColWidth("11%") },
-    { name: "agent", label: "目标", field: "agent_id", align: "left", ...registryColWidth("10%") },
-    { name: "counts", label: "统计", field: "metadata_json", align: "left", ...registryColWidth("9%") },
-    { name: "status", label: "状态", field: "status", align: "left", ...registryColWidth("9%") },
-    { name: "timing", label: "执行时间", field: "metadata_json", align: "left", ...registryColWidth("11%") },
-    { name: "enabled", label: "启用", field: "enabled", align: "center", ...registryColWidth("64px") },
-    { name: "actions", label: "操作", field: "id", align: "right", ...registryColWidth("108px") }
-  ];
+  const columns = CRON_TASK_TABLE_COLUMNS;
   const statusOptions = [
     { label: "运行中", value: "active" },
     { label: "已暂停", value: "paused" },

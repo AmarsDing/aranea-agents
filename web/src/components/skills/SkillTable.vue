@@ -3,7 +3,7 @@
     table-class="skill-table"
     row-key="id"
     :rows="rows"
-    :columns="columns"
+    :columns="SKILL_TABLE_COLUMNS"
     :loading="loading"
     :pagination="tablePagination"
     hide-pagination
@@ -109,12 +109,11 @@
 </template>
 
 <script setup lang="ts">
-import type { QTableColumn } from "quasar";
 import AppRegistryTable from "../layout/AppRegistryTable.vue";
 import AppRegistryHoverTip from "../layout/AppRegistryHoverTip.vue";
 import SkillStatsStrip from "./SkillStatsStrip.vue";
 import type { Skill } from "../../features/skills/types";
-import { registryColWidth } from "../../features/ui/registryTableColumns";
+import { SKILL_TABLE_COLUMNS } from "./skillTableUi";
 
 defineProps<{
   rows: Skill[];
@@ -132,18 +131,6 @@ const emit = defineEmits<{
 }>();
 
 const tablePagination = { rowsPerPage: 0 };
-
-const columns: QTableColumn<Skill>[] = [
-  { name: "name", label: "名称", field: "name", align: "left", ...registryColWidth("18%") },
-  { name: "tags", label: "标签", field: "tags", align: "left", ...registryColWidth("11%") },
-  { name: "origin", label: "来源", field: "sync_origin", align: "left", ...registryColWidth("96px") },
-  { name: "disk", label: "磁盘", field: "filesystem_missing", align: "center", ...registryColWidth("72px") },
-  { name: "status", label: "状态 / 版本", field: "status", align: "left", ...registryColWidth("9%") },
-  { name: "enabled", label: "启用", field: "enabled", align: "center", ...registryColWidth("64px") },
-  { name: "stats", label: "使用统计", field: "invoke_count", align: "left", ...registryColWidth("220px") },
-  { name: "last", label: "最近调用", field: "last_invoked_at", align: "left", ...registryColWidth("11%") },
-  { name: "actions", label: "操作", field: "id", align: "right", ...registryColWidth("108px") },
-];
 
 function statusLabel(status: string) {
   return ({ draft: "草稿", published: "已发布", archived: "已归档" } as Record<string, string>)[status] ?? status;

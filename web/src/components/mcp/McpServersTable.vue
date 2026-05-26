@@ -2,9 +2,10 @@
   <AppRegistryTable
     table-class="mcp-servers-table"
     :rows="rows"
-    :columns="columns"
+    :columns="MCP_SERVER_TABLE_COLUMNS"
     row-key="id"
     :loading="loading"
+    
     hide-pagination
     :pagination="{ rowsPerPage: 0 }"
   >
@@ -77,11 +78,10 @@
 </template>
 
 <script setup lang="ts">
-import type { QTableColumn } from "quasar";
 import AppRegistryTable from "../layout/AppRegistryTable.vue";
 import AppRegistryHoverTip from "../layout/AppRegistryHoverTip.vue";
 import type { McpServerConfig, McpServerMetadata, McpServerRow } from "../../features/mcp/types";
-import { registryColWidth } from "../../features/ui/registryTableColumns";
+import { MCP_SERVER_TABLE_COLUMNS } from "./mcpServerTableUi";
 
 defineProps<{
   rows: McpServerRow[];
@@ -97,14 +97,6 @@ defineEmits<{
   test: [row: McpServerRow];
   credentials: [row: McpServerRow];
 }>();
-
-const columns: QTableColumn<McpServerRow>[] = [
-  { name: "name", label: "服务器", field: "name", align: "left", ...registryColWidth("18%") },
-  { name: "transport", label: "传输", field: "config_json", align: "left", ...registryColWidth("9%") },
-  { name: "health", label: "健康", field: "metadata_json", align: "left", ...registryColWidth("9%") },
-  { name: "enabled", label: "状态", field: "enabled", align: "center", ...registryColWidth("11%") },
-  { name: "actions", label: "操作", field: "id", align: "right", ...registryColWidth("148px") }
-];
 
 function parseJSON<T>(value: string | undefined, fallback: T): T {
   if (!value) return fallback;

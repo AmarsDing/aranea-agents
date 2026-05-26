@@ -9,26 +9,12 @@
 
     <q-banner v-if="loadError" rounded class="bg-negative text-white">{{ loadError }}</q-banner>
 
-    <AppRegistryTable
+    <HooksTable
+      variant="agent"
       :rows="scopedRows"
-      :columns="columns"
-      row-key="id"
       :loading="loading"
-      hide-pagination
-      :pagination="{ rowsPerPage: 20 }"
-    >
-      <template #body-cell-rule="props">
-        <q-td :props="props">
-          <q-chip dense outline color="primary">{{ ruleCallbackPoint(props.row) }}</q-chip>
-          <q-chip dense outline>{{ ruleActionType(props.row) }}</q-chip>
-        </q-td>
-      </template>
-      <template #body-cell-actions="props">
-        <q-td :props="props">
-          <q-btn flat dense round icon="edit" color="primary" @click="openEdit(props.row)" />
-        </q-td>
-      </template>
-    </AppRegistryTable>
+      @edit="openEdit"
+    />
 
     <q-expansion-item v-model="editorExpanded" dense-toggle icon="add" label="添加 Agent 回调规则" default-opened>
       <q-card flat bordered class="q-pa-md q-mt-sm">
@@ -60,8 +46,7 @@
 
 <script setup lang="ts">
 import CallbackEditor from "../hooks/CallbackEditor.vue";
-import AppRegistryTable from "../layout/AppRegistryTable.vue";
-import { parseHookConfig, type HookRow } from "../../features/hooks/types";
+import HooksTable from "../hooks/HooksTable.vue";
 import { useAgentHooksPanel } from "../../features/agents/useAgentHooksPanel";
 
 const props = defineProps<{
@@ -74,7 +59,6 @@ const {
   saving,
   loadError,
   scopedRows,
-  columns,
   editorExpanded,
   draftRule,
   draftSort,
@@ -86,16 +70,4 @@ const {
   openEdit,
   saveEdit
 } = useAgentHooksPanel(() => props.agentId, () => props.agentKey);
-
-function ruleOf(row: HookRow) {
-  return parseHookConfig(row.config_json);
-}
-
-function ruleCallbackPoint(row: HookRow) {
-  return ruleOf(row).callback_point;
-}
-
-function ruleActionType(row: HookRow) {
-  return ruleOf(row).action.type;
-}
 </script>

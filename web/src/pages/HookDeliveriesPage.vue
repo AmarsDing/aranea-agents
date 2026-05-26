@@ -103,13 +103,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
-import type { QTableColumn } from "quasar";
 import AppPageToolbar from "../components/layout/AppPageToolbar.vue";
 import AppRegistryTable from "../components/layout/AppRegistryTable.vue";
 import AppRegistryHoverTip from "../components/layout/AppRegistryHoverTip.vue";
 import AppRegistryPagination from "../components/layout/AppRegistryPagination.vue";
-import { registryColWidth } from "../features/ui/registryTableColumns";
+
 import { listHookDeliveries, type HookDeliveryRow } from "../features/hooks/deliveries";
+import { HOOK_DELIVERY_TABLE_COLUMNS } from "../components/hooks/hookTableUi";
 
 const route = useRoute();
 const hookKey = ref("");
@@ -134,13 +134,7 @@ const statusOptions = [
   { label: "failed", value: "failed" }
 ];
 
-const columns: QTableColumn<HookDeliveryRow>[] = [
-  { name: "created_at", label: "时间", field: "created_at", align: "left", ...registryColWidth("11%") },
-  { name: "hook_key", label: "Hook", field: "hook_key", align: "left", ...registryColWidth("16%") },
-  { name: "status", label: "状态", field: "status", align: "left", ...registryColWidth("9%") },
-  { name: "attempt_count", label: "尝试", field: "attempt_count", align: "right", ...registryColWidth("72px") },
-  { name: "max_attempts", label: "上限", field: "max_attempts", align: "right", ...registryColWidth("72px") }
-];
+const columns = HOOK_DELIVERY_TABLE_COLUMNS;
 
 function statusColor(st: string) {
   if (st === "failed") return "negative";
