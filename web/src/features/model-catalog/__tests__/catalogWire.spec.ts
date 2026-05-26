@@ -20,4 +20,14 @@ describe("catalogWire", () => {
     expect(model.contextTokens).toBe(1000000);
     expect(model.family).toBe("deepseek-thinking");
   });
+
+  it("reads nested models.dev cost.input / cost.output", () => {
+    const model = normalizeCatalogModelSummary({
+      id: "deepseek-v4-pro",
+      cost: { input: 0.435, output: 0.87, cache_read: 0.003625 },
+    });
+    expect(model.inputUsdPer1m).toBe(0.435);
+    expect(model.outputUsdPer1m).toBe(0.87);
+    expect(model.cacheReadUsdPer1m).toBe(0.003625);
+  });
 });

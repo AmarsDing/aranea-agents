@@ -182,6 +182,9 @@ func NewData(c *conf.Data) (*Data, func(), error) {
 	var pgOpened bool
 
 	cleanup := func() {
+		if entClient != nil {
+			_ = entClient.Close()
+		}
 		if pgOpened && pg != nil {
 			pg.Close()
 		}

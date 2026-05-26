@@ -36,6 +36,11 @@ func slugify(value string) string {
 	return value
 }
 
+// CanonicalSlug normalizes directory or parsed skill names to slug tokens.
+func CanonicalSlug(value string) string {
+	return slugify(value)
+}
+
 func truncateRunes(value string, limit int) string {
 	value = strings.TrimSpace(value)
 	if limit <= 0 {

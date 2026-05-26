@@ -11,6 +11,7 @@ import {
   findProviderPreset,
   type ProviderModelPreset
 } from "../../config/providerPresets";
+import { registryColWidth } from "../ui/registryTableColumns";
 import {
   PROVIDER_RUNTIME_OVERLAY,
   PROVIDER_TYPE_OPTIONS,
@@ -22,8 +23,10 @@ import {
 import {
   applyCatalogModelFields,
   applyCatalogProviderFields,
+  catalogModelToCost,
   type CapabilityChip
 } from "../model-catalog/applyCatalog";
+import { MODEL_CATEGORY_OPTIONS } from "../model-catalog/catalogCategories";
 import { listCatalogModels, listCatalogProviders } from "../model-catalog/api";
 import { catalogProviderIdFor, ensureProviderMigrationMap } from "../model-catalog/providerMigration";
 import type { CatalogModelSummary, CatalogProviderSummary } from "../../services/kratos/model_catalog/v1/index";
@@ -31,6 +34,7 @@ import {
   hasPricingConfigured,
   pricingWarningMessage,
 } from "../usage/pricingWarning";
+import { validateModel } from "./api";
 
 export function useResourceManagerPage() {
   const route = useRoute();
@@ -123,6 +127,8 @@ const catalogLoading = ref(false);
 const catalogModelsLoading = ref(false);
 /** 新建 Provider（自定义模式）：最近一次「检查」成功时的连接指纹；目录模式由 models.dev 自动回填规格 */
 const providerCreateInspectFingerprint = ref("");
+/** provider_code + model_api_id at dialog open (edit). */
+const providerEditIdentityAtOpen = ref("");
 
 type ModelCategory = {
   value: string;
@@ -182,16 +188,7 @@ type ProviderConfig = {
   model_rating?: number | string | null;
 };
 
-const categoryOptions: ModelCategory[] = [
-  { value: "general", label: "通用对话", tooltip: "均衡，适合日常问答与轻任务" },
-  { value: "reasoning", label: "推理 / 复杂问题", tooltip: "数学、逻辑、多步推导" },
-  { value: "code", label: "代码", tooltip: "生成、解释、重构代码" },
-  { value: "long_context", label: "长上下文", tooltip: "大文档、长会话摘要" },
-  { value: "vision", label: "视觉 / 多模态", tooltip: "图像理解" },
-  { value: "embedding", label: "向量嵌入", tooltip: "记忆、检索" },
-  { value: "fast", label: "低延迟", tooltip: "优先响应速度" },
-  { value: "creative", label: "创意写作", tooltip: "文案、故事、营销" }
-];
+const categoryOptions: ModelCategory[] = MODEL_CATEGORY_OPTIONS;
 
 const providerTypeOptions = PROVIDER_TYPE_OPTIONS;
 const providerTypeFilterOptions = PROVIDER_TYPE_OPTIONS;
@@ -264,12 +261,12 @@ const providerHAForm = reactive<ProviderHAForm>({
 });
 
 const columns: QTableColumn<PlatformResource>[] = [
-  { name: "name", field: "name", label: "Name", align: "left", sortable: true },
-  { name: "key", field: "key", label: "Key", align: "left", sortable: true },
-  { name: "provider", field: "provider", label: "Provider", align: "left" },
-  { name: "model", field: "model", label: "Model", align: "left" },
-  { name: "status", field: "status", label: "Status", align: "left" },
-  { name: "actions", field: "id", label: "Actions", align: "right" }
+  { name: "name", label: "Name", field: "name", align: "left", sortable: true, ...registryColWidth("14%") },
+  { name: "key", label: "Key", field: "key", align: "left", sortable: true, ...registryColWidth("14%") },
+  { name: "provider", label: "Provider", field: "provider", align: "left", ...registryColWidth("11%") },
+  { name: "model", label: "Model", field: "model", align: "left", ...registryColWidth("14%") },
+  { name: "status", label: "Status", field: "status", align: "left", ...registryColWidth("9%") },
+  { name: "actions", label: "Actions", field: "id", align: "right", ...registryColWidth("108px") }
 ];
 
 const resource = computed(() => route.meta.resource as PlatformResourceName);
@@ -470,9 +467,22 @@ const showPricingWarning = computed(
     })
 );
 
+const providerIdentityChanged = computed(() => {
+  if (!editingId.value || !isProviderResource.value) return false;
+  const cur = `${providerForm.provider_code.trim()}\0${providerForm.model_api_id.trim()}`;
+  return cur !== providerEditIdentityAtOpen.value;
+});
+
+const providerRuntimeBindingPreview = computed(() => {
+  const code = providerForm.provider_code.trim();
+  const model = providerForm.model_api_id.trim();
+  if (!code || !model) return "";
+  return `Agent / 运行时将使用：${code} / ${model}`;
+});
+
 const canSubmitNewProviderModel = computed(() => {
   if (!isProviderResource.value) return true;
-  if (editingId.value) return true;
+  if (editingId.value && !providerIdentityChanged.value) return true;
   if (isLocalProviderModel.value) return true;
   if (
     activeCatalogProviderId.value &&
@@ -634,6 +644,14 @@ watch(dialogOpen, (open) => {
   }
 });
 
+watch(catalogModels, (models) => {
+  if (!dialogOpen.value || !useCatalogModelPicker.value || !models.length) return;
+  const id = providerForm.model_api_id.trim();
+  if (id && models.some((m) => m.id === id)) {
+    applyCatalogModel(id);
+  }
+});
+
 async function ensureCatalogLoaded(q = "") {
   catalogLoading.value = true;
   try {
@@ -681,19 +699,48 @@ function filterCatalogModelsLocal(val: string, update: (fn: () => void) => void)
   update(() => {});
 }
 
+function catalogModelHasPricing(model: CatalogModelSummary | undefined): boolean {
+  if (!model) return false;
+  const cost = catalogModelToCost(model);
+  return (
+    cost.input_usd_per_1m > 0 ||
+    cost.output_usd_per_1m > 0 ||
+    cost.cache_read_usd_per_1m > 0 ||
+    cost.cache_write_usd_per_1m > 0 ||
+    cost.reasoning_usd_per_1m > 0
+  );
+}
+
 function applyCatalogModel(modelId: string) {
   const providerId = catalogProviderId.value || providerForm.provider_code.trim();
   const model = catalogModels.value.find((item) => item.id === modelId);
   if (!model || !providerId) return;
   const fields = applyCatalogModelFields(providerId, model, true);
-  const { reasoning_backfill, ...formFields } = fields;
+  const { reasoning_backfill, model_category, ...formFields } = fields;
   Object.assign(providerForm, formFields);
+  if (model_category?.length) {
+    providerForm.model_category = model_category;
+  }
   if (reasoning_backfill !== undefined) {
     providerForm.reasoning_backfill = reasoning_backfill;
   }
   providerForm.catalog_source = "models.dev";
   providerForm.metadata_source = "models.dev";
 }
+
+const selectedCatalogModel = computed(() => {
+  const id = providerForm.model_api_id.trim();
+  if (!id) return undefined;
+  return catalogModels.value.find((m) => m.id === id);
+});
+
+const catalogPricingMissing = computed(
+  () =>
+    isProviderResource.value &&
+    providerAddMode.value === "catalog" &&
+    Boolean(providerForm.model_api_id.trim()) &&
+    !catalogModelHasPricing(selectedCatalogModel.value),
+);
 
 async function applyCatalogProvider(providerId: string) {
   if (!providerId) return;
@@ -839,6 +886,7 @@ function resetForm() {
 
 function openCreate() {
   editingId.value = "";
+  providerEditIdentityAtOpen.value = "";
   resetForm();
   dialogOpen.value = true;
   void ensureCatalogLoaded();
@@ -928,6 +976,11 @@ async function openEdit(row: PlatformResource) {
     });
   }
   providerCreateInspectFingerprint.value = "";
+  if (isProviderResource.value && row.provider && row.model) {
+    providerEditIdentityAtOpen.value = `${row.provider}\0${row.model}`;
+  } else {
+    providerEditIdentityAtOpen.value = "";
+  }
   providerStep.value = 1;
   dialogOpen.value = true;
 }
@@ -964,15 +1017,28 @@ async function saveProviderRow() {
     $q.notify({ type: "negative", message: "Provider 名称和模型ID必填，名称仅支持小写字母、数字、连字符" });
     return;
   }
-  if (!editingId.value && !canSubmitNewProviderModel.value) {
+  if (!canSubmitNewProviderModel.value) {
     $q.notify({
       type: "warning",
       message:
         providerAddMode.value === "catalog"
           ? "请从目录选择 Provider 与模型"
-          : "请先点击「检查」并通过验证后再创建"
+          : editingId.value && providerIdentityChanged.value
+            ? "修改 Provider ID 或模型 ID 后请先点击「检查」"
+            : "请先点击「检查」并通过验证后再创建"
     });
     return;
+  }
+
+  if (editingId.value && !providerIdentityChanged.value) {
+    const pre = await validateModel(code, model);
+    if (!pre.ok) {
+      $q.notify({
+        type: "negative",
+        message: pre.message || "目录中无已启用的 provider/model，请启用本条或修正 Provider ID / 模型 ID"
+      });
+      return;
+    }
   }
 
   const payload = buildProviderPayload();
@@ -986,7 +1052,15 @@ async function saveProviderRow() {
       rows.value = [created, ...rows.value];
     }
     dialogOpen.value = false;
-    $q.notify({ type: "positive", message: "已保存" });
+    const post = await validateModel(code, model);
+    if (!post.ok) {
+      $q.notify({
+        type: "warning",
+        message: post.message || "已保存，但运行时校验未通过，请确认已启用且 Provider ID 正确"
+      });
+    } else {
+      $q.notify({ type: "positive", message: "已保存" });
+    }
   } finally {
     saving.value = false;
   }
@@ -1085,9 +1159,7 @@ async function inspectCurrentProviderModel() {
       const preset = findModelPreset(providerPresetKey.value || code, model);
       const catalogModel = catalogModels.value.find((item) => item.id === model);
       if (catalogModel && catalogProviderId.value) {
-        Object.assign(providerForm, applyCatalogModelFields(catalogProviderId.value, catalogModel, true));
-        providerForm.metadata_source = "models.dev";
-        providerForm.catalog_source = "models.dev";
+        applyCatalogModel(catalogModel.id || model);
         providerForm.catalog_managed = true;
         if (!editingId.value) {
           providerCreateInspectFingerprint.value = providerCreateInspectFingerprintValue();
@@ -1109,6 +1181,12 @@ async function inspectCurrentProviderModel() {
       providerCreateInspectFingerprint.value = providerCreateInspectFingerprintValue();
     }
     // Inspect 仅验证连通性；规格与定价由 models.dev catalog 回填，不在此覆盖。
+    if (catalogProviderId.value && providerForm.model_api_id.trim()) {
+      const cm = catalogModels.value.find((item) => item.id === providerForm.model_api_id.trim());
+      if (cm && !providerForm.input_price_usd_per_1m && !providerForm.output_price_usd_per_1m) {
+        applyCatalogModel(cm.id || providerForm.model_api_id.trim());
+      }
+    }
     if (result.enable_token_tailoring) providerForm.enable_token_tailoring = true;
     if (!providerForm.model_display_name.trim()) {
       providerForm.model_display_name = result.model_display_name || model;
@@ -1362,6 +1440,9 @@ function errorMessage(error: unknown) {
     secretKeyMaskedPlaceholder,
     showPricingWarning,
     canSubmitNewProviderModel,
+    providerIdentityChanged,
+    providerRuntimeBindingPreview,
+    catalogPricingMissing,
     providerModelOptions,
     dialogTitle,
     dialogSubtitle,

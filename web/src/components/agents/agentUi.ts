@@ -88,7 +88,7 @@ export function parseAvatarIcon(row: PlatformResource) {
 
 export function selfEvolveEnabled(agent: Agent) {
   if (agent.settings) {
-    return agent.settings.self_evolve;
+    return agent.settings.self_evolve || agent.settings.evolution_self_evolve;
   }
   try {
     return Boolean(JSON.parse(agent.config_json || "{}").self_evolve);

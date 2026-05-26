@@ -26,15 +26,15 @@ func NewMemoryService(admin *biz.MemoryAdminUsecase, cascade *biz.L4CascadeUseca
 	return &MemoryService{admin: admin, cascade: cascade, memStore: memStore, sysUC: sysUC}
 }
 
-func (s *MemoryService) errStore() error {
+func (s *MemoryService) requireAdmin() error {
 	if s.admin == nil {
-		return kerrors.InternalServer("MEMORY", "session memory store not wired")
+		return kerrors.InternalServer("MEMORY", "memory admin usecase not wired")
 	}
 	return nil
 }
 
 func (s *MemoryService) ListL0Snapshots(ctx context.Context, req *v1.ListL0SnapshotsRequest) (*v1.ListL0SnapshotsResponse, error) {
-	if err := s.errStore(); err != nil {
+	if err := s.requireAdmin(); err != nil {
 		return nil, err
 	}
 	sid := strings.TrimSpace(req.GetSessionId())
@@ -57,7 +57,7 @@ func (s *MemoryService) ListL0Snapshots(ctx context.Context, req *v1.ListL0Snaps
 }
 
 func (s *MemoryService) ListL1Tasks(ctx context.Context, req *v1.ListL1TasksRequest) (*v1.ListL1TasksResponse, error) {
-	if err := s.errStore(); err != nil {
+	if err := s.requireAdmin(); err != nil {
 		return nil, err
 	}
 	sid := strings.TrimSpace(req.GetSessionId())
@@ -82,7 +82,7 @@ func (s *MemoryService) ListL1Tasks(ctx context.Context, req *v1.ListL1TasksRequ
 }
 
 func (s *MemoryService) ListL1Fields(ctx context.Context, req *v1.ListL1FieldsRequest) (*v1.ListL1FieldsResponse, error) {
-	if err := s.errStore(); err != nil {
+	if err := s.requireAdmin(); err != nil {
 		return nil, err
 	}
 	tid := strings.TrimSpace(req.GetTaskId())
@@ -128,7 +128,7 @@ func (s *MemoryService) ListL1Fields(ctx context.Context, req *v1.ListL1FieldsRe
 }
 
 func (s *MemoryService) ListMemoryFacts(ctx context.Context, req *v1.ListMemoryFactsRequest) (*v1.ListMemoryFactsResponse, error) {
-	if err := s.errStore(); err != nil {
+	if err := s.requireAdmin(); err != nil {
 		return nil, err
 	}
 	rows, total, lim, off, err := s.admin.ListFactRows(ctx,
@@ -154,7 +154,7 @@ func (s *MemoryService) ListMemoryFacts(ctx context.Context, req *v1.ListMemoryF
 }
 
 func (s *MemoryService) ListMemoryEntities(ctx context.Context, req *v1.ListMemoryEntitiesRequest) (*v1.ListMemoryEntitiesResponse, error) {
-	if err := s.errStore(); err != nil {
+	if err := s.requireAdmin(); err != nil {
 		return nil, err
 	}
 	rows, total, err := s.admin.ListEntityRows(ctx,
@@ -182,7 +182,7 @@ func (s *MemoryService) ListMemoryEntities(ctx context.Context, req *v1.ListMemo
 }
 
 func (s *MemoryService) GetMemoryNeighborhood(ctx context.Context, req *v1.GetMemoryNeighborhoodRequest) (*v1.GraphNeighborhood, error) {
-	if err := s.errStore(); err != nil {
+	if err := s.requireAdmin(); err != nil {
 		return nil, err
 	}
 	cid := strings.TrimSpace(req.GetCenterId())
@@ -328,7 +328,7 @@ func pbCascadeProposal(raw []byte) (*v1.CascadeProposal, error) {
 }
 
 func (s *MemoryService) GetAgentIdentity(ctx context.Context, req *v1.GetAgentIdentityRequest) (*v1.AgentIdentity, error) {
-	if err := s.errStore(); err != nil {
+	if err := s.requireAdmin(); err != nil {
 		return nil, err
 	}
 	aid := strings.TrimSpace(req.GetAgentId())
@@ -372,7 +372,7 @@ func (s *MemoryService) GetAgentIdentity(ctx context.Context, req *v1.GetAgentId
 }
 
 func (s *MemoryService) GetAgentStrategy(ctx context.Context, req *v1.GetAgentStrategyRequest) (*v1.AgentStrategyProfile, error) {
-	if err := s.errStore(); err != nil {
+	if err := s.requireAdmin(); err != nil {
 		return nil, err
 	}
 	aid := strings.TrimSpace(req.GetAgentId())
@@ -431,7 +431,7 @@ func mapStringFloat(in map[string]any) map[string]float64 {
 }
 
 func (s *MemoryService) ListEvolutionProposals(ctx context.Context, req *v1.ListEvolutionProposalsRequest) (*v1.ListEvolutionProposalsResponse, error) {
-	if err := s.errStore(); err != nil {
+	if err := s.requireAdmin(); err != nil {
 		return nil, err
 	}
 	aid := strings.TrimSpace(req.GetAgentId())
@@ -462,7 +462,7 @@ func (s *MemoryService) ListEvolutionProposals(ctx context.Context, req *v1.List
 }
 
 func (s *MemoryService) ListEvolutionEvents(ctx context.Context, req *v1.ListEvolutionEventsRequest) (*v1.ListEvolutionEventsResponse, error) {
-	if err := s.errStore(); err != nil {
+	if err := s.requireAdmin(); err != nil {
 		return nil, err
 	}
 	aid := strings.TrimSpace(req.GetAgentId())
@@ -491,7 +491,7 @@ func (s *MemoryService) ListEvolutionEvents(ctx context.Context, req *v1.ListEvo
 }
 
 func (s *MemoryService) GetEvolutionMetrics(ctx context.Context, req *v1.GetEvolutionMetricsRequest) (*v1.EvolutionMetricsReport, error) {
-	if err := s.errStore(); err != nil {
+	if err := s.requireAdmin(); err != nil {
 		return nil, err
 	}
 	aid := strings.TrimSpace(req.GetAgentId())
@@ -545,7 +545,7 @@ func (s *MemoryService) GetEvolutionMetrics(ctx context.Context, req *v1.GetEvol
 }
 
 func (s *MemoryService) UpsertMemoryFact(ctx context.Context, req *v1.UpsertMemoryFactRequest) (*v1.UpsertMemoryFactResponse, error) {
-	if err := s.errStore(); err != nil {
+	if err := s.requireAdmin(); err != nil {
 		return nil, err
 	}
 	f := req.GetFact()
@@ -592,7 +592,7 @@ func (s *MemoryService) UpsertMemoryFact(ctx context.Context, req *v1.UpsertMemo
 }
 
 func (s *MemoryService) AppendEvolutionEvent(ctx context.Context, req *v1.AppendEvolutionEventRequest) (*v1.AppendEvolutionEventResponse, error) {
-	if err := s.errStore(); err != nil {
+	if err := s.requireAdmin(); err != nil {
 		return nil, err
 	}
 	aid := strings.TrimSpace(req.GetAgentId())

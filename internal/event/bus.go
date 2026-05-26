@@ -13,16 +13,16 @@ import (
 
 // Re-export contract types for backward compatibility.
 type (
-	DropPolicy      = contract.DropPolicy
-	ChannelPriority = contract.ChannelPriority
+	DropPolicy       = contract.DropPolicy
+	ChannelPriority  = contract.ChannelPriority
 	SubscribeOptions = contract.SubscribeOptions
-	Bus             = contract.Bus
+	Bus              = contract.Bus
 )
 
 const (
-	DropOldest          = contract.DropOldest
-	DropNewest          = contract.DropNewest
-	BlockUpTo           = contract.BlockUpTo
+	DropOldest              = contract.DropOldest
+	DropNewest              = contract.DropNewest
+	BlockUpTo               = contract.BlockUpTo
 	ChannelPriorityCritical = contract.ChannelPriorityCritical
 	ChannelPriorityNormal   = contract.ChannelPriorityNormal
 )
@@ -131,16 +131,17 @@ func (b *bus) deliverBlockUpTo(sub *subscriber, env Envelope, blockFor time.Dura
 	if blockFor <= 0 {
 		blockFor = 100 * time.Millisecond
 	}
-	deadline := time.Now().Add(blockFor)
-	for time.Now().Before(deadline) {
+	timer := time.NewTimer(blockFor)
+	defer timer.Stop()
+	for {
 		select {
 		case sub.ch <- env:
 			return
-		case <-time.After(10 * time.Millisecond):
+		case <-timer.C:
+			b.deliverDropOldestLocked(sub, env)
+			return
 		}
 	}
-	// Deadline exceeded — fall back to evicting oldest (still under RLock).
-	b.deliverDropOldestLocked(sub, env)
 }
 
 func (b *bus) deliverDropOldest(sub *subscriber, env Envelope) {

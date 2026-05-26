@@ -1,77 +1,79 @@
 <template>
-  <q-card flat class="app-registry-panel app-registry-panel--stacked">
-    <q-card-section class="app-registry-toolbar--sessions">
-      <q-input
-        :model-value="keyword"
-        class="app-field-md"
-        dense
-        outlined
-        clearable
-        debounce="350"
-        placeholder="搜索标题、摘要或 Session ID"
-        @update:model-value="$emit('update:keyword', String($event ?? ''))"
-      >
-        <template #prepend><q-icon name="search" /></template>
-      </q-input>
-      <q-select
-        :model-value="ownerType"
-        class="app-field-sm"
-        dense
-        outlined
-        clearable
-        emit-value
-        map-options
-        label="类型"
-        :options="ownerOptions"
-        @update:model-value="$emit('update:ownerType', $event ?? null)"
-      />
-      <q-select
-        :model-value="status"
-        class="app-field-sm"
-        dense
-        outlined
-        clearable
-        emit-value
-        map-options
-        label="状态"
-        :options="statusOptions"
-        @update:model-value="$emit('update:status', $event ?? null)"
-      />
-      <q-select
-        :model-value="contextStatus"
-        class="app-field-sm"
-        dense
-        outlined
-        clearable
-        emit-value
-        map-options
-        label="上下文"
-        :options="contextOptions"
-        @update:model-value="$emit('update:contextStatus', $event ?? null)"
-      />
-      <div class="app-registry-toolbar__actions">
-        <q-btn flat rounded no-caps label="重置" icon="restart_alt" @click="$emit('reset')" />
-        <q-btn color="primary" unelevated rounded no-caps label="查询" icon="manage_search" :loading="loading" @click="$emit('search')" />
+  <AppPageToolbar stacked>
+    <q-input
+      :model-value="keyword"
+      class="app-page-toolbar__search"
+      dense
+      outlined
+      clearable
+      debounce="350"
+      placeholder="搜索标题、摘要或 Session ID"
+      @update:model-value="$emit('update:keyword', String($event ?? ''))"
+    >
+      <template #prepend><q-icon name="search" /></template>
+    </q-input>
+    <q-select
+      :model-value="ownerType"
+      class="app-page-toolbar__field"
+      dense
+      outlined
+      clearable
+      emit-value
+      map-options
+      label="类型"
+      :options="ownerOptions"
+      @update:model-value="$emit('update:ownerType', $event ?? null)"
+    />
+    <q-select
+      :model-value="status"
+      class="app-page-toolbar__field"
+      dense
+      outlined
+      clearable
+      emit-value
+      map-options
+      label="状态"
+      :options="statusOptions"
+      @update:model-value="$emit('update:status', $event ?? null)"
+    />
+    <q-select
+      :model-value="contextStatus"
+      class="app-page-toolbar__field"
+      dense
+      outlined
+      clearable
+      emit-value
+      map-options
+      label="上下文"
+      :options="contextOptions"
+      @update:model-value="$emit('update:contextStatus', $event ?? null)"
+    />
+    <template #actions>
+      <q-btn flat rounded no-caps label="重置" icon="restart_alt" @click="$emit('reset')" />
+      <q-btn color="primary" unelevated rounded no-caps label="查询" icon="manage_search" :loading="loading" @click="$emit('search')" />
+    </template>
+    <template #footer>
+      <div class="app-actions-bar app-actions-bar--start">
+        <q-btn
+          flat
+          rounded
+          no-caps
+          :icon="selectionMode ? 'close' : 'checklist'"
+          :label="selectionMode ? '取消选择' : '批量选择'"
+          :color="selectionMode ? 'primary' : undefined"
+          @click="$emit('toggle-selection')"
+        />
+        <q-separator vertical inset class="q-mx-xs" />
+        <q-btn flat rounded no-caps icon="inventory_2" label="按天数归档" @click="$emit('retention-archive')" />
+        <q-btn flat rounded no-caps icon="delete_sweep" label="按天数删除" @click="$emit('retention-delete')" />
       </div>
-    </q-card-section>
-    <q-card-section class="app-registry-panel__section app-registry-panel__section--dense app-actions-bar app-actions-bar--start">
-      <q-btn
-        flat
-        rounded
-        no-caps
-        :icon="selectionMode ? 'close' : 'checklist'"
-        :label="selectionMode ? '取消选择' : '批量选择'"
-        :color="selectionMode ? 'primary' : undefined"
-        @click="$emit('toggle-selection')"
-      />
-      <q-separator vertical inset class="q-mx-xs" />
-      <q-btn flat rounded no-caps icon="inventory_2" label="按天数归档" @click="$emit('retention-archive')" />
-      <q-btn flat rounded no-caps icon="delete_sweep" label="按天数删除" @click="$emit('retention-delete')" />
-    </q-card-section>
-  </q-card>
+    </template>
+  </AppPageToolbar>
 </template>
 
 <script setup lang="ts">
+import AppPageToolbar from "../layout/AppPageToolbar.vue";
+
 defineProps<{
   keyword: string;
   ownerType: string | null;

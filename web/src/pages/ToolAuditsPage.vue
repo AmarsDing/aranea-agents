@@ -1,5 +1,5 @@
 <template>
-  <q-page class="app-page-cream tool-runs-page">
+  <q-page class="app-standard-page tool-runs-page">
     <tool-hero-section
       kicker="Tool governance"
       title="工具调用审计"

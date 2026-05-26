@@ -11,16 +11,41 @@ import (
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
 
+func memoryRuntimeContext(inv *trpcagent.Invocation, ag biz.Agent) biz.MemoryRuntimeContext {
+	rt := biz.MemoryRuntimeContext{
+		AgentID: strings.TrimSpace(ag.ID),
+	}
+	if inv != nil && inv.Session != nil {
+		rt.UserID = strings.TrimSpace(inv.Session.UserID)
+		rt.Workspace = sessionStateString(inv.Session.State, "workspace")
+		rt.TeamID = sessionStateString(inv.Session.State, "team_id")
+	}
+	if rt.Workspace == "" && ag.Settings != nil {
+		rt.Workspace = strings.TrimSpace(ag.Settings.Workspace)
+	}
+	return rt
+}
+
+func sessionStateString(state map[string][]byte, key string) string {
+	if state == nil {
+		return ""
+	}
+	if b, ok := state[key]; ok {
+		return strings.TrimSpace(string(b))
+	}
+	return ""
+}
+
 func newMemoryInjectBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Callback {
-	if ag.Settings == nil {
+	policy := biz.ResolveMemoryRuntimePolicy(ag.Settings)
+	if !policy.MasterEnabled || !policy.AnyInject() {
 		return nil
 	}
-	l3 := ag.Settings.L3Enabled && ag.Settings.L0InjectL3
-	l2 := ag.Settings.L2RecallEnabled
-	if !l3 && !l2 {
-		return nil
-	}
-	if l2 && deps.MemoryL2Recall == nil && l3 && deps.MemoryL3Recall == nil {
+	hasDep := (policy.InjectL1 || policy.InjectL4) && deps.MemoryAdmin != nil
+	hasDep = hasDep || (policy.RecallL2 && deps.MemoryL2Recall != nil)
+	hasDep = hasDep || (policy.InjectL3 && deps.MemoryL3Recall != nil)
+	hasDep = hasDep || (policy.RecallL2 && policy.InjectL3 && deps.MemoryCompositeRecall != nil)
+	if !hasDep {
 		return nil
 	}
 	return callbacks.NewBeforeModelHook(5, func(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
@@ -38,22 +63,42 @@ func newMemoryInjectBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Cal
 }
 
 func buildRuntimeMemoryCue(ctx context.Context, deps TRPCBuilderDeps, ag biz.Agent, messages []trpcmodel.Message) string {
+	policy := biz.ResolveMemoryRuntimePolicy(ag.Settings)
+	if !policy.MasterEnabled {
+		return ""
+	}
 	inv, ok := trpcagent.InvocationFromContext(ctx)
 	if !ok || inv == nil || inv.Session == nil {
 		return ""
 	}
-	userID := strings.TrimSpace(inv.Session.UserID)
+	rt := memoryRuntimeContext(inv, ag)
 	sessionID := strings.TrimSpace(inv.Session.ID)
-	keyword := lastUserMessageText(messages)
+	keyword := RecallKeywordFromMessages(messages)
 	var parts []string
-	if ag.Settings.L2RecallEnabled {
-		if l2 := L2MemoryCue(ctx, deps.MemoryL2Recall, ag, sessionID, keyword, 0); l2 != "" {
-			parts = append(parts, l2)
+	if policy.InjectL1 {
+		if l1 := L1MemoryCue(ctx, deps.MemoryAdmin, ag, policy, sessionID); l1 != "" {
+			parts = append(parts, l1)
 		}
 	}
-	if ag.Settings.L3Enabled && ag.Settings.L0InjectL3 {
-		if l3 := L3MemoryCue(ctx, deps.MemoryL3Recall, ag, userID, keyword, 0); l3 != "" {
-			parts = append(parts, l3)
+	if policy.RecallL2 && policy.InjectL3 && deps.MemoryCompositeRecall != nil {
+		if composite := CompositeMemoryCue(ctx, deps.MemoryCompositeRecall, ag, policy, rt, sessionID, keyword, 0); composite != "" {
+			parts = append(parts, composite)
+		}
+	} else {
+		if policy.RecallL2 {
+			if l2 := L2MemoryCue(ctx, deps.MemoryL2Recall, ag, policy, sessionID, keyword, 0); l2 != "" {
+				parts = append(parts, l2)
+			}
+		}
+		if policy.InjectL3 {
+			if l3 := L3MemoryCue(ctx, deps.MemoryL3Recall, ag, policy, rt, keyword, 0); l3 != "" {
+				parts = append(parts, l3)
+			}
+		}
+	}
+	if policy.InjectL4 {
+		if l4 := L4MemoryCue(ctx, deps.MemoryAdmin, ag, policy, keyword); l4 != "" {
+			parts = append(parts, l4)
 		}
 	}
 	return strings.TrimSpace(strings.Join(parts, "\n\n"))

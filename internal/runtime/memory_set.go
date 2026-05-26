@@ -13,6 +13,7 @@ type MemorySet struct {
 	Admin    biz.SessionAdminStore
 	L2Recall biz.MemoryL2Recaller
 	L3Recall biz.MemoryL3Recaller
+	CompositeRecall biz.MemoryCompositeRecaller
 }
 
 func (s MemorySet) Available() bool {

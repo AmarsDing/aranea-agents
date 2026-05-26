@@ -8,27 +8,31 @@
   </tool-glass-panel>
 
   <tool-glass-panel v-else>
-    <q-table
-      flat
-      class="tool-runs-data-table"
+    <AppRegistryTable
+      :shell="false"
+      table-class="tool-runs-data-table"
       row-key="id"
       :rows="rows"
       :columns="columns"
       :loading="loading"
-      :pagination="tablePagination"
       hide-pagination
+      :pagination="{ rowsPerPage: 0 }"
     >
       <template #body-cell-tool="props">
         <q-td :props="props">
-          <div class="text-weight-medium">{{ props.row.tool_key }}</div>
-          <div class="text-caption muted-caption">{{ props.row.action }}</div>
+          <AppRegistryHoverTip :text="clipPreview(props.row.result_summary)" empty-label="无摘要">
+            <div class="min-width-0">
+              <div class="app-registry-cell-primary ellipsis">{{ props.row.tool_key }}</div>
+              <div class="app-registry-cell-sub ellipsis">{{ props.row.action }}</div>
+            </div>
+          </AppRegistryHoverTip>
         </q-td>
       </template>
 
       <template #body-cell-actor="props">
         <q-td :props="props">
-          <div>{{ props.row.agent_id || "—" }}</div>
-          <div class="text-caption muted-caption">{{ props.row.user_id || props.row.session_id || "—" }}</div>
+          <div class="app-registry-cell-primary ellipsis">{{ props.row.agent_id || "—" }}</div>
+          <div class="app-registry-cell-sub ellipsis">{{ props.row.user_id || props.row.session_id || "—" }}</div>
         </q-td>
       </template>
 
@@ -38,26 +42,23 @@
         </q-td>
       </template>
 
-      <template #body-cell-summary="props">
-        <q-td :props="props">
-          <div class="text-caption ellipsis">{{ clipPreview(props.row.result_summary) || "无摘要" }}</div>
-        </q-td>
-      </template>
-
       <template #body-cell-time="props">
         <q-td :props="props">
           <div>{{ formatInvocationWhen(props.row.created_at) }}</div>
-          <div class="text-caption muted-caption">{{ props.row.source }}</div>
+          <div class="text-caption muted-caption ellipsis">{{ props.row.source }}</div>
         </q-td>
       </template>
-    </q-table>
+    </AppRegistryTable>
   </tool-glass-panel>
 </template>
 
 <script setup lang="ts">
 import type { QTableColumn } from "quasar";
+import AppRegistryTable from "../layout/AppRegistryTable.vue";
+import AppRegistryHoverTip from "../layout/AppRegistryHoverTip.vue";
 import ToolGlassPanel from "./ToolGlassPanel.vue";
 import type { ToolInvocationAudit } from "../../features/tools/types";
+import { registryColWidth } from "../../features/ui/registryTableColumns";
 import {
   clipPreview,
   formatInvocationWhen,
@@ -70,13 +71,10 @@ defineProps<{
   loading: boolean;
 }>();
 
-const tablePagination = { rowsPerPage: 0 };
-
 const columns: QTableColumn<ToolInvocationAudit>[] = [
-  { name: "tool", label: "Tool / Action", field: "tool_key", align: "left" },
-  { name: "actor", label: "Agent / User", field: "agent_id", align: "left" },
-  { name: "status", label: "状态", field: "status", align: "left" },
-  { name: "summary", label: "结果摘要", field: "result_summary", align: "left" },
-  { name: "time", label: "时间", field: "created_at", align: "left" }
+  { name: "tool", label: "Tool / Action", field: "tool_key", align: "left", ...registryColWidth("14%") },
+  { name: "actor", label: "Agent / User", field: "agent_id", align: "left", ...registryColWidth("10%") },
+  { name: "status", label: "状态", field: "status", align: "left", ...registryColWidth("9%") },
+  { name: "time", label: "时间", field: "created_at", align: "left", ...registryColWidth("18%") }
 ];
 </script>

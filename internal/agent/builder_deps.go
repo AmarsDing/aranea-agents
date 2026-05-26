@@ -42,6 +42,7 @@ type TRPCMemoryKnowledgeDeps struct {
 	MemoryAdmin    biz.SessionAdminStore
 	MemoryL2Recall biz.MemoryL2Recaller
 	MemoryL3Recall biz.MemoryL3Recaller
+	MemoryCompositeRecall biz.MemoryCompositeRecaller
 	KnowledgeRetriever *knowledge.Retriever
 }
 
@@ -81,6 +82,7 @@ type TRPCBuilderDeps struct {
 	MemoryAdmin        biz.SessionAdminStore
 	MemoryL2Recall     biz.MemoryL2Recaller
 	MemoryL3Recall     biz.MemoryL3Recaller
+	MemoryCompositeRecall biz.MemoryCompositeRecaller
 	KnowledgeRetriever *knowledge.Retriever
 	// TRPCPluginDeps
 	Plugins       []trpcplugin.Plugin

@@ -149,14 +149,15 @@ func (r *monitorRepo) ListMonitorEvents(ctx context.Context, query biz.MonitorEv
 
 	where, args := monitorEventsWhere(query)
 	countSQL := sqlMonitorEventsCount + where
-	listSQL := sqlMonitorEventsList + where + fmt.Sprintf(" ORDER BY created_at DESC LIMIT %d OFFSET %d", limit, offset)
+	listSQL := sqlMonitorEventsList + where + " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+	listArgs := append(args, limit, offset)
 
 	var total int32
 	if err := r.data.RawDB().QueryRowContext(ctx, countSQL, args...).Scan(&total); err != nil {
 		return biz.MonitorListResult{}, err
 	}
 
-	rows, err := r.data.RawDB().QueryContext(ctx, listSQL, args...)
+	rows, err := r.data.RawDB().QueryContext(ctx, listSQL, listArgs...)
 	if err != nil {
 		return biz.MonitorListResult{}, err
 	}
@@ -177,8 +178,8 @@ func monitorEventsWhere(q biz.MonitorEventsQuery) (string, []any) {
 		args = append(args, q.EventType+"%")
 	}
 	if q.AgentID != "" {
-		parts = append(parts, "metadata_json LIKE ?")
-		args = append(args, "%"+q.AgentID+"%")
+		parts = append(parts, "json_extract(metadata_json, '$.agent_id') = ?")
+		args = append(args, q.AgentID)
 	}
 	if q.Status != "" {
 		parts = append(parts, "status = ?")
@@ -214,14 +215,15 @@ func (r *monitorRepo) ListMonitorTraces(ctx context.Context, query biz.MonitorTr
 
 	where, args := monitorTracesWhere(query)
 	countSQL := sqlMonitorTracesCount + where
-	listSQL := sqlMonitorTracesList + where + fmt.Sprintf(" ORDER BY created_at DESC LIMIT %d OFFSET %d", limit, offset)
+	listSQL := sqlMonitorTracesList + where + " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+	listArgs := append(args, limit, offset)
 
 	var total int32
 	if err := r.data.RawDB().QueryRowContext(ctx, countSQL, args...).Scan(&total); err != nil {
 		return biz.MonitorListResult{}, err
 	}
 
-	rows, err := r.data.RawDB().QueryContext(ctx, listSQL, args...)
+	rows, err := r.data.RawDB().QueryContext(ctx, listSQL, listArgs...)
 	if err != nil {
 		return biz.MonitorListResult{}, err
 	}
@@ -238,16 +240,16 @@ func monitorTracesWhere(q biz.MonitorTracesQuery) (string, []any) {
 	parts := []string{}
 	args := []any{}
 	if q.AgentID != "" {
-		parts = append(parts, "metadata_json LIKE ?")
-		args = append(args, "%"+q.AgentID+"%")
+		parts = append(parts, "json_extract(metadata_json, '$.agent_id') = ?")
+		args = append(args, q.AgentID)
 	}
 	if q.Provider != "" {
-		parts = append(parts, "metadata_json LIKE ?")
-		args = append(args, "%"+q.Provider+"%")
+		parts = append(parts, "json_extract(metadata_json, '$.provider') = ?")
+		args = append(args, q.Provider)
 	}
 	if q.Model != "" {
-		parts = append(parts, "metadata_json LIKE ?")
-		args = append(args, "%"+q.Model+"%")
+		parts = append(parts, "json_extract(metadata_json, '$.model') = ?")
+		args = append(args, q.Model)
 	}
 	if q.Status != "" {
 		parts = append(parts, "status = ?")
@@ -285,11 +287,13 @@ func (r *monitorRepo) PatchRunnerCompletionMetadata(ctx context.Context, session
 	if sessionID == "" || strings.TrimSpace(patchJSON) == "" {
 		return false, nil
 	}
-	if patched, err := r.patchRunnerCompletionByKey(ctx, sessionID, "run_id", runID, patchJSON); err != nil || patched {
-		return patched, err
+	if invocationID != "" {
+		if patched, err := r.patchRunnerCompletionByKey(ctx, sessionID, "invocation_id", invocationID, patchJSON); err != nil || patched {
+			return patched, err
+		}
 	}
-	if invocationID != "" && invocationID != runID {
-		return r.patchRunnerCompletionByKey(ctx, sessionID, "invocation_id", invocationID, patchJSON)
+	if runID != "" && runID != invocationID {
+		return r.patchRunnerCompletionByKey(ctx, sessionID, "run_id", runID, patchJSON)
 	}
 	return false, nil
 }

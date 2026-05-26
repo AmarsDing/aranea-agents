@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"strings"
+
+	"aranea-agents/pkg/jsonutil"
 )
 
 var ErrCascadeUnavailable = errors.New("memory: cascade store not available")
@@ -120,21 +123,21 @@ func (uc *L4CascadeUsecase) collectAffected(ctx context.Context, centerID string
 	}
 	relByTarget := map[string]string{}
 	for _, rel := range nb.Relations {
-		tgt := jsonStr(rel, "target_id")
+		tgt := jsonutil.IfaceStr(rel, "target_id")
 		if tgt != "" {
-			relByTarget[tgt] = jsonStr(rel, "relation_type")
+			relByTarget[tgt] = jsonutil.IfaceStr(rel, "relation_type")
 		}
 	}
 	out := make([]CascadeAffectedEntity, 0, len(nb.Entities))
 	for _, ent := range nb.Entities {
-		id := jsonStr(ent, "id")
+		id := jsonutil.IfaceStr(ent, "id")
 		if id == "" || id == centerID {
 			continue
 		}
 		out = append(out, CascadeAffectedEntity{
 			EntityID:     id,
-			EntityName:   jsonStr(ent, "name"),
-			EntityType:   jsonStr(ent, "entity_type"),
+			EntityName:   jsonutil.IfaceStr(ent, "name"),
+			EntityType:   jsonutil.IfaceStr(ent, "entity_type"),
 			RelationType: relByTarget[id],
 			Hops:         cascadeEntityHops(ent),
 		})
@@ -143,32 +146,10 @@ func (uc *L4CascadeUsecase) collectAffected(ctx context.Context, centerID string
 }
 
 func cascadeEntityHops(ent map[string]any) int {
-	if h := jsonInt(ent, "hop"); h > 0 {
+	if h := jsonutil.IfaceInt(ent, "hop"); h > 0 {
 		return h
 	}
 	return 1
-}
-
-func jsonInt(m map[string]any, key string) int {
-	if m == nil {
-		return 0
-	}
-	v, ok := m[key]
-	if !ok || v == nil {
-		return 0
-	}
-	switch t := v.(type) {
-	case int:
-		return t
-	case int32:
-		return int(t)
-	case int64:
-		return int(t)
-	case float64:
-		return int(t)
-	default:
-		return 0
-	}
 }
 
 func (uc *L4CascadeUsecase) ListRows(ctx context.Context, agentID, status string, limit int32) ([][]byte, error) {
@@ -190,13 +171,13 @@ func (uc *L4CascadeUsecase) Approve(ctx context.Context, id, reviewer string) ([
 	if err := json.Unmarshal(raw, &row); err != nil {
 		return nil, err
 	}
-	if jsonStr(row, "status") != "pending" {
+	if jsonutil.IfaceStr(row, "status") != "pending" {
 		return raw, nil
 	}
-	agentID := jsonStr(row, "agent_id")
-	entityID := jsonStr(row, "trigger_entity_id")
-	oldName := jsonStr(row, "old_value")
-	newName := jsonStr(row, "new_value")
+	agentID := jsonutil.IfaceStr(row, "agent_id")
+	entityID := jsonutil.IfaceStr(row, "trigger_entity_id")
+	oldName := jsonutil.IfaceStr(row, "old_value")
+	newName := jsonutil.IfaceStr(row, "new_value")
 	entRaw, err := uc.store.GetEntityRow(ctx, entityID)
 	if err != nil {
 		return nil, err
@@ -209,14 +190,14 @@ func (uc *L4CascadeUsecase) Approve(ctx context.Context, id, reviewer string) ([
 		ID:             entityID,
 		ScopeType:      "agent",
 		ScopeID:        agentID,
-		UserID:         jsonStr(ent, "user_id"),
-		EntityType:     jsonStr(ent, "entity_type"),
+		UserID:         jsonutil.IfaceStr(ent, "user_id"),
+		EntityType:     jsonutil.IfaceStr(ent, "entity_type"),
 		Name:           newName,
 		NameNormalized: strings.ToLower(newName),
-		Description:    jsonStr(ent, "description"),
+		Description:    jsonutil.IfaceStr(ent, "description"),
 		Importance:     0.85,
 		Confidence:     0.8,
-		MetadataJSON:   mergeCascadeAppliedMeta(jsonStr(ent, "metadata_json"), newName),
+		MetadataJSON:   mergeCascadeAppliedMeta(jsonutil.IfaceStr(ent, "metadata_json"), newName),
 	}); err != nil {
 		return nil, err
 	}
@@ -241,7 +222,7 @@ func (uc *L4CascadeUsecase) touchAffectedEntities(ctx context.Context, row map[s
 	if uc == nil || uc.graph == nil || uc.store == nil {
 		return nil
 	}
-	rawAffected := jsonStr(row, "affected_json")
+	rawAffected := jsonutil.IfaceStr(row, "affected_json")
 	if rawAffected == "" || rawAffected == "[]" {
 		return nil
 	}
@@ -249,6 +230,7 @@ func (uc *L4CascadeUsecase) touchAffectedEntities(ctx context.Context, row map[s
 	if err := json.Unmarshal([]byte(rawAffected), &affected); err != nil {
 		return err
 	}
+	var failedIDs []string
 	for _, aff := range affected {
 		id := strings.TrimSpace(aff.EntityID)
 		if id == "" || id == triggerID {
@@ -256,25 +238,32 @@ func (uc *L4CascadeUsecase) touchAffectedEntities(ctx context.Context, row map[s
 		}
 		entRaw, err := uc.store.GetEntityRow(ctx, id)
 		if err != nil {
+			failedIDs = append(failedIDs, id)
 			continue
 		}
 		var ent map[string]any
 		if err := json.Unmarshal(entRaw, &ent); err != nil {
+			failedIDs = append(failedIDs, id)
 			continue
 		}
-		_ = uc.graph.UpsertEntity(ctx, L4EntityWrite{
+		if err := uc.graph.UpsertEntity(ctx, L4EntityWrite{
 			ID:             id,
 			ScopeType:      "agent",
-			ScopeID:        jsonStr(row, "agent_id"),
-			UserID:         jsonStr(ent, "user_id"),
-			EntityType:     jsonStr(ent, "entity_type"),
-			Name:           jsonStr(ent, "name"),
-			NameNormalized: jsonStr(ent, "name_normalized"),
-			Description:    jsonStr(ent, "description"),
+			ScopeID:        jsonutil.IfaceStr(row, "agent_id"),
+			UserID:         jsonutil.IfaceStr(ent, "user_id"),
+			EntityType:     jsonutil.IfaceStr(ent, "entity_type"),
+			Name:           jsonutil.IfaceStr(ent, "name"),
+			NameNormalized: jsonutil.IfaceStr(ent, "name_normalized"),
+			Description:    jsonutil.IfaceStr(ent, "description"),
 			Importance:     0.5,
 			Confidence:     0.7,
-			MetadataJSON:   mergeCascadeLinkedMeta(jsonStr(ent, "metadata_json"), triggerID, newName),
-		})
+			MetadataJSON:   mergeCascadeLinkedMeta(jsonutil.IfaceStr(ent, "metadata_json"), triggerID, newName),
+		}); err != nil {
+			failedIDs = append(failedIDs, id)
+		}
+	}
+	if len(failedIDs) > 0 {
+		slog.Warn("touchAffectedEntities: some entities failed", "trigger_id", triggerID, "failed_ids", failedIDs)
 	}
 	return nil
 }

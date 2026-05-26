@@ -27,6 +27,7 @@ func (s *alertNotifySpy) count() int {
 type alertMonitorRepo struct {
 	total  int32
 	errors int32
+	rules  []MonitorAlertRule
 }
 
 func (r *alertMonitorRepo) ListAuditLogs(ctx context.Context, query AuditQuery) (AuditListResult, error) {
@@ -58,6 +59,9 @@ func (r *alertMonitorRepo) GetMonitorTrace(ctx context.Context, id string) (Moni
 }
 
 func (r *alertMonitorRepo) ListAlertRules(ctx context.Context) ([]MonitorAlertRule, error) {
+	if len(r.rules) > 0 {
+		return r.rules, nil
+	}
 	return []MonitorAlertRule{{
 		ID: "r1", Name: "test", MetricKey: "runner.error_rate",
 		Threshold: 0.5, WindowMinutes: 60, Enabled: true, CooldownMinutes: 60,
@@ -65,6 +69,7 @@ func (r *alertMonitorRepo) ListAlertRules(ctx context.Context) ([]MonitorAlertRu
 }
 
 func (r *alertMonitorRepo) ReplaceAlertRules(ctx context.Context, rules []MonitorAlertRule) error {
+	r.rules = append([]MonitorAlertRule(nil), rules...)
 	return nil
 }
 
@@ -101,6 +106,33 @@ func TestEvaluateAlerts_cooldownSuppressesRepeatFire(t *testing.T) {
 	if spy.count() != 1 {
 		t.Fatalf("expected cooldown to suppress second notify, got %d", spy.count())
 	}
+}
+
+func TestEvaluateAlerts_skillFilesystemMissingCount(t *testing.T) {
+	repo := &alertMonitorRepo{}
+	spy := &alertNotifySpy{}
+	uc := NewMonitorUsecase(repo, spy)
+	uc.SetFilesystemHealthReader(filesystemHealthStub{missing: 3})
+	ctx := context.Background()
+
+	rules := []MonitorAlertRule{{
+		ID: "fs1", Name: "skill missing", MetricKey: "skill.filesystem_missing_count",
+		Threshold: 1, Enabled: true, CooldownMinutes: 60, Severity: "warn",
+	}}
+	repo.rules = rules
+	uc.EvaluateAlerts(ctx)
+	if spy.count() != 1 {
+		t.Fatalf("expected 1 notify, got %d", spy.count())
+	}
+}
+
+type filesystemHealthStub struct {
+	missing int
+	pending int
+}
+
+func (s filesystemHealthStub) FilesystemHealthStats(_ context.Context) (int, int, error) {
+	return s.missing, s.pending, nil
 }
 
 func TestShouldFireAlert_respectsCooldown(t *testing.T) {

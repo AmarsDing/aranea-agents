@@ -70,9 +70,9 @@ func NewEvolutionUsecase(
 }
 
 func (uc *EvolutionUsecase) GetEvolutionMetrics(ctx context.Context, agentID string, timeRange string) (EvolutionMetrics, error) {
-	agentID = strings.TrimSpace(agentID)
-	if agentID == "" {
-		return EvolutionMetrics{}, kerrors.BadRequest("EVOLUTION", "agent_id is required")
+	agentID, err := requireNonEmpty(agentID, "EVOLUTION", "agent_id")
+	if err != nil {
+		return EvolutionMetrics{}, err
 	}
 	since := timeRangeToSince(timeRange)
 	toolRate, toolSeries, err := uc.metricsRepo.GetToolSuccessRate(ctx, agentID, since)
@@ -104,17 +104,17 @@ func (uc *EvolutionUsecase) GetEvolutionMetrics(ctx context.Context, agentID str
 }
 
 func (uc *EvolutionUsecase) GetEvolutionSuggestions(ctx context.Context, agentID string, status string) ([]EvolutionSuggestion, error) {
-	agentID = strings.TrimSpace(agentID)
-	if agentID == "" {
-		return nil, kerrors.BadRequest("EVOLUTION", "agent_id is required")
+	agentID, err := requireNonEmpty(agentID, "EVOLUTION", "agent_id")
+	if err != nil {
+		return nil, err
 	}
 	return uc.suggestionRepo.ListByAgent(ctx, agentID, status)
 }
 
 func (uc *EvolutionUsecase) GetSuggestionByID(ctx context.Context, id string) (EvolutionSuggestion, error) {
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return EvolutionSuggestion{}, kerrors.BadRequest("EVOLUTION", "id is required")
+	id, err := requireNonEmpty(id, "EVOLUTION", "id")
+	if err != nil {
+		return EvolutionSuggestion{}, err
 	}
 	return uc.suggestionRepo.GetByID(ctx, id)
 }

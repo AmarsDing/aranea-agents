@@ -13,6 +13,7 @@ import (
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/skill/storage"
 	"aranea-agents/internal/skill/importer"
+	"aranea-agents/pkg/safego"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/go-kratos/kratos/v2/log"
@@ -26,11 +27,21 @@ type Runner struct {
 	sys      biz.SystemSettingRepo
 	log      log.Logger
 	eventBus event.Bus
+	reporter SyncReporter
+	alertEval AlertEvaluator
 
 	mu           sync.Mutex
 	timer        *time.Timer
 	pending      map[string]struct{}
 	childWatches []string
+}
+
+// SetSyncReporter configures optional monitor/audit notifications.
+func (r *Runner) SetSyncReporter(reporter SyncReporter) {
+	if r == nil {
+		return
+	}
+	r.reporter = reporter
 }
 
 // NewRunner returns a filesystem watcher. Pass nil logger to disable structured logs.
@@ -78,6 +89,7 @@ func (r *Runner) Start(ctx context.Context) {
 
 	r.logf(log.LevelInfo, "skill.fs.scan", "msg", "skill watch: startup scan", "path", root)
 	r.scanAll(ctx, root, biz.SkillInvocationSourceFilesystemScan)
+	r.startReconcileLoop(ctx)
 
 	for {
 		select {
@@ -221,6 +233,7 @@ func (r *Runner) syncSlug(ctx context.Context, root, slug, source string) {
 			Source:       source,
 		})
 		r.logf(log.LevelWarn, sourceTag, "slug", slug, "status", "missing", "err", errMsg)
+		r.reportSync(ctx, "skill.filesystem.missing", slug, "Skill 磁盘目录缺失: "+slug, "warn")
 		return
 	}
 	_ = r.uc.MarkFilesystemMissing(ctx, slug, false)
@@ -232,6 +245,12 @@ func (r *Runner) syncSlug(ctx context.Context, root, slug, source string) {
 		return
 	}
 	candidate, tags := importer.ValidateSkillPackage(files, slug, nil, true)
+	if mismatch := importer.DirectorySlugMismatch(slug, candidate.Slug); mismatch != nil {
+		r.recordFailure(ctx, slug, source, t0, mismatch.Type, errors.New(mismatch.Message))
+		r.logf(log.LevelWarn, "skill.fs.error", "slug", slug, "msg", mismatch.Message)
+		r.reportSync(ctx, "skill.filesystem.rejected", slug, mismatch.Message, "warn")
+		return
+	}
 	if candidate.ValidationStatus != "pass" || len(candidate.Blocks) > 0 {
 		msg := "validation failed"
 		if len(candidate.Blocks) > 0 {
@@ -239,13 +258,20 @@ func (r *Runner) syncSlug(ctx context.Context, root, slug, source string) {
 		}
 		r.recordFailure(ctx, slug, source, t0, "validate", errors.New(msg))
 		r.logf(log.LevelWarn, "skill.fs.error", "slug", slug, "msg", msg)
+		r.reportSync(ctx, "skill.filesystem.rejected", slug, msg, "warn")
 		return
 	}
 	body := string(files["SKILL.md"])
 	if body == "" {
 		body = string(files["skill.md"])
 	}
-	sk, err := r.uc.UpsertSkillFromDisk(ctx, biz.SkillDiskSyncInput{
+	wasMissing := false
+	isNew := true
+	if existing, err := r.uc.GetBySlug(ctx, slug); err == nil {
+		isNew = false
+		wasMissing = existing.FilesystemMissing
+	}
+	sk, outcome, err := r.uc.UpsertSkillFromDisk(ctx, biz.SkillDiskSyncInput{
 		Name:        candidate.Name,
 		Slug:        candidate.Slug,
 		Description: candidate.Description,
@@ -274,6 +300,25 @@ func (r *Runner) syncSlug(ctx context.Context, root, slug, source string) {
 		Source:        source,
 	})
 	r.logf(log.LevelInfo, sourceTag, "slug", slug, "skill_id", sk.ID, "duration_ms", dur)
+	eventKey := "skill.filesystem.updated"
+	severity := "info"
+	message := "Skill 磁盘同步: " + sk.Name
+	switch {
+	case outcome.RevertedToDraft:
+		eventKey = "skill.filesystem.updated"
+		severity = "warn"
+		message = "磁盘内容已变更，Skill 已回退为草稿并停用: " + sk.Name
+	case wasMissing:
+		eventKey = "skill.filesystem.recovered"
+		message = "Skill 磁盘目录已恢复: " + sk.Name
+	case isNew:
+		eventKey = "skill.filesystem.imported"
+		message = "检测到新磁盘 Skill（待发布）: " + sk.Name
+	}
+	r.reportSync(ctx, eventKey, slug, message, severity)
+	if isNew {
+		r.checkSimilarityAsync(slug, candidate.Name)
+	}
 	if r.eventBus != nil {
 		env := event.NewEnvelope("skill.reload", "skill.watch", "")
 		env.Metadata = map[string]any{"slug": slug}
@@ -304,4 +349,44 @@ func preview(s string) string {
 	}
 	r := []rune(s)
 	return string(r[:512]) + "..."
+}
+
+func (r *Runner) checkSimilarityAsync(slug, name string) {
+	if r == nil || r.uc == nil {
+		return
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return
+	}
+	slug = strings.TrimSpace(slug)
+	safego.Go(context.Background(), "skill.fs.similarity", func() {
+		ctx := context.Background()
+		sources, err := r.uc.ListSimilaritySources(ctx)
+		if err != nil {
+			return
+		}
+		for _, item := range sources {
+			if strings.EqualFold(strings.TrimSpace(item.Slug), slug) {
+				continue
+			}
+			if strings.EqualFold(strings.TrimSpace(item.Name), name) {
+				r.reportSync(ctx, "skill.filesystem.similarity_warn", slug,
+					"磁盘 Skill "+name+" 与已有 Skill "+item.Name+" 名称相同，建议 review", "warn")
+				return
+			}
+		}
+	})
+}
+
+func (r *Runner) reportSync(ctx context.Context, eventKey, slug, message, severity string) {
+	if r == nil || r.reporter == nil {
+		return
+	}
+	r.reporter.ReportFilesystemSync(ctx, SyncReport{
+		EventKey: eventKey,
+		Slug:     slug,
+		Message:  message,
+		Severity: severity,
+	})
 }

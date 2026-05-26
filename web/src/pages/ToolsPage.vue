@@ -1,5 +1,5 @@
 <template>
-  <q-page class="app-page-cream app-registry-page tools-page">
+  <q-page class="app-standard-page app-registry-page tools-page">
     <tool-hero-section kicker="Tool registry" title="Tools 管理" subtitle="统一管理 Tool 元数据、运行时绑定、风险策略、配置 Schema 与调用记录。">
       <template #actions>
         <q-btn outline rounded no-caps class="app-outline-btn" icon="policy" label="审计日志" :to="{ name: 'tool-audits' }" />
@@ -44,7 +44,7 @@
       @remove="removeTool"
     />
 
-    <skill-pagination v-model:page="page" v-model:page-size="pageSize" :page-max="pageMax" :total="total" :loading="loading" label="个 Tool" />
+    <AppRegistryPagination v-model:page="page" v-model:page-size="pageSize" :page-max="pageMax" :total="total" :loading="loading" label="个 Tool" />
 
     <tool-detail-dialog v-model:open="detailOpen" :tool="detailTarget">
       <tool-detail-content
@@ -87,7 +87,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
 import { storeToRefs } from "pinia";
-import SkillPagination from "../components/skills/SkillPagination.vue";
+import AppRegistryPagination from "../components/layout/AppRegistryPagination.vue";
 import ToolHeroSection from "../components/tools/ToolHeroSection.vue";
 import ToolsMetricStrip from "../components/tools/ToolsMetricStrip.vue";
 import ToolCatalogFilters from "../components/tools/ToolCatalogFilters.vue";

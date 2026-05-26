@@ -10,8 +10,8 @@ import (
 )
 
 // L2MemoryCue formats episodic memories for prompt injection (keyword/vector rerank when query set).
-func L2MemoryCue(ctx context.Context, l2 biz.MemoryL2Recaller, ag biz.Agent, sessionID, query string, limit int) string {
-	if l2 == nil || ag.Settings == nil || !ag.Settings.L2RecallEnabled {
+func L2MemoryCue(ctx context.Context, l2 biz.MemoryL2Recaller, ag biz.Agent, policy biz.MemoryRuntimePolicy, sessionID, query string, limit int) string {
+	if l2 == nil || !policy.RecallL2 {
 		return ""
 	}
 	agentID := strings.TrimSpace(ag.ID)
@@ -19,7 +19,7 @@ func L2MemoryCue(ctx context.Context, l2 biz.MemoryL2Recaller, ag biz.Agent, ses
 		return ""
 	}
 	if limit <= 0 {
-		limit = int(ag.Settings.L2RecallMax)
+		limit = policy.L2RecallMax
 	}
 	if limit <= 0 {
 		limit = 3

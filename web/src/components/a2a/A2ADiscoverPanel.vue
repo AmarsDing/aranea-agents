@@ -1,60 +1,87 @@
 <template>
   <div>
-    <q-card flat class="app-registry-panel">
-      <q-card-section class="app-form-field-grid app-registry-toolbar items-end">
-        <q-input v-model="workspace" class="app-field-md" dense outlined clearable label="Workspace" />
-        <q-input v-model="capability" class="app-field-md" dense outlined clearable label="Capability" />
-        <div class="app-actions-bar app-actions-bar--start">
-          <q-btn color="primary" unelevated no-caps rounded icon="search" label="发现" :loading="loading" @click="$emit('discover')" />
-        </div>
-      </q-card-section>
-    </q-card>
-    <div class="app-registry-table-shell">
-      <q-table
-        flat
-        dense
-        class="app-registry-table"
-        :rows="agents"
-        :columns="columns"
-        row-key="agent_id"
-        :loading="loading"
-        :pagination="{ rowsPerPage: 10 }"
-      >
-        <template #body-cell-agent_id="props">
-          <q-td :props="props">
-            <div class="app-registry-cell-primary">{{ props.row.agent_id }}</div>
-          </q-td>
-        </template>
-        <template #body-cell-enabled="props">
-          <q-td :props="props">
-            <q-chip dense :color="props.row.enabled ? 'positive' : 'grey'" text-color="white" size="sm">
-              {{ props.row.enabled ? "启用" : "禁用" }}
-            </q-chip>
-          </q-td>
-        </template>
-        <template #body-cell-capabilities="props">
-          <q-td :props="props">
-            <div class="app-registry-chip-wrap">
-              <q-chip v-for="c in props.row.capabilities" :key="c.name" dense outline size="sm">{{ c.name }}</q-chip>
-            </div>
-          </q-td>
-        </template>
-      </q-table>
-    </div>
+    <AppPageToolbar>
+      <q-input v-model="workspace" class="app-page-toolbar__field" dense outlined clearable label="Workspace" />
+      <q-input v-model="capability" class="app-page-toolbar__field" dense outlined clearable label="Capability" />
+      <template #actions>
+        <q-btn flat rounded no-caps icon="restart_alt" label="重置" @click="resetFilters" />
+        <q-btn color="primary" unelevated no-caps rounded icon="search" label="发现" :loading="loading" @click="$emit('discover')" />
+      </template>
+    </AppPageToolbar>
+    <AppRegistryTable
+      :rows="pagedRows"
+      :columns="columns"
+      row-key="agent_id"
+      :loading="loading"
+      hide-pagination
+      :pagination="{ rowsPerPage: 0 }"
+    >
+      <template #body-cell-agent_id="props">
+        <q-td :props="props">
+          <div class="app-registry-cell-primary ellipsis" :title="props.row.agent_id">{{ props.row.agent_id }}</div>
+        </q-td>
+      </template>
+      <template #body-cell-display_name="props">
+        <q-td :props="props">
+          <span class="app-registry-cell-sub ellipsis" :title="props.row.display_name">{{ props.row.display_name || "—" }}</span>
+        </q-td>
+      </template>
+      <template #body-cell-enabled="props">
+        <q-td :props="props">
+          <q-chip dense :color="props.row.enabled ? 'positive' : 'grey'" text-color="white" size="sm">
+            {{ props.row.enabled ? "启用" : "禁用" }}
+          </q-chip>
+        </q-td>
+      </template>
+      <template #body-cell-capabilities="props">
+        <q-td :props="props">
+          <div class="app-registry-chip-wrap">
+            <q-chip v-for="c in props.row.capabilities" :key="c.name" dense outline size="sm">{{ c.name }}</q-chip>
+          </div>
+        </q-td>
+      </template>
+    </AppRegistryTable>
+    <AppRegistryPagination
+      v-model:page="page"
+      v-model:page-size="pageSize"
+      :page-max="pageMax"
+      :total="agents.length"
+      :loading="loading"
+      label="个 Agent"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
+import { computed, ref } from "vue";
+import AppPageToolbar from "../layout/AppPageToolbar.vue";
+import AppRegistryTable from "../layout/AppRegistryTable.vue";
+import AppRegistryPagination from "../layout/AppRegistryPagination.vue";
 import type { A2AAgentCard } from "../../features/a2a/types";
+import type { RegistryTableColumn } from "../../features/ui/registryTableColumns";
 
-defineProps<{
+const props = defineProps<{
   agents: A2AAgentCard[];
   loading: boolean;
-  columns: { name: string; label: string; field: string; align: "left" | "right" | "center"; style?: string }[];
+  columns: RegistryTableColumn<A2AAgentCard>[];
 }>();
 
 const workspace = defineModel<string>("workspace", { default: "" });
 const capability = defineModel<string>("capability", { default: "" });
 
 defineEmits<{ discover: [] }>();
+
+const page = ref(1);
+const pageSize = ref(10);
+const pageMax = computed(() => Math.max(1, Math.ceil(props.agents.length / pageSize.value)));
+const pagedRows = computed(() => {
+  const start = (page.value - 1) * pageSize.value;
+  return props.agents.slice(start, start + pageSize.value);
+});
+
+function resetFilters() {
+  workspace.value = "";
+  capability.value = "";
+  page.value = 1;
+}
 </script>

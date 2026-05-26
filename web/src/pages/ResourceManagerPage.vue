@@ -1,21 +1,17 @@
 ﻿<template>
-  <q-page :class="['app-registry-page resource-manager-page', { 'is-dark': isDark }]">
-    <div class="app-page-shell">
+  <q-page :class="['app-standard-page app-registry-page resource-manager-page', { 'is-dark': isDark }]">
     <template v-if="isProviderResource">
-      <section class="app-page-hero provider-page-hero">
-        <div>
-          <div class="app-page-kicker">LLM Provider</div>
-          <h1 class="app-page-title">{{ pageTitle }}</h1>
-          <p class="app-page-subtitle">{{ pageSubtitle }}</p>
-        </div>
-        <q-btn color="primary" unelevated rounded icon="add" label="添加 Provider" @click="openCreate" />
-      </section>
+      <AppPageHero kicker="LLM Provider" :title="pageTitle" :subtitle="pageSubtitle">
+        <template #actions>
+          <q-btn color="primary" unelevated rounded icon="add" label="添加 Provider" @click="openCreate" />
+        </template>
+      </AppPageHero>
 
       <q-card flat bordered class="app-entity-glass-panel provider-card">
-        <q-card-section class="provider-toolbar__inner">
+        <q-card-section class="app-page-toolbar__body">
           <q-input
             v-model="keyword"
-            class="provider-toolbar__search provider-control"
+            class="app-page-toolbar__search provider-control"
             dense
             outlined
             clearable
@@ -26,7 +22,7 @@
           </q-input>
           <q-select
             v-model="providerTypeFilter"
-            class="provider-toolbar__filter provider-control"
+            class="app-page-toolbar__field provider-control"
             dense
             outlined
             multiple
@@ -45,24 +41,36 @@
           </q-card-section>
         </div>
 
-        <div v-else-if="pagedProviderRows.length" class="provider-table">
-          <ProviderModelListHeader :is-dark="isDark" />
-          <div class="provider-table__body provider-list">
-            <ProviderModelRow
-              v-for="row in pagedProviderRows"
-              :key="row.id"
-              :row="row"
-              :saving="saving"
-              :list-key-visible="listKeyState(row.id).visible"
-              :list-key-revealing="listKeyState(row.id).revealing"
-              :list-revealed-api-key="listKeyState(row.id).value"
-              @toggle-enabled="toggleEnabled"
-              @toggle-reveal-key="toggleListKeyReveal"
-              @trend="openTrend"
-              @edit="openEdit"
-              @delete="confirmRemoveRow"
-            />
+        <div v-else-if="pagedProviderRows.length" class="app-registry-table-shell provider-table-shell">
+          <div class="provider-table">
+            <ProviderModelListHeader :is-dark="isDark" />
+            <div class="provider-table__body provider-list">
+              <ProviderModelRow
+                v-for="row in pagedProviderRows"
+                :key="row.id"
+                :row="row"
+                :saving="saving"
+                :list-key-visible="listKeyState(row.id).visible"
+                :list-key-revealing="listKeyState(row.id).revealing"
+                :list-revealed-api-key="listKeyState(row.id).value"
+                @toggle-enabled="toggleEnabled"
+                @toggle-reveal-key="toggleListKeyReveal"
+                @trend="openTrend"
+                @edit="openEdit"
+                @delete="confirmRemoveRow"
+              />
+            </div>
           </div>
+
+          <AppRegistryPagination
+            v-model:page="page"
+            v-model:page-size="rowsPerPage"
+            :page-max="pageCount"
+            :total="filteredRows.length"
+            :loading="loading"
+            label="条模型"
+            :page-size-options="[10, 20, 50]"
+          />
         </div>
 
         <q-card-section v-else class="app-registry-empty empty-state">
@@ -71,12 +79,6 @@
           <div class="text-caption text-grey-7">添加 Provider 后，可为每个模型配置能力分类、密钥和性能指标。</div>
           <q-btn class="q-mt-md" color="primary" unelevated rounded icon="add" label="添加 Provider" @click="openCreate" />
         </q-card-section>
-
-        <q-separator />
-        <q-card-actions class="app-registry-pagination pagination-bar">
-          <div class="text-caption text-grey-7">共 {{ filteredRows.length }} 条，每页 {{ rowsPerPage }} 条</div>
-          <q-pagination v-model="page" :max="pageCount" direction-links boundary-links color="primary" />
-        </q-card-actions>
       </q-card>
     </template>
 
@@ -96,8 +98,8 @@
         </div>
       </q-card-section>
       <q-separator />
-      <q-table
-        flat
+      <AppRegistryTable
+        :shell="false"
         :rows="filteredRows"
         :columns="columns"
         row-key="id"
@@ -117,7 +119,7 @@
             <q-btn flat dense round icon="delete" color="negative" :aria-label="`删除 ${props.row.name}`" @click="confirmRemoveRow(props.row)" />
           </q-td>
         </template>
-      </q-table>
+      </AppRegistryTable>
     </q-card>
 
     <q-dialog v-model="dialogOpen" persistent>
@@ -329,10 +331,26 @@
             dense
             outlined
             label="Provider ID *"
-            hint="目录模式下为 models.dev 供应商 id"
+            hint="厂商 ID（如 deepseek），勿填模型名；目录模式下为 models.dev 供应商 id"
             :readonly="providerAddMode === 'catalog'"
             :rules="[providerCodeRule]"
           />
+          <q-banner
+            v-if="providerRuntimeBindingPreview"
+            dense
+            rounded
+            class="app-grid-span-full bg-info text-white text-caption"
+          >
+            {{ providerRuntimeBindingPreview }}
+          </q-banner>
+          <q-banner
+            v-if="editingId && providerIdentityChanged"
+            dense
+            rounded
+            class="app-grid-span-full app-banner-warning text-caption"
+          >
+            已修改 Provider ID 或模型 ID，保存前请点击模型旁的「检查」验证连通性。
+          </q-banner>
           <q-input
             v-model="providerForm.provider_display_name"
             dense
@@ -464,7 +482,15 @@
           <div v-else class="text-caption text-grey-7 app-grid-span-full q-mb-sm">从目录选择模型后自动填充；自定义模型可留空。</div>
 
           <div class="section-label app-grid-span-full">价格快照（USD / 1M tokens）</div>
-          <q-banner v-if="showPricingWarning" dense rounded class="app-banner-warning app-grid-span-full q-mb-sm">
+          <q-banner
+            v-if="providerAddMode === 'catalog' && catalogPricingMissing"
+            dense
+            rounded
+            class="app-banner-warning app-grid-span-full q-mb-sm"
+          >
+            目录中该模型未提供定价（或尚未同步 models.dev）。请前往「系统设置 → 模型目录」执行同步，或在此手动填写价格。
+          </q-banner>
+          <q-banner v-else-if="showPricingWarning" dense rounded class="app-banner-warning app-grid-span-full q-mb-sm">
             {{ pricingWarningMessage() }}
           </q-banner>
           <q-input v-model.number="providerForm.input_price_usd_per_1m" dense outlined type="number" min="0" step="0.0001" label="输入价格" />
@@ -559,8 +585,12 @@
             :disable="saving || !canSubmitNewProviderModel"
             @click="saveRow"
           >
-            <q-tooltip v-if="isProviderResource && !editingId && !canSubmitNewProviderModel">
-              远程模型需先点击「检查」并通过验证后再创建；本地自定义模型可直接创建
+            <q-tooltip v-if="isProviderResource && !canSubmitNewProviderModel">
+              {{
+                editingId && providerIdentityChanged
+                  ? "修改 Provider/模型 ID 后需先「检查」"
+                  : "远程模型需先点击「检查」并通过验证后再创建；本地自定义模型可直接创建"
+              }}
             </q-tooltip>
           </q-btn>
         </q-card-actions>
@@ -576,11 +606,13 @@
       :loading="trendOverviewLoading"
       @update:metric="trendMetric = $event"
     />
-    </div>
   </q-page>
 </template>
 
 <script setup lang="ts">
+import AppPageHero from "../components/layout/AppPageHero.vue";
+import AppRegistryTable from "../components/layout/AppRegistryTable.vue";
+import AppRegistryPagination from "../components/layout/AppRegistryPagination.vue";
 import ProviderHAConfig from "../components/platform/ProviderHAConfig.vue";
 import ProviderModelListHeader from "../components/platform/ProviderModelListHeader.vue";
 import ProviderModelRow from "../components/platform/ProviderModelRow.vue";
@@ -650,6 +682,9 @@ const {
   secretKeyMaskedPlaceholder,
   showPricingWarning,
   canSubmitNewProviderModel,
+  providerIdentityChanged,
+  providerRuntimeBindingPreview,
+  catalogPricingMissing,
   providerModelOptions,
   dialogTitle,
   dialogSubtitle,

@@ -1,67 +1,66 @@
 <template>
-  <q-card flat bordered class="agents-filter-card app-entity-toolbar app-entity-toolbar--offset">
-    <q-card-section class="app-entity-toolbar__body app-form-field-grid items-end">
-      <q-input v-model="keyword" class="app-field-md agent-control" dense outlined clearable debounce="350" placeholder="搜索 Agent...">
-        <template #prepend><q-icon name="search" /></template>
-      </q-input>
-      <q-select
-        v-model="selectedStatus"
+  <AppPageToolbar variant="entity" offset class="agents-filter-card">
+    <q-input v-model="keyword" class="app-page-toolbar__search agent-control" dense outlined clearable debounce="350" placeholder="搜索 Agent...">
+      <template #prepend><q-icon name="search" /></template>
+    </q-input>
+    <q-select
+      v-model="selectedStatus"
+      class="app-page-toolbar__field agent-control"
+      dense
+      outlined
+      clearable
+      emit-value
+      map-options
+      label="All Types"
+      :options="statusOptions"
+    />
+    <q-select
+      v-model="selectedCreator"
+      class="app-page-toolbar__field agent-control"
+      dense
+      outlined
+      clearable
+      emit-value
+      map-options
+      label="创建者"
+      :options="creatorOptions"
+      option-value="user_id"
+      option-label="label"
+    />
+    <agent-category-filter v-model="selectedCategory" class="app-page-toolbar__field agent-category-field--toolbar" :tree="categoryTree" />
+    <q-select
+      v-model="selectedProvider"
+      class="app-page-toolbar__field agent-control"
+      dense
+      outlined
+      clearable
+      emit-value
+      map-options
+      label="Provider"
+      :options="providerOptions"
+    />
+    <template #actions>
+      <q-btn-toggle
+        v-model="viewMode"
         dense
-        outlined
-        clearable
-        emit-value
-        map-options
-        label="All Types"
-        :options="statusOptions"
-        class="agent-control"
-      />
-      <q-select
-        v-model="selectedCreator"
-        dense
-        outlined
-        clearable
-        emit-value
-        map-options
-        label="创建者"
-        :options="creatorOptions"
-        option-value="user_id"
-        option-label="label"
-        class="agent-control"
-      />
-      <agent-category-filter v-model="selectedCategory" :tree="categoryTree" />
-      <q-select
-        v-model="selectedProvider"
-        dense
-        outlined
-        clearable
-        emit-value
-        map-options
-        label="Provider"
-        :options="providerOptions"
-        class="agent-control"
-      />
-      <div class="app-actions-bar app-actions-bar--start">
-        <q-btn-toggle
-          v-model="viewMode"
-          dense
-          rounded
-          unelevated
-          class="app-view-toggle"
-          toggle-color="primary"
-          :options="[
-            { value: 'grid', slot: 'grid' },
-            { value: 'list', slot: 'list' }
-          ]"
-        >
-          <template #grid><q-icon name="grid_view" /></template>
-          <template #list><q-icon name="view_list" /></template>
-        </q-btn-toggle>
-      </div>
-    </q-card-section>
-  </q-card>
+        rounded
+        unelevated
+        class="app-view-toggle"
+        toggle-color="primary"
+        :options="[
+          { value: 'grid', slot: 'grid' },
+          { value: 'list', slot: 'list' }
+        ]"
+      >
+        <template #grid><q-icon name="grid_view" /></template>
+        <template #list><q-icon name="view_list" /></template>
+      </q-btn-toggle>
+    </template>
+  </AppPageToolbar>
 </template>
 
 <script setup lang="ts">
+import AppPageToolbar from "../layout/AppPageToolbar.vue";
 import AgentCategoryFilter from "./AgentCategoryFilter.vue";
 import type { PlatformResourceTreeNode } from "../../features/platform/types";
 

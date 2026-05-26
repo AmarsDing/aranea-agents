@@ -27,7 +27,7 @@ type Artifact struct {
 	RiskFlags       []string `json:"risk_flags"`
 }
 
-const intentSystem = `You classify and restate the user's request for a coding assistant. Reply with ONE JSON object only, no markdown fences, no commentary. Keys:
+const intentSystemCoding = `You classify and restate the user's request for a coding assistant. Reply with ONE JSON object only, no markdown fences, no commentary. Keys:
 - refined_goal (string): one clear sentence of what the user wants.
 - intent_kind (string): one of code_change, explain, debug, doc, research, other.
 - success_criteria (array of strings): measurable checks (e.g. "tests pass").
@@ -35,8 +35,18 @@ const intentSystem = `You classify and restate the user's request for a coding a
 - search_hints (array of strings): short literals useful for codebase search (identifiers, error substrings, file name fragments).
 - risk_flags (array of strings): e.g. touches_auth, migrations, or [].`
 
+const intentSystemGeneral = `You classify and restate the user's request. Reply with ONE JSON object only, no markdown fences, no commentary. Keys:
+- refined_goal (string): one clear sentence of what the user wants.
+- intent_kind (string): one of task, question, analysis, creative, research, other.
+- success_criteria (array of strings): measurable checks, or [].
+- ambiguities (array of strings): questions that still need human clarification, or [].
+- search_hints (array of strings): short keywords useful for retrieval or search tools, or [].
+- risk_flags (array of strings): e.g. sensitive_data, compliance, or [].`
+
+const minIntentPassRunes = 20
+
 // PassEffective returns whether the intent pass should run (extra LLM call).
-// Per-agent default comes from agent_runtime_settings.intent_pass_enabled (UI / API, default true).
+// Per-agent default comes from agent_runtime_settings.intent_pass_enabled (default false for new agents).
 // ARANEA_INTENT_PASS: unset → follow agent; "0"/"false"/"off"/"no" → off; "1"/"true"/"on"/"yes" → on; other non-empty values → follow agent.
 func PassEffective(agentIntentPassEnabled bool) bool {
 	v := strings.TrimSpace(os.Getenv("ARANEA_INTENT_PASS"))
@@ -53,12 +63,41 @@ func PassEffective(agentIntentPassEnabled bool) bool {
 	return agentIntentPassEnabled
 }
 
-// IntentPassFromAgent returns persisted intent-pass preference; default true when settings are missing.
+// IntentPassFromAgent returns persisted intent-pass preference; default false when settings are missing.
 func IntentPassFromAgent(ag biz.Agent) bool {
 	if ag.Settings != nil {
 		return ag.Settings.IntentPassEnabled
 	}
-	return true
+	return false
+}
+
+// ShouldRun reports whether the intent pass should execute for this agent and user text.
+func ShouldRun(ag biz.Agent, userText string) bool {
+	if !PassEffective(IntentPassFromAgent(ag)) {
+		return false
+	}
+	userText = strings.TrimSpace(userText)
+	return len([]rune(userText)) >= minIntentPassRunes
+}
+
+// IntentSystemForAgent selects coding vs general classifier prompt.
+func IntentSystemForAgent(ag biz.Agent) string {
+	if agentUsesCodingIntentTemplate(ag) {
+		return intentSystemCoding
+	}
+	return intentSystemGeneral
+}
+
+func agentUsesCodingIntentTemplate(ag biz.Agent) bool {
+	if ag.Settings == nil || !ag.Settings.ToolsEnabled {
+		return false
+	}
+	mode := strings.ToLower(strings.TrimSpace(ag.SystemPromptMode))
+	if mode == "none" || mode == "minimized" {
+		return false
+	}
+	profile := strings.ToLower(strings.TrimSpace(ag.Settings.ToolsProfile))
+	return profile == "" || profile == "full" || profile == "coding" || profile == "developer"
 }
 
 // RunResult is the outcome of Run (for main path wiring and TeamRunEvent / monitor).
@@ -135,6 +174,22 @@ func MonitorLogEntry(r RunResult, scope string, meta RunMeta) (level, msg string
 
 // Run calls a small chat completion to produce an Artifact. On skip or failure Artifact is nil with Outcome set.
 func Run(ctx context.Context, agentIntentPassEnabled bool, catalog *biz.LlmProviderModelUsecase, httpClient *http.Client, provider, model, userText string) (res RunResult) {
+	return runWithSystem(ctx, agentIntentPassEnabled, intentSystemCoding, catalog, httpClient, provider, model, userText)
+}
+
+// RunForAgent runs the intent pass with agent-aware gating and prompt template selection.
+func RunForAgent(ctx context.Context, ag biz.Agent, catalog *biz.LlmProviderModelUsecase, httpClient *http.Client, provider, model, userText string) (res RunResult) {
+	if !ShouldRun(ag, userText) {
+		res.Outcome = "skipped_disabled"
+		if PassEffective(IntentPassFromAgent(ag)) && strings.TrimSpace(userText) != "" && len([]rune(strings.TrimSpace(userText))) < minIntentPassRunes {
+			res.Outcome = "skipped_trivial"
+		}
+		return res
+	}
+	return runWithSystem(ctx, IntentPassFromAgent(ag), IntentSystemForAgent(ag), catalog, httpClient, provider, model, userText)
+}
+
+func runWithSystem(ctx context.Context, agentIntentPassEnabled bool, systemPrompt string, catalog *biz.LlmProviderModelUsecase, httpClient *http.Client, provider, model, userText string) (res RunResult) {
 	start := time.Now()
 	defer func() { res.Duration = time.Since(start) }()
 
@@ -158,7 +213,7 @@ func Run(ctx context.Context, agentIntentPassEnabled bool, catalog *biz.LlmProvi
 	agent.MergeProviderConfigJSON(row.ConfigJSON, &cfg)
 
 	msgs := []agent.OpenAICompatMessage{
-		{Role: "system", Content: intentSystem},
+		{Role: "system", Content: systemPrompt},
 		{Role: "user", Content: "User message:\n\n" + userText},
 	}
 	callCtx, cancel := context.WithTimeout(ctx, 45*time.Second)

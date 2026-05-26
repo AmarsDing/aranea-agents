@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/sessionmemory"
 	"aranea-agents/internal/event"
 	"aranea-agents/pkg/safego"
@@ -15,7 +16,6 @@ import (
 
 const (
 	memoryL3DecayDefaultInterval = 24 * time.Hour
-	memoryL3DecayMinFactAge      = 24 * time.Hour
 	memoryL3DecayBatchFactor     = 0.97
 )
 
@@ -23,16 +23,18 @@ const (
 type MemoryL3DecayWorker struct {
 	interval time.Duration
 	store    *sessionmemory.Store
+	agents   *biz.AgentUsecase
 	log      *log.Helper
 }
 
-func NewMemoryL3DecayWorker(interval time.Duration, store *sessionmemory.Store, logger log.Logger) *MemoryL3DecayWorker {
+func NewMemoryL3DecayWorker(interval time.Duration, store *sessionmemory.Store, agents *biz.AgentUsecase, logger log.Logger) *MemoryL3DecayWorker {
 	if interval <= 0 {
 		interval = memoryL3DecayDefaultInterval
 	}
 	return &MemoryL3DecayWorker{
 		interval: interval,
 		store:    store,
+		agents:   agents,
 		log:      log.NewHelper(logger),
 	}
 }
@@ -56,7 +58,38 @@ func (w *MemoryL3DecayWorker) Start(ctx context.Context) {
 
 func (w *MemoryL3DecayWorker) runOnce(ctx context.Context) {
 	safego.Go(ctx, "memory.l3_decay", func() {
-		cutoff := time.Now().UTC().Add(-memoryL3DecayMinFactAge).Format(time.RFC3339Nano)
+		if w.agents != nil {
+			targets, err := w.agents.ListMemoryMaintenanceTargets(ctx)
+			if err != nil {
+				event.SysLogWarn("memory.l3_decay", "L3 maintenance target list failed", event.P("error", err))
+				if w.log != nil {
+					w.log.Warnf("memory l3 decay: list targets: %v", err)
+				}
+				return
+			}
+			var total int
+			for _, t := range targets {
+				if !t.WriteL3Facts {
+					continue
+				}
+				intervalHours := t.L3DecayIntervalHours
+				if intervalHours <= 0 {
+					intervalHours = 24
+				}
+				cutoff := time.Now().UTC().Add(-time.Duration(intervalHours) * time.Hour).Format(time.RFC3339Nano)
+				n, err := w.store.ApplyAgentFactImportanceDecay(ctx, t.AgentID, cutoff, memoryL3DecayBatchFactor)
+				if err != nil {
+					event.SysLogWarn("memory.l3_decay", "L3 fact importance decay failed", event.P("agent_id", t.AgentID), event.P("error", err))
+					continue
+				}
+				total += n
+			}
+			if total > 0 && w.log != nil {
+				w.log.Infof("memory l3 decay: updated %d facts across %d agents", total, len(targets))
+			}
+			return
+		}
+		cutoff := time.Now().UTC().Add(-24 * time.Hour).Format(time.RFC3339Nano)
 		n, err := w.store.ApplyAllFactImportanceDecay(ctx, cutoff, memoryL3DecayBatchFactor)
 		if err != nil {
 			event.SysLogWarn("memory.l3_decay", "L3 fact importance decay failed", event.P("error", err))

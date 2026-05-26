@@ -2,6 +2,10 @@ import { ref } from "vue";
 import type { Message } from "../features/chat/types";
 import { createPlaceholderMessage } from "../features/chat/streamHandlers";
 import { patchStreamingMessage } from "../features/chat/streamContentPatch";
+import {
+  inferAssistantStreamTurnIndex,
+  realignEphemeralTurnIndexes,
+} from "../features/chat/streamTurnIndex";
 
 export type ChatStreamingSnapshot = {
   reasoning: string;
@@ -79,16 +83,22 @@ export function applyStreamingSnapshotToSession(
     }
     rows = [
       ...rows,
-      { ...createPlaceholderMessage(streamId, sessionId, "assistant", ""), status: "streaming" },
+      {
+        ...createPlaceholderMessage(streamId, sessionId, "assistant", ""),
+        turn_index: inferAssistantStreamTurnIndex(rows),
+        status: "streaming",
+      },
     ];
   }
 
   setMessages(
     sessionId,
-    patchStreamingMessage(rows, streamId, {
-      reasoning: snap.reasoning || undefined,
-      text: snap.partialText || undefined,
-      status: existingStream?.status === "ok" ? "ok" : "streaming",
-    })
+    realignEphemeralTurnIndexes(
+      patchStreamingMessage(rows, streamId, {
+        reasoning: snap.reasoning || undefined,
+        text: snap.partialText || undefined,
+        status: existingStream?.status === "ok" ? "ok" : "streaming",
+      })
+    )
   );
 }

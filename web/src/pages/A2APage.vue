@@ -1,17 +1,14 @@
 <template>
-  <q-page class="app-page-cream app-registry-page a2a-page">
-    <section class="app-page-hero">
-      <div>
-        <div class="app-page-kicker">Agent-to-Agent</div>
-        <h1 class="app-page-title">A2A 管理</h1>
-        <p class="app-page-subtitle">
-          发现 AgentCard、注册远程 Agent、查看调用审计、测试 Invoke（Admin 鉴权 + 工作区策略）。
-        </p>
-      </div>
-      <div class="app-actions-bar">
+  <q-page class="app-standard-page app-registry-page a2a-page">
+    <AppPageHero
+      kicker="Agent-to-Agent"
+      title="A2A 管理"
+      subtitle="发现 AgentCard、注册远程 Agent、查看调用审计、测试 Invoke（Admin 鉴权 + 工作区策略）。"
+    >
+      <template #actions>
         <q-btn outline rounded no-caps color="primary" icon="refresh" label="刷新" :loading="loading" @click="reload" />
-      </div>
-    </section>
+      </template>
+    </AppPageHero>
 
     <A2ARuntimeConfigBanner :config="runtimeConfig" />
 
@@ -43,19 +40,19 @@
         />
       </q-tab-panel>
       <q-tab-panel name="remote" class="q-pa-none q-gutter-md">
-        <div class="app-form-field-grid items-end q-mb-md">
+        <AppPageToolbar>
           <q-input
             v-model="remoteWorkspace"
-            class="app-field-md"
+            class="app-page-toolbar__field"
             dense
             outlined
             label="筛选工作区"
             hint="留空列出全部"
           />
-          <div class="app-actions-bar app-actions-bar--start">
+          <template #actions>
             <q-btn outline no-caps color="primary" label="刷新列表" :loading="remoteLoading" @click="loadRemote" />
-          </div>
-        </div>
+          </template>
+        </AppPageToolbar>
         <A2ARemoteAgentPanel
           :loading="remoteLoading"
           :discovering="remoteDiscoverLoading"
@@ -63,17 +60,22 @@
           @register="submitRemoteRegister"
           @discover="previewRemote"
         />
-        <div class="app-registry-table-shell">
-        <q-table
-          flat
-          dense
-          class="app-registry-table"
+        <AppRegistryTable
           row-key="id"
           :rows="remoteAgents"
           :columns="remoteColumns"
           :loading="remoteLoading"
+          hide-pagination
+          :pagination="{ rowsPerPage: 0 }"
           no-data-label="暂无远程注册"
         >
+          <template #body-cell-display_name="props">
+            <q-td :props="props">
+              <AppRegistryHoverTip :text="props.row.remote_url" empty-label="暂无 URL">
+                <span class="app-registry-cell-primary ellipsis">{{ props.row.display_name || props.row.remote_url || "—" }}</span>
+              </AppRegistryHoverTip>
+            </q-td>
+          </template>
           <template #body-cell-enabled="props">
             <q-td :props="props">
               <q-badge :color="props.row.enabled ? 'positive' : 'grey'" :label="props.row.enabled ? '启用' : '禁用'" />
@@ -82,12 +84,11 @@
           <template #body-cell-actions="props">
             <q-td :props="props">
               <div class="app-registry-cell-actions">
-                <q-btn flat dense round color="negative" icon="delete" @click="removeRemote(props.row.id)" />
+                <q-btn flat dense round color="negative" icon="delete" aria-label="删除" @click="removeRemote(props.row.id)" />
               </div>
             </q-td>
           </template>
-        </q-table>
-        </div>
+        </AppRegistryTable>
       </q-tab-panel>
       <q-tab-panel name="audit" class="q-pa-none">
         <A2AAuditPanel :rows="auditRows" :loading="auditLoading" :columns="auditColumns" :status-color="auditStatusColor" />
@@ -110,6 +111,10 @@
 </template>
 
 <script setup lang="ts">
+import AppPageHero from "../components/layout/AppPageHero.vue";
+import AppPageToolbar from "../components/layout/AppPageToolbar.vue";
+import AppRegistryTable from "../components/layout/AppRegistryTable.vue";
+import AppRegistryHoverTip from "../components/layout/AppRegistryHoverTip.vue";
 import A2ADiscoverPanel from "../components/a2a/A2ADiscoverPanel.vue";
 import A2AAuditPanel from "../components/a2a/A2AAuditPanel.vue";
 import A2AInvokePanel from "../components/a2a/A2AInvokePanel.vue";

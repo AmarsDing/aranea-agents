@@ -1,40 +1,39 @@
 <template>
-  <q-page :class="['app-entity-page app-entity-page--warm agent-categories-page', { 'is-dark': isDark }]">
-    <section class="app-page-hero">
-      <div>
-        <div class="app-page-kicker">Agent Type</div>
-        <h1 class="app-page-title">Agent 行业分类</h1>
-        <p class="app-page-subtitle">按行业、部门、职位三层组织 Agent 业务画像。创建 Agent 时仅绑定职位叶子，列表筛选同源读取数据库。</p>
-      </div>
-      <div class="category-actions">
-        <q-btn outline rounded color="primary" icon="refresh" label="刷新" :loading="loading" @click="() => loadTree()" />
-        <q-btn color="primary" rounded unelevated icon="add" label="新增行业" @click="openCreate('industry')" />
-      </div>
-    </section>
-
-    <q-card flat bordered class="app-entity-glass-panel category-toolbar">
-      <q-card-section class="category-toolbar__inner">
-        <q-input
-          v-model="keyword"
-          class="category-toolbar__search category-control"
-          dense
-          outlined
-          clearable
-          debounce="200"
-          placeholder="搜索行业、部门或职位..."
-        >
-          <template #prepend><q-icon name="search" /></template>
-        </q-input>
-        <div class="category-toolbar__aside">
-          <div class="category-stats">
-            <div class="app-entity-stat"><strong>{{ stats.industries }}</strong><span>行业</span></div>
-            <div class="app-entity-stat"><strong>{{ stats.departments }}</strong><span>部门</span></div>
-            <div class="app-entity-stat"><strong>{{ stats.positions }}</strong><span>职位</span></div>
-          </div>
-          <q-toggle v-model="onlyCustom" class="category-toolbar__toggle" color="primary" label="仅看自建" />
+  <q-page :class="['app-standard-page app-entity-page app-entity-page--warm agent-categories-page', { 'is-dark': isDark }]">
+    <AppPageHero
+      kicker="Agent Type"
+      title="Agent 行业分类"
+      subtitle="按行业、部门、职位三层组织 Agent 业务画像。创建 Agent 时仅绑定职位叶子，列表筛选同源读取数据库。"
+    >
+      <template #actions>
+        <div class="category-actions">
+          <q-btn outline rounded color="primary" icon="refresh" label="刷新" :loading="loading" @click="() => loadTree()" />
+          <q-btn color="primary" rounded unelevated icon="add" label="新增行业" @click="openCreate('industry')" />
         </div>
-      </q-card-section>
-    </q-card>
+      </template>
+    </AppPageHero>
+
+    <AppPageToolbar variant="entity" offset class="category-toolbar">
+      <q-input
+        v-model="keyword"
+        class="app-page-toolbar__search category-control"
+        dense
+        outlined
+        clearable
+        debounce="200"
+        placeholder="搜索行业、部门或职位..."
+      >
+        <template #prepend><q-icon name="search" /></template>
+      </q-input>
+      <template #actions>
+        <div class="category-stats">
+          <div class="app-entity-stat"><strong>{{ stats.industries }}</strong><span>行业</span></div>
+          <div class="app-entity-stat"><strong>{{ stats.departments }}</strong><span>部门</span></div>
+          <div class="app-entity-stat"><strong>{{ stats.positions }}</strong><span>职位</span></div>
+        </div>
+        <q-toggle v-model="onlyCustom" class="category-toolbar__toggle" color="primary" label="仅看自建" />
+      </template>
+    </AppPageToolbar>
 
     <q-card v-if="loading" flat bordered class="app-entity-glass-panel category-tree-shell q-mt-lg">
       <q-card-section>
@@ -121,6 +120,8 @@
 </template>
 
 <script setup lang="ts">
+import AppPageHero from "../components/layout/AppPageHero.vue";
+import AppPageToolbar from "../components/layout/AppPageToolbar.vue";
 import AgentCategoryTree from "../components/agents/AgentCategoryTree.vue";
 import { useAgentCategoriesPage } from "../features/platform/useAgentCategoriesPage";
 

@@ -70,24 +70,24 @@ func (c *HeuristicConsolidator) Extract(_ context.Context, in ConsolidateInput) 
 			continue
 		}
 		for _, pat := range c.patterns {
-			m := pat.FindStringSubmatch(text)
-			if len(m) <= 1 {
-				continue
-			}
-			stmt := strings.TrimSpace(m[0])
-			if stmt == "" {
-				continue
-			}
-			key := strings.ToLower(stmt)
-			if _, ok := seen[key]; ok {
-				continue
-			}
-			seen[key] = struct{}{}
-			out = append(out, MemoryProposal{
-				Layer:           MemoryLayerL3,
-				Statement:       stmt,
-				SourceMessageID: strings.TrimSpace(msg.MessageID),
-			})
+		m := pat.FindStringSubmatch(text)
+		if len(m) <= 1 {
+			continue
+		}
+		stmt := strings.TrimSpace(m[1])
+		if stmt == "" {
+			continue
+		}
+		key := strings.ToLower(stmt)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, MemoryProposal{
+			Layer:           MemoryLayerL3,
+			Statement:       stmt,
+			SourceMessageID: strings.TrimSpace(msg.MessageID),
+		})
 		}
 	}
 	return out, nil

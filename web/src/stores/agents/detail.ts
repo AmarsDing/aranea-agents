@@ -6,6 +6,7 @@ import {
   applyEvolutionSuggestion, rejectEvolutionSuggestion,
   type Agent, type EvolutionMetrics, type EvolutionSuggestion
 } from "../../features/agents/api";
+import type { AgentPromptPreview } from "../../features/agents/types";
 
 /** Agent 详情 / 设置页：HTTP 仅在此 Store actions（vue-design §0.1）。 */
 export const useAgentDetailStore = defineStore("agentDetail", () => {
@@ -31,7 +32,7 @@ export const useAgentDetailStore = defineStore("agentDetail", () => {
     }
   }
 
-  async function fetchPromptPreview(id: string, mode?: string): Promise<string> {
+  async function fetchPromptPreview(id: string, mode?: string): Promise<AgentPromptPreview> {
     previewLoading.value = true;
     try {
       return await getAgentPromptPreview(id, mode);

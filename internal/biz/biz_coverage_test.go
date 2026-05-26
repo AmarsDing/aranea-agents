@@ -60,17 +60,21 @@ func (m *memTeamRepoB) ListTeamRunSteps(_ context.Context, _ string) ([]biz.Team
 func (m *memTeamRepoB) CreateTeamRun(_ context.Context, r biz.TeamRun) (biz.TeamRun, error) {
 	return r, nil
 }
-func (m *memTeamRepoB) UpdateTeamRun(_ context.Context, _ biz.TeamRun) error { return nil }
+func (m *memTeamRepoB) UpdateTeamRun(_ context.Context, _ biz.TeamRun) error          { return nil }
 func (m *memTeamRepoB) UpdateTeamRunSummaryJSON(_ context.Context, _, _ string) error { return nil }
-func (m *memTeamRepoB) UpdateTeamRunGraphExecutionID(_ context.Context, _, _ string) error { return nil }
-func (m *memTeamRepoB) UpdateTeamRunTraceID(_ context.Context, _, _ string) error             { return nil }
+func (m *memTeamRepoB) UpdateTeamRunGraphExecutionID(_ context.Context, _, _ string) error {
+	return nil
+}
+func (m *memTeamRepoB) UpdateTeamRunTraceID(_ context.Context, _, _ string) error { return nil }
 func (m *memTeamRepoB) BatchCreateOrchestrationSteps(_ context.Context, _ []biz.OrchestrationStep) error {
 	return nil
 }
 func (m *memTeamRepoB) ListOrchestrationSteps(_ context.Context, _, _ string, _ int) ([]biz.OrchestrationStep, error) {
 	return nil, nil
 }
-func (m *memTeamRepoB) CreateTaskDeadLetter(_ context.Context, _ biz.TaskDeadLetter) error { return nil }
+func (m *memTeamRepoB) CreateTaskDeadLetter(_ context.Context, _ biz.TaskDeadLetter) error {
+	return nil
+}
 func (m *memTeamRepoB) ListTaskDeadLetters(_ context.Context, _ biz.TaskDeadLetterListFilter) ([]biz.TaskDeadLetter, error) {
 	return nil, nil
 }
@@ -82,7 +86,7 @@ func (m *memTeamRepoB) CreateTeamRunStep(_ context.Context, s biz.TeamRunStep) (
 }
 
 func TestTeamUsecase_CreateAndList(t *testing.T) {
-	uc := biz.NewTeamUsecase(newMemTeamRepoB())
+	uc := biz.NewTeamUsecase(newMemTeamRepoB(), nil)
 	ctx := context.Background()
 
 	team, err := uc.Create(ctx, biz.Team{TeamKey: "alpha", DisplayName: "Alpha Team"})
@@ -103,7 +107,7 @@ func TestTeamUsecase_CreateAndList(t *testing.T) {
 }
 
 func TestTeamUsecase_Create_Validation(t *testing.T) {
-	uc := biz.NewTeamUsecase(newMemTeamRepoB())
+	uc := biz.NewTeamUsecase(newMemTeamRepoB(), nil)
 	ctx := context.Background()
 
 	_, err := uc.Create(ctx, biz.Team{TeamKey: "", DisplayName: "X"})
@@ -119,7 +123,7 @@ func TestTeamUsecase_Create_Validation(t *testing.T) {
 
 func TestTeamUsecase_Delete_DefaultBlocked(t *testing.T) {
 	repo := newMemTeamRepoB()
-	uc := biz.NewTeamUsecase(repo)
+	uc := biz.NewTeamUsecase(repo, nil)
 	ctx := context.Background()
 
 	team, _ := uc.Create(ctx, biz.Team{TeamKey: "default", DisplayName: "Default"})
@@ -135,7 +139,7 @@ func TestTeamUsecase_Delete_DefaultBlocked(t *testing.T) {
 }
 
 func TestTeamUsecase_Update(t *testing.T) {
-	uc := biz.NewTeamUsecase(newMemTeamRepoB())
+	uc := biz.NewTeamUsecase(newMemTeamRepoB(), nil)
 	ctx := context.Background()
 
 	team, _ := uc.Create(ctx, biz.Team{TeamKey: "t1", DisplayName: "Original"})
@@ -149,7 +153,7 @@ func TestTeamUsecase_Update(t *testing.T) {
 }
 
 func TestTeamUsecase_Duplicate(t *testing.T) {
-	uc := biz.NewTeamUsecase(newMemTeamRepoB())
+	uc := biz.NewTeamUsecase(newMemTeamRepoB(), nil)
 	ctx := context.Background()
 
 	team, _ := uc.Create(ctx, biz.Team{TeamKey: "orig", DisplayName: "Orig"})

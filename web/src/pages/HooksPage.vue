@@ -1,40 +1,37 @@
 <template>
-  <q-page class="app-page-cream app-registry-page hooks-page">
-    <section class="app-page-hero">
-      <div>
-        <div class="app-page-kicker">Callback rules</div>
-        <h1 class="app-page-title">Hook / Callback rules</h1>
-        <p class="app-page-subtitle">
-          Configure lifecycle hooks for Agent, Model, Tool, and Runner events (log, notify, block, modify).
-        </p>
-      </div>
-      <div class="app-actions-bar">
+  <q-page class="app-standard-page app-registry-page hooks-page">
+    <AppPageHero
+      kicker="Callback rules"
+      title="Hook / Callback rules"
+      subtitle="Configure lifecycle hooks for Agent, Model, Tool, and Runner events (log, notify, block, modify)."
+    >
+      <template #actions>
         <q-btn outline rounded no-caps icon="send" label="投递队列" to="/hooks/deliveries" />
         <q-btn outline rounded no-caps icon="history" label="运行记录" to="/plugins/runs" />
         <q-btn color="primary" rounded unelevated no-caps icon="add" label="New Hook" @click="openCreate" />
-      </div>
-    </section>
+      </template>
+    </AppPageHero>
 
-    <q-card flat class="app-registry-panel">
-      <q-card-section class="app-form-field-grid app-registry-toolbar items-end">
-        <q-input v-model="search" class="app-field-md" dense outlined clearable debounce="200" label="Search">
-          <template #prepend><q-icon name="search" /></template>
-        </q-input>
-        <q-select
-          v-model="filterPoint"
-          dense
-          outlined
-          clearable
-          emit-value
-          map-options
-          label="回调点"
-          :options="callbackPointOptions"
-        />
-        <div class="app-actions-bar app-actions-bar--start">
-          <q-btn outline rounded no-caps icon="refresh" label="Refresh" :loading="loading" @click="loadRows" />
-        </div>
-      </q-card-section>
-    </q-card>
+    <AppPageToolbar>
+      <q-input v-model="search" class="app-page-toolbar__search" dense outlined clearable debounce="200" label="Search">
+        <template #prepend><q-icon name="search" /></template>
+      </q-input>
+      <q-select
+        v-model="filterPoint"
+        class="app-page-toolbar__field"
+        dense
+        outlined
+        clearable
+        emit-value
+        map-options
+        label="回调点"
+        :options="callbackPointOptions"
+      />
+      <template #actions>
+        <q-btn flat rounded no-caps icon="restart_alt" label="重置" @click="resetFilters" />
+        <q-btn flat rounded no-caps icon="refresh" label="Refresh" :loading="loading" @click="loadRows" />
+      </template>
+    </AppPageToolbar>
 
     <q-banner v-if="error" rounded class="bg-negative text-white q-mb-md">
       {{ error }}
@@ -43,8 +40,14 @@
       </template>
     </q-banner>
 
-    <div class="app-registry-table-shell">
-    <q-table flat dense class="app-registry-table" :rows="filteredRows" :columns="columns" row-key="id" :loading="loading">
+    <AppRegistryTable
+      :rows="pagedRows"
+      :columns="columns"
+      row-key="id"
+      :loading="loading"
+      hide-pagination
+      :pagination="{ rowsPerPage: 0 }"
+    >
       <template #body-cell-enabled="props">
         <q-td :props="props">
           <q-toggle
@@ -74,8 +77,16 @@
           </div>
         </q-td>
       </template>
-    </q-table>
-    </div>
+    </AppRegistryTable>
+
+    <AppRegistryPagination
+      v-model:page="page"
+      v-model:page-size="pageSize"
+      :page-max="pageMax"
+      :total="filteredRows.length"
+      :loading="loading"
+      label="条 Hook"
+    />
 
     <q-dialog v-model="editorOpen" persistent maximized>
       <q-card>
@@ -103,15 +114,19 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { storeToRefs } from "pinia";
 import { useQuasar } from "quasar";
+import AppPageHero from "../components/layout/AppPageHero.vue";
+import AppPageToolbar from "../components/layout/AppPageToolbar.vue";
+import AppRegistryTable from "../components/layout/AppRegistryTable.vue";
+import AppRegistryPagination from "../components/layout/AppRegistryPagination.vue";
 import CallbackEditor from "../components/hooks/CallbackEditor.vue";
 import { CALLBACK_POINT_OPTIONS } from "../features/callback/constants";
 import { defaultHookRuleConfig, parseHookConfig, type HookRow, type HookRuleConfig } from "../features/hooks/types";
 import { useHooksStore } from "../stores/hooks";
-import { registryCol } from "../features/ui/registryTableColumns";
+import { registryColWidth } from "../features/ui/registryTableColumns";
 
 const $q = useQuasar();
 const router = useRouter();
@@ -137,11 +152,11 @@ const form = reactive({
 });
 
 const columns = [
-  { name: "name", label: "Name", field: "name", align: "left" as const, ...registryCol.name },
-  { name: "key", label: "Key", field: "key", align: "left" as const, ...registryCol.name },
-  { name: "rule", label: "Rule", field: "id", align: "left" as const, ...registryCol.callbacks },
-  { name: "enabled", label: "Enabled", field: "enabled", align: "center" as const, ...registryCol.toggle },
-  { name: "actions", label: "Actions", field: "id", align: "right" as const, ...registryCol.actions }
+  { name: "name", label: "Name", field: "name", align: "left" as const, ...registryColWidth("14%") },
+  { name: "key", label: "Key", field: "key", align: "left" as const, ...registryColWidth("14%") },
+  { name: "rule", label: "Rule", field: "id", align: "left" as const, ...registryColWidth("13%") },
+  { name: "enabled", label: "Enabled", field: "enabled", align: "center" as const, ...registryColWidth("64px") },
+  { name: "actions", label: "Actions", field: "id", align: "right" as const, ...registryColWidth("108px") }
 ];
 
 const filteredRows = computed(() => {
@@ -153,6 +168,24 @@ const filteredRows = computed(() => {
     if (!q) return true;
     return r.name.toLowerCase().includes(q) || r.key.toLowerCase().includes(q);
   });
+});
+
+const page = ref(1);
+const pageSize = ref(20);
+const pageMax = computed(() => Math.max(1, Math.ceil(filteredRows.value.length / pageSize.value)));
+const pagedRows = computed(() => {
+  const start = (page.value - 1) * pageSize.value;
+  return filteredRows.value.slice(start, start + pageSize.value);
+});
+
+function resetFilters() {
+  search.value = "";
+  filterPoint.value = "";
+  page.value = 1;
+}
+
+watch([search, filterPoint], () => {
+  page.value = 1;
 });
 
 function openRuns(row: HookRow) {

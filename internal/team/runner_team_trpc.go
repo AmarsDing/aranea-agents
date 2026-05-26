@@ -151,8 +151,9 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		HasMemory:          r.td.Persist.Memory.Available(),
 		PluginManager:      r.pluginManager,
 		MemoryAdmin:        r.td.Persist.Memory.Admin,
-		MemoryL2Recall:     r.td.Persist.Memory.L2Recall,
-		MemoryL3Recall:     r.td.Persist.Memory.L3Recall,
+		MemoryL2Recall:        r.td.Persist.Memory.L2Recall,
+		MemoryL3Recall:        r.td.Persist.Memory.L3Recall,
+		MemoryCompositeRecall: r.td.Persist.Memory.CompositeRecall,
 		KnowledgeRetriever: r.knowledgeRetriever,
 		CodeExecFactory:    r.codeExecFactory,
 	}
@@ -315,18 +316,21 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		r.finishRunErr(ctx, &run, t0, err.Error())
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
-	sendText := content
-	intRes := intent.Run(ctx, intent.IntentPassFromAgent(firstAg), r.td.Catalog.LLM, r.td.LLMHTTP, prov0, mod0, content)
-	if intRes.Artifact != nil {
-		if strings.TrimSpace(intRes.RawJSON) != "" {
-			merged, merr := intent.MergeIntoUserOptionsJSON(userOpts, intRes.RawJSON)
-			if merr != nil {
-				event.CtxFlowLogWarn(ctx, "team.intent.merge_fail", "团队意图合并失败，将继续执行", event.P("error", merr))
-			} else {
-				userOpts = merged
+	var intentRunOpts []trpcagent.RunOption
+	var intRes intent.RunResult
+	if intent.ShouldRun(firstAg, content) {
+		intRes = intent.RunForAgent(ctx, firstAg, r.td.Catalog.LLM, r.td.LLMHTTP, prov0, mod0, content)
+		if intRes.Artifact != nil {
+			if strings.TrimSpace(intRes.RawJSON) != "" {
+				merged, merr := intent.MergeIntoUserOptionsJSON(userOpts, intRes.RawJSON)
+				if merr != nil {
+					event.CtxFlowLogWarn(ctx, "team.intent.merge_fail", "团队意图合并失败，将继续执行", event.P("error", merr))
+				} else {
+					userOpts = merged
+				}
 			}
+			intentRunOpts = append(intentRunOpts, intent.RunOptionInject(intRes.Artifact))
 		}
-		sendText = intent.WrapUserMessage(content, intRes.Artifact)
 	}
 	if r.td.Persist.ArtifactUC != nil && len(artifactbiz.NormalizeAttachmentIDs(input.Options.AttachmentIDs)) > 0 {
 		refs, rerr := artifactbiz.ResolveAttachmentRefs(ctx, r.td.Persist.ArtifactUC, sess.ID, input.Options.AttachmentIDs)
@@ -344,13 +348,13 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 			return biz.ChatMessage{}, biz.ChatMessage{}, merr
 		}
 	}
-	meta := intent.RunMeta{
-		AgentID:   firstAg.ID,
-		SessionID: sess.ID,
-		RunID:     run.ID,
-		TeamID:    teamRow.ID,
-	}
-	if r.td.Pipeline.Bus != nil {
+	if intent.ShouldRun(firstAg, content) && r.td.Pipeline.Bus != nil {
+		meta := intent.RunMeta{
+			AgentID:   firstAg.ID,
+			SessionID: sess.ID,
+			RunID:     run.ID,
+			TeamID:    teamRow.ID,
+		}
 		env := event.NewEnvelope(event.EnvelopeTypeIntentPass, firstAg.ID, sess.ID)
 		env.TeamID = teamRow.ID
 		env.Metadata = intent.BuildIntentPassPayload(intRes, meta)
@@ -394,7 +398,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	var turnArtCollector *artifactbiz.TurnCollector
 	runCtx, turnArtCollector = artifactbiz.WithTurnCollector(runCtx)
 
-	userTurnMsg, err := agent.BuildUserMessageFromArtifacts(runCtx, r.td.Persist.ArtifactUC, sess.ID, sendText, input.Options.AttachmentIDs)
+	userTurnMsg, err := agent.BuildUserMessageFromArtifacts(runCtx, r.td.Persist.ArtifactUC, sess.ID, content, input.Options.AttachmentIDs)
 	if err != nil {
 		if teamEmitter != nil {
 			teamEmitter.LogError("team.run.attachments", err.Error(), event.P("mode", mode))
@@ -404,7 +408,8 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		return userMsg, biz.ChatMessage{}, err
 	}
 
-	events, err := agent.RunTRPCUserTurnMsg(runCtx, runner, uid, sess.ID, userTurnMsg, skillruntime.RunOptionWithTurnQuery(sendText))
+	runOpts := append([]trpcagent.RunOption{skillruntime.RunOptionWithTurnQuery(content)}, intentRunOpts...)
+	events, err := agent.RunTRPCUserTurnMsg(runCtx, runner, uid, sess.ID, userTurnMsg, runOpts...)
 	if err != nil {
 		if teamEmitter != nil {
 			teamEmitter.LogError("team.run.execute", err.Error(), event.P("mode", mode))

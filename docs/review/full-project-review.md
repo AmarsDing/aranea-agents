@@ -3,6 +3,7 @@
 **审查范围**: 全项目后端 + 前端代码
 **审查重点**: 业务逻辑、代码质量、架构和设计模式、代码可读性与风格、错误处理与健壮性、影响范围与回归风险
 **审查日期**: 2026-05-25（全项目）/ 2026-05-26（记忆系统专项）
+**最后更新**: 2026-05-26（优化实施跟踪）
 
 ---
 
@@ -14,7 +15,7 @@
 | **业务逻辑** | B | 核心链路完整，Turn 生命周期管理成熟；Channel 路由和 Team 编译存在复杂度隐患 |
 | **代码质量** | B | Go 代码风格统一，前端 TS 类型安全已加固（278→0 vue-tsc 错误）；部分重复模式 |
 | **代码可读性与风格** | B+ | Go 命名规范，注释充分；前端 composable 拆分合理；biz 层文件过多需索引 |
-| **错误处理与健壮性** | B- | Kratos 错误码体系完整；EventBus 丢消息有监控；部分静默吞错和 nil 检查缺失 |
+| **错误处理与健壮性** | B | Kratos 错误码体系完整；EventBus 丢消息有监控；关键路径静默吞错已添加 slog.Warn 日志 |
 | **影响范围与回归风险** | B | Wire DI 编译期安全；ConfigJSON 双写是最大回归风险点；前端 store 拆分后兼容良好 |
 
 **综合评级: B (良好，有明确改进方向)**
@@ -198,8 +199,8 @@ Chat store 从单一巨石拆分为 `sessionStore` + `messageStore` + `runtimeSt
 |---|------|--------|------|------|
 | E1 | **ChatUsecase.StartBackgroundGoroutines 清理空 key 逻辑** | 中 | [chat_usecase.go](file:///f:/aranea-agents/internal/biz/chat_usecase.go#L197-L210) | 5 分钟定时清理 `awaitChans` 中空 sessionID 的条目，但正常流程 `DeleteAwaitChannel` 已清理。此 GC 只处理异常残留，缺少启动/停止生命周期管理 |
 | E2 | **MemoryUsecase nil 接收者检查** | 中 | [memory.go](file:///f:/aranea-agents/internal/biz/memory.go#L49-L52) | `RememberWithUser` 检查 `uc == nil || uc.embedder == nil || uc.repo == nil` 返回 `ErrMemoryUnavailable`，但调用方可能不检查此错误 |
-| E3 | **WS 连接数限制硬编码** | 低 | [ws.go](file:///f:/aranea-agents/internal/server/ws.go#L27-L28) | `maxSessionConns=5`、`maxGlobalMonitorConns=3` 硬编码，无法通过配置调整 |
-| E4 | **data.NewData 启动失败 cleanup 不完整** | 低 | [data.go](file:///f:/aranea-agents/internal/data/data.go#L327-L365) | `initSQLite` 成功后如果后续步骤失败，`cleanup` 只关闭 `pg` 和 `rawDB`，不关闭 `entClient` |
+| E3 | **WS 连接数限制硬编码** ~~已修复✅~~ | 低 | [ws.go](file:///f:/aranea-agents/internal/server/ws.go#L27-L28) | ~~`maxSessionConns=5`、`maxGlobalMonitorConns=3` 硬编码，无法通过配置调整~~ 已通过 `WS_MAX_SESSION_CONNS`/`WS_MAX_GLOBAL_MONITOR_CONNS` 环境变量可配置 |
+| E4 | **data.NewData 启动失败 cleanup 不完整** ~~已修复✅~~ | 低 | [data.go](file:///f:/aranea-agents/internal/data/data.go#L327-L365) | ~~`initSQLite` 成功后如果后续步骤失败，`cleanup` 只关闭 `pg` 和 `rawDB`，不关闭 `entClient`~~ cleanup 已包含 `entClient.Close()` |
 
 ---
 
@@ -241,10 +242,16 @@ Chat store 从单一巨石拆分为 `sessionStore` + `messageStore` + `runtimeSt
 | P1 | AgentRuntimeSettings 拆分子表 | agent_settings 所有消费者 | 中（需 DB 迁移 + API 适配） | 大 |
 | P1 | ChatService 接口拆分 | service Wire 绑定 | 中（需改 Wire ProviderSet） | 中 |
 | P1 | 前端 API 类型 proto 生成 | 前端所有 API 调用 | 中 | 中 |
+| P1 | compileAdaptiveEdges 限制边数 ~~已修复✅~~ | adaptive team 编译 | ~~高（拓扑变化）~~ 已限制上限 30 | ~~中~~ 已完成 |
 | P2 | ensureSchemaDDL 版本门控 | 启动链路 | 低 | 中 |
 | P2 | biz 层子包重组 | internal/biz 导入路径 | 低（Go 内部包） | 中 |
 | P2 | Team 编译验证增强 | Team 创建/更新 | 低 | 小 |
-| P3 | EventBus 投递优化（替换忙等待） | 事件分发性能 | 低 | 小 |
+| P2 | MatchRoute 改用 regexp ~~已修复✅~~ | channel routing | ~~中~~ 已改为三层匹配策略 | ~~小~~ 已完成 |
+| P2 | monitorEventsWhere/TracesWhere LIKE→json_extract ~~已修复✅~~ | monitor 查询 | ~~中~~ 已改用 json_extract 精确查询 | ~~小~~ 已完成 |
+| P3 | EventBus 投递优化（替换忙等待） ~~已修复✅~~ | 事件分发性能 | 低 | ~~小~~ 已完成：`deliverBlockUpTo` 已改用 `time.NewTimer` + `select` |
+| P3 | SuggestDurableRun 长度阈值 ~~已修复✅~~ | channel config helpers | 低 | ~~小~~ 已完成：`suggestDurableMinRuneLen=4` |
+| P3 | compileParallelEdges entry=finish 边界 ~~已修复✅~~ | parallel team 编译 | 低 | ~~小~~ 已完成：回退到 compileSequentialEdges |
+| P3 | postAlertWebhook 专用 http.Client ~~已修复✅~~ | monitor 告警通知 | 低 | ~~小~~ 已完成：专用 alertWebhookClient |
 | P3 | 测试 mock 工厂替代 `as any` | 前端测试 | 低 | 小 |
 
 ---
@@ -269,9 +276,8 @@ flowchart LR
     end
 
     subgraph Risk["风险 🔴"]
-        R1["BatchUpdate 无事务"]
-        R2["前端 API 类型手动维护"]
-        R3["Agent Kind 无 DB 约束"]
+        R1["前端 API 类型手动维护"]
+        R2["Agent Kind 无 DB 约束"]
     end
 
     style Good fill:#c8e6c9,color:#1a5e20
@@ -290,7 +296,31 @@ flowchart LR
 | Chat store 拆分 | 单一 store | 3 子 store + facade | ✅ 完成 |
 | EventBus 丢包监控 | 无 | Prometheus + SysLog | ✅ 完成 |
 | ConfigJSON 双写 | 存在 | 仍存在 | ⚠️ 未变 |
-| BatchUpdate 事务 | 无 | 无 | 🔴 未修复 |
+| BatchUpdate 事务 | 无 | ✅ 已有 ExecInTx | ✅ 已验证 |
+| compileCoordinatorEdges hub→finish | 缺失 | ✅ 已添加 | ✅ 已修复 |
+| startGraphWatch 超时 | 硬编码 30min | ✅ 可配置 | ✅ 已修复 |
+| MemoryJobQueue 丢弃监控 | 无 | ✅ dropped/debounced 计数器 | ✅ 已修复 |
+| monitor_events 索引 | 无 | ✅ 复合索引 | ✅ 已修复 |
+| postAlertWebhook HTTPS | 不校验 | ✅ 已校验 | ✅ 已修复 |
+| AutoMemoryWorker 构造 | panic | ✅ 返回 error | ✅ 已修复 |
+| EvaluateAlerts 同步阻塞 | 同步 | ✅ safego.Go 异步 | ✅ 已修复 |
+| RecordAuditLog/RecordMonitorEvent 静默丢弃 | 无日志 | ✅ slog.Warn 日志 | ✅ 已修复 |
+| recordDelivery 忽略错误 | 无日志 | ✅ slog.Warn 日志 | ✅ 已修复 |
+| EncryptChannelSecretRef key 缺失 | BadRequest | ✅ InternalServer | ✅ 已修复 |
+| Coordinator.sessions 无 GC | 无清理 | ✅ CleanupStaleSessions | ✅ 已修复 |
+| webhookRateLimits 无清理 | 无清理 | ✅ 惰性清理 5min | ✅ 已修复 |
+| MatchRoute filepath.Match 语义不匹配 | filepath.Match | ✅ 三层匹配策略（前缀/glob/精确） | ✅ 已修复 |
+| SuggestDurableRun 误触发率高 | 无长度检查 | ✅ suggestDurableMinRuneLen=4 | ✅ 已修复 |
+| compileAdaptiveEdges O(n²) 边爆炸 | 无上限 | ✅ adaptiveMaxTransferEdges=30 | ✅ 已修复 |
+| compileParallelEdges entry=finish 空边集 | 无边界处理 | ✅ entry==finish 回退 sequential | ✅ 已修复 |
+| DeferTeamRunSuccessIfHITL 仅检查 status | 仅 status | ✅ 补充 InterruptNode 检查 | ✅ 已修复 |
+| postAlertWebhook http.DefaultClient | DefaultClient | ✅ 专用 alertWebhookClient | ✅ 已修复 |
+| monitorEventsWhere LIKE 查询 JSON | LIKE 模糊匹配 | ✅ json_extract 精确查询 | ✅ 已修复 |
+| monitorTracesWhere LIKE 查询 JSON | LIKE 模糊匹配 | ✅ json_extract 精确查询 | ✅ 已修复 |
+| fmt.Sprintf 拼接 SQL LIMIT/OFFSET | fmt.Sprintf | ✅ ? 占位符 | ✅ 已修复 |
+| M2 jsonStr 重复定义 | 3 处重复 | ✅ 统一到 jsonutil.IfaceStr | ✅ 已修复 |
+| M3 errStore() 语义不清 | errStore | ✅ 重命名为 requireAdmin() | ✅ 已修复 |
+| M4 HeuristicConsolidator m[0] 整句 | m[0] | ✅ 改为 m[1] 捕获组 | ✅ 已修复 |
 
 ---
 
@@ -390,27 +420,27 @@ flowchart TB
 
 **建议**：考虑生成代码或使用 `json.Unmarshal` 直接反序列化到 proto 结构体（proto JSON tag 已有），减少手写映射。
 
-#### M2: `jsonStr` / `factJSONStr` / `jsonInt` 重复定义
+#### M2: `jsonStr` / `factJSONStr` / `jsonInt` 重复定义 ~~已修复✅~~
 
 [biz/memory_l4_cascade.go](file:///f:/aranea-agents/internal/biz/memory_l4_cascade.go#L199-L218) 和 [biz/memory_index_sync.go](file:///f:/aranea-agents/internal/biz/memory_index_sync.go#L74-L84) 和 [data/memory_fact_index_sync.go](file:///f:/aranea-agents/internal/data/memory_fact_index_sync.go#L69-L80) 各自定义了 `jsonStr`/`factJSONStr`/`jsonInt` 等辅助函数，逻辑几乎相同。
 
-**建议**：统一到 `pkg/jsonutil` 或 `internal/biz` 的共享 helper 中。
+**已修复**：已统一到 `pkg/jsonutil.IfaceStr` 等共享函数，消除了重复定义。
 
-#### M3: `MemoryService.errStore()` 语义不清
+#### M3: `MemoryService.errStore()` 语义不清 ~~已修复✅~~
 
 [memory.go:18-21](file:///f:/aranea-agents/internal/service/memory.go#L18-L21) 中 `errStore()` 仅检查 `admin == nil`，但方法名暗示检查的是 `memStore`。实际上 `memStore` 为 nil 时其他方法（如 `DebugMemoryRecall`）是单独检查的。
 
-**建议**：重命名为 `requireAdmin()` 或拆分为更明确的检查方法。
+**已修复**：已重命名为 `requireAdmin()`，语义更清晰。
 
 ### 10.3 业务逻辑
 
-#### M4: HeuristicConsolidator 正则提取整句而非关键信息 (P1)
+#### M4: HeuristicConsolidator 正则提取整句而非关键信息 ~~已修复✅~~ (P1)
 
 [memory_consolidator.go:62](file:///f:/aranea-agents/internal/biz/memory_consolidator.go#L62) 中 `stmt := strings.TrimSpace(m[0])` 使用 `m[0]`（完整匹配）而非 `m[1]`（捕获组）。例如 `"My name is Alice"` 会存储整句而非 `"Alice"`。
 
 **影响**：L3 fact 存储的是冗余整句而非精炼事实，降低检索质量和 token 效率。
 
-**建议**：改为 `m[1]` + 上下文描述，如 `"User's name is Alice"`。
+**已修复**：已改为 `m[1]` 提取捕获组，存储精炼事实而非整句。
 
 #### M5: L4 `WriteFromUserText` 每次调用都执行 decay — 性能隐患 (P2)
 
@@ -525,16 +555,16 @@ flowchart TB
 
 | No. | 问题 | 级别 | 建议 | 代码链接 |
 |-----|------|------|------|----------|
-| M4 | HeuristicConsolidator 用 `m[0]` 存整句而非 `m[1]` 捕获组 | P1 | 改为 `m[1]` + 上下文描述 | [memory_consolidator.go:62](file:///f:/aranea-agents/internal/biz/memory_consolidator.go#L62) |
+| M4 | HeuristicConsolidator 用 `m[0]` 存整句而非 `m[1]` 捕获组 ~~已修复✅~~ | P1 | ~~改为 `m[1]` + 上下文描述~~ 已改为 `m[1]` 提取捕获组 | [memory_consolidator.go:62](file:///f:/aranea-agents/internal/biz/memory_consolidator.go#L62) |
 | M5 | L4 `WriteFromUserText` 每次调用执行 decay | P2 | 移到 cron job | [memory_l4_usecase.go:143](file:///f:/aranea-agents/internal/biz/memory_l4_usecase.go#L143) |
 | M7 | MemoryJobQueue 满时静默丢弃无指标 | P2 | 添加丢弃计数器 + RPC 暴露 | [auto_memory_queue.go:72-73](file:///f:/aranea-agents/internal/memory/trpc/auto_memory_queue.go#L72-L73) |
 | M8 | PII 正则误报风险高 | P2 | 收紧正则或加白名单 | [memory_pii.go:11-14](file:///f:/aranea-agents/internal/biz/memory_pii.go#L11-L14) |
 | M9 | pgvector 同步失败无指标/告警 | P2 | 添加 Prometheus counter | [memory_admin_usecase.go:145](file:///f:/aranea-agents/internal/biz/memory_admin_usecase.go#L145) |
 | M15 | `syncFactIndexBestEffort` 吞错 | P2 | 记录日志或递增指标 | [memory_admin_usecase.go:145](file:///f:/aranea-agents/internal/biz/memory_admin_usecase.go#L145) |
 | M1 | Service 层大量手写 JSON→Proto 映射 | P3 | 考虑生成代码或直接 JSON 反序列化 | [memory_decode.go](file:///f:/aranea-agents/internal/service/memory_decode.go) |
-| M2 | `jsonStr`/`factJSONStr`/`jsonInt` 重复定义 | P3 | 统一到共享 helper | [memory_l4_cascade.go:199](file:///f:/aranea-agents/internal/biz/memory_l4_cascade.go#L199) |
-| M3 | `errStore()` 方法名语义不清 | P3 | 重命名为 `requireAdmin()` | [memory.go:18](file:///f:/aranea-agents/internal/service/memory.go#L18) |
-| M6 | AutoMemoryWorker `drain` 硬编码上限 50 | P3 | 提取为常量或配置项 | [auto_memory.go:91-100](file:///f:/aranea-agents/internal/cronrunner/jobs/auto_memory.go#L91-L100) |
+| M2 | `jsonStr`/`factJSONStr`/`jsonInt` 重复定义 ~~已修复✅~~ | P3 | ~~统一到共享 helper~~ 已统一到 `pkg/jsonutil.IfaceStr` 等共享函数 | [memory_l4_cascade.go:199](file:///f:/aranea-agents/internal/biz/memory_l4_cascade.go#L199) |
+| M3 | `errStore()` 方法名语义不清 ~~已修复✅~~ | P3 | ~~重命名为 `requireAdmin()`~~ 已重命名为 `requireAdmin()` | [memory.go:18](file:///f:/aranea-agents/internal/service/memory.go#L18) |
+| M6 | AutoMemoryWorker `drain` 硬编码上限 50 ~~已修复✅~~ | P3 | ~~提取为常量或配置项~~ 已提取为常量 `autoMemoryDrainBatchSize` | [auto_memory.go:91-100](file:///f:/aranea-agents/internal/cronrunner/jobs/auto_memory.go#L91-L100) |
 | M10 | `[][]byte` 跨层返回类型安全缺失 | P3 | 渐进式引入 typed DTO | 多处接口 |
 | M11 | `MemorySet.Available()` 仅检查 TRPC | P3 | 扩展或拆分可用性检查 | [memory_set.go:19](file:///f:/aranea-agents/internal/runtime/memory_set.go#L19) |
 | M12 | `CrossEncoderReranker` 命名误导 | P3 | 重命名为 `LexicalReranker` | [memory_rerank.go:6](file:///f:/aranea-agents/internal/biz/memory_rerank.go#L6) |
@@ -546,14 +576,14 @@ flowchart TB
 
 | 优先级 | 改进项 | 影响范围 | 回归风险 | 预估工作量 |
 |--------|--------|----------|----------|-----------|
-| P1 | HeuristicConsolidator `m[0]` → `m[1]`：修复 fact 提取逻辑 | L3 fact 存储与检索 | 高（需数据迁移） | 中 |
+| P1 | HeuristicConsolidator `m[0]` → `m[1]`：修复 fact 提取逻辑 ~~已修复✅~~ | L3 fact 存储与检索 | ~~高（需数据迁移）~~ 已完成 | ~~中~~ 已完成 |
 | P2 | L4 decay 移到 cron job | L4 写入路径 | 中（行为变化） | 小 |
 | P2 | MemoryJobQueue 丢弃计数器 | 队列监控 | 低 | 小 |
 | P2 | PII 正则收紧 | PII 检测全链路 | 中（需回归测试） | 中 |
 | P2 | pgvector 同步失败指标 | L3 向量索引 | 低 | 小 |
 | P3 | `[][]byte` → typed DTO | biz/data/service 三层 | 高（渐进式） | 大 |
 | P3 | `CrossEncoderReranker` 重命名 | rerank 模块 | 低 | 小 |
-| P3 | `jsonStr` 合并 | 多文件 | 低 | 小 |
+| P3 | `jsonStr` 合并 ~~已修复✅~~ | 多文件 | 低 | ~~小~~ 已完成 |
 | P3 | nil receiver 模式统一 | 所有 memory usecase | 低 | 中 |
 
 ---
@@ -811,30 +841,30 @@ sequenceDiagram
 
 | No. | 问题 | 级别 | 建议 | 代码链接 |
 |-----|------|------|------|----------|
-| G5 | `compileAdaptiveEdges` O(n²) 全连接边 | P1 | 限制最大 transfer 边数或改运行时动态路由 | [graph_compile.go:259-269](file:///f:/aranea-agents/internal/team/graph_compile.go#L259-L269) |
+| G5 | `compileAdaptiveEdges` O(n²) 全连接边 ~~已修复✅~~ | P1 | ~~限制最大 transfer 边数或改运行时动态路由~~ 已添加 `adaptiveMaxTransferEdges=30` 上限 | [graph_compile.go:259-269](file:///f:/aranea-agents/internal/team/graph_compile.go#L259-269) |
 | G6 | `compileCoordinatorEdges` 缺少 hub→finish 边 | P1 | 添加条件边或直连边 | [graph_compile.go:233-244](file:///f:/aranea-agents/internal/team/graph_compile.go#L233-L244) |
 | G11 | `GraphUsecase` 三重职责违反 SRP | P2 | 拆分为 DefinitionUsecase + ExecutionUsecase | [graph.go](file:///f:/aranea-agents/internal/biz/graph.go) |
 | G12 | `teamBuildConfigs` 内存无上限，SaveRun 失败不回滚 | P2 | 先 SaveRun 再写内存，失败时回滚 | [graph_team_execution.go:32-46](file:///f:/aranea-agents/internal/biz/graph_team_execution.go#L32-L46) |
-| G13 | `Coordinator.sessions` 内存无 GC | P2 | 添加定期清理 | [team_graph_run_coordinator.go:39](file:///f:/aranea-agents/internal/team/team_graph_run_coordinator.go#L39) |
-| G15 | `consumeRuntimeEvents` 中 `UpdateRun` 错误静默忽略 | P2 | 添加日志和重试计数 | [graph_execution.go:289](file:///f:/aranea-agents/internal/biz/graph_execution.go#L289) |
+| G13 | `Coordinator.sessions` 内存无 GC ~~已修复✅~~ | P2 | ~~添加定期清理~~ 已添加 `CleanupStaleSessions` 方法，清理超过 2 小时的 session | [team_graph_run_coordinator.go:39](file:///f:/aranea-agents/internal/team/team_graph_run_coordinator.go#L39) |
+| G15 | `consumeRuntimeEvents` 中 `UpdateRun` 错误静默忽略 ~~已修复✅~~ | P2 | ~~添加日志和重试计数~~ 已添加 `slog.Warn` 日志 | [graph_execution.go:289](file:///f:/aranea-agents/internal/biz/graph_execution.go#L289) |
 | G8 | `startGraphWatch` 30 分钟硬编码超时 | P2 | 提取为配置项，HITL 场景延长 | [team_graph_run_coordinator.go:165](file:///f:/aranea-agents/internal/team/team_graph_run_coordinator.go#L165) |
 | G2 | `embeddedGraphEdge.Condition` 被静默忽略 | P2 | 映射到 CondFuncRef 或文档标注限制 | [embedded_graph.go:38](file:///f:/aranea-agents/internal/team/embedded_graph.go#L38) |
 | G14 | 编译期与运行时选项双重应用，单向覆盖 | P2 | 使用完整赋值或编译期一次性完成 | [graph_runtime_options.go:20](file:///f:/aranea-agents/internal/team/graph_runtime_options.go#L20) |
-| G7 | `compileParallelEdges` entry=finish 时空边集 | P3 | 确保 entry ≠ finish | [graph_compile.go:197-210](file:///f:/aranea-agents/internal/team/graph_compile.go#L197-L210) |
-| G9 | `DeferTeamRunSuccessIfHITL` 仅检查 status | P3 | 补充检查 InterruptNode | [team_graph_run_coordinator.go:107-118](file:///f:/aranea-agents/internal/team/team_graph_run_coordinator.go#L107-L118) |
-| G16 | `HandleTeamGraphTaskCompleted` 忽略 UpdateTeamRun 错误 | P3 | 记录日志 | [team_graph_run_coordinator.go:131](file:///f:/aranea-agents/internal/team/team_graph_run_coordinator.go#L131) |
-| G17 | `RegisterTeamGraphExecution` 部分失败不回滚 | P3 | 先持久化再写内存 | [graph_team_execution.go:32-46](file:///f:/aranea-agents/internal/biz/graph_team_execution.go#L32-L46) |
-| G18 | `buildResumeSessionContext` 静默忽略解析错误 | P3 | 添加 warn 日志 | [team_graph_run_finisher.go:147](file:///f:/aranea-agents/internal/team/team_graph_run_finisher.go#L147) |
+| G7 | `compileParallelEdges` entry=finish 时空边集 ~~已修复✅~~ | P3 | ~~确保 entry ≠ finish~~ 已添加 `entry == finish` 时回退到 `compileSequentialEdges` | [graph_compile.go:197-210](file:///f:/aranea-agents/internal/team/graph_compile.go#L197-L210) |
+| G9 | `DeferTeamRunSuccessIfHITL` 仅检查 status ~~已修复✅~~ | P3 | ~~补充检查 InterruptNode~~ 已补充 `InterruptNode` 非空检查 | [team_graph_run_coordinator.go:107-118](file:///f:/aranea-agents/internal/team/team_graph_run_coordinator.go#L107-L118) |
+| G16 | `HandleTeamGraphTaskCompleted` 忽略 UpdateTeamRun 错误 ~~已修复✅~~ | P3 | ~~记录日志~~ 已添加 `slog.Warn` 日志 | [team_graph_run_coordinator.go:131](file:///f:/aranea-agents/internal/team/team_graph_run_coordinator.go#L131) |
+| G17 | `RegisterTeamGraphExecution` 部分失败不回滚 ~~已修复✅~~ | P3 | ~~先持久化再写内存~~ 已改为先 SaveRun 再写内存 | [graph_team_execution.go:32-46](file:///f:/aranea-agents/internal/biz/graph_team_execution.go#L32-L46) |
+| G18 | `buildResumeSessionContext` 静默忽略解析错误 ~~已修复✅~~ | P3 | ~~添加 warn 日志~~ 已添加 `slog.Warn` 日志 | [team_graph_run_finisher.go:147](file:///f:/aranea-agents/internal/team/team_graph_run_finisher.go#L147) |
 | G1 | `compileToGraphBuildConfigWithLoader` 5 参数透传 | P3 | 引入 CompileContext 结构体 | [graph_compile.go:34-37](file:///f:/aranea-agents/internal/team/graph_compile.go#L34-L37) |
 | G3 | meta 提取函数风格不一致 | P3 | 统一为 metautil 工具函数 | [team_graph_execution_tracker.go:71](file:///f:/aranea-agents/internal/team/team_graph_execution_tracker.go#L71) |
 | G4 | `graphNodePolicy` 与 `embeddedGraphNode` 字段重复 | P3 | 抽取共享嵌入结构体 | [graph_runtime_options.go:30-38](file:///f:/aranea-agents/internal/team/graph_runtime_options.go#L30-L38) |
-| G10 | `applyTeamRuntimeExecutionOptions` 中 `_ = def` | P3 | 移除或注释说明 | [graph_runtime_options.go:20](file:///f:/aranea-agents/internal/team/graph_runtime_options.go#L20) |
+| G10 | `applyTeamRuntimeExecutionOptions` 中 `_ = def` ~~已修复✅~~ | P3 | ~~移除或注释说明~~ `_ = def` 已不存在，`def.FailurePolicy` 已被使用 | [graph_runtime_options.go:20](file:///f:/aranea-agents/internal/team/graph_runtime_options.go#L20) |
 
 ### 11.8 Team Graph 改进路线图
 
 | 优先级 | 改进项 | 影响范围 | 回归风险 | 预估工作量 |
 |--------|--------|----------|----------|-----------|
-| P1 | `compileAdaptiveEdges` 限制边数或改动态路由 | adaptive team 编译 | 高（拓扑变化） | 中 |
+| P1 | `compileAdaptiveEdges` 限制边数或改动态路由 ~~已修复✅~~ | adaptive team 编译 | ~~高（拓扑变化）~~ 已限制上限 30 | ~~中~~ 已完成 |
 | P1 | `compileCoordinatorEdges` 添加 hub→finish 条件边 | coordinator team 编译 | 中（新增边） | 小 |
 | P2 | `GraphUsecase` 拆分 | graph 全模块 | 高（Wire 绑定 + import 路径） | 大 |
 | P2 | `teamBuildConfigs` 回滚 + sessions GC | graph 执行内存管理 | 低 | 小 |
@@ -842,7 +872,7 @@ sequenceDiagram
 | P2 | `startGraphWatch` 超时可配置 | HITL resume watch | 低 | 小 |
 | P2 | `embeddedGraphEdge.Condition` 映射 | embedded graph 条件路由 | 中（新功能） | 中 |
 | P2 | 编译期/运行时选项统一 | graph 编译 + options | 中 | 中 |
-| P3 | `compileParallelEdges` entry=finish 边界 | parallel team 编译 | 低 | 小 |
+| P3 | `compileParallelEdges` entry=finish 边界 ~~已修复✅~~ | parallel team 编译 | ~~低~~ 已完成 | ~~小~~ 已完成 |
 | P3 | meta 提取统一 + NodePolicy 合并 | team 包内部 | 低 | 小 |
 | P3 | `buildResumeSessionContext` 错误日志 | resume 路径 | 低 | 小 |
 
@@ -1170,13 +1200,13 @@ if !ok || svc.orch == nil {
 
 ### 12.8 业务逻辑审查
 
-#### CA26: `MatchRoute` 使用 `filepath.Match` — 语义不匹配 (P2)
+#### CA26: `MatchRoute` 使用 `filepath.Match` — 语义不匹配 ~~已修复✅~~ (P2)
 
 [channel_routing.go:80-89](file:///f:/aranea-agents/internal/biz/channel_routing.go#L80-L89) 中 `MatchRoute` 使用 `filepath.Match` 做 peer pattern 匹配。`filepath.Match` 的语义是文件路径 glob（`*` 匹配非分隔符，`**` 不支持递归），但 peer_id 不是文件路径。
 
 **影响**：用户可能期望 `user_*` 匹配 `user_123`，但不匹配 `user_123/extra`；`filepath.Match` 的行为在非文件路径场景下容易误解。
 
-**建议**：使用 `regexp.MatchString` 或简单的 `strings.HasPrefix` / `strings.HasSuffix`，并在文档中明确 pattern 语法。
+**已修复**：改为三层匹配策略 — `*` 后缀使用 `strings.HasPrefix` 前缀匹配、含 glob 字符使用 `path.Match`（跨平台一致）、纯字符串精确匹配。
 
 #### CA27: `IsChannelCancelCommand` 精确匹配 — 无法处理带参数的命令 (P3)
 
@@ -1184,13 +1214,13 @@ if !ok || svc.orch == nil {
 
 **建议**：使用 `strings.HasPrefix` 匹配命令前缀，或支持自然语言变体。
 
-#### CA28: `ChannelLongTaskConfig.SuggestDurableRun` 关键词匹配过于简单 (P3)
+#### CA28: `ChannelLongTaskConfig.SuggestDurableRun` 关键词匹配过于简单 ~~已修复✅~~ (P3)
 
 [channel_config_helpers.go](file:///f:/aranea-agents/internal/biz/channel_config_helpers.go) 中 `DefaultChannelAsyncKeywords` 包含 "分析"、"全量"、"研报" 等关键词，`SuggestDurableRun` 做简单的 `strings.Contains` 匹配。
 
 **影响**：误触发率高（如 "分析一下这个简单问题" 也会建议 durable run）。
 
-**建议**：结合消息长度和关键词双重判断，或将判断逻辑移到 LLM intent 分类。
+**已修复**：添加 `suggestDurableMinRuneLen=4` 最小消息长度阈值，极短消息（如 "分析"）不再触发关键词匹配，仅保留 `/async`、`/background` 显式命令的即时响应。
 
 #### CA29: `ChannelAccessPolicy.Allows` 群聊+私聊混合判断逻辑复杂 (P3)
 
@@ -1222,15 +1252,15 @@ if !ok || svc.orch == nil {
 | CA3 | `ChannelUsecase` 四重职责（CRUD+投递+健康检查+凭证） | P2 | 拆分 DeliveryUsecase | [channel.go](file:///f:/aranea-agents/internal/biz/channel.go) |
 | CA4 | `AgentRuntimeSettings` 80+ 扁平字段 | P2 | 嵌入子结构体 | [agent_types.go:49-120](file:///f:/aranea-agents/internal/biz/agent_types.go#L49-L120) |
 | CA6 | `acceptInbound` 150+ 行，圈复杂度过高 | P2 | 拆分为 routeSync/routeAsync/routeBackground | [channel_ingress_accept.go:27-150](file:///f:/aranea-agents/internal/service/channel_ingress_accept.go#L27-L150) |
-| CA15 | `steerIntoActiveTurn` 类型断言失败静默跳过 | P2 | 添加 warn 日志或改用接口方法 | [channel_ingress_policy.go:81-85](file:///f:/aranea-agents/internal/service/channel_ingress_policy.go#L81-L85) |
+| CA15 | `steerIntoActiveTurn` 类型断言失败静默跳过 ~~已修复✅~~ | P2 | ~~添加 warn 日志或改用接口方法~~ 已添加 `slog.Warn` 日志 | [channel_ingress_policy.go:81-85](file:///f:/aranea-agents/internal/service/channel_ingress_policy.go#L81-L85) |
 | CA16 | 三层幂等检查写放大 | P2 | 延迟 DB 写入到确认需要处理时 | [channel_ingress_guard.go:18-65](file:///f:/aranea-agents/internal/service/channel_ingress_guard.go#L18-L65) |
 | CA19 | `ChatOrchestratorDeps` 12 字段，Wire 绑定复杂 | P2 | 子聚合体各自 Wire Provider Set | [chat_orchestrator.go:79-93](file:///f:/aranea-agents/internal/service/chat_orchestrator.go#L79-L93) |
 | CA20 | 平台适配器分散在 service 层 | P2 | 抽取 ChannelPlatformAdapter 接口 | service/channel_ingress_*.go |
-| CA22 | 多处 `_ = h.recordDelivery` 忽略错误 | P2 | 添加错误日志计数 | [channel_ingress_accept.go](file:///f:/aranea-agents/internal/service/channel_ingress_accept.go) |
-| CA23 | `EncryptChannelSecretRef` key 缺失时静默返回空 | P2 | 返回明确 InternalServer 错误 | [channel_credential_crypto.go:15-18](file:///f:/aranea-agents/internal/biz/channel_credential_crypto.go#L15-L18) |
+| CA22 | 多处 `_ = h.recordDelivery` 忽略错误 ~~已修复✅~~ | P2 | ~~添加错误日志计数~~ `recordDelivery` 方法内已添加 `slog.Warn` 日志 | [channel_ingress_accept.go](file:///f:/aranea-agents/internal/service/channel_ingress_accept.go) |
+| CA23 | `EncryptChannelSecretRef` key 缺失时静默返回空 ~~已修复✅~~ | P2 | ~~返回明确 InternalServer 错误~~ 已改为 `errors.InternalServer` | [channel_credential_crypto.go:15-18](file:///f:/aranea-agents/internal/biz/channel_credential_crypto.go#L15-L18) |
 | CA24 | `ResumeDurableSessionRun` goroutine 内错误处理不完整 | P2 | 所有错误路径通知 RunEscalation | [chat_durable_resume.go:62-90](file:///f:/aranea-agents/internal/service/chat_durable_resume.go#L62-L90) |
-| CA26 | `MatchRoute` 使用 filepath.Match 语义不匹配 | P2 | 改用 regexp 或 strings.HasPrefix | [channel_routing.go:80-89](file:///f:/aranea-agents/internal/biz/channel_routing.go#L80-L89) |
-| CA5 | `webhookRateLimits` 全局 sync.Map 无清理 | P3 | 添加定期清理 | [channel_ingress_ratelimit.go:18](file:///f:/aranea-agents/internal/service/channel_ingress_ratelimit.go#L18) |
+| CA26 | `MatchRoute` 使用 filepath.Match 语义不匹配 ~~已修复✅~~ | P2 | ~~改用 regexp 或 strings.HasPrefix~~ 已改为三层匹配（前缀/glob/精确） | [channel_routing.go:80-89](file:///f:/aranea-agents/internal/biz/channel_routing.go#L80-L89) |
+| CA5 | `webhookRateLimits` 全局 sync.Map 无清理 ~~已修复✅~~ | P3 | ~~添加定期清理~~ 已添加 `cleanupStaleWebhookRateLimits` 惰性清理（5 分钟间隔） | [channel_ingress_ratelimit.go:18](file:///f:/aranea-agents/internal/service/channel_ingress_ratelimit.go#L18) |
 | CA7 | `channelTypeFromConfig` 重复解析 configJSON | P3 | 入口解析一次，context 传递 | service/channel_ingress_*.go |
 | CA8 | `ParseChannelLongTaskConfig` 重复解析 | P3 | 入口解析一次，context 传递 | [channel_config_helpers.go](file:///f:/aranea-agents/internal/biz/channel_config_helpers.go) |
 | CA9 | 硬编码中文字符串散布 service 层 | P3 | 提取到 i18n 模板或 config | [channel_ingress_constants.go](file:///f:/aranea-agents/internal/service/channel_ingress_constants.go) |
@@ -1240,8 +1270,8 @@ if !ok || svc.orch == nil {
 | CA18 | `mergeChannelMetadataJSON` 每次请求重复解析 | P3 | 缓存或预计算 | [channel.go:65-78](file:///f:/aranea-agents/internal/service/channel.go#L65-L78) |
 | CA21 | `AgentUsecase.hydrate` 有写入副作用 | P3 | 迁移逻辑移到显式命令 | [agent_usecase.go:136-165](file:///f:/aranea-agents/internal/biz/agent_usecase.go#L136-L165) |
 | CA25 | `onSessionRunSoftBudget` 自动升级无取消机制 | P3 | 定时器触发时检查 run 状态 | [chat_orchestrator_session_run.go:85-108](file:///f:/aranea-agents/internal/service/chat_orchestrator_session_run.go#L85-L108) |
-| CA27 | `IsChannelCancelCommand` 精确匹配 | P3 | 改用 HasPrefix 或支持变体 | [channel_inbound_commands.go:5-8](file:///f:/aranea-agents/internal/biz/channel_inbound_commands.go#L5-L8) |
-| CA28 | `SuggestDurableRun` 关键词匹配误触发率高 | P3 | 结合消息长度或 LLM intent | [channel_config_helpers.go](file:///f:/aranea-agents/internal/biz/channel_config_helpers.go) |
+| CA27 | `IsChannelCancelCommand` 精确匹配 ~~已修复✅~~ | P3 | ~~改用 HasPrefix 或支持变体~~ 已改用 `strings.HasPrefix` 前缀匹配 | [channel_inbound_commands.go:5-8](file:///f:/aranea-agents/internal/biz/channel_inbound_commands.go#L5-L8) |
+| CA28 | `SuggestDurableRun` 关键词匹配误触发率高 ~~已修复✅~~ | P3 | ~~结合消息长度或 LLM intent~~ 已添加 `suggestDurableMinRuneLen=4` 最小长度阈值 | [channel_config_helpers.go](file:///f:/aranea-agents/internal/biz/channel_config_helpers.go) |
 | CA29 | `ChannelAccessPolicy.Allows` 判断逻辑复杂 | P3 | 添加决策矩阵测试 | [channel_access.go:50-73](file:///f:/aranea-agents/internal/biz/channel_access.go#L50-L73) |
 
 ### 12.11 Channel / Chat / Agent 改进路线图
@@ -1261,7 +1291,8 @@ if !ok || svc.orch == nil {
 | P2 | `steerIntoActiveTurn` 去除断言 | channel ingress | 低 | 小 |
 | P2 | `ChatOrchestratorDeps` Wire 拆分 | chat service | 低 | 小 |
 | P2 | delivery 错误日志 + 计数 | channel ingress | 低 | 小 |
-| P2 | `MatchRoute` 改用 regexp | channel routing | 中（匹配行为变化） | 小 |
+| P2 | `MatchRoute` 改用 regexp ~~已修复✅~~ | channel routing | ~~中（匹配行为变化）~~ 已改为三层匹配策略 | ~~小~~ 已完成 |
+| P3 | SuggestDurableRun 长度阈值优化 ~~已修复✅~~ | channel config helpers | 低 | ~~小~~ 已完成：`suggestDurableMinRuneLen=4` |
 | P3 | `webhookRateLimits` 清理 | channel ratelimit | 低 | 小 |
 | P3 | configJSON 解析缓存 | channel ingress | 低 | 小 |
 | P3 | 中文字符串 i18n | channel service | 低 | 中 |
@@ -1452,7 +1483,7 @@ sequenceDiagram
 
 **建议**：引入 `AlertEvaluator` 接口，每种 `MetricKey` 注册一个评估器，`EvaluateAlerts` 遍历注册的评估器。
 
-#### MO7: `monitorEventsWhere` 用 `LIKE` 查询 JSON 字段 — 脆弱且低效 (P2)
+#### MO7: `monitorEventsWhere` 用 `LIKE` 查询 JSON 字段 — 脆弱且低效 ~~已修复✅~~ (P2)
 
 [data/monitor.go:181-192](file:///f:/aranea-agents/internal/data/monitor.go#L181-L192) 中 `monitorEventsWhere` 对 `agent_id` 和 `event_type` 使用 `metadata_json LIKE ?` 查询：
 
@@ -1467,15 +1498,15 @@ if q.AgentID != "" {
 
 **影响**：查询结果可能包含误匹配；大数据量下全表扫描性能差。
 
-**建议**：使用 SQLite 的 `json_extract(metadata_json, '$.agent_id') = ?` 精确查询（已在 `ExistsRunnerCompletion` 中使用），并为 `agent_id` 添加生成列 + 索引。
+**已修复**：已改用 `json_extract(metadata_json, '$.agent_id') = ?` 精确查询，与 `ExistsRunnerCompletion` 保持一致。
 
-#### MO8: `monitorTracesWhere` 同样用 `LIKE` 查询 JSON (P2)
+#### MO8: `monitorTracesWhere` 同样用 `LIKE` 查询 JSON ~~已修复✅~~ (P2)
 
 [data/monitor.go:238-252](file:///f:/aranea-agents/internal/data/monitor.go#L238-L252) 中 `monitorTracesWhere` 对 `agent_id`、`provider`、`model` 都使用 `metadata_json LIKE ?`。
 
-**建议**：同 MO7，改用 `json_extract` 精确查询。
+**已修复**：已改用 `json_extract` 精确查询。
 
-#### MO9: `ListMonitorEvents` / `ListMonitorTraces` 用 `fmt.Sprintf` 拼接 LIMIT/OFFSET (P3)
+#### MO9: `ListMonitorEvents` / `ListMonitorTraces` 用 `fmt.Sprintf` 拼接 LIMIT/OFFSET ~~已修复✅~~ (P3)
 
 [data/monitor.go:173](file:///f:/aranea-agents/internal/data/monitor.go#L173) 和 [data/monitor.go:228](file:///f:/aranea-agents/internal/data/monitor.go#L228) 中：
 
@@ -1485,7 +1516,7 @@ listSQL := sqlMonitorEventsList + where + fmt.Sprintf(" ORDER BY created_at DESC
 
 虽然 `limit` 和 `offset` 是 `int` 类型不会注入，但使用 `fmt.Sprintf` 拼接 SQL 是不良实践，且与同文件中其他查询使用 `?` 占位符的风格不一致。
 
-**建议**：统一使用 `?` 占位符。
+**已修复**：已统一使用 `?` 占位符。
 
 #### MO10: `sanitizeJSONString` 在序列化时做两遍 JSON 解析 (P3)
 
@@ -1493,11 +1524,11 @@ listSQL := sqlMonitorEventsList + where + fmt.Sprintf(" ORDER BY created_at DESC
 
 **建议**：在 biz 层返回时就做 sanitize，避免 service 层重复解析。
 
-#### MO11: `postAlertWebhook` 使用 `http.DefaultClient` (P3)
+#### MO11: `postAlertWebhook` 使用 `http.DefaultClient` ~~已修复✅~~ (P3)
 
 [monitor_notify.go:104](file:///f:/aranea-agents/internal/service/monitor_notify.go#L104) 中 `postAlertWebhook` 使用 `http.DefaultClient`，没有自定义 Transport、超时配置（虽然有 context timeout）、连接池限制。
 
-**建议**：注入一个专用的 `*http.Client`，配置合理的连接池和超时。
+**已修复**：已替换为专用 `alertWebhookClient`，配置了 10s 超时、连接池（MaxIdleConns=10, MaxIdleConnsPerHost=5, IdleConnTimeout=30s）。
 
 ### 13.4 功能正确性验证
 
@@ -1666,19 +1697,19 @@ errors, _ := u.repo.CountMonitorEventsSince(ctx, "runner.completion", "error", s
 | MO3 | `PlatformRow` 通用结构体语义模糊 | P2 | 为 Event/Trace 定义独立结构体 | [monitor.go:50-70](file:///f:/aranea-agents/internal/biz/monitor/monitor.go#L50-L70) |
 | MO4 | `TurnCompletionBridge` 全局单例无持久化 | P2 | 持久化 pendingUsage 或使用共享存储 | [runner_completion.go:20](file:///f:/aranea-agents/internal/biz/runner_completion.go#L20) |
 | MO6 | `EvaluateAlerts` 硬编码 `runner.error_rate` | P2 | 引入 AlertEvaluator 注册机制 | [monitor.go:227](file:///f:/aranea-agents/internal/biz/monitor/monitor.go#L227) |
-| MO7 | `monitorEventsWhere` 用 LIKE 查 JSON 字段 | P2 | 改用 json_extract 精确查询 | [data/monitor.go:181-192](file:///f:/aranea-agents/internal/data/monitor.go#L181-L192) |
-| MO8 | `monitorTracesWhere` 用 LIKE 查 JSON 字段 | P2 | 改用 json_extract 精确查询 | [data/monitor.go:238-252](file:///f:/aranea-agents/internal/data/monitor.go#L238-L252) |
-| MO12 | `EvaluateAlerts` 同步调用阻塞事件处理 | P2 | 异步执行或添加节流 | [event_bus_runner_handler.go:58](file:///f:/aranea-agents/internal/biz/event_bus_runner_handler.go#L58) |
+| MO7 | `monitorEventsWhere` 用 LIKE 查 JSON 字段 ~~已修复✅~~ | P2 | ~~改用 json_extract 精确查询~~ 已改用 `json_extract(metadata_json, '$.agent_id') = ?` | [data/monitor.go:181-192](file:///f:/aranea-agents/internal/data/monitor.go#L181-L192) |
+| MO8 | `monitorTracesWhere` 用 LIKE 查 JSON 字段 ~~已修复✅~~ | P2 | ~~改用 json_extract 精确查询~~ 已改用 `json_extract` 精确查询 agent_id/provider/model | [data/monitor.go:238-252](file:///f:/aranea-agents/internal/data/monitor.go#L238-L252) |
+| MO12 | `EvaluateAlerts` 同步调用阻塞事件处理 ~~已修复✅~~ | P2 | ~~异步执行或添加节流~~ 已改为 `safego.Go` 异步执行 | [event_bus_runner_handler.go:58](file:///f:/aranea-agents/internal/biz/event_bus_runner_handler.go#L58) |
 | MO13 | `RecordRunnerCompletion` 幂等性竞态 | P2 | DB 唯一约束 + INSERT OR IGNORE | [monitor.go:327-347](file:///f:/aranea-agents/internal/biz/monitor/monitor.go#L327-L347) |
-| MO14 | `lastFired` sync.Map 无清理 | P2 | 规则删除时清理对应 entry | [monitor.go:221](file:///f:/aranea-agents/internal/biz/monitor/monitor.go#L221) |
-| MO16 | `PatchRunnerCompletionMetadata` 可能 patch 错误行 | P2 | 优先使用 invocation_id | [data/monitor.go:275-282](file:///f:/aranea-agents/internal/data/monitor.go#L275-L282) |
-| MO17 | `CountMonitorEventsSince` 无索引全表扫描 | P2 | 添加复合索引 | [data/monitor_alert.go:72-80](file:///f:/aranea-agents/internal/data/monitor_alert.go#L72-L80) |
+| MO14 | `lastFired` sync.Map 无清理 ~~已修复✅~~ | P2 | ~~规则删除时清理对应 entry~~ `ReplaceAlertRules` 已自动清理已删除规则的 lastFired 条目 | [monitor.go:221](file:///f:/aranea-agents/internal/biz/monitor/monitor.go#L221) |
+| MO16 | `PatchRunnerCompletionMetadata` 可能 patch 错误行 ~~已修复✅~~ | P2 | ~~优先使用 invocation_id~~ 已优先使用 `invocation_id` 匹配 | [data/monitor.go:275-282](file:///f:/aranea-agents/internal/data/monitor.go#L275-L282) |
+| MO17 | `CountMonitorEventsSince` 无索引全表扫描 ~~已修复✅~~ | P2 | ~~添加复合索引~~ 已有 `idx_monitor_events_key_created` 和 `idx_monitor_events_key_status_created` 复合索引 | [data/monitor_alert.go:72-80](file:///f:/aranea-agents/internal/data/monitor_alert.go#L72-L80) |
 | MO18 | `AvgRunnerCompletionDurationMsSince` json_extract 无索引 | P2 | 提取 duration_ms 为独立列 | [data/monitor_alert.go:82-91](file:///f:/aranea-agents/internal/data/monitor_alert.go#L82-L91) |
-| MO23 | `RecordAuditLog` / `RecordMonitorEvent` 错误静默丢弃 | P2 | 至少记录 warn 日志 | [monitor.go:152-162](file:///f:/aranea-agents/internal/biz/monitor/monitor.go#L152-L162) |
-| MO24 | `EvaluateAlerts` 中 DB 查询错误被忽略 | P2 | 检查 error 并记录 warn | [monitor.go:233-234](file:///f:/aranea-agents/internal/biz/monitor/monitor.go#L233-L234) |
-| MO25 | `postAlertWebhook` 不验证 HTTPS | P2 | 验证 URL scheme | [monitor_notify.go:104](file:///f:/aranea-agents/internal/service/monitor_notify.go#L104) |
+| MO23 | `RecordAuditLog` / `RecordMonitorEvent` 错误静默丢弃 ~~已修复✅~~ | P2 | ~~至少记录 warn 日志~~ 已添加 `slog.Warn` 日志记录失败 | [monitor.go:152-162](file:///f:/aranea-agents/internal/biz/monitor/monitor.go#L152-162) |
+| MO24 | `EvaluateAlerts` 中 DB 查询错误被忽略 ~~已修复✅~~ | P2 | ~~检查 error 并记录 warn~~ 已添加 `slog.Warn` 日志并跳过当前规则 | [monitor.go:233-234](file:///f:/aranea-agents/internal/biz/monitor/monitor.go#L233-L234) |
+| MO25 | `postAlertWebhook` 不验证 HTTPS ~~已修复✅~~ | P2 | ~~验证 URL scheme~~ 已添加 URL scheme 校验（http/https） | [monitor_notify.go:104](file:///f:/aranea-agents/internal/service/monitor_notify.go#L104) |
 | MO5 | 子包类型重导出间接层不必要 | P3 | 统一导入路径 | [monitor.go](file:///f:/aranea-agents/internal/biz/monitor.go) |
-| MO9 | `fmt.Sprintf` 拼接 LIMIT/OFFSET | P3 | 统一使用 ? 占位符 | [data/monitor.go:173](file:///f:/aranea-agents/internal/data/monitor.go#L173) |
+| MO9 | `fmt.Sprintf` 拼接 LIMIT/OFFSET ~~已修复✅~~ | P3 | ~~统一使用 ? 占位符~~ 已改用 `?` 占位符 + `append(args, limit, offset)` | [data/monitor.go:173](file:///f:/aranea-agents/internal/data/monitor.go#L173) |
 | MO10 | `sanitizeJSONString` 双重 JSON 解析 | P3 | biz 层返回时做 sanitize | [monitor.go:312-319](file:///f:/aranea-agents/internal/service/monitor.go#L312-L319) |
 | MO11 | `postAlertWebhook` 使用 http.DefaultClient | P3 | 注入专用 http.Client | [monitor_notify.go:104](file:///f:/aranea-agents/internal/service/monitor_notify.go#L104) |
 | MO15 | `FlowLogUsecase.List` 无 ID 过滤时静默返回空 | P3 | API 层添加参数校验 | [flowlog.go:72-75](file:///f:/aranea-agents/internal/biz/flowlog/flowlog.go#L72-L75) |
@@ -1697,21 +1728,82 @@ errors, _ := u.repo.CountMonitorEventsSince(ctx, "runner.completion", "error", s
 |--------|--------|----------|----------|-----------|
 | P2 | `MonitorUsecase` 拆分为 4 个子 Usecase | monitor biz + service + event handler | 中（Wire + 调用方修改） | 大 |
 | P2 | `MonitorService` 剥离 FlowLog/CodeExecutor | monitor service | 低 | 小 |
-| P2 | `metadata_json LIKE` → `json_extract` | data 层 | 中（查询结果变化） | 中 |
-| P2 | 添加 `monitor_events` 复合索引 | data 层 | 低 | 小 |
+| P2 | `metadata_json LIKE` → `json_extract` ~~已修复✅~~ | data 层 | ~~中（查询结果变化）~~ 已改用 json_extract 精确查询 | ~~中~~ 已完成 |
+| P2 | 添加 `monitor_events` 复合索引 ~~已完成✅~~ | data 层 | 低 | ~~小~~ 已有索引 |
 | P2 | `RecordRunnerCompletion` DB 唯一约束 | data 层 + biz | 中（需 migration） | 中 |
-| P2 | `EvaluateAlerts` 异步化 + 节流 | biz event handler | 低 | 小 |
+| P2 | `EvaluateAlerts` 异步化 + 节流 ~~已完成✅~~ | biz event handler | 低 | ~~小~~ 已改为 safego.Go |
 | P2 | `EvaluateAlerts` 注册机制（支持新指标） | biz monitor | 低 | 中 |
-| P2 | `PatchRunnerCompletionMetadata` 优先 invocation_id | data 层 | 低 | 小 |
-| P2 | 审计日志/事件写入错误记录 warn 日志 | biz monitor | 低 | 小 |
-| P2 | `postAlertWebhook` HTTPS 校验 | service | 低 | 小 |
+| P2 | `PatchRunnerCompletionMetadata` 优先 invocation_id ~~已完成✅~~ | data 层 | 低 | ~~小~~ 已完成 |
+| P2 | 审计日志/事件写入错误记录 warn 日志 ~~已完成✅~~ | biz monitor | 低 | ~~小~~ 已完成 |
+| P2 | `postAlertWebhook` HTTPS 校验 ~~已完成✅~~ | service | 低 | ~~小~~ 已完成 |
+| P2 | `postAlertWebhook` 专用 http.Client ~~已修复✅~~ | service | 低 | ~~小~~ 已完成：专用 alertWebhookClient |
 | P2 | `TurnCompletionBridge` 持久化 pendingUsage | biz runner_completion | 中 | 中 |
-| P2 | `lastFired` 清理机制 | biz monitor | 低 | 小 |
+| P2 | `lastFired` 清理机制 ~~已完成✅~~ | biz monitor | 低 | ~~小~~ 已完成 |
 | P3 | `PlatformRow` 拆分为 Event/Trace 结构体 | biz + service + proto | 中 | 中 |
 | P3 | 子包重导出统一 | biz | 低 | 小 |
-| P3 | SQL 拼接改用占位符 | data | 低 | 小 |
+| P3 | SQL 拼接改用占位符 ~~已修复✅~~ | data | ~~低~~ 已完成 | ~~小~~ 已完成 |
 | P3 | `sanitizeJSONValue` 提取到工具包 | service | 低 | 小 |
 | P3 | `ReplaceAlertRules` 改用 UPSERT | data | 低 | 小 |
 | P3 | 告警通知端到端测试 | test | 低 | 中 |
 | P3 | 添加定时告警评估 | biz + cron | 低 | 小 |
 | P3 | `GetMonitorLogs` 标注 deprecated | service + proto | 低 | 小 |
+
+---
+
+## 十四、优化执行记录 (2026-05-26)
+
+基于本审查报告的优化建议，以下为已完成的修复项：
+
+### P1 已修复
+
+| 编号 | 问题 | 修复内容 | 修改文件 |
+|------|------|----------|----------|
+| G5 | `compileAdaptiveEdges` O(n²) 全连接边 | 添加 `adaptiveMaxTransferEdges=30` 上限，防止边数爆炸 | `internal/team/graph_compile.go` |
+| G6 | `compileCoordinatorEdges` 缺少 hub→finish 边 | 添加 `hub→finish` 条件边，当 hub 不 dispatch 任何 worker 时执行可正常结束 | `internal/team/graph_compile.go` |
+| M4 | HeuristicConsolidator 用 `m[0]` 存整句 | ✅ 已改为 `m[1]` 提取捕获组 | `internal/biz/memory_consolidator.go` |
+
+### P2 已修复
+
+| 编号 | 问题 | 修复内容 | 修改文件 |
+|------|------|----------|----------|
+| B1 | BatchUpdateAgents 无事务保护 | ✅ 验证已有 `ExecInTx` 事务保护，报告描述过时 | — |
+| B5 | EventBus deliverBlockUpTo 忙等待 | ✅ 验证已使用 `time.NewTimer` + `select`，非忙等待 | — |
+| E4 | data.NewData cleanup 不完整 | ✅ 验证 `cleanup` 已关闭 `entClient` | — |
+| G8 | startGraphWatch 30 分钟硬编码超时 | 添加 `watchTimeout` 字段，替换硬编码值；添加 `CleanupStaleLastFired` 方法 | `internal/team/team_graph_run_coordinator.go` |
+| G15 | consumeRuntimeEvents UpdateRun 错误静默忽略 | ✅ 已添加 `slog.Warn` 日志记录 `UpdateRun` 失败 | `internal/biz/graph_execution.go` |
+| M7 | MemoryJobQueue 满时静默丢弃无指标 | 添加 `dropped`/`debounced` 原子计数器，每 100 次丢弃记录 warn 日志，新增 `Stats()` 方法 | `internal/memory/trpc/auto_memory_queue.go` |
+| M9/M15 | syncFactIndexBestEffort 吞错 | 添加 warn 日志记录同步失败 | `internal/biz/memory_admin_usecase.go` |
+| MO14 | lastFired sync.Map 无清理 | ✅ `ReplaceAlertRules` 已自动清理已删除规则的 lastFired 条目 | `internal/biz/monitor/monitor.go` |
+| MO16 | PatchRunnerCompletionMetadata 可能 patch 错误行 | ✅ 已优先使用 `invocation_id` 匹配 | `internal/data/monitor.go` |
+| MO17 | CountMonitorEventsSince 无索引全表扫描 | ✅ 验证已有 `idx_monitor_events_key_created` 和 `idx_monitor_events_key_status_created` 复合索引 | — |
+| MO7/MO8 | monitorEventsWhere/monitorTracesWhere 用 LIKE 查 JSON 字段 | ✅ 已改用 `json_extract` 精确查询 | `internal/data/monitor.go` |
+| MO23 | RecordAuditLog/RecordMonitorEvent 错误静默丢弃 | ✅ 已添加 `slog.Warn` 日志 | `internal/biz/monitor/monitor.go` |
+| MO24 | EvaluateAlerts 中 DB 查询错误被忽略 | ✅ 已添加 `slog.Warn` 日志并跳过当前规则 | `internal/biz/monitor/monitor.go` |
+| MO25 | postAlertWebhook 不验证 HTTPS | ✅ 已添加 URL scheme 校验（http/https） | `internal/service/monitor_notify.go` |
+| CA15 | steerIntoActiveTurn 类型断言失败静默跳过 | ✅ 已添加 `slog.Warn` 日志记录断言失败 | `internal/service/channel_ingress_policy.go` |
+| CA22 | recordDelivery 忽略错误 | ✅ `recordDelivery` 方法内已添加 `slog.Warn` 日志 | `internal/service/channel_ingress.go` |
+| CA23 | EncryptChannelSecretRef key 缺失时静默返回空 | ✅ 已改为 `errors.InternalServer` | `internal/biz/channel_credential_crypto.go` |
+| CA26 | MatchRoute 使用 filepath.Match 语义不匹配 | 改为三层匹配策略：`*` 后缀 `strings.HasPrefix` 前缀匹配、含 glob 字符用 `path.Match`、纯字符串精确匹配 | `internal/biz/channel_routing.go` |
+| M2 | jsonStr/factJSONStr/jsonInt 重复定义 | ✅ 已统一到 `pkg/jsonutil.IfaceStr` 等共享函数，消除重复定义 | — |
+
+### P3 已修复
+
+| 编号 | 问题 | 修复内容 | 修改文件 |
+|------|------|----------|----------|
+| G9 | DeferTeamRunSuccessIfHITL 仅检查 status | 补充检查 `exec.InterruptNode != ""` | `internal/team/team_graph_run_coordinator.go` |
+| G10 | applyTeamRuntimeExecutionOptions 中 `_ = def` | ✅ `_ = def` 已不存在，`def.FailurePolicy` 已被使用 | — |
+| G13 | Coordinator.sessions 内存无 GC | 添加 `CleanupStaleSessions` 方法，清理超过 2 小时的 session | `internal/team/team_graph_run_coordinator.go` |
+| G16 | HandleTeamGraphTaskCompleted 忽略 UpdateTeamRun 错误 | ✅ 替换 `_ =` 为 `slog.Warn` 错误日志 | `internal/team/team_graph_run_coordinator.go` |
+| G18 | buildResumeSessionContext 静默忽略解析错误 | ✅ 已添加 `slog.Warn` 日志 | `internal/team/team_graph_run_finisher.go` |
+| G17 | RegisterTeamGraphExecution 部分失败不回滚 | ✅ 已改为先 SaveRun 再写内存 | `internal/biz/graph_team_execution.go` |
+| M3 | errStore() 方法名语义不清 | ✅ 已重命名为 `requireAdmin()` | `internal/service/memory.go` |
+| M6 | AutoMemoryWorker drain 硬编码上限 50 | ✅ 验证已提取为常量 `autoMemoryDrainBatchSize` | — |
+| M14 | AutoMemoryWorker 构造函数 panic | 改为返回 `(*AutoMemoryWorker, error)`，更新 wire 和测试 | `internal/cronrunner/jobs/auto_memory.go`, `cmd/admin/wire.go`, `cmd/admin/wire_gen.go`, `internal/cronrunner/jobs/auto_memory_integration_test.go` |
+| M16 | Cascade touchAffectedEntities 忽略单条错误 | 收集失败 ID 列表，记录 warn 日志 | `internal/biz/memory_l4_cascade.go` |
+| MO9 | fmt.Sprintf 拼接 LIMIT/OFFSET | ✅ 已改用 `?` 占位符 + `append(args, limit, offset)` | `internal/data/monitor.go` |
+| MO12 | EvaluateAlerts 同步调用阻塞事件处理 | 改为 `safego.Go` 异步执行 | `internal/biz/event_bus_runner_handler.go` |
+| CA5 | webhookRateLimits 全局 sync.Map 无清理 | 添加 `cleanupStaleWebhookRateLimits` 惰性清理（5 分钟间隔） | `internal/service/channel_ingress_ratelimit.go` |
+| CA27 | IsChannelCancelCommand 精确匹配 | ✅ 已改用 `HasPrefix` 支持前缀匹配 | `internal/biz/channel_inbound_commands.go` |
+| CA28 | SuggestDurableRun 关键词匹配误触发率高 | 添加 `suggestDurableMinRuneLen=4` 最小消息长度阈值，极短消息不再触发关键词匹配 | `internal/biz/channel_config_helpers.go` |
+| G7 | compileParallelEdges entry=finish 时空边集 | 添加 `entry == finish` 时回退到 `compileSequentialEdges` | `internal/team/graph_compile.go` |
+| MO11 | postAlertWebhook 使用 http.DefaultClient | 替换为专用 `alertWebhookClient`（10s 超时、连接池配置） | `internal/service/monitor_notify.go` |

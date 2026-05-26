@@ -120,18 +120,18 @@ func (u *ChannelUsecase) List(ctx context.Context) ([]Channel, error) {
 }
 
 func (u *ChannelUsecase) Get(ctx context.Context, id string) (Channel, error) {
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return Channel{}, errors.BadRequest("CHANNEL", "id is required")
+	id, err := requireNonEmpty(id, "CHANNEL", "id")
+	if err != nil {
+		return Channel{}, err
 	}
 	return u.repo.Get(ctx, id)
 }
 
 // GetByKey loads a channel by unique channel_key (webhook path segment).
 func (u *ChannelUsecase) GetByKey(ctx context.Context, channelKey string) (Channel, error) {
-	channelKey = strings.TrimSpace(channelKey)
-	if channelKey == "" {
-		return Channel{}, errors.BadRequest("CHANNEL", "channel_key is required")
+	channelKey, err := requireNonEmpty(channelKey, "CHANNEL", "channel_key")
+	if err != nil {
+		return Channel{}, err
 	}
 	return u.repo.GetByKey(ctx, channelKey)
 }
@@ -194,17 +194,17 @@ func (u *ChannelUsecase) Update(ctx context.Context, id string, row Channel, cre
 }
 
 func (u *ChannelUsecase) Delete(ctx context.Context, id string) error {
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return errors.BadRequest("CHANNEL", "id is required")
+	id, err := requireNonEmpty(id, "CHANNEL", "id")
+	if err != nil {
+		return err
 	}
 	return u.repo.Delete(ctx, id)
 }
 
 func (u *ChannelUsecase) Toggle(ctx context.Context, id string, enabled bool) (Channel, error) {
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return Channel{}, errors.BadRequest("CHANNEL", "id is required")
+	id, err := requireNonEmpty(id, "CHANNEL", "id")
+	if err != nil {
+		return Channel{}, err
 	}
 	row, err := u.repo.Get(ctx, id)
 	if err != nil {

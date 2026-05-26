@@ -74,7 +74,7 @@ func openTestSessionMemoryStore(t *testing.T) *sessionmemory.Store {
 
 func TestSQLiteMemoryService_AddMemoryWritesFactVisibleToAdmin(t *testing.T) {
 	store := openTestSessionMemoryStore(t)
-	svc := trpcmem.NewSQLiteMemoryService(store, nil, nil)
+	svc := trpcmem.NewSQLiteMemoryService(store, nil, nil, nil, nil)
 	ctx := context.Background()
 	uk := trpcmemory.UserKey{AppName: "agent-1", UserID: "user-1"}
 	if err := svc.AddMemory(ctx, uk, "My name is Alice", []string{"profile"}); err != nil {
@@ -101,7 +101,7 @@ func TestSQLiteMemoryService_AddMemoryWritesFactVisibleToAdmin(t *testing.T) {
 
 func TestSQLiteMemoryService_AddMemoryDedupByFingerprint(t *testing.T) {
 	store := openTestSessionMemoryStore(t)
-	svc := trpcmem.NewSQLiteMemoryService(store, nil, nil)
+	svc := trpcmem.NewSQLiteMemoryService(store, nil, nil, nil, nil)
 	ctx := context.Background()
 	uk := trpcmemory.UserKey{AppName: "agent-dedup", UserID: "user-dedup"}
 	stmt := "I prefer tea in the morning"
@@ -122,7 +122,7 @@ func TestSQLiteMemoryService_AddMemoryDedupByFingerprint(t *testing.T) {
 
 func TestSQLiteMemoryService_ReadMemoriesFromFacts(t *testing.T) {
 	store := openTestSessionMemoryStore(t)
-	svc := trpcmem.NewSQLiteMemoryService(store, nil, nil)
+	svc := trpcmem.NewSQLiteMemoryService(store, nil, nil, nil, nil)
 	ctx := context.Background()
 	uk := trpcmemory.UserKey{AppName: "agent-2", UserID: "user-2"}
 	if err := svc.AddMemory(ctx, uk, "I prefer dark mode", nil); err != nil {
@@ -142,7 +142,7 @@ func TestSQLiteMemoryService_ReadMemoriesFromFacts(t *testing.T) {
 
 func TestSQLiteMemoryService_DeleteAndClear(t *testing.T) {
 	store := openTestSessionMemoryStore(t)
-	svc := trpcmem.NewSQLiteMemoryService(store, nil, nil)
+	svc := trpcmem.NewSQLiteMemoryService(store, nil, nil, nil, nil)
 	ctx := context.Background()
 	uk := trpcmemory.UserKey{AppName: "agent-3", UserID: "user-3"}
 	if err := svc.AddMemory(ctx, uk, "fact one", nil); err != nil {

@@ -253,6 +253,20 @@ message GetAgentPromptPreviewRequest {
 
 message GetAgentPromptPreviewResponse {
   string preview = 1;
+  // instruction is the static build-time system instruction (Description + prompt files + RuntimeCapabilityCue).
+  string instruction = 2;
+  repeated PromptSectionEstimate sections = 3;
+  int32 static_total_tokens = 4;
+  int32 runtime_overlay_est_tokens = 5;
+  string runtime_note = 6;
+}
+
+message PromptSectionEstimate {
+  string key = 1;
+  string label = 2;
+  int32 est_tokens = 3;
+  // build = included in instruction; runtime = injected per LLM call when enabled.
+  string source = 4;
 }
 
 // EffectiveAgentTool is one evaluated tool row for an agent (legacy /agents/{id}/tools/effective JSON).

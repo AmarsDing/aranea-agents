@@ -48,6 +48,8 @@ func toProtoSkill(s biz.Skill) *v1.Skill {
 		ExtendsSkillId:       s.ExtendsSkillID,
 		Status:               s.Status,
 		Enabled:              s.Enabled,
+		FilesystemMissing:    s.FilesystemMissing,
+		SyncOrigin:           s.SyncOrigin,
 		InvokeCount:          int32(s.InvokeCount),
 		SuccessCount:         int32(s.SuccessCount),
 		FailureCount:         int32(s.FailureCount),
@@ -114,12 +116,14 @@ func toProtoInvocation(x biz.SkillInvocation) *v1.SkillInvocation {
 func (s *SkillService) ListSkills(ctx context.Context, req *v1.ListSkillsRequest) (*v1.ListSkillsResponse, error) {
 	limit, offset, page, pageSize := biz.PageToLimitOffset(req.GetPage(), req.GetPageSize())
 	q := biz.SkillListQuery{
-		Search:  req.GetSearch(),
-		Tags:    req.GetTags(),
-		Enabled: req.GetEnabled(),
-		Status:  req.GetStatus(),
-		Limit:   limit,
-		Offset:  offset,
+		Search:            req.GetSearch(),
+		Tags:              req.GetTags(),
+		Enabled:           req.GetEnabled(),
+		Status:            req.GetStatus(),
+		FilesystemMissing: req.GetFilesystemMissing(),
+		SyncOrigin:        req.GetSyncOrigin(),
+		Limit:             limit,
+		Offset:            offset,
 	}
 	result, err := s.uc.List(ctx, q)
 	if err != nil {
@@ -134,6 +138,24 @@ func (s *SkillService) ListSkills(ctx context.Context, req *v1.ListSkillsRequest
 		resp.Items = append(resp.Items, toProtoSkill(result.Items[i]))
 	}
 	return resp, nil
+}
+
+func (s *SkillService) GetSkillFilesystemHealth(ctx context.Context, _ *emptypb.Empty) (*v1.SkillFilesystemHealth, error) {
+	root := s.resolvedStorageRoot(ctx)
+	rootAccessible := true
+	if st, err := os.Stat(root); err != nil || !st.IsDir() {
+		rootAccessible = false
+	}
+	stats, err := s.uc.FilesystemHealthStats(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &v1.SkillFilesystemHealth{
+		RootAccessible:         rootAccessible,
+		ResolvedRoot:           root,
+		MissingCount:           int32(stats.MissingCount),
+		PendingFilesystemCount: int32(stats.PendingFilesystemCount),
+	}, nil
 }
 
 func (s *SkillService) ToggleSkillEnabled(ctx context.Context, req *v1.ToggleSkillEnabledRequest) (*v1.Skill, error) {

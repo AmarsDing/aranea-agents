@@ -11,7 +11,7 @@ import type { Message } from "../types";
 const SCROLL_BOTTOM_THRESHOLD = 80;
 
 export type ChatMessageScrollOpts = {
-  sessionTitle: Ref<string>;
+  sessionKey: Ref<string> | ComputedRef<string>;
   messages: Ref<Message[]>;
   useTurnBlockMode: ComputedRef<boolean>;
   turnBlocks: ComputedRef<TurnBlockGroup[]>;
@@ -164,7 +164,7 @@ export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
   }
 
   watch(
-    () => opts.sessionTitle.value,
+    () => opts.sessionKey.value,
     () => {
       stickToBottom.value = true;
       showScrollBtn.value = false;

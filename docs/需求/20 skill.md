@@ -140,6 +140,66 @@
 | 请求失败 | `QBanner` negative +「重试」 |
 | 无权限操作 | 按钮禁用，`QTooltip` 展示原因 |
 
+### 2.4 磁盘同步（拷贝 / 删除 / 通知）
+
+除 **ZIP 上传** 外，平台支持将合规 Skill 包 **直接拷贝** 到 Skill 根目录 `{工作目录}/skills/{slug}/`，由后台 **`internal/skill/watch`** 自动登记。与上传路径对比如下：
+
+| 维度 | ZIP 上传 | 磁盘拷贝 |
+|------|----------|----------|
+| 入口 | Skill 管理页「上传 Skill」 | 运维 / 开发者拷贝目录到 `skills/` |
+| 校验 | 结构 + 重名 + 模型相似度 + 炼化 | 结构 + 安全；**不做**同步阻塞相似度 |
+| 默认状态 | 用户确认 apply 后入库 | 自动 **`draft` + `enabled=false`** |
+| 运行时 | 发布并启用后 Agent 可见 | 同左 |
+| 来源标记 | `sync_origin=import` | `sync_origin=filesystem` |
+
+**目录约定**
+
+- Skill 根：`{ResolvedWorkDirectory}/skills`（与系统设置 `work_directory` 一致，见 **`20 skill struct design.md`** §2.5）。
+- 每个 Skill 为 **一级子目录**，目录名 **必须等于 slug**（与 `SKILL.md` 解析 slug 不一致则 block，不入库）。
+- 必须含 `SKILL.md`（或 `skill.md`）；隐藏目录（`.` 开头）忽略。
+
+**拷贝进入（磁盘 → 登记）**
+
+1. `watch.Runner` 启动全量 scan + `fsnotify` debounce（2s）。
+2. 校验通过后 `UpsertSkillFromDisk`：新建为 draft；已存在同 slug 则更新 metadata/正文并清除 `filesystem_missing`。
+3. 写入 `metadata_json.sync_origin=filesystem`。
+4. 发布 Monitor 事件 `skill.filesystem.imported` / `skill.filesystem.updated`（经 EventBus + `monitor_events`）。
+5. **不**自动 publish / enable。
+
+**删除离开（磁盘 → 标记）**
+
+1. 目录被外部删除或移走后，watch 将对应 slug 标记 **`filesystem_missing=true`**（DB 软删记录保留）。
+2. 发布 `skill.filesystem.missing`；恢复目录并校验通过后发布 `skill.filesystem.recovered` 并清除标记。
+3. 平台 UI「删除 Skill」为 **软删 DB**，**不**删除磁盘，**不**触发磁盘缺失告警。
+
+**Skill 管理页 UI（磁盘同步）**
+
+| 区域 | 需求 |
+|------|------|
+| 页顶 Banner | `GET /v1/skills/filesystem-health` 返回 `missing_count>0` 或 `pending_filesystem_count>0` 时展示 |
+| 筛选 | 「来源：磁盘 / ZIP / 全部」「仅磁盘异常（filesystem_missing）」 |
+| 表格列 | 「来源」chip；「磁盘」列：正常 / 缺失 |
+| 待审核 | `sync_origin=filesystem` 且 `status=draft` 在 Banner 中提示「需发布并启用」 |
+
+**API 契约（磁盘同步字段）**
+
+| 字段 | 说明 |
+|------|------|
+| `Skill.filesystem_missing` | 磁盘目录是否缺失 |
+| `Skill.sync_origin` | `filesystem` \| `import` \| `manual` \| 空 |
+| `ListSkillsRequest.filesystem_missing` | 筛选：`true` / `false` / 空 |
+| `ListSkillsRequest.sync_origin` | 按来源筛选 |
+| `SkillFilesystemHealth` | 汇总：根目录可达、缺失数、待审核磁盘 Skill 数 |
+
+**通知与监控（管理员 / 领导）**
+
+| 渠道 | EventKey / 行为 |
+|------|-----------------|
+| Monitor Events | `skill.filesystem.imported` · `updated` · `missing` · `recovered` · `rejected` |
+| Audit | `skill.filesystem.sync`（slug、action、validation） |
+| EventBus | 同上 EventKey，供 WS 实时流（debounce 批量） |
+| Webhook | Monitor Alert Rule：`metric_key=skill.filesystem_missing_count`，threshold 为缺失 Skill 数 |
+
 ---
 
 ## 3. 上传与导入流程

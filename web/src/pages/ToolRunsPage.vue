@@ -1,5 +1,5 @@
 <template>
-  <q-page class="app-page-cream tool-runs-page">
+  <q-page class="app-standard-page tool-runs-page">
     <tool-hero-section kicker="Tool observability" title="Tool 调用记录" subtitle="查看工具调用参数摘要、结果摘要、耗时、状态和错误信息。">
       <template #actions>
         <q-btn outline rounded no-caps class="app-outline-btn" icon="arrow_back" label="返回 Tools 管理" :to="{ name: 'tools' }" />

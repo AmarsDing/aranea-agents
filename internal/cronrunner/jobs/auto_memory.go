@@ -22,6 +22,8 @@ const autoMemoryMaxRetries = 3
 // autoMemoryMaxMessages is the maximum number of recent messages to analyze per job.
 const autoMemoryMaxMessages = 40
 
+const autoMemoryDrainBatchSize = 50
+
 // AutoMemoryWorker drains the global auto-memory queue every interval and runs
 // memory consolidation for each pending session.
 //
@@ -50,9 +52,9 @@ func NewAutoMemoryWorker(
 	l4 biz.L4GraphWriter,
 	consolidator biz.MemoryConsolidator,
 	queue memtrpc.AutoMemoryQueue,
-) *AutoMemoryWorker {
+) (*AutoMemoryWorker, error) {
 	if queue == nil {
-		panic("jobs: auto memory queue is required")
+		return nil, errors.New("jobs: auto memory queue is required")
 	}
 	if interval <= 0 {
 		interval = 10 * time.Second
@@ -71,7 +73,7 @@ func NewAutoMemoryWorker(
 		consolidator: consolidator,
 		feedback:     biz.NewFeedbackConsolidator(),
 		queue:        queue,
-	}
+	}, nil
 }
 
 func (w *AutoMemoryWorker) Start(ctx context.Context) {
@@ -92,7 +94,7 @@ func (w *AutoMemoryWorker) drain(ctx context.Context) {
 	if q == nil {
 		return
 	}
-	for i := 0; i < 50; i++ {
+	for i := 0; i < autoMemoryDrainBatchSize; i++ {
 		select {
 		case req := <-q.Chan():
 			if ctx.Err() != nil {
@@ -153,11 +155,14 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 		return err
 	}
 	agentID := strings.TrimSpace(sess.AgentID)
-	l4Enabled := false
+	var memoryPolicy biz.MemoryRuntimePolicy
 	if w.agents != nil && agentID != "" {
 		if ag, err := w.agents.Get(ctx, agentID); err == nil && ag.Settings != nil {
-			l4Enabled = ag.Settings.L4Enabled
+			memoryPolicy = biz.ResolveMemoryRuntimePolicy(ag.Settings)
 		}
+	}
+	if !memoryPolicy.AnyWrite() {
+		return nil
 	}
 
 	msgs, err := w.sessions.ListMessagesRecent(ctx, sid, autoMemoryMaxMessages)
@@ -203,39 +208,41 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 	lastUserMsgID := lastUserMessageID(msgs)
 	msgIDsWithL3 := make(map[string]struct{})
 	var factInputs []sessionmemory.MemoryFactUpsert
-	for _, p := range proposals {
-		stmt := strings.TrimSpace(p.Statement)
-		if stmt == "" {
-			continue
+	if memoryPolicy.WriteL3Facts {
+		for _, p := range proposals {
+			stmt := strings.TrimSpace(p.Statement)
+			if stmt == "" {
+				continue
+			}
+			msgID := strings.TrimSpace(p.SourceMessageID)
+			if msgID == "" {
+				msgID = lastUserMsgID
+			}
+			if msgID != "" {
+				msgIDsWithL3[msgID] = struct{}{}
+			}
+			factInputs = append(factInputs, sessionmemory.MemoryFactUpsert{
+				ScopeType:       "agent",
+				ScopeID:         appName,
+				UserID:          userID,
+				AgentID:         appName,
+				Statement:       stmt,
+				DetailsMarkdown: stmt,
+				FactKind:        "fact",
+				TagsJSON:        topicsJSON(p.Topics),
+				Confidence:      0.85,
+				Importance:      0.6,
+				SourceKind:      "auto_memory",
+				SourceSessionID: sid,
+				SourceMessageID: msgID,
+				Status:          "active",
+				MetadataJSON:    `{"source":"auto_memory"}`,
+			})
 		}
-		msgID := strings.TrimSpace(p.SourceMessageID)
-		if msgID == "" {
-			msgID = lastUserMsgID
-		}
-		if msgID != "" {
-			msgIDsWithL3[msgID] = struct{}{}
-		}
-		factInputs = append(factInputs, sessionmemory.MemoryFactUpsert{
-			ScopeType:       "agent",
-			ScopeID:         appName,
-			UserID:          userID,
-			AgentID:         appName,
-			Statement:       stmt,
-			DetailsMarkdown: stmt,
-			FactKind:        "fact",
-			TagsJSON:        topicsJSON(p.Topics),
-			Confidence:      0.85,
-			Importance:      0.6,
-			SourceKind:      "auto_memory",
-			SourceSessionID: sid,
-			SourceMessageID: msgID,
-			Status:          "active",
-			MetadataJSON:    `{"source":"auto_memory"}`,
-		})
 	}
 
 	var ep *sessionmemory.EpisodeInsert
-	if len(factInputs) > 0 {
+	if memoryPolicy.WriteL2Episode && len(factInputs) > 0 {
 		added := len(factInputs)
 		title := "Auto-memory consolidation"
 		if added == 1 {
@@ -280,7 +287,7 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 	}
 
 	var l4Written int
-	if l4Enabled && w.l4 != nil && agentID != "" {
+	if memoryPolicy.WriteL4Graph && w.l4 != nil && agentID != "" {
 		for _, msg := range msgs {
 			if msg.Role != "user" {
 				continue
@@ -298,6 +305,9 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 			} else {
 				l4Written += n
 			}
+		}
+		if l4Written > 0 {
+			w.l4.RunDecay(ctx, agentID)
 		}
 	}
 

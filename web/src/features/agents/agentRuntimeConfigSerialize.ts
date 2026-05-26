@@ -9,6 +9,7 @@ export function buildRuntimeSettingsPayload(
   advanced: AgentAdvancedSettingsForm,
   extras: Partial<AgentRuntimeSettings> = {},
 ): AgentRuntimeSettings {
+  config.evolution.self_evolve = config.self_evolve;
   return {
     self_evolve: config.self_evolve,
     subagents_enabled: config.subagents.enabled,
@@ -89,7 +90,7 @@ export function buildRuntimeSettingsPayload(
     evo_system_prompt_max_appends: config.evolutionSettings.system_prompt_max_appends,
     heartbeat_enabled: config.heartbeat.enabled,
     heartbeat_interval_minutes: config.heartbeat.interval_minutes,
-    evolution_self_evolve: config.evolution.self_evolve,
+    evolution_self_evolve: config.self_evolve,
     evolution_skill_evolve: config.evolution.skill_evolve,
     evolution_metrics_enabled: config.evolution.evolution_metrics_enabled,
     evolution_suggestions_enabled: config.evolution.evolution_suggestions_enabled,

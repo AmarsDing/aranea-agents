@@ -29,4 +29,10 @@ describe("applyCatalog", () => {
     expect(fields.context_window_k).toBe(1000);
     expect(fields.reasoning_backfill).toBe(true);
   });
+
+  it("infers model_category from catalog capabilities", () => {
+    const fields = applyCatalogModelFields("deepseek", deepseekV4Pro, true);
+    expect(fields.model_category?.map((c) => c.value)).toContain("reasoning");
+    expect(fields.model_category?.map((c) => c.value)).toContain("long_context");
+  });
 });

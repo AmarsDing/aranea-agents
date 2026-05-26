@@ -3,6 +3,7 @@ import { storeToRefs } from "pinia";
 import { useQuasar } from "quasar";
 import type { EvalCaseResult, EvalRun, EvalRunComparison, EvalTrendPoint } from "./types";
 import { useEvaluationStore } from "../../stores/evaluation";
+import { registryColWidth } from "../ui/registryTableColumns";
 
 export function useEvaluationPage() {
   const $q = useQuasar();
@@ -34,28 +35,28 @@ export function useEvaluationPage() {
   const selectedDataset = computed(() => datasets.value.find((d) => d.id === selectedDatasetId.value));
 
   const runColumns = [
-    { name: "id", label: "Run ID", field: "id", align: "left" as const },
-    { name: "agent_id", label: "Agent", field: "agent_id", align: "left" as const },
-    { name: "status", label: "状态", field: "status", align: "left" as const },
+    { name: "id", label: "Run ID", field: "id", align: "left" as const, ...registryColWidth("10%") },
+    { name: "agent_id", label: "Agent", field: "agent_id", align: "left" as const, ...registryColWidth("10%") },
+    { name: "status", label: "状态", field: "status", align: "left" as const, ...registryColWidth("9%") },
     {
       name: "completed_cases",
       label: "进度",
       field: (r: EvalRun) => `${r.completed_cases}/${r.total_cases}`,
-      align: "right" as const
+      align: "right" as const,
+      ...registryColWidth("72px")
     },
-    { name: "exact_match_score", label: "Exact", field: "exact_match_score", align: "right" as const },
-    { name: "actions", label: "", field: "id", align: "right" as const }
+    { name: "exact_match_score", label: "Exact", field: "exact_match_score", align: "right" as const, ...registryColWidth("64px") },
+    { name: "actions", label: "", field: "id", align: "right" as const, ...registryColWidth("108px") }
   ];
 
   const resultColumns = [
-    { name: "case_id", label: "Case", field: "case_id", align: "left" as const },
-    { name: "exact_match", label: "Exact", field: "exact_match", align: "center" as const },
-    { name: "contains_match", label: "Contains", field: "contains_match", align: "center" as const },
-    { name: "human_pass", label: "人工", field: "human_pass", align: "center" as const },
-    { name: "human_score", label: "分数", field: "human_score", align: "center" as const },
-    { name: "human_comment", label: "评语", field: "human_comment", align: "left" as const },
-    { name: "annotate", label: "", field: "id", align: "right" as const },
-    { name: "error_message", label: "错误", field: "error_message", align: "left" as const }
+    { name: "case_id", label: "Case", field: "case_id", align: "left" as const, ...registryColWidth("10%") },
+    { name: "exact_match", label: "Exact", field: "exact_match", align: "center" as const, ...registryColWidth("64px") },
+    { name: "contains_match", label: "Contains", field: "contains_match", align: "center" as const, ...registryColWidth("64px") },
+    { name: "human_pass", label: "人工", field: "human_pass", align: "center" as const, ...registryColWidth("64px") },
+    { name: "human_score", label: "分数", field: "human_score", align: "center" as const, ...registryColWidth("64px") },
+    { name: "human_comment", label: "评语", field: "human_comment", align: "left" as const, ...registryColWidth("12%") },
+    { name: "annotate", label: "", field: "id", align: "right" as const, ...registryColWidth("108px") }
   ];
 
   function runStatusColor(status: string) {

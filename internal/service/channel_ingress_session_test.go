@@ -289,6 +289,9 @@ func (s ingressAgentRepo) ListExtrasForAgents(context.Context, []string) (map[st
 func (s ingressAgentRepo) ListAgentCreators(context.Context) ([]biz.AgentCreator, error) {
 	return nil, nil
 }
+func (s ingressAgentRepo) ExecInTx(ctx context.Context, fn func(context.Context) error) error {
+	return fn(ctx)
+}
 
 func TestEnsureChannelSessionRebindsStalePeerBind(t *testing.T) {
 	const (

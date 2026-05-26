@@ -1,16 +1,13 @@
 <template>
-  <div class="app-registry-table-shell">
-    <q-table
-      flat
-      dense
-      class="app-registry-table tools-data-table"
-      row-key="id"
-      :rows="rows"
-      :columns="columns"
-      :loading="loading"
-      :pagination="tablePagination"
-      hide-pagination
-    >
+  <AppRegistryTable
+    table-class="tools-data-table"
+    row-key="id"
+    :rows="rows"
+    :columns="columns"
+    :loading="loading"
+    :pagination="tablePagination"
+    hide-pagination
+  >
       <template #body-cell-name="props">
         <q-td :props="props">
           <div class="app-registry-cell-primary">{{ props.row.display_name }}</div>
@@ -84,12 +81,12 @@
           </div>
         </q-td>
       </template>
-    </q-table>
-  </div>
+    </AppRegistryTable>
 </template>
 
 <script setup lang="ts">
 import type { QTableColumn } from "quasar";
+import AppRegistryTable from "../layout/AppRegistryTable.vue";
 import type { Tool } from "../../features/tools/types";
 import {
   riskLabel,
@@ -97,7 +94,7 @@ import {
   runtimeKindHint,
   runtimeStatusLabel
 } from "./toolUi";
-import { registryCol } from "../../features/ui/registryTableColumns";
+import { registryColWidth } from "../../features/ui/registryTableColumns";
 
 defineProps<{
   rows: Tool[];
@@ -115,12 +112,12 @@ defineEmits<{
 const tablePagination = { rowsPerPage: 0 };
 
 const columns: QTableColumn<Tool>[] = [
-  { name: "name", label: "Tool", field: "display_name", align: "left", ...registryCol.name },
-  { name: "category", label: "分类 / 来源", field: "category", align: "left", ...registryCol.chips },
-  { name: "risk", label: "风险", field: "risk_level", align: "left", ...registryCol.status },
-  { name: "runtime", label: "运行时", field: "runtime_status", align: "left", ...registryCol.chips },
-  { name: "enabled", label: "启用", field: "enabled", align: "left", ...registryCol.toggle },
-  { name: "stats", label: "调用", field: "invoke_count", align: "left", ...registryCol.stats },
-  { name: "actions", label: "操作", field: "id", align: "right", ...registryCol.actions }
+  { name: "name", label: "Tool", field: "display_name", align: "left", ...registryColWidth("14%") },
+  { name: "category", label: "分类 / 来源", field: "category", align: "left", ...registryColWidth("11%") },
+  { name: "risk", label: "风险", field: "risk_level", align: "left", ...registryColWidth("9%") },
+  { name: "runtime", label: "运行时", field: "runtime_status", align: "left", ...registryColWidth("11%") },
+  { name: "enabled", label: "启用", field: "enabled", align: "left", ...registryColWidth("64px") },
+  { name: "stats", label: "调用", field: "invoke_count", align: "left", ...registryColWidth("9%") },
+  { name: "actions", label: "操作", field: "id", align: "right", ...registryColWidth("108px") }
 ];
 </script>

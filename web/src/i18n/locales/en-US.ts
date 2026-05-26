@@ -91,6 +91,8 @@ export default {
     modelProvider: "Model",
     contextUse: "Context",
     contextPromptUse: "Prompt ctx",
+    contextUsageEmpty: "No usage data yet",
+    headerPromptPlaceholder: "Scroll to view that turn's question",
     sessionTotalTokens: "Session {n} tok",
     knowledgeBases: "Knowledge",
     feedbackPositive: "Helpful",
@@ -166,6 +168,9 @@ export default {
     toolConfirmDeny: "Deny",
     toolConfirmApprove: "Allow",
     toolLongRunning: "Long-running",
+    sessionArtifacts: {
+      title: "Session artifacts",
+    },
     job: {
       title: "Background jobs",
       loading: "Loading background jobs…",
@@ -360,6 +365,11 @@ export default {
     routingTeamPlaceholder: "Select a team",
     routingAgentDisabledHint: "Routing to a team",
     routingTeamDisabledHint: "Routing to an agent",
+    routingAgentModelChecking: "Checking whether the agent model exists in the provider catalog…",
+    routingAgentModelOk: "Model available: {provider} / {model}",
+    routingAgentModelFail:
+      "Model unavailable ({provider} / {model}): {detail}. Feishu/Web deliveries may fail—fix in Agent settings or Model catalog.",
+    routingAgentModelFailDefault: "no enabled catalog row for this pair",
     routingRulesLabel: "Peer routing rules",
     routingRulesAdd: "Add rule",
     routingRulesPeerPattern: "peer_pattern",

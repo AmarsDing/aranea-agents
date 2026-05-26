@@ -84,8 +84,12 @@ func (m *memSkillRepo) GetSkillBySkillKey(_ context.Context, _ string) (biz.Skil
 	return biz.Skill{}, fmt.Errorf("not found")
 }
 
-func (m *memSkillRepo) UpsertSkillFromDisk(_ context.Context, in biz.SkillDiskSyncInput) (biz.Skill, error) {
-	return biz.Skill{}, nil
+func (m *memSkillRepo) UpsertSkillFromDisk(_ context.Context, in biz.SkillDiskSyncInput) (biz.Skill, biz.SkillDiskSyncOutcome, error) {
+	return biz.Skill{}, biz.SkillDiskSyncOutcome{}, nil
+}
+
+func (m *memSkillRepo) ListRegisteredSlugs(_ context.Context) ([]string, error) {
+	return nil, nil
 }
 
 func (m *memSkillRepo) ListEnabledPublishedSkillKeys(_ context.Context) ([]string, error) {
@@ -128,6 +132,10 @@ func (m *memSkillRepo) PublishSkill(_ context.Context, id string) (biz.Skill, er
 
 func (m *memSkillRepo) MarkSkillFilesystemMissing(_ context.Context, _ string, _ bool) error {
 	return nil
+}
+
+func (m *memSkillRepo) FilesystemHealthStats(_ context.Context) (biz.SkillFilesystemHealthStats, error) {
+	return biz.SkillFilesystemHealthStats{}, nil
 }
 
 func newSkillService() *service.SkillService {

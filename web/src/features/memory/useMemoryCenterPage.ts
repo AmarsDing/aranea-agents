@@ -18,6 +18,7 @@ import { approveCascadeProposal, listCascadeProposals, rejectCascadeProposal } f
 import { useAgentsCatalogStore } from "../../stores/agents/catalog";
 import { useSessionStore } from "../../stores/session";
 import { useMemoryStore } from "../../stores/memory";
+import { registryColWidth } from "../ui/registryTableColumns";
 
 export function useMemoryCenterPage() {
   const agentsCatalog = useAgentsCatalogStore();
@@ -162,21 +163,20 @@ export function useMemoryCenterPage() {
   const factStatusOptions = ["active", "archived", "disputed", "deprecated", "deleted"].map((value) => ({ label: value, value }));
 
   const factColumns = [
-    { name: "statement", label: "Statement", field: "statement", align: "left" as const, sortable: false },
-    { name: "scope", label: "Scope", field: "scope_type", align: "left" as const, sortable: false },
-    { name: "confidence", label: "Confidence", field: "confidence", align: "left" as const, sortable: false },
-    { name: "source", label: "Source", field: "source_kind", align: "left" as const, sortable: false },
-    { name: "updated", label: "Updated", field: "updated_at", align: "left" as const, sortable: false, format: formatDate },
-    { name: "actions", label: "操作", field: "id", align: "right" as const, sortable: false }
+    { name: "scope", label: "Scope", field: "scope_type", align: "center" as const, sortable: false, ...registryColWidth("12%") },
+    { name: "confidence", label: "Confidence", field: "confidence", align: "left" as const, sortable: false, ...registryColWidth("15%") },
+    { name: "source", label: "Source", field: "source_kind", align: "left" as const, sortable: false, ...registryColWidth("11%") },
+    { name: "updated", label: "Updated", field: "updated_at", align: "left" as const, sortable: false, format: formatDate, ...registryColWidth("11%") },
+    { name: "actions", label: "操作", field: "id", align: "right" as const, sortable: false, ...registryColWidth("10%") }
   ];
 
   const snapshotColumns = [
-    { name: "created", label: "时间", field: "created_at", align: "left" as const, sortable: false, format: formatDate },
-    { name: "model", label: "模型", field: (row: L0AssemblySnapshot) => `${row.provider || "-"} / ${row.model || "-"}`, align: "left" as const, sortable: false },
-    { name: "ratio", label: "Used", field: "used_ratio", align: "left" as const, sortable: false },
-    { name: "segments", label: "段落", field: "segments_json", align: "left" as const, sortable: false },
-    { name: "strategy", label: "裁剪策略", field: "truncate_strategy", align: "left" as const, sortable: false },
-    { name: "actions", label: "操作", field: "id", align: "right" as const, sortable: false }
+    { name: "created", label: "时间", field: "created_at", align: "left" as const, sortable: false, format: formatDate, ...registryColWidth("11%") },
+    { name: "model", label: "模型", field: (row: L0AssemblySnapshot) => `${row.provider || "-"} / ${row.model || "-"}`, align: "left" as const, sortable: false, ...registryColWidth("14%") },
+    { name: "ratio", label: "Used", field: "used_ratio", align: "left" as const, sortable: false, ...registryColWidth("9%") },
+    { name: "segments", label: "段落", field: "segments_json", align: "left" as const, sortable: false, ...registryColWidth("11%") },
+    { name: "strategy", label: "裁剪策略", field: "truncate_strategy", align: "left" as const, sortable: false, ...registryColWidth("11%") },
+    { name: "actions", label: "操作", field: "id", align: "right" as const, sortable: false, ...registryColWidth("108px") }
   ];
 
   onMounted(loadAll);

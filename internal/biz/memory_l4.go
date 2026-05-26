@@ -36,6 +36,7 @@ type L4EntitySnapshot struct {
 
 type L4GraphWriter interface {
 	WriteFromUserText(ctx context.Context, agentID, userID, text string) (int, error)
+	RunDecay(ctx context.Context, agentID string)
 }
 
 type L4GraphRepo interface {

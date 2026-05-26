@@ -1,8 +1,6 @@
 <template>
-  <q-table
-    flat
-    dense
-    class="app-registry-table skill-table"
+  <AppRegistryTable
+    table-class="skill-table"
     row-key="id"
     :rows="rows"
     :columns="columns"
@@ -12,16 +10,12 @@
   >
     <template #body-cell-name="props">
       <q-td :props="props">
-        <div class="app-registry-cell-primary">{{ props.row.name }}</div>
-        <div class="app-registry-cell-sub">{{ props.row.slug }}</div>
-      </q-td>
-    </template>
-
-    <template #body-cell-description="props">
-      <q-td :props="props">
-        <div class="app-registry-cell-desc skill-table-desc" :title="props.row.description || ''">
-          {{ props.row.description || "暂无描述" }}
-        </div>
+        <AppRegistryHoverTip :text="props.row.description" empty-label="暂无描述">
+          <div class="min-width-0">
+            <div class="app-registry-cell-primary">{{ props.row.name }}</div>
+            <div class="app-registry-cell-sub">{{ props.row.slug }}</div>
+          </div>
+        </AppRegistryHoverTip>
       </q-td>
     </template>
 
@@ -33,6 +27,22 @@
           </q-chip>
           <span v-if="!props.row.tags?.length" class="text-caption text-grey-6">无标签</span>
         </div>
+      </q-td>
+    </template>
+
+    <template #body-cell-origin="props">
+      <q-td :props="props">
+        <q-chip v-if="props.row.sync_origin" dense size="sm" :outline="props.row.sync_origin !== 'filesystem'" color="primary" text-color="white">
+          {{ originLabel(props.row.sync_origin) }}
+        </q-chip>
+        <span v-else class="text-caption text-grey-6">—</span>
+      </q-td>
+    </template>
+
+    <template #body-cell-disk="props">
+      <q-td :props="props">
+        <q-badge v-if="props.row.filesystem_missing" rounded color="negative">缺失</q-badge>
+        <q-badge v-else rounded color="positive" outline>正常</q-badge>
       </q-td>
     </template>
 
@@ -95,14 +105,16 @@
         </div>
       </q-td>
     </template>
-  </q-table>
+  </AppRegistryTable>
 </template>
 
 <script setup lang="ts">
 import type { QTableColumn } from "quasar";
+import AppRegistryTable from "../layout/AppRegistryTable.vue";
+import AppRegistryHoverTip from "../layout/AppRegistryHoverTip.vue";
 import SkillStatsStrip from "./SkillStatsStrip.vue";
 import type { Skill } from "../../features/skills/types";
-import { registryCol } from "../../features/ui/registryTableColumns";
+import { registryColWidth } from "../../features/ui/registryTableColumns";
 
 defineProps<{
   rows: Skill[];
@@ -122,14 +134,15 @@ const emit = defineEmits<{
 const tablePagination = { rowsPerPage: 0 };
 
 const columns: QTableColumn<Skill>[] = [
-  { name: "name", label: "名称", field: "name", align: "left", ...registryCol.name },
-  { name: "description", label: "描述", field: "description", align: "left", ...registryCol.desc },
-  { name: "tags", label: "标签", field: "tags", align: "left", ...registryCol.chips },
-  { name: "status", label: "状态 / 版本", field: "status", align: "left", ...registryCol.status },
-  { name: "enabled", label: "启用", field: "enabled", align: "center", ...registryCol.toggle },
-  { name: "stats", label: "使用统计", field: "invoke_count", align: "left", style: "width: 248px; min-width: 220px" },
-  { name: "last", label: "最近调用", field: "last_invoked_at", align: "left", ...registryCol.time },
-  { name: "actions", label: "操作", field: "id", align: "right", ...registryCol.actions }
+  { name: "name", label: "名称", field: "name", align: "left", ...registryColWidth("18%") },
+  { name: "tags", label: "标签", field: "tags", align: "left", ...registryColWidth("11%") },
+  { name: "origin", label: "来源", field: "sync_origin", align: "left", ...registryColWidth("96px") },
+  { name: "disk", label: "磁盘", field: "filesystem_missing", align: "center", ...registryColWidth("72px") },
+  { name: "status", label: "状态 / 版本", field: "status", align: "left", ...registryColWidth("9%") },
+  { name: "enabled", label: "启用", field: "enabled", align: "center", ...registryColWidth("64px") },
+  { name: "stats", label: "使用统计", field: "invoke_count", align: "left", ...registryColWidth("220px") },
+  { name: "last", label: "最近调用", field: "last_invoked_at", align: "left", ...registryColWidth("11%") },
+  { name: "actions", label: "操作", field: "id", align: "right", ...registryColWidth("108px") },
 ];
 
 function statusLabel(status: string) {
@@ -138,6 +151,10 @@ function statusLabel(status: string) {
 
 function statusColor(status: string) {
   return status === "published" ? "positive" : status === "draft" ? "warning" : "grey";
+}
+
+function originLabel(origin: string) {
+  return ({ filesystem: "磁盘", import: "ZIP", manual: "手动" } as Record<string, string>)[origin] ?? origin;
 }
 
 function formatDate(value?: string) {

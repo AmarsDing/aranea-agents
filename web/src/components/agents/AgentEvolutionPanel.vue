@@ -19,8 +19,71 @@
         </q-item>
       </q-list>
       <q-banner rounded class="settings-info-banner settings-info-banner--bordered q-mt-md">
-        仅允许进化 SOUL.md 中的沟通风格与语调；身份、核心目的、AGENTS* 操作规则保持锁定。
+        <strong>沟通风格</strong>（SOUL.md）与下方<strong>自动提议流水线</strong>独立：前者控制是否改写语调，后者控制是否扫描并生成改进提议。
       </q-banner>
+    </section>
+
+    <section class="settings-section">
+      <div class="section-heading">
+        <div class="section-heading__main">
+          <div class="section-title">
+            <span class="section-title__text">自动提议流水线</span>
+          </div>
+          <p class="settings-section__hint">基于 Episode / 负反馈触发结构化进化提议（与 L4 图谱注入无关）。</p>
+        </div>
+      </div>
+      <div class="app-form-field-grid app-form-field-grid--2col">
+        <q-toggle v-model="evolutionSettings.enabled" label="启用提议流水线" />
+        <q-toggle v-model="evolutionSettings.auto_apply" label="低风险自动应用" />
+        <q-input
+          v-model.number="evolutionSettings.min_episodes"
+          dense
+          outlined
+          type="number"
+          label="触发 Episode 数"
+          :min="1"
+        />
+        <q-input
+          v-model.number="evolutionSettings.min_negative_feedback"
+          dense
+          outlined
+          type="number"
+          label="触发负反馈数"
+          :min="1"
+        />
+        <q-input
+          v-model.number="evolutionSettings.throttle_hours"
+          dense
+          outlined
+          type="number"
+          label="节流小时"
+          :min="1"
+        />
+        <q-input
+          v-model.number="evolutionSettings.proposal_ttl_days"
+          dense
+          outlined
+          type="number"
+          label="提议过期天数"
+          :min="1"
+        />
+        <q-input
+          v-model.number="evolutionSettings.persona_max_chars"
+          dense
+          outlined
+          type="number"
+          label="Persona 最大字符"
+          :min="1"
+        />
+        <q-input
+          v-model.number="evolutionSettings.system_prompt_max_appends"
+          dense
+          outlined
+          type="number"
+          label="Prompt 追加段上限"
+          :min="0"
+        />
+      </div>
     </section>
 
     <section class="settings-section">
@@ -136,10 +199,12 @@
 import { computed } from "vue";
 import type { EvolutionKey } from "./agentUi";
 import type { EvolutionMetrics, EvolutionSuggestion } from "../../features/agents/types";
+import type { AgentRuntimeConfigForm } from "../../features/agents/agentRuntimeConfig";
 
 const props = defineProps<{
   agentId: string;
   evolution: Record<EvolutionKey, boolean>;
+  evolutionSettings: AgentRuntimeConfigForm["evolutionSettings"];
   guardrails: {
     max_change_per_period: number;
     min_data_points: number;

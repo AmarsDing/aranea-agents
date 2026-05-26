@@ -226,3 +226,19 @@ export type EvolutionSuggestion = {
   created_at: string;
   applied_at: string;
 };
+
+export type AgentPromptSection = {
+  key: string;
+  label: string;
+  est_tokens: number;
+  source: string;
+};
+
+export type AgentPromptPreview = {
+  summary: string;
+  instruction: string;
+  sections: AgentPromptSection[];
+  static_total_tokens: number;
+  runtime_overlay_est_tokens: number;
+  runtime_note: string;
+};

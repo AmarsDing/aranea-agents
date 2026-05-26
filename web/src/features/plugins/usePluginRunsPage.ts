@@ -1,6 +1,6 @@
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
-import type { QTableColumn, QTableProps } from "quasar";
+import type { QTableColumn } from "quasar";
 import {
   CALLBACK_POINT_OPTIONS,
   PLUGIN_RUN_KEY_PRESETS,
@@ -8,7 +8,7 @@ import {
   pluginRunsQueryFromRoute
 } from "../callback/constants";
 import type { PluginRun } from "./types";
-import { registryCol } from "../ui/registryTableColumns";
+import { registryColWidth } from "../ui/registryTableColumns";
 import { usePluginsStore } from "../../stores/plugins";
 
 export function usePluginRunsPage() {
@@ -24,7 +24,10 @@ export function usePluginRunsPage() {
   const rows = ref<PluginRun[]>([]);
   const loading = ref(false);
   const error = ref("");
-  const tablePagination = ref({ page: 1, rowsPerPage: 20, rowsNumber: 0 });
+  const total = ref(0);
+  const page = ref(1);
+  const pageSize = ref(20);
+  const pageMax = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
   const detailOpen = ref(false);
   const detailText = ref("");
 
@@ -33,13 +36,12 @@ export function usePluginRunsPage() {
   const pluginKeyOptions = ref([...PLUGIN_RUN_KEY_PRESETS.map((p) => p.value)]);
 
   const columns: QTableColumn<PluginRun>[] = [
-    { name: "created_at", label: "时间", field: "created_at", align: "left", ...registryCol.time },
-    { name: "plugin_key", label: "Plugin / Hook", field: "plugin_key", align: "left", ...registryCol.plugin },
-    { name: "agent_id", label: "Agent", field: "agent_id", align: "left", ...registryCol.agent },
-    { name: "callback_point", label: "生命周期点", field: "callback_point", align: "left", ...registryCol.phase },
-    { name: "status", label: "结果", field: "status", align: "left", ...registryCol.status },
-    { name: "duration_ms", label: "耗时(ms)", field: "duration_ms", align: "right", ...registryCol.duration },
-    { name: "detail_json", label: "摘要", field: "detail_json", align: "right", ...registryCol.actions }
+    { name: "created_at", label: "时间", field: "created_at", align: "left", ...registryColWidth("11%") },
+    { name: "plugin_key", label: "Plugin / Hook", field: "plugin_key", align: "left", ...registryColWidth("12%") },
+    { name: "agent_id", label: "Agent", field: "agent_id", align: "left", ...registryColWidth("10%") },
+    { name: "callback_point", label: "生命周期点", field: "callback_point", align: "left", ...registryColWidth("9%") },
+    { name: "status", label: "结果", field: "status", align: "left", ...registryColWidth("9%") },
+    { name: "duration_ms", label: "耗时(ms)", field: "duration_ms", align: "right", ...registryColWidth("72px") }
   ];
 
   function filterPluginKeys(val: string, update: (fn: () => void) => void) {
@@ -63,7 +65,7 @@ export function usePluginRunsPage() {
     return d.toISOString();
   }
 
-  async function loadRows(page = tablePagination.value.page, pageSize = tablePagination.value.rowsPerPage) {
+  async function loadRows(nextPage = page.value, nextPageSize = pageSize.value) {
     loading.value = true;
     error.value = "";
     try {
@@ -74,11 +76,11 @@ export function usePluginRunsPage() {
         status: status.value || undefined,
         from: toRFC3339(from.value),
         to: toRFC3339(to.value),
-        page,
-        page_size: pageSize
+        page: nextPage,
+        page_size: nextPageSize
       });
       rows.value = data.items;
-      tablePagination.value = { ...tablePagination.value, page, rowsPerPage: pageSize, rowsNumber: data.total };
+      total.value = data.total;
     } catch (err) {
       error.value = err instanceof Error ? err.message : "加载运行记录失败";
     } finally {
@@ -86,13 +88,9 @@ export function usePluginRunsPage() {
     }
   }
 
-  const onTableRequest: QTableProps["onRequest"] = (props) => {
-    void loadRows(props.pagination.page, props.pagination.rowsPerPage);
-  };
-
   function onFilterChange() {
-    tablePagination.value.page = 1;
-    void loadRows(1, tablePagination.value.rowsPerPage);
+    page.value = 1;
+    void loadRows(1, pageSize.value);
   }
 
   function resetFilters() {
@@ -102,13 +100,17 @@ export function usePluginRunsPage() {
     status.value = "";
     from.value = "";
     to.value = "";
-    tablePagination.value.page = 1;
-    void loadRows(1, tablePagination.value.rowsPerPage);
+    page.value = 1;
+    void loadRows(1, pageSize.value);
   }
 
   function openDetail(row: PluginRun) {
-    detailText.value = row.detail_json?.trim() ? row.detail_json : JSON.stringify(row, null, 2);
+    detailText.value = detailPreview(row) || JSON.stringify(row, null, 2);
     detailOpen.value = true;
+  }
+
+  function detailPreview(row: PluginRun) {
+    return row.detail_json?.trim() || "";
   }
 
   function applyRouteQuery() {
@@ -118,6 +120,8 @@ export function usePluginRunsPage() {
     if (q.callback_point) callbackPoint.value = q.callback_point;
     if (q.status) status.value = q.status;
   }
+
+  watch([page, pageSize], () => void loadRows());
 
   onMounted(() => {
     applyRouteQuery();
@@ -134,7 +138,10 @@ export function usePluginRunsPage() {
     rows,
     loading,
     error,
-    tablePagination,
+    total,
+    page,
+    pageSize,
+    pageMax,
     detailOpen,
     detailText,
     callbackPointOptions,
@@ -144,9 +151,9 @@ export function usePluginRunsPage() {
     filterPluginKeys,
     statusColor,
     loadRows,
-    onTableRequest,
     onFilterChange,
     resetFilters,
-    openDetail
+    openDetail,
+    detailPreview
   };
 }

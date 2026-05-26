@@ -1,5 +1,6 @@
 import type { CatalogModelSummary } from "../../services/kratos/model_catalog/v1/index";
 import { runtimeProfileFor } from "../../config/providerRuntimeOverlay";
+import { inferModelCategoryValues, modelCategoriesFromValues, type ModelCategoryOption } from "./catalogCategories";
 
 export type CapabilityChip = {
   key: string;
@@ -67,6 +68,7 @@ export type CatalogApplyTarget = {
   reasoning_price_usd_per_1m: number;
   embedding_price_usd_per_1m: number;
   capability_chips: CapabilityChip[];
+  model_category: ModelCategoryOption[];
   metadata_source: string;
   raw_metadata_json: string;
   catalog_managed: boolean;
@@ -125,6 +127,7 @@ export function applyCatalogModelFields(
     reasoning_price_usd_per_1m: cost.reasoning_usd_per_1m,
     embedding_price_usd_per_1m: cost.embedding_usd_per_1m,
     capability_chips: chips,
+    model_category: modelCategoriesFromValues(inferModelCategoryValues(model)),
     metadata_source: "models.dev",
     raw_metadata_json: JSON.stringify({
       source: "models.dev",

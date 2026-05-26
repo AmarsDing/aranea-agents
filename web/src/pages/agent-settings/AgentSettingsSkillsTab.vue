@@ -130,6 +130,13 @@
             hint="chat_only / read_only / coding / research / full"
             :options="toolProfileOptions"
           />
+          <q-banner
+            v-if="config.tools.profile === 'full'"
+            class="app-grid-span-full settings-warning-banner"
+            rounded
+          >
+            <strong>full</strong> 配置文件会暴露平台全部工具，仅建议在受信环境使用。
+          </q-banner>
           <q-input v-model="config.tools.tool_call_prefix" dense outlined label="工具调用前缀" hint="如 proxy_，解析前会从工具名剥离" />
           <q-select
             v-model="config.tools.allow"

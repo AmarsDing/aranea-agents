@@ -1,8 +1,20 @@
 import { ref, watch, type Ref } from "vue";
 import { promptModes, type PromptMode } from "../../components/agents/agentUi";
 import { useAgentDetailStore } from "../../stores/agents";
+import type { AgentPromptPreview } from "./types";
 
-/** System prompt preview dialog: mode tabs + fetched preview text. */
+function emptyPromptPreview(): AgentPromptPreview {
+  return {
+    summary: "",
+    instruction: "",
+    sections: [],
+    static_total_tokens: 0,
+    runtime_overlay_est_tokens: 0,
+    runtime_note: "",
+  };
+}
+
+/** System prompt preview dialog: mode tabs + fetched preview report. */
 export function useAgentPromptPreview(
   agentId: Ref<string>,
   systemPromptMode: Ref<string>,
@@ -10,7 +22,7 @@ export function useAgentPromptPreview(
   const detailStore = useAgentDetailStore();
   const promptDialog = ref(false);
   const previewMode = ref<PromptMode>("complete");
-  const promptPreview = ref("");
+  const promptPreview = ref<AgentPromptPreview>(emptyPromptPreview());
 
   async function loadPromptPreview() {
     const id = agentId.value.trim();
@@ -26,6 +38,10 @@ export function useAgentPromptPreview(
 
   watch(systemPromptMode, (value) => {
     previewMode.value = (value as PromptMode) || "complete";
+  });
+
+  watch(promptDialog, (open) => {
+    if (open) void loadPromptPreview();
   });
 
   return {

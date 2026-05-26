@@ -7,7 +7,7 @@
 // ===== Header =====
 .chat-message-header
   position: relative
-  min-height: 52px
+  min-height: 56px
   padding-top: 10px
   padding-bottom: 10px
   background: linear-gradient(180deg, var(--chat-header-bg-top) 0%, var(--chat-header-bg-bottom) 100%)
@@ -17,52 +17,161 @@
 body.body--dark .chat-message-header
   background: linear-gradient(180deg, var(--chat-surface-muted-60) 0%, var(--chat-header-bg-bottom-dark-alt) 100%)
 
-.chat-message-header__pulse
+.chat-message-header__grid
   display: flex
   align-items: center
-  justify-content: center
-  width: 28px
-  height: 28px
-  margin-right: 10px
-  border-radius: 50%
-  background: var(--chat-accent-soft)
+  gap: 10px
+  width: 100%
+  min-width: 0
 
-.chat-message-header__dot
-  width: 9px
-  height: 9px
-  border-radius: 50%
-  background: var(--color-accent)
-  box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 55%, transparent)
-  animation: chat-pulse 2.4s ease-in-out infinite
+.chat-message-header__usage
+  flex: 0 1 auto
+  min-width: 0
+  max-width: 42%
 
-@keyframes chat-pulse
-  0%
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 50%, transparent)
-  70%
-    box-shadow: 0 0 0 8px transparent
-  100%
-    box-shadow: 0 0 0 0 transparent
+.chat-message-header__prompt
+  flex: 0 1 auto
+  min-width: 0
+  max-width: 48%
+  margin-left: auto
+  display: flex
+  justify-content: flex-end
 
-.chat-message-header__title
-  color: var(--color-surface-solid)
-  font-size: 15px
+.chat-message-header__actions
+  flex: 0 0 auto
+  min-width: 44px
+  margin-left: 8px
+  justify-content: flex-end
+
+.chat-header-usage
+  min-width: 0
+  gap: 12px
+  padding: 0
+  background: transparent
+  border: none
+
+.chat-header-usage__ring-wrap
+  flex-shrink: 0
+  filter: drop-shadow(0 0 1px color-mix(in srgb, var(--color-text-primary) 12%, transparent))
+
+.chat-header-usage__ring
+  :deep(.q-circular-progress__circle--track)
+    stroke: color-mix(in srgb, var(--color-text-secondary) 55%, var(--glass-border)) !important
+    opacity: 1 !important
+
+  :deep(.q-circular-progress__circle--center)
+    opacity: 1 !important
+
+  :deep(.q-circular-progress__svg)
+    overflow: visible
+
+.chat-header-usage__ring--dark
+  :deep(.q-circular-progress__circle--track)
+    stroke: color-mix(in srgb, var(--color-text-secondary) 65%, rgba(255, 255, 255, 0.15)) !important
+
+  :deep(.q-circular-progress__circle:not(.q-circular-progress__circle--track))
+    opacity: 1 !important
+
+.chat-header-usage__ring-value
+  font-size: 10px
   font-weight: 800
-  letter-spacing: 0.01em
-  line-height: 1.25
-
-.chat-message-header__subtitle
-  margin-top: 2px
-  color: var(--chat-text-muted)
-  font-size: 11.5px
-  font-weight: 500
-  letter-spacing: 0.04em
-  text-transform: uppercase
-
-body.body--dark .chat-message-header__title
+  line-height: 1
   color: var(--color-text-primary)
+  text-shadow: 0 0 1px color-mix(in srgb, var(--glass-surface) 90%, transparent)
 
-body.body--dark .chat-message-header__subtitle
+body.body--dark .chat-header-usage__ring-value
+  color: var(--color-text-primary)
+  text-shadow: 0 0 6px color-mix(in srgb, var(--color-accent) 35%, transparent)
+
+.chat-header-usage__metrics
+  gap: 10px
+  min-width: 0
+
+.chat-header-usage__chip
+  flex-shrink: 0
+  font-size: 11.5px
+  line-height: 1.3
   color: var(--chat-text-muted)
+  letter-spacing: 0.02em
+  white-space: nowrap
+
+.chat-header-usage__chip--muted
+  opacity: 0.75
+
+.chat-header-prompt
+  min-width: 0
+  width: 100%
+  height: 100%
+  display: flex
+  align-items: center
+  justify-content: flex-end
+
+.chat-header-prompt__box
+  width: auto
+  max-width: 100%
+  min-height: 36px
+  display: flex
+  align-items: center
+  padding: 6px 12px
+  border-radius: 10px
+  border: 1px solid color-mix(in srgb, var(--color-accent) 42%, var(--glass-border))
+  background: color-mix(in srgb, var(--glass-surface) 88%, transparent)
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 10%, transparent), 0 0 10px color-mix(in srgb, var(--color-accent) 22%, transparent), 0 0 20px color-mix(in srgb, var(--color-accent) 10%, transparent)
+  transition: border-color 0.2s ease, box-shadow 0.2s ease
+
+body.body--dark .chat-header-prompt__box
+  background: color-mix(in srgb, var(--glass-surface) 55%, transparent)
+  border-color: color-mix(in srgb, var(--color-accent) 55%, var(--glass-border))
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 18%, transparent), 0 0 12px color-mix(in srgb, var(--color-accent) 32%, transparent), 0 0 22px color-mix(in srgb, var(--color-accent) 14%, transparent)
+
+.chat-header-prompt__box--placeholder
+  border-color: color-mix(in srgb, var(--glass-border) 90%, transparent)
+  box-shadow: none
+
+.chat-header-prompt__text
+  max-width: 100%
+  font-size: 14px
+  font-weight: 600
+  line-height: 1.35
+  color: var(--color-text-primary)
+  text-align: right
+
+.chat-header-prompt__box--placeholder .chat-header-prompt__text
+  font-weight: 500
+  color: var(--chat-text-muted)
+
+.chat-header-prompt__tooltip-body
+  max-width: min(480px, 70vw)
+  max-height: 240px
+  overflow: auto
+  white-space: pre-wrap
+  word-break: break-word
+  line-height: 1.5
+  font-size: 13px
+
+.chat-title-fade-enter-active,
+.chat-title-fade-leave-active
+  transition: opacity 0.18s ease, transform 0.18s ease
+
+.chat-title-fade-enter-from,
+.chat-title-fade-leave-to
+  opacity: 0
+  transform: translateY(4px)
+
+.chat-message-header__runner
+  max-width: 100%
+
+@media (max-width: 720px)
+  .chat-message-header__usage,
+  .chat-message-header__prompt
+    max-width: 38%
+    min-width: 100px
+
+  .chat-header-usage__chip
+    font-size: 10px
+
+  .chat-header-prompt__text
+    font-size: 13px
 
 // ===== Messages canvas =====
 .chat-messages
@@ -956,7 +1065,8 @@ body:not(.body--dark) .chat-message-content--sent
 // Reduced motion
 @media (prefers-reduced-motion: reduce)
   .chat-q-message,
-  .chat-message-header__dot,
+  .chat-title-fade-enter-active,
+  .chat-title-fade-leave-active,
   .chat-empty-state__halo::before,
   .chat-typing i,
   .chat-q-message--streaming.chat-q-message--member .chat-message-bubble::before

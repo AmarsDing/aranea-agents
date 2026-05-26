@@ -1,9 +1,6 @@
 <template>
-  <div class="app-registry-table-shell">
-  <q-table
-    flat
-    dense
-    class="app-registry-table app-registry-table--sessions"
+  <AppRegistryTable
+    table-class="app-registry-table--sessions"
     row-key="id"
     :rows="rows"
     :columns="tableColumns"
@@ -113,8 +110,7 @@
         </div>
       </q-td>
     </template>
-  </q-table>
-  </div>
+  </AppRegistryTable>
 
   <div class="app-registry-pagination q-mt-md">
     <div class="text-caption">共 {{ total }} 个 Session</div>
@@ -144,6 +140,7 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
+import AppRegistryTable from "../layout/AppRegistryTable.vue";
 import type { Session } from "../../features/session/types";
 import {
   contextProgressColor,

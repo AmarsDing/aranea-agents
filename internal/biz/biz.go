@@ -2,8 +2,10 @@ package biz
 
 import (
 	"context"
+	"strings"
 
 	"github.com/google/wire"
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 type AgentExistenceCheckerFunc func(ctx context.Context, agentName string) bool
@@ -79,4 +81,12 @@ func ProvideAgentExistenceChecker(repo AgentRepository) AgentExistenceCheckerFun
 		_, err := repo.GetAgentByAgentKey(ctx, agentName)
 		return err == nil
 	}
+}
+
+func requireNonEmpty(val, domain, field string) (string, error) {
+	val = strings.TrimSpace(val)
+	if val == "" {
+		return "", kerrors.BadRequest(domain, field+" is required")
+	}
+	return val, nil
 }

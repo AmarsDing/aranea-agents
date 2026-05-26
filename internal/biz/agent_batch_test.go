@@ -54,6 +54,9 @@ func (r *batchAgentRepo) ListExtrasForAgents(context.Context, []string) (map[str
 	return nil, nil
 }
 func (r *batchAgentRepo) ListAgentCreators(context.Context) ([]AgentCreator, error) { return nil, nil }
+func (r *batchAgentRepo) ExecInTx(ctx context.Context, fn func(context.Context) error) error {
+	return fn(ctx)
+}
 
 func TestBatchUpdateAgents_Status(t *testing.T) {
 	repo := &batchAgentRepo{agents: map[string]Agent{"a1": {ID: "a1", Status: "active"}}}

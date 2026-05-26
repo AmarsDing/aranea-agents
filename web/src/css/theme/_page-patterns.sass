@@ -3,6 +3,7 @@
 
 body:not(.body--dark)
   .app-page-cream,
+  .app-standard-page,
   .system-settings-page,
   .monitor-page,
   .memory-page,
@@ -12,6 +13,7 @@ body:not(.body--dark)
 
 body.body--dark
   .app-page-cream,
+  .app-standard-page,
   .system-settings-page,
   .monitor-page,
   .memory-page,
@@ -48,6 +50,22 @@ body.body--dark
     background: var(--glass-surface)
     color: var(--color-text-primary)
     border: 1px solid var(--glass-border)
+
+// --- 标准管理页（Plugin 样板：背景 + 内容区宽度/内边距）---
+.app-standard-page
+  min-height: 100%
+  color: var(--color-text-primary)
+  padding: var(--space-6)
+  max-width: var(--layout-max-width)
+  margin: 0 auto
+  width: 100%
+  box-sizing: border-box
+
+body:not(.body--dark) .app-standard-page
+  background: linear-gradient(160deg, #FFF8E7 0%, var(--canvas-base) 40%, color-mix(in srgb, var(--canvas-base) 88%, #E8DCC8) 100%)
+
+body.body--dark .app-standard-page
+  background: var(--gradient-page)
 
 // --- 页面 Hero（registry / admin 通用）---
 .app-page-hero
@@ -372,12 +390,6 @@ body.body--dark .app-page-error-banner
 .plugin-run-detail
   margin: 0
 
-.tool-runs-page
-  padding: 24px
-
-.channels-page
-  padding: 24px
-
 // JSON 代码查看器
 .json-code-viewer
   border: 1px solid var(--glass-border)
@@ -486,11 +498,13 @@ body.body--dark .app-page-error-banner
 
 // Monitor 页
 .monitor-page
-  min-height: 100%
-  padding: var(--space-6)
   display: flex
   flex-direction: column
   min-height: calc(100dvh - 56px)
+
+  &:not(.app-standard-page)
+    min-height: 100%
+    padding: var(--space-6)
 
 .monitor-page-shell
   width: 100%

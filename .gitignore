@@ -93,7 +93,4 @@ profile.cov
 /node_modules
 /.gocache
 /workspace
-/cmd/data/arena.db
-/cmd/data/arenea.sqlite
-/cmd/data/*.sqlite
 

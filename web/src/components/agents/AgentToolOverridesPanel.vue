@@ -18,16 +18,26 @@
         <q-banner v-if="!toolsEnabled" rounded class="settings-warning-banner q-mb-sm">
           Agent 工具总开关已关闭；以下矩阵为策略计算结果，运行时不注入工具。
         </q-banner>
-        <q-table
-          flat
-          dense
+        <AppRegistryTable
+          :shell="false"
+          :data-shell="true"
+          table-class="agent-tool-overrides-table"
           :rows="rows"
           :columns="columns"
           row-key="tool_key"
-          :pagination="{ rowsPerPage: 0 }"
           hide-pagination
-          class="agent-tool-overrides-table"
+          :pagination="{ rowsPerPage: 0 }"
         >
+          <template #body-cell-tool_key="props">
+            <q-td :props="props">
+              <div class="app-registry-cell-primary ellipsis" :title="props.row.tool_key">{{ props.row.tool_key }}</div>
+            </q-td>
+          </template>
+          <template #body-cell-display_name="props">
+            <q-td :props="props">
+              <span class="app-registry-cell-sub ellipsis" :title="props.row.display_name">{{ props.row.display_name || "—" }}</span>
+            </q-td>
+          </template>
           <template #body-cell-effective_state="props">
             <q-td :props="props">
               <q-badge :color="props.row.enabled ? 'positive' : 'grey'" :label="props.row.effective_state" />
@@ -47,24 +57,26 @@
             </q-td>
           </template>
           <template #body-cell-actions="props">
-            <q-td :props="props" class="text-right">
-              <q-btn flat dense round icon="edit" size="sm" @click="$emit('edit', props.row)">
-                <q-tooltip>{{ props.row.override ? "编辑覆盖" : "添加覆盖" }}</q-tooltip>
-              </q-btn>
-              <q-btn
-                v-if="props.row.override"
-                flat
-                dense
-                round
-                icon="delete"
-                size="sm"
-                @click="$emit('remove', props.row)"
-              >
-                <q-tooltip>删除覆盖</q-tooltip>
-              </q-btn>
+            <q-td :props="props">
+              <div class="app-registry-cell-actions">
+                <q-btn flat dense round icon="edit" size="sm" @click="$emit('edit', props.row)">
+                  <q-tooltip>{{ props.row.override ? "编辑覆盖" : "添加覆盖" }}</q-tooltip>
+                </q-btn>
+                <q-btn
+                  v-if="props.row.override"
+                  flat
+                  dense
+                  round
+                  icon="delete"
+                  size="sm"
+                  @click="$emit('remove', props.row)"
+                >
+                  <q-tooltip>删除覆盖</q-tooltip>
+                </q-btn>
+              </div>
             </q-td>
           </template>
-        </q-table>
+        </AppRegistryTable>
       </template>
     </q-card-section>
 
@@ -83,7 +95,9 @@
 </template>
 
 <script setup lang="ts">
+import AppRegistryTable from "../layout/AppRegistryTable.vue";
 import AgentToolOverrideEditorDialog from "./AgentToolOverrideEditorDialog.vue";
+import { registryColWidth } from "../../features/ui/registryTableColumns";
 import type {
   AgentToolOverrideForm,
   AgentToolOverrideRow
@@ -111,11 +125,11 @@ defineEmits<{
 }>();
 
 const columns = [
-  { name: "tool_key", label: "工具 Key", field: "tool_key", align: "left" as const },
-  { name: "display_name", label: "名称", field: "display_name", align: "left" as const },
-  { name: "effective_state", label: "生效", field: "effective_state", align: "left" as const },
-  { name: "requires_confirmation", label: "确认", field: "effective_requires_confirmation", align: "left" as const },
-  { name: "override", label: "覆盖", field: "override", align: "left" as const },
-  { name: "actions", label: "", field: "actions", align: "right" as const }
+  { name: "tool_key", label: "工具 Key", field: "tool_key", align: "left" as const, ...registryColWidth("12%") },
+  { name: "display_name", label: "名称", field: "display_name", align: "left" as const, ...registryColWidth("14%") },
+  { name: "effective_state", label: "生效", field: "effective_state", align: "left" as const, ...registryColWidth("9%") },
+  { name: "requires_confirmation", label: "确认", field: "effective_requires_confirmation", align: "left" as const, ...registryColWidth("64px") },
+  { name: "override", label: "覆盖", field: "override", align: "left" as const, ...registryColWidth("11%") },
+  { name: "actions", label: "", field: "actions", align: "right" as const, ...registryColWidth("108px") }
 ];
 </script>

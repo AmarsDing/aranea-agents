@@ -45,6 +45,7 @@
     <div
       class="chat-message-stack"
       :class="{ 'chat-message-stack--sent': message.role === 'user' }"
+      :data-chat-user-prompt="message.role === 'user' ? userPromptAttr : undefined"
     >
       <div
         v-if="!row.isContinued(index)"
@@ -187,7 +188,10 @@
           @click="emit('feedback', { messageId: message.id, rating: 'negative' })"
         />
       </div>
-      <div v-if="message.role === 'user'" class="message-send-tags message-send-tags--sent text-caption">
+      <div
+        v-if="message.role === 'user' && row.userSendTagLine(message)"
+        class="message-send-tags message-send-tags--sent text-caption"
+      >
         {{ row.userSendTagLine(message) }}
       </div>
       <span v-if="row.isStreaming(message)" class="chat-typing" aria-label="正在输入">
@@ -207,6 +211,7 @@ import {
   messageSourceChipKey,
   parseMessageSourceMeta,
 } from "../../features/chat/messageSourceMeta";
+import { userPromptText } from "../../features/chat/useChatScrollTitle";
 import ChatExecutionCard from "./ChatExecutionCard.vue";
 import ChatReasoningPeek from "./ChatReasoningPeek.vue";
 import ChatReactSteps from "./ChatReactSteps.vue";
@@ -258,6 +263,10 @@ const bundle = computed(() =>
 );
 const avatarSize = CHAT_MESSAGE_AVATAR_SIZE;
 const avatarIconSize = CHAT_MESSAGE_AVATAR_ICON_SIZE;
+
+const userPromptAttr = computed(() =>
+  props.message.role === "user" ? userPromptText(props.message) : "",
+);
 
 const userSourceMeta = computed(() =>
   props.message.role === "user" ? parseMessageSourceMeta(props.message.options_json) : null

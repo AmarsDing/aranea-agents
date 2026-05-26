@@ -49,7 +49,7 @@
           label="模型"
           hint="仅可选择 Provider 管理中已录入且启用的模型。"
           :options="filteredProviderModelOptions"
-          :loading="loadingProviderModels"
+          :loading="loadingProviderModels || checkingAgentModel"
           @filter="(val, update) => $emit('filter-provider-models', val, update)"
           @popup-show="$emit('reset-provider-model-filter')"
         >
@@ -62,7 +62,59 @@
             </q-item>
           </template>
         </q-select>
+        <div v-if="form.provider && form.model" class="row items-center q-gutter-xs q-mt-xs">
+          <q-chip
+            v-if="checkingAgentModel"
+            dense
+            square
+            color="blue-grey-2"
+            text-color="blue-grey-9"
+            icon="hourglass_empty"
+            label="校验中…"
+          />
+          <q-chip
+            v-else-if="agentModelCheckOk === true"
+            dense
+            square
+            color="positive"
+            text-color="white"
+            icon="check_circle"
+            label="模型可用"
+          />
+          <q-chip
+            v-else-if="agentModelCheckOk === false"
+            dense
+            square
+            color="negative"
+            text-color="white"
+            icon="error"
+            :label="agentModelCheckMessage || '模型不可用'"
+          />
+        </div>
       </div>
+      <q-banner
+        v-if="orphanProviderModel"
+        rounded
+        class="q-mt-sm settings-warning-banner"
+        dense
+      >
+        当前指向 <code>{{ form.provider }} / {{ form.model }}</code>，但 Provider 目录中无匹配的已启用条目。
+        Web、飞书等渠道的消息将无法调用模型。
+        <template #action>
+          <q-btn flat no-caps color="primary" label="打开模型管理" @click="$emit('open-provider-manager')" />
+        </template>
+      </q-banner>
+      <q-banner
+        v-else-if="disabledCatalogMatch"
+        rounded
+        class="q-mt-sm settings-warning-banner"
+        dense
+      >
+        目录中存在该模型但已禁用，请启用或更换其他模型。
+        <template #action>
+          <q-btn flat no-caps color="primary" label="打开模型管理" @click="$emit('open-provider-manager')" />
+        </template>
+      </q-banner>
       <q-banner rounded class="q-mt-md settings-info-banner">
         月度费用上限请在
         <a href="#" class="settings-link" @click.prevent="$emit('open-permissions-tab')">「权限」</a>
@@ -107,8 +159,8 @@
             <div>
               <div class="settings-subsection__title">意图 Pass</div>
               <p class="settings-subsection__hint">
-                每轮用户消息进入主模型前先做一次轻量意图梳理。全局可用
-                <code>ARANEA_INTENT_PASS=0</code> 覆写。
+                开启后每轮用户消息进入主模型前先做轻量意图梳理（默认关闭，与后端一致）。全局可用
+                <code>ARANEA_INTENT_PASS=1</code> 强制开启。
               </p>
             </div>
             <q-toggle v-model="config.intent_pass.enabled" />
@@ -150,6 +202,11 @@ withDefaults(
     statusOptions?: { label: string; value: string }[];
     filteredProviderModelOptions?: { label: string; value: string; caption?: string }[];
     loadingProviderModels?: boolean;
+    orphanProviderModel?: boolean;
+    disabledCatalogMatch?: boolean;
+    checkingAgentModel?: boolean;
+    agentModelCheckOk?: boolean | null;
+    agentModelCheckMessage?: string;
   }>(),
   {
     agentId: "",
@@ -157,6 +214,11 @@ withDefaults(
     statusOptions: () => [],
     filteredProviderModelOptions: () => [],
     loadingProviderModels: false,
+    orphanProviderModel: false,
+    disabledCatalogMatch: false,
+    checkingAgentModel: false,
+    agentModelCheckOk: null,
+    agentModelCheckMessage: "",
   }
 );
 
@@ -164,6 +226,7 @@ defineEmits<{
   "copy-key": [];
   "open-permissions-tab": [];
   "open-memory-tab": [];
+  "open-provider-manager": [];
   "filter-provider-models": [val: string, update: (fn: () => void) => void];
   "reset-provider-model-filter": [];
 }>();

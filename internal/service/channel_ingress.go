@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -187,11 +188,13 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 		}
 		ev, ok, rejectReason := lark.InboundEventFromWebhook(parsed)
 		if !ok {
-			_ = h.recordDelivery(r.Context(), chRow.ID, "skipped_"+rejectReason, map[string]any{
+			if dErr := h.recordDelivery(r.Context(), chRow.ID, "skipped_"+rejectReason, map[string]any{
 				"message_id": parsed.MessageID,
 				"peer_id":    ingressFirstNonEmpty(parsed.SenderOpenID, parsed.ChatID),
 				"via":        "webhook",
-			}, "")
+			}, ""); dErr != nil {
+				slog.Warn("recordDelivery failed", "channel_id", chRow.ID, "status", "skipped_"+rejectReason, "error", dErr)
+			}
 			w.WriteHeader(http.StatusOK)
 			return nil
 		}
@@ -218,7 +221,11 @@ func channelReceiveModeFromConfig(configJSON string) string {
 
 func (h *ChannelIngress) recordDelivery(ctx context.Context, channelID, status string, payload map[string]any, errMsg string) error {
 	b, _ := json.Marshal(payload)
-	return h.channels.AddInboundDelivery(ctx, channelID, status, string(b), errMsg)
+	if err := h.channels.AddInboundDelivery(ctx, channelID, status, string(b), errMsg); err != nil {
+		slog.Warn("recordDelivery failed", "channel_id", channelID, "status", status, "error", err)
+		return err
+	}
+	return nil
 }
 
 func ingressFirstNonEmpty(parts ...string) string {

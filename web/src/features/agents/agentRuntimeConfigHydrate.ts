@@ -63,10 +63,6 @@ export function hydrateAdvancedFromSettings(
     reasoning_level: settings.reasoning_level || "off",
     context_compaction_enabled: settings.context_compaction_enabled ?? false,
     session_summary_enabled: settings.session_summary_enabled ?? false,
-    truncate_strategy: settings.l0_truncate_strategy || "sliding",
-    recent_window_turns: settings.l0_recent_window_turns ?? 20,
-    recent_window_tokens: settings.l0_recent_window_tokens ?? 0,
-    summary_keep_turns: settings.l0_summary_keep_turns ?? 4,
   });
 }
 
@@ -181,7 +177,7 @@ export function hydrateRuntimeFromSettings(
       interval_minutes: settings.heartbeat_interval_minutes,
     },
     evolution: {
-      self_evolve: settings.evolution_self_evolve,
+      self_evolve: settings.self_evolve,
       skill_evolve: settings.evolution_skill_evolve,
       evolution_metrics_enabled: settings.evolution_metrics_enabled,
       evolution_suggestions_enabled: settings.evolution_suggestions_enabled,
@@ -194,9 +190,10 @@ export function hydrateRuntimeFromSettings(
     skillRuntime: parseSkillRuntimeForm(settings.skill_runtime_json),
     code_executor_type: settings.code_executor_type || "local",
     intent_pass: {
-      enabled: settings.intent_pass_enabled !== false,
+      enabled: settings.intent_pass_enabled ?? false,
     },
   });
+  config.evolution.self_evolve = config.self_evolve;
   hydrateAdvancedFromSettings(advanced, settings);
 }
 
@@ -215,15 +212,11 @@ export function hydrateAgentRuntime(
 }
 
 export function applyAdvancedSaveToRuntime(
-  config: AgentRuntimeConfigForm,
+  _config: AgentRuntimeConfigForm,
   advanced: AgentAdvancedSettingsForm,
   payload: AgentAdvancedSettingsForm,
 ) {
   Object.assign(advanced, payload);
-  config.memoryL0.recent_window_turns = payload.recent_window_turns;
-  config.memoryL0.recent_window_tokens = payload.recent_window_tokens;
-  config.memoryL0.summary_keep_turns = payload.summary_keep_turns;
-  config.memoryL0.truncate_strategy = payload.truncate_strategy;
 }
 
 /** Reset config/advanced to defaults (e.g. new agent). */

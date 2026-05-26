@@ -40,7 +40,7 @@ func provideMemoryL2Recall(store *sessionmemory.Store, vec *biz.MemoryUsecase) b
 }
 
 func provideMemoryL3Recall(store *sessionmemory.Store, vec *biz.MemoryUsecase) biz.MemoryL3Recaller {
-	return biz.NewMemoryL3RecallUsecase(store, vec)
+	return biz.NewMemoryL3RecallUsecase(store, data.NewL3ScoredRecallAdapter(store), vec)
 }
 
 func provideAutoMemoryEnqueuer(q memtrpc.AutoMemoryQueue) biz.AutoMemoryEnqueuer {
@@ -51,18 +51,24 @@ func provideFeedbackMemoryEnqueuer(q memtrpc.AutoMemoryQueue) biz.FeedbackMemory
 	return biz.FeedbackMemoryEnqueuerFunc(memtrpc.NewFeedbackMemoryEnqueuer(q))
 }
 
+func provideMemoryCompositeRecall(store *sessionmemory.Store) biz.MemoryCompositeRecaller {
+	return biz.NewMemoryCompositeRecallUsecase(data.NewMemoryCompositeRecallAdapter(store))
+}
+
 func providePersistenceSet(
 	store *sessionmemory.Store,
 	mcp *biz.AgentMCPTooling,
 	sess trpcsession.Service,
 	artifact trpcartifact.Service,
 	artifactUC *biz.ArtifactUsecase,
+	agentsUC *biz.AgentUsecase,
 	vec *biz.MemoryUsecase,
 	q memtrpc.AutoMemoryQueue,
 	policy *biz.MemoryPolicyEngine,
 	factSync biz.MemoryFactIndexSyncer,
 	l2Recall biz.MemoryL2Recaller,
 	l3Recall biz.MemoryL3Recaller,
+	compositeRecall biz.MemoryCompositeRecaller,
 ) rt.PersistenceSet {
 	var mem rt.MemorySet
 	if store != nil {
@@ -70,10 +76,11 @@ func providePersistenceSet(
 			store.SetPolicyEngine(policy)
 		}
 		mem = rt.MemorySet{
-			TRPC:     memtrpc.NewSQLiteMemoryService(store, factSync, q, vec),
-			Admin:    newWireSessionAdminStoreAdapter(store),
-			L2Recall: l2Recall,
-			L3Recall: l3Recall,
+			TRPC:            memtrpc.NewSQLiteMemoryService(store, factSync, q, vec, memtrpc.NewAgentRuntimeSettingsLoader(agentsUC)),
+			Admin:           newWireSessionAdminStoreAdapter(store),
+			L2Recall:        l2Recall,
+			L3Recall:        l3Recall,
+			CompositeRecall: compositeRecall,
 		}
 	}
 	return rt.PersistenceSet{Session: sess, Memory: mem, AgentMCP: mcp, Artifact: artifact, ArtifactUC: artifactUC}
@@ -94,6 +101,14 @@ func (a *wireSessionAdminStoreAdapter) ListL0SnapshotRows(ctx context.Context, s
 	return a.inner.ListL0SnapshotRows(ctx, sessionID, limit)
 }
 
+func (a *wireSessionAdminStoreAdapter) InsertL0AssemblySnapshot(ctx context.Context, in biz.L0AssemblySnapshotInsert) error {
+	return a.inner.InsertL0AssemblySnapshot(ctx, in)
+}
+
+func (a *wireSessionAdminStoreAdapter) UpdateL0SnapshotActual(ctx context.Context, id string, actualPromptTokens, contextWindowTokens int) error {
+	return a.inner.UpdateL0SnapshotActual(ctx, id, actualPromptTokens, contextWindowTokens)
+}
+
 func (a *wireSessionAdminStoreAdapter) ListL1TaskRows(ctx context.Context, sessionID, agentID, status, includeEnded string) ([][]byte, error) {
 	return a.inner.ListL1TaskRows(ctx, sessionID, agentID, status, includeEnded)
 }
@@ -110,8 +125,8 @@ func (a *wireSessionAdminStoreAdapter) ListFactRowsForUser(ctx context.Context, 
 	return a.inner.ListFactRowsForUser(ctx, scopeType, scopeID, userID, keyword, limit, offset)
 }
 
-func (a *wireSessionAdminStoreAdapter) RecallL3Facts(ctx context.Context, scopeType, scopeID, userID, query string, queryEmbedding []float32, limit int32) ([][]byte, error) {
-	return a.inner.RecallL3Facts(ctx, scopeType, scopeID, userID, query, queryEmbedding, limit)
+func (a *wireSessionAdminStoreAdapter) RecallL3Facts(ctx context.Context, scopeType, scopeID, userID, query string, queryEmbedding []float32, limit int32, minScore float64) ([][]byte, error) {
+	return a.inner.RecallL3Facts(ctx, scopeType, scopeID, userID, query, queryEmbedding, limit, minScore)
 }
 
 func (a *wireSessionAdminStoreAdapter) ListEpisodeRowsForRecall(ctx context.Context, agentID, sessionID string, limit int32) ([][]byte, error) {

@@ -18,6 +18,7 @@ type (
 	SkillInvocationWrite    = skill.InvocationWrite
 	SkillCreateInput        = skill.CreateInput
 	SkillDiskSyncInput      = skill.DiskSyncInput
+	SkillDiskSyncOutcome    = skill.DiskSyncOutcome
 	SkillUsecase            = skill.Usecase
 	SkillSimilaritySource   = skill.SimilaritySource
 	SkillImportJob          = skill.ImportJob
@@ -32,12 +33,18 @@ type (
 	SkillImportApplyResult  = skill.ImportApplyResult
 	SkillRuntimePolicy      = skill.RuntimePolicy
 	SkillRuntimeCandidate   = skill.RuntimeCandidate
+	SkillFilesystemHealthStats = skill.FilesystemHealthStats
 )
 
 const (
 	SkillInvocationSourceRuntime         = skill.InvocationSourceRuntime
 	SkillInvocationSourceFilesystemScan  = skill.InvocationSourceFilesystemScan
 	SkillInvocationSourceFilesystemWatch = skill.InvocationSourceFilesystemWatch
+	SkillInvocationSourceFilesystemReconcile = skill.InvocationSourceFilesystemReconcile
+
+	SkillSyncOriginFilesystem = skill.SyncOriginFilesystem
+	SkillSyncOriginImport     = skill.SyncOriginImport
+	SkillSyncOriginManual     = skill.SyncOriginManual
 )
 
 var (

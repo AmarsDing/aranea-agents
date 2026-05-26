@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -148,11 +149,25 @@ type RunnerMetricsSummary struct {
 	AvgDurationMs float64
 }
 
+// FilesystemHealthReader supplies live skill filesystem health for alerts.
+type FilesystemHealthReader interface {
+	FilesystemHealthStats(ctx context.Context) (missingCount int, pendingCount int, err error)
+}
+
 // Usecase implements monitor workflows.
 type Usecase struct {
 	repo      Repo
 	notifier  AlertNotifier
+	fsHealth  FilesystemHealthReader
 	lastFired sync.Map
+}
+
+// SetFilesystemHealthReader configures skill filesystem metrics for alert rules.
+func (u *Usecase) SetFilesystemHealthReader(r FilesystemHealthReader) {
+	if u == nil {
+		return
+	}
+	u.fsHealth = r
 }
 
 // NewUsecase constructs a MonitorUsecase.
@@ -160,7 +175,7 @@ func NewUsecase(repo Repo, notifier AlertNotifier) *Usecase {
 	return &Usecase{repo: repo, notifier: notifier}
 }
 
-// RecordAuditLog persists an admin audit row (best-effort).
+// RecordAuditLog persists an admin audit row (best-effort, logs on failure).
 func (u *Usecase) RecordAuditLog(ctx context.Context, entry AuditLog) error {
 	if u == nil || u.repo == nil {
 		return nil
@@ -168,15 +183,23 @@ func (u *Usecase) RecordAuditLog(ctx context.Context, entry AuditLog) error {
 	if strings.TrimSpace(entry.ID) == "" {
 		entry.ID = uuid.NewString()
 	}
-	return u.repo.InsertAuditLog(ctx, entry)
+	if err := u.repo.InsertAuditLog(ctx, entry); err != nil {
+		slog.Warn("RecordAuditLog failed", "action", entry.Action, "resource_id", entry.ResourceID, "error", err)
+		return err
+	}
+	return nil
 }
 
-// RecordMonitorEvent persists a monitor_events row (best-effort).
+// RecordMonitorEvent persists a monitor_events row (best-effort, logs on failure).
 func (u *Usecase) RecordMonitorEvent(ctx context.Context, ev EventWrite) error {
 	if u == nil || u.repo == nil {
 		return nil
 	}
-	return u.repo.InsertMonitorEvent(ctx, ev)
+	if err := u.repo.InsertMonitorEvent(ctx, ev); err != nil {
+		slog.Warn("RecordMonitorEvent failed", "event_key", ev.EventKey, "error", err)
+		return err
+	}
+	return nil
 }
 
 // ListAuditLogs returns paginated audit logs.
@@ -203,12 +226,32 @@ func (u *Usecase) ListAlertRules(ctx context.Context) ([]AlertRule, error) {
 	return u.repo.ListAlertRules(ctx)
 }
 
-// ReplaceAlertRules replaces all alert rules.
+// ReplaceAlertRules replaces all alert rules and cleans up lastFired entries for deleted rules.
 func (u *Usecase) ReplaceAlertRules(ctx context.Context, rules []AlertRule) error {
 	if u == nil || u.repo == nil {
 		return nil
 	}
-	return u.repo.ReplaceAlertRules(ctx, rules)
+
+	oldRules, _ := u.repo.ListAlertRules(ctx)
+	oldIDs := make(map[string]struct{}, len(oldRules))
+	for _, r := range oldRules {
+		oldIDs[r.ID] = struct{}{}
+	}
+
+	if err := u.repo.ReplaceAlertRules(ctx, rules); err != nil {
+		return err
+	}
+
+	newIDs := make(map[string]struct{}, len(rules))
+	for _, r := range rules {
+		newIDs[r.ID] = struct{}{}
+	}
+	for id := range oldIDs {
+		if _, exists := newIDs[id]; !exists {
+			u.lastFired.Delete(id)
+		}
+	}
+	return nil
 }
 
 // EvaluateAlerts checks enabled rules after runner completion and records alert.fired events.
@@ -221,51 +264,116 @@ func (u *Usecase) EvaluateAlerts(ctx context.Context) {
 		return
 	}
 	for _, rule := range rules {
-		if !rule.Enabled || rule.MetricKey != "runner.error_rate" {
+		if !rule.Enabled {
 			continue
 		}
-		window := rule.WindowMinutes
-		if window <= 0 {
-			window = 60
+		switch strings.TrimSpace(rule.MetricKey) {
+		case "runner.error_rate":
+			u.evaluateRunnerErrorRate(ctx, rule)
+		case "skill.filesystem_missing_count":
+			u.evaluateSkillFilesystemMissingCount(ctx, rule)
 		}
-		since := time.Now().UTC().Add(-time.Duration(window) * time.Minute).Format(time.RFC3339)
-		total, _ := u.repo.CountMonitorEventsSince(ctx, "runner.completion", "", since)
-		if total == 0 {
-			continue
-		}
-		errors, _ := u.repo.CountMonitorEventsSince(ctx, "runner.completion", "error", since)
-		rate := float64(errors) / float64(total)
-		if rate < rule.Threshold {
-			continue
-		}
-		now := time.Now().UTC()
-		if !u.ShouldFireAlert(rule, now) {
-			continue
-		}
-		u.MarkAlertFired(rule.ID, now)
-		meta, _ := json.Marshal(map[string]any{
-			"rule_id": rule.ID, "error_rate": rate, "errors": errors, "total": total, "window_minutes": window,
-		})
-		_ = u.RecordMonitorEvent(ctx, EventWrite{
-			EventKey:     "alert.fired",
-			Name:         rule.Name,
-			Description:  fmt.Sprintf("error rate %.2f >= %.2f", rate, rule.Threshold),
-			Status:       strings.TrimSpace(rule.Severity),
-			MetadataJSON: string(meta),
-		})
-		payload := map[string]any{
-			"rule_id":        rule.ID,
-			"name":           rule.Name,
-			"error_rate":     rate,
-			"errors":         errors,
-			"total":          total,
-			"window_minutes": window,
-			"severity":       strings.TrimSpace(rule.Severity),
-			"fired_at":       now.Format(time.RFC3339),
-		}
-		if u.notifier != nil {
-			u.notifier.Notify(ctx, rule, payload)
-		}
+	}
+}
+
+func (u *Usecase) evaluateRunnerErrorRate(ctx context.Context, rule AlertRule) {
+	if u == nil || u.repo == nil {
+		return
+	}
+	window := rule.WindowMinutes
+	if window <= 0 {
+		window = 60
+	}
+	since := time.Now().UTC().Add(-time.Duration(window) * time.Minute).Format(time.RFC3339)
+	total, errTotal := u.repo.CountMonitorEventsSince(ctx, "runner.completion", "", since)
+	if errTotal != nil {
+		slog.Warn("EvaluateAlerts: CountMonitorEventsSince(total) failed", "rule_id", rule.ID, "error", errTotal)
+		return
+	}
+	if total == 0 {
+		return
+	}
+	errors, errErrors := u.repo.CountMonitorEventsSince(ctx, "runner.completion", "error", since)
+	if errErrors != nil {
+		slog.Warn("EvaluateAlerts: CountMonitorEventsSince(errors) failed", "rule_id", rule.ID, "error", errErrors)
+		return
+	}
+	rate := float64(errors) / float64(total)
+	if rate < rule.Threshold {
+		return
+	}
+	now := time.Now().UTC()
+	if !u.ShouldFireAlert(rule, now) {
+		return
+	}
+	u.MarkAlertFired(rule.ID, now)
+	meta, _ := json.Marshal(map[string]any{
+		"rule_id": rule.ID, "error_rate": rate, "errors": errors, "total": total, "window_minutes": window,
+	})
+	if err := u.RecordMonitorEvent(ctx, EventWrite{
+		EventKey:     "alert.fired",
+		Name:         rule.Name,
+		Description:  fmt.Sprintf("error rate %.2f >= %.2f", rate, rule.Threshold),
+		Status:       strings.TrimSpace(rule.Severity),
+		MetadataJSON: string(meta),
+	}); err != nil {
+		slog.Warn("RecordMonitorEvent for alert.fired failed", "rule_id", rule.ID, "error", err)
+	}
+	payload := map[string]any{
+		"rule_id":        rule.ID,
+		"name":           rule.Name,
+		"error_rate":     rate,
+		"errors":         errors,
+		"total":          total,
+		"window_minutes": window,
+		"severity":       strings.TrimSpace(rule.Severity),
+		"fired_at":       now.Format(time.RFC3339),
+	}
+	if u.notifier != nil {
+		u.notifier.Notify(ctx, rule, payload)
+	}
+}
+
+func (u *Usecase) evaluateSkillFilesystemMissingCount(ctx context.Context, rule AlertRule) {
+	if u == nil || u.fsHealth == nil {
+		return
+	}
+	missing, pending, err := u.fsHealth.FilesystemHealthStats(ctx)
+	if err != nil {
+		slog.Warn("EvaluateAlerts: FilesystemHealthStats failed", "rule_id", rule.ID, "error", err)
+		return
+	}
+	if float64(missing) < rule.Threshold {
+		return
+	}
+	now := time.Now().UTC()
+	if !u.ShouldFireAlert(rule, now) {
+		return
+	}
+	u.MarkAlertFired(rule.ID, now)
+	meta, _ := json.Marshal(map[string]any{
+		"rule_id": rule.ID, "missing_count": missing, "pending_filesystem_count": pending, "threshold": rule.Threshold,
+	})
+	if err := u.RecordMonitorEvent(ctx, EventWrite{
+		EventKey:     "alert.fired",
+		Name:         rule.Name,
+		Description:  fmt.Sprintf("skill filesystem missing %d >= %.0f", missing, rule.Threshold),
+		Status:       strings.TrimSpace(rule.Severity),
+		MetadataJSON: string(meta),
+	}); err != nil {
+		slog.Warn("RecordMonitorEvent for skill alert.fired failed", "rule_id", rule.ID, "error", err)
+	}
+	payload := map[string]any{
+		"rule_id":                  rule.ID,
+		"name":                     rule.Name,
+		"missing_count":            missing,
+		"pending_filesystem_count": pending,
+		"threshold":                rule.Threshold,
+		"severity":                 strings.TrimSpace(rule.Severity),
+		"fired_at":                 now.Format(time.RFC3339),
+	}
+	if u.notifier != nil {
+		u.notifier.Notify(ctx, rule, payload)
 	}
 }
 
@@ -290,6 +398,18 @@ func (u *Usecase) MarkAlertFired(ruleID string, now time.Time) {
 		return
 	}
 	u.lastFired.Store(ruleID, now)
+}
+
+func (u *Usecase) CleanupStaleLastFired(now time.Time, maxAge time.Duration) {
+	if u == nil || maxAge <= 0 {
+		return
+	}
+	u.lastFired.Range(func(key, value any) bool {
+		if t, ok := value.(time.Time); ok && now.Sub(t) > maxAge {
+			u.lastFired.Delete(key)
+		}
+		return true
+	})
 }
 
 // GetMonitorEvent returns one monitor event by ID.

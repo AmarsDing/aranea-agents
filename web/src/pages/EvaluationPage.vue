@@ -1,16 +1,11 @@
 <template>
-  <q-page class="app-page-cream app-registry-page evaluation-page">
-    <section class="app-page-hero">
-      <div>
-        <div class="app-page-kicker">EvalSet / metrics</div>
-        <h1 class="app-page-title">评估管理</h1>
-        <p class="app-page-subtitle">EvalSet + FrameworkBridge（LLM UserSim / 扩展指标 / 趋势对比已接入）。</p>
-      </div>
-      <div class="app-actions-bar">
+  <q-page class="app-standard-page app-registry-page evaluation-page">
+    <AppPageHero kicker="EvalSet / metrics" title="评估管理" subtitle="EvalSet + FrameworkBridge（LLM UserSim / 扩展指标 / 趋势对比已接入）。">
+      <template #actions>
         <q-btn color="primary" rounded unelevated no-caps icon="add" label="新建数据集" @click="createOpen = true" />
         <q-btn outline rounded no-caps color="primary" icon="refresh" label="刷新" :loading="loading" @click="loadDatasets" />
-      </div>
-    </section>
+      </template>
+    </AppPageHero>
 
     <q-banner v-if="error" rounded class="bg-negative text-white q-mb-md">
       {{ error }}
@@ -42,8 +37,21 @@
           <q-separator />
           <q-card-section>
             <div class="text-subtitle2 q-mb-sm">运行记录</div>
-            <div class="app-registry-table-shell">
-            <q-table flat dense class="app-registry-table" :rows="runs" :columns="runColumns" row-key="id" :loading="runsLoading" :pagination="{ rowsPerPage: 8 }">
+            <AppRegistryTable
+              :shell="false"
+              :data-shell="true"
+              :rows="pagedRuns"
+              :columns="runColumns"
+              row-key="id"
+              :loading="runsLoading"
+              hide-pagination
+              :pagination="{ rowsPerPage: 0 }"
+            >
+              <template #body-cell-id="props">
+                <q-td :props="props">
+                  <span class="app-registry-cell-sub ellipsis" :title="props.row.id">{{ props.row.id }}</span>
+                </q-td>
+              </template>
               <template #body-cell-status="props">
                 <q-td :props="props">
                   <q-chip dense :color="runStatusColor(props.row.status)" text-color="white" size="sm">{{ props.row.status }}</q-chip>
@@ -51,11 +59,20 @@
               </template>
               <template #body-cell-actions="props">
                 <q-td :props="props">
-                  <q-btn flat dense label="结果" @click="openResults(props.row)" />
+                  <div class="app-registry-cell-actions">
+                    <q-btn flat dense round icon="analytics" color="primary" aria-label="查看结果" @click="openResults(props.row)" />
+                  </div>
                 </q-td>
               </template>
-            </q-table>
-            </div>
+            </AppRegistryTable>
+            <AppRegistryPagination
+              v-model:page="runsPage"
+              v-model:page-size="runsPageSize"
+              :page-max="runsPageMax"
+              :total="runs.length"
+              :loading="runsLoading"
+              label="条运行"
+            />
           </q-card-section>
         </q-card>
         <div v-else class="app-registry-empty app-entity-empty">
@@ -111,6 +128,10 @@
 </template>
 
 <script setup lang="ts">
+import { computed, ref, watch } from "vue";
+import AppPageHero from "../components/layout/AppPageHero.vue";
+import AppRegistryTable from "../components/layout/AppRegistryTable.vue";
+import AppRegistryPagination from "../components/layout/AppRegistryPagination.vue";
 import EvaluationAnalyticsPanel from "../components/evaluation/EvaluationAnalyticsPanel.vue";
 import EvaluationDatasetList from "../components/evaluation/EvaluationDatasetList.vue";
 import EvaluationCreateDialog from "../components/evaluation/EvaluationCreateDialog.vue";
@@ -157,4 +178,19 @@ const {
   loadTrend,
   submitCompare
 } = useEvaluationPage();
+
+const runsPage = ref(1);
+const runsPageSize = ref(8);
+const runsPageMax = computed(() => Math.max(1, Math.ceil(runs.value.length / runsPageSize.value)));
+const pagedRuns = computed(() => {
+  const start = (runsPage.value - 1) * runsPageSize.value;
+  return runs.value.slice(start, start + runsPageSize.value);
+});
+
+watch(
+  () => runs.value.length,
+  () => {
+    if (runsPage.value > runsPageMax.value) runsPage.value = runsPageMax.value;
+  }
+);
 </script>

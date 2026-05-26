@@ -51,6 +51,16 @@ message Skill {
   string created_at = 19;
   string updated_at = 20;
   SkillPermissions permissions = 21;
+  bool filesystem_missing = 22;
+  // filesystem | import | manual
+  string sync_origin = 23;
+}
+
+message SkillFilesystemHealth {
+  bool root_accessible = 1;
+  string resolved_root = 2;
+  int32 missing_count = 3;
+  int32 pending_filesystem_count = 4;
 }
 
 message ListSkillsRequest {
@@ -60,6 +70,8 @@ message ListSkillsRequest {
   string status = 4;
   int32 page = 5;
   int32 page_size = 6;
+  string filesystem_missing = 7;
+  string sync_origin = 8;
 }
 
 message ListSkillsResponse {
@@ -313,6 +325,9 @@ message SkillRefineResult {
 service SkillService {
   rpc ListSkills(ListSkillsRequest) returns (ListSkillsResponse) {
     option (google.api.http) = {get: "/v1/skills"};
+  }
+  rpc GetSkillFilesystemHealth(google.protobuf.Empty) returns (SkillFilesystemHealth) {
+    option (google.api.http) = {get: "/v1/skills/filesystem-health"};
   }
   rpc GetSkill(GetSkillRequest) returns (GetSkillResponse) {
     option (google.api.http) = {get: "/v1/skills/{id}"};

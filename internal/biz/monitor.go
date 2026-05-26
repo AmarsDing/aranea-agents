@@ -2,6 +2,8 @@ package biz
 
 import "aranea-agents/internal/biz/monitor"
 
+type FilesystemHealthReader = monitor.FilesystemHealthReader
+
 type (
 	AuditLog               = monitor.AuditLog
 	AuditQuery             = monitor.AuditQuery

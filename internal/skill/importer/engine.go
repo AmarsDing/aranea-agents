@@ -265,7 +265,7 @@ func (e *Engine) createImportedSkill(ctx context.Context, name string, slug stri
 			return biz.Skill{}, err
 		}
 	}
-	return e.repo.CreateSkillWithVersion(ctx, biz.SkillCreateInput{Name: name, Slug: slug, Description: description, Body: body, Tags: tags, StorageDir: targetDir})
+	return e.repo.CreateSkillWithVersion(ctx, biz.SkillCreateInput{Name: name, Slug: slug, Description: description, Body: body, Tags: tags, StorageDir: targetDir, SyncOrigin: biz.SkillSyncOriginImport})
 }
 
 func (e *Engine) updateCandidateWarning(job *jobState, candidateID string, metrics biz.SkillSimilarityMetrics) {

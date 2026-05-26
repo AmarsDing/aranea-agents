@@ -29,14 +29,24 @@ type scoredFact struct {
 }
 
 // RecallL3Facts retrieves semantic facts with keyword/vector fusion and rerank.
-func (st *Store) RecallL3Facts(ctx context.Context, scopeType, scopeID, userID, query string, queryEmbedding []float32, limit int32) ([][]byte, error) {
+func (st *Store) RecallL3Facts(ctx context.Context, scopeType, scopeID, userID, query string, queryEmbedding []float32, limit int32, minScore float64) ([][]byte, error) {
 	scored, err := st.RecallL3FactsScored(ctx, scopeType, scopeID, userID, query, queryEmbedding, limit)
 	if err != nil {
 		return nil, err
 	}
-	out := make([][]byte, len(scored))
-	for i := range scored {
-		out[i] = scored[i].Raw
+	lim := int(limit)
+	if lim <= 0 {
+		lim = 12
+	}
+	out := make([][]byte, 0, lim)
+	for _, s := range scored {
+		if minScore > 0 && strings.TrimSpace(query) != "" && s.Scores.Total < minScore {
+			continue
+		}
+		out = append(out, s.Raw)
+		if len(out) >= lim {
+			break
+		}
 	}
 	return out, nil
 }

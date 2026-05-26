@@ -6,41 +6,48 @@
     </q-card-section>
     <q-separator class="overview-separator" />
     <q-card-section class="q-pa-none">
-      <q-markup-table flat dense class="overview-anomaly-table">
-        <thead>
-          <tr>
-            <th class="text-left">时间</th>
-            <th class="text-left">模型</th>
-            <th class="text-left">Agent</th>
-            <th class="text-left">状态</th>
-            <th class="text-left">错误</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="row in rows" :key="row.id">
-            <td class="overview-anomaly-time">{{ formatTime(row.occurred_at) }}</td>
-            <td>{{ row.provider_code }} / {{ row.model_api_id }}</td>
-            <td>{{ row.agent_key || "—" }}</td>
-            <td>
-              <q-badge outline class="overview-status-badge overview-status-badge--error" :label="row.status" />
-            </td>
-            <td class="overview-anomaly-error ellipsis">{{ row.error_message || "—" }}</td>
-          </tr>
-          <tr v-if="!rows.length">
-            <td colspan="5" class="overview-empty-inline text-center q-pa-lg">暂无异常请求</td>
-          </tr>
-        </tbody>
-      </q-markup-table>
+      <AppRegistryMarkupTable
+        :rows="rows"
+        :columns="columns"
+        table-class="overview-anomaly-table"
+        empty-cell-class="overview-empty-inline text-center q-pa-lg"
+      >
+        <template #cell-occurred_at="{ value }">
+          <span class="overview-anomaly-time">{{ formatTime(String(value)) }}</span>
+        </template>
+        <template #cell-model_api_id="{ row }">
+          {{ row.provider_code }} / {{ row.model_api_id }}
+        </template>
+        <template #cell-agent_id="{ row }">
+          {{ row.agent_key || "—" }}
+        </template>
+        <template #cell-status="{ row }">
+          <AppRegistryHoverTip :text="String(row.error_message ?? '')" empty-label="暂无错误信息">
+            <q-badge outline class="overview-status-badge overview-status-badge--error" :label="String(row.status)" />
+          </AppRegistryHoverTip>
+        </template>
+        <template #empty>暂无异常请求</template>
+      </AppRegistryMarkupTable>
     </q-card-section>
   </q-card>
 </template>
 
 <script setup lang="ts">
+import AppRegistryHoverTip from "../layout/AppRegistryHoverTip.vue";
+import AppRegistryMarkupTable from "../layout/AppRegistryMarkupTable.vue";
+import { REGISTRY_COL_W, registryColWidth } from "../../features/ui/registryTableColumns";
 import type { ModelTokenUsageEvent } from "../../features/usage/types";
 
 defineProps<{
   rows: ModelTokenUsageEvent[];
 }>();
+
+const columns = [
+  { name: "occurred_at", label: "时间", field: "occurred_at", align: "left" as const, ...registryColWidth(REGISTRY_COL_W.time) },
+  { name: "model_api_id", label: "模型", field: "model_api_id", align: "left" as const, ...registryColWidth(REGISTRY_COL_W.name) },
+  { name: "agent_id", label: "Agent", field: "agent_id", align: "left" as const, ...registryColWidth(REGISTRY_COL_W.agent) },
+  { name: "status", label: "状态", field: "status", align: "left" as const, ...registryColWidth(REGISTRY_COL_W.status) }
+];
 
 function formatTime(value: string) {
   if (!value) return "—";

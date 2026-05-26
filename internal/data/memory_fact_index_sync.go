@@ -3,11 +3,10 @@ package data
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	"strings"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/sessionmemory"
+	"aranea-agents/pkg/jsonutil"
 )
 
 type memoryFactIndexSync struct {
@@ -48,16 +47,16 @@ func (s *memoryFactIndexSync) SyncFactIndexFromRow(ctx context.Context, raw []by
 	if err := json.Unmarshal(raw, &m); err != nil {
 		return err
 	}
-	agentID := strings.TrimSpace(factJSONStr(m, "agent_id"))
+	agentID := jsonutil.IfaceStr(m, "agent_id")
 	if agentID == "" {
-		agentID = strings.TrimSpace(factJSONStr(m, "scope_id"))
+		agentID = jsonutil.IfaceStr(m, "scope_id")
 	}
-	factID := strings.TrimSpace(factJSONStr(m, "id"))
-	statement := strings.TrimSpace(factJSONStr(m, "statement"))
+	factID := jsonutil.IfaceStr(m, "id")
+	statement := jsonutil.IfaceStr(m, "statement")
 	if agentID == "" || factID == "" || statement == "" {
 		return nil
 	}
-	return s.SyncFactIndex(ctx, agentID, factJSONStr(m, "user_id"), factID, statement)
+	return s.SyncFactIndex(ctx, agentID, jsonutil.IfaceStr(m, "user_id"), factID, statement)
 }
 
 func (s *memoryFactIndexSync) syncSQLiteBlob(ctx context.Context, factID string, embedding []float32) error {
@@ -65,18 +64,4 @@ func (s *memoryFactIndexSync) syncSQLiteBlob(ctx context.Context, factID string,
 		return nil
 	}
 	return s.store.UpsertFactEmbedding(ctx, factID, embedding, "memory_embedder", len(embedding))
-}
-
-func factJSONStr(m map[string]any, key string) string {
-	if m == nil {
-		return ""
-	}
-	v, ok := m[key]
-	if !ok || v == nil {
-		return ""
-	}
-	if s, ok := v.(string); ok {
-		return s
-	}
-	return strings.TrimSpace(fmt.Sprint(v))
 }

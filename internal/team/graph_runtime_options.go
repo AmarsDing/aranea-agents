@@ -24,7 +24,6 @@ func applyTeamRuntimeExecutionOptions(cfg biz.GraphBuildConfig, def Definition, 
 	if def.FailurePolicy != nil && def.FailurePolicy.CircuitBreaker != nil {
 		cfg = biz.ApplyCircuitBreakerPolicy(cfg, def.FailurePolicy.CircuitBreaker)
 	}
-	_ = def
 	return cfg
 }
 

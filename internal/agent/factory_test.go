@@ -57,6 +57,9 @@ func (m *memAgentRepo) UpdateAgentPromptFile(context.Context, biz.AgentPromptFil
 	return biz.AgentPromptFile{}, nil
 }
 func (m *memAgentRepo) DeleteAgentPromptFile(context.Context, string, string) error { return nil }
+func (m *memAgentRepo) ExecInTx(ctx context.Context, fn func(context.Context) error) error {
+	return fn(ctx)
+}
 
 func TestResolveBizAgentByKey(t *testing.T) {
 	repo := &memAgentRepo{byKey: map[string]biz.Agent{

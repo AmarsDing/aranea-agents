@@ -32,22 +32,20 @@
           <q-card-section>
             <div class="text-subtitle1">Composite Search（L2 + L3 融合）</div>
           </q-card-section>
-          <q-markup-table flat dense wrap-cells>
-            <thead>
-              <tr>
-                <th>Layer</th>
-                <th>Text</th>
-                <th class="text-right">Score</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="row in compositeHits" :key="`${row.layer}-${row.id}`">
-                <td><q-badge :color="row.layer === 'L2' ? 'teal' : 'deep-purple'">{{ row.layer }}</q-badge></td>
-                <td class="ellipsis" style="max-width: 480px">{{ row.text || row.id }}</td>
-                <td class="text-right">{{ formatScore(row.score) }}</td>
-              </tr>
-            </tbody>
-          </q-markup-table>
+          <AppRegistryMarkupTable
+            :rows="compositeRows"
+            :columns="compositeColumns"
+            row-key="row_uid"
+          >
+            <template #cell-layer="{ row }">
+              <AppRegistryHoverTip :text="String(row.text || row.id)" empty-label="暂无文本">
+                <q-badge :color="row.layer === 'L2' ? 'teal' : 'deep-purple'">{{ row.layer }}</q-badge>
+              </AppRegistryHoverTip>
+            </template>
+            <template #cell-score="{ row }">
+              {{ formatScore(Number(row.score)) }}
+            </template>
+          </AppRegistryMarkupTable>
         </q-card>
       </div>
     </div>
@@ -64,10 +62,22 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import type { CompositeSearchHit, MemoryRecallHit } from "./types";
 import { compositeSearchMemories, debugMemoryRecall } from "./api";
 import RecallHitTable from "./RecallHitTable.vue";
+import AppRegistryHoverTip from "../../components/layout/AppRegistryHoverTip.vue";
+import AppRegistryMarkupTable from "../../components/layout/AppRegistryMarkupTable.vue";
+import { REGISTRY_COL_W, registryColWidth } from "../ui/registryTableColumns";
+
+const compositeColumns = [
+  { name: "layer", label: "Layer", field: "layer", align: "left" as const, ...registryColWidth(REGISTRY_COL_W.nameWide) },
+  { name: "score", label: "Score", field: "score", align: "right" as const, ...registryColWidth(REGISTRY_COL_W.metric) }
+];
+
+const compositeRows = computed(() =>
+  compositeHits.value.map((row) => ({ ...row, row_uid: `${row.layer}-${row.id}` }))
+);
 
 const props = defineProps<{
   agentId: string | null;

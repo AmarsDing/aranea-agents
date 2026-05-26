@@ -9,23 +9,31 @@ import (
 )
 
 const (
-	defaultWebhookRateLimitPerMin = 120
+	defaultWebhookRateLimitPerMin   = 120
 	flowStepChannelWebhookRateLimit = "channel.webhook.rate_limit"
 )
 
 type webhookRateLimiter struct {
-	mu      sync.Mutex
-	window  time.Time
-	count   int
-	limit   int
+	mu     sync.Mutex
+	window time.Time
+	count  int
+	limit  int
 }
 
 var webhookRateLimits sync.Map // channel_key -> *webhookRateLimiter
+
+var webhookRateLimitsLastCleaned time.Time
+
+const webhookRateLimitsCleanupInterval = 5 * time.Minute
 
 func allowWebhookRequest(channelKey string) bool {
 	channelKey = trimKey(channelKey)
 	if channelKey == "" {
 		return true
+	}
+	if now := time.Now(); now.Sub(webhookRateLimitsLastCleaned) >= webhookRateLimitsCleanupInterval {
+		webhookRateLimitsLastCleaned = now
+		go cleanupStaleWebhookRateLimits()
 	}
 	v, _ := webhookRateLimits.LoadOrStore(channelKey, &webhookRateLimiter{limit: defaultWebhookRateLimitPerMin})
 	rl := v.(*webhookRateLimiter)
@@ -45,6 +53,25 @@ func allowWebhookRequest(channelKey string) bool {
 	}
 	rl.count++
 	return true
+}
+
+// cleanupStaleWebhookRateLimits removes rate limiter entries whose window has expired.
+func cleanupStaleWebhookRateLimits() {
+	now := time.Now()
+	webhookRateLimits.Range(func(key, value any) bool {
+		rl, ok := value.(*webhookRateLimiter)
+		if !ok {
+			webhookRateLimits.Delete(key)
+			return true
+		}
+		rl.mu.Lock()
+		stale := !rl.window.IsZero() && now.Sub(rl.window) >= 5*time.Minute
+		rl.mu.Unlock()
+		if stale {
+			webhookRateLimits.Delete(key)
+		}
+		return true
+	})
 }
 
 func trimKey(s string) string {

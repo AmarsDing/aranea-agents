@@ -96,6 +96,7 @@ internal/data           ← Repo 实现（Ent ORM + SQLite，单 sql.Open）
 | **探索 / 查询代码结构** | 本文 [§4.1](./README.md#41-代码探索约束codegraph) + `.cursor/rules/codegraph.mdc` | CodeGraph 优先于 grep；符号、调用链、影响面、模块上下文 |
 | **判断代码该放 Kratos 哪层** | [guides/kratos-framework-guide.md](./guides/kratos-framework-guide.md) | Kratos 各层职责边界、依赖方向、Proto/Wire/中间件/错误处理/配置 |
 | **使用 trpc-agent-go 框架** | [guides/trpc-agent-go-framework.md](./guides/trpc-agent-go-framework.md) | 框架目录结构、核心接口、项目内桥接函数、常见实现场景、官方文档索引 |
+| **Agent Prompt 组装 / 排障** | [guides/prompt/README.md](./guides/prompt/README.md) · [assembly.md](./guides/prompt/assembly.md) | 构建期 System Instruction、运行时 Processor 链、L2/L3 记忆、Intent Pass、附件与源码入口 |
 | **任何前端编码** | [guides/frontend-guide.md](./guides/frontend-guide.md) | ★ **唯一前端编码行为准则**：数据流、分层、红线、UX 主题、迁移剧本 |
 | **跨模块解耦 / 架构优化** | [需求/0-module-decoupling-architecture.md](./需求/0-module-decoupling-architecture.md) · [**§3.1 四层目标架构**](./需求/0-module-decoupling-architecture.md#31-推荐目标架构channel--chat--agent) | Chat / Channel / Agent 边界、Ingress/Policy/Turn/Projector、端口化路线 |
 | **当前迭代进度与任务** | [guides/execution-plan.md](./guides/execution-plan.md) | 模块接入度、Top-20、里程碑、扩展红线 |
@@ -163,6 +164,7 @@ internal/data           ← Repo 实现（Ent ORM + SQLite，单 sql.Open）
 | **前端规范** | `guides/frontend-guide.md` | 前端红线、数据流、分层、UX 主题 | 后端内容 |
 | **Kratos 框架** | `guides/kratos-framework-guide.md` | Kratos 各层职责与约束 | 通用教程 / 示例代码 |
 | **trpc 框架** | `guides/trpc-agent-go-framework.md` | 框架接口与项目映射 | 通用教程 |
+| **Prompt 组装** | `guides/prompt/` | 构建期 Instruction、运行时 Processor、记忆/Intent/附件 | 单次需求进度 |
 | **解耦指导** | `需求/0-module-decoupling-architecture.md` | 跨模块边界、依赖方向、端口化路线、AI 迁移模板 | 单次需求进度 / 具体修复记录 |
 | **进度真相** | `guides/execution-plan.md` | 模块接入度 / 里程碑 / 红线扩展 | 已冻结的 sprint 节奏 |
 | **需求文档** | `需求/*.md` | 用户故事、功能规格、验收标准 | 实现细节、代码片段 |
@@ -183,6 +185,9 @@ docs/
 │   ├── frontend-guide.md                   ← ★ 前端编码唯一行为准则
 │   ├── kratos-framework-guide.md           ← Kratos 框架层职责速查
 │   ├── trpc-agent-go-framework.md          ← trpc-agent-go 框架接口速查
+│   ├── prompt/                             ← Agent Prompt 组装指南
+│   │   ├── README.md                       ← 索引与速览
+│   │   └── assembly.md                     ← ★ 拼接全流程（构建期 + 运行时）
 │   └── execution-plan.md                   ← 当前迭代进度与任务
 ├── frontend/                              ← 前端参考文档
 │   ├── UX.md                               ← UX 主题与视觉规范

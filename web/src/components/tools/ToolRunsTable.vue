@@ -8,27 +8,31 @@
   </tool-glass-panel>
 
   <tool-glass-panel v-else>
-    <q-table
-      flat
-      class="tool-runs-data-table"
+    <AppRegistryTable
+      :shell="false"
+      table-class="tool-runs-data-table"
       row-key="id"
       :rows="rows"
       :columns="columns"
       :loading="loading"
-      :pagination="tablePagination"
       hide-pagination
+      :pagination="{ rowsPerPage: 0 }"
     >
       <template #body-cell-tool="props">
         <q-td :props="props">
-          <div class="text-weight-medium">{{ props.row.tool_display_name || props.row.tool_key }}</div>
-          <div class="text-caption muted-caption">{{ props.row.tool_key }}</div>
+          <AppRegistryHoverTip :text="toolRunHoverText(props.row)" empty-label="无参数 / 结果摘要">
+            <div class="min-width-0">
+              <div class="app-registry-cell-primary ellipsis">{{ props.row.tool_display_name || props.row.tool_key }}</div>
+              <div class="app-registry-cell-sub ellipsis">{{ props.row.tool_key }}</div>
+            </div>
+          </AppRegistryHoverTip>
         </q-td>
       </template>
 
       <template #body-cell-agent="props">
         <q-td :props="props">
-          <div>{{ invocationAgentLine(props.row) }}</div>
-          <div class="text-caption muted-caption">{{ props.row.agent_id }}</div>
+          <div class="app-registry-cell-primary ellipsis">{{ invocationAgentLine(props.row) }}</div>
+          <div class="app-registry-cell-sub ellipsis">{{ props.row.agent_id }}</div>
         </q-td>
       </template>
 
@@ -38,10 +42,9 @@
         </q-td>
       </template>
 
-      <template #body-cell-preview="props">
+      <template #body-cell-session_id="props">
         <q-td :props="props">
-          <div class="text-caption ellipsis">{{ clipPreview(props.row.input_preview) || "无参数摘要" }}</div>
-          <div class="text-caption muted-caption ellipsis">{{ clipPreview(props.row.output_preview || props.row.error_message) || "无结果摘要" }}</div>
+          <span class="app-registry-cell-sub ellipsis" :title="props.row.session_id">{{ props.row.session_id || "—" }}</span>
         </q-td>
       </template>
 
@@ -51,14 +54,17 @@
           <div class="text-caption muted-caption">{{ formatInvocationDuration(props.row.duration_ms) }}</div>
         </q-td>
       </template>
-    </q-table>
+    </AppRegistryTable>
   </tool-glass-panel>
 </template>
 
 <script setup lang="ts">
 import type { QTableColumn } from "quasar";
+import AppRegistryTable from "../layout/AppRegistryTable.vue";
+import AppRegistryHoverTip from "../layout/AppRegistryHoverTip.vue";
 import ToolGlassPanel from "./ToolGlassPanel.vue";
 import type { ToolInvocation } from "../../features/tools/types";
+import { registryColWidth } from "../../features/ui/registryTableColumns";
 import {
   clipPreview,
   formatInvocationDuration,
@@ -73,14 +79,20 @@ defineProps<{
   loading: boolean;
 }>();
 
-const tablePagination = { rowsPerPage: 0 };
-
 const columns: QTableColumn<ToolInvocation>[] = [
-  { name: "tool", label: "Tool", field: "tool_key", align: "left" },
-  { name: "agent", label: "Agent", field: "agent_id", align: "left" },
-  { name: "status", label: "状态", field: "status", align: "left" },
-  { name: "preview", label: "参数 / 结果摘要", field: "input_preview", align: "left", style: "max-width: 420px;" },
-  { name: "session_id", label: "Session", field: "session_id", align: "left" },
-  { name: "time", label: "时间 / 耗时", field: "started_at", align: "left" }
+  { name: "tool", label: "Tool", field: "tool_key", align: "left", ...registryColWidth("18%") },
+  { name: "agent", label: "Agent", field: "agent_id", align: "left", ...registryColWidth("10%") },
+  { name: "status", label: "状态", field: "status", align: "left", ...registryColWidth("9%") },
+  { name: "session_id", label: "Session", field: "session_id", align: "left", ...registryColWidth("10%") },
+  { name: "time", label: "时间 / 耗时", field: "started_at", align: "left", ...registryColWidth("11%") }
 ];
+
+function toolRunHoverText(row: ToolInvocation) {
+  const input = clipPreview(row.input_preview);
+  const output = clipPreview(row.output_preview || row.error_message);
+  const parts = [];
+  if (input) parts.push(`参数：${input}`);
+  if (output) parts.push(`结果：${output}`);
+  return parts.join("\n\n");
+}
 </script>

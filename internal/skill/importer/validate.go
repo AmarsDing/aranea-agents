@@ -1,6 +1,7 @@
 package importer
 
 import (
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -9,6 +10,17 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/strutil"
 )
+
+// DirectorySlugMismatch reports when a folder name does not match parsed slug.
+func DirectorySlugMismatch(dirSlug, candidateSlug string) *biz.SkillImportIssue {
+	if CanonicalSlug(dirSlug) != CanonicalSlug(candidateSlug) {
+		return &biz.SkillImportIssue{
+			Type:    "directory_slug_mismatch",
+			Message: fmt.Sprintf("directory name %q must match skill slug %q", dirSlug, candidateSlug),
+		}
+	}
+	return nil
+}
 
 func ValidateSkillPackage(files map[string][]byte, dirSlugHint string, existing []biz.SkillSimilaritySource, skipDuplicateCheck bool) (biz.SkillImportCandidate, []biz.SkillTag) {
 	bodyBytes, ok := files["SKILL.md"]

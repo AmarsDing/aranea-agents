@@ -232,14 +232,13 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
     skipMessageReload: boolean
   ) {
     if (!deps.focusChannelSession || focusInFlight.has(sessionId)) return;
+    flushInboundWriter(sessionId);
     focusInFlight.add(sessionId);
     void Promise.resolve(
       deps.focusChannelSession(sessionId, agentId, { skipMessageReload })
-    )
-      .catch(() => {
-        /* entity nav surfaces navigation / load errors */
-      })
-      .finally(() => {
+    ).catch((err) => {
+      console.warn("[chat] channel focus failed:", sessionId, err);
+    }).finally(() => {
         focusInFlight.delete(sessionId);
       });
   }
@@ -328,7 +327,11 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
     let channelRunStatus = "";
     if (channelInbound) {
       channelAgentId = await resolveInboundAgentId(sessionId, env, deps.sessionStore);
-      if (channelAgentId) {
+      const shouldRefreshSessions =
+        env.type === "run_status" ||
+        isSessionRevisionSyncEnvelope(env) ||
+        isTurnCompleteEnvelope(env);
+      if (channelAgentId && shouldRefreshSessions) {
         void refreshAgentSessionsForChannel(deps.sessionStore, channelAgentId, {
           entityKind: deps.sessionStore.entityKind,
           activeAgentId: deps.selectedAgentId.value,

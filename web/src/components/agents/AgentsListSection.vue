@@ -38,15 +38,14 @@
       />
     </div>
 
-    <q-table
+    <AppRegistryTable
       v-else
       class="agents-table"
-      flat
-      bordered
       :rows="agents"
       :columns="tableColumns"
       row-key="id"
       hide-pagination
+      :pagination="{ rowsPerPage: 0 }"
     >
       <template #body-cell-name="props">
         <q-td :props="props">
@@ -61,11 +60,16 @@
               @click="$emit('toggle-favorite', props.row.id)"
             />
             <agent-avatar-q :icon="props.row.icon" :alt="props.row.display_name" size="36px" />
-            <div>
-              <div class="text-weight-medium">{{ props.row.display_name }}</div>
-              <button type="button" class="agent-handle" @click="$emit('copy-key', props.row.agent_key)">{{ props.row.agent_key }}</button>
+            <div class="min-width-0">
+              <div class="app-registry-cell-primary ellipsis">{{ props.row.display_name }}</div>
+              <button type="button" class="agent-handle ellipsis" @click="$emit('copy-key', props.row.agent_key)">{{ props.row.agent_key }}</button>
             </div>
           </div>
+        </q-td>
+      </template>
+      <template #body-cell-model="props">
+        <q-td :props="props">
+          <span class="app-registry-cell-sub ellipsis">{{ props.row.provider }} / {{ props.row.model }}</span>
         </q-td>
       </template>
       <template #body-cell-status="props">
@@ -74,13 +78,21 @@
         </q-td>
       </template>
       <template #body-cell-actions="props">
-        <q-td :props="props" class="q-gutter-xs">
-          <q-btn flat dense rounded color="primary" label="设置" :to="`/agents/${props.row.id}/settings`" />
-          <q-btn flat dense rounded color="secondary" label="复制" @click="$emit('duplicate', props.row)" />
-          <q-btn flat dense round color="negative" icon="delete" @click="$emit('delete', props.row)" />
+        <q-td :props="props">
+          <div class="app-registry-cell-actions">
+            <q-btn flat dense round color="primary" icon="settings" :to="`/agents/${props.row.id}/settings`">
+              <q-tooltip>设置</q-tooltip>
+            </q-btn>
+            <q-btn flat dense round color="secondary" icon="content_copy" @click="$emit('duplicate', props.row)">
+              <q-tooltip>复制</q-tooltip>
+            </q-btn>
+            <q-btn flat dense round color="negative" icon="delete" @click="$emit('delete', props.row)">
+              <q-tooltip>删除</q-tooltip>
+            </q-btn>
+          </div>
         </q-td>
       </template>
-    </q-table>
+    </AppRegistryTable>
   </section>
 </template>
 
@@ -89,6 +101,7 @@ import type { QTableColumn } from "quasar";
 import type { Agent } from "../../features/agents/types";
 import AgentCard from "./AgentCard.vue";
 import AgentAvatarQ from "../avatar/AgentAvatarQ.vue";
+import AppRegistryTable from "../layout/AppRegistryTable.vue";
 import { formatLastRunContext, isAgentEvolving } from "./agentUi";
 
 type ViewMode = "grid" | "list";

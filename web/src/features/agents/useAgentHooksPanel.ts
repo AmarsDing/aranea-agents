@@ -2,6 +2,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useQuasar } from "quasar";
 import { defaultHookRuleConfig, parseHookConfig, type HookRow, type HookRuleConfig } from "../hooks/types";
 import { useHooksStore } from "../../stores/hooks";
+import { registryColWidth } from "../ui/registryTableColumns";
 
 export function useAgentHooksPanel(agentId: () => string, agentKey: () => string) {
   const $q = useQuasar();
@@ -19,9 +20,9 @@ export function useAgentHooksPanel(agentId: () => string, agentKey: () => string
   const editSort = ref(0);
 
   const columns = [
-    { name: "name", label: "名称", field: "name", align: "left" as const },
-    { name: "rule", label: "规则", field: "id", align: "left" as const },
-    { name: "actions", label: "操作", field: "id", align: "right" as const }
+    { name: "name", label: "名称", field: "name", align: "left" as const, ...registryColWidth("14%") },
+    { name: "rule", label: "规则", field: "id", align: "left" as const, ...registryColWidth("13%") },
+    { name: "actions", label: "操作", field: "id", align: "right" as const, ...registryColWidth("108px") }
   ];
 
   function ruleOf(row: HookRow) {

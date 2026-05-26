@@ -28,6 +28,7 @@ type sqliteMemoryService struct {
 	indexSync       biz.MemoryFactIndexSyncer
 	autoMemoryQueue AutoMemoryQueue
 	vector          vectorFactSearcher
+	settingsLoader  AgentRuntimeSettingsLoader
 }
 
 // vectorFactSearcher optional pgvector recall for SearchMemories.
@@ -37,19 +38,17 @@ type vectorFactSearcher interface {
 
 var _ trpcmemory.Service = (*sqliteMemoryService)(nil)
 
-func NewSQLiteMemoryService(store *sessionmemory.Store, indexSync biz.MemoryFactIndexSyncer, queue AutoMemoryQueue, vector ...vectorFactSearcher) trpcmemory.Service {
+func NewSQLiteMemoryService(store *sessionmemory.Store, indexSync biz.MemoryFactIndexSyncer, queue AutoMemoryQueue, vector vectorFactSearcher, settingsLoader AgentRuntimeSettingsLoader) trpcmemory.Service {
 	if store == nil {
 		return nil
 	}
-	svc := &sqliteMemoryService{
+	return &sqliteMemoryService{
 		store:           store,
 		indexSync:       indexSync,
 		autoMemoryQueue: queue,
+		vector:          vector,
+		settingsLoader:  settingsLoader,
 	}
-	if len(vector) > 0 && vector[0] != nil {
-		svc.vector = vector[0]
-	}
-	return svc
 }
 
 func (s *sqliteMemoryService) requireStore() error {
@@ -117,7 +116,11 @@ func (s *sqliteMemoryService) ReadMemories(ctx context.Context, uk trpcmemory.Us
 	if err := s.requireStore(); err != nil {
 		return nil, err
 	}
-	return s.listEntries(ctx, uk, "", limit)
+	defaultLimit, _ := resolveMemoryToolSearchLimits(ctx, s.settingsLoader, uk.AppName, 0)
+	if limit <= 0 {
+		limit = int(defaultLimit)
+	}
+	return s.listEntries(ctx, uk, "", limit, 0)
 }
 
 func (s *sqliteMemoryService) SearchMemories(ctx context.Context, uk trpcmemory.UserKey, query string, opts ...trpcmemory.SearchOption) ([]*trpcmemory.Entry, error) {
@@ -132,13 +135,13 @@ func (s *sqliteMemoryService) SearchMemories(ctx context.Context, uk trpcmemory.
 	if q == "" {
 		q = strings.TrimSpace(searchOpts.Query)
 	}
-	topK := searchOpts.MaxResults
+	topK, minScore := resolveMemoryToolSearchLimits(ctx, s.settingsLoader, uk.AppName, int32(searchOpts.MaxResults))
 	if topK <= 0 {
-		topK = 10
+		return nil, nil
 	}
 
 	if q != "" && s.vector != nil {
-		hits, err := s.vector.RecallWithUser(ctx, uk.AppName, uk.UserID, q, topK)
+		hits, err := s.vector.RecallWithUser(ctx, uk.AppName, uk.UserID, q, int(topK))
 		if err == nil && len(hits) > 0 {
 			out := make([]*trpcmemory.Entry, 0, len(hits))
 			for _, h := range hits {
@@ -171,7 +174,7 @@ func (s *sqliteMemoryService) SearchMemories(ctx context.Context, uk trpcmemory.
 		}
 	}
 
-	entries, err := s.listEntries(ctx, uk, q, int(topK))
+	entries, err := s.listEntries(ctx, uk, q, int(topK), minScore)
 	if err != nil {
 		return nil, err
 	}
@@ -181,7 +184,7 @@ func (s *sqliteMemoryService) SearchMemories(ctx context.Context, uk trpcmemory.
 	return entries, nil
 }
 
-func (s *sqliteMemoryService) listEntries(ctx context.Context, uk trpcmemory.UserKey, keyword string, limit int) ([]*trpcmemory.Entry, error) {
+func (s *sqliteMemoryService) listEntries(ctx context.Context, uk trpcmemory.UserKey, keyword string, limit int, minImportance float64) ([]*trpcmemory.Entry, error) {
 	limit32 := int32(limit)
 	if limit32 <= 0 {
 		limit32 = 50
@@ -193,6 +196,14 @@ func (s *sqliteMemoryService) listEntries(ctx context.Context, uk trpcmemory.Use
 	seen := make(map[string]struct{}, len(rows))
 	out := make([]*trpcmemory.Entry, 0, len(rows))
 	for _, raw := range rows {
+		if minImportance > 0 {
+			var row map[string]any
+			if json.Unmarshal(raw, &row) == nil {
+				if imp, ok := row["importance"].(float64); ok && imp < minImportance {
+					continue
+				}
+			}
+		}
 		e, convErr := factRowToEntry(raw, uk)
 		if convErr != nil {
 			continue

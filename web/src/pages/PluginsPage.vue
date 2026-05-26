@@ -1,27 +1,27 @@
 <template>
-  <q-page class="app-page-cream app-registry-page plugins-page">
-    <section class="app-page-hero">
-      <div>
-        <div class="app-page-kicker">ADK Runner plugins</div>
-        <h1 class="app-page-title">Plugin 管理</h1>
-        <p class="app-page-subtitle">配置 ADK Runner 运行时插件，替代手工维护 ADK_RUNNER_PLUGINS 环境变量。</p>
-      </div>
-      <div class="app-actions-bar">
+  <q-page class="app-standard-page app-registry-page plugins-page">
+    <AppPageHero
+      kicker="ADK Runner plugins"
+      title="Plugin 管理"
+      subtitle="配置 ADK Runner 运行时插件，替代手工维护 ADK_RUNNER_PLUGINS 环境变量。"
+    >
+      <template #actions>
         <q-btn outline rounded no-caps color="primary" icon="history" label="运行记录" to="/plugins/runs" />
-        <q-btn color="primary" unelevated rounded no-caps icon="refresh" label="刷新" :loading="loading" @click="() => loadRows()" />
-      </div>
-    </section>
+      </template>
+    </AppPageHero>
 
-    <q-card flat class="app-registry-panel q-mb-md">
-      <q-card-section class="app-form-field-grid items-end">
-        <q-input v-model="search" class="app-field-md" dense outlined clearable debounce="250" label="搜索 Plugin">
-          <template #prepend><q-icon name="search" /></template>
-        </q-input>
-        <q-select v-model="category" class="app-field-sm" dense outlined clearable emit-value map-options label="类型" :options="categoryOptions" />
-        <q-select v-model="enabled" class="app-field-sm" dense outlined clearable emit-value map-options label="启用状态" :options="enabledOptions" />
-        <q-input v-model="callbackPoint" class="app-field-sm" dense outlined clearable label="Callback" placeholder="before_model" />
-      </q-card-section>
-    </q-card>
+    <AppPageToolbar>
+      <q-input v-model="search" class="app-page-toolbar__search" dense outlined clearable debounce="250" label="搜索 Plugin">
+        <template #prepend><q-icon name="search" /></template>
+      </q-input>
+      <q-select v-model="category" class="app-page-toolbar__field" dense outlined clearable emit-value map-options label="类型" :options="categoryOptions" />
+      <q-select v-model="enabled" class="app-page-toolbar__field" dense outlined clearable emit-value map-options label="启用状态" :options="enabledOptions" />
+      <q-input v-model="callbackPoint" class="app-page-toolbar__field" dense outlined clearable label="Callback" placeholder="before_model" />
+      <template #actions>
+        <q-btn flat rounded no-caps icon="restart_alt" label="重置" @click="resetFilters" />
+        <q-btn flat rounded no-caps icon="refresh" label="刷新" :loading="loading" @click="() => loadRows()" />
+      </template>
+    </AppPageToolbar>
 
     <q-banner v-if="error" rounded class="bg-negative text-white q-mb-md">
       {{ error }}
@@ -30,33 +30,32 @@
       </template>
     </q-banner>
 
-    <div class="app-registry-table-shell">
-      <q-table
-        flat
-        dense
-        class="app-registry-table plugins-table"
+    <q-card v-if="!loading && rows.length === 0" flat class="app-registry-empty app-empty-state-center">
+      <q-card-section class="column items-center text-center q-pa-xl">
+        <q-avatar size="72px" color="primary" text-color="white" icon="extension" />
+        <div class="text-h6 q-mt-md">{{ search ? "没有匹配的 Plugin" : "暂无 Plugin" }}</div>
+        <div class="text-body2 text-grey-7 q-mt-sm">调整筛选条件或刷新列表。</div>
+      </q-card-section>
+    </q-card>
+
+    <template v-else>
+      <AppRegistryTable
+        table-class="plugins-table"
         :rows="rows"
         :columns="columns"
         row-key="id"
         :loading="loading"
-        v-model:pagination="tablePagination"
-        :rows-per-page-options="[10, 20, 50]"
-        @request="onTableRequest"
+        hide-pagination
+        :pagination="{ rowsPerPage: 0 }"
       >
         <template #body-cell-name="props">
           <q-td :props="props">
-            <div class="plugins-table__name-hit">
-              <div class="app-registry-cell-primary">{{ props.row.name }}</div>
-              <div class="app-registry-cell-sub">{{ props.row.key }}</div>
-              <q-tooltip
-                anchor="top start"
-                self="bottom start"
-                :offset="[0, 8]"
-                content-class="plugins-table__desc-tooltip"
-              >
-                {{ props.row.description || "暂无说明" }}
-              </q-tooltip>
-            </div>
+            <AppRegistryHoverTip :text="props.row.description" empty-label="暂无说明">
+              <div class="plugins-table__name-hit min-width-0">
+                <div class="app-registry-cell-primary">{{ props.row.name }}</div>
+                <div class="app-registry-cell-sub">{{ props.row.key }}</div>
+              </div>
+            </AppRegistryHoverTip>
           </q-td>
         </template>
         <template #body-cell-category="props">
@@ -69,28 +68,24 @@
         </template>
         <template #body-cell-callbacks="props">
           <q-td :props="props">
-            <div class="app-registry-chip-wrap plugins-table__callback-chips">
-              <q-chip v-for="point in props.row.callback_points" :key="point" dense outline color="primary">{{ point }}</q-chip>
-            </div>
+            <span class="plugins-table__callbacks-text" :title="formatCallbacksSummary(props.row.callback_points)">
+              {{ formatCallbacksSummary(props.row.callback_points) }}
+            </span>
           </q-td>
         </template>
         <template #body-cell-enabled="props">
           <q-td :props="props">
-            <q-toggle :model-value="props.row.enabled" color="primary" :disable="!props.row.permissions?.can_toggle || togglingId === props.row.id" @update:model-value="toggleEnabled(props.row, Boolean($event))" />
+            <q-toggle
+              :model-value="props.row.enabled"
+              color="primary"
+              :disable="!props.row.permissions?.can_toggle || togglingId === props.row.id"
+              @update:model-value="toggleEnabled(props.row, Boolean($event))"
+            />
           </q-td>
         </template>
         <template #body-cell-scope="props">
           <q-td :props="props">
             <q-chip dense outline>{{ props.row.scope || "global" }}</q-chip>
-          </q-td>
-        </template>
-        <template #body-cell-sort_order="props">
-          <q-td :props="props">
-            <div class="row items-center no-wrap q-gutter-xs">
-              <span>{{ props.row.sort_order }}</span>
-              <q-btn v-if="props.row.permissions?.can_edit_config" flat dense round icon="arrow_upward" @click="bumpSort(props.row, -10)" />
-              <q-btn v-if="props.row.permissions?.can_edit_config" flat dense round icon="arrow_downward" @click="bumpSort(props.row, 10)" />
-            </div>
           </q-td>
         </template>
         <template #body-cell-actions="props">
@@ -105,8 +100,17 @@
             </div>
           </q-td>
         </template>
-      </q-table>
-    </div>
+      </AppRegistryTable>
+
+      <AppRegistryPagination
+        v-model:page="page"
+        v-model:page-size="pageSize"
+        :page-max="pageMax"
+        :total="total"
+        :loading="loading"
+        label="个 Plugin"
+      />
+    </template>
 
     <q-dialog v-model="detailOpen">
       <q-card class="plugin-detail-card app-dialog-card app-dialog-card--md">
@@ -129,6 +133,10 @@
             <div class="col-6"><b>阻断 / 错误：</b>{{ detailTarget.block_count }} / {{ detailTarget.error_count }}</div>
             <div class="col-6"><b>最近状态：</b>{{ detailTarget.last_status || "未调用" }}</div>
             <div class="col-6"><b>最近调用：</b>{{ formatDate(detailTarget.last_invoked_at) }}</div>
+          </div>
+          <div v-if="detailTarget.permissions?.can_edit_config" class="row q-gutter-sm">
+            <q-btn outline dense no-caps icon="arrow_upward" label="上移顺序" @click="bumpSort(detailTarget, -10)" />
+            <q-btn outline dense no-caps icon="arrow_downward" label="下移顺序" @click="bumpSort(detailTarget, 10)" />
           </div>
           <q-expansion-item dense-toggle label="Agent 绑定">
             <div class="q-gutter-sm">
@@ -196,18 +204,26 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
-import { useQuasar, type QTableColumn, type QTableProps } from "quasar";
+import { useQuasar, type QTableColumn } from "quasar";
 import { storeToRefs } from "pinia";
 import { usePluginsStore } from "../stores/plugins";
 import type { Plugin } from "../features/plugins/types";
 import PluginSchemaForm from "../components/plugins/PluginSchemaForm.vue";
+import AppPageHero from "../components/layout/AppPageHero.vue";
+import AppPageToolbar from "../components/layout/AppPageToolbar.vue";
+import AppRegistryTable from "../components/layout/AppRegistryTable.vue";
+import AppRegistryHoverTip from "../components/layout/AppRegistryHoverTip.vue";
+import AppRegistryPagination from "../components/layout/AppRegistryPagination.vue";
+import { registryColWidth } from "../features/ui/registryTableColumns";
 
 const $q = useQuasar();
 const pluginsStore = usePluginsStore();
 const { plugins: storePlugins, total: storeTotal } = storeToRefs(pluginsStore);
 const rows = ref<Plugin[]>([]);
 const total = ref(0);
-const tablePagination = ref({ page: 1, rowsPerPage: 20, rowsNumber: 0 });
+const page = ref(1);
+const pageSize = ref(20);
+const pageMax = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
 const scopeMode = ref<"global" | "agent">("global");
 const scopeAgentId = ref("");
 const savingScope = ref(false);
@@ -232,13 +248,12 @@ const enabledOptions = [
   { label: "已停用", value: false }
 ];
 const columns: QTableColumn<Plugin>[] = [
-  { name: "name", label: "Plugin", field: "name", align: "left" },
-  { name: "category", label: "类型 / 风险", field: "category", align: "left" },
-  { name: "callbacks", label: "Callback", field: "callback_points", align: "left" },
-  { name: "enabled", label: "启用", field: "enabled", align: "center" },
-  { name: "scope", label: "作用域", field: "scope", align: "left" },
-  { name: "sort_order", label: "顺序", field: "sort_order", align: "left" },
-  { name: "actions", label: "操作", field: "id", align: "right" }
+  { name: "name", label: "Plugin", field: "name", align: "left", ...registryColWidth("14%") },
+  { name: "category", label: "类型 / 风险", field: "category", align: "left", ...registryColWidth("11%") },
+  { name: "callbacks", label: "Callback", field: "callback_points", align: "left", ...registryColWidth("13%") },
+  { name: "enabled", label: "启用", field: "enabled", align: "center", ...registryColWidth("64px") },
+  { name: "scope", label: "作用域", field: "scope", align: "left", ...registryColWidth("72px") },
+  { name: "actions", label: "操作", field: "id", align: "right", ...registryColWidth("108px") }
 ];
 
 const configError = computed(() => {
@@ -250,10 +265,7 @@ const configError = computed(() => {
   }
 });
 
-async function loadRows(
-  nextPage = tablePagination.value.page,
-  nextPageSize = tablePagination.value.rowsPerPage
-) {
+async function loadRows(nextPage = page.value, nextPageSize = pageSize.value) {
   loading.value = true;
   error.value = "";
   try {
@@ -267,7 +279,6 @@ async function loadRows(
     });
     rows.value = [...storePlugins.value];
     total.value = storeTotal.value;
-    tablePagination.value = { page: nextPage, rowsPerPage: nextPageSize, rowsNumber: storeTotal.value };
   } catch (err) {
     error.value = err instanceof Error ? err.message : "加载 Plugin 失败";
   } finally {
@@ -275,9 +286,14 @@ async function loadRows(
   }
 }
 
-const onTableRequest: QTableProps["onRequest"] = (props) => {
-  void loadRows(props.pagination.page, props.pagination.rowsPerPage);
-};
+function resetFilters() {
+  search.value = "";
+  category.value = "";
+  enabled.value = null;
+  callbackPoint.value = "";
+  page.value = 1;
+  void loadRows(1, pageSize.value);
+}
 
 async function toggleEnabled(plugin: Plugin, next: boolean) {
   togglingId.value = plugin.id;
@@ -337,6 +353,7 @@ async function bumpSort(plugin: Plugin, delta: number) {
   try {
     const updated = await pluginsStore.bumpSort(plugin.id, Math.max(0, plugin.sort_order + delta));
     rows.value = rows.value.map((row) => (row.id === updated.id ? updated : row));
+    if (detailTarget.value?.id === updated.id) detailTarget.value = updated;
     $q.notify({ type: "positive", message: "执行顺序已更新" });
   } catch (err) {
     $q.notify({ type: "negative", message: err instanceof Error ? err.message : "更新失败" });
@@ -370,10 +387,22 @@ function riskColor(risk: string) {
   return "positive";
 }
 
+const CALLBACK_CHIP_LIMIT = 2;
+
+function visibleCallbackPoints(points?: string[]) {
+  return (points ?? []).slice(0, CALLBACK_CHIP_LIMIT);
+}
+
+function hiddenCallbackCount(points?: string[]) {
+  return Math.max(0, (points ?? []).length - CALLBACK_CHIP_LIMIT);
+}
+
 watch([search, category, enabled, callbackPoint], () => {
-  tablePagination.value.page = 1;
-  void loadRows(1, tablePagination.value.rowsPerPage);
+  page.value = 1;
+  void loadRows(1, pageSize.value);
 });
+
+watch([page, pageSize], () => void loadRows());
 
 onMounted(() => loadRows());
 </script>

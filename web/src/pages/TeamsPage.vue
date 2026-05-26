@@ -1,13 +1,14 @@
 <template>
-  <q-page :class="['app-entity-page teams-page', { 'is-dark': isDark }]">
-    <section class="app-page-hero">
-      <div>
-        <div class="app-page-kicker">ADK Multi-Agent</div>
-        <h1 class="app-page-title">Team 管理</h1>
-        <p class="app-page-subtitle">参照 ADK Web 的 App / Session / Trace 工作台，将多个 Agent 编排成可运行、可观测的协作团队。</p>
-      </div>
-      <q-btn color="primary" rounded unelevated icon="add" label="新增 Team" @click="openCreate" />
-    </section>
+  <q-page :class="['app-standard-page app-entity-page teams-page', { 'is-dark': isDark }]">
+    <AppPageHero
+      kicker="ADK Multi-Agent"
+      title="Team 管理"
+      subtitle="参照 ADK Web 的 App / Session / Trace 工作台，将多个 Agent 编排成可运行、可观测的协作团队。"
+    >
+      <template #actions>
+        <q-btn color="primary" rounded unelevated icon="add" label="新增 Team" @click="openCreate" />
+      </template>
+    </AppPageHero>
 
     <TeamToolbar
       v-model:search="search"
@@ -111,6 +112,7 @@
 </template>
 
 <script setup lang="ts">
+import AppPageHero from "../components/layout/AppPageHero.vue";
 import TeamCard from "../components/teams/TeamCard.vue";
 import TeamEditorDialog from "../components/teams/TeamEditorDialog.vue";
 import TeamRunsDialog from "../components/teams/TeamRunsDialog.vue";

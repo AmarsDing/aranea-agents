@@ -3,6 +3,7 @@ package biz
 import (
 	"context"
 	"errors"
+	"log/slog"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
@@ -130,7 +131,7 @@ func (uc *MemoryAdminUsecase) syncFactIndexBestEffort(ctx context.Context, raw [
 		return
 	}
 	if err := syncer.SyncFactIndexFromRow(ctx, raw); err != nil && !errors.Is(err, ErrMemoryUnavailable) {
-		_ = err
+		slog.Warn("syncFactIndexBestEffort failed", "error", err)
 	}
 }
 

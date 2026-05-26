@@ -10,11 +10,13 @@
 // 单元格：.app-registry-cell-primary / __sub / __desc / __actions
 
 .app-registry-page
-  padding: var(--space-6)
-  max-width: var(--layout-max-width)
-  margin: 0 auto
-  width: 100%
-  box-sizing: border-box
+  // 布局已并入 .app-standard-page；保留类名供页面级 scoped 样式挂载
+  &:not(.app-standard-page)
+    padding: var(--space-6)
+    max-width: var(--layout-max-width)
+    margin: 0 auto
+    width: 100%
+    box-sizing: border-box
 
 // ── 统一玻璃面板（ToolGlassPanel / 筛选条 / Monitor 卡片）──
 .app-glass-panel,
@@ -86,39 +88,9 @@
   .app-form-field-grid
     justify-content: start
 
-// 会话历史等：搜索 + 3 筛选 + 操作，避免右侧大段空白
+// 会话历史等：已由 AppPageToolbar 单行布局替代，保留类名避免旧引用报错
 .app-registry-toolbar--sessions
-  display: grid
-  gap: var(--space-3) var(--space-4)
-  grid-template-columns: minmax(240px, 1.6fr) repeat(3, minmax(132px, 168px)) auto
-  align-items: end
-  max-width: 100%
-
-  @media (width <= 1199px)
-    grid-template-columns: repeat(2, minmax(0, 1fr))
-
-    .app-registry-toolbar__actions
-      grid-column: 1 / -1
-
-  @media (width <= 599px)
-    grid-template-columns: 1fr
-
-  .app-field-md,
-  .app-field-sm
-    max-width: none
-    width: 100%
-
-  .app-registry-toolbar__actions
-    display: flex
-    flex-wrap: wrap
-    align-items: center
-    justify-content: flex-end
-    gap: var(--space-2)
-    margin-left: auto
-
-    @media (width <= 1199px)
-      justify-content: flex-start
-      margin-left: 0
+  @extend .app-page-toolbar__body
 
 .app-registry-panel--stacked
   .app-registry-panel__section + .app-registry-panel__section
@@ -163,7 +135,36 @@
   color: var(--color-text-secondary)
   line-height: 1.4
 
-// ── 表格玻璃壳 ──
+// ── 表格玻璃壳 & 行内表格共用 chrome ──
+=registry-table-chrome
+  background: transparent
+
+  thead tr th
+    background: color-mix(in srgb, var(--glass-surface) 94%, transparent)
+    color: var(--color-text-secondary)
+    border-color: var(--glass-border)
+    padding: 10px 14px
+    font-size: var(--text-xs)
+    font-weight: 700
+    letter-spacing: 0.06em
+    text-transform: uppercase
+    white-space: nowrap
+
+  tbody td
+    border-color: var(--glass-border)
+    padding: 10px 14px
+    vertical-align: top
+    font-size: var(--text-sm)
+    line-height: 1.45
+
+  tbody tr:hover
+    background: var(--glass-surface-hover)
+
+  .q-table__bottom
+    border-top: 1px solid var(--glass-border)
+    background: color-mix(in srgb, var(--glass-surface) 90%, transparent)
+    padding: var(--space-2) var(--space-4)
+
 .app-registry-table-shell,
 .app-data-table-shell
   border: 1px solid var(--glass-border)
@@ -175,47 +176,93 @@
   overflow: hidden
 
   .q-table
-    background: transparent
+    +registry-table-chrome
 
-  .q-table thead tr th
-    background: color-mix(in srgb, var(--glass-surface) 94%, transparent)
-    color: var(--color-text-secondary)
-    border-color: var(--glass-border)
-    padding: 10px 14px
-    font-size: var(--text-xs)
-    font-weight: 700
-    letter-spacing: 0.06em
-    text-transform: uppercase
-    white-space: nowrap
-
-  .q-table tbody td
-    border-color: var(--glass-border)
-    padding: 10px 14px
-    vertical-align: top
-    font-size: var(--text-sm)
-    line-height: 1.45
-
-  .q-table tbody tr:hover
-    background: var(--glass-surface-hover)
-
-  .q-table__bottom
+  .app-registry-pagination--card
     border-top: 1px solid var(--glass-border)
-    background: color-mix(in srgb, var(--glass-surface) 90%, transparent)
-    padding: var(--space-2) var(--space-4)
+    margin-top: 0
+    border-radius: 0
 
-// 表格密度与列宽策略
+// 无外壳时（dialog / glass-panel 内）仍应用表头与行样式
+.app-registry-table.q-table,
+.memory-facts-table.q-table,
+.monitor-events-table.q-table,
+.monitor-traces-table.q-table,
+.tool-runs-data-table.q-table,
+.channels-data-table.q-table
+  +registry-table-chrome
+
+// 表头列宽拖拽
+body.app-registry-col-resizing
+  cursor: col-resize !important
+  user-select: none !important
+
+  *
+    cursor: col-resize !important
+
+.app-registry-table--resizable
+  thead tr th.app-registry-th-resizable
+    position: relative
+    overflow: visible
+
+  .app-registry-col-resize
+    position: absolute
+    top: 0
+    right: -4px
+    width: 8px
+    height: 100%
+    cursor: col-resize
+    touch-action: none
+    z-index: 2
+
+    &::after
+      content: ""
+      position: absolute
+      top: 18%
+      bottom: 18%
+      left: 3px
+      width: 1px
+      border-radius: 1px
+      background: transparent
+      transition: background 0.15s ease
+
+    &:hover::after,
+    body.app-registry-col-resizing &::after
+      background: color-mix(in srgb, var(--color-accent) 55%, var(--glass-border))
+
+// 表格布局：列宽由各页面 columns + 拖拽持久化决定，全局不强制 fixed
 .app-registry-table
-  table-layout: fixed
   width: 100%
+  background: transparent
 
   .q-table__middle
     overflow-x: auto
 
-// 会话历史：收窄文本列、操作列 sticky，避免横向滚动淹没按钮
-.app-registry-table--sessions
-  .q-table tbody td
-    overflow: hidden
+  .q-table__middle > table
+    width: 100%
+    max-width: 100%
 
+  &--external-pagination
+    .q-table__bottom
+      display: none
+
+// Registry 列表通用行高（Skill 表格密度）
+.app-registry-table:not(.app-registry-table--sessions)
+  thead tr th,
+  tbody tr td
+    vertical-align: middle
+
+  thead tr th
+    padding-top: 10px
+    padding-bottom: 10px
+    font-size: 12px
+
+  tbody tr td
+    padding-top: 12px
+    padding-bottom: 12px
+
+// 会话历史：操作列 sticky
+.app-registry-table--sessions
   .app-registry-col-actions
     position: sticky
     right: 0
@@ -255,8 +302,16 @@
   -webkit-box-orient: vertical
   overflow: hidden
   line-height: 1.45
-  max-width: 320px
+  max-width: 100%
   color: var(--color-text-secondary)
+
+.app-registry-cell-desc--wide
+  display: block
+  -webkit-line-clamp: unset
+  white-space: nowrap
+  text-overflow: ellipsis
+  overflow: hidden
+  max-width: 100%
 
 .app-registry-cell-actions
   display: inline-flex
@@ -506,6 +561,16 @@ body.body--dark .channel-icon-btn:hover
 .channels-data-table .q-toggle__track
   opacity: 1
 
+.monitor-card
+  .app-registry-table-shell
+    border: none
+    border-radius: 0
+    box-shadow: none
+    background: transparent
+
+    .app-registry-pagination
+      margin-top: 0 !important
+
 .mcp-form-scroll
   max-height: min(70vh, 720px)
   overflow: auto
@@ -526,49 +591,35 @@ body.body--dark .channel-icon-btn:hover
 body.body--dark .mcp-server-item
   background: color-mix(in srgb, var(--glass-surface) 72%, transparent)
 
-.plugins-table,
-.app-registry-table
+.memory-card
+  .app-registry-table-shell
+    border: none
+    border-radius: 0
+    box-shadow: none
+    background: transparent
+
+    .app-registry-pagination
+      margin-top: 0 !important
+
+.provider-card .provider-table-shell
+  border: none
+  border-radius: 0
+  box-shadow: none
+  background: transparent
+
+  .app-registry-pagination
+    margin-top: 0 !important
+
+.memory-facts-table.q-table,
+.plugins-table.q-table,
+.channels-data-table.q-table,
+.mcp-servers-table.q-table,
+.monitor-events-table.q-table,
+.monitor-traces-table.q-table
   background: transparent
 
 .plugins-table
-  .q-table
-    table-layout: fixed
-
-  thead tr th,
-  tbody tr td
-    &:nth-child(1)
-      width: 13%
-      min-width: 128px
-
-    &:nth-child(2)
-      width: 11%
-      min-width: 118px
-
-    &:nth-child(3)
-      width: 44%
-      min-width: 280px
-
-    &:nth-child(4)
-      width: 68px
-      padding-left: 8px
-      padding-right: 8px
-      text-align: center
-
-    &:nth-child(5)
-      width: 84px
-
-    &:nth-child(6)
-      width: 96px
-
-    &:nth-child(7)
-      width: 88px
-      padding-right: 12px
-
-  tbody td:nth-child(4)
-    text-align: center
-
-  tbody td:nth-child(7) .app-registry-cell-actions
-    justify-content: flex-end
+  background: transparent
 
   .q-table tbody td
     padding-top: 12px
@@ -579,22 +630,92 @@ body.body--dark .mcp-server-item
   max-width: 100%
 
 .plugins-table__callback-chips
-  max-width: none
+  max-width: 100%
+  max-height: 28px
+  overflow: hidden
+  flex-wrap: nowrap
+  align-items: center
+
+.plugins-table__callbacks-text
+  display: block
+  max-width: 100%
+  overflow: hidden
+  text-overflow: ellipsis
+  white-space: nowrap
+  font-size: var(--text-sm)
+  color: var(--color-text-secondary)
 
 .plugins-table .plugins-table__callback-chips
-  gap: 6px 8px
+  gap: 4px 6px
 
 .plugins-table .app-registry-chip-wrap:not(.plugins-table__callback-chips)
-  max-width: none
+  max-width: 240px
 
 .plugins-table .plugins-table__callback-chips .q-chip
   font-size: 12px
 
-.plugins-table__desc-tooltip
-  font-size: 30px !important
+// Registry 表格 — 悬停描述 tooltip（玻璃主题、较大字号）
+.app-registry-hover-tip
+  display: inline-flex
+  align-items: flex-start
+  gap: 6px
+  max-width: 100%
+  min-width: 0
+
+  &--block
+    display: flex
+    width: 100%
+
+  &--active
+    cursor: help
+
+  &__icon
+    flex: 0 0 auto
+    margin-top: 2px
+    font-size: 16px
+    color: var(--color-text-tertiary)
+    opacity: 0.85
+
+  &:hover &__icon
+    color: var(--color-accent)
+
+.app-registry-hover-tip__popup
+  border: 1px solid var(--glass-border) !important
+  border-radius: 14px !important
+  background: color-mix(in srgb, var(--glass-surface) 92%, var(--glass-elevated, #fff)) !important
+  backdrop-filter: blur(var(--glass-blur-default)) !important
+  -webkit-backdrop-filter: blur(var(--glass-blur-default)) !important
+  box-shadow: var(--glass-inner-highlight), 0 12px 32px color-mix(in srgb, var(--color-shadow, #000) 18%, transparent) !important
+  color: var(--color-text-primary) !important
+  font-size: var(--text-base, 15px) !important
   line-height: 1.55 !important
-  max-width: min(640px, 86vw) !important
-  padding: 20px 24px !important
-  white-space: normal !important
-  text-align: left !important
   font-weight: 500 !important
+  max-width: min(640px, 86vw) !important
+  padding: 14px 18px !important
+  white-space: pre-wrap !important
+  word-break: break-word !important
+  text-align: left !important
+
+body.body--dark .app-registry-hover-tip__popup
+  background: color-mix(in srgb, var(--glass-elevated) 78%, transparent) !important
+
+.app-registry-hover-tip__content
+  margin: 0
+
+// 兼容旧类名（Plugins 等）
+.plugins-table__desc-tooltip
+  @extend .app-registry-hover-tip__popup
+
+// ── Markup table（Recall / Graph / Usage 等轻量表格）──
+.app-registry-markup-table
+  width: 100%
+
+  th,
+  td
+    text-overflow: ellipsis
+    white-space: nowrap
+
+  &.wrap-cells td:nth-child(2),
+  td.app-registry-markup-table__wrap
+    white-space: normal
+    word-break: break-word

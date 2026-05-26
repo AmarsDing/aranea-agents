@@ -208,7 +208,7 @@ func TestGraphRuntimeE2E_buildCoordinatorTeamGraph(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}
-	if len(cfg.Edges) != 3 {
+	if len(cfg.Edges) != 4 {
 		t.Fatalf("runtime edges=%d", len(cfg.Edges))
 	}
 	if g == nil {

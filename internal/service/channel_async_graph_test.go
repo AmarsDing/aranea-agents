@@ -101,6 +101,9 @@ func (s channelTestAgentRepo) ListExtrasForAgents(context.Context, []string) (ma
 func (s channelTestAgentRepo) ListAgentCreators(context.Context) ([]biz.AgentCreator, error) {
 	return nil, nil
 }
+func (s channelTestAgentRepo) ExecInTx(ctx context.Context, fn func(context.Context) error) error {
+	return fn(ctx)
+}
 
 type stubGraphExecutor struct {
 	lastGraphID string

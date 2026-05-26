@@ -14,7 +14,9 @@
           <q-banner rounded dense class="settings-info-banner">
             Ralph Loop（迭代验证）在
             <strong>Agent</strong>
-            标签页的「Ralph Loop」区块配置，与规划模式独立。
+            标签页配置；L0 窗口与裁剪策略请在
+            <strong>记忆</strong>
+            标签页调整。
           </q-banner>
           <section class="settings-section">
             <div class="section-heading">
@@ -96,36 +98,12 @@
               <q-icon name="compress" color="primary" size="20px" />
               <div>
                 <div class="text-subtitle2 text-weight-bold">上下文压缩</div>
-                <div class="text-caption text-grey-7">长对话自动压缩与摘要策略。</div>
+                <div class="text-caption text-grey-7">长对话自动压缩与会话摘要；溢出裁剪策略见「记忆」→ L0。</div>
               </div>
             </div>
             <div class="app-form-field-grid app-form-field-grid--2col">
               <q-toggle v-model="compactionEnabled" color="primary" label="启用上下文压缩" />
               <q-toggle v-model="sessionSummaryEnabled" color="primary" label="会话摘要" />
-            </div>
-          </section>
-
-          <section class="settings-section">
-            <div class="section-heading">
-              <q-icon name="content_cut" color="primary" size="20px" />
-              <div>
-                <div class="text-subtitle2 text-weight-bold">上下文裁剪</div>
-                <div class="text-caption text-grey-7">控制上下文窗口溢出时的裁剪行为。</div>
-              </div>
-            </div>
-            <div class="app-form-field-grid">
-              <q-select
-                v-model="truncateStrategy"
-                dense
-                outlined
-                emit-value
-                map-options
-                label="裁剪策略"
-                :options="truncateStrategyOptions"
-              />
-              <q-input v-model.number="recentWindowTurns" dense outlined type="number" label="保留最近轮数" />
-              <q-input v-model.number="recentWindowTokens" dense outlined type="number" label="保留最近 Token" />
-              <q-input v-model.number="summaryKeepTurns" dense outlined type="number" label="摘要保留轮数" />
             </div>
           </section>
 
@@ -169,10 +147,6 @@ const props = defineProps<{
   reasoningLevelInput: string;
   compactionEnabledInput: boolean;
   sessionSummaryEnabledInput: boolean;
-  truncateStrategyInput: string;
-  recentWindowTurnsInput: number;
-  recentWindowTokensInput: number;
-  summaryKeepTurnsInput: number;
 }>();
 
 const emit = defineEmits<{
@@ -185,10 +159,6 @@ const emit = defineEmits<{
     reasoning_level: string;
     context_compaction_enabled: boolean;
     session_summary_enabled: boolean;
-    truncate_strategy: string;
-    recent_window_turns: number;
-    recent_window_tokens: number;
-    summary_keep_turns: number;
   }];
 }>();
 
@@ -199,10 +169,6 @@ const reasoningMode = ref(props.reasoningModeInput || "provider_default");
 const reasoningLevel = ref(props.reasoningLevelInput || "off");
 const compactionEnabled = ref(props.compactionEnabledInput);
 const sessionSummaryEnabled = ref(props.sessionSummaryEnabledInput);
-const truncateStrategy = ref(props.truncateStrategyInput || "sliding");
-const recentWindowTurns = ref(props.recentWindowTurnsInput || 20);
-const recentWindowTokens = ref(props.recentWindowTokensInput || 0);
-const summaryKeepTurns = ref(props.summaryKeepTurnsInput || 4);
 
 const reasoningModeOptions = [
   { label: "跟随厂商", value: "provider_default" },
@@ -214,12 +180,6 @@ const reasoningLevelOptions = [
   { label: "低（~4K）", value: "low" },
   { label: "中（~10-16K）", value: "medium" },
   { label: "高（~32K）", value: "high" }
-];
-
-const truncateStrategyOptions = [
-  { label: "滑动窗口", value: "sliding" },
-  { label: "摘要优先", value: "summary_first" },
-  { label: "严格截断", value: "hard_truncate" }
 ];
 
 function onChannelChange() {
@@ -234,11 +194,7 @@ function onSave() {
     reasoning_mode: reasoningMode.value,
     reasoning_level: reasoningLevel.value,
     context_compaction_enabled: compactionEnabled.value,
-    session_summary_enabled: sessionSummaryEnabled.value,
-    truncate_strategy: truncateStrategy.value,
-    recent_window_turns: recentWindowTurns.value,
-    recent_window_tokens: recentWindowTokens.value,
-    summary_keep_turns: summaryKeepTurns.value
+    session_summary_enabled: sessionSummaryEnabled.value
   });
   emit("update:open", false);
 }
@@ -254,10 +210,6 @@ watch(
     reasoningLevel.value = props.reasoningLevelInput || "off";
     compactionEnabled.value = props.compactionEnabledInput;
     sessionSummaryEnabled.value = props.sessionSummaryEnabledInput;
-    truncateStrategy.value = props.truncateStrategyInput || "sliding";
-    recentWindowTurns.value = props.recentWindowTurnsInput || 20;
-    recentWindowTokens.value = props.recentWindowTokensInput || 0;
-    summaryKeepTurns.value = props.summaryKeepTurnsInput || 4;
   }
 );
 </script>

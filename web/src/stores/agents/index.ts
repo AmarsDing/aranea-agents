@@ -21,6 +21,7 @@ import { flattenCategoryPositions, formatContext } from "../../components/agents
 import { findCategoryPath, formatCategoryPath } from "../../features/platform/categoryTreeUtils";
 import { useAppStore } from "../app";
 import { useAvatarCatalogStore } from "../avatar";
+import { registryColWidth } from "../../features/ui/registryTableColumns";
 
 /** Agent 列表页：筛选、分页、依赖数据与列表 CRUD；Agent HTTP 经 features/agents/api（Kratos）。 */
 export const useAgentsPageStore = defineStore("agentsPage", () => {
@@ -61,12 +62,12 @@ export const useAgentsPageStore = defineStore("agentsPage", () => {
   }
 
   const tableColumns = computed<QTableColumn<Agent>[]>(() => [
-    { name: "name", label: "名称", align: "left", field: "display_name" },
-    { name: "status", label: "状态", align: "left", field: "status" },
-    { name: "model", label: "模型", align: "left", field: (row) => `${row.provider} / ${row.model}` },
-    { name: "category", label: "业务分类", align: "left", field: (row) => categoryLabel(row.category_position_id) },
-    { name: "ctx", label: "上下文", align: "left", field: (row) => formatContext(row.context_window) },
-    { name: "actions", label: "操作", align: "right", field: "id" }
+    { name: "name", label: "名称", field: "display_name", align: "left", ...registryColWidth("14%") },
+    { name: "status", label: "状态", field: "status", align: "left", ...registryColWidth("9%") },
+    { name: "model", label: "模型", field: (row) => `${row.provider} / ${row.model}`, align: "left", ...registryColWidth("20%") },
+    { name: "category", label: "业务分类", field: (row) => categoryLabel(row.category_position_id), align: "left", ...registryColWidth("11%") },
+    { name: "ctx", label: "上下文", field: (row) => formatContext(row.context_window), align: "left", ...registryColWidth("9%") },
+    { name: "actions", label: "操作", field: "id", align: "right", ...registryColWidth("108px") }
   ]);
 
   async function loadAgentList() {

@@ -3,6 +3,8 @@ package intent
 import (
 	"testing"
 	"time"
+
+	"aranea-agents/internal/biz"
 )
 
 func TestPassEffective(t *testing.T) {
@@ -28,6 +30,37 @@ func TestPassEffective(t *testing.T) {
 				t.Fatalf("PassEffective(agent=%v) with env %q: got %v want %v", tc.agent, tc.env, g, tc.expect)
 			}
 		})
+	}
+}
+
+func TestShouldRun(t *testing.T) {
+	ag := biz.Agent{Settings: &biz.AgentRuntimeSettings{IntentPassEnabled: true}}
+	if ShouldRun(ag, "hi") {
+		t.Fatal("short message should skip")
+	}
+	if !ShouldRun(ag, "please refactor the auth middleware tests") {
+		t.Fatal("long message should run when enabled")
+	}
+	ag.Settings.IntentPassEnabled = false
+	if ShouldRun(ag, "please refactor the auth middleware tests") {
+		t.Fatal("disabled agent should skip")
+	}
+}
+
+func TestIntentSystemForAgent(t *testing.T) {
+	coding := biz.Agent{
+		SystemPromptMode: "complete",
+		Settings:         &biz.AgentRuntimeSettings{ToolsEnabled: true, ToolsProfile: "full"},
+	}
+	if IntentSystemForAgent(coding) != intentSystemCoding {
+		t.Fatal("expected coding template")
+	}
+	general := biz.Agent{
+		SystemPromptMode: "complete",
+		Settings:         &biz.AgentRuntimeSettings{ToolsEnabled: false},
+	}
+	if IntentSystemForAgent(general) != intentSystemGeneral {
+		t.Fatal("expected general template")
 	}
 }
 

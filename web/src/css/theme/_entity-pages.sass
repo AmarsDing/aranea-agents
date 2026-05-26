@@ -1,12 +1,13 @@
 // 实体编排类页面（Team / 分类 / 资源管理）共享布局与玻璃面板
 
 .app-entity-page
-  min-height: 100%
-  padding: var(--space-8)
-  background: var(--gradient-entity-page-light)
+  &:not(.app-standard-page)
+    min-height: 100%
+    padding: var(--space-8)
+    background: var(--gradient-entity-page-light)
 
-.app-entity-page.is-dark,
-body.body--dark .app-entity-page
+.app-entity-page.is-dark:not(.app-standard-page),
+body.body--dark .app-entity-page:not(.app-standard-page)
   background: var(--gradient-entity-page-dark)
   color: var(--color-text-primary)
 
@@ -547,6 +548,7 @@ body.body--dark .app-entity-stat
 .agents-page.is-dark .agent-handle
   color: var(--color-text-secondary)
 
+.agents-page.is-dark .agents-filter-card.app-page-toolbar,
 .agents-page.is-dark .agents-filter-card.app-entity-toolbar,
 .agents-page.is-dark .empty-agent-card,
 .agents-page.is-dark .agents-table,
@@ -854,19 +856,19 @@ body.body--dark .app-entity-stat
 .resource-manager-page
   min-height: 100%
 
-.resource-manager-page:not(.is-dark)
+.resource-manager-page:not(.app-standard-page):not(.is-dark)
   background: var(--color-page-tint-warm)
 
-body.body--dark .resource-manager-page.is-dark,
-.resource-manager-page.is-dark
+body.body--dark .resource-manager-page.is-dark:not(.app-standard-page),
+.resource-manager-page.is-dark:not(.app-standard-page)
   background: var(--gradient-entity-page-dark)
   color: var(--color-text-primary)
 
-.app-entity-page--warm
+.app-entity-page--warm:not(.app-standard-page)
   background: var(--gradient-entity-page-light-warm)
 
-body.body--dark .app-entity-page--warm,
-.app-entity-page--warm.is-dark
+body.body--dark .app-entity-page--warm:not(.app-standard-page),
+.app-entity-page--warm.is-dark:not(.app-standard-page)
   background: var(--gradient-entity-page-dark-warm)
 
 .category-actions,
@@ -884,26 +886,13 @@ body.body--dark .app-entity-page--warm,
   flex-wrap: nowrap
 
 .category-toolbar
-  margin-top: 22px
+  margin-top: 0
 
-.category-toolbar__inner
+.category-toolbar .app-page-toolbar__actions
   display: flex
-  flex-wrap: wrap
+  flex-wrap: nowrap
   align-items: center
   gap: var(--space-3) var(--space-4)
-  padding: 14px 16px
-
-.category-toolbar__search
-  flex: 1 1 280px
-  min-width: min(100%, 240px)
-  max-width: 420px
-
-.category-toolbar__aside
-  display: flex
-  flex-wrap: wrap
-  align-items: center
-  gap: var(--space-3) var(--space-4)
-  margin-left: auto
 
 .category-toolbar .app-entity-stat
   min-width: 72px
@@ -918,20 +907,19 @@ body.body--dark .app-entity-page--warm,
   white-space: nowrap
 
 @media (width <= 767px)
-  .category-toolbar__aside
+  .category-toolbar .app-page-toolbar__body
+    flex-wrap: wrap
+
+  .category-toolbar .app-page-toolbar__actions
     width: 100%
     margin-left: 0
     justify-content: space-between
-
-  .category-toolbar__search
-    max-width: none
-    flex-basis: 100%
 
 @media (width <= 479px)
   .category-stats
     flex-wrap: wrap
 
-  .category-toolbar__aside
+  .category-toolbar .app-page-toolbar__actions
     flex-direction: column
     align-items: stretch
 
@@ -998,22 +986,31 @@ body.body--dark .app-entity-page--warm,
   color: var(--color-text-secondary)
   font-weight: 700
 
+.app-page-toolbar__body > .agent-category-field--toolbar
+  flex: 0 1 auto
+  min-width: 168px
+  max-width: 240px
+
 .agent-category-filter__hit,
-.agent-category-picker__hit
+.agent-category-picker__hit,
+.agent-category-field__hit
   min-height: 24px
   gap: 8px
   color: var(--color-text-heading)
 
 .agent-category-filter__hit.is-placeholder,
-.agent-category-picker__hit.is-placeholder
+.agent-category-picker__hit.is-placeholder,
+.agent-category-field__hit.is-placeholder
   color: var(--color-text-tertiary)
 
 .agent-category-filter-menu__card,
-.agent-category-picker-menu__card
+.agent-category-picker-menu__card,
+.agent-category-field-menu__card
   width: min(420px, 92vw)
 
 .agent-category-filter-menu__scroll,
-.agent-category-picker-menu__scroll
+.agent-category-picker-menu__scroll,
+.agent-category-field-menu__scroll
   height: min(320px, 50vh)
 
 body.body--dark .agent-categories-page .category-tree-panel .q-tree__node-header:hover
@@ -1359,22 +1356,8 @@ body.body--dark .agent-categories-page .category-empty__visual
 .provider-card
   overflow: hidden
 
-.provider-toolbar__inner
-  display: flex
-  flex-wrap: wrap
-  align-items: flex-end
-  gap: var(--space-3) var(--space-4)
+.provider-card > .app-page-toolbar__body
   padding: 14px 16px
-
-.provider-toolbar__search
-  flex: 1 1 280px
-  min-width: min(100%, 240px)
-  max-width: 420px
-
-.provider-toolbar__filter
-  flex: 1 1 220px
-  min-width: min(100%, 200px)
-  max-width: 360px
 
 .provider-table
   --provider-col-template: minmax(220px, 1.45fr) 64px 76px 60px minmax(148px, 1fr) 88px 136px
@@ -1591,9 +1574,10 @@ body.body--dark .agent-categories-page .category-empty__visual
   color: var(--color-accent-amber)
 
 .usage-bar-wrap
-  flex: 1
+  flex: 0 1 72px
+  width: 72px
+  max-width: 72px
   height: 4px
-  min-width: 36px
   border-radius: 999px
   overflow: hidden
   background: color-mix(in srgb, var(--color-text-tertiary) 18%, transparent)

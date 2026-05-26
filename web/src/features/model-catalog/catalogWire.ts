@@ -1,6 +1,22 @@
 import { asRecord, pickBool, pickNum, pickStr, pickStrArray } from "../../shared/wireJson";
 import type { CatalogModelSummary, CatalogProviderSummary } from "../../services/kratos/model_catalog/v1/index";
 
+function pickUsdPer1m(
+  row: Record<string, unknown>,
+  cost: Record<string, unknown>,
+  snake: string,
+  camel: string,
+  costKey: string,
+): number {
+  const direct = pickNum(row, snake, camel);
+  if (direct > 0) return direct;
+  for (const key of [camel.replace(/1m$/, "_1M"), camel.replace(/1m$/, "1M")]) {
+    const v = row[key];
+    if (typeof v === "number" && v > 0 && !Number.isNaN(v)) return v;
+  }
+  return pickNum(cost, costKey, costKey);
+}
+
 export function normalizeCatalogProviderSummary(raw: unknown): CatalogProviderSummary {
   const r = asRecord(raw);
   return {
@@ -18,6 +34,7 @@ export function normalizeCatalogProviderSummary(raw: unknown): CatalogProviderSu
 
 export function normalizeCatalogModelSummary(raw: unknown): CatalogModelSummary {
   const r = asRecord(raw);
+  const cost = asRecord(r.cost ?? r.Cost);
   return {
     id: pickStr(r, "id", "id"),
     name: pickStr(r, "name", "name"),
@@ -25,13 +42,13 @@ export function normalizeCatalogModelSummary(raw: unknown): CatalogModelSummary 
     reasoning: pickBool(r, "reasoning", "reasoning"),
     toolCall: pickBool(r, "tool_call", "toolCall"),
     attachment: pickBool(r, "attachment", "attachment"),
-    inputUsdPer1m: pickNum(r, "input_usd_per_1m", "inputUsdPer1m"),
-    outputUsdPer1m: pickNum(r, "output_usd_per_1m", "outputUsdPer1m"),
+    inputUsdPer1m: pickUsdPer1m(r, cost, "input_usd_per_1m", "inputUsdPer1m", "input"),
+    outputUsdPer1m: pickUsdPer1m(r, cost, "output_usd_per_1m", "outputUsdPer1m", "output"),
     contextTokens: pickNum(r, "context_tokens", "contextTokens"),
     outputTokens: pickNum(r, "output_tokens", "outputTokens"),
-    cacheReadUsdPer1m: pickNum(r, "cache_read_usd_per_1m", "cacheReadUsdPer1m"),
-    cacheWriteUsdPer1m: pickNum(r, "cache_write_usd_per_1m", "cacheWriteUsdPer1m"),
-    reasoningUsdPer1m: pickNum(r, "reasoning_usd_per_1m", "reasoningUsdPer1m"),
+    cacheReadUsdPer1m: pickUsdPer1m(r, cost, "cache_read_usd_per_1m", "cacheReadUsdPer1m", "cache_read"),
+    cacheWriteUsdPer1m: pickUsdPer1m(r, cost, "cache_write_usd_per_1m", "cacheWriteUsdPer1m", "cache_write"),
+    reasoningUsdPer1m: pickUsdPer1m(r, cost, "reasoning_usd_per_1m", "reasoningUsdPer1m", "reasoning"),
     structuredOutput: pickBool(r, "structured_output", "structuredOutput"),
     openWeights: pickBool(r, "open_weights", "openWeights"),
     temperature: pickBool(r, "temperature", "temperature"),

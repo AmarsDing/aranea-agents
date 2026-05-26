@@ -231,8 +231,12 @@ func (u *LlmProviderModelUsecase) Update(ctx context.Context, id string, patch P
 	merged.Description = patch.Description
 	merged.Enabled = patch.Enabled
 	merged.SortOrder = patch.SortOrder
-	merged.Provider = patch.Provider
-	merged.Model = patch.Model
+	if p := strings.TrimSpace(patch.Provider); p != "" {
+		merged.Provider = p
+	}
+	if m := strings.TrimSpace(patch.Model); m != "" {
+		merged.Model = m
+	}
 	if strings.TrimSpace(patch.ConfigJSON) != "" {
 		mergedCfg, err := mergeConfigJSONForUpdate(cur.ConfigJSON, patch.ConfigJSON)
 		if err != nil {
@@ -273,9 +277,9 @@ func (u *LlmProviderModelUsecase) Delete(ctx context.Context, id string) error {
 
 // RevealCredentials returns decrypted credentials for admin edit UI (never logged).
 func (u *LlmProviderModelUsecase) RevealCredentials(ctx context.Context, id string) (ProviderCredentialsReveal, error) {
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return ProviderCredentialsReveal{}, errors.BadRequest("LLM_PROVIDER_MODEL", "id is required")
+	id, err := requireNonEmpty(id, "LLM_PROVIDER_MODEL", "id")
+	if err != nil {
+		return ProviderCredentialsReveal{}, err
 	}
 	m, err := u.repo.GetProviderModel(ctx, id)
 	if err != nil {

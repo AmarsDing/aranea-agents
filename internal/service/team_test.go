@@ -90,7 +90,7 @@ func (m *memTeamRepo) CreateTeamRunStep(_ context.Context, s biz.TeamRunStep) (b
 }
 
 func newTeamService() *service.TeamService {
-	return service.NewTeamService(biz.NewTeamUsecase(newMemTeamRepo()), nil, nil, nil, nil, nil, nil)
+	return service.NewTeamService(biz.NewTeamUsecase(newMemTeamRepo(), nil), nil, nil, nil, nil, nil, nil)
 }
 
 func TestTeamService_CreateListGetDelete(t *testing.T) {

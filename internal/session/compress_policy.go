@@ -24,8 +24,60 @@ func compressThresholdAndKeep(ag biz.Agent) (threshold float64, keepTurns int) {
 	}
 	if ag.Settings.L0SummaryKeepTurns > 0 {
 		keepTurns = ag.Settings.L0SummaryKeepTurns
+	} else if ag.Settings.L0RecentWindowTurns > 0 {
+		keepTurns = ag.Settings.L0RecentWindowTurns
 	}
 	return threshold, keepTurns
+}
+
+func sessionCompressEnabled(ag biz.Agent) bool {
+	if ag.Settings == nil {
+		return true
+	}
+	// Primary gate since snapshot persistence split from compression (see assembly.md §2.7).
+	if ag.Settings.ContextCompactionEnabled {
+		return true
+	}
+	// Legacy: native compression followed l0_snapshot_mode before observe_v1 snapshots shipped.
+	return strings.ToLower(strings.TrimSpace(ag.Settings.L0SnapshotMode)) != "off"
+}
+
+func sessionCompressThreshold(ag biz.Agent) float64 {
+	threshold, _ := compressThresholdAndKeep(ag)
+	mode := "on_warning"
+	if ag.Settings != nil {
+		mode = strings.ToLower(strings.TrimSpace(ag.Settings.L0SnapshotMode))
+	}
+	if mode == "always" && threshold > 0.35 {
+		return 0.35
+	}
+	return threshold
+}
+
+func truncateStrategy(ag biz.Agent) string {
+	if ag.Settings == nil {
+		return "summary"
+	}
+	s := strings.ToLower(strings.TrimSpace(ag.Settings.L0TruncateStrategy))
+	if s == "" {
+		return "summary"
+	}
+	return s
+}
+
+func filterMessagesForTruncateStrategy(msgs []biz.ChatMessage, strategy string) []biz.ChatMessage {
+	strategy = strings.ToLower(strings.TrimSpace(strategy))
+	if strategy != "drop_tool_results" && strategy != "hybrid" {
+		return msgs
+	}
+	out := make([]biz.ChatMessage, 0, len(msgs))
+	for _, m := range msgs {
+		if strings.EqualFold(strings.TrimSpace(m.Role), "tool") {
+			continue
+		}
+		out = append(out, m)
+	}
+	return out
 }
 
 func compressProviderModel(sess biz.Session, ag biz.Agent) (prov, mod string) {

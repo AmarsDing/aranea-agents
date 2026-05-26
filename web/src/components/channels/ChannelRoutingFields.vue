@@ -35,6 +35,29 @@
         :placeholder="t('channelEditor.routingAgentPlaceholder')"
       />
       <span v-else class="text-grey-7">{{ t("channelEditor.routingAgentDisabledHint") }}</span>
+      <q-banner
+        v-if="targetType === 'agent' && agentId && routingAgentProvider && routingAgentModel"
+        dense
+        rounded
+        class="q-mt-sm app-grid-span-full"
+        :class="routingAgentModelBannerClass"
+      >
+        <template v-if="routingAgentModelChecking">
+          {{ t("channelEditor.routingAgentModelChecking") }}
+        </template>
+        <template v-else-if="routingAgentModelOk === true">
+          {{ t("channelEditor.routingAgentModelOk", { provider: routingAgentProvider, model: routingAgentModel }) }}
+        </template>
+        <template v-else-if="routingAgentModelOk === false">
+          {{
+            t("channelEditor.routingAgentModelFail", {
+              provider: routingAgentProvider,
+              model: routingAgentModel,
+              detail: routingAgentModelMessage || t("channelEditor.routingAgentModelFailDefault")
+            })
+          }}
+        </template>
+      </q-banner>
     </channel-config-row>
 
     <channel-config-row
@@ -111,12 +134,34 @@ const dmScopeOptions = [
   { label: t("channelEditor.dmScope.main"), value: "main" },
 ];
 
-const props = defineProps<{
-  agents: Agent[];
-  teams: Team[];
-  loading?: boolean;
-}>();
+const props = withDefaults(
+  defineProps<{
+    agents: Agent[];
+    teams: Team[];
+    loading?: boolean;
+    routingAgentProvider?: string;
+    routingAgentModel?: string;
+    routingAgentModelChecking?: boolean;
+    routingAgentModelOk?: boolean | null;
+    routingAgentModelMessage?: string;
+  }>(),
+  {
+    loading: false,
+    routingAgentProvider: "",
+    routingAgentModel: "",
+    routingAgentModelChecking: false,
+    routingAgentModelOk: null,
+    routingAgentModelMessage: ""
+  }
+);
 
 const agentOptions = computed(() => channelAgentSelectOptions(props.agents));
 const teamOptions = computed(() => channelTeamSelectOptions(props.teams));
+
+const routingAgentModelBannerClass = computed(() => {
+  if (props.routingAgentModelChecking) return "bg-blue-grey-2 text-blue-grey-9";
+  if (props.routingAgentModelOk === true) return "bg-positive text-white";
+  if (props.routingAgentModelOk === false) return "bg-negative text-white";
+  return "bg-grey-3";
+});
 </script>

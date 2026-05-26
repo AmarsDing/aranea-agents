@@ -51,6 +51,23 @@ export function useAgentProviderModelPicker(form: MaybeRefOrGetter<Agent>) {
     );
   });
 
+  /** Agent 有 provider/model 但目录无启用匹配行（含被禁用、误填、已删除）。 */
+  const orphanProviderModel = computed(() => {
+    const f = toValue(form);
+    const p = String(f.provider ?? "").trim();
+    const m = String(f.model ?? "").trim();
+    if (!p || !m) return false;
+    return !providerModelOptions.value.some((row) => row.provider === p && row.model === m);
+  });
+
+  const disabledCatalogMatch = computed(() => {
+    const f = toValue(form);
+    const p = String(f.provider ?? "").trim();
+    const m = String(f.model ?? "").trim();
+    if (!p || !m) return false;
+    return providerModels.value.some((row) => row.provider === p && row.model === m && !row.enabled);
+  });
+
   async function loadProviderModels() {
     loadingProviderModels.value = true;
     try {
@@ -90,6 +107,8 @@ export function useAgentProviderModelPicker(form: MaybeRefOrGetter<Agent>) {
     providerModelOptions,
     filteredProviderModelOptions,
     selectedProviderModelID,
+    orphanProviderModel,
+    disabledCatalogMatch,
     loadProviderModels,
     selectProviderModel,
     filterProviderModels,

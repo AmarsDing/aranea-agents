@@ -96,6 +96,15 @@ func skillListPredicates(q biz.SkillListQuery) []predicate.PlatformSkill {
 			ps = append(ps, platformskill.StatusEQ(q.Status))
 		}
 	}
+	if q.FilesystemMissing == "true" {
+		ps = append(ps, platformskill.FilesystemMissingEQ(true))
+	}
+	if q.FilesystemMissing == "false" {
+		ps = append(ps, platformskill.FilesystemMissingEQ(false))
+	}
+	if origin := strings.TrimSpace(q.SyncOrigin); origin != "" {
+		ps = append(ps, platformskill.MetadataJSONContains(`"sync_origin":"`+origin+`"`))
+	}
 	return ps
 }
 
@@ -195,14 +204,16 @@ func (r *skillRepo) enrichSkill(ctx context.Context, e *dataent.PlatformSkill) (
 	c := r.client()
 	id := e.ID
 	item := biz.Skill{
-		ID:          e.ID,
-		Slug:        e.SkillKey,
-		Name:        e.Name,
-		Description: e.Description,
-		Status:      normalizeSkillStatus(e.Status),
-		Enabled:     e.Enabled,
-		CreatedAt:   e.CreatedAt,
-		UpdatedAt:   e.UpdatedAt,
+		ID:                e.ID,
+		Slug:              e.SkillKey,
+		Name:              e.Name,
+		Description:       e.Description,
+		Status:            normalizeSkillStatus(e.Status),
+		Enabled:           e.Enabled,
+		FilesystemMissing: e.FilesystemMissing,
+		SyncOrigin:        parseSkillMetadata(e.MetadataJSON).SyncOrigin,
+		CreatedAt:         e.CreatedAt,
+		UpdatedAt:         e.UpdatedAt,
 		Permissions: biz.SkillPermissions{
 			CanEdit: true, CanDelete: true, CanToggleEnabled: true, CanDuplicate: true,
 		},
@@ -587,11 +598,7 @@ func (r *skillRepo) CreateSkillWithVersion(ctx context.Context, in biz.SkillCrea
 	}
 	skillID := fmt.Sprintf("skill_%d", time.Now().UTC().UnixNano())
 	versionID := fmt.Sprintf("skillver_%d", time.Now().UTC().UnixNano())
-	metadata := struct {
-		Tags       []biz.SkillTag `json:"tags"`
-		StorageDir string         `json:"storage_dir"`
-	}{Tags: in.Tags, StorageDir: in.StorageDir}
-	metaJSON, err := json.Marshal(metadata)
+	metaJSON, err := encodeSkillMetadata(in.Tags, in.StorageDir, in.SyncOrigin)
 	if err != nil {
 		return biz.Skill{}, err
 	}
@@ -649,64 +656,86 @@ func (r *skillRepo) GetSkillBySkillKey(ctx context.Context, skillKey string) (bi
 	return r.enrichSkill(ctx, e)
 }
 
-func (r *skillRepo) UpsertSkillFromDisk(ctx context.Context, in biz.SkillDiskSyncInput) (biz.Skill, error) {
+func (r *skillRepo) UpsertSkillFromDisk(ctx context.Context, in biz.SkillDiskSyncInput) (biz.Skill, biz.SkillDiskSyncOutcome, error) {
 	in.Name = strings.TrimSpace(in.Name)
 	in.Slug = strings.TrimSpace(in.Slug)
 	in.Description = strings.TrimSpace(in.Description)
 	in.Body = strings.TrimSpace(in.Body)
 	if in.Name == "" || in.Slug == "" || in.Body == "" {
-		return biz.Skill{}, errors.New("skill name, slug and body are required")
+		return biz.Skill{}, biz.SkillDiskSyncOutcome{}, errors.New("skill name, slug and body are required")
 	}
 	skillRow, err := r.client().PlatformSkill.Query().
 		Where(platformskill.SkillKeyEQ(in.Slug), platformskill.DeletedAtEQ("")).
 		Only(ctx)
 	if dataent.IsNotFound(err) {
-		return r.CreateSkillWithVersion(ctx, biz.SkillCreateInput{
+		sk, createErr := r.CreateSkillWithVersion(ctx, biz.SkillCreateInput{
 			Name:        in.Name,
 			Slug:        in.Slug,
 			Description: in.Description,
 			Body:        in.Body,
 			Tags:        in.Tags,
 			StorageDir:  in.StorageDir,
+			SyncOrigin:  biz.SkillSyncOriginFilesystem,
 		})
+		return sk, biz.SkillDiskSyncOutcome{}, createErr
 	}
 	if err != nil {
-		return biz.Skill{}, err
+		return biz.Skill{}, biz.SkillDiskSyncOutcome{}, err
 	}
+	outcome := biz.SkillDiskSyncOutcome{}
+	wasPublished := skillRow.Status == "published" || skillRow.Status == "active"
 	now := nowRFC3339()
-	md := struct {
-		Tags       []biz.SkillTag `json:"tags"`
-		StorageDir string         `json:"storage_dir"`
-	}{Tags: in.Tags, StorageDir: in.StorageDir}
-	metaJSON, err := json.Marshal(md)
+	metaJSON, err := encodeSkillMetadata(in.Tags, in.StorageDir, biz.SkillSyncOriginFilesystem)
 	if err != nil {
-		return biz.Skill{}, err
+		return biz.Skill{}, biz.SkillDiskSyncOutcome{}, err
 	}
-	if _, err := r.client().PlatformSkill.UpdateOneID(skillRow.ID).
+	update := r.client().PlatformSkill.UpdateOneID(skillRow.ID).
 		SetName(in.Name).
 		SetDescription(in.Description).
 		SetMetadataJSON(string(metaJSON)).
 		SetUpdatedAt(now).
-		SetFilesystemMissing(false).
-		Save(ctx); err != nil {
-		return biz.Skill{}, err
-	}
+		SetFilesystemMissing(false)
 	sv, err := r.client().SkillVersion.Query().
 		Where(skillversion.SkillIDEQ(skillRow.ID)).
 		Order(skillversion.ByCreatedAt(entsql.OrderDesc())).
 		First(ctx)
 	if err != nil {
-		return biz.Skill{}, err
+		return biz.Skill{}, biz.SkillDiskSyncOutcome{}, err
 	}
 	if strings.TrimSpace(sv.ContentMarkdown) != in.Body {
+		outcome.ContentChanged = true
 		if _, err := r.client().SkillVersion.UpdateOneID(sv.ID).
 			SetContentMarkdown(in.Body).
 			SetUpdatedAt(now).
 			Save(ctx); err != nil {
-			return biz.Skill{}, err
+			return biz.Skill{}, biz.SkillDiskSyncOutcome{}, err
 		}
 	}
-	return r.GetSkillByID(ctx, skillRow.ID)
+	if outcome.ContentChanged && wasPublished {
+		outcome.RevertedToDraft = true
+		update = update.SetStatus("draft").SetEnabled(false)
+	}
+	if _, err := update.Save(ctx); err != nil {
+		return biz.Skill{}, biz.SkillDiskSyncOutcome{}, err
+	}
+	sk, err := r.GetSkillByID(ctx, skillRow.ID)
+	return sk, outcome, err
+}
+
+func (r *skillRepo) ListRegisteredSlugs(ctx context.Context) ([]string, error) {
+	rows, err := r.client().PlatformSkill.Query().
+		Where(platformskill.DeletedAtEQ("")).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(rows))
+	for _, row := range rows {
+		if slug := strings.TrimSpace(row.SkillKey); slug != "" {
+			out = append(out, slug)
+		}
+	}
+	return out, nil
 }
 
 func (r *skillRepo) ListEnabledPublishedSkillKeys(ctx context.Context) ([]string, error) {
@@ -820,6 +849,20 @@ func (r *skillRepo) GetLatestSkillMarkdown(ctx context.Context, skillID string) 
 type skillMetadataEnvelope struct {
 	Tags       []biz.SkillTag `json:"tags"`
 	StorageDir string         `json:"storage_dir"`
+	SyncOrigin string         `json:"sync_origin"`
+}
+
+func encodeSkillMetadata(tags []biz.SkillTag, storageDir, syncOrigin string) (string, error) {
+	md := skillMetadataEnvelope{
+		Tags:       tags,
+		StorageDir: strings.TrimSpace(storageDir),
+		SyncOrigin: strings.TrimSpace(syncOrigin),
+	}
+	b, err := json.Marshal(md)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
 }
 
 func parseSkillMetadata(raw string) skillMetadataEnvelope {
@@ -945,4 +988,29 @@ func (r *skillRepo) MarkSkillFilesystemMissing(ctx context.Context, slug string,
 		return sql.ErrNoRows
 	}
 	return nil
+}
+
+func (r *skillRepo) FilesystemHealthStats(ctx context.Context) (biz.SkillFilesystemHealthStats, error) {
+	c := r.client()
+	missing, err := c.PlatformSkill.Query().
+		Where(platformskill.DeletedAtEQ(""), platformskill.FilesystemMissingEQ(true)).
+		Count(ctx)
+	if err != nil {
+		return biz.SkillFilesystemHealthStats{}, err
+	}
+	pending, err := c.PlatformSkill.Query().
+		Where(
+			platformskill.DeletedAtEQ(""),
+			platformskill.StatusEQ("draft"),
+			platformskill.FilesystemMissingEQ(false),
+			platformskill.MetadataJSONContains(`"sync_origin":"filesystem"`),
+		).
+		Count(ctx)
+	if err != nil {
+		return biz.SkillFilesystemHealthStats{}, err
+	}
+	return biz.SkillFilesystemHealthStats{
+		MissingCount:           missing,
+		PendingFilesystemCount: pending,
+	}, nil
 }
