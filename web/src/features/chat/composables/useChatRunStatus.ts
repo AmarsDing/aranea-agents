@@ -106,11 +106,22 @@ export function useChatRunStatus(deps: UseChatRunStatusDeps) {
     scheduleHttpHydrate(sessionId);
   }
 
+  /** Force-set run status (used when backend rejects enqueue due to stale state). */
+  function forceSetRunStatus(status: RunStatusValue) {
+    wsAuthoritative = true;
+    clearHydrateTimer();
+    runStatus.value = status;
+    if (status === "idle") {
+      runMeta.value = null;
+    }
+  }
+
   return {
     runStatus,
     runMeta,
     applyFromEnvelope,
     onSessionSwitch,
     refreshRunStatus,
+    forceSetRunStatus,
   };
 }

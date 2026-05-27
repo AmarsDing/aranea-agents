@@ -66,6 +66,7 @@ type SessionRunRepo interface {
 	ListBySession(ctx context.Context, sessionID string, limit, offset int) ([]SessionRun, int, error)
 	TryClaimDurableResume(ctx context.Context, id, staleBefore string) (bool, error)
 	ClearResumeClaim(ctx context.Context, id string) error
+	MarkOrphanedRunsCancelled(ctx context.Context) (int, error)
 }
 
 // SessionRunListQuery filters session runs for chat jobs panel (CC-R-04).
@@ -226,4 +227,13 @@ func (u *SessionRunUsecase) GetActiveForSession(ctx context.Context, sessionID s
 		return SessionRun{}, fmt.Errorf("SessionRunUsecase: not initialized")
 	}
 	return u.repo.GetActiveForSession(ctx, sessionID)
+}
+
+// CleanupOrphanedRuns marks all active session_runs without finished_at as cancelled.
+// Should be called once on startup to clean up zombie runs from a previous crash.
+func (u *SessionRunUsecase) CleanupOrphanedRuns(ctx context.Context) (int, error) {
+	if u == nil || u.repo == nil {
+		return 0, nil
+	}
+	return u.repo.MarkOrphanedRunsCancelled(ctx)
 }

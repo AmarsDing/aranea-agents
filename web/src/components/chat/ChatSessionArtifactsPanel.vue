@@ -21,7 +21,7 @@
           <q-btn flat round dense icon="close" v-close-popup :aria-label="t('chat.cancel')" />
         </q-card-section>
         <q-card-section class="app-dialog-body q-pt-sm">
-          <ArtifactList :items="items" :loading="loading" @open="onOpen" />
+          <ArtifactList :items="items" :loading="loading" @open="onOpen" @deleted="(id) => emit('deleted', id)" />
         </q-card-section>
       </q-card>
     </q-dialog>
@@ -43,6 +43,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   open: [id: string];
+  deleted: [id: string];
 }>();
 
 const { t } = useI18n();

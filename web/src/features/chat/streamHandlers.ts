@@ -2,7 +2,6 @@ import type { Envelope } from "./envelope";
 import type { UseEnvelopeStreamReturn } from "./useEnvelopeStream";
 import type { Message } from "./types";
 import type { Session } from "../session/types";
-import { dropPendingUserPlaceholders } from "./mergeSessionMessages";
 import { upsertToolMessage, finalizeOrphanToolMessages } from "./envelopeToolCall";
 import { patchStreamingMessage } from "./streamContentPatch";
 import { createMessageBatchWriter } from "./messageStoreBatch";
@@ -22,7 +21,7 @@ export function createPlaceholderMessage(
     id,
     session_id: sessionID,
     parent_message_id: "",
-    turn_index: 1,
+    turn_index: 0,
     role,
     content_markdown: content,
     model_name: "mock",
@@ -56,6 +55,10 @@ export type StreamHandlerCtx = {
   /** Team-only: resolve member meta for member_* envelopes */
   resolveMemberMeta?: (agentKey: string) => { agent_key: string; name: string; role: string };
   streamIdPrefix?: string;
+  /** request_id of the current in-flight user message, used to associate
+   *  ws-stream assistant rows with the pending-user placeholder for TurnBlock grouping.
+   *  Can be a static string or a function that resolves it dynamically. */
+  activeRequestId?: string | (() => string | undefined);
 };
 
 function streamRowId(ctx: StreamHandlerCtx, sessionId: string): string {
@@ -68,11 +71,12 @@ function patchMessages(
   sessionId: string,
   streamId: string,
   env: Envelope,
-  isDone: boolean
+  isDone: boolean,
+  requestId?: string
 ) {
   ctx.setMessages(
     sessionId,
-    patchStreamingEnvelope(ctx.getMessages(sessionId), sessionId, streamId, env, isDone)
+    patchStreamingEnvelope(ctx.getMessages(sessionId), sessionId, streamId, env, isDone, requestId)
   );
 }
 
@@ -102,19 +106,26 @@ export function patchStreamingEnvelope(
   sessionId: string,
   streamId: string,
   env: Envelope,
-  isDone: boolean
+  isDone: boolean,
+  requestId?: string
 ): Message[] {
   const cur = messages;
   const exists = cur.some((m) => m.id === streamId);
   let next = cur;
   if (!exists) {
-    const turnIndex = inferAssistantStreamTurnIndex(cur);
+    // When request_id is available, use turn_index=0 so groupMessagesByTurn
+    // groups this row with the pending-user placeholder via request_id instead
+    // of guessing a turn_index that may collide with persisted turns.
+    const turnIndex = requestId ? 0 : inferAssistantStreamTurnIndex(cur);
+    const opts: Record<string, unknown> = {};
+    if (requestId) opts.request_id = requestId;
     next = [
       ...cur,
       {
         ...createPlaceholderMessage(streamId, sessionId, "assistant", ""),
         turn_index: turnIndex,
         status: "streaming",
+        options_json: Object.keys(opts).length > 0 ? JSON.stringify(opts) : "",
       },
     ];
   }
@@ -142,11 +153,13 @@ export function bindStreamHandlers(
     : null;
 
   function patch(sessionId: string, streamId: string, env: Envelope, isDone: boolean) {
+    const resolved = typeof ctx.activeRequestId === "function" ? ctx.activeRequestId() : ctx.activeRequestId;
+    const rid = resolved || env.request_id;
     if (writer) {
-      writer.update((cur) => patchStreamingEnvelope(cur, sessionId, streamId, env, isDone));
+      writer.update((cur) => patchStreamingEnvelope(cur, sessionId, streamId, env, isDone, rid));
       return;
     }
-    patchMessages(ctx, sessionId, streamId, env, isDone);
+    patchMessages(ctx, sessionId, streamId, env, isDone, rid);
   }
 
   function applySessionContextPatch(sessionId: string, env: Envelope) {
@@ -274,9 +287,10 @@ export function bindStreamHandlers(
     writer?.flushSync();
     const sid = ctx.resolveActiveSessionId() ?? ctx.sessionId;
     if (!sid) return;
-    const finalized = dropPendingUserPlaceholders(
-      finalizeOrphanToolMessages(ctx.getMessages(sid))
-    ).filter((m) => {
+    // Keep pending-user placeholders so the user message stays visible while
+    // loadMessages fetches the persisted version.  The merge logic in
+    // mergeSessionMessages will replace them with server-persisted rows.
+    const finalized = finalizeOrphanToolMessages(ctx.getMessages(sid)).filter((m) => {
       const id = m.id || "";
       // Keep ws-stream rows that received text_done (status="ok") as fallback
       // until server-persisted messages arrive via loadMessages.

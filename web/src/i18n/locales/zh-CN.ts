@@ -100,6 +100,10 @@ export default {
     feedbackThanks: "感谢反馈",
     feedbackFailed: "反馈提交失败",
     fileImport: "导入",
+    fileNotSupported: "当前模型不支持文件附件",
+    limitedFileTypes: "当前模型仅支持非图片文件",
+    clipboardFileUnsupported: "当前模型不支持此类型的文件粘贴",
+    fileModelUnsupported: "当前模型不支持文件附件，请移除附件或切换模型",
     voiceInput: "语音",
     send: "发送",
     stop: "停止生成",
@@ -174,6 +178,8 @@ export default {
     confirmDelete: "确认删除",
     cancel: "取消",
     voicePlaceholder: "语音输入功能将在后续版本接入。",
+    attachmentDeleted: "附件已删除",
+    attachmentDeleteFailed: "附件删除失败",
     awaitingUserHint: "Agent 正在等待你的回复，在下方输入后点击「提交回复」。",
     submitAwaitReply: "提交回复",
     awaitReplySent: "已提交回复，继续执行",
@@ -186,13 +192,22 @@ export default {
     toolLongRunning: "长任务",
     sessionArtifacts: {
       title: "会话制品",
+      view: "查看",
+      download: "下载",
+      delete: "删除",
+      empty: "暂无制品",
     },
     job: {
       title: "后台任务",
       loading: "加载后台任务…",
       empty: "暂无后台任务",
       refresh: "刷新",
-      openGraph: "打开 Graph 执行"
+      openGraph: "打开 Graph 执行",
+      cancel: "取消任务",
+      cancelConfirm: "取消任务",
+      cancelConfirmMsg: "确定要取消此任务吗？此操作不可撤销。",
+      cancelled: "任务已取消",
+      cancelFailed: "取消失败"
     },
     turn: {
       block: {

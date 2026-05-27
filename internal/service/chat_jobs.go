@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
@@ -108,4 +109,44 @@ func bizTurnJobToChatBackgroundJob(j biz.ChannelTurnJob) *chatv1.ChatBackgroundJ
 		item.GraphId = &graphID
 	}
 	return item
+}
+
+// CancelChatBackgroundJob cancels a running background job (session_run or channel_turn_job).
+func (s *ChatService) CancelChatBackgroundJob(ctx context.Context, req *chatv1.CancelChatBackgroundJobRequest) (*chatv1.CancelChatBackgroundJobResponse, error) {
+	id := strings.TrimSpace(req.GetId())
+	if id == "" {
+		return nil, kerrors.BadRequest("CHAT_JOBS", "id is required")
+	}
+	source := strings.TrimSpace(req.GetSource())
+
+	switch source {
+	case "session_run":
+		if s == nil || s.orch.chTurn.SessionRuns == nil {
+			return nil, kerrors.NotFound("CHAT_JOBS", "session run service not available")
+		}
+		run, err := s.orch.chTurn.SessionRuns.Get(ctx, id)
+		if err != nil {
+			return nil, kerrors.NotFound("CHAT_JOBS", fmt.Sprintf("session run %s not found", id))
+		}
+		// Only allow cancelling active runs
+		if run.FinishedAt != "" {
+			return &chatv1.CancelChatBackgroundJobResponse{Cancelled: false}, nil
+		}
+		if err := s.orch.chTurn.SessionRuns.Fail(ctx, id, "cancelled by user"); err != nil {
+			return nil, kerrors.New(http.StatusInternalServerError, "CHAT_JOBS", fmt.Sprintf("cancel session run failed: %v", err))
+		}
+		return &chatv1.CancelChatBackgroundJobResponse{Cancelled: true}, nil
+
+	case "channel":
+		if s == nil || s.orch.chTurn.TurnJobs == nil {
+			return nil, kerrors.NotFound("CHAT_JOBS", "turn job service not available")
+		}
+		if err := s.orch.chTurn.TurnJobs.Cancel(ctx, id); err != nil {
+			return nil, kerrors.New(http.StatusInternalServerError, "CHAT_JOBS", fmt.Sprintf("cancel turn job failed: %v", err))
+		}
+		return &chatv1.CancelChatBackgroundJobResponse{Cancelled: true}, nil
+
+	default:
+		return nil, kerrors.BadRequest("CHAT_JOBS", fmt.Sprintf("unsupported source: %s (expected 'session_run' or 'channel')", source))
+	}
 }

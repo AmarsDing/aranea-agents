@@ -43,6 +43,7 @@
 | 11 | **Page**（`pages/**/*Page.vue`）不得直接 `import` `features/*/api` | 请求经 **Store action**；编排经 **`features/<域>/useXxx.ts`** composable |
 | 12 | 展示组件从 `features/<域>/api.ts` **引类型**（含 re-export） | 共享类型放在 **`features/<域>/types.ts`**，组件只 import types |
 | 13 | 单页 `*Page.vue` 的 `<script setup>` 不宜长期超过 **~200 行**（不含 import） | 拆 **Dialog 组件** + **域内 composable** + **子面板组件** |
+| 14 | 前端禁止猜测/推算服务端权威字段（`turn_index`、`id` 等），in-flight 占位消息必须标记为"未分配" | 占位消息 `turn_index=0`；通过 `request_id` 关联 in-flight 消息分组；服务端持久化消息到达后 merge 替换 |
 
 ### 决策树（代码该放哪？）
 
@@ -164,6 +165,42 @@ Page.vue          ← import composable + storeToRefs；模板只做布局与事
 - `AgentToolOverridesPanel` 内 `useToolsStore()` + `fetchCatalog`
 - `ToolDetailContent` 内 `testTool()` 与 `useToolsStore`
 - 单文件 Page >300 行且含完整 CRUD Dialog 模板
+
+### 1.5 聊天消息 in-flight 设计规范
+
+> 本节为红线 #14 的详细说明。违反此规范会导致消息闪烁、错位、归入错误轮次等 UX 问题。
+
+**核心原则：前端不得猜测服务端权威字段**
+
+服务端分配的字段（`turn_index`、`id` 等）是 **source of truth**。前端 in-flight 占位消息不得推算或伪造这些值。
+
+**in-flight 消息生命周期**：
+
+```
+用户点击发送
+  → 创建 pending-user-{request_id} 占位消息（turn_index=0，表示"未分配"）
+  → 输入框清空，占位消息立即显示
+  → WS 发送 user_message（携带 request_id）
+  → 服务端返回 text_delta → 创建 ws-stream-{sessionId}（options_json 中存储 request_id）
+  → groupMessagesByTurn 通过 request_id 将 pending-user 和 ws-stream 归入同一 TurnBlock
+  → runner_completion → loadMessages 获取服务端持久化消息
+  → mergeSessionMessages 用服务端消息替换占位消息（按 content 匹配）
+  → 服务端消息携带正确的 turn_index，TurnBlock 自然重新分组
+```
+
+**必须遵守**：
+
+1. `createPlaceholderMessage` 的 `turn_index` 必须为 `0`（表示"未分配"），禁止硬编码为 `1` 或通过推算赋值
+2. ws-stream 消息的 `options_json` 中必须存储 `request_id`，用于 TurnBlock 分组关联
+3. `groupMessagesByTurn` 对 `turn_index=0` 的 in-flight 消息，通过 `request_id` 关联分组，而非 `turn_index`
+4. `mergeSessionMessages` 排序时，`turn_index=0` 的消息排序权重为 `9999`（排在所有持久化消息之后）
+5. `realignEphemeralTurnIndexes` 不得修改 `turn_index=0` 的 `pending-user-` 消息
+
+**禁止的模式**：
+
+- ❌ `nextUserTurnIndex()` — 扫描消息列表推算下一个 turn_index（服务端可能不连续，推算值可能冲突）
+- ❌ `createPlaceholderMessage` 中 `turn_index: 1` — 硬编码导致多轮对话归入错误 TurnBlock
+- ❌ `dropPendingUserPlaceholders` 后再 `loadMessages` — 中间窗口消息闪烁
 
 ---
 

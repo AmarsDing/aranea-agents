@@ -100,6 +100,10 @@ export default {
     feedbackThanks: "Thanks for your feedback",
     feedbackFailed: "Could not submit feedback",
     fileImport: "Files",
+    fileNotSupported: "This model does not support file attachments",
+    limitedFileTypes: "This model only supports non-image files",
+    clipboardFileUnsupported: "This model does not support pasting this file type",
+    fileModelUnsupported: "This model does not support file attachments. Remove attachments or switch model",
     voiceInput: "Voice",
     send: "Send",
     stop: "Stop generating",
@@ -174,6 +178,8 @@ export default {
     confirmDelete: "Delete",
     cancel: "Cancel",
     voicePlaceholder: "Voice capture will be wired in a later release.",
+    attachmentDeleted: "Attachment deleted",
+    attachmentDeleteFailed: "Failed to delete attachment",
     awaitingUserHint: "The agent is waiting for your reply. Type below and click Submit reply.",
     submitAwaitReply: "Submit reply",
     awaitReplySent: "Reply submitted; execution continues",
@@ -186,13 +192,22 @@ export default {
     toolLongRunning: "Long-running",
     sessionArtifacts: {
       title: "Session artifacts",
+      view: "View",
+      download: "Download",
+      delete: "Delete",
+      empty: "No artifacts yet",
     },
     job: {
       title: "Background jobs",
       loading: "Loading background jobs…",
       empty: "No background jobs",
       refresh: "Refresh",
-      openGraph: "Open graph run"
+      openGraph: "Open graph run",
+      cancel: "Cancel job",
+      cancelConfirm: "Cancel job",
+      cancelConfirmMsg: "Are you sure you want to cancel this job? This action cannot be undone.",
+      cancelled: "Job cancelled",
+      cancelFailed: "Cancel failed"
     },
     turn: {
       block: {

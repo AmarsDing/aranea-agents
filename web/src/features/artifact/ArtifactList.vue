@@ -4,9 +4,9 @@
     <div v-if="loading" class="row justify-center q-py-sm">
       <q-spinner color="primary" size="1.5em" />
     </div>
-    <template v-else-if="items.length">
+    <template v-else-if="displayItems.length">
       <div class="artifact-list__items">
-        <div v-for="item in items" :key="item.id" class="artifact-list__item row items-center q-gutter-xs" clickable @click="onOpen(item)">
+        <div v-for="item in displayItems" :key="item.id" class="artifact-list__item row items-center q-gutter-xs" clickable>
           <q-icon :name="mimeIcon(item.mime_type)" size="18px" color="grey-7" />
           <div class="col" style="min-width: 0">
             <div class="artifact-list__name app-ellipsis">{{ item.name }}</div>
@@ -15,14 +15,20 @@
               <span v-if="item.version > 0"> · v{{ item.version }}</span>
             </div>
           </div>
+          <q-btn flat dense round icon="visibility" size="xs" @click.stop="onView(item)">
+            <q-tooltip>{{ t("chat.sessionArtifacts.view", "查看") }}</q-tooltip>
+          </q-btn>
           <q-btn flat dense round icon="download" size="xs" @click.stop="onDownload(item)">
-            <q-tooltip>下载</q-tooltip>
+            <q-tooltip>{{ t("chat.sessionArtifacts.download", "下载") }}</q-tooltip>
+          </q-btn>
+          <q-btn flat dense round icon="delete" size="xs" color="negative" @click.stop="onDelete(item)">
+            <q-tooltip>{{ t("chat.sessionArtifacts.delete", "删除") }}</q-tooltip>
           </q-btn>
         </div>
       </div>
     </template>
     <div v-else class="text-caption text-grey-7 q-pa-sm">
-      暂无制品
+      {{ t("chat.sessionArtifacts.empty", "暂无制品") }}
     </div>
 
     <q-dialog v-model="previewOpen" transition-show="slide-up" transition-hide="slide-down">
@@ -44,8 +50,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
-import { signDownloadUrl, artifactDownloadHref } from "./api";
+import { computed, ref } from "vue";
+import { useI18n } from "vue-i18n";
+import { useQuasar } from "quasar";
+import { signDownloadUrl, artifactDownloadHref, deleteArtifact } from "./api";
 import ArtifactPreview from "./ArtifactPreview.vue";
 import type { ArtifactMeta } from "./types";
 
@@ -56,7 +64,14 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   open: [id: string];
+  deleted: [id: string];
 }>();
+
+const { t } = useI18n();
+const { notify } = useQuasar();
+
+const deletedIds = ref(new Set<string>());
+const displayItems = computed(() => props.items.filter((item) => !deletedIds.value.has(item.id)));
 
 const previewOpen = ref(false);
 const previewMeta = ref<ArtifactMeta | null>(null);
@@ -81,11 +96,10 @@ function formatBytes(n: number) {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function onOpen(item: ArtifactMeta) {
+function onView(item: ArtifactMeta) {
   previewMeta.value = item;
   previewArtifactId.value = item.id;
   previewOpen.value = true;
-  emit("open", item.id);
 }
 
 async function onDownload(item: ArtifactMeta) {
@@ -99,5 +113,16 @@ async function onDownload(item: ArtifactMeta) {
 
 async function onPreviewDownload(meta: ArtifactMeta) {
   await onDownload(meta);
+}
+
+async function onDelete(item: ArtifactMeta) {
+  try {
+    await deleteArtifact(item.id);
+    deletedIds.value.add(item.id);
+    emit("deleted", item.id);
+    notify({ type: "positive", message: t("chat.attachmentDeleted") });
+  } catch {
+    notify({ type: "negative", message: t("chat.attachmentDeleteFailed") });
+  }
 }
 </script>

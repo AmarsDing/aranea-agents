@@ -12,9 +12,11 @@ import type { ChatAttachment, ChatEntityKind } from "../../../components/chat/ty
 import type { UseEnvelopeStreamReturn } from "../useEnvelopeStream";
 import type { WsUpstream } from "../envelope";
 import { createPlaceholderMessage } from "../streamHandlers";
-import { shouldBlockImageAttachmentsForModel } from "../modelCapabilities";
+import { shouldBlockAttachmentsForModel } from "../modelCapabilities";
 import { sendMessage } from "../api";
 import { AWAIT_KIND_TOOL_CONFIRM } from "../awaitConstants";
+
+import type { RunStatusValue } from "../types";
 
 type SessionStore = ReturnType<typeof useChatSessionStore>;
 type MessageStore = ReturnType<typeof useChatMessageStore>;
@@ -49,6 +51,7 @@ export type SenderDeps = {
   onNewSession: (title?: string) => Promise<void>;
   makeSessionTitle: (content: string) => string;
   refreshRunStatus: () => Promise<void>;
+  setRunStatus: (status: RunStatusValue) => void;
   submitAwaitingReply: () => Promise<void>;
   submitToolConfirm: (approved: boolean) => Promise<void>;
   refreshPendingMessages?: () => Promise<void>;
@@ -220,15 +223,18 @@ export function useChatSender(deps: SenderDeps) {
         await deps.refreshPendingMessages?.();
         return;
       }
-      // P1-3: Differentiate reject reasons
+      // Backend rejected enqueue — likely no active run. Reset status and retry as new turn.
       dropPendingUserRow(sessionId, pendingUserId);
-      $q.notify({ type: "warning", message: t("chat.enqueueRejected", "Could not enqueue message") });
+      deps.setRunStatus("idle");
+      await sendAgentUserContent(content);
     } catch (err: unknown) {
       dropPendingUserRow(sessionId, pendingUserId);
       const errMessage = err instanceof Error ? err.message : "";
       // P1-3: Map backend error codes to user-friendly messages
       if (errMessage.includes("CHAT_RUN_ENDED")) {
-        $q.notify({ type: "info", message: t("chat.enqueueRunEnded", "当前对话已结束，请直接发送新消息") });
+        // Backend says run ended — reset status and retry as new turn
+        deps.setRunStatus("idle");
+        await sendAgentUserContent(content);
       } else if (errMessage.includes("CHAT_QUEUE_FULL")) {
         $q.notify({ type: "warning", message: t("chat.enqueueQueueFull", "排队消息已满，请稍后再试") });
       } else {
@@ -295,6 +301,20 @@ export function useChatSender(deps: SenderDeps) {
       if (!followUp) {
         markSending(sessionId);
       }
+
+      // Optimistic UI: clear input and show placeholder immediately so the user
+      // sees their message without waiting for backend availability checks.
+      // turn_index=0 means "unassigned" — groupMessagesByTurn groups this with
+      // the ws-stream row via request_id until the server returns a persisted message.
+      const pendingUserId = reusePendingId ?? `pending-user-${crypto.randomUUID()}`;
+      if (!reusePendingId) {
+        deps.inputText.value = "";
+        deps.messageStore.setMessages(sessionId, [
+          ...deps.messageStore.getMessages(sessionId),
+          createPlaceholderMessage(pendingUserId, sessionId, "user", text),
+        ]);
+      }
+
       const selectedModel = deps.selectedProviderModel.value;
       const provider =
         selectedModel?.provider ||
@@ -306,22 +326,18 @@ export function useChatSender(deps: SenderDeps) {
         deps.sessionStore.selectedSession.model ||
         deps.appStore.selectedAgent?.model ||
         "";
-      if (shouldBlockImageAttachmentsForModel({ provider, model, capabilities: selectedModel?.capabilities }, deps.attachments.value)) {
+      const blockReason = shouldBlockAttachmentsForModel({ provider, model, capabilities: selectedModel?.capabilities }, deps.attachments.value);
+      if (blockReason) {
         clearAttachments = false;
-        notifyUnsupportedImageModel();
+        if (blockReason === "ATTACHMENT_UNSUPPORTED") {
+          $q.notify({ type: "warning", message: t("chat.fileModelUnsupported", "当前模型不支持文件附件，请移除附件或切换模型") });
+        } else {
+          notifyUnsupportedImageModel();
+        }
+        // Remove the optimistic placeholder since we're aborting the send.
+        if (!reusePendingId) dropPendingUserRow(sessionId, pendingUserId);
         if (!followUp) markSendingDone();
         return;
-      }
-      if (!reusePendingId) {
-        deps.inputText.value = "";
-      }
-
-      const pendingUserId = reusePendingId ?? `pending-user-${crypto.randomUUID()}`;
-      if (!reusePendingId) {
-        deps.messageStore.setMessages(sessionId, [
-          ...deps.messageStore.getMessages(sessionId),
-          createPlaceholderMessage(pendingUserId, sessionId, "user", text),
-        ]);
       }
 
       if (!(await checkBackendAvailability())) {
@@ -430,24 +446,34 @@ export function useChatSender(deps: SenderDeps) {
       if (!followUp) {
         markSending(sessionId);
       }
+
+      // Optimistic UI: clear input and show placeholder immediately.
+      // turn_index=0 means "unassigned" — grouped by request_id in TurnBlock.
+      const pendingUserId = `pending-user-${crypto.randomUUID()}`;
+      deps.inputText.value = "";
+      deps.messageStore.setMessages(sessionId, [
+        ...deps.messageStore.getMessages(sessionId),
+        createPlaceholderMessage(pendingUserId, sessionId, "user", content),
+      ]);
+
       const teamId = deps.sessionStore.selectedTeamId!;
       const session = deps.sessionStore.teamSessions[teamId]?.find((item) => item.id === sessionId);
       const selectedModel = deps.selectedProviderModel.value;
       const provider = selectedModel?.provider || session?.provider || "";
       const model = selectedModel?.model || session?.model || "";
-      if (shouldBlockImageAttachmentsForModel({ provider, model, capabilities: selectedModel?.capabilities }, deps.attachments.value)) {
+      const blockReason = shouldBlockAttachmentsForModel({ provider, model, capabilities: selectedModel?.capabilities }, deps.attachments.value);
+      if (blockReason) {
         clearAttachments = false;
-        notifyUnsupportedImageModel();
+        if (blockReason === "ATTACHMENT_UNSUPPORTED") {
+          $q.notify({ type: "warning", message: t("chat.fileModelUnsupported", "当前模型不支持文件附件，请移除附件或切换模型") });
+        } else {
+          notifyUnsupportedImageModel();
+        }
+        // Remove the optimistic placeholder since we're aborting the send.
+        dropPendingUserRow(sessionId, pendingUserId);
         if (!followUp) markSendingDone();
         return;
       }
-      deps.inputText.value = "";
-
-      const pendingUserId = `pending-user-${crypto.randomUUID()}`;
-      deps.messageStore.setMessages(sessionId, [
-        ...deps.messageStore.getMessages(sessionId),
-        createPlaceholderMessage(pendingUserId, sessionId, "user", content),
-      ]);
 
       if (!(await checkBackendAvailability())) {
         // P0-1: Mark as failed instead of removing

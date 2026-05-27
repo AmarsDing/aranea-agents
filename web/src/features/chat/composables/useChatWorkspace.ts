@@ -29,6 +29,7 @@ import { clearChatMarkdownCache } from "../chatMessageMarkdown";
 import { formatSessionTime, getProviderModelValue, sessionToView } from "./chatWorkspaceUtils";
 import { useChatSidebarOrder } from "./useChatSidebarOrder";
 import { useChatAttachments } from "./useChatAttachments";
+import { fileAcceptForModel, modelSupportsFileInput, type ChatModelDescriptor } from "../modelCapabilities";
 import { useChatProviderOptions } from "./useChatProviderOptions";
 import { useChatDeleteFlow } from "./useChatDeleteFlow";
 import { createChatFocusCoordinator } from "../chatFocusCoordinator";
@@ -75,7 +76,7 @@ export function useChatWorkspace() {
   } = awaitReply;
 
   const runStatusCtrl = useChatRunStatus({ applyAwaitRunStatus });
-  const { runStatus, runMeta, applyFromEnvelope, onSessionSwitch, refreshRunStatus } = runStatusCtrl;
+  const { runStatus, runMeta, applyFromEnvelope, onSessionSwitch, refreshRunStatus, forceSetRunStatus } = runStatusCtrl;
 
   const providerOpts = useChatProviderOptions(appStore);
   const { dialogMode, modelProvider, modeOpts, provOpts, providerModels, loadChatOptions, onModeChange, onProviderChange } =
@@ -84,6 +85,26 @@ export function useChatWorkspace() {
   const selectedProviderModel = computed(() =>
     providerModels.value.find((row) => getProviderModelValue(row) === modelProvider.value)
   );
+
+  const fileSupported = computed(() => {
+    const m = selectedProviderModel.value;
+    if (!m) return true;
+    return modelSupportsFileInput({
+      provider: m.provider,
+      model: m.model,
+      capabilities: m.capabilities as ChatModelDescriptor["capabilities"],
+    });
+  });
+
+  const fileAccept = computed(() => {
+    const m = selectedProviderModel.value;
+    if (!m) return "";
+    return fileAcceptForModel({
+      provider: m.provider,
+      model: m.model,
+      capabilities: m.capabilities as ChatModelDescriptor["capabilities"],
+    });
+  });
 
   const activePlannerKind = computed(() =>
     (appStore.selectedAgent?.settings?.planner_kind ?? "").trim().toLowerCase()
@@ -155,7 +176,7 @@ export function useChatWorkspace() {
     focusTurnId.value = undefined;
   }
 
-  const { fileRef, attachments, pickFile, onFileChange, removeAttachment } =
+  const { fileRef, attachments, pickFile, onFileChange, uploadFile, removeAttachment } =
     useChatAttachments(sessionIdForArtifacts);
 
   let applyRunStatusFromEnvelope!: (env: Envelope) => void;
@@ -320,6 +341,7 @@ export function useChatWorkspace() {
     onNewSession: (title?: string) => entityNav.onNewSession(title),
     makeSessionTitle,
     refreshRunStatus: refreshRunStatusForUi,
+    setRunStatus: forceSetRunStatus,
     submitAwaitingReply: awaitSubmit.submitAwaitingReply,
     submitToolConfirm: awaitSubmit.submitToolConfirm,
     refreshPendingMessages: () => refreshPendingMessagesFn?.() ?? Promise.resolve(),
@@ -387,12 +409,41 @@ export function useChatWorkspace() {
     openSessionTrace,
   } = traceAndArtifacts;
 
-  const { sessionArtifacts, sessionArtifactsLoading, openSessionArtifact } =
+  const { sessionArtifacts, sessionArtifactsLoading, openSessionArtifact, onArtifactDeleted: removeArtifactFromList } =
     useChatSessionArtifacts(sessionIdForArtifacts);
+
+  function onArtifactDeleted(id: string) {
+    removeArtifactFromList(id);
+    // Also remove the attachment ref from message options_json so the chip disappears.
+    const sid = selectedSessionForUi.value?.id;
+    if (!sid) return;
+    const msgs = messageStore.getMessages(sid);
+    const updated = msgs.map((m) => {
+      if (!m.options_json) return m;
+      try {
+        const opts = JSON.parse(m.options_json);
+        if (!Array.isArray(opts.attachments)) return m;
+        const filtered = opts.attachments.filter((a: Record<string, unknown>) => a.id !== id);
+        if (filtered.length === opts.attachments.length) return m;
+        opts.attachments = filtered;
+        return { ...m, options_json: JSON.stringify(opts) };
+      } catch {
+        return m;
+      }
+    });
+    messageStore.setMessages(sid, updated);
+  }
 
   const isRunnerActive = computed(
     () => runStatus.value === "running" || runStatus.value === "pending" || sender.sending.value
   );
+
+  // Refresh background jobs when run transitions to idle (tasks may complete after turn ends)
+  watch(runStatus, (newVal, oldVal) => {
+    if (newVal === "idle" && oldVal !== "idle") {
+      jobsRefreshNonce.value += 1;
+    }
+  });
 
   const sessionRevision = computed(() => {
     const sid = selectedSessionForUi.value?.id;
@@ -620,7 +671,10 @@ export function useChatWorkspace() {
       clearFocusTurn,
       sessionArtifacts,
       sessionArtifactsLoading,
+      fileSupported,
+      fileAccept,
       openSessionArtifact,
+      onArtifactDeleted,
       onSelectSession: entityNav.onSelectSession,
       onRenameSession: entityNav.onRenameSession,
       onTogglePinSession: entityNav.onTogglePinSession,
@@ -659,6 +713,7 @@ export function useChatWorkspace() {
       stopStreaming,
       pickFile,
       onFileChange,
+      uploadFile,
       removeAttachment,
       onCancelPending,
       onUpdatePending,
@@ -703,6 +758,7 @@ export function useChatWorkspace() {
       traceInitialTab,
       traceStreamDeps,
       selectedProviderModel,
+      fileSupported,
     }),
   };
 }

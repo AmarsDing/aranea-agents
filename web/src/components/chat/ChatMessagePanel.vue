@@ -101,6 +101,7 @@
           @feedback="(p) => emit('feedback', p)"
           @retry="(id) => emit('retry', id)"
           @dismiss-failed="(id) => emit('dismiss-failed', id)"
+          @attachment-deleted="(id) => emit('attachment-deleted', id)"
         />
       </q-virtual-scroll>
       <div
@@ -140,6 +141,7 @@
           @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
           @retry="(id) => emit('retry', id)"
           @dismiss-failed="(id) => emit('dismiss-failed', id)"
+          @attachment-deleted="(id) => emit('attachment-deleted', id)"
         />
       </div>
       <ChatPendingQueue
@@ -186,6 +188,8 @@
       :session-id="sessionId"
       :session-artifacts="sessionArtifacts"
       :session-artifacts-loading="sessionArtifactsLoading"
+      :file-supported="fileSupported"
+      :file-accept="fileAccept"
       :show-background-jobs="showBackgroundJobs"
       :agent-id="agentId"
       :jobs-refresh-nonce="jobsRefreshNonce"
@@ -202,6 +206,8 @@
       @submit-await-reply="emit('submit-await-reply')"
       @submit-tool-confirm="emit('submit-tool-confirm', $event)"
       @open-artifact="emit('open-artifact', $event)"
+      @attachment-deleted="emit('attachment-deleted', $event)"
+      @paste-file="emit('paste-file', $event)"
       @focus-turn="emit('focus-turn', $event)"
       @navigate="emit('navigate', $event)"
     />
@@ -279,6 +285,8 @@ const props = defineProps<{
   focusTurnId?: string;
   sessionArtifacts?: ArtifactMeta[];
   sessionArtifactsLoading?: boolean;
+  fileSupported?: boolean;
+  fileAccept?: string;
   showBackgroundJobs?: boolean;
   agentId?: string;
   jobsRefreshNonce?: number;
@@ -301,6 +309,7 @@ const emit = defineEmits<{
   "submit-tool-confirm": [approved: boolean];
   "open-events": [];
   "open-artifact": [id: string];
+  "paste-file": [file: File];
   "focus-turn": [turnId: string];
   navigate: [route: { name: string; params: Record<string, string> }];
   "focus-turn-cleared": [];
@@ -308,6 +317,7 @@ const emit = defineEmits<{
   feedback: [payload: { messageId: string; rating: "positive" | "negative" }];
   retry: [messageId: string];
   "dismiss-failed": [messageId: string];
+  "attachment-deleted": [id: string];
 }>();
 
 const { t } = useI18n();

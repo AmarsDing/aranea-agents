@@ -61,11 +61,47 @@ export function useChatAttachments(sessionId: Ref<string | undefined>) {
     input.value = "";
   }
 
+  async function uploadFile(file: File) {
+    const sid = sessionId.value ?? "";
+    if (!sid) {
+      $q.notify({ type: "warning", message: "请先创建或选择会话再上传附件" });
+      return;
+    }
+
+    const sizeErr = validateArtifactFileSize(file.size);
+    if (sizeErr) {
+      $q.notify({ type: "warning", message: sizeErr });
+      return;
+    }
+
+    const tempId = `pending-${Date.now()}-${file.name}`;
+    const record: ChatAttachment = { id: tempId, name: file.name, mime_type: file.type, progress: 0.1 };
+    attachments.value.push(record);
+    try {
+      const artifactStore = useArtifactStore();
+      const meta = await artifactStore.upload({
+        session_id: sid,
+        name: file.name,
+        mime_type: file.type || "application/octet-stream",
+        data_base64: await readFileAsBase64(file),
+      });
+      record.id = meta.id;
+      record.progress = 1;
+    } catch (e) {
+      attachments.value = attachments.value.filter((item) => item.id !== tempId);
+      $q.notify({
+        type: "negative",
+        message: e instanceof Error ? e.message : "附件上传失败",
+      });
+    }
+  }
+
   return {
     fileRef,
     attachments,
     pickFile,
     onFileChange,
+    uploadFile,
     removeAttachment,
   };
 }

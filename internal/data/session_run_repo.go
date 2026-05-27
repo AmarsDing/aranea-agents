@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"strings"
+	"time"
 
 	"aranea-agents/internal/biz"
 )
@@ -213,7 +214,7 @@ WHERE 1=1`
 		query += ` AND r.phase=?`
 		args = append(args, biz.NormalizeSessionRunPhase(st))
 	} else {
-		query += ` AND r.phase IN ('escalating','durable','interactive')`
+		query += ` AND r.phase IN ('escalating','durable','interactive') AND (r.finished_at IS NULL OR r.finished_at='')`
 	}
 	query += ` ORDER BY r.created_at DESC LIMIT ?`
 	args = append(args, limit)
@@ -295,4 +296,25 @@ func (r *sessionRunRepo) Get(ctx context.Context, id string) (biz.SessionRun, er
 	}
 	row := db.QueryRowContext(ctx, sessionRunSelectSQL+` WHERE id=? LIMIT 1`, strings.TrimSpace(id))
 	return scanSessionRunRow(row)
+}
+
+// MarkOrphanedRunsCancelled marks all active session_runs with no finished_at as cancelled.
+// Called on startup to clean up zombie runs left from a previous process crash/restart.
+func (r *sessionRunRepo) MarkOrphanedRunsCancelled(ctx context.Context) (int, error) {
+	db := r.db()
+	if db == nil {
+		return 0, nil
+	}
+	now := biz.ChannelTurnJobNow()
+	nowStr := time.Now().UTC().Format(time.RFC3339)
+	res, err := db.ExecContext(ctx, `
+UPDATE session_runs SET phase='cancelled', error_message='orphaned: process restarted', finished_at=?, phase_changed_at=?, updated_at=?
+WHERE phase IN ('interactive','escalating','durable') AND (finished_at IS NULL OR finished_at='')`,
+		now, now, nowStr,
+	)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
 }

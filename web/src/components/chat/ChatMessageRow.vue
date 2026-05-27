@@ -135,6 +135,7 @@
         <ChatMessageAttachments
           v-if="messageAttachments.length"
           :attachments="messageAttachments"
+          @deleted="(id) => emit('attachment-deleted', id)"
         />
         <div
           v-if="bundle.presentation.bodyMarkdown"
@@ -265,6 +266,7 @@ const emit = defineEmits<{
   feedback: [payload: { messageId: string; rating: "positive" | "negative" }];
   retry: [messageId: string];
   "dismiss-failed": [messageId: string];
+  "attachment-deleted": [id: string];
 }>();
 
 const { t } = useI18n();

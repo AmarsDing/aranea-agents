@@ -66,6 +66,8 @@
         :focus-turn-id="session.focusTurnId"
         :session-artifacts="session.sessionArtifacts"
         :session-artifacts-loading="session.sessionArtifactsLoading"
+        :file-supported="session.fileSupported"
+        :file-accept="session.fileAccept"
         :show-background-jobs="entity.selectedEntityKind === 'agent'"
         :agent-id="entity.store.selectedAgent?.id"
         :jobs-refresh-nonce="session.jobsRefreshNonce"
@@ -81,6 +83,7 @@
         @update:selected-knowledge-bases="(v) => (composer.selectedKnowledgeBases = v)"
         @remove-attachment="composer.removeAttachment"
         @pick-file="composer.pickFile"
+        @paste-file="composer.uploadFile"
         @voice="composer.onVoiceClick"
         @send="composer.onSend"
         @stop="composer.stopStreaming"
@@ -90,6 +93,7 @@
         @submit-tool-confirm="composer.submitToolConfirm"
         @open-events="session.openSessionEvents"
         @open-artifact="session.openSessionArtifact"
+        @attachment-deleted="session.onArtifactDeleted"
         @focus-turn="session.focusSessionTurn"
         @navigate="onNavigate"
         @focus-turn-cleared="session.clearFocusTurn"
@@ -98,7 +102,7 @@
         @retry="composer.retryFailedMessage"
         @dismiss-failed="composer.dismissFailedMessage"
       />
-      <input ref="fileRef" type="file" hidden multiple @change="composer.onFileChange" />
+      <input ref="fileRef" type="file" hidden multiple :accept="session.fileAccept" @change="composer.onFileChange" />
     </div>
 
     <ChatSideToggle
