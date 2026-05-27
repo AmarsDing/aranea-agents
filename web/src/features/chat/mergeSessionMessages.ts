@@ -11,22 +11,17 @@ function isEphemeralMessage(message: Message): boolean {
   );
 }
 
-function messageTime(message: Message): string {
-  return message.created_at || "";
-}
-
-function messageOrder(message: Message): [number, string] {
-  // turn_index=0 means "unassigned" (in-flight). These must sort after all
-  // persisted messages (turn_index >= 1) so they appear at the bottom.
-  const ti = message.turn_index ?? 0;
-  const sortTi = ti === 0 ? 9999 : ti;
-  return [sortTi, messageTime(message)];
-}
-
-function isInFlightLocalRow(message: Message): boolean {
+/** Whether this row is a local-only in-flight message (not yet persisted by server). */
+export function isInFlightLocalRow(message: Message): boolean {
   if (isEphemeralMessage(message)) return true;
   const status = message.status || "";
   return status === "tool_running" || status === "streaming" || status === "tool_blocked";
+}
+
+function messageOrder(message: Message): [number, string] {
+  // In-flight rows sort after persisted rows; within each group, sort by time.
+  const inFlight = isInFlightLocalRow(message) ? 1 : 0;
+  return [inFlight, message.created_at || ""];
 }
 
 /** Drop optimistic user placeholders after the server turn completes. */
@@ -66,35 +61,6 @@ export function mergeIncrementalSessionMessages(
     byId.set(row.id, row);
   }
   return mergeSessionMessages([...byId.values()], local, opts);
-}
-
-/** Extract request_id from a message's options_json. */
-function messageRequestId(message: Message): string | undefined {
-  try {
-    const raw = JSON.parse(message.options_json || "{}") as { request_id?: string };
-    return raw.request_id;
-  } catch {
-    return undefined;
-  }
-}
-
-/** Merge request_id from a pending-user placeholder into the server message that replaces it. */
-function transferRequestId(pending: Message, serverMsg: Message): Message {
-  // For pending-user-* rows, the request_id IS the row id itself.
-  // For other rows, extract from options_json.
-  const rid = pending.id.startsWith("pending-user-")
-    ? pending.id
-    : messageRequestId(pending);
-  if (!rid) return serverMsg;
-  // If server message already has request_id, keep it
-  if (messageRequestId(serverMsg)) return serverMsg;
-  try {
-    const opts = JSON.parse(serverMsg.options_json || "{}") as Record<string, unknown>;
-    opts.request_id = rid;
-    return { ...serverMsg, options_json: JSON.stringify(opts) };
-  } catch {
-    return serverMsg;
-  }
 }
 
 /** Match a pending-user placeholder to a server-persisted user message by content. */
@@ -138,23 +104,11 @@ export function mergeSessionMessages(
     const key = `${row.session_id}::${row.content_markdown}`;
     const serverMatch = serverUserByContent.get(key);
     if (serverMatch) {
-      // Transfer request_id from pending-user to server message so that
-      // groupMessagesByTurn can still associate ws-stream rows via request_id
-      // after the pending-user placeholder is replaced.
-      const enriched = transferRequestId(row, serverMatch);
-      pendingReplacedBy.set(row.id, enriched);
+      pendingReplacedBy.set(row.id, serverMatch);
     }
   }
 
-  // Replace server messages with their enriched versions (carrying request_id)
-  const enrichedServer = normalizedServer.map((m) => {
-    for (const [, replacement] of pendingReplacedBy) {
-      if (replacement.id === m.id) return replacement;
-    }
-    return m;
-  });
-
-  const merged = [...enrichedServer];
+  const merged = [...normalizedServer];
   for (const row of local) {
     // If this pending-user row has a server replacement, skip it (already in merged via server)
     if (pendingReplacedBy.has(row.id)) continue;
@@ -164,9 +118,9 @@ export function mergeSessionMessages(
     merged.push(row);
   }
   merged.sort((a, b) => {
-    const [turnA, timeA] = messageOrder(a);
-    const [turnB, timeB] = messageOrder(b);
-    if (turnA !== turnB) return turnA - turnB;
+    const [inFlightA, timeA] = messageOrder(a);
+    const [inFlightB, timeB] = messageOrder(b);
+    if (inFlightA !== inFlightB) return inFlightA - inFlightB;
     return timeA.localeCompare(timeB);
   });
   return merged;

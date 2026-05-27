@@ -166,16 +166,6 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
         setLastIntentPass: (value) => {
           deps.messageStore.lastIntentPass = value;
         },
-        activeRequestId: () => {
-          const sid = deps.sessionStore.selectedSession?.id;
-          if (!sid) return undefined;
-          const msgs = deps.messageStore.getMessages(sid);
-          for (let i = msgs.length - 1; i >= 0; i--) {
-            const id = msgs[i]?.id ?? "";
-            if (id.startsWith("pending-user-") && (msgs[i]!.turn_index ?? 0) === 0) return id;
-          }
-          return undefined;
-        },
         onStreamingPatch: (sid, patch) => {
           if (patch.done) {
             streamingSnapshots.put(sid, {
@@ -239,16 +229,6 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
           deps.messageStore.lastIntentPass = value;
         },
         resolveMemberMeta: resolveTeamMemberMeta,
-        activeRequestId: () => {
-          const sid = deps.sessionStore.teamSelectedSessionId;
-          if (!sid) return undefined;
-          const msgs = deps.messageStore.getMessages(sid);
-          for (let i = msgs.length - 1; i >= 0; i--) {
-            const id = msgs[i]?.id ?? "";
-            if (id.startsWith("pending-user-") && (msgs[i]!.turn_index ?? 0) === 0) return id;
-          }
-          return undefined;
-        },
       }
     );
 

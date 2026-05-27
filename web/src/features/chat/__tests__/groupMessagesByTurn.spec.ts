@@ -2,10 +2,11 @@ import { describe, expect, it } from "vitest";
 import { groupMessagesByTurn, lastAssistantTurnBlockIndex } from "../groupMessagesByTurn";
 import type { Message } from "../types";
 
-function msg(partial: Partial<Message> & Pick<Message, "id" | "role" | "turn_index">): Message {
+function msg(partial: Partial<Message> & Pick<Message, "id" | "role">): Message {
   return {
     session_id: "s1",
     parent_message_id: "",
+    turn_index: partial.turn_index ?? 0,
     content_markdown: partial.content_markdown ?? "body",
     model_name: "",
     token_in: 0,
@@ -20,20 +21,20 @@ function msg(partial: Partial<Message> & Pick<Message, "id" | "role" | "turn_ind
   };
 }
 
-describe("groupMessagesByTurn", () => {
+describe("groupMessagesByTurn (stack-based)", () => {
   it("groups user, tools, assistant into one turn block", () => {
     const messages: Message[] = [
-      msg({ id: "u1", role: "user", turn_index: 1, content_markdown: "hi" }),
+      msg({ id: "u1", role: "user", created_at: "2026-05-23T00:00:00Z", content_markdown: "hi" }),
       msg({
         id: "t1",
         role: "assistant",
-        turn_index: 1,
+        created_at: "2026-05-23T00:00:01Z",
         content_markdown: "",
         options_json: '{"schema":"chat.activity/v1","tool_event":{}}',
         status: "tool_ok",
         latency_ms: 1200,
       }),
-      msg({ id: "a1", role: "assistant", turn_index: 2, content_markdown: "done" }),
+      msg({ id: "a1", role: "assistant", created_at: "2026-05-23T00:00:02Z", content_markdown: "done" }),
     ];
     const blocks = groupMessagesByTurn(messages);
     expect(blocks).toHaveLength(1);
@@ -42,23 +43,25 @@ describe("groupMessagesByTurn", () => {
     expect(blocks[0]?.assistant?.id).toBe("a1");
   });
 
-  it("splits multiple turns by turn_index", () => {
+  it("splits multiple turns by role=user boundary", () => {
     const messages: Message[] = [
-      msg({ id: "u1", role: "user", turn_index: 1 }),
-      msg({ id: "a1", role: "assistant", turn_index: 2 }),
-      msg({ id: "u2", role: "user", turn_index: 3 }),
-      msg({ id: "a2", role: "assistant", turn_index: 4 }),
+      msg({ id: "u1", role: "user", created_at: "2026-05-23T00:00:00Z" }),
+      msg({ id: "a1", role: "assistant", created_at: "2026-05-23T00:00:01Z" }),
+      msg({ id: "u2", role: "user", created_at: "2026-05-23T00:00:02Z" }),
+      msg({ id: "a2", role: "assistant", created_at: "2026-05-23T00:00:03Z" }),
     ];
     expect(groupMessagesByTurn(messages)).toHaveLength(2);
+    expect(groupMessagesByTurn(messages)[0]?.user?.id).toBe("u1");
+    expect(groupMessagesByTurn(messages)[1]?.user?.id).toBe("u2");
   });
 
   it("merges orphan tool-only blocks into previous user turn", () => {
     const messages: Message[] = [
-      msg({ id: "u1", role: "user", turn_index: 1 }),
+      msg({ id: "u1", role: "user", created_at: "2026-05-23T00:00:00Z" }),
       msg({
         id: "t1",
         role: "assistant",
-        turn_index: 3,
+        created_at: "2026-05-23T00:00:01Z",
         content_markdown: "",
         options_json: '{"schema":"chat.activity/v1"}',
         status: "tool_ok",
@@ -66,7 +69,7 @@ describe("groupMessagesByTurn", () => {
       msg({
         id: "t2",
         role: "assistant",
-        turn_index: 5,
+        created_at: "2026-05-23T00:00:02Z",
         content_markdown: "",
         options_json: '{"schema":"chat.activity/v1"}',
         status: "tool_ok",
@@ -77,18 +80,70 @@ describe("groupMessagesByTurn", () => {
     expect(blocks[0]?.tools).toHaveLength(2);
   });
 
+  it("places in-flight messages after persisted ones", () => {
+    const messages: Message[] = [
+      msg({ id: "u1", role: "user", created_at: "2026-05-23T00:00:00Z" }),
+      msg({ id: "a1", role: "assistant", created_at: "2026-05-23T00:00:01Z", content_markdown: "done" }),
+      msg({ id: "pending-user-abc", role: "user", created_at: "2026-05-23T00:00:02Z", content_markdown: "new question" }),
+      msg({ id: "ws-stream-s1", role: "assistant", created_at: "2026-05-23T00:00:03Z", status: "streaming" }),
+    ];
+    const blocks = groupMessagesByTurn(messages);
+    expect(blocks).toHaveLength(2);
+    expect(blocks[0]?.user?.id).toBe("u1");
+    expect(blocks[0]?.assistant?.id).toBe("a1");
+    expect(blocks[1]?.user?.id).toBe("pending-user-abc");
+    expect(blocks[1]?.assistant?.id).toBe("ws-stream-s1");
+  });
+
+  it("handles first message not being user", () => {
+    const messages: Message[] = [
+      msg({ id: "a1", role: "assistant", created_at: "2026-05-23T00:00:00Z", content_markdown: "welcome" }),
+    ];
+    const blocks = groupMessagesByTurn(messages);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]?.user).toBeNull();
+    expect(blocks[0]?.assistant?.id).toBe("a1");
+  });
+
+  it("groups team member messages into members array", () => {
+    const messages: Message[] = [
+      msg({ id: "u1", role: "user", created_at: "2026-05-23T00:00:00Z" }),
+      msg({ id: "member-researcher", role: "assistant", created_at: "2026-05-23T00:00:01Z" }),
+      msg({ id: "a1", role: "assistant", created_at: "2026-05-23T00:00:02Z" }),
+    ];
+    const blocks = groupMessagesByTurn(messages);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]?.members).toHaveLength(1);
+    expect(blocks[0]?.members[0]?.id).toBe("member-researcher");
+  });
+
   it("lastAssistantTurnBlockIndex anchors on assistant body", () => {
     const blocks = groupMessagesByTurn([
-      msg({ id: "u1", role: "user", turn_index: 1 }),
+      msg({ id: "u1", role: "user", created_at: "2026-05-23T00:00:00Z" }),
       msg({
         id: "t1",
         role: "assistant",
-        turn_index: 1,
+        created_at: "2026-05-23T00:00:01Z",
         options_json: '{"schema":"chat.activity/v1"}',
         content_markdown: "",
       }),
-      msg({ id: "a1", role: "assistant", turn_index: 2, content_markdown: "answer" }),
+      msg({ id: "a1", role: "assistant", created_at: "2026-05-23T00:00:02Z", content_markdown: "answer" }),
     ]);
     expect(lastAssistantTurnBlockIndex(blocks)).toBe(0);
+  });
+
+  it("ignores turn_index for grouping decisions", () => {
+    // Even with conflicting turn_index values, stack-based grouping
+    // should group by role=user boundary + time order
+    const messages: Message[] = [
+      msg({ id: "u1", role: "user", turn_index: 1, created_at: "2026-05-23T00:00:00Z" }),
+      msg({ id: "a1", role: "assistant", turn_index: 2, created_at: "2026-05-23T00:00:01Z" }),
+      msg({ id: "u2", role: "user", turn_index: 3, created_at: "2026-05-23T00:00:02Z" }),
+      msg({ id: "a2", role: "assistant", turn_index: 2, created_at: "2026-05-23T00:00:03Z" }), // same turn_index as a1
+    ];
+    const blocks = groupMessagesByTurn(messages);
+    expect(blocks).toHaveLength(2);
+    expect(blocks[0]?.assistant?.id).toBe("a1");
+    expect(blocks[1]?.assistant?.id).toBe("a2");
   });
 });

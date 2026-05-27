@@ -35,13 +35,14 @@ describe("mergeSessionMessages", () => {
     expect(merged.some((m) => m.id === "act-tc-1")).toBe(true);
   });
 
-  it("sorts by turn_index before created_at", () => {
+  it("sorts by time with in-flight rows after persisted", () => {
     const server = [
-      { ...msg("a", "ok", "2026-05-20T10:00:02Z"), turn_index: 2 },
-      { ...msg("b", "ok", "2026-05-20T10:00:01Z"), turn_index: 1 },
+      { ...msg("a", "ok", "2026-05-20T10:00:02Z") },
+      { ...msg("b", "ok", "2026-05-20T10:00:01Z") },
     ];
-    const local = [{ ...msg("ws-stream-sess-1", "streaming", "2026-05-20T10:00:03Z"), turn_index: 3 }];
+    const local = [{ ...msg("ws-stream-sess-1", "streaming", "2026-05-20T10:00:03Z") }];
     const merged = mergeSessionMessages(server, local);
+    // Persisted sorted by created_at, in-flight after
     expect(merged.map((m) => m.id)).toEqual(["b", "a", "ws-stream-sess-1"]);
   });
 

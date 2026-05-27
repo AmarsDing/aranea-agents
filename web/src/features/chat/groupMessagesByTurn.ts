@@ -1,10 +1,21 @@
+/**
+ * Stack-based chat message grouping.
+ *
+ * Messages are sorted by time, then grouped into TurnBlocks:
+ * - Each `role=user` message starts a new block.
+ * - Subsequent non-user messages (assistant, tool, member) belong to the current block.
+ * - No turn_index inference or request_id coupling needed.
+ *
+ * The `turn_index` field on Message is preserved for backend compatibility but
+ * is NOT used for frontend grouping decisions.
+ */
 import type { Message, ReactToolLinkIndex } from "./types";
 import { toolEventFromMessage } from "./envelopeToolCall";
-import { isActivityMessage } from "./mergeSessionMessages";
+import { isActivityMessage, isInFlightLocalRow } from "./mergeSessionMessages";
 import { isToolLinkedInReactIndex } from "./reactToolLinkIndex";
 
 export type TurnBlockGroup = {
-  /** User message turn_index (odd); grouping key. 0 for in-flight request_id groups. */
+  /** Sequential block index (0-based). */
   key: number;
   turnId: string;
   user: Message | null;
@@ -17,167 +28,84 @@ export function isTeamMemberStreamMessage(message: Message): boolean {
   return String(message.id).startsWith("member-");
 }
 
-/** Extract request_id from a message's options_json (stored by patchStreamingEnvelope). */
-function messageRequestId(message: Message): string | undefined {
-  try {
-    const raw = JSON.parse(message.options_json || "{}") as { request_id?: string };
-    return raw.request_id;
-  } catch {
-    return undefined;
-  }
-}
-
-/** Whether this message is an in-flight placeholder with no server-assigned turn_index. */
-function isInFlightPlaceholder(message: Message): boolean {
-  return (message.turn_index ?? 0) === 0;
-}
-
-/** Map any message row to its user-turn grouping key. */
-export function deriveTurnKey(message: Message): number {
-  const ti = message.turn_index ?? 0;
-  if (isTeamMemberStreamMessage(message)) return ti;
-  if (isActivityMessage(message)) {
-    return ti % 2 === 0 ? Math.max(0, ti - 1) : ti;
-  }
-  if (message.role === "assistant" && ti > 0 && ti % 2 === 0) {
-    return ti - 1;
-  }
-  if (message.role === "user") return ti;
-  return ti % 2 === 0 ? Math.max(0, ti - 1) : ti;
+/**
+ * Sort comparator: persisted messages by created_at, in-flight rows last.
+ * Within each group, preserve original array order as tiebreaker.
+ */
+function messageSortRank(message: Message, index: number): [number, string, number] {
+  const inFlight = isInFlightLocalRow(message) ? 1 : 0;
+  return [inFlight, message.created_at || "", index];
 }
 
 /**
- * Derive TurnBlock[] from merged messages (after mergeSessionMessages).
- * Team member stream rows stay nested under their turn block.
+ * Derive TurnBlock[] from merged messages.
  *
- * In-flight messages (turn_index=0) are grouped by request_id:
- * pending-user-{rid} and ws-stream rows carrying the same request_id
- * are placed in the same TurnBlock, appended after all persisted turns.
+ * Algorithm:
+ * 1. Sort: persisted by created_at, in-flight at the end.
+ * 2. Iterate: role=user → open new block; otherwise → append to current block.
+ * 3. Consolidate orphan tool-only blocks into previous block.
  */
 export function groupMessagesByTurn(messages: Message[]): TurnBlockGroup[] {
-  // Build request_id → pending-user message index for in-flight association
-  const pendingUserByRequestId = new Map<string, number>();
-  for (let i = 0; i < messages.length; i++) {
-    const msg = messages[i]!;
-    if (msg.id.startsWith("pending-user-") && isInFlightPlaceholder(msg)) {
-      // The request_id IS the pending-user id (it was set as pendingUserId in useChatSender)
-      pendingUserByRequestId.set(msg.id, i);
-    }
-  }
+  if (messages.length === 0) return [];
 
-  // Also build request_id → persisted user message index, so that ws-stream rows
-  // whose pending-user was already replaced by a server message can still be
-  // grouped correctly via request_id stored in the server message's options_json.
-  const persistedUserByRequestId = new Map<string, number>();
-  for (let i = 0; i < messages.length; i++) {
-    const msg = messages[i]!;
-    if (!msg.id.startsWith("pending-user-") && msg.role === "user" && !isInFlightPlaceholder(msg)) {
-      const rid = messageRequestId(msg);
-      if (rid) persistedUserByRequestId.set(rid, i);
-    }
-  }
+  // Sort: persisted first (by time), in-flight last (by time)
+  const sorted = messages
+    .map((m, i) => ({ m, i }))
+    .sort((a, b) => {
+      const ra = messageSortRank(a.m, a.i);
+      const rb = messageSortRank(b.m, b.i);
+      if (ra[0] !== rb[0]) return ra[0] - rb[0];
+      if (ra[1] !== rb[1]) return ra[1].localeCompare(rb[1]);
+      return ra[2] - rb[2];
+    })
+    .map((x) => x.m);
 
-  const map = new Map<number, TurnBlockGroup>();
-  // Separate map for in-flight request_id groups (keyed by a synthetic negative number)
-  const inflightMap = new Map<string, TurnBlockGroup>();
-  let inflightCounter = -1;
+  const blocks: TurnBlockGroup[] = [];
+  let current: TurnBlockGroup | null = null;
+  let blockIndex = 0;
 
-  for (const msg of messages) {
-    // In-flight messages with turn_index=0: group by request_id
-    if (isInFlightPlaceholder(msg) && !isTeamMemberStreamMessage(msg)) {
-      const requestId = msg.id.startsWith("pending-user-")
-        ? msg.id
-        : messageRequestId(msg);
-
-      // Case 1: pending-user still exists → group into inflightMap
-      if (requestId && pendingUserByRequestId.has(requestId)) {
-        let block = inflightMap.get(requestId);
-        if (!block) {
-          block = {
-            key: inflightCounter--,
-            turnId: requestId,
-            user: null,
-            assistant: null,
-            tools: [],
-            members: [],
-          };
-          inflightMap.set(requestId, block);
-        }
-        if (isActivityMessage(msg)) {
-          block.tools.push(msg);
-        } else if (msg.role === "user") {
-          block.user = msg;
-          block.turnId = msg.id;
-        } else if (msg.role === "assistant") {
-          block.assistant = msg;
-        }
-        continue;
-      }
-
-      // Case 2: pending-user was replaced by server message → attach to that
-      // persisted user's TurnBlock via request_id stored in the server message.
-      if (requestId && persistedUserByRequestId.has(requestId)) {
-        const serverIdx = persistedUserByRequestId.get(requestId)!;
-        const serverMsg = messages[serverIdx]!;
-        const key = deriveTurnKey(serverMsg);
-        let block = map.get(key);
-        if (!block) {
-          block = {
-            key,
-            turnId: serverMsg.id,
-            user: serverMsg,
-            assistant: null,
-            tools: [],
-            members: [],
-          };
-          map.set(key, block);
-        }
-        // Attach the in-flight ws-stream/tool row to this persisted block
-        if (isActivityMessage(msg)) {
-          block.tools.push(msg);
-        } else if (msg.role === "assistant" && !block.assistant) {
-          block.assistant = msg;
-        }
-        continue;
-      }
+  for (const msg of sorted) {
+    // role=user starts a new block
+    if (msg.role === "user") {
+      current = {
+        key: blockIndex++,
+        turnId: msg.id,
+        user: msg,
+        assistant: null,
+        tools: [],
+        members: [],
+      };
+      blocks.push(current);
+      continue;
     }
 
-    const key = deriveTurnKey(msg);
-    let block = map.get(key);
-    if (!block) {
-      block = {
-        key,
-        turnId: msg.role === "user" ? msg.id : `turn-${key}`,
+    // First message is not user → open a block with user=null
+    if (!current) {
+      current = {
+        key: blockIndex++,
+        turnId: `turn-orphan-${blockIndex}`,
         user: null,
         assistant: null,
         tools: [],
         members: [],
       };
-      map.set(key, block);
+      blocks.push(current);
     }
+
+    // Distribute into current block
     if (isTeamMemberStreamMessage(msg)) {
-      block.members.push(msg);
-      continue;
-    }
-    if (isActivityMessage(msg)) {
-      block.tools.push(msg);
-      continue;
-    }
-    if (msg.role === "user") {
-      block.user = msg;
-      block.turnId = msg.id;
+      current.members.push(msg);
+    } else if (isActivityMessage(msg)) {
+      current.tools.push(msg);
     } else if (msg.role === "assistant") {
-      block.assistant = msg;
+      current.assistant = msg;
     }
   }
 
-  const persisted = [...map.values()].sort((a, b) => a.key - b.key);
-  const inflight = [...inflightMap.values()];
-  // In-flight blocks appear after all persisted blocks
-  return consolidateOrphanToolBlocks([...persisted, ...inflight]);
+  return consolidateOrphanToolBlocks(blocks);
 }
 
-/** Merge tool-only blocks (failed/partial turns) into the previous user turn. */
+/** Merge tool-only blocks (no user, no assistant) into the previous user turn. */
 function consolidateOrphanToolBlocks(blocks: TurnBlockGroup[]): TurnBlockGroup[] {
   const out: TurnBlockGroup[] = [];
   for (const block of blocks) {

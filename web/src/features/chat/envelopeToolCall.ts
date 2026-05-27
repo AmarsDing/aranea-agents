@@ -3,7 +3,6 @@ import type { ActivityKind, ToolUseEvent } from "./types";
 import type { Message } from "./types";
 import { classifyActivityKind } from "./activityPresentation";
 import { toolEventToMessage } from "./toolEventMarkdown";
-import { inferToolActivityTurnIndex, realignEphemeralTurnIndexes } from "./streamTurnIndex";
 
 function parseJSONRecord(raw: string | undefined): Record<string, unknown> {
   if (!raw?.trim()) return {};
@@ -111,7 +110,6 @@ export function upsertToolMessage(
   const event = envelopeToToolEvent(env, phase);
   if (!event) return messages;
   const row = toolEventToMessage(sessionId, event);
-  row.turn_index = inferToolActivityTurnIndex(messages);
   const messageId = activityMessageId(event);
   row.id = messageId;
   const idx = messages.findIndex((m) => m.id === messageId || (event.id && m.id === `act-${event.id}`));
@@ -119,13 +117,12 @@ export function upsertToolMessage(
     const priorMeta = toolEventFromMessage(messages[idx]);
     const merged = priorMeta ? mergeToolEvents(priorMeta, event) : event;
     const nextRow = toolEventToMessage(sessionId, merged);
-    nextRow.turn_index = inferToolActivityTurnIndex(messages);
     nextRow.id = messageId;
     const next = [...messages];
     next[idx] = { ...messages[idx], ...nextRow, id: messageId };
-    return realignEphemeralTurnIndexes(next);
+    return next;
   }
-  return realignEphemeralTurnIndexes([...messages, row]);
+  return [...messages, row];
 }
 
 /** Mark in-flight tool activity rows as cancelled when run_status=cancelled. */

@@ -6,7 +6,6 @@ import { upsertToolMessage, finalizeOrphanToolMessages } from "./envelopeToolCal
 import { patchStreamingMessage } from "./streamContentPatch";
 import { createMessageBatchWriter } from "./messageStoreBatch";
 import { shouldSessionWsSkipEnvelope } from "./inboundSyncRouting";
-import { inferAssistantStreamTurnIndex, realignEphemeralTurnIndexes } from "./streamTurnIndex";
 import type { IntentPassResult } from "./types";
 import { sessionContextPatchFromEnvelope } from "./sessionContextPatch";
 import type { SessionContextPatch } from "./sessionContextPatch";
@@ -55,10 +54,6 @@ export type StreamHandlerCtx = {
   /** Team-only: resolve member meta for member_* envelopes */
   resolveMemberMeta?: (agentKey: string) => { agent_key: string; name: string; role: string };
   streamIdPrefix?: string;
-  /** request_id of the current in-flight user message, used to associate
-   *  ws-stream assistant rows with the pending-user placeholder for TurnBlock grouping.
-   *  Can be a static string or a function that resolves it dynamically. */
-  activeRequestId?: string | (() => string | undefined);
 };
 
 function streamRowId(ctx: StreamHandlerCtx, sessionId: string): string {
@@ -71,12 +66,11 @@ function patchMessages(
   sessionId: string,
   streamId: string,
   env: Envelope,
-  isDone: boolean,
-  requestId?: string
+  isDone: boolean
 ) {
   ctx.setMessages(
     sessionId,
-    patchStreamingEnvelope(ctx.getMessages(sessionId), sessionId, streamId, env, isDone, requestId)
+    patchStreamingEnvelope(ctx.getMessages(sessionId), sessionId, streamId, env, isDone)
   );
 }
 
@@ -106,37 +100,27 @@ export function patchStreamingEnvelope(
   sessionId: string,
   streamId: string,
   env: Envelope,
-  isDone: boolean,
-  requestId?: string
+  isDone: boolean
 ): Message[] {
   const cur = messages;
   const exists = cur.some((m) => m.id === streamId);
   let next = cur;
   if (!exists) {
-    // When request_id is available, use turn_index=0 so groupMessagesByTurn
-    // groups this row with the pending-user placeholder via request_id instead
-    // of guessing a turn_index that may collide with persisted turns.
-    const turnIndex = requestId ? 0 : inferAssistantStreamTurnIndex(cur);
-    const opts: Record<string, unknown> = {};
-    if (requestId) opts.request_id = requestId;
     next = [
       ...cur,
       {
         ...createPlaceholderMessage(streamId, sessionId, "assistant", ""),
-        turn_index: turnIndex,
         status: "streaming",
-        options_json: Object.keys(opts).length > 0 ? JSON.stringify(opts) : "",
       },
     ];
   }
-  const patched = patchStreamingMessage(next, streamId, {
+  return patchStreamingMessage(next, streamId, {
     text: isDone ? undefined : env.content?.text,
     reasoning: isDone ? undefined : env.content?.reasoning,
     replaceText: isDone ? env.content?.text : undefined,
     replaceReasoning: isDone ? env.content?.reasoning : undefined,
     status: isDone ? "ok" : "streaming",
   });
-  return realignEphemeralTurnIndexes(patched);
 }
 
 export function bindStreamHandlers(
@@ -153,13 +137,11 @@ export function bindStreamHandlers(
     : null;
 
   function patch(sessionId: string, streamId: string, env: Envelope, isDone: boolean) {
-    const resolved = typeof ctx.activeRequestId === "function" ? ctx.activeRequestId() : ctx.activeRequestId;
-    const rid = resolved || env.request_id;
     if (writer) {
-      writer.update((cur) => patchStreamingEnvelope(cur, sessionId, streamId, env, isDone, rid));
+      writer.update((cur) => patchStreamingEnvelope(cur, sessionId, streamId, env, isDone));
       return;
     }
-    patchMessages(ctx, sessionId, streamId, env, isDone, rid);
+    patchMessages(ctx, sessionId, streamId, env, isDone);
   }
 
   function applySessionContextPatch(sessionId: string, env: Envelope) {
