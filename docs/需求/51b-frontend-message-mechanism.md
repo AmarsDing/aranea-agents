@@ -1,0 +1,1059 @@
+# 51b 前端消息机制 — 传输协议与客户端设计
+
+> 本文档设计 Aranea-Agents 前端的通信消息机制，聚焦传输协议、客户端实现和场景适配。后端消息机制见 [51a 后端消息机制](./51a%20后端消息机制.md)。
+
+---
+
+## 一、传输层选型
+
+### 1.1 决策
+
+```
+WebSocket = 主传输通道（双向通信、多路复用、低延迟）
+Chat HTTP = 非流式 / 后台入口（HTTP POST /v1/chat/messages）
+```
+
+WebSocket 在实时交互维度优于 HTTP unary：
+
+| 维度 | 说明 |
+|------|------|
+| **方向性** | 双向通信，cancel/enqueue/subscribe 无需额外 HTTP |
+| **连接数** | 1 个 WS 连接复用所有通道（Chat+Monitor+Team+Graph） |
+| **浏览器限制** | 无硬限制，多 Session 不受连接数约束 |
+| **协议开销** | 握手后仅 2-14 字节帧头，高频事件场景带宽节省显著 |
+| **多路复用** | Channel 机制天然支持 monitor/team/chat/graph 统一连接 |
+
+---
+
+## 二、WebSocket 协议
+
+### 2.1 连接建立
+
+```
+WS /v1/ws?session_id=sess-uuid&token=jwt_token
+
+认证方式（三级回退）：
+1. URL token 参数（优先）
+2. Authorization: Bearer Header（浏览器 WebSocket API 不支持，仅非浏览器客户端）
+3. access_token Cookie（浏览器场景的必要回退，浏览器 WebSocket API 无法设置自定义 Header）
+
+前端连接时自动从 Cookie 读取 token：
+  buildWsUrl({ sessionId, lastEventId, token: readAccessTokenCookie() })
+
+握手时校验：
+1. JWT token 有效（从 URL / Header / Cookie 三处提取）
+2. session_id 存在且用户有权限
+3. Origin 白名单校验
+
+成功后服务端发送：
+{
+  "direction": "server_to_client",
+  "channel": "system",
+  "type": "connected",
+  "payload": {
+    "session_id": "sess-uuid",
+    "server_time": "2026-01-01T00:00:00.000Z",
+    "subscribed_channels": ["chat", "system"],
+    "last_event_id": "evt-100"
+  }
+}
+```
+
+### 2.2 下行消息格式（Server → Client）
+
+所有下行消息统一为 Envelope，通过 `channel` 字段多路复用：
+
+```json
+{
+  "direction": "server_to_client",
+  "channel": "chat | monitor | team | graph | system",
+  "envelope": {
+    "id": "evt-uuid",
+    "type": "text_delta | tool_call | ...",
+    "author": "agent_name",
+    "session_id": "sess-uuid",
+    "team_id": "team-uuid",
+    "request_id": "req-uuid",
+    "invocation_id": "inv-uuid",
+    "parent_invocation_id": "parent-inv-uuid",
+    "branch": "agent_a/agent_b",
+    "filter_key": "agent_a/agent_b",
+    "tag": "code_execution_code;transfer",
+    "timestamp": "2026-01-01T00:00:00.000Z",
+    "version": 1,
+    "channel": "chat",
+    "content": { "text": "...", "reasoning": "...", "is_partial": true },
+    "tool_call": { "..." },
+    "state_delta": { "..." },
+    "transfer": { "..." },
+    "error": { "..." },
+    "usage": { "..." },
+    "extensions": { "..." },
+    "actions": { "..." },
+    "trace": { "..." },
+    "metadata": {}
+  }
+}
+```
+
+**系统消息**（非 Envelope）：
+
+```json
+{
+  "direction": "server_to_client",
+  "channel": "system",
+  "type": "connected | pong | server_shutdown | replay_start | replay_end",
+  "payload": { ... }
+}
+```
+
+### 2.3 上行消息格式（Client → Server）
+
+```json
+{
+  "direction": "client_to_server",
+  "channel": "chat | control",
+  "type": "user_message | cancel | enqueue_message | subscribe | unsubscribe | enable_log | ping",
+  "request_id": "req-uuid",
+  "payload": {}
+}
+```
+
+### 2.4 上行消息类型
+
+#### user_message — 发送聊天消息
+
+```json
+{
+  "direction": "client_to_server",
+  "channel": "chat",
+  "type": "user_message",
+  "request_id": "req-uuid",
+  "payload": {
+    "content": "帮我分析一下这段代码",
+    "agent_key": "default",
+    "team_id": "",
+    "options": {}
+  }
+}
+```
+
+#### cancel — 停止生成
+
+```json
+{
+  "direction": "client_to_server",
+  "channel": "chat",
+  "type": "cancel",
+  "request_id": "req-uuid",
+  "payload": {}
+}
+```
+
+#### enqueue_message — 中途插入消息（SteerableRunner）
+
+```json
+{
+  "direction": "client_to_server",
+  "channel": "chat",
+  "type": "enqueue_message",
+  "request_id": "req-uuid",
+  "payload": {
+    "content": "请同时考虑性能优化"
+  }
+}
+```
+
+#### subscribe — 动态订阅通道
+
+```json
+{
+  "direction": "client_to_server",
+  "channel": "control",
+  "type": "subscribe",
+  "payload": {
+    "channel": "team",
+    "filter_key": "coordinator/agent_b"
+  }
+}
+```
+
+#### unsubscribe — 取消订阅通道
+
+```json
+{
+  "direction": "client_to_server",
+  "channel": "control",
+  "type": "unsubscribe",
+  "payload": {
+    "channel": "team"
+  }
+}
+```
+
+#### enable_log — 开启/关闭 Monitor 日志流
+
+```json
+{
+  "direction": "client_to_server",
+  "channel": "control",
+  "type": "enable_log",
+  "payload": {
+    "enabled": true
+  }
+}
+```
+
+#### ping — 心跳
+
+```json
+{
+  "direction": "client_to_server",
+  "channel": "control",
+  "type": "ping",
+  "payload": {}
+}
+```
+
+服务端回复：
+
+```json
+{
+  "direction": "server_to_client",
+  "channel": "system",
+  "type": "pong",
+  "payload": {
+    "server_time": "2026-01-01T00:00:00.000Z"
+  }
+}
+```
+
+### 2.5 Channel 定义
+
+| Channel | 方向 | 说明 | 默认订阅 |
+|---------|------|------|---------|
+| `chat` | 双向 | Chat 事件 + 用户消息上行 | ✅ 连接即订阅 |
+| `monitor` | 下行 | 运维日志、系统事件 | ❌ 需 enable_log 开启 |
+| `team` | 下行 | Team 运行事件 | ✅ 全局模式自动订阅 / 普通模式需 subscribe |
+| `graph` | 下行 | Graph 工作流事件 | ✅ 全局模式自动订阅 / 普通模式需 subscribe |
+| `system` | 下行 | 系统通知（connected/pong/server_shutdown） | ✅ 连接即订阅 |
+
+### 2.6 心跳与断连检测
+
+```
+应用层心跳：
+  客户端 → 服务端：每 25s 发送应用层 ping
+  服务端 → 客户端：回复 pong（含 server_time）
+
+协议层心跳：
+  服务端 → 客户端：每 30s 发送 WebSocket Ping 帧
+  客户端 → 服务端：自动回复 Pong 帧
+
+客户端检测：
+  - 60s 无 pong → 认为连接断开，触发重连
+  - 重连策略：指数退避（1s/2s/4s/8s/16s/30s cap）
+  - 重连时携带 last_event_id，服务端从 EventBuffer 重放
+
+服务端关闭通知：
+  - 服务端优雅关闭时发送 server_shutdown 系统消息
+  - 客户端收到后不再自动重连
+```
+
+### 2.7 重连与事件重放
+
+```
+1. 客户端断连后发起重连
+2. WS 握手携带 last_event_id 参数：
+   WS /v1/ws?session_id=sess-uuid&last_event_id=evt-100
+3. 服务端从 EventBuffer 查询 evt-100 之后的事件
+4. 先发送重放事件（channel 不变），再切换到实时流
+
+服务端同步屏障：
+  重放期间 eventPump 阻塞等待 replayDone 通道关闭，
+  确保重放事件全部发送完毕后才开始转发实时事件，避免两者交错。
+
+重放消息标记：
+{
+  "direction": "server_to_client",
+  "channel": "chat",
+  "type": "replay_start",
+  "payload": { "count": 15, "from_id": "evt-101", "to_id": "evt-115" }
+}
+{
+  "direction": "server_to_client",
+  "channel": "chat",
+  "envelope": { ... }  // 重放事件
+}
+{
+  "direction": "server_to_client",
+  "channel": "chat",
+  "type": "replay_end",
+  "payload": { "last_event_id": "evt-115" }
+}
+```
+
+---
+
+## 三、Envelope 类型定义
+
+### 3.1 TypeScript 类型
+
+```typescript
+export interface Envelope {
+  id: string;
+  type: EnvelopeType;
+  author: string;
+  session_id: string;
+  team_id?: string;
+  request_id?: string;
+  invocation_id?: string;
+  parent_invocation_id?: string;
+  branch?: string;
+  filter_key?: string;
+  tag?: string;
+  timestamp: string;
+  version: number;
+  channel?: string;
+  content?: EnvelopeContent;
+  tool_call?: EnvelopeToolCall;
+  state_delta?: EnvelopeStateDelta;
+  transfer?: EnvelopeTransfer;
+  error?: EnvelopeError;
+  usage?: EnvelopeUsage;
+  extensions?: Record<string, string>;
+  actions?: EnvelopeActions;
+  trace?: EnvelopeTrace;
+  metadata?: Record<string, unknown>;
+}
+
+export type EnvelopeType =
+  | "text_delta"
+  | "text_done"
+  | "tool_call"
+  | "tool_result"
+  | "state_delta"
+  | "transfer"
+  | "runner_completion"
+  | "error"
+  | "log"
+  | "graph_node_start"
+  | "graph_node_end"
+  | "graph_node_error"
+  | "graph_step"
+  | "graph_execution_done"
+  | "graph_node_custom"
+  | "checkpoint"
+  | "intent_pass"
+  | "member_message_start"
+  | "member_delta"
+  | "member_message_done"
+  | "team_run_started"
+  | "team_run_finished"
+  | "team_run_failed"
+  | "team_step_started"
+  | "team_step_finished";
+
+export interface EnvelopeContent {
+  text: string;
+  reasoning?: string;
+  is_partial: boolean;
+}
+
+export interface EnvelopeToolCall {
+  id: string;
+  name: string;
+  arguments_json: string;
+  result_json: string | null;
+  status: "calling" | "running" | "success" | "error";
+  duration_ms: number;
+  is_long_running: boolean;
+}
+
+export interface EnvelopeStateDelta {
+  operation: "set" | "append" | "delete";
+  path: string;
+  value_json: string;
+}
+
+export interface EnvelopeTransfer {
+  from_agent: string;
+  to_agent: string;
+}
+
+export interface EnvelopeError {
+  type: "run_error" | "stream_error" | "tool_error";
+  message: string;
+  pending_id: string;
+}
+
+export interface EnvelopeUsage {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+}
+
+export interface EnvelopeActions {
+  skip_summarization: boolean;
+}
+
+export interface EnvelopeTrace {
+  agent_name: string;
+  invocation_id: string;
+  step_count: number;
+  duration_ms?: number;
+}
+
+export interface LogMetadata {
+  level: "DEBUG" | "INFO" | "WARN" | "ERROR";
+  source: string;
+  component?: string;
+}
+```
+
+### 3.2 WS 消息类型
+
+```typescript
+export interface WsDownstream {
+  direction: "server_to_client";
+  channel: string;
+  type?: string;
+  payload?: Record<string, unknown>;
+  envelope?: Envelope;
+}
+
+export interface WsUpstream {
+  direction: "client_to_server";
+  channel: string;
+  type: string;
+  request_id?: string;
+  payload?: Record<string, unknown>;
+}
+```
+
+### 3.3 事件类型语义
+
+| EnvelopeType | 语义 | 典型处理 |
+|-------------|------|---------|
+| `text_delta` | 文本增量（流式） | 追加到消息气泡 |
+| `text_done` | 文本完成 | 标记消息完成，停止 loading |
+| `tool_call` | 工具调用开始 | 显示工具调用卡片（loading 状态） |
+| `tool_result` | 工具返回结果 | 更新工具调用卡片（结果/错误） |
+| `state_delta` | 状态增量 | 更新 Session 状态（UI 可能不展示） |
+| `transfer` | Agent 转移 | 显示 Agent 切换动画 |
+| `runner_completion` | 运行完成 | 停止 loading，显示用量 |
+| `error` | 错误 | 显示错误提示 |
+| `log` | 运维日志 | 写入 Monitor 面板 |
+| `graph_node_start` | Graph 节点开始 | 高亮当前节点 |
+| `graph_node_end` | Graph 节点结束 | 标记节点完成 |
+| `graph_node_error` | Graph 节点错误 | 标记节点错误 |
+| `graph_step` | Graph 步骤进度 | 更新进度条 |
+| `graph_execution_done` | Graph 执行完成 | 标记工作流完成 |
+| `graph_node_custom` | Graph 自定义节点事件 | 自定义渲染 |
+| `checkpoint` | 检查点 | 保存断点信息 |
+| `intent_pass` | 意图识别 | 显示意图标签 |
+| `member_message_start` | Team 成员消息开始 | 显示成员头像+loading |
+| `member_delta` | Team 成员增量 | 追加到成员消息气泡 |
+| `member_message_done` | Team 成员消息完成 | 标记成员消息完成 |
+| `team_run_started` | Team 运行开始 | 显示 Team 运行状态 |
+| `team_run_finished` | Team 运行完成 | 标记 Team 运行完成 |
+| `team_run_failed` | Team 运行失败 | 显示 Team 运行错误 |
+| `team_step_started` | Team 步骤开始 | 显示步骤进度 |
+| `team_step_finished` | Team 步骤完成 | 更新步骤状态 |
+
+---
+
+## 四、传输层实现
+
+### 4.1 createWsTransport
+
+```typescript
+// web/src/features/chat/ws-transport.ts
+
+export interface WsTransportOptions {
+  sessionId: string;
+  lastEventId?: string;
+  token?: string;
+  onEnvelope?: (env: Envelope) => void;
+  onConnected?: (info: { sessionId: string; lastEventId?: string }) => void;
+  onDisconnected?: () => void;
+  onError?: (error: Event) => void;
+}
+
+export interface WsTransport {
+  connect(): void;
+  disconnect(): void;
+  send(upstream: WsUpstream): void;
+  connected(): boolean;
+  lastEventId(): string | undefined;
+}
+
+export function createWsTransport(opts: WsTransportOptions): WsTransport {
+  let ws: WebSocket | null = null;
+  let _connected = false;
+  let _lastEventId: string | undefined = opts.lastEventId;
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  let reconnectAttempts = 0;
+  const maxReconnectDelay = 30_000;
+  const heartbeatInterval = 25_000;
+  const pendingQueue: WsUpstream[] = [];
+
+  function connect(): void {
+    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+      return;
+    }
+
+    const url = buildWsUrl({
+      sessionId: opts.sessionId,
+      lastEventId: _lastEventId,
+      token: opts.token || readAccessTokenCookie()
+    });
+    ws = new WebSocket(url);
+
+    ws.onopen = () => {
+      _connected = true;
+      reconnectAttempts = 0;
+      startHeartbeat();
+      flushPendingQueue();
+    };
+
+    ws.onmessage = (ev: MessageEvent) => {
+      try {
+        const msg = JSON.parse(ev.data as string) as WsDownstream;
+        if (msg.direction !== "server_to_client") return;
+
+        if (msg.type === "connected" && msg.payload) {
+          const payload = msg.payload as Record<string, unknown>;
+          _lastEventId = (payload.last_event_id as string) || _lastEventId;
+          opts.onConnected?.({ sessionId: opts.sessionId, lastEventId: _lastEventId });
+          return;
+        }
+
+        if (msg.type === "pong") return;
+
+        if (msg.type === "server_shutdown") {
+          disconnect();
+          return;
+        }
+
+        if (msg.envelope) {
+          _lastEventId = msg.envelope.id;
+          opts.onEnvelope?.(msg.envelope);
+        }
+      } catch {
+        // ignore parse errors
+      }
+    };
+
+    ws.onclose = () => {
+      _connected = false;
+      stopHeartbeat();
+      opts.onDisconnected?.();
+      scheduleReconnect();
+    };
+
+    ws.onerror = (e) => {
+      opts.onError?.(e);
+    };
+  }
+
+  function send(upstream: WsUpstream): void {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(upstream));
+    } else {
+      pendingQueue.push(upstream);
+    }
+  }
+
+  function flushPendingQueue(): void {
+    while (pendingQueue.length > 0 && ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(pendingQueue.shift()));
+    }
+  }
+
+  function startHeartbeat(): void {
+    stopHeartbeat();
+    heartbeatTimer = setInterval(() => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        send({ direction: "client_to_server", channel: "control", type: "ping" });
+      }
+    }, heartbeatInterval);
+  }
+
+  function stopHeartbeat(): void {
+    if (heartbeatTimer) {
+      clearInterval(heartbeatTimer);
+      heartbeatTimer = null;
+    }
+  }
+
+  function scheduleReconnect(): void {
+    if (reconnectTimer) return;
+    const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), maxReconnectDelay);
+    reconnectAttempts++;
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      connect();
+    }, delay);
+  }
+
+  function disconnect(): void {
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+    stopHeartbeat();
+    if (ws) {
+      ws.onclose = null;
+      ws.close(1000, "client disconnect");
+      ws = null;
+    }
+    _connected = false;
+  }
+
+  return {
+    connect,
+    disconnect,
+    send,
+    connected: () => _connected,
+    lastEventId: () => _lastEventId,
+  };
+}
+```
+
+**关键实现细节**：
+
+1. **Pending 队列**：连接未建立时上行消息入队，连接建立后自动刷新
+2. **server_shutdown 处理**：收到服务端关闭通知后主动断开，不再自动重连
+3. **Cookie token 回退**：`readAccessTokenCookie()` 从 Cookie 读取 token 作为浏览器场景的认证回退
+4. **lastEventId 追踪**：自动记录最新事件 ID，重连时携带
+
+### 4.2 URL 构建
+
+```typescript
+// web/src/config/runtime.ts
+
+export function buildWsUrl(opts: {
+  sessionId: string;
+  lastEventId?: string;
+  token?: string;
+}): string {
+  const base = getWsBaseUrl();
+  const params = new URLSearchParams();
+  params.set("session_id", opts.sessionId);
+  if (opts.lastEventId) params.set("last_event_id", opts.lastEventId);
+  if (opts.token) params.set("token", opts.token);
+  return `${base}/v1/ws?${params.toString()}`;
+}
+
+export function readAccessTokenCookie(): string | undefined {
+  if (typeof document === "undefined") return undefined;
+  const match = document.cookie.match(/(?:^|;\s*)access_token=([^;]*)/);
+  return match ? match[1] : undefined;
+}
+```
+
+---
+
+## 五、事件分发器
+
+### 5.1 EnvelopeDispatcher 类
+
+```typescript
+// web/src/features/chat/dispatcher.ts
+
+export class EnvelopeDispatcher {
+  private typeHandlers = new Map<EnvelopeType, Set<(env: Envelope) => void>>();
+  private channelHandlers = new Map<string, Set<(env: Envelope) => void>>();
+  private globalHandlers = new Set<(env: Envelope) => void>();
+
+  onType(type: EnvelopeType, handler: (env: Envelope) => void): () => void {
+    if (!this.typeHandlers.has(type)) {
+      this.typeHandlers.set(type, new Set());
+    }
+    this.typeHandlers.get(type)!.add(handler);
+    return () => this.typeHandlers.get(type)?.delete(handler);
+  }
+
+  onChannel(channel: string, handler: (env: Envelope) => void): () => void {
+    if (!this.channelHandlers.has(channel)) {
+      this.channelHandlers.set(channel, new Set());
+    }
+    this.channelHandlers.get(channel)!.add(handler);
+    return () => this.channelHandlers.get(channel)?.delete(handler);
+  }
+
+  on(handler: (env: Envelope) => void): () => void {
+    this.globalHandlers.add(handler);
+    return () => this.globalHandlers.delete(handler);
+  }
+
+  dispatch(env: Envelope): void {
+    this.globalHandlers.forEach(h => h(env));
+    this.typeHandlers.get(env.type)?.forEach(h => h(env));
+    if (env.channel) {
+      this.channelHandlers.get(env.channel)?.forEach(h => h(env));
+    }
+  }
+
+  matchFilterKey(env: Envelope, key: string): boolean {
+    if (!key || !env.filter_key) return true;
+    const subKey = key + "/";
+    const envKey = env.filter_key + "/";
+    return subKey.startsWith(envKey) || envKey.startsWith(subKey);
+  }
+}
+```
+
+**设计决策**：使用类而非 composable 函数，因为：
+- 分发器需要在多个组件间共享实例
+- 支持按 type / channel / global 三级过滤
+- 提供 `matchFilterKey` 辅助方法对齐后端前缀匹配语义
+
+---
+
+## 六、场景 Hooks
+
+### 6.1 useEnvelopeStream
+
+```typescript
+// web/src/features/chat/useEnvelopeStream.ts
+
+export function useEnvelopeStream(sessionId: string) {
+  const transport = createWsTransport({
+    sessionId,
+    onEnvelope: (env) => dispatcher.dispatch(env),
+  });
+
+  const dispatcher = new EnvelopeDispatcher();
+
+  onMounted(() => transport.connect());
+  onUnmounted(() => transport.disconnect());
+
+  return {
+    transport,
+    dispatcher,
+    send: transport.send,
+  };
+}
+```
+
+### 6.2 useChatStream
+
+```typescript
+export function useChatStream(sessionId: string) {
+  const { transport, dispatcher } = useEnvelopeStream(sessionId);
+  const text = ref("");
+  const reasoning = ref("");
+  const toolCalls = ref<EnvelopeToolCall[]>([]);
+  const done = ref(false);
+  const error = ref<EnvelopeError | null>(null);
+
+  dispatcher.onType("text_delta", (env) => {
+    text.value += env.content?.text ?? "";
+    if (env.content?.reasoning) reasoning.value += env.content.reasoning;
+  });
+  dispatcher.onType("text_done", () => { /* finalize */ });
+  dispatcher.onType("tool_call", (env) => {
+    toolCalls.value.push(env.tool_call!);
+  });
+  dispatcher.onType("tool_result", (env) => {
+    const idx = toolCalls.value.findIndex(tc => tc.id === env.tool_call?.id);
+    if (idx >= 0) toolCalls.value[idx] = env.tool_call!;
+  });
+  dispatcher.onType("runner_completion", () => { done.value = true; });
+  dispatcher.onType("error", (env) => { error.value = env.error!; });
+
+  function send(content: string, options?: Record<string, unknown>) {
+    transport.send({
+      direction: "client_to_server",
+      channel: "chat",
+      type: "user_message",
+      payload: { content, ...options },
+    });
+  }
+
+  function cancel() {
+    transport.send({
+      direction: "client_to_server",
+      channel: "chat",
+      type: "cancel",
+    });
+  }
+
+  return { text, reasoning, toolCalls, done, error, send, cancel };
+}
+```
+
+### 6.3 useTeamStream
+
+```typescript
+export function useTeamStream(sessionId: string) {
+  const { transport, dispatcher } = useEnvelopeStream(sessionId);
+  const members = ref<Map<string, { author: string; text: string; done: boolean }>>(new Map());
+  const transfers = ref<EnvelopeTransfer[]>([]);
+  const done = ref(false);
+
+  dispatcher.onType("member_message_start", (env) => {
+    members.value.set(env.author, { author: env.author, text: "", done: false });
+  });
+  dispatcher.onType("member_delta", (env) => {
+    const m = members.value.get(env.author);
+    if (m) m.text += env.content?.text ?? "";
+  });
+  dispatcher.onType("member_message_done", (env) => {
+    const m = members.value.get(env.author);
+    if (m) { m.text = env.content?.text ?? m.text; m.done = true; }
+  });
+  dispatcher.onType("transfer", (env) => {
+    transfers.value.push(env.transfer!);
+  });
+  dispatcher.onType("team_run_finished", () => { done.value = true; });
+  dispatcher.onType("team_run_failed", () => { done.value = true; });
+
+  return { members, transfers, done };
+}
+```
+
+### 6.4 useMonitorStream
+
+```typescript
+export function useMonitorStream(sessionId: string) {
+  const { transport, dispatcher } = useEnvelopeStream(sessionId);
+  const logs = ref<LogEntry[]>([]);
+
+  function enableLog() {
+    transport.send({
+      direction: "client_to_server",
+      channel: "control",
+      type: "enable_log",
+      payload: { enabled: true },
+    });
+  }
+
+  function disableLog() {
+    transport.send({
+      direction: "client_to_server",
+      channel: "control",
+      type: "enable_log",
+      payload: { enabled: false },
+    });
+  }
+
+  dispatcher.onType("log", (env) => {
+    logs.value.push({
+      level: (env.metadata?.level as string) ?? "INFO",
+      source: (env.metadata?.source as string) ?? "",
+      text: env.content?.text ?? "",
+      timestamp: env.timestamp,
+    });
+  });
+
+  return { logs, enableLog, disableLog };
+}
+```
+
+### 6.5 useGraphStream
+
+```typescript
+export function useGraphStream(sessionId: string) {
+  const { transport, dispatcher } = useEnvelopeStream(sessionId);
+  const nodes = ref<Map<string, { name: string; status: string; error?: string }>>(new Map());
+  const steps = ref(0);
+  const done = ref(false);
+
+  dispatcher.onType("graph_node_start", (env) => {
+    nodes.value.set(env.author, { name: env.author, status: "running" });
+  });
+  dispatcher.onType("graph_node_end", (env) => {
+    const n = nodes.value.get(env.author);
+    if (n) n.status = "done";
+  });
+  dispatcher.onType("graph_node_error", (env) => {
+    const n = nodes.value.get(env.author);
+    if (n) { n.status = "error"; n.error = env.error?.message; }
+  });
+  dispatcher.onType("graph_step", () => { steps.value++; });
+  dispatcher.onType("graph_execution_done", () => { done.value = true; });
+
+  return { nodes, steps, done };
+}
+```
+
+---
+
+## 七、场景交互流程
+
+### 7.1 Chat 对话
+
+```
+1. 前端建立 WS 连接
+   WS /v1/ws?session_id=sess-1&token=jwt
+
+2. 服务端发送 connected
+   ← {channel:"system", type:"connected", payload:{subscribed_channels:["chat","system"]}}
+
+3. 前端发送用户消息
+   → {direction:"client_to_server", channel:"chat", type:"user_message", payload:{content:"分析代码"}}
+
+4. 服务端推送事件
+   ← {channel:"chat", envelope:{type:"text_delta", content:{text:"我来分析", is_partial:true}}}
+   ← {channel:"chat", envelope:{type:"tool_call", tool_call:{name:"read_file",...}}}
+   ← {channel:"chat", envelope:{type:"tool_result", tool_call:{name:"read_file", result_json:"..."}}}
+   ← {channel:"chat", envelope:{type:"text_delta", content:{text:"这段代码...", is_partial:true}}}
+   ← {channel:"chat", envelope:{type:"text_done", content:{text:"这段代码有问题", is_partial:false}}}
+   ← {channel:"chat", envelope:{type:"runner_completion", usage:{context_prompt_tokens, max_tokens, turn_total_tokens, ...}}}
+
+**上下文进度条（Composer）**：收到 `context_usage`（ReAct 子步）、`runner_completion` 或 `system.session.compress` 的 `text_done` 时，`streamHandlers` 调用 `sessionContextPatchFromEnvelope` 乐观更新 session store；Composer 圆环 + 副行（ctx/in/out/Σ/费用）与 Usage 大盘口径一致。
+
+5. 前端可随时取消
+   → {direction:"client_to_server", channel:"chat", type:"cancel", request_id:"req-1"}
+
+6. 前端可动态开启 Monitor 日志
+   → {direction:"client_to_server", channel:"control", type:"enable_log", payload:{enabled:true}}
+   ← {channel:"monitor", envelope:{type:"log", metadata:{level:"ERROR",...}}}
+```
+
+### 7.2 Team 多 Agent 场景
+
+```
+1. 前端连接 WS，发送 subscribe 订阅 team 通道
+   → {direction:"client_to_server", channel:"control", type:"subscribe", payload:{channel:"team"}}
+
+2. 收到 Team 生命周期事件
+   ← {channel:"team", envelope:{type:"team_run_started"}}
+   ← {channel:"team", envelope:{type:"team_step_started"}}
+
+3. 收到成员消息
+   ← {channel:"team", envelope:{type:"member_message_start", author:"agent_b", branch:"coordinator/agent_b"}}
+   ← {channel:"team", envelope:{type:"member_delta", author:"agent_b", content:{text:"从安全角度看", is_partial:true}}}
+   ← {channel:"team", envelope:{type:"member_message_done", author:"agent_b", content:{text:"从安全角度看，这个方案需要...", is_partial:false}}}
+
+4. 收到 Agent 转移
+   ← {channel:"team", envelope:{type:"transfer", transfer:{from_agent:"coordinator", to_agent:"agent_b"}}}
+
+5. 前端过滤特定 Agent
+   → {direction:"client_to_server", channel:"control", type:"subscribe", payload:{channel:"team", filter_key:"coordinator/agent_b"}}
+
+6. Team 运行完成
+   ← {channel:"team", envelope:{type:"team_step_finished"}}
+   ← {channel:"team", envelope:{type:"team_run_finished"}}
+```
+
+### 7.3 Graph 工作流场景
+
+```
+1. 前端连接 WS，发送 subscribe 订阅 graph 通道
+   → {direction:"client_to_server", channel:"control", type:"subscribe", payload:{channel:"graph"}}
+
+2. 收到节点事件
+   ← {channel:"graph", envelope:{type:"graph_node_start", author:"step_1", trace:{...}}}
+   ← {channel:"graph", envelope:{type:"text_delta", content:{text:"分析中...", is_partial:true}}}
+   ← {channel:"graph", envelope:{type:"graph_node_end", author:"step_1", trace:{step_count:1}}}
+
+3. 收到步骤进度
+   ← {channel:"graph", envelope:{type:"graph_step"}}
+
+4. 收到执行完成
+   ← {channel:"graph", envelope:{type:"graph_execution_done"}}
+
+5. 收到检查点
+   ← {channel:"graph", envelope:{type:"checkpoint", state_delta:{path:"__checkpoint__", value_json:"..."}}}
+
+6. HITL 中断恢复
+   ← {channel:"chat", envelope:{type:"runner_completion", tag:"interrupt"}}
+   → 用户审批
+   → {direction:"client_to_server", channel:"chat", type:"user_message", payload:{content:"批准"}}
+```
+
+### 7.4 Monitor 日志场景
+
+**流程日志（`flow_log`）**：Chat Turn / Team / 系统域经 `TraceEmitter` 推送，**无需** `enable_log`；前端 `useLogStreamHub` → Flow 面板（中文 title + severity 配色）。
+
+**进程日志（`log`）**：Gateway/Plugin 等文本日志，需 `enable_log` 或连接参数 `log_enabled=1`（全局监控在 `ProcessLogEnabled` 时可默认开启）。
+
+```
+1. 发 Chat → Monitor Logs「流程」Tab 自动出现 flow_log（无需 enable_log）
+   ← {channel:"monitor", envelope:{type:"flow_log", metadata:{severity:"ok", title:"…", step_id:"chat.llm.invoke", trace_id:"…"}}}
+
+2. 可选：开启进程日志
+   → {direction:"client_to_server", channel:"control", type:"enable_log", payload:{enabled:true}}
+   ← {channel:"monitor", envelope:{type:"log", metadata:{level:"ERROR", source:"tool"}, content:{text:"…"}}}
+
+3. 关闭进程日志（flow_log 仍下发）
+   → enable_log enabled:false
+```
+
+### 7.5 服务端关闭场景
+
+```
+1. 服务端优雅关闭，广播 server_shutdown
+   ← {channel:"system", type:"server_shutdown"}
+
+2. 前端收到后不再自动重连
+3. 用户可看到"服务已关闭"提示
+```
+
+---
+
+## 八、向后兼容与迁移
+
+### 8.1 旧事件名映射
+
+| 旧事件名 | 新 Envelope type | 前端迁移操作 |
+|---------|------------------|-------------|
+| `delta` | `text_delta` | 监听 Envelope，按 `type` 分发 |
+| `done` | `text_done` + `runner_completion` | 拆分处理逻辑 |
+| `tool.call` | `tool_call` | 名称统一 |
+| `user_message` | 保留为独立上行消息 | 不变 |
+| `error` | `error` | 结构增强 |
+| `state_delta` | `state_delta` | 从独立事件变为 Envelope type |
+| `intent_pass` | `intent_pass` | 从独立事件变为 Envelope type |
+
+### 8.2 迁移阶段
+
+| 阶段 | 内容 | 状态 |
+|------|------|------|
+| 一 | EventBus + Envelope 引入，双写期 | ✅ 已完成 |
+| 二 | 事件格式统一为 Envelope | ✅ 已完成 |
+| 三 | WebSocket 统一传输上线 | ✅ 已完成 |
+| 四 | 事件持久化与高级特性 | ✅ 已完成（EventBuffer + replay + 动态订阅） |
+
+---
+
+## 九、前端文件结构
+
+```
+web/src/
+  config/
+    runtime.ts                     # buildWsUrl（含 token 参数）+ readAccessTokenCookie + buildHealthWsUrl
+  features/
+    chat/
+      ws-transport.ts              # createWsTransport（含应用层心跳、Cookie token 回退、pending 队列、server_shutdown 处理）
+      envelope.ts                  # Envelope 类型定义（31 种，与后端对齐）
+      envelopeRunStatus.ts         # run_status 解析
+    monitor/
+      useLogStreamHub.ts           # flow_log / log 分流；FlowTracePanel 按 trace 过滤
+      dispatcher.ts                # EnvelopeDispatcher 类（onType / onChannel / on 过滤 + matchFilterKey）
+      useEnvelopeStream.ts         # useEnvelopeStream + 场景 hooks
+                                     useChatStream(sessionId) → { text, reasoning, toolCalls, done, error }
+                                     useTeamStream(sessionId) → { members, transfers, done }
+                                     useMonitorStream(sessionId) → { logs, enableLog, disableLog }
+                                     useGraphStream(sessionId) → { nodes, steps, done }
+      useEventFilter.ts            # 事件过滤辅助
+```
+
+---
+
+## 十、性能考量
+
+### 10.1 前端优化
+
+| 优化点 | 方法 |
+|--------|------|
+| 消息合并 | 连续 `text_delta` 合并渲染（requestAnimationFrame） |
+| 虚拟滚动 | 长对话使用虚拟列表 |
+| 背压感知 | WS buffer 未清空时降低渲染频率 |
+| 重连去抖 | 指数退避避免频繁重连 |
+| 事件去重 | 重放期间跳过已处理的事件 ID |
+| Pending 队列 | 连接未建立时上行消息入队，连接后自动刷新 |

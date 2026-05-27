@@ -2,6 +2,9 @@ package artifactfs_test
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -181,5 +184,57 @@ func TestFSArtifactRepo_StorageURIIsRelative(t *testing.T) {
 	}
 	if string(data) != "hi" {
 		t.Fatalf("payload mismatch: %q", data)
+	}
+}
+
+func TestFSArtifactRepo_LegacyStorageURIWithRoot(t *testing.T) {
+	dir := t.TempDir()
+	repo := artifactfs.NewFSArtifactRepoAt(dir)
+	ctx := context.Background()
+
+	saved, err := repo.Save(ctx, "sess-legacy", "bar.txt", "text/plain", []byte("legacy"))
+	if err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	sessionDir := filepath.Join(dir, "sess-legacy")
+	metaPath := filepath.Join(sessionDir, fmt.Sprintf("%s-v%d.json", saved.ID, saved.Version))
+	raw, err := os.ReadFile(metaPath)
+	if err != nil {
+		t.Fatalf("read meta: %v", err)
+	}
+
+	var meta map[string]any
+	if err := json.Unmarshal(raw, &meta); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	meta["storage_uri"] = filepath.Join(dir, "sess-legacy", fmt.Sprintf("%s-v%d.bin", saved.ID, saved.Version))
+	updated, _ := json.Marshal(meta)
+	if err := os.WriteFile(metaPath, updated, 0o644); err != nil {
+		t.Fatalf("write meta: %v", err)
+	}
+
+	_, data, err := repo.Load(ctx, saved.ID, 0)
+	if err != nil {
+		t.Fatalf("Load with absolute StorageURI: %v", err)
+	}
+	if string(data) != "legacy" {
+		t.Fatalf("payload mismatch: %q", data)
+	}
+
+	rootPrefixedURI := filepath.Join(dir, "sess-legacy", fmt.Sprintf("%s-v%d.bin", saved.ID, saved.Version))
+	meta["storage_uri"] = filepath.ToSlash(rootPrefixedURI)
+	updated2, _ := json.Marshal(meta)
+	if err := os.WriteFile(metaPath, updated2, 0o644); err != nil {
+		t.Fatalf("write meta: %v", err)
+	}
+
+	_, data2, err := repo.Load(ctx, saved.ID, 0)
+	if err != nil {
+		t.Fatalf("Load with root-prefixed StorageURI %q: %v", rootPrefixedURI, err)
+	}
+	if string(data2) != "legacy" {
+		t.Fatalf("payload mismatch: %q", data2)
 	}
 }

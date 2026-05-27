@@ -184,18 +184,24 @@ func (r *FSArtifactRepo) Load(_ context.Context, id string, version int) (biz.Ar
 
 // resolveBinPath returns the on-disk path for a metadata entry. New entries
 // store a relative URI (OUT-05 / ART-03); legacy entries written before this
-// change stored an absolute path, which we still honor here so existing data
-// stays readable. The result is always sanitized against r.root.
+// change stored either an absolute path or a path that already includes the
+// storage root (e.g. "data/artifacts/session/..."). We detect and handle all
+// three cases so existing data stays readable. The result is always sanitized
+// against r.root.
 func (r *FSArtifactRepo) resolveBinPath(meta artifactMeta) string {
 	uri := strings.TrimSpace(meta.StorageURI)
 	if uri == "" {
-		// Last-resort reconstruction from id+version (mirrors Save layout).
 		return filepath.Join(r.root, meta.SessionID, fmt.Sprintf("%s-v%d.bin", meta.ID, meta.Version))
 	}
 	if filepath.IsAbs(uri) {
-		return uri // legacy absolute path; keep working for back-compat
+		return uri
 	}
-	return filepath.Join(r.root, filepath.FromSlash(uri))
+	uriOS := filepath.FromSlash(uri)
+	rootOS := filepath.FromSlash(r.root)
+	if strings.HasPrefix(uriOS, rootOS+string(os.PathSeparator)) {
+		return uri
+	}
+	return filepath.Join(r.root, uriOS)
 }
 
 // List returns artifact metadata for a session (no payload).

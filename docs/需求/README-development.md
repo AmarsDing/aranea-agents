@@ -1,6 +1,6 @@
 # 模块开发计划索引
 
-> 本索引帮助 AI 从 `docs/README.md` 快速进入模块开发计划。系统级优先阅读 `0 系统框图.md` 与 `0-system-development.md`。
+> 本索引帮助 AI 从 `docs/README.md` 快速进入模块开发计划。系统级优先阅读 `0-system-diagram.md` 与 `0-system-development.md`。
 
 ## 系统级
 
@@ -8,7 +8,7 @@
 |------|----------|
 | System | [0-system-development.md](./0-system-development.md) |
 | **前端（页面总览）** | [frontend-pages.md](./frontend-pages.md) |
-| Message | [51 消息机制](./51%20消息机制.md) · [51a](./51a%20后端消息机制.md) · [51b](./51b%20前端消息机制.md) · [开发计划](./message-development.md) |
+| Message | [51-message-mechanism.md](./51-message-mechanism.md) · [51a](./51a-backend-message-mechanism.md) · [51b](./51b-frontend-message-mechanism.md) · [开发计划](./message-development.md) |
 | Admin/Auth | [admin-auth.design.md](./admin-auth.design.md) · [admin-auth-development.md](./admin-auth-development.md) |
 
 ## 核心运行
@@ -230,25 +230,25 @@
 | [37-knowledge-development.md](./37-knowledge-development.md) | 管理页 G0（上轮已对齐） |
 | [27-artifact-development.md](./27-artifact-development.md) | Runner 注入、ArtifactsPage（上轮已对齐） |
 | [../guides/execution-plan.md](../guides/execution-plan.md) | I8-MON-02 方案 C ✅（2026-05-21 文档对齐） |
-| [18 monitor.md](./18%20monitor.md) / [18 monitor.design.md](./18%20monitor.design.md) | **2026-05-21**：Usage Tab 去重、文件树与 Dashboard 分工 |
+| [18-monitor.md](./18-monitor.md) / [18-monitor.design.md](./18-monitor.design.md) | **2026-05-21**：Usage Tab 去重、文件树与 Dashboard 分工 |
 | [18-monitor-development.md](./18-monitor-development.md) | **2026-05-21**：Dashboard Phase 2 ✅；验收项同步 |
-| [18 monitor-dashboard.md](./18%20monitor-dashboard.md) 三件套 | **2026-05-21**：Phase 0～3b 完成、Store/composable 分层 |
+| [18-monitor-dashboard.md](./18-monitor-dashboard.md) 三件套 | **2026-05-21**：Phase 0～3b 完成、Store/composable 分层 |
 | [frontend-pages.md](./frontend-pages.md) / [29-token-development.md](./29-token-development.md) | **2026-05-21**：概览 ECharts/Runner；趋势组件路径更正 |
 | [changelog/2026-05-21-Event-System-DocSync.md](../changelog/2026-05-21-Event-System-DocSync.md) | Event M18 文档与代码对齐摘要 |
 | [34-event-development.md](./34-event-development.md) | **2026-05-21**：Bus SRP 拆分、RealtimeEvents、优化表 O1–O7 |
 | [changelog/2026-05-20-Monitor-Events-RunnerCompletion-Plan.md](../changelog/2026-05-20-Monitor-Events-RunnerCompletion-Plan.md) | 方案 C 决策摘要 |
 | [33-evaluation-development.md](./33-evaluation-development.md) | **2026-05-21**：Phase 5 完整 + Eval LLM system_settings |
-| [33 evaluation.md / design](./33%20evaluation.md) | **2026-05-21**：US-7/8、扩展指标、系统配置 §3.4 |
+| [33-evaluation.md / design](./33-evaluation.md) | **2026-05-21**：US-7/8、扩展指标、系统配置 §3.4 |
 | [changelog/2026-05-21-Evaluation-DocSync-Phase5.md](../changelog/2026-05-21-Evaluation-DocSync-Phase5.md) | Evaluation 文档与代码对齐摘要 |
 | [26-a2a-development.md](./26-a2a-development.md) | **2026-05-21**：Phase 1–3.5 + 健康 Cron/限流 ✅ |
 | [changelog/2026-05-21-A2A-DocSync.md](../changelog/2026-05-21-A2A-DocSync.md) | **2026-05-21**：三件套与代码对齐 |
 | [changelog/2026-05-20-A2A-Phase35.md](../changelog/2026-05-20-A2A-Phase35.md) | Phase 3.5 联邦/Graph/远程 Invoke |
 | [changelog/2026-05-20-A2A-Phase3.md](../changelog/2026-05-20-A2A-Phase3.md) | Phase 3 交付摘要 |
 | [changelog/2026-05-20-A2A-Phase1-2.md](../changelog/2026-05-20-A2A-Phase1-2.md) | Phase 1–2 交付摘要 |
-| [26 a2a-protocol.md](./26%20a2a-protocol.md) | **2026-05-21**：现状对齐；需求边界（无实现代码块） |
-| [26 a2a-protocol.design.md](./26%20a2a-protocol.design.md) | **2026-05-21**：分层/SRP/传输 §十二 |
-| [2 agents-create.md](./2%20agents-create.md) / [2-agents-create-development.md](./2-agents-create-development.md) | **2026-05-20**：§9 A2A Proxy 创建 |
-| [5 agent-setting.md](./5%20agent-setting.md) / [5-agent-setting-development.md](./5-agent-setting-development.md) | **2026-05-20**：§10 A2A Tab |
+| [26-a2a-protocol.md](./26-a2a-protocol.md) | **2026-05-21**：现状对齐；需求边界（无实现代码块） |
+| [26-a2a-protocol.design.md](./26-a2a-protocol.design.md) | **2026-05-21**：分层/SRP/传输 §十二 |
+| [2-agents-create.md](./2-agents-create.md) / [2-agents-create-development.md](./2-agents-create-development.md) | **2026-05-20**：§9 A2A Proxy 创建 |
+| [5-agent-setting.md](./5-agent-setting.md) / [5-agent-setting-development.md](./5-agent-setting-development.md) | **2026-05-20**：§10 A2A Tab |
 | [frontend-pages.md](./frontend-pages.md) | **2026-05-20**：Agent 创建/设置/A2A 页分工 |
 | [40-runner-development.md](./40-runner-development.md) | **2026-05-21**：PendingQueue runtime、Review Phase D 同步 |
 | [23-tools-development.md](./23-tools-development.md) | **2026-05-22**：Phase 4+5 ✅；[Review](../review/23-tools-review.md) 86 分 |
