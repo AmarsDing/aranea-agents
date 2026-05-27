@@ -76,6 +76,26 @@ function patchMessages(
   );
 }
 
+function markPendingUserFailed(messages: Message[], pendingId: string, errorMessage: string): Message[] {
+  return messages.map((m) =>
+    m.id === pendingId
+      ? {
+          ...m,
+          status: "failed",
+          error_message: errorMessage,
+        }
+      : m
+  );
+}
+
+function latestPendingUserId(messages: Message[]): string {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const id = messages[i]?.id ?? "";
+    if (id.startsWith("pending-user-")) return id;
+  }
+  return "";
+}
+
 /** Shared streaming row patch for WS handlers and inbound sync. */
 export function patchStreamingEnvelope(
   messages: Message[],
@@ -277,20 +297,33 @@ export function bindStreamHandlers(
     }
   });
 
-  stream.onType("error", (env: Envelope) => {
+  stream.onType("error", async (env: Envelope) => {
     const errType = env.error?.type ?? "";
     if (errType.startsWith("flow_")) return;
     const hint = env.error?.hint?.trim();
     const msg = env.error?.message ?? "stream failed";
     ctx.onErrorNotify(hint ? `${msg} — ${hint}` : msg);
     const sid = ctx.resolveActiveSessionId() ?? ctx.sessionId;
-    if (sid && env.request_id?.startsWith("pending-user-")) {
-      ctx.setMessages(
-        sid,
-        ctx.getMessages(sid).filter((m) => m.id !== env.request_id)
-      );
+    writer?.flushSync();
+    if (sid) {
+      const pendingUserId = env.request_id?.startsWith("pending-user-")
+        ? env.request_id
+        : latestPendingUserId(ctx.getMessages(sid));
+      if (pendingUserId) {
+        ctx.setMessages(
+          sid,
+          markPendingUserFailed(ctx.getMessages(sid), pendingUserId, msg)
+        );
+      }
     }
     ctx.markSendingDone();
+    if (sid && !shouldSessionWsSkipEnvelope(env)) {
+      try {
+        await ctx.onReloadAfterCompletion(sid);
+      } catch {
+        /* caller may surface errors */
+      }
+    }
   });
 
   stream.onType("intent_pass", (env: Envelope) => {

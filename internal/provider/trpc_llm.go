@@ -116,6 +116,128 @@ func mapVariant(pt string) string {
 	}
 }
 
+func InferVariant(cfg CatalogConfig) string {
+	if v := mapVariant(cfg.ProviderType); v != "" {
+		return v
+	}
+	if v := strings.TrimSpace(cfg.Variant); v != "" {
+		return v
+	}
+	return mapVariantFromBaseURL(cfg.BaseURL)
+}
+
+func mapVariantFromBaseURL(baseURL string) string {
+	u := strings.ToLower(strings.TrimSpace(baseURL))
+	if u == "" {
+		return ""
+	}
+	if strings.Contains(u, "deepseek.com") {
+		return "deepseek"
+	}
+	return ""
+}
+
+func ModelSupportsImageAttachments(ctx context.Context, catalog *biz.LlmProviderModelUsecase, prov, model string) bool {
+	if catalog == nil {
+		return !looksLikeDeepSeek(prov, model)
+	}
+	pm, err := catalog.GetByProviderAndModel(ctx, strings.TrimSpace(prov), strings.TrimSpace(model))
+	if err != nil {
+		return !looksLikeDeepSeek(prov, model)
+	}
+	if pm.CapabilitiesExplicit {
+		return pm.Capabilities.Vision && !pm.Capabilities.TextOnly
+	}
+	cfg, err := CatalogFromModel(ModelCatalogInput{
+		Model:      pm.Model,
+		ConfigJSON: pm.ConfigJSON,
+	})
+	if err == nil {
+		cfg = MergeCatalogConfig(cfg, pm.ConfigJSON)
+		if hasExplicitCapabilities(cfg.Capabilities) {
+			return cfg.Capabilities.Vision && !cfg.Capabilities.TextOnly
+		}
+		if InferVariant(cfg) == "deepseek" {
+			return false
+		}
+	}
+	return !looksLikeDeepSeek(pm.Provider, pm.Model)
+}
+
+func ModelSupportsFileAttachments(ctx context.Context, catalog *biz.LlmProviderModelUsecase, prov, model string) bool {
+	if catalog == nil {
+		return true
+	}
+	pm, err := catalog.GetByProviderAndModel(ctx, strings.TrimSpace(prov), strings.TrimSpace(model))
+	if err != nil {
+		return true
+	}
+	if pm.CapabilitiesExplicit {
+		return pm.Capabilities.File
+	}
+	cfg, err := CatalogFromModel(ModelCatalogInput{
+		Model:      pm.Model,
+		ConfigJSON: pm.ConfigJSON,
+	})
+	if err == nil {
+		cfg = MergeCatalogConfig(cfg, pm.ConfigJSON)
+		if hasExplicitCapabilities(cfg.Capabilities) {
+			return cfg.Capabilities.File
+		}
+	}
+	return true
+}
+
+func CapabilitiesForProviderModel(pm biz.ProviderModel) ModelCapabilities {
+	if pm.CapabilitiesExplicit {
+		return ModelCapabilities{
+			Text:     pm.Capabilities.Text,
+			Vision:   pm.Capabilities.Vision,
+			Audio:    pm.Capabilities.Audio,
+			File:     pm.Capabilities.File,
+			ToolCall: pm.Capabilities.ToolCall,
+			Cache:    pm.Capabilities.Cache,
+			Thinking: pm.Capabilities.Thinking,
+			TextOnly: pm.Capabilities.TextOnly,
+		}
+	}
+	cfg, err := CatalogFromModel(ModelCatalogInput{
+		Model:      pm.Model,
+		ConfigJSON: pm.ConfigJSON,
+	})
+	if err == nil {
+		cfg = MergeCatalogConfig(cfg, pm.ConfigJSON)
+	}
+	caps := cfg.Capabilities
+	if !hasExplicitCapabilities(caps) {
+		caps.Text = true
+		caps.File = true
+		caps.ToolCall = true
+	}
+	if InferVariant(cfg) == "deepseek" || looksLikeDeepSeek(pm.Provider, pm.Model) {
+		caps.Text = true
+		caps.TextOnly = true
+		caps.Vision = false
+		caps.Audio = false
+	}
+	if caps.Cache || cfg.OptimizeForCache || cfg.CacheSystemPrompt || cfg.CacheTools || cfg.CacheMessages {
+		caps.Cache = true
+	}
+	if caps.Thinking || cfg.ReasoningBackfill {
+		caps.Thinking = true
+	}
+	return caps
+}
+
+func looksLikeDeepSeek(parts ...string) bool {
+	for _, part := range parts {
+		if strings.Contains(strings.ToLower(strings.TrimSpace(part)), "deepseek") {
+			return true
+		}
+	}
+	return false
+}
+
 func buildProviderOptions(cfg CatalogConfig, rt *RoundTrip) []trpcprovider.Option {
 	var opts []trpcprovider.Option
 
@@ -125,9 +247,7 @@ func buildProviderOptions(cfg CatalogConfig, rt *RoundTrip) []trpcprovider.Optio
 	if baseURL := strings.TrimSpace(cfg.BaseURL); baseURL != "" {
 		opts = append(opts, trpcprovider.WithBaseURL(baseURL))
 	}
-	if v := mapVariant(cfg.ProviderType); v != "" {
-		opts = append(opts, trpcprovider.WithVariant(v))
-	} else if v := strings.TrimSpace(cfg.Variant); v != "" {
+	if v := InferVariant(cfg); v != "" {
 		opts = append(opts, trpcprovider.WithVariant(v))
 	}
 	if cfg.ChannelBufferSize > 0 {

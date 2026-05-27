@@ -9,6 +9,7 @@ import (
 	"aranea-agents/internal/data/sessionmemory"
 	memtrpc "aranea-agents/internal/memory/trpc"
 	rt "aranea-agents/internal/runtime"
+	sessiontrpc "aranea-agents/internal/session/trpc"
 
 	trpcartifact "trpc.group/trpc-go/trpc-agent-go/artifact"
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
@@ -56,6 +57,7 @@ func provideMemoryCompositeRecall(store *sessionmemory.Store) biz.MemoryComposit
 }
 
 func providePersistenceSet(
+	d *data.Data,
 	store *sessionmemory.Store,
 	mcp *biz.AgentMCPTooling,
 	sess trpcsession.Service,
@@ -83,7 +85,11 @@ func providePersistenceSet(
 			CompositeRecall: compositeRecall,
 		}
 	}
-	return rt.PersistenceSet{Session: sess, Memory: mem, AgentMCP: mcp, Artifact: artifact, ArtifactUC: artifactUC}
+	var rollback rt.RunnerSessionRollbackStore
+	if d != nil {
+		rollback = sessiontrpc.NewRunnerRollbackStore(d.RawDB())
+	}
+	return rt.PersistenceSet{Session: sess, Memory: mem, AgentMCP: mcp, Artifact: artifact, ArtifactUC: artifactUC, RunnerRollback: rollback}
 }
 
 type wireSessionAdminStoreAdapter struct {

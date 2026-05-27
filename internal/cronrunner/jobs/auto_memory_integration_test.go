@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"aranea-agents/internal/biz"
 	sessionsess "aranea-agents/internal/biz/session"
@@ -43,7 +44,9 @@ func (r *memoryTestAgentRepo) GetAgentByID(_ context.Context, id string) (biz.Ag
 	if _, ok := r.ids[id]; !ok {
 		return biz.Agent{}, sql.ErrNoRows
 	}
-	return biz.Agent{ID: id, AgentKey: id}, nil
+	settings := biz.DefaultAgentRuntimeSettings()
+	settings.AgentID = id
+	return biz.Agent{ID: id, AgentKey: id, Settings: &settings}, nil
 }
 func (r *memoryTestAgentRepo) GetAgentByAgentKey(context.Context, string) (biz.Agent, error) {
 	return biz.Agent{}, sql.ErrNoRows
@@ -82,7 +85,9 @@ func (r *memoryTestAgentRepo) CreateAgentPromptFile(context.Context, biz.AgentPr
 func (r *memoryTestAgentRepo) UpdateAgentPromptFile(context.Context, biz.AgentPromptFile) (biz.AgentPromptFile, error) {
 	return biz.AgentPromptFile{}, nil
 }
-func (r *memoryTestAgentRepo) DeleteAgentPromptFile(context.Context, string, string) error { return nil }
+func (r *memoryTestAgentRepo) DeleteAgentPromptFile(context.Context, string, string) error {
+	return nil
+}
 func (r *memoryTestAgentRepo) ExecInTx(ctx context.Context, fn func(context.Context) error) error {
 	return fn(ctx)
 }
@@ -226,13 +231,19 @@ func TestAutoMemoryWorker_DrainUsesInjectedQueue(t *testing.T) {
 	}
 
 	q.Enqueue(memtrpc.AutoMemoryJobRequest{SessionID: "sess-q-1", UserID: "user-q-1", AppName: "agent-q-1"})
-	w.drain(ctx)
-
-	rows, total, _, _, err := store.ListFactRows(ctx, "agent", "agent-q-1", "", "active", "", 20, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if total != 1 || len(rows) != 1 {
-		t.Fatalf("expected fact after queue drain, got total=%d", total)
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		w.drain(ctx)
+		rows, total, _, _, err := store.ListFactRows(ctx, "agent", "agent-q-1", "", "active", "", 20, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if total == 1 && len(rows) == 1 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("expected fact after queue drain, got total=%d", total)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }

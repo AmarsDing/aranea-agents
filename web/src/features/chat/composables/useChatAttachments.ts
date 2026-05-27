@@ -38,7 +38,7 @@ export function useChatAttachments(sessionId: Ref<string | undefined>) {
         continue;
       }
       const tempId = `pending-${Date.now()}-${file.name}`;
-      const record: ChatAttachment = { id: tempId, name: file.name, progress: 0.1 };
+      const record: ChatAttachment = { id: tempId, name: file.name, mime_type: file.type, progress: 0.1 };
       attachments.value.push(record);
       try {
         const artifactStore = useArtifactStore();

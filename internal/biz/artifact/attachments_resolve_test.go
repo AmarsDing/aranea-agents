@@ -31,6 +31,14 @@ func (m *resolveMemRepo) Load(_ context.Context, id string, _ int) (artifact.Art
 	return a, m.data[id], nil
 }
 
+func (m *resolveMemRepo) LoadMeta(_ context.Context, id string, _ int) (artifact.Artifact, error) {
+	a, ok := m.items[id]
+	if !ok {
+		return artifact.Artifact{}, fmt.Errorf("not found")
+	}
+	return a, nil
+}
+
 func (m *resolveMemRepo) List(context.Context, string, int, int) ([]artifact.Artifact, int, error) {
 	return nil, 0, nil
 }

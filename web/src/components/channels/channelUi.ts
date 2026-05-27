@@ -1,5 +1,5 @@
 import type { QTableColumn } from "quasar";
-import type { ChannelCatalogItem, ChannelConfig, ChannelMetadata, ChannelRow } from "../../features/channels/types";
+import type { ChannelCatalogItem, ChannelConfig, ChannelDeliveryRow, ChannelMetadata, ChannelRow } from "../../features/channels/types";
 import { buildChannelWebhookURL, isLocalhostOrigin, resolvePublicWebhookOrigin } from "../../features/channels/publicWebhookOrigin";
 import {
   REGISTRY_COL_W,
@@ -136,4 +136,12 @@ export const CHANNEL_TURN_JOBS_TABLE_COLUMNS = [
   registryCol("peer_id", "peer_id", "peer_id", "left", REGISTRY_COL_W.name),
   registryCol("session_id", "session_id", "session_id", "left", REGISTRY_COL_W.name),
   registryCol("updated_at", "updated_at", "updated_at", "left", REGISTRY_COL_W.time)
+];
+
+/** Channel Delivery 面板列 */
+export const CHANNEL_DELIVERIES_TABLE_COLUMNS: QTableColumn<ChannelDeliveryRow>[] = [
+  registryCol<ChannelDeliveryRow>("status", "status", "status", "left", REGISTRY_COL_W.status),
+  registryCol<ChannelDeliveryRow>("agent_id", "agent_id", "agent_id", "left", REGISTRY_COL_W.name),
+  registryCol<ChannelDeliveryRow>("payload", "payload", "payload_json", "left", REGISTRY_COL_W.name),
+  registryCol<ChannelDeliveryRow>("updated_at", "updated_at", "updated_at", "left", REGISTRY_COL_W.time)
 ];

@@ -32,7 +32,7 @@ export function dropPendingUserPlaceholders(messages: Message[]): Message[] {
 
 function shouldDropStaleInFlight(message: Message): boolean {
   const id = message.id || "";
-  if (id.startsWith("pending-user-")) return true;
+	if (id.startsWith("pending-user-")) return message.status !== "failed";
   if (id.startsWith("ws-stream-") || id.startsWith("ws-team-stream-")) {
     // Terminal ephemeral row is superseded by persisted server assistant message.
     return (message.status || "") !== "streaming";

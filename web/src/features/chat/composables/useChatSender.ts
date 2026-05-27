@@ -12,6 +12,7 @@ import type { ChatAttachment, ChatEntityKind } from "../../../components/chat/ty
 import type { UseEnvelopeStreamReturn } from "../useEnvelopeStream";
 import type { WsUpstream } from "../envelope";
 import { createPlaceholderMessage } from "../streamHandlers";
+import { shouldBlockImageAttachmentsForModel } from "../modelCapabilities";
 import { sendMessage } from "../api";
 import { AWAIT_KIND_TOOL_CONFIRM } from "../awaitConstants";
 
@@ -36,7 +37,11 @@ export type SenderDeps = {
   awaitingRunId: Ref<string>;
   awaitKind: Ref<string>;
   runStatus: Ref<string>;
-  selectedProviderModel: ComputedRef<{ provider: string; model: string } | undefined>;
+  selectedProviderModel: ComputedRef<{
+    provider: string;
+    model: string;
+    capabilities?: { vision?: boolean; image?: boolean; text_only?: boolean };
+  } | undefined>;
   selectedKnowledgeBases: Ref<string[]>;
   ensureChatStream: (sessionId: string) => UseEnvelopeStreamReturn;
   ensureTeamStream: (sessionId: string) => UseEnvelopeStreamReturn;
@@ -264,6 +269,13 @@ export function useChatSender(deps: SenderDeps) {
     });
   }
 
+  function notifyUnsupportedImageModel() {
+    $q.notify({
+      type: "warning",
+      message: t("chat.imageModelUnsupported", "当前模型不支持图片理解，请移除图片附件或切换到支持视觉的模型"),
+    });
+  }
+
   async function sendAgentUserContent(content: string, reusePendingId?: string) {
     const text = content.trim();
     if (!text) return;
@@ -271,6 +283,7 @@ export function useChatSender(deps: SenderDeps) {
     if (!followUp) {
       markSending();
     }
+    let clearAttachments = true;
     try {
       if (!deps.sessionStore.selectedSession) await deps.onNewSession(deps.makeSessionTitle(text));
       if (!deps.sessionStore.selectedSession) {
@@ -283,6 +296,25 @@ export function useChatSender(deps: SenderDeps) {
         markSending(sessionId);
       }
       const selectedModel = deps.selectedProviderModel.value;
+      const provider =
+        selectedModel?.provider ||
+        deps.sessionStore.selectedSession.provider ||
+        deps.appStore.selectedAgent?.provider ||
+        "";
+      const model =
+        selectedModel?.model ||
+        deps.sessionStore.selectedSession.model ||
+        deps.appStore.selectedAgent?.model ||
+        "";
+      if (shouldBlockImageAttachmentsForModel({ provider, model, capabilities: selectedModel?.capabilities }, deps.attachments.value)) {
+        clearAttachments = false;
+        notifyUnsupportedImageModel();
+        if (!followUp) markSendingDone();
+        return;
+      }
+      if (!reusePendingId) {
+        deps.inputText.value = "";
+      }
 
       const pendingUserId = reusePendingId ?? `pending-user-${crypto.randomUUID()}`;
       if (!reusePendingId) {
@@ -315,16 +347,8 @@ export function useChatSender(deps: SenderDeps) {
           content: text,
           options: {
             dialog_mode: deps.dialogMode.value,
-            provider:
-              selectedModel?.provider ||
-              deps.sessionStore.selectedSession.provider ||
-              deps.appStore.selectedAgent?.provider ||
-              "",
-            model:
-              selectedModel?.model ||
-              deps.sessionStore.selectedSession.model ||
-              deps.appStore.selectedAgent?.model ||
-              "",
+            provider,
+            model,
             attachments: deps.attachments.value.map((item) => ({ id: item.id })),
             knowledge_bases: deps.selectedKnowledgeBases.value,
           },
@@ -346,16 +370,8 @@ export function useChatSender(deps: SenderDeps) {
             undefined,
             {
               dialogMode: deps.dialogMode.value,
-              provider:
-                selectedModel?.provider ||
-                deps.sessionStore.selectedSession.provider ||
-                deps.appStore.selectedAgent?.provider ||
-                "",
-              model:
-                selectedModel?.model ||
-                deps.sessionStore.selectedSession.model ||
-                deps.appStore.selectedAgent?.model ||
-                "",
+              provider,
+              model,
               attachments: deps.attachments.value,
               knowledgeBases: deps.selectedKnowledgeBases.value,
             }
@@ -385,12 +401,13 @@ export function useChatSender(deps: SenderDeps) {
         if (!followUp) markSendingDone();
       }
     } finally {
-      deps.attachments.value = [];
+      if (clearAttachments) {
+        deps.attachments.value = [];
+      }
     }
   }
 
   async function sendAgentMessage(content: string) {
-    deps.inputText.value = "";
     await sendAgentUserContent(content);
   }
 
@@ -400,6 +417,7 @@ export function useChatSender(deps: SenderDeps) {
       markSending();
     }
     let sessionIdForCatch = "";
+    let clearAttachments = true;
     try {
       if (!deps.sessionStore.teamSelectedSessionId) await deps.onNewSession(deps.makeSessionTitle(content));
       const sessionId = deps.sessionStore.teamSelectedSessionId;
@@ -415,6 +433,14 @@ export function useChatSender(deps: SenderDeps) {
       const teamId = deps.sessionStore.selectedTeamId!;
       const session = deps.sessionStore.teamSessions[teamId]?.find((item) => item.id === sessionId);
       const selectedModel = deps.selectedProviderModel.value;
+      const provider = selectedModel?.provider || session?.provider || "";
+      const model = selectedModel?.model || session?.model || "";
+      if (shouldBlockImageAttachmentsForModel({ provider, model, capabilities: selectedModel?.capabilities }, deps.attachments.value)) {
+        clearAttachments = false;
+        notifyUnsupportedImageModel();
+        if (!followUp) markSendingDone();
+        return;
+      }
       deps.inputText.value = "";
 
       const pendingUserId = `pending-user-${crypto.randomUUID()}`;
@@ -449,8 +475,8 @@ export function useChatSender(deps: SenderDeps) {
             content,
             options: {
               dialog_mode: deps.dialogMode.value,
-              provider: selectedModel?.provider || session?.provider || "",
-              model: selectedModel?.model || session?.model || "",
+              provider,
+              model,
               attachments: deps.attachments.value.map((item) => ({ id: item.id })),
               knowledge_bases: deps.selectedKnowledgeBases.value,
             },
@@ -466,8 +492,8 @@ export function useChatSender(deps: SenderDeps) {
             deps.sessionStore.selectedTeamId ?? undefined,
             {
               dialogMode: deps.dialogMode.value,
-              provider: selectedModel?.provider || session?.provider || "",
-              model: selectedModel?.model || session?.model || "",
+              provider,
+              model,
               attachments: deps.attachments.value,
               knowledgeBases: deps.selectedKnowledgeBases.value,
             }
@@ -492,7 +518,9 @@ export function useChatSender(deps: SenderDeps) {
         }
       }
     } finally {
-      deps.attachments.value = [];
+      if (clearAttachments) {
+        deps.attachments.value = [];
+      }
     }
   }
 

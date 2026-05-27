@@ -83,7 +83,59 @@ func chatNowRFC3339() string {
 
 // ExecuteTurn implements biz.TurnGateway — delegates to ChatOrchestrator.Execute.
 func (s *ChatService) ExecuteTurn(ctx context.Context, input biz.TurnInput) (biz.TurnResult, error) {
+	if s != nil && s.turnPipeline != nil {
+		if result, err, handled := s.tryAdmissionBeforePersistence(ctx, input); handled {
+			tr := turnResultFromNative(result)
+			if IsTurnMessageQueued(err) {
+				return tr, ErrTurnMessageQueued
+			}
+			return tr, err
+		}
+		_, result, err := s.turnPipeline.Run(ctx, turnIntentFromInput(input))
+		tr := turnResultFromNative(result)
+		if err != nil {
+			return tr, err
+		}
+		if result.Outcome == biz.NativeTurnOutcomeQueued {
+			return tr, ErrTurnMessageQueued
+		}
+		return tr, nil
+	}
 	return s.orch.Execute(ctx, input)
+}
+
+func (s *ChatService) tryAdmissionBeforePersistence(ctx context.Context, input biz.TurnInput) (biz.NativeTurnResult, error, bool) {
+	if s == nil || s.orch == nil {
+		return biz.NativeTurnResult{}, nil, false
+	}
+	sessionID := strings.TrimSpace(input.SessionID)
+	if sessionID == "" {
+		return biz.NativeTurnResult{}, nil, false
+	}
+	hasActive := s.orch.runs.HasActive(sessionID)
+	if !hasActive {
+		return biz.NativeTurnResult{}, nil, false
+	}
+	contextPressure := s.orch.sessionContextPressure(ctx, input)
+	verdict, handled := s.orch.checkTurnAdmission(input, hasActive, contextPressure)
+	if !handled {
+		return biz.NativeTurnResult{}, nil, false
+	}
+	result, err := nativeResultFromAdmissionVerdict(verdict)
+	return result, err, true
+}
+
+func turnIntentFromInput(input biz.TurnInput) biz.TurnIntent {
+	return biz.TurnIntent{
+		SessionID:     input.SessionID,
+		AgentKey:      input.AgentKey,
+		TeamID:        input.TeamID,
+		Content:       input.Content,
+		AttachmentIDs: input.Options.AttachmentIDs,
+		Options:       input.Options,
+		Timeouts:      input.Timeouts,
+		EntryConfig:   input.EntryConfig,
+	}
 }
 
 // chatServiceGatewayAdapter adapts ChatService to implement biz-level narrow

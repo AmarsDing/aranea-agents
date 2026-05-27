@@ -74,6 +74,7 @@ type TurnIntent struct {
 	IdempotencyKey  string
 	DeliveryTargets []DeliveryTarget
 	Options         TurnOptions
+	Timeouts        TurnTimeouts
 	EntryConfig     TurnEntryPointConfig
 }
 
@@ -105,6 +106,7 @@ func (i TurnIntent) TurnInput() TurnInput {
 		AgentKey:  i.AgentKey,
 		TeamID:    i.TeamID,
 		Options:   i.Options,
+		Timeouts:  i.Timeouts,
 		EntryConfig: TurnEntryPointConfig{
 			EntryPoint:  entryPointFromTurnSource(i.Source),
 			AllowQueue:  i.EntryConfig.AllowQueue,

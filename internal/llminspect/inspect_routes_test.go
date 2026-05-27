@@ -5,9 +5,23 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
+func allowLocalProviderInspect(t *testing.T) {
+	t.Helper()
+	oldValidate := validateProviderURL
+	oldClient := newProviderClient
+	validateProviderURL = func(string) error { return nil }
+	newProviderClient = func(time.Duration) *http.Client { return http.DefaultClient }
+	t.Cleanup(func() {
+		validateProviderURL = oldValidate
+		newProviderClient = oldClient
+	})
+}
+
 func TestInspectOllamaModel(t *testing.T) {
+	allowLocalProviderInspect(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/tags" {
 			http.NotFound(w, r)
@@ -51,6 +65,7 @@ func TestInspectBedrockModel(t *testing.T) {
 }
 
 func TestInspectGeminiModel(t *testing.T) {
+	allowLocalProviderInspect(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"models": []map[string]any{

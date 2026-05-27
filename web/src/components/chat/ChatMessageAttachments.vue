@@ -99,7 +99,7 @@ async function onDownload(meta: ArtifactMeta) {
 }
 
 .chat-message-attachments__size {
-  opacity: 0.75;
+  opacity: 75%;
   flex-shrink: 0;
 }
 

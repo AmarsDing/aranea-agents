@@ -33,6 +33,7 @@ type PersistenceSet struct {
 	AgentMCP   *biz.AgentMCPTooling // per-agent MCP tool configuration
 	Artifact   trpcartifact.Service // optional; wired from biz.ArtifactUsecase adapter
 	ArtifactUC *biz.ArtifactUsecase // optional; attachment ref resolution for turns
+	RunnerRollback RunnerSessionRollbackStore // optional framework-session rollback boundary store
 }
 
 // EventPipeline wraps the event bus used for projecting runtime events

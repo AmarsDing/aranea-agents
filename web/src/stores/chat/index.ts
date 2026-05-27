@@ -30,12 +30,30 @@ export const useChatStore = defineStore("chat", () => {
   const runtime = useChatRuntimeStore();
 
   // --- Session delegates ---
-  const entityKind = computed(() => session.entityKind);
-  const selectedTeamId = computed(() => session.selectedTeamId);
-  const teamSelectedSessionId = computed(() => session.teamSelectedSessionId);
-  const sessions = computed(() => session.sessions);
-  const selectedSession = computed(() => session.selectedSession);
-  const teamSessions = computed(() => session.teamSessions);
+  const entityKind = computed({
+    get: () => session.entityKind,
+    set: (kind: ChatEntityKind) => { session.entityKind = kind; },
+  });
+  const selectedTeamId = computed({
+    get: () => session.selectedTeamId,
+    set: (teamId: string | null) => { session.selectedTeamId = teamId; },
+  });
+  const teamSelectedSessionId = computed({
+    get: () => session.teamSelectedSessionId,
+    set: (sessionId: string | null) => { session.teamSelectedSessionId = sessionId; },
+  });
+  const sessions = computed({
+    get: () => session.sessions,
+    set: (rows: Session[]) => { session.sessions = rows; },
+  });
+  const selectedSession = computed({
+    get: () => session.selectedSession,
+    set: (row: Session | null) => { session.selectedSession = row; },
+  });
+  const teamSessions = computed({
+    get: () => session.teamSessions,
+    set: (rows: Record<string, TeamSessionRow[]>) => { session.teamSessions = rows; },
+  });
 
   function currentSessionId() { return session.currentSessionId(); }
   function resetForAgentSwitch() { session.resetForAgentSwitch(); }

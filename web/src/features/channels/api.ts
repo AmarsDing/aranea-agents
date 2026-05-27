@@ -11,6 +11,7 @@ import type {
   ChannelCatalogItem,
   ChannelCredential,
   ChannelCredentialInput,
+  ChannelDeliveryRow,
   ChannelResourceInput,
   ChannelRow,
   ChannelTestResult,
@@ -195,6 +196,7 @@ export type {
   ChannelResourceInput,
   ChannelCredential,
   ChannelCredentialInput,
+  ChannelDeliveryRow,
   ChannelTestResult,
   ChannelTurnJobRow
 } from "./types";
@@ -232,17 +234,6 @@ export async function listChannelTurnJobs(channelId: string, limit = 30): Promis
   const items = (res as { items?: unknown[] }).items ?? [];
   return { items: items.map(wireChannelTurnJob) };
 }
-
-export type ChannelDeliveryRow = {
-  id: string;
-  channel_id: string;
-  agent_id: string;
-  status: string;
-  payload_json: string;
-  error_message: string;
-  created_at: string;
-  updated_at: string;
-};
 
 export async function listChannelDeliveries(id: string, limit?: number): Promise<{ items: ChannelDeliveryRow[] }> {
   const data = await channelApi.ListChannelDeliveries({ id, limit: limit ?? 50 });

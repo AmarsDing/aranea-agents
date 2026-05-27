@@ -102,19 +102,8 @@ export function clearChatMarkdownCache() {
   mdCache.clear();
 }
 
-function closeOpenFences(src: string): string {
-  let count = 0;
-  for (const line of src.split("\n")) {
-    if (/^\s*```/.test(line)) count++;
-  }
-  if (count % 2 !== 0) return `${src}\n\`\`\``;
-  return src;
-}
-
 export function renderStreamingChatMarkdown(content: string): string {
-  const patched = closeOpenFences(content || "");
-  return DOMPurify.sanitize(markdown.render(patched), {
-    ADD_TAGS: ["button"],
-    ADD_ATTR: ["type", "aria-label", "aria-hidden"],
-  });
+  // During streaming, avoid full markdown-it parsing on every token. The final
+  // text_done render still uses complete Markdown above.
+  return markdown.utils.escapeHtml(content || "").replace(/\n/g, "<br>");
 }

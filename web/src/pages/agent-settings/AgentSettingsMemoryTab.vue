@@ -39,8 +39,7 @@
           v-if="!memoryLayersDisabled && config.heartbeat.enabled"
           dense
           rounded
-          class="app-grid-span-full q-mt-xs"
-          style="background: rgba(var(--q-warning-rgb, 255,152,0),0.1)"
+          class="app-grid-span-full q-mt-xs memory-heartbeat-banner"
         >
           <q-icon name="info" color="warning" class="q-mr-sm" />
           HEARTBEAT.md 已在 PGO-1 中弃用，心跳检查清单请移至 AGENTS_TASK.md。
@@ -488,6 +487,12 @@
     </section>
   </div>
 </template>
+
+<style scoped>
+.memory-heartbeat-banner {
+  background: color-mix(in srgb, var(--q-warning) 10%, transparent);
+}
+</style>
 
 <script setup lang="ts">
 import { computed } from "vue";

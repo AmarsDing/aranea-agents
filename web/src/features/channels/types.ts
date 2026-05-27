@@ -19,6 +19,17 @@ export type ChannelTurnJobRow = {
   updated_at: string;
 };
 
+export type ChannelDeliveryRow = {
+  id: string;
+  channel_id: string;
+  agent_id: string;
+  status: string;
+  payload_json: string;
+  error_message: string;
+  created_at: string;
+  updated_at: string;
+};
+
 export type ChannelCatalogItem = {
   type: string;
   label: string;

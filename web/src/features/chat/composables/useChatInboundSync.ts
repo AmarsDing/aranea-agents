@@ -203,7 +203,13 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
       }
       flushInboundWriter(sessionId);
       try {
-        await deps.messageStore.loadMessages({ sessionId, dropStaleInFlight });
+        const afterRevision =
+          deps.messageStore.sessionRevisionBySession[sessionId] ?? 0;
+        await deps.messageStore.loadMessages({
+          sessionId,
+          afterRevision: afterRevision > 0 ? afterRevision : undefined,
+          dropStaleInFlight,
+        });
         if (clearStreaming) {
           streamingSnapshots.clear(sessionId);
         }

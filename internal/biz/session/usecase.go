@@ -286,6 +286,11 @@ type SessionTurnListResult struct {
 type SessionTurnUpdateFields struct {
 	Status              *string
 	EndedAt             *string
+	UserMessageID       *string
+	AssistantMessageID  *string
+	OwnerType           *string
+	AgentID             *string
+	TeamID              *string
 	DurationMs          *int
 	FirstTokenMs        *int
 	ModelCallCount      *int
@@ -299,7 +304,6 @@ type SessionTurnUpdateFields struct {
 	FinalProvider       *string
 	FinalModel          *string
 	FinalContentPreview *string
-	AssistantMessageID  *string
 	ErrorCode           *string
 	ErrorMessage        *string
 	MetadataJSON        *string

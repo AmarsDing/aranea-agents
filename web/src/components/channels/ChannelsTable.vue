@@ -90,6 +90,16 @@
             dense
             round
             class="channel-icon-btn"
+            icon="work_history"
+            @click="$emit('ops', props.row)"
+          >
+            <q-tooltip>查看 Job / Delivery</q-tooltip>
+          </q-btn>
+          <q-btn
+            flat
+            dense
+            round
+            class="channel-icon-btn"
             icon="science"
             :loading="testingId === props.row.id"
             @click="$emit('testConnection', props.row)"
@@ -140,6 +150,7 @@ defineEmits<{
   toggleEnabled: [row: ChannelRow, value: boolean];
   testConnection: [row: ChannelRow];
   copyWebhook: [row: ChannelRow];
+  ops: [row: ChannelRow];
   edit: [row: ChannelRow];
   remove: [row: ChannelRow];
 }>();

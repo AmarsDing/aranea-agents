@@ -43,6 +43,13 @@
                     :color="turnBadgeColor(inbox.lastTurn.status)"
                     :label="turnStatusLabel(inbox.lastTurn.status)"
                   />
+                  <q-badge
+                    v-if="inboxDeliveryLabel(inbox)"
+                    dense
+                    outline
+                    :color="inboxDeliveryColor(inbox)"
+                    :label="inboxDeliveryLabel(inbox)"
+                  />
                 </div>
               </q-item-section>
             </q-item>
@@ -208,6 +215,7 @@ import type { DeleteKind, SessionView } from "./types";
 import { isChannelSession, parseChannelSessionMeta } from "../../features/chat/channelSessionMeta";
 import type { ConversationSession, ConversationTurnStatus } from "../../domain/conversation";
 import {
+  presentDeliveryStatus,
   presentConversationSource,
   presentTurnStatus,
   toneToQuasarColor,
@@ -331,6 +339,24 @@ function turnStatusLabel(status: ConversationTurnStatus): string {
 
 function turnBadgeColor(status: ConversationTurnStatus): string {
   return toneToQuasarColor(presentTurnStatus(status).tone);
+}
+
+function inboxDeliveryLabel(session: ConversationSession): string {
+  const target = latestDeliveryTarget(session);
+  if (session.lastTurn?.status === "failed" && target?.status !== "failed") {
+    return "";
+  }
+  return target ? presentDeliveryStatus(target.status).label : "";
+}
+
+function inboxDeliveryColor(session: ConversationSession): string {
+  const target = latestDeliveryTarget(session);
+  return toneToQuasarColor(presentDeliveryStatus(target?.status).tone);
+}
+
+function latestDeliveryTarget(session: ConversationSession) {
+  const targets = session.lastTurn?.deliveryTargets ?? [];
+  return targets.length ? targets[targets.length - 1] : undefined;
 }
 
 function shortTime(session: SessionView) {

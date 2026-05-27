@@ -68,17 +68,20 @@ const guide = computed(() => getFieldGuide(props.scope, props.fileName))
   display: inline-flex;
   align-items: center;
 }
+
 .field-guide-hint__icon {
   vertical-align: middle;
 }
+
 .field-guide-card {
   max-width: 340px;
 }
+
 .example-body {
   font-size: 11px;
-  background: #f9f9f9;
+  background: var(--glass-surface);
   border-radius: 4px;
   white-space: pre-wrap;
-  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 </style>

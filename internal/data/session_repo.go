@@ -8,13 +8,13 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
-	"aranea-agents/internal/llmcontext"
 	"aranea-agents/internal/data/ent/agent"
 	"aranea-agents/internal/data/ent/message"
 	"aranea-agents/internal/data/ent/platformskill"
 	entsession "aranea-agents/internal/data/ent/session"
 	skillinvocationpkg "aranea-agents/internal/data/ent/skillinvocation"
 	toolinvocationpkg "aranea-agents/internal/data/ent/toolinvocation"
+	"aranea-agents/internal/llmcontext"
 
 	entsql "entgo.io/ent/dialect/sql"
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -947,6 +947,24 @@ func (r *sessionRepo) AppendChatMessage(ctx context.Context, sessionID string, m
 		return rollback(err)
 	}
 	return nil
+}
+
+func (r *sessionRepo) UpdateChatMessageStatus(ctx context.Context, sessionID, messageID, status, errorMessage string) error {
+	sessionID = strings.TrimSpace(sessionID)
+	messageID = strings.TrimSpace(messageID)
+	status = strings.TrimSpace(status)
+	if sessionID == "" || messageID == "" {
+		return kerrors.BadRequest("SESSION", "session_id and message_id are required")
+	}
+	if status == "" {
+		return kerrors.BadRequest("SESSION", "status is required")
+	}
+	_, err := r.data.entClient.Message.Update().
+		Where(message.IDEQ(messageID), message.SessionIDEQ(sessionID)).
+		SetStatus(status).
+		SetErrorMessage(strings.TrimSpace(errorMessage)).
+		Save(ctx)
+	return err
 }
 
 func (r *sessionRepo) IncrementInvocationCounts(ctx context.Context, sessionID string, toolDelta, mcpDelta, skillDelta int) error {

@@ -68,6 +68,13 @@ describe("mergeSessionMessages", () => {
     expect(merged.some((m) => m.id === "act-tc-1")).toBe(false);
   });
 
+  it("keeps failed pending-user rows when dropStaleInFlight is set", () => {
+    const server = [msg("u-1", "ok", "2026-05-20T10:00:00Z")];
+    const failed = { ...msg("pending-user-1", "failed", "2026-05-20T10:00:02Z"), role: "user" };
+    const merged = mergeSessionMessages(server, [...server, failed], { dropStaleInFlight: true });
+    expect(merged.some((m) => m.id === "pending-user-1")).toBe(true);
+  });
+
   it("keeps streaming ws-stream row when dropStaleInFlight is set", () => {
     const server = [msg("u-1", "ok", "2026-05-20T10:00:00Z")];
     const local = [...server, msg("ws-stream-sess-1", "streaming", "2026-05-20T10:00:01Z")];

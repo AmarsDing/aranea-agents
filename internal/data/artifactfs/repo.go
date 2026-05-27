@@ -182,6 +182,18 @@ func (r *FSArtifactRepo) Load(_ context.Context, id string, version int) (biz.Ar
 	return meta.toBiz(), data, nil
 }
 
+// LoadMeta returns artifact metadata without reading the binary payload.
+func (r *FSArtifactRepo) LoadMeta(_ context.Context, id string, version int) (biz.Artifact, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	meta, err := r.findMeta(id, version)
+	if err != nil {
+		return biz.Artifact{}, err
+	}
+	return meta.toBiz(), nil
+}
+
 // resolveBinPath returns the on-disk path for a metadata entry. New entries
 // store a relative URI (OUT-05 / ART-03); legacy entries written before this
 // change stored either an absolute path or a path that already includes the

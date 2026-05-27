@@ -107,21 +107,21 @@ const visibleTools = computed(() =>
   margin-bottom: 12px;
   padding: 12px 14px;
   border-radius: 14px;
-  background: var(--app-glass-soft, rgba(255, 255, 255, 0.55));
-  border: 1px solid var(--app-border-subtle, rgba(0, 0, 0, 0.06));
+  background: var(--glass-surface);
+  border: 1px solid var(--glass-border);
   transition: box-shadow 0.25s ease, border-color 0.25s ease;
 }
 
 .turn-block--focused {
-  border-color: var(--q-primary, #1976d2);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--q-primary, #1976d2) 35%, transparent);
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 35%, transparent);
 }
 
 .turn-block__channel-bar {
   margin: -4px 0 8px;
   padding: 4px 8px;
   border-radius: 8px;
-  background: var(--app-info-soft, rgba(33, 150, 243, 0.12));
-  color: var(--app-text-secondary, rgba(0, 0, 0, 0.65));
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  color: var(--color-text-secondary);
 }
 </style>

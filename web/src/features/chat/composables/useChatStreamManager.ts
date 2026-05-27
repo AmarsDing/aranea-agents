@@ -41,9 +41,17 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
   let teamStreamSessionId: string | null = null;
 
   const wsReplaying = ref(false);
+  let lastErrorNotifyMessage = "";
+  let lastErrorNotifyAt = 0;
 
   function notifyError(message: string) {
-    $q.notify({ type: "negative", message });
+    const now = Date.now();
+    if (message === lastErrorNotifyMessage && now - lastErrorNotifyAt < 5000) {
+      return;
+    }
+    lastErrorNotifyMessage = message;
+    lastErrorNotifyAt = now;
+    $q.notify({ type: "negative", message, group: "chat-stream-error" });
   }
 
   function notifyOrchestration(message: string) {

@@ -23,6 +23,19 @@ func (m *Manager) runSupervised(
 	platform, mode string,
 ) {
 	defer m.remove(ch.ID)
+	runCtx := parentCtx
+	cancelRun := func() {}
+	leaseKey := biz.ChannelRuntimeLeaseKey(ch.ID, platform)
+	if m.leaseRepo != nil && leaseKey != "" && strings.TrimSpace(m.ownerID) != "" {
+		runCtx, cancelRun = context.WithCancel(parentCtx)
+		renewCtx, stopRenew := context.WithCancel(runCtx)
+		defer cancelRun()
+		defer stopRenew()
+		defer func() {
+			_ = m.leaseRepo.ReleaseRuntimeLease(context.Background(), leaseKey, m.ownerID)
+		}()
+		go m.renewLeaseLoop(renewCtx, leaseKey, platform, cancelRun)
+	}
 	arametrics.ChannelRuntimeConnected.WithLabelValues(platform, mode).Inc()
 	defer arametrics.ChannelRuntimeConnected.WithLabelValues(platform, mode).Dec()
 
@@ -31,21 +44,21 @@ func (m *Manager) runSupervised(
 		backoff = runtimeReconnectInitial
 	}
 	for {
-		if parentCtx.Err() != nil {
+		if runCtx.Err() != nil {
 			return
 		}
 		if !m.fingerprintMatches(ch.ID, fp) {
 			return
 		}
 		setChannelConnection(ch.ID, true)
-		creds, err := m.channels.ListCredentialsRaw(parentCtx, ch.ID)
+		creds, err := m.channels.ListCredentialsRaw(runCtx, ch.ID)
 		if err != nil {
 			setChannelConnection(ch.ID, false)
 			return
 		}
-		_ = starter(parentCtx, ch, creds, m.credLookup, m.handler)
+		_ = starter(runCtx, ch, creds, m.credLookup, m.handler)
 		setChannelConnection(ch.ID, false)
-		if parentCtx.Err() != nil {
+		if runCtx.Err() != nil {
 			return
 		}
 		if !m.fingerprintMatches(ch.ID, fp) {
@@ -56,7 +69,7 @@ func (m *Manager) runSupervised(
 
 		timer := time.NewTimer(backoff)
 		select {
-		case <-parentCtx.Done():
+		case <-runCtx.Done():
 			timer.Stop()
 			return
 		case <-timer.C:
@@ -65,6 +78,34 @@ func (m *Manager) runSupervised(
 			backoff *= 2
 			if backoff > runtimeReconnectMax {
 				backoff = runtimeReconnectMax
+			}
+		}
+	}
+}
+
+func (m *Manager) renewLeaseLoop(ctx context.Context, leaseKey, platform string, cancelRun context.CancelFunc) {
+	ttl := m.leaseTTL
+	if ttl <= 0 {
+		ttl = runtimeLeaseTTL
+	}
+	interval := ttl / 3
+	if interval < time.Second {
+		interval = time.Second
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			renewed, err := m.leaseRepo.RenewRuntimeLease(ctx, leaseKey, m.ownerID, time.Now().UTC().Add(ttl))
+			if err != nil || !renewed {
+				if err != nil {
+					arametrics.ChannelRuntimeReconnectTotal.WithLabelValues(platform, "lease", "renew_error").Inc()
+				}
+				cancelRun()
+				return
 			}
 		}
 	}

@@ -51,6 +51,7 @@ var ProviderSet = wire.NewSet(
 	NewChannelPeerSessionRepo,
 	NewChannelInboundReceiptRepo,
 	NewChannelTurnJobRepo,
+	NewChannelRuntimeLeaseRepo,
 	NewSessionRunRepo,
 	NewSessionRunCheckpointRepo,
 	NewSessionParticipantRepo,
@@ -331,6 +332,9 @@ func ensureSchemaDDL(rawDB *sql.DB, entClient *ent.Client) error {
 	if err := ensurePricingRulePatches(context.Background(), entClient); err != nil {
 		return fmt.Errorf("pricing rule patches: %w", err)
 	}
+	if err := ensureLlmProviderModelCapabilityPatches(context.Background(), entClient); err != nil {
+		return fmt.Errorf("llm provider model capability patches: %w", err)
+	}
 	if err := ensureDefaultSystemSetting(context.Background(), entClient); err != nil {
 		return err
 	}
@@ -370,6 +374,9 @@ func ensureSchemaDDL(rawDB *sql.DB, entClient *ent.Client) error {
 	}
 	if err := EnsureChannelTurnJobSchema(ctxSchema, rawDB); err != nil {
 		return fmt.Errorf("channel turn job schema: %w", err)
+	}
+	if err := EnsureChannelRuntimeLeaseSchema(ctxSchema, rawDB); err != nil {
+		return fmt.Errorf("channel runtime lease schema: %w", err)
 	}
 	if err := EnsureSessionRunSchema(ctxSchema, rawDB); err != nil {
 		return fmt.Errorf("session run schema: %w", err)
