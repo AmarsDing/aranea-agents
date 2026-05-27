@@ -16,6 +16,7 @@ import {
   envelopeSource,
   isSessionRevisionSyncEnvelope,
   isTurnCompleteEnvelope,
+  shouldSkipHydrate,
 } from "../inboundSyncEnvelope";
 import {
   shouldGlobalHubFinalizeTurn,
@@ -395,6 +396,12 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
     if (!ownsEnvelope) return;
 
     if (isCurrent && isSessionRevisionSyncEnvelope(env)) {
+      if (shouldSkipHydrate(env)) {
+        if (envRev > localRev) {
+          deps.messageStore.sessionRevisionBySession[sessionId] = envRev;
+        }
+        return;
+      }
       if (envRev > localRev) {
         scheduleHydrate(sessionId, false, false);
       }

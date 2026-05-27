@@ -69,13 +69,17 @@ func PublishSessionRevisionEnvelope(bus Bus, sessionID, runID, turnID, source st
 	env.Channel = RouteChannel(env)
 	env.SessionRevision = revision
 	env.TurnID = strings.TrimSpace(turnID)
-	if src := strings.TrimSpace(source); src != "" {
+	src := strings.TrimSpace(source)
+	if src != "" {
 		env.Source = src
 	}
 	env.Metadata = map[string]any{
 		"run_id":           runID,
 		"status":           status,
 		"session_revision": revision,
+	}
+	if src == "ws" && status == SessionRunStatusSync {
+		env.Metadata["skip_hydrate"] = true
 	}
 	bus.Publish(context.Background(), env)
 }

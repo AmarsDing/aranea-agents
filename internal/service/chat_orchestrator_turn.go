@@ -55,6 +55,10 @@ func (o *ChatOrchestrator) RunNativeAgentTurnWithOutcome(ctx context.Context, in
 		return biz.NativeTurnResult{}, kerrors.BadRequest("CHAT_NATIVE", "session_id and content are required")
 	}
 
+	if ep := strings.TrimSpace(string(input.EntryConfig.EntryPoint)); ep != "" {
+		ctx = event.WithEnvelopeSource(ctx, ep)
+	}
+
 	flow := event.NewFlowLogger(o.td.Pipeline.Bus, o.td.Pipeline.Buffer, sessionID, "")
 	flow.LogStart("chat.receive", "收到用户消息", event.P("content_len", len(content)))
 
@@ -155,6 +159,8 @@ func (o *ChatOrchestrator) runNativeAgentTurnBody(ctx context.Context, input biz
 	dialogMode = strutil.FirstNonEmpty(dialogMode, sess.DialogMode, "default")
 	prov = strutil.FirstNonEmpty(prov, sess.DefaultProvider, ag.Provider)
 	mod = strutil.FirstNonEmpty(mod, sess.DefaultModel, ag.Model)
+	prov, mod = o.resolveProviderModelFallback(ctx, prov, mod)
+	o.syncSessionProviderModel(ctx, sessionID, sess, prov, mod)
 	flow.LogDone("chat.provider_resolve", "Provider/Model已解析", event.P("provider", prov), event.P("model", mod), event.P("dialog_mode", dialogMode))
 
 	attN := len(artifactbiz.NormalizeAttachmentIDs(input.Options.AttachmentIDs))
@@ -166,6 +172,50 @@ func (o *ChatOrchestrator) runNativeAgentTurnBody(ctx context.Context, input biz
 	o.runs.StoreCancelable(sessionID, agentRunID, turnCancel)
 	unlock()
 	return o.runSingleAgentViaTRPC(turnCtx, sess, input, ag, dialogMode, prov, mod)
+}
+
+func (o *ChatOrchestrator) resolveProviderModelFallback(ctx context.Context, prov, mod string) (string, string) {
+	if prov != "" && mod != "" {
+		return prov, mod
+	}
+	if o.td.Catalog.Settings != nil {
+		if refine, err := o.td.Catalog.Settings.GetRefineLLM(ctx); err == nil {
+			prov = strutil.FirstNonEmpty(prov, refine.Provider)
+			mod = strutil.FirstNonEmpty(mod, refine.Model)
+		}
+	}
+	if prov != "" && mod != "" {
+		return prov, mod
+	}
+	if o.td.Catalog.LLM != nil {
+		if models, err := o.td.Catalog.LLM.List(ctx); err == nil {
+			for _, m := range models {
+				if m.Enabled && m.Provider != "" && m.Model != "" {
+					prov = strutil.FirstNonEmpty(prov, m.Provider)
+					mod = strutil.FirstNonEmpty(mod, m.Model)
+					break
+				}
+			}
+		}
+	}
+	return prov, mod
+}
+
+func (o *ChatOrchestrator) syncSessionProviderModel(ctx context.Context, sessionID string, sess biz.Session, prov, mod string) {
+	if prov == "" || mod == "" {
+		return
+	}
+	if sess.DefaultProvider == prov && sess.DefaultModel == mod {
+		return
+	}
+	if o.td.Sessions == nil {
+		return
+	}
+	p, m := prov, mod
+	_, _ = o.td.Sessions.Update(ctx, sessionID, biz.SessionUpdateFields{
+		DefaultProvider: &p,
+		DefaultModel:    &m,
+	})
 }
 
 // hydratedAgent loads and returns an Agent by ID.
@@ -651,6 +701,9 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 
 	uid := chatagent.UserIDFromCtx(ctx)
 	runOpts := durableResumeRunOpts(durableCtx.active, []trpcagent.RunOption{trpcagent.WithRequestID(sessionID), skillruntime.RunOptionWithTurnQuery(content)})
+	if input.EntryConfig.AllowStream {
+		runOpts = append(runOpts, trpcagent.WithStream(true))
+	}
 	runOpts = append(runOpts, intentRunOpts...)
 	if ag.Settings != nil {
 		if vars := chatagent.ParseVariablesJSON(ag.Settings.VariablesJSON); vars != nil {

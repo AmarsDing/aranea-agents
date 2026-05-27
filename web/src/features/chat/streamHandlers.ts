@@ -256,7 +256,10 @@ export function bindStreamHandlers(
     if (!sid) return;
     const finalized = dropPendingUserPlaceholders(
       finalizeOrphanToolMessages(ctx.getMessages(sid))
-    );
+    ).filter((m) => {
+      const id = m.id || "";
+      return !id.startsWith("ws-stream-") && !id.startsWith("ws-team-stream-");
+    });
     ctx.setMessages(sid, finalized);
     applySessionContextPatch(sid, env);
     if (shouldSessionWsSkipEnvelope(env)) {

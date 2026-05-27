@@ -25,6 +25,13 @@ export function isSessionRevisionSyncEnvelope(env: Envelope): boolean {
   return runStatusFromEnvelope(env)?.status === SESSION_RUN_STATUS.SYNC;
 }
 
+/** Check skip_hydrate metadata flag — backend sets this on WS-originated sync events
+ *  to prevent redundant full hydrate that causes duplicate messages. */
+export function shouldSkipHydrate(env: Envelope): boolean {
+  const md = env.metadata as Record<string, unknown> | undefined;
+  return md?.skip_hydrate === true;
+}
+
 export function isTurnCompleteEnvelope(env: Envelope): boolean {
   if (env.type === "runner_completion") return true;
   if (env.type !== "run_status") return false;

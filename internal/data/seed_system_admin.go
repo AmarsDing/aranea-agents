@@ -32,7 +32,7 @@ func SeedSystemAdminAgent(ctx context.Context, client *ent.Client) error {
 		budget_monthly_cents, config_json, roles_json, created_by,
 		created_at, updated_at, deleted_at, readonly, kind
 	) VALUES (
-		'agent___system_admin__', ?, '系统管家', '', '',
+		'agent___system_admin__', ?, '系统管家', 'openrouter', 'gpt-4.1-mini',
 		'active', 0, 0, '', '系统内置管理助手 Agent，负责管理 Skill / Agent / Team 等资源。',
 		'', 'complete', 0, 0, '{"tools_profile":"system_admin"}', '[]', 'system',
 		?, ?, '', 1, 'system'

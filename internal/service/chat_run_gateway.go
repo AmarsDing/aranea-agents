@@ -152,9 +152,7 @@ func persistRunStatusToSession(sessions *biz.SessionUsecase, ctx context.Context
 		return
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	safego.Go(ctx, "chat.persist_run_status", func() {
-		bg, bgCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer bgCancel()
+	writeState := func(bg context.Context) {
 		state, err := sessions.GetSessionState(bg, sessionID)
 		if err != nil {
 			return
@@ -176,7 +174,18 @@ func persistRunStatusToSession(sessions *biz.SessionUsecase, ctx context.Context
 			state[stateKeyRunUpdatedAt] = now
 		}
 		_ = sessions.SaveSessionState(bg, sessionID, state)
-	})
+	}
+	if terminalRunStatus(status) {
+		bg, bgCancel := context.WithTimeout(ctx, 5*time.Second)
+		defer bgCancel()
+		writeState(bg)
+	} else {
+		safego.Go(ctx, "chat.persist_run_status", func() {
+			bg, bgCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer bgCancel()
+			writeState(bg)
+		})
+	}
 }
 
 func persistAwaitMarkersToSession(sessions *biz.SessionUsecase, ctx context.Context, sessionID, runID string, await biz.ChatAwaitMeta, syncWrite bool) {

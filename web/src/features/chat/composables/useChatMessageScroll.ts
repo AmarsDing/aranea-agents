@@ -119,7 +119,7 @@ export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
 
   async function scrollToBottom(smooth = false) {
     if (opts.useVirtualMessageList.value && opts.timelineItemsLength.value > 0) {
-      for (let attempt = 0; attempt < 6; attempt++) {
+      for (let attempt = 0; attempt < 3; attempt++) {
         await nextTick();
         if (opts.virtualScrollRef.value) {
           opts.virtualScrollRef.value.scrollTo(
@@ -182,7 +182,7 @@ export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
         return;
       }
       if (!stickToBottom.value) return;
-      void scrollToLatestDialogue(false);
+      void scrollToBottom(false);
     }
   );
 
@@ -200,14 +200,25 @@ export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
   });
 
   let scrollStickRaf = 0;
+  let scrollStickThrottle = 0;
   watch(
     () => opts.messages.value[opts.messages.value.length - 1]?.content_markdown ?? "",
     () => {
       if (!stickToBottom.value) return;
       if (scrollStickRaf) return;
+      const now = Date.now();
+      if (now - scrollStickThrottle < 50) {
+        scrollStickRaf = requestAnimationFrame(() => {
+          scrollStickRaf = 0;
+          scrollStickThrottle = Date.now();
+          void scrollToBottom(false);
+        });
+        return;
+      }
+      scrollStickThrottle = now;
       scrollStickRaf = requestAnimationFrame(() => {
         scrollStickRaf = 0;
-        void scrollToLatestDialogue(false);
+        void scrollToBottom(false);
       });
     }
   );
