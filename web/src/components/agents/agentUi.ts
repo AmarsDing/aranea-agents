@@ -9,6 +9,8 @@ export type AgentFile = {
   name: string;
   caption: string;
   body: string;
+  /** optional=true means the file is not created by default; user adds it explicitly (PGO-1). */
+  optional?: boolean;
 };
 
 export const promptModes = [
@@ -35,16 +37,41 @@ export const statusOptions = [
 
 export const toolOptions = ["browser", "replace_content", "list_file", "read_file", "save_file", "create_image", "create_video", "stt"];
 
+// PGO-1 V2: 5 core files + 1 optional. Removed SOUL.md (merged → IDENTITY.md ## Persona),
+// HEARTBEAT.md (deprecated), USER.md, USER_PREDEFINED.md.
+// Must match internal/biz.pgoDefaultFilesV2 — validated by make fieldguide-lint.
 export const defaultAgentFiles: AgentFile[] = [
-  { name: "AGENTS_CORE.md", caption: "通用操作规则、语言跟随、工具保存约束", body: "# AGENTS_CORE\n遵循用户语言，保存变更必须通过文件工具。" },
-  { name: "AGENTS_TASK.md", caption: "任务模式规则、memory、cron 与隐私约定", body: "# AGENTS_TASK\n执行企业任务时保持可追踪、可恢复。" },
-  { name: "SOUL.md", caption: "人格、语气、价值观；自我进化仅允许调整风格", body: "# SOUL\n保持专业、清晰、克制。" },
-  { name: "IDENTITY.md", caption: "对外身份、角色名与边界", body: "# IDENTITY\n我是企业级 Agent。" },
-  { name: "USER.md", caption: "Agent 级默认用户上下文（每用户覆盖可后续接入）", body: "# USER\n记录稳定偏好。" },
-  { name: "USER_PREDEFINED.md", caption: "预置用户画像与偏好说明", body: "# USER_PREDEFINED\n暂无。" },
-  { name: "CAPABILITIES.md", caption: "能力描述、工具使用说明与边界", body: "# CAPABILITIES\n可进行分析、执行和复盘。" },
-  { name: "RULE.md", caption: "硬性规则、约束与禁止项", body: "# RULE\n不得越权操作。" },
-  { name: "HEARTBEAT.md", caption: "心跳周期注入的检查清单", body: "# 心跳检查清单\n- 检查待处理任务\n- 报告当前状态" }
+  {
+    name: "AGENTS_CORE.md",
+    caption: "通用操作规则、语言跟随、工具保存约束",
+    body: "# AGENTS_CORE\n遵循用户语言，保存变更必须通过文件工具。",
+  },
+  {
+    name: "AGENTS_TASK.md",
+    caption: "任务模式规则、memory、cron 与隐私约定",
+    body: "# AGENTS_TASK\n执行企业任务时保持可追踪、可恢复。",
+  },
+  {
+    name: "IDENTITY.md",
+    caption: "身份 + 人格（含 ## Persona 段，替代旧 SOUL.md）",
+    body: "# IDENTITY\n\n## Persona\n保持专业、清晰、克制。",
+  },
+  {
+    name: "RULE.md",
+    caption: "硬性规则、约束与禁止项",
+    body: "# RULE\n不得越权操作。",
+  },
+  {
+    name: "CAPABILITIES.md",
+    caption: "能力描述、工具使用说明与边界",
+    body: "# CAPABILITIES\n可进行分析、执行和复盘。",
+  },
+  {
+    name: "USER_CONTEXT.md",
+    caption: "用户上下文（可选）：稳定偏好、背景说明",
+    body: "# USER_CONTEXT\n记录稳定偏好与背景信息。",
+    optional: true,
+  },
 ];
 
 export function promptModeLabel(value: string) {

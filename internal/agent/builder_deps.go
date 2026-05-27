@@ -10,6 +10,7 @@ import (
 
 	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
 	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
+	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
 // TRPCCatalogDeps documents catalog/repo dependencies on TRPCBuilderDeps.
@@ -31,19 +32,20 @@ type TRPCModelRouteDeps struct {
 
 // TRPCToolAssemblyDeps documents tool/MCP assembly on TRPCBuilderDeps.
 type TRPCToolAssemblyDeps struct {
-	ToolUC     *biz.ToolUsecase
-	MCPTooling *biz.AgentMCPTooling
-	AwaitHook  tooltrpc.ReplyFunc
+	ToolUC      *biz.ToolUsecase
+	MCPTooling  *biz.AgentMCPTooling
+	AwaitHook   tooltrpc.ReplyFunc
+	CustomTools []trpctool.Tool
 }
 
 // TRPCMemoryKnowledgeDeps documents memory/knowledge ports on TRPCBuilderDeps.
 type TRPCMemoryKnowledgeDeps struct {
-	HasMemory      bool
-	MemoryAdmin    biz.SessionAdminStore
-	MemoryL2Recall biz.MemoryL2Recaller
-	MemoryL3Recall biz.MemoryL3Recaller
+	HasMemory             bool
+	MemoryAdmin           biz.SessionAdminStore
+	MemoryL2Recall        biz.MemoryL2Recaller
+	MemoryL3Recall        biz.MemoryL3Recaller
 	MemoryCompositeRecall biz.MemoryCompositeRecaller
-	KnowledgeRetriever *knowledge.Retriever
+	KnowledgeRetriever    *knowledge.Retriever
 }
 
 // TRPCPluginDeps documents plugin/callback chain on TRPCBuilderDeps.
@@ -74,16 +76,17 @@ type TRPCBuilderDeps struct {
 	Model      string
 	DialogMode string
 	// TRPCToolAssemblyDeps
-	ToolUC     *biz.ToolUsecase
-	MCPTooling *biz.AgentMCPTooling
-	AwaitHook  tooltrpc.ReplyFunc
+	ToolUC      *biz.ToolUsecase
+	MCPTooling  *biz.AgentMCPTooling
+	AwaitHook   tooltrpc.ReplyFunc
+	CustomTools []trpctool.Tool
 	// TRPCMemoryKnowledgeDeps
-	HasMemory          bool
-	MemoryAdmin        biz.SessionAdminStore
-	MemoryL2Recall     biz.MemoryL2Recaller
-	MemoryL3Recall     biz.MemoryL3Recaller
+	HasMemory             bool
+	MemoryAdmin           biz.SessionAdminStore
+	MemoryL2Recall        biz.MemoryL2Recaller
+	MemoryL3Recall        biz.MemoryL3Recaller
 	MemoryCompositeRecall biz.MemoryCompositeRecaller
-	KnowledgeRetriever *knowledge.Retriever
+	KnowledgeRetriever    *knowledge.Retriever
 	// TRPCPluginDeps
 	Plugins       []trpcplugin.Plugin
 	PluginManager *plugintrpc.Manager
@@ -91,6 +94,10 @@ type TRPCBuilderDeps struct {
 	SkillUC         *biz.SkillUsecase
 	SkillDBRepo     trpcskill.Repository
 	CodeExecFactory *localexec.Factory
+	// PGO-1: AgentCategory is used to resolve the 岗位职责 (position description)
+	// from agent_category_nodes for injection into the system instruction.
+	// Optional: when nil, category responsibility injection is skipped.
+	AgentCategory *biz.AgentCategoryUsecase
 }
 
 // CatalogGroup returns the catalog subset (for tests and future refactors).

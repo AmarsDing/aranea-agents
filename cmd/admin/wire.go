@@ -991,6 +991,10 @@ func wireApp(*conf.Server, *conf.Data, log.Logger) (wireOut, func(), error) {
 		provideA2APublicBaseReloader,
 		provideA2AService,
 		provideEventService,
+		// PGO-3: DynamicLLMCaller → biz.LLMCaller binding, PromptRefiner.
+		chatagent.NewDynamicLLMCaller,
+		wire.Bind(new(biz.LLMCaller), new(*chatagent.DynamicLLMCaller)),
+		biz.NewPromptRefiner,
 		wire.Bind(new(biz.UsageQuotaRepo), new(biz.UsageRepo)),
 		newApp,
 		provideWireOut,

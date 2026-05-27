@@ -235,6 +235,64 @@ func (u *AgentCategoryUsecase) normalizeAgentCategory(ctx context.Context, in *A
 	return nil
 }
 
+// BuildResponsibility constructs the role_responsibility string that is
+// injected into the system instruction for an agent bound to a position.
+// It reads the position's description (岗位职责) and, in complete mode only,
+// also prepends the parent department's description. PGO-1-BIZ-04.
+//
+// mode behaviour:
+//   - "complete" / "": full position desc + optional dept desc
+//   - "task":          position desc truncated to 300 chars
+//   - "minimized" / "none" / other: empty string (not injected)
+func (u *AgentCategoryUsecase) BuildResponsibility(ctx context.Context, positionID string, mode string) (string, error) {
+	if strings.TrimSpace(positionID) == "" {
+		return "", nil
+	}
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "minimized", "none":
+		return "", nil
+	}
+
+	pos, err := u.repo.GetAgentCategory(ctx, positionID)
+	if err != nil {
+		return "", err
+	}
+	if pos.Level != "position" {
+		return "", nil
+	}
+	posDesc := strings.TrimSpace(pos.Description)
+	if posDesc == "" {
+		return "", nil
+	}
+
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "task":
+		return truncateResponsibility(posDesc, 300), nil
+	default: // complete / ""
+		result := posDesc
+		if strings.TrimSpace(pos.ParentID) != "" {
+			dept, deptErr := u.repo.GetAgentCategory(ctx, pos.ParentID)
+			if deptErr == nil && strings.TrimSpace(dept.Description) != "" {
+				result = posDesc + "\n\n部门职责：" + strings.TrimSpace(dept.Description)
+			}
+		}
+		return result, nil
+	}
+}
+
+func truncateResponsibility(s string, maxChars int) string {
+	runes := []rune(s)
+	if len(runes) <= maxChars {
+		return s
+	}
+	// Truncate at last newline boundary before maxChars to avoid mid-sentence cuts.
+	sub := string(runes[:maxChars])
+	if idx := strings.LastIndex(sub, "\n"); idx > maxChars/2 {
+		return strings.TrimRight(sub[:idx], " \t") + "…"
+	}
+	return strings.TrimRight(sub, " \t") + "…"
+}
+
 // ErrCategoryBadRequest maps validation messages to 400.
 func ErrCategoryBadRequest(msg string) error {
 	return errors.BadRequest("AGENT_CATEGORY", msg)

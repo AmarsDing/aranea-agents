@@ -1,6 +1,25 @@
 # CLI 终端控制台 — 实现设计文档
 
-> 对应需求：`25 cli.md`
+> ⚠️ **状态：SUPERSEDED（2026-05-27）**
+> 本文档（v2.0）的技术设计已被取代，请改读：
+> - 新设计：[`25-cli-design-2026-05-27.md`](./25-cli-design-2026-05-27.md)（v3.0）
+> - 新需求：[`25-cli-PRD-2026-05-27.md`](./25-cli-PRD-2026-05-27.md)
+> - 新开发计划：[`25-cli-development-plan-2026-05-27.md`](./25-cli-development-plan-2026-05-27.md)
+>
+> 本文档以下章节**与新设计冲突，已废弃**：
+> - §2.3「CLI 依赖 `internal/agent` / `internal/biz` / trpc-agent-go」—— **违反框架红线**（`.cursor/rules/trpc-agent-framework-first.mdc`）
+> - §3.2「手抄等价 Go struct，避开 gRPC 栈」—— 新设计直接复用 `api/kratos/*/v1` 的 pb 类型 + `protojson`
+> - §四「对话模式在 CLI 进程内构建 Runner / dbAgentLoader / SQLiteSessionService」—— 新设计 CLI 仅作为 WS 客户端
+> - §5.3「新增 `ConfirmPlugin`」—— 新设计复用 `chat.proto` 既有 `AwaitUserReply`
+> - §6.3「改 proto 字段扩展 skill import」—— 新设计走 multipart form 字段写 `metadata_json`
+> - §八「Wire 注入：CLI 手动组装 `internal/data.NewData` 等」—— 新设计无数据层依赖
+> - 所有 `/api/v1/*` 路径 —— 新设计统一为 `/v1/*`（与 proto `google.api.http` 注解对齐）
+>
+> 本文档保留作为历史，**不要再据此实施**。
+
+---
+
+> 对应需求：`25 cli.md`（v2.0，已 SUPERSEDED）
 > 遵循规范：`AI-DEVELOPMENT-SPECIFICATION.md`
 
 ---

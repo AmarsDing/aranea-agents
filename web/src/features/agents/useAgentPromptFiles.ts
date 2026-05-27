@@ -6,6 +6,9 @@ import {
   type AgentFile,
 } from "../../components/agents/agentUi";
 
+// PGO-1: only non-optional files are created by default.
+const coreAgentFiles = defaultAgentFiles.filter((f) => !f.optional);
+
 type NotifyFn = (opts: { type: string; message: string }) => void;
 
 /** Prompt file editor state for Agent settings. */
@@ -18,7 +21,8 @@ export function useAgentPromptFiles(agentId: Ref<string>, notify: NotifyFn) {
   const aiInstruction = ref("");
   const fileTokenByName = ref<Record<string, number>>({});
 
-  const files = reactive<AgentFile[]>(defaultAgentFiles.map((file) => ({ ...file })));
+  // PGO-1: start with core (non-optional) files only.
+  const files = reactive<AgentFile[]>(coreAgentFiles.map((file) => ({ ...file })));
 
   const activeFileMeta = computed(() => files.find((file) => file.name === activeFile.value) ?? files[0]);
 
@@ -34,9 +38,26 @@ export function useAgentPromptFiles(agentId: Ref<string>, notify: NotifyFn) {
     () => activeFileBody.value !== (initialFileBodies.value[activeFile.value] ?? ""),
   );
 
-  const heartbeatFile = computed(
-    () => files.find((file) => file.name === "HEARTBEAT.md") ?? files[0],
+  /**
+   * PGO-1: optional files defined in defaultAgentFiles that haven't been added yet.
+   * Used to populate "Add optional file" picker.
+   */
+  const availableOptionalFiles = computed(() =>
+    defaultAgentFiles
+      .filter((f) => f.optional && !files.some((existing) => existing.name === f.name))
   );
+
+  /**
+   * addOptionalFile adds an optional file template (e.g. USER_CONTEXT.md) to the
+   * active file list. Replaces the old heartbeatFile ref. (PGO-1-WEB-02)
+   */
+  function addOptionalFile(name: string) {
+    const template = defaultAgentFiles.find((f) => f.name === name && f.optional);
+    if (!template) return;
+    if (files.some((f) => f.name === name)) return;
+    files.push({ ...template });
+    activeFile.value = name;
+  }
 
   function snapshotFiles() {
     initialFileBodies.value = Object.fromEntries(files.map((file) => [file.name, file.body]));
@@ -135,7 +156,8 @@ export function useAgentPromptFiles(agentId: Ref<string>, notify: NotifyFn) {
     activeFileBody,
     activeFileMeta,
     fileDirty,
-    heartbeatFile,
+    availableOptionalFiles,
+    addOptionalFile,
     snapshotFiles,
     updateFileBody,
     reloadActiveFile,

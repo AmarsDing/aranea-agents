@@ -68,6 +68,16 @@ api:
 check-overlay:
 	go test ./internal/modelcatalog/ -run TestRuntimeOverlayMatchesWebCopy -count=1
 
+.PHONY: cli
+# build the aranea CLI binary to ./bin/aranea
+cli:
+	mkdir -p bin/ && go build -ldflags "-X main.Version=$(VERSION)" -o ./bin/aranea$(GOEXE) ./cmd/aranea
+
+.PHONY: cli-all
+# build aranea CLI for linux/amd64 (cross-compile)
+cli-all: cli
+	GOOS=linux GOARCH=amd64 go build -ldflags "-X main.Version=$(VERSION)" -o ./bin/aranea-linux-amd64 ./cmd/aranea
+
 .PHONY: build
 # build
 build:
@@ -82,6 +92,17 @@ else
 	pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/check-runtime-boundary.ps1
 endif
 
+.PHONY: fieldguide-lint
+# PGO-2-LINT-02: check Go ↔ TypeScript FieldGuide scope registry is in sync
+fieldguide-lint:
+	go run ./cmd/araneactl/fieldguide-lint --root .
+
+.PHONY: pgo-lint
+# PGO-PRE-02: run all PGO-related lint checks (CLI boundary + fieldguide schema sync)
+pgo-lint:
+	go run ./cmd/araneactl/lint --root .
+	$(MAKE) fieldguide-lint
+
 .PHONY: lint
 # run cross-platform lint tool (R1-R10) + go vet + gofmt + golangci-lint (if installed)
 # EP-ENG-07: gofmt check added via go run so CI catches formatting drift on any OS.
@@ -89,6 +110,7 @@ lint:
 	go run ./cmd/araneactl/lint --root .
 	go vet ./...
 	go run ./cmd/araneactl/fmtcheck --root .
+	$(MAKE) fieldguide-lint
 	@golangci-lint run ./... 2>/dev/null || true
 
 .PHONY: golangci-lint

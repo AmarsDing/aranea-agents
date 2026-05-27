@@ -60,6 +60,10 @@ func (m *memArtifactRepo) Delete(_ context.Context, id string) error {
 	return nil
 }
 
+func (m *memArtifactRepo) DeleteVersion(_ context.Context, sessionID, name string, version int) error {
+	return nil
+}
+
 func (m *memArtifactRepo) ListBySessionAndName(_ context.Context, sessionID, name string) ([]biz.Artifact, error) {
 	var out []biz.Artifact
 	for _, a := range m.items {

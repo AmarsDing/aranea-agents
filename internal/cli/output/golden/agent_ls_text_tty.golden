@@ -1,0 +1,6 @@
+id                                    display_name                    status      
+----------------------------------------------------------------------------------
+agent-001                             Test Agent A                    active
+agent-002                             Test Agent B                    inactive
+
+Total: 2

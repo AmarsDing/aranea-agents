@@ -1,0 +1,15 @@
+{
+  "items": [
+    {
+      "display_name": "Test Agent A",
+      "id": "agent-001",
+      "status": "active"
+    },
+    {
+      "display_name": "Test Agent B",
+      "id": "agent-002",
+      "status": "inactive"
+    }
+  ],
+  "total": 2
+}

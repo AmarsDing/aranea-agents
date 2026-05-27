@@ -37,6 +37,11 @@ func ensureSystemSettingPatches(ctx context.Context, c *ent.Client) error {
 		{"web_research_http_proxy", `ALTER TABLE system_settings ADD COLUMN web_research_http_proxy TEXT NOT NULL DEFAULT ''`},
 		{"memory_policy_strict", `ALTER TABLE system_settings ADD COLUMN memory_policy_strict INTEGER NOT NULL DEFAULT 0`},
 		{"memory_episode_backfill_disabled", `ALTER TABLE system_settings ADD COLUMN memory_episode_backfill_disabled INTEGER NOT NULL DEFAULT 0`},
+		// PGO-3: platform default LLM for AI prompt refinement.
+		{"refine_llm_provider", `ALTER TABLE system_settings ADD COLUMN refine_llm_provider TEXT NOT NULL DEFAULT ''`},
+		{"refine_llm_model", `ALTER TABLE system_settings ADD COLUMN refine_llm_model TEXT NOT NULL DEFAULT ''`},
+		{"refine_llm_base_url", `ALTER TABLE system_settings ADD COLUMN refine_llm_base_url TEXT NOT NULL DEFAULT ''`},
+		{"refine_llm_api_key", `ALTER TABLE system_settings ADD COLUMN refine_llm_api_key TEXT NOT NULL DEFAULT ''`},
 	}
 	for _, p := range patches {
 		has, err := sqliteTableHasColumn(ctx, c, "system_settings", p.col)

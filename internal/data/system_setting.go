@@ -40,7 +40,9 @@ func entToBizSystemSetting(e *ent.SystemSetting) biz.SystemSetting {
 			PolicyStrict:            e.MemoryPolicyStrict,
 			EpisodeBackfillDisabled: e.MemoryEpisodeBackfillDisabled,
 		},
-		UpdateTime:                        e.UpdateTime,
+		// DefaultRefineLLM is not loaded from entToBizSystemSetting because
+		// it's stored via raw SQL patches — use GetRefineLLM for full data.
+		UpdateTime: e.UpdateTime,
 	}
 }
 
@@ -92,7 +94,35 @@ func (r *systemSettingRepo) Get(ctx context.Context) (biz.SystemSetting, error) 
 		}
 		return biz.SystemSetting{}, err
 	}
-	return entToBizSystemSetting(row), nil
+	out := entToBizSystemSetting(row)
+	// PGO-3 (review follow-up): ent schema does not include refine_llm_* fields
+	// because the generator can't run (tablewriter conflict); overlay them via
+	// raw SQL so PromptRefiner.resolveModel Tier-2 fallback works again.
+	// API key intentionally NOT loaded here — read it only via GetRefineLLM.
+	if rl, rerr := r.getRefineLLMRedacted(ctx); rerr == nil {
+		out.DefaultRefineLLM = rl
+	}
+	return out, nil
+}
+
+// getRefineLLMRedacted loads refine_llm_* columns without the api_key field.
+// Used by Get() to populate biz.SystemSetting.DefaultRefineLLM safely.
+func (r *systemSettingRepo) getRefineLLMRedacted(ctx context.Context) (biz.RefineLLMSetting, error) {
+	rows, err := r.data.entClient.QueryContext(ctx,
+		`SELECT refine_llm_provider, refine_llm_model, refine_llm_base_url
+		 FROM system_settings WHERE id = ? LIMIT 1`, systemSettingSingletonID)
+	if err != nil {
+		return biz.RefineLLMSetting{}, err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return biz.RefineLLMSetting{}, sql.ErrNoRows
+	}
+	var s biz.RefineLLMSetting
+	if err := rows.Scan(&s.Provider, &s.Model, &s.BaseURL); err != nil {
+		return biz.RefineLLMSetting{}, err
+	}
+	return s, nil
 }
 
 func (r *systemSettingRepo) EnsureCredentialEncryptionKey(ctx context.Context) (string, error) {
@@ -233,6 +263,47 @@ func (r *systemSettingRepo) UpdateEvalLLM(ctx context.Context, patch biz.EvalLLM
 		return biz.EvalLLMSetting{}, err
 	}
 	return entToEvalLLM(row), nil
+}
+
+// GetRefineLLM returns the stored platform default LLM for AI refinement (API key included).
+// Uses raw SQL because the ent generator cannot be run due to a tablewriter version conflict.
+func (r *systemSettingRepo) GetRefineLLM(ctx context.Context) (biz.RefineLLMSetting, error) {
+	rows, err := r.data.entClient.QueryContext(ctx,
+		`SELECT refine_llm_provider, refine_llm_model, refine_llm_base_url, refine_llm_api_key
+		 FROM system_settings WHERE id = ? LIMIT 1`, systemSettingSingletonID)
+	if err != nil {
+		return biz.RefineLLMSetting{}, err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return biz.RefineLLMSetting{}, sql.ErrNoRows
+	}
+	var s biz.RefineLLMSetting
+	if err := rows.Scan(&s.Provider, &s.Model, &s.BaseURL, &s.APIKey); err != nil {
+		return biz.RefineLLMSetting{}, err
+	}
+	return s, nil
+}
+
+// UpdateRefineLLM persists the platform default LLM for AI refinement.
+// Uses raw SQL because the ent generator cannot be run due to a tablewriter version conflict.
+func (r *systemSettingRepo) UpdateRefineLLM(ctx context.Context, patch biz.RefineLLMSetting, updateAPIKey bool) (biz.RefineLLMSetting, error) {
+	if updateAPIKey {
+		_, err := r.data.entClient.ExecContext(ctx,
+			`UPDATE system_settings SET refine_llm_provider=?, refine_llm_model=?, refine_llm_base_url=?, refine_llm_api_key=? WHERE id=?`,
+			patch.Provider, patch.Model, patch.BaseURL, strings.TrimSpace(patch.APIKey), systemSettingSingletonID)
+		if err != nil {
+			return biz.RefineLLMSetting{}, err
+		}
+	} else {
+		_, err := r.data.entClient.ExecContext(ctx,
+			`UPDATE system_settings SET refine_llm_provider=?, refine_llm_model=?, refine_llm_base_url=? WHERE id=?`,
+			patch.Provider, patch.Model, patch.BaseURL, systemSettingSingletonID)
+		if err != nil {
+			return biz.RefineLLMSetting{}, err
+		}
+	}
+	return biz.RefineLLMSetting{Provider: patch.Provider, Model: patch.Model, BaseURL: patch.BaseURL}, nil
 }
 
 func (r *systemSettingRepo) UpdateMemoryPlatform(ctx context.Context, patch biz.MemoryPlatformSetting) (biz.MemoryPlatformSetting, error) {

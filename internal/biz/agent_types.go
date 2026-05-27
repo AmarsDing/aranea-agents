@@ -1,6 +1,9 @@
 package biz
 
-import "strings"
+import (
+	"encoding/json"
+	"strings"
+)
 
 // Agent is the catalog agent aggregate (legacy agents table + hydrated runtime state).
 type Agent struct {
@@ -19,6 +22,7 @@ type Agent struct {
 	ContextWindow      int
 	BudgetMonthlyCents int
 	ConfigJSON         string
+	MetadataJSON       string
 	Roles              []string
 	Kind                 string // llm | a2a_proxy
 	A2AProxy             *A2AProxyConfig
@@ -32,6 +36,26 @@ type Agent struct {
 	DeletedAt          string
 	Settings           *AgentRuntimeSettings
 	Files              []AgentPromptFile
+	// CategoryResponsibilityPreview is a transient field populated by the prompt
+	// preview handler to display the injected role_responsibility block.
+	// It is never persisted to DB. PGO-1-BIZ-03.
+	CategoryResponsibilityPreview string
+}
+
+// SkipCategoryResponsibility returns true when the agent's metadata_json
+// contains {"skip_category_responsibility": true}, allowing power users to
+// opt out of the automatic L1 岗位职责 injection. PGO-1-BIZ-05.
+func (a Agent) SkipCategoryResponsibility() bool {
+	if strings.TrimSpace(a.MetadataJSON) == "" {
+		return false
+	}
+	var m struct {
+		Skip bool `json:"skip_category_responsibility"`
+	}
+	if err := json.Unmarshal([]byte(a.MetadataJSON), &m); err != nil {
+		return false
+	}
+	return m.Skip
 }
 
 // AgentRuntimeSettings mirrors the agent_runtime_settings row.

@@ -93,7 +93,7 @@ func (uc *EvolutionUsecase) ScanAgent(ctx context.Context, agentID string) error
 	if metrics.NegativeFeedback >= minNeg {
 		title := "负反馈累积"
 		content := fmt.Sprintf(
-			"近%s负反馈 %d 次（阈值 %d）。建议审阅 SOUL.md 语气与工具策略。",
+			"近%s负反馈 %d 次（阈值 %d）。建议审阅 IDENTITY.md ## Persona 语气与工具策略。",
 			evolutionScanDefaultTimeRange,
 			metrics.NegativeFeedback,
 			minNeg,

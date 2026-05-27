@@ -1,0 +1,6 @@
+package badcli
+
+import (
+	// R12 violation: CLI must not import internal/biz
+	_ "aranea-agents/internal/biz"
+)

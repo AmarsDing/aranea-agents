@@ -93,6 +93,7 @@ internal/data           ← Repo 实现（Ent ORM + SQLite，单 sql.Open）
 | 场景 | 读取文档 | 说明 |
 |------|----------|------|
 | **任何后端编码** | [guides/AI-DEVELOPMENT-SPECIFICATION.md](./guides/AI-DEVELOPMENT-SPECIFICATION.md) | ★ **唯一后端编码行为准则**：红线、决策树、分层规则、运行时规范、API/Proto、Go 风格、自检清单 |
+| **CLI 快速上手（aranea 命令行）** | [guides/cli-quickstart.md](./guides/cli-quickstart.md) | 安装、登录、agent/skill/tool 管理、全局选项、常见问题 |
 | **探索 / 查询代码结构** | 本文 [§4.1](./README.md#41-代码探索约束codegraph) + `.cursor/rules/codegraph.mdc` | CodeGraph 优先于 grep；符号、调用链、影响面、模块上下文 |
 | **判断代码该放 Kratos 哪层** | [guides/kratos-framework-guide.md](./guides/kratos-framework-guide.md) | Kratos 各层职责边界、依赖方向、Proto/Wire/中间件/错误处理/配置 |
 | **使用 trpc-agent-go 框架** | [guides/trpc-agent-go-framework.md](./guides/trpc-agent-go-framework.md) | 框架目录结构、核心接口、项目内桥接函数、常见实现场景、官方文档索引 |

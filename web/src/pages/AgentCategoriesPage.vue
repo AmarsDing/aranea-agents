@@ -91,7 +91,8 @@
           </div>
 
           <div class="category-dialog__desc">
-            <div class="category-dialog__desc-label">描述</div>
+            <!-- PGO-1-WEB-03: label and placeholder switch by level. -->
+            <div class="category-dialog__desc-label">{{ currentDescLabel }}</div>
             <q-input
               v-model="form.description"
               class="category-control category-dialog__desc-input"
@@ -99,8 +100,20 @@
               outlined
               type="textarea"
               :rows="4"
-              placeholder="可选，补充该分类的业务说明…"
+              :placeholder="currentDescPlaceholder"
             />
+            <!-- PGO-3-WEB-03: AI Refine button for category description (3 levels). -->
+            <div class="row justify-end q-mt-xs">
+              <AIRefineButton
+                :scope="levelScope(currentLevelNum)"
+                :resource-id="editingId || undefined"
+                :text="form.description ?? ''"
+                flat
+                size="sm"
+                label="AI 优化描述"
+                @apply="(v: string) => { form.description = v }"
+              />
+            </div>
           </div>
 
           <div class="category-dialog__enabled row items-center q-mt-md">
@@ -120,10 +133,13 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from "vue";
 import AppPageHero from "../components/layout/AppPageHero.vue";
 import AppPageToolbar from "../components/layout/AppPageToolbar.vue";
 import AgentCategoryTree from "../components/agents/AgentCategoryTree.vue";
+import AiRefineButton from "../components/agents/AIRefineButton.vue";
 import { useAgentCategoriesPage } from "../features/platform/useAgentCategoriesPage";
+import { descriptionLabel, descriptionPlaceholder, levelScope, parseLevelNumber } from "../features/platform/categoryLabels";
 
 const {
   isDark,
@@ -146,4 +162,9 @@ const {
   toggleNodeEnabled,
   levelLabel
 } = useAgentCategoriesPage();
+
+// PGO-1-WEB-03: dynamic labels based on category level.
+const currentLevelNum = computed(() => parseLevelNumber(form.level));
+const currentDescLabel = computed(() => descriptionLabel(currentLevelNum.value));
+const currentDescPlaceholder = computed(() => descriptionPlaceholder(currentLevelNum.value));
 </script>

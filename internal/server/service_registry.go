@@ -40,6 +40,7 @@ type ServiceRegistry struct {
 	Event          *service.EventService
 	Gateway        *service.GatewayService
 	ChannelIngress *service.ChannelIngress
+	AIRefine       *service.AIRefineService
 }
 
 // NewServiceRegistry assembles all services into a single registry for Wire injection.
@@ -75,6 +76,7 @@ func NewServiceRegistry(
 	eventSvc *service.EventService,
 	gatewaySvc *service.GatewayService,
 	channelIngress *service.ChannelIngress,
+	aiRefine *service.AIRefineService,
 ) *ServiceRegistry {
 	return &ServiceRegistry{
 		Admin:          admin,
@@ -107,5 +109,6 @@ func NewServiceRegistry(
 		Event:          eventSvc,
 		Gateway:        gatewaySvc,
 		ChannelIngress: channelIngress,
+		AIRefine:       aiRefine,
 	}
 }
