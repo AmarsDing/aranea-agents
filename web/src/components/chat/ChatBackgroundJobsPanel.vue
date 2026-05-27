@@ -332,6 +332,6 @@ function payloadPreview(row: TaskDeadLetterRow) {
   overflow: auto;
   font-size: 11px;
   white-space: pre-wrap;
-  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 </style>

@@ -26,6 +26,18 @@ message ProviderModel {
   string created_at = 12;
   string updated_at = 13;
   string deleted_at = 14;
+  ModelCapabilities capabilities = 15;
+}
+
+message ModelCapabilities {
+  bool text = 1;
+  bool vision = 2;
+  bool audio = 3;
+  bool file = 4;
+  bool tool_call = 5;
+  bool cache = 6;
+  bool thinking = 7;
+  bool text_only = 8;
 }
 
 message ListProviderModelsResponse {
@@ -43,6 +55,7 @@ message CreateProviderModelRequest {
   string model = 8;
   string config_json = 9;
   string metadata_json = 10;
+  ModelCapabilities capabilities = 11;
 }
 
 message GetProviderModelRequest {

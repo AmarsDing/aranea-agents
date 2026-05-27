@@ -65,4 +65,22 @@ describe("conversationEventDispatcher", () => {
     expect(conversationSourceFromEnvelope(env({ source: "job" }))).toBe("durable");
     expect(conversationSourceFromEnvelope(env({ metadata: { source: "background" } }))).toBe("durable");
   });
+
+  it("projects error envelopes as failed hydrating turn events", () => {
+    const projected = projectConversationEnvelope(
+      env({
+        type: "error",
+        request_id: "pending-user-1",
+        error: { type: "ATTACHMENT_UNSUPPORTED", message: "当前模型不支持该附件类型" },
+      }),
+      { currentSessionId: "sess-1" }
+    );
+
+    expect(projected).toMatchObject({
+      scope: "current-session",
+      turnId: "pending-user-1",
+      status: "failed",
+      hydrate: true,
+    });
+  });
 });

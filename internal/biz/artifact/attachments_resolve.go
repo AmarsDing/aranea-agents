@@ -33,7 +33,7 @@ func ResolveAttachmentRefs(ctx context.Context, uc *Usecase, sessionID string, i
 	sessionID = strings.TrimSpace(sessionID)
 	refs := make([]Ref, 0, len(ids))
 	for _, id := range ids {
-		meta, _, err := uc.Load(ctx, id, 0)
+		meta, err := uc.LoadMeta(ctx, id, 0)
 		if err != nil {
 			return nil, kerrors.BadRequest("ARTIFACT", fmt.Sprintf("load attachment %s: %s", id, err.Error()))
 		}

@@ -13,6 +13,7 @@ import (
 	"aranea-agents/internal/biz"
 	artifactbiz "aranea-agents/internal/biz/artifact"
 	"aranea-agents/internal/event"
+	"aranea-agents/internal/provider"
 	rt "aranea-agents/internal/runtime"
 	sessctx "aranea-agents/internal/session"
 	"aranea-agents/internal/telemetry/turntrace"
@@ -131,28 +132,50 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 
 	prov0 := strutil.FirstNonEmpty(provOpt, sess.DefaultProvider, firstAg.Provider)
 	mod0 := strutil.FirstNonEmpty(modOpt, sess.DefaultModel, firstAg.Model)
+	var attachmentRefs []artifactbiz.Ref
+	if r.td.Persist.ArtifactUC != nil && len(artifactbiz.NormalizeAttachmentIDs(input.Options.AttachmentIDs)) > 0 {
+		attachmentRefs, err = artifactbiz.ResolveAttachmentRefs(ctx, r.td.Persist.ArtifactUC, sess.ID, input.Options.AttachmentIDs)
+		if err != nil {
+			turnStatus = biz.TeamMemberStepStatusError
+			r.finishRunErr(ctx, &run, t0, err.Error())
+			return biz.ChatMessage{}, biz.ChatMessage{}, err
+		}
+		attN = len(attachmentRefs)
+		if refsContainImageAttachment(attachmentRefs) && !provider.ModelSupportsImageAttachments(ctx, r.td.Catalog.LLM, prov0, mod0) {
+			err = kerrors.BadRequest("CHAT_AGENT", fmt.Sprintf("当前模型不支持该附件类型 (%s/%s does not support image attachments)", strings.TrimSpace(prov0), strings.TrimSpace(mod0)))
+			turnStatus = biz.TeamMemberStepStatusError
+			r.finishRunErr(ctx, &run, t0, err.Error())
+			return biz.ChatMessage{}, biz.ChatMessage{}, err
+		}
+		if refsContainFileAttachment(attachmentRefs) && !provider.ModelSupportsFileAttachments(ctx, r.td.Catalog.LLM, prov0, mod0) {
+			err = kerrors.BadRequest("CHAT_AGENT", fmt.Sprintf("当前模型不支持该附件类型 (%s/%s does not support file attachments)", strings.TrimSpace(prov0), strings.TrimSpace(mod0)))
+			turnStatus = biz.TeamMemberStepStatusError
+			r.finishRunErr(ctx, &run, t0, err.Error())
+			return biz.ChatMessage{}, biz.ChatMessage{}, err
+		}
+	}
 	builderDeps := agent.TRPCBuilderDeps{
-		Catalog:            r.td.Catalog.LLM,
-		AgentUC:            r.td.Catalog.AgentsUC,
-		Agents:             r.td.Catalog.Agents,
-		RT:                 r.td.RoundTrip(),
-		SkillUC:            r.td.Catalog.SkillUC,
-		MCPTooling:         r.td.Persist.AgentMCP,
-		ToolUC:             r.td.Catalog.ToolUC,
-		Sessions:           r.td.Sessions,
-		Sys:                r.td.Catalog.Settings,
-		Provider:           prov0,
-		Model:              mod0,
-		DialogMode:         dialogMode,
-		SkillDBRepo:        r.skillDBRepo,
-		HasMemory:          r.td.Persist.Memory.Available(),
-		PluginManager:      r.pluginManager,
-		MemoryAdmin:        r.td.Persist.Memory.Admin,
+		Catalog:               r.td.Catalog.LLM,
+		AgentUC:               r.td.Catalog.AgentsUC,
+		Agents:                r.td.Catalog.Agents,
+		RT:                    r.td.RoundTrip(),
+		SkillUC:               r.td.Catalog.SkillUC,
+		MCPTooling:            r.td.Persist.AgentMCP,
+		ToolUC:                r.td.Catalog.ToolUC,
+		Sessions:              r.td.Sessions,
+		Sys:                   r.td.Catalog.Settings,
+		Provider:              prov0,
+		Model:                 mod0,
+		DialogMode:            dialogMode,
+		SkillDBRepo:           r.skillDBRepo,
+		HasMemory:             r.td.Persist.Memory.Available(),
+		PluginManager:         r.pluginManager,
+		MemoryAdmin:           r.td.Persist.Memory.Admin,
 		MemoryL2Recall:        r.td.Persist.Memory.L2Recall,
 		MemoryL3Recall:        r.td.Persist.Memory.L3Recall,
 		MemoryCompositeRecall: r.td.Persist.Memory.CompositeRecall,
-		KnowledgeRetriever: r.knowledgeRetriever,
-		CodeExecFactory:    r.codeExecFactory,
+		KnowledgeRetriever:    r.knowledgeRetriever,
+		CodeExecFactory:       r.codeExecFactory,
 	}
 	if r.awaitHookProvider != nil {
 		builderDeps.AwaitHook = r.awaitHookProvider(ctx, sess.ID, run.ID)
@@ -195,7 +218,8 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		event.CtxFlowLogWarn(ctx, "team.runner.ralph_loop", "Ralph Loop 配置无效，已跳过",
 			event.P("agent_id", firstAg.ID), event.P("error", rl.SkipErr.Error()))
 	}
-	runner, err := r.td.CoalesceRunnerManager().NewTurnRunner(root, rt.TurnRunnerSpec{
+	runnerMgr := r.td.CoalesceRunnerManager()
+	runner, err := runnerMgr.NewTurnRunner(root, rt.TurnRunnerSpec{
 		Plugins:               plugins,
 		AwaitUserReplyRouting: builderDeps.AwaitHook != nil,
 		BuilderDeps:           builderDeps,
@@ -211,7 +235,19 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	if r.runs != nil {
 		r.runs.StoreRunner(sess.ID, run.ID, runner)
 	}
+	rollbackBoundary, _ := runnerMgr.MarkRollbackBoundary(ctx, sess.ID, run.ID, "")
+	rollbackDone := false
+	rollbackRunnerSession := func() {
+		if rollbackDone {
+			return
+		}
+		rollbackDone = true
+		_ = runnerMgr.RollbackToBoundary(context.Background(), rollbackBoundary)
+	}
 	defer func() {
+		if turnStatus != biz.TeamMemberStepStatusOK {
+			rollbackRunnerSession()
+		}
 		if r.runs != nil {
 			r.runs.Finish(sess.ID)
 		}
@@ -245,16 +281,9 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 			intentRunOpts = append(intentRunOpts, intent.RunOptionInject(intRes.Artifact))
 		}
 	}
-	if r.td.Persist.ArtifactUC != nil && len(artifactbiz.NormalizeAttachmentIDs(input.Options.AttachmentIDs)) > 0 {
-		refs, rerr := artifactbiz.ResolveAttachmentRefs(ctx, r.td.Persist.ArtifactUC, sess.ID, input.Options.AttachmentIDs)
-		if rerr != nil {
-			turnStatus = biz.TeamMemberStepStatusError
-			r.finishRunErr(ctx, &run, t0, rerr.Error())
-			return biz.ChatMessage{}, biz.ChatMessage{}, rerr
-		}
-		attN = len(refs)
+	if len(attachmentRefs) > 0 {
 		var merr error
-		userOpts, merr = artifactbiz.MergeRefsIntoOptionsJSON(userOpts, refs)
+		userOpts, merr = artifactbiz.MergeRefsIntoOptionsJSON(userOpts, attachmentRefs)
 		if merr != nil {
 			turnStatus = biz.TeamMemberStepStatusError
 			r.finishRunErr(ctx, &run, t0, merr.Error())
@@ -318,6 +347,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		}
 		turnStatus = biz.TeamMemberStepStatusError
 		r.finishRunErr(ctx, &run, t0, err.Error())
+		rollbackRunnerSession()
 		return userMsg, biz.ChatMessage{}, err
 	}
 
@@ -329,6 +359,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		}
 		turnStatus = biz.TeamMemberStepStatusError
 		r.finishRunErr(ctx, &run, t0, err.Error())
+		rollbackRunnerSession()
 		return userMsg, biz.ChatMessage{}, err
 	}
 	events = event.WrapFrameworkEventsWithOtel(events, teamEmitter, teamBridge, teamBridge)
@@ -429,16 +460,16 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	}
 
 	assistantMsg = biz.ChatMessage{
-		ID:              uuid.NewString(),
-		SessionID:       sess.ID,
-		Role:            "assistant",
-		ContentMarkdown: displayMarkdown,
-		ModelName:       strutil.FirstNonEmpty(modOpt, sess.DefaultModel, firstAg.Model),
-		Status:          biz.TeamMemberStepStatusOK,
-		OptionsJSON:     assistantOptsStr,
-		CreatedAt:       agent.RFC3339Now(),
-		TokenIn:         promptTok,
-		TokenOut:        completionTok,
+		ID:               uuid.NewString(),
+		SessionID:        sess.ID,
+		Role:             "assistant",
+		ContentMarkdown:  displayMarkdown,
+		ModelName:        strutil.FirstNonEmpty(modOpt, sess.DefaultModel, firstAg.Model),
+		Status:           biz.TeamMemberStepStatusOK,
+		OptionsJSON:      assistantOptsStr,
+		CreatedAt:        agent.RFC3339Now(),
+		TokenIn:          promptTok,
+		TokenOut:         completionTok,
 		AttachmentsCount: assistantAttN,
 	}
 
@@ -530,4 +561,23 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		r.publishTeamRunSummary(ctx, run)
 	}
 	return userMsg, assistantMsg, nil
+}
+
+func refsContainImageAttachment(refs []artifactbiz.Ref) bool {
+	for _, ref := range refs {
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(ref.MimeType)), "image/") {
+			return true
+		}
+	}
+	return false
+}
+
+func refsContainFileAttachment(refs []artifactbiz.Ref) bool {
+	for _, ref := range refs {
+		mime := strings.ToLower(strings.TrimSpace(ref.MimeType))
+		if mime != "" && !strings.HasPrefix(mime, "image/") {
+			return true
+		}
+	}
+	return false
 }

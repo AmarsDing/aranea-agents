@@ -47,6 +47,19 @@ func TestPublishTurnFailure_pendingID(t *testing.T) {
 	}
 }
 
+func TestEnvelopeErrorFromTurn_redactsUnknownDetail(t *testing.T) {
+	envErr := envelopeErrorFromTurn("", `POST "https://api.deepseek.com/v1/chat/completions": 400 Bad Request`)
+	if envErr == nil {
+		t.Fatal("expected error payload")
+	}
+	if envErr.Message == "" || envErr.Message == `POST "https://api.deepseek.com/v1/chat/completions": 400 Bad Request` {
+		t.Fatalf("expected redacted user-facing message, got %q", envErr.Message)
+	}
+	if envErr.Hint == "" {
+		t.Fatal("expected recovery hint")
+	}
+}
+
 func TestTurnErrorCodeFromErr_kratos(t *testing.T) {
 	err := TurnError(TurnErrTurnTimeout, "5m")
 	if TurnErrorCodeFromErr(err) != TurnErrTurnTimeout {

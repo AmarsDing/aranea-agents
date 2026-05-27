@@ -86,6 +86,7 @@ export function conversationSourceFromEnvelope(env: Envelope): ConversationSourc
 
 export function turnStatusFromEnvelope(env: Envelope): ConversationTurnStatus | undefined {
   if (env.type === "runner_completion") return "completed";
+  if (env.type === "error") return "failed";
   const raw =
     stringValue(metadataValue(env, "status")) ||
     stringValue(metadataValue(env, "phase")) ||

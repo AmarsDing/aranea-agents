@@ -121,6 +121,7 @@ export default {
     sendFailed: "发送失败",
     sendFailedRetry: "发送失败，请点击重试",
     sendFailedBackend: "后端不可用",
+    imageModelUnsupported: "当前模型不支持图片理解，请移除图片附件或切换到支持视觉的模型",
     sessionCreateFailed: "未创建会话或会话无效，请重试",
     backendUnavailableDev: "后端不可用，请确认 admin 是否在 :8000 运行（页面应使用 http://localhost:9001）",
     backendUnavailable: "后端服务不可用，请重新登录",
@@ -346,7 +347,9 @@ export default {
     copyWebhookFailed: "复制失败",
     deleteTitle: "确认删除该 Channel？",
     deleteMessage: "删除后将停止运行时加载，第三方 Webhook 需要自行解绑。",
-    deleteOk: "Channel 已删除"
+    deleteOk: "Channel 已删除",
+    opsTitle: "Channel 运维面板",
+    opsClose: "收起"
   },
   channelEditor: {
     editTitle: "编辑 Channel",
@@ -524,6 +527,9 @@ export default {
     turnJobsHint: "按 created_at 倒序；用于 LT-07 排障。",
     turnJobsRefresh: "刷新",
     turnJobsEmpty: "暂无 Turn Job 记录",
+    deliveriesTitle: "近期 Delivery 状态",
+    deliveriesHint: "展示入站处理与外发投递的最近状态，用于定位 Channel 消息是否已送达。",
+    deliveriesEmpty: "暂无 Delivery 记录",
     status: {
       pendingSave: "待保存",
       configured: "✔ 已配置",

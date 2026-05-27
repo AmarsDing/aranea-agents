@@ -98,6 +98,21 @@ func (r *sessionRepo) UpdateSessionTurn(ctx context.Context, id string, fields b
 	if fields.EndedAt != nil {
 		upd = upd.SetEndedAt(*fields.EndedAt)
 	}
+	if fields.UserMessageID != nil {
+		upd = upd.SetUserMessageID(*fields.UserMessageID)
+	}
+	if fields.AssistantMessageID != nil {
+		upd = upd.SetAssistantMessageID(*fields.AssistantMessageID)
+	}
+	if fields.OwnerType != nil {
+		upd = upd.SetOwnerType(*fields.OwnerType)
+	}
+	if fields.AgentID != nil {
+		upd = upd.SetAgentID(*fields.AgentID)
+	}
+	if fields.TeamID != nil {
+		upd = upd.SetTeamID(*fields.TeamID)
+	}
 	if fields.DurationMs != nil {
 		upd = upd.SetDurationMs(*fields.DurationMs)
 	}
@@ -136,9 +151,6 @@ func (r *sessionRepo) UpdateSessionTurn(ctx context.Context, id string, fields b
 	}
 	if fields.FinalContentPreview != nil {
 		upd = upd.SetFinalContentPreview(*fields.FinalContentPreview)
-	}
-	if fields.AssistantMessageID != nil {
-		upd = upd.SetAssistantMessageID(*fields.AssistantMessageID)
 	}
 	if fields.ErrorCode != nil {
 		upd = upd.SetErrorCode(*fields.ErrorCode)

@@ -529,6 +529,19 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		defer cancel()
 	}
 
+	attachmentRefs, err := o.resolveUserAttachmentRefs(ctx, sessionID, input.Options.AttachmentIDs)
+	if err != nil {
+		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
+		o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
+		return biz.ChatMessage{}, biz.ChatMessage{}, err
+	}
+	if err := o.validateTurnAttachmentCapabilities(ctx, prov, mod, attachmentRefs); err != nil {
+		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
+		emitter.LogWarn("chat.attachment.preflight", "模型不支持当前附件类型", "", event.P("provider", prov), event.P("model", mod), event.P("error", err.Error()))
+		o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
+		return biz.ChatMessage{}, biz.ChatMessage{}, err
+	}
+
 	deps := chatagent.TRPCBuilderDeps{
 		Catalog:               o.td.Catalog.LLM,
 		AgentUC:               o.td.Catalog.AgentsUC,
@@ -583,7 +596,8 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 			event.P("agent_id", ag.ID), event.P("error", rl.SkipErr.Error()))
 	}
 	emitter.LogStart("chat.runner.create", "创建 Runner", event.P("agent_key", ag.AgentKey), event.P("plugin_count", len(plugins)))
-	runner, err := o.td.CoalesceRunnerManager().NewTurnRunner(root, rt.TurnRunnerSpec{
+	runnerMgr := o.td.CoalesceRunnerManager()
+	runner, err := runnerMgr.NewTurnRunner(root, rt.TurnRunnerSpec{
 		Plugins:               plugins,
 		AwaitUserReplyRouting: deps.AwaitHook != nil,
 		BuilderDeps:           deps,
@@ -600,9 +614,26 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	}
 	emitter.LogDone("chat.runner.create", "Runner 已创建")
 	o.runs.StoreRunner(sessionID, runID, runner)
+	rollbackBoundary, rbErr := runnerMgr.MarkRollbackBoundary(ctx, sessionID, runID, "")
+	if rbErr != nil {
+		emitter.LogWarn("chat.runner.rollback_boundary", "Runner 回滚边界记录失败", "", event.P("error", rbErr.Error()))
+	}
+	rollbackDone := false
+	rollbackRunnerSession := func() {
+		if rollbackDone {
+			return
+		}
+		rollbackDone = true
+		if err := runnerMgr.RollbackToBoundary(context.Background(), rollbackBoundary); err != nil {
+			emitter.LogWarn("chat.runner.rollback", "Runner 会话回滚失败", "", event.P("error", err.Error()))
+		}
+	}
 	o.setRunStatus(ctx, sessionID, runID, "running", "")
 	emitter.LogStart("chat.turn.execute", "开始执行对话轮次", event.P("run_id", runID))
 	defer func() {
+		if turnStatus != "ok" {
+			rollbackRunnerSession()
+		}
 		o.runs.Finish(sessionID)
 		runner.Close()
 		o.processPendingQueue(sessionID, sess, ag, dialogMode, prov, mod)
@@ -659,15 +690,24 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		emitter.LogSkip("chat.intent.pass", "A2A Proxy Agent 跳过意图识别", event.P("agent_kind", ag.Kind))
 	}
 
-	userOpts, attN, err := o.mergeUserAttachmentRefs(ctx, sessionID, userOpts, input.Options.AttachmentIDs)
+	userOpts, err = mergeUserAttachmentRefs(userOpts, attachmentRefs)
 	if err != nil {
 		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
 		o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
+	attN := len(attachmentRefs)
 
 	now := chatagent.RFC3339Now()
 	var userMsg biz.ChatMessage
+	userMsgPersisted := false
+	defer func() {
+		if userMsgPersisted && turnStatus != "ok" {
+			if err := o.td.Sessions.UpdateChatMessageStatus(ctx, sessionID, userMsg.ID, "failed", turnErrMsg); err != nil {
+				event.CtxFlowLogWarn(ctx, "chat.user_msg_status_fail", "用户消息失败状态更新失败", event.P("message_id", userMsg.ID), event.P("error", err.Error()))
+			}
+		}
+	}()
 	if durableCtx.active {
 		userMsg = durableCtx.buildUserMessage(sessionID, userOpts, attN, emitter)
 		o.notifySessionRevisionSync(ctx, sessionID, runID, userMsg.ID)
@@ -677,7 +717,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 			SessionID:        sessionID,
 			Role:             "user",
 			ContentMarkdown:  content,
-			Status:           "ok",
+			Status:           "pending",
 			OptionsJSON:      userOpts,
 			CreatedAt:        now,
 			AttachmentsCount: attN,
@@ -687,6 +727,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 			o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
 			return biz.ChatMessage{}, biz.ChatMessage{}, err
 		}
+		userMsgPersisted = true
 		emitter.LogDone("chat.user_msg_persist", "用户消息已持久化")
 		o.bumpSessionRevisionSyncAndPublish(ctx, sessionID, runID, userMsg.ID)
 	}
@@ -739,6 +780,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		emitter.LogError("chat.llm.invoke", "附件装配失败", event.P("error", err.Error()))
 		o.setRunStatus(ctx, sessionID, runID, "failed", err.Error())
 		te := TurnError(TurnErrAttachmentFailed, err.Error())
+		rollbackRunnerSession()
 		o.publishTurnFailure(sessionID, runID, "chat-service", te, "")
 		return userMsg, biz.ChatMessage{}, te
 	}
@@ -753,6 +795,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "error").Observe(time.Since(turnStart).Seconds())
 		o.setRunStatus(ctx, sessionID, runID, "failed", err.Error())
 		te := TurnError(TurnErrLLMCallFailed, err.Error())
+		rollbackRunnerSession()
 		o.publishTurnFailure(sessionID, runID, "chat-service", te, "")
 		return userMsg, biz.ChatMessage{}, te
 	}
@@ -876,6 +919,13 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
 		return userMsg, biz.ChatMessage{}, err
 	}
+	if userMsgPersisted {
+		if err := o.td.Sessions.UpdateChatMessageStatus(ctx, sessionID, userMsg.ID, "ok", ""); err != nil {
+			event.CtxFlowLogWarn(ctx, "chat.user_msg_status_fail", "用户消息成功状态更新失败", event.P("message_id", userMsg.ID), event.P("error", err.Error()))
+		} else {
+			userMsg.Status = "ok"
+		}
+	}
 	emitter.LogDone("chat.assistant_msg_persist", "助手消息已持久化", event.P("reply_len", len(displayMarkdown)))
 	o.patchSessionContextUsage(ctx, sessionID, sess, ag, prov, mod, promptTok, completionTok)
 
@@ -904,7 +954,7 @@ func (o *ChatOrchestrator) processPendingQueue(sessionID string, sess biz.Sessio
 	pendingEntryID := entry.ID
 	pendingEmitter := event.NewFlowLogger(o.td.Pipeline.Bus, o.td.Pipeline.Buffer, sessionID, ag.AgentKey)
 	pendingEmitter.LogStart("chat.pending_dequeue", "排队消息开始处理", event.P("entry_id", pendingEntryID), event.P("content_len", len(pendingContent)))
-	safego.Go(nil, "pending-queue", func() {
+	safego.Go(context.Background(), "pending-queue", func() {
 		unlock := o.lockSession(sessionID)
 		defer unlock()
 		if o.runs.HasActive(sessionID) {
@@ -944,6 +994,27 @@ func (o *ChatOrchestrator) recordSessionTurn(ctx context.Context, sessionID stri
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	preview := strutil.ProtoPreview(contentPreview, 200)
+	if turnID := admittedTurnIDFromContext(ctx); turnID != "" {
+		_, err := o.td.Sessions.UpdateTurn(ctx, turnID, biz.SessionTurnUpdateFields{
+			Status:              ptrString("completed"),
+			EndedAt:             ptrString(now),
+			UserMessageID:       ptrString(userMsgID),
+			AssistantMessageID:  ptrString(assistantMsgID),
+			OwnerType:           ptrString("agent"),
+			AgentID:             ptrString(ag.ID),
+			InputTokens:         ptrInt(promptTok),
+			OutputTokens:        ptrInt(completionTok),
+			TotalTokens:         ptrInt(promptTok + completionTok),
+			ModelCallCount:      ptrInt(1),
+			FinalProvider:       ptrString(prov),
+			FinalModel:          ptrString(mod),
+			FinalContentPreview: ptrString(preview),
+		})
+		if err != nil {
+			event.CtxFlowLogWarn(ctx, "chat.usage_record_fail", "会话轮次更新失败", event.P("session_id", sessionID), event.P("turn_id", turnID), event.P("error", err.Error()))
+		}
+		return
+	}
 	turn := biz.SessionTurn{
 		SessionID:           sessionID,
 		UserMessageID:       userMsgID,
@@ -973,6 +1044,27 @@ func (o *ChatOrchestrator) recordTeamSessionTurn(ctx context.Context, sessionID,
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	preview := strutil.ProtoPreview(contentPreview, 200)
+	if turnID := admittedTurnIDFromContext(ctx); turnID != "" {
+		_, err := o.td.Sessions.UpdateTurn(ctx, turnID, biz.SessionTurnUpdateFields{
+			Status:              ptrString("completed"),
+			EndedAt:             ptrString(now),
+			UserMessageID:       ptrString(userMsgID),
+			AssistantMessageID:  ptrString(assistantMsgID),
+			OwnerType:           ptrString("team"),
+			TeamID:              ptrString(teamID),
+			InputTokens:         ptrInt(promptTok),
+			OutputTokens:        ptrInt(completionTok),
+			TotalTokens:         ptrInt(promptTok + completionTok),
+			ModelCallCount:      ptrInt(1),
+			FinalProvider:       ptrString(prov),
+			FinalModel:          ptrString(mod),
+			FinalContentPreview: ptrString(preview),
+		})
+		if err != nil {
+			event.CtxFlowLogWarn(ctx, "chat.usage_record_fail", "团队会话轮次更新失败", event.P("session_id", sessionID), event.P("turn_id", turnID), event.P("error", err.Error()))
+		}
+		return
+	}
 	turn := biz.SessionTurn{
 		SessionID:           sessionID,
 		UserMessageID:       userMsgID,

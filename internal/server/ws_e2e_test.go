@@ -46,6 +46,7 @@ func (s *e2eChatSender) EnqueueUserMessage(context.Context, *chatv1.EnqueueUserM
 // TestWSE2E_UserMessageStream is a skeleton E2E: WS connect → user_message → streamed envelopes.
 func TestWSE2E_UserMessageStream(t *testing.T) {
 	t.Setenv("KRATOS_HTTP_AUTH_DISABLED", "true")
+	t.Setenv("DEPLOY_ENV", "dev")
 
 	const sessionID = "sess-e2e"
 	bus := event.NewBus()

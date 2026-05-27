@@ -55,21 +55,21 @@ body.body--dark .chat-message-header
   filter: drop-shadow(0 0 1px color-mix(in srgb, var(--color-text-primary) 12%, transparent))
 
 .chat-header-usage__ring
-  :deep(.q-circular-progress__circle--track)
+  .q-circular-progress__circle--track
     stroke: color-mix(in srgb, var(--color-text-secondary) 55%, var(--glass-border)) !important
     opacity: 1 !important
 
-  :deep(.q-circular-progress__circle--center)
+  .q-circular-progress__circle--center
     opacity: 1 !important
 
-  :deep(.q-circular-progress__svg)
+  .q-circular-progress__svg
     overflow: visible
 
 .chat-header-usage__ring--dark
-  :deep(.q-circular-progress__circle--track)
-    stroke: color-mix(in srgb, var(--color-text-secondary) 65%, rgba(255, 255, 255, 0.15)) !important
+  .q-circular-progress__circle--track
+    stroke: color-mix(in srgb, var(--color-text-secondary) 65%, rgb(255 255 255 / 15%)) !important
 
-  :deep(.q-circular-progress__circle:not(.q-circular-progress__circle--track))
+  .q-circular-progress__circle:not(.q-circular-progress__circle--track)
     opacity: 1 !important
 
 .chat-header-usage__ring-value
@@ -457,7 +457,7 @@ body.body--dark .chat-empty-state__hint
   pointer-events: none
   will-change: transform
   transition: transform 0.08s linear
-  :deep(p)
+  p
     margin: 0 0 0.35em
     &:last-child
       margin-bottom: 0

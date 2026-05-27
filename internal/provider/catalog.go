@@ -36,6 +36,18 @@ type CatalogConfig struct {
 	HACandidates         []HACandidateConfig
 	HAHedgeDelayMs       int
 	RateLimitRPM         int
+	Capabilities         ModelCapabilities
+}
+
+type ModelCapabilities struct {
+	Text     bool `json:"text"`
+	Vision   bool `json:"vision"`
+	Audio    bool `json:"audio"`
+	File     bool `json:"file"`
+	ToolCall bool `json:"tool_call"`
+	Cache    bool `json:"cache"`
+	Thinking bool `json:"thinking"`
+	TextOnly bool `json:"text_only"`
 }
 
 type HACandidateConfig struct {
@@ -68,6 +80,7 @@ type catalogConfigJSON struct {
 	HACandidates         []HACandidateConfig `json:"ha_candidates"`
 	HAHedgeDelayMs       int                 `json:"ha_hedge_delay_ms"`
 	RateLimitRPM         int                 `json:"rate_limit_rpm"`
+	Capabilities         ModelCapabilities   `json:"capabilities"`
 }
 
 func CatalogFromModel(in ModelCatalogInput) (CatalogConfig, error) {
@@ -164,6 +177,9 @@ func MergeCatalogConfig(cfg CatalogConfig, configJSON string) CatalogConfig {
 	if merged.RateLimitRPM == 0 && c.RateLimitRPM > 0 {
 		merged.RateLimitRPM = c.RateLimitRPM
 	}
+	if hasExplicitCapabilities(c.Capabilities) {
+		merged.Capabilities = mergeCapabilities(merged.Capabilities, c.Capabilities)
+	}
 	return merged
 }
 
@@ -184,6 +200,7 @@ func catalogConfigToConfig(c catalogConfigJSON, modelAPI string) CatalogConfig {
 		HACandidates:      c.HACandidates,
 		HAHedgeDelayMs:    c.HAHedgeDelayMs,
 		RateLimitRPM:      c.RateLimitRPM,
+		Capabilities:      c.Capabilities,
 	}
 	if c.EnableTokenTailoring != nil {
 		cfg.EnableTokenTailoring = *c.EnableTokenTailoring
@@ -210,4 +227,36 @@ func catalogConfigToConfig(c catalogConfigJSON, modelAPI string) CatalogConfig {
 		cfg.CacheMessages = *c.CacheMessages
 	}
 	return cfg
+}
+
+func hasExplicitCapabilities(c ModelCapabilities) bool {
+	return c.Text || c.Vision || c.Audio || c.File || c.ToolCall || c.Cache || c.Thinking || c.TextOnly
+}
+
+func mergeCapabilities(base, override ModelCapabilities) ModelCapabilities {
+	if override.Text {
+		base.Text = true
+	}
+	if override.Vision {
+		base.Vision = true
+	}
+	if override.Audio {
+		base.Audio = true
+	}
+	if override.File {
+		base.File = true
+	}
+	if override.ToolCall {
+		base.ToolCall = true
+	}
+	if override.Cache {
+		base.Cache = true
+	}
+	if override.Thinking {
+		base.Thinking = true
+	}
+	if override.TextOnly {
+		base.TextOnly = true
+	}
+	return base
 }

@@ -88,6 +88,19 @@ CREATE INDEX IF NOT EXISTS idx_channel_turn_job_channel_created
 CREATE INDEX IF NOT EXISTS idx_channel_turn_job_session
   ON channel_turn_job(session_id);
 
+CREATE TABLE IF NOT EXISTS channel_runtime_lease (
+  key TEXT PRIMARY KEY,
+  channel_id TEXT NOT NULL DEFAULT '',
+  platform TEXT NOT NULL DEFAULT '',
+  owner_id TEXT NOT NULL DEFAULT '',
+  expires_at TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS idx_channel_runtime_lease_expires
+  ON channel_runtime_lease(expires_at);
+
 CREATE TABLE IF NOT EXISTS hooks (
   id TEXT PRIMARY KEY,
   hook_key TEXT NOT NULL UNIQUE,

@@ -121,6 +121,7 @@ export default {
     sendFailed: "Send failed",
     sendFailedRetry: "Send failed, click to retry",
     sendFailedBackend: "Backend unavailable",
+    imageModelUnsupported: "The current model does not support image understanding. Remove image attachments or switch to a vision-capable model.",
     sessionCreateFailed: "Session not created or invalid, please retry",
     backendUnavailableDev: "Backend unavailable, make sure admin is running on :8000 (page should use http://localhost:9001)",
     backendUnavailable: "Backend unavailable, please log in again",
@@ -347,7 +348,9 @@ export default {
     copyWebhookFailed: "Failed to copy",
     deleteTitle: "Delete this channel?",
     deleteMessage: "Runtime will stop loading it; unbind webhooks on the platform side manually.",
-    deleteOk: "Channel deleted"
+    deleteOk: "Channel deleted",
+    opsTitle: "Channel ops panel",
+    opsClose: "Collapse"
   },
   channelEditor: {
     editTitle: "Edit channel",
@@ -526,6 +529,9 @@ export default {
     turnJobsHint: "Newest first; for LT-07 troubleshooting.",
     turnJobsRefresh: "Refresh",
     turnJobsEmpty: "No turn jobs yet",
+    deliveriesTitle: "Recent delivery states",
+    deliveriesHint: "Shows recent inbound processing and outbound delivery state for channel troubleshooting.",
+    deliveriesEmpty: "No delivery records yet",
     status: {
       pendingSave: "Pending save",
       configured: "✔ Configured",

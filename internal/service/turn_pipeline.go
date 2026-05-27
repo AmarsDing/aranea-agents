@@ -71,6 +71,34 @@ func (p TurnPipeline) Run(ctx context.Context, intent biz.TurnIntent) (biz.Turn,
 		return turn, result, execErr
 	}
 
+	if result.Outcome == biz.NativeTurnOutcomeQueued {
+		p.project(ctx, biz.TurnEvent{
+			TurnID:     turn.ID,
+			SessionID:  turn.SessionID,
+			Type:       biz.TurnEventQueued,
+			Source:     turn.Source,
+			Status:     biz.TurnStatusQueued,
+			OccurredAt: p.now(),
+		})
+		return turn, result, nil
+	}
+
+	if result.Outcome == biz.NativeTurnOutcomeFailed {
+		failed, failErr := p.Service.FailTurn(ctx, turn, nil)
+		if failErr == nil {
+			turn = failed
+		}
+		p.project(ctx, biz.TurnEvent{
+			TurnID:     turn.ID,
+			SessionID:  turn.SessionID,
+			Type:       biz.TurnEventFailed,
+			Source:     turn.Source,
+			Status:     biz.TurnStatusFailed,
+			OccurredAt: p.now(),
+		})
+		return turn, result, nil
+	}
+
 	completed, err := p.Service.CompleteTurn(ctx, turn, result)
 	if err != nil {
 		return turn, result, err

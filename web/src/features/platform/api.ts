@@ -86,6 +86,7 @@ function mapAgentCategoryTreeNode(raw: unknown): PlatformResourceTreeNode {
 
 function llmProviderWireToPlatform(raw: unknown): PlatformResource {
   const r = asRecord(raw);
+  const caps = asRecord(r.capabilities ?? r.Capabilities);
   return {
     id: pickStr(r, "id", "id"),
     resource: "llm-provider-models",
@@ -102,6 +103,17 @@ function llmProviderWireToPlatform(raw: unknown): PlatformResource {
     model: pickStr(r, "model", "model"),
     config_json: pickStr(r, "config_json", "configJson") || "{}",
     metadata_json: pickStr(r, "metadata_json", "metadataJson") || "{}",
+    capabilities: {
+      text: pickBool(caps, "text", "text"),
+      vision: pickBool(caps, "vision", "vision"),
+      image: pickBool(caps, "vision", "vision"),
+      audio: pickBool(caps, "audio", "audio"),
+      file: pickBool(caps, "file", "file"),
+      tool_call: pickBool(caps, "tool_call", "toolCall"),
+      cache: pickBool(caps, "cache", "cache"),
+      thinking: pickBool(caps, "thinking", "thinking"),
+      text_only: pickBool(caps, "text_only", "textOnly")
+    },
     created_at: pickStr(r, "created_at", "createdAt"),
     updated_at: pickStr(r, "updated_at", "updatedAt"),
     deleted_at: pickStr(r, "deleted_at", "deletedAt")

@@ -50,6 +50,7 @@ func lookupStarter(channelType, receiveMode string) (Starter, bool) {
 }
 
 const runtimeReplaceShutdownWait = 15 * time.Second
+const runtimeLeaseTTL = 30 * time.Second
 
 type runningInstance struct {
 	cancel      context.CancelFunc
@@ -65,6 +66,10 @@ type Manager struct {
 
 	mu      sync.Mutex
 	running map[string]runningInstance
+
+	leaseRepo biz.ChannelRuntimeLeaseRepo
+	ownerID   string
+	leaseTTL  time.Duration
 }
 
 func NewManager(channels *biz.ChannelUsecase, handler InboundHandler, credLookup CredentialLookup) *Manager {
@@ -74,6 +79,19 @@ func NewManager(channels *biz.ChannelUsecase, handler InboundHandler, credLookup
 		credLookup: credLookup,
 		running:    map[string]runningInstance{},
 	}
+}
+
+func (m *Manager) WithRuntimeLease(repo biz.ChannelRuntimeLeaseRepo, ownerID string, ttl time.Duration) *Manager {
+	if m == nil {
+		return nil
+	}
+	m.leaseRepo = repo
+	m.ownerID = strings.TrimSpace(ownerID)
+	if ttl <= 0 {
+		ttl = runtimeLeaseTTL
+	}
+	m.leaseTTL = ttl
+	return m
 }
 
 // Reload stops stale connectors and starts enabled runtime instances.
@@ -155,6 +173,16 @@ func (m *Manager) Reload(ctx context.Context) error {
 		mode := EffectiveReceiveMode(chCopy)
 		st, _ := lookupStarter(cfg.Type, mode)
 		platform := cfg.Type
+		if !m.acquireLease(ctx, chCopy.ID, platform) {
+			m.mu.Lock()
+			if inst, ok := m.running[chCopy.ID]; ok && inst.fingerprint == fp {
+				inst.cancel()
+				delete(m.running, chCopy.ID)
+			}
+			m.mu.Unlock()
+			close(done)
+			continue
+		}
 		go func(starter Starter, fingerprint, plat, recvMode string) {
 			defer close(done)
 			m.runSupervised(runCtx, chCopy, fingerprint, starter, plat, recvMode)
@@ -167,6 +195,29 @@ func (m *Manager) Reload(ctx context.Context) error {
 		)
 	}
 	return nil
+}
+
+func (m *Manager) acquireLease(ctx context.Context, channelID, platform string) bool {
+	if m == nil || m.leaseRepo == nil {
+		return true
+	}
+	lease := biz.NewChannelRuntimeLease(channelID, platform, m.ownerID, m.leaseTTL, time.Now().UTC())
+	claimed, err := m.leaseRepo.TryAcquireRuntimeLease(ctx, lease)
+	if err != nil {
+		event.SysLogWarn("channel.runtime.lease_acquire_fail", "Channel Runtime 获取租约失败",
+			event.P("channel_id", channelID),
+			event.P("platform", platform),
+			event.P("error", err.Error()),
+		)
+		return false
+	}
+	if !claimed {
+		event.SysLogInfo("channel.runtime.lease_skip", "Channel Runtime 租约被其他副本持有，跳过启动",
+			event.P("channel_id", channelID),
+			event.P("platform", platform),
+		)
+	}
+	return claimed
 }
 
 // runtimeFingerprint hashes only fields that should restart a connector.

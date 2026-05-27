@@ -23,12 +23,20 @@ import (
 type ChatService struct {
 	chatv1.UnimplementedChatServiceServer
 
-	orch *ChatOrchestrator
+	orch         *ChatOrchestrator
+	turnPipeline *TurnPipeline
 }
 
 func NewChatService(deps ChatOrchestratorDeps) *ChatService {
 	orch := NewChatOrchestrator(deps)
-	return &ChatService{orch: orch}
+	svc := &ChatService{orch: orch}
+	if deps.Sessions != nil {
+		svc.turnPipeline = &TurnPipeline{
+			Service:  NewPersistentTurnService(deps.Sessions),
+			Executor: chatTurnExecutor{orch: orch},
+		}
+	}
+	return svc
 }
 
 // ProvideChatOrchestrator extracts the ChatOrchestrator from ChatService for

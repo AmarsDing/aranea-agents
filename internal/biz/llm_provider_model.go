@@ -29,20 +29,34 @@ func newLLMID() string {
 
 // ProviderModel matches legacy PlatformResource for llm-provider-models.
 type ProviderModel struct {
-	ID           string
-	Key          string // model_key
-	Name         string
-	Description  string
-	Status       string
-	Enabled      bool
-	SortOrder    int
-	Provider     string
-	Model        string
-	ConfigJSON   string
-	MetadataJSON string
-	CreatedAt    string
-	UpdatedAt    string
-	DeletedAt    string
+	ID                   string
+	Key                  string // model_key
+	Name                 string
+	Description          string
+	Status               string
+	Enabled              bool
+	SortOrder            int
+	Provider             string
+	Model                string
+	ConfigJSON           string
+	MetadataJSON         string
+	Capabilities         ModelCapabilities
+	CapabilitiesExplicit bool
+	CreatedAt            string
+	UpdatedAt            string
+	DeletedAt            string
+}
+
+// ModelCapabilities is the persisted provider-model capability catalog.
+type ModelCapabilities struct {
+	Text     bool
+	Vision   bool
+	Audio    bool
+	File     bool
+	ToolCall bool
+	Cache    bool
+	Thinking bool
+	TextOnly bool
 }
 
 // ModelPricingRule matches domain.ModelPricingRule (subset used for Upsert).
@@ -254,6 +268,10 @@ func (u *LlmProviderModelUsecase) Update(ctx context.Context, id string, patch P
 	}
 	if strings.TrimSpace(patch.MetadataJSON) != "" {
 		merged.MetadataJSON = patch.MetadataJSON
+	}
+	if patch.CapabilitiesExplicit {
+		merged.Capabilities = patch.Capabilities
+		merged.CapabilitiesExplicit = true
 	}
 	if merged.Key == "" {
 		merged.Key = cur.Key

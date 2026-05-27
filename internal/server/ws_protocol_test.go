@@ -3,10 +3,12 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
+	"aranea-agents/internal/biz"
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/event"
 )
@@ -29,6 +31,7 @@ func TestWSUpstreamPingProducesPong(t *testing.T) {
 	wc := &wsConn{
 		channels: map[string]bool{"system": true},
 		send:     make(chan []byte, 4),
+		queues:   newConnQueues(),
 	}
 
 	raw, err := json.Marshal(wsUpstream{
@@ -42,7 +45,7 @@ func TestWSUpstreamPingProducesPong(t *testing.T) {
 	srv.handleUpstream(wc, raw)
 
 	select {
-	case out := <-wc.send:
+	case out := <-wc.queues.normal:
 		var down wsDownstream
 		if err := json.Unmarshal(out, &down); err != nil {
 			t.Fatal(err)
@@ -183,6 +186,28 @@ func (stubChatSender) EnqueueUserMessage(_ context.Context, req *chatv1.EnqueueU
 	return &chatv1.EnqueueUserMessageResponse{Accepted: true}, nil
 }
 
+type stubTurnGateway struct {
+	err error
+}
+
+func (s stubTurnGateway) ExecuteTurn(_ context.Context, _ biz.TurnInput) (biz.TurnResult, error) {
+	return biz.TurnResult{}, s.err
+}
+
+func (stubTurnGateway) HasActiveRun(_ string) bool {
+	return false
+}
+
+func (stubTurnGateway) CancelRun(_ context.Context, _ string) bool {
+	return false
+}
+
+func (stubTurnGateway) SetRunStatus(_ context.Context, _, _, _, _ string) {}
+
+func (stubTurnGateway) LastPendingMessageID(_ string) string {
+	return ""
+}
+
 func TestWSUpstreamUserMessagePublishesErrorWithRequestID(t *testing.T) {
 	bus := event.NewBus()
 	srv := NewWSServer(&conf.Server{Ws: &conf.Server_WS{Enable: true}}, bus, event.NewBuffer(), nil, stubChatSender{sendErr: context.Canceled})
@@ -222,6 +247,42 @@ func TestWSUpstreamUserMessagePublishesErrorWithRequestID(t *testing.T) {
 		case <-deadline:
 			t.Fatal("timeout waiting for send_failed envelope")
 		}
+	}
+}
+
+func TestWSUpstreamTurnGatewayErrorDoesNotPublishRawDuplicate(t *testing.T) {
+	bus := event.NewBus()
+	srv := NewWSServerFromInfra(
+		&conf.Server{Ws: &conf.Server_WS{Enable: true}},
+		&event.Infra{SessionBus: bus, MonitorBus: bus, Buffer: event.NewBuffer()},
+		nil,
+		stubChatSender{},
+		stubTurnGateway{err: errors.New("provider raw error")},
+	)
+	wc := &wsConn{
+		sessionID: "sess-turn",
+		channels:  map[string]bool{"chat": true, "system": true},
+		send:      make(chan []byte, 2),
+		connCtx:   context.Background(),
+	}
+	ch, unsub := bus.Subscribe(event.SubscribeOptions{SessionID: "sess-turn", BufferSize: 4})
+	defer unsub()
+
+	raw, _ := json.Marshal(wsUpstream{
+		Direction: "client_to_server",
+		Channel:   "chat",
+		Type:      "user_message",
+		RequestID: "pending-user-abc",
+		Payload: map[string]any{
+			"content": "hello",
+		},
+	})
+	srv.handleUpstream(wc, raw)
+
+	select {
+	case env := <-ch:
+		t.Fatalf("unexpected duplicate error envelope: %+v", env)
+	case <-time.After(100 * time.Millisecond):
 	}
 }
 
