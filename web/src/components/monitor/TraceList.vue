@@ -23,7 +23,7 @@
         :shell="false"
         table-class="monitor-traces-table"
         :rows="pagedRows"
-        :columns="columns"
+        :columns="MONITOR_TRACES_TABLE_COLUMNS"
         row-key="id"
         :loading="loading"
         hide-pagination
@@ -191,7 +191,7 @@
 import { computed, ref, watch } from "vue";
 import { useMonitorRunNavigation } from "../../features/monitor/useMonitorRunNavigation";
 import { useMonitorTraceFlow } from "../../features/monitor/useMonitorTraceFlow";
-import { copyToClipboard, Notify, type QTableColumn } from "quasar";
+import { copyToClipboard, Notify } from "quasar";
 import type { MonitorTraceEvent } from "../../features/monitor/types";
 import { compactJSON, formatCount, formatDate, formatLatency, formatMoney, parseJSON } from "../../features/monitor/utils";
 import TraceWaterfall from "./TraceWaterfall.vue";
@@ -201,7 +201,7 @@ import AppRegistryTable from "../layout/AppRegistryTable.vue";
 import AppRegistryHoverTip from "../layout/AppRegistryHoverTip.vue";
 import AppPageToolbar from "../layout/AppPageToolbar.vue";
 import AppRegistryPagination from "../layout/AppRegistryPagination.vue";
-import { registryColWidth } from "../../features/ui/registryTableColumns";
+import { MONITOR_TRACES_TABLE_COLUMNS } from "./monitorTableUi";
 
 type TreeNode = {
   id: string;
@@ -230,15 +230,6 @@ const detailOpen = ref(false);
 const detailTab = ref<"flow" | "waterfall" | "tree">("flow");
 
 const { flowLines, activeCorrelation, stopFlowStream, openTraceDetail } = useMonitorTraceFlow(detail, detailOpen);
-
-const columns: QTableColumn<MonitorTraceEvent>[] = [
-  { name: "name", label: "Agent", field: "agent_key", align: "left", ...registryColWidth("14%") },
-  { name: "tokens", label: "Token in / out", field: "total_tokens", align: "left", ...registryColWidth("9%") },
-  { name: "latency", label: "Latency", field: "latency_ms", align: "left", ...registryColWidth("72px") },
-  { name: "cost", label: "Cost", field: "total_cost_micro_usd", align: "left", ...registryColWidth("72px") },
-  { name: "time", label: "Time", field: "occurred_at", align: "left", ...registryColWidth("11%") },
-  { name: "actions", label: "操作", field: "id", align: "right", ...registryColWidth("108px") }
-];
 
 const filteredRows = computed(() => {
   const q = keyword.value.trim().toLowerCase();

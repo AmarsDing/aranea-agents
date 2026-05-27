@@ -15,6 +15,7 @@ type TeamRepository interface {
 	UpdateTeam(ctx context.Context, t Team) (Team, error)
 	DeleteTeam(ctx context.Context, id string) error
 	ListTeamRuns(ctx context.Context, teamID string, limit int) ([]TeamRun, error)
+	HasActiveTeamRun(ctx context.Context, teamID string) (bool, error)
 	GetTeamRunByID(ctx context.Context, id string) (TeamRun, error)
 	ListTeamRunSteps(ctx context.Context, runID string) ([]TeamRunStep, error)
 	CreateTeamRun(ctx context.Context, r TeamRun) (TeamRun, error)
@@ -31,19 +32,12 @@ type TeamRepository interface {
 }
 
 type TeamUsecase struct {
-	repo   TeamRepository
-	agents AgentRepository
+	repo         TeamRepository
+	agentChecker AgentIDExistenceChecker
 }
 
-func NewTeamUsecase(repo TeamRepository, agents AgentRepository) *TeamUsecase {
-	return &TeamUsecase{repo: repo, agents: agents}
-}
-
-func firstNonEmptyTeam(a, b string) string {
-	if strings.TrimSpace(a) != "" {
-		return strings.TrimSpace(a)
-	}
-	return b
+func NewTeamUsecase(repo TeamRepository, agentChecker AgentIDExistenceChecker) *TeamUsecase {
+	return &TeamUsecase{repo: repo, agentChecker: agentChecker}
 }
 
 func defaultTeamDefinitionJSON() string {
@@ -70,7 +64,7 @@ func validateTeamDefinition(raw string) error {
 	if err := json.Unmarshal([]byte(raw), &body); err != nil {
 		return kerrors.BadRequest("TEAM", "definition_json must be valid JSON")
 	}
-	mode := firstNonEmptyTeam(body.Mode, "sequential")
+	mode := firstNonEmpty(body.Mode, "sequential")
 	switch mode {
 	case "sequential", "parallel", "coordinator", "critic_loop", "swarm", "adaptive":
 	default:
@@ -99,6 +93,17 @@ func validateTeamDefinition(raw string) error {
 			hasCritic = true
 		}
 	}
+	// Validate role compatibility with mode.
+	validRoles := validRolesForMode(mode)
+	for _, member := range body.Members {
+		role := strings.TrimSpace(member.Role)
+		if role == "" {
+			continue
+		}
+		if !validRoles[role] {
+			return kerrors.BadRequest("TEAM", "role "+role+" is not compatible with mode "+mode)
+		}
+	}
 	if enabledCount == 0 {
 		return kerrors.BadRequest("TEAM", "team must have at least one enabled member")
 	}
@@ -114,8 +119,26 @@ func validateTeamDefinition(raw string) error {
 	return nil
 }
 
+// validRolesForMode returns the set of roles allowed for a given orchestration mode.
+// Empty role (default member) is always allowed.
+func validRolesForMode(mode string) map[string]bool {
+	switch mode {
+	case "critic_loop":
+		return map[string]bool{"generator": true, "critic": true, "synthesizer": true}
+	case "parallel":
+		return map[string]bool{"synthesizer": true}
+	case "coordinator":
+		return map[string]bool{"synthesizer": true}
+	case "sequential", "swarm", "adaptive":
+		// These modes use generic members; no special roles needed.
+		return map[string]bool{}
+	default:
+		return map[string]bool{}
+	}
+}
+
 func (u *TeamUsecase) validateTeamMembersExist(ctx context.Context, raw string) error {
-	if u.agents == nil || strings.TrimSpace(raw) == "" {
+	if u.agentChecker == nil || strings.TrimSpace(raw) == "" {
 		return nil
 	}
 	var body struct {
@@ -126,14 +149,14 @@ func (u *TeamUsecase) validateTeamMembersExist(ctx context.Context, raw string) 
 		} `json:"members"`
 	}
 	if err := json.Unmarshal([]byte(raw), &body); err != nil {
-		return nil
+		return kerrors.BadRequest("TEAM", "invalid team definition JSON: "+err.Error())
 	}
 	for _, member := range body.Members {
 		aid := strings.TrimSpace(member.AgentID)
 		if aid == "" {
 			continue
 		}
-		if _, err := u.agents.GetAgentByID(ctx, aid); err != nil {
+		if !u.agentChecker.AgentExistsByID(ctx, aid) {
 			return kerrors.BadRequest("TEAM", "team member agent "+aid+" does not exist")
 		}
 	}
@@ -203,11 +226,7 @@ func (u *TeamUsecase) HasActiveRun(ctx context.Context, teamID string) (bool, er
 	if err != nil {
 		return false, err
 	}
-	runs, err := u.repo.ListTeamRuns(ctx, teamID, 50)
-	if err != nil {
-		return false, err
-	}
-	return HasActiveTeamRun(runs), nil
+	return u.repo.HasActiveTeamRun(ctx, teamID)
 }
 
 func (u *TeamUsecase) Update(ctx context.Context, id string, patch Team) (Team, error) {
@@ -226,10 +245,10 @@ func (u *TeamUsecase) Update(ctx context.Context, id string, patch Team) (Team, 
 	if err != nil {
 		return Team{}, err
 	}
-	current.TeamKey = strings.TrimSpace(firstNonEmptyTeam(patch.TeamKey, current.TeamKey))
-	current.DisplayName = strings.TrimSpace(firstNonEmptyTeam(patch.DisplayName, current.DisplayName))
-	current.Status = firstNonEmptyTeam(patch.Status, current.Status)
-	current.DefinitionJSON = firstNonEmptyTeam(patch.DefinitionJSON, current.DefinitionJSON)
+	current.TeamKey = strings.TrimSpace(firstNonEmpty(patch.TeamKey, current.TeamKey))
+	current.DisplayName = strings.TrimSpace(firstNonEmpty(patch.DisplayName, current.DisplayName))
+	current.Status = firstNonEmpty(patch.Status, current.Status)
+	current.DefinitionJSON = firstNonEmpty(patch.DefinitionJSON, current.DefinitionJSON)
 	current.ADKAppName = patch.ADKAppName
 	if patch.ADKAppName == "" {
 		current.ADKAppName = current.TeamKey
@@ -268,11 +287,7 @@ func (u *TeamUsecase) Duplicate(ctx context.Context, id string) (Team, error) {
 		return Team{}, err
 	}
 	current.ID = newAgentCatalogID()
-	suffix := newAgentCatalogID()
-	if len(suffix) > 6 {
-		suffix = strings.ToLower(suffix[:6])
-	}
-	current.TeamKey = current.TeamKey + "-copy-" + suffix
+	current.TeamKey = current.TeamKey + "-copy-" + newAgentCatalogID()
 	current.DisplayName = current.DisplayName + " Copy"
 	current.IsDefault = false
 	return u.repo.CreateTeam(ctx, current)
@@ -422,7 +437,7 @@ func (u *TeamUsecase) ExportStructure(ctx context.Context, teamID string) (*Team
 			nid := m.AgentID
 			snapshot.Nodes = append(snapshot.Nodes, StructureNode{NodeID: nid, Kind: "agent", Name: m.Name})
 			if i == 0 {
-				snapshot.Edges = append(snapshot.Edges, StructureEdge{FromNodeID: "team-"+t.TeamKey, ToNodeID: nid})
+				snapshot.Edges = append(snapshot.Edges, StructureEdge{FromNodeID: "team-" + t.TeamKey, ToNodeID: nid})
 			} else {
 				snapshot.Edges = append(snapshot.Edges, StructureEdge{FromNodeID: def.Members[0].AgentID, ToNodeID: nid})
 			}
@@ -432,7 +447,7 @@ func (u *TeamUsecase) ExportStructure(ctx context.Context, teamID string) (*Team
 			nid := m.AgentID
 			snapshot.Nodes = append(snapshot.Nodes, StructureNode{NodeID: nid, Kind: "agent", Name: m.Name})
 			if i == 0 {
-				snapshot.Edges = append(snapshot.Edges, StructureEdge{FromNodeID: "team-"+t.TeamKey, ToNodeID: nid})
+				snapshot.Edges = append(snapshot.Edges, StructureEdge{FromNodeID: "team-" + t.TeamKey, ToNodeID: nid})
 			}
 			for j, other := range def.Members {
 				if i != j {
@@ -444,7 +459,7 @@ func (u *TeamUsecase) ExportStructure(ctx context.Context, teamID string) (*Team
 		for _, m := range def.Members {
 			nid := m.AgentID
 			snapshot.Nodes = append(snapshot.Nodes, StructureNode{NodeID: nid, Kind: "agent", Name: m.Name})
-			snapshot.Edges = append(snapshot.Edges, StructureEdge{FromNodeID: "team-"+t.TeamKey, ToNodeID: nid})
+			snapshot.Edges = append(snapshot.Edges, StructureEdge{FromNodeID: "team-" + t.TeamKey, ToNodeID: nid})
 		}
 	}
 	return snapshot, nil

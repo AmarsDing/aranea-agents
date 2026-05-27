@@ -29,10 +29,7 @@ func (r *Runner) recordMemberUsage(
 		return
 	}
 	now := time.Now().UTC()
-	status := asst.Status
-	if status == "" || status == "ok" {
-		status = "success"
-	}
+	status := biz.NormalizeTokenUsageStatus(asst.Status)
 	latency := asst.LatencyMS
 	tps := 0.0
 	if latency > 0 && tout > 0 {
@@ -93,7 +90,7 @@ func (r *Runner) recordTeamRunUsage(
 	promptTok, completionTok int,
 	prov, mod, dialogMode string,
 ) {
-	if r == nil || r.usage == nil || promptTok <= 0 && completionTok <= 0 {
+	if r == nil || r.usage == nil || (promptTok <= 0 && completionTok <= 0) {
 		return
 	}
 	now := time.Now().UTC()
@@ -122,7 +119,7 @@ func (r *Runner) recordTeamRunUsage(
 		TotalTokens:      promptTok + completionTok,
 		UsageKind:        biz.UsageKindTeamTurn,
 		PromptMode:       dialogMode,
-		Status:           "success",
+		Status:           biz.TokenUsageStatusSuccess,
 		MetadataJSON:     meta,
 		OccurredAt:       now.Format(time.RFC3339),
 	}

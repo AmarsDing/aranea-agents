@@ -53,3 +53,14 @@ func PropagateDenyAliases(m map[string]bool) {
 		}
 	}
 }
+
+// PolicyAliases returns a defensive copy of the policy alias map. Used by
+// internal/tools to assert that runtime aliases agree on the same canonical
+// target whenever both maps include the same alias key (TPM-P1-01).
+func PolicyAliases() map[string]string {
+	out := make(map[string]string, len(toolPolicyKeyAliases))
+	for k, v := range toolPolicyKeyAliases {
+		out[k] = v
+	}
+	return out
+}

@@ -162,6 +162,16 @@ func (r *evalRepo) DeleteDataset(ctx context.Context, id string) error {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	// 级联顺序：results → runs → cases → dataset，避免孤儿数据。
+	// 参考 DeleteRun 已用同事务删 results+runs 的模式。
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM eval_case_results WHERE run_id IN (SELECT id FROM eval_runs WHERE dataset_id=?)`,
+		id); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM eval_runs WHERE dataset_id=?`, id); err != nil {
+		return err
+	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM eval_cases WHERE dataset_id=?`, id); err != nil {
 		return err
 	}

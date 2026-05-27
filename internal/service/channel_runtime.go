@@ -8,6 +8,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/runtime"
+	"aranea-agents/pkg/safego"
 )
 
 const defaultRuntimeReloadInterval = 2 * time.Minute
@@ -59,7 +60,7 @@ func (r *ChannelRuntime) Start(parent context.Context) {
 	}
 	ctx, cancel := context.WithCancel(parent)
 	r.cancel = cancel
-	go func() {
+	safego.Go(ctx, "channel_runtime.reload_loop", func() {
 		_ = r.mgr.Reload(ctx)
 		interval := RuntimeReloadInterval()
 		if interval <= 0 {
@@ -76,7 +77,7 @@ func (r *ChannelRuntime) Start(parent context.Context) {
 				_ = r.mgr.Reload(ctx)
 			}
 		}
-	}()
+	})
 }
 
 // Reload restarts connectors after channel CRUD.

@@ -93,9 +93,12 @@ func ObserverForServer(serverKey string) trpcmcp.ReconnectObserver {
 }
 
 // DefaultSessionReconnectMax returns the default max reconnect attempts for network transports.
+// Transport aliases here MUST stay aligned with internal/mcp/config.transportAliases (TPM-P1-10);
+// we keep the local switch instead of importing mcpconfig to avoid a dependency from this
+// low-level observer package back into config.
 func DefaultSessionReconnectMax(transport string) int {
 	switch strings.ToLower(strings.TrimSpace(transport)) {
-	case "sse", "streamable", "streamable_http":
+	case "sse", "streamable", "streamable_http", "streamablehttp", "http":
 		return 3
 	default:
 		return 0

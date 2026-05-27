@@ -36,6 +36,9 @@ func (m *parityMemRepo) DeleteTeam(context.Context, string) error               
 func (m *parityMemRepo) ListTeamRuns(context.Context, string, int) ([]biz.TeamRun, error) {
 	return nil, nil
 }
+func (m *parityMemRepo) HasActiveTeamRun(context.Context, string) (bool, error) {
+	return false, nil
+}
 func (m *parityMemRepo) GetTeamRunByID(_ context.Context, id string) (biz.TeamRun, error) {
 	if r, ok := m.runs[id]; ok {
 		return r, nil
@@ -200,7 +203,7 @@ func runGraphPathHarness(t *testing.T, def Definition, outcomes []parityMemberOu
 		CompletionTok:  result.CompletionTok,
 		GraphExecID:    run.GraphExecutionID,
 	}
-	runner.persistGraphMemberStepsFromResult(context.Background(), finishIn, def)
+	runner.persistGraphMemberStepsFromResultTestOnly(context.Background(), finishIn, def)
 
 	envs := drainEnvelopes(ch)
 	steps, _ := repo.ListTeamRunSteps(context.Background(), run.ID)

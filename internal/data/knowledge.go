@@ -198,9 +198,56 @@ func (r *knowledgeRepo) ListDocuments(ctx context.Context, collectionID string, 
 	return out, total, rows.Err()
 }
 
+// DeleteDocument removes a document, lets the FK cascade drop its chunks, and
+// atomically adjusts the owning collection's cached counters (DAT-02 / REV-B).
+//
+// Counter adjustment rules:
+//   - document_count is only decremented when the document was successfully
+//     indexed (status = "indexed"). For pending/indexing/error documents the
+//     collection counter was never incremented, so decrementing would produce
+//     drift.
+//   - chunk_count is decremented by the document's chunk_count regardless of
+//     status, but GREATEST guards against going below 0. (A partially-indexed
+//     document that failed mid-way may have some chunks already counted.)
+//
+// All statements run in one transaction to avoid any partial-update window.
 func (r *knowledgeRepo) DeleteDocument(ctx context.Context, id string) error {
-	_, err := r.db.ExecContext(ctx, `DELETE FROM knowledge_documents WHERE id = $1`, id)
-	return err
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var collectionID string
+	var chunkCount int
+	var status string
+	switch err := tx.QueryRowContext(ctx,
+		`SELECT collection_id, chunk_count, status FROM knowledge_documents WHERE id = $1`, id).
+		Scan(&collectionID, &chunkCount, &status); {
+	case err == sql.ErrNoRows:
+		return nil // idempotent: deleting an absent doc is a no-op
+	case err != nil:
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM knowledge_documents WHERE id = $1`, id); err != nil {
+		return err
+	}
+	if collectionID != "" {
+		// Only decrement document_count when the document was actually counted
+		// (i.e. UpdateCollectionCounts was called on successful ingest).
+		docDelta := 0
+		if status == "indexed" {
+			docDelta = 1
+		}
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE knowledge_collections
+			 SET document_count = GREATEST(document_count - $2, 0),
+			     chunk_count    = GREATEST(chunk_count    - $3, 0),
+			     updated_at     = NOW()
+			 WHERE id = $1`, collectionID, docDelta, chunkCount); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // --- Chunk operations ---

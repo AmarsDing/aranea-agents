@@ -21,7 +21,7 @@
       <AppRegistryTable
         :shell="false"
         :rows="rows"
-        :columns="columns"
+        :columns="MEMORY_CASCADE_TABLE_COLUMNS"
         row-key="id"
         :loading="loading"
         hide-pagination
@@ -62,8 +62,9 @@
 <script setup lang="ts">
 import AppRegistryTable from "../../components/layout/AppRegistryTable.vue";
 import AppRegistryHoverTip from "../../components/layout/AppRegistryHoverTip.vue";
-import { registryColWidth } from "../ui/registryTableColumns";
+
 import type { CascadeProposal } from "./types";
+import { MEMORY_CASCADE_TABLE_COLUMNS } from "./memoryTableUi";
 
 defineProps<{
   agentId: string | null;
@@ -77,14 +78,6 @@ defineEmits<{
   approve: [row: CascadeProposal];
   reject: [row: CascadeProposal];
 }>();
-
-const columns = [
-  { name: "change", label: "更名", field: "old_value", align: "left" as const, ...registryColWidth("14%") },
-  { name: "risk", label: "风险", field: "risk_level", align: "left" as const, ...registryColWidth("9%") },
-  { name: "affected", label: "影响实体", field: "affected_entities", align: "center" as const, ...registryColWidth("72px") },
-  { name: "created", label: "创建时间", field: "created_at", align: "left" as const, ...registryColWidth("11%") },
-  { name: "actions", label: "操作", field: "id", align: "right" as const, ...registryColWidth("108px") }
-];
 
 function riskColor(level?: string) {
   switch ((level || "").toLowerCase()) {

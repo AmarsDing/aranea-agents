@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"strings"
 
 	"aranea-agents/internal/biz"
@@ -81,24 +80,18 @@ func (h *ChannelIngress) steerIntoActiveTurn(ctx context.Context, chRow biz.Chan
 	if h == nil || h.chat == nil || sessionID == "" {
 		return "", nil
 	}
-	svc, ok := h.chat.(*ChatService)
-	if !ok || svc.orch == nil {
-		if !ok && h.chat != nil {
-			slog.Warn("steerIntoActiveTurn: chat is not *ChatService", "type", fmt.Sprintf("%T", h.chat))
-		}
-		return "", nil
-	}
 	content := strings.TrimSpace(ev.Text)
 	if content == "" {
 		return "", nil
 	}
-	accepted, _, pendingID, _, err := svc.orch.EnqueueUserMessage(sessionID, content)
+	accepted, err := h.chat.TryEnqueueUserMessage(sessionID, content)
 	if err != nil {
 		return "", err
 	}
 	if !accepted {
 		return "", fmt.Errorf("steer rejected")
 	}
+	pendingID := h.chat.LastPendingMessageID(sessionID)
 	if err := h.sendInboundQueuedAck(ctx, chRow, ev, platform, ltCfg, pendingID); err != nil {
 		return pendingID, err
 	}
@@ -106,9 +99,5 @@ func (h *ChannelIngress) steerIntoActiveTurn(ctx context.Context, chRow biz.Chan
 }
 
 func (h *ChannelIngress) channelHasActiveRunner(sessionID string) bool {
-	svc, ok := h.chat.(*ChatService)
-	if !ok || svc.orch == nil {
-		return false
-	}
-	return svc.orch.HasActiveRunner(sessionID)
+	return h.chat.HasActiveRun(sessionID)
 }

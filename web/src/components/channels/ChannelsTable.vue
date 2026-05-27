@@ -2,7 +2,7 @@
   <AppRegistryTable
     table-class="channels-data-table"
     :rows="rows"
-    :columns="columns"
+    :columns="CHANNEL_TABLE_COLUMNS"
     row-key="id"
     :loading="loading"
     hide-pagination
@@ -109,13 +109,13 @@
 </template>
 
 <script setup lang="ts">
-import type { QTableColumn } from "quasar";
 import AppRegistryTable from "../layout/AppRegistryTable.vue";
 import AppRegistryHoverTip from "../layout/AppRegistryHoverTip.vue";
 import ChannelPlatformAvatar from "./ChannelPlatformAvatar.vue";
 import type { ChannelCatalogItem, ChannelRow } from "../../features/channels/types";
-import { registryColWidth } from "../../features/ui/registryTableColumns";
+
 import {
+  CHANNEL_TABLE_COLUMNS,
   catalogLabelForType,
   channelExternalID,
   channelMetadata,
@@ -143,14 +143,4 @@ defineEmits<{
   edit: [row: ChannelRow];
   remove: [row: ChannelRow];
 }>();
-
-const columns: QTableColumn<ChannelRow>[] = [
-  { name: "name", label: "名称", field: "name", align: "left", ...registryColWidth("14%") },
-  { name: "type", label: "平台", field: "config_json", align: "left", ...registryColWidth("11%") },
-  { name: "external_id", label: "外部 ID", field: "metadata_json", align: "left", ...registryColWidth("10%") },
-  { name: "status", label: "连接状态", field: "status", align: "left", ...registryColWidth("9%") },
-  { name: "enabled", label: "启用", field: "enabled", align: "center", ...registryColWidth("64px") },
-  { name: "updated", label: "最近更新", field: "updated_at", align: "left", ...registryColWidth("11%") },
-  { name: "actions", label: "操作", field: "id", align: "right", ...registryColWidth("148px") }
-];
 </script>

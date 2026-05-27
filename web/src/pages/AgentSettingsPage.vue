@@ -262,13 +262,9 @@ import { useAgentA2AEndpointTab } from "../features/agents/useAgentA2AEndpointTa
 import { useAgentSettingsPage } from "../features/agents/useAgentSettingsPage";
 import { tokenEstimateFor } from "../components/agents/agentUi";
 
-import { registryColWidth } from "../features/ui/registryTableColumns";
+import { AGENT_PROMPT_ASSEMBLY_TABLE_COLUMNS } from "../components/agents/agentTableUi";
 
-const promptSectionColumns = [
-  { name: "label", label: "区块", field: "label", align: "left" as const, ...registryColWidth("20%") },
-  { name: "source", label: "来源", field: "source", align: "left" as const, ...registryColWidth("11%") },
-  { name: "est_tokens", label: "估算 tokens", field: "est_tokens", align: "right" as const, ...registryColWidth("72px") },
-];
+const promptSectionColumns = AGENT_PROMPT_ASSEMBLY_TABLE_COLUMNS;
 
 const {
   tab,

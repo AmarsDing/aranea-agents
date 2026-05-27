@@ -42,6 +42,9 @@ func (r *completionMonitorRepo) ListAlertRules(ctx context.Context) ([]MonitorAl
 func (r *completionMonitorRepo) ReplaceAlertRules(ctx context.Context, rules []MonitorAlertRule) error {
 	return nil
 }
+func (r *completionMonitorRepo) UpdateAlertFiringState(_ context.Context, _ string, _ MonitorAlertFiringState, _ *time.Time, _ float64, _ *time.Time) error {
+	return nil
+}
 func (r *completionMonitorRepo) CountMonitorEventsSince(ctx context.Context, eventKey, status, sinceRFC3339 string) (int32, error) {
 	return 0, nil
 }

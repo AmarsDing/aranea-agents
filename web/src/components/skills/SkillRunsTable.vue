@@ -3,7 +3,7 @@
     table-class="skill-runs-table"
     row-key="id"
     :rows="rows"
-    :columns="columns"
+    :columns="SKILL_RUNS_TABLE_COLUMNS"
     :loading="loading"
     hide-pagination
   >
@@ -42,23 +42,16 @@
 </template>
 
 <script setup lang="ts">
-import type { QTableColumn } from "quasar";
 import AppRegistryTable from "../layout/AppRegistryTable.vue";
 import AppRegistryHoverTip from "../layout/AppRegistryHoverTip.vue";
+import ToolGlassPanel from "./ToolGlassPanel.vue";
 import type { SkillInvocation } from "../../features/skills/types";
-import { registryColWidth } from "../../features/ui/registryTableColumns";
+import { SKILL_RUNS_TABLE_COLUMNS } from "./skillTableUi";
 
 defineProps<{
   rows: SkillInvocation[];
   loading: boolean;
 }>();
-
-const columns: QTableColumn<SkillInvocation>[] = [
-  { name: "time", label: "时间 / 耗时", field: "started_at", align: "left", ...registryColWidth("11%") },
-  { name: "skill", label: "Skill", field: "skill_name", align: "left", ...registryColWidth("14%") },
-  { name: "agent", label: "Agent", field: "agent_display_name", align: "left", ...registryColWidth("10%") },
-  { name: "status", label: "结果", field: "status", align: "left", ...registryColWidth("9%") }
-];
 
 function formatDate(value?: string) {
   if (!value) return "-";

@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"aranea-agents/pkg/safego"
 )
 
 const (
@@ -60,7 +62,7 @@ func SyncProviderLogos(ctx context.Context, store *Store, cat Catalog, logosBase
 	for _, id := range ids {
 		id := id
 		wg.Add(1)
-		go func() {
+		safego.Go(ctx, "modelcatalog.logo_fetch", func() {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
@@ -74,7 +76,7 @@ func SyncProviderLogos(ctx context.Context, store *Store, cat Catalog, logosBase
 			mu.Lock()
 			res.Synced++
 			mu.Unlock()
-		}()
+		})
 	}
 	wg.Wait()
 

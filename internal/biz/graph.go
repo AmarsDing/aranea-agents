@@ -190,14 +190,14 @@ type GraphRunRepo interface {
 }
 
 type GraphUsecase struct {
-	repo          GraphRepo
-	runRepo       GraphRunRepo
-	factory       GraphBuilderFactory
-	execObserver  GraphExecutionObserver
-	taskCoord     GraphTaskCoordinator
-	mu            sync.RWMutex
-	defs          map[string]*GraphDefinition
-	executions    map[string]*GraphExecution
+	repo             GraphRepo
+	runRepo          GraphRunRepo
+	factory          GraphBuilderFactory
+	execObserver     GraphExecutionObserver
+	taskCoord        GraphTaskCoordinator
+	mu               sync.RWMutex
+	defs             map[string]*GraphDefinition
+	executions       map[string]*GraphExecution
 	teamBuildConfigs map[string]GraphBuildConfig
 }
 
@@ -257,6 +257,7 @@ func ShouldCreateTeamGraphTaskNode(node *NodeDef) bool {
 
 const gcInterval = 5 * time.Minute
 const executionMaxAge = 30 * time.Minute
+const maxExecutions = 500
 
 func (uc *GraphUsecase) gcLoop() {
 	ticker := time.NewTicker(gcInterval)
@@ -268,7 +269,7 @@ func (uc *GraphUsecase) gcLoop() {
 
 func (uc *GraphUsecase) gc() {
 	uc.mu.Lock()
-	defer uc.mu.Unlock()
+	var expired []*GraphExecution
 	now := time.Now()
 	for id, exec := range uc.executions {
 		if exec.Status == "running" || exec.Status == "waiting_human" {
@@ -281,9 +282,16 @@ func (uc *GraphUsecase) gc() {
 			exec.Status = "expired"
 			nowCopy := now
 			exec.FinishedAt = &nowCopy
+			expired = append(expired, exec)
 			delete(uc.executions, id)
 			delete(uc.teamBuildConfigs, id)
 		}
+	}
+	uc.mu.Unlock()
+
+	// Persist expired executions to repo before discarding from memory.
+	for _, exec := range expired {
+		_ = uc.runRepo.UpdateRun(context.Background(), exec)
 	}
 }
 

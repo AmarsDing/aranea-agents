@@ -666,6 +666,7 @@ CREATE INDEX IF NOT EXISTS idx_cron_run_task ON cron_task_run(task_id, created_a
 CREATE INDEX IF NOT EXISTS idx_monitor_events_created ON monitor_events(created_at);
 CREATE INDEX IF NOT EXISTS idx_monitor_events_key_created ON monitor_events(event_key, created_at);
 CREATE INDEX IF NOT EXISTS idx_monitor_events_key_status_created ON monitor_events(event_key, status, created_at);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_monitor_events_runner_completion_unique ON monitor_events(event_key, json_extract(metadata_json, '$.session_id'), json_extract(metadata_json, '$.invocation_id')) WHERE event_key = 'runner.completion' AND deleted_at = '';
 CREATE INDEX IF NOT EXISTS idx_monitor_traces_created ON monitor_traces(created_at);
 
 -- L1 working memory (aranea/docs/13 memory-L1-working.md 搂3)
@@ -938,6 +939,11 @@ CREATE TABLE IF NOT EXISTS memory_facts (
   last_used_at TEXT NOT NULL DEFAULT '',
   expires_at TEXT NOT NULL DEFAULT '',
   metadata_json TEXT NOT NULL DEFAULT '{}',
+  -- MEM-OPT-01 Phase 0: external vector index (pgvector / embedding_blob) consistency tracking
+  index_status TEXT NOT NULL DEFAULT 'fresh',
+  index_synced_at INTEGER NOT NULL DEFAULT 0,
+  index_attempts INTEGER NOT NULL DEFAULT 0,
+  index_last_error TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   archived_at TEXT NOT NULL DEFAULT '',
@@ -1012,6 +1018,8 @@ CREATE INDEX IF NOT EXISTS idx_memory_facts_workspace ON memory_facts(workspace_
 CREATE INDEX IF NOT EXISTS idx_memory_facts_agent ON memory_facts(agent_id, status, last_used_at);
 CREATE INDEX IF NOT EXISTS idx_memory_facts_decay ON memory_facts(status, next_decay_at);
 CREATE INDEX IF NOT EXISTS idx_memory_facts_kind ON memory_facts(fact_kind, scope_type, scope_id);
+-- MEM-OPT-01 Phase 0: reconciler can quickly find stale rows that need re-sync
+CREATE INDEX IF NOT EXISTS idx_memory_facts_index_status ON memory_facts(index_status, index_synced_at);
 CREATE INDEX IF NOT EXISTS idx_memory_fact_versions_fact ON memory_fact_versions(fact_id, version DESC);
 CREATE INDEX IF NOT EXISTS idx_memory_fact_feedback_fact ON memory_fact_feedback(fact_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_memory_fact_feedback_session ON memory_fact_feedback(session_id, created_at DESC);

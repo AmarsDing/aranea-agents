@@ -105,8 +105,13 @@
 import { computed, ref, watch } from "vue";
 import AppRegistryTable from "../layout/AppRegistryTable.vue";
 import AppRegistryPagination from "../layout/AppRegistryPagination.vue";
-import { registryColWidth } from "../../features/ui/registryTableColumns";
+
 import type { EvalRun, EvalRunComparison, EvalTrendPoint } from "../../features/evaluation/types";
+import {
+  EVAL_COMPARE_TABLE_COLUMNS,
+  EVAL_RECENT_RUN_TABLE_COLUMNS,
+  EVAL_TREND_TABLE_COLUMNS
+} from "../../features/evaluation/evaluationTableUi";
 
 const props = defineProps<{
   agentId: string;
@@ -158,29 +163,9 @@ watch(
   }
 );
 
-const trendColumns = [
-  { name: "created_at", label: "时间", field: "created_at", align: "left" as const, ...registryColWidth("11%") },
-  { name: "trigger_source", label: "触发", field: "trigger_source", align: "left" as const, ...registryColWidth("72px") },
-  { name: "exact_match_score", label: "Exact", field: "exact_match_score", align: "right" as const, ...registryColWidth("64px") },
-  { name: "contains_match_score", label: "Contains", field: "contains_match_score", align: "right" as const, ...registryColWidth("64px") },
-  { name: "llm_judge_score", label: "LLM", field: "llm_judge_score", align: "right" as const, ...registryColWidth("64px") },
-  { name: "pass_at_k", label: "pass@k", field: "pass_at_k", align: "right" as const, ...registryColWidth("64px") }
-];
-
-const compareSelectColumns = [
-  { name: "id", label: "Run", field: "id", align: "left" as const, ...registryColWidth("10%") },
-  { name: "status", label: "状态", field: "status", align: "left" as const, ...registryColWidth("9%") },
-  { name: "exact_match_score", label: "Exact", field: "exact_match_score", align: "right" as const, ...registryColWidth("64px") },
-  { name: "created_at", label: "时间", field: "created_at", align: "left" as const, ...registryColWidth("11%") }
-];
-
-const comparisonColumns = [
-  { name: "run_id", label: "Run", field: "run_id", align: "left" as const, ...registryColWidth("10%") },
-  { name: "exact_match_score", label: "Exact", field: "exact_match_score", align: "right" as const, ...registryColWidth("64px") },
-  { name: "delta_exact_match", label: "Δ Exact", field: "delta_exact_match", align: "right" as const, ...registryColWidth("64px") },
-  { name: "delta_llm_judge", label: "Δ LLM", field: "delta_llm_judge", align: "right" as const, ...registryColWidth("64px") },
-  { name: "delta_tool_call_accuracy", label: "Δ Tool", field: "delta_tool_call_accuracy", align: "right" as const, ...registryColWidth("64px") }
-];
+const trendColumns = EVAL_TREND_TABLE_COLUMNS;
+const compareSelectColumns = EVAL_RECENT_RUN_TABLE_COLUMNS;
+const comparisonColumns = EVAL_COMPARE_TABLE_COLUMNS;
 
 function onAgentChange(v: string) {
   emit("update:agentId", v);

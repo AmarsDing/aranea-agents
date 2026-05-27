@@ -6,8 +6,25 @@ import (
 	"sync"
 	"time"
 
+	"aranea-agents/internal/event"
 	"aranea-agents/pkg/safego"
 )
+
+const awaitChanMaxAge = 30 * time.Minute
+
+// AwaitReplyMsg is the message sent over an await channel when a user replies.
+type AwaitReplyMsg struct {
+	RunID string
+	Reply string
+}
+
+// AwaitChannel is the concrete channel type used for await-reply coordination.
+type AwaitChannel = chan AwaitReplyMsg
+
+type awaitChanEntry struct {
+	ch        AwaitChannel
+	createdAt time.Time
+}
 
 type ChatRunStatus struct {
 	RunID     string
@@ -171,16 +188,24 @@ func (uc *ChatUsecase) EnqueueUserMessage(sessionID, content string, mergeFollow
 	return true, true, pid, "", nil
 }
 
-func (uc *ChatUsecase) RegisterAwaitChannel(sessionID string, ch interface{}) {
-	uc.awaitChans.Store(sessionID, ch)
+func (uc *ChatUsecase) RegisterAwaitChannel(sessionID string, ch AwaitChannel) {
+	uc.awaitChans.Store(sessionID, awaitChanEntry{ch: ch, createdAt: time.Now()})
 }
 
 func (uc *ChatUsecase) DeleteAwaitChannel(sessionID string) {
 	uc.awaitChans.Delete(sessionID)
 }
 
-func (uc *ChatUsecase) LoadAwaitChannel(sessionID string) (interface{}, bool) {
-	return uc.awaitChans.Load(sessionID)
+func (uc *ChatUsecase) LoadAwaitChannel(sessionID string) (AwaitChannel, bool) {
+	val, ok := uc.awaitChans.Load(sessionID)
+	if !ok {
+		return nil, false
+	}
+	entry, ok := val.(awaitChanEntry)
+	if !ok {
+		return nil, false
+	}
+	return entry.ch, true
 }
 
 func (uc *ChatUsecase) PersistAwaitMarkers(ctx context.Context, sessionID, runID string, meta ChatAwaitMeta) {
@@ -209,9 +234,16 @@ func (uc *ChatUsecase) StartBackgroundGoroutines() {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				uc.awaitChans.Range(func(key, _ interface{}) bool {
+				now := time.Now()
+				uc.awaitChans.Range(func(key, val interface{}) bool {
 					sid, ok := key.(string)
 					if !ok || strings.TrimSpace(sid) == "" {
+						uc.awaitChans.Delete(key)
+						return true
+					}
+					entry, ok := val.(awaitChanEntry)
+					if ok && now.Sub(entry.createdAt) > awaitChanMaxAge {
+						event.SysLogWarn("system.session.compress", "await channel expired, cleaning up", event.P("session_id", sid), event.P("age", now.Sub(entry.createdAt).Round(time.Second).String()))
 						uc.awaitChans.Delete(key)
 					}
 					return true

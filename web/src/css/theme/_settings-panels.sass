@@ -186,6 +186,79 @@
   code
     font-size: 11px
 
+// Hook / Callback 规则编辑器
+.callback-editor
+  display: flex
+  flex-direction: column
+  gap: 12px
+
+.callback-editor__section
+  padding: 14px 16px
+  border: 1px solid var(--glass-border)
+  border-radius: 14px
+  background: color-mix(in srgb, var(--glass-surface) 88%, transparent)
+
+.callback-editor__section-head
+  display: flex
+  flex-wrap: wrap
+  align-items: center
+  gap: 8px
+  margin-bottom: 12px
+
+.callback-editor__section-title
+  margin-right: 4px
+  color: var(--color-text-heading)
+  font-size: 13px
+  font-weight: 700
+
+.callback-editor__panel
+  padding: 4px 2px 8px
+
+.callback-editor__expansion-head
+  color: var(--color-text-secondary)
+  font-weight: 600
+
+.callback-editor__hint
+  margin: 0
+  color: var(--color-text-secondary)
+  font-size: 12px
+  line-height: 1.55
+
+.hook-tag
+  display: inline-flex
+  align-items: center
+  padding: 2px 8px
+  border: 1px solid var(--glass-border)
+  border-radius: 6px
+  font-size: 11px
+  font-weight: 600
+  line-height: 1.35
+  white-space: nowrap
+
+.hook-tag--point
+  border-color: color-mix(in srgb, var(--color-link) 24%, var(--glass-border))
+  background: color-mix(in srgb, var(--color-link) 8%, var(--glass-surface))
+  color: var(--color-link)
+
+.hook-tag--log
+  color: var(--color-text-secondary)
+  background: transparent
+
+.hook-tag--notify
+  border-color: color-mix(in srgb, var(--color-accent) 28%, var(--glass-border))
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--glass-surface))
+  color: var(--color-text-heading)
+
+.hook-tag--block
+  border-color: color-mix(in srgb, var(--color-danger) 28%, var(--glass-border))
+  background: color-mix(in srgb, var(--color-danger) 10%, var(--glass-surface))
+  color: var(--color-danger)
+
+.hook-tag--modify
+  border-color: color-mix(in srgb, var(--color-accent-indigo) 28%, var(--glass-border))
+  background: color-mix(in srgb, var(--color-accent-indigo) 12%, var(--glass-surface))
+  color: var(--color-accent-indigo-light)
+
 .settings-link
   color: var(--color-accent)
   text-decoration: none

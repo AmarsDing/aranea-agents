@@ -35,7 +35,7 @@
 <script setup lang="ts">
 import AppRegistryHoverTip from "../layout/AppRegistryHoverTip.vue";
 import AppRegistryMarkupTable from "../layout/AppRegistryMarkupTable.vue";
-import { REGISTRY_COL_W, registryColWidth } from "../../features/ui/registryTableColumns";
+import { REGISTRY_COL_W, registryCol } from "../../features/ui/registryTableColumns";
 import type { ModelTokenUsageEvent } from "../../features/usage/types";
 
 defineProps<{
@@ -43,10 +43,10 @@ defineProps<{
 }>();
 
 const columns = [
-  { name: "occurred_at", label: "时间", field: "occurred_at", align: "left" as const, ...registryColWidth(REGISTRY_COL_W.time) },
-  { name: "model_api_id", label: "模型", field: "model_api_id", align: "left" as const, ...registryColWidth(REGISTRY_COL_W.name) },
-  { name: "agent_id", label: "Agent", field: "agent_id", align: "left" as const, ...registryColWidth(REGISTRY_COL_W.agent) },
-  { name: "status", label: "状态", field: "status", align: "left" as const, ...registryColWidth(REGISTRY_COL_W.status) }
+  registryCol("occurred_at", "时间", "occurred_at", "left", REGISTRY_COL_W.time),
+  registryCol("model_api_id", "模型", "model_api_id", "left", REGISTRY_COL_W.name),
+  registryCol("agent_id", "Agent", "agent_id", "left", REGISTRY_COL_W.agent),
+  registryCol("status", "状态", "status", "left", REGISTRY_COL_W.status)
 ];
 
 function formatTime(value: string) {

@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"aranea-agents/internal/event"
+
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
@@ -52,9 +54,9 @@ type AgentRepository interface {
 
 // AgentUsecase is catalog agent CRUD + prompt preview.
 type AgentUsecase struct {
-	repo              AgentRepository
-	tools             ToolRepo
-	sys               SystemSettingRepo
+	repo               AgentRepository
+	tools              ToolRepo
+	sys                SystemSettingRepo
 	webResearchChecker WebResearchReadinessChecker
 }
 
@@ -151,6 +153,7 @@ func (u *AgentUsecase) hydrate(ctx context.Context, agent Agent) (Agent, error) 
 		if !stderrors.Is(err, sql.ErrNoRows) {
 			return Agent{}, err
 		}
+		event.SysLogWarn("system.agent.db_resolve", "agent runtime settings not found, migrating from legacy config_json", event.P("agent_id", agent.ID))
 		settings = u.migrateLegacySettings(ctx, agent)
 	}
 	files, err := u.repo.ListAgentPromptFiles(ctx, agent.ID)
@@ -158,6 +161,7 @@ func (u *AgentUsecase) hydrate(ctx context.Context, agent Agent) (Agent, error) 
 		return Agent{}, err
 	}
 	if len(files) == 0 {
+		event.SysLogWarn("system.agent.skill_build", "agent prompt files not found, migrating from legacy config_json", event.P("agent_id", agent.ID))
 		files = u.migrateLegacyFiles(ctx, agent)
 	}
 	agent.Settings = &settings
@@ -486,21 +490,11 @@ func (u *AgentUsecase) syncConfigJSON(ctx context.Context, id string) (Agent, er
 
 func mergeAgentCatalog(current, patch Agent) Agent {
 	out := current
-	if strings.TrimSpace(patch.AgentKey) != "" {
-		out.AgentKey = strings.TrimSpace(patch.AgentKey)
-	}
-	if strings.TrimSpace(patch.DisplayName) != "" {
-		out.DisplayName = strings.TrimSpace(patch.DisplayName)
-	}
-	if strings.TrimSpace(patch.Provider) != "" {
-		out.Provider = strings.TrimSpace(patch.Provider)
-	}
-	if strings.TrimSpace(patch.Model) != "" {
-		out.Model = strings.TrimSpace(patch.Model)
-	}
-	if strings.TrimSpace(patch.Status) != "" {
-		out.Status = strings.TrimSpace(patch.Status)
-	}
+	out.AgentKey = firstNonEmpty(patch.AgentKey, current.AgentKey)
+	out.DisplayName = firstNonEmpty(patch.DisplayName, current.DisplayName)
+	out.Provider = firstNonEmpty(patch.Provider, current.Provider)
+	out.Model = firstNonEmpty(patch.Model, current.Model)
+	out.Status = firstNonEmpty(patch.Status, current.Status)
 	out.IsDefault = patch.IsDefault
 	out.IsFavorite = patch.IsFavorite
 	out.Icon = patch.Icon
@@ -524,11 +518,20 @@ func mergeAgentCatalog(current, patch Agent) Agent {
 	return out
 }
 
+// firstNonEmpty returns the first argument after TrimSpace if non-empty, otherwise the second.
+func firstNonEmpty(a, b string) string {
+	a = strings.TrimSpace(a)
+	if a != "" {
+		return a
+	}
+	return b
+}
+
 // AgentBatchUpdateInput is LIST-04 bulk enable/disable/delete.
 type AgentBatchUpdateInput struct {
-	IDs     []string
-	Status  string // optional: active | inactive
-	Delete  bool
+	IDs    []string
+	Status string // optional: active | inactive
+	Delete bool
 }
 
 // BatchUpdateAgents applies status changes or deletes for many agents inside a transaction.

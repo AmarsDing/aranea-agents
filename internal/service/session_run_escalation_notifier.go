@@ -80,9 +80,9 @@ func (n *channelRunEscalationNotifier) NotifyRunCompleted(ctx context.Context, r
 	reply := strings.TrimSpace(replyMarkdown)
 	reasoning := ""
 	if reply == "" {
-		reply, reasoning = assistantReplyPartsForRun(ctx, n.sessions, run.SessionID, run.StartedAt)
+		reply, reasoning = assistantReplyPartsForRun(ctx, n.sessions, run.SessionID, run.StartedAt, run.TurnID)
 	} else if reasoning == "" {
-		_, reasoning = assistantReplyPartsForRun(ctx, n.sessions, run.SessionID, run.StartedAt)
+		_, reasoning = assistantReplyPartsForRun(ctx, n.sessions, run.SessionID, run.StartedAt, run.TurnID)
 	}
 	if reply == "" {
 		reply = "任务已完成。"
@@ -158,7 +158,11 @@ func (n *channelRunEscalationNotifier) NotifyRunFailed(ctx context.Context, run 
 	return n.enqueueForSession(ctx, run.SessionID, "run:"+run.ID+":failed", text, "")
 }
 
-func assistantReplyPartsForRun(ctx context.Context, sessions *biz.SessionUsecase, sessionID string, runStartedAt string) (body, reasoning string) {
+// assistantReplyPartsForRun finds the assistant reply belonging to a specific run.
+// It uses turnID (the user message ID stored on the run) to precisely locate the
+// paired assistant message via TurnIndex adjacency, avoiding the timestamp ambiguity
+// that causes CHAT-03 (picking the wrong assistant message in busy sessions).
+func assistantReplyPartsForRun(ctx context.Context, sessions *biz.SessionUsecase, sessionID, runStartedAt, turnID string) (body, reasoning string) {
 	if sessions == nil {
 		return "", ""
 	}
@@ -166,6 +170,32 @@ func assistantReplyPartsForRun(ctx context.Context, sessions *biz.SessionUsecase
 	if err != nil || len(msgs) == 0 {
 		return "", ""
 	}
+
+	// Primary path: locate the user message by ID, then return the adjacent assistant
+	// message at TurnIndex+1 (guaranteed by AppendChatTurn's sequential assignment).
+	if tid := strings.TrimSpace(turnID); tid != "" {
+		userTurnIdx := -1
+		for _, m := range msgs {
+			if strings.TrimSpace(m.ID) == tid {
+				userTurnIdx = m.TurnIndex
+				break
+			}
+		}
+		if userTurnIdx >= 0 {
+			for _, m := range msgs {
+				if m.TurnIndex == userTurnIdx+1 && strings.EqualFold(strings.TrimSpace(m.Role), "assistant") {
+					candidateBody := strings.TrimSpace(m.ContentMarkdown)
+					if candidateBody == "" && strings.TrimSpace(m.OptionsJSON) == "" {
+						break
+					}
+					return candidateBody, preview.ReasoningMarkdownFromOptions(m.OptionsJSON)
+				}
+			}
+		}
+	}
+
+	// Fallback: timestamp heuristic for runs without a TurnID or when the user
+	// message has scrolled out of the recent-32 window.
 	started := strings.TrimSpace(runStartedAt)
 	for i := len(msgs) - 1; i >= 0; i-- {
 		m := msgs[i]

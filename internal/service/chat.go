@@ -17,12 +17,6 @@ import (
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
-// awaitReplyCh is sent on channels keyed by sessionID when AwaitUserReply is called.
-type awaitReplyCh struct {
-	RunID string
-	Reply string
-}
-
 // ChatService is the thin transport bridge between proto/HTTP/WS and the
 // ChatOrchestrator. It only handles request validation, proto mapping, and
 // delegates all orchestration work to ChatOrchestrator.
@@ -85,6 +79,23 @@ func (s *ChatService) setRunStatus(ctx context.Context, sessionID, runID, status
 // SetRunStatus implements biz.NativeTurnGateway.
 func (s *ChatService) SetRunStatus(ctx context.Context, sessionID, runID, status, errMsg string) {
 	s.orch.setRunStatus(ctx, sessionID, runID, status, errMsg)
+}
+
+// TryEnqueueUserMessage implements biz.NativeTurnGateway — delegates to ChatOrchestrator.
+func (s *ChatService) TryEnqueueUserMessage(sessionID, content string) (bool, error) {
+	if s == nil || s.orch == nil {
+		return false, nil
+	}
+	accepted, _, _, _, err := s.orch.EnqueueUserMessage(sessionID, content)
+	return accepted, err
+}
+
+// SetSessionPendingMergeFollowup implements biz.NativeTurnGateway — delegates to ChatOrchestrator.
+func (s *ChatService) SetSessionPendingMergeFollowup(sessionID string, merge bool) {
+	if s == nil || s.orch == nil {
+		return
+	}
+	s.orch.SetSessionPendingMergeFollowup(sessionID, merge)
 }
 
 // RunGateway exposes the shared session run registry (Chat, Team, Cron, Channel, WS).
@@ -176,20 +187,6 @@ func (s *ChatService) EnqueueUserMessage(ctx context.Context, req *chatv1.Enqueu
 		return nil, kerrors.BadRequest("CHAT", "content is required")
 	}
 
-	if s.orch.HasActiveRun(sessionID) {
-		policy := EvaluateIngressPolicy(IngressPolicyInput{
-			Text:            content,
-			EntryPoint:      biz.EntryPointWeb,
-			AllowQueue:      true,
-			HasActiveRun:    true,
-			HasActiveRunner: s.orch.HasActiveRunner(sessionID),
-		})
-		recordIngressIntentMetric(policy.Intent)
-		if policy.Decision == IngressRejectBusy {
-			return nil, turnBusyError()
-		}
-	}
-
 	accepted, queued, pendingID, rejectReason, err := s.orch.EnqueueUserMessage(sessionID, content)
 	if err != nil {
 		return nil, err
@@ -270,7 +267,7 @@ func (s *ChatService) AwaitUserReply(ctx context.Context, req *chatv1.AwaitUserR
 	if reply == "" {
 		return nil, kerrors.BadRequest("CHAT", "reply is required")
 	}
-	val, ok := s.orch.LoadAwaitChannel(sessionID)
+	ch, ok := s.orch.LoadAwaitChannel(sessionID)
 	if !ok {
 		runID, canResume := s.orch.canResumeAwait(ctx, sessionID)
 		if canResume {
@@ -287,16 +284,12 @@ func (s *ChatService) AwaitUserReply(ctx context.Context, req *chatv1.AwaitUserR
 		}
 		return &chatv1.AwaitUserReplyResponse{Accepted: false}, nil
 	}
-	ch, ok := val.(chan awaitReplyCh)
-	if !ok {
-		return &chatv1.AwaitUserReplyResponse{Accepted: false}, nil
-	}
 	runID := ""
 	if req.RunId != nil {
 		runID = *req.RunId
 	}
 	select {
-	case ch <- awaitReplyCh{RunID: runID, Reply: reply}:
+	case ch <- biz.AwaitReplyMsg{RunID: runID, Reply: reply}:
 		return &chatv1.AwaitUserReplyResponse{Accepted: true}, nil
 	default:
 		return &chatv1.AwaitUserReplyResponse{Accepted: false}, nil

@@ -9,26 +9,18 @@ import (
 
 func (h *ChannelIngress) bindChannelPendingMode(sessionID, configJSON string) {
 	sessionID = strings.TrimSpace(sessionID)
-	if sessionID == "" || h == nil {
+	if sessionID == "" || h == nil || h.chat == nil {
 		return
 	}
-	svc, ok := h.chat.(*ChatService)
-	if !ok || svc.orch == nil {
-		return
-	}
-	svc.orch.SetSessionPendingMergeFollowup(sessionID, biz.ChannelBusyInputFollowup(configJSON))
+	h.chat.SetSessionPendingMergeFollowup(sessionID, biz.ChannelBusyInputFollowup(configJSON))
 }
 
 func (h *ChannelIngress) clearChannelPendingMode(sessionID string) {
 	sessionID = strings.TrimSpace(sessionID)
-	if sessionID == "" || h == nil {
+	if sessionID == "" || h == nil || h.chat == nil {
 		return
 	}
-	svc, ok := h.chat.(*ChatService)
-	if !ok || svc.orch == nil {
-		return
-	}
-	svc.orch.SetSessionPendingMergeFollowup(sessionID, false)
+	h.chat.SetSessionPendingMergeFollowup(sessionID, false)
 }
 
 func (h *ChannelIngress) tryAcquireChannelConcurrent(chRow biz.Channel, ev port.InboundEvent, ltCfg biz.ChannelLongTaskConfig) (release func(), ok bool) {
@@ -36,9 +28,10 @@ func (h *ChannelIngress) tryAcquireChannelConcurrent(chRow biz.Channel, ev port.
 		return func() {}, true
 	}
 	isGroup := inboundEventIsGroup(ev)
+	peerID := strings.TrimSpace(ev.PeerID)
 	limit := ltCfg.MaxConcurrentInbound(isGroup)
-	if !h.concurrentGate.TryAcquire(chRow.ID, isGroup, limit) {
+	if !h.concurrentGate.TryAcquire(chRow.ID, peerID, isGroup, limit) {
 		return nil, false
 	}
-	return func() { h.concurrentGate.Release(chRow.ID, isGroup) }, true
+	return func() { h.concurrentGate.Release(chRow.ID, peerID, isGroup) }, true
 }

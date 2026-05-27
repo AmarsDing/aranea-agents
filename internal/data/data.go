@@ -67,6 +67,7 @@ var ProviderSet = wire.NewSet(
 	NewArtifactRepo,
 	NewKnowledgeRepoFromData,
 	NewEvalRepoFromData,
+	NewBackgroundJobRepo,
 	NewA2ARepoFromData,
 	NewEcosystemRepo,
 	NewEventStoreRepo,
@@ -301,6 +302,13 @@ func initSQLite(c *conf.Data) (*ent.Client, *sql.DB, error) {
 func ensureSchemaDDL(rawDB *sql.DB, entClient *ent.Client) error {
 	if err := sessionmemory.EnsurePatches(context.Background(), entClient); err != nil {
 		return fmt.Errorf("session memory patches: %w", err)
+	}
+	// Must run before EnsureSessionMemorySchema: the SQL DDL contains
+	// CREATE INDEX on index_status, but CREATE TABLE IF NOT EXISTS skips
+	// adding new columns to an existing table. Without this patch first,
+	// the index creation fails with "no such column: index_status".
+	if err := ensureMemoryFactsIndexStatusPatches(context.Background(), entClient); err != nil {
+		return fmt.Errorf("memory facts index status patches: %w", err)
 	}
 	if err := EnsureSessionMemorySchema(context.Background(), entClient); err != nil {
 		return fmt.Errorf("session memory schema: %w", err)

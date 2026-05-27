@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -15,7 +14,7 @@ import (
 	"aranea-agents/pkg/safego"
 )
 
-const teamRunStatusWaitingHuman = "waiting_human"
+const teamRunStatusWaitingHuman = biz.TeamRunStatusWaitingHuman
 
 const defaultGraphWatchTimeout = 30 * time.Minute
 
@@ -36,31 +35,31 @@ type TeamGraphTaskResumeHandler interface {
 
 // TeamGraphRunCoordinator unifies team graph execution register, HITL defer, and task resume (M53 P1).
 type TeamGraphRunCoordinator struct {
-	graphs        TeamGraphExecutionBackend
-	teams         biz.TeamRepository
-	bus           event.Bus
-	finisher      TeamGraphRunFinisher
-	watchTimeout  time.Duration
+	graphs       TeamGraphExecutionBackend
+	teams        biz.TeamRepository
+	bus          event.Bus
+	finisher     TeamGraphRunFinisher
+	watchTimeout time.Duration
 
 	mu       sync.RWMutex
 	sessions map[string]*teamGraphRunSession
 }
 
 type teamGraphRunSession struct {
-	teamRunID    string
-	teamID       string
-	sessionID    string
-	execID       string
-	inputPreview string
+	teamRunID      string
+	teamID         string
+	sessionID      string
+	execID         string
+	inputPreview   string
 	definitionJSON string
-	watchStop    context.CancelFunc
+	watchStop      context.CancelFunc
 
-	stepDedup      *graphStepDedup
-	memberByNode   map[string]MemberDef
-	stepSortIndex  map[string]int
-	obsReg         biz.OrchestrationRegistry
-	obsStore       *biz.OrchestrationStatusStore
-	registeredAt   time.Time
+	stepDedup     *graphStepDedup
+	memberByNode  map[string]MemberDef
+	stepSortIndex map[string]int
+	obsReg        biz.OrchestrationRegistry
+	obsStore      *biz.OrchestrationStatusStore
+	registeredAt  time.Time
 }
 
 type graphWatchMode int
@@ -89,12 +88,12 @@ func (c *TeamGraphRunCoordinator) RegisterTeamGraphExecution(ctx context.Context
 	}
 	execID = strings.TrimSpace(execID)
 	sess := &teamGraphRunSession{
-		teamRunID:      strings.TrimSpace(teamRunID),
-		teamID:         strings.TrimSpace(teamID),
-		sessionID:      strings.TrimSpace(sessionID),
-		execID:         execID,
-		stepDedup:      newGraphStepDedup(),
-		registeredAt:   time.Now(),
+		teamRunID:    strings.TrimSpace(teamRunID),
+		teamID:       strings.TrimSpace(teamID),
+		sessionID:    strings.TrimSpace(sessionID),
+		execID:       execID,
+		stepDedup:    newGraphStepDedup(),
+		registeredAt: time.Now(),
 	}
 	if c.teams != nil {
 		if run, err := c.teams.GetTeamRunByID(ctx, sess.teamRunID); err == nil {
@@ -173,6 +172,17 @@ func (c *TeamGraphRunCoordinator) HandleTeamGraphTaskCompleted(ctx context.Conte
 		return true, nil
 	}
 	if _, err := c.graphs.ResumeExecution(ctx, task.ExecutionID, resume); err != nil {
+		if c.bus != nil {
+			run, rerr := c.teams.GetTeamRunByID(ctx, sess.teamRunID)
+			if rerr == nil {
+				failEnv := event.NewEnvelope(event.EnvelopeTypeTeamRunFailed, "team-coordinator", sess.sessionID)
+				failEnv.TeamID = sess.teamID
+				failEnv.Metadata = map[string]any{"run_id": run.ID, "error_message": err.Error()}
+				c.bus.Publish(ctx, failEnv)
+			}
+		}
+		event.SysLogError("team.intent.merge_fail", "HandleTeamGraphTaskCompleted: ResumeExecution failed",
+			event.P("execution_id", task.ExecutionID), event.P("error", err.Error()))
 		return true, err
 	}
 	run, err := c.teams.GetTeamRunByID(ctx, sess.teamRunID)
@@ -180,9 +190,9 @@ func (c *TeamGraphRunCoordinator) HandleTeamGraphTaskCompleted(ctx context.Conte
 		return true, err
 	}
 	if run.Status == teamRunStatusWaitingHuman {
-		run.Status = "running"
+		run.Status = biz.TeamRunStatusRunning
 		if err := c.teams.UpdateTeamRun(ctx, run); err != nil {
-			slog.Warn("HandleTeamGraphTaskCompleted: UpdateTeamRun failed", "team_run_id", run.ID, "error", err)
+			event.SysLogWarn("team.usage_record_fail", "HandleTeamGraphTaskCompleted: UpdateTeamRun failed", event.P("team_run_id", run.ID), event.P("error", err.Error()))
 		}
 	}
 	c.startGraphWatch(ctx, sess, graphWatchStepsAndFinalize)
@@ -357,17 +367,17 @@ func (c *TeamGraphRunCoordinator) finalizeTeamRun(ctx context.Context, sess *tea
 	if err != nil {
 		return
 	}
-	if run.Status != teamRunStatusWaitingHuman && run.Status != "running" {
+	if run.Status != teamRunStatusWaitingHuman && run.Status != biz.TeamRunStatusRunning {
 		return
 	}
 	now := agent.RFC3339Now()
 	run.FinishedAt = now
 	run.UpdatedAt = now
 	if failed {
-		run.Status = "error"
+		run.Status = biz.TeamRunStatusFailed
 		run.ErrorMessage = errMsg
 	} else {
-		run.Status = "success"
+		run.Status = biz.TeamRunStatusSuccess
 	}
 	_ = c.teams.UpdateTeamRun(ctx, run)
 	if c.bus != nil {
@@ -405,7 +415,7 @@ func (c *TeamGraphRunCoordinator) CleanupStaleSessions() {
 				sess.watchStop = nil
 			}
 			delete(c.sessions, id)
-			slog.Warn("CleanupStaleSessions: evicted stale session", "exec_id", id, "age", now.Sub(sess.registeredAt))
+			event.SysLogWarn("team.intent_anchor_fallback", "CleanupStaleSessions: evicted stale session", event.P("exec_id", id), event.P("age", now.Sub(sess.registeredAt).String()))
 		}
 	}
 }

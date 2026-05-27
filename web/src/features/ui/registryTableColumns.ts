@@ -5,19 +5,24 @@ type RegistryColumn = NonNullable<QTableProps["columns"]>[number];
 /** AppRegistryTable / AppRegistryMarkupTable 统一列定义类型 */
 export type RegistryTableColumn<T extends Record<string, any> = Record<string, any>> = QTableColumn<T>;
 
-/** 常用列宽 token（与 ChannelsTable 等 registry 列表对齐） */
+/** 常用列宽 token（Registry 列表统一引用，避免散落 width 字符串） */
 export const REGISTRY_COL_W = {
   name: "14%",
   nameWide: "18%",
+  desc: "16%",
   status: "9%",
-  time: "11%",
+  time: "50px",
+  timeWide: "18%",
   agent: "10%",
   session: "10%",
-  enabled: "64px",
+  category: "11%",
+  stats: "20%",
+  enabled: "40px",
   metric: "72px",
   narrow: "64px",
-  actions: "108px",
-  actionsWide: "148px"
+  actions: "90px",
+  actionsWide: "100px",
+  select: "48px"
 } as const;
 
 /**
@@ -39,7 +44,6 @@ export function normalizeRegistryColumns(columns: QTableProps["columns"]): QTabl
 
 /**
  * 列宽 helper：同时写入 style + headerStyle（Quasar 表头/表体各读一处）。
- * 在各 table 页面的 columns 定义里单独使用，勿放入全局样式。
  * @param width CSS width 值，如 "14%" 或 "108px"；含 ":" 时视为完整 CSS 片段
  */
 export function registryColWidth(width: string) {
@@ -59,6 +63,27 @@ export function registryCol<T extends Record<string, any>>(
   extra?: Omit<RegistryTableColumn<T>, "name" | "label" | "field" | "align" | "style" | "headerStyle">
 ): RegistryTableColumn<T> {
   return { name, label, field, align, ...registryColWidth(width), ...extra };
+}
+
+/** 操作列 preset：右对齐 + sticky 类名（sessions 等特殊表可复用） */
+export function registryColActions<T extends Record<string, any>>(
+  width: string = REGISTRY_COL_W.actions,
+  label = "操作",
+  field: RegistryTableColumn<T>["field"] = "id"
+) {
+  return registryCol<T>("actions", label, field, "right", width, {
+    sortable: false,
+    classes: "app-registry-col-actions",
+    headerClasses: "app-registry-col-actions"
+  });
+}
+
+/** Toggle 列 preset：居中 + 固定宽度 */
+export function registryColEnabled<T extends Record<string, any>>(
+  label = "启用",
+  field: RegistryTableColumn<T>["field"] = "enabled"
+) {
+  return registryCol<T>("enabled", label, field, "center", REGISTRY_COL_W.enabled, { sortable: false });
 }
 
 export function registryFieldValue(row: Record<string, unknown>, field: RegistryTableColumn["field"]): unknown {

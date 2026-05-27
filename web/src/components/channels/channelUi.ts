@@ -1,5 +1,12 @@
+import type { QTableColumn } from "quasar";
 import type { ChannelCatalogItem, ChannelConfig, ChannelMetadata, ChannelRow } from "../../features/channels/types";
 import { buildChannelWebhookURL, isLocalhostOrigin, resolvePublicWebhookOrigin } from "../../features/channels/publicWebhookOrigin";
+import {
+  REGISTRY_COL_W,
+  registryCol,
+  registryColActions,
+  registryColEnabled
+} from "../../features/ui/registryTableColumns";
 
 export function parseJSON<T>(value: string | undefined, fallback: T): T {
   if (!value) return fallback;
@@ -111,3 +118,22 @@ export async function copyChannelWebhookURL(row: ChannelRow): Promise<string> {
   }
   return url;
 }
+
+/** ChannelsTable 列定义 */
+export const CHANNEL_TABLE_COLUMNS: QTableColumn<ChannelRow>[] = [
+  registryCol<ChannelRow>("name", "名称", "name", "left", REGISTRY_COL_W.name),
+  registryCol<ChannelRow>("type", "平台", "config_json", "left", "15%"),
+  registryCol<ChannelRow>("external_id", "外部 ID", "metadata_json", "left", "16%"),
+  registryCol<ChannelRow>("status", "连接状态", "status", "left", "12%"),
+  registryColEnabled<ChannelRow>(),
+  registryCol<ChannelRow>("updated", "最近更新", "updated_at", "left", REGISTRY_COL_W.time),
+  registryColActions<ChannelRow>("80px")
+];
+
+/** Channel Turn Jobs 面板列 */
+export const CHANNEL_TURN_JOBS_TABLE_COLUMNS = [
+  registryCol("status", "status", "status", "left", REGISTRY_COL_W.status),
+  registryCol("peer_id", "peer_id", "peer_id", "left", REGISTRY_COL_W.name),
+  registryCol("session_id", "session_id", "session_id", "left", REGISTRY_COL_W.name),
+  registryCol("updated_at", "updated_at", "updated_at", "left", REGISTRY_COL_W.time)
+];

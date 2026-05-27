@@ -48,9 +48,10 @@
 | 13 | 所有 `go func()` 必须走 `pkg/safego.Go` / `pkg/safego.GoRecover` | 禁止裸 `go func()` 不处理 panic |
 | 14 | 不得在 biz 层使用 `fmt.Errorf` 返回业务错误 | 统一使用 `kerrors.BadRequest/NotFound/InternalServer` |
 | 15 | 非 Service 层不得 import `api/*/v1` proto 包 | proto 映射只在 Service 层；biz 定义端口接口，其他模块依赖端口 |
-| 16 | 跨模块调用不得持有对方 Service 具体类型 | 通过 biz 级窄接口（端口）交互，Wire 绑定在 Service 层 |
-| 17 | Graph 运行时类型不得泄漏到 biz | biz 暴露 `GraphBuildConfig`/`GraphRuntime`/`GraphExecutor` 端口，trpc graph 留在 adapter |
-| 18 | 不得新增已无调用者的 deprecated 方法 | 死代码即删，不保留 Deprecated 标记 |
+| 16 | 禁止使用 `log/slog` 记录日志 | 统一使用 `internal/event` 的 `FlowLog`（`event.SysLog*` / `event.SessionSysLog*`），确保日志可观测、可检索 |
+| 17 | 跨模块调用不得持有对方 Service 具体类型 | 通过 biz 级窄接口（端口）交互，Wire 绑定在 Service 层 |
+| 18 | Graph 运行时类型不得泄漏到 biz | biz 暴露 `GraphBuildConfig`/`GraphRuntime`/`GraphExecutor` 端口，trpc graph 留在 adapter |
+| 19 | 不得新增已无调用者的 deprecated 方法 | 死代码即删，不保留 Deprecated 标记 |
 
 ### 代码探索约束（CodeGraph）
 

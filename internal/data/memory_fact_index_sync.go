@@ -6,6 +6,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/sessionmemory"
+	"aranea-agents/internal/event"
 	"aranea-agents/pkg/jsonutil"
 )
 
@@ -25,18 +26,41 @@ func NewMemoryFactIndexSync(vec *biz.MemoryUsecase, store *sessionmemory.Store) 
 	return &memoryFactIndexSync{vec: vec, store: store}
 }
 
+// SyncFactIndex embeds the statement and writes vectors to pgvector + SQLite.
+// On any failure it marks index_status='stale' on the SQLite row (MEM-OPT-01 Phase 1).
+// On success it marks index_status='fresh'.
 func (s *memoryFactIndexSync) SyncFactIndex(ctx context.Context, agentID, userID, factID, statement string) error {
 	if s == nil || s.vec == nil {
 		return biz.ErrMemoryUnavailable
 	}
+	markStale := func(reason error) {
+		if s.store == nil {
+			return
+		}
+		if serr := s.store.MarkFactIndexStale(ctx, factID, reason.Error()); serr != nil {
+			event.SysLogWarn("system.auto_memory.l4_fail", "failed to mark fact index stale", event.P("fact_id", factID), event.P("error", serr.Error()))
+		}
+	}
 	embedding, err := s.vec.EmbedText(ctx, statement)
 	if err != nil {
+		markStale(err)
 		return err
 	}
 	if err := s.vec.UpsertFactVector(ctx, agentID, userID, factID, statement, embedding); err != nil {
+		markStale(err)
 		return err
 	}
-	return s.syncSQLiteBlob(ctx, factID, embedding)
+	if err := s.syncSQLiteBlob(ctx, factID, embedding); err != nil {
+		markStale(err)
+		return err
+	}
+	// Mark fresh on full success.
+	if s.store != nil {
+		if serr := s.store.MarkFactIndexSynced(ctx, factID); serr != nil {
+			event.SysLogWarn("system.auto_memory.l4_fail", "failed to mark fact index synced", event.P("fact_id", factID), event.P("error", serr.Error()))
+		}
+	}
+	return nil
 }
 
 func (s *memoryFactIndexSync) SyncFactIndexFromRow(ctx context.Context, raw []byte) error {

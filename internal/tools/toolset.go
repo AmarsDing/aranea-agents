@@ -7,6 +7,12 @@ import (
 	"sync"
 	"time"
 
+	"aranea-agents/internal/event"
+
+	mcpconfig "aranea-agents/internal/mcp/config"
+	"aranea-agents/internal/tools/hostexecnorm"
+	"aranea-agents/internal/tools/mcpobserve"
+
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcagenttool "trpc.group/trpc-go/trpc-agent-go/tool/agent"
 	trpcarxivsearch "trpc.group/trpc-go/trpc-agent-go/tool/arxivsearch"
@@ -16,8 +22,6 @@ import (
 	trpcemail "trpc.group/trpc-go/trpc-agent-go/tool/email"
 	trpcfile "trpc.group/trpc-go/trpc-agent-go/tool/file"
 	trpcgooglesearch "trpc.group/trpc-go/trpc-agent-go/tool/google/search"
-	"aranea-agents/internal/tools/mcpobserve"
-	"aranea-agents/internal/tools/hostexecnorm"
 
 	trpchostexec "trpc.group/trpc-go/trpc-agent-go/tool/hostexec"
 	trpcmcp "trpc.group/trpc-go/trpc-agent-go/tool/mcp"
@@ -279,6 +283,10 @@ type AssembledToolsets struct {
 }
 
 func Assemble(ctx context.Context, cfg AssemblyConfig) (*AssembledToolsets, error) {
+	// TPM-P1-01: fail fast if runtime/policy alias maps disagree on canonical target.
+	if err := ValidateRuntimeAliasesAgainstPolicy(); err != nil {
+		return nil, fmt.Errorf("tools.Assemble: %w", err)
+	}
 	out := &AssembledToolsets{}
 	enabled := make(map[string]bool, len(cfg.EnabledTools))
 	for _, name := range cfg.EnabledTools {
@@ -381,7 +389,17 @@ func Assemble(ctx context.Context, cfg AssemblyConfig) (*AssembledToolsets, erro
 		} else if spec.SpecURL != "" {
 			specLoader, err = trpcopenapi.NewURILoader(spec.SpecURL)
 		}
-		if err != nil || specLoader == nil {
+		// TPM-P2-02: log loader failures so misconfigurations are visible instead
+		// of silently disappearing. We continue rather than aborting all assembly
+		// so a bad spec doesn't block unrelated toolsets.
+		if err != nil {
+			event.SysLogWarn("system.builtin_tools_sync_fail", "tools.assemble.openapi_loader_failed",
+				event.P("spec_name", spec.Name),
+				event.P("spec_url", spec.SpecURL),
+				event.P("error", err.Error()))
+			continue
+		}
+		if specLoader == nil {
 			continue
 		}
 		ts, err := trpcopenapi.NewToolSet(ctx,
@@ -446,9 +464,11 @@ func mcpTimeoutDuration(timeoutSec int) time.Duration {
 }
 
 func buildMCPToolSet(cfg MCPServerConfig) (ToolSet, error) {
-	transport := strings.TrimSpace(cfg.Transport)
+	// TPM-P1-10: route every transport string through the canonical normalizer so
+	// "streamable_http" / "http" / "STREAMABLE" all converge on the framework value.
+	transport := mcpconfig.NormalizeTransport(cfg.Transport)
 	if transport == "" {
-		transport = "stdio"
+		transport = mcpconfig.TransportStdio
 	}
 	connCfg := trpcmcp.ConnectionConfig{
 		Transport: transport,
@@ -477,9 +497,10 @@ func buildMCPToolSet(cfg MCPServerConfig) (ToolSet, error) {
 func buildMCPBrokerTools(cfg MCPBrokerConfig) ([]Tool, error) {
 	servers := make(map[string]trpcmcp.ConnectionConfig, len(cfg.Servers))
 	for _, s := range cfg.Servers {
-		transport := strings.TrimSpace(s.Transport)
+		// TPM-P1-10: single normalization path; see buildMCPToolSet.
+		transport := mcpconfig.NormalizeTransport(s.Transport)
 		if transport == "" {
-			transport = "stdio"
+			transport = mcpconfig.TransportStdio
 		}
 		connCfg := trpcmcp.ConnectionConfig{
 			Transport: transport,

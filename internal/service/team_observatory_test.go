@@ -36,6 +36,9 @@ func (r *observatoryTeamRepo) ListTeamRuns(_ context.Context, teamID string, _ i
 	}
 	return nil, nil
 }
+func (r *observatoryTeamRepo) HasActiveTeamRun(context.Context, string) (bool, error) {
+	return false, nil
+}
 func (r *observatoryTeamRepo) GetTeamRunByID(_ context.Context, id string) (biz.TeamRun, error) {
 	if id == r.run.ID {
 		return r.run, nil

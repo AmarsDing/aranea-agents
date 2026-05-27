@@ -84,6 +84,18 @@ func (r *memArtifactRepo) Delete(_ context.Context, id string) error {
 	return nil
 }
 
+func (r *memArtifactRepo) DeleteVersion(_ context.Context, sessionID, name string, version int) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for id, e := range r.store {
+		if e.meta.SessionID == sessionID && e.meta.Name == name && e.meta.Version == version {
+			delete(r.store, id)
+			return nil
+		}
+	}
+	return fmt.Errorf("artifact: version %d of %q not found", version, name)
+}
+
 func (r *memArtifactRepo) ListBySessionAndName(_ context.Context, sessionID, name string) ([]biz.Artifact, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

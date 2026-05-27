@@ -2,7 +2,6 @@ package team
 
 import (
 	"context"
-	"log/slog"
 	"strings"
 	"time"
 
@@ -51,12 +50,12 @@ func (r *Runner) PersistGraphRunStep(ctx context.Context, stepCtx *GraphRunStepC
 			event.P("run_id", stepCtx.TeamRunID), event.P("node_id", nodeID), event.P("error", err.Error()))
 		return
 	}
-	status := "ok"
+	status := biz.TeamMemberStepStatusOK
 	if skipped {
-		status = "skipped"
+		status = biz.TeamMemberStepStatusSkipped
 	}
 	if strings.TrimSpace(errMsg) != "" {
-		status = "error"
+		status = biz.TeamMemberStepStatusError
 	}
 	asst := biz.ChatMessage{
 		ID:              uuid.NewString(),
@@ -80,7 +79,7 @@ func (r *Runner) FinalizeGraphTeamRun(ctx context.Context, stepCtx *GraphRunStep
 	if err != nil {
 		return
 	}
-	if run.Status != teamRunStatusWaitingHuman && run.Status != "running" {
+	if run.Status != teamRunStatusWaitingHuman && run.Status != biz.TeamRunStatusRunning {
 		return
 	}
 	t0 := time.Now()
@@ -96,7 +95,7 @@ func (r *Runner) FinalizeGraphTeamRun(ctx context.Context, stepCtx *GraphRunStep
 	steps, _ := r.teams.ListTeamRunSteps(ctx, run.ID)
 	enrichTeamRunMetricsFromSteps(&run, steps)
 	now := agent.RFC3339Now()
-	run.Status = "success"
+	run.Status = biz.TeamRunStatusSuccess
 	run.FinishedAt = now
 	run.UpdatedAt = now
 	run.DurationMS = int(time.Since(t0).Milliseconds())
@@ -118,7 +117,7 @@ func buildResumeSessionContext(defJSON, inputPreview string) (
 ) {
 	def, err := ParseDefinition(defJSON)
 	if err != nil {
-		slog.Warn("buildResumeSessionContext: ParseDefinition failed", "error", err)
+		event.SysLogWarn("team.intent.merge_fail", "buildResumeSessionContext: ParseDefinition failed", event.P("error", err.Error()))
 		return biz.OrchestrationRegistry{}, nil, nil
 	}
 	reg = BuildOrchestrationRegistry(def,

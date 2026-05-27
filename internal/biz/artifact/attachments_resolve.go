@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 // NormalizeAttachmentIDs trims and drops empty IDs while preserving order.
@@ -26,17 +28,17 @@ func ResolveAttachmentRefs(ctx context.Context, uc *Usecase, sessionID string, i
 		return nil, nil
 	}
 	if uc == nil {
-		return nil, fmt.Errorf("attachments require artifact service")
+		return nil, kerrors.BadRequest("ARTIFACT", "attachments require artifact service")
 	}
 	sessionID = strings.TrimSpace(sessionID)
 	refs := make([]Ref, 0, len(ids))
 	for _, id := range ids {
 		meta, _, err := uc.Load(ctx, id, 0)
 		if err != nil {
-			return nil, fmt.Errorf("load attachment %s: %w", id, err)
+			return nil, kerrors.BadRequest("ARTIFACT", fmt.Sprintf("load attachment %s: %s", id, err.Error()))
 		}
 		if strings.TrimSpace(meta.SessionID) != "" && sessionID != "" && meta.SessionID != sessionID {
-			return nil, fmt.Errorf("attachment %s belongs to another session", id)
+			return nil, kerrors.BadRequest("ARTIFACT", fmt.Sprintf("attachment %s belongs to another session", id))
 		}
 		refs = append(refs, Ref{
 			ID:       meta.ID,

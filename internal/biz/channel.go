@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"sync"
 
 	"github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
@@ -85,6 +86,20 @@ type ChannelTestResult struct {
 	Status  string
 	Message string
 	Details map[string]any
+}
+
+// ChannelLiveTester performs live connectivity tests for a specific channel type.
+// Implementations are registered per channel type and called by ChannelService after
+// the structural EvaluateChannelTest passes.
+type ChannelLiveTester interface {
+	TestLive(ctx context.Context, configJSON string, credentials []ChannelCredential) ChannelTestResult
+}
+
+// ChannelLiveTesterFunc is a convenience adapter for single-function testers.
+type ChannelLiveTesterFunc func(ctx context.Context, configJSON string, credentials []ChannelCredential) ChannelTestResult
+
+func (f ChannelLiveTesterFunc) TestLive(ctx context.Context, configJSON string, credentials []ChannelCredential) ChannelTestResult {
+	return f(ctx, configJSON, credentials)
 }
 
 type ChannelRepo interface {
@@ -286,20 +301,34 @@ func (u *ChannelUsecase) RunHealthChecks(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// Limit concurrency to avoid resource exhaustion with many channels.
+	const maxConcurrent = 8
+	sem := make(chan struct{}, maxConcurrent)
+	var mu sync.Mutex
+	var wg sync.WaitGroup
 	for _, row := range items {
 		if !row.Enabled {
 			continue
 		}
-		credentials, err := u.repo.ListCredentials(ctx, row.ID)
-		if err != nil {
-			continue
-		}
-		result, err := EvaluateChannelTest(row, credentials)
-		if err != nil {
-			continue
-		}
-		_, _ = u.updateTestMetadata(ctx, row, result)
+		sem <- struct{}{}
+		wg.Add(1)
+		go func(ch Channel) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			credentials, err := u.repo.ListCredentials(ctx, ch.ID)
+			if err != nil {
+				return
+			}
+			result, err := EvaluateChannelTest(ch, credentials)
+			if err != nil {
+				return
+			}
+			mu.Lock()
+			_, _ = u.updateTestMetadata(ctx, ch, result)
+			mu.Unlock()
+		}(row)
 	}
+	wg.Wait()
 	return nil
 }
 

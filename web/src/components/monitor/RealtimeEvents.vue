@@ -23,7 +23,7 @@
           :shell="false"
           table-class="monitor-events-table"
           :rows="pagedEvents"
-          :columns="columns"
+          :columns="MONITOR_EVENTS_TABLE_COLUMNS"
           row-key="id"
           hide-pagination
           :pagination="{ rowsPerPage: 0 }"
@@ -120,14 +120,14 @@
 
 <script setup lang="ts">
 import { computed, ref, toRef, watch } from "vue";
-import type { QTableColumn } from "quasar";
 import AppPageToolbar from "../layout/AppPageToolbar.vue";
 import AppRegistryTable from "../layout/AppRegistryTable.vue";
 import AppRegistryHoverTip from "../layout/AppRegistryHoverTip.vue";
 import AppRegistryPagination from "../layout/AppRegistryPagination.vue";
-import { registryColWidth } from "../../features/ui/registryTableColumns";
+
 import type { PlatformResource, MonitorTraceEvent } from "../../features/monitor/types";
 import { useMonitorRealtimeEvents, type MonitorViewEvent } from "../../features/monitor/useMonitorRealtimeEvents";
+import { MONITOR_EVENTS_TABLE_COLUMNS } from "./monitorTableUi";
 
 const props = defineProps<{
   persistedEvents: PlatformResource[];
@@ -165,13 +165,6 @@ const pagedEvents = computed(() => {
 watch([category, visibleEvents], () => {
   page.value = 1;
 });
-
-const columns: QTableColumn<MonitorViewEvent>[] = [
-  { name: "title", label: "事件", field: "title", align: "left", ...registryColWidth("24%") },
-  { name: "tags", label: "类型", field: "type", align: "left", ...registryColWidth("11%") },
-  { name: "time", label: "时间", field: "time", align: "left", ...registryColWidth("11%") },
-  { name: "actions", label: "操作", field: "id", align: "right", ...registryColWidth("108px") }
-];
 </script>
 
 <style scoped>

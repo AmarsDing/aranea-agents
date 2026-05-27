@@ -271,7 +271,9 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 	added := writeResult.FactsWritten
 	for _, raw := range writeResult.FactRows {
 		if w.indexSync != nil {
-			_ = w.indexSync.SyncFactIndexFromRow(ctx, raw)
+			if serr := w.indexSync.SyncFactIndexFromRow(ctx, raw); serr != nil {
+				event.SysLogWarn("system.auto_memory.l4_fail", "auto_memory index sync failed", event.P("error", serr.Error()))
+			}
 		}
 	}
 	if w.episodeSync != nil && len(writeResult.EpisodeRow) > 0 {
@@ -399,7 +401,9 @@ func (w *AutoMemoryWorker) extractFeedback(ctx context.Context, req memtrpc.Auto
 	}
 	for _, raw := range writeResult.FactRows {
 		if w.indexSync != nil {
-			_ = w.indexSync.SyncFactIndexFromRow(ctx, raw)
+			if serr := w.indexSync.SyncFactIndexFromRow(ctx, raw); serr != nil {
+				event.SysLogWarn("system.auto_memory.l4_fail", "feedback_memory index sync failed", event.P("error", serr.Error()))
+			}
 		}
 	}
 	event.SessionSysLogInfo(ctx, sid, "system.auto_memory.feedback_done", "反馈偏好记忆已写入",

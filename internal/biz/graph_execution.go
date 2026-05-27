@@ -2,10 +2,10 @@ package biz
 
 import (
 	"context"
-	"log/slog"
 	"strings"
 	"time"
 
+	"aranea-agents/internal/event"
 	"aranea-agents/pkg/safego"
 
 	"github.com/go-kratos/kratos/v2/errors"
@@ -20,6 +20,32 @@ func (uc *GraphUsecase) notifyExecComplete(exec *GraphExecution) {
 	uc.execObserver.OnGraphExecutionComplete(exec)
 }
 
+// evictIfNeeded removes the oldest finished execution if the executions map exceeds maxExecutions.
+func (uc *GraphUsecase) evictIfNeeded() {
+	if len(uc.executions) < maxExecutions {
+		return
+	}
+	var oldestID string
+	var oldestTime time.Time
+	for id, exec := range uc.executions {
+		if exec.Status == "running" || exec.Status == "waiting_human" {
+			continue
+		}
+		finishTime := exec.StartedAt
+		if exec.FinishedAt != nil {
+			finishTime = *exec.FinishedAt
+		}
+		if oldestID == "" || finishTime.Before(oldestTime) {
+			oldestID = id
+			oldestTime = finishTime
+		}
+	}
+	if oldestID != "" {
+		delete(uc.executions, oldestID)
+		delete(uc.teamBuildConfigs, oldestID)
+	}
+}
+
 func (uc *GraphUsecase) loadExecution(ctx context.Context, executionID string) (*GraphExecution, error) {
 	uc.mu.RLock()
 	exec, ok := uc.executions[executionID]
@@ -32,6 +58,7 @@ func (uc *GraphUsecase) loadExecution(ctx context.Context, executionID string) (
 		return nil, ErrNotFound
 	}
 	uc.mu.Lock()
+	uc.evictIfNeeded()
 	uc.executions[executionID] = persisted
 	uc.mu.Unlock()
 	return persisted, nil
@@ -67,6 +94,7 @@ func (uc *GraphUsecase) ensureCheckpointRuntime(ctx context.Context, exec *Graph
 	}
 	exec.runtime = rt
 	uc.mu.Lock()
+	uc.evictIfNeeded()
 	uc.executions[exec.ID] = exec
 	uc.mu.Unlock()
 	return nil
@@ -113,6 +141,7 @@ func (uc *GraphUsecase) ExecuteGraph(ctx context.Context, graphID, sessionID, ex
 	})
 
 	uc.mu.Lock()
+	uc.evictIfNeeded()
 	uc.executions[execID] = exec
 	uc.mu.Unlock()
 	return exec, nil
@@ -158,6 +187,7 @@ func (uc *GraphUsecase) ExecuteGraphBuildConfig(ctx context.Context, graphID, se
 	})
 
 	uc.mu.Lock()
+	uc.evictIfNeeded()
 	uc.executions[execID] = exec
 	uc.mu.Unlock()
 	return exec, nil
@@ -240,10 +270,11 @@ func (uc *GraphUsecase) consumeRuntimeEvents(eventCh <-chan GraphRuntimeEvent, e
 		now := time.Now()
 		exec.FinishedAt = &now
 	}
+	uc.evictIfNeeded()
 	uc.executions[execID] = exec
 	uc.mu.Unlock()
 	if err := uc.runRepo.UpdateRun(context.Background(), exec); err != nil {
-		slog.Warn("consumeRuntimeEvents: UpdateRun failed", "exec_id", execID, "error", err)
+		event.SysLogWarn("system.tool.record_fail", "consumeRuntimeEvents: UpdateRun failed", event.P("exec_id", execID), event.P("error", err.Error()))
 	}
 }
 
@@ -275,7 +306,7 @@ func (uc *GraphUsecase) updateExecutionFromRuntimeEvent(exec *GraphExecution, e 
 		})
 		uc.mu.Unlock()
 		if err := uc.runRepo.UpdateRun(context.Background(), exec); err != nil {
-			slog.Warn("updateExecutionFromRuntimeEvent: UpdateRun failed for node_end", "execution_id", exec.ID, "error", err)
+			event.SysLogWarn("system.tool.record_fail", "updateExecutionFromRuntimeEvent: UpdateRun failed for node_end", event.P("execution_id", exec.ID), event.P("error", err.Error()))
 		}
 	case DomainEventGraphNodeError:
 		uc.mu.Lock()
@@ -290,7 +321,7 @@ func (uc *GraphUsecase) updateExecutionFromRuntimeEvent(exec *GraphExecution, e 
 		})
 		uc.mu.Unlock()
 		if err := uc.runRepo.UpdateRun(context.Background(), exec); err != nil {
-			slog.Warn("updateExecutionFromRuntimeEvent: UpdateRun failed for node_error", "execution_id", exec.ID, "error", err)
+			event.SysLogWarn("system.tool.record_fail", "updateExecutionFromRuntimeEvent: UpdateRun failed for node_error", event.P("execution_id", exec.ID), event.P("error", err.Error()))
 		}
 	case DomainEventGraphInterrupt:
 		uc.mu.Lock()
@@ -298,7 +329,7 @@ func (uc *GraphUsecase) updateExecutionFromRuntimeEvent(exec *GraphExecution, e 
 		exec.InterruptNode = e.NodeID
 		uc.mu.Unlock()
 		if err := uc.runRepo.UpdateRun(context.Background(), exec); err != nil {
-			slog.Warn("updateExecutionFromRuntimeEvent: UpdateRun failed for interrupt", "execution_id", exec.ID, "error", err)
+			event.SysLogWarn("system.tool.record_fail", "updateExecutionFromRuntimeEvent: UpdateRun failed for interrupt", event.P("execution_id", exec.ID), event.P("error", err.Error()))
 		}
 	}
 }

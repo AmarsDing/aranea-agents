@@ -4,11 +4,16 @@ import (
 	"context"
 	"strings"
 
-	"github.com/google/wire"
 	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"github.com/google/wire"
 )
 
 type AgentExistenceCheckerFunc func(ctx context.Context, agentName string) bool
+
+// AgentIDExistenceChecker checks whether an agent exists by its ID.
+type AgentIDExistenceChecker interface {
+	AgentExistsByID(ctx context.Context, agentID string) bool
+}
 
 var ProviderSet = wire.NewSet(
 	NewEventBusConsumer,
@@ -45,6 +50,7 @@ var ProviderSet = wire.NewSet(
 	NewWebhookUsecase,
 	NewWebhookDispatcher,
 	ProvideAgentExistenceChecker,
+	ProvideAgentIDExistenceChecker,
 )
 
 func ProvideAgentRoleChecker(repo AgentRepository) AgentRoleChecker {
@@ -81,6 +87,21 @@ func ProvideAgentExistenceChecker(repo AgentRepository) AgentExistenceCheckerFun
 		_, err := repo.GetAgentByAgentKey(ctx, agentName)
 		return err == nil
 	}
+}
+
+// agentIDExistenceChecker adapts AgentRepository to AgentIDExistenceChecker.
+type agentIDExistenceChecker struct {
+	repo AgentRepository
+}
+
+func (c *agentIDExistenceChecker) AgentExistsByID(ctx context.Context, agentID string) bool {
+	_, err := c.repo.GetAgentByID(ctx, agentID)
+	return err == nil
+}
+
+// ProvideAgentIDExistenceChecker creates an AgentIDExistenceChecker from AgentRepository.
+func ProvideAgentIDExistenceChecker(repo AgentRepository) AgentIDExistenceChecker {
+	return &agentIDExistenceChecker{repo: repo}
 }
 
 func requireNonEmpty(val, domain, field string) (string, error) {

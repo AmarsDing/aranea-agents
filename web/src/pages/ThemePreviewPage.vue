@@ -220,7 +220,7 @@
 import { ref } from "vue";
 import AppRegistryTable from "../components/layout/AppRegistryTable.vue";
 import AppRegistryHoverTip from "../components/layout/AppRegistryHoverTip.vue";
-import { registryColWidth } from "../features/ui/registryTableColumns";
+import { REGISTRY_COL_W, registryCol, registryColActions } from "../features/ui/registryTableColumns";
 
 const sampleText = ref("Aranea Agent Orchestrator");
 const sampleToggle = ref(true);
@@ -263,9 +263,9 @@ const dashboardKpis = [
 ];
 
 const registryPreviewColumns = [
-  { name: "name", label: "名称", field: "name", align: "left" as const, ...registryColWidth("20%") },
-  { name: "status", label: "状态", field: "status", align: "left" as const, ...registryColWidth("9%") },
-  { name: "actions", label: "操作", field: "id", align: "right" as const, ...registryColWidth("108px") }
+  registryCol("name", "名称", "name", "left", "20%"),
+  registryCol("status", "状态", "status", "left", REGISTRY_COL_W.status),
+  registryColActions()
 ];
 
 const registryPreviewRows = [
@@ -274,9 +274,9 @@ const registryPreviewRows = [
 ];
 
 const tablePreviewColumns = [
-  { name: "name", label: "名称", field: "name", align: "left" as const, ...registryColWidth("14%") },
-  { name: "status", label: "状态", field: "status", align: "left" as const, ...registryColWidth("9%") },
-  { name: "updated", label: "更新时间", field: "updated", align: "left" as const, ...registryColWidth("11%") }
+  registryCol("name", "名称", "name", "left", REGISTRY_COL_W.name),
+  registryCol("status", "状态", "status", "left", REGISTRY_COL_W.status),
+  registryCol("updated", "更新时间", "updated", "left", REGISTRY_COL_W.time)
 ];
 
 const tablePreviewRows = [

@@ -51,6 +51,9 @@ func (m *memTeamRepoB) DeleteTeam(_ context.Context, id string) error {
 func (m *memTeamRepoB) ListTeamRuns(_ context.Context, _ string, _ int) ([]biz.TeamRun, error) {
 	return nil, nil
 }
+func (m *memTeamRepoB) HasActiveTeamRun(_ context.Context, _ string) (bool, error) {
+	return false, nil
+}
 func (m *memTeamRepoB) GetTeamRunByID(_ context.Context, id string) (biz.TeamRun, error) {
 	return biz.TeamRun{}, fmt.Errorf("team run not found: %s", id)
 }
@@ -445,7 +448,13 @@ func newMemArtifactRepoB() *memArtifactRepoB {
 
 func (m *memArtifactRepoB) Save(_ context.Context, sessionID, name, mimeType string, data []byte) (biz.Artifact, error) {
 	id := biz.NewArtifactID()
-	a := biz.Artifact{ID: id, SessionID: sessionID, Name: name, MimeType: mimeType, Size: int64(len(data)), Version: 1}
+	version := 1
+	for _, existing := range m.items {
+		if existing.SessionID == sessionID && existing.Name == name && existing.Version >= version {
+			version = existing.Version + 1
+		}
+	}
+	a := biz.Artifact{ID: id, SessionID: sessionID, Name: name, MimeType: mimeType, Size: int64(len(data)), Version: version}
 	m.items[id] = a
 	m.data[id] = data
 	return a, nil
@@ -470,6 +479,16 @@ func (m *memArtifactRepoB) Delete(_ context.Context, id string) error {
 	delete(m.items, id)
 	delete(m.data, id)
 	return nil
+}
+func (m *memArtifactRepoB) DeleteVersion(_ context.Context, sessionID, name string, version int) error {
+	for id, a := range m.items {
+		if a.SessionID == sessionID && a.Name == name && a.Version == version {
+			delete(m.items, id)
+			delete(m.data, id)
+			return nil
+		}
+	}
+	return fmt.Errorf("artifact: version %d of %q not found in session %q", version, name, sessionID)
 }
 func (m *memArtifactRepoB) ListBySessionAndName(_ context.Context, sessionID, name string) ([]biz.Artifact, error) {
 	var out []biz.Artifact
@@ -536,5 +555,77 @@ func TestArtifactUsecase_ListVersions(t *testing.T) {
 	}
 	if len(versions) != 2 {
 		t.Errorf("expected 2 versions, got %d", len(versions))
+	}
+}
+
+// DAT-01 / ART-04: Deleting one ID must remove all sibling versions sharing
+// session+name. Prior behavior left orphan version files on disk.
+func TestArtifactUsecase_DeleteRemovesAllVersions(t *testing.T) {
+	uc := biz.NewArtifactUsecase(newMemArtifactRepoB())
+	ctx := context.Background()
+
+	v1, err := uc.Save(ctx, "sess-3", "doc.txt", "text/plain", []byte("v1"))
+	if err != nil {
+		t.Fatalf("save v1: %v", err)
+	}
+	v2, err := uc.Save(ctx, "sess-3", "doc.txt", "text/plain", []byte("v2"))
+	if err != nil {
+		t.Fatalf("save v2: %v", err)
+	}
+	v3, err := uc.Save(ctx, "sess-3", "doc.txt", "text/plain", []byte("v3"))
+	if err != nil {
+		t.Fatalf("save v3: %v", err)
+	}
+	other, err := uc.Save(ctx, "sess-3", "other.txt", "text/plain", []byte("o"))
+	if err != nil {
+		t.Fatalf("save other: %v", err)
+	}
+
+	// Deleting via the middle version's ID should still wipe v1, v2, v3.
+	if err := uc.Delete(ctx, v2.ID); err != nil {
+		t.Fatalf("delete v2: %v", err)
+	}
+
+	for _, id := range []string{v1.ID, v2.ID, v3.ID} {
+		if _, _, err := uc.Load(ctx, id, 0); err == nil {
+			t.Errorf("expected version %s to be deleted", id)
+		}
+	}
+	// Sibling artifact under same session but different name MUST survive.
+	if _, _, err := uc.Load(ctx, other.ID, 0); err != nil {
+		t.Errorf("unrelated artifact should remain: %v", err)
+	}
+}
+
+// TestArtifactUsecase_DeleteVersionRemovesSingleVersion verifies that
+// DeleteVersion removes exactly one version while leaving siblings intact.
+func TestArtifactUsecase_DeleteVersionRemovesSingleVersion(t *testing.T) {
+	uc := biz.NewArtifactUsecase(newMemArtifactRepoB())
+	ctx := context.Background()
+
+	v1, _ := uc.Save(ctx, "sess-4", "log.txt", "text/plain", []byte("v1"))
+	v2, _ := uc.Save(ctx, "sess-4", "log.txt", "text/plain", []byte("v2"))
+	v3, _ := uc.Save(ctx, "sess-4", "log.txt", "text/plain", []byte("v3"))
+
+	// Delete only v2 (using v1.ID as the handle; any version ID resolves the name).
+	if err := uc.DeleteVersion(ctx, v1.ID, v2.Version); err != nil {
+		t.Fatalf("DeleteVersion: %v", err)
+	}
+
+	// v2 must be gone.
+	if _, _, err := uc.Load(ctx, v2.ID, 0); err == nil {
+		t.Error("v2 should have been deleted")
+	}
+	// v1 and v3 must survive.
+	if _, _, err := uc.Load(ctx, v1.ID, 0); err != nil {
+		t.Errorf("v1 should remain: %v", err)
+	}
+	if _, _, err := uc.Load(ctx, v3.ID, 0); err != nil {
+		t.Errorf("v3 should remain: %v", err)
+	}
+
+	// Deleting a non-existent version must return an error.
+	if err := uc.DeleteVersion(ctx, v1.ID, 99); err == nil {
+		t.Error("expected error for non-existent version 99")
 	}
 }

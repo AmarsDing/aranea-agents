@@ -80,17 +80,37 @@ func (o *OutputPolicyPlugin) onEvent(
 	inv *trpcagent.Invocation,
 	e *trpcevent.Event,
 ) (*trpcevent.Event, error) {
-	if e == nil {
+	if e == nil || e.Response == nil {
 		return e, nil
 	}
 	text := eventText(e)
 	if text == "" {
 		return e, nil
 	}
-	if viol, pat := o.violation(text); viol {
-		o.record(ctx, "on_event", "blocked")
-		if o.cfg.BlockOnViolation {
-			o.logger.Warn("output_policy.event_blocked", "plugin", o.name, "pattern", pat)
+	viol, pat := o.violation(text)
+	if !viol {
+		return e, nil
+	}
+	o.record(ctx, "on_event", "blocked")
+	o.logger.Warn("output_policy.event_blocked", "plugin", o.name, "pattern", pat, "block_on_violation", o.cfg.BlockOnViolation)
+	// TPM-P1-04: actually enforce block_on_violation in streaming path. Previously
+	// the event passed through unchanged — admin's block_on_violation=true was a no-op
+	// for OnEvent (only afterModel honored it). Now we splice the chunk content with
+	// the replacement message so the violating fragment never reaches the client.
+	if !o.cfg.BlockOnViolation {
+		return e, nil
+	}
+	msg := strings.TrimSpace(o.cfg.ReplacementMessage)
+	if msg == "" {
+		msg = "output_policy: blocked content matching " + pat
+	}
+	for i := range e.Response.Choices {
+		ch := &e.Response.Choices[i]
+		ch.Message.Content = msg
+		ch.Delta.Content = msg
+		if ch.FinishReason == nil {
+			reason := "content_filter"
+			ch.FinishReason = &reason
 		}
 	}
 	return e, nil

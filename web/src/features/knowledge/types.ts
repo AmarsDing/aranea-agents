@@ -25,6 +25,8 @@ export type KnowledgeDocument = {
   error_message: string;
   created_at: string;
   updated_at: string;
+  /** Computed by backend: true when the MIME type is supported for text extraction. */
+  extract_supported?: boolean;
 };
 
 export type KnowledgeChunk = {

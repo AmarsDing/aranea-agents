@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 
 	v1 "aranea-agents/api/kratos/gateway/v1"
 	"aranea-agents/internal/biz"
@@ -22,7 +23,35 @@ func NewGatewayService(wh *biz.WebhookUsecase) *GatewayService {
 	return &GatewayService{wh: wh}
 }
 
+// maskSecret returns a redacted placeholder when a secret is set so that
+// the actual value is never returned in list/get API responses (HK-08).
+func maskSecret(s string) string {
+	if strings.TrimSpace(s) == "" {
+		return ""
+	}
+	return "••••••••"
+}
+
+// webhookToProto converts a webhook to its proto form with the secret masked.
+// Use for list/get operations where the secret must not be exposed.
 func webhookToProto(w biz.WebhookConfig) *v1.Webhook {
+	return &v1.Webhook{
+		Id:             w.ID,
+		Name:           w.Name,
+		Url:            w.URL,
+		EventTypesJson: w.EventTypesJSON,
+		Secret:         maskSecret(w.Secret),
+		Headers:        w.Headers,
+		Enabled:        w.Enabled,
+		CreatedAt:      w.CreatedAt,
+		UpdatedAt:      w.UpdatedAt,
+	}
+}
+
+// webhookToProtoWithSecret converts a webhook to its proto form with the
+// plaintext secret included. Use only for create/update responses where the
+// caller must be able to record the value they just set (HK-08 / P1-5).
+func webhookToProtoWithSecret(w biz.WebhookConfig) *v1.Webhook {
 	return &v1.Webhook{
 		Id:             w.ID,
 		Name:           w.Name,
@@ -59,7 +88,9 @@ func (s *GatewayService) CreateWebhook(ctx context.Context, req *v1.CreateWebhoo
 	if err != nil {
 		return nil, err
 	}
-	return webhookToProto(w), nil
+	// Return the plaintext secret on create so the caller can record it.
+	// Subsequent list/get responses will mask it (HK-08 / P1-5).
+	return webhookToProtoWithSecret(w), nil
 }
 
 func (s *GatewayService) ListWebhooks(ctx context.Context, _ *emptypb.Empty) (*v1.ListWebhooksResponse, error) {
@@ -97,7 +128,9 @@ func (s *GatewayService) UpdateWebhook(ctx context.Context, req *v1.UpdateWebhoo
 		}
 		return nil, err
 	}
-	return webhookToProto(w), nil
+	// Return the plaintext secret on update so the caller can confirm the new value.
+	// Subsequent list/get responses will mask it (HK-08 / P1-5).
+	return webhookToProtoWithSecret(w), nil
 }
 
 func (s *GatewayService) DeleteWebhook(ctx context.Context, req *v1.DeleteWebhookRequest) (*emptypb.Empty, error) {

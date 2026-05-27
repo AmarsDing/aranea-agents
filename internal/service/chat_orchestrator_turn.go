@@ -290,7 +290,7 @@ func (o *ChatOrchestrator) injectA2AContext(ctx context.Context, callerAgentID s
 // makeAwaitReplyFunc returns a ReplyFunc closure for await-reply.
 func (o *ChatOrchestrator) makeAwaitReplyFunc(runCtx context.Context, sessionID, runID string) func(context.Context) (string, error) {
 	return func(toolCtx context.Context) (string, error) {
-		ch := make(chan awaitReplyCh, 1)
+		ch := make(biz.AwaitChannel, 1)
 		o.chatUC.RegisterAwaitChannel(sessionID, ch)
 		awaitMeta := AwaitStatusMeta{Kind: biz.ChatAwaitKindReply}
 		if req, ok := serviceawaitreply.ToolConfirmRequestFromContext(toolCtx); ok {
@@ -850,7 +850,7 @@ func (o *ChatOrchestrator) processPendingQueue(sessionID string, sess biz.Sessio
 	pendingEntryID := entry.ID
 	pendingEmitter := event.NewFlowLogger(o.td.Pipeline.Bus, o.td.Pipeline.Buffer, sessionID, ag.AgentKey)
 	pendingEmitter.LogStart("chat.pending_dequeue", "排队消息开始处理", event.P("entry_id", pendingEntryID), event.P("content_len", len(pendingContent)))
-	safego.Go(context.Background(), "pending-queue", func() {
+	safego.Go(nil, "pending-queue", func() {
 		unlock := o.lockSession(sessionID)
 		defer unlock()
 		if o.runs.HasActive(sessionID) {
@@ -858,7 +858,7 @@ func (o *ChatOrchestrator) processPendingQueue(sessionID string, sess biz.Sessio
 			pendingEmitter.Log("chat.pending_dequeue", event.FlowPhaseDone, "会话仍活跃，消息已重新入队", event.P("entry_id", pendingEntryID))
 			return
 		}
-		bgCtx, cancel := context.WithTimeout(context.Background(), defaultTurnTimeout)
+		bgCtx, cancel := context.WithTimeout(o.svcCtx, defaultTurnTimeout)
 		o.runs.SetPendingCancel(sessionID, cancel)
 		defer func() {
 			cancel()

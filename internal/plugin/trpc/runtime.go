@@ -28,6 +28,7 @@ type Runtime struct {
 	active         []runtimeEntry
 	stats          StatsRecorder
 	notifier       *HookNotifier
+	retryWorker    *HookDeliveryRetryWorker
 	bus            event.Bus
 	budgets        *CostGuardBudgetRegistry
 	resolveAgent   AgentKeyResolver
@@ -41,14 +42,31 @@ func NewRuntime(stats StatsRecorder) *Runtime {
 	}
 }
 
-// SetHookDeliveryRepo enables durable Hook notify delivery with retries.
+// SetHookDeliveryRepo enables durable Hook notify delivery with retries and
+// starts the background retry worker for crash-recovery (OUT-02 / HK-01).
 func (rt *Runtime) SetHookDeliveryRepo(repo biz.HookDeliveryRepo) {
 	if rt == nil {
 		return
 	}
 	rt.mu.Lock()
+	defer rt.mu.Unlock()
 	rt.notifier = NewHookNotifier(repo)
-	rt.mu.Unlock()
+	if repo != nil {
+		rt.retryWorker = NewHookDeliveryRetryWorker(repo, rt.notifier)
+		rt.retryWorker.Start()
+	}
+}
+
+// Close stops background workers started by this Runtime (e.g. hook retry worker).
+func (rt *Runtime) Close() {
+	if rt == nil {
+		return
+	}
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	if rt.retryWorker != nil {
+		rt.retryWorker.Stop()
+	}
 }
 
 // HookNotifier returns the configured Hook notify worker.

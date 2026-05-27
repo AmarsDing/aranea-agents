@@ -1,8 +1,9 @@
 package biz
 
 import (
-	"fmt"
 	"strings"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 // ChannelAsyncGraphTarget resolves a channel long-task async graph execution target.
@@ -23,5 +24,5 @@ func ResolveChannelAsyncGraphTarget(cfg ChannelLongTaskConfig) (ChannelAsyncGrap
 	if graphID != "" {
 		return ChannelAsyncGraphTarget{TargetType: "graph", GraphID: graphID}, nil
 	}
-	return ChannelAsyncGraphTarget{}, fmt.Errorf("channel async: no async_graph_id or async_team_id configured")
+	return ChannelAsyncGraphTarget{}, kerrors.BadRequest("CHANNEL", "channel async: no async_graph_id or async_team_id configured")
 }

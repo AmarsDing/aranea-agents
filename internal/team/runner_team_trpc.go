@@ -5,8 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-
-	"aranea-agents/internal/event"
 	"strings"
 	"time"
 
@@ -14,7 +12,7 @@ import (
 	"aranea-agents/internal/agent/intent"
 	"aranea-agents/internal/biz"
 	artifactbiz "aranea-agents/internal/biz/artifact"
-	"aranea-agents/internal/metrics"
+	"aranea-agents/internal/event"
 	rt "aranea-agents/internal/runtime"
 	sessctx "aranea-agents/internal/session"
 	"aranea-agents/internal/telemetry/turntrace"
@@ -23,12 +21,11 @@ import (
 	"aranea-agents/internal/tools/skillruntime"
 	"aranea-agents/pkg/strutil"
 
-	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
-
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
+	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
 )
 
 func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, input biz.TurnInput, teamRow biz.Team, def Definition, mode string) (userMsg biz.ChatMessage, assistantMsg biz.ChatMessage, err error) {
@@ -49,7 +46,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		TeamID:                 teamRow.ID,
 		SessionID:              sess.ID,
 		Mode:                   mode,
-		Status:                 "running",
+		Status:                 biz.TeamRunStatusRunning,
 		InputPreview:           preview(content, 512),
 		TopologyJSON:           topologyJSON(def),
 		DefinitionSnapshotJSON: strings.TrimSpace(teamRow.DefinitionJSON),
@@ -62,7 +59,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
 
-	turnStatus := "ok"
+	turnStatus := biz.TeamMemberStepStatusOK
 	var teamBridge *turntrace.Bridge
 	ctx, teamBridge, _ = turntrace.Start(ctx, turntrace.Config{
 		Domain:    turntrace.DomainTeam,
@@ -127,7 +124,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		if err == sql.ErrNoRows {
 			err = kerrors.NotFound("AGENT", "team member agent not found")
 		}
-		turnStatus = "error"
+		turnStatus = biz.TeamMemberStepStatusError
 		r.finishRunErr(ctx, &run, t0, err.Error())
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
@@ -162,76 +159,16 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	}
 	teamDeps := TRPCTeamBuilderDeps{BuilderDeps: builderDeps, UseCache: true}
 
-	graphExecID := ""
-	var root trpcagent.Agent
-	var memberLookup map[string]trpcagent.Agent
-	var compiledGraphCfg biz.GraphBuildConfig
-	graphAttempted := false
-	graphCompileErr := ""
-	graphBuildErr := ""
-	useGraph := r.graphRoot != nil && TeamGraphRuntimeEnabledForTeam(def, teamRow.ID) && SupportsTeamGraphRuntimeMode(mode)
-	if useGraph {
-		graphAttempted = true
-		graphExecID = uuid.NewString()
-		cfg, cerr := CompileToGraphRuntimeConfigFromJSON(ctx, def, teamRow.DefinitionJSON, func(agentID string) string {
-			ag, gerr := r.catalogAgent(ctx, agentID)
-			if gerr != nil {
-				return ""
-			}
-			return strings.TrimSpace(ag.AgentKey)
-		}, r.graphLoader)
-		if cerr != nil {
-			graphCompileErr = cerr.Error()
-			event.CtxFlowLogWarn(ctx, "team.graph_runtime.compile", "Graph 编译失败", event.P("error", cerr.Error()))
-			metrics.TeamGraphRuntimeTotal.WithLabelValues("graph", "compile_error").Inc()
-		} else {
-			compiledGraphCfg = cfg
-			groot, gerr := r.graphRoot.BuildTeamGraphRoot(ctx, cfg)
-			if gerr != nil {
-				graphBuildErr = gerr.Error()
-				event.CtxFlowLogWarn(ctx, "team.graph_runtime.build", "GraphAgent 构建失败", event.P("error", gerr.Error()))
-				metrics.TeamGraphRuntimeTotal.WithLabelValues("graph", "build_error").Inc()
-			} else {
-				root = groot
-				_, memberLookup, err = BuildTeamMemberAgents(ctx, def, teamDeps, r.catalogAgent)
-				if err != nil {
-					turnStatus = "error"
-					r.finishRunErr(ctx, &run, t0, err.Error())
-					return biz.ChatMessage{}, biz.ChatMessage{}, err
-				}
-				run.GraphExecutionID = graphExecID
-				if uerr := r.teams.UpdateTeamRunGraphExecutionID(ctx, run.ID, graphExecID); uerr != nil {
-					event.CtxFlowLogWarn(ctx, "team.graph_runtime.persist", "graph_execution_id 持久化失败", event.P("error", uerr.Error()))
-				}
-				if r.teamGraphCoord != nil {
-					if regErr := r.teamGraphCoord.RegisterTeamGraphExecution(ctx, graphExecID, sess.ID, teamRow.ID, run.ID, compiledGraphCfg); regErr != nil {
-						event.CtxFlowLogWarn(ctx, "team.graph_runtime.register", "graph execution 注册失败", event.P("error", regErr.Error()))
-					}
-				}
-				if teamEmitter != nil {
-					teamEmitter.LogDone("team.run.graph", "Team GraphAgent 已构建", event.P("graph_execution_id", graphExecID))
-				}
-				metrics.TeamGraphRuntimeTotal.WithLabelValues("graph", "success").Inc()
-			}
-		}
+	root, memberLookup, graphExecID, compiledGraphCfg, err := r.compileTeamRuntime(ctx, sess, teamRow, def, mode, teamDeps, teamEmitter, run.ID)
+	if err != nil {
+		turnStatus = biz.TeamMemberStepStatusError
+		r.finishRunErr(ctx, &run, t0, err.Error())
+		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
-	if root == nil {
-		decision := DecideNativeFallback(def, teamRow.ID, graphAttempted, graphCompileErr, graphBuildErr, mode, r.graphRoot != nil)
-		if decision.UseNative {
-			root, memberLookup, err = BuildTRPCTeam(ctx, def, teamDeps, r.catalogAgent)
-			if err != nil {
-				turnStatus = "error"
-				r.finishRunErr(ctx, &run, t0, err.Error())
-				return biz.ChatMessage{}, biz.ChatMessage{}, err
-			}
-			metrics.TeamGraphRuntimeTotal.WithLabelValues("native", decision.MetricLabel).Inc()
-			if teamEmitter != nil {
-				teamEmitter.LogDone("team.run.build", "团队 Native 应急路径已构建", event.P("mode", mode), event.P("graph_attempted", graphAttempted))
-			}
-		} else {
-			turnStatus = "error"
-			r.finishRunErr(ctx, &run, t0, decision.ErrorMessage)
-			return biz.ChatMessage{}, biz.ChatMessage{}, decision.Error()
+	if graphExecID != "" {
+		run.GraphExecutionID = graphExecID
+		if uerr := r.teams.UpdateTeamRunGraphExecutionID(ctx, run.ID, graphExecID); uerr != nil {
+			event.CtxFlowLogWarn(ctx, "team.graph_runtime.persist", "graph_execution_id 持久化失败", event.P("error", uerr.Error()))
 		}
 	}
 
@@ -244,37 +181,13 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	builderDeps.Plugins = plugins
 	memberKeys, err := memberAgentKeys(ctx, def, r.catalogAgent)
 	if err != nil {
-		turnStatus = "error"
+		turnStatus = biz.TeamMemberStepStatusError
 		r.finishRunErr(ctx, &run, t0, err.Error())
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
 
-	var stopObsProjector context.CancelFunc
-	var stopTaskBridge context.CancelFunc
-	var stopExecTracker context.CancelFunc
-	var stopGraphStepWatch context.CancelFunc
-	var activityFlusher *ActivityStepFlusher
 	obs := r.startObservers(ctx, sess, teamRow, def, run, graphExecID, compiledGraphCfg)
-	stopObsProjector = obs.stopObsProjector
-	stopTaskBridge = obs.stopTaskBridge
-	stopExecTracker = obs.stopExecTracker
-	stopGraphStepWatch = obs.stopGraphStepWatch
-	activityFlusher = obs.activityFlusher
-	if activityFlusher != nil {
-		defer activityFlusher.Stop()
-	}
-	if stopObsProjector != nil {
-		defer stopObsProjector()
-	}
-	if stopTaskBridge != nil {
-		defer stopTaskBridge()
-	}
-	if stopExecTracker != nil {
-		defer stopExecTracker()
-	}
-	if stopGraphStepWatch != nil {
-		defer stopGraphStepWatch()
-	}
+	defer obs.stopAll()
 
 	// Team Ralph Loop uses the first member agent's runtime settings (orchestrator / lead).
 	rl := agent.ResolveRalphLoopTurn(firstAg.Settings)
@@ -291,7 +204,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		RalphLoop:             rl.Config,
 	})
 	if err != nil {
-		turnStatus = "error"
+		turnStatus = biz.TeamMemberStepStatusError
 		r.finishRunErr(ctx, &run, t0, err.Error())
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
@@ -312,7 +225,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	}
 	userOpts, err := agent.UserOptionsJSON(firstAg, dialogMode, prov0, mod0, sess.ContextUsedRatio, anchor)
 	if err != nil {
-		turnStatus = "error"
+		turnStatus = biz.TeamMemberStepStatusError
 		r.finishRunErr(ctx, &run, t0, err.Error())
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
@@ -335,7 +248,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	if r.td.Persist.ArtifactUC != nil && len(artifactbiz.NormalizeAttachmentIDs(input.Options.AttachmentIDs)) > 0 {
 		refs, rerr := artifactbiz.ResolveAttachmentRefs(ctx, r.td.Persist.ArtifactUC, sess.ID, input.Options.AttachmentIDs)
 		if rerr != nil {
-			turnStatus = "error"
+			turnStatus = biz.TeamMemberStepStatusError
 			r.finishRunErr(ctx, &run, t0, rerr.Error())
 			return biz.ChatMessage{}, biz.ChatMessage{}, rerr
 		}
@@ -343,7 +256,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		var merr error
 		userOpts, merr = artifactbiz.MergeRefsIntoOptionsJSON(userOpts, refs)
 		if merr != nil {
-			turnStatus = "error"
+			turnStatus = biz.TeamMemberStepStatusError
 			r.finishRunErr(ctx, &run, t0, merr.Error())
 			return biz.ChatMessage{}, biz.ChatMessage{}, merr
 		}
@@ -366,14 +279,14 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		SessionID:        sess.ID,
 		Role:             "user",
 		ContentMarkdown:  content,
-		Status:           "ok",
+		Status:           biz.TeamMemberStepStatusOK,
 		OptionsJSON:      userOpts,
 		CreatedAt:        agent.RFC3339Now(),
 		AttachmentsCount: attN,
 	}
 
 	if err := r.td.Sessions.AppendChatMessage(ctx, sess.ID, userMsg, false); err != nil {
-		turnStatus = "error"
+		turnStatus = biz.TeamMemberStepStatusError
 		r.finishRunErr(ctx, &run, t0, err.Error())
 		return userMsg, biz.ChatMessage{}, err
 	}
@@ -403,7 +316,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		if teamEmitter != nil {
 			teamEmitter.LogError("team.run.attachments", err.Error(), event.P("mode", mode))
 		}
-		turnStatus = "error"
+		turnStatus = biz.TeamMemberStepStatusError
 		r.finishRunErr(ctx, &run, t0, err.Error())
 		return userMsg, biz.ChatMessage{}, err
 	}
@@ -414,7 +327,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		if teamEmitter != nil {
 			teamEmitter.LogError("team.run.execute", err.Error(), event.P("mode", mode))
 		}
-		turnStatus = "error"
+		turnStatus = biz.TeamMemberStepStatusError
 		r.finishRunErr(ctx, &run, t0, err.Error())
 		return userMsg, biz.ChatMessage{}, err
 	}
@@ -432,7 +345,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	var streamPromptTok, streamCompletionTok int
 	var contextUsagePatched bool
 	defer func() {
-		if !contextUsagePatched && turnStatus != "ok" && streamPromptTok > 0 {
+		if !contextUsagePatched && turnStatus != biz.TeamMemberStepStatusOK && streamPromptTok > 0 {
 			sessctx.PatchContextFromLLMUsage(ctx, r.td.Sessions, r.td.Compress, r.teamLLMCatalog(), sess.ID, sess, firstAg, prov0, mod0, streamPromptTok, streamCompletionTok)
 		}
 	}()
@@ -455,7 +368,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	streamPromptTok = result.PromptTok
 	streamCompletionTok = result.CompletionTok
 	if streamErr != nil {
-		turnStatus = "error"
+		turnStatus = biz.TeamMemberStepStatusError
 		if teamEmitter != nil {
 			teamEmitter.LogError("team.run.execute", streamErr.Error(), event.P("mode", mode))
 		}
@@ -475,7 +388,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		if teamEmitter != nil {
 			teamEmitter.LogError("team.run.execute", runCtx.Err().Error()+hint, event.P("mode", mode))
 		}
-		turnStatus = "error"
+		turnStatus = biz.TeamMemberStepStatusError
 		r.finishRunErr(ctx, &run, t0, runCtx.Err().Error())
 		return userMsg, biz.ChatMessage{}, runCtx.Err()
 	}
@@ -490,20 +403,20 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 
 	assistantOptsStr, err := agent.AssistantOptionsJSON(firstAg, anchor)
 	if err != nil {
-		turnStatus = "error"
+		turnStatus = biz.TeamMemberStepStatusError
 		r.finishRunErr(ctx, &run, t0, err.Error())
 		return userMsg, biz.ChatMessage{}, err
 	}
 	if reasoningText != "" {
 		if assistantOptsStr, err = agent.MergeReasoningIntoAssistantOptionsJSON(assistantOptsStr, reasoningText); err != nil {
-			turnStatus = "error"
+			turnStatus = biz.TeamMemberStepStatusError
 			r.finishRunErr(ctx, &run, t0, err.Error())
 			return userMsg, biz.ChatMessage{}, err
 		}
 	}
 	if turnArtCollector != nil {
 		if merged, merr := artifactbiz.MergeRefsIntoOptionsJSON(assistantOptsStr, turnArtCollector.Refs()); merr != nil {
-			turnStatus = "error"
+			turnStatus = biz.TeamMemberStepStatusError
 			r.finishRunErr(ctx, &run, t0, merr.Error())
 			return userMsg, biz.ChatMessage{}, merr
 		} else {
@@ -521,7 +434,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		Role:            "assistant",
 		ContentMarkdown: displayMarkdown,
 		ModelName:       strutil.FirstNonEmpty(modOpt, sess.DefaultModel, firstAg.Model),
-		Status:          "ok",
+		Status:          biz.TeamMemberStepStatusOK,
 		OptionsJSON:     assistantOptsStr,
 		CreatedAt:       agent.RFC3339Now(),
 		TokenIn:         promptTok,
@@ -537,13 +450,13 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 			fallback = "The team workflow completed but produced no text output. This may indicate a configuration issue with the model."
 		}
 		err := kerrors.InternalServer("CHAT_TEAM_NATIVE", fallback)
-		turnStatus = "error"
+		turnStatus = biz.TeamMemberStepStatusError
 		r.finishRunErr(ctx, &run, t0, err.Error())
 		return userMsg, biz.ChatMessage{}, err
 	}
 
 	if err := r.td.Sessions.AppendChatMessage(ctx, sess.ID, assistantMsg, true); err != nil {
-		turnStatus = "error"
+		turnStatus = biz.TeamMemberStepStatusError
 		r.finishRunErr(ctx, &run, t0, err.Error())
 		return userMsg, biz.ChatMessage{}, err
 	}
@@ -593,7 +506,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	}
 	r.recordTeamRunUsage(ctx, run, teamRow.ID, firstAg, promptTok, completionTok, prov0, mod0, dialogMode)
 
-	run.Status = "success"
+	run.Status = biz.TeamRunStatusSuccess
 	run.TokenIn = promptTok
 	run.TokenOut = completionTok
 	run.DurationMS = int(time.Since(t0).Milliseconds())

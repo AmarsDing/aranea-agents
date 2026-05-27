@@ -36,6 +36,9 @@ func (m *resolveMemRepo) List(context.Context, string, int, int) ([]artifact.Art
 }
 
 func (m *resolveMemRepo) Delete(context.Context, string) error { return nil }
+func (m *resolveMemRepo) DeleteVersion(_ context.Context, sessionID, name string, version int) error {
+	return nil
+}
 
 func (m *resolveMemRepo) ListBySessionAndName(context.Context, string, string) ([]artifact.Artifact, error) {
 	return nil, nil

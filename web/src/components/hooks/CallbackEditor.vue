@@ -1,38 +1,46 @@
 <template>
-  <div class="callback-editor q-gutter-md">
-    <div class="app-form-field-grid">
-      <q-select
-        v-model="localRule.callback_point"
-        dense
-        outlined
-        emit-value
-        map-options
-        label="回调点"
-        :options="pointOptions"
-        @update:model-value="emitChange"
-      />
-      <q-select
-        v-model="localRule.action.type"
-        dense
-        outlined
-        emit-value
-        map-options
-        label="动作"
-        :options="actionOptions"
-        @update:model-value="emitChange"
-      />
-      <q-input
-        v-model.number="sortOrder"
-        dense
-        outlined
-        type="number"
-        label="排序"
-        @update:model-value="emitMeta"
-      />
-    </div>
+  <div class="callback-editor">
+    <section class="callback-editor__section">
+      <div class="callback-editor__section-head">
+        <span class="callback-editor__section-title">规则概要</span>
+        <span class="hook-tag hook-tag--point">{{ localRule.callback_point }}</span>
+        <span :class="actionTagClass(localRule.action.type)">{{ actionTypeLabel(localRule.action.type) }}</span>
+      </div>
+      <div class="app-form-field-grid app-form-field-grid--wide">
+        <q-select
+          v-model="localRule.callback_point"
+          dense
+          outlined
+          emit-value
+          map-options
+          label="回调点"
+          :options="pointOptions"
+          @update:model-value="emitChange"
+        />
+        <q-select
+          v-model="localRule.action.type"
+          dense
+          outlined
+          emit-value
+          map-options
+          label="动作"
+          :options="actionOptions"
+          @update:model-value="emitChange"
+        />
+        <q-input
+          v-model.number="sortOrder"
+          dense
+          outlined
+          type="number"
+          label="排序"
+          hint="越小越先执行"
+          @update:model-value="emitMeta"
+        />
+      </div>
+    </section>
 
-    <q-expansion-item dense-toggle default-open label="触发条件">
-      <div class="app-form-field-grid q-pa-sm">
+    <q-expansion-item dense-toggle default-opened icon="filter_alt" label="触发条件" header-class="callback-editor__expansion-head">
+      <div class="callback-editor__panel app-form-field-grid">
         <q-input
           v-model="localRule.condition.agent_id"
           dense
@@ -48,6 +56,7 @@
           outlined
           clearable
           label="Tool 名称"
+          hint="仅 before_tool / after_tool 生效"
           :disable="!toolPoint"
           @update:model-value="emitChange"
         />
@@ -57,25 +66,25 @@
           outlined
           clearable
           label="事件类型"
-          hint="on_event: runner_completion / model_response"
-          :disable="localRule.callback_point !== 'on_event'"
+          hint="on_event：runner_completion / model_response"
+          :disable="!onEventPoint"
           @update:model-value="emitChange"
         />
       </div>
     </q-expansion-item>
 
-    <q-expansion-item dense-toggle default-open label="执行动作">
-      <div class="q-pa-sm q-gutter-md">
-        <template v-if="localRule.action.type === 'notify'">
+    <q-expansion-item dense-toggle default-opened icon="bolt" label="执行动作" header-class="callback-editor__expansion-head">
+      <div class="callback-editor__panel q-gutter-md">
+        <template v-if="showNotifyFields">
           <q-input
             v-model="localRule.action.webhook_url"
-            class="app-field-long"
+            class="app-grid-span-full"
             dense
             outlined
             label="Webhook URL"
             @update:model-value="emitChange"
           />
-          <div class="app-form-field-grid app-form-field-grid--2col">
+          <div class="app-form-field-grid app-form-field-grid--2col app-grid-span-full">
             <q-input
               v-model.number="localRule.action.notify_max_retries"
               dense
@@ -94,26 +103,29 @@
               type="number"
               min="1"
               max="60"
-              label="超时(秒)"
+              label="超时 (秒)"
               hint="默认 8"
               @update:model-value="emitChange"
             />
           </div>
         </template>
+
         <q-select
-          v-if="localRule.action.type === 'log'"
+          v-if="showLogFields"
           v-model="localRule.action.log_level"
           dense
           outlined
           emit-value
           map-options
           label="日志级别"
-          :options="logLevelOptions"
+          :options="LOG_LEVEL_OPTIONS"
           @update:model-value="emitChange"
         />
+
         <q-input
-          v-if="localRule.action.type === 'block' || localRule.action.type === 'log'"
+          v-if="showMessageField"
           v-model="localRule.action.message"
+          class="app-grid-span-full"
           dense
           outlined
           type="textarea"
@@ -121,21 +133,18 @@
           label="消息"
           @update:model-value="emitChange"
         />
-        <template v-if="localRule.action.type === 'modify'">
-          <div class="text-caption text-grey-7">
-            before_model: generation_config / append_system / append_user。
-            before_tool: <strong>arguments</strong> 整包替换；
-            <strong>merge_arguments</strong> 深度合并（嵌套对象递归，标量/数组以 patch 为准）。
-          </div>
+
+        <template v-if="showModifyFields">
+          <p class="callback-editor__hint app-grid-span-full">{{ MODIFY_PATCH_HINT }}</p>
           <q-input
             v-model="modifyPatchText"
-            class="app-field-long"
+            class="app-grid-span-full"
             dense
             outlined
             type="textarea"
             rows="8"
             label="modify_patch (JSON)"
-            :error="!!modifyPatchError"
+            :error="Boolean(modifyPatchError)"
             :error-message="modifyPatchError"
             @update:model-value="onModifyPatchInput"
           />
@@ -146,14 +155,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
 import {
-  ACTION_TYPE_OPTIONS,
-  CALLBACK_POINT_OPTIONS,
-  cloneHookRuleConfig,
-  defaultHookRuleConfig,
-  type HookRuleConfig
-} from "../../features/hooks/types";
+  actionTagClass,
+  actionTypeLabel,
+  LOG_LEVEL_OPTIONS,
+  MODIFY_PATCH_HINT
+} from "./callbackEditorUi";
+import { useCallbackEditor } from "./useCallbackEditor";
+import type { HookRuleConfig } from "../../features/hooks/types";
 
 const props = defineProps<{
   modelValue: HookRuleConfig;
@@ -167,70 +176,21 @@ const emit = defineEmits<{
   "update:sortOrder": [number];
 }>();
 
-const localRule = ref<HookRuleConfig>(defaultHookRuleConfig(props.agentId, props.agentKey));
-const sortOrder = ref(props.sortOrder ?? 0);
-const modifyPatchText = ref("{}");
-const modifyPatchError = ref("");
-
-const pointOptions = CALLBACK_POINT_OPTIONS;
-const actionOptions = ACTION_TYPE_OPTIONS;
-const logLevelOptions = [
-  { label: "debug", value: "debug" },
-  { label: "info", value: "info" },
-  { label: "warn", value: "warn" },
-  { label: "error", value: "error" }
-];
-
-const toolPoint = computed(
-  () => localRule.value.callback_point === "before_tool" || localRule.value.callback_point === "after_tool"
-);
-
-watch(
-  () => props.modelValue,
-  (v) => {
-    localRule.value = v
-      ? cloneHookRuleConfig(v)
-      : defaultHookRuleConfig(props.agentId, props.agentKey);
-    syncModifyText();
-  },
-  { immediate: true, deep: true }
-);
-
-watch(
-  () => props.sortOrder,
-  (v) => {
-    sortOrder.value = v ?? 0;
-  },
-  { immediate: true }
-);
-
-function syncModifyText() {
-  modifyPatchError.value = "";
-  modifyPatchText.value = JSON.stringify(localRule.value.action.modify_patch ?? {}, null, 2);
-}
-
-function emitChange() {
-  emit("update:modelValue", cloneHookRuleConfig(localRule.value));
-}
-
-function emitMeta() {
-  emit("update:sortOrder", Number(sortOrder.value) || 0);
-}
-
-function onModifyPatchInput(raw: string | number | null) {
-  const text = String(raw ?? "").trim();
-  if (!text) {
-    localRule.value.action.modify_patch = {};
-    modifyPatchError.value = "";
-    emitChange();
-    return;
-  }
-  try {
-    localRule.value.action.modify_patch = JSON.parse(text) as Record<string, unknown>;
-    modifyPatchError.value = "";
-    emitChange();
-  } catch {
-    modifyPatchError.value = "JSON 格式错误";
-  }
-}
+const {
+  localRule,
+  sortOrder,
+  modifyPatchText,
+  modifyPatchError,
+  pointOptions,
+  actionOptions,
+  toolPoint,
+  onEventPoint,
+  showNotifyFields,
+  showLogFields,
+  showModifyFields,
+  showMessageField,
+  emitChange,
+  emitMeta,
+  onModifyPatchInput
+} = useCallbackEditor(props, emit);
 </script>

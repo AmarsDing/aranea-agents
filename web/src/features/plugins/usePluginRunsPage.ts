@@ -1,6 +1,5 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
-import type { QTableColumn } from "quasar";
 import {
   CALLBACK_POINT_OPTIONS,
   PLUGIN_RUN_KEY_PRESETS,
@@ -8,7 +7,8 @@ import {
   pluginRunsQueryFromRoute
 } from "../callback/constants";
 import type { PluginRun } from "./types";
-import { registryColWidth } from "../ui/registryTableColumns";
+
+import { PLUGIN_RUN_TABLE_COLUMNS } from "./pluginRunsTableUi";
 import { usePluginsStore } from "../../stores/plugins";
 
 export function usePluginRunsPage() {
@@ -35,14 +35,7 @@ export function usePluginRunsPage() {
   const statusOptions = PLUGIN_RUN_STATUS_OPTIONS;
   const pluginKeyOptions = ref([...PLUGIN_RUN_KEY_PRESETS.map((p) => p.value)]);
 
-  const columns: QTableColumn<PluginRun>[] = [
-    { name: "created_at", label: "时间", field: "created_at", align: "left", ...registryColWidth("11%") },
-    { name: "plugin_key", label: "Plugin / Hook", field: "plugin_key", align: "left", ...registryColWidth("12%") },
-    { name: "agent_id", label: "Agent", field: "agent_id", align: "left", ...registryColWidth("10%") },
-    { name: "callback_point", label: "生命周期点", field: "callback_point", align: "left", ...registryColWidth("9%") },
-    { name: "status", label: "结果", field: "status", align: "left", ...registryColWidth("9%") },
-    { name: "duration_ms", label: "耗时(ms)", field: "duration_ms", align: "right", ...registryColWidth("72px") }
-  ];
+  const columns = PLUGIN_RUN_TABLE_COLUMNS;
 
   function filterPluginKeys(val: string, update: (fn: () => void) => void) {
     update(() => {

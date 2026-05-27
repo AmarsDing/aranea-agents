@@ -5,10 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"strings"
 	"sync"
 	"time"
+
+	"aranea-agents/internal/event"
 
 	"github.com/google/uuid"
 )
@@ -101,6 +102,18 @@ type EventWrite struct {
 	MetadataJSON string
 }
 
+// AlertFiringState is the alert state machine value (MON-OPT-02).
+type AlertFiringState string
+
+const (
+	AlertFiringStateIdle      AlertFiringState = "idle"
+	AlertFiringStateFiring    AlertFiringState = "firing"
+	AlertFiringStateRecovered AlertFiringState = "recovered"
+)
+
+// defaultRecoveryFactor is the fraction of the threshold below which a firing alert is considered recovered.
+const defaultRecoveryFactor = 0.9
+
 // AlertRule defines a simple threshold alert on monitor_events aggregates.
 type AlertRule struct {
 	ID               string
@@ -115,6 +128,14 @@ type AlertRule struct {
 	CooldownMinutes  int
 	CreatedAt        string
 	UpdatedAt        string
+
+	// MON-OPT-02: persistent firing state machine.
+	FiringState          AlertFiringState // idle | firing | recovered
+	LastFiredAt          *time.Time       // unix ms persisted in DB
+	LastFiredValue       float64          // metric value at last fire
+	LastFiredWindowStart *time.Time
+	RecoveredAt          *time.Time
+	RecoveryFactor       float64 // 0.9 default: metric must drop below Threshold×RecoveryFactor to recover
 }
 
 // AlertNotifier delivers fired alerts to external channels.
@@ -133,6 +154,9 @@ type Repo interface {
 	GetMonitorTrace(ctx context.Context, id string) (PlatformRow, error)
 	ListAlertRules(ctx context.Context) ([]AlertRule, error)
 	ReplaceAlertRules(ctx context.Context, rules []AlertRule) error
+	// UpdateAlertFiringState persists the firing state machine columns (MON-OPT-02).
+	// SQLite: runs inside BEGIN IMMEDIATE to prevent duplicate fires on restart.
+	UpdateAlertFiringState(ctx context.Context, id string, state AlertFiringState, lastFiredAt *time.Time, lastFiredValue float64, recoveredAt *time.Time) error
 	CountMonitorEventsSince(ctx context.Context, eventKey, status, sinceRFC3339 string) (int32, error)
 	AvgRunnerCompletionDurationMsSince(ctx context.Context, sinceRFC3339 string) (float64, error)
 	ExistsRunnerCompletion(ctx context.Context, sessionID, invocationID string) (bool, error)
@@ -156,11 +180,16 @@ type FilesystemHealthReader interface {
 
 // Usecase implements monitor workflows.
 type Usecase struct {
-	repo      Repo
-	notifier  AlertNotifier
-	fsHealth  FilesystemHealthReader
-	lastFired sync.Map
+	repo        Repo
+	notifier    AlertNotifier
+	fsHealth    FilesystemHealthReader
+	lastFired   sync.Map
+	rulesCache  []AlertRule
+	rulesExpire time.Time
+	rulesMu     sync.RWMutex
 }
+
+const rulesCacheTTL = 5 * time.Minute
 
 // SetFilesystemHealthReader configures skill filesystem metrics for alert rules.
 func (u *Usecase) SetFilesystemHealthReader(r FilesystemHealthReader) {
@@ -184,7 +213,7 @@ func (u *Usecase) RecordAuditLog(ctx context.Context, entry AuditLog) error {
 		entry.ID = uuid.NewString()
 	}
 	if err := u.repo.InsertAuditLog(ctx, entry); err != nil {
-		slog.Warn("RecordAuditLog failed", "action", entry.Action, "resource_id", entry.ResourceID, "error", err)
+		event.SysLogWarn("system.monitor.audit_log_fail", "RecordAuditLog failed", event.P("action", entry.Action), event.P("resource_id", entry.ResourceID), event.P("error", err.Error()))
 		return err
 	}
 	return nil
@@ -196,7 +225,7 @@ func (u *Usecase) RecordMonitorEvent(ctx context.Context, ev EventWrite) error {
 		return nil
 	}
 	if err := u.repo.InsertMonitorEvent(ctx, ev); err != nil {
-		slog.Warn("RecordMonitorEvent failed", "event_key", ev.EventKey, "error", err)
+		event.SysLogWarn("system.monitor.event_persist_fail", "RecordMonitorEvent failed", event.P("event_key", ev.EventKey), event.P("error", err.Error()))
 		return err
 	}
 	return nil
@@ -242,6 +271,12 @@ func (u *Usecase) ReplaceAlertRules(ctx context.Context, rules []AlertRule) erro
 		return err
 	}
 
+	// Invalidate rules cache
+	u.rulesMu.Lock()
+	u.rulesCache = nil
+	u.rulesExpire = time.Time{}
+	u.rulesMu.Unlock()
+
 	newIDs := make(map[string]struct{}, len(rules))
 	for _, r := range rules {
 		newIDs[r.ID] = struct{}{}
@@ -259,10 +294,7 @@ func (u *Usecase) EvaluateAlerts(ctx context.Context) {
 	if u == nil || u.repo == nil {
 		return
 	}
-	rules, err := u.repo.ListAlertRules(ctx)
-	if err != nil {
-		return
-	}
+	rules := u.cachedAlertRules(ctx)
 	for _, rule := range rules {
 		if !rule.Enabled {
 			continue
@@ -276,6 +308,28 @@ func (u *Usecase) EvaluateAlerts(ctx context.Context) {
 	}
 }
 
+func (u *Usecase) cachedAlertRules(ctx context.Context) []AlertRule {
+	u.rulesMu.RLock()
+	if u.rulesCache != nil && time.Now().Before(u.rulesExpire) {
+		rules := u.rulesCache
+		u.rulesMu.RUnlock()
+		return rules
+	}
+	u.rulesMu.RUnlock()
+
+	rules, err := u.repo.ListAlertRules(ctx)
+	if err != nil {
+		return nil
+	}
+
+	u.rulesMu.Lock()
+	u.rulesCache = rules
+	u.rulesExpire = time.Now().Add(rulesCacheTTL)
+	u.rulesMu.Unlock()
+
+	return rules
+}
+
 func (u *Usecase) evaluateRunnerErrorRate(ctx context.Context, rule AlertRule) {
 	if u == nil || u.repo == nil {
 		return
@@ -287,26 +341,55 @@ func (u *Usecase) evaluateRunnerErrorRate(ctx context.Context, rule AlertRule) {
 	since := time.Now().UTC().Add(-time.Duration(window) * time.Minute).Format(time.RFC3339)
 	total, errTotal := u.repo.CountMonitorEventsSince(ctx, "runner.completion", "", since)
 	if errTotal != nil {
-		slog.Warn("EvaluateAlerts: CountMonitorEventsSince(total) failed", "rule_id", rule.ID, "error", errTotal)
+		event.SysLogWarn("system.monitor.alert_count_fail", "EvaluateAlerts: CountMonitorEventsSince(total) failed", event.P("rule_id", rule.ID), event.P("error", errTotal.Error()))
 		return
 	}
 	if total == 0 {
+		// MON-OPT-02: if rule is firing and there are 0 completions, treat as recovered.
+		if rule.FiringState == AlertFiringStateFiring {
+			u.MarkAlertRecovered(ctx, rule, time.Now().UTC())
+		}
 		return
 	}
 	errors, errErrors := u.repo.CountMonitorEventsSince(ctx, "runner.completion", "error", since)
 	if errErrors != nil {
-		slog.Warn("EvaluateAlerts: CountMonitorEventsSince(errors) failed", "rule_id", rule.ID, "error", errErrors)
+		event.SysLogWarn("system.monitor.alert_count_fail", "EvaluateAlerts: CountMonitorEventsSince(errors) failed", event.P("rule_id", rule.ID), event.P("error", errErrors.Error()))
 		return
 	}
 	rate := float64(errors) / float64(total)
+	now := time.Now().UTC()
+
+	// MON-OPT-02: recovery transition — firing rule whose metric dropped below recovery threshold.
+	if rule.FiringState == AlertFiringStateFiring && rate < recoveryThreshold(rule) {
+		u.MarkAlertRecovered(ctx, rule, now)
+		// Publish alert.recovered event.
+		meta, _ := json.Marshal(map[string]any{
+			"rule_id": rule.ID, "error_rate": rate, "total": total, "window_minutes": window,
+		})
+		_ = u.RecordMonitorEvent(ctx, EventWrite{
+			EventKey:     "alert.recovered",
+			Name:         rule.Name,
+			Description:  fmt.Sprintf("error rate %.2f recovered below %.2f", rate, recoveryThreshold(rule)),
+			Status:       "recovered",
+			MetadataJSON: string(meta),
+		})
+		if u.notifier != nil {
+			u.notifier.Notify(ctx, rule, map[string]any{
+				"rule_id": rule.ID, "name": rule.Name, "error_rate": rate,
+				"recovered_at": now.Format(time.RFC3339),
+			})
+		}
+		return
+	}
+
 	if rate < rule.Threshold {
 		return
 	}
-	now := time.Now().UTC()
 	if !u.ShouldFireAlert(rule, now) {
 		return
 	}
-	u.MarkAlertFired(rule.ID, now)
+	// MON-OPT-02: persist firing state before publishing (prevents duplicate fires on restart).
+	u.MarkAlertFiredPersistent(ctx, rule, now, rate)
 	meta, _ := json.Marshal(map[string]any{
 		"rule_id": rule.ID, "error_rate": rate, "errors": errors, "total": total, "window_minutes": window,
 	})
@@ -317,7 +400,7 @@ func (u *Usecase) evaluateRunnerErrorRate(ctx context.Context, rule AlertRule) {
 		Status:       strings.TrimSpace(rule.Severity),
 		MetadataJSON: string(meta),
 	}); err != nil {
-		slog.Warn("RecordMonitorEvent for alert.fired failed", "rule_id", rule.ID, "error", err)
+		event.SysLogWarn("system.monitor.alert_fired_persist_fail", "RecordMonitorEvent for alert.fired failed", event.P("rule_id", rule.ID), event.P("error", err.Error()))
 	}
 	payload := map[string]any{
 		"rule_id":        rule.ID,
@@ -340,17 +423,42 @@ func (u *Usecase) evaluateSkillFilesystemMissingCount(ctx context.Context, rule 
 	}
 	missing, pending, err := u.fsHealth.FilesystemHealthStats(ctx)
 	if err != nil {
-		slog.Warn("EvaluateAlerts: FilesystemHealthStats failed", "rule_id", rule.ID, "error", err)
+		event.SysLogWarn("system.monitor.fs_health_fail", "EvaluateAlerts: FilesystemHealthStats failed", event.P("rule_id", rule.ID), event.P("error", err.Error()))
 		return
 	}
-	if float64(missing) < rule.Threshold {
-		return
-	}
+	missingF := float64(missing)
 	now := time.Now().UTC()
+
+	// MON-OPT-02: recovery transition — firing rule whose metric dropped below recovery threshold.
+	if rule.FiringState == AlertFiringStateFiring && missingF < recoveryThreshold(rule) {
+		u.MarkAlertRecovered(ctx, rule, now)
+		meta, _ := json.Marshal(map[string]any{
+			"rule_id": rule.ID, "missing_count": missing, "threshold": rule.Threshold,
+		})
+		_ = u.RecordMonitorEvent(ctx, EventWrite{
+			EventKey:     "alert.recovered",
+			Name:         rule.Name,
+			Description:  fmt.Sprintf("skill filesystem missing %d recovered below %.0f", missing, recoveryThreshold(rule)),
+			Status:       "recovered",
+			MetadataJSON: string(meta),
+		})
+		if u.notifier != nil {
+			u.notifier.Notify(ctx, rule, map[string]any{
+				"rule_id": rule.ID, "name": rule.Name, "missing_count": missing,
+				"recovered_at": now.Format(time.RFC3339),
+			})
+		}
+		return
+	}
+
+	if missingF < rule.Threshold {
+		return
+	}
 	if !u.ShouldFireAlert(rule, now) {
 		return
 	}
-	u.MarkAlertFired(rule.ID, now)
+	// MON-OPT-02: persist firing state before publishing (prevents duplicate fires on restart).
+	u.MarkAlertFiredPersistent(ctx, rule, now, missingF)
 	meta, _ := json.Marshal(map[string]any{
 		"rule_id": rule.ID, "missing_count": missing, "pending_filesystem_count": pending, "threshold": rule.Threshold,
 	})
@@ -361,7 +469,7 @@ func (u *Usecase) evaluateSkillFilesystemMissingCount(ctx context.Context, rule 
 		Status:       strings.TrimSpace(rule.Severity),
 		MetadataJSON: string(meta),
 	}); err != nil {
-		slog.Warn("RecordMonitorEvent for skill alert.fired failed", "rule_id", rule.ID, "error", err)
+		event.SysLogWarn("system.monitor.skill_alert_fired_persist_fail", "RecordMonitorEvent for skill alert.fired failed", event.P("rule_id", rule.ID), event.P("error", err.Error()))
 	}
 	payload := map[string]any{
 		"rule_id":                  rule.ID,
@@ -377,6 +485,11 @@ func (u *Usecase) evaluateSkillFilesystemMissingCount(ctx context.Context, rule 
 	}
 }
 
+// ShouldFireAlert checks whether an alert rule should fire now.
+//
+// MON-OPT-02: Cooldown is evaluated against DB-persisted LastFiredAt (loaded via
+// ListAlertRules cache). This survives process restarts and prevents duplicate fires
+// across replicas when SQLite is used (single-writer).
 func (u *Usecase) ShouldFireAlert(rule AlertRule, now time.Time) bool {
 	if u == nil {
 		return false
@@ -385,19 +498,76 @@ func (u *Usecase) ShouldFireAlert(rule AlertRule, now time.Time) bool {
 	if cooldown <= 0 {
 		cooldown = 60
 	}
-	if v, ok := u.lastFired.Load(rule.ID); ok {
-		if last, ok := v.(time.Time); ok && now.Sub(last) < time.Duration(cooldown)*time.Minute {
+	cooldownDur := time.Duration(cooldown) * time.Minute
+
+	// DB-persisted path (MON-OPT-02): use rule.LastFiredAt if available.
+	if rule.LastFiredAt != nil && now.Sub(*rule.LastFiredAt) < cooldownDur {
+		return false
+	}
+	// recovered state also enforces cooldown
+	if rule.FiringState == AlertFiringStateRecovered && rule.RecoveredAt != nil {
+		if now.Sub(*rule.RecoveredAt) < cooldownDur {
 			return false
+		}
+	}
+
+	// Legacy in-memory fallback (pre-OPT-02 data or repo not wired).
+	if rule.LastFiredAt == nil {
+		if v, ok := u.lastFired.Load(rule.ID); ok {
+			if last, ok := v.(time.Time); ok && now.Sub(last) < cooldownDur {
+				return false
+			}
 		}
 	}
 	return true
 }
 
+// MarkAlertFired records the firing event both in-memory (fast path) and in the DB
+// (persistent path, MON-OPT-02). Failures are logged but do not abort the alert.
 func (u *Usecase) MarkAlertFired(ruleID string, now time.Time) {
 	if u == nil {
 		return
 	}
 	u.lastFired.Store(ruleID, now)
+}
+
+// MarkAlertFiredPersistent is the DB-backed version called by evaluateRunner* after
+// the alert.fired event is published (MON-OPT-02). It also advances the state machine
+// from idle/recovered → firing.
+func (u *Usecase) MarkAlertFiredPersistent(ctx context.Context, rule AlertRule, now time.Time, metricValue float64) {
+	if u == nil || u.repo == nil {
+		return
+	}
+	u.lastFired.Store(rule.ID, now)
+	if err := u.repo.UpdateAlertFiringState(ctx, rule.ID, AlertFiringStateFiring, &now, metricValue, nil); err != nil {
+		event.SysLogWarn("system.monitor.mark_fired_db_fail", "MarkAlertFiredPersistent: DB update failed", event.P("rule_id", rule.ID), event.P("error", err.Error()))
+	}
+	// Invalidate rules cache so next evaluation round reads fresh DB state.
+	u.rulesMu.Lock()
+	u.rulesExpire = time.Time{}
+	u.rulesMu.Unlock()
+}
+
+// MarkAlertRecovered transitions a firing alert to recovered and persists it (MON-OPT-02).
+func (u *Usecase) MarkAlertRecovered(ctx context.Context, rule AlertRule, now time.Time) {
+	if u == nil || u.repo == nil {
+		return
+	}
+	if err := u.repo.UpdateAlertFiringState(ctx, rule.ID, AlertFiringStateRecovered, rule.LastFiredAt, rule.LastFiredValue, &now); err != nil {
+		event.SysLogWarn("system.monitor.mark_recovered_db_fail", "MarkAlertRecovered: DB update failed", event.P("rule_id", rule.ID), event.P("error", err.Error()))
+	}
+	u.rulesMu.Lock()
+	u.rulesExpire = time.Time{}
+	u.rulesMu.Unlock()
+}
+
+// recoveryThreshold returns the value below which a firing alert is considered recovered.
+func recoveryThreshold(rule AlertRule) float64 {
+	f := rule.RecoveryFactor
+	if f <= 0 || f > 1 {
+		f = defaultRecoveryFactor
+	}
+	return rule.Threshold * f
 }
 
 func (u *Usecase) CleanupStaleLastFired(now time.Time, maxAge time.Duration) {

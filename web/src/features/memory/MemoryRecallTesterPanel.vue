@@ -68,11 +68,11 @@ import { compositeSearchMemories, debugMemoryRecall } from "./api";
 import RecallHitTable from "./RecallHitTable.vue";
 import AppRegistryHoverTip from "../../components/layout/AppRegistryHoverTip.vue";
 import AppRegistryMarkupTable from "../../components/layout/AppRegistryMarkupTable.vue";
-import { REGISTRY_COL_W, registryColWidth } from "../ui/registryTableColumns";
+import { REGISTRY_COL_W, registryCol } from "../ui/registryTableColumns";
 
 const compositeColumns = [
-  { name: "layer", label: "Layer", field: "layer", align: "left" as const, ...registryColWidth(REGISTRY_COL_W.nameWide) },
-  { name: "score", label: "Score", field: "score", align: "right" as const, ...registryColWidth(REGISTRY_COL_W.metric) }
+  registryCol("layer", "Layer", "layer", "left", REGISTRY_COL_W.nameWide),
+  registryCol("score", "Score", "score", "right", REGISTRY_COL_W.metric)
 ];
 
 const compositeRows = computed(() =>

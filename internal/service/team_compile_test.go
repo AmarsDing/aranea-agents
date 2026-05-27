@@ -29,6 +29,9 @@ func (r *compileTeamRepo) DeleteTeam(context.Context, string) error             
 func (r *compileTeamRepo) ListTeamRuns(context.Context, string, int) ([]biz.TeamRun, error) {
 	return nil, nil
 }
+func (r *compileTeamRepo) HasActiveTeamRun(context.Context, string) (bool, error) {
+	return false, nil
+}
 func (r *compileTeamRepo) GetTeamRunByID(context.Context, string) (biz.TeamRun, error) {
 	return biz.TeamRun{}, sql.ErrNoRows
 }

@@ -6,10 +6,10 @@ import (
 )
 
 var (
-	piiEmailRe    = regexp.MustCompile(`(?i)[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}`)
-	piiPhoneRe    = regexp.MustCompile(`(?:(?:\+?\d{1,3}[\s-]?)?(?:\(?\d{2,4}\)?[\s-]?)?\d{3,4}[\s-]?\d{3,4})`)
+	piiEmailRe    = regexp.MustCompile(`(?i)\b[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}\b`)
+	piiPhoneRe    = regexp.MustCompile(`(?:\+?\d{1,3}[\s-]?)?\(?\d{2,4}\)?[\s-]?\d{3,4}[\s-]?\d{3,4}\b`)
 	piiIDCardRe   = regexp.MustCompile(`\b\d{17}[\dXx]\b`)
-	piiCreditRe   = regexp.MustCompile(`\b(?:\d[ -]*?){13,19}\b`)
+	piiCreditRe   = regexp.MustCompile(`\b(?:\d[ -]*?){12,18}\d\b`)
 )
 
 // PIIScanResult holds detection output for one statement.

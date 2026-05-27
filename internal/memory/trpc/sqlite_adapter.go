@@ -11,6 +11,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/pgvector"
 	"aranea-agents/internal/data/sessionmemory"
+	"aranea-agents/internal/event"
 
 	trpcmemory "trpc.group/trpc-go/trpc-agent-go/memory"
 	trpcmemtool "trpc.group/trpc-go/trpc-agent-go/memory/tool"
@@ -142,6 +143,11 @@ func (s *sqliteMemoryService) SearchMemories(ctx context.Context, uk trpcmemory.
 
 	if q != "" && s.vector != nil {
 		hits, err := s.vector.RecallWithUser(ctx, uk.AppName, uk.UserID, q, int(topK))
+		if err != nil {
+			if !errors.Is(err, biz.ErrMemoryUnavailable) {
+				event.SysLogWarn("system.auto_memory.extract_fail", "vector recall failed", event.P("agent", uk.AppName), event.P("error", err.Error()))
+			}
+		}
 		if err == nil && len(hits) > 0 {
 			out := make([]*trpcmemory.Entry, 0, len(hits))
 			for _, h := range hits {
@@ -225,7 +231,10 @@ func (s *sqliteMemoryService) syncIndexBestEffort(ctx context.Context, raw []byt
 	if s == nil || s.indexSync == nil || len(raw) == 0 {
 		return
 	}
-	_ = s.indexSync.SyncFactIndexFromRow(ctx, raw)
+	// MEM-OPT-01 Phase 1: errors are captured by SyncFactIndexFromRow → MarkFactIndexStale.
+	if err := s.indexSync.SyncFactIndexFromRow(ctx, raw); err != nil {
+		event.SysLogWarn("system.auto_memory.l4_fail", "sqlite_adapter index sync failed", event.P("error", err.Error()))
+	}
 }
 
 func trpcFactUpsert(uk trpcmemory.UserKey, id, mem string, topics []string, factKind, createdAt, updatedAt string) sessionmemory.MemoryFactUpsert {
@@ -292,13 +301,13 @@ func topicsJSON(topics []string) string {
 }
 
 type factRow struct {
-	ID          string  `json:"id"`
-	Statement   string  `json:"statement"`
-	TagsJSON    string  `json:"tags_json"`
-	Importance  float64 `json:"importance"`
-	MetadataJSON string `json:"metadata_json"`
-	CreatedAt   string  `json:"created_at"`
-	UpdatedAt   string  `json:"updated_at"`
+	ID           string  `json:"id"`
+	Statement    string  `json:"statement"`
+	TagsJSON     string  `json:"tags_json"`
+	Importance   float64 `json:"importance"`
+	MetadataJSON string  `json:"metadata_json"`
+	CreatedAt    string  `json:"created_at"`
+	UpdatedAt    string  `json:"updated_at"`
 }
 
 func factRowToEntry(raw []byte, uk trpcmemory.UserKey) (*trpcmemory.Entry, error) {

@@ -104,15 +104,15 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import AppRegistryMarkupTable from "../../components/layout/AppRegistryMarkupTable.vue";
-import { REGISTRY_COL_W, registryColWidth } from "../ui/registryTableColumns";
+import { REGISTRY_COL_W, registryCol } from "../ui/registryTableColumns";
 import type { GraphNeighborhood, MemoryEntity } from "./types";
 import { getMemoryNeighborhood } from "./api";
 
 const relationColumns = [
-  { name: "source_id", label: "Source", field: "source_id", align: "left" as const, ...registryColWidth(REGISTRY_COL_W.name) },
-  { name: "relation_type", label: "Relation", field: "relation_type", align: "left" as const, ...registryColWidth("11%") },
-  { name: "target_id", label: "Target", field: "target_id", align: "left" as const, ...registryColWidth(REGISTRY_COL_W.name) },
-  { name: "weight", label: "Weight", field: "weight", align: "right" as const, ...registryColWidth(REGISTRY_COL_W.metric) }
+  registryCol("source_id", "Source", "source_id", "left", REGISTRY_COL_W.name),
+  registryCol("relation_type", "Relation", "relation_type", "left", "11%"),
+  registryCol("target_id", "Target", "target_id", "left", REGISTRY_COL_W.name),
+  registryCol("weight", "Weight", "weight", "right", REGISTRY_COL_W.metric)
 ];
 
 const props = defineProps<{

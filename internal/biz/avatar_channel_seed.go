@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 
+	kerrors "github.com/go-kratos/kratos/v2/errors"
+
 	"aranea-agents/internal/biz/avatar"
 	"aranea-agents/internal/biz/channelicons"
 )
@@ -17,7 +19,7 @@ func EnsureChannelPlatformAvatars(ctx context.Context, repo AvatarRepo) error {
 	}
 	for _, spec := range ChannelPlatformAvatarSpecs() {
 		if err := ensureOneChannelPlatformAvatar(ctx, repo, spec); err != nil {
-			return fmt.Errorf("channel avatar %s: %w", spec.AssetKey, err)
+			return kerrors.InternalServer("AVATAR", fmt.Sprintf("channel avatar %s: %s", spec.AssetKey, err.Error()))
 		}
 	}
 	return nil

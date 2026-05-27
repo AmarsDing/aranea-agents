@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/safego"
 
 	"github.com/go-kratos/kratos/v2/log"
 )
@@ -48,7 +49,7 @@ func (r *Runner) startReconcileLoop(ctx context.Context) {
 		return
 	}
 	ticker := time.NewTicker(interval)
-	go func() {
+	safego.Go(ctx, "skill.watch.reconcile_loop", func() {
 		defer ticker.Stop()
 		for {
 			select {
@@ -58,7 +59,7 @@ func (r *Runner) startReconcileLoop(ctx context.Context) {
 				r.reconcile(ctx)
 			}
 		}
-	}()
+	})
 	r.logf(log.LevelInfo, "skill.fs.reconcile", "msg", "skill reconcile ticker started", "interval", interval.String())
 }
 

@@ -6,20 +6,22 @@ import (
 	"strings"
 	"time"
 
+	"aranea-agents/internal/event"
+
 	"github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
 )
 
 const (
 	ChannelDeliveryStatusPending   = "pending"
-	ChannelDeliveryStatusRetry       = "retry"
+	ChannelDeliveryStatusRetry     = "retry"
 	ChannelDeliveryStatusDelivered = "delivered"
-	ChannelDeliveryStatusError       = "error"
-	ChannelOutboundTextKind          = "outbound_text"
-	ChannelOutboundCardKind          = "outbound_card"
-	MaxOutboundAttempts              = 3
-	outboundRetryBaseDelay           = 5 * time.Second
-	outboundRetryMaxDelay            = 5 * time.Minute
+	ChannelDeliveryStatusError     = "error"
+	ChannelOutboundTextKind        = "outbound_text"
+	ChannelOutboundCardKind        = "outbound_card"
+	MaxOutboundAttempts            = 3
+	outboundRetryBaseDelay         = 5 * time.Second
+	outboundRetryMaxDelay          = 5 * time.Minute
 )
 
 // ChannelOutboundPayload is stored in channel_delivery.payload_json for async outbound sends.
@@ -93,6 +95,9 @@ func (u *ChannelUsecase) hasOutboundIdempotency(ctx context.Context, channelID, 
 	items, err := u.repo.ListDeliveries(ctx, channelID, 100)
 	if err != nil {
 		return false, err
+	}
+	if len(items) >= 100 {
+		event.SysLogWarn("system.monitor.alert_channel_fail", "hasOutboundIdempotency scanned max deliveries without finding match; consider DB unique index for idempotency_key", event.P("channel_id", channelID), event.P("key", key))
 	}
 	for _, item := range items {
 		if item.Status != ChannelDeliveryStatusPending &&

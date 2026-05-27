@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -15,6 +17,28 @@ import (
 
 	"aranea-agents/internal/biz"
 )
+
+// sessionIDPattern is the allowed shape for an artifact session ID at the FS layer.
+// OUT-05 / ART-01: prevents `../`, slashes, NUL, control chars and OS-specific
+// path tricks (backslash, drive letters) from being interpreted as parent
+// directory traversal by `filepath.Join(root, sessionID)`.
+var sessionIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-][A-Za-z0-9_.-]{0,127}$`)
+
+// validateSessionID returns nil only when id is safe to use as a single
+// directory component beneath the artifact storage root.
+func validateSessionID(id string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return fmt.Errorf("artifact: session_id is required")
+	}
+	if !sessionIDPattern.MatchString(id) {
+		return fmt.Errorf("artifact: session_id contains disallowed characters")
+	}
+	if strings.Contains(id, "..") { // belt-and-braces: character class allows individual dots but not ".."; explicit check prevents traversal sequences
+		return fmt.Errorf("artifact: session_id may not contain ..")
+	}
+	return nil
+}
 
 // artifactDirEnv is the env var for the artifact storage root.
 const artifactDirEnv = "ARTIFACT_STORAGE_DIR"
@@ -86,6 +110,11 @@ func (r *FSArtifactRepo) sessionDir(sessionID string) string {
 
 // Save stores artifact bytes and returns the saved Artifact.
 func (r *FSArtifactRepo) Save(_ context.Context, sessionID, name, mimeType string, data []byte) (biz.Artifact, error) {
+	// OUT-05 / ART-01: reject any sessionID that could traverse out of the
+	// configured artifact root before we touch the filesystem.
+	if err := validateSessionID(sessionID); err != nil {
+		return biz.Artifact{}, err
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -108,6 +137,11 @@ func (r *FSArtifactRepo) Save(_ context.Context, sessionID, name, mimeType strin
 		return biz.Artifact{}, fmt.Errorf("artifact write: %w", err)
 	}
 
+	// OUT-05 / ART-03: persist a *relative* URI so API responses never disclose
+	// the host filesystem layout. `Load` joins this against the configured root
+	// at read time. Use forward slashes for a stable cross-platform layout key.
+	relURI := path.Join(sessionID, binName)
+
 	meta := artifactMeta{
 		ID:          id,
 		SessionID:   sessionID,
@@ -116,7 +150,7 @@ func (r *FSArtifactRepo) Save(_ context.Context, sessionID, name, mimeType strin
 		Size:        int64(len(data)),
 		SHA256:      hash,
 		StorageKind: "local",
-		StorageURI:  binPath,
+		StorageURI:  relURI,
 		Version:     version,
 		CreatedAt:   now,
 	}
@@ -140,12 +174,28 @@ func (r *FSArtifactRepo) Load(_ context.Context, id string, version int) (biz.Ar
 	if err != nil {
 		return biz.Artifact{}, nil, err
 	}
-	data, err := os.ReadFile(meta.StorageURI)
+	data, err := os.ReadFile(r.resolveBinPath(meta))
 	if err != nil {
 		return biz.Artifact{}, nil, fmt.Errorf("artifact read: %w", err)
 	}
 
 	return meta.toBiz(), data, nil
+}
+
+// resolveBinPath returns the on-disk path for a metadata entry. New entries
+// store a relative URI (OUT-05 / ART-03); legacy entries written before this
+// change stored an absolute path, which we still honor here so existing data
+// stays readable. The result is always sanitized against r.root.
+func (r *FSArtifactRepo) resolveBinPath(meta artifactMeta) string {
+	uri := strings.TrimSpace(meta.StorageURI)
+	if uri == "" {
+		// Last-resort reconstruction from id+version (mirrors Save layout).
+		return filepath.Join(r.root, meta.SessionID, fmt.Sprintf("%s-v%d.bin", meta.ID, meta.Version))
+	}
+	if filepath.IsAbs(uri) {
+		return uri // legacy absolute path; keep working for back-compat
+	}
+	return filepath.Join(r.root, filepath.FromSlash(uri))
 }
 
 // List returns artifact metadata for a session (no payload).
@@ -226,6 +276,39 @@ func (r *FSArtifactRepo) Delete(_ context.Context, id string) error {
 	return nil
 }
 
+// DeleteVersion removes exactly one version of a logical artifact identified by
+// session+name+version. Returns a "not found" error when the version does not
+// exist. Both the .bin data file and the .json metadata sidecar are removed.
+func (r *FSArtifactRepo) DeleteVersion(_ context.Context, sessionID, name string, version int) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if err := validateSessionID(sessionID); err != nil {
+		return err
+	}
+	metas, err := r.listSessionMetas(sessionID)
+	if err != nil {
+		return err
+	}
+	var target *artifactMeta
+	for i := range metas {
+		if metas[i].Name == name && metas[i].Version == version {
+			target = &metas[i]
+			break
+		}
+	}
+	if target == nil {
+		return fmt.Errorf("artifact: version %d of %q not found in session %q", version, name, sessionID)
+	}
+	dir := r.sessionDir(sessionID)
+	// Remove binary data file.
+	_ = os.Remove(r.resolveBinPath(*target))
+	// Remove metadata sidecar.
+	metaPath := filepath.Join(dir, fmt.Sprintf("%s-v%d.json", target.ID, target.Version))
+	_ = os.Remove(metaPath)
+	return nil
+}
+
 // ListBySessionAndName returns all version metadata for a session+name combo.
 func (r *FSArtifactRepo) ListBySessionAndName(_ context.Context, sessionID, name string) ([]biz.Artifact, error) {
 	r.mu.Lock()
@@ -248,6 +331,9 @@ func (r *FSArtifactRepo) ListBySessionAndName(_ context.Context, sessionID, name
 // --- internal helpers ---
 
 func (r *FSArtifactRepo) listSessionMetas(sessionID string) ([]artifactMeta, error) {
+	if err := validateSessionID(sessionID); err != nil {
+		return nil, err
+	}
 	dir := r.sessionDir(sessionID)
 	files, err := os.ReadDir(dir)
 	if err != nil {

@@ -155,6 +155,10 @@ func main() {
 		if out.ChannelRuntime != nil {
 			out.ChannelRuntime.Stop()
 		}
+		// Stop the HookDeliveryRetryWorker goroutine started by plugin Runtime (OUT-02 / P0-4).
+		if out.PluginRuntime != nil {
+			out.PluginRuntime.Close()
+		}
 	}
 	defer stopBackgroundWorkers()
 
@@ -263,6 +267,11 @@ func main() {
 		logger.Log(log.LevelInfo, "msg", "flow log cleanup started", "interval", "1h")
 	}
 
+	if out.MonitorAlertCooldownCleanup != nil {
+		go out.MonitorAlertCooldownCleanup.Start(cronCtx)
+		logger.Log(log.LevelInfo, "msg", "monitor alert cooldown cleanup started", "interval", "1h", "maxAge", "24h")
+	}
+
 	if out.MemoryL2Decay != nil {
 		go out.MemoryL2Decay.Start(cronCtx)
 		logger.Log(log.LevelInfo, "msg", "memory l2 decay worker started", "interval", "24h")
@@ -271,6 +280,11 @@ func main() {
 	if out.MemoryL3Decay != nil {
 		go out.MemoryL3Decay.Start(cronCtx)
 		logger.Log(log.LevelInfo, "msg", "memory l3 decay worker started", "interval", "24h")
+	}
+
+	if out.MemoryL4Decay != nil {
+		go out.MemoryL4Decay.Start(cronCtx)
+		logger.Log(log.LevelInfo, "msg", "memory l4 decay worker started", "interval", "24h")
 	}
 
 	if out.MemoryEpisodeBackfill != nil {

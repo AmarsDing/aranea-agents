@@ -105,7 +105,6 @@ import {
   statusFilterOptions
 } from "../components/sessions/sessionUi";
 import { useSessionsPage } from "../features/session/useSessionsPage";
-import { exportSession } from "../features/session/api";
 import { downloadTextFile } from "../features/session/downloadExport";
 import { useQuasar } from "quasar";
 
@@ -151,7 +150,8 @@ const {
   archiveRow,
   togglePinRow,
   promptDeleteSelected,
-  archiveSelected
+  archiveSelected,
+  exportSession
 } = useSessionsPage();
 
 const $q = useQuasar();

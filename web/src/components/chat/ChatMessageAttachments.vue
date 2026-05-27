@@ -36,7 +36,7 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import ArtifactPreview from "../../features/artifact/ArtifactPreview.vue";
-import { signDownloadUrl, artifactDownloadHref } from "../../features/artifact/api";
+import { useArtifactStore } from "../../stores/artifact";
 import type { ArtifactMeta } from "../../features/artifact/types";
 import {
   attachmentMimeIcon,
@@ -68,8 +68,9 @@ function openPreview(item: MessageAttachmentRef) {
 
 async function onDownload(meta: ArtifactMeta) {
   try {
-    const signed = await signDownloadUrl(meta.id, meta.version);
-    window.open(artifactDownloadHref(signed.url), "_blank", "noopener,noreferrer");
+    const artifactStore = useArtifactStore();
+    const signed = await artifactStore.signDownload(meta.id, meta.version);
+    window.open(artifactStore.artifactDownloadHref(signed.url), "_blank", "noopener,noreferrer");
   } catch {
     // user can retry from preview toolbar
   }

@@ -13,7 +13,7 @@
       table-class="tool-runs-data-table"
       row-key="id"
       :rows="rows"
-      :columns="columns"
+      :columns="TOOL_RUNS_TABLE_COLUMNS"
       :loading="loading"
       hide-pagination
       :pagination="{ rowsPerPage: 0 }"
@@ -59,13 +59,12 @@
 </template>
 
 <script setup lang="ts">
-import type { QTableColumn } from "quasar";
 import AppRegistryTable from "../layout/AppRegistryTable.vue";
 import AppRegistryHoverTip from "../layout/AppRegistryHoverTip.vue";
 import ToolGlassPanel from "./ToolGlassPanel.vue";
 import type { ToolInvocation } from "../../features/tools/types";
-import { registryColWidth } from "../../features/ui/registryTableColumns";
 import {
+  TOOL_RUNS_TABLE_COLUMNS,
   clipPreview,
   formatInvocationDuration,
   formatInvocationWhen,
@@ -78,14 +77,6 @@ defineProps<{
   rows: ToolInvocation[];
   loading: boolean;
 }>();
-
-const columns: QTableColumn<ToolInvocation>[] = [
-  { name: "tool", label: "Tool", field: "tool_key", align: "left", ...registryColWidth("18%") },
-  { name: "agent", label: "Agent", field: "agent_id", align: "left", ...registryColWidth("10%") },
-  { name: "status", label: "状态", field: "status", align: "left", ...registryColWidth("9%") },
-  { name: "session_id", label: "Session", field: "session_id", align: "left", ...registryColWidth("10%") },
-  { name: "time", label: "时间 / 耗时", field: "started_at", align: "left", ...registryColWidth("11%") }
-];
 
 function toolRunHoverText(row: ToolInvocation) {
   const input = clipPreview(row.input_preview);

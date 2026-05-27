@@ -2,6 +2,8 @@ package artifactfs_test
 
 import (
 	"context"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"aranea-agents/internal/data/artifactfs"
@@ -120,5 +122,64 @@ func TestFSArtifactRepo_Delete(t *testing.T) {
 	_, total, _ := repo.List(ctx, "sess3", 10, 0)
 	if total != 0 {
 		t.Fatalf("expected empty list after delete, got %d", total)
+	}
+}
+
+// OUT-05 / ART-01: Save must reject session IDs that could traverse out of the
+// configured artifact root. Without this guard, an attacker controlling the
+// session ID can write/read files anywhere the process has permission to.
+func TestFSArtifactRepo_RejectsTraversalSessionID(t *testing.T) {
+	dir := t.TempDir()
+	repo := artifactfs.NewFSArtifactRepoAt(dir)
+	ctx := context.Background()
+
+	bad := []string{
+		"../escape",
+		"..",
+		"a/b",
+		"a\\b",
+		"foo/../bar",
+		"",
+		"   ",
+		string([]byte{0}),
+	}
+	for _, sid := range bad {
+		if _, err := repo.Save(ctx, sid, "x.txt", "text/plain", []byte("x")); err == nil {
+			t.Errorf("expected Save to reject session_id %q, got nil error", sid)
+		}
+	}
+}
+
+// OUT-05 / ART-03: persisted StorageURI must be relative to the artifact root so
+// API responses (and meta sidecar dumps) never disclose absolute filesystem
+// layout. The repo must still be able to Load the artifact by joining root +
+// relative URI internally.
+func TestFSArtifactRepo_StorageURIIsRelative(t *testing.T) {
+	dir := t.TempDir()
+	repo := artifactfs.NewFSArtifactRepoAt(dir)
+	ctx := context.Background()
+
+	saved, err := repo.Save(ctx, "sess-rel", "foo.txt", "text/plain", []byte("hi"))
+	if err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	uri := saved.StorageURI
+	if uri == "" {
+		t.Fatal("expected non-empty StorageURI")
+	}
+	if filepath.IsAbs(uri) {
+		t.Fatalf("expected relative StorageURI, got absolute %q", uri)
+	}
+	if !strings.HasPrefix(uri, "sess-rel/") {
+		t.Fatalf("expected URI prefixed with session id, got %q", uri)
+	}
+
+	// Round-trip: Load must still find the artifact when StorageURI is relative.
+	_, data, err := repo.Load(ctx, saved.ID, 0)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if string(data) != "hi" {
+		t.Fatalf("payload mismatch: %q", data)
 	}
 }

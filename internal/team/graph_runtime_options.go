@@ -88,12 +88,10 @@ func applyEmbeddedNodePolicies(cfg *biz.GraphBuildConfig, raw string) {
 		if !ok {
 			continue
 		}
-		if n.InterruptBefore {
-			cfg.Nodes[i].InterruptBefore = true
-		}
-		if n.InterruptAfter {
-			cfg.Nodes[i].InterruptAfter = true
-		}
+		// Use full assignment from runtime policy as source of truth,
+		// overriding any compile-time defaults to avoid dual-application.
+		cfg.Nodes[i].InterruptBefore = n.InterruptBefore
+		cfg.Nodes[i].InterruptAfter = n.InterruptAfter
 		if len(n.Destinations) > 0 {
 			cfg.Nodes[i].Destinations = append([]string(nil), n.Destinations...)
 		}
