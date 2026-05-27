@@ -32,16 +32,32 @@
           label="间隔"
           :disable="memoryLayersDisabled || !config.heartbeat.enabled"
         />
-        <q-input
-          v-model="heartbeatFile.body"
-          class="app-grid-span-full app-field-long"
+        <!-- PGO-1: HEARTBEAT.md is deprecated; heartbeat content now lives in
+             AGENTS_TASK.md. This section retains the interval toggle for
+             backward-compatible agents; the inline body editor is removed. -->
+        <q-banner
+          v-if="!memoryLayersDisabled && config.heartbeat.enabled"
           dense
-          outlined
-          autogrow
-          type="textarea"
-          label="检查清单 (HEARTBEAT.MD)"
-          :disable="memoryLayersDisabled || !config.heartbeat.enabled"
-        />
+          rounded
+          class="app-grid-span-full q-mt-xs"
+          style="background: rgba(var(--q-warning-rgb, 255,152,0),0.1)"
+        >
+          <q-icon name="info" color="warning" class="q-mr-sm" />
+          HEARTBEAT.md 已在 PGO-1 中弃用，心跳检查清单请移至 AGENTS_TASK.md。
+          <div v-if="availableOptionalFiles.length" class="row q-gutter-xs q-mt-sm">
+            <q-btn
+              v-for="file in availableOptionalFiles"
+              :key="file.name"
+              dense
+              outline
+              rounded
+              color="primary"
+              icon="add"
+              :label="`添加 ${file.name}`"
+              @click="$emit('add-optional-file', file.name)"
+            />
+          </div>
+        </q-banner>
       </div>
     </section>
 
@@ -484,14 +500,18 @@ const props = withDefaults(
     truncateStrategyOptions: { label: string; value: string }[];
     snapshotModeOptions: { label: string; value: string }[];
     memoryScopeOptions: { label: string; value: string }[];
-    heartbeatFile?: AgentFile;
+    // PGO-1: heartbeatFile removed; optional files from useAgentPromptFiles.
+    availableOptionalFiles?: AgentFile[];
   }>(),
   {
-    heartbeatFile: () => ({ name: "HEARTBEAT.MD", caption: "", body: "" }),
+    availableOptionalFiles: () => [],
   },
 );
 
-defineEmits<{ "open-evolution-tab": [] }>();
+defineEmits<{
+  "open-evolution-tab": [];
+  "add-optional-file": [name: string];
+}>();
 
 const memoryLayersDisabled = computed(() => !props.config.memory.enabled);
 </script>

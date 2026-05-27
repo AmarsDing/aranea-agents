@@ -90,16 +90,19 @@ internal/data           ← Repo 实现（Ent ORM + SQLite，单 sql.Open）
 
 | 场景 | 读取文档 | 说明 |
 |------|----------|------|
-| **任何后端编码** | [AI-DEVELOPMENT-SPECIFICATION.md](./guides/AI-DEVELOPMENT-SPECIFICATION.md) | ★ **唯一后端编码行为准则**：红线、决策树、分层规则、运行时规范、API/Proto、Go 风格、自检清单 |
-| **探索 / 查询代码结构** | 本文 §4.1 + `.cursor/rules/codegraph.mdc` | CodeGraph 优先于 grep |
-| **判断代码该放 Kratos 哪层** | [kratos-framework-guide.md](./guides/kratos-framework-guide.md) | Kratos 各层职责边界、依赖方向、Proto/Wire/中间件/错误处理/配置 |
-| **使用 trpc-agent-go 框架** | [trpc-agent-go-framework.md](./guides/trpc-agent-go-framework.md) | 框架目录结构、核心接口、项目内桥接函数、常见实现场景 |
-| **Agent Prompt 组装 / 排障** | [prompt/README.md](./guides/prompt/README.md) · [assembly.md](./guides/prompt/assembly.md) | 构建期 System Instruction、运行时 Processor 链、L2/L3 记忆、Intent Pass |
-| **任何前端编码** | [frontend-guide.md](./guides/frontend-guide.md) | ★ **唯一前端编码行为准则**：数据流、分层、红线、UX 主题、迁移剧本 |
-| **跨模块解耦 / 架构优化** | [0-module-decoupling-architecture.md](./需求/0-module-decoupling-architecture.md) | Chat / Channel / Agent 边界、Ingress/Policy/Turn/Projector、端口化路线 |
-| **当前迭代进度与任务** | [execution-plan.md](./guides/execution-plan.md) | 模块接入度、Top-20、里程碑、扩展红线 |
-| **系统开发计划总览** | [0-system-development.md](./需求/0-system-development.md) | 架构健康度、路线图、代码质量评价 |
-| **模块开发计划索引** | [README-development.md](./需求/README-development.md) | 全部模块接入度、近期完成、建议下一步 |
+| **任何后端编码** | [guides/AI-DEVELOPMENT-SPECIFICATION.md](./guides/AI-DEVELOPMENT-SPECIFICATION.md) | ★ **唯一后端编码行为准则**：红线、决策树、分层规则、运行时规范、API/Proto、Go 风格、自检清单 |
+| **CLI 快速上手（aranea 命令行）** | [guides/cli-quickstart.md](./guides/cli-quickstart.md) | 安装、登录、agent/skill/tool 管理、全局选项、常见问题 |
+| **探索 / 查询代码结构** | 本文 [§4.1](./README.md#41-代码探索约束codegraph) + `.cursor/rules/codegraph.mdc` | CodeGraph 优先于 grep；符号、调用链、影响面、模块上下文 |
+| **判断代码该放 Kratos 哪层** | [guides/kratos-framework-guide.md](./guides/kratos-framework-guide.md) | Kratos 各层职责边界、依赖方向、Proto/Wire/中间件/错误处理/配置 |
+| **使用 trpc-agent-go 框架** | [guides/trpc-agent-go-framework.md](./guides/trpc-agent-go-framework.md) | 框架目录结构、核心接口、项目内桥接函数、常见实现场景、官方文档索引 |
+| **Agent Prompt 组装 / 排障** | [guides/prompt/README.md](./guides/prompt/README.md) · [assembly.md](./guides/prompt/assembly.md) | 构建期 System Instruction、运行时 Processor 链、L2/L3 记忆、Intent Pass、附件与源码入口 |
+| **任何前端编码** | [guides/frontend-guide.md](./guides/frontend-guide.md) | ★ **唯一前端编码行为准则**：数据流、分层、红线、UX 主题、迁移剧本 |
+| **跨模块解耦 / 架构优化** | [需求/0-module-decoupling-architecture.md](./需求/0-module-decoupling-architecture.md) · [**§3.1 四层目标架构**](./需求/0-module-decoupling-architecture.md#31-推荐目标架构channel--chat--agent) | Chat / Channel / Agent 边界、Ingress/Policy/Turn/Projector、端口化路线 |
+| **当前迭代进度与任务** | [guides/execution-plan.md](./guides/execution-plan.md) | 模块接入度、Top-20、里程碑、扩展红线 |
+| **Chat × Channel 企业级蓝图** | [需求/55-chat-channel-cursor-solution.md#9-附录企业级蓝图与-ai-落地指南](./需求/55-chat-channel-cursor-solution.md#9-附录企业级蓝图与-ai-落地指南) | ★ 主链路架构 / UX 蓝图；**§1.5** 双投影 + Tier 评估；**§2.6** Run 升格（P-1 根本解）；**§13** 设计评审；AI 任务卡 |
+| **Graph × Team × Multi-Agent 企业级蓝图** | [需求/53%20team-graph-orchestration.design.md#附录企业级蓝图与-ai-落地指南](./需求/53%20team-graph-orchestration.design.md#附录企业级蓝图与-ai-落地指南) | ★ M53 编排融合下一阶段（执行单链 / OrchestrationSpec v2 / Activity 时间线 / FailurePolicy 完整化）AI 落地任务卡 |
+| **系统开发计划总览** | [需求/0-system-development.md](./需求/0-system-development.md) | 架构健康度、OpenClaw 对照、路线图、代码质量评价；AI 开发前必读 |
+| **模块开发计划索引** | [需求/README-development.md](./需求/README-development.md) | 全部模块接入度、近期完成、建议下一步 |
 
 ### 5.2 需求与设计
 

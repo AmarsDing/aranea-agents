@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
 	agentplanner "aranea-agents/internal/agent/planner"
@@ -48,7 +49,13 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) 
 			return nil, err
 		}
 	}
-	sys := BuildSystemPrompt(ag, files, ag.SystemPromptMode)
+	// PGO-1-AGENT-02: Inject 岗位职责 from the category tree when the flag is on
+	// and the agent has a position associated (CategoryPositionID != "").
+	var catResp string
+	if shouldInjectCategoryResponsibility(ag) && deps.AgentCategory != nil {
+		catResp, _ = deps.AgentCategory.BuildResponsibility(ctx, ag.CategoryPositionID, ag.SystemPromptMode)
+	}
+	sys := BuildSystemPrompt(ag, files, ag.SystemPromptMode, catResp)
 	// RuntimeCapabilityCue is injected per LLM call via BeforeModel (runtime_cue_inject.go).
 	opts := []trpcllmagent.Option{
 		trpcllmagent.WithModel(m),
@@ -268,6 +275,23 @@ func buildModelSelector(selector string) trpcagent.ModelSelector {
 	default:
 		return nil
 	}
+}
+
+// shouldInjectCategoryResponsibility returns true when:
+//  1. PGO_CATEGORY_RESPONSIBILITY_INJECT env flag is on, AND
+//  2. the agent has a CategoryPositionID, AND
+//  3. the agent has NOT explicitly opted out via metadata_json.
+//
+// PGO-1-AGENT-02.
+func shouldInjectCategoryResponsibility(ag biz.Agent) bool {
+	v := strings.TrimSpace(strings.ToLower(os.Getenv("PGO_CATEGORY_RESPONSIBILITY_INJECT")))
+	if v != "1" && v != "true" && v != "yes" {
+		return false
+	}
+	if strings.TrimSpace(ag.CategoryPositionID) == "" {
+		return false
+	}
+	return !ag.SkipCategoryResponsibility()
 }
 
 func ParseVariablesJSON(raw string) map[string]any {

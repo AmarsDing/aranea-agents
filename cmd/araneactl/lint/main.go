@@ -126,6 +126,8 @@ func checkFile(rel, path string) []violation {
 		vs = append(vs, r8SqlOpenOnlyInDataGo(rel, lines)...)
 		vs = append(vs, r9NoBizLogDefault(rel, lines)...)
 	}
+	// R12: CLI layer (cmd/aranea/** and internal/cli/**) must not import backend-internal packages.
+	vs = append(vs, r12CLINoBackendImport(rel, imports)...)
 	return vs
 }
 
@@ -392,6 +394,37 @@ func isFeaturesAPIPath(parts []string) bool {
 		}
 	}
 	return false
+}
+
+// R12: cmd/aranea/** and internal/cli/** must not import backend-internal packages.
+// These packages represent a hard isolation boundary between the CLI and the server.
+var r12BlacklistPrefixes = []string{
+	"aranea-agents/internal/biz",
+	"aranea-agents/internal/data",
+	"aranea-agents/internal/agent",
+	"aranea-agents/internal/server",
+	"aranea-agents/internal/service",
+	"aranea-agents/pkg/trpc-agent-go",
+}
+
+func r12CLINoBackendImport(rel string, imports []string) []violation {
+	isCLI := strings.HasPrefix(rel, "cmd/aranea/") || strings.HasPrefix(rel, "internal/cli/")
+	if !isCLI {
+		return nil
+	}
+	var vs []violation
+	for _, imp := range imports {
+		for _, blacklisted := range r12BlacklistPrefixes {
+			if strings.HasPrefix(imp, blacklisted) {
+				vs = append(vs, violation{
+					file:    rel,
+					rule:    "R12",
+					message: fmt.Sprintf("CLI layer must not import %q (violates CLI/backend isolation)", imp),
+				})
+			}
+		}
+	}
+	return vs
 }
 
 // R10: cmd/admin/main.go must not exceed 200 lines.

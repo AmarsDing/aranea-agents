@@ -1,0 +1,64 @@
+syntax = "proto3";
+
+package kratos.ai_refine.v1;
+
+import "google/api/annotations.proto";
+
+option go_package = "aranea-agents/api/kratos/ai_refine/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.kratos.ai_refine.v1";
+
+// AIRefineService provides AI-powered text refinement for all prompt scopes.
+// PGO-3: unified endpoint replacing scope-specific AI edit endpoints.
+service AIRefineService {
+  rpc Refine(RefineRequest) returns (RefineResponse) {
+    option (google.api.http) = {
+      post: "/v1/ai/refine"
+      body: "*"
+    };
+  }
+}
+
+// RefineScope identifies the field being refined.
+// Must match internal/biz.FieldScope values.
+enum RefineScope {
+  REFINE_SCOPE_UNSPECIFIED       = 0;
+  REFINE_SCOPE_CATEGORY_INDUSTRY = 1; // category.industry
+  REFINE_SCOPE_CATEGORY_DEPT     = 2; // category.department
+  REFINE_SCOPE_CATEGORY_POSITION = 3; // category.position
+  REFINE_SCOPE_AGENT_DESCRIPTION = 4; // agent.description
+  REFINE_SCOPE_AGENT_FILE        = 5; // agent.file (use file_name to specify)
+  REFINE_SCOPE_SPEC_EXTRACT      = 6; // spec_extract: markdown → YAML org spec (PGO-4)
+}
+
+message RefineRequest {
+  // scope identifies which field this refinement targets.
+  RefineScope scope = 1;
+  // resource_id is the category_id or agent_id for audit and model selection.
+  string resource_id = 2;
+  // file_name is required when scope=REFINE_SCOPE_AGENT_FILE.
+  string file_name = 3;
+  // original_text is the current field content; max 5000 chars.
+  string original_text = 4;
+  // user_hint is an optional free-text instruction from the user ("more formal", etc.)
+  string user_hint = 5;
+  // target_mode influences length budget: complete / task / minimized.
+  string target_mode = 6;
+}
+
+message RefineResponse {
+  // refined is the improved text returned by the LLM.
+  string refined = 1;
+  // diff is a simple line-level unified diff for display.
+  string diff = 2;
+  // tokens_before is the estimated token count of original_text.
+  int32 tokens_before = 3;
+  // tokens_after is the total tokens used by the LLM call (prompt + completion).
+  int32 tokens_after = 4;
+  // provider is the LLM provider that was used.
+  string provider = 5;
+  // model is the LLM model that was used.
+  string model = 6;
+  // source indicates how the model was selected: agent_model / system_default / catalog_first.
+  string source = 7;
+}

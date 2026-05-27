@@ -15,16 +15,36 @@ type Deps struct {
 	ToolsCatalog biz.ToolRepo // optional; with Agents, used when AgentUC is nil to still resolve GetEffectiveTools
 	// SQLiteSessionMemory reflects whether Runner memory persists session entities (SessionMemoryStore wired).
 	SQLiteSessionMemory bool
+	// AgentCategory resolves 岗位职责 for preview. PGO-1.
+	AgentCategory *biz.AgentCategoryUsecase
 }
 
 // BuildSystemPrompt joins agent description and prompt files, filtered by system_prompt_mode.
-func BuildSystemPrompt(agent biz.Agent, files []biz.AgentPromptFile, mode string) string {
+//
+// PGO-1-AGENT-01: a new optional categoryResponsibility parameter has been added.
+// When non-empty and PGO_CATEGORY_RESPONSIBILITY_INJECT is enabled, it is prepended
+// as a <role_responsibility source="category"> block BEFORE agent_description.
+// Pass "" to preserve the original behaviour (backward-compatible).
+func BuildSystemPrompt(agent biz.Agent, files []biz.AgentPromptFile, mode string, categoryResponsibility ...string) string {
 	filtered := biz.FilesForMode(files, mode)
 	var b strings.Builder
+
+	// L1: inject 岗位职责 from category tree (PGO-1).
+	if len(categoryResponsibility) > 0 {
+		if cr := strings.TrimSpace(categoryResponsibility[0]); cr != "" {
+			b.WriteString("<role_responsibility source=\"category\">\n")
+			b.WriteString(cr)
+			b.WriteString("\n</role_responsibility>\n\n")
+		}
+	}
+
+	// L2: agent-level description.
 	if d := strings.TrimSpace(agent.AgentDescription); d != "" {
 		b.WriteString(d)
 		b.WriteString("\n\n")
 	}
+
+	// L3: prompt files.
 	for _, f := range filtered {
 		if body := strings.TrimSpace(f.Body); body != "" {
 			b.WriteString(fmt.Sprintf("<internal_config name=%q>\n", f.Name))

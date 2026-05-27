@@ -3,8 +3,20 @@ package biz
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 )
+
+// pgoDefaultFilesV2 reads the PGO_DEFAULT_FILES_V2 env-flag without importing
+// internal/conf (which would create a circular dependency). biz must remain
+// dependency-free of conf. PGO-1-BIZ-01.
+//
+// Intentional: this duplicates conf.PGODefaultFilesV2() to avoid the
+// biz → conf import cycle. Both read the same env var; keep them in sync.
+func pgoDefaultFilesV2() bool {
+	v := strings.TrimSpace(strings.ToLower(os.Getenv("PGO_DEFAULT_FILES_V2")))
+	return v == "1" || v == "true" || v == "yes"
+}
 
 // withSettingDefaults fills missing numeric/string fields in AgentRuntimeSettings without turning unset booleans into forced defaults.
 func withSettingDefaults(v AgentRuntimeSettings) AgentRuntimeSettings {
@@ -219,7 +231,32 @@ func filesFromLegacyConfig(raw string) []AgentPromptFile {
 	return withFileDefaults(parsed.Files)
 }
 
+// defaultPromptFiles returns the V2 default set (5 core files) when
+// PGO_DEFAULT_FILES_V2 is enabled, otherwise returns the legacy 9-file set
+// for backward compatibility. PGO-1-BIZ-01.
 func defaultPromptFiles() []AgentPromptFile {
+	if pgoDefaultFilesV2() {
+		return defaultPromptFilesV2()
+	}
+	return defaultPromptFilesLegacy()
+}
+
+// defaultPromptFilesV2 is the PGO-1 canonical 5-file set.
+// SOUL/USER/USER_PREDEFINED are removed; HEARTBEAT moves to Settings.
+// USER_CONTEXT.md is available as an optional file via OptionalPromptFileTemplates.
+func defaultPromptFilesV2() []AgentPromptFile {
+	return []AgentPromptFile{
+		{Name: "AGENTS_CORE.md", Body: "# AGENTS_CORE\n\n（请描述 Agent 的核心角色、首要原则、模型偏好）", SortOrder: 10},
+		{Name: "AGENTS_TASK.md", Body: "# AGENTS_TASK\n\n（请描述任务目标、输出契约、协作机制与典型 SOP）", SortOrder: 20},
+		{Name: "IDENTITY.md", Body: "# IDENTITY\n\n（请描述 Agent 的称呼、语气、口头禅、不可妥协人设）\n\n## Persona\n\n（人设细节写在此处，由 Evolution 自动更新）", SortOrder: 30},
+		{Name: "CAPABILITIES.md", Body: "# CAPABILITIES\n\n（请列出工具白名单、Skill 列表、能力边界）", SortOrder: 40},
+		{Name: "RULE.md", Body: "# RULE\n\n（请列出禁止行为、合规要求、降级策略）", SortOrder: 50},
+	}
+}
+
+// defaultPromptFilesLegacy is the pre-PGO 9-file set, preserved for
+// backward compatibility when PGO_DEFAULT_FILES_V2=false.
+func defaultPromptFilesLegacy() []AgentPromptFile {
 	return []AgentPromptFile{
 		{Name: "AGENTS_CORE.md", Body: "# AGENTS_CORE\nstub", SortOrder: 10},
 		{Name: "AGENTS_TASK.md", Body: "# AGENTS_TASK\nstub", SortOrder: 20},
@@ -231,6 +268,16 @@ func defaultPromptFiles() []AgentPromptFile {
 		{Name: "RULE.md", Body: "# RULE\nstub", SortOrder: 80},
 		{Name: "HEARTBEAT.md", Body: "# HEARTBEAT\nstub", SortOrder: 90},
 	}
+}
+
+// OptionalPromptFileTemplates holds optional files that users can add on demand.
+// PGO-1-BIZ-01: USER_CONTEXT replaces legacy USER + USER_PREDEFINED.
+var OptionalPromptFileTemplates = map[string]AgentPromptFile{
+	"USER_CONTEXT.md": {
+		Name:      "USER_CONTEXT.md",
+		Body:      "# USER_CONTEXT\n\n（记录用户的长期偏好、历史与个性化设置）",
+		SortOrder: 60,
+	},
 }
 
 func withFileDefaults(files []AgentPromptFile) []AgentPromptFile {
@@ -393,11 +440,22 @@ func configJSONFromSettings(settings AgentRuntimeSettings, files []AgentPromptFi
 	return string(data)
 }
 
+// composePromptPreview generates a human-readable preview of what the system
+// instruction will look like for the given mode. PGO-1-BIZ-03: shows the
+// role_responsibility block when the inject flag is set and the agent has a
+// category_position_id (populated by callers that pass it via agent.Files
+// being pre-resolved or via a separate CategoryResponsibility field).
 func composePromptPreview(agent Agent, mode string) string {
 	var b strings.Builder
 	settings := agent.Settings
 	b.WriteString("# Agent System Prompt\n\n")
 	b.WriteString(fmt.Sprintf("Mode: %s\nName: %s\nKey: %s\nProvider: %s\nModel: %s\n\n", mode, agent.DisplayName, agent.AgentKey, agent.Provider, agent.Model))
+	// Show role_responsibility block if available (injected by preview handler).
+	if cr := strings.TrimSpace(agent.CategoryResponsibilityPreview); cr != "" {
+		b.WriteString("## Role Responsibility (category, L1)\n")
+		b.WriteString(cr)
+		b.WriteString("\n\n")
+	}
 	b.WriteString("## Description\n")
 	b.WriteString(strFallback(agent.AgentDescription, "No description configured."))
 	b.WriteString("\n\n")
@@ -421,6 +479,14 @@ func composePromptPreview(agent Agent, mode string) string {
 	return strings.TrimSpace(b.String())
 }
 
+// FilesForMode filters prompt files based on the agent's system_prompt_mode.
+// PGO-1-BIZ-02: task mode no longer includes HEARTBEAT.md (moved to Settings).
+// Whitelist per mode:
+//   - complete / "": all files
+//   - task:        AGENTS_CORE, IDENTITY, RULE, AGENTS_TASK, CAPABILITIES
+//   - minimized:   AGENTS_CORE, RULE
+//   - none:        empty
+//   - unknown:     AGENTS_CORE, RULE (same as minimized, safe default)
 func FilesForMode(files []AgentPromptFile, mode string) []AgentPromptFile {
 	mode = strings.ToLower(strings.TrimSpace(mode))
 	if mode == "" || mode == "complete" {
@@ -440,7 +506,8 @@ func FilesForMode(files []AgentPromptFile, mode string) []AgentPromptFile {
 		allowed["RULE.md"] = true
 		allowed["AGENTS_TASK.md"] = true
 		allowed["CAPABILITIES.md"] = true
-		allowed["HEARTBEAT.md"] = true
+		// HEARTBEAT.md intentionally removed: heartbeat is now a runtime
+		// Settings concern, not a static prompt file. PGO-1-BIZ-02.
 	default:
 		// Unknown modes fall back to minimized core rules to avoid leaking full prompt files.
 		allowed["AGENTS_CORE.md"] = true

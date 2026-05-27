@@ -22,7 +22,21 @@
         </q-input>
         <q-select v-model="form.status" dense outlined emit-value map-options label="状态" :options="statusOptions" />
         <q-toggle v-model="form.is_default" label="默认 Agent" />
-        <q-input v-model="form.agent_description" class="app-grid-span-full app-field-long" outlined autogrow type="textarea" label="专业摘要 / 能力描述" />
+        <div class="app-grid-span-full">
+          <q-input v-model="form.agent_description" class="app-field-long" outlined autogrow type="textarea" label="专业摘要 / 能力描述" />
+          <!-- PGO-3-WEB-03: AI Refine button for agent description -->
+          <div class="row justify-end q-mt-xs">
+            <AIRefineButton
+              scope="agent.description"
+              :resource-id="agentId"
+              :text="form.agent_description ?? ''"
+              flat
+              size="sm"
+              label="AI 优化描述"
+              @apply="(v: string) => { form.agent_description = v }"
+            />
+          </div>
+        </div>
       </div>
     </section>
 
@@ -185,6 +199,7 @@ import AgentChannelRefsSection from "./AgentChannelRefsSection.vue";
 import AgentSettingsPromptSection from "./AgentSettingsPromptSection.vue";
 import AgentPlannerSection from "../../components/agents/AgentPlannerSection.vue";
 import AgentRalphLoopSection from "../../components/agents/AgentRalphLoopSection.vue";
+import AiRefineButton from "../../components/agents/AIRefineButton.vue";
 import type { PlannerFormState } from "../../features/agents/plannerConfig";
 import type { RalphLoopFormState } from "../../features/agents/ralphLoopConfig";
 

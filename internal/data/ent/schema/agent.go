@@ -40,5 +40,8 @@ func (Agent) Fields() []ent.Field {
 		field.String("created_at").Default(""),
 		field.String("updated_at").Default(""),
 		field.String("deleted_at").Default(""),
+		// CLI-20: system admin agent support.
+		field.Bool("readonly").Default(false).Comment("system agents cannot be deleted"),
+		field.Enum("kind").Values("user", "system").Default("user").Comment("agent kind: user | system"),
 	}
 }

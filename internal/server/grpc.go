@@ -5,22 +5,23 @@ import (
 	adminv1 "aranea-agents/api/kratos/admin/v1"
 	agentv1 "aranea-agents/api/kratos/agent/v1"
 	agentcategoryv1 "aranea-agents/api/kratos/agent_category/v1"
+	airefinev1 "aranea-agents/api/kratos/ai_refine/v1"
 	artifactv1 "aranea-agents/api/kratos/artifact/v1"
 	avatarv1 "aranea-agents/api/kratos/avatar/v1"
 	channelv1 "aranea-agents/api/kratos/channel/v1"
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	cronv1 "aranea-agents/api/kratos/cron/v1"
-	evaluationv1 "aranea-agents/api/kratos/evaluation/v1"
 	ecosystemv1 "aranea-agents/api/kratos/ecosystem/v1"
+	evaluationv1 "aranea-agents/api/kratos/evaluation/v1"
 	eventv1 "aranea-agents/api/kratos/event/v1"
 	gatewayv1 "aranea-agents/api/kratos/gateway/v1"
 	graphv1 "aranea-agents/api/kratos/graph/v1"
 	hookv1 "aranea-agents/api/kratos/hook/v1"
 	knowledgev1 "aranea-agents/api/kratos/knowledge/v1"
 	llmprovidermodelv1 "aranea-agents/api/kratos/llm_provider_model/v1"
-	modelcatalogv1 "aranea-agents/api/kratos/model_catalog/v1"
 	mcpserverv1 "aranea-agents/api/kratos/mcp_server/v1"
 	memoryv1 "aranea-agents/api/kratos/memory/v1"
+	modelcatalogv1 "aranea-agents/api/kratos/model_catalog/v1"
 	monitorv1 "aranea-agents/api/kratos/monitor/v1"
 	pluginv1 "aranea-agents/api/kratos/plugin/v1"
 	sessionv1 "aranea-agents/api/kratos/session/v1"
@@ -64,6 +65,9 @@ func NewGRPCServer(c *conf.Server, s *ServiceRegistry) *grpc.Server {
 	avatarv1.RegisterAvatarServiceServer(srv, s.Avatar)
 	agentv1.RegisterAgentServiceServer(srv, s.Agents)
 	agentcategoryv1.RegisterAgentCategoryServiceServer(srv, s.AgentCat)
+	if s.AIRefine != nil {
+		airefinev1.RegisterAIRefineServiceServer(srv, s.AIRefine)
+	}
 	llmprovidermodelv1.RegisterLlmProviderModelServiceServer(srv, s.LLM)
 	hookv1.RegisterHookServiceServer(srv, s.Hook)
 	cronv1.RegisterCronServiceServer(srv, s.Cron)

@@ -1,7 +1,22 @@
 # CLI 命令行 — 开发计划
 
-> **版本**：2.0 | **状态**：❌ 未实现
-> **需求**：[25 cli.md](./25%20cli.md) · **设计**：[25 cli.design.md](./25%20cli.design.md)
+> ⚠️ **状态：SUPERSEDED（2026-05-27）**
+> 本文档（v2.0）已被全面取代，请改读：
+> - **新开发计划**：[`25-cli-development-plan-2026-05-27.md`](./25-cli-development-plan-2026-05-27.md)（v3.0，任务 ID 改为 `CLI-01..30`，每条 ≤1 天，含 DoD/依赖/AI 提示词）
+> - 新需求：[`25-cli-PRD-2026-05-27.md`](./25-cli-PRD-2026-05-27.md)
+> - 新设计：[`25-cli-design-2026-05-27.md`](./25-cli-design-2026-05-27.md)
+>
+> 与本文档的差异概要：
+> - Phase 1 中"对话模式 dbAgentLoader / ConfirmPlugin / BuildSystemAdminAgent 在 CLI 进程组装"全部删除 —— CLI 仅作 WS 客户端
+> - 任务粒度统一到 ≤1 天；BE / CLI 工种分开；R12 黑名单 lint 上线进入 P0 退出条件
+> - 完整差异表见新开发计划 §9
+>
+> 本文档保留作为历史，**不要再据此实施**。
+
+---
+
+> **版本**：2.0 | **状态**：❌ 未实现（SUPERSEDED，2026-05-27）
+> **需求**：[25 cli.md](./25%20cli.md)（SUPERSEDED） · **设计**：[25 cli.design.md](./25%20cli.design.md)（SUPERSEDED）
 > **规范**：[AI-DEVELOPMENT-SPECIFICATION.md](../guides/AI-DEVELOPMENT-SPECIFICATION.md)
 
 ---

@@ -20,7 +20,18 @@ type SystemSetting struct {
 	WebResearch                       WebResearchSetting
 	MCPAllowAdHocHTTP                 bool
 	MemoryPlatform                    MemoryPlatformSetting
-	UpdateTime                        time.Time
+	// DefaultRefineLLM is the platform-level LLM config used by PromptRefiner
+	// when the target agent doesn't have a model configured. PGO-3.
+	DefaultRefineLLM RefineLLMSetting
+	UpdateTime       time.Time
+}
+
+// RefineLLMSetting holds the platform default provider/model for AI refinement.
+type RefineLLMSetting struct {
+	Provider string
+	Model    string
+	BaseURL  string
+	APIKey   string
 }
 
 type SystemSettingRepo interface {
@@ -33,6 +44,9 @@ type SystemSettingRepo interface {
 	UpdateWebResearch(ctx context.Context, patch WebResearchSetting, updateAPIKey bool) (WebResearchSetting, error)
 	UpdateMemoryPlatform(ctx context.Context, patch MemoryPlatformSetting) (MemoryPlatformSetting, error)
 	EnsureCredentialEncryptionKey(ctx context.Context) (string, error)
+	// PGO-3: platform default LLM for AI refinement.
+	GetRefineLLM(ctx context.Context) (RefineLLMSetting, error)
+	UpdateRefineLLM(ctx context.Context, patch RefineLLMSetting, updateAPIKey bool) (RefineLLMSetting, error)
 }
 
 type SystemSettingUsecase struct {
@@ -132,4 +146,19 @@ func (u *SystemSettingUsecase) UpdateWebResearch(ctx context.Context, patch WebR
 // UpdateMemoryPlatform persists memory worker / policy platform toggles.
 func (u *SystemSettingUsecase) UpdateMemoryPlatform(ctx context.Context, patch MemoryPlatformSetting) (MemoryPlatformSetting, error) {
 	return u.repo.UpdateMemoryPlatform(ctx, patch)
+}
+
+// GetRefineLLM returns the stored platform default LLM for AI refinement (API key redacted).
+func (u *SystemSettingUsecase) GetRefineLLM(ctx context.Context) (RefineLLMSetting, error) {
+	return u.repo.GetRefineLLM(ctx)
+}
+
+// UpdateRefineLLM persists the platform default LLM for AI refinement (PGO-3).
+func (u *SystemSettingUsecase) UpdateRefineLLM(ctx context.Context, patch RefineLLMSetting, updateAPIKey bool) (RefineLLMSetting, error) {
+	return u.repo.UpdateRefineLLM(ctx, RefineLLMSetting{
+		Provider: strings.TrimSpace(patch.Provider),
+		Model:    strings.TrimSpace(patch.Model),
+		BaseURL:  strings.TrimSpace(patch.BaseURL),
+		APIKey:   strings.TrimSpace(patch.APIKey),
+	}, updateAPIKey)
 }

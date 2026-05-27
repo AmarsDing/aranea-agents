@@ -38,5 +38,5 @@ func ToolsetConfigHasAny(cfg ToolsetConfig) bool {
 		cfg.GeminiFetch || cfg.GoogleSearch || cfg.ArxivSearch || cfg.Wikipedia ||
 		cfg.Email || cfg.Todo || cfg.AwaitReply || cfg.ClaudeCode || cfg.WorkspaceExec ||
 		cfg.KnowledgeSearch || cfg.CallAgent || cfg.Kanban ||
-		len(cfg.MCPServers) > 0 || cfg.MCPBroker != nil
+		len(cfg.MCPServers) > 0 || cfg.MCPBroker != nil || len(cfg.CustomTools) > 0
 }

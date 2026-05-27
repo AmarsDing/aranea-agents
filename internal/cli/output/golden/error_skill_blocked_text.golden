@@ -1,0 +1,3 @@
+Error  SKILL_IMPORT_BLOCKED (HTTP 409)
+message: 候选 Skill 与已有 Skill 同名（figma-code-connect）
+hint   : 用 `--decision skip` 跳过，或 `--decision keep` 保留两份

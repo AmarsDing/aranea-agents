@@ -77,4 +77,6 @@ var ProviderSet = wire.NewSet(
 	ProvideSessionLogWriter,
 	ProvideSystemLogWriter,
 	ProvideWebResearchTester,
+	// PGO-3: AI prompt refinement service.
+	NewAIRefineService,
 )

@@ -20,7 +20,15 @@
           </div>
           <div class="row q-gutter-sm">
             <q-btn outline rounded icon="refresh" label="重新召唤" @click="$emit('reload')" />
-            <q-btn outline rounded color="primary" icon="auto_fix_high" label="AI 编辑" @click="$emit('ai-edit')" />
+            <!-- PGO-3-WEB-03: AIRefineButton for file Tab editor. -->
+            <AIRefineButton
+              scope="agent.file"
+              :file-name="activeFile"
+              :resource-id="agentId || undefined"
+              :text="bodyModel"
+              outline
+              @apply="(v: string) => emit('update-file-body', activeFile, v)"
+            />
             <q-btn color="primary" rounded unelevated icon="save" label="保存" :disable="!dirty" @click="$emit('save')" />
           </div>
         </div>
@@ -35,6 +43,7 @@
 import { computed } from "vue";
 import type { AgentFile } from "./agentUi";
 import { tokenEstimateFor, tokenText } from "./agentUi";
+import AiRefineButton from "./AIRefineButton.vue";
 
 const props = defineProps<{
   files: AgentFile[];
@@ -42,7 +51,8 @@ const props = defineProps<{
   splitter: number;
   dirty: boolean;
   fileTokenByName?: Record<string, number>;
-}>();
+  agentId?: string;
+}>(); 
 
 function fileTokenLabel(name: string, body: string) {
   const n = props.fileTokenByName?.[name];
@@ -62,7 +72,6 @@ const emit = defineEmits<{
   "update:splitter": [value: number];
   "update-file-body": [fileName: string, body: string];
   reload: [];
-  "ai-edit": [];
   save: [];
 }>();
 

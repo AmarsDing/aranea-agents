@@ -12,8 +12,8 @@ import (
 	mcpconfig "aranea-agents/internal/mcp/config"
 	"aranea-agents/internal/skill/storage"
 	"aranea-agents/internal/tools"
-	tooltrpc "aranea-agents/internal/tools/trpc"
 	kanbanpkg "aranea-agents/internal/tools/kanban"
+	tooltrpc "aranea-agents/internal/tools/trpc"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 )
@@ -21,9 +21,15 @@ import (
 func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) (*tooltrpc.AssembledToolsets, error) {
 	cfg := tooltrpc.ToolsetConfig{}
 	var eff map[string]bool
+	if len(deps.CustomTools) > 0 {
+		cfg.CustomTools = append(cfg.CustomTools, deps.CustomTools...)
+	}
 	if ag.Settings != nil && ag.Settings.ToolsEnabled {
 		eff = loadEffectiveToolKeys(ctx, deps, ag.ID)
 		cfg = tooltrpc.ToolsetConfigFromEffectiveKeys(eff)
+		if len(deps.CustomTools) > 0 {
+			cfg.CustomTools = append(cfg.CustomTools, deps.CustomTools...)
+		}
 
 		mcpServers, _ := resolveMCPServers(ctx, deps, ag.ID)
 		platformAllowAdHoc := platformMCPAllowAdHocHTTP(ctx, deps)

@@ -40,7 +40,13 @@ func BuildPreviewReport(ctx context.Context, ag biz.Agent, mode string, deps Dep
 	agPreview.SystemPromptMode = mode
 
 	files := agPreview.Files
-	sys := BuildSystemPrompt(agPreview, files, mode)
+
+	// PGO-1-AGENT-03: resolve category responsibility for preview.
+	var catResp string
+	if shouldInjectCategoryResponsibility(agPreview) && deps.AgentCategory != nil {
+		catResp, _ = deps.AgentCategory.BuildResponsibility(ctx, agPreview.CategoryPositionID, mode)
+	}
+	sys := BuildSystemPrompt(agPreview, files, mode, catResp)
 	instruction := sys
 	if cue := RuntimeCapabilityCue(ctx, deps, agPreview); cue != "" {
 		if instruction != "" {
@@ -51,9 +57,15 @@ func BuildPreviewReport(ctx context.Context, ag biz.Agent, mode string, deps Dep
 	}
 
 	sections := []PreviewSection{}
+	// PGO-1: show role_responsibility (L1) as a distinct section.
+	if catResp != "" {
+		sections = append(sections, PreviewSection{
+			Key: "category_responsibility", Label: "岗位职责 (L1 分类)", EstTokens: estTokensFromChars(utf8.RuneCountInString(catResp)), Source: "build",
+		})
+	}
 	if d := strings.TrimSpace(agPreview.AgentDescription); d != "" {
 		sections = append(sections, PreviewSection{
-			Key: "description", Label: "Description", EstTokens: estTokensFromChars(utf8.RuneCountInString(d)), Source: "build",
+			Key: "description", Label: "Description (L2 个体)", EstTokens: estTokensFromChars(utf8.RuneCountInString(d)), Source: "build",
 		})
 	}
 	fileTokens := 0

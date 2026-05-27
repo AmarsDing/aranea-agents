@@ -1,5 +1,17 @@
 # Aranea CLI（终端控制台 + Agent 对话操作）
 
+> ⚠️ **状态：SUPERSEDED（2026-05-27）**
+> 本文档（v2.0）的产品需求已被取代，请改读：
+> - 新需求：[`25-cli-PRD-2026-05-27.md`](./25-cli-PRD-2026-05-27.md)（v3.0）
+> - 新设计：[`25-cli-design-2026-05-27.md`](./25-cli-design-2026-05-27.md)
+> - 新开发计划：[`25-cli-development-plan-2026-05-27.md`](./25-cli-development-plan-2026-05-27.md)
+> - 上层方案对账：[`25-cli-implementation-plan-2026-05-27.md`](./25-cli-implementation-plan-2026-05-27.md)
+>
+> 与新文档的关键差异（路径前缀、对话模式不在 CLI 进程构建 Runner、CLI 直接复用 pb 类型、复用 AwaitUserReply、删除 workspace_id 等）见新 PRD §1.1。
+> 本文档保留作为历史，**不要再据此实施**。
+
+---
+
 本文档定义 **Aranea CLI** 的产品需求：命令体系、对话式系统管家、Skill 安装流程、配置 / 会话 / 审计 / 输出的落地方案。
 
 CLI 的目标是把现有 Web 控制台（`/skills`、`/agents`、`/teams`、`/tools`、`/plugins`、`/mcp-servers`、`/cron`、`/channels`、`/monitor` 等）所有可执行能力，**都搬到终端**：既支持 `aranea skill install <url>` 这样的脚本化命令，也支持 `aranea` 进入交互式对话，由内置「系统管家 Agent」用自然语言完成跨模块操作。

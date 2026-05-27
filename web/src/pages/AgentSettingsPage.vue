@@ -59,20 +59,22 @@
             :truncate-strategy-options="truncateStrategyOptions"
             :snapshot-mode-options="snapshotModeOptions"
             :memory-scope-options="memoryScopeOptions"
-            :heartbeat-file="heartbeatFile"
+            :available-optional-files="availableOptionalFiles"
+          @add-optional-file="addOptionalFile"
             @open-evolution-tab="tab = 'evolution'"
           />
         </q-tab-panel>
         <q-tab-panel name="files" class="settings-tab-panel-fill">
+          <!-- PGO-3-WEB-04: old @ai-edit replaced by AIRefineButton inside AgentFilesPanel -->
           <agent-files-panel
             v-model:active-file="activeFile"
             v-model:splitter="fileSplitter"
             :files="files"
             :file-token-by-name="fileTokenByName"
             :dirty="fileDirty"
+            :agent-id="toValue(agentId)"
             @update-file-body="updateFileBody"
             @reload="reloadActiveFile"
-            @ai-edit="aiEditOpen = true"
             @save="saveAgent"
           />
         </q-tab-panel>
@@ -206,12 +208,14 @@
       </q-card>
     </q-dialog>
 
+    <!-- PGO-3-WEB-04: Legacy AI-edit dialog (retained for Flag-off fallback).
+         The primary path is now AIRefineButton embedded in AgentFilesPanel. -->
     <q-dialog v-model="aiEditOpen">
       <q-card class="app-dialog-card app-dialog-card--sm">
         <q-card-section class="row items-center justify-between">
           <div>
-            <div class="text-h6">AI 编辑</div>
-            <div class="text-caption text-grey-7">描述您想要更改的内容。AI 将读取当前文件并相应更新。</div>
+            <div class="text-h6">AI 编辑（旧版）</div>
+            <div class="text-caption text-grey-7">请在文件 Tab 中使用新版「AI 优化」按钮。此入口保留向后兼容。</div>
           </div>
           <q-btn flat round icon="close" v-close-popup />
         </q-card-section>
@@ -260,7 +264,6 @@ import AppRegistryTable from "../components/layout/AppRegistryTable.vue";
 import { useAgentEvolutionPanel } from "../features/agents/useAgentEvolutionPanel";
 import { useAgentA2AEndpointTab } from "../features/agents/useAgentA2AEndpointTab";
 import { useAgentSettingsPage } from "../features/agents/useAgentSettingsPage";
-import { tokenEstimateFor } from "../components/agents/agentUi";
 
 import { AGENT_PROMPT_ASSEMBLY_TABLE_COLUMNS } from "../components/agents/agentTableUi";
 
@@ -299,7 +302,8 @@ const {
   loadingCatalogTools,
   toolConflicts,
   agentId,
-  heartbeatFile,
+  availableOptionalFiles,
+  addOptionalFile,
   activeFile,
   fileSplitter,
   files,

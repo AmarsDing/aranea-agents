@@ -141,11 +141,34 @@ func (uc *EvolutionUsecase) ApplySuggestion(ctx context.Context, agentID string,
 		if err != nil {
 			return EvolutionSuggestion{}, err
 		}
+		// PGO-1-BIZ-06: Write persona suggestions into IDENTITY.md's ## Persona
+		// section instead of the now-deprecated SOUL.md. Fall back to SOUL.md
+		// for legacy agents that still carry that file.
+		applied := false
 		for i, f := range files {
-			if f.Name == "SOUL.md" {
-				files[i].Body = s.Content
+			if f.Name == "IDENTITY.md" {
+				files[i].Body = replaceOrAppendPersona(f.Body, s.Content)
+				applied = true
 				break
 			}
+		}
+		if !applied {
+			for i, f := range files {
+				if f.Name == "SOUL.md" {
+					files[i].Body = s.Content
+					applied = true
+					break
+				}
+			}
+		}
+		// If neither file exists, append a new IDENTITY.md.
+		if !applied {
+			files = append(files, AgentPromptFile{
+				AgentID:   agentID,
+				Name:      "IDENTITY.md",
+				Body:      "# IDENTITY\n\n## Persona\n\n" + s.Content,
+				SortOrder: 30,
+			})
 		}
 		if _, err := uc.agents.ReplaceAgentPromptFiles(ctx, agentID, files); err != nil {
 			return EvolutionSuggestion{}, err
@@ -195,6 +218,31 @@ func (uc *EvolutionUsecase) RejectSuggestion(ctx context.Context, agentID string
 		return EvolutionSuggestion{}, kerrors.BadRequest("EVOLUTION", "only pending suggestions can be rejected")
 	}
 	return uc.suggestionRepo.UpdateStatus(ctx, suggestionID, "rejected")
+}
+
+// replaceOrAppendPersona writes personaContent into the "## Persona" section
+// of an IDENTITY.md body. If the section exists it replaces everything from
+// the ## Persona heading to the next same-level heading (or EOF). If the
+// section does not exist it is appended. PGO-1-BIZ-06.
+func replaceOrAppendPersona(body, personaContent string) string {
+	const anchor = "## Persona"
+	idx := strings.Index(body, anchor)
+	if idx == -1 {
+		// No ## Persona section — append it.
+		trimmed := strings.TrimRight(body, "\n ")
+		return trimmed + "\n\n" + anchor + "\n\n" + strings.TrimSpace(personaContent)
+	}
+	// Find the end of the ## Persona section: next "## " heading or EOF.
+	after := body[idx+len(anchor):]
+	nextH2 := strings.Index(after, "\n## ")
+	var tail string
+	if nextH2 == -1 {
+		tail = ""
+	} else {
+		tail = after[nextH2:]
+	}
+	prefix := strings.TrimRight(body[:idx], "\n ")
+	return prefix + "\n\n" + anchor + "\n\n" + strings.TrimSpace(personaContent) + tail
 }
 
 func timeRangeToSince(tr string) time.Time {
