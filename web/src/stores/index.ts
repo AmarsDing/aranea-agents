@@ -12,6 +12,7 @@ export { useAvatarCatalogStore } from "./avatar";
 export { useAdminStore } from "./admin";
 export { useChannelsStore } from "./channels";
 export { useChatStore } from "./chat";
+export { useChatConversationStore } from "./chat/conversationStore";
 export { useCronStore } from "./cron";
 export { useGraphStore } from "./graph";
 export { useHeartbeatStore } from "./heartbeat";

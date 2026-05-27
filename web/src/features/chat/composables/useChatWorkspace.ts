@@ -9,6 +9,7 @@ import { useAppStore } from "../../../stores/app";
 import { useChatSessionStore } from "../../../stores/chat/sessionStore";
 import { useChatMessageStore } from "../../../stores/chat/messageStore";
 import { useChatRuntimeStore } from "../../../stores/chat/runtimeStore";
+import { useChatConversationStore } from "../../../stores/chat/conversationStore";
 import { cancelRunningToolMessages } from "../envelopeToolCall";
 import { runStatusFromEnvelope } from "../envelopeRunStatus";
 import type { Envelope } from "../envelope";
@@ -47,6 +48,7 @@ export function useChatWorkspace() {
   const sessionStore = useChatSessionStore();
   const messageStore = useChatMessageStore();
   const runtimeStore = useChatRuntimeStore();
+  const conversationStore = useChatConversationStore();
 
   const isDark = computed(() => $q.dark.isActive);
   const leftOpen = ref(true);
@@ -170,6 +172,38 @@ export function useChatWorkspace() {
 
   const selectedAgentId = computed(() => appStore.selectedAgent?.id);
   const selectedSessionId = computed(() => selectedSessionForUi.value?.id);
+
+  watch(
+    () => ({
+      entityKind: sessionStore.entityKind,
+      agent: appStore.selectedAgent,
+      teamId: sessionStore.selectedTeamId,
+      team: displayTeams.value.find((team) => team.id === sessionStore.selectedTeamId),
+    }),
+    ({ entityKind, agent, teamId, team }) => {
+      if (entityKind === "team" && teamId) {
+        conversationStore.setCurrentTarget({
+          type: "team",
+          id: teamId,
+          name: team?.display_name,
+          source: "web",
+        });
+        return;
+      }
+      if (agent?.id) {
+        conversationStore.setCurrentTarget({
+          type: "agent",
+          id: agent.id,
+          key: agent.agent_key,
+          name: agent.display_name,
+          source: "web",
+        });
+        return;
+      }
+      conversationStore.setCurrentTarget(null);
+    },
+    { immediate: true }
+  );
 
   async function refreshRunStatusForUi() {
     const sid = selectedSessionForUi.value?.id;
@@ -570,6 +604,7 @@ export function useChatWorkspace() {
     }),
     session: reactive({
       displaySessions,
+      inboxSessions: conversationStore.inboxSessions,
       selectedSessionForUi,
       composerUsageSnapshot,
       displayMessages,

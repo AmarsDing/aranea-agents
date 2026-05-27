@@ -111,6 +111,7 @@
     <ChatSessionSidebar
       :open="layout.rightOpen"
       :sessions="session.displaySessions"
+      :inbox-sessions="session.inboxSessions"
       :selected-session-id="session.selectedSessionForUi?.id"
       :is-dark="layout.isDark"
       @select="session.onSelectSession"

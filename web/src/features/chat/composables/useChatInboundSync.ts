@@ -8,6 +8,7 @@ import type { UseEnvelopeStreamReturn } from "../useEnvelopeStream";
 import type { useAppStore } from "../../../stores/app";
 import type { useChatSessionStore } from "../../../stores/chat/sessionStore";
 import type { useChatMessageStore } from "../../../stores/chat/messageStore";
+import { useChatConversationStore } from "../../../stores/chat/conversationStore";
 import { useChatStreamingSnapshots } from "../../../stores/chatStreamingSnapshots";
 import { runStatusFromEnvelope } from "../envelopeRunStatus";
 import { SESSION_RUN_STATUS } from "../sessionRunStatus";
@@ -39,6 +40,7 @@ import {
   resolveInboundAgentId,
 } from "../channelInboundSession";
 import { noteChannelWsEnvelope } from "../channelWsCursor";
+import { projectConversationEnvelope } from "../conversationEventDispatcher";
 
 export type ChatInboundSyncDeps = {
   appStore: ReturnType<typeof useAppStore>;
@@ -75,6 +77,7 @@ function inboundStreamRowId(sessionId: string): string {
  */
 export function useChatInboundSync(deps: ChatInboundSyncDeps) {
   const streamingSnapshots = useChatStreamingSnapshots();
+  const conversationStore = useChatConversationStore();
   let hubId: string | null = null;
   let hydrateTimer: ReturnType<typeof setTimeout> | null = null;
   let pendingHydrateSessionId = "";
@@ -297,6 +300,12 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
   async function handleInboundEnvelope(env: Envelope) {
     const sessionId = (env.session_id ?? "").trim();
     if (!sessionId) return;
+    const projection = projectConversationEnvelope(env, {
+      currentSessionId: deps.selectedSessionId.value,
+    });
+    if (projection) {
+      conversationStore.applyProjection(projection);
+    }
 
     if (env.id) {
       noteChannelWsEnvelope(sessionId, env.id);
@@ -317,9 +326,9 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
       }
     }
 
-    const envRev = envelopeSessionRevision(env);
+    const envRev = projection?.revision || envelopeSessionRevision(env);
     const localRev = deps.messageStore.sessionRevisionBySession[sessionId] ?? 0;
-    const inboundSource = envelopeSource(env);
+    const inboundSource = projection?.source ?? envelopeSource(env);
     const channelInbound =
       inboundSource === "channel" ||
       (await isChannelInboundSession(sessionId, inboundSource, deps.sessionStore));
