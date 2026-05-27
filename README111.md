@@ -338,3 +338,23 @@ TODO:
 10 tools 功能完善 测试
 
 11 监控面板需求 UI 完善
+
+
+【页面】记忆中心 > 知识库（MemoryKnowledgePanel / L3 facts 表格）
+【问题】
+1. 表格列布局被长文本撑破：某一行的 statement 很长时，整表变宽，Scope / Confidence / Source 等列被挤出屏幕。
+2. 要求：所有列在同一视口内可见，表格区域不出现横向滚动条。
+3. 要求：按字段类型分配列宽——短字段（Scope、操作）固定窄宽，长字段（Statement）占剩余比例但需截断，不能无限撑开。
+4. 对齐 Skill 管理页 Template C：AppRegistryTable + registryCol + app-registry-cell-desc + 外部分页。
+【验收标准】
+- 任意一行 statement 再长，表格总宽度不变，右侧列仍可见。
+- Statement 列显示 2 行或 ellipsis，hover/点击查看全文。
+- 列宽使用 registryTableColumns.ts 或等价比例，配合 table-layout: fixed。
+
+
+哪一页、哪张表（组件/路由）
+期望：全列同屏、无横向滚动、长文本列内截断
+不要什么：不要单行把表撑宽、不要隐藏列、不要只靠横向滚动条
+参考样式：Skill 管理页 + registryCol + AppRegistryTable
+
+知识库表格要做固定列宽布局：所有列同屏显示、禁止横向滚动；Statement 等长字段在列内 ellipsis/最多 2 行，短字段窄列固定；对齐 Skill 页的 AppRegistryTable + registryCol，不能让某行长内容撑破整表。
