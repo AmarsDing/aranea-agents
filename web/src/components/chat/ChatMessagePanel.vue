@@ -1,10 +1,16 @@
-﻿<template>
+<template>
   <q-card flat bordered class="col column no-wrap chat-mid-card" style="min-height: 0; border-radius: 18px">
     <q-banner v-if="wsReplaying" dense rounded class="q-mx-md q-mt-sm app-info-banner">
       <template #avatar>
         <q-spinner-dots color="primary" size="20px" />
       </template>
       {{ t("chat.wsReplaying", "正在同步历史事件…") }}
+    </q-banner>
+    <q-banner v-else-if="sessionLoading" dense rounded class="q-mx-md q-mt-sm app-info-banner">
+      <template #avatar>
+        <q-spinner-dots color="primary" size="20px" />
+      </template>
+      {{ t("chat.sessionLoading", "正在加载会话…") }}
     </q-banner>
     <q-card-section class="chat-message-header q-px-md q-py-sm">
       <div class="chat-message-header__grid">
@@ -93,6 +99,8 @@
           :react-tool-link-index="props.reactToolLinkIndex"
           @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
           @feedback="(p) => emit('feedback', p)"
+          @retry="(id) => emit('retry', id)"
+          @dismiss-failed="(id) => emit('dismiss-failed', id)"
         />
       </q-virtual-scroll>
       <div
@@ -130,6 +138,8 @@
           :planner-kind="props.plannerKind"
           :react-tool-link-index="props.reactToolLinkIndex"
           @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
+          @retry="(id) => emit('retry', id)"
+          @dismiss-failed="(id) => emit('dismiss-failed', id)"
         />
       </div>
       <ChatPendingQueue
@@ -254,6 +264,7 @@ const props = defineProps<{
   awaitKind?: string;
   awaitToolKey?: string;
   wsReplaying?: boolean;
+  sessionLoading?: boolean;
   isTeamSession?: boolean;
   plannerKind?: string;
   reactToolLinkIndex: ReactToolLinkIndex;
@@ -295,6 +306,8 @@ const emit = defineEmits<{
   "focus-turn-cleared": [];
   "a2ui-user-action": [payload: A2UIUserActionPayload];
   feedback: [payload: { messageId: string; rating: "positive" | "negative" }];
+  retry: [messageId: string];
+  "dismiss-failed": [messageId: string];
 }>();
 
 const { t } = useI18n();

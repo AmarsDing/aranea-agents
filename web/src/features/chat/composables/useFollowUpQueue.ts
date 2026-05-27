@@ -10,7 +10,8 @@ export function useFollowUpQueue(
   notifyError?: (message: string) => void
 ) {
   const pendingMessages = ref<PendingMessage[]>([]);
-  let pendingPollTimer: ReturnType<typeof setInterval> | null = null;
+  /** One-shot poll timer: fires once after run starts, then WS events take over. */
+  let pendingPollTimer: ReturnType<typeof setTimeout> | null = null;
 
   async function refreshPendingMessages() {
     const sid = sessionId.value;
@@ -29,19 +30,30 @@ export function useFollowUpQueue(
 
   function stopPendingPoll() {
     if (pendingPollTimer != null) {
-      clearInterval(pendingPollTimer);
+      clearTimeout(pendingPollTimer);
       pendingPollTimer = null;
     }
   }
 
-  function startPendingPoll() {
+  /** Initial one-shot fetch after a short delay; subsequent updates come via WS events. */
+  function scheduleInitialFetch() {
     stopPendingPoll();
-    void refreshPendingMessages();
-    pendingPollTimer = setInterval(refreshPendingMessages, 3000);
+    pendingPollTimer = setTimeout(() => {
+      pendingPollTimer = null;
+      void refreshPendingMessages();
+    }, 500);
   }
 
+  /** WS-driven refresh: called when a relevant envelope arrives.
+   *  Replaces the old 3-second polling loop with real-time push. */
   function onRunStatusEnvelope(env: Envelope) {
     if (messageQueuedFromEnvelope(env)) {
+      void refreshPendingMessages();
+    }
+    // Also refresh on run completion to clear stale pending items
+    const meta = env.metadata ?? {};
+    const rs = String(meta.status ?? "");
+    if (rs === "completed" || rs === "cancelled" || rs === "failed") {
       void refreshPendingMessages();
     }
   }
@@ -86,14 +98,12 @@ export function useFollowUpQueue(
 
   function watchSending(active: boolean) {
     if (active) {
-      startPendingPoll();
+      // One-shot fetch after 500ms; WS events handle subsequent updates
+      scheduleInitialFetch();
     } else {
+      // Final refresh after run completes, then stop
       setTimeout(() => {
-        void refreshPendingMessages().then(() => {
-          if (pendingMessages.value.length === 0) {
-            stopPendingPoll();
-          }
-        });
+        void refreshPendingMessages();
       }, 1000);
     }
   }
@@ -103,7 +113,7 @@ export function useFollowUpQueue(
   return {
     pendingMessages,
     refreshPendingMessages,
-    startPendingPoll,
+    startPendingPoll: scheduleInitialFetch,
     stopPendingPoll,
     onRunStatusHint,
     onRunStatusEnvelope,

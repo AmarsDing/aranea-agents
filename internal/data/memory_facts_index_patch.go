@@ -17,6 +17,15 @@ func ensureMemoryFactsIndexStatusPatches(ctx context.Context, c *ent.Client) err
 	if c == nil {
 		return nil
 	}
+	hasTable, err := sqliteTableExists(ctx, c, "memory_facts")
+	if err != nil {
+		return err
+	}
+	if !hasTable {
+		// Fresh or legacy DBs without memory chain tables: memory_chain.sql creates
+		// memory_facts (with index_status columns) on the next EnsureSessionMemorySchema step.
+		return nil
+	}
 	patches := []struct {
 		column string
 		ddl    string

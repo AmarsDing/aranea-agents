@@ -68,8 +68,11 @@ const mdCache = new Map<string, string>();
 function markdownCacheKey(messageId: string, content: string, streaming: boolean): string {
   const id = messageId || "anon";
   const len = content.length;
-  const tail = len > 96 ? content.slice(-96) : content;
-  return `${id}:${streaming ? "s" : "f"}:${len}:${tail}`;
+  // Use a hash-like key: combine length with head and tail to avoid collisions
+  // where different content shares the same length and tail (common during streaming).
+  const head = len > 48 ? content.slice(0, 48) : content;
+  const tail = len > 48 ? content.slice(-48) : "";
+  return `${id}:${streaming ? "s" : "f"}:${len}:${head}:${tail}`;
 }
 
 function trimMarkdownCache() {

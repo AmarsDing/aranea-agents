@@ -507,6 +507,20 @@ body.body--dark .chat-empty-state__hint
   background-image: linear-gradient(180deg, var(--chat-danger-soft), rgba(30, 41, 59, 0.92))
   border-color: var(--chat-danger-border-dark)
 
+// ===== Failed user message (retry banner) =====
+.chat-message-bubble--send-failed
+  border-color: var(--chat-danger-border)
+  background-image: linear-gradient(180deg, var(--color-danger-soft), var(--chat-danger-faint))
+
+.chat-message-bubble--dark.chat-message-bubble--send-failed
+  background-image: linear-gradient(180deg, var(--chat-danger-soft), rgba(30, 41, 59, 0.92))
+  border-color: var(--chat-danger-border-dark)
+
+.message-failed-banner
+  padding: 4px 8px
+  border-radius: 6px
+  background: rgba(239, 68, 68, 0.06)
+
 // ===== Avatar =====
 .message-avatar
   position: relative

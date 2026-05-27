@@ -258,7 +258,12 @@ export function bindStreamHandlers(
       finalizeOrphanToolMessages(ctx.getMessages(sid))
     ).filter((m) => {
       const id = m.id || "";
-      return !id.startsWith("ws-stream-") && !id.startsWith("ws-team-stream-");
+      // Keep ws-stream rows that received text_done (status="ok") as fallback
+      // until server-persisted messages arrive via loadMessages.
+      if (id.startsWith("ws-stream-") || id.startsWith("ws-team-stream-")) {
+        return m.status === "ok";
+      }
+      return true;
     });
     ctx.setMessages(sid, finalized);
     applySessionContextPatch(sid, env);

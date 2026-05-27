@@ -140,6 +140,7 @@ export function useChatWorkspace() {
   const sessionIdForArtifacts = computed(() => selectedSessionForUi.value?.id);
   const jobsRefreshNonce = ref(0);
   const inboundHydrateError = ref("");
+  const sessionLoading = ref(false);
   const focusTurnId = ref<string | undefined>(undefined);
 
   function focusSessionTurn(turnId: string) {
@@ -241,10 +242,13 @@ export function useChatWorkspace() {
     wsReplaying: streamManager.wsReplaying,
     isChatRoute: () => route.name === "chat",
     shouldAutoFocusChannel: () => {
-      if (typeof localStorage !== "undefined" && localStorage.getItem("channel_auto_focus") === "false") {
-        return false;
+      // Default OFF: channel inbound messages no longer auto-focus the session
+      // to avoid interrupting the user's current workflow. Users can opt in
+      // via localStorage channel_auto_focus=true.
+      if (typeof localStorage !== "undefined" && localStorage.getItem("channel_auto_focus") === "true") {
+        return !inputText.value.trim();
       }
-      return !inputText.value.trim();
+      return false;
     },
     focusChannelSession: (sessionId, agentId, options) =>
       entityNav.focusAgentSessionView(sessionId, agentId, options),
@@ -272,6 +276,7 @@ export function useChatWorkspace() {
     attachments,
     isAwaitingUser,
     awaitingRunId,
+    awaitKind,
     runStatus,
     selectedProviderModel,
     selectedKnowledgeBases,
@@ -432,6 +437,7 @@ export function useChatWorkspace() {
     } else {
       streamManager.ensureChatStream(sessionId);
     }
+    sessionLoading.value = true;
     try {
       if (replace) clearChatMarkdownCache();
       await messageStore.loadMessages(replace ? { sessionId, replace: true } : { sessionId });
@@ -440,6 +446,8 @@ export function useChatWorkspace() {
         type: "negative",
         message: err instanceof Error ? err.message : "加载消息失败",
       });
+    } finally {
+      sessionLoading.value = false;
     }
   }
 
@@ -571,6 +579,7 @@ export function useChatWorkspace() {
       wsReplaying: streamManager.wsReplaying,
       jobsRefreshNonce,
       inboundHydrateError,
+      sessionLoading,
       focusTurnId,
       focusSessionTurn,
       clearFocusTurn,
@@ -620,6 +629,15 @@ export function useChatWorkspace() {
       onUpdatePending,
       onVoiceClick,
       onMessageFeedback,
+      retryFailedMessage: sender.retryFailedMessage,
+      dismissFailedMessage: (messageId: string) => {
+        const sid = sessionStore.currentSessionId();
+        if (!sid) return;
+        messageStore.setMessages(
+          sid,
+          messageStore.getMessages(sid).filter((m) => m.id !== messageId)
+        );
+      },
     }),
     dialogs: reactive({
       settingsOpen,

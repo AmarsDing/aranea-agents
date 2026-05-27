@@ -21,6 +21,8 @@ export function useChatRunStatus(deps: UseChatRunStatusDeps) {
   let wsAuthoritative = false;
   let hydrateTimer: ReturnType<typeof setTimeout> | null = null;
   let hydrateSessionId = "";
+  /** Whether we are currently hydrating after a session switch (suppresses stale flash). */
+  let hydrating = false;
 
   function clearHydrateTimer() {
     if (hydrateTimer) {
@@ -32,6 +34,7 @@ export function useChatRunStatus(deps: UseChatRunStatusDeps) {
   function resetRunStatus() {
     clearHydrateTimer();
     wsAuthoritative = false;
+    hydrating = false;
     hydrateSessionId = "";
     runStatus.value = "idle";
     runMeta.value = null;
@@ -60,6 +63,7 @@ export function useChatRunStatus(deps: UseChatRunStatusDeps) {
   function scheduleHttpHydrate(sessionId: string) {
     hydrateSessionId = sessionId;
     wsAuthoritative = false;
+    hydrating = true;
     clearHydrateTimer();
     hydrateTimer = setTimeout(() => {
       void hydrateFromHttpIfNeeded(sessionId);
@@ -77,6 +81,8 @@ export function useChatRunStatus(deps: UseChatRunStatusDeps) {
       deps.applyAwaitRunStatus(rs);
     } catch {
       /* ignore transient hydrate failures */
+    } finally {
+      hydrating = false;
     }
   }
 
@@ -94,8 +100,9 @@ export function useChatRunStatus(deps: UseChatRunStatusDeps) {
       resetRunStatus();
       return;
     }
-    runStatus.value = "idle";
-    runMeta.value = null;
+    // Don't reset to "idle" immediately — keep previous value until HTTP hydrate
+    // completes to avoid a brief incorrect "idle" flash during session switch.
+    // The hydrate will set the correct status within HYDRATE_DELAY_MS.
     scheduleHttpHydrate(sessionId);
   }
 

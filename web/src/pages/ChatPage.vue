@@ -57,6 +57,7 @@
         :await-kind="composer.awaitKind"
         :await-tool-key="composer.awaitToolKey"
         :ws-replaying="session.wsReplaying"
+        :session-loading="session.sessionLoading"
         :session-revision="session.sessionRevision"
         :ws-connected="session.wsConnected"
         :is-team-session="entity.selectedEntityKind === 'team'"
@@ -94,6 +95,8 @@
         @focus-turn-cleared="session.clearFocusTurn"
         @a2ui-user-action="composer.submitA2UIUserAction"
         @feedback="composer.onMessageFeedback"
+        @retry="composer.retryFailedMessage"
+        @dismiss-failed="composer.dismissFailedMessage"
       />
       <input ref="fileRef" type="file" hidden multiple @change="composer.onFileChange" />
     </div>
