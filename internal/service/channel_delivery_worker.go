@@ -14,6 +14,7 @@ import (
 	"aranea-agents/internal/event"
 	arametrics "aranea-agents/internal/metrics"
 
+	"github.com/go-kratos/kratos/v2/log"
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 

@@ -43,7 +43,7 @@ func allowWebhookRequest(channelKey string) bool {
 	}
 	v, _ := webhookRateLimits.LoadOrStore(channelKey, &webhookRateLimiter{limit: defaultWebhookRateLimitPerMin})
 	rl := v.(*webhookRateLimiter)
-	now := time.Now()
+	now = time.Now()
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 	if rl.window.IsZero() || now.Sub(rl.window) >= time.Minute {

@@ -91,7 +91,7 @@ func (h *ChannelIngress) steerIntoActiveTurn(ctx context.Context, chRow biz.Chan
 		return "", err
 	}
 	if !accepted {
-		return "", kerrors.FailedPrecondition("CHANNEL", "steer rejected")
+		return "", kerrors.BadRequest("CHANNEL", "steer rejected")
 	}
 	pendingID := h.chat.LastPendingMessageID(sessionID)
 	if err := h.sendInboundQueuedAck(ctx, chRow, ev, platform, ltCfg, pendingID); err != nil {

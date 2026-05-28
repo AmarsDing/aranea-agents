@@ -56,7 +56,7 @@ func (h *ChannelIngress) executeAsyncGraphTarget(
 	initialState map[string]any,
 ) (targetType, targetID, asyncID string, err error) {
 	if h == nil || h.graphs == nil {
-		return "", "", "", kerrors.FailedPrecondition("CHANNEL", "graph service not configured")
+		return "", "", "", kerrors.BadRequest("CHANNEL", "graph service not configured")
 	}
 	switch target.TargetType {
 	case "graph":
@@ -67,7 +67,7 @@ func (h *ChannelIngress) executeAsyncGraphTarget(
 		return "graph", target.GraphID, strings.TrimSpace(execID), nil
 	case "team_graph":
 		if h.teams == nil {
-			return "", "", "", kerrors.FailedPrecondition("CHANNEL", "team repository not configured")
+			return "", "", "", kerrors.BadRequest("CHANNEL", "team repository not configured")
 		}
 		teamRow, terr := h.teams.GetTeamByID(ctx, target.TeamID)
 		if terr != nil {
