@@ -11,7 +11,6 @@ import (
 	"aranea-agents/internal/service"
 )
 
-// decoSyncSessionRepo simulates session revision bumps + incremental message reads (DECO-01).
 type decoSyncSessionRepo struct {
 	batchSessionRepo
 	messages []biz.ChatMessage
@@ -41,7 +40,7 @@ func (r *decoSyncSessionRepo) ListMessagesAfterRevision(_ context.Context, _ str
 	}
 	var out []biz.ChatMessage
 	for _, msg := range r.messages {
-		if int64(msg.TurnIndex) > afterRevision*2 {
+		if int64(msg.TurnNumber) > afterRevision {
 			out = append(out, msg)
 		}
 	}
@@ -63,7 +62,7 @@ func TestDECO01_SessionRevisionChannelToWebSync(t *testing.T) {
 
 	ctx := context.Background()
 	runID := "run-feishu-1"
-	userMsg := biz.ChatMessage{ID: "u1", Role: "user", ContentMarkdown: "你好", TurnIndex: 1}
+	userMsg := biz.ChatMessage{ID: "u1", Role: "user", ContentMarkdown: "你好", TurnNumber: 1, TurnID: "t1"}
 	if err := uc.AppendChatMessage(ctx, sessionID, userMsg, false); err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +89,7 @@ func TestDECO01_SessionRevisionChannelToWebSync(t *testing.T) {
 		t.Fatalf("after rev0: %+v", msgs)
 	}
 
-	assistantMsg := biz.ChatMessage{ID: "a1", Role: "assistant", ContentMarkdown: "你好！", TurnIndex: 2}
+	assistantMsg := biz.ChatMessage{ID: "a1", Role: "assistant", ContentMarkdown: "你好！", TurnNumber: 1, TurnID: "t1"}
 	if err := uc.AppendChatMessage(ctx, sessionID, assistantMsg, false); err != nil {
 		t.Fatal(err)
 	}
@@ -117,10 +116,9 @@ func TestDECO01_SessionRevisionChannelToWebSync(t *testing.T) {
 		t.Fatalf("completed turn messages: %+v", delta)
 	}
 
-	// Incremental cursor after first turn sync (rev=1): only later turns appear.
 	repo.messages = append(repo.messages,
-		biz.ChatMessage{ID: "u2", Role: "user", ContentMarkdown: "继续", TurnIndex: 3},
-		biz.ChatMessage{ID: "a2", Role: "assistant", ContentMarkdown: "好的", TurnIndex: 4},
+		biz.ChatMessage{ID: "u2", Role: "user", ContentMarkdown: "继续", TurnNumber: 2, TurnID: "t2"},
+		biz.ChatMessage{ID: "a2", Role: "assistant", ContentMarkdown: "好的", TurnNumber: 2, TurnID: "t2"},
 	)
 	repo.sessions[sessionID] = biz.Session{ID: sessionID, SessionRevision: 2}
 	incr, err := proj.GetMessagesAfterRevision(ctx, sessionID, 1)

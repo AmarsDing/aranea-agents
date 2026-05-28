@@ -42,10 +42,7 @@ func invocationStatusFromAfter(args *trpctool.AfterToolArgs) (status, errCode, e
 }
 
 func truncateErr(msg string) string {
-	if len(msg) > 500 {
-		return msg[:500]
-	}
-	return msg
+	return safeTruncate(msg, 500)
 }
 
 func recordToolInvocationAfter(ctx context.Context, args *trpctool.AfterToolArgs, ag biz.Agent, deps TRPCBuilderDeps) {

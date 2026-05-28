@@ -85,7 +85,7 @@ const closeLabel = computed(() => t("common.close", "关闭"));
 }
 
 .a2ui-modal-card {
-  min-width: 280px;
+  min-width: min(280px, 90vw);
   max-width: 90vw;
 }
 </style>

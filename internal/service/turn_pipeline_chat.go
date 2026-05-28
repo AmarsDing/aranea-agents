@@ -50,6 +50,7 @@ func turnResultFromNative(result biz.NativeTurnResult) biz.TurnResult {
 			Outcome:      biz.TurnOutcomeCompleted,
 			UserMsg:      result.UserMsg,
 			AssistantMsg: result.AssistantMsg,
+			Reply:        result.AssistantMsg.ContentMarkdown,
 		}
 	case biz.NativeTurnOutcomeQueued:
 		return biz.TurnResult{

@@ -88,7 +88,7 @@ export type SessionTurn = {
   id: string;
   session_id: string;
   run_id: string;
-  turn_index: number;
+  turn_number: number;
   user_message_id: string;
   assistant_message_id: string;
   owner_type: string;

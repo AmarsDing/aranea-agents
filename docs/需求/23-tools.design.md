@@ -1365,9 +1365,12 @@ export async function getAgentEffectiveTools(agentId: string): Promise<AgentEffe
 1. **顶部 Hero 区域**：标题 "工具管理" + Summary 统计卡片 + 刷新/新建按钮
 2. **筛选卡片**：搜索框 + Category 下拉 + Source 下拉 + Risk Level 下拉 + 启用状态筛选
 3. **数据表格**：展示工具列表
-4. **新建/编辑弹窗**：创建或编辑工具
-5. **详情弹窗**：查看工具完整信息
-6. **配置弹窗**：编辑工具的 config_json
+4. **新建/编辑弹窗**（`ToolEditorDialog` + `ToolEditorForm`）：4 Tab — 基础 / 运行策略 / 参数与配置 / 高级；文案 `features/tools/toolEditorCopy.ts`；子组件 `components/tools/editor/*`
+5. **详情弹窗**（`ToolDetailContent`）：5 Tab — 概览 / 参数 / 配置（可编辑，`PUT /v1/tools/{id}/config`）/ Agent / 调用；Agent Tab 含 **生效摘要**（§5.6 UX-02）
+
+~~6. **配置弹窗**~~：已合并至详情「配置」Tab 与编辑弹窗「参数与配置」Tab。
+
+**§5.6 后续 UX**（chip 语义、Schema 边界、保存引导等）见 [23-tools.md §5.6](./23%20tools.md#56-后续迭代业务评审-2026-05-28)。
 
 **Summary 统计卡片**：
 - 总工具数 / 已启用数 / 高风险启用数

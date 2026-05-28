@@ -136,7 +136,7 @@ func buildSessionMarkdown(sess Session, messages []ChatMessage, timeline Session
 
 	sb.WriteString("## Messages\n\n")
 	for _, msg := range messages {
-		sb.WriteString(fmt.Sprintf("### %s · turn %d\n\n", msg.Role, msg.TurnIndex))
+		sb.WriteString(fmt.Sprintf("### %s · turn %d\n\n", msg.Role, msg.TurnNumber))
 		if strings.TrimSpace(msg.ContentMarkdown) != "" {
 			sb.WriteString(msg.ContentMarkdown)
 			sb.WriteString("\n\n")

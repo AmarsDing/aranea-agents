@@ -111,7 +111,7 @@ func lastUserMessageText(messages []trpcmodel.Message) string {
 		}
 		if t := strings.TrimSpace(messages[i].Content); t != "" {
 			if len(t) > 120 {
-				return t[:120]
+				return safeTruncate(t, 120)
 			}
 			return t
 		}

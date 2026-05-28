@@ -248,7 +248,9 @@ message ChatMessageRow {
   string id = 1;
   string session_id = 2;
   string parent_message_id = 3;
-  int32 turn_index = 4;
+  string turn_id = 4;
+  int32 turn_number = 16;
+  int32 seq_in_turn = 17;
   string role = 5;
   string content_markdown = 6;
   string model_name = 7;
@@ -300,7 +302,7 @@ message SessionTurn {
   string id = 1;
   string session_id = 2;
   string run_id = 3;
-  int32 turn_index = 4;
+  int32 turn_number = 4;
   string user_message_id = 5;
   string assistant_message_id = 6;
   string owner_type = 7;

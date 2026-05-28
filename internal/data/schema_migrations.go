@@ -10,9 +10,10 @@ import (
 )
 
 const (
-	// MigrationLegacyTRPCMemoryFacts marks one-time trpc_memory entity → memory_facts backfill.
 	MigrationLegacyTRPCMemoryFacts     = 20260524
 	migrationNameLegacyTRPCMemoryFacts = "legacy_trpc_memory_facts"
+	MigrationTurnIndexToTurnID         = 20260528
+	migrationNameTurnIndexToTurnID     = "turn_index_to_turn_id"
 )
 
 func isMigrationApplied(ctx context.Context, client *ent.Client, version int) (bool, error) {

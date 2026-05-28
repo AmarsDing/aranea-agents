@@ -26,6 +26,7 @@ import (
 	trpchostexec "trpc.group/trpc-go/trpc-agent-go/tool/hostexec"
 	trpcmcp "trpc.group/trpc-go/trpc-agent-go/tool/mcp"
 	trpcmcpbroker "trpc.group/trpc-go/trpc-agent-go/tool/mcpbroker"
+	memorytool "aranea-agents/internal/tools/memory"
 	trpcopenapi "trpc.group/trpc-go/trpc-agent-go/tool/openapi"
 	trpctodo "trpc.group/trpc-go/trpc-agent-go/tool/todo"
 	trpcgeminifetch "trpc.group/trpc-go/trpc-agent-go/tool/webfetch/geminifetch"
@@ -42,27 +43,27 @@ func Registry() []*ToolRegistration {
 	registryOnce.Do(func() {
 		registry = []*ToolRegistration{
 			{
-				Name:        "file",
-				Description: "File operation ToolSet (read, write, search, replace, list)",
-				Category:    "filesystem",
-				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
-					return trpcfile.NewToolSet()
-				},
-				EnabledByDefault:    true,
-				RiskLevel:           "low",
-				SupportsConcurrency: true,
+			Name:        "file",
+			Description: "File operation ToolSet (read, write, search, replace, list)",
+			Category:    "filesystem",
+			ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
+				return nil, nil
 			},
-			{
-				Name:        "hostexec",
-				Description: "Host command execution ToolSet (shell, bash, powershell)",
-				Category:    "execution",
-				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
-					return trpchostexec.NewToolSet()
-				},
-				EnabledByDefault:     false,
-				RiskLevel:            "critical",
-				RequiresConfirmation: true,
+			EnabledByDefault:    true,
+			RiskLevel:           "low",
+			SupportsConcurrency: true,
+		},
+		{
+			Name:        "hostexec",
+			Description: "Host command execution ToolSet (shell, bash, powershell)",
+			Category:    "execution",
+			ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
+				return nil, nil
 			},
+			EnabledByDefault:     false,
+			RiskLevel:            "critical",
+			RequiresConfirmation: true,
+		},
 			{
 				Name:        "httpfetch",
 				Description: "HTTP web page fetch tool",
@@ -167,16 +168,16 @@ func Registry() []*ToolRegistration {
 				RiskLevel:        "low",
 			},
 			{
-				Name:        "claudecode",
-				Description: "Claude Code ToolSet (bash, edit, read, write, glob, grep, etc.)",
-				Category:    "coding",
-				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
-					return trpcclaudecode.NewToolSet()
-				},
-				EnabledByDefault:     false,
-				RiskLevel:            "critical",
-				RequiresConfirmation: true,
+			Name:        "claudecode",
+			Description: "Claude Code ToolSet (bash, edit, read, write, glob, grep, etc.)",
+			Category:    "coding",
+			ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
+				return nil, nil
 			},
+			EnabledByDefault:     false,
+			RiskLevel:            "critical",
+			RequiresConfirmation: true,
+		},
 			{
 				Name:        "workspace_exec",
 				Description: "Workspace execution tools (exec, write_stdin, kill_session)",
@@ -268,6 +269,7 @@ type AssemblyConfig struct {
 	AgentTools    []AgentToolConfig
 	MCPServers    []MCPServerConfig
 	MCPBroker     *MCPBrokerConfig
+	MemoryEnabled bool
 	CustomTools   []Tool
 }
 
@@ -316,31 +318,28 @@ func Assemble(ctx context.Context, cfg AssemblyConfig) (*AssembledToolsets, erro
 		}
 	}
 
-	if enabled["file"] && cfg.FilesystemDir != "" {
-		ts, err := trpcfile.NewToolSet(trpcfile.WithBaseDir(cfg.FilesystemDir))
+	if enabled["file"] {
+		var opts []trpcfile.Option
+		if cfg.FilesystemDir != "" {
+			opts = append(opts, trpcfile.WithBaseDir(cfg.FilesystemDir))
+		}
+		ts, err := trpcfile.NewToolSet(opts...)
 		if err != nil {
-			return nil, fmt.Errorf("file toolset with dir: %w", err)
+			return nil, fmt.Errorf("file toolset: %w", err)
 		}
-		for i, existing := range out.ToolSets {
-			if existing.Name() == "file" {
-				out.ToolSets[i] = ts
-				break
-			}
-		}
+		out.ToolSets = append(out.ToolSets, ts)
 	}
 
-	if enabled["hostexec"] && cfg.ShellExecDir != "" {
-		ts, err := trpchostexec.NewToolSet(trpchostexec.WithBaseDir(cfg.ShellExecDir))
+	if enabled["hostexec"] {
+		var opts []trpchostexec.Option
+		if cfg.ShellExecDir != "" {
+			opts = append(opts, trpchostexec.WithBaseDir(cfg.ShellExecDir))
+		}
+		ts, err := trpchostexec.NewToolSet(opts...)
 		if err != nil {
-			return nil, fmt.Errorf("hostexec toolset with dir: %w", err)
+			return nil, fmt.Errorf("hostexec toolset: %w", err)
 		}
-		wrapped := hostexecnorm.WrapToolSet(ts)
-		for i, existing := range out.ToolSets {
-			if existing.Name() == "hostexec" {
-				out.ToolSets[i] = wrapped
-				break
-			}
-		}
+		out.ToolSets = append(out.ToolSets, hostexecnorm.WrapToolSet(ts))
 	}
 
 	if enabled["geminifetch"] {
@@ -368,17 +367,16 @@ func Assemble(ctx context.Context, cfg AssemblyConfig) (*AssembledToolsets, erro
 		}
 	}
 
-	if enabled["claudecode"] && cfg.ClaudeCodeDir != "" {
-		ts, err := trpcclaudecode.NewToolSet(trpcclaudecode.WithBaseDir(cfg.ClaudeCodeDir))
+	if enabled["claudecode"] {
+		var opts []trpcclaudecode.Option
+		if cfg.ClaudeCodeDir != "" {
+			opts = append(opts, trpcclaudecode.WithBaseDir(cfg.ClaudeCodeDir))
+		}
+		ts, err := trpcclaudecode.NewToolSet(opts...)
 		if err != nil {
 			return nil, fmt.Errorf("claudecode: %w", err)
 		}
-		for i, existing := range out.ToolSets {
-			if existing.Name() == "claudecode" {
-				out.ToolSets[i] = ts
-				break
-			}
-		}
+		out.ToolSets = append(out.ToolSets, ts)
 	}
 
 	for _, spec := range cfg.OpenAPISpecs {
@@ -446,6 +444,10 @@ func Assemble(ctx context.Context, cfg AssemblyConfig) (*AssembledToolsets, erro
 			return nil, fmt.Errorf("mcpbroker: %w", err)
 		}
 		out.Tools = append(out.Tools, brokerTools...)
+	}
+
+	if cfg.MemoryEnabled {
+		out.Tools = append(out.Tools, memorytool.DefaultTools()...)
 	}
 
 	out.Tools = append(out.Tools, cfg.CustomTools...)

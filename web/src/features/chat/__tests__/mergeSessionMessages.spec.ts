@@ -1,13 +1,23 @@
 import { describe, expect, it } from "vitest";
-import type { Message } from "../types";
+import type { Message, MessageOrigin } from "../types";
 import { isActivityMessage, mergeIncrementalSessionMessages, mergeSessionMessages, dropPendingUserPlaceholders } from "../mergeSessionMessages";
+
+function originFromId(id: string): MessageOrigin | undefined {
+  if (id.startsWith("pending-user-")) return { kind: "pending_user", localId: id };
+  if (id.startsWith("ws-stream-") || id.startsWith("ws-team-stream-")) return { kind: "streaming", sessionId: id.replace(/^ws-(team-)?stream-/, "") };
+  if (id.startsWith("member-")) return { kind: "team_member", agentKey: id.replace(/^member-/, "") };
+  if (id.startsWith("act-") || id.startsWith("tool-")) return { kind: "tool_activity", toolEventId: id };
+  return undefined;
+}
 
 function msg(id: string, status = "ok", created = "2026-05-20T10:00:00Z"): Message {
   return {
     id,
     session_id: "sess-1",
     parent_message_id: "",
-    turn_index: 0,
+    turn_id: "",
+    turn_number: 0,
+    seq_in_turn: 0,
     role: "assistant",
     content_markdown: "",
     model_name: "",
@@ -19,6 +29,7 @@ function msg(id: string, status = "ok", created = "2026-05-20T10:00:00Z"): Messa
     options_json: "",
     error_message: "",
     created_at: created,
+    origin: originFromId(id),
   };
 }
 

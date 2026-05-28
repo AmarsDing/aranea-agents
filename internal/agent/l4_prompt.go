@@ -95,9 +95,20 @@ func formatL4JSONBlock(title string, raw []byte, maxChars int) string {
 	return fmt.Sprintf("## %s\n```json\n%s\n```", title, body)
 }
 
-func truncateText(s string, maxChars int) string {
-	if maxChars <= 0 || len(s) <= maxChars {
+func safeTruncate(s string, maxChars int) string {
+	if maxChars <= 0 {
 		return s
 	}
-	return s[:maxChars] + "…"
+	runes := []rune(s)
+	if len(runes) <= maxChars {
+		return s
+	}
+	return string(runes[:maxChars]) + "…"
+}
+
+func truncateText(s string, maxChars int) string {
+	if maxChars <= 0 {
+		return ""
+	}
+	return safeTruncate(s, maxChars)
 }

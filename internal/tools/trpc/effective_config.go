@@ -37,6 +37,6 @@ func ToolsetConfigHasAny(cfg ToolsetConfig) bool {
 	return cfg.Filesystem || cfg.ShellExec || cfg.WebFetch || cfg.WebSearch || cfg.WebResearch ||
 		cfg.GeminiFetch || cfg.GoogleSearch || cfg.ArxivSearch || cfg.Wikipedia ||
 		cfg.Email || cfg.Todo || cfg.AwaitReply || cfg.ClaudeCode || cfg.WorkspaceExec ||
-		cfg.KnowledgeSearch || cfg.CallAgent || cfg.Kanban ||
+		cfg.KnowledgeSearch || cfg.CallAgent || cfg.Kanban || cfg.MemoryEnabled ||
 		len(cfg.MCPServers) > 0 || cfg.MCPBroker != nil || len(cfg.CustomTools) > 0
 }

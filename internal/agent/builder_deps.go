@@ -3,6 +3,7 @@ package agent
 import (
 	localexec "aranea-agents/internal/agent/codeexecutor"
 	"aranea-agents/internal/biz"
+	kanbanpkg "aranea-agents/internal/tools/kanban"
 	"aranea-agents/internal/knowledge"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	"aranea-agents/internal/provider"
@@ -76,10 +77,11 @@ type TRPCBuilderDeps struct {
 	Model      string
 	DialogMode string
 	// TRPCToolAssemblyDeps
-	ToolUC      *biz.ToolUsecase
-	MCPTooling  *biz.AgentMCPTooling
-	AwaitHook   tooltrpc.ReplyFunc
-	CustomTools []trpctool.Tool
+	ToolUC       *biz.ToolUsecase
+	MCPTooling   *biz.AgentMCPTooling
+	AwaitHook    tooltrpc.ReplyFunc
+	CustomTools  []trpctool.Tool
+	KanbanBridge kanbanpkg.Bridge
 	// TRPCMemoryKnowledgeDeps
 	HasMemory             bool
 	MemoryAdmin           biz.SessionAdminStore
@@ -98,6 +100,12 @@ type TRPCBuilderDeps struct {
 	// from agent_category_nodes for injection into the system instruction.
 	// Optional: when nil, category responsibility injection is skipped.
 	AgentCategory *biz.AgentCategoryUsecase
+	// Cache version hashes: optional strings computed by the caller.
+	// When non-empty they are folded into the build cache fingerprint so that
+	// tool / skill / MCP changes invalidate the cached agent.
+	ToolVersionHash  string
+	SkillVersionHash string
+	MCPVersionHash   string
 }
 
 // CatalogGroup returns the catalog subset (for tests and future refactors).

@@ -57,13 +57,13 @@ func (h *ChannelIngress) runChatTurnWithOutcomeOnce(ctx context.Context, chRow b
 			if pendingID == "" {
 				pendingID = h.chat.LastPendingMessageID(sessionID)
 			}
-			return biz.ChannelTurnResult{Outcome: biz.ChannelTurnOutcomeQueued, PendingID: pendingID}, nil
+			return biz.ChannelTurnResult{Outcome: biz.TurnOutcomeQueued, PendingID: pendingID}, nil
 		}
 		if IsTurnBusyError(err) {
-			return biz.ChannelTurnResult{Outcome: biz.ChannelTurnOutcomeFailed}, err
+			return biz.ChannelTurnResult{Outcome: biz.TurnOutcomeFailed}, err
 		}
 		_ = h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "chat", "error": err.Error()}, err.Error())
-		return biz.ChannelTurnResult{Outcome: biz.ChannelTurnOutcomeFailed}, err
+		return biz.ChannelTurnResult{Outcome: biz.TurnOutcomeFailed}, err
 	}
 	return h.channelTurnResultFromNative(sessionID, result)
 }
@@ -104,12 +104,12 @@ func (h *ChannelIngress) channelTurnResultFromNative(sessionID string, result bi
 		if pendingID == "" && h != nil && h.chat != nil {
 			pendingID = h.chat.LastPendingMessageID(sessionID)
 		}
-		return biz.ChannelTurnResult{Outcome: biz.ChannelTurnOutcomeQueued, PendingID: pendingID}, nil
+		return biz.ChannelTurnResult{Outcome: biz.TurnOutcomeQueued, PendingID: pendingID}, nil
 	case biz.NativeTurnOutcomeCompleted:
 		reply := strings.TrimSpace(result.AssistantMsg.ContentMarkdown)
-		return biz.ChannelTurnResult{Outcome: biz.ChannelTurnOutcomeCompleted, Reply: reply}, nil
+		return biz.ChannelTurnResult{Outcome: biz.TurnOutcomeCompleted, Reply: reply}, nil
 	default:
-		return biz.ChannelTurnResult{Outcome: biz.ChannelTurnOutcomeFailed},
+		return biz.ChannelTurnResult{Outcome: biz.TurnOutcomeFailed},
 			fmt.Errorf("unexpected native turn outcome: %s", result.Outcome)
 	}
 }

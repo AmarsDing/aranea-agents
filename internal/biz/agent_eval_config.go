@@ -41,3 +41,12 @@ func ParseAgentEvalAutoConfig(configJSON string) AgentEvalAutoConfig {
 	}
 	return cfg
 }
+
+// EvalAutoConfig returns the evaluation auto-config from the runtime settings.
+// This is a placeholder — evaluation config is still stored in config_json
+// (not yet migrated to agent_runtime_settings columns).
+// TODO(D-03-phase2): migrate evaluation fields to agent_runtime_settings and
+// implement this method. After migration, ParseAgentEvalAutoConfig can be removed.
+func (s *AgentRuntimeSettings) EvalAutoConfig() AgentEvalAutoConfig {
+	return AgentEvalAutoConfig{}
+}

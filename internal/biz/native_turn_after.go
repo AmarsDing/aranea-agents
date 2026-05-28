@@ -6,6 +6,7 @@ import "context"
 type NativeTurnEvent struct {
 	AgentID         string
 	AgentConfigJSON string
+	AgentSettings   *AgentRuntimeSettings
 	SessionID       string
 	UserInput       string
 	AssistantOutput string

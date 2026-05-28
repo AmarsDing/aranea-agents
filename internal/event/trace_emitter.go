@@ -9,8 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"aranea-agents/pkg/safego"
-
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
 )
 
@@ -93,10 +91,7 @@ func (e *TraceEmitter) LogError(stepID, message string, extra ...Pair) {
 			Type:    "flow_" + normalizeStepID(stepID),
 			Message: message,
 		}
-		bus := e.bus
-		safego.Go(context.Background(), "flow-error-publish", func() {
-			bus.Publish(context.Background(), errEnv)
-		})
+		e.bus.Publish(context.Background(), errEnv)
 	}
 }
 
@@ -338,14 +333,9 @@ func (e *TraceEmitter) emit(stepID string, phase FlowPhase, explicitSev FlowSeve
 	// MON-OPT-01 Phase 0/1: route flow_log via Infra.Publish if available (M-01: no per-call Getenv).
 	// Falls back to direct bus publish if Infra is not yet wired (pre-MON-OPT-01 behavior).
 	if infra := boundInfraRef(); infra != nil {
-		// Infra.Publish reads cached routing mode — no os.Getenv per invocation.
 		infra.Publish(context.Background(), env)
 	} else {
-		// No Infra wired yet — fall back to SessionBus.
-		bus := e.bus
-		safego.Go(context.Background(), "flow-log-publish", func() {
-			bus.Publish(context.Background(), env)
-		})
+		e.bus.Publish(context.Background(), env)
 	}
 }
 

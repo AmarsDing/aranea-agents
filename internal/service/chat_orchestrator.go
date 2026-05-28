@@ -13,6 +13,7 @@ import (
 	"aranea-agents/internal/event"
 	graphadapter "aranea-agents/internal/graph/adapter"
 	"aranea-agents/internal/knowledge"
+	kanbanpkg "aranea-agents/internal/tools/kanban"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	araneasession "aranea-agents/internal/session"
 	rt "aranea-agents/internal/runtime"
@@ -45,6 +46,7 @@ type RuntimeTooling struct {
 	SkillDBRepo        trpcskill.Repository
 	KnowledgeRetriever *knowledge.Retriever
 	CodeExecFactory    *localexec.Factory
+	KanbanBridge       kanbanpkg.Bridge
 }
 
 // TeamOrchestrationDeps groups team execution and graph compilation dependencies.

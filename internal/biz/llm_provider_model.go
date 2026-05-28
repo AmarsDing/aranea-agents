@@ -403,11 +403,35 @@ func mergeInspectConfigJSON(cfg string, in *InspectMerge) {
 	}
 }
 
-func (u *LlmProviderModelUsecase) syncProviderModelPricing(ctx context.Context, row ProviderModel) error {
+func parsePricingConfig(configJSON string) (providerPricingConfig, bool) {
 	var cfg providerPricingConfig
-	if json.Unmarshal([]byte(row.ConfigJSON), &cfg) != nil {
-		return nil
+	if json.Unmarshal([]byte(configJSON), &cfg) != nil {
+		return cfg, false
 	}
+	return cfg, true
+}
+
+// costBlockHasValue checks all 6 pricing dimensions in the cost block.
+// Must stay consistent with the fields mapped in costBlockToCostUSD;
+// the original code only checked Input/Output which caused costUSD to
+// ignore CacheRead/CacheWrite/Reasoning/Embedding when Input and Output were zero.
+func costBlockHasValue(c providerCostBlock) bool {
+	return c.InputUSDPer1M > 0 || c.OutputUSDPer1M > 0 || c.CacheReadUSDPer1M > 0 ||
+		c.CacheWriteUSDPer1M > 0 || c.ReasoningUSDPer1M > 0 || c.EmbeddingUSDPer1M > 0
+}
+
+func costBlockToCostUSD(c providerCostBlock) modelcatalog.CostUSDPer1M {
+	return modelcatalog.CostUSDPer1M{
+		Input:      c.InputUSDPer1M,
+		Output:     c.OutputUSDPer1M,
+		CacheRead:  c.CacheReadUSDPer1M,
+		CacheWrite: c.CacheWriteUSDPer1M,
+		Reasoning:  c.ReasoningUSDPer1M,
+		Embedding:  c.EmbeddingUSDPer1M,
+	}
+}
+
+func buildMicroPricing(cfg providerPricingConfig) modelcatalog.MicroPricing {
 	micro := modelcatalog.MicroPricing{
 		Input:     cfg.InputPriceMicroUSDPer1K,
 		Output:    cfg.OutputPriceMicroUSDPer1K,
@@ -415,39 +439,33 @@ func (u *LlmProviderModelUsecase) syncProviderModelPricing(ctx context.Context, 
 		Reasoning: cfg.ReasoningPriceMicroUSDPer1K,
 		Embedding: cfg.EmbeddingPriceMicroUSDPer1K,
 	}
-	if cfg.Cost.InputUSDPer1M > 0 || cfg.Cost.OutputUSDPer1M > 0 || cfg.Cost.CacheReadUSDPer1M > 0 ||
-		cfg.Cost.CacheWriteUSDPer1M > 0 || cfg.Cost.ReasoningUSDPer1M > 0 || cfg.Cost.EmbeddingUSDPer1M > 0 {
-		micro = modelcatalog.MicroPricingFromCostBlock(modelcatalog.CostUSDPer1M{
-			Input:      cfg.Cost.InputUSDPer1M,
-			Output:     cfg.Cost.OutputUSDPer1M,
-			CacheRead:  cfg.Cost.CacheReadUSDPer1M,
-			CacheWrite: cfg.Cost.CacheWriteUSDPer1M,
-			Reasoning:  cfg.Cost.ReasoningUSDPer1M,
-			Embedding:  cfg.Cost.EmbeddingUSDPer1M,
-		})
+	if costBlockHasValue(cfg.Cost) {
+		micro = modelcatalog.MicroPricingFromCostBlock(costBlockToCostUSD(cfg.Cost))
 	}
-	if micro.Input == 0 && micro.Output == 0 && micro.CacheRead == 0 && micro.CacheWrite == 0 &&
-		micro.Reasoning == 0 && micro.Embedding == 0 {
-		return nil
+	return micro
+}
+
+func isValidPricing(micro modelcatalog.MicroPricing) bool {
+	return micro.Input != 0 || micro.Output != 0 || micro.CacheRead != 0 ||
+		micro.CacheWrite != 0 || micro.Reasoning != 0 || micro.Embedding != 0
+}
+
+func buildCostUSD(cfg providerPricingConfig, micro modelcatalog.MicroPricing) modelcatalog.CostUSDPer1M {
+	if costBlockHasValue(cfg.Cost) {
+		return costBlockToCostUSD(cfg.Cost)
 	}
-	costUSD := modelcatalog.CostUSDPer1M{
-		Input:     modelcatalog.MicroPer1KToUSDPer1M(micro.Input),
-		Output:    modelcatalog.MicroPer1KToUSDPer1M(micro.Output),
-		CacheRead: modelcatalog.MicroPer1KToUSDPer1M(micro.CacheRead),
-		Reasoning: modelcatalog.MicroPer1KToUSDPer1M(micro.Reasoning),
-		Embedding: modelcatalog.MicroPer1KToUSDPer1M(micro.Embedding),
+	return modelcatalog.CostUSDPer1M{
+		Input:      modelcatalog.MicroPer1KToUSDPer1M(micro.Input),
+		Output:     modelcatalog.MicroPer1KToUSDPer1M(micro.Output),
+		CacheRead:  modelcatalog.MicroPer1KToUSDPer1M(micro.CacheRead),
+		CacheWrite: modelcatalog.MicroPer1KToUSDPer1M(micro.CacheWrite),
+		Reasoning:  modelcatalog.MicroPer1KToUSDPer1M(micro.Reasoning),
+		Embedding:  modelcatalog.MicroPer1KToUSDPer1M(micro.Embedding),
 	}
-	if cfg.Cost.InputUSDPer1M > 0 || cfg.Cost.OutputUSDPer1M > 0 {
-		costUSD = modelcatalog.CostUSDPer1M{
-			Input:      cfg.Cost.InputUSDPer1M,
-			Output:     cfg.Cost.OutputUSDPer1M,
-			CacheRead:  cfg.Cost.CacheReadUSDPer1M,
-			CacheWrite: cfg.Cost.CacheWriteUSDPer1M,
-			Reasoning:  cfg.Cost.ReasoningUSDPer1M,
-			Embedding:  cfg.Cost.EmbeddingUSDPer1M,
-		}
-	}
-	return u.repo.UpsertModelPricingRule(ctx, ModelPricingRule{
+}
+
+func buildModelPricingRule(row ProviderModel, micro modelcatalog.MicroPricing, costUSD modelcatalog.CostUSDPer1M) ModelPricingRule {
+	return ModelPricingRule{
 		ProviderCode:                  row.Provider,
 		ModelAPIID:                    row.Model,
 		Currency:                      "USD",
@@ -465,7 +483,21 @@ func (u *LlmProviderModelUsecase) syncProviderModelPricing(ctx context.Context, 
 		EmbeddingPriceUSDPer1M:        costUSD.Embedding,
 		Source:                        "model-inspect",
 		MetadataJSON:                  "{}",
-	})
+	}
+}
+
+func (u *LlmProviderModelUsecase) syncProviderModelPricing(ctx context.Context, row ProviderModel) error {
+	cfg, ok := parsePricingConfig(row.ConfigJSON)
+	if !ok {
+		return nil
+	}
+	micro := buildMicroPricing(cfg)
+	if !isValidPricing(micro) {
+		return nil
+	}
+	costUSD := buildCostUSD(cfg, micro)
+	rule := buildModelPricingRule(row, micro, costUSD)
+	return u.repo.UpsertModelPricingRule(ctx, rule)
 }
 
 // RunHealthChecks probes enabled provider models and marks unhealthy rows.

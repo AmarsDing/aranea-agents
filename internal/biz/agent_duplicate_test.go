@@ -66,6 +66,10 @@ func (r *duplicateAgentRepo) ReplaceAgentPromptFiles(ctx context.Context, agentI
 	return files, nil
 }
 
+func (r *duplicateAgentRepo) ExecInTx(ctx context.Context, fn func(context.Context) error) error {
+	return fn(ctx)
+}
+
 func TestDuplicate_copiesFilesWithNewIDs(t *testing.T) {
 	src := Agent{
 		ID:          "src-1",

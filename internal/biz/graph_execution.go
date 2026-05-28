@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -136,8 +137,7 @@ func (uc *GraphUsecase) ExecuteGraph(ctx context.Context, graphID, sessionID, ex
 	}
 
 	safego.Go(context.Background(), "graph.consumeEvents", func() {
-		uc.consumeRuntimeEvents(eventCh, exec, execID, graphID, sessionID)
-		uc.notifyExecComplete(exec)
+		uc.consumeRuntimeEvents(eventCh, exec, execID, graphID, sessionID, func() { uc.notifyExecComplete(exec) })
 	})
 
 	uc.mu.Lock()
@@ -182,8 +182,7 @@ func (uc *GraphUsecase) ExecuteGraphBuildConfig(ctx context.Context, graphID, se
 	}
 
 	safego.Go(context.Background(), "graph.consumeEvents", func() {
-		uc.consumeRuntimeEvents(eventCh, exec, execID, graphID, sessionID)
-		uc.notifyExecComplete(exec)
+		uc.consumeRuntimeEvents(eventCh, exec, execID, graphID, sessionID, func() { uc.notifyExecComplete(exec) })
 	})
 
 	uc.mu.Lock()
@@ -252,14 +251,16 @@ func (uc *GraphUsecase) ResumeExecution(ctx context.Context, executionID string,
 	exec.InterruptNode = ""
 
 	safego.Go(context.Background(), "graph.consumeEvents(resume)", func() {
-		uc.consumeRuntimeEvents(eventCh, exec, executionID, exec.GraphID, exec.SessionID)
+		uc.consumeRuntimeEvents(eventCh, exec, executionID, exec.GraphID, exec.SessionID, func() { uc.notifyExecComplete(exec) })
 	})
 
-	_ = uc.runRepo.UpdateRun(ctx, exec)
+	if err := uc.runRepo.UpdateRun(ctx, exec); err != nil {
+		return nil, fmt.Errorf("update run after resume: %w", err)
+	}
 	return exec, nil
 }
 
-func (uc *GraphUsecase) consumeRuntimeEvents(eventCh <-chan GraphRuntimeEvent, exec *GraphExecution, execID, graphID, sessionID string) {
+func (uc *GraphUsecase) consumeRuntimeEvents(eventCh <-chan GraphRuntimeEvent, exec *GraphExecution, execID, graphID, sessionID string, onComplete func()) {
 	for e := range eventCh {
 		uc.updateExecutionFromRuntimeEvent(exec, e)
 	}
@@ -276,13 +277,19 @@ func (uc *GraphUsecase) consumeRuntimeEvents(eventCh <-chan GraphRuntimeEvent, e
 	if err := uc.runRepo.UpdateRun(context.Background(), exec); err != nil {
 		event.SysLogWarn("system.tool.record_fail", "consumeRuntimeEvents: UpdateRun failed", event.P("exec_id", execID), event.P("error", err.Error()))
 	}
+
+	if onComplete != nil {
+		onComplete()
+	}
 }
 
 func (uc *GraphUsecase) updateExecutionFromRuntimeEvent(exec *GraphExecution, e GraphRuntimeEvent) {
 	switch e.Type {
 	case DomainEventGraphNodeStart:
 		uc.mu.Lock()
-		exec.CurrentNode = e.NodeID
+		if exec.Status != "failed" {
+			exec.CurrentNode = e.NodeID
+		}
 		uc.mu.Unlock()
 		if uc.taskCoord != nil {
 			ctx := context.Background()

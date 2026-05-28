@@ -55,7 +55,7 @@ func (uc *SessionUsecase) ListMessagesPaged(ctx context.Context, sessionID strin
 	return MessageListResult{Items: items, Total: total}, nil
 }
 
-// ListMessagesAfterTurn loads rows with turn_index > afterTurn (compression path).
+// ListMessagesAfterTurn loads rows with turn_number > afterTurn (compression path).
 func (uc *SessionUsecase) ListMessagesAfterTurn(ctx context.Context, sessionID string, afterTurn int) ([]ChatMessage, error) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
@@ -138,7 +138,7 @@ func (uc *SessionUsecase) UpdateMessageFeedback(ctx context.Context, sessionID, 
 	return uc.sessions.UpdateMessageFeedbackJSON(ctx, sessionID, messageID, rating, strings.TrimSpace(comment))
 }
 
-// ListMessagesAfterRevision returns messages with turn_index > afterRevision*2 (M55 session sync).
+// ListMessagesAfterRevision returns messages with turn_number > afterRevision (M55 session sync).
 func (uc *SessionUsecase) ListMessagesAfterRevision(ctx context.Context, sessionID string, afterRevision int64) ([]ChatMessage, error) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {

@@ -174,7 +174,9 @@ func (r *RunRegistry) Cancel(sessionID string) (bool, string) {
 	if run.cancel != nil {
 		run.cancel()
 		r.SetStatus(sessionID, run.runID, "cancelled", "")
-		r.activeRuns.delete(sessionID)
+		if current, ok := r.activeRuns.load(sessionID); ok && current.runID == run.runID {
+			r.activeRuns.delete(sessionID)
+		}
 		return true, run.runID
 	}
 	if run.placeholder || run.runner == nil {

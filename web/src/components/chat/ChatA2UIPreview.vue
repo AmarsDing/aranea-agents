@@ -76,27 +76,27 @@ function formatPayload(payload: Record<string, unknown>): string {
 
 <style scoped>
 .chat-a2ui-preview {
-  padding: 10px 12px;
+  padding: var(--space-3);
   border-radius: 14px;
   border: 1px solid var(--glass-border);
   background: var(--glass-elevated);
 }
 
 .chat-a2ui-line {
-  margin-bottom: 8px;
+  margin-bottom: var(--space-2);
 }
 
 .chat-a2ui-line--err {
   border-left: 3px solid var(--q-negative);
-  padding-left: 8px;
+  padding-left: var(--space-2);
 }
 
 .chat-a2ui-line__json {
-  margin: 4px 0 0;
-  padding: 8px;
+  margin: var(--space-1) 0 0;
+  padding: var(--space-2);
   border-radius: 8px;
   background: var(--glass-surface);
-  font-size: 12px;
+  font-size: var(--text-xs);
   overflow-x: auto;
   white-space: pre-wrap;
   overflow-wrap: anywhere;

@@ -358,7 +358,10 @@ func (o *ChatOrchestrator) makeAwaitReplyFunc(runCtx context.Context, sessionID,
 			o.setRunStatus(toolCtx, sessionID, runID, "running", "")
 		}()
 		select {
-		case r := <-ch:
+		case r, ok := <-ch:
+			if !ok {
+				return "", toolCtx.Err()
+			}
 			return r.Reply, nil
 		case <-toolCtx.Done():
 			return "", toolCtx.Err()
@@ -566,6 +569,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		KnowledgeRetriever:    o.rt.KnowledgeRetriever,
 		CodeExecFactory:       o.rt.CodeExecFactory,
 		CustomTools:           o.cliAdminTools(ctx, ag),
+		KanbanBridge:          o.rt.KanbanBridge,
 	}
 	root, err := chatagent.BuildTRPCAgentCached(ctx, ag, deps)
 	if err != nil {
@@ -1168,6 +1172,7 @@ func (o *ChatOrchestrator) notifyNativeTurnHooks(ctx context.Context, sessionID 
 	o.td.AfterTurn.AfterNativeTurn(ctx, biz.NativeTurnEvent{
 		AgentID:         ag.ID,
 		AgentConfigJSON: ag.ConfigJSON,
+		AgentSettings:   ag.Settings,
 		SessionID:       sessionID,
 		UserInput:       userInput,
 		AssistantOutput: assistantOutput,

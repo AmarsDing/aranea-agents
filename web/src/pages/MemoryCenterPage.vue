@@ -169,7 +169,7 @@ const {
 }
 
 .memory-tabs-card {
-  margin-bottom: 12px;
+  margin-bottom: var(--space-3);
   overflow: hidden;
 }
 
@@ -183,20 +183,20 @@ const {
 
 .memory-flow {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .memory-flow-node {
   align-items: center;
-  border: 1px solid rgb(15 23 42 / 8%);
+  border: 1px solid var(--glass-border);
   border-radius: 16px;
   display: flex;
-  gap: 12px;
-  padding: 14px;
+  gap: var(--space-3);
+  padding: var(--space-3);
 }
 
 .memory-active-item {
-  background: rgb(25 118 210 / 8%);
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
   color: var(--q-primary);
 }
 
@@ -207,14 +207,14 @@ const {
 
 .memory-pre {
   background: var(--color-surface-soft);
-  border: 1px solid rgb(15 23 42 / 8%);
+  border: 1px solid var(--glass-border);
   border-radius: 14px;
   color: var(--color-text-heading);
   line-height: 1.55;
-  margin: 12px 0 0;
+  margin: var(--space-3) 0 0;
   max-height: 320px;
   overflow: auto;
-  padding: 12px;
+  padding: var(--space-3);
   white-space: pre-wrap;
 }
 
@@ -230,18 +230,18 @@ body.body--dark .memory-tabs-card {
 }
 
 body.body--dark .memory-flow-node {
-  border-color: rgb(148 163 184 / 18%);
-  background: rgb(15 23 42 / 50%);
+  border-color: var(--glass-border-hover);
+  background: var(--glass-surface);
 }
 
 body.body--dark .memory-info-banner {
-  background: rgb(30 64 175 / 24%);
+  background: color-mix(in srgb, var(--color-accent) 24%, transparent);
   color: var(--color-accent-blue-light);
 }
 
 body.body--dark .memory-pre {
   background: var(--color-surface-solid);
-  border-color: rgb(148 163 184 / 20%);
+  border-color: var(--glass-border-hover);
   color: var(--color-text-dark);
 }
 
@@ -250,6 +250,6 @@ body.body--dark .memory-drawer {
 }
 
 body.body--dark .memory-page .text-grey-7 {
-  color: var(--color-text-secondary) !important;
+  color: var(--color-text-secondary);
 }
 </style>

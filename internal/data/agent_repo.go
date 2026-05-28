@@ -389,7 +389,7 @@ func (r *agentRepo) categoryPositionIDsForFilter(ctx context.Context, categoryID
 	if categoryID == "" {
 		return nil, nil
 	}
-	node, err := r.data.entClient.AgentCategory.Query().
+	node, err := r.txClient(ctx).AgentCategory.Query().
 		Where(
 			agentcategory.IDEQ(categoryID),
 			agentcategory.DeletedAtEQ(""),
@@ -405,7 +405,7 @@ func (r *agentRepo) categoryPositionIDsForFilter(ctx context.Context, categoryID
 	case "position":
 		return []string{node.ID}, nil
 	case "department":
-		return r.data.entClient.AgentCategory.Query().
+		return r.txClient(ctx).AgentCategory.Query().
 			Where(
 				agentcategory.ParentIDEQ(categoryID),
 				agentcategory.LevelEQ("position"),
@@ -413,7 +413,7 @@ func (r *agentRepo) categoryPositionIDsForFilter(ctx context.Context, categoryID
 			).
 			IDs(ctx)
 	case "industry":
-		deptIDs, err := r.data.entClient.AgentCategory.Query().
+		deptIDs, err := r.txClient(ctx).AgentCategory.Query().
 			Where(
 				agentcategory.ParentIDEQ(categoryID),
 				agentcategory.LevelEQ("department"),
@@ -426,7 +426,7 @@ func (r *agentRepo) categoryPositionIDsForFilter(ctx context.Context, categoryID
 		if len(deptIDs) == 0 {
 			return []string{}, nil
 		}
-		return r.data.entClient.AgentCategory.Query().
+		return r.txClient(ctx).AgentCategory.Query().
 			Where(
 				agentcategory.ParentIDIn(deptIDs...),
 				agentcategory.LevelEQ("position"),
@@ -484,7 +484,7 @@ func (r *agentRepo) SearchAgents(ctx context.Context, q biz.AgentListQuery) (biz
 		preds = append(preds, agent.RolesJSONContains(role))
 	}
 	where := agent.And(preds...)
-	c := r.data.entClient
+	c := r.txClient(ctx)
 	total, err := c.Agent.Query().Where(where).Count(ctx)
 	if err != nil {
 		return biz.AgentListResult{}, err
@@ -505,7 +505,7 @@ func (r *agentRepo) SearchAgents(ctx context.Context, q biz.AgentListQuery) (biz
 }
 
 func (r *agentRepo) ListAgentCreators(ctx context.Context) ([]biz.AgentCreator, error) {
-	rows, err := r.data.entClient.Agent.Query().
+	rows, err := r.txClient(ctx).Agent.Query().
 		Where(agent.DeletedAtEQ(""), agent.CreatedByNEQ("")).
 		Select(agent.FieldCreatedBy).
 		GroupBy(agent.FieldCreatedBy).
@@ -538,7 +538,7 @@ func creatorLabel(userID string) string {
 }
 
 func (r *agentRepo) GetAgentByID(ctx context.Context, id string) (biz.Agent, error) {
-	row, err := r.data.entClient.Agent.Query().Where(agent.IDEQ(id), agent.DeletedAtEQ("")).Only(ctx)
+	row, err := r.txClient(ctx).Agent.Query().Where(agent.IDEQ(id), agent.DeletedAtEQ("")).Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return biz.Agent{}, sql.ErrNoRows
@@ -553,7 +553,7 @@ func (r *agentRepo) GetAgentByAgentKey(ctx context.Context, agentKey string) (bi
 	if agentKey == "" {
 		return biz.Agent{}, sql.ErrNoRows
 	}
-	row, err := r.data.entClient.Agent.Query().Where(agent.AgentKeyEQ(agentKey), agent.DeletedAtEQ("")).Only(ctx)
+	row, err := r.txClient(ctx).Agent.Query().Where(agent.AgentKeyEQ(agentKey), agent.DeletedAtEQ("")).Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return biz.Agent{}, sql.ErrNoRows
@@ -575,7 +575,7 @@ func (r *agentRepo) CreateAgent(ctx context.Context, a biz.Agent) (biz.Agent, er
 	if a.Status == "" {
 		a.Status = "active"
 	}
-	_, err := r.data.entClient.Agent.Create().
+	_, err := r.txClient(ctx).Agent.Create().
 		SetID(a.ID).
 		SetAgentKey(a.AgentKey).
 		SetDisplayName(a.DisplayName).
@@ -627,7 +627,7 @@ func (r *agentRepo) UpdateAgent(ctx context.Context, a biz.Agent) (biz.Agent, er
 	}
 	a.CreatedAt = current.CreatedAt
 	a.UpdatedAt = nowRFC3339()
-	_, err = r.data.entClient.Agent.UpdateOneID(a.ID).
+	_, err = r.txClient(ctx).Agent.UpdateOneID(a.ID).
 		SetDisplayName(a.DisplayName).
 		SetProvider(a.Provider).
 		SetModel(a.Model).
@@ -654,7 +654,7 @@ func (r *agentRepo) DeleteAgent(ctx context.Context, id string) error {
 		return fmt.Errorf("id is required")
 	}
 	now := nowRFC3339()
-	_, err := r.data.entClient.Agent.UpdateOneID(id).
+	_, err := r.txClient(ctx).Agent.UpdateOneID(id).
 		SetDeletedAt(now).
 		SetStatus("deleted").
 		SetUpdatedAt(now).
@@ -663,7 +663,7 @@ func (r *agentRepo) DeleteAgent(ctx context.Context, id string) error {
 }
 
 func (r *agentRepo) GetAgentRuntimeSettings(ctx context.Context, agentID string) (biz.AgentRuntimeSettings, error) {
-	row, err := r.data.entClient.AgentRuntimeSetting.Get(ctx, agentID)
+	row, err := r.txClient(ctx).AgentRuntimeSetting.Get(ctx, agentID)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return biz.AgentRuntimeSettings{}, sql.ErrNoRows
@@ -682,7 +682,7 @@ func (r *agentRepo) UpsertAgentRuntimeSettings(ctx context.Context, v biz.AgentR
 		v.CreatedAt = now
 	}
 	v.UpdatedAt = now
-	b := r.data.entClient.AgentRuntimeSetting.Create().SetID(v.AgentID)
+	b := r.txClient(ctx).AgentRuntimeSetting.Create().SetID(v.AgentID)
 	applyBizRuntimeToCreate(b, v)
 	if err := b.OnConflict(
 		entsql.ConflictColumns(agentruntimesetting.FieldID),
@@ -690,7 +690,7 @@ func (r *agentRepo) UpsertAgentRuntimeSettings(ctx context.Context, v biz.AgentR
 	).Exec(ctx); err != nil {
 		return biz.AgentRuntimeSettings{}, err
 	}
-	row, err := r.data.entClient.AgentRuntimeSetting.Get(ctx, v.AgentID)
+	row, err := r.txClient(ctx).AgentRuntimeSetting.Get(ctx, v.AgentID)
 	if err != nil {
 		return biz.AgentRuntimeSettings{}, err
 	}
@@ -698,7 +698,7 @@ func (r *agentRepo) UpsertAgentRuntimeSettings(ctx context.Context, v biz.AgentR
 }
 
 func (r *agentRepo) ListAgentPromptFiles(ctx context.Context, agentID string) ([]biz.AgentPromptFile, error) {
-	rows, err := r.data.entClient.AgentPromptFile.Query().
+	rows, err := r.txClient(ctx).AgentPromptFile.Query().
 		Where(agentpromptfile.AgentIDEQ(agentID)).
 		Order(agentpromptfile.BySortOrder(), agentpromptfile.ByFileName()).
 		All(ctx)
@@ -716,40 +716,38 @@ func (r *agentRepo) ReplaceAgentPromptFiles(ctx context.Context, agentID string,
 	if agentID == "" {
 		return nil, fmt.Errorf("agent id is required")
 	}
-	tx, err := r.data.entClient.Tx(ctx)
+	err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+		if _, err := r.txClient(txCtx).AgentPromptFile.Delete().Where(agentpromptfile.AgentIDEQ(agentID)).Exec(txCtx); err != nil {
+			return err
+		}
+		now := nowRFC3339()
+		for i, file := range files {
+			if strings.TrimSpace(file.Name) == "" {
+				continue
+			}
+			id := file.ID
+			if id == "" {
+				id = fmt.Sprintf("%s_%s", agentID, sanitizePromptFileID(file.Name))
+			}
+			sortOrder := file.SortOrder
+			if sortOrder == 0 {
+				sortOrder = (i + 1) * 10
+			}
+			if _, err := r.txClient(txCtx).AgentPromptFile.Create().
+				SetID(id).
+				SetAgentID(agentID).
+				SetFileName(strings.TrimSpace(file.Name)).
+				SetBody(file.Body).
+				SetSortOrder(sortOrder).
+				SetCreatedAt(now).
+				SetUpdatedAt(now).
+				Save(txCtx); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = tx.Rollback() }()
-	if _, err = tx.AgentPromptFile.Delete().Where(agentpromptfile.AgentIDEQ(agentID)).Exec(ctx); err != nil {
-		return nil, err
-	}
-	now := nowRFC3339()
-	for i, file := range files {
-		if strings.TrimSpace(file.Name) == "" {
-			continue
-		}
-		id := file.ID
-		if id == "" {
-			id = fmt.Sprintf("%s_%s", agentID, sanitizePromptFileID(file.Name))
-		}
-		sortOrder := file.SortOrder
-		if sortOrder == 0 {
-			sortOrder = (i + 1) * 10
-		}
-		if _, err = tx.AgentPromptFile.Create().
-			SetID(id).
-			SetAgentID(agentID).
-			SetFileName(strings.TrimSpace(file.Name)).
-			SetBody(file.Body).
-			SetSortOrder(sortOrder).
-			SetCreatedAt(now).
-			SetUpdatedAt(now).
-			Save(ctx); err != nil {
-			return nil, err
-		}
-	}
-	if err = tx.Commit(); err != nil {
 		return nil, err
 	}
 	return r.ListAgentPromptFiles(ctx, agentID)
@@ -764,7 +762,7 @@ func (r *agentRepo) CreateAgentPromptFile(ctx context.Context, f biz.AgentPrompt
 		id = fmt.Sprintf("%s_%s", f.AgentID, sanitizePromptFileID(f.Name))
 	}
 	now := nowRFC3339()
-	created, err := r.data.entClient.AgentPromptFile.Create().
+	created, err := r.txClient(ctx).AgentPromptFile.Create().
 		SetID(id).
 		SetAgentID(f.AgentID).
 		SetFileName(strings.TrimSpace(f.Name)).
@@ -783,7 +781,7 @@ func (r *agentRepo) UpdateAgentPromptFile(ctx context.Context, f biz.AgentPrompt
 	if f.ID == "" || f.AgentID == "" {
 		return biz.AgentPromptFile{}, fmt.Errorf("id and agent_id are required")
 	}
-	update := r.data.entClient.AgentPromptFile.UpdateOneID(f.ID).
+	update := r.txClient(ctx).AgentPromptFile.UpdateOneID(f.ID).
 		SetUpdatedAt(nowRFC3339())
 	if strings.TrimSpace(f.Name) != "" {
 		update = update.SetFileName(strings.TrimSpace(f.Name))
@@ -808,23 +806,22 @@ func (r *agentRepo) DeleteAgentPromptFile(ctx context.Context, agentID, id strin
 	if agentID == "" || id == "" {
 		return fmt.Errorf("agent_id and id are required")
 	}
-	_, err := r.data.entClient.AgentPromptFile.Delete().
+	_, err := r.txClient(ctx).AgentPromptFile.Delete().
 		Where(agentpromptfile.IDEQ(id), agentpromptfile.AgentIDEQ(agentID)).
 		Exec(ctx)
 	return err
 }
 
+func (r *agentRepo) txClient(ctx context.Context) *ent.Client {
+	if c := txClientFromCtx(ctx); c != nil {
+		return c
+	}
+	if r.data == nil {
+		return nil
+	}
+	return r.data.entClient
+}
+
 func (r *agentRepo) ExecInTx(ctx context.Context, fn func(ctx context.Context) error) error {
-	if r.data == nil || r.data.rawDB == nil {
-		return fn(ctx)
-	}
-	tx, err := r.data.rawDB.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	if err := fn(ctx); err != nil {
-		_ = tx.Rollback()
-		return err
-	}
-	return tx.Commit()
+	return r.data.ExecInTx(ctx, fn)
 }

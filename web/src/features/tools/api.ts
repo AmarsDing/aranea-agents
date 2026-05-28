@@ -27,6 +27,23 @@ import type {
 const toolApi = createToolService();
 const agentApi = createAgentService();
 
+/** Coerce legacy string booleans ("true"/"false") from forms before proto bool fields. */
+export function toolBool(v: unknown): boolean {
+  if (typeof v === "boolean") return v;
+  if (typeof v === "string") return v.trim().toLowerCase() === "true";
+  return Boolean(v);
+}
+
+function toolUpsertBools(input: ToolUpsertInput) {
+  return {
+    enabled: toolBool(input.enabled),
+    readonly: toolBool(input.readonly),
+    requiresConfirmation: toolBool(input.requires_confirmation),
+    supportsStreaming: toolBool(input.supports_streaming),
+    supportsConcurrency: toolBool(input.supports_concurrency)
+  };
+}
+
 function enabledFilter(enabled: ToolListQuery["enabled"]): string | undefined {
   if (enabled === true) {
     return "true";
@@ -145,6 +162,7 @@ export async function getTool(id: string): Promise<Tool> {
 }
 
 export async function createTool(input: ToolUpsertInput): Promise<Tool> {
+  const bools = toolUpsertBools(input);
   const data = await toolApi.CreateTool({
     key: input.key,
     displayName: input.display_name,
@@ -152,11 +170,7 @@ export async function createTool(input: ToolUpsertInput): Promise<Tool> {
     category: input.category,
     source: input.source,
     riskLevel: input.risk_level,
-    enabled: input.enabled,
-    readonly: input.readonly,
-    requiresConfirmation: input.requires_confirmation,
-    supportsStreaming: input.supports_streaming,
-    supportsConcurrency: input.supports_concurrency,
+    ...bools,
     parametersSchemaJson: input.parameters_schema_json,
     resultSchemaJson: input.result_schema_json,
     configSchemaJson: input.config_schema_json,
@@ -168,6 +182,7 @@ export async function createTool(input: ToolUpsertInput): Promise<Tool> {
 }
 
 export async function updateTool(id: string, input: ToolUpsertInput): Promise<Tool> {
+  const bools = toolUpsertBools(input);
   const data = await toolApi.UpdateTool({
     id,
     key: input.key,
@@ -176,11 +191,7 @@ export async function updateTool(id: string, input: ToolUpsertInput): Promise<To
     category: input.category,
     source: input.source,
     riskLevel: input.risk_level,
-    enabled: input.enabled,
-    readonly: input.readonly,
-    requiresConfirmation: input.requires_confirmation,
-    supportsStreaming: input.supports_streaming,
-    supportsConcurrency: input.supports_concurrency,
+    ...bools,
     parametersSchemaJson: input.parameters_schema_json,
     resultSchemaJson: input.result_schema_json,
     configSchemaJson: input.config_schema_json,

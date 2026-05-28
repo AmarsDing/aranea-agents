@@ -158,7 +158,7 @@ function factHoverText(row: MemoryFact) {
 
 <style scoped>
 .memory-knowledge-toolbar {
-  padding: 12px 16px 0;
+  padding: var(--space-3) var(--space-4) 0;
   border-bottom: none;
 }
 </style>

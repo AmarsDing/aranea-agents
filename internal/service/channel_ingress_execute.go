@@ -161,14 +161,14 @@ func (h *ChannelIngress) processInboundUnaryWithOutcome(ctx context.Context, chR
 		return "", "", false, err
 	}
 	switch result.Outcome {
-	case biz.ChannelTurnOutcomeQueued:
+	case biz.TurnOutcomeQueued:
 		if err := h.sendInboundQueuedAck(ctx, chRow, ev, platform, ltCfg, result.PendingID); err != nil {
 			_ = h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "queued_ack", "error": err.Error()}, err.Error())
 			return "", "", false, err
 		}
 		_ = h.recordDelivery(ctx, chRow.ID, "queued", map[string]any{"peer_id": ev.PeerID, "pending_id": result.PendingID}, "")
 		return "", "", true, nil
-	case biz.ChannelTurnOutcomeCompleted:
+	case biz.TurnOutcomeCompleted:
 		reply := strings.TrimSpace(result.Reply)
 		if previewCoord != nil {
 			if rendered := strings.TrimSpace(previewCoord.RenderedText()); rendered != "" {

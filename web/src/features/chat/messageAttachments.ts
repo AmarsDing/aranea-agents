@@ -1,10 +1,8 @@
 /** Parsed artifact attachment refs from user message options_json (ART-01). */
-export type MessageAttachmentRef = {
-  id: string;
-  name: string;
-  mime_type: string;
-  size?: number;
-};
+
+import type { MessageAttachmentRef } from "../../domain/types";
+
+export type { MessageAttachmentRef };
 
 export function parseMessageAttachments(optionsJson: string | undefined): MessageAttachmentRef[] {
   const raw = optionsJson?.trim();
@@ -29,6 +27,11 @@ export function parseMessageAttachments(optionsJson: string | undefined): Messag
   } catch {
     return [];
   }
+}
+
+export function messageAttachmentsFromMessage(message: { attachments?: MessageAttachmentRef[]; options_json?: string }): MessageAttachmentRef[] {
+  if (message.attachments && message.attachments.length > 0) return message.attachments;
+  return parseMessageAttachments(message.options_json);
 }
 
 export function attachmentMimeIcon(mime: string): string {

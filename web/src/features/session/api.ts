@@ -24,6 +24,7 @@ import type {
   SessionTurn
 } from "./types";
 import type { Message } from "../../domain/types";
+import { parseMessageOptions } from "../chat/parseMessageOptions";
 
 export type {
   Session,
@@ -359,7 +360,9 @@ function kratosChatRowToMessage(row: ChatMessageRow): Message {
     id: row.id ?? "",
     session_id: row.sessionId ?? "",
     parent_message_id: row.parentMessageId ?? "",
-    turn_index: row.turnIndex ?? 0,
+    turn_id: row.turnId ?? "",
+    turn_number: row.turnNumber ?? 0,
+    seq_in_turn: row.seqInTurn ?? 0,
     role: row.role ?? "",
     content_markdown: row.contentMarkdown ?? "",
     model_name: row.modelName ?? "",
@@ -370,7 +373,8 @@ function kratosChatRowToMessage(row: ChatMessageRow): Message {
     attachments_count: row.attachmentsCount ?? 0,
     options_json: row.optionsJson ?? "",
     error_message: row.errorMessage ?? "",
-    created_at: row.createdAt ?? ""
+    created_at: row.createdAt ?? "",
+    ...parseMessageOptions(row.optionsJson ?? ""),
   };
 }
 
@@ -469,7 +473,7 @@ function kratosSessionTurnToLegacy(t: KratosSessionTurn): SessionTurn {
     id: t.id ?? "",
     session_id: t.sessionId ?? "",
     run_id: t.runId ?? "",
-    turn_index: t.turnIndex ?? 0,
+    turn_number: t.turnNumber ?? 0,
     user_message_id: t.userMessageId ?? "",
     assistant_message_id: t.assistantMessageId ?? "",
     owner_type: t.ownerType ?? "",

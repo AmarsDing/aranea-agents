@@ -4,6 +4,7 @@ package shared
 
 import (
 	"encoding/json"
+	"fmt"
 	stderrors "errors"
 	"strings"
 
@@ -70,6 +71,7 @@ var (
 	ErrUsageScopeRequired  = stderrors.New("usage scope required")
 	ErrBudgetAlertNotFound = stderrors.New("budget alert not found after upsert")
 	ErrQuotaNotFound       = stderrors.New("usage quota not configured")
+	ErrMessageDuplicate    = stderrors.New("message duplicate constraint")
 )
 
 var (
@@ -92,16 +94,16 @@ var (
 // ── JSON helpers ──────────────────────────────────────────────────────────────
 
 // JSONStringList parses a JSON string array from agent settings or API payloads.
-func JSONStringList(raw string) []string {
+func JSONStringList(raw string) ([]string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" || raw == "[]" || raw == "{}" {
-		return nil
+		return nil, nil
 	}
 	var list []string
 	if err := json.Unmarshal([]byte(raw), &list); err != nil {
-		return nil
+		return nil, fmt.Errorf("json string list parse: %w", err)
 	}
-	return list
+	return list, nil
 }
 
 // ValidateDocumentAgainstSchema validates a JSON document against a JSON Schema.

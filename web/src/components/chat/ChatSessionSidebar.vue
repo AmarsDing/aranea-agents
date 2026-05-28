@@ -433,27 +433,27 @@ function saveIDs(key: string, ids: Set<string>) {
 }
 
 .chat-session-scroll :deep(.q-scrollarea__container) {
-  overflow-x: hidden !important;
+  overflow-x: hidden;
 }
 
 .chat-session-scroll :deep(.q-scrollarea__content) {
-  width: 100% !important;
-  max-width: 100% !important;
-  overflow-x: hidden !important;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 .chat-session-scroll :deep(.q-scrollarea__bar--h),
 .chat-session-scroll :deep(.q-scrollarea__thumb--h) {
-  display: none !important;
-  height: 0 !important;
-  opacity: 0% !important;
+  display: none;
+  height: 0;
+  opacity: 0%;
 }
 
 .chat-session-list {
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
-  padding: 6px 10px 10px !important;
+  padding: var(--space-2) var(--space-3) var(--space-3);
 }
 
 .chat-session-list :deep(.q-item) {
@@ -465,7 +465,7 @@ function saveIDs(key: string, ids: Set<string>) {
 }
 
 .chat-session-list :deep(.q-item__section--main) {
-  min-width: 0 !important;
+  min-width: 0;
   max-width: 100%;
 }
 
@@ -478,7 +478,7 @@ function saveIDs(key: string, ids: Set<string>) {
 .chat-session-header__label {
   letter-spacing: 0.08em;
   font-weight: 700;
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 
 .chat-session-count-badge {
@@ -493,7 +493,7 @@ function saveIDs(key: string, ids: Set<string>) {
   background: color-mix(in srgb, var(--color-accent) 16%, var(--glass-elevated));
   color: var(--color-text-primary);
   border: 1px solid color-mix(in srgb, var(--color-accent) 28%, var(--glass-border));
-  font-size: 15px;
+  font-size: var(--text-md);
   font-weight: 800;
   line-height: 1;
   letter-spacing: 0.02em;
@@ -506,19 +506,19 @@ function saveIDs(key: string, ids: Set<string>) {
   color: var(--color-accent);
   border-color: color-mix(in srgb, var(--color-accent) 48%, var(--glass-border));
   background: color-mix(in srgb, var(--color-accent) 22%, var(--glass-elevated));
-  box-shadow: var(--glass-inner-highlight), 0 0 14px rgb(0 229 255 / 12%);
+  box-shadow: var(--glass-inner-highlight), 0 0 14px color-mix(in srgb, var(--color-accent) 12%, transparent);
 }
 
 .chat-session-item {
   width: 100%;
   max-width: 100%;
   min-height: 64px;
-  padding: 10px 12px !important;
-  margin-bottom: 8px;
+  padding: var(--space-3) var(--space-3);
+  margin-bottom: var(--space-2);
   color: var(--color-text-secondary);
   overflow: hidden;
   box-sizing: border-box;
-  border-radius: 14px !important;
+  border-radius: 14px;
   backdrop-filter: blur(var(--glass-blur-default));
   -webkit-backdrop-filter: blur(var(--glass-blur-default));
 }
@@ -530,13 +530,13 @@ function saveIDs(key: string, ids: Set<string>) {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .chat-session-title-row {
   width: 100%;
   min-width: 0;
-  gap: 6px;
+  gap: var(--space-2);
 }
 
 .chat-session-title-wrap {
@@ -547,7 +547,7 @@ function saveIDs(key: string, ids: Set<string>) {
 
 .chat-session-meta-row {
   width: 100%;
-  gap: 8px;
+  gap: var(--space-2);
   justify-content: flex-start;
 }
 
@@ -564,7 +564,7 @@ function saveIDs(key: string, ids: Set<string>) {
   width: 100%;
   max-width: 100%;
   color: var(--color-text-secondary);
-  font-size: 15px;
+  font-size: var(--text-md);
   font-weight: 700;
   line-height: 1.4;
   text-align: left;
@@ -593,15 +593,15 @@ function saveIDs(key: string, ids: Set<string>) {
 
 :global(.chat-session-title-tooltip) {
   max-width: min(400px, 92vw);
-  padding: 12px 14px !important;
-  font-size: 18px !important;
+  padding: var(--space-3) var(--space-3);
+  font-size: var(--text-lg);
   font-weight: 600;
   line-height: 1.45;
   overflow-wrap: anywhere;
   white-space: normal;
-  background: var(--glass-elevated) !important;
-  color: var(--color-text-heading) !important;
-  border: 1px solid var(--glass-border) !important;
+  background: var(--glass-elevated);
+  color: var(--color-text-heading);
+  border: 1px solid var(--glass-border);
   border-radius: 14px;
   box-shadow: var(--glass-inner-highlight);
   backdrop-filter: blur(var(--glass-blur-elevated));
@@ -609,18 +609,18 @@ function saveIDs(key: string, ids: Set<string>) {
 }
 
 :global(.chat-session-title-tooltip .q-tooltip__content) {
-  font-size: 18px;
+  font-size: var(--text-lg);
   line-height: 1.45;
 }
 
 :global(.body--dark .chat-session-title-tooltip) {
-  background: color-mix(in srgb, var(--glass-elevated) 92%, var(--canvas-base)) !important;
-  color: var(--color-text-heading) !important;
-  border: 1px solid var(--glass-border-hover) !important;
+  background: color-mix(in srgb, var(--glass-elevated) 92%, var(--canvas-base));
+  color: var(--color-text-heading);
+  border: 1px solid var(--glass-border-hover);
 }
 
 .chat-session-progress__label {
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-weight: 800;
   line-height: 1;
   color: var(--color-text-tertiary);
@@ -635,9 +635,9 @@ function saveIDs(key: string, ids: Set<string>) {
 }
 
 .chat-timeline-label {
-  padding: 14px 10px 8px;
+  padding: var(--space-3) var(--space-3) var(--space-2);
   color: var(--color-text-secondary);
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 800;
   letter-spacing: 0.04em;
 }
@@ -654,10 +654,10 @@ function saveIDs(key: string, ids: Set<string>) {
   background: color-mix(in srgb, var(--glass-surface-hover) 88%, transparent);
   color: var(--color-text-tertiary);
   border: 1px solid var(--glass-border);
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 700;
   letter-spacing: 0.02em;
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
 }
@@ -712,11 +712,11 @@ function saveIDs(key: string, ids: Set<string>) {
 }
 
 .chat-session-item--active {
-  box-shadow: var(--glass-inner-highlight), inset 3px 0 0 var(--color-accent) !important;
+  box-shadow: var(--glass-inner-highlight), inset 3px 0 0 var(--color-accent);
 }
 
 :global(.body--dark) .chat-session-item--active {
-  box-shadow: var(--glass-inner-highlight), inset 3px 0 0 color-mix(in srgb, var(--color-accent) 72%, transparent) !important;
+  box-shadow: var(--glass-inner-highlight), inset 3px 0 0 color-mix(in srgb, var(--color-accent) 72%, transparent);
 }
 
 @media (width <= 900px) {

@@ -63,7 +63,7 @@ func L1MemoryCue(ctx context.Context, admin biz.SessionAdminStore, ag biz.Agent,
 			continue
 		}
 		if len(val) > fieldMax {
-			val = val[:fieldMax] + "…"
+			val = safeTruncate(val, fieldMax)
 		}
 		fmt.Fprintf(&b, "- %s: %s\n", path, val)
 		added++

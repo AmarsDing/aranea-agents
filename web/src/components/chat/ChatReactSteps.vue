@@ -61,11 +61,11 @@ function renderBody(body: string): string {
 .chat-react-steps {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .chat-react-step {
-  padding: 10px 12px;
+  padding: var(--space-3);
   border-radius: 14px;
   border: 1px solid var(--glass-border);
   background: var(--glass-elevated);
@@ -75,7 +75,7 @@ function renderBody(body: string): string {
   display: flex;
   align-items: center;
   color: var(--color-text-secondary);
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
 }
 
 .chat-react-step__body :deep(p:last-child) {

@@ -409,6 +409,7 @@ func provideRuntimeTooling(
 	skillDBRepo trpcskill.Repository,
 	knowledgeRetriever *knowledge.Retriever,
 	codeExecFactory *localexec.Factory,
+	kanbanBridge *service.KanbanToolBridge,
 ) service.RuntimeTooling {
 	return service.RuntimeTooling{
 		PluginRT:           pluginRT,
@@ -416,6 +417,7 @@ func provideRuntimeTooling(
 		SkillDBRepo:        skillDBRepo,
 		KnowledgeRetriever: knowledgeRetriever,
 		CodeExecFactory:    codeExecFactory,
+		KanbanBridge:       kanbanBridge,
 	}
 }
 

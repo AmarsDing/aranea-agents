@@ -123,6 +123,6 @@ watch(
 
 .session-timeline-dialog__stats {
   flex: 0 0 auto;
-  padding: 14px 20px;
+  padding: var(--space-3) var(--space-5);
 }
 </style>

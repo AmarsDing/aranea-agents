@@ -49,11 +49,13 @@ export function patchStreamingMessage(
       options_json: mergeMessageExtras(m.options_json, {
         reasoning_markdown: reasoning.trim() ? reasoning : undefined,
       }),
+      reasoning_markdown: reasoning.trim() || undefined,
     };
   });
 }
 
 export function reasoningMarkdown(message: Message): string {
+  if (message.reasoning_markdown?.trim()) return message.reasoning_markdown.trim();
   return reasoningFromExtras(parseMessageExtras(message.options_json));
 }
 

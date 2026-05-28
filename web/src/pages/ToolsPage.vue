@@ -4,7 +4,7 @@
       <template #actions>
         <q-btn outline rounded no-caps class="app-outline-btn" icon="policy" label="审计日志" :to="{ name: 'tool-audits' }" />
         <q-btn outline rounded no-caps class="app-outline-btn" icon="history" label="调用记录" :to="{ name: 'tool-runs' }" />
-        <q-btn rounded no-caps unelevated class="app-accent-btn" icon="add" label="新建 Tool" @click="openCreateTool()" />
+        <q-btn rounded no-caps unelevated class="app-accent-btn" icon="add" label="新建 Tool" @click="editorStore.openCreate()" />
       </template>
     </tool-hero-section>
 
@@ -38,62 +38,40 @@
       :rows="rows"
       :loading="loading"
       :busy-id="busyId"
+      :selected="selected"
+      @update:selected="selected = $event"
       @toggleEnabled="toggleEnabled"
+      @updateRisk="updateRisk"
       @viewDetail="openDetail"
-      @edit="openEditTool"
+      @edit="editorStore.openEdit($event)"
       @remove="removeTool"
     />
 
+    <div v-if="selected.length" class="tools-batch-bar q-pa-sm">
+      <span class="text-caption q-mr-md">已选 {{ selected.length }} 项</span>
+      <q-btn flat dense no-caps icon="toggle_on" label="批量启用" size="sm" class="app-registry-accent-btn" @click="batchToggle(true)" />
+      <q-btn flat dense no-caps icon="toggle_off" label="批量停用" size="sm" @click="batchToggle(false)" />
+      <q-btn flat dense no-caps icon="delete" label="批量删除" size="sm" color="negative" @click="batchRemove" />
+    </div>
+
     <AppRegistryPagination v-model:page="page" v-model:page-size="pageSize" :page-max="pageMax" :total="total" :loading="loading" label="个 Tool" />
 
-    <tool-detail-dialog v-model:open="detailOpen" :tool="detailTarget">
-      <tool-detail-content
-        :tool="detailTarget"
-        :overrides="overrides"
-        :overrides-loading="overridesLoading"
-        :recent-runs="recentRuns"
-        :runs-loading="runsLoading"
-        :test-args-json="testArgsJson"
-        :test-timeout-sec="testTimeoutSec"
-        :test-running="testRunning"
-        :test-result="testResult"
-        :override-editor-open="overrideEditorOpen"
-        :editing-override="editingOverride"
-        :override-saving="overrideSaving"
-        :override-form="overrideForm"
-        @update:test-args-json="testArgsJson = $event"
-        @update:test-timeout-sec="testTimeoutSec = $event"
-        @run-test="runToolTest()"
-        @edit-override="openOverrideEditor($event)"
-        @delete-override="confirmRemoveOverride($event)"
-        @update:override-editor-open="overrideEditorOpen = $event"
-        @update:override-form="overrideForm = $event"
-        @save-override="saveOverride()"
-      />
-    </tool-detail-dialog>
+    <tool-detail-drawer />
 
-    <tool-editor-dialog
-      v-model:open="editorOpen"
-      :editing-id="editorEditingId"
-      :saving="editorSaving"
-      :form="editorForm"
-      :errors="editorJsonErrors"
-      :risk-options="editorRiskOptions"
-      @save="saveEditor()"
-    />
+    <tool-editor-dialog />
   </q-page>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
 import { storeToRefs } from "pinia";
+import { useQuasar } from "quasar";
 import AppRegistryPagination from "../components/layout/AppRegistryPagination.vue";
 import ToolHeroSection from "../components/tools/ToolHeroSection.vue";
 import ToolsMetricStrip from "../components/tools/ToolsMetricStrip.vue";
 import ToolCatalogFilters from "../components/tools/ToolCatalogFilters.vue";
 import ToolsTable from "../components/tools/ToolsTable.vue";
-import ToolDetailContent from "../components/tools/ToolDetailContent.vue";
-import ToolDetailDialog from "../components/tools/ToolDetailDialog.vue";
+import ToolDetailDrawer from "../components/tools/ToolDetailDrawer.vue";
 import ToolEditorDialog from "../components/tools/ToolEditorDialog.vue";
 import {
   buildToolSummaryCards,
@@ -101,13 +79,18 @@ import {
   enabledTriStateOptions,
   riskLevelOptions
 } from "../components/tools/toolUi";
-import { useToolDetailPanel } from "../features/tools/useToolDetailPanel";
-import { useToolEditor, useToolToggle } from "../features/tools/useToolEditor";
+import { useToolDetailStore } from "../stores/tools/toolDetail";
+import { useToolEditorStore } from "../stores/tools/toolEditor";
+import { useToolToggle } from "../features/tools/useToolEditor";
 import type { Tool } from "../features/tools/types";
 import { useToolsStore } from "../stores/tools";
 
+const $q = useQuasar();
 const toolsStore = useToolsStore();
+const detailStore = useToolDetailStore();
+const editorStore = useToolEditorStore();
 const { tools: rows, total, summary, loading } = storeToRefs(toolsStore);
+
 const search = ref("");
 const category = ref("");
 const riskLevel = ref("");
@@ -115,8 +98,7 @@ const enabled = ref<boolean | null>(null);
 const page = ref(1);
 const pageSize = ref(20);
 const error = ref("");
-const detailOpen = ref(false);
-const detailTarget = ref<Tool | null>(null);
+const selected = ref<Tool[]>([]);
 
 const categoryOptions = categoryFilterOptions;
 const riskOptions = riskLevelOptions;
@@ -141,37 +123,15 @@ async function loadRows() {
   }
 }
 
-const {
-  open: editorOpen,
-  editingId: editorEditingId,
-  saving: editorSaving,
-  jsonErrors: editorJsonErrors,
-  form: editorForm,
-  riskOptions: editorRiskOptions,
-  openCreate: openCreateTool,
-  openEdit: openEditTool,
-  save: saveEditor
-} = useToolEditor(loadRows);
 const { busyId, toggleEnabled, removeTool } = useToolToggle(loadRows);
 
-const {
-  overrides,
-  overridesLoading,
-  recentRuns,
-  runsLoading,
-  testArgsJson,
-  testTimeoutSec,
-  testRunning,
-  testResult,
-  overrideEditorOpen,
-  editingOverride,
-  overrideSaving,
-  overrideForm,
-  runToolTest,
-  openOverrideEditor,
-  saveOverride,
-  confirmRemoveOverride
-} = useToolDetailPanel(detailTarget);
+editorStore.setCallbacks({
+  onSaved: loadRows,
+  onCreated: async (tool) => {
+    const fetched = await toolsStore.fetchTool(tool.id || tool.key);
+    detailStore.openDetail(fetched);
+  }
+});
 
 function resetFilters() {
   search.value = "";
@@ -183,8 +143,68 @@ function resetFilters() {
 }
 
 async function openDetail(tool: Tool) {
-  detailTarget.value = await toolsStore.fetchTool(tool.id || tool.key);
-  detailOpen.value = true;
+  const fetched = await toolsStore.fetchTool(tool.id || tool.key);
+  detailStore.openDetail(fetched);
+}
+
+async function updateRisk(tool: Tool, value: string) {
+  try {
+    await toolsStore.editTool(tool.id || tool.key, {
+      key: tool.key,
+      display_name: tool.display_name,
+      description: tool.description,
+      category: tool.category,
+      source: tool.source,
+      risk_level: value,
+      enabled: tool.enabled,
+      readonly: tool.readonly,
+      requires_confirmation: tool.requires_confirmation,
+      supports_streaming: tool.supports_streaming,
+      supports_concurrency: tool.supports_concurrency,
+      parameters_schema_json: tool.parameters_schema_json || "{}",
+      result_schema_json: tool.result_schema_json || "{}",
+      config_schema_json: tool.config_schema_json || "{}",
+      config_json: tool.config_json || "{}",
+      default_config_json: tool.default_config_json || "{}",
+      metadata_json: tool.metadata_json || "{}"
+    });
+    $q.notify({ type: "positive", message: "风险级别已更新" });
+    await loadRows();
+  } catch (err) {
+    $q.notify({ type: "negative", message: err instanceof Error ? err.message : "更新风险级别失败" });
+  }
+}
+
+async function batchToggle(value: boolean) {
+  for (const tool of selected.value) {
+    try {
+      await toolsStore.toggle(tool.id || tool.key, value);
+    } catch {
+      // continue
+    }
+  }
+  selected.value = [];
+  await loadRows();
+}
+
+function batchRemove() {
+  const count = selected.value.length;
+  $q.dialog({
+    title: "批量删除",
+    message: `确认删除选中的 ${count} 个 Tool？`,
+    cancel: true,
+    persistent: true
+  }).onOk(async () => {
+    for (const tool of selected.value) {
+      try {
+        await toolsStore.remove(tool.id || tool.key);
+      } catch {
+        // continue
+      }
+    }
+    selected.value = [];
+    await loadRows();
+  });
 }
 
 watch([search, category, riskLevel, enabled], () => {

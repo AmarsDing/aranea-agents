@@ -414,11 +414,15 @@ export function useChatWorkspace() {
 
   function onArtifactDeleted(id: string) {
     removeArtifactFromList(id);
-    // Also remove the attachment ref from message options_json so the chip disappears.
     const sid = selectedSessionForUi.value?.id;
     if (!sid) return;
     const msgs = messageStore.getMessages(sid);
     const updated = msgs.map((m) => {
+      if (m.attachments) {
+        const filtered = m.attachments.filter((a) => a.id !== id);
+        if (filtered.length === m.attachments.length) return m;
+        return { ...m, attachments: filtered.length > 0 ? filtered : undefined };
+      }
       if (!m.options_json) return m;
       try {
         const opts = JSON.parse(m.options_json);

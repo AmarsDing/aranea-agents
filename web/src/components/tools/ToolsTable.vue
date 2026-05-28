@@ -6,7 +6,10 @@
     :columns="TOOL_TABLE_COLUMNS"
     :loading="loading"
     :pagination="tablePagination"
+    :selected="selected"
+    selection="multiple"
     hide-pagination
+    @update:selected="$emit('update:selected', $event)"
   >
       <template #body-cell-name="props">
         <q-td :props="props">
@@ -24,8 +27,21 @@
 
       <template #body-cell-risk="props">
         <q-td :props="props">
-          <q-badge rounded :color="riskQuasarColor(props.row.risk_level)">{{ riskLabel(props.row.risk_level) }}</q-badge>
-          <q-badge v-if="props.row.requires_confirmation" rounded color="warning" class="q-ml-xs">需确认</q-badge>
+          <q-select
+            dense
+            outlined
+            emit-value
+            map-options
+            :model-value="props.row.risk_level"
+            :options="riskLevelOptions"
+            class="tool-risk-inline-select"
+            :loading="busyId === props.row.id"
+            @update:model-value="$emit('updateRisk', props.row, String($event ?? 'low'))"
+          />
+          <q-badge v-if="props.row.requires_confirmation" rounded color="warning" class="q-ml-xs">
+            需确认
+            <q-tooltip>{{ policyChip.requires_confirmation.tooltip }}</q-tooltip>
+          </q-badge>
         </q-td>
       </template>
 
@@ -87,10 +103,10 @@
 <script setup lang="ts">
 import AppRegistryTable from "../layout/AppRegistryTable.vue";
 import type { Tool } from "../../features/tools/types";
+import { TOOL_POLICY_CHIP_COPY } from "../../features/tools/toolEditorCopy";
 import {
   TOOL_TABLE_COLUMNS,
-  riskLabel,
-  riskQuasarColor,
+  riskLevelOptions,
   runtimeKindHint,
   runtimeStatusLabel
 } from "./toolUi";
@@ -99,14 +115,18 @@ defineProps<{
   rows: Tool[];
   loading: boolean;
   busyId: string;
+  selected?: Tool[];
 }>();
 
 defineEmits<{
   toggleEnabled: [tool: Tool, value: boolean];
+  updateRisk: [tool: Tool, value: string];
   viewDetail: [tool: Tool];
   edit: [tool: Tool];
   remove: [tool: Tool];
+  "update:selected": [value: Tool[]];
 }>();
 
 const tablePagination = { rowsPerPage: 0 };
+const policyChip = TOOL_POLICY_CHIP_COPY;
 </script>

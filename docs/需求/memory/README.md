@@ -1,6 +1,6 @@
 # Memory L0–L4 文档索引
 
-> **模块编号**：12–16 · **最后整合**：2026-05-24  
+> **模块编号**：12–16 · **最后整合**：2026-05-28
 > **进度真相**：以 [`memory-development.md`](./memory-development.md) 与各层 `*-development.md` 为准；需求/设计正文不写修复记录。
 
 ---
@@ -29,8 +29,12 @@
 | 类型 | 文档 | 说明 |
 |------|------|------|
 | 需求 | [`memory.md`](./memory.md) | 五层产品定位、Memory Center UX、权限、信息架构 |
+| 需求 | [`neural-memory.md`](./neural-memory.md) | **神经记忆系统**：时间感知、联动更新、仿生生命周期、Memory-Agent |
+| 设计 | [`neural-memory.design.md`](./neural-memory.design.md) | 神经记忆系统设计：数据模型、接口、核心流程、Proto 扩展 |
+| 开发计划 | [`neural-memory-development.md`](./neural-memory-development.md) | 神经记忆系统开发计划：48 项任务、3 Phase、验收标准 |
 | 设计 | [`memory.design.md`](./memory.design.md) | 目标架构、存储拓扑、双轨、Policy、MemoryWorker、Proto 索引 |
 | 开发计划 | [`memory-development.md`](./memory-development.md) | 模块定位、分层包表、全局现状、Phase、跨层任务 |
+| 优化方案 | [`memory-optimization-2026-05-26.md`](./memory-optimization-2026-05-26.md) | 6 项业务逻辑优化（L3 双轨、L4 衰减、队列隔离、PII、提取协议、Cascade Saga） |
 | 理论 | [`theory.md`](./theory.md) | 知识体系思辨（原 `38 memory.md`） |
 
 ### 分层
@@ -54,6 +58,8 @@
 | Agent 设置记忆 Tab | [`5 agent-setting.md`](../5%20agent-setting.md) · **记忆 Tab**：`l0_compress_*`、`memory_worker_*`（巩固 Worker 模型） |
 | Agent 进化 | [`7 agent-evolution.md`](../7%20agent-evolution.md) |
 | 模块 Review | [`review/memory-review.md`](../../review/memory-review.md) |
+| 行业差距分析 | [`review/memory-module-gap-analysis.md`](../../review/memory-module-gap-analysis.md) |
+| 优化提案（学术） | [`review/memory-optimization-proposal.md`](../../review/memory-optimization-proposal.md) |
 | SQL 迁移 | [`internal/data/sql/memory_chain.sql`](../../../internal/data/sql/memory_chain.sql) |
 | Legacy 迁移（旧 trpc_memory） | [`memory.design.md`](./memory.design.md) §3.1、§十一 · [`L3.design.md`](./L3.design.md) §3.8 · [changelog](../../changelog/2026-05-24-Memory-Legacy-Backfill-Startup.md) |
 

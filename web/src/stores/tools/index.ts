@@ -1,7 +1,7 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
 import {
-  listTools, getTool, createTool, updateTool, deleteTool, toggleToolEnabled,
+  listTools, getTool, createTool, updateTool, deleteTool, toggleToolEnabled, updateToolConfig,
   getAgentEffectiveTools, listToolAgentOverrides, listToolAgentOverridesByAgent,
   upsertToolAgentOverride, deleteToolAgentOverride,   listToolRunsForTool,
   listToolRuns,
@@ -65,6 +65,13 @@ export const useToolsStore = defineStore("tools", () => {
     if (activeTool.value?.id === id) activeTool.value = null;
   }
 
+  async function editToolConfig(id: string, configJson: string) {
+    const updated = await updateToolConfig(id, configJson);
+    tools.value = tools.value.map((t) => (t.id === id ? updated : t));
+    if (activeTool.value?.id === id) activeTool.value = updated;
+    return updated;
+  }
+
   async function toggle(id: string, enabled: boolean, confirmKey?: string) {
     const updated = await toggleToolEnabled(id, enabled, confirmKey);
     tools.value = tools.value.map((t) => (t.id === id ? updated : t));
@@ -113,7 +120,7 @@ export const useToolsStore = defineStore("tools", () => {
 
   return {
     tools, activeTool, total, summary, loading,
-    loadTools, fetchTool, addTool, editTool, remove, toggle,
+    loadTools, fetchTool, addTool, editTool, editToolConfig, remove, toggle,
     fetchCatalog, fetchEffectiveTools, fetchOverrides, fetchOverridesByAgent,
     saveOverride, removeOverride, fetchToolRuns, loadToolRuns, loadToolAudits, runToolTest
   };

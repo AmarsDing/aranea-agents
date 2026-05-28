@@ -35,14 +35,7 @@ type ToolsetConfig struct {
 	Wikipedia     bool
 	Email         bool
 	Todo          bool
-	// AwaitReply enables the await_user_reply tool.
-	// When AwaitHook is also set the service-integrated ServiceTool is used
-	// (blocks mid-turn and delivers the reply text back to the agent).
-	// When AwaitHook is nil the framework's built-in tool is used (marks
-	// routing state only; does not block).
 	AwaitReply bool
-	// AwaitHook is an optional blocking callback injected by the ChatService.
-	// When non-nil, the ServiceTool replaces the framework's await_user_reply.
 	AwaitHook       ReplyFunc
 	ClaudeCode      bool
 	ClaudeCodeDir   string
@@ -55,6 +48,8 @@ type ToolsetConfig struct {
 	KnowledgeSearch bool
 	CallAgent       bool
 	Kanban          bool
+	KanbanBridge    kanbanpkg.Bridge
+	MemoryEnabled   bool
 }
 
 type AgentToolConfig = tools.AgentToolConfig
@@ -168,7 +163,7 @@ func BuildToolsets(ctx context.Context, cfg ToolsetConfig) (*AssembledToolsets, 
 		customTools = append(customTools, serviceawaitreply.New())
 	}
 	if cfg.Kanban {
-		for _, t := range kanbanpkg.NewToolset() {
+		for _, t := range kanbanpkg.NewToolset(cfg.KanbanBridge) {
 			customTools = append(customTools, t)
 		}
 	}
@@ -185,6 +180,7 @@ func BuildToolsets(ctx context.Context, cfg ToolsetConfig) (*AssembledToolsets, 
 		AgentTools:    agentTools,
 		MCPServers:    mcpServers,
 		MCPBroker:     mcpBroker,
+		MemoryEnabled: cfg.MemoryEnabled,
 		CustomTools:   customTools,
 	})
 	if err != nil {

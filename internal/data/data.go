@@ -230,6 +230,13 @@ func NewData(c *conf.Data) (*Data, func(), error) {
 		return nil, nil, err
 	}
 
+	if err := runStartupStep("dataMigrations", func() error {
+		return runPendingDataMigrations(entClient)
+	}); err != nil {
+		cleanup()
+		return nil, nil, err
+	}
+
 	if err := runStartupStep("seedInitialData", func() error {
 		return seedInitialData(entClient, c)
 	}); err != nil {
@@ -310,6 +317,9 @@ func ensureSchemaDDL(rawDB *sql.DB, entClient *ent.Client) error {
 	// the index creation fails with "no such column: index_status".
 	if err := ensureMemoryFactsIndexStatusPatches(context.Background(), entClient); err != nil {
 		return fmt.Errorf("memory facts index status patches: %w", err)
+	}
+	if err := ensureMessagesTurnNumberPatch(context.Background(), entClient); err != nil {
+		return fmt.Errorf("messages turn_number patch: %w", err)
 	}
 	if err := EnsureSessionMemorySchema(context.Background(), entClient); err != nil {
 		return fmt.Errorf("session memory schema: %w", err)
@@ -411,6 +421,9 @@ func runPendingDataMigrations(entClient *ent.Client) error {
 		startupLog.Printf("[startup] legacy trpc memory backfill skipped (migration %d applied)", MigrationLegacyTRPCMemoryFacts)
 	} else if migrated > 0 {
 		startupLog.Printf("[startup] legacy trpc memory backfill migrated=%d", migrated)
+	}
+	if err := RunTurnIndexToTurnIDMigration(ctx, entClient); err != nil {
+		return fmt.Errorf("turn_index migration: %w", err)
 	}
 	return nil
 }

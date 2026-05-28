@@ -8,6 +8,7 @@ import (
 	"time"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"github.com/go-kratos/kratos/v2/log"
 	"github.com/google/uuid"
 )
 
@@ -417,9 +418,13 @@ func (uc *TaskUsecase) ReviewTask(ctx context.Context, taskID string, reviewerAg
 }
 
 func (uc *TaskUsecase) CheckTimeouts(ctx context.Context) error {
-	uc.mu.Lock()
-	defer uc.mu.Unlock()
+	type timeoutEntry struct {
+		taskID   string
+		deadline time.Time
+	}
+	var expired []timeoutEntry
 	now := time.Now()
+	uc.mu.Lock()
 	for taskID, deadline := range uc.leaseDeadline {
 		if now.After(deadline) {
 			lastHB, hasHB := uc.heartbeats[taskID]
@@ -427,18 +432,25 @@ func (uc *TaskUsecase) CheckTimeouts(ctx context.Context) error {
 				uc.leaseDeadline[taskID] = now.Add(5 * time.Minute)
 				continue
 			}
-			task, err := uc.repo.GetTask(ctx, taskID)
-			if err != nil {
+			expired = append(expired, timeoutEntry{taskID: taskID, deadline: deadline})
+			delete(uc.leaseDeadline, taskID)
+			delete(uc.heartbeats, taskID)
+		}
+	}
+	uc.mu.Unlock()
+	for _, e := range expired {
+		task, err := uc.repo.GetTask(ctx, e.taskID)
+		if err != nil {
+			continue
+		}
+		if task.Status == TaskStatusClaimed {
+			task.Status = TaskStatusTimedOut
+			if err := uc.repo.UpdateTask(ctx, task); err != nil {
+				log.Errorf("timeout update task_id=%s: %v", e.taskID, err)
 				continue
 			}
-			if task.Status == TaskStatusClaimed {
-				task.Status = TaskStatusTimedOut
-				if err := uc.repo.UpdateTask(ctx, task); err != nil {
-					continue
-				}
-				uc.recordTaskEvent(ctx, taskID, "task_timed_out", task.NodeID, "task timed out")
-				uc.publishTaskStatus(ctx, task, nil)
-			}
+			uc.recordTaskEvent(ctx, e.taskID, "task_timed_out", task.NodeID, "task timed out")
+			uc.publishTaskStatus(ctx, task, nil)
 		}
 	}
 	return nil
@@ -455,6 +467,25 @@ func (uc *TaskUsecase) findNodeDef(ctx context.Context, task *GraphTask) *NodeDe
 	}
 	cfg := defToBuildConfig(def)
 	return uc.graphUC.factory.FindNodeDef(cfg, task.NodeID)
+}
+
+func (uc *TaskUsecase) ReleaseClaim(ctx context.Context, taskID string) {
+	uc.mu.Lock()
+	delete(uc.leaseDeadline, taskID)
+	delete(uc.heartbeats, taskID)
+	uc.mu.Unlock()
+	task, err := uc.repo.GetTask(ctx, taskID)
+	if err != nil {
+		return
+	}
+	task.Status = TaskStatusPending
+	task.Assignee = ""
+	task.ClaimedAt = nil
+	if err := uc.repo.UpdateTask(ctx, task); err != nil {
+		log.Warnf("release claim update task_id=%s: %v", taskID, err)
+	}
+	uc.recordTaskEvent(ctx, taskID, "task_claim_released", task.NodeID, "claim released after dispatch failure")
+	uc.publishTaskStatus(ctx, task, nil)
 }
 
 func (uc *TaskUsecase) recordTaskEvent(ctx context.Context, taskID string, eventType string, sourceNode string, description string) {

@@ -120,7 +120,9 @@ type ChatMessage struct {
 	ID               string
 	SessionID        string
 	ParentMessageID  string
-	TurnIndex        int
+	TurnID           string
+	TurnNumber       int
+	SeqInTurn        int
 	Role             string
 	ContentMarkdown  string
 	ModelName        string
@@ -249,7 +251,7 @@ type SessionTurn struct {
 	ID                  string
 	SessionID           string
 	RunID               string
-	TurnIndex           int
+	TurnNumber          int
 	UserMessageID       string
 	AssistantMessageID  string
 	OwnerType           string

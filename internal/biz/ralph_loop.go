@@ -27,8 +27,8 @@ func ValidateRalphLoopSettings(s *AgentRuntimeSettings) error {
 	if promise == "" && verify == "" {
 		return errors.BadRequest("AGENT", "ralph loop requires completion_promise or verify_command when enabled")
 	}
-	if s.RalphLoopMaxIterations < 0 {
-		return errors.BadRequest("AGENT", "ralph_loop_max_iterations must be >= 0")
+	if s.RalphLoopMaxIterations < 1 {
+		return errors.BadRequest("AGENT", "ralph_loop_max_iterations must be >= 1")
 	}
 	if s.RalphLoopVerifyTimeoutSeconds < 0 {
 		return errors.BadRequest("AGENT", "ralph_loop_verify_timeout_seconds must be >= 0")

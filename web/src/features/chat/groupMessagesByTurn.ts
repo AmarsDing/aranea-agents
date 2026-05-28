@@ -2,17 +2,19 @@
  * Stack-based chat message grouping.
  *
  * Messages are sorted by time, then grouped into TurnBlocks:
- * - Each `role=user` message starts a new block.
- * - Subsequent non-user messages (assistant, tool, member) belong to the current block.
- * - No turn_index inference or request_id coupling needed.
+ * - Grouping uses `turn_id` from the backend; messages sharing the same turn_id
+ *   are guaranteed to belong to the same turn.
+ * - If turn_id is missing or changes, a new block is started.
+ * - Within a block, messages are distributed by role/origin into user/assistant/tools/members.
  *
- * The `turn_index` field on Message is preserved for backend compatibility but
- * is NOT used for frontend grouping decisions.
+ * The `turn_number` field is preserved for display/sorting but is NOT used for
+ * grouping decisions — `turn_id` is the authoritative FK.
  */
 import type { Message, ReactToolLinkIndex } from "./types";
 import { toolEventFromMessage } from "./envelopeToolCall";
 import { isActivityMessage, isInFlightLocalRow } from "./mergeSessionMessages";
 import { isToolLinkedInReactIndex } from "./reactToolLinkIndex";
+import { isTeamMemberOrigin, ensureOrigin } from "./messageOrigin";
 
 export type TurnBlockGroup = {
   /** Sequential block index (0-based). */
@@ -25,7 +27,7 @@ export type TurnBlockGroup = {
 };
 
 export function isTeamMemberStreamMessage(message: Message): boolean {
-  return String(message.id).startsWith("member-");
+  return isTeamMemberOrigin(message.origin);
 }
 
 /**
@@ -37,20 +39,31 @@ function messageSortRank(message: Message, index: number): [number, string, numb
   return [inFlight, message.created_at || "", index];
 }
 
+function getEffectiveTurnId(msg: Message): string {
+  return msg.turn_id?.trim() || "";
+}
+
+function shouldStartNewBlock(current: TurnBlockGroup | null, msg: Message, effectiveTurnId: string): boolean {
+  if (!current) return true;
+  if (effectiveTurnId) return current.turnId !== effectiveTurnId;
+  return msg.role === "user";
+}
+
 /**
  * Derive TurnBlock[] from merged messages.
  *
  * Algorithm:
  * 1. Sort: persisted by created_at, in-flight at the end.
- * 2. Iterate: role=user → open new block; otherwise → append to current block.
- * 3. Consolidate orphan tool-only blocks into previous block.
+ * 2. Group by turn_id (authoritative FK from backend).
+ * 3. Within each turn block, distribute messages by role/origin.
+ * 4. Consolidate orphan tool-only blocks into previous block.
  */
 export function groupMessagesByTurn(messages: Message[]): TurnBlockGroup[] {
   if (messages.length === 0) return [];
 
   // Sort: persisted first (by time), in-flight last (by time)
   const sorted = messages
-    .map((m, i) => ({ m, i }))
+    .map((m, i) => ({ m: ensureOrigin(m), i }))
     .sort((a, b) => {
       const ra = messageSortRank(a.m, a.i);
       const rb = messageSortRank(b.m, b.i);
@@ -65,25 +78,12 @@ export function groupMessagesByTurn(messages: Message[]): TurnBlockGroup[] {
   let blockIndex = 0;
 
   for (const msg of sorted) {
-    // role=user starts a new block
-    if (msg.role === "user") {
-      current = {
-        key: blockIndex++,
-        turnId: msg.id,
-        user: msg,
-        assistant: null,
-        tools: [],
-        members: [],
-      };
-      blocks.push(current);
-      continue;
-    }
+    const effectiveTurnId = getEffectiveTurnId(msg);
 
-    // First message is not user → open a block with user=null
-    if (!current) {
+    if (shouldStartNewBlock(current, msg, effectiveTurnId)) {
       current = {
         key: blockIndex++,
-        turnId: `turn-orphan-${blockIndex}`,
+        turnId: effectiveTurnId || `__legacy_${blockIndex}`,
         user: null,
         assistant: null,
         tools: [],
@@ -92,8 +92,10 @@ export function groupMessagesByTurn(messages: Message[]): TurnBlockGroup[] {
       blocks.push(current);
     }
 
-    // Distribute into current block
-    if (isTeamMemberStreamMessage(msg)) {
+    // Distribute into current block by role/origin
+    if (msg.role === "user") {
+      current.user = msg;
+    } else if (isTeamMemberStreamMessage(msg)) {
       current.members.push(msg);
     } else if (isActivityMessage(msg)) {
       current.tools.push(msg);

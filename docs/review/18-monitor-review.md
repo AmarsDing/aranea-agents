@@ -86,3 +86,4 @@
 2. ~~FlowLogger Phase 2 落库~~ ✅
 3. ~~latency `avg_duration_ms` + 30s 自动刷新~~ ✅ Phase C
 4. **下迭代**：Grafana JSON 与 metrics 路径对齐；Alert Channel UX 测试
+5. **AI 闭环追踪**：见 [18-monitor-ai-closed-loop-2026-05-28.md](../需求/18-monitor-ai-closed-loop-2026-05-28.md)（LOG-01 文件落盘 → DIAG-01 诊断包 → LOOP-01 闭环工作流）

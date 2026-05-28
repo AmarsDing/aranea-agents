@@ -23,7 +23,7 @@ func (SessionTurn) Fields() []ent.Field {
 		field.String("id").Immutable().Unique().MaxLen(256),
 		field.String("session_id").MaxLen(256),
 		field.String("run_id").Default(""),
-		field.Int("turn_index").Default(0),
+		field.Int("turn_number").Default(0),
 		field.String("user_message_id").Default(""),
 		field.String("assistant_message_id").Default(""),
 		field.String("owner_type").Default("agent"),
@@ -55,7 +55,7 @@ func (SessionTurn) Fields() []ent.Field {
 
 func (SessionTurn) Indexes() []ent.Index {
 	return []ent.Index{
-		index.Fields("session_id", "turn_index"),
+		index.Fields("session_id", "turn_number"),
 		index.Fields("status", "started_at"),
 	}
 }

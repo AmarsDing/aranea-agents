@@ -1,12 +1,11 @@
 /** Message / session source for UserBubble badges (M55 CC-B-07). */
 
-export type MessageSourceKind = "web" | "channel" | "cron" | "a2a" | "api" | "";
+import type { MessageSourceMeta } from "../../domain/types";
+import { VALID_SOURCES } from "./parseMessageOptions";
 
-export type MessageSourceMeta = {
-  source: MessageSourceKind;
-  platform?: string;
-  channelKey?: string;
-};
+export type MessageSourceKind = MessageSourceMeta["source"];
+
+export { type MessageSourceMeta };
 
 export function parseMessageSourceMeta(optionsJson?: string): MessageSourceMeta | null {
   const raw = (optionsJson ?? "").trim();
@@ -19,7 +18,7 @@ export function parseMessageSourceMeta(optionsJson?: string): MessageSourceMeta 
       channel_key?: string;
     };
     const source = (o.source ?? "").trim().toLowerCase() as MessageSourceKind;
-    if (!source) return null;
+    if (!source || !VALID_SOURCES.has(source)) return null;
     return {
       source,
       platform: (o.platform ?? o.channel ?? "").trim() || undefined,
@@ -28,6 +27,12 @@ export function parseMessageSourceMeta(optionsJson?: string): MessageSourceMeta 
   } catch {
     return null;
   }
+}
+
+export function messageSourceFromMessage(message: { source_meta?: MessageSourceMeta | null; options_json?: string } | null): MessageSourceMeta | null {
+  if (!message) return null;
+  if (message.source_meta) return message.source_meta;
+  return parseMessageSourceMeta(message.options_json);
 }
 
 export function messageSourceChipKey(meta: MessageSourceMeta | null): string {

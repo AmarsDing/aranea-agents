@@ -10,6 +10,8 @@ import type { IntentPassResult } from "./types";
 import { sessionContextPatchFromEnvelope } from "./sessionContextPatch";
 import type { SessionContextPatch } from "./sessionContextPatch";
 
+import { originFromId } from "./messageOrigin";
+
 export function createPlaceholderMessage(
   id: string,
   sessionID: string,
@@ -20,7 +22,9 @@ export function createPlaceholderMessage(
     id,
     session_id: sessionID,
     parent_message_id: "",
-    turn_index: 0,
+    turn_id: "",
+    turn_number: 0,
+    seq_in_turn: 0,
     role,
     content_markdown: content,
     model_name: "mock",
@@ -32,6 +36,10 @@ export function createPlaceholderMessage(
     options_json: "",
     error_message: "",
     created_at: new Date().toISOString(),
+    origin: originFromId(id, role),
+    agent_ref: null,
+    team_member: null,
+    source_meta: null,
   };
 }
 
@@ -232,6 +240,8 @@ export function bindStreamHandlers(
           status: "streaming",
           model_name: `team/${meta.role || "member"}`,
           options_json: JSON.stringify({ team_member: meta }),
+          origin: { kind: "team_member", agentKey: env.author },
+          team_member: { agent_id: "", name: meta.name, role: meta.role },
         },
       ]);
     });

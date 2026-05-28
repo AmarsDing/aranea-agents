@@ -7,7 +7,8 @@ import (
 	"github.com/go-kratos/kratos/v2/errors"
 )
 
-// ChannelTurnJobUsecase owns channel turn job persistence for ingress and admin API.
+var errChannelTurnJobNotInit = errors.InternalServer("CHANNEL_TURN_JOB", "usecase not initialized")
+
 type ChannelTurnJobUsecase struct {
 	channels *ChannelUsecase
 	jobs     ChannelTurnJobRepo
@@ -19,7 +20,7 @@ func NewChannelTurnJobUsecase(channels *ChannelUsecase, jobs ChannelTurnJobRepo)
 
 func (u *ChannelTurnJobUsecase) ListByChannel(ctx context.Context, channelID string, limit int) ([]ChannelTurnJob, error) {
 	if u == nil || u.jobs == nil {
-		return nil, nil
+		return nil, errChannelTurnJobNotInit
 	}
 	channelID = strings.TrimSpace(channelID)
 	if channelID == "" {
@@ -33,10 +34,9 @@ func (u *ChannelTurnJobUsecase) ListByChannel(ctx context.Context, channelID str
 	return u.jobs.ListByChannel(ctx, channelID, NormalizeChannelTurnJobListLimit(limit))
 }
 
-// ListFiltered returns jobs for chat background panel (session / agent / status filters).
 func (u *ChannelTurnJobUsecase) ListFiltered(ctx context.Context, q ChannelTurnJobListQuery) ([]ChannelTurnJob, error) {
 	if u == nil || u.jobs == nil {
-		return nil, nil
+		return nil, errChannelTurnJobNotInit
 	}
 	q.SessionID = strings.TrimSpace(q.SessionID)
 	q.AgentID = strings.TrimSpace(q.AgentID)
@@ -44,33 +44,37 @@ func (u *ChannelTurnJobUsecase) ListFiltered(ctx context.Context, q ChannelTurnJ
 	return u.jobs.ListFiltered(ctx, q)
 }
 
-// CreateAccepted inserts or resolves an accepted job and returns the persisted row id.
 func (u *ChannelTurnJobUsecase) CreateAccepted(ctx context.Context, job ChannelTurnJob) (string, error) {
 	if u == nil || u.jobs == nil {
-		return "", nil
+		return "", errChannelTurnJobNotInit
 	}
 	job.Status = ChannelTurnJobStatusAccepted
 	return u.jobs.Create(ctx, job)
 }
 
 func (u *ChannelTurnJobUsecase) UpdateStatus(ctx context.Context, id, status, errMsg, previewMsgID, contentPreview string) error {
-	if u == nil || u.jobs == nil || strings.TrimSpace(id) == "" {
+	if u == nil || u.jobs == nil {
+		return errChannelTurnJobNotInit
+	}
+	if strings.TrimSpace(id) == "" {
 		return nil
 	}
 	return u.jobs.UpdateStatus(ctx, id, status, errMsg, previewMsgID, contentPreview)
 }
 
 func (u *ChannelTurnJobUsecase) UpdateAsyncTarget(ctx context.Context, id, targetType, targetID string) error {
-	if u == nil || u.jobs == nil || strings.TrimSpace(id) == "" {
+	if u == nil || u.jobs == nil {
+		return errChannelTurnJobNotInit
+	}
+	if strings.TrimSpace(id) == "" {
 		return nil
 	}
 	return u.jobs.UpdateAsyncTarget(ctx, id, targetType, targetID)
 }
 
-// CancelRunningForSession marks the newest running/accepted job for a session as cancelled.
 func (u *ChannelTurnJobUsecase) CancelRunningForSession(ctx context.Context, channelID, sessionID string) error {
 	if u == nil || u.jobs == nil {
-		return nil
+		return errChannelTurnJobNotInit
 	}
 	channelID = strings.TrimSpace(channelID)
 	sessionID = strings.TrimSpace(sessionID)
@@ -93,10 +97,9 @@ func (u *ChannelTurnJobUsecase) CancelRunningForSession(ctx context.Context, cha
 	return nil
 }
 
-// Cancel marks a specific turn job as cancelled by ID.
 func (u *ChannelTurnJobUsecase) Cancel(ctx context.Context, id string) error {
 	if u == nil || u.jobs == nil {
-		return nil
+		return errChannelTurnJobNotInit
 	}
 	id = strings.TrimSpace(id)
 	if id == "" {
