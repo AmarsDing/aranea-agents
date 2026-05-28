@@ -78,6 +78,10 @@ func (s *durableWorkerRepoStub) ClearResumeClaim(_ context.Context, id string) e
 	return nil
 }
 
+func (s *durableWorkerRepoStub) MarkOrphanedRunsCancelled(_ context.Context) (int, error) {
+	return 0, nil
+}
+
 type durableWorkerCheckpointStub struct {
 	cps map[string]biz.SessionRunCheckpoint
 }

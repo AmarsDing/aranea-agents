@@ -71,8 +71,11 @@ func NewHTTPServer(c *conf.Server, s *ServiceRegistry, wsSrv *WSServer) *kratosh
 	}
 	srv := kratoshttp.NewServer(opts...)
 
-	registerProtoServices(srv, s)
+	// Custom routes MUST be registered before proto services so that exact
+	// paths (e.g. /v1/artifacts/download) take priority over wildcard
+	// patterns (e.g. /v1/artifacts/{id}).
 	registerCustomRoutes(srv, s.ChannelIngress, s.Skill, s.Artifact, s.A2APublic, s.SystemSetting)
+	registerProtoServices(srv, s)
 	registerInfrastructureRoutes(srv)
 	wsSrv.RegisterOnKratos(srv)
 

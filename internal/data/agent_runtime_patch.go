@@ -63,6 +63,27 @@ func ensureAgentRuntimePatches(ctx context.Context, c *ent.Client) error {
 	return nil
 }
 
+func sqliteTableExists(ctx context.Context, c *ent.Client, table string) (bool, error) {
+	table = strings.TrimSpace(table)
+	if table == "" {
+		return false, nil
+	}
+	rows, err := c.QueryContext(ctx,
+		`SELECT COUNT(1) FROM sqlite_master WHERE type IN ('table','view') AND name = ?`, table)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return false, rows.Err()
+	}
+	var n int
+	if err := rows.Scan(&n); err != nil {
+		return false, err
+	}
+	return n > 0, rows.Err()
+}
+
 func sqliteColumnExists(ctx context.Context, c *ent.Client, table, column string) (bool, error) {
 	table = strings.TrimSpace(table)
 	column = strings.TrimSpace(column)

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -20,16 +21,29 @@ type ChannelRuntime struct {
 }
 
 // NewChannelRuntime wires runtime.Manager to ChannelIngress.
-func NewChannelRuntime(channels *biz.ChannelUsecase, ingress *ChannelIngress) *ChannelRuntime {
+func NewChannelRuntime(channels *biz.ChannelUsecase, ingress *ChannelIngress, leases biz.ChannelRuntimeLeaseRepo) *ChannelRuntime {
 	if channels == nil || ingress == nil {
 		return nil
 	}
 	lookup := func(ctx context.Context, creds []biz.ChannelCredential, key string) (string, error) {
 		return resolveCredentialPlain(ctx, creds, key)
 	}
-	return &ChannelRuntime{
-		mgr: runtime.NewManager(channels, ingress, lookup),
+	mgr := runtime.NewManager(channels, ingress, lookup)
+	if leases != nil {
+		mgr = mgr.WithRuntimeLease(leases, channelRuntimeOwnerID(), 0)
 	}
+	return &ChannelRuntime{
+		mgr: mgr,
+	}
+}
+
+func channelRuntimeOwnerID() string {
+	host, _ := os.Hostname()
+	host = strings.TrimSpace(host)
+	if host == "" {
+		host = "unknown-host"
+	}
+	return fmt.Sprintf("%s:%d", host, os.Getpid())
 }
 
 // Disabled reports CHANNEL_RUNTIME_DISABLED=1.

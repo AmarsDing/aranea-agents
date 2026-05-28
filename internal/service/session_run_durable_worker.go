@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"log"
 	"strings"
 	"time"
 
@@ -27,6 +28,12 @@ func NewSessionRunDurableWorker(runs *biz.SessionRunUsecase, chat *ChatService) 
 func (w *SessionRunDurableWorker) Start(ctx context.Context) {
 	if w == nil {
 		return
+	}
+	// Clean up zombie runs from a previous process crash/restart.
+	if n, err := w.runs.CleanupOrphanedRuns(context.Background()); err != nil {
+		log.Printf("[session-run-durable-worker] orphan cleanup failed: %v", err)
+	} else if n > 0 {
+		log.Printf("[session-run-durable-worker] orphaned runs cleaned up: count=%d", n)
 	}
 	safego.Go(ctx, "session-run-durable-worker", func() {
 		ticker := time.NewTicker(sessionRunWorkerPollInterval)

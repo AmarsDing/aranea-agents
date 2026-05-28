@@ -5,7 +5,7 @@
     <span v-if="agentName" class="text-caption ellipsis chat-runner-status__agent">{{ agentName }}</span>
     <span v-if="elapsedLabel" class="text-caption text-grey-7">{{ elapsedLabel }}</span>
     <span v-if="eventCount != null && eventCount > 0" class="text-caption text-grey-7">
-      {{ eventCount }} {{ t("chat.runnerEvents", "events") }}
+      {{ eventCount }} 个事件
     </span>
     <q-btn
       v-if="showCancel"
@@ -15,7 +15,7 @@
       size="sm"
       color="negative"
       icon="stop"
-      :aria-label="t('chat.stop')"
+      aria-label="停止生成"
       @click="emit('cancel')"
     />
   </div>
@@ -23,8 +23,8 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import { useI18n } from "vue-i18n";
 import type { RunStatusValue } from "../types";
+import { presentRunStatus, toneToQuasarColor } from "../../../domain/conversationPresentation";
 
 const props = defineProps<{
   status: RunStatusValue;
@@ -36,36 +36,16 @@ const props = defineProps<{
 
 const emit = defineEmits<{ cancel: [] }>();
 
-const { t } = useI18n();
-
 const visible = computed(() => {
   const s = props.status;
   return s === "running" || s === "pending" || s === "awaiting_user";
 });
 
-const badgeColor = computed(() => {
-  switch (props.status) {
-    case "running":
-      return "primary";
-    case "awaiting_user":
-      return "warning";
-    case "pending":
-      return "grey-7";
-    default:
-      return "grey";
-  }
-});
+const presentation = computed(() => presentRunStatus(props.status));
 
-const statusLabel = computed(() => {
-  const key = `chat.runStatus.${props.status}`;
-  const fallback =
-    props.status === "running"
-      ? "Running"
-      : props.status === "awaiting_user"
-        ? "Awaiting"
-        : props.status;
-  return t(key, fallback);
-});
+const badgeColor = computed(() => toneToQuasarColor(presentation.value.tone));
+
+const statusLabel = computed(() => presentation.value.label);
 
 const elapsedLabel = computed(() => {
   if (!props.startedAt) return "";

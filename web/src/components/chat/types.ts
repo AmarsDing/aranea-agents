@@ -36,6 +36,7 @@ export type SessionView = {
 export type ChatAttachment = {
   id: string;
   name: string;
+  mime_type?: string;
   progress: number;
   timer?: ReturnType<typeof setInterval>;
 };

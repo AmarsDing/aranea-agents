@@ -9,6 +9,51 @@
       </div>
       <q-scroll-area class="col chat-session-scroll">
         <q-list class="chat-session-list" dense>
+          <template v-if="inboxSessions.length">
+            <q-item-label header class="chat-timeline-label">
+              外部消息
+            </q-item-label>
+            <q-item
+              v-for="inbox in inboxSessions"
+              :key="`inbox-${inbox.id}`"
+              clickable
+              class="chat-session-item chat-session-item--inbox rounded-borders"
+              :class="{ 'chat-session-item--active': selectedSessionId === inbox.id }"
+              @click="$emit('select', inbox.id)"
+            >
+              <q-item-section class="chat-session-main">
+                <div class="chat-session-title-row row items-center no-wrap">
+                  <div class="chat-session-title-wrap col">
+                    <div class="chat-session-title">
+                      {{ inbox.title }}
+                    </div>
+                  </div>
+                  <q-badge
+                    v-if="inbox.unreadCount > 0"
+                    rounded
+                    color="negative"
+                    :label="inbox.unreadCount"
+                  />
+                </div>
+                <div class="chat-session-meta-row row items-center no-wrap">
+                  <q-badge dense outline color="teal" :label="sourceLabel(inbox.source)" />
+                  <q-badge
+                    v-if="inbox.lastTurn"
+                    dense
+                    :color="turnBadgeColor(inbox.lastTurn.status)"
+                    :label="turnStatusLabel(inbox.lastTurn.status)"
+                  />
+                  <q-badge
+                    v-if="inboxDeliveryLabel(inbox)"
+                    dense
+                    outline
+                    :color="inboxDeliveryColor(inbox)"
+                    :label="inboxDeliveryLabel(inbox)"
+                  />
+                </div>
+              </q-item-section>
+            </q-item>
+          </template>
           <template v-for="group in timelineGroups" :key="group.key">
             <q-item-label header class="chat-timeline-label">
               {{ group.label }}
@@ -168,10 +213,18 @@ import { useI18n } from "vue-i18n";
 import { useQuasar } from "quasar";
 import type { DeleteKind, SessionView } from "./types";
 import { isChannelSession, parseChannelSessionMeta } from "../../features/chat/channelSessionMeta";
+import type { ConversationSession, ConversationTurnStatus } from "../../domain/conversation";
+import {
+  presentDeliveryStatus,
+  presentConversationSource,
+  presentTurnStatus,
+  toneToQuasarColor,
+} from "../../domain/conversationPresentation";
 
 const props = defineProps<{
   open: boolean;
   sessions: SessionView[];
+  inboxSessions?: ConversationSession[];
   selectedSessionId?: string | null;
   isDark: boolean;
 }>();
@@ -190,6 +243,8 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 const $q = useQuasar();
+
+const inboxSessions = computed(() => props.inboxSessions ?? []);
 
 const FAVORITE_KEY = "chat:favorite-sessions";
 
@@ -272,6 +327,36 @@ function sessionChannelLabel(session: SessionView): string {
   }
   if (isChannelSession(session.metadata_json, session.title)) return "channel";
   return "";
+}
+
+function sourceLabel(source: string | undefined): string {
+  return presentConversationSource(source);
+}
+
+function turnStatusLabel(status: ConversationTurnStatus): string {
+  return presentTurnStatus(status).label;
+}
+
+function turnBadgeColor(status: ConversationTurnStatus): string {
+  return toneToQuasarColor(presentTurnStatus(status).tone);
+}
+
+function inboxDeliveryLabel(session: ConversationSession): string {
+  const target = latestDeliveryTarget(session);
+  if (session.lastTurn?.status === "failed" && target?.status !== "failed") {
+    return "";
+  }
+  return target ? presentDeliveryStatus(target.status).label : "";
+}
+
+function inboxDeliveryColor(session: ConversationSession): string {
+  const target = latestDeliveryTarget(session);
+  return toneToQuasarColor(presentDeliveryStatus(target?.status).tone);
+}
+
+function latestDeliveryTarget(session: ConversationSession) {
+  const targets = session.lastTurn?.deliveryTargets ?? [];
+  return targets.length ? targets[targets.length - 1] : undefined;
 }
 
 function shortTime(session: SessionView) {

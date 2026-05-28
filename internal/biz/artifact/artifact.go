@@ -29,6 +29,8 @@ type Repo interface {
 	Save(ctx context.Context, sessionID, name, mimeType string, data []byte) (Artifact, error)
 	// Load returns artifact data.  version <= 0 means latest.
 	Load(ctx context.Context, id string, version int) (Artifact, []byte, error)
+	// LoadMeta returns artifact metadata without loading payload bytes. version <= 0 means latest.
+	LoadMeta(ctx context.Context, id string, version int) (Artifact, error)
 	// List returns artifact metadata for a session (no data payload).
 	List(ctx context.Context, sessionID string, limit, offset int) ([]Artifact, int, error)
 	// Delete removes all versions of an artifact by ID.
@@ -67,6 +69,11 @@ func (uc *Usecase) Save(ctx context.Context, sessionID, name, mimeType string, d
 // Load retrieves artifact data.  version <= 0 returns the latest version.
 func (uc *Usecase) Load(ctx context.Context, id string, version int) (Artifact, []byte, error) {
 	return uc.repo.Load(ctx, id, version)
+}
+
+// LoadMeta retrieves artifact metadata without reading artifact bytes.
+func (uc *Usecase) LoadMeta(ctx context.Context, id string, version int) (Artifact, error) {
+	return uc.repo.LoadMeta(ctx, id, version)
 }
 
 // List returns artifact metadata for a session. query and mimePrefix filter in-memory when set.

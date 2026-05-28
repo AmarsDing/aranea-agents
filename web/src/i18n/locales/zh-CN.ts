@@ -100,6 +100,10 @@ export default {
     feedbackThanks: "感谢反馈",
     feedbackFailed: "反馈提交失败",
     fileImport: "导入",
+    fileNotSupported: "当前模型不支持文件附件",
+    limitedFileTypes: "当前模型仅支持非图片文件",
+    clipboardFileUnsupported: "当前模型不支持此类型的文件粘贴",
+    fileModelUnsupported: "当前模型不支持文件附件，请移除附件或切换模型",
     voiceInput: "语音",
     send: "发送",
     stop: "停止生成",
@@ -116,6 +120,22 @@ export default {
     },
     wsReplaying: "正在同步历史事件…",
     wsReplayingShort: "回放中",
+    sessionLoading: "正在加载会话…",
+    sendDispatchTimeout: "消息发送超时，请检查网络连接",
+    sendFailed: "发送失败",
+    sendFailedRetry: "发送失败，请点击重试",
+    sendFailedBackend: "后端不可用",
+    imageModelUnsupported: "当前模型不支持图片理解，请移除图片附件或切换到支持视觉的模型",
+    sessionCreateFailed: "未创建会话或会话无效，请重试",
+    backendUnavailableDev: "后端不可用，请确认 admin 是否在 :8000 运行（页面应使用 http://localhost:9001）",
+    backendUnavailable: "后端服务不可用，请重新登录",
+    wsFallbackHttp: "WebSocket 不可用，正在通过 HTTP 发送…",
+    toolConfirmUseButtons: "请使用批准或拒绝按钮来确认工具调用",
+    enqueueRunEnded: "当前对话已结束，请直接发送新消息",
+    enqueueQueueFull: "排队消息已满，请稍后再试",
+    teamSendFailed: "Team 发送失败",
+    retry: "重试",
+    dismiss: "关闭",
     syncDiagnostic: "{count} 条 · rev {rev} · WS {ws} · {ctx}% ctx",
     source: {
       web: "Web",
@@ -158,6 +178,8 @@ export default {
     confirmDelete: "确认删除",
     cancel: "取消",
     voicePlaceholder: "语音输入功能将在后续版本接入。",
+    attachmentDeleted: "附件已删除",
+    attachmentDeleteFailed: "附件删除失败",
     awaitingUserHint: "Agent 正在等待你的回复，在下方输入后点击「提交回复」。",
     submitAwaitReply: "提交回复",
     awaitReplySent: "已提交回复，继续执行",
@@ -170,13 +192,22 @@ export default {
     toolLongRunning: "长任务",
     sessionArtifacts: {
       title: "会话制品",
+      view: "查看",
+      download: "下载",
+      delete: "删除",
+      empty: "暂无制品",
     },
     job: {
       title: "后台任务",
       loading: "加载后台任务…",
       empty: "暂无后台任务",
       refresh: "刷新",
-      openGraph: "打开 Graph 执行"
+      openGraph: "打开 Graph 执行",
+      cancel: "取消任务",
+      cancelConfirm: "取消任务",
+      cancelConfirmMsg: "确定要取消此任务吗？此操作不可撤销。",
+      cancelled: "任务已取消",
+      cancelFailed: "取消失败"
     },
     turn: {
       block: {
@@ -331,7 +362,9 @@ export default {
     copyWebhookFailed: "复制失败",
     deleteTitle: "确认删除该 Channel？",
     deleteMessage: "删除后将停止运行时加载，第三方 Webhook 需要自行解绑。",
-    deleteOk: "Channel 已删除"
+    deleteOk: "Channel 已删除",
+    opsTitle: "Channel 运维面板",
+    opsClose: "收起"
   },
   channelEditor: {
     editTitle: "编辑 Channel",
@@ -509,6 +542,9 @@ export default {
     turnJobsHint: "按 created_at 倒序；用于 LT-07 排障。",
     turnJobsRefresh: "刷新",
     turnJobsEmpty: "暂无 Turn Job 记录",
+    deliveriesTitle: "近期 Delivery 状态",
+    deliveriesHint: "展示入站处理与外发投递的最近状态，用于定位 Channel 消息是否已送达。",
+    deliveriesEmpty: "暂无 Delivery 记录",
     status: {
       pendingSave: "待保存",
       configured: "✔ 已配置",

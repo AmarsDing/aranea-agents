@@ -93,6 +93,7 @@
         :dark="isDark"
         :disable="inputDisabled ?? sending"
         @keydown="onInputKeydown"
+        @paste="handlePaste"
         @update:model-value="$emit('update:modelValue', String($event ?? ''))"
       />
 
@@ -154,10 +155,11 @@
           <ChatSessionArtifactsPanel
             v-if="sessionId"
             :session-id="sessionId"
-            :items="sessionArtifacts"
+            :items="sessionArtifacts ?? []"
             :loading="sessionArtifactsLoading"
             :is-dark="isDark"
             @open="$emit('open-artifact', $event)"
+            @deleted="$emit('attachment-deleted', $event)"
           />
           <ChatBackgroundJobsPanel
             v-if="showBackgroundJobs"
@@ -173,12 +175,13 @@
             unelevated
             outline
             color="primary"
+            :disable="fileSupported === false"
             :aria-label="t('chat.fileImport')"
             class="chat-toolbar-btn chat-toolbar-btn--outline"
             @click="$emit('pick-file')"
           >
             <q-icon name="attach_file" size="20px" />
-            <q-tooltip>{{ artifactMaxSizeHint() }}</q-tooltip>
+            <q-tooltip>{{ fileSupported === false ? t('chat.fileNotSupported') : (fileAccept ? t('chat.limitedFileTypes') : artifactMaxSizeHint()) }}</q-tooltip>
           </q-btn>
           <q-btn
             dense
@@ -221,6 +224,7 @@
 
 <script setup lang="ts">
 import { useI18n } from "vue-i18n";
+import { useQuasar } from "quasar";
 import ChatEnqueueMessage from "../../features/chat/components/ChatEnqueueMessage.vue";
 import ChatSessionArtifactsPanel from "./ChatSessionArtifactsPanel.vue";
 import ChatBackgroundJobsPanel from "./ChatBackgroundJobsPanel.vue";
@@ -256,6 +260,8 @@ const props = defineProps<{
   sessionId?: string;
   sessionArtifacts?: ArtifactMeta[];
   sessionArtifactsLoading?: boolean;
+  fileSupported?: boolean;
+  fileAccept?: string;
   showBackgroundJobs?: boolean;
   agentId?: string;
   jobsRefreshNonce?: number;
@@ -275,11 +281,36 @@ const emit = defineEmits<{
   "submit-await-reply": [];
   "submit-tool-confirm": [approved: boolean];
   "open-artifact": [id: string];
+  "attachment-deleted": [id: string];
+  "paste-file": [file: File];
   "focus-turn": [turnId: string];
   navigate: [route: { name: string; params: Record<string, string> }];
 }>();
 
 const { t } = useI18n();
+const $q = useQuasar();
+
+function handlePaste(event: ClipboardEvent) {
+  const items = event.clipboardData?.items;
+  if (!items || props.fileSupported === false) return;
+
+  for (const item of Array.from(items)) {
+    if (item.kind === "file") {
+      const file = item.getAsFile();
+      if (!file) continue;
+      // If fileAccept is non-empty, model only accepts non-image files (no vision support)
+      const isImage = file.type?.toLowerCase().startsWith("image/") || /\.(png|jpe?g|gif|webp|bmp|svg|heic|heif)$/i.test(file.name);
+      if (props.fileAccept && isImage) {
+        event.preventDefault();
+        $q.notify({ type: "warning", message: t("chat.clipboardFileUnsupported", "当前模型不支持此类型的文件粘贴") });
+        return;
+      }
+      event.preventDefault();
+      emit("paste-file", file);
+      return;
+    }
+  }
+}
 
 function onInputKeydown(event: KeyboardEvent) {
   if (event.key !== "Enter" || event.shiftKey || event.isComposing) return;

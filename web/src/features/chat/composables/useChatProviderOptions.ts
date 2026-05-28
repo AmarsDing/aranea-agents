@@ -21,10 +21,16 @@ function chatModelOptionsToPlatform(rows: ChatOption[]): PlatformResource[] {
     .map((item, index) => {
       let provider = "";
       let model = "";
+      let capabilities: PlatformResource["capabilities"];
       try {
-        const meta = JSON.parse(item.metadata_json || "{}") as { provider?: string; model?: string };
+        const meta = JSON.parse(item.metadata_json || "{}") as {
+          provider?: string;
+          model?: string;
+          capabilities?: PlatformResource["capabilities"];
+        };
         provider = meta.provider ?? "";
         model = meta.model ?? "";
+        capabilities = meta.capabilities;
       } catch {
         /* ignore */
       }
@@ -44,6 +50,7 @@ function chatModelOptionsToPlatform(rows: ChatOption[]): PlatformResource[] {
         model,
         config_json: "{}",
         metadata_json: item.metadata_json,
+        capabilities,
         created_at: "",
         updated_at: "",
         deleted_at: "",

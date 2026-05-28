@@ -466,6 +466,13 @@ func (m *memArtifactRepoB) Load(_ context.Context, id string, _ int) (biz.Artifa
 	}
 	return a, m.data[id], nil
 }
+func (m *memArtifactRepoB) LoadMeta(_ context.Context, id string, _ int) (biz.Artifact, error) {
+	a, ok := m.items[id]
+	if !ok {
+		return biz.Artifact{}, fmt.Errorf("not found")
+	}
+	return a, nil
+}
 func (m *memArtifactRepoB) List(_ context.Context, sessionID string, _, _ int) ([]biz.Artifact, int, error) {
 	var out []biz.Artifact
 	for _, a := range m.items {

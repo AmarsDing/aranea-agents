@@ -35,13 +35,14 @@ describe("mergeSessionMessages", () => {
     expect(merged.some((m) => m.id === "act-tc-1")).toBe(true);
   });
 
-  it("sorts by turn_index before created_at", () => {
+  it("sorts by time with in-flight rows after persisted", () => {
     const server = [
-      { ...msg("a", "ok", "2026-05-20T10:00:02Z"), turn_index: 2 },
-      { ...msg("b", "ok", "2026-05-20T10:00:01Z"), turn_index: 1 },
+      { ...msg("a", "ok", "2026-05-20T10:00:02Z") },
+      { ...msg("b", "ok", "2026-05-20T10:00:01Z") },
     ];
-    const local = [{ ...msg("ws-stream-sess-1", "streaming", "2026-05-20T10:00:03Z"), turn_index: 3 }];
+    const local = [{ ...msg("ws-stream-sess-1", "streaming", "2026-05-20T10:00:03Z") }];
     const merged = mergeSessionMessages(server, local);
+    // Persisted sorted by created_at, in-flight after
     expect(merged.map((m) => m.id)).toEqual(["b", "a", "ws-stream-sess-1"]);
   });
 
@@ -66,6 +67,13 @@ describe("mergeSessionMessages", () => {
     const local = [...server, msg("act-tc-1", "tool_running", "2026-05-20T10:00:02Z")];
     const merged = mergeSessionMessages(server, local, { dropStaleInFlight: true });
     expect(merged.some((m) => m.id === "act-tc-1")).toBe(false);
+  });
+
+  it("keeps failed pending-user rows when dropStaleInFlight is set", () => {
+    const server = [msg("u-1", "ok", "2026-05-20T10:00:00Z")];
+    const failed = { ...msg("pending-user-1", "failed", "2026-05-20T10:00:02Z"), role: "user" };
+    const merged = mergeSessionMessages(server, [...server, failed], { dropStaleInFlight: true });
+    expect(merged.some((m) => m.id === "pending-user-1")).toBe(true);
   });
 
   it("keeps streaming ws-stream row when dropStaleInFlight is set", () => {
@@ -104,5 +112,51 @@ describe("mergeSessionMessages", () => {
     expect(merged.map((m) => m.id)).toContain("u-2");
     expect(merged.map((m) => m.id)).toContain("ws-stream-sess-1");
     expect(merged).toHaveLength(4);
+  });
+
+  it("replaces pending-user placeholder with server-persisted user message on merge", () => {
+    const serverUser = { ...msg("srv-u-1", "ok", "2026-05-20T10:00:00Z"), role: "user", content_markdown: "hello" };
+    const server = [serverUser];
+    const local = [
+      { ...msg("pending-user-abc", "ok", "2026-05-20T10:00:00Z"), role: "user", content_markdown: "hello" },
+    ];
+    const merged = mergeSessionMessages(server, local);
+    // Server message replaces the placeholder — no duplicate
+    expect(merged.some((m) => m.id === "srv-u-1")).toBe(true);
+    expect(merged.some((m) => m.id === "pending-user-abc")).toBe(false);
+    expect(merged).toHaveLength(1);
+  });
+
+  it("keeps pending-user placeholder when no matching server message exists", () => {
+    const server = [msg("asst-1", "ok", "2026-05-20T10:00:01Z")];
+    const local = [
+      { ...msg("pending-user-abc", "ok", "2026-05-20T10:00:00Z"), role: "user", content_markdown: "hello" },
+    ];
+    const merged = mergeSessionMessages(server, local);
+    expect(merged.some((m) => m.id === "pending-user-abc")).toBe(true);
+    expect(merged).toHaveLength(2);
+  });
+
+  it("keeps failed pending-user placeholder even when matching server message exists", () => {
+    const serverUser = { ...msg("srv-u-1", "ok", "2026-05-20T10:00:00Z"), role: "user", content_markdown: "hello" };
+    const server = [serverUser];
+    const local = [
+      { ...msg("pending-user-abc", "failed", "2026-05-20T10:00:00Z"), role: "user", content_markdown: "hello" },
+    ];
+    const merged = mergeSessionMessages(server, local);
+    // Failed placeholder is preserved for retry UX
+    expect(merged.some((m) => m.id === "pending-user-abc")).toBe(true);
+    expect(merged.some((m) => m.id === "srv-u-1")).toBe(true);
+  });
+
+  it("replaces pending-user placeholder with dropStaleInFlight", () => {
+    const serverUser = { ...msg("srv-u-1", "ok", "2026-05-20T10:00:00Z"), role: "user", content_markdown: "hello" };
+    const server = [serverUser];
+    const local = [
+      { ...msg("pending-user-abc", "ok", "2026-05-20T10:00:00Z"), role: "user", content_markdown: "hello" },
+    ];
+    const merged = mergeSessionMessages(server, local, { dropStaleInFlight: true });
+    expect(merged.some((m) => m.id === "srv-u-1")).toBe(true);
+    expect(merged.some((m) => m.id === "pending-user-abc")).toBe(false);
   });
 });

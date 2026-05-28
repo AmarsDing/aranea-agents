@@ -92,9 +92,14 @@ export function useChatSessionArtifacts(sessionId: ComputedRef<string | undefine
     })();
   }
 
+  function onArtifactDeleted(id: string) {
+    sessionArtifacts.value = sessionArtifacts.value.filter((a) => a.id !== id);
+  }
+
   return {
     sessionArtifacts,
     sessionArtifactsLoading,
     openSessionArtifact,
+    onArtifactDeleted,
   };
 }

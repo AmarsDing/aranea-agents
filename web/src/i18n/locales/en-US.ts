@@ -100,6 +100,10 @@ export default {
     feedbackThanks: "Thanks for your feedback",
     feedbackFailed: "Could not submit feedback",
     fileImport: "Files",
+    fileNotSupported: "This model does not support file attachments",
+    limitedFileTypes: "This model only supports non-image files",
+    clipboardFileUnsupported: "This model does not support pasting this file type",
+    fileModelUnsupported: "This model does not support file attachments. Remove attachments or switch model",
     voiceInput: "Voice",
     send: "Send",
     stop: "Stop generating",
@@ -116,6 +120,22 @@ export default {
     },
     wsReplaying: "Syncing historical events…",
     wsReplayingShort: "replay",
+    sessionLoading: "Loading session…",
+    sendDispatchTimeout: "Send timed out, please check your network connection",
+    sendFailed: "Send failed",
+    sendFailedRetry: "Send failed, click to retry",
+    sendFailedBackend: "Backend unavailable",
+    imageModelUnsupported: "The current model does not support image understanding. Remove image attachments or switch to a vision-capable model.",
+    sessionCreateFailed: "Session not created or invalid, please retry",
+    backendUnavailableDev: "Backend unavailable, make sure admin is running on :8000 (page should use http://localhost:9001)",
+    backendUnavailable: "Backend unavailable, please log in again",
+    wsFallbackHttp: "WebSocket unavailable, sending via HTTP…",
+    toolConfirmUseButtons: "Please use the approve or deny buttons to confirm the tool call",
+    enqueueRunEnded: "Current run has ended, please send a new message directly",
+    enqueueQueueFull: "Queue is full, please try again later",
+    teamSendFailed: "Team send failed",
+    retry: "Retry",
+    dismiss: "Dismiss",
     syncDiagnostic: "{count} msgs · rev {rev} · WS {ws} · {ctx}% ctx",
     source: {
       web: "Web",
@@ -158,6 +178,8 @@ export default {
     confirmDelete: "Delete",
     cancel: "Cancel",
     voicePlaceholder: "Voice capture will be wired in a later release.",
+    attachmentDeleted: "Attachment deleted",
+    attachmentDeleteFailed: "Failed to delete attachment",
     awaitingUserHint: "The agent is waiting for your reply. Type below and click Submit reply.",
     submitAwaitReply: "Submit reply",
     awaitReplySent: "Reply submitted; execution continues",
@@ -170,13 +192,22 @@ export default {
     toolLongRunning: "Long-running",
     sessionArtifacts: {
       title: "Session artifacts",
+      view: "View",
+      download: "Download",
+      delete: "Delete",
+      empty: "No artifacts yet",
     },
     job: {
       title: "Background jobs",
       loading: "Loading background jobs…",
       empty: "No background jobs",
       refresh: "Refresh",
-      openGraph: "Open graph run"
+      openGraph: "Open graph run",
+      cancel: "Cancel job",
+      cancelConfirm: "Cancel job",
+      cancelConfirmMsg: "Are you sure you want to cancel this job? This action cannot be undone.",
+      cancelled: "Job cancelled",
+      cancelFailed: "Cancel failed"
     },
     turn: {
       block: {
@@ -332,7 +363,9 @@ export default {
     copyWebhookFailed: "Failed to copy",
     deleteTitle: "Delete this channel?",
     deleteMessage: "Runtime will stop loading it; unbind webhooks on the platform side manually.",
-    deleteOk: "Channel deleted"
+    deleteOk: "Channel deleted",
+    opsTitle: "Channel ops panel",
+    opsClose: "Collapse"
   },
   channelEditor: {
     editTitle: "Edit channel",
@@ -511,6 +544,9 @@ export default {
     turnJobsHint: "Newest first; for LT-07 troubleshooting.",
     turnJobsRefresh: "Refresh",
     turnJobsEmpty: "No turn jobs yet",
+    deliveriesTitle: "Recent delivery states",
+    deliveriesHint: "Shows recent inbound processing and outbound delivery state for channel troubleshooting.",
+    deliveriesEmpty: "No delivery records yet",
     status: {
       pendingSave: "Pending save",
       configured: "✔ Configured",

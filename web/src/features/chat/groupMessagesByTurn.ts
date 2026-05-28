@@ -1,10 +1,21 @@
+/**
+ * Stack-based chat message grouping.
+ *
+ * Messages are sorted by time, then grouped into TurnBlocks:
+ * - Each `role=user` message starts a new block.
+ * - Subsequent non-user messages (assistant, tool, member) belong to the current block.
+ * - No turn_index inference or request_id coupling needed.
+ *
+ * The `turn_index` field on Message is preserved for backend compatibility but
+ * is NOT used for frontend grouping decisions.
+ */
 import type { Message, ReactToolLinkIndex } from "./types";
 import { toolEventFromMessage } from "./envelopeToolCall";
-import { isActivityMessage } from "./mergeSessionMessages";
+import { isActivityMessage, isInFlightLocalRow } from "./mergeSessionMessages";
 import { isToolLinkedInReactIndex } from "./reactToolLinkIndex";
 
 export type TurnBlockGroup = {
-  /** User message turn_index (odd); grouping key */
+  /** Sequential block index (0-based). */
   key: number;
   turnId: string;
   user: Message | null;
@@ -17,61 +28,84 @@ export function isTeamMemberStreamMessage(message: Message): boolean {
   return String(message.id).startsWith("member-");
 }
 
-/** Map any message row to its user-turn grouping key. */
-export function deriveTurnKey(message: Message): number {
-  const ti = message.turn_index ?? 0;
-  if (isTeamMemberStreamMessage(message)) return ti;
-  if (isActivityMessage(message)) {
-    return ti % 2 === 0 ? Math.max(0, ti - 1) : ti;
-  }
-  if (message.role === "assistant" && ti > 0 && ti % 2 === 0) {
-    return ti - 1;
-  }
-  if (message.role === "user") return ti;
-  return ti % 2 === 0 ? Math.max(0, ti - 1) : ti;
+/**
+ * Sort comparator: persisted messages by created_at, in-flight rows last.
+ * Within each group, preserve original array order as tiebreaker.
+ */
+function messageSortRank(message: Message, index: number): [number, string, number] {
+  const inFlight = isInFlightLocalRow(message) ? 1 : 0;
+  return [inFlight, message.created_at || "", index];
 }
 
 /**
- * Derive TurnBlock[] from merged messages (after mergeSessionMessages).
- * Team member stream rows stay nested under their turn block.
+ * Derive TurnBlock[] from merged messages.
+ *
+ * Algorithm:
+ * 1. Sort: persisted by created_at, in-flight at the end.
+ * 2. Iterate: role=user → open new block; otherwise → append to current block.
+ * 3. Consolidate orphan tool-only blocks into previous block.
  */
 export function groupMessagesByTurn(messages: Message[]): TurnBlockGroup[] {
-  const map = new Map<number, TurnBlockGroup>();
+  if (messages.length === 0) return [];
 
-  for (const msg of messages) {
-    const key = deriveTurnKey(msg);
-    let block = map.get(key);
-    if (!block) {
-      block = {
-        key,
-        turnId: msg.role === "user" ? msg.id : `turn-${key}`,
+  // Sort: persisted first (by time), in-flight last (by time)
+  const sorted = messages
+    .map((m, i) => ({ m, i }))
+    .sort((a, b) => {
+      const ra = messageSortRank(a.m, a.i);
+      const rb = messageSortRank(b.m, b.i);
+      if (ra[0] !== rb[0]) return ra[0] - rb[0];
+      if (ra[1] !== rb[1]) return ra[1].localeCompare(rb[1]);
+      return ra[2] - rb[2];
+    })
+    .map((x) => x.m);
+
+  const blocks: TurnBlockGroup[] = [];
+  let current: TurnBlockGroup | null = null;
+  let blockIndex = 0;
+
+  for (const msg of sorted) {
+    // role=user starts a new block
+    if (msg.role === "user") {
+      current = {
+        key: blockIndex++,
+        turnId: msg.id,
+        user: msg,
+        assistant: null,
+        tools: [],
+        members: [],
+      };
+      blocks.push(current);
+      continue;
+    }
+
+    // First message is not user → open a block with user=null
+    if (!current) {
+      current = {
+        key: blockIndex++,
+        turnId: `turn-orphan-${blockIndex}`,
         user: null,
         assistant: null,
         tools: [],
         members: [],
       };
-      map.set(key, block);
+      blocks.push(current);
     }
+
+    // Distribute into current block
     if (isTeamMemberStreamMessage(msg)) {
-      block.members.push(msg);
-      continue;
-    }
-    if (isActivityMessage(msg)) {
-      block.tools.push(msg);
-      continue;
-    }
-    if (msg.role === "user") {
-      block.user = msg;
-      block.turnId = msg.id;
+      current.members.push(msg);
+    } else if (isActivityMessage(msg)) {
+      current.tools.push(msg);
     } else if (msg.role === "assistant") {
-      block.assistant = msg;
+      current.assistant = msg;
     }
   }
 
-  return consolidateOrphanToolBlocks([...map.values()].sort((a, b) => a.key - b.key));
+  return consolidateOrphanToolBlocks(blocks);
 }
 
-/** Merge tool-only blocks (failed/partial turns) into the previous user turn. */
+/** Merge tool-only blocks (no user, no assistant) into the previous user turn. */
 function consolidateOrphanToolBlocks(blocks: TurnBlockGroup[]): TurnBlockGroup[] {
   const out: TurnBlockGroup[] = [];
   for (const block of blocks) {

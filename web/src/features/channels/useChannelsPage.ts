@@ -21,6 +21,7 @@ export function useChannelsPage() {
   const editorOpen = ref(false);
   const editingRow = ref<ChannelRow | null>(null);
   const editingCredentials = ref<ChannelCredential[]>([]);
+  const opsChannelId = ref("");
 
   const typeOptions = computed(() => catalog.value.map((item) => ({ label: item.label, value: item.type })));
   const statusOptions = computed(() => [
@@ -54,6 +55,7 @@ export function useChannelsPage() {
     const start = (page.value - 1) * pageSize.value;
     return filteredRows.value.slice(start, start + pageSize.value);
   });
+  const opsChannel = computed(() => rows.value.find((row) => row.id === opsChannelId.value) ?? null);
 
   onMounted(() => void loadAll());
 
@@ -89,6 +91,14 @@ export function useChannelsPage() {
     const index = rows.value.findIndex((item) => item.id === row.id);
     if (index >= 0) rows.value[index] = row;
     else rows.value.unshift(row);
+  }
+
+  function openOps(row: ChannelRow) {
+    opsChannelId.value = row.id;
+  }
+
+  function closeOps() {
+    opsChannelId.value = "";
   }
 
   async function toggleRow(row: ChannelRow, enabled: boolean) {
@@ -137,6 +147,9 @@ export function useChannelsPage() {
       persistent: true
     }).onOk(async () => {
       await channelsStore.removeChannel(row.id);
+      if (opsChannelId.value === row.id) {
+        closeOps();
+      }
       $q.notify({ type: "positive", message: t("channelsPage.deleteOk") });
     });
   }
@@ -161,10 +174,13 @@ export function useChannelsPage() {
     editorOpen,
     editingRow,
     editingCredentials,
+    opsChannel,
     resetFilters,
     loadAll,
     openCreate,
     openEdit,
+    openOps,
+    closeOps,
     onSaved,
     toggleRow,
     testRow,

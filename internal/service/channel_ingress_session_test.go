@@ -153,6 +153,9 @@ func (m *ingressSessionRepo) SearchMessages(context.Context, biz.MessageSearchQu
 func (m *ingressSessionRepo) AppendChatMessage(context.Context, string, biz.ChatMessage, bool) error {
 	return nil
 }
+func (m *ingressSessionRepo) UpdateChatMessageStatus(context.Context, string, string, string, string) error {
+	return nil
+}
 func (m *ingressSessionRepo) UpdateMessageFeedbackJSON(context.Context, string, string, string, string) error {
 	return nil
 }

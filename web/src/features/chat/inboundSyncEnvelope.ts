@@ -34,6 +34,7 @@ export function shouldSkipHydrate(env: Envelope): boolean {
 
 export function isTurnCompleteEnvelope(env: Envelope): boolean {
   if (env.type === "runner_completion") return true;
+  if (env.type === "error") return true;
   if (env.type !== "run_status") return false;
   const status = runStatusFromEnvelope(env)?.status;
   if (status === SESSION_RUN_STATUS.SYNC) return false;

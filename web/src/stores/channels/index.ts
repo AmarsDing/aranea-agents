@@ -9,11 +9,13 @@ import {
   deleteChannel,
   toggleChannel,
   testChannel,
+  listChannelDeliveries,
   listChannelTurnJobs,
   type ChannelRow,
   type ChannelCatalogItem,
   type ChannelCredential,
   type ChannelResourceInput,
+  type ChannelDeliveryRow,
   type ChannelTurnJobRow
 } from "../../features/channels/api";
 
@@ -71,6 +73,11 @@ export const useChannelsStore = defineStore("channels", () => {
     return data.items;
   }
 
+  async function loadDeliveries(channelId: string, limit = 30): Promise<ChannelDeliveryRow[]> {
+    const data = await listChannelDeliveries(channelId, limit);
+    return data.items;
+  }
+
   return {
     channels,
     catalog,
@@ -83,6 +90,7 @@ export const useChannelsStore = defineStore("channels", () => {
     toggle,
     fetchCredentials,
     testConnection,
-    loadTurnJobs
+    loadTurnJobs,
+    loadDeliveries
   };
 });

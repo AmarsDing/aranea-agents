@@ -99,6 +99,14 @@ func (wc *wsConn) sendSystemDownstream(msg wsDownstream) {
 	}
 	// H-02: route through queues (normal priority) so writePump has a single drain path.
 	wc.queues.enqueueSystem(data)
+	wc.wakeWriter()
+}
+
+func (wc *wsConn) contextOrBackground() context.Context {
+	if wc != nil && wc.connCtx != nil {
+		return wc.connCtx
+	}
+	return context.Background()
 }
 
 func (s *WSServer) countGlobalMonitorConns() int {
@@ -227,6 +235,20 @@ func (s *WSServer) broadcastShutdown() {
 func (wc *wsConn) sendSystemRaw(data []byte) {
 	// H-02: route through queues (normal priority).
 	wc.queues.enqueueSystem(data)
+	wc.wakeWriter()
+}
+
+func (wc *wsConn) wakeWriter() {
+	if wc == nil || wc.send == nil {
+		return
+	}
+	defer func() {
+		_ = recover()
+	}()
+	select {
+	case wc.send <- nil:
+	default:
+	}
 }
 
 func (s *WSServer) handleWS(w http.ResponseWriter, r *http.Request) {
@@ -316,7 +338,7 @@ func (s *WSServer) handleWS(w http.ResponseWriter, r *http.Request) {
 		channels:   channels,
 		filterKey:  filterKey,
 		send:       make(chan []byte, wsNormalCap), // system/replay messages (normal priority)
-		queues:     newConnQueues(),               // MON-OPT-04 priority lanes for bus events
+		queues:     newConnQueues(),                // MON-OPT-04 priority lanes for bus events
 		logEnabled: logEnabled,
 		globalMode: globalMode,
 		probeMode:  probeMode,
@@ -416,6 +438,7 @@ func (s *WSServer) replayEvents(wc *wsConn, sessionID, lastEventID string) {
 	// H-02: all replay messages route through queues (normal priority).
 	if data, err := json.Marshal(startMsg); err == nil {
 		wc.queues.enqueueSystem(data)
+		wc.wakeWriter()
 	}
 
 	for _, env := range events {
@@ -433,6 +456,7 @@ func (s *WSServer) replayEvents(wc *wsConn, sessionID, lastEventID string) {
 			continue
 		}
 		wc.queues.enqueueSystem(data)
+		wc.wakeWriter()
 	}
 
 	endMsg := wsDownstream{
@@ -445,6 +469,7 @@ func (s *WSServer) replayEvents(wc *wsConn, sessionID, lastEventID string) {
 	}
 	if data, err := json.Marshal(endMsg); err == nil {
 		wc.queues.enqueueSystem(data)
+		wc.wakeWriter()
 	}
 }
 
@@ -588,6 +613,7 @@ func (s *WSServer) eventPump(wc *wsConn, eventCh <-chan event.Envelope) {
 			close(wc.send) // signal writePump to exit
 			return
 		}
+		wc.wakeWriter()
 	}
 }
 
@@ -699,13 +725,44 @@ func (s *WSServer) handleUserMessage(wc *wsConn, up wsUpstream) {
 		if opts, ok := payload["options"].(map[string]any); ok {
 			input.Options = buildBizTurnOptions(opts)
 		}
+		// COR-03: derive turn context from the connection context so disconnecting
+		// the WebSocket also cancels in-flight agent turns for this connection.
+		connCtx := wc.contextOrBackground()
+		safego.Go(context.Background(), "ws-user-message", func() {
+			ctx, cancel := context.WithTimeout(connCtx, defaultWSTurnTimeout)
+			defer cancel()
+			_, err := s.turnGateway.ExecuteTurn(ctx, input)
+			if err != nil {
+				event.SessionSysLogWarn(context.Background(), sessionID, "system.ws.send_failed", "WebSocket 用户消息发送失败", event.P("error", err))
+				// ExecuteTurn publishes user-facing failures through the turn projector.
+				// Avoid a second raw ws-handler error that can leak provider details.
+			}
+		})
+		return
+	}
+
+	// Fallback: proto-based ChatSender (legacy path).
+	req := &chatv1.SendChatMessageRequest{
+		SessionId: sessionID,
+		Content:   strings.TrimSpace(content),
+	}
+	if agentKey, _ := payload["agent_key"].(string); agentKey != "" {
+		req.AgentKey = &agentKey
+	}
+	if teamID, _ := payload["team_id"].(string); teamID != "" {
+		req.TeamId = &teamID
+	}
+	if opts, ok := payload["options"].(map[string]any); ok {
+		req.Options = buildChatOptions(opts)
+	}
+
 	// COR-03: derive turn context from the connection context so disconnecting
 	// the WebSocket also cancels in-flight agent turns for this connection.
-	connCtx := wc.connCtx
+	connCtx := wc.contextOrBackground()
 	safego.Go(context.Background(), "ws-user-message", func() {
 		ctx, cancel := context.WithTimeout(connCtx, defaultWSTurnTimeout)
 		defer cancel()
-		_, err := s.turnGateway.ExecuteTurn(ctx, input)
+		_, err := s.sender.SendChatMessage(ctx, req)
 		if err != nil {
 			event.SessionSysLogWarn(context.Background(), sessionID, "system.ws.send_failed", "WebSocket 用户消息发送失败", event.P("error", err))
 			env := event.NewEnvelope(event.EnvelopeTypeError, "ws-handler", sessionID)
@@ -717,45 +774,12 @@ func (s *WSServer) handleUserMessage(wc *wsConn, up wsUpstream) {
 			s.eventBus.Publish(context.Background(), env)
 		}
 	})
-	return
-}
-
-// Fallback: proto-based ChatSender (legacy path).
-req := &chatv1.SendChatMessageRequest{
-	SessionId: sessionID,
-	Content:   strings.TrimSpace(content),
-}
-if agentKey, _ := payload["agent_key"].(string); agentKey != "" {
-	req.AgentKey = &agentKey
-}
-if teamID, _ := payload["team_id"].(string); teamID != "" {
-	req.TeamId = &teamID
-}
-if opts, ok := payload["options"].(map[string]any); ok {
-	req.Options = buildChatOptions(opts)
-}
-
-// COR-03: derive turn context from the connection context so disconnecting
-// the WebSocket also cancels in-flight agent turns for this connection.
-connCtx := wc.connCtx
-safego.Go(context.Background(), "ws-user-message", func() {
-	ctx, cancel := context.WithTimeout(connCtx, defaultWSTurnTimeout)
-	defer cancel()
-	_, err := s.sender.SendChatMessage(ctx, req)
-	if err != nil {
-		event.SessionSysLogWarn(context.Background(), sessionID, "system.ws.send_failed", "WebSocket 用户消息发送失败", event.P("error", err))
-		env := event.NewEnvelope(event.EnvelopeTypeError, "ws-handler", sessionID)
-		env.RequestID = requestID
-		env.Error = &event.EnvelopeError{
-			Type:    "send_failed",
-			Message: err.Error(),
-		}
-		s.eventBus.Publish(context.Background(), env)
-	}
-})
 }
 
 func (s *WSServer) handleEnqueueMessage(wc *wsConn, up wsUpstream) {
+	if s == nil || s.sender == nil {
+		return
+	}
 	payload, ok := up.Payload.(map[string]any)
 	if !ok {
 		return
@@ -772,7 +796,7 @@ func (s *WSServer) handleEnqueueMessage(wc *wsConn, up wsUpstream) {
 		Content:   strings.TrimSpace(content),
 	}
 
-	connCtxEq := wc.connCtx
+	connCtxEq := wc.contextOrBackground()
 	safego.Go(context.Background(), "ws-enqueue-message", func() {
 		ctx, cancel := context.WithTimeout(connCtxEq, defaultWSTurnTimeout)
 		defer cancel()

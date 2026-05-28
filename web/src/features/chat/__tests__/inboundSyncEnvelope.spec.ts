@@ -61,4 +61,8 @@ describe("inboundSyncEnvelope (DECO-01 / M55-SYNC)", () => {
       isTurnCompleteEnvelope(env({ type: "runner_completion" }))
     ).toBe(true);
   });
+
+  it("treats error envelopes as turn complete", () => {
+    expect(isTurnCompleteEnvelope(env({ type: "error" }))).toBe(true);
+  });
 });

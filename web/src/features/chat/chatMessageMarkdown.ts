@@ -68,8 +68,11 @@ const mdCache = new Map<string, string>();
 function markdownCacheKey(messageId: string, content: string, streaming: boolean): string {
   const id = messageId || "anon";
   const len = content.length;
-  const tail = len > 96 ? content.slice(-96) : content;
-  return `${id}:${streaming ? "s" : "f"}:${len}:${tail}`;
+  // Use a hash-like key: combine length with head and tail to avoid collisions
+  // where different content shares the same length and tail (common during streaming).
+  const head = len > 48 ? content.slice(0, 48) : content;
+  const tail = len > 48 ? content.slice(-48) : "";
+  return `${id}:${streaming ? "s" : "f"}:${len}:${head}:${tail}`;
 }
 
 function trimMarkdownCache() {
@@ -99,19 +102,8 @@ export function clearChatMarkdownCache() {
   mdCache.clear();
 }
 
-function closeOpenFences(src: string): string {
-  let count = 0;
-  for (const line of src.split("\n")) {
-    if (/^\s*```/.test(line)) count++;
-  }
-  if (count % 2 !== 0) return `${src}\n\`\`\``;
-  return src;
-}
-
 export function renderStreamingChatMarkdown(content: string): string {
-  const patched = closeOpenFences(content || "");
-  return DOMPurify.sanitize(markdown.render(patched), {
-    ADD_TAGS: ["button"],
-    ADD_ATTR: ["type", "aria-label", "aria-hidden"],
-  });
+  // During streaming, avoid full markdown-it parsing on every token. The final
+  // text_done render still uses complete Markdown above.
+  return markdown.utils.escapeHtml(content || "").replace(/\n/g, "<br>");
 }

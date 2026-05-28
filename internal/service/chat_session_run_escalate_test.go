@@ -58,6 +58,9 @@ func (s *escalateSessionRunRepoStub) TryClaimDurableResume(_ context.Context, _ 
 func (s *escalateSessionRunRepoStub) ClearResumeClaim(_ context.Context, _ string) error {
 	return nil
 }
+func (s *escalateSessionRunRepoStub) MarkOrphanedRunsCancelled(_ context.Context) (int, error) {
+	return 0, nil
+}
 
 type escalateCheckpointRepoStub struct {
 	cps map[string]biz.SessionRunCheckpoint

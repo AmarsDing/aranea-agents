@@ -2,12 +2,10 @@ import type { Envelope } from "./envelope";
 import type { UseEnvelopeStreamReturn } from "./useEnvelopeStream";
 import type { Message } from "./types";
 import type { Session } from "../session/types";
-import { dropPendingUserPlaceholders } from "./mergeSessionMessages";
 import { upsertToolMessage, finalizeOrphanToolMessages } from "./envelopeToolCall";
 import { patchStreamingMessage } from "./streamContentPatch";
 import { createMessageBatchWriter } from "./messageStoreBatch";
 import { shouldSessionWsSkipEnvelope } from "./inboundSyncRouting";
-import { inferAssistantStreamTurnIndex, realignEphemeralTurnIndexes } from "./streamTurnIndex";
 import type { IntentPassResult } from "./types";
 import { sessionContextPatchFromEnvelope } from "./sessionContextPatch";
 import type { SessionContextPatch } from "./sessionContextPatch";
@@ -22,7 +20,7 @@ export function createPlaceholderMessage(
     id,
     session_id: sessionID,
     parent_message_id: "",
-    turn_index: 1,
+    turn_index: 0,
     role,
     content_markdown: content,
     model_name: "mock",
@@ -76,6 +74,26 @@ function patchMessages(
   );
 }
 
+function markPendingUserFailed(messages: Message[], pendingId: string, errorMessage: string): Message[] {
+  return messages.map((m) =>
+    m.id === pendingId
+      ? {
+          ...m,
+          status: "failed",
+          error_message: errorMessage,
+        }
+      : m
+  );
+}
+
+function latestPendingUserId(messages: Message[]): string {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const id = messages[i]?.id ?? "";
+    if (id.startsWith("pending-user-")) return id;
+  }
+  return "";
+}
+
 /** Shared streaming row patch for WS handlers and inbound sync. */
 export function patchStreamingEnvelope(
   messages: Message[],
@@ -88,24 +106,21 @@ export function patchStreamingEnvelope(
   const exists = cur.some((m) => m.id === streamId);
   let next = cur;
   if (!exists) {
-    const turnIndex = inferAssistantStreamTurnIndex(cur);
     next = [
       ...cur,
       {
         ...createPlaceholderMessage(streamId, sessionId, "assistant", ""),
-        turn_index: turnIndex,
         status: "streaming",
       },
     ];
   }
-  const patched = patchStreamingMessage(next, streamId, {
+  return patchStreamingMessage(next, streamId, {
     text: isDone ? undefined : env.content?.text,
     reasoning: isDone ? undefined : env.content?.reasoning,
     replaceText: isDone ? env.content?.text : undefined,
     replaceReasoning: isDone ? env.content?.reasoning : undefined,
     status: isDone ? "ok" : "streaming",
   });
-  return realignEphemeralTurnIndexes(patched);
 }
 
 export function bindStreamHandlers(
@@ -254,11 +269,17 @@ export function bindStreamHandlers(
     writer?.flushSync();
     const sid = ctx.resolveActiveSessionId() ?? ctx.sessionId;
     if (!sid) return;
-    const finalized = dropPendingUserPlaceholders(
-      finalizeOrphanToolMessages(ctx.getMessages(sid))
-    ).filter((m) => {
+    // Keep pending-user placeholders so the user message stays visible while
+    // loadMessages fetches the persisted version.  The merge logic in
+    // mergeSessionMessages will replace them with server-persisted rows.
+    const finalized = finalizeOrphanToolMessages(ctx.getMessages(sid)).filter((m) => {
       const id = m.id || "";
-      return !id.startsWith("ws-stream-") && !id.startsWith("ws-team-stream-");
+      // Keep ws-stream rows that received text_done (status="ok") as fallback
+      // until server-persisted messages arrive via loadMessages.
+      if (id.startsWith("ws-stream-") || id.startsWith("ws-team-stream-")) {
+        return m.status === "ok";
+      }
+      return true;
     });
     ctx.setMessages(sid, finalized);
     applySessionContextPatch(sid, env);
@@ -272,20 +293,33 @@ export function bindStreamHandlers(
     }
   });
 
-  stream.onType("error", (env: Envelope) => {
+  stream.onType("error", async (env: Envelope) => {
     const errType = env.error?.type ?? "";
     if (errType.startsWith("flow_")) return;
     const hint = env.error?.hint?.trim();
     const msg = env.error?.message ?? "stream failed";
     ctx.onErrorNotify(hint ? `${msg} — ${hint}` : msg);
     const sid = ctx.resolveActiveSessionId() ?? ctx.sessionId;
-    if (sid && env.request_id?.startsWith("pending-user-")) {
-      ctx.setMessages(
-        sid,
-        ctx.getMessages(sid).filter((m) => m.id !== env.request_id)
-      );
+    writer?.flushSync();
+    if (sid) {
+      const pendingUserId = env.request_id?.startsWith("pending-user-")
+        ? env.request_id
+        : latestPendingUserId(ctx.getMessages(sid));
+      if (pendingUserId) {
+        ctx.setMessages(
+          sid,
+          markPendingUserFailed(ctx.getMessages(sid), pendingUserId, msg)
+        );
+      }
     }
     ctx.markSendingDone();
+    if (sid && !shouldSessionWsSkipEnvelope(env)) {
+      try {
+        await ctx.onReloadAfterCompletion(sid);
+      } catch {
+        /* caller may surface errors */
+      }
+    }
   });
 
   stream.onType("intent_pass", (env: Envelope) => {

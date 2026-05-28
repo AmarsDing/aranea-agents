@@ -40,9 +40,20 @@ func entToBizPM(e *ent.LlmProviderModel) biz.ProviderModel {
 		Model:        e.Model,
 		ConfigJSON:   e.ConfigJSON,
 		MetadataJSON: e.MetadataJSON,
-		CreatedAt:    e.CreatedAt,
-		UpdatedAt:    e.UpdatedAt,
-		DeletedAt:    e.DeletedAt,
+		Capabilities: biz.ModelCapabilities{
+			Text:     e.CapabilityText,
+			Vision:   e.CapabilityVision,
+			Audio:    e.CapabilityAudio,
+			File:     e.CapabilityFile,
+			ToolCall: e.CapabilityToolCall,
+			Cache:    e.CapabilityCache,
+			Thinking: e.CapabilityThinking,
+			TextOnly: e.CapabilityTextOnly,
+		},
+		CapabilitiesExplicit: e.CapabilitiesExplicit,
+		CreatedAt:            e.CreatedAt,
+		UpdatedAt:            e.UpdatedAt,
+		DeletedAt:            e.DeletedAt,
 	}
 }
 
@@ -128,6 +139,15 @@ func (r *llmProviderModelRepo) CreateProviderModel(ctx context.Context, m biz.Pr
 		SetModel(m.Model).
 		SetConfigJSON(m.ConfigJSON).
 		SetMetadataJSON(m.MetadataJSON).
+		SetCapabilityText(m.Capabilities.Text).
+		SetCapabilityVision(m.Capabilities.Vision).
+		SetCapabilityAudio(m.Capabilities.Audio).
+		SetCapabilityFile(m.Capabilities.File).
+		SetCapabilityToolCall(m.Capabilities.ToolCall).
+		SetCapabilityCache(m.Capabilities.Cache).
+		SetCapabilityThinking(m.Capabilities.Thinking).
+		SetCapabilityTextOnly(m.Capabilities.TextOnly).
+		SetCapabilitiesExplicit(m.CapabilitiesExplicit).
 		SetCreatedAt(m.CreatedAt).
 		SetUpdatedAt(m.UpdatedAt).
 		SetDeletedAt("").
@@ -151,6 +171,15 @@ func (r *llmProviderModelRepo) UpdateProviderModel(ctx context.Context, m biz.Pr
 		SetModel(m.Model).
 		SetConfigJSON(m.ConfigJSON).
 		SetMetadataJSON(m.MetadataJSON).
+		SetCapabilityText(m.Capabilities.Text).
+		SetCapabilityVision(m.Capabilities.Vision).
+		SetCapabilityAudio(m.Capabilities.Audio).
+		SetCapabilityFile(m.Capabilities.File).
+		SetCapabilityToolCall(m.Capabilities.ToolCall).
+		SetCapabilityCache(m.Capabilities.Cache).
+		SetCapabilityThinking(m.Capabilities.Thinking).
+		SetCapabilityTextOnly(m.Capabilities.TextOnly).
+		SetCapabilitiesExplicit(m.CapabilitiesExplicit).
 		SetUpdatedAt(m.UpdatedAt).
 		Exec(ctx)
 	if err != nil {

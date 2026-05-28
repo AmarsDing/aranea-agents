@@ -58,6 +58,7 @@
       @toggle-enabled="toggleRow"
       @test-connection="testRow"
       @copy-webhook="copyWebhook"
+      @ops="openOps"
       @edit="openEdit"
       @remove="confirmDelete"
     />
@@ -71,6 +72,29 @@
       label="个 Channel"
     />
 
+    <section v-if="opsChannel" ref="opsSectionRef" class="channel-ops-section">
+      <div class="row items-center justify-between q-mb-sm">
+        <div>
+          <div class="text-subtitle1 text-weight-medium">{{ t("channelsPage.opsTitle") }}</div>
+          <div class="text-caption text-grey-7">
+            {{ opsChannel.name }} · {{ opsChannel.key }}
+          </div>
+        </div>
+        <q-btn
+          flat
+          dense
+          no-caps
+          icon="close"
+          :label="t('channelsPage.opsClose')"
+          @click="closeOps"
+        />
+      </div>
+      <div class="channel-ops-grid">
+        <ChannelTurnJobsPanel :channel-id="opsChannel.id" />
+        <ChannelDeliveriesPanel :channel-id="opsChannel.id" />
+      </div>
+    </section>
+
     <ChannelEditorDialog
       v-model="editorOpen"
       :catalog="catalog"
@@ -83,10 +107,13 @@
 </template>
 
 <script setup lang="ts">
+import { nextTick, ref, watch } from "vue";
 import ChannelCatalogFilters from "../components/channels/ChannelCatalogFilters.vue";
 import ChannelHeroSection from "../components/channels/ChannelHeroSection.vue";
 import ChannelsTable from "../components/channels/ChannelsTable.vue";
 import ChannelEditorDialog from "../features/channels/ChannelEditorDialog.vue";
+import ChannelDeliveriesPanel from "../features/channels/ChannelDeliveriesPanel.vue";
+import ChannelTurnJobsPanel from "../features/channels/ChannelTurnJobsPanel.vue";
 import AppRegistryPagination from "../components/layout/AppRegistryPagination.vue";
 import { useChannelsPage } from "../features/channels/useChannelsPage";
 
@@ -110,14 +137,47 @@ const {
   editorOpen,
   editingRow,
   editingCredentials,
+  opsChannel,
   resetFilters,
   loadAll,
   openCreate,
   openEdit,
+  openOps,
+  closeOps,
   onSaved,
   toggleRow,
   testRow,
   copyWebhook,
   confirmDelete
 } = useChannelsPage();
+
+const opsSectionRef = ref<HTMLElement | null>(null);
+
+watch(opsChannel, async (row) => {
+  if (!row) return;
+  await nextTick();
+  opsSectionRef.value?.scrollIntoView({ behavior: "smooth", block: "start" });
+});
 </script>
+
+<style scoped>
+.channel-ops-section {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--glass-border);
+  border-radius: 20px;
+  background: var(--glass-elevated);
+}
+
+.channel-ops-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+@media (width <= 1100px) {
+  .channel-ops-grid {
+    grid-template-columns: 1fr;
+  }
+}
+</style>

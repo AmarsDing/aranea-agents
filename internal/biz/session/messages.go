@@ -5,6 +5,10 @@ import (
 	"strings"
 )
 
+type chatMessageStatusUpdater interface {
+	UpdateChatMessageStatus(ctx context.Context, sessionID, messageID, status, errorMessage string) error
+}
+
 // SearchMessages full-text search within one session.
 func (uc *SessionUsecase) SearchMessages(ctx context.Context, q MessageSearchQuery) (MessageSearchResult, error) {
 	if uc == nil || uc.sessions == nil {
@@ -98,6 +102,23 @@ func (uc *SessionUsecase) AppendChatMessage(ctx context.Context, sessionID strin
 		_ = uc.maybeAutoTitleFromUserMessage(ctx, sessionID, msg.ContentMarkdown)
 	}
 	return nil
+}
+
+func (uc *SessionUsecase) UpdateChatMessageStatus(ctx context.Context, sessionID, messageID, status, errorMessage string) error {
+	sessionID = strings.TrimSpace(sessionID)
+	messageID = strings.TrimSpace(messageID)
+	status = strings.TrimSpace(status)
+	if sessionID == "" || messageID == "" {
+		return validationErr("session_id and message_id are required")
+	}
+	if status == "" {
+		return validationErr("status is required")
+	}
+	updater, ok := uc.sessions.(chatMessageStatusUpdater)
+	if !ok {
+		return nil
+	}
+	return updater.UpdateChatMessageStatus(ctx, sessionID, messageID, status, strings.TrimSpace(errorMessage))
 }
 
 // UpdateMessageFeedback records thumbs up/down on an assistant message (options_json.feedback).

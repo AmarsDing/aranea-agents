@@ -52,6 +52,18 @@
                   <q-item-section side>
                     <div class="row items-center q-gutter-xs">
                       <q-btn
+                        v-if="isJobActive(job)"
+                        flat
+                        dense
+                        round
+                        icon="cancel"
+                        color="negative"
+                        :aria-label="t('chat.job.cancel', '取消任务')"
+                        @click.stop="cancelJob(job)"
+                      >
+                        <q-tooltip>{{ t('chat.job.cancel', '取消任务') }}</q-tooltip>
+                      </q-btn>
+                      <q-btn
                         v-if="turnBlockLink(job)"
                         flat
                         dense
@@ -149,8 +161,10 @@
 <script setup lang="ts">
 import { computed, ref, toRef, watch, type Ref } from "vue";
 import { useI18n } from "vue-i18n";
+import { useQuasar } from "quasar";
 import { useChatBackgroundJobs } from "../../features/chat/useChatBackgroundJobs";
 import { useTaskDeadLetters } from "../../features/chat/useTaskDeadLetters";
+import { cancelChatBackgroundJob } from "../../features/chat/api";
 
 type ChatBackgroundJobRow = ReturnType<typeof useChatBackgroundJobs>["rows"]["value"][number];
 type TaskDeadLetterRow = ReturnType<typeof useTaskDeadLetters>["rows"]["value"][number];
@@ -226,10 +240,38 @@ function refreshActiveTab() {
   }
 }
 
+const ACTIVE_JOB_STATUSES = new Set(["running", "accepted", "async_queued", "queued", "interactive", "escalating", "durable"]);
+
+function isJobActive(job: ChatBackgroundJobRow) {
+  return ACTIVE_JOB_STATUSES.has(job.status);
+}
+
+const $q = useQuasar();
+
+async function cancelJob(job: ChatBackgroundJobRow) {
+  $q.dialog({
+    title: t("chat.job.cancelConfirm", "取消任务"),
+    message: t("chat.job.cancelConfirmMsg", "确定要取消此任务吗？此操作不可撤销。"),
+    cancel: true,
+    persistent: false,
+  }).onOk(async () => {
+    const ok = await cancelChatBackgroundJob(job.id, job.source);
+    if (ok) {
+      $q.notify({ type: "positive", message: t("chat.job.cancelled", "任务已取消") });
+      void loadJobs();
+    } else {
+      $q.notify({ type: "warning", message: t("chat.job.cancelFailed", "取消失败") });
+    }
+  });
+}
+
 function statusColor(status: string) {
   switch (status) {
     case "running":
     case "accepted":
+    case "interactive":
+    case "escalating":
+    case "durable":
       return "info";
     case "completed":
       return "positive";
@@ -332,6 +374,6 @@ function payloadPreview(row: TaskDeadLetterRow) {
   overflow: auto;
   font-size: 11px;
   white-space: pre-wrap;
-  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 </style>

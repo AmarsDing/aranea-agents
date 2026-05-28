@@ -32,18 +32,18 @@ import (
 	graphtrpc "aranea-agents/internal/graph/trpc"
 	"aranea-agents/internal/knowledge"
 	"aranea-agents/internal/llminspect"
-	"aranea-agents/internal/modelcatalog"
 	"aranea-agents/internal/mcp/alert"
 	"aranea-agents/internal/mcp/health"
 	mcpmetadata "aranea-agents/internal/mcp/metadata"
 	mcpprobe "aranea-agents/internal/mcp/probe"
 	memtrpc "aranea-agents/internal/memory/trpc"
+	"aranea-agents/internal/modelcatalog"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	"aranea-agents/internal/provider"
 	rt "aranea-agents/internal/runtime"
-	araneasession "aranea-agents/internal/session"
 	"aranea-agents/internal/server"
 	"aranea-agents/internal/service"
+	araneasession "aranea-agents/internal/session"
 	"aranea-agents/internal/skill/watch"
 	"aranea-agents/internal/team"
 	"aranea-agents/internal/tools/testexec"
@@ -631,11 +631,11 @@ func provideChannelDeliveryWorker(channels *biz.ChannelUsecase, ingress *service
 	return service.NewChannelDeliveryWorker(channels, ingress, logger)
 }
 
-func provideChannelRuntime(channels *biz.ChannelUsecase, ingress *service.ChannelIngress) *service.ChannelRuntime {
+func provideChannelRuntime(channels *biz.ChannelUsecase, ingress *service.ChannelIngress, leases biz.ChannelRuntimeLeaseRepo) *service.ChannelRuntime {
 	if service.ChannelRuntimeDisabled() {
 		return nil
 	}
-	return service.NewChannelRuntime(channels, ingress)
+	return service.NewChannelRuntime(channels, ingress, leases)
 }
 
 func provideMemoryL2DecayWorker(store *sessionmemory.Store, agents *biz.AgentUsecase, logger log.Logger) *jobs.MemoryL2DecayWorker {

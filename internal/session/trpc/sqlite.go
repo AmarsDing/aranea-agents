@@ -19,7 +19,7 @@ func NewSQLiteSessionService(db *sql.DB) (trpcsession.Service, error) {
 	}
 	svc, err := trpcsqlite.NewService(db,
 		trpcsqlite.WithTablePrefix("trpc_"),
-		trpcsqlite.WithEnableAsyncPersist(true),
+		trpcsqlite.WithEnableAsyncPersist(false),
 		trpcsqlite.WithSoftDelete(true),
 	)
 	if err != nil {

@@ -92,3 +92,15 @@ func (u *ChannelTurnJobUsecase) CancelRunningForSession(ctx context.Context, cha
 	}
 	return nil
 }
+
+// Cancel marks a specific turn job as cancelled by ID.
+func (u *ChannelTurnJobUsecase) Cancel(ctx context.Context, id string) error {
+	if u == nil || u.jobs == nil {
+		return nil
+	}
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return nil
+	}
+	return u.jobs.UpdateStatus(ctx, id, ChannelTurnJobStatusCancelled, "cancelled by user", "", "")
+}

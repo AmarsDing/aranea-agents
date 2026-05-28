@@ -1,10 +1,16 @@
-﻿<template>
+<template>
   <q-card flat bordered class="col column no-wrap chat-mid-card" style="min-height: 0; border-radius: 18px">
     <q-banner v-if="wsReplaying" dense rounded class="q-mx-md q-mt-sm app-info-banner">
       <template #avatar>
         <q-spinner-dots color="primary" size="20px" />
       </template>
       {{ t("chat.wsReplaying", "正在同步历史事件…") }}
+    </q-banner>
+    <q-banner v-else-if="sessionLoading" dense rounded class="q-mx-md q-mt-sm app-info-banner">
+      <template #avatar>
+        <q-spinner-dots color="primary" size="20px" />
+      </template>
+      {{ t("chat.sessionLoading", "正在加载会话…") }}
     </q-banner>
     <q-card-section class="chat-message-header q-px-md q-py-sm">
       <div class="chat-message-header__grid">
@@ -93,6 +99,9 @@
           :react-tool-link-index="props.reactToolLinkIndex"
           @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
           @feedback="(p) => emit('feedback', p)"
+          @retry="(id) => emit('retry', id)"
+          @dismiss-failed="(id) => emit('dismiss-failed', id)"
+          @attachment-deleted="(id) => emit('attachment-deleted', id)"
         />
       </q-virtual-scroll>
       <div
@@ -130,6 +139,9 @@
           :planner-kind="props.plannerKind"
           :react-tool-link-index="props.reactToolLinkIndex"
           @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
+          @retry="(id) => emit('retry', id)"
+          @dismiss-failed="(id) => emit('dismiss-failed', id)"
+          @attachment-deleted="(id) => emit('attachment-deleted', id)"
         />
       </div>
       <ChatPendingQueue
@@ -176,6 +188,8 @@
       :session-id="sessionId"
       :session-artifacts="sessionArtifacts"
       :session-artifacts-loading="sessionArtifactsLoading"
+      :file-supported="fileSupported"
+      :file-accept="fileAccept"
       :show-background-jobs="showBackgroundJobs"
       :agent-id="agentId"
       :jobs-refresh-nonce="jobsRefreshNonce"
@@ -192,6 +206,8 @@
       @submit-await-reply="emit('submit-await-reply')"
       @submit-tool-confirm="emit('submit-tool-confirm', $event)"
       @open-artifact="emit('open-artifact', $event)"
+      @attachment-deleted="emit('attachment-deleted', $event)"
+      @paste-file="emit('paste-file', $event)"
       @focus-turn="emit('focus-turn', $event)"
       @navigate="emit('navigate', $event)"
     />
@@ -254,6 +270,7 @@ const props = defineProps<{
   awaitKind?: string;
   awaitToolKey?: string;
   wsReplaying?: boolean;
+  sessionLoading?: boolean;
   isTeamSession?: boolean;
   plannerKind?: string;
   reactToolLinkIndex: ReactToolLinkIndex;
@@ -268,6 +285,8 @@ const props = defineProps<{
   focusTurnId?: string;
   sessionArtifacts?: ArtifactMeta[];
   sessionArtifactsLoading?: boolean;
+  fileSupported?: boolean;
+  fileAccept?: string;
   showBackgroundJobs?: boolean;
   agentId?: string;
   jobsRefreshNonce?: number;
@@ -290,11 +309,15 @@ const emit = defineEmits<{
   "submit-tool-confirm": [approved: boolean];
   "open-events": [];
   "open-artifact": [id: string];
+  "paste-file": [file: File];
   "focus-turn": [turnId: string];
   navigate: [route: { name: string; params: Record<string, string> }];
   "focus-turn-cleared": [];
   "a2ui-user-action": [payload: A2UIUserActionPayload];
   feedback: [payload: { messageId: string; rating: "positive" | "negative" }];
+  retry: [messageId: string];
+  "dismiss-failed": [messageId: string];
+  "attachment-deleted": [id: string];
 }>();
 
 const { t } = useI18n();

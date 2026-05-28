@@ -28,6 +28,17 @@ export type PlatformResource = {
   model: string;
   config_json: string;
   metadata_json: string;
+  capabilities?: {
+    text?: boolean;
+    vision?: boolean;
+    image?: boolean;
+    audio?: boolean;
+    file?: boolean;
+    tool_call?: boolean;
+    cache?: boolean;
+    thinking?: boolean;
+    text_only?: boolean;
+  };
   created_at: string;
   updated_at: string;
   deleted_at: string;

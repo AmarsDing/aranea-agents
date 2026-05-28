@@ -18,6 +18,11 @@ import (
 	"aranea-agents/pkg/strutil"
 )
 
+var (
+	validateProviderURL = outboundguard.ValidateURL
+	newProviderClient   = outboundguard.NewClient
+)
+
 type Input struct {
 	ResourceID   string
 	ProviderCode string
@@ -113,7 +118,7 @@ func inspectOpenRouterModel(in Input) (Result, error) {
 	if err := getProviderJSON(endpoint, in.APIKey, nil, &out); err != nil {
 		return Result{OK: false, Message: "OpenRouter 模型参数请求失败：" + err.Error(), ProviderCode: in.ProviderCode, ProviderType: in.ProviderType, ModelAPIID: in.ModelAPIID}, nil
 	}
-		for _, item := range out.Data {
+	for _, item := range out.Data {
 		if item.ID != in.ModelAPIID {
 			continue
 		}
@@ -178,7 +183,7 @@ func inspectAnthropicModel(in Input) (Result, error) {
 	if err := getProviderJSON(modelsURL(base), in.APIKey, headers, &out); err != nil {
 		return anthropicKnownModelFallback(in, "Anthropic 元数据接口不可用，已根据模型ID使用内置参数："+err.Error()), nil
 	}
-		for _, item := range out.Data {
+	for _, item := range out.Data {
 		if item.ID == in.ModelAPIID {
 			raw, _ := json.Marshal(item)
 			return Result{
@@ -218,10 +223,10 @@ func inspectGeminiModel(in Input) (Result, error) {
 	}
 	var out struct {
 		Models []struct {
-			Name                       string `json:"name"`
-			DisplayName                string `json:"displayName"`
-			InputTokenLimit            int    `json:"inputTokenLimit"`
-			OutputTokenLimit           int    `json:"outputTokenLimit"`
+			Name                       string   `json:"name"`
+			DisplayName                string   `json:"displayName"`
+			InputTokenLimit            int      `json:"inputTokenLimit"`
+			OutputTokenLimit           int      `json:"outputTokenLimit"`
 			SupportedGenerationMethods []string `json:"supportedGenerationMethods"`
 		} `json:"models"`
 	}
@@ -260,10 +265,10 @@ func inspectOllamaModel(in Input) (Result, error) {
 	endpoint := strings.TrimRight(base, "/") + "/api/tags"
 	var out struct {
 		Models []struct {
-			Name       string `json:"name"`
-			Model      string `json:"model"`
-			Size       int64  `json:"size"`
-			Details    struct {
+			Name    string `json:"name"`
+			Model   string `json:"model"`
+			Size    int64  `json:"size"`
+			Details struct {
 				ParameterSize string `json:"parameter_size"`
 			} `json:"details"`
 		} `json:"models"`
@@ -348,10 +353,10 @@ func inspectBedrockModel(in Input) (Result, error) {
 }
 
 func getProviderJSON(endpoint string, apiKey string, headers map[string]string, out any) error {
-	if err := outboundguard.ValidateURL(endpoint); err != nil {
+	if err := validateProviderURL(endpoint); err != nil {
 		return fmt.Errorf("provider inspect blocked: %w", err)
 	}
-	client := outboundguard.NewClient(15 * time.Second)
+	client := newProviderClient(15 * time.Second)
 	request, err := http.NewRequest(http.MethodGet, endpoint, nil)
 	if err != nil {
 		return err

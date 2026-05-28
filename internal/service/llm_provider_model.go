@@ -8,6 +8,7 @@ import (
 	v1 "aranea-agents/api/kratos/llm_provider_model/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+	"aranea-agents/internal/provider"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 
@@ -26,6 +27,7 @@ func NewLlmProviderModelService(uc *biz.LlmProviderModelUsecase) *LlmProviderMod
 }
 
 func toProtoPM(m biz.ProviderModel) *v1.ProviderModel {
+	caps := provider.CapabilitiesForProviderModel(m)
 	return &v1.ProviderModel{
 		Id:           m.ID,
 		Key:          m.Key,
@@ -41,6 +43,16 @@ func toProtoPM(m biz.ProviderModel) *v1.ProviderModel {
 		CreatedAt:    m.CreatedAt,
 		UpdatedAt:    m.UpdatedAt,
 		DeletedAt:    m.DeletedAt,
+		Capabilities: &v1.ModelCapabilities{
+			Text:     caps.Text,
+			Vision:   caps.Vision,
+			Audio:    caps.Audio,
+			File:     caps.File,
+			ToolCall: caps.ToolCall,
+			Cache:    caps.Cache,
+			Thinking: caps.Thinking,
+			TextOnly: caps.TextOnly,
+		},
 	}
 }
 
@@ -48,7 +60,7 @@ func patchFromProto(pb *v1.ProviderModel) biz.ProviderModel {
 	if pb == nil {
 		return biz.ProviderModel{}
 	}
-	return biz.ProviderModel{
+	out := biz.ProviderModel{
 		Key:          pb.GetKey(),
 		Name:         pb.GetName(),
 		Description:  pb.GetDescription(),
@@ -60,6 +72,31 @@ func patchFromProto(pb *v1.ProviderModel) biz.ProviderModel {
 		ConfigJSON:   pb.GetConfigJson(),
 		MetadataJSON: pb.GetMetadataJson(),
 	}
+	if caps := pb.GetCapabilities(); caps != nil {
+		out.Capabilities = capabilitiesFromProto(caps)
+		out.CapabilitiesExplicit = hasExplicitBizCapabilities(out.Capabilities)
+	}
+	return out
+}
+
+func capabilitiesFromProto(caps *v1.ModelCapabilities) biz.ModelCapabilities {
+	if caps == nil {
+		return biz.ModelCapabilities{}
+	}
+	return biz.ModelCapabilities{
+		Text:     caps.GetText(),
+		Vision:   caps.GetVision(),
+		Audio:    caps.GetAudio(),
+		File:     caps.GetFile(),
+		ToolCall: caps.GetToolCall(),
+		Cache:    caps.GetCache(),
+		Thinking: caps.GetThinking(),
+		TextOnly: caps.GetTextOnly(),
+	}
+}
+
+func hasExplicitBizCapabilities(c biz.ModelCapabilities) bool {
+	return c.Text || c.Vision || c.Audio || c.File || c.ToolCall || c.Cache || c.Thinking || c.TextOnly
 }
 
 // ListProviderModels GET /v1/llm-provider-models.
@@ -88,6 +125,10 @@ func (s *LlmProviderModelService) CreateProviderModel(ctx context.Context, req *
 		Model:        req.GetModel(),
 		ConfigJSON:   req.GetConfigJson(),
 		MetadataJSON: req.GetMetadataJson(),
+	}
+	if caps := req.GetCapabilities(); caps != nil {
+		in.Capabilities = capabilitiesFromProto(caps)
+		in.CapabilitiesExplicit = hasExplicitBizCapabilities(in.Capabilities)
 	}
 	out, err := s.uc.Create(ctx, in)
 	if err != nil {

@@ -322,3 +322,13 @@ export async function listChatBackgroundJobs(opts: {
     wrapChatError(err, "listChatBackgroundJobs failed");
   }
 }
+
+export async function cancelChatBackgroundJob(id: string, source: string): Promise<boolean> {
+  try {
+    const data = await chatService.CancelChatBackgroundJob({ id, source });
+    return Boolean((data as { cancelled?: boolean })?.cancelled);
+  } catch (err) {
+    wrapChatError(err, "cancelChatBackgroundJob failed");
+    return false;
+  }
+}

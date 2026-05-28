@@ -85,6 +85,7 @@
           'chat-message-bubble--tool': row.isToolEventMessage(message),
           'chat-message-bubble--tool-running': message.status === 'tool_running',
           'chat-message-bubble--tool-failed': message.status === 'tool_failed',
+          'chat-message-bubble--send-failed': message.role === 'user' && message.status === 'failed',
         }"
         :style="row.bubbleAccentStyle(message)"
       >
@@ -134,6 +135,7 @@
         <ChatMessageAttachments
           v-if="messageAttachments.length"
           :attachments="messageAttachments"
+          @deleted="(id) => emit('attachment-deleted', id)"
         />
         <div
           v-if="bundle.presentation.bodyMarkdown"
@@ -189,6 +191,33 @@
         />
       </div>
       <div
+        v-if="message.role === 'user' && message.status === 'failed'"
+        class="row items-center q-gutter-xs q-mt-xs message-failed-banner"
+      >
+        <q-icon name="error_outline" color="negative" size="18px" />
+        <span class="text-caption text-negative">{{ message.error_message || t("chat.sendFailed", "发送失败") }}</span>
+        <q-btn
+          flat
+          dense
+          no-caps
+          color="primary"
+          size="sm"
+          icon="refresh"
+          :label="t('chat.retry', '重试')"
+          @click="emit('retry', message.id)"
+        />
+        <q-btn
+          flat
+          dense
+          no-caps
+          color="grey"
+          size="sm"
+          icon="close"
+          :label="t('chat.dismiss', '关闭')"
+          @click="emit('dismiss-failed', message.id)"
+        />
+      </div>
+      <div
         v-if="message.role === 'user' && row.userSendTagLine(message)"
         class="message-send-tags message-send-tags--sent text-caption"
       >
@@ -235,6 +264,9 @@ import type { A2UIUserActionPayload } from "../../features/chat/a2uiUserAction";
 const emit = defineEmits<{
   "a2ui-user-action": [payload: A2UIUserActionPayload];
   feedback: [payload: { messageId: string; rating: "positive" | "negative" }];
+  retry: [messageId: string];
+  "dismiss-failed": [messageId: string];
+  "attachment-deleted": [id: string];
 }>();
 
 const { t } = useI18n();

@@ -223,11 +223,11 @@ function applyResult() {
 .diff-view {
   font-family: monospace;
   font-size: 12px;
-  background: #f5f5f5;
+  background: var(--glass-surface);
   border-radius: 6px;
   max-height: 320px;
   overflow-y: auto;
   white-space: pre-wrap;
-  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 </style>

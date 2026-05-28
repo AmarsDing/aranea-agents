@@ -186,6 +186,15 @@ message ListChatBackgroundJobsResponse {
   repeated ChatBackgroundJob items = 1;
 }
 
+message CancelChatBackgroundJobRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string source = 2;
+}
+
+message CancelChatBackgroundJobResponse {
+  bool cancelled = 1;
+}
+
 service ChatService {
   rpc SendChatMessage(SendChatMessageRequest) returns (SendChatMessageResponse) {
     option (google.api.http) = {
@@ -235,6 +244,13 @@ service ChatService {
 
   rpc ListChatBackgroundJobs(ListChatBackgroundJobsRequest) returns (ListChatBackgroundJobsResponse) {
     option (google.api.http) = {get: "/v1/chat/jobs"};
+  }
+
+  rpc CancelChatBackgroundJob(CancelChatBackgroundJobRequest) returns (CancelChatBackgroundJobResponse) {
+    option (google.api.http) = {
+      post: "/v1/chat/jobs/{id}/cancel"
+      body: "*"
+    };
   }
 
   rpc SubmitMessageFeedback(SubmitMessageFeedbackRequest) returns (SubmitMessageFeedbackResponse) {

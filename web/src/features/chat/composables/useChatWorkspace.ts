@@ -9,6 +9,7 @@ import { useAppStore } from "../../../stores/app";
 import { useChatSessionStore } from "../../../stores/chat/sessionStore";
 import { useChatMessageStore } from "../../../stores/chat/messageStore";
 import { useChatRuntimeStore } from "../../../stores/chat/runtimeStore";
+import { useChatConversationStore } from "../../../stores/chat/conversationStore";
 import { cancelRunningToolMessages } from "../envelopeToolCall";
 import { runStatusFromEnvelope } from "../envelopeRunStatus";
 import type { Envelope } from "../envelope";
@@ -28,6 +29,7 @@ import { clearChatMarkdownCache } from "../chatMessageMarkdown";
 import { formatSessionTime, getProviderModelValue, sessionToView } from "./chatWorkspaceUtils";
 import { useChatSidebarOrder } from "./useChatSidebarOrder";
 import { useChatAttachments } from "./useChatAttachments";
+import { fileAcceptForModel, modelSupportsFileInput, type ChatModelDescriptor } from "../modelCapabilities";
 import { useChatProviderOptions } from "./useChatProviderOptions";
 import { useChatDeleteFlow } from "./useChatDeleteFlow";
 import { createChatFocusCoordinator } from "../chatFocusCoordinator";
@@ -47,6 +49,7 @@ export function useChatWorkspace() {
   const sessionStore = useChatSessionStore();
   const messageStore = useChatMessageStore();
   const runtimeStore = useChatRuntimeStore();
+  const conversationStore = useChatConversationStore();
 
   const isDark = computed(() => $q.dark.isActive);
   const leftOpen = ref(true);
@@ -73,7 +76,7 @@ export function useChatWorkspace() {
   } = awaitReply;
 
   const runStatusCtrl = useChatRunStatus({ applyAwaitRunStatus });
-  const { runStatus, runMeta, applyFromEnvelope, onSessionSwitch, refreshRunStatus } = runStatusCtrl;
+  const { runStatus, runMeta, applyFromEnvelope, onSessionSwitch, refreshRunStatus, forceSetRunStatus } = runStatusCtrl;
 
   const providerOpts = useChatProviderOptions(appStore);
   const { dialogMode, modelProvider, modeOpts, provOpts, providerModels, loadChatOptions, onModeChange, onProviderChange } =
@@ -82,6 +85,26 @@ export function useChatWorkspace() {
   const selectedProviderModel = computed(() =>
     providerModels.value.find((row) => getProviderModelValue(row) === modelProvider.value)
   );
+
+  const fileSupported = computed(() => {
+    const m = selectedProviderModel.value;
+    if (!m) return true;
+    return modelSupportsFileInput({
+      provider: m.provider,
+      model: m.model,
+      capabilities: m.capabilities as ChatModelDescriptor["capabilities"],
+    });
+  });
+
+  const fileAccept = computed(() => {
+    const m = selectedProviderModel.value;
+    if (!m) return "";
+    return fileAcceptForModel({
+      provider: m.provider,
+      model: m.model,
+      capabilities: m.capabilities as ChatModelDescriptor["capabilities"],
+    });
+  });
 
   const activePlannerKind = computed(() =>
     (appStore.selectedAgent?.settings?.planner_kind ?? "").trim().toLowerCase()
@@ -140,6 +163,7 @@ export function useChatWorkspace() {
   const sessionIdForArtifacts = computed(() => selectedSessionForUi.value?.id);
   const jobsRefreshNonce = ref(0);
   const inboundHydrateError = ref("");
+  const sessionLoading = ref(false);
   const focusTurnId = ref<string | undefined>(undefined);
 
   function focusSessionTurn(turnId: string) {
@@ -152,7 +176,7 @@ export function useChatWorkspace() {
     focusTurnId.value = undefined;
   }
 
-  const { fileRef, attachments, pickFile, onFileChange, removeAttachment } =
+  const { fileRef, attachments, pickFile, onFileChange, uploadFile, removeAttachment } =
     useChatAttachments(sessionIdForArtifacts);
 
   let applyRunStatusFromEnvelope!: (env: Envelope) => void;
@@ -169,6 +193,38 @@ export function useChatWorkspace() {
 
   const selectedAgentId = computed(() => appStore.selectedAgent?.id);
   const selectedSessionId = computed(() => selectedSessionForUi.value?.id);
+
+  watch(
+    () => ({
+      entityKind: sessionStore.entityKind,
+      agent: appStore.selectedAgent,
+      teamId: sessionStore.selectedTeamId,
+      team: displayTeams.value.find((team) => team.id === sessionStore.selectedTeamId),
+    }),
+    ({ entityKind, agent, teamId, team }) => {
+      if (entityKind === "team" && teamId) {
+        conversationStore.setCurrentTarget({
+          type: "team",
+          id: teamId,
+          name: team?.display_name,
+          source: "web",
+        });
+        return;
+      }
+      if (agent?.id) {
+        conversationStore.setCurrentTarget({
+          type: "agent",
+          id: agent.id,
+          key: agent.agent_key,
+          name: agent.display_name,
+          source: "web",
+        });
+        return;
+      }
+      conversationStore.setCurrentTarget(null);
+    },
+    { immediate: true }
+  );
 
   async function refreshRunStatusForUi() {
     const sid = selectedSessionForUi.value?.id;
@@ -241,10 +297,13 @@ export function useChatWorkspace() {
     wsReplaying: streamManager.wsReplaying,
     isChatRoute: () => route.name === "chat",
     shouldAutoFocusChannel: () => {
-      if (typeof localStorage !== "undefined" && localStorage.getItem("channel_auto_focus") === "false") {
-        return false;
+      // Default OFF: channel inbound messages no longer auto-focus the session
+      // to avoid interrupting the user's current workflow. Users can opt in
+      // via localStorage channel_auto_focus=true.
+      if (typeof localStorage !== "undefined" && localStorage.getItem("channel_auto_focus") === "true") {
+        return !inputText.value.trim();
       }
-      return !inputText.value.trim();
+      return false;
     },
     focusChannelSession: (sessionId, agentId, options) =>
       entityNav.focusAgentSessionView(sessionId, agentId, options),
@@ -272,6 +331,7 @@ export function useChatWorkspace() {
     attachments,
     isAwaitingUser,
     awaitingRunId,
+    awaitKind,
     runStatus,
     selectedProviderModel,
     selectedKnowledgeBases,
@@ -281,6 +341,7 @@ export function useChatWorkspace() {
     onNewSession: (title?: string) => entityNav.onNewSession(title),
     makeSessionTitle,
     refreshRunStatus: refreshRunStatusForUi,
+    setRunStatus: forceSetRunStatus,
     submitAwaitingReply: awaitSubmit.submitAwaitingReply,
     submitToolConfirm: awaitSubmit.submitToolConfirm,
     refreshPendingMessages: () => refreshPendingMessagesFn?.() ?? Promise.resolve(),
@@ -348,12 +409,41 @@ export function useChatWorkspace() {
     openSessionTrace,
   } = traceAndArtifacts;
 
-  const { sessionArtifacts, sessionArtifactsLoading, openSessionArtifact } =
+  const { sessionArtifacts, sessionArtifactsLoading, openSessionArtifact, onArtifactDeleted: removeArtifactFromList } =
     useChatSessionArtifacts(sessionIdForArtifacts);
+
+  function onArtifactDeleted(id: string) {
+    removeArtifactFromList(id);
+    // Also remove the attachment ref from message options_json so the chip disappears.
+    const sid = selectedSessionForUi.value?.id;
+    if (!sid) return;
+    const msgs = messageStore.getMessages(sid);
+    const updated = msgs.map((m) => {
+      if (!m.options_json) return m;
+      try {
+        const opts = JSON.parse(m.options_json);
+        if (!Array.isArray(opts.attachments)) return m;
+        const filtered = opts.attachments.filter((a: Record<string, unknown>) => a.id !== id);
+        if (filtered.length === opts.attachments.length) return m;
+        opts.attachments = filtered;
+        return { ...m, options_json: JSON.stringify(opts) };
+      } catch {
+        return m;
+      }
+    });
+    messageStore.setMessages(sid, updated);
+  }
 
   const isRunnerActive = computed(
     () => runStatus.value === "running" || runStatus.value === "pending" || sender.sending.value
   );
+
+  // Refresh background jobs when run transitions to idle (tasks may complete after turn ends)
+  watch(runStatus, (newVal, oldVal) => {
+    if (newVal === "idle" && oldVal !== "idle") {
+      jobsRefreshNonce.value += 1;
+    }
+  });
 
   const sessionRevision = computed(() => {
     const sid = selectedSessionForUi.value?.id;
@@ -432,6 +522,7 @@ export function useChatWorkspace() {
     } else {
       streamManager.ensureChatStream(sessionId);
     }
+    sessionLoading.value = true;
     try {
       if (replace) clearChatMarkdownCache();
       await messageStore.loadMessages(replace ? { sessionId, replace: true } : { sessionId });
@@ -440,6 +531,8 @@ export function useChatWorkspace() {
         type: "negative",
         message: err instanceof Error ? err.message : "加载消息失败",
       });
+    } finally {
+      sessionLoading.value = false;
     }
   }
 
@@ -562,6 +655,7 @@ export function useChatWorkspace() {
     }),
     session: reactive({
       displaySessions,
+      inboxSessions: conversationStore.inboxSessions,
       selectedSessionForUi,
       composerUsageSnapshot,
       displayMessages,
@@ -571,12 +665,16 @@ export function useChatWorkspace() {
       wsReplaying: streamManager.wsReplaying,
       jobsRefreshNonce,
       inboundHydrateError,
+      sessionLoading,
       focusTurnId,
       focusSessionTurn,
       clearFocusTurn,
       sessionArtifacts,
       sessionArtifactsLoading,
+      fileSupported,
+      fileAccept,
       openSessionArtifact,
+      onArtifactDeleted,
       onSelectSession: entityNav.onSelectSession,
       onRenameSession: entityNav.onRenameSession,
       onTogglePinSession: entityNav.onTogglePinSession,
@@ -615,11 +713,21 @@ export function useChatWorkspace() {
       stopStreaming,
       pickFile,
       onFileChange,
+      uploadFile,
       removeAttachment,
       onCancelPending,
       onUpdatePending,
       onVoiceClick,
       onMessageFeedback,
+      retryFailedMessage: sender.retryFailedMessage,
+      dismissFailedMessage: (messageId: string) => {
+        const sid = sessionStore.currentSessionId();
+        if (!sid) return;
+        messageStore.setMessages(
+          sid,
+          messageStore.getMessages(sid).filter((m) => m.id !== messageId)
+        );
+      },
     }),
     dialogs: reactive({
       settingsOpen,
@@ -650,6 +758,7 @@ export function useChatWorkspace() {
       traceInitialTab,
       traceStreamDeps,
       selectedProviderModel,
+      fileSupported,
     }),
   };
 }

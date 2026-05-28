@@ -132,6 +132,60 @@ describe("bindStreamHandlers", () => {
     expect(rows["sess-1"]).toEqual([]);
   });
 
+  it("marks pending user failed and reloads on stream error", async () => {
+    const pending = {
+      id: "pending-user-1",
+      session_id: "sess-1",
+      parent_message_id: "",
+      turn_index: 1,
+      role: "user",
+      content_markdown: "hello",
+      model_name: "mock",
+      token_in: 0,
+      token_out: 0,
+      latency_ms: 0,
+      status: "ok",
+      attachments_count: 0,
+      options_json: "",
+      error_message: "",
+      created_at: "",
+    } satisfies Message;
+    const rows: Record<string, Message[]> = { "sess-1": [pending] };
+    const onReloadAfterCompletion = vi.fn().mockResolvedValue(undefined);
+    const dispatcher = new EnvelopeDispatcher();
+    const stream = {
+      onType: (type: string | string[], handler: (e: Envelope) => void) =>
+        dispatcher.onType(type as Envelope["type"] | Envelope["type"][], handler),
+    };
+
+    bindStreamHandlers(stream as any, {
+      sessionId: "sess-1",
+      resolveActiveSessionId: () => "sess-1",
+      getMessages: (sid) => rows[sid] ?? [],
+      setMessages: (sid, next) => {
+        rows[sid] = next;
+      },
+      markSendingDone: vi.fn(),
+      onRunStatus: vi.fn(),
+      onErrorNotify: vi.fn(),
+      onReloadAfterCompletion,
+      setLastIntentPass: vi.fn(),
+    });
+
+    dispatcher.dispatch(
+      env({
+        type: "error",
+        request_id: "pending-user-1",
+        error: { type: "LLM_CALL_FAILED", message: "模型调用失败" },
+      })
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(rows["sess-1"]?.[0]?.status).toBe("failed");
+    expect(rows["sess-1"]?.[0]?.error_message).toBe("模型调用失败");
+    expect(onReloadAfterCompletion).toHaveBeenCalledWith("sess-1");
+  });
+
   it("patchStreamingEnvelope creates and updates streaming row", () => {
     const next = patchStreamingEnvelope([], "sess-1", "ws-stream-sess-1", {
       id: "e1",

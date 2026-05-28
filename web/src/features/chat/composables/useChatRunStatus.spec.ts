@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { createPinia, setActivePinia } from "pinia";
 import { useChatRunStatus } from "./useChatRunStatus";
 
 vi.mock("../api", () => ({
@@ -9,6 +10,7 @@ import { getRunStatus } from "../api";
 
 describe("useChatRunStatus", () => {
   beforeEach(() => {
+    setActivePinia(createPinia());
     vi.useFakeTimers();
     vi.mocked(getRunStatus).mockReset();
   });
@@ -60,9 +62,7 @@ describe("useChatRunStatus", () => {
     const { runStatus, onSessionSwitch } = useChatRunStatus({ applyAwaitRunStatus });
 
     onSessionSwitch("sess-2");
-    vi.advanceTimersByTime(400);
-    await Promise.resolve();
-    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(400);
 
     expect(getRunStatus).toHaveBeenCalledWith("sess-2");
     expect(runStatus.value).toBe("awaiting_user");

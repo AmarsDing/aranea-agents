@@ -132,6 +132,10 @@ func (s *sessionRunRepoStub) ClearResumeClaim(_ context.Context, id string) erro
 	return nil
 }
 
+func (s *sessionRunRepoStub) MarkOrphanedRunsCancelled(_ context.Context) (int, error) {
+	return 0, nil
+}
+
 type sessionRunCheckpointRepoStub struct {
 	cps map[string]SessionRunCheckpoint
 }

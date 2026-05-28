@@ -63,6 +63,16 @@ func (r *memArtifactRepo) Load(_ context.Context, id string, _ int) (biz.Artifac
 	return e.meta, e.data, nil
 }
 
+func (r *memArtifactRepo) LoadMeta(_ context.Context, id string, _ int) (biz.Artifact, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	e, ok := r.store[id]
+	if !ok {
+		return biz.Artifact{}, fmt.Errorf("artifact not found: %s", id)
+	}
+	return e.meta, nil
+}
+
 func (r *memArtifactRepo) List(_ context.Context, sessionID string, _, _ int) ([]biz.Artifact, int, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

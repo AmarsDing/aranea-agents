@@ -28,13 +28,20 @@
         <q-card-section v-if="previewId">
           <ArtifactPreview :artifact-id="previewId" :show-download="true" @download="onDownload" />
         </q-card-section>
-      </q-card>
-    </q-dialog>
+      <q-card-actions align="right" class="app-actions-bar">
+        <q-btn flat no-caps color="negative" icon="delete" label="删除" @click="onDelete" />
+        <q-space />
+        <q-btn flat no-caps label="关闭" v-close-popup />
+      </q-card-actions>
+    </q-card>
+  </q-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref } from "vue";
+import { useQuasar } from "quasar";
+import { useI18n } from "vue-i18n";
 import ArtifactPreview from "../../features/artifact/ArtifactPreview.vue";
 import { useArtifactStore } from "../../stores/artifact";
 import type { ArtifactMeta } from "../../features/artifact/types";
@@ -44,9 +51,16 @@ import {
   type MessageAttachmentRef,
 } from "../../features/chat/messageAttachments";
 
-defineProps<{
+const props = defineProps<{
   attachments: MessageAttachmentRef[];
 }>();
+
+const emit = defineEmits<{
+  deleted: [id: string];
+}>();
+
+const { notify } = useQuasar();
+const { t } = useI18n();
 
 const previewOpen = ref(false);
 const previewMeta = ref<MessageAttachmentRef | null>(null);
@@ -75,6 +89,19 @@ async function onDownload(meta: ArtifactMeta) {
     // user can retry from preview toolbar
   }
 }
+
+async function onDelete() {
+  if (!previewId.value || !previewMeta.value) return;
+  try {
+    const artifactStore = useArtifactStore();
+    await artifactStore.remove(previewId.value);
+    emit("deleted", previewId.value);
+    previewOpen.value = false;
+    notify({ type: "positive", message: t("chat.attachmentDeleted") });
+  } catch {
+    notify({ type: "negative", message: t("chat.attachmentDeleteFailed") });
+  }
+}
 </script>
 
 <style scoped>
@@ -99,7 +126,7 @@ async function onDownload(meta: ArtifactMeta) {
 }
 
 .chat-message-attachments__size {
-  opacity: 0.75;
+  opacity: 75%;
   flex-shrink: 0;
 }
 
