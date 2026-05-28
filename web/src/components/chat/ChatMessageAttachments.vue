@@ -107,17 +107,17 @@ async function onDelete() {
 <style scoped>
 .chat-message-attachments__chip {
   max-width: 220px;
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   border-radius: 8px;
-  background: rgb(0 0 0 / 6%);
+  background: var(--glass-surface);
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--text-xs);
   line-height: 1.3;
   transition: background 0.15s;
 }
 
 .chat-message-attachments__chip:hover {
-  background: rgb(0 0 0 / 10%);
+  background: var(--glass-surface-hover);
 }
 
 .chat-message-attachments__name {

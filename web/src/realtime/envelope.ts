@@ -160,3 +160,28 @@ export type WsUpstream = {
   request_id?: string;
   payload?: unknown;
 };
+
+export function resolveEnvelopeTurnId(env: Envelope): string {
+  return (
+    (env.turn_id ?? "").trim() ||
+    stringValue(env.metadata?.turn_id) ||
+    stringValue(env.metadata?.run_id) ||
+    (env.request_id ?? "").trim() ||
+    env.id
+  );
+}
+
+export function resolveEnvelopeSource(env: Envelope): string {
+  return ((env.source ?? "").trim() || stringValue(env.metadata?.source));
+}
+
+export function resolveEnvelopeRevision(env: Envelope): number {
+  if (typeof env.session_revision === "number" && env.session_revision > 0) return env.session_revision;
+  const fromMeta = env.metadata?.session_revision;
+  if (typeof fromMeta === "number" && fromMeta > 0) return fromMeta;
+  return 0;
+}
+
+function stringValue(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}

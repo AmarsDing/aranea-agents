@@ -19,7 +19,7 @@ func entSessionTurnToBiz(e *ent.SessionTurn) biz.SessionTurn {
 		ID:                  e.ID,
 		SessionID:           e.SessionID,
 		RunID:               e.RunID,
-		TurnIndex:           e.TurnIndex,
+		TurnNumber:          e.TurnNumber,
 		UserMessageID:       e.UserMessageID,
 		AssistantMessageID:  e.AssistantMessageID,
 		OwnerType:           e.OwnerType,
@@ -55,7 +55,7 @@ func (r *sessionRepo) CreateSessionTurn(ctx context.Context, turn biz.SessionTur
 		SetID(turn.ID).
 		SetSessionID(turn.SessionID).
 		SetRunID(turn.RunID).
-		SetTurnIndex(turn.TurnIndex).
+		SetTurnNumber(turn.TurnNumber).
 		SetUserMessageID(turn.UserMessageID).
 		SetAssistantMessageID(turn.AssistantMessageID).
 		SetOwnerType(turn.OwnerType).
@@ -182,7 +182,7 @@ func (r *sessionRepo) ListSessionTurns(ctx context.Context, sessionID string, li
 	}
 	rows, err := c.SessionTurn.Query().
 		Where(where).
-		Order(ent.Asc(entsessionturn.FieldTurnIndex)).
+		Order(ent.Asc(entsessionturn.FieldTurnNumber)).
 		Limit(limit).
 		Offset(offset).
 		All(ctx)

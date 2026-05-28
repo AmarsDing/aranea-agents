@@ -93,4 +93,6 @@ profile.cov
 /node_modules
 /.gocache
 /workspace
+/data/artifacts
+/data/model-catalog
 

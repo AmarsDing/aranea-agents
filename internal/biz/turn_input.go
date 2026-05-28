@@ -1,7 +1,6 @@
 package biz
 
 import (
-	"context"
 	"time"
 )
 
@@ -61,29 +60,19 @@ func (t TurnTimeouts) Resolved() TurnTimeouts {
 // NativeTurnGateway is the narrow Chat surface Channel ingress needs.
 // Channel only depends on this interface instead of the full ChatService,
 // ensuring it never imports proto types or reaches Chat internals.
+//
+// Deprecated: prefer composing TurnGateway + TurnControlGateway + PendingQueueGateway.
+// NativeTurnGateway is kept for backward compatibility until ChannelIngress is
+// refactored to accept the split interfaces directly (tracked in D-07 migration).
 type NativeTurnGateway interface {
-	// RunNativeTurn executes a synchronous agent/team turn and returns user + assistant messages.
-	RunNativeTurn(ctx context.Context, input TurnInput) (ChatMessage, ChatMessage, error)
-	// RunNativeTurnWithOutcome returns an explicit outcome (completed / queued / failed) for Channel ingress.
-	RunNativeTurnWithOutcome(ctx context.Context, input TurnInput) (NativeTurnResult, error)
-	// HasActiveRun reports whether a session has an in-flight run.
-	HasActiveRun(sessionID string) bool
-	// LastPendingMessageID returns the most recently enqueued pending message id.
-	LastPendingMessageID(sessionID string) string
-	// CancelRun stops the active run for a session.
-	CancelRun(ctx context.Context, sessionID string) bool
-	// SetRunStatus atomically updates the run status and publishes a WS envelope.
-	SetRunStatus(ctx context.Context, sessionID, runID, status, errMsg string)
-	// CancelSessionRunForCard cancels a session run by ID for card action callbacks.
-	CancelSessionRunForCard(ctx context.Context, sessionRunID, expectedSessionID string) (cancelled bool, reply string)
-	// ActiveSessionRunPhase returns the phase of the active session run, if any.
-	ActiveSessionRunPhase(ctx context.Context, sessionID string) string
-	// EscalateActiveSessionRun escalates the active session run to background for a session.
-	EscalateActiveSessionRun(ctx context.Context, sessionID string) (escalated bool, reply string, err error)
-	// EscalateSessionRun escalates a specific session run to background.
-	EscalateSessionRun(ctx context.Context, sessionRunID, expectedSessionID string) (reply string, err error)
+	TurnGateway
+	TurnControlGateway
+	PendingQueueGateway
+}
+
+// PendingQueueGateway is the narrow interface for pending message queue operations.
+type PendingQueueGateway interface {
 	// TryEnqueueUserMessage enqueues a user message into the active turn's pending queue.
-	// Named TryEnqueue* to avoid collision with the proto-generated RPC method of the same base name.
 	TryEnqueueUserMessage(sessionID, content string) (bool, error)
 	// SetSessionPendingMergeFollowup configures whether followup messages merge into the active turn.
 	SetSessionPendingMergeFollowup(sessionID string, merge bool)

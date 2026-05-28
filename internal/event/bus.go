@@ -222,7 +222,6 @@ func (b *bus) Subscribe(opts SubscribeOptions) (<-chan Envelope, func()) {
 		sub.mu.Lock()
 		if !sub.closed {
 			sub.closed = true
-			close(sub.ch)
 		}
 		sub.mu.Unlock()
 	}

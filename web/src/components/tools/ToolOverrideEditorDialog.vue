@@ -7,12 +7,16 @@
       </q-card-section>
       <q-separator />
       <q-card-section class="q-gutter-sm">
-        <q-input
+        <q-select
           :model-value="form.agent_id"
-          label="Agent ID"
+          label="Agent"
           dense
           outlined
+          :options="agentOptions"
+          emit-value
+          map-options
           :disable="editing"
+          :loading="agentsLoading"
           @update:model-value="emitFormPatch({ agent_id: String($event ?? '') })"
         />
         <q-select
@@ -54,6 +58,10 @@
 </template>
 
 <script setup lang="ts">
+import { onMounted, ref } from "vue";
+import { listAgents } from "../../features/agents/api";
+import type { Agent } from "../../features/agents/types";
+
 export type ToolOverrideForm = {
   agent_id: string;
   mode: string;
@@ -80,6 +88,24 @@ const modeOptions = [
   { label: "允许 (allow)", value: "allow" },
   { label: "拒绝 (deny)", value: "deny" }
 ];
+
+const agentsLoading = ref(false);
+const agentOptions = ref<{ label: string; value: string }[]>([]);
+
+onMounted(async () => {
+  agentsLoading.value = true;
+  try {
+    const agents: Agent[] = await listAgents({ limit: 200 });
+    agentOptions.value = agents.map((a) => ({
+      label: a.display_name || a.agent_key || a.id,
+      value: a.id
+    }));
+  } catch {
+    agentOptions.value = [];
+  } finally {
+    agentsLoading.value = false;
+  }
+});
 
 function emitFormPatch(patch: Partial<ToolOverrideForm>) {
   emit("update:form", { ...props.form, ...patch });

@@ -5,6 +5,7 @@ import (
 	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema"
 	"entgo.io/ent/schema/field"
+	"entgo.io/ent/schema/index"
 )
 
 // Session maps legacy table sessions（包含 sqlite.ensureLegacyColumns 增补列）.
@@ -15,6 +16,14 @@ type Session struct {
 func (Session) Annotations() []schema.Annotation {
 	return []schema.Annotation{
 		entsql.Annotation{Table: "sessions"},
+	}
+}
+
+func (Session) Indexes() []ent.Index {
+	return []ent.Index{
+		index.Fields("deleted_at", "agent_id"),
+		index.Fields("deleted_at", "user_id"),
+		index.Fields("deleted_at", "status"),
 	}
 }
 

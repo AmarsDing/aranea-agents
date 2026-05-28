@@ -162,8 +162,8 @@ watch(opsChannel, async (row) => {
 
 <style scoped>
 .channel-ops-section {
-  margin-top: 16px;
-  padding: 16px;
+  margin-top: var(--space-4);
+  padding: var(--space-4);
   border: 1px solid var(--glass-border);
   border-radius: 20px;
   background: var(--glass-elevated);
@@ -172,7 +172,7 @@ watch(opsChannel, async (row) => {
 .channel-ops-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+  gap: var(--space-4);
 }
 
 @media (width <= 1100px) {

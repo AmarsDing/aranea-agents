@@ -1120,3 +1120,626 @@ body.body--dark .app-registry-hover-tip__popup
   td.app-registry-markup-table__wrap
     white-space: normal
     word-break: break-word
+
+// ── Tools 编辑弹窗 / 详情配置 ──
+.tool-dialog-card--editor
+  max-height: min(90vh, 880px)
+
+  .app-glass-dialog__body
+    padding-top: var(--space-3)
+    padding-bottom: var(--space-4)
+
+.tool-editor-form
+  gap: var(--space-4)
+
+.tool-editor-form__toolbar
+  display: flex
+  align-items: flex-end
+  justify-content: space-between
+  gap: var(--space-3)
+  padding-bottom: var(--space-2)
+  border-bottom: 1px solid var(--glass-border)
+
+.tool-editor-tabs
+  flex: 1
+  min-width: 0
+
+  .q-tab
+    min-height: 40px
+    padding: 0 var(--space-3)
+    font-weight: 500
+
+.tool-template-grid
+  display: grid
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr))
+  gap: var(--space-3)
+
+.tool-template-card
+  display: flex
+  flex-direction: column
+  align-items: flex-start
+  gap: var(--space-1)
+  padding: var(--space-3)
+  min-height: 72px
+  text-align: left
+  border-radius: 12px
+  border: 1px solid var(--glass-border)
+  background: var(--glass-surface)
+  cursor: pointer
+  transition: background 0.15s ease, border-color 0.15s ease
+
+  &:hover:not(.tool-template-card--active)
+    background: var(--glass-surface-hover)
+    border-color: color-mix(in srgb, var(--color-accent) 28%, var(--glass-border))
+
+  &--active
+    border-color: color-mix(in srgb, var(--color-accent) 55%, var(--glass-border))
+    background: color-mix(in srgb, var(--color-accent) 8%, var(--glass-surface))
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 20%, transparent)
+
+.tool-template-card__label
+  font-size: 14px
+  font-weight: 600
+  color: var(--color-text-primary)
+  line-height: 1.35
+
+.tool-template-card__caption
+  font-size: 12px
+  line-height: 1.45
+  color: var(--color-text-secondary)
+
+.tool-editor-policy-list
+  display: flex
+  flex-direction: column
+  gap: var(--space-3)
+
+.tool-policy-card
+  border-radius: 12px
+  border: 1px solid var(--glass-border)
+  background: var(--glass-surface)
+
+  .q-card__section
+    padding: var(--space-3) var(--space-4)
+
+.tool-policy-card__title
+  font-size: 14px
+  font-weight: 600
+  color: var(--color-text-primary)
+
+.tool-policy-card__summary
+  font-size: 14px
+  line-height: 1.55
+  color: var(--color-text-primary)
+  margin: 0 0 var(--space-1)
+
+.tool-policy-card__meta
+  font-size: 12px
+  line-height: 1.45
+  color: var(--color-text-secondary)
+  margin: 0
+
+.tool-editor-section
+  padding: 28px
+  border-radius: 16px
+  border: 1px solid color-mix(in srgb, var(--color-accent) 10%, var(--glass-border))
+  background: var(--glass-surface)
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+  transition: border-color 0.2s ease
+
+  &:hover
+    border-color: color-mix(in srgb, var(--color-accent) 22%, var(--glass-border))
+
+.tool-editor-section__header
+  display: flex
+  align-items: flex-start
+  gap: 14px
+  margin-bottom: 20px
+
+.tool-editor-section__step
+  width: 32px
+  height: 32px
+  border-radius: 10px
+  display: flex
+  align-items: center
+  justify-content: center
+  font-size: 14px
+  font-weight: 700
+  flex-shrink: 0
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent)
+  color: var(--color-accent)
+
+.tool-editor-section__title
+  font-size: 16px
+  font-weight: 700
+  color: var(--color-text-heading)
+  margin: 0 0 4px
+  letter-spacing: -0.01em
+
+.tool-schema-builder__field-card
+  padding: var(--space-3)
+  border-radius: 10px
+  border: 1px solid var(--glass-border)
+  background: var(--glass-surface)
+
+.tool-help-drawer.q-card
+  width: min(420px, 92vw)
+  max-height: 90vh
+  border-radius: 16px 0 0 16px
+  border: 1px solid var(--glass-border)
+  // 实底 + 无 blur，避免正文发糊、对比度不足
+  background: var(--color-surface-elevated, #fff) !important
+  backdrop-filter: none !important
+  -webkit-backdrop-filter: none !important
+  box-shadow: -8px 0 32px color-mix(in srgb, var(--color-text-primary) 12%, transparent)
+  color: var(--color-text-primary)
+
+body.body--dark .tool-help-drawer.q-card
+  background: var(--color-surface-elevated, #121a28) !important
+
+.tool-help-drawer__head
+  padding: var(--space-4) var(--space-4) var(--space-3)
+
+.tool-help-drawer__title
+  font-size: 18px
+  font-weight: 600
+  line-height: 1.35
+  color: var(--color-text-primary)
+
+.tool-help-drawer__body
+  padding: var(--space-3) var(--space-4) var(--space-4)
+  overflow-x: hidden
+
+.tool-help-drawer__section-title
+  margin: 0 0 var(--space-2)
+  font-size: 15px
+  font-weight: 600
+  line-height: 1.4
+  color: var(--color-text-primary)
+
+.tool-help-drawer__text
+  margin: var(--space-2) 0 0
+  font-size: 14px
+  line-height: 1.65
+  color: var(--color-text-secondary)
+
+.tool-help-drawer__list
+  margin: 0
+  padding-left: 1.25rem
+  font-size: 14px
+  line-height: 1.65
+  color: var(--color-text-primary)
+
+  li + li
+    margin-top: var(--space-1)
+
+.tool-help-drawer__code
+  margin: var(--space-2) 0 0
+  padding: var(--space-3)
+  border-radius: 10px
+  border: 1px solid var(--glass-border)
+  background: color-mix(in srgb, var(--glass-surface) 92%, transparent)
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace
+  font-size: 12px
+  line-height: 1.55
+  color: var(--color-text-primary)
+  white-space: pre-wrap
+  word-break: break-word
+  overflow-x: auto
+
+.tool-help-drawer__field-list
+  border-color: var(--glass-border) !important
+  background: var(--glass-surface)
+
+.tool-help-drawer__field-label
+  font-size: 14px
+  font-weight: 600
+  color: var(--color-text-primary)
+
+.tool-help-drawer__field-key
+  font-size: 11px
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace
+  color: var(--color-text-secondary)
+  opacity: 0.85
+
+.tool-help-drawer__field-hint
+  margin-top: 2px
+  font-size: 13px
+  line-height: 1.55
+  color: var(--color-text-secondary)
+  white-space: normal
+  word-break: break-word
+
+.tool-detail-meta
+  display: flex
+  flex-wrap: wrap
+  gap: var(--space-2)
+
+.tool-detail-config-panel
+  display: flex
+  flex-direction: column
+  gap: var(--space-4)
+
+.tool-detail-drawer
+  display: flex
+  flex-direction: column
+  background: var(--glass-elevated)
+  backdrop-filter: blur(var(--glass-blur-hover))
+  -webkit-backdrop-filter: blur(var(--glass-blur-hover))
+  border-left: 1px solid color-mix(in srgb, var(--color-accent) 22%, var(--glass-border))
+  box-shadow: -6px 0 32px color-mix(in srgb, var(--color-text-primary) 8%, transparent)
+
+.tool-detail-drawer__head
+  display: flex
+  align-items: flex-start
+  justify-content: space-between
+  gap: var(--space-3)
+  padding: var(--space-4) var(--space-5)
+  background: color-mix(in srgb, var(--color-accent) 5%, var(--glass-elevated))
+  border-bottom: 1px solid color-mix(in srgb, var(--color-accent) 14%, var(--glass-border))
+
+.tool-detail-drawer__head-info
+  flex: 1
+  min-width: 0
+
+.tool-detail-drawer__head-actions
+  flex-shrink: 0
+
+.tool-detail-drawer__title
+  font-size: 18px
+  font-weight: 700
+  color: var(--color-text-heading)
+  line-height: 1.35
+  letter-spacing: -0.01em
+
+.tool-detail-drawer__subtitle
+  margin-top: 4px
+  font-size: 13px
+  line-height: 1.45
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace
+  color: color-mix(in srgb, var(--color-accent) 70%, var(--color-text-secondary))
+
+.tool-detail-drawer__meta
+  display: flex
+  flex-wrap: wrap
+  gap: var(--space-2)
+  padding: var(--space-3) var(--space-5)
+  border-bottom: 1px solid color-mix(in srgb, var(--color-accent) 8%, var(--glass-border))
+  background: color-mix(in srgb, var(--color-accent) 2%, var(--glass-elevated))
+
+.tool-detail-drawer__body
+  flex: 1
+  min-height: 0
+  overflow-y: auto
+  padding: var(--space-4) var(--space-5)
+  scrollbar-width: thin
+  scrollbar-color: color-mix(in srgb, var(--color-accent) 18%, transparent) transparent
+
+  &::-webkit-scrollbar
+    width: 5px
+
+  &::-webkit-scrollbar-thumb
+    background: color-mix(in srgb, var(--color-accent) 18%, transparent)
+    border-radius: 3px
+
+.tool-detail-metrics
+  display: grid
+  grid-template-columns: repeat(4, 1fr)
+  gap: var(--space-3)
+
+.tool-detail-metrics__card
+  display: flex
+  flex-direction: column
+  align-items: center
+  padding: var(--space-3) var(--space-2)
+  border-radius: 12px
+  border: 1px solid color-mix(in srgb, var(--color-accent) 12%, var(--glass-border))
+  background: var(--glass-surface)
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+  transition: border-color 0.2s ease, box-shadow 0.2s ease
+
+  &:hover
+    border-color: color-mix(in srgb, var(--color-accent) 30%, var(--glass-border))
+    box-shadow: 0 2px 12px color-mix(in srgb, var(--color-accent) 8%, transparent)
+
+.tool-detail-metrics__value
+  font-size: 20px
+  font-weight: 700
+  color: var(--color-text-heading)
+  line-height: 1.3
+  font-variant-numeric: tabular-nums
+
+.tool-detail-metrics__label
+  font-size: 10px
+  color: var(--color-text-secondary)
+  margin-top: 4px
+  text-transform: uppercase
+  letter-spacing: 0.06em
+  font-weight: 500
+
+.tool-detail-test-card
+  border-radius: 12px
+  border-color: color-mix(in srgb, var(--color-accent) 18%, var(--glass-border))
+  background: color-mix(in srgb, var(--color-accent) 3%, var(--glass-surface))
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+
+.tool-editor-shell
+  display: flex
+  flex-direction: column
+  height: 100vh
+
+.tool-editor-shell__head
+  display: flex
+  align-items: center
+  justify-content: space-between
+  padding: 12px 24px
+  border-bottom: 1px solid color-mix(in srgb, var(--color-accent) 14%, var(--glass-border))
+  background: color-mix(in srgb, var(--color-accent) 4%, var(--glass-elevated))
+  flex-shrink: 0
+
+.tool-editor-shell__head-left
+  display: flex
+  align-items: center
+  gap: 12px
+
+.tool-editor-shell__breadcrumb
+  display: flex
+  align-items: center
+  gap: 4px
+  font-size: 14px
+  color: var(--color-text-secondary)
+
+.tool-editor-shell__breadcrumb-prefix
+  color: var(--color-text-secondary)
+
+.tool-editor-shell__breadcrumb-current
+  font-weight: 600
+  color: var(--color-text-heading)
+
+.tool-editor-shell__entity
+  font-size: 14px
+  font-weight: 600
+  color: var(--color-accent)
+  padding: 2px 10px
+  border-radius: 8px
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent)
+
+.tool-editor-shell__head-right
+  display: flex
+  align-items: center
+  gap: 8px
+
+.tool-editor-shell__body
+  display: flex
+  flex: 1
+  min-height: 0
+
+.tool-editor-aside
+  width: 260px
+  flex-shrink: 0
+  border-right: 1px solid color-mix(in srgb, var(--color-accent) 10%, var(--glass-border))
+  background: var(--glass-elevated)
+  display: flex
+  flex-direction: column
+  overflow-y: auto
+  scrollbar-width: none
+
+  &::-webkit-scrollbar
+    display: none
+
+.tool-editor-aside__nav
+  padding: 16px 12px 8px
+
+.tool-editor-aside__nav-title
+  font-size: 10px
+  font-weight: 700
+  text-transform: uppercase
+  letter-spacing: 0.08em
+  color: var(--color-text-secondary)
+  margin-bottom: 8px
+  padding-left: 8px
+
+.tool-editor-aside__nav-item
+  display: flex
+  align-items: flex-start
+  gap: 10px
+  padding: 10px 8px
+  border-radius: 10px
+  cursor: pointer
+  transition: background 0.15s ease, box-shadow 0.15s ease
+  margin-bottom: 2px
+
+  &:hover
+    background: color-mix(in srgb, var(--color-accent) 6%, transparent)
+
+  &--active
+    background: color-mix(in srgb, var(--color-accent) 10%, transparent)
+    box-shadow: inset 3px 0 0 var(--color-accent)
+
+.tool-editor-aside__nav-num
+  width: 24px
+  height: 24px
+  border-radius: 8px
+  display: flex
+  align-items: center
+  justify-content: center
+  font-size: 12px
+  font-weight: 700
+  flex-shrink: 0
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent)
+  color: var(--color-accent)
+
+  .tool-editor-aside__nav-item--active &
+    background: var(--color-accent)
+    color: white
+
+.tool-editor-aside__nav-label
+  font-size: 13px
+  font-weight: 600
+  color: var(--color-text-heading)
+  line-height: 1.3
+
+.tool-editor-aside__nav-hint
+  font-size: 11px
+  color: var(--color-text-secondary)
+  line-height: 1.35
+  margin-top: 1px
+
+.tool-editor-aside__validation
+  padding: 12px
+  border-top: 1px solid var(--glass-border)
+
+.tool-editor-aside__check
+  padding: 3px 0
+
+.tool-editor-aside__diff
+  padding: 12px
+  border-top: 1px solid var(--glass-border)
+
+.tool-editor-aside__diff-list
+  max-height: 140px
+  overflow-y: auto
+  scrollbar-width: none
+
+  &::-webkit-scrollbar
+    display: none
+
+.tool-editor-aside__diff-line
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace
+  font-size: 11px
+  line-height: 1.6
+  color: var(--color-text-secondary)
+  white-space: nowrap
+  overflow: hidden
+  text-overflow: ellipsis
+  padding: 1px 0
+
+  &::before
+    content: "±"
+    margin-right: 4px
+    color: var(--color-accent)
+    font-weight: 600
+
+.tool-editor-main
+  flex: 1
+  display: flex
+  flex-direction: column
+  min-width: 0
+
+.tool-editor-main__scroll
+  flex: 1
+  overflow-y: auto
+  scrollbar-width: thin
+  scrollbar-color: color-mix(in srgb, var(--color-accent) 18%, transparent) transparent
+
+  &::-webkit-scrollbar
+    width: 6px
+
+  &::-webkit-scrollbar-thumb
+    background: color-mix(in srgb, var(--color-accent) 18%, transparent)
+    border-radius: 3px
+
+.tool-editor-main__content
+  max-width: 920px
+  padding: 32px 40px 48px
+  display: flex
+  flex-direction: column
+  gap: 28px
+
+.tool-editor-main__footer
+  display: flex
+  align-items: center
+  justify-content: flex-end
+  gap: 10px
+  padding: 14px 24px
+  border-top: 1px solid color-mix(in srgb, var(--color-accent) 10%, var(--glass-border))
+  background: var(--glass-elevated)
+  flex-shrink: 0
+
+.tools-batch-bar
+  display: flex
+  align-items: center
+  gap: var(--space-2)
+  border: 1px solid color-mix(in srgb, var(--color-accent) 22%, var(--glass-border))
+  border-radius: 12px
+  background: color-mix(in srgb, var(--color-accent) 6%, var(--glass-surface))
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+
+.schema-form__object-group
+  padding: var(--space-3)
+  border: 1px solid var(--glass-border)
+  border-radius: 12px
+  background: color-mix(in srgb, var(--glass-surface) 92%, transparent)
+
+.schema-form__array-group
+  padding: var(--space-3)
+  border: 1px solid var(--glass-border)
+  border-radius: 12px
+  background: color-mix(in srgb, var(--glass-surface) 92%, transparent)
+
+.tool-risk-inline-select
+  max-width: 110px
+  font-size: 12px
+
+  .q-field__control
+    min-height: 28px
+
+  .q-field__marginal
+    height: 28px
+
+.tool-template-grid
+  display: grid
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr))
+  gap: var(--space-3)
+
+.tool-template-card
+  display: flex
+  flex-direction: column
+  align-items: center
+  gap: 4px
+  padding: var(--space-3) var(--space-2)
+  border-radius: 12px
+  border: 1px solid var(--glass-border)
+  background: color-mix(in srgb, var(--glass-surface) 92%, transparent)
+  cursor: pointer
+  transition: border-color 0.2s ease, background 0.2s ease
+  color: var(--color-text-primary)
+  font-family: inherit
+  font-size: inherit
+
+  &:hover
+    border-color: color-mix(in srgb, var(--color-accent) 30%, var(--glass-border))
+    background: color-mix(in srgb, var(--color-accent) 4%, var(--glass-surface))
+
+  &--active
+    border-color: var(--color-accent)
+    background: color-mix(in srgb, var(--color-accent) 8%, var(--glass-surface))
+
+.tool-template-card__label
+  font-weight: 600
+  font-size: 13px
+
+.tool-template-card__caption
+  font-size: 11px
+  color: var(--color-text-secondary)
+  text-align: center
+
+.tool-editor-section__desc
+  font-size: 13px
+  line-height: 1.55
+  color: var(--color-text-secondary)
+  margin: 0 0 var(--space-3)
+  max-width: 680px
+
+  strong
+    color: var(--color-text-primary)
+    font-weight: 600
+
+.tool-editor-section__subtitle
+  font-size: 13px
+  font-weight: 600
+  color: var(--color-text-heading)
+  margin-bottom: var(--space-2)

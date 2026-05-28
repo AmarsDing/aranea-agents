@@ -619,7 +619,7 @@ CREATE INDEX IF NOT EXISTS idx_team_runs_team_created ON team_runs(team_id, crea
 CREATE INDEX IF NOT EXISTS idx_team_runs_session ON team_runs(session_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_team_run_steps_run ON team_run_steps(run_id, sort_order);
 CREATE INDEX IF NOT EXISTS idx_sessions_last_message ON sessions(last_message_at);
-CREATE INDEX IF NOT EXISTS idx_messages_session_turn ON messages(session_id, turn_index);
+CREATE INDEX IF NOT EXISTS idx_messages_session_turn ON messages(session_id, turn_number);
 CREATE INDEX IF NOT EXISTS idx_session_summaries_session_range ON session_summaries(session_id, to_turn);
 CREATE INDEX IF NOT EXISTS idx_memory_l0_snapshots_session ON memory_l0_assembly_snapshots(session_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_memory_l0_snapshots_span ON memory_l0_assembly_snapshots(span_id);

@@ -47,6 +47,10 @@ func (a *aliasTool) Declaration() *Declaration {
 	}
 	out := *decl
 	out.Name = a.name
+	if decl.InputSchema != nil {
+		schemaCopy := *decl.InputSchema
+		out.InputSchema = &schemaCopy
+	}
 	return &out
 }
 
@@ -71,6 +75,22 @@ func (a *aliasTool) StreamableCall(ctx context.Context, jsonArgs []byte) (*trpct
 		return st.StreamableCall(ctx, jsonArgs)
 	}
 	return nil, fmt.Errorf("tool alias %q: inner tool is not streamable", a.name)
+}
+
+func (a *aliasTool) SkipSummarization() bool {
+	type skipper interface{ SkipSummarization() bool }
+	if s, ok := a.inner.(skipper); ok {
+		return s.SkipSummarization()
+	}
+	return false
+}
+
+func (a *aliasTool) LongRunning() bool {
+	type longRunner interface{ LongRunning() bool }
+	if l, ok := a.inner.(longRunner); ok {
+		return l.LongRunning()
+	}
+	return false
 }
 
 func aliasNameOrUnknown(a *aliasTool) string {

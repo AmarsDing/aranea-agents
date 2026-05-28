@@ -160,7 +160,7 @@ func (n *channelRunEscalationNotifier) NotifyRunFailed(ctx context.Context, run 
 
 // assistantReplyPartsForRun finds the assistant reply belonging to a specific run.
 // It uses turnID (the user message ID stored on the run) to precisely locate the
-// paired assistant message via TurnIndex adjacency, avoiding the timestamp ambiguity
+// paired assistant message via turn_id FK, avoiding the timestamp ambiguity
 // that causes CHAT-03 (picking the wrong assistant message in busy sessions).
 func assistantReplyPartsForRun(ctx context.Context, sessions *biz.SessionUsecase, sessionID, runStartedAt, turnID string) (body, reasoning string) {
 	if sessions == nil {
@@ -171,19 +171,19 @@ func assistantReplyPartsForRun(ctx context.Context, sessions *biz.SessionUsecase
 		return "", ""
 	}
 
-	// Primary path: locate the user message by ID, then return the adjacent assistant
-	// message at TurnIndex+1 (guaranteed by AppendChatTurn's sequential assignment).
+	// Primary path: locate the user message by ID, then find the assistant message
+	// sharing the same turn_id (guaranteed by AppendChatTurn's FK assignment).
 	if tid := strings.TrimSpace(turnID); tid != "" {
-		userTurnIdx := -1
+		var userTurnID string
 		for _, m := range msgs {
 			if strings.TrimSpace(m.ID) == tid {
-				userTurnIdx = m.TurnIndex
+				userTurnID = m.TurnID
 				break
 			}
 		}
-		if userTurnIdx >= 0 {
+		if userTurnID != "" {
 			for _, m := range msgs {
-				if m.TurnIndex == userTurnIdx+1 && strings.EqualFold(strings.TrimSpace(m.Role), "assistant") {
+				if m.TurnID == userTurnID && strings.EqualFold(strings.TrimSpace(m.Role), "assistant") {
 					candidateBody := strings.TrimSpace(m.ContentMarkdown)
 					if candidateBody == "" && strings.TrimSpace(m.OptionsJSON) == "" {
 						break

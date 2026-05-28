@@ -35,6 +35,7 @@ const (
 	TurnStatusBackground   TurnStatus = "background"
 	TurnStatusCompleted    TurnStatus = "completed"
 	TurnStatusFailed       TurnStatus = "failed"
+	TurnStatusRejected     TurnStatus = "rejected"
 	TurnStatusCancelled    TurnStatus = "cancelled"
 )
 
@@ -169,6 +170,8 @@ func TurnStatusFromNativeOutcome(outcome NativeTurnOutcome) TurnStatus {
 		return TurnStatusCompleted
 	case NativeTurnOutcomeQueued:
 		return TurnStatusQueued
+	case NativeTurnOutcomeRejected:
+		return TurnStatusRejected
 	case NativeTurnOutcomeFailed:
 		return TurnStatusFailed
 	default:

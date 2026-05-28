@@ -51,16 +51,16 @@ const isDark = computed(() => $q.dark.isActive);
 
 .chat-workspace-hero
   flex: 0 0 auto
-  margin-bottom: 16px
+  margin-bottom: var(--space-4)
 
 .chat-workspace-hero__text
   max-width: 52rem
 
 .chat-workspace-kicker
   display: inline-flex
-  padding: 5px 11px
+  padding: var(--space-1) var(--space-3)
   border-radius: 999px
-  font-size: 11px
+  font-size: var(--text-xs)
   font-weight: 700
   letter-spacing: 0.08em
   text-transform: uppercase
@@ -71,7 +71,7 @@ const isDark = computed(() => $q.dark.isActive);
   -webkit-backdrop-filter: blur(var(--glass-blur-default))
 
 .chat-workspace-title
-  margin: 10px 0 0
+  margin: var(--space-3) 0 0
   font-size: clamp(1.35rem, 2.5vw, 1.75rem)
   font-weight: 700
   letter-spacing: -0.03em
@@ -79,7 +79,7 @@ const isDark = computed(() => $q.dark.isActive);
   color: var(--color-text-primary)
 
 .chat-workspace-subtitle
-  margin: 8px 0 0
+  margin: var(--space-2) 0 0
   font-size: 0.9rem
   line-height: 1.55
   color: var(--color-text-secondary)
@@ -88,5 +88,5 @@ const isDark = computed(() => $q.dark.isActive);
   color: var(--color-text-secondary)
 
 .chat-workspace-shell--dark .chat-workspace-title
-  text-shadow: 0 0 12px rgba(0, 229, 255, 0.12)
+  text-shadow: 0 0 12px color-mix(in srgb, var(--color-accent) 12%, transparent)
 </style>

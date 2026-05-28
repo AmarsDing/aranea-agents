@@ -1,7 +1,7 @@
 <template>
   <q-btn round flat class="app-header-icon-btn" icon="notifications_none" size="md" aria-label="Notifications">
     <q-badge v-if="unreadCount > 0" color="negative" floating rounded>{{ unreadCount }}</q-badge>
-    <q-menu anchor="bottom right" self="top right" :offset="[0, 8]" style="min-width: 320px; max-width: 400px">
+    <q-menu anchor="bottom right" self="top right" :offset="[0, 8]" class="inbound-notification-menu">
       <q-list dense>
         <q-item>
           <q-item-section class="text-weight-medium">{{ t("chat.inboundNotify.title", "渠道通知") }}</q-item-section>
@@ -70,3 +70,10 @@ function onOpen(item: InboundNotification) {
   emit("openSession", item.sessionId, item.agentId);
 }
 </script>
+
+<style>
+.inbound-notification-menu {
+  min-width: min(320px, 90vw);
+  max-width: min(400px, 90vw);
+}
+</style>

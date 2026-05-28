@@ -2,6 +2,7 @@ import { computed, type ComputedRef } from "vue";
 import { useI18n } from "vue-i18n";
 import { isAvatarAssetRef } from "../avatar/iconModel";
 import { reasoningMarkdown } from "./streamContentPatch";
+import { MESSAGE_STATUS, isToolStatus } from "../../domain/types";
 import type { ToolUseEvent } from "./types";
 import type { Message } from "./types";
 
@@ -37,6 +38,10 @@ export function useChatMessageRow(messages: ComputedRef<Message[]>) {
   const { t } = useI18n();
 
   function teamMemberMeta(message: Message): TeamMemberMessageMeta | null {
+    if (message.team_member) {
+      const tm = message.team_member;
+      return { agent_id: tm.agent_id, name: tm.name, role: tm.role, icon: tm.icon };
+    }
     try {
       const raw = JSON.parse(message.options_json || "{}") as {
         schema?: string;
@@ -62,6 +67,10 @@ export function useChatMessageRow(messages: ComputedRef<Message[]>) {
   }
 
   function agentMeta(message: Message): AgentMessageMeta | null {
+    if (message.agent_ref) {
+      const a = message.agent_ref;
+      return { agent_id: a.id, agent_key: a.agent_key, name: a.name, icon: a.icon };
+    }
     try {
       const raw = JSON.parse(message.options_json || "{}") as { agent?: AgentMessageMeta };
       return raw.agent ?? null;
@@ -71,6 +80,9 @@ export function useChatMessageRow(messages: ComputedRef<Message[]>) {
   }
 
   function toolEventMeta(message: Message): ToolUseEvent | null {
+    if (message.tool_event && typeof message.tool_event === "object") {
+      return message.tool_event as ToolUseEvent;
+    }
     try {
       const raw = JSON.parse(message.options_json || "{}") as { tool_event?: ToolUseEvent };
       return raw.tool_event ?? null;
@@ -112,7 +124,7 @@ export function useChatMessageRow(messages: ComputedRef<Message[]>) {
   }
 
   function isStreaming(message: Message): boolean {
-    return message.status === "streaming" || message.status === "tool_running";
+    return message.status === MESSAGE_STATUS.STREAMING || message.status === MESSAGE_STATUS.TOOL_RUNNING;
   }
 
   function isContinued(idx: number): boolean {
@@ -182,7 +194,7 @@ export function useChatMessageRow(messages: ComputedRef<Message[]>) {
 
   function isCollapsibleToolDetail(message: Message): boolean {
     if (!isToolEventMessage(message)) return false;
-    if (message.status === "tool_running") return false;
+    if (message.status === MESSAGE_STATUS.TOOL_RUNNING) return false;
     return toolCollapseParts(message).detail.length > 0;
   }
 
@@ -239,7 +251,7 @@ export function useChatMessageRow(messages: ComputedRef<Message[]>) {
     const parts: string[] = [];
     if (intentKind) parts.push(intentKind);
     const st = message.status?.trim();
-    if (st && st !== "ok") parts.push(st);
+    if (st && st !== MESSAGE_STATUS.OK) parts.push(st);
     const err = message.error_message?.trim();
     if (err) parts.push(err);
     return parts.join(" · ");

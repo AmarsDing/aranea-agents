@@ -8,7 +8,7 @@ CREATE INDEX IF NOT EXISTS idx_sessions_team ON sessions(team_id, deleted_at, up
 CREATE INDEX IF NOT EXISTS idx_sessions_last_message ON sessions(last_message_at);
 
 -- Message 索引
-CREATE INDEX IF NOT EXISTS idx_messages_session_turn ON messages(session_id, turn_index);
+CREATE INDEX IF NOT EXISTS idx_messages_session_turn ON messages(session_id, turn_number);
 
 -- Session Summary 索引
 CREATE INDEX IF NOT EXISTS idx_session_summaries_session_range ON session_summaries(session_id, to_turn);

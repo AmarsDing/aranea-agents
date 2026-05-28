@@ -22,7 +22,9 @@ type OrchestrationSpec struct {
 	IntentAnchorAgentID   string               `json:"intent_anchor_agent_id,omitempty"`
 	Description           string               `json:"description,omitempty"`
 	MaxConcurrency        int                  `json:"max_concurrency,omitempty"`
+	// Deprecated: use RunTimeoutSec
 	TimeoutSeconds        int                  `json:"timeout_seconds,omitempty"`
+	RunTimeoutSec         int                  `json:"run_timeout_sec,omitempty"`
 	LoopMaxIterations     int                  `json:"loop_max_iterations,omitempty"`
 	SynthesizerAgentID    string               `json:"synthesizer_agent_id,omitempty"`
 	CriticLoop            *CriticLoopSpec      `json:"critic_loop,omitempty"`
@@ -100,7 +102,7 @@ func DefaultOrchestrationSpec() OrchestrationSpec {
 		RuntimeEngine:    "graph",
 		TeamGraphRuntime: true,
 		MaxConcurrency:   2,
-		TimeoutSeconds:   600,
+		RunTimeoutSec:    600,
 		Members:          []OrchestrationMember{},
 	}
 }
@@ -132,8 +134,14 @@ func NormalizeOrchestrationSpec(spec *OrchestrationSpec) {
 	if spec.MaxConcurrency <= 0 {
 		spec.MaxConcurrency = 2
 	}
+	if spec.RunTimeoutSec == 0 && spec.TimeoutSeconds > 0 {
+		spec.RunTimeoutSec = spec.TimeoutSeconds
+	}
+	if spec.RunTimeoutSec <= 0 {
+		spec.RunTimeoutSec = 600
+	}
 	if spec.TimeoutSeconds <= 0 {
-		spec.TimeoutSeconds = 600
+		spec.TimeoutSeconds = spec.RunTimeoutSec
 	}
 }
 

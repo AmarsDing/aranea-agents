@@ -17,6 +17,7 @@ import type {
   RunStatus,
   RunStatusValue
 } from "./types";
+import { parseMessageOptions } from "./parseMessageOptions";
 
 export type {
   ChatOption,
@@ -51,7 +52,9 @@ function wireInboundChatMessage(raw: unknown): Message {
       id: "",
       session_id: "",
       parent_message_id: "",
-      turn_index: 0,
+      turn_id: "",
+      turn_number: 0,
+      seq_in_turn: 0,
       role: "",
       content_markdown: "",
       model_name: "",
@@ -65,11 +68,14 @@ function wireInboundChatMessage(raw: unknown): Message {
       created_at: ""
     };
   }
+  const options_json = pickStr(r, "options_json", "optionsJson");
   return {
     id: pickStr(r, "id", "id"),
     session_id: pickStr(r, "session_id", "sessionId"),
     parent_message_id: pickStr(r, "parent_message_id", "parentMessageId"),
-    turn_index: pickI32(r, "turn_index", "turnIndex"),
+    turn_id: pickStr(r, "turn_id", "turnId"),
+    turn_number: pickI32(r, "turn_number", "turnNumber"),
+    seq_in_turn: pickI32(r, "seq_in_turn", "seqInTurn"),
     role: pickStr(r, "role", "role"),
     content_markdown: pickStr(r, "content_markdown", "contentMarkdown"),
     model_name: pickStr(r, "model_name", "modelName"),
@@ -78,9 +84,10 @@ function wireInboundChatMessage(raw: unknown): Message {
     latency_ms: pickI32(r, "latency_ms", "latencyMs"),
     status: pickStr(r, "status", "status"),
     attachments_count: pickI32(r, "attachments_count", "attachmentsCount"),
-    options_json: pickStr(r, "options_json", "optionsJson"),
+    options_json,
     error_message: pickStr(r, "error_message", "errorMessage"),
-    created_at: pickStr(r, "created_at", "createdAt")
+    created_at: pickStr(r, "created_at", "createdAt"),
+    ...parseMessageOptions(options_json),
   };
 }
 

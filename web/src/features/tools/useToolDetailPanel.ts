@@ -1,6 +1,11 @@
 import { ref, watch, type Ref } from "vue";
 import { useQuasar } from "quasar";
 import { useToolsStore } from "../../stores/tools";
+import {
+  bindingSummaryLine,
+  fetchToolAgentBindingSummary,
+  type ToolAgentBindingSummary
+} from "./toolAgentBindingSummary";
 import type { Tool, ToolAgentOverride, ToolInvocation } from "./types";
 import type { ToolTestResult } from "./types";
 
@@ -35,6 +40,14 @@ export function useToolDetailPanel(tool: Ref<Tool | null>) {
     requires_confirmation: false,
     config_override_json: "{}"
   });
+  const configJson = ref("{}");
+  const configSaving = ref(false);
+  const agentBindingSummary = ref<ToolAgentBindingSummary | null>(null);
+  const agentBindingLoading = ref(false);
+
+  function syncConfigFromTool() {
+    configJson.value = tool.value?.config_json || "{}";
+  }
 
   function toolKey(): string {
     return tool.value?.key?.trim() || tool.value?.id?.trim() || "";
@@ -67,10 +80,28 @@ export function useToolDetailPanel(tool: Ref<Tool | null>) {
     }
   }
 
+  async function loadAgentBindingSummary() {
+    const key = toolKey();
+    if (!key) {
+      agentBindingSummary.value = null;
+      return;
+    }
+    agentBindingLoading.value = true;
+    try {
+      agentBindingSummary.value = await fetchToolAgentBindingSummary(key, overrides.value.length);
+    } catch {
+      agentBindingSummary.value = null;
+    } finally {
+      agentBindingLoading.value = false;
+    }
+  }
+
   async function refreshDetail() {
     testResult.value = null;
     testArgsJson.value = "{}";
-    await Promise.all([loadOverrides(), loadRecentRuns()]);
+    syncConfigFromTool();
+    await loadOverrides();
+    await Promise.all([loadRecentRuns(), loadAgentBindingSummary()]);
   }
 
   async function runToolTest() {
@@ -131,6 +162,7 @@ export function useToolDetailPanel(tool: Ref<Tool | null>) {
       });
       overrideEditorOpen.value = false;
       await loadOverrides();
+      await loadAgentBindingSummary();
     } catch (err) {
       $q.notify({ type: "negative", message: err instanceof Error ? err.message : "保存覆盖失败" });
     } finally {
@@ -150,14 +182,41 @@ export function useToolDetailPanel(tool: Ref<Tool | null>) {
       try {
         await toolsStore.removeOverride(key, o.agent_id);
         await loadOverrides();
+      await loadAgentBindingSummary();
       } catch (err) {
         $q.notify({ type: "negative", message: err instanceof Error ? err.message : "删除覆盖失败" });
       }
     });
   }
 
+  async function saveConfig() {
+    const t = tool.value;
+    if (!t?.id) return;
+    try {
+      JSON.parse(configJson.value || "{}");
+    } catch (err) {
+      $q.notify({
+        type: "negative",
+        message: err instanceof Error ? `配置 JSON 无效：${err.message}` : "配置 JSON 无效"
+      });
+      return;
+    }
+    configSaving.value = true;
+    try {
+      const updated = await toolsStore.editToolConfig(t.id, configJson.value);
+      tool.value = updated;
+      configJson.value = updated.config_json || configJson.value;
+      $q.notify({ type: "positive", message: "配置已保存" });
+    } catch (err) {
+      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "保存配置失败" });
+    } finally {
+      configSaving.value = false;
+    }
+  }
+
   watch(tool, (t) => {
     if (t) void refreshDetail();
+    else syncConfigFromTool();
   });
 
   return {
@@ -173,8 +232,13 @@ export function useToolDetailPanel(tool: Ref<Tool | null>) {
     editingOverride,
     overrideSaving,
     overrideForm,
+    configJson,
+    configSaving,
+    agentBindingSummary,
+    agentBindingLoading,
     refreshDetail,
     runToolTest,
+    saveConfig,
     openOverrideEditor,
     saveOverride,
     confirmRemoveOverride

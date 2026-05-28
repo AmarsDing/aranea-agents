@@ -14,10 +14,11 @@ const triggerAfterTurn = "after_turn"
 
 // AfterTurnTrigger schedules dataset evaluation after successful chat turns (US-5).
 type AfterTurnTrigger struct {
-	uc     *biz.EvalUsecase
-	runner *Runner
-	mu     sync.Mutex
-	last   map[string]time.Time // agentID -> last trigger time
+	uc        *biz.EvalUsecase
+	runner    *Runner
+	mu        sync.Mutex
+	last      map[string]time.Time
+	lastClean time.Time
 }
 
 // NewAfterTurnTrigger constructs an AfterTurnTrigger.
@@ -32,7 +33,13 @@ func (t *AfterTurnTrigger) AfterNativeTurn(ctx context.Context, ev biz.NativeTur
 	if t == nil || t.uc == nil || t.runner == nil {
 		return
 	}
-	cfg := biz.ParseAgentEvalAutoConfig(ev.AgentConfigJSON)
+	var cfg biz.AgentEvalAutoConfig
+	if ev.AgentSettings != nil {
+		cfg = ev.AgentSettings.EvalAutoConfig()
+	}
+	if !cfg.Enabled {
+		cfg = biz.ParseAgentEvalAutoConfig(ev.AgentConfigJSON)
+	}
 	if !cfg.Enabled || cfg.DatasetID == "" {
 		return
 	}
@@ -69,6 +76,15 @@ func (t *AfterTurnTrigger) allowTrigger(agentID string, minIntervalSec int) bool
 	now := time.Now()
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	if now.Sub(t.lastClean) > time.Hour {
+		cutoff := now.Add(-2 * time.Duration(minIntervalSec) * time.Second)
+		for k, v := range t.last {
+			if v.Before(cutoff) {
+				delete(t.last, k)
+			}
+		}
+		t.lastClean = now
+	}
 	if last, ok := t.last[agentID]; ok && now.Sub(last) < time.Duration(minIntervalSec)*time.Second {
 		return false
 	}

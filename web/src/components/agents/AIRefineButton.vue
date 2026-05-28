@@ -23,7 +23,7 @@
 
   <!-- Result dialog -->
   <q-dialog v-model="showResult" persistent>
-    <q-card style="min-width: 620px; max-width: 92vw">
+    <q-card class="ai-refine-dialog-card">
       <q-card-section class="row items-center">
         <div class="text-h6">AI 优化结果</div>
         <q-space />
@@ -220,9 +220,14 @@ function applyResult() {
 </script>
 
 <style scoped>
+.ai-refine-dialog-card {
+  min-width: min(620px, 92vw);
+  max-width: 92vw;
+}
+
 .diff-view {
   font-family: monospace;
-  font-size: 12px;
+  font-size: var(--text-xs);
   background: var(--glass-surface);
   border-radius: 6px;
   max-height: 320px;

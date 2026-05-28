@@ -105,11 +105,19 @@ export function formatToolEventMarkdown(event: ToolUseEvent): string {
 export function toolEventToMessage(sessionID: string, event: ToolUseEvent): Message {
   const status = toolEventMessageStatus(event.status);
   const messageId = event.id?.trim() ? `act-${event.id.trim()}` : `tool-${event.agent_id || event.agent_key || "agent"}-${event.id || event.tool_name}`;
+  const agentRef = {
+    id: event.agent_id || "",
+    agent_key: event.agent_key || "",
+    name: event.agent_name || event.agent_key || "",
+    icon: event.agent_icon || "",
+  };
   return {
     id: messageId,
     session_id: sessionID,
     parent_message_id: "",
-    turn_index: 0,
+    turn_id: "",
+    turn_number: 0,
+    seq_in_turn: 0,
     role: "assistant",
     content_markdown: formatToolEventMarkdown(event),
     model_name: "",
@@ -129,7 +137,10 @@ export function toolEventToMessage(sessionID: string, event: ToolUseEvent): Mess
       tool_event: { ...event, is_long_running: event.is_long_running }
     }),
     error_message: event.error || "",
-    created_at: event.occurred_at || new Date().toISOString()
+    created_at: event.occurred_at || new Date().toISOString(),
+    origin: { kind: "tool_activity", toolEventId: messageId },
+    agent_ref: agentRef,
+    tool_event: { ...event, is_long_running: event.is_long_running },
   };
 }
 

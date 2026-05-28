@@ -44,7 +44,7 @@ func L3MemoryCue(ctx context.Context, l3 biz.MemoryL3Recaller, ag biz.Agent, pol
 			continue
 		}
 		if len(stmt) > maxChars {
-			stmt = stmt[:maxChars] + "…"
+			stmt = safeTruncate(stmt, maxChars)
 		}
 		statements = append(statements, stmt)
 	}

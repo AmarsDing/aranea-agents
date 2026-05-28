@@ -279,7 +279,8 @@ func (uc *GraphUsecase) gc() {
 			delete(uc.executions, id)
 			delete(uc.teamBuildConfigs, id)
 		} else if exec.FinishedAt == nil && now.Sub(exec.StartedAt) > executionMaxAge {
-			exec.Status = "expired"
+			exec.Status = "failed"
+			exec.ErrorMessage = "execution expired: no activity within timeout"
 			nowCopy := now
 			exec.FinishedAt = &nowCopy
 			expired = append(expired, exec)

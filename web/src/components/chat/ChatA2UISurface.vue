@@ -28,6 +28,6 @@ const emit = defineEmits<{
 
 <style scoped>
 .chat-a2ui-surface {
-  padding: 8px 4px;
+  padding: var(--space-2) var(--space-1);
 }
 </style>

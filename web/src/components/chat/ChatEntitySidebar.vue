@@ -306,17 +306,17 @@ function parseTeamDefinition(raw?: string) {
 }
 
 .chat-entity-group {
-  margin-bottom: 10px;
+  margin-bottom: var(--space-3);
 }
 
 .chat-entity-group__label {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   min-height: 28px;
-  padding: 0 8px;
+  padding: 0 var(--space-2);
   color: var(--color-text-secondary);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 800;
   letter-spacing: 0.06em;
 }
@@ -332,7 +332,7 @@ function parseTeamDefinition(raw?: string) {
 .chat-entity-item {
   align-items: center;
   min-height: 56px;
-  padding: 8px;
+  padding: var(--space-2);
   color: var(--color-text-primary);
   overflow: hidden;
 }
@@ -342,7 +342,7 @@ function parseTeamDefinition(raw?: string) {
   max-width: 100%;
   overflow: hidden;
   color: inherit;
-  font-size: 14px;
+  font-size: var(--text-base);
   font-weight: 600;
   line-height: 1.35;
   text-overflow: ellipsis;
@@ -351,18 +351,18 @@ function parseTeamDefinition(raw?: string) {
 
 .chat-entity-item--active,
 :global(.body--dark) .chat-entity-item--active {
-  color: var(--chat-text-active, var(--color-on-accent)) !important;
+  color: var(--chat-text-active, var(--color-on-accent));
 }
 
 .chat-status-icon {
   min-width: 22px;
-  padding-right: 4px;
+  padding-right: var(--space-1);
 }
 
 .chat-entity-main {
   min-width: 0;
   flex: 1 1 auto;
-  padding-right: 4px;
+  padding-right: var(--space-1);
 }
 
 .chat-entity-actions {
@@ -374,7 +374,7 @@ function parseTeamDefinition(raw?: string) {
 .chat-action-stack {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .chat-action-btn {
@@ -382,17 +382,17 @@ function parseTeamDefinition(raw?: string) {
   height: 24px;
   min-height: 24px;
   border-radius: 10px;
-  background: rgb(255 255 255 / 72%);
+  background: var(--glass-elevated);
 }
 
 :global(.body--dark) .chat-action-btn {
-  color: rgb(248 250 252 / 92%);
-  background: rgb(15 23 42 / 34%);
+  color: var(--color-text-primary);
+  background: var(--glass-surface-hover);
 }
 
 .chat-entity-item--active .chat-action-btn {
   color: var(--color-on-accent);
-  background: rgb(255 255 255 / 18%);
+  background: var(--glass-surface);
 }
 
 .chat-entity-meta {
@@ -403,20 +403,20 @@ function parseTeamDefinition(raw?: string) {
   display: inline-flex;
   align-items: center;
   min-height: 20px;
-  padding: 2px 8px;
-  border: 1px solid rgb(102 112 133 / 16%);
+  padding: 2px var(--space-2);
+  border: 1px solid var(--glass-border);
   border-radius: 999px;
-  background: rgb(248 250 252 / 88%);
+  background: var(--glass-elevated);
   color: var(--color-text-secondary);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 800;
   line-height: 1.2;
   letter-spacing: 0.02em;
 }
 
 .chat-status-pill.is-working {
-  border-color: rgb(239 68 68 / 28%);
-  background: rgb(254 242 242 / 96%);
+  border-color: color-mix(in srgb, var(--color-danger) 28%, transparent);
+  background: var(--color-danger-soft);
   color: var(--color-danger-text);
 }
 
@@ -487,6 +487,6 @@ function parseTeamDefinition(raw?: string) {
 }
 
 :global(.body--dark) .chat-side-hint {
-  color: var(--chat-idle-meta) !important;
+  color: var(--chat-idle-meta);
 }
 </style>

@@ -5,6 +5,7 @@ import (
 	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema"
 	"entgo.io/ent/schema/field"
+	"entgo.io/ent/schema/index"
 )
 
 // Agent maps legacy table agents (read paths + counts only until full agent domain is migrated).
@@ -15,6 +16,13 @@ type Agent struct {
 func (Agent) Annotations() []schema.Annotation {
 	return []schema.Annotation{
 		entsql.Annotation{Table: "agents"},
+	}
+}
+
+func (Agent) Indexes() []ent.Index {
+	return []ent.Index{
+		index.Fields("deleted_at"),
+		index.Fields("deleted_at", "status"),
 	}
 }
 

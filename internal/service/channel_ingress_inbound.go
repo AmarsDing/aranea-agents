@@ -23,7 +23,7 @@ func (h *ChannelIngress) processInboundCore(ctx context.Context, chRow biz.Chann
 		return "", err
 	}
 	switch result.Outcome {
-	case biz.ChannelTurnOutcomeQueued:
+	case biz.TurnOutcomeQueued:
 		ltCfg := biz.ParseChannelLongTaskConfig(chRow.ConfigJSON)
 		text := strings.TrimSpace(ltCfg.AckOnQueued)
 		if text == "" {

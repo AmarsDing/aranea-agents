@@ -140,7 +140,11 @@ const detailItems = computed(() => [
 
 function buildChartOption(): EChartsCoreOption {
   const palette = usageChartPalette();
-  const accent = palette.series[2] ?? "#00e5ff";
+  const cs = getComputedStyle(document.documentElement);
+  const accent = palette.series[2] ?? (cs.getPropertyValue("--color-accent").trim() || "#00e5ff");
+  const glassElevated = cs.getPropertyValue("--glass-elevated").trim() || "rgba(15, 23, 42, 0.92)";
+  const textPrimary = cs.getPropertyValue("--color-text-primary").trim() || "#e2e8f0";
+  const onAccent = cs.getPropertyValue("--color-on-accent").trim() || "#fff";
   const points = trends.value;
   const labels = points.map((p) => formatTrendLabel(p.date_key, false));
   const isCost = props.metric === "cost";
@@ -151,9 +155,9 @@ function buildChartOption(): EChartsCoreOption {
     grid: { left: 8, right: 12, top: 28, bottom: 8, containLabel: true },
     tooltip: {
       trigger: "axis",
-      backgroundColor: "rgba(15, 23, 42, 0.92)",
-      borderColor: "rgba(0, 229, 255, 0.25)",
-      textStyle: { color: "#e2e8f0", fontSize: 12 },
+      backgroundColor: glassElevated,
+      borderColor: colorMix(accent, 0.25),
+      textStyle: { color: textPrimary, fontSize: 12 },
       valueFormatter: (v: number) => (isCost ? `$${Number(v).toFixed(4)}` : formatCount(v))
     },
     xAxis: {
@@ -185,19 +189,35 @@ function buildChartOption(): EChartsCoreOption {
         symbol: "circle",
         symbolSize: 6,
         showSymbol: points.length <= 14,
-        lineStyle: { width: 2.5, color: accent, shadowColor: "rgba(0, 229, 255, 0.35)", shadowBlur: 8 },
-        itemStyle: { color: accent, borderColor: "#fff", borderWidth: 1 },
+        lineStyle: { width: 2.5, color: accent, shadowColor: colorMix(accent, 0.35), shadowBlur: 8 },
+        itemStyle: { color: accent, borderColor: onAccent, borderWidth: 1 },
         areaStyle: {
           color: new graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: "rgba(0, 229, 255, 0.28)" },
-            { offset: 0.65, color: "rgba(0, 229, 255, 0.06)" },
-            { offset: 1, color: "rgba(0, 229, 255, 0)" }
+            { offset: 0, color: colorMix(accent, 0.28) },
+            { offset: 0.65, color: colorMix(accent, 0.06) },
+            { offset: 1, color: colorMix(accent, 0) }
           ])
         },
         data
       }
     ]
   });
+}
+
+function colorMix(color: string, alpha: number): string {
+  if (color.startsWith("rgba")) {
+    return color.replace(/[\d.]+\)$/, `${alpha})`);
+  }
+  if (color.startsWith("rgb")) {
+    return color.replace("rgb", "rgba").replace(")", `, ${alpha})`);
+  }
+  if (color.startsWith("#")) {
+    const r = parseInt(color.slice(1, 3), 16);
+    const g = parseInt(color.slice(3, 5), 16);
+    const b = parseInt(color.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+  return `rgba(0, 229, 255, ${alpha})`;
 }
 
 useUsageChart(chartEl, buildChartOption, () => [trends.value, props.metric, props.loading]);

@@ -4,12 +4,17 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
 func buildToolFilter(s *biz.AgentRuntimeSettings) trpctool.FilterFunc {
-	denyList := biz.JSONStringList(s.ToolsDenyJSON)
+	denyList, err := biz.JSONStringList(s.ToolsDenyJSON)
+	if err != nil {
+		event.SysLogWarn("system.agent.tool_build", "json string list parse failed", event.P("error", err.Error()))
+		return nil
+	}
 	if len(denyList) == 0 {
 		return nil
 	}

@@ -39,6 +39,6 @@ defineProps<{
 }
 
 .a2ui-divider {
-  margin: 8px 0;
+  margin: var(--space-2) 0;
 }
 </style>

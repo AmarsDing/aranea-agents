@@ -21,6 +21,9 @@ func pgoDefaultFilesV2() bool {
 // withSettingDefaults fills missing numeric/string fields in AgentRuntimeSettings without turning unset booleans into forced defaults.
 func withSettingDefaults(v AgentRuntimeSettings) AgentRuntimeSettings {
 	d := DefaultAgentRuntimeSettings()
+	if v.SelfEvolve && !v.EvolutionSelfEvolve {
+		v.EvolutionSelfEvolve = v.SelfEvolve
+	}
 	defaultInt(&v.SubagentsMaxConcurrency, d.SubagentsMaxConcurrency)
 	defaultInt(&v.SubagentsMaxGenerationDepth, d.SubagentsMaxGenerationDepth)
 	defaultInt(&v.SubagentsMaxChildrenPerAgent, d.SubagentsMaxChildrenPerAgent)
@@ -294,7 +297,7 @@ func withFileDefaults(files []AgentPromptFile) []AgentPromptFile {
 	return result
 }
 
-func configJSONFromSettings(settings AgentRuntimeSettings, files []AgentPromptFile) string {
+func configJSONFromSettings(settings AgentRuntimeSettings, files []AgentPromptFile) (string, error) {
 	payload := map[string]any{
 		"self_evolve": settings.SelfEvolve,
 		"subagents": map[string]any{
@@ -435,9 +438,9 @@ func configJSONFromSettings(settings AgentRuntimeSettings, files []AgentPromptFi
 	}
 	data, err := json.Marshal(payload)
 	if err != nil {
-		return "{}"
+		return "", fmt.Errorf("config json marshal: %w", err)
 	}
-	return string(data)
+	return string(data), nil
 }
 
 // composePromptPreview generates a human-readable preview of what the system

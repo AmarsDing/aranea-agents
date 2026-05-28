@@ -159,6 +159,8 @@ func (u *TeamUsecase) validateTeamMembersExist(ctx context.Context, raw string) 
 		if !u.agentChecker.AgentExistsByID(ctx, aid) {
 			return kerrors.BadRequest("TEAM", "team member agent "+aid+" does not exist")
 		}
+		// NOTE: AgentIDExistenceChecker only checks existence, not active status.
+		// Adding AgentIsActiveByID would require interface changes across multiple packages.
 	}
 	return nil
 }
@@ -366,6 +368,13 @@ func (u *TeamUsecase) UpdateSwarmMembers(ctx context.Context, teamID string, add
 	teamID = strings.TrimSpace(teamID)
 	if teamID == "" {
 		return false, kerrors.BadRequest("TEAM", "team_id is required")
+	}
+	active, err := u.HasActiveRun(ctx, teamID)
+	if err != nil {
+		return false, err
+	}
+	if active {
+		return false, kerrors.BadRequest("TEAM", "cannot update members while team has active run")
 	}
 	t, err := u.repo.GetTeamByID(ctx, teamID)
 	if err != nil {

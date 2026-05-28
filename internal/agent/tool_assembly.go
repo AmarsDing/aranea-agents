@@ -19,17 +19,12 @@ import (
 )
 
 func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) (*tooltrpc.AssembledToolsets, error) {
-	cfg := tooltrpc.ToolsetConfig{}
+	var cfg tooltrpc.ToolsetConfig
 	var eff map[string]bool
-	if len(deps.CustomTools) > 0 {
-		cfg.CustomTools = append(cfg.CustomTools, deps.CustomTools...)
-	}
+
 	if ag.Settings != nil && ag.Settings.ToolsEnabled {
 		eff = loadEffectiveToolKeys(ctx, deps, ag.ID)
 		cfg = tooltrpc.ToolsetConfigFromEffectiveKeys(eff)
-		if len(deps.CustomTools) > 0 {
-			cfg.CustomTools = append(cfg.CustomTools, deps.CustomTools...)
-		}
 
 		mcpServers, _ := resolveMCPServers(ctx, deps, ag.ID)
 		platformAllowAdHoc := platformMCPAllowAdHocHTTP(ctx, deps)
@@ -51,6 +46,25 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 		cfg.CallAgent = eff[biz.ToolKeyCallAgent]
 		cfg.AwaitHook = deps.AwaitHook
 	}
+
+	if len(deps.CustomTools) > 0 {
+		cfg.CustomTools = append(cfg.CustomTools, deps.CustomTools...)
+	}
+
+	if kanbanpkg.Enabled() {
+		if deps.KanbanBridge != nil {
+			cfg.Kanban = true
+			cfg.KanbanBridge = deps.KanbanBridge
+		} else {
+			event.CtxFlowLogWarn(ctx, "system.agent.tool_build", "kanban 已启用但 KanbanBridge 未注入，跳过看板工具",
+				event.P("agent_id", ag.ID))
+		}
+	}
+
+	if deps.HasMemory && biz.ResolveMemoryRuntimePolicy(ag.Settings).MasterEnabled {
+		cfg.MemoryEnabled = true
+	}
+
 	if !tooltrpc.ToolsetConfigHasAny(cfg) {
 		event.CtxFlowLogDone(ctx, "system.agent.tool_build", "工具构建：未启用任何工具", event.P("agent_id", ag.ID))
 		return nil, nil
@@ -59,9 +73,6 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 	applyRuntimeToolConfigs(ctx, ag.ID, eff, deps, &cfg)
 	applyWebResearchPlatformDefaults(ctx, deps, &cfg)
 	tooltrpc.ResolveGeminiFetchModel(&cfg, ag.Provider, ag.Model)
-	if kanbanpkg.Enabled() {
-		cfg.Kanban = true
-	}
 	if skipped := tooltrpc.PruneUnconfiguredToolFlags(&cfg); len(skipped) > 0 {
 		event.CtxFlowLogWarn(ctx, "system.agent.tool_build", "已跳过未配置凭证的工具，避免构建失败",
 			event.P("agent_id", ag.ID), event.P("skipped_tools", skipped))
@@ -260,6 +271,7 @@ func resolveMCPServers(ctx context.Context, deps TRPCBuilderDeps, agentID string
 		}
 		sc, err := mcpconfig.ParseServerConfigJSON(cfgJSON)
 		if err != nil {
+			event.SysLogWarn("system.agent.tool_build", "MCP server config parse failed", event.P("server_key", key), event.P("error", err.Error()))
 			continue
 		}
 		out = append(out, tooltrpc.MCPServerConfig{

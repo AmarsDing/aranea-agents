@@ -1,6 +1,7 @@
 import type { Envelope } from "./envelope";
 import type { ActivityKind, ToolUseEvent } from "./types";
 import type { Message } from "./types";
+import { MESSAGE_STATUS } from "../../domain/types";
 import { classifyActivityKind } from "./activityPresentation";
 import { toolEventToMessage } from "./toolEventMarkdown";
 
@@ -127,16 +128,16 @@ export function upsertToolMessage(
 
 /** Mark in-flight tool activity rows as cancelled when run_status=cancelled. */
 export function cancelRunningToolMessages(messages: Message[], reason = "用户已停止生成"): Message[] {
-  return patchOrphanToolMessages(messages, reason, "cancelled", "tool_cancelled", ["tool_running", "tool_blocked"]);
+  return patchOrphanToolMessages(messages, reason, "cancelled", MESSAGE_STATUS.TOOL_CANCELLED, [MESSAGE_STATUS.TOOL_RUNNING, MESSAGE_STATUS.TOOL_BLOCKED]);
 }
 
 /** Mark orphan in-flight tool rows when a turn ends without tool_result. */
 export function finalizeOrphanToolMessages(
   messages: Message[],
   reason = "Turn 已完成，未收到工具结果",
-  statuses: string[] = ["tool_running", "tool_blocked"]
+  statuses: string[] = [MESSAGE_STATUS.TOOL_RUNNING, MESSAGE_STATUS.TOOL_BLOCKED]
 ): Message[] {
-  return patchOrphanToolMessages(messages, reason, "failed", "tool_failed", statuses);
+  return patchOrphanToolMessages(messages, reason, "failed", MESSAGE_STATUS.TOOL_FAILED, statuses);
 }
 
 function patchOrphanToolMessages(
@@ -168,6 +169,9 @@ function patchOrphanToolMessages(
 }
 
 export function toolEventFromMessage(message: Message): ToolUseEvent | null {
+  if (message.tool_event && typeof message.tool_event === "object") {
+    return message.tool_event as ToolUseEvent;
+  }
   try {
     const raw = JSON.parse(message.options_json || "{}") as { tool_event?: ToolUseEvent };
     return raw.tool_event ?? null;

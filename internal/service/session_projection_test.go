@@ -16,7 +16,7 @@ type projectionRepo struct {
 func (p *projectionRepo) ListMessagesAfterRevision(_ context.Context, _ string, afterRevision int64) ([]biz.ChatMessage, error) {
 	var out []biz.ChatMessage
 	for _, m := range p.messages {
-		if int64(m.TurnIndex) > afterRevision*2 {
+		if int64(m.TurnNumber) > afterRevision {
 			out = append(out, m)
 		}
 	}
@@ -43,8 +43,8 @@ func TestSessionProjectionAdapter_GetMessagesAfterRevision(t *testing.T) {
 			"s1": {ID: "s1", SessionRevision: 2},
 		}},
 		messages: []biz.ChatMessage{
-			{ID: "m1", TurnIndex: 1},
-			{ID: "m2", TurnIndex: 3},
+			{ID: "m1", TurnNumber: 1, TurnID: "t1"},
+			{ID: "m2", TurnNumber: 2, TurnID: "t2"},
 		},
 	}
 	uc := biz.NewSessionUsecase(repo, nil, nil, nil)

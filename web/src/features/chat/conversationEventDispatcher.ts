@@ -1,4 +1,5 @@
 import type { Envelope } from "../../realtime/envelope";
+import { resolveEnvelopeTurnId, resolveEnvelopeSource, resolveEnvelopeRevision } from "../../realtime/envelope";
 import {
   type ConversationSource,
   type ConversationTurnStatus,
@@ -35,15 +36,10 @@ export function projectConversationEnvelope(
   if (!sessionId) return null;
 
   const source = conversationSourceFromEnvelope(env);
-  const revision = numericValue(env.session_revision ?? metadataValue(env, "session_revision"));
+  const revision = resolveEnvelopeRevision(env);
   const status = turnStatusFromEnvelope(env);
   const delivery = deliveryTargetFromEnvelope(env);
-  const turnId =
-    (env.turn_id ?? "").trim() ||
-    stringValue(metadataValue(env, "turn_id")) ||
-    stringValue(metadataValue(env, "run_id")) ||
-    (env.request_id ?? "").trim() ||
-    env.id;
+  const turnId = resolveEnvelopeTurnId(env);
 
   return {
     key: conversationEventKey(env, turnId, revision),
@@ -60,12 +56,12 @@ export function projectConversationEnvelope(
 }
 
 export function conversationEventKey(env: Envelope, turnId?: string, revision = 0): string {
-  const tid = turnId || env.turn_id || stringValue(metadataValue(env, "turn_id")) || env.id;
+  const tid = turnId || resolveEnvelopeTurnId(env);
   return [env.session_id, tid, env.type, revision || "", env.id].filter(Boolean).join(":");
 }
 
 export function conversationSourceFromEnvelope(env: Envelope): ConversationSource {
-  const raw = (env.source ?? stringValue(metadataValue(env, "source"))).trim().toLowerCase();
+  const raw = resolveEnvelopeSource(env).trim().toLowerCase();
   switch (raw) {
     case "channel":
       return "channel";
@@ -139,13 +135,4 @@ function metadataValue(env: Envelope, key: string): unknown {
 
 function stringValue(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
-}
-
-function numericValue(value: unknown): number {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string") {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : 0;
-  }
-  return 0;
 }

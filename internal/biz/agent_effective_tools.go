@@ -7,6 +7,8 @@ import (
 	"errors"
 	"strings"
 
+	"aranea-agents/internal/event"
+
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
@@ -39,7 +41,12 @@ type AgentToolPolicyInput struct {
 }
 
 func jsonStringList(raw string) []string {
-	return JSONStringList(raw)
+	list, err := JSONStringList(raw)
+	if err != nil {
+		event.SysLogWarn("system.agent.tools", "json string list parse failed", event.P("error", err.Error()))
+		return nil
+	}
+	return list
 }
 
 var toolGroupsFilesystem = []string{"read_file", "read_multiple_files", "save_file", "list_file", "search_file", "search_content", "replace_content", "diff_edit", "patch_file"}

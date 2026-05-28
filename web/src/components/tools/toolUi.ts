@@ -11,10 +11,10 @@ import {
 export const TOOL_TABLE_COLUMNS: QTableColumn<Tool>[] = [
   registryCol<Tool>("name", "Tool", "display_name", "left", REGISTRY_COL_W.name),
   registryCol<Tool>("category", "分类 / 来源", "category", "left", REGISTRY_COL_W.category),
-  registryCol<Tool>("risk", "风险", "risk_level", "left", REGISTRY_COL_W.status),
   registryCol<Tool>("runtime", "运行时", "runtime_status", "left", REGISTRY_COL_W.category),
   registryColEnabled<Tool>(),
   registryCol<Tool>("stats", "调用", "invoke_count", "left", REGISTRY_COL_W.status),
+  registryCol<Tool>("risk", "风险", "risk_level", "left", REGISTRY_COL_W.status),
   registryColActions<Tool>()
 ];
 
@@ -222,6 +222,24 @@ export const toolEditorJsonKeys = [
   "default_config_json",
   "metadata_json"
 ] as const;
+
+export type ToolEditorJsonKey = (typeof toolEditorJsonKeys)[number];
+
+/** Map JSON field → editor tab for validation focus. */
+export function editorTabForJsonKey(key: string): "schema" | "advanced" {
+  if (key === "parameters_schema_json" || key === "result_schema_json" || key === "config_schema_json" || key === "config_json") {
+    return "schema";
+  }
+  return "advanced";
+}
+
+/** First invalid JSON key in stable field order. */
+export function firstInvalidToolJsonKey(errors: Record<string, string>): ToolEditorJsonKey | null {
+  for (const key of toolEditorJsonKeys) {
+    if (errors[key]) return key;
+  }
+  return null;
+}
 
 export function invocationAgentLine(row: ToolInvocation): string {
   return row.agent_display_name || row.agent_key || row.agent_id || "—";

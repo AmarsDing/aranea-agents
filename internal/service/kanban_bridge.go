@@ -14,10 +14,10 @@ type KanbanToolBridge struct {
 }
 
 func NewKanbanToolBridge(tasks *biz.TaskUsecase) *KanbanToolBridge {
-	b := &KanbanToolBridge{tasks: tasks}
-	kanbanpkg.SetGlobalBridge(b)
-	return b
+	return &KanbanToolBridge{tasks: tasks}
 }
+
+var _ kanbanpkg.Bridge = (*KanbanToolBridge)(nil)
 
 func (b *KanbanToolBridge) Show(ctx context.Context, taskID string) (map[string]any, error) {
 	task, err := b.tasks.GetTask(ctx, taskID)

@@ -372,7 +372,7 @@ function payloadPreview(row: TaskDeadLetterRow) {
   margin: 0;
   max-height: 120px;
   overflow: auto;
-  font-size: 11px;
+  font-size: var(--text-xs);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }

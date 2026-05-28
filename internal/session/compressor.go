@@ -139,11 +139,11 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 		return nil
 	}
 	split := len(timeline) - keepRows
-	cutoffTurn := timeline[split-1].TurnIndex
+	cutoffTurn := timeline[split-1].TurnNumber
 
 	var body []biz.ChatMessage
 	for _, m := range timeline {
-		if m.TurnIndex > maxSummarized && m.TurnIndex <= cutoffTurn {
+		if m.TurnNumber > maxSummarized && m.TurnNumber <= cutoffTurn {
 			body = append(body, m)
 		}
 	}
@@ -195,8 +195,8 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 			event.P("truncate_strategy", strategy))
 	}
 
-	fromTurn := body[0].TurnIndex
-	toTurn := body[len(body)-1].TurnIndex
+	fromTurn := body[0].TurnNumber
+	toTurn := body[len(body)-1].TurnNumber
 	row := biz.SessionSummary{
 		ID:              uuid.NewString(),
 		SessionID:       sessionID,
@@ -218,7 +218,7 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 
 	var tail []biz.ChatMessage
 	for _, m := range timeline {
-		if m.TurnIndex > cutoffTurn {
+		if m.TurnNumber > cutoffTurn {
 			tail = append(tail, m)
 		}
 	}

@@ -6,14 +6,14 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
-
-	"aranea-agents/internal/event"
 	"time"
 
 	"aranea-agents/internal/biz"
 	arametrics "aranea-agents/internal/metrics"
 
+	"aranea-agents/internal/event"
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 )
 
@@ -102,11 +102,11 @@ func (c *BuildCache) put(key string, ag trpcagent.Agent) {
 
 // Invalidate removes all cache entries whose key contains the given agentID prefix.
 func (c *BuildCache) Invalidate(agentID string) {
-	prefix := agentID + ":"
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	for k := range c.items {
-		if len(k) > len(prefix) && k[:len(prefix)] == prefix {
+		idx := strings.Index(k, ":")
+		if idx >= 0 && k[:idx] == agentID {
 			c.evict(k)
 		}
 	}
@@ -124,7 +124,7 @@ func (c *BuildCache) evict(key string) {
 // configuration. The key encodes agent ID + UpdatedAt (covers all DB-level changes)
 // + provider / model / dialog_mode so that per-request option overrides produce their
 // own cache slot.
-func BuildCacheKey(ag biz.Agent, deps TRPCBuilderDeps) string {
+func BuildCacheKey(ag biz.Agent, deps TRPCBuilderDeps, toolHash, skillHash, mcpHash string) string {
 	type fingerprint struct {
 		AgentID      string
 		AgentUpdated string
@@ -133,19 +133,26 @@ func BuildCacheKey(ag biz.Agent, deps TRPCBuilderDeps) string {
 		Model        string
 		DialogMode   string
 		SettingsJSON string
+		ToolHash     string
+		SkillHash    string
+		MCPHash      string
 	}
 	fp := fingerprint{
 		AgentID:      ag.ID,
 		AgentUpdated: ag.UpdatedAt,
-		ConfigJSON:   ag.ConfigJSON,
 		Provider:     deps.Provider,
 		Model:        deps.Model,
 		DialogMode:   deps.DialogMode,
+		ToolHash:     toolHash,
+		SkillHash:    skillHash,
+		MCPHash:      mcpHash,
 	}
 	if ag.Settings != nil {
 		if b, err := json.Marshal(ag.Settings); err == nil {
 			fp.SettingsJSON = string(b)
 		}
+	} else {
+		fp.ConfigJSON = ag.ConfigJSON
 	}
 	raw, _ := json.Marshal(fp)
 	sum := sha256.Sum256(raw)
@@ -161,7 +168,7 @@ func InvalidateAgentCache(agentID string) {
 // BuildTRPCLLMAgentCached wraps BuildTRPCLLMAgent with the global LRU cache.
 // Cache hits avoid the cost of assembling tools, skills, and the model client.
 func BuildTRPCLLMAgentCached(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) (trpcagent.Agent, error) {
-	key := BuildCacheKey(ag, deps)
+	key := BuildCacheKey(ag, deps, deps.ToolVersionHash, deps.SkillVersionHash, deps.MCPVersionHash)
 	if cached := globalBuildCache.get(key); cached != nil {
 		arametrics.AgentBuildCacheHits.Inc()
 		event.CtxFlowLogDone(ctx, "system.agent.cache_hit", "Agent 构建缓存命中", event.P("agent_id", ag.ID), event.P("agent_key", ag.AgentKey), event.P("cache_key", key))

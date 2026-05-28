@@ -91,8 +91,8 @@ type chatRunStatusPersister struct {
 	sessions *biz.SessionUsecase
 }
 
-func (p *chatRunStatusPersister) PersistRunStatus(ctx context.Context, sessionID, runID, status, errMsg string) {
-	persistRunStatusToSession(p.sessions, ctx, sessionID, runID, status, errMsg)
+func (p *chatRunStatusPersister) PersistRunStatus(ctx context.Context, sessionID, runID, status, errMsg string) error {
+	return persistRunStatusToSession(p.sessions, ctx, sessionID, runID, status, errMsg)
 }
 
 func (p *chatRunStatusPersister) PersistAwaitMarkers(ctx context.Context, sessionID, runID string, meta biz.ChatAwaitMeta) {
@@ -143,19 +143,19 @@ func NewChatUsecaseFromDeps(
 	return uc
 }
 
-func persistRunStatusToSession(sessions *biz.SessionUsecase, ctx context.Context, sessionID, runID, status, errMsg string) {
+func persistRunStatusToSession(sessions *biz.SessionUsecase, ctx context.Context, sessionID, runID, status, errMsg string) error {
 	if sessions == nil {
-		return
+		return nil
 	}
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
-		return
+		return nil
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	writeState := func(bg context.Context) {
+	writeState := func(bg context.Context) error {
 		state, err := sessions.GetSessionState(bg, sessionID)
 		if err != nil {
-			return
+			return err
 		}
 		if state == nil {
 			state = map[string]string{}
@@ -173,19 +173,11 @@ func persistRunStatusToSession(sessions *biz.SessionUsecase, ctx context.Context
 			state[stateKeyRunError] = strings.TrimSpace(errMsg)
 			state[stateKeyRunUpdatedAt] = now
 		}
-		_ = sessions.SaveSessionState(bg, sessionID, state)
+		return sessions.SaveSessionState(bg, sessionID, state)
 	}
-	if terminalRunStatus(status) {
-		bg, bgCancel := context.WithTimeout(ctx, 5*time.Second)
-		defer bgCancel()
-		writeState(bg)
-	} else {
-		safego.Go(ctx, "chat.persist_run_status", func() {
-			bg, bgCancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer bgCancel()
-			writeState(bg)
-		})
-	}
+	bg, bgCancel := context.WithTimeout(ctx, 5*time.Second)
+	defer bgCancel()
+	return writeState(bg)
 }
 
 func persistAwaitMarkersToSession(sessions *biz.SessionUsecase, ctx context.Context, sessionID, runID string, await biz.ChatAwaitMeta, syncWrite bool) {

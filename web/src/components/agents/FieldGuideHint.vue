@@ -78,7 +78,7 @@ const guide = computed(() => getFieldGuide(props.scope, props.fileName))
 }
 
 .example-body {
-  font-size: 11px;
+  font-size: var(--text-xs);
   background: var(--glass-surface);
   border-radius: 4px;
   white-space: pre-wrap;

@@ -1,12 +1,21 @@
 import { reactive, ref } from "vue";
 import { useQuasar } from "quasar";
 import {
+  editorTabForJsonKey,
+  firstInvalidToolJsonKey,
   riskLevelOptions,
   toolEditorJsonKeys,
   validateToolJsonFields
 } from "../../components/tools/toolUi";
+import { TOOL_CREATE_TEMPLATES } from "./toolEditorCopy";
 import type { Tool, ToolUpsertInput } from "./types";
 import { useToolsStore } from "../../stores/tools";
+
+export type UseToolEditorOptions = {
+  onSaved: () => void | Promise<void>;
+  /** After creating external tool — open detail for online test. */
+  onCreated?: (tool: Tool) => void | Promise<void>;
+};
 
 export function blankToolForm(): ToolUpsertInput {
   return {
@@ -31,29 +40,45 @@ export function blankToolForm(): ToolUpsertInput {
 }
 
 /** Page-level create/edit dialog orchestration for Tools catalog. */
-export function useToolEditor(onSaved: () => void | Promise<void>) {
+export function useToolEditor(options: UseToolEditorOptions | (() => void | Promise<void>)) {
+  const opts: UseToolEditorOptions = typeof options === "function" ? { onSaved: options } : options;
+  const onSaved = opts.onSaved;
+  const onCreated = opts.onCreated;
   const $q = useQuasar();
   const toolsStore = useToolsStore();
   const open = ref(false);
   const editingId = ref("");
   const saving = ref(false);
+  const activeTab = ref("basic");
   const jsonErrors = reactive<Record<string, string>>({});
   const form = reactive<ToolUpsertInput>(blankToolForm());
   const riskOptions = riskLevelOptions;
+  const selectedTemplate = ref("blank");
 
   function assignForm(input: ToolUpsertInput) {
     Object.assign(form, input);
     Object.keys(jsonErrors).forEach((key) => delete jsonErrors[key]);
   }
 
+  function applyTemplate(templateId: string) {
+    selectedTemplate.value = templateId;
+    const tpl = TOOL_CREATE_TEMPLATES.find((t) => t.id === templateId);
+    if (!tpl?.apply) return;
+    assignForm({ ...blankToolForm(), ...tpl.apply });
+  }
+
   function openCreate() {
     editingId.value = "";
+    selectedTemplate.value = "blank";
+    activeTab.value = "basic";
     assignForm(blankToolForm());
     open.value = true;
   }
 
   function openEdit(tool: Tool) {
     editingId.value = tool.id;
+    selectedTemplate.value = "blank";
+    activeTab.value = "basic";
     assignForm({
       key: tool.key,
       display_name: tool.display_name,
@@ -91,16 +116,35 @@ export function useToolEditor(onSaved: () => void | Promise<void>) {
   }
 
   async function save() {
-    if (!validateJSONFields()) return;
+    if (!validateJSONFields()) {
+      const badKey = firstInvalidToolJsonKey(jsonErrors);
+      if (badKey) {
+        activeTab.value = editorTabForJsonKey(badKey);
+        $q.notify({ type: "negative", message: `JSON 格式错误（${badKey}）` });
+      }
+      return;
+    }
     saving.value = true;
     try {
       if (editingId.value) {
         await toolsStore.editTool(editingId.value, { ...form });
+        open.value = false;
+        $q.notify({ type: "positive", message: "Tool 已保存" });
+        await onSaved();
       } else {
-        await toolsStore.addTool({ ...form });
+        const created = await toolsStore.addTool({ ...form });
+        open.value = false;
+        await onSaved();
+        $q.dialog({
+          title: "Tool 已创建",
+          message: `「${created.display_name || created.key}」已注册。建议打开详情 → 在线测试，确认 Schema 与配置可用。`,
+          cancel: { label: "稍后", flat: true, noCaps: true },
+          ok: { label: "打开详情", noCaps: true, unelevated: true, class: "app-registry-primary-btn" },
+          persistent: false
+        }).onOk(async () => {
+          if (onCreated) await onCreated(created);
+        });
       }
-      open.value = false;
-      await onSaved();
     } catch (err) {
       $q.notify({ type: "negative", message: err instanceof Error ? err.message : "保存 Tool 失败" });
     } finally {
@@ -112,9 +156,12 @@ export function useToolEditor(onSaved: () => void | Promise<void>) {
     open,
     editingId,
     saving,
+    activeTab,
     jsonErrors,
     form,
     riskOptions,
+    selectedTemplate,
+    applyTemplate,
     openCreate,
     openEdit,
     save
@@ -156,6 +203,8 @@ export function useToolToggle(onChanged: () => void | Promise<void>) {
     try {
       await toolsStore.toggle(tool.id || tool.key, value);
       await onChanged();
+    } catch (err) {
+      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "操作失败" });
     } finally {
       busyId.value = "";
     }
@@ -172,6 +221,8 @@ export function useToolToggle(onChanged: () => void | Promise<void>) {
       try {
         await toolsStore.remove(tool.id || tool.key);
         await onChanged();
+      } catch (err) {
+        $q.notify({ type: "negative", message: err instanceof Error ? err.message : "删除失败" });
       } finally {
         busyId.value = "";
       }

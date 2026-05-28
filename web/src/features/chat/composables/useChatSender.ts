@@ -304,8 +304,8 @@ export function useChatSender(deps: SenderDeps) {
 
       // Optimistic UI: clear input and show placeholder immediately so the user
       // sees their message without waiting for backend availability checks.
-      // turn_index=0 means "unassigned" — groupMessagesByTurn groups this with
-      // the ws-stream row via request_id until the server returns a persisted message.
+      // turn_id="" means "unassigned" — groupMessagesByTurn groups this with
+      // the ws-stream row via turn_id until the server returns a persisted message.
       const pendingUserId = reusePendingId ?? `pending-user-${crypto.randomUUID()}`;
       if (!reusePendingId) {
         deps.inputText.value = "";
@@ -448,7 +448,7 @@ export function useChatSender(deps: SenderDeps) {
       }
 
       // Optimistic UI: clear input and show placeholder immediately.
-      // turn_index=0 means "unassigned" — grouped by request_id in TurnBlock.
+      // turn_id="" means "unassigned" — grouped by turn_id in TurnBlock.
       const pendingUserId = `pending-user-${crypto.randomUUID()}`;
       deps.inputText.value = "";
       deps.messageStore.setMessages(sessionId, [

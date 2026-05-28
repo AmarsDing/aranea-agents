@@ -2,11 +2,11 @@ package webresearch
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
+	"trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
 
 // researchInput is the LLM-facing schema for web_research.
@@ -45,77 +45,66 @@ func NewTool(cfg Config) (trpctool.CallableTool, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &researchTool{cfg: cfg, provider: provider}, nil
-}
-
-type researchTool struct {
-	cfg      Config
-	provider searchProvider
-}
-
-func (t *researchTool) Declaration() *trpctool.Declaration {
-	return &trpctool.Declaration{
-		Name: "web_research",
-		Description: "Search the web and return ranked sources with snippets and page excerpts in one call. " +
-			"Uses Tavily or SerpAPI (platform-configured). Best for current events, documentation, comparisons, and fact-finding. " +
-			"Prefer this over duckduckgo_search for general web queries.",
-	}
-}
-
-func (t *researchTool) Call(ctx context.Context, args []byte) (any, error) {
-	var in researchInput
-	if err := json.Unmarshal(args, &in); err != nil {
-		return nil, fmt.Errorf("web_research: invalid args: %w", err)
-	}
-	query := strings.TrimSpace(in.Query)
-	if query == "" {
-		return nil, fmt.Errorf("web_research: query is required")
-	}
-
-	runCtx, cancel := context.WithTimeout(ctx, t.cfg.Timeout)
-	defer cancel()
-
-	resp, err := t.provider.search(runCtx, query)
-	if err != nil {
-		return nil, err
-	}
-
-	hits := append([]Hit(nil), resp.Results...)
-	warnings, enrichErr := enrichHits(runCtx, hits, t.cfg.FetchTop, t.cfg)
-	partial := enrichErr != nil || len(warnings) > 0
-	if enrichErr != nil {
-		warnings = append(warnings, enrichErr.Error())
-	}
-
-	sources := make([]sourceItem, 0, len(hits))
-	fetched := 0
-	for _, h := range hits {
-		if strings.TrimSpace(h.Content) != "" {
-			fetched++
+	execute := func(ctx context.Context, in researchInput) (researchOutput, error) {
+		query := strings.TrimSpace(in.Query)
+		if query == "" {
+			return researchOutput{}, fmt.Errorf("web_research: query is required")
 		}
-		sources = append(sources, sourceItem{
-			Title:   h.Title,
-			URL:     h.URL,
-			Snippet: h.Snippet,
-			Content: truncateUTF8(h.Content, 12000),
-			Score:   h.Score,
-		})
-	}
 
-	summary := fmt.Sprintf("Found %d sources via %s", len(sources), resp.Provider)
-	if strings.TrimSpace(resp.Answer) != "" {
-		summary = resp.Answer
-	}
+		runCtx, cancel := context.WithTimeout(ctx, cfg.Timeout)
+		defer cancel()
 
-	return researchOutput{
-		Query:           resp.Query,
-		Answer:          resp.Answer,
-		Sources:         sources,
-		Provider:        resp.Provider,
-		ResponseTimeSec: resp.ResponseTime,
-		FetchedURLCount: fetched,
-		Summary:         summary,
-		Partial:         partial,
-		FetchWarnings:   warnings,
-	}, nil
+		resp, err := provider.search(runCtx, query)
+		if err != nil {
+			return researchOutput{}, err
+		}
+
+		hits := append([]Hit(nil), resp.Results...)
+		warnings, enrichErr := enrichHits(runCtx, hits, cfg.FetchTop, cfg)
+		partial := enrichErr != nil || len(warnings) > 0
+		if enrichErr != nil {
+			warnings = append(warnings, enrichErr.Error())
+		}
+
+		sources := make([]sourceItem, 0, len(hits))
+		fetched := 0
+		for _, h := range hits {
+			if strings.TrimSpace(h.Content) != "" {
+				fetched++
+			}
+			sources = append(sources, sourceItem{
+				Title:   h.Title,
+				URL:     h.URL,
+				Snippet: h.Snippet,
+				Content: truncateUTF8(h.Content, 12000),
+				Score:   h.Score,
+			})
+		}
+
+		summary := fmt.Sprintf("Found %d sources via %s", len(sources), resp.Provider)
+		if strings.TrimSpace(resp.Answer) != "" {
+			summary = resp.Answer
+		}
+
+		return researchOutput{
+			Query:           resp.Query,
+			Answer:          resp.Answer,
+			Sources:         sources,
+			Provider:        resp.Provider,
+			ResponseTimeSec: resp.ResponseTime,
+			FetchedURLCount: fetched,
+			Summary:         summary,
+			Partial:         partial,
+			FetchWarnings:   warnings,
+		}, nil
+	}
+	return function.NewFunctionTool(
+		execute,
+		function.WithName("web_research"),
+		function.WithDescription(
+			"Search the web and return ranked sources with snippets and page excerpts in one call. "+
+				"Uses Tavily or SerpAPI (platform-configured). Best for current events, documentation, comparisons, and fact-finding. "+
+				"Prefer this over duckduckgo_search for general web queries.",
+		),
+	), nil
 }

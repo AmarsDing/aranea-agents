@@ -3,6 +3,7 @@ package service
 import (
 	graphv1 "aranea-agents/api/kratos/graph/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 	graphtrpc "aranea-agents/internal/graph/trpc"
 
 	"google.golang.org/protobuf/types/known/structpb"
@@ -174,7 +175,9 @@ func toProtoStateField(sf biz.StateFieldDef) *graphv1.StateFieldDef {
 	}
 	if sf.DefaultValue != nil {
 		v, err := structpb.NewValue(sf.DefaultValue)
-		if err == nil {
+		if err != nil {
+			event.SysLogWarn("graph.mapping", "structpb.NewValue failed for state field default", event.P("field", sf.Name), event.P("error", err.Error()))
+		} else {
 			pb.DefaultValue = v
 		}
 	}

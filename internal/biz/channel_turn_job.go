@@ -96,7 +96,7 @@ func NormalizeChannelTurnJobStatus(status string) string {
 func IsChannelTurnJobTerminalStatus(status string) bool {
 	switch NormalizeChannelTurnJobStatus(status) {
 	case ChannelTurnJobStatusCompleted, ChannelTurnJobStatusFailed,
-		ChannelTurnJobStatusTimeout, ChannelTurnJobStatusCancelled, ChannelTurnJobStatusQueued:
+		ChannelTurnJobStatusTimeout, ChannelTurnJobStatusCancelled:
 		return true
 	default:
 		return false

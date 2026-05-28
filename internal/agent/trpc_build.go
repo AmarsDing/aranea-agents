@@ -14,7 +14,6 @@ import (
 	"aranea-agents/internal/provider"
 	"aranea-agents/internal/skill/storage"
 	skilltrpc "aranea-agents/internal/skill/trpc"
-	memorytool "aranea-agents/internal/tools/memory"
 	"aranea-agents/internal/tools/skillruntime"
 	"aranea-agents/pkg/strutil"
 
@@ -123,15 +122,8 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) 
 		}
 	}
 
-	// EP-RT-05: Memory tools are only injected when both the agent setting is on
-	// AND the runner will have a MemoryService to back them.  When HasMemory is
-	// false but MemoryEnabled is true, we log a warning so operators can act.
 	if biz.ResolveMemoryRuntimePolicy(ag.Settings).MasterEnabled {
-		if deps.HasMemory {
-			if memTools := memorytool.DefaultTools(); len(memTools) > 0 {
-				opts = append(opts, trpcllmagent.WithTools(memTools))
-			}
-		} else {
+		if !deps.HasMemory {
 			event.CtxFlowLogWarn(ctx, "system.agent.memory_disabled", "Agent 已启用记忆但未配置 MemoryService，记忆工具已禁用",
 				event.P("agent_id", ag.ID))
 		}

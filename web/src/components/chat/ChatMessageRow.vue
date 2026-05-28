@@ -238,8 +238,9 @@ import ResolvedAvatarImg from "../avatar/ResolvedAvatarImg.vue";
 import {
   messageSourceChipFallback,
   messageSourceChipKey,
-  parseMessageSourceMeta,
+  messageSourceFromMessage,
 } from "../../features/chat/messageSourceMeta";
+import { messageAttachmentsFromMessage } from "../../features/chat/messageAttachments";
 import { userPromptText } from "../../features/chat/useChatScrollTitle";
 import ChatExecutionCard from "./ChatExecutionCard.vue";
 import ChatReasoningPeek from "./ChatReasoningPeek.vue";
@@ -301,7 +302,7 @@ const userPromptAttr = computed(() =>
 );
 
 const userSourceMeta = computed(() =>
-  props.message.role === "user" ? parseMessageSourceMeta(props.message.options_json) : null
+  props.message.role === "user" ? messageSourceFromMessage(props.message) : null
 );
 const userSourceLabel = computed(() => {
   const meta = userSourceMeta.value;
@@ -320,7 +321,7 @@ const showThinkingIndicator = computed(() => {
   return true;
 });
 
-const messageAttachments = computed(() => parseMessageAttachments(props.message.options_json));
+const messageAttachments = computed(() => messageAttachmentsFromMessage(props.message));
 
 function formatStamp(iso: string) {
   return formatMessageStamp(iso);

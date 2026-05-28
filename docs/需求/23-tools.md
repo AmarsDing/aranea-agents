@@ -260,15 +260,110 @@ Agent 运行时对「需要目录」的工具共用 **单一工作区根** `work
 
 ### 5.4 详情抽屉
 
-详情抽屉分为 5 个 Tab：
+详情抽屉分为 5 个 Tab（**已实现**，见 `ToolDetailContent.vue`）：
 
 | Tab | 内容 |
 |-----|------|
-| 概览 | 描述、分类、风险、来源、启用状态、依赖能力 |
-| 参数 | `parameters_schema_json` 渲染的只读 schema、必填字段、示例参数 |
-| 配置 | `config_schema_json` 渲染的可编辑表单；敏感字段仅显示已配置 |
-| Agent | 使用该工具的 Agent、allow / deny 覆盖、profile 命中 |
-| 调用 | 最近 20 条调用记录、错误摘要、跳转完整记录 |
+| 概览 | 描述、分类、风险、来源、策略 chips、在线测试 |
+| 参数 | `parameters_schema_json` 只读预览 |
+| 配置 | `config_schema_json` 渲染的可编辑表单；`PUT /v1/tools/{id}/config` 保存 |
+| Agent | allow / deny 覆盖、编辑覆盖弹窗 |
+| 调用 | 最近 20 条调用记录、跳转完整记录 |
+
+日常改 API Key / 超时：**详情「配置」Tab**，不必打开完整编辑弹窗。
+
+### 5.5 编辑弹窗 UX（P0–P3）
+
+实现位置：`web/src/components/tools/ToolEditorForm.vue` 及 `editor/*` 子组件；文案源 `web/src/features/tools/toolEditorCopy.ts`。
+
+#### 5.5.1 信息架构（4 Tab）
+
+| Tab | 内容 | 目标用户 |
+|-----|------|----------|
+| **基础** | Key、名称、描述、分类、来源、风险；新建时可选模板 | 所有人 |
+| **运行策略** | 启用 / 只读 / 需确认 / 流式 / 并发（卡片 + 说明） | 运维 |
+| **参数与配置** | Schema 字段构建器 + 配置可视化表单 | 注册 external Tool |
+| **高级** | 默认配置、metadata、Raw JSON；配置 diff | 开发者 |
+
+顶栏 **? 帮助** 打开侧栏抽屉（配置分层、字段词典）。
+
+#### 5.5.2 运行策略开关语义
+
+| 开关 | 含义 | 与 Agent 设置的区别 |
+|------|------|---------------------|
+| 全局启用 | 目录级启停 | 列表 toggle 同源 |
+| 需确认 | 调用前用户确认 | ≠ Agent 覆盖「需确认」可叠加 |
+| 流式 | 工具支持 StreamableCall | 实际流式还取决于 Agent `tools_streaming_enabled` |
+| 并发 | 目录标记可并行 | 实际并行取决于 Agent `tools_parallel_enabled` + allow |
+
+**builtin / 只读工具**：需确认、流式、并发由 `syncBuiltinToolsFromRegistry` 维护，UI 显示锁图标与警告；重启可能恢复 registry 默认值。
+
+#### 5.5.3 JSON 字段说明
+
+| 字段 | 作用 | 格式 |
+|------|------|------|
+| `parameters_schema_json` | LLM 可见调用参数 | JSON Schema object |
+| `result_schema_json` | 返回结构文档（可选） | JSON Schema object |
+| `config_schema_json` | 管理员配置项定义 | JSON Schema object |
+| `config_json` | 当前配置值 | 符合 config_schema 的 JSON object |
+| `default_config_json` | 出厂默认 | 同 config_json |
+| `metadata_json` | OpenAPI URL、MCP 信息等 | JSON object |
+
+#### 5.5.4 新建模板
+
+| 模板 | 预填 |
+|------|------|
+| 空白 Tool | 默认 external / custom |
+| REST 查询 | query 参数 + base_url / timeout 配置 Schema |
+| OpenAPI | metadata.openapi_spec_url |
+
+#### 5.5.5 分工（减少困惑）
+
+| 操作 | 入口 |
+|------|------|
+| 启用 / 停用 | 列表 toggle |
+| 改 API Key、超时 | 详情「配置」Tab |
+| 改 Schema / 注册新 Tool | 编辑弹窗 |
+| Agent 策略 | Agent 设置 → 平台工具策略 |
+
+### 5.6 后续迭代（业务评审 2026-05-28）
+
+> 背景：§5.5 编辑 UX（P0–P3）已落地；以下为业务评审识别的缺口与优先级。**实现状态**随 PR 更新。
+
+#### 5.6.1 P1 — 降低语义误解
+
+| ID | 项 | 说明 | 状态 |
+|----|-----|------|------|
+| UX-01 | 策略 chip 降噪 | 详情 meta chip 改为「标记：需确认 / 流式 / 可并行」并附 tooltip，强调目录标记 ≠ 运行时必然生效 | ✅ |
+| UX-02 | Agent Tab 生效摘要 | 汇总各 Agent 对该 Tool 的 effective_state（allowed / denied）及 override 数量；链到 Agent 能力 Tab | ✅ |
+| UX-03 | Schema Builder 边界 | 字段视图顶部说明：仅支持扁平 `object.properties`；嵌套/array 请用 JSON 模式 | ✅ |
+| UX-04 | 保存校验体验 | 编辑弹窗 JSON 校验失败自动跳转对应 Tab；详情「配置」保存前本地 `JSON.parse` | ✅ |
+
+#### 5.6.2 P2 — 闭环与硬约束
+
+| ID | 项 | 说明 | 状态 |
+|----|-----|------|------|
+| UX-05 | 新建后测试引导 | external Tool 首次保存成功后提示「打开详情 → 在线测试」 | ✅ |
+| UX-06 | builtin 策略后端只读 | `syncBuiltinToolsFromRegistry` 覆盖字段在后端拒绝写入，避免 UI「假成功」 | 待做 |
+| UX-07 | 工具调用审计 | §0.1 后续项；与 Tools 页「审计日志」路由联动 | 待做 |
+
+#### 5.6.3 分工不变（§5.5.5 延续）
+
+| 用户问题 | 正确入口 |
+|----------|----------|
+| 「开了流式/并行为什么没效果？」 | Agent 设置 → 能力 Tab（`tools_streaming_enabled` / `tools_parallel_enabled`） |
+| 「哪些 Agent 能用这个 Tool？」 | 详情 → Agent Tab 生效摘要 + 覆盖列表 |
+| 「注册完怎么验证？」 | 详情 → 概览 → 在线测试（新建后 UX-05 引导） |
+
+#### 5.6.4 实现位置
+
+| 能力 | 路径 |
+|------|------|
+| chip 文案 / tooltip | `web/src/features/tools/toolEditorCopy.ts` |
+| Agent 生效汇总 | `web/src/features/tools/toolAgentBindingSummary.ts` |
+| JSON Tab 映射 | `web/src/components/tools/toolUi.ts` |
+| 详情 Agent 摘要 UI | `web/src/components/tools/ToolDetailContent.vue` |
+| Schema 边界 banner | `web/src/components/tools/editor/ToolSchemaBuilder.vue` |
 
 ---
 

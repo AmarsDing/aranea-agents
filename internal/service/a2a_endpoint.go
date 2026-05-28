@@ -68,6 +68,7 @@ func (b *A2AEndpointBuilder) BuildHandler(ctx context.Context, agentID, publicUR
 		MemoryCompositeRecall: b.chat.orch.td.Persist.Memory.CompositeRecall,
 		KnowledgeRetriever: b.chat.orch.rt.KnowledgeRetriever,
 		CodeExecFactory:    b.chat.orch.rt.CodeExecFactory,
+		KanbanBridge:       b.chat.orch.rt.KanbanBridge,
 	}
 	var plugins []trpcplugin.Plugin
 	if b.chat.orch.rt.PluginManager != nil {

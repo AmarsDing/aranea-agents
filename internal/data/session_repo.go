@@ -12,12 +12,14 @@ import (
 	"aranea-agents/internal/data/ent/message"
 	"aranea-agents/internal/data/ent/platformskill"
 	entsession "aranea-agents/internal/data/ent/session"
+	entsessionturn "aranea-agents/internal/data/ent/sessionturn"
 	skillinvocationpkg "aranea-agents/internal/data/ent/skillinvocation"
 	toolinvocationpkg "aranea-agents/internal/data/ent/toolinvocation"
 	"aranea-agents/internal/llmcontext"
 
 	entsql "entgo.io/ent/dialect/sql"
 	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"github.com/google/uuid"
 )
 
 type sessionRepo struct {
@@ -360,7 +362,7 @@ func entMessageToBiz(m *ent.Message) biz.ChatMessage {
 	}
 	return biz.ChatMessage{
 		ID: m.ID, SessionID: m.SessionID, ParentMessageID: m.ParentMessageID,
-		TurnIndex: m.TurnIndex, Role: m.Role, ContentMarkdown: m.ContentMarkdown,
+		TurnID: m.TurnID, TurnNumber: m.TurnNumber, SeqInTurn: m.SeqInTurn, Role: m.Role, ContentMarkdown: m.ContentMarkdown,
 		ModelName: m.ModelName, TokenIn: m.TokenIn, TokenOut: m.TokenOut,
 		LatencyMS: m.LatencyMs, Status: m.Status, AttachmentsCount: m.AttachmentsCount,
 		OptionsJSON: m.OptionsJSON, ErrorMessage: m.ErrorMessage, CreatedAt: m.CreatedAt,
@@ -388,7 +390,7 @@ func (r *sessionRepo) ListMessagesBySession(ctx context.Context, sessionID strin
 	}
 	rows, err := r.data.entClient.Message.Query().
 		Where(message.SessionIDEQ(sessionID)).
-		Order(message.ByTurnIndex(entsql.OrderAsc()), message.ByCreatedAt(entsql.OrderAsc())).
+		Order(message.ByTurnID(entsql.OrderAsc()), message.BySeqInTurn(entsql.OrderAsc()), message.ByCreatedAt(entsql.OrderAsc())).
 		Limit(limit).Offset(clampOffset(offset)).All(ctx)
 	if err != nil {
 		return nil, err
@@ -405,11 +407,21 @@ func (r *sessionRepo) ListMessagesAfterTurn(ctx context.Context, sessionID strin
 	if sessionID == "" {
 		return nil, kerrors.BadRequest("SESSION", "session id is required")
 	}
-	q := r.data.entClient.Message.Query().Where(message.SessionIDEQ(sessionID))
-	if afterTurn > 0 {
-		q = q.Where(message.TurnIndexGT(afterTurn))
+	turnIDs, err := r.data.entClient.SessionTurn.Query().
+		Where(entsessionturn.SessionIDEQ(sessionID), entsessionturn.TurnNumberGT(afterTurn)).
+		All(ctx)
+	if err != nil {
+		return nil, err
 	}
-	rows, err := q.Order(message.ByTurnIndex(entsql.OrderAsc()), message.ByCreatedAt(entsql.OrderAsc())).
+	ids := make([]string, 0, len(turnIDs))
+	for _, t := range turnIDs {
+		ids = append(ids, t.ID)
+	}
+	if len(ids) == 0 {
+		return []biz.ChatMessage{}, nil
+	}
+	q := r.data.entClient.Message.Query().Where(message.SessionIDEQ(sessionID), message.TurnIDIn(ids...))
+	rows, err := q.Order(message.ByTurnID(entsql.OrderAsc()), message.BySeqInTurn(entsql.OrderAsc()), message.ByCreatedAt(entsql.OrderAsc())).
 		Limit(biz.CompressMessageMaxRows).All(ctx)
 	if err != nil {
 		return nil, err
@@ -431,7 +443,7 @@ func (r *sessionRepo) ListMessagesByStatus(ctx context.Context, sessionID, statu
 	}
 	rows, err := r.data.entClient.Message.Query().
 		Where(message.SessionIDEQ(sessionID), message.StatusEQ(status)).
-		Order(message.ByTurnIndex(entsql.OrderDesc()), message.ByCreatedAt(entsql.OrderDesc())).
+		Order(message.ByTurnID(entsql.OrderDesc()), message.BySeqInTurn(entsql.OrderDesc()), message.ByCreatedAt(entsql.OrderDesc())).
 		Limit(limit).All(ctx)
 	if err != nil {
 		return nil, err
@@ -453,7 +465,7 @@ func (r *sessionRepo) ListMessagesRecent(ctx context.Context, sessionID string, 
 	}
 	rows, err := r.data.entClient.Message.Query().
 		Where(message.SessionIDEQ(sessionID)).
-		Order(message.ByTurnIndex(entsql.OrderDesc()), message.ByCreatedAt(entsql.OrderDesc())).
+		Order(message.ByTurnID(entsql.OrderDesc()), message.BySeqInTurn(entsql.OrderDesc()), message.ByCreatedAt(entsql.OrderDesc())).
 		Limit(limit).All(ctx)
 	if err != nil {
 		return nil, err
@@ -628,9 +640,9 @@ func dedupeStrings(in []string) []string {
 }
 
 func (r *sessionRepo) maxMessageTurnTx(ctx context.Context, tx *ent.Tx, sessionID string) (int, error) {
-	row, err := tx.Message.Query().
-		Where(message.SessionIDEQ(sessionID)).
-		Order(message.ByTurnIndex(entsql.OrderDesc())).
+	row, err := tx.SessionTurn.Query().
+		Where(entsessionturn.SessionIDEQ(sessionID)).
+		Order(entsessionturn.ByTurnNumber(entsql.OrderDesc())).
 		First(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
@@ -638,7 +650,59 @@ func (r *sessionRepo) maxMessageTurnTx(ctx context.Context, tx *ent.Tx, sessionI
 		}
 		return 0, err
 	}
-	return row.TurnIndex, nil
+	return row.TurnNumber, nil
+}
+
+func (r *sessionRepo) assignTurnForNewMessage(ctx context.Context, tx *ent.Tx, sessionID, role string) (turnID string, turnNumber int, seqInTurn int, err error) {
+	latestTurn, qErr := tx.SessionTurn.Query().
+		Where(entsessionturn.SessionIDEQ(sessionID)).
+		Order(entsessionturn.ByTurnNumber(entsql.OrderDesc())).
+		First(ctx)
+	if qErr != nil && !ent.IsNotFound(qErr) {
+		return "", 0, 0, qErr
+	}
+	if latestTurn != nil {
+		shouldReuse := false
+		switch role {
+		case "user":
+			shouldReuse = latestTurn.Status == "awaiting_user"
+		default:
+			shouldReuse = latestTurn.Status != "completed" && latestTurn.Status != "failed" && latestTurn.Status != "cancelled"
+		}
+		if shouldReuse {
+			maxSeq, seqErr := tx.Message.Query().
+				Where(message.SessionIDEQ(sessionID), message.TurnIDEQ(latestTurn.ID)).
+				Order(message.BySeqInTurn(entsql.OrderDesc())).
+				First(ctx)
+			if seqErr != nil && !ent.IsNotFound(seqErr) {
+				return "", 0, 0, seqErr
+			}
+			nextSeq := 1
+			if maxSeq != nil {
+				nextSeq = maxSeq.SeqInTurn + 1
+			}
+			return latestTurn.ID, latestTurn.TurnNumber, nextSeq, nil
+		}
+	}
+	maxTurn, mErr := r.maxMessageTurnTx(ctx, tx, sessionID)
+	if mErr != nil {
+		return "", 0, 0, mErr
+	}
+	newTurnID := uuid.NewString()
+	newTurnNumber := maxTurn + 1
+	now := nowRFC3339()
+	if _, cErr := tx.SessionTurn.Create().
+		SetID(newTurnID).
+		SetSessionID(sessionID).
+		SetTurnNumber(newTurnNumber).
+		SetStatus("running").
+		SetStartedAt(now).
+		SetCreatedAt(now).
+		SetUpdatedAt(now).
+		Save(ctx); cErr != nil {
+		return "", 0, 0, cErr
+	}
+	return newTurnID, newTurnNumber, 1, nil
 }
 
 func (r *sessionRepo) insertMessageTx(ctx context.Context, tx *ent.Tx, m biz.ChatMessage) error {
@@ -646,7 +710,9 @@ func (r *sessionRepo) insertMessageTx(ctx context.Context, tx *ent.Tx, m biz.Cha
 		SetID(m.ID).
 		SetSessionID(m.SessionID).
 		SetParentMessageID(m.ParentMessageID).
-		SetTurnIndex(m.TurnIndex).
+		SetTurnID(m.TurnID).
+		SetTurnNumber(m.TurnNumber).
+		SetSeqInTurn(m.SeqInTurn).
 		SetRole(m.Role).
 		SetContentMarkdown(m.ContentMarkdown).
 		SetModelName(m.ModelName).
@@ -712,31 +778,25 @@ func (r *sessionRepo) UpdateSessionContextFromLLMUsage(ctx context.Context, sess
 	if sessionID == "" {
 		return kerrors.BadRequest("SESSION", "session id is required")
 	}
-	cur, err := r.GetSessionByID(ctx, sessionID)
-	if err != nil {
-		return err
-	}
-	ratio := cur.ContextUsedRatio
+	ratio := 0.0
 	if contextWindow > 0 && promptTokens > 0 {
 		ratio = llmcontext.ContextRatio(promptTokens, contextWindow)
 	}
-	maxR := cur.MaxContextUsedRatio
-	if ratio > maxR {
-		maxR = ratio
-	}
-	upd := r.data.entClient.Session.Update().
-		Where(entsession.IDEQ(sessionID), entsession.DeletedAtEQ("")).
-		SetContextUsedRatio(ratio).
-		SetMaxContextUsedRatio(maxR).
-		SetContextStatus(llmcontext.ContextStatusForRatio(ratio)).
-		SetUpdatedAt(nowRFC3339())
-	if contextWindow > 0 {
-		upd = upd.SetLastContextWindowTokens(contextWindow)
-	}
-	if promptTokens > 0 {
-		upd = upd.SetContextUsedTokens(promptTokens)
-	}
-	_, err = upd.Save(ctx)
+	now := nowRFC3339()
+	_, err := r.data.rawDB.ExecContext(ctx,
+		`UPDATE sessions
+		 SET context_used_ratio = ?,
+		     max_context_used_ratio = MAX(max_context_used_ratio, ?),
+		     context_status = ?,
+		     context_used_tokens = CASE WHEN ? > 0 THEN ? ELSE context_used_tokens END,
+		     last_context_window_tokens = CASE WHEN ? > 0 THEN ? ELSE last_context_window_tokens END,
+		     updated_at = ?
+		 WHERE id = ? AND deleted_at = ''`,
+		ratio, ratio, llmcontext.ContextStatusForRatio(ratio),
+		promptTokens, promptTokens,
+		contextWindow, contextWindow,
+		now, sessionID,
+	)
 	return err
 }
 
@@ -783,8 +843,29 @@ func (r *sessionRepo) AppendChatTurn(ctx context.Context, sessionID string, user
 	if err != nil {
 		return rollback(err)
 	}
-	user.TurnIndex = maxTurn + 1
-	assistant.TurnIndex = maxTurn + 2
+	turnID := uuid.NewString()
+	turnNumber := maxTurn + 1
+	now := nowRFC3339()
+	if _, err = tx.SessionTurn.Create().
+		SetID(turnID).
+		SetSessionID(sessionID).
+		SetTurnNumber(turnNumber).
+		SetUserMessageID(user.ID).
+		SetAssistantMessageID(assistant.ID).
+		SetStatus("completed").
+		SetStartedAt(now).
+		SetEndedAt(now).
+		SetCreatedAt(now).
+		SetUpdatedAt(now).
+		Save(ctx); err != nil {
+		return rollback(err)
+	}
+	user.TurnID = turnID
+	user.TurnNumber = turnNumber
+	user.SeqInTurn = 1
+	assistant.TurnID = turnID
+	assistant.TurnNumber = turnNumber
+	assistant.SeqInTurn = 2
 	if err = r.insertMessageTx(ctx, tx, user); err != nil {
 		return rollback(err)
 	}
@@ -833,6 +914,8 @@ func sessionSearchOrder(sortBy, sortOrder string) []entsession.OrderOption {
 	}
 }
 
+// TODO(finding-5): UpsertChatActivityMessage still uses manual Tx instead of ExecInTx + txClient.
+// sessionRepo has no txClient helper yet; refactor when available.
 func (r *sessionRepo) UpsertChatActivityMessage(ctx context.Context, sessionID string, msg biz.ChatMessage) error {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
@@ -859,11 +942,13 @@ func (r *sessionRepo) UpsertChatActivityMessage(ctx context.Context, sessionID s
 			return rollback(err)
 		}
 		msg.SessionID = sessionID
-		maxTurn, merr := r.maxMessageTurnTx(ctx, tx, sessionID)
+		turnID, turnNum, seqInTurn, merr := r.assignTurnForNewMessage(ctx, tx, sessionID, msg.Role)
 		if merr != nil {
 			return rollback(merr)
 		}
-		msg.TurnIndex = maxTurn + 1
+		msg.TurnID = turnID
+		msg.TurnNumber = turnNum
+		msg.SeqInTurn = seqInTurn
 		if strings.TrimSpace(msg.CreatedAt) == "" {
 			msg.CreatedAt = nowRFC3339()
 		}
@@ -883,13 +968,22 @@ func (r *sessionRepo) UpsertChatActivityMessage(ctx context.Context, sessionID s
 	if strings.TrimSpace(lastAt) == "" {
 		lastAt = existing.CreatedAt
 	}
-	if _, err = tx.Message.UpdateOneID(msg.ID).
+	update := tx.Message.UpdateOneID(msg.ID).
 		SetContentMarkdown(msg.ContentMarkdown).
 		SetOptionsJSON(msg.OptionsJSON).
 		SetStatus(msg.Status).
 		SetLatencyMs(msg.LatencyMS).
-		SetErrorMessage(msg.ErrorMessage).
-		Save(ctx); err != nil {
+		SetErrorMessage(msg.ErrorMessage)
+	if msg.TokenIn > 0 {
+		update = update.SetTokenIn(msg.TokenIn)
+	}
+	if msg.TokenOut > 0 {
+		update = update.SetTokenOut(msg.TokenOut)
+	}
+	if msg.ModelName != "" {
+		update = update.SetModelName(msg.ModelName)
+	}
+	if _, err = update.Save(ctx); err != nil {
 		return rollback(err)
 	}
 	if _, err = tx.Session.UpdateOneID(sessionID).
@@ -917,15 +1011,17 @@ func (r *sessionRepo) AppendChatMessage(ctx context.Context, sessionID string, m
 	if _, err = tx.Session.Query().Where(entsession.IDEQ(sessionID), entsession.DeletedAtEQ("")).Only(ctx); err != nil {
 		return rollback(err)
 	}
-	maxTurn, err := r.maxMessageTurnTx(ctx, tx, sessionID)
+	turnID, turnNum, seqInTurn, err := r.assignTurnForNewMessage(ctx, tx, sessionID, msg.Role)
 	if err != nil {
 		return rollback(err)
 	}
-	msg.TurnIndex = maxTurn + 1
+	msg.TurnID = turnID
+	msg.TurnNumber = turnNum
+	msg.SeqInTurn = seqInTurn
 	if err = r.insertMessageTx(ctx, tx, msg); err != nil {
 		if ent.IsConstraintError(err) {
 			_ = tx.Rollback()
-			return nil
+			return biz.ErrMessageDuplicate
 		}
 		return rollback(err)
 	}
@@ -1022,6 +1118,5 @@ func (r *sessionRepo) ListMessagesAfterRevision(ctx context.Context, sessionID s
 	if afterRevision <= 0 {
 		return r.ListMessagesBySession(ctx, sessionID, biz.MessageListMaxLimit, 0)
 	}
-	afterTurn := int(afterRevision * 2)
-	return r.ListMessagesAfterTurn(ctx, sessionID, afterTurn)
+	return r.ListMessagesAfterTurn(ctx, sessionID, int(afterRevision))
 }

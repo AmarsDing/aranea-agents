@@ -20,7 +20,7 @@ func (m *afterRevisionSessionRepo) ListMessagesAfterRevision(_ context.Context, 
 	}
 	var out []biz.ChatMessage
 	for _, msg := range m.messages {
-		if int64(msg.TurnIndex) > afterRevision*2 {
+		if int64(msg.TurnNumber) > afterRevision {
 			out = append(out, msg)
 		}
 	}
@@ -33,10 +33,10 @@ func TestSessionService_ListSessionMessages_afterRevision(t *testing.T) {
 			"s1": {ID: "s1", SessionRevision: 2},
 		}},
 		messages: []biz.ChatMessage{
-			{ID: "u1", SessionID: "s1", Role: "user", TurnIndex: 1},
-			{ID: "a1", SessionID: "s1", Role: "assistant", TurnIndex: 2},
-			{ID: "u2", SessionID: "s1", Role: "user", TurnIndex: 3},
-			{ID: "a2", SessionID: "s1", Role: "assistant", TurnIndex: 4},
+			{ID: "u1", SessionID: "s1", Role: "user", TurnNumber: 1, TurnID: "t1"},
+			{ID: "a1", SessionID: "s1", Role: "assistant", TurnNumber: 1, TurnID: "t1"},
+			{ID: "u2", SessionID: "s1", Role: "user", TurnNumber: 2, TurnID: "t2"},
+			{ID: "a2", SessionID: "s1", Role: "assistant", TurnNumber: 2, TurnID: "t2"},
 		},
 	}
 	uc := biz.NewSessionUsecase(repo, nil, nil, nil)

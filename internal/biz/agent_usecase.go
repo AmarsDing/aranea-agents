@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	stderrors "errors"
 	"regexp"
 	"strings"
@@ -167,6 +168,12 @@ func (u *AgentUsecase) hydrate(ctx context.Context, agent Agent) (Agent, error) 
 	agent.Settings = &settings
 	agent.Files = files
 	HydrateAgentKind(&agent)
+	computed, err := configJSONFromSettings(withSettingDefaults(settings), files)
+	if err != nil {
+		return Agent{}, err
+	}
+	computed = EmbedAgentKindInConfigJSON(computed, agent.Kind, agent.A2AProxy)
+	agent.ConfigJSON = mergeEvaluationFromLegacy(computed, agent.ConfigJSON)
 	if extras, err := u.repo.ListExtrasForAgents(ctx, []string{agent.ID}); err == nil {
 		if ex, ok := extras[agent.ID]; ok {
 			agent.LastRunStatus = ex.LastRunStatus
@@ -260,7 +267,10 @@ func (u *AgentUsecase) Create(ctx context.Context, in Agent) (Agent, error) {
 	}
 	files = withFileDefaults(files)
 	if strings.TrimSpace(in.ConfigJSON) == "" {
-		in.ConfigJSON = configJSONFromSettings(settings, files)
+		in.ConfigJSON, err = configJSONFromSettings(settings, files)
+		if err != nil {
+			return Agent{}, err
+		}
 	}
 	in.ConfigJSON = EmbedAgentKindInConfigJSON(in.ConfigJSON, in.Kind, in.A2AProxy)
 	in.Status = strings.TrimSpace(in.Status)
@@ -270,19 +280,21 @@ func (u *AgentUsecase) Create(ctx context.Context, in Agent) (Agent, error) {
 	if strings.TrimSpace(in.CreatedBy) == "" {
 		in.CreatedBy = AgentCreatedByFromContext(ctx)
 	}
-	if _, err := u.repo.CreateAgent(ctx, in); err != nil {
-		if isAgentKeyDuplicate(err) {
-			return Agent{}, kerrors.BadRequest("AGENT_KEY_CONFLICT", "agent_key already in use")
+	if err := u.repo.ExecInTx(ctx, func(txCtx context.Context) error {
+		if _, err := u.repo.CreateAgent(txCtx, in); err != nil {
+			if isAgentKeyDuplicate(err) {
+				return kerrors.BadRequest("AGENT_KEY_CONFLICT", "agent_key already in use")
+			}
+			return err
 		}
-		return Agent{}, err
-	}
-	if _, err := u.repo.UpsertAgentRuntimeSettings(ctx, settings); err != nil {
-		return Agent{}, err
-	}
-	if _, err := u.repo.ReplaceAgentPromptFiles(ctx, in.ID, files); err != nil {
-		return Agent{}, err
-	}
-	if _, err := u.syncConfigJSON(ctx, in.ID); err != nil {
+		if _, err := u.repo.UpsertAgentRuntimeSettings(txCtx, settings); err != nil {
+			return err
+		}
+		if _, err := u.repo.ReplaceAgentPromptFiles(txCtx, in.ID, files); err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
 		return Agent{}, err
 	}
 	return u.Get(ctx, in.ID)
@@ -346,9 +358,6 @@ func (u *AgentUsecase) Update(ctx context.Context, id string, patch Agent) (Agen
 	if _, err := u.repo.ReplaceAgentPromptFiles(ctx, id, files); err != nil {
 		return Agent{}, err
 	}
-	if _, err := u.syncConfigJSON(ctx, id); err != nil {
-		return Agent{}, err
-	}
 	return u.Get(ctx, id)
 }
 
@@ -409,9 +418,6 @@ func (u *AgentUsecase) CreatePromptFile(ctx context.Context, f AgentPromptFile) 
 	if err != nil {
 		return AgentPromptFile{}, err
 	}
-	if _, err := u.syncConfigJSON(ctx, f.AgentID); err != nil {
-		return AgentPromptFile{}, err
-	}
 	return created, nil
 }
 
@@ -427,9 +433,6 @@ func (u *AgentUsecase) UpdatePromptFile(ctx context.Context, f AgentPromptFile) 
 	}
 	updated, err := u.repo.UpdateAgentPromptFile(ctx, f)
 	if err != nil {
-		return AgentPromptFile{}, err
-	}
-	if _, err := u.syncConfigJSON(ctx, f.AgentID); err != nil {
 		return AgentPromptFile{}, err
 	}
 	return updated, nil
@@ -448,8 +451,7 @@ func (u *AgentUsecase) DeletePromptFile(ctx context.Context, agentID, id string)
 	if err := u.repo.DeleteAgentPromptFile(ctx, agentID, id); err != nil {
 		return err
 	}
-	_, err := u.syncConfigJSON(ctx, agentID)
-	return err
+	return nil
 }
 
 // EstimateTokens returns an approximate token count for all prompt files of an agent.
@@ -465,27 +467,59 @@ func (u *AgentUsecase) EstimateTokens(ctx context.Context, agentID string) (File
 	return estimateTokensForFiles(a.Files), nil
 }
 
-func (u *AgentUsecase) syncConfigJSON(ctx context.Context, id string) (Agent, error) {
+func (u *AgentUsecase) computeConfigJSON(ctx context.Context, id string) (string, error) {
 	a, err := u.repo.GetAgentByID(ctx, id)
 	if err != nil {
-		return Agent{}, err
+		return "", err
 	}
 	settings, err := u.repo.GetAgentRuntimeSettings(ctx, id)
 	if err != nil {
 		if !stderrors.Is(err, sql.ErrNoRows) {
-			return Agent{}, err
+			return "", err
 		}
 		settings = withSettingDefaults(settingsFromLegacyConfig(a.ConfigJSON))
 		settings.AgentID = id
 	}
 	files, err := u.repo.ListAgentPromptFiles(ctx, id)
 	if err != nil {
-		return Agent{}, err
+		return "", err
 	}
-	a.ConfigJSON = configJSONFromSettings(withSettingDefaults(settings), files)
+	cj, err := configJSONFromSettings(withSettingDefaults(settings), files)
+	if err != nil {
+		return "", err
+	}
 	HydrateAgentKind(&a)
-	a.ConfigJSON = EmbedAgentKindInConfigJSON(a.ConfigJSON, a.Kind, a.A2AProxy)
-	return u.repo.UpdateAgent(ctx, a)
+	cj = EmbedAgentKindInConfigJSON(cj, a.Kind, a.A2AProxy)
+	cj = mergeEvaluationFromLegacy(cj, a.ConfigJSON)
+	return cj, nil
+}
+
+func mergeEvaluationFromLegacy(computed, legacy string) string {
+	if strings.TrimSpace(legacy) == "" {
+		return computed
+	}
+	var leg map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(legacy), &leg); err != nil {
+		return computed
+	}
+	evalRaw, ok := leg["evaluation"]
+	if !ok {
+		return computed
+	}
+	var comp map[string]any
+	if err := json.Unmarshal([]byte(computed), &comp); err != nil {
+		return computed
+	}
+	var eval any
+	if err := json.Unmarshal(evalRaw, &eval); err != nil {
+		return computed
+	}
+	comp["evaluation"] = eval
+	out, err := json.Marshal(comp)
+	if err != nil {
+		return computed
+	}
+	return string(out)
 }
 
 func mergeAgentCatalog(current, patch Agent) Agent {

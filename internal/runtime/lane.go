@@ -121,12 +121,12 @@ func (s *LaneScheduler) release(lane TurnLane) {
 	q := s.wait[lane]
 	for len(q) > 0 {
 		ch := q[0]
-		q = q[1:]
 		select {
 		case ch <- struct{}{}:
-			s.wait[lane] = q
+			s.wait[lane] = q[1:]
 			return
 		default:
+			q = q[1:]
 		}
 	}
 	s.wait[lane] = q

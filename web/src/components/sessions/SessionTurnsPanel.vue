@@ -8,11 +8,11 @@
     <q-list v-else separator>
       <q-item v-for="turn in turns" :key="turn.id" class="app-interactive-list-item turn-item">
         <q-item-section side>
-          <q-badge :color="turnStatusColor(turn.status)" outline>{{ turn.turn_index }}</q-badge>
+          <q-badge :color="turnStatusColor(turn.status)" outline>{{ turn.turn_number }}</q-badge>
         </q-item-section>
         <q-item-section>
           <q-item-label overline class="text-grey-7">
-            Turn #{{ turn.turn_index }}
+            Turn #{{ turn.turn_number }}
             <span v-if="turn.final_provider || turn.final_model" class="q-ml-sm">
               {{ turn.final_provider }}/{{ turn.final_model }}
             </span>

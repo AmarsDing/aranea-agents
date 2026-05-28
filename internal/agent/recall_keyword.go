@@ -57,8 +57,5 @@ func searchHintsFromIntentContent(content string) string {
 
 func trimRecallKeyword(s string) string {
 	s = strings.TrimSpace(s)
-	if len([]rune(s)) > 120 {
-		return string([]rune(s)[:120])
-	}
-	return s
+	return safeTruncate(s, 120)
 }

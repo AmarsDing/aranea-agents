@@ -50,8 +50,12 @@ func RalphLoopConfigFromSettings(s *biz.AgentRuntimeSettings) (*trpcrunner.Ralph
 	if tagClose == "" {
 		tagClose = defaultRalphPromiseTagClose
 	}
+	maxIter := s.RalphLoopMaxIterations
+	if maxIter <= 0 {
+		maxIter = 5
+	}
 	return &trpcrunner.RalphLoopConfig{
-		MaxIterations:     s.RalphLoopMaxIterations,
+		MaxIterations:     maxIter,
 		CompletionPromise: promise,
 		PromiseTagOpen:    tagOpen,
 		PromiseTagClose:   tagClose,

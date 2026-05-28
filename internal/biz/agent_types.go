@@ -73,6 +73,7 @@ func (a Agent) SkipCategoryResponsibility() bool {
 //   - Context   : ContextCompactionEnabled, SessionSummaryEnabled, OutputSchemaJSON, ModelSelector, PlannerKind
 type AgentRuntimeSettings struct {
 	AgentID                           string
+	// Deprecated: use EvolutionSelfEvolve
 	SelfEvolve                        bool
 	SubagentsEnabled                  bool
 	SubagentsMaxConcurrency           int
@@ -332,7 +333,7 @@ func (s *AgentRuntimeSettings) GetCodeExecutor() CodeExecutorCfg {
 // GetEvolution returns the Evolution domain view.
 func (s *AgentRuntimeSettings) GetEvolution() EvolutionCfg {
 	return EvolutionCfg{
-		SelfEvolve:                        s.SelfEvolve,
+		SelfEvolve:                        s.EvolutionSelfEvolve,
 		SubagentsEnabled:                  s.SubagentsEnabled,
 		SubagentsMaxConcurrency:           s.SubagentsMaxConcurrency,
 		SubagentsMaxGenerationDepth:       s.SubagentsMaxGenerationDepth,

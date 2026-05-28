@@ -101,6 +101,7 @@ func (d *TaskDispatcher) tick(ctx context.Context) error {
 		if d.runner != nil {
 			if err := d.runner.DispatchTask(ctx, claimed, agentKey); err != nil {
 				d.log.Warnf("task dispatch run: task_id=%s agent=%s: %v", claimed.TaskID, agentKey, err)
+				d.tasks.ReleaseClaim(ctx, claimed.TaskID)
 			}
 		}
 	}

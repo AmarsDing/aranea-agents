@@ -152,40 +152,40 @@ const hasMetadata = computed(() => Boolean(props.event.run_id?.trim() || props.e
 <style scoped lang="sass">
 .chat-execution-card
   border-radius: 10px
-  border: 1px solid var(--glass-border, var(--color-border-subtle, rgba(0, 0, 0, 0.08)))
-  background: var(--glass-surface, var(--color-surface-elevated, rgba(255, 255, 255, 0.6)))
+  border: 1px solid var(--glass-border)
+  background: var(--glass-surface)
   overflow: hidden
 
 .chat-execution-card--running
-  border-color: rgba(255, 152, 0, 0.35)
+  border-color: color-mix(in srgb, var(--color-warning) 35%, transparent)
 
 .chat-execution-card--failed
-  border-color: rgba(244, 67, 54, 0.35)
+  border-color: color-mix(in srgb, var(--color-danger) 35%, transparent)
 
 .chat-execution-card--cancelled
-  border-color: rgba(158, 158, 158, 0.35)
+  border-color: color-mix(in srgb, var(--color-text-tertiary) 35%, transparent)
   opacity: 0.92
 
 .chat-execution-card__body
-  padding: 0 12px 12px
+  padding: 0 var(--space-3) var(--space-3)
 
 .chat-execution-card__pre
   margin: 0
-  padding: 8px
+  padding: var(--space-2)
   border-radius: 6px
-  font-size: 12px
+  font-size: var(--text-xs)
   line-height: 1.45
   max-height: 280px
   overflow: auto
   white-space: pre-wrap
   word-break: break-word
-  background: rgba(0, 0, 0, 0.04)
+  background: var(--glass-surface)
 
 body.body--dark .chat-execution-card__pre
-  background: rgba(255, 255, 255, 0.06)
+  background: var(--glass-surface-hover)
 
 .chat-execution-card__audit
-  padding-top: 4px
-  border-top: 1px dashed var(--glass-border, rgba(0, 0, 0, 0.08))
+  padding-top: var(--space-1)
+  border-top: 1px dashed var(--glass-border)
   line-height: 1.4
 </style>

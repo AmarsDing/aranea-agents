@@ -80,7 +80,7 @@ const (
 )
 
 type ChatRunStatusPersister interface {
-	PersistRunStatus(ctx context.Context, sessionID, runID, status, errMsg string)
+	PersistRunStatus(ctx context.Context, sessionID, runID, status, errMsg string) error
 	PersistAwaitMarkers(ctx context.Context, sessionID, runID string, meta ChatAwaitMeta)
 	ClearAwaitingRunState(ctx context.Context, sessionID string)
 }
@@ -129,9 +129,11 @@ func (uc *ChatUsecase) CancelRun(sessionID string) (bool, string) {
 }
 
 func (uc *ChatUsecase) SetRunStatus(ctx context.Context, sessionID, runID, status, errMsg string) {
+	if err := uc.persist.PersistRunStatus(ctx, sessionID, runID, status, errMsg); err != nil {
+		event.SysLogError("chat.persist_run_status", "persist run status failed", event.P("session_id", sessionID), event.P("run_id", runID), event.P("error", err.Error()))
+	}
 	uc.runs.SetStatus(sessionID, runID, status, errMsg)
 	uc.publisher.PublishRunStatus(sessionID, runID, status, errMsg)
-	uc.persist.PersistRunStatus(ctx, sessionID, runID, status, errMsg)
 }
 
 func (uc *ChatUsecase) GetRunStatus(sessionID string) (ChatRunStatus, bool) {
@@ -244,6 +246,7 @@ func (uc *ChatUsecase) StartBackgroundGoroutines() {
 					entry, ok := val.(awaitChanEntry)
 					if ok && now.Sub(entry.createdAt) > awaitChanMaxAge {
 						event.SysLogWarn("system.session.compress", "await channel expired, cleaning up", event.P("session_id", sid), event.P("age", now.Sub(entry.createdAt).Round(time.Second).String()))
+						close(entry.ch)
 						uc.awaitChans.Delete(key)
 					}
 					return true

@@ -250,7 +250,7 @@ async function copyJSON() {
 
 <style scoped>
 .monitor-audit-toolbar {
-  padding: 8px 16px 0;
+  padding: var(--space-2) var(--space-4) 0;
   border-bottom: none;
 }
 </style>

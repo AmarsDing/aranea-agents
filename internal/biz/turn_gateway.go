@@ -13,6 +13,12 @@ type TurnGateway interface {
 	// ExecuteTurn runs a single turn and returns the classified result.
 	ExecuteTurn(ctx context.Context, input TurnInput) (TurnResult, error)
 
+	// RunNativeTurn executes a synchronous agent/team turn and returns user + assistant messages.
+	RunNativeTurn(ctx context.Context, input TurnInput) (ChatMessage, ChatMessage, error)
+
+	// RunNativeTurnWithOutcome returns an explicit outcome (completed / queued / failed) for Channel ingress.
+	RunNativeTurnWithOutcome(ctx context.Context, input TurnInput) (NativeTurnResult, error)
+
 	// HasActiveRun reports whether a session has an in-flight run.
 	HasActiveRun(sessionID string) bool
 

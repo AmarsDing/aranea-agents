@@ -68,7 +68,7 @@ import { filterToolsForToolStrip } from "../../features/chat/groupMessagesByTurn
 import {
   messageSourceChipFallback,
   messageSourceChipKey,
-  parseMessageSourceMeta,
+  messageSourceFromMessage,
 } from "../../features/chat/messageSourceMeta";
 import type { A2UIUserActionPayload } from "../../features/chat/a2uiUserAction";
 import type { Message, ReactToolLinkIndex } from "../../features/chat/types";
@@ -91,7 +91,7 @@ const emit = defineEmits<{
 const { t } = useI18n();
 
 const turnSourceLabel = computed(() => {
-  const meta = parseMessageSourceMeta(props.block.user?.options_json);
+  const meta = messageSourceFromMessage(props.block.user ?? null);
   if (!meta) return "";
   const key = messageSourceChipKey(meta);
   return key ? t(key, messageSourceChipFallback(meta)) : messageSourceChipFallback(meta);
@@ -104,8 +104,8 @@ const visibleTools = computed(() =>
 
 <style scoped>
 .turn-block {
-  margin-bottom: 12px;
-  padding: 12px 14px;
+  margin-bottom: var(--space-3);
+  padding: var(--space-3) var(--space-3);
   border-radius: 14px;
   background: var(--glass-surface);
   border: 1px solid var(--glass-border);
@@ -118,8 +118,8 @@ const visibleTools = computed(() =>
 }
 
 .turn-block__channel-bar {
-  margin: -4px 0 8px;
-  padding: 4px 8px;
+  margin: calc(-1 * var(--space-1)) 0 var(--space-2);
+  padding: var(--space-1) var(--space-2);
   border-radius: 8px;
   background: color-mix(in srgb, var(--color-accent) 12%, transparent);
   color: var(--color-text-secondary);

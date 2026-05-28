@@ -7,7 +7,7 @@
           <div class="text-h6">实体列表</div>
           <q-btn flat dense icon="refresh" :loading="loadingEntities" @click="$emit('refresh')" />
         </q-card-section>
-        <q-list separator dense style="max-height: 420px; overflow: auto">
+        <q-list separator dense class="memory-graph-entity-list">
           <q-item
             v-for="entity in entities"
             :key="entity.id"
@@ -34,7 +34,7 @@
         <q-card-section class="row items-center q-gutter-sm">
           <div class="text-h6">Neighborhood BFS</div>
           <q-space />
-          <q-select v-model="hops" :options="hopOptions" dense outlined style="width: 100px" label="Hops" />
+          <q-select v-model="hops" :options="hopOptions" dense outlined class="memory-graph-hops-select" label="Hops" />
           <q-btn color="primary" dense label="展开" :loading="loadingGraph" :disable="!selectedId" @click="loadNeighborhood" />
         </q-card-section>
 
@@ -210,3 +210,14 @@ function truncate(s: string, n: number) {
   return s.length <= n ? s : `${s.slice(0, n)}…`;
 }
 </script>
+
+<style scoped>
+.memory-graph-entity-list {
+  max-height: 420px;
+  overflow: auto;
+}
+
+.memory-graph-hops-select {
+  width: 100px;
+}
+</style>
